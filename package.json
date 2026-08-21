@@ -1,0 +1,11 @@
+{
+  "name": "inner-leadership-website",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Bilingual static funnel for the Inner Leadership 12-week program.",
+  "scripts": {
+    "build": "python scripts/build_pages.py",
+    "check": "node scripts/check-site.mjs",
+    "serve": "python -m http.server 8080"
+  }
+}
