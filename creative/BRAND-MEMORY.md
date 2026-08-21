@@ -1,6 +1,6 @@
 # Inner Leadership — Brand Memory & Canonical Preferences
 
-Version: 1.0  
+Version: 1.1  
 Status: CURRENT
 
 This file contains stable creative preferences learned from explicit approval/rejection. It is not a transcript dump.
@@ -46,9 +46,12 @@ Approved work teaches the system what to make next. Preserve the approved asset 
 ## Current real-photo direction
 
 - The real soldering/electronics photo is the current preferred hero because it communicates concentration, Jewish identity, hands-on mastery and credibility.
-- Use real program photos in a dedicated proof/gallery section with consistent crops and spacing.
+- Use the current real-program photo set in one dedicated proof/gallery section with consistent crops and spacing.
+- Do not insert one real photo into only one curriculum-module card while the other modules use illustrations.
 - Founder uses the real founder photo, not a generated identity.
 - Preserve originals unchanged; derivatives/crops are separate.
+- Public-use permission is confirmed for the current six-image real-media set as of 2026-08-21.
+- Future real child images still require separate confirmation before public promotion.
 
 ## Copy / voice
 
