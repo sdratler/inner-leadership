@@ -1,6 +1,6 @@
 # Inner Leadership — Asset Registry & Canonical Slots
 
-Version: 1.0  
+Version: 1.1  
 Status: CURRENT
 
 ## Drive root
@@ -21,6 +21,11 @@ Inner Leadership — Canonical Library/
 │   ├── 01_LANDING PAGE/
 │   │   ├── 00_WORKING/
 │   │   ├── 01_CURRENT — Approved/
+│   │   │   ├── 01_HERO/
+│   │   │   ├── 02_REAL-WORK GALLERY/
+│   │   │   ├── 03_FOUNDER/
+│   │   │   ├── 04_CURRICULUM ILLUSTRATIONS/
+│   │   │   └── 05_OUTCOME ICONS/
 │   │   ├── 02_HISTORY — Prior Approved/
 │   │   └── 03_PROMPTS — Reproducible/
 │   ├── 02_META ADS/
@@ -38,6 +43,9 @@ Inner Leadership — Canonical Library/
 ├── 05_REAL MEDIA — Originals & Consent/
 │   ├── 01_ORIGINALS — Never Modify/
 │   ├── 02_APPROVED FOR PUBLIC/
+│   │   ├── 01_REAL PROGRAM PHOTOS/
+│   │   ├── 02_FOUNDER/
+│   │   └── 03_GENERATED ASSETS/
 │   └── 03_CONSENT RECORDS/
 └── 99_ARCHIVE — Superseded & Retired/
 ```
@@ -47,6 +55,7 @@ Inner Leadership — Canonical Library/
 A slot is one specific job an asset performs, for example:
 
 - `landing.hero`
+- `landing.real-program-proof.gallery`
 - `landing.curriculum.communication`
 - `landing.outcome-icon.communication`
 - `meta.cold.critical-thinking.square`
@@ -60,6 +69,7 @@ Each slot may have many historical versions but only one CURRENT version unless 
 - `WORKING` — not approved.
 - `REFERENCE` — explicitly liked as a style/example reference.
 - `CURRENT` — explicitly approved for the production slot.
+- `CURRENT VARIANT SET` — approved group of assets filling one repeated-set slot.
 - `HISTORY` — previously CURRENT but superseded.
 - `REJECTED` — not for use; preserve the lesson when useful.
 
@@ -70,33 +80,51 @@ Each slot may have many historical versions but only one CURRENT version unless 
 - Status: CURRENT
 - Asset: `IL_landing-hero_soldering-real_v01_CURRENT.png`
 - Drive: https://drive.google.com/file/d/1XjfbQJafLGwck2HZncS7lOkg2oHoqwex/view
+- Folder: https://drive.google.com/drive/folders/1UzEf1EPb1vOoK0iOwra70WLbS63I6v6K
 - Type: Real photograph
 - Source original: `IL_real-program_electronics-soldering_ORIGINAL.png`
 - Source: https://drive.google.com/file/d/11jK4PTkzIY--b6biREXW7ib1aE80G6P3/view
 - Approved qualities: authentic Jewish boy, visible kippah, concentration, practical mastery, hands-on competence, credible program atmosphere.
 
+### `landing.real-program-proof.gallery`
+
+- Status: CURRENT VARIANT SET
+- Folder: https://drive.google.com/drive/folders/1tvdNjlGYCIUOfJp6y6Nj27BoUIZvIctT
+- Type: Real photographs
+- Rule: use as one coherent proof/gallery set. Do not insert them individually into the four curriculum-module illustration cards.
+- Assets:
+  - `IL_landing-gallery_drums-mastery_v01_CURRENT.png` — https://drive.google.com/file/d/1X6CfCrIsplOcNotdbok47WdPrIKuFj13/view
+  - `IL_landing-gallery_group-huddle-project_v01_CURRENT.png` — https://drive.google.com/file/d/1SRu5XecMCqVWr3mNU6RQpCl5Sy6XAj3V/view
+  - `IL_landing-gallery_outdoor-challenge_v01_CURRENT.png` — https://drive.google.com/file/d/1gxIxPA1b1LfH-vaFFQxnXM5OwLouC0Dy/view
+  - `IL_landing-gallery_jewish-build-project_v01_CURRENT.png` — https://drive.google.com/file/d/10dWmVVnmF-CdHS7gA0inaiUixb3g3j71/view
+
 ### `founder.portrait`
 
 - Status: CURRENT
-- Asset: `IL_founder-portrait_real_v01_CURRENT.jpg`
-- Drive: https://drive.google.com/file/d/1mBlb1aliaRs-ZHCbmRn4jk_JFYBodHHN/view
-- Type: Real photograph
+- Brand asset: `IL_founder-portrait_real_v01_CURRENT.jpg`
+- Brand Drive: https://drive.google.com/file/d/1mBlb1aliaRs-ZHCbmRn4jk_JFYBodHHN/view
+- Landing-page asset: `IL_landing-founder_shloimie-dratler_v01_CURRENT.jpg`
+- Landing-page Drive: https://drive.google.com/file/d/1Ar9effyyIz_SYR2wqc_8o_ufGk5hBG9L/view
 - Source original: `IL_real-founder_shloimie-dratler_ORIGINAL.jpg`
 - Source: https://drive.google.com/file/d/1A-yiwgIGgH2VYLqqmA-iAztfqfQtbkyx/view
 - Rule: use the real founder image; do not substitute a generated face.
 
-## Known real originals
+## Public-use real media
 
-These are preserved originals, not automatically approved for public use:
+Public-use permission for the current six-image set was explicitly confirmed on 2026-08-21.
 
-- `IL_real-program_drums-mastery_ORIGINAL.png` — https://drive.google.com/file/d/1T_gKnd3OPx0Q2q2isp71daT8oNiiruM5/view
-- `IL_real-program_group-huddle-project_ORIGINAL.png` — https://drive.google.com/file/d/1K2pp_XTpiG6QvgK7T1SA_lKmA1tODjhs/view
-- `IL_real-program_outdoor-challenge_ORIGINAL.png` — https://drive.google.com/file/d/1NWe3U9bOGGq5eQsxOhJPLPcLhT686tJO/view
-- `IL_real-program_jewish-build-project_ORIGINAL.png` — https://drive.google.com/file/d/1pyah1VjqfnjWL-mFqFWSzNw-bZg7rT59/view
+- Approved program photos: https://drive.google.com/drive/folders/1_EV9RmLVeJH9JKeSk0h0q8WTR_prfozk
+- Approved founder media: https://drive.google.com/drive/folders/1OexoMh179rkruPe53cvbA0iqsqUKkqas
+- Consent record: https://docs.google.com/document/d/1IjqyFWksAWYx94FhAUgE1sC7aaFY-0dMSGZYYXL9jV0/edit
+
+Originals remain unchanged in:
+
+- https://drive.google.com/drive/folders/1d4QrCVbNEZWp7t7ZlEi9VGrem3yk1pLL
+
+Future real child images still require separate confirmation before promotion into the public-approved folder.
 
 ## Pending slots
 
-- `landing.real-program-proof.gallery`
 - `landing.curriculum.values-purpose`
 - `landing.curriculum.communication`
 - `landing.curriculum.problem-solving`
@@ -111,10 +139,6 @@ These are preserved originals, not automatically approved for public use:
 - `meta.cold.creative-01`
 - `meta.cold.creative-02`
 - `meta.cold.creative-03`
-
-## Public-photo rule
-
-A real child photograph can be stored in ORIGINALS without being marked approved for public use. Public approval and media-consent evidence remain separate.
 
 ## Drive canonical registry
 
