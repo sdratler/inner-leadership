@@ -1,120 +1,158 @@
 # Inner Leadership — GHL Source of Truth
 
-Status: CURRENT
-Date: 2026-08-23
-Repository: `sdratler/inner-leadership`
-Branch: `main`
+Status: **CURRENT**  
+Date: 2026-08-23  
+Acquisition version: **Google-first direct qualification**
 
-## The rule
+## Authority
 
-There is one authoritative control plane for the Inner Leadership GHL build:
+1. `ACQUISITION_PIVOT_2026-08-23.md` controls acquisition strategy.
+2. Live GHL readback controls exact object existence, IDs and draft/published state.
+3. `GHL_CURRENT_STATE.md` is the current verified registry.
+4. `GHL_BUILD_SPEC.md` is the desired architecture.
+5. `GHL_PROMPT_LIBRARY.md` contains the executable worker prompts.
+6. GitHub `main` is the version-controlled mirror; the Drive GHL control document is the AI-readable operational copy.
 
-**GitHub `main`, beginning with this file.**
+## Canonical location
 
-GHL itself is authoritative for live runtime facts: what objects actually exist, their IDs, their settings, and whether they are draft or published. GitHub is authoritative for the intended architecture, verified registry, exact copy, prompt library, decisions, and change history.
+- GHL location name: `Life Skills`
+- Location ID: `9HQEubuu4WWG6xz09yB4`
+- Required URL fragment: `/v2/location/9HQEubuu4WWG6xz09yB4/`
 
-Google Drive is authoritative only for binary creative assets.
+Legacy location `pBSnOK2nkdxp6gf9Rg3o` is read-only. Never use its IDs in the Life Skills build.
 
-Do not use chat history, browser tabs, old project folders, or legacy GHL sub-accounts as an independent source of truth.
+## Canonical offer
 
-## Locked marketing decision — 2026-08-23
+**Inner Leadership / הנהגה מבפנים**
 
-The public category is resolved and no longer an open legal-language question:
+- practical emotional therapy for boys ages 7–13;
+- Beit Shemesh;
+- Hebrew and English;
+- one weekly 50–60-minute individual therapeutic session;
+- two weekly 90-minute therapeutic project labs;
+- three parent-guidance sessions;
+- 12 weeks;
+- 10,800 NIS total, paid as 3 × 3,600 NIS;
+- two compatible paid boys open the first lab;
+- five-boy founding target;
+- ten-boy cap.
 
-- Brand: `Inner Leadership / הנהגה מבפנים`
-- Hebrew category: `טיפול רגשי מעשי לבנים בגילאי 7–13`
-- English category: `Practical Emotional Therapy for Boys Ages 7–13`
-- Delivery: a focused 12-week therapeutic process combining weekly individual therapy, two applied therapeutic project labs each week, and three parent-guidance sessions
+## Current active funnel
 
-Do not revert the public positioning to “course,” “club,” “chug,” “curriculum,” or a generic life-skills program. The project method remains self-governance and intrinsic motivation; the service category is emotional treatment.
+**Google Search → landing page → direct practical qualification → parent consultation → offer → first payment → enrollment**
 
-## Canonical systems
+### Active public steps
 
-| Domain | Authority | Canonical location |
-|---|---|---|
-| Live CRM/funnel runtime | GHL | Life Skills, `9HQEubuu4WWG6xz09yB4` |
-| Desired GHL architecture | GitHub | `GHL_BUILD_SPEC.md` on `main` |
-| Verified GHL IDs and implementation status | GitHub mirror of GHL readback | `GHL_CURRENT_STATE.md` on `main` |
-| Exact execution prompts | GitHub | `GHL_PROMPT_LIBRARY.md` on `main` |
-| Email subjects and bodies | GitHub | `EMAIL_FUNNEL_EN_HE.md` on `main` |
-| Website copy | GitHub | `WEBSITE_COPY_EN_HE.md` on `main` |
-| Marketing positioning and founder video scripts | GitHub | `MARKETING_POSITIONING_AND_VIDEO_SCRIPTS.md` on `main` |
-| Images, video, and other binaries | Google Drive | `Inner Leadership — Canonical Library` |
+- `IL | HE | Landing`
+- `IL | HE | Qualification`
+- `IL | HE | Thank You`
+- `IL | EN | Landing`
+- `IL | EN | Qualification`
+- `IL | EN | Thank You`
 
-## Canonical GHL location
+### Active forms
 
-Every GHL task must verify the URL contains:
+- `IL | HE | Direct Qualification`
+- `IL | EN | Direct Qualification`
+- `IL | Shared | Confidential Intake`
 
-`/v2/location/9HQEubuu4WWG6xz09yB4/`
+### Active CTAs
 
-Canonical location:
+- Hebrew: `בדקו אם התהליך מתאים לבן שלכם`
+- Hebrew secondary: `צפו בהסבר קצר על התהליך`
+- English: `Check whether the treatment fits your son`
+- English secondary: `Watch the short program overview`
 
-- Name: `Life Skills`
-- ID: `9HQEubuu4WWG6xz09yB4`
+The exact investment must appear before the public qualification form.
 
-Legacy/wrong location:
+## Video decision
 
-- `pBSnOK2nkdxp6gf9Rg3o`
+- 30–45-second direct founder video: active creative.
+- 5–6-minute program overview: optional landing-page asset.
+- 35–40-minute masterclass: deferred/history.
+- no video-engagement threshold;
+- no watch gate;
+- no masterclass requirement in the publication gate.
 
-Never use an ID from the legacy location in the current build. Leave legacy assets untouched unless the owner explicitly authorizes cleanup later.
+If old Masterclass Registration or Masterclass Watch steps exist, keep them draft and disconnected. Do not delete them during the speed launch.
 
-## Precedence when documents disagree
+## CRM preservation
 
-1. Explicit owner decision in the current conversation.
-2. This file.
-3. `MARKETING_POSITIONING_AND_VIDEO_SCRIPTS.md` for public category, ad/video framing, and creative hierarchy.
-4. `GHL_BUILD_SPEC.md` for desired structure.
-5. Fresh GHL readback recorded in `GHL_CURRENT_STATE.md` for actual state.
-6. Exact canonical copy files such as `WEBSITE_COPY_EN_HE.md` and `EMAIL_FUNNEL_EN_HE.md`.
-7. Other current project files.
-8. Legacy records and archives.
+The verified 13-stage pipeline, 31 canonical tags and 22 `contact.il_*` fields remain the CRM foundation.
 
-A fresh GHL readback may prove that the live system differs from the spec. That does not silently change the spec. Record the discrepancy in `GHL_CURRENT_STATE.md`, then deliberately decide whether to change GHL or amend the spec.
+Masterclass-specific stages, tags and fields are dormant. Do not delete, recreate or route active leads through them.
 
-## Update protocol after every GHL workstream
+Active stage path:
 
-Every GHL worker must return:
+`New Lead → Qualification In Progress → Qualified or Human Review → Consultation Booked → Consultation Attended → Offer / Decision → First Payment Received → Enrolled — Cohort Assigned`
 
-1. confirmed location ID;
-2. exact asset names;
-3. exact IDs;
-4. draft/published state;
-5. settings changed;
-6. dependencies or blockers;
-7. duplicate candidates left untouched;
-8. confirmation that no SMS/WhatsApp was added;
-9. confirmation that nothing was published;
-10. a concise delta: CREATED, UPDATED, VERIFIED, BLOCKED.
+Alternative outcomes:
 
-Then the central coordinator must:
+- `Nurture / Next Cohort`
+- `Not Fit / Closed`
 
-1. compare the report with live GHL readback when available;
-2. update `GHL_CURRENT_STATE.md` on `main`;
-3. update `GHL_BUILD_SPEC.md` only when the intended architecture changes;
-4. update `GHL_PROMPT_LIBRARY.md` when prompts or dependencies change;
-5. commit the change before issuing dependent prompts.
+## Workflows
 
-No browser worker should independently rewrite the canonical GitHub files unless its sole assigned task is source-of-truth maintenance.
+- `W01 | IL | New Lead Routing`
+- `W02 | IL | Direct Qualification Intake`
+- `W03 | IL | Fast Lead Response`
+- `W04 | IL | Qualification Started`
+- `W05 | IL | Qualification Outcome`
+- `W06 | IL | Consultation`
+- `W07 | IL | Offer`
+- `W08 | IL | Payment & Enrollment`
+- `W09 | IL | Direct Program Nurture`
+- `W10 | IL | Data Hygiene`
 
-## Permanent operating constraints
+Everything stays draft/off until explicit publication approval.
 
+## Email
+
+Keep the existing 28 E00–E13 Hebrew/English template records and IDs. Replace masterclass-first subjects and bodies with `EMAIL_FUNNEL_EN_HE.md`. Do not recreate the templates.
+
+## Bots, KBs and widgets
+
+They are not launch blockers.
+
+- zero public bots required for first launch;
+- zero public chat widgets required for first launch;
+- two language KBs may remain draft for later program FAQ use;
+- old masterclass-concierge bot plans are deferred.
+
+## Calendar
+
+Use the existing canonical `IL | Parent Consultation` calendar. Zoom binding and one complete test booking must pass before publication. No Google/Outlook conflict calendar, no Look Busy, no SMS, no WhatsApp automation.
+
+## Permanent rules
+
+- exact-name check before creation;
+- inspect and reuse the current-location asset before creating a duplicate;
+- no deletion during active build;
+- no publication without explicit owner approval;
+- no email send during build/QA without explicit approval;
 - no SMS;
 - no WhatsApp automation;
-- no publication without explicit owner approval;
-- no deletion during active build;
-- no touching One Time or BNA assets;
-- no use of SG-prefixed objects as substitutes for IL-prefixed objects;
-- exact-name check before creation;
-- GHL AI Builder/natural-language builder preferred whenever available;
-- current copy and IDs must come from the canonical files, not from memory;
-- public copy may describe the service as `טיפול רגשי מעשי`;
-- paid Meta ads must not claim to know that the viewer's child has a diagnosis, medical condition, or medication history;
-- no ad may tell parents to stop, reject, or alter medication; the masterclass may discuss the broader developmental picture without giving medical instructions.
+- do not touch One Time, BNA, SG, adult-assessment or double-underscore clinical assets;
+- no broad re-audit when a scoped readback is sufficient;
+- no stock substitutions;
+- no sensitive clinical history in public forms;
+- every worker returns exact IDs and a `CREATED / UPDATED / VERIFIED / BLOCKED` delta;
+- every worker writes its result to the canonical run ledger or reports `WRITEBACK_BLOCKED`.
 
-## Current status
+## Publication gate
 
-Read `GHL_CURRENT_STATE.md` before issuing or executing any GHL task.
+The first Hebrew Google route may publish after:
 
-Read `GHL_BUILD_SPEC.md` before creating missing architecture.
+- current Hebrew copy installed;
+- price shown before qualification;
+- direct form and redirects tested;
+- one contact and one opportunity created correctly;
+- qualified/human-review routing tested;
+- canonical calendar and Zoom booking tested;
+- lifecycle emails linked and tested without masterclass placeholders;
+- Google conversion action tested;
+- privacy/terms present;
+- zero SMS/WhatsApp;
+- owner explicitly approves publication and ad spend.
 
-Read `GHL_PROMPT_LIBRARY.md` for the current parallel build prompts.
+English, Meta, bots, widgets, long-form video, curriculum illustrations and outcome icons are not blockers for the first Hebrew Search launch unless the owner explicitly makes them blockers.
