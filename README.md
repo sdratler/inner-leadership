@@ -1,99 +1,133 @@
 # Inner Leadership / הנהגה מבפנים
 
-Inner Leadership is a **12-week practical emotional-therapy process for boys ages 7–13** in Beit Shemesh.
+Canonical operating repository for **Inner Leadership**, a focused 12-week practical emotional-therapy process for boys ages 7–13 in Beit Shemesh.
 
-## Locked public positioning
+## Current offer
 
-- Brand: **Inner Leadership / הנהגה מבפנים**
-- Hebrew service category: **טיפול רגשי מעשי לבנים בגילאי 7–13**
-- English service category: **Practical Emotional Therapy for Boys Ages 7–13**
-- Delivery model: one weekly individual therapeutic session, two 90-minute therapeutic project labs each week, and three parent-guidance sessions during the twelve weeks
-- Founding investment: **10,800 NIS**, paid in three installments of 3,600 NIS
-- Two compatible paid boys can open the first lab
-- Five-boy founding cohort target
-- Ten-boy current cap
+### Hebrew category
 
-The brand describes the developmental method. The public category must read as treatment—not as a class, club, enrichment course, or generic life-skills program.
+**טיפול רגשי מעשי לבנים בגילאי 7–13**
 
-## Start here — source of truth
+### English category
 
-The authoritative entry point for every GHL task is:
+**Practical Emotional Therapy for Boys Ages 7–13**
 
-- [`GHL_SOURCE_OF_TRUTH.md`](GHL_SOURCE_OF_TRUTH.md)
+### Delivery
 
-Supporting canonical files:
+- one weekly 50–60-minute individual therapeutic session;
+- two weekly 90-minute therapeutic project labs;
+- three parent-guidance sessions;
+- individual goals, observation, reflection and continuation planning;
+- Hebrew and English;
+- 10,800 NIS total, paid as 3 × 3,600 NIS;
+- two compatible paid boys open the first lab;
+- five-boy founding target;
+- ten-boy cap.
 
-- [`GHL_BUILD_SPEC.md`](GHL_BUILD_SPEC.md) — intended pipeline, stages, tags, fields, forms, bots, calendar, pages, email architecture, and workflows;
-- [`GHL_CURRENT_STATE.md`](GHL_CURRENT_STATE.md) — verified live IDs, actual implementation state, blockers, and legacy-location warnings;
-- [`GHL_PROMPT_LIBRARY.md`](GHL_PROMPT_LIBRARY.md) — current copy/paste prompts for parallel GHL workstreams;
-- [`EMAIL_FUNNEL_EN_HE.md`](EMAIL_FUNNEL_EN_HE.md) — canonical bilingual lifecycle email copy;
-- [`WEBSITE_COPY_EN_HE.md`](WEBSITE_COPY_EN_HE.md) — canonical bilingual website copy;
-- [`MARKETING_POSITIONING_AND_VIDEO_SCRIPTS.md`](MARKETING_POSITIONING_AND_VIDEO_SCRIPTS.md) — locked therapy positioning, founder-led video scripts, creative hierarchy, and Meta copy guardrails.
+## Current acquisition decision — 2026-08-23
 
-**GHL is authoritative for live runtime facts. GitHub `main` is the canonical control plane and versioned record. Google Drive is the canonical binary creative library.**
+The active launch no longer depends on a 35–40-minute masterclass.
 
-Canonical GHL location:
+### Primary route
 
-- `Life Skills`
-- `9HQEubuu4WWG6xz09yB4`
+**Google Search → price-transparent landing page → direct practical qualification → parent consultation → manual offer → first payment → enrollment**
 
-Do not use IDs from legacy location `pBSnOK2nkdxp6gf9Rg3o` in the current build.
+### Active videos
 
-## Static website in this repository
+- approximately 30–45-second direct founder video for Meta, organic and Page use;
+- optional 5–6-minute program overview embedded on the landing page;
+- no watch threshold and no video gate.
 
-The repository contains a complete static website/funnel codebase:
+### Deferred
 
-- `index.html` — sales website
-- `masterclass.html` — masterclass registration
-- `watch.html` — watch page
-- `apply.html` — application page
-- `thank-you.html` — confirmation page
-- `privacy.html`
-- `terms.html`
-- `404.html`
+The long Hebrew and English masterclass scripts, registration/watch pages, masterclass stages, tags and engagement fields are preserved as history/dormant infrastructure. They are not part of the active route and are not publication requirements.
 
-The generated static site is currently a **reference/archive**, not the active production funnel. Some generated page/source copy still reflects an older offer version and must not be treated as canonical until rebuilt from the current therapy-positioned copy.
+Read `ACQUISITION_PIVOT_2026-08-23.md` before changing marketing or GHL architecture.
 
-The page generator is:
+## GHL
 
-- `scripts/build_pages.py`
+Canonical location:
 
-If the static site is updated later, make copy changes in the generator and rebuild so generated HTML and source remain aligned.
+- Name: `Life Skills`
+- Location ID: `9HQEubuu4WWG6xz09yB4`
+- Required URL fragment: `/v2/location/9HQEubuu4WWG6xz09yB4/`
 
-## Current method
+Legacy location `pBSnOK2nkdxp6gf9Rg3o` is read-only and must not supply IDs to the current build.
 
-**Understand → Practice → Observe → Reflect → Retry**
+### Active public funnel route
 
-The four current treatment modules are:
+- `IL | HE | Landing`
+- `IL | HE | Qualification`
+- `IL | HE | Thank You`
+- `IL | EN | Landing`
+- `IL | EN | Qualification`
+- `IL | EN | Thank You`
 
-1. Values, Identity, Purpose & Goals — *The Door Sign for My Future Home*
-2. Communication — *The Conversation Bench*
-3. Problem Solving — *The Bridge That Must Fail First*
-4. Bodily Awareness — meditation, interoception, food, cooking, movement, strength and recovery
+### Active forms
 
-## Current funnel
+- `IL | HE | Direct Qualification`
+- `IL | EN | Direct Qualification`
+- `IL | Shared | Confidential Intake`
 
-Meta ad → short registration → free parent masterclass → approximately 5% video engagement → qualification → Zoom parent consultation → manual fit/offer decision → first payment → enrollment.
+Public bots and widgets are not required for the first launch. Everything remains draft/off until owner approval.
 
-Operational rules:
+## Source-of-truth order
 
-- email only;
+1. `ACQUISITION_PIVOT_2026-08-23.md`
+2. `GHL_SOURCE_OF_TRUTH.md`
+3. `GHL_CURRENT_STATE.md`
+4. `GHL_BUILD_SPEC.md`
+5. `WEBSITE_COPY_EN_HE.md`
+6. `MARKETING_POSITIONING_AND_VIDEO_SCRIPTS.md`
+7. `EMAIL_FUNNEL_EN_HE.md`
+8. `GOOGLE_ADS_LAUNCH_PLAN.md`
+9. `GHL_PROMPT_LIBRARY.md`
+10. `GHL_AUDIT_RECONCILIATION_2026-08-23.md` for provenance and unresolved readback
+
+When a prior file says Meta-first, masterclass-first, 5% watch engagement, four bots/two widgets as launch blockers, or Google Search deferred, the acquisition pivot supersedes it.
+
+## Repository responsibilities
+
+### GitHub
+
+Version-controlled project state, copy, GHL registry/specification, prompts, campaign plan, decision history and reference code.
+
+### Google Drive
+
+Canonical working documents, approved creative binaries, source images, consent records and the AI-readable GHL control document.
+
+### GHL
+
+Live customer journey, forms, contacts, pipeline, workflows, email templates, calendar and media.
+
+Do not claim an external system was updated unless its connector or live UI confirmed the write.
+
+## Core files
+
+- `ACQUISITION_PIVOT_2026-08-23.md` — current commercial and funnel decision.
+- `GOOGLE_ADS_LAUNCH_PLAN.md` — first paid-channel build and operating plan.
+- `GHL_SOURCE_OF_TRUTH.md` — short governing rules for every GHL worker.
+- `GHL_CURRENT_STATE.md` — exact current-location registry and verified/draft state.
+- `GHL_BUILD_SPEC.md` — desired direct-funnel architecture.
+- `GHL_PROMPT_LIBRARY.md` — copy/paste prompts for parallel GHL workers.
+- `WEBSITE_COPY_EN_HE.md` — price-transparent bilingual direct landing copy.
+- `MARKETING_POSITIONING_AND_VIDEO_SCRIPTS.md` — founder positioning, 30-second video and 5–6-minute overview.
+- `EMAIL_FUNNEL_EN_HE.md` — direct qualification, consultation and enrollment lifecycle.
+- `LAUNCH_CHECKLIST.md` — fastest safe publication sequence.
+
+## Permanent safety rules
+
+- no publication without explicit owner approval;
+- no deletion or merging during active build;
 - no SMS;
 - no WhatsApp automation;
-- no publication without explicit owner approval;
-- do not collect detailed clinical histories in public forms/bots;
-- do not touch BNA or One Time assets during Inner Leadership builds.
+- no use of One Time, BNA, SG, adult-assessment or legacy-location objects;
+- no diagnosis/cure guarantees;
+- no detailed clinical history in public forms;
+- no sensitive form answers sent to ad platforms;
+- exact-name check before creating anything;
+- every GHL worker returns exact IDs and a `CREATED / UPDATED / VERIFIED / BLOCKED` delta.
 
-## Pre-launch gate
+## Reference website code
 
-Before any public launch:
-
-1. Install final Hebrew and English therapy-positioned copy.
-2. Install approved media.
-3. Record and upload the real founder-led masterclass and short video ads.
-4. Confirm one canonical Zoom consultation calendar in the current GHL location.
-5. Run one complete Hebrew lead through the funnel.
-6. Run one complete English lead through the funnel.
-7. Confirm stage/state consistency and zero SMS actions.
-8. Complete required legal/operational review unrelated to the now-locked use of `טיפול רגשי`.
-9. Publish only after explicit owner approval.
+The generated static HTML remains a reference/archive implementation. GHL is the production funnel. Do not publish the static pages as current marketing until they are rebuilt from `WEBSITE_COPY_EN_HE.md` and the direct-funnel decision.
