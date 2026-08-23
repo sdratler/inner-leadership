@@ -1,499 +1,362 @@
-# Inner Leadership — GHL Prompt Library
+# Inner Leadership — GHL Prompt Library V3
 
-Status: CURRENT
-Wave: Foundation rebuild in canonical Life Skills location
-Date: 2026-08-23
+Status: **CURRENT**  
+Date: 2026-08-23  
+Strategy: **Google-first direct qualification; no active long masterclass**
 
-Before using any prompt, read:
+## Non-negotiable context for every prompt
 
-1. `GHL_SOURCE_OF_TRUTH.md`
-2. `GHL_CURRENT_STATE.md`
-3. `GHL_BUILD_SPEC.md`
-4. `MARKETING_POSITIONING_AND_VIDEO_SCRIPTS.md` for any public-facing copy, treatment positioning, or media decision
-
-These four prompts are designed to run simultaneously in four separate GHL Ask AI/browser windows.
+- Canonical GHL location: `Life Skills` — `9HQEubuu4WWG6xz09yB4`.
+- Verify the URL contains `/v2/location/9HQEubuu4WWG6xz09yB4/` before any write.
+- Legacy `pBSnOK2nkdxp6gf9Rg3o` is read-only.
+- Read Drive document `Inner Leadership — GHL Canonical Source of Truth`, ID `1NE-Pf4YzEnjFTtFxQad_Cy21_as7DbsEb_mTsqScV-0`.
+- Read GitHub `sdratler/inner-leadership` on `main`, especially `ACQUISITION_PIVOT_2026-08-23.md`, `GHL_CURRENT_STATE.md`, `GHL_BUILD_SPEC.md` and the relevant copy file.
+- Active route: Google Search → landing → direct qualification → parent consultation → offer → payment.
+- Long masterclass, registration/watch pages and engagement gate are deferred.
+- Existing masterclass objects are preserved but disconnected; never delete them.
+- Exact price appears before form submission: 10,800 NIS / 3 × 3,600 NIS.
+- No SMS. No WhatsApp automation. Do not publish. Do not send customer email during build/QA. Do not spend money.
+- Exact-name check before creation. Do not touch One Time, BNA, SG, adult-assessment or double-underscore clinical assets.
+- At end, write one run record to the Life Skills GHL Build Run ledger and return exact IDs plus `CREATED / UPDATED / VERIFIED / BLOCKED`.
 
 ---
 
-## Window A — CRM foundation + W04/W05 repair
+# PROMPT 0 — Coordinator / Resume Current Work
 
 ```text
-PROCEED NOW. This prompt is explicit approval to create the missing canonical Inner Leadership CRM foundation. Do not stop for another approval gate.
+Read the current Inner Leadership source of truth before doing anything:
 
-WORK ONLY IN:
-Life Skills
-Location ID: 9HQEubuu4WWG6xz09yB4
+1. Drive document “Inner Leadership — GHL Canonical Source of Truth” — 1NE-Pf4YzEnjFTtFxQad_Cy21_as7DbsEb_mTsqScV-0.
+2. GitHub sdratler/inner-leadership main:
+   - ACQUISITION_PIVOT_2026-08-23.md
+   - GHL_CURRENT_STATE.md
+   - GHL_BUILD_SPEC.md
+   - GHL_PROMPT_LIBRARY.md
 
-Before any write, verify the URL contains:
-/v2/location/9HQEubuu4WWG6xz09yB4/
+Verify the active GHL URL contains /v2/location/9HQEubuu4WWG6xz09yB4/. If not, switch to Life Skills before any write. The legacy location pBSnOK2nkdxp6gf9Rg3o is read-only.
 
-Read these files from GitHub main in sdratler/inner-leadership:
-- GHL_SOURCE_OF_TRUTH.md
-- GHL_CURRENT_STATE.md
-- GHL_BUILD_SPEC.md
+The active launch is now Google Search → price-transparent landing page → direct practical qualification → parent consultation → offer → payment. The long masterclass, registration/watch gate, 5% engagement rule and masterclass nurture are DEFERRED. Preserve existing objects but route no active leads through them.
 
-Those files are authoritative. Do not use the old pBS location or SG-prefixed assets as substitutes.
+Resume the current assigned workstream from its last verified checkpoint. Do not restart, run a broad audit, recreate verified CRM objects, delete anything, publish anything, send an email, add SMS/WhatsApp, connect an account or spend money.
 
-PERMANENT RULES:
-- exact-name check before creating;
-- no deletes;
-- no publishing;
-- no SMS;
-- no WhatsApp automation;
-- do not touch One Time or BNA;
-- keep all workflows draft;
-- use API/natural-language builder where possible.
-
-TASK 1 — CREATE THE COMPLETE CRM FOUNDATION
-
-The prior proposed reduced build of 10 fields, 4 tags, and 5 stages is NOT sufficient.
-
-Create exactly what GHL_BUILD_SPEC.md defines:
-
-A. One pipeline:
-IL | 12-Week Program
-
-B. All 13 stages, in the exact order in GHL_BUILD_SPEC.md.
-
-C. All 31 exact `il |` tags in GHL_BUILD_SPEC.md.
-
-D. All 22 exact `contact.il_*` custom fields, with the exact display names, types, keys, and option values in GHL_BUILD_SPEC.md.
-
-Do not rename or alter:
-- SG-01 Self-Governance Enrollment
-- contact.sg_* fields
-- sg-* tags
-
-If an exact IL object already exists by the time you reach it, reuse it and record its ID rather than creating a duplicate.
-
-TASK 2 — VERIFY THE FOUNDATION
-
-After creation, fetch/read back:
-- pipeline ID;
-- all 13 stage IDs;
-- all 31 tag IDs;
-- all 22 field IDs and keys.
-
-Confirm the counts are exactly 1 pipeline, 13 stages, 31 tags, and 22 fields.
-
-TASK 3 — REPAIR THE TWO EXISTING DRAFT WORKFLOWS
-
-Existing current-location shells:
-- d450fc35-530b-4143-a5c0-28b81850de7d
-- 10d4cb09-cf3b-47ed-8e0a-d60aaeeb313f
-
-Repair the first and rename it exactly:
-W04 | IL | Qualification Started
-
-Use current-location objects only.
-Trigger when IL Qualification Status becomes In Progress or the supported qualification-start state is applied.
-Actions:
-- add `il | qualification | in progress`;
-- set IL Funnel State = Qualification In Progress;
-- set IL Next Action = Complete Qualification;
-- create/update ONE opportunity in IL | 12-Week Program at Qualification In Progress;
-- never duplicate an active IL opportunity.
-
-Repair the second and rename it exactly:
-W05 | IL | Qualification Outcome
-
-Trigger when IL Qualification Status updates.
-Branches:
-- Qualified → add qualified tag; stage Qualified; IL Funnel State = Qualified; IL Next Action = Book Consultation.
-- Human Review → add human-review tag; stage Human Review; IL Funnel State = Human Review; IL Next Action = Human Review.
-- Nurture → add nurture tag; stage Nurture / Next Cohort; IL Funnel State = Nurture / Next Cohort; IL Next Action = Nurture.
-- Not Fit → add not-fit tag; stage Not Fit / Closed; IL Funnel State = Not Fit / Closed; IL Next Action = Closed.
-
-Do not automatically offer enrollment. Human fit decision remains human.
-
-Keep W04 and W05 draft/unpublished.
-
-RETURN A CLEAN COMPLETION REPORT:
-1. confirmed location ID;
-2. pipeline name + ID;
-3. all 13 stage names + IDs in order;
-4. all 31 tag names + IDs;
-5. all 22 field display names + keys + IDs + types;
-6. W04 final name + ID + trigger/action summary;
-7. W05 final name + ID + branch summary;
-8. any exact failure/blocker;
-9. duplicate candidates left untouched;
-10. confirmation no SG object was altered;
-11. confirmation nothing was published;
-12. confirmation zero SMS/WhatsApp was added;
-13. a concise delta grouped as CREATED / UPDATED / VERIFIED / BLOCKED.
+Complete every next ready draft task in this workstream. At completion or true blocker, append one Life Skills GHL Build Run record and verify Drive ledger writeback. Return:
+- confirmed location ID;
+- exact names and IDs;
+- CREATED / UPDATED / VERIFIED / BLOCKED;
+- draft/published state;
+- dependencies;
+- duplicates left untouched;
+- manual actions;
+- confirmation nothing sent/published;
+- confirmation zero SMS/WhatsApp;
+- Drive writeback status.
 ```
 
 ---
 
-## Window B — Calendar + W06/W07/W08/W10
+# PROMPT A — Fast Hebrew Funnel, Direct Form and Page Routing
+
+Run this first. It owns Sites/Funnels/Forms only. It does not build workflows or patch email templates.
 
 ```text
-PROCEED NOW. Do not ask for another approval gate.
+You own only the Inner Leadership public funnel and forms in canonical Life Skills location 9HQEubuu4WWG6xz09yB4.
 
-WORK ONLY IN:
-Life Skills
-Location ID: 9HQEubuu4WWG6xz09yB4
+Read:
+- Drive GHL canonical source: 1NE-Pf4YzEnjFTtFxQad_Cy21_as7DbsEb_mTsqScV-0
+- GitHub ACQUISITION_PIVOT_2026-08-23.md
+- GitHub GHL_BUILD_SPEC.md sections 6–8
+- GitHub WEBSITE_COPY_EN_HE.md
 
-Verify URL contains:
-/v2/location/9HQEubuu4WWG6xz09yB4/
+FIRST: inspect the Life Skills Sites UI for exact-name funnel `IL | Public Funnel`. A candidate was previously visible. Read back its exact ID, all current steps, domains/paths, embedded forms and draft/published state. Do not create a duplicate.
 
-Read from GitHub main:
-- GHL_SOURCE_OF_TRUTH.md
-- GHL_CURRENT_STATE.md
-- GHL_BUILD_SPEC.md
-
-Do not use legacy calendar IDs from pBSnOK2nkdxp6gf9Rg3o.
-Do not modify these current-location noncanonical calendars:
-- SG-01 Parent Consultation — NNYMfaDAlrtsxSQKvMPm
-- Shloimie Dratler's Personal Calendar — P2DIOgdMZ4ci5PZype1I
-
-No deletes. No publish. No SMS. No WhatsApp.
-
-TASK 1 — CREATE THE CANONICAL CALENDAR
-
-Exact-name check:
-IL | Parent Consultation
-
-If absent, create exactly one Personal Booking Calendar with:
-- exact name: IL | Parent Consultation;
-- owner: uyhQVFp0ixFvGrKOKCrK;
-- slug: il-parent-consultation if available;
-- Zoom meeting location;
-- no Google Calendar;
-- no Outlook Calendar;
-- no external conflict calendar;
-- Look Busy OFF;
-- SMS OFF;
-- WhatsApp OFF;
-- no native email reminder sequence;
-- unpublished.
-
-Working technical draft values, used only so the draft can be saved:
-- 25-minute duration;
-- 30-minute interval;
-- one appointment per slot;
-- auto-confirm on;
-- recurring off.
-
-Do not expose unapproved availability. Leave availability unpublished/owner-review. If GHL technically requires an availability schedule, use the least-public draft/default setting and explicitly report it for owner review.
-
-Verify Zoom OAuth in THIS location. If not connected, report the smallest exact manual click path; do not substitute a custom/empty meeting location.
-
-TASK 2 — BUILD DEPENDENT WORKFLOWS IF FOUNDATION NOW EXISTS
-
-After the calendar is created, exact-name check for the complete IL pipeline/tags/fields from GHL_BUILD_SPEC.md. Another parallel window is creating them.
-
-If the complete foundation is present, build these four workflows as draft. If not yet present, finish the calendar and report BLOCKED_BY_FOUNDATION without guessing.
-
-W06 | IL | Consultation
-- scope every appointment trigger only to IL | Parent Consultation;
-- booked: apply booked tag, stage Consultation Booked, matching funnel state/next action;
-- wait until 24 hours before appointment and send E10 by preferred language;
-- HE E10 ID: 6a8a0ed4473a54c04100262e;
-- EN E10 ID: 6a8a0f075111f4c7772fb40d;
-- attended: attended tag + Consultation Attended stage/state;
-- no show: no-show tag + E11 by language;
-- HE E11 ID: 6a8a0ed5c95ab36931c80d26;
-- EN E11 ID: 6a8a0f078f831e07ce2de27a;
-- cancelled: cancelled tag;
-- email only;
-- no duplicate opportunity.
-
-W07 | IL | Offer
-- trigger ONLY when a human explicitly applies `il | offer | made` or the deliberate manual offer state;
-- never trigger merely from consultation attendance;
-- stage Offer / Decision;
-- set funnel state/next action;
-- send E12 by language;
-- HE E12 ID: 6a8a0ed6bc3bac7221ce5036;
-- EN E12 ID: 6a8a0f0817389f8e23f25f41.
-
-W08 | IL | Payment & Enrollment
-- first-payment tag → stage/state First Payment Received and E13 by language;
-- HE E13 ID: 6a8a0ed6bc3bac7221ce5043;
-- EN E13 ID: 6a8a0f086b43001bee0644f5;
-- enrolled tag/manual assignment → Enrolled — Cohort Assigned;
-- populate cohort/program cycle only with actual values;
-- no payment webhook; Green Invoice remains deferred.
-
-W10 | IL | Data Hygiene
-- event-driven consistency only;
-- sync language field/tag;
-- sync clear qualification/consultation/payment state and stage;
-- guard against duplicate active IL opportunities;
-- add a review note rather than delete uncertain duplicates;
-- exclude One Time/BNA;
-- never overwrite deliberate human-review/fit decisions;
-- never delete anything.
-
-RETURN:
-1. location ID;
-2. calendar name + ID + slug;
-3. owner, duration, interval, location, Zoom status, availability state;
-4. untouched calendar candidates;
-5. W06/W07/W08/W10 names + IDs + status, or exact BLOCKED_BY_FOUNDATION;
-6. exact manual clicks required;
-7. confirmation nothing published;
-8. confirmation zero SMS/WhatsApp;
-9. CREATED / UPDATED / VERIFIED / BLOCKED delta.
-```
-
----
-
-## Window C — Funnel, forms, W01/W02
-
-```text
-PROCEED NOW. This prompt authorizes the missing draft funnel and forms in the canonical location.
-
-WORK ONLY IN:
-Life Skills
-Location ID: 9HQEubuu4WWG6xz09yB4
-
-Verify URL contains:
-/v2/location/9HQEubuu4WWG6xz09yB4/
-
-Read from GitHub main:
-- GHL_SOURCE_OF_TRUTH.md
-- GHL_CURRENT_STATE.md
-- GHL_BUILD_SPEC.md
-- WEBSITE_COPY_EN_HE.md
-- MARKETING_POSITIONING_AND_VIDEO_SCRIPTS.md
-
-The repository's old generated static HTML is reference/archive and may contain old offer facts. Do not copy from it. Use WEBSITE_COPY_EN_HE.md, MARKETING_POSITIONING_AND_VIDEO_SCRIPTS.md, and GHL_BUILD_SPEC.md.
-
-LOCKED PUBLIC POSITIONING:
-- Hebrew: טיפול רגשי מעשי לבנים בגילאי 7–13
-- English: Practical Emotional Therapy for Boys Ages 7–13
-- Do not call the public service a course, chug, club, enrichment program, or generic life-skills program.
-- Keep internal pipeline/tag names unchanged.
-
-No deletes. No publish. No SMS. No WhatsApp. No legacy IDs.
-Use GHL AI page/form/workflow builder whenever possible.
-
-TASK 1 — CREATE THE STANDARD FUNNEL
-
-Exact-name check:
-IL | Public Funnel
-
-If absent, create exactly one standard funnel with these ten draft steps in order:
+Transform or complete the existing funnel so the ACTIVE route is:
 1. IL | HE | Landing
-2. IL | HE | Masterclass Registration
-3. IL | HE | Masterclass Watch
-4. IL | HE | Qualification
-5. IL | HE | Thank You
-6. IL | EN | Landing
-7. IL | EN | Masterclass Registration
-8. IL | EN | Masterclass Watch
-9. IL | EN | Qualification
-10. IL | EN | Thank You
+2. IL | HE | Qualification
+3. IL | HE | Thank You
+4. IL | EN | Landing
+5. IL | EN | Qualification
+6. IL | EN | Thank You
 
-Use canonical HE/EN landing copy from WEBSITE_COPY_EN_HE.md.
+If Masterclass Registration or Masterclass Watch steps already exist:
+- preserve them;
+- keep them draft/unpublished;
+- disconnect all active CTA, redirect and navigation paths from them;
+- optionally prefix the internal step name with `DEFERRED |` only if that is safe and will not break a live URL;
+- do not delete them;
+- return their IDs.
 
-Landing-page structure:
-- therapy-positioned hero;
-- what the treatment is;
-- who it is for;
-- three therapeutic delivery components;
-- six outcomes;
-- method;
-- real-work proof gallery;
-- four therapeutic curriculum modules;
-- parent-guidance sessions;
-- founder;
-- treatment details/investment;
-- FAQ;
-- masterclass CTA.
+Forms:
+- locate/reuse or create exactly `IL | HE | Direct Qualification`;
+- locate/reuse or create exactly `IL | EN | Direct Qualification`;
+- locate/reuse or create exactly `IL | Shared | Confidential Intake`;
+- do not create Masterclass Registration forms.
 
-Use the verified real Drive assets from GHL_CURRENT_STATE.md for founder/gallery/proof when the Drive picker is available.
-Do not use stock substitutions.
-The real founder identity must lead trust creative. The soldering image is proof of the therapeutic method, not the sole therapy signal.
-The four curriculum illustrations and six icons are missing: keep those sections text-first or leave clean unfilled media slots in draft; do not insert random placeholders.
-The masterclass video is missing: create the watch-page structure but do not insert a fake video.
+For HE/EN Direct Qualification, use the existing canonical contact.il_* fields only:
+preferred language, son age, city, current framework, primary goal, social group context, project interest, travel to Beit Shemesh, maximum travel time, weekly schedule fit, parent-session commitment, financial fit, plus parent name/email/phone and hidden source attribution where supported.
 
-TASK 2 — CREATE FIVE FORMS
+Display the exact investment before the financial-fit question and before submission:
+10,800 NIS total; 3 installments of 3,600 NIS.
 
-Exact names:
-- IL | HE | Masterclass Registration
-- IL | EN | Masterclass Registration
-- IL | HE | Qualification Fallback
-- IL | EN | Qualification Fallback
-- IL | Shared | Confidential Intake
+Landing page requirements:
+- install exact same-language copy from WEBSITE_COPY_EN_HE.md;
+- practical emotional therapy / טיפול רגשי מעשי must be clear immediately;
+- primary CTA goes directly to the same-language Qualification step;
+- secondary CTA scrolls to/opens the optional 5–6-minute program-overview section;
+- no masterclass CTA;
+- no email gate for video;
+- video placeholder is allowed and must never block the form;
+- preserve UTM and GCLID/source detail where supported;
+- HE page and form fully RTL/mobile QA;
+- include privacy/consent links and avoid detailed clinical-history collection.
 
-Use the exact field mappings in GHL_BUILD_SPEC.md.
+Redirects:
+- HE qualification → HE Thank You;
+- EN qualification → EN Thank You;
+- Thank You must provide a clear next step and canonical consultation-calendar button placeholder/link when available;
+- no redirect to a watch page.
 
-Registration forms collect only parent name, email, phone, son age, city, primary goal, preferred language, and hidden source detail where available.
+Do not publish. Do not send. Do not build workflows. Do not modify email templates. Do not touch any other funnel.
 
-Qualification forms collect the nine practical qualification fields from GHL_BUILD_SPEC.md. Do not collect detailed clinical history.
+Verify desktop/mobile and valid/invalid form submission in preview. Return exact funnel ID, all step IDs, all three form IDs, paths, redirects, blockers and a concise delta. Append and verify the required Life Skills GHL Build Run ledger record.
+```
 
-Confidential Intake is a private/draft shell only.
+---
 
-Wire HE and EN forms to the matching funnel steps and redirects. Keep all paths internal/draft until domain approval.
+# PROMPT B — Patch 28 Email Templates for Direct Funnel
 
-TASK 3 — BUILD W01/W02 IF FOUNDATION NOW EXISTS
+This may run in parallel with Prompt A. It owns email templates only.
 
-After the funnel/forms are complete, exact-name check for the full current-location IL pipeline/tags/fields. Another parallel window is creating them.
+```text
+You own only the existing 28 Inner Leadership email templates in canonical Life Skills location 9HQEubuu4WWG6xz09yB4.
 
-If present, build:
+Read:
+- Drive GHL canonical source: 1NE-Pf4YzEnjFTtFxQad_Cy21_as7DbsEb_mTsqScV-0
+- GitHub ACQUISITION_PIVOT_2026-08-23.md
+- GitHub EMAIL_FUNNEL_EN_HE.md
+- GitHub GHL_CURRENT_STATE.md email IDs
+
+Folder:
+IL | Inner Leadership — 6a8a0e75473a54c04100225d
+
+All 28 records already exist. Do not recreate, duplicate, rename the E00–E13 codes or change folder placement.
+
+Patch every Hebrew and English E00–E13 subject/body so it matches EMAIL_FUNNEL_EN_HE.md exactly. The old masterclass-first copy is stale.
+
+Required removals:
+- no masterclass delivery subject/body;
+- no masterclass watch reminder;
+- no 35–40-minute claim;
+- no MASTERCLASS LINK placeholder;
+- no masterclass engagement language.
+
+Required active placeholders only as specified in the canonical copy:
+- PROGRAM LINK;
+- QUALIFICATION LINK;
+- CALENDAR LINK;
+- MEETING DETAILS;
+- RESCHEDULE LINK;
+- PAYMENT / ENROLLMENT LINK;
+- INTAKE LINK;
+- schedule/details placeholders.
+
+Preserve language, punctuation, Hebrew maqaf/RTL characters and template IDs. Do not attach templates to workflows, send email or publish anything.
+
+Verification:
+- read back all 28 subjects and bodies;
+- compare exactly to canonical copy;
+- report 28/28 or exact mismatches;
+- report unresolved links separately;
+- append and verify one Life Skills GHL Build Run ledger record.
+```
+
+---
+
+# PROMPT C — Direct Workflows W01–W05 and W09
+
+Run after Prompt A returns form IDs. It owns W01–W05 and W09 only.
+
+```text
+You own only Inner Leadership workflows W01–W05 and W09 in Life Skills location 9HQEubuu4WWG6xz09yB4.
+
+Read:
+- Drive GHL canonical source 1NE-Pf4YzEnjFTtFxQad_Cy21_as7DbsEb_mTsqScV-0
+- GitHub ACQUISITION_PIVOT_2026-08-23.md
+- GitHub GHL_BUILD_SPEC.md sections 8–11
+- GitHub GHL_CURRENT_STATE.md for exact stage/tag/field IDs
+- GitHub EMAIL_FUNNEL_EN_HE.md
+- Prompt A completion report for exact HE/EN form and page IDs
+- Prompt B completion report for email-template status
+
+Use canonical pipeline `IL | 12-Week Program` — viW1VdaNcQKm1umo67du.
+
+Build/repair, all draft/off:
 
 W01 | IL | New Lead Routing
-- normalize language/source/interest;
-- create/update one IL opportunity;
-- stage New Lead only when no later state already exists;
-- never duplicate an active opportunity;
-- preserve later/manual states.
+- normalize language/source;
+- apply interest 12-week program;
+- set source detail/ad market when available;
+- create/update one active opportunity at New Lead;
+- deduplicate safely;
+- do not use masterclass stages/tags.
 
-W02 | IL | Masterclass Registration
-- triggers: HE/EN registration form submissions;
-- language, source/interest, registered, and pre-masterclass state;
-- stage/state Masterclass Registered;
-- next action Watch Masterclass;
-- send E00 immediately by language;
-- HE E00 ID: 6a8a0ebac3ca7ccb66b7fbb4;
-- EN E00 ID: 6a8a0eef17389f8e23f25e29;
-- wait approximately 20–24 hours;
-- if engagement is absent, send E01 by language;
-- HE E01 ID: 6a8a0eba6b43001bee0641be;
-- EN E01 ID: 6a8a0ef0bc3bac7221ce5165;
-- stop reminder branch when the lead advances.
+W02 | IL | Direct Qualification Intake
+- trigger on HE Direct Qualification and EN Direct Qualification submission using exact IDs from Prompt A;
+- apply language/source/program interest;
+- set qualification state/status;
+- create/update opportunity at Qualification In Progress;
+- evaluate clear fit vs Human Review using current field option values;
+- send E00 in correct language only after Prompt B verified canonical copy and links are resolved enough for safe QA;
+- create immediate internal review task/notification;
+- preserve UTM/GCLID/source detail;
+- never add masterclass tags or stages.
 
-If foundation is not yet present, do not guess; return BLOCKED_BY_FOUNDATION after completing the independent funnel/form work.
+W03 | IL | Fast Lead Response
+- trigger after completed qualification from Google/website/referral;
+- create internal task/notification with parent name, city, son age and nonclinical fit summary;
+- no diagnosis/free-text clinical details in notification;
+- stop when booked/not fit/enrolled;
+- no SMS/WhatsApp.
 
-RETURN:
-1. confirmed location;
-2. funnel name + ID;
-3. all ten step names + IDs;
-4. five form names + IDs;
-5. exact form-field mappings;
-6. page/form redirect map;
-7. media installed vs missing;
-8. W01/W02 IDs or exact BLOCKED_BY_FOUNDATION;
-9. manual clicks required;
-10. confirmation nothing published;
-11. confirmation zero SMS/WhatsApp;
-12. CREATED / UPDATED / VERIFIED / BLOCKED delta.
+W04 | IL | Qualification Started
+- use existing shell d450fc35-530b-4143-a5c0-28b81850de7d;
+- rename/repair, never recreate;
+- use only if a reliable form-start event exists;
+- set Qualification In Progress and compatible tags;
+- if partial-start tracking is not supported, leave a documented draft placeholder and do not block launch.
+
+W05 | IL | Qualification Outcome
+- use existing shell 10d4cb09-cf3b-47ed-8e0a-d60aaeeb313f;
+- rename/repair, never recreate;
+- Qualified branch: correct stage/tag/next action; send E01/E09 at canonical timing if no booking;
+- Human Review branch: correct stage/tag; send E08;
+- Nurture and Not Fit branches: correct mutually exclusive stage/tags;
+- remove incompatible tags.
+
+W09 | IL | Direct Program Nurture
+- replace the old concept of Masterclass Nurture;
+- send E02–E07 only to opted-in, not-booked/not-enrolled leads;
+- use program/qualification/calendar links, never a masterclass link;
+- stop on booking, not fit, withdrawal or enrollment.
+
+Do not build W06–W08 or W10. Do not publish or activate. Do not send live customer messages; use safe test contacts only if owner has already authorized them. Confirm zero SMS/WhatsApp.
+
+Run branch-level QA with a Hebrew clear-fit test, Hebrew human-review test and English test. Return exact workflow IDs, triggers/actions, template IDs, stage/tag/field mapping, blockers and run-ledger writeback status.
 ```
 
 ---
 
-## Window D — Email copy + KBs + bots + widgets
+# PROMPT D — Calendar, Consultation, Offer, Payment and Data Hygiene
+
+This may run in parallel after Prompt A supplies the Thank You/calendar linkage and Prompt B verifies email copy.
 
 ```text
-PROCEED NOW. Do not re-audit the media library and do not ask for another approval gate.
+You own only the canonical calendar plus W06, W07, W08 and W10 in Life Skills location 9HQEubuu4WWG6xz09yB4.
 
-WORK ONLY IN:
-Life Skills
-Location ID: 9HQEubuu4WWG6xz09yB4
+Read:
+- Drive GHL canonical source 1NE-Pf4YzEnjFTtFxQad_Cy21_as7DbsEb_mTsqScV-0
+- GitHub GHL_CURRENT_STATE.md
+- GitHub GHL_BUILD_SPEC.md sections 9–11
+- GitHub EMAIL_FUNNEL_EN_HE.md
 
-Verify URL contains:
-/v2/location/9HQEubuu4WWG6xz09yB4/
+Calendar — reuse only:
+IL | Parent Consultation — KIUGS5BkjlpF5F8ryvg8
+Owner: uyhQVFp0ixFvGrKOKCrK
+Slug: il-parent-consultation
 
-Read from GitHub main:
-- GHL_SOURCE_OF_TRUTH.md
-- GHL_CURRENT_STATE.md
-- GHL_BUILD_SPEC.md
-- EMAIL_FUNNEL_EN_HE.md
-- WEBSITE_COPY_EN_HE.md
-- MARKETING_POSITIONING_AND_VIDEO_SCRIPTS.md
+Do not create another calendar. Verify:
+- Personal Booking Calendar;
+- 25-minute working duration / 30-minute interval unless owner has since approved another value;
+- one appointment per slot;
+- Zoom fixed meeting location;
+- no Google/Outlook conflict calendar;
+- no Look Busy;
+- no SMS/WhatsApp/native customer reminders;
+- no public availability until owner approval.
 
-LOCKED PUBLIC POSITIONING:
-- Hebrew: טיפול רגשי מעשי לבנים בגילאי 7–13
-- English: Practical Emotional Therapy for Boys Ages 7–13
-- Do not present it as a course, chug, club, enrichment program, or generic life-skills program.
+If Zoom is not bound, report the exact manual click/authorization required. Do not connect or reauthorize an external account without owner approval. After binding is authorized, prove one test booking produces a working Zoom link.
 
-No deletes. No publish. No SMS. No WhatsApp. All bots/widgets off/draft.
+Build, all draft/off:
 
-TASK 1 — INSTALL CANONICAL COPY INTO THE 28 EXISTING EMAIL TEMPLATES
+W06 | IL | Consultation
+- booking → Consultation Booked stage/tag;
+- email confirmation/reminder only using canonical templates;
+- attendance → Consultation Attended;
+- cancellation/no-show → correct status/tag and E11/reschedule;
+- no SMS/WhatsApp.
 
-Email folder:
-IL | Inner Leadership
-ID: 6a8a0e75473a54c04100225d
+W07 | IL | Offer
+- manual trigger only after attended consultation and owner decision;
+- Offer / Decision stage;
+- offer-made tag;
+- send E12 with canonical payment/enrollment link;
+- never auto-offer from form answers.
 
-The 28 HE/EN E00–E13 shells already exist. Do not recreate them.
+W08 | IL | Payment & Enrollment
+- verified first-payment trigger or documented manual trigger;
+- First Payment Received stage/tag;
+- send E13;
+- route to confidential intake;
+- move to Enrolled — Cohort Assigned only after required enrollment actions;
+- add founding-cohort tag;
+- do not invent a payment webhook.
 
-Replace every placeholder/AI-generated subject and every blank body using EMAIL_FUNNEL_EN_HE.md exactly.
+W10 | IL | Data Hygiene
+- one active IL opportunity per contact/program cycle;
+- mutually exclusive qualification/consultation/program status tags;
+- preserve source attribution;
+- flag missing data;
+- never auto-delete or merge contacts/opportunities.
 
-Rules:
-- exact copy source only;
-- do not paraphrase or improve;
-- preserve all link placeholders;
-- simple clean email formatting;
-- do not attach templates to new workflows in this window;
-- do not send test emails.
+Do not publish, activate, send live email or change public availability. Return exact IDs, QA results, manual Zoom/payment dependencies and ledger writeback status.
+```
 
-Verify all 28 template IDs against GHL_CURRENT_STATE.md and report COPY INSTALLED yes/no for each.
+---
 
-TASK 2 — CREATE TWO KNOWLEDGE BASES
+# PROMPT E — Optional KB / Program Assistant Inventory (Not a Launch Blocker)
 
-Exact names:
+Run only after the Hebrew Search route is ready, or in parallel if it cannot delay the direct funnel.
+
+```text
+This is a non-blocking optional workstream in Life Skills 9HQEubuu4WWG6xz09yB4.
+
+Read the current acquisition pivot. The old four-bot masterclass architecture is cancelled/deferred. Do not recreate it.
+
+First perform a scoped UI inventory of exact IL knowledge bases, Conversation AI agents and chat widgets in Life Skills. Current accepted evidence says zero IL agents, zero widgets and one unrelated KB `Existing knowledge base` A3jlU85MYs5IORNw4Gjn. Do not attach or alter the unrelated KB.
+
+If no exact current assets exist, you may draft only:
 - IL | KB | Program | HE
 - IL | KB | Program | EN
 
-Use GHL_BUILD_SPEC.md, WEBSITE_COPY_EN_HE.md, and MARKETING_POSITIONING_AND_VIDEO_SCRIPTS.md as the factual source. Include:
-- locked treatment category and offer facts;
-- four therapeutic modules;
-- therapeutic delivery structure;
-- parent-guidance sessions;
-- location/price;
-- masterclass/qualification/consultation flow;
-- not a school replacement;
-- no diagnosis claims or medication instructions;
-- practical FAQ and fit boundaries.
+Source them from the current direct-funnel KB documents in Drive, not the long masterclass scripts. Keep them draft.
 
-Do not use the unrelated `Existing knowledge base` A3jlU85MYs5IORNw4Gjn.
+Do not create public bots/widgets unless a separate explicit owner decision authorizes the post-launch Phase 2 architecture. Do not publish or connect a widget. Return inventory and exact IDs. This workstream must not delay Prompt A–D or the Hebrew Google launch.
+```
 
-TASK 3 — CREATE FOUR BOTS
+---
 
-Exact names:
-- IL | Bot | HE | Masterclass Concierge
-- IL | Bot | EN | Masterclass Concierge
-- IL | Bot | HE | Program Qualification
-- IL | Bot | EN | Program Qualification
+# PROMPT F — Final Hebrew Google-Route QA
 
-Map each bot to its corresponding HE/EN KB.
+```text
+Run final read-only/draft-safe QA for the active Hebrew route in Life Skills 9HQEubuu4WWG6xz09yB4.
 
-Concierge bots:
-- answer treatment/masterclass questions;
-- help register/watch;
-- low friction;
-- no full qualification prematurely.
+The route must be:
+Google parameters → IL | HE | Landing → IL | HE | Qualification → IL | HE | Thank You / calendar → consultation lifecycle.
 
-Qualification bots:
-- collect the practical qualification information defined in GHL_BUILD_SPEC.md;
-- recommend only Qualified, Human Review, Nurture, or Not Fit;
-- do not diagnose or give medication instructions;
-- do not promise enrollment;
-- final offer remains human.
+Verify:
+- no active link or redirect enters Masterclass Registration/Watch;
+- 10,800 NIS / 3 × 3,600 NIS appears before form submission;
+- HE RTL/mobile/desktop;
+- correct existing contact.il_* field mapping;
+- one contact and one active IL opportunity;
+- Google source tag, source detail, ad market and UTMs/GCLID preserved where supported;
+- Qualified and Human Review branches;
+- internal fast-response task;
+- correct email language and no MASTERCLASS LINK placeholder;
+- canonical calendar and working Zoom link;
+- no SMS/WhatsApp;
+- no detailed clinical data sent to ad platforms;
+- privacy/terms accessible;
+- all assets remain draft until explicit publish approval.
 
-Another window is creating the `contact.il_*` fields. Build the bots/prompts independently first. At the end, re-check whether the fields now exist and map them. If not, report FIELD_MAPPING_BLOCKED rather than inventing fields.
-
-TASK 4 — CREATE/VERIFY TWO WIDGETS
-
-Exact names:
-- IL | Widget | Hebrew
-- IL | Widget | English
-
-Use exactly two public-language widgets and four bots. Configure the supported routing so language plus pre/post-masterclass state selects the proper concierge or qualification bot.
-
-If widgets cannot be listed through API, verify through the browser UI before creating. Do not create duplicates.
-
-Keep both widgets unpublished/off.
-
-Do not build workflows in this window.
-Do not re-audit media; the current media registry is already verified.
-
-RETURN:
-1. confirmed location;
-2. email folder ID;
-3. all 28 template IDs + canonical subject + COPY INSTALLED yes/no;
-4. HE/EN KB names + IDs;
-5. four bot names + IDs + KB mapping;
-6. two widget names + IDs;
-7. field mappings completed vs FIELD_MAPPING_BLOCKED;
-8. duplicate candidates left untouched;
-9. manual clicks required;
-10. confirmation no email sent;
-11. confirmation bots/widgets remain off/unpublished;
-12. confirmation zero SMS/WhatsApp;
-13. CREATED / UPDATED / VERIFIED / BLOCKED delta.
+Return a PASS/FAIL table with exact evidence and IDs. Do not publish or spend. Append and verify the run ledger record.
 ```
