@@ -1,6 +1,6 @@
 # Inner Leadership — Canonical GHL Build Specification
 
-Version: 1.0
+Version: 1.1
 Date: 2026-08-23
 Status: CURRENT BUILD SPEC
 
@@ -28,20 +28,27 @@ Permanent rules:
 - search exact name before creating;
 - use GHL AI Builder / natural-language builder whenever available;
 - keep every new asset draft/unpublished until final QA;
-- never use IDs from legacy location `pBSnOK2nkdxp6gf9Rg3o`.
+- never use IDs from legacy location `pBSnOK2nkdxp6gf9Rg3o`;
+- public-facing copy must use the locked therapy category and the current canonical website/email/marketing sources;
+- do not present the offer publicly as a course, chug, club, enrichment program, or generic life-skills class.
 
 ## 2. Canonical offer facts
 
 - Brand: Inner Leadership / הנהגה מבפנים
-- Offer: 12-week hands-on self-governance program
+- Hebrew public category: טיפול רגשי מעשי לבנים בגילאי 7–13
+- English public category: Practical Emotional Therapy for Boys Ages 7–13
+- Offer: focused 12-week practical emotional-therapy process
 - Ages: 7–13
 - Location: Beit Shemesh
 - Languages: Hebrew and English
-- Delivery: one weekly private 50–60 minute session, two weekly 90-minute applied project labs, three parent strategy sessions
+- Delivery: one weekly individual therapeutic 50–60 minute session, two weekly 90-minute therapeutic project labs, three parent-guidance sessions
+- Core method: Understand → Practice → Observe → Reflect → Retry
 - Founding investment: 10,800 NIS, paid as 3 × 3,600 NIS
 - Two compatible paid boys can open the first lab
 - Five-boy founding target
 - Ten-boy current cap
+
+The brand and curriculum describe the method. The service category is emotional treatment. The 12-week structure explains delivery.
 
 ## 3. Pipeline
 
@@ -65,7 +72,7 @@ Stages in this exact order:
 12. `Nurture / Next Cohort`
 13. `Not Fit / Closed`
 
-Do not create a reduced five-stage pipeline.
+Do not create a reduced five-stage pipeline. Internal pipeline/tag names remain unchanged even though the public category is now therapy.
 
 ## 4. Tags
 
@@ -176,7 +183,7 @@ Ten steps in this exact order:
 
 All pages remain draft. Use GHL AI page builder where available. Do not publish a domain or paths until final QA and explicit approval.
 
-Canonical page copy must come from the current bilingual website-copy source, not from the older static-site pages in the repository.
+Canonical page copy must come from the current bilingual website-copy source, not from the older static-site pages in the repository. The first screen must identify the service as practical emotional therapy.
 
 ## 7. Forms
 
@@ -221,7 +228,7 @@ Do not collect detailed clinical history.
 
 ### Confidential intake
 
-Create the shell and keep it private/draft. It is for accepted clients only. Detailed medical, safety, emergency, allergy, confidentiality, and consent information belongs here later, after the legal/operations review—not in public forms or bots.
+Create the shell and keep it private/draft. It is for accepted clients only. Detailed medical, safety, emergency, allergy, confidentiality, and consent information belongs here later, after the operations review—not in public forms or bots.
 
 ## 8. Knowledge bases
 
@@ -230,17 +237,17 @@ Create exactly two:
 - `IL | KB | Program | HE`
 - `IL | KB | Program | EN`
 
-Each KB must contain the same factual program architecture in its language:
+Each KB must contain the same factual treatment architecture in its language:
 
-- offer facts;
-- four curriculum modules;
-- program structure;
-- parent sessions;
+- locked therapy category and offer facts;
+- four therapeutic curriculum modules;
+- treatment structure;
+- parent-guidance sessions;
 - location and price;
 - masterclass and qualification process;
 - consultation and manual fit decision;
 - not a school replacement;
-- no diagnosis claims;
+- no diagnosis claims or medication instructions;
 - practical FAQ and fit boundaries.
 
 ## 9. Bots and widgets
@@ -261,7 +268,7 @@ All bots and widgets remain OFF/DRAFT.
 
 ### Concierge bots
 
-- answer program/masterclass questions;
+- answer treatment/masterclass questions;
 - help the visitor register or watch;
 - remain low-friction;
 - do not conduct full post-masterclass qualification prematurely;
@@ -276,7 +283,7 @@ Collect the qualification fields listed above. They may recommend one of four op
 - Nurture;
 - Not Fit.
 
-They may not diagnose, promise enrollment, or make the final offer decision.
+They may not diagnose, give medication instructions, promise enrollment, or make the final offer decision.
 
 Widget routing uses language plus pre-/post-masterclass state. Exact GHL implementation may use bot-state tags, workflow routing, or the supported Conversation AI routing mechanism, but the result must preserve exactly two public widgets and four bots.
 
@@ -460,14 +467,15 @@ Verified usable real assets and their IDs are maintained in `GHL_CURRENT_STATE.m
 
 Required production media:
 
-- real soldering/electronics hero;
-- four real-work gallery photos;
 - real founder portrait;
+- real founder-led short video/reel for trust and therapy positioning;
+- real soldering/electronics proof image;
+- four real-work gallery photos;
 - four matching curriculum illustrations;
 - six matching outcome icons;
 - real masterclass video.
 
-No stock substitutions. Drive originals are never overwritten.
+No stock substitutions. Drive originals are never overwritten. The soldering image is proof of method, not the sole therapy signal.
 
 ## 14. Completion-report contract
 
@@ -488,8 +496,9 @@ Every GHL worker must return:
 
 Nothing may be published until:
 
-- final HE/EN copy is installed;
+- final therapy-positioned HE/EN copy is installed;
 - approved media is installed;
+- real founder-led ad/video creative is approved;
 - real masterclass video is uploaded and trackable;
 - Zoom booking produces a working meeting link;
 - one Hebrew end-to-end lead passes;
