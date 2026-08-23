@@ -1,13 +1,31 @@
 # Inner Leadership — GHL Audit Reconciliation
 
-Date: 2026-08-23
-Status: CURRENT AUDIT INTERPRETATION
-Canonical location: `Life Skills` — `9HQEubuu4WWG6xz09yB4`
+Date: 2026-08-23  
+Status: **CURRENT AUDIT INTERPRETATION**  
+Canonical location: `Life Skills` — `9HQEubuu4WWG6xz09yB4`  
 Legacy location: `pBSnOK2nkdxp6gf9Rg3o` — read-only / do not use
 
-This record reconciles the parallel API/UI audit reports. It does not replace `GHL_CURRENT_STATE.md`; it records which audit conclusions are accepted, rejected, or still require direct readback.
+This record preserves the accepted audit facts and applies the 2026-08-23 acquisition pivot. It does not replace `GHL_CURRENT_STATE.md`.
 
-## 1. Accepted current facts
+## 1. Acquisition override
+
+The current active route is:
+
+**Google Search → price-transparent landing page → direct practical qualification → parent consultation → manual offer → first payment → enrollment**
+
+The following prior requirements are now superseded:
+
+- Meta-first launch;
+- long masterclass as the value event;
+- Masterclass Registration/Watch as required public steps;
+- 5% video-engagement gating;
+- masterclass-specific nurture;
+- four bots/two widgets as publication blockers;
+- real long-masterclass recording as a publication blocker.
+
+Existing masterclass pipeline stages, tags, fields, pages, media folders and scripts remain preserved as dormant/history. No deletion is authorized.
+
+## 2. Accepted current facts
 
 ### CRM foundation
 
@@ -18,24 +36,42 @@ The canonical Life Skills location contains the complete required child-program 
 - all 31 canonical child-program `il |` tags;
 - all 22 canonical `contact.il_*` fields.
 
-The successful creation/readback report supersedes earlier partial reports that said only 15 fields existed or that the foundation was missing.
+Additional IL-prefixed adult/assessment assets and double-underscore clinical fields exist. They are protected extras and must not be used in the 12-week boys funnel without an explicit later decision.
 
-Additional IL-prefixed assets also exist in Life Skills, including assessment/adult-client tags and double-underscore clinical fields. These are not part of the 12-week boys-program architecture. Leave them untouched and do not use them in the child funnel unless an explicit later decision says otherwise.
+### Dormant CRM objects
+
+Preserve but do not use on the active route:
+
+- stage `Masterclass Registered` — `a5204d3c-5136-4b41-b07d-bd1b84638d16`;
+- stage `Masterclass Engaged` — `afd27be9-3d94-495f-a600-4388ef98331a`;
+- masterclass interest/state/engagement tags;
+- `IL Masterclass Engagement Pct` and `IL Masterclass Engaged At` fields.
+
+The active stage path begins at New Lead and moves directly to Qualification In Progress.
 
 ### Workflows
 
-Canonical Life Skills:
+Canonical Life Skills shells:
 
 - W04 shell `Qualification Started Workflow` — `d450fc35-530b-4143-a5c0-28b81850de7d` — draft; rename/repair required.
 - W05 shell `IL Qualification Outcome` — `10d4cb09-cf3b-47ed-8e0a-d60aaeeb313f` — draft; rename/repair required.
-- W01, W02, W03, W06, W07, W08, W09, W10 are not verified operational in Life Skills.
 
-Legacy location:
+Legacy W01/W02 exist only in the legacy location and their IDs must never be reused.
 
-- W01 `W01 | IL | New Lead Routing` — `08c44c45-dd8c-4007-8cb3-166d94032730` — draft.
-- W02 `W02 | IL | Masterclass Registration` — `1004490b-e654-44ab-9cd6-113250fe9460` — draft.
+Required current direct-funnel workflows:
 
-Do not reference legacy workflow IDs or migrate them blindly: their field/tag/stage IDs belong to the legacy location. Rebuild/remap in Life Skills.
+- W01 New Lead Routing;
+- W02 Direct Qualification Intake;
+- W03 Fast Lead Response;
+- W04 Qualification Started;
+- W05 Qualification Outcome;
+- W06 Consultation;
+- W07 Offer;
+- W08 Payment & Enrollment;
+- W09 Direct Program Nurture;
+- W10 Data Hygiene.
+
+There is no current W03 video-engagement workflow requirement.
 
 ### Calendar
 
@@ -44,88 +80,133 @@ Canonical calendar:
 - `IL | Parent Consultation` — `KIUGS5BkjlpF5F8ryvg8`;
 - 25-minute working draft, 30-minute interval;
 - owner `uyhQVFp0ixFvGrKOKCrK`;
+- slug `il-parent-consultation`;
 - no public open hours;
 - no Google/Outlook conflict calendar;
-- no SMS/WhatsApp/native reminder sequence;
-- slug `il-parent-consultation`.
+- no SMS/WhatsApp/native reminder sequence.
 
-A Zoom account appears connected at the location level, but the calendar still reports `isZoomAdded=false`. Treat Zoom as **connection present, calendar binding/QA unresolved**. Re-select/authorize Zoom if necessary and prove it with one test booking before publication.
+A Zoom account appears connected at the location level, while calendar binding/test booking remains unresolved. Treat this as a binding/QA issue. Do not reauthorize without owner approval.
 
-### Media
+### Funnel and forms
 
-Canonical GHL media folder scaffold exists, but native GHL storage contains no IL files. The six approved real assets remain in Drive and are the intended source. Four curriculum illustrations, six outcome icons, and the real masterclass recording remain missing.
+A direct UI audit displayed an `IL | Public Funnel` candidate in Life Skills, contradicting an earlier API zero-result. Current accepted state:
+
+- candidate present in UI;
+- exact funnel ID unverified;
+- existing step IDs and form embedding unverified;
+- no duplicate may be created before exact readback.
+
+Desired active public steps:
+
+1. HE Landing;
+2. HE Qualification;
+3. HE Thank You;
+4. EN Landing;
+5. EN Qualification;
+6. EN Thank You.
+
+Any existing Masterclass Registration/Watch steps remain draft, disconnected and preserved.
+
+Desired active forms:
+
+- HE Direct Qualification;
+- EN Direct Qualification;
+- Shared Confidential Intake.
 
 ### Email
 
-Both locations contain 28 E00–E13 templates. In Life Skills the 28 templates are plain-text records with preview URLs. That proves records/content objects exist, but does not prove that subjects/bodies match the canonical lifecycle copy.
+Life Skills contains 28 E00–E13 template records in Hebrew and English. On 2026-08-23, all 28 were verified against the then-current masterclass-first copy.
 
-Therefore email status is:
+The acquisition pivot makes that installed copy operationally stale. Current status:
 
-- 28 canonical-location template records: VERIFIED;
-- exact subject/body correctness: UNVERIFIED;
-- workflow attachment: UNVERIFIED;
-- do not overwrite until individual template content is read and compared with `EMAIL_FUNNEL_EN_HE.md`.
+- 28 record IDs: VERIFIED;
+- V3 direct-funnel canonical copy in GitHub: CURRENT;
+- live GHL subject/body patch: NOT YET VERIFIED;
+- workflow attachment: NOT YET VERIFIED;
+- no template should send until direct links and QA are complete.
 
-### Bots, knowledge bases, and widgets
+Do not recreate the templates. Patch the existing IDs from `EMAIL_FUNNEL_EN_HE.md` V3.
 
-Direct UI evidence supersedes the earlier API-only absence claim:
+### Bots, knowledge bases and widgets
 
 Canonical Life Skills direct UI:
 
 - Conversation AI agents: zero;
 - Voice AI agents: zero;
-- Knowledge Bases: one unrelated `Existing knowledge base` — `A3jlU85MYs5IORNw4Gjn`;
 - Chat Widgets: zero;
-- Sites UI displayed an `IL | Public Funnel` candidate; exact funnel ID, steps and forms still require readback before any creation.
+- one unrelated Knowledge Base `Existing knowledge base` — `A3jlU85MYs5IORNw4Gjn`.
 
-Legacy location direct UI:
+This is not a launch defect. Public bots/widgets are deferred and must not delay the Hebrew Search route. The unrelated KB remains untouched.
 
-- 9 Conversation AI agents;
-- 6 Knowledge Bases;
-- 2 Inner Leadership widgets;
-- `IL | Public Funnel` with 10 steps.
+### Media
 
-Exact legacy bot/KB/widget inventory and IDs must be captured before using them as a reference. Do not create or migrate from the legacy location without that mapping.
+Canonical GHL media folder scaffold exists. Approved real assets remain in Drive.
 
-## 2. Audit conclusions not accepted as final
+For the first Hebrew Search launch, missing long-masterclass media, curriculum illustrations and outcome icons are not blockers. The optional 5–6-minute overview may be added later without gating qualification.
+
+## 3. Audit conclusions that remain rejected
 
 ### Truncated custom-field absence claims
 
-The API audit response was truncated. Claims that `contact.il_primary_goal`, `contact.il_project_interest`, `contact.il_preferred_language`, or the final seven fields were absent are invalidated by the later successful 22/22 creation and readback report.
+Earlier API responses were truncated. Claims that canonical fields were missing are invalidated by the later 22/22 readback.
 
-### `41 tags` / `25+ fields` as the canonical boys-program count
+### Inflated tag/field counts as canonical architecture
 
-Those totals include unrelated IL-prefixed adult/assessment assets. The canonical boys-program set remains exactly 31 tags and 22 fields. Extras are protected and out of scope, not canonical funnel dependencies.
+Totals that include adult/assessment extras do not change the canonical boys-program count of 31 tags and 22 fields.
 
-### Google Drive is completely nonfunctional
+### Google Drive conclusively nonfunctional
 
-An API metadata flag reported `isExpired=true`, while another workstream successfully navigated and read the connected Drive source. Treat the connection as contradictory/needs functional UI test, not conclusively dead. Test the GHL media picker or KB Drive import. Reauthorize only if the actual UI operation fails.
+Connection metadata and functional navigation conflicted. Test the actual Drive picker/KB import before reauthorizing.
 
-### Zoom token conclusively expired
+### Zoom conclusively expired
 
-The location-level Zoom connection returned active account details, while the calendar binding remained false. Treat this as a calendar-binding/QA issue, not proof that the account connection itself is dead.
+Location-level connection evidence and calendar-level binding evidence conflicted. Treat this as unresolved binding/QA, not proof of expiration.
 
-### No phone/WhatsApp/Google Calendar as critical blockers
+### Missing phone, WhatsApp or Google Calendar as blockers
 
-These are intentional architecture choices:
+Their absence is intentional:
 
 - no SMS;
 - no WhatsApp automation;
 - no Google/Outlook conflict calendar.
 
-Their absence is compliant, not a launch defect.
-
 ### Funnel absent in Life Skills
 
-Earlier API calls returned zero funnels, but the later direct UI audit displayed `IL | Public Funnel` in Life Skills. Current status is **UI candidate present; exact ID and ten-step/form completeness unverified**. Do not create a duplicate until exact UI/API readback is complete.
+Direct UI evidence supersedes the earlier zero-result API call. Read back the candidate; do not create a duplicate.
 
-## 3. Current execution order
+## 4. Current execution order
 
-1. Read back the Life Skills `IL | Public Funnel`, its ten steps, all embedded forms and exact IDs. Complete it rather than creating a duplicate.
-2. Individually read the 28 Life Skills email templates and compare to `EMAIL_FUNNEL_EN_HE.md`; update only mismatches.
-3. Capture the complete legacy 9-agent / 6-KB / 2-widget inventory and exact mappings; then recreate only the canonical 2 KBs, 4 bots and 2 widgets in Life Skills.
-4. Repair W04/W05 in Life Skills.
-5. Build W01/W02 fresh in Life Skills using canonical IDs; use legacy only as a logic reference.
-6. Build W06/W07/W08/W09/W10 in Life Skills. W03 remains blocked by the real masterclass recording.
-7. Functionally test Drive access and Zoom booking instead of relying on metadata flags.
-8. Keep everything draft/off; no deletes; no SMS; no WhatsApp; no publication.
+1. Read back the Life Skills `IL | Public Funnel`, all steps, forms, paths and IDs.
+2. Complete the active Hebrew route: Landing → Direct Qualification → Thank You / Booking.
+3. Preserve/disconnect old masterclass steps.
+4. Build or repair HE Direct Qualification with price before submission.
+5. Patch the existing 28 email templates to V3 direct copy.
+6. Build W01–W03; repair W04/W05; build W09/W10.
+7. Bind/test the canonical consultation calendar and build W06–W08.
+8. Install/test Google conversion tracking.
+9. Run one complete Hebrew test lead with Google-like parameters.
+10. Stop for explicit owner approval before publication, public calendar availability, external sends or spend.
+11. Add English, Meta and optional AI components after the Hebrew route works.
+
+## 5. Current blockers
+
+Real blockers to the first Hebrew Search publication are limited to:
+
+- exact funnel/form readback and completion;
+- price-transparent Hebrew page installation;
+- direct qualification routing;
+- current lifecycle email patch and link resolution;
+- calendar/Zoom test booking;
+- Google conversion QA;
+- privacy/terms and owner-approved public details;
+- explicit owner approval to publish and spend.
+
+The long masterclass, masterclass thumbnail, Meta campaign, bots, widgets and full illustration/icon set are not blockers.
+
+## 6. Safety state
+
+- Nothing was deleted by the strategy update.
+- Nothing was published by the strategy update.
+- No external email was sent.
+- No SMS or WhatsApp automation was created.
+- No ad spend was authorized.
