@@ -17,6 +17,17 @@ Google Drive is authoritative only for binary creative assets.
 
 Do not use chat history, browser tabs, old project folders, or legacy GHL sub-accounts as an independent source of truth.
 
+## Locked marketing decision — 2026-08-23
+
+The public category is resolved and no longer an open legal-language question:
+
+- Brand: `Inner Leadership / הנהגה מבפנים`
+- Hebrew category: `טיפול רגשי מעשי לבנים בגילאי 7–13`
+- English category: `Practical Emotional Therapy for Boys Ages 7–13`
+- Delivery: a focused 12-week therapeutic process combining weekly individual therapy, two applied therapeutic project labs each week, and three parent-guidance sessions
+
+Do not revert the public positioning to “course,” “club,” “chug,” “curriculum,” or a generic life-skills program. The project method remains self-governance and intrinsic motivation; the service category is emotional treatment.
+
 ## Canonical systems
 
 | Domain | Authority | Canonical location |
@@ -26,7 +37,8 @@ Do not use chat history, browser tabs, old project folders, or legacy GHL sub-ac
 | Verified GHL IDs and implementation status | GitHub mirror of GHL readback | `GHL_CURRENT_STATE.md` on `main` |
 | Exact execution prompts | GitHub | `GHL_PROMPT_LIBRARY.md` on `main` |
 | Email subjects and bodies | GitHub | `EMAIL_FUNNEL_EN_HE.md` on `main` |
-| Program/marketing decisions | GitHub project documents | current master-plan files |
+| Website copy | GitHub | `WEBSITE_COPY_EN_HE.md` on `main` |
+| Marketing positioning and founder video scripts | GitHub | `MARKETING_POSITIONING_AND_VIDEO_SCRIPTS.md` on `main` |
 | Images, video, and other binaries | Google Drive | `Inner Leadership — Canonical Library` |
 
 ## Canonical GHL location
@@ -50,11 +62,12 @@ Never use an ID from the legacy location in the current build. Leave legacy asse
 
 1. Explicit owner decision in the current conversation.
 2. This file.
-3. `GHL_BUILD_SPEC.md` for desired structure.
-4. Fresh GHL readback recorded in `GHL_CURRENT_STATE.md` for actual state.
-5. Exact canonical copy files such as `EMAIL_FUNNEL_EN_HE.md`.
-6. Other current project files.
-7. Legacy records and archives.
+3. `MARKETING_POSITIONING_AND_VIDEO_SCRIPTS.md` for public category, ad/video framing, and creative hierarchy.
+4. `GHL_BUILD_SPEC.md` for desired structure.
+5. Fresh GHL readback recorded in `GHL_CURRENT_STATE.md` for actual state.
+6. Exact canonical copy files such as `WEBSITE_COPY_EN_HE.md` and `EMAIL_FUNNEL_EN_HE.md`.
+7. Other current project files.
+8. Legacy records and archives.
 
 A fresh GHL readback may prove that the live system differs from the spec. That does not silently change the spec. Record the discrepancy in `GHL_CURRENT_STATE.md`, then deliberately decide whether to change GHL or amend the spec.
 
@@ -93,7 +106,10 @@ No browser worker should independently rewrite the canonical GitHub files unless
 - no use of SG-prefixed objects as substitutes for IL-prefixed objects;
 - exact-name check before creation;
 - GHL AI Builder/natural-language builder preferred whenever available;
-- current copy and IDs must come from the canonical files, not from memory.
+- current copy and IDs must come from the canonical files, not from memory;
+- public copy may describe the service as `טיפול רגשי מעשי`;
+- paid Meta ads must not claim to know that the viewer's child has a diagnosis, medical condition, or medication history;
+- no ad may tell parents to stop, reject, or alter medication; the masterclass may discuss the broader developmental picture without giving medical instructions.
 
 ## Current status
 
