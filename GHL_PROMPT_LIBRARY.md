@@ -9,6 +9,7 @@ Before using any prompt, read:
 1. `GHL_SOURCE_OF_TRUTH.md`
 2. `GHL_CURRENT_STATE.md`
 3. `GHL_BUILD_SPEC.md`
+4. `MARKETING_POSITIONING_AND_VIDEO_SCRIPTS.md` for any public-facing copy, treatment positioning, or media decision
 
 These four prompts are designed to run simultaneously in four separate GHL Ask AI/browser windows.
 
@@ -257,8 +258,15 @@ Read from GitHub main:
 - GHL_CURRENT_STATE.md
 - GHL_BUILD_SPEC.md
 - WEBSITE_COPY_EN_HE.md
+- MARKETING_POSITIONING_AND_VIDEO_SCRIPTS.md
 
-The repository's old generated static HTML is reference/archive and may contain old offer facts. Do not copy from it. Use WEBSITE_COPY_EN_HE.md and GHL_BUILD_SPEC.md.
+The repository's old generated static HTML is reference/archive and may contain old offer facts. Do not copy from it. Use WEBSITE_COPY_EN_HE.md, MARKETING_POSITIONING_AND_VIDEO_SCRIPTS.md, and GHL_BUILD_SPEC.md.
+
+LOCKED PUBLIC POSITIONING:
+- Hebrew: טיפול רגשי מעשי לבנים בגילאי 7–13
+- English: Practical Emotional Therapy for Boys Ages 7–13
+- Do not call the public service a course, chug, club, enrichment program, or generic life-skills program.
+- Keep internal pipeline/tag names unchanged.
 
 No deletes. No publish. No SMS. No WhatsApp. No legacy IDs.
 Use GHL AI page/form/workflow builder whenever possible.
@@ -283,22 +291,23 @@ If absent, create exactly one standard funnel with these ten draft steps in orde
 Use canonical HE/EN landing copy from WEBSITE_COPY_EN_HE.md.
 
 Landing-page structure:
-- hero;
-- what the program is;
+- therapy-positioned hero;
+- what the treatment is;
 - who it is for;
-- three delivery components;
+- three therapeutic delivery components;
 - six outcomes;
 - method;
-- real-work gallery;
-- four curriculum modules;
-- parent strategy sessions;
+- real-work proof gallery;
+- four therapeutic curriculum modules;
+- parent-guidance sessions;
 - founder;
-- program details/investment;
+- treatment details/investment;
 - FAQ;
 - masterclass CTA.
 
-Use the verified real Drive assets from GHL_CURRENT_STATE.md for hero/gallery/founder when the Drive picker is available.
+Use the verified real Drive assets from GHL_CURRENT_STATE.md for founder/gallery/proof when the Drive picker is available.
 Do not use stock substitutions.
+The real founder identity must lead trust creative. The soldering image is proof of the therapeutic method, not the sole therapy signal.
 The four curriculum illustrations and six icons are missing: keep those sections text-first or leave clean unfilled media slots in draft; do not insert random placeholders.
 The masterclass video is missing: create the watch-page structure but do not insert a fake video.
 
@@ -385,6 +394,12 @@ Read from GitHub main:
 - GHL_BUILD_SPEC.md
 - EMAIL_FUNNEL_EN_HE.md
 - WEBSITE_COPY_EN_HE.md
+- MARKETING_POSITIONING_AND_VIDEO_SCRIPTS.md
+
+LOCKED PUBLIC POSITIONING:
+- Hebrew: טיפול רגשי מעשי לבנים בגילאי 7–13
+- English: Practical Emotional Therapy for Boys Ages 7–13
+- Do not present it as a course, chug, club, enrichment program, or generic life-skills program.
 
 No deletes. No publish. No SMS. No WhatsApp. All bots/widgets off/draft.
 
@@ -414,15 +429,15 @@ Exact names:
 - IL | KB | Program | HE
 - IL | KB | Program | EN
 
-Use GHL_BUILD_SPEC.md and WEBSITE_COPY_EN_HE.md as the factual source. Include:
-- offer facts;
-- four modules;
-- delivery structure;
-- parent sessions;
+Use GHL_BUILD_SPEC.md, WEBSITE_COPY_EN_HE.md, and MARKETING_POSITIONING_AND_VIDEO_SCRIPTS.md as the factual source. Include:
+- locked treatment category and offer facts;
+- four therapeutic modules;
+- therapeutic delivery structure;
+- parent-guidance sessions;
 - location/price;
 - masterclass/qualification/consultation flow;
 - not a school replacement;
-- no diagnosis claims;
+- no diagnosis claims or medication instructions;
 - practical FAQ and fit boundaries.
 
 Do not use the unrelated `Existing knowledge base` A3jlU85MYs5IORNw4Gjn.
@@ -438,7 +453,7 @@ Exact names:
 Map each bot to its corresponding HE/EN KB.
 
 Concierge bots:
-- answer program/masterclass questions;
+- answer treatment/masterclass questions;
 - help register/watch;
 - low friction;
 - no full qualification prematurely.
@@ -446,7 +461,7 @@ Concierge bots:
 Qualification bots:
 - collect the practical qualification information defined in GHL_BUILD_SPEC.md;
 - recommend only Qualified, Human Review, Nurture, or Not Fit;
-- do not diagnose;
+- do not diagnose or give medication instructions;
 - do not promise enrollment;
 - final offer remains human.
 
