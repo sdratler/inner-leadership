@@ -1,4 +1,4 @@
-# INNER LEADERSHIP WEBSITE COPY V2
+# INNER LEADERSHIP WEBSITE COPY V3
 # Canonical age range: 7–13
 
 ## ENGLISH
@@ -6,13 +6,13 @@
 ### HERO
 
 Eyebrow:
-12-WEEK HANDS-ON SELF-GOVERNANCE CURRICULUM
+PRACTICAL EMOTIONAL THERAPY FOR BOYS · 12 WEEKS
 
 Headline:
-A 12-Week Hands-On Self-Governance Program for Boys Ages 7–13
+Practical Emotional Therapy for Boys Ages 7–13
 
 Subheadline:
-Weekly private coaching, two 90-minute applied project labs, and three parent strategy sessions—built around a structured curriculum in communication, critical thinking, responsibility and self-governance.
+A focused 12-week therapeutic process combining one weekly individual therapeutic session, two 90-minute applied project-based group sessions each week, and three parent-guidance sessions.
 
 Outcome line:
 Communication · Critical Thinking · Emotional Regulation · Responsibility · Confidence · Purpose
@@ -26,32 +26,32 @@ View the 12-Week Curriculum
 Proof line:
 Beit Shemesh · Hebrew & English · Limited Enrollment
 
-### WHAT THE PROGRAM IS
+### WHAT THE TREATMENT IS
 
 Heading:
-Private coaching. Applied projects. One structured curriculum.
+Individual therapy. Applied group work. Parent guidance. One integrated process.
 
 Body:
-Each boy meets privately once a week to develop language, judgment and an individual goal. Twice a week, he applies those skills in hands-on project labs with other boys. Three parent strategy sessions help the same language carry into the home.
+Each boy meets individually once a week to work therapeutically on language, judgment, emotional regulation and an individual target. Twice a week, applied project-based group work creates real situations in which communication, confrontation, frustration and responsibility become visible. Three parent-guidance sessions carry the same therapeutic language into the home.
 
 ### WHO IT IS FOR
 
 Heading:
-For boys who need more than another class or another lecture.
+For boys who need emotional treatment that goes beyond talking alone.
 
 Body:
-The program is designed for boys ages 7–13 who would benefit from stronger communication, critical thinking, responsibility, confidence and self-governance. Boys remain in their current school or educational framework and attend the program in Beit Shemesh.
+The treatment is designed for boys ages 7–13 who need stronger internal motivation, emotional regulation, communication, social judgment, responsibility and self-governance. Boys remain in their current school or educational framework and attend the 12-week process in Beit Shemesh.
 
 ### WHAT EVERY BOY RECEIVES
 
-Weekly Private Coaching
-One 50–60 minute individual session focused on communication, judgment, goals, reflection and preparation for real situations.
+Weekly Individual Therapeutic Session
+One 50–60 minute individual session focused on communication, judgment, emotional regulation, goals, reflection and preparation for real situations.
 
-Two Weekly Applied Project Labs
-Two 90-minute hands-on group sessions using woodworking, building, cooking, movement and collaborative challenges.
+Two Weekly Therapeutic Project Labs
+Two 90-minute therapeutic group sessions using woodworking, building, cooking, movement and collaborative challenges to create real developmental material.
 
-Three Parent Strategy Sessions
-A focused parent curriculum in motivation and agency, communication and critical thinking, and transferring responsibility at home.
+Three Parent-Guidance Sessions
+Three focused sessions in motivation and agency, communication and critical thinking, and transferring responsibility at home.
 
 ### METHOD
 
@@ -59,7 +59,7 @@ Heading:
 Understand → Practice → Observe → Reflect → Retry
 
 Body:
-The private session develops clarity and a personal target. The project lab creates a real situation. Communication, frustration, responsibility and decision-making become visible. The next private session uses that evidence to prepare a better response.
+The individual therapeutic session develops clarity and a personal target. The applied lab creates a real situation. Communication, confrontation, frustration, responsibility and decision-making become visible. The next individual session uses that evidence to prepare a more intentional response.
 
 ### CORE OUTCOMES
 
@@ -120,11 +120,11 @@ Duration:
 Location:
 Beit Shemesh
 
-Weekly structure:
-One private session + two 90-minute project labs
+Weekly therapeutic structure:
+One individual therapeutic session + two 90-minute therapeutic project labs
 
 Parent component:
-Three strategy sessions
+Three parent-guidance sessions
 
 Founding investment:
 10,800 NIS
@@ -142,13 +142,13 @@ Limited. The first lab opens when two compatible paid boys are enrolled.
 ### אזור פתיחה
 
 כותרת עליונה:
-תוכנית מעשית להנהגה עצמית — 12 שבועות
+טיפול רגשי מעשי לבנים · 12 שבועות
 
 כותרת ראשית:
-תוכנית מעשית בת 12 שבועות להנהגה עצמית לבנים בגילאי 7–13
+טיפול רגשי מעשי לבנים בגילאי 7–13
 
 כותרת משנה:
-פגישה אישית שבועית, שתי מעבדות פרויקט של 90 דקות בכל שבוע ושלוש פגישות אסטרטגיה להורים—לפי תוכנית מובנית בתקשורת, חשיבה ביקורתית, אחריות והנהגה עצמית.
+תהליך טיפולי ממוקד בן 12 שבועות המשלב פגישה טיפולית אישית שבועית, שתי מעבדות טיפוליות־מעשיות של 90 דקות בכל שבוע, ושלוש פגישות הדרכת הורים.
 
 שורת תוצאות:
 תקשורת · חשיבה ביקורתית · ויסות רגשי · אחריות · ביטחון עצמי · תכלית
@@ -162,32 +162,32 @@ Limited. The first lab opens when two compatible paid boys are enrolled.
 שורת מידע:
 בית שמש · עברית ואנגלית · מספר המקומות מוגבל
 
-### מהי התוכנית
+### מהו הטיפול
 
 כותרת:
-פגישה אישית. פרויקטים מעשיים. תוכנית אחת מובנית.
+טיפול אישי. עבודה טיפולית דרך פרויקטים. הדרכת הורים. תהליך אחד משולב.
 
 טקסט:
-כל ילד נפגש באופן אישי פעם בשבוע כדי לפתח שפה, שיקול דעת ויעד אישי. פעמיים בשבוע הוא מיישם את הכלים במעבדות פרויקט מעשיות עם ילדים נוספים. שלוש פגישות אסטרטגיה להורים מחברות את אותה שפה גם לבית.
+כל ילד נפגש לטיפול אישי פעם בשבוע כדי לעבוד על שפה, שיקול דעת, ויסות רגשי ויעד אישי. פעמיים בשבוע העבודה הטיפולית עוברת למצבים אמיתיים במעבדות פרויקט עם ילדים נוספים, שבהם תקשורת, עימות, תסכול ואחריות נעשים נראים. שלוש פגישות הדרכת הורים מחברות את אותה שפה טיפולית גם לבית.
 
-### למי התוכנית מיועדת
+### למי הטיפול מיועד
 
 כותרת:
-לבנים שצריכים יותר מעוד שיעור או עוד הרצאה.
+לבנים שצריכים טיפול רגשי שלא נשאר רק בשיחה.
 
 טקסט:
-התוכנית מיועדת לבנים בגילאי 7–13 שיכולים להפיק תועלת מתקשורת חזקה יותר, חשיבה ביקורתית, אחריות, ביטחון עצמי והנהגה עצמית. הילדים נשארים במסגרת הלימודית הנוכחית שלהם ומגיעים לתוכנית בבית שמש.
+הטיפול מיועד לבנים בגילאי 7–13 הזקוקים לחיזוק במוטיבציה פנימית, ויסות רגשי, תקשורת, שיקול דעת חברתי, אחריות והנהגה עצמית. הילדים נשארים במסגרת הלימודית הנוכחית שלהם ומגיעים לתהליך בן 12 השבועות בבית שמש.
 
 ### מה כל ילד מקבל
 
-פגישה אישית שבועית
-פגישה אישית של 50–60 דקות המתמקדת בתקשורת, שיקול דעת, מטרות, רפלקציה והכנה למצבים אמיתיים.
+פגישה טיפולית אישית שבועית
+פגישה אישית של 50–60 דקות המתמקדת בתקשורת, שיקול דעת, ויסות רגשי, מטרות, רפלקציה והכנה למצבים אמיתיים.
 
-שתי מעבדות פרויקט בכל שבוע
-שתי פגישות קבוצתיות מעשיות של 90 דקות הכוללות נגרות, בנייה, בישול, תנועה ואתגרים שיתופיים.
+שתי מעבדות טיפוליות־מעשיות בכל שבוע
+שתי פגישות טיפוליות בקבוצה של 90 דקות, המשתמשות בנגרות, בנייה, בישול, תנועה ואתגרים שיתופיים כדי ליצור חומר טיפולי אמיתי.
 
-שלוש פגישות אסטרטגיה להורים
-תוכנית ממוקדת להורים בנושאי מוטיבציה ו־agency, תקשורת וחשיבה ביקורתית, והעברת אחריות בבית.
+שלוש פגישות הדרכת הורים
+שלוש פגישות ממוקדות בנושאי מוטיבציה וסוכנות אישית, תקשורת וחשיבה ביקורתית, והעברת אחריות בבית.
 
 ### השיטה
 
@@ -195,7 +195,7 @@ Limited. The first lab opens when two compatible paid boys are enrolled.
 להבין → לתרגל → לצפות → לשקף → לנסות שוב
 
 טקסט:
-הפגישה האישית מפתחת בהירות ויעד אישי. מעבדת הפרויקט יוצרת מצב אמיתי. תקשורת, תסכול, אחריות וקבלת החלטות נעשים נראים. הפגישה האישית הבאה משתמשת במה שקרה כדי להכין תגובה טובה יותר.
+הפגישה הטיפולית האישית מפתחת בהירות ויעד אישי. המעבדה יוצרת מצב אמיתי. תקשורת, עימות, תסכול, אחריות וקבלת החלטות נעשים נראים. הפגישה האישית הבאה משתמשת במה שקרה כדי להכין תגובה מכוונת יותר.
 
 ### התוצאות המרכזיות
 
@@ -256,11 +256,11 @@ Limited. The first lab opens when two compatible paid boys are enrolled.
 מיקום:
 בית שמש
 
-מבנה שבועי:
-פגישה אישית אחת + שתי מעבדות פרויקט של 90 דקות
+מבנה טיפולי שבועי:
+פגישה טיפולית אישית אחת + שתי מעבדות טיפוליות־מעשיות של 90 דקות
 
 מרכיב הורים:
-שלוש פגישות אסטרטגיה
+שלוש פגישות הדרכת הורים
 
 מחיר מחזור המייסדים:
 10,800 ₪
