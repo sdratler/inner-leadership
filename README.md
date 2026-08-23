@@ -13,19 +13,28 @@ Current delivery model:
 - five-boy founding cohort target;
 - ten-boy current cap.
 
-## Current production architecture
+## Start here — GHL source of truth
 
-**GHL is the production funnel and CRM.**
+The authoritative entry point for every GHL task is:
 
-**GitHub is the canonical text/state record.**
+- [`GHL_SOURCE_OF_TRUTH.md`](GHL_SOURCE_OF_TRUTH.md)
 
-**Google Drive is the canonical binary creative library.**
+Supporting canonical files:
 
-Current GHL implementation state and exact verified IDs are maintained in:
+- [`GHL_BUILD_SPEC.md`](GHL_BUILD_SPEC.md) — intended pipeline, stages, tags, fields, forms, bots, calendar, pages, email architecture, and workflows;
+- [`GHL_CURRENT_STATE.md`](GHL_CURRENT_STATE.md) — verified live IDs, actual implementation state, blockers, and legacy-location warnings;
+- [`GHL_PROMPT_LIBRARY.md`](GHL_PROMPT_LIBRARY.md) — current copy/paste prompts for parallel GHL workstreams;
+- [`EMAIL_FUNNEL_EN_HE.md`](EMAIL_FUNNEL_EN_HE.md) — canonical bilingual lifecycle email copy;
+- [`WEBSITE_COPY_EN_HE.md`](WEBSITE_COPY_EN_HE.md) — canonical bilingual website copy.
 
-- [`GHL_CURRENT_STATE.md`](GHL_CURRENT_STATE.md)
+**GHL is authoritative for live runtime facts. GitHub `main` is the canonical control plane and versioned record. Google Drive is the canonical binary creative library.**
 
-Do not use older GHL IDs without checking that they belong to the current canonical Life Skills location.
+Canonical GHL location:
+
+- `Life Skills`
+- `9HQEubuu4WWG6xz09yB4`
+
+Do not use IDs from legacy location `pBSnOK2nkdxp6gf9Rg3o` in the current build.
 
 ## Static website in this repository
 
