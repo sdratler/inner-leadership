@@ -60,25 +60,29 @@ Never generate a fake version of the founder's body, office, or therapy interact
 
 ## 5. Hebrew founder video — paid Meta version
 
-Target length: 35–45 seconds.
+Target length: 40–50 seconds.
 
 ### Script
 
-יש בנים שמתקשים בעימותים, חסרי מוטיבציה, או מתפקדים רק כשמבוגר מנהל כל צעד.
+יש בנים שמתקשים להתמודד עם עימותים, חוסר הסכמה או לחץ חברתי.
 
-עוד לחץ ועוד ניהול מבחוץ יכולים לייצר התנהגות — אבל הם לא בהכרח בונים שיקול דעת, תקשורת ואחריות מבפנים.
+יש בנים שכמעט שום דבר לא זז אצלם בלי תזכורות, לחץ או מאבק.
+
+ובמקרים רבים, השיחה עוברת מהר לאבחון או לטיפול תרופתי — עוד לפני שעובדים בצורה מסודרת על מוטיבציה פנימית, ויסות רגשי, שיקול דעת ואחריות.
 
 אני שלוימי דרטלר. אני מתמחה במוטיבציה פנימית, ויסות רגשי והנהגה עצמית אצל בנים בגילאי 7–13.
 
-במאסטרקלאס החינמי אני עובר על מחקר אמיתי וכלים מעשיים: איך להפסיק לעשות עבור הילד את כל החשיבה, איך להציב גבולות בלי לנהל כל צעד, ואיך להשתמש בקונפליקט ובתוצאות טבעיות כדי לבנות אחריות מבפנים.
+הנהגה מבפנים היא טיפול רגשי מעשי לבנים בתהליך ממוקד של 12 שבועות.
 
-לחצו כאן וצפו במאסטרקלאס החינמי.
+במאסטרקלאס החינמי אני מציג מחקר אמיתי וכלים מעשיים שיעזרו לילד לעשות יותר מהחשיבה בעצמו, להתמודד טוב יותר עם עימותים ולקחת יותר אחריות.
+
+לחצו לצפייה במאסטרקלאס החינמי.
 
 ### On-screen text
 
 - טיפול רגשי מעשי לבנים בגילאי 7–13
-- מוטיבציה פנימית · ויסות רגשי · תקשורת · אחריות
-- מאסטרקלאס חינמי להורים
+- מחקר אמיתי · כלים מעשיים להורים
+- מאסטרקלאס חינמי
 
 ### CTA
 
@@ -86,21 +90,25 @@ Target length: 35–45 seconds.
 
 ## 6. Hebrew founder video — sharper organic/Page version
 
-Target length: 45–60 seconds. Use for an organic Page post, founder introduction, or non-paid educational Reel.
+Target length: 55–70 seconds. Use for an organic Page post, website founder video, masterclass-registration page, or non-paid educational Reel.
 
 ### Script
 
-כשילד מתקשה בעימותים, חסר מוטיבציה או מסתבך שוב ושוב במסגרת, מהר מאוד השיחה נהיית על משמעת, אבחון או תרופות.
+הבן שלכם מתקשה להתמודד עם עימותים אישיים, דחייה או חוסר הסכמה?
 
-לפעמים אבחון או טיפול תרופתי הם חלק נכון מהתמונה. אבל הם לא מחליפים את העבודה שהילד עדיין צריך לעשות: להבין מה קורה לו, לדבר ברור, לחשוב דרך בעיה ולקחת אחריות.
+האם כל דבר נהיה מאבק על מוטיבציה — תזכורות, לחץ, פרסים או עונשים?
+
+והאם השיחה עם בית הספר כבר עברה לאבחון או לטיפול תרופתי, לפני שמישהו עצר לבדוק לעומק מה באמת מניע אותו, מה מציף אותו ואילו כלים עדיין חסרים לו?
 
 אני שלוימי דרטלר. אני מתמחה במוטיבציה פנימית, ויסות רגשי והנהגה עצמית אצל בנים בגילאי 7–13.
 
-במאסטרקלאס החינמי אני עובר על מקורות ומחקר אמיתי, ומראה שלושה שינויים מעשיים בבית: איך להפסיק לעשות עבורו את כל החשיבה, איך להציב גבולות בלי לקחת ממנו בעלות, ואיך להשתמש בקונפליקט ובתוצאות טבעיות כדי לבנות אחריות מבפנים.
+הנהגה מבפנים היא טיפול רגשי מעשי לבנים בתהליך ממוקד של 12 שבועות.
 
-אני לא מציע עוד שיטת משמעת. אני מציג דרך לבנות ילד שמתחיל לחשוב, לתקשר ולנהל את עצמו.
+הכנתי מאסטרקלאס חינמי להורים. לא סיסמאות ולא עוד אוסף טיפים. אני עובר על המחקר של דסי וריאן, על בחירה ותגמולים, על ויסות רגשי בתוך המשפחה, ועל כלים מעשיים כמו SODAS.
 
-לחצו כאן לצפייה במאסטרקלאס.
+אני אראה לכם איך להפסיק לעשות עבור הילד את כל החשיבה, איך לנהל עימות בלי עוד הרצאה, ואיך להעביר אליו אחריות בצורה שבונה שיקול דעת ומסוגלות — בלי לוותר על גבולות.
+
+לחצו לצפייה במאסטרקלאס החינמי. נתראה שם.
 
 ## 7. English founder video — paid version
 
@@ -111,6 +119,8 @@ Some boys struggle with confrontation, lack internal motivation, or function onl
 More pressure can produce behavior. It does not necessarily build judgment, communication, or responsibility from within.
 
 I’m Shloimie Dratler. I specialize in intrinsic motivation, emotional regulation, and self-governance in boys ages 7–13.
+
+That is the approach behind Inner Leadership—a focused 12-week practical emotional-therapy process for boys.
 
 In my free parent masterclass, I walk through real research and practical tools: how to stop doing all of the thinking for a child, how to set boundaries without managing every step, and how to use conflict and natural consequences to build responsibility from within.
 
