@@ -1,133 +1,82 @@
-# Inner Leadership / הנהגה מבפנים
+# Life Skills
 
-Canonical operating repository for **Inner Leadership**, a focused 12-week practical emotional-therapy process for boys ages 7–13 in Beit Shemesh.
+Canonical repository for one bilingual private-practice application and its public acquisition site.
 
-## Current offer
+## Current product
 
-### Hebrew category
+Life Skills supports Rabbi Shloimie Dratler’s hands-on emotional-therapy practice for boys ages 8–12, with secondary adult-client support inside the same private application.
 
-**טיפול רגשי מעשי לבנים בגילאי 7–13**
+The active child offer is a 12-week program containing:
 
-### English category
+- 12 weekly 60-minute individual meetings;
+- 24 project labs, two 90-minute labs each week;
+- three parent-guidance meetings at the beginning, middle and end;
+- practitioner-controlled goals, commitments and check-ins;
+- forms and resources;
+- monthly professional progress reporting;
+- schedule, attendance and payment tracking.
 
-**Practical Emotional Therapy for Boys Ages 7–13**
+Current child price: **₪13,500**, paid as **3 × ₪4,500**.
 
-### Delivery
+Cohorts start after four compatible paid boys and target a maximum of five. Initial location is Beit Shemesh; another city is not promised until fit, location, staffing, insurance and economics are confirmed.
 
-- one weekly 50–60-minute individual therapeutic session;
-- two weekly 90-minute therapeutic project labs;
-- three parent-guidance sessions;
-- individual goals, observation, reflection and continuation planning;
-- Hebrew and English;
-- 10,800 NIS total, paid as 3 × 3,600 NIS;
-- two compatible paid boys open the first lab;
-- five-boy founding target;
-- ten-boy cap.
+Adult work is not publicly advertised. Current adult rate remains ₪450 per session.
 
-## Current acquisition decision — 2026-08-23
+## Accounts
 
-The active launch no longer depends on a 35–40-minute masterclass.
+- One practitioner account in the first release.
+- One shared family account per minor case; no separate parent accounts.
+- Optional practitioner-enabled child login.
+- Adult client owns the adult account.
+- Parent visibility is set per shareable item: private, title/completion, or full item.
 
-### Primary route
+## Product principles
 
-**Google Search → price-transparent landing page → direct practical qualification → parent consultation → manual offer → first payment → enrollment**
+- This is not a school or classroom platform.
+- This is not a general messaging system.
+- No self-booking or client cancellation button.
+- No badges, points, streaks, trophies, levels, leaderboards, prizes, rankings, confetti or gamification.
+- Child progress is practitioner-assessed and family-facing through four professional domains plus individualized contextual targets.
+- Therapeutically relevant parent observations/updates live in the app; administrative reminders use WATI.
+- Raw audio is deleted 30 days after transcript approval unless deliberately retained.
+- AI output remains draft-only until practitioner approval.
 
-### Active videos
+## Current source of truth
 
-- approximately 30–45-second direct founder video for Meta, organic and Page use;
-- optional 5–6-minute program overview embedded on the landing page;
-- no watch threshold and no video gate.
+Start here:
+https://docs.google.com/document/d/1XZS-MzUtjc3T488lyrSbtDX0Yq5UCl7Wzh5uN_YOvMg/edit
 
-### Deferred
+Repository agent rules:
+[`AGENTS.md`](AGENTS.md)
 
-The long Hebrew and English masterclass scripts, registration/watch pages, masterclass stages, tags and engagement fields are preserved as history/dormant infrastructure. They are not part of the active route and are not publication requirements.
+Drive source registry:
+[`docs/DRIVE_SOURCES.md`](docs/DRIVE_SOURCES.md)
 
-Read `ACQUISITION_PIVOT_2026-08-23.md` before changing marketing or GHL architecture.
+Build-control snapshot:
+[`docs/BUILD_CONTROL.md`](docs/BUILD_CONTROL.md)
 
-## GHL
+Product snapshot:
+[`docs/PRODUCT_CONTRACT.md`](docs/PRODUCT_CONTRACT.md)
 
-Canonical location:
+UI snapshot:
+[`docs/UI_SYSTEM.md`](docs/UI_SYSTEM.md)
 
-- Name: `Life Skills`
-- Location ID: `9HQEubuu4WWG6xz09yB4`
-- Required URL fragment: `/v2/location/9HQEubuu4WWG6xz09yB4/`
+Merge-packet standard:
+[`docs/MERGE_PACKET_STANDARD.md`](docs/MERGE_PACKET_STANDARD.md)
 
-Legacy location `pBSnOK2nkdxp6gf9Rg3o` is read-only and must not supply IDs to the current build.
+Live Build Control:
+https://docs.google.com/spreadsheets/d/1Y_Vf_kipj7mAhhEnuj8F2L85v3KpOi_V9KfSrj4MZ4Y/edit
 
-### Active public funnel route
+## Repository state
 
-- `IL | HE | Landing`
-- `IL | HE | Qualification`
-- `IL | HE | Thank You`
-- `IL | EN | Landing`
-- `IL | EN | Qualification`
-- `IL | EN | Thank You`
+The verified legacy `main` head used to begin this planning branch was:
 
-### Active forms
+`ccca0251287f3aed04ca6677290abfdb888f229d`
 
-- `IL | HE | Direct Qualification`
-- `IL | EN | Direct Qualification`
-- `IL | Shared | Confidential Intake`
+Legacy `main` contains the earlier static marketing/GHL system. It has not been deleted or declared to be the new private application. The first active work item is `LS-000 — Repository & Foundation Convergence`, which must inspect all branches and deployment evidence, preserve useful legacy assets, and establish a verified application foundation branch before parallel feature work.
 
-Public bots and widgets are not required for the first launch. Everything remains draft/off until owner approval.
+## Privacy
 
-## Source-of-truth order
+No real client names, identifiable minors, private family disclosures, assessments, recordings, transcripts, credentials, secrets, database rows or production tokens belong in Git, prompts, merge packets, screenshots or logs.
 
-1. `ACQUISITION_PIVOT_2026-08-23.md`
-2. `GHL_SOURCE_OF_TRUTH.md`
-3. `GHL_CURRENT_STATE.md`
-4. `GHL_BUILD_SPEC.md`
-5. `WEBSITE_COPY_EN_HE.md`
-6. `MARKETING_POSITIONING_AND_VIDEO_SCRIPTS.md`
-7. `EMAIL_FUNNEL_EN_HE.md`
-8. `GOOGLE_ADS_LAUNCH_PLAN.md`
-9. `GHL_PROMPT_LIBRARY.md`
-10. `GHL_AUDIT_RECONCILIATION_2026-08-23.md` for provenance and unresolved readback
-
-When a prior file says Meta-first, masterclass-first, 5% watch engagement, four bots/two widgets as launch blockers, or Google Search deferred, the acquisition pivot supersedes it.
-
-## Repository responsibilities
-
-### GitHub
-
-Version-controlled project state, copy, GHL registry/specification, prompts, campaign plan, decision history and reference code.
-
-### Google Drive
-
-Canonical working documents, approved creative binaries, source images, consent records and the AI-readable GHL control document.
-
-### GHL
-
-Live customer journey, forms, contacts, pipeline, workflows, email templates, calendar and media.
-
-Do not claim an external system was updated unless its connector or live UI confirmed the write.
-
-## Core files
-
-- `ACQUISITION_PIVOT_2026-08-23.md` — current commercial and funnel decision.
-- `GOOGLE_ADS_LAUNCH_PLAN.md` — first paid-channel build and operating plan.
-- `GHL_SOURCE_OF_TRUTH.md` — short governing rules for every GHL worker.
-- `GHL_CURRENT_STATE.md` — exact current-location registry and verified/draft state.
-- `GHL_BUILD_SPEC.md` — desired direct-funnel architecture.
-- `GHL_PROMPT_LIBRARY.md` — copy/paste prompts for parallel GHL workers.
-- `WEBSITE_COPY_EN_HE.md` — price-transparent bilingual direct landing copy.
-- `MARKETING_POSITIONING_AND_VIDEO_SCRIPTS.md` — founder positioning, 30-second video and 5–6-minute overview.
-- `EMAIL_FUNNEL_EN_HE.md` — direct qualification, consultation and enrollment lifecycle.
-- `LAUNCH_CHECKLIST.md` — fastest safe publication sequence.
-
-## Permanent safety rules
-
-- no publication without explicit owner approval;
-- no deletion or merging during active build;
-- no SMS;
-- no WhatsApp automation;
-- no use of One Time, BNA, SG, adult-assessment or legacy-location objects;
-- no diagnosis/cure guarantees;
-- no detailed clinical history in public forms;
-- no sensitive form answers sent to ad platforms;
-- exact-name check before creating anything;
-- every GHL worker returns exact IDs and a `CREATED / UPDATED / VERIFIED / BLOCKED` delta.
-
-## Reference website code
-
-The generated static HTML remains a reference/archive implementation. GHL is the production funnel. Do not publish the static pages as current marketing until they are rebuilt from `WEBSITE_COPY_EN_HE.md` and the direct-funnel decision.
+Current code may be public only while it contains code and non-sensitive documentation exclusively. Private repository visibility is strongly preferred before clinical application operation.
