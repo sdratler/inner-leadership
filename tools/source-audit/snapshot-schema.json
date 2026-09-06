@@ -1,0 +1,23 @@
+{
+  "description": "Connector-export input contract; not a real captured dataset or product authority.",
+  "required": [
+    "schema_version",
+    "capture_mode",
+    "captured_at",
+    "sources",
+    "control",
+    "git_head",
+    "reachable"
+  ],
+  "schema_version": 1,
+  "capture_mode_values": [
+    "connector_export",
+    "live_api",
+    "synthetic_test"
+  ],
+  "sources": "Object keyed by registry/product/architecture/ui/program/website/prompts/operating/packet. Each has exact allowlisted id, ISO8601 timezone-aware read_at, and full actual plaintext text.",
+  "control": "Object with complete actual value matrices, including header rows, for Work Graph A1:W201, Decisions A1:J100, Interfaces A1:I100, Overview A1:C100 and Instructions A1:H100. Overview stable policy from row18 and Instructions from row3 are mandatory. Never include Leads/contact or client data.",
+  "git_head": "Fresh actual40-character main SHA.",
+  "reachable": "Object mapping each checked exact baseline to true only after an actual Git read confirms that commit. Do not fabricate reachability.",
+  "notes": "All input reads must be fresh; keep temporary input private, not in a code repository or packet. Include only redacted output evidence in a packet. Tests use synthetic_test only."
+}
