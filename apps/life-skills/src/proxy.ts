@@ -13,6 +13,12 @@ export function proxy(request: NextRequest) {
   }
   const headers = securityHeaders(nonce, env.NODE_ENV === "development", env.LS_APP_ORIGIN.startsWith("https:"));
   const pathname = request.nextUrl.pathname;
+  // The synthetic gallery is a development-only review surface. Deny it before
+  // React streaming begins so production returns an actual 404 status.
+  const developmentGallery = /^\/(he|en)\/dev\/ui(?:\/|$)/.test(pathname);
+  if (developmentGallery && env.NODE_ENV !== "development") {
+    return decorate(new NextResponse(null,{status:404}),headers);
+  }
   // Private paths never become available merely by enabling a visual preview.
   const privatePath = pathname.startsWith("/api/private/") || /^\/(he|en)\/(app|workspace|parent|client|practitioner)(\/|$)/.test(pathname);
   const health = pathname === "/api/health";
