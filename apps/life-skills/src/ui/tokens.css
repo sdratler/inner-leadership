@@ -1,0 +1,7 @@
+:root {
+  --ls-forest-900:#173c2d; --ls-forest-700:#24513e; --ls-forest-600:#315e49;
+  --ls-brown-900:#38271f; --ls-brown-600:#6e5849; --ls-clay-600:#9a6747; --ls-clay-700:#7c4d33;
+  --ls-sand-300:#e8ddca; --ls-sand-100:#f3ecdf; --ls-cream:#fbf7ef; --ls-paper:#fffdf8;
+  --ls-sage-200:#d6dfd2; --ls-sage-500:#80937e; --ls-ink:#25251f; --ls-muted:#65645c;
+  --ls-danger:#8f3129; --ls-success:#2b6b4a; --ls-warning:#8a5a21; --ls-line:rgba(56,39,31,.16);
+}
