@@ -2,10 +2,11 @@
   "name": "inner-leadership-website",
   "version": "1.0.0",
   "private": true,
-  "description": "Bilingual static funnel for the Inner Leadership 12-week program.",
+  "description": "Independent bilingual Life Skills landing page with direct human contact.",
   "scripts": {
-    "build": "python scripts/build_pages.py",
-    "check": "node scripts/check-site.mjs",
-    "serve": "python -m http.server 8080"
+    "build": "python3 scripts/build_life_skills_site.py --production",
+    "build:preview": "python3 scripts/build_life_skills_site.py",
+    "check": "node --test tests/static/site.test.cjs && python3 tests/static/test_static.py",
+    "serve": "python3 -m http.server 8080 --directory dist/site"
   }
 }

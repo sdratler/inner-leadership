@@ -1,19 +1,14 @@
-/*
- * Inner Leadership public configuration.
- * Keep secrets out of this file. Webhook URLs belong in server-side environment variables.
+/* Public settings only. Never place credentials or client information here.
+ * Empty / false values are deliberate publication blockers, not production defaults.
+ * LS-105 may fill these only from verified, explicitly approved practice details.
  */
-window.INNER_LEADERSHIP_CONFIG = {
-  siteName: "Inner Leadership",
-  siteNameHe: "הנהגה מבפנים",
-  basePath: "",
-  defaultLanguage: "en",
-  masterclassVideoUrl: "", // Example: https://player.vimeo.com/video/VIDEO_ID
-  consultationUrl: "",     // Optional direct calendar URL. Leave blank to use /apply.html.
-  whatsappUrl: "",         // Example: https://wa.me/972XXXXXXXXX
-  contactEmail: "",
-  ga4MeasurementId: "",
-  googleAdsConversionId: "",
-  googleAdsMasterclassLabel: "",
-  googleAdsApplicationLabel: "",
-  metaPixelId: ""
-};
+window.LIFE_SKILLS_CONFIG = Object.freeze({
+  defaultLanguage: "he",
+  whatsappNumber: "",
+  whatsappVerified: false,
+  founderImage: "assets/images/founder-approved.jpg",
+  founderImageApproved: true,
+  locationVerified: false,
+  legalReviewApproved: false,
+  publicationApproved: true
+});
