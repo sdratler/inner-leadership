@@ -1,0 +1,403 @@
+{
+  "schema_version": 1,
+  "derived_evidence_only": true,
+  "approved_transaction": "D-028/D-029 / SYS-030",
+  "max_snapshot_age_seconds": 1800,
+  "sources": {
+    "registry": {
+      "id": "1XZS-MzUtjc3T488lyrSbtDX0Yq5UCl7Wzh5uN_YOvMg",
+      "version": "2.1",
+      "sha256": "5ccc8b837f742c22a918c2c870c11a27e26d30176dbfe58da53fbf1ecd217f6d",
+      "required": [
+        "Product Contract: 2\\.1",
+        "Control Protocol: 2\\.2",
+        "Packet Standard: 1\\.3",
+        "SYS-031",
+        "SOURCE_AUDIT.json"
+      ],
+      "forbidden": [
+        "one shared family account",
+        "does not support separate mother",
+        "Child login is optional",
+        "no cancellation mutation route",
+        "Family, child, and adult views are read-only",
+        "13,500",
+        "10,800"
+      ]
+    },
+    "product": {
+      "id": "1kJug8ojFwdGgZoPUx8BJt9fLKBjGYvX0wwbtarGTIIg",
+      "version": "2.1",
+      "sha256": "1fc0e37f920934dec8180ad77758029a1ccf5c6aec6a6066d0d5e78ed2ce5641",
+      "required": [
+        "Version: 2\\.1",
+        "Shlomo Drautler",
+        "Four appointments are prepaid",
+        "either parent able to complete",
+        "each assigned parent to submit",
+        "No child/student accounts at launch",
+        "Cancel / request reschedule",
+        "two working days",
+        "every four weeks"
+      ],
+      "forbidden": [
+        "one shared family account",
+        "does not support separate mother",
+        "Child login is optional",
+        "no cancellation mutation route",
+        "Family, child, and adult views are read-only",
+        "13,500",
+        "10,800"
+      ]
+    },
+    "architecture": {
+      "id": "1h-bnQ94uxuTrs8BPeDg-1uwZFcQEONdmYccd9Inacgw",
+      "version": "2.1",
+      "sha256": "a9f769d95c57391b5375e84906a51c8e3609057fe5800d10058b16a22050afa0",
+      "required": [
+        "Version: 2\\.1",
+        "task_coordination_versions",
+        "reschedule_requests",
+        "credit_events",
+        "case_guardians",
+        "I-014",
+        "Resend",
+        "Whapi.Cloud"
+      ],
+      "forbidden": [
+        "one shared family account",
+        "does not support separate mother",
+        "Child login is optional",
+        "no cancellation mutation route",
+        "Family, child, and adult views are read-only",
+        "13,500",
+        "10,800"
+      ]
+    },
+    "ui": {
+      "id": "1KokAca2V-UhCPj1czP28TQ4i5E2Wd1JKJFbuXfmAPu4",
+      "version": "2.1",
+      "sha256": "62642b350c01ec725ee80ed83911eb6c3b6d4edc9563a7ede97210d0e3401182",
+      "required": [
+        "Version: 2\\.1",
+        "Who handles this",
+        "No child/student navigation",
+        "notification settings"
+      ],
+      "forbidden": [
+        "one shared family account",
+        "does not support separate mother",
+        "Child login is optional",
+        "no cancellation mutation route",
+        "Family, child, and adult views are read-only",
+        "13,500",
+        "10,800"
+      ]
+    },
+    "program": {
+      "id": "1aR8ONMUW0nlPbVe3jFZ6FKJ1_lPHyYPdVbTRbWB3hhA",
+      "version": "2.1",
+      "sha256": "9ed39548f6617abcc62551c06f2e8baa49b9ff3d6ac31424e8d0e1b5fc967e14",
+      "required": [
+        "Version 2\\.1",
+        "twelve attended",
+        "no student login",
+        "W01",
+        "W12",
+        "Separate morning/evening"
+      ],
+      "forbidden": [
+        "one shared family account",
+        "does not support separate mother",
+        "Child login is optional",
+        "no cancellation mutation route",
+        "Family, child, and adult views are read-only",
+        "13,500",
+        "10,800"
+      ]
+    },
+    "website": {
+      "id": "1jw0shI2DSfUH9RpJc2WdeIqXwO1OYOUEiwuv3mdNngU",
+      "version": "2.1",
+      "sha256": "7277321c68b212136ee889e1912201a908387e3ea4f027793878dacab295d7a9",
+      "required": [
+        "Version: 2\\.1",
+        "No public qualification form",
+        "₪2,200",
+        "LS-105",
+        "Shlomo Drautler"
+      ],
+      "forbidden": [
+        "one shared family account",
+        "does not support separate mother",
+        "Child login is optional",
+        "no cancellation mutation route",
+        "Family, child, and adult views are read-only",
+        "13,500",
+        "10,800"
+      ]
+    },
+    "prompts": {
+      "id": "1r8fN36liKyXcf9GVG1Cl25Yq9vjaYWD9A0YC1h3jn-E",
+      "version": "2.1",
+      "sha256": "3b1973a22cba112b4a4a5b1c3faa5202b558ec996d1c57fac44f477e2d4647e4",
+      "required": [
+        "Prompt Pack Version: 2\\.1",
+        "Packet Standard: 1\\.3",
+        "I-014",
+        "Prompt LS-105",
+        "SOURCE_AUDIT.json"
+      ],
+      "forbidden": [
+        "one shared family account",
+        "does not support separate mother",
+        "Child login is optional",
+        "no cancellation mutation route",
+        "Family, child, and adult views are read-only",
+        "13,500",
+        "10,800"
+      ]
+    },
+    "operating": {
+      "id": "1q-GDEaL9JmmVfy1meQrGvu3V4H2XNJ4jp2b17ZrP6bE",
+      "version": "2.2",
+      "sha256": "8640d333141438d267e8f53f09494113774c02b5ecb05cfe275286975a48fbe6",
+      "required": [
+        "Version: 2\\.2",
+        "SYS-031",
+        "approved owner correction",
+        "No extra approval ritual"
+      ],
+      "forbidden": []
+    },
+    "packet": {
+      "id": "1NrlYux3I78nO7M9v1fKGl-UCKpkcZrOUtHSoV-BmLOE",
+      "version": "1.3",
+      "sha256": "489835a95798cee0d2158ab919ee9bb6d4ffbb798850d5d2b375ff756d429902",
+      "required": [
+        "Version: 1\\.3",
+        "SOURCE_AUDIT.json",
+        "Scheduler NOT INSTALLED"
+      ],
+      "forbidden": []
+    }
+  },
+  "settings_sha256": "528c9245fc7ba0cbfde79b3d53934ef2adbefec6e1a0d89bf6bef675b059dd54",
+  "historical_work_ids": [
+    "FIN-010",
+    "SYS-010",
+    "SYS-012",
+    "SYS-020",
+    "SYS-022"
+  ],
+  "work_definitions": {
+    "LS-000": "010c8080995da96b4243bd343e12779bcab816eed34afe4950d6d3d39065791d",
+    "LS-005": "8c329afb5b83216cf45a912b19359492e600fada545dbd4e56ed378c70f81ab4",
+    "LS-010": "565ee80159c40b64e3ac515960c121d1c5a87498a8164caef52528b28c6c8155",
+    "LS-020": "ac875780bf6dc633ef70659f8a20afe40d9d5c84eae5e2fbe9348749e3535792",
+    "LS-030": "f5c1279559b9923805ddce43b4505e7e54ae64fdea835491a3b1a032e209beb6",
+    "LS-040": "1ef9e42d23c9c5b8d444989604703e0e53b386135466bf36d4bf594dad4fd389",
+    "LS-050": "1a1420fcc2848a22df0e669b1ff23db625b3acd79a222d2aef82c2d6f121e417",
+    "LS-060": "a1eb32bbb5c159c11681ab4fe188c9edb7d0fc2ec4eb5d81721c065fb4fd12a4",
+    "LS-070": "19eb788fb528b1f38330af882f1c5f6a346467b2c2c6c166d5c850c3b87b92de",
+    "LS-080": "02d8b9e045be1ef5aed5e9a0d8d2c3adcbcd41c79c64ab555c4d3a685c4123a0",
+    "LS-090": "b15a56dff3a5b34b182b694e37e76c9689871548adbf4ba274c842b801795738",
+    "LS-100": "c6a3d871d3d7b86467b8932770f77398fb492fcb2a38972bf88135b592c75cbf",
+    "LS-110": "87acbb6c4641018b98d1cc083b59c8888daa1aa6cc7a9f308f60a43b4b6c184f",
+    "LS-120": "dbe328203ec1c845aff3c1f863bbfb53bba4bf3e399f7848a18f5b3cca55e222",
+    "LS-130": "4b051fd30bda5578395975c66ff822ca1487e417eb5aea85fa57fb6d0d30a2be",
+    "MKT-020": "b26f8fe44c417e053e1fc3f55297665e2659ab65a8378543d01ab1fa23a158d4",
+    "PRG-010": "22da59fb8685d9081fb50939f018867c9d5854896f5912e886cbc01a15740783",
+    "OPS-010": "ba45dff56fe1ed541efe3410d258c513baf569649d81e5d3a5e868f59653c591",
+    "LS-025": "4f9253ed86d87d8b63285722005d019b6a3bf46505864bb125a9ac184e5bdc89",
+    "SYS-021": "3123c8e544ee2b3bb42e3470514e2f302fccf6b6a8120c416d4a951af4717fbf",
+    "SYS-030": "7e869880988c4e5e32b24c274a9c7f47d8e596b36626ab50ba3c750c1011623a",
+    "SYS-031": "9a902dc8626918c2f3093b1ba7654ab1482f37343c2fa055d05cfc5ecc3ead0f",
+    "LS-105": "74b8fd7caf1c6ebd4210d7b2b7f3637a8b28c8e4966ab710d6c86bd544d33ec2",
+    "SYS-032": "36ed9f6123c495059b334a138fc4d2588a97b2c6fb6f9d6598287a131aa79642"
+  },
+  "approved_decisions": {
+    "D-001": "5184b8b1ab12625f00cd077c8d25e25e4e25ac846b965a9cd2050a965067bea1",
+    "D-002": "2eaab7ee8cabc48b4b08ed4f9adf8ebd4a4b062d7b69e75309175ca013217867",
+    "D-008": "ba40547ad09eaf07b911c8dfabc8d0f9a57532ad1ccb9fa165308cfca5abad7c",
+    "D-009": "e52905a2a3ce68fcdaf3a25e31843c52026aa8591a8b9b97f4b5ab9b4a754c51",
+    "D-011": "209e44c53de097d8b5ea24a5616410ca4c682396ba38aa794b0c4b236d57cee4",
+    "D-012": "532a4f991c3eac702337edcc8fe6cf570a9619800832e16b01233bd26f285d21",
+    "D-013": "90a1f92bc1bf5a19a920d6a690bff135ef75cf34e94851c76536f80185adc362",
+    "D-014": "7ea8cc6fd9edae50b45aa2f6aabd46e3ed9b20f4253bdb845a1c9fd46a77fe54",
+    "D-016": "d92fec5607ac14ecf369a7843d1268b57620b00d4727cb30d09da15e6fba5918",
+    "D-017": "aa26abd8c84d54469f6a56a8cee27dc0246a16c6f673a2c2e2706780ffe55526",
+    "D-018": "8f4e04071ba98edae6ee27ff7c06ea5a4aaa5fe9f97789315f68581774702f31",
+    "D-SYS-010": "e00340f287ef609adae0025f9a3c970313c5c243b4268c12acec6213d0b694ef",
+    "D-FIN-010": "8d23a65032bc9c8209455c346e3f023451b665e873e52fdd298891c761475441",
+    "D-SYS-011": "71cb3f06ed6171502c4098583e1cd3cd4bd63ca47b2ac6392bf05219b2ae726d",
+    "D-028": "9bb3b7702f49d07fda5b10f4dc94f0ad0d169784354da3a3f83178463b65698d",
+    "D-029": "c07b1696263731af7f5749c6d86d2dfd3e5f40f996518b42dcee17b27810d369"
+  },
+  "interface_definitions": {
+    "I-001": "cb1d733d5b24bb18ef64e2dacb88dbc57602992a465f77b3b0c5cd342c0b02d1",
+    "I-002": "70a4db16f467be63b088497ec15706fb0a99801c235abdaa0fb95e6ca00a12b2",
+    "I-003": "eced027dbb1c09003d17f0d028c08c71fcd30f95bc3b45de104fb0a033409c68",
+    "I-004": "1488c4a4d2f7920c724359818f5459e06a28dfcb67e3b54c44f28a42fcf567d0",
+    "I-005": "fc09c378645ec24f9d298310c4fa56c0f7a1fe33e8e0070910bb99e20ebb89b0",
+    "I-006": "785b3cdbcf3399a938e595f2e2870d9a2793738eb522df98eb5ad0c61578838d",
+    "I-007": "20281e056ad535554221e58e4fee849fea3c037ea19c70cbeab4faba21eb9333",
+    "I-008": "9efd272829ab43fb3980fb9eff2e831f59bef2fa8c83f99c21eec72485959c54",
+    "I-009": "d67cab8e60e118a7b3169f8f4a66d63d8af950e55a10cf2224e6984b6aaaf80e",
+    "I-010": "b622b2a462b0905dda60b7e00f56ecb039f77bb82f847f3c1b5c54965df38204",
+    "I-011": "269c7917f6cf856b90af61e85386337d7173407a32baac1ca6db7209841d5ce6",
+    "I-012": "98b76bb9d95ae0d05613d2db657d6cdab3f338d8c1e209b8cee9c87d0ca7ca2e",
+    "I-013": "b32348df317c56302737e5e4a4f6e25a7a55a920249f538bab1d858065e31347",
+    "I-014": "86d70d9c425b2dc53b3330de14395195f03f34c6ad44f9d647143f3158f19e70"
+  },
+  "work_scopes": {
+    "LS-100": [
+      "registry",
+      "product",
+      "website",
+      "ui",
+      "prompts",
+      "operating",
+      "packet"
+    ],
+    "MKT-020": [
+      "registry",
+      "product",
+      "website",
+      "ui",
+      "prompts",
+      "operating",
+      "packet"
+    ],
+    "PRG-010": [
+      "registry",
+      "product",
+      "program",
+      "prompts",
+      "operating",
+      "packet"
+    ],
+    "OPS-010": [
+      "registry",
+      "product",
+      "architecture",
+      "prompts",
+      "operating",
+      "packet"
+    ],
+    "SYS-032": [
+      "registry",
+      "product",
+      "architecture",
+      "ui",
+      "program",
+      "website",
+      "prompts",
+      "operating",
+      "packet"
+    ]
+  },
+  "ownership_roots": {
+    "LS-000": [
+      "apps/life-skills",
+      "AGENTS.md"
+    ],
+    "LS-100": [
+      "index.html",
+      "assets/css/site.css",
+      "assets/js/site.js",
+      "assets/js/config.js",
+      "tests/static"
+    ],
+    "SYS-031": [
+      "tools/source-audit",
+      ".github/workflows/source-audit.yml"
+    ],
+    "SYS-030": [
+      "canonical/sources"
+    ],
+    "MKT-020": [
+      "drive/40_MARKETING"
+    ],
+    "PRG-010": [
+      "drive/50_PROGRAM/derived",
+      "drive/55_REPORTS/derived"
+    ],
+    "OPS-010": [
+      "drive/60_OPERATIONS/derived"
+    ],
+    "SYS-021": [
+      "drive/legacy-only"
+    ],
+    "LS-010": [
+      "apps/life-skills/src/features/identity",
+      "apps/life-skills/src/features/cases",
+      "apps/life-skills/src/providers/email"
+    ],
+    "LS-020": [
+      "apps/life-skills/src/ui"
+    ],
+    "LS-030": [
+      "apps/life-skills/src/features/calendar"
+    ],
+    "LS-040": [
+      "apps/life-skills/src/features/home-practice"
+    ],
+    "LS-050": [
+      "apps/life-skills/src/features/forms",
+      "apps/life-skills/src/features/resources",
+      "apps/life-skills/src/features/progress"
+    ],
+    "LS-060": [
+      "apps/life-skills/src/features/payments"
+    ],
+    "LS-080": [
+      "apps/life-skills/src/features/updates"
+    ],
+    "LS-005": [
+      "apps/life-skills",
+      "AGENTS.md"
+    ],
+    "LS-025": [
+      "apps/life-skills"
+    ],
+    "LS-070": [
+      "apps/life-skills"
+    ],
+    "LS-105": [
+      "index.html",
+      "assets/css/site.css",
+      "assets/js/site.js",
+      "assets/js/config.js",
+      "tests/static",
+      "netlify.toml"
+    ],
+    "SYS-032": [
+      "drive/control-summary-repair",
+      "tools/source-audit"
+    ]
+  },
+  "checker_version": "1.1.0",
+  "control_contracts": {
+    "Overview": {
+      "start_row": 18,
+      "columns": 3,
+      "sha256": "ca9d32e5063eb2ed469e9e153c73791efd470b5a322e3ca153034b43a22173fc"
+    },
+    "Instructions": {
+      "start_row": 3,
+      "columns": 8,
+      "sha256": "1ef218037b795e2e45daaf6565637c921beb9693333a2580b7ae5389ce28b1b4"
+    }
+  },
+  "reviewed_change": "SYS-032: add reviewed Overview/Instructions policy fingerprints; add own scoped repair definition; renew ONLY SYS-021 definition after verifying authorized cleanup closeout in Change Log row12 and Chat Runs row11. All nine document hashes, approved decisions, interfaces and other feature definitions unchanged.",
+  "review_evidence": {
+    "transaction": "SYS032-20260906-125022-b41f7e",
+    "reviewed_at": "2026-09-06T09:58:55.007351+00:00",
+    "SYS-021": {
+      "before_sha256": "e2bbcb3ed3767f0955f9a1b3dc836e920300028b46a5209beee00ae3d47b4ac4",
+      "after_sha256": "3123c8e544ee2b3bb42e3470514e2f302fccf6b6a8120c416d4a951af4717fbf",
+      "basis": "Authorized prior cleanup closeout SYS021-20260906-120434-91b8b2; Build Control Change Log A12:J12 and Chat Runs A11:S11; only next-action wording changed, no business scope change."
+    }
+  }
+}
