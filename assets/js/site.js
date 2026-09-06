@@ -1,161 +1,132 @@
-(() => {
+/* LS-100: dependency-free public page. No client-data collection or external fetch. */
+(function (global) {
   "use strict";
-
-  const config = window.INNER_LEADERSHIP_CONFIG || {};
-  const html = document.documentElement;
-  const storageKey = "innerLeadershipLanguage";
-  const supported = ["en", "he"];
-
-  function normalizeLanguage(value) {
-    return supported.includes(value) ? value : "en";
+  const TEXT = {
+  "he": {
+    "name": "שלמה דרטלר",
+    "preview": "תצוגה לבדיקת האתר — לא אתר שפורסם. התמונה, פרטי הקשר ואישורי הפרסום עדיין ממתינים לאימות.",
+    "navApproach": "הגישה",
+    "navProcess": "איך זה עובד",
+    "navQuestions": "שאלות נפוצות"
+  },
+  "en": {
+    "name": "Shlomo Dratler",
+    "preview": "Website review preview — not a published service page. Photograph, contact details and publication approvals still require verification.",
+    "navApproach": "The approach",
+    "navProcess": "How it works",
+    "navQuestions": "Questions"
   }
-
-  function getInitialLanguage() {
-    const params = new URLSearchParams(window.location.search);
-    const queryLang = params.get("lang");
-    if (supported.includes(queryLang)) return queryLang;
-    const stored = localStorage.getItem(storageKey);
-    if (supported.includes(stored)) return stored;
-    const browser = (navigator.language || "").toLowerCase();
-    if (browser.startsWith("he")) return "he";
-    return normalizeLanguage(config.defaultLanguage);
+};
+  const TITLES = {
+    he: "שלמה דרטלר | טיפול רגשי פרטני והדרכת הורים | Life Skills",
+    en: "Shlomo Dratler | Individual Therapy & Parent Guidance | Life Skills"
+  };
+  const DESCRIPTIONS = {
+    he: "טיפול רגשי פרטני לבנים בגילאי 8–12, עם הדרכת הורים וכלים מעשיים ליישום בבית.",
+    en: "Individual emotional therapy for boys ages 8–12, with parent guidance and practical tools for implementation at home."
+  };
+  function chooseLocale(search, fallback) {
+    const requested = new URLSearchParams(search).get("lang");
+    return requested === "en" || requested === "he" ? requested : fallback === "en" ? "en" : "he";
   }
-
-  function setLanguage(lang, persist = true) {
-    const normalized = normalizeLanguage(lang);
-    html.lang = normalized;
-    html.dir = normalized === "he" ? "rtl" : "ltr";
-    if (persist) localStorage.setItem(storageKey, normalized);
-    document.querySelectorAll("[data-lang-label]").forEach((el) => {
-      el.textContent = normalized === "he" ? "EN" : "עברית";
-      el.setAttribute("aria-label", normalized === "he" ? "Switch to English" : "החלפה לעברית");
-    });
-    document.querySelectorAll("[data-consultation-link]").forEach((el) => {
-      const fallback = `apply.html?lang=${normalized}`;
-      el.href = config.consultationUrl || fallback;
-    });
-    document.querySelectorAll("[data-label-en]").forEach((el) => {
-      const value = normalized === "he" ? el.dataset.labelHe : el.dataset.labelEn;
-      if (value) el.setAttribute("data-label", value);
-    });
-    document.dispatchEvent(new CustomEvent("innerleadership:language", { detail: { lang: normalized } }));
+  function contactUrl(config) {
+    if (!config || config.whatsappVerified !== true || typeof config.whatsappNumber !== "string") return null;
+    // Exact E.164 digits without plus, separators, query strings or a local leading zero.
+    if (!/^[1-9][0-9]{7,14}$/.test(config.whatsappNumber)) return null;
+    return "https://wa.me/" + config.whatsappNumber;
   }
+  function photoPath(config) {
+    if (!config || config.founderImageApproved !== true || typeof config.founderImage !== "string") return null;
+    // Only an explicitly approved same-origin raster asset. No remote tracking, SVG, or traversal.
+    return /^assets\/images\/[a-zA-Z0-9_-]+\.(?:webp|jpg|jpeg|png)$/.test(config.founderImage) ? config.founderImage : null;
+  }
+  function publicationProblems(config) {
+    const c = config || {};
+    const reasons = [];
+    if (!contactUrl(c)) reasons.push("CONTACT_UNVERIFIED");
+    if (!photoPath(c)) reasons.push("FOUNDER_PHOTO_UNVERIFIED");
+    if (c.locationVerified !== true) reasons.push("LOCATION_UNVERIFIED");
+    if (c.legalReviewApproved !== true) reasons.push("LEGAL_REVIEW_UNVERIFIED");
+    if (c.publicationApproved !== true) reasons.push("PUBLICATION_NOT_AUTHORIZED");
+    return reasons;
+  }
+  const api = Object.freeze({chooseLocale, contactUrl, photoPath, publicationProblems});
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+  if (!global.document) return;
+  const doc = global.document;
+  const config = global.LIFE_SKILLS_CONFIG || {};
+  let locale = chooseLocale(global.location.search, config.defaultLanguage);
+  doc.documentElement.classList.add("js");
 
-  window.InnerLeadership = window.InnerLeadership || {};
-  window.InnerLeadership.setLanguage = setLanguage;
-  window.InnerLeadership.getLanguage = () => html.lang;
-  window.InnerLeadership.config = config;
-
-  document.addEventListener("DOMContentLoaded", () => {
-    setLanguage(getInitialLanguage(), false);
-
-    document.querySelectorAll("[data-language-toggle]").forEach((button) => {
-      button.addEventListener("click", () => setLanguage(html.lang === "he" ? "en" : "he"));
+  function applyLanguage(next, announce) {
+    locale = next;
+    const direction = next === "he" ? "rtl" : "ltr";
+    doc.documentElement.lang = next;
+    doc.documentElement.dir = direction;
+    doc.documentElement.dataset.locale = next;
+    doc.title = TITLES[next];
+    doc.querySelector('meta[name="description"]').content = DESCRIPTIONS[next];
+    doc.querySelectorAll("[data-ui]").forEach(el => {
+      const key = el.dataset.ui;
+      el.textContent = key === "skip" ? (next === "he" ? "דלגו לתוכן" : "Skip to content") : TEXT[next][key];
     });
+    doc.querySelector("[data-ui-nav]").setAttribute("aria-label", next === "he" ? "ניווט ראשי" : "Main navigation");
+    doc.querySelectorAll("[data-nav]").forEach(el => el.setAttribute("href", "#" + el.dataset.nav + "-" + next));
+    doc.querySelectorAll("[data-language]").forEach(el => {
+      if (el.dataset.language === next) el.setAttribute("aria-current", "true");
+      else el.removeAttribute("aria-current");
+    });
+    if (announce) doc.getElementById("language-status").textContent = next === "he" ? "השפה שונתה לעברית" : "Language changed to English";
+  }
+  applyLanguage(locale, false);
 
-    const menuButton = document.querySelector("[data-menu-toggle]");
-    const navLinks = document.querySelector("[data-nav-links]");
-    if (menuButton && navLinks) {
-      menuButton.addEventListener("click", () => {
-        const open = navLinks.classList.toggle("open");
-        menuButton.setAttribute("aria-expanded", String(open));
-      });
-      navLinks.addEventListener("click", (event) => {
-        if (event.target.closest("a")) {
-          navLinks.classList.remove("open");
-          menuButton.setAttribute("aria-expanded", "false");
-        }
+  doc.querySelectorAll("[data-language]").forEach(link => link.addEventListener("click", event => {
+    if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    const next = link.dataset.language;
+    const oldHash = global.location.hash;
+    // Preserve only our known section anchor. Never propagate arbitrary URL parameters.
+    const anchor = /^#(?:approach|process|questions|fees|contact|privacy)-(he|en)$/.test(oldHash) ? oldHash.replace(/-(he|en)$/, "-" + next) : "";
+    global.history.pushState(null, "", global.location.pathname + "?lang=" + next + anchor);
+    applyLanguage(next, true);
+  }));
+  global.addEventListener("popstate", () => applyLanguage(chooseLocale(global.location.search, config.defaultLanguage), true));
+
+  const contact = contactUrl(config);
+  doc.querySelectorAll("[data-contact]").forEach(link => {
+    if (contact) {
+      link.href = contact;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.referrerPolicy = "no-referrer";
+    } else {
+      link.setAttribute("aria-describedby", "contact-status-" + link.dataset.locale);
+      link.addEventListener("click", () => {
+        const panel = doc.getElementById("contact-" + link.dataset.locale);
+        panel.focus({preventScroll: true});
       });
     }
-
-    document.querySelectorAll("[data-faq-question]").forEach((button) => {
-      button.addEventListener("click", () => {
-        const item = button.closest(".faq-item");
-        const open = item.classList.toggle("open");
-        button.setAttribute("aria-expanded", String(open));
-      });
-    });
-
-    const observer = "IntersectionObserver" in window
-      ? new IntersectionObserver((entries) => {
-          entries.forEach((entry) => {
-            if (entry.isIntersecting) {
-              entry.target.classList.add("visible");
-              observer.unobserve(entry.target);
-            }
-          });
-        }, { threshold: 0.12 })
-      : null;
-
-    document.querySelectorAll(".reveal").forEach((el) => {
-      if (observer) observer.observe(el);
-      else el.classList.add("visible");
-    });
-
-    const videoShell = document.querySelector("[data-masterclass-video]");
-    if (videoShell && config.masterclassVideoUrl) {
-      const iframe = document.createElement("iframe");
-      iframe.src = config.masterclassVideoUrl;
-      iframe.title = "Inner Leadership masterclass";
-      iframe.allow = "autoplay; fullscreen; picture-in-picture";
-      iframe.allowFullscreen = true;
-      videoShell.innerHTML = "";
-      videoShell.appendChild(iframe);
-    }
-
-    document.querySelectorAll("[data-whatsapp-link]").forEach((el) => {
-      if (config.whatsappUrl) el.href = config.whatsappUrl;
-      else el.hidden = true;
-    });
-
-    document.querySelectorAll("[data-contact-email]").forEach((el) => {
-      if (config.contactEmail) {
-        el.href = `mailto:${config.contactEmail}`;
-        el.textContent = config.contactEmail;
-      } else {
-        el.hidden = true;
-      }
-    });
-
-    loadTracking(config);
-    updateYear();
   });
-
-  function updateYear() {
-    document.querySelectorAll("[data-year]").forEach((el) => {
-      el.textContent = new Date().getFullYear();
+  doc.querySelectorAll("[data-contact-unavailable]").forEach(panel => {
+    panel.id = "contact-status-" + panel.closest("[data-page-locale]").dataset.pageLocale;
+    panel.hidden = Boolean(contact);
+  });
+  let failedPhoto = false;
+  const photo = photoPath(config);
+  const preview = doc.querySelector("[data-preview]");
+  function refreshPreview() { preview.hidden = publicationProblems(config).length === 0 && !failedPhoto; }
+  if (photo) {
+    doc.querySelectorAll("[data-founder-image]").forEach(img => {
+      const placeholder = img.parentElement.querySelector("[data-photo-placeholder]");
+      img.addEventListener("load", () => { img.hidden = false; placeholder.hidden = true; refreshPreview(); });
+      img.addEventListener("error", () => { img.hidden = true; placeholder.hidden = false; failedPhoto = true; refreshPreview(); });
+      img.src = photo;
     });
   }
-
-  function loadScript(src, id) {
-    if (id && document.getElementById(id)) return;
-    const script = document.createElement("script");
-    script.async = true;
-    script.src = src;
-    if (id) script.id = id;
-    document.head.appendChild(script);
-  }
-
-  function loadTracking(options) {
-    if (options.ga4MeasurementId) {
-      loadScript(`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(options.ga4MeasurementId)}`, "ga4-loader");
-      window.dataLayer = window.dataLayer || [];
-      window.gtag = window.gtag || function () { window.dataLayer.push(arguments); };
-      window.gtag("js", new Date());
-      window.gtag("config", options.ga4MeasurementId, { anonymize_ip: true });
-    }
-    if (options.googleAdsConversionId && window.gtag) {
-      window.gtag("config", options.googleAdsConversionId);
-    }
-    if (options.metaPixelId) {
-      /* Standard Meta Pixel loader; no child details or health data are sent. */
-      !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-      n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
-      n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
-      t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}
-      (window, document,'script','https://connect.facebook.net/en_US/fbevents.js');
-      window.fbq("init", options.metaPixelId);
-      window.fbq("track", "PageView");
-    }
-  }
-})();
+  refreshPreview();
+  // Explicit links to disclosures also open their native accessible disclosure widget.
+  doc.querySelectorAll('a[href^="#privacy-"]').forEach(link => link.addEventListener("click", () => {
+    const target = doc.getElementById(link.hash.slice(1));
+    if (target) target.querySelector("details").open = true;
+  }));
+})(typeof window !== "undefined" ? window : globalThis);

@@ -1,21 +1,95 @@
+# Prepared LS-105 wiring. No publication or deploy permission is granted by this file.
+# Both automatic branch and production builds fail until the reviewed config gates pass.
 [build]
-  publish = "."
-  functions = "netlify/functions"
+  command = "python3 scripts/build_life_skills_site.py --production"
+  publish = "dist/site"
+
+[functions]
+  directory = "dist/disabled-functions"
 
 [dev]
-  publish = "."
-  functions = "netlify/functions"
+  publish = "dist/site"
+  functions = "dist/disabled-functions"
   port = 8888
 
 [[headers]]
   for = "/*"
   [headers.values]
-    X-Frame-Options = "SAMEORIGIN"
+    X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
-    Referrer-Policy = "strict-origin-when-cross-origin"
+    Referrer-Policy = "no-referrer"
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    Content-Security-Policy = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'none'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    Cache-Control = "public, max-age=0, must-revalidate"
 
-[[headers]]
-  for = "/assets/*"
-  [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
+[[redirects]]
+  from = "/apply"
+  to = "/"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/apply.html"
+  to = "/"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/masterclass"
+  to = "/"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/masterclass.html"
+  to = "/"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/watch"
+  to = "/"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/watch.html"
+  to = "/"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/thank-you"
+  to = "/"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/thank-you.html"
+  to = "/"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/privacy"
+  to = "/#privacy-he"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/privacy.html"
+  to = "/#privacy-he"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/terms"
+  to = "/#fees-he"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/terms.html"
+  to = "/#fees-he"
+  status = 301
+  force = true
