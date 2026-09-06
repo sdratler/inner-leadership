@@ -1,0 +1,20 @@
+import { describe, it, expect } from "vitest";
+import { money, addMoney, formatMoney } from "../../src/lib/money.ts";
+import { instant, elapsedMilliseconds, practiceCalendarDate } from "../../src/lib/time.ts";
+import { direction, isLocale } from "../../src/lib/locale.ts";
+import { orderFeatures } from "../../src/lib/features.ts";
+import { isVisibility } from "../../src/lib/visibility.ts";
+import { asId } from "../../src/lib/ids.ts";
+describe("primitive boundaries", () => {
+  it.each([NaN, Infinity, 1.5, Number.MAX_SAFE_INTEGER + 1])("rejects invalid money %s", value => expect(() => money(value)).toThrow());
+  it("adds integer agorot without rounding", () => expect(addMoney(money(101),money(202)).minorUnits).toBe(303));
+  it("formats ILS", () => expect(formatMoney(money(55000),"he")).toContain("550"));
+  it("sets structural language direction", () => { expect(direction("he")).toBe("rtl"); expect(direction("en")).toBe("ltr"); expect(isLocale("fr")).toBe(false); });
+  it.each(["2026-02-30T00:00:00Z", "2026-03-27T02:30:00", "not-a-date", "2026-01-01T24:00:00Z"])("rejects ambiguous/invalid time %s", value => expect(() => instant(value)).toThrow());
+  it("keeps elapsed time independent of DST display", () => expect(elapsedMilliseconds(instant("2026-03-26T12:00:00+02:00"),instant("2026-03-27T13:00:00+03:00"))).toBe(86400000));
+  it("uses Jerusalem calendar date", () => expect(practiceCalendarDate(instant("2026-09-06T22:30:00Z"))).toBe("2026-09-07"));
+  it("rejects malformed identifiers", () => expect(() => asId("client-name","case")).toThrow());
+  it("does not add visibility vocabulary", () => { expect(isVisibility("private")).toBe(true);expect(isVisibility("public")).toBe(false); });
+  it("orders feature dependencies", () => expect(orderFeatures([{id:"feedback",dependsOn:["identity"]},{id:"identity",dependsOn:[]}]).map(f=>f.id)).toEqual(["identity","feedback"]));
+  it("rejects cyclic feature imports", () => expect(() => orderFeatures([{id:"alpha",dependsOn:["beta"]},{id:"beta",dependsOn:["alpha"]}])).toThrow("FEATURE_CYCLE"));
+});
