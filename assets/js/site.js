@@ -22,8 +22,8 @@
     en: "Shlomo Dratler | Individual Therapy & Parent Guidance | Life Skills"
   };
   const DESCRIPTIONS = {
-    he: "טיפול רגשי פרטני לבנים בגילאי 8–12 באזור בית שמש: פגישה שבועית, הדרכת הורים ותרגול מותאם לבית.",
-    en: "Individual emotional therapy for boys ages 8–12 around Beit Shemesh, with weekly parent guidance and tailored home practice."
+    he: "טיפול רגשי פרטני לבנים בגילאי 8–12, עם הדרכת הורים וכלים מעשיים ליישום בבית.",
+    en: "Individual emotional therapy for boys ages 8–12, with parent guidance and practical tools for implementation at home."
   };
   function chooseLocale(search, fallback) {
     const requested = new URLSearchParams(search).get("lang");

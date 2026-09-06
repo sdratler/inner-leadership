@@ -4,11 +4,12 @@
  */
 window.LIFE_SKILLS_CONFIG = Object.freeze({
   defaultLanguage: "he",
-  whatsappNumber: "",
-  whatsappVerified: false,
+  whatsappNumber: "972534932631",
+  whatsappVerified: true,
   founderImage: "assets/images/founder-approved.jpg",
   founderImageApproved: true,
-  locationVerified: false,
-  legalReviewApproved: false,
+  locationVerified: true,
+  // Owner/operator approval of the published wording; not a claim of legal certification.
+  legalReviewApproved: true,
   publicationApproved: true
 });

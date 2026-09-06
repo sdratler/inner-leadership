@@ -23,6 +23,7 @@ class StaticTests(unittest.TestCase):
         cls.text=(ROOT/'index.html').read_text(encoding='utf-8')
         cls.page=Page();cls.page.feed(cls.text)
         cls.js=(ROOT/'assets/js/site.js').read_text(encoding='utf-8')
+        cls.config=(ROOT/'assets/js/config.js').read_text(encoding='utf-8')
         cls.css=(ROOT/'assets/css/site.css').read_text(encoding='utf-8')
     def test_unique_ids(self):self.assertEqual(len(self.page.ids),len(set(self.page.ids)))
     def test_local_anchor_targets(self):
@@ -96,6 +97,17 @@ class StaticTests(unittest.TestCase):
         self.assertIn('התמודדות עם תסכול.',self.text)
         self.assertIn('כישורים חברתיים חזקים.',self.text)
         self.assertIn('כלים מעשיים ליישום בבית.',self.text)
+    def test_no_fixed_location_claim(self):
+        for value in ['Beit Shemesh','בית שמש']:
+            self.assertNotIn(value,self.text+self.js)
+        self.assertIn('Families may inquire from any area.',self.text)
+        self.assertIn('אפשר לפנות מכל אזור',self.text)
+    def test_verified_public_configuration(self):
+        self.assertIn('whatsappNumber: "972534932631"',self.config)
+        self.assertIn('whatsappVerified: true',self.config)
+        self.assertIn('locationVerified: true',self.config)
+        self.assertIn('legalReviewApproved: true',self.config)
+        self.assertIn('publicationApproved: true',self.config)
     def test_images_never_have_blank_src(self):
         for tag,a in self.page.attrs:
             if tag=='img':self.assertNotIn('src',a)
