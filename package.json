@@ -7,6 +7,8 @@
     "build": "python3 scripts/build_life_skills_site.py --production",
     "build:preview": "python3 scripts/build_life_skills_site.py",
     "check": "node --test tests/static/site.test.cjs && python3 tests/static/test_static.py",
-    "serve": "python3 -m http.server 8080 --directory dist/site"
+    "check:server": "node --test tests/static/server.test.cjs",
+    "start": "node server.js",
+    "serve": "node server.js"
   }
 }
