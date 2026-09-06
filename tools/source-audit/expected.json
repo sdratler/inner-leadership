@@ -6,14 +6,16 @@
   "sources": {
     "registry": {
       "id": "1XZS-MzUtjc3T488lyrSbtDX0Yq5UCl7Wzh5uN_YOvMg",
-      "version": "2.1",
-      "sha256": "5ccc8b837f742c22a918c2c870c11a27e26d30176dbfe58da53fbf1ecd217f6d",
+      "version": "2.3",
+      "sha256": "1acf5a9cee0d1a5c63bcca5750c9a0635e792404b397acc9bb41aec400e55e17",
       "required": [
-        "Product Contract: 2\\.1",
+        "Product Contract: 2\\.3",
         "Control Protocol: 2\\.2",
         "Packet Standard: 1\\.3",
         "SYS-031",
-        "SOURCE_AUDIT.json"
+        "SOURCE_AUDIT.json",
+        "D-BRAND-002",
+        "Families may inquire from any area"
       ],
       "forbidden": [
         "one shared family account",
@@ -27,18 +29,20 @@
     },
     "product": {
       "id": "1kJug8ojFwdGgZoPUx8BJt9fLKBjGYvX0wwbtarGTIIg",
-      "version": "2.1",
-      "sha256": "1fc0e37f920934dec8180ad77758029a1ccf5c6aec6a6066d0d5e78ed2ce5641",
+      "version": "2.3",
+      "sha256": "c07eef71e6f147e208c99c22562950bfcd6362fa9343c7610b6bb9ff2135d926",
       "required": [
-        "Version: 2\\.1",
-        "Shlomo Drautler",
+        "Version: 2\\.3",
+        "Shlomo Dratler",
         "Four appointments are prepaid",
         "either parent able to complete",
         "each assigned parent to submit",
         "No child/student accounts at launch",
         "Cancel / request reschedule",
         "two working days",
-        "every four weeks"
+        "every four weeks",
+        "D-BRAND-002",
+        "Families may inquire from any area"
       ],
       "forbidden": [
         "one shared family account",
@@ -47,22 +51,24 @@
         "no cancellation mutation route",
         "Family, child, and adult views are read-only",
         "13,500",
-        "10,800"
+        "10,800",
+        "Beit[\\s-]*Shemesh|בית[\\s־-]*שמש"
       ]
     },
     "architecture": {
       "id": "1h-bnQ94uxuTrs8BPeDg-1uwZFcQEONdmYccd9Inacgw",
-      "version": "2.1",
-      "sha256": "a9f769d95c57391b5375e84906a51c8e3609057fe5800d10058b16a22050afa0",
+      "version": "2.3",
+      "sha256": "a3b5eb6e78a16f303c33c7b4cdc065b75b78c559494c6c5cd7153373c926553f",
       "required": [
-        "Version: 2\\.1",
+        "Version: 2\\.3",
         "task_coordination_versions",
         "reschedule_requests",
         "credit_events",
         "case_guardians",
         "I-014",
         "Resend",
-        "Whapi.Cloud"
+        "Whapi.Cloud",
+        "D-BRAND-002"
       ],
       "forbidden": [
         "one shared family account",
@@ -118,14 +124,16 @@
     },
     "website": {
       "id": "1jw0shI2DSfUH9RpJc2WdeIqXwO1OYOUEiwuv3mdNngU",
-      "version": "2.1",
-      "sha256": "7277321c68b212136ee889e1912201a908387e3ea4f027793878dacab295d7a9",
+      "version": "2.3",
+      "sha256": "15884091ce2e9f5c5fcc0712855e10b4d29633d25d33405e311cd6e77af3b356",
       "required": [
-        "Version: 2\\.1",
+        "Version: 2\\.3",
         "No public qualification form",
         "₪2,200",
         "LS-105",
-        "Shlomo Drautler"
+        "Shlomo Dratler",
+        "D-BRAND-002",
+        "Families may inquire from any area"
       ],
       "forbidden": [
         "one shared family account",
@@ -134,19 +142,21 @@
         "no cancellation mutation route",
         "Family, child, and adult views are read-only",
         "13,500",
-        "10,800"
+        "10,800",
+        "Beit[\\s-]*Shemesh|בית[\\s־-]*שמש"
       ]
     },
     "prompts": {
       "id": "1r8fN36liKyXcf9GVG1Cl25Yq9vjaYWD9A0YC1h3jn-E",
-      "version": "2.1",
-      "sha256": "3b1973a22cba112b4a4a5b1c3faa5202b558ec996d1c57fac44f477e2d4647e4",
+      "version": "2.3",
+      "sha256": "445de156180a05470ab295949e3d9b5333f28e10506ecbdb415a6751d5f23d95",
       "required": [
-        "Prompt Pack Version: 2\\.1",
+        "Prompt Pack Version: 2\\.3",
         "Packet Standard: 1\\.3",
         "I-014",
         "Prompt LS-105",
-        "SOURCE_AUDIT.json"
+        "SOURCE_AUDIT.json",
+        "D-BRAND-002"
       ],
       "forbidden": [
         "one shared family account",
@@ -214,7 +224,8 @@
     "SYS-030": "7e869880988c4e5e32b24c274a9c7f47d8e596b36626ab50ba3c750c1011623a",
     "SYS-031": "9a88008cc85b0d44d7658ee5af407368274b8aced23953eaaf5d5d3a4f1e1922",
     "LS-105": "74b8fd7caf1c6ebd4210d7b2b7f3637a8b28c8e4966ab710d6c86bd544d33ec2",
-    "SYS-032": "36ed9f6123c495059b334a138fc4d2588a97b2c6fb6f9d6598287a131aa79642"
+    "SYS-032": "36ed9f6123c495059b334a138fc4d2588a97b2c6fb6f9d6598287a131aa79642",
+    "MKT-030": "4f9b7108b560336696b9c360f467ad8218d5d877073525836f2c9f58a0af2433"
   },
   "approved_decisions": {
     "D-001": "5184b8b1ab12625f00cd077c8d25e25e4e25ac846b965a9cd2050a965067bea1",
@@ -232,7 +243,9 @@
     "D-FIN-010": "8d23a65032bc9c8209455c346e3f023451b665e873e52fdd298891c761475441",
     "D-SYS-011": "71cb3f06ed6171502c4098583e1cd3cd4bd63ca47b2ac6392bf05219b2ae726d",
     "D-028": "9bb3b7702f49d07fda5b10f4dc94f0ad0d169784354da3a3f83178463b65698d",
-    "D-029": "c07b1696263731af7f5749c6d86d2dfd3e5f40f996518b42dcee17b27810d369"
+    "D-029": "c07b1696263731af7f5749c6d86d2dfd3e5f40f996518b42dcee17b27810d369",
+    "D-BRAND-001": "831e5ab28e082af39eeb5afcf157e284831303335cf2803eb7d891233faeb055",
+    "D-BRAND-002": "f5ae37e3e597fac263c5eb5bf551529136111a83af42588ea8640d1f59c45636"
   },
   "interface_definitions": {
     "I-001": "cb1d733d5b24bb18ef64e2dacb88dbc57602992a465f77b3b0c5cd342c0b02d1",
@@ -286,6 +299,17 @@
       "packet"
     ],
     "SYS-032": [
+      "registry",
+      "product",
+      "architecture",
+      "ui",
+      "program",
+      "website",
+      "prompts",
+      "operating",
+      "packet"
+    ],
+    "MKT-030": [
       "registry",
       "product",
       "architecture",
@@ -390,10 +414,30 @@
       "sha256": "1ef218037b795e2e45daaf6565637c921beb9693333a2580b7ae5389ce28b1b4"
     }
   },
-  "reviewed_change": "SYS-032: add reviewed Overview/Instructions policy fingerprints; add own scoped repair definition; renew ONLY SYS-021 definition after verifying authorized cleanup closeout in Change Log row12 and Chat Runs row11. All nine document hashes, approved decisions, interfaces and other feature definitions unchanged.",
+  "reviewed_change": "MKT-030: apply the reviewed cumulative D-BRAND-001/D-BRAND-002 source delta for registry, product, architecture, website and prompts from version 2.1 to 2.3; add only the two approved decision fingerprints, MKT-030 work definition and MKT-030 source scope. Preserve settings, UI/program/operating/packet fingerprints, interfaces, controls, ownership roots and all unrelated work definitions.",
   "review_evidence": {
-    "transaction": "SYS032-20260906-125022-b41f7e",
-    "reviewed_at": "2026-09-06T09:58:55.007351+00:00",
+    "transaction": "MKT030-20260906-172351-aed9e8",
+    "reviewed_at": "2026-09-06T14:32:41.949317+00:00",
+    "receipt_sha256": "eab9cb08df43c00733f9bf708de1589816e91f2df6a3f2a78792cab357048823",
+    "MKT-030": {
+      "basis": "Approved cumulative source-change receipt version 2, independently checked against the repository's version 2.1 expected baseline; all six receipt files matched their internal SHA-256 inventory.",
+      "changed_sources": [
+        "registry",
+        "product",
+        "architecture",
+        "website",
+        "prompts"
+      ],
+      "unchanged_sources": [
+        "ui",
+        "program",
+        "operating",
+        "packet"
+      ],
+      "settings_sha256": "528c9245fc7ba0cbfde79b3d53934ef2adbefec6e1a0d89bf6bef675b059dd54"
+    },
+    "prior_transaction": "SYS032-20260906-125022-b41f7e",
+    "prior_reviewed_at": "2026-09-06T09:58:55.007351+00:00",
     "SYS-021": {
       "before_sha256": "e2bbcb3ed3767f0955f9a1b3dc836e920300028b46a5209beee00ae3d47b4ac4",
       "after_sha256": "3123c8e544ee2b3bb42e3470514e2f302fccf6b6a8120c416d4a951af4717fbf",
