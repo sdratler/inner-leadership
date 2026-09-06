@@ -10,7 +10,7 @@
     "navQuestions": "שאלות נפוצות"
   },
   "en": {
-    "name": "Shlomo Drautler",
+    "name": "Shlomo Dratler",
     "preview": "Website review preview — not a published service page. Photograph, contact details and publication approvals still require verification.",
     "navApproach": "The approach",
     "navProcess": "How it works",
@@ -19,7 +19,7 @@
 };
   const TITLES = {
     he: "שלמה דרטלר | טיפול רגשי פרטני והדרכת הורים | Life Skills",
-    en: "Shlomo Drautler | Individual Therapy & Parent Guidance | Life Skills"
+    en: "Shlomo Dratler | Individual Therapy & Parent Guidance | Life Skills"
   };
   const DESCRIPTIONS = {
     he: "טיפול רגשי פרטני לבנים בגילאי 8–12 באזור בית שמש: פגישה שבועית, הדרכת הורים ותרגול מותאם לבית.",

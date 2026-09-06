@@ -81,9 +81,21 @@ class StaticTests(unittest.TestCase):
     def test_rtl_age_range_is_isolated(self):
         self.assertIn('בגילאי <bdi dir="ltr">8–12</bdi>',self.text)
     def test_current_identity(self):
-        self.assertIn('Shlomo Drautler',self.text)
+        self.assertIn('Shlomo Dratler',self.text)
         self.assertIn('שלמה דרטלר',self.text)
+        self.assertNotIn('Drautler',self.text)
         self.assertNotIn('Rabbi',self.text)
+    def test_owner_approved_outcome_language(self):
+        self.assertIn('Emotional Therapy for Boys Ages 8–12',self.text)
+        self.assertIn('Clear communication.',self.text)
+        self.assertIn('Handling frustration.',self.text)
+        self.assertIn('Strong social skills.',self.text)
+        self.assertIn('Practical tools for implementation at home.',self.text)
+        self.assertIn('טיפול רגשי לבנים בגילאי <bdi dir="ltr">8–12</bdi>',self.text)
+        self.assertIn('תקשורת ברורה.',self.text)
+        self.assertIn('התמודדות עם תסכול.',self.text)
+        self.assertIn('כישורים חברתיים חזקים.',self.text)
+        self.assertIn('כלים מעשיים ליישום בבית.',self.text)
     def test_images_never_have_blank_src(self):
         for tag,a in self.page.attrs:
             if tag=='img':self.assertNotIn('src',a)
