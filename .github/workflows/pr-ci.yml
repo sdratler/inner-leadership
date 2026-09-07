@@ -24,6 +24,8 @@ jobs:
       - run: python3 -m unittest discover -s tools/source-audit/tests -v
       - run: npm run check && npm run build && npm run check:server
   app-and-database:
+    # CUTOVER NEGATIVE PROOF: the required aggregate must reject this skipped child.
+    if: ${{ false }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     defaults:
