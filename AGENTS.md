@@ -1,22 +1,21 @@
-# Life Skills — authoritative source pointers
-This file is a derived entry point, not a replacement product contract. Prepared by LS000-20260906-134416-f3e10d99 at baseline `ccca0251287f3aed04ca6677290abfdb888f229d`. Before any substantive work, read the CURRENT registry and live Work Graph, then reread the applicable contract. A changed source requires a new scoped audit; do not accept an old fingerprint silently.
+# Life Skills — current authority pointers
 
-- registry v2.1: https://docs.google.com/document/d/1XZS-MzUtjc3T488lyrSbtDX0Yq5UCl7Wzh5uN_YOvMg/edit
-- product v2.1: https://docs.google.com/document/d/1kJug8ojFwdGgZoPUx8BJt9fLKBjGYvX0wwbtarGTIIg/edit
-- architecture v2.1: https://docs.google.com/document/d/1h-bnQ94uxuTrs8BPeDg-1uwZFcQEONdmYccd9Inacgw/edit
+This is a derived entry point, not a product master. Prepared under SYS033 at `b4276f563240bd3337366aa1d24de2216eb9fb55`. Current Drive contracts govern intent; Build Control governs work; exact Git commits govern code; authenticated provider evidence governs deployment. Original LS000 build provenance remains unchanged in `apps/life-skills/docs/historical/ls000-source-snapshot.json`.
+
+- registry v2.7: https://docs.google.com/document/d/1XZS-MzUtjc3T488lyrSbtDX0Yq5UCl7Wzh5uN_YOvMg/edit
+- product v2.3: https://docs.google.com/document/d/1kJug8ojFwdGgZoPUx8BJt9fLKBjGYvX0wwbtarGTIIg/edit
+- architecture v2.3: https://docs.google.com/document/d/1h-bnQ94uxuTrs8BPeDg-1uwZFcQEONdmYccd9Inacgw/edit
 - ui v2.1: https://docs.google.com/document/d/1KokAca2V-UhCPj1czP28TQ4i5E2Wd1JKJFbuXfmAPu4/edit
 - program v2.1: https://docs.google.com/document/d/1aR8ONMUW0nlPbVe3jFZ6FKJ1_lPHyYPdVbTRbWB3hhA/edit
-- website v2.1: https://docs.google.com/document/d/1jw0shI2DSfUH9RpJc2WdeIqXwO1OYOUEiwuv3mdNngU/edit
-- prompts v2.1: https://docs.google.com/document/d/1r8fN36liKyXcf9GVG1Cl25Yq9vjaYWD9A0YC1h3jn-E/edit
-- operating v2.2: https://docs.google.com/document/d/1q-GDEaL9JmmVfy1meQrGvu3V4H2XNJ4jp2b17ZrP6bE/edit
-- packet v1.3: https://docs.google.com/document/d/1NrlYux3I78nO7M9v1fKGl-UCKpkcZrOUtHSoV-BmLOE/edit
+- website v2.5: https://docs.google.com/document/d/1jw0shI2DSfUH9RpJc2WdeIqXwO1OYOUEiwuv3mdNngU/edit
+- prompts v2.7: https://docs.google.com/document/d/1r8fN36liKyXcf9GVG1Cl25Yq9vjaYWD9A0YC1h3jn-E/edit
+- operating v2.5: https://docs.google.com/document/d/1q-GDEaL9JmmVfy1meQrGvu3V4H2XNJ4jp2b17ZrP6bE/edit
+- packet v1.5: https://docs.google.com/document/d/1NrlYux3I78nO7M9v1fKGl-UCKpkcZrOUtHSoV-BmLOE/edit
 - Build Control: https://docs.google.com/spreadsheets/d/1Y_Vf_kipj7mAhhEnuj8F2L85v3KpOi_V9KfSrj4MZ4Y/edit
-- Repository: https://github.com/sdratler/inner-leadership
 
-Old repository marketing/planning mirrors are not authority for the private app. This pointer does not authorize deleting them. The public website, source-audit installer, private foundation and future features have separate owners. Keep all real client data and secrets outside this repository. The app foundation is locked by default and is not an implemented client service.
+GitHub issues and pull requests govern engineering execution; exact commits govern code. Build Control remains transition history and the preparation ledger until each lane receives Git-native release instructions. Proposed application CI has no Drive reader, provider credential, production database, or other privileged secret. The trusted control workflow treats pull-request files only as data and freezes CI/control paths behind an explicit owner-authorized transition. Never weaken authentication, authorization, privacy, or data-integrity checks to obtain a green result.
 
-## Verbatim Operating Protocol 2.2 settings block
-The following is an exact source export, not a shortened instruction replacement. Its current Drive original wins if revised.
+## Exact current Operating Protocol settings block
 
 BEGIN PROJECT SETTINGS BLOCK
 
