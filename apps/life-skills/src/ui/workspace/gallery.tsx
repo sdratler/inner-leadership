@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect,useState } from 'react';
 import type { Locale,WorkspaceRole } from './model.ts';
 import { GalleryFrame,initialGalleryState } from './gallery-frame.tsx';
 import type { GalleryEvent } from './gallery-frame.tsx';
@@ -7,6 +7,8 @@ import { UnsavedChangesGuard } from './draft-guard.tsx';
 import { uiCopy } from './i18n.ts';
 function GalleryController({locale,role}: {locale:Locale;role:WorkspaceRole}) {
  const [state,setState]=useState(initialGalleryState);
+ const [hydrated,setHydrated]=useState(false);
+ useEffect(()=>setHydrated(true),[]);
  function event(event:GalleryEvent) {
   setState(previous=>{
    switch(event.type){
@@ -21,7 +23,7 @@ function GalleryController({locale,role}: {locale:Locale;role:WorkspaceRole}) {
    }
   });
  }
- return <><UnsavedChangesGuard dirty={Boolean(state.draft.body)&&!state.saved} message={uiCopy(locale).unsaved}/><GalleryFrame locale={locale} role={role} state={state} onEvent={event}/></>;
+ return <>{hydrated&&<span data-lsw-hydrated="true" hidden/>}<UnsavedChangesGuard dirty={Boolean(state.draft.body)&&!state.saved} message={uiCopy(locale).unsaved}/><GalleryFrame locale={locale} role={role} state={state} onEvent={event}/></>;
 }
 /** Component only, not an automatically exposed route. The server route must ALSO return notFound outside development. */
 export function DevelopmentGallery(props: {locale:Locale;role:WorkspaceRole}) {

@@ -3,6 +3,7 @@ for(const locale of ['he','en'] as const)for(const role of ['parent','practition
  test(`${locale} ${role} ${width}: hydrated synthetic UI`,async({page})=>{
   await page.setViewportSize({width,height:width===390?844:1024});
   await page.goto(`/${locale}/dev/ui?role=${role}`);
+  await page.locator('[data-lsw-hydrated="true"]').waitFor({state:'attached'});
   await expect(page.locator('.lsw')).toHaveAttribute('dir',locale==='he'?'rtl':'ltr');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.locator('#observation-body').waitFor();

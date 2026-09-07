@@ -3,7 +3,8 @@ import test,{after,before} from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn,type ChildProcess} from 'node:child_process';
 import {once} from 'node:events';
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
+import {readFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {Pool} from 'pg';
 import {request as playwrightRequest,type APIRequestContext} from '@playwright/test';
@@ -14,6 +15,7 @@ import {dispatchOneAuthMail,processResetRequests} from '../../src/providers/emai
 import {SyntheticAuthEmailSink} from '../../src/providers/email/sink.ts';
 import {opaqueToken,tokenDigest} from '../../src/features/identity/crypto.ts';
 import type {IdentityStore,SqlSession} from '../../src/features/identity/store.ts';
+import {migrate,type MigrationClient} from '../../src/db/migration-runner.ts';
 
 const origin='https://localhost:3003';
 const practitionerEmail='practitioner-http@example.invalid';
@@ -91,6 +93,12 @@ before(async()=>{
  if(!['127.0.0.1','localhost','[::1]'].includes(databaseUrl.hostname)||!/_test$/.test(databaseUrl.pathname)||databaseUrl.search)throw new Error('LOOPBACK_DISPOSABLE_DATABASE_REQUIRED');
  if(process.env.NODE_ENV!=='development'||process.env.LS_APP_ORIGIN!==origin)throw new Error('LOCAL_HTTPS_DEVELOPMENT_REQUIRED');
  pool=new Pool({connectionString:raw,ssl:false,max:6});
+ const files=await Promise.all(['0001_ls_foundation.sql','0010_ls_identity_cases_20260906.sql'].map(async name=>{const sql=await readFile(resolve('migrations',name),'utf8');return {name,sql,checksum:createHash('sha256').update(sql).digest('hex')};}));
+ const migrationClient=await pool.connect();
+ try{
+  const adapter:MigrationClient={query:async(text,values)=>migrationClient.query(text,values?[...values]:undefined)};
+  await migrate(adapter,files,false);
+ }finally{migrationClient.release();}
  const state=await pool.query("SELECT (SELECT count(*)::integer FROM ls_identity.accounts) AS accounts,(SELECT count(*)::integer FROM ls_control.migrations) AS migrations");
  assert.equal(state.rows[0]?.accounts,0,'disposable HTTP database must contain no accounts');
  assert.equal(state.rows[0]?.migrations,2,'disposable HTTP database must have both signed migrations');
