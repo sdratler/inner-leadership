@@ -108,7 +108,8 @@ before(async()=>{
  await dispatchAll();
  await auth.consumePasswordToken('invite',tokenFromMail(practitionerEmail,'invite'),practitionerPassword,randomUUID());
  const nextBin=resolve('node_modules/next/dist/bin/next');
- server=spawn(process.execPath,[nextBin,'dev','--experimental-https','--experimental-https-key',httpsKey,'--experimental-https-cert',httpsCert,'--hostname','127.0.0.1','--port','3003'],{cwd:process.cwd(),env:process.env,stdio:['ignore','ignore','ignore']});
+ const serverEnv={...process.env,LS_APP_MODE:'foundation_preview'};
+ server=spawn(process.execPath,[nextBin,'dev','--experimental-https','--experimental-https-key',httpsKey,'--experimental-https-cert',httpsCert,'--hostname','127.0.0.1','--port','3003'],{cwd:process.cwd(),env:serverEnv,stdio:['ignore','ignore','ignore']});
  await waitForServer();
 });
 
