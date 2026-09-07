@@ -151,7 +151,7 @@ test('mounted HTTPS identity routes enforce credential, case and denial boundari
 
   let resetCsrf=await csrf(anonymous);let reset=await anonymous.post('/api/identity/reset/request',{headers:{Origin:origin,'X-CSRF-Token':resetCsrf},data:{email:parentAEmail}});assert.equal(reset.status(),202);
   await processResetRequests(store,config,clock);await dispatchAll();const expiredToken=tokenFromMail(parentAEmail,'reset');
-  await pool.query("UPDATE ls_identity.auth_tokens SET expires_at=clock_timestamp()-interval '1 second' WHERE token_digest=$1",[tokenDigest(expiredToken)]);
+  await pool.query("UPDATE ls_identity.auth_tokens SET created_at=clock_timestamp()-interval '2 seconds',expires_at=clock_timestamp()-interval '1 second' WHERE token_digest=$1",[tokenDigest(expiredToken)]);
   const expiredContext=await playwrightRequest.newContext({baseURL:origin,ignoreHTTPSErrors:true});
   resetCsrf=await csrf(expiredContext);reset=await expiredContext.post('/api/identity/reset/complete',{headers:{Origin:origin,'X-CSRF-Token':resetCsrf},data:{token:expiredToken,password:replacementPassword}});assert.equal(reset.status(),400);await expiredContext.dispose();
 
