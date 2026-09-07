@@ -1,4 +1,5 @@
 name: Trusted control integrity
+# Negative proof: trusted main must reject any proposed mutation of this file.
 
 on:
   pull_request_target:
