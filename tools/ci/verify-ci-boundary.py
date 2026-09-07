@@ -26,6 +26,7 @@ def main() -> None:
         "npm run lint",
         "npm run typecheck",
         "npm run build",
+        "node ../../tools/ci/create-migration-database.cjs",
         "npm run db:migrate",
         "npm run db:verify",
         "npm run test:db",

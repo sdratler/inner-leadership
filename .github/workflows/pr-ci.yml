@@ -48,7 +48,7 @@ jobs:
       LS_APP_ORIGIN: http://127.0.0.1:3001
       LS_DATABASE_TLS: disable
       LS_DATABASE_URL: postgresql://synthetic:synthetic_ci_only@127.0.0.1:5432/lifeskills_ci_test
-      LS_MIGRATION_DATABASE_URL: postgresql://synthetic:synthetic_ci_only@127.0.0.1:5432/lifeskills_ci_test
+      LS_MIGRATION_DATABASE_URL: postgresql://synthetic:synthetic_ci_only@127.0.0.1:5432/lifeskills_migration_test
       LS_TEST_DATABASE_URL: postgresql://synthetic:synthetic_ci_only@127.0.0.1:5432/lifeskills_ci_test
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -59,6 +59,8 @@ jobs:
           node-version: '22'
       - run: node --version && npm --version
       - run: npm ci
+      - name: Create isolated disposable migration database
+        run: node ../../tools/ci/create-migration-database.cjs
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
