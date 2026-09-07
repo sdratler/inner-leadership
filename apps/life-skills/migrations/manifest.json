@@ -2,5 +2,9 @@
   {
     "name": "0001_ls_foundation.sql",
     "sha256": "df3ba0131c7d5fd093953884e5f5316c7416b2dbe49fceee0d57acf2ae362dcd"
+  },
+  {
+    "name": "0010_ls_identity_cases_20260906.sql",
+    "sha256": "a72742e47f4b3c7900f45679cdb3e7b85765ba9eee87c2168afa07822aaeec7c"
   }
 ]
