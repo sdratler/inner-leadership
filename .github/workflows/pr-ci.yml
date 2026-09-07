@@ -1,0 +1,88 @@
+name: Life Skills proposed-code CI
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+permissions:
+  contents: read
+concurrency:
+  group: application-ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  static-and-checker:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - run: node --version && python3 --version
+      - run: python3 -m unittest discover -s tools/source-audit/tests -v
+      - run: npm run check && npm run build && npm run check:server
+  app-and-database:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: apps/life-skills
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: synthetic
+          POSTGRES_PASSWORD: synthetic_ci_only
+          POSTGRES_DB: lifeskills_ci_test
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U synthetic -d lifeskills_ci_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      CI: 'true'
+      NEXT_TELEMETRY_DISABLED: '1'
+      LS_APP_MODE: foundation_locked
+      LS_APP_ORIGIN: http://127.0.0.1:3001
+      LS_DATABASE_TLS: disable
+      LS_DATABASE_URL: postgresql://synthetic:synthetic_ci_only@127.0.0.1:5432/lifeskills_ci_test
+      LS_MIGRATION_DATABASE_URL: postgresql://synthetic:synthetic_ci_only@127.0.0.1:5432/lifeskills_ci_test
+      LS_TEST_DATABASE_URL: postgresql://synthetic:synthetic_ci_only@127.0.0.1:5432/lifeskills_ci_test
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - run: node --version && npm --version
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - name: Shared UI unit suite when installed
+        run: if test -f vitest.ui.config.ts; then npx --no-install vitest run --config vitest.ui.config.ts; fi
+      - run: npm run build
+      - name: First, repeated and verify-only disposable migrations
+        run: npm run db:migrate && npm run db:migrate && npm run db:verify
+      - run: npm run test:db
+      - run: npx --no-install playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - run: npm run test:e2e:locked
+      - name: Shared UI browser suite when installed
+        run: if test -f playwright.ui.config.ts; then npx --no-install playwright test --config playwright.ui.config.ts; fi
+      - name: Existing identity database and mounted HTTPS denial journeys
+        run: node ../../tools/source-audit/ci-identity.cjs
+  application-ci:
+    name: application-ci
+    if: always()
+    needs: [static-and-checker, app-and-database]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Require every independent job to succeed
+        env:
+          STATIC_RESULT: ${{ needs.static-and-checker.result }}
+          APP_RESULT: ${{ needs.app-and-database.result }}
+        run: test "$STATIC_RESULT" = success && test "$APP_RESULT" = success

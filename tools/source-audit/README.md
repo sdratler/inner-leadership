@@ -1,124 +1,33 @@
-# Life Skills source integrity
+# Life Skills source integrity 2.0.0
 
-This is a read-only gate, not an alternative Product Contract, a clinical system,
-a deployment audit, a whole-Drive cleanup, or proof that all semantic contradictions
-are detectable. The approved source decisions remain in the registered Drive files.
+This is a read-only, fixed-source administrative integrity check, not a product contract, deployment receipt, client-data processor or semantic guarantee. CURRENT Drive remains authority. Policies are reviewed data; a new hash alone is not permission to change policy.
 
-## What it checks
+## Separate trust paths
 
-Nine fixed, non-client source documents; exact normalized export fingerprints;
-selected positive and retired-language rules; reviewed Overview launch-policy
-and Instructions rule fingerprints; identical complete Project Settings
-Blocks; approved-decision and interface fingerprints; work-definition fingerprints;
-explicit dependency grammar, missing producers and cycles; eligible code baselines;
-claim completeness, six-hour expiry and known ownership overlaps; and required
-packet files/checksums. Integration mode verifies supplied producer ZIP bytes.
-Text and settings normalization removes a leading BOM and changes CRLF to LF only.
-Dynamic claims, status, results and output links do not unnecessarily invalidate
-stable work-definition hashes. A relevant decision or definition change does.
+`source-audit.yml` ordinarily runs only trusted-base code under `pull_request_target`. It fetches proposed files as bytes to verify exact hashes, interprets only bounded JSON policy/receipt data, checks independent approval in Build Control, and binds the result to the exact current PR head. It does not check out or run proposed app code, shell scripts, workflows, dependencies or caches with the Google reader. Proposed-code tests run under a separate `pull_request` workflow with no Google, provider or production credentials.
 
-The owner-authorized bootstrap was run against actual connected-source exports.
-No scheduled cloud run has occurred as part of packet preparation. No client data
-or credentials are in this folder. The expected.json file contains derived IDs,
-hashes and test rules, not copies of the source documents.
+The initial 1.1.0-to-2.0.0 migration cannot pretend the old checker understands the new policy. A `workflow_dispatch` on the independently reviewed exact head is the narrow bootstrap exception. The existing default-branch workflow must exist, the server must accept the reviewed branch dispatch, and `source-policy-bootstrap` must have an actual independent reviewer, prevent self-review and disallow administrator bypass. The reviewer checks the full delta, external receipt digest and exact commit. Unsupported dispatch/protection or lack of an eligible reviewer means Blocked; do not loosen protections or manufacture a successful commit status.
 
-## Run
+Before any proposed branch push, verify provider-side branch/deploy isolation. Before any credential-bearing job, contain the documented credential exposure privately and verify the Releases security row. Store the Google reader only in scoped environment secrets, never in repository-wide or organization-inherited secrets available to ordinary PR jobs. The standing reader may read only the nine registered non-client Docs and Build Control. The ordinary-reader environment must allow the actual executing trusted main ref only. Remove a former repository-level reader secret only after exact identity, consumers, replacement and readback are verified; never print any value. The bootstrap reader environment is restricted to the reviewed remediation branch and real approval gate.
 
-Python3.10+ and OpenSSL are sufficient; no Python package installation is required.
+## Policy receipt
 
-```sh
-python3 -m unittest discover -s tools/source-audit/tests -v
-python3 tools/source-audit/audit.py --live --output /tmp/source-audit.json
-python3 tools/source-audit/audit.py --snapshot /tmp/fresh-source-input.json \
-  --work-id LS-100 --baseline EXACT_40_CHARACTER_BASELINE --phase prepare \
-  --output /tmp/SOURCE_AUDIT.json
-python3 tools/source-audit/audit.py --live --work-id LS-105 \
-  --baseline EXACT_40_CHARACTER_BASELINE --phase integrate \
-  --packet LS-100=/private/verified/LS-100.zip --output /tmp/SOURCE_AUDIT.json
-```
+`expected.json` is canonical-JSON hashed (sorted keys, UTF-8, compact separators) independently of its on-disk byte SHA256. `policy-receipt.json` lists every changed PR file's raw SHA256, excluding itself; removal is `null`. The receipt is itself canonical-JSON hashed and pinned in Build Control Policy Receipts. An independently Approved row must match the base/result policy digests, receipt digest, exact Work ID scope, expiry, independent reviewer, evidence URL and exact current head. This head binding is outside the commit to avoid circular self-hashes. Any file, policy, head, base, expiry or scope change requires another reviewed exact receipt. The maker is not the independent approver.
 
-Resolve the baseline from the fresh Work Graph; placeholders must never be used
-as actual command arguments. A snapshot must contain actual source reads within
-30minutes and must be labeled connector_export. It is not a cloud run. See
-snapshot-schema.json for the input shape. A synthetic_test input is test-only.
-Exit0 means the checked scope passed; exit1 means blocked. Missing credentials,
-unreadable sources or incomplete inputs must never be converted into PASS.
+Current receipt effect limits deny merge, deployment, paid activation, private-client-data use and downstream unlock. Mutable Work Graph status/claim/output/Next Action are not definition fingerprints. Stable definition columns are A,B,C,D,E,H,I,J,O. Interface fingerprints use A,B,C,D,E,G,H; acceptance metadata is checked separately. Overview authority is rows18:25; dynamic status summaries are not contracts. All schema-migration digests are explicitly listed in the SYS033 review packet; never regenerate accepted fingerprints just to make a failure disappear.
 
-## Narrow credentials
+## CLI
 
-Use a dedicated service account with view-only access to the nine registered Docs
-and Build Control ONLY. Do not share a parent folder, Leads workbook, client runtime,
-consent records, media originals or clinical folder. Both Drive and Sheets APIs
-must be enabled in its project. Domain-wide delegation is neither needed nor
-approved. OAuth scopes are read-only. Configure its JSON privately in repository
-secret LIFE_SKILLS_AUDIT_GOOGLE_SERVICE_ACCOUNT_JSON; never paste it in a prompt,
-issue, packet, log or repository. A short-lived GOOGLE_ACCESS_TOKEN is supported
-for a private manual run. OpenSSL signs a temporary0600 private-key file which is
-removed automatically. The runtime must still be trusted; environment secrets are
-not a security boundary against malicious code.
+From the repository root, execute `python3 -m unittest discover -s tools/source-audit/tests -v` without credentials. `audit.py --snapshot PATH --work-id SYS-034 --baseline SHA --phase integrate --packet SYS-033=ZIP --output REPORT` consumes a fresh private administrative connector snapshot. Do not commit or upload the raw snapshot.
 
-The collector permits only fixed Google/GitHub HTTPS hosts and refuses redirects,
-limits reads/retries and emits neutral errors, not HTTP bodies. Network/provider
-authentication has not been live-tested in this packet because no runtime
-credentials were available here. Actual integration must prove it.
+Prefer the wrapper: `python3 tools/source-audit/preflight.py --work-id SYS-034 --claim-id CLAIM --snapshot PATH --packet-dir PRIVATE_PACKET_DIRECTORY --output REPORT`. It derives the phase, exact accepted starting SHA and producer arguments from the actual row and verifies outer/inner producer hashes. `--preclaim` is limited to a Ready unclaimed row; it does not create a claim. `--live` replaces `--snapshot` only for the reviewed installed checker. `preflight.sh` and `preflight.ps1` provide the same contract. OpenSSL is discovered from an existing explicit absolute executable, PATH or supported Windows installations; nothing is downloaded. Windows execution still needs installer verification.
 
-## Daily and pull-request checks
+`policy_gate.py --pr NUMBER --publish-status --output REPORT` runs in the trusted-base PR job. `--bootstrap-head EXACT_SHA` is permitted only in the protected reviewed dispatch. Status success is possible only after a complete PASS with an unchanged exact head; a denial publishes failure, never forced success. Raw credentials/source bodies are never emitted.
 
-The prepared workflow runs at04:17UTC daily and on manual dispatch, plus trusted
-pull_request_target events. It checks out only the target repository's base SHA,
-NEVER the pull-request head with secrets. It executes no PR-provided scripts,
-artifacts, caches or package hooks. The result is explicitly posted to the PR head
-as source-integrity. The trusted workflow/checker and baseline changes themselves
-need independent review. Do not replace this with an untrusted-head checkout.
+The checker reads and reconciles Work Graph, Decisions, Interfaces, Overview, Instructions, Chat Runs, Merge Packets, Releases, Change Log and Policy Receipts. A reachable branch is not merged main. Reconstructed integration runs are warnings, not new runtime tests. Deployment requires scoped provider evidence; historical reported deployment remains historical. Interface declarations are not frozen merely because they compile. The five application consumers remain ineligible until LS025 is accepted on main and all required interfaces have evidence.
 
-A successful workflow run is the last-success heartbeat. Inspect run timestamps
-and conclusions before relying on schedule health; a daily job that never starts
-cannot notify on its own. No guarantee of exact-time execution. GitHub's schedule
-is supplemental: every packet worker still runs a fresh on-demand scope check.
-A missing/stale scheduled heartbeat must be reported, not interpreted as success.
+## CI and evidence limits
 
-Configure a required source-integrity check, bound to the expected GitHub Actions
-app where supported, after a real successful installation run. Existing rules must
-be preserved. The checker cannot prevent a privileged administrator from bypassing
-rules; no tool should describe an unenforced branch rule as installed. Review rules
-for forks/merge queues before enabling them; this workflow does not implement a
-merge-queue trigger. Do not use dependency installation or application deployment
-as part of this audit job.
+`pr-ci.yml` runs static checks, app lint/types/unit/UI/build, disposable database migration/idempotency checks and browser suites, with existing LS025 database/HTTPS journeys when those files exist. `ci-identity.cjs` permits only the fixed disposable CI database at loopback, creates a separate empty synthetic identity database and temporary self-signed localhost keys, and never uses a real provider or persists keys. Node22 and postgres17 resolve within approved major versions; record actual resolved versions/image digest in the installer evidence. Do not claim these jobs passed until they run.
 
-## Approved changes
-
-The active conversation records the explicit approval. A claimed reconciliation
-worker patches the SAME authoritative files, removes contradictions, updates the
-relevant definitions and records one Change Log transaction. Read back and review
-all affected prose as well as structured cells. Only after that review renew the
-expected fingerprints in a scoped reviewed change. There is deliberately no
-“accept current state” command that would make arbitrary drift green.
-
-An unrelated Proposed idea is not an automatic blocker for independent work.
-A new Approved decision or interface change triggers reconciliation. Scope-local
-work-definition findings can be warnings for another independent packet, but
-global unreadable inputs, audit settings and decision drift fail closed.
-
-## Known scope limits
-
-This gate does not search every Drive folder for duplicate master documents, inspect
-private data, attest clinical efficacy, validate every natural-language implication,
-run app tests, verify deployment, or install its own scheduler. Those actions have
-separate ownership/evidence. Legacy-only Drive cleanup remains SYS-021. The entire
-current Work Graph, including narrative next-action text, was reviewed at bootstrap;
-new approved changes still require semantic review. Actual source document exports
-can change after formatting updates; review that drift rather than silently updating
-hashes. Optional future integration slices must have exact baseline and dependency
-evidence before their rows become Ready.
-
-## Control-summary coverage in checker1.1.0
-
-Read Overview A1:C100 and Instructions A1:H100. The stable Overview section begins
-at row18 (including all launch constraints); Instructions begins at row3. The
-reader keeps internal blank rows and rejects missing or malformed sections.
-Trailing empty rows normalize consistently across connector and Sheets exports.
-Overview counters/last-run status above row18 are deliberately not hashed.
-The fingerprints detect any subsequent change; semantic correctness still relies
-on the recorded review that established them. Overview is derived from the Product
-Contract, never a separate authority. Changing expected hashes to suppress an
-unexplained failure is prohibited.
+A prepared schedule is not installed. A manual audit is not a natural scheduled run. Check actual installed workflow SHA, event type, run URL and conclusion before asserting schedule verification. This tool never grants merge/deployment authority or rewrites controls.

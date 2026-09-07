@@ -1,63 +1,104 @@
-name: Source integrity
+name: Life Skills source integrity
 on:
   schedule:
     - cron: '17 4 * * *'
-  workflow_dispatch:
   pull_request_target:
-    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Main audit, or independently reviewed exact-head bootstrap
+        type: choice
+        options: [audit, bootstrap]
+        default: audit
+        required: true
+      pr_number:
+        description: SYS-034 PR number for protected bootstrap
+        type: string
+        required: false
+      reviewed_head_sha:
+        description: Exact externally pinned 40-character bootstrap commit
+        type: string
+        required: false
 permissions:
   contents: read
-  statuses: write
 concurrency:
-  group: source-integrity-${{ github.event.pull_request.number || 'daily' }}
-  cancel-in-progress: false
+  group: source-integrity-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
-  source-integrity:
-    # Never execute pull-request code with Google credentials. Dispatch only main.
-    if: >-
-      github.repository == 'sdratler/inner-leadership' &&
-      (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main')
-    runs-on: ubuntu-latest
-    timeout-minutes: 12
+  trusted-source-reader:
+    if: github.event_name == 'pull_request_target' || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'audit' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: source-integrity-reader
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
     steps:
-      - name: Check out trusted base only
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          repository: sdratler/inner-leadership
-          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
-          fetch-depth: 1
-      - name: Test trusted checker
+      - name: Trusted checker regression tests without Google credentials
         run: python3 -m unittest discover -s tools/source-audit/tests -v
-      - name: Read current canonical sources
-        id: audit
+      - name: Trusted-base PR check; proposed files are data only
+        if: github.event_name == 'pull_request_target'
         env:
-          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.LIFE_SKILLS_AUDIT_GOOGLE_SERVICE_ACCOUNT_JSON }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SOURCE_READER_JSON }}
           GITHUB_TOKEN: ${{ github.token }}
-        run: >-
-          python3 tools/source-audit/audit.py --live
-          --output "$RUNNER_TEMP/source-integrity-report.json"
-      - name: Bind result to proposed commit
-        if: always() && github.event_name == 'pull_request_target'
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python3 tools/source-audit/policy_gate.py --pr "$PR_NUMBER" --publish-status --output "$RUNNER_TEMP/source-audit-report.json"
+      - name: Strict global main or natural-schedule audit
+        if: github.event_name != 'pull_request_target'
         env:
-          GH_TOKEN: ${{ github.token }}
-          TARGET_SHA: ${{ github.event.pull_request.head.sha }}
-          AUDIT_OUTCOME: ${{ steps.audit.outcome }}
-        shell: bash
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SOURCE_READER_JSON }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 tools/source-audit/audit.py --live --output "$RUNNER_TEMP/source-audit-report.json"
+  bootstrap-preflight:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'bootstrap'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Bind dispatch to the independently reviewed commit
+        env:
+          REVIEWED_HEAD: ${{ inputs.reviewed_head_sha }}
+          PR_NUMBER: ${{ inputs.pr_number }}
         run: |
           python3 - <<'PY'
-          import json, os, re, urllib.request
-          sha=os.environ['TARGET_SHA']
-          if not re.fullmatch(r'[a-f0-9]{40}',sha): raise SystemExit('Invalid target SHA')
-          ok=os.environ.get('AUDIT_OUTCOME')=='success'
-          body=json.dumps({'state':'success' if ok else 'failure',
-            'context':'source-integrity',
-            'description':'Fresh canonical-source gate passed' if ok else 'Source gate blocked or unavailable',
-            'target_url':f"https://github.com/sdratler/inner-leadership/actions/runs/{os.environ['GITHUB_RUN_ID']}"}).encode()
-          req=urllib.request.Request(f'https://api.github.com/repos/sdratler/inner-leadership/statuses/{sha}',
-            data=body,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],
-            'Accept':'application/vnd.github+json','Content-Type':'application/json','User-Agent':'LifeSkillsSourceAudit'})
-          with urllib.request.urlopen(req,timeout=20) as response:
-            if response.status not in (200,201): raise SystemExit('Status write failed')
-          print('Source-integrity status recorded for proposed commit.')
+          import os,re
+          assert re.fullmatch(r'[a-f0-9]{40}',os.environ['REVIEWED_HEAD']), 'INVALID_HEAD'
+          assert os.environ['REVIEWED_HEAD'] == os.environ['GITHUB_SHA'], 'HEAD_MISMATCH'
+          assert re.fullmatch(r'[1-9][0-9]*',os.environ['PR_NUMBER']), 'INVALID_PR'
           PY
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Prepared checker tests; no service credentials
+        run: python3 -m unittest discover -s tools/source-audit/tests -v
+  reviewed-bootstrap:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'bootstrap'
+    needs: bootstrap-preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: source-policy-bootstrap
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Approved exact-head bootstrap only; never a merge or deployment
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SOURCE_READER_JSON }}
+          GITHUB_TOKEN: ${{ github.token }}
+          REVIEWED_HEAD: ${{ inputs.reviewed_head_sha }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+        run: python3 tools/source-audit/policy_gate.py --pr "$PR_NUMBER" --bootstrap-head "$REVIEWED_HEAD" --publish-status --output "$RUNNER_TEMP/source-audit-bootstrap.json"

@@ -24,7 +24,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
 
-VERSION = "1.1.0"
+VERSION = "2.0.0"
 REPOSITORY = "sdratler/inner-leadership"
 CONTROL_ID = "1Y_Vf_kipj7mAhhEnuj8F2L85v3KpOi_V9KfSrj4MZ4Y"
 DOC_IDS = {
@@ -39,8 +39,10 @@ DOC_IDS = {
  "packet":"1NrlYux3I78nO7M9v1fKGl-UCKpkcZrOUtHSoV-BmLOE",
 }
 RANGES = {"Work Graph":"'Work Graph'!A1:W201", "Decisions":"Decisions!A1:J100",
-          "Interfaces":"Interfaces!A1:I100", "Overview":"Overview!A1:C100",
-          "Instructions":"Instructions!A1:H100"}
+          "Interfaces":"Interfaces!A1:N100", "Overview":"Overview!A1:C100",
+          "Instructions":"Instructions!A1:H100", "Chat Runs":"'Chat Runs'!A1:Z1000",
+          "Merge Packets":"'Merge Packets'!A1:P200", "Releases":"Releases!A1:Z100",
+          "Change Log":"'Change Log'!A1:N500", "Policy Receipts":"'Policy Receipts'!A1:L100"}
 # Stable policy sections only: exclude live status counters/owner-action summaries.
 CONTROL_SECTIONS = {"Overview": (17, 3), "Instructions": (2, 8)}
 WORK_ID = re.compile(r"(?:LS|SYS|PRG|MKT|OPS|FIN)-\d{3}\Z")
@@ -51,7 +53,7 @@ LEASED = {"Claimed", "Code generating", "Integrating"}
 RETIRED = {"Superseded", "Canceled"}
 RANK = {"Packet ready":4,"Integrating":5,"Integrated":6,"Verified":7,"Deployed":8,"Owner accepted":9}
 # Runtime baseline and status/lease/output fields deliberately excluded.
-DEF_COLS = (0,1,2,3,4,7,8,9,14,22)
+DEF_COLS = (0,1,2,3,4,7,8,9,14)
 
 class AuditError(Exception):
     """An intentionally content-free operational error."""
@@ -100,7 +102,7 @@ def definition(row: list[Any]) -> list[str]:
     return [row[i] for i in DEF_COLS]
 
 
-def control_section(rows: Any, start: int, width: int) -> list[list[str]] | None:
+def control_section(rows: Any, start: int, width: int, end: int|None=None) -> list[list[str]] | None:
     """Normalize a read-only policy section, retaining empty internal rows.
 
     A missing/truncated/malformed section must not equal a valid empty policy.
@@ -110,7 +112,7 @@ def control_section(rows: Any, start: int, width: int) -> list[list[str]] | None
         return None
     if any(not isinstance(row, list) for row in rows):
         return None
-    result = [pad(row, width)[:width] for row in rows[start:]]
+    result = [pad(row, width)[:width] for row in rows[start:end]]
     while result and not any(result[-1]):
         result.pop()
     return result if result and any(any(row) for row in result) else None
@@ -145,6 +147,8 @@ def verify_zip(path: Path, expected: str) -> list[str]:
         checkfiles=[n for n in names if n.endswith("/CHECKSUMS.sha256") or n=="CHECKSUMS.sha256"]
         if len(checkfiles)!=1: return ["PACKET_CHECKSUM_INDEX"]
         prefix=checkfiles[0][:-len("CHECKSUMS.sha256")]
+        if not prefix or any(not n.startswith(prefix) for n in names):return ["PACKET_MULTIPLE_ROOTS"]
+        if any(":" in n or "\x00" in n or "." in n.split("/") for n in names):return ["PACKET_UNSAFE_PATH"]
         mandatory=["MANIFEST.md","INTEGRATION.md","ACCEPTANCE.md","SOURCE_NOTES.md",
                    "SOURCE_AUDIT.json","CODEX_INTEGRATION_PROMPT.md"]
         if any(prefix+n not in names for n in mandatory): issues.append("PACKET_REQUIRED_FILE")
@@ -209,7 +213,7 @@ def audit(snapshot: dict, manifest: dict, work_id: str|None=None, baseline: str|
     control_fingerprints = []
     for name, (start, width) in CONTROL_SECTIONS.items():
         expected_control = manifest.get("control_contracts", {}).get(name)
-        actual_control = control_section(control.get(name), start, width)
+        actual_control = control_section(control.get(name), start, width, 25 if name == "Overview" else None)
         if not isinstance(expected_control, dict) or not SHA64.fullmatch(str(expected_control.get("sha256", ""))):
             add("CONTROL_POLICY_BASELINE_MISSING", name)
             continue
@@ -258,7 +262,7 @@ def audit(snapshot: dict, manifest: dict, work_id: str|None=None, baseline: str|
             if dep not in rows: add("DEPENDENCY_MISSING",wid)
             else:visit(dep)
         visiting.remove(wid);visited.add(wid)
-    for wid in relevant: visit(wid)
+    for wid in rows: visit(wid)
     claims=[]; claim_ids=set()
     for wid,row in rows.items():
         if row[5] in LEASED or row[15]:
@@ -272,6 +276,7 @@ def audit(snapshot: dict, manifest: dict, work_id: str|None=None, baseline: str|
                     add("CLAIM_TIME_INVALID",wid)
                 if row[5] not in LEASED: add("CLAIM_STATUS_MISMATCH",wid)
                 if end>now: claims.append(wid)
+                if not manifest.get("ownership_roots",{}).get(wid): add("CLAIM_OWNERSHIP_UNKNOWN",wid)
             except (ValueError,TypeError): add("CLAIM_INCOMPLETE",wid)
         if wid not in relevant: continue
         if row[5] in ACTIVE:
@@ -302,13 +307,34 @@ def audit(snapshot: dict, manifest: dict, work_id: str|None=None, baseline: str|
     actual_approved={pad(v,10)[0] for v in (decision_rows or [])[1:] if pad(v,10)[3]=="Approved"}
     for did in approved:
         if did not in actual_approved:add("APPROVED_DECISION_MISSING",did)
+    # A reviewed pending decision is observed, not silently represented as propagated.
+    # Only explicitly enumerated non-business lanes may continue; marketing acceptance stays blocked.
+    pending_decisions=manifest.get("pending_canonical_decisions",{})
+    if not isinstance(pending_decisions,dict):
+        add("PENDING_DECISION_POLICY_INVALID")
+        pending_decisions={}
+    for did,pending in pending_decisions.items():
+        valid=(isinstance(pending,dict) and pending.get("decision_sha256")==approved.get(did)
+               and did in actual_approved
+               and pending.get("state")=="APPROVED_PROPAGATION_PENDING"
+               and isinstance(pending.get("unaffected_work_ids"),list)
+               and set(pending["unaffected_work_ids"]) <= {"SYS-033","SYS-034","SYS-021"}
+               and isinstance(pending.get("source_sha256"),dict)
+               and bool(pending["source_sha256"])
+               and all(key in sources and digest(sources[key].get("text",""))==sha
+                       for key,sha in pending["source_sha256"].items()))
+        if not valid:
+            add("PENDING_DECISION_POLICY_INVALID",did)
+        else:
+            add("APPROVED_CANONICAL_PROPAGATION_PENDING",did,
+                "warning" if work_id in pending["unaffected_work_ids"] else "error")
     interface_rows=control.get("Interfaces")
     if not isinstance(interface_rows,list) or not interface_rows:add("INTERFACES_UNREADABLE")
     else:
         observed={}
         for v in interface_rows[1:]:
             row=pad(v,9)
-            if row[0]:observed[row[0]]=compact_hash([row[i] for i in (0,1,2,3,4,6,7,8)])
+            if row[0]:observed[row[0]]=compact_hash([row[i] for i in (0,1,2,3,4,6,7)])
         if observed != manifest.get("interface_definitions",{}):add("INTERFACE_CONTRACT_CHANGED")
         states={pad(v,9)[0]:pad(v,9)[5] for v in interface_rows[1:] if pad(v,9)[0]}
         consumers={"LS-030","LS-040","LS-050","LS-060","LS-080"}
@@ -335,16 +361,24 @@ def audit(snapshot: dict, manifest: dict, work_id: str|None=None, baseline: str|
                     try:
                         for code in verify_zip(path,rows[dep][20]):add(code,dep)
                     except (OSError,ValueError,zipfile.BadZipFile,KeyError):add("PACKET_UNREADABLE",dep)
-    # Scope-local definition findings do not block independent work; global failures do.
+    if manifest.get("cross_ledger_required"):
+        from ledger_checks import check_ledgers
+        for item in check_ledgers(snapshot, rows, graph, relevant, now, strict_global=work_id is None):
+            add(item["code"], item["subject"], item.get("severity", "error"))
+    # Scope-local definition/evidence findings do not weaken global structural/security checks.
+    global_codes = {"WORK_ID_DUPLICATE", "WORK_ID_INVALID", "DEPENDENCY_SYNTAX", "DEPENDENCY_CYCLE",
+                    "DEPENDENCY_MISSING", "CLAIM_OWNERSHIP_OVERLAP", "CLAIM_OWNERSHIP_UNKNOWN",
+                    "CLAIM_ID_DUPLICATE", "CLAIM_INCOMPLETE", "CLAIM_EXPIRED", "CLAIM_TIME_INVALID",
+                    "CLAIM_STATUS_MISMATCH", "LEDGER_DUPLICATE_ID", "SECURITY_CONTAINMENT_UNVERIFIED"}
     for finding in findings:
-        if work_id and WORK_ID.fullmatch(finding["subject"]) and finding["subject"] not in relevant and finding["code"] not in {"CLAIM_OWNERSHIP_OVERLAP"}:
+        if work_id and WORK_ID.fullmatch(finding["subject"]) and finding["subject"] not in relevant and finding["code"] not in global_codes:
             finding["severity"]="warning"
     return {"schema_version":1,"checker_version":VERSION,"checked_at":now.isoformat(),
             "capture_mode":snapshot.get("capture_mode"),"phase":phase,"work_id":work_id,
             "baseline":baseline,"git_head":snapshot.get("git_head"),"source_fingerprints":checked,
             "result":"BLOCKED" if any(f["severity"]=="error" for f in findings) else "PASS",
             "findings":findings,"control_fingerprints":control_fingerprints,"semantic_limit":"Fingerprints/rules do not prove all meaning is consistent; review every approved change.",
-            "scheduler_installed":False if snapshot.get("capture_mode")!="live_api" else None}
+            "scheduler_installed":None, "installation_evidence":"Not established by this invocation"}
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self,*args,**kwargs): raise AuditError("HTTP_REDIRECT_REFUSED")
@@ -354,9 +388,10 @@ def request_json(url: str, token: str|None=None, data: bytes|None=None, form: bo
     parsed=urllib.parse.urlparse(url)
     if parsed.scheme!="https" or parsed.hostname not in {"www.googleapis.com","sheets.googleapis.com","oauth2.googleapis.com","api.github.com"}:
         raise AuditError("HTTP_HOST_REFUSED")
-    headers={"User-Agent":"LifeSkillsSourceAudit/1.1","Accept":"application/json"}
+    headers={"User-Agent":"LifeSkillsSourceAudit/2.0","Accept":"application/json"}
     if token:headers["Authorization"]="Bearer "+token
     if form:headers["Content-Type"]="application/x-www-form-urlencoded"
+    elif data is not None:headers["Content-Type"]="application/json"
     for attempt in range(3):
         try:
             req=urllib.request.Request(url,data=data,headers=headers)
@@ -388,7 +423,8 @@ def google_token() -> str:
         unsigned=header+b"."+claim
         with tempfile.TemporaryDirectory() as temp:
             p=Path(temp)/"key.pem";p.write_text(key);p.chmod(0o600)
-            signed=subprocess.run(["openssl","dgst","-sha256","-sign",str(p)],input=unsigned,capture_output=True,check=True,timeout=10).stdout
+            from signer import find_openssl
+            signed=subprocess.run([find_openssl(),"dgst","-sha256","-sign",str(p)],input=unsigned,capture_output=True,check=True,timeout=10).stdout
         jwt=unsigned+b"."+base64.urlsafe_b64encode(signed).rstrip(b"=")
         body=urllib.parse.urlencode({"grant_type":"urn:ietf:params:oauth:grant-type:jwt-bearer","assertion":jwt.decode()}).encode()
         result=request_json("https://oauth2.googleapis.com/token",data=body,form=True)
@@ -411,15 +447,20 @@ def collect_live(manifest: dict) -> dict:
     gh=os.environ.get("GITHUB_TOKEN")
     head=request_json(f"https://api.github.com/repos/{REPOSITORY}/branches/main",gh)["commit"]["sha"]
     reachable={head:True}
+    main_contains={head:True}
     for item in control["Work Graph"][1:]:
         row=pad(item)
-        if row[5] in ACTIVE and SHA40.fullmatch(row[6]) and row[6] not in reachable:
+        if row[5] not in ACTIVE|set(RANK): continue
+        for candidate in (row[6],row[11]):
+            if not SHA40.fullmatch(candidate) or candidate in reachable: continue
             try:
-                data=request_json(f"https://api.github.com/repos/{REPOSITORY}/commits/{row[6]}",gh)
-                reachable[row[6]]=data.get("sha")==row[6]
-            except AuditError:reachable[row[6]]=False
+                data=request_json(f"https://api.github.com/repos/{REPOSITORY}/commits/{candidate}",gh)
+                reachable[candidate]=data.get("sha")==candidate
+                compare=request_json(f"https://api.github.com/repos/{REPOSITORY}/compare/{candidate}...{head}",gh)
+                main_contains[candidate]=compare.get("status") in {"ahead","identical"}
+            except AuditError:reachable[candidate]=False;main_contains[candidate]=False
     return {"schema_version":1,"capture_mode":"live_api","captured_at":read_at,"sources":sources,
-            "control":control,"git_head":head,"reachable":reachable}
+            "control":control,"git_head":head,"reachable":reachable,"main_contains":main_contains}
 
 
 def main(argv=None) -> int:
@@ -441,7 +482,7 @@ def main(argv=None) -> int:
             if not sep or not WORK_ID.fullmatch(wid):raise AuditError("PACKET_ARGUMENT_INVALID")
             packets[wid]=Path(path)
         report=audit(snapshot,manifest,args.work_id,args.baseline,args.phase,packets)
-    except (AuditError,OSError,ValueError,TypeError,KeyError) as err:
+    except (AuditError,OSError,ValueError,TypeError,KeyError,ImportError) as err:
         code=str(err) if isinstance(err,AuditError) else "INPUT_OR_CONFIGURATION_ERROR"
         report={"schema_version":1,"checker_version":VERSION,"checked_at":utcnow().isoformat(),"result":"BLOCKED",
                 "capture_mode":"live_api" if args.live else "connector_export","findings":[{"code":code,"subject":"control","severity":"error"}]}

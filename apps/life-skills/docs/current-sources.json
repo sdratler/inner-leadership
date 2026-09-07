@@ -1,91 +1,110 @@
 {
-  "purpose": "Derived build provenance and pointers only; not a product master. Reread live sources before work.",
-  "work_id": "LS-000",
-  "claim_id": "LS000-20260906-134416-f3e10d99",
-  "baseline_sha": "ccca0251287f3aed04ca6677290abfdb888f229d",
+  "purpose": "Live authority pointers plus SYS033 prepared evidence; not a competing contract. Original LS000 provenance retained unchanged in historical/ls000-source-snapshot.json. Always reread current Drive.",
+  "prepared_by": "SYS033-20260907-092640-c5a94d",
+  "repository": "sdratler/inner-leadership",
+  "prepared_baseline": "b4276f563240bd3337366aa1d24de2216eb9fb55",
+  "installation_status": "PREPARED_NOT_INTEGRATED",
   "build_control": "https://docs.google.com/spreadsheets/d/1Y_Vf_kipj7mAhhEnuj8F2L85v3KpOi_V9KfSrj4MZ4Y/edit",
+  "settings_block_sha256": "528c9245fc7ba0cbfde79b3d53934ef2adbefec6e1a0d89bf6bef675b059dd54",
   "sources": [
     {
       "key": "registry",
       "id": "1XZS-MzUtjc3T488lyrSbtDX0Yq5UCl7Wzh5uN_YOvMg",
-      "version": "2.1",
-      "google_docs_revision_id": "ANLCKQk076-QdBnOc5YwdXcsZiGfHObBBuBz90kDR8yiBmGrI84M3JCmlZE80BejmBhZn-AwN58xbje8Q3Mb1F5gDb4UJHbRx1qeqqU0tos",
-      "normalized_export_sha256": "5ccc8b837f742c22a918c2c870c11a27e26d30176dbfe58da53fbf1ecd217f6d",
-      "read_at_utc": "2026-09-06T11:13:51.519161+00:00",
-      "url": "https://docs.google.com/document/d/1XZS-MzUtjc3T488lyrSbtDX0Yq5UCl7Wzh5uN_YOvMg/edit"
+      "version": "2.5",
+      "revision_id": "ANLCKQn_gBeV8UGYFN76cvnciN9LuXH1Dul4sfvsUc2L3YS-VSxZFqVr0xMV234ibvyIqelsYK82yC1q0A-nqCnil3aQHS5bCRhkyi3RDoE",
+      "normalized_sha256": "d4cb5e912dfe6d4116147af67c270979abeef4fb9d4e01b2a2a2c82c3277998b",
+      "read_at_utc": "2026-09-07T11:54:50.694194+00:00",
+      "url": "https://docs.google.com/document/d/1XZS-MzUtjc3T488lyrSbtDX0Yq5UCl7Wzh5uN_YOvMg/edit",
+      "baseline_sha256": "1acf5a9cee0d1a5c63bcca5750c9a0635e792404b397acc9bb41aec400e55e17",
+      "content_changed": true
     },
     {
       "key": "product",
       "id": "1kJug8ojFwdGgZoPUx8BJt9fLKBjGYvX0wwbtarGTIIg",
-      "version": "2.1",
-      "google_docs_revision_id": "ANLCKQn7KD9m8KB9YKkIbqD3whgHRmimR00cIDNPphu2IMRO9wTBbpjNofykLSLvq0M-ptJJT2ERNmMRRrOk3nC6uwAteDSN-4djMNFkeps",
-      "normalized_export_sha256": "1fc0e37f920934dec8180ad77758029a1ccf5c6aec6a6066d0d5e78ed2ce5641",
-      "read_at_utc": "2026-09-06T11:13:51.575161+00:00",
-      "url": "https://docs.google.com/document/d/1kJug8ojFwdGgZoPUx8BJt9fLKBjGYvX0wwbtarGTIIg/edit"
+      "version": "2.3",
+      "revision_id": "ANLCKQk4zsV71506QsS956beW9FikD5-ju1jXZ6p5-H0CSbqc0Jmydd8S1ghsRy77TVlWEKam82W8YpwPD8Lw6ZLr_jEhqCM3dUDfSL--CU",
+      "normalized_sha256": "c07eef71e6f147e208c99c22562950bfcd6362fa9343c7610b6bb9ff2135d926",
+      "read_at_utc": "2026-09-07T11:54:50.794196+00:00",
+      "url": "https://docs.google.com/document/d/1kJug8ojFwdGgZoPUx8BJt9fLKBjGYvX0wwbtarGTIIg/edit",
+      "baseline_sha256": "c07eef71e6f147e208c99c22562950bfcd6362fa9343c7610b6bb9ff2135d926",
+      "content_changed": false
     },
     {
       "key": "architecture",
       "id": "1h-bnQ94uxuTrs8BPeDg-1uwZFcQEONdmYccd9Inacgw",
-      "version": "2.1",
-      "google_docs_revision_id": "ANLCKQkc4bD5JQo4QpKJxOes-qC5PB6JmFVK9UjS9tWjHLNxGRHLPxgR4CNaSn38sIClYkHDy6uj1iN_g_xtqdguBn5ikxG6mYHA2ef3xyA",
-      "normalized_export_sha256": "a9f769d95c57391b5375e84906a51c8e3609057fe5800d10058b16a22050afa0",
-      "read_at_utc": "2026-09-06T11:13:51.583161+00:00",
-      "url": "https://docs.google.com/document/d/1h-bnQ94uxuTrs8BPeDg-1uwZFcQEONdmYccd9Inacgw/edit"
+      "version": "2.3",
+      "revision_id": "ANLCKQkV2v9XIAENbNGn-XeI8XhORJmRayKyo2y3Klz85piUfssRaEH9rfFBCJr3lAHpTEcKVI3456w6wqg3E76Ijj5kUPmZy3-0jErsQs4",
+      "normalized_sha256": "a3b5eb6e78a16f303c33c7b4cdc065b75b78c559494c6c5cd7153373c926553f",
+      "read_at_utc": "2026-09-07T11:54:50.934199+00:00",
+      "url": "https://docs.google.com/document/d/1h-bnQ94uxuTrs8BPeDg-1uwZFcQEONdmYccd9Inacgw/edit",
+      "baseline_sha256": "a3b5eb6e78a16f303c33c7b4cdc065b75b78c559494c6c5cd7153373c926553f",
+      "content_changed": false
     },
     {
       "key": "ui",
       "id": "1KokAca2V-UhCPj1czP28TQ4i5E2Wd1JKJFbuXfmAPu4",
       "version": "2.1",
-      "google_docs_revision_id": "ANLCKQmrPnjby3tOpVYqCk0szvs7gnhczmQ0CcwAF-oxMkNHV1zWc0YfiSsf0HFyMgbbNzv3ib-ajhfcZdoXSQh7wiDOU8ULSSc1JC8IO0o",
-      "normalized_export_sha256": "62642b350c01ec725ee80ed83911eb6c3b6d4edc9563a7ede97210d0e3401182",
-      "read_at_utc": "2026-09-06T11:13:51.515161+00:00",
-      "url": "https://docs.google.com/document/d/1KokAca2V-UhCPj1czP28TQ4i5E2Wd1JKJFbuXfmAPu4/edit"
+      "revision_id": "ANLCKQmrPnjby3tOpVYqCk0szvs7gnhczmQ0CcwAF-oxMkNHV1zWc0YfiSsf0HFyMgbbNzv3ib-ajhfcZdoXSQh7wiDOU8ULSSc1JC8IO0o",
+      "normalized_sha256": "62642b350c01ec725ee80ed83911eb6c3b6d4edc9563a7ede97210d0e3401182",
+      "read_at_utc": "2026-09-07T11:54:50.954200+00:00",
+      "url": "https://docs.google.com/document/d/1KokAca2V-UhCPj1czP28TQ4i5E2Wd1JKJFbuXfmAPu4/edit",
+      "baseline_sha256": "62642b350c01ec725ee80ed83911eb6c3b6d4edc9563a7ede97210d0e3401182",
+      "content_changed": false
     },
     {
       "key": "program",
       "id": "1aR8ONMUW0nlPbVe3jFZ6FKJ1_lPHyYPdVbTRbWB3hhA",
       "version": "2.1",
-      "google_docs_revision_id": "ANLCKQkx7ppVVjLbZjNAAm-1PZh93BAXQ7fWn16ygLi5CeVzN36R7kwnNZGU-ueC2X7FyMUzrfnWOXXRK4mJdPQQQuNFqFt97apMrQvzFC8",
-      "normalized_export_sha256": "9ed39548f6617abcc62551c06f2e8baa49b9ff3d6ac31424e8d0e1b5fc967e14",
-      "read_at_utc": "2026-09-06T11:13:51.071160+00:00",
-      "url": "https://docs.google.com/document/d/1aR8ONMUW0nlPbVe3jFZ6FKJ1_lPHyYPdVbTRbWB3hhA/edit"
+      "revision_id": "ANLCKQkx7ppVVjLbZjNAAm-1PZh93BAXQ7fWn16ygLi5CeVzN36R7kwnNZGU-ueC2X7FyMUzrfnWOXXRK4mJdPQQQuNFqFt97apMrQvzFC8",
+      "normalized_sha256": "9ed39548f6617abcc62551c06f2e8baa49b9ff3d6ac31424e8d0e1b5fc967e14",
+      "read_at_utc": "2026-09-07T11:54:50.586192+00:00",
+      "url": "https://docs.google.com/document/d/1aR8ONMUW0nlPbVe3jFZ6FKJ1_lPHyYPdVbTRbWB3hhA/edit",
+      "baseline_sha256": "9ed39548f6617abcc62551c06f2e8baa49b9ff3d6ac31424e8d0e1b5fc967e14",
+      "content_changed": false
     },
     {
       "key": "website",
       "id": "1jw0shI2DSfUH9RpJc2WdeIqXwO1OYOUEiwuv3mdNngU",
-      "version": "2.1",
-      "google_docs_revision_id": "ANLCKQn2j-k2MH4YmuFW2e7DapW1B8y9dPREyU5XYIgjb4pyAIfR0xFxYYsKwUDLUKF8bUb3OnJT_cUkXsTEhLcrd8wwxAY3-v4Rb5OAFuA",
-      "normalized_export_sha256": "7277321c68b212136ee889e1912201a908387e3ea4f027793878dacab295d7a9",
-      "read_at_utc": "2026-09-06T11:13:51.227160+00:00",
-      "url": "https://docs.google.com/document/d/1jw0shI2DSfUH9RpJc2WdeIqXwO1OYOUEiwuv3mdNngU/edit"
+      "version": "2.4",
+      "revision_id": "ANLCKQn17cG85Pb8FTZ6WfFSMqpWPs5EDJ_8udobiLjMbYZ1HHBv229k4xwfeIVdAkbqxNIFZ_-6Zh1cBIIBCws8EeZRZw6Zu2L953bQyQ0",
+      "normalized_sha256": "1617640c71b116f7bb3f0c965b8bf6e0b9e4a3179795ae0d9b0fb3a95b7bf4bb",
+      "read_at_utc": "2026-09-07T11:54:50.466189+00:00",
+      "url": "https://docs.google.com/document/d/1jw0shI2DSfUH9RpJc2WdeIqXwO1OYOUEiwuv3mdNngU/edit",
+      "baseline_sha256": "15884091ce2e9f5c5fcc0712855e10b4d29633d25d33405e311cd6e77af3b356",
+      "content_changed": true
     },
     {
       "key": "prompts",
       "id": "1r8fN36liKyXcf9GVG1Cl25Yq9vjaYWD9A0YC1h3jn-E",
-      "version": "2.1",
-      "google_docs_revision_id": "ANLCKQkh8F2CrcBmDOX2RqdgJv5RIzRxpPxYfM3_EFpVA97Cto7Hbmi7aSnHTdrxBMwCMCdfNtIxPdWi9ADPHKr_L3xxtOGpeRwkjqqaiDQ",
-      "normalized_export_sha256": "3b1973a22cba112b4a4a5b1c3faa5202b558ec996d1c57fac44f477e2d4647e4",
-      "read_at_utc": "2026-09-06T11:13:51.539161+00:00",
-      "url": "https://docs.google.com/document/d/1r8fN36liKyXcf9GVG1Cl25Yq9vjaYWD9A0YC1h3jn-E/edit"
+      "version": "2.5",
+      "revision_id": "ANLCKQmxc4sAhpzW4Ym4vEKku_2LG_Tc3QtJTikvcHUwI2HpnuqsHF_5KZmtPhF__bbTgoHG4W_EKoG6_IIQL6sXbccPQSk3XykoUnAtwEg",
+      "normalized_sha256": "c0f342012c94080832067fb4869a7b740fdc8e245bb985c21e16ef043cdf1809",
+      "read_at_utc": "2026-09-07T11:54:50.702194+00:00",
+      "url": "https://docs.google.com/document/d/1r8fN36liKyXcf9GVG1Cl25Yq9vjaYWD9A0YC1h3jn-E/edit",
+      "baseline_sha256": "445de156180a05470ab295949e3d9b5333f28e10506ecbdb415a6751d5f23d95",
+      "content_changed": true
     },
     {
       "key": "operating",
       "id": "1q-GDEaL9JmmVfy1meQrGvu3V4H2XNJ4jp2b17ZrP6bE",
-      "version": "2.2",
-      "google_docs_revision_id": "ANLCKQmHF8a_HRTzuZBfsBzdAksr3T5p8FqLCbceLGSp9Z8gNbJGVVrwQmVdBCKv0ILruHQA2aiK2MZh9u17NTds8dD4EMFWh-NSrKBphFQ",
-      "normalized_export_sha256": "8640d333141438d267e8f53f09494113774c02b5ecb05cfe275286975a48fbe6",
-      "read_at_utc": "2026-09-06T11:13:51.439160+00:00",
-      "url": "https://docs.google.com/document/d/1q-GDEaL9JmmVfy1meQrGvu3V4H2XNJ4jp2b17ZrP6bE/edit"
+      "version": "2.3",
+      "revision_id": "ANLCKQmAJbQgN_QOGl2LK1IEtLLBduA1Hm5SgMDnPVcKJdK7brX9ibEMaYTDn_LXkN6aH607h_13ceAtdfEmO2NFMmPtZLABsLaXYX0vYvE",
+      "normalized_sha256": "2fa7c0fd705c0f73e8ef64416f8b032df1e02e1e087948f7ac6b77019d4ef0d0",
+      "read_at_utc": "2026-09-07T11:54:50.354187+00:00",
+      "url": "https://docs.google.com/document/d/1q-GDEaL9JmmVfy1meQrGvu3V4H2XNJ4jp2b17ZrP6bE/edit",
+      "baseline_sha256": "8640d333141438d267e8f53f09494113774c02b5ecb05cfe275286975a48fbe6",
+      "content_changed": true
     },
     {
       "key": "packet",
       "id": "1NrlYux3I78nO7M9v1fKGl-UCKpkcZrOUtHSoV-BmLOE",
-      "version": "1.3",
-      "google_docs_revision_id": "ANLCKQlrsLshMEo8PpkOlLZ46Vi9xuOm3E4f05mo0zSZqaj4H5LJVjVkruRT0gmpWT5uhFaZrCgo2N1G-wuFv8MWz9ft6PGDPmLIYcgouAQ",
-      "normalized_export_sha256": "489835a95798cee0d2158ab919ee9bb6d4ffbb798850d5d2b375ff756d429902",
-      "read_at_utc": "2026-09-06T11:13:51.459161+00:00",
-      "url": "https://docs.google.com/document/d/1NrlYux3I78nO7M9v1fKGl-UCKpkcZrOUtHSoV-BmLOE/edit"
+      "version": "1.4",
+      "revision_id": "ANLCKQkU8eAEzILb7vzMPR12vKNr_mpC8BFAfag7m1fWFHuPz4IjZDtdXEV7BXDRB7UQ3_z7a_Ld1PICm9jdWEUV0eHAVnUpdh_KVYwY-Jg",
+      "normalized_sha256": "065de518f8dc751f8a56e3e584d5d8dfee784eceb0374aa37a89d23d90bc521c",
+      "read_at_utc": "2026-09-07T11:54:50.630193+00:00",
+      "url": "https://docs.google.com/document/d/1NrlYux3I78nO7M9v1fKGl-UCKpkcZrOUtHSoV-BmLOE/edit",
+      "baseline_sha256": "489835a95798cee0d2158ab919ee9bb6d4ffbb798850d5d2b375ff756d429902",
+      "content_changed": true
     }
-  ],
-  "settings_block_sha256": "528c9245fc7ba0cbfde79b3d53934ef2adbefec6e1a0d89bf6bef675b059dd54"
+  ]
 }
