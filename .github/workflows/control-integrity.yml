@@ -1,0 +1,91 @@
+name: Trusted control integrity
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+
+concurrency:
+  group: control-integrity-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  trusted-control-review:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Review proposed paths as data and bind result to the PR head
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          api = "https://api.github.com"
+          repo = os.environ["GITHUB_REPOSITORY"]
+          token = os.environ["GITHUB_TOKEN"]
+          pr_number = os.environ["PR_NUMBER"]
+          head = os.environ["PR_HEAD_SHA"]
+
+          def request(path, *, body=None):
+              headers = {
+                  "Accept": "application/vnd.github+json",
+                  "Authorization": f"Bearer {token}",
+                  "User-Agent": "LifeSkillsControlIntegrity",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              }
+              data = None if body is None else json.dumps(body).encode()
+              if data is not None:
+                  headers["Content-Type"] = "application/json"
+              with urllib.request.urlopen(
+                  urllib.request.Request(f"{api}{path}", data=data, headers=headers),
+                  timeout=20,
+              ) as response:
+                  return json.load(response)
+
+          state = "error"
+          description = "Trusted control review could not complete"
+          try:
+              changed = []
+              page = 1
+              while True:
+                  batch = request(f"/repos/{repo}/pulls/{pr_number}/files?per_page=100&page={page}")
+                  changed.extend(item["filename"] for item in batch)
+                  if len(batch) < 100:
+                      break
+                  page += 1
+              guarded = sorted(
+                  path for path in changed
+                  if path.startswith((".github/workflows/", ".github/actions/", "tools/ci/"))
+              )
+              if guarded:
+                  state = "failure"
+                  description = "Frozen CI/control files need an owner-authorized transition"
+                  print("Guarded proposed paths:", *guarded, sep="\n- ")
+              else:
+                  state = "success"
+                  description = "No frozen CI/control files changed"
+          finally:
+              request(
+                  f"/repos/{repo}/statuses/{head}",
+                  body={
+                      "state": state,
+                      "context": "control-integrity",
+                      "description": description,
+                      "target_url": (
+                          f"https://github.com/{repo}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+                      ),
+                  },
+              )
+          if state != "success":
+              raise SystemExit(description)
+          PY
