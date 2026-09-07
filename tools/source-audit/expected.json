@@ -1,19 +1,18 @@
 {
   "schema_version": 1,
   "derived_evidence_only": true,
-  "approved_transaction": "D-SYS033-REMEDIATION-01 / preparation only; independent Policy Receipts approval required",
+  "approved_transaction": "D-028/D-029 / SYS-030",
   "max_snapshot_age_seconds": 1800,
   "sources": {
     "registry": {
       "id": "1XZS-MzUtjc3T488lyrSbtDX0Yq5UCl7Wzh5uN_YOvMg",
-      "version": "2.5",
-      "sha256": "d4cb5e912dfe6d4116147af67c270979abeef4fb9d4e01b2a2a2c82c3277998b",
+      "version": "2.3",
+      "sha256": "1acf5a9cee0d1a5c63bcca5750c9a0635e792404b397acc9bb41aec400e55e17",
       "required": [
         "Product Contract: 2\\.3",
-        "Control Protocol: 2\\.3",
-        "Packet Standard: 1\\.4",
-        "SYS-?033",
-        "SYS-?034",
+        "Control Protocol: 2\\.2",
+        "Packet Standard: 1\\.3",
+        "SYS-031",
         "SOURCE_AUDIT.json",
         "D-BRAND-002",
         "Families may inquire from any area"
@@ -125,10 +124,10 @@
     },
     "website": {
       "id": "1jw0shI2DSfUH9RpJc2WdeIqXwO1OYOUEiwuv3mdNngU",
-      "version": "2.4",
-      "sha256": "1617640c71b116f7bb3f0c965b8bf6e0b9e4a3179795ae0d9b0fb3a95b7bf4bb",
+      "version": "2.3",
+      "sha256": "15884091ce2e9f5c5fcc0712855e10b4d29633d25d33405e311cd6e77af3b356",
       "required": [
-        "Version: 2\\.4",
+        "Version: 2\\.3",
         "No public qualification form",
         "₪2,200",
         "LS-105",
@@ -149,13 +148,13 @@
     },
     "prompts": {
       "id": "1r8fN36liKyXcf9GVG1Cl25Yq9vjaYWD9A0YC1h3jn-E",
-      "version": "2.5",
-      "sha256": "c0f342012c94080832067fb4869a7b740fdc8e245bb985c21e16ef043cdf1809",
+      "version": "2.3",
+      "sha256": "445de156180a05470ab295949e3d9b5333f28e10506ecbdb415a6751d5f23d95",
       "required": [
-        "Prompt Pack Version: 2\\.5",
-        "Packet Standard: 1\\.4",
+        "Prompt Pack Version: 2\\.3",
+        "Packet Standard: 1\\.3",
         "I-014",
-        "SYS-034",
+        "Prompt LS-105",
         "SOURCE_AUDIT.json",
         "D-BRAND-002"
       ],
@@ -171,27 +170,24 @@
     },
     "operating": {
       "id": "1q-GDEaL9JmmVfy1meQrGvu3V4H2XNJ4jp2b17ZrP6bE",
-      "version": "2.3",
-      "sha256": "2fa7c0fd705c0f73e8ef64416f8b032df1e02e1e087948f7ac6b77019d4ef0d0",
+      "version": "2.2",
+      "sha256": "8640d333141438d267e8f53f09494113774c02b5ecb05cfe275286975a48fbe6",
       "required": [
-        "Version: 2\\.3",
-        "Policy Receipts",
-        "pull_request_target",
-        "No extra approval ritual",
-        "SYS-?034"
+        "Version: 2\\.2",
+        "SYS-031",
+        "approved owner correction",
+        "No extra approval ritual"
       ],
       "forbidden": []
     },
     "packet": {
       "id": "1NrlYux3I78nO7M9v1fKGl-UCKpkcZrOUtHSoV-BmLOE",
-      "version": "1.4",
-      "sha256": "065de518f8dc751f8a56e3e584d5d8dfee784eceb0374aa37a89d23d90bc521c",
+      "version": "1.3",
+      "sha256": "489835a95798cee0d2158ab919ee9bb6d4ffbb798850d5d2b375ff756d429902",
       "required": [
-        "Version: 1\\.4",
+        "Version: 1\\.3",
         "SOURCE_AUDIT.json",
-        "CHECKSUMS.sha256",
-        "Policy Receipts",
-        "CONTROL_PLANE_CLOSEOUT"
+        "Scheduler NOT INSTALLED"
       ],
       "forbidden": []
     }
@@ -205,36 +201,31 @@
     "SYS-022"
   ],
   "work_definitions": {
-    "LS-000": "533fe63d550162aa9d98c3ff826eb1dbc3b843741270fcbd515ad6d53e262558",
-    "LS-005": "8d746092a3691d8555e7b19c9b430a9add920e5dd9124b53b0d0efa80b0fb3e8",
-    "LS-010": "50066a0e65da127b14e2b4b8949e95c4e7461b8d685d5129ebcd9a16421c5940",
-    "LS-020": "da51df1208bb9206567320f69f2aeebf3551d0b757208f2c83bea16bbddbd865",
-    "LS-030": "6fc5d91e259544e22491fab9da1cb2f17d51a53c7c73191915adae5c32c41a26",
-    "LS-040": "1371c9cd7d004df33bd8e0cefdb9d9b83c413c104ac5ba7ea5d4d1d65cb6bb76",
-    "LS-050": "7a5305027706294da80e51bd72d53ca5f29ecc9183cbf61c84b9f0724b1bc961",
-    "LS-060": "1bf5a484341f14c390ebf540436e6afcf41a4ca9b71a9ee9f350710f492e988d",
-    "LS-070": "62aa7f4b186fd43d212ff91c22fd034413a188004cf6bbf34273b61845b4cc80",
-    "LS-080": "741568de5bf69c67f92c8e50f35876ba58e5783afd5c324598dc4c9689a5bb32",
-    "LS-090": "a3d4331ff65f8b8499c14e0b35ba511d8ebcf6401b0d602c757261140832eb18",
-    "LS-100": "a8c4e7b3b03a604f485f1352dd818ec70967d0a774c23d47eae7e3cf71cf1dcb",
-    "LS-110": "dbd73aeb3bf7aaf897bf276cc375001782c6c6f9ae13efd28c19876dd6cf95a6",
-    "LS-120": "5c48b638d73e67ca1de3465fdd1f3c1ba56e6dd2e68f8b8a84cce6acc273dfcd",
-    "LS-130": "1e6809a31b9c3b76017fecaab7b969ccb136b619599732618c3622df1d4473c1",
-    "MKT-020": "ec2af28cb58fc9a0fc98b85fdfd3e0c11fc44308aebe73f4701a3d4cb6538321",
-    "PRG-010": "d8a5153fc28a934c592b7d6d022078f318a78d9c5df1f52688da68ee99b31d9a",
-    "OPS-010": "0189cb1c86904c6344bf86075e0c8c733fa0f4ed0fa1fd6dfa6cfb64bf3f7274",
-    "LS-025": "fb1d8598d97e1960b1bb65f0210d60240ada9b51da3e678187ffcba690c8a469",
-    "SYS-021": "0162476bd9e1ee09d92a37700a74ce400092ea45ead2eaba34d39aa599b29298",
-    "SYS-030": "d94357a784fac36f795bd7fa4e1c406d942c7c097bffe75654f3be9143ca7e8d",
-    "SYS-031": "98315bcd36dd592e0541514bc875099d9a30c660891126e99b8d2450d40cf9d3",
-    "LS-105": "ac2a0aedaa5772b6b28e9d2a3c5d64b3cb189bca66e1901001ee78994dba5c87",
-    "SYS-032": "f752d5a76dc56feecfd4e59175764bf0fabcd73fff23f9819dfc18dd109f0a2f",
-    "MKT-030": "d95a07fa8bafbaf49c0b4188f066a82ea8f76343e1f949490a68ea02759458b3",
-    "MKT-040": "1f294157fa311252f02fee2341f9f4da6f1cd6387f560255d198a268c97c5ac1",
-    "MKT-045": "8ff38062763f1b9dcb43bbed52fd6b70aa95dfefe2efc3850cae5ba72d8d1308",
-    "SYS-033": "5250b9538eec5e7be423bda8fc934be290bf6880ee86b18ed231cd3f9b480b34",
-    "SYS-034": "4be936bdd58b73af381e45475d229438bee8ba2cb9916cc444d60c65ada393f6",
-    "MKT-050": "d9e16bf056a357a1755cbd2b381f45f3fa2b1c0a7457e5ba41c6201a702202fe"
+    "LS-000": "010c8080995da96b4243bd343e12779bcab816eed34afe4950d6d3d39065791d",
+    "LS-005": "8c329afb5b83216cf45a912b19359492e600fada545dbd4e56ed378c70f81ab4",
+    "LS-010": "565ee80159c40b64e3ac515960c121d1c5a87498a8164caef52528b28c6c8155",
+    "LS-020": "ac875780bf6dc633ef70659f8a20afe40d9d5c84eae5e2fbe9348749e3535792",
+    "LS-030": "f5c1279559b9923805ddce43b4505e7e54ae64fdea835491a3b1a032e209beb6",
+    "LS-040": "1ef9e42d23c9c5b8d444989604703e0e53b386135466bf36d4bf594dad4fd389",
+    "LS-050": "1a1420fcc2848a22df0e669b1ff23db625b3acd79a222d2aef82c2d6f121e417",
+    "LS-060": "a1eb32bbb5c159c11681ab4fe188c9edb7d0fc2ec4eb5d81721c065fb4fd12a4",
+    "LS-070": "19eb788fb528b1f38330af882f1c5f6a346467b2c2c6c166d5c850c3b87b92de",
+    "LS-080": "02d8b9e045be1ef5aed5e9a0d8d2c3adcbcd41c79c64ab555c4d3a685c4123a0",
+    "LS-090": "b15a56dff3a5b34b182b694e37e76c9689871548adbf4ba274c842b801795738",
+    "LS-100": "c6a3d871d3d7b86467b8932770f77398fb492fcb2a38972bf88135b592c75cbf",
+    "LS-110": "87acbb6c4641018b98d1cc083b59c8888daa1aa6cc7a9f308f60a43b4b6c184f",
+    "LS-120": "dbe328203ec1c845aff3c1f863bbfb53bba4bf3e399f7848a18f5b3cca55e222",
+    "LS-130": "4b051fd30bda5578395975c66ff822ca1487e417eb5aea85fa57fb6d0d30a2be",
+    "MKT-020": "b26f8fe44c417e053e1fc3f55297665e2659ab65a8378543d01ab1fa23a158d4",
+    "PRG-010": "22da59fb8685d9081fb50939f018867c9d5854896f5912e886cbc01a15740783",
+    "OPS-010": "ba45dff56fe1ed541efe3410d258c513baf569649d81e5d3a5e868f59653c591",
+    "LS-025": "4f9253ed86d87d8b63285722005d019b6a3bf46505864bb125a9ac184e5bdc89",
+    "SYS-021": "3123c8e544ee2b3bb42e3470514e2f302fccf6b6a8120c416d4a951af4717fbf",
+    "SYS-030": "7e869880988c4e5e32b24c274a9c7f47d8e596b36626ab50ba3c750c1011623a",
+    "SYS-031": "9a88008cc85b0d44d7658ee5af407368274b8aced23953eaaf5d5d3a4f1e1922",
+    "LS-105": "74b8fd7caf1c6ebd4210d7b2b7f3637a8b28c8e4966ab710d6c86bd544d33ec2",
+    "SYS-032": "36ed9f6123c495059b334a138fc4d2588a97b2c6fb6f9d6598287a131aa79642",
+    "MKT-030": "4f9b7108b560336696b9c360f467ad8218d5d877073525836f2c9f58a0af2433"
   },
   "approved_decisions": {
     "D-001": "5184b8b1ab12625f00cd077c8d25e25e4e25ac846b965a9cd2050a965067bea1",
@@ -254,26 +245,23 @@
     "D-028": "9bb3b7702f49d07fda5b10f4dc94f0ad0d169784354da3a3f83178463b65698d",
     "D-029": "c07b1696263731af7f5749c6d86d2dfd3e5f40f996518b42dcee17b27810d369",
     "D-BRAND-001": "831e5ab28e082af39eeb5afcf157e284831303335cf2803eb7d891233faeb055",
-    "D-BRAND-002": "f5ae37e3e597fac263c5eb5bf551529136111a83af42588ea8640d1f59c45636",
-    "D-BRAND-003": "0c4cc6b0f9b5f80fcd43b900f773ecabbe9fe6284e4a5f2f6f63f678958c3ccf",
-    "D-SYS033-REMEDIATION-01": "1cbacfbb1b63b16deebec5cad4f6b51fbe219d3a029b730a63e4e3ff1773c15c",
-    "D-BRAND-004": "eb9c5d2e543c554978b459e35ff9542231543b95c9a914fcb8e71ca5313e6ce5"
+    "D-BRAND-002": "f5ae37e3e597fac263c5eb5bf551529136111a83af42588ea8640d1f59c45636"
   },
   "interface_definitions": {
-    "I-001": "33a06530d6bced5e03cb1d18760253db502603fc3606331b19c0b98449745f2e",
-    "I-002": "62c6ecebe831b550dc57bbd32c244ddbcc90471426facbe6eceb97a892705d83",
-    "I-003": "65ce8acdbc4ffc2b14b44e7546fc2f9c60b27b8655668c992221ef75459610f6",
-    "I-004": "043d1eb6d98c0c0922ef82fda2c66a1506d9af3ee04adba41c789ff09823d756",
-    "I-005": "0a907b5fbf145e8fe374af16c197a8ce2acd35bf023136c257bc8144f5cb048c",
-    "I-006": "a0650f287ca12f0d4d99206a0521d5a334e35cc4b5f1872df74ec18c66557a92",
-    "I-007": "58b093c66cd3bd32657c958ea034544265b323f552ec6ee997548efd6884fb94",
-    "I-008": "18a53c6951889781e29856617231108e900a773b497537d014a5900baa568cdd",
-    "I-009": "15c1f782810214f240e0896de0cae22cd3aa32c9452cf7a18c316af8a4235106",
-    "I-010": "047a5484c9d70994e97347c8c56cb43a50454caa2edbd3e6d2b1757db0631897",
-    "I-011": "bdac1dc556a426176e161ec938fc45aff9bf4e7e3dec303c37be2acf3c2a6faf",
-    "I-012": "213e94257a248b01089df7505edc1d46d581e631a9a7785f616a8bca2be134e6",
-    "I-013": "5bb2c98113433f9327e35bb0cf29724cb946f0862d334a3a92236b5bbe4cf52f",
-    "I-014": "87395ca4a705cf78c46696c6526d8b19e3087711004f2ecc9c19ff9ea3f5900f"
+    "I-001": "cb1d733d5b24bb18ef64e2dacb88dbc57602992a465f77b3b0c5cd342c0b02d1",
+    "I-002": "70a4db16f467be63b088497ec15706fb0a99801c235abdaa0fb95e6ca00a12b2",
+    "I-003": "eced027dbb1c09003d17f0d028c08c71fcd30f95bc3b45de104fb0a033409c68",
+    "I-004": "1488c4a4d2f7920c724359818f5459e06a28dfcb67e3b54c44f28a42fcf567d0",
+    "I-005": "fc09c378645ec24f9d298310c4fa56c0f7a1fe33e8e0070910bb99e20ebb89b0",
+    "I-006": "785b3cdbcf3399a938e595f2e2870d9a2793738eb522df98eb5ad0c61578838d",
+    "I-007": "20281e056ad535554221e58e4fee849fea3c037ea19c70cbeab4faba21eb9333",
+    "I-008": "9efd272829ab43fb3980fb9eff2e831f59bef2fa8c83f99c21eec72485959c54",
+    "I-009": "d67cab8e60e118a7b3169f8f4a66d63d8af950e55a10cf2224e6984b6aaaf80e",
+    "I-010": "b622b2a462b0905dda60b7e00f56ecb039f77bb82f847f3c1b5c54965df38204",
+    "I-011": "269c7917f6cf856b90af61e85386337d7173407a32baac1ca6db7209841d5ce6",
+    "I-012": "98b76bb9d95ae0d05613d2db657d6cdab3f338d8c1e209b8cee9c87d0ca7ca2e",
+    "I-013": "b32348df317c56302737e5e4a4f6e25a7a55a920249f538bab1d858065e31347",
+    "I-014": "86d70d9c425b2dc53b3330de14395195f03f34c6ad44f9d647143f3158f19e70"
   },
   "work_scopes": {
     "LS-100": [
@@ -322,28 +310,6 @@
       "packet"
     ],
     "MKT-030": [
-      "registry",
-      "product",
-      "architecture",
-      "ui",
-      "program",
-      "website",
-      "prompts",
-      "operating",
-      "packet"
-    ],
-    "SYS-033": [
-      "registry",
-      "product",
-      "architecture",
-      "ui",
-      "program",
-      "website",
-      "prompts",
-      "operating",
-      "packet"
-    ],
-    "SYS-034": [
       "registry",
       "product",
       "architecture",
@@ -433,67 +399,49 @@
     "SYS-032": [
       "drive/control-summary-repair",
       "tools/source-audit"
-    ],
-    "SYS-033": [
-      "tools/source-audit",
-      ".github/workflows/source-audit.yml",
-      ".github/workflows/pr-ci.yml",
-      "AGENTS.md",
-      "apps/life-skills/docs/current-sources.json",
-      "apps/life-skills/docs/historical/ls000-source-snapshot.json",
-      "railway.json",
-      "drive/control-process",
-      "drive/packet-ready/SYS-033",
-      "overlay/LS-025"
-    ],
-    "SYS-034": [
-      "tools/source-audit",
-      ".github/workflows/source-audit.yml",
-      ".github/workflows/pr-ci.yml",
-      "AGENTS.md",
-      "apps/life-skills/docs/current-sources.json",
-      "apps/life-skills/docs/historical/ls000-source-snapshot.json",
-      "railway.json"
-    ],
-    "MKT-050": [
-      "drive/marketing/MKT-050"
     ]
   },
-  "checker_version": "2.0.0",
+  "checker_version": "1.1.0",
   "control_contracts": {
     "Overview": {
       "start_row": 18,
       "columns": 3,
-      "sha256": "e1b65fefdab0e520c25ecebf3de200ba8982d3bde780dce3bf85db998c149983"
+      "sha256": "ca9d32e5063eb2ed469e9e153c73791efd470b5a322e3ca153034b43a22173fc"
     },
     "Instructions": {
       "start_row": 3,
       "columns": 8,
-      "sha256": "0fa66b86039baf321b20f4ae9204a7df2aab62bd879a7c054f0888ce2991e226"
+      "sha256": "1ef218037b795e2e45daaf6565637c921beb9693333a2580b7ae5389ce28b1b4"
     }
   },
-  "reviewed_change": "SYS033 prepared process-remediation data, not yet independently approved for repository installation. Source versions and all stable-definition schema deltas are enumerated in REVIEW/POLICY_DELTA.json. No business, pricing, branding, data permission or downstream acceptance changes. Concurrent D-BRAND-004 is observed as approved but unpropagated; explicit exact-source hold blocks formal marketing acceptance. Only enumerated unaffected process/legacy-cleanup lanes continue. MKT050 ownership is derived-artifact-only.",
+  "reviewed_change": "MKT-030: apply the reviewed cumulative D-BRAND-001/D-BRAND-002 source delta for registry, product, architecture, website and prompts from version 2.1 to 2.3; add only the two approved decision fingerprints, MKT-030 work definition and MKT-030 source scope. Preserve settings, UI/program/operating/packet fingerprints, interfaces, controls, ownership roots and all unrelated work definitions.",
   "review_evidence": {
-    "transaction": "SYS033-20260907-092640-c5a94d",
-    "decision": "D-SYS033-REMEDIATION-01",
-    "stage": "PREPARED_REQUIRES_INDEPENDENT_EXACT_HEAD_RECEIPT",
-    "prior_policy_blob": "d42cd009a4aeda915062ada4e6e5f8af559d31c0"
-  },
-  "cross_ledger_required": true,
-  "pending_canonical_decisions": {
-    "D-BRAND-004": {
-      "decision_sha256": "eb9c5d2e543c554978b459e35ff9542231543b95c9a914fcb8e71ca5313e6ce5",
-      "state": "APPROVED_PROPAGATION_PENDING",
-      "unaffected_work_ids": [
-        "SYS-033",
-        "SYS-034",
-        "SYS-021"
+    "transaction": "MKT030-20260906-172351-aed9e8",
+    "reviewed_at": "2026-09-06T14:32:41.949317+00:00",
+    "receipt_sha256": "eab9cb08df43c00733f9bf708de1589816e91f2df6a3f2a78792cab357048823",
+    "MKT-030": {
+      "basis": "Approved cumulative source-change receipt version 2, independently checked against the repository's version 2.1 expected baseline; all six receipt files matched their internal SHA-256 inventory.",
+      "changed_sources": [
+        "registry",
+        "product",
+        "architecture",
+        "website",
+        "prompts"
       ],
-      "source_sha256": {
-        "website": "1617640c71b116f7bb3f0c965b8bf6e0b9e4a3179795ae0d9b0fb3a95b7bf4bb",
-        "registry": "d4cb5e912dfe6d4116147af67c270979abeef4fb9d4e01b2a2a2c82c3277998b",
-        "prompts": "c0f342012c94080832067fb4869a7b740fdc8e245bb985c21e16ef043cdf1809"
-      }
+      "unchanged_sources": [
+        "ui",
+        "program",
+        "operating",
+        "packet"
+      ],
+      "settings_sha256": "528c9245fc7ba0cbfde79b3d53934ef2adbefec6e1a0d89bf6bef675b059dd54"
+    },
+    "prior_transaction": "SYS032-20260906-125022-b41f7e",
+    "prior_reviewed_at": "2026-09-06T09:58:55.007351+00:00",
+    "SYS-021": {
+      "before_sha256": "e2bbcb3ed3767f0955f9a1b3dc836e920300028b46a5209beee00ae3d47b4ac4",
+      "after_sha256": "3123c8e544ee2b3bb42e3470514e2f302fccf6b6a8120c416d4a951af4717fbf",
+      "basis": "Authorized prior cleanup closeout SYS021-20260906-120434-91b8b2; Build Control Change Log A12:J12 and Chat Runs A11:S11; only next-action wording changed, no business scope change."
     }
   }
 }

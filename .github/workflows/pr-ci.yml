@@ -9,7 +9,7 @@ concurrency:
   group: application-ci-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 jobs:
-  static-and-checker:
+  static-and-control:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -20,6 +20,7 @@ jobs:
         with:
           node-version: '22'
       - run: node --version && python3 --version
+      - run: python3 tools/ci/verify-ci-boundary.py
       - run: python3 -m unittest discover -s tools/source-audit/tests -v
       - run: npm run check && npm run build && npm run check:server
   app-and-database:
@@ -36,7 +37,7 @@ jobs:
           POSTGRES_PASSWORD: synthetic_ci_only
           POSTGRES_DB: lifeskills_ci_test
         ports:
-          - 127.0.0.1:5432:5432
+          - 5432:5432
         options: >-
           --health-cmd "pg_isready -U synthetic -d lifeskills_ci_test"
           --health-interval 5s --health-timeout 5s --health-retries 12
@@ -73,16 +74,16 @@ jobs:
       - name: Shared UI browser suite when installed
         run: if test -f playwright.ui.config.ts; then npx --no-install playwright test --config playwright.ui.config.ts; fi
       - name: Existing identity database and mounted HTTPS denial journeys
-        run: node ../../tools/source-audit/ci-identity.cjs
+        run: node ../../tools/ci/ci-identity.cjs
   application-ci:
     name: application-ci
     if: always()
-    needs: [static-and-checker, app-and-database]
+    needs: [static-and-control, app-and-database]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
       - name: Require every independent job to succeed
         env:
-          STATIC_RESULT: ${{ needs.static-and-checker.result }}
+          STATIC_RESULT: ${{ needs.static-and-control.result }}
           APP_RESULT: ${{ needs.app-and-database.result }}
         run: test "$STATIC_RESULT" = success && test "$APP_RESULT" = success
