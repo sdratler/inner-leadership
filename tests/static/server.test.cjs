@@ -15,11 +15,14 @@ test.before(async () => {
 });
 test.after(async () => new Promise((resolve) => server.close(resolve)));
 
-test("serves the review page with hardened headers", async () => {
+test("serves the current build with hardened headers and matching robots mode", async () => {
   const response = await fetch(`${origin}/?lang=en`);
   const body = await response.text();
   assert.equal(response.status, 200);
-  assert.match(body, /content="noindex, nofollow"/);
+  const configResponse = await fetch(`${origin}/assets/js/config.js`);
+  const config = await configResponse.text();
+  if (/reviewPreview: false/.test(config)) assert.match(body, /content="index, follow"/);
+  else assert.match(body, /content="noindex, nofollow"/);
   assert.match(body, /id="life-skills-root"/);
   assert.match(body, /assets\/js\/site-react\.js/);
   assert.equal(response.headers.get("x-frame-options"), "DENY");
