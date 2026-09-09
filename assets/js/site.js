@@ -3,27 +3,29 @@
   "use strict";
   const TEXT = {
   "he": {
-    "name": "שלמה דרטלר",
-    "preview": "תצוגה לבדיקת האתר — לא אתר שפורסם. התמונה, פרטי הקשר ואישורי הפרסום עדיין ממתינים לאימות.",
-    "navApproach": "הגישה",
-    "navProcess": "איך זה עובד",
-    "navQuestions": "שאלות נפוצות"
+    "brand": "כישורי חיים",
+    "tagline": "לחיים שלמים",
+    "preview": "תצוגה לבדיקת האתר — לא אתר שפורסם.",
+    "navTeaching": "מה לומדים",
+    "navFounder": "על שלמה",
+    "navFaq": "שאלות נפוצות"
   },
   "en": {
-    "name": "Shlomo Dratler",
-    "preview": "Website review preview — not a published service page. Photograph, contact details and publication approvals still require verification.",
-    "navApproach": "The approach",
-    "navProcess": "How it works",
-    "navQuestions": "Questions"
+    "brand": "Life Skills",
+    "tagline": "",
+    "preview": "Website review preview — not a published service page.",
+    "navTeaching": "What children learn",
+    "navFounder": "About Shlomo",
+    "navFaq": "Common questions"
   }
 };
   const TITLES = {
-    he: "שלמה דרטלר | טיפול רגשי פרטני והדרכת הורים | Life Skills",
-    en: "Shlomo Dratler | Individual Therapy & Parent Guidance | Life Skills"
+    he: "כישורי חיים | טיפול רגשי לבנים בגילאי 8–12",
+    en: "Life Skills | Emotional Therapy for Boys Ages 8–12"
   };
   const DESCRIPTIONS = {
-    he: "טיפול רגשי פרטני לבנים בגילאי 8–12, עם הדרכת הורים וכלים מעשיים ליישום בבית.",
-    en: "Individual emotional therapy for boys ages 8–12, with parent guidance and practical tools for implementation at home."
+    he: "טיפול רגשי לבנים בגילאי 8–12, עם הדרכת הורים מעשית.",
+    en: "Emotional therapy for boys ages 8–12, with practical parent guidance."
   };
   function chooseLocale(search, fallback) {
     const requested = new URLSearchParams(search).get("lang");
@@ -70,6 +72,8 @@
       const key = el.dataset.ui;
       el.textContent = key === "skip" ? (next === "he" ? "דלגו לתוכן" : "Skip to content") : TEXT[next][key];
     });
+    const tagline = doc.querySelector('[data-ui="tagline"]');
+    if (tagline) tagline.hidden = !TEXT[next].tagline;
     doc.querySelector("[data-ui-nav]").setAttribute("aria-label", next === "he" ? "ניווט ראשי" : "Main navigation");
     doc.querySelectorAll("[data-nav]").forEach(el => el.setAttribute("href", "#" + el.dataset.nav + "-" + next));
     doc.querySelectorAll("[data-language]").forEach(el => {
@@ -86,7 +90,7 @@
     const next = link.dataset.language;
     const oldHash = global.location.hash;
     // Preserve only our known section anchor. Never propagate arbitrary URL parameters.
-    const anchor = /^#(?:approach|process|questions|fees|contact|privacy)-(he|en)$/.test(oldHash) ? oldHash.replace(/-(he|en)$/, "-" + next) : "";
+    const anchor = /^#(?:teaching|founder|faq|contact)-(he|en)$/.test(oldHash) ? oldHash.replace(/-(he|en)$/, "-" + next) : "";
     global.history.pushState(null, "", global.location.pathname + "?lang=" + next + anchor);
     applyLanguage(next, true);
   }));

@@ -24,6 +24,8 @@ const MIME_TYPES = new Map([
   [".jpg", "image/jpeg"],
   [".js", "text/javascript; charset=utf-8"],
   [".png", "image/png"],
+  [".svg", "image/svg+xml"],
+  [".ttf", "font/ttf"],
   [".txt", "text/plain; charset=utf-8"],
   [".webp", "image/webp"],
 ]);
@@ -72,8 +74,11 @@ function sendFile(req, res, file, status = 200) {
 }
 
 function resolveAsset(pathname) {
-  if (!pathname.startsWith("/assets/")) return null;
-  const relative = pathname.slice(1).replaceAll("/", path.sep);
+  const publicPath = pathname.startsWith("/life-skills/assets/")
+    ? pathname.slice("/life-skills".length)
+    : pathname;
+  if (!publicPath.startsWith("/assets/")) return null;
+  const relative = publicPath.slice(1).replaceAll("/", path.sep);
   const file = path.resolve(PUBLIC_ROOT, relative);
   if (!file.startsWith(`${ASSETS_ROOT}${path.sep}`)) return null;
   return MIME_TYPES.has(path.extname(file).toLowerCase()) ? file : null;
@@ -81,8 +86,20 @@ function resolveAsset(pathname) {
 
 function handleRequest(req, res) {
   let pathname;
+  let requestUrl;
   try {
-    pathname = decodeURIComponent(new URL(req.url, "http://localhost").pathname).replace(/\/+$/, "") || "/";
+    requestUrl = new URL(req.url, "http://localhost");
+    const rawPathname = decodeURIComponent(requestUrl.pathname);
+    if (rawPathname === "/life-skills") {
+      res.writeHead(308, {
+        ...SECURITY_HEADERS,
+        "Cache-Control": "no-store",
+        Location: `/life-skills/${requestUrl.search}`,
+      });
+      res.end();
+      return;
+    }
+    pathname = rawPathname.replace(/\/+$/, "") || "/";
   } catch {
     sendText(res, 400, "Bad request\n");
     return;
@@ -105,9 +122,9 @@ function handleRequest(req, res) {
     res.end();
     return;
   }
-  if (pathname === "/" || pathname === "/index.html") {
+  if (pathname === "/" || pathname === "/index.html" || pathname === "/life-skills" || pathname === "/life-skills/index.html") {
     if (sendFile(req, res, path.join(PUBLIC_ROOT, "index.html"))) return;
-  } else if (pathname === "/robots.txt") {
+  } else if (pathname === "/robots.txt" || pathname === "/life-skills/robots.txt") {
     if (sendFile(req, res, path.join(PUBLIC_ROOT, "robots.txt"))) return;
   } else {
     const asset = resolveAsset(pathname);

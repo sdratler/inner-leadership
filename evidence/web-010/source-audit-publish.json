@@ -1,0 +1,299 @@
+{
+  "schema_version": 1,
+  "checker_version": "2.2.1",
+  "checked_at": "2026-09-08T16:59:23.861028+00:00",
+  "capture_mode": "connector_export",
+  "phase": "publish",
+  "work_id": "WEB-010",
+  "baseline": "f465161b761452c5d46aefe27671203e6f5784f1",
+  "git_head": "f465161b761452c5d46aefe27671203e6f5784f1",
+  "source_fingerprints": [
+    {
+      "key": "architecture",
+      "id": "1h-bnQ94uxuTrs8BPeDg-1uwZFcQEONdmYccd9Inacgw",
+      "sha256": "a3b5eb6e78a16f303c33c7b4cdc065b75b78c559494c6c5cd7153373c926553f",
+      "version": "2.3"
+    },
+    {
+      "key": "operating",
+      "id": "1q-GDEaL9JmmVfy1meQrGvu3V4H2XNJ4jp2b17ZrP6bE",
+      "sha256": "dea707083a7a600803912e1514c9839d74fb48c5ef81fa870a809a43625ce70f",
+      "version": "2.5"
+    },
+    {
+      "key": "packet",
+      "id": "1NrlYux3I78nO7M9v1fKGl-UCKpkcZrOUtHSoV-BmLOE",
+      "sha256": "cd2a99ef2a51524c9ea6497592fb4b368afb0d8cdbebe3498e9dda3f9a372f07",
+      "version": "1.5"
+    },
+    {
+      "key": "product",
+      "id": "1kJug8ojFwdGgZoPUx8BJt9fLKBjGYvX0wwbtarGTIIg",
+      "sha256": "c07eef71e6f147e208c99c22562950bfcd6362fa9343c7610b6bb9ff2135d926",
+      "version": "2.3"
+    },
+    {
+      "key": "program",
+      "id": "1aR8ONMUW0nlPbVe3jFZ6FKJ1_lPHyYPdVbTRbWB3hhA",
+      "sha256": "9ed39548f6617abcc62551c06f2e8baa49b9ff3d6ac31424e8d0e1b5fc967e14",
+      "version": "2.1"
+    },
+    {
+      "key": "prompts",
+      "id": "1r8fN36liKyXcf9GVG1Cl25Yq9vjaYWD9A0YC1h3jn-E",
+      "sha256": "d7b4d19cee347f55e0edc60bf04e57792923515fa4ae8a3da86763337c7e7299",
+      "version": "2.7"
+    },
+    {
+      "key": "registry",
+      "id": "1XZS-MzUtjc3T488lyrSbtDX0Yq5UCl7Wzh5uN_YOvMg",
+      "sha256": "51417f5054c4b578a95d1e2e5fe2b98b113d1f1a8158d01fd4e16c60e4771141",
+      "version": "2.8"
+    },
+    {
+      "key": "ui",
+      "id": "1KokAca2V-UhCPj1czP28TQ4i5E2Wd1JKJFbuXfmAPu4",
+      "sha256": "62642b350c01ec725ee80ed83911eb6c3b6d4edc9563a7ede97210d0e3401182",
+      "version": "2.1"
+    },
+    {
+      "key": "website",
+      "id": "1jw0shI2DSfUH9RpJc2WdeIqXwO1OYOUEiwuv3mdNngU",
+      "sha256": "fc28fdd5d01e16f0b1c1c9fb8df42b4a068efe0c33fc53b017623fa7db9ee1c1",
+      "version": "2.6"
+    }
+  ],
+  "result": "PASS",
+  "findings": [
+    {
+      "code": "WORK_DEFINITION_UNREVIEWED",
+      "subject": "PRG-020",
+      "severity": "warning"
+    },
+    {
+      "code": "DEPENDENCY_SYNTAX",
+      "subject": "MKT-060",
+      "severity": "warning"
+    },
+    {
+      "code": "WORK_DEFINITION_UNREVIEWED",
+      "subject": "MKT-060",
+      "severity": "warning"
+    },
+    {
+      "code": "INTEGRATION_RUN_RECONSTRUCTED",
+      "subject": "LS-005",
+      "severity": "warning"
+    },
+    {
+      "code": "COMPLETED_INTEGRATION_RUN_MISSING",
+      "subject": "LS-025",
+      "severity": "warning"
+    },
+    {
+      "code": "INTEGRATION_RUN_RECONSTRUCTED",
+      "subject": "SYS-031",
+      "severity": "warning"
+    },
+    {
+      "code": "PRODUCER_INTEGRATION_RECORD_MISSING",
+      "subject": "SYS-031",
+      "severity": "warning"
+    },
+    {
+      "code": "INTEGRATION_RUN_RECONSTRUCTED",
+      "subject": "LS-105",
+      "severity": "warning"
+    },
+    {
+      "code": "PROVIDER_EVIDENCE_HISTORICAL",
+      "subject": "LS-105",
+      "severity": "warning"
+    }
+  ],
+  "control_fingerprints": [
+    {
+      "sheet": "Overview",
+      "start_row": 18,
+      "columns": 3,
+      "sha256": "e1b65fefdab0e520c25ecebf3de200ba8982d3bde780dce3bf85db998c149983"
+    },
+    {
+      "sheet": "Instructions",
+      "start_row": 3,
+      "columns": 8,
+      "sha256": "cfc674354dcdf1ddcbd5008f0c180e1d7265bc85cd9a96599a0b4b3907b80849"
+    }
+  ],
+  "semantic_limit": "Fingerprints/rules do not prove all meaning is consistent; review every approved change.",
+  "scheduler_installed": null,
+  "source_epoch": "SYS036-PREP-20260908-v5 / R-LS025-POSTMERGE-20260907-v1",
+  "admission_channel": "DRIVE_PREPARATION_ONLY",
+  "installation_evidence": "This invocation does not install hosted checks or authorize Git, integration, merge or deployment",
+  "arguments_derived_from_live_row": true,
+  "producer_ids_verified": [],
+  "authorizes_merge_or_deploy": false,
+  "watchdog": {
+    "observed_at": "2026-09-08T16:59:23.880133+00:00",
+    "trigger": "worker-admission-or-closeout",
+    "scheduler_installed": false,
+    "effects": [],
+    "findings": [
+      {
+        "finding_id": "WF-0e5bae5beb0d935a657f",
+        "rule": "WORK_DEFINITION_UNREVIEWED",
+        "subject": "PRG-020",
+        "epoch": "SYS036-PREP-20260908-v5 / R-LS025-POSTMERGE-20260907-v1",
+        "head": "f465161b761452c5d46aefe27671203e6f5784f1",
+        "state": "Open",
+        "severity": "warning",
+        "last_seen": "2026-09-08T16:59:23.880133+00:00",
+        "evidence": "Source audit 2026-09-08T16:59:23.861028+00:00",
+        "next_action": "Resolve within existing owner; preserve source pins and completed outputs.",
+        "first_seen": "2026-09-08T16:59:23.880133+00:00",
+        "update_required": true
+      },
+      {
+        "finding_id": "WF-4650f1fab940077294b9",
+        "rule": "DEPENDENCY_SYNTAX",
+        "subject": "MKT-060",
+        "epoch": "SYS036-PREP-20260908-v5 / R-LS025-POSTMERGE-20260907-v1",
+        "head": "f465161b761452c5d46aefe27671203e6f5784f1",
+        "state": "Open",
+        "severity": "warning",
+        "last_seen": "2026-09-08T16:59:23.880133+00:00",
+        "evidence": "Source audit 2026-09-08T16:59:23.861028+00:00",
+        "next_action": "Resolve within existing owner; preserve source pins and completed outputs.",
+        "first_seen": "2026-09-08T16:59:23.880133+00:00",
+        "update_required": true
+      },
+      {
+        "finding_id": "WF-b64805b200784f73db7b",
+        "rule": "WORK_DEFINITION_UNREVIEWED",
+        "subject": "MKT-060",
+        "epoch": "SYS036-PREP-20260908-v5 / R-LS025-POSTMERGE-20260907-v1",
+        "head": "f465161b761452c5d46aefe27671203e6f5784f1",
+        "state": "Open",
+        "severity": "warning",
+        "last_seen": "2026-09-08T16:59:23.880133+00:00",
+        "evidence": "Source audit 2026-09-08T16:59:23.861028+00:00",
+        "next_action": "Resolve within existing owner; preserve source pins and completed outputs.",
+        "first_seen": "2026-09-08T16:59:23.880133+00:00",
+        "update_required": true
+      },
+      {
+        "finding_id": "WF-ab0b80c7ec118cc854c9",
+        "rule": "INTEGRATION_RUN_RECONSTRUCTED",
+        "subject": "LS-005",
+        "epoch": "SYS036-PREP-20260908-v5 / R-LS025-POSTMERGE-20260907-v1",
+        "head": "f465161b761452c5d46aefe27671203e6f5784f1",
+        "state": "Open",
+        "severity": "warning",
+        "last_seen": "2026-09-08T16:59:23.880133+00:00",
+        "evidence": "Source audit 2026-09-08T16:59:23.861028+00:00",
+        "next_action": "Resolve within existing owner; preserve source pins and completed outputs.",
+        "first_seen": "2026-09-08T16:59:23.880133+00:00",
+        "update_required": true
+      },
+      {
+        "finding_id": "WF-6d4a1a535bf61824e1bc",
+        "rule": "COMPLETED_INTEGRATION_RUN_MISSING",
+        "subject": "LS-025",
+        "epoch": "SYS036-PREP-20260908-v5 / R-LS025-POSTMERGE-20260907-v1",
+        "head": "f465161b761452c5d46aefe27671203e6f5784f1",
+        "state": "Open",
+        "severity": "warning",
+        "last_seen": "2026-09-08T16:59:23.880133+00:00",
+        "evidence": "Source audit 2026-09-08T16:59:23.861028+00:00",
+        "next_action": "Resolve within existing owner; preserve source pins and completed outputs.",
+        "first_seen": "2026-09-08T16:59:23.880133+00:00",
+        "update_required": true
+      },
+      {
+        "finding_id": "WF-cfae7ffd62a58306c183",
+        "rule": "INTEGRATION_RUN_RECONSTRUCTED",
+        "subject": "SYS-031",
+        "epoch": "SYS036-PREP-20260908-v5 / R-LS025-POSTMERGE-20260907-v1",
+        "head": "f465161b761452c5d46aefe27671203e6f5784f1",
+        "state": "Open",
+        "severity": "warning",
+        "last_seen": "2026-09-08T16:59:23.880133+00:00",
+        "evidence": "Source audit 2026-09-08T16:59:23.861028+00:00",
+        "next_action": "Resolve within existing owner; preserve source pins and completed outputs.",
+        "first_seen": "2026-09-08T16:59:23.880133+00:00",
+        "update_required": true
+      },
+      {
+        "finding_id": "WF-15f422086298ff76ddf7",
+        "rule": "PRODUCER_INTEGRATION_RECORD_MISSING",
+        "subject": "SYS-031",
+        "epoch": "SYS036-PREP-20260908-v5 / R-LS025-POSTMERGE-20260907-v1",
+        "head": "f465161b761452c5d46aefe27671203e6f5784f1",
+        "state": "Open",
+        "severity": "warning",
+        "last_seen": "2026-09-08T16:59:23.880133+00:00",
+        "evidence": "Source audit 2026-09-08T16:59:23.861028+00:00",
+        "next_action": "Resolve within existing owner; preserve source pins and completed outputs.",
+        "first_seen": "2026-09-08T16:59:23.880133+00:00",
+        "update_required": true
+      },
+      {
+        "finding_id": "WF-ce77112e2276e4728b81",
+        "rule": "INTEGRATION_RUN_RECONSTRUCTED",
+        "subject": "LS-105",
+        "epoch": "SYS036-PREP-20260908-v5 / R-LS025-POSTMERGE-20260907-v1",
+        "head": "f465161b761452c5d46aefe27671203e6f5784f1",
+        "state": "Open",
+        "severity": "warning",
+        "last_seen": "2026-09-08T16:59:23.880133+00:00",
+        "evidence": "Source audit 2026-09-08T16:59:23.861028+00:00",
+        "next_action": "Resolve within existing owner; preserve source pins and completed outputs.",
+        "first_seen": "2026-09-08T16:59:23.880133+00:00",
+        "update_required": true
+      },
+      {
+        "finding_id": "WF-3eef50a31145a386834f",
+        "rule": "PROVIDER_EVIDENCE_HISTORICAL",
+        "subject": "LS-105",
+        "epoch": "SYS036-PREP-20260908-v5 / R-LS025-POSTMERGE-20260907-v1",
+        "head": "f465161b761452c5d46aefe27671203e6f5784f1",
+        "state": "Open",
+        "severity": "warning",
+        "last_seen": "2026-09-08T16:59:23.880133+00:00",
+        "evidence": "Source audit 2026-09-08T16:59:23.861028+00:00",
+        "next_action": "Resolve within existing owner; preserve source pins and completed outputs.",
+        "first_seen": "2026-09-08T16:59:23.880133+00:00",
+        "update_required": true
+      },
+      {
+        "finding_id": "WF-80e6ca7960fba857d661",
+        "rule": "PROJECT_SETTINGS_UI_NOT_VERIFIED",
+        "subject": "SYS-036",
+        "epoch": "SYS036-PREP-20260908-v5 / R-LS025-POSTMERGE-20260907-v1",
+        "head": "f465161b761452c5d46aefe27671203e6f5784f1",
+        "state": "Open",
+        "severity": "info",
+        "last_seen": "2026-09-08T16:59:23.880133+00:00",
+        "evidence": "Canonical block verified; no connected Project Settings UI read/write proof.",
+        "next_action": "Paste full canonical block once for persistence; do not block explicit bounded preparation restarts.",
+        "first_seen": "2026-09-08T16:59:23.880133+00:00",
+        "update_required": true
+      },
+      {
+        "finding_id": "WF-56163b63027f2df98b36",
+        "rule": "DIRECT_GIT_ACTIVATION_PENDING",
+        "subject": "SYS-034",
+        "epoch": "SYS036-PREP-20260908-v5 / R-LS025-POSTMERGE-20260907-v1",
+        "head": "f465161b761452c5d46aefe27671203e6f5784f1",
+        "state": "Open",
+        "severity": "info",
+        "last_seen": "2026-09-08T16:59:23.880133+00:00",
+        "evidence": "Target approved, protected writer/security/runtime installation separate.",
+        "next_action": "Continue existing SYS034 installer; no duplicate audit and no merge/deploy authorization.",
+        "first_seen": "2026-09-08T16:59:23.880133+00:00",
+        "update_required": true
+      }
+    ],
+    "error_count": 0
+  }
+}

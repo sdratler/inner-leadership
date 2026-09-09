@@ -1,0 +1,1103 @@
+{
+  "schema": "life-skills.website-redesign-copy.v1",
+  "status": "draft_for_preview",
+  "editorial_notes": {
+    "new_phrasing": "PROPOSED for the owner’s review preview. Twelve modules, parent guidance and short approach explanation are grounded in the actual current protocol; no claim of individual copy approval or implementation.",
+    "approved_direction": "Founder placement and the relationship to Bnei Neviim Academy in the footer are owner-directed.",
+    "voice": "Positive, capacity-first, clear, practical and precise. Body copy uses third person; WhatsApp CTAs may use first person.",
+    "display_rules": [
+      "Render one language at a time: Hebrew RTL, English LTR.",
+      "The Hebrew tagline sits beneath the Hebrew brand name. English has no tagline.",
+      "Keep the hero headline to two or three readable lines. The hero body is one short service sentence.",
+      "Show three benefits, twelve illustrated teaching modules in one continuous scroll, one concise parent-guidance bridge, the founder, six FAQs and one closing CTA.",
+      "Render all twelve themes visibly in sequence; the four teaching areas below are source groupings only, never four expandable cards. Internal keys W01–W12 must never be visible page labels.",
+      "Pricing appears only inside the FAQ. Do not create a price card, pricing band or price-focused hero.",
+      "The central-Israel line stays inline with the founder text, with further logistics in the FAQ.",
+      "Founder photo treatment follows the main redesign specification: grass-photo setting with text beside the founder. This file does not define image processing.",
+      "Use the short CTA on buttons. The longer fixed CTA is optional supporting copy, not an additional headline.",
+      "Do not display status, editorial notes, stable keys, approval language or production instructions on the public page.",
+      "Use he/en.teaching.modules in website/redesign-copy.json as the authoritative twelve visible modules, matched by W01–W12. Render a short title, exactly two practical leaf-icon bullets and one labeled everyday Example/לדוגמה. Replace the previous generic paragraph; do not stack it above this new copy. Areas are internal source groupings only. New editorial text is PROPOSED for preview, not already owner-approved.",
+      "Hero has one genuine WhatsApp CTA. Remove the extra Explore the approach/modality CTA; retain normal navigation.",
+      "Use the flyers as the visual reference: alternate warm beige and forest-green surfaces, use the olive brush-underline colour for dividers, and preserve subtle motion with reduced-motion fallback."
+    ],
+    "sources": [
+      "Current owner direction supplied in the task",
+      "Existing website-assets.json: four public areas and twelve stable curriculum themes",
+      "Existing website-scenes.json: complete SODAS sequence and method distinctions",
+      "Existing build_month_copy.py: factual service, founder, central-Israel location and practical parent guidance"
+    ],
+    "boundary": "Copy handoff only; no website implementation or external write.",
+    "layout_revision": "v4.2 owner-directed twelve-module continuous illustrated page",
+    "current_v43": {
+      "revision": "4.3-current-launch-style",
+      "scope": "Existing selected pair hero and footer corrections preserved. Complete concrete HE/EN twelve-module, parent-guidance and approach copy is now proposed for review.",
+      "approval_states": {
+        "he_hero": "owner_approved",
+        "en_hero": "proposed_translation",
+        "parent_heading": "proposed",
+        "closing_cta": "proposed",
+        "module_copy": "PROPOSED_for_preview",
+        "parent_body": "PROPOSED_for_preview",
+        "approach_intro": "PROPOSED_for_preview"
+      },
+      "testimonial": {
+        "instruction": "The user clarified the supplied separate private Life Skills preview: keep its existing woman circular photograph and the existing quote beginning “Medication is no longer relevant…”; change only attribution from “L Bars, 2024” to “LB, 2024”. Do not infer a full name, produce another portrait or rewrite the quote.",
+        "reference_preview": "C:/Users/User/Documents/Codex/2026-09-08/files-mentioned-by-the-user-codex/outputs/life-skills-preview/index.html",
+        "status": "identified_private_preview_reference; actual image/source bytes not bundled; public testimonial consent not established",
+        "integration": "The existing WEB-010 owner must reconcile that parallel private preview with the main existing preview; do not overwrite the academy site or publish the testimonial on this instruction."
+      }
+    },
+    "module_completion_requirement": "Use he/en.teaching.modules in website/redesign-copy.json as the authoritative twelve visible modules, matched by W01–W12. Render a short title, exactly two practical leaf-icon bullets and one labeled everyday Example/לדוגמה. Replace the previous generic paragraph; do not stack it above this new copy. Areas are internal source groupings only. New editorial text is PROPOSED for preview, not already owner-approved.",
+    "latest_footer_correction": {
+      "source": "Latest owner screenshot upload/55734b37-0bff-4e87-8816-29268b94cba9.png; assessed by coordinator",
+      "status": "owner-requested centered presentation; short heading translations proposed for preview",
+      "closing_cta": {
+        "layout": "One centered composition on a shared center axis; no repeated WhatsApp invitation line above the same button.",
+        "heading_he": "לקביעת פגישה",
+        "heading_en": "Arrange an appointment",
+        "heading_status": "proposed_short_copy",
+        "button_he": "לתיאום בוואטסאפ",
+        "button_en": "Message me on WhatsApp",
+        "button_href": "https://wa.me/972534932631",
+        "region_he": "מפגשים במרכז הארץ",
+        "region_en": "Meetings in central Israel",
+        "region_position": "one compact line beneath the real button"
+      },
+      "footer": {
+        "axis": "Centered logo, nonprofit description and contact/navigation; coherent desktop and mobile center axis.",
+        "logo": "Use the actual approved twig plus language lockup as a genuine SVG or transparent PNG, readable at roughly 160–200px wide and capped to mobile available width. Preserve Hebrew tagline; English no tagline.",
+        "nonprofit_copy": "Keep the exact existing Bnei Neviim Academy relationship wording unchanged; max-width 640px and centered.",
+        "contact_navigation": "One centered row for the existing Terms and Privacy links plus telephone 053-493-2631, with clean gaps/separators; wrap naturally on mobile. Use tel:+972534932631 and isolate the phone as LTR within Hebrew. Preserve the actual existing terms/privacy routes; do not invent URLs.",
+        "padding": "32–40px internal padding, responsive side gutters; no detached bare phone number at an outer edge.",
+        "founder_relation": "The full grass group photograph and adjacent biography remain a separate section above this legal footer."
+      },
+      "typography": "Reuse the actual approved logo artwork. Titles and paragraphs remain live HTML styled with the chosen available/licensed web fonts and recorded weights. Match hierarchy, line breaks and padding; do not rasterize every heading or infer an exact font name from the screenshot.",
+      "acceptance": [
+        "Actual HE and EN screenshots at 1440px desktop and 390px mobile, covering closing CTA and complete footer.",
+        "Verify coherent centered axis, readable logo, no duplicate WhatsApp invitation, preserved nonprofit wording, group founder section remains separate.",
+        "Check real WhatsApp and tel links, keyboard focus, mobile wrapping/overflow and LTR phone display inside RTL.",
+        "Check reduced-motion behavior where existing motion applies. Technical test passing alone does not establish visual fit."
+      ]
+    },
+    "module_copy_provenance": {
+      "primary_source": {
+        "title": "Life Skills — 12-Week Child & Parent Home-Practice Protocol — CURRENT",
+        "version": "2.1",
+        "document_id": "1aR8ONMUW0nlPbVe3jFZ6FKJ1_lPHyYPdVbTRbWB3hhA",
+        "url": "https://docs.google.com/document/d/1aR8ONMUW0nlPbVe3jFZ6FKJ1_lPHyYPdVbTRbWB3hhA/edit",
+        "revision_id_read": "ANLCKQkx7ppVVjLbZjNAAm-1PZh93BAXQ7fWn16ygLi5CeVzN36R7kwnNZGU-ueC2X7FyMUzrfnWOXXRK4mJdPQQQuNFqFt97apMrQvzFC8",
+        "read_date_utc": "2026-09-09",
+        "access": "Native Google Docs complete extracted text, including all twelve private-session and parent-practice sections."
+      },
+      "supporting_sources_read": [
+        {
+          "path": "month-kit-build/Life-Skills-Campaign-JSON-Kit/website/redesign-copy.json",
+          "use": "Current sequence and public service framing; approved Hebrew hero preserved outside this patch; existing founder methods confirm the owner uses IFS."
+        },
+        {
+          "path": "month-kit-build/Life-Skills-Campaign-JSON-Kit/website/website-scenes.json",
+          "use": "Existing module-to-artwork mapping and ordinary-life illustration examples. Full twelve SCENE sections inspected separately from repetitive technical prompt text."
+        }
+      ],
+      "translation": "Hebrew and English are new editorial proposals, derived from the actual English protocol. They are not represented as a previously approved translation.",
+      "example_status": "All Example/לדוגמה text is illustrative proposed copy. No example claims a completed session, observed outcome or universal assignment.",
+      "modality_placement": {
+        "W03": "Meaningful ownership and shared responsibility follow the protocol’s autonomy-support/SDT foundation. The public bullet explains this through action rather than adding a theory label.",
+        "W07": "Full SODAS sequence retained: Situation, Options, Disadvantages, Advantages, Solution. This is a structured tool, not a treatment-outcome claim.",
+        "W10": "Brief mindfulness, meditation and body scan are explicit in the protocol. Gentle parts language is also explicit there; its IFS name is supported by the existing owner-directed founder methods copy. It is framed as optional and adapted.",
+        "flow": "No new flow stage or module added. The protocol does not prescribe a dedicated flow exercise in this twelve-item sequence."
+      }
+    },
+    "approach_copy_provenance": {
+      "protocol": {
+        "title": "Life Skills — 12-Week Child & Parent Home-Practice Protocol — CURRENT",
+        "version": "2.1",
+        "document_id": "1aR8ONMUW0nlPbVe3jFZ6FKJ1_lPHyYPdVbTRbWB3hhA",
+        "url": "https://docs.google.com/document/d/1aR8ONMUW0nlPbVe3jFZ6FKJ1_lPHyYPdVbTRbWB3hhA/edit",
+        "revision_id_read": "ANLCKQkx7ppVVjLbZjNAAm-1PZh93BAXQ7fWn16ygLi5CeVzN36R7kwnNZGU-ueC2X7FyMUzrfnWOXXRK4mJdPQQQuNFqFt97apMrQvzFC8",
+        "read_date_utc": "2026-09-09",
+        "access": "Native Google Docs complete extracted text, including all twelve private-session and parent-practice sections."
+      },
+      "owner_request": "Latest coordinator steering requests ordinary experience, learning through mistakes, transparent and slightly scientific language, and a concrete explanation of flow.",
+      "supporting_research_read_by_coordinator": [
+        {
+          "url": "https://arxiv.org/abs/2409.06592",
+          "scope": "Learning progress and subjective engagement/flow; provided as internal support by root, not independently re-audited in this file merge."
+        },
+        {
+          "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7551835/",
+          "scope": "Flow, challenge/skill balance, goals and feedback; provided as internal support by root, not proof of this child programme’s efficacy."
+        }
+      ],
+      "boundary": "This paragraph is an owner-requested editorial proposal. It creates no additional module, guaranteed flow state or clinical-validation claim. Do not imply that the cited studies validated this twelve-session programme."
+    },
+    "current_launch_owner_report": {
+      "source": "Latest owner message in coordinator thread, 2026-09-09",
+      "state": "owner_reports_existing_two_ads_now_launched_via_external_codex",
+      "verification": "Coordinator has not independently verified current delivery, spend, final budget, end time or all placements.",
+      "supersedes": "Row 110 OFF/InDraft is historical and no longer the current owner-reported status.",
+      "next_action": "Audit the same existing ad IDs read-only. Do not recreate, republish, reset budget, restart or pause delivery on this instruction. Report actual settings and any concrete defect before proposing a change.",
+      "authorization": "This record adds no new spending, editing, activation or publication authorization."
+    }
+  },
+  "contact": {
+    "phone_display": "053-493-2631",
+    "phone_raw": "0534932631",
+    "phone_international": "+972534932631",
+    "whatsapp_url": "https://wa.me/972534932631"
+  },
+  "section_order": [
+    "hero",
+    "benefits",
+    "teaching",
+    "parent_guidance",
+    "founder",
+    "faq",
+    "closing_cta",
+    "footer"
+  ],
+  "he": {
+    "language": "עברית",
+    "direction": "rtl",
+    "brand": {
+      "name": "כישורי חיים",
+      "tagline": "לחיים שלמים"
+    },
+    "navigation": [
+      {
+        "target": "teaching",
+        "label": "מה לומדים"
+      },
+      {
+        "target": "founder",
+        "label": "על שלמה"
+      },
+      {
+        "target": "faq",
+        "label": "שאלות נפוצות"
+      }
+    ],
+    "cta": {
+      "button": "לתיאום בוואטסאפ",
+      "supporting_copy": "שלחו לי הודעה בוואטסאפ כדי להתחיל."
+    },
+      "hero": {
+        "headline": "בכל ילד יש גיבור.",
+        "body": "טיפול רגשי לבנים בגילאי 8–12, בשילוב הדרכת הורים מעשית.",
+        "service_title": "טיפול רגשי לבנים",
+        "service_details": [
+          "בגילאי 8–12",
+          "בשילוב הדרכת הורים מעשית."
+        ]
+    },
+    "benefits": {
+      "heading": "יכולות לחיים בבית ובין חברים",
+      "items": [
+        {
+          "id": "self_governance",
+          "title": "הנהגה עצמית",
+            "body": "לעצור, לשקול אפשרויות ולבחור.",
+            "icon_key": "compass"
+        },
+        {
+          "id": "emotional_regulation",
+          "title": "ויסות רגשי",
+            "body": "לזהות רגשות, להקשיב לגוף ולתרגל תגובה.",
+            "icon_key": "head_heart"
+        },
+        {
+          "id": "responsibility",
+          "title": "אחריות מתוך בחירה",
+            "body": "להבין למה התפקיד חשוב, לקחת חלק וללמוד.",
+            "icon_key": "mountain_flag"
+        }
+      ]
+    },
+    "teaching": {
+      "heading": "כישורים לחיים.",
+      "intro": "להכיר את עצמם. לתקשר. לבחור ולקחת אחריות.",
+      "eyebrow": "12 מפגשים אישיים",
+      "intro_support": "בכל מפגש מחברים בין הבנה לתרגול בחיי היום־יום.",
+      "areas": [
+        {
+          "id": "values_vision_responsibility",
+          "title": "ערכים וחזון",
+          "body": "מה חשוב לילד, מי הוא רוצה להיות ואיזה צעד יכול לבטא זאת בחיי היום־יום.",
+          "module_keys": [
+            "W01",
+            "W02",
+            "W03"
+          ],
+          "presentation": "internal_source_grouping_only"
+        },
+        {
+          "id": "communication_relationships",
+          "title": "תקשורת וקשרים",
+          "body": "לבקש בבירור, להקשיב, לשמור על גבול ולהביע אי־הסכמה בכבוד.",
+          "module_keys": [
+            "W04",
+            "W05",
+            "W06"
+          ],
+          "presentation": "internal_source_grouping_only"
+        },
+        {
+          "id": "choices_learning_from_experience",
+          "title": "בחירות ולמידה מהתנסות",
+          "body": "להשוות אפשרויות, להבין השלכות, לבקש עזרה ולנסות שוב עם התאמה.",
+          "module_keys": [
+            "W07",
+            "W08",
+            "W09"
+          ],
+          "presentation": "internal_source_grouping_only"
+        },
+        {
+          "id": "body_awareness_integration",
+          "title": "מודעות לגוף",
+          "body": "לשים לב לתחושות, למתח ולאנרגיה, ולחבר את המידע הזה לבחירת תגובה.",
+          "module_keys": [
+            "W10",
+            "W11",
+            "W12"
+          ],
+          "presentation": "internal_source_grouping_only"
+        }
+      ],
+      "pace_note": "התהליך כולל 12 מפגשים אישיים, בדרך כלל אחת לשבוע. סדר הנושאים והקצב מותאמים לילד; לאחר 12 מפגשים בוחנים יחד את ההמשך.",
+      "example_label": "לדוגמה",
+      "modules": [
+        {
+          "internal_theme_key": "W01",
+          "title": "מה חשוב לי?",
+          "bullets": [
+            {
+              "kind": "learn",
+              "text": "לזהות חוזקות, תחומי עניין ותכונות שהילד מעריך בעצמו ובאנשים שהוא מכבד."
+            },
+            {
+              "kind": "practise",
+              "text": "לבחור עניין או תכונה, להסביר מה מושך בהם ולהבחין בין מה שחשוב לילד לבין מה שמצפים ממנו."
+            }
+          ],
+          "example": "בשיחה על משחק אהוב, לשאול: ״מה אתה אוהב בו?״ ולהקשיב לפני שמציעים תשובה.",
+          "source_sections": [
+            "Week 1 — Values, strengths and interests",
+            "Parent home practice — W01: curiosity before answers"
+          ],
+          "visual_asset_id": "LS-CUR-W01",
+          "copy_status": "PROPOSED_for_preview"
+        },
+        {
+          "internal_theme_key": "W02",
+          "title": "מי אני רוצה להיות?",
+          "bullets": [
+            {
+              "kind": "learn",
+              "text": "לחבר בין חוזקות ותחומי עניין לבין האדם שהילד רוצה להיות כחבר וכבן משפחה."
+            },
+            {
+              "kind": "practise",
+              "text": "לבחור תכונה שחשובה לו ולחשוב על מעשה קטן שיבטא אותה ועל מה יוכלו לסמוך עליו."
+            }
+          ],
+          "example": "ילד שמעריך חברות יכול לבחור להזמין למשחק חבר שנשאר בצד.",
+          "source_sections": [
+            "Week 2 — Identity, purpose and future vision",
+            "Parent home practice — W02: values, contribution and meaningful choice"
+          ],
+          "visual_asset_id": "LS-CUR-W02",
+          "copy_status": "PROPOSED_for_preview"
+        },
+        {
+          "internal_theme_key": "W03",
+          "title": "מרצון לאחריות",
+          "bullets": [
+            {
+              "kind": "learn",
+              "text": "להבין איך מטרה שחשובה לילד הופכת למעשה, ומה האחריות שלו גם כשלא מתחשק לבצע אותו."
+            },
+            {
+              "kind": "practise",
+              "text": "לבחור צעד קטן, להסכים מתי עושים אותו ואיזו עזרה נחוצה; ואם לא עמדו בהסכמה, לתקן ולעדכן את התוכנית."
+            }
+          ],
+          "example": "לבחור יחד חלק בסידור השולחן, להבין למי הוא עוזר ולהסכים מתי ובאיזו תמיכה מבצעים אותו.",
+          "source_sections": [
+            "Week 3 — Goals, next steps and responsibility",
+            "Parent home practice — W03: shared responsibility connected to a value"
+          ],
+          "visual_asset_id": "LS-CUR-W03",
+          "copy_status": "PROPOSED_for_preview"
+        },
+        {
+          "internal_theme_key": "W04",
+          "title": "להגיד מה אני צריך",
+          "bullets": [
+            {
+              "kind": "learn",
+              "text": "לברר מה רוצים שהאחר יבין ומה רוצים שיקרה בעקבות השיחה."
+            },
+            {
+              "kind": "practise",
+              "text": "לנסח בקשה, דעה או שאלה במילים ברורות, ולבחור טון והבעה שעוזרים להעביר את המסר."
+            }
+          ],
+          "example": "כשנתקעים במשימה, לומר: ״אני צריך עזרה בחלק הזה״ ולציין בדיוק מה לא ברור.",
+          "source_sections": [
+            "Week 4 — Purpose, words and expression",
+            "Parent home practice — W04: a clear request"
+          ],
+          "visual_asset_id": "LS-CUR-W04",
+          "copy_status": "PROPOSED_for_preview"
+        },
+        {
+          "internal_theme_key": "W05",
+          "title": "להקשיב ולשמור על גבול",
+          "bullets": [
+            {
+              "kind": "learn",
+              "text": "להבין ששני אנשים יכולים לראות את אותו מצב אחרת, ושאפשר להבין רגש בלי להסכים לכל בקשה."
+            },
+            {
+              "kind": "practise",
+              "text": "לחזור במילים שלנו על מה שהאחר אמר, לבדוק שהבנו ולהביע או לקבל גבול ברור."
+            }
+          ],
+          "example": "לפני שיוצאים מהפארק, ההורה יכול לומר: ״רצית להמשיך לשחק. הבנתי נכון? עכשיו צריך לצאת.״",
+          "source_sections": [
+            "Week 5 — Listening, perspective, validation and boundaries",
+            "Parent home practice — W05: reflect before responding"
+          ],
+          "visual_asset_id": "LS-CUR-W05",
+          "copy_status": "PROPOSED_for_preview"
+        },
+        {
+          "internal_theme_key": "W06",
+          "title": "לא להסכים בכבוד",
+          "bullets": [
+            {
+              "kind": "learn",
+              "text": "להביע דעה שונה בלי לפגוע באדם, ולהבחין בין פשרה לבין ויתור על גבול שחשוב לשמור."
+            },
+            {
+              "kind": "practise",
+              "text": "לתאר מה קרה, לומר מה רוצים ולהציע צעד להמשך; אחרי מריבה, לקחת אחריות על החלק שלנו ולנסות לתקן."
+            }
+          ],
+          "example": "אחרי ויכוח על חוקי משחק, להציע: ״בואו נסכם את הכלל לפני שממשיכים.״",
+          "source_sections": [
+            "Week 6 — Disagreement, compromise and repair",
+            "Parent home practice — W06: disagreement and repair"
+          ],
+          "visual_asset_id": "LS-CUR-W06",
+          "copy_status": "PROPOSED_for_preview"
+        },
+        {
+          "internal_theme_key": "W07",
+          "title": "לחשוב לפני שבוחרים",
+          "bullets": [
+            {
+              "kind": "learn",
+              "text": "להפריד בין מה שידוע לבין מה שמשערים, ולברר מה אפשר לשנות ומה מחוץ לשליטתנו."
+            },
+            {
+              "kind": "practise",
+              "text": "לתרגל פתרון בעיות בעזרת SODAS: לתאר את המצב, להעלות אפשרויות, לבחון חסרונות ויתרונות ולבחור פתרון."
+            }
+          ],
+          "example": "כשמקום המשחק חוסם מעבר, להשוות בין מקומות אחרים ולבחור סידור שמשאיר מקום לעוברים.",
+          "source_sections": [
+            "Week 7 — Define the situation and generate options",
+            "Parent home practice — W07: guided SODAS conversation",
+            "website-scenes.json: LS-CUR-W07"
+          ],
+          "visual_asset_id": "LS-CUR-W07",
+          "copy_status": "PROPOSED_for_preview"
+        },
+        {
+          "internal_theme_key": "W08",
+          "title": "בחירות, תוצאות ולמידה",
+          "bullets": [
+            {
+              "kind": "learn",
+              "text": "להבין את התוצאות הטבעיות של בחירות ולחבר כל תיקון לערך ולמטרה."
+            },
+            {
+              "kind": "practise",
+              "text": "לחזור לדוגמה אמיתית ובטוחה, לברר מה תרם לתוצאה ולבחור דבר אחד לשנות בניסיון הבא."
+            }
+          ],
+          "example": "אם דף ציור עף מהשולחן ברוח, לאסוף אותו ולבדוק איך להחזיק את הדפים בפעם הבאה.",
+          "source_sections": [
+            "Week 8 — Choices, natural consequences and failure data",
+            "Parent home practice — W08: consequences as information",
+            "website-scenes.json: LS-CUR-W08"
+          ],
+          "visual_asset_id": "LS-CUR-W08",
+          "copy_status": "PROPOSED_for_preview"
+        },
+        {
+          "internal_theme_key": "W09",
+          "title": "לבקש עזרה ולנסות שוב",
+          "bullets": [
+            {
+              "kind": "learn",
+              "text": "לזהות תסכול ולברר אם נחוצה הפסקה, עזרה ממוקדת או דרך אחרת להתקדם."
+            },
+            {
+              "kind": "practise",
+              "text": "להצביע על החלק שנתקע, לבקש עזרה שמתאימה לו ולנסות שוב עם שינוי שאפשר לבדוק."
+            }
+          ],
+          "example": "במשחק הרכבה, לבקש עזרה בחיבור אחד ואז לבצע בעצמנו את הצעד הבא.",
+          "source_sections": [
+            "Week 9 — Frustration, help-seeking and intelligent retry",
+            "Parent home practice — W09: help without taking over"
+          ],
+          "visual_asset_id": "LS-CUR-W09",
+          "copy_status": "PROPOSED_for_preview"
+        },
+        {
+          "internal_theme_key": "W10",
+          "title": "להקשיב לגוף ולרגש",
+          "bullets": [
+            {
+              "kind": "learn",
+              "text": "לזהות מתח, עייפות, חום, אי־שקט ודחפים, ולבחון מה הם אומרים לנו לפני שבוחרים כיצד להגיב."
+            },
+            {
+              "kind": "practise",
+              "text": "לתרגל קשיבות ומדיטציה קצרה, ולפי הצורך להיעזר בשפת חלקים (IFS) כדי להבין רצונות שונים שעולים יחד."
+            }
+          ],
+          "example": "אחרי משחק סוער, לשים לב לנשימה ולמתח בגוף ולבחור אם לעצור לרגע, לשתות או לבקש עזרה.",
+          "source_sections": [
+            "Week 10 — Interoception, meditation and body signals",
+            "Parent home practice — W10: notice body cues",
+            "redesign-copy.json: existing owner-directed founder.methods IFS framing"
+          ],
+          "visual_asset_id": "LS-CUR-W10",
+          "copy_status": "PROPOSED_for_preview"
+        },
+        {
+          "internal_theme_key": "W11",
+          "title": "לדאוג לאנרגיה שלי",
+          "bullets": [
+            {
+              "kind": "learn",
+              "text": "לשים לב לקשר בין אוכל, שתייה, שינה ותנועה לבין תחושת האנרגיה והיכולת להתרכז."
+            },
+            {
+              "kind": "practise",
+              "text": "לבחור עם ההורים התאמה קטנה בשגרה, כמו להכין מים, לאכול כשצריך או ליצור מעבר רגוע יותר לשינה."
+            }
+          ],
+          "example": "כשחוזרים ממשחק, לבדוק אם מרגישים צמא, רעב או עייפות ולבחור מענה שמתאים לצורך.",
+          "source_sections": [
+            "Week 11 — Food, energy and practical care",
+            "Parent home practice — W11: practical care and energy"
+          ],
+          "visual_asset_id": "LS-CUR-W11",
+          "copy_status": "PROPOSED_for_preview"
+        },
+        {
+          "internal_theme_key": "W12",
+          "title": "לקחת את הכלים הלאה",
+          "bullets": [
+            {
+              "kind": "learn",
+              "text": "לחבר בין ערכים, תקשורת, בחירה ותחושות הגוף, ולהבחין מתי אפשר להמשיך ומתי צריך מנוחה או עזרה."
+            },
+            {
+              "kind": "practise",
+              "text": "לחזור לדוגמאות מהתהליך, לבחור אחריות אחת ודרך תקשורת אחת להמשך, ולהסכים איזו תמיכה נשארת זמינה."
+            }
+          ],
+          "example": "בשיחת סיכום, לבחור תפקיד בבית ובקשה שרוצים להמשיך לתרגל, ולקבוע מתי בודקים יחד איך הולך.",
+          "source_sections": [
+            "Week 12 — Strength, recovery and integration",
+            "Parent home practice — W12: integration and continuation"
+          ],
+          "visual_asset_id": "LS-CUR-W12",
+          "copy_status": "PROPOSED_for_preview"
+        }
+      ],
+      "render_source": "modules",
+      "areas_role": "internal_source_groupings_only_do_not_render_as_cards",
+      "approach_intro": {
+        "heading": "ללמוד מתוך החיים",
+        "body": "מפתחים מוטיבציה פנימית והנהגה עצמית דרך מטרות שמשמעותיות לילד: לתקשר בבירור, להתמודד עם תסכול ולקחת אחריות בחיי היום־יום.",
+        "principles_intro": "שלושה צרכים בסיסיים לפי תיאוריית ההכוונה העצמית:",
+        "principles": [
+          {
+            "id": "autonomy",
+            "title": "אוטונומיה",
+            "body": "מקום אמיתי לבחירה ולקביעת מטרות."
+          },
+          {
+            "id": "competence",
+            "title": "מסוגלות",
+            "body": "להתנסות, להתקדם ולהרגיש שיש לי יכולת."
+          },
+          {
+            "id": "relatedness",
+            "title": "קשר ושייכות",
+            "body": "להרגיש שמבינים אותי ושיש לי על מי לסמוך."
+          }
+        ],
+        "methods": "הגישה האינטגרטיבית משלבת IFS, CBT, מודעות לגוף ומדיטציית קשיבות המותאמת לילדים. מחברים כל תרגול למטרה ברורה ולמצב אמיתי בחיים.",
+        "practice_lines": [
+          "מחברים כל תיקון לערך ולמטרה.",
+          "לומדים מבחירות ומהתוצאות הטבעיות שלהן.",
+          "הופכים טעויות להזדמנויות ללמידה."
+        ]
+      }
+    },
+    "parent_guidance": {
+      "heading": "הדרכת הורים ותרגול בבית",
+      "body": "בשיחה שבועית של 15 דקות חוזרים לדוגמה מהבית: מה ניסיתם, איך הילד הגיב ומה כדאי להתאים. בוחרים תרגול קטן בשגרה — בקשה ברורה, גבול עם הקשבה או אחריות משותפת — ומבררים איך לעזור בלי לקחת הכול לידיים.",
+      "source_sections": [
+        "Program Method",
+        "Parent guidance integrated throughout the twelve weeks"
+      ],
+      "copy_status": "PROPOSED_for_preview"
+    },
+    "founder": {
+      "eyebrow": "על שלמה",
+      "name": "שלמה דרטלר",
+      "bio": "שלמה מלווה בנים בגילאי 8–12 בעבודה על רגשות, בחירה וקשרים. התהליך מחבר בין מה שחשוב לילד לבין צעדים שאפשר לתרגל, בשיתוף ההורים.",
+      "methods": "עם ההורים מחברים את התרגול לחיים בבית: מגדירים מטרה, מתנסים, בודקים מה עבד ומתאימים את הצעד הבא.",
+      "location_inline": "מפגשים במרכז הארץ, בתיאום אישי."
+    },
+    "faq": {
+      "heading": "שאלות נפוצות",
+      "items": [
+        {
+          "id": "fee",
+          "question": "כמה עולה מפגש?",
+          "answer": "550 ₪ למפגש אישי של 60 דקות. אפשר לשלם מראש על ארבעה מפגשים בסך 2,200 ₪. אין חידוש אוטומטי."
+        },
+        {
+          "id": "included",
+          "question": "מה כלול בתהליך?",
+          "answer": "לצד המפגש עם הילד: שיחת מעקב שבועית בת 15 דקות עם ההורים, תרגול מותאם לבית ומשוב על דוגמאות רלוונטיות שההורים מביאים."
+        },
+        {
+          "id": "pace",
+          "question": "האם התהליך כולל 12 מפגשים?",
+          "answer": "לאחר 12 מפגשים שהתקיימו בפועל, בוחנים יחד את ההמשך. התכנים והקצב מותאמים לילד; זו אינה התחייבות לסיים בתוך 12 שבועות או לשלם מראש עבור כל המפגשים."
+        },
+        {
+          "id": "location",
+          "question": "איפה ומתי נפגשים?",
+          "answer": "המפגשים מתקיימים במרכז הארץ. המקום המדויק והמועדים נקבעים בתיאום אישי."
+        },
+        {
+          "id": "contact",
+          "question": "איך מתחילים?",
+          "answer": "לפרטים ולתיאום שיחה ראשונית אפשר לפנות לשלמה בוואטסאפ: 053-493-2631."
+        },
+        {
+          "id": "individual_service",
+          "question": "למי מיועד השירות, והאם המפגשים אישיים?",
+          "answer": "זהו טיפול רגשי אישי לבנים בגילאי 8–12, בשילוב הדרכת הורים מעשית. העבודה מותאמת לילד ולמשפחה."
+        }
+      ]
+    },
+    "closing_cta": {
+      "heading": "לקביעת פגישה",
+      "body": "",
+      "button": "לתיאום בוואטסאפ",
+      "region_line": "מפגשים במרכז הארץ",
+      "href": "https://wa.me/972534932631",
+      "copy_status": "PROPOSED_for_preview"
+    },
+    "footer": {
+      "relationship": "כישורי חיים הוא מיזם של Bnei Neviim Academy, ארגון ללא כוונת רווח בניו ג׳רזי, הפועל לקידום ההתפתחות הרגשית והחינוכית של ילדים יהודים, עצמאותם וצמיחה מתוך הכוונה עצמית.",
+      "contact_label": "יצירת קשר",
+      "phone_display": "053-493-2631",
+      "phone_href": "tel:+972534932631"
+    },
+    "accessibility": {
+      "language_switch_label": "English",
+      "menu_open_label": "פתיחת תפריט",
+      "menu_close_label": "סגירת תפריט",
+      "skip_to_content": "דילוג לתוכן",
+      "founder_photo_alt": "שלמה דרטלר",
+      "decorative_background_alt": ""
+    }
+  },
+  "en": {
+    "language": "English",
+    "direction": "ltr",
+    "brand": {
+      "name": "Life Skills",
+      "tagline": null
+    },
+    "navigation": [
+      {
+        "target": "teaching",
+        "label": "What children learn"
+      },
+      {
+        "target": "founder",
+        "label": "About Shlomo"
+      },
+      {
+        "target": "faq",
+        "label": "Common questions"
+      }
+    ],
+    "cta": {
+      "button": "Message me on WhatsApp",
+      "supporting_copy": "Message me on WhatsApp to get started."
+    },
+      "hero": {
+        "headline": "There’s a hero in every child.",
+        "body": "Emotional therapy for boys ages 8–12, together with practical parent guidance.",
+        "service_title": "Emotional therapy for boys",
+        "service_details": [
+          "Ages 8–12",
+          "With practical parent guidance."
+        ]
+    },
+    "benefits": {
+      "heading": "Skills for home and friendships",
+      "items": [
+        {
+          "id": "self_governance",
+          "title": "Self-governance",
+            "body": "Pause, consider options and choose.",
+            "icon_key": "compass"
+        },
+        {
+          "id": "emotional_regulation",
+          "title": "Emotional regulation",
+            "body": "Recognize feelings, listen to the body and practise a response.",
+            "icon_key": "head_heart"
+        },
+        {
+          "id": "responsibility",
+          "title": "Responsibility by choice",
+            "body": "Understand why a role matters, take part and learn.",
+            "icon_key": "mountain_flag"
+        }
+      ]
+    },
+    "teaching": {
+      "heading": "Skills for life.",
+      "intro": "Understand themselves. Communicate. Choose and take responsibility.",
+      "eyebrow": "12 individual sessions",
+      "intro_support": "Each session connects understanding with everyday practice.",
+      "areas": [
+        {
+          "id": "values_vision_responsibility",
+          "title": "Values and vision",
+          "body": "What matters to the child, who he wants to become and how to express that in everyday life.",
+          "module_keys": [
+            "W01",
+            "W02",
+            "W03"
+          ],
+          "presentation": "internal_source_grouping_only"
+        },
+        {
+          "id": "communication_relationships",
+          "title": "Communication and relationships",
+          "body": "Making clear requests, listening, maintaining boundaries and disagreeing respectfully.",
+          "module_keys": [
+            "W04",
+            "W05",
+            "W06"
+          ],
+          "presentation": "internal_source_grouping_only"
+        },
+        {
+          "id": "choices_learning_from_experience",
+          "title": "Choices and learning from experience",
+          "body": "Comparing options, understanding consequences, asking for help and adjusting the next attempt.",
+          "module_keys": [
+            "W07",
+            "W08",
+            "W09"
+          ],
+          "presentation": "internal_source_grouping_only"
+        },
+        {
+          "id": "body_awareness_integration",
+          "title": "Body awareness",
+          "body": "Noticing sensations, tension and energy, then using that information to choose a response.",
+          "module_keys": [
+            "W10",
+            "W11",
+            "W12"
+          ],
+          "presentation": "internal_source_grouping_only"
+        }
+      ],
+      "pace_note": "The process includes 12 individual sessions, usually weekly. Topics and pace are adapted to the child, with a shared review after 12 attended sessions.",
+      "example_label": "Example",
+      "modules": [
+        {
+          "internal_theme_key": "W01",
+          "title": "What matters to me?",
+          "bullets": [
+            {
+              "kind": "learn",
+              "text": "Recognize strengths, genuine interests and qualities the child values in himself and people he respects."
+            },
+            {
+              "kind": "practise",
+              "text": "Choose an interest or quality, explain what draws him to it and distinguish what matters to him from what others expect."
+            }
+          ],
+          "example": "When talking about a favourite game, ask, “What do you enjoy about it?” and listen before offering an answer.",
+          "source_sections": [
+            "Week 1 — Values, strengths and interests",
+            "Parent home practice — W01: curiosity before answers"
+          ],
+          "visual_asset_id": "LS-CUR-W01",
+          "copy_status": "PROPOSED_for_preview"
+        },
+        {
+          "internal_theme_key": "W02",
+          "title": "Who do I want to become?",
+          "bullets": [
+            {
+              "kind": "learn",
+              "text": "Connect strengths and interests with the person the child wants to become as a friend and family member."
+            },
+            {
+              "kind": "practise",
+              "text": "Choose a quality that matters to him, identify a small action that expresses it and consider what others could rely on him for."
+            }
+          ],
+          "example": "A child who values friendship might choose to invite someone sitting out to join a game.",
+          "source_sections": [
+            "Week 2 — Identity, purpose and future vision",
+            "Parent home practice — W02: values, contribution and meaningful choice"
+          ],
+          "visual_asset_id": "LS-CUR-W02",
+          "copy_status": "PROPOSED_for_preview"
+        },
+        {
+          "internal_theme_key": "W03",
+          "title": "From intention to responsibility",
+          "bullets": [
+            {
+              "kind": "learn",
+              "text": "Understand how a meaningful goal becomes an action, and what taking responsibility means when the task is not enjoyable."
+            },
+            {
+              "kind": "practise",
+              "text": "Choose a small step, agree when to do it and what help is needed, then repair and revise the plan after a missed commitment."
+            }
+          ],
+          "example": "Choose a part in setting the family table, understand who it helps and agree when and with what support to do it.",
+          "source_sections": [
+            "Week 3 — Goals, next steps and responsibility",
+            "Parent home practice — W03: shared responsibility connected to a value"
+          ],
+          "visual_asset_id": "LS-CUR-W03",
+          "copy_status": "PROPOSED_for_preview"
+        },
+        {
+          "internal_theme_key": "W04",
+          "title": "Saying what I need",
+          "bullets": [
+            {
+              "kind": "learn",
+              "text": "Work out what the other person needs to understand and what the child wants to happen after the conversation."
+            },
+            {
+              "kind": "practise",
+              "text": "Put a request, view or question into clear words, using a tone and expression that help the message get across."
+            }
+          ],
+          "example": "When stuck on a task, say, “I need help with this part,” and show exactly what is unclear.",
+          "source_sections": [
+            "Week 4 — Purpose, words and expression",
+            "Parent home practice — W04: a clear request"
+          ],
+          "visual_asset_id": "LS-CUR-W04",
+          "copy_status": "PROPOSED_for_preview"
+        },
+        {
+          "internal_theme_key": "W05",
+          "title": "Listening and keeping boundaries",
+          "bullets": [
+            {
+              "kind": "learn",
+              "text": "Understand that two people can see the same situation differently, and that acknowledging a feeling does not mean agreeing to every request."
+            },
+            {
+              "kind": "practise",
+              "text": "Reflect the other person’s point in our own words, check we understood and practise expressing or accepting a clear boundary."
+            }
+          ],
+          "example": "Before leaving the park, a parent might say, “You wanted to keep playing. Have I understood? It’s time to leave now.”",
+          "source_sections": [
+            "Week 5 — Listening, perspective, validation and boundaries",
+            "Parent home practice — W05: reflect before responding"
+          ],
+          "visual_asset_id": "LS-CUR-W05",
+          "copy_status": "PROPOSED_for_preview"
+        },
+        {
+          "internal_theme_key": "W06",
+          "title": "Disagreeing respectfully",
+          "bullets": [
+            {
+              "kind": "learn",
+              "text": "Express a different view without attacking the person, and distinguish compromise from giving up a boundary that needs to stay."
+            },
+            {
+              "kind": "practise",
+              "text": "Describe what happened, state a preference and propose a next step; after an argument, own our part and attempt a repair."
+            }
+          ],
+          "example": "After a disagreement about a game, suggest, “Let’s agree on the rule before we carry on.”",
+          "source_sections": [
+            "Week 6 — Disagreement, compromise and repair",
+            "Parent home practice — W06: disagreement and repair"
+          ],
+          "visual_asset_id": "LS-CUR-W06",
+          "copy_status": "PROPOSED_for_preview"
+        },
+        {
+          "internal_theme_key": "W07",
+          "title": "Thinking through a choice",
+          "bullets": [
+            {
+              "kind": "learn",
+              "text": "Separate what is known from what is assumed, and identify what can be changed and what is outside our control."
+            },
+            {
+              "kind": "practise",
+              "text": "Work through SODAS: describe the Situation, suggest Options, compare Disadvantages and Advantages, then choose a Solution."
+            }
+          ],
+          "example": "If a game blocks a walkway, compare other places to play and choose an arrangement that leaves room for people to pass.",
+          "source_sections": [
+            "Week 7 — Define the situation and generate options",
+            "Parent home practice — W07: guided SODAS conversation",
+            "website-scenes.json: LS-CUR-W07"
+          ],
+          "visual_asset_id": "LS-CUR-W07",
+          "copy_status": "PROPOSED_for_preview"
+        },
+        {
+          "internal_theme_key": "W08",
+          "title": "Choices, consequences and learning",
+          "bullets": [
+            {
+              "kind": "learn",
+              "text": "Understand the natural consequences of choices and connect correction to a value and a purpose."
+            },
+            {
+              "kind": "practise",
+              "text": "Review a real, low-risk example, explore what contributed to the result and choose one thing to change next time."
+            }
+          ],
+          "example": "If a drawing blows off the table, collect it and work out how to keep the next sheets in place.",
+          "source_sections": [
+            "Week 8 — Choices, natural consequences and failure data",
+            "Parent home practice — W08: consequences as information",
+            "website-scenes.json: LS-CUR-W08"
+          ],
+          "visual_asset_id": "LS-CUR-W08",
+          "copy_status": "PROPOSED_for_preview"
+        },
+        {
+          "internal_theme_key": "W09",
+          "title": "Asking for help and trying again",
+          "bullets": [
+            {
+              "kind": "learn",
+              "text": "Recognize frustration and work out whether a pause, specific help or a different approach would make the next step manageable."
+            },
+            {
+              "kind": "practise",
+              "text": "Identify the part that is stuck, ask for useful help and try again with a change whose result can be checked."
+            }
+          ],
+          "example": "With a building toy, ask for help with one connection, then complete the next step independently.",
+          "source_sections": [
+            "Week 9 — Frustration, help-seeking and intelligent retry",
+            "Parent home practice — W09: help without taking over"
+          ],
+          "visual_asset_id": "LS-CUR-W09",
+          "copy_status": "PROPOSED_for_preview"
+        },
+        {
+          "internal_theme_key": "W10",
+          "title": "Listening to body and feelings",
+          "bullets": [
+            {
+              "kind": "learn",
+              "text": "Notice tension, tiredness, heat, restlessness and urges, and explore what they tell us before choosing a response."
+            },
+            {
+              "kind": "practise",
+              "text": "Try brief mindfulness and meditation, using gentle IFS parts language when helpful to understand different wishes that arise together."
+            }
+          ],
+          "example": "After an energetic game, notice breathing and tension, then choose whether to pause, drink or ask for help.",
+          "source_sections": [
+            "Week 10 — Interoception, meditation and body signals",
+            "Parent home practice — W10: notice body cues",
+            "redesign-copy.json: existing owner-directed founder.methods IFS framing"
+          ],
+          "visual_asset_id": "LS-CUR-W10",
+          "copy_status": "PROPOSED_for_preview"
+        },
+        {
+          "internal_theme_key": "W11",
+          "title": "Looking after my energy",
+          "bullets": [
+            {
+              "kind": "learn",
+              "text": "Notice how food, water, sleep and movement relate to energy and the ability to concentrate."
+            },
+            {
+              "kind": "practise",
+              "text": "Choose a small routine change with parents, such as preparing water, eating when needed or making the transition to bedtime calmer."
+            }
+          ],
+          "example": "After playing, check whether the body feels thirsty, hungry or tired, then choose a response that fits.",
+          "source_sections": [
+            "Week 11 — Food, energy and practical care",
+            "Parent home practice — W11: practical care and energy"
+          ],
+          "visual_asset_id": "LS-CUR-W11",
+          "copy_status": "PROPOSED_for_preview"
+        },
+        {
+          "internal_theme_key": "W12",
+          "title": "Taking the skills forward",
+          "bullets": [
+            {
+              "kind": "learn",
+              "text": "Connect values, communication, choices and body signals, recognizing when to continue and when rest or help is needed."
+            },
+            {
+              "kind": "practise",
+              "text": "Review examples from the process, choose one responsibility and one communication skill to keep practising, and agree what support remains available."
+            }
+          ],
+          "example": "At the review, choose a home responsibility and a clear request to keep practising, and agree when to check how they are going.",
+          "source_sections": [
+            "Week 12 — Strength, recovery and integration",
+            "Parent home practice — W12: integration and continuation"
+          ],
+          "visual_asset_id": "LS-CUR-W12",
+          "copy_status": "PROPOSED_for_preview"
+        }
+      ],
+      "render_source": "modules",
+      "areas_role": "internal_source_groupings_only_do_not_render_as_cards",
+      "approach_intro": {
+        "heading": "Learning through life",
+        "body": "Build intrinsic motivation and self-governance through goals that matter to the child: communicating clearly, handling frustration and taking responsibility in everyday life.",
+        "principles_intro": "Three basic needs from self-determination theory:",
+        "principles": [
+          {
+            "id": "autonomy",
+            "title": "Autonomy",
+            "body": "A real voice in choices and goals."
+          },
+          {
+            "id": "competence",
+            "title": "Competence",
+            "body": "Practice, progress and a growing sense of ability."
+          },
+          {
+            "id": "relatedness",
+            "title": "Relatedness",
+            "body": "Feeling understood, connected and supported."
+          }
+        ],
+        "methods": "An integrative approach draws on IFS, CBT, body awareness and mindfulness meditation adapted for children. Each practice connects to a clear goal and a real situation.",
+        "practice_lines": [
+          "Correction guided by values and purpose.",
+          "Learning from choices and their natural consequences.",
+          "Mistakes become opportunities to learn."
+        ]
+      }
+    },
+    "parent_guidance": {
+      "heading": "Parent guidance and practice at home",
+      "body": "A weekly 15-minute conversation starts with a real example: what you tried, how your child responded and what needs adjusting. Choose a small everyday practice — a clear request, a boundary with listening or a shared responsibility — and work out how to help without taking over.",
+      "source_sections": [
+        "Program Method",
+        "Parent guidance integrated throughout the twelve weeks"
+      ],
+      "copy_status": "PROPOSED_for_preview"
+    },
+    "founder": {
+      "eyebrow": "About Shlomo",
+      "name": "Shlomo Dratler",
+      "bio": "Shlomo works with boys ages 8–12 on emotions, choices and relationships. With parents involved, the process connects what matters to the child with steps he can practise.",
+      "methods": "Together with parents, we bring the practice into life at home: set a goal, try it, notice what worked and adjust the next step.",
+      "location_inline": "Meetings in central Israel, arranged individually."
+    },
+    "faq": {
+      "heading": "Common questions",
+      "items": [
+        {
+          "id": "fee",
+          "question": "How much does a session cost?",
+          "answer": "₪550 for an individual 60-minute session. Four appointments can be prepaid for ₪2,200. There is no automatic renewal."
+        },
+        {
+          "id": "included",
+          "question": "What is included?",
+          "answer": "Alongside the child’s session: a weekly 15-minute parent check-in, tailored home practice and feedback on relevant examples parents bring."
+        },
+        {
+          "id": "pace",
+          "question": "Does the process include 12 sessions?",
+          "answer": "After 12 attended sessions, we reassess together. Topics and pace are adapted to the child; this does not require finishing within 12 weeks or paying for all sessions in advance."
+        },
+        {
+          "id": "location",
+          "question": "Where and when are the sessions?",
+          "answer": "Sessions take place in central Israel. The exact location and appointment times are arranged individually."
+        },
+        {
+          "id": "contact",
+          "question": "How does a family get started?",
+          "answer": "For details and to arrange an initial conversation, contact Shlomo on WhatsApp: 053-493-2631."
+        },
+        {
+          "id": "individual_service",
+          "question": "Who is the service for, and are sessions individual?",
+          "answer": "The service is individual emotional therapy for boys ages 8–12, together with practical parent guidance. The work is adapted to the child and family."
+        }
+      ]
+    },
+    "closing_cta": {
+      "heading": "Arrange an appointment",
+      "body": "",
+      "button": "Message me on WhatsApp",
+      "region_line": "Meetings in central Israel",
+      "href": "https://wa.me/972534932631",
+      "copy_status": "PROPOSED_for_preview"
+    },
+    "footer": {
+      "relationship": "Life Skills is a project of Bnei Neviim Academy, a New Jersey nonprofit supporting Jewish children’s emotional and educational development, autonomy and self-directed growth.",
+      "contact_label": "Contact",
+      "phone_display": "053-493-2631",
+      "phone_href": "tel:+972534932631"
+    },
+    "accessibility": {
+      "language_switch_label": "עברית",
+      "menu_open_label": "Open menu",
+      "menu_close_label": "Close menu",
+      "skip_to_content": "Skip to content",
+      "founder_photo_alt": "Shlomo Dratler",
+      "decorative_background_alt": ""
+    }
+  }
+}
