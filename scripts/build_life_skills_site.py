@@ -9,7 +9,37 @@ from __future__ import annotations
 import argparse, hashlib, json, re, shutil, subprocess, sys
 from pathlib import Path
 
-ASSETS=('assets/css/site.css','assets/js/config.js','assets/js/site.js')
+VERSIONED_ASSETS=('assets/css/site.css','assets/js/config.js','assets/js/site-react.js')
+PUBLIC_ASSETS=(
+    *VERSIONED_ASSETS,
+    'assets/js/site.js',
+    'assets/fonts/FrankRuhlLibre-wght.ttf',
+    'assets/fonts/Heebo-wght.ttf',
+    'assets/fonts/OFL-Frank-Ruhl-Libre.txt',
+    'assets/fonts/OFL-Heebo.txt',
+    'assets/images/founder-boy-hero-desktop.webp',
+    'assets/images/founder-boy-hero-mobile.webp',
+    'assets/images/founder-grass-group.webp',
+    'assets/images/l-bars-2024.png',
+    'assets/images/meir-bunny.png',
+    'assets/images/bna-logo-nobg.png',
+    'assets/images/v43-approved-twig.png',
+    'assets/images/LS-WEB-04__p03__r01.webp',
+    'assets/images/LS-CUR-W02__p03__r01.webp',
+    'assets/images/LS-CUR-W03__p02__r01.webp',
+    'assets/images/LS-CUR-W04__p03__r01.webp',
+    'assets/images/LS-CUR-W07__p03__r01.webp',
+    'assets/images/LS-CUR-W09__p03__r01.webp',
+    'assets/images/LS-CUR-W10__p03__r01.webp',
+    'assets/images/LS-CUR-W11__p03__r01.webp',
+    'assets/images/LS-WEB-02__p02__r01.webp',
+    'assets/images/LS-WEB-03__p03__r01.webp',
+    'assets/images/LS-AD-A07__p03__r01.webp',
+    'assets/icons/self-governance.svg',
+    'assets/icons/emotional-regulation.svg',
+    'assets/icons/responsibility.svg',
+    'assets/icons/parent-guidance.svg',
+)
 
 def config_result(root: Path) -> dict:
     script = r'''
@@ -35,6 +65,12 @@ def build(root: Path, production: bool=False) -> dict:
         dest.chmod(0o700);shutil.rmtree(dest)
     info=config_result(root)
     problems=list(info['problems'])
+    testimonial_public = (
+        info['config'].get('testimonialConsentOwnerConfirmed') is True
+        and info['config'].get('testimonialConsentReference') == 'LS-LB-CONSENT-20260909-001'
+    )
+    if info['config'].get('privateTestimonialPreview') is True and not testimonial_public:
+        problems.append('PRIVATE_TESTIMONIAL_CONSENT_UNVERIFIED')
     photo=info['photo']
     if photo:
         src=root/photo
@@ -46,22 +82,36 @@ def build(root: Path, production: bool=False) -> dict:
         raise ValueError('PUBLICATION_BLOCKED: '+','.join(problems))
     dest.mkdir(parents=True);disabled.mkdir(parents=True,exist_ok=True)
     if any(disabled.iterdir()):raise ValueError('DISABLED_FUNCTION_DIRECTORY_NOT_EMPTY')
-    for relative in ['index.html',*ASSETS]:
+    for relative in ['index.html',*PUBLIC_ASSETS]:
         src=root/relative
         if not src.is_file() or src.is_symlink() or root not in src.resolve().parents:
             raise ValueError('UNSAFE_OR_MISSING_PUBLIC_SOURCE')
         target=dest/relative;target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(src,target)
-    if photo and not any(x.startswith('APPROVED_PHOTO_') for x in problems):
-        target=dest/photo;target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(root/photo,target)
+    if production:
+        config_path=dest/'assets/js/config.js'
+        public_config=config_path.read_text(encoding='utf-8').replace('reviewPreview: true','reviewPreview: false')
+        if public_config == config_path.read_text(encoding='utf-8'):
+            raise ValueError('PUBLIC_REVIEW_FLAG_NOT_FOUND')
+        config_path.write_text(public_config,encoding='utf-8')
+    if photo and photo not in PUBLIC_ASSETS:
+        raise ValueError('APPROVED_PHOTO_NOT_IN_PUBLIC_ASSET_MANIFEST')
     html=(dest/'index.html').read_text(encoding='utf-8')
     # Bust old year-long immutable legacy caches without introducing a remote asset service.
-    for relative in ASSETS:
+    for relative in VERSIONED_ASSETS:
         digest=hashlib.sha256((dest/relative).read_bytes()).hexdigest()[:12]
         html=re.sub(re.escape(relative)+r'(?:\?v=[a-zA-Z0-9_-]+)?(?=")',relative+'?v='+digest,html)
     if production:
         html=html.replace('content="noindex, nofollow"','content="index, follow"')
+        html=html.replace('יש להפעיל JavaScript כדי לראות את תצוגת האתר. Enable JavaScript to view this website preview.',
+                          'יש להפעיל JavaScript כדי לראות את האתר. Enable JavaScript to view this website.')
     (dest/'index.html').write_text(html,encoding='utf-8')
-    (dest/'404.html').write_text('''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><meta name="referrer" content="no-referrer"><title>Page not found | Life Skills</title><link rel="stylesheet" href="/assets/css/site.css"></head><body><main class="container section"><h1>Page not found</h1><p><a href="/?lang=en">Return to Life Skills</a></p><p lang="he" dir="rtl"><a href="/?lang=he">חזרה לעמוד של Life Skills</a></p></main></body></html>''',encoding='utf-8')
+    (dest/'404.html').write_text('''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><meta name="referrer" content="no-referrer"><title>Page not found | Life Skills</title><link rel="stylesheet" href="assets/css/site.css"></head><body><main class="container section"><h1>Page not found</h1><p><a href="./?lang=en">Return to Life Skills</a></p><p lang="he" dir="rtl"><a href="./?lang=he">חזרה לעמוד של Life Skills</a></p></main></body></html>''',encoding='utf-8')
+    referenced=set()
+    for source in (html,(dest/'assets/js/config.js').read_text(encoding='utf-8')):
+        referenced.update(re.findall(r'assets/[A-Za-z0-9_./-]+\.(?:css|js|jpe?g|png|webp|svg)',source))
+    missing=sorted(relative for relative in referenced if not (dest/relative).is_file())
+    if missing:
+        raise ValueError('REFERENCED_PUBLIC_ASSET_MISSING: '+','.join(missing))
     (dest/'robots.txt').write_text('User-agent: *\n'+('Allow: /\n' if production else 'Disallow: /\n'),encoding='utf-8')
     files=sorted(p.relative_to(dest).as_posix() for p in dest.rglob('*') if p.is_file())
     result={'mode':'production' if production else 'review-preview','files':files,'publication_blockers':problems,

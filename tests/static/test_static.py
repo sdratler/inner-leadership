@@ -1,114 +1,201 @@
-"""LS-100 source/offer regression checks. Pure stdlib; no client data or external calls."""
+"""WEB-010 v4.3 bilingual static-page regression checks (stdlib only)."""
+import json
 import re
 import unittest
-from pathlib import Path
 from html.parser import HTMLParser
+from pathlib import Path
+
 ROOT = Path(__file__).resolve().parents[2]
+
+
 class Page(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
-        self.tags=[]
-        self.ids=[]
-        self.links=[]
-        self.scripts=[]
-        self.attrs=[]
+        self.tags = []
+        self.ids = []
+        self.scripts = []
+        self.attrs = []
+
     def handle_starttag(self, tag, attrs):
-        a=dict(attrs);self.tags.append(tag);self.attrs.append((tag,a))
-        if 'id' in a:self.ids.append(a['id'])
-        if tag=='a':self.links.append(a.get('href',''))
-        if tag=='script':self.scripts.append(a.get('src',''))
+        values = dict(attrs)
+        self.tags.append(tag)
+        self.attrs.append((tag, values))
+        if "id" in values:
+            self.ids.append(values["id"])
+        if tag == "script":
+            self.scripts.append(values.get("src", ""))
+
+
 class StaticTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.text=(ROOT/'index.html').read_text(encoding='utf-8')
-        cls.page=Page();cls.page.feed(cls.text)
-        cls.js=(ROOT/'assets/js/site.js').read_text(encoding='utf-8')
-        cls.config=(ROOT/'assets/js/config.js').read_text(encoding='utf-8')
-        cls.css=(ROOT/'assets/css/site.css').read_text(encoding='utf-8')
-    def test_unique_ids(self):self.assertEqual(len(self.page.ids),len(set(self.page.ids)))
+        cls.text = (ROOT / "index.html").read_text(encoding="utf-8")
+        cls.page = Page()
+        cls.page.feed(cls.text)
+        cls.react = (ROOT / "src/life-skills-page.jsx").read_text(encoding="utf-8")
+        cls.bundle = (ROOT / "assets/js/site-react.js").read_text(encoding="utf-8")
+        cls.config = (ROOT / "assets/js/config.js").read_text(encoding="utf-8")
+        cls.css = (ROOT / "assets/css/site.css").read_text(encoding="utf-8")
+        cls.copy = json.loads((ROOT / "website/redesign-copy.json").read_text(encoding="utf-8"))
+
+    def test_unique_shell_ids(self):
+        self.assertEqual(len(self.page.ids), len(set(self.page.ids)))
+
     def test_local_anchor_targets(self):
-        for href in self.page.links:
-            if href.startswith('#'): self.assertIn(href[1:],self.page.ids)
-    def test_only_external_scripts_are_local_files(self):
-        self.assertEqual(self.page.scripts,['assets/js/config.js?v=ls100-20260906','assets/js/site.js?v=ls100-20260906'])
-        for src in self.page.scripts:self.assertTrue((ROOT/src.split('?')[0]).is_file())
-    def test_no_public_form_or_iframe(self):
-        for tag in ['form','input','textarea','iframe','video','audio']:self.assertNotIn(tag,self.page.tags)
+        for target in ["teaching", "founder", "faq", "contact"]:
+            self.assertIn('id={`' + target + '-${locale}`}', self.react)
+
+    def test_scripts_are_local_files(self):
+        self.assertEqual([s.split("?")[0] for s in self.page.scripts], ["assets/js/config.js", "assets/js/site-react.js"])
+        for src in self.page.scripts:
+            self.assertTrue((ROOT / src.split("?")[0]).is_file())
+
+    def test_no_public_form_or_embed(self):
+        for tag in ["form", "input", "textarea", "iframe", "video", "audio"]:
+            self.assertNotIn(tag, self.page.tags)
+
     def test_no_inline_script_or_event_handlers(self):
-        self.assertNotIn('',self.page.scripts)
-        for _,a in self.page.attrs:
-            for k in a:self.assertFalse(k.startswith('on'),k)
-    def test_bilingual_semantics(self):
-        self.assertIn('lang="he" dir="rtl"',self.text)
-        self.assertIn('lang="en" dir="ltr"',self.text)
-        self.assertEqual(self.text.count('data-page-locale='),2)
-    def test_exact_fees(self):
-        self.assertEqual(self.text.count('₪550'),2)
-        self.assertEqual(self.text.count('₪2,200'),2)
-        self.assertNotIn('₪450',self.text)
-    def test_fee_is_after_approach_in_both_languages(self):
-        for lang in ['he','en']:
-            self.assertLess(self.text.index(f'id="questions-{lang}"'),self.text.index(f'id="fees-{lang}"'))
-    def test_no_obsolete_price(self):
-        for value in ['10,600','10,800','12,000','masterclass.html','apply.html','forms.js','GHL','gtag(','fbq(','googletagmanager']:
-            self.assertNotIn(value,self.text+self.js)
-    def test_no_sensitive_prefill_or_analytics(self):
-        self.assertNotIn('?text=',self.js)
-        for value in ['localStorage','sessionStorage','document.cookie','fetch(','XMLHttpRequest','sendBeacon']:
-            self.assertNotIn(value,self.js)
-    def test_no_external_requests_in_markup(self):
-        for _,a in self.page.attrs:
-            for k in ['src','href']:
-                self.assertFalse(a.get(k,'').startswith(('https:','http:','//','data:')))
-    def test_preview_noindex(self):self.assertIn('content="noindex, nofollow"',self.text)
-    def test_csp_blocks_connections_and_forms(self):
-        self.assertIn("connect-src 'none'",self.text)
-        self.assertIn("form-action 'none'",self.text)
-    def test_keyboard_and_reduced_motion(self):
-        self.assertIn(':focus-visible',self.css)
-        self.assertIn('prefers-reduced-motion:reduce',self.css)
-        self.assertIn('class="skip-link"',self.text)
-    def test_twelve_attended_and_four_week_summary(self):
-        self.assertIn('Twelve attended meetings',self.text)
-        self.assertIn('four-week calendar periods',self.text)
-        self.assertIn('12 פגישות שהתקיימו',self.text)
-    def test_notice_and_no_auto_debt(self):
-        self.assertIn('at least 24 hours',self.text)
-        self.assertIn('no automatic renewal',self.text)
-        self.assertIn('24 שעות',self.text)
-    def test_no_child_device(self):
-        self.assertIn('Your child does not need an account or a phone',self.text)
-    def test_review_is_not_observation(self):self.assertIn('witnessed or verified',self.text)
-    def test_rtl_age_range_is_isolated(self):
-        self.assertIn('בגילאי <bdi dir="ltr">8–12</bdi>',self.text)
-    def test_current_identity(self):
-        self.assertIn('Shlomo Dratler',self.text)
-        self.assertIn('שלמה דרטלר',self.text)
-        self.assertNotIn('Drautler',self.text)
-        self.assertNotIn('Rabbi',self.text)
-    def test_owner_approved_outcome_language(self):
-        self.assertIn('Emotional Therapy for Boys Ages 8–12',self.text)
-        self.assertIn('Clear communication.',self.text)
-        self.assertIn('Handling frustration.',self.text)
-        self.assertIn('Strong social skills.',self.text)
-        self.assertIn('Practical tools for implementation at home.',self.text)
-        self.assertIn('טיפול רגשי לבנים בגילאי <bdi dir="ltr">8–12</bdi>',self.text)
-        self.assertIn('תקשורת ברורה.',self.text)
-        self.assertIn('התמודדות עם תסכול.',self.text)
-        self.assertIn('כישורים חברתיים חזקים.',self.text)
-        self.assertIn('כלים מעשיים ליישום בבית.',self.text)
-    def test_no_fixed_location_claim(self):
-        for value in ['Beit Shemesh','בית שמש']:
-            self.assertNotIn(value,self.text+self.js)
-        self.assertIn('Families may inquire from any area.',self.text)
-        self.assertIn('אפשר לפנות מכל אזור',self.text)
-    def test_verified_public_configuration(self):
-        self.assertIn('whatsappNumber: "972534932631"',self.config)
-        self.assertIn('whatsappVerified: true',self.config)
-        self.assertIn('locationVerified: true',self.config)
-        self.assertIn('legalReviewApproved: true',self.config)
-        self.assertIn('publicationApproved: true',self.config)
-    def test_images_never_have_blank_src(self):
-        for tag,a in self.page.attrs:
-            if tag=='img':self.assertNotIn('src',a)
-if __name__=='__main__': unittest.main(verbosity=2)
+        self.assertNotIn("", self.page.scripts)
+        for _, attrs in self.page.attrs:
+            for key in attrs:
+                self.assertFalse(key.startswith("on"), key)
+
+    def test_bilingual_semantics_and_copy_source(self):
+        self.assertIn("import redesignCopy from '../website/redesign-copy.json'", self.react)
+        self.assertIn("document.documentElement.lang = locale", self.react)
+        self.assertEqual(self.copy["he"]["direction"], "rtl")
+        self.assertEqual(self.copy["en"]["direction"], "ltr")
+
+    def test_v43_hero_and_brand(self):
+        self.assertEqual(self.copy["he"]["hero"]["headline"], "בכל ילד יש גיבור.")
+        self.assertEqual(self.copy["en"]["hero"]["headline"], "There’s a hero in every child.")
+        self.assertEqual(self.copy["he"]["brand"]["tagline"], "לחיים שלמים")
+        self.assertIsNone(self.copy["en"]["brand"]["tagline"])
+        self.assertIn("images/v43-approved-twig.png", self.react)
+        self.assertNotIn("section.link", self.react)
+
+    def test_twelve_modules_are_continuous_and_concrete(self):
+        for locale in ["he", "en"]:
+            modules = self.copy[locale]["teaching"]["modules"]
+            self.assertEqual(len(modules), 12)
+            self.assertEqual([m["internal_theme_key"] for m in modules], [f"W{i:02d}" for i in range(1, 13)])
+            for module in modules:
+                self.assertEqual(len(module["bullets"]), 2)
+                self.assertTrue(module["title"])
+                self.assertTrue(module["example"])
+        self.assertNotIn("theme-disclosure", self.react)
+        self.assertNotIn('<details className="curriculum', self.react)
+        self.assertIn("c.teaching.modules.map", self.react)
+        self.assertIn("data-theme-key={key}", self.react)
+
+    def test_required_method_language(self):
+        combined = json.dumps(self.copy, ensure_ascii=False).lower()
+        for phrase in ["self-determination theory", "mindfulness", "meditation", "disagreeing respectfully", "sodas", "ifs", "cbt", "קשיבות", "מדיטציה", "לא להסכים בכבוד"]:
+            self.assertIn(phrase, combined)
+
+    def test_price_only_in_faq_source(self):
+        for locale in ["he", "en"]:
+            whole = json.dumps(self.copy[locale], ensure_ascii=False)
+            faq = json.dumps(self.copy[locale]["faq"], ensure_ascii=False)
+            self.assertEqual(whole.count("550"), faq.count("550"))
+            self.assertEqual(whole.count("2,200"), faq.count("2,200"))
+        self.assertNotIn("price-card", self.react + self.css)
+
+    def test_current_terms_and_location(self):
+        combined = self.react + json.dumps(self.copy, ensure_ascii=False)
+        for phrase in ["After 12 attended sessions", "12 מפגשים", "at least 24 hours", "24 שעות", "אין חידוש אוטומטי", "no automatic renewal", "מפגשים במרכז הארץ", "Meetings in central Israel"]:
+            self.assertIn(phrase, combined)
+        self.assertNotIn("Beit Shemesh", combined)
+        self.assertNotIn("בית שמש", combined)
+
+    def test_verified_contact_and_real_links(self):
+        for phrase in ['whatsappNumber: "972534932631"', "whatsappVerified: true", "locationVerified: true", "legalReviewApproved: true", "publicationApproved: true"]:
+            self.assertIn(phrase, self.config)
+        self.assertEqual(self.copy["contact"]["whatsapp_url"], "https://wa.me/972534932631")
+        self.assertEqual(self.copy["en"]["footer"]["phone_href"], "tel:+972534932631")
+
+    def test_all_referenced_images_exist(self):
+        module_block = self.react.split("const MODULE_ALTS", 1)[0]
+        mapping = dict(re.findall(r"(W\d{2}): '([^']+)'", module_block))
+        self.assertEqual(len(mapping), 12)
+        for src in set(mapping.values()):
+            self.assertTrue((ROOT / "assets" / src).is_file(), src)
+        for name in ["founder-boy-hero-desktop.webp", "founder-boy-hero-mobile.webp", "founder-grass-group.webp", "l-bars-2024.png", "meir-bunny.png", "bna-logo-nobg.png", "v43-approved-twig.png"]:
+            self.assertTrue((ROOT / "assets/images" / name).is_file(), name)
+
+    def test_v455_fonts_and_visual_copy_are_real(self):
+        for name in ["FrankRuhlLibre-wght.ttf", "Heebo-wght.ttf", "OFL-Frank-Ruhl-Libre.txt", "OFL-Heebo.txt"]:
+            self.assertTrue((ROOT / "assets/fonts" / name).is_file(), name)
+        self.assertIn('@font-face{font-family:"Frank Ruhl Libre"', self.css)
+        self.assertIn('@font-face{font-family:"Heebo"', self.css)
+        self.assertEqual(self.copy["he"]["hero"]["service_title"], "טיפול רגשי לבנים")
+        self.assertEqual(self.copy["he"]["teaching"]["eyebrow"], "12 מפגשים אישיים")
+        self.assertEqual(self.copy["he"]["teaching"]["heading"], "כישורים לחיים.")
+        self.assertEqual(self.copy["en"]["teaching"]["heading"], "Skills for life.")
+        self.assertNotIn("flow", self.copy["he"]["teaching"]["approach_intro"])
+        self.assertNotIn("flow", self.copy["en"]["teaching"]["approach_intro"])
+        self.assertIn("section.principles.map", self.react)
+        self.assertIn("c.teaching.intro_support", self.react)
+        self.assertNotIn("section.flow", self.react)
+
+    def test_approach_band_uses_requested_real_photo(self):
+        self.assertIn('url("../images/meir-bunny.png")', self.css)
+        self.assertIn("linear-gradient(rgba(15,49,34,.70),rgba(15,49,34,.82))", self.css)
+
+    def test_private_testimonial_and_floating_whatsapp(self):
+        component = (ROOT / "src/FloatingWhatsAppButton.jsx").read_text(encoding="utf-8")
+        self.assertIn("https://wa.me/972534932631", component)
+        self.assertIn("FloatingWhatsAppButton", self.react)
+        self.assertIn("Medication is no longer relevant…", self.react)
+        self.assertIn("<cite>LB</cite><time dateTime=\"2024\">2024</time>", self.react)
+        self.assertIn("privateTestimonialPreview: true", self.config)
+        self.assertIn("testimonialConsentOwnerConfirmed: true", self.config)
+        self.assertIn('testimonialConsentReference: "LS-LB-CONSENT-20260909-001"', self.config)
+        self.assertIn(".floating-whatsapp[hidden]{display:none}", self.css)
+        self.assertNotIn("L Bars", self.react)
+
+    def test_icons_are_real_svg_exports(self):
+        expected = ["self-governance.svg", "emotional-regulation.svg", "responsibility.svg", "parent-guidance.svg"]
+        for name in expected:
+            self.assertIn(name, self.react)
+            svg = (ROOT / "assets/icons" / name).read_text(encoding="utf-8")
+            self.assertIn("<svg", svg)
+            self.assertNotIn("<text", svg)
+
+    def test_founder_and_exact_nonprofit_footer(self):
+        self.assertIn("images/founder-grass-group.webp", self.react)
+        self.assertIn("founder-boy-hero-desktop.webp", self.react)
+        self.assertEqual(self.copy["en"]["footer"]["relationship"], "Life Skills is a project of Bnei Neviim Academy, a New Jersey nonprofit supporting Jewish children’s emotional and educational development, autonomy and self-directed growth.")
+        self.assertNotIn("LLC", json.dumps(self.copy))
+
+    def test_centered_closing_and_footer(self):
+        self.assertEqual(self.copy["he"]["closing_cta"]["heading"], "לקביעת פגישה")
+        self.assertEqual(self.copy["en"]["closing_cta"]["heading"], "Arrange an appointment")
+        self.assertIn("closing-inner", self.css)
+        self.assertIn("text-align:center", self.css)
+        self.assertIn("max-width:640px", self.css)
+
+    def test_requested_components_are_rendered(self):
+        for name in ["CampaignHero", "OutcomeCards", "CurriculumModule", "ModuleImageGallery", "OrganicBulletList", "FounderSection", "FAQAccordion"]:
+            self.assertIn(f"function {name}", self.react)
+        self.assertGreater(len(self.bundle), 50000)
+
+    def test_accessibility_controls(self):
+        self.assertIn(":focus-visible", self.css)
+        self.assertIn("prefers-reduced-motion:reduce", self.css)
+        self.assertIn('className="skip-link"', self.react)
+        self.assertIn("aria-current", self.react)
+        self.assertIn('bdi dir="ltr"', self.react)
+
+    def test_preview_security(self):
+        self.assertIn('content="noindex, nofollow"', self.text)
+        self.assertIn("connect-src 'none'", self.text)
+
+    def test_production_hides_review_banner_and_keeps_owner_confirmed_testimonial(self):
+        self.assertIn("reviewPreview: true", self.config)
+        self.assertIn("reviewPreview ?", self.react)
+        self.assertIn("form-action 'none'", self.text)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

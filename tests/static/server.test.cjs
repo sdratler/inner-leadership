@@ -15,20 +15,54 @@ test.before(async () => {
 });
 test.after(async () => new Promise((resolve) => server.close(resolve)));
 
-test("serves the production page with hardened headers", async () => {
+test("serves the current build with hardened headers and matching robots mode", async () => {
   const response = await fetch(`${origin}/?lang=en`);
   const body = await response.text();
   assert.equal(response.status, 200);
-  assert.match(body, /content="index, follow"/);
-  assert.match(body, /Shlomo Dratler/);
+  const configResponse = await fetch(`${origin}/assets/js/config.js`);
+  const config = await configResponse.text();
+  if (/reviewPreview: false/.test(config)) assert.match(body, /content="index, follow"/);
+  else assert.match(body, /content="noindex, nofollow"/);
+  assert.match(body, /id="life-skills-root"/);
+  assert.match(body, /assets\/js\/site-react\.js/);
   assert.equal(response.headers.get("x-frame-options"), "DENY");
   assert.match(response.headers.get("content-security-policy"), /form-action 'none'/);
+
+  const app = await fetch(`${origin}/assets/js/site-react.js`);
+  assert.equal(app.status, 200);
+  assert.match(await app.text(), /Shlomo Dratler/);
 });
 
 test("serves the verified public contact configuration", async () => {
   const response = await fetch(`${origin}/assets/js/config.js`);
   assert.equal(response.status, 200);
   assert.match(await response.text(), /whatsappNumber: "972534932631"/);
+});
+
+test("serves the selected life-skills subpath and preserves language queries", async () => {
+  const redirect = await fetch(`${origin}/life-skills?lang=he`, { redirect: "manual" });
+  assert.equal(redirect.status, 308);
+  assert.equal(redirect.headers.get("location"), "/life-skills/?lang=he");
+
+  const page = await fetch(`${origin}/life-skills/?lang=en`);
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /id="life-skills-root"/);
+
+  const app = await fetch(`${origin}/life-skills/assets/js/site-react.js`);
+  assert.equal(app.status, 200);
+  assert.match(await app.text(), /Meetings in central Israel/);
+
+  const css = await fetch(`${origin}/life-skills/assets/css/site.css`);
+  assert.equal(css.status, 200);
+  assert.match(css.headers.get("content-type"), /text\/css/);
+
+  const image = await fetch(`${origin}/life-skills/assets/images/founder-boy-hero-desktop.webp`);
+  assert.equal(image.status, 200);
+  assert.match(image.headers.get("content-type"), /image\/webp/);
+
+  const font = await fetch(`${origin}/life-skills/assets/fonts/FrankRuhlLibre-wght.ttf`);
+  assert.equal(font.status, 200);
+  assert.match(font.headers.get("content-type"), /font\/ttf/);
 });
 
 for (const [route, target] of [
