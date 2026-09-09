@@ -102,6 +102,8 @@ def build(root: Path, production: bool=False) -> dict:
         html=re.sub(re.escape(relative)+r'(?:\?v=[a-zA-Z0-9_-]+)?(?=")',relative+'?v='+digest,html)
     if production:
         html=html.replace('content="noindex, nofollow"','content="index, follow"')
+        html=html.replace('יש להפעיל JavaScript כדי לראות את תצוגת האתר. Enable JavaScript to view this website preview.',
+                          'יש להפעיל JavaScript כדי לראות את האתר. Enable JavaScript to view this website.')
     (dest/'index.html').write_text(html,encoding='utf-8')
     (dest/'404.html').write_text('''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><meta name="referrer" content="no-referrer"><title>Page not found | Life Skills</title><link rel="stylesheet" href="assets/css/site.css"></head><body><main class="container section"><h1>Page not found</h1><p><a href="./?lang=en">Return to Life Skills</a></p><p lang="he" dir="rtl"><a href="./?lang=he">חזרה לעמוד של Life Skills</a></p></main></body></html>''',encoding='utf-8')
     referenced=set()
