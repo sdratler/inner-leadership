@@ -253,15 +253,16 @@ export function CampaignHero({section, benefits, locale, contact, meta}) {
         <h1 id={`hero-${locale}`}>{lines.map(line => <span key={line}>{line}</span>)}</h1>
         <span className="hero-divider" aria-hidden="true"/>
         <h2 className="hero-service-title">{section.service_title}</h2>
-        <div className="hero-service-details">{section.service_details.map((line, index) => <p key={line}>
-          {index === 0 ? <>{locale === 'he' ? 'בגילאי ' : 'Ages '}<bdi dir="ltr">8–12</bdi></> : line}
-        </p>)}</div>
+        <div className="hero-service-details"><p className="hero-age">{locale === 'he' ? 'בגילאי ' : 'Ages '}<bdi dir="ltr">8–12</bdi></p>
+          <p className="hero-support-desktop">{section.service_details[1]}</p>
+        </div>
       </div>
       <figure className="hero-photo">
         <picture>
           <source media="(max-width: 760px)" srcSet={ASSETS + 'images/founder-boy-hero-mobile.webp'}/>
           <img src={ASSETS + 'images/founder-boy-hero-desktop.webp'} alt={meta.heroAlt} width="2400" height="1600"/>
         </picture>
+        <figcaption className="hero-photo-support">{section.service_details[1]}</figcaption>
       </figure>
       <div className="hero-action">
         <a className="button button-light" href={contact} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">{redesignCopy[locale].cta.button}</a>

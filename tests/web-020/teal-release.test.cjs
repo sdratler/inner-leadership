@@ -22,13 +22,14 @@ test('approved Hebrew leaf master is unchanged and its derivative appears in bot
 
 test('locked colors, mobile geometry, and type sources remain explicit', () => {
   for (const value of ['#245159', '#163F48', '#FBF7EF', '#E6D0A4']) assert.match(css, new RegExp(value, 'i'));
-  for (const value of ['FrankRuhlLibre-wght.ttf', 'Heebo-wght.ttf', 'font-size:64px', 'line-height:66px', 'min-height:98px', 'width:170px']) assert.match(css, new RegExp(value.replace(/[.]/g, '\\.'), 'i'));
+  for (const value of ['FrankRuhlLibre-wght.ttf', 'Heebo-wght.ttf', 'font-size:54px', 'line-height:56px', 'min-height:98px', 'width:170px']) assert.match(css, new RegExp(value.replace(/[.]/g, '\\.'), 'i'));
   assert.doesNotMatch(css, /#153E2C/i);
 });
 
 test('hero and About copy match the owner-approved release copy', () => {
   assert.deepEqual(copy.he.hero.service_details, ['בגילאי 8–12', 'מפגשים אישיים והדרכת הורים מעשית.']);
-  assert.equal(copy.he.cta.button, 'לתיאום פגישה בוואטסאפ');
+  assert.equal(copy.he.cta.button, 'לפרטים בוואטסאפ');
+  assert.equal(copy.en.cta.button, 'Find out more on WhatsApp');
   assert.equal(copy.he.founder.name, 'על שלמה דרטלר');
   assert.equal(copy.en.founder.name, 'About Shlomo Dratler');
   assert.equal(copy.he.founder.paragraphs.length, 3);
