@@ -171,6 +171,7 @@ class StaticTests(unittest.TestCase):
     def test_mobile_menu_and_real_ctas(self):
         self.assertIn('aria-expanded={menuOpen}', self.react)
         self.assertIn('aria-controls="mobile-menu"', self.react)
+        self.assertIn('className="mobile-language-direct"', self.react)
         self.assertIn("event.key === 'Escape'", self.react)
         self.assertIn("https://wa.me/972534932631", self.copy["contact"]["whatsapp_url"])
         self.assertEqual(self.copy["he"]["cta"]["button"], "לפרטים בוואטסאפ")

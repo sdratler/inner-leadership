@@ -395,6 +395,7 @@ function Header({c, locale, meta, contact, reviewPreview}) {
     <header className="site-header">
       <div className="container header-inner">
         <a className="brand" href={`?lang=${locale}`} aria-label={c.brand.name}><BrandLockup brand={c.brand} locale={locale} compact/></a>
+        <a className="mobile-language-direct" href={`?lang=${locale === 'he' ? 'en' : 'he'}`} lang={locale === 'he' ? 'en' : 'he'} aria-label={locale === 'he' ? 'Switch to English' : 'מעבר לעברית'}>{locale === 'he' ? 'EN' : 'HE'}</a>
         <nav className="desktop-nav" aria-label={meta.navLabel}>{c.navigation.map(item => <a key={item.target} href={`#${item.target}-${locale}`}>{item.label}</a>)}</nav>
         <div className="header-actions">
           <div className="language-switch" role="group" aria-label="שפה / Language">

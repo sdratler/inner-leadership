@@ -30,6 +30,7 @@ test('hero and About copy match the owner-approved release copy', () => {
   assert.deepEqual(copy.he.hero.service_details, ['בגילאי 8–12', 'מפגשים אישיים והדרכת הורים מעשית.']);
   assert.equal(copy.he.cta.button, 'לפרטים בוואטסאפ');
   assert.equal(copy.en.cta.button, 'Find out more on WhatsApp');
+  assert.match(source, /className="mobile-language-direct"/);
   assert.equal(copy.he.founder.name, 'על שלמה דרטלר');
   assert.equal(copy.en.founder.name, 'About Shlomo Dratler');
   assert.equal(copy.he.founder.paragraphs.length, 3);
