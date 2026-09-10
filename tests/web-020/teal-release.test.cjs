@@ -11,10 +11,12 @@ const source = read('src/life-skills-page.jsx');
 const css = read('assets/css/site.css');
 const bundle = read('assets/js/site-react.js');
 
-test('approved Hebrew leaf master is unchanged and its derivative is the only Hebrew lockup', () => {
+test('approved Hebrew leaf master is unchanged and its derivative appears in both language lockups', () => {
   const master = fs.readFileSync(path.join(root, 'assets/images/LS_LOGO_HE_LEAF_APPROVED_20260910.png'));
   assert.equal(crypto.createHash('sha256').update(master).digest('hex'), 'a95609b2ce76f5062be6619e5131430f11b99d7579148affebb2b545f66cc07c');
   assert.match(source, /LS_LOGO_HE_LEAF_APPROVED_20260910-transparent\.png/);
+  assert.match(source, /className="brand-hebrew-logo"/);
+  assert.match(source, /<strong>\{brand\.name\}<\/strong>/);
   assert.doesNotMatch(source, /v43-approved-twig\.png/);
 });
 
@@ -31,6 +33,15 @@ test('hero and About copy match the owner-approved release copy', () => {
   assert.equal(copy.en.founder.name, 'About Shlomo Dratler');
   assert.equal(copy.he.founder.paragraphs.length, 3);
   assert.equal(copy.en.founder.paragraphs.length, 3);
+});
+
+test('testimonial precedes founder and pricing uses the owner-approved monthly wording', () => {
+  const appMarkup = source.slice(source.indexOf('return <><Header'));
+  assert.ok(appMarkup.indexOf('<PrivateTestimonial') < appMarkup.indexOf('<FounderSection'));
+  assert.equal(copy.he.faq.items.find(item => item.id === 'fee').answer, '2,200 ₪ לארבעה מפגשים בחודש.');
+  assert.equal(copy.en.faq.items.find(item => item.id === 'fee').answer, '₪2,200 for four sessions a month.');
+  assert.doesNotMatch(copy.he.faq.items.find(item => item.id === 'fee').answer, /550|60/);
+  assert.doesNotMatch(copy.en.faq.items.find(item => item.id === 'fee').answer, /550|60/);
 });
 
 test('the twelve-session carousel is ordered, manual, keyboard-aware, and reduced-motion safe', () => {

@@ -115,7 +115,7 @@ function BrandLockup({brand, locale, compact = false}) {
     </span>;
   }
   return <span className={`brand-lockup brand-lockup-en ${compact ? 'brand-lockup-compact' : ''}`}>
-    <span className="english-leaf" aria-hidden="true"/>
+    <img className="brand-hebrew-logo" src={ASSETS + 'images/LS_LOGO_HE_LEAF_APPROVED_20260910-transparent.png'} alt="" aria-hidden="true"/>
     <span className="brand-words"><strong>{brand.name}</strong></span>
   </span>;
 }
@@ -466,10 +466,10 @@ function App() {
       </div>
     </section>
     <ParentGuidance section={c.parent_guidance} meta={meta}/>
+    <PrivateTestimonial locale={locale}/>
     <FounderSection section={c.founder} locale={locale} meta={meta}/>
     <FAQAccordion section={c.faq} locale={locale} meta={meta}/>
     <ClosingCTA section={c.closing_cta} locale={locale} meta={meta} contact={contact}/>
-    <PrivateTestimonial locale={locale}/>
   </main><Footer c={c} locale={locale} meta={meta}/><FloatingWhatsAppButton locale={locale} corner="left"/></>;
 }
 
