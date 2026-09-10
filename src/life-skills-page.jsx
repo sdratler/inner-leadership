@@ -68,7 +68,7 @@ const META = {
     description: 'טיפול רגשי לבנים בגילאי 8–12, בשילוב הדרכת הורים מעשית.',
     preview: 'תצוגה לבדיקת האתר — לא אתר שפורסם.',
     benefitsLabel: 'מה הילד מפתח',
-    approachLabel: 'דרך העבודה',
+    approachLabel: 'הגישה של כישורי חיים',
     teachingLabel: 'מה לומדים',
     paceLabel: 'הקצב מותאם לילד',
     parentLabel: 'להורים',
@@ -86,7 +86,7 @@ const META = {
     description: 'Emotional therapy for boys ages 8–12, together with practical parent guidance.',
     preview: 'Website review preview — not a published service page.',
     benefitsLabel: 'What a child develops',
-    approachLabel: 'The approach',
+    approachLabel: 'The Life Skills approach',
     teachingLabel: 'What children learn',
     paceLabel: 'Pace adapts to the child',
     parentLabel: 'For parents',
@@ -122,6 +122,19 @@ function BrandLockup({brand, locale, compact = false}) {
 
 function Reveal({children, className = ''}) {
   return <div className={`reveal ${className}`.trim()}>{children}</div>;
+}
+
+function LineIcon({kind}) {
+  const paths = {
+    autonomy: <><path d="M5 19c4-1 7-4 8-8 3 1 5 4 5 8"/><path d="M7 8c2-3 5-4 8-3-1 3-3 6-7 7"/></>,
+    competence: <><path d="M4 19 10 5l3 7 3-3 4 10"/><path d="m8 10 2 2 2-2"/></>,
+    relatedness: <><path d="M8 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M16 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M3 20c.7-4 2.4-6 5-6s4.3 2 5 6"/><path d="M12 15c1-.7 2.3-1 4-1 2.6 0 4.3 2 5 6"/></>,
+  };
+  return <svg className="line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[kind]}</svg>;
+}
+
+function WhatsAppGlyph() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M13.601 2.326A7.85 7.85 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.9 7.9 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.9 7.9 0 0 0 13.6 2.326zM7.994 14.521a6.6 6.6 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.56 6.56 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592m3.615-4.934c-.197-.099-1.17-.578-1.353-.646-.182-.065-.315-.099-.445.099-.133.197-.513.646-.627.775-.114.133-.232.148-.43.05-.197-.1-.836-.308-1.592-.985-.59-.525-.985-1.175-1.103-1.372-.114-.198-.011-.304.088-.403.087-.088.197-.232.296-.346.1-.114.133-.198.198-.33.065-.134.034-.248-.015-.347-.05-.099-.445-1.076-.612-1.47-.16-.389-.323-.335-.445-.34-.114-.007-.247-.007-.38-.007a.73.73 0 0 0-.529.247c-.182.198-.691.677-.691 1.654s.71 1.916.81 2.049c.098.133 1.394 2.132 3.383 2.992.47.205.84.326 1.129.418.475.152.904.129 1.246.08.38-.058 1.171-.48 1.338-.943.164-.464.164-.86.114-.943-.049-.084-.182-.133-.38-.232"/></svg>;
 }
 
 export function OrganicBulletList({items}) {
@@ -278,19 +291,31 @@ export function OutcomeCards({section, meta}) {
 
 function ApproachIntro({section, meta, locale}) {
   return <section id={`approach-${locale}`} className="approach-band" aria-labelledby={`approach-title-${locale}`}>
-    <div className="container approach-layout">
-      <div>
+    <div className="container approach-frame">
+      <div className="approach-heading">
         <p className="eyebrow">{meta.approachLabel}</p>
         <h2 id={`approach-title-${locale}`}>{section.heading}</h2>
-      </div>
-      <div className="approach-copy">
         <p className="approach-lede">{section.body}</p>
-        <p className="principles-intro">{section.principles_intro}</p>
+      </div>
+      <div className="approach-block approach-motivation">
+        <div className="approach-block-heading"><span className="approach-index">01</span><div><h3>{section.feature.motivation_heading}</h3><p>{section.principles_intro}</p></div></div>
         <dl className="principle-grid">{section.principles.map(principle => <div key={principle.id}>
-          <dt>{principle.title}</dt><dd>{principle.body}</dd>
+          <LineIcon kind={principle.id}/><dt>{principle.title}</dt><dd>{principle.body}</dd>
         </div>)}</dl>
+      </div>
+      <div className="approach-split">
+        <article className="approach-block approach-governance">
+          <div className="approach-block-heading"><span className="approach-index">02</span><div><h3>{section.feature.governance_heading}</h3><p>{section.feature.governance_body}</p></div></div>
+          <ol className="sodas-path">{section.feature.sodas_steps.map(step => <li key={step}><span>{step}</span></li>)}</ol>
+        </article>
+        <article className="approach-block approach-frustration">
+          <div className="approach-block-heading"><span className="approach-index">03</span><div><h3>{section.feature.frustration_heading}</h3><p>{section.feature.frustration_body}</p></div></div>
+          <ol className="frustration-path">{section.feature.frustration_steps.map(step => <li key={step}>{step}</li>)}</ol>
+        </article>
+      </div>
+      <div className="approach-footer-copy">
         <p className="approach-methods">{section.methods}</p>
-        <ul className="practice-lines">{section.practice_lines.map(line => <li key={line}>{line}</li>)}</ul>
+        <ul className="practice-lines">{section.practice_lines.map((line, index) => <li key={line} className={index === 0 ? 'values-purpose' : ''}>{line}</li>)}</ul>
       </div>
     </div>
   </section>;
@@ -307,16 +332,17 @@ function ParentGuidance({section, meta}) {
 
 export function FounderSection({section, locale, meta}) {
   return <section id={`founder-${locale}`} className="founder" aria-labelledby={`founder-title-${locale}`}>
-    <figure className="founder-photo" aria-hidden="true">
-      <img src={ASSETS + 'images/founder-grass-group.webp'} alt="" width="1600" height="1068" loading="lazy"/>
-    </figure>
-    <div className="founder-overlay" aria-hidden="true"/>
     <div className="container founder-layout">
+      <figure className="founder-photo">
+        <img src={ASSETS + 'images/founder-grass-group.webp'} alt={meta.founderAlt} width="1600" height="1068" loading="lazy"/>
+      </figure>
       <div className="founder-copy">
         <p className="eyebrow">{section.eyebrow}</p>
         <span className="founder-divider" aria-hidden="true"/>
         <h2 id={`founder-title-${locale}`}>{section.name}</h2>
-        <div className="founder-paragraphs">{section.paragraphs.map(paragraph => <p key={paragraph}>{paragraph}</p>)}</div>
+        <p className="founder-intro">{section.intro}</p>
+        <ul className="founder-capabilities">{section.capabilities.map(item => <li key={item}><span aria-hidden="true"/>{item}</li>)}</ul>
+        <p className="founder-summary">{section.summary}</p>
       </div>
     </div>
   </section>;
@@ -340,7 +366,7 @@ export function PrivateTestimonial({locale}) {
 export function FAQAccordion({section, locale, meta}) {
   const items = [...section.items, {id: 'terms_privacy', question: meta.terms[0], answer: meta.terms[1]}];
   return <section id={`faq-${locale}`} className="section faq container" aria-labelledby={`faq-title-${locale}`}>
-    <div className="section-heading"><p className="eyebrow">{meta.faqLabel}</p><h2 id={`faq-title-${locale}`}>{section.heading}</h2></div>
+    <div className="section-heading centered"><p className="eyebrow">{meta.faqLabel}</p><h2 id={`faq-title-${locale}`}>{section.heading}</h2></div>
     <div className="faq-list">{items.map((item, index) =>
       <details key={item.id} id={item.id === 'terms_privacy' ? `terms-${locale}` : undefined} className={index === items.length - 1 ? 'terms-disclosure' : ''}>
         <summary>{item.question}</summary><p>{item.answer}</p>
@@ -406,18 +432,20 @@ function ClosingCTA({section, locale, meta, contact}) {
   </section>;
 }
 
-function Footer({c, locale, meta}) {
+function Footer({c, locale, meta, contact}) {
   return <footer className="page-footer">
     <div className="container footer-inner">
       <BrandLockup brand={c.brand} locale={locale}/>
+      <div className="footer-contact" aria-label={c.footer.contact_label}>
+        <a className="footer-whatsapp" href={contact} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer" aria-label={locale === 'he' ? 'יצירת קשר בוואטסאפ' : 'Contact on WhatsApp'}><WhatsAppGlyph/></a>
+        <a className="footer-phone" href={c.footer.phone_href}><bdi dir="ltr">{c.footer.phone_display}</bdi></a>
+      </div>
       <p className="footer-relationship">{c.footer.relationship}</p>
       <a className="bna-footer-link" href="https://bneineviimacademy.org/" target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer" aria-label="Bnei Neviim Academy">
         <img src={ASSETS + 'images/bna-logo-nobg.png'} alt="" width="120" height="32" loading="lazy"/>
       </a>
       <nav aria-label={locale === 'he' ? 'מידע נוסף' : 'More information'}>
-        <a href={`#terms-${locale}`}>{meta.termsLink}</a><span aria-hidden="true">·</span>
-        <a href={`#terms-${locale}`}>{meta.privacyLink}</a><span aria-hidden="true">·</span>
-        <a href={c.footer.phone_href}><bdi dir="ltr">{c.footer.phone_display}</bdi></a>
+        <a href={`#terms-${locale}`}>{meta.termsLink}</a><span aria-hidden="true">·</span><a href={`#terms-${locale}`}>{meta.privacyLink}</a>
       </nav>
     </div>
   </footer>;
@@ -470,7 +498,7 @@ function App() {
     <FounderSection section={c.founder} locale={locale} meta={meta}/>
     <FAQAccordion section={c.faq} locale={locale} meta={meta}/>
     <ClosingCTA section={c.closing_cta} locale={locale} meta={meta} contact={contact}/>
-  </main><Footer c={c} locale={locale} meta={meta}/><FloatingWhatsAppButton locale={locale} corner="left"/></>;
+  </main><Footer c={c} locale={locale} meta={meta} contact={contact}/><FloatingWhatsAppButton locale={locale} corner="left"/></>;
 }
 
 createRoot(document.getElementById('life-skills-root')).render(<App/>);

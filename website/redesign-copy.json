@@ -551,7 +551,16 @@
           "מחברים כל תיקון לערך ולמטרה.",
           "לומדים מבחירות ומהתוצאות הטבעיות שלהן.",
           "הופכים טעויות להזדמנויות ללמידה."
-        ]
+        ],
+        "feature": {
+          "motivation_heading": "מוטיבציה פנימית",
+          "governance_heading": "הנהגה עצמית",
+          "governance_body": "לומדים לעצור, להגדיר את המצב, להשוות אפשרויות ולבחור צעד שאפשר לנסות.",
+          "sodas_steps": ["מצב", "אפשרויות", "חסרונות", "יתרונות", "פתרון"],
+          "frustration_heading": "התמודדות עם תסכול",
+          "frustration_body": "שמים לב לאותות הגוף ולרגש, מבינים מה קורה ובוחרים תגובה שמתאימה למצב ולמטרה.",
+          "frustration_steps": ["מזהים", "מבינים", "בוחרים"]
+        }
       }
     },
     "parent_guidance": {
@@ -566,6 +575,13 @@
     "founder": {
       "eyebrow": "היכרות",
       "name": "על שלמה דרטלר",
+      "intro": "שלמה דרטלר עובד באופן אישי עם בנים בגילאי 8–12 ועם הוריהם.",
+      "capabilities": [
+        "קשר אישי ותנועה",
+        "כלים מעשיים לוויסות ובחירה",
+        "עבודה משותפת עם ההורים"
+      ],
+      "summary": "העבודה משלבת שיחה והתנסות עם מודעות לגוף ולרגש, תקשורת, פתרון בעיות, מוטיבציה, ערכים והנהגה עצמית — ומחברת את התרגול למצבים אמיתיים בבית ובין חברים.",
       "paragraphs": [
         "שלמה דרטלר עובד באופן אישי עם בנים בגילאי 8–12 ועם הוריהם. העבודה שלו משלבת קשר אישי, תנועה ושיחה עם כלים מעשיים של ויסות רגשי, מודעות גופנית, תקשורת, פתרון בעיות, מוטיבציה, ערכים והנהגה עצמית.",
         "במהלך עבודתו שלמה ליווה בנים שהתמודדו עם חרדה חברתית, חוויות קשות או טראומטיות, קושי בוויסות, קונפליקטים וחוסר ביטחון. העבודה אינה מבוססת על פתרון אחיד: מתחילים בקשר, מבינים מה קורה לילד, מתרגלים בחירה ותגובה, ומחברים את העבודה לחיים בבית ובין חברים.",
@@ -1025,7 +1041,16 @@
           "Correction guided by values and purpose.",
           "Learning from choices and their natural consequences.",
           "Mistakes become opportunities to learn."
-        ]
+        ],
+        "feature": {
+          "motivation_heading": "Intrinsic motivation",
+          "governance_heading": "Self-governance",
+          "governance_body": "Children learn to pause, define the situation, compare options and choose a step they can try.",
+          "sodas_steps": ["Situation", "Options", "Disadvantages", "Advantages", "Solution"],
+          "frustration_heading": "Handling frustration",
+          "frustration_body": "Notice body signals and emotions, understand what is happening, then choose a response that fits the situation and purpose.",
+          "frustration_steps": ["Notice", "Understand", "Choose"]
+        }
       }
     },
     "parent_guidance": {
@@ -1040,6 +1065,13 @@
     "founder": {
       "eyebrow": "Meet Shlomo",
       "name": "About Shlomo Dratler",
+      "intro": "Shlomo Dratler works individually with boys ages 8–12 and with their parents.",
+      "capabilities": [
+        "Personal connection and movement",
+        "Practical tools for regulation and choice",
+        "Working together with parents"
+      ],
+      "summary": "The work combines conversation and experience with body and emotional awareness, communication, problem solving, motivation, values and self-governance — connecting practice to real situations at home and with friends.",
       "paragraphs": [
         "Shlomo Dratler works individually with boys ages 8–12 and with their parents. His work combines personal connection, movement and conversation with practical tools for emotional regulation, body awareness, communication, problem solving, motivation, values and self-governance.",
         "Shlomo has worked with boys dealing with social anxiety, difficult or traumatic experiences, regulation challenges, conflict and low confidence. The work is not one-size-fits-all: it begins with connection, understanding what is happening for the child, practising choices and responses, and carrying that practice into home life and friendships.",

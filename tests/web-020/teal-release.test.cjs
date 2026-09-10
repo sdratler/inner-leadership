@@ -44,6 +44,18 @@ test('testimonial precedes founder and pricing uses the owner-approved monthly w
   assert.doesNotMatch(copy.en.faq.items.find(item => item.id === 'fee').answer, /550|60/);
 });
 
+test('approved UX refinement is structured, bilingual, and face-safe', () => {
+  assert.match(source, /section\.feature\.sodas_steps/);
+  assert.match(source, /section\.feature\.frustration_steps/);
+  assert.match(source, /className="footer-whatsapp"/);
+  assert.match(source, /className="footer-phone"/);
+  assert.match(css, /border:2px solid var\(--gold\)/);
+  assert.match(css, /object-position:66% 50%/);
+  assert.equal(copy.he.teaching.approach_intro.feature.motivation_heading, 'מוטיבציה פנימית');
+  assert.equal(copy.en.teaching.approach_intro.feature.motivation_heading, 'Intrinsic motivation');
+  assert.deepEqual(copy.en.teaching.approach_intro.feature.sodas_steps, ['Situation', 'Options', 'Disadvantages', 'Advantages', 'Solution']);
+});
+
 test('the twelve-session carousel is ordered, manual, keyboard-aware, and reduced-motion safe', () => {
   for (const locale of ['he', 'en']) {
     assert.deepEqual(copy[locale].teaching.modules.map(module => module.internal_theme_key), Array.from({length: 12}, (_, index) => `W${String(index + 1).padStart(2, '0')}`));
