@@ -4,6 +4,7 @@
 - Branch: `codex/web-020-teal-release-20260910`
 - Exact base: `6326ae04cd1ed2d81f68e47111945edee0bbf5cd`
 - Recorded: `2026-09-10T16:02:09+03:00`
+- Release-gate hardening: `2026-09-10T16:35:00+03:00`
 - Decisions: `D-LOGO-LEAF-20260910-01`, `D-WEB-TEAL-LOCK-20260910-01`, `D-WEB-ABOUT-20260910-01`
 - Parallel exclusion: no `creative/**` file or PR #16 state was changed.
 
@@ -28,7 +29,7 @@
 - `python3 tools/ci/verify-ci-boundary.py`: pass (`CI_BOUNDARY_OK`).
 - `python3 -m unittest discover -s tools/source-audit/tests -v`: 52/52 pass.
 - `npm run check`: 43 Node checks + 26 Python static checks pass.
-- `node --test tests/web-020/teal-release.test.cjs`: 5/5 pass.
+- `node --test tests/web-020/teal-release.test.cjs`: 6/6 pass, including exclusion of non-public editorial and workstation metadata from the browser bundle.
 - `npm run build`: production build pass; zero publication blockers; no function bundle.
 - `npm run check:server`: 11/11 pass, including hardened headers, route/query behavior, private-file denial and Railway `/health`.
 - `apps/life-skills`: lint pass, type generation/typecheck pass, Vitest 126/126 pass, Next production build pass.
@@ -57,7 +58,7 @@ Pixel screenshots used for review are stored outside the repository under the ru
 ## Build digests
 
 - `assets/css/site.css`: `9805748d9122137596b6c41eb99b0fbd418b8b82be90b8b395ddfe1afb88bc76`
-- `assets/js/site-react.js`: `49b208ee1d172573b30ad1bde9a8f1683200878ec725530727f736b209875dc7`
+- `assets/js/site-react.js`: `ba61bfb8f62e3c10adf994718aaddf432ecef4a3a5946b93c49d7649d8c1a622`
 - `dist/site/index.html`: `17c6ee19ace45c99bbabc1ae4210fa320de2435e9b9625485ba7be596f73c300`
 
 These are release-candidate digests. The final merge SHA, Railway deployment ID, production headers and public HE/EN verification are recorded after merge/deploy.

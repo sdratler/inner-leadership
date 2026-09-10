@@ -62,7 +62,8 @@ class StaticTests(unittest.TestCase):
                 self.assertFalse(key.startswith("on"), key)
 
     def test_bilingual_semantics_and_copy_source(self):
-        self.assertIn("import redesignCopy from '../website/redesign-copy.json'", self.react)
+        self.assertIn("from '../website/redesign-copy.json'", self.react)
+        self.assertIn("const redesignCopy = {contact: contactCopy, en: englishCopy, he: hebrewCopy}", self.react)
         self.assertIn("document.documentElement.lang = locale", self.react)
         self.assertEqual(self.copy["he"]["direction"], "rtl")
         self.assertEqual(self.copy["en"]["direction"], "ltr")

@@ -1,7 +1,13 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import redesignCopy from '../website/redesign-copy.json';
+import {
+  contact as contactCopy,
+  en as englishCopy,
+  he as hebrewCopy,
+} from '../website/redesign-copy.json';
 import FloatingWhatsAppButton from './FloatingWhatsAppButton.jsx';
+
+const redesignCopy = {contact: contactCopy, en: englishCopy, he: hebrewCopy};
 
 const ASSETS = 'assets/';
 const MODULE_IMAGES = {
