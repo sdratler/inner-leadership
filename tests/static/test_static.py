@@ -153,7 +153,11 @@ class StaticTests(unittest.TestCase):
 
     def test_approach_band_uses_requested_real_photo(self):
         self.assertIn('url("../images/meir-bunny.png")', self.css)
-        self.assertIn("linear-gradient(105deg,rgba(22,63,72,.97),rgba(36,81,89,.88))", self.css)
+        self.assertIn("linear-gradient(118deg,rgba(22,63,72,.72),rgba(36,81,89,.58))", self.css)
+        self.assertIn("border:2px solid var(--gold)", self.css)
+        self.assertIn("border-radius:32px", self.css)
+        for phrase in ["section.feature.sodas_steps", "section.feature.frustration_steps", "section.principles.map"]:
+            self.assertIn(phrase, self.react)
 
     def test_locked_teal_system_and_mobile_geometry(self):
         for token in ["--teal:#245159", "--deep-teal:#163F48", "--cream:#FBF7EF", "--gold:#E6D0A4"]:
@@ -177,6 +181,9 @@ class StaticTests(unittest.TestCase):
         self.assertEqual(self.copy["en"]["founder"]["name"], "About Shlomo Dratler")
         self.assertEqual(len(self.copy["he"]["founder"]["paragraphs"]), 3)
         self.assertEqual(len(self.copy["en"]["founder"]["paragraphs"]), 3)
+        self.assertEqual(len(self.copy["he"]["founder"]["capabilities"]), 3)
+        self.assertEqual(len(self.copy["en"]["founder"]["capabilities"]), 3)
+        self.assertIn("object-position:66% 50%", self.css)
         combined = json.dumps(self.copy, ensure_ascii=False).lower()
         for forbidden in ["completely reversed social anxiety", "healed trauma", "cured", "success percentage"]:
             self.assertNotIn(forbidden, combined)
@@ -213,6 +220,8 @@ class StaticTests(unittest.TestCase):
         self.assertIn("closing-inner", self.css)
         self.assertIn("text-align:center", self.css)
         self.assertIn("max-width:640px", self.css)
+        self.assertIn('className="footer-whatsapp"', self.react)
+        self.assertIn('className="footer-phone"', self.react)
 
     def test_requested_components_are_rendered(self):
         for name in ["CampaignHero", "OutcomeCards", "CurriculumModule", "ModuleImageGallery", "OrganicBulletList", "FounderSection", "FAQAccordion"]:
