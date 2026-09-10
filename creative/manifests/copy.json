@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "manifestId": "life-skills-copy-domains-20260910-01",
+  "copySets": [
+    {
+      "id": "website.he.brand.v1",
+      "domain": "website",
+      "language": "he",
+      "direction": "rtl",
+      "status": "LOCKED",
+      "text": {
+        "brand": "כישורי חיים",
+        "tagline": "לחיים שלמים"
+      }
+    },
+    {
+      "id": "website.en.brand.v1",
+      "domain": "website",
+      "language": "en",
+      "direction": "ltr",
+      "status": "LOCKED",
+      "text": {
+        "brand": "Life Skills"
+      },
+      "constraints": {
+        "tagline": "FORBIDDEN",
+        "logoAsset": "UNRESOLVED"
+      }
+    },
+    {
+      "id": "website.he.hero.review",
+      "domain": "website",
+      "language": "he",
+      "direction": "rtl",
+      "status": "REVIEW",
+      "text": {
+        "headline": "בכל ילד יש גיבור.",
+        "button": "לתיאום בוואטסאפ"
+      },
+      "notes": "Stored only as review input; it is not copied into paid-ad copy and cannot pass production validation."
+    },
+    {
+      "id": "paid-ads.he.current",
+      "domain": "paid_ads",
+      "language": "he",
+      "direction": "rtl",
+      "status": "UNRESOLVED",
+      "text": {},
+      "notes": "Paid-ad copy must be imported from its independently approved source; website hero text is not a fallback."
+    },
+    {
+      "id": "paid-ads.en.current",
+      "domain": "paid_ads",
+      "language": "en",
+      "direction": "ltr",
+      "status": "UNRESOLVED",
+      "text": {},
+      "notes": "Paid-ad copy must be imported from its independently approved source; website hero text is not a fallback."
+    }
+  ],
+  "rules": {
+    "crossDomainFallback": false,
+    "englishTaglineAllowed": false,
+    "copyMustRemainEditableUntilExport": true
+  }
+}

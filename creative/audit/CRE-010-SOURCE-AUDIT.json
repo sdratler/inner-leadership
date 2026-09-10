@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "workId": "CRE-010",
+  "claimId": "CRE010-20260910T135922+03",
+  "capturedAt": "2026-09-10T13:59:22.0547807+03:00",
+  "captureMode": "connector_export_and_git_read",
+  "baseline": {
+    "expected": "6326ae04cd1ed2d81f68e47111945edee0bbf5cd",
+    "originMainObserved": "6326ae04cd1ed2d81f68e47111945edee0bbf5cd",
+    "match": true
+  },
+  "sources": [
+    {
+      "role": "registry",
+      "id": "1XZS-MzUtjc3T488lyrSbtDX0Yq5UCl7Wzh5uN_YOvMg",
+      "title": "00_START HERE — Life Skills Practice — CURRENT",
+      "reportedVersion": "Registry 2.8",
+      "modifiedTime": "2026-09-08T16:06:56.500Z",
+      "read": true
+    },
+    {
+      "role": "operating_protocol",
+      "id": "1q-GDEaL9JmmVfy1meQrGvu3V4H2XNJ4jp2b17ZrP6bE",
+      "title": "Life Skills — Autonomous Project Operating Protocol — CURRENT",
+      "reportedVersion": "2.5",
+      "modifiedTime": "2026-09-07T15:02:03.859Z",
+      "read": true
+    },
+    {
+      "role": "asset_register",
+      "id": "1Gm6xxXihoywaQVqgWmcrLFJ0dqzAQ0Sr",
+      "title": "LS-ASSET-REGISTER.json",
+      "modifiedTime": "2026-09-10T09:36:13.841Z",
+      "sha256": "a93d1341288a95fbd06f2335252d3cff73fb1a127e1726a94216cf21b0748f7f",
+      "read": true
+    }
+  ],
+  "controlReadback": {
+    "decisions": [
+      "D-CREATIVE-SOT-GIT-01:Approved",
+      "D-LOGO-LEAF-20260910-01:Approved"
+    ],
+    "workflowControl": "Codex integration admissions:CRE-010",
+    "workGraphRow": 43,
+    "statusBeforeClaim": "Ready",
+    "executionMode": "CODEX_INTEGRATION",
+    "ownedPaths": ["creative/**"],
+    "claimReadback": "CRE010-20260910T135922+03"
+  },
+  "scopeFindings": {
+    "conflictsResolved": [
+      "D-LOGO-LEAF-20260910-01 supersedes earlier Hebrew logo directions only.",
+      "Website and paid-ad copy remain separate namespaces.",
+      "Drive remains transitional authority until accepted-commit pointer reconciliation."
+    ],
+    "unresolved": [
+      "Exact teal gradient stops",
+      "Outside-logo fonts",
+      "Responsive geometry",
+      "English leaf logo",
+      "Transparent logo derivative",
+      "Accepted proof-worker composition JSON"
+    ],
+    "privacy": "PASS_FOR_SCOPED_SCAFFOLD: no private/client/minor photo, screenshot, contact, clinical, credential, or secret is included.",
+    "existingCreativeMigrationAtBaseline": false
+  },
+  "checkerCompatibility": {
+    "status": "UNSUPPORTED_NOT_PASS",
+    "command": "python tools/source-audit/audit.py --snapshot <fresh-snapshot.json> --work-id CRE-010 --baseline 6326ae04cd1ed2d81f68e47111945edee0bbf5cd --phase integrate --output <report.json>",
+    "blockingCheck": "tools/source-audit/audit.py:WORK_ID",
+    "reason": "The protected checker accepts only LS|SYS|PRG|MKT|OPS|FIN prefixes, so CRE-010 is reported as WORK_ID_INVALID and cannot be represented by its expected manifest.",
+    "smallestMissingCapability": "A separately reviewed checker/manifest extension that admits the CRE prefix and a CRE-010 CODEX_INTEGRATION work scope without changing the six preparation admissions or their pinned baselines."
+  },
+  "result": "SCOPED_AUDIT_COMPLETE_WITH_CHECKER_COMPATIBILITY_LIMIT",
+  "productionExportAuthorized": false
+}

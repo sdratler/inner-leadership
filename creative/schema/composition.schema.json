@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bneineviimacademy.org/schemas/life-skills/creative-composition-v1.json",
+  "title": "Life Skills deterministic composition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "kind", "domain", "language", "brandManifestId", "copySetId", "decisionState", "output", "fonts", "theme", "layout", "layers"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "id": {"type": "string", "minLength": 1},
+    "kind": {"enum": ["website", "fixed_size"]},
+    "domain": {"enum": ["website", "paid_ads"]},
+    "language": {"enum": ["he", "en"]},
+    "brandManifestId": {"type": "string", "minLength": 1},
+    "copySetId": {"type": "string", "minLength": 1},
+    "decisionState": {"$ref": "#/$defs/state"},
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height", "format"],
+      "properties": {
+        "width": {"type": "integer", "minimum": 1},
+        "height": {"type": "integer", "minimum": 1},
+        "format": {"enum": ["html", "svg"]}
+      }
+    },
+    "fonts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "assetId", "family", "weight", "style", "display", "decisionState"],
+        "properties": {
+          "id": {"type": "string"},
+          "assetId": {"type": "string"},
+          "family": {"type": "string"},
+          "weight": {"type": "integer", "minimum": 1, "maximum": 1000},
+          "style": {"enum": ["normal", "italic"]},
+          "display": {"enum": ["swap", "block", "fallback", "optional"]},
+          "decisionState": {"$ref": "#/$defs/state"}
+        }
+      }
+    },
+    "theme": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["surfaceIntent", "surfaceGradient", "textColor", "header", "button"],
+      "properties": {
+        "surfaceIntent": {"const": "TEAL_BLUE_GREEN_DARKEN_TOWARD_BOTTOM"},
+        "surfaceGradient": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["angleDeg", "stops", "decisionState"],
+          "properties": {
+            "angleDeg": {"type": "number"},
+            "decisionState": {"$ref": "#/$defs/state"},
+            "stops": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["offset", "color"],
+                "properties": {
+                  "offset": {"type": "number", "minimum": 0, "maximum": 1},
+                  "color": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$"}
+                }
+              }
+            }
+          }
+        },
+        "textColor": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$"},
+        "header": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["backgroundColor", "decisionState"],
+          "properties": {
+            "backgroundColor": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$"},
+            "decisionState": {"$ref": "#/$defs/state"}
+          }
+        },
+        "button": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["backgroundColor", "textColor", "borderColor", "borderWidthPx", "borderRadiusPx", "decisionState"],
+          "properties": {
+            "backgroundColor": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$"},
+            "textColor": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$"},
+            "borderColor": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$"},
+            "borderWidthPx": {"type": "number", "minimum": 0},
+            "borderRadiusPx": {"type": "number", "minimum": 0},
+            "decisionState": {"$ref": "#/$defs/state"}
+          }
+        }
+      }
+    },
+    "layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["header", "logo", "content", "button", "decisionState"],
+      "properties": {
+        "header": {"$ref": "#/$defs/box"},
+        "logo": {"$ref": "#/$defs/box"},
+        "content": {"$ref": "#/$defs/box"},
+        "button": {"$ref": "#/$defs/box"},
+        "decisionState": {"$ref": "#/$defs/state"}
+      }
+    },
+    "layers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "type", "z", "decisionState"],
+        "properties": {
+          "id": {"type": "string"},
+          "type": {"enum": ["asset", "overlay", "text", "button"]},
+          "z": {"type": "integer"},
+          "assetId": {"type": "string"},
+          "copyKey": {"type": "string"},
+          "fontId": {"type": "string"},
+          "href": {"type": "string", "format": "uri"},
+          "box": {"$ref": "#/$defs/box"},
+          "opacity": {"type": "number", "minimum": 0, "maximum": 1},
+          "decisionState": {"$ref": "#/$defs/state"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "state": {"enum": ["LOCKED", "REVIEW", "UNRESOLVED"]},
+    "box": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "width", "height"],
+      "properties": {
+        "x": {"type": "number"},
+        "y": {"type": "number"},
+        "width": {"type": "number", "exclusiveMinimum": 0},
+        "height": {"type": "number", "exclusiveMinimum": 0}
+      }
+    }
+  }
+}

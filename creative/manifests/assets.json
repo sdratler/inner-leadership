@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "manifestId": "life-skills-public-assets-20260910-01",
+  "assetRoot": "../assets",
+  "sourceRegister": {
+    "driveFileId": "1Gm6xxXihoywaQVqgWmcrLFJ0dqzAQ0Sr",
+    "sha256": "a93d1341288a95fbd06f2335252d3cff73fb1a127e1726a94216cf21b0748f7f",
+    "migrationState": "TRANSITIONAL_UNTIL_ACCEPTED_COMMIT_POINTER_RECONCILIATION"
+  },
+  "assets": [
+    {
+      "id": "LS-LOGO-HE-LEAF-01",
+      "kind": "logo",
+      "path": "LS_LOGO_HE_LEAF_APPROVED_20260910.png",
+      "externalSource": {
+        "provider": "google_drive",
+        "fileId": "1xWhbjz5u9FaI0QQaIRjW0TI6ZN-zhYlu"
+      },
+      "sha256": "a95609b2ce76f5062be6619e5131430f11b99d7579148affebb2b545f66cc07c",
+      "mediaType": "image/png",
+      "width": 2172,
+      "height": 724,
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "approval": {
+        "status": "LOCKED",
+        "decisionId": "D-LOGO-LEAF-20260910-01",
+        "scope": ["brand:he"]
+      },
+      "embeddedCopy": {
+        "language": "he",
+        "brand": "כישורי חיים",
+        "tagline": "לחיים שלמים"
+      },
+      "reuse": {
+        "allowUniformScale": true,
+        "allowRegeneration": false,
+        "allowRecolor": false,
+        "allowMirror": false,
+        "allowRetype": false,
+        "allowCrop": false
+      },
+      "derivativeState": "OPAQUE_MASTER_ONLY_TRANSPARENT_DERIVATIVE_REVIEW"
+    }
+  ]
+}

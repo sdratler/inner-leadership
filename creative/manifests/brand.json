@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "manifestId": "life-skills-brand-execution-20260910-01",
+  "hebrewLogo": {
+    "assetId": "LS-LOGO-HE-LEAF-01",
+    "status": "LOCKED",
+    "pixelPolicy": "PRESERVE_EXACT_PIXELS"
+  },
+  "englishLogo": {
+    "assetId": null,
+    "status": "UNRESOLVED",
+    "fallback": "LIVE_TEXT_LIFE_SKILLS_NO_TAGLINE"
+  },
+  "websiteSurface": {
+    "intent": "TEAL_BLUE_GREEN_DARKEN_TOWARD_BOTTOM",
+    "directionStatus": "LOCKED",
+    "exactGradientStops": null,
+    "exactGradientStopsStatus": "REVIEW"
+  },
+  "typographyOutsideLogo": {
+    "fonts": [],
+    "status": "REVIEW",
+    "logoLetteringMustNotBeRetyped": true
+  },
+  "responsiveGeometry": {
+    "status": "REVIEW"
+  },
+  "copyDomains": {
+    "website": "INDEPENDENT",
+    "paid_ads": "INDEPENDENT",
+    "crossDomainFallback": false
+  }
+}
