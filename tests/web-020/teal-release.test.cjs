@@ -9,6 +9,7 @@ const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 const copy = JSON.parse(read('website/redesign-copy.json'));
 const source = read('src/life-skills-page.jsx');
 const css = read('assets/css/site.css');
+const bundle = read('assets/js/site-react.js');
 
 test('approved Hebrew leaf master is unchanged and its derivative is the only Hebrew lockup', () => {
   const master = fs.readFileSync(path.join(root, 'assets/images/LS_LOGO_HE_LEAF_APPROVED_20260910.png'));
@@ -44,4 +45,15 @@ test('all primary CTAs use the verified direct WhatsApp destination', () => {
   assert.equal(copy.contact.whatsapp_url, 'https://wa.me/972534932631');
   assert.match(source, /href=\{contact\}/);
   assert.doesNotMatch(copy.contact.whatsapp_url, /[?&]text=/);
+});
+
+test('the public bundle excludes non-public editorial and workstation metadata', () => {
+  for (const marker of [
+    'editorial_notes',
+    'C:/Users/',
+    'public testimonial consent not established',
+    'L Bars, 2024',
+  ]) {
+    assert.equal(bundle.includes(marker), false, marker);
+  }
 });
