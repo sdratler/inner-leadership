@@ -1,4 +1,4 @@
-import React, {useEffect} from 'react';
+import React, {useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import redesignCopy from '../website/redesign-copy.json';
 import FloatingWhatsAppButton from './FloatingWhatsAppButton.jsx';
@@ -102,13 +102,15 @@ function approvedContact() {
     : redesignCopy.contact.whatsapp_url;
 }
 
-function BrandLockup({brand, compact = false}) {
-  return <span className={`brand-lockup ${compact ? 'brand-lockup-compact' : ''}`}>
-    <img src={ASSETS + 'images/v43-approved-twig.png'} alt="" aria-hidden="true"/>
-    <span className="brand-words">
-      <strong>{brand.name}</strong>
-      {brand.tagline && <small>{brand.tagline}</small>}
-    </span>
+function BrandLockup({brand, locale, compact = false}) {
+  if (locale === 'he') {
+    return <span className={`brand-lockup brand-lockup-he ${compact ? 'brand-lockup-compact' : ''}`}>
+      <img src={ASSETS + 'images/LS_LOGO_HE_LEAF_APPROVED_20260910-transparent.png'} alt="כישורי חיים — לחיים שלמים"/>
+    </span>;
+  }
+  return <span className={`brand-lockup brand-lockup-en ${compact ? 'brand-lockup-compact' : ''}`}>
+    <span className="english-leaf" aria-hidden="true"/>
+    <span className="brand-words"><strong>{brand.name}</strong></span>
   </span>;
 }
 
@@ -130,7 +132,7 @@ export function ModuleImageGallery({image, alt}) {
 
 export function CurriculumModule({module, index, locale, exampleLabel}) {
   const key = module.internal_theme_key;
-  return <article className={`curriculum-module ${index % 2 ? 'module-reverse' : ''} ${(index + 1) % 4 === 0 ? 'module-forest' : ''}`} data-theme-key={key}>
+  return <article className={`curriculum-module ${index % 2 ? 'module-reverse' : ''} ${(index + 1) % 4 === 0 ? 'module-teal' : ''}`} data-theme-key={key} aria-label={`${index + 1} / 12`}>
     <ModuleImageGallery image={MODULE_IMAGES[key]} alt={MODULE_ALTS[locale][key]}/>
     <div className="module-copy">
       <span className="module-number" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
@@ -144,24 +146,111 @@ export function CurriculumModule({module, index, locale, exampleLabel}) {
   </article>;
 }
 
-export function CampaignHero({section, locale, contact, brand, meta}) {
-  return <section className="hero-shell">
-    <div className="hero-art" aria-hidden="true">
-      <picture>
-        <source media="(max-width: 760px)" srcSet={ASSETS + 'images/founder-boy-hero-mobile.webp'}/>
-        <img src={ASSETS + 'images/founder-boy-hero-desktop.webp'} alt=""/>
-      </picture>
+function ArrowIcon({direction}) {
+  return <svg viewBox="0 0 32 20" aria-hidden="true" focusable="false" className={`arrow-icon arrow-${direction}`}>
+    <path d="M2 10h26M20 2l8 8-8 8"/>
+  </svg>;
+}
+
+export function CurriculumCarousel({modules, locale, exampleLabel}) {
+  const trackRef = useRef(null);
+  const slideRefs = useRef([]);
+  const frameRef = useRef(null);
+  const [current, setCurrent] = useState(0);
+
+  function goTo(index) {
+    const next = Math.max(0, Math.min(modules.length - 1, index));
+    setCurrent(next);
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    slideRefs.current[next]?.scrollIntoView({behavior: reduceMotion ? 'auto' : 'smooth', block: 'nearest', inline: 'center'});
+  }
+
+  function syncCurrent() {
+    if (frameRef.current) cancelAnimationFrame(frameRef.current);
+    frameRef.current = requestAnimationFrame(() => {
+      const track = trackRef.current;
+      if (!track) return;
+      const center = track.getBoundingClientRect().left + track.clientWidth / 2;
+      let nearest = 0;
+      let distance = Number.POSITIVE_INFINITY;
+      slideRefs.current.forEach((slide, index) => {
+        if (!slide) return;
+        const rect = slide.getBoundingClientRect();
+        const nextDistance = Math.abs(rect.left + rect.width / 2 - center);
+        if (nextDistance < distance) {
+          distance = nextDistance;
+          nearest = index;
+        }
+      });
+      setCurrent(nearest);
+    });
+  }
+
+  useEffect(() => () => frameRef.current && cancelAnimationFrame(frameRef.current), []);
+
+  const previousLabel = locale === 'he' ? 'למפגש הקודם' : 'Previous session';
+  const nextLabel = locale === 'he' ? 'למפגש הבא' : 'Next session';
+  const carouselLabel = locale === 'he' ? 'שנים עשר מפגשים' : 'Twelve sessions';
+  return <div className="curriculum-carousel" role="region" aria-label={carouselLabel} aria-roledescription="carousel">
+    <div className="carousel-toolbar">
+      <button type="button" className="carousel-arrow carousel-previous" onClick={() => goTo(current - 1)} disabled={current === 0} aria-label={previousLabel}>
+        <ArrowIcon direction="previous"/>
+      </button>
+      <p className="carousel-status" aria-live="polite"><bdi dir="ltr">{current + 1} / {modules.length}</bdi></p>
+      <button type="button" className="carousel-arrow carousel-next" onClick={() => goTo(current + 1)} disabled={current === modules.length - 1} aria-label={nextLabel}>
+        <ArrowIcon direction="next"/>
+      </button>
     </div>
-    <div className="hero container" aria-labelledby={`hero-${locale}`}>
+    <div ref={trackRef} className="curriculum-track" onScroll={syncCurrent} tabIndex="0" onKeyDown={event => {
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        goTo(locale === 'he' ? current + 1 : current - 1);
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        goTo(locale === 'he' ? current - 1 : current + 1);
+      } else if (event.key === 'Home') {
+        event.preventDefault();
+        goTo(0);
+      } else if (event.key === 'End') {
+        event.preventDefault();
+        goTo(modules.length - 1);
+      }
+    }}>
+      {modules.map((module, index) => <div className="curriculum-slide" key={module.internal_theme_key} ref={node => { slideRefs.current[index] = node; }}>
+        <CurriculumModule module={module} index={index} locale={locale} exampleLabel={exampleLabel}/>
+      </div>)}
+    </div>
+    <div className="carousel-dots" role="group" aria-label={locale === 'he' ? 'בחירת מפגש' : 'Choose a session'}>
+      {modules.map((module, index) => <button key={module.internal_theme_key} type="button" className={index === current ? 'is-active' : ''} onClick={() => goTo(index)} aria-label={`${locale === 'he' ? 'מפגש' : 'Session'} ${index + 1}`} aria-current={index === current ? 'true' : undefined}/>) }
+    </div>
+  </div>;
+}
+
+export function CampaignHero({section, benefits, locale, contact, meta}) {
+  const lines = locale === 'he' ? ['בכל ילד', 'יש גיבור.'] : ['There’s a hero', 'in every child.'];
+  return <section className="hero-shell" aria-labelledby={`hero-${locale}`}>
+    <div className="hero-layout container hero">
       <div className="hero-copy">
-        <h1 id={`hero-${locale}`}>{section.headline}</h1>
+        <h1 id={`hero-${locale}`}>{lines.map(line => <span key={line}>{line}</span>)}</h1>
+        <span className="hero-divider" aria-hidden="true"/>
         <h2 className="hero-service-title">{section.service_title}</h2>
         <div className="hero-service-details">{section.service_details.map((line, index) => <p key={line}>
-          {locale === 'he' && index === 0 ? <>בגילאי <bdi dir="ltr">8–12</bdi></> : line}
+          {index === 0 ? <>{locale === 'he' ? 'בגילאי ' : 'Ages '}<bdi dir="ltr">8–12</bdi></> : line}
         </p>)}</div>
-        <a className="button button-primary" href={contact} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">{redesignCopy[locale].cta.button}</a>
       </div>
-      <span className="sr-only">{meta.heroAlt}</span>
+      <figure className="hero-photo">
+        <picture>
+          <source media="(max-width: 760px)" srcSet={ASSETS + 'images/founder-boy-hero-mobile.webp'}/>
+          <img src={ASSETS + 'images/founder-boy-hero-desktop.webp'} alt={meta.heroAlt} width="2400" height="1600"/>
+        </picture>
+      </figure>
+      <div className="hero-action">
+        <a className="button button-light" href={contact} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">{redesignCopy[locale].cta.button}</a>
+      </div>
+      <ul className="hero-benefits" aria-label={meta.benefitsLabel}>{benefits.items.map(item => <li key={item.id}>
+        <img src={`${ASSETS}icons/${ICONS[item.id]}`} alt="" aria-hidden="true"/>
+        <span>{item.title}</span>
+      </li>)}</ul>
     </div>
   </section>;
 }
@@ -211,14 +300,17 @@ function ParentGuidance({section, meta}) {
 }
 
 export function FounderSection({section, locale, meta}) {
-  return <section id={`founder-${locale}`} className="section container founder" aria-labelledby={`founder-title-${locale}`}>
-    <div className="founder-card">
-      <figure className="founder-photo"><img src={ASSETS + 'images/founder-grass-group.webp'} alt={meta.founderAlt} width="1600" height="1068" loading="lazy"/></figure>
+  return <section id={`founder-${locale}`} className="founder" aria-labelledby={`founder-title-${locale}`}>
+    <figure className="founder-photo" aria-hidden="true">
+      <img src={ASSETS + 'images/founder-grass-group.webp'} alt="" width="1600" height="1068" loading="lazy"/>
+    </figure>
+    <div className="founder-overlay" aria-hidden="true"/>
+    <div className="container founder-layout">
       <div className="founder-copy">
         <p className="eyebrow">{section.eyebrow}</p>
+        <span className="founder-divider" aria-hidden="true"/>
         <h2 id={`founder-title-${locale}`}>{section.name}</h2>
-        <p>{section.bio}</p><p>{section.methods}</p>
-        <p className="founder-location">{section.location_inline}</p>
+        <div className="founder-paragraphs">{section.paragraphs.map(paragraph => <p key={paragraph}>{paragraph}</p>)}</div>
       </div>
     </div>
   </section>;
@@ -251,15 +343,47 @@ export function FAQAccordion({section, locale, meta}) {
   </section>;
 }
 
-function Header({c, locale, meta, reviewPreview}) {
+function Header({c, locale, meta, contact, reviewPreview}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    function closeOnEscape(event) {
+      if (event.key === 'Escape') setMenuOpen(false);
+    }
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, []);
+
+  const menuLabel = locale === 'he' ? 'פתיחת תפריט' : 'Open menu';
+  const closeLabel = locale === 'he' ? 'סגירת תפריט' : 'Close menu';
+  const ctaLabel = redesignCopy[locale].cta.button;
   return <><a className="skip-link" href="#main-content">{c.accessibility.skip_to_content}</a>
     {reviewPreview ? <div className="preview-bar"><p>{meta.preview}</p></div> : null}
-    <header className="site-header container">
-      <a className="brand" href={`?lang=${locale}`} aria-label={c.brand.name}><BrandLockup brand={c.brand} compact/></a>
-      <nav className="desktop-nav" aria-label={meta.navLabel}>{c.navigation.map(item => <a key={item.target} href={`#${item.target}-${locale}`}>{item.label}</a>)}</nav>
-      <div className="language-switch" role="group" aria-label="שפה / Language">
-        <a href="?lang=he" lang="he" aria-current={locale === 'he' ? 'page' : undefined}>עברית</a>
-        <a href="?lang=en" lang="en" dir="ltr" aria-current={locale === 'en' ? 'page' : undefined}>English</a>
+    <header className="site-header">
+      <div className="container header-inner">
+        <a className="brand" href={`?lang=${locale}`} aria-label={c.brand.name}><BrandLockup brand={c.brand} locale={locale} compact/></a>
+        <nav className="desktop-nav" aria-label={meta.navLabel}>{c.navigation.map(item => <a key={item.target} href={`#${item.target}-${locale}`}>{item.label}</a>)}</nav>
+        <div className="header-actions">
+          <div className="language-switch" role="group" aria-label="שפה / Language">
+            <a href="?lang=he" lang="he" aria-current={locale === 'he' ? 'page' : undefined}>HE</a>
+            <span aria-hidden="true">/</span>
+            <a href="?lang=en" lang="en" dir="ltr" aria-current={locale === 'en' ? 'page' : undefined}>EN</a>
+          </div>
+          <a className="button button-header" href={contact} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">WhatsApp</a>
+        </div>
+        <button type="button" className="menu-button" aria-expanded={menuOpen} aria-controls="mobile-menu" aria-label={menuOpen ? closeLabel : menuLabel} onClick={() => setMenuOpen(open => !open)}>
+          <span/><span/><span/>
+        </button>
+      </div>
+      <div id="mobile-menu" className={`mobile-menu ${menuOpen ? 'is-open' : ''}`} hidden={!menuOpen}>
+        <nav className="container" aria-label={meta.navLabel}>
+          {c.navigation.map(item => <a key={item.target} href={`#${item.target}-${locale}`} onClick={() => setMenuOpen(false)}>{item.label}</a>)}
+          <div className="mobile-language-switch" role="group" aria-label="שפה / Language">
+            <a href="?lang=he" lang="he" aria-current={locale === 'he' ? 'page' : undefined}>עברית</a>
+            <a href="?lang=en" lang="en" dir="ltr" aria-current={locale === 'en' ? 'page' : undefined}>English</a>
+          </div>
+          <a className="button button-light mobile-menu-cta" href={contact} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">{ctaLabel}</a>
+        </nav>
       </div>
     </header>
   </>;
@@ -279,7 +403,7 @@ function ClosingCTA({section, locale, meta, contact}) {
 function Footer({c, locale, meta}) {
   return <footer className="page-footer">
     <div className="container footer-inner">
-      <BrandLockup brand={c.brand}/>
+      <BrandLockup brand={c.brand} locale={locale}/>
       <p className="footer-relationship">{c.footer.relationship}</p>
       <a className="bna-footer-link" href="https://bneineviimacademy.org/" target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer" aria-label="Bnei Neviim Academy">
         <img src={ASSETS + 'images/bna-logo-nobg.png'} alt="" width="120" height="32" loading="lazy"/>
@@ -320,9 +444,8 @@ function App() {
     return () => observer?.disconnect();
   }, [locale, c, meta]);
 
-  return <><Header c={c} locale={locale} meta={meta} reviewPreview={reviewPreview}/><main id="main-content" tabIndex="-1">
-    <CampaignHero section={c.hero} locale={locale} contact={contact} brand={c.brand} meta={meta}/>
-    <OutcomeCards section={c.benefits} meta={meta}/>
+  return <><Header c={c} locale={locale} meta={meta} contact={contact} reviewPreview={reviewPreview}/><main id="main-content" tabIndex="-1">
+    <CampaignHero section={c.hero} benefits={c.benefits} locale={locale} contact={contact} meta={meta}/>
     <ApproachIntro section={c.teaching.approach_intro} meta={meta} locale={locale}/>
     <section id={`teaching-${locale}`} className="section teaching">
       <div className="container">
@@ -333,9 +456,7 @@ function App() {
           <p className="teaching-support">{c.teaching.intro_support}</p>
         </div>
         <p className="pace-note"><strong>{meta.paceLabel}</strong><span>{c.teaching.pace_note}</span></p>
-        <div className="curriculum-flow">{c.teaching.modules.map((module, index) =>
-          <Reveal key={module.internal_theme_key}><CurriculumModule module={module} index={index} locale={locale} exampleLabel={c.teaching.example_label}/></Reveal>
-        )}</div>
+        <CurriculumCarousel modules={c.teaching.modules} locale={locale} exampleLabel={c.teaching.example_label}/>
       </div>
     </section>
     <ParentGuidance section={c.parent_guidance} meta={meta}/>
