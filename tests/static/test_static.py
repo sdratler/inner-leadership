@@ -108,13 +108,15 @@ class StaticTests(unittest.TestCase):
         for locale in ["he", "en"]:
             whole = json.dumps(self.copy[locale], ensure_ascii=False)
             faq = json.dumps(self.copy[locale]["faq"], ensure_ascii=False)
-            self.assertEqual(whole.count("550"), faq.count("550"))
             self.assertEqual(whole.count("2,200"), faq.count("2,200"))
+            self.assertNotIn("550", faq)
+            self.assertNotIn("60-minute", faq)
+            self.assertNotIn("60 דקות", faq)
         self.assertNotIn("price-card", self.react + self.css)
 
     def test_current_terms_and_location(self):
         combined = self.react + json.dumps(self.copy, ensure_ascii=False)
-        for phrase in ["After 12 attended sessions", "12 מפגשים", "at least 24 hours", "24 שעות", "אין חידוש אוטומטי", "no automatic renewal", "מפגשים במרכז הארץ", "Meetings in central Israel"]:
+        for phrase in ["After 12 attended sessions", "12 מפגשים", "at least 24 hours", "24 שעות", "מפגשים במרכז הארץ", "Meetings in central Israel"]:
             self.assertIn(phrase, combined)
         self.assertNotIn("Beit Shemesh", combined)
         self.assertNotIn("בית שמש", combined)

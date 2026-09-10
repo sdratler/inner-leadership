@@ -7,7 +7,7 @@
     "voice": "Positive, capacity-first, clear, practical and precise. Body copy uses third person; WhatsApp CTAs may use first person.",
     "display_rules": [
       "Render one language at a time: Hebrew RTL, English LTR.",
-      "The Hebrew tagline sits beneath the Hebrew brand name. English has no tagline.",
+      "Use the approved Hebrew leaf logo unchanged in both languages. On English pages, place the live words Life Skills beside that Hebrew logo; do not add an English tagline.",
       "Keep the hero headline to two or three readable lines. The hero body is one short service sentence.",
       "Show three hero benefits, twelve illustrated teaching modules in one manual accessible carousel, one concise parent-guidance bridge, the founder, six FAQs and one closing CTA.",
       "Render all twelve themes visibly in sequence; the four teaching areas below are source groupings only, never four expandable cards. Internal keys W01–W12 must never be visible page labels.",
@@ -65,7 +65,7 @@
       },
       "footer": {
         "axis": "Centered logo, nonprofit description and contact/navigation; coherent desktop and mobile center axis.",
-        "logo": "Use the actual approved twig plus language lockup as a genuine SVG or transparent PNG, readable at roughly 160–200px wide and capped to mobile available width. Preserve Hebrew tagline; English no tagline.",
+        "logo": "Use the actual approved Hebrew leaf logo in both languages. Preserve its Hebrew lettering and tagline unchanged; on English pages place the live words Life Skills beside it, with no English tagline.",
         "nonprofit_copy": "Keep the exact existing Bnei Neviim Academy relationship wording unchanged; max-width 640px and centered.",
         "contact_navigation": "One centered row for the existing Terms and Privacy links plus telephone 053-493-2631, with clean gaps/separators; wrap naturally on mobile. Use tel:+972534932631 and isolate the phone as LTR within Hebrew. Preserve the actual existing terms/privacy routes; do not invent URLs.",
         "padding": "32–40px internal padding, responsive side gutters; no detached bare phone number at an outer edge.",
@@ -578,7 +578,7 @@
         {
           "id": "fee",
           "question": "כמה עולה מפגש?",
-          "answer": "550 ₪ למפגש אישי של 60 דקות. אפשר לשלם מראש על ארבעה מפגשים בסך 2,200 ₪. אין חידוש אוטומטי."
+          "answer": "2,200 ₪ לארבעה מפגשים בחודש."
         },
         {
           "id": "included",
@@ -1052,7 +1052,7 @@
         {
           "id": "fee",
           "question": "How much does a session cost?",
-          "answer": "₪550 for an individual 60-minute session. Four appointments can be prepaid for ₪2,200. There is no automatic renewal."
+          "answer": "₪2,200 for four sessions a month."
         },
         {
           "id": "included",
