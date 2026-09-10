@@ -1,24 +1,24 @@
 {
   "schema": "life-skills.website-redesign-copy.v1",
-  "status": "draft_for_preview",
+  "status": "owner_approved_for_production_2026-09-10",
   "editorial_notes": {
-    "new_phrasing": "PROPOSED for the owner’s review preview. Twelve modules, parent guidance and short approach explanation are grounded in the actual current protocol; no claim of individual copy approval or implementation.",
-    "approved_direction": "Founder placement and the relationship to Bnei Neviim Academy in the footer are owner-directed.",
+    "new_phrasing": "Owner-approved production copy for the 2026-09-10 teal visual release. Existing service, curriculum, terms, privacy, fees, contact, testimonial and nonprofit-relationship facts remain governed by Website Brief 2.6.",
+    "approved_direction": "The hero, approved Hebrew leaf logo, teal visual system, About section and Bnei Neviim Academy relationship follow the owner’s locked decisions.",
     "voice": "Positive, capacity-first, clear, practical and precise. Body copy uses third person; WhatsApp CTAs may use first person.",
     "display_rules": [
       "Render one language at a time: Hebrew RTL, English LTR.",
       "The Hebrew tagline sits beneath the Hebrew brand name. English has no tagline.",
       "Keep the hero headline to two or three readable lines. The hero body is one short service sentence.",
-      "Show three benefits, twelve illustrated teaching modules in one continuous scroll, one concise parent-guidance bridge, the founder, six FAQs and one closing CTA.",
+      "Show three hero benefits, twelve illustrated teaching modules in one manual accessible carousel, one concise parent-guidance bridge, the founder, six FAQs and one closing CTA.",
       "Render all twelve themes visibly in sequence; the four teaching areas below are source groupings only, never four expandable cards. Internal keys W01–W12 must never be visible page labels.",
       "Pricing appears only inside the FAQ. Do not create a price card, pricing band or price-focused hero.",
-      "The central-Israel line stays inline with the founder text, with further logistics in the FAQ.",
-      "Founder photo treatment follows the main redesign specification: grass-photo setting with text beside the founder. This file does not define image processing.",
+      "Keep the central-Israel line and further logistics in the existing approved contact and FAQ surfaces.",
+      "Founder photo treatment uses the approved grass-photo setting as a substantial responsive background with a readable teal-and-gold content panel.",
       "Use the short CTA on buttons. The longer fixed CTA is optional supporting copy, not an additional headline.",
       "Do not display status, editorial notes, stable keys, approval language or production instructions on the public page.",
-      "Use he/en.teaching.modules in website/redesign-copy.json as the authoritative twelve visible modules, matched by W01–W12. Render a short title, exactly two practical leaf-icon bullets and one labeled everyday Example/לדוגמה. Replace the previous generic paragraph; do not stack it above this new copy. Areas are internal source groupings only. New editorial text is PROPOSED for preview, not already owner-approved.",
+      "Use he/en.teaching.modules in website/redesign-copy.json as the authoritative twelve visible modules, matched by W01–W12. Render a short title, exactly two practical leaf-icon bullets and one labeled everyday Example/לדוגמה. Areas are internal source groupings only.",
       "Hero has one genuine WhatsApp CTA. Remove the extra Explore the approach/modality CTA; retain normal navigation.",
-      "Use the flyers as the visual reference: alternate warm beige and forest-green surfaces, use the olive brush-underline colour for dividers, and preserve subtle motion with reduced-motion fallback."
+      "Use the locked #245159, #163F48, #FBF7EF and #E6D0A4 website system, preserving subtle motion with a reduced-motion fallback."
     ],
     "sources": [
       "Current owner direction supplied in the task",
@@ -26,9 +26,9 @@
       "Existing website-scenes.json: complete SODAS sequence and method distinctions",
       "Existing build_month_copy.py: factual service, founder, central-Israel location and practical parent guidance"
     ],
-    "boundary": "Copy handoff only; no website implementation or external write.",
-    "layout_revision": "v4.2 owner-directed twelve-module continuous illustrated page",
-    "current_v43": {
+    "boundary": "WEB-020 production website release; no ad, WAPI, messaging, spending, academy-homepage, DNS, email or private-app changes.",
+    "layout_revision": "WEB-020 owner-approved teal visual release with manual twelve-module carousel",
+    "historical_v43": {
       "revision": "4.3-current-launch-style",
       "scope": "Existing selected pair hero and footer corrections preserved. Complete concrete HE/EN twelve-module, parent-guidance and approach copy is now proposed for review.",
       "approval_states": {
@@ -47,7 +47,7 @@
         "integration": "The existing WEB-010 owner must reconcile that parallel private preview with the main existing preview; do not overwrite the academy site or publish the testimonial on this instruction."
       }
     },
-    "module_completion_requirement": "Use he/en.teaching.modules in website/redesign-copy.json as the authoritative twelve visible modules, matched by W01–W12. Render a short title, exactly two practical leaf-icon bullets and one labeled everyday Example/לדוגמה. Replace the previous generic paragraph; do not stack it above this new copy. Areas are internal source groupings only. New editorial text is PROPOSED for preview, not already owner-approved.",
+    "module_completion_requirement": "Use he/en.teaching.modules in website/redesign-copy.json as the authoritative twelve visible modules, matched by W01–W12. Render a short title, exactly two practical leaf-icon bullets and one labeled everyday Example/לדוגמה. Areas are internal source groupings only.",
     "latest_footer_correction": {
       "source": "Latest owner screenshot upload/55734b37-0bff-4e87-8816-29268b94cba9.png; assessed by coordinator",
       "status": "owner-requested centered presentation; short heading translations proposed for preview",
@@ -178,16 +178,16 @@
       }
     ],
     "cta": {
-      "button": "לתיאום בוואטסאפ",
+      "button": "לתיאום פגישה בוואטסאפ",
       "supporting_copy": "שלחו לי הודעה בוואטסאפ כדי להתחיל."
     },
       "hero": {
         "headline": "בכל ילד יש גיבור.",
-        "body": "טיפול רגשי לבנים בגילאי 8–12, בשילוב הדרכת הורים מעשית.",
+        "body": "טיפול רגשי לבנים בגילאי 8–12. מפגשים אישיים והדרכת הורים מעשית.",
         "service_title": "טיפול רגשי לבנים",
         "service_details": [
           "בגילאי 8–12",
-          "בשילוב הדרכת הורים מעשית."
+          "מפגשים אישיים והדרכת הורים מעשית."
         ]
     },
     "benefits": {
@@ -207,7 +207,7 @@
         },
         {
           "id": "responsibility",
-          "title": "אחריות מתוך בחירה",
+          "title": "אחריות",
             "body": "להבין למה התפקיד חשוב, לקחת חלק וללמוד.",
             "icon_key": "mountain_flag"
         }
@@ -564,11 +564,13 @@
       "copy_status": "PROPOSED_for_preview"
     },
     "founder": {
-      "eyebrow": "על שלמה",
-      "name": "שלמה דרטלר",
-      "bio": "שלמה מלווה בנים בגילאי 8–12 בעבודה על רגשות, בחירה וקשרים. התהליך מחבר בין מה שחשוב לילד לבין צעדים שאפשר לתרגל, בשיתוף ההורים.",
-      "methods": "עם ההורים מחברים את התרגול לחיים בבית: מגדירים מטרה, מתנסים, בודקים מה עבד ומתאימים את הצעד הבא.",
-      "location_inline": "מפגשים במרכז הארץ, בתיאום אישי."
+      "eyebrow": "היכרות",
+      "name": "על שלמה דרטלר",
+      "paragraphs": [
+        "שלמה דרטלר עובד באופן אישי עם בנים בגילאי 8–12 ועם הוריהם. העבודה שלו משלבת קשר אישי, תנועה ושיחה עם כלים מעשיים של ויסות רגשי, מודעות גופנית, תקשורת, פתרון בעיות, מוטיבציה, ערכים והנהגה עצמית.",
+        "במהלך עבודתו שלמה ליווה בנים שהתמודדו עם חרדה חברתית, חוויות קשות או טראומטיות, קושי בוויסות, קונפליקטים וחוסר ביטחון. העבודה אינה מבוססת על פתרון אחיד: מתחילים בקשר, מבינים מה קורה לילד, מתרגלים בחירה ותגובה, ומחברים את העבודה לחיים בבית ובין חברים.",
+        "שלמה מלמד ילדים והורים כלים שאפשר להשתמש בהם בזמן אמת: לזהות מה קורה בגוף וברגש, להבין מה רוצים להשיג, לבחור תגובה שמתאימה לערכים שלהם, ולבחון יחד מה עבד ומה נכון לתרגל הלאה."
+      ]
     },
     "faq": {
       "heading": "שאלות נפוצות",
@@ -608,7 +610,7 @@
     "closing_cta": {
       "heading": "לקביעת פגישה",
       "body": "",
-      "button": "לתיאום בוואטסאפ",
+      "button": "לתיאום פגישה בוואטסאפ",
       "region_line": "מפגשים במרכז הארץ",
       "href": "https://wa.me/972534932631",
       "copy_status": "PROPOSED_for_preview"
@@ -650,16 +652,16 @@
       }
     ],
     "cta": {
-      "button": "Message me on WhatsApp",
+      "button": "Arrange an appointment on WhatsApp",
       "supporting_copy": "Message me on WhatsApp to get started."
     },
       "hero": {
         "headline": "There’s a hero in every child.",
-        "body": "Emotional therapy for boys ages 8–12, together with practical parent guidance.",
+        "body": "Emotional therapy for boys ages 8–12. Individual sessions and practical parent guidance.",
         "service_title": "Emotional therapy for boys",
         "service_details": [
           "Ages 8–12",
-          "With practical parent guidance."
+          "Individual sessions and practical parent guidance."
         ]
     },
     "benefits": {
@@ -679,7 +681,7 @@
         },
         {
           "id": "responsibility",
-          "title": "Responsibility by choice",
+          "title": "Responsibility",
             "body": "Understand why a role matters, take part and learn.",
             "icon_key": "mountain_flag"
         }
@@ -1036,11 +1038,13 @@
       "copy_status": "PROPOSED_for_preview"
     },
     "founder": {
-      "eyebrow": "About Shlomo",
-      "name": "Shlomo Dratler",
-      "bio": "Shlomo works with boys ages 8–12 on emotions, choices and relationships. With parents involved, the process connects what matters to the child with steps he can practise.",
-      "methods": "Together with parents, we bring the practice into life at home: set a goal, try it, notice what worked and adjust the next step.",
-      "location_inline": "Meetings in central Israel, arranged individually."
+      "eyebrow": "Meet Shlomo",
+      "name": "About Shlomo Dratler",
+      "paragraphs": [
+        "Shlomo Dratler works individually with boys ages 8–12 and with their parents. His work combines personal connection, movement and conversation with practical tools for emotional regulation, body awareness, communication, problem solving, motivation, values and self-governance.",
+        "Shlomo has worked with boys dealing with social anxiety, difficult or traumatic experiences, regulation challenges, conflict and low confidence. The work is not one-size-fits-all: it begins with connection, understanding what is happening for the child, practising choices and responses, and carrying that practice into home life and friendships.",
+        "Shlomo teaches children and parents tools they can use in real situations: noticing what is happening in the body and emotions, clarifying the outcome they want, choosing a response that fits their values, and reviewing together what worked and what to practise next."
+      ]
     },
     "faq": {
       "heading": "Common questions",
@@ -1080,7 +1084,7 @@
     "closing_cta": {
       "heading": "Arrange an appointment",
       "body": "",
-      "button": "Message me on WhatsApp",
+      "button": "Arrange an appointment on WhatsApp",
       "region_line": "Meetings in central Israel",
       "href": "https://wa.me/972534932631",
       "copy_status": "PROPOSED_for_preview"

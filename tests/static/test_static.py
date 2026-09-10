@@ -1,4 +1,5 @@
-"""WEB-010 v4.3 bilingual static-page regression checks (stdlib only)."""
+"""WEB-020 bilingual teal-release regression checks (stdlib only)."""
+import hashlib
 import json
 import re
 import unittest
@@ -66,15 +67,19 @@ class StaticTests(unittest.TestCase):
         self.assertEqual(self.copy["he"]["direction"], "rtl")
         self.assertEqual(self.copy["en"]["direction"], "ltr")
 
-    def test_v43_hero_and_brand(self):
+    def test_approved_hero_and_brand(self):
         self.assertEqual(self.copy["he"]["hero"]["headline"], "בכל ילד יש גיבור.")
         self.assertEqual(self.copy["en"]["hero"]["headline"], "There’s a hero in every child.")
         self.assertEqual(self.copy["he"]["brand"]["tagline"], "לחיים שלמים")
         self.assertIsNone(self.copy["en"]["brand"]["tagline"])
-        self.assertIn("images/v43-approved-twig.png", self.react)
+        self.assertIn("images/LS_LOGO_HE_LEAF_APPROVED_20260910-transparent.png", self.react)
+        master = ROOT / "assets/images/LS_LOGO_HE_LEAF_APPROVED_20260910.png"
+        self.assertEqual(hashlib.sha256(master.read_bytes()).hexdigest(), "a95609b2ce76f5062be6619e5131430f11b99d7579148affebb2b545f66cc07c")
+        self.assertTrue((ROOT / "assets/images/LS_LOGO_HE_LEAF_APPROVED_20260910-transparent.png").is_file())
+        self.assertNotIn("v43-approved-twig.png", self.react)
         self.assertNotIn("section.link", self.react)
 
-    def test_twelve_modules_are_continuous_and_concrete(self):
+    def test_twelve_modules_are_accessible_ordered_carousel(self):
         for locale in ["he", "en"]:
             modules = self.copy[locale]["teaching"]["modules"]
             self.assertEqual(len(modules), 12)
@@ -85,7 +90,12 @@ class StaticTests(unittest.TestCase):
                 self.assertTrue(module["example"])
         self.assertNotIn("theme-disclosure", self.react)
         self.assertNotIn('<details className="curriculum', self.react)
-        self.assertIn("c.teaching.modules.map", self.react)
+        self.assertIn("function CurriculumCarousel", self.react)
+        self.assertIn("modules.map", self.react)
+        self.assertIn('aria-roledescription="carousel"', self.react)
+        self.assertIn("scroll-snap-type:x mandatory", self.css)
+        self.assertIn("prefers-reduced-motion: reduce", self.react)
+        self.assertNotIn("autoplay", (self.react + self.css).lower())
         self.assertIn("data-theme-key={key}", self.react)
 
     def test_required_method_language(self):
@@ -120,7 +130,7 @@ class StaticTests(unittest.TestCase):
         self.assertEqual(len(mapping), 12)
         for src in set(mapping.values()):
             self.assertTrue((ROOT / "assets" / src).is_file(), src)
-        for name in ["founder-boy-hero-desktop.webp", "founder-boy-hero-mobile.webp", "founder-grass-group.webp", "l-bars-2024.png", "meir-bunny.png", "bna-logo-nobg.png", "v43-approved-twig.png"]:
+        for name in ["founder-boy-hero-desktop.webp", "founder-boy-hero-mobile.webp", "founder-grass-group.webp", "l-bars-2024.png", "meir-bunny.png", "bna-logo-nobg.png", "LS_LOGO_HE_LEAF_APPROVED_20260910.png", "LS_LOGO_HE_LEAF_APPROVED_20260910-transparent.png"]:
             self.assertTrue((ROOT / "assets/images" / name).is_file(), name)
 
     def test_v455_fonts_and_visual_copy_are_real(self):
@@ -140,7 +150,33 @@ class StaticTests(unittest.TestCase):
 
     def test_approach_band_uses_requested_real_photo(self):
         self.assertIn('url("../images/meir-bunny.png")', self.css)
-        self.assertIn("linear-gradient(rgba(15,49,34,.70),rgba(15,49,34,.82))", self.css)
+        self.assertIn("linear-gradient(105deg,rgba(22,63,72,.97),rgba(36,81,89,.88))", self.css)
+
+    def test_locked_teal_system_and_mobile_geometry(self):
+        for token in ["--teal:#245159", "--deep-teal:#163F48", "--cream:#FBF7EF", "--gold:#E6D0A4"]:
+            self.assertIn(token, self.css)
+        for geometry in ["min-height:98px", "padding-inline:22px", "width:170px", "font-size:64px", "line-height:66px", "width:72px", "min-height:56px"]:
+            self.assertIn(geometry, self.css)
+        self.assertIn("opacity:.72", self.css)
+        self.assertIn("opacity:.32", self.css)
+        self.assertNotIn("#153E2C", self.css)
+
+    def test_mobile_menu_and_real_ctas(self):
+        self.assertIn('aria-expanded={menuOpen}', self.react)
+        self.assertIn('aria-controls="mobile-menu"', self.react)
+        self.assertIn("event.key === 'Escape'", self.react)
+        self.assertIn("https://wa.me/972534932631", self.copy["contact"]["whatsapp_url"])
+        self.assertEqual(self.copy["he"]["cta"]["button"], "לתיאום פגישה בוואטסאפ")
+        self.assertEqual(self.copy["en"]["cta"]["button"], "Arrange an appointment on WhatsApp")
+
+    def test_about_copy_and_claim_boundary(self):
+        self.assertEqual(self.copy["he"]["founder"]["name"], "על שלמה דרטלר")
+        self.assertEqual(self.copy["en"]["founder"]["name"], "About Shlomo Dratler")
+        self.assertEqual(len(self.copy["he"]["founder"]["paragraphs"]), 3)
+        self.assertEqual(len(self.copy["en"]["founder"]["paragraphs"]), 3)
+        combined = json.dumps(self.copy, ensure_ascii=False).lower()
+        for forbidden in ["completely reversed social anxiety", "healed trauma", "cured", "success percentage"]:
+            self.assertNotIn(forbidden, combined)
 
     def test_private_testimonial_and_floating_whatsapp(self):
         component = (ROOT / "src/FloatingWhatsAppButton.jsx").read_text(encoding="utf-8")
