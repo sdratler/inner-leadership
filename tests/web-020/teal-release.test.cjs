@@ -22,7 +22,7 @@ test('approved Hebrew leaf master is unchanged and its derivative appears in bot
 
 test('locked colors, mobile geometry, and type sources remain explicit', () => {
   for (const value of ['#245159', '#163F48', '#FBF7EF', '#E6D0A4']) assert.match(css, new RegExp(value, 'i'));
-  for (const value of ['FrankRuhlLibre-wght.ttf', 'Heebo-wght.ttf', 'font-size:48px', 'line-height:46px', 'min-height:98px', 'width:88px']) assert.match(css, new RegExp(value.replace(/[.]/g, '\\.'), 'i'));
+  for (const value of ['FrankRuhlLibre-wght.ttf', 'Heebo-wght.ttf', 'aspect-ratio:16/9', 'aspect-ratio:941/1529', 'min-height:98px', 'width:88px']) assert.match(css, new RegExp(value.replace(/[.]/g, '\\.'), 'i'));
   assert.doesNotMatch(css, /#153E2C/i);
 });
 
@@ -37,34 +37,43 @@ test('hero and About copy match the owner-approved release copy', () => {
   assert.equal(copy.en.founder.paragraphs.length, 3);
 });
 
-test('hero uses fixed UI-free plates with the complete live centered hierarchy', () => {
-  const desktopPlate = fs.readFileSync(path.join(root, 'assets/images/founder-boy-hero-desktop.webp'));
-  const mobilePlate = fs.readFileSync(path.join(root, 'assets/images/founder-boy-hero-mobile.webp'));
-  assert.equal(crypto.createHash('sha256').update(desktopPlate).digest('hex'), '33da02e086f98c0eaac2a4455f0395b645f55922a0851ae3223e6c07c0f91f48');
-  assert.equal(crypto.createHash('sha256').update(mobilePlate).digest('hex'), 'f054a5de1b3a28e0e0bdebd291ff7de2f603f6385de4924dfeca1b4c84422e71');
+test('hero uses the four exact owner-approved composite masters with live header and WhatsApp only', () => {
+  const expected = {
+    'founder-boy-hero-en-mobile.png': 'ee2924444efc3d21dda5186b3a1107c3fde935ce4c76ded75ae3458aa99c7a71',
+    'founder-boy-hero-he-mobile.png': '56dc8fcbe99f16d723a8b07b41eda8ebb03eb27716829b8c786f27b82a3ddcbe',
+    'founder-boy-hero-en-desktop.png': '5c28d22d7b6b784eb6becb4cfabb7977c80a304b5bcaca93943564ed74394f50',
+    'founder-boy-hero-he-desktop.png': '74c7d3258770abdab5c146e1211c4cbd16e0738840d5c274390f9a707f8dd824',
+  };
+  for (const [name, sha256] of Object.entries(expected)) {
+    const bytes = fs.readFileSync(path.join(root, 'assets/images', name));
+    assert.equal(crypto.createHash('sha256').update(bytes).digest('hex'), sha256, name);
+  }
 
   const hero = source.slice(source.indexOf('export function CampaignHero'), source.indexOf('export function OutcomeCards'));
   const order = [
-    'className="hero-copy container"',
-    'className="hero-service-title"',
-    'className="hero-age"',
+    'className="sr-only hero-semantics"',
+    'className="hero-art"',
     'className="hero-photo"',
     'className="hero-whatsapp"',
-    'className="hero-benefits container"',
   ].map(marker => hero.indexOf(marker));
   assert.ok(order.every(index => index >= 0));
   assert.deepEqual(order, [...order].sort((a, b) => a - b));
+  assert.match(hero, /founder-boy-hero-\$\{locale\}-desktop\.png/);
+  assert.match(hero, /founder-boy-hero-\$\{locale\}-mobile\.png/);
+  assert.match(hero, /alt="" aria-hidden="true"/);
   assert.match(hero, /<WhatsAppGlyph\/>/);
   assert.match(hero, /<ArrowIcon direction=/);
-  assert.doesNotMatch(hero, /figcaption|hero-photo-support|hero-support-desktop/);
+  assert.doesNotMatch(hero, /hero-copy|hero-service-title|hero-age|hero-benefits|figcaption|hero-photo-support|hero-support-desktop/);
 
-  assert.match(css, /\.hero-layout\{display:flex;flex-direction:column;align-items:center/);
+  assert.match(css, /\.hero-layout\{display:block;width:100%\}/);
+  assert.match(css, /\.hero-action\{position:absolute;z-index:2;left:33\.125%;top:62\.592593%;/);
+  assert.match(css, /\.hero-art\{aspect-ratio:941\/1529\}.*\.hero-action\{left:8\.501594%;top:65\.467626%;width:83\.103082%;height:8\.175278%/s);
   assert.match(css, /\.hero-shell:after\{content:none\}/);
   assert.doesNotMatch(css, /\.hero-photo:after\{/);
   assert.doesNotMatch(css, /grid-column:7\/13|photo-left|side-split/i);
 });
 
-test('live hero CTA and benefits match Website Brief 2.9', () => {
+test('live hero CTA and hidden semantic text match Website Brief 2.9', () => {
   for (const marker of [
     'min-height:58px',
     'min-height:54px',
@@ -75,8 +84,8 @@ test('live hero CTA and benefits match Website Brief 2.9', () => {
     'width:22px',
     'width:18px',
   ]) assert.ok(css.includes(marker), marker);
-  assert.match(css, /\.hero-benefits\{display:grid;grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
-  assert.match(css, /\.hero-benefits li\+li\{border-inline-start:1px solid rgba\(102,125,61,\.38\)\}/);
+  assert.match(source, /className="sr-only hero-semantics"/);
+  assert.match(source, /<h1 id=\{`hero-\$\{locale\}`\}>\{section\.headline\}<\/h1>/);
   assert.deepEqual(copy.en.benefits.items.map(item => item.title), ['Self-governance', 'Emotional regulation', 'Responsibility']);
   assert.deepEqual(copy.he.benefits.items.map(item => item.title), ['הנהגה עצמית', 'ויסות רגשי', 'אחריות']);
 });

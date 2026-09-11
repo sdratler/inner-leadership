@@ -241,22 +241,21 @@ export function CurriculumCarousel({modules, locale, exampleLabel}) {
 }
 
 export function CampaignHero({section, benefits, locale, contact, meta}) {
-  const lines = locale === 'he' ? ['בכל ילד', 'יש גיבור.'] : ['There’s a hero', 'in every child.'];
+  const desktopMaster = `${ASSETS}images/founder-boy-hero-${locale}-desktop.png`;
+  const mobileMaster = `${ASSETS}images/founder-boy-hero-${locale}-mobile.png`;
   return <section className="hero-shell" aria-labelledby={`hero-${locale}`}>
     <div className="hero-layout hero">
-      <div className="hero-copy container">
-        <h1 id={`hero-${locale}`}>{lines.map(line => <span key={line}>{line}</span>)}</h1>
-        <span className="hero-divider" aria-hidden="true"/>
-        <h2 className="hero-service-title">{section.service_title}</h2>
-        <p className="hero-age">{locale === 'he' ? 'בגילאי ' : 'Ages '}<bdi dir="ltr">8–12</bdi></p>
+      <div className="sr-only hero-semantics">
+        <h1 id={`hero-${locale}`}>{section.headline}</h1>
+        <p>{section.service_title}</p>
+        <p>{section.service_details[0]}</p>
+        <ul aria-label={meta.benefitsLabel}>{benefits.items.map(item => <li key={item.id}>{item.title}</li>)}</ul>
       </div>
-      <figure className="hero-photo">
-        <picture>
-          <source media="(max-width: 760px)" srcSet={ASSETS + 'images/founder-boy-hero-mobile.webp'}/>
-          <img src={ASSETS + 'images/founder-boy-hero-desktop.webp'} alt={meta.heroAlt} width="1600" height="760"/>
+      <figure className="hero-art">
+        <picture className="hero-photo">
+          <source media="(max-width: 760px)" srcSet={mobileMaster}/>
+          <img src={desktopMaster} alt="" aria-hidden="true" width="2400" height="1350"/>
         </picture>
-      </figure>
-      <div className="hero-controls">
         <div className="hero-action">
           <a className="hero-whatsapp" href={contact} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
             <span className="hero-whatsapp-icon"><WhatsAppGlyph/></span>
@@ -265,11 +264,7 @@ export function CampaignHero({section, benefits, locale, contact, meta}) {
             <ArrowIcon direction={locale === 'he' ? 'previous' : 'next'}/>
           </a>
         </div>
-        <ul className="hero-benefits container" aria-label={meta.benefitsLabel}>{benefits.items.map(item => <li key={item.id}>
-          <img src={`${ASSETS}icons/${ICONS[item.id]}`} alt="" aria-hidden="true"/>
-          <span>{item.title}</span>
-        </li>)}</ul>
-      </div>
+      </figure>
     </div>
   </section>;
 }
