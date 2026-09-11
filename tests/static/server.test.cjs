@@ -56,9 +56,9 @@ test("serves the selected life-skills subpath and preserves language queries", a
   assert.equal(css.status, 200);
   assert.match(css.headers.get("content-type"), /text\/css/);
 
-  const image = await fetch(`${origin}/life-skills/assets/images/founder-boy-hero-desktop.webp`);
+  const image = await fetch(`${origin}/life-skills/assets/images/founder-boy-hero-en-desktop.png`);
   assert.equal(image.status, 200);
-  assert.match(image.headers.get("content-type"), /image\/webp/);
+  assert.match(image.headers.get("content-type"), /image\/png/);
 
   const font = await fetch(`${origin}/life-skills/assets/fonts/FrankRuhlLibre-wght.ttf`);
   assert.equal(font.status, 200);

@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 2,
+  "manifestId": "life-skills-public-assets-20260910-01",
+  "migrationState": "DRAFT_RECONCILIATION_PENDING_ACCEPTED_GIT_POINTER",
+  "assets": [
+    {
+      "id": "LS-AD-VISUAL-REFERENCE-APPROVED-20260910",
+      "kind": "approved_visual_reference_with_ui",
+      "width": 941,
+      "height": 1672,
+      "approval": {
+        "status": "OWNER_APPROVED_REFERENCE",
+        "scope": "appearance_and_composition_not_final_website_asset",
+        "evidence": "Owner approval in supplied transcript lines 3–53; current Website Brief section23"
+      },
+      "verification": {
+        "driveBytes": "SHA256_AND_DIMENSIONS_VERIFIED_2026-09-11",
+        "visualInspection": true,
+        "openart": "ID_DIMENSIONS_BYTE_SIZE_VERIFIED; CDN byte download returned403 so cross-provider hash not independently reverified"
+      },
+      "deployableHero": false,
+      "privateBindingId": "LS-AD-VISUAL-REFERENCE-APPROVED-20260910",
+      "bindingSource": "CURRENT Codex Ad Production Handoff private_asset_bindings; resolved through authenticated CURRENT registry"
+    },
+    {
+      "id": "LS-PHOTO-A",
+      "kind": "original_photo",
+      "width": 4000,
+      "height": 3000,
+      "verification": {
+        "hash": "PRIOR_ASSET_AUDIT_REPORTED_NOT_REHASHED_THIS_AUDIT",
+        "metadata": "CURRENT_OPENART_ID_DIMENSIONS_SIZE_VERIFIED",
+        "requiredBeforePaidJob": "Download exact registered source through authorized access and verify actual hash; do not treat metadata as hash proof"
+      },
+      "privateBindingId": "LS-PHOTO-A",
+      "bindingSource": "CURRENT Codex Ad Production Handoff private_asset_bindings; resolved through authenticated CURRENT registry"
+    },
+    {
+      "id": "LS-PHOTO-B",
+      "kind": "original_photo",
+      "width": 4000,
+      "height": 3000,
+      "verification": {
+        "driveBytes": "SHA256_VERIFIED_2026-09-11",
+        "openart": "NOT_IN_COMPLETE_PROJECT_UPLOAD_LIST"
+      },
+      "nextAction": "Register these exact bytes in existing life skills project through supported upload route and record actual returned ID; do not request another photo from owner",
+      "privateBindingId": "LS-PHOTO-B",
+      "bindingSource": "CURRENT Codex Ad Production Handoff private_asset_bindings; resolved through authenticated CURRENT registry"
+    },
+    {
+      "id": "LS-LOGO-HE-LEAF-01",
+      "kind": "logo",
+      "width": 2172,
+      "height": 724,
+      "approval": {
+        "status": "LOCKED",
+        "decisionId": "D-LOGO-LEAF-20260910-01"
+      },
+      "verification": {
+        "source": "PR16 assets.json metadata; not rehashed this audit"
+      },
+      "transparentDerivative": {
+        "width": 1300,
+        "height": 677,
+        "status": "REGISTERED_DERIVATIVE_HASH_AND_APPROVAL_RELATIONSHIP_TO_VERIFY"
+      },
+      "embeddedCopy": {
+        "brand": "כישורי חיים",
+        "tagline": "לחיים שלמים"
+      },
+      "reuse": {
+        "allowUniformDisplayScale": true,
+        "allowRegeneration": false,
+        "allowRecolor": false,
+        "allowRetype": false,
+        "allowMirror": false
+      },
+      "privateBindingId": "LS-LOGO-HE-LEAF-01",
+      "bindingSource": "CURRENT Codex Ad Production Handoff private_asset_bindings; resolved through authenticated CURRENT registry"
+    },
+    {
+      "id": "LS-HERO-REFERENCE-HE-MOBILE-AGE-20260911",
+      "kind": "typography_and_button_reference_with_ui",
+      "width": 941,
+      "height": 1672,
+      "privateBindingId": "LS-HERO-REFERENCE-HE-MOBILE-AGE-20260911",
+      "bindingSource": "CURRENT Codex Ad Production Handoff private_asset_bindings",
+      "deployableHero": false,
+      "verification": {
+        "visualInspection": true,
+        "localBytes": "SHA256_AND_DIMENSIONS_VERIFIED_2026-09-11"
+      },
+      "changeId": "OWNER-HERO-TYPE-20260911-01"
+    },
+    {
+      "id": "LS-HERO-DESKTOP-COMPARISON-SCREENSHOT-20260911",
+      "kind": "chat_screenshot_comparison_only",
+      "width": 809,
+      "height": 745,
+      "privateBindingId": "LS-HERO-DESKTOP-COMPARISON-SCREENSHOT-20260911",
+      "bindingSource": "CURRENT Codex Ad Production Handoff private_asset_bindings",
+      "deployableHero": false,
+      "verification": {
+        "visualInspection": true,
+        "localBytes": "SHA256_AND_DIMENSIONS_VERIFIED_2026-09-11"
+      },
+      "changeId": "OWNER-HERO-TYPE-20260911-01"
+    }
+  ],
+  "privateBindingPolicy": "Original-photo provider IDs and checksums stay in existing private Drive handoff. This public registry owns logical assets, state and rules. Resolved bindings are runtime-only and never create another brand authority.",
+  "privateBindingResolver": {
+    "authority": "Build Control",
+    "workId": "MKT-060",
+    "field": "Codex Prompt Link",
+    "section": "private_asset_bindings",
+    "runtimeOnly": true,
+    "missingBindingPolicy": "Block only dependent job; never substitute a photo"
+  }
+}

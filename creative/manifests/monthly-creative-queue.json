@@ -1,0 +1,180 @@
+{
+  "schemaVersion": 1,
+  "id": "LS-MONTHLY-CREATIVE-QUEUE-30",
+  "status": "PLANNING_INVENTORY_AWAITING_APPROVED_MASTERS_AND_COPY",
+  "preparedOn": "2026-09-11",
+  "authority": "Derived planning inventory. Current creative manifests and explicit owner decisions govern execution; historical files are provenance only.",
+  "scope": "Thirty distinct language-specific ad/post designs using existing concepts and real photo A/B. This file neither generates images nor schedules or publishes content.",
+  "countDefinition": {
+    "requestedDesigns": 30,
+    "designIdentity": [
+      "concept_id",
+      "photo_id",
+      "locale"
+    ],
+    "conceptPhotoPairs": 15,
+    "localesPerPair": [
+      "he",
+      "en"
+    ],
+    "distinctConcepts": 8,
+    "ratioExportsCountAsAdditionalDesigns": false,
+    "repostingCountsAsAdditionalDesigns": false,
+    "plannedRatioDerivativesPerDesign": 2,
+    "potentialDerivativeFilesAfterApproval": 60,
+    "sameRatioReuse": "Facebook/Instagram Feed reuse the same feed bytes; Stories/Reels/WhatsApp Status reuse the same vertical bytes where supported and verified.",
+    "actualGeneratedDesigns": 0,
+    "actualGeneratedFiles": 0,
+    "actualApprovedDesigns": 0,
+    "actualScheduledPosts": 0,
+    "actualPublishedPosts": 0,
+    "schedule": "Unscheduled inventory, not thirty dated days. Two posts on a day can reuse approved designs; no publication frequency or audience is inferred."
+  },
+  "provenance": [
+    {
+      "id": "current_copy",
+      "path": "creative/manifests/copy.json",
+      "role": "Current concept selection/rejection and short WhatsApp label authority; reread current version before execution"
+    },
+    {
+      "id": "current_assets",
+      "path": "creative/manifests/assets.json",
+      "role": "Logical LS-PHOTO-A/LS-PHOTO-B resolve through current private bindings, never the historical copy-bank photo paths"
+    },
+    {
+      "id": "current_policy",
+      "path": "creative/manifests/production-policy.json",
+      "role": "Master, credit, generation, verification and publishing gates"
+    }
+  ],
+  "assumptions": [
+    "Thirty means thirty distinct locale/concept/photo designs: fifteen pairs localized in Hebrew and English. Ratios are separately approved derivatives.",
+    "C01/C02 were owner-selected concepts, not approved completed bilingual rasters. C04 remains unconfirmed.",
+    "C06–C10 are existing historical draft concepts selected only to reserve nonduplicate planning slots. Their exact wording is registered as draft in copy.json and requires current copy approval before production.",
+    "The requested real Photo A/B come from the current asset manifest; the older copy-bank describes different portraits and is not identity authority.",
+    "Feed and vertical composition masters must be resolved and approved separately. Website hero masters are not fallback ad layouts.",
+    "No current source establishes a credit cap or completed output for this queue."
+  ],
+  "excludedHistoricalConcepts": [
+    {
+      "id": "C03",
+      "status": "OWNER_REJECTED",
+      "reason": "Current copy.json disallows production of Feeling they belong / Choosing to contribute."
+    },
+    {
+      "id": "C05",
+      "status": "OWNER_REJECTED",
+      "reason": "Current copy.json disallows production of I have a role / I have something to contribute."
+    },
+    {
+      "id": "C11",
+      "status": "STALE_OWNER_CORRECTION",
+      "reason": "Historical flow_and_engagement concept conflicts with the owner instruction to remove flow messaging; not included."
+    },
+    {
+      "id": "C12",
+      "status": "STALE_FRAMING_WITHHELD",
+      "reason": "Historical From the session to home headline resembles framing the owner rejected. Parent guidance remains part of the service, but this headline is not carried forward."
+    }
+  ],
+  "excludedHistoricalFields": [
+    "Long Message me on WhatsApp to get started CTA",
+    "Practitioner-led third-person captions criticized by owner",
+    "Historical no-hero rule as blanket policy",
+    "Claim that all five original headlines are owner accepted",
+    "Historical photo A/B filenames and portrait descriptions",
+    "Old budget proposals, dates and platform activation state"
+  ],
+  "execution": {
+    "generationEnabled": false,
+    "publicationEnabled": false,
+    "creditCap": null,
+    "creditUnit": null,
+    "providerProjectId": null,
+    "model": null,
+    "batchId": null,
+    "firstProofCount": 1,
+    "masterSource": "Separately promoted ad master for exact locale and ratio; resolve current registry, do not invent IDs or reuse website artwork implicitly",
+    "copySource": "Current copy.json by stable concept ID; never use stale wording from the planning queue. Exact text/hash is snapshotted only when an authorized job is submitted.",
+    "requiredBeforeSubmit": [
+      "approved_ratio_locale_ad_master",
+      "verified_exact_photo_binding",
+      "complete_approved_on_art_copy",
+      "one_checked_proof_of_relevant_template",
+      "working_resumable_provider_adapter",
+      "explicit_credit_cap"
+    ],
+    "postingAutomation": "Not configured by this planning file; any schedule/channel/audience requires its own resolved authorized publishing job."
+  },
+  "planningCounts": {
+    "ownerSelectedConceptDesigns": 8,
+    "unconfirmedCurrentCopyDesigns": 4,
+    "historicalProposalDesigns": 18,
+    "missingCompletedOutputs": 30
+  },
+  "historicalProvenance": {
+    "rotation": "30-DAY-ROTATION.csv: 30 rows, 10 repeated concept/photo pairs; contains rejected copy and is not executable",
+    "copy": "Uploaded copy-bank.json v4.3; usable proposals migrated to current copy.json with unapproved state"
+  },
+  "designDefaults": {
+    "status": "PLANNED_AWAITING_MASTERS_AND_COPY",
+    "creditCap": null,
+    "providerJobId": null,
+    "output": null,
+    "qualityReceipt": null,
+    "publicationEnabled": false,
+    "scheduledAt": null
+  },
+  "derivativeDefaults": [
+    {
+      "placement": "feed",
+      "width": 1080,
+      "height": 1350,
+      "ratio": "4:5",
+      "master_id": null,
+      "master_sha256": null,
+      "output": null
+    },
+    {
+      "placement": "vertical",
+      "width": 1080,
+      "height": 1920,
+      "ratio": "9:16",
+      "master_id": null,
+      "master_sha256": null,
+      "output": null
+    }
+  ],
+  "designs": [
+    {"id": "LS-MONTH30-C01-A-HE", "sequence": 1, "concept_id": "C01", "photo_id": "LS-PHOTO-A", "locale": "he"},
+    {"id": "LS-MONTH30-C01-A-EN", "sequence": 2, "concept_id": "C01", "photo_id": "LS-PHOTO-A", "locale": "en"},
+    {"id": "LS-MONTH30-C01-B-HE", "sequence": 3, "concept_id": "C01", "photo_id": "LS-PHOTO-B", "locale": "he"},
+    {"id": "LS-MONTH30-C01-B-EN", "sequence": 4, "concept_id": "C01", "photo_id": "LS-PHOTO-B", "locale": "en"},
+    {"id": "LS-MONTH30-C02-A-HE", "sequence": 5, "concept_id": "C02", "photo_id": "LS-PHOTO-A", "locale": "he"},
+    {"id": "LS-MONTH30-C02-A-EN", "sequence": 6, "concept_id": "C02", "photo_id": "LS-PHOTO-A", "locale": "en"},
+    {"id": "LS-MONTH30-C02-B-HE", "sequence": 7, "concept_id": "C02", "photo_id": "LS-PHOTO-B", "locale": "he"},
+    {"id": "LS-MONTH30-C02-B-EN", "sequence": 8, "concept_id": "C02", "photo_id": "LS-PHOTO-B", "locale": "en"},
+    {"id": "LS-MONTH30-C04-A-HE", "sequence": 9, "concept_id": "C04", "photo_id": "LS-PHOTO-A", "locale": "he"},
+    {"id": "LS-MONTH30-C04-A-EN", "sequence": 10, "concept_id": "C04", "photo_id": "LS-PHOTO-A", "locale": "en"},
+    {"id": "LS-MONTH30-C04-B-HE", "sequence": 11, "concept_id": "C04", "photo_id": "LS-PHOTO-B", "locale": "he"},
+    {"id": "LS-MONTH30-C04-B-EN", "sequence": 12, "concept_id": "C04", "photo_id": "LS-PHOTO-B", "locale": "en"},
+    {"id": "LS-MONTH30-C06-A-HE", "sequence": 13, "concept_id": "C06", "photo_id": "LS-PHOTO-A", "locale": "he"},
+    {"id": "LS-MONTH30-C06-A-EN", "sequence": 14, "concept_id": "C06", "photo_id": "LS-PHOTO-A", "locale": "en"},
+    {"id": "LS-MONTH30-C06-B-HE", "sequence": 15, "concept_id": "C06", "photo_id": "LS-PHOTO-B", "locale": "he"},
+    {"id": "LS-MONTH30-C06-B-EN", "sequence": 16, "concept_id": "C06", "photo_id": "LS-PHOTO-B", "locale": "en"},
+    {"id": "LS-MONTH30-C07-A-HE", "sequence": 17, "concept_id": "C07", "photo_id": "LS-PHOTO-A", "locale": "he"},
+    {"id": "LS-MONTH30-C07-A-EN", "sequence": 18, "concept_id": "C07", "photo_id": "LS-PHOTO-A", "locale": "en"},
+    {"id": "LS-MONTH30-C07-B-HE", "sequence": 19, "concept_id": "C07", "photo_id": "LS-PHOTO-B", "locale": "he"},
+    {"id": "LS-MONTH30-C07-B-EN", "sequence": 20, "concept_id": "C07", "photo_id": "LS-PHOTO-B", "locale": "en"},
+    {"id": "LS-MONTH30-C08-A-HE", "sequence": 21, "concept_id": "C08", "photo_id": "LS-PHOTO-A", "locale": "he"},
+    {"id": "LS-MONTH30-C08-A-EN", "sequence": 22, "concept_id": "C08", "photo_id": "LS-PHOTO-A", "locale": "en"},
+    {"id": "LS-MONTH30-C08-B-HE", "sequence": 23, "concept_id": "C08", "photo_id": "LS-PHOTO-B", "locale": "he"},
+    {"id": "LS-MONTH30-C08-B-EN", "sequence": 24, "concept_id": "C08", "photo_id": "LS-PHOTO-B", "locale": "en"},
+    {"id": "LS-MONTH30-C09-A-HE", "sequence": 25, "concept_id": "C09", "photo_id": "LS-PHOTO-A", "locale": "he"},
+    {"id": "LS-MONTH30-C09-A-EN", "sequence": 26, "concept_id": "C09", "photo_id": "LS-PHOTO-A", "locale": "en"},
+    {"id": "LS-MONTH30-C09-B-HE", "sequence": 27, "concept_id": "C09", "photo_id": "LS-PHOTO-B", "locale": "he"},
+    {"id": "LS-MONTH30-C09-B-EN", "sequence": 28, "concept_id": "C09", "photo_id": "LS-PHOTO-B", "locale": "en"},
+    {"id": "LS-MONTH30-C10-A-HE", "sequence": 29, "concept_id": "C10", "photo_id": "LS-PHOTO-A", "locale": "he"},
+    {"id": "LS-MONTH30-C10-A-EN", "sequence": 30, "concept_id": "C10", "photo_id": "LS-PHOTO-A", "locale": "en"}
+  ]
+}

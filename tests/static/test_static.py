@@ -133,7 +133,7 @@ class StaticTests(unittest.TestCase):
         self.assertEqual(len(mapping), 12)
         for src in set(mapping.values()):
             self.assertTrue((ROOT / "assets" / src).is_file(), src)
-        for name in ["founder-boy-hero-desktop.webp", "founder-boy-hero-mobile.webp", "founder-grass-group.webp", "l-bars-2024.png", "meir-bunny.png", "bna-logo-nobg.png", "LS_LOGO_HE_LEAF_APPROVED_20260910.png", "LS_LOGO_HE_LEAF_APPROVED_20260910-transparent.png"]:
+        for name in ["founder-boy-hero-en-desktop.png", "founder-boy-hero-en-mobile.png", "founder-boy-hero-he-desktop.png", "founder-boy-hero-he-mobile.png", "founder-grass-group.webp", "l-bars-2024.png", "meir-bunny.png", "bna-logo-nobg.png", "LS_LOGO_HE_LEAF_APPROVED_20260910.png", "LS_LOGO_HE_LEAF_APPROVED_20260910-transparent.png"]:
             self.assertTrue((ROOT / "assets/images" / name).is_file(), name)
 
     def test_v455_fonts_and_visual_copy_are_real(self):
@@ -162,7 +162,7 @@ class StaticTests(unittest.TestCase):
     def test_locked_teal_system_and_mobile_geometry(self):
         for token in ["--teal:#245159", "--deep-teal:#163F48", "--cream:#FBF7EF", "--gold:#E6D0A4"]:
             self.assertIn(token, self.css)
-        for geometry in ["min-height:98px", "padding-inline:22px", "width:170px", "font-size:54px", "line-height:56px", "width:72px", "min-height:52px"]:
+        for geometry in ["min-height:98px", "padding-inline:22px", "width:88px", "aspect-ratio:16/9", "aspect-ratio:941/1529", "left:8.501594%", "min-height:50px", "min-height:58px"]:
             self.assertIn(geometry, self.css)
         self.assertIn("opacity:.72", self.css)
         self.assertIn("opacity:.32", self.css)
@@ -174,10 +174,10 @@ class StaticTests(unittest.TestCase):
         self.assertIn('className="mobile-language-direct"', self.react)
         self.assertIn("event.key === 'Escape'", self.react)
         self.assertIn("https://wa.me/972534932631", self.copy["contact"]["whatsapp_url"])
-        self.assertEqual(self.copy["he"]["cta"]["button"], "לפרטים בוואטסאפ")
-        self.assertEqual(self.copy["en"]["cta"]["button"], "Find out more on WhatsApp")
-        self.assertIn('className="hero-photo-support"', self.react)
-        self.assertIn("max-width:310px", self.css)
+        self.assertEqual(self.copy["he"]["cta"]["button"], "שלחו הודעה בוואטסאפ")
+        self.assertEqual(self.copy["en"]["cta"]["button"], "Message on WhatsApp")
+        self.assertNotIn('hero-photo-support', self.react)
+        self.assertIn("width:83.103082%", self.css)
         self.assertIn("white-space:nowrap", self.css)
 
     def test_about_copy_and_claim_boundary(self):
@@ -214,7 +214,7 @@ class StaticTests(unittest.TestCase):
 
     def test_founder_and_exact_nonprofit_footer(self):
         self.assertIn("images/founder-grass-group.webp", self.react)
-        self.assertIn("founder-boy-hero-desktop.webp", self.react)
+        self.assertIn("founder-boy-hero-${locale}-desktop.png", self.react)
         self.assertEqual(self.copy["en"]["footer"]["relationship"], "Life Skills is a project of Bnei Neviim Academy, a New Jersey nonprofit supporting Jewish children’s emotional and educational development, autonomy and self-directed growth.")
         self.assertNotIn("LLC", json.dumps(self.copy))
 

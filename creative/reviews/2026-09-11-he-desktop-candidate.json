@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "reviewId": "WEB-HERO-HE-DESKTOP-PR24-20260911-01",
+  "state": "OWNER_APPROVED_PENDING_DOWNSTREAM_INSTALL",
+  "source": {
+    "photoLogicalAssetId": "PHOTO_A",
+    "photoSha256": "f517882ef0e472dfce61fda65771bd115d4562e6419610f78afd14b0b95742d9",
+    "approvedMobileMasterSha256": "56dc8fcbe99f16d723a8b07b41eda8ebb03eb27716829b8c786f27b82a3ddcbe"
+  },
+  "candidate": {
+    "filename": "LS_HERO_HE_DESKTOP_CANDIDATE_PR24.png",
+    "width": 2400,
+    "height": 1350,
+    "sha256": "74c7d3258770abdab5c146e1211c4cbd16e0738840d5c274390f9a707f8dd824",
+    "storedInGit": false,
+    "storedInOwnerDrive": true,
+    "privateBindingId": "LS-HERO-MASTER-HE-DESKTOP-20260911",
+    "driveReadbackSize": 2411645,
+    "approvedMaster": true,
+    "intendedSlot": "website.hero.he.desktop"
+  },
+  "checkedPreview": {
+    "filename": "checked-live-controls-preview-he-1440x900.png",
+    "width": 1440,
+    "height": 900,
+    "sha256": "2372cb107451107aa32f6d5d0b8dd8233c6d6938b8e874c3d85d0d0610f94d61",
+    "storedInGit": false,
+    "scope": "Static QA rendering of the exact composite with the separate mirrored Hebrew toolbar and RTL WhatsApp control."
+  },
+  "verification": {
+    "registeredSourceHashesMatched": true,
+    "photoIdentity": "UNCHANGED_SOURCE_PHOTO_NO_GENERATED_PERSON_PIXELS",
+    "photoMirrored": false,
+    "centeredDesktopComposition": true,
+    "sideSplit": false,
+    "stretchedMobile": false,
+    "headline": "בכל ילד יש גיבור",
+    "service": "טיפול רגשי לבנים",
+    "age": "בגילאי 8–12",
+    "benefits": ["הנהגה עצמית", "ויסות רגשי", "אחריות"],
+    "bakedToolbarAbsent": true,
+    "bakedWhatsappControlAbsent": true,
+    "noFaceOverlap": true,
+    "visualReview": "PASS"
+  },
+  "controls": {
+    "whatsappBoundsPx": [795, 845, 1605, 995],
+    "whatsappBoundsNormalized": [0.33125, 0.62592593, 0.3375, 0.11111111]
+  },
+  "provider": {
+    "openArtGenerationUsed": false,
+    "creditsSpent": 0,
+    "reason": "Independent bounded desktop raster composition using registered Photo A and the owner-approved Hebrew mobile art direction."
+  },
+  "ownerApproval": {
+    "evidence": "Owner message on 2026-09-11 approving the other two desktop masters in advance, conditional on continuing the checked approved direction.",
+    "approvedAt": "2026-09-11T14:46:40+03:00",
+    "assetSha256": "74c7d3258770abdab5c146e1211c4cbd16e0738840d5c274390f9a707f8dd824"
+  },
+  "nextAction": "Install this exact private-bound file in the downstream website repository and verify the served byte hash."
+}

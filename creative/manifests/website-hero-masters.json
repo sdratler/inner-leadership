@@ -1,0 +1,240 @@
+{
+  "schema_version": 1,
+  "status": "DRAFT_RECONCILIATION_NOT_DEPLOYED",
+  "checked_at": "2026-09-11",
+  "source_reference": "LS-AD-VISUAL-REFERENCE-APPROVED-20260910",
+  "masters": [
+    {
+      "id": "LS-HERO-MASTER-EN-MOBILE",
+      "locale": "en",
+      "orientation": "mobile",
+      "status": "OWNER_APPROVED_MASTER",
+      "asset": {
+        "path": "assets/images/founder-boy-hero-en-mobile.png",
+        "width": 941,
+        "height": 1529,
+        "sha256": "ee2924444efc3d21dda5186b3a1107c3fde935ce4c76ded75ae3458aa99c7a71"
+      },
+      "owner_approval": {
+        "evidence": "Owner message in continuing PR #24 task on 2026-09-11: Okay, approved.",
+        "asset_sha256": "ee2924444efc3d21dda5186b3a1107c3fde935ce4c76ded75ae3458aa99c7a71",
+        "approved_at": "2026-09-11T14:13:29+03:00"
+      },
+      "candidate": {
+        "private_binding_id": "LS-HERO-MASTER-EN-MOBILE-20260911",
+        "filename": "LS_HERO_EN_MOBILE_MASTER_APPROVED_20260911.png",
+        "width": 941,
+        "height": 1529,
+        "sha256": "ee2924444efc3d21dda5186b3a1107c3fde935ce4c76ded75ae3458aa99c7a71",
+        "stored_in_owner_drive": true,
+        "stored_in_this_repository": true
+      },
+      "baked_layers": [
+        "headline",
+        "service",
+        "age",
+        "photo",
+        "benefit_icons",
+        "benefit_labels",
+        "shading",
+        "fade",
+        "cream",
+        "bottom_curve"
+      ],
+      "visible_live_layers": [
+        "header",
+        "whatsapp"
+      ],
+      "controls": {
+        "whatsapp": {
+          "bounds": {
+            "x": 0.08501594,
+            "y": 0.65467626,
+            "width": 0.83103082,
+            "height": 0.08175278
+          },
+          "coordinate_space": "normalized_intrinsic_image"
+        }
+      },
+      "allow_regeneration": false,
+      "allow_relayout": false,
+      "allow_recolor": false,
+      "allow_reference_substitution": false,
+      "production_note": "Owner approved exact candidate SHA256 ee2924444efc3d21dda5186b3a1107c3fde935ce4c76ded75ae3458aa99c7a71. The exact approved bytes are installed at the public website asset path and remain backed up privately in the owner Drive."
+    },
+    {
+      "id": "LS-HERO-MASTER-HE-MOBILE",
+      "locale": "he",
+      "orientation": "mobile",
+      "status": "OWNER_APPROVED_MASTER",
+      "asset": {
+        "path": "assets/images/founder-boy-hero-he-mobile.png",
+        "width": 941,
+        "height": 1529,
+        "sha256": "56dc8fcbe99f16d723a8b07b41eda8ebb03eb27716829b8c786f27b82a3ddcbe"
+      },
+      "owner_approval": {
+        "evidence": "Owner message in the continuing PR #24 task on 2026-09-11 approving the Hebrew mobile master and the two desktop masters in advance.",
+        "asset_sha256": "56dc8fcbe99f16d723a8b07b41eda8ebb03eb27716829b8c786f27b82a3ddcbe",
+        "approved_at": "2026-09-11T14:46:40+03:00"
+      },
+      "candidate": {
+        "private_binding_id": "LS-HERO-MASTER-HE-MOBILE-20260911",
+        "filename": "LS_HERO_HE_MOBILE_MASTER_APPROVED_20260911.png",
+        "width": 941,
+        "height": 1529,
+        "sha256": "56dc8fcbe99f16d723a8b07b41eda8ebb03eb27716829b8c786f27b82a3ddcbe",
+        "stored_in_owner_drive": true,
+        "stored_in_this_repository": true
+      },
+      "baked_layers": [
+        "headline",
+        "service",
+        "age",
+        "photo",
+        "benefit_icons",
+        "benefit_labels",
+        "shading",
+        "fade",
+        "cream",
+        "bottom_curve"
+      ],
+      "visible_live_layers": [
+        "header",
+        "whatsapp"
+      ],
+      "controls": {
+        "whatsapp": {
+          "bounds": {
+            "x": 0.08501594,
+            "y": 0.65467626,
+            "width": 0.83103082,
+            "height": 0.08175278
+          },
+          "coordinate_space": "normalized_intrinsic_image"
+        }
+      },
+      "allow_regeneration": false,
+      "allow_relayout": false,
+      "allow_recolor": false,
+      "allow_reference_substitution": false,
+      "production_note": "Owner approved exact candidate SHA256 56dc8fcbe99f16d723a8b07b41eda8ebb03eb27716829b8c786f27b82a3ddcbe. The exact approved bytes are installed at the public website asset path and remain backed up privately in the owner Drive."
+    },
+    {
+      "id": "LS-HERO-MASTER-EN-DESKTOP",
+      "locale": "en",
+      "orientation": "desktop",
+      "status": "OWNER_APPROVED_MASTER",
+      "asset": {
+        "path": "assets/images/founder-boy-hero-en-desktop.png",
+        "width": 2400,
+        "height": 1350,
+        "sha256": "5c28d22d7b6b784eb6becb4cfabb7977c80a304b5bcaca93943564ed74394f50"
+      },
+      "owner_approval": {
+        "evidence": "Owner message on 2026-09-11 approving both desktop masters in advance, followed by a visual and source-identity check of this exact output.",
+        "asset_sha256": "5c28d22d7b6b784eb6becb4cfabb7977c80a304b5bcaca93943564ed74394f50",
+        "approved_at": "2026-09-11T14:46:40+03:00"
+      },
+      "candidate": {
+        "private_binding_id": "LS-HERO-MASTER-EN-DESKTOP-20260911",
+        "filename": "LS_HERO_EN_DESKTOP_MASTER_APPROVED_20260911.png",
+        "width": 2400,
+        "height": 1350,
+        "sha256": "5c28d22d7b6b784eb6becb4cfabb7977c80a304b5bcaca93943564ed74394f50",
+        "stored_in_owner_drive": true,
+        "stored_in_this_repository": true
+      },
+      "baked_layers": [
+        "headline",
+        "service",
+        "age",
+        "photo",
+        "benefit_icons",
+        "benefit_labels",
+        "shading",
+        "fade",
+        "cream",
+        "bottom_curve"
+      ],
+      "visible_live_layers": [
+        "header",
+        "whatsapp"
+      ],
+      "controls": {
+        "whatsapp": {
+          "bounds": {
+            "x": 0.33125,
+            "y": 0.62592593,
+            "width": 0.3375,
+            "height": 0.11111111
+          },
+          "coordinate_space": "normalized_intrinsic_image"
+        }
+      },
+      "allow_regeneration": false,
+      "allow_relayout": false,
+      "allow_recolor": false,
+      "allow_reference_substitution": false,
+      "production_note": "Owner-approved checked desktop SHA256 5c28d22d7b6b784eb6becb4cfabb7977c80a304b5bcaca93943564ed74394f50. Independent centered composition from registered Photo A; not mirrored or stretched from mobile; exact approved bytes are installed at the public website asset path."
+    },
+    {
+      "id": "LS-HERO-MASTER-HE-DESKTOP",
+      "locale": "he",
+      "orientation": "desktop",
+      "status": "OWNER_APPROVED_MASTER",
+      "asset": {
+        "path": "assets/images/founder-boy-hero-he-desktop.png",
+        "width": 2400,
+        "height": 1350,
+        "sha256": "74c7d3258770abdab5c146e1211c4cbd16e0738840d5c274390f9a707f8dd824"
+      },
+      "owner_approval": {
+        "evidence": "Owner message on 2026-09-11 approving both desktop masters in advance, followed by a visual and source-identity check of this exact output.",
+        "asset_sha256": "74c7d3258770abdab5c146e1211c4cbd16e0738840d5c274390f9a707f8dd824",
+        "approved_at": "2026-09-11T14:46:40+03:00"
+      },
+      "candidate": {
+        "private_binding_id": "LS-HERO-MASTER-HE-DESKTOP-20260911",
+        "filename": "LS_HERO_HE_DESKTOP_MASTER_APPROVED_20260911.png",
+        "width": 2400,
+        "height": 1350,
+        "sha256": "74c7d3258770abdab5c146e1211c4cbd16e0738840d5c274390f9a707f8dd824",
+        "stored_in_owner_drive": true,
+        "stored_in_this_repository": true
+      },
+      "baked_layers": [
+        "headline",
+        "service",
+        "age",
+        "photo",
+        "benefit_icons",
+        "benefit_labels",
+        "shading",
+        "fade",
+        "cream",
+        "bottom_curve"
+      ],
+      "visible_live_layers": [
+        "header",
+        "whatsapp"
+      ],
+      "controls": {
+        "whatsapp": {
+          "bounds": {
+            "x": 0.33125,
+            "y": 0.62592593,
+            "width": 0.3375,
+            "height": 0.11111111
+          },
+          "coordinate_space": "normalized_intrinsic_image"
+        }
+      },
+      "allow_regeneration": false,
+      "allow_relayout": false,
+      "allow_recolor": false,
+      "allow_reference_substitution": false,
+      "production_note": "Owner-approved checked desktop SHA256 74c7d3258770abdab5c146e1211c4cbd16e0738840d5c274390f9a707f8dd824. Independent centered composition from registered Photo A; not mirrored or stretched from mobile; exact approved bytes are installed at the public website asset path."
+    }
+  ]
+}
