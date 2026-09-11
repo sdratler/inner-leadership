@@ -1,0 +1,148 @@
+{
+  "schema_version": 1,
+  "status": "DRAFT_RECONCILIATION_NOT_DEPLOYED",
+  "checked_at": "2026-09-11",
+  "source_reference": "LS-AD-VISUAL-REFERENCE-APPROVED-20260910",
+  "masters": [
+    {
+      "id": "LS-HERO-MASTER-EN-MOBILE",
+      "locale": "en",
+      "orientation": "mobile",
+      "status": "MISSING",
+      "asset": null,
+      "owner_approval": null,
+      "baked_layers": [
+        "headline",
+        "service",
+        "age",
+        "photo",
+        "benefit_icons",
+        "benefit_labels",
+        "shading",
+        "fade",
+        "cream",
+        "bottom_curve"
+      ],
+      "visible_live_layers": [
+        "header",
+        "whatsapp"
+      ],
+      "controls": {
+        "whatsapp": {
+          "bounds": null,
+          "coordinate_space": "normalized_intrinsic_image"
+        }
+      },
+      "allow_regeneration": false,
+      "allow_relayout": false,
+      "allow_recolor": false,
+      "allow_reference_substitution": false,
+      "production_note": "FIRST: remove toolbar and painted CTA from registered reference; replace Self-leadership with owner-confirmed Self-governance; preserve all other pixels. One candidate only."
+    },
+    {
+      "id": "LS-HERO-MASTER-HE-MOBILE",
+      "locale": "he",
+      "orientation": "mobile",
+      "status": "MISSING",
+      "asset": null,
+      "owner_approval": null,
+      "baked_layers": [
+        "headline",
+        "service",
+        "age",
+        "photo",
+        "benefit_icons",
+        "benefit_labels",
+        "shading",
+        "fade",
+        "cream",
+        "bottom_curve"
+      ],
+      "visible_live_layers": [
+        "header",
+        "whatsapp"
+      ],
+      "controls": {
+        "whatsapp": {
+          "bounds": null,
+          "coordinate_space": "normalized_intrinsic_image"
+        }
+      },
+      "allow_regeneration": false,
+      "allow_relayout": false,
+      "allow_recolor": false,
+      "allow_reference_substitution": false,
+      "production_note": "Wait for accepted first mobile candidate; one localized/orientation candidate at a time"
+    },
+    {
+      "id": "LS-HERO-MASTER-EN-DESKTOP",
+      "locale": "en",
+      "orientation": "desktop",
+      "status": "MISSING",
+      "asset": null,
+      "owner_approval": null,
+      "baked_layers": [
+        "headline",
+        "service",
+        "age",
+        "photo",
+        "benefit_icons",
+        "benefit_labels",
+        "shading",
+        "fade",
+        "cream",
+        "bottom_curve"
+      ],
+      "visible_live_layers": [
+        "header",
+        "whatsapp"
+      ],
+      "controls": {
+        "whatsapp": {
+          "bounds": null,
+          "coordinate_space": "normalized_intrinsic_image"
+        }
+      },
+      "allow_regeneration": false,
+      "allow_relayout": false,
+      "allow_recolor": false,
+      "allow_reference_substitution": false,
+      "production_note": "Wait for accepted first mobile candidate; one localized/orientation candidate at a time"
+    },
+    {
+      "id": "LS-HERO-MASTER-HE-DESKTOP",
+      "locale": "he",
+      "orientation": "desktop",
+      "status": "MISSING",
+      "asset": null,
+      "owner_approval": null,
+      "baked_layers": [
+        "headline",
+        "service",
+        "age",
+        "photo",
+        "benefit_icons",
+        "benefit_labels",
+        "shading",
+        "fade",
+        "cream",
+        "bottom_curve"
+      ],
+      "visible_live_layers": [
+        "header",
+        "whatsapp"
+      ],
+      "controls": {
+        "whatsapp": {
+          "bounds": null,
+          "coordinate_space": "normalized_intrinsic_image"
+        }
+      },
+      "allow_regeneration": false,
+      "allow_relayout": false,
+      "allow_recolor": false,
+      "allow_reference_substitution": false,
+      "production_note": "Wait for accepted first mobile candidate; one localized/orientation candidate at a time"
+    }
+  ]
+}

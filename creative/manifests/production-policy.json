@@ -1,0 +1,193 @@
+{
+  "schema_version": 1,
+  "status": "CONTRACT_ONLY_RUNNER_NOT_INSTALLED",
+  "website": {
+    "visible_live_layers": [
+      "header",
+      "whatsapp"
+    ],
+    "baked_layers": [
+      "headline",
+      "service",
+      "age",
+      "photo",
+      "benefit_icons",
+      "benefit_labels",
+      "shading",
+      "fade",
+      "cream",
+      "bottom_curve"
+    ],
+    "allow_proportional_display_scaling": true,
+    "allow_asset_reencoding": false,
+    "allow_css_recolor": false,
+    "allow_crop": false,
+    "hidden_semantics": "Exact equivalent of raster copy; no visible duplicate"
+  },
+  "openart": {
+    "projectName": "life skills",
+    "defaultProjectForbidden": true,
+    "referenceRoles": [
+      "PROMOTED_RATIO_MASTER_OR_EXPLICIT_APPROVED_SOURCE",
+      "EXACT_ORIGINAL_PHOTO"
+    ],
+    "maxReferencesForPhotoVariant": 2,
+    "unapprovedDerivativeChaining": false,
+    "exactPixelLockAvailable": false,
+    "modelSelection": "Discover current form and quote exact job settings; benchmark one suitable route before bulk",
+    "nanoBananaProModel": "nano-banana-pro",
+    "model_mode": "image2image",
+    "privateProjectBinding": "life-skills-openart-project",
+    "auditedConnectorCapabilities": {
+      "date": "2026-09-11",
+      "imageReferenceGeneration": true,
+      "exposedEditMask": false,
+      "protectedPixelRegions": false,
+      "directLocalFileImport": false,
+      "userDrivenUploadPicker": true,
+      "fullProductCapabilityClaim": false,
+      "exactEditDependency": "Controlled patch/preservation check and verified storage/import path outside exposed MCP generation form"
+    }
+  },
+  "generation": {
+    "firstProofCount": 1,
+    "maxParallelUnapprovedCandidates": 1,
+    "batchEnabled": false,
+    "batchEnableRequires": [
+      "relevant_ratio_locale_master_owner_approved",
+      "exact_sources_verified",
+      "all_copy_ids_approved",
+      "runner_and_resume_verified",
+      "explicit_batch_credit_cap"
+    ],
+    "defaultAutomaticRetries": 0,
+    "automaticPremiumFallback": false,
+    "freeStructuredPlan": true,
+    "optionalPaidIntentParsing": "Separately disclosed and metered"
+  },
+  "bulk": {
+    "ratios": {
+      "feed": [
+        1080,
+        1350
+      ],
+      "vertical": [
+        1080,
+        1920
+      ]
+    },
+    "sameRatioPlatformsReuseBytes": true,
+    "differentRatioNeedsApprovedMaster": true,
+    "allowedVariableFields": [
+      "registered_photo_id",
+      "approved_copy_id",
+      "locale",
+      "placement"
+    ],
+    "fixedByMaster": [
+      "teal",
+      "shading",
+      "fade",
+      "geometry",
+      "identity",
+      "icons",
+      "curve"
+    ],
+    "deduplicationKey": [
+      "master_sha256",
+      "photo_sha256",
+      "copy_sha256",
+      "locale",
+      "placement",
+      "model",
+      "mode",
+      "canonical_parameters"
+    ],
+    "submissionStates": [
+      "PLANNED",
+      "CLAIMED",
+      "SUBMITTED",
+      "GENERATED",
+      "SAVED",
+      "CHECKED",
+      "OWNER_REVIEW",
+      "APPROVED_DERIVATIVE",
+      "SCHEDULED",
+      "PUBLISHED",
+      "FAILED",
+      "BLOCKED"
+    ],
+    "receiptRequired": [
+      "job_id",
+      "source_commit",
+      "master_id",
+      "master_sha256",
+      "photo_id",
+      "photo_sha256",
+      "copy_id",
+      "copy_utf8",
+      "copy_sha256",
+      "project_id",
+      "model",
+      "mode",
+      "exact_prompt",
+      "exact_parameters",
+      "credit_quote",
+      "credit_cap",
+      "history_id",
+      "output_asset_id",
+      "output_uri",
+      "output_sha256",
+      "actual_dimensions",
+      "quality_checks",
+      "state"
+    ],
+    "spendSemantics": "Image credits are paid spend even when Meta ad spend is false; record unknown actual charge as null, never estimated=actual",
+    "leasePolicy": "One atomic claimant per dedupe key; persist provider ID; reconcile ambiguous submission before any retry"
+  },
+  "localizedEdits": {
+    "requires": [
+      "clean_underlay_or_layers",
+      "precise_edit_mask",
+      "exact_font_asset_when_retyping",
+      "correct_Hebrew_shaping",
+      "pixel_comparison_outside_mask",
+      "visual_review"
+    ],
+    "otherwise": "BLOCK_EXACT_SUBSTITUTION_CLAIM_AND_PREPARE_ONE_CONTROLLED_CANDIDATE"
+  },
+  "publishing": {
+    "generationImpliesPublication": false,
+    "metaActivationInScope": false,
+    "whatsappSendingInScope": false,
+    "websiteDeployInScope": false,
+    "crmChangesInScope": false,
+    "scope": "Effects granted by creative-generation jobs only; separately authorized website release, posting and CRM jobs use their own contracts."
+  },
+  "creditsObserved": {
+    "date": "2026-09-11",
+    "auditGenerationCreditsSpent": 0,
+    "quotesAreNotAuthorization": true,
+    "examples": [
+      {
+        "model": "nano-banana-pro",
+        "mode": "image2image",
+        "resolution": "2K",
+        "aspectRatio": "9:16",
+        "imageCount": 1,
+        "references": 2,
+        "credits": 40
+      },
+      {
+        "model": "gpt-image-2-5-sunburst",
+        "mode": "image2image",
+        "resolution": "2k",
+        "quality": "medium",
+        "aspectRatio": "9:16",
+        "imageCount": 1,
+        "references": 2,
+        "credits": 61
+      }
+    ]
+  }
+}

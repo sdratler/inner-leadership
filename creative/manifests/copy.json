@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 2,
+  "status": "SCOPED_COPY_INVENTORY_NOT_FULL_MONTH_APPROVAL",
+  "website": {
+    "en": {
+      "headline": "There’s a hero\nin every child",
+      "service": "Emotional therapy for boys",
+      "age": "Ages 8–12",
+      "benefitsAsSeen": [
+        "Self-leadership",
+        "Emotional regulation",
+        "Responsibility"
+      ],
+      "source": "Exact visually inspected approved reference",
+      "benefits": [
+        "Self-governance",
+        "Emotional regulation",
+        "Responsibility"
+      ]
+    },
+    "he": {
+      "headline": "בכל ילד יש גיבור",
+      "service": "טיפול רגשי לבנים",
+      "age": "בגילאי 8–12",
+      "benefits": [
+        "הנהגה עצמית",
+        "ויסות רגשי",
+        "אחריות"
+      ],
+      "source": "Owner conversation/canonical wording; exact localized pixels still require proof"
+    },
+    "copyMismatch": {
+      "field": "English first benefit",
+      "approvedReference": "Self-leadership",
+      "olderManifests": "Self-governance",
+      "resolution": "RESOLVED: owner explicitly confirmed Self-governance in this audit conversation on2026-09-11. Replace only this label in the first master candidate; preserve remaining approved design.",
+      "status": "OWNER_CORRECTION_APPROVED"
+    }
+  },
+  "ads": [
+    {
+      "id": "C01",
+      "en": "Taking responsibility by choice.",
+      "he": "לקחת אחריות מתוך בחירה.",
+      "status": "OWNER_SELECTED_CONCEPT",
+      "finalBilingualRasterApproval": false
+    },
+    {
+      "id": "C02",
+      "en": "Motivation from within.",
+      "he": "מוטיבציה שמתחילה מבפנים.",
+      "status": "OWNER_SELECTED_CONCEPT",
+      "finalBilingualRasterApproval": false
+    },
+    {
+      "id": "C03",
+      "en": "Feeling they belong. Choosing to contribute.",
+      "status": "OWNER_REJECTED_IN_CURRENT_CONVERSATION",
+      "allowProduction": false
+    },
+    {
+      "id": "C04",
+      "en": "Understanding themselves. Making thoughtful choices.",
+      "he": "להבין את עצמם. לבחור בשיקול דעת.",
+      "status": "UNCONFIRMED_FINAL_COPY",
+      "allowProduction": false
+    },
+    {
+      "id": "C05",
+      "en": "I have a role. I have something to contribute.",
+      "status": "OWNER_REJECTED_IN_CURRENT_CONVERSATION",
+      "allowProduction": false
+    },
+    {
+      "id": "C06",
+      "status": "HISTORICAL_DRAFT_NOT_CURRENTLY_APPROVED",
+      "allowProduction": false,
+      "provenance": "Uploaded copy-bank.json v4.3; not owner-approved current wording",
+      "he": "אפשר לא להסכים. אפשר להמשיך לדבר.",
+      "en": "Disagree respectfully. Keep the conversation open."
+    },
+    {
+      "id": "C07",
+      "status": "HISTORICAL_DRAFT_NOT_CURRENTLY_APPROVED",
+      "allowProduction": false,
+      "provenance": "Uploaded copy-bank.json v4.3; not owner-approved current wording",
+      "he": "לשים לב לגוף. לפנות מקום לבחירה.",
+      "en": "Notice the body. Make room for choice."
+    },
+    {
+      "id": "C08",
+      "status": "HISTORICAL_DRAFT_NOT_CURRENTLY_APPROVED",
+      "allowProduction": false,
+      "provenance": "Uploaded copy-bank.json v4.3; not owner-approved current wording",
+      "he": "לתת מקום למה שמרגישים.",
+      "en": "Make room for what they feel."
+    },
+    {
+      "id": "C09",
+      "status": "HISTORICAL_DRAFT_NOT_CURRENTLY_APPROVED",
+      "allowProduction": false,
+      "provenance": "Uploaded copy-bank.json v4.3; not owner-approved current wording",
+      "he": "מה חשוב לי? לאן אני רוצה להגיע?",
+      "en": "What matters to me? Where do I want to go?"
+    },
+    {
+      "id": "C10",
+      "status": "HISTORICAL_DRAFT_NOT_CURRENTLY_APPROVED",
+      "allowProduction": false,
+      "provenance": "Uploaded copy-bank.json v4.3; not owner-approved current wording",
+      "he": "ללמוד מתוך החיים. לנסות בתוך החיים.",
+      "en": "Learn through life. Practise in everyday life."
+    }
+  ],
+  "whatsapp": {
+    "en": {
+      "label": "Message on WhatsApp",
+      "prefill": "Hi, I’d love to learn more about Life Skills and the sessions for children ages 8–12."
+    },
+    "he": {
+      "label": "שלחו הודעה בוואטסאפ",
+      "prefill": "היי, אשמח לשמוע עוד על כישורי חיים ועל המפגשים לילדים בגילאי 8–12."
+    },
+    "destinationBinding": "approved_practice_whatsapp_from_private_current_handoff"
+  },
+  "heroAdCopyFallback": false
+}
