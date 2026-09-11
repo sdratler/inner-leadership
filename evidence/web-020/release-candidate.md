@@ -11,6 +11,17 @@
 
 The superseded side-split desktop raster and untreated mobile raster were replaced in place. Both files are now deterministic static derivatives of the already-approved real photograph. Their pixels contain only the photograph, fixed teal atmospheric shading, a cream transition, reserved space and a restrained lower curve. They contain no toolbar, logo, wordmark, headline, service/age copy, CTA, benefit icon/label, navigation, locale control or hamburger. The Drive/OpenArt composition was inspected only as styling authority. No image model, OpenArt credit, provider mutation, logo reference, old proof or intermediate generation was used.
 
+### 2026-09-11 asset-readback closure
+
+The owner-confirmed asset-readback closes the former style-reference ambiguity without another image generation:
+
+- OpenArt project: `life skills` (`YNFWEmEe4mvjjbLz7KLc`), verified non-default and generation-enabled. No generation was submitted for this website correction.
+- Style master: OpenArt upload `5Fidhb5Gy4pLhCzTIkNO`, `LS-AD-VISUAL-REFERENCE-APPROVED-20260910.png`, 941×1672 PNG, 1,902,342 bytes, SHA256 `5778f3e1b31d189137bcc6c48a81fcce8ebe0ae09dcffd9c5f61889fcc2c237f`.
+- Drive-approved counterpart: `1tTeNplk8PB4wZi8J2Grcpue7_CsaLwLB`, same filename, dimensions, byte length and SHA256. Direct decoded-RGBA comparison and byte comparison both passed; the OpenArt style-master pixels are exact, not a crop or derivative.
+- Real Photo A: OpenArt upload `2JRZlpK8Gy3hAoYp3XMv`, `10_REAL_FOUNDER_BOY_WALL.jpg`, 4000×3000 JPEG, 4,254,738 bytes, SHA256 `f517882ef0e472dfce61fda65771bd115d4562e6419610f78afd14b0b95742d9`.
+- The approved mobile reference remains a visual target only. It was not copied into the website bundle. The toolbar, logo/wordmark, headings, service/age copy, WhatsApp control and benefit icons/labels remain live UI.
+- The existing in-place hero plates required no second generated or model-authored reference. Their current committed digests remain the release-candidate digests below.
+
 All website UI is live HTML in this order on mobile and desktop: toolbar; headline; service; age; centered static plate; real WhatsApp anchor; three equal-column benefits. The old `.hero-shell:after` art-direction gradient and mobile `.hero-photo:after` gradient are absent. The desktop layout has no photo/text side split.
 
 ### Current fixed assets and build digests
@@ -49,6 +60,21 @@ Playwright Chromium inspected EN and HE at 1440×1200, 390×844 and 360×800 aga
 - reduced-motion reports auto document/carousel scrolling and zero CTA transition duration.
 
 The six owner-review screenshots remain outside Git because they contain an identifiable minor. Their filenames and SHA256 receipts are recorded in the control-plane closeout.
+
+### Fresh browser evidence after asset readback
+
+The exact production build from this branch was rechecked in headless Chromium on 2026-09-11 at 1440×1200, 390×844 and 360×800 in both locales. All six first-view captures are intentionally outside Git; only their redacted receipts are recorded here.
+
+- `he-desktop-1440x1200-first-view.png`: `8a052b6cbd41a8079a8b1dbea17434411f0828d7c68a99945558747cdc246661`
+- `en-desktop-1440x1200-first-view.png`: `c1a9a905a38cabfcfb24440f473c353226b2d8ae0a073feef7f3c7e99f1bb651`
+- `he-mobile-390x844-first-view.png`: `b89c0a29bad427c2842e7676f1a909337672a378d5218f416c7e76e09eed2bcd`
+- `en-mobile-390x844-first-view.png`: `4dfd9d8274517799d7325b47be6723b1582a0ad6170427478ff4a932cc97cde1`
+- `he-mobile-360x800-first-view.png`: `b9eff1084ed09efb9a3f9080d1da8f777a393ef18c78970b7485ab218b413652`
+- `en-mobile-360x800-first-view.png`: `bd4f0c20aa38a860ec8a4660c7f24b03f3ed6b27b9ebeefd651f76e07052b0b3`
+
+Measured first-view results: no horizontal overflow, no failed requests, no broken images, exact locale mirror, exact approved leaf source with `filter: none`, direct `https://wa.me/972534932631` CTA, and the complete three-benefit row inside both mobile viewports. At 390px the row ended at 667px (HE) / 665px (EN); at 360px it ended at 645px (HE) / 643px (EN).
+
+Re-run checks after readback: `npm run check` passed 43 Node and 26 Python tests; `node --test tests/web-020/teal-release.test.cjs` passed 10/10; `npm run check:server` passed 11/11; `npm run build` completed with zero publication blockers and `no_deployment_performed: true`; `git diff --check` passed.
 
 - Run: `WEB020-20260910T151455+03`
 - Branch: `codex/web-020-teal-release-20260910`
