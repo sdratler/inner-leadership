@@ -16,25 +16,69 @@ test('approved Hebrew leaf master is unchanged and its derivative appears in bot
   assert.equal(crypto.createHash('sha256').update(master).digest('hex'), 'a95609b2ce76f5062be6619e5131430f11b99d7579148affebb2b545f66cc07c');
   assert.match(source, /LS_LOGO_HE_LEAF_APPROVED_20260910-transparent\.png/);
   assert.match(source, /className="brand-hebrew-logo"/);
-  assert.match(source, /<strong>\{brand\.name\}<\/strong>/);
+  assert.match(source, /<strong>Life Skills<\/strong>/);
   assert.doesNotMatch(source, /v43-approved-twig\.png/);
 });
 
 test('locked colors, mobile geometry, and type sources remain explicit', () => {
   for (const value of ['#245159', '#163F48', '#FBF7EF', '#E6D0A4']) assert.match(css, new RegExp(value, 'i'));
-  for (const value of ['FrankRuhlLibre-wght.ttf', 'Heebo-wght.ttf', 'font-size:54px', 'line-height:56px', 'min-height:98px', 'width:170px']) assert.match(css, new RegExp(value.replace(/[.]/g, '\\.'), 'i'));
+  for (const value of ['FrankRuhlLibre-wght.ttf', 'Heebo-wght.ttf', 'font-size:48px', 'line-height:46px', 'min-height:98px', 'width:88px']) assert.match(css, new RegExp(value.replace(/[.]/g, '\\.'), 'i'));
   assert.doesNotMatch(css, /#153E2C/i);
 });
 
 test('hero and About copy match the owner-approved release copy', () => {
   assert.deepEqual(copy.he.hero.service_details, ['בגילאי 8–12', 'מפגשים אישיים והדרכת הורים מעשית.']);
-  assert.equal(copy.he.cta.button, 'לפרטים בוואטסאפ');
-  assert.equal(copy.en.cta.button, 'Find out more on WhatsApp');
+  assert.equal(copy.he.cta.button, 'שלחו הודעה בוואטסאפ');
+  assert.equal(copy.en.cta.button, 'Message on WhatsApp');
   assert.match(source, /className="mobile-language-direct"/);
   assert.equal(copy.he.founder.name, 'על שלמה דרטלר');
   assert.equal(copy.en.founder.name, 'About Shlomo Dratler');
   assert.equal(copy.he.founder.paragraphs.length, 3);
   assert.equal(copy.en.founder.paragraphs.length, 3);
+});
+
+test('hero uses fixed UI-free plates with the complete live centered hierarchy', () => {
+  const desktopPlate = fs.readFileSync(path.join(root, 'assets/images/founder-boy-hero-desktop.webp'));
+  const mobilePlate = fs.readFileSync(path.join(root, 'assets/images/founder-boy-hero-mobile.webp'));
+  assert.equal(crypto.createHash('sha256').update(desktopPlate).digest('hex'), '33da02e086f98c0eaac2a4455f0395b645f55922a0851ae3223e6c07c0f91f48');
+  assert.equal(crypto.createHash('sha256').update(mobilePlate).digest('hex'), 'f054a5de1b3a28e0e0bdebd291ff7de2f603f6385de4924dfeca1b4c84422e71');
+
+  const hero = source.slice(source.indexOf('export function CampaignHero'), source.indexOf('export function OutcomeCards'));
+  const order = [
+    'className="hero-copy container"',
+    'className="hero-service-title"',
+    'className="hero-age"',
+    'className="hero-photo"',
+    'className="hero-whatsapp"',
+    'className="hero-benefits container"',
+  ].map(marker => hero.indexOf(marker));
+  assert.ok(order.every(index => index >= 0));
+  assert.deepEqual(order, [...order].sort((a, b) => a - b));
+  assert.match(hero, /<WhatsAppGlyph\/>/);
+  assert.match(hero, /<ArrowIcon direction=/);
+  assert.doesNotMatch(hero, /figcaption|hero-photo-support|hero-support-desktop/);
+
+  assert.match(css, /\.hero-layout\{display:flex;flex-direction:column;align-items:center/);
+  assert.match(css, /\.hero-shell:after\{content:none\}/);
+  assert.doesNotMatch(css, /\.hero-photo:after\{/);
+  assert.doesNotMatch(css, /grid-column:7\/13|photo-left|side-split/i);
+});
+
+test('live hero CTA and benefits match Website Brief 2.9', () => {
+  for (const marker of [
+    'min-height:58px',
+    'min-height:54px',
+    'border-radius:999px',
+    'linear-gradient(135deg,#0A5E50 0%,#024942 100%)',
+    'color:#FEFDF9',
+    'rgba(255,255,255,.32)',
+    'width:22px',
+    'width:18px',
+  ]) assert.ok(css.includes(marker), marker);
+  assert.match(css, /\.hero-benefits\{display:grid;grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+  assert.match(css, /\.hero-benefits li\+li\{border-inline-start:1px solid rgba\(102,125,61,\.38\)\}/);
+  assert.deepEqual(copy.en.benefits.items.map(item => item.title), ['Self-governance', 'Emotional regulation', 'Responsibility']);
+  assert.deepEqual(copy.he.benefits.items.map(item => item.title), ['הנהגה עצמית', 'ויסות רגשי', 'אחריות']);
 });
 
 test('testimonial precedes founder and pricing uses the owner-approved monthly wording', () => {

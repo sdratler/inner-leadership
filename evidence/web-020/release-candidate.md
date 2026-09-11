@@ -1,5 +1,55 @@
 # WEB-020 teal website release candidate
 
+## Website 2.9 centered-hero correction — draft review
+
+- Run: `WEB020-20260911T1025+03-HERO06`
+- Branch: `codex/web-020-centered-hero-20260911-1025`
+- Exact base: `0af6981cbab1c5e79ebc0ffb4d29bd08020b7729`
+- Decision: `D-WEB-HERO-LAYERING-20260911-06`
+- Winning fence: `WEB-TEAL-20260910-v1:13:WEB020-20260911T1025+03-HERO06:RENEW`
+- Review boundary: draft PR and owner screenshots only; no merge or deployment.
+
+The superseded side-split desktop raster and untreated mobile raster were replaced in place. Both files are now deterministic static derivatives of the already-approved real photograph. Their pixels contain only the photograph, fixed teal atmospheric shading, a cream transition, reserved space and a restrained lower curve. They contain no toolbar, logo, wordmark, headline, service/age copy, CTA, benefit icon/label, navigation, locale control or hamburger. The Drive/OpenArt composition was inspected only as styling authority. No image model, OpenArt credit, provider mutation, logo reference, old proof or intermediate generation was used.
+
+All website UI is live HTML in this order on mobile and desktop: toolbar; headline; service; age; centered static plate; real WhatsApp anchor; three equal-column benefits. The old `.hero-shell:after` art-direction gradient and mobile `.hero-photo:after` gradient are absent. The desktop layout has no photo/text side split.
+
+### Current fixed assets and build digests
+
+- Desktop UI-free plate, 1600×760: `33da02e086f98c0eaac2a4455f0395b645f55922a0851ae3223e6c07c0f91f48`
+- Mobile UI-free plate, 900×660: `f054a5de1b3a28e0e0bdebd291ff7de2f603f6385de4924dfeca1b4c84422e71`
+- Approved logo master remains: `a95609b2ce76f5062be6619e5131430f11b99d7579148affebb2b545f66cc07c`
+- Transparent logo derivative remains: `023fc129c4cf2bf0a04c6a8ae5051118eb5d3eef1d75685b5a3941fb7b92ce2d`
+- `assets/css/site.css`: `a0ba9ce26025db489e310d700a50a6296771a8f303d7efd7896dbdff39c09c9c`
+- `assets/js/site-react.js`: `4064c1cb4aa5352bebd4cf2cd81158c29135b146332344f7658f17589b0c6c5d`
+- Production-build `dist/site/index.html`: `c6e1822a78dcba4e919769f10dc4f7b048b9d762c7a7928a681391697b11e1ff`
+
+### Current checks
+
+- `python3 tools/ci/verify-ci-boundary.py`: pass (`CI_BOUNDARY_OK`).
+- `python3 -m unittest discover -s tools/source-audit/tests -v`: 52/52 pass.
+- `node --test tests/web-020/teal-release.test.cjs`: 10/10 pass.
+- `npm run check`: 43 Node checks and 26 Python static checks pass.
+- `npm run build`: production build pass, zero publication blockers, `no_deployment_performed: true`.
+- `npm run check:server`: 11/11 pass.
+- `git diff --check`: pass.
+
+### Current browser QA
+
+Playwright Chromium inspected EN and HE at 1440×1200, 390×844 and 360×800 against the production static build. All six cases passed:
+
+- exact 98px toolbar; approved logo source with no CSS filter; separate live `Life Skills` text;
+- locale-mirrored mobile brand/language/hamburger positions, 44px hamburger target, visible keyboard focus, correct `aria-expanded`, and Escape closure;
+- centered headline, plate and CTA; no side split; no CSS pseudo-element art layer;
+- real `https://wa.me/972534932631` anchor with exact locale copy, 999px radius, required gradient, 54px mobile / 58px desktop height, 22px glyph, divider and mirrored arrow;
+- three existing SVG benefits in equal columns with restrained olive dividers;
+- at 390px and 360px, the complete benefit row ends at 667px or earlier, before the first viewport scroll;
+- no horizontal overflow, failed hero requests or broken visible hero images;
+- Frank Ruhl Libre 700 and Heebo 400/700 loaded; Hebrew display/body roles resolve correctly;
+- W01–W12 remain ordered; arrows advance 1/12 → 2/12; End reaches 12/12 and remains stable without autoplay;
+- reduced-motion reports auto document/carousel scrolling and zero CTA transition duration.
+
+The six owner-review screenshots remain outside Git because they contain an identifiable minor. Their filenames and SHA256 receipts are recorded in the control-plane closeout.
+
 - Run: `WEB020-20260910T151455+03`
 - Branch: `codex/web-020-teal-release-20260910`
 - Exact base: `6326ae04cd1ed2d81f68e47111945edee0bbf5cd`

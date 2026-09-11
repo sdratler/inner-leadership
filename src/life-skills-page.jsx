@@ -109,14 +109,9 @@ function approvedContact() {
 }
 
 function BrandLockup({brand, locale, compact = false}) {
-  if (locale === 'he') {
-    return <span className={`brand-lockup brand-lockup-he ${compact ? 'brand-lockup-compact' : ''}`}>
-      <img src={ASSETS + 'images/LS_LOGO_HE_LEAF_APPROVED_20260910-transparent.png'} alt="כישורי חיים — לחיים שלמים"/>
-    </span>;
-  }
-  return <span className={`brand-lockup brand-lockup-en ${compact ? 'brand-lockup-compact' : ''}`}>
-    <img className="brand-hebrew-logo" src={ASSETS + 'images/LS_LOGO_HE_LEAF_APPROVED_20260910-transparent.png'} alt="" aria-hidden="true"/>
-    <span className="brand-words"><strong>{brand.name}</strong></span>
+  return <span className={`brand-lockup brand-lockup-${locale} ${compact ? 'brand-lockup-compact' : ''}`}>
+    <img className="brand-hebrew-logo" src={ASSETS + 'images/LS_LOGO_HE_LEAF_APPROVED_20260910-transparent.png'} alt="כישורי חיים — לחיים שלמים"/>
+    <span className="brand-words" lang="en" dir="ltr"><strong>Life Skills</strong></span>
   </span>;
 }
 
@@ -248,29 +243,33 @@ export function CurriculumCarousel({modules, locale, exampleLabel}) {
 export function CampaignHero({section, benefits, locale, contact, meta}) {
   const lines = locale === 'he' ? ['בכל ילד', 'יש גיבור.'] : ['There’s a hero', 'in every child.'];
   return <section className="hero-shell" aria-labelledby={`hero-${locale}`}>
-    <div className="hero-layout container hero">
-      <div className="hero-copy">
+    <div className="hero-layout hero">
+      <div className="hero-copy container">
         <h1 id={`hero-${locale}`}>{lines.map(line => <span key={line}>{line}</span>)}</h1>
         <span className="hero-divider" aria-hidden="true"/>
         <h2 className="hero-service-title">{section.service_title}</h2>
-        <div className="hero-service-details"><p className="hero-age">{locale === 'he' ? 'בגילאי ' : 'Ages '}<bdi dir="ltr">8–12</bdi></p>
-          <p className="hero-support-desktop">{section.service_details[1]}</p>
-        </div>
+        <p className="hero-age">{locale === 'he' ? 'בגילאי ' : 'Ages '}<bdi dir="ltr">8–12</bdi></p>
       </div>
       <figure className="hero-photo">
         <picture>
           <source media="(max-width: 760px)" srcSet={ASSETS + 'images/founder-boy-hero-mobile.webp'}/>
-          <img src={ASSETS + 'images/founder-boy-hero-desktop.webp'} alt={meta.heroAlt} width="2400" height="1600"/>
+          <img src={ASSETS + 'images/founder-boy-hero-desktop.webp'} alt={meta.heroAlt} width="1600" height="760"/>
         </picture>
-        <figcaption className="hero-photo-support">{section.service_details[1]}</figcaption>
       </figure>
-      <div className="hero-action">
-        <a className="button button-light" href={contact} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">{redesignCopy[locale].cta.button}</a>
+      <div className="hero-controls">
+        <div className="hero-action">
+          <a className="hero-whatsapp" href={contact} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
+            <span className="hero-whatsapp-icon"><WhatsAppGlyph/></span>
+            <span className="hero-whatsapp-divider" aria-hidden="true"/>
+            <span className="hero-whatsapp-label">{redesignCopy[locale].cta.button}</span>
+            <ArrowIcon direction={locale === 'he' ? 'previous' : 'next'}/>
+          </a>
+        </div>
+        <ul className="hero-benefits container" aria-label={meta.benefitsLabel}>{benefits.items.map(item => <li key={item.id}>
+          <img src={`${ASSETS}icons/${ICONS[item.id]}`} alt="" aria-hidden="true"/>
+          <span>{item.title}</span>
+        </li>)}</ul>
       </div>
-      <ul className="hero-benefits" aria-label={meta.benefitsLabel}>{benefits.items.map(item => <li key={item.id}>
-        <img src={`${ASSETS}icons/${ICONS[item.id]}`} alt="" aria-hidden="true"/>
-        <span>{item.title}</span>
-      </li>)}</ul>
     </div>
   </section>;
 }

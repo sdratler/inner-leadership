@@ -162,7 +162,7 @@ class StaticTests(unittest.TestCase):
     def test_locked_teal_system_and_mobile_geometry(self):
         for token in ["--teal:#245159", "--deep-teal:#163F48", "--cream:#FBF7EF", "--gold:#E6D0A4"]:
             self.assertIn(token, self.css)
-        for geometry in ["min-height:98px", "padding-inline:22px", "width:170px", "font-size:54px", "line-height:56px", "width:72px", "min-height:52px"]:
+        for geometry in ["min-height:98px", "padding-inline:22px", "width:88px", "font-size:48px", "line-height:46px", "width:56px", "min-height:54px", "min-height:58px"]:
             self.assertIn(geometry, self.css)
         self.assertIn("opacity:.72", self.css)
         self.assertIn("opacity:.32", self.css)
@@ -174,10 +174,10 @@ class StaticTests(unittest.TestCase):
         self.assertIn('className="mobile-language-direct"', self.react)
         self.assertIn("event.key === 'Escape'", self.react)
         self.assertIn("https://wa.me/972534932631", self.copy["contact"]["whatsapp_url"])
-        self.assertEqual(self.copy["he"]["cta"]["button"], "לפרטים בוואטסאפ")
-        self.assertEqual(self.copy["en"]["cta"]["button"], "Find out more on WhatsApp")
-        self.assertIn('className="hero-photo-support"', self.react)
-        self.assertIn("max-width:310px", self.css)
+        self.assertEqual(self.copy["he"]["cta"]["button"], "שלחו הודעה בוואטסאפ")
+        self.assertEqual(self.copy["en"]["cta"]["button"], "Message on WhatsApp")
+        self.assertNotIn('hero-photo-support', self.react)
+        self.assertIn("width:min(342px,100%)", self.css)
         self.assertIn("white-space:nowrap", self.css)
 
     def test_about_copy_and_claim_boundary(self):
