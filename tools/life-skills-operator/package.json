@@ -3,10 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Owner-ramble to machine-validated Life Skills creative execution contracts using OpenAI Agents SDK + Codex executor.",
+  "description": "Canonical-manifest Life Skills planner, resumable job adapter and zero-model watchdog.",
   "scripts": {
     "plan": "node src/cli.mjs plan",
+    "interpret-plan": "node src/cli.mjs interpret-plan",
     "execute": "node src/cli.mjs execute",
+    "watchdog": "node src/cli.mjs watchdog",
     "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {

@@ -1,17 +1,22 @@
 {
-  "owner_input": "Make the C01 Hebrew Photo A feed proof like the approved teal reference, then stop.",
-  "expected_classification": "execute_approved_intent",
-  "expected_domain": "ad_creative",
-  "openart_project_id": "YNFWEmEe4mvjjbLz7KLc",
-  "model": "nano-banana-pro",
-  "mode": "image2image",
-  "resolution": "2K",
-  "aspect_ratio": "4:5",
-  "visual_reference_ids": [
-    "5Fidhb5Gy4pLhCzTIkNO",
-    "2JRZlpK8Gy3hAoYp3XMv"
+  "classification": "execute_approved_intent",
+  "domain": "ad_creative",
+  "summary": "Prepare one C01 Hebrew Photo A feed proof.",
+  "preserve": [
+    {"target": "ad.visual_authority", "operation": "preserve"},
+    {"target": "photo.identity", "operation": "preserve"}
   ],
-  "raster_cta_he": "שלחו הודעה בוואטסאפ",
-  "actual_click_destination": "Meta WhatsApp CTA configured separately",
-  "stop_after": "one proof"
+  "changes": [
+    {"target": "ad.concept", "operation": "set", "value": "C01"},
+    {"target": "ad.photo", "operation": "set", "value": "LS-PHOTO-A"},
+    {"target": "ad.locale", "operation": "set", "value": "he"},
+    {"target": "ad.format", "operation": "set", "value": "feed"}
+  ],
+  "unresolved": [],
+  "locale": "he",
+  "format": "feed",
+  "conceptId": "C01",
+  "photoId": "LS-PHOTO-A",
+  "ownerApprovalRequired": true,
+  "rationale": "One proof before batch production."
 }

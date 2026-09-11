@@ -12,9 +12,10 @@ Classify the turn as exactly one of:
 - proposed_decision: genuinely new policy or unresolved choice
 
 For creative work, distinguish website_hero from ad_creative.
-A website hero uses a static art plate plus LIVE HTML toolbar/copy/WhatsApp button/benefits.
+A website hero consumes one exact approved locale/orientation raster master. The visible live layers are only the header/toolbar and actual WhatsApp anchor; equivalent headline/service/age/benefit semantics may be visually hidden.
 An ad is a raster creative; the on-image WhatsApp CTA is visual, while Meta owns the actual clickable CTA.
 Never infer a new photo master, OpenArt project, or reference ID from prose. Those are resolved deterministically after this step.
+Represent requested changes and preservation rules as typed target/operation/value objects. Put unresolved subjective or business choices in unresolved rather than guessing.
 Return only the schema output.
 `.trim();
 

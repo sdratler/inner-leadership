@@ -1,0 +1,18 @@
+{
+  "classification": "execute_approved_intent",
+  "domain": "website_hero",
+  "summary": "Use the four registered owner-approved website hero masters.",
+  "preserve": [
+    {"target": "hero.master_pixels", "operation": "preserve", "reason": "Owner-approved immutable raster masters"},
+    {"target": "header.language_switch", "operation": "preserve"},
+    {"target": "hero.whatsapp_anchor", "operation": "preserve"}
+  ],
+  "changes": [],
+  "unresolved": [],
+  "locale": "both",
+  "format": "multiple",
+  "conceptId": null,
+  "photoId": null,
+  "ownerApprovalRequired": false,
+  "rationale": "The site consumes exact approved pixels; it does not regenerate or reconstruct the composition."
+}

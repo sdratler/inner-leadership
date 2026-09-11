@@ -1,36 +1,37 @@
-# Life Skills Creative Operator v0.1
+# Life Skills Creative Operator
 
-Purpose: accept the owner's natural-language ramble, classify it, resolve it against machine-enforced current creative state, emit a deterministic execution contract, and optionally hand that contract to Codex through the OpenAI Agents SDK experimental Codex tool.
+This package consumes the accepted machine-readable authority in `creative/manifests/**`. It does not keep a second brand kit or public asset registry.
 
-## Why this exists
-The owner should not need to remember file names, OpenArt projects, model IDs, reference IDs, website layering rules, or which elements are live UI versus raster artwork. Those are locked in config and validated before execution.
+## Local plan
 
-## Current hard locks
-- Website hero = static art plate plus live HTML. Never bake toolbar, wordmark, hero copy, WhatsApp button, benefits, navigation, locale switch or hamburger into the static plate.
-- Website desktop and mobile use the same centered hierarchy; no side-split desktop hero.
-- Ads = OpenArt art direction, then exact raster compositing for logo/copy/WhatsApp glyph/benefit SVGs.
-- OpenArt project is always `life skills` / `YNFWEmEe4mvjjbLz7KLc`.
-- Photo A proof references are exactly style master `5Fidhb5Gy4pLhCzTIkNO` then real photo `2JRZlpK8Gy3hAoYp3XMv`.
-- Do not send logo/icons/previous generated proofs into OpenArt as references.
-- Nano Banana Pro first. GPT Image 2.5 Sunburst only after owner rejects the primary proof.
-- One proof before any batch after a rendering-policy change.
-- Raster `Message on WhatsApp` is visual; the actual clickable Meta CTA is separate.
+Structured planning performs no model or provider call:
 
-## Run
 ```bash
-npm install
-node src/cli.mjs plan "Use that exact teal shading. For the website, keep the toolbar live, not inside the hero image."
+npm run plan -- --intent examples/website-hero-approved-master.json
 ```
 
-Execution is intentionally separate:
+Free-form interpretation is explicit and separately metered:
+
 ```bash
-LIFE_SKILLS_REPO=/path/to/inner-leadership node src/cli.mjs execute "Make the C01 Hebrew Photo A feed proof."
+npm run interpret-plan -- "Use the approved English mobile hero."
 ```
 
-The executor must use private environment credentials. No secrets belong in this repository.
+The compiler emits typed requested changes, preservation rules, unresolved blockers, exact registered assets and effect limits. A plan never generates, spends, publishes, deploys or changes provider configuration.
 
-## Owner-ramble contract
+## Durable generation boundary
 
-The natural-language model is allowed to interpret **intent**, not execution identity. Provider project IDs, reference IDs, asset roles, layer boundaries and effect permissions come from versioned config and are validated after interpretation. An owner correction can produce a new proposed execution contract; it does not silently rewrite Product/Website/Marketing authority. Canonical source changes still follow the existing same-file reconciliation protocol.
+`QueueStore` gives each canonical job specification one deduplication key, writes claims atomically and records provider state outside Git. `OpenArtAdapter` requires a numeric image-credit cap, records a quote before submission, persists a returned history ID, resumes by that ID, and blocks automatic resubmission after an ambiguous submission. The adapter accepts an authenticated runtime transport; secrets and private asset bindings never belong here.
 
-Website and ads intentionally use different layer boundaries. Website static plates are UI-free art and the site renders live controls. Ads are final rasters and currently retain the short visual WhatsApp CTA, while Meta owns the actual clickable CTA/destination.
+The current 30-design queue remains blocked by the canonical manifest: zero approved ad masters, incomplete copy approval, missing Photo B OpenArt binding and no numeric image-credit cap. Those blockers do not affect the already released website.
+
+## Watchdog
+
+```bash
+npm run watchdog -- --config /private/path/runtime.json
+```
+
+The watchdog uses ordinary code only (`modelCalls: 0`, `providerCalls: 0`). It verifies the promoted website masters, repairs only the derived queue index, and reports expired claims, ambiguous submissions, missing provider receipts, source/deployment divergence and missed heartbeats. A scheduler is not considered installed until an authorized host records an actual scheduled-event receipt.
+
+## Execution boundary
+
+`execute` accepts the same structured intent but remains fail-closed. It cannot turn a blocked ad plan into paid work and cannot publish, deploy, merge or mutate provider settings. Website plans reference the four exact approved raster masters; only the header and real WhatsApp anchor are visible live UI.
