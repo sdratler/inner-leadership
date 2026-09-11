@@ -1,0 +1,17 @@
+{
+  "owner_input": "Make the C01 Hebrew Photo A feed proof like the approved teal reference, then stop.",
+  "expected_classification": "execute_approved_intent",
+  "expected_domain": "ad_creative",
+  "openart_project_id": "YNFWEmEe4mvjjbLz7KLc",
+  "model": "nano-banana-pro",
+  "mode": "image2image",
+  "resolution": "2K",
+  "aspect_ratio": "4:5",
+  "visual_reference_ids": [
+    "5Fidhb5Gy4pLhCzTIkNO",
+    "2JRZlpK8Gy3hAoYp3XMv"
+  ],
+  "raster_cta_he": "שלחו הודעה בוואטסאפ",
+  "actual_click_destination": "Meta WhatsApp CTA configured separately",
+  "stop_after": "one proof"
+}

@@ -1,0 +1,217 @@
+{
+  "schema_version": 1,
+  "id": "LS-CREATIVE-BRAND-KIT-20260911-v1",
+  "status": "owner-approved-derived-execution-lock",
+  "principle": "The model interprets owner intent; code enforces current assets, layering, provider project, model policy and effect limits.",
+  "palette": {
+    "header_cream": "#FEFDF9",
+    "body_cream": "#FBF7F0",
+    "hero_teal_top": "#085760",
+    "hero_teal_core": "#075159",
+    "hero_teal_deep": "#064B53",
+    "photo_transition": "#287C96",
+    "cta_start": "#0A5E50",
+    "cta_end": "#024942",
+    "footer_teal": "#065156",
+    "olive": "#C4BA92",
+    "tan": "#B6A67D",
+    "icon_disc": "#E0DCC9",
+    "near_black": "#171A18"
+  },
+  "typography": {
+    "display": "Frank Ruhl Libre 700",
+    "ui": "Heebo 600/500",
+    "english_wordmark": "warm restrained serif; black/near-black; live text, not AI-generated"
+  },
+  "logo": {
+    "rule": "exact approved single-leaf pixels only; no redraw, regeneration, extra leaves, olives, twig, wreath or capsule",
+    "drive_id": "12bWwwEoU6W2Sx94OefUAQ4Cf1z9Pgnhs",
+    "filename": "LS_LOGO_HE_LEAF_APPROVED_20260910.transparent.png",
+    "repo_path": "assets/images/LS_LOGO_HE_LEAF_APPROVED_20260910-transparent.png"
+  },
+  "website_hero": {
+    "rendering_model": "static_art_plate_plus_live_html",
+    "visual_target": {
+      "drive_id": "1tTeNplk8PB4wZi8J2Grcpue7_CsaLwLB",
+      "openart_upload_id": "5Fidhb5Gy4pLhCzTIkNO",
+      "sha256": "5778f3e1b31d189137bcc6c48a81fcce8ebe0ae09dcffd9c5f61889fcc2c237f",
+      "role": "reference only; contains UI and must never be installed as the website static plate"
+    },
+    "static_plate_must_contain_only": [
+      "real founder-and-boy photograph",
+      "teal atmospheric shading",
+      "photo-to-teal/cream transition",
+      "reserved negative space",
+      "restrained decorative bottom curve/background treatment"
+    ],
+    "static_plate_must_not_contain": [
+      "toolbar/header",
+      "Life Skills wordmark or logo",
+      "headline",
+      "service line",
+      "age line",
+      "WhatsApp button or WhatsApp glyph",
+      "benefit icons or labels",
+      "navigation",
+      "language switch",
+      "hamburger"
+    ],
+    "live_html_order": [
+      "header/toolbar",
+      "headline",
+      "service line",
+      "age line",
+      "centered photo/art plate",
+      "real WhatsApp link button",
+      "three live benefit items"
+    ],
+    "desktop_rule": "same centered hierarchy as mobile; no photo-left/text-right or other side-split hero",
+    "mobile_rule": "CTA and all three benefits visible before first scroll at 390x844 and 360x800",
+    "css_art_direction": "forbidden; hero shading, fade, photo transition, negative space and bottom curve must be static plate pixels, never a CSS-generated replacement",
+    "header": {
+      "surface": "#FEFDF9",
+      "both_locales": "exact approved Hebrew leaf + separate live Life Skills wordmark in near-black",
+      "he": "brand right; EN and hamburger left",
+      "en": "brand left; HE and hamburger right",
+      "controls": {
+        "min_size_px": 44,
+        "radius_px": 10,
+        "border": "1px solid rgba(23,26,24,0.14)"
+      }
+    },
+    "whatsapp_button": {
+      "href": "https://wa.me/972534932631",
+      "en": "Message on WhatsApp",
+      "he": "שלחו הודעה בוואטסאפ",
+      "min_height_px": 54,
+      "desktop_min_height_px": 58,
+      "radius_px": 999,
+      "padding_inline_px": 24,
+      "background": "linear-gradient(135deg,#0A5E50 0%,#024942 100%)",
+      "foreground": "#FEFDF9",
+      "border": "1px solid rgba(255,255,255,0.18)",
+      "shadow": "0 10px 24px rgba(2,73,66,0.30)",
+      "icon_px": 22,
+      "arrow_px": 18,
+      "divider": "1px solid rgba(255,255,255,0.32)",
+      "layout": "centered below the photo; comfortable breathing room; unmistakably interactive; HE mirrors icon/text/arrow order"
+    },
+    "benefits": {
+      "en": [
+        "Self-governance",
+        "Emotional regulation",
+        "Responsibility"
+      ],
+      "he": [
+        "הנהגה עצמית",
+        "ויסות רגשי",
+        "אחריות"
+      ],
+      "icons": [
+        "self-governance.svg",
+        "emotional-regulation.svg",
+        "responsibility.svg"
+      ],
+      "layout": "three equal columns, centered, generous spacing, restrained olive dividers; live accessible HTML"
+    },
+    "plate_generation": {
+      "provider": "OpenArt MCP",
+      "project_name": "life skills",
+      "project_id": "YNFWEmEe4mvjjbLz7KLc",
+      "primary_model": {
+        "id": "nano-banana-pro",
+        "mode": "image2image",
+        "resolution": "2K",
+        "autoEnhancePrompt": false
+      },
+      "visual_references_exactly_two": [
+        {
+          "order": 1,
+          "id": "5Fidhb5Gy4pLhCzTIkNO",
+          "role": "style/composition/shading reference only"
+        },
+        {
+          "order": 2,
+          "id": "2JRZlpK8Gy3hAoYp3XMv",
+          "role": "Photo A identity/pose/source"
+        }
+      ],
+      "desktop_target": "centered UI-free art plate; 16:9 working composition; exact export size resolved by website worker after browser fit",
+      "mobile_target": "centered UI-free art plate; 9:16 working composition; exact export size resolved by website worker after browser fit",
+      "proof_policy": "one desktop and one mobile plate proof; never install the UI-rich reference itself; never chain an unapproved generated plate"
+    }
+  },
+  "ads": {
+    "rendering_model": "openart_art_plate_then_exact_raster_composite",
+    "do_not_use": [
+      "HTML/CSS/SVG/browser screenshot as final creative renderer",
+      "Wan 2.7 Image for this current family",
+      "chained generated references",
+      "old beige/twig/foliage references"
+    ],
+    "openart": {
+      "project_name": "life skills",
+      "project_id": "YNFWEmEe4mvjjbLz7KLc",
+      "primary_model": {
+        "id": "nano-banana-pro",
+        "mode": "image2image",
+        "resolution": "2K",
+        "autoEnhancePrompt": false
+      },
+      "fallback_model": {
+        "id": "gpt-image-2-5-sunburst",
+        "mode": "image2image",
+        "resolutionTier": "2k",
+        "quality": "high",
+        "autoEnhancePrompt": false,
+        "requires_owner_rejection_of_primary": true
+      },
+      "visual_references_exactly_two": [
+        {
+          "order": 1,
+          "id": "5Fidhb5Gy4pLhCzTIkNO",
+          "label": "LS-AD-VISUAL-REFERENCE-APPROVED-20260910.png",
+          "role": "style/composition/shading"
+        },
+        {
+          "order": 2,
+          "id": "2JRZlpK8Gy3hAoYp3XMv",
+          "label": "10_REAL_FOUNDER_BOY_WALL.jpg",
+          "role": "Photo A identity/pose/source"
+        }
+      ],
+      "forbidden_reference_classes": [
+        "generated intermediate proof",
+        "rejected deterministic ad",
+        "old beige creative",
+        "logo",
+        "icons",
+        "website screenshot other than the exact style master"
+      ],
+      "photo_b": {
+        "drive_id": "13ELYcvD40MR63gi_xDk0RVDzI1CNjbFV",
+        "filename": "20260908_135657.jpg",
+        "sha256": "29731f640da660861f065a8a04ae58a9ca95bd4a719fafee2b9be490d010f11f",
+        "dimensions": [
+          4000,
+          3000
+        ],
+        "openart_id": null,
+        "status": "OPENART_UPLOAD_ID_REQUIRED_BEFORE_B_JOBS",
+        "rule": "upload exact registered bytes to life skills project, record returned ID, then use [style master, photo B] exactly; no third reference and no chained proof"
+      }
+    },
+    "raster_cta": {
+      "required_current_family": true,
+      "en": "Message on WhatsApp",
+      "he": "שלחו הודעה בוואטסאפ",
+      "note": "This is a visual CTA inside the raster. The actual clickable destination/button is configured separately in Meta. Keep the raster CTA for both Facebook and Instagram feed/vertical until the owner changes this rule."
+    },
+    "meta_interaction": {
+      "destination": "WhatsApp +972534932631",
+      "raster_is_not_clickable": true,
+      "platform_cta_is_separate": true,
+      "no_publish_or_spend_without_separate_authority": true
+    }
+  }
+}
