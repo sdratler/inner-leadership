@@ -1,0 +1,22 @@
+{
+  "classification": "execute_approved_intent",
+  "domain": "ad_creative",
+  "summary": "Prepare one C01 Hebrew Photo A feed proof.",
+  "preserve": [
+    {"target": "ad.visual_authority", "operation": "preserve"},
+    {"target": "photo.identity", "operation": "preserve"}
+  ],
+  "changes": [
+    {"target": "ad.concept", "operation": "set", "value": "C01"},
+    {"target": "ad.photo", "operation": "set", "value": "LS-PHOTO-A"},
+    {"target": "ad.locale", "operation": "set", "value": "he"},
+    {"target": "ad.format", "operation": "set", "value": "feed"}
+  ],
+  "unresolved": [],
+  "locale": "he",
+  "format": "feed",
+  "conceptId": "C01",
+  "photoId": "LS-PHOTO-A",
+  "ownerApprovalRequired": true,
+  "rationale": "One proof before batch production."
+}
