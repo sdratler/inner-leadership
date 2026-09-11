@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 2,
+  "manifestId": "life-skills-brand-execution-20260910-01",
+  "status": "DRAFT_RECONCILIATION",
+  "decisionIds": [
+    "D-BB2-BRAND-004",
+    "D-WEB-HERO-LOCKED-COMPOSITE-20260911-07",
+    "D-CREATIVE-MASTER-PIPELINE-20260911-08"
+  ],
+  "hebrewLogo": {
+    "assetId": "LS-LOGO-HE-LEAF-01",
+    "brand": "כישורי חיים",
+    "tagline": "לחיים שלמים",
+    "pixelPolicy": "PRESERVE_APPROVED_PIXELS"
+  },
+  "englishBrand": {
+    "text": "Life Skills",
+    "approvedTagline": null,
+    "workingTranslationNotApproved": "For a full life"
+  },
+  "visualAuthority": {
+    "assetId": "LS-AD-VISUAL-REFERENCE-APPROVED-20260910",
+    "policy": "FINAL_APPROVED_PIXELS_OVERRIDE_PROMPT_HEX_OR_FONT_APPROXIMATIONS",
+    "approvedHeroRegistry": "website-hero-masters.json"
+  },
+  "layout": {
+    "centeredDesktopAndMobile": true,
+    "extraBottomFoliage": false,
+    "founderSignatureInHero": false,
+    "duplicateHeroLogo": false
+  },
+  "typography": {
+    "websiteBakedCopy": "KEEP_MASTER_PIXELS_NO_LIVE_RETYPE",
+    "exactEditableFontFiles": null,
+    "unknownFontsPolicy": "Do not invent an exact font match; resolve font and localized text proof when a permitted edit needs it"
+  },
+  "copyDomains": {
+    "website": "INDEPENDENT",
+    "paid_ads": "INDEPENDENT",
+    "crossDomainFallback": false
+  },
+  "authorityRule": "Operator reads these records at accepted commit; no tool-local brand fallback"
+}

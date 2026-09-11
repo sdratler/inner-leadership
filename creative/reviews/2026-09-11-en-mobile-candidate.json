@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "reviewId": "WEB-HERO-EN-MOBILE-PR24-20260911-01",
+  "state": "OWNER_APPROVED_PENDING_DOWNSTREAM_INSTALL",
+  "source": {
+    "logicalAssetId": "LS-AD-VISUAL-REFERENCE-APPROVED-20260910",
+    "width": 941,
+    "height": 1672,
+    "sha256": "5778f3e1b31d189137bcc6c48a81fcce8ebe0ae09dcffd9c5f61889fcc2c237f"
+  },
+  "candidate": {
+    "filename": "LS_HERO_EN_MOBILE_CANDIDATE_PR24.png",
+    "width": 941,
+    "height": 1529,
+    "sha256": "ee2924444efc3d21dda5186b3a1107c3fde935ce4c76ded75ae3458aa99c7a71",
+    "storedInGit": false,
+    "storedInOwnerDrive": true,
+    "privateBindingId": "LS-HERO-MASTER-EN-MOBILE-20260911",
+    "driveReadbackSize": 1565727,
+    "approvedMaster": true,
+    "intendedSlot": "website.hero.en.mobile"
+  },
+  "checkedPreview": {
+    "filename": "checked-live-controls-preview-390x844.png",
+    "width": 390,
+    "height": 844,
+    "sha256": "43957f6c5ff32fe2de87d29048847a9006889ed569b803cfb44133fb11536cf0",
+    "storedInGit": false,
+    "scope": "Static QA rendering of the separate live-control geometry; the private preview HTML contains the real accessible WhatsApp anchor."
+  },
+  "changes": [
+    {
+      "operation": "crop",
+      "purpose": "remove the baked toolbar/header",
+      "sourceRowsRemoved": [0, 142]
+    },
+    {
+      "operation": "localized-underlay-patch",
+      "purpose": "remove the baked WhatsApp control",
+      "sourceMask": [45, 1126, 896, 1301]
+    },
+    {
+      "operation": "localized-underlay-and-type",
+      "purpose": "apply the owner-confirmed first benefit wording",
+      "sourceMask": [28, 1444, 313, 1524],
+      "before": "Self-leadership",
+      "after": "Self-governance",
+      "font": "Heebo variable",
+      "weight": 630,
+      "sizePx": 34,
+      "color": "#013D43"
+    },
+    {
+      "operation": "one-pixel-raster-emboldening",
+      "purpose": "apply OWNER-HERO-TYPE-20260911-01 without guessing or re-typesetting the source font",
+      "sourceMask": [376, 483, 567, 527],
+      "referenceAsset": "LS-HERO-REFERENCE-HE-MOBILE-AGE-20260911",
+      "referenceSha256": "f9531def2058fc61476305a61c7a1e4d63f420f7cd0b7ed28d601e330b1b09cd",
+      "preserved": ["wording", "glyph shapes", "font size", "tan color", "center", "baseline"]
+    }
+  ],
+  "verification": {
+    "registeredSourceHashMatched": true,
+    "changedPixelsInsideDeclaredMasks": 164439,
+    "changedPixelsOutsideDeclaredMasks": 0,
+    "outsideMaskPixelIdentity": "PASS",
+    "founderAndChildPixels": "UNCHANGED",
+    "headlineAndServicePixels": "UNCHANGED",
+    "agePixels": "CHANGED_ONLY_INSIDE_DECLARED_AGE_MASK",
+    "secondAndThirdBenefitPixels": "UNCHANGED",
+    "bakedToolbarAbsent": true,
+    "bakedWhatsappControlAbsent": true,
+    "firstBenefitReads": "Self-governance",
+    "englishAgeLine": "SLIGHTLY_BOLDER_PER_REGISTERED_HEBREW_REFERENCE",
+    "visualReview": "PASS_FOR_OWNER_REVIEW"
+  },
+  "provider": {
+    "openArtGenerationUsed": false,
+    "creditsSpent": 0,
+    "reason": "The registered production policy records no mask/protected-region route. A bounded local raster patch preserved every pixel outside the declared masks."
+  },
+  "ownerApproval": {
+    "evidence": "Owner message in the continuing PR #24 task on 2026-09-11: Okay, approved.",
+    "approvedAt": "2026-09-11T14:13:29+03:00",
+    "assetSha256": "ee2924444efc3d21dda5186b3a1107c3fde935ce4c76ded75ae3458aa99c7a71"
+  },
+  "gates": {
+    "additionalHeroVariants": "UNLOCKED_ONE_AT_A_TIME",
+    "websitePr23": "HELD_FOR_APPROVED_FOUR_MASTER_SET",
+    "marketingBatch": "HELD_FOR_APPROVED_VISUAL_MASTERS_AND_CREDIT_CAP",
+    "watchdog": "CARRIED_FORWARD_UNCHANGED",
+    "crmDeliveryTest": "CARRIED_FORWARD_UNTESTED",
+    "merge": "NOT_AUTHORIZED_BY_THIS_REVIEW",
+    "deployment": "NOT_AUTHORIZED_BY_THIS_REVIEW"
+  },
+  "nextAction": "Prepare and visually check exactly one Hebrew mobile candidate before any desktop variant."
+}

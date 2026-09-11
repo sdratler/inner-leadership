@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "reviewId": "WEB-HERO-EN-DESKTOP-PR24-20260911-01",
+  "state": "OWNER_APPROVED_PENDING_DOWNSTREAM_INSTALL",
+  "source": {
+    "photoLogicalAssetId": "PHOTO_A",
+    "photoSha256": "f517882ef0e472dfce61fda65771bd115d4562e6419610f78afd14b0b95742d9",
+    "approvedMobileMasterSha256": "ee2924444efc3d21dda5186b3a1107c3fde935ce4c76ded75ae3458aa99c7a71"
+  },
+  "candidate": {
+    "filename": "LS_HERO_EN_DESKTOP_CANDIDATE_PR24.png",
+    "width": 2400,
+    "height": 1350,
+    "sha256": "5c28d22d7b6b784eb6becb4cfabb7977c80a304b5bcaca93943564ed74394f50",
+    "storedInGit": false,
+    "storedInOwnerDrive": true,
+    "privateBindingId": "LS-HERO-MASTER-EN-DESKTOP-20260911",
+    "driveReadbackSize": 2427407,
+    "approvedMaster": true,
+    "intendedSlot": "website.hero.en.desktop"
+  },
+  "checkedPreview": {
+    "filename": "checked-live-controls-preview-en-1440x900.png",
+    "width": 1440,
+    "height": 900,
+    "sha256": "f7d8976535c20b346603db4ae79964da349ff6a003f508252c4ae6d421381257",
+    "storedInGit": false,
+    "scope": "Static QA rendering of the exact composite with the separate live English toolbar and WhatsApp control."
+  },
+  "verification": {
+    "registeredSourceHashesMatched": true,
+    "photoIdentity": "UNCHANGED_SOURCE_PHOTO_NO_GENERATED_PERSON_PIXELS",
+    "photoMirrored": false,
+    "centeredDesktopComposition": true,
+    "sideSplit": false,
+    "stretchedMobile": false,
+    "headline": "There’s a hero in every child",
+    "service": "Emotional therapy for boys",
+    "age": "Ages 8–12",
+    "benefits": ["Self-governance", "Emotional regulation", "Responsibility"],
+    "bakedToolbarAbsent": true,
+    "bakedWhatsappControlAbsent": true,
+    "noFaceOverlap": true,
+    "visualReview": "PASS"
+  },
+  "controls": {
+    "whatsappBoundsPx": [795, 845, 1605, 995],
+    "whatsappBoundsNormalized": [0.33125, 0.62592593, 0.3375, 0.11111111]
+  },
+  "provider": {
+    "openArtGenerationUsed": false,
+    "creditsSpent": 0,
+    "reason": "Independent bounded desktop raster composition using registered Photo A and the owner-approved mobile art direction."
+  },
+  "ownerApproval": {
+    "evidence": "Owner message on 2026-09-11 approving the other two desktop masters in advance, conditional on continuing the checked approved direction.",
+    "approvedAt": "2026-09-11T14:46:40+03:00",
+    "assetSha256": "5c28d22d7b6b784eb6becb4cfabb7977c80a304b5bcaca93943564ed74394f50"
+  },
+  "nextAction": "Install this exact private-bound file in the downstream website repository and verify the served byte hash."
+}

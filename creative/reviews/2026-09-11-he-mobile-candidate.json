@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "reviewId": "WEB-HERO-HE-MOBILE-PR24-20260911-01",
+  "state": "OWNER_APPROVED_PENDING_DOWNSTREAM_INSTALL",
+  "source": {
+    "logicalAssetId": "LS-HERO-REFERENCE-HE-MOBILE-AGE-20260911",
+    "width": 941,
+    "height": 1672,
+    "sha256": "f9531def2058fc61476305a61c7a1e4d63f420f7cd0b7ed28d601e330b1b09cd"
+  },
+  "candidate": {
+    "filename": "LS_HERO_HE_MOBILE_CANDIDATE_PR24.png",
+    "width": 941,
+    "height": 1529,
+    "sha256": "56dc8fcbe99f16d723a8b07b41eda8ebb03eb27716829b8c786f27b82a3ddcbe",
+    "storedInGit": false,
+    "storedInOwnerDrive": true,
+    "privateBindingId": "LS-HERO-MASTER-HE-MOBILE-20260911",
+    "driveReadbackSize": 1490692,
+    "approvedMaster": true,
+    "intendedSlot": "website.hero.he.mobile"
+  },
+  "checkedPreview": {
+    "filename": "checked-live-controls-preview-he-390x844.png",
+    "width": 390,
+    "height": 844,
+    "sha256": "df63423c9fb58dc46c85ceab92773e3464bc6163c656899fe0078b7f4a50f1cb",
+    "storedInGit": false,
+    "scope": "Static QA rendering of the separate mirrored header and live-control geometry; final website implementation remains accessible RTL HTML."
+  },
+  "changes": [
+    {
+      "operation": "crop",
+      "purpose": "remove the baked toolbar/header",
+      "sourceRowsRemoved": [0, 142]
+    },
+    {
+      "operation": "localized-underlay-patch",
+      "purpose": "remove the baked WhatsApp control",
+      "sourceMask": [45, 1126, 896, 1301]
+    }
+  ],
+  "verification": {
+    "registeredSourceHashMatched": true,
+    "changedPixelsInsideDeclaredMasks": 143169,
+    "changedPixelsOutsideDeclaredMasks": 0,
+    "outsideMaskPixelIdentity": "PASS",
+    "founderAndChildPixels": "UNCHANGED",
+    "headlineServiceAgePixels": "UNCHANGED",
+    "allBenefitPixels": "UNCHANGED",
+    "bakedToolbarAbsent": true,
+    "bakedWhatsappControlAbsent": true,
+    "visualReview": "PASS_FOR_OWNER_REVIEW"
+  },
+  "provider": {
+    "openArtGenerationUsed": false,
+    "creditsSpent": 0,
+    "reason": "The registered source already contains the approved Hebrew composition; a bounded local raster patch preserves every pixel outside the CTA mask."
+  },
+  "ownerApproval": {
+    "evidence": "Owner message in the continuing PR #24 task on 2026-09-11: Okay, I approve, and I approve of the other two also. You're doing it right. I approve of them in advance. Just keep going. Keep finishing all your tasks.",
+    "approvedAt": "2026-09-11T14:46:40+03:00",
+    "assetSha256": "56dc8fcbe99f16d723a8b07b41eda8ebb03eb27716829b8c786f27b82a3ddcbe"
+  },
+  "gates": {
+    "desktopHeroVariants": "UNLOCKED_AND_ADVANCE_APPROVED_SUBJECT_TO_CHECKED_HASH_BINDING",
+    "websitePr23": "HELD_FOR_APPROVED_FOUR_MASTER_SET",
+    "marketingBatch": "HELD_FOR_APPROVED_VISUAL_MASTERS_AND_CREDIT_CAP",
+    "watchdog": "CARRIED_FORWARD_UNCHANGED",
+    "crmDeliveryTest": "CARRIED_FORWARD_UNTESTED",
+    "merge": "NOT_AUTHORIZED_BY_THIS_REVIEW",
+    "deployment": "NOT_AUTHORIZED_BY_THIS_REVIEW"
+  },
+  "nextAction": "Bind the two independently checked desktop candidates, then install the exact four-master set downstream."
+}
