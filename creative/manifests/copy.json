@@ -35,6 +35,23 @@
       "olderManifests": "Self-governance",
       "resolution": "RESOLVED: owner explicitly confirmed Self-governance in this audit conversation on2026-09-11. Replace only this label in the first master candidate; preserve remaining approved design.",
       "status": "OWNER_CORRECTION_APPROVED"
+    },
+    "ageTypography": {
+      "changeId": "OWNER-HERO-TYPE-20260911-01",
+      "status": "OWNER_REQUESTED_CORRECTION",
+      "target": "Slightly increase the English age-line weight to the visually bolder Hebrew reference; maintain the Hebrew reference weight.",
+      "weightReferenceAsset": "LS-HERO-REFERENCE-HE-MOBILE-AGE-20260911",
+      "preserve": [
+        "wording",
+        "font size",
+        "tan color",
+        "center alignment",
+        "baseline",
+        "line spacing",
+        "all other artwork"
+      ],
+      "exactFontWeight": null,
+      "fontWeightEvidence": "Raster comparison only; do not invent a numeric font weight or font identity."
     }
   },
   "ads": [
@@ -121,7 +138,25 @@
       "label": "שלחו הודעה בוואטסאפ",
       "prefill": "היי, אשמח לשמוע עוד על כישורי חיים ועל המפגשים לילדים בגילאי 8–12."
     },
-    "destinationBinding": "approved_practice_whatsapp_from_private_current_handoff"
+    "destinationBinding": "approved_practice_whatsapp_from_private_current_handoff",
+    "visualControl": {
+      "changeId": "OWNER-HERO-TYPE-20260911-01",
+      "referenceAsset": "LS-AD-VISUAL-REFERENCE-APPROVED-20260910",
+      "shape": "Wide dark-teal pill with fully rounded ends, subtle brighter upper rim and soft shadow",
+      "contents": "Cream WhatsApp glyph left, short translucent vertical divider, bold localized label, right arrow",
+      "referenceCanvas": [
+        941,
+        1672
+      ],
+      "referenceBoundsApproxPx": {
+        "x": 80,
+        "y": 1144,
+        "width": 782,
+        "height": 125
+      },
+      "boundsStatus": "REFERENCE_GUIDE_ONLY_EXCLUDES_SHADOW_REMEASURE_AFTER_TOOLBAR_REMOVAL",
+      "implementation": "One real live button; preserve reference appearance and existing gentle hover/focus behavior. No painted duplicate, extra CTA words, or artwork re-layout."
+    }
   },
   "heroAdCopyFallback": false
 }

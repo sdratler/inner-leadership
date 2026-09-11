@@ -37,7 +37,7 @@
       "allow_relayout": false,
       "allow_recolor": false,
       "allow_reference_substitution": false,
-      "production_note": "FIRST: remove toolbar and painted CTA from registered reference; replace Self-leadership with owner-confirmed Self-governance; preserve all other pixels. One candidate only."
+      "production_note": "FIRST: remove toolbar and painted CTA from registered reference; replace Self-leadership with owner-confirmed Self-governance and make the English age line slightly bolder per copy.json ageTypography; preserve all other pixels. One candidate only."
     },
     {
       "id": "LS-HERO-MASTER-HE-MOBILE",

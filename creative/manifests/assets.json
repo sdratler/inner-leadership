@@ -78,6 +78,34 @@
       },
       "privateBindingId": "LS-LOGO-HE-LEAF-01",
       "bindingSource": "CURRENT Codex Ad Production Handoff private_asset_bindings; resolved through authenticated CURRENT registry"
+    },
+    {
+      "id": "LS-HERO-REFERENCE-HE-MOBILE-AGE-20260911",
+      "kind": "typography_and_button_reference_with_ui",
+      "width": 941,
+      "height": 1672,
+      "privateBindingId": "LS-HERO-REFERENCE-HE-MOBILE-AGE-20260911",
+      "bindingSource": "CURRENT Codex Ad Production Handoff private_asset_bindings",
+      "deployableHero": false,
+      "verification": {
+        "visualInspection": true,
+        "localBytes": "SHA256_AND_DIMENSIONS_VERIFIED_2026-09-11"
+      },
+      "changeId": "OWNER-HERO-TYPE-20260911-01"
+    },
+    {
+      "id": "LS-HERO-DESKTOP-COMPARISON-SCREENSHOT-20260911",
+      "kind": "chat_screenshot_comparison_only",
+      "width": 809,
+      "height": 745,
+      "privateBindingId": "LS-HERO-DESKTOP-COMPARISON-SCREENSHOT-20260911",
+      "bindingSource": "CURRENT Codex Ad Production Handoff private_asset_bindings",
+      "deployableHero": false,
+      "verification": {
+        "visualInspection": true,
+        "localBytes": "SHA256_AND_DIMENSIONS_VERIFIED_2026-09-11"
+      },
+      "changeId": "OWNER-HERO-TYPE-20260911-01"
     }
   ],
   "privateBindingPolicy": "Original-photo provider IDs and checksums stay in existing private Drive handoff. This public registry owns logical assets, state and rules. Resolved bindings are runtime-only and never create another brand authority.",
