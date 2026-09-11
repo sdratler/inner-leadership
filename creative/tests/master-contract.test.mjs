@@ -140,13 +140,35 @@ test('an unapproved candidate never satisfies readiness', async t => {
   assert.equal((await validateMasterContract({ repoRoot: f.root, ready: true })).ok, false);
 });
 
+test('owner-approved external bytes remain non-ready until exact repository installation', async t => {
+  const f = await fixture(t);
+  const entry = f.manifest.masters[0];
+  entry.status = 'OWNER_APPROVED_PENDING_INSTALL';
+  entry.asset = null;
+  entry.candidate = { sha256: HASH, stored_in_this_repository: false };
+  await f.save();
+  const inventory = await validateMasterContract({ repoRoot: f.root });
+  assert.equal(inventory.ok, true, inventory.errors.join('\n'));
+  assert.equal(inventory.ready, false);
+  assert.equal(inventory.ready_count, 3);
+  assert.match(inventory.warnings.join('\n'), /owner-approved bytes pending repository install/);
+});
+
 test('repository traversal and symlinks to outside assets are rejected', async t => {
   const f = await fixture(t);
   const outside = await mkdtemp(path.join(tmpdir(), 'ls-outside-master-'));
   t.after(() => rm(outside, { recursive: true, force: true }));
   const externalImage = path.join(outside, 'synthetic.png');
   await writeFile(externalImage, PNG);
-  await symlink(externalImage, path.join(f.root, 'creative/assets/masters/outside.png'));
+  try {
+    await symlink(externalImage, path.join(f.root, 'creative/assets/masters/outside.png'));
+  } catch (error) {
+    if (process.platform === 'win32' && error?.code === 'EPERM') {
+      t.skip('Windows host does not grant symlink creation privilege; Linux CI exercises this boundary.');
+      return;
+    }
+    throw error;
+  }
   f.manifest.masters[0].asset.path = 'creative/assets/masters/outside.png';
   f.manifest.masters[1].asset.path = path.relative(f.root, externalImage);
   await f.save();

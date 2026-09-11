@@ -26,7 +26,7 @@ const LOCKS = Object.freeze([
 ]);
 const STATUS = new Set([
   'MISSING', 'SOURCE_REFERENCE_ONLY', 'CANDIDATE', 'PENDING_OWNER_REVIEW',
-  'OWNER_APPROVED_MASTER', 'SUPERSEDED', 'REJECTED',
+  'OWNER_APPROVED_PENDING_INSTALL', 'OWNER_APPROVED_MASTER', 'SUPERSEDED', 'REJECTED',
 ]);
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const isSha = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
@@ -174,7 +174,19 @@ export async function validateMasterContract({
       continue;
     }
     if (!STATUS.has(entry.status)) slot.issues.push('Unrecognized master status');
-    if (entry.status !== 'OWNER_APPROVED_MASTER') {
+    if (entry.status === 'OWNER_APPROVED_PENDING_INSTALL') {
+      result.warnings.push(id + ': owner-approved bytes pending repository install');
+      const approval = entry.owner_approval;
+      const candidate = entry.candidate;
+      if (!isObject(candidate) || !isSha(candidate.sha256)) {
+        slot.issues.push('Pending install requires a hash-bound candidate record');
+      }
+      if (!isObject(approval) || typeof approval.evidence !== 'string' || !approval.evidence.trim()
+          || !isSha(approval.asset_sha256) || approval.asset_sha256 !== candidate?.sha256) {
+        slot.issues.push('Pending install approval must bind to the candidate SHA256');
+      }
+      if (entry.asset) slot.issues.push('Pending install may not claim a repository asset');
+    } else if (entry.status !== 'OWNER_APPROVED_MASTER') {
       result.warnings.push(id + ': not owner-approved (' + entry.status + ')');
     }
     // Any supplied asset is checked even when the slot remains a candidate.
