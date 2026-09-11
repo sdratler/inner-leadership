@@ -61,15 +61,20 @@
       "id": "LS-HERO-MASTER-HE-MOBILE",
       "locale": "he",
       "orientation": "mobile",
-      "status": "PENDING_OWNER_REVIEW",
+      "status": "OWNER_APPROVED_PENDING_INSTALL",
       "asset": null,
-      "owner_approval": null,
+      "owner_approval": {
+        "evidence": "Owner message in the continuing PR #24 task on 2026-09-11 approving the Hebrew mobile master and the two desktop masters in advance.",
+        "asset_sha256": "56dc8fcbe99f16d723a8b07b41eda8ebb03eb27716829b8c786f27b82a3ddcbe",
+        "approved_at": "2026-09-11T14:46:40+03:00"
+      },
       "candidate": {
-        "filename": "LS_HERO_HE_MOBILE_CANDIDATE_PR24.png",
+        "private_binding_id": "LS-HERO-MASTER-HE-MOBILE-20260911",
+        "filename": "LS_HERO_HE_MOBILE_MASTER_APPROVED_20260911.png",
         "width": 941,
         "height": 1529,
         "sha256": "56dc8fcbe99f16d723a8b07b41eda8ebb03eb27716829b8c786f27b82a3ddcbe",
-        "stored_in_owner_drive": false,
+        "stored_in_owner_drive": true,
         "stored_in_this_repository": false
       },
       "baked_layers": [
@@ -103,15 +108,28 @@
       "allow_relayout": false,
       "allow_recolor": false,
       "allow_reference_substitution": false,
-      "production_note": "Exact registered Hebrew reference was cropped to remove the toolbar and locally patched only within the painted WhatsApp mask. Candidate SHA256 56dc8fcbe99f16d723a8b07b41eda8ebb03eb27716829b8c786f27b82a3ddcbe awaits owner visual review."
+      "production_note": "Owner approved exact candidate SHA256 56dc8fcbe99f16d723a8b07b41eda8ebb03eb27716829b8c786f27b82a3ddcbe. Private bytes were stored in the owner Drive and remain excluded from this public source repository. Promote only after the downstream website repository contains and verifies the exact bytes."
     },
     {
       "id": "LS-HERO-MASTER-EN-DESKTOP",
       "locale": "en",
       "orientation": "desktop",
-      "status": "MISSING",
+      "status": "OWNER_APPROVED_PENDING_INSTALL",
       "asset": null,
-      "owner_approval": null,
+      "owner_approval": {
+        "evidence": "Owner message on 2026-09-11 approving both desktop masters in advance, followed by a visual and source-identity check of this exact output.",
+        "asset_sha256": "5c28d22d7b6b784eb6becb4cfabb7977c80a304b5bcaca93943564ed74394f50",
+        "approved_at": "2026-09-11T14:46:40+03:00"
+      },
+      "candidate": {
+        "private_binding_id": "LS-HERO-MASTER-EN-DESKTOP-20260911",
+        "filename": "LS_HERO_EN_DESKTOP_MASTER_APPROVED_20260911.png",
+        "width": 2400,
+        "height": 1350,
+        "sha256": "5c28d22d7b6b784eb6becb4cfabb7977c80a304b5bcaca93943564ed74394f50",
+        "stored_in_owner_drive": true,
+        "stored_in_this_repository": false
+      },
       "baked_layers": [
         "headline",
         "service",
@@ -130,7 +148,12 @@
       ],
       "controls": {
         "whatsapp": {
-          "bounds": null,
+          "bounds": {
+            "x": 0.33125,
+            "y": 0.62592593,
+            "width": 0.3375,
+            "height": 0.11111111
+          },
           "coordinate_space": "normalized_intrinsic_image"
         }
       },
@@ -138,15 +161,28 @@
       "allow_relayout": false,
       "allow_recolor": false,
       "allow_reference_substitution": false,
-      "production_note": "Wait for accepted first mobile candidate; one localized/orientation candidate at a time"
+      "production_note": "Owner-approved checked desktop SHA256 5c28d22d7b6b784eb6becb4cfabb7977c80a304b5bcaca93943564ed74394f50. Independent centered composition from registered Photo A; not mirrored, stretched from mobile, or stored in this public source repository."
     },
     {
       "id": "LS-HERO-MASTER-HE-DESKTOP",
       "locale": "he",
       "orientation": "desktop",
-      "status": "MISSING",
+      "status": "OWNER_APPROVED_PENDING_INSTALL",
       "asset": null,
-      "owner_approval": null,
+      "owner_approval": {
+        "evidence": "Owner message on 2026-09-11 approving both desktop masters in advance, followed by a visual and source-identity check of this exact output.",
+        "asset_sha256": "74c7d3258770abdab5c146e1211c4cbd16e0738840d5c274390f9a707f8dd824",
+        "approved_at": "2026-09-11T14:46:40+03:00"
+      },
+      "candidate": {
+        "private_binding_id": "LS-HERO-MASTER-HE-DESKTOP-20260911",
+        "filename": "LS_HERO_HE_DESKTOP_MASTER_APPROVED_20260911.png",
+        "width": 2400,
+        "height": 1350,
+        "sha256": "74c7d3258770abdab5c146e1211c4cbd16e0738840d5c274390f9a707f8dd824",
+        "stored_in_owner_drive": true,
+        "stored_in_this_repository": false
+      },
       "baked_layers": [
         "headline",
         "service",
@@ -165,7 +201,12 @@
       ],
       "controls": {
         "whatsapp": {
-          "bounds": null,
+          "bounds": {
+            "x": 0.33125,
+            "y": 0.62592593,
+            "width": 0.3375,
+            "height": 0.11111111
+          },
           "coordinate_space": "normalized_intrinsic_image"
         }
       },
@@ -173,7 +214,7 @@
       "allow_relayout": false,
       "allow_recolor": false,
       "allow_reference_substitution": false,
-      "production_note": "Wait for accepted first mobile candidate; one localized/orientation candidate at a time"
+      "production_note": "Owner-approved checked desktop SHA256 74c7d3258770abdab5c146e1211c4cbd16e0738840d5c274390f9a707f8dd824. Independent centered composition from registered Photo A; not mirrored, stretched from mobile, or stored in this public source repository."
     }
   ]
 }

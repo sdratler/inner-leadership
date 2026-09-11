@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "reviewId": "WEB-HERO-HE-MOBILE-PR24-20260911-01",
-  "state": "CHECKED_CANDIDATE_OWNER_REVIEW",
+  "state": "OWNER_APPROVED_PENDING_DOWNSTREAM_INSTALL",
   "source": {
     "logicalAssetId": "LS-HERO-REFERENCE-HE-MOBILE-AGE-20260911",
     "width": 941,
@@ -14,7 +14,10 @@
     "height": 1529,
     "sha256": "56dc8fcbe99f16d723a8b07b41eda8ebb03eb27716829b8c786f27b82a3ddcbe",
     "storedInGit": false,
-    "approvedMaster": false,
+    "storedInOwnerDrive": true,
+    "privateBindingId": "LS-HERO-MASTER-HE-MOBILE-20260911",
+    "driveReadbackSize": 1490692,
+    "approvedMaster": true,
     "intendedSlot": "website.hero.he.mobile"
   },
   "checkedPreview": {
@@ -54,8 +57,13 @@
     "creditsSpent": 0,
     "reason": "The registered source already contains the approved Hebrew composition; a bounded local raster patch preserves every pixel outside the CTA mask."
   },
+  "ownerApproval": {
+    "evidence": "Owner message in the continuing PR #24 task on 2026-09-11: Okay, I approve, and I approve of the other two also. You're doing it right. I approve of them in advance. Just keep going. Keep finishing all your tasks.",
+    "approvedAt": "2026-09-11T14:46:40+03:00",
+    "assetSha256": "56dc8fcbe99f16d723a8b07b41eda8ebb03eb27716829b8c786f27b82a3ddcbe"
+  },
   "gates": {
-    "desktopHeroVariants": "HELD_FOR_OWNER_APPROVAL",
+    "desktopHeroVariants": "UNLOCKED_AND_ADVANCE_APPROVED_SUBJECT_TO_CHECKED_HASH_BINDING",
     "websitePr23": "HELD_FOR_APPROVED_FOUR_MASTER_SET",
     "marketingBatch": "HELD_FOR_APPROVED_VISUAL_MASTERS_AND_CREDIT_CAP",
     "watchdog": "CARRIED_FORWARD_UNCHANGED",
@@ -63,5 +71,5 @@
     "merge": "NOT_AUTHORIZED_BY_THIS_REVIEW",
     "deployment": "NOT_AUTHORIZED_BY_THIS_REVIEW"
   },
-  "nextAction": "Owner visually approves or rejects this exact Hebrew mobile candidate hash before desktop work."
+  "nextAction": "Bind the two independently checked desktop candidates, then install the exact four-master set downstream."
 }
