@@ -1,0 +1,21 @@
+import { describe,expect,it } from 'vitest';
+import { AppError } from '../../src/lib/errors.ts';
+import { APPOINTMENT_RATE_MINOR,BLOCK_PRICE_MINOR,CREDITS_PER_BLOCK,TERMS_VERSION,bodyDigest,calendarDisposition,parseIlsMinor } from '../../src/features/payments/policy.ts';
+const base={kind:'individual' as const,termsVersion:TERMS_VERSION,noticeEligibility:null,attendanceState:null,exceptionReason:null,priorConsumed:false};
+describe('LS-060 settled payment policy',()=>{
+ it('uses integer minor units for the exact approved block',()=>{expect(APPOINTMENT_RATE_MINOR).toBe(55000);expect(BLOCK_PRICE_MINOR).toBe(220000);expect(CREDITS_PER_BLOCK).toBe(4);expect(BLOCK_PRICE_MINOR).toBe(APPOINTMENT_RATE_MINOR*CREDITS_PER_BLOCK);});
+ it.each([['2200',220000],['550',55000],['1.05',105],['0.01',1]])('parses %s without floating point rounding',(value,wanted)=>expect(parseIlsMinor(value)).toBe(wanted));
+ it.each(['-1','1.001','1,000','₪550','0','01'])('rejects invalid money %s',value=>expect(()=>parseIlsMinor(value)).toThrow(AppError));
+ it('hashes property-order-equivalent command bodies identically',()=>expect(bodyDigest({b:2,a:{d:4,c:3}})).toBe(bodyDigest({a:{c:3,d:4},b:2})));
+ it('consumes attended individual appointments',()=>expect(calendarDisposition('consume',{...base,attendanceState:'present'})).toBe('consume'));
+ it('consumes late attendance as attendance',()=>expect(calendarDisposition('consume',{...base,attendanceState:'late'})).toBe('consume'));
+ it('consumes a no-show',()=>expect(calendarDisposition('consume',{...base,attendanceState:'no_show'})).toBe('consume'));
+ it('consumes a late notice independently of attendance',()=>expect(calendarDisposition('consume',{...base,noticeEligibility:'late_notice'})).toBe('consume'));
+ it('preserves at the exact calendar-provided timely boundary',()=>expect(calendarDisposition('preserve',{...base,noticeEligibility:'credit_preserved'})).toBe('preserve'));
+ it('never consumes a protected credit',()=>expect(()=>calendarDisposition('consume',{...base,noticeEligibility:'credit_preserved'})).toThrow(AppError));
+ it('honors the practitioner exception',()=>expect(calendarDisposition('preserve',{...base,exceptionReason:'practitioner_exception'})).toBe('preserve'));
+ it('restores only a previously consumed protected appointment',()=>expect(calendarDisposition('restore',{...base,priorConsumed:true,exceptionReason:'provider_unavailable'})).toBe('restore'));
+ it('does not invent a restoration',()=>expect(()=>calendarDisposition('restore',{...base,exceptionReason:'practitioner_exception'})).toThrow(AppError));
+ it('does not consume joint-parent check-ins',()=>expect(()=>calendarDisposition('consume',{...base,kind:'parent_guidance',attendanceState:'present'})).toThrow(AppError));
+ it('fails closed on a superseded terms version',()=>expect(()=>calendarDisposition('consume',{...base,termsVersion:'Product2.0',attendanceState:'present'})).toThrow(AppError));
+});

@@ -19,18 +19,24 @@ export function proxy(request: NextRequest) {
   if (developmentGallery && env.NODE_ENV !== "development") {
     return decorate(new NextResponse(null,{status:404}),headers);
   }
-  // Private paths never become available merely by enabling a visual preview.
-  const privatePath = pathname.startsWith("/api/private/") || /^\/(he|en)\/(app|workspace|parent|client|practitioner)(\/|$)/.test(pathname);
+  // The private application has its own explicit server-side gate. Foundation
+  // preview never opens authenticated application or domain API routes.
+  const privatePath = /^\/api\/(?:private|identity|calendar|attendance|checkins|commitments|forms|goals|home-practice|payments|progress|resources|updates)(?:\/|$)/.test(pathname) ||
+    /^\/(he|en)\/(?:app|family|workspace|parent|client|practitioner|attendance|calendar|checkins|commitments|forms|goals|home-practice|payments|progress|resources|updates)(?:\/|$)/.test(pathname);
+  const privateMode = process.env.LS_PRIVATE_APP_ENABLED === "true";
   const health = pathname === "/api/health";
   const robots = pathname === "/robots.txt";
-  if (privatePath || (!health && !robots && env.LS_APP_MODE !== "foundation_preview")) {
+  if ((privatePath && !privateMode) || (!privatePath && !health && !robots && env.LS_APP_MODE !== "foundation_preview")) {
     return decorate(NextResponse.json({ ok:false, error:{code:"UNAVAILABLE"}, requestId:crypto.randomUUID() }, {status:503}),headers);
   }
-  if (pathname === "/") return decorate(NextResponse.redirect(new URL("/he/foundation", request.url)),headers);
+  if (pathname === "/") return decorate(NextResponse.redirect(new URL(privateMode ? "/he/app" : "/he/foundation", request.url)),headers);
   const inbound = new Headers(request.headers);
   // Do not trust caller-supplied nonce or request identifiers.
   inbound.set("x-nonce",nonce); inbound.set("Content-Security-Policy",headers["Content-Security-Policy"] ?? "default-src 'none'");
   inbound.set("x-request-id",crypto.randomUUID());
+  const configuredOrigin = new URL(env.LS_APP_ORIGIN);
+  inbound.set("x-forwarded-proto",configuredOrigin.protocol.slice(0,-1));
+  inbound.set("x-forwarded-host",request.headers.get("host") ?? configuredOrigin.host);
   return decorate(NextResponse.next({ request: { headers: inbound } }),headers);
 }
 export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"] };

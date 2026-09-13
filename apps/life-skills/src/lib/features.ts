@@ -19,5 +19,19 @@ export function orderFeatures(features: readonly FeatureDescriptor[]): readonly 
   for (const id of byId.keys()) visit(id);
   return Object.freeze(ordered);
 }
-/** LS-005 installs the foundation only. Domain registrations belong to later packets. */
-export const registeredFeatures = orderFeatures([]);
+/** Central LS-070 registration. Ordering records dependencies; authorization stays server-side. */
+export const registeredFeatures = orderFeatures([
+  { id: "identity", dependsOn: [] },
+  { id: "cases", dependsOn: ["identity"] },
+  { id: "calendar", dependsOn: ["cases"] },
+  { id: "attendance", dependsOn: ["calendar"] },
+  { id: "goals", dependsOn: ["cases"] },
+  { id: "commitments", dependsOn: ["goals"] },
+  { id: "home-practice", dependsOn: ["commitments"] },
+  { id: "checkins", dependsOn: ["home-practice"] },
+  { id: "payments", dependsOn: ["calendar"] },
+  { id: "forms", dependsOn: ["cases"] },
+  { id: "resources", dependsOn: ["cases"] },
+  { id: "updates", dependsOn: ["home-practice"] },
+  { id: "progress", dependsOn: ["attendance", "home-practice", "updates"] },
+]);
