@@ -48,9 +48,6 @@ test("serves the selected life-skills subpath and preserves language queries", a
   assert.equal(page.status, 200);
   const pageBody = await page.text();
   assert.match(pageBody, /id="life-skills-root"/);
-  assert.match(pageBody, /<html lang="en" dir="ltr"/);
-  assert.match(pageBody, /<title>Life Skills \| Emotional Therapy for Boys Ages 8–12<\/title>/);
-  assert.match(pageBody, /property="og:locale" content="en_US"/);
   assert.match(pageBody, /property="og:image" content="https:\/\/bneineviimacademy\.org\/life-skills\/assets\/images\/og\/LS_OG_MASTER_HE_V1_20260913\.png"/);
 
   const app = await fetch(`${origin}/life-skills/assets/js/site-react.js`);

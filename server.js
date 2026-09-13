@@ -53,38 +53,6 @@ function sendText(res, status, body, headers = {}) {
   res.end(content);
 }
 
-function sendHtml(req, res, body, status = 200) {
-  const content = Buffer.from(body, "utf8");
-  res.writeHead(status, {
-    ...SECURITY_HEADERS,
-    "Cache-Control": "no-store",
-    "Content-Length": content.length,
-    "Content-Type": "text/html; charset=utf-8",
-  });
-  if (req.method === "HEAD") res.end();
-  else res.end(content);
-}
-
-function renderLocalizedIndex(locale) {
-  let html = fs.readFileSync(path.join(PUBLIC_ROOT, "index.html"), "utf8");
-  if (locale !== "en") return html;
-  const replacements = new Map([
-    ['<html lang="he" dir="rtl" data-locale="he">', '<html lang="en" dir="ltr" data-locale="en">'],
-    ['<title>כישורי חיים | טיפול רגשי לבנים בגילאי 8–12</title>', '<title>Life Skills | Emotional Therapy for Boys Ages 8–12</title>'],
-    ['<meta name="description" content="טיפול רגשי לבנים בגילאי 8–12, עם הדרכת הורים מעשית.">', '<meta name="description" content="Emotional therapy for boys ages 8–12, together with practical parent guidance.">'],
-    ['<link rel="canonical" href="https://bneineviimacademy.org/life-skills/?lang=he">', '<link rel="canonical" href="https://bneineviimacademy.org/life-skills/?lang=en">'],
-    ['<meta property="og:locale" content="he_IL">', '<meta property="og:locale" content="en_US">'],
-    ['<meta property="og:title" content="בכל ילד יש גיבור | כישורי חיים">', '<meta property="og:title" content="There’s a hero in every child | Life Skills">'],
-    ['<meta property="og:description" content="טיפול רגשי לבנים בגילאי 8–12, עם הדרכת הורים מעשית.">', '<meta property="og:description" content="Emotional therapy for boys ages 8–12, together with practical parent guidance.">'],
-    ['<meta property="og:url" content="https://bneineviimacademy.org/life-skills/?lang=he">', '<meta property="og:url" content="https://bneineviimacademy.org/life-skills/?lang=en">'],
-    ['<meta property="og:image:alt" content="כישורי חיים — בכל ילד יש גיבור">', '<meta property="og:image:alt" content="Hebrew Life Skills visual — there is a hero in every child">'],
-    ['<meta name="twitter:title" content="בכל ילד יש גיבור | כישורי חיים">', '<meta name="twitter:title" content="There’s a hero in every child | Life Skills">'],
-    ['<meta name="twitter:description" content="טיפול רגשי לבנים בגילאי 8–12, עם הדרכת הורים מעשית.">', '<meta name="twitter:description" content="Emotional therapy for boys ages 8–12, together with practical parent guidance.">'],
-  ]);
-  for (const [from, to] of replacements) html = html.replace(from, to);
-  return html;
-}
-
 function sendFile(req, res, file, status = 200) {
   let stat;
   try {
@@ -155,14 +123,7 @@ function handleRequest(req, res) {
     return;
   }
   if (pathname === "/" || pathname === "/index.html" || pathname === "/life-skills" || pathname === "/life-skills/index.html") {
-    const locale = requestUrl.searchParams.get("lang") === "en" ? "en" : "he";
-    try {
-      sendHtml(req, res, renderLocalizedIndex(locale));
-      return;
-    } catch {
-      sendText(res, 503, "Website build unavailable\n");
-      return;
-    }
+    if (sendFile(req, res, path.join(PUBLIC_ROOT, "index.html"))) return;
   } else if (pathname === "/robots.txt" || pathname === "/life-skills/robots.txt") {
     if (sendFile(req, res, path.join(PUBLIC_ROOT, "robots.txt"))) return;
   } else {
@@ -191,4 +152,4 @@ if (require.main === module) {
   process.on("SIGTERM", shutdown);
 }
 
-module.exports = { createServer, handleRequest, renderLocalizedIndex, resolveAsset };
+module.exports = { createServer, handleRequest, resolveAsset };
