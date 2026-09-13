@@ -46,7 +46,12 @@ test("serves the selected life-skills subpath and preserves language queries", a
 
   const page = await fetch(`${origin}/life-skills/?lang=en`);
   assert.equal(page.status, 200);
-  assert.match(await page.text(), /id="life-skills-root"/);
+  const pageBody = await page.text();
+  assert.match(pageBody, /id="life-skills-root"/);
+  assert.match(pageBody, /<html lang="en" dir="ltr"/);
+  assert.match(pageBody, /<title>Life Skills \| Emotional Therapy for Boys Ages 8–12<\/title>/);
+  assert.match(pageBody, /property="og:locale" content="en_US"/);
+  assert.match(pageBody, /property="og:image" content="https:\/\/bneineviimacademy\.org\/life-skills\/assets\/images\/og\/LS_OG_MASTER_HE_V1_20260913\.png"/);
 
   const app = await fetch(`${origin}/life-skills/assets/js/site-react.js`);
   assert.equal(app.status, 200);
@@ -59,6 +64,10 @@ test("serves the selected life-skills subpath and preserves language queries", a
   const image = await fetch(`${origin}/life-skills/assets/images/founder-boy-hero-en-desktop.png`);
   assert.equal(image.status, 200);
   assert.match(image.headers.get("content-type"), /image\/png/);
+
+  const social = await fetch(`${origin}/life-skills/assets/images/og/LS_OG_MASTER_HE_V1_20260913.png`);
+  assert.equal(social.status, 200);
+  assert.match(social.headers.get("content-type"), /image\/png/);
 
   const font = await fetch(`${origin}/life-skills/assets/fonts/FrankRuhlLibre-wght.ttf`);
   assert.equal(font.status, 200);

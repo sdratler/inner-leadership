@@ -80,7 +80,7 @@ class StaticTests(unittest.TestCase):
         self.assertNotIn("v43-approved-twig.png", self.react)
         self.assertNotIn("section.link", self.react)
 
-    def test_twelve_modules_are_accessible_ordered_carousel(self):
+    def test_twelve_modules_are_visible_in_accessible_continuous_order(self):
         for locale in ["he", "en"]:
             modules = self.copy[locale]["teaching"]["modules"]
             self.assertEqual(len(modules), 12)
@@ -91,11 +91,12 @@ class StaticTests(unittest.TestCase):
                 self.assertTrue(module["example"])
         self.assertNotIn("theme-disclosure", self.react)
         self.assertNotIn('<details className="curriculum', self.react)
-        self.assertIn("function CurriculumCarousel", self.react)
+        self.assertIn("function CurriculumList", self.react)
         self.assertIn("modules.map", self.react)
-        self.assertIn('aria-roledescription="carousel"', self.react)
-        self.assertIn("scroll-snap-type:x mandatory", self.css)
-        self.assertIn("prefers-reduced-motion: reduce", self.react)
+        self.assertIn('role="list"', self.react)
+        self.assertNotIn('aria-roledescription="carousel"', self.react)
+        self.assertNotIn("scroll-snap-type:x mandatory", self.css)
+        self.assertNotIn('className="module-example"', self.react)
         self.assertNotIn("autoplay", (self.react + self.css).lower())
         self.assertIn("data-theme-key={key}", self.react)
 
@@ -135,6 +136,8 @@ class StaticTests(unittest.TestCase):
             self.assertTrue((ROOT / "assets" / src).is_file(), src)
         for name in ["founder-boy-hero-en-desktop.png", "founder-boy-hero-en-mobile.png", "founder-boy-hero-he-desktop.png", "founder-boy-hero-he-mobile.png", "founder-grass-group.webp", "l-bars-2024.png", "meir-bunny.png", "bna-logo-nobg.png", "LS_LOGO_HE_LEAF_APPROVED_20260910.png", "LS_LOGO_HE_LEAF_APPROVED_20260910-transparent.png"]:
             self.assertTrue((ROOT / "assets/images" / name).is_file(), name)
+        og = ROOT / "assets/images/og/LS_OG_MASTER_HE_V1_20260913.png"
+        self.assertEqual(hashlib.sha256(og.read_bytes()).hexdigest(), "209bdb5a7c6fa8573dead56e22d1213787e7e080f2d701fbe5901480029313ab")
 
     def test_v455_fonts_and_visual_copy_are_real(self):
         for name in ["FrankRuhlLibre-wght.ttf", "Heebo-wght.ttf", "OFL-Frank-Ruhl-Libre.txt", "OFL-Heebo.txt"]:
@@ -151,21 +154,22 @@ class StaticTests(unittest.TestCase):
         self.assertIn("c.teaching.intro_support", self.react)
         self.assertNotIn("section.flow", self.react)
 
-    def test_approach_band_uses_requested_real_photo(self):
-        self.assertIn('url("../images/meir-bunny.png")', self.css)
-        self.assertIn("linear-gradient(118deg,rgba(22,63,72,.72),rgba(36,81,89,.58))", self.css)
-        self.assertIn("border:2px solid var(--gold)", self.css)
-        self.assertIn("border-radius:32px", self.css)
-        for phrase in ["section.feature.sodas_steps", "section.feature.frustration_steps", "section.principles.map"]:
-            self.assertIn(phrase, self.react)
+    def test_approach_is_concise_teal_and_parent_guidance_follows_it(self):
+        self.assertIn(".approach-band{position:relative", self.css)
+        self.assertIn("background:var(--teal)", self.css)
+        self.assertIn("section.principles.map", self.react)
+        self.assertNotIn("section.feature.sodas_steps", self.react)
+        self.assertNotIn("section.feature.frustration_steps", self.react)
+        self.assertNotIn("sodas-path", self.css)
+        app = self.react.split('return <><Header', 1)[1]
+        self.assertLess(app.index("<ApproachIntro"), app.index("<ParentGuidance"))
+        self.assertLess(app.index("<ParentGuidance"), app.index("<section id={`teaching-"))
 
     def test_locked_teal_system_and_mobile_geometry(self):
         for token in ["--teal:#245159", "--deep-teal:#163F48", "--cream:#FBF7EF", "--gold:#E6D0A4"]:
             self.assertIn(token, self.css)
         for geometry in ["min-height:98px", "padding-inline:22px", "width:88px", "aspect-ratio:16/9", "aspect-ratio:941/1529", "left:8.501594%", "min-height:50px", "min-height:58px"]:
             self.assertIn(geometry, self.css)
-        self.assertIn("opacity:.72", self.css)
-        self.assertIn("opacity:.32", self.css)
         self.assertNotIn("#153E2C", self.css)
 
     def test_mobile_menu_and_real_ctas(self):
@@ -228,7 +232,7 @@ class StaticTests(unittest.TestCase):
         self.assertIn('className="footer-phone"', self.react)
 
     def test_requested_components_are_rendered(self):
-        for name in ["CampaignHero", "OutcomeCards", "CurriculumModule", "ModuleImageGallery", "OrganicBulletList", "FounderSection", "FAQAccordion"]:
+        for name in ["CampaignHero", "OutcomeCards", "CurriculumModule", "CurriculumList", "ModuleImageGallery", "OrganicBulletList", "FounderSection", "FAQAccordion"]:
             self.assertIn(f"function {name}", self.react)
         self.assertGreater(len(self.bundle), 50000)
 
@@ -242,6 +246,7 @@ class StaticTests(unittest.TestCase):
     def test_preview_security(self):
         self.assertIn('content="noindex, nofollow"', self.text)
         self.assertIn("connect-src 'none'", self.text)
+        self.assertIn('property="og:image" content="https://bneineviimacademy.org/life-skills/assets/images/og/LS_OG_MASTER_HE_V1_20260913.png"', self.text)
 
     def test_production_hides_review_banner_and_keeps_owner_confirmed_testimonial(self):
         self.assertIn("reviewPreview: true", self.config)

@@ -99,24 +99,32 @@ test('testimonial precedes founder and pricing uses the owner-approved monthly w
   assert.doesNotMatch(copy.en.faq.items.find(item => item.id === 'fee').answer, /550|60/);
 });
 
-test('approved UX refinement is structured, bilingual, and face-safe', () => {
-  assert.match(source, /section\.feature\.sodas_steps/);
-  assert.match(source, /section\.feature\.frustration_steps/);
+test('approved UX refinement is concise, bilingual, and face-safe', () => {
+  assert.doesNotMatch(source, /section\.feature\.sodas_steps/);
+  assert.doesNotMatch(source, /section\.feature\.frustration_steps/);
+  assert.match(source, /section\.principles\.map/);
   assert.match(source, /className="footer-whatsapp"/);
   assert.match(source, /className="footer-phone"/);
-  assert.match(css, /border:2px solid var\(--gold\)/);
+  assert.match(css, /\.approach-band\{position:relative;overflow:hidden;.*background:var\(--teal\)/);
   assert.match(css, /object-position:66% 50%/);
   assert.equal(copy.he.teaching.approach_intro.feature.motivation_heading, 'מוטיבציה פנימית');
   assert.equal(copy.en.teaching.approach_intro.feature.motivation_heading, 'Intrinsic motivation');
   assert.deepEqual(copy.en.teaching.approach_intro.feature.sodas_steps, ['Situation', 'Options', 'Disadvantages', 'Advantages', 'Solution']);
 });
 
-test('the twelve-session carousel is ordered, manual, keyboard-aware, and reduced-motion safe', () => {
+test('all twelve sessions are rendered in one continuous ordered flow', () => {
   for (const locale of ['he', 'en']) {
     assert.deepEqual(copy[locale].teaching.modules.map(module => module.internal_theme_key), Array.from({length: 12}, (_, index) => `W${String(index + 1).padStart(2, '0')}`));
   }
-  for (const marker of ['function CurriculumCarousel', "event.key === 'ArrowLeft'", "event.key === 'Home'", "event.key === 'End'", 'prefers-reduced-motion: reduce']) assert.match(source, new RegExp(marker.replace(/[()]/g, '\\$&')));
+  for (const marker of ['function CurriculumList', 'className="curriculum-list"', 'role="list"']) assert.match(source, new RegExp(marker.replace(/[()]/g, '\\$&')));
+  assert.doesNotMatch(source, /CurriculumCarousel|aria-roledescription="carousel"|module-example/);
+  assert.doesNotMatch(css, /scroll-snap-type/);
   assert.doesNotMatch(source + css, /autoplay/i);
+});
+
+test('approved Hebrew social image is exact', () => {
+  const og = fs.readFileSync(path.join(root, 'assets/images/og/LS_OG_MASTER_HE_V1_20260913.png'));
+  assert.equal(crypto.createHash('sha256').update(og).digest('hex'), '209bdb5a7c6fa8573dead56e22d1213787e7e080f2d701fbe5901480029313ab');
 });
 
 test('all primary CTAs use the verified direct WhatsApp destination', () => {

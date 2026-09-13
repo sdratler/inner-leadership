@@ -27,6 +27,7 @@ PUBLIC_ASSETS=(
     'assets/images/bna-logo-nobg.png',
     'assets/images/LS_LOGO_HE_LEAF_APPROVED_20260910.png',
     'assets/images/LS_LOGO_HE_LEAF_APPROVED_20260910-transparent.png',
+    'assets/images/og/LS_OG_MASTER_HE_V1_20260913.png',
     'assets/images/LS-WEB-04__p03__r01.webp',
     'assets/images/LS-CUR-W02__p03__r01.webp',
     'assets/images/LS-CUR-W03__p02__r01.webp',
