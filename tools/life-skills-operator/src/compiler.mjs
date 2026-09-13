@@ -9,9 +9,24 @@ const REQUIRED_READS = [
   'creative/manifests/website-hero-masters.json',
 ];
 
+const FULL_STATIC_AD_LAYERS = [
+  'approved photograph',
+  'approved on-image copy',
+  'approved logo',
+  'service and age',
+  'three labeled benefit icons',
+  'baked visual WhatsApp CTA',
+];
+
 function assertNoUnsafeEffects(contract) {
-  if (contract.effects.publish || contract.effects.deploy || contract.effects.providerMutation) {
-    throw new Error('Operator contract cannot authorize publish, deploy or provider configuration');
+  if (
+    contract.effects.publish
+    || contract.effects.deploy
+    || contract.effects.providerMutation
+    || contract.effects.sendMessages
+    || contract.effects.automaticWhatsAppReplies
+  ) {
+    throw new Error('Operator contract cannot authorize publish, deploy, provider configuration or messaging');
   }
   if (contract.mode === 'plan' && (contract.effects.generateImage || contract.effects.spend)) {
     throw new Error('Local plan cannot generate images or spend credits');
@@ -52,10 +67,53 @@ function websiteContract(base, state) {
 }
 
 function adContract(base, intent, state) {
+  const surface = intent.creativeSurface === 'unspecified' ? 'full_static_ad' : intent.creativeSurface;
+  if (!['full_static_ad', 'link_preview_card', 'organic_card'].includes(surface)) {
+    throw new Error(`Invalid ad creative surface: ${surface}`);
+  }
+
+  if (surface !== 'full_static_ad') {
+    const unresolved = [
+      ...base.unresolved,
+      `No canonical ${surface} master is registered in creative/manifests/** at this commit.`,
+    ];
+    return {
+      ...base,
+      creativeSurface: surface,
+      exactAssets: { surfaceMaster: null },
+      rendering: {
+        surface,
+        fullStaticAdMaster: false,
+        rule: 'A link-preview or organic card follows its own recorded asset approval; it is never promoted to a full static-ad master.',
+        mayBeSimplerThanFullStaticAd: true,
+      },
+      layering: {
+        rule: 'Do not infer the full-ad service, age, three benefit labels/icons or baked WhatsApp CTA for a simpler card.',
+      },
+      copy: {},
+      unresolved,
+      validations: [
+        'Resolve the exact approved surface-specific asset or saved provider receipt before execution.',
+        'Never use a link-preview or organic card as a full static-ad ratio or localization master.',
+        'Resume a saved provider history before considering any new submission.',
+      ],
+      stopConditions: [
+        ...base.stopConditions,
+        ...unresolved.map((item) => `Block production: ${item}`),
+      ],
+    };
+  }
+
   const copy = intent.conceptId ? findAdCopy(state, intent.conceptId) : null;
   const photo = intent.photoId ? findAsset(state, intent.photoId) : null;
+  const fullStaticMaster = state.assets.assets.find((asset) => (
+    asset.kind === 'approved_full_static_ad_master'
+    && (!asset.locale || asset.locale === intent.locale)
+    && (!asset.placement || asset.placement === intent.format)
+  )) || null;
   const queue = state.monthlyQueue;
   const unresolved = [...base.unresolved];
+  if (!fullStaticMaster) unresolved.push('No approved full static-ad master is registered for this locale and placement.');
   if (!copy) unresolved.push('A registered conceptId is required.');
   if (copy && (copy.allowProduction === false || copy.finalBilingualRasterApproval === false)) {
     unresolved.push(`Copy ${copy.id} is not approved for production.`);
@@ -67,7 +125,9 @@ function adContract(base, intent, state) {
 
   return {
     ...base,
+    creativeSurface: surface,
     exactAssets: {
+      fullStaticMaster,
       concept: copy,
       photo,
       styleReference: findAsset(state, 'LS-AD-VISUAL-REFERENCE-APPROVED-20260910'),
@@ -78,8 +138,12 @@ function adContract(base, intent, state) {
       ratios: state.policy.bulk.ratios,
       deduplicationKey: state.policy.bulk.deduplicationKey,
       exactPixelLockAvailable: state.policy.openart.exactPixelLockAvailable,
+      fullStaticAdMaster: true,
+      requiredRasterLayers: FULL_STATIC_AD_LAYERS,
     },
-    layering: { rule: 'Provider authors art direction; exact approved copy/logo/icons are applied by the controlled final compositor.' },
+    layering: {
+      rule: 'A full static ad is one finished raster containing the approved photograph, copy, logo, service/age, all three labeled benefit icons and baked visual WhatsApp CTA. The platform supplies the actual clickable destination.',
+    },
     copy: { concept: copy, locale: intent.locale },
     unresolved,
     validations: [
@@ -87,6 +151,7 @@ function adContract(base, intent, state) {
       'Quote the exact job before submit and compare it with the explicit image-credit cap.',
       'Persist history ID before polling and never resubmit an ambiguous request.',
       'One checked proof precedes any batch after a visual-policy change.',
+      'Do not substitute a simpler link-preview or organic card for a full static-ad master.',
     ],
     stopConditions: [
       ...base.stopConditions,
@@ -103,6 +168,9 @@ export function compileContract(intent, state, options = {}) {
     mode,
     classification: intent.classification,
     domain: intent.domain,
+    creativeSurface: intent.domain === 'website_hero'
+      ? 'website_hero'
+      : intent.creativeSurface,
     outcome: intent.summary,
     intentResolution: { method, modelCalls: method === 'model_interpretation' ? 1 : 0 },
     requiredReads: REQUIRED_READS,
@@ -113,7 +181,15 @@ export function compileContract(intent, state, options = {}) {
     validations: [],
     forbidden: ['Unapproved asset substitution', 'Silent canonical-source mutation'],
     stopConditions: [],
-    effects: { generateImage: false, publish: false, spend: false, deploy: false, providerMutation: false },
+    effects: {
+      generateImage: false,
+      publish: false,
+      spend: false,
+      deploy: false,
+      providerMutation: false,
+      sendMessages: false,
+      automaticWhatsAppReplies: false,
+    },
   };
   const compiled = intent.domain === 'website_hero'
     ? websiteContract(base, state)
@@ -134,5 +210,11 @@ export function assertCreativeContract(contract) {
   }
   if (contract.domain === 'ad_creative' && contract.mode === 'execute' && contract.unresolved.length) {
     throw new Error(`Ad execution blocked: ${contract.unresolved.join(' | ')}`);
+  }
+  if (contract.domain === 'ad_creative' && contract.creativeSurface === 'full_static_ad') {
+    if (contract.rendering.fullStaticAdMaster !== true) throw new Error('Full static-ad boundary drifted');
+    if (contract.rendering.requiredRasterLayers.join(',') !== FULL_STATIC_AD_LAYERS.join(',')) {
+      throw new Error('Full static-ad raster layer contract drifted');
+    }
   }
 }

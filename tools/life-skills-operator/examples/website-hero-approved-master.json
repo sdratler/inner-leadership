@@ -1,7 +1,8 @@
 {
   "classification": "execute_approved_intent",
   "domain": "website_hero",
-  "summary": "Use the four registered owner-approved website hero masters.",
+  "creativeSurface": "website_hero",
+  "summary": "Preserve and select among the four deployed owner-approved website hero masters without recreating them.",
   "preserve": [
     {"target": "hero.master_pixels", "operation": "preserve", "reason": "Owner-approved immutable raster masters"},
     {"target": "header.language_switch", "operation": "preserve"},

@@ -10,6 +10,13 @@ export const ChangeSchema = z.object({
 export const IntentSchema = z.object({
   classification: z.enum(['execute_approved_intent', 'owner_correction', 'proposed_decision']),
   domain: z.enum(['website_hero', 'ad_creative', 'brand', 'copy', 'other']),
+  creativeSurface: z.enum([
+    'website_hero',
+    'full_static_ad',
+    'link_preview_card',
+    'organic_card',
+    'unspecified',
+  ]).default('unspecified'),
   summary: z.string().min(1),
   preserve: z.array(ChangeSchema).default([]),
   changes: z.array(ChangeSchema).default([]),
@@ -27,6 +34,7 @@ export const ExecutionContractSchema = z.object({
   mode: z.enum(['plan', 'execute']),
   classification: IntentSchema.shape.classification,
   domain: IntentSchema.shape.domain,
+  creativeSurface: IntentSchema.shape.creativeSurface,
   outcome: z.string(),
   intentResolution: z.object({
     method: z.enum(['structured_local', 'model_interpretation']),
@@ -49,5 +57,7 @@ export const ExecutionContractSchema = z.object({
     spend: z.boolean(),
     deploy: z.boolean(),
     providerMutation: z.boolean(),
+    sendMessages: z.boolean(),
+    automaticWhatsAppReplies: z.boolean(),
   }),
 });

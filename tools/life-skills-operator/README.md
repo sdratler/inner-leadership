@@ -22,7 +22,9 @@ The compiler emits typed requested changes, preservation rules, unresolved block
 
 `QueueStore` gives each canonical job specification one deduplication key, writes claims atomically and records provider state outside Git. `OpenArtAdapter` requires a numeric image-credit cap, records a quote before submission, persists a returned history ID, resumes by that ID, and blocks automatic resubmission after an ambiguous submission. The adapter accepts an authenticated runtime transport; secrets and private asset bindings never belong here.
 
-The current 30-design queue remains blocked by the canonical manifest: zero approved ad masters, incomplete copy approval, missing Photo B OpenArt binding and no numeric image-credit cap. Those blockers do not affect the already released website.
+An already-submitted job is resumed from its saved history receipt with `resumeExisting`; that path adopts the receipt, performs no quote or submit, records `newImageGenerations: 0`, and polls only the saved history ID. Never create a replacement generation merely because a local queue record is missing.
+
+The current 30-design queue remains blocked by the canonical manifest: zero approved **full static-ad** masters, incomplete copy approval, missing Photo B OpenArt binding and no numeric image-credit cap. A full static ad is a finished feed or vertical raster with the approved photo, copy, logo, service/age, all three labeled benefit icons and the baked visual WhatsApp CTA; the posting platform provides the real link. A simpler approved link-preview or organic card is a different surface and never satisfies the full-ad-master gate. Those blockers do not affect the already deployed website.
 
 ## Watchdog
 
@@ -34,4 +36,4 @@ The watchdog uses ordinary code only (`modelCalls: 0`, `providerCalls: 0`). It v
 
 ## Execution boundary
 
-`execute` accepts the same structured intent but remains fail-closed. It cannot turn a blocked ad plan into paid work and cannot publish, deploy, merge or mutate provider settings. Website plans reference the four exact approved raster masters; only the header and real WhatsApp anchor are visible live UI.
+`execute` accepts the same structured intent but remains fail-closed. It cannot turn a blocked ad plan into paid work and cannot publish, deploy, merge, send messages, enable automatic WhatsApp replies or mutate provider settings. Website plans reference the four exact deployed raster masters; only the header and real WhatsApp anchor are visible live UI.

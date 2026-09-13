@@ -16,7 +16,7 @@ Use the Codex tool for workspace/MCP operations.
 If Codex cannot retrieve an exact asset or provider receipt, stop and report the exact blocker.
 Never substitute an asset by visual similarity or filename guess.
 Never promote an unapproved proof to a master.
-Never publish, spend, deploy, merge or mutate provider configuration when the contract effects say false.
+Never publish, spend, deploy, merge, send messages, enable automatic WhatsApp replies or mutate provider configuration when the contract effects say false.
 `.trim(),
     tools: [
       codexTool({

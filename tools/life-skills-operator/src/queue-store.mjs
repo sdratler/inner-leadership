@@ -81,6 +81,8 @@ export class QueueStore {
         historyId: null,
         output: null,
         failure: null,
+        providerReceipts: [],
+        newImageGenerations: 0,
       };
       state.jobs.push(job);
       state.index = { ...(state.index || {}), [key]: state.jobs.length - 1 };
