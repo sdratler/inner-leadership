@@ -24,9 +24,12 @@ export function proxy(request: NextRequest) {
   const privatePath = /^\/api\/(?:private|identity|calendar|attendance|checkins|commitments|forms|goals|home-practice|payments|progress|resources|updates)(?:\/|$)/.test(pathname) ||
     /^\/(he|en)\/(?:app|family|workspace|parent|client|practitioner|attendance|calendar|checkins|commitments|forms|goals|home-practice|payments|progress|resources|updates)(?:\/|$)/.test(pathname);
   const privateMode = process.env.LS_PRIVATE_APP_ENABLED === "true";
+  // Preserve the accepted standalone identity preview independently of the full
+  // portal flag. Identity runtime configuration and all auth checks still apply.
+  const identityPreview = /^\/api\/identity(?:\/|$)/.test(pathname) && env.LS_APP_MODE === "foundation_preview";
   const health = pathname === "/api/health";
   const robots = pathname === "/robots.txt";
-  if ((privatePath && !privateMode) || (!privatePath && !health && !robots && env.LS_APP_MODE !== "foundation_preview")) {
+  if ((privatePath && !privateMode && !identityPreview) || (!privatePath && !health && !robots && env.LS_APP_MODE !== "foundation_preview")) {
     return decorate(NextResponse.json({ ok:false, error:{code:"UNAVAILABLE"}, requestId:crypto.randomUUID() }, {status:503}),headers);
   }
   if (pathname === "/") return decorate(NextResponse.redirect(new URL(privateMode ? "/he/app" : "/he/foundation", request.url)),headers);
