@@ -129,6 +129,32 @@
       "en": "Learn through life. Practise in everyday life."
     }
   ],
+  "organicReview": [
+    {
+      "id": "ORG-REVIEW-20260913-C01",
+      "status": "REVIEW",
+      "headline_he": "קשר לפני תיקון",
+      "caption_he": "לפני שמציעים פתרון, אפשר לשאול: ״מה היה לך קשה?״ הקשבה נותנת מקום לדבר גם על גבולות, על בחירה ועל הצעד הבא.",
+      "english_gloss": "Connection before correction. Before offering a solution, ask what was difficult. Listening makes room to discuss boundaries, choices and the next step.",
+      "publishAllowed": false
+    },
+    {
+      "id": "ORG-REVIEW-20260913-C02",
+      "status": "REVIEW",
+      "headline_he": "לקחת אחריות מתוך בחירה.",
+      "caption_he": "אחריות מתחילה בהבנה: מה חשוב כאן, על מי הבחירה שלי משפיעה, ומה אפשר לעשות עכשיו. הילד מתרגל לבחור צעד, לראות את התוצאה ולחשוב מה ירצה לעשות אחרת בפעם הבאה.",
+      "english_gloss": "Taking responsibility by choice. Understand what matters and whom a choice affects; practise choosing a step, noticing its result and considering the next attempt.",
+      "publishAllowed": false
+    },
+    {
+      "id": "ORG-REVIEW-20260913-C03",
+      "status": "REVIEW",
+      "headline_he": "מוטיבציה שמתחילה מבפנים.",
+      "caption_he": "סקרנות, עניין ורצון להשתפר נותנים לילד סיבה לעסוק בעשייה עצמה. גם משימה שאינה מהנה יכולה לקבל משמעות כשמבינים למה היא חשובה.",
+      "english_gloss": "Motivation from within. Curiosity, interest and improving can motivate the activity itself. Necessary tasks can also become meaningful when their value is understood.",
+      "publishAllowed": false
+    }
+  ],
   "whatsapp": {
     "en": {
       "label": "Message on WhatsApp",
