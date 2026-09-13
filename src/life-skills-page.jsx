@@ -144,7 +144,7 @@ export function ModuleImageGallery({image, alt}) {
   </figure>;
 }
 
-export function CurriculumModule({module, index, locale, exampleLabel}) {
+export function CurriculumModule({module, index, locale}) {
   const key = module.internal_theme_key;
   return <article className={`curriculum-module ${index % 2 ? 'module-reverse' : ''} ${(index + 1) % 4 === 0 ? 'module-teal' : ''}`} data-theme-key={key} aria-label={`${index + 1} / 12`}>
     <ModuleImageGallery image={MODULE_IMAGES[key]} alt={MODULE_ALTS[locale][key]}/>
@@ -152,10 +152,6 @@ export function CurriculumModule({module, index, locale, exampleLabel}) {
       <span className="module-number" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
       <h3>{module.title}</h3>
       <OrganicBulletList items={module.bullets}/>
-      <div className="module-example">
-        <span>{exampleLabel}</span>
-        <p>{module.example}</p>
-      </div>
     </div>
   </article>;
 }
@@ -166,77 +162,12 @@ function ArrowIcon({direction}) {
   </svg>;
 }
 
-export function CurriculumCarousel({modules, locale, exampleLabel}) {
-  const trackRef = useRef(null);
-  const slideRefs = useRef([]);
-  const frameRef = useRef(null);
-  const [current, setCurrent] = useState(0);
-
-  function goTo(index) {
-    const next = Math.max(0, Math.min(modules.length - 1, index));
-    setCurrent(next);
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    slideRefs.current[next]?.scrollIntoView({behavior: reduceMotion ? 'auto' : 'smooth', block: 'nearest', inline: 'center'});
-  }
-
-  function syncCurrent() {
-    if (frameRef.current) cancelAnimationFrame(frameRef.current);
-    frameRef.current = requestAnimationFrame(() => {
-      const track = trackRef.current;
-      if (!track) return;
-      const center = track.getBoundingClientRect().left + track.clientWidth / 2;
-      let nearest = 0;
-      let distance = Number.POSITIVE_INFINITY;
-      slideRefs.current.forEach((slide, index) => {
-        if (!slide) return;
-        const rect = slide.getBoundingClientRect();
-        const nextDistance = Math.abs(rect.left + rect.width / 2 - center);
-        if (nextDistance < distance) {
-          distance = nextDistance;
-          nearest = index;
-        }
-      });
-      setCurrent(nearest);
-    });
-  }
-
-  useEffect(() => () => frameRef.current && cancelAnimationFrame(frameRef.current), []);
-
-  const previousLabel = locale === 'he' ? 'למפגש הקודם' : 'Previous session';
-  const nextLabel = locale === 'he' ? 'למפגש הבא' : 'Next session';
-  const carouselLabel = locale === 'he' ? 'שנים עשר מפגשים' : 'Twelve sessions';
-  return <div className="curriculum-carousel" role="region" aria-label={carouselLabel} aria-roledescription="carousel">
-    <div className="carousel-toolbar">
-      <button type="button" className="carousel-arrow carousel-previous" onClick={() => goTo(current - 1)} disabled={current === 0} aria-label={previousLabel}>
-        <ArrowIcon direction="previous"/>
-      </button>
-      <p className="carousel-status" aria-live="polite"><bdi dir="ltr">{current + 1} / {modules.length}</bdi></p>
-      <button type="button" className="carousel-arrow carousel-next" onClick={() => goTo(current + 1)} disabled={current === modules.length - 1} aria-label={nextLabel}>
-        <ArrowIcon direction="next"/>
-      </button>
-    </div>
-    <div ref={trackRef} className="curriculum-track" onScroll={syncCurrent} tabIndex="0" onKeyDown={event => {
-      if (event.key === 'ArrowLeft') {
-        event.preventDefault();
-        goTo(locale === 'he' ? current + 1 : current - 1);
-      } else if (event.key === 'ArrowRight') {
-        event.preventDefault();
-        goTo(locale === 'he' ? current - 1 : current + 1);
-      } else if (event.key === 'Home') {
-        event.preventDefault();
-        goTo(0);
-      } else if (event.key === 'End') {
-        event.preventDefault();
-        goTo(modules.length - 1);
-      }
-    }}>
-      {modules.map((module, index) => <div className="curriculum-slide" key={module.internal_theme_key} ref={node => { slideRefs.current[index] = node; }}>
-        <CurriculumModule module={module} index={index} locale={locale} exampleLabel={exampleLabel}/>
-      </div>)}
-    </div>
-    <div className="carousel-dots" role="group" aria-label={locale === 'he' ? 'בחירת מפגש' : 'Choose a session'}>
-      {modules.map((module, index) => <button key={module.internal_theme_key} type="button" className={index === current ? 'is-active' : ''} onClick={() => goTo(index)} aria-label={`${locale === 'he' ? 'מפגש' : 'Session'} ${index + 1}`} aria-current={index === current ? 'true' : undefined}/>) }
-    </div>
+export function CurriculumList({modules, locale}) {
+  const listLabel = locale === 'he' ? 'שנים עשר נושאי הלימוד' : 'Twelve teaching themes';
+  return <div className="curriculum-list" role="list" aria-label={listLabel}>
+    {modules.map((module, index) => <div className="curriculum-item reveal" role="listitem" key={module.internal_theme_key}>
+      <CurriculumModule module={module} index={index} locale={locale}/>
+    </div>)}
   </div>;
 }
 
@@ -292,21 +223,11 @@ function ApproachIntro({section, meta, locale}) {
         <h2 id={`approach-title-${locale}`}>{section.heading}</h2>
         <p className="approach-lede">{section.body}</p>
       </div>
-      <div className="approach-block approach-motivation">
-        <div className="approach-block-heading"><span className="approach-index">01</span><div><h3>{section.feature.motivation_heading}</h3><p>{section.principles_intro}</p></div></div>
+      <div className="approach-principles">
+        <p className="approach-principles-intro">{section.principles_intro}</p>
         <dl className="principle-grid">{section.principles.map(principle => <div key={principle.id}>
           <LineIcon kind={principle.id}/><dt>{principle.title}</dt><dd>{principle.body}</dd>
         </div>)}</dl>
-      </div>
-      <div className="approach-split">
-        <article className="approach-block approach-governance">
-          <div className="approach-block-heading"><span className="approach-index">02</span><div><h3>{section.feature.governance_heading}</h3><p>{section.feature.governance_body}</p></div></div>
-          <ol className="sodas-path">{section.feature.sodas_steps.map(step => <li key={step}><span>{step}</span></li>)}</ol>
-        </article>
-        <article className="approach-block approach-frustration">
-          <div className="approach-block-heading"><span className="approach-index">03</span><div><h3>{section.feature.frustration_heading}</h3><p>{section.feature.frustration_body}</p></div></div>
-          <ol className="frustration-path">{section.feature.frustration_steps.map(step => <li key={step}>{step}</li>)}</ol>
-        </article>
       </div>
       <div className="approach-footer-copy">
         <p className="approach-methods">{section.methods}</p>
@@ -477,6 +398,7 @@ function App() {
   return <><Header c={c} locale={locale} meta={meta} contact={contact} reviewPreview={reviewPreview}/><main id="main-content" tabIndex="-1">
     <CampaignHero section={c.hero} benefits={c.benefits} locale={locale} contact={contact} meta={meta}/>
     <ApproachIntro section={c.teaching.approach_intro} meta={meta} locale={locale}/>
+    <ParentGuidance section={c.parent_guidance} meta={meta}/>
     <section id={`teaching-${locale}`} className="section teaching">
       <div className="container">
         <div className="section-heading teaching-heading">
@@ -486,10 +408,9 @@ function App() {
           <p className="teaching-support">{c.teaching.intro_support}</p>
         </div>
         <p className="pace-note"><strong>{meta.paceLabel}</strong><span>{c.teaching.pace_note}</span></p>
-        <CurriculumCarousel modules={c.teaching.modules} locale={locale} exampleLabel={c.teaching.example_label}/>
+        <CurriculumList modules={c.teaching.modules} locale={locale}/>
       </div>
     </section>
-    <ParentGuidance section={c.parent_guidance} meta={meta}/>
     <PrivateTestimonial locale={locale}/>
     <FounderSection section={c.founder} locale={locale} meta={meta}/>
     <FAQAccordion section={c.faq} locale={locale} meta={meta}/>
