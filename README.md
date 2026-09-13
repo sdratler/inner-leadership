@@ -8,7 +8,7 @@ This repository contains the bilingual Life Skills website source and the separa
 2. Read [Build Control](https://docs.google.com/spreadsheets/d/1Y_Vf_kipj7mAhhEnuj8F2L85v3KpOi_V9KfSrj4MZ4Y/edit) and the [Operating Protocol](https://docs.google.com/document/d/1q-GDEaL9JmmVfy1meQrGvu3V4H2XNJ4jp2b17ZrP6bE/edit) for current ownership, dependencies and release instructions.
 3. For any hero, logo, image or ad work, read [creative/README.md](creative/README.md). Resolve the exact registered assets before editing or generating anything.
 
-The owner-requested project-wide workflow is in [PROJECT-WORKFLOW.md](docs/PROJECT-WORKFLOW.md), with the [source audit](docs/PROJECT-WORKFLOW-AUDIT-20260911.md), [project instructions](docs/PROJECT-INSTRUCTIONS-TO-PASTE.md), and [complete Codex execution handoff](docs/CODEX-COMPLETE-HANDOFF.md). The handoff covers four hero masters, the website release, 30 finished creatives, the operator/watchdog and lead-to-CRM verification. These documents distinguish prepared work from installed automation and completed outputs.
+The owner-requested project-wide workflow is in [PROJECT-WORKFLOW.md](docs/PROJECT-WORKFLOW.md). The repository's dated source-audit, project-instructions and Codex-handoff files are historical snapshots. Use the [current private execution handoff v5.8](https://drive.google.com/file/d/1TIHrQqi9SMVtVxkT5QE_Ow2pBVNfrt52/view) with the live registered sources and Build Control for current website, Open Graph, organic/CRM, operator and watchdog status.
 
 Use the same current source records and manifests when an owner correction arrives. An old prompt, a successful test, an OpenArt upload or a PR comment alone does not prove that a finished image is approved, integrated or live.
 
@@ -18,7 +18,7 @@ The website hero must display the exact approved image bytes. Its visible headli
 
 Do not recreate the hero with HTML/CSS/SVG, recolor it, regenerate it, substitute a similar reference or silently crop away its composition. The `creative/**` registry records asset identity, approval scope, hashes and permitted placement. `tools/life-skills-operator/**`, when integrated, must consume that registry rather than own another brand kit. A pending record is not an approved master.
 
-Immediate production order is the four website masters: Hebrew/English, mobile/desktop. Work from the already chosen composition, review one candidate at a time, and preserve approved pixels. Batch ad variants follow the registered master and the credit/receipt policy in [creative/README.md](creative/README.md). Do not generate a new design for every post.
+All four website hero masters already exist and must remain byte-identical at their registered hashes. Do not recreate them. The approved Hebrew Open Graph master is a separate minimal share/organic card, not a replacement hero or a full static ad. Batch ad variants follow their own registered format masters and the credit/receipt policy in [creative/README.md](creative/README.md); do not generate a new design for every post.
 
 ## Repository surfaces and existing commands
 

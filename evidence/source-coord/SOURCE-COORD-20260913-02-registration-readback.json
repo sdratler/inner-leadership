@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "receipt_id": "R-SOURCE-COORD-20260913-02-v1",
+  "receipt_url": "https://drive.google.com/file/d/1DolCIAvzEbsA1oTHctVgjZRqCJdWdzMA/view",
+  "receipt_sha256": "c68866bff0f5c5b9f27f52d0dff7fec67dc4b05d17f5b902950c61ddf33aee4f",
+  "result_policy_canonical_sha256": "d94f94c2b236fc75aabb0a7c983709d01c4e373526fe3b49df3c608a3384fe1b",
+  "bound_base_head": "9956e396dfb19d5ae6e3ce2a1136b107027679b7",
+  "policy_receipts_row": 16,
+  "workflow_control_row": 28,
+  "work_graph_rows": {
+    "SYS-041": 46,
+    "MKT-061": 47
+  },
+  "control_event_rows": {
+    "SYS-041_ACQUIRE": 60,
+    "MKT-061_ACQUIRE": 61
+  },
+  "claim_ids": {
+    "SYS-041": "SYS041-SOURCE-20260913T191253Z-CODEX",
+    "MKT-061": "MKT061-OG-20260913T191253Z-CODEX"
+  },
+  "readback_result": "PASS",
+  "notes": [
+    "Existing LS-070 and SYS-040 results were preserved and received only affected-source compatibility refreshes.",
+    "No changed source fingerprint was accepted automatically.",
+    "A concurrent WEB-020 acquisition shifted the appended control-event rows; Work Graph fences were corrected to rows 60 and 61 after native readback.",
+    "The app worker and WEB-020 worker claims remained intact."
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "review_type": "Independent affected-source and scoped integration admission review; no merge, deployment, provider activation or publication authority",
+  "result": "PASS",
+  "reviewer": "Codex /root",
+  "prepared_by": "ChatGPT manager SOURCE-COORD-20260913-02 and Codex private-app owner",
+  "reviewed_at": "2026-09-13T19:12:53.167Z",
+  "expires_at": "2026-09-14T19:12:53.167Z",
+  "receipt_id": "R-SOURCE-COORD-20260913-02-v1",
+  "receipt_status": "Integration approved",
+  "work_ids": [
+    "LS-070",
+    "SYS-040",
+    "SYS-041",
+    "MKT-061"
+  ],
+  "prior_manifest_canonical_sha256": "0a3080685c2c7d4d2373a3999c25562e2ffab29918445159b621ba26c3afb69f",
+  "result_policy_canonical_sha256": "d94f94c2b236fc75aabb0a7c983709d01c4e373526fe3b49df3c608a3384fe1b",
+  "bound_base_head": "9956e396dfb19d5ae6e3ce2a1136b107027679b7",
+  "source_refresh": {
+    "normalized_export_sha256": {
+      "registry": "292a5eb0ee3a0f0149777175fc3892f3ed3e8ad22625e01de320fa1dd8ccbbda",
+      "website": "5be04c460b25e7b314d5865a09cdb31275767099b1af15930fd10f4f7f704e71",
+      "prompts": "b234d3a33acc47601cf63731e03dba79837ff01e2a3b0e151723c575ce75fb01",
+      "operating": "077557e5eb74fbaca89959f7c35ad53acabb398cbf6047412fcdb8d95f92a66f",
+      "mkt060": "5c1ebd94441f5d2b5b33f82b8801f2fb27946a429fc02761e8b340f05079ef0d"
+    },
+    "paragraph_text_sha256": {
+      "registry": "60e88506392691b446015b34df8af43d768b538a5758981f86fdafe524a51589",
+      "website": "bdcdb7affa6db835297672d6c13b478671416c15a7d6cdad5ece1a0d6cdb20b1",
+      "prompts": "39598aa74346146cd42fa6a84c0b73173f0a61103b9e77ee810f4697931d67b9",
+      "operating": "25752411d8ef1ab39c28e69cfc691d0039a325df1da0e4c7acda57ede6f39b17",
+      "mkt060": "1f7fd141d9c65097916ca46c257b31d2cedcd4936ebd8e2d22ff876db3fee671"
+    },
+    "settings_sha256": "e9ff94c48c194882c7ae0b9b07ad9711881d9a2e1d64c408ffc8b6f05f46b76c",
+    "settings_characters": 6979,
+    "semantic_delta_review": "Only status-aware master preservation, full-ad/minimal-card distinction, organic attribution controls, and unchanged authority gates.",
+    "review6_checker_tests": {
+      "passed": 230,
+      "failed": 0
+    },
+    "app_preparation_artifact": {
+      "url": "https://drive.google.com/file/d/10kGQK3txTq3Pd_k9XwfsibZ95AH-Po7z/view",
+      "sha256": "0235937cc6bf1fb736f8caabb7878f1505267277e2a7a2b517c29056d2757f8a"
+    }
+  },
+  "preserved_results": {
+    "ls070_head": "7e7807a4d5251b07c8f2b4a79648ce8f17d4abb3",
+    "sys040_head": "4dd9d1cb8b7d12a3be29081db6ef46da4feeb2d8",
+    "website_hero_master_sha256": [
+      "ee2924444efc3d21dda5186b3a1107c3fde935ce4c76ded75ae3458aa99c7a71",
+      "56dc8fcbe99f16d723a8b07b41eda8ebb03eb27716829b8c786f27b82a3ddcbe",
+      "5c28d22d7b6b784eb6becb4cfabb7977c80a304b5bcaca93943564ed74394f50",
+      "74c7d3258770abdab5c146e1211c4cbd16e0738840d5c274390f9a707f8dd824"
+    ]
+  },
+  "approved_og_master": {
+    "id": "LS-OG-MASTER-HE",
+    "historyId": "avJp5dVmQ57ZwWoxUzxF",
+    "resourceId": "hJLsVPvmQEAidSZ05PYj",
+    "width": 1376,
+    "height": 768,
+    "sizeBytes": 1483572,
+    "sha256": "209bdb5a7c6fa8573dead56e22d1213787e7e080f2d701fbe5901480029313ab",
+    "olderHistoryIdRole": "8mHVLTE0Kn9KRLNYPNhC provenance only"
+  },
+  "review_note": {
+    "code": "STALE_HISTORICAL_VERSION_LABEL",
+    "source": "Operating2.8",
+    "text_scope": "Project Settings explanatory paragraph only",
+    "effect": "No owner-facing Project Settings installation is admitted; source-owner correction remains open."
+  },
+  "denied_effects": {
+    "merge": false,
+    "deploy": false,
+    "live_migration": false,
+    "provider_mutations": false,
+    "new_image_generations": false,
+    "paid_actions": false,
+    "publish": false,
+    "messaging": false,
+    "automatic_whatsapp_replies": false,
+    "private_data": false
+  },
+  "registration_status": "Prepared for exact Drive upload and native Build Control registration/readback"
+}
