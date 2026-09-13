@@ -19,12 +19,14 @@ if(process.env.LS_CALENDAR_TEST_SHARED_ROUTES_ACCEPTED!=='true')throw new Error(
 const databaseUrl=safeTestUrl(),folder=mkdtempSync(join(tmpdir(),'ls030-private-browser-'));
 let app:ChildProcess|null=null,tests:ChildProcess|null=null,tls:ReturnType<typeof httpsServer>|null=null,f:Awaited<ReturnType<typeof fixture>>|null=null;
 async function terminate(child:ChildProcess|null){if(!child||child.exitCode!==null)return;child.kill('SIGTERM');await Promise.race([once(child,'exit'),new Promise(r=>setTimeout(r,5000))]);if(child.exitCode===null)child.kill('SIGKILL');}
-let cleanupStarted=false;
-async function cleanup(){
- if(cleanupStarted)return;cleanupStarted=true;
- await terminate(tests);
- if(tls){tls.closeAllConnections();await new Promise<void>(r=>tls!.close(()=>r()));}
- await terminate(app);await f?.pool.end();rmSync(folder,{recursive:true,force:true});
+let cleanupPromise:Promise<void>|null=null;
+function cleanup(){
+ cleanupPromise??=(async()=>{
+  await terminate(tests);
+  if(tls){tls.closeAllConnections();await new Promise<void>(r=>tls!.close(()=>r()));}
+  await terminate(app);await f?.pool.end();rmSync(folder,{recursive:true,force:true});
+ })();
+ return cleanupPromise;
 }
 process.once('SIGTERM',()=>{void cleanup().finally(()=>process.exit(143));});
 process.once('SIGINT',()=>{void cleanup().finally(()=>process.exit(130));});
