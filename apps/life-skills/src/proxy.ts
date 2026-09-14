@@ -5,6 +5,20 @@ function decorate(response: NextResponse, headers: Record<string,string>): NextR
   for (const [key,value] of Object.entries(headers)) response.headers.set(key,value);
   return response;
 }
+function constantTimeEqual(left: string, right: string): boolean {
+  let mismatch = left.length ^ right.length;
+  const length = Math.max(left.length,right.length);
+  for (let index=0;index<length;index++) mismatch |= (left.charCodeAt(index) || 0) ^ (right.charCodeAt(index) || 0);
+  return mismatch === 0;
+}
+function isolatedPreviewAuthorized(request: NextRequest, expected: string | undefined): boolean {
+  const header=request.headers.get("authorization");
+  if (!expected || !header?.startsWith("Basic ")) return false;
+  try {
+    const decoded=atob(header.slice(6)); const separator=decoded.indexOf(":");
+    return separator>0 && constantTimeEqual(decoded.slice(0,separator),"preview") && constantTimeEqual(decoded.slice(separator+1),expected);
+  } catch { return false; }
+}
 export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString("base64");
   let env: ReturnType<typeof parseEnvironment>;
@@ -29,10 +43,20 @@ export function proxy(request: NextRequest) {
   const identityPreview = /^\/api\/identity(?:\/|$)/.test(pathname) && env.LS_APP_MODE === "foundation_preview";
   const health = pathname === "/api/health";
   const robots = pathname === "/robots.txt";
-  if ((privatePath && !privateMode && !identityPreview) || (!privatePath && !health && !robots && env.LS_APP_MODE !== "foundation_preview")) {
+  const isolatedPreview = env.LS_APP_MODE === "isolated_preview";
+  const isolatedPreviewPage = pathname === "/" || /^\/(he|en)\/preview(?:\/|$)/.test(pathname);
+  if (isolatedPreview && !health && !robots && !isolatedPreviewAuthorized(request,env.LS_PREVIEW_ACCESS_KEY)) {
+    const response=NextResponse.json({ok:false,error:{code:"UNAUTHENTICATED"},requestId:crypto.randomUUID()},{status:401});
+    response.headers.set("WWW-Authenticate",'Basic realm="Life Skills private preview", charset="UTF-8"');
+    return decorate(response,headers);
+  }
+  if (isolatedPreview && !health && !robots && !privatePath && !isolatedPreviewPage) {
+    return decorate(new NextResponse(null,{status:404}),headers);
+  }
+  if ((privatePath && !privateMode && !identityPreview) || (!privatePath && !health && !robots && env.LS_APP_MODE !== "foundation_preview" && !isolatedPreview)) {
     return decorate(NextResponse.json({ ok:false, error:{code:"UNAVAILABLE"}, requestId:crypto.randomUUID() }, {status:503}),headers);
   }
-  if (pathname === "/") return decorate(NextResponse.redirect(new URL(privateMode ? "/he/app" : "/he/foundation", request.url)),headers);
+  if (pathname === "/") return decorate(NextResponse.redirect(new URL(isolatedPreview ? "/he/preview" : privateMode ? "/he/app" : "/he/foundation", request.url)),headers);
   const inbound = new Headers(request.headers);
   // Do not trust caller-supplied nonce or request identifiers.
   inbound.set("x-nonce",nonce); inbound.set("Content-Security-Policy",headers["Content-Security-Policy"] ?? "default-src 'none'");
