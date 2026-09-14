@@ -7,7 +7,7 @@ import { uiCopy } from './i18n.ts';
 type NavLeaf={key:string;label:string;href:string|undefined};
 type NavSection={key:string;label:string;children:readonly NavLeaf[]};
 
-function NavItem({label,href,current,onClick}: {label:string;href:string|undefined;current:boolean;onClick?:MouseEventHandler<HTMLAnchorElement>}) {return href?<a href={localHref(href)} aria-current={current?'page':undefined} onClick={onClick}>{label}</a>:<span aria-disabled="true">{label}</span>;}
+function NavItem({label,href,current,onClick}: {label:string;href:string|undefined;current:boolean;onClick?:MouseEventHandler<HTMLAnchorElement>|undefined}) {return href?<a href={localHref(href)} aria-current={current?'page':undefined} onClick={onClick}>{label}</a>:<span aria-disabled="true">{label}</span>;}
 
 function sections(locale:Locale,role:WorkspaceRole,destinations:Destinations):NavSection[] {
  const t=uiCopy(locale);
@@ -26,7 +26,7 @@ function sections(locale:Locale,role:WorkspaceRole,destinations:Destinations):Na
 
 function sectionIsActive(section:NavSection,active:string) {return section.children.some(child=>child.key===active);}
 
-function NavSectionView({section,active,onNavigate}: {section:NavSection;active:string;onNavigate?:MouseEventHandler<HTMLAnchorElement>}) {
+function NavSectionView({section,active,onNavigate}: {section:NavSection;active:string;onNavigate?:MouseEventHandler<HTMLAnchorElement>|undefined}) {
  const selected=sectionIsActive(section,active);
  return <details className="lsw-nav-section" open={selected}><summary><span>{section.label}</span><span aria-hidden="true">⌄</span></summary><div>{section.children.map(child=><NavItem key={child.key} label={child.label} href={child.href} current={child.key===active} onClick={onNavigate}/>)}</div></details>;
 }
