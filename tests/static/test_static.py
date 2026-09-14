@@ -165,6 +165,11 @@ class StaticTests(unittest.TestCase):
         self.assertLess(app.index("<ApproachIntro"), app.index("<ParentGuidance"))
         self.assertLess(app.index("<ParentGuidance"), app.index("<section id={`teaching-"))
 
+    def test_first_month_process_is_present_in_both_languages(self):
+        self.assertIn("section.first_month_body", self.react)
+        self.assertIn("The first month begins with a conversation with Shlomo", self.copy["en"]["parent_guidance"]["first_month_body"])
+        self.assertIn("החודש הראשון מתחיל בשיחה עם שלמה", self.copy["he"]["parent_guidance"]["first_month_body"])
+
     def test_locked_teal_system_and_mobile_geometry(self):
         for token in ["--teal:#245159", "--deep-teal:#163F48", "--cream:#FBF7EF", "--gold:#E6D0A4"]:
             self.assertIn(token, self.css)

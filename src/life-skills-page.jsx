@@ -241,7 +241,7 @@ function ParentGuidance({section, meta}) {
   return <section className="parent-guidance">
     <div className="container parent-layout">
       <img src={ASSETS + 'icons/parent-guidance.svg'} alt="" aria-hidden="true"/>
-      <div><p className="eyebrow">{meta.parentLabel}</p><h2>{section.heading}</h2><p>{section.body}</p></div>
+      <div><p className="eyebrow">{meta.parentLabel}</p><h2>{section.heading}</h2><p>{section.body}</p><p className="parent-first-month">{section.first_month_body}</p></div>
     </div>
   </section>;
 }
