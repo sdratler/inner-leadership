@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "manifestId": "life-skills-public-assets-20260910-01",
-  "migrationState": "DRAFT_RECONCILIATION_PENDING_ACCEPTED_GIT_POINTER",
+  "migrationState": "ACCEPTED_GIT_POINTER_WITH_PENDING_DOWNSTREAM_SHARE_INSTALL",
   "assets": [
     {
       "id": "LS-AD-VISUAL-REFERENCE-APPROVED-20260910",
@@ -21,6 +21,56 @@
       "deployableHero": false,
       "privateBindingId": "LS-AD-VISUAL-REFERENCE-APPROVED-20260910",
       "bindingSource": "CURRENT Codex Ad Production Handoff private_asset_bindings; resolved through authenticated CURRENT registry"
+    },
+    {
+      "id": "LS-OG-MASTER-HE",
+      "kind": "approved_open_graph_and_organic_master",
+      "role": "minimal_link_preview_and_organic_card",
+      "asset": {
+        "path": "creative/assets/ls-og-master-he-v1.png",
+        "width": 1376,
+        "height": 768,
+        "sizeBytes": 1483572,
+        "sha256": "209bdb5a7c6fa8573dead56e22d1213787e7e080f2d701fbe5901480029313ab"
+      },
+      "approval": {
+        "status": "OWNER_APPROVED_MASTER",
+        "decisionId": "D-OG-MASTER-20260913-01",
+        "scope": "Hebrew Open Graph and reviewed organic placement only",
+        "evidence": "Build Control decision and current private execution handoff v5.8"
+      },
+      "provenance": {
+        "provider": "OpenArt",
+        "historyId": "avJp5dVmQ57ZwWoxUzxF",
+        "resourceId": "hJLsVPvmQEAidSZ05PYj",
+        "capabilityId": "nano-banana-2:image2image",
+        "aspectRatio": "16:9",
+        "providerReportedWidth": 1376,
+        "providerReportedHeight": 768,
+        "providerUrl": "https://cdn.openart.ai/openart-ai/production/2026-09/create-image/JgDzoOO28hIowGAru673/image_1789319838974_650f11f0_1789319840960_b43c2480.png",
+        "archivedAt": "2026-09-13T19:08:00Z",
+        "archiveMethod": "Exact provider PNG download; no generation, crop, re-encoding, recolor or relayout",
+        "olderProvenanceOnlyHistoryId": "8mHVLTE0Kn9KRLNYPNhC"
+      },
+      "visibleElements": [
+        "headline",
+        "service",
+        "age",
+        "registered_real_photo",
+        "teal_and_cream_treatment"
+      ],
+      "intentionalOmissions": [
+        "toolbar",
+        "logo_only_treatment",
+        "drawn_whatsapp_cta",
+        "benefit_icon_row"
+      ],
+      "notAWebsiteHero": true,
+      "notAFullStaticAd": true,
+      "allowRegeneration": false,
+      "allowRelayout": false,
+      "allowRecolor": false,
+      "allowSilentCrop": false
     },
     {
       "id": "LS-PHOTO-A",
