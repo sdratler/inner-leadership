@@ -1,0 +1,26 @@
+{
+  "classification": "execute_approved_intent",
+  "domain": "ad_creative",
+  "creativeSurface": "full_static_ad",
+  "summary": "Plan one C01 Hebrew Photo A full static-ad feed proof.",
+  "preserve": [
+    {"target": "ad.approved_full_static_master", "operation": "preserve"},
+    {"target": "photo.identity", "operation": "preserve"},
+    {"target": "ad.logo_service_age", "operation": "preserve"},
+    {"target": "ad.three_labeled_benefit_icons", "operation": "preserve"},
+    {"target": "ad.baked_visual_whatsapp_cta", "operation": "preserve"}
+  ],
+  "changes": [
+    {"target": "ad.concept", "operation": "set", "value": "C01"},
+    {"target": "ad.photo", "operation": "set", "value": "LS-PHOTO-A"},
+    {"target": "ad.locale", "operation": "set", "value": "he"},
+    {"target": "ad.format", "operation": "set", "value": "feed"}
+  ],
+  "unresolved": [],
+  "locale": "he",
+  "format": "feed",
+  "conceptId": "C01",
+  "photoId": "LS-PHOTO-A",
+  "ownerApprovalRequired": true,
+  "rationale": "One full static-ad proof before any batch; link-preview and organic cards are separate simpler surfaces."
+}
