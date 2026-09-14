@@ -16,6 +16,8 @@ describe('LS-020 real React rendering and foundation interfaces',()=>{
    expect(html).toContain(`dir="${locale==='he'?'rtl':'ltr'}"`);
    expect((html.match(/<h1(?:\s|>)/g)||[]).length).toBe(1);
    expect(html).toContain('id="lsw-main"');expect(html).toContain(uiCopy(locale).notReported);
+   expect(html).toContain('lsw-nav-section');expect(html).toContain('lsw-account-menu');
+   if(role==='parent')expect(html).toContain('lsw-child-context');
    expect(html).not.toMatch(/href="[^\"]*\/(child|student)\b/);
    expect(html).not.toContain('undefined');
   });
