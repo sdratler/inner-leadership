@@ -6,21 +6,20 @@ import { fileURLToPath } from 'node:url';
 const manifestPath = fileURLToPath(new URL('../manifests/monthly-status-calendar-20260914.json', import.meta.url));
 const raw = await readFile(manifestPath, 'utf8');
 const manifest = JSON.parse(raw);
-
-const candidateSequences = [1, 3, 4, 5, 6, 7, 8, 9, 10];
 const holidaySequences = [6, 7, 11, 12, 18, 19];
 
-test('monthly intake reports the exact incomplete evidence without claiming approval', () => {
+test('manifest reconciles the current thirty-concept intake without claiming missing exports', () => {
   assert.equal(manifest.id, 'LS-MONTH-20260914');
-  assert.equal(manifest.status, 'REVIEW_INTAKE_INCOMPLETE');
+  assert.equal(manifest.authority.handoffVersion, '6.5');
   assert.deepEqual(manifest.counts, {
     requestedFlyers: 30,
-    receivedFiles: 9,
-    missingFiles: 21,
-    exactVersionApprovals: 0,
-    productionEligibleFiles: 0,
-    scheduledPosts: 0,
-    publishedPosts: 0,
+    receivedConcepts: 16,
+    missingConcepts: 14,
+    exactVersionApprovals: 6,
+    verifiedStatusExports: 6,
+    verifiedFacebookFeedExports: 0,
+    publishedConcepts: 1,
+    publishedEvents: 2,
   });
   assert.equal(manifest.ownership.duplicateGenerationAllowed, false);
   assert.equal(manifest.ownership.generationPerformedByThisLane, false);
@@ -36,25 +35,24 @@ test('all thirty dated slots are unique, continuous and retain editable Hebrew h
   assert.ok(manifest.items.every(item => typeof item.headline === 'string' && item.headline.length > 4));
 });
 
-test('only the nine read-back candidates have file receipts and each fails the production dimensions gate', () => {
-  const candidates = manifest.items.filter(item => item.file);
-  const missing = manifest.items.filter(item => !item.file);
-  assert.deepEqual(candidates.map(item => item.sequence), candidateSequences);
-  assert.equal(missing.length, 21);
-  assert.ok(candidates.every(item => item.file.width === 941 && item.file.height === 1672));
-  assert.ok(candidates.every(item => /^[a-f0-9]{64}$/.test(item.file.sha256)));
-  assert.ok(candidates.every(item => item.assetState === 'REVIEW_CANDIDATE_WRONG_DIMENSIONS_UNAPPROVED'));
+test('received and missing concepts match the read-back state', () => {
+  const received = manifest.items.filter(item => item.sequence <= 16);
+  const missing = manifest.items.filter(item => item.sequence >= 17);
+  assert.equal(received.length, manifest.counts.receivedConcepts);
+  assert.equal(missing.length, manifest.counts.missingConcepts);
+  assert.ok(received.every(item => item.sourceFile || item.file));
+  assert.ok(missing.every(item => !item.sourceFile && !item.file));
   assert.ok(missing.every(item => item.assetState === 'MISSING'));
-  assert.deepEqual([manifest.assetRequirements.width, manifest.assetRequirements.height], [1080, 1920]);
 });
 
-test('no item is exact-version approved, production eligible, scheduled or published', () => {
-  assert.ok(manifest.items.every(item => item.exactVersionApproved === false));
-  assert.ok(manifest.items.every(item => item.approvalEvidence === null));
-  assert.equal(manifest.schedule.activationAuthorized, false);
-  assert.equal(manifest.schedule.publicationEnabled, false);
-  assert.equal(manifest.schedule.providerMutationPerformed, false);
-  assert.ok(manifest.schedule.channels.every(channel => channel.providerHealth === 'DEFERRED_UNTIL_OWNER_CALENDAR_APPROVAL'));
+test('only six exact versions have verified status exports and none has a verified feed export', () => {
+  const approved = manifest.items.filter(item => item.exactVersionApproved);
+  assert.deepEqual(approved.map(item => item.sequence), [1, 3, 5, 6, 7, 16]);
+  assert.ok(approved.every(item => item.statusExport?.width === 1080 && item.statusExport?.height === 1920));
+  assert.ok(approved.every(item => /^[a-f0-9]{64}$/.test(item.statusExport.sha256)));
+  assert.ok(manifest.items.every(item => item.facebookFeedExport == null));
+  assert.deepEqual([manifest.assetRequirements.status.width, manifest.assetRequirements.status.height], [1080, 1920]);
+  assert.deepEqual([manifest.assetRequirements.facebookFeed.width, manifest.assetRequirements.facebookFeed.height], [1080, 1350]);
 });
 
 test('holiday rules skip exactly six dates with no backfill', () => {
@@ -66,22 +64,33 @@ test('holiday rules skip exactly six dates with no backfill', () => {
   assert.equal(manifest.schedule.holidayPolicy.backfill, false);
 });
 
-test('calendar timing, dedupe and owner-approved effect boundaries are fail-closed', () => {
+test('WhatsApp is active independently while Facebook unattended publishing remains fail-closed', () => {
+  const whatsapp = manifest.schedule.channels.find(channel => channel.id === 'whatsapp_status');
+  const facebook = manifest.schedule.channels.find(channel => channel.id === 'facebook_page');
   assert.equal(manifest.schedule.localTime, '20:00');
   assert.equal(manifest.schedule.timeZone, 'Asia/Jerusalem');
   assert.equal(manifest.schedule.deduplication.mode, 'ATOMIC');
   assert.equal(manifest.schedule.deduplication.unknownDeliveryAutoRetry, false);
-  assert.equal(manifest.schedule.channels.find(channel => channel.id === 'whatsapp_status').automaticReplies, false);
-  assert.equal(manifest.caption.source, 'CODEX_PROPOSED_NOT_GRAPHICS_IMPORTED');
-  assert.equal(manifest.caption.graphicsWindowReturnedCaptionSet, false);
-  assert.equal(manifest.caption.ownerApproved, false);
+  assert.equal(whatsapp.publicationEnabled, true);
+  assert.equal(whatsapp.automaticReplies, false);
+  assert.equal(facebook.publicationEnabled, false);
+  assert.match(facebook.providerHealth, /OAUTH_CODE_200/);
+  assert.equal(manifest.schedule.firstNaturalScheduledRun.receiptStatus, 'PENDING_NOT_YET_DUE');
 });
 
-test('the public manifest contains no private image bytes, local paths or Drive file IDs', () => {
+test('provider receipts prove two one-off events without inventing the missing Facebook permalink', () => {
+  assert.equal(manifest.schedule.receipts.length, 2);
+  assert.deepEqual(manifest.schedule.receipts.map(receipt => receipt.channel), ['whatsapp_status', 'facebook_page']);
+  assert.equal(manifest.schedule.receipts[1].providerPostId, '122110504053449454');
+  assert.equal(manifest.schedule.receipts[1].permalinkStatus, 'PENDING_EXACT_READBACK');
+});
+
+test('the public manifest contains no private image bytes, local paths, Drive IDs or secrets', () => {
   assert.equal(manifest.publicSafety.identifiableImageBinariesInGit, false);
   assert.equal(manifest.publicSafety.driveFileIdsInGit, false);
   assert.doesNotMatch(raw, /drive\.google\.com\/file\/d\//i);
   assert.doesNotMatch(raw, /[A-Z]:\\Users\\/i);
   assert.doesNotMatch(raw, /(?:^|\/)Users\//i);
+  assert.doesNotMatch(raw, /(?:secret|token|apiKey)\s*[=:]/i);
   assert.doesNotMatch(raw, /"(?:driveFileId|fileId|providerToken|apiKey)"\s*:/i);
 });
