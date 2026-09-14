@@ -2,14 +2,21 @@ import {test,expect} from '@playwright/test';
 for(const locale of ['he','en'] as const)for(const role of ['parent','practitioner'] as const)for(const width of [390,768,1440]){
  test(`${locale} ${role} ${width}: hydrated synthetic UI`,async({page})=>{
   await page.setViewportSize({width,height:width===390?844:1024});
-  await page.goto(`/${locale}/dev/ui?role=${role}`);
+  await page.goto(`/${locale}/dev/ui?role=${role}${role==='parent'?'&child=synthetic-child-a':''}#feedback`);
   await page.locator('[data-lsw-hydrated="true"]').waitFor({state:'attached'});
+  await page.locator('.lsw-skip').focus();await expect(page.locator('.lsw-skip')).toBeFocused();
+  await page.keyboard.press('Enter');await expect(page.locator('#lsw-main')).toBeFocused();
+  await page.goto(`/${locale}/dev/ui?role=${role}${role==='parent'?'&child=synthetic-child-a':''}#feedback`);await expect(page.locator('[data-lsw-hydrated="true"]')).toBeAttached();
   await expect(page.locator('.lsw')).toHaveAttribute('dir',locale==='he'?'rtl':'ltr');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.locator('#observation-body').waitFor();
+  const feedbackLink=page.locator('.lsw-sidebar a[href="#feedback"]').first();
+  await expect(feedbackLink).toHaveAttribute('aria-current','page');
+  if(role==='parent')await expect(page.locator('.lsw-sidebar a[href="#schedule"]')).toHaveCount(2);
+  if(width<=1023){const drawer=page.locator('.lsw-mobile-drawer>summary');const panel=page.locator('.lsw-mobile-drawer__panel');await drawer.click();await expect(panel).toBeVisible();if(width===390)await page.screenshot({path:`test-results/app-nav-${locale}-${role}-mobile-drawer.png`});await panel.locator('a[href="#feedback"]').first().click();await expect(panel).toBeHidden();await drawer.focus();await page.keyboard.press('Enter');await expect(panel).toBeVisible();await page.keyboard.press('Enter');}
+  else{const firstDisclosure=page.locator('.lsw-sidebar .lsw-nav-section').first();await firstDisclosure.locator('summary').focus();await page.keyboard.press('Enter');await expect(firstDisclosure).toHaveAttribute('open','');}
+  if(role==='parent'){const context=page.locator('#lsw-child-context');await expect(context).toHaveValue('synthetic-child-a');await context.selectOption('synthetic-child-b');await expect(context).toHaveValue('synthetic-child-b');await page.goBack();await expect(context).toHaveValue('synthetic-child-a');}
   await page.evaluate(async()=>{await document.fonts.ready;await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));});
-  await page.keyboard.press('Tab');await expect(page.locator('.lsw-skip')).toBeFocused();
-  await page.keyboard.press('Enter');await expect(page.locator('#lsw-main')).toBeFocused();
   await page.locator('#observation-body').fill(locale==='he'?'דיווח סינתטי לבדיקה בלבד':'Synthetic report for testing only');
   await page.locator('#coordination-form-parent-1').uncheck();
   await expect(page.locator('#coordination-form-parent-0')).toBeChecked();
