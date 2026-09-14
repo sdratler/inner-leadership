@@ -1,7 +1,8 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
+vi.mock('next/navigation',()=>({usePathname:()=>'/en/app/calendar',useSearchParams:()=>new URLSearchParams()}));
 import { CoreNavigation } from '../../../src/ui/workspace/core-navigation.tsx';
 
 it.each(['en','he'] as const)('practitioner desktop and mobile calendar links resolve to the implemented %s route',locale=>{
