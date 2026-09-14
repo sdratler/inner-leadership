@@ -1,5 +1,5 @@
 'use client';
-import { useEffect,useState,type ReactNode } from 'react';
+import { useEffect,useState,type MouseEventHandler,type ReactNode } from 'react';
 import { direction } from '../../lib/locale.ts';
 import type { Locale,WorkspaceRole,Destinations } from './model.ts';
 import { localHref } from './model.ts';
@@ -7,7 +7,7 @@ import { uiCopy } from './i18n.ts';
 type NavLeaf={key:string;label:string;href:string|undefined};
 type NavSection={key:string;label:string;children:readonly NavLeaf[]};
 
-function NavItem({label,href,current}: {label:string;href:string|undefined;current:boolean}) {return href?<a href={localHref(href)} aria-current={current?'page':undefined}>{label}</a>:<span aria-disabled="true">{label}</span>;}
+function NavItem({label,href,current,onClick}: {label:string;href:string|undefined;current:boolean;onClick?:MouseEventHandler<HTMLAnchorElement>}) {return href?<a href={localHref(href)} aria-current={current?'page':undefined} onClick={onClick}>{label}</a>:<span aria-disabled="true">{label}</span>;}
 
 function sections(locale:Locale,role:WorkspaceRole,destinations:Destinations):NavSection[] {
  const t=uiCopy(locale);
@@ -15,7 +15,7 @@ function sections(locale:Locale,role:WorkspaceRole,destinations:Destinations):Na
   {key:'home',label:t.home,children:[{key:'overview',label:t.overview,href:destinations.home}]},
   {key:'practice',label:t.practice,children:[{key:'practice',label:t.currentPractice,href:destinations.practice},{key:'coordination',label:t.practiceHistory,href:'#coordination'},{key:'controls',label:t.resources,href:'#controls'}]},
   {key:'feedback',label:t.feedback,children:[{key:'feedback',label:t.parentReports,href:destinations.feedback},{key:'summary',label:t.practitionerReplies,href:'#summary'}]},
-  {key:'schedule',label:t.schedule,children:[{key:'schedule',label:t.appointments,href:destinations.schedule},{key:'calendar',label:t.rescheduleAppointment,href:'#calendar'}]},
+  {key:'schedule',label:t.schedule,children:[{key:'schedule',label:t.appointments,href:destinations.schedule},{key:'schedule-action',label:t.rescheduleAppointment,href:destinations.schedule}]},
  ];
  return [
   {key:'calendar',label:t.calendar,children:[{key:'calendar',label:t.today,href:destinations.calendar}]},
@@ -26,9 +26,9 @@ function sections(locale:Locale,role:WorkspaceRole,destinations:Destinations):Na
 
 function sectionIsActive(section:NavSection,active:string) {return section.children.some(child=>child.key===active);}
 
-function NavSectionView({section,active}: {section:NavSection;active:string}) {
+function NavSectionView({section,active,onNavigate}: {section:NavSection;active:string;onNavigate?:MouseEventHandler<HTMLAnchorElement>}) {
  const selected=sectionIsActive(section,active);
- return <details className="lsw-nav-section" open={selected}><summary><span>{section.label}</span><span aria-hidden="true">⌄</span></summary><div>{section.children.map(child=><NavItem key={child.key} label={child.label} href={child.href} current={child.key===active}/>)}</div></details>;
+ return <details className="lsw-nav-section" open={selected}><summary><span>{section.label}</span><span aria-hidden="true">⌄</span></summary><div>{section.children.map(child=><NavItem key={child.key} label={child.label} href={child.href} current={child.key===active} onClick={onNavigate}/>)}</div></details>;
 }
 
 function activeHash(current:string) {return typeof window==='undefined'?current:window.location.hash.slice(1)||current;}
@@ -36,7 +36,8 @@ function activeHash(current:string) {return typeof window==='undefined'?current:
 function Navigation({locale,role,destinations,current,mobile=false}: {locale:Locale;role:WorkspaceRole;destinations:Destinations;current:string;mobile?:boolean}) {
  const t=uiCopy(locale),[active,setActive]=useState(current),items=sections(locale,role,destinations);
  useEffect(()=>{const sync=()=>setActive(activeHash(current));sync();window.addEventListener('hashchange',sync);window.addEventListener('popstate',sync);return()=>{window.removeEventListener('hashchange',sync);window.removeEventListener('popstate',sync);};},[current]);
- const content=<nav className="lsw-nav-sections" aria-label={t.navigation}>{items.map(section=><NavSectionView key={section.key} section={section} active={active}/>)}</nav>;
+ const closeMobileDrawer:MouseEventHandler<HTMLAnchorElement>|undefined=mobile?event=>{const drawer=event.currentTarget.closest('details.lsw-mobile-drawer');if(drawer instanceof HTMLDetailsElement)drawer.open=false;}:undefined;
+ const content=<nav className="lsw-nav-sections" aria-label={t.navigation}>{items.map(section=><NavSectionView key={section.key} section={section} active={active} onNavigate={closeMobileDrawer}/>)}</nav>;
  if(mobile)return <details className="lsw-mobile-drawer"><summary aria-label={t.menu}><span aria-hidden="true">☰</span><span>{t.menu}</span></summary><div className="lsw-mobile-drawer__panel">{content}</div></details>;
  return <aside className="lsw-sidebar"><p className="lsw-eyebrow">{role==='parent'?t.parentSpace:t.practitionerSpace}</p>{content}</aside>;
 }

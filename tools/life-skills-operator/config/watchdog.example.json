@@ -1,0 +1,9 @@
+{
+  "repoRoot": "../..",
+  "stateDir": "../../../private-runtime/life-skills-operator",
+  "outputPath": "../../../private-runtime/life-skills-operator/watchdog-latest.json",
+  "deploymentReceiptPath": "../../../private-runtime/life-skills-operator/deployment-receipt.json",
+  "expectedSourceCommit": "SET_AT_INSTALL_TIME",
+  "lastSuccessfulRunAt": "SET_BY_SCHEDULER",
+  "maximumSilenceMinutes": 1560
+}
