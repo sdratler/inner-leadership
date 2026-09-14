@@ -1,5 +1,6 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type { MouseEvent } from 'react';
 import type { Locale } from '../../lib/locale.ts';
 import { accountRead } from '../identity/client.ts';
@@ -19,6 +20,7 @@ import { CalendarAgenda, CalendarBoard, formatTime, NoticeReceipt } from './view
 import './calendar.css';
 type HistoryPage={items:Array<{version:number;state:'present'|'late'|'no_show'|'canceled';recordedAt:string;reason:string|null}>;nextVersion:number|null};
 export function CalendarWorkspace({locale,role,initialDate,initialView,initialCaseId}:{locale:Locale;role:'parent'|'practitioner';initialDate:string;initialView:'day'|'week'|'month';initialCaseId:string}){
+ const router=useRouter();
  const t=text(locale),practitioner=role==='practitioner';
  const [cases,setCases]=useState<CaseChoice[]>([]),[caseId,setCaseId]=useState(initialCaseId),[items,setItems]=useState<AppointmentView[]>([]),[cursor,setCursor]=useState<string|null>(null);
  const [loading,setLoading]=useState(true),[error,setError]=useState(false),[available,setAvailable]=useState<Availability[]>([]),[count,setCount]=useState<number|null>(null);
@@ -59,13 +61,14 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
   }
   await load();setTimeout(()=>{if(selected)document.getElementById('receipt-'+selected.id)?.focus();},0);
  },method);
+ function selectCase(nextCaseId:string){setCaseId(nextCaseId);const query=new URLSearchParams({date,view,...(nextCaseId?{caseId:nextCaseId}:{})});router.replace(basePath+'?'+query.toString(),{scroll:false});}
  function showAppointment(a:AppointmentView,e:MouseEvent<HTMLButtonElement>){if(mutation.locked)return;setSelected(a);setHistory(null);setHistoryError(false);setDirty(false);openDialog('ls-cal-detail',e);}
  function openBook(e:MouseEvent<HTMLButtonElement>,child:AppointmentView|null=null){if(mutation.locked)return;if(dirty&&!window.confirm(t.dirty))return;closeDialog('ls-cal-detail');setCheckinFor(child);setBookingNonce(v=>v+1);setBookingOpen(true);setDirty(false);openDialog('ls-cal-book',e);}
  async function loadHistory(next=false){if(!selected)return;setHistoryError(false);try{const p=await calendarRead<HistoryPage>(`appointments/${selected.id}/attendance-history`+(next&&history?.nextVersion?'?beforeVersion='+history.nextVersion:''));setHistory(old=>next&&old?{items:[...old.items,...p.items],nextVersion:p.nextVersion}:p);}catch{setHistoryError(true);}}
  return <main className="ls-cal lsw" dir={locale==='he'?'rtl':'ltr'} lang={locale}>
  <UnsavedChangesGuard dirty={dirty||mutation.uncertain} message={t.dirty}/>
  <PageHeader title={practitioner?t.title:t.familyTitle} context={practitioner?t.context:t.familyContext} action={<a href={href(date).replace('/'+locale+'/',locale==='he'?'/en/':'/he/')} hrefLang={locale==='he'?'en':'he'}>{t.language}</a>}/>
- <div className="ls-cal-toolbar"><Select id="calendar-case" label={t.case} value={caseId} onChange={e=>setCaseId(e.target.value)} disabled={mutation.locked}>{practitioner&&<option value="">{t.allCases}</option>}{cases.filter(c=>c.kind==='minor').map(c=><option key={c.id} value={c.id}>{c.displayName}</option>)}</Select>
+ <div className="ls-cal-toolbar"><Select id="calendar-case" label={t.case} value={caseId} onChange={e=>selectCase(e.target.value)} disabled={mutation.locked}>{practitioner&&<option value="">{t.allCases}</option>}{cases.filter(c=>c.kind==='minor').map(c=><option key={c.id} value={c.id}>{c.displayName}</option>)}</Select>
  <form className="ls-cal-period" action={basePath}><Input id="calendar-date" label={t.period} type="date" name="date" required value={dateInput} onChange={e=>setDateInput(e.target.value)}/><input type="hidden" name="view" value={view}/><input type="hidden" name="caseId" value={caseId}/><Button type="submit">{t.go}</Button></form>
  {practitioner&&<div className="ls-cal-actions"><Button disabled={mutation.locked||!cases.length} onClick={e=>openBook(e)}>{t.newBooking}</Button><Button variant="secondary" disabled={mutation.locked} onClick={e=>{setDirty(false);openDialog('ls-cal-availability',e);}}>{t.addWindow}</Button></div>}</div>
  {count!==null&&<aside className="ls-cal-count"><strong>{t.attendedCount}: {new Intl.NumberFormat(locale).format(count)}</strong><p>{t.attendanceOnly}</p></aside>}
