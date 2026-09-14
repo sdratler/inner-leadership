@@ -4,8 +4,9 @@ const loopbacks = new Set(["localhost", "127.0.0.1", "[::1]"]);
 export function isLoopback(host: string): boolean { return loopbacks.has(host); }
 const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-  LS_APP_MODE: z.enum(["foundation_locked", "foundation_preview"]).default("foundation_locked"),
+  LS_APP_MODE: z.enum(["foundation_locked", "foundation_preview", "isolated_preview"]).default("foundation_locked"),
   LS_APP_ORIGIN: z.url().default("http://127.0.0.1:3001"),
+  LS_PREVIEW_ACCESS_KEY: optionalText,
   LS_DATABASE_URL: optionalText,
   LS_MIGRATION_DATABASE_URL: optionalText,
   LS_DATABASE_TLS: z.enum(["verify-full", "disable"]).default("verify-full"),
@@ -29,6 +30,7 @@ export function parseEnvironment(input: Record<string, string | undefined>): Env
   if (origin.username || origin.password || origin.pathname !== "/" || origin.search || origin.hash || !["http:","https:"].includes(origin.protocol)) throw new Error("INVALID_APP_ORIGIN");
   if (origin.protocol !== "https:" && !isLoopback(origin.hostname)) throw new Error("APP_HTTPS_REQUIRED");
   if (env.LS_APP_MODE === "foundation_preview" && !isLoopback(origin.hostname)) throw new Error("PREVIEW_REQUIRES_LOOPBACK_ORIGIN");
+  if (env.LS_APP_MODE === "isolated_preview" && (origin.protocol !== "https:" || !/^[A-Za-z0-9_-]{32,128}$/.test(env.LS_PREVIEW_ACCESS_KEY ?? ""))) throw new Error("ISOLATED_PREVIEW_CONFIGURATION_REQUIRED");
   if (env.LS_DATABASE_URL) validateDatabaseUrl(env.LS_DATABASE_URL, env.LS_DATABASE_TLS);
   if (env.LS_MIGRATION_DATABASE_URL) validateDatabaseUrl(env.LS_MIGRATION_DATABASE_URL, env.LS_DATABASE_TLS);
   return Object.freeze({ ...env, LS_APP_ORIGIN: origin.origin });

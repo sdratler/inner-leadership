@@ -1,0 +1,11 @@
+import { describe,expect,it } from 'vitest';
+import { allocationSchema,chargeSchema,paymentSchema,refundSchema } from '../../src/features/payments/validation.ts';
+const caseId='10000000-0000-4000-8000-000000000001',paymentId='10000000-0000-4000-8000-000000000002',chargeId='10000000-0000-4000-8000-000000000003',blockId='10000000-0000-4000-8000-000000000004';
+describe('LS-060 request boundaries',()=>{
+ it('accepts only an exact case-scoped charge with explicit due information',()=>{expect(chargeSchema.safeParse({caseId,dueOn:'2026-09-15'}).success).toBe(true);expect(chargeSchema.safeParse({caseId,dueOn:'2026-02-30'}).success).toBe(false);expect(chargeSchema.safeParse({caseId,dueOn:'2026-09-15',renew:true}).success).toBe(false);});
+ it('accepts cash and bank transfer but no card method',()=>{const base={caseId,amountMinor:220000,receivedAt:'2026-09-11T12:00:00Z',privateReference:'synthetic-reference'};expect(paymentSchema.safeParse({...base,method:'cash'}).success).toBe(true);expect(paymentSchema.safeParse({...base,method:'bank_transfer'}).success).toBe(true);expect(paymentSchema.safeParse({...base,method:'card'}).success).toBe(false);});
+ it('requires offset-qualified payment receipt time',()=>expect(paymentSchema.safeParse({caseId,amountMinor:1,method:'cash',receivedAt:'2026-09-11T12:00:00',privateReference:'synthetic'}).success).toBe(false));
+ it('bounds private references and rejects controls',()=>expect(paymentSchema.safeParse({caseId,amountMinor:1,method:'cash',receivedAt:'2026-09-11T12:00:00Z',privateReference:'synthetic\nreference'}).success).toBe(false));
+ it('requires positive integer allocation minor units',()=>{expect(allocationSchema.safeParse({caseId,paymentId,chargeId,amountMinor:55000}).success).toBe(true);expect(allocationSchema.safeParse({caseId,paymentId,chargeId,amountMinor:0}).success).toBe(false);});
+ it('bounds a manual refund to four credits and requires a reason',()=>{expect(refundSchema.safeParse({caseId,blockId,credits:4,reason:'Synthetic administrative adjustment'}).success).toBe(true);expect(refundSchema.safeParse({caseId,blockId,credits:5,reason:'Synthetic'}).success).toBe(false);expect(refundSchema.safeParse({caseId,blockId,credits:1,reason:''}).success).toBe(false);});
+});

@@ -5,6 +5,20 @@ function decorate(response: NextResponse, headers: Record<string,string>): NextR
   for (const [key,value] of Object.entries(headers)) response.headers.set(key,value);
   return response;
 }
+function constantTimeEqual(left: string, right: string): boolean {
+  let mismatch = left.length ^ right.length;
+  const length = Math.max(left.length,right.length);
+  for (let index=0;index<length;index++) mismatch |= (left.charCodeAt(index) || 0) ^ (right.charCodeAt(index) || 0);
+  return mismatch === 0;
+}
+function isolatedPreviewAuthorized(request: NextRequest, expected: string | undefined): boolean {
+  const header=request.headers.get("authorization");
+  if (!expected || !header?.startsWith("Basic ")) return false;
+  try {
+    const decoded=atob(header.slice(6)); const separator=decoded.indexOf(":");
+    return separator>0 && constantTimeEqual(decoded.slice(0,separator),"preview") && constantTimeEqual(decoded.slice(separator+1),expected);
+  } catch { return false; }
+}
 export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString("base64");
   let env: ReturnType<typeof parseEnvironment>;
@@ -19,18 +33,37 @@ export function proxy(request: NextRequest) {
   if (developmentGallery && env.NODE_ENV !== "development") {
     return decorate(new NextResponse(null,{status:404}),headers);
   }
-  // Private paths never become available merely by enabling a visual preview.
-  const privatePath = pathname.startsWith("/api/private/") || /^\/(he|en)\/(app|workspace|parent|client|practitioner)(\/|$)/.test(pathname);
+  // The private application has its own explicit server-side gate. Foundation
+  // preview never opens authenticated application or domain API routes.
+  const privatePath = /^\/api\/(?:private|identity|calendar|attendance|checkins|commitments|forms|goals|home-practice|payments|progress|resources|updates)(?:\/|$)/.test(pathname) ||
+    /^\/(he|en)\/(?:app|family|workspace|parent|client|practitioner|attendance|calendar|checkins|commitments|forms|goals|home-practice|payments|progress|resources|updates)(?:\/|$)/.test(pathname);
+  const privateMode = process.env.LS_PRIVATE_APP_ENABLED === "true";
+  // Preserve the accepted standalone identity preview independently of the full
+  // portal flag. Identity runtime configuration and all auth checks still apply.
+  const identityPreview = /^\/api\/identity(?:\/|$)/.test(pathname) && env.LS_APP_MODE === "foundation_preview";
   const health = pathname === "/api/health";
   const robots = pathname === "/robots.txt";
-  if (privatePath || (!health && !robots && env.LS_APP_MODE !== "foundation_preview")) {
+  const isolatedPreview = env.LS_APP_MODE === "isolated_preview";
+  const isolatedPreviewPage = pathname === "/" || /^\/(he|en)\/preview(?:\/|$)/.test(pathname);
+  if (isolatedPreview && !health && !robots && !isolatedPreviewAuthorized(request,env.LS_PREVIEW_ACCESS_KEY)) {
+    const response=NextResponse.json({ok:false,error:{code:"UNAUTHENTICATED"},requestId:crypto.randomUUID()},{status:401});
+    response.headers.set("WWW-Authenticate",'Basic realm="Life Skills private preview", charset="UTF-8"');
+    return decorate(response,headers);
+  }
+  if (isolatedPreview && !health && !robots && !privatePath && !isolatedPreviewPage) {
+    return decorate(new NextResponse(null,{status:404}),headers);
+  }
+  if ((privatePath && !privateMode && !identityPreview) || (!privatePath && !health && !robots && env.LS_APP_MODE !== "foundation_preview" && !isolatedPreview)) {
     return decorate(NextResponse.json({ ok:false, error:{code:"UNAVAILABLE"}, requestId:crypto.randomUUID() }, {status:503}),headers);
   }
-  if (pathname === "/") return decorate(NextResponse.redirect(new URL("/he/foundation", request.url)),headers);
+  if (pathname === "/") return decorate(NextResponse.redirect(new URL(isolatedPreview ? "/he/preview" : privateMode ? "/he/app" : "/he/foundation", request.url)),headers);
   const inbound = new Headers(request.headers);
   // Do not trust caller-supplied nonce or request identifiers.
   inbound.set("x-nonce",nonce); inbound.set("Content-Security-Policy",headers["Content-Security-Policy"] ?? "default-src 'none'");
   inbound.set("x-request-id",crypto.randomUUID());
+  const configuredOrigin = new URL(env.LS_APP_ORIGIN);
+  inbound.set("x-forwarded-proto",configuredOrigin.protocol.slice(0,-1));
+  inbound.set("x-forwarded-host",request.headers.get("host") ?? configuredOrigin.host);
   return decorate(NextResponse.next({ request: { headers: inbound } }),headers);
 }
 export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"] };
