@@ -9,14 +9,14 @@
       "Render one language at a time: Hebrew RTL, English LTR.",
       "Use the approved Hebrew leaf logo unchanged in both languages. On English pages, place the live words Life Skills beside that Hebrew logo; do not add an English tagline.",
       "Keep the hero headline to two or three readable lines. The hero body is one short service sentence.",
-      "Show three hero benefits, twelve illustrated teaching modules in one manual accessible carousel, one concise parent-guidance bridge, the founder, six FAQs and one closing CTA.",
+      "Show three hero benefits, one concise public approach section, parent guidance immediately after it, all twelve illustrated teaching modules in a continuous scroll, the founder, six FAQs and one closing CTA.",
       "Render all twelve themes visibly in sequence; the four teaching areas below are source groupings only, never four expandable cards. Internal keys W01–W12 must never be visible page labels.",
       "Pricing appears only inside the FAQ. Do not create a price card, pricing band or price-focused hero.",
       "Keep the central-Israel line and further logistics in the existing approved contact and FAQ surfaces.",
       "Founder photo treatment uses the approved grass-photo setting as a substantial responsive background with a readable teal-and-gold content panel.",
       "Use the short CTA on buttons. The longer fixed CTA is optional supporting copy, not an additional headline.",
       "Do not display status, editorial notes, stable keys, approval language or production instructions on the public page.",
-      "Use he/en.teaching.modules in website/redesign-copy.json as the authoritative twelve visible modules, matched by W01–W12. Render a short title, exactly two practical leaf-icon bullets and one labeled everyday Example/לדוגמה. Areas are internal source groupings only.",
+      "Use he/en.teaching.modules in website/redesign-copy.json as the authoritative twelve visible modules, matched by W01–W12. Render a short title and exactly two practical leaf-icon bullets. Keep Example/לדוגמה fields editable in source but do not render them publicly. Areas are internal source groupings only.",
       "Hero has one genuine WhatsApp CTA. Remove the extra Explore the approach/modality CTA; retain normal navigation.",
       "Use the locked #245159, #163F48, #FBF7EF and #E6D0A4 website system, preserving subtle motion with a reduced-motion fallback."
     ],
@@ -27,7 +27,7 @@
       "Existing build_month_copy.py: factual service, founder, central-Israel location and practical parent guidance"
     ],
     "boundary": "WEB-020 production website release; no ad, WAPI, messaging, spending, academy-homepage, DNS, email or private-app changes.",
-    "layout_revision": "WEB-020 owner-approved teal visual release with manual twelve-module carousel",
+    "layout_revision": "WEB-020 owner-approved teal visual release with all twelve modules in continuous scroll",
     "historical_v43": {
       "revision": "4.3-current-launch-style",
       "scope": "Existing selected pair hero and footer corrections preserved. Complete concrete HE/EN twelve-module, parent-guidance and approach copy is now proposed for review.",
@@ -47,7 +47,7 @@
         "integration": "The existing WEB-010 owner must reconcile that parallel private preview with the main existing preview; do not overwrite the academy site or publish the testimonial on this instruction."
       }
     },
-    "module_completion_requirement": "Use he/en.teaching.modules in website/redesign-copy.json as the authoritative twelve visible modules, matched by W01–W12. Render a short title, exactly two practical leaf-icon bullets and one labeled everyday Example/לדוגמה. Areas are internal source groupings only.",
+    "module_completion_requirement": "Use he/en.teaching.modules in website/redesign-copy.json as the authoritative twelve visible modules, matched by W01–W12. Render a short title and exactly two practical leaf-icon bullets in a continuous scroll. Preserve Example/לדוגמה fields as non-public editable source content. Areas are internal source groupings only.",
     "latest_footer_correction": {
       "source": "Latest owner screenshot upload/55734b37-0bff-4e87-8816-29268b94cba9.png; assessed by coordinator",
       "status": "owner-requested centered presentation; short heading translations proposed for preview",
