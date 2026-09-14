@@ -5,7 +5,7 @@ import { GalleryFrame,initialGalleryState } from './gallery-frame.tsx';
 import type { GalleryEvent } from './gallery-frame.tsx';
 import { UnsavedChangesGuard } from './draft-guard.tsx';
 import { uiCopy } from './i18n.ts';
-function GalleryController({locale,role}: {locale:Locale;role:WorkspaceRole}) {
+function GalleryController({locale,role,previewRoute='/dev/ui'}: {locale:Locale;role:WorkspaceRole;previewRoute?:'/dev/ui'|'/preview'}) {
  const [state,setState]=useState(initialGalleryState);
  const [hydrated,setHydrated]=useState(false);
  useEffect(()=>setHydrated(true),[]);
@@ -23,10 +23,14 @@ function GalleryController({locale,role}: {locale:Locale;role:WorkspaceRole}) {
    }
   });
  }
- return <>{hydrated&&<span data-lsw-hydrated="true" hidden/>}<UnsavedChangesGuard dirty={Boolean(state.draft.body)&&!state.saved} message={uiCopy(locale).unsaved}/><GalleryFrame locale={locale} role={role} state={state} onEvent={event}/></>;
+ return <>{hydrated&&<span data-lsw-hydrated="true" hidden/>}<UnsavedChangesGuard dirty={Boolean(state.draft.body)&&!state.saved} message={uiCopy(locale).unsaved}/><GalleryFrame locale={locale} role={role} state={state} onEvent={event} previewRoute={previewRoute}/></>;
 }
 /** Component only, not an automatically exposed route. The server route must ALSO return notFound outside development. */
 export function DevelopmentGallery(props: {locale:Locale;role:WorkspaceRole}) {
  if(process.env.NODE_ENV!=='development')return null;
  return <GalleryController {...props}/>;
+}
+/** Synthetic, non-client UI used only by the server-gated isolated preview route. */
+export function IsolatedPreviewGallery(props: {locale:Locale;role:WorkspaceRole}) {
+ return <GalleryController {...props} previewRoute="/preview"/>;
 }

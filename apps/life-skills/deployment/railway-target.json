@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "decision": "D-LS-ISOLATED-RUNTIME-20260913-01",
+  "canonical": true,
+  "workspace": {
+    "id": "d2428a88-aa7e-4369-b396-72060bf720f4",
+    "name": "sdratler's Projects"
+  },
+  "project": {
+    "id": "3b756632-1f66-4f75-a016-eabc37aa0d67",
+    "name": "life-skills-sys034-staging-0907"
+  },
+  "environment": {
+    "id": "dd91bd71-57cc-45e6-a75b-8c858491d7c7",
+    "name": "production",
+    "purpose": "private-preview"
+  },
+  "applicationService": {
+    "id": "0267d061-f3ce-4a0a-82d4-ce133e4501e9",
+    "name": "life-skills-private-staging",
+    "repository": "sdratler/inner-leadership",
+    "rootDirectory": "/apps/life-skills",
+    "branch": "codex/ls070-private-app-integration-20260913",
+    "commit": "RECORDED_IN_BUILD_CONTROL_RELEASES",
+    "buildCommand": "npm run build",
+    "startCommand": "npm run start:railway",
+    "healthcheckPath": "/api/health",
+    "mode": "isolated_preview",
+    "previewUrl": "RECORDED_IN_BUILD_CONTROL_RELEASES"
+  },
+  "databaseService": {
+    "id": "354b5343-9e83-45a7-b764-09396f14ae29",
+    "name": "Postgres",
+    "runtimeVariable": "LS_DATABASE_URL",
+    "reference": "${{Postgres.DATABASE_URL}}",
+    "selectionRule": "service-id-and-same-project-environment",
+    "migrationState": "READBACK_PENDING"
+  },
+  "boundaries": {
+    "publicLifeSkillsWebsite": "separate",
+    "publicWebsiteDatabaseAllowed": false,
+    "realClientDataAllowed": false,
+    "mainMergeAuthorized": false,
+    "productionCutoverAuthorized": false,
+    "legacyDestructionAuthorized": false
+  }
+}

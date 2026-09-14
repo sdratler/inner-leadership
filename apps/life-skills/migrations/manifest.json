@@ -6,5 +6,33 @@
   {
     "name": "0010_ls_identity_cases_20260906.sql",
     "sha256": "a72742e47f4b3c7900f45679cdb3e7b85765ba9eee87c2168afa07822aaeec7c"
+  },
+  {
+    "name": "0030_ls_calendar_attendance_20260907.sql",
+    "sha256": "88efc31fcf6a6d757ae43dc17187f3dee359971c16f2ce87e0cfd9ff7bd415b5"
+  },
+  {
+    "name": "0040_ls_home_practice_20260911.sql",
+    "sha256": "fc21ef46fbf8881274abe2d12f32358a3e4dd90d92a8ec34bd48a42916166a8c"
+  },
+  {
+    "name": "0050_forms_resources_qualitative_reviews_20260911.sql",
+    "sha256": "33fad59e49f0621da676298f9460bbe3bcae5f095bac4427fed00d254debae18"
+  },
+  {
+    "name": "0060_ls_manual_payments_credits_20260911.sql",
+    "sha256": "7e516bbf2b96f44124a58f82352a6985ee7a52c3dadcb805361b58917414aa38"
+  },
+  {
+    "name": "0070_ls070_practice_adaptation_receipts.sql",
+    "sha256": "9bfa3bb9718d136037d4541f0a3fba1efcc5092d29e012102d0d07dbb3735bb1"
+  },
+  {
+    "name": "0071_ls070_calendar_delivery_attempts.sql",
+    "sha256": "fac7f0be9027df786008c1b41aba726241fdbd56b29b38fb4ab5c847a7dfc9d2"
+  },
+  {
+    "name": "0080_ls_context_updates_20260911.sql",
+    "sha256": "3e60f07af8974ea4f48639b4e70fb64ed131970827d34f362dde9ac25c09fa58"
   }
 ]

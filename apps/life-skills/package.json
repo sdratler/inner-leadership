@@ -10,6 +10,7 @@
     "dev": "next dev --hostname 127.0.0.1 --port 3001",
     "build": "next build",
     "start": "next start --hostname 127.0.0.1 --port 3001",
+    "start:railway": "node scripts/start.mjs",
     "lint": "eslint . --max-warnings 0",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
@@ -19,7 +20,8 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "db:verify": "tsx scripts/migrate.ts --verify-only",
     "verify": "npm run lint && npm run typecheck && npm test && npm run build",
-    "test:e2e:locked": "playwright test --config playwright.locked.config.ts"
+    "test:e2e:locked": "playwright test --config playwright.locked.config.ts",
+    "test:e2e:isolated-preview": "playwright test --config playwright.isolated-preview.config.ts"
   },
   "dependencies": {
     "next": "16.3.3",
