@@ -19,6 +19,11 @@ import { AttendanceForm, AvailabilityForm, BookingForm, NoticeForm, Practitioner
 import { CalendarAgenda, CalendarBoard, formatTime, NoticeReceipt } from './views.tsx';
 import './calendar.css';
 type HistoryPage={items:Array<{version:number;state:'present'|'late'|'no_show'|'canceled';recordedAt:string;reason:string|null}>;nextVersion:number|null};
+/** Only expose a provider URL returned for this authorized appointment; never derive or reuse a room URL. */
+export function verifiedGoogleMeetUrl(value:string|null|undefined){
+ if(!value)return null;
+ try{const url=new URL(value);return url.protocol==='https:'&&url.hostname==='meet.google.com'&&/^[a-z]{3}-[a-z]{4}-[a-z]{3}\/?$/i.test(url.pathname)?url.href:null;}catch{return null;}
+}
 export function CalendarWorkspace({locale,role,initialDate,initialView,initialCaseId}:{locale:Locale;role:'parent'|'practitioner';initialDate:string;initialView:'day'|'week'|'month';initialCaseId:string}){
  const router=useRouter();
  const t=text(locale),practitioner=role==='practitioner';
@@ -81,7 +86,7 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  {practitioner&&<details className="ls-cal-section"><summary>{t.availability}</summary>{available.length?<ul className="ls-cal-availability-list">{available.map(w=><li key={w.id}><div><strong>{t[w.kind]}</strong><p>{formatTime(w.startsAt,locale)} — {formatTime(w.endsAt,locale)}</p></div><Button variant="quiet" disabled={mutation.locked} onClick={()=>{if(window.confirm(t.remove+'?'))save(`availability/${w.id}/remove`,{expectedVersion:w.version});}}>{t.remove}</Button></li>)}</ul>:<p>{t.emptyAvailability}</p>}</details>}
  <div className="ls-cal-page-feedback">{mutation.feedback}</div>
  <Dialog id="ls-cal-detail" title={t.details} locale={locale} busy={mutation.locked}>
- {selected&&<div className="ls-cal-detail" key={selected.id}><h3>{names[selected.caseId]??t.case}</h3><p>{t[selected.kind]}</p><p className="ls-cal-time">{formatTime(selected.startsAt,locale)} — {formatTime(selected.endsAt,locale,false)}</p>{selected.location&&<p>{selected.location}</p>}
+ {selected&&<div className="ls-cal-detail" key={selected.id}><h3>{names[selected.caseId]??t.case}</h3><p>{t[selected.kind]}</p><p className="ls-cal-time">{formatTime(selected.startsAt,locale)} — {formatTime(selected.endsAt,locale,false)}</p>{selected.location&&<p>{selected.location}</p>}{selected.kind==='parent_guidance'&&(verifiedGoogleMeetUrl(selected.conferenceUri)?<p><a className="lsw-button lsw-button--secondary" href={verifiedGoogleMeetUrl(selected.conferenceUri) as string} target="_blank" rel="noreferrer">{t.meet}</a></p>:<p className="ls-cal-muted">{t.meetUnavailable}</p>)}
  <StatusChip>{t[selected.status]}</StatusChip><p>{t.attendance}: {selected.attendance?t[selected.attendance.state]:t.unrecorded}</p>
  {selected.checkinNeedsReview&&<p className="ls-cal-policy">{t.checkinReview}</p>}
  {selected.creditException&&!selected.notice&&<p className="ls-cal-policy">{t.exceptionApproved} {t.financialSeparate}</p>}

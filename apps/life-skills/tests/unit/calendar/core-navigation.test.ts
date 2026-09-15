@@ -11,3 +11,11 @@ it.each(['en','he'] as const)('practitioner desktop and mobile calendar links re
  expect(markup).not.toContain(`href="/${locale}/calendar"`);
  expect(existsSync(resolve(import.meta.dirname,'../../../src/app/[locale]/app/calendar/page.tsx'))).toBe(true);
 });
+
+it.each(['en','he'] as const)('parent navigation starts with the calendar and retains only routed destinations in %s',locale=>{
+ const markup=renderToStaticMarkup(CoreNavigation({locale,role:'parent',children:'Route content'}));
+ expect(markup).toContain(`href="/${locale}/family/schedule"`);
+ expect(markup).toContain(`href="/${locale}/family/resources"`);
+ expect(markup).not.toContain(`href="/${locale}/family#`);
+ expect(markup).not.toContain(`/${locale}/student`);
+});
