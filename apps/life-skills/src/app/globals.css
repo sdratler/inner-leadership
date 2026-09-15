@@ -1,12 +1,14 @@
 @import "../ui/tokens.css";
+@font-face { font-family:"Heebo"; src:url("/fonts/Heebo-wght.ttf") format("truetype"); font-weight:100 900; font-style:normal; font-display:swap; }
+@font-face { font-family:"Frank Ruhl Libre"; src:url("/fonts/FrankRuhlLibre-wght.ttf") format("truetype"); font-weight:100 900; font-style:normal; font-display:swap; }
 * { box-sizing: border-box; }
-html { background:var(--ls-cream); color:var(--ls-ink); font-family:Inter,system-ui,sans-serif; font-size:16px; line-height:1.6; }
-html[lang="he"] { font-family:"Noto Sans Hebrew",Arial,sans-serif; }
+html { background:var(--ls-cream); color:var(--ls-ink); font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif; font-size:16px; line-height:1.6; }
+html[lang="he"] { font-family:"Heebo",Arial,sans-serif; }
 body { margin:0; min-inline-size:320px; }
 a { color:var(--ls-forest-900); text-underline-offset:4px; }
 a, button { -webkit-tap-highlight-color:transparent; }
 a:hover { color:var(--ls-forest-700); }
-:focus-visible { outline:3px solid var(--ls-forest-900); outline-offset:4px; }
+:focus-visible { outline:3px solid var(--ls-deep); outline-offset:4px; }
 button { font:inherit; cursor:pointer; }
 p,h1,h2 { margin-block-start:0; }
 h1 { font-size:2.1rem; line-height:1.2; font-weight:650; max-inline-size:24ch; letter-spacing:-.025em; margin-block-end:16px; text-wrap:balance; }
