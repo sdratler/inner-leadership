@@ -27,10 +27,11 @@ export interface GreenInvoiceAuthConfig {
  */
 export function verifyAndNormalizeGreenInvoice(input: ProviderReceiptInput, config: GreenInvoiceAuthConfig): AuthenticationResult {
   if (!input || typeof input.rawBody !== 'string' || !input.rawBody || !config || typeof config.accountId !== 'string' || !config.accountId || typeof config.verify !== 'function') return { ok: false, reason: 'invalid' };
-  try { if (!config.verify(input)) return { ok: false, reason: 'unauthenticated' }; } catch { return { ok: false, reason: 'unauthenticated' }; }
+  try { if (config.verify(input) !== true) return { ok: false, reason: 'unauthenticated' }; } catch { return { ok: false, reason: 'unauthenticated' }; }
 
   let payload: unknown;
   try { payload = JSON.parse(input.rawBody); } catch { return { ok: false, reason: 'invalid' }; }
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return { ok: false, reason: 'invalid' };
   const p = payload as Record<string, unknown>;
   const providerEventId = typeof p.eventId === 'string' ? p.eventId : undefined;
   const providerAccountId = typeof p.providerAccountId === 'string' ? p.providerAccountId : config.accountId;
@@ -67,6 +68,7 @@ function normalizeTransaction(value: unknown): ProviderTransaction | undefined {
 export async function ingestProviderReceipt(event: VerifiedPaymentEvent, receivedAt: string, store: ReceiptStore): Promise<ProviderReceiptResult> {
   return store.withReceiptLock(event.eventKey, async () => {
     const prior = await store.findByEventKey(event.eventKey);
+    if (prior && prior.event.rawDigest !== event.rawDigest) throw new Error('event_identity_conflict');
     if (prior && prior.state !== 'pending') return { receiptId: prior.receiptId, eventKey: event.eventKey, state: 'duplicate', allocations: prior.allocations, reason: 'replay' };
 
     const provisional = prior ?? receiptFromEvent(event, receivedAt, 'pending');
@@ -81,20 +83,18 @@ export async function ingestProviderReceipt(event: VerifiedPaymentEvent, receive
     const allocations: ReceiptAllocation[] = [];
     const orderRefs = event.transactions.map(t => t.orderId ?? event.orderId);
     const orderIds = new Set(orderRefs.filter(Boolean));
-    if (event.purpose !== 'first_session' || orderIds.size !== 1 || orderRefs.some(ref => ref !== [...orderIds][0]) || event.transactions.length !== 1) return await finalize(store, provisional, 'unmatched', 'stable_single_first_session_order_required');
+    if (event.purpose !== 'first_session' || orderIds.size !== 1 || orderRefs.some(ref => ref !== [...orderIds][0]) || event.transactions.some(t=>t.orderId && event.orderId && t.orderId!==event.orderId) || event.transactions.length !== 1) return await finalize(store, provisional, 'unmatched', 'stable_single_first_session_order_required');
     const order = await store.findOrder([...orderIds][0]!);
     const transaction = event.transactions[0]!;
-    if (!order || order.purpose !== 'first_session' || transaction.currency !== FIRST_SESSION_CURRENCY || transaction.amountMinor !== FIRST_SESSION_AMOUNT_MINOR || transaction.status !== 'succeeded') return await finalize(store, provisional, 'unmatched', 'exact_order_amount_currency_purpose_required');
+    if (!order || order.purpose !== 'first_session' || order.amountMinor !== FIRST_SESSION_AMOUNT_MINOR || order.currency !== FIRST_SESSION_CURRENCY || transaction.currency !== FIRST_SESSION_CURRENCY || transaction.amountMinor !== FIRST_SESSION_AMOUNT_MINOR || transaction.status !== 'succeeded') return await finalize(store, provisional, 'unmatched', 'exact_order_amount_currency_purpose_required');
     if (await store.hasRefundedTransaction(transaction.transactionId)) return await finalize(store, provisional, 'refunded', 'refund_precedes_success');
     const existing = await store.findAllocation(transaction.transactionId);
     if (existing) return await finalize(store, provisional, 'duplicate', 'transaction_already_allocated', [existing]);
     if (await store.findOrderAllocation(order.orderId)) return await finalize(store, provisional, 'unmatched', 'order_already_allocated');
     const allocation: ReceiptAllocation = { transactionId: transaction.transactionId, orderId: order.orderId, childId: order.childId, amountMinor: transaction.amountMinor };
-    try { await store.saveAllocation(allocation); } catch {
-      const raced = await store.findAllocation(transaction.transactionId);
-      if (raced) return await finalize(store, provisional, 'duplicate', 'transaction_already_allocated', [raced]);
-      return await finalize(store, provisional, 'unmatched', 'allocation_conflict');
-    }
+    // The store serializes the receipt/allocation transaction. Persistence failures
+    // must roll back and trigger retry, never become a successful unmatched ACK.
+    await store.saveAllocation(allocation);
     return await finalize(store, { ...provisional, allocations: [allocation] }, 'paid', undefined, [allocation]);
   });
 }

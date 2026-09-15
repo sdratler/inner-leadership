@@ -13,7 +13,7 @@ export class MemoryReceiptStore implements ReceiptStore {
   private readonly transactions = new Set<string>();
   private readonly allocations = new Map<string, ReceiptAllocation>();
   private readonly refundedTransactions = new Set<string>();
-  private readonly locks = new Map<string, Promise<unknown>>();
+  private tail: Promise<void> = Promise.resolve();
 
   addOrder(order: FirstSessionOrder): void {
     this.orders.set(order.orderId, order);
@@ -23,13 +23,14 @@ export class MemoryReceiptStore implements ReceiptStore {
     return this.receipts.get(eventKey);
   }
 
-  async withReceiptLock<T>(eventKey: string, work: () => Promise<T>): Promise<T> {
-    const previous = this.locks.get(eventKey) ?? Promise.resolve();
+  async withReceiptLock<T>(_eventKey: string, work: () => Promise<T>): Promise<T> {
+    // Serialize across different event IDs too: they can claim the same payment.
+    const previous = this.tail;
     let release!: () => void;
     const current = new Promise<void>(resolve => { release = resolve; });
-    this.locks.set(eventKey, previous.then(() => current));
+    this.tail = previous.then(() => current);
     await previous;
-    try { return await work(); } finally { release(); if (this.locks.get(eventKey) === current) this.locks.delete(eventKey); }
+    try { return await work(); } finally { release(); }
   }
 
   async save(receipt: StoredReceipt): Promise<void> {

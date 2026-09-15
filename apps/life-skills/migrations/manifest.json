@@ -34,5 +34,9 @@
   {
     "name": "0080_ls_context_updates_20260911.sql",
     "sha256": "3e60f07af8974ea4f48639b4e70fb64ed131970827d34f362dde9ac25c09fa58"
+  },
+  {
+    "name": "0090_ls_parents_first.sql",
+    "sha256": "75f60bb1db7e78896fe083ef56c2828f1428f6e70417435ba154575d0043f182"
   }
 ]
