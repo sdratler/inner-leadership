@@ -26,6 +26,7 @@ export interface VerifiedPaymentEvent {
   provider: 'green_invoice';
   providerAccountId: string;
   providerEventId: string;
+  purpose?: 'first_session';
   status: ProviderStatus;
   transactions: readonly ProviderTransaction[];
   orderId?: string;
@@ -74,11 +75,15 @@ export interface StoredReceipt {
 }
 
 export interface ReceiptStore {
+  withReceiptLock<T>(eventKey: string, work: () => Promise<T>): Promise<T>;
   findByEventKey(eventKey: string): Promise<StoredReceipt | undefined>;
   save(receipt: StoredReceipt): Promise<void>;
   findOrder(orderId: string): Promise<FirstSessionOrder | undefined>;
-  hasTransactionAllocation(transactionId: string): Promise<boolean>;
+  findAllocation(transactionId: string): Promise<ReceiptAllocation | undefined>;
+  findOrderAllocation(orderId: string): Promise<ReceiptAllocation | undefined>;
   saveAllocation(allocation: ReceiptAllocation): Promise<void>;
+  recordRefund(transactionId: string): Promise<void>;
+  hasRefundedTransaction(transactionId: string): Promise<boolean>;
 }
 
 export type AuthenticationResult =
