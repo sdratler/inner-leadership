@@ -10,6 +10,12 @@ function input(body: object, authenticated = true) {
 }
 const order = { orderId: 'o-1', caseId: 'c-1', childId: 'child-1', amountMinor: 55000 as const, currency: 'ILS' as const, purpose: 'first_session' as const };
 
+test('requires a real numeric minor amount, nonblank transaction ID and synchronous true authentication', () => {
+  const body = { eventId:'e-shape',status:'succeeded',purpose:'first_session',orderId:'o-1',transactions:[{transactionId:'t-shape',status:'succeeded',amountMinor:55000,currency:'ILS'}] };
+  for(const transaction of [{...body.transactions[0],amountMinor:'55000'},{...body.transactions[0],transactionId:' '}]) assert.equal(verifyAndNormalizeGreenInvoice(input({...body,transactions:[transaction]}),config).ok,false);
+  assert.equal(verifyAndNormalizeGreenInvoice(input(body),{accountId:'acct-test',verify:(()=>Promise.resolve(true)) as never}).ok,false);
+});
+
 test('requires authentication and explicit success semantics', async () => {
   const body = { eventId: 'e-1', status: 'succeeded', purpose: 'first_session', orderId: 'o-1', transactions: [{ transactionId: 't-1', status: 'succeeded', amountMinor: 55000, currency: 'ILS' }] };
   assert.equal(verifyAndNormalizeGreenInvoice(input(body, false), config).ok, false);

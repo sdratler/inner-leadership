@@ -59,7 +59,7 @@ function normalizeStatus(value: unknown): ProviderStatus | undefined {
 function normalizeTransaction(value: unknown): ProviderTransaction | undefined {
   if (!value || typeof value !== 'object') return undefined;
   const p = value as Record<string, unknown>;
-  if (typeof p.transactionId !== 'string' || !Number.isInteger(p.amountMinor) || p.amountMinor <= 0 || typeof p.currency !== 'string') return undefined;
+  if (typeof p.transactionId !== 'string' || !p.transactionId.trim() || typeof p.amountMinor !== 'number' || !Number.isInteger(p.amountMinor) || p.amountMinor <= 0 || typeof p.currency !== 'string') return undefined;
   const status = normalizeStatus(p.status);
   if (!status) return undefined;
   return { transactionId: p.transactionId, status, amountMinor: p.amountMinor, currency: p.currency, orderId: typeof p.orderId === 'string' ? p.orderId : undefined };
