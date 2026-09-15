@@ -1,13 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createHash } from 'node:crypto';
 import { ingestProviderReceipt, verifyAndNormalizeGreenInvoice, recordStaffReceipt } from '../../src/features/payments/provider-adapter.ts';
 import { MemoryReceiptStore } from '../../src/features/payments/provider-receipts.ts';
 
-const config = { accountId: 'acct-test', secret: 'synthetic-secret' };
-function input(body: object, signature = true) {
+const config = { accountId: 'acct-test', verify: (value: { rawBody: string }) => value.rawBody !== 'unauthenticated' };
+function input(body: object, authenticated = true) {
   const rawBody = JSON.stringify(body);
-  return { rawBody, receivedAt: '2026-09-15T00:00:00.000Z', headers: { 'x-green-invoice-signature': signature ? createHash('sha256').update(`${config.secret}.${rawBody}`).digest('hex') : 'bad' } };
+  return { rawBody: authenticated ? rawBody : 'unauthenticated', receivedAt: '2026-09-15T00:00:00.000Z', headers: {} };
 }
 const order = { orderId: 'o-1', caseId: 'c-1', childId: 'child-1', amountMinor: 55000 as const, currency: 'ILS' as const, purpose: 'first_session' as const };
 

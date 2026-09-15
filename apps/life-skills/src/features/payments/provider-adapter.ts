@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import type {
   AuthenticationResult,
   FirstSessionOrder,
@@ -16,20 +16,17 @@ import { receiptFromEvent } from './provider-receipts.ts';
 
 export interface GreenInvoiceAuthConfig {
   accountId: string;
-  secret: string;
+  /** The nominated receiver supplies provider-documented verification. */
+  verify: (input: ProviderReceiptInput) => boolean;
 }
 
 /**
- * Provider authentication boundary. The receiver must pass the untouched body and
- * provider signature header; this module never trusts a redirect or invoice amount.
+ * Provider authentication boundary. The receiver must implement the provider-
+ * documented verification method; this adapter never invents a header, signature
+ * algorithm, endpoint, or trusts a redirect/invoice amount.
  */
 export function verifyAndNormalizeGreenInvoice(input: ProviderReceiptInput, config: GreenInvoiceAuthConfig): AuthenticationResult {
-  const signature = input.headers['x-green-invoice-signature'];
-  if (!signature) return { ok: false, reason: 'unauthenticated' };
-  const expected = createHash('sha256').update(`${config.secret}.${input.rawBody}`).digest('hex');
-  const a = Buffer.from(signature, 'utf8');
-  const b = Buffer.from(expected, 'utf8');
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return { ok: false, reason: 'unauthenticated' };
+  if (!config.verify(input)) return { ok: false, reason: 'unauthenticated' };
 
   let payload: unknown;
   try { payload = JSON.parse(input.rawBody); } catch { return { ok: false, reason: 'invalid' }; }
