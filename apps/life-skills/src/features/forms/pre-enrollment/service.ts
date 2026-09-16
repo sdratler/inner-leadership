@@ -2,7 +2,8 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { AppError } from "../../../lib/errors.ts";
 import { seal } from "../../identity/crypto.ts";
 import type { Keyring } from "../../identity/crypto.ts";
-import { parsePreEnrollment, digestPreEnrollment, type PreEnrollmentInput } from "./schema.ts";
+import { parsePreEnrollment, digestPreEnrollment, intakeConsentHash, type PreEnrollmentInput } from "./schema.ts";
+import { intakeConsent } from "./consent.ts";
 
 export type IntakeToken = Readonly<{ tokenDigest: string; stableLeadId: string; childSlotIds: readonly string[]; expiresAt: Date; usedAt: Date | null }>;
 export type IntakeReceipt = Readonly<{ receiptId: string; receivedAt: string; duplicate: boolean }>;
@@ -47,9 +48,8 @@ export class PreEnrollmentService {
         return { receiptId: prior.receiptId, receivedAt: prior.receivedAt.toISOString(), duplicate: true };
       }
       if (!issued || issued.usedAt || issued.expiresAt.getTime() <= at.getTime()) throw new AppError("NOT_FOUND");
-      if (input.children.length !== issued.childSlotIds.length || input.children.some(child => !issued.childSlotIds.includes(child.childSlotId))) throw new AppError("NOT_FOUND");
+      if (input.children.length !== issued.childSlotIds.length || new Set(input.children.map(child=>child.childSlotId)).size !== issued.childSlotIds.length || input.children.some(child => !issued.childSlotIds.includes(child.childSlotId))) throw new AppError("NOT_FOUND");
       const receiptId = randomUUID();
-      const { intakeConsent, intakeConsentHash } = await import("./schema.ts");
       const result = await tx.insertReceipt({ receiptId, tokenDigest, payloadCiphertext: seal(JSON.stringify(input), `pre-enrollment:${issued.stableLeadId}:${receiptId}`, this.keyring), payloadDigest: digest, idempotencyKey, receivedAt: at, consentVersion: intakeConsent.version, consentHash: intakeConsentHash });
       if (result === "mismatch") throw new AppError("CONFLICT");
       if (typeof result === "object") return { receiptId: result.receiptId, stableLeadId: issued.stableLeadId, receivedAt: result.receivedAt.toISOString(), duplicate: true };

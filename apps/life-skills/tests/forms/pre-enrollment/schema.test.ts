@@ -16,7 +16,7 @@ const valid = {
   cp01: "discuss_privately" as const,
   willingToBeContacted: "no" as const,
   accessSupportNeeded: "no" as const,
-  consentAcknowledged: true as const,
+  consentAcknowledgements: [true, true, true] as const,
   signerName: "Synthetic Signer",
 };
 
@@ -28,7 +28,7 @@ describe("P1 pre-enrollment contract", () => {
     expect(policyTextHash("synthetic policy")).toMatch(/^[a-f0-9]{64}$/);
   });
   it.each([
-    ["false acknowledgement", { consentAcknowledged: false }],
+    ["false acknowledgement", { consentAcknowledgements: [true, false, true] }],
     ["blank signer", { signerName: "   " }],
     ["free-text contact preference", { willingToBeContacted: "maybe" }],
     ["missing child slot", { children: [{ firstName: "x", age: 8 }] }],

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { intakeConsent } from "./consent.ts";
 
 /** P1's private, parent-first intake contract. Contact preference is deliberately
  * independent from CP01 and never implies an invitation or access grant. */
@@ -30,17 +31,13 @@ export const preEnrollmentSchema = z.strictObject({
   cp01: z.enum(cp01Values),
   willingToBeContacted: z.enum(contactValues),
   accessSupportNeeded: z.enum(contactValues),
-  consentAcknowledged: z.literal(true),
+  consentAcknowledgements: z.array(z.literal(true)).length(3),
   signerName: nonBlank(160),
 });
 export type PreEnrollmentInput = z.infer<typeof preEnrollmentSchema>;
 
 /** Server-owned accepted wording. The request body can acknowledge it, but cannot select it. */
-export const intakeConsent = Object.freeze({
-  version: "P1-2026-09-16",
-  text: "המידע נמסר לצורך תיאום פגישת היכרות בלבד ונשמר במערכת הפרטית של כישורי חיים. הוא אינו קובע פגישה, אינו יוצר חשבון ואינו מאשר חיוב חוזר. שלמה יצור קשר לאישור זמן ומקום.",
-});
-export const intakeConsentHash = policyTextHash(intakeConsent.text);
+export const intakeConsentHash = policyTextHash(JSON.stringify(intakeConsent));
 
 export function policyTextHash(text: string): string { return createHash("sha256").update(text, "utf8").digest("hex"); }
 
