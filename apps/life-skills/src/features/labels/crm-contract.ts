@@ -16,7 +16,7 @@ export type CrmAdminField = typeof CRM_ADMIN_FIELDS[number];
 export type StableLeadId = `LS-LEAD-${string}` | `LS-WAPI-${string}`;
 
 export function parseStableLeadId(value: unknown): StableLeadId {
-  if (typeof value !== 'string' || !/^LS-(?:LEAD|WAPI)-[A-Z0-9-]+$/.test(value)) throw new Error('stable_lead_id_required');
+  if (typeof value !== 'string' || !/^LS-(?:LEAD|WAPI)-[A-Za-z0-9-]+$/.test(value)) throw new Error('stable_lead_id_required');
   return value as StableLeadId;
 }
 
@@ -41,4 +41,3 @@ export function buildAdministrativePatch(leadId: unknown, changes: Record<string
   assertOwnedCrmFields(changes);
   return { leadId: stableLeadId, fieldMapVersion: CRM_FIELD_MAP_VERSION, fields: { ...changes } };
 }
-
