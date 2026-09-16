@@ -1,3 +1,8 @@
-import { PreEnrollmentForm, type PublicConsent } from "@/features/forms/pre-enrollment/client.tsx";
-function readPublicConsent():PublicConsent|null{try{const value:unknown=JSON.parse(process.env.LS_INTAKE_PUBLIC_CONSENT_JSON??'');if(!value||typeof value!=='object')return null;const item=value as Record<string,unknown>;if(typeof item.version!=='string'||!Array.isArray(item.sourceHashes)||!Array.isArray(item.displayText)||!Array.isArray(item.acknowledgements))return null;if([item.sourceHashes,item.displayText,item.acknowledgements].some(list=>list.length<1||list.some(value=>typeof value!=='string')))return null;return {version:item.version,sourceHashes:item.sourceHashes as string[],displayText:item.displayText as string[],acknowledgements:item.acknowledgements as string[]};}catch{return null;}}
-export default function PreEnrollmentPage(){return <main dir="rtl" lang="he" style={{maxWidth:680,margin:"2rem auto",padding:"1rem"}}><PreEnrollmentForm consent={readPublicConsent()}/></main>;}
+import { PreEnrollmentForm } from "@/features/forms/pre-enrollment/client.tsx";
+import { runtimePublicConsent } from "@/features/forms/pre-enrollment/consent.ts";
+export const dynamic = "force-dynamic";
+export default function PreEnrollmentPage() {
+  let consent = null;
+  try { consent = runtimePublicConsent(); } catch { /* Closed until configured. */ }
+  return <main dir="rtl" lang="he"><PreEnrollmentForm consent={consent} /></main>;
+}

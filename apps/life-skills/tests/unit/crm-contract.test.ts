@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'vitest';
 import { CRM_ADMIN_FIELDS, CRM_FIELD_MAP_VERSION, buildAdministrativePatch, parseStableLeadId, resolveCrmHeaders } from '../../src/features/labels/crm-contract.ts';
 import { administrativePatch } from '../../src/features/onboarding/parents-first.ts';
 

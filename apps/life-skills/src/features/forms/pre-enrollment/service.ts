@@ -2,8 +2,8 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { AppError } from "../../../lib/errors.ts";
 import { seal } from "../../identity/crypto.ts";
 import type { Keyring } from "../../identity/crypto.ts";
-import { parsePreEnrollment, digestPreEnrollment, intakeConsentHash, type PreEnrollmentInput } from "./schema.ts";
-import { intakeConsent } from "./consent.ts";
+import { parsePreEnrollment, digestPreEnrollment } from "./schema.ts";
+import { runtimePublicConsent, type PublicConsent } from "./consent.ts";
 
 export type IntakeToken = Readonly<{ tokenDigest: string; stableLeadId: string; childSlotIds: readonly string[]; expiresAt: Date; usedAt: Date | null }>;
 export type IntakeReceipt = Readonly<{ receiptId: string; receivedAt: string; duplicate: boolean }>;
@@ -22,15 +22,17 @@ export function issueToken(stableLeadId: string, now: Date, ttlMs = 7 * 24 * 60 
 }
 
 export class PreEnrollmentService {
-  constructor(private readonly repository: PreEnrollmentRepository, private readonly keyring: Keyring, private readonly now: () => Date = () => new Date(), private readonly enabled = false) {}
+  constructor(private readonly repository: PreEnrollmentRepository, private readonly keyring: Keyring, private readonly now: () => Date = () => new Date(), private readonly enabled = false, private readonly workspaceId: string) {
+    if (!/^[0-9a-f-]{36}$/i.test(workspaceId)) throw new AppError("INVALID_REQUEST");
+  }
 
   /** Exchange the fragment-held token in a POST body; callers must not put it in a URL. */
-  async exchange(token: string): Promise<{ childSlotIds: readonly string[]; expiresAt: string }> {
+  async exchange(token: string): Promise<{ childSlotIds: readonly string[]; expiresAt: string; consent: PublicConsent }> {
     if (!this.enabled || !/^[A-Za-z0-9_-]{43}$/.test(token)) throw new AppError("NOT_FOUND");
     const row = await this.repository.findToken(createHash("sha256").update(token).digest("hex"));
     const at = this.now();
     if (!row || row.usedAt || row.expiresAt.getTime() <= at.getTime()) throw new AppError("NOT_FOUND");
-    return { childSlotIds: row.childSlotIds, expiresAt: row.expiresAt.toISOString() };
+    return { childSlotIds: row.childSlotIds, expiresAt: row.expiresAt.toISOString(), consent: runtimePublicConsent() };
   }
 
   async submit(token: string, idempotencyKey: string, raw: unknown): Promise<IntakeReceipt> {
@@ -38,6 +40,8 @@ export class PreEnrollmentService {
     if (!/^[A-Za-z0-9_-]{43}$/.test(token) || !/^[0-9a-f-]{36}$/i.test(idempotencyKey)) throw new AppError("INVALID_REQUEST");
     const tokenDigest = createHash("sha256").update(token).digest("hex");
     const input = parsePreEnrollment(raw);
+    const consent = runtimePublicConsent();
+    if (input.consentVersion !== consent.version || input.consentHash !== consent.hash || input.consentAcknowledgements.length !== 3) throw new AppError("INVALID_REQUEST");
     const at = this.now();
     return this.repository.transaction(async (tx) => {
       const issued = await tx.findToken(tokenDigest);
@@ -50,7 +54,8 @@ export class PreEnrollmentService {
       if (!issued || issued.usedAt || issued.expiresAt.getTime() <= at.getTime()) throw new AppError("NOT_FOUND");
       if (input.children.length !== issued.childSlotIds.length || new Set(input.children.map(child=>child.childSlotId)).size !== issued.childSlotIds.length || input.children.some(child => !issued.childSlotIds.includes(child.childSlotId))) throw new AppError("NOT_FOUND");
       const receiptId = randomUUID();
-      const result = await tx.insertReceipt({ receiptId, tokenDigest, payloadCiphertext: seal(JSON.stringify(input), `pre-enrollment:${issued.stableLeadId}:${receiptId}`, this.keyring), payloadDigest: digest, idempotencyKey, receivedAt: at, consentVersion: intakeConsent.version, consentHash: intakeConsentHash });
+      const accepted = { input, consent: { version: consent.version, hash: consent.hash, sourceHashes: consent.sourceHashes, displayText: consent.displayText, acknowledgements: consent.acknowledgements } };
+      const result = await tx.insertReceipt({ receiptId, tokenDigest, payloadCiphertext: seal(JSON.stringify(accepted), `pre-enrollment:${this.workspaceId}:${issued.stableLeadId}:${receiptId}:original`, this.keyring), payloadDigest: digest, idempotencyKey, receivedAt: at, consentVersion: consent.version, consentHash: consent.hash });
       if (result === "mismatch") throw new AppError("CONFLICT");
       if (typeof result === "object") return { receiptId: result.receiptId, stableLeadId: issued.stableLeadId, receivedAt: result.receivedAt.toISOString(), duplicate: true };
       if (!await tx.consumeToken(tokenDigest, at)) throw new AppError("CONFLICT");

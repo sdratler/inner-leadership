@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'vitest';
 import { LIFE_SKILLS_ADMIN_LABELS, assertAdministrativeLabel, labelDoesNotEstablishPaymentOrConsent, preserveUnrelatedLabels } from '../../src/features/labels/admin-labels.ts';
 
 test('allows only administrative Life Skills labels and preserves unrelated labels', () => {

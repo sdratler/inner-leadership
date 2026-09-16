@@ -1,6 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseEnvironment } from "./lib/env/schema.ts";
 import { securityHeaders } from "./lib/security/headers.ts";
+import { parseIdentityConfig } from "./features/identity/config.ts";
+import { runtimePublicConsent } from "./features/forms/pre-enrollment/consent.ts";
+
+const intakeIdentityRoutes = new Set([
+  "/api/identity/csrf", "/api/identity/login", "/api/identity/session",
+  "/api/identity/logout", "/api/identity/logout-all", "/api/identity/invites/accept",
+  "/api/identity/reset/request", "/api/identity/reset/complete",
+]);
+/** This gate does not replace token, identity, role or CSRF checks in each route. */
+export function intakeReleasePath(pathname: string, input: Record<string,string|undefined>): boolean {
+  const allowed = /^\/(he|en)\/intake(?:\/staff)?\/?$/.test(pathname) ||
+    pathname === "/auth/invite" || pathname === "/auth/reset" ||
+    pathname === "/api/intake" || pathname === "/api/intake/staff" || intakeIdentityRoutes.has(pathname);
+  if (!allowed) return false;
+  try {
+    const origin = new URL(input.LS_APP_ORIGIN ?? "");
+    const synthetic = input.NODE_ENV === "development" && input.LS_INTAKE_SYNTHETIC_LOOPBACK === "true" &&
+      ["127.0.0.1", "localhost", "[::1]"].includes(origin.hostname);
+    if (input.LS_INTAKE_REAL_DATA_RELEASE !== "true" && !synthetic) return false;
+    parseIdentityConfig(input);
+    runtimePublicConsent(input.LS_INTAKE_PUBLIC_CONSENT_JSON);
+    return true;
+  } catch { return false; }
+}
 function decorate(response: NextResponse, headers: Record<string,string>): NextResponse {
   for (const [key,value] of Object.entries(headers)) response.headers.set(key,value);
   return response;
@@ -27,6 +51,18 @@ export function proxy(request: NextRequest) {
   }
   const headers = securityHeaders(nonce, env.NODE_ENV === "development", env.LS_APP_ORIGIN.startsWith("https:"));
   const pathname = request.nextUrl.pathname;
+  const intakePath = intakeReleasePath(pathname, process.env);
+  if (intakePath && ["/auth/invite", "/auth/reset"].includes(pathname)) {
+    if (request.nextUrl.search) return decorate(new NextResponse(null,{status:404}),headers);
+    // A fragment is retained by the browser during this redirect; it never reaches the server.
+    const destination = new URL("/he/intake/staff", env.LS_APP_ORIGIN);
+    destination.searchParams.set("mode", pathname.endsWith("invite") ? "invite" : "reset");
+    return decorate(NextResponse.redirect(destination),headers);
+  }
+  // Respondent credentials belong only in fragments, not query strings.
+  if (/^\/(he|en)\/intake\/?$/.test(pathname) && request.nextUrl.search) {
+    return decorate(new NextResponse(null,{status:404}),headers);
+  }
   // The synthetic gallery is a development-only review surface. Deny it before
   // React streaming begins so production returns an actual 404 status.
   const developmentGallery = /^\/(he|en)\/dev\/ui(?:\/|$)/.test(pathname);
@@ -45,15 +81,15 @@ export function proxy(request: NextRequest) {
   const robots = pathname === "/robots.txt";
   const isolatedPreview = env.LS_APP_MODE === "isolated_preview";
   const isolatedPreviewPage = pathname === "/" || /^\/(he|en)\/preview(?:\/|$)/.test(pathname);
-  if (isolatedPreview && !health && !robots && !isolatedPreviewAuthorized(request,env.LS_PREVIEW_ACCESS_KEY)) {
+  if (isolatedPreview && !intakePath && !health && !robots && !isolatedPreviewAuthorized(request,env.LS_PREVIEW_ACCESS_KEY)) {
     const response=NextResponse.json({ok:false,error:{code:"UNAUTHENTICATED"},requestId:crypto.randomUUID()},{status:401});
     response.headers.set("WWW-Authenticate",'Basic realm="Life Skills private preview", charset="UTF-8"');
     return decorate(response,headers);
   }
-  if (isolatedPreview && !health && !robots && !privatePath && !isolatedPreviewPage) {
+  if (isolatedPreview && !intakePath && !health && !robots && !privatePath && !isolatedPreviewPage) {
     return decorate(new NextResponse(null,{status:404}),headers);
   }
-  if ((privatePath && !privateMode && !identityPreview) || (!privatePath && !health && !robots && env.LS_APP_MODE !== "foundation_preview" && !isolatedPreview)) {
+  if (!intakePath && ((privatePath && !privateMode && !identityPreview) || (!privatePath && !health && !robots && env.LS_APP_MODE !== "foundation_preview" && !isolatedPreview))) {
     return decorate(NextResponse.json({ ok:false, error:{code:"UNAVAILABLE"}, requestId:crypto.randomUUID() }, {status:503}),headers);
   }
   if (pathname === "/") return decorate(NextResponse.redirect(new URL(isolatedPreview ? "/he/preview" : privateMode ? "/he/app" : "/he/foundation", request.url)),headers);

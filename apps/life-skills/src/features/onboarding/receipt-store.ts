@@ -54,7 +54,7 @@ export class SqlReceiptStore implements ReceiptStore {
     const row=(await this.tx().query<ReceiptAllocation & {accountId:string}>('SELECT provider_account_id AS "accountId",transaction_id AS "transactionId",order_id AS "orderId",child_id AS "childId",amount_minor AS "amountMinor" FROM ls_onboarding.payment_allocations WHERE workspace_id=$1 AND order_id=$2',[this.workspaceId,orderId]))[0];
     if(row && row.accountId!==this.accountId) throw new Error('other_provider_account_requires_review');
     if(!row) return undefined;
-    const {accountId,...allocation}=row; return allocation;
+    return {transactionId:row.transactionId,orderId:row.orderId,childId:row.childId,amountMinor:row.amountMinor};
   }
   async saveAllocation(a:ReceiptAllocation):Promise<void>{
     const rows=await this.tx().query(`INSERT INTO ls_onboarding.payment_allocations(workspace_id,provider_account_id,transaction_id,order_id,child_id,amount_minor)

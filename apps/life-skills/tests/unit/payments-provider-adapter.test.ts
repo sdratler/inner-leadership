@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'vitest';
 import { ingestProviderReceipt, verifyAndNormalizeGreenInvoice, recordStaffReceipt } from '../../src/features/payments/provider-adapter.ts';
 import { MemoryReceiptStore } from '../../src/features/payments/provider-receipts.ts';
 

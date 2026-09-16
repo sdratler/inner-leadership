@@ -48,7 +48,7 @@ export function verifyAndNormalizeGreenInvoice(input: ProviderReceiptInput, conf
   const eventKey = `${config.accountId}:${providerEventId}`;
   return {
     ok: true,
-    event: { provider: 'green_invoice', providerAccountId, providerEventId, status, transactions: transactions as ProviderTransaction[], orderId, purpose, rawDigest, eventKey },
+    event: { provider: 'green_invoice', providerAccountId, providerEventId, status, transactions: transactions as ProviderTransaction[], ...(orderId !== undefined ? { orderId } : {}), ...(purpose !== undefined ? { purpose } : {}), rawDigest, eventKey },
   };
 }
 
@@ -62,7 +62,7 @@ function normalizeTransaction(value: unknown): ProviderTransaction | undefined {
   if (typeof p.transactionId !== 'string' || !p.transactionId.trim() || typeof p.amountMinor !== 'number' || !Number.isInteger(p.amountMinor) || p.amountMinor <= 0 || typeof p.currency !== 'string') return undefined;
   const status = normalizeStatus(p.status);
   if (!status) return undefined;
-  return { transactionId: p.transactionId, status, amountMinor: p.amountMinor, currency: p.currency, orderId: typeof p.orderId === 'string' ? p.orderId : undefined };
+  return { transactionId: p.transactionId, status, amountMinor: p.amountMinor, currency: p.currency, ...(typeof p.orderId === 'string' ? { orderId: p.orderId } : {}) };
 }
 
 export async function ingestProviderReceipt(event: VerifiedPaymentEvent, receivedAt: string, store: ReceiptStore): Promise<ProviderReceiptResult> {
@@ -80,7 +80,6 @@ export async function ingestProviderReceipt(event: VerifiedPaymentEvent, receive
       return await finalize(store, provisional, 'refunded', 'provider_refunded');
     }
 
-    const allocations: ReceiptAllocation[] = [];
     const orderRefs = event.transactions.map(t => t.orderId ?? event.orderId);
     const orderIds = new Set(orderRefs.filter(Boolean));
     if (event.purpose !== 'first_session' || orderIds.size !== 1 || orderRefs.some(ref => ref !== [...orderIds][0]) || event.transactions.some(t=>t.orderId && event.orderId && t.orderId!==event.orderId) || event.transactions.length !== 1) return await finalize(store, provisional, 'unmatched', 'stable_single_first_session_order_required');
@@ -113,7 +112,7 @@ async function finalize(store: ReceiptStore, receipt: StoredReceipt, state: Prov
 }
 
 function result(receipt: { receiptId: string; event: { eventKey: string }; allocations?: readonly ReceiptAllocation[] }, state: ProviderReceiptResult['state'], reason?: string, allocations?: readonly ReceiptAllocation[]): ProviderReceiptResult {
-  return { receiptId: receipt.receiptId, eventKey: receipt.event.eventKey, state, allocations: allocations ?? receipt.allocations ?? [], reason };
+  return { receiptId: receipt.receiptId, eventKey: receipt.event.eventKey, state, allocations: allocations ?? receipt.allocations ?? [], ...(reason !== undefined ? { reason } : {}) };
 }
 
 export function recordStaffReceipt(input: StaffReceiptInput): { state: 'pending'; method: StaffReceiptInput['method']; dueUntilVerified: boolean } {
