@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { ingestProviderReceipt, verifyAndNormalizeGreenInvoice } from '../payments/provider-adapter.ts';
 import type { ProviderReceiptInput, ProviderReceiptResult, ReceiptStore, VerifiedPaymentEvent } from '../payments/provider-types.ts';
+import { buildAdministrativePatch, parseStableLeadId } from '../labels/crm-contract.ts';
 
 export const FIRST_SESSION_PAYMENT_URL = 'https://mrng.to/RQYMwyQ88C';
 export interface ConsentClearance { affirmative: boolean; approvedPolicyVersion: string; signerReference: string; recordedAt: string; }
@@ -49,7 +50,9 @@ export async function manualSchedulingEligibility(input:{orderId:string;consent?
 const OWNED_FIELDS=new Set(['Form sent','Form submitted','Payment link sent','Payment method','Payment status','Payment allocation','Booking status','Message receipt','Update provenance']);
 /** Stable-ID, field-owned projection. Never copies notes, identities or confidential intake. */
 export function administrativePatch(leadId:string, changes:Record<string,string>){
-  if(!/^LS-LEAD-[A-Z0-9-]+$/.test(leadId)) throw new Error('stable_lead_id_required');
+  parseStableLeadId(leadId);
   for(const name of Object.keys(changes)) if(!OWNED_FIELDS.has(name)) throw new Error('unowned_crm_field');
   return {leadId,fields:{...changes}};
 }
+
+export { buildAdministrativePatch };
