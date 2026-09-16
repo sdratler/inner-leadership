@@ -34,3 +34,11 @@ The canonical private target remains Railway project `life-skills-sys034-staging
 - Clean nominated checkout: `C:/Users/User/Documents/Codex/2026-09-11/read-the-complete-life-skills-app/inner-leadership-w4-clean-20260916` (detached at the candidate SHA, clean worktree).
 - Reproducible commands from `apps/life-skills`: `npm ci --ignore-scripts --no-audit --no-fund`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, then the existing isolated/locked/UI suites. Dependency restoration in the clean checkout was interrupted after a bounded wait without a completion receipt; the passing results in the original isolated checkout remain the authoritative execution evidence above.
 - Remaining gates: coordinator review, serialized main integration, then separate Railway deploy/migration/real-data acceptance approvals. No merge, deploy, provider or database action was taken here.
+
+## Current-main integration receipt — 2026-09-16
+
+- Main snapshot integrated into the W4 branch: `668b0722c792a670e386ccd28f0076b50303ab6a`.
+- Integrated branch head: `8fdc03f25c1de4e8b29da52bc074a01212aaae98`, pushed to the existing `codex/app-ux-w4-20260914` PR branch.
+- Git merge completed without conflicts and brought in only the five current website files from main; W4’s approved app paths remained intact.
+- Post-merge checks: lint (direct ESLint invocation), Next route type generation + TypeScript no-emit, 241 unit tests, production build, isolated preview 4, locked runtime 1, and the existing 13-case synthetic UI gallery completed successfully. Next’s package-lock location warning is informational only.
+- This remains preparation only: PR34 is not merged, and no deployment, migration, provider, database, intake, CRM, advertising or shared-root changes were made.
