@@ -8,6 +8,7 @@ import { z } from "zod";
 import { validateDatabaseUrl } from "../src/lib/env/schema.ts";
 import { migrate } from "../src/db/migration-runner.ts";
 import type { Migration } from "../src/db/migration-plan.ts";
+import { verifyReleaseSourceProvenance } from "../src/features/forms/pre-enrollment/release-provenance.ts";
 
 const target = Object.freeze({
   projectId:"3b756632-1f66-4f75-a016-eabc37aa0d67",
@@ -23,7 +24,7 @@ const proofSchema=z.strictObject({
   scope:z.literal("private-intake-storage-only"),
   projectId:z.literal(target.projectId),serviceId:z.literal(target.serviceId),
   environmentId:z.literal(target.environmentId),databaseServiceId:z.literal(target.databaseServiceId),
-  reviewedCommit:z.string().regex(/^[a-f0-9]{40}$/),manifestSha256:sha,
+  reviewedCommit:z.string().regex(/^[a-f0-9]{40}$/),cliSourceManifestSha256:sha.optional(),manifestSha256:sha,
   independentReview:z.literal("PASS"),reviewReceiptSha256:sha,
   backupId:z.string().min(1),backupReadbackSha256:sha,
   isolatedRestore:z.literal("PASS"),restoreReceiptSha256:sha,
@@ -41,7 +42,8 @@ async function main():Promise<void>{
   const proofBytes=await readFile(proofFile);
   if(hash(proofBytes)!==process.env.LS_INTAKE_RELEASE_PROOF_SHA256)throw Error("PROOF_HASH");
   const proof=proofSchema.parse(JSON.parse(proofBytes.toString("utf8")));
-  if(Date.parse(proof.expiresAt)<=Date.now() || proof.reviewedCommit!==process.env.RAILWAY_GIT_COMMIT_SHA)throw Error("STALE_REVIEW");
+  if(Date.parse(proof.expiresAt)<=Date.now())throw Error("STALE_REVIEW");
+  await verifyReleaseSourceProvenance(proof,{providerGitCommit:process.env.RAILWAY_GIT_COMMIT_SHA,cliManifestFile:process.env.LS_INTAKE_CLI_SOURCE_MANIFEST_FILE,root:process.cwd()});
   if(hash(process.env.LS_INTAKE_PUBLIC_CONSENT_JSON??"")!==proof.consentConfigurationSha256)throw Error("CONSENT_CHANGED");
   const connectionString=process.env.LS_DATABASE_URL;
   if(!connectionString||!process.env.LS_DATABASE_CA)throw Error("DATABASE_TLS");
