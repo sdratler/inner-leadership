@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import {
   accountAction,
   publicAuthAction,
@@ -8,6 +9,7 @@ import {
 } from "@/features/identity/client.ts";
 import type { PreEnrollmentInput } from "./schema.ts";
 import { respondentLink } from "./staff-link.ts";
+import { staffCopy, newAmendmentDays, type StaffLocale } from "./staff-locales.ts";
 import styles from "./staff-client.module.css";
 type Session = Awaited<ReturnType<typeof sessionInfo>>;
 type Receipt = {
@@ -34,20 +36,7 @@ type Entry = {
 };
 type Selection = { receiptId: string; entries: Entry[] };
 type IssuedLink = { href: string; expiresAt: string };
-const days = [
-  ["sun", "א׳"],
-  ["mon", "ב׳"],
-  ["tue", "ג׳"],
-  ["wed", "ד׳"],
-  ["thu", "ה׳"],
-  ["fri", "ו׳"],
-  ["sat", "ש׳"],
-] as const;
-const windows = [
-  ["morning", "בוקר"],
-  ["afternoon", "צהריים"],
-  ["evening", "ערב"],
-] as const;
+const windowKeys = ["morning", "afternoon", "evening"] as const;
 async function staff<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(path, {
     ...init,
@@ -62,7 +51,9 @@ async function staff<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw Error("unavailable");
   return body.data;
 }
-export function IntakeStaffClient() {
+export function IntakeStaffClient({ locale = "he", respondentOrigin }: { locale?: StaffLocale; respondentOrigin: string }) {
+  const t = staffCopy(locale), english = locale === "en", activationLinkError = t.errors.activationLink;
+  const formatDate = (value: string, withTime = false) => new Intl.DateTimeFormat(english ? "en-GB" : "he-IL", { timeZone: t.timezone, dateStyle: withTime ? undefined : "medium", ...(withTime ? { dateStyle: "medium", timeStyle: "short" } : {}) }).format(new Date(value));
   const [session, setSession] = useState<Session | null>(null);
   const [items, setItems] = useState<Receipt[]>([]);
   const [selection, setSelection] = useState<Selection | null>(null);
@@ -96,7 +87,7 @@ export function IntakeStaffClient() {
           if (!response.ok) throw Error("unavailable");
           setMode(requested);
         })
-        .catch(() => setStatus("קישור ההפעלה אינו זמין כרגע."));
+        .catch(() => setStatus(activationLinkError));
       return;
     }
     const epoch = sessionEpoch.current;
@@ -110,7 +101,7 @@ export function IntakeStaffClient() {
         }
       })
       .catch(() => undefined);
-  }, []);
+  }, [activationLinkError]);
   async function login(form: FormData) {
     if (pending) return;
     setPending(true);
@@ -130,7 +121,7 @@ export function IntakeStaffClient() {
       }
     } catch {
       if (epoch === sessionEpoch.current)
-        setStatus("לא ניתן להיכנס. נדרש חשבון מלווה מורשה.");
+        setStatus(t.errors.login);
     } finally {
       setPending(false);
     }
@@ -143,7 +134,7 @@ export function IntakeStaffClient() {
       password.length < 15 ||
       password !== form.get("confirmation")
     ) {
-      setStatus("נדרש קישור תקף ושתי סיסמאות תואמות בנות 15 תווים לפחות.");
+      setStatus(t.errors.password);
       return;
     }
     setPending(true);
@@ -154,9 +145,9 @@ export function IntakeStaffClient() {
       );
       authToken.current = null;
       setMode("login");
-      setStatus("הפעולה הושלמה. אפשר להיכנס עם הסיסמה החדשה.");
+      setStatus(english ? "Action complete. You can sign in with the new password." : "הפעולה הושלמה. אפשר להיכנס עם הסיסמה החדשה.");
     } catch {
-      setStatus("לא ניתן להשלים את ההפעלה כרגע.");
+      setStatus(t.errors.activation);
     } finally {
       setPending(false);
     }
@@ -180,7 +171,7 @@ export function IntakeStaffClient() {
         sequence === requestSequence.current &&
         epoch === sessionEpoch.current
       )
-        setStatus("לא ניתן לפתוח את הפנייה כעת.");
+        setStatus(t.errors.open);
     }
   }
   async function refresh() {
@@ -189,7 +180,7 @@ export function IntakeStaffClient() {
       const list = await staff<Receipt[]>("/api/intake/staff");
       if (epoch === sessionEpoch.current) setItems(list);
     } catch {
-      if (epoch === sessionEpoch.current) setStatus("לא ניתן לרענן כרגע.");
+      if (epoch === sessionEpoch.current) setStatus(t.errors.refresh);
     }
   }
   async function logout() {
@@ -204,10 +195,10 @@ export function IntakeStaffClient() {
     setIssueState("idle");
     try {
       await accountAction("logout", "POST", {});
-      setStatus("נותקת.");
+      setStatus(t.errors.loggedOut);
     } catch {
       setStatus(
-        "המידע הוסר מהמסך, אך לא ניתן לאשר יציאה מהשרת. סגרו את החלון.",
+        t.errors.logoutFailed,
       );
     }
   }
@@ -222,7 +213,7 @@ export function IntakeStaffClient() {
       chosenDays = form.getAll("days"),
       chosenWindows = form.getAll("windows");
     if (!chosenDays.length || !chosenWindows.length) {
-      setStatus("יש לבחור לפחות יום וחלון זמן.");
+      setStatus(t.errors.days);
       return;
     }
     const payload = {
@@ -248,13 +239,13 @@ export function IntakeStaffClient() {
       if (epoch === sessionEpoch.current) {
         setSelection({ receiptId: boundSelection.receiptId, entries });
         setEditing(false);
-        setStatus("נוסף תיקון מיוחס. הפנייה המקורית וההסכמה נשמרו ללא שינוי.");
+        setStatus(t.errors.amendmentSuccess);
         await refresh();
       }
     } catch {
       if (epoch === sessionEpoch.current)
         setStatus(
-          "לא ניתן לאשר שמירת תיקון. רעננו את ההיסטוריה לפני ניסיון נוסף.",
+          t.errors.amendment,
         );
     } finally {
       setPending(false);
@@ -272,7 +263,7 @@ export function IntakeStaffClient() {
       childCount < 1 ||
       childCount > 8
     ) {
-      setStatus("נדרש מזהה פנייה תקין ומספר ילדים בין 1 ל־8.");
+      setStatus(t.errors.issueInput);
       return;
     }
     const epoch = sessionEpoch.current;
@@ -291,7 +282,7 @@ export function IntakeStaffClient() {
           body: JSON.stringify({ stableLeadRef, childCount }),
         },
       );
-      const href = respondentLink(window.location.origin, issued.token);
+      const href = respondentLink(respondentOrigin, issued.token, locale);
       if (!href) throw Error("unavailable");
       if (epoch !== sessionEpoch.current) return;
       setIssuedLink({
@@ -300,13 +291,13 @@ export function IntakeStaffClient() {
       });
       setIssueState("issued");
       setStatus(
-        "נוצר קישור פרטי. העתיקו או פתחו אותו לפני שיתוף ידני בערוץ מאומת.",
+        t.errors.issueSuccess,
       );
     } catch {
       if (epoch !== sessionEpoch.current) return;
       setIssueState("uncertain");
       setStatus(
-        "לא ניתן לאשר אם הקישור נוצר. אין לנסות שוב מאותו מסך; רעננו ובדקו את מצב ההנפקות מול הרשומה הפרטית.",
+        t.errors.issueUnknown,
       );
     }
   }
@@ -314,19 +305,19 @@ export function IntakeStaffClient() {
     if (!issuedLink) return;
     try {
       await navigator.clipboard.writeText(issuedLink.href);
-      setStatus("הקישור הועתק. הוא לא נשמר בדפדפן לאחר סגירת או רענון הדף.");
+      setStatus(t.errors.copied);
     } catch {
       setStatus(
-        "לא ניתן להעתיק אוטומטית. אפשר לפתוח את הקישור ולשתף אותו ידנית בערוץ מאומת.",
+        t.errors.copyFailed,
       );
     }
   }
   if (mode !== "login")
     return (
-      <form className={styles.card} action={(form) => void activate(form)}>
-        <h1>{mode === "invite" ? "הפעלת חשבון" : "איפוס סיסמה"}</h1>
+      <form className={styles.card} dir={t.direction} action={(form) => void activate(form)}>
+        <h1>{mode === "invite" ? t.activation : t.reset}</h1>
         <label>
-          סיסמה חדשה
+          {t.newPassword}
           <input
             name="password"
             type="password"
@@ -336,7 +327,7 @@ export function IntakeStaffClient() {
           />
         </label>
         <label>
-          אימות סיסמה
+          {t.confirmPassword}
           <input
             name="confirmation"
             type="password"
@@ -346,22 +337,23 @@ export function IntakeStaffClient() {
           />
         </label>
         <button disabled={pending} type="submit">
-          שמירה
+          {t.save}
         </button>
         <p role="alert">{status}</p>
       </form>
     );
   if (!session)
     return (
-      <form className={styles.card} action={(form) => void login(form)}>
-        <h1>פניות פרטיות — כישורי חיים</h1>
-        <p>כניסה למלווה מורשה בלבד.</p>
+      <form className={styles.card} dir={t.direction} action={(form) => void login(form)}>
+        <h1>{t.loginTitle}</h1>
+        <nav aria-label={t.language}><Link href="/he/intake/staff">{t.hebrew}</Link> · <Link href="/en/intake/staff">{t.english}</Link></nav>
+        <p>{t.loginHelp}</p>
         <label>
-          דוא״ל
+          {t.email}
           <input name="email" type="email" required autoComplete="username" />
         </label>
         <label>
-          סיסמה
+          {t.password}
           <input
             name="password"
             type="password"
@@ -370,31 +362,31 @@ export function IntakeStaffClient() {
           />
         </label>
         <button disabled={pending} type="submit">
-          כניסה
+          {t.signIn}
         </button>
         <p role="alert">{status}</p>
       </form>
     );
   const latest = selection?.entries.at(-1)?.input;
   return (
-    <main className={styles.shell}>
+    <main className={styles.shell} dir={t.direction}>
       <header>
-        <h1>פניות פרטיות</h1>
+        <h1>{t.privateIntake}</h1>
         <button disabled={pending} type="button" onClick={() => void logout()}>
-          יציאה
+          {t.signOut}
         </button>
-        <p>תיאום ידני בלבד. אין כאן קביעת פגישה או אישור תשלום.</p>
+        <p>{t.manualOnly}</p>
+        <nav aria-label={t.language}><Link href="/he/intake/staff">{t.hebrew}</Link> · <Link href="/en/intake/staff">{t.english}</Link> · <a href={`https://bneineviimacademy.org/life-skills/?lang=${locale}`} rel="noreferrer">{t.backToPublic}</a></nav>
       </header>
       <section className={styles.card}>
-        <h2>הנפקת קישור פרטי</h2>
+        <h2>{t.issueTitle}</h2>
         <p>
-          למלווה מורשה בלבד. הפעולה אינה שולחת הודעה, אינה יוצרת חשבון הורה
-          ואינה קובעת פגישה.
+          {t.issueHelp}
         </p>
         <form onSubmit={(event) => void issueInvitation(event)}>
           <fieldset disabled={issueState !== "idle"}>
             <label>
-              מזהה פנייה יציב
+              {t.stableRef}
               <input
                 name="stableLeadRef"
                 required
@@ -404,7 +396,7 @@ export function IntakeStaffClient() {
               />
             </label>
             <label>
-              מספר ילדים
+              {t.childCount}
               <select name="childCount" defaultValue="1">
                 {Array.from({ length: 8 }, (_, index) => (
                   <option key={index + 1} value={index + 1}>
@@ -414,35 +406,32 @@ export function IntakeStaffClient() {
               </select>
             </label>
             <button type="submit">
-              {issueState === "issuing" ? "מנפיקים…" : "הנפקת קישור"}
+              {issueState === "issuing" ? t.issuing : t.issueLink}
             </button>
           </fieldset>
         </form>
       {issuedLink && (
         <div className={styles.issued}>
             <p>
-              תוקף הקישור:{" "}
-              {new Date(issuedLink.expiresAt).toLocaleString("he-IL", {
-                timeZone: "Asia/Jerusalem",
-              })}
+              {t.linkExpiry}: {formatDate(issuedLink.expiresAt, true)}
             </p>
           <button type="button" onClick={() => void copyIssuedLink()}>
-            העתקת קישור
+            {t.copyLink}
           </button>
-          <label>קישור פרטי להעתקה ידנית<input value={issuedLink.href} readOnly aria-label="קישור פרטי להעתקה ידנית" /></label>
+          <label>{t.privateLink}<input value={issuedLink.href} readOnly aria-label={t.privateLink} /></label>
           <a href={issuedLink.href} target="_blank" rel="noreferrer">
-              פתיחת הטופס
+              {t.openForm}
             </a>
           </div>
         )}
         {issueState === "uncertain" && (
-          <p role="alert">הנפקה במצב לא ודאי; אין לחזור עליה כאן.</p>
+          <p role="alert">{t.uncertainIssue}</p>
         )}
       </section>
       <section className={styles.card}>
-        <h2>פניות שהתקבלו</h2>
+        <h2>{t.received}</h2>
         <button type="button" disabled={pending} onClick={() => void refresh()}>
-          רענון
+          {t.refresh}
         </button>
         {items.length ? (
           <ul>
@@ -453,23 +442,21 @@ export function IntakeStaffClient() {
                   onClick={() => void open(item.receiptId)}
                   type="button"
                 >
-                  פתיחה ·{" "}
-                  {new Date(item.receivedAt).toLocaleDateString("he-IL")} ·{" "}
-                  {item.amendmentCount} עדכונים
+                  {t.open} · {formatDate(item.receivedAt)} · {item.amendmentCount} {t.updates}
                 </button>
               </li>
             ))}
           </ul>
         ) : (
-          <p>אין פניות להצגה.</p>
+          <p>{t.noItems}</p>
         )}
       </section>
       {selection?.entries.map((entry) => (
-        <HistoryEntry key={entry.entryId} entry={entry} />
+        <HistoryEntry key={entry.entryId} entry={entry} locale={locale} />
       ))}
       {latest && !editing && (
         <button type="button" onClick={() => setEditing(true)}>
-          תיקון פרטי תיאום תוך שמירת היסטוריה
+          {t.amendButton}
         </button>
       )}
       {latest && editing && (
@@ -478,11 +465,11 @@ export function IntakeStaffClient() {
           className={styles.card}
           onSubmit={(event) => void amend(event)}
         >
-          <h2>תיקון פרטי תיאום בלבד</h2>
+          <h2>{t.amendTitle}</h2>
           <fieldset disabled={pending}>
-            <legend>הסכמה וזהות הילד לא משתנות</legend>
+            <legend>{t.consentImmutable}</legend>
             <label>
-              מיקום מועדף
+              {t.preferredLocation}
               <input
                 name="locationPreference"
                 required
@@ -491,15 +478,15 @@ export function IntakeStaffClient() {
               />
             </label>
             <label>
-              חניה ונגישות
+              {t.parking}
               <textarea
                 name="arrivalNeeds"
                 maxLength={500}
                 defaultValue={latest.arrivalNeeds}
               />
             </label>
-            <p>ימים נוחים — Asia/Jerusalem</p>
-            {days.map(([value, label]) => (
+            <p>{t.convenientDays} — {t.timezone}</p>
+            {newAmendmentDays.map((value) => (
               <label key={value}>
                 <input
                   type="checkbox"
@@ -507,11 +494,11 @@ export function IntakeStaffClient() {
                   value={value}
                   defaultChecked={latest.availableDays.includes(value)}
                 />
-                {label}
+                {t.days[value]}
               </label>
             ))}
-            <p>חלונות זמן</p>
-            {windows.map(([value, label]) => (
+            <p>{t.timeWindows}</p>
+            {windowKeys.map((value) => (
               <label key={value}>
                 <input
                   type="checkbox"
@@ -519,11 +506,11 @@ export function IntakeStaffClient() {
                   value={value}
                   defaultChecked={latest.timeWindows.includes(value)}
                 />
-                {label}
+                {t.windows[value]}
               </label>
             ))}
             <label>
-              הערת זמינות
+              {t.availabilityNote}
               <textarea
                 name="availabilityNote"
                 maxLength={1000}
@@ -532,14 +519,14 @@ export function IntakeStaffClient() {
             </label>
           </fieldset>
           <button disabled={pending} type="submit">
-            שמירת תיקון
+            {t.saveAmendment}
           </button>
           <button
             disabled={pending}
             type="button"
             onClick={() => setEditing(false)}
           >
-            ביטול עריכה
+            {t.cancel}
           </button>
         </form>
       )}
@@ -547,58 +534,54 @@ export function IntakeStaffClient() {
     </main>
   );
 }
-function HistoryEntry({ entry }: { entry: Entry }) {
+function HistoryEntry({ entry, locale }: { entry: Entry; locale: StaffLocale }) {
+  const t = staffCopy(locale);
   const input = entry.input;
   return (
     <section className={styles.card}>
       <h2>
-        {entry.kind === "original" ? "פנייה מקורית" : "תיקון של מלווה מורשה"}
+        {entry.kind === "original" ? t.original : t.amendment}
       </h2>
       <p>
-        {new Date(entry.createdAt).toLocaleString("he-IL", {
-          timeZone: "Asia/Jerusalem",
-        })}{" "}
-        · Asia/Jerusalem
+        {new Intl.DateTimeFormat(locale === "en" ? "en-GB" : "he-IL", { timeZone: t.timezone, dateStyle: "medium", timeStyle: "short" }).format(new Date(entry.createdAt))} · {t.timezone}
       </p>
       <p>
-        הורה: {input.parentName} · {input.contactNumber} ·{" "}
-        {input.email || "ללא דוא״ל"} · {input.preferredLanguage}
+        {t.parent}: {input.parentName} · {input.contactNumber} · {input.email || t.noEmail} · {input.preferredLanguage === "en" ? t.english : t.hebrew}
       </p>
       <p>
-        ילדים:{" "}
+        {t.children}: {" "}
         {input.children
           .map((child) => child.firstName + " (" + child.age + ")")
           .join(", ")}
       </p>
-      <p>מיקום: {input.locationPreference}</p>
-      <p>חניה/נגישות: {input.arrivalNeeds || "לא צוין"}</p>
+      <p>{t.location}: {input.locationPreference}</p>
+      <p>{t.arrival}: {input.arrivalNeeds || t.notSpecified}</p>
       <p>
-        זמינות:{" "}
+        {t.availability}: {" "}
         {input.availableDays
-          .map((value) => days.find((day) => day[0] === value)?.[1])
+          .map((value) => t.days[value as keyof typeof t.days])
           .join(", ")}{" "}
         ·{" "}
         {input.timeWindows
-          .map((value) => windows.find((time) => time[0] === value)?.[1])
+          .map((value) => t.windows[value as keyof typeof t.windows])
           .join(", ")}
       </p>
       <p>{input.availabilityNote}</p>
-      <p>הקשר פרטי: {input.privateContext || "לא צוין"}</p>
+      <p>{t.privateContext}: {input.privateContext || t.notSpecified}</p>
       <p>
-        הורה נוסף: {input.cp01} · אפשרות קשר: {input.willingToBeContacted} ·
-        צורך בנגישות: {input.accessSupportNeeded}
+        {t.additionalParent}: {input.cp01} · {t.contactOption}: {input.willingToBeContacted} · {t.accessNeed}: {input.accessSupportNeeded}
       </p>
       {entry.consent && (
         <details>
           <summary>
-            אישור הורה: {input.signerName} · גרסה {entry.consent.version}
+            {t.consent}: {input.signerName} · {t.version} {entry.consent.version}
           </summary>
           {entry.consent.displayText.map((text) => (
             <p key={text}>{text}</p>
           ))}
           {entry.consent.acknowledgements.map((text, index) => (
             <p key={text}>
-              {input.consentAcknowledgements[index] ? "אושר" : "לא אושר"} —{" "}
+              {input.consentAcknowledgements[index] ? t.approved : t.notApproved} —{" "}
               {text}
             </p>
           ))}
@@ -606,8 +589,7 @@ function HistoryEntry({ entry }: { entry: Entry }) {
         </details>
       )}
       <p>
-        השלב הבא: צרו קשר בערוץ מאומת, אשרו זמן ומקום, ותעדו בנפרד אישור מועד
-        ואימות תשלום. אין כאן פגישה מאושרת.
+        {t.nextStep}
       </p>
     </section>
   );

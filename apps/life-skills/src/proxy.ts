@@ -4,6 +4,7 @@ import { securityHeaders } from "./lib/security/headers.ts";
 import { parseIdentityConfig } from "./features/identity/config.ts";
 import { runtimePublicConsent } from "./features/forms/pre-enrollment/consent.ts";
 import { ownerPreviewConfig } from "./features/forms/pre-enrollment/owner-preview.ts";
+import { intakeStaffEntry } from "./features/forms/pre-enrollment/public-origin.ts";
 
 const intakeIdentityRoutes = new Set([
   "/api/identity/csrf", "/api/identity/login", "/api/identity/session",
@@ -56,6 +57,12 @@ export function proxy(request: NextRequest) {
   }
   const headers = securityHeaders(nonce, env.NODE_ENV === "development", env.LS_APP_ORIGIN.startsWith("https:"));
   const pathname = request.nextUrl.pathname;
+  if (process.env.LS_PRIVATE_APP_ENABLED !== "true" && intakeReleasePath("/en/intake/staff", process.env)) {
+    try {
+      const entry = intakeStaffEntry(request, process.env);
+      if (entry) return decorate(NextResponse.redirect(entry), headers);
+    } catch { return decorate(new NextResponse(null, { status: 503 }), headers); }
+  }
   // Only these four already-public brand files bypass app gates. No wildcard,
   // directory listing, private record, image proxy or remote image fetch is opened.
   if (intakeBrandAssets.has(pathname) && ["GET", "HEAD"].includes(request.method)) {
