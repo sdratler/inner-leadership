@@ -3,7 +3,8 @@ import { PreEnrollmentForm } from "@/features/forms/pre-enrollment/client.tsx";
 import { ownerPreviewConfig, ownerPreviewConsent } from "@/features/forms/pre-enrollment/owner-preview.ts";
 import { IntakeBrand } from "@/features/forms/pre-enrollment/intake-brand.tsx";
 export const dynamic = "force-dynamic";
-export default function OwnerIntakePreviewPage() {
+export default async function OwnerIntakePreviewPage({ params }: { params: Promise<{ locale: "he" | "en" }> }) {
+  const { locale } = await params;
   if (!ownerPreviewConfig(process.env)) notFound();
-  return <IntakeBrand><div dir="rtl" lang="he"><PreEnrollmentForm consent={ownerPreviewConsent} testPreview /></div></IntakeBrand>;
+  return <IntakeBrand locale={locale}><div><PreEnrollmentForm consent={ownerPreviewConsent} testPreview /></div></IntakeBrand>;
 }

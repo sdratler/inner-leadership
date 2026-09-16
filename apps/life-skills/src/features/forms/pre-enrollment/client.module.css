@@ -145,7 +145,8 @@
   background: #edf7f4;
 }
 .submit,
-.payment a {
+.payment a:link,
+.payment a:visited {
   display: inline-flex;
   align-items: center;
   justify-content: center;

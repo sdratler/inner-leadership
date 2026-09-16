@@ -38,14 +38,18 @@ export const preEnrollmentSchema = z.strictObject({
   consentVersion: nonBlank(200),
   consentHash: z.string().regex(/^[a-f0-9]{64}$/),
   signerName: nonBlank(160),
+  consentLanguage: z.enum(languages).optional(),
 });
 export type PreEnrollmentInput = z.infer<typeof preEnrollmentSchema>;
+const newSubmissionSchema = preEnrollmentSchema.extend({ availableDays: z.array(z.enum(["sun", "mon", "tue", "wed", "thu"])).min(1).max(5), consentLanguage: z.enum(languages) });
+export type NewPreEnrollmentInput = z.infer<typeof newSubmissionSchema>;
 
 export function policyTextHash(text: string): string { return createHash("sha256").update(text, "utf8").digest("hex"); }
 
 export function parsePreEnrollment(value: unknown): PreEnrollmentInput {
   return preEnrollmentSchema.parse(value);
 }
+export function parseNewPreEnrollment(value: unknown): NewPreEnrollmentInput { return newSubmissionSchema.parse(value); }
 
 export function digestPreEnrollment(value: PreEnrollmentInput): string {
   return createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex");

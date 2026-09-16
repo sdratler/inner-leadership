@@ -5,7 +5,7 @@ import { freshActor } from "../../identity/data.ts";
 import { unseal, seal, type Keyring } from "../../identity/crypto.ts";
 import type { IdentityStore } from "../../identity/store.ts";
 import type { Actor } from "../../identity/types.ts";
-import { digestPreEnrollment, parsePreEnrollment, type PreEnrollmentInput } from "./schema.ts";
+import { digestPreEnrollment, parseNewPreEnrollment, parsePreEnrollment, type PreEnrollmentInput } from "./schema.ts";
 
 export type IntakeListItem = Readonly<{ receiptId: string; receivedAt: string; amendmentCount: number; consentVersion: string; consentHash: string }>;
 export type IntakeHistoryEntry = Readonly<{ kind: "original" | "amendment"; entryId: string; createdAt: string; actorAccountId: string | null; input: PreEnrollmentInput; consent: { version: string; hash: string; sourceHashes: readonly string[]; displayText: readonly string[]; acknowledgements: readonly string[] } | null }>;
@@ -42,16 +42,17 @@ export class PreEnrollmentStaffService {
   }
 
   async amend(actor: Actor, receiptId: string, input: unknown): Promise<void> {
-    const value = parsePreEnrollment(input);
     await this.store.transaction(async tx => {
       const current = await freshActor(tx, actor, this.now()); requirePractitioner(current);
       const originals = await tx.query<{ lead: string; payload: string }>(`SELECT i.stable_lead_ref AS lead,r.payload_ciphertext AS payload FROM ls_intake.pre_enrollment_receipts r JOIN ls_intake.pre_enrollment_invitations i ON i.workspace_id=r.workspace_id AND i.invitation_id=r.invitation_id WHERE r.workspace_id=$1 AND r.receipt_id=$2`, [current.workspaceId, receiptId]);
       const original = originals[0]; if (!original) throw new AppError("NOT_FOUND");
       const accepted = JSON.parse(unseal(original.payload, `pre-enrollment:${current.workspaceId}:${original.lead}:${receiptId}:original`, this.ring)) as OriginalEnvelope;
       const baseline = parsePreEnrollment(accepted.input);
+      const value = baseline.consentLanguage === undefined ? parsePreEnrollment(input) : parseNewPreEnrollment(input);
       const sameSlots = baseline.children.length === value.children.length && baseline.children.every((child, index) => child.childSlotId === value.children[index]?.childSlotId);
-      const sameParentEvidence = baseline.signerName === value.signerName && baseline.consentVersion === value.consentVersion && baseline.consentHash === value.consentHash && JSON.stringify(baseline.consentAcknowledgements) === JSON.stringify(value.consentAcknowledgements);
-      if (!sameSlots || !sameParentEvidence) throw new AppError("INVALID_REQUEST");
+      const sameParentEvidence = baseline.signerName === value.signerName && baseline.consentVersion === value.consentVersion && baseline.consentHash === value.consentHash && baseline.consentLanguage === value.consentLanguage && JSON.stringify(baseline.consentAcknowledgements) === JSON.stringify(value.consentAcknowledgements);
+      const sameAvailability = JSON.stringify([...baseline.availableDays].sort()) === JSON.stringify([...value.availableDays].sort());
+      if (!sameSlots || !sameParentEvidence || (!sameAvailability && value.availableDays.some(day => day === "fri" || day === "sat"))) throw new AppError("INVALID_REQUEST");
       const amendmentId = randomUUID(), createdAt = this.now();
       await tx.query(`INSERT INTO ls_intake.pre_enrollment_amendments(workspace_id,amendment_id,receipt_id,actor_account_id,payload_ciphertext,payload_digest,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)`, [current.workspaceId, amendmentId, receiptId, current.id, seal(JSON.stringify({ input: value }), `pre-enrollment:${current.workspaceId}:${original.lead}:${receiptId}:amendment:${amendmentId}`, this.ring), digestPreEnrollment(value), createdAt]);
     });

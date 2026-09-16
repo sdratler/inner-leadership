@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { AppError } from "../../../lib/errors.ts";
 import { seal } from "../../identity/crypto.ts";
 import type { Keyring } from "../../identity/crypto.ts";
-import { parsePreEnrollment, digestPreEnrollment } from "./schema.ts";
+import { parseNewPreEnrollment, parsePreEnrollment, digestPreEnrollment } from "./schema.ts";
 import { runtimePublicConsent, type PublicConsent } from "./consent.ts";
 import { runtimeIntakeBankTransfer, type IntakeBankTransfer } from "./payment.ts";
 
@@ -40,12 +40,19 @@ export class PreEnrollmentService {
     if (!this.enabled) throw new AppError("NOT_FOUND");
     if (!/^[A-Za-z0-9_-]{43}$/.test(token) || !/^[0-9a-f-]{36}$/i.test(idempotencyKey)) throw new AppError("INVALID_REQUEST");
     const tokenDigest = createHash("sha256").update(token).digest("hex");
-    const input = parsePreEnrollment(raw);
-    const consent = runtimePublicConsent();
-    if (input.consentVersion !== consent.version || input.consentHash !== consent.hash || input.consentAcknowledgements.length !== 3) throw new AppError("INVALID_REQUEST");
     const at = this.now();
     return this.repository.transaction(async (tx) => {
       const issued = await tx.findToken(tokenDigest);
+      let legacyInput: ReturnType<typeof parsePreEnrollment> | null = null;
+      try { legacyInput = parsePreEnrollment(raw); } catch { /* new-write validation follows */ }
+      const legacyPrior = legacyInput ? await tx.findReceiptByIdempotency(tokenDigest, idempotencyKey) : null;
+      if (legacyPrior) {
+        if (legacyPrior.payloadDigest !== digestPreEnrollment(legacyInput!)) throw new AppError("CONFLICT");
+        return { receiptId: legacyPrior.receiptId, receivedAt: legacyPrior.receivedAt.toISOString(), duplicate: true };
+      }
+      const input = parseNewPreEnrollment(raw);
+      const consent = runtimePublicConsent();
+      if (input.consentVersion !== consent.version || input.consentHash !== consent.hash || input.consentAcknowledgements.length !== 3 || (input.consentLanguage === "en" && !consent.translations?.en)) throw new AppError("INVALID_REQUEST");
       const digest = digestPreEnrollment(input);
       const prior = await tx.findReceiptByIdempotency(tokenDigest, idempotencyKey);
       if (prior) {
@@ -55,7 +62,7 @@ export class PreEnrollmentService {
       if (!issued || issued.usedAt || issued.expiresAt.getTime() <= at.getTime()) throw new AppError("NOT_FOUND");
       if (input.children.length !== issued.childSlotIds.length || new Set(input.children.map(child=>child.childSlotId)).size !== issued.childSlotIds.length || input.children.some(child => !issued.childSlotIds.includes(child.childSlotId))) throw new AppError("NOT_FOUND");
       const receiptId = randomUUID();
-      const accepted = { input, consent: { version: consent.version, hash: consent.hash, sourceHashes: consent.sourceHashes, displayText: consent.displayText, acknowledgements: consent.acknowledgements } };
+      const accepted = { input, consent: { version: consent.version, hash: consent.hash, sourceHashes: consent.sourceHashes, displayText: consent.displayText, acknowledgements: consent.acknowledgements, ...(consent.translations ? { translations: consent.translations } : {}) } };
       const result = await tx.insertReceipt({ receiptId, tokenDigest, payloadCiphertext: seal(JSON.stringify(accepted), `pre-enrollment:${this.workspaceId}:${issued.stableLeadId}:${receiptId}:original`, this.keyring), payloadDigest: digest, idempotencyKey, receivedAt: at, consentVersion: consent.version, consentHash: consent.hash });
       if (result === "mismatch") throw new AppError("CONFLICT");
       if (typeof result === "object") return { receiptId: result.receiptId, stableLeadId: issued.stableLeadId, receivedAt: result.receivedAt.toISOString(), duplicate: true };

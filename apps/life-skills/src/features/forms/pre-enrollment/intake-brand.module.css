@@ -18,3 +18,8 @@
 @media(max-width:340px){.container{width:calc(100% - 32px)}.headerInner{padding-inline:16px;gap:7px}.compact .hebrewLogo{width:78px}.compact .words strong{font-size:16px}.mobileLanguage{width:36px;height:38px}.footerContact{padding-inline:13px}.footerInner .lockup{gap:8px}.footerInner>.lockup>.hebrewLogo{width:142px}}
 @media(prefers-reduced-motion:reduce){.button,.menuButton span{transition:none}}
 @media(forced-colors:active){.button,.menuButton{border:2px solid ButtonText}.languageSwitch a[aria-current=page]{outline:2px solid LinkText}.page .floatingWhatsapp{border:2px solid ButtonText;background:ButtonFace;color:ButtonText}}
+/* Keep locale controls visually equivalent after changing anchors to buttons. */
+.languageSwitch button{display:grid;place-items:center;min-width:36px;min-height:44px;border:0;background:transparent;color:inherit;border-radius:10px;font:inherit;cursor:pointer}
+.languageSwitch button[aria-pressed=true]{color:var(--deep-teal);text-decoration:underline;text-decoration-color:var(--gold);text-decoration-thickness:2px;text-underline-offset:5px}
+.mobileLanguages button{display:grid;place-items:center;min-width:72px;min-height:44px;border:1px solid rgba(230,208,164,.45);border-radius:10px;background:transparent;color:inherit;font:inherit}
+.mobileLanguages button[aria-pressed=true]{background:var(--cream);color:var(--deep-teal)}

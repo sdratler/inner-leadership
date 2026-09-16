@@ -38,7 +38,7 @@ async function migrate(db: Db) {
     await db.query("INSERT INTO ls_identity.sessions(token_digest,workspace_id,account_id,created_at,expires_at) VALUES($1,$2,$3,$4,$5)", [sessionDigest(id), workspaceId, id, now, new Date(now.getTime() + 86_400_000)]);
   }
 }
-function payload(slots: readonly string[], overrides: Record<string, unknown> = {}) { return { parentName: "Synthetic Parent", contactNumber: "+972500000000", preferredLanguage: "he", email: "", children: slots.map((childSlotId, index) => ({ childSlotId, firstName: `Child ${index}`, age: 8 })), locationPreference: "synthetic-location", arrivalNeeds: "", availableDays: ["sun"], timeWindows: ["afternoon"], availabilityNote: "", privateContext: "private synthetic context", cp01: "not_now", willingToBeContacted: "yes", accessSupportNeeded: "no", consentAcknowledgements: [true, true, true], consentVersion: consent.version, consentHash: publicConsentHash(consent), signerName: "Synthetic Signer", ...overrides }; }
+function payload(slots: readonly string[], overrides: Record<string, unknown> = {}) { return { parentName: "Synthetic Parent", contactNumber: "+972500000000", preferredLanguage: "he", email: "", children: slots.map((childSlotId, index) => ({ childSlotId, firstName: `Child ${index}`, age: 8 })), locationPreference: "synthetic-location", arrivalNeeds: "", availableDays: ["sun"], timeWindows: ["afternoon"], availabilityNote: "", privateContext: "private synthetic context", cp01: "not_now", willingToBeContacted: "yes", accessSupportNeeded: "no", consentAcknowledgements: [true, true, true], consentVersion: consent.version, consentHash: publicConsentHash(consent), consentLanguage: "he", signerName: "Synthetic Signer", ...overrides }; }
 async function cleanupMkdtemp(directory: string) {
   const target = resolve(directory), temp = resolve(tmpdir()), pathWithinTemp = relative(temp, target);
   if (pathWithinTemp === "" || pathWithinTemp.startsWith("..") || !basename(target).startsWith("ls-intake-")) throw new Error("unsafe intake test cleanup target");
@@ -46,6 +46,19 @@ async function cleanupMkdtemp(directory: string) {
 }
 
 describe("pre-enrollment PGlite", () => {
+  it("preserves bilingual consent evidence and rejects amendment evidence or new weekend availability changes", async () => {
+    const { PGlite } = await import(process.env.PGLITE_MODULE!); const connection = new (PGlite as unknown as PGliteCtor)();
+    const translated = { ...consent, translations: { en: { displayText: ["Exact English paragraph one.", "Exact English paragraph two."], acknowledgements: ["Exact English acknowledgement one.", "Exact English acknowledgement two.", "Exact English acknowledgement three."] } } };
+    try {
+      await migrate(connection); const identity = store(connection); const staff = new PreEnrollmentStaffService(identity, ring, () => now); const issued = await staff.issue(actor(practitioner, "practitioner"), "LS-LEAD-bilingual", 1);
+      process.env.LS_INTAKE_PUBLIC_CONSENT_JSON = JSON.stringify(translated); const service = new PreEnrollmentService(new SqlPreEnrollmentRepository(identity, workspace), ring, () => now, true, workspace); const slots = (await service.exchange(issued.token)).childSlotIds; const original = payload(slots, { preferredLanguage: "he", consentLanguage: "en", consentVersion: translated.version, consentHash: publicConsentHash(translated) }); const receipt = await service.submit(issued.token, randomUUID(), original); const history = await staff.history(actor(practitioner, "practitioner"), receipt.receiptId);
+      const bilingual = history[0]?.consent as (typeof translated & { hash: string }) | null; expect(history[0]?.input.consentLanguage).toBe("en"); expect(bilingual?.translations.en.displayText).toEqual(translated.translations.en.displayText); expect(bilingual?.translations.en.acknowledgements).toEqual(translated.translations.en.acknowledgements);
+      await expect(staff.amend(actor(practitioner, "practitioner"), receipt.receiptId, { ...original, consentLanguage: "he" })).rejects.toMatchObject({ code: "INVALID_REQUEST" });
+      await expect(staff.amend(actor(practitioner, "practitioner"), receipt.receiptId, { ...original, signerName: "Forged signer" })).rejects.toMatchObject({ code: "INVALID_REQUEST" });
+      await expect(staff.amend(actor(practitioner, "practitioner"), receipt.receiptId, { ...original, availableDays: ["fri"] })).rejects.toBeTruthy();
+    } finally { process.env.LS_INTAKE_PUBLIC_CONSENT_JSON = JSON.stringify(consent); await connection.close(); }
+  }, 30_000);
+
   it("uses real identity state for issue, exchange, submit, immutable history, authorization and durable ciphertext", async () => {
     const { PGlite } = await import(process.env.PGLITE_MODULE!); const directory = await mkdtemp(join(tmpdir(), "ls-intake-")); const connection = new (PGlite as unknown as PGliteCtor)(directory);
     try {

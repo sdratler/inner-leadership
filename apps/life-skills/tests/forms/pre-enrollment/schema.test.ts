@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { digestPreEnrollment, parsePreEnrollment, policyTextHash } from "@/features/forms/pre-enrollment/schema.ts";
+import { digestPreEnrollment, parseNewPreEnrollment, parsePreEnrollment, policyTextHash } from "@/features/forms/pre-enrollment/schema.ts";
+import { publicConsentHash } from "@/features/forms/pre-enrollment/consent.ts";
 
 const valid = {
   parentName: "Synthetic Parent",
@@ -18,6 +19,9 @@ const valid = {
   accessSupportNeeded: "no" as const,
   consentAcknowledgements: [true, true, true] as const,
   signerName: "Synthetic Signer",
+  consentLanguage: "he" as const,
+  consentVersion: "synthetic-schema-v4",
+  consentHash: "a".repeat(64),
 };
 
 describe("P1 pre-enrollment contract", () => {
@@ -34,5 +38,19 @@ describe("P1 pre-enrollment contract", () => {
     ["missing child slot", { children: [{ firstName: "x", age: 8 }] }],
   ])("rejects %s", (_name, change) => {
     expect(() => parsePreEnrollment({ ...valid, ...change })).toThrow();
+  });
+  it("keeps historical Friday/Saturday records readable but rejects them for new writes", () => {
+    expect(parsePreEnrollment({ ...valid, availableDays: ["fri"] })).toMatchObject({ availableDays: ["fri"] });
+    expect(() => parseNewPreEnrollment({ ...valid, availableDays: ["fri"] })).toThrow();
+    expect(parseNewPreEnrollment(valid).consentLanguage).toBe("he");
+  });
+});
+
+describe("bilingual consent hashing", () => {
+  const base = { version: "v3", sourceHashes: ["a".repeat(64)], displayText: ["עברית"], acknowledgements: ["א", "ב", "ג"] };
+  it("preserves legacy hash and binds translated text when present", () => {
+    const legacy = publicConsentHash(base);
+    expect(publicConsentHash({ ...base, translations: { en: { displayText: ["English"], acknowledgements: ["A", "B", "C"] } } })).not.toBe(legacy);
+    expect(publicConsentHash(base)).toBe(legacy);
   });
 });
