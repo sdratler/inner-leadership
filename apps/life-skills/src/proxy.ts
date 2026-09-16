@@ -3,6 +3,7 @@ import { parseEnvironment } from "./lib/env/schema.ts";
 import { securityHeaders } from "./lib/security/headers.ts";
 import { parseIdentityConfig } from "./features/identity/config.ts";
 import { runtimePublicConsent } from "./features/forms/pre-enrollment/consent.ts";
+import { ownerPreviewConfig } from "./features/forms/pre-enrollment/owner-preview.ts";
 
 const intakeIdentityRoutes = new Set([
   "/api/identity/csrf", "/api/identity/login", "/api/identity/session",
@@ -52,6 +53,8 @@ export function proxy(request: NextRequest) {
   const headers = securityHeaders(nonce, env.NODE_ENV === "development", env.LS_APP_ORIGIN.startsWith("https:"));
   const pathname = request.nextUrl.pathname;
   const intakePath = intakeReleasePath(pathname, process.env);
+  const ownerPreviewPath = /^\/(he|en)\/preview\/intake\/?$/.test(pathname) || pathname === "/api/intake-preview";
+  if (ownerPreviewPath && !ownerPreviewConfig(process.env)) return decorate(new NextResponse(null,{status:404}),headers);
   if (intakePath && ["/auth/invite", "/auth/reset"].includes(pathname)) {
     if (request.nextUrl.search) return decorate(new NextResponse(null,{status:404}),headers);
     // A fragment is retained by the browser during this redirect; it never reaches the server.
@@ -81,12 +84,12 @@ export function proxy(request: NextRequest) {
   const robots = pathname === "/robots.txt";
   const isolatedPreview = env.LS_APP_MODE === "isolated_preview";
   const isolatedPreviewPage = pathname === "/" || /^\/(he|en)\/preview(?:\/|$)/.test(pathname);
-  if (isolatedPreview && !intakePath && !health && !robots && !isolatedPreviewAuthorized(request,env.LS_PREVIEW_ACCESS_KEY)) {
+  if (isolatedPreview && !intakePath && !ownerPreviewPath && !health && !robots && !isolatedPreviewAuthorized(request,env.LS_PREVIEW_ACCESS_KEY)) {
     const response=NextResponse.json({ok:false,error:{code:"UNAUTHENTICATED"},requestId:crypto.randomUUID()},{status:401});
     response.headers.set("WWW-Authenticate",'Basic realm="Life Skills private preview", charset="UTF-8"');
     return decorate(response,headers);
   }
-  if (isolatedPreview && !intakePath && !health && !robots && !privatePath && !isolatedPreviewPage) {
+  if (isolatedPreview && !intakePath && !ownerPreviewPath && !health && !robots && !privatePath && !isolatedPreviewPage) {
     return decorate(new NextResponse(null,{status:404}),headers);
   }
   if (!intakePath && ((privatePath && !privateMode && !identityPreview) || (!privatePath && !health && !robots && env.LS_APP_MODE !== "foundation_preview" && !isolatedPreview))) {

@@ -9,7 +9,7 @@ type Exchange = { ok: true; data: { childSlotIds: string[]; consent: PublicConse
 const days = [["sun", "א׳"], ["mon", "ב׳"], ["tue", "ג׳"], ["wed", "ד׳"], ["thu", "ה׳"], ["fri", "ו׳"], ["sat", "ש׳"]] as const;
 const windows = [["morning", "בוקר"], ["afternoon", "צהריים"], ["evening", "ערב"]] as const;
 
-export function PreEnrollmentForm({ consent }: { consent: PublicConsent | null }) {
+export function PreEnrollmentForm({ consent, testPreview = false }: { consent: PublicConsent | null; testPreview?: boolean }) {
   const tokenRef = useRef<string | null>(null);
   const idempotencyKey = useRef<string | null>(null);
   const attemptedPayload = useRef<object | null>(null);
@@ -29,7 +29,7 @@ export function PreEnrollmentForm({ consent }: { consent: PublicConsent | null }
     const value = window.location.hash.slice(1);
     tokenRef.current = value;
     window.history.replaceState(null, "", window.location.pathname);
-    void fetch("/api/intake", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "exchange", token: value }) })
+    void fetch(testPreview ? "/api/intake-preview" : "/api/intake", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "exchange", token: value }) })
       .then(response => { if (!response.ok) throw new Error("unavailable"); return response.json() as Promise<Exchange>; })
       .then(result => {
         if (!result.ok || !Array.isArray(result.data.childSlotIds) || !result.data.consent) throw new Error("unavailable");
@@ -38,7 +38,7 @@ export function PreEnrollmentForm({ consent }: { consent: PublicConsent | null }
         setReady(true);
       })
       .catch(() => setStatus("הקישור אינו זמין או שפג תוקפו."));
-  }, []);
+  }, [testPreview]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -47,6 +47,10 @@ export function PreEnrollmentForm({ consent }: { consent: PublicConsent | null }
     const availableDays = form.getAll("days").map(String);
     const timeWindows = form.getAll("timeWindows").map(String);
     if (!attemptedPayload.current && (!availableDays.length || !timeWindows.length)) { setStatus("יש לבחור לפחות יום ושעת נוחות אחת."); return; }
+    if (testPreview) {
+      if (!availableDays.length || !timeWindows.length) { setStatus("יש לבחור לפחות יום ושעת נוחות אחת."); return; }
+      setAttempted(true); tokenRef.current = null; setSaved(true); setStatus("בדיקה הושלמה — המידע לא נשלח ולא נשמר"); return;
+    }
     idempotencyKey.current ??= crypto.randomUUID();
     setStatus("שומרים…");
     pendingRequest.current = true;
@@ -67,9 +71,9 @@ export function PreEnrollmentForm({ consent }: { consent: PublicConsent | null }
 
   if (!ready) return <p role="status">{status || "טוענים טופס פרטי…"}</p>;
   if (!activeConsent) return <p role="alert">הטופס אינו זמין כרגע.</p>;
-  if (saved) return <section className={styles.form} aria-label="המידע התקבל"><h1>המידע התקבל ונשמר</h1><p>שלמה יצור קשר לאישור זמן ומקום. מילוי הטופס ותשלום אינם אישור לפגישה.</p><h2>תשלום לפגישת ההיכרות</h2><p>₪550 לכל ילד לפגישה ראשונה אחת. העברה בנקאית או מזומן יתואמו ישירות עם שלמה.</p><a href="https://mrng.to/RQYMwyQ88C" target="_blank" rel="noreferrer">לקישור התשלום הקיים</a></section>;
+  if (saved) return <section className={styles.form} aria-label={testPreview ? "בדיקה הושלמה" : "המידע התקבל"}><h1>{testPreview ? "בדיקה הושלמה — המידע לא נשלח ולא נשמר" : "המידע התקבל ונשמר"}</h1><p>{testPreview ? "זו בדיקה בלבד; אין תיאום, שמירה או תשלום במסגרת הבדיקה." : "שלמה יצור קשר לאישור זמן ומקום. מילוי הטופס ותשלום אינם אישור לפגישה."}</p><h2>תשלום לפגישת ההיכרות</h2><p>₪550 לכל ילד לפגישה ראשונה אחת. העברה בנקאית או מזומן יתואמו ישירות עם שלמה.</p><a href="https://mrng.to/RQYMwyQ88C" target="_blank" rel="noreferrer">{testPreview ? "קישור תשלום אמיתי — אינו חלק מהבדיקה" : "לקישור התשלום הקיים"}</a></section>;
   return <form className={styles.form} onSubmit={submit}>
-    <header><h1>פנייה פרטית למשפחות</h1><p>העדפות לתיאום בלבד — אין בכך קביעת פגישה.</p></header>
+    {testPreview && <aside role="alert"><strong>תצוגת בדיקה לשלמה בלבד; אין להזין מידע אמיתי על ילדים; אין צורך לשלם</strong></aside>}<header><h1>פנייה פרטית למשפחות</h1><p>העדפות לתיאום בלבד — אין בכך קביעת פגישה.</p></header>
     <fieldset disabled={attempted} className={styles.section}><legend>פרטי הפנייה</legend>
     <Section title="פרטי קשר"><Field label="שם ההורה"><input name="parentName" required maxLength={160} /></Field><Field label="טלפון"><input name="contactNumber" required maxLength={64} inputMode="tel" /></Field><Field label="שפת קשר"><select name="preferredLanguage"><option value="he">עברית</option><option value="en">English</option></select></Field><Field label="דוא״ל (לא חובה)"><input name="email" type="email" maxLength={254} /></Field></Section>
     {children.map((child, index) => <Section key={child.childSlotId} title={`ילד/ה ${index + 1}`}><Field label="שם פרטי"><input value={child.firstName} required maxLength={120} onChange={event => setChildren(items => items.map((item, i) => i === index ? { ...item, firstName: event.target.value } : item))} /></Field><Field label="גיל"><input type="number" min="0" max="25" value={child.age ?? ""} required onChange={event => setChildren(items => items.map((item, i) => i === index ? { ...item, age: event.target.value === "" ? null : Number(event.target.value) } : item))} /></Field></Section>)}
@@ -77,7 +81,7 @@ export function PreEnrollmentForm({ consent }: { consent: PublicConsent | null }
     <Section title="פרטים נוספים"><Field label="מידע פרטי רלוונטי (לא חובה)"><textarea name="privateContext" maxLength={4000} /></Field><Field label="הורה נוסף"><select name="cp01"><option value="not_now">לא כרגע</option><option value="joint">פנייה משותפת</option><option value="separate">בנפרד</option><option value="discuss_privately">לדבר בפרטיות</option></select></Field><p>בחירה זו אינה שולחת פנייה או הזמנה להורה נוסף ואינה מעניקה לו גישה למידע.</p><Field label="אפשר לפנות אליי?"><select name="contact"><option value="yes">כן</option><option value="no">לא</option></select></Field><Field label="נדרשת התאמת נגישות?"><select name="access"><option value="no">לא</option><option value="yes">כן</option></select></Field></Section>
     <Section title="הסכמה">{activeConsent.displayText.map(text => <p key={text}>{text}</p>)}{activeConsent.acknowledgements.map((text, index) => <label className={styles.check} key={text}><input name={`consent-${index}`} type="checkbox" required /> {text}</label>)}<Field label="שם החותם/ת"><input name="signerName" required maxLength={160} /></Field></Section>
     </fieldset>
-    <button disabled={submitting} type="submit">{submitting ? "שומרים…" : attempted ? "בדיקה ושליחה חוזרת" : "שליחה"}</button><p role="status">{status}</p>
+    <button disabled={submitting} type="submit">{submitting ? "שומרים…" : testPreview ? "סיום בדיקה ללא שליחה" : attempted ? "בדיקה ושליחה חוזרת" : "שליחה"}</button><p role="status">{status}</p>
   </form>;
 }
 function Section({ title, children }: { title: string; children: React.ReactNode }) { return <fieldset className={styles.section}><legend>{title}</legend>{children}</fieldset>; }
