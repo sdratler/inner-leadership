@@ -5,7 +5,7 @@ import styles from "./client.module.css";
 
 export type PublicConsent = Readonly<{ version: string; hash: string; sourceHashes: readonly string[]; displayText: readonly string[]; acknowledgements: readonly string[] }>;
 type Child = { childSlotId: string; firstName: string; age: number | null };
-type Exchange = { ok: true; data: { childSlotIds: string[]; consent: PublicConsent; opening?: { message: string } } } | { ok: false };
+type Exchange = { ok: true; data: { childSlotIds: string[]; consent: PublicConsent } } | { ok: false };
 const days = [["sun", "א׳"], ["mon", "ב׳"], ["tue", "ג׳"], ["wed", "ד׳"], ["thu", "ה׳"], ["fri", "ו׳"], ["sat", "ש׳"]] as const;
 const windows = [["morning", "בוקר"], ["afternoon", "צהריים"], ["evening", "ערב"]] as const;
 
@@ -22,7 +22,6 @@ export function PreEnrollmentForm({ consent, testPreview = false }: { consent: P
   const [submitting, setSubmitting] = useState(false);
   const [attempted, setAttempted] = useState(false);
   const [activeConsent, setActiveConsent] = useState<PublicConsent | null>(consent);
-  const [opening, setOpening] = useState("");
 
   useEffect(() => {
     if (exchanged.current) return;
@@ -36,7 +35,6 @@ export function PreEnrollmentForm({ consent, testPreview = false }: { consent: P
         if (!result.ok || !Array.isArray(result.data.childSlotIds) || !result.data.consent) throw new Error("unavailable");
         setChildren(result.data.childSlotIds.map(childSlotId => ({ childSlotId, firstName: "", age: null })));
         setActiveConsent(result.data.consent);
-        setOpening(typeof result.data.opening?.message === "string" ? result.data.opening.message : "");
         setReady(true);
       })
       .catch(() => setStatus("הקישור אינו זמין או שפג תוקפו."));
@@ -59,7 +57,8 @@ export function PreEnrollmentForm({ consent, testPreview = false }: { consent: P
     pendingRequest.current = true;
     setSubmitting(true);
     setAttempted(true);
-    const payload = { parentName: form.get("parentName"), contactNumber: form.get("contactNumber"), preferredLanguage: form.get("preferredLanguage"), email: form.get("email"), children, locationPreference: form.get("locationPreference"), arrivalNeeds: form.get("arrivalNeeds"), availableDays, timeWindows, availabilityNote: form.get("availabilityNote"), privateContext: form.get("privateContext"), cp01: form.get("cp01"), willingToBeContacted: form.get("contact"), accessSupportNeeded: form.get("access"), consentVersion: activeConsent.version, consentHash: activeConsent.hash, consentAcknowledgements: activeConsent.acknowledgements.map((_, index) => form.get(`consent-${index}`) === "on"), signerName: form.get("signerName") };
+    const acceptedConsent = form.get("consent") === "on";
+    const payload = { parentName: form.get("parentName"), contactNumber: form.get("contactNumber"), preferredLanguage: form.get("preferredLanguage"), email: form.get("email"), children, locationPreference: form.get("locationPreference"), arrivalNeeds: form.get("arrivalNeeds"), availableDays, timeWindows, availabilityNote: form.get("availabilityNote"), privateContext: form.get("privateContext"), cp01: form.get("cp01"), willingToBeContacted: form.get("contact"), accessSupportNeeded: form.get("access"), consentVersion: activeConsent.version, consentHash: activeConsent.hash, consentAcknowledgements: activeConsent.acknowledgements.map(() => acceptedConsent), signerName: form.get("signerName") };
     try {
       attemptedPayload.current ??= payload;
       const response = await fetch("/api/intake", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "submit", token: tokenRef.current, idempotencyKey: idempotencyKey.current, payload: attemptedPayload.current }) });
@@ -74,15 +73,15 @@ export function PreEnrollmentForm({ consent, testPreview = false }: { consent: P
 
   if (!ready) return <p role="status">{status || "טוענים טופס פרטי…"}</p>;
   if (!activeConsent) return <p role="alert">הטופס אינו זמין כרגע.</p>;
-  if (saved) return <section className={styles.form} aria-label={testPreview ? "בדיקה הושלמה" : "המידע התקבל"}><h1>{testPreview ? "בדיקה הושלמה — המידע לא נשלח ולא נשמר" : "המידע התקבל ונשמר"}</h1><p>{testPreview ? "זו בדיקה בלבד; אין תיאום, שמירה או תשלום במסגרת הבדיקה." : "מילוי הטופס ותשלום אינם אישור לפגישה."}</p><h2>תשלום לפגישת ההיכרות</h2><p>₪550 לכל ילד לפגישה ראשונה אחת. העברה בנקאית או מזומן יתואמו ישירות עם שלמה. לאחר אישור התשלום, אשלח קישור ליומן כדי שתוכלו לבחור זמן פנוי. הקישור נשלח ידנית.</p><a href="https://mrng.to/RQYMwyQ88C" target="_blank" rel="noreferrer">{testPreview ? "קישור תשלום אמיתי — אינו חלק מהבדיקה" : "לקישור התשלום הקיים"}</a></section>;
+  if (saved) return <section className={styles.form} aria-label={testPreview ? "בדיקה הושלמה" : "המידע התקבל"}><h1>{testPreview ? "בדיקה הושלמה — המידע לא נשלח ולא נשמר" : "המידע התקבל ונשמר"}</h1><p>{testPreview ? "זו בדיקה בלבד; אין תיאום, שמירה או תשלום במסגרת הבדיקה." : "מילוי הטופס ותשלום אינם אישור לפגישה."}</p><h2>תשלום למפגש הניסיון</h2><p>₪550 לכל ילד למפגש ניסיון ראשון. העברה בנקאית או מזומן יתואמו ישירות עם שלמה. לאחר תשלום מאומת, נתאם את המפגש ידנית או באמצעות קישור ליומן ששלמה ישלח.</p><p>משך מפגש הניסיון 60 דקות. לאחריו, פגישת Google Meet של 15 דקות עם שני ההורים המתאימים ככל האפשר; ובתום השבוע הראשון תיאום בדיקה נוסף בהסכמה.</p><a href="https://mrng.to/RQYMwyQ88C" target="_blank" rel="noreferrer">{testPreview ? "קישור תשלום אמיתי — אינו חלק מהבדיקה" : "לקישור התשלום הקיים"}</a></section>;
   return <form className={styles.form} onSubmit={submit}>
-    {testPreview && <aside role="alert"><strong>תצוגת בדיקה לשלמה בלבד; אין להזין מידע אמיתי על ילדים; אין צורך לשלם</strong></aside>}{opening && <aside className={styles.opening} aria-label="פתיחה אישית">{opening}</aside>}<header><h1>פנייה פרטית למשפחות</h1><p>העדפות לתיאום בלבד — אין בכך קביעת פגישה.</p></header>
+    {testPreview && <aside role="alert"><strong>תצוגת בדיקה לשלמה בלבד; אין להזין מידע אמיתי על ילדים; אין צורך לשלם</strong></aside>}<header><h1>מפגש ניסיון ראשון</h1><p>לאחר השיחה שלנו, מלאו את הפרטים לקראת מפגש הניסיון.</p></header>
     <fieldset disabled={attempted} className={styles.section}><legend>פרטי הפנייה</legend>
     <Section title="פרטי קשר"><Field label="שם ההורה" required><input name="parentName" required maxLength={160} /></Field><Field label="טלפון" required><input name="contactNumber" required maxLength={64} inputMode="tel" /></Field><Field label="שפת קשר"><Dropdown name="preferredLanguage" ariaLabel="שפת קשר" options={[["he","עברית"],["en","English"]]} /></Field><Field label="דוא״ל (רשות)"><input name="email" type="email" maxLength={254} /></Field></Section>
     {children.map((child, index) => <Section key={child.childSlotId} title={`ילד/ה ${index + 1}`}><Field label="שם פרטי" required><input value={child.firstName} required maxLength={120} onChange={event => setChildren(items => items.map((item, i) => i === index ? { ...item, firstName: event.target.value } : item))} /></Field><Field label="גיל" required><Dropdown name={`age-${index}`} ariaLabel={`גיל ילד/ה ${index + 1}`} required options={Array.from({length:51},(_,index)=>{const age=index/2;return [String(age),String(age)] as const})} value={child.age===null?"":String(child.age)} placeholder="בחירת גיל" onChange={value=>setChildren(items=>items.map((item,i)=>i===index?{...item,age:Number(value)}:item))}/></Field></Section>)}
     <Section title="מיקום וזמינות"><p>השעות הן לפי שעון ישראל (Asia/Jerusalem). שלמה יאשר איתכם את המועד, המיקום והנחיות ההגעה באופן אישי.</p><Field label="מיקום מועדף" required><input name="locationPreference" required maxLength={500} placeholder="למשל: לתאם מיקום עם שלמה" /></Field><Field label="חניה או נגישות"><textarea name="arrivalNeeds" maxLength={500} /></Field><Choice name="days" title="ימים נוחים" values={days} required /><Choice name="timeWindows" title="שעות נוחות" values={windows} required /><Field label="העדפה נוספת"><textarea name="availabilityNote" maxLength={1000} /></Field></Section>
     <Section title="פרטים נוספים"><Field label="מידע פרטי רלוונטי (רשות)"><textarea name="privateContext" maxLength={4000} /></Field><Field label="הורה נוסף"><Dropdown name="cp01" ariaLabel="הורה נוסף" options={[["not_now","לא כרגע"],["joint","פנייה משותפת"],["separate","בנפרד"],["discuss_privately","לדבר בפרטיות"]]} /></Field><p>בחירה זו אינה שולחת פנייה או הזמנה להורה נוסף ואינה מעניקה לו גישה למידע.</p><Field label="אפשר לפנות אליי?"><Dropdown name="contact" ariaLabel="אפשר לפנות אליי" options={[["yes","כן"],["no","לא"]]} /></Field><Field label="נדרשת התאמת נגישות?"><Dropdown name="access" ariaLabel="נדרשת התאמת נגישות" options={[["no","לא"],["yes","כן"]]} /></Field></Section>
-    <Section title="הסכמה">{activeConsent.displayText.map(text => <p key={text}>{text}</p>)}{activeConsent.acknowledgements.map((text, index) => <label className={styles.check} key={text}><input name={`consent-${index}`} type="checkbox" required /> <span>{text}<RequiredMarker /></span></label>)}<Field label="שם החותם/ת" required><input name="signerName" required maxLength={160} /></Field></Section>
+    <Section title="הסכמה"><p id="consent-instruction">יש לגלול ולקרוא את כל נוסח ההסכמה לפני אישור.</p><div className={styles.consentBox} tabIndex={0} aria-labelledby="consent-instruction">{activeConsent.displayText.map(text => <p key={text}>{text}</p>)}<ol>{activeConsent.acknowledgements.map(text => <li key={text}>{text}</li>)}</ol></div><label className={styles.check}><input name="consent" type="checkbox" required /> <span>קראתי את הנוסח ואני מסכים/ה לשלוש ההצהרות הממוספרות לעיל<RequiredMarker /></span></label><Field label="שם החותם/ת" required><input name="signerName" required maxLength={160} /></Field></Section>
     </fieldset>
     <button className={styles.submit} disabled={submitting} type="submit">{submitting ? "שומרים…" : testPreview ? "סיום בדיקה ללא שליחה" : attempted ? "בדיקה ושליחה חוזרת" : "שליחה"}</button><p role="status">{status}</p>
   </form>;
