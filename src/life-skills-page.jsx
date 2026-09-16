@@ -65,7 +65,7 @@ const ICONS = {
 const META = {
   he: {
     title: 'כישורי חיים | טיפול רגשי לבנים בגילאי 8–12',
-    description: 'טיפול רגשי לבנים בגילאי 8–12, בשילוב הדרכת הורים מעשית.',
+    description: 'טיפול רגשי לבנים בגילאי 8–12, עם דוחות התקדמות חודשיים להורים.',
     preview: 'תצוגה לבדיקת האתר — לא אתר שפורסם.',
     benefitsLabel: 'מה הילד מפתח',
     approachLabel: 'הגישה של כישורי חיים',
@@ -77,13 +77,13 @@ const META = {
     heroAlt: 'שלמה דרטלר וילד יושבים יחד על חומת אבן ומביטים זה בזה',
     founderAlt: 'שלמה דרטלר יושב על הדשא עם קבוצת ילדים',
     navLabel: 'ניווט ראשי',
-    terms: ['תנאים מעשיים ופרטיות', 'ביטול או שינוי מועד: בהודעה של לפחות 24 שעות, נשמר זיכוי למפגש ומתאמים מועד חלופי לפי זמינות משותפת. בהודעה קצרה יותר או באי־הגעה, מנוצל זיכוי אחד ללא החלפה אוטומטית, בכפוף לזכויות מחייבות ולשיקול דעת במקרים חריגים. מומלץ שבפנייה הראשונה יופיעו רק גיל, אזור כללי, זמינות ותיאור כללי של הצורך, בלי שמות ילדים או פרטים רגישים. שיחת המעקב השבועית בת 15 הדקות כלולה; פגישה ממושכת יותר עם ההורים מחייבת הסכמה נפרדת מראש.'],
+    terms: ['תנאים מעשיים ופרטיות', 'ביטול או שינוי מועד: בהודעה של לפחות 24 שעות, נשמר זיכוי למפגש ומתאמים מועד חלופי לפי זמינות משותפת. בהודעה קצרה יותר או באי־הגעה, מנוצל זיכוי אחד ללא החלפה אוטומטית, בכפוף לזכויות מחייבות ולשיקול דעת במקרים חריגים. מומלץ שבפנייה הראשונה יופיעו רק גיל, אזור כללי, זמינות ותיאור כללי של הצורך, בלי שמות ילדים או פרטים רגישים. במסגרת ליווי מתמשך נמסרים להורים דוחות התקדמות חודשיים.'],
     termsLink: 'תנאי השירות',
     privacyLink: 'פרטיות',
   },
   en: {
     title: 'Life Skills | Emotional Therapy for Boys Ages 8–12',
-    description: 'Emotional therapy for boys ages 8–12, together with practical parent guidance.',
+    description: 'Emotional therapy for boys ages 8–12, with monthly progress reports for parents.',
     preview: 'Website review preview — not a published service page.',
     benefitsLabel: 'What a child develops',
     approachLabel: 'The Life Skills approach',
@@ -95,7 +95,7 @@ const META = {
     heroAlt: 'Shlomo Dratler and a boy seated together on a stone wall, looking at each other',
     founderAlt: 'Shlomo Dratler seated on the grass with a group of children',
     navLabel: 'Main navigation',
-    terms: ['Practical terms and privacy', 'Cancellation or rescheduling: with at least 24 hours’ notice, the session credit is retained and an alternative is arranged subject to mutual availability. With shorter notice or non-attendance, one credit is used without automatic replacement, subject to applicable rights and discretion in exceptional cases. In a first message, include only age, general area, availability and a general description of the need—without children’s names or sensitive details. The weekly 15-minute check-in is included; a longer parent meeting requires separate prior agreement.'],
+    terms: ['Practical terms and privacy', 'Cancellation or rescheduling: with at least 24 hours’ notice, the session credit is retained and an alternative is arranged subject to mutual availability. With shorter notice or non-attendance, one credit is used without automatic replacement, subject to applicable rights and discretion in exceptional cases. In a first message, include only age, general area, availability and a general description of the need—without children’s names or sensitive details. During ongoing support, parents receive monthly progress reports.'],
     termsLink: 'Terms',
     privacyLink: 'Privacy',
   },
