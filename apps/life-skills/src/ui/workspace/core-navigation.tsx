@@ -1,37 +1,13 @@
-import type { ReactNode } from "react";
-import type { Locale } from "../../lib/locale.ts";
-
-type Role = "parent" | "practitioner";
-const copy = {
-  en: { brand: "Life Skills", practitioner: "Practitioner workspace", parent: "Family workspace", skip: "Skip to content", nav: "Application navigation", language: "עברית", unavailable: "This private workspace is unavailable. Sign in with an authorized account and try again.", retry: "Try again" },
-  he: { brand: "Life Skills", practitioner: "מרחב המטפל", parent: "מרחב המשפחה", skip: "דילוג לתוכן", nav: "ניווט באפליקציה", language: "English", unavailable: "המרחב הפרטי אינו זמין. יש להתחבר באמצעות חשבון מורשה ולנסות שוב.", retry: "ניסיון נוסף" },
-} as const;
-
-const items = {
-  practitioner: [
-    ["app/calendar", "יומן", "Calendar"], ["home-practice", "תרגול ביתי", "Home practice"],
-    ["updates", "עדכוני הורים", "Parent updates"], ["progress", "סקירות", "Reviews"],
-    ["forms", "טפסים", "Forms"], ["payments", "תשלומים", "Payments"],
-  ],
-  parent: [
-    ["family", "בית", "Home"], ["home-practice", "תרגול", "Practice"],
-    ["updates", "עדכונים", "Updates"], ["family/schedule", "לוח זמנים", "Schedule"],
-    ["resources", "משאבים", "Resources"], ["forms", "טפסים", "Forms"],
-  ],
-} as const;
-
-export function CoreNavigation({ locale, role, children }: { locale: Locale; role: Role; children: ReactNode }) {
-  const t = copy[locale], links = items[role];
-  return <div className={`lsw lsw-shell lsw-shell--${role}`} lang={locale} dir={locale === "he" ? "rtl" : "ltr"}>
-    <a className="lsw-skip" href="#lsw-main">{t.skip}</a>
-    <header className="lsw-topbar"><div className="lsw-brand"><span aria-hidden="true" className="lsw-brand-mark">L</span><div><b translate="no" dir="ltr">{t.brand}</b><span>{role === "parent" ? t.parent : t.practitioner}</span></div></div><div className="lsw-header-actions"><a href={`/${locale === "he" ? "en" : "he"}/${role === "parent" ? "family" : "app"}`} lang={locale === "he" ? "en" : "he"}>{t.language}</a></div></header>
-    {role === "practitioner" ? <aside className="lsw-sidebar"><p className="lsw-eyebrow">{t.practitioner}</p><nav aria-label={t.nav}>{links.map(([path, he, en]) => <a key={path} href={`/${locale}/${path}`}>{locale === "he" ? he : en}</a>)}</nav></aside> : <nav className="lsw-parent-nav" aria-label={t.nav}>{links.slice(0, 4).map(([path, he, en]) => <a key={path} href={`/${locale}/${path}`}>{locale === "he" ? he : en}</a>)}</nav>}
-    <div className="lsw-workarea"><div id="lsw-main" tabIndex={-1} className="lsw-main">{children}</div></div>
-    <nav className="lsw-mobile-nav" aria-label={t.nav}>{links.slice(0, 4).map(([path, he, en]) => <a key={path} href={`/${locale}/${path}`}>{locale === "he" ? he : en}</a>)}</nav>
-  </div>;
-}
-
-export function PrivateWorkspaceUnavailable({ locale, role }: { locale: Locale; role: Role }) {
-  const t = copy[locale];
-  return <div className="lsw" lang={locale} dir={locale === "he" ? "rtl" : "ltr"}><main className="lsw-main"><section className="lsw-card" role="status"><h1>{role === "parent" ? t.parent : t.practitioner}</h1><p>{t.unavailable}</p><a className="lsw-button lsw-button--secondary" href={`/${locale}/${role === "parent" ? "family" : "app"}`}>{t.retry}</a></section></main></div>;
-}
+"use client";
+import type {ReactNode} from "react";import {usePathname,useSearchParams} from "next/navigation";import type {Locale} from "../../lib/locale.ts";
+type Role="parent"|"practitioner";type Item={href:string;en:string;he:string};type Section={en:string;he:string;items:Item[]};
+const copy={en:{brand:"Life Skills",practitioner:"Practitioner workspace",parent:"Family workspace",skip:"Skip to content",nav:"Application navigation",language:"עברית",menu:"Menu",account:"Account",settings:"Settings",notifications:"Notification preferences",unavailable:"This private workspace is unavailable. Sign in with an authorized account and try again.",retry:"Try again"},he:{brand:"Life Skills",practitioner:"מרחב המטפל",parent:"מרחב המשפחה",skip:"דילוג לתוכן",nav:"ניווט באפליקציה",language:"English",menu:"תפריט",account:"חשבון",settings:"הגדרות",notifications:"העדפות התראות",unavailable:"המרחב הפרטי אינו זמין. יש להתחבר באמצעות חשבון מורשה ולנסות שוב.",retry:"ניסיון נוסף"}} as const;
+const parent:Item[]=[{href:"family/schedule",en:"Calendar",he:"יומן"},{href:"family/practice",en:"Practice",he:"תרגול"},{href:"family/feedback",en:"Feedback",he:"משוב"},{href:"family/resources",en:"Forms & resources",he:"טפסים ומשאבים"}];
+const practitioner:Section[]=[{en:"Today",he:"היום",items:[{href:"app/calendar",en:"Calendar",he:"יומן"}]},{en:"Family work",he:"עבודה עם משפחות",items:[{href:"app/practice",en:"Practice",he:"תרגול"},{href:"app/feedback",en:"Feedback",he:"משוב"}]},{en:"Other tools",he:"כלים נוספים",items:[{href:"app/resources",en:"Resources",he:"משאבים"},{href:"app/forms",en:"Forms",he:"טפסים"},{href:"app/payments",en:"Payments",he:"תשלומים"}]}];
+const valid=(v:string|null):v is string=>Boolean(v&&/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v));
+export function workspaceHref(locale:Locale,path:string,caseId?:string|null){return "/"+locale+"/"+path+(valid(caseId??null)?"?caseId="+encodeURIComponent(caseId as string):"");}
+function Links({items,locale,pathname,caseId}:{items:Item[];locale:Locale;pathname:string;caseId:string|null}){return <>{items.map(item=>{const active=pathname==="/"+locale+"/"+item.href;return <a key={item.href} href={workspaceHref(locale,item.href,caseId)} aria-current={active?"page":undefined}>{locale==="he"?item.he:item.en}</a>;})}</>}
+function Account({locale,role}:{locale:Locale;role:Role}){const t=copy[locale],path=role==="parent"?"family/settings":"app/settings";return <details className="lsw-account-menu"><summary aria-label={t.account}><span className="lsw-avatar" aria-hidden="true">●</span></summary><div className="lsw-account-menu__panel"><p>{t.account}</p><a href={"/"+locale+"/"+path}>{t.settings}</a><a href={"/"+locale+"/"+path+"/notifications"}>{t.notifications}</a></div></details>}
+function Drawer({locale,role,pathname,caseId}:{locale:Locale;role:Role;pathname:string;caseId:string|null}){const t=copy[locale],items=role==="parent"?parent:practitioner.flatMap(x=>x.items);return <details className="lsw-mobile-drawer"><summary>{t.menu}<span aria-hidden="true">⌄</span></summary><nav aria-label={t.nav}><Links items={items} locale={locale} pathname={pathname} caseId={caseId}/></nav></details>}
+export function CoreNavigation({locale,role,children}:{locale:Locale;role:Role;children:ReactNode}){const t=copy[locale],pathname=usePathname(),query=useSearchParams(),caseId=query.get("caseId"),search=query.toString(),other=pathname.replace(/^\/(he|en)(?=\/|$)/,"/"+(locale==="he"?"en":"he"))+(search?"?"+search:"");return <div className={"lsw lsw-shell lsw-shell--"+role} lang={locale} dir={locale==="he"?"rtl":"ltr"}><a className="lsw-skip" href="#lsw-main">{t.skip}</a><header className="lsw-topbar"><div className="lsw-brand"><div><b translate="no" dir="ltr">{t.brand}</b><span>{role==="parent"?t.parent:t.practitioner}</span></div></div><div className="lsw-header-actions"><a href={other} lang={locale==="he"?"en":"he"}>{t.language}</a><Account locale={locale} role={role}/><Drawer locale={locale} role={role} pathname={pathname} caseId={caseId}/></div></header>{role==="practitioner"?<aside className="lsw-sidebar"><p className="lsw-eyebrow">{t.practitioner}</p><nav className="lsw-nav-sections" aria-label={t.nav}>{practitioner.map(section=><details className="lsw-nav-section" key={section.en} open={section.items.some(item=>pathname==="/"+locale+"/"+item.href)}><summary>{locale==="he"?section.he:section.en}<span aria-hidden="true">⌄</span></summary><div><Links items={section.items} locale={locale} pathname={pathname} caseId={caseId}/></div></details>)}</nav></aside>:<nav className="lsw-parent-nav" aria-label={t.nav}><Links items={parent} locale={locale} pathname={pathname} caseId={caseId}/></nav>}<div className="lsw-workarea"><div id="lsw-main" tabIndex={-1} className="lsw-main">{children}</div></div></div>}
+export function PrivateWorkspaceUnavailable({locale,role}:{locale:Locale;role:Role}){const t=copy[locale];return <div className="lsw" lang={locale} dir={locale==="he"?"rtl":"ltr"}><main className="lsw-main"><section className="lsw-card" role="status"><h1>{role==="parent"?t.parent:t.practitioner}</h1><p>{t.unavailable}</p><a className="lsw-button lsw-button--secondary" href={"/"+locale+"/"+(role==="parent"?"family":"app")}>{t.retry}</a></section></main></div>}
