@@ -28,6 +28,13 @@ class Page(HTMLParser):
 
 
 class StaticTests(unittest.TestCase):
+    def test_monthly_reports_replace_recurring_parent_call_offer(self):
+        for locale, heading in [('en', 'Monthly progress reports'), ('he', 'דוחות התקדמות חודשיים')]:
+            self.assertEqual(self.copy[locale]['parent_guidance']['heading'], heading)
+        current = json.dumps({'en': self.copy['en'], 'he': self.copy['he']}, ensure_ascii=False) + self.react + self.text
+        for obsolete in ['weekly 15-minute', 'fifteen-minute', '15 דקות', '15 הדקות', 'Parent guidance and practice at home', 'הדרכת הורים ותרגול בבית']:
+            self.assertNotIn(obsolete, current)
+
     @classmethod
     def setUpClass(cls):
         cls.text = (ROOT / "index.html").read_text(encoding="utf-8")
