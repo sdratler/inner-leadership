@@ -9,7 +9,8 @@ export const languages = ["he", "en"] as const;
 
 const nonBlank = (max: number) => z.string().trim().min(1).max(max);
 const childSchema = z.strictObject({
-  stableChildId: z.string().trim().regex(/^[A-Za-z0-9_-]{8,128}$/),
+  /** This is an opaque slot minted on the invitation, never an administrative child id. */
+  childSlotId: z.string().uuid(),
   firstName: nonBlank(120),
   age: z.number().int().min(0).max(25),
 });
@@ -21,20 +22,27 @@ export const preEnrollmentSchema = z.strictObject({
   email: z.string().trim().email().max(254).optional().or(z.literal("")),
   children: z.array(childSchema).min(1).max(8),
   locationPreference: nonBlank(500),
-  arrivalAvailability: nonBlank(500),
-  availability: nonBlank(1_000),
+  arrivalNeeds: z.string().trim().max(500).optional().or(z.literal("")),
+  availableDays: z.array(z.enum(["sun", "mon", "tue", "wed", "thu", "fri", "sat"])).min(1).max(7),
+  timeWindows: z.array(z.enum(["morning", "afternoon", "evening"])).min(1).max(3),
+  availabilityNote: z.string().trim().max(1_000).optional().or(z.literal("")),
   privateContext: z.string().trim().max(4_000).optional().or(z.literal("")),
   cp01: z.enum(cp01Values),
   willingToBeContacted: z.enum(contactValues),
   accessSupportNeeded: z.enum(contactValues),
-  consentPolicyVersion: nonBlank(80),
-  consentPolicyHash: z.string().trim().regex(/^[a-f0-9]{64}$/),
   consentAcknowledged: z.literal(true),
   signerName: nonBlank(160),
 });
 export type PreEnrollmentInput = z.infer<typeof preEnrollmentSchema>;
 
-export const policyTextHash = (text: string): string => createHash("sha256").update(text, "utf8").digest("hex");
+/** Server-owned accepted wording. The request body can acknowledge it, but cannot select it. */
+export const intakeConsent = Object.freeze({
+  version: "P1-2026-09-16",
+  text: "המידע נמסר לצורך תיאום פגישת היכרות בלבד ונשמר במערכת הפרטית של כישורי חיים. הוא אינו קובע פגישה, אינו יוצר חשבון ואינו מאשר חיוב חוזר. שלמה יצור קשר לאישור זמן ומקום.",
+});
+export const intakeConsentHash = policyTextHash(intakeConsent.text);
+
+export function policyTextHash(text: string): string { return createHash("sha256").update(text, "utf8").digest("hex"); }
 
 export function parsePreEnrollment(value: unknown): PreEnrollmentInput {
   return preEnrollmentSchema.parse(value);
