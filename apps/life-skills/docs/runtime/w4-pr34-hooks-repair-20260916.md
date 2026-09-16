@@ -26,3 +26,11 @@ The gallery evidence is synthetic UI evidence only. It does not claim an authent
 ## Release fence
 
 The canonical private target remains Railway project `life-skills-sys034-staging-0907`, service `life-skills-private-staging`, with its dedicated PostgreSQL service. This repair has not crossed the existing merge, deployment, migration, restore, or real-data release gates.
+
+## Independent candidate readback
+
+- Current PR candidate: `5f350b7bbcac34aedea8d94d2f97ce2ac3678f05` on `codex/app-ux-w4-20260914`.
+- Current remote main readback: `668b0722c792a670e386ccd28f0076b50303ab6a` (fetched 2026-09-16). `git merge-tree --write-tree` produced a merged tree without conflict output, so the candidate is textually mergeable against that snapshot; normal independent review/checks remain required.
+- Clean nominated checkout: `C:/Users/User/Documents/Codex/2026-09-11/read-the-complete-life-skills-app/inner-leadership-w4-clean-20260916` (detached at the candidate SHA, clean worktree).
+- Reproducible commands from `apps/life-skills`: `npm ci --ignore-scripts --no-audit --no-fund`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, then the existing isolated/locked/UI suites. Dependency restoration in the clean checkout was interrupted after a bounded wait without a completion receipt; the passing results in the original isolated checkout remain the authoritative execution evidence above.
+- Remaining gates: coordinator review, serialized main integration, then separate Railway deploy/migration/real-data acceptance approvals. No merge, deploy, provider or database action was taken here.
