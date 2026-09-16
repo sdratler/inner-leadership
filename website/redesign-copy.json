@@ -9,7 +9,7 @@
       "Render one language at a time: Hebrew RTL, English LTR.",
       "Use the approved Hebrew leaf logo unchanged in both languages. On English pages, place the live words Life Skills beside that Hebrew logo; do not add an English tagline.",
       "Keep the hero headline to two or three readable lines. The hero body is one short service sentence.",
-      "Show three hero benefits, one concise public approach section, parent guidance immediately after it, all twelve illustrated teaching modules in a continuous scroll, the founder, six FAQs and one closing CTA.",
+      "Show three hero benefits, one concise public approach section, monthly progress reports immediately after it, all twelve illustrated teaching modules in a continuous scroll, the founder, six FAQs and one closing CTA.",
       "Render all twelve themes visibly in sequence; the four teaching areas below are source groupings only, never four expandable cards. Internal keys W01–W12 must never be visible page labels.",
       "Pricing appears only inside the FAQ. Do not create a price card, pricing band or price-focused hero.",
       "Keep the central-Israel line and further logistics in the existing approved contact and FAQ surfaces.",
@@ -183,11 +183,11 @@
     },
       "hero": {
         "headline": "בכל ילד יש גיבור.",
-        "body": "טיפול רגשי לבנים בגילאי 8–12. מפגשים אישיים והדרכת הורים מעשית.",
+        "body": "טיפול רגשי לבנים בגילאי 8–12. מפגשים אישיים ודוחות התקדמות חודשיים להורים.",
         "service_title": "טיפול רגשי לבנים",
         "service_details": [
           "בגילאי 8–12",
-          "מפגשים אישיים והדרכת הורים מעשית."
+          "מפגשים אישיים ודוחות התקדמות חודשיים להורים."
         ]
     },
     "benefits": {
@@ -564,11 +564,11 @@
       }
     },
     "parent_guidance": {
-      "heading": "הדרכת הורים ותרגול בבית",
-      "body": "בשיחה שבועית של 15 דקות חוזרים לדוגמה מהבית: מה ניסיתם, איך הילד הגיב ומה כדאי להתאים. בוחרים תרגול קטן בשגרה — בקשה ברורה, גבול עם הקשבה או אחריות משותפת — ומבררים איך לעזור בלי לקחת הכול לידיים.",
+      "heading": "דוחות התקדמות חודשיים",
+      "body": "במסגרת ליווי מתמשך ההורים מקבלים דוח התקדמות חודשי עם תצפיות מעשיות מהמפגשים והצעות לתרגול בבית. הדוח מסכם את העבודה עם הילד ואת הצעדים הרלוונטיים להמשך.",
       "source_sections": [
         "Program Method",
-        "Parent guidance integrated throughout the twelve weeks"
+        "Monthly progress reports during ongoing support"
       ],
       "copy_status": "PROPOSED_for_preview"
     },
@@ -599,7 +599,7 @@
         {
           "id": "included",
           "question": "מה כלול בתהליך?",
-          "answer": "לצד המפגש עם הילד: שיחת מעקב שבועית בת 15 דקות עם ההורים, תרגול מותאם לבית ומשוב על דוגמאות רלוונטיות שההורים מביאים."
+          "answer": "במסגרת ליווי מתמשך, לצד המפגשים עם הילד, ההורים מקבלים דוחות התקדמות חודשיים עם תצפיות מעשיות והצעות לתרגול בבית."
         },
         {
           "id": "pace",
@@ -619,7 +619,7 @@
         {
           "id": "individual_service",
           "question": "למי מיועד השירות, והאם המפגשים אישיים?",
-          "answer": "זהו טיפול רגשי אישי לבנים בגילאי 8–12, בשילוב הדרכת הורים מעשית. העבודה מותאמת לילד ולמשפחה."
+          "answer": "זהו טיפול רגשי אישי לבנים בגילאי 8–12, עם דוחות התקדמות חודשיים להורים במסגרת ליווי מתמשך. העבודה מותאמת לילד ולמשפחה."
         }
       ]
     },
@@ -673,11 +673,11 @@
     },
       "hero": {
         "headline": "There’s a hero in every child.",
-        "body": "Emotional therapy for boys ages 8–12. Individual sessions and practical parent guidance.",
+        "body": "Emotional therapy for boys ages 8–12. Individual sessions and monthly progress reports for parents.",
         "service_title": "Emotional therapy for boys",
         "service_details": [
           "Ages 8–12",
-          "Individual sessions and practical parent guidance."
+          "Individual sessions and monthly progress reports for parents."
         ]
     },
     "benefits": {
@@ -1054,11 +1054,11 @@
       }
     },
     "parent_guidance": {
-      "heading": "Parent guidance and practice at home",
-      "body": "A weekly 15-minute conversation starts with a real example: what you tried, how your child responded and what needs adjusting. Choose a small everyday practice — a clear request, a boundary with listening or a shared responsibility — and work out how to help without taking over.",
+      "heading": "Monthly progress reports",
+      "body": "During ongoing support, parents receive a monthly progress report with practical observations from the sessions and suggestions for practice at home. The report summarizes the work with your child and relevant next steps.",
       "source_sections": [
         "Program Method",
-        "Parent guidance integrated throughout the twelve weeks"
+        "Monthly progress reports during ongoing support"
       ],
       "copy_status": "PROPOSED_for_preview"
     },
@@ -1089,7 +1089,7 @@
         {
           "id": "included",
           "question": "What is included?",
-          "answer": "Alongside the child’s session: a weekly 15-minute parent check-in, tailored home practice and feedback on relevant examples parents bring."
+          "answer": "During ongoing support, alongside your child’s sessions, parents receive monthly progress reports with practical observations and suggestions for practice at home."
         },
         {
           "id": "pace",
@@ -1109,7 +1109,7 @@
         {
           "id": "individual_service",
           "question": "Who is the service for, and are sessions individual?",
-          "answer": "The service is individual emotional therapy for boys ages 8–12, together with practical parent guidance. The work is adapted to the child and family."
+          "answer": "The service is individual emotional therapy for boys ages 8–12, with monthly progress reports for parents during ongoing support. The work is adapted to the child and family."
         }
       ]
     },

@@ -7,6 +7,8 @@ import { VisibilityControl } from './practice.tsx';
 import { NoticeReceipt,CreditBalance } from './appointments.tsx';
 import { localHref,tabStep,validParentSelection,checkedPage } from './model.ts';
 import { uiCopy,formatInstant } from './i18n.ts';
+import { workspaceHref } from './core-navigation.tsx';
+import { updatePreference, type Preference } from './account-settings.tsx';
 import messages from './messages.json';
 describe('LS-020 real React rendering and foundation interfaces',()=>{
  it('keeps translation keys identical',()=>expect(Object.keys(messages.he).sort()).toEqual(Object.keys(messages.en).sort()));
@@ -31,5 +33,7 @@ describe('LS-020 real React rendering and foundation interfaces',()=>{
  it('keeps native Hebrew roving tab order',()=>{expect(tabStep(0,'ArrowLeft',3,true)).toBe(1);expect(tabStep(0,'ArrowRight',3,true)).toBe(2);});
  it('rejects empty or unauthorized assignee selections',()=>{expect(validParentSelection([],['a'])).toBe(false);expect(validParentSelection(['b'],['a'])).toBe(false);expect(validParentSelection(['a'],['a'])).toBe(true);});
  it('rejects oversized rendered pages',()=>expect(()=>checkedPage({items:Array.from({length:51},(_,i)=>i),page:1,totalPages:1})).toThrow());
+ it('keeps a valid selected-child context in app navigation',()=>{const id='123e4567-e89b-42d3-a456-426614174000';expect(workspaceHref('he','family/schedule',id)).toBe('/he/family/schedule?caseId='+id);expect(workspaceHref('he','family/schedule','invalid')).toBe('/he/family/schedule');});
+ it('updates one notification choice without dropping a saved row',()=>{const rows:Preference[]=[{eventType:'practice_due',channel:'email',enabled:false,locale:'en',timezone:'Asia/Jerusalem',quietStart:null,quietEnd:null},{eventType:'new_reply',channel:'push',enabled:true,locale:'he',timezone:'Asia/Jerusalem',quietStart:'20:00',quietEnd:'07:00'}];const next=updatePreference(rows,'practice_due','email',true);expect(next[0]?.enabled).toBe(true);expect(next[1]).toEqual(rows[1]);});
  it('uses the foundation timestamp validator',()=>{expect(()=>formatInstant('2026-09-06T09:00:00','en')).toThrow();expect(()=>formatInstant('2026-02-30T09:00:00Z','en')).toThrow();});
 });

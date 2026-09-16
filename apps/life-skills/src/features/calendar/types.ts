@@ -29,6 +29,8 @@ export interface Attendance {
 }
 export interface AppointmentView extends Appointment {
  notice: Notice | null; attendance: Attendance | null;
+ /** A server-authorized Google Calendar conference entry point, when this appointment is mapped to one. */
+ conferenceUri?: string | null;
  /** Never derived from payment consumption; true only for an attended individual appointment. */
  countsAsChildSession: boolean;
  checkinNeedsReview: boolean;
