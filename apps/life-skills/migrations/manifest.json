@@ -38,5 +38,9 @@
   {
     "name": "0090_ls_parents_first.sql",
     "sha256": "75f60bb1db7e78896fe083ef56c2828f1428f6e70417435ba154575d0043f182"
+  },
+  {
+    "name": "0091_ls_pre_enrollment.sql",
+    "sha256": "b1a58dcd33390d1dc8a8c1d87a508010895463cbc8274c6e72c28419189507e9"
   }
 ]
