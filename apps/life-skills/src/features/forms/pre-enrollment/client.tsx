@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import styles from "./client.module.css";
 
 export type PublicConsent = Readonly<{ version: string; hash: string; sourceHashes: readonly string[]; displayText: readonly string[]; acknowledgements: readonly string[] }>;
-type Child = { childSlotId: string; firstName: string; age: number };
+type Child = { childSlotId: string; firstName: string; age: number | null };
 type Exchange = { ok: true; data: { childSlotIds: string[]; consent: PublicConsent } } | { ok: false };
 const days = [["sun", "א׳"], ["mon", "ב׳"], ["tue", "ג׳"], ["wed", "ד׳"], ["thu", "ה׳"], ["fri", "ו׳"], ["sat", "ש׳"]] as const;
 const windows = [["morning", "בוקר"], ["afternoon", "צהריים"], ["evening", "ערב"]] as const;
@@ -30,10 +30,10 @@ export function PreEnrollmentForm({ consent }: { consent: PublicConsent | null }
     tokenRef.current = value;
     window.history.replaceState(null, "", window.location.pathname);
     void fetch("/api/intake", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "exchange", token: value }) })
-      .then(response => response.json() as Promise<Exchange>)
+      .then(response => { if (!response.ok) throw new Error("unavailable"); return response.json() as Promise<Exchange>; })
       .then(result => {
         if (!result.ok || !Array.isArray(result.data.childSlotIds) || !result.data.consent) throw new Error("unavailable");
-        setChildren(result.data.childSlotIds.map(childSlotId => ({ childSlotId, firstName: "", age: 0 })));
+        setChildren(result.data.childSlotIds.map(childSlotId => ({ childSlotId, firstName: "", age: null })));
         setActiveConsent(result.data.consent);
         setReady(true);
       })
@@ -72,13 +72,12 @@ export function PreEnrollmentForm({ consent }: { consent: PublicConsent | null }
     <header><h1>פנייה פרטית למשפחות</h1><p>העדפות לתיאום בלבד — אין בכך קביעת פגישה.</p></header>
     <fieldset disabled={attempted} className={styles.section}><legend>פרטי הפנייה</legend>
     <Section title="פרטי קשר"><Field label="שם ההורה"><input name="parentName" required maxLength={160} /></Field><Field label="טלפון"><input name="contactNumber" required maxLength={64} inputMode="tel" /></Field><Field label="שפת קשר"><select name="preferredLanguage"><option value="he">עברית</option><option value="en">English</option></select></Field><Field label="דוא״ל (לא חובה)"><input name="email" type="email" maxLength={254} /></Field></Section>
-    {children.map((child, index) => <Section key={child.childSlotId} title={`ילד/ה ${index + 1}`}><Field label="שם פרטי"><input value={child.firstName} required maxLength={120} onChange={event => setChildren(items => items.map((item, i) => i === index ? { ...item, firstName: event.target.value } : item))} /></Field><Field label="גיל"><input type="number" min="0" max="25" value={child.age || ""} required onChange={event => setChildren(items => items.map((item, i) => i === index ? { ...item, age: Number(event.target.value) } : item))} /></Field></Section>)}
-    <Section title="מיקום וזמינות"><Field label="מיקום מועדף"><input name="locationPreference" required maxLength={500} placeholder="למשל: לתאם מיקום עם שלמה" /></Field><Field label="חניה או נגישות"><textarea name="arrivalNeeds" maxLength={500} /></Field><Choice name="days" title="ימים נוחים (חובה)" values={days} /><Choice name="timeWindows" title="שעות נוחות (חובה)" values={windows} /><Field label="העדפה נוספת"><textarea name="availabilityNote" maxLength={1000} /></Field></Section>
-    <Section title="פרטים נוספים"><Field label="מידע פרטי רלוונטי (לא חובה)"><textarea name="privateContext" maxLength={4000} /></Field><Field label="הורה נוסף"><select name="cp01"><option value="not_now">לא כרגע</option><option value="joint">פנייה משותפת</option><option value="separate">בנפרד</option><option value="discuss_privately">לדבר בפרטיות</option></select></Field><Field label="אפשר לפנות אליי?"><select name="contact"><option value="yes">כן</option><option value="no">לא</option></select></Field><Field label="נדרשת התאמת נגישות?"><select name="access"><option value="no">לא</option><option value="yes">כן</option></select></Field></Section>
+    {children.map((child, index) => <Section key={child.childSlotId} title={`ילד/ה ${index + 1}`}><Field label="שם פרטי"><input value={child.firstName} required maxLength={120} onChange={event => setChildren(items => items.map((item, i) => i === index ? { ...item, firstName: event.target.value } : item))} /></Field><Field label="גיל"><input type="number" min="0" max="25" value={child.age ?? ""} required onChange={event => setChildren(items => items.map((item, i) => i === index ? { ...item, age: event.target.value === "" ? null : Number(event.target.value) } : item))} /></Field></Section>)}
+    <Section title="מיקום וזמינות"><p>השעות הן לפי שעון ישראל (Asia/Jerusalem). שלמה יאשר איתכם את המועד, המיקום והנחיות ההגעה באופן אישי.</p><Field label="מיקום מועדף"><input name="locationPreference" required maxLength={500} placeholder="למשל: לתאם מיקום עם שלמה" /></Field><Field label="חניה או נגישות"><textarea name="arrivalNeeds" maxLength={500} /></Field><Choice name="days" title="ימים נוחים (חובה)" values={days} /><Choice name="timeWindows" title="שעות נוחות (חובה)" values={windows} /><Field label="העדפה נוספת"><textarea name="availabilityNote" maxLength={1000} /></Field></Section>
+    <Section title="פרטים נוספים"><Field label="מידע פרטי רלוונטי (לא חובה)"><textarea name="privateContext" maxLength={4000} /></Field><Field label="הורה נוסף"><select name="cp01"><option value="not_now">לא כרגע</option><option value="joint">פנייה משותפת</option><option value="separate">בנפרד</option><option value="discuss_privately">לדבר בפרטיות</option></select></Field><p>בחירה זו אינה שולחת פנייה או הזמנה להורה נוסף ואינה מעניקה לו גישה למידע.</p><Field label="אפשר לפנות אליי?"><select name="contact"><option value="yes">כן</option><option value="no">לא</option></select></Field><Field label="נדרשת התאמת נגישות?"><select name="access"><option value="no">לא</option><option value="yes">כן</option></select></Field></Section>
     <Section title="הסכמה">{activeConsent.displayText.map(text => <p key={text}>{text}</p>)}{activeConsent.acknowledgements.map((text, index) => <label className={styles.check} key={text}><input name={`consent-${index}`} type="checkbox" required /> {text}</label>)}<Field label="שם החותם/ת"><input name="signerName" required maxLength={160} /></Field></Section>
     </fieldset>
     <button disabled={submitting} type="submit">{submitting ? "שומרים…" : attempted ? "בדיקה ושליחה חוזרת" : "שליחה"}</button><p role="status">{status}</p>
-    {saved && <section className={styles.payment} aria-label="תשלום"><h2>תשלום לפגישת ההיכרות</h2><p>₪550 לפגישת היכרות אחת. העברה בנקאית או מזומן יתואמו בערוץ מאומת. שליחה או תשלום אינם אישור פגישה.</p><a href="https://mrng.to/RQYMwyQ88C" target="_blank" rel="noreferrer">לתשלום מאובטח</a></section>}
   </form>;
 }
 function Section({ title, children }: { title: string; children: React.ReactNode }) { return <fieldset className={styles.section}><legend>{title}</legend>{children}</fieldset>; }

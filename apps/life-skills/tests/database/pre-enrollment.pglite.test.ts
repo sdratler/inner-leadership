@@ -1,7 +1,7 @@
 import { readFile, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { randomUUID } from "node:crypto";
+import { basename, join, relative, resolve } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 import { SqlPreEnrollmentRepository } from "../../src/features/forms/pre-enrollment/repository.ts";
@@ -39,6 +39,11 @@ async function migrate(db: Db) {
   }
 }
 function payload(slots: readonly string[], overrides: Record<string, unknown> = {}) { return { parentName: "Synthetic Parent", contactNumber: "+972500000000", preferredLanguage: "he", email: "", children: slots.map((childSlotId, index) => ({ childSlotId, firstName: `Child ${index}`, age: 8 })), locationPreference: "synthetic-location", arrivalNeeds: "", availableDays: ["sun"], timeWindows: ["afternoon"], availabilityNote: "", privateContext: "private synthetic context", cp01: "not_now", willingToBeContacted: "yes", accessSupportNeeded: "no", consentAcknowledgements: [true, true, true], consentVersion: consent.version, consentHash: publicConsentHash(consent), signerName: "Synthetic Signer", ...overrides }; }
+async function cleanupMkdtemp(directory: string) {
+  const target = resolve(directory), temp = resolve(tmpdir()), pathWithinTemp = relative(temp, target);
+  if (pathWithinTemp === "" || pathWithinTemp.startsWith("..") || !basename(target).startsWith("ls-intake-")) throw new Error("unsafe intake test cleanup target");
+  await rm(target, { recursive: true, force: true });
+}
 
 describe("pre-enrollment PGlite", () => {
   it("uses real identity state for issue, exchange, submit, immutable history, authorization and durable ciphertext", async () => {
@@ -57,7 +62,7 @@ describe("pre-enrollment PGlite", () => {
       await expect(new PreEnrollmentStaffService(identity, ring, () => now).history(actor(otherPractitioner, "practitioner", otherWorkspace), first.receiptId)).rejects.toMatchObject({ code: "NOT_FOUND" });
       const row = await connection.query<{ payload_ciphertext: string }>("SELECT payload_ciphertext FROM ls_intake.pre_enrollment_receipts"); expect(row.rows[0]!.payload_ciphertext).not.toContain("Synthetic Parent");
       await connection.close(); const reopened = new (PGlite as unknown as PGliteCtor)(directory); expect((await reopened.query("SELECT receipt_id FROM ls_intake.pre_enrollment_receipts")).rows).toHaveLength(1); await reopened.close();
-    } finally { await rm(directory, { recursive: true, force: true }); }
+    } finally { await cleanupMkdtemp(directory); }
   }, 30_000);
 
   it("rejects expired, revoked, false or stale consent and preserves retry semantics", async () => {
@@ -71,8 +76,15 @@ describe("pre-enrollment PGlite", () => {
       const concurrent = await staff.issue(actor(practitioner, "practitioner"), "LS-LEAD-concurrent", 1), concurrentSlots = (await service.exchange(concurrent.token)).childSlotIds;
       const contenders = await Promise.allSettled([service.submit(concurrent.token, randomUUID(), payload(concurrentSlots)), service.submit(concurrent.token, randomUUID(), payload(concurrentSlots))]); expect(contenders.filter(result => result.status === "fulfilled")).toHaveLength(1); expect(contenders.filter(result => result.status === "rejected")).toHaveLength(1);
       const failing = await staff.issue(actor(practitioner, "practitioner"), "LS-LEAD-failure", 1), failingSlots = (await service.exchange(failing.token)).childSlotIds, repository = new SqlPreEnrollmentRepository(identity, workspace);
-      const failPersist: PreEnrollmentRepository = { transaction: async work => work(failPersist), findToken: digest => repository.findToken(digest), findReceiptByIdempotency: (digest, key) => repository.findReceiptByIdempotency(digest, key), insertReceipt: async () => { throw new Error("simulated persistence failure"); }, consumeToken: (digest, at) => repository.consumeToken(digest, at) };
-      await expect(new PreEnrollmentService(failPersist, ring, () => now, true, workspace).submit(failing.token, randomUUID(), payload(failingSlots))).rejects.toThrow("simulated persistence failure"); expect((await service.exchange(failing.token)).childSlotIds).toEqual(failingSlots);
+      const failAfterInsert: PreEnrollmentRepository = {
+        transaction: work => repository.transaction(async tx => {
+          const failedTx: PreEnrollmentRepository = { transaction: nested => tx.transaction(nested), findToken: digest => tx.findToken(digest), findReceiptByIdempotency: (digest, key) => tx.findReceiptByIdempotency(digest, key), insertReceipt: async row => { await tx.insertReceipt(row); throw new Error("simulated failure after receipt insert"); }, consumeToken: (digest, at) => tx.consumeToken(digest, at) };
+          return work(failedTx);
+        }),
+        findToken: digest => repository.findToken(digest), findReceiptByIdempotency: (digest, key) => repository.findReceiptByIdempotency(digest, key), insertReceipt: row => repository.insertReceipt(row), consumeToken: (digest, at) => repository.consumeToken(digest, at),
+      };
+      await expect(new PreEnrollmentService(failAfterInsert, ring, () => now, true, workspace).submit(failing.token, randomUUID(), payload(failingSlots))).rejects.toThrow("simulated failure after receipt insert");
+      const persisted = await connection.query<{ receiptCount: number; consumedAt: Date | null }>("SELECT count(r.receipt_id)::int AS \"receiptCount\",i.consumed_at AS \"consumedAt\" FROM ls_intake.pre_enrollment_invitations i LEFT JOIN ls_intake.pre_enrollment_receipts r ON r.workspace_id=i.workspace_id AND r.invitation_id=i.invitation_id WHERE i.workspace_id=$1 AND i.token_digest=$2 GROUP BY i.consumed_at", [workspace, createHash("sha256").update(failing.token).digest("hex")]); expect(persisted.rows).toEqual([{ receiptCount: 0, consumedAt: null }]); expect((await service.exchange(failing.token)).childSlotIds).toEqual(failingSlots); await expect(service.submit(failing.token, randomUUID(), payload(failingSlots))).resolves.toMatchObject({ duplicate: false });
     } finally { await connection.close(); }
   }, 30_000);
 });
