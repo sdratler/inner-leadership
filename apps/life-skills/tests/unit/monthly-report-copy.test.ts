@@ -21,6 +21,8 @@ describe("monthly report and intake-call copy", () => {
     const gallery = readFileSync(resolve(process.cwd(), "src/ui/workspace/gallery-frame.tsx"), "utf8");
     expect(gallery).toMatch(/monthly progress report/);
     expect(gallery).toMatch(/דוח התקדמות חודשי/);
+    expect(gallery).toMatch(/title=\{t\.monthlyReport\}/);
+    expect(gallery).not.toMatch(/title=\{t\.parentGuidance\}/);
     expect(gallery).not.toMatch(/15 minutes|15 דקות/);
   });
 });
