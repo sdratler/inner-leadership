@@ -76,7 +76,7 @@ export function PreEnrollmentForm({ consent, testPreview = false }: { consent: P
 
   if (!ready) return <p role="status">{status || "טוענים טופס פרטי…"}</p>;
   if (!activeConsent) return <p role="alert">הטופס אינו זמין כרגע.</p>;
-  if (saved) return <section className={styles.form} aria-label={testPreview ? "בדיקה הושלמה" : "המידע התקבל"}><h1>{testPreview ? "בדיקה הושלמה — המידע לא נשלח ולא נשמר" : "המידע התקבל ונשמר"}</h1><p>{testPreview ? "זו בדיקה בלבד; אין תיאום, שמירה או תשלום במסגרת הבדיקה." : "מילוי הטופס ותשלום אינם אישור לפגישה."}</p><PaymentGuidance bankTransfer={bankTransfer} testPreview={testPreview} /><p>משך מפגש הניסיון 60 דקות. לאחריו, פגישת Google Meet של 15 דקות עם שני ההורים ככל האפשר ובהתאם להסכמות; ובתום השבוע הראשון תיאום בדיקה נוסף בהסכמה.</p></section>;
+  if (saved) return <section className={styles.form} aria-label={testPreview ? "בדיקה הושלמה" : "המידע התקבל"}><h1>{testPreview ? "בדיקה הושלמה — המידע לא נשלח ולא נשמר" : "המידע התקבל ונשמר"}</h1><p>{testPreview ? "זו בדיקה בלבד; אין תיאום, שמירה או תשלום במסגרת הבדיקה." : "מילוי הטופס ותשלום אינם אישור לפגישה."}</p><PaymentGuidance bankTransfer={bankTransfer} testPreview={testPreview} /><p>משך מפגש הניסיון 60 דקות. במסגרת ליווי מתמשך תקבלו דוח התקדמות חודשי עם תצפיות מעשיות והצעות לתרגול בבית.</p></section>;
   return <form className={styles.form} onSubmit={submit}>
     {testPreview && <aside role="alert"><strong>תצוגת בדיקה לשלמה בלבד; אין להזין מידע אמיתי על ילדים; אין צורך לשלם</strong></aside>}<header><h1>מפגש ניסיון ראשון</h1><p>לאחר השיחה שלנו, מלאו את הפרטים לקראת מפגש הניסיון.</p></header><PaymentGuidance bankTransfer={bankTransfer} testPreview={testPreview} />
     <fieldset disabled={attempted} className={styles.section}><legend>פרטי הפנייה</legend>
