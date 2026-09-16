@@ -4,6 +4,7 @@ import { seal } from "../../identity/crypto.ts";
 import type { Keyring } from "../../identity/crypto.ts";
 import { parsePreEnrollment, digestPreEnrollment } from "./schema.ts";
 import { runtimePublicConsent, type PublicConsent } from "./consent.ts";
+import { runtimeIntakeBankTransfer, type IntakeBankTransfer } from "./payment.ts";
 
 export type IntakeToken = Readonly<{ tokenDigest: string; stableLeadId: string; childSlotIds: readonly string[]; expiresAt: Date; usedAt: Date | null }>;
 export type IntakeReceipt = Readonly<{ receiptId: string; receivedAt: string; duplicate: boolean }>;
@@ -27,12 +28,12 @@ export class PreEnrollmentService {
   }
 
   /** Exchange the fragment-held token in a POST body; callers must not put it in a URL. */
-  async exchange(token: string): Promise<{ childSlotIds: readonly string[]; expiresAt: string; consent: PublicConsent }> {
+  async exchange(token: string): Promise<{ childSlotIds: readonly string[]; expiresAt: string; consent: PublicConsent; bankTransfer: IntakeBankTransfer | null }> {
     if (!this.enabled || !/^[A-Za-z0-9_-]{43}$/.test(token)) throw new AppError("NOT_FOUND");
     const row = await this.repository.findToken(createHash("sha256").update(token).digest("hex"));
     const at = this.now();
     if (!row || row.usedAt || row.expiresAt.getTime() <= at.getTime()) throw new AppError("NOT_FOUND");
-    return { childSlotIds: row.childSlotIds, expiresAt: row.expiresAt.toISOString(), consent: runtimePublicConsent() };
+    return { childSlotIds: row.childSlotIds, expiresAt: row.expiresAt.toISOString(), consent: runtimePublicConsent(), bankTransfer: runtimeIntakeBankTransfer() };
   }
 
   async submit(token: string, idempotencyKey: string, raw: unknown): Promise<IntakeReceipt> {
