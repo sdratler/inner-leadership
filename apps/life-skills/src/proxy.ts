@@ -10,6 +10,10 @@ const intakeIdentityRoutes = new Set([
   "/api/identity/logout", "/api/identity/logout-all", "/api/identity/invites/accept",
   "/api/identity/reset/request", "/api/identity/reset/complete",
 ]);
+const intakeBrandAssets = new Set([
+  "/intake-brand/life-skills-logo.png", "/intake-brand/bna-logo.png",
+  "/intake-brand/Heebo-wght.ttf", "/intake-brand/FrankRuhlLibre-wght.ttf",
+]);
 /** This gate does not replace token, identity, role or CSRF checks in each route. */
 export function intakeReleasePath(pathname: string, input: Record<string,string|undefined>): boolean {
   const allowed = /^\/(he|en)\/intake(?:\/staff)?\/?$/.test(pathname) ||
@@ -52,6 +56,11 @@ export function proxy(request: NextRequest) {
   }
   const headers = securityHeaders(nonce, env.NODE_ENV === "development", env.LS_APP_ORIGIN.startsWith("https:"));
   const pathname = request.nextUrl.pathname;
+  // Only these four already-public brand files bypass app gates. No wildcard,
+  // directory listing, private record, image proxy or remote image fetch is opened.
+  if (intakeBrandAssets.has(pathname) && ["GET", "HEAD"].includes(request.method)) {
+    return decorate(NextResponse.next(), headers);
+  }
   const intakePath = intakeReleasePath(pathname, process.env);
   const ownerPreviewPath = /^\/(he|en)\/preview\/intake\/?$/.test(pathname) || pathname === "/api/intake-preview";
   if (ownerPreviewPath && !ownerPreviewConfig(process.env)) return decorate(new NextResponse(null,{status:404}),headers);

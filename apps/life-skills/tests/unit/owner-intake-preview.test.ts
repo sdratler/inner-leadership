@@ -45,4 +45,12 @@ describe("owner intake preview", () => {
     expect(proxy(new NextRequest("https://preview.example.test/he/preview/intake")).status).toBe(404);
     expect(proxy(new NextRequest("https://preview.example.test/api/intake-preview", { method: "POST" })).status).toBe(404);
   });
+  it("opens only the four public brand assets, not arbitrary files or mutations", () => {
+    applyPreviewEnvironment(false);
+    for (const asset of ["life-skills-logo.png", "bna-logo.png", "Heebo-wght.ttf", "FrankRuhlLibre-wght.ttf"]) {
+      expect(proxy(new NextRequest(`https://preview.example.test/intake-brand/${asset}`)).headers.get("x-middleware-next")).toBe("1");
+    }
+    expect(proxy(new NextRequest("https://preview.example.test/intake-brand/private.json")).status).toBe(401);
+    expect(proxy(new NextRequest("https://preview.example.test/intake-brand/life-skills-logo.png", { method: "POST" })).status).toBe(401);
+  });
 });

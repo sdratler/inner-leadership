@@ -12,7 +12,11 @@ const childSchema = z.strictObject({
   /** This is an opaque slot minted on the invitation, never an administrative child id. */
   childSlotId: z.string().uuid(),
   firstName: nonBlank(120),
-  age: z.number().int().min(0).max(25),
+  // The intake UI offers half-year increments.  Keep this finite so JSON edge
+  // cases (NaN/Infinity) cannot enter the encrypted response envelope.
+  age: z.number().finite().min(0).max(25).refine(age => Number.isInteger(age * 2), {
+    message: "Age must be a whole or half year",
+  }),
 });
 
 export const preEnrollmentSchema = z.strictObject({
