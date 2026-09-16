@@ -18,12 +18,13 @@ export function PreEnrollmentForm({ consent }: { consent: PublicConsent | null }
   const [status, setStatus] = useState("");
   const [saved, setSaved] = useState(false);
   const [activeConsent, setActiveConsent] = useState<PublicConsent | null>(consent);
-  const missingToken = typeof window !== "undefined" && !window.location.hash.slice(1);
+  const [fragmentToken] = useState(() => typeof window === "undefined" ? "" : window.location.hash.slice(1));
+  const missingToken = !fragmentToken;
 
   useEffect(() => {
     if (exchanged.current || missingToken) return;
     exchanged.current = true;
-    const value = window.location.hash.slice(1);
+    const value = fragmentToken;
     tokenRef.current = value;
     window.history.replaceState(null, "", window.location.pathname);
     void fetch("/api/intake", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "exchange", token: value }) })
@@ -35,7 +36,7 @@ export function PreEnrollmentForm({ consent }: { consent: PublicConsent | null }
         setReady(true);
       })
       .catch(() => setStatus("הקישור אינו זמין או שפג תוקפו."));
-  }, [missingToken]);
+  }, [fragmentToken, missingToken]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
