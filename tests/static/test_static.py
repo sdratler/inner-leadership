@@ -54,7 +54,7 @@ class StaticTests(unittest.TestCase):
             self.assertIn('id={`' + target + '-${locale}`}', self.react)
 
     def test_scripts_are_local_files(self):
-        self.assertEqual([s.split("?")[0] for s in self.page.scripts], ["assets/js/config.js", "assets/js/site-react.js"])
+        self.assertEqual([s.split("?")[0] for s in self.page.scripts], ["assets/js/google-ads.js", "assets/js/config.js", "assets/js/site-react.js"])
         for src in self.page.scripts:
             self.assertTrue((ROOT / src.split("?")[0]).is_file())
 
@@ -252,7 +252,20 @@ class StaticTests(unittest.TestCase):
 
     def test_preview_security(self):
         self.assertIn('content="noindex, nofollow"', self.text)
-        self.assertIn("connect-src 'none'", self.text)
+        policy = next(attrs["content"] for tag, attrs in self.page.attrs
+                      if tag == "meta" and attrs.get("http-equiv") == "Content-Security-Policy")
+        directives = dict((parts[0], parts[1:]) for directive in policy.split(";")
+                          if (parts := directive.split()))
+        for directive in ["default-src", "object-src", "base-uri", "form-action"]:
+            self.assertEqual(directives[directive], ["'none'"])
+        self.assertEqual(directives["script-src"], ["'self'"])
+        self.assertEqual(set(directives["connect-src"]), {
+            "https://pagead2.googlesyndication.com", "https://www.googleadservices.com",
+            "https://googleads.g.doubleclick.net", "https://ad.doubleclick.net",
+            "https://www.google.com", "https://google.com", "https://www.google.co.il",
+        })
+        self.assertNotIn("'unsafe-inline'", policy)
+        self.assertNotIn("'unsafe-eval'", policy)
         self.assertIn('property="og:image" content="https://bneineviimacademy.org/life-skills/assets/images/og/LS_OG_MASTER_HE_V1_20260913.png"', self.text)
 
     def test_production_hides_review_banner_and_keeps_owner_confirmed_testimonial(self):
