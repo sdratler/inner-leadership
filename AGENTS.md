@@ -1,19 +1,21 @@
 # Life Skills — current authority pointers
 
-This is a derived entry point, not a product master. Prepared under SYS033 at `b4276f563240bd3337366aa1d24de2216eb9fb55`. Current Drive contracts govern intent; Build Control governs work; exact Git commits govern code; authenticated provider evidence governs deployment. Original LS000 build provenance remains unchanged in `apps/life-skills/docs/historical/ls000-source-snapshot.json`.
+This is a derived entry point, not a product master. Reconciled under `SOURCE-COORD-20260913-02` from main `9956e396dfb19d5ae6e3ce2a1136b107027679b7`. Current Drive contracts govern intent; Build Control governs work; exact Git commits govern code; authenticated provider evidence governs deployment. Original LS000 build provenance remains unchanged in `apps/life-skills/docs/historical/ls000-source-snapshot.json`.
 
-The version labels below describe the existing SYS033 pointer snapshot. Read the linked CURRENT documents to establish their current revisions; do not treat these labels as a fresh source read.
+The version labels below record the reviewed 13 September 2026 pointer snapshot. Read the linked CURRENT documents and Build Control to establish their live revisions before acting; do not accept a changed fingerprint automatically.
 
-- registry v2.7: https://docs.google.com/document/d/1XZS-MzUtjc3T488lyrSbtDX0Yq5UCl7Wzh5uN_YOvMg/edit
+- registry v3.6: https://docs.google.com/document/d/1XZS-MzUtjc3T488lyrSbtDX0Yq5UCl7Wzh5uN_YOvMg/edit
 - product v2.3: https://docs.google.com/document/d/1kJug8ojFwdGgZoPUx8BJt9fLKBjGYvX0wwbtarGTIIg/edit
 - architecture v2.3: https://docs.google.com/document/d/1h-bnQ94uxuTrs8BPeDg-1uwZFcQEONdmYccd9Inacgw/edit
-- ui v2.1: https://docs.google.com/document/d/1KokAca2V-UhCPj1czP28TQ4i5E2Wd1JKJFbuXfmAPu4/edit
+- ui v2.2: https://docs.google.com/document/d/1KokAca2V-UhCPj1czP28TQ4i5E2Wd1JKJFbuXfmAPu4/edit
 - program v2.1: https://docs.google.com/document/d/1aR8ONMUW0nlPbVe3jFZ6FKJ1_lPHyYPdVbTRbWB3hhA/edit
-- website v2.5: https://docs.google.com/document/d/1jw0shI2DSfUH9RpJc2WdeIqXwO1OYOUEiwuv3mdNngU/edit
-- prompts v2.7: https://docs.google.com/document/d/1r8fN36liKyXcf9GVG1Cl25Yq9vjaYWD9A0YC1h3jn-E/edit
-- operating v2.5: https://docs.google.com/document/d/1q-GDEaL9JmmVfy1meQrGvu3V4H2XNJ4jp2b17ZrP6bE/edit
+- website v3.2: https://docs.google.com/document/d/1jw0shI2DSfUH9RpJc2WdeIqXwO1OYOUEiwuv3mdNngU/edit
+- MKT-060 visual source v1.9: https://docs.google.com/document/d/1XITqbJKdM4d8dHnuW9hUKDDieQ-jIkFYaz14x3ww2hY/edit
+- prompts v3.0: https://docs.google.com/document/d/1r8fN36liKyXcf9GVG1Cl25Yq9vjaYWD9A0YC1h3jn-E/edit
+- operating v2.8: https://docs.google.com/document/d/1q-GDEaL9JmmVfy1meQrGvu3V4H2XNJ4jp2b17ZrP6bE/edit
 - packet v1.5: https://docs.google.com/document/d/1NrlYux3I78nO7M9v1fKGl-UCKpkcZrOUtHSoV-BmLOE/edit
 - Build Control: https://docs.google.com/spreadsheets/d/1Y_Vf_kipj7mAhhEnuj8F2L85v3KpOi_V9KfSrj4MZ4Y/edit
+- current private execution handoff v5.8: https://drive.google.com/file/d/1TIHrQqi9SMVtVxkT5QE_Ow2pBVNfrt52/view
 
 GitHub issues and pull requests govern engineering execution; exact commits govern code. Build Control remains transition history and the preparation ledger until each lane receives Git-native release instructions. Proposed application CI has no Drive reader, provider credential, production database, or other privileged secret. The trusted control workflow treats pull-request files only as data and freezes CI/control paths behind an explicit owner-authorized transition. Never weaken authentication, authorization, privacy, or data-integrity checks to obtain a green result.
 
