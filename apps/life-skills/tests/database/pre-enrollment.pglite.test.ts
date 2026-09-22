@@ -29,7 +29,7 @@ function sessionDigest(id: string) { return id.replaceAll("-", "").padEnd(64, "0
 function actor(id: string, role: Actor["role"], workspaceId = workspace): Actor { return { id: id as Actor["id"], personId: id as Actor["personId"], workspaceId: workspaceId as Actor["workspaceId"], role, state: "active", locale: "en", sessionDigest: sessionDigest(id), expiresAt: now.getTime() + 86_400_000 }; }
 async function migrate(db: Db) {
   await db.exec("CREATE SCHEMA ls_control");
-  for (const name of ["0001_ls_foundation.sql", "0010_ls_identity_cases_20260906.sql", "0091_ls_pre_enrollment.sql"]) await db.exec(await readFile(join("migrations", name), "utf8"));
+  for (const name of ["0001_ls_foundation.sql", "0010_ls_identity_cases_20260906.sql", "0030_ls_calendar_attendance_20260907.sql", "0090_ls_parents_first.sql", "0091_ls_pre_enrollment.sql", "0096_ls_intake_followup.sql"]) await db.exec(await readFile(join("migrations", name), "utf8"));
   for (const id of [workspace, otherWorkspace]) await db.query("INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,$2)", [id, now]);
   for (const [id, workspaceId, role] of [[practitioner, workspace, "practitioner"], [parent, workspace, "parent"], [otherPractitioner, otherWorkspace, "practitioner"]] as const) {
     await db.query("INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,'adult','sealed',$3)", [id, workspaceId, now]);

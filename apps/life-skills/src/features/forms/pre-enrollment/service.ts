@@ -7,13 +7,14 @@ import { runtimePublicConsent, type PublicConsent } from "./consent.ts";
 import { runtimeIntakeBankTransfer, type IntakeBankTransfer } from "./payment.ts";
 
 export type IntakeToken = Readonly<{ tokenDigest: string; stableLeadId: string; childSlotIds: readonly string[]; expiresAt: Date; usedAt: Date | null }>;
-export type IntakeReceipt = Readonly<{ receiptId: string; receivedAt: string; duplicate: boolean }>;
+export type IntakeReceipt = Readonly<{ receiptId: string; stableLeadId: string; receivedAt: string; duplicate: boolean }>;
 export interface PreEnrollmentRepository {
   transaction<T>(work: (tx: PreEnrollmentRepository) => Promise<T>): Promise<T>;
   findToken(tokenDigest: string): Promise<IntakeToken | null>;
   findReceiptByIdempotency(tokenDigest: string, idempotencyKey: string): Promise<{ receiptId: string; receivedAt: Date; payloadDigest: string } | null>;
   insertReceipt(row: { receiptId: string; tokenDigest: string; payloadCiphertext: string; payloadDigest: string; idempotencyKey: string; receivedAt: Date; consentVersion: string; consentHash: string }): Promise<"inserted" | { kind: "duplicate"; receiptId: string; receivedAt: Date } | "mismatch">;
   consumeToken(tokenDigest: string, at: Date): Promise<boolean>;
+  recordSubmittedJourney?(stableLeadId:string,receiptId:string,at:Date):Promise<void>;
 }
 
 export function issueToken(stableLeadId: string, now: Date, ttlMs = 7 * 24 * 60 * 60 * 1000): { token: string; tokenDigest: string; stableLeadId: string; expiresAt: Date } {
@@ -48,7 +49,8 @@ export class PreEnrollmentService {
       const legacyPrior = legacyInput ? await tx.findReceiptByIdempotency(tokenDigest, idempotencyKey) : null;
       if (legacyPrior) {
         if (legacyPrior.payloadDigest !== digestPreEnrollment(legacyInput!)) throw new AppError("CONFLICT");
-        return { receiptId: legacyPrior.receiptId, receivedAt: legacyPrior.receivedAt.toISOString(), duplicate: true };
+        if(!issued) throw new AppError("NOT_FOUND");
+        return { receiptId: legacyPrior.receiptId, stableLeadId: issued.stableLeadId, receivedAt: legacyPrior.receivedAt.toISOString(), duplicate: true };
       }
       const input = parseNewPreEnrollment(raw);
       const consent = runtimePublicConsent();
@@ -57,7 +59,8 @@ export class PreEnrollmentService {
       const prior = await tx.findReceiptByIdempotency(tokenDigest, idempotencyKey);
       if (prior) {
         if (prior.payloadDigest !== digest) throw new AppError("CONFLICT");
-        return { receiptId: prior.receiptId, receivedAt: prior.receivedAt.toISOString(), duplicate: true };
+        if(!issued) throw new AppError("NOT_FOUND");
+        return { receiptId: prior.receiptId, stableLeadId: issued.stableLeadId, receivedAt: prior.receivedAt.toISOString(), duplicate: true };
       }
       if (!issued || issued.usedAt || issued.expiresAt.getTime() <= at.getTime()) throw new AppError("NOT_FOUND");
       if (input.children.length !== issued.childSlotIds.length || new Set(input.children.map(child=>child.childSlotId)).size !== issued.childSlotIds.length || input.children.some(child => !issued.childSlotIds.includes(child.childSlotId))) throw new AppError("NOT_FOUND");
@@ -67,7 +70,8 @@ export class PreEnrollmentService {
       if (result === "mismatch") throw new AppError("CONFLICT");
       if (typeof result === "object") return { receiptId: result.receiptId, stableLeadId: issued.stableLeadId, receivedAt: result.receivedAt.toISOString(), duplicate: true };
       if (!await tx.consumeToken(tokenDigest, at)) throw new AppError("CONFLICT");
-      return { receiptId, receivedAt: at.toISOString(), duplicate: false };
+      await tx.recordSubmittedJourney?.(issued.stableLeadId,receiptId,at);
+      return { receiptId, stableLeadId: issued.stableLeadId, receivedAt: at.toISOString(), duplicate: false };
     });
   }
 }

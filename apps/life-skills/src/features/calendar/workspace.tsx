@@ -17,6 +17,7 @@ import type { AppointmentView, SchedulePage } from './types.ts';
 import { useCalendarMutation, useDialogGuard } from './form-support.tsx';
 import { AttendanceForm, BookingForm, NoticeForm, PractitionerActionForm, type CaseChoice, type SaveForm } from './forms.tsx';
 import { CalendarAgenda, CalendarBoard, formatTime, NoticeReceipt } from './views.tsx';
+import { IntakeSummaryCard } from '../prospects/summary-card.tsx';
 import './calendar.css';
 type HistoryPage={items:Array<{version:number;state:'present'|'late'|'no_show'|'canceled';recordedAt:string;reason:string|null}>;nextVersion:number|null};
 import { verifiedGoogleMeetUrl } from './meeting-url.ts';
@@ -70,7 +71,8 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  return <main className="ls-cal lsw" dir={locale==='he'?'rtl':'ltr'} lang={locale}>
  <UnsavedChangesGuard dirty={dirty||mutation.uncertain} message={t.dirty}/>
  <PageHeader title={practitioner?t.title:t.familyTitle} context={practitioner?t.context:t.familyContext}/>
- {practitioner&&<nav className="lsu-attention-links" aria-label={locale==='he'?'לעבודה הקרובה':'Immediate work'}><a href={`/${locale}/app/feedback${caseId?'?caseId='+encodeURIComponent(caseId):''}`}>{locale==='he'?'משוב לבדיקה':'Review feedback'}</a><a href={`/${locale}/app/clients${caseId?'?caseId='+encodeURIComponent(caseId):''}`}>{locale==='he'?'פתיחת תיק':'Open a case'}</a><a href={`/${locale}/app/reports${caseId?'?caseId='+encodeURIComponent(caseId):''}`}>{locale==='he'?'דוחות חודשיים':'Monthly reports'}</a></nav>}
+ {practitioner&&<IntakeSummaryCard locale={locale}/>}
+ {practitioner&&<nav className="lsu-attention-links" aria-label={locale==='he'?'לעבודה הקרובה':'Immediate work'}><a href={`/${locale}/app/prospects`}>{locale==='he'?'קליטת מתעניינים':'Prospect intake'}</a><a href={`/${locale}/app/feedback${caseId?'?caseId='+encodeURIComponent(caseId):''}`}>{locale==='he'?'משוב לבדיקה':'Review feedback'}</a><a href={`/${locale}/app/clients${caseId?'?caseId='+encodeURIComponent(caseId):''}`}>{locale==='he'?'פתיחת תיק':'Open a case'}</a><a href={`/${locale}/app/reports${caseId?'?caseId='+encodeURIComponent(caseId):''}`}>{locale==='he'?'דוחות חודשיים':'Monthly reports'}</a></nav>}
  <div className="ls-cal-toolbar"><Select id="calendar-case" label={t.case} value={caseId} onChange={e=>selectCase(e.target.value)} disabled={mutation.locked}>{practitioner&&<option value="">{t.allCases}</option>}{cases.filter(c=>practitioner||c.kind===caseKind).map(c=><option key={c.id} value={c.id}>{c.displayName}</option>)}</Select>
  <form className="ls-cal-period" action={basePath}><Input id="calendar-date" label={t.period} type="date" name="date" required value={dateInput} onChange={e=>setDateInput(e.target.value)}/><input type="hidden" name="view" value={view}/><input type="hidden" name="caseId" value={caseId}/><Button type="submit">{t.go}</Button></form>
  {practitioner&&<div className="ls-cal-actions"><Button disabled={mutation.locked||!cases.length} onClick={e=>openBook(e)}>{t.newBooking}</Button><a className="lsw-button lsw-button--secondary" href={`/${locale}/app/settings/availability?date=${date}`}>{t.availability}</a></div>}</div>

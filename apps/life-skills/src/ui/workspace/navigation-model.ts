@@ -6,7 +6,7 @@ const item = (key: string, path: string, en: string, he: string): NavItem => ({ 
 export const primaryNavigation: Record<WorkspaceRole, readonly NavItem[]> = {
   parent: [item("home", "family", "Home", "בית"), item("schedule", "family/schedule", "Calendar", "יומן"), item("practice", "family/practice", "Practice", "תרגול"), item("feedback", "family/feedback", "Messages", "הודעות")],
   client: [item("home", "client", "Home", "בית"), item("schedule", "client/calendar", "Calendar", "יומן"), item("practice", "client/practice", "Practice", "תרגול"), item("feedback", "client/messages", "Messages", "הודעות")],
-  practitioner: [item("calendar", "app/calendar", "Calendar", "יומן"), item("clients", "app/clients", "Clients", "לקוחות"), item("feedback", "app/feedback", "Communications", "תקשורת"), item("reports", "app/reports", "Reports", "דוחות"), item("marketing", "app/marketing", "Marketing", "שיווק")],
+  practitioner: [item("calendar", "app/calendar", "Calendar", "יומן"), item("clients", "app/clients", "Clients", "לקוחות"), item("prospects", "app/prospects", "Prospects", "מתעניינים"), item("feedback", "app/feedback", "Communications", "תקשורת"), item("reports", "app/reports", "Reports", "דוחות"), item("marketing", "app/marketing", "Marketing", "שיווק")],
 };
 export const navigationGroups: Record<WorkspaceRole, readonly NavGroup[]> = {
   parent: [{ key: "materials", en: "Shared with you", he: "שותף איתכם", items: [item("forms", "family/forms", "Forms to complete", "טפסים למילוי"), item("resources", "family/resources", "Shared resources", "משאבים משותפים"), item("reports", "family/reports", "Shared reports", "דוחות משותפים")] }],
