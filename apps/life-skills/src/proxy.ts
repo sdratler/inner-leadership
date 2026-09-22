@@ -91,7 +91,7 @@ export function proxy(request: NextRequest) {
   }
   // The private application has its own explicit server-side gate. Foundation
   // preview never opens authenticated application or domain API routes.
-  const privatePath = pathname === "/api/private-notes" || /^\/api\/(?:private|identity|calendar|attendance|checkins|commitments|forms|goals|home-practice|payments|progress|resources|sessions|updates)(?:\/|$)/.test(pathname) ||
+  const privatePath = pathname === "/api/private-notes" || /^\/api\/(?:private|identity|calendar|attendance|checkins|commitments|forms|goals|home-practice|payments|progress|prospects|resources|sessions|updates)(?:\/|$)/.test(pathname) ||
     /^\/(he|en)\/(?:app|family|workspace|parent|client|practitioner|attendance|calendar|checkins|commitments|forms|goals|home-practice|payments|progress|resources|updates)(?:\/|$)/.test(pathname);
   const privateMode = process.env.LS_PRIVATE_APP_ENABLED === "true";
   // Preserve the accepted standalone identity preview independently of the full

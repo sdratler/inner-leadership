@@ -58,5 +58,9 @@
   {
     "name": "0095_ls_optional_child_accounts.sql",
     "sha256": "6e495fe9ed085e1e1a8efb43b34eddfe890fe9239c54a18142bfe1d0c40127f6"
+  },
+  {
+    "name": "0096_ls_intake_followup.sql",
+    "sha256": "e2c5abb3ba045d7bb37e748ab486cd151b6b7952da501c7b24fda3d5a9375aa0"
   }
 ]
