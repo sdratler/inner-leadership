@@ -15,7 +15,7 @@ export function csrfSecret(token: string, key: Buffer, purpose: "preauth" | "ses
 }
 export function validatePassword(password: string): void {
   const length = [...password].length;
-  if (length < 15 || length > 128 || Buffer.byteLength(password, "utf8") > 512) throw new AppError("INVALID_REQUEST");
+  if (length < 6 || length > 128 || Buffer.byteLength(password, "utf8") > 512) throw new AppError("INVALID_REQUEST");
 }
 function derive(password: string, salt: Buffer): Promise<Buffer> {
   return new Promise((resolve, reject) => scrypt(password, salt, 64,

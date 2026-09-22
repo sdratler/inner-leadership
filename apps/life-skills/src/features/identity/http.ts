@@ -21,7 +21,7 @@ import type { CaseService } from "../cases/service.ts";
 const PREAUTH_COOKIE='__Host-ls-preauth';
 const email=z.string().email().max(254).transform(canonicalEmail);
 const password=z.string().min(1).max(512);
-const newPassword=z.string().min(15).max(512);
+const newPassword=z.string().min(6).max(512);
 const token=z.string().regex(TOKEN_PATTERN);
 const locale=z.enum(['he','en']);
 const caseId=z.string().uuid().transform(v=>asId(v,'case'));

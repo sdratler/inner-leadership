@@ -154,7 +154,7 @@ export function IntakeStaffClient({ locale = "he", respondentOrigin }: { locale?
     if (
       pending ||
       !authToken.current ||
-      [...password].length < 15 ||
+      [...password].length < 6 ||
       password !== form.get("confirmation")
     ) {
       setStatus(t.errors.password);
@@ -344,7 +344,7 @@ export function IntakeStaffClient({ locale = "he", respondentOrigin }: { locale?
           <input
             name="password"
             type="password"
-            minLength={15}
+            minLength={6}
             required
             autoComplete="new-password"
           />
@@ -354,7 +354,7 @@ export function IntakeStaffClient({ locale = "he", respondentOrigin }: { locale?
           <input
             name="confirmation"
             type="password"
-            minLength={15}
+            minLength={6}
             required
             autoComplete="new-password"
           />
