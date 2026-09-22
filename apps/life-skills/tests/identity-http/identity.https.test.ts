@@ -21,9 +21,11 @@ const origin='https://localhost:3003';
 const practitionerEmail='practitioner-http@example.invalid';
 const parentAEmail='parent-http-a@example.invalid';
 const parentBEmail='parent-http-b@example.invalid';
+const childEmail='child-http@example.invalid';
 const practitionerPassword=opaqueToken();
 const parentAPassword=opaqueToken();
 const parentBPassword=opaqueToken();
+const childPassword=opaqueToken();
 const replacementPassword=opaqueToken();
 const clock={now:()=>new Date()};
 const sink=new SyntheticAuthEmailSink('synthetic-test');
@@ -93,7 +95,7 @@ before(async()=>{
  if(!['127.0.0.1','localhost','[::1]'].includes(databaseUrl.hostname)||!/_test$/.test(databaseUrl.pathname)||databaseUrl.search)throw new Error('LOOPBACK_DISPOSABLE_DATABASE_REQUIRED');
  if(process.env.NODE_ENV!=='development'||process.env.LS_APP_ORIGIN!==origin)throw new Error('LOCAL_HTTPS_DEVELOPMENT_REQUIRED');
  pool=new Pool({connectionString:raw,ssl:false,max:6});
- const files=await Promise.all(['0001_ls_foundation.sql','0010_ls_identity_cases_20260906.sql'].map(async name=>{const sql=await readFile(resolve('migrations',name),'utf8');return {name,sql,checksum:createHash('sha256').update(sql).digest('hex')};}));
+ const files=await Promise.all(['0001_ls_foundation.sql','0010_ls_identity_cases_20260906.sql','0095_ls_optional_child_accounts.sql'].map(async name=>{const sql=await readFile(resolve('migrations',name),'utf8');return {name,sql,checksum:createHash('sha256').update(sql).digest('hex')};}));
  const migrationClient=await pool.connect();
  try{
   const adapter:MigrationClient={query:async(text,values)=>migrationClient.query(text,values?[...values]:undefined)};
@@ -101,7 +103,7 @@ before(async()=>{
  }finally{migrationClient.release();}
  const state=await pool.query("SELECT (SELECT count(*)::integer FROM ls_identity.accounts) AS accounts,(SELECT count(*)::integer FROM ls_control.migrations) AS migrations");
  assert.equal(state.rows[0]?.accounts,0,'disposable HTTP database must contain no accounts');
- assert.equal(state.rows[0]?.migrations,2,'disposable HTTP database must have both signed migrations');
+ assert.equal(state.rows[0]?.migrations,3,'disposable HTTP database must have all three signed migrations');
  store={async transaction(work){const client=await pool.connect();try{await client.query('BEGIN');const tx:SqlSession={async query<T extends object>(text:string,values:readonly unknown[]=[]){return (await client.query(text,[...values])).rows as T[];}};const value=await work(tx);await client.query('COMMIT');return value;}catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}}};
  config=parseIdentityConfig(process.env);auth=new IdentityAuthService(store,config,clock);accounts=new IdentityAccountService(store,config,clock);
  await accounts.bootstrapPractitioner({email:practitionerEmail,displayName:'Synthetic HTTPS Practitioner',locale:'he'},true,randomUUID());
@@ -124,6 +126,7 @@ test('mounted HTTPS identity routes enforce credential, case and denial boundari
  const practitionerSecondTab=await playwrightRequest.newContext({baseURL:origin,ignoreHTTPSErrors:true});
  const parentA=await playwrightRequest.newContext({baseURL:origin,ignoreHTTPSErrors:true});
  const parentB=await playwrightRequest.newContext({baseURL:origin,ignoreHTTPSErrors:true});
+ const child=await playwrightRequest.newContext({baseURL:origin,ignoreHTTPSErrors:true});
  const anonymous=await playwrightRequest.newContext({baseURL:origin,ignoreHTTPSErrors:true});
  try{
   const practitionerCsrf=await login(practitioner,practitionerEmail,practitionerPassword);
@@ -135,17 +138,24 @@ test('mounted HTTPS identity routes enforce credential, case and denial boundari
   const caseB=(await caseBResponse.json()).data.caseId as string;
   const inviteA=await authorizedPost(practitioner,'/api/identity/invites/parent',practitionerCsrf,{caseId:caseA,email:parentAEmail,displayName:'Synthetic HTTPS Parent A',locale:'he'});
   const inviteB=await authorizedPost(practitioner,'/api/identity/invites/parent',practitionerCsrf,{caseId:caseB,email:parentBEmail,displayName:'Synthetic HTTPS Parent B',locale:'en'});
-  assert.equal(inviteA.status(),200);assert.equal(inviteB.status(),200);
+  const inviteChild=await authorizedPost(practitioner,'/api/identity/invites/child',practitionerCsrf,{caseId:caseA,email:childEmail,displayName:'Synthetic HTTPS Child',locale:'he'});
+  assert.equal(inviteA.status(),200);assert.equal(inviteB.status(),200);assert.equal(inviteChild.status(),200);
+  const childAccountId=(await inviteChild.json()).data.accountId as string;
   await dispatchAll();
   await accept(parentA,tokenFromMail(parentAEmail,'invite'),parentAPassword);
   await accept(parentB,tokenFromMail(parentBEmail,'invite'),parentBPassword);
+  await accept(child,tokenFromMail(childEmail,'invite'),childPassword);
   await login(parentA,parentAEmail,parentAPassword);
   await login(parentB,parentBEmail,parentBPassword);
+  await login(child,childEmail,childPassword);
   const visibleCases=await parentA.get('/api/identity/cases');assert.equal(visibleCases.status(),200);
   assert.deepEqual((await visibleCases.json()).data.map((item:{id:string})=>item.id),[caseA]);
+  const childSession=await child.get('/api/identity/session');assert.equal(childSession.status(),200);assert.equal((await childSession.json()).data.role,'child');
+  const childCases=await child.get('/api/identity/cases');assert.equal(childCases.status(),200);assert.deepEqual((await childCases.json()).data.map((item:{id:string})=>item.id),[caseA]);
   const audienceResponse=await authorizedPost(practitioner,'/api/identity/audiences',practitionerCsrf,{caseId:caseB,visibility:'family_full',published:true});
   assert.equal(audienceResponse.status(),200);const audienceId=(await audienceResponse.json()).data.audienceId as string;
   const tampered=await parentA.get(`/api/identity/audiences?caseId=${caseB}&audienceId=${audienceId}`);assert.equal(tampered.status(),404);
+  const childTampered=await child.get(`/api/identity/audiences?caseId=${caseB}&audienceId=${audienceId}`);assert.equal(childTampered.status(),404);
   const badCsrf=await parentA.put('/api/identity/preferences',{headers:{Origin:origin,'X-CSRF-Token':opaqueToken()},data:{preferences:[{eventType:'practice_due',channel:'email',enabled:true,locale:'he',timezone:'Asia/Jerusalem',quietStart:null,quietEnd:null}]}});assert.equal(badCsrf.status(),403);
   for(const path of ['/api/identity/child/login','/api/identity/register','/api/identity/bootstrap'])assert.equal((await anonymous.post(path,{data:{}})).status(),404);
 
@@ -166,9 +176,11 @@ test('mounted HTTPS identity routes enforce credential, case and denial boundari
   const parentReloginCsrf=await login(parentA,parentAEmail,replacementPassword);
   const logout=await authorizedPost(parentA,'/api/identity/logout',parentReloginCsrf,{});assert.equal(logout.status(),200);assert.equal((await parentA.get('/api/identity/session')).status(),401);
   await login(practitionerSecondTab,practitionerEmail,practitionerPassword);
+  const revokeChild=await authorizedPost(practitioner,'/api/identity/accounts/revoke',practitionerCsrf,{accountId:childAccountId});assert.equal(revokeChild.status(),200);
+  assert.equal((await child.get('/api/identity/session')).status(),401,'child account revocation must invalidate its browser session');
   const logoutAll=await authorizedPost(practitioner,'/api/identity/logout-all',practitionerCsrf,{});assert.equal(logoutAll.status(),200);
   assert.equal((await practitionerSecondTab.get('/api/identity/session')).status(),401,'logout-all must revoke a second browser context immediately');
  }finally{
-  await practitioner.dispose();await practitionerSecondTab.dispose();await parentA.dispose();await parentB.dispose();await anonymous.dispose();
+  await practitioner.dispose();await practitionerSecondTab.dispose();await parentA.dispose();await parentB.dispose();await child.dispose();await anonymous.dispose();
  }
 });

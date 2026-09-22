@@ -41,4 +41,8 @@ test('auth routes refuse query-string credentials and unrecognized methods',asyn
  const f=fixture();assert.ok((await f.http.handle(new Request(f.config.origin+'/api/identity/reset/complete?token='+opaqueToken(),{method:'POST'}))).status===400);
  assert.ok((await f.http.handle(new Request(f.config.origin+'/api/identity/login',{method:'GET'}))).status===404);
 });
-test('no child/student route or public bootstrap is registered',()=>assert.ok(Object.keys(identityRouteMethods).every(path=>!/(child|student|register|bootstrap)/.test(path))));
+test('the optional child invitation is the only registered child route and no public bootstrap exists',()=>{
+ const matching=Object.keys(identityRouteMethods).filter(path=>/(child|student|register|bootstrap)/.test(path));
+ assert.deepEqual(matching,['/api/identity/invites/child']);
+ assert.deepEqual(identityRouteMethods['/api/identity/invites/child'],['POST']);
+});

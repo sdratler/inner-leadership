@@ -5,7 +5,7 @@ import { AppError } from "../../lib/errors.ts";
 import { newRequestId } from "../../lib/ids.ts";
 import { identityRuntime } from "./runtime.ts";
 import { processResetRequests,dispatchOneAuthMail,pruneAuthEphemera } from "../../providers/email/dispatch.ts";
-import { parseResendAuthConfig,ResendAuthTransport } from "../../providers/email/resend.ts";
+import { createAuthEmailTransport } from "../../providers/email/gmail.ts";
 async function main():Promise<void>{
  if(process.env.LS_IDENTITY_OPERATOR_APPROVED!=="true" || process.argv.length!==3) throw new AppError("FORBIDDEN");
  const command=process.argv[2];
@@ -19,7 +19,7 @@ async function main():Promise<void>{
   process.stdout.write(JSON.stringify({command,result:"invitation_queued"})+"\n");
  }else if(command==="dispatch"){
   // A provider credential and explicit enablement are required; no fallback transport.
-  const email=parseResendAuthConfig(process.env),transport=new ResendAuthTransport(email);
+  const email=createAuthEmailTransport(process.env),transport=email.transport;
   const processed=await processResetRequests(runtime.store,runtime.config,runtime.clock,25);
   const outcomes={sent:0,retry:0,canceled:0,failed:0};
   for(let i=0;i<25;i++){

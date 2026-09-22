@@ -22,6 +22,9 @@ describe("LS-070 convergence contract", () => {
       "0040_ls_home_practice_20260911.sql", "0050_forms_resources_qualitative_reviews_20260911.sql",
       "0060_ls_manual_payments_credits_20260911.sql", "0070_ls070_practice_adaptation_receipts.sql",
       "0071_ls070_calendar_delivery_attempts.sql", "0080_ls_context_updates_20260911.sql",
+      "0090_ls_parents_first.sql", "0091_ls_pre_enrollment.sql",
+      "0092_ls_practitioner_private_notes.sql",
+      "0093_ls_session_records.sql", "0094_ls_resource_command_receipts.sql", "0095_ls_optional_child_accounts.sql",
     ]);
     for (const item of manifest) expect(sha(`migrations/${item.name}`)).toBe(item.sha256);
   });

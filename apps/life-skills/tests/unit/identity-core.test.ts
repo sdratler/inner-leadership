@@ -1,4 +1,5 @@
-import { test } from 'vitest';
+import { test,vi } from 'vitest';
+import { IdentityHttp,type IdentityHttpServices } from '../../src/features/identity/http.ts';
 import assert from 'node:assert/strict';
 import { randomBytes,randomUUID } from 'node:crypto';
 import { asId } from '../../src/lib/ids.ts';
@@ -19,6 +20,19 @@ import { AuthEmailDeliveryError } from '../../src/providers/email/transport.ts';
 import { authEmailContent } from '../../src/providers/email/template.ts';
 import { takeAuthTokenFragment } from '../../src/features/identity/client.ts';
 const workspace=asId(randomUUID(),'workspace'),otherWorkspace=asId(randomUUID(),'workspace');
+test('password token routes enforce fifteen-character boundary before consuming invite or reset tokens',async()=>{
+ const config=parseIdentityConfig({LS_IDENTITY_ENABLED:'true',LS_APP_ORIGIN:'https://app.example.invalid',LS_IDENTITY_WORKSPACE_ID:workspace,LS_IDENTITY_DATA_KEYS:JSON.stringify({k1:opaqueToken()}),LS_IDENTITY_ACTIVE_KEY_ID:'k1',LS_IDENTITY_CSRF_KEY:opaqueToken(),LS_IDENTITY_LOOKUP_KEY:opaqueToken(),LS_IDENTITY_RATE_KEY:opaqueToken()});
+ for(const path of ['/api/identity/reset/complete','/api/identity/invites/accept']){
+  const preauth=opaqueToken(),consume=vi.fn(async()=>{});
+  const services={auth:{assertPreauth:async()=>{},consumePasswordToken:consume},limits:{consume:async()=>({count:1,retryAfterMs:1000})},audit:{write:async()=>{}}} as unknown as IdentityHttpServices;
+  const http=new IdentityHttp(config,{now:()=>new Date()},services);
+  const headers={Origin:config.origin,Cookie:'__Host-ls-preauth='+preauth,'X-CSRF-Token':csrfSecret(preauth,config.csrfKey,'preauth'),'Content-Type':'application/json'};
+  for(const [password,status,calls]of [['x'.repeat(14),400,0],['x'.repeat(15),200,1],['a longer existing password',200,2]] as const){
+   const response=await http.handle(new Request(config.origin+path,{method:'POST',headers,body:JSON.stringify({token:opaqueToken(),password})}));
+   assert.equal(response.status,status);assert.equal(consume.mock.calls.length,calls);
+  }
+ }
+});
 function account(role:AccountFacts['role'],state:AccountFacts['state']='active'):AccountFacts{return {id:asId(randomUUID(),'account'),workspaceId:workspace,personId:asId(randomUUID(),'person'),role,state,locale:'he'};}
 const practitioner=account('practitioner'),parentA=account('parent'),parentB=account('parent'),outsider=account('parent'),adult=account('adult_client');
 const item:CaseFacts={id:asId(randomUUID(),'case'),workspaceId:workspace,clientPersonId:asId(randomUUID(),'person'),practitionerAccountId:practitioner.id,kind:'minor',state:'active'};
@@ -66,7 +80,7 @@ test('passwords are salted scrypt verifiers, not reversible or fixed fixtures',a
  const password=opaqueToken(),first=await hashPassword(password),second=await hashPassword(password);
  assert.ok(first!==second && !first.includes(password));assert.ok(await verifyPassword(password,first));assert.ok(!await verifyPassword(opaqueToken(),first));assert.ok(!await verifyPassword(password,'invalid-format'));
 });
-test('password policy counts Unicode codepoints, bounds bytes and allows paste-length passphrases',()=>{validatePassword(opaqueToken());denied(()=>validatePassword('x'.repeat(14)),'INVALID_REQUEST');denied(()=>validatePassword('x'.repeat(129)),'INVALID_REQUEST');validatePassword('א'.repeat(15));});
+test('password policy counts Unicode codepoints, requires fifteen, and preserves bounds',async()=>{const generated=opaqueToken();validatePassword(generated);denied(()=>validatePassword('x'.repeat(14)),'INVALID_REQUEST');const fifteen='x'.repeat(15),encoded=await hashPassword(fifteen);validatePassword(fifteen);assert.ok(await verifyPassword(fifteen,encoded));denied(()=>validatePassword('😀'.repeat(14)),'INVALID_REQUEST');validatePassword('😀'.repeat(15));validatePassword('א'.repeat(15));denied(()=>validatePassword('x'.repeat(129)),'INVALID_REQUEST');validatePassword('א'.repeat(128));});
 test('AES-GCM envelopes bind field, workspace and object; key rotation preserves old values',()=>{
  const old=randomBytes(32),ring={activeKeyId:'v1',keys:{v1:old}},message='Synthetic profile';const encrypted=seal(message,'person:synthetic:one',ring);
  assert.ok(!encrypted.includes(message));assert.ok(unseal(encrypted,'person:synthetic:one',ring)===message);
@@ -96,7 +110,7 @@ test('atomic rate contract denies excess and backend failure',async()=>{
 test('identity stays disabled without explicit validated configuration',()=>{
  assert.ok(!identityEnabled({}));denied(()=>parseIdentityConfig({LS_IDENTITY_ENABLED:'true'}),'UNAVAILABLE');
  const env={LS_IDENTITY_ENABLED:'true',LS_APP_ORIGIN:'https://app.example.invalid',LS_IDENTITY_WORKSPACE_ID:workspace,LS_IDENTITY_DATA_KEYS:JSON.stringify({k1:opaqueToken()}),LS_IDENTITY_ACTIVE_KEY_ID:'k1',LS_IDENTITY_CSRF_KEY:opaqueToken(),LS_IDENTITY_LOOKUP_KEY:opaqueToken(),LS_IDENTITY_RATE_KEY:opaqueToken()};
- assert.ok(parseIdentityConfig(env).sessionSeconds===28800);denied(()=>parseIdentityConfig({...env,LS_APP_ORIGIN:'http://app.example.invalid'}),'UNAVAILABLE');denied(()=>parseIdentityConfig({...env,LS_IDENTITY_LOOKUP_KEY:env.LS_IDENTITY_CSRF_KEY}),'UNAVAILABLE');
+ assert.ok(parseIdentityConfig(env).sessionSeconds===28800);assert.equal(parseIdentityConfig(env).childAccountsEnabled,false);assert.equal(parseIdentityConfig({...env,LS_CHILD_ACCOUNTS_ENABLED:'true'}).childAccountsEnabled,true);denied(()=>parseIdentityConfig({...env,LS_APP_ORIGIN:'http://app.example.invalid'}),'UNAVAILABLE');denied(()=>parseIdentityConfig({...env,LS_IDENTITY_LOOKUP_KEY:env.LS_IDENTITY_CSRF_KEY}),'UNAVAILABLE');
 });
 test('preferences default to in-app only and keep overnight quiet windows local',()=>{
  assert.ok(defaultPreference('practice_due','in_app','he').enabled);assert.ok(!defaultPreference('practice_due','whatsapp','he').enabled);

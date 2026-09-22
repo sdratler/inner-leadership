@@ -71,13 +71,14 @@ export function validateAnswers(definition: FormDefinition, answers: FormAnswers
       if (field.required) throw new Error("REQUIRED_FORM_FIELD");
       continue;
     }
+    if (typeof answer === "string" && answer.trim().length === 0 && field.required) throw new Error("REQUIRED_FORM_FIELD");
     if (field.kind === "boolean" && typeof answer !== "boolean") throw new Error("INVALID_FORM_ANSWER");
     if (["short_text", "long_text", "date", "single_choice"].includes(field.kind) && typeof answer !== "string") throw new Error("INVALID_FORM_ANSWER");
     if (field.kind === "short_text" && typeof answer === "string" && answer.length > 500) throw new Error("INVALID_FORM_ANSWER");
-    if (field.kind === "date" && typeof answer === "string" && !/^\d{4}-\d{2}-\d{2}$/.test(answer)) throw new Error("INVALID_FORM_ANSWER");
+    if (field.kind === "date" && typeof answer === "string" && (!/^\d{4}-\d{2}-\d{2}$/.test(answer) || Number.isNaN(Date.parse(`${answer}T00:00:00Z`)) || new Date(`${answer}T00:00:00Z`).toISOString().slice(0, 10) !== answer)) throw new Error("INVALID_FORM_ANSWER");
     if (field.kind === "single_choice" && typeof answer === "string" && !field.options?.some((option) => option.value === answer)) throw new Error("INVALID_FORM_ANSWER");
     if (field.kind === "multiple_choice") {
-      if (!Array.isArray(answer) || new Set(answer).size !== answer.length || answer.some((value) => !field.options?.some((option) => option.value === value))) throw new Error("INVALID_FORM_ANSWER");
+      if (!Array.isArray(answer) || (field.required && answer.length === 0) || new Set(answer).size !== answer.length || answer.some((value) => !field.options?.some((option) => option.value === value))) throw new Error("INVALID_FORM_ANSWER");
     }
   }
 }

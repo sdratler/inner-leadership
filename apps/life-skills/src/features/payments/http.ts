@@ -17,7 +17,7 @@ export async function handlePayments(request:Request,path:readonly string[]):Pro
  try{
   if(path.length!==1||path[0]!.length>60||!['GET','POST'].includes(request.method))throw new AppError('NOT_FOUND');
   const {identity,service}=await paymentsRuntime(),token=sessionToken(request.headers);if(request.method!=='GET')verifyMutationOrigin(request,identity.config.origin);
-  actor=await identity.services.sessions.actor(token);audit=identity.services.audit;if(actor.role==='adult_client')throw new AppError('NOT_FOUND');
+  actor=await identity.services.sessions.actor(token);audit=identity.services.audit;if(actor.role==='adult_client'||actor.role==='child')throw new AppError('NOT_FOUND');
   if(request.method!=='GET')verifyCsrfToken(request.headers.get('x-csrf-token'),identity.services.sessions.csrf(token));
   await enforceRateLimit(identity.services.limits,opaqueRateLimitKey(`payments:${actor.workspaceId}:${actor.id}:${request.method}`,identity.config.rateLimitKey),request.method==='GET'?120:40,60_000);
   let data:unknown;

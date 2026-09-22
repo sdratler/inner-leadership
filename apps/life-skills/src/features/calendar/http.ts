@@ -41,7 +41,7 @@ export async function handleCalendar(request:Request,path:readonly string[]):Pro
   const {identity,service}=await calendarRuntime(),token=sessionToken(request.headers);
   if(request.method!=='GET')verifyMutationOrigin(request,identity.config.origin);
   const actor=await identity.services.sessions.actor(token);verifiedActor=actor;audit=identity.services.audit;
-  if(actor.role==='adult_client')throw new AppError('FORBIDDEN');
+  if((actor.role==='adult_client'||actor.role==='child')&&request.method!=='GET')throw new AppError('FORBIDDEN');
   if(request.method!=='GET')verifyCsrfToken(request.headers.get('x-csrf-token'),identity.services.sessions.csrf(token));
   await enforceRateLimit(identity.services.limits,opaqueRateLimitKey(`calendar:${actor.workspaceId}:${actor.id}:${request.method==='GET'?'read':'write'}`,identity.config.rateLimitKey),request.method==='GET'?240:60,60_000);
   const key=request.headers.get('idempotency-key')??'';

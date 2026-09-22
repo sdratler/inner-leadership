@@ -1,0 +1,78 @@
+{
+  "auditId": "LS-SOT-20260922-01",
+  "kind": "documentation-source-routing-snapshot",
+  "notRuntimeCheckerConfiguration": true,
+  "observedRemoteMain": "be2a563bc749b347d1e3a19afffa05555a2681c5",
+  "preparedCode": {
+    "driveId": "1cGb7XqZue0zEWrP3bgvSrvLs_IkO5b0p",
+    "archiveSha256": "41d3ca5b1ec81aff70574c8b4cb2d69decd0d74d08869b7f5ebfc73976ab63ae",
+    "sourceDigest": "39e4a460f26a889f6feb3afcc1d86acef156f461bc02313f3ede2da378d1eca8",
+    "applicationFileCount": 468,
+    "isGitCommit": false
+  },
+  "sources": [
+    {
+      "key": "START",
+      "driveId": "1XZS-MzUtjc3T488lyrSbtDX0Yq5UCl7Wzh5uN_YOvMg",
+      "version": "4.0",
+      "exportSha256": "8a603ead94011480f68ff3367ed69b02688c7d30477220df9e869c6e24d58e36"
+    },
+    {
+      "key": "PRODUCT",
+      "driveId": "1kJug8ojFwdGgZoPUx8BJt9fLKBjGYvX0wwbtarGTIIg",
+      "version": "3.0",
+      "exportSha256": "7734e5b32a88e122c7ded06a346df53f8277cd1c542602f83a55bfe171252087"
+    },
+    {
+      "key": "ARCHITECTURE",
+      "driveId": "1h-bnQ94uxuTrs8BPeDg-1uwZFcQEONdmYccd9Inacgw",
+      "version": "3.0",
+      "exportSha256": "0fe93577a7e8d6f1685984a297f46c851125a90db3d37715b699e99e8f64a183"
+    },
+    {
+      "key": "UI",
+      "driveId": "1KokAca2V-UhCPj1czP28TQ4i5E2Wd1JKJFbuXfmAPu4",
+      "version": "3.0",
+      "exportSha256": "768f9eeba1e18265db337475988179ea65b92ecf76b45f260ce54ea3c60804ff"
+    },
+    {
+      "key": "BRAND",
+      "driveId": "1Ru0oxW_2OFU7IN_aGDpuzIayOrpvB7wCi-HhK5VFyUQ",
+      "version": "existing graphics authority + 2026-09-22 live-UI addendum",
+      "exportSha256": "12eeaf78f5238589a121140ecb0061410a097398743c5edab14ab7f807b6c39b"
+    },
+    {
+      "key": "OPERATING",
+      "driveId": "1q-GDEaL9JmmVfy1meQrGvu3V4H2XNJ4jp2b17ZrP6bE",
+      "version": "3.0",
+      "exportSha256": "d7feca9b49ae5021eae2ef8cd34c3949986013fb04e69f94aacb0f687c019b33"
+    },
+    {
+      "key": "PROMPT",
+      "driveId": "1r8fN36liKyXcf9GVG1Cl25Yq9vjaYWD9A0YC1h3jn-E",
+      "version": "4.0",
+      "exportSha256": "6e26ccd05478f84d9fd7fae98d69697ed214e4325fee4654baca2d34bf9a7e23"
+    },
+    {
+      "key": "PACKET",
+      "driveId": "1NrlYux3I78nO7M9v1fKGl-UCKpkcZrOUtHSoV-BmLOE",
+      "version": "2.0",
+      "exportSha256": "5469ffcfff65e281b596a74002b257e1d2ebb2e002c96ead2a95de9a05e4b95d"
+    },
+    {
+      "key": "WEBSITE",
+      "driveId": "1jw0shI2DSfUH9RpJc2WdeIqXwO1OYOUEiwuv3mdNngU",
+      "version": "existing 3.3 website/content body + 2026-09-22 app alignment",
+      "exportSha256": "495a9716993f2537adba2cc51ee325a91299be27249a4b4702771a3bf7ef601f"
+    },
+    {
+      "key": "PROGRAM",
+      "driveId": "1aR8ONMUW0nlPbVe3jFZ6FKJ1_lPHyYPdVbTRbWB3hhA",
+      "version": "2.2",
+      "exportSha256": "019bd70da35d07783bf784a7f120b1c85cdf552bdee1e83aaba46df83555c23e"
+    }
+  ],
+  "localWaveBlockSha256": "67b11665c0cf8cfd1e1090c81dedb8842f01dd52d571a47520f848c6f26b57e8",
+  "historicalMachineManifest": "apps/life-skills/docs/current-sources.json remains unchanged; no expected fingerprint or acceptance status is replaced.",
+  "mode": "NO_PUSH_NO_MERGE_NO_DEPLOY_NO_PROVIDER_WRITE"
+}

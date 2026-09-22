@@ -1,0 +1,81 @@
+.shell,
+.card {
+  display: grid;
+  gap: 1rem;
+  max-width: 680px;
+  margin: 2rem auto;
+  padding: 1rem;
+}
+.card {
+  border: 1px solid #c9dad5;
+  border-radius: 12px;
+  background: #fff;
+}
+.card label {
+  display: grid;
+  gap: 0.35rem;
+}
+.card input,
+.card button,
+.shell button {
+  min-height: 44px;
+  font: inherit;
+}
+.card input {
+  border: 1px solid #8da9a2;
+  border-radius: 8px;
+  padding: 0.6rem;
+}
+.card select {
+  min-height: 44px;
+  border: 1px solid #8da9a2;
+  border-radius: 8px;
+  padding: 0.6rem;
+  font: inherit;
+  background: #fff;
+}
+.card button,
+.shell button {
+  border: 0;
+  border-radius: 8px;
+  padding: 0.6rem;
+  background: #176b63;
+  color: #fff;
+}
+.shell ul {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0;
+  list-style: none;
+}
+.issued {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+  border: 1px solid #8da9a2;
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+.issued p {
+  width: 100%;
+  margin: 0;
+}
+.issued a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  border-radius: 8px;
+  padding: 0.6rem;
+  background: #176b63;
+  color: #fff;
+  font-weight: 700;
+  text-decoration: none;
+}
+@media (max-width: 480px) {
+  .shell,
+  .card {
+    margin: 0;
+    padding: 0.8rem;
+  }
+}

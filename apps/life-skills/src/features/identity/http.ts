@@ -37,8 +37,8 @@ export const identityRouteMethods=Object.freeze({
  '/api/identity/session':['GET'], '/api/identity/logout':['POST'], '/api/identity/logout-all':['POST'],
  '/api/identity/preferences':['GET','PUT'], '/api/identity/contacts':['GET'], '/api/identity/contacts/email':['POST'],
  '/api/identity/contacts/phone':['PUT'], '/api/identity/cases':['GET','POST'], '/api/identity/cases/state':['PATCH'],
- '/api/identity/invites/parent':['POST'], '/api/identity/invites/adult':['POST'], '/api/identity/guardians/revoke':['POST'],
- '/api/identity/accounts/revoke':['POST'], '/api/identity/engagements':['POST'], '/api/identity/audiences':['GET','POST'],
+ '/api/identity/invites/parent':['POST'], '/api/identity/invites/adult':['POST'], '/api/identity/invites/child':['POST'], '/api/identity/guardians/revoke':['POST'],
+ '/api/identity/accounts/revoke':['POST'], '/api/identity/engagements':['POST'], '/api/identity/audiences':['GET','POST'], '/api/identity/case-access':['GET'],
 } satisfies Record<string,readonly string[]>);
 const publicPosts=new Set(['/api/identity/login','/api/identity/reset/request','/api/identity/reset/complete','/api/identity/invites/accept','/api/identity/email/confirm']);
 function cookie(request:Request,name:string):string|undefined {
@@ -72,7 +72,7 @@ export class IdentityHttp {
    const url=new URL(request.url),path=url.pathname;
    const methods=(identityRouteMethods as Record<string,readonly string[]>)[path];
    if(!methods || !methods.includes(request.method)) throw new AppError("NOT_FOUND");
-   if(url.origin!==this.config.origin || (url.search && !(path==='/api/identity/audiences' && request.method==='GET'))) throw new AppError("INVALID_REQUEST");
+   if(url.origin!==this.config.origin || (url.search && !(['/api/identity/audiences','/api/identity/case-access'].includes(path) && request.method==='GET'))) throw new AppError("INVALID_REQUEST");
    const network=this.trustedNetworkHint(request);
    if(typeof network!=='string' || network.length<1 || network.length>128) throw new AppError("UNAVAILABLE");
    await this.limit('network:'+network,200);
@@ -132,10 +132,15 @@ export class IdentityHttp {
      const input=await readJson(request,z.object({kind:z.enum(['minor','adult']),displayName:boundedLabel,familyLabel:boundedLabel,familyId:z.string().uuid().transform(v=>asId(v,'family')).optional()}).strict());
      data=await this.services.cases.create(actor,{kind:input.kind,displayName:input.displayName,familyLabel:input.familyLabel,...(input.familyId?{familyId:input.familyId}:{})},requestId);
     }
+   }else if(path==='/api/identity/case-access'){
+    const keys=[...url.searchParams.keys()];const parsed=z.object({caseId}).strict().safeParse(Object.fromEntries(url.searchParams));
+    if(keys.length!==1||keys[0]!=='caseId'||!parsed.success)throw new AppError('INVALID_REQUEST');
+    data=await this.services.cases.caseAccessInfo(actor,parsed.data.caseId);
    }else if(path==='/api/identity/cases/state'){
     const input=await readJson(request,z.object({caseId,state:z.enum(caseLifecycleValues)}).strict());await this.services.cases.changeState(actor,input.caseId,input.state,requestId);
    }else if(path==='/api/identity/invites/parent') data=await this.services.accounts.inviteParent(actor,await readJson(request,invite),requestId);
    else if(path==='/api/identity/invites/adult') data=await this.services.accounts.inviteAdult(actor,await readJson(request,invite),requestId);
+   else if(path==='/api/identity/invites/child') data=await this.services.accounts.inviteChild(actor,await readJson(request,invite),requestId);
    else if(path==='/api/identity/guardians/revoke'){
     const input=await readJson(request,z.object({caseId,accountId}).strict());await this.services.accounts.revokeGuardian(actor,input.caseId,input.accountId,requestId);
    }else if(path==='/api/identity/accounts/revoke'){
@@ -145,11 +150,11 @@ export class IdentityHttp {
     data=await this.services.cases.createEngagement(actor,input.caseId,input,requestId);
    }else if(path==='/api/identity/audiences'){
     if(request.method==='GET'){
-     if([...url.searchParams.keys()].length!==2 || !url.searchParams.has('caseId') || !url.searchParams.has('audienceId')) throw new AppError("INVALID_REQUEST");
-     const parsed=z.object({caseId,audienceId}).safeParse(Object.fromEntries(url.searchParams));if(!parsed.success) throw new AppError("INVALID_REQUEST");
-     data=await this.services.cases.audience(actor,parsed.data.caseId,parsed.data.audienceId);
+     const keys=[...url.searchParams.keys()];if(!url.searchParams.has('caseId') || new Set(keys).size!==keys.length || keys.some(key=>key!=="caseId"&&key!=="audienceId")) throw new AppError("INVALID_REQUEST");
+     const parsed=z.object({caseId,audienceId:audienceId.optional()}).safeParse(Object.fromEntries(url.searchParams));if(!parsed.success) throw new AppError("INVALID_REQUEST");
+     data=parsed.data.audienceId?await this.services.cases.audience(actor,parsed.data.caseId,parsed.data.audienceId):await this.services.cases.audiences(actor,parsed.data.caseId);
     }else{
-     const input=await readJson(request,z.object({caseId,visibility:z.enum(visibilityValues),published:z.boolean(),accountIds:z.array(accountId).max(2).optional()}).strict());
+     const input=await readJson(request,z.object({caseId,visibility:z.enum(visibilityValues),published:z.boolean(),accountIds:z.array(accountId).max(3).optional()}).strict());
      data=await this.services.cases.createAudience(actor,input.caseId,{visibility:input.visibility,published:input.published,...(input.accountIds?{accountIds:input.accountIds}:{})},requestId);
     }
    }else throw new AppError("NOT_FOUND");

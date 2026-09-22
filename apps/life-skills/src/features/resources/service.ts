@@ -1,10 +1,10 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { AppError } from "../../lib/errors.ts";
 import { asId, type Id } from "../../lib/ids.ts";
 import { seal, unseal } from "../identity/crypto.ts";
 import { freshActor, lockWorkspace } from "../identity/data.ts";
 import type { IdentityConfig } from "../identity/config.ts";
-import type { IdentityStore } from "../identity/store.ts";
+import type { IdentityStore,SqlSession } from "../identity/store.ts";
 import { one } from "../identity/store.ts";
 import type { Actor, AudienceId, CaseId, IdentityClock } from "../identity/types.ts";
 import { loadAudience, loadCase, loadGuardians } from "../cases/data.ts";
@@ -14,6 +14,8 @@ import type { ResourceReference } from "./schema.ts";
 
 export type ResourceId = Id<"resource">;
 export type ResourceAssignmentId = Id<"resource_assignment">;
+function commandDigest(value:unknown){return createHash("sha256").update(JSON.stringify(value)).digest("hex");}
+async function resourceCommand<T>(tx:SqlSession,config:IdentityConfig,actor:Actor,operation:"create_resource"|"assign_resource",key:string,body:unknown,work:()=>Promise<T>):Promise<T>{if(!/^[0-9a-f-]{36}$/i.test(key))throw new AppError("INVALID_REQUEST");const digest=commandDigest(body),aad=`resource-command:${actor.workspaceId}:${actor.id}:${operation}:${key}`,prior=await one<{bodyDigest:string;resultCiphertext:string}>(tx,'SELECT body_digest AS "bodyDigest",result_ciphertext AS "resultCiphertext" FROM ls_resources.command_receipts WHERE workspace_id=$1 AND actor_account_id=$2 AND operation=$3 AND idempotency_key=$4',[actor.workspaceId,actor.id,operation,key]);if(prior){if(prior.bodyDigest!==digest)throw new AppError("CONFLICT");return JSON.parse(unseal(prior.resultCiphertext,aad,config.keyring)) as T}const result=await work();await tx.query('INSERT INTO ls_resources.command_receipts(workspace_id,actor_account_id,operation,idempotency_key,body_digest,result_ciphertext) VALUES($1,$2,$3,$4,$5,$6)',[actor.workspaceId,actor.id,operation,key,digest,seal(JSON.stringify(result),aad,config.keyring)]);return result;}
 
 interface ResourceAssignmentRow {
   assignmentId: ResourceAssignmentId;
@@ -60,27 +62,27 @@ export function projectResource(row: Omit<ResourceAssignmentRow, "referenceCiphe
 export class ResourcesService {
   constructor(private readonly store: IdentityStore, private readonly config: IdentityConfig, private readonly clock: IdentityClock) {}
 
-  async create(actor: Actor, input: { type: ResourceAssignmentRow["type"]; title: string; description: string; reference: ResourceReference; downloadable: boolean; locale: "he" | "en" }, requestId: string) {
+  async create(actor: Actor, input: { type: ResourceAssignmentRow["type"]; title: string; description: string; reference: ResourceReference; downloadable: boolean; locale: "he" | "en" }, requestId: string,idempotencyKey:string) {
     const now = this.clock.now();
     return this.store.transaction(async (tx) => {
       await lockWorkspace(tx, actor.workspaceId);
       requirePractitioner(await freshActor(tx, actor, now));
-      const id = asId(randomUUID(), "resource");
+      return resourceCommand(tx,this.config,actor,"create_resource",idempotencyKey,input,async()=>{const id = asId(randomUUID(), "resource");
       const reference = seal(JSON.stringify(input.reference), `resource:${actor.workspaceId}:${id}`, this.config.keyring);
       await tx.query(`INSERT INTO ls_resources.resources
         (id,workspace_id,type,title,description,reference_ciphertext,downloadable,locale,owner_account_id,created_at)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
       [id, actor.workspaceId, input.type, input.title, input.description, reference, input.downloadable, input.locale, actor.id, now]);
       await recordLs050Action(tx, { requestId, now }, actor.workspaceId, actor.id, "resource_created");
-      return { resourceId: id };
+      return { resourceId: id };});
     });
   }
 
-  async assign(actor: Actor, input: { resourceId: ResourceId; caseId: CaseId; audienceId: AudienceId; dueDate: string | null; displayDate: string; completionEnabled: boolean }, requestId: string) {
+  async assign(actor: Actor, input: { resourceId: ResourceId; caseId: CaseId; audienceId: AudienceId; dueDate: string | null; displayDate: string; completionEnabled: boolean }, requestId: string,idempotencyKey:string) {
     const now = this.clock.now();
     return this.store.transaction(async (tx) => {
       await lockWorkspace(tx, actor.workspaceId);
-      const current = await freshActor(tx, actor, now);
+      return resourceCommand(tx,this.config,actor,"assign_resource",idempotencyKey,input,async()=>{const current = await freshActor(tx, actor, now);
       const item = await loadCase(tx, actor.workspaceId, input.caseId);
       const guardians = await loadGuardians(tx, actor.workspaceId, input.caseId);
       caseAccess(current, item, guardians, "publish");
@@ -94,7 +96,7 @@ export class ResourcesService {
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
       [id, actor.workspaceId, input.resourceId, input.caseId, input.audienceId, input.dueDate, input.displayDate, input.completionEnabled, actor.id, now]);
       await recordLs050Action(tx, { requestId, now }, actor.workspaceId, actor.id, "resource_assigned");
-      return { assignmentId: id };
+      return { assignmentId: id };});
     });
   }
 
@@ -130,6 +132,15 @@ export class ResourcesService {
         result.push(projectResource({ ...row, reference }, true));
       }
       return result;
+    });
+  }
+
+  /** Practitioner library metadata only; no storage keys or private bytes. */
+  async catalog(actor: Actor) {
+    return this.store.transaction(async tx => {
+      requirePractitioner(await freshActor(tx, actor, this.clock.now()));
+      return tx.query<{resourceId:ResourceId;title:string;type:ResourceAssignmentRow['type'];locale:'he'|'en'}>(
+        'SELECT id AS "resourceId",title,type,locale FROM ls_resources.resources WHERE workspace_id=$1 AND archived_at IS NULL ORDER BY created_at DESC,id LIMIT 100', [actor.workspaceId]);
     });
   }
 

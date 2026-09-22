@@ -7,11 +7,7 @@ export const CREDITS_PER_BLOCK=4 as const;
 export const TERMS_VERSION='Product2.3' as const;
 export const CURRENCY='ILS' as const;
 export const IDEMPOTENCY_KEY=/^[A-Za-z0-9][A-Za-z0-9_.:-]{15,99}$/;
-export function assertMinor(value:number,max=10_000_000):number{if(!Number.isSafeInteger(value)||value<1||value>max)throw new AppError('INVALID_REQUEST');return value;}
-export function parseIlsMinor(value:string):number{
- const match=/^(0|[1-9][0-9]{0,6})(?:\.([0-9]{1,2}))?$/.exec(value.trim());if(!match)throw new AppError('INVALID_REQUEST');
- return assertMinor(Number(match[1])*100+Number((match[2]??'').padEnd(2,'0')));
-}
+export { assertMinor, parseIlsMinor } from './amount.ts';
 function normalized(value:unknown):unknown{
  if(Array.isArray(value))return value.map(normalized);
  if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>[k,normalized(v)]));

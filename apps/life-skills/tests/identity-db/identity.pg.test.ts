@@ -25,7 +25,7 @@ import { opaqueRateLimitKey } from '../../src/lib/security/rate-limit.ts';
 let pool:Pool,store:IdentityStore,config:IdentityConfig,auth:IdentityAuthService,accounts:IdentityAccountService,sessions:IdentitySessions,prefs:IdentityPreferenceService,cases:CaseService,authorizer:DatabaseCaseAuthorizer;
 const clock={now:()=>new Date()},sink=new SyntheticAuthEmailSink('synthetic-test'),mailFrom='service@example.invalid';
 const request=()=>randomUUID();
-const email={practitioner:'practitioner@example.invalid',a:'parent-a@example.invalid',b:'parent-b@example.invalid',other:'parent-other@example.invalid',adult:'adult@example.invalid'};
+const email={practitioner:'practitioner@example.invalid',a:'parent-a@example.invalid',b:'parent-b@example.invalid',other:'parent-other@example.invalid',adult:'adult@example.invalid',child:'child@example.invalid'};
 const passwords=new Map<string,string>();
 async function dispatchAll(){for(let i=0;i<100;i++){if(await dispatchOneAuthMail(store,config,clock,sink,mailFrom)==='idle') return;}throw new Error('SYNTHETIC_QUEUE_NOT_DRAINED');}
 function tokenFromMail(to:string,mode:'invite'|'reset'){
@@ -51,7 +51,8 @@ before(async()=>{
  assert.ok(createHash('sha256').update(foundation).digest('hex')==='df3ba0131c7d5fd093953884e5f5316c7416b2dbe49fceee0d57acf2ae362dcd','foundation migration must match frozen baseline');
  await pool.query('CREATE SCHEMA ls_control');await pool.query(foundation);
  await pool.query(await readFile(resolve('migrations/0010_ls_identity_cases_20260906.sql'),'utf8'));
- config={enabled:true,origin:'https://app.example.invalid',workspaceId:asId(randomUUID(),'workspace'),csrfKey:randomBytes(32),lookupKey:randomBytes(32),rateLimitKey:opaqueToken(),keyring:{activeKeyId:'test',keys:{test:randomBytes(32)}},sessionSeconds:28800};
+ await pool.query(await readFile(resolve('migrations/0095_ls_optional_child_accounts.sql'),'utf8'));
+ config={enabled:true,origin:'https://app.example.invalid',workspaceId:asId(randomUUID(),'workspace'),csrfKey:randomBytes(32),lookupKey:randomBytes(32),rateLimitKey:opaqueToken(),keyring:{activeKeyId:'test',keys:{test:randomBytes(32)}},sessionSeconds:28800,childAccountsEnabled:true};
  auth=new IdentityAuthService(store,config,clock);accounts=new IdentityAccountService(store,config,clock);sessions=new IdentitySessions(store,config,clock);prefs=new IdentityPreferenceService(store,config,clock);cases=new CaseService(store,config,clock);authorizer=new DatabaseCaseAuthorizer(store);
 });
 after(async()=>{sink.clear();if(pool)await pool.end();});
@@ -101,12 +102,18 @@ test('PostgreSQL journey: practitioner, two independent parents, reset, explicit
  const adultCase=await cases.create(practitioner.actor,{kind:'adult',displayName:'Synthetic Adult',familyLabel:'Synthetic Adult Case'},request());
  await accounts.inviteAdult(practitioner.actor,{caseId:adultCase.caseId,email:email.adult,displayName:'Synthetic Adult',locale:'en'},request());await dispatchAll();await accept(email.adult);
  const adult=await login(email.adult);assert.ok((await cases.list(adult.actor)).every(c=>c.id===adultCase.caseId));await denied(()=>authorizer.authorize({workspaceId:config.workspaceId,accountId:adult.actor.id},main.caseId,'read'));
+ await accounts.inviteChild(practitioner.actor,{caseId:main.caseId,email:email.child,displayName:'Synthetic Child',locale:'he'},request());await dispatchAll();await accept(email.child);
+ const child=await login(email.child);assert.equal(child.actor.role,'child');assert.deepEqual((await cases.list(child.actor)).map(item=>item.id),[main.caseId]);
+ await denied(()=>cases.audience(child.actor,main.caseId,republished.audienceId));
+ const childAudience=await cases.createAudience(practitioner.actor,main.caseId,{visibility:'family_full',published:true},request());await cases.audience(child.actor,main.caseId,childAudience.audienceId);
+ await denied(()=>authorizer.authorize({workspaceId:config.workspaceId,accountId:child.actor.id},other.caseId,'read'));
+ await accounts.revokeAccount(practitioner.actor,child.actor.id,request());assert.equal(await sessions.resolve(child.token),null);
  const engagement=await cases.createEngagement(practitioner.actor,main.caseId,{rateMinor:55000,attendedReviewTarget:12},request());assert.ok(Boolean(engagement.engagementId));
  await denied(()=>cases.createEngagement(practitioner.actor,other.caseId,{rateMinor:45000,attendedReviewTarget:12},request()),'CONFLICT');
  // Terminal outbox rows retain no decryptable recipient or token payload.
  await dispatchAll();const leaked=await pool.query("SELECT count(*)::integer AS count FROM ls_identity.auth_mail_outbox WHERE state<>'queued' AND payload_ciphertext IS NOT NULL");assert.ok(leaked.rows[0]?.count===0);
 });
-test('PostgreSQL constraints reject child authentication and cross-workspace relationships',async()=>{
+test('PostgreSQL constraints enforce account/subject kind and cross-workspace relationships',async()=>{
  const minor=await pool.query("SELECT id FROM ls_identity.people WHERE workspace_id=$1 AND kind='minor' LIMIT 1",[config.workspaceId]);
  await assert.rejects(()=>store.transaction(async tx=>{
   const id=asId(randomUUID(),'account');await tx.query("INSERT INTO ls_identity.accounts (id,workspace_id,role,state,locale,email_blind,email_ciphertext,created_at,updated_at) VALUES ($1,$2,'parent','invited','he',$3,$4,$5,$5)",[id,config.workspaceId,blindEmail('invalid-child-link@example.invalid',config.lookupKey),seal('invalid-child-link@example.invalid',`email:${config.workspaceId}:${id}`,config.keyring),clock.now()]);
@@ -122,6 +129,7 @@ test('PostgreSQL counter is atomic under concurrent requests and recovers after 
 test('forward migration rerun is data-preserving and credential cleanup remains scoped',async()=>{
  const before=await pool.query("SELECT count(*)::integer AS count FROM ls_identity.accounts");
  await pool.query(await readFile(resolve('migrations/0010_ls_identity_cases_20260906.sql'),'utf8'));
+ await pool.query(await readFile(resolve('migrations/0095_ls_optional_child_accounts.sql'),'utf8'));
  const after=await pool.query("SELECT count(*)::integer AS count FROM ls_identity.accounts");assert.ok(before.rows[0].count===after.rows[0].count);
  await pruneAuthEphemera(store,config,clock);
 });
