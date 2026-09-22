@@ -1,6 +1,6 @@
 # Life Skills private application
 
-The existing application source is isolated under `apps/life-skills`. The current implementation target is **LS-REVAMP-20260922-01** following source reconciliation **LS-SOT-20260922-01**. It is not a new foundation, and neither this README nor the prepared source certifies a complete or live application.
+The existing application source is isolated under `apps/life-skills`. The current implementation target is **LS-REVAMP-20260922-01** following source reconciliation **LS-SOT-20260922-01**. The audited source is integrated on the protected pull-request candidate recorded in the [September 22 execution receipt](docs/runtime/w4-revamp-20260922.md); this is not a claim that provider verification or deployment has occurred.
 
 ## Current sources and execution
 Read the original [START HERE](https://docs.google.com/document/d/1XZS-MzUtjc3T488lyrSbtDX0Yq5UCl7Wzh5uN_YOvMg/edit), [Product](https://docs.google.com/document/d/1kJug8ojFwdGgZoPUx8BJt9fLKBjGYvX0wwbtarGTIIg/edit), [Architecture](https://docs.google.com/document/d/1h-bnQ94uxuTrs8BPeDg-1uwZFcQEONdmYccd9Inacgw/edit), [UI](https://docs.google.com/document/d/1KokAca2V-UhCPj1czP28TQ4i5E2Wd1JKJFbuXfmAPu4/edit) and [complete current prompt](https://docs.google.com/document/d/1r8fN36liKyXcf9GVG1Cl25Yq9vjaYWD9A0YC1h3jn-E/edit). Use the [source reconciliation](../../docs/REVAMP-20260922-SOURCE-OF-TRUTH.md) for archive identity, current version routing and scope.
@@ -15,7 +15,7 @@ The old foundation descriptions (empty registry, no account logic, one technical
 Synthetic preview routes show only what their actual source implements. They are not client login, database acceptance, provider readiness or production access. A health response is liveness only. Keep the application closed by default unless a specific local synthetic configuration is used. Real account/session, role and case checks remain server-enforced.
 
 ## Database and provider boundaries
-Use existing encryption, identity and forward-only migrations. The prepared session SQL is an unexecuted candidate; assign a number only after comparing the actual local ledger and validate on a dedicated disposable synthetic database. Preserve existing migration bytes, payment/credit/attendance rules and confidential records. No `.env`, real recordings or private case data in Git or test fixtures.
+Use existing encryption, identity and forward-only migrations. The prepared session SQL was reconciled as migration `0093`; migrations `0090` through `0095` are registered with checksums and were validated on fresh disposable PostgreSQL 17.11 databases. They have not been applied to a live database. Preserve existing migration bytes, payment/credit/attendance rules and confidential records. No `.env`, real recordings or private case data belongs in Git or test fixtures.
 
 The existing deployment record is [`deployment/railway-target.json`](deployment/railway-target.json); historical reconciliation is [`docs/runtime/railway-reconciliation-20260914.md`](docs/runtime/railway-reconciliation-20260914.md). They identify recorded targets, not fresh credentials, live state or permission to deploy. Never substitute the public website/BNA database for the private app or overwrite a newer live intake with an older main snapshot.
 
