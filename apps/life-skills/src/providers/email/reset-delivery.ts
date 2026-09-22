@@ -37,8 +37,8 @@ export async function scheduleResetDelivery(request: Request, response: Response
           link.pathname = `/${locale}/intake/staff`; link.search = "?mode=reset";
           const subject = locale === "he" ? "כישורי חיים — איפוס סיסמה" : "Life Skills — reset your password";
           const text = locale === "he"
-            ? `התקבלה בקשה לאיפוס הסיסמה לחשבון כישורי חיים.\n\n${link.href}\n\nהקישור תקף ל־15 דקות. בחרו סיסמה חדשה בת 15 תווים לפחות. אין להעביר הודעה זו. אם לא ביקשתם איפוס, התעלמו ממנה.`
-            : `You requested a password reset for your Life Skills account.\n\n${link.href}\n\nThis link expires in 15 minutes. Choose a new password of at least 15 characters, then sign in. Do not forward this email. If you did not request a reset, ignore it.`;
+            ? `התקבלה בקשה לאיפוס הסיסמה לחשבון כישורי חיים.\n\n${link.href}\n\nהקישור תקף ל־15 דקות. בחרו סיסמה חדשה בת 6 תווים לפחות. אין להעביר הודעה זו. אם לא ביקשתם איפוס, התעלמו ממנה.`
+            : `You requested a password reset for your Life Skills account.\n\n${link.href}\n\nThis link expires in 15 minutes. Choose a new password of at least 6 characters, then sign in. Do not forward this email. If you did not request a reset, ignore it.`;
           return provider.send({ ...message, subject, text });
         }
       };

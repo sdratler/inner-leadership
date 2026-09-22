@@ -52,7 +52,7 @@ test.describe("staff password reset request", () => {
   }
 
   for (const locale of ["he", "en"] as const) {
-    test(`${locale}: reset password boundary rejects fourteen and accepts fifteen codepoints`, async ({ page }) => {
+    test(`${locale}: reset password boundary rejects five and accepts six codepoints`, async ({ page }) => {
       let completions = 0;
       await page.route("**/api/identity/csrf", (route) =>
         route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, data: { csrfToken: "test-csrf" } }) }),
@@ -65,13 +65,13 @@ test.describe("staff password reset request", () => {
       const form = page.locator("form");
       const password = form.locator('input[name="password"]');
       const confirmation = form.locator('input[name="confirmation"]');
-      await expect(password).toHaveAttribute("minlength", "15");
-      await password.fill("א".repeat(14));
-      await confirmation.fill("א".repeat(14));
+      await expect(password).toHaveAttribute("minlength", "6");
+      await password.fill("אבגדה");
+      await confirmation.fill("אבגדה");
       await form.getByRole("button", { name: locale === "en" ? "Save" : "שמירה" }).click();
       expect(completions).toBe(0);
-      await password.fill("א".repeat(15));
-      await confirmation.fill("א".repeat(15));
+      await password.fill("אבגדהו");
+      await confirmation.fill("אבגדהו");
       await form.getByRole("button", { name: locale === "en" ? "Save" : "שמירה" }).click();
       await expect.poll(() => completions).toBe(1);
     });

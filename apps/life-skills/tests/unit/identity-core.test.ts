@@ -20,14 +20,14 @@ import { AuthEmailDeliveryError } from '../../src/providers/email/transport.ts';
 import { authEmailContent } from '../../src/providers/email/template.ts';
 import { takeAuthTokenFragment } from '../../src/features/identity/client.ts';
 const workspace=asId(randomUUID(),'workspace'),otherWorkspace=asId(randomUUID(),'workspace');
-test('password token routes enforce fifteen-character boundary before consuming invite or reset tokens',async()=>{
+test('password token routes enforce six-character boundary before consuming invite or reset tokens',async()=>{
  const config=parseIdentityConfig({LS_IDENTITY_ENABLED:'true',LS_APP_ORIGIN:'https://app.example.invalid',LS_IDENTITY_WORKSPACE_ID:workspace,LS_IDENTITY_DATA_KEYS:JSON.stringify({k1:opaqueToken()}),LS_IDENTITY_ACTIVE_KEY_ID:'k1',LS_IDENTITY_CSRF_KEY:opaqueToken(),LS_IDENTITY_LOOKUP_KEY:opaqueToken(),LS_IDENTITY_RATE_KEY:opaqueToken()});
  for(const path of ['/api/identity/reset/complete','/api/identity/invites/accept']){
   const preauth=opaqueToken(),consume=vi.fn(async()=>{});
   const services={auth:{assertPreauth:async()=>{},consumePasswordToken:consume},limits:{consume:async()=>({count:1,retryAfterMs:1000})},audit:{write:async()=>{}}} as unknown as IdentityHttpServices;
   const http=new IdentityHttp(config,{now:()=>new Date()},services);
   const headers={Origin:config.origin,Cookie:'__Host-ls-preauth='+preauth,'X-CSRF-Token':csrfSecret(preauth,config.csrfKey,'preauth'),'Content-Type':'application/json'};
-  for(const [password,status,calls]of [['x'.repeat(14),400,0],['x'.repeat(15),200,1],['a longer existing password',200,2]] as const){
+  for(const [password,status,calls]of [['xxxxx',400,0],['xxxxxx',200,1],['a longer existing password',200,2]] as const){
    const response=await http.handle(new Request(config.origin+path,{method:'POST',headers,body:JSON.stringify({token:opaqueToken(),password})}));
    assert.equal(response.status,status);assert.equal(consume.mock.calls.length,calls);
   }
@@ -80,7 +80,7 @@ test('passwords are salted scrypt verifiers, not reversible or fixed fixtures',a
  const password=opaqueToken(),first=await hashPassword(password),second=await hashPassword(password);
  assert.ok(first!==second && !first.includes(password));assert.ok(await verifyPassword(password,first));assert.ok(!await verifyPassword(opaqueToken(),first));assert.ok(!await verifyPassword(password,'invalid-format'));
 });
-test('password policy counts Unicode codepoints, requires fifteen, and preserves bounds',async()=>{const generated=opaqueToken();validatePassword(generated);denied(()=>validatePassword('x'.repeat(14)),'INVALID_REQUEST');const fifteen='x'.repeat(15),encoded=await hashPassword(fifteen);validatePassword(fifteen);assert.ok(await verifyPassword(fifteen,encoded));denied(()=>validatePassword('😀'.repeat(14)),'INVALID_REQUEST');validatePassword('😀'.repeat(15));validatePassword('א'.repeat(15));denied(()=>validatePassword('x'.repeat(129)),'INVALID_REQUEST');validatePassword('א'.repeat(128));});
+test('password policy counts Unicode codepoints, accepts six, and preserves bounds',async()=>{const generated=opaqueToken();validatePassword(generated);denied(()=>validatePassword('x'.repeat(5)),'INVALID_REQUEST');const six='x'.repeat(6),sixEncoded=await hashPassword(six);validatePassword(six);assert.ok(await verifyPassword(six,sixEncoded));denied(()=>validatePassword('😀'.repeat(5)),'INVALID_REQUEST');validatePassword('😀'.repeat(6));validatePassword('א'.repeat(6));denied(()=>validatePassword('x'.repeat(129)),'INVALID_REQUEST');validatePassword('א'.repeat(128));const longer='א'.repeat(15),encoded=await hashPassword(longer);assert.ok(await verifyPassword(longer,encoded));});
 test('AES-GCM envelopes bind field, workspace and object; key rotation preserves old values',()=>{
  const old=randomBytes(32),ring={activeKeyId:'v1',keys:{v1:old}},message='Synthetic profile';const encrypted=seal(message,'person:synthetic:one',ring);
  assert.ok(!encrypted.includes(message));assert.ok(unseal(encrypted,'person:synthetic:one',ring)===message);
