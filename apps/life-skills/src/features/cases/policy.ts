@@ -23,7 +23,8 @@ export function caseAccess(account: AccountFacts, item: CaseFacts | null, guardi
   const parent = account.role === "parent" && item.kind === "minor" && guardians.some(g =>
     g.accountId === account.id && g.caseId === item.id && g.workspaceId === item.workspaceId && g.revoked === false);
   const adult = account.role === "adult_client" && item.kind === "adult" && item.clientPersonId === account.personId;
-  if (!owner && !(operation === "read" && (parent || adult))) throw new AppError("NOT_FOUND");
+  const child = account.role === "child" && item.kind === "minor" && item.clientPersonId === account.personId;
+  if (!owner && !(operation === "read" && (parent || adult || child))) throw new AppError("NOT_FOUND");
   // Lifecycle does not silently change retention or end-of-service access policy.
   // Membership revocation is explicit, rather than inferred from completion/payment.
   return Object.freeze({ workspaceId: item.workspaceId, accountId: account.id, caseId: item.id });
@@ -51,11 +52,12 @@ export function projectSharedItem(actor: AccountFacts, item: CaseFacts, guardian
   return audience.visibility === "family_title_completion" && actor.role !== "practitioner"
     ? minimal : { ...minimal, details: content.publicDetails };
 }
-export function validateAssignees(actor: AccountFacts, item: CaseFacts, guardians: readonly GuardianFacts[], audience: AudienceFacts, assignees: readonly AccountId[]): readonly AccountId[] {
+export function validateAssignees(actor: AccountFacts, item: CaseFacts, guardians: readonly GuardianFacts[], audience: AudienceFacts, assignees: readonly AccountId[], clientAccountIds: readonly AccountId[] = []): readonly AccountId[] {
   audienceAccess(actor, item, guardians, audience);
-  if (!assignees.length || assignees.length > 2 || new Set(assignees).size !== assignees.length) throw new AppError("INVALID_REQUEST");
+  if (!assignees.length || assignees.length > 3 || new Set(assignees).size !== assignees.length) throw new AppError("INVALID_REQUEST");
   for (const id of assignees) {
-    if (!audience.accountIds.includes(id) || !guardians.some(g => g.accountId === id && g.caseId === item.id && g.workspaceId === item.workspaceId && !g.revoked)) throw new AppError("NOT_FOUND");
+    const guardian=guardians.some(g => g.accountId === id && g.caseId === item.id && g.workspaceId === item.workspaceId && !g.revoked);
+    if (!audience.accountIds.includes(id) || (!guardian && !clientAccountIds.includes(id))) throw new AppError("NOT_FOUND");
   }
   return [...assignees];
 }

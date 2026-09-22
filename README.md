@@ -2,13 +2,21 @@
 
 This repository contains the bilingual Life Skills website source and the separate private-application code. Current business intent comes from the registered Drive contracts; this README is a navigation page, not another brand kit or offer specification.
 
+## Current application continuation — 22 September 2026
+
+The current app goal is **LS-REVAMP-20260922-01**, following source audit **LS-SOT-20260922-01**. Use the original [START HERE registry](https://docs.google.com/document/d/1XZS-MzUtjc3T488lyrSbtDX0Yq5UCl7Wzh5uN_YOvMg/edit) and [current complete implementation prompt](https://docs.google.com/document/d/1r8fN36liKyXcf9GVG1Cl25Yq9vjaYWD9A0YC1h3jn-E/edit).
+
+The [source reconciliation](docs/REVAMP-20260922-SOURCE-OF-TRUTH.md) distinguishes original source, prepared files, integrated code, tests and deployment. The September 22 ZIP is a manifest-backed candidate, **not** this repository's current commit or a released application. Preserve later local/remote work. One local writer completes the supplied code and real adapters/pages; do not restart the old six-window foundation cycle, rerun source exporters or treat helper tests as app acceptance.
+
+This documentation patch alone changes no application behavior, provider configuration, legacy source-checker fingerprint or release permission. Default: `NO_PUSH_NO_MERGE_NO_DEPLOY_NO_PROVIDER_WRITE`.
+
 ## Start here
 
 1. Read [AGENTS.md](AGENTS.md) and the [CURRENT source registry](https://docs.google.com/document/d/1XZS-MzUtjc3T488lyrSbtDX0Yq5UCl7Wzh5uN_YOvMg/edit).
 2. Read [Build Control](https://docs.google.com/spreadsheets/d/1Y_Vf_kipj7mAhhEnuj8F2L85v3KpOi_V9KfSrj4MZ4Y/edit) and the [Operating Protocol](https://docs.google.com/document/d/1q-GDEaL9JmmVfy1meQrGvu3V4H2XNJ4jp2b17ZrP6bE/edit) for current ownership, dependencies and release instructions.
 3. For any hero, logo, image or ad work, read [creative/README.md](creative/README.md). Resolve the exact registered assets before editing or generating anything.
 
-The owner-requested project-wide workflow is in [PROJECT-WORKFLOW.md](docs/PROJECT-WORKFLOW.md), with the [source audit](docs/PROJECT-WORKFLOW-AUDIT-20260911.md), [project instructions](docs/PROJECT-INSTRUCTIONS-TO-PASTE.md), and [complete Codex execution handoff](docs/CODEX-COMPLETE-HANDOFF.md). The handoff covers four hero masters, the website release, 30 finished creatives, the operator/watchdog and lead-to-CRM verification. These documents distinguish prepared work from installed automation and completed outputs.
+The owner-requested project-wide workflow is in [PROJECT-WORKFLOW.md](docs/PROJECT-WORKFLOW.md), with the [source audit](docs/PROJECT-WORKFLOW-AUDIT-20260911.md), [project instructions](docs/PROJECT-INSTRUCTIONS-TO-PASTE.md), and [complete Codex execution handoff](docs/CODEX-COMPLETE-HANDOFF.md). That earlier handoff describes a separate historical website/creative/operator acquisition scope; it is not the September 22 private-app build order and does not imply those outputs were all completed. These documents distinguish prepared work from installed automation and completed outputs.
 
 Use the same current source records and manifests when an owner correction arrives. An old prompt, a successful test, an OpenArt upload or a PR comment alone does not prove that a finished image is approved, integrated or live.
 
@@ -18,7 +26,7 @@ The website hero must display the exact approved image bytes. Its visible headli
 
 Do not recreate the hero with HTML/CSS/SVG, recolor it, regenerate it, substitute a similar reference or silently crop away its composition. The `creative/**` registry records asset identity, approval scope, hashes and permitted placement. `tools/life-skills-operator/**`, when integrated, must consume that registry rather than own another brand kit. A pending record is not an approved master.
 
-Immediate production order is the four website masters: Hebrew/English, mobile/desktop. Work from the already chosen composition, review one candidate at a time, and preserve approved pixels. Batch ad variants follow the registered master and the credit/receipt policy in [creative/README.md](creative/README.md). Do not generate a new design for every post.
+Historical website-lane order described four website masters: Hebrew/English, mobile/desktop. Do not reopen completed assets or use this as the current private-app instruction. Work from the already chosen composition, review one candidate at a time, and preserve approved pixels. Batch ad variants follow the registered master and the credit/receipt policy in [creative/README.md](creative/README.md). Do not generate a new design for every post.
 
 ## Repository surfaces and existing commands
 

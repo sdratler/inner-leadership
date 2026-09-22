@@ -143,10 +143,14 @@ export class FormsService {
       if (!assignment) throw new AppError("NOT_FOUND");
       caseAccess(current, await loadCase(tx, actor.workspaceId, assignment.caseId), await loadGuardians(tx, actor.workspaceId, assignment.caseId), "read");
       if (assignment.assignedAccountId !== actor.id) throw new AppError("NOT_FOUND");
-      const existing = await one<{ id: FormSubmissionId }>(tx,
-        `SELECT id FROM ls_forms.form_submissions WHERE workspace_id=$1 AND assignment_id=$2 AND idempotency_key=$3`,
+      const existing = await one<{ id: FormSubmissionId; answersDigest: string }>(tx,
+        `SELECT id,answers_digest AS "answersDigest" FROM ls_forms.form_submissions WHERE workspace_id=$1 AND assignment_id=$2 AND idempotency_key=$3`,
         [actor.workspaceId, assignment.id, input.idempotencyKey]);
-      if (existing) return { submissionId: existing.id, duplicate: true };
+      if (existing) {
+        const suppliedDigest = createHash("sha256").update(JSON.stringify(input.answers)).digest("hex");
+        if (existing.answersDigest !== suppliedDigest) throw new AppError("CONFLICT");
+        return { submissionId: existing.id, duplicate: true };
+      }
       if (assignment.state !== "assigned") throw new AppError("CONFLICT");
       try { validateAnswers(assignment.definition, input.answers); } catch (error) { invalid(error); }
       const id = asId(randomUUID(), "form_submission");

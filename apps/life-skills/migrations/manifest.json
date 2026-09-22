@@ -34,5 +34,29 @@
   {
     "name": "0080_ls_context_updates_20260911.sql",
     "sha256": "3e60f07af8974ea4f48639b4e70fb64ed131970827d34f362dde9ac25c09fa58"
+  },
+  {
+    "name": "0090_ls_parents_first.sql",
+    "sha256": "75f60bb1db7e78896fe083ef56c2828f1428f6e70417435ba154575d0043f182"
+  },
+  {
+    "name": "0091_ls_pre_enrollment.sql",
+    "sha256": "b1a58dcd33390d1dc8a8c1d87a508010895463cbc8274c6e72c28419189507e9"
+  },
+  {
+    "name": "0092_ls_practitioner_private_notes.sql",
+    "sha256": "57fabf2a064e6102d319b11f45588e4d1be2060a8d9dc0df0b39d062d71889f4"
+  },
+  {
+    "name": "0093_ls_session_records.sql",
+    "sha256": "fa91ab8482b658cb0d9f15c915eb3f8da23a5c75c18bada78e959ef7c9b7be99"
+  },
+  {
+    "name": "0094_ls_resource_command_receipts.sql",
+    "sha256": "3e933c13a5af7feed1e0c3aec44240d9062348db57fd871db41217c59dbff139"
+  },
+  {
+    "name": "0095_ls_optional_child_accounts.sql",
+    "sha256": "6e495fe9ed085e1e1a8efb43b34eddfe890fe9239c54a18142bfe1d0c40127f6"
   }
 ]

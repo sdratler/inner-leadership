@@ -8,11 +8,12 @@ import { resourceAssignmentInputSchema, resourceCompletionInputSchema, resourceI
 import { ResourcesService } from "./service.ts";
 
 const methods = Object.freeze({
-  "/api/resources": ["POST"],
+  "/api/resources": ["GET", "POST"],
   "/api/resources/assignments": ["GET", "POST"],
   "/api/resources/completions": ["POST"],
 } satisfies Record<string, readonly string[]>);
 const caseId = z.uuid().transform((value) => asId(value, "case"));
+function idempotencyKey(request:Request){const value=request.headers.get("idempotency-key")??"";if(!z.string().uuid().safeParse(value).success)throw new AppError("INVALID_REQUEST");return value;}
 
 export class ResourcesHttp {
   private readonly boundary: Ls050HttpBoundary;
@@ -27,7 +28,8 @@ export class ResourcesHttp {
   private async dispatch(actor: Actor, requestId: string, url: URL, path: string, request: Request) {
     if (path === "/api/resources") {
       if (url.search) throw new AppError("INVALID_REQUEST");
-      return { data: await this.resources.create(actor, await readJson(request, resourceInputSchema), requestId), status: 201 };
+      if (request.method === 'GET') return {data:await this.resources.catalog(actor)};
+      return { data: await this.resources.create(actor, await readJson(request, resourceInputSchema), requestId,idempotencyKey(request)), status: 201 };
     }
     if (path === "/api/resources/assignments") {
       if (request.method === "GET") {
@@ -36,7 +38,7 @@ export class ResourcesHttp {
         return { data: await this.resources.list(actor, result.data.caseId as CaseId) };
       }
       if (url.search) throw new AppError("INVALID_REQUEST");
-      return { data: await this.resources.assign(actor, await readJson(request, resourceAssignmentInputSchema), requestId), status: 201 };
+      return { data: await this.resources.assign(actor, await readJson(request, resourceAssignmentInputSchema), requestId,idempotencyKey(request)), status: 201 };
     }
     if (path === "/api/resources/completions") {
       if (url.search) throw new AppError("INVALID_REQUEST");

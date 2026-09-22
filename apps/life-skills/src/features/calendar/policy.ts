@@ -11,12 +11,13 @@ export function authorizeAppointment(actor: AccountFacts, item: CaseFacts | null
 }
 export function validateBooking(actor: AccountFacts, item: CaseFacts, guardians: readonly GuardianFacts[], audience: AudienceFacts, input: CreateBooking, now: string) {
  requirePractitioner(actor); caseAccess(actor,item,guardians,'write');
- if (item.kind!=='minor' || !['active','intake'].includes(item.state)) throw new AppError('CONFLICT');
- if (input.caseId!==item.id || audience.caseId!==item.id || input.audienceId!==audience.id || !audience.published || audience.visibility!=='family_full') throw new AppError('INVALID_REQUEST');
+ if (!['active','intake'].includes(item.state)) throw new AppError('CONFLICT');
+ if (input.caseId!==item.id || audience.caseId!==item.id || input.audienceId!==audience.id || !audience.published || audience.visibility==='private') throw new AppError('INVALID_REQUEST');
  if (!['individual','parent_guidance'].includes(input.kind)) throw new AppError('INVALID_REQUEST');
  if (!Number.isInteger(input.bufferBefore) || !Number.isInteger(input.bufferAfter) || input.bufferBefore<0 || input.bufferAfter<0 || input.bufferBefore>120 || input.bufferAfter>120) throw new AppError('INVALID_REQUEST');
  if (ms(input.startsAt)<=ms(now) || ms(input.startsAt)>ms(now)+366*86_400_000) throw new AppError('INVALID_REQUEST');
  if (input.location.length>280 || /[\u0000-\u001f]/.test(input.location)) throw new AppError('INVALID_REQUEST');
+ if (item.kind==='adult'&&input.kind!=='individual') throw new AppError('INVALID_REQUEST');
  if (input.kind==='parent_guidance') {
   if (!input.parentForId) throw new AppError('INVALID_REQUEST'); validateAssignees(actor,item,guardians,audience,input.parentIds);
  } else if (input.parentForId!==null || input.parentIds.length) throw new AppError('INVALID_REQUEST');

@@ -44,7 +44,7 @@ export async function fixture(options:{workspaceId?:string;keyring?:Keyring;term
   // These records only service authorization; no password/email provider is exercised.
   await pool.query('INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,\'adult\',$3,$4)',[personId,workspaceId,seal(JSON.stringify({displayName:label}),`person:${workspaceId}:${personId}`,keyring),ago]);
   await pool.query(`INSERT INTO ls_identity.accounts(id,workspace_id,role,state,locale,email_blind,email_ciphertext,email_verified_at,password_hash,created_at,updated_at)
-   VALUES($1,$2,$3,'active','en',$4,$5,$6,'synthetic-non-login-hash',$6,$6)`,[id,workspaceId,role,createHash('sha256').update(id).digest('hex'),seal('synthetic-'+id+'@example.invalid',`account-email:${workspaceId}:${id}`,keyring),ago]);
+   VALUES($1,$2,$3,'active','en',$4,$5,$6,'synthetic-non-login-hash',$6,$6)`,[id,workspaceId,role,createHash('sha256').update(id).digest('hex'),seal('synthetic-'+id+'@example.invalid',`email:${workspaceId}:${id}`,keyring),ago]);
   await pool.query('INSERT INTO ls_identity.account_subjects(workspace_id,account_id,person_id) VALUES($1,$2,$3)',[workspaceId,id,personId]);
   await pool.query('INSERT INTO ls_identity.sessions(token_digest,workspace_id,account_id,created_at,expires_at) VALUES($1,$2,$3,$4,$5)',[actor.sessionDigest,workspaceId,id,ago,new Date(expiresAt)]);
   return {actor,token};

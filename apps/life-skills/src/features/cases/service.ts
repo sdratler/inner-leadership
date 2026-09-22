@@ -35,6 +35,7 @@ export class CaseService {
     JOIN ls_identity.people p ON p.workspace_id=cl.workspace_id AND p.id=cl.person_id WHERE c.workspace_id=$1 AND
     (($3='practitioner' AND c.practitioner_account_id=$2) OR
      ($3='adult_client' AND p.kind='adult' AND p.id=$4) OR
+     ($3='child' AND p.kind='minor' AND p.id=$4) OR
      ($3='parent' AND p.kind='minor' AND EXISTS(SELECT 1 FROM ls_cases.case_guardians g WHERE g.workspace_id=c.workspace_id AND g.case_id=c.id AND g.account_id=$2 AND g.revoked_at IS NULL)))
     ORDER BY c.created_at DESC,c.id LIMIT 100`,[actor.workspaceId,actor.id,current.role,current.personId]);
    return rows.map(row=>{
@@ -75,11 +76,11 @@ export class CaseService {
    caseAccess(current,item,guardians,'publish');if(!item) throw new AppError("NOT_FOUND");
    const eligible=await tx.query<{id:AccountId}>(`SELECT a.id FROM ls_identity.accounts a JOIN ls_identity.account_subjects s ON s.workspace_id=a.workspace_id AND s.account_id=a.id
     WHERE a.workspace_id=$1 AND a.state<>'revoked' AND
-    (($3='minor' AND a.role='parent' AND EXISTS(SELECT 1 FROM ls_cases.case_guardians g WHERE g.workspace_id=a.workspace_id AND g.case_id=$2 AND g.account_id=a.id AND g.revoked_at IS NULL)) OR
+    (($3='minor' AND ((a.role='parent' AND EXISTS(SELECT 1 FROM ls_cases.case_guardians g WHERE g.workspace_id=a.workspace_id AND g.case_id=$2 AND g.account_id=a.id AND g.revoked_at IS NULL)) OR (a.role='child' AND s.person_id=$4))) OR
      ($3='adult' AND a.role='adult_client' AND s.person_id=$4)) ORDER BY a.id`,[actor.workspaceId,caseId,item.kind,item.clientPersonId]);
    const allowed=eligible.map(x=>x.id),ids=input.visibility==='private'?[]:[...(input.accountIds ?? allowed)];
    if(input.visibility==='private' && input.accountIds?.length) throw new AppError("INVALID_REQUEST");
-   if(new Set(ids).size!==ids.length || ids.length>2 || ids.some(id=>!allowed.includes(id))) throw new AppError("NOT_FOUND");
+   if(new Set(ids).size!==ids.length || ids.length>3 || ids.some(id=>!allowed.includes(id))) throw new AppError("NOT_FOUND");
    const audienceId=asId(randomUUID(),'audience');
    await tx.query("INSERT INTO ls_cases.audiences (id,workspace_id,case_id,visibility,published,created_at) VALUES ($1,$2,$3,$4,$5,$6)",[audienceId,actor.workspaceId,caseId,input.visibility,input.published,context.now]);
    for(const id of ids) await tx.query("INSERT INTO ls_cases.audience_accounts (workspace_id,case_id,audience_id,account_id,granted_at) VALUES ($1,$2,$3,$4,$5)",[actor.workspaceId,caseId,audienceId,id,context.now]);
@@ -93,6 +94,36 @@ export class CaseService {
    audienceAccess(current,await loadCase(tx,actor.workspaceId,caseId),await loadGuardians(tx,actor.workspaceId,caseId),item);
    // Other recipients' account identifiers are not exposed by this read model.
    return {id:item.id,visibility:item.visibility,published:item.published};
+  });
+ }
+ async caseAccessInfo(actor:Actor,caseId:CaseId) {
+  return this.store.transaction(async tx=>{
+   const current=await freshActor(tx,actor,this.clock.now());requirePractitioner(current);
+   const item=await loadCase(tx,actor.workspaceId,caseId),guardians=await loadGuardians(tx,actor.workspaceId,caseId);
+   caseAccess(current,item,guardians,'read');if(!item)throw new AppError('NOT_FOUND');
+   const rows=await tx.query<{accountId:AccountId;personId:string;profileCiphertext:string;emailCiphertext:string;locale:'he'|'en';role:'parent'|'adult_client'|'child';state:'invited'|'active'|'revoked';guardianRevokedAt:string|null}>(`SELECT a.id AS "accountId",p.id AS "personId",p.profile_ciphertext AS "profileCiphertext",a.email_ciphertext AS "emailCiphertext",a.locale,a.role,a.state,g.revoked_at::text AS "guardianRevokedAt"
+    FROM ls_identity.accounts a JOIN ls_identity.account_subjects s ON s.workspace_id=a.workspace_id AND s.account_id=a.id
+    JOIN ls_identity.people p ON p.workspace_id=s.workspace_id AND p.id=s.person_id
+    LEFT JOIN ls_cases.case_guardians g ON g.workspace_id=a.workspace_id AND g.account_id=a.id AND g.case_id=$2
+    WHERE a.workspace_id=$1 AND (($3='minor' AND ((a.role='parent' AND g.case_id=$2) OR (a.role='child' AND p.id=$4))) OR ($3='adult' AND a.role='adult_client' AND p.id=$4))
+    ORDER BY a.created_at,a.id LIMIT 50`,[actor.workspaceId,caseId,item.kind,item.clientPersonId]);
+   const members=rows.map(row=>{
+    const profile:unknown=JSON.parse(unseal(row.profileCiphertext,`person:${actor.workspaceId}:${row.personId}`,this.config.keyring));
+    if(!profile||typeof profile!=='object'||!('displayName' in profile)||typeof profile.displayName!=='string')throw new AppError('UNAVAILABLE');
+    return {accountId:row.accountId,displayName:profile.displayName,email:unseal(row.emailCiphertext,`email:${actor.workspaceId}:${row.accountId}`,this.config.keyring),locale:row.locale,role:row.role,state:row.state,guardianRevokedAt:row.guardianRevokedAt};
+   });
+   return {caseId,kind:item.kind,childAccountsEnabled:this.config.childAccountsEnabled===true,members};
+  });
+ }
+ async audiences(actor:Actor,caseId:CaseId):Promise<Array<{id:AudienceId;visibility:Visibility;published:boolean}>> {
+  return this.store.transaction(async tx=>{
+   const current=await freshActor(tx,actor,this.clock.now()),item=await loadCase(tx,actor.workspaceId,caseId),guardians=await loadGuardians(tx,actor.workspaceId,caseId);
+   caseAccess(current,item,guardians,'read');
+   const rows=await tx.query<{id:AudienceId;visibility:Visibility;published:boolean}>("SELECT id,visibility,published FROM ls_cases.audiences WHERE workspace_id=$1 AND case_id=$2 AND published ORDER BY created_at DESC,id",[actor.workspaceId,caseId]);
+   if(current.role==='practitioner')return rows;
+   const allowed:typeof rows=[];
+   for(const row of rows){const audience=await loadAudience(tx,actor.workspaceId,caseId,row.id);if(!audience)continue;try{audienceAccess(current,item,guardians,audience);allowed.push(row)}catch(error){if(!(error instanceof AppError)||error.code!=='NOT_FOUND')throw error}}
+   return allowed;
   });
  }
 }

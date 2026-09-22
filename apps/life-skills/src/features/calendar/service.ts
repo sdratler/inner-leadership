@@ -39,6 +39,12 @@ export class CalendarService {
     AND (a.starts_at,a.id)>($5::timestamptz,$6::uuid)
     AND (($7='practitioner' AND cs.practitioner_account_id=$8) OR ($7='parent' AND au.published AND au.visibility<>'private'
      AND EXISTS(SELECT 1 FROM ls_cases.case_guardians g WHERE g.workspace_id=a.workspace_id AND g.case_id=a.case_id AND g.account_id=$8 AND g.revoked_at IS NULL)
+     AND EXISTS(SELECT 1 FROM ls_cases.audience_accounts aa WHERE aa.workspace_id=a.workspace_id AND aa.case_id=a.case_id AND aa.audience_id=a.audience_id AND aa.account_id=$8 AND aa.revoked_at IS NULL))
+     OR ($7='adult_client' AND au.published AND au.visibility<>'private'
+     AND EXISTS(SELECT 1 FROM ls_cases.clients cl JOIN ls_identity.account_subjects s ON s.workspace_id=cl.workspace_id AND s.person_id=cl.person_id WHERE cl.workspace_id=cs.workspace_id AND cl.id=cs.client_id AND s.account_id=$8)
+     AND EXISTS(SELECT 1 FROM ls_cases.audience_accounts aa WHERE aa.workspace_id=a.workspace_id AND aa.case_id=a.case_id AND aa.audience_id=a.audience_id AND aa.account_id=$8 AND aa.revoked_at IS NULL))
+     OR ($7='child' AND au.published AND au.visibility<>'private'
+     AND EXISTS(SELECT 1 FROM ls_cases.clients cl JOIN ls_identity.account_subjects s ON s.workspace_id=cl.workspace_id AND s.person_id=cl.person_id WHERE cl.workspace_id=cs.workspace_id AND cl.id=cs.client_id AND s.account_id=$8)
      AND EXISTS(SELECT 1 FROM ls_cases.audience_accounts aa WHERE aa.workspace_id=a.workspace_id AND aa.case_id=a.case_id AND aa.audience_id=a.audience_id AND aa.account_id=$8 AND aa.revoked_at IS NULL)))
     ORDER BY a.starts_at,a.id LIMIT 101`,[c.workspace,query.caseId,from,to,cursorTime,cursorId,c.actor.role,c.actor.id]);
    const items:AppointmentView[]=[];for(const r of rows.slice(0,100))items.push(await this.db.view(c,r.id));
@@ -47,12 +53,13 @@ export class CalendarService {
  }
  catalog(actor:Actor,caseId:CaseId):Promise<BookingCatalog>{return this.db.read(actor,async c=>{
   const {item,guardians}=await this.db.scope(c,caseId,true);requirePractitioner(c.actor);
-  const rows=await c.tx.query<{id:AudienceId}>(`SELECT id FROM ls_cases.audiences WHERE workspace_id=$1 AND case_id=$2 AND published AND visibility='family_full' ORDER BY created_at,id LIMIT 101`,[c.workspace,caseId]);
+  const rows=await c.tx.query<{id:AudienceId}>(`SELECT id FROM ls_cases.audiences WHERE workspace_id=$1 AND case_id=$2 AND published AND visibility<>'private' ORDER BY created_at,id LIMIT 101`,[c.workspace,caseId]);
   if(rows.length>100)throw new AppError('CONFLICT');
   const audiences:BookingCatalog['audiences']=[];
   for(const r of rows){const au=await loadAudience(c.tx,c.workspace,caseId,r.id);if(!au)continue;audienceAccess(c.actor,item,guardians,au);
    const parentIds:AccountId[]=[];for(const id of au.accountIds){if(guardians.some(g=>g.accountId===id&&!g.revoked)){try{await this.db.assertParentActive(c,id);parentIds.push(id);}catch(error){if(!(error instanceof AppError && error.code==='NOT_FOUND'))throw error;}}}
-   if(parentIds.length)audiences.push({id:au.id,parentIds});
+   if(item.kind==='minor'&&au.visibility==='family_full'&&parentIds.length)audiences.push({id:au.id,parentIds});
+   if(item.kind==='adult'){const adult=await one(c.tx,`SELECT a.id FROM ls_identity.accounts a JOIN ls_identity.account_subjects s ON s.workspace_id=a.workspace_id AND s.account_id=a.id WHERE a.workspace_id=$1 AND a.state='active' AND a.role='adult_client' AND s.person_id=$2 AND a.id=ANY($3::uuid[])`,[c.workspace,item.clientPersonId,au.accountIds]);if(adult)audiences.push({id:au.id,parentIds:[]});}
   }
   const engagement=await one<{id:EngagementId;termsVersion:string}>(c.tx,`SELECT id,terms_version AS "termsVersion" FROM ls_cases.engagements WHERE workspace_id=$1 AND case_id=$2 AND state='active'`,[c.workspace,caseId]);
   return {audiences,engagement};
@@ -90,7 +97,8 @@ export class CalendarService {
   const {item,guardians,audience}=await this.db.audience(c,input.caseId,input.audienceId);
   const times=validateBooking(c.actor,item,guardians,audience,input,c.now);
   for(const id of input.parentIds)await this.db.assertParentActive(c,id);
-  if(!audience.accountIds.some(id=>guardians.some(g=>g.accountId===id&&!g.revoked)))throw new AppError('INVALID_REQUEST');
+  if(item.kind==='minor'&&!audience.accountIds.some(id=>guardians.some(g=>g.accountId===id&&!g.revoked)))throw new AppError('INVALID_REQUEST');
+  if(item.kind==='adult'){const adult=await one(c.tx,`SELECT a.id FROM ls_identity.accounts a JOIN ls_identity.account_subjects s ON s.workspace_id=a.workspace_id AND s.account_id=a.id WHERE a.workspace_id=$1 AND a.state='active' AND a.role='adult_client' AND s.person_id=$2 AND a.id=ANY($3::uuid[])`,[c.workspace,item.clientPersonId,audience.accountIds]);if(!adult)throw new AppError('INVALID_REQUEST');}
   const engagement=original?{id:original.engagementId,termsVersion:original.termsVersion}:await one<{id:EngagementId;termsVersion:string}>(c.tx,`SELECT id,terms_version AS "termsVersion" FROM ls_cases.engagements WHERE workspace_id=$1 AND case_id=$2 AND state='active'`,[c.workspace,input.caseId]);
   if(!engagement)throw new AppError('CONFLICT');
   if(input.parentForId){

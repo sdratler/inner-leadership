@@ -1,35 +1,25 @@
-# Life Skills private-app foundation
-An isolated, closed-by-default Next.js/TypeScript foundation. No public-site changes, real accounts, login handler, case database, clinical records or live service are included.
+# Life Skills private application
 
-## Local integration
-Node 22.12+ (below 25) and npm are required. Commands run inside this directory, never at the repository root. The first dependency install and lockfile creation belong to the authorized Codex integrator. Subsequent runs must use the committed package-lock.json and `npm ci`.
+The existing application source is isolated under `apps/life-skills`. The current implementation target is **LS-REVAMP-20260922-01** following source reconciliation **LS-SOT-20260922-01**. The audited source is integrated on the protected pull-request candidate recorded in the [September 22 execution receipt](docs/runtime/w4-revamp-20260922.md); this is not a claim that provider verification or deployment has occurred.
 
-```sh
-npm install
-npm run verify
-```
+## Current sources and execution
+Read the original [START HERE](https://docs.google.com/document/d/1XZS-MzUtjc3T488lyrSbtDX0Yq5UCl7Wzh5uN_YOvMg/edit), [Product](https://docs.google.com/document/d/1kJug8ojFwdGgZoPUx8BJt9fLKBjGYvX0wwbtarGTIIg/edit), [Architecture](https://docs.google.com/document/d/1h-bnQ94uxuTrs8BPeDg-1uwZFcQEONdmYccd9Inacgw/edit), [UI](https://docs.google.com/document/d/1KokAca2V-UhCPj1czP28TQ4i5E2Wd1JKJFbuXfmAPu4/edit) and [complete current prompt](https://docs.google.com/document/d/1r8fN36liKyXcf9GVG1Cl25Yq9vjaYWD9A0YC1h3jn-E/edit). Use the [source reconciliation](../../docs/REVAMP-20260922-SOURCE-OF-TRUTH.md) for archive identity, current version routing and scope.
 
-For a local visual preview, set `LS_APP_MODE=foundation_preview` and `LS_APP_ORIGIN=http://127.0.0.1:3001`, then run `npm run dev`. Preview mode rejects non-loopback origins. It has no database access. Private API and application paths remain unavailable in either mode. The default `foundation_locked` returns 503 for user pages. `/api/health` is liveness only; it does not assert database, authentication or deployment readiness. `/robots.txt` disallows indexing.
+Use one writer in a new isolated candidate. Compare the actual local source once and preserve later edits. Reuse the prepared React components, session/permission logic, fixture data and tests; connect real authentication, persistence and routes. Do not substitute a fixture selector or static component gallery for working parent/adult/child access.
 
-The separately authorized hosted synthetic preview uses `LS_APP_MODE=isolated_preview`, an HTTPS `LS_APP_ORIGIN` and an uncommitted 32–128 character `LS_PREVIEW_ACCESS_KEY`. It exposes only `/he/preview` and `/en/preview` behind HTTP Basic authentication (`preview` plus the secret key). Private APIs remain unavailable, health and robots stay public, and no client data is used. Run `npm run test:e2e:isolated-preview` before publishing a preview revision.
+The exact start commands and full test inventory are in the verified package's `prompts/CODEX-MASTER.txt`, with path ownership in `contracts/FILE-OWNERSHIP.json`. Use the existing supported Node/runtime and locked dependencies. Do not use an initial `npm install` or a short historical default verification script as a substitute for that inventory. Do not rerun old transfer/UI/LS070 installers.
 
-The preview routes are `/he/foundation` and `/en/foundation`; `?view=practitioner` selects the practitioner layout, otherwise the parent layout. All copy is explicitly foundation-only. Error, empty, loading and not-found states are supplied. Review images in the packet are not screenshots of a built Next application.
+## Source and runtime truth
+The old foundation descriptions (empty registry, no account logic, one technical migration) are historical, not a current inventory. `docs/current-sources.json` retains its original frozen source fingerprints as historical evidence; do not refresh them just to suppress a checker. The audit's separate source-register file does not install a checker or certify new fingerprints.
 
-## Boundaries
-`src/lib` contains locale, exact integer-agora money, explicit-offset instant, errors, visibility, audit and security primitives. `src/db` supplies the metadata schema and forward-only migration tooling. `src/ui` supplies shared tokens, simple components and the preview. Feature registration is initially empty. Account/case ownership and audience projections must be integrated and verified in LS-010/LS-025; the default adapters here never grant access. UI expansion belongs to LS-020. No consumer feature should be built against these unintegrated files.
+Synthetic preview routes show only what their actual source implements. They are not client login, database acceptance, provider readiness or production access. A health response is liveness only. Keep the application closed by default unless a specific local synthetic configuration is used. Real account/session, role and case checks remain server-enforced.
 
-Do not add business fees, scheduling policies, secret values or client data to this README or provenance file. `docs/current-sources.json` points to the CURRENT authorities without mirroring their business content.
+## Database and provider boundaries
+Use existing encryption, identity and forward-only migrations. The prepared session SQL was reconciled as migration `0093`; migrations `0090` through `0095` are registered with checksums and were validated on fresh disposable PostgreSQL 17.11 databases. They have not been applied to a live database. Preserve existing migration bytes, payment/credit/attendance rules and confidential records. No `.env`, real recordings or private case data belongs in Git or test fixtures.
 
-## Database
-Separate runtime and migration URLs are supported. Remote connections require certificate validation; URL SSL query overrides are rejected. The supplied migration CLI is limited to disposable loopback databases ending `_test` or `_dev`. The first SQL migration contains only technical foundation metadata; no clients or account tables. Run migrations explicitly, never during a web request or framework build. Read packet MIGRATIONS/README.md before running them.
+The existing deployment record is [`deployment/railway-target.json`](deployment/railway-target.json); historical reconciliation is [`docs/runtime/railway-reconciliation-20260914.md`](docs/runtime/railway-reconciliation-20260914.md). They identify recorded targets, not fresh credentials, live state or permission to deploy. Never substitute the public website/BNA database for the private app or overwrite a newer live intake with an older main snapshot.
 
-## Canonical Railway target
+## Acceptance and effects
+Run focused tests during integration and the complete actual convergence gate: lint, framework-generated/pinned type check, applicable unit suites, build, disposable migration/transaction tests and authenticated two-family HE/EN desktop/mobile journeys. Report skipped, blocked, failed and unrun checks honestly. Provider/device/backup/restore acceptance remains separate from source parsing and helper tests.
 
-Under `D-LS-ISOLATED-RUNTIME-20260913-01`, every private-app worker must use Railway project `life-skills-sys034-staging-0907` (`3b756632-1f66-4f75-a016-eabc37aa0d67`), environment `production` (`dd91bd71-57cc-45e6-a75b-8c858491d7c7`), application service `life-skills-private-staging` (`0267d061-f3ce-4a0a-82d4-ce133e4501e9`) and database service ID `354b5343-9e83-45a7-b764-09396f14ae29`. The database is selected by exact service/project/environment identity and bound as `LS_DATABASE_URL=${{Postgres.DATABASE_URL}}`; never infer it from the `Postgres` display name.
-
-The non-secret deployment record is [`deployment/railway-target.json`](deployment/railway-target.json); reconciliation and preservation details are in [`docs/runtime/railway-reconciliation-20260914.md`](docs/runtime/railway-reconciliation-20260914.md). The Railway project `inner-leadership-app` remains preserved legacy/noncanonical. The Railway project `inner-leadership` is a separate public-site runtime. Neither is an alternate private-app destination, and the public `/life-skills` website database must never be used here.
-
-## Verification
-`npm run verify` runs lint, full framework-generated type checking, Vitest unit tests and a production build. `npm run test:db` requires a fresh disposable loopback database in `LS_TEST_DATABASE_URL`. `npm run test:e2e` builds and tests preview mode; `npm run test:e2e:locked` separately tests locked production mode. No failing or skipped required suite is a verification pass.
-
-No production/staging deployment, public DNS change, external provider activation, recording, AI processing or real data is authorized by this foundation packet. Root static publishing must not expose this directory.
+Default: `NO_PUSH_NO_MERGE_NO_DEPLOY_NO_PROVIDER_WRITE`. No real sends, paid transcription/AI/Apify, social publishing, ad mutation, production database, tunnel or deployment is authorized by this documentation. A later release needs exact owner authority, target verification, independent review and actual operational evidence.

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { isLocale } from "@/lib/locale.ts";
 import { requireWorkspaceRole } from "@/features/integration/page-session.ts";
 import { CoreNavigation, PrivateWorkspaceUnavailable } from "@/ui/workspace/core-navigation.tsx";
+import { PwaRegistration } from "@/features/pwa/registration.tsx";
 import "@/ui/workspace/workspace.css";
 import "@/ui/workspace/w4-v2.css";
 
@@ -11,5 +12,5 @@ export default async function PractitionerLayout({ children, params }: { childre
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   try { await requireWorkspaceRole("practitioner"); } catch { return <PrivateWorkspaceUnavailable locale={locale} role="practitioner" />; }
-  return <CoreNavigation locale={locale} role="practitioner">{children}</CoreNavigation>;
+  return <><link rel="manifest" href={`/${locale}/pwa/practitioner/manifest.webmanifest`}/><meta name="theme-color" content="#245159"/><PwaRegistration/><CoreNavigation locale={locale} role="practitioner">{children}</CoreNavigation></>;
 }

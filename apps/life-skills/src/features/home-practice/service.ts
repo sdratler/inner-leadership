@@ -281,7 +281,12 @@ export class HomePracticeService implements PracticeVersionReader {
       const item = await loadCase(tx, actor.workspaceId, row.caseId), guardians = await loadGuardians(tx, actor.workspaceId, row.caseId);
       const audience = await loadAudience(tx, actor.workspaceId, row.caseId, row.audienceId);
       if (!audience) throw new AppError("NOT_FOUND");
-      const assignees = validateAssignees(current, item!, guardians, audience, input.assigneeAccountIds);
+      const clientAccounts=item?await tx.query<{id:AccountId}>(`SELECT a.id FROM ls_identity.accounts a
+        JOIN ls_identity.account_subjects s ON s.workspace_id=a.workspace_id AND s.account_id=a.id
+        WHERE a.workspace_id=$1 AND a.state='active' AND s.person_id=$2
+        AND (($3='minor' AND a.role='child') OR ($3='adult' AND a.role='adult_client'))
+        AND a.id=ANY($4::uuid[])`,[actor.workspaceId,item.clientPersonId,item.kind,audience.accountIds]):[];
+      const assignees = validateAssignees(current, item!, guardians, audience, input.assigneeAccountIds, clientAccounts.map(row=>row.id));
       if (input.completionMode === "each_assignee" && assignees.length < 2) throw new AppError("INVALID_REQUEST");
       if (new Set(input.reminderCandidateAccountIds).size !== input.reminderCandidateAccountIds.length || input.reminderCandidateAccountIds.some(id => !assignees.includes(id))) throw new AppError("INVALID_REQUEST");
       const versionId = asId(randomUUID(), "coordination_version");
@@ -337,7 +342,14 @@ export class HomePracticeService implements PracticeVersionReader {
         OR EXISTS(SELECT 1 FROM ls_cases.audience_accounts aa JOIN ls_identity.accounts ac ON ac.workspace_id=aa.workspace_id AND ac.id=aa.account_id
           JOIN ls_cases.case_guardians g ON g.workspace_id=aa.workspace_id AND g.case_id=aa.case_id AND g.account_id=aa.account_id
           WHERE aa.workspace_id=a.workspace_id AND aa.case_id=a.case_id AND aa.audience_id=a.audience_id AND aa.account_id=$4
-           AND aa.revoked_at IS NULL AND g.revoked_at IS NULL AND ac.state='active' AND ac.role='parent'))`,
+           AND aa.revoked_at IS NULL AND g.revoked_at IS NULL AND ac.state='active' AND ac.role='parent')
+        OR EXISTS(SELECT 1 FROM ls_cases.audience_accounts aa JOIN ls_identity.accounts ac ON ac.workspace_id=aa.workspace_id AND ac.id=aa.account_id
+          JOIN ls_identity.account_subjects s ON s.workspace_id=ac.workspace_id AND s.account_id=ac.id
+          JOIN ls_cases.cases c ON c.workspace_id=aa.workspace_id AND c.id=aa.case_id
+          JOIN ls_cases.clients cl ON cl.workspace_id=c.workspace_id AND cl.id=c.client_id AND cl.person_id=s.person_id
+          JOIN ls_identity.people p ON p.workspace_id=cl.workspace_id AND p.id=cl.person_id
+          WHERE aa.workspace_id=a.workspace_id AND aa.case_id=a.case_id AND aa.audience_id=a.audience_id AND aa.account_id=$4
+           AND aa.revoked_at IS NULL AND ac.state='active' AND ((ac.role='child' AND p.kind='minor') OR (ac.role='adult_client' AND p.kind='adult'))))`,
       [scope.workspaceId, scope.caseId, versionId, scope.accountId]);
       if (!row?.publishedAt || !row.immutableSnapshotDigest) return null;
       const audience = await loadAudience(tx, scope.workspaceId, scope.caseId, row.audienceId);

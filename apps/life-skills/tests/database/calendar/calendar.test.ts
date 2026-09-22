@@ -92,7 +92,7 @@ describe('LS-030 real PostgreSQL contracts',()=>{
    await tx.query('INSERT INTO ls_calendar.synthetic_test_receipts(event_id,sequence) VALUES($1,$2) ON CONFLICT DO NOTHING',[meta.id,meta.sequence]);if(throwAfter)throw new Error('SYNTHETIC_CONSUMER_FAILURE');
   },100));
   await expect(consume(true)).rejects.toMatchObject({code:'UNAVAILABLE'});
-  expect((await f.pool.query('SELECT count(*)::int AS n FROM ls_calendar.synthetic_test_receipts')).rows[0].n).toBe(0);
+  expect((await f.pool.query('SELECT count(*)::int AS n FROM ls_calendar.synthetic_test_receipts r JOIN ls_calendar.events e ON e.id=r.event_id WHERE e.workspace_id=$1',[f.workspaceId])).rows[0].n).toBe(0);
   expect(await consume(false)).toBeGreaterThan(0);expect(await consume(false)).toBe(0);
  });
  test('database rejects mutable appointment instants and mismatched terms independently of transport',async()=>{

@@ -1,97 +1,36 @@
 "use client";
-
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import type { Locale } from "../../lib/locale.ts";
-import { Breadcrumb } from "../../ui/workspace/surfaces.tsx";
-import { accountRead } from "../identity/client.ts";
-
-type Role = "parent" | "practitioner";
-type Mode = "resources" | "forms" | "both";
-type Case = { id: string; displayName: string; kind: "minor" | "adult" };
-type Resource = { assignmentId: string; title: string; completed: boolean; detailsAvailable: boolean; type?: string; description?: string; dueDate?: string | null; displayDate?: string; completionEnabled?: boolean };
-type Form = { id: string; templateKey: string; templateVersion: number; dueDate: string | null; state: string; locale: "he" | "en" };
-type ItemLoad = { key: string; resources: Resource[] | null; forms: Form[] | null };
-
-const copy = {
-  en: { resources: "Resources", forms: "Forms", title: "Forms & resources", lead: "Only items assigned to an authorized case appear here.", child: "Child", loading: "Loading assigned items…", empty: "Nothing is assigned for this authorized context.", unavailable: "Assigned items are unavailable. Try again later.", due: "Due", state: "State", details: "Details", private: "This item has a title-only audience; protected details are not shown.", practice: "Practice" },
-  he: { resources: "משאבים", forms: "טפסים", title: "טפסים ומשאבים", lead: "כאן מופיעים רק פריטים שהוקצו לתיק מורשה.", child: "ילד/ה", loading: "טוען פריטים שהוקצו…", empty: "לא הוקצו פריטים להקשר מורשה זה.", unavailable: "הפריטים שהוקצו אינם זמינים. אפשר לנסות שוב מאוחר יותר.", due: "עד", state: "מצב", details: "פרטים", private: "לקהל זה מוצגת כותרת בלבד; הפרטים המוגנים אינם מוצגים.", practice: "תרגול" },
-} as const;
-
-function result<T>(response: Response): Promise<T> {
-  return response.json().then((payload: unknown) => {
-    if (!response.ok || !payload || typeof payload !== "object" || !("ok" in payload) || payload.ok !== true || !("data" in payload)) throw new Error("UNAVAILABLE");
-    return (payload as { data: T }).data;
-  });
+import {useEffect,useState} from 'react';
+import {useRouter} from 'next/navigation';
+import type {Locale} from '../../lib/locale.ts';
+import {accountRead,sessionInfo} from '../identity/client.ts';
+import {FormsWorkspace} from '../forms/workspace.tsx';
+import {ResourcesWorkspace} from '../resources/workspace.tsx';
+type Role='parent'|'practitioner';
+type Mode='forms'|'resources'|'both';
+type Case={id:string;displayName:string;kind:'minor'|'adult'};
+type Option={id:string;label:string};
+type Audience={id:string;visibility:string;published:boolean};
+type Member={accountId:string;displayName:string;email:string;state:string;guardianRevokedAt:string|null};
+type Props={locale:Locale;role:Role;mode:Mode;initialCaseId?:string|undefined};
+const words={en:{forms:'Forms',resources:'Resources',both:'Forms & resources',case:'Case',load:'Loading authorized workspace…',error:'This workspace is unavailable. Check your access and try again.',empty:'No authorized cases are available.',retry:'Try again',full:'Full shared audience',limited:'Title-only audience'},he:{forms:'טפסים',resources:'משאבים',both:'טפסים ומשאבים',case:'תיק',load:'טוען מרחב מורשה…',error:'המרחב אינו זמין. יש לבדוק הרשאה ולנסות שוב.',empty:'אין תיקים מורשים להצגה.',retry:'ניסיון נוסף',full:'קהל לשיתוף מלא',limited:'קהל לכותרת בלבד'}} as const;
+async function read<T>(url:string,signal:AbortSignal):Promise<T>{const response=await fetch(url,{credentials:'same-origin',cache:'no-store',redirect:'error',signal}),body=await response.json() as {ok?:boolean;data:T};if(!response.ok||body.ok!==true)throw Error('READ_FAILED');return body.data;}
+/** The case roster, never a raw query parameter, grants the UI its context. APIs recheck every action. */
+export function SharedItemsWorkspace(props:Props){return <AuthorizedItems key={`${props.locale}:${props.role}:${props.mode}:${props.initialCaseId??''}`} {...props}/>;}
+export function AuthorizedItems({locale,role,mode,initialCaseId=''}:Props){
+ const t=words[locale],router=useRouter();
+ const [cases,setCases]=useState<Case[]|null>(null),[error,setError]=useState(false),[revision,setRevision]=useState(0),[selected,setSelected]=useState(initialCaseId);
+ useEffect(()=>{let active=true;void accountRead<Case[]>('cases').then(rows=>{if(active){setCases(role==='parent'?rows.filter(row=>row.kind==='minor'):rows);setError(false)}}).catch(()=>{if(active){setCases(null);setError(true)}});return()=>{active=false}},[role,revision]);
+ const current=cases?.find(item=>item.id===selected)||(!selected?cases?.[0]:undefined),invalid=Boolean(cases&&selected&&!current);
+ return <section className="lsw-stack" lang={locale} dir={locale==='he'?'rtl':'ltr'}><h1>{t[mode]}</h1>{error||invalid?<div role="alert"><p>{t.error}</p><button onClick={()=>setRevision(n=>n+1)}>{t.retry}</button></div>:!cases?<p role="status">{t.load}</p>:!cases.length?<p>{t.empty}</p>:<>
+ <label className="lsw-field">{t.case}<select className="lsw-input" value={current?.id??''} onChange={event=>{const next=event.target.value;if(!cases.some(item=>item.id===next))return;setSelected(next);router.replace(`/${locale}/${role==='parent'?'family':'app'}/${mode==='both'?'resources':mode}?caseId=${encodeURIComponent(next)}`,{scroll:false})}}>{cases.map(item=><option value={item.id} key={item.id}>{item.displayName}</option>)}</select></label>
+ {current&&(mode==='forms'||mode==='both')&&<AuthorizedForms key={`${locale}:${role}:${current.id}`} locale={locale} role={role} item={current}/>}
+ {current&&(mode==='resources'||mode==='both')&&<ResourcesWorkspace key={`${locale}:${role}:${current.id}`} locale={locale} role={role} caseId={current.id}/>}</>}
+ </section>;
 }
-
-export function SharedItemsWorkspace({ locale, role, mode, initialCaseId = "" }: { locale: Locale; role: Role; mode: Mode; initialCaseId?: string | undefined }) {
-  const t = copy[locale];
-  const router = useRouter();
-  const [cases, setCases] = useState<Case[]>([]);
-  const [casesLoaded, setCasesLoaded] = useState(false);
-  const [casesUnavailable, setCasesUnavailable] = useState(false);
-  const [caseId, setCaseId] = useState(initialCaseId);
-  const [items, setItems] = useState<ItemLoad>({ key: "", resources: null, forms: null });
-  const [itemsUnavailableKey, setItemsUnavailableKey] = useState<string | null>(null);
-
-  const eligible = role === "parent" ? cases.filter((item) => item.kind === "minor") : cases;
-  const selected = eligible.some((item) => item.id === caseId) ? caseId : eligible[0]?.id ?? "";
-  const requestKey = selected ? `${mode}:${selected}` : "";
-  const title = mode === "resources" ? t.resources : mode === "forms" ? t.forms : t.title;
-  const route = role === "parent" ? "family/resources" : `app/${mode}`;
-
-  useEffect(() => {
-    let live = true;
-    void accountRead<Case[]>("cases")
-      .then((loadedCases) => { if (live) setCases(loadedCases); })
-      .catch(() => { if (live) setCasesUnavailable(true); })
-      .finally(() => { if (live) setCasesLoaded(true); });
-    return () => { live = false; };
-  }, []);
-
-  useEffect(() => {
-    if (!requestKey) return;
-    let live = true;
-    const query = `?caseId=${encodeURIComponent(selected)}`;
-    const requests = [
-      ...(mode === "resources" || mode === "both" ? [fetch(`/api/resources/assignments${query}`, { credentials: "same-origin", cache: "no-store" }).then((response) => result<Resource[]>(response))] : []),
-      ...(mode === "forms" || mode === "both" ? [fetch(`/api/forms/assignments${query}`, { credentials: "same-origin", cache: "no-store" }).then((response) => result<Form[]>(response))] : []),
-    ];
-    void Promise.all(requests)
-      .then((values) => {
-        if (!live) return;
-        let index = 0;
-        setItems({
-          key: requestKey,
-          resources: mode === "resources" || mode === "both" ? values[index++] as Resource[] : null,
-          forms: mode === "forms" || mode === "both" ? values[index] as Form[] : null,
-        });
-        setItemsUnavailableKey(null);
-      })
-      .catch(() => { if (live) setItemsUnavailableKey(requestKey); });
-    return () => { live = false; };
-  }, [mode, requestKey, selected]);
-
-  function change(next: string) {
-    setCaseId(next);
-    router.replace(`/${locale}/${route}?caseId=${encodeURIComponent(next)}`, { scroll: false });
-  }
-
-  const itemsReady = items.key === requestKey;
-  const unavailable = casesUnavailable || itemsUnavailableKey === requestKey;
-  const loading = !casesLoaded || (Boolean(requestKey) && !itemsReady && !unavailable);
-  const resources = itemsReady ? items.resources : null;
-  const forms = itemsReady ? items.forms : null;
-
-  return <section className="lsw-stack lsw-shared-items">
-    <Breadcrumb label={locale === "he" ? "מיקום" : "Location"} items={[{ label: title }]}/>
-    <header className="lsw-page-header"><div><p className="lsw-eyebrow">{role === "parent" ? (locale === "he" ? "מרחב המשפחה" : "Family workspace") : (locale === "he" ? "מרחב המטפל" : "Practitioner workspace")}</p><h1>{title}</h1><p>{t.lead}</p></div></header>
-    {eligible.length > 1 && <div className="lsw-field"><label htmlFor="shared-case">{t.child}</label><select id="shared-case" className="lsw-input" value={selected} onChange={(event) => change(event.target.value)}>{eligible.map((item) => <option key={item.id} value={item.id}>{item.displayName}</option>)}</select></div>}
-    {eligible.length === 1 && <p className="lsw-context">{t.child}: <strong>{eligible[0]?.displayName}</strong></p>}
-    {unavailable ? <section className="lsw-alert" role="alert"><p>{t.unavailable}</p></section> : loading ? <p role="status">{t.loading}</p> : !selected ? <p>{t.empty}</p> : <div className="lsw-stack">
-      {(mode === "resources" || mode === "both") && <section className="lsw-card"><h2>{t.resources}</h2>{resources?.length ? <ul className="lsw-shared-list">{resources.map((item) => <li key={item.assignmentId}><strong>{item.title}</strong>{item.detailsAvailable ? <details className="lsw-details"><summary>{t.details}</summary><div className="lsw-stack">{item.description && <p>{item.description}</p>}{item.dueDate && <p>{t.due}: <time dateTime={item.dueDate}>{item.dueDate}</time></p>}</div></details> : <p className="lsw-help">{t.private}</p>}</li>)}</ul> : <p>{t.empty}</p>}</section>}
-      {(mode === "forms" || mode === "both") && <section className="lsw-card"><h2>{t.forms}</h2>{forms?.length ? <ul className="lsw-shared-list">{forms.map((item) => <li key={item.id}><strong>{item.templateKey}</strong><p>{t.state}: {item.state}</p>{item.dueDate && <p>{t.due}: <time dateTime={item.dueDate}>{item.dueDate}</time></p>}</li>)}</ul> : <p>{t.empty}</p>}</section>}
-    </div>}
-  </section>;
+export function AuthorizedForms({locale,role,item}:{locale:Locale;role:Role;item:Case}){
+ const t=words[locale];const [data,setData]=useState<{csrf:string;audiences:Option[];responders:Option[]}|null>(null),[error,setError]=useState(false),[revision,setRevision]=useState(0);
+ useEffect(()=>{const controller=new AbortController();void Promise.all([sessionInfo(),role==='practitioner'?read<Audience[]>(`/api/identity/audiences?caseId=${encodeURIComponent(item.id)}`,controller.signal):Promise.resolve([]),role==='practitioner'?read<{caseId:string;members:Member[]}>(`/api/identity/case-access?caseId=${encodeURIComponent(item.id)}`,controller.signal):Promise.resolve({caseId:item.id,members:[]})]).then(([session,audiences,access])=>{if(controller.signal.aborted)return;if(session.role!==role||access.caseId!==item.id)throw Error('CONTEXT_MISMATCH');setData({csrf:session.csrfToken,audiences:audiences.filter(a=>a.published&&a.visibility==='family_full').map((a,i)=>({id:a.id,label:`${t.full} ${i+1}`})),responders:access.members.filter(m=>m.state==='active'&&!m.guardianRevokedAt).map(m=>({id:m.accountId,label:`${m.displayName} · ${m.email}`}))});setError(false)}).catch(()=>{if(!controller.signal.aborted){setData(null);setError(true)}});return()=>controller.abort()},[locale,role,item.id,revision,t.full]);
+ if(error)return <div role="alert"><p>{t.error}</p><button onClick={()=>setRevision(n=>n+1)}>{t.retry}</button></div>;
+ if(!data)return <p role="status">{t.load}</p>;
+ return <FormsWorkspace key={`${role}:${locale}:${item.id}`} locale={locale} role={role} csrfToken={data.csrf} caseKind={item.kind} cases={[{id:item.id,label:item.displayName}]} audiences={data.audiences} responders={data.responders}/>;
 }

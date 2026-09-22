@@ -24,6 +24,7 @@ export function BookingForm({locale,cases,appointments,initialCaseId,original,ch
  const [start,setStart]=useState(wallTime()),[audienceId,setAudienceId]=useState(original?.audienceId??''),[parentForId,setParentForId]=useState(original?.parentForId??checkinFor?.id??''),[parents,setParents]=useState<AccountId[]>(original?.parentIds??[]);
  const [location,setLocation]=useState(original?.location??''),[before,setBefore]=useState(original?.bufferBefore??0),[after,setAfter]=useState(original?.bufferAfter??0),[exception,setException]=useState(''),[error,setError]=useState('');
  const {catalog,error:catalogError}=useCatalog(caseId);
+ const selectedCase=cases.find(item=>item.id===caseId);
  const chosen=catalog?.audiences.find(a=>a.id===audienceId)??(catalog?.audiences.length===1?catalog.audiences[0]:undefined);
  const linked=appointments.filter(a=>a.caseId===caseId&&a.kind==='individual');
  if(checkinFor&&!linked.some(a=>a.id===checkinFor.id))linked.push(checkinFor);
@@ -34,8 +35,8 @@ export function BookingForm({locale,cases,appointments,initialCaseId,original,ch
    parentIds:kind==='parent_guidance'?parents:[],bufferBefore:before,bufferAfter:after,location,checkinExceptionReason:exception.trim()||null};
   setError('');onSave(value,()=>onDirty(false));
  }}><p>{t.bookHelp}</p><fieldset disabled={locked}>
- <Select id={prefix+"-case"} label={t.case} value={caseId} required disabled={Boolean(original||checkinFor)} onChange={e=>{setCaseId(e.target.value);setAudienceId('');setParents([]);setParentForId('');}}><option value="">{t.selectCase}</option>{cases.filter(c=>c.kind==='minor').map(c=><option key={c.id} value={c.id}>{c.displayName}</option>)}</Select>
- <Select id={prefix+"-kind"} label={t.kind} value={kind} disabled={Boolean(original||checkinFor)} onChange={e=>{setKind(e.target.value as CreateBooking['kind']);setParents([]);}}><option value="individual">{t.individual}</option><option value="parent_guidance">{t.parent_guidance}</option></Select>
+ <Select id={prefix+"-case"} label={t.case} value={caseId} required disabled={Boolean(original||checkinFor)} onChange={e=>{setCaseId(e.target.value);if(cases.find(item=>item.id===e.target.value)?.kind==='adult')setKind('individual');setAudienceId('');setParents([]);setParentForId('');}}><option value="">{t.selectCase}</option>{cases.map(c=><option key={c.id} value={c.id}>{c.displayName}</option>)}</Select>
+ <Select id={prefix+"-kind"} label={t.kind} value={kind} disabled={Boolean(original||checkinFor)} onChange={e=>{setKind(e.target.value as CreateBooking['kind']);setParents([]);}}><option value="individual">{t.individual}</option>{selectedCase?.kind!=='adult'&&<option value="parent_guidance">{t.parent_guidance}</option>}</Select>
  <ZonedInput id={prefix+"-start"} label={t.startsAt} value={start} onChange={setStart} locale={locale} required/>
  <Select id={prefix+"-audience"} label={t.audience} value={chosen?.id??''} required onChange={e=>{setAudienceId(e.target.value);setParents([]);}}><option value="">{t.audience}</option>{catalog?.audiences.map((a,i)=><option value={a.id} key={a.id}>{t.audience} {i+1} · {a.parentIds.length}</option>)}</Select>
  {kind==='parent_guidance'&&<><Select id={prefix+"-child"} label={t.parentFor} value={parentForId} required onChange={e=>setParentForId(e.target.value)}><option value="">{t.parentFor}</option>{linked.map(a=><option key={a.id} value={a.id}>{new Intl.DateTimeFormat(locale==='he'?'he-IL':'en-GB',{timeZone:'Asia/Jerusalem',dateStyle:'medium',timeStyle:'short'}).format(new Date(a.startsAt))}</option>)}</Select>
