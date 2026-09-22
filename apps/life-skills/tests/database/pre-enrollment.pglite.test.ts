@@ -47,7 +47,7 @@ async function cleanupMkdtemp(directory: string) {
 
 describe("pre-enrollment PGlite", () => {
   it("preserves bilingual consent evidence and rejects amendment evidence or new weekend availability changes", async () => {
-    const { PGlite } = await import(process.env.PGLITE_MODULE!); const connection = new (PGlite as unknown as PGliteCtor)();
+    const { PGlite } = await import(process.env.PGLITE_MODULE || "@electric-sql/pglite"); const connection = new (PGlite as unknown as PGliteCtor)();
     const translated = { ...consent, translations: { en: { displayText: ["Exact English paragraph one.", "Exact English paragraph two."], acknowledgements: ["Exact English acknowledgement one.", "Exact English acknowledgement two.", "Exact English acknowledgement three."] } } };
     try {
       await migrate(connection); const identity = store(connection); const staff = new PreEnrollmentStaffService(identity, ring, () => now); const issued = await staff.issue(actor(practitioner, "practitioner"), "LS-LEAD-bilingual", 1);
@@ -60,7 +60,7 @@ describe("pre-enrollment PGlite", () => {
   }, 30_000);
 
   it("uses real identity state for issue, exchange, submit, immutable history, authorization and durable ciphertext", async () => {
-    const { PGlite } = await import(process.env.PGLITE_MODULE!); const directory = await mkdtemp(join(tmpdir(), "ls-intake-")); const connection = new (PGlite as unknown as PGliteCtor)(directory);
+    const { PGlite } = await import(process.env.PGLITE_MODULE || "@electric-sql/pglite"); const directory = await mkdtemp(join(tmpdir(), "ls-intake-")); const connection = new (PGlite as unknown as PGliteCtor)(directory);
     try {
       await migrate(connection); const identity = store(connection); const staff = new PreEnrollmentStaffService(identity, ring, () => now);
       const issued = await staff.issue(actor(practitioner, "practitioner"), "LS-LEAD-synthetic", 2);
@@ -79,7 +79,7 @@ describe("pre-enrollment PGlite", () => {
   }, 30_000);
 
   it("rejects expired, revoked, false or stale consent and preserves retry semantics", async () => {
-    const { PGlite } = await import(process.env.PGLITE_MODULE!); const connection = new (PGlite as unknown as PGliteCtor)();
+    const { PGlite } = await import(process.env.PGLITE_MODULE || "@electric-sql/pglite"); const connection = new (PGlite as unknown as PGliteCtor)();
     try {
       await migrate(connection); const identity = store(connection), staff = new PreEnrollmentStaffService(identity, ring, () => now);
       const expired = await staff.issue(actor(practitioner, "practitioner"), "LS-LEAD-expired", 1); const later = new PreEnrollmentService(new SqlPreEnrollmentRepository(identity, workspace), ring, () => new Date(now.getTime() + 8 * 86_400_000), true, workspace); await expect(later.exchange(expired.token)).rejects.toMatchObject({ code: "NOT_FOUND" });
