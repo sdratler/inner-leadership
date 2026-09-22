@@ -105,12 +105,13 @@ before(async()=>{
  assert.equal(state.rows[0]?.accounts,0,'disposable HTTP database must contain no accounts');
  assert.equal(state.rows[0]?.migrations,3,'disposable HTTP database must have all three signed migrations');
  store={async transaction(work){const client=await pool.connect();try{await client.query('BEGIN');const tx:SqlSession={async query<T extends object>(text:string,values:readonly unknown[]=[]){return (await client.query(text,[...values])).rows as T[];}};const value=await work(tx);await client.query('COMMIT');return value;}catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}}};
- config=parseIdentityConfig(process.env);auth=new IdentityAuthService(store,config,clock);accounts=new IdentityAccountService(store,config,clock);
+ const identityEnv={...process.env,LS_CHILD_ACCOUNTS_ENABLED:'true'};
+ config=parseIdentityConfig(identityEnv);auth=new IdentityAuthService(store,config,clock);accounts=new IdentityAccountService(store,config,clock);
  await accounts.bootstrapPractitioner({email:practitionerEmail,displayName:'Synthetic HTTPS Practitioner',locale:'he'},true,randomUUID());
  await dispatchAll();
  await auth.consumePasswordToken('invite',tokenFromMail(practitionerEmail,'invite'),practitionerPassword,randomUUID());
  const nextBin=resolve('node_modules/next/dist/bin/next');
- const serverEnv={...process.env,LS_APP_MODE:'foundation_preview'};
+ const serverEnv={...identityEnv,LS_APP_MODE:'foundation_preview'};
  server=spawn(process.execPath,[nextBin,'dev','--experimental-https','--experimental-https-key',httpsKey,'--experimental-https-cert',httpsCert,'--hostname','127.0.0.1','--port','3003'],{cwd:process.cwd(),env:serverEnv,stdio:['ignore','ignore','ignore']});
  await waitForServer();
 });
