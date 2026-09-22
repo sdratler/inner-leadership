@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "decision": "D-LS-ISOLATED-RUNTIME-20260913-01",
   "canonical": true,
   "workspace": {
@@ -20,13 +20,15 @@
     "name": "life-skills-private-staging",
     "repository": "sdratler/inner-leadership",
     "rootDirectory": "/apps/life-skills",
-    "branch": "codex/ls070-private-app-integration-20260913",
-    "commit": "RECORDED_IN_BUILD_CONTROL_RELEASES",
+    "branch": "main",
+    "commit": "0a1c3bd9c6e82cb2a1c08f31c6901c123b23b87d",
     "buildCommand": "npm run build",
     "startCommand": "npm run start:railway",
     "healthcheckPath": "/api/health",
     "mode": "isolated_preview",
-    "previewUrl": "RECORDED_IN_BUILD_CONTROL_RELEASES"
+    "previewUrl": "https://life-skills-private-staging-production.up.railway.app",
+    "deploymentId": "d1bdd81e-4723-404c-a286-ecbef1180bfe",
+    "deploymentState": "SUCCESS"
   },
   "databaseService": {
     "id": "354b5343-9e83-45a7-b764-09396f14ae29",
@@ -34,13 +36,21 @@
     "runtimeVariable": "LS_DATABASE_URL",
     "reference": "${{Postgres.DATABASE_URL}}",
     "selectionRule": "service-id-and-same-project-environment",
-    "migrationState": "READBACK_PENDING"
+    "migrationState": "APPLIED_AND_VERIFIED_THROUGH_0095",
+    "migrationCount": 15,
+    "localBackup": {
+      "path": "C:\\Users\\User\\Documents\\LifeSkillsBackups\\2026-09-22-before-w4-deploy\\life-skills-private-before-w4-20260922.dump",
+      "sha256": "15bab252760fa47121dc55827308a4f69300ca461ba44c7e804ff58b146c8286",
+      "encryption": "Windows EFS AES-256",
+      "restoreListVerified": true
+    }
   },
   "boundaries": {
     "publicLifeSkillsWebsite": "separate",
     "publicWebsiteDatabaseAllowed": false,
     "realClientDataAllowed": false,
-    "mainMergeAuthorized": false,
+    "mainMergeAuthorized": true,
+    "privatePreviewDeployAuthorized": true,
     "productionCutoverAuthorized": false,
     "legacyDestructionAuthorized": false
   }
