@@ -28,6 +28,14 @@ for(const locale of ["he","en"] as const){
    await expect(page.locator(".lsu-review-calendar")).toHaveCount(0);
    await page.goBack();
    await expect(page.locator(".lsu-review-calendar")).toBeVisible();
+   if(role==="practitioner"){
+    const tabs=testInfo.project.name==="desktop"?page.locator(".lsu-header>.lsu-top-tabs"):page.locator(".lsu-mobile-tabs .lsu-top-tabs");
+    await tabs.locator("a").filter({hasText:locale==="he"?"מודעות":"Ads"}).click();
+    await expect(page).toHaveURL(/section=ads/);
+    await expect(page.getByRole("heading",{name:locale==="he"?"מודעות — נתוני דוגמה":"Ads — sample data"})).toBeVisible();
+    await page.goBack();
+    await expect(page.locator(".lsu-review-calendar")).toBeVisible();
+   }
    await page.locator(".lsu-account summary").click();
    await expect(page.locator(`.lsu-account-panel a[href*="page=${role==="parent"?"family":"app"}%2Fsettings"]`)).toHaveCount(1);
    await expect(page.locator(`.lsu-account-panel a[href="/${locale}/sample"]`)).toHaveCount(1);

@@ -5,6 +5,7 @@ import {WorkspaceShell} from "../../src/ui/workspace/workspace-shell.tsx";
 import {breadcrumbItems,workspaceHref} from "../../src/ui/workspace/navigation-model.ts";
 import {CalendarShell} from "../../src/ui/workspace/appointments.tsx";
 import {CalendarBoard} from "../../src/features/calendar/views.tsx";
+import {countCurrentAssignments} from "../../src/features/calendar/attention-summary.tsx";
 
 describe("operational workspace navigation",()=>{
  for(const locale of ["he","en"] as const){
@@ -34,5 +35,12 @@ describe("operational workspace navigation",()=>{
   expect(html).toContain('dateTime="2026-09-24"');
   expect(html).toContain('aria-current="page"');
   expect(html).toContain("No appointments");
+ });
+ it("counts the latest published assignment version, never a superseded date window",()=>{
+  expect(countCurrentAssignments([
+   {assignmentId:"a",version:1,startsOn:"2026-09-01",endsOn:"2026-09-30"},
+   {assignmentId:"a",version:2,startsOn:"2026-10-01",endsOn:null},
+   {assignmentId:"b",version:1,startsOn:"2026-09-01",endsOn:null},
+  ],"2026-09-23")).toBe(1);
  });
 });

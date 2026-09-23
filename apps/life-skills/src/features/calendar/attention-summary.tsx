@@ -4,9 +4,15 @@ import {useEffect,useState} from "react";
 import type {Locale} from "../../lib/locale.ts";
 
 type Audience={id:string;published:boolean};
-type Practice={assignmentId:string;startsOn:string;endsOn:string|null};
+type Practice={assignmentId:string;version:number;startsOn:string;endsOn:string|null};
 type Thread={report:{id:string;reviewState:string}};
 type Snapshot={caseId:string;assignments:number|null;communications:number|null;partial:boolean};
+
+export function countCurrentAssignments(versions:readonly Practice[],today:string):number{
+ const activeVersions=new Map<string,Practice>();
+ for(const item of versions){const previous=activeVersions.get(item.assignmentId);if(!previous||item.version>previous.version)activeVersions.set(item.assignmentId,item);}
+ return [...activeVersions.values()].filter(item=>item.startsOn<=today&&(!item.endsOn||item.endsOn>=today)).length;
+}
 
 async function read<T>(url:string,signal:AbortSignal):Promise<T>{
  const response=await fetch(url,{credentials:"same-origin",cache:"no-store",redirect:"error",signal});
@@ -28,15 +34,16 @@ export function CalendarAttentionSummary({locale,caseId}:{locale:Locale;caseId:s
     read<Thread[]>(`/api/updates?caseId=${encodeURIComponent(caseId)}&audienceId=${encodeURIComponent(item.id)}`,controller.signal),
    ]));
    if(controller.signal.aborted)return;
-   const assignments=new Set<string>(),communications=new Set<string>();
+   const versions:Practice[]=[],communications=new Set<string>();
    const today=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Jerusalem"}).format(new Date());
    let assignmentError=false,communicationError=false;
    results.forEach((result,index)=>{
     if(result.status==="rejected"){if(index%2===0)assignmentError=true;else communicationError=true;return;}
-    if(index%2===0){for(const item of result.value as Practice[])if(item.startsOn<=today&&(!item.endsOn||item.endsOn>=today))assignments.add(item.assignmentId);}
+    if(index%2===0)versions.push(...result.value as Practice[]);
     else for(const item of result.value as Thread[])if(item.report.reviewState==="new")communications.add(item.report.id);
    });
-   setSnapshot({caseId,assignments:assignmentError?null:assignments.size,communications:communicationError?null:communications.size,partial:assignmentError||communicationError});
+   const assignments=countCurrentAssignments(versions,today);
+   setSnapshot({caseId,assignments:assignmentError?null:assignments,communications:communicationError?null:communications.size,partial:assignmentError||communicationError});
   }).catch(()=>{if(!controller.signal.aborted)setSnapshot({caseId,assignments:null,communications:null,partial:true})});
   return()=>controller.abort();
  },[caseId]);

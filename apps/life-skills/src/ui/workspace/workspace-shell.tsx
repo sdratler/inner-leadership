@@ -7,7 +7,7 @@ const copy = {
   en: { skip: "Skip to content", nav: "Workspace navigation", more: "More", close: "Close navigation", menu: "Open navigation", account: "Account menu", settings: "Settings", practitioner: "Practitioner workspace", parent: "Family workspace", client: "Client workspace", location: "You are here", language: "עברית", privacy: "Access is limited to your authorized workspace." },
   he: { skip: "דילוג לתוכן", nav: "ניווט במרחב", more: "עוד", close: "סגירת התפריט", menu: "פתיחת התפריט", account: "תפריט החשבון", settings: "הגדרות", practitioner: "מרחב המטפל", parent: "מרחב המשפחה", client: "מרחב לקוח/ה", location: "המיקום שלכם", language: "English", privacy: "הגישה מוגבלת למרחב המורשה שלכם." },
 } as const;
-export type WorkspaceShellProps = { locale: Locale; role: WorkspaceRole; pathname: string; caseId?: string | null; section?: string | null; languageHref: string; children: ReactNode; toHref?: (path: string) => string; notice?: ReactNode };
+export type WorkspaceShellProps = { locale: Locale; role: WorkspaceRole; pathname: string; caseId?: string | null; section?: string | null | undefined; languageHref: string; children: ReactNode; toHref?: (path: string) => string; notice?: ReactNode };
 export function WorkspaceShell({ locale, role, pathname, caseId, section, languageHref, children, toHref, notice }: WorkspaceShellProps) {
   const t = copy[locale], active = activeItem(pathname, locale, role);
   const drawer = useRef<HTMLDialogElement>(null), trigger = useRef<HTMLButtonElement>(null), account = useRef<HTMLDetailsElement>(null);
@@ -22,7 +22,8 @@ export function WorkspaceShell({ locale, role, pathname, caseId, section, langua
   }, []);
   const link = (entry: NavItem) => <a className="lsu-nav-link" key={entry.key} href={href(entry.path)} aria-current={active?.key === entry.key ? "page" : undefined}>{entry[locale]}</a>;
   const topLinks = primaryNavigation[role].filter(entry => entry.key !== "prospects");
-  const adsHref = href("app/marketing") + (caseId ? "&" : "?") + "section=ads";
+  const marketingHref = href("app/marketing");
+  const adsHref = marketingHref + (marketingHref.includes("?") ? "&" : "?") + "section=ads";
   const topTabs = <nav className="lsu-top-tabs" aria-label={locale === "he" ? "חלקי המרחב" : "Workspace sections"}>{topLinks.map(entry => <a key={entry.key} href={href(entry.path)} aria-current={active?.key === entry.key && !(entry.key === "marketing" && section === "ads") ? "page" : undefined}>{entry[locale]}</a>)}{role === "practitioner" && <a href={adsHref} aria-current={active?.key === "marketing" && section === "ads" ? "page" : undefined}>{locale === "he" ? "מודעות" : "Ads"}</a>}</nav>;
   const settings = `${role === "parent" ? "family" : role === "client" ? "client" : "app"}/settings`;
   const groups = navigationGroups[role].map(group => <details key={`${group.key}:${active?.key ?? "none"}`} className="lsu-nav-group" open={group.items.some(x => x.key === active?.key)}><summary>{group[locale]}<span aria-hidden="true">⌄</span></summary><div>{group.items.map(link)}</div></details>);
