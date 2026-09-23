@@ -6,6 +6,7 @@ import {breadcrumbItems,workspaceHref} from "../../src/ui/workspace/navigation-m
 import {CalendarShell} from "../../src/ui/workspace/appointments.tsx";
 import {CalendarBoard} from "../../src/features/calendar/views.tsx";
 import {countCurrentAssignments} from "../../src/features/calendar/attention-summary.tsx";
+import {selectAuthorizedPaymentCase} from "../../src/features/payments/case-selection.ts";
 
 describe("operational workspace navigation",()=>{
  for(const locale of ["he","en"] as const){
@@ -42,5 +43,11 @@ describe("operational workspace navigation",()=>{
    {assignmentId:"a",version:2,startsOn:"2026-10-01",endsOn:null},
    {assignmentId:"b",version:1,startsOn:"2026-09-01",endsOn:null},
   ],"2026-09-23")).toBe(1);
+ });
+ it("never substitutes a different payment client for an invalid bookmarked case",()=>{
+  const cases=[{id:"child-a",kind:"minor" as const},{id:"adult-b",kind:"adult" as const}];
+  expect(selectAuthorizedPaymentCase(cases,"practitioner","adult-b").selected?.id).toBe("adult-b");
+  expect(selectAuthorizedPaymentCase(cases,"parent","adult-b")).toMatchObject({selected:undefined,invalid:true});
+  expect(selectAuthorizedPaymentCase(cases,"practitioner","missing")).toMatchObject({selected:undefined,invalid:true});
  });
 });
