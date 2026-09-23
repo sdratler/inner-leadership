@@ -101,18 +101,29 @@ export function proxy(request: NextRequest) {
   const robots = pathname === "/robots.txt";
   const isolatedPreview = env.LS_APP_MODE === "isolated_preview";
   const isolatedPreviewPage = pathname === "/" || /^\/(he|en)\/preview(?:\/|$)/.test(pathname);
-  if (isolatedPreview && !intakePath && !ownerPreviewPath && !health && !robots && !isolatedPreviewAuthorized(request,env.LS_PREVIEW_ACCESS_KEY)) {
+  const canonicalOrigin = new URL(env.LS_APP_ORIGIN);
+  const requestHost = (request.headers.get("host") ?? request.nextUrl.host).trim().toLowerCase();
+  const canonicalPrivateOrigin = request.nextUrl.protocol === canonicalOrigin.protocol &&
+    request.nextUrl.host.toLowerCase() === canonicalOrigin.host.toLowerCase() &&
+    requestHost === canonicalOrigin.host.toLowerCase();
+  // Preserve the owner-review perimeter on the Railway/service hostname while
+  // allowing the registered custom origin to use the real identity + role gate.
+  const isolatedPreviewPerimeter = isolatedPreview && !canonicalPrivateOrigin;
+  if (isolatedPreviewPerimeter && !intakePath && !ownerPreviewPath && !health && !robots && !isolatedPreviewAuthorized(request,env.LS_PREVIEW_ACCESS_KEY)) {
     const response=NextResponse.json({ok:false,error:{code:"UNAUTHENTICATED"},requestId:crypto.randomUUID()},{status:401});
     response.headers.set("WWW-Authenticate",'Basic realm="Life Skills private preview", charset="UTF-8"');
     return decorate(response,headers);
   }
-  if (isolatedPreview && !intakePath && !ownerPreviewPath && !health && !robots && !privatePath && !isolatedPreviewPage) {
+  if (isolatedPreviewPerimeter && !intakePath && !ownerPreviewPath && !health && !robots && !privatePath && !isolatedPreviewPage) {
     return decorate(new NextResponse(null,{status:404}),headers);
   }
-  if (!intakePath && ((privatePath && !privateMode && !identityPreview) || (!privatePath && !health && !robots && env.LS_APP_MODE !== "foundation_preview" && !isolatedPreview))) {
+  if (isolatedPreview && canonicalPrivateOrigin && !ownerPreviewPath && /^\/(he|en)\/preview(?:\/|$)/.test(pathname)) {
+    return decorate(new NextResponse(null,{status:404}),headers);
+  }
+  if (!intakePath && !ownerPreviewPath && ((privatePath && !privateMode && !identityPreview) || (!privatePath && pathname !== "/" && !health && !robots && env.LS_APP_MODE !== "foundation_preview" && !isolatedPreviewPerimeter))) {
     return decorate(NextResponse.json({ ok:false, error:{code:"UNAVAILABLE"}, requestId:crypto.randomUUID() }, {status:503}),headers);
   }
-  if (pathname === "/") return decorate(NextResponse.redirect(new URL(isolatedPreview ? "/he/preview" : privateMode ? "/he/app" : "/he/foundation", request.url)),headers);
+  if (pathname === "/") return decorate(NextResponse.redirect(new URL(isolatedPreviewPerimeter ? "/he/preview" : privateMode ? "/he/app" : "/he/foundation", request.url)),headers);
   const inbound = new Headers(request.headers);
   // Do not trust caller-supplied nonce or request identifiers.
   inbound.set("x-nonce",nonce); inbound.set("Content-Security-Policy",headers["Content-Security-Policy"] ?? "default-src 'none'");
