@@ -103,8 +103,11 @@ export function proxy(request: NextRequest) {
   const isolatedPreviewPage = pathname === "/" || /^\/(he|en)\/preview(?:\/|$)/.test(pathname);
   const canonicalOrigin = new URL(env.LS_APP_ORIGIN);
   const requestHost = (request.headers.get("host") ?? request.nextUrl.host).trim().toLowerCase();
-  const canonicalPrivateOrigin = request.nextUrl.protocol === canonicalOrigin.protocol &&
-    request.nextUrl.host.toLowerCase() === canonicalOrigin.host.toLowerCase() &&
+  // Railway may retain its internal service hostname in nextUrl even when the
+  // edge-routed Host is the registered custom domain. Host/proto select the
+  // perimeter only; identity, role and case authorization still gate data.
+  const requestProtocol = (request.headers.get("x-forwarded-proto") ?? request.nextUrl.protocol.slice(0, -1)).split(",", 1)[0]!.trim().toLowerCase();
+  const canonicalPrivateOrigin = requestProtocol === canonicalOrigin.protocol.slice(0, -1) &&
     requestHost === canonicalOrigin.host.toLowerCase();
   // Preserve the owner-review perimeter on the Railway/service hostname while
   // allowing the registered custom origin to use the real identity + role gate.

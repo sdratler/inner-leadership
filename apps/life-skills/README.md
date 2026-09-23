@@ -19,6 +19,12 @@ Use existing encryption, identity and forward-only migrations. The prepared sess
 
 The existing deployment record is [`deployment/railway-target.json`](deployment/railway-target.json); historical reconciliation is [`docs/runtime/railway-reconciliation-20260914.md`](docs/runtime/railway-reconciliation-20260914.md). The record identifies the exact private-preview project, environment, app service, database service, merged source commit and successful deployment. It contains no credentials and is not standing permission for another deployment. Never substitute the public website/BNA database for the private app or overwrite a newer live intake with an older main snapshot.
 
+### Current production provider bindings
+
+Advertising reporting uses the existing Life Skills Meta app and ad account through the direct, server-only Meta Graph API connection. AdSpire and other advertising proxy services are not part of this application. The Marketing page is read-only: it may display completed-day campaign delivery, workbook-backed creative inventory and publication receipts, but it must not mutate campaigns, budgets or ads.
+
+The creative inventory and WhatsApp Status calendar remain in the existing Life Skills Marketing workbook and are read through the authenticated BNA bridge. The private application database remains the dedicated PostgreSQL service recorded in `deployment/railway-target.json`; neither the public website database nor the marketing workbook is a substitute for that database.
+
 ## Acceptance and effects
 Run focused tests during integration and the complete actual convergence gate: lint, framework-generated/pinned type check, applicable unit suites, build, disposable migration/transaction tests and authenticated two-family HE/EN desktop/mobile journeys. Report skipped, blocked, failed and unrun checks honestly. Provider/device/backup/restore acceptance remains separate from source parsing and helper tests.
 

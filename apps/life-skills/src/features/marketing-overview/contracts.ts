@@ -12,6 +12,10 @@ export interface CreativeVersion {
     contentDigest: string;
     review: "draft" | "in_review" | "approved" | "retired";
     approvedDigest: string | null;
+    surface?: string;
+    sourceUrl?: string | null;
+    holdReason?: string | null;
+    libraryState?: string;
 }
 export interface Publication {
     id: string;
@@ -22,7 +26,7 @@ export interface Publication {
     destinationLabel: string;
     scheduledFor: string | null;
     timezone: string;
-    state: "draft" | "ready" | "scheduled" | "sending" | "published" | "failed" | "unknown" | "manually_reported";
+    state: "draft" | "ready" | "scheduled" | "sending" | "published" | "failed" | "unknown" | "skipped" | "manually_reported";
     provider: "whapi" | "publer" | "meta" | "manual" | "unbound";
     providerReceiptId: string | null;
     providerReadAt: string | null;
@@ -42,6 +46,40 @@ export interface AdSnapshot {
     inquiries: number | null;
     asOf: string | null;
     manageUrl: string | null;
+    impressions?: number | null;
+    reach?: number | null;
+    linkClicks?: number | null;
+    linkCtr?: number | null;
+    costPerLinkClickMinor?: number | null;
+    providerResults?: number | null;
+    providerResultLabel?: string | null;
+    costPerResultMinor?: number | null;
+    startDate?: string | null;
+    endDate?: string | null;
+    previousSpendMinor?: number | null;
+}
+export interface AdDailyPoint {
+    date: string;
+    spendMinor: number | null;
+    linkClicks: number | null;
+    providerResults: number | null;
+}
+export interface MarketingInventory {
+    files: number;
+    concepts: number;
+    publishablePosts: number;
+    heStatusReady: number;
+    heFeedReady: number;
+    enFeedReady: number;
+    adEligible: number;
+    inLiveAds: number | null;
+    queued: number;
+    published: number;
+    needsApproval: number;
+    needsResizeOrCaption: number;
+    heldMissing: number;
+    partial: boolean;
+    asOf: string;
 }
 export interface MarketingSnapshot {
     source: "synthetic" | "provider_readback" | "registry_only";
@@ -49,6 +87,10 @@ export interface MarketingSnapshot {
     creatives: readonly CreativeVersion[];
     publications: readonly Publication[];
     ads: readonly AdSnapshot[];
+    inventory?: MarketingInventory;
+    adSeries?: readonly AdDailyPoint[];
+    workbookUrl?: string | null;
+    connectionErrors?: readonly string[];
     scout: {
         readyDrafts: number | null;
         sourceUrl: string | null;
