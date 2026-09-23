@@ -19,7 +19,7 @@ export function publicationLabel(p: Publication, assets: readonly CreativeVersio
         return p.receiptKind === "schedule" && p.scheduledFor && validIso(p.scheduledFor) && p.provider !== "unbound" && p.providerReceiptId && p.providerReadAt && validIso(p.providerReadAt) ? "Scheduled — provider confirmed" : "Planned — not provider-confirmed";
     if (p.state === "ready")
         return approvedCreative(asset) ? "Approved, not scheduled" : "Not approved for this revision";
-    return { draft: "Draft", sending: "Sending — awaiting result", failed: "Failed", unknown: "Unknown — check provider" }[p.state] ?? "Unknown";
+    return { draft: "Draft", sending: "Sending — awaiting result", failed: "Failed", unknown: "Unknown — check provider", skipped: "Skipped — no backfill" }[p.state] ?? "Unknown";
 }
 export function safeMarketingUrl(value: string | null, hosts: readonly string[]): string | null {
     if (!value)
@@ -44,13 +44,16 @@ export function assertMarketingOwner(actor: {
     invariant(actor.active && actor.role === "practitioner" && actor.workspaceId === owner.workspaceId && actor.accountId === owner.accountId, "NOT_FOUND");
 }
 export function validateMarketingSnapshot(snapshot: MarketingSnapshot): void {
-    invariant(Object.keys(snapshot).sort().join() === ["source", "fetchedAt", "creatives", "publications", "ads", "scout"].sort().join(), "MARKETING_FIELDS");
+    const allowed = new Set(["source", "fetchedAt", "creatives", "publications", "ads", "scout", "inventory", "adSeries", "workbookUrl", "connectionErrors"]);
+    invariant(Object.keys(snapshot).every(key => allowed.has(key)) && ["source", "fetchedAt", "creatives", "publications", "ads", "scout"].every(key => key in snapshot), "MARKETING_FIELDS");
     invariant(["synthetic", "provider_readback", "registry_only"].includes(snapshot.source) && (snapshot.fetchedAt === null || validIso(snapshot.fetchedAt)), "MARKETING_PROVENANCE");
     invariant(snapshot.creatives.length <= 1000 && snapshot.publications.length <= 2000 && snapshot.ads.length <= 200, "MARKETING_PAGE_BOUND");
     for (const p of snapshot.publications)
         invariant(validTimezone(p.timezone) && (p.scheduledFor === null || validIso(p.scheduledFor)), "PUBLICATION_TIME");
     for (const a of snapshot.ads)
         invariant((a.spendMinor === null || Number.isSafeInteger(a.spendMinor) && a.spendMinor >= 0) && (a.inquiries === null || Number.isSafeInteger(a.inquiries) && a.inquiries >= 0), "ADS_UNKNOWN_IS_NOT_ZERO");
+    for (const point of snapshot.adSeries ?? [])
+        invariant(/^\d{4}-\d{2}-\d{2}$/.test(point.date) && (point.spendMinor === null || Number.isSafeInteger(point.spendMinor) && point.spendMinor >= 0), "ADS_SERIES");
 }
 export function filterPublications(snapshot: MarketingSnapshot, filters: {
     channel?: Publication["channel"];

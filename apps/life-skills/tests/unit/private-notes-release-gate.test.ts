@@ -86,6 +86,18 @@ describe("private-notes API obeys the private-app release gate", () => {
     expect(root.status).toBe(307);
     expect(root.headers.get("location")).toBe(`${isolatedOrigin}/he/app`);
   });
+  it("uses the edge Host when Railway keeps an internal hostname in nextUrl", () => {
+    vi.stubEnv("LS_APP_MODE", "isolated_preview");
+    vi.stubEnv("LS_APP_ORIGIN", isolatedOrigin);
+    vi.stubEnv("LS_PREVIEW_ACCESS_KEY", isolatedKey);
+    vi.stubEnv("LS_PRIVATE_APP_ENABLED", "true");
+    const response = proxy(new NextRequest(`${previewServiceOrigin}/api/private-notes`, {
+      headers: { host: new URL(isolatedOrigin).host, "x-forwarded-proto": "https" },
+    }));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(response.headers.get("www-authenticate")).toBeNull();
+  });
   it("does not add private notes to the limited intake-release allowlist", () => {
     expect(intakeReleasePath("/api/private-notes", {})).toBe(false);
   });
