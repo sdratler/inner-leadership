@@ -11,7 +11,7 @@ export function CoreNavigation({ locale, role, children }: { locale: Locale; rol
   const languageHref = pathname.replace(/^\/(he|en)(?=\/|$)/, `/${other}`) + (query.size ? `?${query.toString()}` : "");
   return <WorkspaceShell locale={locale} role={role} pathname={pathname} caseId={caseId} languageHref={languageHref}>{children}</WorkspaceShell>;
 }
-export function PrivateWorkspaceUnavailable({ locale, role }: { locale: Locale; role: WorkspaceRole }) {
+export function PrivateWorkspaceUnavailable({ locale }: { locale: Locale; role: WorkspaceRole }) {
   const he = locale === "he";
-  return <div className="lsw" lang={locale} dir={he ? "rtl" : "ltr"}><main className="lsw-main"><section className="lsw-card" role="status"><h1>{he ? "המרחב הפרטי אינו זמין" : "Private workspace unavailable"}</h1><p>{he ? "יש להתחבר באמצעות חשבון מורשה ולנסות שוב." : "Sign in with an authorized account and try again."}</p><a className="lsw-button lsw-button--secondary" href={`/${locale}/${role === "parent" ? "family" : role === "client" ? "client" : "app"}`}>{he ? "ניסיון נוסף" : "Try again"}</a></section></main></div>;
+  return <div className="lsw" lang={locale} dir={he ? "rtl" : "ltr"}><main className="lsw-main"><section className="lsw-card" role="status"><h1>{he ? "יש להתחבר למרחב הפרטי" : "Sign in to the private app"}</h1><p>{he ? "הגישה נפתחת רק לאחר כניסה לחשבון מורשה." : "Access opens only after signing in with an authorized account."}</p><a className="lsw-button lsw-button--secondary" href={`/${locale}/login`}>{he ? "מעבר לכניסה" : "Go to sign in"}</a></section></main></div>;
 }

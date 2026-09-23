@@ -33,8 +33,8 @@ export async function scheduleResetDelivery(request: Request, response: Response
           const link = new URL(line);
           if (link.origin !== runtime.config.origin || link.pathname !== "/auth/reset" || link.search ||
               !/^#token=[A-Za-z0-9_-]+$/.test(link.hash)) throw new Error("AUTH_RESET_LINK_INVALID");
-          // Existing staff reset client works with the full app off; token remains in fragment.
-          link.pathname = `/${locale}/intake/staff`; link.search = "?mode=reset";
+          // The shared account entry supports practitioner, parent and adult-client accounts.
+          link.pathname = `/${locale}/login`; link.search = "?mode=reset";
           const subject = locale === "he" ? "כישורי חיים — איפוס סיסמה" : "Life Skills — reset your password";
           const text = locale === "he"
             ? `התקבלה בקשה לאיפוס הסיסמה לחשבון כישורי חיים.\n\n${link.href}\n\nהקישור תקף ל־15 דקות. בחרו סיסמה חדשה בת 6 תווים לפחות. אין להעביר הודעה זו. אם לא ביקשתם איפוס, התעלמו ממנה.`

@@ -81,10 +81,14 @@ describe("private-notes API obeys the private-app release gate", () => {
     expect(privateResponse.status).toBe(200);
     expect(privateResponse.headers.get("x-middleware-next")).toBe("1");
     expect(privateResponse.headers.get("www-authenticate")).toBeNull();
+    const login = proxy(new NextRequest(`${isolatedOrigin}/he/login`));
+    expect(login.status).toBe(200);
+    expect(login.headers.get("x-middleware-next")).toBe("1");
+    expect(proxy(new NextRequest(`${previewServiceOrigin}/he/login`)).status).toBe(401);
     expect(proxy(new NextRequest(`${isolatedOrigin}/he/preview`)).status).toBe(404);
     const root = proxy(new NextRequest(`${isolatedOrigin}/`));
     expect(root.status).toBe(307);
-    expect(root.headers.get("location")).toBe(`${isolatedOrigin}/he/app`);
+    expect(root.headers.get("location")).toBe(`${isolatedOrigin}/he/login`);
   });
   it("uses the edge Host when Railway keeps an internal hostname in nextUrl", () => {
     vi.stubEnv("LS_APP_MODE", "isolated_preview");

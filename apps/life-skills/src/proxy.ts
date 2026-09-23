@@ -75,7 +75,7 @@ export function proxy(request: NextRequest) {
   if (intakePath && ["/auth/invite", "/auth/reset"].includes(pathname)) {
     if (request.nextUrl.search) return decorate(new NextResponse(null,{status:404}),headers);
     // A fragment is retained by the browser during this redirect; it never reaches the server.
-    const destination = new URL("/he/intake/staff", env.LS_APP_ORIGIN);
+    const destination = new URL("/he/login", env.LS_APP_ORIGIN);
     destination.searchParams.set("mode", pathname.endsWith("invite") ? "invite" : "reset");
     return decorate(NextResponse.redirect(destination),headers);
   }
@@ -92,7 +92,7 @@ export function proxy(request: NextRequest) {
   // The private application has its own explicit server-side gate. Foundation
   // preview never opens authenticated application or domain API routes.
   const privatePath = pathname === "/api/private-notes" || /^\/api\/(?:private|identity|calendar|attendance|checkins|commitments|forms|goals|home-practice|payments|progress|prospects|resources|sessions|updates)(?:\/|$)/.test(pathname) ||
-    /^\/(he|en)\/(?:app|family|workspace|parent|client|practitioner|attendance|calendar|checkins|commitments|forms|goals|home-practice|payments|progress|resources|updates)(?:\/|$)/.test(pathname);
+    /^\/(he|en)(?:\/?$|\/(?:login|app|family|workspace|parent|client|practitioner|attendance|calendar|checkins|commitments|forms|goals|home-practice|payments|progress|resources|updates)(?:\/|$))/.test(pathname);
   const privateMode = process.env.LS_PRIVATE_APP_ENABLED === "true";
   // Preserve the accepted standalone identity preview independently of the full
   // portal flag. Identity runtime configuration and all auth checks still apply.
@@ -126,7 +126,7 @@ export function proxy(request: NextRequest) {
   if (!intakePath && !ownerPreviewPath && ((privatePath && !privateMode && !identityPreview) || (!privatePath && pathname !== "/" && !health && !robots && env.LS_APP_MODE !== "foundation_preview" && !isolatedPreviewPerimeter))) {
     return decorate(NextResponse.json({ ok:false, error:{code:"UNAVAILABLE"}, requestId:crypto.randomUUID() }, {status:503}),headers);
   }
-  if (pathname === "/") return decorate(NextResponse.redirect(new URL(isolatedPreviewPerimeter ? "/he/preview" : privateMode ? "/he/app" : "/he/foundation", request.url)),headers);
+  if (pathname === "/") return decorate(NextResponse.redirect(new URL(isolatedPreviewPerimeter ? "/he/preview" : privateMode ? "/he/login" : "/he/foundation", request.url)),headers);
   const inbound = new Headers(request.headers);
   // Do not trust caller-supplied nonce or request identifiers.
   inbound.set("x-nonce",nonce); inbound.set("Content-Security-Policy",headers["Content-Security-Policy"] ?? "default-src 'none'");
