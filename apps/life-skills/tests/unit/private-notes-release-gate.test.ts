@@ -3,7 +3,8 @@ import { NextRequest } from "next/server";
 import { intakeReleasePath, proxy } from "../../src/proxy.ts";
 
 const localOrigin = "http://127.0.0.1:3001";
-const isolatedOrigin = "https://synthetic.example.test";
+const isolatedOrigin = "https://private-app.example.test";
+const previewServiceOrigin = "https://private-app-preview.example.test";
 const isolatedKey = "synthetic_private_notes_preview_key_1234567890";
 
 beforeEach(() => {
@@ -21,7 +22,7 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllEnvs(); });
 
 function request(path: string, method = "GET", isolated = false) {
-  return new NextRequest(`${isolated ? isolatedOrigin : localOrigin}${path}`, {
+  return new NextRequest(`${isolated ? previewServiceOrigin : localOrigin}${path}`, {
     method,
     ...(isolated ? { headers: { authorization: `Basic ${Buffer.from(`preview:${isolatedKey}`).toString("base64")}` } } : {}),
   });
@@ -58,7 +59,7 @@ describe("private-notes API obeys the private-app release gate", () => {
     vi.stubEnv("LS_APP_ORIGIN", isolatedOrigin);
     vi.stubEnv("LS_PREVIEW_ACCESS_KEY", isolatedKey);
     vi.stubEnv("LS_PRIVATE_APP_ENABLED", "true");
-    expect(proxy(new NextRequest(`${isolatedOrigin}/api/private-notes`)).status).toBe(401);
+    expect(proxy(new NextRequest(`${previewServiceOrigin}/api/private-notes`)).status).toBe(401);
   });
   for (const enabled of ["false", "true"]) {
     it(`isolated preview: valid Basic credentials do not replace private-app flag ${enabled}`, () => {
@@ -71,6 +72,20 @@ describe("private-notes API obeys the private-app release gate", () => {
       expect(response.headers.get("x-middleware-next")).toBe(enabled === "true" ? "1" : null);
     });
   }
+  it("uses real identity and role boundaries on the registered custom origin without exposing the synthetic preview", () => {
+    vi.stubEnv("LS_APP_MODE", "isolated_preview");
+    vi.stubEnv("LS_APP_ORIGIN", isolatedOrigin);
+    vi.stubEnv("LS_PREVIEW_ACCESS_KEY", isolatedKey);
+    vi.stubEnv("LS_PRIVATE_APP_ENABLED", "true");
+    const privateResponse = proxy(new NextRequest(`${isolatedOrigin}/api/private-notes`));
+    expect(privateResponse.status).toBe(200);
+    expect(privateResponse.headers.get("x-middleware-next")).toBe("1");
+    expect(privateResponse.headers.get("www-authenticate")).toBeNull();
+    expect(proxy(new NextRequest(`${isolatedOrigin}/he/preview`)).status).toBe(404);
+    const root = proxy(new NextRequest(`${isolatedOrigin}/`));
+    expect(root.status).toBe(307);
+    expect(root.headers.get("location")).toBe(`${isolatedOrigin}/he/app`);
+  });
   it("does not add private notes to the limited intake-release allowlist", () => {
     expect(intakeReleasePath("/api/private-notes", {})).toBe(false);
   });
