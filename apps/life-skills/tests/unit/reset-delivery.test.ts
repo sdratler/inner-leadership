@@ -34,7 +34,7 @@ describe("accepted-request-only Gmail reset delivery",()=>{
   let job:(()=>Promise<void>)|undefined;await scheduleResetDelivery(req("reset/request","POST",locale),response(),rt,env,cb=>{job=cb;});await job!();
   const transport=mocks.dispatch.mock.calls[0]![3];
   await transport.send({from:"office@bneineviimacademy.org",to:"owner@example.org",subject:"old",text:origin+"/auth/reset#token="+"a".repeat(43),idempotencyKey:"ls-auth-"+id});
-  const sent=mocks.send.mock.calls[0]![0];expect(sent.text).toContain(origin+"/"+locale+"/intake/staff?mode=reset#token=");expect(sent.to).toBe("owner@example.org");expect(sent.text).not.toContain("?token=");
+  const sent=mocks.send.mock.calls[0]![0];expect(sent.text).toContain(origin+"/"+locale+"/login?mode=reset#token=");expect(sent.to).toBe("owner@example.org");expect(sent.text).not.toContain("?token=");
   expect(sent.text).toContain(locale === "he" ? "15 דקות" : "15 minutes");expect(sent.text).toMatch(locale === "he" ? /6 תווים/ : /6 characters/);expect(sent.text).not.toMatch(locale === "he" ? /15 תווים/ : /15 characters/);
  });
  test("provider/store failures do not leak account, token or error details",async()=>{
