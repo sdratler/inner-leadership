@@ -9,9 +9,9 @@ export const primaryNavigation: Record<WorkspaceRole, readonly NavItem[]> = {
   practitioner: [item("calendar", "app/calendar", "Calendar", "יומן"), item("clients", "app/clients", "Clients", "לקוחות"), item("prospects", "app/prospects", "Prospects", "מתעניינים"), item("feedback", "app/feedback", "Communications", "תקשורת"), item("reports", "app/reports", "Reports", "דוחות"), item("marketing", "app/marketing", "Marketing", "שיווק")],
 };
 export const navigationGroups: Record<WorkspaceRole, readonly NavGroup[]> = {
-  parent: [{ key: "materials", en: "Shared with you", he: "שותף איתכם", items: [item("forms", "family/forms", "Forms to complete", "טפסים למילוי"), item("resources", "family/resources", "Shared resources", "משאבים משותפים"), item("reports", "family/reports", "Shared reports", "דוחות משותפים")] }],
+  parent: [{ key: "materials", en: "Shared with you", he: "שותף איתכם", items: [item("forms", "family/forms", "Forms to complete", "טפסים למילוי"), item("resources", "family/resources", "Materials & exercises", "חומרים ותרגילים"), item("reports", "family/reports", "Shared reports", "דוחות משותפים")] }],
   client: [],
-  practitioner: [{ key: "tools", en: "Tools", he: "כלים", items: [item("practice", "app/practice", "Assignments", "משימות"), item("forms", "app/forms", "Forms", "טפסים"), item("resources", "app/resources", "Resources", "משאבים"), item("payments", "app/payments", "Payments", "תשלומים")] }],
+  practitioner: [{ key: "tools", en: "Tools", he: "כלים", items: [item("practice", "app/practice", "Assignments", "משימות"), item("forms", "app/forms", "Forms", "טפסים"), item("resources", "app/resources", "Materials & exercises", "חומרים ותרגילים"), item("payments", "app/payments", "Payments", "תשלומים")] }],
 };
 export function isCaseId(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
