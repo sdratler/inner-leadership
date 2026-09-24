@@ -16,6 +16,10 @@ for(const locale of ["he","en"] as const){
   await page.getByRole('button',{name:locale==='he'?'הסתרת סיסמה':'Hide password'}).click();
   await expect(password).toHaveAttribute('type','password');
   await expect(password).toHaveValue('synthetic-six-character-check');
+  await page.getByRole('button',{name:locale==='he'?'הצגת סיסמה':'Show password'}).click();
+  await page.getByRole('button',{name:locale==='he'?'שכחתי סיסמה':'Forgot password?'}).click();
+  await page.getByRole('button',{name:locale==='he'?'חזרה לכניסה':'Back to sign in'}).click();
+  await expect(page.locator('#login-password')).toHaveAttribute('type','password');
   await page.screenshot({path:testInfo.outputPath(`${locale}-login.png`),fullPage:true});
  });
  for(const role of ["parent","practitioner"] as const){

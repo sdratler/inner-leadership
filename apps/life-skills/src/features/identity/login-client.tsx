@@ -131,7 +131,7 @@ export function LoginClient({ locale }: { locale: Locale }) {
     setBusy(true); setStatus("");
     try {
       await publicAuthAction(mode === "invite" ? "invites/accept" : "reset/complete", { token: token.current, password });
-      token.current = null; setTokenReady(false); setMode("login"); setStatus(t.completed);
+      token.current = null; setTokenReady(false); setPasswordVisible(false); setMode("login"); setStatus(t.completed);
       window.history.replaceState(null, "", `/${locale}/login`);
     } catch { setStatus(t.token); }
     finally { setBusy(false); }
@@ -156,14 +156,14 @@ export function LoginClient({ locale }: { locale: Locale }) {
         <h1 id="login-title">{t.forgotTitle}</h1><p>{t.forgotHelp}</p>
         <label>{t.email}<input name="email" type="email" required autoComplete="username" /></label>
         <button disabled={busy || resetAccepted} type="submit">{busy ? t.working : t.request}</button>
-        <button className={styles.secondary} disabled={busy} type="button" onClick={() => { setMode("login"); setStatus(""); }}>{t.back}</button>
+        <button className={styles.secondary} disabled={busy} type="button" onClick={() => { setPasswordVisible(false); setMode("login"); setStatus(""); }}>{t.back}</button>
       </form> : <form action={(form) => void login(form)}>
         <h1 id="login-title">{t.title}</h1><p>{t.help}</p>
         <label>{t.email}<input name="email" type="email" required autoComplete="username" /></label>
         <label>{t.password}<input id="login-password" name="password" type={passwordVisible ? "text" : "password"} required autoComplete="current-password" /></label>
         <button className={styles.passwordToggle} type="button" aria-controls="login-password" aria-pressed={passwordVisible} onClick={() => setPasswordVisible(value => !value)}>{passwordVisible ? t.hidePassword : t.showPassword}</button>
         <button disabled={busy} type="submit">{busy ? t.working : t.signIn}</button>
-        <button className={styles.secondary} disabled={busy} type="button" onClick={() => { setMode("forgot"); setStatus(""); }}>{t.forgot}</button>
+        <button className={styles.secondary} disabled={busy} type="button" onClick={() => { setPasswordVisible(false); setMode("forgot"); setStatus(""); }}>{t.forgot}</button>
       </form>}
       <p className={styles.status} role="status" aria-live="polite">{status}</p>
       {mode !== "invite" && mode !== "reset" && <Link className={styles.language} href={`/${language}/login`}>{language === "he" ? "עברית" : "English"}</Link>}
