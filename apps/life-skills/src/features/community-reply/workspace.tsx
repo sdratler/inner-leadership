@@ -16,6 +16,7 @@ const copy = {
     failed: "Generation was not confirmed. Your input is preserved; do not assume a reply was saved or posted.",
     blocked: "The draft needs manual safety review before it can be copied.",
     sources: "Source versions used", guide: "Content Voice", playbook: "Community Response Playbook", synced: "Read for this draft",
+    generation: "Generation", usage: "Model tokens (input/output)",
     warning: "Editing changes the checked draft. Review your final wording before copying; nothing is posted by the app.",
   },
   he: {
@@ -28,6 +29,7 @@ const copy = {
     failed: "יצירת התגובה לא אומתה. הטקסט שהזנת נשמר במסך; אין להניח שתגובה נשמרה או פורסמה.",
     blocked: "הטיוטה דורשת בדיקת בטיחות ידנית לפני העתקה.",
     sources: "גרסאות המקורות ששימשו", guide: "מדריך סגנון הכתיבה", playbook: "מדריך תגובות בקהילה", synced: "נקראו עבור טיוטה זו",
+    generation: "יצירת הטיוטה", usage: "טוקנים של המודל (קלט/פלט)",
     warning: "עריכה משנה את הטיוטה שנבדקה. יש לבדוק את הנוסח הסופי לפני העתקה; האפליקציה אינה מפרסמת אותו.",
   },
 };
@@ -91,6 +93,8 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
         <dt>{t.guide}</dt><dd>v{result.provenance.guide.declaredVersion ?? "—"} · Drive #{result.provenance.guide.driveRevision} · {result.provenance.guide.modifiedAt} · SHA-256 {result.provenance.guide.sha256.slice(0, 12)}</dd>
         <dt>{t.playbook}</dt><dd>v{result.provenance.playbook.declaredVersion ?? "—"} · Drive #{result.provenance.playbook.driveRevision} · {result.provenance.playbook.modifiedAt} · SHA-256 {result.provenance.playbook.sha256.slice(0, 12)}</dd>
         <dt>{t.synced}</dt><dd>{result.provenance.guide.checkedAt} · {result.provenance.playbook.checkedAt}</dd>
+        <dt>{t.generation}</dt><dd>{result.provenance.generatedAt} · {result.provenance.model} · {result.provenance.policyVersion}</dd>
+        <dt>{t.usage}</dt><dd>{result.provenance.usage.inputTokens} / {result.provenance.usage.outputTokens}</dd>
       </dl></details>
       <label>{t.correction}<textarea value={correction} disabled={busy} maxLength={1000} onChange={event => setCorrection(event.target.value)} /></label>
       <div className="lsr-actions"><button type="button" disabled={busy || correction.trim().length < 3} onClick={() => void request("revise_once")}>{t.revise}</button>
