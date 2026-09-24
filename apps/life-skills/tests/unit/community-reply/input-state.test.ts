@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { matchesSubmittedInput, proposalForResult } from "../../../src/features/community-reply/input-state.ts";
+import { matchesSubmittedInput, proposalForResult, replyFailureKind } from "../../../src/features/community-reply/input-state.ts";
+
+describe("manual drafting limit feedback", () => {
+  it("identifies only the API's confirmed manual limit", () => {
+    expect(replyFailureKind(429, "RATE_LIMITED")).toBe("limited");
+    expect(replyFailureKind(429, "UNAVAILABLE")).toBe("unconfirmed");
+    expect(replyFailureKind(503, "RATE_LIMITED")).toBe("unconfirmed");
+    expect(replyFailureKind(409, "CONFLICT")).toBe("unconfirmed");
+  });
+});
 
 describe("manual reply source binding", () => {
   const submitted = { question: "מה יכול לעזור בבוקר?", originalUrl: "https://www.facebook.com/groups/synthetic/posts/42" };
