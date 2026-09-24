@@ -1,6 +1,27 @@
 import {expect,test} from "@playwright/test";
 
 for(const locale of ["he","en"] as const){
+ test(`${locale} login uses approved brand and keeps entered password on visibility toggle`,async({page},testInfo)=>{
+  await page.goto(`/${locale}/login`);
+  await expect(page.locator("html")).toHaveAttribute("dir",locale==="he"?"rtl":"ltr");
+  const logo=page.locator('img[src="/intake-brand/life-skills-logo.png"]');
+  await expect(logo).toBeVisible();
+  await expect.poll(()=>logo.evaluate(image=>(image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+  const password=page.locator('#login-password');
+  await password.fill('synthetic-six-character-check');
+  const toggle=page.getByRole('button',{name:locale==='he'?'הצגת סיסמה':'Show password'});
+  await toggle.click();
+  await expect(password).toHaveAttribute('type','text');
+  await expect(password).toHaveValue('synthetic-six-character-check');
+  await page.getByRole('button',{name:locale==='he'?'הסתרת סיסמה':'Hide password'}).click();
+  await expect(password).toHaveAttribute('type','password');
+  await expect(password).toHaveValue('synthetic-six-character-check');
+  await page.getByRole('button',{name:locale==='he'?'הצגת סיסמה':'Show password'}).click();
+  await page.getByRole('button',{name:locale==='he'?'שכחתי סיסמה':'Forgot password?'}).click();
+  await page.getByRole('button',{name:locale==='he'?'חזרה לכניסה':'Back to sign in'}).click();
+  await expect(page.locator('#login-password')).toHaveAttribute('type','password');
+  await page.screenshot({path:testInfo.outputPath(`${locale}-login.png`),fullPage:true});
+ });
  for(const role of ["parent","practitioner"] as const){
   test(`${locale} ${role} organized routes, contrast and return`,async({page},testInfo)=>{
    const errors:string[]=[];page.on("pageerror",error=>errors.push(error.message));

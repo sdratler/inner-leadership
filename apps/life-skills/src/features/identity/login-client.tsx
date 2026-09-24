@@ -23,6 +23,8 @@ const copy = {
     help: "Use the private account that was created or invited for you.",
     email: "Email",
     password: "Password",
+    showPassword: "Show password",
+    hidePassword: "Hide password",
     signIn: "Sign in",
     forgot: "Forgot password?",
     forgotTitle: "Reset your password",
@@ -47,6 +49,8 @@ const copy = {
     help: "יש להשתמש בחשבון הפרטי שנוצר או הוזמן עבורכם.",
     email: "דוא״ל",
     password: "סיסמה",
+    showPassword: "הצגת סיסמה",
+    hidePassword: "הסתרת סיסמה",
     signIn: "כניסה",
     forgot: "שכחתי סיסמה",
     forgotTitle: "איפוס סיסמה",
@@ -78,6 +82,7 @@ export function LoginClient({ locale }: { locale: Locale }) {
   const [status, setStatus] = useState("");
   const [resetAccepted, setResetAccepted] = useState(false);
   const [tokenReady, setTokenReady] = useState(false);
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const token = useRef<string | null>(null);
   const t = copy[locale];
 
@@ -126,7 +131,7 @@ export function LoginClient({ locale }: { locale: Locale }) {
     setBusy(true); setStatus("");
     try {
       await publicAuthAction(mode === "invite" ? "invites/accept" : "reset/complete", { token: token.current, password });
-      token.current = null; setTokenReady(false); setMode("login"); setStatus(t.completed);
+      token.current = null; setTokenReady(false); setPasswordVisible(false); setMode("login"); setStatus(t.completed);
       window.history.replaceState(null, "", `/${locale}/login`);
     } catch { setStatus(t.token); }
     finally { setBusy(false); }
@@ -135,23 +140,30 @@ export function LoginClient({ locale }: { locale: Locale }) {
   const language = locale === "he" ? "en" : "he";
   return <main className={styles.page}>
     <section className={styles.card} aria-labelledby="login-title">
-      <header className={styles.brand}><span aria-hidden="true">❧</span><div><strong>{locale === "he" ? "כישורי חיים" : "Life Skills"}</strong><small>{locale === "he" ? "המרחב הפרטי" : "Private app"}</small></div></header>
+      <header className={styles.brand}>
+        {/* Exact approved local brand asset, shared with the authenticated workspace. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/intake-brand/life-skills-logo.png" width={124} height={65} alt={locale === "he" ? "כישורי חיים" : "Life Skills"} />
+        <div><strong>{locale === "he" ? "כישורי חיים" : "Life Skills"}</strong><small>{locale === "he" ? "המרחב הפרטי" : "Private app"}</small></div>
+      </header>
       {mode === "invite" || mode === "reset" ? <form action={(form) => void complete(form)}>
         <h1 id="login-title">{mode === "invite" ? t.activation : t.reset}</h1>
-        <label>{t.newPassword}<input name="password" type="password" minLength={6} maxLength={128} required autoComplete="new-password" /></label>
-        <label>{t.confirmation}<input name="confirmation" type="password" minLength={6} maxLength={128} required autoComplete="new-password" /></label>
+        <label>{t.newPassword}<input id="new-password" name="password" type={passwordVisible ? "text" : "password"} minLength={6} maxLength={128} required autoComplete="new-password" /></label>
+        <label>{t.confirmation}<input id="confirm-password" name="confirmation" type={passwordVisible ? "text" : "password"} minLength={6} maxLength={128} required autoComplete="new-password" /></label>
+        <button className={styles.passwordToggle} type="button" aria-controls="new-password confirm-password" aria-pressed={passwordVisible} onClick={() => setPasswordVisible(value => !value)}>{passwordVisible ? t.hidePassword : t.showPassword}</button>
         <button disabled={busy || !tokenReady} type="submit">{busy ? t.working : t.save}</button>
       </form> : mode === "forgot" ? <form action={(form) => void requestReset(form)}>
         <h1 id="login-title">{t.forgotTitle}</h1><p>{t.forgotHelp}</p>
         <label>{t.email}<input name="email" type="email" required autoComplete="username" /></label>
         <button disabled={busy || resetAccepted} type="submit">{busy ? t.working : t.request}</button>
-        <button className={styles.secondary} disabled={busy} type="button" onClick={() => { setMode("login"); setStatus(""); }}>{t.back}</button>
+        <button className={styles.secondary} disabled={busy} type="button" onClick={() => { setPasswordVisible(false); setMode("login"); setStatus(""); }}>{t.back}</button>
       </form> : <form action={(form) => void login(form)}>
         <h1 id="login-title">{t.title}</h1><p>{t.help}</p>
         <label>{t.email}<input name="email" type="email" required autoComplete="username" /></label>
-        <label>{t.password}<input name="password" type="password" required autoComplete="current-password" /></label>
+        <label>{t.password}<input id="login-password" name="password" type={passwordVisible ? "text" : "password"} required autoComplete="current-password" /></label>
+        <button className={styles.passwordToggle} type="button" aria-controls="login-password" aria-pressed={passwordVisible} onClick={() => setPasswordVisible(value => !value)}>{passwordVisible ? t.hidePassword : t.showPassword}</button>
         <button disabled={busy} type="submit">{busy ? t.working : t.signIn}</button>
-        <button className={styles.secondary} disabled={busy} type="button" onClick={() => { setMode("forgot"); setStatus(""); }}>{t.forgot}</button>
+        <button className={styles.secondary} disabled={busy} type="button" onClick={() => { setPasswordVisible(false); setMode("forgot"); setStatus(""); }}>{t.forgot}</button>
       </form>}
       <p className={styles.status} role="status" aria-live="polite">{status}</p>
       {mode !== "invite" && mode !== "reset" && <Link className={styles.language} href={`/${language}/login`}>{language === "he" ? "עברית" : "English"}</Link>}
