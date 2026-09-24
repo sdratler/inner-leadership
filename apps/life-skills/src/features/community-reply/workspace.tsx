@@ -78,21 +78,21 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
 
   return <div className="lsr-community-reply" dir={locale === "he" ? "rtl" : "ltr"}>
     <p className="lsr-instruction">{t.intro}</p>
-    <div className="lsr-form-grid"><label>{t.question}<textarea value={question} maxLength={2000} onChange={event => setQuestion(event.target.value)} /></label>
-      <label>{t.url}<input type="url" value={originalUrl} maxLength={1000} onChange={event => setOriginalUrl(event.target.value)} placeholder="https://www.facebook.com/groups/…" /></label></div>
+    <div className="lsr-form-grid"><label>{t.question}<textarea value={question} disabled={busy} maxLength={2000} onChange={event => setQuestion(event.target.value)} /></label>
+      <label>{t.url}<input type="url" value={originalUrl} disabled={busy} maxLength={1000} onChange={event => setOriginalUrl(event.target.value)} placeholder="https://www.facebook.com/groups/…" /></label></div>
     <div className="lsr-actions"><button type="button" className="lsr-primary" disabled={busy || question.trim().length < 8} onClick={() => void request("generate")}>{t.generate}</button></div>
     {result && <>
-      <label>{t.reply}<textarea value={draft} maxLength={3000} onChange={event => setDraft(event.target.value)} /></label>
+      <label>{t.reply}<textarea value={draft} disabled={busy} maxLength={3000} onChange={event => setDraft(event.target.value)} /></label>
       {draft !== result.reply && <p className="lsr-help">{t.warning}</p>}
       {!result.copyAllowed && <p role="alert" className="lsr-inline-error">{t.blocked} {result.reviewFlags.join(", ")}</p>}
-      <div className="lsr-actions"><button type="button" disabled={!result.copyAllowed || !draft.trim()} onClick={() => void copyDraft()}>{t.copy}</button>
+      <div className="lsr-actions"><button type="button" disabled={busy || !result.copyAllowed || !draft.trim()} onClick={() => void copyDraft()}>{t.copy}</button>
         {result.originalUrl && <a className="lsr-button" href={result.originalUrl} target="_blank" rel="noopener noreferrer">{t.open}</a>}</div>
       <details><summary>{t.sources}</summary><dl className="lsr-community-sources">
         <dt>{t.guide}</dt><dd>v{result.provenance.guide.declaredVersion ?? "—"} · Drive #{result.provenance.guide.driveRevision} · {result.provenance.guide.modifiedAt} · SHA-256 {result.provenance.guide.sha256.slice(0, 12)}</dd>
         <dt>{t.playbook}</dt><dd>v{result.provenance.playbook.declaredVersion ?? "—"} · Drive #{result.provenance.playbook.driveRevision} · {result.provenance.playbook.modifiedAt} · SHA-256 {result.provenance.playbook.sha256.slice(0, 12)}</dd>
         <dt>{t.synced}</dt><dd>{result.provenance.guide.checkedAt} · {result.provenance.playbook.checkedAt}</dd>
       </dl></details>
-      <label>{t.correction}<textarea value={correction} maxLength={1000} onChange={event => setCorrection(event.target.value)} /></label>
+      <label>{t.correction}<textarea value={correction} disabled={busy} maxLength={1000} onChange={event => setCorrection(event.target.value)} /></label>
       <div className="lsr-actions"><button type="button" disabled={busy || correction.trim().length < 3} onClick={() => void request("revise_once")}>{t.revise}</button>
         <button type="button" disabled title={t.pending}>{t.persistent}</button></div>
       {proposedRule && <div className="lsr-form-grid"><label>{t.proposed}<textarea value={proposedRule} maxLength={400} onChange={event => setProposedRule(event.target.value)} /></label>

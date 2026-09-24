@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     if (actor.role !== "practitioner") throw new AppError("FORBIDDEN");
     verifyMutationOrigin(request, identity.config.origin);
     verifyCsrfToken(request.headers.get("x-csrf-token"), identity.services.sessions.csrf(token));
-    const command = await readJson(request, body, 8_192);
+    const command = await readJson(request, body, 65_536);
     const result = await requestCommunityReply(command);
     return NextResponse.json({ ok: true, data: result, requestId: randomUUID() }, { headers: { "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" } });
   } catch (error) { return fail(error); }
