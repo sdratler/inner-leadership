@@ -12,7 +12,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const body = z.discriminatedUnion("mode", [
   z.object({ operationId: z.string().uuid(), mode: z.literal("generate"), question: z.string().trim().min(8).max(2000), originalUrl: z.string().url().max(1000).optional() }).strict(),
-  z.object({ operationId: z.string().uuid(), mode: z.literal("revise_once"), question: z.string().trim().min(8).max(2000), originalUrl: z.string().url().max(1000).optional(), correction: z.string().trim().min(3).max(1000), previousReply: z.string().min(10).max(3000) }).strict(),
+  z.object({ operationId: z.string().uuid(), mode: z.literal("revise_once"), question: z.string().trim().min(8).max(2000), originalUrl: z.string().url().max(1000).optional(), correction: z.string().trim().min(3).max(1000), previousReply: z.string().trim().min(10).max(3000) }).strict(),
 ]);
 function fail(error: unknown) { const result = errorEnvelope(error instanceof AppError ? error : new AppError("UNAVAILABLE"), randomUUID()); return NextResponse.json(result.body, { status: result.status, headers: { "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" } }); }
 

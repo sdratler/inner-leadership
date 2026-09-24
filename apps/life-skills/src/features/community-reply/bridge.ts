@@ -13,6 +13,7 @@ export type CommunityReplyCommand = {
   previousReply?: string | undefined;
 };
 export type CommunityReplyResult = {
+  operationId: string;
   reply: string;
   copyAllowed: boolean;
   reviewFlags: string[];
@@ -33,10 +34,10 @@ function sourceMatches(actual: CommunityReplyResult["provenance"]["guide"] | und
   return actual?.id === id && actual.sha256 === expected.sha256 && actual.driveRevision === expected.driveRevision &&
     actual.declaredVersion === expected.declaredVersion && actual.modifiedAt === expected.modifiedAt && actual.checkedAt === expected.checkedAt;
 }
-function verified(value: unknown, guide: ContentVoiceSnapshot, playbook: ContentVoiceSnapshot, originalUrl: string | null): CommunityReplyResult {
+function verified(value: unknown, guide: ContentVoiceSnapshot, playbook: ContentVoiceSnapshot, command: CommunityReplyCommand, originalUrl: string | null): CommunityReplyResult {
   if (!value || typeof value !== "object") throw new AppError("UNAVAILABLE");
   const result = value as Partial<CommunityReplyResult>;
-  if (typeof result.reply !== "string" || result.reply.length > 3000 || typeof result.copyAllowed !== "boolean" ||
+  if (result.operationId !== command.operationId || typeof result.reply !== "string" || result.reply.length > 3000 || typeof result.copyAllowed !== "boolean" ||
       !Array.isArray(result.reviewFlags) || result.reviewFlags.some(item => typeof item !== "string") ||
       typeof result.suggestedRule !== "string" || result.suggestedRule.length > 400 ||
       !["", "community", "general"].includes(String(result.ruleScope)) ||
@@ -77,5 +78,5 @@ export async function requestCommunityReply(command: CommunityReplyCommand,
   let body: unknown;
   try { body = await response.json(); } catch { throw new AppError("UNAVAILABLE"); }
   if (!body || typeof body !== "object" || (body as { ok?: unknown }).ok !== true) throw new AppError("UNAVAILABLE");
-  return verified((body as { data?: unknown }).data, guide, playbook, originalUrl);
+  return verified((body as { data?: unknown }).data, guide, playbook, command, originalUrl);
 }

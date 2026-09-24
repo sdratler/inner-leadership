@@ -57,7 +57,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
   const stale = !!result && !matchesSubmittedInput({ question, originalUrl }, submittedInput);
 
   async function request(mode: "generate" | "revise_once") {
-    if (inFlight.current || question.trim().length < 8 || (mode === "revise_once" && (stale || draft.length < 10 || correction.trim().length < 3))) return;
+    if (inFlight.current || question.trim().length < 8 || (mode === "revise_once" && (stale || draft.trim().length < 10 || correction.trim().length < 3))) return;
     inFlight.current = true; setBusy(true); setNotice("");
     try {
       const session = await sessionInfo();
@@ -110,7 +110,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
         <dt>{t.usage}</dt><dd>{result.provenance.usage.inputTokens} / {result.provenance.usage.outputTokens}</dd>
       </dl></details>
       <label>{t.correction}<textarea value={correction} disabled={busy} maxLength={1000} onChange={event => setCorrection(event.target.value)} /></label>
-      <div className="lsr-actions"><button type="button" disabled={busy || stale || draft.length < 10 || correction.trim().length < 3} onClick={() => void request("revise_once")}>{t.revise}</button>
+      <div className="lsr-actions"><button type="button" disabled={busy || stale || draft.trim().length < 10 || correction.trim().length < 3} onClick={() => void request("revise_once")}>{t.revise}</button>
         <button type="button" disabled title={t.pending}>{t.persistent}</button></div>
       {proposedRule && <div className="lsr-form-grid"><label>{t.proposed}<textarea value={proposedRule} maxLength={400} onChange={event => setProposedRule(event.target.value)} /></label>
         <label>{t.scope}<select value={ruleScope} onChange={event => setRuleScope(event.target.value === "general" ? "general" : "community")}><option value="community">{t.community}</option><option value="general">{t.general}</option></select></label></div>}
