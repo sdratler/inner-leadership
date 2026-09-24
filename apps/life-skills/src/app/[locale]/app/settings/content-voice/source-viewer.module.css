@@ -1,0 +1,6 @@
+.metadata { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 16px; margin: 0; }
+.metadata div { min-width: 0; }
+.metadata dt { font-weight: 750; color: var(--ls-deep); }
+.metadata dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+.hash { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .85rem; }
+.sourceText { max-height: min(70vh, 900px); overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.7; margin: 0; }

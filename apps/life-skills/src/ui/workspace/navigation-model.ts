@@ -50,7 +50,7 @@ export function caseDestinationHref(locale: Locale, path: string, caseId: string
 }
 export function settingsItems(role: WorkspaceRole): readonly NavItem[] {
   const base = role === "parent" ? "family/settings" : role === "client" ? "client/settings" : "app/settings";
-  return [item("account", `${base}/account`, "Account & language", "חשבון ושפה"), item("notifications", `${base}/notifications`, "Notifications", "התראות"), ...(role === "parent" ? [item("coordination", `${base}/coordination`, "Task coordination", "תיאום משימות"), item("credits", `${base}/credits`, "Appointment credits", "יתרת מפגשים")] : role === "practitioner" ? [item("availability", `${base}/availability`, "Availability", "זמינות")] : [])];
+  return [item("account", `${base}/account`, "Account & language", "חשבון ושפה"), item("notifications", `${base}/notifications`, "Notifications", "התראות"), ...(role === "parent" ? [item("coordination", `${base}/coordination`, "Task coordination", "תיאום משימות"), item("credits", `${base}/credits`, "Appointment credits", "יתרת מפגשים")] : role === "practitioner" ? [item("availability", `${base}/availability`, "Availability", "זמינות"), item("content_voice", `${base}/content-voice`, "Content Voice", "קול התוכן")] : [])];
 }
 export function activeItem(pathname: string, locale: Locale, role: WorkspaceRole): NavItem | undefined {
   const path = pathname.replace(new RegExp(`^/${locale}/`), "").replace(/\/$/, "");
