@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 export const CONTENT_VOICE_FILE_ID = "174-EqMG0QIH5rCuRgn2xYYPMX-XWJZNn";
+export const COMMUNITY_PLAYBOOK_FILE_ID = "12C3QM4F6RZdpeWRvReN2x2BB7GzBnSqvfhjMg1PKwC0";
 const MAX_SOURCE_BYTES = 100_000;
 const TOKEN_PATTERN = /^[^\r\n]{1,4096}$/;
 
@@ -83,4 +84,49 @@ export async function readContentVoiceSource(fetcher: typeof fetch = fetch,
       sha256: createHash("sha256").update(bytes).digest("hex"), text };
   }
   throw new Error("CONTENT_VOICE_UNAVAILABLE");
+}
+
+/** The separate community-channel authority is a native Google Doc, not a copy of the writing guide. */
+export async function readCommunityPlaybookSource(fetcher: typeof fetch = fetch,
+  env: Record<string, string | undefined> = process.env,
+  now: () => Date = () => new Date()): Promise<ContentVoiceSnapshot> {
+  const accessToken = await token(fetcher, env);
+  const url = `https://www.googleapis.com/drive/v3/files/${COMMUNITY_PLAYBOOK_FILE_ID}`;
+  const readMetadata = async () => {
+    const response = await fetcher(`${url}?fields=id,name,mimeType,modifiedTime,version`, {
+      redirect: "error", cache: "no-store", signal: AbortSignal.timeout(8000),
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!response.ok) throw new Error("COMMUNITY_PLAYBOOK_UNAVAILABLE");
+    const value: Metadata = await response.json();
+    if (value.id !== COMMUNITY_PLAYBOOK_FILE_ID || value.mimeType !== "application/vnd.google-apps.document" ||
+        typeof value.name !== "string" || value.name.length > 200 ||
+        typeof value.version !== "string" || !/^\d+$/.test(value.version) ||
+        typeof value.modifiedTime !== "string" || !Number.isFinite(Date.parse(value.modifiedTime))) {
+      throw new Error("COMMUNITY_PLAYBOOK_UNAVAILABLE");
+    }
+    return value as { name: string; version: string; modifiedTime: string };
+  };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const before = await readMetadata();
+    const response = await fetcher(`${url}/export?mimeType=text%2Fplain`, {
+      redirect: "error", cache: "no-store", signal: AbortSignal.timeout(8000),
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!response.ok || Number(response.headers.get("content-length") ?? 0) > MAX_SOURCE_BYTES) throw new Error("COMMUNITY_PLAYBOOK_UNAVAILABLE");
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (!bytes.length || bytes.length > MAX_SOURCE_BYTES) throw new Error("COMMUNITY_PLAYBOOK_UNAVAILABLE");
+    const after = await readMetadata();
+    if (before.version !== after.version || before.modifiedTime !== after.modifiedTime) {
+      if (attempt === 0) continue;
+      throw new Error("COMMUNITY_PLAYBOOK_CHANGED_DURING_READ");
+    }
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    const versions = [...text.matchAll(/^Version\s+([0-9]+(?:\.[0-9]+)*)\b/gm)];
+    return { title: after.name, sourceUrl: `https://docs.google.com/document/d/${COMMUNITY_PLAYBOOK_FILE_ID}/edit`,
+      declaredVersion: versions.at(-1)?.[1] ?? null, driveRevision: after.version,
+      modifiedAt: after.modifiedTime, checkedAt: now().toISOString(),
+      sha256: createHash("sha256").update(bytes).digest("hex"), text };
+  }
+  throw new Error("COMMUNITY_PLAYBOOK_UNAVAILABLE");
 }
