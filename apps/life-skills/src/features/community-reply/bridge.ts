@@ -29,14 +29,17 @@ export type CommunityReplyResult = {
   };
 };
 
+function sourceMatches(actual: CommunityReplyResult["provenance"]["guide"] | undefined, expected: ContentVoiceSnapshot, id: string): boolean {
+  return actual?.id === id && actual.sha256 === expected.sha256 && actual.driveRevision === expected.driveRevision &&
+    actual.declaredVersion === expected.declaredVersion && actual.modifiedAt === expected.modifiedAt && actual.checkedAt === expected.checkedAt;
+}
 function verified(value: unknown, guide: ContentVoiceSnapshot, playbook: ContentVoiceSnapshot): CommunityReplyResult {
   if (!value || typeof value !== "object") throw new AppError("UNAVAILABLE");
   const result = value as Partial<CommunityReplyResult>;
   if (typeof result.reply !== "string" || result.reply.length > 3000 || typeof result.copyAllowed !== "boolean" ||
       !Array.isArray(result.reviewFlags) || result.reviewFlags.some(item => typeof item !== "string") ||
-      !result.provenance || result.provenance.guide?.id !== CONTENT_VOICE_FILE_ID || result.provenance.playbook?.id !== COMMUNITY_PLAYBOOK_FILE_ID ||
-      result.provenance.guide.sha256 !== guide.sha256 || result.provenance.guide.driveRevision !== guide.driveRevision ||
-      result.provenance.playbook.sha256 !== playbook.sha256 || result.provenance.playbook.driveRevision !== playbook.driveRevision) throw new AppError("UNAVAILABLE");
+      !result.provenance || !sourceMatches(result.provenance.guide, guide, CONTENT_VOICE_FILE_ID) ||
+      !sourceMatches(result.provenance.playbook, playbook, COMMUNITY_PLAYBOOK_FILE_ID)) throw new AppError("UNAVAILABLE");
   return result as CommunityReplyResult;
 }
 
