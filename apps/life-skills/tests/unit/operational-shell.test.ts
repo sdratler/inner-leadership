@@ -8,7 +8,7 @@ import {CalendarBoard} from "../../src/features/calendar/views.tsx";
 import {countCurrentAssignments} from "../../src/features/calendar/attention-summary.tsx";
 import {selectAuthorizedPaymentCase} from "../../src/features/payments/case-selection.ts";
 import {calendarView} from "../../src/features/calendar/time.ts";
-import {paymentSection,paymentVisiblePanels} from "../../src/features/payments/sections.ts";
+import {paymentSection,paymentVisibleCharges,paymentVisiblePanels} from "../../src/features/payments/sections.ts";
 
 describe("operational workspace navigation",()=>{
  it("limits the practitioner sidebar to the six owner-selected destinations",()=>{
@@ -88,6 +88,10 @@ describe("operational workspace navigation",()=>{
   expect(paymentVisiblePanels(paymentSection("credits",true))).toMatchObject({balance:true,charges:false,received:false,history:true,newCharge:false,refundCredit:false});
   expect(paymentVisiblePanels(paymentSection("refunds",true))).toMatchObject({balance:false,charges:false,received:false,history:true,newCharge:false,refundCredit:true});
   expect(Object.values(paymentVisiblePanels(paymentSection(undefined,false))).every(Boolean)).toBe(true);
+  const charges=[{id:"due",status:"open" as const},{id:"settled",status:"paid" as const}];
+  expect(paymentVisibleCharges(charges,"awaiting").map(item=>item.id)).toEqual(["due"]);
+  expect(paymentVisibleCharges(charges,"overview").map(item=>item.id)).toEqual(["due","settled"]);
+  expect(paymentVisibleCharges(charges,"full").map(item=>item.id)).toEqual(["due","settled"]);
   expect(practitionerContext("/en/app/payments",null).map(item=>item.en)).toEqual(["Overview","Awaiting","Paid","Credits","Refunds"]);
  });
 });

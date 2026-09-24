@@ -19,3 +19,7 @@ export function paymentVisiblePanels(section: PaymentSection) {
     refundCredit: section === 'full' || section === 'refunds',
   } as const;
 }
+
+export function paymentVisibleCharges<T extends {status: 'open' | 'paid'}>(charges: readonly T[], section: PaymentSection): T[] {
+  return section === 'awaiting' ? charges.filter(item => item.status === 'open') : [...charges];
+}
