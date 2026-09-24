@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { sessionInfo } from "../identity/client.ts";
 import type { CommunityReplyResult } from "./bridge.ts";
-import { matchesSubmittedInput, proposalForResult, type CommunitySourceInput } from "./input-state.ts";
+import { matchesSubmittedInput, proposalForResult, replyFailureKind, type CommunitySourceInput } from "./input-state.ts";
 
 type Locale = "he" | "en";
 const copy = {
@@ -15,6 +15,7 @@ const copy = {
     pending: "The canonical writing-rule update is not yet connected. This correction changes only this reply; no source rule has been saved.",
     copy: "Copy reply", open: "Open original post", copied: "Copied. Review the edited text before posting manually.",
     failed: "Generation was not confirmed. Your input is preserved; do not assume a reply was saved or posted.",
+    limited: "Manual drafting has reached its approved limit. Your input is preserved; no new reply was confirmed. An ongoing limit needs owner approval before more drafts can be generated.",
     blocked: "The draft needs manual safety review before it can be copied.",
     sources: "Source versions used", guide: "Content Voice", playbook: "Community Response Playbook", synced: "Latest source check",
     generation: "Generation", usage: "Model tokens (input/output)",
@@ -30,6 +31,7 @@ const copy = {
     pending: "עדכון כללי הכתיבה במקור עדיין אינו מחובר. התיקון חל רק על תגובה זו; לא נשמר כלל במקור.",
     copy: "העתקת התגובה", open: "פתיחת הפוסט המקורי", copied: "הועתק. יש לבדוק את הנוסח הערוך לפני פרסום ידני.",
     failed: "יצירת התגובה לא אומתה. הטקסט שהזנת נשמר במסך; אין להניח שתגובה נשמרה או פורסמה.",
+    limited: "יצירת הטיוטות הידנית הגיעה למגבלה שאושרה. הטקסט שהזנת נשמר במסך, ולא אומתה תגובה חדשה. כדי ליצור טיוטות נוספות נדרש אישור בעל החשבון למגבלה מתמשכת.",
     blocked: "הטיוטה דורשת בדיקת בטיחות ידנית לפני העתקה.",
     sources: "גרסאות המקורות ששימשו", guide: "מדריך סגנון הכתיבה", playbook: "מדריך תגובות בקהילה", synced: "בדיקת המקורות האחרונה",
     generation: "יצירת הטיוטה", usage: "טוקנים של המודל (קלט/פלט)",
@@ -71,7 +73,8 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
         headers: { "Content-Type": "application/json", "X-CSRF-Token": session.csrfToken },
         body: JSON.stringify({ operationId: attempt.current.operationId, ...command }),
       });
-      const payload = await response.json() as { ok?: boolean; data?: CommunityReplyResult };
+      const payload = await response.json() as { ok?: boolean; data?: CommunityReplyResult; error?: { code?: string } };
+      if (replyFailureKind(response.status, payload.error?.code) === "limited") { setNotice(t.limited); return; }
       if (!response.ok || payload.ok !== true || !payload.data) throw Error("unconfirmed");
       attempt.current = null;
       setSubmittedInput({ question: command.question, originalUrl: command.originalUrl ?? "" });
@@ -116,6 +119,6 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
         <label>{t.scope}<select value={ruleScope} onChange={event => setRuleScope(event.target.value === "general" ? "general" : "community")}><option value="community">{t.community}</option><option value="general">{t.general}</option></select></label></div>}
       <p className="lsr-help">{t.pending}</p>
     </>}
-    {notice && <p role="status" className={notice === t.failed ? "lsr-inline-error" : "lsr-status"}>{notice}</p>}
+    {notice && <p role={notice === t.failed || notice === t.limited ? "alert" : "status"} className={notice === t.failed || notice === t.limited ? "lsr-inline-error" : "lsr-status"}>{notice}</p>}
   </div>;
 }
