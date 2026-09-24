@@ -20,6 +20,7 @@ const copy = {
     generation: "Generation", usage: "Model tokens (input/output)",
     warning: "Editing changes the checked draft. Review your final wording before copying; nothing is posted by the app.",
     stale: "This draft belongs to the previous question or link. Generate a new draft before copying or revising it.",
+    reviewed: "I reviewed this exact reply for accuracy, privacy and no private-contact invitation.",
   },
   he: {
     intro: "טיוטת תגובה לשאלה ציבורית בקהילה. יש להדביק רק את הקטע הציבורי הנחוץ, ללא שמות, טלפונים או פרטים אישיים על ילדים. דבר אינו מתפרסם או נשלח אוטומטית.",
@@ -34,6 +35,7 @@ const copy = {
     generation: "יצירת הטיוטה", usage: "טוקנים של המודל (קלט/פלט)",
     warning: "עריכה משנה את הטיוטה שנבדקה. יש לבדוק את הנוסח הסופי לפני העתקה; האפליקציה אינה מפרסמת אותו.",
     stale: "הטיוטה שייכת לשאלה או לקישור הקודמים. יש ליצור טיוטה חדשה לפני העתקה או תיקון.",
+    reviewed: "בדקתי את הנוסח המדויק לדיוק, פרטיות והיעדר הזמנה לפנייה פרטית.",
   },
 };
 
@@ -43,6 +45,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
   const [originalUrl, setOriginalUrl] = useState("");
   const [correction, setCorrection] = useState("");
   const [draft, setDraft] = useState("");
+  const [reviewed, setReviewed] = useState(false);
   const [proposedRule, setProposedRule] = useState("");
   const [ruleScope, setRuleScope] = useState<"community" | "general">("community");
   const [result, setResult] = useState<CommunityReplyResult | null>(null);
@@ -72,14 +75,14 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
       if (!response.ok || payload.ok !== true || !payload.data) throw Error("unconfirmed");
       attempt.current = null;
       setSubmittedInput({ question: command.question, originalUrl: command.originalUrl ?? "" });
-      setResult(payload.data); setDraft(payload.data.reply);
+      setResult(payload.data); setDraft(payload.data.reply); setReviewed(false);
       if (mode === "revise_once") { setCorrection(""); setProposedRule(payload.data.suggestedRule); setRuleScope("community"); }
     } catch { setNotice(t.failed); }
     finally { inFlight.current = false; setBusy(false); }
   }
 
   async function copyDraft() {
-    if (!result?.copyAllowed || stale || !draft.trim()) return;
+    if (!result?.copyAllowed || stale || !reviewed || !draft.trim()) return;
     try { await navigator.clipboard.writeText(draft); setNotice(t.copied); }
     catch { setNotice(t.failed); }
   }
@@ -91,10 +94,11 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
     <div className="lsr-actions"><button type="button" className="lsr-primary" disabled={busy || question.trim().length < 8} onClick={() => void request("generate")}>{t.generate}</button></div>
     {result && <>
       {stale && <p role="alert" className="lsr-inline-error">{t.stale}</p>}
-      <label>{t.reply}<textarea value={draft} disabled={busy} maxLength={3000} onChange={event => setDraft(event.target.value)} /></label>
+      <label>{t.reply}<textarea value={draft} disabled={busy} maxLength={3000} onChange={event => { setDraft(event.target.value); setReviewed(false); }} /></label>
       {draft !== result.reply && <p className="lsr-help">{t.warning}</p>}
       {!result.copyAllowed && <p role="alert" className="lsr-inline-error">{t.blocked} {result.reviewFlags.join(", ")}</p>}
-      <div className="lsr-actions"><button type="button" disabled={busy || stale || !result.copyAllowed || !draft.trim()} onClick={() => void copyDraft()}>{t.copy}</button>
+      <label className="lsr-community-review"><input type="checkbox" checked={reviewed} disabled={busy || stale || !result.copyAllowed} onChange={event => setReviewed(event.target.checked)} />{t.reviewed}</label>
+      <div className="lsr-actions"><button type="button" disabled={busy || stale || !reviewed || !result.copyAllowed || !draft.trim()} onClick={() => void copyDraft()}>{t.copy}</button>
         {!stale && result.originalUrl && <a className="lsr-button" href={result.originalUrl} target="_blank" rel="noopener noreferrer">{t.open}</a>}</div>
       <details><summary>{t.sources}</summary><dl className="lsr-community-sources">
         <dt><a href="https://drive.google.com/file/d/174-EqMG0QIH5rCuRgn2xYYPMX-XWJZNn/view" target="_blank" rel="noopener noreferrer">{t.guide}</a></dt><dd>v{result.provenance.guide.declaredVersion ?? "—"} · Drive #{result.provenance.guide.driveRevision} · {result.provenance.guide.modifiedAt} · SHA-256 {result.provenance.guide.sha256.slice(0, 12)}</dd>

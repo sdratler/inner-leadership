@@ -9,6 +9,7 @@
 .lsr-tabs a{display:inline-flex;align-items:center;min-height:48px;padding:10px 18px;border:1px solid var(--r-line);border-radius:10px;text-decoration:none;font-weight:700}
 .lsr-tabs a[aria-current=page]{background:var(--r-teal);border-color:var(--r-teal);color:#fff}
 .lsr-community-reply{display:grid;gap:16px;max-width:1000px}.lsr-community-reply .lsr-form-grid{align-items:start}.lsr-community-reply label:has(textarea){grid-column:1/-1}.lsr-community-reply .lsr-actions{margin-block:0}.lsr-community-sources{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:8px 18px;overflow-wrap:anywhere}.lsr-community-sources dt{font-weight:700}.lsr-community-sources dd{margin:0}
+.lsr-community-reply .lsr-community-review{display:flex;flex-direction:row;align-items:center;gap:12px}.lsr-community-review input{width:22px;min-height:22px;height:22px;flex:none}
 .lsr-stat-link{display:grid;gap:4px;text-decoration:none;min-height:80px}
 .lsr-stat-link span{font-size:14px;text-decoration:underline}
 @media(max-width:700px){.lsr-chart-grid{grid-template-columns:1fr}.lsr-metric-row{grid-template-columns:1fr 1fr}}
