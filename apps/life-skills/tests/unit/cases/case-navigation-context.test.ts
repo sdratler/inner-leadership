@@ -10,9 +10,10 @@ for (const locale of ['en', 'he'] as const) {
  it(`${locale}: case-route context reaches each practitioner destination in desktop and mobile navigation`, () => {
   navigation.pathname = `/${locale}/app/cases/${id}`; navigation.query = new URLSearchParams();
   const markup = renderToStaticMarkup(CoreNavigation({ locale, role: 'practitioner', children: 'Synthetic case' }));
-  for (const path of ['app/calendar', 'app/practice', 'app/feedback', 'app/forms', 'app/resources', 'app/reports', 'app/payments']) {
-   expect(markup.match(new RegExp(`href="/${locale}/${path}\\?caseId=${id}"`, 'g'))?.length ?? 0).toBeGreaterThanOrEqual(2);
+  for (const path of ['app/calendar', 'app/practice', 'app/feedback', 'app/forms', 'app/reports']) {
+   expect(markup.match(new RegExp(`href="/${locale}/${path}\\?caseId=${id}&amp;context=client"`, 'g'))?.length ?? 0).toBeGreaterThanOrEqual(2);
   }
+  expect(markup).not.toContain(`href="/${locale}/app/resources`);
   expect(markup).toContain(`lang="${locale}"`); expect(markup).toContain(`dir="${locale === 'he' ? 'rtl' : 'ltr'}"`);
  });
 }

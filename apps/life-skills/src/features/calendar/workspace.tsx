@@ -23,7 +23,7 @@ import './calendar.css';
 type HistoryPage={items:Array<{version:number;state:'present'|'late'|'no_show'|'canceled';recordedAt:string;reason:string|null}>;nextVersion:number|null};
 import { verifiedGoogleMeetUrl } from './meeting-url.ts';
 export { verifiedGoogleMeetUrl } from './meeting-url.ts';
-export function CalendarWorkspace({locale,role,initialDate,initialView,initialCaseId}:{locale:Locale;role:'parent'|'adult_client'|'child'|'practitioner';initialDate:string;initialView:'day'|'week'|'month';initialCaseId:string}){
+export function CalendarWorkspace({locale,role,initialDate,initialView,initialCaseId}:{locale:Locale;role:'parent'|'adult_client'|'child'|'practitioner';initialDate:string;initialView:'day'|'week'|'month'|'agenda';initialCaseId:string}){
  const router=useRouter();
  const t=text(locale),practitioner=role==='practitioner';
  const [cases,setCases]=useState<CaseChoice[]>([]),[caseId,setCaseId]=useState(initialCaseId),[items,setItems]=useState<AppointmentView[]>([]),[cursor,setCursor]=useState<string|null>(null);
@@ -80,8 +80,8 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  {practitioner&&<div className="ls-cal-actions"><Button disabled={mutation.locked||!cases.length} onClick={e=>openBook(e)}>{t.newBooking}</Button><a className="lsw-button lsw-button--secondary" href={`/${locale}/app/settings/availability?date=${date}`}>{t.availability}</a></div>}</div>
  {count!==null&&<aside className="ls-cal-count"><strong>{t.attendedCount}: {new Intl.NumberFormat(locale).format(count)}</strong><p>{t.attendanceOnly}</p></aside>}
  {loading?<LoadingState locale={locale}/>:error?<ErrorState locale={locale} onRetry={()=>void load()}/>:<>{!cases.length&&<p role="status">{t.noCases}</p>}<CalendarShell locale={locale} period={new Intl.DateTimeFormat(locale==='he'?'he-IL':'en-GB',{timeZone:'Asia/Jerusalem',month:'long',year:'numeric'}).format(new Date(date+'T12:00Z'))} view={view}
- viewHrefs={{day:href(date,'day'),week:href(date,'week'),month:href(date,'month')}} todayHref={href(civilDate(new Date().toISOString()))} previousHref={href(view==='month'?shiftMonth(date,-1):shiftDay(date,view==='day'?-1:-7))} nextHref={href(view==='month'?shiftMonth(date,1):shiftDay(date,view==='day'?1:7))}
- desktop={<CalendarBoard dates={range.dates} items={items} locale={locale} view={view} names={names} onOpen={showAppointment}/>}
+ viewHrefs={{day:href(date,'day'),week:href(date,'week'),month:href(date,'month'),agenda:href(date,'agenda')}} showViewTabs={!practitioner} todayHref={href(civilDate(new Date().toISOString()))} previousHref={href(view==='month'?shiftMonth(date,-1):shiftDay(date,view==='day'?-1:view==='agenda'?-14:-7))} nextHref={href(view==='month'?shiftMonth(date,1):shiftDay(date,view==='day'?1:view==='agenda'?14:7))}
+ desktop={<CalendarBoard dates={range.dates} items={items} locale={locale} view={view==='agenda'?'week':view} names={names} onOpen={showAppointment}/>}
  agenda={<CalendarAgenda items={items} locale={locale} names={names} onOpen={showAppointment}/>}/></>}
  {cursor&&<div className="ls-cal-pagination"><p>{t.partial}</p><Button onClick={()=>void load(false,cursor)} disabled={loading}>{t.loadMore}</Button></div>}
  <p className="ls-cal-muted">{t.remaining}</p>

@@ -65,3 +65,5 @@
 @media(max-width:700px){.lsu-page{padding:18px 16px}.lsu .lsw-page-header h1{font-size:27px}.lsu .lsu-panel{padding:18px}.lsu .lsw-actions>*{flex:1}.lsu .lsw-preference-grid>fieldset{padding:18px}.lsu input,.lsu select,.lsu textarea{font-size:16px}.lsu .lsw-button{min-height:48px}}
 .lsw.lsu .lsw-case-group{margin-block:24px}.lsw.lsu .lsw-case-group h2{margin-block-end:8px}.lsw.lsu .lsw-case-group .lsw-card-list{margin-block:12px 0;grid-template-columns:repeat(3,minmax(0,1fr))}@media(max-width:800px){.lsw.lsu .lsw-case-group .lsw-card-list{grid-template-columns:1fr}}
 @media(max-width:600px){.lsw.lsu .ls-cal[data-has-appointments="false"] .lsw-calendar-grid{display:block!important;max-width:100%;overflow-x:auto;overscroll-behavior-inline:contain}.lsw.lsu .ls-cal-board--week,.lsw.lsu .ls-cal-board--month{min-width:700px}.lsw.lsu .ls-cal-board--day{min-width:0}.lsw.lsu .lsw-calendar-agenda{border-top:1px solid var(--ui-line)}}
+.lsw.lsu .lsw-calendar--agenda .lsw-calendar-grid,.lsw.lsu .ls-cal[data-has-appointments="false"] .lsw-calendar--agenda .lsw-calendar-grid{display:none!important}
+.lsw.lsu .lsw-calendar--agenda .lsw-calendar-agenda{display:block!important}

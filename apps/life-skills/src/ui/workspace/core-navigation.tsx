@@ -9,7 +9,7 @@ export function CoreNavigation({ locale, role, children }: { locale: Locale; rol
   const pathname = usePathname(), query = useSearchParams(), caseId = selectedCaseId(pathname, query.get("caseId"));
   const other = locale === "he" ? "en" : "he";
   const languageHref = pathname.replace(/^\/(he|en)(?=\/|$)/, `/${other}`) + (query.size ? `?${query.toString()}` : "");
-  return <WorkspaceShell locale={locale} role={role} pathname={pathname} caseId={caseId} section={query.get("section")} languageHref={languageHref}>{children}</WorkspaceShell>;
+  return <WorkspaceShell locale={locale} role={role} pathname={pathname} caseId={caseId} selectedClient={query.get("context")==="client"} section={query.get("section")} view={query.get("view")} date={query.get("date")} languageHref={languageHref}>{children}</WorkspaceShell>;
 }
 export function PrivateWorkspaceUnavailable({ locale }: { locale: Locale; role: WorkspaceRole }) {
   const he = locale === "he";
