@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { matchesSubmittedInput } from "../../../src/features/community-reply/input-state.ts";
+import { matchesSubmittedInput, proposalForResult } from "../../../src/features/community-reply/input-state.ts";
 
 describe("manual reply source binding", () => {
   const submitted = { question: "מה יכול לעזור בבוקר?", originalUrl: "https://www.facebook.com/groups/synthetic/posts/42" };
@@ -10,5 +10,14 @@ describe("manual reply source binding", () => {
   });
   it("never treats a missing submitted input as a current draft", () => {
     expect(matchesSubmittedInput(submitted, null)).toBe(false);
+  });
+});
+
+describe("reusable proposal display", () => {
+  it("preserves a returned general scope for a revision", () => {
+    expect(proposalForResult("revise_once", "Use a shorter opening.", "general")).toEqual({ rule: "Use a shorter opening.", scope: "general" });
+  });
+  it("clears an earlier proposal when a new reply is generated", () => {
+    expect(proposalForResult("generate", "Old proposal", "general")).toEqual({ rule: "", scope: "community" });
   });
 });

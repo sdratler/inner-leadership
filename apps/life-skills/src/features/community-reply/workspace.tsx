@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { sessionInfo } from "../identity/client.ts";
 import type { CommunityReplyResult } from "./bridge.ts";
-import { matchesSubmittedInput, type CommunitySourceInput } from "./input-state.ts";
+import { matchesSubmittedInput, proposalForResult, type CommunitySourceInput } from "./input-state.ts";
 
 type Locale = "he" | "en";
 const copy = {
@@ -76,7 +76,9 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
       attempt.current = null;
       setSubmittedInput({ question: command.question, originalUrl: command.originalUrl ?? "" });
       setResult(payload.data); setDraft(payload.data.reply); setReviewed(false);
-      if (mode === "revise_once") { setCorrection(""); setProposedRule(payload.data.suggestedRule); setRuleScope("community"); }
+      const proposal = proposalForResult(mode, payload.data.suggestedRule, payload.data.ruleScope);
+      setProposedRule(proposal.rule); setRuleScope(proposal.scope);
+      if (mode === "revise_once") setCorrection("");
     } catch { setNotice(t.failed); }
     finally { inFlight.current = false; setBusy(false); }
   }

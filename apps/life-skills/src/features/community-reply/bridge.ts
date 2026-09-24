@@ -38,8 +38,14 @@ function verified(value: unknown, guide: ContentVoiceSnapshot, playbook: Content
   const result = value as Partial<CommunityReplyResult>;
   if (typeof result.reply !== "string" || result.reply.length > 3000 || typeof result.copyAllowed !== "boolean" ||
       !Array.isArray(result.reviewFlags) || result.reviewFlags.some(item => typeof item !== "string") ||
+      typeof result.suggestedRule !== "string" || result.suggestedRule.length > 400 ||
+      !["", "community", "general"].includes(String(result.ruleScope)) ||
+      (result.originalUrl !== null && typeof result.originalUrl !== "string") ||
       !result.provenance || !sourceMatches(result.provenance.guide, guide, CONTENT_VOICE_FILE_ID) ||
-      !sourceMatches(result.provenance.playbook, playbook, COMMUNITY_PLAYBOOK_FILE_ID)) throw new AppError("UNAVAILABLE");
+      !sourceMatches(result.provenance.playbook, playbook, COMMUNITY_PLAYBOOK_FILE_ID) ||
+      typeof result.provenance.model !== "string" || typeof result.provenance.policyVersion !== "string" ||
+      !Number.isFinite(Date.parse(result.provenance.generatedAt)) ||
+      !Number.isSafeInteger(result.provenance.usage?.inputTokens) || !Number.isSafeInteger(result.provenance.usage?.outputTokens)) throw new AppError("UNAVAILABLE");
   return result as CommunityReplyResult;
 }
 
