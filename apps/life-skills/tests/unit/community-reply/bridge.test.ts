@@ -49,4 +49,9 @@ describe("authenticated app to existing Scout bridge", () => {
     await expect(requestCommunityReply(command, fetcher as typeof fetch, { LS_COMMUNITY_SCOUT_BRIDGE_SECRET: secret })).rejects.toMatchObject({ code: "UNAVAILABLE" });
     await expect(requestCommunityReply(command, fetcher as typeof fetch, { LS_COMMUNITY_SCOUT_BRIDGE_SECRET: secret })).rejects.toMatchObject({ code: "UNAVAILABLE" });
   });
+  it("refuses a different original post link in the returned draft", async () => {
+    const fetcher = vi.fn().mockResolvedValue(Response.json({ ok: true, data: { ...data, originalUrl: "https://www.facebook.com/groups/other/posts/99" } }));
+    await expect(requestCommunityReply({ ...command, originalUrl: "https://www.facebook.com/groups/synthetic/posts/42" }, fetcher as typeof fetch,
+      { LS_COMMUNITY_SCOUT_BRIDGE_SECRET: secret })).rejects.toMatchObject({ code: "UNAVAILABLE" });
+  });
 });

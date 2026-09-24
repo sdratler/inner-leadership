@@ -33,14 +33,14 @@ function sourceMatches(actual: CommunityReplyResult["provenance"]["guide"] | und
   return actual?.id === id && actual.sha256 === expected.sha256 && actual.driveRevision === expected.driveRevision &&
     actual.declaredVersion === expected.declaredVersion && actual.modifiedAt === expected.modifiedAt && actual.checkedAt === expected.checkedAt;
 }
-function verified(value: unknown, guide: ContentVoiceSnapshot, playbook: ContentVoiceSnapshot): CommunityReplyResult {
+function verified(value: unknown, guide: ContentVoiceSnapshot, playbook: ContentVoiceSnapshot, originalUrl: string | null): CommunityReplyResult {
   if (!value || typeof value !== "object") throw new AppError("UNAVAILABLE");
   const result = value as Partial<CommunityReplyResult>;
   if (typeof result.reply !== "string" || result.reply.length > 3000 || typeof result.copyAllowed !== "boolean" ||
       !Array.isArray(result.reviewFlags) || result.reviewFlags.some(item => typeof item !== "string") ||
       typeof result.suggestedRule !== "string" || result.suggestedRule.length > 400 ||
       !["", "community", "general"].includes(String(result.ruleScope)) ||
-      (result.originalUrl !== null && typeof result.originalUrl !== "string") ||
+      result.originalUrl !== originalUrl ||
       !result.provenance || !sourceMatches(result.provenance.guide, guide, CONTENT_VOICE_FILE_ID) ||
       !sourceMatches(result.provenance.playbook, playbook, COMMUNITY_PLAYBOOK_FILE_ID) ||
       typeof result.provenance.model !== "string" || typeof result.provenance.policyVersion !== "string" ||
@@ -54,6 +54,9 @@ export async function requestCommunityReply(command: CommunityReplyCommand,
   env: Record<string, string | undefined> = process.env): Promise<CommunityReplyResult> {
   const secret = env.LS_COMMUNITY_SCOUT_BRIDGE_SECRET;
   if (!secret || !SECRET.test(secret)) throw new AppError("UNAVAILABLE");
+  let originalUrl: string | null = null;
+  try { originalUrl = command.originalUrl ? new URL(command.originalUrl).toString() : null; }
+  catch { throw new AppError("UNAVAILABLE"); }
   let guide, playbook;
   try { [guide, playbook] = await Promise.all([readContentVoiceSource(fetcher, env), readCommunityPlaybookSource(fetcher, env)]); }
   catch { throw new AppError("UNAVAILABLE"); }
@@ -62,7 +65,7 @@ export async function requestCommunityReply(command: CommunityReplyCommand,
     response = await fetcher(`${SCOUT_ORIGIN}/internal/life-skills/reply`, {
       method: "POST", redirect: "error", cache: "no-store", signal: AbortSignal.timeout(70_000),
       headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ ...command,
+      body: JSON.stringify({ ...command, ...(originalUrl ? { originalUrl } : {}),
         guide: { id: CONTENT_VOICE_FILE_ID, ...guide },
         playbook: { id: COMMUNITY_PLAYBOOK_FILE_ID, ...playbook },
       }),
@@ -74,5 +77,5 @@ export async function requestCommunityReply(command: CommunityReplyCommand,
   let body: unknown;
   try { body = await response.json(); } catch { throw new AppError("UNAVAILABLE"); }
   if (!body || typeof body !== "object" || (body as { ok?: unknown }).ok !== true) throw new AppError("UNAVAILABLE");
-  return verified((body as { data?: unknown }).data, guide, playbook);
+  return verified((body as { data?: unknown }).data, guide, playbook, originalUrl);
 }
