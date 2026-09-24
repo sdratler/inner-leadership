@@ -44,6 +44,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
+  const attempt = useRef<{ fingerprint: string; operationId: string } | null>(null);
 
   async function request(mode: "generate" | "revise_once") {
     if (inFlight.current || question.trim().length < 8 || (mode === "revise_once" && (!draft.trim() || correction.trim().length < 3))) return;
@@ -51,14 +52,18 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
     try {
       const session = await sessionInfo();
       if (session.role !== "practitioner") throw Error("role");
+      const command = { mode, question: question.trim(), ...(originalUrl.trim() ? { originalUrl: originalUrl.trim() } : {}),
+        ...(mode === "revise_once" ? { correction: correction.trim(), previousReply: draft } : {}) };
+      const fingerprint = JSON.stringify(command);
+      if (attempt.current?.fingerprint !== fingerprint) attempt.current = { fingerprint, operationId: crypto.randomUUID() };
       const response = await fetch("/api/community-reply", {
         method: "POST", credentials: "same-origin", cache: "no-store", redirect: "error", referrerPolicy: "no-referrer",
         headers: { "Content-Type": "application/json", "X-CSRF-Token": session.csrfToken },
-        body: JSON.stringify({ operationId: crypto.randomUUID(), mode, question: question.trim(), ...(originalUrl.trim() ? { originalUrl: originalUrl.trim() } : {}),
-          ...(mode === "revise_once" ? { correction: correction.trim(), previousReply: draft } : {}) }),
+        body: JSON.stringify({ operationId: attempt.current.operationId, ...command }),
       });
       const payload = await response.json() as { ok?: boolean; data?: CommunityReplyResult };
       if (!response.ok || payload.ok !== true || !payload.data) throw Error("unconfirmed");
+      attempt.current = null;
       setResult(payload.data); setDraft(payload.data.reply);
       if (mode === "revise_once") { setCorrection(""); setProposedRule(payload.data.suggestedRule); setRuleScope("community"); }
     } catch { setNotice(t.failed); }
