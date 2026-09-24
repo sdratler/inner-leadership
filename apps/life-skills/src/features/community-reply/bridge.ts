@@ -1,6 +1,6 @@
 import "server-only";
 import { AppError } from "../../lib/errors.ts";
-import { COMMUNITY_PLAYBOOK_FILE_ID, CONTENT_VOICE_FILE_ID, readCommunityPlaybookSource, readContentVoiceSource } from "../content-voice/source.ts";
+import { COMMUNITY_PLAYBOOK_FILE_ID, CONTENT_VOICE_FILE_ID, readCommunityPlaybookSource, readContentVoiceSource, type ContentVoiceSnapshot } from "../content-voice/source.ts";
 
 const SCOUT_ORIGIN = "https://community-scout-production.up.railway.app";
 const SECRET = /^[A-Za-z0-9_-]{43,}$/;
@@ -29,13 +29,14 @@ export type CommunityReplyResult = {
   };
 };
 
-function verified(value: unknown): CommunityReplyResult {
+function verified(value: unknown, guide: ContentVoiceSnapshot, playbook: ContentVoiceSnapshot): CommunityReplyResult {
   if (!value || typeof value !== "object") throw new AppError("UNAVAILABLE");
   const result = value as Partial<CommunityReplyResult>;
   if (typeof result.reply !== "string" || result.reply.length > 3000 || typeof result.copyAllowed !== "boolean" ||
       !Array.isArray(result.reviewFlags) || result.reviewFlags.some(item => typeof item !== "string") ||
       !result.provenance || result.provenance.guide?.id !== CONTENT_VOICE_FILE_ID || result.provenance.playbook?.id !== COMMUNITY_PLAYBOOK_FILE_ID ||
-      typeof result.provenance.guide.sha256 !== "string" || typeof result.provenance.playbook.sha256 !== "string") throw new AppError("UNAVAILABLE");
+      result.provenance.guide.sha256 !== guide.sha256 || result.provenance.guide.driveRevision !== guide.driveRevision ||
+      result.provenance.playbook.sha256 !== playbook.sha256 || result.provenance.playbook.driveRevision !== playbook.driveRevision) throw new AppError("UNAVAILABLE");
   return result as CommunityReplyResult;
 }
 
@@ -64,5 +65,5 @@ export async function requestCommunityReply(command: CommunityReplyCommand,
   let body: unknown;
   try { body = await response.json(); } catch { throw new AppError("UNAVAILABLE"); }
   if (!body || typeof body !== "object" || (body as { ok?: unknown }).ok !== true) throw new AppError("UNAVAILABLE");
-  return verified((body as { data?: unknown }).data);
+  return verified((body as { data?: unknown }).data, guide, playbook);
 }
