@@ -8,6 +8,7 @@ import {CalendarBoard} from "../../src/features/calendar/views.tsx";
 import {countCurrentAssignments} from "../../src/features/calendar/attention-summary.tsx";
 import {selectAuthorizedPaymentCase} from "../../src/features/payments/case-selection.ts";
 import {calendarView} from "../../src/features/calendar/time.ts";
+import {paymentSection,paymentVisiblePanels} from "../../src/features/payments/sections.ts";
 
 describe("operational workspace navigation",()=>{
  it("limits the practitioner sidebar to the six owner-selected destinations",()=>{
@@ -77,5 +78,16 @@ describe("operational workspace navigation",()=>{
   expect(selectAuthorizedPaymentCase(cases,"practitioner","adult-b").selected?.id).toBe("adult-b");
   expect(selectAuthorizedPaymentCase(cases,"parent","adult-b")).toMatchObject({selected:undefined,invalid:true});
   expect(selectAuthorizedPaymentCase(cases,"practitioner","missing")).toMatchObject({selected:undefined,invalid:true});
+ });
+ it("routes payment context to distinct rendered panels without changing the existing full payment route",()=>{
+  expect(paymentSection("refunds",false)).toBe("full");
+  expect(paymentSection("untrusted",true)).toBe("overview");
+  expect(paymentVisiblePanels(paymentSection("overview",true))).toMatchObject({balance:true,charges:true,received:true,newCharge:false,recordPayment:false,allocatePayment:false,refundCredit:false});
+  expect(paymentVisiblePanels(paymentSection("awaiting",true))).toMatchObject({balance:false,charges:true,received:false,newCharge:true,recordPayment:false,allocatePayment:true,refundCredit:false});
+  expect(paymentVisiblePanels(paymentSection("paid",true))).toMatchObject({balance:false,charges:false,received:true,newCharge:false,recordPayment:true,allocatePayment:false,refundCredit:false});
+  expect(paymentVisiblePanels(paymentSection("credits",true))).toMatchObject({balance:true,charges:false,received:false,history:true,newCharge:false,refundCredit:false});
+  expect(paymentVisiblePanels(paymentSection("refunds",true))).toMatchObject({balance:false,charges:false,received:false,history:true,newCharge:false,refundCredit:true});
+  expect(Object.values(paymentVisiblePanels(paymentSection(undefined,false))).every(Boolean)).toBe(true);
+  expect(practitionerContext("/en/app/payments",null).map(item=>item.en)).toEqual(["Overview","Awaiting","Paid","Credits","Refunds"]);
  });
 });
