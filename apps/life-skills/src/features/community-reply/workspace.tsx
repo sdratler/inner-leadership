@@ -9,7 +9,8 @@ const copy = {
   en: {
     intro: "Draft a reply to a public community question. Paste only the minimum public question text; remove names, phone numbers and private child details. Nothing is posted or sent automatically.",
     question: "Public question or post excerpt", url: "Original Facebook post link (optional)", generate: "Generate draft",
-    reply: "Editable reply", correction: "Tell me what to change", revise: "Revise this reply only", persistent: "Update my writing rules",
+    reply: "Editable reply", correction: "What should change?", revise: "Revise this reply only", persistent: "Apply correction + update my writing rules",
+    proposed: "Reusable preference understood (not saved)", scope: "Future scope", community: "Community replies", general: "All writing",
     pending: "The canonical writing-rule update is not yet connected. This correction changes only this reply; no source rule has been saved.",
     copy: "Copy reply", open: "Open original post", copied: "Copied. Review the edited text before posting manually.",
     failed: "Generation was not confirmed. Your input is preserved; do not assume a reply was saved or posted.",
@@ -20,7 +21,8 @@ const copy = {
   he: {
     intro: "טיוטת תגובה לשאלה ציבורית בקהילה. יש להדביק רק את הקטע הציבורי הנחוץ, ללא שמות, טלפונים או פרטים אישיים על ילדים. דבר אינו מתפרסם או נשלח אוטומטית.",
     question: "השאלה הציבורית או קטע מהפוסט", url: "קישור לפוסט המקורי בפייסבוק (לא חובה)", generate: "יצירת טיוטה",
-    reply: "תגובה ניתנת לעריכה", correction: "מה לשנות בתגובה", revise: "תיקון התגובה הזאת בלבד", persistent: "עדכון כללי הכתיבה שלי",
+    reply: "תגובה ניתנת לעריכה", correction: "מה צריך לשנות?", revise: "תיקון התגובה הזאת בלבד", persistent: "החלת התיקון ועדכון כללי הכתיבה שלי",
+    proposed: "העדפת כתיבה חוזרת שזוהתה (לא נשמרה)", scope: "תחולה לעתיד", community: "תגובות בקהילה", general: "כל הכתיבה",
     pending: "עדכון כללי הכתיבה במקור עדיין אינו מחובר. התיקון חל רק על תגובה זו; לא נשמר כלל במקור.",
     copy: "העתקת התגובה", open: "פתיחת הפוסט המקורי", copied: "הועתק. יש לבדוק את הנוסח הערוך לפני פרסום ידני.",
     failed: "יצירת התגובה לא אומתה. הטקסט שהזנת נשמר במסך; אין להניח שתגובה נשמרה או פורסמה.",
@@ -36,6 +38,8 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
   const [originalUrl, setOriginalUrl] = useState("");
   const [correction, setCorrection] = useState("");
   const [draft, setDraft] = useState("");
+  const [proposedRule, setProposedRule] = useState("");
+  const [ruleScope, setRuleScope] = useState<"community" | "general">("community");
   const [result, setResult] = useState<CommunityReplyResult | null>(null);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -56,7 +60,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
       const payload = await response.json() as { ok?: boolean; data?: CommunityReplyResult };
       if (!response.ok || payload.ok !== true || !payload.data) throw Error("unconfirmed");
       setResult(payload.data); setDraft(payload.data.reply);
-      if (mode === "revise_once") setCorrection("");
+      if (mode === "revise_once") { setCorrection(""); setProposedRule(payload.data.suggestedRule); setRuleScope("community"); }
     } catch { setNotice(t.failed); }
     finally { inFlight.current = false; setBusy(false); }
   }
@@ -86,7 +90,8 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
       <label>{t.correction}<textarea value={correction} maxLength={1000} onChange={event => setCorrection(event.target.value)} /></label>
       <div className="lsr-actions"><button type="button" disabled={busy || correction.trim().length < 3} onClick={() => void request("revise_once")}>{t.revise}</button>
         <button type="button" disabled title={t.pending}>{t.persistent}</button></div>
-      {result.suggestedRule && <p>{result.suggestedRule} · {result.ruleScope}</p>}
+      {proposedRule && <div className="lsr-form-grid"><label>{t.proposed}<textarea value={proposedRule} maxLength={400} onChange={event => setProposedRule(event.target.value)} /></label>
+        <label>{t.scope}<select value={ruleScope} onChange={event => setRuleScope(event.target.value === "general" ? "general" : "community")}><option value="community">{t.community}</option><option value="general">{t.general}</option></select></label></div>}
       <p className="lsr-help">{t.pending}</p>
     </>}
     {notice && <p role="status" className={notice === t.failed ? "lsr-inline-error" : "lsr-status"}>{notice}</p>}
