@@ -41,6 +41,12 @@ export function workspaceHref(locale: Locale, path: string, caseId?: string | nu
   if (!/^(app|family|client)(?:\/[a-zA-Z0-9_-]+)*$/.test(path)) throw new Error("INVALID_WORKSPACE_PATH");
   return `/${locale}/${path}` + (isCaseId(caseId) ? `?caseId=${encodeURIComponent(caseId)}` : "");
 }
+export function caseDestinationHref(locale: Locale, path: string, caseId: string): string {
+  if (!isCaseId(caseId)) throw new Error("INVALID_CASE_CONTEXT");
+  const url = new URL(workspaceHref(locale, path, caseId), "https://private.invalid");
+  url.searchParams.set("context", "client");
+  return url.pathname + url.search;
+}
 export function settingsItems(role: WorkspaceRole): readonly NavItem[] {
   const base = role === "parent" ? "family/settings" : role === "client" ? "client/settings" : "app/settings";
   return [item("account", `${base}/account`, "Account & language", "חשבון ושפה"), item("notifications", `${base}/notifications`, "Notifications", "התראות"), ...(role === "parent" ? [item("coordination", `${base}/coordination`, "Task coordination", "תיאום משימות"), item("credits", `${base}/credits`, "Appointment credits", "יתרת מפגשים")] : role === "practitioner" ? [item("availability", `${base}/availability`, "Availability", "זמינות")] : [])];
@@ -67,15 +73,15 @@ export function breadcrumbItems(locale: Locale, role: WorkspaceRole, pathname: s
     if(pathname.includes("/sessions")&&isCaseId(id))return [home,{label:locale==="he"?"לקוחות":"Clients",path:"app/clients"},{label:locale==="he"?"התיק הנבחר":"Selected case",path:`app/cases/${id}`},{label:locale==="he"?"מפגשים":"Sessions"}];
     return [home, { label: locale === "he" ? "לקוחות" : "Clients", path: "app/clients" }, { label: locale === "he" ? "התיק הנבחר" : "Selected case" }];
   }
-  const found = activeItem(pathname, locale, role);
-  if (role === "practitioner" && found) {
-    const child = practitionerContext(pathname, null).find(x => x.key === (found.key === "calendar" ? view : section));
-    if (child) return [home, { label: found[locale], path: found.path }, { label: child[locale] }];
-  }
   if(role==="practitioner"&&selectedClient&&isCaseId(caseId)){
     const key=pathname.includes("/app/calendar")?"calendar":pathname.includes("/app/practice")?"practice":pathname.includes("/app/feedback")?"communications":pathname.includes("/app/reports")?"reports":pathname.includes("/app/forms")?"forms":"overview";
     const child=practitionerContext(pathname,caseId,true).find(item=>item.key===key);
     return [home,{label:locale==="he"?"לקוחות":"Clients",path:"app/clients"},{label:locale==="he"?"התיק הנבחר":"Selected case",path:`app/cases/${caseId}`},{label:child?.[locale]??(locale==="he"?"סקירה":"Overview")}];
+  }
+  const found = activeItem(pathname, locale, role);
+  if (role === "practitioner" && found) {
+    const child = practitionerContext(pathname, null).find(x => x.key === (found.key === "calendar" ? view : section));
+    if (child) return [home, { label: found[locale], path: found.path }, { label: child[locale] }];
   }
   return found && found.path !== home.path ? [home, { label: found[locale] }] : [{ label: found ? found[locale] : home.label }];
 }
