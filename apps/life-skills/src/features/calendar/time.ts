@@ -43,6 +43,9 @@ export function dayStart(date: string): string {
  const choices = possibleInstants(`${shiftDay(date,0)}T00:00`);
  if (!choices[0]) throw new AppError('INVALID_REQUEST'); return choices[0];
 }
+export function calendarView(value: unknown): 'day' | 'week' | 'month' | 'agenda' {
+ return value === 'day' || value === 'month' || value === 'agenda' ? value : 'week';
+}
 export function dateRange(date: string, view: 'day' | 'week' | 'month' | 'agenda') {
  let start = shiftDay(date,0), count = 1;
  if (view === 'week') { start = shiftDay(date,-new Date(`${date}T12:00Z`).getUTCDay()); count=7; }

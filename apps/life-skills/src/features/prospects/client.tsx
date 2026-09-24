@@ -1,14 +1,14 @@
 "use client";
 
 import {useEffect,useMemo,useRef,useState} from "react";
-import type {Locale} from "@/lib/locale.ts";
-import {sessionInfo} from "@/features/identity/client.ts";
+import type {Locale} from "../../lib/locale.ts";
+import {sessionInfo} from "../identity/client.ts";
 import type {Prospect} from "./bridge.ts";
 
 /* Remote state is loaded once per refresh and filter changes reset pagination. */
 /* eslint-disable react-hooks/set-state-in-effect */
 type State="loading"|"ready"|"error";
-type Preset="all"|"today"|"new"|"intake"|"payment"|"booking"|"archived";
+export type Preset="all"|"today"|"new"|"intake"|"payment"|"booking"|"archived";
 const PAGE_SIZE=12;
 const copy={
  en:{title:"Clients & prospects",lead:"Follow each inquiry from first contact through intake, verified payment and a confirmed first appointment.",clients:"Clients",prospects:"Prospects / intake",all:"All open",today:"Due today",newLead:"New inquiries",intake:"Intake",payment:"Awaiting verified payment",booking:"Paid — awaiting booking",archived:"Archived",empty:"No prospects match these filters.",retry:"Try again",save:"Save follow-up",send:"Send WhatsApp",sendIntake:"Send intake form",bookingLink:"Secure booking link",sendBooking:"Send booking link",children:"Children on form",notes:"Administrative note",next:"Next action",due:"Due date",owner:"Owner",loading:"Loading the private CRM…",failed:"The CRM could not be loaded. Try again.",saved:"Saved.",created:"Prospect saved without sending anything.",sent:"WhatsApp delivery confirmed.",sendFailed:"The action could not be confirmed. Nothing was marked sent.",paymentGate:"Booking is available only after an authenticated payment is verified.",intakeHelp:"This sends the existing private intake form. Submitting it moves the inquiry directly to payment; there is no second acceptance step.",search:"Search name or phone",stage:"Stage",language:"Language",dueFilter:"Due",any:"Any",overdue:"Overdue",add:"Add prospect",name:"Name (optional)",phone:"Phone",source:"Source",previous:"Previous",nextPage:"Next",page:"Page"},
@@ -41,7 +41,7 @@ function whatsappNumber(phone:string):string|null{
  return null;
 }
 
-export function ProspectsClient({locale,initialFilter="all"}:{locale:Locale;initialFilter?:Preset}){
+export function ProspectsClient({locale,initialFilter="all",embedded=false}:{locale:Locale;initialFilter?:Preset;embedded?:boolean}){
  const t=copy[locale],[rows,setRows]=useState<Prospect[]>([]),[state,setState]=useState<State>("loading"),[preset,setPreset]=useState<Preset>(initialFilter),[query,setQuery]=useState(""),[stage,setStage]=useState(""),[language,setLanguage]=useState(""),[due,setDue]=useState(""),[page,setPage]=useState(1),[status,setStatus]=useState("");
  const mounted=useRef(true),addRef=useRef<HTMLDetailsElement>(null);
  const load=()=>{setState("loading");void api<Prospect[]>({method:"GET"}).then(value=>{if(mounted.current){setRows(value);setState("ready")}}).catch(()=>{if(mounted.current)setState("error")})};
@@ -50,7 +50,7 @@ export function ProspectsClient({locale,initialFilter="all"}:{locale:Locale;init
  const today=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Jerusalem"}).format(new Date());
  const stages=useMemo(()=>[...new Set(rows.map(row=>row.stage).filter(Boolean))].sort((a,b)=>a.localeCompare(b)),[rows]);
  const shown=useMemo(()=>rows.filter(row=>{
-  if(preset==="today"&&row.dueDate!==today)return false;
+  if(preset==="today"&&(!row.dueDate||row.dueDate>today))return false;
   if(preset==="new"&&(row.formSent||row.formSubmitted||row.paymentVerified||active(row)))return false;
   if(preset==="intake"&&(!row.formSent||Boolean(row.formSubmitted)))return false;
   if(preset==="payment"&&(!row.formSubmitted||row.paymentVerified))return false;
@@ -59,16 +59,16 @@ export function ProspectsClient({locale,initialFilter="all"}:{locale:Locale;init
   if(preset==="all"&&(closed(row)||active(row)))return false;
   if(stage&&row.stage!==stage)return false;
   if(language&&!row.language.toLocaleLowerCase().startsWith(language))return false;
-  if(due==="today"&&row.dueDate!==today)return false;
+  if(due==="today"&&(!row.dueDate||row.dueDate>today))return false;
   if(due==="overdue"&&(!row.dueDate||row.dueDate>=today))return false;
   const needle=query.trim().toLocaleLowerCase();return !needle||`${row.name} ${row.phone}`.toLocaleLowerCase().includes(needle);
  }).sort((a,b)=>(a.dueDate||"9999").localeCompare(b.dueDate||"9999")||a.receivedAt.localeCompare(b.receivedAt)||a.leadId.localeCompare(b.leadId)),[rows,preset,stage,language,due,query,today]);
  const pages=Math.max(1,Math.ceil(shown.length/PAGE_SIZE)),visible=shown.slice((page-1)*PAGE_SIZE,page*PAGE_SIZE);
  async function action(payload:unknown){setStatus("");try{await api({method:"POST",body:JSON.stringify(payload)});const kind=(payload as {action:string}).action;setStatus(kind==="update"?t.saved:kind==="add"?t.created:t.sent);load()}catch{setStatus(t.sendFailed)}}
  const filters:readonly (readonly [Preset,string])[]=[["all",t.all],["today",t.today],["new",t.newLead],["intake",t.intake],["payment",t.payment],["booking",t.booking],["archived",t.archived]];
- return <main className="lsw-main" lang={locale} dir={locale==="he"?"rtl":"ltr"}>
-  <header className="lsw-page-header"><div><p className="lsw-eyebrow">{locale==="he"?"CRM פרטי":"Private CRM"}</p><h1>{t.title}</h1><p>{t.lead}</p></div><button type="button" className="lsw-button lsw-button--secondary" onClick={()=>{if(addRef.current){addRef.current.open=true;addRef.current.scrollIntoView({behavior:"smooth",block:"start"});addRef.current.querySelector<HTMLInputElement>("input")?.focus()}}}>{t.add}</button></header>
-  <nav className="lsw-tabs" aria-label={t.title}><a className="lsw-button lsw-button--quiet" href={`/${locale}/app/clients`}>{t.clients}</a><a className="lsw-button lsw-button--primary" aria-current="page" href={`/${locale}/app/prospects`}>{t.prospects}</a></nav>
+ const content=<>
+  <header className="lsw-page-header"><div><p className="lsw-eyebrow">{locale==="he"?"CRM פרטי":"Private CRM"}</p>{embedded?<h2>{t.prospects}</h2>:<h1>{t.title}</h1>}<p>{t.lead}</p></div><button type="button" className="lsw-button lsw-button--secondary" onClick={()=>{if(addRef.current){addRef.current.open=true;addRef.current.scrollIntoView({behavior:"smooth",block:"start"});addRef.current.querySelector<HTMLInputElement>("input")?.focus()}}}>{t.add}</button></header>
+  {!embedded&&<nav className="lsw-tabs" aria-label={t.title}><a className="lsw-button lsw-button--quiet" href={`/${locale}/app/clients`}>{t.clients}</a><a className="lsw-button lsw-button--primary" aria-current="page" href={`/${locale}/app/clients?section=prospects`}>{t.prospects}</a></nav>}
   <div className="lsw-tabs" role="tablist">{filters.map(([key,label])=><button key={key} type="button" role="tab" aria-selected={preset===key} onClick={()=>setPreset(key)}>{label}</button>)}</div>
   <section className="lsw-card" aria-label={locale==="he"?"מסננים":"Filters"}><div className="lsw-two-fields"><label className="lsw-field">{t.search}<input className="lsw-input" type="search" value={query} onChange={event=>setQuery(event.target.value)}/></label><label className="lsw-field">{t.stage}<select className="lsw-input" value={stage} onChange={event=>setStage(event.target.value)}><option value="">{t.any}</option>{stages.map(value=><option key={value}>{value}</option>)}</select></label><label className="lsw-field">{t.language}<select className="lsw-input" value={language} onChange={event=>setLanguage(event.target.value)}><option value="">{t.any}</option><option value="he">עברית</option><option value="en">English</option></select></label><label className="lsw-field">{t.dueFilter}<select className="lsw-input" value={due} onChange={event=>setDue(event.target.value)}><option value="">{t.any}</option><option value="today">{t.today}</option><option value="overdue">{t.overdue}</option></select></label></div></section>
   {state==="loading"&&<p role="status">{t.loading}</p>}{state==="error"&&<div className="lsw-alert" role="alert"><p>{t.failed}</p><button className="lsw-button lsw-button--secondary" onClick={load}>{t.retry}</button></div>}
@@ -76,7 +76,8 @@ export function ProspectsClient({locale,initialFilter="all"}:{locale:Locale;init
   {state==="ready"&&pages>1&&<nav className="lsw-actions" aria-label={t.page}><button className="lsw-button lsw-button--secondary" disabled={page<=1} onClick={()=>setPage(value=>value-1)}>{t.previous}</button><span>{t.page} {page} / {pages}</span><button className="lsw-button lsw-button--secondary" disabled={page>=pages} onClick={()=>setPage(value=>value+1)}>{t.nextPage}</button></nav>}
   <details ref={addRef} id="add-prospect" className="lsw-card lsu-inline-create"><summary>{t.add}</summary><AddProspect locale={locale} action={action}/></details>
   <p className="lsw-save-result" role="status">{status}</p>
- </main>;
+ </>;
+ return embedded?<section className="lsw-main lsu-crm-embedded" lang={locale} dir={locale==="he"?"rtl":"ltr"}>{content}</section>:<main className="lsw-main" lang={locale} dir={locale==="he"?"rtl":"ltr"}>{content}</main>;
 }
 
 function AddProspect({locale,action}:{locale:Locale;action:(payload:unknown)=>Promise<void>}){

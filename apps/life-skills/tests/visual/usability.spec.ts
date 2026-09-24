@@ -23,16 +23,23 @@ for(const locale of ["he","en"] as const){
    await page.screenshot({path:testInfo.outputPath(`${locale}-${role}-calendar.png`),fullPage:true});
    const next=role==="parent"?"family/practice":"app/clients";
    const top=testInfo.project.name==="desktop"?page.locator(".lsu-header>.lsu-top-tabs"):page.locator(".lsu-mobile-tabs .lsu-top-tabs");
-   await top.locator("a").filter({hasText:role==="parent"?(locale==="he"?"תרגול":"Practice"):(locale==="he"?"לקוחות":"Clients")}).first().click();
+   if(role==="practitioner"&&testInfo.project.name==="mobile")await page.locator(".lsu-menu").click();
+   const major=role==="practitioner"?(testInfo.project.name==="desktop"?page.locator(".lsu-sidebar"):page.locator(".lsu-drawer")):top;
+   await major.locator("a").filter({hasText:role==="parent"?(locale==="he"?"תרגול":"Practice"):(locale==="he"?"לקוחות":"Clients")}).first().click();
    await expect(page).toHaveURL(new RegExp(`page=${next.replace("/","%2F")}`));
    await expect(page.locator(".lsu-review-calendar")).toHaveCount(0);
    await page.goBack();
    await expect(page.locator(".lsu-review-calendar")).toBeVisible();
    if(role==="practitioner"){
+    if(testInfo.project.name==="mobile")await page.locator(".lsu-menu").click();
+    const majorNav=testInfo.project.name==="desktop"?page.locator(".lsu-sidebar"):page.locator(".lsu-drawer");
+    await majorNav.locator("a").filter({hasText:locale==="he"?"שיווק":"Marketing"}).first().click();
     const tabs=testInfo.project.name==="desktop"?page.locator(".lsu-header>.lsu-top-tabs"):page.locator(".lsu-mobile-tabs .lsu-top-tabs");
     await tabs.locator("a").filter({hasText:locale==="he"?"מודעות":"Ads"}).click();
     await expect(page).toHaveURL(/section=ads/);
     await expect(page.getByRole("heading",{name:locale==="he"?"מודעות — נתוני דוגמה":"Ads — sample data"})).toBeVisible();
+    await page.screenshot({path:testInfo.outputPath(`${locale}-practitioner-marketing-ads.png`),fullPage:true});
+    await page.goBack();
     await page.goBack();
     await expect(page.locator(".lsu-review-calendar")).toBeVisible();
    }

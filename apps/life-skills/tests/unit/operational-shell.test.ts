@@ -2,13 +2,18 @@ import React from "react";
 import {describe,expect,it} from "vitest";
 import {renderToStaticMarkup} from "react-dom/server";
 import {WorkspaceShell} from "../../src/ui/workspace/workspace-shell.tsx";
-import {breadcrumbItems,workspaceHref} from "../../src/ui/workspace/navigation-model.ts";
+import {breadcrumbItems,caseDestinationHref,practitionerContext,primaryNavigation,workspaceHref} from "../../src/ui/workspace/navigation-model.ts";
 import {CalendarShell} from "../../src/ui/workspace/appointments.tsx";
 import {CalendarBoard} from "../../src/features/calendar/views.tsx";
 import {countCurrentAssignments} from "../../src/features/calendar/attention-summary.tsx";
 import {selectAuthorizedPaymentCase} from "../../src/features/payments/case-selection.ts";
+import {calendarView} from "../../src/features/calendar/time.ts";
 
 describe("operational workspace navigation",()=>{
+ it("limits the practitioner sidebar to the six owner-selected destinations",()=>{
+  expect(primaryNavigation.practitioner.map(item=>item.en)).toEqual(["Calendar","Clients","Communications","Reports","Marketing","Payments"]);
+  expect(practitionerContext("/en/app/marketing",null).map(item=>item.en)).toEqual(["Overview","Content Calendar","Creatives","Needs approval","Community","Ads"]);
+ });
  for(const locale of ["he","en"] as const){
   it(`${locale}: keeps desktop and mobile sections route-based with one account Settings entry`,()=>{
    const props={locale,role:"practitioner",pathname:`/${locale}/app/marketing`,section:"ads",languageHref:`/${locale==="he"?"en":"he"}/app/marketing`} as React.ComponentProps<typeof WorkspaceShell>;
@@ -21,12 +26,27 @@ describe("operational workspace navigation",()=>{
    expect(html.match(new RegExp(`href="/${locale}/app/settings"`,"g"))).toHaveLength(1);
    expect(html).toContain(`href="/${locale}/sample"`);
   });
+  it(`${locale}: changes the contextual toolbar with the current page`,()=>{
+   const props={locale,role:"practitioner",pathname:`/${locale}/app/calendar`,view:"agenda",date:"2026-09-24",languageHref:`/${locale==="he"?"en":"he"}/app/calendar?view=agenda&date=2026-09-24`} as React.ComponentProps<typeof WorkspaceShell>;
+   const html=renderToStaticMarkup(React.createElement(WorkspaceShell,props,React.createElement("h1",null,"Content")));
+   expect(html).toContain(`/${locale}/app/calendar?view=agenda&amp;date=2026-09-24`);
+   expect(html).toContain(`aria-label="${locale==="he"?"תצוגות הדף הנוכחי":"Current page views"}"`);
+   expect(html).not.toContain(`href="/${locale}/app/prospects"`);
+   expect(html).not.toContain(`href="/${locale}/app/practice"`);
+  });
  }
  it("keeps a validated selected client in destination links, not authorization",()=>{
   const caseId="123e4567-e89b-42d3-a456-426614174000";
   expect(workspaceHref("en","app/payments",caseId)).toBe(`/en/app/payments?caseId=${caseId}`);
   expect(workspaceHref("en","app/payments","untrusted")).toBe("/en/app/payments");
+  expect(caseDestinationHref("en","app/calendar",caseId)).toBe(`/en/app/calendar?caseId=${caseId}&context=client`);
+  expect(()=>caseDestinationHref("en","app/calendar","untrusted")).toThrow("INVALID_CASE_CONTEXT");
   expect(breadcrumbItems("en","practitioner",`/en/app/cases/${caseId}/settings`).map(item=>item.label)).toEqual(["Home","Clients","Selected case","Access & participants"]);
+  expect(breadcrumbItems("en","practitioner","/en/app/calendar",null,"week",true,caseId).map(item=>item.label)).toEqual(["Home","Clients","Selected case","Calendar"]);
+  const html=renderToStaticMarkup(React.createElement(WorkspaceShell,{locale:"en",role:"practitioner",pathname:"/en/app/feedback",caseId,selectedClient:true,languageHref:`/he/app/feedback?caseId=${caseId}&context=client`} as React.ComponentProps<typeof WorkspaceShell>,React.createElement("h1",null,"Content")));
+  expect(html).toContain(`/en/app/feedback?caseId=${caseId}&amp;context=client`);
+  expect(html).toContain("Selected case");
+  expect(html).toContain("Communications");
  });
  it("keeps controls and an actual date grid when no appointments exist",()=>{
   const board=React.createElement(CalendarBoard,{dates:["2026-09-23","2026-09-24"],items:[],locale:"en",view:"week",names:{},onOpen:()=>undefined});
@@ -36,6 +56,14 @@ describe("operational workspace navigation",()=>{
   expect(html).toContain('dateTime="2026-09-24"');
   expect(html).toContain('aria-current="page"');
   expect(html).toContain("No appointments");
+ });
+ it("shows an explicit agenda without a second desktop calendar grid",()=>{
+  expect(calendarView("agenda")).toBe("agenda");
+  expect(calendarView("unexpected")).toBe("week");
+  const html=renderToStaticMarkup(React.createElement(CalendarShell,{locale:"en",period:"September 2026",view:"agenda",viewHrefs:{day:"/en/app/calendar?view=day",week:"/en/app/calendar?view=week",month:"/en/app/calendar?view=month",agenda:"/en/app/calendar?view=agenda"},showViewTabs:false,todayHref:"/en/app/calendar",previousHref:"/en/app/calendar?date=2026-09-10",nextHref:"/en/app/calendar?date=2026-10-08",desktop:React.createElement("p",null,"Grid"),agenda:React.createElement("p",null,"Agenda entries")}));
+  expect(html).toContain("lsw-calendar--agenda");
+  expect(html).toContain("Agenda entries");
+  expect(html).not.toContain("aria-label=\"Calendar\"");
  });
  it("counts the latest published assignment version, never a superseded date window",()=>{
   expect(countCurrentAssignments([
