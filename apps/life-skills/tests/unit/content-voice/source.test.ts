@@ -65,6 +65,15 @@ describe("community-channel source snapshot", () => {
     expect(result.checkedAt).toBe("2026-09-24T10:00:00.000Z");
     expect(String(fetcher.mock.calls[2]?.[0])).toContain("/export?mimeType=text%2Fplain");
   });
+  it("preserves an exported UTF-8 BOM so the bridge receives text matching the source byte hash", async () => {
+    const exported = "\uFEFF" + playbook;
+    const fetcher = vi.fn().mockResolvedValueOnce(oauth()).mockResolvedValueOnce(Response.json(playbookMeta("1")))
+      .mockResolvedValueOnce(new Response(exported)).mockResolvedValueOnce(Response.json(playbookMeta("1")));
+    const result = await readCommunityPlaybookSource(fetcher as typeof fetch, env);
+    expect(result.text).toBe(exported);
+    expect(result.sha256).toBe(createHash("sha256").update(result.text).digest("hex"));
+    expect(result.declaredVersion).toBe("0.3");
+  });
   it("fails closed if the Doc changes twice during export", async () => {
     const fetcher = vi.fn().mockResolvedValueOnce(oauth())
       .mockResolvedValueOnce(Response.json(playbookMeta("1"))).mockResolvedValueOnce(new Response(playbook)).mockResolvedValueOnce(Response.json(playbookMeta("2")))

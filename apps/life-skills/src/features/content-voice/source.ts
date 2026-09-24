@@ -77,7 +77,8 @@ export async function readContentVoiceSource(fetcher: typeof fetch = fetch,
       if (attempt === 0) continue;
       throw new Error("CONTENT_VOICE_CHANGED_DURING_READ");
     }
-    const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    // Preserve an exported UTF-8 BOM so the forwarded text hashes to the exact source bytes.
+    const text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
     const declaredVersion = text.match(/^\*\*Version:\*\*\s*(.+)$/m)?.[1]?.trim() ?? null;
     return { title: after.name, sourceUrl: `https://drive.google.com/file/d/${CONTENT_VOICE_FILE_ID}/view`,
       declaredVersion, driveRevision: after.version, modifiedAt: after.modifiedTime, checkedAt: now().toISOString(),
@@ -121,7 +122,8 @@ export async function readCommunityPlaybookSource(fetcher: typeof fetch = fetch,
       if (attempt === 0) continue;
       throw new Error("COMMUNITY_PLAYBOOK_CHANGED_DURING_READ");
     }
-    const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    // Native Docs exports may start with a BOM; stripping it makes text and byte SHA diverge.
+    const text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
     const versions = [...text.matchAll(/^Version\s+([0-9]+(?:\.[0-9]+)*)\b/gm)];
     return { title: after.name, sourceUrl: `https://docs.google.com/document/d/${COMMUNITY_PLAYBOOK_FILE_ID}/edit`,
       declaredVersion: versions.at(-1)?.[1] ?? null, driveRevision: after.version,
