@@ -74,5 +74,9 @@
   {
     "name": "0099_ls_demo_origin_enforcement.sql",
     "sha256": "e6c7bbd6d9ce26b6f3f43cc1646a0561ce201a9009ba229c06ee5d132d253c05"
+  },
+  {
+    "name": "0100_ls_demo_prospect_marker_gate.sql",
+    "sha256": "cd86d4f2047a4a61116e94fd4a9a5559f0b1b2ece96343e943652fdd86c63da2"
   }
 ]

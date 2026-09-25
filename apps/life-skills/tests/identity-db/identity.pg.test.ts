@@ -56,6 +56,7 @@ before(async()=>{
  await pool.query(await readFile(resolve('migrations/0097_ls_demo_provenance.sql'),'utf8'));
  await pool.query(await readFile(resolve('migrations/0098_ls_demo_calendar_isolation.sql'),'utf8'));
  await pool.query(await readFile(resolve('migrations/0099_ls_demo_origin_enforcement.sql'),'utf8'));
+ await pool.query(await readFile(resolve('migrations/0100_ls_demo_prospect_marker_gate.sql'),'utf8'));
  config={enabled:true,origin:'https://app.example.invalid',workspaceId:asId(randomUUID(),'workspace'),csrfKey:randomBytes(32),lookupKey:randomBytes(32),rateLimitKey:opaqueToken(),keyring:{activeKeyId:'test',keys:{test:randomBytes(32)}},sessionSeconds:28800,childAccountsEnabled:true};
  auth=new IdentityAuthService(store,config,clock);accounts=new IdentityAccountService(store,config,clock);sessions=new IdentitySessions(store,config,clock);prefs=new IdentityPreferenceService(store,config,clock);cases=new CaseService(store,config,clock);authorizer=new DatabaseCaseAuthorizer(store);
 });
@@ -154,6 +155,7 @@ test('native PostgreSQL keeps demo roots immutable and batch-scoped',async()=>{
  const real=await cases.create(practitioner.actor,{kind:'minor',displayName:'Synthetic real unbooked case',familyLabel:'Synthetic real family'},request());
  await assert.rejects(()=>pool.query('INSERT INTO ls_demo.cases(workspace_id,case_id,batch_id,source_key) VALUES($1,$2,$3,$4)',[config.workspaceId,real.caseId,batch,'not-a-demo']),e=>typeof e==='object'&&e!==null&&'code' in e&&e.code==='23514');
  await assert.rejects(()=>pool.query('INSERT INTO ls_demo.accounts(workspace_id,account_id,batch_id,source_key) VALUES($1,$2,$3,$4)',[config.workspaceId,practitioner.actor.id,batch,'not-a-demo-account']),e=>typeof e==='object'&&e!==null&&'code' in e&&e.code==='23514');
+ await assert.rejects(()=>pool.query("INSERT INTO ls_demo.records(workspace_id,batch_id,entity_kind,entity_key,source_key,case_id) VALUES($1,$2,'prospect',$3,$4,$5)",[config.workspaceId,batch,'LS-LEAD-real-untouchable','not-a-demo-prospect',created.caseId]),e=>typeof e==='object'&&e!==null&&'code' in e&&e.code==='23514');
 });
 test('three plus-addressed demo invites use ordinary authentication and cannot cross into live cases',async()=>{
  const practitioner=await login(email.practitioner),batch='ls-owner-20260925';
