@@ -53,6 +53,7 @@ describe("operational workspace navigation",()=>{
   const board=React.createElement(CalendarBoard,{dates:["2026-09-23","2026-09-24"],items:[],locale:"en",view:"week",names:{},onOpen:()=>undefined});
   const html=renderToStaticMarkup(React.createElement(CalendarShell,{locale:"en",period:"September 2026",view:"week",viewHrefs:{day:"/en/app/calendar?view=day",week:"/en/app/calendar?view=week",month:"/en/app/calendar?view=month"},todayHref:"/en/app/calendar?date=2026-09-23",previousHref:"/en/app/calendar?date=2026-09-16",nextHref:"/en/app/calendar?date=2026-09-30",desktop:board,agenda:React.createElement("p",null,"No appointments")}));
   expect(html).toContain('class="lsw-calendar-grid"');
+  expect(html).toContain('data-ls-calendar-grid="true"');
   expect(html).toContain('dateTime="2026-09-23"');
   expect(html).toContain('dateTime="2026-09-24"');
   expect(html).toContain('aria-current="page"');
