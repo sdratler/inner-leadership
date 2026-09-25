@@ -53,10 +53,12 @@ describe("read-only Marketing content calendar", () => {
     expect(he).toContain("הסטטוס המתוכנן הבא בעברית במאגר");
     expect(he).toContain("אושר, אך לא תוזמן");
     expect(he).toContain("תצוגות פרסום");
-    const undated = renderToStaticMarkup(React.createElement(MarketingDashboard, { locale: "en", snapshot: snapshot([{ ...post("undated", null, "failed"), errorCode: "PROVIDER_REJECTED" }]), initialSection: "content_calendar", initialMonth: "2026-09", renderedAt: "2026-09-25T08:00:00Z" }));
+    const undated = renderToStaticMarkup(React.createElement(MarketingDashboard, { locale: "en", snapshot: snapshot([{ ...post("undated", null, "failed"), errorCode: "PROVIDER_REJECTED", providerReceiptId: "receipt-history" }, { ...post("planned", "2026-09-30T17:00:00Z"), providerReceiptId: "receipt-queue" }]), initialSection: "content_calendar", initialMonth: "2026-09", renderedAt: "2026-09-25T08:00:00Z" }));
     expect(undated).toContain("Other registry records");
     expect(undated).toContain("No recorded date");
     expect(undated).toContain("Hebrew Status");
     expect(undated).toContain("Attention needed: PROVIDER_REJECTED");
+    expect(undated).toContain("Provider receipt: receipt-history");
+    expect(undated).toContain("Provider receipt: receipt-queue");
   });
 });
