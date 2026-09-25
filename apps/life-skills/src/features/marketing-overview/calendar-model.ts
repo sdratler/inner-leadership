@@ -28,7 +28,7 @@ export function publicationStatusText(item: Publication, creatives: readonly Cre
 }
 const MONTH = /^(20\d{2})-(0[1-9]|1[0-2])$/;
 const queuedStates = new Set<Publication["state"]>(["ready", "scheduled", "sending"]);
-const instant = (value: string | null): number => value ? Date.parse(value) : Number.POSITIVE_INFINITY;
+const instant = (value: string | null): number => validIso(value) ? Date.parse(value) : Number.POSITIVE_INFINITY;
 export type ContentView = "all" | "queued" | "drafts" | "published" | "history";
 export function contentView(value: string | undefined): ContentView {
   return value === "queued" || value === "drafts" || value === "published" || value === "history" ? value : "all";
@@ -42,7 +42,7 @@ export function contentViewPublications(publications: readonly Publication[], vi
 }
 export function publicationDisplayTime(item: Publication): string | null {
   if (item.state === "manually_reported" && validIso(item.manualReportedAt)) return item.manualReportedAt;
-  return item.scheduledFor;
+  return validIso(item.scheduledFor) ? item.scheduledFor : null;
 }
 
 export function contentDayKey(instant: string, timezone = CONTENT_TIMEZONE): string {
@@ -71,7 +71,7 @@ export function orderedPublicationQueue(publications: readonly Publication[]): r
 }
 export function nextHebrewStatus(publications: readonly Publication[], creatives: readonly CreativeVersion[], now: Date): Publication | null {
   return orderedPublicationQueue(publications).find(item => item.channel === "whatsapp_status" &&
-    item.scheduledFor !== null && Date.parse(item.scheduledFor) >= now.getTime() &&
+    validIso(item.scheduledFor) && Date.parse(item.scheduledFor) >= now.getTime() &&
     creatives.some(asset => asset.assetId === item.assetId && asset.revision === item.creativeRevision && asset.contentDigest === item.creativeDigest && asset.locale === "he")) ?? null;
 }
 export function monthPublications(publications: readonly Publication[], month: string): ReadonlyMap<string, readonly Publication[]> {

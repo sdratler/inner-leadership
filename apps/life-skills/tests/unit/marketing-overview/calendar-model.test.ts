@@ -18,6 +18,15 @@ describe("read-only Marketing content calendar", () => {
     expect(contentDayKey("2026-09-30T21:15:00Z")).toBe("2026-10-01");
     expect(monthPublications([post("status", "2026-09-30T21:15:00Z")], "2026-10").get("2026-10-01")?.[0]?.id).toBe("status");
   });
+  it("keeps malformed registry times visible as errors without crashing unrelated sections", () => {
+    const invalid = post("invalid", "2026-02-30T17:00:00Z");
+    expect(publicationDisplayTime(invalid)).toBeNull();
+    expect(monthPublications([invalid], "2026-03").size).toBe(0);
+    expect(nextHebrewStatus([invalid], [creative], new Date("2026-02-25T08:00:00Z"))).toBeNull();
+    expect(() => renderToStaticMarkup(React.createElement(MarketingDashboard, { locale: "en", snapshot: snapshot([invalid]), initialSection: "overview", renderedAt: "2026-09-25T08:00:00Z" }))).not.toThrow();
+    const calendar = renderToStaticMarkup(React.createElement(MarketingDashboard, { locale: "en", snapshot: snapshot([invalid]), initialSection: "content_calendar", initialMonth: "2026-03", renderedAt: "2026-09-25T08:00:00Z" }));
+    expect(calendar).toContain("Invalid recorded date — check source");
+  });
   it("renders empty month grids, leap dates and linkable adjacent months", () => {
     expect(calendarDates("2026-02").filter(Boolean)).toHaveLength(28);
     expect(calendarDates("2028-02").filter(Boolean)).toHaveLength(29);
