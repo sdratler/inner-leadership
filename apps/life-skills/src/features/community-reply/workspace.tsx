@@ -1,13 +1,17 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { sessionInfo } from "../identity/client.ts";
+import type { CommunityInboxPage, CommunityInboxPost } from "../community-inbox/bridge.ts";
 import type { CommunityReplyResult } from "./bridge.ts";
 import { matchesSubmittedInput, proposalForResult, replyFailureKind, type CommunitySourceInput } from "./input-state.ts";
 
 type Locale = "he" | "en";
 const copy = {
   en: {
+    inbox: "Community post inbox", inboxHelp: "Captured public posts for manual review. No comments or conversation history are captured; nothing is posted automatically.",
+    inboxAll: "All", inboxReady: "Ready", inboxNew: "New", inboxReplied: "Marked replied", inboxEmpty: "No captured posts in this view. If you expected posts, check the approved groups and Scout collection status.",
+    inboxUnavailable: "The captured-post inbox could not load. Your draft input is preserved. Retry when the Scout connection is available.", inboxLoading: "Loading captured posts…", inboxRetry: "Retry inbox", inboxMore: "More posts", inboxUse: "Use this post for a draft", inboxReplace: "Replace the current unsaved question and link with this post?", inboxOriginal: "Open original Facebook post", inboxDraft: "Saved suggestion", inboxNoDraft: "No saved suggestion yet", inboxCaptured: "Captured", inboxNoComments: "Comments not captured", inboxStatus: "Workflow status",
     intro: "Draft a reply to a public community question. Paste only the minimum public question text; remove names, phone numbers and private child details. Nothing is posted or sent automatically.",
     question: "Public question or post excerpt", url: "Original Facebook post link (optional)", generate: "Generate draft",
     reply: "Editable reply", correction: "What should change?", revise: "Revise this reply only", persistent: "Apply correction + update my writing rules",
@@ -24,6 +28,9 @@ const copy = {
     reviewed: "I reviewed this exact reply for accuracy, privacy and no private-contact invitation.",
   },
   he: {
+    inbox: "תיבת פוסטים מהקהילה", inboxHelp: "פוסטים ציבוריים שנקלטו לבדיקה ידנית. תגובות והיסטוריית שיחה אינן נקלטות; דבר אינו מתפרסם אוטומטית.",
+    inboxAll: "הכול", inboxReady: "מוכן", inboxNew: "חדש", inboxReplied: "סומן כנענה", inboxEmpty: "אין פוסטים שנקלטו בתצוגה זו. אם ציפית לפוסטים, בדוק את הקבוצות שאושרו ואת מצב האיסוף.",
+    inboxUnavailable: "לא ניתן לטעון את תיבת הפוסטים. הטיוטה שלך נשמרה במסך. אפשר לנסות שוב כשהחיבור זמין.", inboxLoading: "טוען פוסטים שנקלטו…", inboxRetry: "ניסיון חוזר", inboxMore: "עוד פוסטים", inboxUse: "שימוש בפוסט הזה ליצירת טיוטה", inboxReplace: "להחליף את השאלה והקישור שהוזנו ועדיין לא נשמרו בפוסט הזה?", inboxOriginal: "פתיחת הפוסט המקורי", inboxDraft: "הצעה שמורה", inboxNoDraft: "אין עדיין הצעה שמורה", inboxCaptured: "נקלט", inboxNoComments: "תגובות לא נקלטו", inboxStatus: "סטטוס טיפול",
     intro: "טיוטת תגובה לשאלה ציבורית בקהילה. יש להדביק רק את הקטע הציבורי הנחוץ, ללא שמות, טלפונים או פרטים אישיים על ילדים. דבר אינו מתפרסם או נשלח אוטומטית.",
     question: "השאלה הציבורית או קטע מהפוסט", url: "קישור לפוסט המקורי בפייסבוק (לא חובה)", generate: "יצירת טיוטה",
     reply: "תגובה ניתנת לעריכה", correction: "מה צריך לשנות?", revise: "תיקון התגובה הזאת בלבד", persistent: "החלת התיקון ועדכון כללי הכתיבה שלי",
@@ -54,9 +61,45 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
   const [submittedInput, setSubmittedInput] = useState<CommunitySourceInput | null>(null);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [inboxStatus, setInboxStatus] = useState("all");
+  const [inbox, setInbox] = useState<CommunityInboxPost[]>([]);
+  const [inboxCursor, setInboxCursor] = useState<string | null>(null);
+  const [inboxLoading, setInboxLoading] = useState(true);
+  const [inboxError, setInboxError] = useState(false);
   const inFlight = useRef(false);
+  const inboxRequest = useRef(0);
   const attempt = useRef<{ fingerprint: string; operationId: string } | null>(null);
   const stale = !!result && !matchesSubmittedInput({ question, originalUrl }, submittedInput);
+
+  const loadInbox = useCallback(async (status: string, cursor = "") => {
+    const requestId = ++inboxRequest.current;
+    try {
+      const params = new URLSearchParams({ status }); if (cursor) params.set("cursor", cursor);
+      const response = await fetch(`/api/community-posts?${params}`, { credentials: "same-origin", cache: "no-store", redirect: "error" });
+      const payload = await response.json() as { ok?: boolean; data?: CommunityInboxPage };
+      if (!response.ok || payload.ok !== true || !payload.data || !Array.isArray(payload.data.items)) throw Error("inbox");
+      if (requestId !== inboxRequest.current) return;
+      setInbox(previous => cursor ? [...previous, ...payload.data!.items] : payload.data!.items);
+      setInboxCursor(payload.data.nextCursor);
+    } catch { if (requestId === inboxRequest.current) setInboxError(true); }
+    finally { if (requestId === inboxRequest.current) setInboxLoading(false); }
+  }, []);
+  useEffect(() => {
+    const controller = new AbortController();
+    const requestId = ++inboxRequest.current;
+    void fetch("/api/community-posts?status=all", { credentials: "same-origin", cache: "no-store", redirect: "error", signal: controller.signal })
+      .then(async response => { const payload = await response.json() as { ok?: boolean; data?: CommunityInboxPage }; if (!response.ok || payload.ok !== true || !payload.data) throw Error("inbox"); return payload.data; })
+      .then(data => { if (!controller.signal.aborted && requestId === inboxRequest.current) { setInbox(data.items); setInboxCursor(data.nextCursor); } })
+      .catch(() => { if (!controller.signal.aborted && requestId === inboxRequest.current) setInboxError(true); })
+      .finally(() => { if (!controller.signal.aborted && requestId === inboxRequest.current) setInboxLoading(false); });
+    return () => controller.abort();
+  }, []);
+
+  function choosePost(post: CommunityInboxPost) {
+    if ((question.trim() || originalUrl.trim()) && !window.confirm(t.inboxReplace)) return;
+    setQuestion(post.excerpt); setOriginalUrl(post.postUrl); setResult(null); setDraft(""); setCorrection(""); setReviewed(false);
+    setSubmittedInput(null); setNotice(""); attempt.current = null;
+  }
 
   async function request(mode: "generate" | "revise_once") {
     if (inFlight.current || question.trim().length < 8 || (mode === "revise_once" && (stale || draft.trim().length < 10 || correction.trim().length < 3))) return;
@@ -93,6 +136,25 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
   }
 
   return <div className="lsr-community-reply" dir={locale === "he" ? "rtl" : "ltr"}>
+    <section className="lsr-panel" aria-label={t.inbox}>
+      <h3>{t.inbox}</h3><p className="lsr-help">{t.inboxHelp}</p>
+      <div className="lsr-tabs" role="group" aria-label={t.inboxStatus}>
+        {([['all', t.inboxAll], ['ready', t.inboxReady], ['new', t.inboxNew], ['replied', t.inboxReplied]] as const).map(([status, label]) =>
+          <button key={status} type="button" aria-pressed={inboxStatus === status} onClick={() => { if (status !== inboxStatus) { setInbox([]); setInboxCursor(null); setInboxLoading(true); setInboxError(false); setInboxStatus(status); void loadInbox(status); } }}>{label}</button>)}
+      </div>
+      {inboxLoading && <p role="status">{t.inboxLoading}</p>}
+      {inboxError && <p role="alert" className="lsr-inline-error">{t.inboxUnavailable} <button type="button" onClick={() => { setInboxLoading(true); setInboxError(false); void loadInbox(inboxStatus); }}>{t.inboxRetry}</button></p>}
+      {!inboxLoading && !inboxError && inbox.length === 0 && <p>{t.inboxEmpty}</p>}
+      {inbox.map(post => <article key={post.id} className="lsr-publication-row">
+        <h3>{post.groupName}</h3><p>{post.excerpt}{post.excerptTruncated ? '…' : ''}</p>
+        <p className="lsr-help">{t.inboxStatus}: {post.status} · {t.inboxCaptured}: {post.postedAt ?? post.capturedAt ?? '—'} · {t.inboxNoComments}</p>
+        {post.draft && <details><summary>{t.inboxDraft}</summary><p>{post.draft}</p></details>}
+        {!post.draft && <p className="lsr-help">{t.inboxNoDraft}</p>}
+        <div className="lsr-actions"><a className="lsr-button" href={post.postUrl} target="_blank" rel="noopener noreferrer">{t.inboxOriginal}</a>
+          <button type="button" onClick={() => choosePost(post)}>{t.inboxUse}</button></div>
+      </article>)}
+      {inboxCursor && <button type="button" disabled={inboxLoading} onClick={() => { setInboxLoading(true); setInboxError(false); void loadInbox(inboxStatus, inboxCursor); }}>{t.inboxMore}</button>}
+    </section>
     <p className="lsr-instruction">{t.intro}</p>
     <div className="lsr-form-grid"><label>{t.question}<textarea value={question} disabled={busy} maxLength={2000} onChange={event => setQuestion(event.target.value)} /></label>
       <label>{t.url}<input type="url" value={originalUrl} disabled={busy} maxLength={1000} onChange={event => setOriginalUrl(event.target.value)} placeholder="https://www.facebook.com/groups/…" /></label></div>
