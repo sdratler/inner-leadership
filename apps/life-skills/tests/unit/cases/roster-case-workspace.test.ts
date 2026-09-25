@@ -120,3 +120,17 @@ it('keeps the active case-only view free of CRM filters and add-prospect control
  expect(text(output)).not.toContain('Add prospect');
  expect(text(output)).not.toContain('New inquiries');
 });
+
+it('shows one searchable People list without hiding a linked child case or duplicating status tabs', async () => {
+ const lead = { leadId: 'synthetic-lead', caseId: caseA.id, name: 'Synthetic parent', phone: '0500000000', stage: 'New inquiry', language: 'he', receivedAt: '2026-09-25T08:00:00Z', dueDate: '', formSent: '', formSubmitted: '', paymentVerified: false, bookingStatus: '', outcome: '', journeyState: '' };
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: [lead] }) }));
+ try {
+  hook.render(() => ProspectsClient({ locale: 'en', embedded: true, clientCases: [caseA], caseState: 'ready' }));
+  hook.flushEffects(); await tick();
+  const output = hook.render(() => ProspectsClient({ locale: 'en', embedded: true, clientCases: [caseA], caseState: 'ready' }));
+  expect(text(output)).toContain('Synthetic parent');
+  expect(text(output)).toContain('Synthetic case A');
+  expect(find(output, element => element.props.className === 'lsu-people-results')).toBeDefined();
+  expect(find(output, element => element.props.role === 'tablist')).toBeUndefined();
+ } finally { vi.unstubAllGlobals(); }
+});

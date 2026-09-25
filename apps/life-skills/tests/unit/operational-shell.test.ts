@@ -12,7 +12,7 @@ import {paymentSection,paymentVisibleCharges,paymentVisiblePanels} from "../../s
 
 describe("operational workspace navigation",()=>{
  it("limits the practitioner sidebar to the six owner-selected destinations",()=>{
-  expect(primaryNavigation.practitioner.map(item=>item.en)).toEqual(["Calendar","Clients","Communications","Reports","Marketing","Payments"]);
+  expect(primaryNavigation.practitioner.map(item=>item.en)).toEqual(["Calendar","People","Communications","Reports","Marketing","Payments"]);
   expect(practitionerContext("/en/app/marketing",null).map(item=>item.en)).toEqual(["Overview","Content Calendar","Creatives","Needs approval","Community","Ads"]);
  });
  for(const locale of ["he","en"] as const){
@@ -21,7 +21,8 @@ describe("operational workspace navigation",()=>{
    const html=renderToStaticMarkup(React.createElement(WorkspaceShell,props,React.createElement("h1",null,"Content")));
    expect(html).toContain(`dir="${locale==="he"?"rtl":"ltr"}"`);
    expect(html).toContain('class="lsu-top-tabs"');
-   expect(html).toContain('class="lsu-mobile-tabs"');
+   expect(html.match(/class="lsu-top-tabs"/g)).toHaveLength(1);
+   expect(html).not.toContain('class="lsu-mobile-tabs"');
    expect(html).toContain(`/${locale}/app/marketing?section=ads`);
    expect(html).toContain(`href="/${locale}/app/marketing?section=ads" aria-current="page"`);
    expect(html.match(new RegExp(`href="/${locale}/app/settings"`,"g"))).toHaveLength(1);
@@ -42,8 +43,8 @@ describe("operational workspace navigation",()=>{
   expect(workspaceHref("en","app/payments","untrusted")).toBe("/en/app/payments");
   expect(caseDestinationHref("en","app/calendar",caseId)).toBe(`/en/app/calendar?caseId=${caseId}&context=client`);
   expect(()=>caseDestinationHref("en","app/calendar","untrusted")).toThrow("INVALID_CASE_CONTEXT");
-  expect(breadcrumbItems("en","practitioner",`/en/app/cases/${caseId}/settings`).map(item=>item.label)).toEqual(["Home","Clients","Selected case","Access & participants"]);
-  expect(breadcrumbItems("en","practitioner","/en/app/calendar",null,"week",true,caseId).map(item=>item.label)).toEqual(["Home","Clients","Selected case","Calendar"]);
+  expect(breadcrumbItems("en","practitioner",`/en/app/cases/${caseId}/settings`).map(item=>item.label)).toEqual(["Home","People","Selected case","Access & participants"]);
+  expect(breadcrumbItems("en","practitioner","/en/app/calendar",null,"week",true,caseId).map(item=>item.label)).toEqual(["Home","People","Selected case","Calendar"]);
   const html=renderToStaticMarkup(React.createElement(WorkspaceShell,{locale:"en",role:"practitioner",pathname:"/en/app/feedback",caseId,selectedClient:true,languageHref:`/he/app/feedback?caseId=${caseId}&context=client`} as React.ComponentProps<typeof WorkspaceShell>,React.createElement("h1",null,"Content")));
   expect(html).toContain(`/en/app/feedback?caseId=${caseId}&amp;context=client`);
   expect(html).toContain("Selected case");
