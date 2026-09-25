@@ -60,5 +60,8 @@ describe("read-only Marketing content calendar", () => {
     expect(undated).toContain("Attention needed: PROVIDER_REJECTED");
     expect(undated).toContain("Provider receipt: receipt-history");
     expect(undated).toContain("Provider receipt: receipt-queue");
+    const noSource = renderToStaticMarkup(React.createElement(MarketingDashboard, { locale: "en", snapshot: { ...snapshot([]), creatives: [{ ...creative, imageUrl: null, sourceUrl: null, width: 1080, height: 1920, title: "No source" }] }, initialSection: "creatives", renderedAt: "2026-09-25T08:00:00Z" }));
+    expect(noSource).toContain("No verified thumbnail");
+    expect(noSource).not.toContain("Thumbnail unavailable; open the source asset");
   });
 });
