@@ -7,8 +7,8 @@ import type {AdministrativePerson,JourneyFacts} from "../../../src/features/cont
 const person=(personId="synthetic-person",changes:Partial<AdministrativePerson>={}):AdministrativePerson=>({personId,workspaceId:"synthetic-workspace",displayName:"DEMO — Synthetic adult",kind:"guardian",locale:"he",endpoints:[],legacyLeadIds:[],caseIds:[],mode:"demo",demoBatchId:"synthetic-batch",archivedAt:null,doNotContact:false,version:1,...changes});
 const journey=(changes:Partial<JourneyFacts>={}):JourneyFacts=>({personId:"synthetic-person",enrollmentId:"synthetic-enrollment",caseId:null,formSubmittedAt:null,formSentAt:null,contactedAt:null,paymentAllocationId:null,paymentReversedAt:null,confirmedAppointmentId:null,activeCase:false,suspended:false,...changes});
 const query=(changes:Partial<Parameters<typeof selectPeople>[1]>={})=>({view:"all" as const,search:"",today:"2026-09-25",page:1,pageSize:12,...changes});
-const proof=(changes:Partial<CutoverProof>={}):CutoverProof=>({backupRestored:true,snapshotMatched:true,imported:true,rowContentMatched:true,allRowsAccounted:true,identityConflicts:0,paymentsReconciled:true,writersFenced:true,inboundDurable:true,deltaDrained:true,consumersRepointed:true,sheetConsumersRepointed:true,nativeBrowserVerified:true,oldSchedulesDisabled:true,sourceFrozen:true,restorePlanReady:true,...changes});
-const state=(phase:CutoverState["phase"]="sheet_active"):CutoverState=>({phase,epoch:4,batchId:phase==="sheet_active"?null:"synthetic-batch",nativeWritesSinceSwitch:0});
+const proof=(changes:Partial<CutoverProof>={}):CutoverProof=>({batchId:"synthetic-batch",sourceFileId:"synthetic-workbook",sourceRevision:"synthetic-revision",expectedEpoch:4,backupRestored:true,snapshotMatched:true,imported:true,rowContentMatched:true,allRowsAccounted:true,identityConflicts:0,paymentsReconciled:true,writersFenced:true,inboundDurable:true,deltaDrained:true,consumersRepointed:true,sheetConsumersRepointed:true,nativeBrowserVerified:true,oldSchedulesDisabled:true,sourceFrozen:true,restorePlanReady:true,...changes});
+const state=(phase:CutoverState["phase"]="sheet_active"):CutoverState=>({phase,epoch:4,batchId:phase==="sheet_active"?null:"synthetic-batch",sourceFileId:phase==="sheet_active"?null:"synthetic-workbook",sourceRevision:phase==="sheet_active"?null:"synthetic-revision",nativeWritesSinceSwitch:0});
 
 describe("native CRM candidate integrated into the existing app",()=>{
  it("keeps contact normalization separate from login identity",()=>{
@@ -68,6 +68,9 @@ describe("native CRM candidate integrated into the existing app",()=>{
   expect(selectPeople(rows,query({view:"prospects",stage:"form_sent"})).items.map(row=>row.id)).toEqual(["family"]);
  });
  it("requires restored backups, reconciled rows and a writer fence before native authority",()=>{
+  expect(()=>advanceCutover(state(),"prepare",proof({batchId:"old-batch"}),"synthetic-batch")).toThrow("PROOF_MISMATCH");
+  expect(()=>advanceCutover(state(),"prepare",proof({expectedEpoch:3}),"synthetic-batch")).toThrow("PROOF_MISMATCH");
+  expect(()=>advanceCutover(state("frozen"),"switch_native",proof({sourceRevision:"old-revision"}),"synthetic-batch")).toThrow("PROOF_MISMATCH");
   expect(()=>advanceCutover(state(),"prepare",proof({backupRestored:false}),"synthetic-batch")).toThrow("IMPORT_NOT_RECONCILED");
   expect(()=>advanceCutover(state("frozen"),"switch_native",proof({writersFenced:false}),"synthetic-batch")).toThrow("UNSAFE_CUTOVER");
   expect(()=>advanceCutover(state("frozen"),"switch_native",proof({identityConflicts:1}),"synthetic-batch")).toThrow("UNSAFE_CUTOVER");
@@ -79,12 +82,19 @@ describe("native CRM candidate integrated into the existing app",()=>{
  });
  it("cannot retire a workbook still used by marketing, even when Leads is migrated",()=>{
   const names=Array.from({length:16},(_,i)=>`Synthetic tab ${i+1}`),inventory={sourceFileId:"synthetic-workbook",revision:"synthetic-revision",completeSourceReadback:true,tabNames:names,tabCount:16};
+  const authorization={sourceFileId:"synthetic-workbook",revision:"synthetic-revision",authorized:true as const};
   const safe=names.map(name=>({name,kind:"crm" as const,activeReader:false,activeWriter:false,preserved:true}));
-  expect(canTrashWholeWorkbook(safe,true,inventory)).toBe(true);
-  expect(canTrashWholeWorkbook(safe.slice(0,-1),true,inventory)).toBe(false);
-  expect(canTrashWholeWorkbook(safe,true,{...inventory,completeSourceReadback:false})).toBe(false);
-  expect(canTrashWholeWorkbook(safe.map((d,i)=>i===3?{...d,activeReader:true}:d),true,inventory)).toBe(false);
-  expect(canTrashWholeWorkbook([{name:"Leads",kind:"crm",activeReader:false,activeWriter:false,preserved:true},{name:"Asset Registry",kind:"marketing",activeReader:true,activeWriter:false,preserved:true}],true)).toBe(false);
-  expect(canTrashWholeWorkbook([{name:"Leads",kind:"crm",activeReader:false,activeWriter:false,preserved:true}],false)).toBe(false);
+  expect(canTrashWholeWorkbook(safe,authorization,inventory)).toBe(true);
+  expect(canTrashWholeWorkbook(safe,{...authorization,sourceFileId:"another-workbook"},inventory)).toBe(false);
+  expect(canTrashWholeWorkbook(safe,{...authorization,revision:"old-revision"},inventory)).toBe(false);
+  expect(canTrashWholeWorkbook(safe.slice(0,-1),authorization,inventory)).toBe(false);
+  expect(canTrashWholeWorkbook(safe,authorization,{...inventory,completeSourceReadback:false})).toBe(false);
+  expect(canTrashWholeWorkbook(safe.map((d,i)=>i===3?{...d,activeReader:true}:d),authorization,inventory)).toBe(false);
+  expect(canTrashWholeWorkbook([{name:"Leads",kind:"crm",activeReader:false,activeWriter:false,preserved:true},{name:"Asset Registry",kind:"marketing",activeReader:true,activeWriter:false,preserved:true}],authorization)).toBe(false);
+  expect(canTrashWholeWorkbook([{name:"Leads",kind:"crm",activeReader:false,activeWriter:false,preserved:true}],null)).toBe(false);
+ });
+ it("rejects a nonexistent calendar day instead of normalizing it",()=>{
+  expect(()=>projectPeople("synthetic-workspace",[person()],[],[{personId:"synthetic-person",nextAction:null,followUpDate:null,nextAppointmentAt:"2026-02-30T12:00Z",unreadCount:0}])).toThrow("INVALID_INSTANT");
+  expect(()=>projectPeople("synthetic-workspace",[person()],[],[{personId:"synthetic-person",nextAction:null,followUpDate:null,nextAppointmentAt:"2028-02-29T12:00+02:00",unreadCount:0}])).not.toThrow();
  });
 });

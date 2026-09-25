@@ -6,7 +6,12 @@ export function requireThat(condition: unknown, code: string): asserts condition
         throw new ContractError(code);
 }
 export function isInstant(value: unknown): value is string {
-    return typeof value === "string" && /T\d\d:\d\d(?::\d\d(?:\.\d+)?)?(?:Z|[+-]\d\d:\d\d)$/.test(value) && Number.isFinite(Date.parse(value));
+    if (typeof value !== "string") return false;
+    const parts = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(Z|[+-](\d{2}):(\d{2}))$/.exec(value);
+    if (!parts || !dateOnly(parts[1])) return false;
+    const hour = Number(parts[2]), minute = Number(parts[3]), second = Number(parts[4] ?? 0);
+    const zoneHour = Number(parts[6] ?? 0), zoneMinute = Number(parts[7] ?? 0);
+    return hour <= 23 && minute <= 59 && second <= 59 && zoneHour <= 23 && zoneMinute <= 59 && Number.isFinite(Date.parse(value));
 }
 export function epoch(value: string): number { requireThat(isInstant(value), "INVALID_INSTANT"); return Date.parse(value); }
 export function dateOnly(value: unknown): value is string {

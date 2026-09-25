@@ -4,9 +4,15 @@ export interface CutoverState {
     phase: Phase;
     epoch: number;
     batchId: string | null;
+    sourceFileId: string | null;
+    sourceRevision: string | null;
     nativeWritesSinceSwitch: number;
 }
 export interface CutoverProof {
+    batchId: string;
+    sourceFileId: string;
+    sourceRevision: string;
+    expectedEpoch: number;
     backupRestored: boolean;
     snapshotMatched: boolean;
     imported: boolean;
@@ -29,9 +35,12 @@ export type CutoverAction = "prepare" | "freeze" | "switch_native" | "retire_she
 export function advanceCutover(s: CutoverState, action: CutoverAction, proof: CutoverProof, batchId: string): CutoverState {
     requireThat(Number.isSafeInteger(s.epoch) && s.epoch >= 0, "INVALID_EPOCH");
     requireThat(Boolean(batchId), "MISSING_BATCH");
-    if (s.batchId)
-        requireThat(s.batchId === batchId, "BATCH_MISMATCH");
-    const to = (phase: Phase): CutoverState => ({ ...s, phase, epoch: s.epoch + 1, batchId });
+    requireThat(proof.batchId === batchId && proof.expectedEpoch === s.epoch && Boolean(proof.sourceFileId && proof.sourceRevision), "PROOF_MISMATCH");
+    if (s.phase === "sheet_active")
+        requireThat(s.batchId === null && s.sourceFileId === null && s.sourceRevision === null, "STATE_MISMATCH");
+    else
+        requireThat(s.batchId === batchId && s.sourceFileId === proof.sourceFileId && s.sourceRevision === proof.sourceRevision, "PROOF_MISMATCH");
+    const to = (phase: Phase): CutoverState => ({ ...s, phase, epoch: s.epoch + 1, batchId, sourceFileId: proof.sourceFileId, sourceRevision: proof.sourceRevision });
     if (action === "prepare") {
         requireThat(s.phase === "sheet_active", "WRONG_PHASE");
         requireThat(proof.backupRestored && proof.snapshotMatched && proof.imported && proof.rowContentMatched && proof.allRowsAccounted, "IMPORT_NOT_RECONCILED");
@@ -61,7 +70,7 @@ export function advanceCutover(s: CutoverState, action: CutoverAction, proof: Cu
     requireThat(s.phase === "rollback_prepared", "WRONG_PHASE");
     // Native writes require an explicit delta export/reconciliation; never flip an old flag back.
     requireThat(proof.writersFenced && proof.deltaDrained && proof.rowContentMatched && proof.allRowsAccounted && proof.paymentsReconciled && proof.sheetConsumersRepointed, "ROLLBACK_DELTA_UNVERIFIED");
-    return { ...to("sheet_active"), nativeWritesSinceSwitch: 0, batchId: null };
+    return { ...to("sheet_active"), nativeWritesSinceSwitch: 0, batchId: null, sourceFileId: null, sourceRevision: null };
 }
 export function writeDestination(phase: Phase): "sheet" | "native" | "durable_queue_only" {
     return phase === "sheet_active" || phase === "shadow_ready" ? "sheet" : phase === "native_active" || phase === "retired" ? "native" : "durable_queue_only";
@@ -81,8 +90,13 @@ export interface WorkbookInventoryProof {
     tabNames: readonly string[];
     tabCount: number;
 }
-export function canTrashWholeWorkbook(deps: readonly WorkbookDependency[], explicitDeletionReceipt: boolean, inventory?: WorkbookInventoryProof): boolean {
-    if (!explicitDeletionReceipt || !inventory?.completeSourceReadback || !inventory.sourceFileId || !inventory.revision || inventory.tabCount < 16 || inventory.tabNames.length !== inventory.tabCount || deps.length !== inventory.tabCount)
+export interface WorkbookDeletionAuthorization {
+    sourceFileId: string;
+    revision: string;
+    authorized: true;
+}
+export function canTrashWholeWorkbook(deps: readonly WorkbookDependency[], authorization: WorkbookDeletionAuthorization | null, inventory?: WorkbookInventoryProof): boolean {
+    if (authorization?.authorized !== true || !inventory?.completeSourceReadback || !inventory.sourceFileId || !inventory.revision || authorization.sourceFileId !== inventory.sourceFileId || authorization.revision !== inventory.revision || inventory.tabCount < 16 || inventory.tabNames.length !== inventory.tabCount || deps.length !== inventory.tabCount)
         return false;
     const names = new Set(inventory.tabNames), dependencyNames = new Set(deps.map(d => d.name));
     if (names.size !== inventory.tabCount || dependencyNames.size !== deps.length || [...names].some(name => !dependencyNames.has(name)))
