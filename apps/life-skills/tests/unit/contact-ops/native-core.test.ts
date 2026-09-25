@@ -1,0 +1,115 @@
+import {describe,expect,it} from "vitest";
+import {normalizeEmail,normalizePhone,resolveEndpoint} from "../../../src/features/contact-ops/core/contact-resolution.ts";
+import {advanceCutover,assessWorkbookRetirement,writeDestination,type CutoverProof,type CutoverState} from "../../../src/features/contact-ops/core/cutover.ts";
+import {journeyStage,projectPeople,selectPeople} from "../../../src/features/contact-ops/core/people.ts";
+import {safeLocalHref} from "../../../src/features/contact-ops/core/validation.ts";
+import type {AdministrativePerson,JourneyFacts} from "../../../src/features/contact-ops/core/types.ts";
+
+const person=(personId="synthetic-person",changes:Partial<AdministrativePerson>={}):AdministrativePerson=>({personId,workspaceId:"synthetic-workspace",displayName:"DEMO — Synthetic adult",kind:"guardian",locale:"he",endpoints:[],legacyLeadIds:[],caseIds:[],mode:"demo",demoBatchId:"synthetic-batch",archivedAt:null,doNotContact:false,version:1,...changes});
+const journey=(changes:Partial<JourneyFacts>={}):JourneyFacts=>({personId:"synthetic-person",enrollmentId:"synthetic-enrollment",caseId:null,formSubmittedAt:null,formSentAt:null,contactedAt:null,paymentAllocationId:null,paymentReversedAt:null,confirmedAppointmentId:null,activeCase:false,suspended:false,...changes});
+const query=(changes:Partial<Parameters<typeof selectPeople>[1]>={})=>({view:"all" as const,search:"",today:"2026-09-25",page:1,pageSize:12,...changes});
+const proof=(changes:Partial<CutoverProof>={}):CutoverProof=>({batchId:"synthetic-batch",sourceFileId:"synthetic-workbook",sourceRevision:"synthetic-revision",expectedEpoch:4,backupRestored:true,snapshotMatched:true,imported:true,rowContentMatched:true,allRowsAccounted:true,identityConflicts:0,paymentsReconciled:true,writersFenced:true,inboundDurable:true,deltaDrained:true,consumersRepointed:true,sheetConsumersRepointed:true,nativeBrowserVerified:true,oldSchedulesDisabled:true,sourceFrozen:true,restorePlanReady:true,...changes});
+const state=(phase:CutoverState["phase"]="sheet_active"):CutoverState=>({phase,epoch:4,batchId:phase==="sheet_active"?null:"synthetic-batch",sourceFileId:phase==="sheet_active"?null:"synthetic-workbook",sourceRevision:phase==="sheet_active"?null:"synthetic-revision",nativeWritesSinceSwitch:0});
+
+describe("native CRM candidate integrated into the existing app",()=>{
+ it("keeps contact normalization separate from login identity",()=>{
+  expect(normalizeEmail("demo+parent@EXAMPLE.INVALID")).toBe("demo+parent@example.invalid");
+  expect(normalizeEmail("uK@EXAMPLE.INVALID")).toBe("uK@example.invalid");
+  expect(normalizeEmail("uK@EXAMPLE.INVALID")).toBe("uK@example.invalid");
+  expect(normalizeEmail("a@example..com")).toBeNull();
+  expect(normalizeEmail("a@-example.com")).toBeNull();
+  expect(normalizeEmail("a@example-.com")).toBeNull();
+  expect(normalizeEmail("a..b@example.com")).toBeNull();
+  expect(normalizeEmail(".a@example.com")).toBeNull();
+  expect(normalizeEmail("a.@example.com")).toBeNull();
+  expect(normalizeEmail(`${"a".repeat(65)}@example.com`)).toBeNull();
+  expect(normalizeEmail(`${"é".repeat(32)}@${["a".repeat(54),"b".repeat(54),"c".repeat(54),"d".repeat(55)].join(".")}`)).toBeNull();
+  expect(normalizePhone("052-000-0001")).toBe("+972520000001");
+  expect(normalizePhone("name@phone")).toBeNull();
+ });
+ it("never treats a shared endpoint as proof of one person or guardian permission",()=>{
+  expect(resolveEndpoint("synthetic-workspace","blind",[{workspaceId:"synthetic-workspace",personId:"a",endpointKey:"blind",verified:true,shared:true,revoked:false}])).toEqual({kind:"ambiguous",candidateIds:["a"]});
+  expect(resolveEndpoint("synthetic-workspace","blind",[{workspaceId:"other",personId:"a",endpointKey:"blind",verified:true,shared:false,revoked:false}])).toEqual({kind:"new"});
+ });
+ it("refuses duplicate or cross-workspace people and unmarked demo records",()=>{
+  expect(()=>projectPeople("synthetic-workspace",[person(),person()],[],[])).toThrow("DUPLICATE_PERSON");
+  expect(()=>projectPeople("synthetic-workspace",[person("other",{workspaceId:"other"})],[],[])).toThrow("CROSS_WORKSPACE");
+  expect(()=>projectPeople("synthetic-workspace",[person("other",{demoBatchId:null})],[],[])).toThrow("UNMARKED_DEMO");
+ });
+ it("requires an actual non-reversed allocation and preserves independent child journeys",()=>{
+  expect(journeyStage(journey({formSubmittedAt:"2026-09-24T10:00:00Z"}))).toBe("payment_pending");
+  expect(journeyStage(journey({paymentAllocationId:"allocation",paymentReversedAt:"2026-09-25T10:00:00Z"}))).toBe("new");
+  const row=projectPeople("synthetic-workspace",[person()],[journey({enrollmentId:"child-a",activeCase:true,confirmedAppointmentId:"appointment"}),journey({enrollmentId:"child-b",paymentAllocationId:"allocation"})],[])[0];
+  expect(row).toMatchObject({active:true,paidAwaitingBooking:true});
+  expect(projectPeople("synthetic-workspace",[person()],[journey({activeCase:true,paymentAllocationId:"allocation"})],[])[0]?.paidAwaitingBooking).toBe(false);
+ });
+ it("returns one sortable, searchable, paginated person projection",()=>{
+  const rows=projectPeople("synthetic-workspace",[person("a",{displayName:"DEMO — Alpha",endpoints:[{channel:"email",value:"demo+alpha@example.invalid",verified:true,shared:false}]}),person("b",{displayName:"DEMO — Beta",archivedAt:"2026-09-24T10:00:00Z"})],[],[]);
+  expect(selectPeople(rows,query()).items.map(row=>row.id)).toEqual(["a"]);
+  expect(selectPeople(rows,query({search:"+alpha"})).items.map(row=>row.id)).toEqual(["a"]);
+  expect(selectPeople(rows,query({view:"archived"})).items.map(row=>row.id)).toEqual(["b"]);
+  expect(selectPeople(rows,query({page:99})).page).toBe(1);
+ });
+ it("keeps missed follow-ups in Today without mixing archived people into All open",()=>{
+  const rows=projectPeople("synthetic-workspace",[person("overdue"),person("today"),person("future"),person("archived",{archivedAt:"2026-09-24T10:00:00Z"})],[],[
+   {personId:"overdue",nextAction:"Follow up",followUpDate:"2026-09-24",nextAppointmentAt:null,unreadCount:0},
+   {personId:"today",nextAction:"Follow up",followUpDate:"2026-09-25",nextAppointmentAt:null,unreadCount:0},
+   {personId:"future",nextAction:"Follow up",followUpDate:"2026-09-26",nextAppointmentAt:null,unreadCount:0},
+   {personId:"archived",nextAction:"Follow up",followUpDate:"2026-09-24",nextAppointmentAt:null,unreadCount:0},
+  ]);
+  expect(selectPeople(rows,query({due:"today"})).items.map(row=>row.id).sort()).toEqual(["overdue","today"]);
+  expect(selectPeople(rows,query({view:"archived"})).items.map(row=>row.id)).toEqual(["archived"]);
+ });
+ it("keeps do-not-contact people out of every open queue but visible as closed",()=>{
+  const rows=projectPeople("synthetic-workspace",[person("suppressed",{doNotContact:true})],[],[]);
+  for(const view of ["all","prospects","paid","active"] as const) expect(selectPeople(rows,query({view})).total).toBe(0);
+  expect(selectPeople(rows,query({view:"archived"})).items.map(row=>row.id)).toEqual(["suppressed"]);
+ });
+ it("keeps a sibling's unfinished intake visible when another case is active",()=>{
+  const rows=projectPeople("synthetic-workspace",[person("family")],[
+   journey({personId:"family",enrollmentId:"child-active",activeCase:true,confirmedAppointmentId:"booked"}),
+   journey({personId:"family",enrollmentId:"child-new",formSentAt:"2026-09-25T10:00:00Z"}),
+  ],[]);
+  expect(rows[0]).toMatchObject({active:true,openProspect:true});
+  expect(selectPeople(rows,query({view:"prospects"})).items.map(row=>row.id)).toEqual(["family"]);
+  expect(selectPeople(rows,query({view:"prospects",stage:"form_sent"})).items.map(row=>row.id)).toEqual(["family"]);
+ });
+ it("requires restored backups, reconciled rows and a writer fence before native authority",()=>{
+  expect(()=>advanceCutover(state(),"prepare",proof({batchId:"old-batch"}),"synthetic-batch")).toThrow("PROOF_MISMATCH");
+  expect(()=>advanceCutover(state(),"prepare",proof({expectedEpoch:3}),"synthetic-batch")).toThrow("PROOF_MISMATCH");
+  expect(()=>advanceCutover(state("frozen"),"switch_native",proof({sourceRevision:"old-revision"}),"synthetic-batch")).toThrow("PROOF_MISMATCH");
+  expect(()=>advanceCutover(state(),"prepare",proof({backupRestored:false}),"synthetic-batch")).toThrow("IMPORT_NOT_RECONCILED");
+  expect(()=>advanceCutover(state("frozen"),"switch_native",proof({writersFenced:false}),"synthetic-batch")).toThrow("UNSAFE_CUTOVER");
+  expect(()=>advanceCutover(state("frozen"),"switch_native",proof({identityConflicts:1}),"synthetic-batch")).toThrow("UNSAFE_CUTOVER");
+  expect(writeDestination("frozen")).toBe("durable_queue_only");
+  expect(()=>advanceCutover(state("native_active"),"retire_sheet",proof({writersFenced:false}),"synthetic-batch")).toThrow("UNSAFE_RETIREMENT");
+  expect(()=>advanceCutover(state("native_active"),"retire_sheet",proof({sourceFrozen:false}),"synthetic-batch")).toThrow("UNSAFE_RETIREMENT");
+  expect(()=>advanceCutover(state("rollback_prepared"),"finish_rollback",proof({sheetConsumersRepointed:false}),"synthetic-batch")).toThrow("ROLLBACK_DELTA_UNVERIFIED");
+  expect(writeDestination("rollback_prepared")).toBe("durable_queue_only");
+ });
+ it("static workbook reconciliation never authorizes deletion without a live dependency fence",()=>{
+  const names=Array.from({length:16},(_,i)=>`Synthetic tab ${i+1}`),inventory={sourceFileId:"synthetic-workbook",revision:"synthetic-revision",completeSourceReadback:true,tabNames:names,tabCount:16};
+  const authorization={sourceFileId:"synthetic-workbook",revision:"synthetic-revision",authorized:true as const};
+  const safe=names.map(name=>({name,kind:"crm" as const,activeReader:false,activeWriter:false,preserved:true}));
+  const scan={sourceFileId:"synthetic-workbook",revision:"synthetic-revision",dependencies:safe};
+  expect(assessWorkbookRetirement(scan,authorization,inventory)).toEqual({dependenciesReconciled:true,deletionAllowed:false,requiredLiveGate:"durable_dependency_fence"});
+  expect(assessWorkbookRetirement({...scan,sourceFileId:"another-workbook"},authorization,inventory).dependenciesReconciled).toBe(false);
+  expect(assessWorkbookRetirement({...scan,revision:"old-revision"},authorization,inventory).dependenciesReconciled).toBe(false);
+  expect(assessWorkbookRetirement(scan,{...authorization,sourceFileId:"another-workbook"},inventory).dependenciesReconciled).toBe(false);
+  expect(assessWorkbookRetirement(scan,{...authorization,revision:"old-revision"},inventory).dependenciesReconciled).toBe(false);
+  expect(assessWorkbookRetirement({...scan,dependencies:safe.slice(0,-1)},authorization,inventory).dependenciesReconciled).toBe(false);
+  expect(assessWorkbookRetirement(scan,authorization,{...inventory,completeSourceReadback:false}).dependenciesReconciled).toBe(false);
+  expect(assessWorkbookRetirement({...scan,dependencies:safe.map((d,i)=>i===3?{...d,activeReader:true}:d)},authorization,inventory).dependenciesReconciled).toBe(false);
+  expect(assessWorkbookRetirement({...scan,dependencies:[{name:"Leads",kind:"crm",activeReader:false,activeWriter:false,preserved:true},{name:"Asset Registry",kind:"marketing",activeReader:true,activeWriter:false,preserved:true}]},authorization).dependenciesReconciled).toBe(false);
+  expect(assessWorkbookRetirement({...scan,dependencies:[{name:"Leads",kind:"crm",activeReader:false,activeWriter:false,preserved:true}]},null).dependenciesReconciled).toBe(false);
+ });
+ it("rejects a nonexistent calendar day instead of normalizing it",()=>{
+  expect(()=>projectPeople("synthetic-workspace",[person()],[],[{personId:"synthetic-person",nextAction:null,followUpDate:null,nextAppointmentAt:"2026-02-30T12:00Z",unreadCount:0}])).toThrow("INVALID_INSTANT");
+  expect(()=>projectPeople("synthetic-workspace",[person()],[],[{personId:"synthetic-person",nextAction:null,followUpDate:null,nextAppointmentAt:"2028-02-29T12:00+02:00",unreadCount:0}])).not.toThrow();
+ });
+ it("keeps normalized app links inside their locale subtree",()=>{
+  expect(safeLocalHref("/en/app/clients?view=prospects")).toBe("/en/app/clients?view=prospects");
+  expect(()=>safeLocalHref("/en/x/../../admin")).toThrow("UNSAFE_APP_LINK");
+  expect(()=>safeLocalHref("/en/%2e%2e/admin")).toThrow("UNSAFE_APP_LINK");
+ });
+});
