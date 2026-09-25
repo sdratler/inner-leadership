@@ -73,6 +73,19 @@ export interface WorkbookDependency {
     activeWriter: boolean;
     preserved: boolean;
 }
-export function canTrashWholeWorkbook(deps: readonly WorkbookDependency[], explicitDeletionReceipt: boolean): boolean {
-    return explicitDeletionReceipt && deps.length > 0 && deps.every(d => !d.activeReader && !d.activeWriter && d.preserved && d.kind !== "unknown");
+/** Supplied only from a fresh, complete Drive metadata readback by the retirement adapter. */
+export interface WorkbookInventoryProof {
+    sourceFileId: string;
+    revision: string;
+    completeSourceReadback: boolean;
+    tabNames: readonly string[];
+    tabCount: number;
+}
+export function canTrashWholeWorkbook(deps: readonly WorkbookDependency[], explicitDeletionReceipt: boolean, inventory?: WorkbookInventoryProof): boolean {
+    if (!explicitDeletionReceipt || !inventory?.completeSourceReadback || !inventory.sourceFileId || !inventory.revision || inventory.tabCount < 16 || inventory.tabNames.length !== inventory.tabCount || deps.length !== inventory.tabCount)
+        return false;
+    const names = new Set(inventory.tabNames), dependencyNames = new Set(deps.map(d => d.name));
+    if (names.size !== inventory.tabCount || dependencyNames.size !== deps.length || [...names].some(name => !dependencyNames.has(name)))
+        return false;
+    return deps.every(d => !d.activeReader && !d.activeWriter && d.preserved && d.kind !== "unknown");
 }

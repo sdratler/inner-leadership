@@ -50,4 +50,11 @@ describe("native CRM candidate source planner",()=>{
   const revised=[...original];revised[6]="Changed synthetic note";
   expect(sameProtectedRow(planImport(snapshot(),"synthetic-workspace",key).rows[0]!,planImport(snapshot({rows:[revised]}),"synthetic-workspace",key).rows[0]!)).toBe(false);
  });
+ it("flags malformed contact email without dropping its original private source value",()=>{
+  const row=[...snapshot().rows[0]!];row[3]="a..b@example.com";
+  const imported=planImport(snapshot({rows:[row]}),"synthetic-workspace",key).rows[0]!;
+  expect(imported.normalizedEmail).toBeNull();
+  expect(imported.issues).toContain("EMAIL_NEEDS_REVIEW");
+  expect(imported.protectedPayload.sourceFields.Email).toBe("a..b@example.com");
+ });
 });

@@ -18,6 +18,10 @@ describe("native CRM candidate integrated into the existing app",()=>{
   expect(normalizeEmail("a@example..com")).toBeNull();
   expect(normalizeEmail("a@-example.com")).toBeNull();
   expect(normalizeEmail("a@example-.com")).toBeNull();
+  expect(normalizeEmail("a..b@example.com")).toBeNull();
+  expect(normalizeEmail(".a@example.com")).toBeNull();
+  expect(normalizeEmail("a.@example.com")).toBeNull();
+  expect(normalizeEmail(`${"a".repeat(65)}@example.com`)).toBeNull();
   expect(normalizePhone("052-000-0001")).toBe("+972520000001");
   expect(normalizePhone("name@phone")).toBeNull();
  });
@@ -72,6 +76,12 @@ describe("native CRM candidate integrated into the existing app",()=>{
   expect(writeDestination("rollback_prepared")).toBe("durable_queue_only");
  });
  it("cannot retire a workbook still used by marketing, even when Leads is migrated",()=>{
+  const names=Array.from({length:16},(_,i)=>`Synthetic tab ${i+1}`),inventory={sourceFileId:"synthetic-workbook",revision:"synthetic-revision",completeSourceReadback:true,tabNames:names,tabCount:16};
+  const safe=names.map(name=>({name,kind:"crm" as const,activeReader:false,activeWriter:false,preserved:true}));
+  expect(canTrashWholeWorkbook(safe,true,inventory)).toBe(true);
+  expect(canTrashWholeWorkbook(safe.slice(0,-1),true,inventory)).toBe(false);
+  expect(canTrashWholeWorkbook(safe,true,{...inventory,completeSourceReadback:false})).toBe(false);
+  expect(canTrashWholeWorkbook(safe.map((d,i)=>i===3?{...d,activeReader:true}:d),true,inventory)).toBe(false);
   expect(canTrashWholeWorkbook([{name:"Leads",kind:"crm",activeReader:false,activeWriter:false,preserved:true},{name:"Asset Registry",kind:"marketing",activeReader:true,activeWriter:false,preserved:true}],true)).toBe(false);
   expect(canTrashWholeWorkbook([{name:"Leads",kind:"crm",activeReader:false,activeWriter:false,preserved:true}],false)).toBe(false);
  });

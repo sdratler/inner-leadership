@@ -5,12 +5,18 @@ export function normalizeEmail(value: string): string | null {
     if (/[\s\r\n]/.test(v) || !/^[^@]+@[^@]+\.[^@]+$/.test(v))
         return null;
     const at = v.lastIndexOf("@");
+    const local = v.slice(0, at);
+    // Conservative unquoted SMTPUTF8 atoms: a malformed endpoint needs review,
+    // never a guessed repair or a merge with another contact.
+    const atom = /^[A-Za-z0-9!#$%&'*+/=?^_`{|}~\-\p{L}\p{N}\p{M}]+$/u;
+    if (new TextEncoder().encode(local).length > 64 || local.split(".").some(part => !atom.test(part)))
+        return null;
     // SMTPUTF8 local parts are opaque; NFKC may change a distinct mailbox.
     const domain = v.slice(at + 1).normalize("NFKC").toLowerCase();
     const labels = domain.split(".");
     if (labels.length < 2 || labels.some(label => label.length > 63 || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label)))
         return null;
-    const normalized = v.slice(0, at) + "@" + domain;
+    const normalized = local + "@" + domain;
     return normalized.length <= 254 ? normalized : null;
 }
 export function normalizePhone(value: string, defaultRegion: "IL" | null = "IL"): string | null {
