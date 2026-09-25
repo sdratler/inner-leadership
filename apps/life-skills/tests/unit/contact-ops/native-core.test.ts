@@ -2,6 +2,7 @@ import {describe,expect,it} from "vitest";
 import {normalizeEmail,normalizePhone,resolveEndpoint} from "../../../src/features/contact-ops/core/contact-resolution.ts";
 import {advanceCutover,canTrashWholeWorkbook,writeDestination,type CutoverProof,type CutoverState} from "../../../src/features/contact-ops/core/cutover.ts";
 import {journeyStage,projectPeople,selectPeople} from "../../../src/features/contact-ops/core/people.ts";
+import {safeLocalHref} from "../../../src/features/contact-ops/core/validation.ts";
 import type {AdministrativePerson,JourneyFacts} from "../../../src/features/contact-ops/core/types.ts";
 
 const person=(personId="synthetic-person",changes:Partial<AdministrativePerson>={}):AdministrativePerson=>({personId,workspaceId:"synthetic-workspace",displayName:"DEMO — Synthetic adult",kind:"guardian",locale:"he",endpoints:[],legacyLeadIds:[],caseIds:[],mode:"demo",demoBatchId:"synthetic-batch",archivedAt:null,doNotContact:false,version:1,...changes});
@@ -96,5 +97,10 @@ describe("native CRM candidate integrated into the existing app",()=>{
  it("rejects a nonexistent calendar day instead of normalizing it",()=>{
   expect(()=>projectPeople("synthetic-workspace",[person()],[],[{personId:"synthetic-person",nextAction:null,followUpDate:null,nextAppointmentAt:"2026-02-30T12:00Z",unreadCount:0}])).toThrow("INVALID_INSTANT");
   expect(()=>projectPeople("synthetic-workspace",[person()],[],[{personId:"synthetic-person",nextAction:null,followUpDate:null,nextAppointmentAt:"2028-02-29T12:00+02:00",unreadCount:0}])).not.toThrow();
+ });
+ it("keeps normalized app links inside their locale subtree",()=>{
+  expect(safeLocalHref("/en/app/clients?view=prospects")).toBe("/en/app/clients?view=prospects");
+  expect(()=>safeLocalHref("/en/x/../../admin")).toThrow("UNSAFE_APP_LINK");
+  expect(()=>safeLocalHref("/en/%2e%2e/admin")).toThrow("UNSAFE_APP_LINK");
  });
 });

@@ -23,7 +23,7 @@ export function dateOnly(value: unknown): value is string {
 export function safeLocalHref(value: string): string {
     requireThat(/^\/(?:he|en)\//.test(value) && !/[\\\u0000-\u001f]/.test(value), "UNSAFE_APP_LINK");
     const u = new URL(value, "https://local.invalid");
-    requireThat(u.origin === "https://local.invalid", "UNSAFE_APP_LINK");
+    requireThat(u.origin === "https://local.invalid" && /^\/(?:he|en)\//.test(u.pathname), "UNSAFE_APP_LINK");
     return u.pathname + u.search + u.hash;
 }
 /** Stable serialization, deliberately rejecting undefined, non-finite numbers and exotic objects. */
