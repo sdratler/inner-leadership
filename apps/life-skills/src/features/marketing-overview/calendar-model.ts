@@ -8,6 +8,7 @@ const hebrewPublicationLabels: Readonly<Record<string, string>> = {
   "Unknown": "לא ידוע",
   "Manual channel — publication not independently verified": "ערוץ ידני — הפרסום לא אומת באופן עצמאי",
   "Published — provider receipt recorded": "פורסם — נשמרה אסמכתה מהספק",
+  "Unknown — publication not verified": "לא ידוע — הפרסום לא אומת",
   "Reminder scheduled — manual posting required": "תזכורת תוזמנה — נדרש פרסום ידני",
   "Manual posting planned": "פרסום ידני מתוכנן",
   "Scheduled — provider confirmed": "תוזמן — הספק אישר",
