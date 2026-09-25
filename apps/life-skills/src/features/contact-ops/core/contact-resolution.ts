@@ -1,12 +1,13 @@
 import { requireThat } from "./validation.js";
 /** Preserve +aliases and dots. This normalizes a contact endpoint, not an authentication identity. */
 export function normalizeEmail(value: string): string | null {
-    const v = value.trim().normalize("NFKC");
-    if (v.length > 254 || /[\s\r\n]/.test(v) || !/^[^@]+@[^@]+\.[^@]+$/.test(v))
+    const v = value.trim();
+    if (/[\s\r\n]/.test(v) || !/^[^@]+@[^@]+\.[^@]+$/.test(v))
         return null;
     const at = v.lastIndexOf("@");
-    // Local-part case is preserved: do not silently conflate arbitrary mail systems.
-    return v.slice(0, at) + "@" + v.slice(at + 1).toLowerCase();
+    // SMTPUTF8 local parts are opaque; NFKC may change a distinct mailbox.
+    const normalized = v.slice(0, at) + "@" + v.slice(at + 1).normalize("NFKC").toLowerCase();
+    return normalized.length <= 254 ? normalized : null;
 }
 export function normalizePhone(value: string, defaultRegion: "IL" | null = "IL"): string | null {
     const v = value.trim();

@@ -57,6 +57,8 @@ export function selectPeople(rows: readonly PersonRow[], q: PeopleQuery): Page<P
     requireThat(Number.isSafeInteger(q.pageSize) && q.pageSize >= 1 && q.pageSize <= 100, "BAD_PAGE_SIZE");
     const text = q.search.trim().toLocaleLowerCase();
     const filtered = rows.filter(r => {
+        if (q.view === "all" && r.archived)
+            return false;
         if (q.view === "prospects" && (r.active || r.archived))
             return false;
         if (q.view === "paid" && (!r.paidAwaitingBooking || r.archived))
@@ -69,7 +71,7 @@ export function selectPeople(rows: readonly PersonRow[], q: PeopleQuery): Page<P
             return false;
         if (q.locale && q.locale !== r.locale)
             return false;
-        if (q.due === "today" && r.followUpDate !== q.today)
+        if (q.due === "today" && (!r.followUpDate || r.followUpDate > q.today))
             return false;
         if (q.due === "overdue" && (!r.followUpDate || r.followUpDate >= q.today))
             return false;

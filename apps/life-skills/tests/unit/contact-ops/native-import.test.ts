@@ -22,7 +22,17 @@ describe("native CRM candidate source planner",()=>{
   expect(()=>planImport(snapshot({complete:false}),"synthetic-workspace",key)).toThrow("INCOMPLETE_SNAPSHOT");
   expect(()=>planImport(snapshot({headers:["Lead ID"]}),"synthetic-workspace",key)).toThrow("MISSING_HEADER");
   expect(()=>planImport(snapshot({headers:["Lead ID","Lead ID"]}),"synthetic-workspace",key)).toThrow("AMBIGUOUS_HEADERS");
+  expect(()=>planImport(snapshot({headers:[...snapshot().headers," Lead ID "]}),"synthetic-workspace",key)).toThrow("AMBIGUOUS_HEADERS");
   expect(()=>planImport(snapshot({rows:[[...snapshot().rows[0]!,"hidden"]]}),"synthetic-workspace",key)).toThrow("UNMAPPED_EXTRA_CELLS");
+ });
+ it("preserves exact source headers and digests while matching required columns by trimmed lookup",()=>{
+  const before=snapshot(),headers=[...before.headers];headers[0]=" Lead ID ";headers[9]=" Unmapped source column ";
+  const original=planImport(before,"synthetic-workspace",key),spaced=planImport(snapshot({headers}),"synthetic-workspace",key);
+  expect(spaced.rows[0]?.legacyId).toBe(original.rows[0]?.legacyId);
+  expect(spaced.rows[0]?.protectedPayload.sourceFields[" Unmapped source column "]).toBe("Preserve this extra");
+  expect(spaced.rows[0]?.protectedPayload.sourceFields["Unmapped source column"]).toBeUndefined();
+  expect(spaced.snapshotDigest).not.toBe(original.snapshotDigest);
+  expect(spaced.rows[0]?.rowDigest).not.toBe(original.rows[0]?.rowDigest);
  });
  it("keeps import identity stable and never merges two different legacy IDs by phone",()=>{
   const original=snapshot().rows[0]!;

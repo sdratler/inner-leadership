@@ -13,6 +13,8 @@ const state=(phase:CutoverState["phase"]="sheet_active"):CutoverState=>({phase,e
 describe("native CRM candidate integrated into the existing app",()=>{
  it("keeps contact normalization separate from login identity",()=>{
   expect(normalizeEmail("demo+parent@EXAMPLE.INVALID")).toBe("demo+parent@example.invalid");
+  expect(normalizeEmail("uK@EXAMPLE.INVALID")).toBe("uK@example.invalid");
+  expect(normalizeEmail("uK@EXAMPLE.INVALID")).toBe("uK@example.invalid");
   expect(normalizePhone("052-000-0001")).toBe("+972520000001");
   expect(normalizePhone("name@phone")).toBeNull();
  });
@@ -33,10 +35,20 @@ describe("native CRM candidate integrated into the existing app",()=>{
  });
  it("returns one sortable, searchable, paginated person projection",()=>{
   const rows=projectPeople("synthetic-workspace",[person("a",{displayName:"DEMO — Alpha",endpoints:[{channel:"email",value:"demo+alpha@example.invalid",verified:true,shared:false}]}),person("b",{displayName:"DEMO — Beta",archivedAt:"2026-09-24T10:00:00Z"})],[],[]);
-  expect(selectPeople(rows,query()).total).toBe(2);
+  expect(selectPeople(rows,query()).items.map(row=>row.id)).toEqual(["a"]);
   expect(selectPeople(rows,query({search:"+alpha"})).items.map(row=>row.id)).toEqual(["a"]);
   expect(selectPeople(rows,query({view:"archived"})).items.map(row=>row.id)).toEqual(["b"]);
   expect(selectPeople(rows,query({page:99})).page).toBe(1);
+ });
+ it("keeps missed follow-ups in Today without mixing archived people into All open",()=>{
+  const rows=projectPeople("synthetic-workspace",[person("overdue"),person("today"),person("future"),person("archived",{archivedAt:"2026-09-24T10:00:00Z"})],[],[
+   {personId:"overdue",nextAction:"Follow up",followUpDate:"2026-09-24",nextAppointmentAt:null,unreadCount:0},
+   {personId:"today",nextAction:"Follow up",followUpDate:"2026-09-25",nextAppointmentAt:null,unreadCount:0},
+   {personId:"future",nextAction:"Follow up",followUpDate:"2026-09-26",nextAppointmentAt:null,unreadCount:0},
+   {personId:"archived",nextAction:"Follow up",followUpDate:"2026-09-24",nextAppointmentAt:null,unreadCount:0},
+  ]);
+  expect(selectPeople(rows,query({due:"today"})).items.map(row=>row.id).sort()).toEqual(["overdue","today"]);
+  expect(selectPeople(rows,query({view:"archived"})).items.map(row=>row.id)).toEqual(["archived"]);
  });
  it("requires restored backups, reconciled rows and a writer fence before native authority",()=>{
   expect(()=>advanceCutover(state(),"prepare",proof({backupRestored:false}),"synthetic-batch")).toThrow("IMPORT_NOT_RECONCILED");

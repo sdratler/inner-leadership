@@ -62,8 +62,9 @@ export function planImport(s: SheetSnapshot, workspaceId: string, integrityKey: 
             blankRows++;
             return;
         }
-        const fields = Object.fromEntries(h.map((key, i) => [key, row[i] ?? ""]));
-        const id = fields["Lead ID"]!.trim();
+        const fields = Object.fromEntries(s.headers.map((key, i) => [key, row[i] ?? ""]));
+        const field = (name: string) => row[h.indexOf(name)] ?? "";
+        const id = field("Lead ID").trim();
         if (!/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]+$/.test(id)) {
             conflicts.push({ sourceRow, code: "MISSING_OR_INVALID_LEGACY_ID" });
             return;
@@ -74,18 +75,19 @@ export function planImport(s: SheetSnapshot, workspaceId: string, integrityKey: 
             return;
         }
         ids.set(id, rd);
-        const phone = fields.Phone!.trim() ? normalizePhone(fields.Phone!) : null, email = fields.Email!.trim() ? normalizeEmail(fields.Email!) : null;
+        const phoneText = field("Phone"), emailText = field("Email");
+        const phone = phoneText.trim() ? normalizePhone(phoneText) : null, email = emailText.trim() ? normalizeEmail(emailText) : null;
         const issues: string[] = [];
-        if (fields.Phone!.trim() && !phone)
+        if (phoneText.trim() && !phone)
             issues.push("PHONE_NEEDS_REVIEW");
-        if (fields.Email!.trim() && !email)
+        if (emailText.trim() && !email)
             issues.push("EMAIL_NEEDS_REVIEW");
         if (!phone && !email)
             issues.push("NO_ROUTABLE_ENDPOINT");
         out.push({ legacyId: id, suggestedPersonId: stableUuid(workspaceId + ":" + s.fileId + ":" + s.tab, id), normalizedPhone: phone, normalizedEmail: email, sourceRow, rowDigest: rd, issues,
-            protectedPayload: { displayName: fields["Parent/adult name"]!, language: fields.Language ?? "", stageText: fields["Pipeline stage"]!, sourceFields: fields }, paymentVerified: false });
+            protectedPayload: { displayName: field("Parent/adult name"), language: h.includes("Language") ? field("Language") : "", stageText: field("Pipeline stage"), sourceFields: fields }, paymentVerified: false });
     });
-    return { source: { fileId: s.fileId, tab: s.tab, revision: s.revision }, snapshotDigest: privateDigest({ headers: h, rows: s.rows }, integrityKey), rows: out, blankRows, conflicts, canImport: conflicts.length === 0 };
+    return { source: { fileId: s.fileId, tab: s.tab, revision: s.revision }, snapshotDigest: privateDigest({ headers: s.headers, rows: s.rows }, integrityKey), rows: out, blankRows, conflicts, canImport: conflicts.length === 0 };
 }
 export function importSummary(p: ImportPlan) { return { source: p.source, snapshotDigest: p.snapshotDigest, rowCount: p.rows.length, blankRows: p.blankRows, conflicts: p.conflicts, issueCount: p.rows.reduce((n, r) => n + r.issues.length, 0), canImport: p.canImport }; }
 /** Header/key fidelity, not just a matching count, is required for reconciliation. */
