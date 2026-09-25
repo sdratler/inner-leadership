@@ -1,5 +1,6 @@
 import type { CreativeVersion, Publication } from "./contracts.ts";
 import { publicationLabel } from "./read-model.ts";
+import { validIso } from "../session-workflow/policy.ts";
 
 export const CONTENT_TIMEZONE = "Asia/Jerusalem";
 const hebrewPublicationLabels: Readonly<Record<string, string>> = {
@@ -40,7 +41,7 @@ export function contentViewPublications(publications: readonly Publication[], vi
     view === "history" && ["published", "manually_reported", "skipped", "failed", "unknown"].includes(item.state));
 }
 export function publicationDisplayTime(item: Publication): string | null {
-  if (item.state === "manually_reported" && item.manualReportedAt && Number.isFinite(Date.parse(item.manualReportedAt))) return item.manualReportedAt;
+  if (item.state === "manually_reported" && validIso(item.manualReportedAt)) return item.manualReportedAt;
   return item.scheduledFor;
 }
 

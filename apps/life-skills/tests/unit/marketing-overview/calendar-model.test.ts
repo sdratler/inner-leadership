@@ -63,6 +63,7 @@ describe("read-only Marketing content calendar", () => {
     expect(undated).toContain("Provider receipt: receipt-queue");
     const manuallyReported = { ...post("reported", null, "manually_reported"), manualReportedAt: "2026-09-30T17:05:00Z" };
     expect(publicationDisplayTime(manuallyReported)).toBe("2026-09-30T17:05:00Z");
+    expect(publicationDisplayTime({ ...manuallyReported, manualReportedAt: "2026-02-30T17:05:00Z" })).toBeNull();
     expect(monthPublications([manuallyReported], "2026-09").get("2026-09-30")?.[0]?.id).toBe("reported");
     const history = renderToStaticMarkup(React.createElement(MarketingDashboard, { locale: "en", snapshot: snapshot([manuallyReported]), initialSection: "content_calendar", initialFilter: "history", initialMonth: "2026-09", renderedAt: "2026-09-25T08:00:00Z" }));
     expect(history).toContain("Sep 30, 2026");
