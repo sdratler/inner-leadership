@@ -103,7 +103,7 @@ before(async()=>{
  }finally{migrationClient.release();}
  const state=await pool.query("SELECT (SELECT count(*)::integer FROM ls_identity.accounts) AS accounts,(SELECT count(*)::integer FROM ls_control.migrations) AS migrations");
  assert.equal(state.rows[0]?.accounts,0,'disposable HTTP database must contain no accounts');
- assert.equal(state.rows[0]?.migrations,3,'disposable HTTP database must have all three signed migrations');
+ assert.equal(state.rows[0]?.migrations,files.length,'disposable HTTP database must have every selected signed migration');
  store={async transaction(work){const client=await pool.connect();try{await client.query('BEGIN');const tx:SqlSession={async query<T extends object>(text:string,values:readonly unknown[]=[]){return (await client.query(text,[...values])).rows as T[];}};const value=await work(tx);await client.query('COMMIT');return value;}catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}}};
  const identityEnv={...process.env,LS_CHILD_ACCOUNTS_ENABLED:'true'};
  config=parseIdentityConfig(identityEnv);auth=new IdentityAuthService(store,config,clock);accounts=new IdentityAccountService(store,config,clock);
