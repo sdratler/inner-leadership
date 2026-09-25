@@ -48,6 +48,7 @@ export interface PersonRow {
     email: string | null;
     locale: Locale | null;
     stage: IntakeStage;
+    stages: readonly IntakeStage[];
     archived: boolean;
     active: boolean;
     openProspect: boolean;

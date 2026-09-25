@@ -25,8 +25,8 @@ export function projectPeople(workspaceId: string, people: readonly Administrati
         seen.add(p.personId);
         requireThat(p.mode !== "demo" || Boolean(p.demoBatchId), "UNMARKED_DEMO");
         const fs = facts.filter(f => f.personId === p.personId), a = attention.find(x => x.personId === p.personId);
-        const stages = fs.map(journeyStage);
-        const stage = stages.sort((a, b) => order.indexOf(b) - order.indexOf(a))[0] ?? "new";
+        const stages: IntakeStage[] = fs.length ? fs.map(journeyStage) : ["new"];
+        const stage = [...stages].sort((a, b) => order.indexOf(b) - order.indexOf(a))[0] ?? "new";
         if (a?.followUpDate)
             requireThat(dateOnly(a.followUpDate), "BAD_FOLLOWUP_DATE");
         if (a?.nextAppointmentAt)
@@ -34,7 +34,7 @@ export function projectPeople(workspaceId: string, people: readonly Administrati
         requireThat(!a || Number.isSafeInteger(a.unreadCount) && a.unreadCount >= 0, "BAD_UNREAD_COUNT");
         return { id: p.personId, displayName: p.mode === "demo" && !p.displayName.startsWith("DEMO — ") ? "DEMO — " + p.displayName : p.displayName,
             kind: p.kind, phone: p.endpoints.find(x => x.channel === "whatsapp")?.value ?? null, email: p.endpoints.find(x => x.channel === "email")?.value ?? null,
-            locale: p.locale, stage, archived: p.archivedAt !== null, active: fs.some(f => f.activeCase && !f.suspended),
+            locale: p.locale, stage, stages: [...new Set(stages)], archived: p.archivedAt !== null, active: fs.some(f => f.activeCase && !f.suspended),
             openProspect: fs.length === 0 || fs.some(f => !f.activeCase && !f.confirmedAppointmentId && !f.suspended),
             paidAwaitingBooking: fs.some(f => Boolean(f.paymentAllocationId) && !f.paymentReversedAt && !f.confirmedAppointmentId && !f.suspended),
             doNotContact: p.doNotContact, demo: p.mode === "demo", caseCount: new Set(p.caseIds).size,
@@ -68,7 +68,7 @@ export function selectPeople(rows: readonly PersonRow[], q: PeopleQuery): Page<P
             return false;
         if (q.view === "archived" && !r.archived)
             return false;
-        if (q.stage && r.stage !== q.stage)
+        if (q.stage && !r.stages.includes(q.stage))
             return false;
         if (q.locale && q.locale !== r.locale)
             return false;

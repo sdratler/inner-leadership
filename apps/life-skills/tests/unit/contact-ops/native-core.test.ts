@@ -65,6 +65,7 @@ describe("native CRM candidate integrated into the existing app",()=>{
   ],[]);
   expect(rows[0]).toMatchObject({active:true,openProspect:true});
   expect(selectPeople(rows,query({view:"prospects"})).items.map(row=>row.id)).toEqual(["family"]);
+  expect(selectPeople(rows,query({view:"prospects",stage:"form_sent"})).items.map(row=>row.id)).toEqual(["family"]);
  });
  it("requires restored backups, reconciled rows and a writer fence before native authority",()=>{
   expect(()=>advanceCutover(state(),"prepare",proof({backupRestored:false}),"synthetic-batch")).toThrow("IMPORT_NOT_RECONCILED");
