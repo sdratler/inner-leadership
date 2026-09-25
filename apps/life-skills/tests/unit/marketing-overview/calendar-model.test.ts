@@ -41,6 +41,8 @@ describe("read-only Marketing content calendar", () => {
     expect(nextHebrewStatus(records, [creative], new Date("2026-09-27T08:00:00Z"))).toBeNull();
     expect(publicationStatusText(post("planned", "2026-09-25T17:00:00Z"), [creative], "he")).toBe("מתוכנן — ללא אישור מהספק");
     expect(publicationStatusText(post("unverified", "2026-09-25T17:00:00Z", "published"), [creative], "he")).toBe("לא ידוע — הפרסום לא אומת");
+    expect(publicationStatusText(post("quiet", "2026-09-25T17:00:00Z", "skipped"), [creative], "en")).toContain("recorded quiet-day rule");
+    expect(publicationStatusText(post("quiet", "2026-09-25T17:00:00Z", "skipped"), [creative], "he")).toContain("יום המנוחה הרשום");
     expect(contentViewPublications(records, "queued").map(item => item.id)).toEqual(["later", "ready", "earlier"]);
     expect(contentViewPublications(records, "published").map(item => item.id)).toEqual(["published"]);
     expect(contentView("unknown")).toBe("all");

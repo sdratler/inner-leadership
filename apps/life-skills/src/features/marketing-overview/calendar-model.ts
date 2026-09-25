@@ -23,6 +23,7 @@ const hebrewPublicationLabels: Readonly<Record<string, string>> = {
   "Skipped — no backfill": "דולג — ללא השלמהย้อนหลัง",
 };
 export function publicationStatusText(item: Publication, creatives: readonly CreativeVersion[], locale: "en" | "he"): string {
+  if (item.state === "skipped") return locale === "he" ? "דולג לפי כלל יום המנוחה הרשום; ללא השלמהย้อนหลัง" : "Skipped by the recorded quiet-day rule; no backfill";
   const label = publicationLabel(item, creatives);
   return locale === "he" ? hebrewPublicationLabels[label] ?? label : label;
 }
