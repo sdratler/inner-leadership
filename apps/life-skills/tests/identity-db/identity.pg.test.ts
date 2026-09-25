@@ -180,5 +180,12 @@ test('three plus-addressed demo invites use ordinary authentication and cannot c
   for(const address of Object.values(aliases))await accept(address);
   const roles=await Promise.all(Object.values(aliases).map(async address=>(await login(address)).actor.role));
   assert.deepEqual(roles,['parent','child','adult_client']);
+  const parentSession=await login(aliases.parent);
+  const audience=await cases.createAudience(practitioner.actor,minor.caseId,{visibility:'family_full',published:true},request());
+  await prefs.replace(parentSession.actor,parentSession.actor.id,[{...defaultPreference('practice_due','email','he'),enabled:true}],request());
+  const effect={schemaVersion:1 as const,workspaceId:config.workspaceId,caseId:minor.caseId,audienceId:audience.audienceId,recipientAccountId:parent.accountId,sourceId:randomUUID(),sourceVersionId:randomUUID(),neutralMessageKey:'practice_due' as const,dueAt:clock.now().toISOString(),channel:'email' as const,idempotencyKey:randomUUID()};
+  const delivery=new IdentityDeliveryAuthorization(store,clock,{async isCurrentAndPending(){return true;}});
+  assert.equal(await delivery.mayDeliver(effect),false,'demo email must be denied at final authorization even with opt-in');
+  assert.equal(await delivery.mayDeliver({...effect,channel:'in_app'}),true,'authorized demo in-app notice remains usable');
  }finally{if(oldRecipients)config.demoSetupRecipients=oldRecipients;else delete config.demoSetupRecipients;}
 });

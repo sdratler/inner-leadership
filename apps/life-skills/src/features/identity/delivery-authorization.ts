@@ -7,6 +7,7 @@ import { loadAudience,loadCase,loadGuardians } from "../cases/data.ts";
 import { defaultPreference,inQuietHours } from "./preferences.ts";
 import type { DeliveryAuthorization,NotificationEffectReference } from "./interfaces.ts";
 import type { IdentityClock,NotificationPreference } from "./types.ts";
+import { demoAccountBatch,demoCaseBatch } from "../demo/provenance.ts";
 export interface SourceValidityReader {isCurrentAndPending(effect:NotificationEffectReference):Promise<boolean>;}
 /** LS-090 must supply a real source-version/completion reader. Default deliberately denies. */
 export class IdentityDeliveryAuthorization implements DeliveryAuthorization {
@@ -16,6 +17,8 @@ export class IdentityDeliveryAuthorization implements DeliveryAuthorization {
   try{return await this.store.transaction(async tx=>{
    const account=await accountById(tx,effect.workspaceId,effect.recipientAccountId),audience=await loadAudience(tx,effect.workspaceId,effect.caseId,effect.audienceId);
    if(!account || !audience) return false;
+   // In-app demo notices remain visible; no external provider gets a demo recipient or case.
+   if(effect.channel!=='in_app' && (await demoAccountBatch(tx,effect.workspaceId,account.id) || await demoCaseBatch(tx,effect.workspaceId,effect.caseId))) return false;
    audienceAccess(account,await loadCase(tx,effect.workspaceId,effect.caseId),await loadGuardians(tx,effect.workspaceId,effect.caseId),audience);
    const row=await one<NotificationPreference>(tx,`SELECT event_type AS "eventType",channel,enabled,locale,timezone,quiet_start AS "quietStart",quiet_end AS "quietEnd"
     FROM ls_identity.preferences WHERE workspace_id=$1 AND account_id=$2 AND event_type=$3 AND channel=$4`,[effect.workspaceId,effect.recipientAccountId,effect.neutralMessageKey,effect.channel]);
