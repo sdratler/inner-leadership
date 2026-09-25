@@ -26,6 +26,7 @@ export function publicationStatusText(item: Publication, creatives: readonly Cre
 }
 const MONTH = /^(20\d{2})-(0[1-9]|1[0-2])$/;
 const queuedStates = new Set<Publication["state"]>(["ready", "scheduled", "sending"]);
+const instant = (value: string | null): number => value ? Date.parse(value) : Number.POSITIVE_INFINITY;
 export type ContentView = "all" | "queued" | "drafts" | "published" | "history";
 export function contentView(value: string | undefined): ContentView {
   return value === "queued" || value === "drafts" || value === "published" || value === "history" ? value : "all";
@@ -60,7 +61,7 @@ export function calendarDates(month: string): readonly (string | null)[] {
 }
 export function orderedPublicationQueue(publications: readonly Publication[]): readonly Publication[] {
   return publications.filter(item => queuedStates.has(item.state)).slice().sort((a, b) =>
-    (a.scheduledFor ?? "9999").localeCompare(b.scheduledFor ?? "9999") || a.id.localeCompare(b.id));
+    instant(a.scheduledFor) - instant(b.scheduledFor) || a.id.localeCompare(b.id));
 }
 export function nextHebrewStatus(publications: readonly Publication[], creatives: readonly CreativeVersion[], now: Date): Publication | null {
   return orderedPublicationQueue(publications).find(item => item.channel === "whatsapp_status" &&
@@ -77,6 +78,6 @@ export function monthPublications(publications: readonly Publication[], month: s
     const list = days.get(key) ?? [];
     list.push(item); days.set(key, list);
   }
-  for (const list of days.values()) list.sort((a, b) => a.scheduledFor!.localeCompare(b.scheduledFor!) || a.id.localeCompare(b.id));
+  for (const list of days.values()) list.sort((a, b) => instant(a.scheduledFor) - instant(b.scheduledFor) || a.id.localeCompare(b.id));
   return days;
 }

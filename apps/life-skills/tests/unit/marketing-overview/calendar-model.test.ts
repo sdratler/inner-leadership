@@ -35,6 +35,15 @@ describe("read-only Marketing content calendar", () => {
     expect(contentViewPublications(records, "published").map(item => item.id)).toEqual(["published"]);
     expect(contentView("unknown")).toBe("all");
   });
+  it("orders mixed ISO offsets by instant and keeps destination-specific records", () => {
+    const earlier = { ...post("earlier", "2026-10-01T00:00:00+03:00"), destinationLabel: "Group A" };
+    const later = { ...post("later", "2026-09-30T22:30:00Z"), destinationLabel: "Group B" };
+    expect(orderedPublicationQueue([later, earlier]).map(item => item.id)).toEqual(["earlier", "later"]);
+    expect(nextHebrewStatus([later, earlier], [creative], new Date("2026-09-30T20:00:00Z"))?.id).toBe("earlier");
+    const html = renderToStaticMarkup(React.createElement(MarketingDashboard, { locale: "en", snapshot: snapshot([later, earlier]), initialSection: "content_calendar", initialMonth: "2026-09", renderedAt: "2026-09-25T08:00:00Z" }));
+    expect(html).toContain("Group A");
+    expect(html).toContain("Group B");
+  });
   it("renders a real empty grid, Hebrew/English views and planned-versus-provider copy", () => {
     const empty = renderToStaticMarkup(React.createElement(MarketingDashboard, { locale: "en", snapshot: snapshot([]), initialSection: "content_calendar", initialMonth: "2026-09", renderedAt: "2026-09-25T08:00:00Z" }));
     expect(empty).toContain("Monthly content calendar");
@@ -44,5 +53,9 @@ describe("read-only Marketing content calendar", () => {
     expect(he).toContain("הסטטוס המתוכנן הבא בעברית במאגר");
     expect(he).toContain("אושר, אך לא תוזמן");
     expect(he).toContain("תצוגות פרסום");
+    const undated = renderToStaticMarkup(React.createElement(MarketingDashboard, { locale: "en", snapshot: snapshot([post("undated", null, "failed")]), initialSection: "content_calendar", initialMonth: "2026-09", renderedAt: "2026-09-25T08:00:00Z" }));
+    expect(undated).toContain("Other registry records");
+    expect(undated).toContain("No recorded date");
+    expect(undated).toContain("Hebrew Status");
   });
 });
