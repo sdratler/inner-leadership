@@ -7,7 +7,7 @@ const item = (key: string, path: string, en: string, he: string): NavItem => ({ 
 export const primaryNavigation: Record<WorkspaceRole, readonly NavItem[]> = {
   parent: [item("home", "family", "Home", "בית"), item("schedule", "family/schedule", "Calendar", "יומן"), item("practice", "family/practice", "Practice", "תרגול"), item("feedback", "family/feedback", "Messages", "הודעות")],
   client: [item("home", "client", "Home", "בית"), item("schedule", "client/calendar", "Calendar", "יומן"), item("practice", "client/practice", "Practice", "תרגול"), item("feedback", "client/messages", "Messages", "הודעות")],
-  practitioner: [item("calendar", "app/calendar", "Calendar", "יומן"), item("clients", "app/clients", "Clients", "לקוחות"), item("feedback", "app/feedback", "Communications", "תקשורת"), item("reports", "app/reports", "Reports", "דוחות"), item("marketing", "app/marketing", "Marketing", "שיווק"), item("payments", "app/payments", "Payments", "תשלומים")],
+  practitioner: [item("calendar", "app/calendar", "Calendar", "יומן"), item("clients", "app/clients", "People", "אנשים"), item("feedback", "app/feedback", "Communications", "תקשורת"), item("reports", "app/reports", "Reports", "דוחות"), item("marketing", "app/marketing", "Marketing", "שיווק"), item("payments", "app/payments", "Payments", "תשלומים")],
 };
 export const navigationGroups: Record<WorkspaceRole, readonly NavGroup[]> = {
   parent: [{ key: "materials", en: "Shared with you", he: "שותף איתכם", items: [item("forms", "family/forms", "Forms to complete", "טפסים למילוי"), item("resources", "family/resources", "Materials & exercises", "חומרים ותרגילים"), item("reports", "family/reports", "Shared reports", "דוחות משותפים")] }],
@@ -70,14 +70,14 @@ export function breadcrumbItems(locale: Locale, role: WorkspaceRole, pathname: s
   }
   if (pathname.includes("/app/cases/")) {
     const id=pathname.match(/\/app\/cases\/([^/]+)/)?.[1];
-    if(pathname.endsWith("/settings")&&isCaseId(id))return [home,{label:locale==="he"?"תיקים":"Clients",path:"app/clients"},{label:locale==="he"?"התיק הנבחר":"Selected case",path:`app/cases/${id}`},{label:locale==="he"?"גישה ומשתתפים":"Access & participants"}];
-    if(pathname.includes("/sessions")&&isCaseId(id))return [home,{label:locale==="he"?"לקוחות":"Clients",path:"app/clients"},{label:locale==="he"?"התיק הנבחר":"Selected case",path:`app/cases/${id}`},{label:locale==="he"?"מפגשים":"Sessions"}];
-    return [home, { label: locale === "he" ? "לקוחות" : "Clients", path: "app/clients" }, { label: locale === "he" ? "התיק הנבחר" : "Selected case" }];
+    if(pathname.endsWith("/settings")&&isCaseId(id))return [home,{label:locale==="he"?"אנשים":"People",path:"app/clients"},{label:locale==="he"?"התיק הנבחר":"Selected case",path:`app/cases/${id}`},{label:locale==="he"?"גישה ומשתתפים":"Access & participants"}];
+    if(pathname.includes("/sessions")&&isCaseId(id))return [home,{label:locale==="he"?"אנשים":"People",path:"app/clients"},{label:locale==="he"?"התיק הנבחר":"Selected case",path:`app/cases/${id}`},{label:locale==="he"?"מפגשים":"Sessions"}];
+    return [home, { label: locale === "he" ? "אנשים" : "People", path: "app/clients" }, { label: locale === "he" ? "התיק הנבחר" : "Selected case" }];
   }
   if(role==="practitioner"&&selectedClient&&isCaseId(caseId)){
     const key=pathname.includes("/app/calendar")?"calendar":pathname.includes("/app/practice")?"practice":pathname.includes("/app/feedback")?"communications":pathname.includes("/app/reports")?"reports":pathname.includes("/app/forms")?"forms":"overview";
     const child=practitionerContext(pathname,caseId,true).find(item=>item.key===key);
-    return [home,{label:locale==="he"?"לקוחות":"Clients",path:"app/clients"},{label:locale==="he"?"התיק הנבחר":"Selected case",path:`app/cases/${caseId}`},{label:child?.[locale]??(locale==="he"?"סקירה":"Overview")}];
+    return [home,{label:locale==="he"?"אנשים":"People",path:"app/clients"},{label:locale==="he"?"התיק הנבחר":"Selected case",path:`app/cases/${caseId}`},{label:child?.[locale]??(locale==="he"?"סקירה":"Overview")}];
   }
   const found = activeItem(pathname, locale, role);
   if (role === "practitioner" && found) {

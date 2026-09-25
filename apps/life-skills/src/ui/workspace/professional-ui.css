@@ -67,3 +67,28 @@
 @media(max-width:600px){.lsw.lsu .ls-cal[data-has-appointments="false"] .lsw-calendar-grid{display:block!important;max-width:100%;overflow-x:auto;overscroll-behavior-inline:contain}.lsw.lsu .ls-cal-board--week,.lsw.lsu .ls-cal-board--month{min-width:700px}.lsw.lsu .ls-cal-board--day{min-width:0}.lsw.lsu .lsw-calendar-agenda{border-top:1px solid var(--ui-line)}}
 .lsw.lsu .lsw-calendar--agenda .lsw-calendar-grid,.lsw.lsu .ls-cal[data-has-appointments="false"] .lsw-calendar--agenda .lsw-calendar-grid{display:none!important}
 .lsw.lsu .lsw-calendar--agenda .lsw-calendar-agenda{display:block!important}
+/* One contextual navigation element moves below the header controls on small screens. */
+.lsw.lsu .lsu-sidebar .lsu-nav-link[aria-current=page]{background:#236674;color:#fff}
+.lsw.lsu .lsu-drawer .lsu-nav-link[aria-current=page]{background:#236674;color:#fff}
+.lsw.lsu .lsw-calendar-toolbar button[aria-pressed=true]{background:var(--ui-teal)!important;border-color:var(--ui-teal)!important;color:#fff!important}
+@media(max-width:1023px){
+  .lsu-header{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 12px}
+  .lsu-brand{grid-column:1;grid-row:1}
+  .lsu-header-controls{grid-column:2;grid-row:1}
+  .lsu-header>.lsu-top-tabs{display:flex;grid-column:1/-1;grid-row:2;justify-content:flex-start;width:100%;padding-block:6px;scroll-snap-type:x proximity}
+  .lsu-header>.lsu-top-tabs>a{scroll-snap-align:start}
+}
+.lsw.lsu .lsu-people-toolbar{display:grid;grid-template-columns:minmax(220px,2fr) repeat(3,minmax(130px,1fr));gap:12px;align-items:end;padding:16px}
+.lsw.lsu .lsu-people-toolbar .lsw-field{margin:0}
+.lsu-people-results{display:grid;gap:8px;margin-block:12px}
+.lsw.lsu .lsu-person-row,.lsw.lsu .lsu-person-details{display:block;padding:0;text-decoration:none;color:var(--ui-deep)}
+.lsu-person-row,.lsu-person-details>summary{min-height:64px;display:grid;grid-template-columns:minmax(180px,2fr) minmax(110px,1fr) minmax(150px,1.5fr) minmax(90px,1fr);align-items:center;gap:12px;padding:12px 18px;cursor:pointer}
+.lsu-person-row>strong,.lsu-person-details>summary>strong{font-size:18px}
+.lsu-person-details>summary{list-style:none}
+.lsu-person-details>summary::-webkit-details-marker{display:none}
+.lsu-person-details>summary:after{content:"⌄";position:absolute;inset-inline-end:18px}
+.lsu-person-details{position:relative}
+.lsu-person-details[open]>summary{border-bottom:1px solid var(--ui-line)}
+.lsw.lsu .lsu-person-details>article{border:0;box-shadow:none;padding:18px}
+@media(max-width:800px){.lsw.lsu .lsu-people-toolbar{grid-template-columns:repeat(2,minmax(0,1fr))}.lsu-person-row,.lsu-person-details>summary{grid-template-columns:minmax(0,1fr) auto}.lsu-person-details>summary>span:nth-of-type(n+2){display:none}}
+@media(max-width:520px){.lsw.lsu .lsu-people-toolbar{grid-template-columns:1fr}.lsu-person-row,.lsu-person-details>summary{padding:12px}}

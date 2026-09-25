@@ -28,8 +28,8 @@ for(const locale of ["he","en"] as const){
    const base=`/${locale}/dev/ui/workspace?role=${role}&page=`;
    await page.goto(`${base}${role==="parent"?"family/schedule":"app/calendar"}`);
    await expect(page.locator(".lsu")).toHaveAttribute("dir",locale==="he"?"rtl":"ltr");
-   if(testInfo.project.name==="desktop")await expect(page.locator(".lsu-header>.lsu-top-tabs")).toBeVisible();
-   else await expect(page.locator(".lsu-mobile-tabs")).toBeVisible();
+   await expect(page.locator(".lsu-header>.lsu-top-tabs")).toBeVisible();
+   await expect(page.locator(".lsu-top-tabs")).toHaveCount(1);
    await expect(page.locator(".lsu-review-calendar")).toBeVisible();
    await expect(page.locator(".lsu-review-calendar>section")).toHaveCount(5);
    if(testInfo.project.name==="desktop"){
@@ -37,16 +37,16 @@ for(const locale of ["he","en"] as const){
     await expect(sidebar).toHaveCSS("background-color","rgb(22, 63, 72)");
     await expect(sidebar.locator('[aria-current="page"]')).toHaveCSS("color","rgb(255, 255, 255)");
    }else{
-    const strip=page.locator(".lsu-mobile-tabs .lsu-top-tabs");
+    const strip=page.locator(".lsu-header>.lsu-top-tabs");
     await expect(strip).toHaveCSS("overflow-x","auto");
     await expect(page.locator(".lsu-account summary")).toBeVisible();
    }
    await page.screenshot({path:testInfo.outputPath(`${locale}-${role}-calendar.png`),fullPage:true});
    const next=role==="parent"?"family/practice":"app/clients";
-   const top=testInfo.project.name==="desktop"?page.locator(".lsu-header>.lsu-top-tabs"):page.locator(".lsu-mobile-tabs .lsu-top-tabs");
+   const top=page.locator(".lsu-header>.lsu-top-tabs");
    if(role==="practitioner"&&testInfo.project.name==="mobile")await page.locator(".lsu-menu").click();
    const major=role==="practitioner"?(testInfo.project.name==="desktop"?page.locator(".lsu-sidebar"):page.locator(".lsu-drawer")):top;
-   await major.locator("a").filter({hasText:role==="parent"?(locale==="he"?"תרגול":"Practice"):(locale==="he"?"לקוחות":"Clients")}).first().click();
+   await major.locator("a").filter({hasText:role==="parent"?(locale==="he"?"תרגול":"Practice"):(locale==="he"?"אנשים":"People")}).first().click();
    await expect(page).toHaveURL(new RegExp(`page=${next.replace("/","%2F")}`));
    await expect(page.locator(".lsu-review-calendar")).toHaveCount(0);
    await page.goBack();
@@ -55,7 +55,7 @@ for(const locale of ["he","en"] as const){
     if(testInfo.project.name==="mobile")await page.locator(".lsu-menu").click();
     const majorNav=testInfo.project.name==="desktop"?page.locator(".lsu-sidebar"):page.locator(".lsu-drawer");
     await majorNav.locator("a").filter({hasText:locale==="he"?"שיווק":"Marketing"}).first().click();
-    const tabs=testInfo.project.name==="desktop"?page.locator(".lsu-header>.lsu-top-tabs"):page.locator(".lsu-mobile-tabs .lsu-top-tabs");
+    const tabs=page.locator(".lsu-header>.lsu-top-tabs");
     await tabs.locator("a").filter({hasText:locale==="he"?"מודעות":"Ads"}).click();
     await expect(page).toHaveURL(/section=ads/);
     await expect(page.getByRole("heading",{name:locale==="he"?"מודעות — נתוני דוגמה":"Ads — sample data"})).toBeVisible();

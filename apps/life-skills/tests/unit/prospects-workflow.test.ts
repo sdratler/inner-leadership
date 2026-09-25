@@ -1,13 +1,13 @@
 import {readFileSync} from "node:fs";
 import {describe,expect,it} from "vitest";
-import {unlinkedClientCases} from "../../src/features/prospects/client.tsx";
+import {visibleClientCases} from "../../src/features/prospects/client.tsx";
 const read=(path:string)=>readFileSync(new URL(`../../src/${path}`,import.meta.url),"utf8");
 describe("live intake follow-up contract",()=>{
- it("keeps a case visible when a linked CRM row does not match the current filter or the CRM is unavailable",()=>{
+ it("does not mistake a lead's linked child case for that same person",()=>{
   const cases=[{id:"case-a",kind:"minor" as const,state:"active",displayName:"Synthetic Case A"}];
-  expect(unlinkedClientCases(cases,[{caseId:"case-a"}],"",true)).toEqual([]);
-  expect(unlinkedClientCases(cases,[],"",true)).toEqual(cases);
-  expect(unlinkedClientCases(cases,[{caseId:"case-a"}],"synthetic",false)).toEqual(cases);
+  expect(visibleClientCases(cases,"")).toEqual(cases);
+  expect(visibleClientCases(cases,"synthetic")).toEqual(cases);
+  expect(visibleClientCases(cases,"unrelated")).toEqual([]);
  });
  it("keeps provider access server-side and practitioner-only",()=>{const route=read("app/api/prospects/route.ts"),bridge=read("features/prospects/bridge.ts");expect(route).toContain('actor.role!=="practitioner"');expect(route).toContain("verifyCsrfToken");expect(bridge).toContain('import "server-only"');expect(bridge).toContain("LIFE_SKILLS_APP_BRIDGE_SECRET");});
  it("uses the approved editable first-contact and intake copy and cleanly omits a missing name",()=>{const ui=read("features/prospects/client.tsx"),route=read("app/api/prospects/route.ts");expect(ui).toContain("this is Shlomo Dratler from Life Skills, following up on your inquiry. When is a convenient time for a brief call?");expect(ui).toContain("זה שלמה דרטלר. ניסיתי לחזור כפי שסיכמנו. מתי נוח לדבר?");expect(ui).toContain('name?`Hi ${name},`:`Hi,`');expect(route).toContain("After submitting it, you can continue to payment for the first session.");});
