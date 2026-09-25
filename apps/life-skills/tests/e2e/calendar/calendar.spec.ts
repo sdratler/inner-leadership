@@ -61,6 +61,19 @@ for(const locale of ['he','en'] as const){
   await page.screenshot({path:info.outputPath(`practitioner-${locale}-attendance.png`),fullPage:true});
  });
 }
+test('an empty calendar keeps its grid on mobile, while populated dates keep the readable agenda',async({page,context},info)=>{
+ await context.addCookies([{name:'__Host-ls-session',value:data.practitioner,url:data.origin,httpOnly:true,secure:true,sameSite:'Lax'}]);
+ const empty=await page.goto('/en/app/calendar?date=2040-01-02&view=week');expect(empty?.status()).toBe(200);
+ await expect(page.locator('main.ls-cal')).toHaveAttribute('data-has-appointments','false');
+ await expect(page.locator('[data-ls-calendar-grid]')).toBeVisible();
+ const d=data.cases[info.project.name+':en']!;
+ const populated=await page.goto(`/en/app/calendar?date=${d.pastDate}&view=day&caseId=${data.caseId}`);expect(populated?.status()).toBe(200);
+ await expect(page.locator('main.ls-cal')).toHaveAttribute('data-has-appointments','true');
+ if(info.project.name==='mobile'){
+  await expect(page.locator('.lsw-calendar-agenda')).toBeVisible();
+  await expect(page.locator('.lsw-calendar-grid')).toBeHidden();
+ }else await expect(page.locator('[data-ls-calendar-grid]')).toBeVisible();
+});
 test('API denies unauthenticated access and timestamp-forged notices; no secret response or partial receipt',async({page,context})=>{
  const noSession=await page.request.get('/api/calendar/appointments/'+data.foreignId);expect(noSession.status()).toBe(401);
  await context.addCookies([{name:'__Host-ls-session',value:data.parent,url:data.origin,httpOnly:true,secure:true,sameSite:'Lax'}]);

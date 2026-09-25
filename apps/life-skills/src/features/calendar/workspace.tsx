@@ -19,6 +19,7 @@ import { AttendanceForm, BookingForm, NoticeForm, PractitionerActionForm, type C
 import { CalendarAgenda, CalendarBoard, formatTime, NoticeReceipt } from './views.tsx';
 import { IntakeSummaryCard } from '../prospects/summary-card.tsx';
 import { CalendarAttentionSummary } from './attention-summary.tsx';
+import { readPractitionerCalendar } from './practitioner-load.ts';
 import './calendar.css';
 type HistoryPage={items:Array<{version:number;state:'present'|'late'|'no_show'|'canceled';recordedAt:string;reason:string|null}>;nextVersion:number|null};
 import { verifiedGoogleMeetUrl } from './meeting-url.ts';
@@ -27,7 +28,7 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  const router=useRouter();
  const t=text(locale),practitioner=role==='practitioner';
  const [cases,setCases]=useState<CaseChoice[]>([]),[caseId,setCaseId]=useState(initialCaseId),[items,setItems]=useState<AppointmentView[]>([]),[cursor,setCursor]=useState<string|null>(null);
- const [loading,setLoading]=useState(true),[error,setError]=useState(false),[count,setCount]=useState<number|null>(null);
+ const [loading,setLoading]=useState(true),[error,setError]=useState(false),[caseError,setCaseError]=useState(false),[countError,setCountError]=useState(false),[count,setCount]=useState<number|null>(null);
  const [selected,setSelected]=useState<AppointmentView|null>(null),[dirty,setDirty]=useState(false),[bookingOpen,setBookingOpen]=useState(false),[checkinFor,setCheckinFor]=useState<AppointmentView|null>(null),[bookingNonce,setBookingNonce]=useState(0);
  const [history,setHistory]=useState<HistoryPage|null>(null),[historyError,setHistoryError]=useState(false),[dateInput,setDateInput]=useState(initialDate);
  const mutation=useCalendarMutation(locale),generation=useRef(0),date=initialDate,view=initialView;
@@ -42,15 +43,25 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  const load=useCallback(async (reset=true,after:string|null=null)=>{
   const current=reset?++generation.current:generation.current;setLoading(reset);setError(false);
   try{
-   const currentCases=await accountRead<CaseChoice[]>('cases');if(current!==generation.current)return;setCases(currentCases);
    let selectedCase=caseId;
-   if(!practitioner&&!selectedCase){selectedCase=currentCases.find(c=>c.kind===caseKind)?.id??'';if(selectedCase){setCaseId(selectedCase);return;}}
-   if(!practitioner&&!selectedCase){setItems([]);setLoading(false);return;}
-   const params=new URLSearchParams({from:range.from,to:range.to,...(selectedCase?{caseId:selectedCase}:{}),...(!reset&&after?{cursor:after}:{})});
-   const page=await calendarRead<SchedulePage>('appointments?'+params);if(current!==generation.current)return;
+   let page:SchedulePage;
+   if(practitioner){
+    const params=new URLSearchParams({from:range.from,to:range.to,...(selectedCase?{caseId:selectedCase}:{}),...(!reset&&after?{cursor:after}:{})});
+    const result=await readPractitionerCalendar(()=>accountRead<CaseChoice[]>('cases'),()=>calendarRead<SchedulePage>('appointments?'+params));
+    if(current!==generation.current)return;
+    setCases(result.cases);setCaseError(result.casesUnavailable);page=result.page;
+   }else{
+    const currentCases=await accountRead<CaseChoice[]>('cases');if(current!==generation.current)return;setCases(currentCases);setCaseError(false);
+    if(!selectedCase){selectedCase=currentCases.find(c=>c.kind===caseKind)?.id??'';if(selectedCase){setCaseId(selectedCase);return;}}
+    if(!selectedCase){setItems([]);setLoading(false);return;}
+    const params=new URLSearchParams({from:range.from,to:range.to,caseId:selectedCase,...(!reset&&after?{cursor:after}:{})});
+    page=await calendarRead<SchedulePage>('appointments?'+params);if(current!==generation.current)return;
+   }
    setItems(old=>reset?page.items:[...old,...page.items.filter(a=>!old.some(o=>o.id===a.id))]);setCursor(page.nextCursor);
-
-   if(selectedCase&&role!=="adult_client"&&role!=="child"){const value=await calendarRead<{attendedChildSessions:number}>('attendance-count?'+new URLSearchParams({caseId:selectedCase}));if(current===generation.current)setCount(value.attendedChildSessions);}else setCount(null);
+   if(selectedCase&&role!=="adult_client"&&role!=="child"){
+    try{const value=await calendarRead<{attendedChildSessions:number}>('attendance-count?'+new URLSearchParams({caseId:selectedCase}));if(current===generation.current){setCount(value.attendedChildSessions);setCountError(false);}}
+    catch{if(current===generation.current){setCount(null);setCountError(true);}}
+   }else{setCount(null);setCountError(false);}
   }catch{if(current===generation.current){setError(true);if(reset){setItems([]);setCases([]);}}}
   finally{if(current===generation.current)setLoading(false);}
  },[caseId,caseKind,range.from,range.to,practitioner,role]);
@@ -72,17 +83,16 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  return <main className="ls-cal lsw" dir={locale==='he'?'rtl':'ltr'} lang={locale} data-has-appointments={items.length>0}>
  <UnsavedChangesGuard dirty={dirty||mutation.uncertain} message={t.dirty}/>
  <PageHeader title={practitioner?t.title:t.familyTitle} context={practitioner?t.context:t.familyContext}/>
- {practitioner&&<IntakeSummaryCard locale={locale}/>}
- {practitioner&&<CalendarAttentionSummary locale={locale} caseId={caseId}/>}
- {practitioner&&<nav className="lsu-attention-links" aria-label={locale==='he'?'לעבודה הקרובה':'Immediate work'}><a href={`/${locale}/app/prospects`}>{locale==='he'?'קליטת מתעניינים':'Prospect intake'}</a><a href={`/${locale}/app/feedback${caseId?'?caseId='+encodeURIComponent(caseId):''}`}>{locale==='he'?'משוב לבדיקה':'Review feedback'}</a><a href={`/${locale}/app/clients${caseId?'?caseId='+encodeURIComponent(caseId):''}`}>{locale==='he'?'פתיחת תיק':'Open a case'}</a><a href={`/${locale}/app/reports${caseId?'?caseId='+encodeURIComponent(caseId):''}`}>{locale==='he'?'דוחות חודשיים':'Monthly reports'}</a></nav>}
- <div className="ls-cal-toolbar"><Select id="calendar-case" label={t.case} value={caseId} onChange={e=>selectCase(e.target.value)} disabled={mutation.locked}>{practitioner&&<option value="">{t.allCases}</option>}{cases.filter(c=>practitioner||c.kind===caseKind).map(c=><option key={c.id} value={c.id}>{c.displayName}</option>)}</Select>
+ <div className="ls-cal-toolbar"><Select id="calendar-case" label={t.case} value={caseId} onChange={e=>selectCase(e.target.value)} disabled={mutation.locked||caseError}>{practitioner&&<option value="">{t.allCases}</option>}{caseError&&caseId&&<option value={caseId}>{locale==='he'?'לקוח נבחר — הרשימה אינה זמינה':'Selected client — list unavailable'}</option>}{cases.filter(c=>practitioner||c.kind===caseKind).map(c=><option key={c.id} value={c.id}>{c.displayName}</option>)}</Select>
  <form className="ls-cal-period" action={basePath}><Input id="calendar-date" label={t.period} type="date" name="date" required value={dateInput} onChange={e=>setDateInput(e.target.value)}/><input type="hidden" name="view" value={view}/><input type="hidden" name="caseId" value={caseId}/>{selectedClientContext&&caseId&&<input type="hidden" name="context" value="client"/>}<Button type="submit">{t.go}</Button></form>
  {practitioner&&<div className="ls-cal-actions"><Button disabled={mutation.locked||!cases.length} onClick={e=>openBook(e)}>{t.newBooking}</Button><a className="lsw-button lsw-button--secondary" href={`/${locale}/app/settings/availability?date=${date}`}>{t.availability}</a></div>}</div>
+ {practitioner&&<div className="ls-cal-operational"><IntakeSummaryCard locale={locale}/><CalendarAttentionSummary locale={locale} caseId={caseId}/></div>}
  {count!==null&&<aside className="ls-cal-count"><strong>{t.attendedCount}: {new Intl.NumberFormat(locale).format(count)}</strong><p>{t.attendanceOnly}</p></aside>}
- {loading?<LoadingState locale={locale}/>:error?<ErrorState locale={locale} onRetry={()=>void load()}/>:<>{!cases.length&&<p role="status">{t.noCases}</p>}<CalendarShell locale={locale} period={new Intl.DateTimeFormat(locale==='he'?'he-IL':'en-GB',{timeZone:'Asia/Jerusalem',month:'long',year:'numeric'}).format(new Date(date+'T12:00Z'))} view={view}
+ {loading?<LoadingState locale={locale}/>:error?<ErrorState locale={locale} onRetry={()=>void load()}/>:<>{caseError&&<p className="ls-cal-partial" role="status">{locale==='he'?'רשימת הלקוחות אינה זמינה כרגע. המפגשים המורשים עדיין מוצגים; שמות ותיאום חדש עשויים להיות חסרים.':'The client list is unavailable right now. Authorized appointments still appear; names and new booking may be unavailable.'} <Button variant="quiet" onClick={()=>void load()}>{locale==='he'?'ניסיון חוזר':'Retry client list'}</Button></p>}{countError&&<p className="ls-cal-partial" role="status">{locale==='he'?'ספירת המפגשים אינה זמינה כרגע. היומן עדיין מוצג.':'Attendance count is unavailable right now. The calendar is still shown.'}</p>}{!caseError&&!cases.length&&<p role="status">{t.noCases}</p>}<CalendarShell locale={locale} period={new Intl.DateTimeFormat(locale==='he'?'he-IL':'en-GB',{timeZone:'Asia/Jerusalem',month:'long',year:'numeric'}).format(new Date(date+'T12:00Z'))} view={view}
  viewHrefs={{day:href(date,'day'),week:href(date,'week'),month:href(date,'month'),agenda:href(date,'agenda')}} showViewTabs todayHref={href(civilDate(new Date().toISOString()))} previousHref={href(view==='month'?shiftMonth(date,-1):shiftDay(date,view==='day'?-1:view==='agenda'?-14:-7))} nextHref={href(view==='month'?shiftMonth(date,1):shiftDay(date,view==='day'?1:view==='agenda'?14:7))}
  desktop={<CalendarBoard dates={range.dates} items={items} locale={locale} view={view==='agenda'?'week':view} names={names} onOpen={showAppointment}/>}
  agenda={<CalendarAgenda items={items} locale={locale} names={names} onOpen={showAppointment}/>}/></>}
+ {practitioner&&<nav className="lsu-attention-links ls-cal-related-links" aria-label={locale==='he'?'לעבודה הקרובה':'Immediate work'}><a href={`/${locale}/app/prospects`}>{locale==='he'?'קליטת מתעניינים':'Prospect intake'}</a><a href={`/${locale}/app/feedback${caseId?'?caseId='+encodeURIComponent(caseId):''}`}>{locale==='he'?'משוב לבדיקה':'Review feedback'}</a><a href={`/${locale}/app/clients${caseId?'?caseId='+encodeURIComponent(caseId):''}`}>{locale==='he'?'פתיחת תיק':'Open a case'}</a><a href={`/${locale}/app/reports${caseId?'?caseId='+encodeURIComponent(caseId):''}`}>{locale==='he'?'דוחות חודשיים':'Monthly reports'}</a></nav>}
  {cursor&&<div className="ls-cal-pagination"><p>{t.partial}</p><Button onClick={()=>void load(false,cursor)} disabled={loading}>{t.loadMore}</Button></div>}
  <p className="ls-cal-muted">{t.remaining}</p>
 

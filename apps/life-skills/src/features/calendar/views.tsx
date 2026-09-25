@@ -10,7 +10,7 @@ export function formatTime(value:string,locale:Locale,full=true){return new Intl
 export type OpenAppointment=(a:AppointmentView,e:MouseEvent<HTMLButtonElement>)=>void;
 export function CalendarBoard({dates,items,locale,view,names,onOpen}:{dates:string[];items:AppointmentView[];locale:Locale;view:'day'|'week'|'month';names:Record<string,string>;onOpen:OpenAppointment}){
  const t=text(locale);
- return <div className={'ls-cal-board ls-cal-board--'+view}>{dates.map(date=>{
+ return <div className={'ls-cal-board ls-cal-board--'+view} data-ls-calendar-grid>{dates.map(date=>{
   const appointments=items.filter(a=>civilDate(a.startsAt)===date);
   const heading=new Intl.DateTimeFormat(locale==='he'?'he-IL':'en-GB',{weekday:'short',day:'numeric',month:'short',timeZone:'Asia/Jerusalem'}).format(new Date(date+'T12:00:00Z'));
   return <section key={date} className="ls-cal-day" aria-labelledby={'day-'+date}><h3 id={'day-'+date}><time dateTime={date}>{heading}</time></h3>
