@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { demoAccountBatch, demoCaseBatch, realCaseEffectAllowed } from '../../src/features/demo/provenance.ts';
+import { demoAccountBatch, demoCaseBatch, demoRecordBatch, realCaseEffectAllowed } from '../../src/features/demo/provenance.ts';
 import type { SqlSession } from '../../src/features/identity/store.ts';
 
 function session(batchId: string | null): SqlSession {
@@ -15,6 +15,16 @@ describe('server-owned demo provenance', () => {
   it('does not turn an unmarked real case into demo from its name', async () => {
     expect(await realCaseEffectAllowed(session(null), 'workspace', 'case')).toBe(true);
     expect(await demoAccountBatch(session(null), 'workspace', 'account')).toBeNull();
+  });
+
+  it('identifies a marked non-contactable prospect by server-owned record key', async () => {
+    const requested: unknown[][] = [];
+    const tx: SqlSession = { query: async <T extends object>(_sql: string, values: readonly unknown[] = []) => {
+      requested.push([...values]);
+      return [{ batchId: 'ls-owner-20260925' }] as T[];
+    } };
+    expect(await demoRecordBatch(tx, 'workspace', 'prospect', 'LS-LEAD-demo')).toBe('ls-owner-20260925');
+    expect(requested).toEqual([['workspace', 'prospect', 'LS-LEAD-demo']]);
   });
 
   it('fails closed when provenance cannot be read', async () => {

@@ -18,6 +18,13 @@ export async function demoCaseBatch(tx: SqlSession, workspaceId: string, caseId:
   return row?.batchId ?? null;
 }
 
+export async function demoRecordBatch(tx: SqlSession, workspaceId: string, entityKind: string, entityKey: string): Promise<string | null> {
+  const row = await one<DemoBatch>(tx,
+    'SELECT batch_id AS "batchId" FROM ls_demo.records WHERE workspace_id=$1 AND entity_kind=$2 AND entity_key=$3',
+    [workspaceId, entityKind, entityKey]);
+  return row?.batchId ?? null;
+}
+
 /** New external-effect adapters must call this again immediately before dispatch. */
 export async function realCaseEffectAllowed(tx: SqlSession, workspaceId: string, caseId: string): Promise<boolean> {
   return (await demoCaseBatch(tx, workspaceId, caseId)) === null;

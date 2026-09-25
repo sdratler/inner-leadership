@@ -51,7 +51,9 @@ before(async()=>{
  assert.ok(createHash('sha256').update(foundation).digest('hex')==='df3ba0131c7d5fd093953884e5f5316c7416b2dbe49fceee0d57acf2ae362dcd','foundation migration must match frozen baseline');
  await pool.query('CREATE SCHEMA ls_control');await pool.query(foundation);
  await pool.query(await readFile(resolve('migrations/0010_ls_identity_cases_20260906.sql'),'utf8'));
+ await pool.query(await readFile(resolve('migrations/0030_ls_calendar_attendance_20260907.sql'),'utf8'));
  await pool.query(await readFile(resolve('migrations/0095_ls_optional_child_accounts.sql'),'utf8'));
+ await pool.query(await readFile(resolve('migrations/0097_ls_demo_provenance.sql'),'utf8'));
  config={enabled:true,origin:'https://app.example.invalid',workspaceId:asId(randomUUID(),'workspace'),csrfKey:randomBytes(32),lookupKey:randomBytes(32),rateLimitKey:opaqueToken(),keyring:{activeKeyId:'test',keys:{test:randomBytes(32)}},sessionSeconds:28800,childAccountsEnabled:true};
  auth=new IdentityAuthService(store,config,clock);accounts=new IdentityAccountService(store,config,clock);sessions=new IdentitySessions(store,config,clock);prefs=new IdentityPreferenceService(store,config,clock);cases=new CaseService(store,config,clock);authorizer=new DatabaseCaseAuthorizer(store);
 });
