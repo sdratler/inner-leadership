@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { CreativeVersion, MarketingSnapshot, Publication } from "../../../src/features/marketing-overview/contracts.ts";
-import { adjacentMonth, calendarDates, contentDayKey, contentMonth, contentView, contentViewPublications, monthPublications, nextHebrewStatus, orderedPublicationQueue, publicationDisplayTime, publicationStatusText } from "../../../src/features/marketing-overview/calendar-model.ts";
+import { adjacentMonth, calendarDates, contentDayKey, contentMonth, contentView, contentViewPublications, monthPublications, nextHebrewStatus, orderedPublicationQueue, publicationDisplayTime, publicationTimeIssue, publicationStatusText } from "../../../src/features/marketing-overview/calendar-model.ts";
 import { MarketingDashboard } from "../../../src/ui/revamp/marketing-dashboard.tsx";
 
 const creative = { assetId: "he-status-1", revision: 2, locale: "he", review: "approved", contentDigest: "a".repeat(64), approvedDigest: "a".repeat(64) } as CreativeVersion;
@@ -25,7 +25,7 @@ describe("read-only Marketing content calendar", () => {
     expect(nextHebrewStatus([invalid], [creative], new Date("2026-02-25T08:00:00Z"))).toBeNull();
     expect(() => renderToStaticMarkup(React.createElement(MarketingDashboard, { locale: "en", snapshot: snapshot([invalid]), initialSection: "overview", renderedAt: "2026-09-25T08:00:00Z" }))).not.toThrow();
     const calendar = renderToStaticMarkup(React.createElement(MarketingDashboard, { locale: "en", snapshot: snapshot([invalid]), initialSection: "content_calendar", initialMonth: "2026-03", renderedAt: "2026-09-25T08:00:00Z" }));
-    expect(calendar).toContain("Invalid recorded date — check source");
+    expect(calendar).toContain("Invalid scheduled date — check source");
   });
   it("renders empty month grids, leap dates and linkable adjacent months", () => {
     expect(calendarDates("2026-02").filter(Boolean)).toHaveLength(28);
@@ -78,11 +78,17 @@ describe("read-only Marketing content calendar", () => {
     expect(undated).toContain("Provider receipt: receipt-queue");
     const manuallyReported = { ...post("reported", null, "manually_reported"), manualReportedAt: "2026-09-30T17:05:00Z" };
     expect(publicationDisplayTime(manuallyReported)).toBe("2026-09-30T17:05:00Z");
-    expect(publicationDisplayTime({ ...manuallyReported, manualReportedAt: "2026-02-30T17:05:00Z" })).toBeNull();
+    const invalidReport = { ...manuallyReported, scheduledFor: "2026-09-30T17:00:00Z", manualReportedAt: "2026-02-30T17:05:00Z" };
+    expect(publicationDisplayTime(invalidReport)).toBeNull();
+    expect(publicationTimeIssue(invalidReport)).toBe("manual");
+    expect(monthPublications([invalidReport], "2026-09").size).toBe(0);
     expect(monthPublications([manuallyReported], "2026-09").get("2026-09-30")?.[0]?.id).toBe("reported");
     const history = renderToStaticMarkup(React.createElement(MarketingDashboard, { locale: "en", snapshot: snapshot([manuallyReported]), initialSection: "content_calendar", initialFilter: "history", initialMonth: "2026-09", renderedAt: "2026-09-25T08:00:00Z" }));
     expect(history).toContain("Sep 30, 2026");
     expect(history).not.toContain("No recorded date");
+    const invalidHistory = renderToStaticMarkup(React.createElement(MarketingDashboard, { locale: "en", snapshot: snapshot([invalidReport]), initialSection: "content_calendar", initialFilter: "history", initialMonth: "2026-09", renderedAt: "2026-09-25T08:00:00Z" }));
+    expect(invalidHistory).toContain("Invalid manual report date — check source");
+    expect(invalidHistory).not.toContain("Sep 30, 2026");
     const noSource = renderToStaticMarkup(React.createElement(MarketingDashboard, { locale: "en", snapshot: { ...snapshot([]), creatives: [{ ...creative, imageUrl: null, sourceUrl: null, width: 1080, height: 1920, title: "No source" }] }, initialSection: "creatives", renderedAt: "2026-09-25T08:00:00Z" }));
     expect(noSource).toContain("No verified thumbnail");
     expect(noSource).not.toContain("Thumbnail unavailable; open the source asset");

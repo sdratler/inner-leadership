@@ -41,8 +41,13 @@ export function contentViewPublications(publications: readonly Publication[], vi
     view === "history" && ["published", "manually_reported", "skipped", "failed", "unknown"].includes(item.state));
 }
 export function publicationDisplayTime(item: Publication): string | null {
+  if (item.state === "manually_reported" && item.manualReportedAt !== null && !validIso(item.manualReportedAt)) return null;
   if (item.state === "manually_reported" && validIso(item.manualReportedAt)) return item.manualReportedAt;
   return validIso(item.scheduledFor) ? item.scheduledFor : null;
+}
+export function publicationTimeIssue(item: Publication): "manual" | "scheduled" | null {
+  if (item.state === "manually_reported" && item.manualReportedAt !== null && !validIso(item.manualReportedAt)) return "manual";
+  return item.scheduledFor !== null && !validIso(item.scheduledFor) ? "scheduled" : null;
 }
 
 export function contentDayKey(instant: string, timezone = CONTENT_TIMEZONE): string {
