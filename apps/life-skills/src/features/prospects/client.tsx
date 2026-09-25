@@ -10,6 +10,10 @@ import type {Prospect} from "./bridge.ts";
 type State="loading"|"ready"|"error";
 export type Preset="all"|"today"|"new"|"intake"|"payment"|"booking"|"archived";
 export type ClientCase={id:string;kind:"minor"|"adult";state:string;displayName:string};
+export function unlinkedClientCases(cases:readonly ClientCase[],matchedProspects:readonly Pick<Prospect,"caseId">[],query:string,crmReady:boolean):ClientCase[]{
+ const needle=query.trim().toLocaleLowerCase();
+ return cases.filter(row=>(!crmReady||!matchedProspects.some(prospect=>prospect.caseId===row.id))&&row.displayName.toLocaleLowerCase().includes(needle));
+}
 const PAGE_SIZE=12;
 const copy={
  en:{title:"Clients & prospects",lead:"Follow each inquiry from first contact through intake, verified payment and a confirmed first appointment.",clients:"Clients",prospects:"Prospects / intake",all:"All open",today:"Due today",newLead:"New inquiries",intake:"Intake",payment:"Awaiting verified payment",booking:"Paid — awaiting booking",archived:"Archived",empty:"No prospects match these filters.",retry:"Try again",save:"Save follow-up",send:"Send WhatsApp",sendIntake:"Send intake form",bookingLink:"Secure booking link",sendBooking:"Send booking link",children:"Children on form",notes:"Administrative note",next:"Next action",due:"Due date",owner:"Owner",loading:"Loading the private CRM…",failed:"The CRM could not be loaded. Try again.",saved:"Saved.",created:"Prospect saved without sending anything.",sent:"WhatsApp delivery confirmed.",sendFailed:"The action could not be confirmed. Nothing was marked sent.",paymentGate:"Booking is available only after an authenticated payment is verified.",intakeHelp:"This sends the existing private intake form. Submitting it moves the inquiry directly to payment; there is no second acceptance step.",search:"Search name or phone",stage:"Stage",language:"Language",dueFilter:"Due",any:"Any",overdue:"Overdue",add:"Add prospect",name:"Name (optional)",phone:"Phone",source:"Source",previous:"Previous",nextPage:"Next",page:"Page"},
@@ -66,7 +70,7 @@ export function ProspectsClient({locale,initialFilter="all",embedded=false,clien
  }).sort((a,b)=>(a.dueDate||"9999").localeCompare(b.dueDate||"9999")||a.receivedAt.localeCompare(b.receivedAt)||a.leadId.localeCompare(b.leadId)),[rows,preset,stage,language,due,query,today]);
  const pages=Math.max(1,Math.ceil(shown.length/PAGE_SIZE)),visible=shown.slice((page-1)*PAGE_SIZE,page*PAGE_SIZE);
  const casesShown=(preset==="all"||preset==="archived")&&!stage&&!language&&!due
-  ?clientCases.filter(row=>(state!=="ready"||!rows.some(prospect=>prospect.caseId===row.id))&&row.displayName.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())):[];
+  ?unlinkedClientCases(clientCases,shown,query,state==="ready"):[];
  async function action(payload:unknown){setStatus("");try{await api({method:"POST",body:JSON.stringify(payload)});const kind=(payload as {action:string}).action;setStatus(kind==="update"?t.saved:kind==="add"?t.created:t.sent);load()}catch{setStatus(t.sendFailed)}}
  const filters:readonly (readonly [Preset,string])[]=[["all",t.all],["today",t.today],["new",t.newLead],["intake",t.intake],["payment",t.payment],["booking",t.booking],["archived",t.archived]];
  const content=<>
