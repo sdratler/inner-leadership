@@ -62,5 +62,9 @@
   {
     "name": "0096_ls_intake_followup.sql",
     "sha256": "e2c5abb3ba045d7bb37e748ab486cd151b6b7952da501c7b24fda3d5a9375aa0"
+  },
+  {
+    "name": "0097_ls_demo_provenance.sql",
+    "sha256": "be52f8c68986c8491a985e66cc8088bb4410ca2d5b7f8b7161aa77dd5325b531"
   }
 ]
