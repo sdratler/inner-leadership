@@ -18,6 +18,7 @@ export interface CutoverProof {
     inboundDurable: boolean;
     deltaDrained: boolean;
     consumersRepointed: boolean;
+    sheetConsumersRepointed: boolean;
     nativeBrowserVerified: boolean;
     oldSchedulesDisabled: boolean;
     sourceFrozen: boolean;
@@ -49,7 +50,7 @@ export function advanceCutover(s: CutoverState, action: CutoverAction, proof: Cu
     }
     if (action === "retire_sheet") {
         requireThat(s.phase === "native_active", "WRONG_PHASE");
-        requireThat(proof.nativeBrowserVerified && proof.oldSchedulesDisabled && proof.consumersRepointed && proof.deltaDrained && proof.backupRestored, "UNSAFE_RETIREMENT");
+        requireThat(proof.nativeBrowserVerified && proof.oldSchedulesDisabled && proof.consumersRepointed && proof.deltaDrained && proof.backupRestored && proof.writersFenced && proof.sourceFrozen, "UNSAFE_RETIREMENT");
         return to("retired");
     }
     if (action === "prepare_rollback") {
@@ -59,7 +60,7 @@ export function advanceCutover(s: CutoverState, action: CutoverAction, proof: Cu
     }
     requireThat(s.phase === "rollback_prepared", "WRONG_PHASE");
     // Native writes require an explicit delta export/reconciliation; never flip an old flag back.
-    requireThat(proof.writersFenced && proof.deltaDrained && proof.rowContentMatched && proof.allRowsAccounted && proof.paymentsReconciled, "ROLLBACK_DELTA_UNVERIFIED");
+    requireThat(proof.writersFenced && proof.deltaDrained && proof.rowContentMatched && proof.allRowsAccounted && proof.paymentsReconciled && proof.sheetConsumersRepointed, "ROLLBACK_DELTA_UNVERIFIED");
     return { ...to("sheet_active"), nativeWritesSinceSwitch: 0, batchId: null };
 }
 export function writeDestination(phase: Phase): "sheet" | "native" | "durable_queue_only" {

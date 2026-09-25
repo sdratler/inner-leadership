@@ -50,6 +50,7 @@ export interface PersonRow {
     stage: IntakeStage;
     archived: boolean;
     active: boolean;
+    openProspect: boolean;
     paidAwaitingBooking: boolean;
     doNotContact: boolean;
     demo: boolean;

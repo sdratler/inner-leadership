@@ -35,6 +35,7 @@ export function projectPeople(workspaceId: string, people: readonly Administrati
         return { id: p.personId, displayName: p.mode === "demo" && !p.displayName.startsWith("DEMO — ") ? "DEMO — " + p.displayName : p.displayName,
             kind: p.kind, phone: p.endpoints.find(x => x.channel === "whatsapp")?.value ?? null, email: p.endpoints.find(x => x.channel === "email")?.value ?? null,
             locale: p.locale, stage, archived: p.archivedAt !== null, active: fs.some(f => f.activeCase && !f.suspended),
+            openProspect: fs.length === 0 || fs.some(f => !f.activeCase && !f.confirmedAppointmentId && !f.suspended),
             paidAwaitingBooking: fs.some(f => Boolean(f.paymentAllocationId) && !f.paymentReversedAt && !f.confirmedAppointmentId && !f.suspended),
             doNotContact: p.doNotContact, demo: p.mode === "demo", caseCount: new Set(p.caseIds).size,
             nextAction: a?.nextAction ?? null, followUpDate: a?.followUpDate ?? null, nextAppointmentAt: a?.nextAppointmentAt ?? null, unreadCount: a?.unreadCount ?? 0, version: p.version };
@@ -59,7 +60,7 @@ export function selectPeople(rows: readonly PersonRow[], q: PeopleQuery): Page<P
     const filtered = rows.filter(r => {
         if (q.view === "all" && r.archived)
             return false;
-        if (q.view === "prospects" && (r.active || r.archived))
+        if (q.view === "prospects" && (!r.openProspect || r.archived))
             return false;
         if (q.view === "paid" && (!r.paidAwaitingBooking || r.archived))
             return false;

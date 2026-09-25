@@ -7,7 +7,7 @@ import type {AdministrativePerson,JourneyFacts} from "../../../src/features/cont
 const person=(personId="synthetic-person",changes:Partial<AdministrativePerson>={}):AdministrativePerson=>({personId,workspaceId:"synthetic-workspace",displayName:"DEMO — Synthetic adult",kind:"guardian",locale:"he",endpoints:[],legacyLeadIds:[],caseIds:[],mode:"demo",demoBatchId:"synthetic-batch",archivedAt:null,doNotContact:false,version:1,...changes});
 const journey=(changes:Partial<JourneyFacts>={}):JourneyFacts=>({personId:"synthetic-person",enrollmentId:"synthetic-enrollment",caseId:null,formSubmittedAt:null,formSentAt:null,contactedAt:null,paymentAllocationId:null,paymentReversedAt:null,confirmedAppointmentId:null,activeCase:false,suspended:false,...changes});
 const query=(changes:Partial<Parameters<typeof selectPeople>[1]>={})=>({view:"all" as const,search:"",today:"2026-09-25",page:1,pageSize:12,...changes});
-const proof=(changes:Partial<CutoverProof>={}):CutoverProof=>({backupRestored:true,snapshotMatched:true,imported:true,rowContentMatched:true,allRowsAccounted:true,identityConflicts:0,paymentsReconciled:true,writersFenced:true,inboundDurable:true,deltaDrained:true,consumersRepointed:true,nativeBrowserVerified:true,oldSchedulesDisabled:true,sourceFrozen:true,restorePlanReady:true,...changes});
+const proof=(changes:Partial<CutoverProof>={}):CutoverProof=>({backupRestored:true,snapshotMatched:true,imported:true,rowContentMatched:true,allRowsAccounted:true,identityConflicts:0,paymentsReconciled:true,writersFenced:true,inboundDurable:true,deltaDrained:true,consumersRepointed:true,sheetConsumersRepointed:true,nativeBrowserVerified:true,oldSchedulesDisabled:true,sourceFrozen:true,restorePlanReady:true,...changes});
 const state=(phase:CutoverState["phase"]="sheet_active"):CutoverState=>({phase,epoch:4,batchId:phase==="sheet_active"?null:"synthetic-batch",nativeWritesSinceSwitch:0});
 
 describe("native CRM candidate integrated into the existing app",()=>{
@@ -15,6 +15,9 @@ describe("native CRM candidate integrated into the existing app",()=>{
   expect(normalizeEmail("demo+parent@EXAMPLE.INVALID")).toBe("demo+parent@example.invalid");
   expect(normalizeEmail("uK@EXAMPLE.INVALID")).toBe("uK@example.invalid");
   expect(normalizeEmail("uK@EXAMPLE.INVALID")).toBe("uK@example.invalid");
+  expect(normalizeEmail("a@example..com")).toBeNull();
+  expect(normalizeEmail("a@-example.com")).toBeNull();
+  expect(normalizeEmail("a@example-.com")).toBeNull();
   expect(normalizePhone("052-000-0001")).toBe("+972520000001");
   expect(normalizePhone("name@phone")).toBeNull();
  });
@@ -50,11 +53,23 @@ describe("native CRM candidate integrated into the existing app",()=>{
   expect(selectPeople(rows,query({due:"today"})).items.map(row=>row.id).sort()).toEqual(["overdue","today"]);
   expect(selectPeople(rows,query({view:"archived"})).items.map(row=>row.id)).toEqual(["archived"]);
  });
+ it("keeps a sibling's unfinished intake visible when another case is active",()=>{
+  const rows=projectPeople("synthetic-workspace",[person("family")],[
+   journey({personId:"family",enrollmentId:"child-active",activeCase:true,confirmedAppointmentId:"booked"}),
+   journey({personId:"family",enrollmentId:"child-new",formSentAt:"2026-09-25T10:00:00Z"}),
+  ],[]);
+  expect(rows[0]).toMatchObject({active:true,openProspect:true});
+  expect(selectPeople(rows,query({view:"prospects"})).items.map(row=>row.id)).toEqual(["family"]);
+ });
  it("requires restored backups, reconciled rows and a writer fence before native authority",()=>{
   expect(()=>advanceCutover(state(),"prepare",proof({backupRestored:false}),"synthetic-batch")).toThrow("IMPORT_NOT_RECONCILED");
   expect(()=>advanceCutover(state("frozen"),"switch_native",proof({writersFenced:false}),"synthetic-batch")).toThrow("UNSAFE_CUTOVER");
   expect(()=>advanceCutover(state("frozen"),"switch_native",proof({identityConflicts:1}),"synthetic-batch")).toThrow("UNSAFE_CUTOVER");
   expect(writeDestination("frozen")).toBe("durable_queue_only");
+  expect(()=>advanceCutover(state("native_active"),"retire_sheet",proof({writersFenced:false}),"synthetic-batch")).toThrow("UNSAFE_RETIREMENT");
+  expect(()=>advanceCutover(state("native_active"),"retire_sheet",proof({sourceFrozen:false}),"synthetic-batch")).toThrow("UNSAFE_RETIREMENT");
+  expect(()=>advanceCutover(state("rollback_prepared"),"finish_rollback",proof({sheetConsumersRepointed:false}),"synthetic-batch")).toThrow("ROLLBACK_DELTA_UNVERIFIED");
+  expect(writeDestination("rollback_prepared")).toBe("durable_queue_only");
  });
  it("cannot retire a workbook still used by marketing, even when Leads is migrated",()=>{
   expect(canTrashWholeWorkbook([{name:"Leads",kind:"crm",activeReader:false,activeWriter:false,preserved:true},{name:"Asset Registry",kind:"marketing",activeReader:true,activeWriter:false,preserved:true}],true)).toBe(false);
