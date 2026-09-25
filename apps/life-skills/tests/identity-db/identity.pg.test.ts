@@ -55,6 +55,7 @@ before(async()=>{
  await pool.query(await readFile(resolve('migrations/0095_ls_optional_child_accounts.sql'),'utf8'));
  await pool.query(await readFile(resolve('migrations/0097_ls_demo_provenance.sql'),'utf8'));
  await pool.query(await readFile(resolve('migrations/0098_ls_demo_calendar_isolation.sql'),'utf8'));
+ await pool.query(await readFile(resolve('migrations/0099_ls_demo_origin_enforcement.sql'),'utf8'));
  config={enabled:true,origin:'https://app.example.invalid',workspaceId:asId(randomUUID(),'workspace'),csrfKey:randomBytes(32),lookupKey:randomBytes(32),rateLimitKey:opaqueToken(),keyring:{activeKeyId:'test',keys:{test:randomBytes(32)}},sessionSeconds:28800,childAccountsEnabled:true};
  auth=new IdentityAuthService(store,config,clock);accounts=new IdentityAccountService(store,config,clock);sessions=new IdentitySessions(store,config,clock);prefs=new IdentityPreferenceService(store,config,clock);cases=new CaseService(store,config,clock);authorizer=new DatabaseCaseAuthorizer(store);
 });
@@ -138,17 +139,18 @@ test('forward migration rerun is data-preserving and credential cleanup remains 
 });
 test('native PostgreSQL keeps demo roots immutable and batch-scoped',async()=>{
  const practitioner=await login(email.practitioner);
- const created=await cases.create(practitioner.actor,{kind:'minor',displayName:'DEMO — SQL boundary',familyLabel:'DEMO — SQL family'},request());
  const batch='ls-owner-20260925';
+ const created=await cases.createDemo(practitioner.actor,{kind:'minor',displayName:'DEMO — SQL boundary',familyLabel:'DEMO — SQL family'},batch,'sql-boundary',request());
  await store.transaction(async tx=>{
-  await tx.query('INSERT INTO ls_demo.batches(workspace_id,batch_id,created_by) VALUES($1,$2,$3)',[config.workspaceId,batch,practitioner.actor.id]);
-  await tx.query('INSERT INTO ls_demo.cases(workspace_id,case_id,batch_id,source_key) VALUES($1,$2,$3,$4)',[config.workspaceId,created.caseId,batch,'sql-boundary']);
   await tx.query('INSERT INTO ls_demo.records(workspace_id,batch_id,entity_kind,entity_key,source_key,case_id) VALUES($1,$2,$3,$4,$5,$6)',[config.workspaceId,batch,'person',randomUUID(),'sql-person',created.caseId]);
  });
  const rows=await pool.query('SELECT batch_id FROM ls_demo.cases WHERE workspace_id=$1 AND case_id=$2',[config.workspaceId,created.caseId]);
  assert.equal(rows.rows[0]?.batch_id,batch);
  await assert.rejects(()=>pool.query('UPDATE ls_demo.cases SET source_key=$3 WHERE workspace_id=$1 AND case_id=$2',[config.workspaceId,created.caseId,'renamed']),e=>typeof e==='object'&&e!==null&&'code' in e&&e.code==='23514');
  await assert.rejects(()=>pool.query('DELETE FROM ls_demo.cases WHERE workspace_id=$1 AND case_id=$2',[config.workspaceId,created.caseId]),e=>typeof e==='object'&&e!==null&&'code' in e&&e.code==='23514');
+ const real=await cases.create(practitioner.actor,{kind:'minor',displayName:'Synthetic real unbooked case',familyLabel:'Synthetic real family'},request());
+ await assert.rejects(()=>pool.query('INSERT INTO ls_demo.cases(workspace_id,case_id,batch_id,source_key) VALUES($1,$2,$3,$4)',[config.workspaceId,real.caseId,batch,'not-a-demo']),e=>typeof e==='object'&&e!==null&&'code' in e&&e.code==='23514');
+ await assert.rejects(()=>pool.query('INSERT INTO ls_demo.accounts(workspace_id,account_id,batch_id,source_key) VALUES($1,$2,$3,$4)',[config.workspaceId,practitioner.actor.id,batch,'not-a-demo-account']),e=>typeof e==='object'&&e!==null&&'code' in e&&e.code==='23514');
 });
 test('three plus-addressed demo invites use ordinary authentication and cannot cross into live cases',async()=>{
  const practitioner=await login(email.practitioner),batch='ls-owner-20260925';
@@ -156,12 +158,8 @@ test('three plus-addressed demo invites use ordinary authentication and cannot c
  const oldRecipients=config.demoSetupRecipients;
  config.demoSetupRecipients=Object.values(aliases);
  try{
-  const minor=await cases.create(practitioner.actor,{kind:'minor',displayName:'DEMO — Child login',familyLabel:'DEMO — Family login'},request());
-  const adult=await cases.create(practitioner.actor,{kind:'adult',displayName:'DEMO — Adult login',familyLabel:'DEMO — Adult family'},request());
-  await store.transaction(async tx=>{
-   await tx.query('INSERT INTO ls_demo.cases(workspace_id,case_id,batch_id,source_key) VALUES($1,$2,$3,$4)',[config.workspaceId,minor.caseId,batch,'demo-auth-minor']);
-   await tx.query('INSERT INTO ls_demo.cases(workspace_id,case_id,batch_id,source_key) VALUES($1,$2,$3,$4)',[config.workspaceId,adult.caseId,batch,'demo-auth-adult']);
-  });
+  const minor=await cases.createDemo(practitioner.actor,{kind:'minor',displayName:'DEMO — Child login',familyLabel:'DEMO — Family login'},batch,'demo-auth-minor',request());
+  const adult=await cases.createDemo(practitioner.actor,{kind:'adult',displayName:'DEMO — Adult login',familyLabel:'DEMO — Adult family'},batch,'demo-auth-adult',request());
   const parent=await accounts.inviteParent(practitioner.actor,{caseId:minor.caseId,email:aliases.parent,displayName:'DEMO — Parent',locale:'he'},request());
   const child=await accounts.inviteChild(practitioner.actor,{caseId:minor.caseId,email:aliases.child,displayName:'DEMO — Child',locale:'he'},request());
   const grown=await accounts.inviteAdult(practitioner.actor,{caseId:adult.caseId,email:aliases.adult,displayName:'DEMO — Adult',locale:'en'},request());
