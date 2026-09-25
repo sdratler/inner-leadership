@@ -112,3 +112,11 @@ it('offers an actionable retry after a roster error and reloads synthetic cases'
  expect(recovered?.props.caseState).toBe('ready');
  expect(recovered?.props.clientCases).toEqual([caseA]);
 });
+
+it('keeps the active case-only view free of CRM filters and add-prospect controls', () => {
+ const output = hook.render(() => ProspectsClient({ locale: 'en', embedded: true, showProspects: false, clientCases: [caseA], caseState: 'ready' }));
+ expect(text(output)).toContain('Synthetic case A');
+ expect(text(output)).toContain('Search clients');
+ expect(text(output)).not.toContain('Add prospect');
+ expect(text(output)).not.toContain('New inquiries');
+});
