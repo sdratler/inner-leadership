@@ -11,7 +11,7 @@ for (const locale of ['en', 'he'] as const) {
   navigation.pathname = `/${locale}/app/cases/${id}`; navigation.query = new URLSearchParams();
   const markup = renderToStaticMarkup(CoreNavigation({ locale, role: 'practitioner', children: 'Synthetic case' }));
   for (const path of ['app/calendar', 'app/practice', 'app/feedback', 'app/forms', 'app/reports']) {
-   expect(markup.match(new RegExp(`href="/${locale}/${path}\\?caseId=${id}&amp;context=client"`, 'g'))?.length ?? 0).toBeGreaterThanOrEqual(2);
+   expect(markup.match(new RegExp(`href="/${locale}/${path}\\?caseId=${id}&amp;context=client"`, 'g'))?.length ?? 0).toBe(1);
   }
   expect(markup).not.toContain(`href="/${locale}/app/resources`);
   expect(markup).toContain(`lang="${locale}"`); expect(markup).toContain(`dir="${locale === 'he' ? 'rtl' : 'ltr'}"`);

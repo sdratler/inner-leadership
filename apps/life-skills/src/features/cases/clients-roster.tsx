@@ -9,8 +9,8 @@ type Section="all"|"prospects"|"paid"|"active"|"archived";
 const sections=new Set<Section>(["all","prospects","paid","active","archived"]);
 const filters=new Set<Preset>(["all","today","new","intake","payment","booking","archived"]);
 const copy={
- en:{title:"Clients",lead:"Client cases and intake follow-ups in one directory."},
- he:{title:"לקוחות",lead:"תיקי לקוחות והמשך טיפול בפניות ברשימה אחת."}
+ en:{title:"People",lead:"Client cases and intake follow-ups in one directory."},
+ he:{title:"אנשים",lead:"תיקי לקוחות והמשך טיפול בפניות ברשימה אחת."}
 } as const;
 const closed=(state:string)=>/closed|archived|revoked/i.test(state);
 

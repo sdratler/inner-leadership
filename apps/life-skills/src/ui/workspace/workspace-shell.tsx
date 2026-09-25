@@ -50,7 +50,6 @@ export function WorkspaceShell({ locale, role, pathname, caseId, selectedClient=
         <button ref={trigger} type="button" className="lsu-icon-control lsu-menu" aria-label={t.menu} aria-controls={drawerId} aria-haspopup="dialog" onClick={() => drawer.current?.showModal()}><svg aria-hidden="true" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
       </div>
     </header>
-    {contextItems.length>0&&<div className="lsu-mobile-tabs">{topTabs}</div>}
     {notice && <div className="lsu-preview-notice">{notice}</div>}
     <div className="lsu-layout">
       <aside className="lsu-sidebar"><nav aria-label={t.nav}><p className="lsu-nav-heading">{t[role]}</p>{primaryNavigation[role].map(link)}{groups}</nav><p className="lsu-sidebar-note">{t.privacy}</p></aside>
