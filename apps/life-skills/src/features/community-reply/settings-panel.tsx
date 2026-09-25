@@ -7,12 +7,12 @@ type Locale = "he" | "en";
 const copy = {
   en: {
     title: "Scout settings and usage", loading: "Checking the live Scout settings…", unavailable: "Scout settings could not be verified. Collection and spending must not be assumed active.", retry: "Retry settings",
-    collection: "Collection", enabled: "Active for approved groups", on: "On", disabled: "Off", groups: "Approved group URLs", noGroups: "No approved group URLs are configured; no collection is running.",
+    collection: "Collection gates", enabled: "Eligible; actual scheduled run unverified", on: "On", disabled: "Off", groups: "Approved group URLs", provider: "Provider binding configured", noGroups: "No approved group URLs are configured; no collection is running.",
     worker: "Worker", autoDraft: "Automatic drafting", maxItems: "Maximum items per run", aiDaily: "AI requests per UTC day", manual: "Manual reply requests", used: "used", remaining: "remaining", requests: "AI requests today (UTC)", tokens: "Tokens today (input / output)", cost: "Money spent", unknownCost: "Not metered here — do not treat as zero", jobs: "Jobs by state", posts: "Unexpired captured posts by status", none: "None", asOf: "Checked at", readOnly: "Read-only actual configuration. These controls do not enable collection, drafting or posting.",
   },
   he: {
     title: "הגדרות ושימוש של Scout", loading: "בודק הגדרות חיות של Scout…", unavailable: "לא ניתן לאמת את הגדרות Scout. אין להניח שאיסוף או הוצאה פעילים.", retry: "בדיקה חוזרת",
-    collection: "איסוף", enabled: "פעיל בקבוצות שאושרו", on: "פעיל", disabled: "כבוי", groups: "כתובות קבוצות שאושרו", noGroups: "לא הוגדרו כתובות קבוצות מאושרות; אין איסוף פעיל.",
+    collection: "תנאי האיסוף", enabled: "כשיר; הרצה מתוזמנת בפועל לא אומתה", on: "פעיל", disabled: "כבוי", groups: "כתובות קבוצות שאושרו", provider: "חיבור הספק מוגדר", noGroups: "לא הוגדרו כתובות קבוצות מאושרות; אין איסוף פעיל.",
     worker: "תהליך רקע", autoDraft: "יצירת טיוטות אוטומטית", maxItems: "מספר מרבי של פריטים בהרצה", aiDaily: "בקשות AI ליום UTC", manual: "בקשות תגובה ידניות", used: "נוצלו", remaining: "נותרו", requests: "בקשות AI היום (UTC)", tokens: "טוקנים היום (קלט / פלט)", cost: "הוצאה כספית", unknownCost: "אינה נמדדת כאן — אין לראות בכך אפס", jobs: "משימות לפי מצב", posts: "פוסטים שנקלטו ועדיין בתוקף", none: "אין", asOf: "נבדק ב־", readOnly: "הגדרות חיות לקריאה בלבד. המסך אינו מפעיל איסוף, טיוטות או פרסום.",
   },
 };
@@ -50,10 +50,11 @@ export function CommunitySettingsPanel({ locale }: { locale: Locale }) {
     {loading && <p role="status">{t.loading}</p>}
     {error && <p role="alert" className="lsr-inline-error">{t.unavailable} <button type="button" onClick={() => { setLoading(true); setError(false); void load(); }}>{t.retry}</button></p>}
     {settings && !loading && !error && <>
-      {!settings.collection.active && settings.collection.allowedGroupCount === 0 && <p role="status" className="lsr-status">{t.noGroups}</p>}
+      {!settings.collection.eligible && settings.collection.allowedGroupCount === 0 && <p role="status" className="lsr-status">{t.noGroups}</p>}
       <dl className="lsr-community-settings">
-        <dt>{t.collection}</dt><dd>{settings.collection.active ? t.enabled : t.disabled}</dd>
+        <dt>{t.collection}</dt><dd>{settings.collection.eligible ? t.enabled : t.disabled}</dd>
         <dt>{t.groups}</dt><dd>{settings.collection.allowedGroupCount}</dd>
+        <dt>{t.provider}</dt><dd>{state(settings.collection.providerConfigured)}</dd>
         <dt>{t.worker}</dt><dd>{state(settings.collection.workerEnabled)}</dd>
         <dt>{t.autoDraft}</dt><dd>{state(settings.collection.autoDraft)}</dd>
         <dt>{t.maxItems}</dt><dd>{settings.collection.maxItemsPerRun}</dd>

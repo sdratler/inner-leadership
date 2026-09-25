@@ -5,7 +5,7 @@ const SCOUT_ORIGIN = "https://community-scout-production.up.railway.app";
 const SECRET = /^[A-Za-z0-9_-]{43,}$/;
 export type CommunitySettings = {
   asOf: string;
-  collection: { authorized: boolean; allowedGroupCount: number; active: boolean; maxItemsPerRun: number; workerEnabled: boolean; autoDraft: boolean };
+  collection: { authorized: boolean; allowedGroupCount: number; providerConfigured: boolean; eligible: boolean; maxItemsPerRun: number; workerEnabled: boolean; autoDraft: boolean };
   limits: { aiRequestsPerUtcDay: number; manualReplyTotal: number; manualReplyUsed: number; manualReplyRemaining: number };
   usageTodayUtc: { requests: number; inputTokens: number; outputTokens: number; moneyCost: null };
   queue: { jobs: Record<string, number>; posts: Record<string, number> };
@@ -20,8 +20,9 @@ function verified(value: unknown): CommunitySettings {
   const item = value as Partial<CommunitySettings>;
   const c = item.collection, l = item.limits, u = item.usageTodayUtc, q = item.queue;
   if (typeof item.asOf !== "string" || !Number.isFinite(Date.parse(item.asOf)) ||
-    !c || [c.authorized, c.active, c.workerEnabled, c.autoDraft].some(flag => typeof flag !== "boolean") ||
+    !c || [c.authorized, c.providerConfigured, c.eligible, c.workerEnabled, c.autoDraft].some(flag => typeof flag !== "boolean") ||
     !integer(c.allowedGroupCount) || !integer(c.maxItemsPerRun) ||
+    c.eligible !== (c.authorized && c.allowedGroupCount > 0 && c.workerEnabled && c.providerConfigured) ||
     !l || !integer(l.aiRequestsPerUtcDay) || !integer(l.manualReplyTotal) || !integer(l.manualReplyUsed) || !integer(l.manualReplyRemaining) ||
     l.manualReplyRemaining !== Math.max(0, l.manualReplyTotal - l.manualReplyUsed) ||
     !u || !integer(u.requests) || !integer(u.inputTokens) || !integer(u.outputTokens) || u.moneyCost !== null ||

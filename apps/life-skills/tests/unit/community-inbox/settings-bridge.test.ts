@@ -4,7 +4,7 @@ import { readCommunitySettings } from "../../../src/features/community-reply/set
 
 const secret = "S".repeat(43);
 const settings = { asOf: "2026-09-25T00:00:00.000Z",
-  collection: { authorized: false, allowedGroupCount: 0, active: false, maxItemsPerRun: 20, workerEnabled: true, autoDraft: false },
+  collection: { authorized: false, allowedGroupCount: 0, providerConfigured: false, eligible: false, maxItemsPerRun: 20, workerEnabled: true, autoDraft: false },
   limits: { aiRequestsPerUtcDay: 30, manualReplyTotal: 1, manualReplyUsed: 0, manualReplyRemaining: 1 },
   usageTodayUtc: { requests: 0, inputTokens: 0, outputTokens: 0, moneyCost: null },
   queue: { jobs: {}, posts: {} } };
