@@ -11,6 +11,7 @@ import { CalendarStore, type TransactionContext } from './store.ts';
 import { assertAvailable, makeNoticeFields, paddedSlot, validateBooking } from './policy.ts';
 import { iso, ms } from './time.ts';
 import { validateAttendance } from '../attendance/policy.ts';
+import { demoCaseBatch } from '../demo/provenance.ts';
 export interface BookingCatalog {
  audiences: Array<{id:AudienceId;parentIds:AccountId[]}>;
  engagement: {id:EngagementId;termsVersion:string}|null;
@@ -79,8 +80,9 @@ export class CalendarService {
   return this.db.command(actor,'availability:create',key,input,c=>this.db.requirePractitioner(c),async c=>{
    if(ms(to)<=ms(c.now)||ms(to)>ms(c.now)+366*86_400_000)throw new AppError('INVALID_REQUEST');
    if(input.kind==='blocked'){
-    const conflicts=await one(c.tx,`SELECT id FROM ls_calendar.appointments WHERE workspace_id=$1 AND practitioner_id=$2 AND status='scheduled'
-     AND starts_at-buffer_before*interval '1 minute'<$4 AND ends_at+buffer_after*interval '1 minute'>$3 LIMIT 1`,[c.workspace,c.actor.id,from,to]);
+    const conflicts=await one(c.tx,`SELECT a.id FROM ls_calendar.appointments a WHERE a.workspace_id=$1 AND a.practitioner_id=$2 AND a.status='scheduled'
+     AND a.starts_at-a.buffer_before*interval '1 minute'<$4 AND a.ends_at+a.buffer_after*interval '1 minute'>$3
+     AND NOT EXISTS (SELECT 1 FROM ls_demo.cases d WHERE d.workspace_id=a.workspace_id AND d.case_id=a.case_id) LIMIT 1`,[c.workspace,c.actor.id,from,to]);
     if(conflicts)throw new AppError('CONFLICT');
    }
    const id=randomUUID();await c.tx.query(`INSERT INTO ls_calendar.availability(id,workspace_id,practitioner_id,starts_at,ends_at,kind) VALUES($1,$2,$3,$4,$5,$6)`,[id,c.workspace,c.actor.id,from,to,input.kind]);
@@ -95,6 +97,7 @@ export class CalendarService {
  }
  private async createIn(c:TransactionContext,input:CreateBooking,original:Appointment|null=null):Promise<Appointment> {
   const {item,guardians,audience}=await this.db.audience(c,input.caseId,input.audienceId);
+  const demoBatch=await demoCaseBatch(c.tx,c.workspace,input.caseId);
   const times=validateBooking(c.actor,item,guardians,audience,input,c.now);
   for(const id of input.parentIds)await this.db.assertParentActive(c,id);
   if(item.kind==='minor'&&!audience.accountIds.some(id=>guardians.some(g=>g.accountId===id&&!g.revoked)))throw new AppError('INVALID_REQUEST');
@@ -111,15 +114,20 @@ export class CalendarService {
    practitionerId:item.practitionerAccountId,termsVersion:engagement.termsVersion,kind:input.kind,...times,status:'scheduled',
    parentForId:input.parentForId,originalId:original?.id??null,parentIds:[...input.parentIds],bufferBefore:input.bufferBefore,bufferAfter:input.bufferAfter,
    location:input.location,createdAt:c.now,createdBy:c.actor.id,version:1};
-  const slot=paddedSlot(a),windows=await this.privateAvailability(c,slot.startsAt,slot.endsAt);
-  const busy=await c.tx.query<{startsAt:Date;endsAt:Date}>(`SELECT starts_at-buffer_before*interval '1 minute' AS "startsAt",ends_at+buffer_after*interval '1 minute' AS "endsAt" FROM ls_calendar.appointments
-   WHERE workspace_id=$1 AND practitioner_id=$2 AND status='scheduled' AND starts_at-buffer_before*interval '1 minute'<$4 AND ends_at+buffer_after*interval '1 minute'>$3`,[c.workspace,c.actor.id,slot.startsAt,slot.endsAt]);
-  assertAvailable(slot,windows,busy.map(r=>({startsAt:r.startsAt.toISOString(),endsAt:r.endsAt.toISOString()})));
+  if(!demoBatch){
+   const slot=paddedSlot(a),windows=await this.privateAvailability(c,slot.startsAt,slot.endsAt);
+   const busy=await c.tx.query<{startsAt:Date;endsAt:Date}>(`SELECT a.starts_at-a.buffer_before*interval '1 minute' AS "startsAt",a.ends_at+a.buffer_after*interval '1 minute' AS "endsAt" FROM ls_calendar.appointments a
+    WHERE a.workspace_id=$1 AND a.practitioner_id=$2 AND a.status='scheduled' AND a.starts_at-a.buffer_before*interval '1 minute'<$4 AND a.ends_at+a.buffer_after*interval '1 minute'>$3
+    AND NOT EXISTS (SELECT 1 FROM ls_demo.cases d WHERE d.workspace_id=a.workspace_id AND d.case_id=a.case_id)`,[c.workspace,c.actor.id,slot.startsAt,slot.endsAt]);
+   assertAvailable(slot,windows,busy.map(r=>({startsAt:r.startsAt.toISOString(),endsAt:r.endsAt.toISOString()})));
+  }
   await c.tx.query(`INSERT INTO ls_calendar.appointments(id,workspace_id,case_id,audience_id,engagement_id,practitioner_id,terms_version,kind,starts_at,ends_at,status,
    parent_for_id,original_id,parent_ids,buffer_before,buffer_after,location_ciphertext,created_by,created_at,checkin_exception_ciphertext)
    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'scheduled',$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
    [a.id,c.workspace,a.caseId,a.audienceId,a.engagementId,a.practitionerId,a.termsVersion,a.kind,a.startsAt,a.endsAt,a.parentForId,a.originalId,a.parentIds,a.bufferBefore,a.bufferAfter,
     this.db.encrypt(c,'location',id,a.location),c.actor.id,c.now,input.checkinExceptionReason?this.db.encrypt(c,'checkin',id,input.checkinExceptionReason):null]);
+  if(demoBatch)await c.tx.query(`INSERT INTO ls_demo.records(workspace_id,batch_id,entity_kind,entity_key,source_key,case_id)
+   VALUES($1,$2,'appointment',$3,$3,$4)`,[c.workspace,demoBatch,a.id,a.caseId]);
   await this.db.event(c,a,`appointment:${id}:1`,{type:'appointment_changed',appointmentId:id,version:1,occurredAt:c.now});
   await this.db.history(c,a,'booked');return a;
  }

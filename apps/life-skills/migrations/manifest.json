@@ -66,5 +66,9 @@
   {
     "name": "0097_ls_demo_provenance.sql",
     "sha256": "be52f8c68986c8491a985e66cc8088bb4410ca2d5b7f8b7161aa77dd5325b531"
+  },
+  {
+    "name": "0098_ls_demo_calendar_isolation.sql",
+    "sha256": "b899c17239e174fdb368b5f620d1412253cffdfa570807d2ba6297966e706db0"
   }
 ]
