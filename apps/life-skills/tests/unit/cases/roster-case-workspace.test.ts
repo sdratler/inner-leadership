@@ -35,6 +35,7 @@ vi.mock('../../../src/features/identity/client.ts', () => ({ accountRead: hook.a
 
 import { CaseWorkspace } from '../../../src/features/cases/case-workspace.tsx';
 import { ClientsRoster } from '../../../src/features/cases/clients-roster.tsx';
+import { ProspectsClient } from '../../../src/features/prospects/client.tsx';
 
 const caseA = { id: '123e4567-e89b-12d3-a456-426614174000', kind: 'minor' as const, state: 'active', displayName: 'Synthetic case A' };
 const caseB = { id: '223e4567-e89b-12d3-a456-426614174000', kind: 'minor' as const, state: 'active', displayName: 'Synthetic case B' };
@@ -102,9 +103,20 @@ it('offers an actionable retry after a roster error and reloads synthetic cases'
  hook.accountRead.mockRejectedValueOnce(new Error('synthetic offline')).mockResolvedValueOnce([caseA]);
  hook.render(() => ClientsRoster({ locale: 'en' })); hook.flushEffects(); await tick();
  let output = hook.render(() => ClientsRoster({ locale: 'en' }));
- const retry = find(output, element => element.type === 'button' && text(element) === 'Try again');
- expect(retry).toBeDefined();
- (retry!.props.onClick as () => void)(); await tick();
+ const directory = find(output, element => element.type === ProspectsClient);
+ expect(directory?.props.caseState).toBe('error');
+ expect(directory?.props.onRetryCases).toBeTypeOf('function');
+ (directory!.props.onRetryCases as () => void)(); await tick();
  output = hook.render(() => ClientsRoster({ locale: 'en' }));
+ const recovered = find(output, element => element.type === ProspectsClient);
+ expect(recovered?.props.caseState).toBe('ready');
+ expect(recovered?.props.clientCases).toEqual([caseA]);
+});
+
+it('keeps the active case-only view free of CRM filters and add-prospect controls', () => {
+ const output = hook.render(() => ProspectsClient({ locale: 'en', embedded: true, showProspects: false, clientCases: [caseA], caseState: 'ready' }));
  expect(text(output)).toContain('Synthetic case A');
+ expect(text(output)).toContain('Search clients');
+ expect(text(output)).not.toContain('Add prospect');
+ expect(text(output)).not.toContain('New inquiries');
 });
