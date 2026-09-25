@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { CreativeVersion, MarketingSnapshot, Publication } from "../../../src/features/marketing-overview/contracts.ts";
-import { adjacentMonth, calendarDates, contentDayKey, contentMonth, contentView, contentViewPublications, monthPublications, nextHebrewStatus, orderedPublicationQueue, publicationStatusText } from "../../../src/features/marketing-overview/calendar-model.ts";
+import { adjacentMonth, calendarDates, contentDayKey, contentMonth, contentView, contentViewPublications, monthPublications, nextHebrewStatus, orderedPublicationQueue, publicationDisplayTime, publicationStatusText } from "../../../src/features/marketing-overview/calendar-model.ts";
 import { MarketingDashboard } from "../../../src/ui/revamp/marketing-dashboard.tsx";
 
 const creative = { assetId: "he-status-1", revision: 2, locale: "he", review: "approved", contentDigest: "a".repeat(64), approvedDigest: "a".repeat(64) } as CreativeVersion;
@@ -61,6 +61,12 @@ describe("read-only Marketing content calendar", () => {
     expect(undated).toContain("Attention needed: PROVIDER_REJECTED");
     expect(undated).toContain("Provider receipt: receipt-history");
     expect(undated).toContain("Provider receipt: receipt-queue");
+    const manuallyReported = { ...post("reported", null, "manually_reported"), manualReportedAt: "2026-09-30T17:05:00Z" };
+    expect(publicationDisplayTime(manuallyReported)).toBe("2026-09-30T17:05:00Z");
+    expect(monthPublications([manuallyReported], "2026-09").get("2026-09-30")?.[0]?.id).toBe("reported");
+    const history = renderToStaticMarkup(React.createElement(MarketingDashboard, { locale: "en", snapshot: snapshot([manuallyReported]), initialSection: "content_calendar", initialFilter: "history", initialMonth: "2026-09", renderedAt: "2026-09-25T08:00:00Z" }));
+    expect(history).toContain("Sep 30, 2026");
+    expect(history).not.toContain("No recorded date");
     const noSource = renderToStaticMarkup(React.createElement(MarketingDashboard, { locale: "en", snapshot: { ...snapshot([]), creatives: [{ ...creative, imageUrl: null, sourceUrl: null, width: 1080, height: 1920, title: "No source" }] }, initialSection: "creatives", renderedAt: "2026-09-25T08:00:00Z" }));
     expect(noSource).toContain("No verified thumbnail");
     expect(noSource).not.toContain("Thumbnail unavailable; open the source asset");

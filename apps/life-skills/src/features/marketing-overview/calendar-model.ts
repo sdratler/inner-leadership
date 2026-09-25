@@ -39,6 +39,10 @@ export function contentViewPublications(publications: readonly Publication[], vi
     view === "published" && item.state === "published" ||
     view === "history" && ["published", "manually_reported", "skipped", "failed", "unknown"].includes(item.state));
 }
+export function publicationDisplayTime(item: Publication): string | null {
+  if (item.state === "manually_reported" && item.manualReportedAt && Number.isFinite(Date.parse(item.manualReportedAt))) return item.manualReportedAt;
+  return item.scheduledFor;
+}
 
 export function contentDayKey(instant: string, timezone = CONTENT_TIMEZONE): string {
   const parts = new Intl.DateTimeFormat("en", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(instant));
@@ -73,12 +77,13 @@ export function monthPublications(publications: readonly Publication[], month: s
   if (!MONTH.test(month)) throw Error("INVALID_MONTH");
   const days = new Map<string, Publication[]>();
   for (const item of publications) {
-    if (!item.scheduledFor) continue;
-    const key = contentDayKey(item.scheduledFor);
+    const recordedAt = publicationDisplayTime(item);
+    if (!recordedAt) continue;
+    const key = contentDayKey(recordedAt);
     if (!key.startsWith(`${month}-`)) continue;
     const list = days.get(key) ?? [];
     list.push(item); days.set(key, list);
   }
-  for (const list of days.values()) list.sort((a, b) => instant(a.scheduledFor) - instant(b.scheduledFor) || a.id.localeCompare(b.id));
+  for (const list of days.values()) list.sort((a, b) => instant(publicationDisplayTime(a)) - instant(publicationDisplayTime(b)) || a.id.localeCompare(b.id));
   return days;
 }
