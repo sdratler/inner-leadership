@@ -135,3 +135,17 @@ test('forward migration rerun is data-preserving and credential cleanup remains 
  const after=await pool.query("SELECT count(*)::integer AS count FROM ls_identity.accounts");assert.ok(before.rows[0].count===after.rows[0].count);
  await pruneAuthEphemera(store,config,clock);
 });
+test('native PostgreSQL keeps demo roots immutable and batch-scoped',async()=>{
+ const practitioner=await login(email.practitioner);
+ const created=await cases.create(practitioner.actor,{kind:'minor',displayName:'DEMO — SQL boundary',familyLabel:'DEMO — SQL family'},request());
+ const batch='ls-owner-20260925';
+ await store.transaction(async tx=>{
+  await tx.query('INSERT INTO ls_demo.batches(workspace_id,batch_id,created_by) VALUES($1,$2,$3)',[config.workspaceId,batch,practitioner.actor.id]);
+  await tx.query('INSERT INTO ls_demo.cases(workspace_id,case_id,batch_id,source_key) VALUES($1,$2,$3,$4)',[config.workspaceId,created.caseId,batch,'sql-boundary']);
+  await tx.query('INSERT INTO ls_demo.records(workspace_id,batch_id,entity_kind,entity_key,source_key,case_id) VALUES($1,$2,$3,$4,$5,$6)',[config.workspaceId,batch,'person',randomUUID(),'sql-person',created.caseId]);
+ });
+ const rows=await pool.query('SELECT batch_id FROM ls_demo.cases WHERE workspace_id=$1 AND case_id=$2',[config.workspaceId,created.caseId]);
+ assert.equal(rows.rows[0]?.batch_id,batch);
+ await assert.rejects(()=>pool.query('UPDATE ls_demo.cases SET source_key=$3 WHERE workspace_id=$1 AND case_id=$2',[config.workspaceId,created.caseId,'renamed']),e=>typeof e==='object'&&e!==null&&'code' in e&&e.code==='23514');
+ await assert.rejects(()=>pool.query('DELETE FROM ls_demo.cases WHERE workspace_id=$1 AND case_id=$2',[config.workspaceId,created.caseId]),e=>typeof e==='object'&&e!==null&&'code' in e&&e.code==='23514');
+});

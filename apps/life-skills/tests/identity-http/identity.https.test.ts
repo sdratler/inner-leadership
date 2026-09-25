@@ -95,7 +95,7 @@ before(async()=>{
  if(!['127.0.0.1','localhost','[::1]'].includes(databaseUrl.hostname)||!/_test$/.test(databaseUrl.pathname)||databaseUrl.search)throw new Error('LOOPBACK_DISPOSABLE_DATABASE_REQUIRED');
  if(process.env.NODE_ENV!=='development'||process.env.LS_APP_ORIGIN!==origin)throw new Error('LOCAL_HTTPS_DEVELOPMENT_REQUIRED');
  pool=new Pool({connectionString:raw,ssl:false,max:6});
- const files=await Promise.all(['0001_ls_foundation.sql','0010_ls_identity_cases_20260906.sql','0095_ls_optional_child_accounts.sql'].map(async name=>{const sql=await readFile(resolve('migrations',name),'utf8');return {name,sql,checksum:createHash('sha256').update(sql).digest('hex')};}));
+ const files=await Promise.all(['0001_ls_foundation.sql','0010_ls_identity_cases_20260906.sql','0030_ls_calendar_attendance_20260907.sql','0095_ls_optional_child_accounts.sql','0097_ls_demo_provenance.sql'].map(async name=>{const sql=await readFile(resolve('migrations',name),'utf8');return {name,sql,checksum:createHash('sha256').update(sql).digest('hex')};}));
  const migrationClient=await pool.connect();
  try{
   const adapter:MigrationClient={query:async(text,values)=>migrationClient.query(text,values?[...values]:undefined)};
