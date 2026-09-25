@@ -35,6 +35,12 @@ describe("read-only Marketing content calendar", () => {
     expect(contentViewPublications(records, "queued").map(item => item.id)).toEqual(["later", "ready", "earlier"]);
     expect(contentViewPublications(records, "published").map(item => item.id)).toEqual(["published"]);
     expect(contentView("unknown")).toBe("all");
+    const mismatch = { ...post("mismatch", "2026-09-25T17:00:00Z"), creativeDigest: "b".repeat(64) };
+    expect(nextHebrewStatus([mismatch], [creative], new Date("2026-09-25T08:00:00Z"))).toBeNull();
+    const mismatchedHtml = renderToStaticMarkup(React.createElement(MarketingDashboard, { locale: "en", snapshot: { ...snapshot([mismatch]), creatives: [{ ...creative, title: "Wrong source", sourceUrl: "https://drive.google.com/file/d/example/view" }] }, initialSection: "content_calendar", initialMonth: "2026-09", renderedAt: "2026-09-25T08:00:00Z" }));
+    expect(mismatchedHtml).toContain("Creative revision unavailable");
+    expect(mismatchedHtml).not.toContain("Wrong source");
+    expect(mismatchedHtml).not.toContain("Open source asset");
   });
   it("orders mixed ISO offsets by instant and keeps destination-specific records", () => {
     const earlier = { ...post("earlier", "2026-10-01T00:00:00+03:00"), destinationLabel: "Group A" };

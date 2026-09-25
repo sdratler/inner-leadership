@@ -72,7 +72,7 @@ export function orderedPublicationQueue(publications: readonly Publication[]): r
 export function nextHebrewStatus(publications: readonly Publication[], creatives: readonly CreativeVersion[], now: Date): Publication | null {
   return orderedPublicationQueue(publications).find(item => item.channel === "whatsapp_status" &&
     item.scheduledFor !== null && Date.parse(item.scheduledFor) >= now.getTime() &&
-    creatives.some(asset => asset.assetId === item.assetId && asset.revision === item.creativeRevision && asset.locale === "he")) ?? null;
+    creatives.some(asset => asset.assetId === item.assetId && asset.revision === item.creativeRevision && asset.contentDigest === item.creativeDigest && asset.locale === "he")) ?? null;
 }
 export function monthPublications(publications: readonly Publication[], month: string): ReadonlyMap<string, readonly Publication[]> {
   if (!MONTH.test(month)) throw Error("INVALID_MONTH");
