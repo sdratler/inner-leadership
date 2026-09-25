@@ -12,7 +12,15 @@ import { requirePractitioner,caseAccess } from "../cases/policy.ts";
 import { loadCase,loadGuardians } from "../cases/data.ts";
 import { recordAction } from "./history.ts";
 import { issueAuthToken,queueAuthMail } from "./auth-mail.ts";
+import { demoAccountBatch,demoCaseBatch } from '../demo/provenance.ts';
 export interface InviteInput {caseId:CaseId;email:string;displayName:string;locale:Locale;}
+async function markDemoInvite(tx:SqlSession,workspaceId:string,caseId:CaseId,account:AccountRow,created:boolean):Promise<void>{
+ const batch=await demoCaseBatch(tx,workspaceId,caseId),existing=await demoAccountBatch(tx,workspaceId,account.id);
+ // A synthetic principal must never be invited into a real case (or vice versa).
+ if(!batch){if(existing)throw new AppError('CONFLICT');return;}
+ if(!created){if(existing!==batch)throw new AppError('CONFLICT');return;}
+ await tx.query("INSERT INTO ls_demo.accounts(workspace_id,account_id,batch_id,source_key) VALUES($1,$2,$3,$4)",[workspaceId,account.id,batch,`account:${account.id}`]);
+}
 async function createAccount(tx:SqlSession,config:IdentityConfig,context:RequestContext,
  input:{email:string;displayName:string;locale:Locale;role:AccountRole;personId?:PersonId;subjectKind?:'adult'|'minor'}):Promise<AccountRow> {
  const id=asId(randomUUID(),'account'),personId=input.personId ?? asId(randomUUID(),'person');
@@ -35,7 +43,9 @@ export class IdentityAccountService {
    if (account && (account.role!=='parent' || account.state==='revoked')) throw new AppError("CONFLICT");
    const already=account && guardians.some(g=>g.accountId===account!.id && !g.revoked);
    if (!already && guardians.filter(g=>!g.revoked).length>=2) throw new AppError("CONFLICT");
+   const created=!account;
    if (!account) account=await createAccount(tx,this.config,context,{...input,role:'parent'});
+   await markDemoInvite(tx,actor.workspaceId,item.id,account,created);
    await tx.query("INSERT INTO ls_cases.case_guardians (workspace_id,case_id,account_id,granted_at) VALUES ($1,$2,$3,$4) ON CONFLICT(workspace_id,case_id,account_id) DO UPDATE SET granted_at=EXCLUDED.granted_at,revoked_at=NULL",[actor.workspaceId,item.id,account.id,context.now]);
    await tx.query("INSERT INTO ls_cases.family_members (workspace_id,family_id,person_id,role) SELECT workspace_id,family_id,$3,'parent' FROM ls_cases.cases WHERE workspace_id=$1 AND id=$2 AND family_id IS NOT NULL ON CONFLICT DO NOTHING",[actor.workspaceId,item.id,account.personId]);
    if (account.state==='invited') await issueAuthToken(tx,this.config,account,context,'invite');
@@ -54,7 +64,9 @@ export class IdentityAccountService {
    if(account && (account.role!=='adult_client' || account.state==='revoked' || account.personId!==item.clientPersonId)) throw new AppError("CONFLICT");
    const linked=await one<{accountId:AccountId}>(tx,"SELECT account_id AS \"accountId\" FROM ls_identity.account_subjects WHERE workspace_id=$1 AND person_id=$2",[actor.workspaceId,item.clientPersonId]);
    if(linked && linked.accountId!==account?.id) throw new AppError("CONFLICT");
+   const created=!account;
    if(!account) account=await createAccount(tx,this.config,context,{...input,role:'adult_client',personId:item.clientPersonId});
+   await markDemoInvite(tx,actor.workspaceId,item.id,account,created);
    if(account.state==='invited') await issueAuthToken(tx,this.config,account,context,'invite');
    else await queueAuthMail(tx,this.config,account,context,'case_notice',null);
    await recordAction(tx,context,actor.workspaceId,actor.id,'invite_queued');return {accountId:account.id};
@@ -71,7 +83,9 @@ export class IdentityAccountService {
    if(account&&(account.role!=='child'||account.state==='revoked'||account.personId!==item.clientPersonId))throw new AppError("CONFLICT");
    const linked=await one<{accountId:AccountId}>(tx,"SELECT account_id AS \"accountId\" FROM ls_identity.account_subjects WHERE workspace_id=$1 AND person_id=$2",[actor.workspaceId,item.clientPersonId]);
    if(linked&&linked.accountId!==account?.id)throw new AppError("CONFLICT");
+   const created=!account;
    if(!account)account=await createAccount(tx,this.config,context,{...input,role:'child',personId:item.clientPersonId,subjectKind:'minor'});
+   await markDemoInvite(tx,actor.workspaceId,item.id,account,created);
    if(account.state==='invited')await issueAuthToken(tx,this.config,account,context,'invite');
    else await queueAuthMail(tx,this.config,account,context,'case_notice',null);
    await recordAction(tx,context,actor.workspaceId,actor.id,'invite_queued');return {accountId:account.id};

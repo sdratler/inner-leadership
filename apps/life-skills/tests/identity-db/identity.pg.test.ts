@@ -54,6 +54,7 @@ before(async()=>{
  await pool.query(await readFile(resolve('migrations/0030_ls_calendar_attendance_20260907.sql'),'utf8'));
  await pool.query(await readFile(resolve('migrations/0095_ls_optional_child_accounts.sql'),'utf8'));
  await pool.query(await readFile(resolve('migrations/0097_ls_demo_provenance.sql'),'utf8'));
+ await pool.query(await readFile(resolve('migrations/0098_ls_demo_calendar_isolation.sql'),'utf8'));
  config={enabled:true,origin:'https://app.example.invalid',workspaceId:asId(randomUUID(),'workspace'),csrfKey:randomBytes(32),lookupKey:randomBytes(32),rateLimitKey:opaqueToken(),keyring:{activeKeyId:'test',keys:{test:randomBytes(32)}},sessionSeconds:28800,childAccountsEnabled:true};
  auth=new IdentityAuthService(store,config,clock);accounts=new IdentityAccountService(store,config,clock);sessions=new IdentitySessions(store,config,clock);prefs=new IdentityPreferenceService(store,config,clock);cases=new CaseService(store,config,clock);authorizer=new DatabaseCaseAuthorizer(store);
 });
@@ -148,4 +149,31 @@ test('native PostgreSQL keeps demo roots immutable and batch-scoped',async()=>{
  assert.equal(rows.rows[0]?.batch_id,batch);
  await assert.rejects(()=>pool.query('UPDATE ls_demo.cases SET source_key=$3 WHERE workspace_id=$1 AND case_id=$2',[config.workspaceId,created.caseId,'renamed']),e=>typeof e==='object'&&e!==null&&'code' in e&&e.code==='23514');
  await assert.rejects(()=>pool.query('DELETE FROM ls_demo.cases WHERE workspace_id=$1 AND case_id=$2',[config.workspaceId,created.caseId]),e=>typeof e==='object'&&e!==null&&'code' in e&&e.code==='23514');
+});
+test('three plus-addressed demo invites use ordinary authentication and cannot cross into live cases',async()=>{
+ const practitioner=await login(email.practitioner),batch='ls-owner-20260925';
+ const aliases={parent:'owner+demo-parent@example.invalid',child:'owner+demo-child@example.invalid',adult:'owner+demo-adult@example.invalid'};
+ const oldRecipients=config.demoSetupRecipients;
+ config.demoSetupRecipients=Object.values(aliases);
+ try{
+  const minor=await cases.create(practitioner.actor,{kind:'minor',displayName:'DEMO — Child login',familyLabel:'DEMO — Family login'},request());
+  const adult=await cases.create(practitioner.actor,{kind:'adult',displayName:'DEMO — Adult login',familyLabel:'DEMO — Adult family'},request());
+  await store.transaction(async tx=>{
+   await tx.query('INSERT INTO ls_demo.cases(workspace_id,case_id,batch_id,source_key) VALUES($1,$2,$3,$4)',[config.workspaceId,minor.caseId,batch,'demo-auth-minor']);
+   await tx.query('INSERT INTO ls_demo.cases(workspace_id,case_id,batch_id,source_key) VALUES($1,$2,$3,$4)',[config.workspaceId,adult.caseId,batch,'demo-auth-adult']);
+  });
+  const parent=await accounts.inviteParent(practitioner.actor,{caseId:minor.caseId,email:aliases.parent,displayName:'DEMO — Parent',locale:'he'},request());
+  const child=await accounts.inviteChild(practitioner.actor,{caseId:minor.caseId,email:aliases.child,displayName:'DEMO — Child',locale:'he'},request());
+  const grown=await accounts.inviteAdult(practitioner.actor,{caseId:adult.caseId,email:aliases.adult,displayName:'DEMO — Adult',locale:'en'},request());
+  assert.equal(new Set([parent.accountId,child.accountId,grown.accountId]).size,3);
+  const markers=await pool.query('SELECT account_id,batch_id FROM ls_demo.accounts WHERE workspace_id=$1 AND account_id=ANY($2::uuid[])',[config.workspaceId,[parent.accountId,child.accountId,grown.accountId]]);
+  assert.equal(markers.rows.length,3);assert.ok(markers.rows.every(row=>row.batch_id===batch));
+  const live=await cases.create(practitioner.actor,{kind:'minor',displayName:'Synthetic unrelated live minor',familyLabel:'Synthetic unrelated live family'},request());
+  await denied(()=>accounts.inviteParent(practitioner.actor,{caseId:live.caseId,email:aliases.parent,displayName:'DEMO — Parent',locale:'he'},request()),'CONFLICT');
+  await denied(()=>accounts.inviteParent(practitioner.actor,{caseId:minor.caseId,email:email.a,displayName:'Synthetic real parent',locale:'he'},request()),'CONFLICT');
+  await dispatchAll();
+  for(const address of Object.values(aliases))await accept(address);
+  const roles=await Promise.all(Object.values(aliases).map(async address=>(await login(address)).actor.role));
+  assert.deepEqual(roles,['parent','child','adult_client']);
+ }finally{if(oldRecipients)config.demoSetupRecipients=oldRecipients;else delete config.demoSetupRecipients;}
 });
