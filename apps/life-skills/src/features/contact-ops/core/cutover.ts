@@ -82,6 +82,12 @@ export interface WorkbookDependency {
     activeWriter: boolean;
     preserved: boolean;
 }
+/** Dependency findings must come from the same exact source snapshot as retirement approval. */
+export interface WorkbookDependencyScan {
+    sourceFileId: string;
+    revision: string;
+    dependencies: readonly WorkbookDependency[];
+}
 /** Supplied only from a fresh, complete Drive metadata readback by the retirement adapter. */
 export interface WorkbookInventoryProof {
     sourceFileId: string;
@@ -95,11 +101,11 @@ export interface WorkbookDeletionAuthorization {
     revision: string;
     authorized: true;
 }
-export function canTrashWholeWorkbook(deps: readonly WorkbookDependency[], authorization: WorkbookDeletionAuthorization | null, inventory?: WorkbookInventoryProof): boolean {
-    if (authorization?.authorized !== true || !inventory?.completeSourceReadback || !inventory.sourceFileId || !inventory.revision || authorization.sourceFileId !== inventory.sourceFileId || authorization.revision !== inventory.revision || inventory.tabCount < 16 || inventory.tabNames.length !== inventory.tabCount || deps.length !== inventory.tabCount)
+export function canTrashWholeWorkbook(scan: WorkbookDependencyScan, authorization: WorkbookDeletionAuthorization | null, inventory?: WorkbookInventoryProof): boolean {
+    if (authorization?.authorized !== true || !inventory?.completeSourceReadback || !inventory.sourceFileId || !inventory.revision || authorization.sourceFileId !== inventory.sourceFileId || authorization.revision !== inventory.revision || scan.sourceFileId !== inventory.sourceFileId || scan.revision !== inventory.revision || inventory.tabCount < 16 || inventory.tabNames.length !== inventory.tabCount || scan.dependencies.length !== inventory.tabCount)
         return false;
-    const names = new Set(inventory.tabNames), dependencyNames = new Set(deps.map(d => d.name));
-    if (names.size !== inventory.tabCount || dependencyNames.size !== deps.length || [...names].some(name => !dependencyNames.has(name)))
+    const names = new Set(inventory.tabNames), dependencyNames = new Set(scan.dependencies.map(d => d.name));
+    if (names.size !== inventory.tabCount || dependencyNames.size !== scan.dependencies.length || [...names].some(name => !dependencyNames.has(name)))
         return false;
-    return deps.every(d => !d.activeReader && !d.activeWriter && d.preserved && d.kind !== "unknown");
+    return scan.dependencies.every(d => !d.activeReader && !d.activeWriter && d.preserved && d.kind !== "unknown");
 }

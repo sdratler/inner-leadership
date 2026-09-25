@@ -91,14 +91,17 @@ describe("native CRM candidate integrated into the existing app",()=>{
   const names=Array.from({length:16},(_,i)=>`Synthetic tab ${i+1}`),inventory={sourceFileId:"synthetic-workbook",revision:"synthetic-revision",completeSourceReadback:true,tabNames:names,tabCount:16};
   const authorization={sourceFileId:"synthetic-workbook",revision:"synthetic-revision",authorized:true as const};
   const safe=names.map(name=>({name,kind:"crm" as const,activeReader:false,activeWriter:false,preserved:true}));
-  expect(canTrashWholeWorkbook(safe,authorization,inventory)).toBe(true);
-  expect(canTrashWholeWorkbook(safe,{...authorization,sourceFileId:"another-workbook"},inventory)).toBe(false);
-  expect(canTrashWholeWorkbook(safe,{...authorization,revision:"old-revision"},inventory)).toBe(false);
-  expect(canTrashWholeWorkbook(safe.slice(0,-1),authorization,inventory)).toBe(false);
-  expect(canTrashWholeWorkbook(safe,authorization,{...inventory,completeSourceReadback:false})).toBe(false);
-  expect(canTrashWholeWorkbook(safe.map((d,i)=>i===3?{...d,activeReader:true}:d),authorization,inventory)).toBe(false);
-  expect(canTrashWholeWorkbook([{name:"Leads",kind:"crm",activeReader:false,activeWriter:false,preserved:true},{name:"Asset Registry",kind:"marketing",activeReader:true,activeWriter:false,preserved:true}],authorization)).toBe(false);
-  expect(canTrashWholeWorkbook([{name:"Leads",kind:"crm",activeReader:false,activeWriter:false,preserved:true}],null)).toBe(false);
+  const scan={sourceFileId:"synthetic-workbook",revision:"synthetic-revision",dependencies:safe};
+  expect(canTrashWholeWorkbook(scan,authorization,inventory)).toBe(true);
+  expect(canTrashWholeWorkbook({...scan,sourceFileId:"another-workbook"},authorization,inventory)).toBe(false);
+  expect(canTrashWholeWorkbook({...scan,revision:"old-revision"},authorization,inventory)).toBe(false);
+  expect(canTrashWholeWorkbook(scan,{...authorization,sourceFileId:"another-workbook"},inventory)).toBe(false);
+  expect(canTrashWholeWorkbook(scan,{...authorization,revision:"old-revision"},inventory)).toBe(false);
+  expect(canTrashWholeWorkbook({...scan,dependencies:safe.slice(0,-1)},authorization,inventory)).toBe(false);
+  expect(canTrashWholeWorkbook(scan,authorization,{...inventory,completeSourceReadback:false})).toBe(false);
+  expect(canTrashWholeWorkbook({...scan,dependencies:safe.map((d,i)=>i===3?{...d,activeReader:true}:d)},authorization,inventory)).toBe(false);
+  expect(canTrashWholeWorkbook({...scan,dependencies:[{name:"Leads",kind:"crm",activeReader:false,activeWriter:false,preserved:true},{name:"Asset Registry",kind:"marketing",activeReader:true,activeWriter:false,preserved:true}]},authorization)).toBe(false);
+  expect(canTrashWholeWorkbook({...scan,dependencies:[{name:"Leads",kind:"crm",activeReader:false,activeWriter:false,preserved:true}]},null)).toBe(false);
  });
  it("rejects a nonexistent calendar day instead of normalizing it",()=>{
   expect(()=>projectPeople("synthetic-workspace",[person()],[],[{personId:"synthetic-person",nextAction:null,followUpDate:null,nextAppointmentAt:"2026-02-30T12:00Z",unreadCount:0}])).toThrow("INVALID_INSTANT");
