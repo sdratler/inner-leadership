@@ -41,6 +41,7 @@ describe("native CRM candidate integrated into the existing app",()=>{
   expect(journeyStage(journey({paymentAllocationId:"allocation",paymentReversedAt:"2026-09-25T10:00:00Z"}))).toBe("new");
   const row=projectPeople("synthetic-workspace",[person()],[journey({enrollmentId:"child-a",activeCase:true,confirmedAppointmentId:"appointment"}),journey({enrollmentId:"child-b",paymentAllocationId:"allocation"})],[])[0];
   expect(row).toMatchObject({active:true,paidAwaitingBooking:true});
+  expect(projectPeople("synthetic-workspace",[person()],[journey({activeCase:true,paymentAllocationId:"allocation"})],[])[0]?.paidAwaitingBooking).toBe(false);
  });
  it("returns one sortable, searchable, paginated person projection",()=>{
   const rows=projectPeople("synthetic-workspace",[person("a",{displayName:"DEMO — Alpha",endpoints:[{channel:"email",value:"demo+alpha@example.invalid",verified:true,shared:false}]}),person("b",{displayName:"DEMO — Beta",archivedAt:"2026-09-24T10:00:00Z"})],[],[]);
@@ -58,6 +59,11 @@ describe("native CRM candidate integrated into the existing app",()=>{
   ]);
   expect(selectPeople(rows,query({due:"today"})).items.map(row=>row.id).sort()).toEqual(["overdue","today"]);
   expect(selectPeople(rows,query({view:"archived"})).items.map(row=>row.id)).toEqual(["archived"]);
+ });
+ it("keeps do-not-contact people out of every open queue but visible as closed",()=>{
+  const rows=projectPeople("synthetic-workspace",[person("suppressed",{doNotContact:true})],[],[]);
+  for(const view of ["all","prospects","paid","active"] as const) expect(selectPeople(rows,query({view})).total).toBe(0);
+  expect(selectPeople(rows,query({view:"archived"})).items.map(row=>row.id)).toEqual(["suppressed"]);
  });
  it("keeps a sibling's unfinished intake visible when another case is active",()=>{
   const rows=projectPeople("synthetic-workspace",[person("family")],[

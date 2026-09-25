@@ -2,7 +2,7 @@ import {describe,expect,it} from "vitest";
 import {importSummary,planImport,sameProtectedRow,type SheetSnapshot} from "../../../src/features/contact-ops/server/import-plan.ts";
 
 const key="synthetic-test-integrity-key-123456789";
-const snapshot=(changes:Partial<SheetSnapshot>={}):SheetSnapshot=>({fileId:"synthetic-source",tab:"Leads",revision:"synthetic-revision",complete:true,headers:["Lead ID","Parent/adult name","Phone","Email","Pipeline stage","Payment status","General sales notes","Update provenance","Inbound provider message IDs","Unmapped source column"],rows:[["LS-LEAD-DEMO-01","DEMO — Synthetic parent","0520000001","demo@example.invalid","Offer made","PAID","Synthetic administrative note","synthetic import","provider-event-synthetic","Preserve this extra"]],...changes});
+const snapshot=(changes:Partial<SheetSnapshot>={}):SheetSnapshot=>({fileId:"synthetic-source",sheetId:101,tab:"Leads",revision:"synthetic-revision",complete:true,headers:["Lead ID","Parent/adult name","Phone","Email","Pipeline stage","Payment status","General sales notes","Update provenance","Inbound provider message IDs","Unmapped source column"],rows:[["LS-LEAD-DEMO-01","DEMO — Synthetic parent","0520000001","demo@example.invalid","Offer made","PAID","Synthetic administrative note","synthetic import","provider-event-synthetic","Preserve this extra"]],...changes});
 
 describe("native CRM candidate source planner",()=>{
  it("preserves every source field privately but never treats Sheet payment text as verified",()=>{
@@ -20,6 +20,7 @@ describe("native CRM candidate source planner",()=>{
  });
  it("rejects incomplete snapshots, missing or ambiguous headers, and hidden extra cells",()=>{
   expect(()=>planImport(snapshot({complete:false}),"synthetic-workspace",key)).toThrow("INCOMPLETE_SNAPSHOT");
+  expect(()=>planImport(snapshot({sheetId:-1}),"synthetic-workspace",key)).toThrow("INCOMPLETE_SNAPSHOT");
   expect(()=>planImport(snapshot({headers:["Lead ID"]}),"synthetic-workspace",key)).toThrow("MISSING_HEADER");
   expect(()=>planImport(snapshot({headers:["Lead ID","Lead ID"]}),"synthetic-workspace",key)).toThrow("AMBIGUOUS_HEADERS");
   expect(()=>planImport(snapshot({headers:[...snapshot().headers," Lead ID "]}),"synthetic-workspace",key)).toThrow("AMBIGUOUS_HEADERS");
@@ -39,6 +40,8 @@ describe("native CRM candidate source planner",()=>{
   const double=snapshot({rows:[original,["LS-LEAD-DEMO-02",...original.slice(1)]]});
   const first=planImport(snapshot(),"synthetic-workspace",key),second=planImport(snapshot(),"synthetic-workspace",key);
   expect(first.rows[0]?.suggestedPersonId).toBe(second.rows[0]?.suggestedPersonId);
+  expect(planImport(snapshot({tab:"Renamed Leads"}),"synthetic-workspace",key).rows[0]?.suggestedPersonId).toBe(first.rows[0]?.suggestedPersonId);
+  expect(planImport(snapshot({sheetId:102}),"synthetic-workspace",key).rows[0]?.suggestedPersonId).not.toBe(first.rows[0]?.suggestedPersonId);
   expect(sameProtectedRow(first.rows[0]!,second.rows[0]!)).toBe(true);
   expect(new Set(planImport(double,"synthetic-workspace",key).rows.map(row=>row.suggestedPersonId)).size).toBe(2);
  });

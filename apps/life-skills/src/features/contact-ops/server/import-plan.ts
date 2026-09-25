@@ -3,6 +3,8 @@ import { requireThat, canonical } from "../core/validation.js";
 import { privateDigest, stableUuid } from "./digests.js";
 export interface SheetSnapshot {
     fileId: string;
+    /** Immutable Google Sheets sheet ID; tab is a mutable display title. */
+    sheetId: number;
     tab: string;
     revision: string;
     complete: boolean;
@@ -29,6 +31,7 @@ export interface ImportRow {
 export interface ImportPlan {
     source: {
         fileId: string;
+        sheetId: number;
         tab: string;
         revision: string;
     };
@@ -44,7 +47,7 @@ export interface ImportPlan {
 const required = ["Lead ID", "Parent/adult name", "Phone", "Email", "Pipeline stage"];
 /** A planner, not an importer. No network/database operations or consent/payment invention. */
 export function planImport(s: SheetSnapshot, workspaceId: string, integrityKey: string): ImportPlan {
-    requireThat(s.complete && Boolean(s.fileId && s.tab && s.revision && workspaceId), "INCOMPLETE_SNAPSHOT");
+    requireThat(s.complete && Boolean(s.fileId && s.tab && s.revision && workspaceId) && Number.isSafeInteger(s.sheetId) && s.sheetId >= 0, "INCOMPLETE_SNAPSHOT");
     requireThat(s.rows.length <= 100000, "SNAPSHOT_BOUND");
     const h = s.headers.map(x => x.trim());
     requireThat(h.length > 0 && new Set(h).size === h.length && h.every(Boolean), "AMBIGUOUS_HEADERS");
@@ -84,10 +87,10 @@ export function planImport(s: SheetSnapshot, workspaceId: string, integrityKey: 
             issues.push("EMAIL_NEEDS_REVIEW");
         if (!phone && !email)
             issues.push("NO_ROUTABLE_ENDPOINT");
-        out.push({ legacyId: id, suggestedPersonId: stableUuid(workspaceId + ":" + s.fileId + ":" + s.tab, id), normalizedPhone: phone, normalizedEmail: email, sourceRow, rowDigest: rd, issues,
+        out.push({ legacyId: id, suggestedPersonId: stableUuid(workspaceId + ":" + s.fileId + ":" + s.sheetId, id), normalizedPhone: phone, normalizedEmail: email, sourceRow, rowDigest: rd, issues,
             protectedPayload: { displayName: field("Parent/adult name"), language: h.includes("Language") ? field("Language") : "", stageText: field("Pipeline stage"), sourceFields: fields }, paymentVerified: false });
     });
-    return { source: { fileId: s.fileId, tab: s.tab, revision: s.revision }, snapshotDigest: privateDigest({ headers: s.headers, rows: s.rows }, integrityKey), rows: out, blankRows, conflicts, canImport: conflicts.length === 0 };
+    return { source: { fileId: s.fileId, sheetId: s.sheetId, tab: s.tab, revision: s.revision }, snapshotDigest: privateDigest({ headers: s.headers, rows: s.rows }, integrityKey), rows: out, blankRows, conflicts, canImport: conflicts.length === 0 };
 }
 export function importSummary(p: ImportPlan) { return { source: p.source, snapshotDigest: p.snapshotDigest, rowCount: p.rows.length, blankRows: p.blankRows, conflicts: p.conflicts, issueCount: p.rows.reduce((n, r) => n + r.issues.length, 0), canImport: p.canImport }; }
 /** Header/key fidelity, not just a matching count, is required for reconciliation. */
