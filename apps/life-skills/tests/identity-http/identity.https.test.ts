@@ -95,7 +95,7 @@ before(async()=>{
  if(!['127.0.0.1','localhost','[::1]'].includes(databaseUrl.hostname)||!/_test$/.test(databaseUrl.pathname)||databaseUrl.search)throw new Error('LOOPBACK_DISPOSABLE_DATABASE_REQUIRED');
  if(process.env.NODE_ENV!=='development'||process.env.LS_APP_ORIGIN!==origin)throw new Error('LOCAL_HTTPS_DEVELOPMENT_REQUIRED');
  pool=new Pool({connectionString:raw,ssl:false,max:6});
- const files=await Promise.all(['0001_ls_foundation.sql','0010_ls_identity_cases_20260906.sql','0095_ls_optional_child_accounts.sql'].map(async name=>{const sql=await readFile(resolve('migrations',name),'utf8');return {name,sql,checksum:createHash('sha256').update(sql).digest('hex')};}));
+ const files=await Promise.all(['0001_ls_foundation.sql','0010_ls_identity_cases_20260906.sql','0030_ls_calendar_attendance_20260907.sql','0095_ls_optional_child_accounts.sql','0097_ls_demo_provenance.sql','0098_ls_demo_calendar_isolation.sql','0099_ls_demo_origin_enforcement.sql'].map(async name=>{const sql=await readFile(resolve('migrations',name),'utf8');return {name,sql,checksum:createHash('sha256').update(sql).digest('hex')};}));
  const migrationClient=await pool.connect();
  try{
   const adapter:MigrationClient={query:async(text,values)=>migrationClient.query(text,values?[...values]:undefined)};
@@ -103,7 +103,7 @@ before(async()=>{
  }finally{migrationClient.release();}
  const state=await pool.query("SELECT (SELECT count(*)::integer FROM ls_identity.accounts) AS accounts,(SELECT count(*)::integer FROM ls_control.migrations) AS migrations");
  assert.equal(state.rows[0]?.accounts,0,'disposable HTTP database must contain no accounts');
- assert.equal(state.rows[0]?.migrations,3,'disposable HTTP database must have all three signed migrations');
+ assert.equal(state.rows[0]?.migrations,files.length,'disposable HTTP database must have every selected signed migration');
  store={async transaction(work){const client=await pool.connect();try{await client.query('BEGIN');const tx:SqlSession={async query<T extends object>(text:string,values:readonly unknown[]=[]){return (await client.query(text,[...values])).rows as T[];}};const value=await work(tx);await client.query('COMMIT');return value;}catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}}};
  const identityEnv={...process.env,LS_CHILD_ACCOUNTS_ENABLED:'true'};
  config=parseIdentityConfig(identityEnv);auth=new IdentityAuthService(store,config,clock);accounts=new IdentityAccountService(store,config,clock);

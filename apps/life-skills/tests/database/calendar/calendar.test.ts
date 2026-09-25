@@ -98,4 +98,16 @@ describe('LS-030 real PostgreSQL contracts',()=>{
  test('database rejects mutable appointment instants and mismatched terms independently of transport',async()=>{
   const id=await f.seed(f.at(110));const code=await f.pool.query("UPDATE ls_calendar.appointments SET starts_at=starts_at+interval '1 minute',ends_at=ends_at+interval '1 minute' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,id]).then(()=>null,e=>e.code);expect(code).toBe('23514');
  });
+ test('marked demo appointments never reserve the practitioner real booking capacity',async()=>{
+  const g=await fixture({demoFirst:true});
+  try{
+  const demo=await g.service.create(g.practitioner.actor,key(),g.booking(g.at(160)));
+  expect((await g.pool.query("SELECT count(*)::int AS n FROM ls_demo.records WHERE workspace_id=$1 AND entity_kind='appointment' AND entity_key=$2",[g.workspaceId,demo.id])).rows[0].n).toBe(1);
+  const real=await g.service.create(g.practitioner.actor,key(),g.booking(g.at(160),g.second));
+  expect(real.id).not.toBe(demo.id);
+  await expect(g.pool.query('INSERT INTO ls_demo.cases(workspace_id,case_id,batch_id,source_key) VALUES($1,$2,$3,$4)',[g.workspaceId,g.second.id,'ls-owner-20260925','cannot-relabel-booked-real-case'])).rejects.toMatchObject({code:'23514'});
+  await g.service.create(g.practitioner.actor,key(),g.booking(g.at(164)));
+  await expect(g.service.addAvailability(g.practitioner.actor,key(),{startsAt:g.at(164),endsAt:g.at(165),kind:'blocked'})).resolves.toMatchObject({kind:'blocked'});
+  }finally{await g.pool.end();}
+ });
 });

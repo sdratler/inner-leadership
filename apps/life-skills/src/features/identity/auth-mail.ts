@@ -5,13 +5,17 @@ import type { AccountRow } from "./data.ts";
 import type { IdentityConfig } from "./config.ts";
 import type { RequestContext } from "./types.ts";
 import { opaqueToken, tokenDigest, seal, unseal } from "./crypto.ts";
+import { demoAccountBatch } from '../demo/provenance.ts';
+import { demoSetupMailAllowed } from '../demo/mail-policy.ts';
 export type AuthTokenPurpose = "invite" | "reset" | "email_change";
 export type AuthMailKind = AuthTokenPurpose | "security_notice" | "case_notice";
 export interface AuthMailPayload { recipient: string; locale: "he" | "en"; token: string | null; }
 export async function queueAuthMail(tx: SqlSession, config: IdentityConfig, account: AccountRow, context: RequestContext,
  kind: AuthMailKind, token: string | null, recipientOverride?: string): Promise<void> {
  const id=randomUUID(), now=context.now;
- const recipient=recipientOverride ?? unseal(account.emailCiphertext,`email:${account.workspaceId}:${account.id}`,config.keyring);
+ const accountEmail=unseal(account.emailCiphertext,`email:${account.workspaceId}:${account.id}`,config.keyring);
+ const recipient=recipientOverride ?? accountEmail;
+ if(await demoAccountBatch(tx,account.workspaceId,account.id) && !demoSetupMailAllowed(kind,recipient,accountEmail,config.demoSetupRecipients))return;
  const payload:AuthMailPayload={recipient,locale:account.locale,token};
  await tx.query(`INSERT INTO ls_identity.auth_mail_outbox
   (id,workspace_id,account_id,token_digest,kind,payload_ciphertext,created_at,expires_at,next_attempt_at,state)

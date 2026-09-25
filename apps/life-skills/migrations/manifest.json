@@ -62,5 +62,21 @@
   {
     "name": "0096_ls_intake_followup.sql",
     "sha256": "e2c5abb3ba045d7bb37e748ab486cd151b6b7952da501c7b24fda3d5a9375aa0"
+  },
+  {
+    "name": "0097_ls_demo_provenance.sql",
+    "sha256": "be52f8c68986c8491a985e66cc8088bb4410ca2d5b7f8b7161aa77dd5325b531"
+  },
+  {
+    "name": "0098_ls_demo_calendar_isolation.sql",
+    "sha256": "b899c17239e174fdb368b5f620d1412253cffdfa570807d2ba6297966e706db0"
+  },
+  {
+    "name": "0099_ls_demo_origin_enforcement.sql",
+    "sha256": "e6c7bbd6d9ce26b6f3f43cc1646a0561ce201a9009ba229c06ee5d132d253c05"
+  },
+  {
+    "name": "0100_ls_demo_prospect_marker_gate.sql",
+    "sha256": "cd86d4f2047a4a61116e94fd4a9a5559f0b1b2ece96343e943652fdd86c63da2"
   }
 ]

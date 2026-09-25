@@ -51,7 +51,12 @@ before(async()=>{
  assert.ok(createHash('sha256').update(foundation).digest('hex')==='df3ba0131c7d5fd093953884e5f5316c7416b2dbe49fceee0d57acf2ae362dcd','foundation migration must match frozen baseline');
  await pool.query('CREATE SCHEMA ls_control');await pool.query(foundation);
  await pool.query(await readFile(resolve('migrations/0010_ls_identity_cases_20260906.sql'),'utf8'));
+ await pool.query(await readFile(resolve('migrations/0030_ls_calendar_attendance_20260907.sql'),'utf8'));
  await pool.query(await readFile(resolve('migrations/0095_ls_optional_child_accounts.sql'),'utf8'));
+ await pool.query(await readFile(resolve('migrations/0097_ls_demo_provenance.sql'),'utf8'));
+ await pool.query(await readFile(resolve('migrations/0098_ls_demo_calendar_isolation.sql'),'utf8'));
+ await pool.query(await readFile(resolve('migrations/0099_ls_demo_origin_enforcement.sql'),'utf8'));
+ await pool.query(await readFile(resolve('migrations/0100_ls_demo_prospect_marker_gate.sql'),'utf8'));
  config={enabled:true,origin:'https://app.example.invalid',workspaceId:asId(randomUUID(),'workspace'),csrfKey:randomBytes(32),lookupKey:randomBytes(32),rateLimitKey:opaqueToken(),keyring:{activeKeyId:'test',keys:{test:randomBytes(32)}},sessionSeconds:28800,childAccountsEnabled:true};
  auth=new IdentityAuthService(store,config,clock);accounts=new IdentityAccountService(store,config,clock);sessions=new IdentitySessions(store,config,clock);prefs=new IdentityPreferenceService(store,config,clock);cases=new CaseService(store,config,clock);authorizer=new DatabaseCaseAuthorizer(store);
 });
@@ -132,4 +137,55 @@ test('forward migration rerun is data-preserving and credential cleanup remains 
  await pool.query(await readFile(resolve('migrations/0095_ls_optional_child_accounts.sql'),'utf8'));
  const after=await pool.query("SELECT count(*)::integer AS count FROM ls_identity.accounts");assert.ok(before.rows[0].count===after.rows[0].count);
  await pruneAuthEphemera(store,config,clock);
+});
+test('native PostgreSQL keeps demo roots immutable and batch-scoped',async()=>{
+ const practitioner=await login(email.practitioner);
+ const batch='ls-owner-20260925';
+ const created=await cases.createDemo(practitioner.actor,{kind:'minor',displayName:'DEMO — SQL boundary',familyLabel:'DEMO — SQL family'},batch,'sql-boundary',request());
+ const repeated=await cases.createDemo(practitioner.actor,{kind:'minor',displayName:'DEMO — SQL boundary',familyLabel:'DEMO — SQL family'},batch,'sql-boundary',request());
+ assert.equal(repeated.caseId,created.caseId,'repeated batch/source key must reuse the original synthetic case');
+ await denied(()=>cases.createDemo(practitioner.actor,{kind:'adult',displayName:'DEMO — SQL boundary',familyLabel:'DEMO — SQL family'},batch,'sql-boundary',request()),'CONFLICT');
+ await store.transaction(async tx=>{
+  await tx.query('INSERT INTO ls_demo.records(workspace_id,batch_id,entity_kind,entity_key,source_key,case_id) VALUES($1,$2,$3,$4,$5,$6)',[config.workspaceId,batch,'person',randomUUID(),'sql-person',created.caseId]);
+ });
+ const rows=await pool.query('SELECT batch_id FROM ls_demo.cases WHERE workspace_id=$1 AND case_id=$2',[config.workspaceId,created.caseId]);
+ assert.equal(rows.rows[0]?.batch_id,batch);
+ await assert.rejects(()=>pool.query('UPDATE ls_demo.cases SET source_key=$3 WHERE workspace_id=$1 AND case_id=$2',[config.workspaceId,created.caseId,'renamed']),e=>typeof e==='object'&&e!==null&&'code' in e&&e.code==='23514');
+ await assert.rejects(()=>pool.query('DELETE FROM ls_demo.cases WHERE workspace_id=$1 AND case_id=$2',[config.workspaceId,created.caseId]),e=>typeof e==='object'&&e!==null&&'code' in e&&e.code==='23514');
+ const real=await cases.create(practitioner.actor,{kind:'minor',displayName:'Synthetic real unbooked case',familyLabel:'Synthetic real family'},request());
+ await assert.rejects(()=>pool.query('INSERT INTO ls_demo.cases(workspace_id,case_id,batch_id,source_key) VALUES($1,$2,$3,$4)',[config.workspaceId,real.caseId,batch,'not-a-demo']),e=>typeof e==='object'&&e!==null&&'code' in e&&e.code==='23514');
+ await assert.rejects(()=>pool.query('INSERT INTO ls_demo.accounts(workspace_id,account_id,batch_id,source_key) VALUES($1,$2,$3,$4)',[config.workspaceId,practitioner.actor.id,batch,'not-a-demo-account']),e=>typeof e==='object'&&e!==null&&'code' in e&&e.code==='23514');
+ await assert.rejects(()=>pool.query("INSERT INTO ls_demo.records(workspace_id,batch_id,entity_kind,entity_key,source_key,case_id) VALUES($1,$2,'prospect',$3,$4,$5)",[config.workspaceId,batch,'LS-LEAD-real-untouchable','not-a-demo-prospect',created.caseId]),e=>typeof e==='object'&&e!==null&&'code' in e&&e.code==='23514');
+});
+test('three plus-addressed demo invites use ordinary authentication and cannot cross into live cases',async()=>{
+ const practitioner=await login(email.practitioner),batch='ls-owner-20260925';
+ const aliases={parent:'owner+demo-parent@example.invalid',child:'owner+demo-child@example.invalid',adult:'owner+demo-adult@example.invalid'};
+ const oldRecipients=config.demoSetupRecipients;
+ config.demoSetupRecipients=Object.values(aliases);
+ try{
+  const minor=await cases.createDemo(practitioner.actor,{kind:'minor',displayName:'DEMO — Child login',familyLabel:'DEMO — Family login'},batch,'demo-auth-minor',request());
+  const adult=await cases.createDemo(practitioner.actor,{kind:'adult',displayName:'DEMO — Adult login',familyLabel:'DEMO — Adult family'},batch,'demo-auth-adult',request());
+  const parent=await accounts.inviteParent(practitioner.actor,{caseId:minor.caseId,email:aliases.parent,displayName:'DEMO — Parent',locale:'he'},request());
+  const child=await accounts.inviteChild(practitioner.actor,{caseId:minor.caseId,email:aliases.child,displayName:'DEMO — Child',locale:'he'},request());
+  const grown=await accounts.inviteAdult(practitioner.actor,{caseId:adult.caseId,email:aliases.adult,displayName:'DEMO — Adult',locale:'en'},request());
+  assert.equal(new Set([parent.accountId,child.accountId,grown.accountId]).size,3);
+  const markers=await pool.query('SELECT account_id,batch_id FROM ls_demo.accounts WHERE workspace_id=$1 AND account_id=ANY($2::uuid[])',[config.workspaceId,[parent.accountId,child.accountId,grown.accountId]]);
+  assert.equal(markers.rows.length,3);assert.ok(markers.rows.every(row=>row.batch_id===batch));
+  const parentPerson=await pool.query("SELECT r.entity_key FROM ls_demo.records r WHERE r.workspace_id=$1 AND r.batch_id=$2 AND r.entity_kind='person' AND r.account_id=$3",[config.workspaceId,batch,parent.accountId]);
+  assert.equal(parentPerson.rows.length,1,'the synthetic parent person must carry a batch marker');
+  const live=await cases.create(practitioner.actor,{kind:'minor',displayName:'Synthetic unrelated live minor',familyLabel:'Synthetic unrelated live family'},request());
+  await denied(()=>accounts.inviteParent(practitioner.actor,{caseId:live.caseId,email:aliases.parent,displayName:'DEMO — Parent',locale:'he'},request()),'CONFLICT');
+  await denied(()=>accounts.inviteParent(practitioner.actor,{caseId:minor.caseId,email:email.a,displayName:'Synthetic real parent',locale:'he'},request()),'CONFLICT');
+  await dispatchAll();
+  for(const address of Object.values(aliases))await accept(address);
+  const roles=await Promise.all(Object.values(aliases).map(async address=>(await login(address)).actor.role));
+  assert.deepEqual(roles,['parent','child','adult_client']);
+  const parentSession=await login(aliases.parent);
+  const audience=await cases.createAudience(practitioner.actor,minor.caseId,{visibility:'family_full',published:true},request());
+  await prefs.replace(parentSession.actor,parentSession.actor.id,[{...defaultPreference('practice_due','email','he'),enabled:true}],request());
+  const effect={schemaVersion:1 as const,workspaceId:config.workspaceId,caseId:minor.caseId,audienceId:audience.audienceId,recipientAccountId:parent.accountId,sourceId:randomUUID(),sourceVersionId:randomUUID(),neutralMessageKey:'practice_due' as const,dueAt:clock.now().toISOString(),channel:'email' as const,idempotencyKey:randomUUID()};
+  const delivery=new IdentityDeliveryAuthorization(store,clock,{async isCurrentAndPending(){return true;}});
+  assert.equal(await delivery.mayDeliver(effect),false,'demo email must be denied at final authorization even with opt-in');
+  assert.equal(await delivery.mayDeliver({...effect,channel:'in_app'}),true,'authorized demo in-app notice remains usable');
+ }finally{if(oldRecipients)config.demoSetupRecipients=oldRecipients;else delete config.demoSetupRecipients;}
 });

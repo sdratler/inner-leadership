@@ -14,16 +14,45 @@ import { requirePractitioner,caseAccess,audienceAccess,isCaseLifecycle,type Case
 export class CaseService {
  constructor(private readonly store:IdentityStore,private readonly config:IdentityConfig,private readonly clock:IdentityClock) {}
  async create(actor:Actor,input:{kind:'minor'|'adult';displayName:string;familyLabel:string;familyId?:FamilyId},requestId:string):Promise<{caseId:CaseId}> {
+  return this.createWithOrigin(actor,input,requestId,null);
+ }
+ /** Internal operator path only: no public handler accepts a demo marker from a browser. */
+ async createDemo(actor:Actor,input:{kind:'minor'|'adult';displayName:string;familyLabel:string},batchId:string,sourceKey:string,requestId:string):Promise<{caseId:CaseId}> {
+  if(!/^ls-owner-[0-9]{8}$/.test(batchId)||!/^[a-z0-9_-]{1,80}$/.test(sourceKey)||!input.displayName.startsWith('DEMO'))throw new AppError('INVALID_REQUEST');
+  return this.createWithOrigin(actor,input,requestId,{batchId,sourceKey});
+ }
+ private async createWithOrigin(actor:Actor,input:{kind:'minor'|'adult';displayName:string;familyLabel:string;familyId?:FamilyId},requestId:string,demo:{batchId:string;sourceKey:string}|null):Promise<{caseId:CaseId}> {
   const context={requestId,now:this.clock.now()};
   return this.store.transaction(async tx=>{
    await lockWorkspace(tx,actor.workspaceId);const current=await freshActor(tx,actor,context.now);requirePractitioner(current);
+   if(demo){
+    if(input.familyId)throw new AppError('INVALID_REQUEST');
+    await tx.query('INSERT INTO ls_demo.batches(workspace_id,batch_id,created_by) VALUES($1,$2,$3) ON CONFLICT(workspace_id,batch_id) DO NOTHING',[actor.workspaceId,demo.batchId,actor.id]);
+    const batch=await one<{createdBy:string}>(tx,'SELECT created_by AS "createdBy" FROM ls_demo.batches WHERE workspace_id=$1 AND batch_id=$2',[actor.workspaceId,demo.batchId]);
+    if(batch?.createdBy!==actor.id)throw new AppError('CONFLICT');
+    const previous=await one<{caseId:CaseId;kind:'minor'|'adult';personId:string;profileCiphertext:string;practitionerId:string}>(tx,`SELECT c.id AS "caseId",p.kind,p.id AS "personId",p.profile_ciphertext AS "profileCiphertext",c.practitioner_account_id AS "practitionerId"
+     FROM ls_demo.cases d JOIN ls_cases.cases c ON c.workspace_id=d.workspace_id AND c.id=d.case_id
+     JOIN ls_cases.clients cl ON cl.workspace_id=c.workspace_id AND cl.id=c.client_id
+     JOIN ls_identity.people p ON p.workspace_id=cl.workspace_id AND p.id=cl.person_id
+     WHERE d.workspace_id=$1 AND d.batch_id=$2 AND d.source_key=$3`,[actor.workspaceId,demo.batchId,demo.sourceKey]);
+    if(previous){
+     const profile:unknown=JSON.parse(unseal(previous.profileCiphertext,`person:${actor.workspaceId}:${previous.personId}`,this.config.keyring));
+     if(previous.practitionerId!==actor.id||previous.kind!==input.kind||!profile||typeof profile!=='object'||!('displayName' in profile)||profile.displayName!==input.displayName)throw new AppError('CONFLICT');
+     return {caseId:previous.caseId};
+    }
+   }
    const personId=asId(randomUUID(),'person'),clientId=randomUUID(),caseId=asId(randomUUID(),'case'),familyId=input.familyId ?? asId(randomUUID(),'family');
    if(input.familyId){if(!await one(tx,"SELECT id FROM ls_cases.families WHERE workspace_id=$1 AND id=$2",[actor.workspaceId,familyId])) throw new AppError("NOT_FOUND");}
    else await tx.query("INSERT INTO ls_cases.families (id,workspace_id,label_ciphertext,created_at) VALUES ($1,$2,$3,$4)",[familyId,actor.workspaceId,seal(input.familyLabel,`family:${actor.workspaceId}:${familyId}`,this.config.keyring),context.now]);
    await tx.query("INSERT INTO ls_identity.people (id,workspace_id,kind,profile_ciphertext,created_at) VALUES ($1,$2,$3,$4,$5)",[personId,actor.workspaceId,input.kind,seal(JSON.stringify({displayName:input.displayName}),`person:${actor.workspaceId}:${personId}`,this.config.keyring),context.now]);
    await tx.query("INSERT INTO ls_cases.clients (id,workspace_id,person_id,created_at) VALUES ($1,$2,$3,$4)",[clientId,actor.workspaceId,personId,context.now]);
    await tx.query("INSERT INTO ls_cases.family_members (workspace_id,family_id,person_id,role) VALUES ($1,$2,$3,$4)",[actor.workspaceId,familyId,personId,input.kind==='minor'?'child':'adult_client']);
-   await tx.query("INSERT INTO ls_cases.cases (id,workspace_id,client_id,family_id,practitioner_account_id,state,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,'invited',$6,$6)",[caseId,actor.workspaceId,clientId,familyId,actor.id,context.now]);
+   await tx.query("INSERT INTO ls_cases.cases (id,workspace_id,client_id,family_id,practitioner_account_id,state,created_at,updated_at,demo_batch_id) VALUES ($1,$2,$3,$4,$5,'invited',$6,$6,$7)",[caseId,actor.workspaceId,clientId,familyId,actor.id,context.now,demo?.batchId??null]);
+   if(demo){
+    await tx.query('INSERT INTO ls_demo.cases(workspace_id,case_id,batch_id,source_key) VALUES($1,$2,$3,$4)',[actor.workspaceId,caseId,demo.batchId,demo.sourceKey]);
+    for(const [kind,id] of [['person',personId],['client',clientId],['family',familyId]])
+     await tx.query('INSERT INTO ls_demo.records(workspace_id,batch_id,entity_kind,entity_key,source_key,case_id) VALUES($1,$2,$3,$4,$5,$6)',[actor.workspaceId,demo.batchId,kind,id,`${demo.sourceKey}:${kind}`,caseId]);
+   }
    await recordAction(tx,context,actor.workspaceId,actor.id,'case_created');return {caseId};
   });
  }

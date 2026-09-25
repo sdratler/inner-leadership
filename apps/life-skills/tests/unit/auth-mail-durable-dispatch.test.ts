@@ -5,6 +5,7 @@ type State = {
   outbox: { id: string; accountId: string; state: string; attempts: number; ciphertext: string; expiresAt: Date; kind: "reset"; tokenDigest: string | null; providerId?: string };
   account: { id: string; state: "active" | "revoked"; emailVerifiedAt: Date | null };
   tokenPresent: boolean;
+  demoBatch?: string;
   failQuery?: string;
 };
 
@@ -23,12 +24,13 @@ vi.mock("../../src/features/identity/store.ts", () => ({
     if (sql.includes("auth_mail_outbox") && sql.includes("account_id=$2") && sql.includes("kind='reset'")) return s.outbox.state === "queued" ? { id: s.outbox.id } : null;
     if (sql.includes("auth_mail_outbox")) return s.outbox.state === "queued" && (values[2] === null || values[2] === undefined || values[2] === s.outbox.id) ? { ...s.outbox } : null;
     if (sql.includes("FROM ls_identity.auth_tokens")) return s.tokenPresent ? { tokenDigest: "digest" } : null;
+    if (sql.includes("FROM ls_demo.accounts")) return s.demoBatch ? { batchId: s.demoBatch } : null;
     return null;
   }),
 }));
 vi.mock("../../src/features/identity/auth-mail.ts", () => ({ issueAuthToken: h.issue }));
 vi.mock("../../src/features/identity/history.ts", () => ({ recordAction: h.record }));
-vi.mock("../../src/features/identity/crypto.ts", () => ({ TOKEN_PATTERN: /^[A-Za-z0-9_-]{43}$/, unseal: () => JSON.stringify({ locale: "en", recipient: "owner@example.org", token: "a".repeat(43) }) }));
+vi.mock("../../src/features/identity/crypto.ts", () => ({ TOKEN_PATTERN: /^[A-Za-z0-9_-]{43}$/, canonicalEmail: (email:string)=>email.trim().toLowerCase(), unseal: (_ciphertext:string,aad:string) => aad.startsWith('email:')?'owner@example.org':JSON.stringify({ locale: "en", recipient: "owner@example.org", token: "a".repeat(43) }) }));
 vi.mock("../../src/providers/email/template.ts", () => ({ authEmailContent: () => ({ subject: "reset", text: "reset" }) }));
 
 import { processResetRequest, dispatchOneAuthMail } from "../../src/providers/email/dispatch.ts";
@@ -113,6 +115,22 @@ describe("durable auth-mail dispatch", () => {
   test("an explicit outbox id cannot dispatch a different queued item", async () => {
     let sends = 0; const transport = { nonIdempotent: true, send: async () => { sends++; return { providerId: "gmail-id" }; } };
     expect(await dispatchOneAuthMail(store(), config, clock, transport, "office@bneineviimacademy.org", "123e4567-e89b-12d3-a456-426614174001")).toBe("idle"); expect(sends).toBe(0);
+  });
+
+  test("denies a marked demo account at final dispatch without an exact setup allowlist", async () => {
+    h.state!.demoBatch = "ls-owner-20260925"; let sends = 0;
+    const transport = { nonIdempotent: true, send: async () => { sends++; return { providerId: "gmail-id" }; } };
+    expect(await dispatchOneAuthMail(store(), config, clock, transport, "office@bneineviimacademy.org")).toBe("canceled");
+    expect(sends).toBe(0);
+  });
+
+
+  test("permits only the configured owner setup recipient for marked demo reset mail", async () => {
+    h.state!.demoBatch = "ls-owner-20260925"; let sends = 0;
+    const transport = { nonIdempotent: true, send: async () => { sends++; return { providerId: "gmail-id" }; } };
+    const allowedConfig = { ...config as object, demoSetupRecipients: ["owner@example.org"] } as never;
+    expect(await dispatchOneAuthMail(store(), allowedConfig, clock, transport, "office@bneineviimacademy.org")).toBe("sent");
+    expect(sends).toBe(1);
   });
 
   test.each([{ label: "revoked account", account: { state: "revoked" as const, emailVerifiedAt: new Date() } }, { label: "missing token", tokenPresent: false }, { label: "expired outbox", expired: true }])("cancels before send when eligibility changes: $label", ({ account, tokenPresent, expired }) => {
