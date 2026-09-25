@@ -1,6 +1,6 @@
 import {describe,expect,it} from "vitest";
 import {normalizeEmail,normalizePhone,resolveEndpoint} from "../../../src/features/contact-ops/core/contact-resolution.ts";
-import {advanceCutover,canTrashWholeWorkbook,writeDestination,type CutoverProof,type CutoverState} from "../../../src/features/contact-ops/core/cutover.ts";
+import {advanceCutover,assessWorkbookRetirement,writeDestination,type CutoverProof,type CutoverState} from "../../../src/features/contact-ops/core/cutover.ts";
 import {journeyStage,projectPeople,selectPeople} from "../../../src/features/contact-ops/core/people.ts";
 import {safeLocalHref} from "../../../src/features/contact-ops/core/validation.ts";
 import type {AdministrativePerson,JourneyFacts} from "../../../src/features/contact-ops/core/types.ts";
@@ -87,21 +87,21 @@ describe("native CRM candidate integrated into the existing app",()=>{
   expect(()=>advanceCutover(state("rollback_prepared"),"finish_rollback",proof({sheetConsumersRepointed:false}),"synthetic-batch")).toThrow("ROLLBACK_DELTA_UNVERIFIED");
   expect(writeDestination("rollback_prepared")).toBe("durable_queue_only");
  });
- it("cannot retire a workbook still used by marketing, even when Leads is migrated",()=>{
+ it("static workbook reconciliation never authorizes deletion without a live dependency fence",()=>{
   const names=Array.from({length:16},(_,i)=>`Synthetic tab ${i+1}`),inventory={sourceFileId:"synthetic-workbook",revision:"synthetic-revision",completeSourceReadback:true,tabNames:names,tabCount:16};
   const authorization={sourceFileId:"synthetic-workbook",revision:"synthetic-revision",authorized:true as const};
   const safe=names.map(name=>({name,kind:"crm" as const,activeReader:false,activeWriter:false,preserved:true}));
   const scan={sourceFileId:"synthetic-workbook",revision:"synthetic-revision",dependencies:safe};
-  expect(canTrashWholeWorkbook(scan,authorization,inventory)).toBe(true);
-  expect(canTrashWholeWorkbook({...scan,sourceFileId:"another-workbook"},authorization,inventory)).toBe(false);
-  expect(canTrashWholeWorkbook({...scan,revision:"old-revision"},authorization,inventory)).toBe(false);
-  expect(canTrashWholeWorkbook(scan,{...authorization,sourceFileId:"another-workbook"},inventory)).toBe(false);
-  expect(canTrashWholeWorkbook(scan,{...authorization,revision:"old-revision"},inventory)).toBe(false);
-  expect(canTrashWholeWorkbook({...scan,dependencies:safe.slice(0,-1)},authorization,inventory)).toBe(false);
-  expect(canTrashWholeWorkbook(scan,authorization,{...inventory,completeSourceReadback:false})).toBe(false);
-  expect(canTrashWholeWorkbook({...scan,dependencies:safe.map((d,i)=>i===3?{...d,activeReader:true}:d)},authorization,inventory)).toBe(false);
-  expect(canTrashWholeWorkbook({...scan,dependencies:[{name:"Leads",kind:"crm",activeReader:false,activeWriter:false,preserved:true},{name:"Asset Registry",kind:"marketing",activeReader:true,activeWriter:false,preserved:true}]},authorization)).toBe(false);
-  expect(canTrashWholeWorkbook({...scan,dependencies:[{name:"Leads",kind:"crm",activeReader:false,activeWriter:false,preserved:true}]},null)).toBe(false);
+  expect(assessWorkbookRetirement(scan,authorization,inventory)).toEqual({dependenciesReconciled:true,deletionAllowed:false,requiredLiveGate:"durable_dependency_fence"});
+  expect(assessWorkbookRetirement({...scan,sourceFileId:"another-workbook"},authorization,inventory).dependenciesReconciled).toBe(false);
+  expect(assessWorkbookRetirement({...scan,revision:"old-revision"},authorization,inventory).dependenciesReconciled).toBe(false);
+  expect(assessWorkbookRetirement(scan,{...authorization,sourceFileId:"another-workbook"},inventory).dependenciesReconciled).toBe(false);
+  expect(assessWorkbookRetirement(scan,{...authorization,revision:"old-revision"},inventory).dependenciesReconciled).toBe(false);
+  expect(assessWorkbookRetirement({...scan,dependencies:safe.slice(0,-1)},authorization,inventory).dependenciesReconciled).toBe(false);
+  expect(assessWorkbookRetirement(scan,authorization,{...inventory,completeSourceReadback:false}).dependenciesReconciled).toBe(false);
+  expect(assessWorkbookRetirement({...scan,dependencies:safe.map((d,i)=>i===3?{...d,activeReader:true}:d)},authorization,inventory).dependenciesReconciled).toBe(false);
+  expect(assessWorkbookRetirement({...scan,dependencies:[{name:"Leads",kind:"crm",activeReader:false,activeWriter:false,preserved:true},{name:"Asset Registry",kind:"marketing",activeReader:true,activeWriter:false,preserved:true}]},authorization).dependenciesReconciled).toBe(false);
+  expect(assessWorkbookRetirement({...scan,dependencies:[{name:"Leads",kind:"crm",activeReader:false,activeWriter:false,preserved:true}]},null).dependenciesReconciled).toBe(false);
  });
  it("rejects a nonexistent calendar day instead of normalizing it",()=>{
   expect(()=>projectPeople("synthetic-workspace",[person()],[],[{personId:"synthetic-person",nextAction:null,followUpDate:null,nextAppointmentAt:"2026-02-30T12:00Z",unreadCount:0}])).toThrow("INVALID_INSTANT");

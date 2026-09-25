@@ -101,11 +101,13 @@ export interface WorkbookDeletionAuthorization {
     revision: string;
     authorized: true;
 }
-export function canTrashWholeWorkbook(scan: WorkbookDependencyScan, authorization: WorkbookDeletionAuthorization | null, inventory?: WorkbookInventoryProof): boolean {
+/** Static reconciliation only. It NEVER authorizes deletion: schedulers can restart without a Sheet revision change. */
+export function assessWorkbookRetirement(scan: WorkbookDependencyScan, authorization: WorkbookDeletionAuthorization | null, inventory?: WorkbookInventoryProof): { dependenciesReconciled: boolean; deletionAllowed: false; requiredLiveGate: "durable_dependency_fence" } {
+    const result = (dependenciesReconciled: boolean) => ({ dependenciesReconciled, deletionAllowed: false as const, requiredLiveGate: "durable_dependency_fence" as const });
     if (authorization?.authorized !== true || !inventory?.completeSourceReadback || !inventory.sourceFileId || !inventory.revision || authorization.sourceFileId !== inventory.sourceFileId || authorization.revision !== inventory.revision || scan.sourceFileId !== inventory.sourceFileId || scan.revision !== inventory.revision || inventory.tabCount < 16 || inventory.tabNames.length !== inventory.tabCount || scan.dependencies.length !== inventory.tabCount)
-        return false;
+        return result(false);
     const names = new Set(inventory.tabNames), dependencyNames = new Set(scan.dependencies.map(d => d.name));
     if (names.size !== inventory.tabCount || dependencyNames.size !== scan.dependencies.length || [...names].some(name => !dependencyNames.has(name)))
-        return false;
-    return scan.dependencies.every(d => !d.activeReader && !d.activeWriter && d.preserved && d.kind !== "unknown");
+        return result(false);
+    return result(scan.dependencies.every(d => !d.activeReader && !d.activeWriter && d.preserved && d.kind !== "unknown"));
 }
