@@ -9,11 +9,16 @@ import type {Prospect} from "./bridge.ts";
 /* eslint-disable react-hooks/set-state-in-effect */
 type State="loading"|"ready"|"error";
 export type Preset="all"|"today"|"new"|"intake"|"payment"|"booking"|"archived";
+export function workflowDestination(locale:Locale,preset:Preset):string{
+ const section=preset==="booking"?"paid":preset==="archived"?"archived":preset==="all"?"all":"prospects";
+ const filter=preset==="all"||preset==="booking"||preset==="archived"?"":`&filter=${preset}`;
+ return `/${locale}/app/clients?section=${section}${filter}`;
+}
 export type ClientCase={id:string;kind:"minor"|"adult";state:string;displayName:string};
-/** A lead's caseId can refer to a child, not the lead's own person record; never hide that case by guessed identity. */
-export function visibleClientCases(cases:readonly ClientCase[],query:string):ClientCase[]{
+/** A linked minor case is a different person from its parent lead; a linked adult case is the same adult. */
+export function visibleClientCases(cases:readonly ClientCase[],prospects:readonly Pick<Prospect,"caseId">[],query:string):ClientCase[]{
  const needle=query.trim().toLocaleLowerCase();
- return cases.filter(row=>row.displayName.toLocaleLowerCase().includes(needle));
+ return cases.filter(row=>row.displayName.toLocaleLowerCase().includes(needle)&&(row.kind==="minor"||!prospects.some(prospect=>prospect.caseId===row.id)));
 }
 const PAGE_SIZE=12;
 const copy={
@@ -71,13 +76,13 @@ export function ProspectsClient({locale,initialFilter="all",embedded=false,clien
  }).sort((a,b)=>(a.dueDate||"9999").localeCompare(b.dueDate||"9999")||a.receivedAt.localeCompare(b.receivedAt)||a.leadId.localeCompare(b.leadId)),[rows,preset,stage,language,due,query,today]);
  const pages=Math.max(1,Math.ceil(shown.length/PAGE_SIZE)),visible=shown.slice((page-1)*PAGE_SIZE,page*PAGE_SIZE);
  const casesShown=(preset==="all"||preset==="archived")&&!stage&&!language&&!due
-  ?visibleClientCases(clientCases,query):[];
+  ?visibleClientCases(clientCases,shown,query):[];
  const entries=[...casesShown.map(row=>({kind:"case" as const,id:row.id,name:row.displayName,row})),...visible.map(row=>({kind:"prospect" as const,id:row.leadId,name:row.name||row.phone,row}))].sort((a,b)=>a.name.localeCompare(b.name,locale)||a.id.localeCompare(b.id));
  async function action(payload:unknown){setStatus("");try{await api({method:"POST",body:JSON.stringify(payload)});const kind=(payload as {action:string}).action;setStatus(kind==="update"?t.saved:kind==="add"?t.created:t.sent);load()}catch{setStatus(t.sendFailed)}}
  const content=<>
   {showProspects&&<header className={embedded?"lsw-section-header":"lsw-page-header"}><div>{!embedded&&<><p className="lsw-eyebrow">{locale==="he"?"CRM פרטי":"Private CRM"}</p><h1>{t.title}</h1><p>{t.lead}</p></>}</div><button type="button" className="lsw-button lsw-button--secondary" onClick={()=>{if(addRef.current){addRef.current.open=true;addRef.current.scrollIntoView({behavior:"smooth",block:"start"});addRef.current.querySelector<HTMLInputElement>("input")?.focus()}}}>{t.add}</button></header>}
   {!embedded&&<nav className="lsw-tabs" aria-label={t.title}><a className="lsw-button lsw-button--quiet" href={`/${locale}/app/clients`}>{t.clients}</a><a className="lsw-button lsw-button--primary" aria-current="page" href={`/${locale}/app/clients?section=prospects`}>{t.prospects}</a></nav>}
-  <section className="lsw-card lsu-people-toolbar" aria-label={locale==="he"?"חיפוש ומסננים":"Search and filters"}><label className="lsw-field">{showProspects?t.search:locale==="he"?"חיפוש לקוחות":"Search clients"}<input className="lsw-input" type="search" value={query} onChange={event=>setQuery(event.target.value)}/></label>{showProspects&&<><label className="lsw-field">{t.stage}<select className="lsw-input" value={stage} onChange={event=>setStage(event.target.value)}><option value="">{t.any}</option>{stages.map(value=><option key={value}>{value}</option>)}</select></label><label className="lsw-field">{t.language}<select className="lsw-input" value={language} onChange={event=>setLanguage(event.target.value)}><option value="">{t.any}</option><option value="he">עברית</option><option value="en">English</option></select></label><label className="lsw-field">{t.dueFilter}<select className="lsw-input" value={due} onChange={event=>setDue(event.target.value)}><option value="">{t.any}</option><option value="today">{t.today}</option><option value="overdue">{t.overdue}</option></select></label></>}</section>
+  <section className="lsw-card lsu-people-toolbar" aria-label={locale==="he"?"חיפוש ומסננים":"Search and filters"}><label className="lsw-field">{showProspects?t.search:locale==="he"?"חיפוש לקוחות":"Search clients"}<input className="lsw-input" type="search" value={query} onChange={event=>setQuery(event.target.value)}/></label>{showProspects&&<><label className="lsw-field">{locale==="he"?"תהליך קליטה":"Intake workflow"}<select className="lsw-input" value={preset} onChange={event=>window.location.assign(workflowDestination(locale,event.target.value as Preset))}><option value="all">{t.all}</option><option value="today">{t.today}</option><option value="new">{t.newLead}</option><option value="intake">{t.intake}</option><option value="payment">{t.payment}</option><option value="booking">{t.booking}</option><option value="archived">{t.archived}</option></select></label><label className="lsw-field">{t.stage}<select className="lsw-input" value={stage} onChange={event=>setStage(event.target.value)}><option value="">{t.any}</option>{stages.map(value=><option key={value}>{value}</option>)}</select></label><label className="lsw-field">{t.language}<select className="lsw-input" value={language} onChange={event=>setLanguage(event.target.value)}><option value="">{t.any}</option><option value="he">עברית</option><option value="en">English</option></select></label><label className="lsw-field">{t.dueFilter}<select className="lsw-input" value={due} onChange={event=>setDue(event.target.value)}><option value="">{t.any}</option><option value="today">{t.today}</option><option value="overdue">{t.overdue}</option></select></label></>}</section>
   {caseState==="loading"&&<p role="status">{locale==="he"?"טוען תיקים מורשים…":"Loading authorized cases…"}</p>}
   {caseState==="error"&&<div className="lsw-alert" role="alert"><p>{locale==="he"?"תיקי הלקוחות לא נטענו. רשימת הפניות עדיין זמינה.":"Client cases could not be loaded. The CRM may still be available."}</p><button className="lsw-button lsw-button--secondary" onClick={onRetryCases}>{t.retry}</button></div>}
   {showProspects&&state==="loading"&&<p role="status">{t.loading}</p>}{showProspects&&state==="error"&&<div className="lsw-alert" role="alert"><p>{t.failed}</p><button className="lsw-button lsw-button--secondary" onClick={load}>{t.retry}</button></div>}

@@ -78,7 +78,7 @@
   .lsu-header>.lsu-top-tabs{display:flex;grid-column:1/-1;grid-row:2;justify-content:flex-start;width:100%;padding-block:6px;scroll-snap-type:x proximity}
   .lsu-header>.lsu-top-tabs>a{scroll-snap-align:start}
 }
-.lsw.lsu .lsu-people-toolbar{display:grid;grid-template-columns:minmax(220px,2fr) repeat(3,minmax(130px,1fr));gap:12px;align-items:end;padding:16px}
+.lsw.lsu .lsu-people-toolbar{display:grid;grid-template-columns:minmax(220px,2fr) repeat(4,minmax(130px,1fr));gap:12px;align-items:end;padding:16px}
 .lsw.lsu .lsu-people-toolbar .lsw-field{margin:0}
 .lsu-people-results{display:grid;gap:8px;margin-block:12px}
 .lsw.lsu .lsu-person-row,.lsw.lsu .lsu-person-details{display:block;padding:0;text-decoration:none;color:var(--ui-deep)}
