@@ -17,7 +17,7 @@ export function normalizeEmail(value: string): string | null {
     if (labels.length < 2 || labels.some(label => label.length > 63 || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label)))
         return null;
     const normalized = local + "@" + domain;
-    return normalized.length <= 254 ? normalized : null;
+    return new TextEncoder().encode(normalized).length <= 254 ? normalized : null;
 }
 export function normalizePhone(value: string, defaultRegion: "IL" | null = "IL"): string | null {
     const v = value.trim();

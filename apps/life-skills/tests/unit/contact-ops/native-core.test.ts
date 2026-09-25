@@ -22,6 +22,7 @@ describe("native CRM candidate integrated into the existing app",()=>{
   expect(normalizeEmail(".a@example.com")).toBeNull();
   expect(normalizeEmail("a.@example.com")).toBeNull();
   expect(normalizeEmail(`${"a".repeat(65)}@example.com`)).toBeNull();
+  expect(normalizeEmail(`${"é".repeat(32)}@${["a".repeat(54),"b".repeat(54),"c".repeat(54),"d".repeat(55)].join(".")}`)).toBeNull();
   expect(normalizePhone("052-000-0001")).toBe("+972520000001");
   expect(normalizePhone("name@phone")).toBeNull();
  });
