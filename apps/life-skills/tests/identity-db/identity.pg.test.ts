@@ -141,6 +141,9 @@ test('native PostgreSQL keeps demo roots immutable and batch-scoped',async()=>{
  const practitioner=await login(email.practitioner);
  const batch='ls-owner-20260925';
  const created=await cases.createDemo(practitioner.actor,{kind:'minor',displayName:'DEMO — SQL boundary',familyLabel:'DEMO — SQL family'},batch,'sql-boundary',request());
+ const repeated=await cases.createDemo(practitioner.actor,{kind:'minor',displayName:'DEMO — SQL boundary',familyLabel:'DEMO — SQL family'},batch,'sql-boundary',request());
+ assert.equal(repeated.caseId,created.caseId,'repeated batch/source key must reuse the original synthetic case');
+ await denied(()=>cases.createDemo(practitioner.actor,{kind:'adult',displayName:'DEMO — SQL boundary',familyLabel:'DEMO — SQL family'},batch,'sql-boundary',request()),'CONFLICT');
  await store.transaction(async tx=>{
   await tx.query('INSERT INTO ls_demo.records(workspace_id,batch_id,entity_kind,entity_key,source_key,case_id) VALUES($1,$2,$3,$4,$5,$6)',[config.workspaceId,batch,'person',randomUUID(),'sql-person',created.caseId]);
  });
@@ -166,6 +169,8 @@ test('three plus-addressed demo invites use ordinary authentication and cannot c
   assert.equal(new Set([parent.accountId,child.accountId,grown.accountId]).size,3);
   const markers=await pool.query('SELECT account_id,batch_id FROM ls_demo.accounts WHERE workspace_id=$1 AND account_id=ANY($2::uuid[])',[config.workspaceId,[parent.accountId,child.accountId,grown.accountId]]);
   assert.equal(markers.rows.length,3);assert.ok(markers.rows.every(row=>row.batch_id===batch));
+  const parentPerson=await pool.query("SELECT r.entity_key FROM ls_demo.records r WHERE r.workspace_id=$1 AND r.batch_id=$2 AND r.entity_kind='person' AND r.account_id=$3",[config.workspaceId,batch,parent.accountId]);
+  assert.equal(parentPerson.rows.length,1,'the synthetic parent person must carry a batch marker');
   const live=await cases.create(practitioner.actor,{kind:'minor',displayName:'Synthetic unrelated live minor',familyLabel:'Synthetic unrelated live family'},request());
   await denied(()=>accounts.inviteParent(practitioner.actor,{caseId:live.caseId,email:aliases.parent,displayName:'DEMO — Parent',locale:'he'},request()),'CONFLICT');
   await denied(()=>accounts.inviteParent(practitioner.actor,{caseId:minor.caseId,email:email.a,displayName:'Synthetic real parent',locale:'he'},request()),'CONFLICT');

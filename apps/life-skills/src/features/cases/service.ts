@@ -30,6 +30,16 @@ export class CaseService {
     await tx.query('INSERT INTO ls_demo.batches(workspace_id,batch_id,created_by) VALUES($1,$2,$3) ON CONFLICT(workspace_id,batch_id) DO NOTHING',[actor.workspaceId,demo.batchId,actor.id]);
     const batch=await one<{createdBy:string}>(tx,'SELECT created_by AS "createdBy" FROM ls_demo.batches WHERE workspace_id=$1 AND batch_id=$2',[actor.workspaceId,demo.batchId]);
     if(batch?.createdBy!==actor.id)throw new AppError('CONFLICT');
+    const previous=await one<{caseId:CaseId;kind:'minor'|'adult';personId:string;profileCiphertext:string;practitionerId:string}>(tx,`SELECT c.id AS "caseId",p.kind,p.id AS "personId",p.profile_ciphertext AS "profileCiphertext",c.practitioner_account_id AS "practitionerId"
+     FROM ls_demo.cases d JOIN ls_cases.cases c ON c.workspace_id=d.workspace_id AND c.id=d.case_id
+     JOIN ls_cases.clients cl ON cl.workspace_id=c.workspace_id AND cl.id=c.client_id
+     JOIN ls_identity.people p ON p.workspace_id=cl.workspace_id AND p.id=cl.person_id
+     WHERE d.workspace_id=$1 AND d.batch_id=$2 AND d.source_key=$3`,[actor.workspaceId,demo.batchId,demo.sourceKey]);
+    if(previous){
+     const profile:unknown=JSON.parse(unseal(previous.profileCiphertext,`person:${actor.workspaceId}:${previous.personId}`,this.config.keyring));
+     if(previous.practitionerId!==actor.id||previous.kind!==input.kind||!profile||typeof profile!=='object'||!('displayName' in profile)||profile.displayName!==input.displayName)throw new AppError('CONFLICT');
+     return {caseId:previous.caseId};
+    }
    }
    const personId=asId(randomUUID(),'person'),clientId=randomUUID(),caseId=asId(randomUUID(),'case'),familyId=input.familyId ?? asId(randomUUID(),'family');
    if(input.familyId){if(!await one(tx,"SELECT id FROM ls_cases.families WHERE workspace_id=$1 AND id=$2",[actor.workspaceId,familyId])) throw new AppError("NOT_FOUND");}

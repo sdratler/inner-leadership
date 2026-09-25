@@ -20,6 +20,7 @@ async function markDemoInvite(tx:SqlSession,workspaceId:string,caseId:CaseId,acc
  if(!batch){if(existing)throw new AppError('CONFLICT');return;}
  if(!created){if(existing!==batch)throw new AppError('CONFLICT');return;}
  await tx.query("INSERT INTO ls_demo.accounts(workspace_id,account_id,batch_id,source_key) VALUES($1,$2,$3,$4)",[workspaceId,account.id,batch,`account:${account.id}`]);
+ if(account.role==='parent')await tx.query("INSERT INTO ls_demo.records(workspace_id,batch_id,entity_kind,entity_key,source_key,account_id) VALUES($1,$2,'person',$3,$4,$5)",[workspaceId,batch,account.personId,`parent-person:${account.id}`,account.id]);
 }
 async function createAccount(tx:SqlSession,config:IdentityConfig,context:RequestContext,
  input:{email:string;displayName:string;locale:Locale;role:AccountRole;personId?:PersonId;subjectKind?:'adult'|'minor';demoBatchId?:string}):Promise<AccountRow> {
