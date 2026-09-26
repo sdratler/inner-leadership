@@ -8,7 +8,7 @@ import { roleDestinations, CLIENT_SECTIONS } from "../../src/ui/revamp/role-mode
 import { primaryNavigation, navigationGroups } from "../../src/ui/workspace/navigation-model.ts";
 import { validateAudioUpload, uploadIdentity, safeAudioObjectKey, UPLOAD_LIMIT } from "../../src/features/session-workflow/upload-policy.ts";
 const app = new URL("../../", import.meta.url);
-test("manifest matches chosen locale and role with no personal query strings", () => { assert.equal(privateAppManifest("he", "parent").start_url, "/he/family"); assert.equal(privateAppManifest("en", "practitioner").start_url, "/en/app/calendar"); assert.equal(privateAppManifest("en", "child").start_url, "/en/client"); assert.equal(privateAppManifest("en", "adult_client").start_url.includes("?"), false); });
+test("manifest matches chosen locale and role with no personal query strings", () => { assert.equal(privateAppManifest("he", "parent").start_url, "/he/family/schedule"); assert.equal(privateAppManifest("en", "practitioner").start_url, "/en/app/calendar"); assert.equal(privateAppManifest("en", "child").start_url, "/en/client"); assert.equal(privateAppManifest("en", "adult_client").start_url.includes("?"), false); });
 test("only practitioner navigation includes marketing; no leads or library", () => {
     for (const role of ["parent", "adult_client", "child"] as const) {
         assert.equal(roleDestinations(role).length, 4);
