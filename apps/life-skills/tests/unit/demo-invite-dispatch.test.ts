@@ -12,10 +12,16 @@ describe('targeted DEMO invitation plan',()=>{
  test('is idempotent for an already sent invite',()=>{
   expect(demoInviteDispatchPlan(ids,[{...rows[0]!,state:'sent'},rows[1]!,rows[2]!],now)).toEqual({queuedIds:['mail-1','mail-2'],alreadySent:1});
  });
+ test('ignores a canceled or expired predecessor after a deliberate reissue',()=>{
+  const history=[{...rows[0]!,id:'old-canceled',state:'canceled'},
+   {...rows[1]!,id:'old-expired',expiresAt:new Date('2026-09-26T12:00:00Z')}];
+  expect(demoInviteDispatchPlan(ids,[...history,...rows],now)).toEqual({queuedIds:['mail-0','mail-1','mail-2'],alreadySent:0});
+ });
  test('fails closed on duplicates, unrelated rows, failed and expired deliveries',()=>{
   expect(()=>demoInviteDispatchPlan(ids,[...rows,rows[0]!],now)).toThrow();
   expect(()=>demoInviteDispatchPlan(ids,[rows[0]!,rows[1]!,{...rows[2]!,accountId:'other'}],now)).toThrow();
   expect(()=>demoInviteDispatchPlan(ids,[rows[0]!,rows[1]!,{...rows[2]!,state:'failed'}],now)).toThrow();
   expect(()=>demoInviteDispatchPlan(ids,[rows[0]!,rows[1]!,{...rows[2]!,expiresAt:now}],now)).toThrow();
+  expect(()=>demoInviteDispatchPlan(ids,[...rows,{...rows[0]!,id:'uncertain-old',state:'failed'}],now)).toThrow();
  });
 });

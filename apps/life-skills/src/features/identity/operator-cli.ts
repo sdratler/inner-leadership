@@ -86,8 +86,13 @@ async function main():Promise<void>{
        await demoAccountBatch(tx,runtime.config.workspaceId,account.id)!==batch)throw new AppError("CONFLICT");
     ids.push(account.id);
    }
-   const rows=await tx.query<DemoInviteMail>(`SELECT id,account_id AS "accountId",state,expires_at AS "expiresAt",next_attempt_at AS "nextAttemptAt"
-    FROM ls_identity.auth_mail_outbox WHERE workspace_id=$1 AND account_id=ANY($2::uuid[]) AND kind='invite'`,[runtime.config.workspaceId,ids]);
+   const rows=await tx.query<DemoInviteMail>(`SELECT m.id,m.account_id AS "accountId",m.state,m.expires_at AS "expiresAt",m.next_attempt_at AS "nextAttemptAt"
+    FROM ls_identity.auth_mail_outbox m JOIN ls_identity.auth_tokens t
+     ON t.workspace_id=m.workspace_id AND t.account_id=m.account_id AND t.token_digest=m.token_digest AND t.purpose='invite'
+    WHERE m.workspace_id=$1 AND m.account_id=ANY($2::uuid[]) AND m.kind='invite'
+     AND m.state IN ('queued','sent','failed') AND m.expires_at>GREATEST($3::timestamptz,clock_timestamp())
+     AND t.used_at IS NULL AND t.revoked_at IS NULL AND t.expires_at>GREATEST($3::timestamptz,clock_timestamp())`,
+    [runtime.config.workspaceId,ids,runtime.clock.now()]);
    return demoInviteDispatchPlan(ids,rows,runtime.clock.now());
   });
   const email=createAuthEmailTransport(process.env);
