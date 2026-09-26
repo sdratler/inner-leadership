@@ -51,6 +51,17 @@ describe("shared private-app sign-in destination", () => {
     const people=practitionerReturnPath("en","clients",{section:"paid",filter:"booking"});
     expect(loginReturnDestination("en","practitioner",people)).toBe("/en/app/clients?section=paid&filter=booking");
   });
+  it("sends a signed-out parent to login without disguising forbidden access or outages",()=>{
+    const layout=readFileSync(new URL("../../src/app/[locale]/family/layout.tsx",import.meta.url),"utf8");
+    expect(layout).toContain('requireWorkspaceRole("parent")');
+    expect(layout).toContain('error.code === "UNAUTHENTICATED"');
+    expect(layout).toContain('redirect(loginHref(locale, `/${locale}/family`))');
+    expect(layout).toContain('error.code === "FORBIDDEN"');
+    expect(layout).toContain('error.code === "NOT_FOUND"');
+    expect(layout).toContain('throw error');
+    expect(layout).not.toContain("PrivateWorkspaceUnavailable");
+    expect(loginReturnDestination("en","parent","/en/family/schedule?view=week")).toBe("/en/family/schedule?view=week");
+  });
   it("rejects cross-origin, cross-role, cross-locale and malformed login returns",()=>{
     for(const value of ["//evil.example/en/app", "https://evil.example/en/app", "/en/family", "/he/app/calendar", "/en/app/../family", "/en/app\\calendar", "/en/app/calendar#token", "/en/app/%2e%2e/family"]){
       expect(loginReturnDestination("en","practitioner",value)).toBe("/en/app");
