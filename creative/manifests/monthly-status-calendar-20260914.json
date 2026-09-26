@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 1,
+  "id": "LS-MONTH-20260914",
+  "status": "PARTIALLY_APPROVED_ACTIVE_WHATSAPP_FACEBOOK_AUTH_BLOCKED",
+  "recordedAt": "2026-09-14T18:30:00+03:00",
+  "authority": {
+    "handoffVersion": "6.5",
+    "sourceEpoch": "OWNER-ORGANIC-PUBLISH-AND-MONTH-20260914-01",
+    "buildControlWorkItem": "MKT-062",
+    "gitIntegrationWorkItem": "MKT-063",
+    "adsAndCreativesRegister": "Leads CRM / Ads & Creatives",
+    "approvalCalendar": "Leads CRM / 30-Day Calendar"
+  },
+  "ownership": {
+    "graphicsGeneration": "SEPARATE_CHATGPT_WINDOW",
+    "thisManifest": "CODEX_INTEGRATION",
+    "duplicateGenerationAllowed": false,
+    "generationPerformedByThisLane": false
+  },
+  "publicSafety": {
+    "repositoryVisibility": "PUBLIC",
+    "identifiableImageBinariesInGit": false,
+    "driveFileIdsInGit": false,
+    "candidateStorage": "ACCESS_CONTROLLED_DRIVE_CREATIVE_FOLDER",
+    "note": "This manifest records hashes and review state only. It does not copy founder, child, or other identifiable image bytes into Git."
+  },
+  "counts": {
+    "requestedFlyers": 30,
+    "receivedConcepts": 16,
+    "missingConcepts": 14,
+    "exactVersionApprovals": 6,
+    "verifiedStatusExports": 6,
+    "verifiedFacebookFeedExports": 0,
+    "publishedConcepts": 1,
+    "publishedEvents": 2
+  },
+  "assetRequirements": {
+    "status": {"width":1080,"height":1920,"ratio":"9:16"},
+    "facebookFeed": {"width":1080,"height":1350,"ratio":"4:5"},
+    "approvedImmutableBytesRequired": true,
+    "approvedCaptionRequired": true
+  },
+  "caption": {
+    "source": "CURRENT_30_DAY_CALENDAR_OWNER_APPROVED_TEMPLATE",
+    "graphicsWindowReturnedCaptionSet": true,
+    "ownerApproved": true,
+    "template": "{headline}\n\nטיפול רגשי לבנים בגילאי 8–12, בשילוב הדרכת הורים מעשית.\nלפרטים נוספים בוואטסאפ: https://wa.me/972534932631"
+  },
+  "schedule": {
+    "status": "ACTIVE_WHATSAPP_FACEBOOK_UNATTENDED_AUTH_BLOCKED",
+    "activationAuthorized": true,
+    "windowStart": "2026-09-15",
+    "windowEnd": "2026-10-14",
+    "datesRollForwardIfApprovedLater": true,
+    "localTime": "20:00",
+    "timeZone": "Asia/Jerusalem",
+    "channels": [
+      {
+        "id": "whatsapp_status",
+        "binding": "EXISTING_WHAPI_BUSINESS_NUMBER",
+        "providerHealth": "AUTHENTICATED_HEALTHY",
+        "publicationEnabled": true,
+        "automaticReplies": false
+      },
+      {
+        "id": "facebook_page",
+        "binding": "DIRECT_META_PAGE_ONLY",
+        "providerHealth": "ONE_OFF_BROWSER_POST_CONFIRMED_GRAPH_API_OAUTH_CODE_200",
+        "publicationEnabled": false,
+        "requiredGate": "Reauthorize the existing Meta app/Page credential with Page publishing permissions; do not create a second route."
+      }
+    ],
+    "deduplication": {
+      "mode": "ATOMIC",
+      "key": ["assetId", "exactAssetSha256", "captionSha256", "channel", "scheduledAt"],
+      "unknownDeliveryAutoRetry": false
+    },
+    "holidayPolicy": {
+      "action": "SKIP",
+      "backfill": false,
+      "dates": ["2026-09-20", "2026-09-21", "2026-09-25", "2026-09-26", "2026-10-02", "2026-10-03"]
+    },
+    "publicationEnabled": true,
+    "providerMutationPerformed": true,
+    "firstNaturalScheduledRun": {
+      "scheduledAt": "2026-09-15T20:00:00+03:00",
+      "receiptStatus": "PENDING_NOT_YET_DUE"
+    },
+    "receipts": [
+      {"channel":"whatsapp_status","sequence":16,"status":"PUBLISHED_ONCE","providerReceiptId":"Psp8ux2AB8kyH5U-xKAA"},
+      {"channel":"facebook_page","sequence":16,"status":"PUBLISHED_ONCE_VIA_AUTHENTICATED_BROWSER","providerPostId":"122110504053449454","publishedAt":"2026-09-14T18:02:00+03:00","permalinkStatus":"PENDING_EXACT_READBACK","boosted":false}
+    ]
+  },
+  "items": [
+    {"slot":"D01","sequence":1,"date":"2026-09-15","assetId":"LS-MONTH-20260914-01","headline":"קשר לפני תיקון.","sourceFile":{"name":"LS-MONTH-20260914-01-v02.png","sha256":"d3a498ea83b9dc1d6da1074640c29de6fc40fd3ac516f4ededbff405bedf5905","width":941,"height":1672},"statusExport":{"name":"LS-MONTH-20260914-01-status-1080x1920-v02-derived.png","sha256":"659f109eab5947b0a781a9b96dd4d4c34e396a65934c82b17c15cc6c353c4f10","width":1080,"height":1920},"facebookFeedExport":null,"assetState":"APPROVED_STATUS_EXPORT_FACEBOOK_FEED_PENDING","exactVersionApproved":true,"approvalEvidence":"OWNER-FLYER-APPROVAL-20260914-01","disposition":"ELIGIBLE_WHATSAPP"},
+    {"slot":"D02","sequence":2,"date":"2026-09-16","assetId":"LS-MONTH-20260914-02","headline":"לקחת אחריות מתוך בחירה.","sourceFile":{"name":"LS-MONTH-20260914-02-v01.png","sha256":null,"width":941,"height":1672,"verification":"PRIVATE_REGISTER_READBACK_PENDING_HASH"},"statusExport":null,"facebookFeedExport":null,"assetState":"RENDERED_PENDING_REVIEW_AGE_ORDER","exactVersionApproved":false,"approvalEvidence":null,"disposition":"BLOCKED"},
+    {"slot":"D03","sequence":3,"date":"2026-09-17","assetId":"LS-MONTH-20260914-03","headline":"מוטיבציה שמתחילה מבפנים.","sourceFile":{"name":"LS-MONTH-20260914-03-v02.png","sha256":"8bd3e3d4e988b0ddedf50c966c5ea1cdc545d781dd1f91cc4a47e9f8599b3316","width":941,"height":1672},"statusExport":{"name":"LS-MONTH-20260914-03-status-1080x1920-v02-derived.png","sha256":"c8f09f43e2da28411b28092da572fb12bc7627cee36418bf12196692f40f3b08","width":1080,"height":1920},"facebookFeedExport":null,"assetState":"APPROVED_STATUS_EXPORT_FACEBOOK_FEED_PENDING","exactVersionApproved":true,"approvalEvidence":"OWNER-FLYER-APPROVAL-20260914-01","disposition":"ELIGIBLE_WHATSAPP"},
+    {"slot":"D04","sequence":4,"date":"2026-09-18","assetId":"LS-MONTH-20260914-04","headline":"ללמוד להנהיג את עצמם.","file":{"name":"LS-MONTH-20260914-04-v01.png","sha256":"158195dda4f9e6974350ec5b512364dcd271c497a9bf66d4d5dd0280ccc5749d","width":941,"height":1672},"assetState":"REVIEW_CANDIDATE_WRONG_DIMENSIONS_UNAPPROVED","exactVersionApproved":false,"approvalEvidence":null,"disposition":"BLOCKED"},
+    {"slot":"D05","sequence":5,"date":"2026-09-19","assetId":"LS-MONTH-20260914-05","headline":"מקום לרגש. מרחב לבחירה.","sourceFile":{"name":"LS-MONTH-20260914-05-v02.png","sha256":"202ab51b25bab98555b807a194c90a3e97c10c585e7bea395bb3fccc21934b90","width":941,"height":1672},"statusExport":{"name":"LS-MONTH-20260914-05-status-1080x1920-v02-derived.png","sha256":"9296f0904150427d58fa4dd63a98532899c0c3d20b6d71597948c74cdcebc8db","width":1080,"height":1920},"facebookFeedExport":null,"assetState":"APPROVED_STATUS_EXPORT_FACEBOOK_FEED_PENDING","exactVersionApproved":true,"approvalEvidence":"OWNER-FLYER-APPROVAL-20260914-01","disposition":"ELIGIBLE_WHATSAPP"},
+    {"slot":"D06","sequence":6,"date":"2026-09-20","assetId":"LS-MONTH-20260914-06","headline":"גבולות ברורים. קשר קרוב.","sourceFile":{"name":"LS-MONTH-20260914-06-v02.png","sha256":"b9892d3a4e3af5f4498a2776261399d2099d4d1db5677aec413a46a87718d628","width":941,"height":1672},"statusExport":{"name":"LS-MONTH-20260914-06-status-1080x1920-v02-derived.png","sha256":"aa3e58c0f99c33703e02251364e98eee06b92eabaaf022dd91cd367a37b42123","width":1080,"height":1920},"facebookFeedExport":null,"assetState":"APPROVED_STATUS_EXPORT_HOLIDAY_SKIP_FACEBOOK_FEED_PENDING","exactVersionApproved":true,"approvalEvidence":"OWNER-FLYER-APPROVAL-20260914-01","disposition":"SKIP","holiday":{"name":"Erev Yom Kippur","reason":"20:00 is after sunset"}},
+    {"slot":"D07","sequence":7,"date":"2026-09-21","assetId":"LS-MONTH-20260914-07","headline":"לעצור רגע. לבחור איך להגיב.","sourceFile":{"name":"LS-MONTH-20260914-07-v02.png","sha256":"57a945908869ae888da24611fd60f2dd1a5efc85f84d99cdf2b4b3955e07edb7","width":941,"height":1672},"statusExport":{"name":"LS-MONTH-20260914-07-status-1080x1920-v02-derived.png","sha256":"415df46389108eae2c6f7b9111b325f3c9877e11188ef3191a26f94eb2189877","width":1080,"height":1920},"facebookFeedExport":null,"assetState":"APPROVED_STATUS_EXPORT_HOLIDAY_SKIP_FACEBOOK_FEED_PENDING","exactVersionApproved":true,"approvalEvidence":"OWNER-FLYER-APPROVAL-20260914-01","disposition":"SKIP","holiday":{"name":"Yom Kippur","reason":"holiday quiet day"}},
+    {"slot":"D08","sequence":8,"date":"2026-09-22","assetId":"LS-MONTH-20260914-08","headline":"להביע את עצמם. לבנות קשרים.","file":{"name":"LS-MONTH-20260914-08-v01.png","sha256":"65724ab72d535114666f1c4977d62ca5b1b6880bea9c5c7c94459617c502ae5a","width":941,"height":1672},"assetState":"REVIEW_CANDIDATE_WRONG_DIMENSIONS_UNAPPROVED","exactVersionApproved":false,"approvalEvidence":null,"disposition":"BLOCKED"},
+    {"slot":"D09","sequence":9,"date":"2026-09-23","assetId":"LS-MONTH-20260914-09","headline":"אחריות צומחת מתוך שותפות.","file":{"name":"LS-MONTH-20260914-09-v01.png","sha256":"f4ab0a6d180f11307c6157a39a3781d690ca30c56fa7158b52287d06e25ecd37","width":941,"height":1672},"assetState":"REVIEW_CANDIDATE_WRONG_DIMENSIONS_UNAPPROVED","exactVersionApproved":false,"approvalEvidence":null,"disposition":"BLOCKED"},
+    {"slot":"D10","sequence":10,"date":"2026-09-24","assetId":"LS-MONTH-20260914-10","headline":"גם טעות יכולה ללמד.","sourceFile":{"name":"LS-MONTH-20260914-10-v02-REJECTED.png","sha256":"263ef8d7766aac06bc7b1cc948938d7943551e322ad0f9435c462beda22f2f08","width":941,"height":1672},"statusExport":null,"facebookFeedExport":null,"assetState":"REJECTED_HEAD_TILT_REPLACEMENT_REQUIRED","exactVersionApproved":false,"approvalEvidence":null,"disposition":"BLOCKED"},
+    {"slot":"D11","sequence":11,"date":"2026-09-25","assetId":"LS-MONTH-20260914-11","headline":"ללמוד לבקש עזרה.","sourceFile":{"name":"LS-MONTH-20260914-11-v01.png","sha256":null,"width":941,"height":1672,"verification":"PRIVATE_REGISTER_READBACK_PENDING_HASH"},"statusExport":null,"facebookFeedExport":null,"assetState":"RENDERED_PENDING_REVIEW_HOLIDAY_SKIP","exactVersionApproved":false,"approvalEvidence":null,"disposition":"SKIP","holiday":{"name":"Erev Sukkot","reason":"20:00 is after sunset"}},
+    {"slot":"D12","sequence":12,"date":"2026-09-26","assetId":"LS-MONTH-20260914-12","headline":"אומץ לנסות גם כשקשה.","sourceFile":{"name":"LS-MONTH-20260914-12-v01.png","sha256":null,"width":941,"height":1672,"verification":"PRIVATE_REGISTER_READBACK_PENDING_HASH"},"statusExport":null,"facebookFeedExport":null,"assetState":"NEEDS_REVISION_HOLIDAY_SKIP","exactVersionApproved":false,"approvalEvidence":null,"disposition":"SKIP","holiday":{"name":"Sukkot I","reason":"holiday quiet day"}},
+    {"slot":"D13","sequence":13,"date":"2026-09-27","assetId":"LS-MONTH-20260914-13","headline":"למצוא מילים למה שמרגישים.","sourceFile":{"name":"LS-MONTH-20260914-13-v01.png","sha256":null,"width":941,"height":1672,"verification":"PRIVATE_REGISTER_READBACK_PENDING_HASH"},"statusExport":null,"facebookFeedExport":null,"assetState":"RENDERED_PENDING_REVIEW","exactVersionApproved":false,"approvalEvidence":null,"disposition":"BLOCKED"},
+    {"slot":"D14","sequence":14,"date":"2026-09-28","assetId":"LS-MONTH-20260914-14","headline":"להקשיב גם כשלא מסכימים.","sourceFile":{"name":"LS-MONTH-20260914-14-v01.png","sha256":null,"width":941,"height":1672,"verification":"PRIVATE_REGISTER_READBACK_PENDING_HASH"},"statusExport":null,"facebookFeedExport":null,"assetState":"RENDERED_PENDING_REVIEW","exactVersionApproved":false,"approvalEvidence":null,"disposition":"BLOCKED"},
+    {"slot":"D15","sequence":15,"date":"2026-09-29","assetId":"LS-MONTH-20260914-15","headline":"להרגיש שייכים. לקחת חלק.","sourceFile":{"name":"LS-MONTH-20260914-15-v01.png","sha256":null,"width":941,"height":1672,"verification":"PRIVATE_REGISTER_READBACK_PENDING_HASH"},"statusExport":null,"facebookFeedExport":null,"assetState":"RENDERED_PENDING_REVIEW","exactVersionApproved":false,"approvalEvidence":null,"disposition":"BLOCKED"},
+    {"slot":"D16","sequence":16,"date":"2026-09-30","assetId":"LS-MONTH-20260914-16","headline":"למצוא משמעות בעשייה.","sourceFile":{"name":"LS-MONTH-20260914-16-v03.png","sha256":"d239cb96bcef990095b66e8d42536536777c48bac84ff1430de65cdef4730e6b","width":941,"height":1672},"statusExport":{"name":"LS-MONTH-20260914-16-v03-status-1080x1920.png","sha256":"f2653d976f666d4e0aaa5818d2e142fedc88ffbcec6d637a25d7889cfef92f36","width":1080,"height":1920},"facebookFeedExport":null,"assetState":"APPROVED_STATUS_PUBLISHED_FACEBOOK_ONE_OFF_PUBLISHED_FEED_EXPORT_PENDING","exactVersionApproved":true,"approvalEvidence":"OWNER-FLYER-16-V03-APPROVED-20260914-01","disposition":"PUBLISHED_ONCE_PER_ACTIVE_CHANNEL"},
+    {"slot":"D17","sequence":17,"date":"2026-10-01","assetId":"LS-MONTH-20260914-17","headline":"צעדים קטנים. התמדה שנבנית.","file":null,"assetState":"MISSING","exactVersionApproved":false,"approvalEvidence":null,"disposition":"BLOCKED"},
+    {"slot":"D18","sequence":18,"date":"2026-10-02","assetId":"LS-MONTH-20260914-18","headline":"להבין את התוצאות של הבחירה.","file":null,"assetState":"MISSING","exactVersionApproved":false,"approvalEvidence":null,"disposition":"SKIP","holiday":{"name":"Erev Shmini Atzeret","reason":"20:00 is after sunset"}},
+    {"slot":"D19","sequence":19,"date":"2026-10-03","assetId":"LS-MONTH-20260914-19","headline":"לתקן מה שאפשר. להמשיך קדימה.","file":null,"assetState":"MISSING","exactVersionApproved":false,"approvalEvidence":null,"disposition":"SKIP","holiday":{"name":"Shmini Atzeret / Simchat Torah","reason":"holiday quiet day in Israel"}},
+    {"slot":"D20","sequence":20,"date":"2026-10-04","assetId":"LS-MONTH-20260914-20","headline":"להתמודד עם אכזבה. למצוא דרך.","file":null,"assetState":"MISSING","exactVersionApproved":false,"approvalEvidence":null,"disposition":"BLOCKED"},
+    {"slot":"D21","sequence":21,"date":"2026-10-05","assetId":"LS-MONTH-20260914-21","headline":"לבחור מטרה שיש בה משמעות.","file":null,"assetState":"MISSING","exactVersionApproved":false,"approvalEvidence":null,"disposition":"BLOCKED"},
+    {"slot":"D22","sequence":22,"date":"2026-10-06","assetId":"LS-MONTH-20260914-22","headline":"להכיר את הכוחות. לגלות מה אפשר.","file":null,"assetState":"MISSING","exactVersionApproved":false,"approvalEvidence":null,"disposition":"BLOCKED"},
+    {"slot":"D23","sequence":23,"date":"2026-10-07","assetId":"LS-MONTH-20260914-23","headline":"לפעול מתוך מה שחשוב.","file":null,"assetState":"MISSING","exactVersionApproved":false,"approvalEvidence":null,"disposition":"BLOCKED"},
+    {"slot":"D24","sequence":24,"date":"2026-10-08","assetId":"LS-MONTH-20260914-24","headline":"לפתור יחד. ללמוד לשתף פעולה.","file":null,"assetState":"MISSING","exactVersionApproved":false,"approvalEvidence":null,"disposition":"BLOCKED"},
+    {"slot":"D25","sequence":25,"date":"2026-10-09","assetId":"LS-MONTH-20260914-25","headline":"אמון שנותן מקום לגדול.","file":null,"assetState":"MISSING","exactVersionApproved":false,"approvalEvidence":null,"disposition":"BLOCKED"},
+    {"slot":"D26","sequence":26,"date":"2026-10-10","assetId":"LS-MONTH-20260914-26","headline":"לראות גם את הצד השני.","file":null,"assetState":"MISSING","exactVersionApproved":false,"approvalEvidence":null,"disposition":"BLOCKED"},
+    {"slot":"D27","sequence":27,"date":"2026-10-11","assetId":"LS-MONTH-20260914-27","headline":"להקשיב לגוף. לזהות מה צריך.","file":null,"assetState":"MISSING","exactVersionApproved":false,"approvalEvidence":null,"disposition":"BLOCKED"},
+    {"slot":"D28","sequence":28,"date":"2026-10-12","assetId":"LS-MONTH-20260914-28","headline":"לא חייבים להצליח מיד.","file":null,"assetState":"MISSING","exactVersionApproved":false,"approvalEvidence":null,"disposition":"BLOCKED"},
+    {"slot":"D29","sequence":29,"date":"2026-10-13","assetId":"LS-MONTH-20260914-29","headline":"להגיד מה צריך, בלי לפגוע.","file":null,"assetState":"MISSING","exactVersionApproved":false,"approvalEvidence":null,"disposition":"BLOCKED"},
+    {"slot":"D30","sequence":30,"date":"2026-10-14","assetId":"LS-MONTH-20260914-30","headline":"לגדול עם תחושת כיוון.","file":null,"assetState":"MISSING","exactVersionApproved":false,"approvalEvidence":null,"disposition":"BLOCKED"}
+  ]
+}
