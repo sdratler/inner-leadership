@@ -6,6 +6,9 @@ import {seal,unseal,type Keyring} from "../../identity/crypto.ts";
 import {freshActor} from "../../identity/data.ts";
 import {requirePractitioner} from "../../cases/policy.ts";
 import {systemClock,type Actor,type IdentityClock} from "../../identity/types.ts";
+import {asId} from "../../../lib/ids.ts";
+import {dateOnly} from "../core/validation.js";
+import {demoRecordBatch} from "../../demo/provenance.ts";
 export interface CrmProfile {
     personId: string;
     stage: string;
@@ -15,13 +18,46 @@ export interface CrmProfile {
     legacyIds: readonly string[];
 }
 function aad(w: string, p: string) { return `ls_contact_ops/profile/v1/${w}/${p}`; }
+function validateProfile(profile:CrmProfile):void {
+    asId(profile.personId,"person");
+    requireThat(profile.stage.length>0&&profile.stage.length<=120&&profile.notes.length<=5000,"BAD_PROFILE");
+    requireThat(profile.nextAction===null||profile.nextAction.length<=500,"BAD_PROFILE");
+    requireThat(profile.followUpDate===null||dateOnly(profile.followUpDate),"BAD_PROFILE");
+    requireThat(profile.legacyIds.length<=100&&new Set(profile.legacyIds).size===profile.legacyIds.length&&profile.legacyIds.every(id=>/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]+$/.test(id)),"BAD_PROFILE");
+}
 /** Existing identity people remain canonical. This stores only their administrative CRM extension. */
 export class NativeCrmStore {
     constructor(private readonly db: IdentityStore, private readonly keyring: Keyring, private readonly integrityKey: string, private readonly clock:IdentityClock=systemClock) { }
+    /** The caller must have created the canonical identity person first. No Sheet write occurs. */
+    async create(a:Actor,profile:CrmProfile,operationId:string):Promise<{version:number;replayed:boolean}> {
+        validateProfile(profile);
+        requireThat(Boolean(operationId)&&operationId.length<=128,"BAD_OPERATION");
+        const payloadDigest=privateDigest({action:"create",profile,actor:a.id,workspace:a.workspaceId},this.integrityKey);
+        const encrypted=seal(JSON.stringify(profile),aad(a.workspaceId,profile.personId),this.keyring);
+        return this.db.transaction(async tx=>{
+            requirePractitioner(await freshActor(tx,a,this.clock.now()));
+            await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",[a.workspaceId+":crm:"+operationId]);
+            const prior=await tx.query<{payload_digest:string;result_version:number;actor_account_id:string;person_id:string}>(
+                "SELECT payload_digest,result_version,actor_account_id,person_id FROM ls_contact_ops.command_receipts WHERE workspace_id=$1 AND operation_id=$2",[a.workspaceId,operationId]);
+            if(prior[0]) {
+                requireThat(prior[0].payload_digest===payloadDigest&&prior[0].actor_account_id===a.id&&prior[0].person_id===profile.personId,"OPERATION_REUSED_WITH_DIFFERENT_INPUT");
+                return {version:prior[0].result_version,replayed:true};
+            }
+            const demoBatch=await demoRecordBatch(tx,a.workspaceId,"person",profile.personId);
+            const inserted=await tx.query<{version:number}>(
+                "INSERT INTO ls_contact_ops.profiles(workspace_id,person_id,payload_ciphertext,record_mode,demo_batch_id) VALUES($1,$2,$3,$4,$5) ON CONFLICT (workspace_id,person_id) DO NOTHING RETURNING version",
+                [a.workspaceId,profile.personId,encrypted,demoBatch?"demo":"live",demoBatch]);
+            requireThat(inserted.length===1,"PROFILE_ALREADY_EXISTS");
+            await tx.query("INSERT INTO ls_contact_ops.command_receipts(workspace_id,operation_id,person_id,actor_account_id,payload_digest,result_version) VALUES($1,$2,$3,$4,$5,$6)",
+                [a.workspaceId,operationId,profile.personId,a.id,payloadDigest,inserted[0]!.version]);
+            return {version:inserted[0]!.version,replayed:false};
+        });
+    }
     async read(a: Actor, personId: string): Promise<{
         profile: CrmProfile;
         version: number;
     } | null> {
+        asId(personId,"person");
         return this.db.transaction(async (tx) => {
             requirePractitioner(await freshActor(tx,a,this.clock.now()));
             const rows = await tx.query<{
@@ -40,9 +76,10 @@ export class NativeCrmStore {
         version: number;
         replayed: boolean;
     }> {
+        validateProfile(profile);
         requireThat(Boolean(operationId) && Number.isSafeInteger(expectedVersion) && expectedVersion > 0, "BAD_OPERATION");
         requireThat(operationId.length<=128 && Boolean(profile.personId),"BAD_OPERATION");
-        const payloadDigest = privateDigest({ profile, expectedVersion, actor: a.id, workspace: a.workspaceId }, this.integrityKey);
+        const payloadDigest = privateDigest({ action:"update",profile, expectedVersion, actor: a.id, workspace: a.workspaceId }, this.integrityKey);
         const encrypted = seal(JSON.stringify(profile),aad(a.workspaceId,profile.personId),this.keyring);
         return this.db.transaction(async (tx) => {
             requirePractitioner(await freshActor(tx,a,this.clock.now()));
