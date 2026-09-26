@@ -5,16 +5,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { Locale } from "../../lib/locale.ts";
 import { publicAuthAction, sessionInfo, takeAuthTokenFragment } from "./client.ts";
+import { loginReturnDestination } from "./login-return.ts";
 import styles from "./login-client.module.css";
 
 type Mode = "login" | "forgot" | "invite" | "reset";
 type Role = Awaited<ReturnType<typeof sessionInfo>>["role"];
 
 export function destinationForRole(locale: Locale, role: Role): string | null {
-  if (role === "practitioner") return `/${locale}/app`;
-  if (role === "parent") return `/${locale}/family`;
-  if (role === "adult_client") return `/${locale}/client`;
-  return null;
+  return loginReturnDestination(locale, role, null);
 }
 
 const copy = {
@@ -76,6 +74,7 @@ export function LoginClient({ locale }: { locale: Locale }) {
   const router = useRouter();
   const query = useSearchParams();
   const requested = query.get("mode");
+  const requestedReturn = query.get("next");
   const initialMode: Mode = requested === "invite" || requested === "reset" ? requested : "login";
   const [mode, setMode] = useState<Mode>(initialMode);
   const [busy, setBusy] = useState(false);
@@ -94,10 +93,10 @@ export function LoginClient({ locale }: { locale: Locale }) {
       return;
     }
     void sessionInfo().then(current => {
-      const destination = destinationForRole(locale, current.role);
+      const destination = loginReturnDestination(locale, current.role, requestedReturn);
       if (destination) router.replace(destination);
     }).catch(() => undefined);
-  }, [initialMode, locale, router, t.token]);
+  }, [initialMode, locale, requestedReturn, router, t.token]);
 
   async function login(form: FormData) {
     if (busy) return;
@@ -105,7 +104,7 @@ export function LoginClient({ locale }: { locale: Locale }) {
     try {
       await publicAuthAction("login", { email: form.get("email"), password: form.get("password") });
       const current = await sessionInfo();
-      const destination = destinationForRole(locale, current.role);
+      const destination = loginReturnDestination(locale, current.role, requestedReturn);
       if (!destination) { setStatus(t.unsupported); return; }
       router.replace(destination); router.refresh();
     } catch (error) {
