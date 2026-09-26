@@ -12,68 +12,126 @@ import { requirePractitioner,caseAccess } from "../cases/policy.ts";
 import { loadCase,loadGuardians } from "../cases/data.ts";
 import { recordAction } from "./history.ts";
 import { issueAuthToken,queueAuthMail } from "./auth-mail.ts";
+import { demoAccountBatch,demoCaseBatch } from '../demo/provenance.ts';
 export interface InviteInput {caseId:CaseId;email:string;displayName:string;locale:Locale;}
+async function markDemoInvite(tx:SqlSession,workspaceId:string,caseId:CaseId,account:AccountRow,created:boolean):Promise<void>{
+ const batch=await demoCaseBatch(tx,workspaceId,caseId),existing=await demoAccountBatch(tx,workspaceId,account.id);
+ // A synthetic principal must never be invited into a real case (or vice versa).
+ if(!batch){if(existing)throw new AppError('CONFLICT');return;}
+ if(!created){if(existing!==batch)throw new AppError('CONFLICT');return;}
+ await tx.query("INSERT INTO ls_demo.accounts(workspace_id,account_id,batch_id,source_key) VALUES($1,$2,$3,$4)",[workspaceId,account.id,batch,`account:${account.id}`]);
+ if(account.role==='parent')await tx.query("INSERT INTO ls_demo.records(workspace_id,batch_id,entity_kind,entity_key,source_key,account_id) VALUES($1,$2,'person',$3,$4,$5)",[workspaceId,batch,account.personId,`parent-person:${account.id}`,account.id]);
+}
+async function usableDemoInvite(tx:SqlSession,workspaceId:string,accountId:AccountId,now:Date):Promise<boolean>{
+ const usable=await one(tx,`SELECT t.token_digest FROM ls_identity.auth_tokens t
+  JOIN ls_identity.auth_mail_outbox m ON m.workspace_id=t.workspace_id AND m.account_id=t.account_id
+   AND m.token_digest=t.token_digest AND m.kind='invite'
+  WHERE t.workspace_id=$1 AND t.account_id=$2 AND t.purpose='invite'
+   AND t.used_at IS NULL AND t.revoked_at IS NULL AND t.expires_at>GREATEST($3::timestamptz,clock_timestamp())
+   AND ((m.state='queued' AND m.expires_at>GREATEST($3::timestamptz,clock_timestamp()) AND m.attempts<6)
+    OR m.state='sent') LIMIT 1`,[workspaceId,accountId,now]);
+ return Boolean(usable);
+}
 async function createAccount(tx:SqlSession,config:IdentityConfig,context:RequestContext,
- input:{email:string;displayName:string;locale:Locale;role:AccountRole;personId?:PersonId;subjectKind?:'adult'|'minor'}):Promise<AccountRow> {
+ input:{email:string;displayName:string;locale:Locale;role:AccountRole;personId?:PersonId;subjectKind?:'adult'|'minor';demoBatchId?:string}):Promise<AccountRow> {
  const id=asId(randomUUID(),'account'),personId=input.personId ?? asId(randomUUID(),'person');
  const subjectKind=input.subjectKind??'adult';
  if (!input.personId) await tx.query("INSERT INTO ls_identity.people (id,workspace_id,kind,profile_ciphertext,created_at) VALUES ($1,$2,$3,$4,$5)",[personId,config.workspaceId,subjectKind,seal(JSON.stringify({displayName:input.displayName}),`person:${config.workspaceId}:${personId}`,config.keyring),context.now]);
  else if (!await one(tx,"SELECT id FROM ls_identity.people WHERE workspace_id=$1 AND id=$2 AND kind=$3",[config.workspaceId,personId,subjectKind])) throw new AppError("NOT_FOUND");
- await tx.query("INSERT INTO ls_identity.accounts (id,workspace_id,role,state,locale,email_blind,email_ciphertext,created_at,updated_at) VALUES ($1,$2,$3,'invited',$4,$5,$6,$7,$7)",[id,config.workspaceId,input.role,input.locale,blindEmail(input.email,config.lookupKey),seal(canonicalEmail(input.email),`email:${config.workspaceId}:${id}`,config.keyring),context.now]);
+ await tx.query("INSERT INTO ls_identity.accounts (id,workspace_id,role,state,locale,email_blind,email_ciphertext,created_at,updated_at,demo_batch_id) VALUES ($1,$2,$3,'invited',$4,$5,$6,$7,$7,$8)",[id,config.workspaceId,input.role,input.locale,blindEmail(input.email,config.lookupKey),seal(canonicalEmail(input.email),`email:${config.workspaceId}:${id}`,config.keyring),context.now,input.demoBatchId??null]);
  await tx.query("INSERT INTO ls_identity.account_subjects (workspace_id,account_id,person_id) VALUES ($1,$2,$3)",[config.workspaceId,id,personId]);
  const row=await accountById(tx,config.workspaceId,id);if(!row) throw new AppError("INTERNAL");return row;
 }
 export class IdentityAccountService {
  constructor(private readonly store:IdentityStore,private readonly config:IdentityConfig,private readonly clock:IdentityClock) {}
  async inviteParent(actor:Actor,input:InviteInput,requestId:string):Promise<{accountId:AccountId}> {
+  return this.inviteParentWithAuthority(actor,input,requestId,false);
+ }
+ /** No browser route invokes this. A private operator command supplies the existing
+  * verified practitioner identity; the account is looked up, never impersonated. */
+ async inviteDemoAsOperator(practitionerId:AccountId,role:'parent'|'child'|'adult_client',input:InviteInput,requestId:string,operatorPermission:boolean):Promise<{accountId:AccountId}> {
+  if(operatorPermission!==true)throw new AppError('FORBIDDEN');
+  if(!input.displayName.startsWith('DEMO')||!this.config.demoSetupRecipients?.includes(canonicalEmail(input.email)))throw new AppError('FORBIDDEN');
+  const principal={id:practitionerId,workspaceId:this.config.workspaceId};
+  if(role==='parent')return this.inviteParentWithAuthority(principal,input,requestId,true);
+  if(role==='child')return this.inviteChildWithAuthority(principal,input,requestId,true);
+  return this.inviteAdultWithAuthority(principal,input,requestId,true);
+ }
+ private async practitionerForInvite(tx:SqlSession,actor:Actor|Pick<Actor,'id'|'workspaceId'>,now:Date,operator:boolean):Promise<AccountRow>{
+  if(actor.workspaceId!==this.config.workspaceId)throw new AppError('FORBIDDEN');
+  const current=operator?await accountById(tx,actor.workspaceId,actor.id):await freshActor(tx,actor as Actor,now);
+  if(!current||current.state!=='active'||operator&&!current.emailVerifiedAt)throw new AppError('FORBIDDEN');
+  requirePractitioner(current);
+  if(operator&&await demoAccountBatch(tx,actor.workspaceId,actor.id))throw new AppError('FORBIDDEN');
+  return current;
+ }
+ private async inviteParentWithAuthority(actor:Actor|Pick<Actor,'id'|'workspaceId'>,input:InviteInput,requestId:string,operator:boolean):Promise<{accountId:AccountId}> {
   const context={requestId,now:this.clock.now()};
   return this.store.transaction(async tx=>{
-   await lockWorkspace(tx,actor.workspaceId);const current=await freshActor(tx,actor,context.now);requirePractitioner(current);
+   await lockWorkspace(tx,actor.workspaceId);const current=await this.practitionerForInvite(tx,actor,context.now,operator);
    const item=await loadCase(tx,actor.workspaceId,input.caseId),guardians=await loadGuardians(tx,actor.workspaceId,input.caseId);
    caseAccess(current,item,guardians,'write');if(!item || item.kind!=='minor') throw new AppError("NOT_FOUND");
    let account=await accountByEmail(tx,actor.workspaceId,blindEmail(input.email,this.config.lookupKey));
    if (account && (account.role!=='parent' || account.state==='revoked')) throw new AppError("CONFLICT");
    const already=account && guardians.some(g=>g.accountId===account!.id && !g.revoked);
    if (!already && guardians.filter(g=>!g.revoked).length>=2) throw new AppError("CONFLICT");
-   if (!account) account=await createAccount(tx,this.config,context,{...input,role:'parent'});
+   const demoBatch=await demoCaseBatch(tx,actor.workspaceId,item.id);
+   if(operator!==Boolean(demoBatch))throw new AppError('FORBIDDEN');
+   const created=!account;
+   if (!account) account=await createAccount(tx,this.config,context,{...input,role:'parent',...(demoBatch?{demoBatchId:demoBatch}:{})});
+   await markDemoInvite(tx,actor.workspaceId,item.id,account,created);
    await tx.query("INSERT INTO ls_cases.case_guardians (workspace_id,case_id,account_id,granted_at) VALUES ($1,$2,$3,$4) ON CONFLICT(workspace_id,case_id,account_id) DO UPDATE SET granted_at=EXCLUDED.granted_at,revoked_at=NULL",[actor.workspaceId,item.id,account.id,context.now]);
    await tx.query("INSERT INTO ls_cases.family_members (workspace_id,family_id,person_id,role) SELECT workspace_id,family_id,$3,'parent' FROM ls_cases.cases WHERE workspace_id=$1 AND id=$2 AND family_id IS NOT NULL ON CONFLICT DO NOTHING",[actor.workspaceId,item.id,account.personId]);
-   if (account.state==='invited') await issueAuthToken(tx,this.config,account,context,'invite');
-   else await queueAuthMail(tx,this.config,account,context,'case_notice',null);
+   if (account.state==='invited' && (!operator||created||!await usableDemoInvite(tx,actor.workspaceId,account.id,context.now))) await issueAuthToken(tx,this.config,account,context,'invite');
+   else if(!operator) await queueAuthMail(tx,this.config,account,context,'case_notice',null);
    // No existing audience grant is inserted or un-revoked by an invitation.
    await recordAction(tx,context,actor.workspaceId,actor.id,'invite_queued');return {accountId:account.id};
   });
  }
  async inviteAdult(actor:Actor,input:InviteInput,requestId:string):Promise<{accountId:AccountId}> {
+  return this.inviteAdultWithAuthority(actor,input,requestId,false);
+ }
+ private async inviteAdultWithAuthority(actor:Actor|Pick<Actor,'id'|'workspaceId'>,input:InviteInput,requestId:string,operator:boolean):Promise<{accountId:AccountId}> {
   const context={requestId,now:this.clock.now()};
   return this.store.transaction(async tx=>{
-   await lockWorkspace(tx,actor.workspaceId);const current=await freshActor(tx,actor,context.now);requirePractitioner(current);
+   await lockWorkspace(tx,actor.workspaceId);const current=await this.practitionerForInvite(tx,actor,context.now,operator);
    const item=await loadCase(tx,actor.workspaceId,input.caseId);caseAccess(current,item,[],'write');
    if(!item || item.kind!=='adult') throw new AppError("NOT_FOUND");
    let account=await accountByEmail(tx,actor.workspaceId,blindEmail(input.email,this.config.lookupKey));
    if(account && (account.role!=='adult_client' || account.state==='revoked' || account.personId!==item.clientPersonId)) throw new AppError("CONFLICT");
    const linked=await one<{accountId:AccountId}>(tx,"SELECT account_id AS \"accountId\" FROM ls_identity.account_subjects WHERE workspace_id=$1 AND person_id=$2",[actor.workspaceId,item.clientPersonId]);
    if(linked && linked.accountId!==account?.id) throw new AppError("CONFLICT");
-   if(!account) account=await createAccount(tx,this.config,context,{...input,role:'adult_client',personId:item.clientPersonId});
-   if(account.state==='invited') await issueAuthToken(tx,this.config,account,context,'invite');
-   else await queueAuthMail(tx,this.config,account,context,'case_notice',null);
+   const demoBatch=await demoCaseBatch(tx,actor.workspaceId,item.id);
+   if(operator!==Boolean(demoBatch))throw new AppError('FORBIDDEN');
+   const created=!account;
+   if(!account) account=await createAccount(tx,this.config,context,{...input,role:'adult_client',personId:item.clientPersonId,...(demoBatch?{demoBatchId:demoBatch}:{})});
+   await markDemoInvite(tx,actor.workspaceId,item.id,account,created);
+   if(account.state==='invited' && (!operator||created||!await usableDemoInvite(tx,actor.workspaceId,account.id,context.now))) await issueAuthToken(tx,this.config,account,context,'invite');
+   else if(!operator) await queueAuthMail(tx,this.config,account,context,'case_notice',null);
    await recordAction(tx,context,actor.workspaceId,actor.id,'invite_queued');return {accountId:account.id};
   });
  }
  async inviteChild(actor:Actor,input:InviteInput,requestId:string):Promise<{accountId:AccountId}> {
+  return this.inviteChildWithAuthority(actor,input,requestId,false);
+ }
+ private async inviteChildWithAuthority(actor:Actor|Pick<Actor,'id'|'workspaceId'>,input:InviteInput,requestId:string,operator:boolean):Promise<{accountId:AccountId}> {
   if(this.config.childAccountsEnabled!==true)throw new AppError("UNAVAILABLE");
   const context={requestId,now:this.clock.now()};
   return this.store.transaction(async tx=>{
-   await lockWorkspace(tx,actor.workspaceId);const current=await freshActor(tx,actor,context.now);requirePractitioner(current);
+   await lockWorkspace(tx,actor.workspaceId);const current=await this.practitionerForInvite(tx,actor,context.now,operator);
    const item=await loadCase(tx,actor.workspaceId,input.caseId),guardians=await loadGuardians(tx,actor.workspaceId,input.caseId);
    caseAccess(current,item,guardians,'write');if(!item||item.kind!=='minor')throw new AppError("NOT_FOUND");
    let account=await accountByEmail(tx,actor.workspaceId,blindEmail(input.email,this.config.lookupKey));
    if(account&&(account.role!=='child'||account.state==='revoked'||account.personId!==item.clientPersonId))throw new AppError("CONFLICT");
    const linked=await one<{accountId:AccountId}>(tx,"SELECT account_id AS \"accountId\" FROM ls_identity.account_subjects WHERE workspace_id=$1 AND person_id=$2",[actor.workspaceId,item.clientPersonId]);
    if(linked&&linked.accountId!==account?.id)throw new AppError("CONFLICT");
-   if(!account)account=await createAccount(tx,this.config,context,{...input,role:'child',personId:item.clientPersonId,subjectKind:'minor'});
-   if(account.state==='invited')await issueAuthToken(tx,this.config,account,context,'invite');
-   else await queueAuthMail(tx,this.config,account,context,'case_notice',null);
+   const demoBatch=await demoCaseBatch(tx,actor.workspaceId,item.id);
+   if(operator!==Boolean(demoBatch))throw new AppError('FORBIDDEN');
+   const created=!account;
+   if(!account)account=await createAccount(tx,this.config,context,{...input,role:'child',personId:item.clientPersonId,subjectKind:'minor',...(demoBatch?{demoBatchId:demoBatch}:{})});
+   await markDemoInvite(tx,actor.workspaceId,item.id,account,created);
+   if(account.state==='invited'&&(!operator||created||!await usableDemoInvite(tx,actor.workspaceId,account.id,context.now)))await issueAuthToken(tx,this.config,account,context,'invite');
+   else if(!operator)await queueAuthMail(tx,this.config,account,context,'case_notice',null);
    await recordAction(tx,context,actor.workspaceId,actor.id,'invite_queued');return {accountId:account.id};
   });
  }

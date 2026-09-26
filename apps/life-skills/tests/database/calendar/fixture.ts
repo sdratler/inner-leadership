@@ -30,7 +30,7 @@ export function poolStore(pool:pg.Pool):IdentityStore {return {async transaction
  const client=await pool.connect();try{await client.query('BEGIN');const tx:SqlSession={async query<R extends object>(statement:string,values:readonly unknown[]=[]){return (await client.query(statement,[...values])).rows as R[];}};const result=await work(tx);await client.query('COMMIT');return result;}
  catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
 }};}
-export async function fixture(options:{workspaceId?:string;keyring?:Keyring;termsVersion?:string}={}){
+export async function fixture(options:{workspaceId?:string;keyring?:Keyring;termsVersion?:string;demoFirst?:boolean}={}){
  const pool=new pg.Pool({connectionString:safeTestUrl(),max:8});
  const check=await pool.query("SELECT to_regclass('ls_calendar.appointments') AS calendar,to_regclass('ls_cases.cases') AS identity");
  if(!check.rows[0]?.calendar||!check.rows[0]?.identity){await pool.end();throw new Error('RUN_APPROVED_MIGRATION_REGISTRY_FIRST');}
@@ -38,30 +38,43 @@ export async function fixture(options:{workspaceId?:string;keyring?:Keyring;term
  const store=poolStore(pool),db=new CalendarStore(store,keyring,systemClock),service=new CalendarService(db);
  const now=Date.now(),ago=new Date(now-7*86400000),expiresAt=now+8*3600000;
  await pool.query('INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,$2)',[workspaceId,ago]);
- async function account(role:AccountRole,label:string){
+ async function account(role:AccountRole,label:string,demoBatchId:string|null=null){
   const id=asId(randomUUID(),'account'),personId=asId(randomUUID(),'person'),token=randomBytes(32).toString('base64url');
   const actor:Actor={id,workspaceId,personId,role,state:'active',locale:'en',sessionDigest:tokenDigest(token),expiresAt};
   // These records only service authorization; no password/email provider is exercised.
-  await pool.query('INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,\'adult\',$3,$4)',[personId,workspaceId,seal(JSON.stringify({displayName:label}),`person:${workspaceId}:${personId}`,keyring),ago]);
-  await pool.query(`INSERT INTO ls_identity.accounts(id,workspace_id,role,state,locale,email_blind,email_ciphertext,email_verified_at,password_hash,created_at,updated_at)
-   VALUES($1,$2,$3,'active','en',$4,$5,$6,'synthetic-non-login-hash',$6,$6)`,[id,workspaceId,role,createHash('sha256').update(id).digest('hex'),seal('synthetic-'+id+'@example.invalid',`email:${workspaceId}:${id}`,keyring),ago]);
-  await pool.query('INSERT INTO ls_identity.account_subjects(workspace_id,account_id,person_id) VALUES($1,$2,$3)',[workspaceId,id,personId]);
-  await pool.query('INSERT INTO ls_identity.sessions(token_digest,workspace_id,account_id,created_at,expires_at) VALUES($1,$2,$3,$4,$5)',[actor.sessionDigest,workspaceId,id,ago,new Date(expiresAt)]);
+  const client=await pool.connect();try{
+   await client.query('BEGIN');
+   await client.query('INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,\'adult\',$3,$4)',[personId,workspaceId,seal(JSON.stringify({displayName:label}),`person:${workspaceId}:${personId}`,keyring),ago]);
+   await client.query(`INSERT INTO ls_identity.accounts(id,workspace_id,role,state,locale,email_blind,email_ciphertext,email_verified_at,password_hash,created_at,updated_at,demo_batch_id)
+    VALUES($1,$2,$3,'active','en',$4,$5,$6,'synthetic-non-login-hash',$6,$6,$7)`,[id,workspaceId,role,createHash('sha256').update(id).digest('hex'),seal('synthetic-'+id+'@example.invalid',`email:${workspaceId}:${id}`,keyring),ago,demoBatchId]);
+   await client.query('INSERT INTO ls_identity.account_subjects(workspace_id,account_id,person_id) VALUES($1,$2,$3)',[workspaceId,id,personId]);
+   await client.query('INSERT INTO ls_identity.sessions(token_digest,workspace_id,account_id,created_at,expires_at) VALUES($1,$2,$3,$4,$5)',[actor.sessionDigest,workspaceId,id,ago,new Date(expiresAt)]);
+   if(demoBatchId)await client.query('INSERT INTO ls_demo.accounts(workspace_id,account_id,batch_id,source_key) VALUES($1,$2,$3,$4)',[workspaceId,id,demoBatchId,`calendar-${role}-${id}`]);
+   await client.query('COMMIT');
+  }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
   return {actor,token};
  }
- const practitioner=await account('practitioner','Synthetic practitioner'),parent=await account('parent','Synthetic parent A'),parentTwo=await account('parent','Synthetic parent B'),outsider=await account('parent','Synthetic unrelated parent');
- async function caseRecord(label:string,parents= [parent.actor,parentTwo.actor]){
+ const practitioner=await account('practitioner','Synthetic practitioner');
+ const demoBatch=options.demoFirst?'ls-owner-20260925':null;
+ if(demoBatch)await pool.query('INSERT INTO ls_demo.batches(workspace_id,batch_id,created_by) VALUES($1,$2,$3)',[workspaceId,demoBatch,practitioner.actor.id]);
+ const parent=await account('parent','Synthetic parent A',demoBatch),parentTwo=await account('parent','Synthetic parent B',demoBatch),outsider=await account('parent','Synthetic unrelated parent');
+ async function caseRecord(label:string,parents= [parent.actor,parentTwo.actor],caseDemoBatch:string|null=null){
   const id=asId(randomUUID(),'case'),personId=asId(randomUUID(),'person'),clientId=randomUUID(),familyId=randomUUID(),audienceId=asId(randomUUID(),'audience'),engagementId=asId(randomUUID(),'engagement');
-  await pool.query(`INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,'minor',$3,$4)`,[personId,workspaceId,seal(JSON.stringify({displayName:label}),`person:${workspaceId}:${personId}`,keyring),ago]);
-  await pool.query('INSERT INTO ls_cases.families(id,workspace_id,label_ciphertext,created_at) VALUES($1,$2,$3,$4)',[familyId,workspaceId,seal(label,`family:${workspaceId}:${familyId}`,keyring),ago]);
-  await pool.query('INSERT INTO ls_cases.clients(id,workspace_id,person_id,created_at) VALUES($1,$2,$3,$4)',[clientId,workspaceId,personId,ago]);
-  await pool.query(`INSERT INTO ls_cases.cases(id,workspace_id,client_id,family_id,practitioner_account_id,state,created_at,updated_at) VALUES($1,$2,$3,$4,$5,'active',$6,$6)`,[id,workspaceId,clientId,familyId,practitioner.actor.id,ago]);
+  const client=await pool.connect();try{
+   await client.query('BEGIN');
+   await client.query(`INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,'minor',$3,$4)`,[personId,workspaceId,seal(JSON.stringify({displayName:label}),`person:${workspaceId}:${personId}`,keyring),ago]);
+   await client.query('INSERT INTO ls_cases.families(id,workspace_id,label_ciphertext,created_at) VALUES($1,$2,$3,$4)',[familyId,workspaceId,seal(label,`family:${workspaceId}:${familyId}`,keyring),ago]);
+   await client.query('INSERT INTO ls_cases.clients(id,workspace_id,person_id,created_at) VALUES($1,$2,$3,$4)',[clientId,workspaceId,personId,ago]);
+   await client.query(`INSERT INTO ls_cases.cases(id,workspace_id,client_id,family_id,practitioner_account_id,state,created_at,updated_at,demo_batch_id) VALUES($1,$2,$3,$4,$5,'active',$6,$6,$7)`,[id,workspaceId,clientId,familyId,practitioner.actor.id,ago,caseDemoBatch]);
+   if(caseDemoBatch)await client.query('INSERT INTO ls_demo.cases(workspace_id,case_id,batch_id,source_key) VALUES($1,$2,$3,$4)',[workspaceId,id,caseDemoBatch,`calendar-case-${id}`]);
+   await client.query('COMMIT');
+  }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
   await pool.query(`INSERT INTO ls_cases.engagements(id,workspace_id,case_id,terms_version,currency,appointment_rate_minor,attended_review_target,state,created_at) VALUES($1,$2,$3,$4,'ILS',55000,12,'active',$5)`,[engagementId,workspaceId,id,termsVersion,ago]);
   await pool.query(`INSERT INTO ls_cases.audiences(id,workspace_id,case_id,visibility,published,created_at) VALUES($1,$2,$3,'family_full',true,$4)`,[audienceId,workspaceId,id,ago]);
   for(const p of parents){await pool.query('INSERT INTO ls_cases.case_guardians(workspace_id,case_id,account_id,granted_at) VALUES($1,$2,$3,$4)',[workspaceId,id,p.id,ago]);await pool.query('INSERT INTO ls_cases.audience_accounts(workspace_id,case_id,audience_id,account_id,granted_at) VALUES($1,$2,$3,$4,$5)',[workspaceId,id,audienceId,p.id,ago]);}
   return {id,audienceId,engagementId};
  }
- const first=await caseRecord('Synthetic case A'),second=await caseRecord('Synthetic case B',[outsider.actor]);
+ const first=await caseRecord('Synthetic case A',[parent.actor,parentTwo.actor],demoBatch),second=await caseRecord('Synthetic case B',[outsider.actor]);
  await pool.query(`INSERT INTO ls_calendar.availability(id,workspace_id,practitioner_id,starts_at,ends_at,kind) VALUES($1,$2,$3,$4,$5,'open')`,[randomUUID(),workspaceId,practitioner.actor.id,new Date(now-6*86400000),new Date(now+20*86400000)]);
  const booking=(startsAt:string,c=first):CreateBooking=>({caseId:c.id,audienceId:c.audienceId,kind:'individual',startsAt,parentForId:null,parentIds:[],bufferBefore:0,bufferAfter:0,location:'Synthetic agreed meeting place',checkinExceptionReason:null});
  async function seed(startsAt:string,c=first):Promise<AppointmentId>{

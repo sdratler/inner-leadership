@@ -8,6 +8,7 @@ import { one,type IdentityStore,type SqlSession } from '../identity/store.ts';
 import type { Actor,IdentityClock } from '../identity/types.ts';
 import { seal,type Keyring } from '../identity/crypto.ts';
 import { APPOINTMENT_RATE_MINOR,BLOCK_PRICE_MINOR,CREDITS_PER_BLOCK,CURRENCY,IDEMPOTENCY_KEY,bodyDigest } from './policy.ts';
+import { demoCaseBatch } from '../demo/provenance.ts';
 import type { AllocationView,ChargeView,CreditBlockView,CreditEventView,PaymentsOverview,PaymentView,RefundView } from './types.ts';
 export interface PaymentContext {tx:SqlSession;actor:AccountRow;workspace:WorkspaceId;now:Date;}
 function iso(value:Date|string):string{const result=new Date(value).toISOString();if(result==='Invalid Date')throw new AppError('UNAVAILABLE');return result;}
@@ -23,7 +24,7 @@ export class PaymentsStore {
   });
  }
  async requireCase(context:PaymentContext,caseId:CaseId,operation:'read'|'write'):Promise<CaseFacts>{const item=await loadCase(context.tx,context.workspace,caseId);caseAccess(context.actor,item,await loadGuardians(context.tx,context.workspace,caseId),operation);if(!item)throw new AppError('NOT_FOUND');return item;}
- async requireMinorCase(context:PaymentContext,caseId:CaseId,operation:'read'|'write'):Promise<void>{const item=await this.requireCase(context,caseId,operation);if(item.kind!=='minor')throw new AppError('NOT_FOUND');}
+ async requireMinorCase(context:PaymentContext,caseId:CaseId,operation:'read'|'write'):Promise<void>{const item=await this.requireCase(context,caseId,operation);if(item.kind!=='minor')throw new AppError('NOT_FOUND');if(operation==='write'&&await demoCaseBatch(context.tx,context.workspace,caseId))throw new AppError('FORBIDDEN');}
  private id<K extends string>(kind:K){return asId(randomUUID(),kind);}
  encryptReference(context:PaymentContext,paymentId:string,value:string):string{return seal(value,`payment:${context.workspace}:${paymentId}`,this.ring);}
  async overview(context:PaymentContext,caseId:CaseId):Promise<PaymentsOverview>{

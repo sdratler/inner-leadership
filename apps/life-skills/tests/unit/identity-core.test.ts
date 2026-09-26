@@ -111,6 +111,10 @@ test('identity stays disabled without explicit validated configuration',()=>{
  assert.ok(!identityEnabled({}));denied(()=>parseIdentityConfig({LS_IDENTITY_ENABLED:'true'}),'UNAVAILABLE');
  const env={LS_IDENTITY_ENABLED:'true',LS_APP_ORIGIN:'https://app.example.invalid',LS_IDENTITY_WORKSPACE_ID:workspace,LS_IDENTITY_DATA_KEYS:JSON.stringify({k1:opaqueToken()}),LS_IDENTITY_ACTIVE_KEY_ID:'k1',LS_IDENTITY_CSRF_KEY:opaqueToken(),LS_IDENTITY_LOOKUP_KEY:opaqueToken(),LS_IDENTITY_RATE_KEY:opaqueToken()};
  assert.ok(parseIdentityConfig(env).sessionSeconds===28800);assert.equal(parseIdentityConfig(env).childAccountsEnabled,false);assert.equal(parseIdentityConfig({...env,LS_CHILD_ACCOUNTS_ENABLED:'true'}).childAccountsEnabled,true);denied(()=>parseIdentityConfig({...env,LS_APP_ORIGIN:'http://app.example.invalid'}),'UNAVAILABLE');denied(()=>parseIdentityConfig({...env,LS_IDENTITY_LOOKUP_KEY:env.LS_IDENTITY_CSRF_KEY}),'UNAVAILABLE');
+ assert.deepEqual(parseIdentityConfig(env).demoSetupRecipients,[]);
+ assert.deepEqual(parseIdentityConfig({...env,LS_DEMO_SETUP_RECIPIENTS_JSON:'["Owner+Demo@example.invalid"]'}).demoSetupRecipients,['owner+demo@example.invalid']);
+ denied(()=>parseIdentityConfig({...env,LS_DEMO_SETUP_RECIPIENTS_JSON:'["owner@example.invalid","OWNER@example.invalid"]'}),'UNAVAILABLE');
+ denied(()=>parseIdentityConfig({...env,LS_DEMO_SETUP_RECIPIENTS_JSON:'["invalid"]'}),'UNAVAILABLE');
 });
 test('preferences default to in-app only and keep overnight quiet windows local',()=>{
  assert.ok(defaultPreference('practice_due','in_app','he').enabled);assert.ok(!defaultPreference('practice_due','whatsapp','he').enabled);

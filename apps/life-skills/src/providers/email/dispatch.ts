@@ -11,6 +11,8 @@ import { unseal,TOKEN_PATTERN } from "../../features/identity/crypto.ts";
 import type { AuthEmailTransport } from "./transport.ts";
 import { AuthEmailDeliveryError } from "./transport.ts";
 import { authEmailContent } from "./template.ts";
+import { demoAccountBatch } from '../../features/demo/provenance.ts';
+import { demoSetupMailAllowed } from '../../features/demo/mail-policy.ts';
 /** Private worker operations only. No public route or unauthenticated cron endpoint is supplied. */
 export async function processResetRequest(store:IdentityStore,config:IdentityConfig,clock:IdentityClock,requestId:string):Promise<string|null> {
  return store.transaction(async tx=>{
@@ -77,6 +79,10 @@ export async function dispatchOneAuthMail(store:IdentityStore,config:IdentityCon
    if(Object.keys(value).sort().join()!=='locale,recipient,token' || typeof value.recipient!=='string' || !['en','he'].includes(String(value.locale)) || !(value.token===null || typeof value.token==='string' && TOKEN_PATTERN.test(value.token))) throw new Error();
    payload=value as unknown as AuthMailPayload;
   }catch{ return finish('failed'); }
+  if(await demoAccountBatch(tx,config.workspaceId,account.id)){
+   let accountEmail:string;try{accountEmail=unseal(account.emailCiphertext,`email:${config.workspaceId}:${account.id}`,config.keyring);}catch{return finish('failed');}
+   if(!demoSetupMailAllowed(row.kind,payload.recipient,accountEmail,config.demoSetupRecipients))return finish('canceled');
+  }
   const content=authEmailContent(config.origin,row.kind,payload);
   try{
    const sent=await transport.send({from,to:payload.recipient,...content,idempotencyKey:`ls-auth-${row.id}`});
@@ -128,6 +134,10 @@ async function dispatchNonIdempotent(store:IdentityStore,config:IdentityConfig,c
    if(!account || account.state==='revoked' || new Date(row.expiresAt).getTime()<=now.getTime() || row.attempts>=6) return cancel();
    if(row.kind==='invite' ? account.state!=='invited' : account.state!=='active') return cancel();
    if(row.tokenDigest && !await one(tx,"SELECT token_digest FROM ls_identity.auth_tokens WHERE workspace_id=$1 AND account_id=$2 AND token_digest=$3 AND purpose=$4 AND used_at IS NULL AND revoked_at IS NULL AND expires_at>GREATEST($5::timestamptz,clock_timestamp())",[config.workspaceId,account.id,row.tokenDigest,row.kind,now])) return cancel();
+   if(await demoAccountBatch(tx,config.workspaceId,account.id)){
+    let accountEmail:string;try{accountEmail=unseal(account.emailCiphertext,`email:${config.workspaceId}:${account.id}`,config.keyring);}catch{return cancel();}
+    if(!demoSetupMailAllowed(row.kind,payload.recipient,accountEmail,config.demoSetupRecipients))return cancel();
+   }
    const content=authEmailContent(config.origin,row.kind,payload);
    const sent=await transport.send({from,to:payload.recipient,...content,idempotencyKey:`ls-auth-${row.id}`});
    await tx.query("UPDATE ls_identity.auth_mail_outbox SET state='sent',provider_id=$3,completed_at=$4 WHERE workspace_id=$1 AND id=$2",[config.workspaceId,row.id,sent.providerId,clock.now()]);

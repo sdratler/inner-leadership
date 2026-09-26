@@ -4,6 +4,7 @@ import { asId } from '../../lib/ids.ts';
 import { one,type SqlSession } from '../identity/store.ts';
 import { APPOINTMENT_RATE_MINOR,bodyDigest,calendarDisposition,creditReason } from './policy.ts';
 import { parseCreditEffect } from './validation.ts';
+import { demoCaseBatch } from '../demo/provenance.ts';
 interface CalendarEventMeta {id:string;sequence:number;workspaceId:string;appointmentId:string;}
 /** A stale consume may be acknowledged without movement only when a later durable
  * calendar preservation proves the correction. Merely seeing new facts is not enough.
@@ -27,6 +28,15 @@ export async function applyCalendarCreditEffect(tx:SqlSession,event:unknown,meta
  if(receipt){if(receipt.effect!==reference.effect||receipt.eventDigest!==digest)throw new AppError('CONFLICT');return;}
  const facts=await one<{caseId:string;kind:'individual'|'parent_guidance';termsVersion:string;noticeEligibility:'credit_preserved'|'late_notice'|null;attendanceState:'present'|'late'|'no_show'|'canceled'|null;exceptionReason:'practitioner_exception'|'provider_unavailable'|null}>(tx,`SELECT a.case_id AS "caseId",a.kind,a.terms_version AS "termsVersion",(SELECT n.eligibility FROM ls_calendar.notices n WHERE n.workspace_id=a.workspace_id AND n.appointment_id=a.id ORDER BY n.received_at,n.id LIMIT 1) AS "noticeEligibility",(SELECT r.state FROM ls_attendance.records r WHERE r.workspace_id=a.workspace_id AND r.appointment_id=a.id) AS "attendanceState",(SELECT x.reason_code FROM ls_calendar.credit_exceptions x WHERE x.workspace_id=a.workspace_id AND x.appointment_id=a.id) AS "exceptionReason" FROM ls_calendar.appointments a WHERE a.workspace_id=$1 AND a.id=$2`,[workspace,appointmentId]);
  if(!facts||facts.caseId!==reference.caseId||facts.termsVersion!==reference.termsVersion)throw new AppError('CONFLICT');
+ const demoBatch=await demoCaseBatch(tx,workspace,reference.caseId);
+ if(demoBatch){
+  const source=await one<{caseId:string;appointmentId:string}>(tx,'SELECT case_id AS "caseId",appointment_id AS "appointmentId" FROM ls_calendar.events WHERE workspace_id=$1 AND id=$2',[workspace,meta.id]);
+  if(!source||source.caseId!==reference.caseId||source.appointmentId!==appointmentId)throw new AppError('CONFLICT');
+  const prior=await one<{caseId:string;eventDigest:string}>(tx,'SELECT case_id AS "caseId",event_digest AS "eventDigest" FROM ls_demo.suppressed_effects WHERE workspace_id=$1 AND source_event_id=$2',[workspace,meta.id]);
+  if(prior){if(prior.caseId!==reference.caseId||prior.eventDigest!==digest)throw new AppError('CONFLICT');return;}
+  await tx.query("INSERT INTO ls_demo.suppressed_effects(workspace_id,source_event_id,case_id,batch_id,effect_kind,event_digest) VALUES($1,$2,$3,$4,'calendar_credit',$5)",[workspace,meta.id,reference.caseId,demoBatch,digest]);
+  return;
+ }
  const consumed=await one<{blockId:string}>(tx,`SELECT credit_block_id AS "blockId" FROM ls_payments.credit_events WHERE workspace_id=$1 AND appointment_id=$2 AND kind='consume'`,[workspace,appointmentId]);
  let effectiveEffect=reference.effect;
  if(!consumed&&(facts.noticeEligibility==='credit_preserved'||facts.exceptionReason!==null)){
