@@ -1,6 +1,9 @@
 import {readFileSync} from "node:fs";
-import {describe,expect,it} from "vitest";
+import {describe,expect,it,vi} from "vitest";
 import {visibleClientCases,workflowDestination} from "../../src/features/prospects/client.tsx";
+import {sendProspectMessage} from "../../src/features/prospects/bridge.ts";
+import type {IdentityStore} from "../../src/features/identity/store.ts";
+vi.mock("server-only",()=>({}));
 const read=(path:string)=>readFileSync(new URL(`../../src/${path}`,import.meta.url),"utf8");
 describe("live intake follow-up contract",()=>{
  it("does not mistake a lead's linked child case for that same person",()=>{
@@ -23,4 +26,32 @@ describe("live intake follow-up contract",()=>{
  it("drives intake counts and filters from real journey facts",()=>{const ui=read("features/prospects/client.tsx"),summary=read("features/prospects/summary-card.tsx");expect(ui).toContain('preset==="payment"&&(!row.formSubmitted||row.paymentVerified)');expect(ui).toContain('preset==="booking"&&(!row.paymentVerified||active(row))');expect(summary).toContain("row.formSubmitted&&!row.paymentVerified");expect(summary).toContain("row.paymentVerified&&!/confirmed|active/i.test(row.bookingStatus)");});
  it("keeps manual add separate from all sends",()=>{const route=read("app/api/prospects/route.ts");const add=route.slice(route.indexOf('if(input.action==="add")'),route.indexOf('if(input.action==="update")'));expect(add).toContain("createProspect");expect(add).not.toContain("sendProspectMessage");});
  it("does not expose import or history-scan actions",()=>{const route=read("app/api/prospects/route.ts");expect(route).not.toMatch(/history.scan|backfill|bulk.import/i);});
+ it("rejects a marked demo prospect at the final WhatsApp bridge without calling the provider",async()=>{
+  const fetchMock=vi.fn();vi.stubGlobal("fetch",fetchMock);
+  const store:IdentityStore={transaction:async work=>work({query:async<T extends object>()=>[{batchId:"test-batch"}] as unknown as T[]})};
+  try{
+   await expect(sendProspectMessage("LS-LEAD-demo","synthetic message",{store,workspaceId:"workspace"})).rejects.toMatchObject({code:"FORBIDDEN"});
+   expect(fetchMock).not.toHaveBeenCalled();
+  }finally{vi.unstubAllGlobals();}
+ });
+ it("fails closed before WhatsApp when provenance storage is unavailable",async()=>{
+  const fetchMock=vi.fn();vi.stubGlobal("fetch",fetchMock);
+  const store:IdentityStore={transaction:async()=>{throw new Error("database unavailable");}};
+  try{
+   await expect(sendProspectMessage("LS-LEAD-unknown","test message",{store,workspaceId:"workspace"})).rejects.toThrow("database unavailable");
+   expect(fetchMock).not.toHaveBeenCalled();
+  }finally{vi.unstubAllGlobals();}
+ });
+ it("permits the existing real-prospect bridge only after a fresh unmarked lookup",async()=>{
+  const queries:unknown[][]=[];
+  const store:IdentityStore={transaction:async work=>work({query:async(_sql,values)=>{queries.push([...values??[]]);return [];}})};
+  const fetchMock=vi.fn().mockResolvedValue({ok:true,status:200,json:async()=>({success:true,receipt:{provider:"test",providerMessageId:"test-id",sentAt:"2026-09-26T00:00:00Z"}})});
+  vi.stubGlobal("fetch",fetchMock);vi.stubEnv("LIFE_SKILLS_CRM_BRIDGE_ORIGIN","https://crm.test");vi.stubEnv("LIFE_SKILLS_APP_BRIDGE_SECRET","test-secret-32-characters-long-only");
+  try{
+   const result=await sendProspectMessage("LS-LEAD-real","test message",{store,workspaceId:"workspace"});
+   expect(queries).toEqual([["workspace","prospect","LS-LEAD-real"]]);
+   expect(fetchMock).toHaveBeenCalledOnce();
+   expect(result.receipt.providerMessageId).toBe("test-id");
+  }finally{vi.unstubAllGlobals();vi.unstubAllEnvs();}
+ });
 });
