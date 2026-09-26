@@ -4,6 +4,9 @@ import {renderToStaticMarkup} from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { destinationForRole, LoginClient } from "../../src/features/identity/login-client.tsx";
 import { loginHref, loginReturnDestination, practitionerReturnPath } from "../../src/features/identity/login-return.ts";
+import { visibleHomeCases } from "../../src/ui/workspace/family-home.tsx";
+import { visibleUpdateCases } from "../../src/features/updates/updates-workspace.tsx";
+import { PracticeList } from "../../src/features/home-practice/practice-list.tsx";
 
 vi.mock("next/navigation",()=>({useRouter:()=>({replace:vi.fn(),refresh:vi.fn()}),useSearchParams:()=>new URLSearchParams()}));
 
@@ -13,8 +16,32 @@ describe("shared private-app sign-in destination", () => {
     expect(destinationForRole("en", "parent")).toBe("/en/family");
     expect(destinationForRole("he", "adult_client")).toBe("/he/client");
   });
-  it("does not introduce independent student access", () => {
-    expect(destinationForRole("en", "child")).toBeNull();
+  it("routes the already-authorized child role to the shared client shell, not a new student app", () => {
+    expect(destinationForRole("en", "child")).toBe("/en/client");
+  });
+  it("keeps child and adult client context separate in real client views",()=>{
+    const cases=[{id:"minor",displayName:"DEMO Child",kind:"minor" as const},{id:"adult",displayName:"DEMO Adult",kind:"adult" as const}];
+    expect(visibleHomeCases("child",cases).map(item=>item.id)).toEqual(["minor"]);
+    expect(visibleHomeCases("adult_client",cases).map(item=>item.id)).toEqual(["adult"]);
+    expect(visibleUpdateCases("child",cases).map(item=>item.id)).toEqual(["minor"]);
+    expect(visibleUpdateCases("adult_client",cases).map(item=>item.id)).toEqual(["adult"]);
+    const empty=renderToStaticMarkup(React.createElement(PracticeList,{locale:"en",role:"child",kind:"home-practice"}));
+    expect(empty).toContain('href="/en/client"');
+    expect(empty).not.toContain('href="/en/family"');
+    const practice=readFileSync(new URL("../../src/features/home-practice/practice-list.tsx",import.meta.url),"utf8");
+    expect(practice).toContain('role === "parent" && versionId');
+    const home=readFileSync(new URL("../../src/ui/workspace/family-home.tsx",import.meta.url),"utf8");
+    expect(home).toContain('role==="parent"?(he?"דיווח או שאלה":"Share an update or question"):(he?"עדכוני מפגשים ששותפו":"Shared session updates")');
+    const layout=readFileSync(new URL("../../src/app/[locale]/client/layout.tsx",import.meta.url),"utf8");
+    expect(layout).toContain('requireWorkspaceRoles(["adult_client","child"])');
+    expect(layout).toContain('error.code==="UNAUTHENTICATED"');
+    expect(layout).toContain('error.code==="FORBIDDEN"');
+    expect(layout).not.toContain("PrivateWorkspaceUnavailable");
+    for(const path of ["../../src/app/[locale]/client/page.tsx","../../src/app/[locale]/client/practice/page.tsx","../../src/app/[locale]/client/messages/page.tsx"]){
+      const source=readFileSync(new URL(path,import.meta.url),"utf8");
+      expect(source).toContain('requireWorkspaceRoles(["adult_client","child"])');
+      expect(source).toContain('role={session.role}');
+    }
   });
   it("returns an expired practitioner session to the requested Calendar or People context",()=>{
     const calendar=practitionerReturnPath("he","calendar",{date:"2026-09-27",view:"week",caseId:"11111111-1111-4111-8111-111111111111",context:"client"});
@@ -30,7 +57,8 @@ describe("shared private-app sign-in destination", () => {
     }
     expect(loginReturnDestination("en","parent","/en/app/clients")).toBe("/en/family");
     expect(loginReturnDestination("en","adult_client","/en/client/calendar?view=week")).toBe("/en/client/calendar?view=week");
-    expect(loginReturnDestination("en","child","/en/client/calendar")).toBeNull();
+    expect(loginReturnDestination("en","child","/en/client/calendar")).toBe("/en/client/calendar");
+    expect(loginReturnDestination("en","child","/en/family")).toBe("/en/client");
   });
   it("forwards only known deep-link parameters and gates People and Calendar before client rendering",()=>{
     expect(practitionerReturnPath("en","clients",{section:"active",filter:"today",other:"private"})).toBe("/en/app/clients?section=active&filter=today");
