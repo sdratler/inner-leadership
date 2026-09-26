@@ -1,9 +1,11 @@
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { CalendarWorkspace } from '../../../../features/calendar/workspace.tsx';
 import { calendarPageSession } from '../../../../features/calendar/page-session.ts';
 import { calendarView, civilDate, shiftDay } from '../../../../features/calendar/time.ts';
 import { isLocale } from '../../../../lib/locale.ts';
 import { text } from '../../../../features/calendar/copy.ts';
+import { AppError } from '../../../../lib/errors.ts';
+import { loginHref, practitionerReturnPath } from '../../../../features/identity/login-return.ts';
 import '../../../../ui/workspace/workspace.css';
 export const dynamic='force-dynamic';
 export const revalidate=0;
@@ -11,8 +13,13 @@ export const metadata={robots:{index:false,follow:false}};
 type Props={params:Promise<{locale:string}>;searchParams:Promise<Record<string,string|string[]|undefined>>};
 export default async function Page({params,searchParams}:Props){
  const {locale}=await params;if(!isLocale(locale))notFound();
- try{await calendarPageSession('practitioner');}catch{return <main lang={locale} dir={locale==='he'?'rtl':'ltr'} className="ls-cal"><h1>{text(locale).title}</h1><p role="status">{text(locale).unavailable}</p><a href={`/${locale}/`}>{text(locale).today}</a></main>;}
- const query=await searchParams;let date=civilDate(new Date().toISOString());
+ const query=await searchParams,returnPath=practitionerReturnPath(locale,'calendar',query);
+ try{await calendarPageSession('practitioner');}catch(error){
+  if(error instanceof AppError&&error.code==='UNAUTHENTICATED')redirect(loginHref(locale,returnPath));
+  if(error instanceof AppError&&(error.code==='FORBIDDEN'||error.code==='NOT_FOUND'))notFound();
+  return <main lang={locale} dir={locale==='he'?'rtl':'ltr'} className="ls-cal"><h1>{text(locale).title}</h1><p role="alert">{text(locale).unavailable}</p><a href={returnPath}>{text(locale).retry}</a></main>;
+ }
+ let date=civilDate(new Date().toISOString());
  try{if(typeof query.date==='string')date=shiftDay(query.date,0);}catch{notFound();}
  const view=calendarView(query.view);
  const caseId=typeof query.caseId==='string'&&/^[0-9a-f-]{36}$/i.test(query.caseId)?query.caseId:'';
