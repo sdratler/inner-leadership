@@ -9,13 +9,27 @@ import { blindEmail } from "./crypto.ts";
 import { identityRuntime } from "./runtime.ts";
 import { demoAccountBatch } from "../demo/provenance.ts";
 import { demoOperatorPlan } from "../demo/operator-plan.ts";
+import { demoInviteDispatchPlan,type DemoInviteMail } from "../demo/invite-dispatch.ts";
 import { processResetRequests,dispatchOneAuthMail,pruneAuthEphemera } from "../../providers/email/dispatch.ts";
 import { createAuthEmailTransport } from "../../providers/email/gmail.ts";
 async function main():Promise<void>{
  if(process.env.LS_IDENTITY_OPERATOR_APPROVED!=="true" || process.argv.length!==3) throw new AppError("FORBIDDEN");
  const command=process.argv[2];
- if(!["bootstrap","dispatch","prune","provision-demo"].includes(command ?? "")) throw new AppError("INVALID_REQUEST");
+ if(!["bootstrap","dispatch","prune","provision-demo","dispatch-demo-invites"].includes(command ?? "")) throw new AppError("INVALID_REQUEST");
  const runtime=await identityRuntime();
+ const demoTarget=()=>{
+  if(process.env.RAILWAY_PROJECT_ID!=="3b756632-1f66-4f75-a016-eabc37aa0d67" ||
+     process.env.RAILWAY_SERVICE_ID!=="0267d061-f3ce-4a0a-82d4-ce133e4501e9" ||
+     process.env.RAILWAY_ENVIRONMENT_ID!=="dd91bd71-57cc-45e6-a75b-8c858491d7c7" ||
+     runtime.config.origin!=="https://life-skills.bneineviimacademy.org")throw new AppError("FORBIDDEN");
+  const databaseUrl=process.env.LS_DATABASE_URL;
+  if(!databaseUrl||process.env.LS_DATABASE_TLS!=="verify-full"||!process.env.LS_DATABASE_CA)throw new AppError("FORBIDDEN");
+  const database=validateDatabaseUrl(databaseUrl,"verify-full");
+  if(database.hostname!=="postgres.railway.internal"||database.pathname!=="/railway")throw new AppError("FORBIDDEN");
+  return demoOperatorPlan({batch:process.env.LS_DEMO_BATCH_ID,ownerEmail:process.env.LS_DEMO_OWNER_EMAIL,
+   parentEmail:process.env.LS_DEMO_PARENT_EMAIL,childEmail:process.env.LS_DEMO_CHILD_EMAIL,adultEmail:process.env.LS_DEMO_ADULT_EMAIL,
+   setupRecipients:runtime.config.demoSetupRecipients,childAccountsEnabled:runtime.config.childAccountsEnabled===true});
+ };
  if(command==="bootstrap"){
   const email=process.env.LS_OPERATOR_BOOTSTRAP_EMAIL,displayName=process.env.LS_OPERATOR_BOOTSTRAP_DISPLAY_NAME;
   const locale=process.env.LS_OPERATOR_BOOTSTRAP_LOCALE;
@@ -26,18 +40,8 @@ async function main():Promise<void>{
   // Deliberate one-shot operator action, not a startup job or public endpoint.
   // No account is created unless the exact existing private-app target and the
   // three owner-controlled aliases agree with the configured setup-mail allowlist.
-  if(process.env.LS_DEMO_PROVISION_APPROVED!=="true" ||
-     process.env.RAILWAY_PROJECT_ID!=="3b756632-1f66-4f75-a016-eabc37aa0d67" ||
-     process.env.RAILWAY_SERVICE_ID!=="0267d061-f3ce-4a0a-82d4-ce133e4501e9" ||
-     process.env.RAILWAY_ENVIRONMENT_ID!=="dd91bd71-57cc-45e6-a75b-8c858491d7c7" ||
-     runtime.config.origin!=="https://life-skills.bneineviimacademy.org")throw new AppError("FORBIDDEN");
-  const databaseUrl=process.env.LS_DATABASE_URL;
-  if(!databaseUrl||process.env.LS_DATABASE_TLS!=="verify-full"||!process.env.LS_DATABASE_CA)throw new AppError("FORBIDDEN");
-  const database=validateDatabaseUrl(databaseUrl,"verify-full");
-  if(database.hostname!=="postgres.railway.internal"||database.pathname!=="/railway")throw new AppError("FORBIDDEN");
-  const plan=demoOperatorPlan({batch:process.env.LS_DEMO_BATCH_ID,ownerEmail:process.env.LS_DEMO_OWNER_EMAIL,
-   parentEmail:process.env.LS_DEMO_PARENT_EMAIL,childEmail:process.env.LS_DEMO_CHILD_EMAIL,adultEmail:process.env.LS_DEMO_ADULT_EMAIL,
-   setupRecipients:runtime.config.demoSetupRecipients,childAccountsEnabled:runtime.config.childAccountsEnabled===true});
+  if(process.env.LS_DEMO_PROVISION_APPROVED!=="true")throw new AppError("FORBIDDEN");
+  const plan=demoTarget();
   const {batch,ownerEmail,addresses:expected}=plan;
   const owner=await runtime.store.transaction(async tx=>{
    const account=await accountByEmail(tx,runtime.config.workspaceId,blindEmail(ownerEmail,runtime.config.lookupKey));
@@ -68,6 +72,37 @@ async function main():Promise<void>{
   });
   if(!count)throw new AppError("INTERNAL");
   process.stdout.write(JSON.stringify({command,result:"three_demo_identities_recorded",batch,setupMail:"queued_or_previously_sent"})+"\n");
+ }else if(command==="dispatch-demo-invites"){
+  if(process.env.LS_DEMO_INVITE_DISPATCH_APPROVED!=="true")throw new AppError("FORBIDDEN");
+  const {batch,ownerEmail,addresses}=demoTarget();
+  const selected=await runtime.store.transaction(async tx=>{
+   const owner=await accountByEmail(tx,runtime.config.workspaceId,blindEmail(ownerEmail,runtime.config.lookupKey));
+   if(!owner||owner.role!=="practitioner"||owner.state!=="active"||!owner.emailVerifiedAt||
+      await demoAccountBatch(tx,runtime.config.workspaceId,owner.id))throw new AppError("FORBIDDEN");
+   const ids:string[]=[];
+   for(const [role,address] of Object.entries(addresses)){
+    const account=await accountByEmail(tx,runtime.config.workspaceId,blindEmail(address,runtime.config.lookupKey));
+    if(!account||account.role!==(role==="adult"?"adult_client":role)||account.state!=="invited"||
+       await demoAccountBatch(tx,runtime.config.workspaceId,account.id)!==batch)throw new AppError("CONFLICT");
+    ids.push(account.id);
+   }
+   const rows=await tx.query<DemoInviteMail>(`SELECT m.id,m.account_id AS "accountId",m.state,m.expires_at AS "expiresAt",m.next_attempt_at AS "nextAttemptAt"
+    FROM ls_identity.auth_mail_outbox m JOIN ls_identity.auth_tokens t
+     ON t.workspace_id=m.workspace_id AND t.account_id=m.account_id AND t.token_digest=m.token_digest AND t.purpose='invite'
+    WHERE m.workspace_id=$1 AND m.account_id=ANY($2::uuid[]) AND m.kind='invite'
+     AND m.state IN ('queued','sent','failed') AND m.expires_at>GREATEST($3::timestamptz,clock_timestamp())
+     AND t.used_at IS NULL AND t.revoked_at IS NULL AND t.expires_at>GREATEST($3::timestamptz,clock_timestamp())`,
+    [runtime.config.workspaceId,ids,runtime.clock.now()]);
+   return demoInviteDispatchPlan(ids,rows,runtime.clock.now());
+  });
+  const email=createAuthEmailTransport(process.env);
+  let sent=0;
+  for(const id of selected.queuedIds){
+   const outcome=await dispatchOneAuthMail(runtime.store,runtime.config,runtime.clock,email.transport,email.from,id);
+   if(outcome!=="sent")throw new AppError("UNAVAILABLE");
+   sent++;
+  }
+  process.stdout.write(JSON.stringify({command,result:"demo_invites_dispatched",sent,alreadySent:selected.alreadySent})+"\n");
  }else if(command==="dispatch"){
   // A provider credential and explicit enablement are required; no fallback transport.
   const email=createAuthEmailTransport(process.env),transport=email.transport;
