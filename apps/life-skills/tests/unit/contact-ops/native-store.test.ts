@@ -6,7 +6,7 @@ import {asId} from "../../../src/lib/ids.ts";
 import type {Actor,AccountRole,AccountState} from "../../../src/features/identity/types.ts";
 
 const actor:Actor={workspaceId:asId("00000000-0000-4000-8000-000000000001","workspace"),id:asId("00000000-0000-4000-8000-000000000002","account"),personId:asId("00000000-0000-4000-8000-000000000003","person"),role:"practitioner",state:"active",locale:"en",sessionDigest:"a".repeat(64),expiresAt:Date.now()+3600000};
-const profile:CrmProfile={personId:"00000000-0000-4000-8000-000000000004",stage:"new",nextAction:"Call",followUpDate:"2026-09-26",notes:"Synthetic administrative note",legacyIds:["LS-LEAD-DEMO-01"]};
+const profile:CrmProfile={personId:"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4",stage:"new",nextAction:"Call",followUpDate:"2026-09-26",notes:"Synthetic administrative note",legacyIds:["LS-LEAD-DEMO-01"]};
 const ring={activeKeyId:"synthetic",keys:{synthetic:Buffer.alloc(32,7)}};
 const key="synthetic-test-integrity-key-123456789";
 
@@ -47,6 +47,13 @@ describe("native CRM profile candidate with existing encrypted store",()=>{
   await store.create(actor,profile,"demo-create");
   expect(state.recordMode).toBe("demo");
   expect(state.statements.find(sql=>sql.includes("INSERT INTO ls_contact_ops.profiles"))).toContain("demo_batch_id");
+ });
+ it("rejects noncanonical person IDs before encryption, persistence or replay",async()=>{
+  const {state,store}=fixture(),uppercase={...profile,personId:profile.personId.toUpperCase()};
+  await expect(store.create(actor,uppercase,"uppercase-create")).rejects.toThrow("CANONICAL_PERSON_ID_REQUIRED");
+  await expect(store.update(actor,uppercase,1,"uppercase-update")).rejects.toThrow("CANONICAL_PERSON_ID_REQUIRED");
+  await expect(store.read(actor,uppercase.personId)).rejects.toThrow("CANONICAL_PERSON_ID_REQUIRED");
+  expect(state.statements).toEqual([]);
  });
  it("saves and reads encrypted synthetic profile under the same person AAD",async()=>{
   const {state,store}=fixture();

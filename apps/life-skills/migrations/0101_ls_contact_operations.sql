@@ -22,6 +22,9 @@ CREATE TABLE ls_contact_ops.profiles (
 CREATE FUNCTION ls_contact_ops.require_profile_provenance() RETURNS trigger LANGUAGE plpgsql AS $fn$
 DECLARE marked_batch text;
 BEGIN
+ -- The reciprocal marker trigger takes the same per-person transaction lock.
+ -- Neither transaction may decide from a stale absence while the other writes.
+ PERFORM pg_advisory_xact_lock(hashtextextended(NEW.workspace_id::text||':contact-person:'||NEW.person_id::text,0));
  SELECT batch_id INTO marked_batch FROM ls_demo.records
   WHERE workspace_id=NEW.workspace_id AND entity_kind='person' AND entity_key=NEW.person_id::text;
  IF (NEW.record_mode='demo' AND marked_batch IS DISTINCT FROM NEW.demo_batch_id)
@@ -36,6 +39,24 @@ END;
 $fn$;
 CREATE TRIGGER profile_provenance BEFORE INSERT OR UPDATE ON ls_contact_ops.profiles
  FOR EACH ROW EXECUTE FUNCTION ls_contact_ops.require_profile_provenance();
+
+CREATE FUNCTION ls_contact_ops.require_marker_compatibility() RETURNS trigger LANGUAGE plpgsql AS $fn$
+BEGIN
+ IF NEW.entity_kind='person' THEN
+  PERFORM pg_advisory_xact_lock(hashtextextended(NEW.workspace_id::text||':contact-person:'||NEW.entity_key::uuid::text,0));
+  IF EXISTS(
+   SELECT 1 FROM ls_contact_ops.profiles p
+    WHERE p.workspace_id=NEW.workspace_id AND p.person_id=NEW.entity_key::uuid
+      AND (p.record_mode<>'demo' OR p.demo_batch_id IS DISTINCT FROM NEW.batch_id)
+  ) THEN
+   RAISE EXCEPTION 'CONTACT_PROFILE_DEMO_PROVENANCE_CONFLICT' USING ERRCODE='23514';
+  END IF;
+ END IF;
+ RETURN NEW;
+END;
+$fn$;
+CREATE TRIGGER contact_person_marker_compatibility BEFORE INSERT ON ls_demo.records
+ FOR EACH ROW EXECUTE FUNCTION ls_contact_ops.require_marker_compatibility();
 
 -- The immutable numeric sheet ID, not a mutable tab title, identifies legacy rows.
 -- Full legacy snapshots and notes remain encrypted; digests are keyed by the app.

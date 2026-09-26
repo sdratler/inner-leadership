@@ -25,6 +25,9 @@ test("native PostgreSQL creates encrypted live profile once and preserves replay
  expect(await store.update(f.practitioner.actor,changed,1,updateId)).toEqual({version:2,replayed:true});
  await expect(store.update(f.practitioner.actor,p,1,"stale-"+randomUUID())).rejects.toThrow("STALE_PROFILE_VERSION");
  expect(await store.read(f.practitioner.actor,p.personId)).toMatchObject({version:2,profile:changed});
+ await expect(f.pool.query("INSERT INTO ls_demo.records(workspace_id,batch_id,entity_kind,entity_key,source_key,case_id) VALUES($1,$2,'person',$3,$4,$5)",
+  [f.workspaceId,"ls-owner-20260925",p.personId,"late-person-"+randomUUID(),f.first.id])).rejects.toThrow("CONTACT_PROFILE_DEMO_PROVENANCE_CONFLICT");
+ expect(await store.read(f.practitioner.actor,p.personId)).toMatchObject({version:2,profile:changed});
 });
 
 test("native PostgreSQL denies a non-practitioner and rejects unmarked demo mode",async()=>{

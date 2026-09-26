@@ -19,7 +19,7 @@ export interface CrmProfile {
 }
 function aad(w: string, p: string) { return `ls_contact_ops/profile/v1/${w}/${p}`; }
 function validateProfile(profile:CrmProfile):void {
-    asId(profile.personId,"person");
+    requireThat(profile.personId===asId(profile.personId,"person"),"CANONICAL_PERSON_ID_REQUIRED");
     requireThat(profile.stage.length>0&&profile.stage.length<=120&&profile.notes.length<=5000,"BAD_PROFILE");
     requireThat(profile.nextAction===null||profile.nextAction.length<=500,"BAD_PROFILE");
     requireThat(profile.followUpDate===null||dateOnly(profile.followUpDate),"BAD_PROFILE");
@@ -57,7 +57,7 @@ export class NativeCrmStore {
         profile: CrmProfile;
         version: number;
     } | null> {
-        asId(personId,"person");
+        requireThat(personId===asId(personId,"person"),"CANONICAL_PERSON_ID_REQUIRED");
         return this.db.transaction(async (tx) => {
             requirePractitioner(await freshActor(tx,a,this.clock.now()));
             const rows = await tx.query<{
