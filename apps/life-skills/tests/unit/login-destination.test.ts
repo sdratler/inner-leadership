@@ -41,6 +41,13 @@ describe("shared private-app sign-in destination", () => {
       expect(source).toMatch(/loginHref\(locale,\s*returnPath\)/);
       expect(source).toContain("notFound()");
     }
+    const layout=readFileSync(new URL("../../src/app/[locale]/app/layout.tsx",import.meta.url),"utf8");
+    const proxy=readFileSync(new URL("../../src/proxy.ts",import.meta.url),"utf8");
+    expect(layout).toContain('error.code === "UNAUTHENTICATED"');
+    expect(layout).toContain('redirect(loginHref(locale, loginReturnDestination(locale, "practitioner", requested)!))');
+    expect(layout).not.toContain("PrivateWorkspaceUnavailable");
+    expect(proxy).toContain('inbound.delete("x-ls-practitioner-return")');
+    expect(proxy).toContain('inbound.set("x-ls-practitioner-return", practitionerReturnPath(locale, page, query))');
   });
   for (const locale of ["he", "en"] as const) {
     it(`${locale}: uses the approved local logo and an accessible password visibility control`,()=>{
