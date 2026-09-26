@@ -3,6 +3,11 @@
 -- No clinical notes, provider messages or real rows are created here.
 CREATE SCHEMA ls_contact_ops;
 
+-- Existing person markers must already be canonical, and future marker inserts
+-- cannot bypass exact text lookups through an uppercase UUID spelling.
+ALTER TABLE ls_demo.records ADD CONSTRAINT canonical_demo_person_key
+ CHECK(entity_kind<>'person' OR entity_key=entity_key::uuid::text);
+
 CREATE TABLE ls_contact_ops.profiles (
  workspace_id uuid NOT NULL,
  person_id uuid NOT NULL,

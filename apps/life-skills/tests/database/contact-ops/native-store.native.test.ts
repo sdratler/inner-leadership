@@ -33,6 +33,8 @@ test("native PostgreSQL creates encrypted live profile once and preserves replay
 test("native PostgreSQL denies a non-practitioner and rejects unmarked demo mode",async()=>{
  const p=profile(f.parent.actor.personId,"Synthetic demo administrative note");
  await expect(store.create(f.parent.actor,p,"parent-denied")).rejects.toThrow("FORBIDDEN");
+ await expect(f.pool.query("INSERT INTO ls_demo.records(workspace_id,batch_id,entity_kind,entity_key,source_key,account_id) VALUES($1,$2,'person',$3,$4,$5)",
+  [f.workspaceId,"ls-owner-20260925","AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAA4","uppercase-person-"+randomUUID(),f.parent.actor.id])).rejects.toThrow("canonical_demo_person_key");
  await expect(f.pool.query("INSERT INTO ls_contact_ops.profiles(workspace_id,person_id,payload_ciphertext,record_mode,demo_batch_id) VALUES($1,$2,'cipher','demo',$3)",[f.workspaceId,p.personId,"ls-owner-20260925"])).rejects.toThrow("CONTACT_PROFILE_DEMO_PROVENANCE_REQUIRED");
  await f.pool.query("INSERT INTO ls_demo.records(workspace_id,batch_id,entity_kind,entity_key,source_key,account_id) VALUES($1,$2,'person',$3,$4,$5)",[f.workspaceId,"ls-owner-20260925",p.personId,"native-crm-parent-"+randomUUID(),f.parent.actor.id]);
  const receipt="demo-create-"+randomUUID();
