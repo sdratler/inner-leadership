@@ -13,6 +13,7 @@ import {paymentSection,paymentVisibleCharges,paymentVisiblePanels} from "../../s
 describe("operational workspace navigation",()=>{
  it("limits the practitioner sidebar to the six owner-selected destinations",()=>{
   expect(primaryNavigation.practitioner.map(item=>item.en)).toEqual(["Calendar","People","Communications","Reports","Marketing","Payments"]);
+  expect(primaryNavigation.parent.map(item=>item.en)).toEqual(["Calendar","Home","Practice","Messages"]);
   expect(practitionerContext("/en/app/marketing",null).map(item=>item.en)).toEqual(["Overview","Content Calendar","Creatives","Needs approval","Community","Ads"]);
  });
  for(const locale of ["he","en"] as const){
