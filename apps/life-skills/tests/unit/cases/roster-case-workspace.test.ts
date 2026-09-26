@@ -135,6 +135,13 @@ it('keeps the active case-only view free of CRM filters and add-prospect control
  expect(text(output)).not.toContain('New inquiries');
 });
 
+it('hides stale private rows and contact actions when either People source denies access', () => {
+ const output = hook.render(() => ProspectsClient({ locale: 'en', embedded: true, clientCases: [caseA], caseState: 'auth' }));
+ expect(text(output)).not.toContain('Synthetic case A');
+ expect(text(output)).not.toContain('Add prospect');
+ expect(text(output)).toContain('Your session has ended');
+});
+
 it('offers same-locale sign-in instead of a false CRM outage when the private lead API rejects the session', async () => {
  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401, json: async () => ({ ok: false, error: { code: 'UNAUTHENTICATED' } }) }));
  try {
