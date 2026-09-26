@@ -6,7 +6,7 @@ type Role = "practitioner" | "parent" | "adult_client" | "child";
 export function loginReturnDestination(locale: Locale, role: Role, requested: string | null): string | null {
   const root = role === "practitioner" ? `/${locale}/app`
     : role === "parent" ? `/${locale}/family`
-    : role === "adult_client" ? `/${locale}/client` : null;
+    : role === "adult_client" || role === "child" ? `/${locale}/client` : null;
   if (!root || !requested || requested.length > 2048 || !requested.startsWith("/") || /[\\\u0000-\u001f\u007f]/.test(requested)) return root;
   try {
     const url = new URL(requested, "https://life-skills.invalid");

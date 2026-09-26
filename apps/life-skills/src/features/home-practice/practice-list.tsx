@@ -10,7 +10,7 @@ const copy = {
   he: { loading: "טוען…", empty: "עדיין לא שותף כאן דבר.", unavailable: "התצוגה אינה זמינה כרגע. אפשר לנסות שוב מאוחר יותר.", unreported: "ללא דיווח מוצג כ׳טרם דווח׳ — לעולם לא כ׳לא בוצע׳.", open: "פתיחת ההנחיה", feedback: "הוספת משוב", current: "ההנחיה הנוכחית", version: "גרסה שפורסמה" },
 } as const;
 
-export function PracticeList({ locale, kind, caseId, audienceId, selectedAssignmentId, role }: { locale: "en" | "he"; kind: Kind; caseId?: string | undefined; audienceId?: string | undefined; selectedAssignmentId?: string | undefined; role: "parent" | "adult_client" | "practitioner" }) {
+export function PracticeList({ locale, kind, caseId, audienceId, selectedAssignmentId, role }: { locale: "en" | "he"; kind: Kind; caseId?: string | undefined; audienceId?: string | undefined; selectedAssignmentId?: string | undefined; role: "parent" | "adult_client" | "child" | "practitioner" }) {
   const [audienceState,setAudienceState]=useState<{caseId:string;status:"ready"|"empty"|"error";id?:string}>({caseId:"",status:"empty"});
   useEffect(()=>{
     if(audienceId||!caseId)return;
@@ -39,14 +39,14 @@ export function PracticeList({ locale, kind, caseId, audienceId, selectedAssignm
       .catch(error => { if (!(error instanceof DOMException && error.name === "AbortError")) setState({ key: requestKey, status: "error", items: [] }); });
     return () => controller.abort();
   }, [caseId, effectiveAudienceId, kind, requestKey]);
-  if(!caseId)return <p>{locale==="he"?"בחרו תיק כדי לצפות בתרגול.":"Choose a case to view practice."} <a href={`/${locale}/${role==="parent"?"family":role==="adult_client"?"client":"app/clients"}`}>{locale==="he"?"בחירת תיק":"Choose case"}</a></p>;
-  if(!audienceId&&audienceState.caseId===caseId&&audienceState.status==="error")return <p role="alert">{copy[locale].unavailable} <a href={`/${locale}/${role==="parent"?"family":role==="adult_client"?"client":"app/clients"}`}>{locale==="he"?"חזרה למרחב":"Return to workspace"}</a></p>;
+  if(!caseId)return <p>{locale==="he"?"בחרו תיק כדי לצפות בתרגול.":"Choose a case to view practice."} <a href={`/${locale}/${role==="parent"?"family":role==="practitioner"?"app/clients":"client"}`}>{locale==="he"?"בחירת תיק":"Choose case"}</a></p>;
+  if(!audienceId&&audienceState.caseId===caseId&&audienceState.status==="error")return <p role="alert">{copy[locale].unavailable} <a href={`/${locale}/${role==="parent"?"family":role==="practitioner"?"app/clients":"client"}`}>{locale==="he"?"חזרה למרחב":"Return to workspace"}</a></p>;
   if(!audienceId&&audienceState.caseId===caseId&&audienceState.status==="empty")return <p>{copy[locale].empty}</p>;
   if(!effectiveAudienceId)return <p role="status">{copy[locale].loading}</p>;
   if (state.key !== requestKey) return <p aria-live="polite">{copy[locale].loading}</p>;
   if (state.status === "error") return <p role="alert">{copy[locale].unavailable}</p>;
   if (!state.items.length) return <p>{copy[locale].empty}</p>;
-  const basePath = `/${locale}/${role === "parent" ? "family" : role === "adult_client" ? "client" : "app"}`;
+  const basePath = `/${locale}/${role === "parent" ? "family" : role === "practitioner" ? "app" : "client"}`;
   return <div className="lsw-practice-list">
     <ul>{state.items.map((item, index) => {
       const assignmentId = typeof item.assignmentId === "string" ? item.assignmentId : "";
@@ -56,7 +56,7 @@ export function PracticeList({ locale, kind, caseId, audienceId, selectedAssignm
       const feedback = new URLSearchParams({ caseId: caseId ?? "", audienceId: effectiveAudienceId ?? "", ...(versionId ? { practiceVersionId: versionId } : {}) });
       return <li key={String(item.assignmentId ?? item.id ?? index)} className="lsw-card">
         <div className="lsw-section-header"><div><strong>{String(item.title ?? item.templateKey ?? "Practice")}</strong>{typeof item.version === "number" ? <p className="lsw-help">{copy[locale].version} {item.version}</p> : null}</div><a className="lsw-button lsw-button--secondary" href={`${basePath}/practice?${params}`}>{copy[locale].open}</a></div>
-        {current && <details className="lsw-details" open><summary>{copy[locale].current}</summary><div className="lsw-stack">{typeof item.instructions === "string" ? <p className="lsw-practice-instruction">{item.instructions}</p> : null}{role !== "practitioner" && versionId ? <a href={`${basePath}/${role==="adult_client"?"messages":"feedback"}?${feedback}`}>{copy[locale].feedback}</a> : null}</div></details>}
+        {current && <details className="lsw-details" open><summary>{copy[locale].current}</summary><div className="lsw-stack">{typeof item.instructions === "string" ? <p className="lsw-practice-instruction">{item.instructions}</p> : null}{role !== "practitioner" && versionId ? <a href={`${basePath}/${role==="parent"?"feedback":"messages"}?${feedback}`}>{copy[locale].feedback}</a> : null}</div></details>}
         {typeof item.state === "string" ? <small>{item.state}</small> : null}
       </li>;
     })}</ul>
