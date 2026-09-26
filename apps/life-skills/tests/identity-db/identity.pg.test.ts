@@ -165,9 +165,10 @@ test('three plus-addressed demo invites use ordinary authentication and cannot c
  try{
   const minor=await cases.createDemo(practitioner.actor,{kind:'minor',displayName:'DEMO — Child login',familyLabel:'DEMO — Family login'},batch,'demo-auth-minor',request());
   const adult=await cases.createDemo(practitioner.actor,{kind:'adult',displayName:'DEMO — Adult login',familyLabel:'DEMO — Adult family'},batch,'demo-auth-adult',request());
-  const parent=await accounts.inviteParent(practitioner.actor,{caseId:minor.caseId,email:aliases.parent,displayName:'DEMO — Parent',locale:'he'},request());
-  const child=await accounts.inviteChild(practitioner.actor,{caseId:minor.caseId,email:aliases.child,displayName:'DEMO — Child',locale:'he'},request());
-  const grown=await accounts.inviteAdult(practitioner.actor,{caseId:adult.caseId,email:aliases.adult,displayName:'DEMO — Adult',locale:'en'},request());
+  await denied(()=>accounts.inviteParent(practitioner.actor,{caseId:minor.caseId,email:aliases.parent,displayName:'DEMO — Parent',locale:'he'},request()),'FORBIDDEN');
+  const parent=await accounts.inviteDemoAsOperator(practitioner.actor.id,'parent',{caseId:minor.caseId,email:aliases.parent,displayName:'DEMO — Parent',locale:'he'},request(),true);
+  const child=await accounts.inviteDemoAsOperator(practitioner.actor.id,'child',{caseId:minor.caseId,email:aliases.child,displayName:'DEMO — Child',locale:'he'},request(),true);
+  const grown=await accounts.inviteDemoAsOperator(practitioner.actor.id,'adult_client',{caseId:adult.caseId,email:aliases.adult,displayName:'DEMO — Adult',locale:'en'},request(),true);
   assert.equal(new Set([parent.accountId,child.accountId,grown.accountId]).size,3);
   const markers=await pool.query('SELECT account_id,batch_id FROM ls_demo.accounts WHERE workspace_id=$1 AND account_id=ANY($2::uuid[])',[config.workspaceId,[parent.accountId,child.accountId,grown.accountId]]);
   assert.equal(markers.rows.length,3);assert.ok(markers.rows.every(row=>row.batch_id===batch));
@@ -175,7 +176,7 @@ test('three plus-addressed demo invites use ordinary authentication and cannot c
   assert.equal(parentPerson.rows.length,1,'the synthetic parent person must carry a batch marker');
   const live=await cases.create(practitioner.actor,{kind:'minor',displayName:'Synthetic unrelated live minor',familyLabel:'Synthetic unrelated live family'},request());
   await denied(()=>accounts.inviteParent(practitioner.actor,{caseId:live.caseId,email:aliases.parent,displayName:'DEMO — Parent',locale:'he'},request()),'CONFLICT');
-  await denied(()=>accounts.inviteParent(practitioner.actor,{caseId:minor.caseId,email:email.a,displayName:'Synthetic real parent',locale:'he'},request()),'CONFLICT');
+  await denied(()=>accounts.inviteParent(practitioner.actor,{caseId:minor.caseId,email:email.a,displayName:'Synthetic real parent',locale:'he'},request()),'FORBIDDEN');
   await dispatchAll();
   for(const address of Object.values(aliases))await accept(address);
   const roles=await Promise.all(Object.values(aliases).map(async address=>(await login(address)).actor.role));
@@ -216,6 +217,11 @@ test('operator demo provisioning requires the real practitioner and replays with
   assert.equal(repeatedChild.accountId,child.accountId);assert.equal(repeatedAdult.accountId,adult.accountId);
   const allInvites=await pool.query("SELECT count(*)::integer AS count FROM ls_identity.auth_mail_outbox WHERE workspace_id=$1 AND account_id=ANY($2::uuid[]) AND kind='invite'",[config.workspaceId,[invite.accountId,child.accountId,adult.accountId]]);
   assert.equal(allInvites.rows[0]?.count,3);
+  await pool.query("UPDATE ls_identity.auth_tokens SET expires_at=created_at+interval '1 millisecond' WHERE workspace_id=$1 AND account_id=$2 AND purpose='invite' AND used_at IS NULL",[config.workspaceId,invite.accountId]);
+  await pool.query("UPDATE ls_identity.auth_mail_outbox SET state='canceled',payload_ciphertext=NULL,completed_at=clock_timestamp() WHERE workspace_id=$1 AND account_id=$2 AND kind='invite' AND state='queued'",[config.workspaceId,invite.accountId]);
+  await accounts.inviteDemoAsOperator(practitioner.actor.id,'parent',{caseId:first.caseId,email:parentEmail,displayName:'DEMO — Operator Parent',locale:'he'},request(),true);
+  const recovered=await pool.query("SELECT count(*)::integer AS count FROM ls_identity.auth_mail_outbox WHERE workspace_id=$1 AND account_id=$2 AND kind='invite'",[config.workspaceId,invite.accountId]);
+  assert.equal(recovered.rows[0]?.count,2,'an expired/canceled invite must be reissued on deliberate operator replay');
   const real=await cases.create(practitioner.actor,{kind:'minor',displayName:'Synthetic live operator denial',familyLabel:'Synthetic live family'},request());
   await denied(()=>accounts.inviteDemoAsOperator(practitioner.actor.id,'parent',{caseId:real.caseId,email:parentEmail,displayName:'DEMO — Operator Parent',locale:'he'},request(),true),'FORBIDDEN');
   await denied(()=>cases.createDemoAsOperator(invite.accountId,{kind:'adult',displayName:'DEMO — Unauthorized',familyLabel:'DEMO — Unauthorized'},batch,'wrong-actor',request(),true),'FORBIDDEN');

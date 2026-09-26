@@ -22,6 +22,16 @@ async function markDemoInvite(tx:SqlSession,workspaceId:string,caseId:CaseId,acc
  await tx.query("INSERT INTO ls_demo.accounts(workspace_id,account_id,batch_id,source_key) VALUES($1,$2,$3,$4)",[workspaceId,account.id,batch,`account:${account.id}`]);
  if(account.role==='parent')await tx.query("INSERT INTO ls_demo.records(workspace_id,batch_id,entity_kind,entity_key,source_key,account_id) VALUES($1,$2,'person',$3,$4,$5)",[workspaceId,batch,account.personId,`parent-person:${account.id}`,account.id]);
 }
+async function usableDemoInvite(tx:SqlSession,workspaceId:string,accountId:AccountId,now:Date):Promise<boolean>{
+ const usable=await one(tx,`SELECT t.token_digest FROM ls_identity.auth_tokens t
+  JOIN ls_identity.auth_mail_outbox m ON m.workspace_id=t.workspace_id AND m.account_id=t.account_id
+   AND m.token_digest=t.token_digest AND m.kind='invite'
+  WHERE t.workspace_id=$1 AND t.account_id=$2 AND t.purpose='invite'
+   AND t.used_at IS NULL AND t.revoked_at IS NULL AND t.expires_at>GREATEST($3::timestamptz,clock_timestamp())
+   AND ((m.state='queued' AND m.expires_at>GREATEST($3::timestamptz,clock_timestamp()) AND m.attempts<6)
+    OR m.state='sent') LIMIT 1`,[workspaceId,accountId,now]);
+ return Boolean(usable);
+}
 async function createAccount(tx:SqlSession,config:IdentityConfig,context:RequestContext,
  input:{email:string;displayName:string;locale:Locale;role:AccountRole;personId?:PersonId;subjectKind?:'adult'|'minor';demoBatchId?:string}):Promise<AccountRow> {
  const id=asId(randomUUID(),'account'),personId=input.personId ?? asId(randomUUID(),'person');
@@ -66,13 +76,13 @@ export class IdentityAccountService {
    const already=account && guardians.some(g=>g.accountId===account!.id && !g.revoked);
    if (!already && guardians.filter(g=>!g.revoked).length>=2) throw new AppError("CONFLICT");
    const demoBatch=await demoCaseBatch(tx,actor.workspaceId,item.id);
-   if(operator&&!demoBatch)throw new AppError('FORBIDDEN');
+   if(operator!==Boolean(demoBatch))throw new AppError('FORBIDDEN');
    const created=!account;
    if (!account) account=await createAccount(tx,this.config,context,{...input,role:'parent',...(demoBatch?{demoBatchId:demoBatch}:{})});
    await markDemoInvite(tx,actor.workspaceId,item.id,account,created);
    await tx.query("INSERT INTO ls_cases.case_guardians (workspace_id,case_id,account_id,granted_at) VALUES ($1,$2,$3,$4) ON CONFLICT(workspace_id,case_id,account_id) DO UPDATE SET granted_at=EXCLUDED.granted_at,revoked_at=NULL",[actor.workspaceId,item.id,account.id,context.now]);
    await tx.query("INSERT INTO ls_cases.family_members (workspace_id,family_id,person_id,role) SELECT workspace_id,family_id,$3,'parent' FROM ls_cases.cases WHERE workspace_id=$1 AND id=$2 AND family_id IS NOT NULL ON CONFLICT DO NOTHING",[actor.workspaceId,item.id,account.personId]);
-   if (account.state==='invited' && (!operator||created)) await issueAuthToken(tx,this.config,account,context,'invite');
+   if (account.state==='invited' && (!operator||created||!await usableDemoInvite(tx,actor.workspaceId,account.id,context.now))) await issueAuthToken(tx,this.config,account,context,'invite');
    else if(!operator) await queueAuthMail(tx,this.config,account,context,'case_notice',null);
    // No existing audience grant is inserted or un-revoked by an invitation.
    await recordAction(tx,context,actor.workspaceId,actor.id,'invite_queued');return {accountId:account.id};
@@ -92,11 +102,11 @@ export class IdentityAccountService {
    const linked=await one<{accountId:AccountId}>(tx,"SELECT account_id AS \"accountId\" FROM ls_identity.account_subjects WHERE workspace_id=$1 AND person_id=$2",[actor.workspaceId,item.clientPersonId]);
    if(linked && linked.accountId!==account?.id) throw new AppError("CONFLICT");
    const demoBatch=await demoCaseBatch(tx,actor.workspaceId,item.id);
-   if(operator&&!demoBatch)throw new AppError('FORBIDDEN');
+   if(operator!==Boolean(demoBatch))throw new AppError('FORBIDDEN');
    const created=!account;
    if(!account) account=await createAccount(tx,this.config,context,{...input,role:'adult_client',personId:item.clientPersonId,...(demoBatch?{demoBatchId:demoBatch}:{})});
    await markDemoInvite(tx,actor.workspaceId,item.id,account,created);
-   if(account.state==='invited' && (!operator||created)) await issueAuthToken(tx,this.config,account,context,'invite');
+   if(account.state==='invited' && (!operator||created||!await usableDemoInvite(tx,actor.workspaceId,account.id,context.now))) await issueAuthToken(tx,this.config,account,context,'invite');
    else if(!operator) await queueAuthMail(tx,this.config,account,context,'case_notice',null);
    await recordAction(tx,context,actor.workspaceId,actor.id,'invite_queued');return {accountId:account.id};
   });
@@ -116,11 +126,11 @@ export class IdentityAccountService {
    const linked=await one<{accountId:AccountId}>(tx,"SELECT account_id AS \"accountId\" FROM ls_identity.account_subjects WHERE workspace_id=$1 AND person_id=$2",[actor.workspaceId,item.clientPersonId]);
    if(linked&&linked.accountId!==account?.id)throw new AppError("CONFLICT");
    const demoBatch=await demoCaseBatch(tx,actor.workspaceId,item.id);
-   if(operator&&!demoBatch)throw new AppError('FORBIDDEN');
+   if(operator!==Boolean(demoBatch))throw new AppError('FORBIDDEN');
    const created=!account;
    if(!account)account=await createAccount(tx,this.config,context,{...input,role:'child',personId:item.clientPersonId,subjectKind:'minor',...(demoBatch?{demoBatchId:demoBatch}:{})});
    await markDemoInvite(tx,actor.workspaceId,item.id,account,created);
-   if(account.state==='invited'&&(!operator||created))await issueAuthToken(tx,this.config,account,context,'invite');
+   if(account.state==='invited'&&(!operator||created||!await usableDemoInvite(tx,actor.workspaceId,account.id,context.now)))await issueAuthToken(tx,this.config,account,context,'invite');
    else if(!operator)await queueAuthMail(tx,this.config,account,context,'case_notice',null);
    await recordAction(tx,context,actor.workspaceId,actor.id,'invite_queued');return {accountId:account.id};
   });

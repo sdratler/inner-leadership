@@ -67,7 +67,7 @@ async function main():Promise<void>{
      rows.some(row=>row.role===role&&row.accountId===id&&row.emailBlind===blindEmail(address!,runtime.config.lookupKey)));
   });
   if(!count)throw new AppError("INTERNAL");
-  process.stdout.write(JSON.stringify({command,result:"three_demo_accounts_queued",batch})+"\n");
+  process.stdout.write(JSON.stringify({command,result:"three_demo_identities_recorded",batch,setupMail:"queued_or_previously_sent"})+"\n");
  }else if(command==="dispatch"){
   // A provider credential and explicit enablement are required; no fallback transport.
   const email=createAuthEmailTransport(process.env),transport=email.transport;
