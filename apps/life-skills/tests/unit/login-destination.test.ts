@@ -28,6 +28,10 @@ describe("shared private-app sign-in destination", () => {
     const empty=renderToStaticMarkup(React.createElement(PracticeList,{locale:"en",role:"child",kind:"home-practice"}));
     expect(empty).toContain('href="/en/client"');
     expect(empty).not.toContain('href="/en/family"');
+    const practice=readFileSync(new URL("../../src/features/home-practice/practice-list.tsx",import.meta.url),"utf8");
+    expect(practice).toContain('role === "parent" && versionId');
+    const home=readFileSync(new URL("../../src/ui/workspace/family-home.tsx",import.meta.url),"utf8");
+    expect(home).toContain('role==="parent"?(he?"דיווח או שאלה":"Share an update or question"):(he?"עדכוני מפגשים ששותפו":"Shared session updates")');
     const layout=readFileSync(new URL("../../src/app/[locale]/client/layout.tsx",import.meta.url),"utf8");
     expect(layout).toContain('requireWorkspaceRoles(["adult_client","child"])');
     expect(layout).toContain('error.code==="UNAUTHENTICATED"');
