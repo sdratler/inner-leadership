@@ -4,7 +4,7 @@ import { asId } from "../../lib/ids.ts";
 import { isVisibility,type Visibility } from "../../lib/visibility.ts";
 import type { IdentityStore } from "../identity/store.ts";
 import { one } from "../identity/store.ts";
-import { freshActor,lockWorkspace } from "../identity/data.ts";
+import { accountById,freshActor,lockWorkspace } from "../identity/data.ts";
 import type { IdentityConfig } from "../identity/config.ts";
 import type { Actor,CaseId,AccountId,AudienceId,FamilyId,IdentityClock } from "../identity/types.ts";
 import { seal,unseal } from "../identity/crypto.ts";
@@ -18,13 +18,25 @@ export class CaseService {
  }
  /** Internal operator path only: no public handler accepts a demo marker from a browser. */
  async createDemo(actor:Actor,input:{kind:'minor'|'adult';displayName:string;familyLabel:string},batchId:string,sourceKey:string,requestId:string):Promise<{caseId:CaseId}> {
-  if(!/^ls-owner-[0-9]{8}$/.test(batchId)||!/^[a-z0-9_-]{1,80}$/.test(sourceKey)||!input.displayName.startsWith('DEMO'))throw new AppError('INVALID_REQUEST');
+  if(!/^ls-owner-[0-9]{8}$/.test(batchId)||!/^[a-z0-9_-]{1,80}$/.test(sourceKey)||!input.displayName.startsWith('DEMO')||!input.familyLabel.startsWith('DEMO'))throw new AppError('INVALID_REQUEST');
   return this.createWithOrigin(actor,input,requestId,{batchId,sourceKey});
  }
- private async createWithOrigin(actor:Actor,input:{kind:'minor'|'adult';displayName:string;familyLabel:string;familyId?:FamilyId},requestId:string,demo:{batchId:string;sourceKey:string}|null):Promise<{caseId:CaseId}> {
+ /** Explicit one-shot operator capability. It is not reachable from an HTTP route and
+  * verifies the existing active practitioner in the database; no session is forged. */
+ async createDemoAsOperator(practitionerId:AccountId,input:{kind:'minor'|'adult';displayName:string;familyLabel:string},batchId:string,sourceKey:string,requestId:string,operatorPermission:boolean):Promise<{caseId:CaseId}> {
+  if(operatorPermission!==true)throw new AppError('FORBIDDEN');
+  if(!/^ls-owner-[0-9]{8}$/.test(batchId)||!/^[a-z0-9_-]{1,80}$/.test(sourceKey)||!input.displayName.startsWith('DEMO')||!input.familyLabel.startsWith('DEMO'))throw new AppError('INVALID_REQUEST');
+  return this.createWithOrigin({id:practitionerId,workspaceId:this.config.workspaceId},input,requestId,{batchId,sourceKey},true);
+ }
+ private async createWithOrigin(actor:Actor|Pick<Actor,'id'|'workspaceId'>,input:{kind:'minor'|'adult';displayName:string;familyLabel:string;familyId?:FamilyId},requestId:string,demo:{batchId:string;sourceKey:string}|null,operator=false):Promise<{caseId:CaseId}> {
   const context={requestId,now:this.clock.now()};
   return this.store.transaction(async tx=>{
-   await lockWorkspace(tx,actor.workspaceId);const current=await freshActor(tx,actor,context.now);requirePractitioner(current);
+   if(actor.workspaceId!==this.config.workspaceId)throw new AppError('FORBIDDEN');
+   await lockWorkspace(tx,actor.workspaceId);
+   const current=operator?await accountById(tx,actor.workspaceId,actor.id):await freshActor(tx,actor as Actor,context.now);
+   if(!current||current.state!=='active'||operator&&!current.emailVerifiedAt)throw new AppError('FORBIDDEN');
+   requirePractitioner(current);
+   if(operator&&await one(tx,'SELECT account_id FROM ls_demo.accounts WHERE workspace_id=$1 AND account_id=$2',[actor.workspaceId,actor.id]))throw new AppError('FORBIDDEN');
    if(demo){
     if(input.familyId)throw new AppError('INVALID_REQUEST');
     await tx.query('INSERT INTO ls_demo.batches(workspace_id,batch_id,created_by) VALUES($1,$2,$3) ON CONFLICT(workspace_id,batch_id) DO NOTHING',[actor.workspaceId,demo.batchId,actor.id]);
