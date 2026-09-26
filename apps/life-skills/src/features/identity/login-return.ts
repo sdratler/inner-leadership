@@ -7,12 +7,14 @@ export function loginReturnDestination(locale: Locale, role: Role, requested: st
   const root = role === "practitioner" ? `/${locale}/app`
     : role === "parent" ? `/${locale}/family`
     : role === "adult_client" || role === "child" ? `/${locale}/client` : null;
-  if (!root || !requested || requested.length > 2048 || !requested.startsWith("/") || /[\\\u0000-\u001f\u007f]/.test(requested)) return root;
+  if (!root) return null;
+  const defaultPath = role === "practitioner" ? `${root}/calendar` : role === "parent" ? `${root}/schedule` : root;
+  if (!requested || requested.length > 2048 || !requested.startsWith("/") || /[\\\u0000-\u001f\u007f]/.test(requested)) return defaultPath;
   try {
     const url = new URL(requested, "https://life-skills.invalid");
-    if (url.origin !== "https://life-skills.invalid" || url.hash || (url.pathname !== root && !url.pathname.startsWith(`${root}/`))) return root;
+    if (url.origin !== "https://life-skills.invalid" || url.hash || (url.pathname !== root && !url.pathname.startsWith(`${root}/`))) return defaultPath;
     return url.pathname + url.search;
-  } catch { return root; }
+  } catch { return defaultPath; }
 }
 
 export function practitionerReturnPath(locale: Locale, page: "calendar" | "clients", query: Record<string, string | string[] | undefined>): string {
@@ -36,7 +38,7 @@ export function parentReturnPath(locale: Locale, pathname: string, query: Record
   const root = `/${locale}/family`;
   const suffix = pathname.startsWith(`${root}/`) ? pathname.slice(root.length) : pathname === root ? "" : null;
   const allowed = new Set(["", "/schedule", "/practice", "/feedback", "/forms", "/resources", "/reports", "/settings", "/settings/account", "/settings/coordination", "/settings/credits", "/settings/notifications"]);
-  if (suffix === null || !allowed.has(suffix)) return root;
+  if (suffix === null || !allowed.has(suffix)) return `${root}/schedule`;
   const params = new URLSearchParams();
   const uuid = (key: string) => { if (/^[0-9a-f-]{36}$/i.test(query[key] ?? "")) params.set(key, query[key]!); };
   if (["", "/schedule", "/practice", "/feedback", "/forms", "/resources", "/reports"].includes(suffix)) uuid("caseId");

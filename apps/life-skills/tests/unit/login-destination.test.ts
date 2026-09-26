@@ -12,8 +12,8 @@ vi.mock("next/navigation",()=>({useRouter:()=>({replace:vi.fn(),refresh:vi.fn()}
 
 describe("shared private-app sign-in destination", () => {
   it("routes each enabled account type to its own workspace", () => {
-    expect(destinationForRole("he", "practitioner")).toBe("/he/app");
-    expect(destinationForRole("en", "parent")).toBe("/en/family");
+    expect(destinationForRole("he", "practitioner")).toBe("/he/app/calendar");
+    expect(destinationForRole("en", "parent")).toBe("/en/family/schedule");
     expect(destinationForRole("he", "adult_client")).toBe("/he/client");
   });
   it("routes the already-authorized child role to the shared client shell, not a new student app", () => {
@@ -64,7 +64,8 @@ describe("shared private-app sign-in destination", () => {
     const schedule=parentReturnPath("en","/en/family/schedule",{date:"2026-09-27",view:"week",caseId:"11111111-1111-4111-8111-111111111111",unknown:"private"});
     expect(schedule).toBe("/en/family/schedule?caseId=11111111-1111-4111-8111-111111111111&date=2026-09-27&view=week");
     expect(loginReturnDestination("en","parent",schedule)).toBe(schedule);
-    expect(parentReturnPath("en","/en/app/calendar",{view:"week"})).toBe("/en/family");
+    expect(loginReturnDestination("en","parent","/en/family")).toBe("/en/family");
+    expect(parentReturnPath("en","/en/app/calendar",{view:"week"})).toBe("/en/family/schedule");
     expect(parentReturnPath("he","/he/family/schedule",{view:"bad",date:"bad",caseId:"not-an-id"})).toBe("/he/family/schedule");
     const proxy=readFileSync(new URL("../../src/proxy.ts",import.meta.url),"utf8");
     expect(proxy).toContain('inbound.delete("x-ls-parent-return")');
@@ -72,9 +73,9 @@ describe("shared private-app sign-in destination", () => {
   });
   it("rejects cross-origin, cross-role, cross-locale and malformed login returns",()=>{
     for(const value of ["//evil.example/en/app", "https://evil.example/en/app", "/en/family", "/he/app/calendar", "/en/app/../family", "/en/app\\calendar", "/en/app/calendar#token", "/en/app/%2e%2e/family"]){
-      expect(loginReturnDestination("en","practitioner",value)).toBe("/en/app");
+      expect(loginReturnDestination("en","practitioner",value)).toBe("/en/app/calendar");
     }
-    expect(loginReturnDestination("en","parent","/en/app/clients")).toBe("/en/family");
+    expect(loginReturnDestination("en","parent","/en/app/clients")).toBe("/en/family/schedule");
     expect(loginReturnDestination("en","adult_client","/en/client/calendar?view=week")).toBe("/en/client/calendar?view=week");
     expect(loginReturnDestination("en","child","/en/client/calendar")).toBe("/en/client/calendar");
     expect(loginReturnDestination("en","child","/en/family")).toBe("/en/client");
