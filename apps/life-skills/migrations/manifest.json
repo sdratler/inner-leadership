@@ -78,5 +78,9 @@
   {
     "name": "0100_ls_demo_prospect_marker_gate.sql",
     "sha256": "cd86d4f2047a4a61116e94fd4a9a5559f0b1b2ece96343e943652fdd86c63da2"
+  },
+  {
+    "name": "0101_ls_contact_operations.sql",
+    "sha256": "a831604af25aa3ad713d7a1270007be9cebd315a8ac3a46cfa680a22b54dc25f"
   }
 ]
