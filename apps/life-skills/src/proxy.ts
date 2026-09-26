@@ -12,11 +12,17 @@ const intakeIdentityRoutes = new Set([
   "/api/identity/logout", "/api/identity/logout-all", "/api/identity/invites/accept",
   "/api/identity/reset/request", "/api/identity/reset/complete",
 ]);
-const intakeBrandAssets = new Set([
+const publicBrandAndFontAssets = new Set([
   "/intake-brand/life-skills-logo.png", "/intake-brand/bna-logo.png",
   "/intake-brand/Heebo-wght.ttf", "/intake-brand/FrankRuhlLibre-wght.ttf",
+  "/fonts/Heebo-wght.ttf", "/fonts/FrankRuhlLibre-wght.ttf",
 ]);
 const pwaPublicAssets = new Set(["/life-skills-sw.js","/pwa/icon-192.png","/pwa/icon-512.png"]);
+export function publicStaticAsset(pathname: string, method: string): boolean {
+  return (method === "GET" || method === "HEAD") &&
+    (publicBrandAndFontAssets.has(pathname) || pwaPublicAssets.has(pathname) ||
+      /^\/(he|en)\/pwa\/(parent|client|practitioner)\/manifest\.webmanifest$/.test(pathname));
+}
 /** This gate does not replace token, identity, role or CSRF checks in each route. */
 export function intakeReleasePath(pathname: string, input: Record<string,string|undefined>): boolean {
   const allowed = /^\/(he|en)\/intake(?:\/staff)?\/?$/.test(pathname) ||
@@ -65,9 +71,9 @@ export function proxy(request: NextRequest) {
       if (entry) return decorate(NextResponse.redirect(entry), headers);
     } catch { return decorate(new NextResponse(null, { status: 503 }), headers); }
   }
-  // Only these four already-public brand files bypass app gates. No wildcard,
-  // directory listing, private record, image proxy or remote image fetch is opened.
-  if ((intakeBrandAssets.has(pathname) || pwaPublicAssets.has(pathname) || /^\/(he|en)\/pwa\/(parent|client|practitioner)\/manifest\.webmanifest$/.test(pathname)) && ["GET", "HEAD"].includes(request.method)) {
+  // Only named public assets bypass app gates. No wildcard, directory listing,
+  // private record, image proxy or remote image fetch is opened.
+  if (publicStaticAsset(pathname, request.method)) {
     return decorate(NextResponse.next(), headers);
   }
   const intakePath = intakeReleasePath(pathname, process.env);
