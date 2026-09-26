@@ -5,6 +5,7 @@ import { sessionInfo } from "../identity/client.ts";
 import type { CommunityInboxPage, CommunityInboxPost } from "../community-inbox/bridge.ts";
 import type { CommunityReplyResult } from "./bridge.ts";
 import { matchesSubmittedInput, proposalForResult, replyFailureKind, type CommunitySourceInput } from "./input-state.ts";
+import { CommunitySettingsPanel } from "./settings-panel.tsx";
 
 type Locale = "he" | "en";
 const copy = {
@@ -136,6 +137,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
   }
 
   return <div className="lsr-community-reply" dir={locale === "he" ? "rtl" : "ltr"}>
+    <CommunitySettingsPanel locale={locale} />
     <section className="lsr-panel" aria-label={t.inbox}>
       <h3>{t.inbox}</h3><p className="lsr-help">{t.inboxHelp}</p>
       <div className="lsr-tabs" role="group" aria-label={t.inboxStatus}>
