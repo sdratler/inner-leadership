@@ -4,12 +4,14 @@ import { useRouter } from 'next/navigation';
 import type { MouseEvent } from 'react';
 import type { Locale } from '../../lib/locale.ts';
 import { accountRead } from '../identity/client.ts';
+import { loginHref } from '../identity/login-return.ts';
 import { Button, Input, Select } from '../../ui/workspace/controls.tsx';
 import { Dialog, openDialog, closeDialog } from '../../ui/workspace/dialogs.tsx';
 import { ErrorState, LoadingState, PageHeader, StatusChip } from '../../ui/workspace/surfaces.tsx';
 import { CalendarShell } from '../../ui/workspace/appointments.tsx';
 import { UnsavedChangesGuard } from '../../ui/workspace/draft-guard.tsx';
 import { calendarRead } from './client.ts';
+import { calendarLoadFailure, type CalendarLoadFailure } from './error-state.ts';
 import { text } from './copy.ts';
 import { civilDate, dateRange, shiftDay, shiftMonth } from './time.ts';
 import { asId } from '../../lib/ids.ts';
@@ -28,7 +30,7 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  const router=useRouter();
  const t=text(locale),practitioner=role==='practitioner';
  const [cases,setCases]=useState<CaseChoice[]>([]),[caseId,setCaseId]=useState(initialCaseId),[items,setItems]=useState<AppointmentView[]>([]),[cursor,setCursor]=useState<string|null>(null);
- const [loading,setLoading]=useState(true),[error,setError]=useState(false),[caseError,setCaseError]=useState(false),[countError,setCountError]=useState(false),[count,setCount]=useState<number|null>(null);
+ const [loading,setLoading]=useState(true),[error,setError]=useState<CalendarLoadFailure|null>(null),[caseError,setCaseError]=useState(false),[countError,setCountError]=useState(false),[count,setCount]=useState<number|null>(null);
  const [selected,setSelected]=useState<AppointmentView|null>(null),[dirty,setDirty]=useState(false),[bookingOpen,setBookingOpen]=useState(false),[checkinFor,setCheckinFor]=useState<AppointmentView|null>(null),[bookingNonce,setBookingNonce]=useState(0);
  const [history,setHistory]=useState<HistoryPage|null>(null),[historyError,setHistoryError]=useState(false),[dateInput,setDateInput]=useState(initialDate);
  const mutation=useCalendarMutation(locale),generation=useRef(0),date=initialDate,view=initialView;
@@ -41,7 +43,7 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  useDialogGuard('ls-cal-book',dirty,mutation.locked,locale,closeBooking);
 
  const load=useCallback(async (reset=true,after:string|null=null)=>{
-  const current=reset?++generation.current:generation.current;setLoading(reset);setError(false);
+  const current=reset?++generation.current:generation.current;setLoading(reset);setError(null);
   try{
    let selectedCase=caseId;
    let page:SchedulePage;
@@ -62,11 +64,11 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
     try{const value=await calendarRead<{attendedChildSessions:number}>('attendance-count?'+new URLSearchParams({caseId:selectedCase}));if(current===generation.current){setCount(value.attendedChildSessions);setCountError(false);}}
     catch{if(current===generation.current){setCount(null);setCountError(true);}}
    }else{setCount(null);setCountError(false);}
-  }catch{if(current===generation.current){setError(true);if(reset){setItems([]);setCases([]);}}}
+  }catch(cause){if(current===generation.current){setError(calendarLoadFailure(cause));if(reset){setItems([]);setCases([]);setCursor(null);setCount(null);}}}
   finally{if(current===generation.current)setLoading(false);}
  },[caseId,caseKind,range.from,range.to,practitioner,role]);
  useEffect(()=>{const timer=window.setTimeout(()=>{void load();},0);return()=>{window.clearTimeout(timer);generation.current+=1;};},[load]); // owned query state; no global navigation registration
- async function refreshSelected(id=selected?.id){if(!id)return;try{setSelected(await calendarRead<AppointmentView>('appointments/'+id));}catch{setSelected(null);setError(true);}}
+ async function refreshSelected(id=selected?.id){if(!id)return;try{setSelected(await calendarRead<AppointmentView>('appointments/'+id));}catch(cause){setSelected(null);setError(calendarLoadFailure(cause));}}
  const save:SaveForm=(path,body,done,method='POST')=>mutation.run(path,body,async value=>{
   done?.();setDirty(false);setHistory(null);
   if(value&&typeof value==='object'){
@@ -88,7 +90,7 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  {practitioner&&<div className="ls-cal-actions"><Button disabled={mutation.locked||!cases.length} onClick={e=>openBook(e)}>{t.newBooking}</Button><a className="lsw-button lsw-button--secondary" href={`/${locale}/app/settings/availability?date=${date}`}>{t.availability}</a></div>}</div>
  {practitioner&&<div className="ls-cal-operational"><IntakeSummaryCard locale={locale}/><CalendarAttentionSummary locale={locale} caseId={caseId}/></div>}
  {count!==null&&<aside className="ls-cal-count"><strong>{t.attendedCount}: {new Intl.NumberFormat(locale).format(count)}</strong><p>{t.attendanceOnly}</p></aside>}
- {loading?<LoadingState locale={locale}/>:error?<ErrorState locale={locale} onRetry={()=>void load()}/>:<>{caseError&&<p className="ls-cal-partial" role="status">{locale==='he'?'רשימת הלקוחות אינה זמינה כרגע. המפגשים המורשים עדיין מוצגים; שמות ותיאום חדש עשויים להיות חסרים.':'The client list is unavailable right now. Authorized appointments still appear; names and new booking may be unavailable.'} <Button variant="quiet" onClick={()=>void load()}>{locale==='he'?'ניסיון חוזר':'Retry client list'}</Button></p>}{countError&&<p className="ls-cal-partial" role="status">{locale==='he'?'ספירת המפגשים אינה זמינה כרגע. היומן עדיין מוצג.':'Attendance count is unavailable right now. The calendar is still shown.'}</p>}{!caseError&&!cases.length&&<p role="status">{t.noCases}</p>}<CalendarShell locale={locale} period={new Intl.DateTimeFormat(locale==='he'?'he-IL':'en-GB',{timeZone:'Asia/Jerusalem',month:'long',year:'numeric'}).format(new Date(date+'T12:00Z'))} view={view}
+ {loading?<LoadingState locale={locale}/>:error==='auth'?<div className="lsw-alert" role="alert"><p>{locale==='he'?'פג תוקף החיבור שלך. יש להיכנס מחדש כדי לפתוח את היומן הפרטי.':'Your session has ended. Sign in to reopen the private calendar.'}</p><a className="lsw-button lsw-button--secondary" href={loginHref(locale,href(date))}>{locale==='he'?'כניסה':'Sign in'}</a></div>:error==='forbidden'?<div className="lsw-alert" role="alert"><p>{locale==='he'?'לחשבון הזה אין הרשאה לצפות ביומן הזה.':'This account is not authorized to view this calendar.'}</p></div>:error?<ErrorState locale={locale} onRetry={()=>void load()}/>:<>{caseError&&<p className="ls-cal-partial" role="status">{locale==='he'?'רשימת הלקוחות אינה זמינה כרגע. המפגשים המורשים עדיין מוצגים; שמות ותיאום חדש עשויים להיות חסרים.':'The client list is unavailable right now. Authorized appointments still appear; names and new booking may be unavailable.'} <Button variant="quiet" onClick={()=>void load()}>{locale==='he'?'ניסיון חוזר':'Retry client list'}</Button></p>}{countError&&<p className="ls-cal-partial" role="status">{locale==='he'?'ספירת המפגשים אינה זמינה כרגע. היומן עדיין מוצג.':'Attendance count is unavailable right now. The calendar is still shown.'}</p>}{!caseError&&!cases.length&&<p role="status">{t.noCases}</p>}<CalendarShell locale={locale} period={new Intl.DateTimeFormat(locale==='he'?'he-IL':'en-GB',{timeZone:'Asia/Jerusalem',month:'long',year:'numeric'}).format(new Date(date+'T12:00Z'))} view={view}
  viewHrefs={{day:href(date,'day'),week:href(date,'week'),month:href(date,'month'),agenda:href(date,'agenda')}} showViewTabs todayHref={href(civilDate(new Date().toISOString()))} previousHref={href(view==='month'?shiftMonth(date,-1):shiftDay(date,view==='day'?-1:view==='agenda'?-14:-7))} nextHref={href(view==='month'?shiftMonth(date,1):shiftDay(date,view==='day'?1:view==='agenda'?14:7))}
  desktop={<CalendarBoard dates={range.dates} items={items} locale={locale} view={view==='agenda'?'week':view} names={names} onOpen={showAppointment}/>}
  agenda={<CalendarAgenda items={items} locale={locale} names={names} onOpen={showAppointment}/>}/></>}
