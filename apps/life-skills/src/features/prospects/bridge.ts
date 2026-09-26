@@ -1,4 +1,7 @@
 import "server-only";
+import { AppError } from "../../lib/errors.ts";
+import { demoRecordBatch } from "../demo/provenance.ts";
+import type { IdentityStore } from "../identity/store.ts";
 
 export type Prospect = {
   leadId:string; receivedAt:string; name:string; phone:string; email:string; language:string;
@@ -25,4 +28,9 @@ export async function crmBridge<T>(path:string,init:RequestInit={}):Promise<T>{
 export async function listProspects(){return (await crmBridge<{success:true;prospects:Prospect[]}>("/api/bna/life-skills-app/prospects")).prospects;}
 export async function createProspect(input:{name:string;phone:string;language:""|"he"|"en";source:string;notes:string;nextAction:string;dueDate:string}){return crmBridge<{success:true;result:{action:"created"|"existing";leadId:string;row:number}}>("/api/bna/life-skills-app/prospects",{method:"POST",body:JSON.stringify(input)});}
 export async function updateProspect(leadId:string,fields:Record<string,string>){return crmBridge(`/api/bna/life-skills-app/prospects/${encodeURIComponent(leadId)}`,{method:"PATCH",body:JSON.stringify({fields})});}
-export async function sendProspectMessage(leadId:string,body:string){return crmBridge<{success:true;receipt:{provider:string;providerMessageId:string|null;sentAt:string|null;replaySuppressed?:boolean;sheetUpdated?:boolean}}>(`/api/bna/life-skills-app/prospects/${encodeURIComponent(leadId)}/send`,{method:"POST",body:JSON.stringify({body})});}
+/** Recheck provenance at the final app-owned provider boundary, not only in a UI route. */
+export async function sendProspectMessage(leadId:string,body:string,context:{store:IdentityStore;workspaceId:string}){
+  const batch=await context.store.transaction(tx=>demoRecordBatch(tx,context.workspaceId,"prospect",leadId));
+  if(batch)throw new AppError("FORBIDDEN");
+  return crmBridge<{success:true;receipt:{provider:string;providerMessageId:string|null;sentAt:string|null;replaySuppressed?:boolean;sheetUpdated?:boolean}}>(`/api/bna/life-skills-app/prospects/${encodeURIComponent(leadId)}/send`,{method:"POST",body:JSON.stringify({body})});
+}
