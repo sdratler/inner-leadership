@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readPractitionerCalendar } from '../../../src/features/calendar/practitioner-load.ts';
+import { CalendarClientError } from '../../../src/features/calendar/client.ts';
 
 describe('practitioner calendar source isolation', () => {
   const page = { items: [{ id: 'synthetic-appointment' }], nextCursor: null };
@@ -20,5 +21,12 @@ describe('practitioner calendar source isolation', () => {
   it('never disguises a failed appointment read as an empty calendar', async () => {
     await expect(readPractitionerCalendar(async () => [], async () => { throw new Error('Calendar unavailable'); }))
       .rejects.toThrow('CALENDAR_UNAVAILABLE');
+  });
+
+  it('preserves the appointment endpoint authorization failure for an actionable sign-in state', async () => {
+    await expect(readPractitionerCalendar(async () => [], async () => { throw new CalendarClientError('UNAUTHENTICATED'); }))
+      .rejects.toMatchObject({ code: 'UNAUTHENTICATED' });
+    await expect(readPractitionerCalendar(async () => [], async () => { throw new CalendarClientError('FORBIDDEN'); }))
+      .rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 });
