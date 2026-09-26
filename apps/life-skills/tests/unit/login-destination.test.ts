@@ -3,7 +3,7 @@ import {readFileSync} from "node:fs";
 import {renderToStaticMarkup} from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { destinationForRole, LoginClient } from "../../src/features/identity/login-client.tsx";
-import { loginHref, loginReturnDestination, practitionerReturnPath } from "../../src/features/identity/login-return.ts";
+import { loginHref, loginReturnDestination, parentReturnPath, practitionerReturnPath } from "../../src/features/identity/login-return.ts";
 import { visibleHomeCases } from "../../src/ui/workspace/family-home.tsx";
 import { visibleUpdateCases } from "../../src/features/updates/updates-workspace.tsx";
 import { PracticeList } from "../../src/features/home-practice/practice-list.tsx";
@@ -55,12 +55,20 @@ describe("shared private-app sign-in destination", () => {
     const layout=readFileSync(new URL("../../src/app/[locale]/family/layout.tsx",import.meta.url),"utf8");
     expect(layout).toContain('requireWorkspaceRole("parent")');
     expect(layout).toContain('error.code === "UNAUTHENTICATED"');
-    expect(layout).toContain('redirect(loginHref(locale, `/${locale}/family`))');
+    expect(layout).toContain('redirect(loginHref(locale, loginReturnDestination(locale, "parent", requested)!))');
     expect(layout).toContain('error.code === "FORBIDDEN"');
     expect(layout).toContain('error.code === "NOT_FOUND"');
     expect(layout).toContain('throw error');
     expect(layout).not.toContain("PrivateWorkspaceUnavailable");
     expect(loginReturnDestination("en","parent","/en/family/schedule?view=week")).toBe("/en/family/schedule?view=week");
+    const schedule=parentReturnPath("en","/en/family/schedule",{date:"2026-09-27",view:"week",caseId:"11111111-1111-4111-8111-111111111111",unknown:"private"});
+    expect(schedule).toBe("/en/family/schedule?caseId=11111111-1111-4111-8111-111111111111&date=2026-09-27&view=week");
+    expect(loginReturnDestination("en","parent",schedule)).toBe(schedule);
+    expect(parentReturnPath("en","/en/app/calendar",{view:"week"})).toBe("/en/family");
+    expect(parentReturnPath("he","/he/family/schedule",{view:"bad",date:"bad",caseId:"not-an-id"})).toBe("/he/family/schedule");
+    const proxy=readFileSync(new URL("../../src/proxy.ts",import.meta.url),"utf8");
+    expect(proxy).toContain('inbound.delete("x-ls-parent-return")');
+    expect(proxy).toContain('inbound.set("x-ls-parent-return", parentReturnPath(');
   });
   it("rejects cross-origin, cross-role, cross-locale and malformed login returns",()=>{
     for(const value of ["//evil.example/en/app", "https://evil.example/en/app", "/en/family", "/he/app/calendar", "/en/app/../family", "/en/app\\calendar", "/en/app/calendar#token", "/en/app/%2e%2e/family"]){

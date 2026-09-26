@@ -31,6 +31,26 @@ export function practitionerReturnPath(locale: Locale, page: "calendar" | "clien
   return `/${locale}/app/${page}${suffix ? `?${suffix}` : ""}`;
 }
 
+/** Preserve known parent destinations without forwarding arbitrary query text into login. */
+export function parentReturnPath(locale: Locale, pathname: string, query: Record<string, string | undefined>): string {
+  const root = `/${locale}/family`;
+  const suffix = pathname.startsWith(`${root}/`) ? pathname.slice(root.length) : pathname === root ? "" : null;
+  const allowed = new Set(["", "/schedule", "/practice", "/feedback", "/forms", "/resources", "/reports", "/settings", "/settings/account", "/settings/coordination", "/settings/credits", "/settings/notifications"]);
+  if (suffix === null || !allowed.has(suffix)) return root;
+  const params = new URLSearchParams();
+  const uuid = (key: string) => { if (/^[0-9a-f-]{36}$/i.test(query[key] ?? "")) params.set(key, query[key]!); };
+  if (["", "/schedule", "/practice", "/feedback", "/forms", "/resources", "/reports"].includes(suffix)) uuid("caseId");
+  if (suffix === "/schedule") {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(query.date ?? "")) params.set("date", query.date!);
+    if (["day", "week", "month", "agenda"].includes(query.view ?? "")) params.set("view", query.view!);
+  }
+  if (["/practice", "/feedback", "/reports"].includes(suffix)) uuid("audienceId");
+  if (suffix === "/practice") uuid("assignmentId");
+  if (suffix === "/feedback") uuid("practiceVersionId");
+  const search = params.toString();
+  return root + suffix + (search ? `?${search}` : "");
+}
+
 export function loginHref(locale: Locale, returnPath: string): string {
   return `/${locale}/login?next=${encodeURIComponent(returnPath)}`;
 }

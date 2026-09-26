@@ -5,7 +5,7 @@ import { parseIdentityConfig } from "./features/identity/config.ts";
 import { runtimePublicConsent } from "./features/forms/pre-enrollment/consent.ts";
 import { ownerPreviewConfig } from "./features/forms/pre-enrollment/owner-preview.ts";
 import { intakeStaffEntry } from "./features/forms/pre-enrollment/public-origin.ts";
-import { practitionerReturnPath } from "./features/identity/login-return.ts";
+import { parentReturnPath, practitionerReturnPath } from "./features/identity/login-return.ts";
 
 const intakeIdentityRoutes = new Set([
   "/api/identity/csrf", "/api/identity/login", "/api/identity/session",
@@ -137,6 +137,7 @@ export function proxy(request: NextRequest) {
   const inbound = new Headers(request.headers);
   // Never forward a caller-supplied return path into the private layout.
   inbound.delete("x-ls-practitioner-return");
+  inbound.delete("x-ls-parent-return");
   const practitionerPage = /^\/(he|en)\/app\/(calendar|clients)\/?$/.exec(pathname);
   if (practitionerPage) {
     const locale = practitionerPage[1] as "he" | "en";
@@ -145,6 +146,15 @@ export function proxy(request: NextRequest) {
     for (const key of page === "calendar" ? ["date", "view", "caseId", "context"] : ["section", "filter"])
       query[key] = request.nextUrl.searchParams.get(key) ?? undefined;
     inbound.set("x-ls-practitioner-return", practitionerReturnPath(locale, page, query));
+  }
+  const parentPage = /^\/(he|en)\/family(?:\/|$)/.exec(pathname);
+  if (parentPage) {
+    const query: Record<string, string | undefined> = {};
+    for (const key of ["caseId", "date", "view", "audienceId", "assignmentId", "practiceVersionId"]) {
+      const values = request.nextUrl.searchParams.getAll(key);
+      query[key] = values.length === 1 ? values[0] : undefined;
+    }
+    inbound.set("x-ls-parent-return", parentReturnPath(parentPage[1] as "he" | "en", pathname, query));
   }
   // Do not trust caller-supplied nonce or request identifiers.
   inbound.set("x-nonce",nonce); inbound.set("Content-Security-Policy",headers["Content-Security-Policy"] ?? "default-src 'none'");

@@ -1,9 +1,10 @@
 import type { ReactNode } from "react";
+import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { isLocale } from "@/lib/locale.ts";
 import { AppError } from "@/lib/errors.ts";
 import { requireWorkspaceRole } from "@/features/integration/page-session.ts";
-import { loginHref } from "@/features/identity/login-return.ts";
+import { loginHref, loginReturnDestination } from "@/features/identity/login-return.ts";
 import { CoreNavigation } from "@/ui/workspace/core-navigation.tsx";
 import { PwaRegistration } from "@/features/pwa/registration.tsx";
 import "@/ui/workspace/workspace.css";
@@ -15,7 +16,10 @@ export default async function FamilyLayout({ children, params }: { children: Rea
   if (!isLocale(locale)) notFound();
   try { await requireWorkspaceRole("parent"); }
   catch (error) {
-    if (error instanceof AppError && error.code === "UNAUTHENTICATED") redirect(loginHref(locale, `/${locale}/family`));
+    if (error instanceof AppError && error.code === "UNAUTHENTICATED") {
+      const requested = (await headers()).get("x-ls-parent-return");
+      redirect(loginHref(locale, loginReturnDestination(locale, "parent", requested)!));
+    }
     if (error instanceof AppError && (error.code === "FORBIDDEN" || error.code === "NOT_FOUND")) notFound();
     throw error;
   }
