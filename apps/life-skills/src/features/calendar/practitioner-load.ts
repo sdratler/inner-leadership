@@ -9,6 +9,12 @@ export async function readPractitionerCalendar<C, P>(
   const [caseResult, pageResult] = await Promise.allSettled([readCases(), readPage()]);
   if (pageResult.status === 'rejected') {
     if (pageResult.reason instanceof CalendarClientError || pageResult.reason instanceof IdentityClientError) throw pageResult.reason;
+  }
+  if (caseResult.status === 'rejected' && caseResult.reason instanceof IdentityClientError &&
+      (caseResult.reason.code === 'UNAUTHENTICATED' || caseResult.reason.code === 'FORBIDDEN')) {
+    throw caseResult.reason;
+  }
+  if (pageResult.status === 'rejected') {
     throw new Error('CALENDAR_UNAVAILABLE');
   }
   return {
