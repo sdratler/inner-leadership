@@ -5,6 +5,7 @@ import { parseIdentityConfig } from "./features/identity/config.ts";
 import { runtimePublicConsent } from "./features/forms/pre-enrollment/consent.ts";
 import { ownerPreviewConfig } from "./features/forms/pre-enrollment/owner-preview.ts";
 import { intakeStaffEntry } from "./features/forms/pre-enrollment/public-origin.ts";
+import { practitionerReturnPath } from "./features/identity/login-return.ts";
 
 const intakeIdentityRoutes = new Set([
   "/api/identity/csrf", "/api/identity/login", "/api/identity/session",
@@ -128,6 +129,17 @@ export function proxy(request: NextRequest) {
   }
   if (pathname === "/") return decorate(NextResponse.redirect(new URL(isolatedPreviewPerimeter ? "/he/preview" : privateMode ? "/he/login" : "/he/foundation", request.url)),headers);
   const inbound = new Headers(request.headers);
+  // Never forward a caller-supplied return path into the private layout.
+  inbound.delete("x-ls-practitioner-return");
+  const practitionerPage = /^\/(he|en)\/app\/(calendar|clients)\/?$/.exec(pathname);
+  if (practitionerPage) {
+    const locale = practitionerPage[1] as "he" | "en";
+    const page = practitionerPage[2] as "calendar" | "clients";
+    const query: Record<string, string | undefined> = {};
+    for (const key of page === "calendar" ? ["date", "view", "caseId", "context"] : ["section", "filter"])
+      query[key] = request.nextUrl.searchParams.get(key) ?? undefined;
+    inbound.set("x-ls-practitioner-return", practitionerReturnPath(locale, page, query));
+  }
   // Do not trust caller-supplied nonce or request identifiers.
   inbound.set("x-nonce",nonce); inbound.set("Content-Security-Policy",headers["Content-Security-Policy"] ?? "default-src 'none'");
   inbound.set("x-request-id",crypto.randomUUID());
