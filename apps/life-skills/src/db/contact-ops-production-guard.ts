@@ -6,6 +6,14 @@ export const CONTACT_OPS_MIGRATION = {
  sha256: 'a831604af25aa3ad713d7a1270007be9cebd315a8ac3a46cfa680a22b54dc25f',
 } as const;
 
+/** Catalog fingerprint from 0101 applied to a clean, disposable native PG17
+ * restore. It covers every column and all 21 PK/FK/CHECK definitions across
+ * profiles, legacy_links and command_receipts, not only object names. */
+export const CONTACT_OPS_SCHEMA_CATALOG = {
+ columns:25,constraints:21,
+ sha256:'dde228b5f919a09ee668420517817eceb673d9a5764ed3a8552de8f980057222',
+} as const;
+
 const target = {
  projectId: '3b756632-1f66-4f75-a016-eabc37aa0d67',
  environmentId: 'dd91bd71-57cc-45e6-a75b-8c858491d7c7',
@@ -24,8 +32,15 @@ export type ContactOpsIntegrityObjects={
  profiles:boolean;legacyLinks:boolean;commandReceipts:boolean;legacyIndex:boolean;
  profileProvenanceTrigger:boolean;markerCompatibilityTrigger:boolean;immutableDemoRecordTrigger:boolean;
  profileFunction:boolean;markerFunction:boolean;immutableFunction:boolean;
- canonicalPersonConstraint:boolean;canonicalConstraintDefinition:boolean;
+ canonicalPersonConstraint:boolean;canonicalConstraintDefinition:boolean;schemaCatalog:boolean;
 };
+
+export function contactOpsSchemaCatalogMatches(columns:unknown,constraints:unknown):boolean{
+ if(!Array.isArray(columns)||columns.length!==CONTACT_OPS_SCHEMA_CATALOG.columns||
+    !Array.isArray(constraints)||constraints.length!==CONTACT_OPS_SCHEMA_CATALOG.constraints)return false;
+ const digest=createHash('sha256').update(JSON.stringify({columns,constraints})).digest('hex');
+ return digest===CONTACT_OPS_SCHEMA_CATALOG.sha256;
+}
 
 /** Match the checked-in, checksum-verified migration bodies, not mutable OIDs. */
 export function contactOpsFunctionBody(files:readonly Migration[],migrationName:string,qualifiedName:string):string{
@@ -74,7 +89,7 @@ export function contactOpsProductionTarget(env:Record<string,string|undefined>,a
 export function contactOpsMigrationState(files:readonly Migration[],history:readonly AppliedMigration[],objects:ContactOpsIntegrityObjects):'pending'|'applied'{
  if(files.at(-1)?.name!==CONTACT_OPS_MIGRATION.name || files.at(-1)?.checksum!==CONTACT_OPS_MIGRATION.sha256)throw new Error('CONTACT_OPS_MANIFEST_MISMATCH');
  const pending=planMigrations(files,history);
- const expectedKeys=['profiles','legacyLinks','commandReceipts','legacyIndex','profileProvenanceTrigger','markerCompatibilityTrigger','immutableDemoRecordTrigger','profileFunction','markerFunction','immutableFunction','canonicalPersonConstraint','canonicalConstraintDefinition'].sort();
+ const expectedKeys=['profiles','legacyLinks','commandReceipts','legacyIndex','profileProvenanceTrigger','markerCompatibilityTrigger','immutableDemoRecordTrigger','profileFunction','markerFunction','immutableFunction','canonicalPersonConstraint','canonicalConstraintDefinition','schemaCatalog'].sort();
  if(JSON.stringify(Object.keys(objects).sort())!==JSON.stringify(expectedKeys))throw new Error('CONTACT_OPS_INTEGRITY_READBACK_INVALID');
  const values=Object.values(objects);
  if(values.some(value=>typeof value!=='boolean'))throw new Error('CONTACT_OPS_INTEGRITY_READBACK_INVALID');

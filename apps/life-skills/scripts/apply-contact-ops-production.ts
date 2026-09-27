@@ -14,7 +14,7 @@ import {readFile,readdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {Pool} from 'pg';
 import {migrate} from '../src/db/migration-runner.ts';
-import {assertContactOpsDatabaseIdentity,contactOpsCanonicalConstraint,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,CONTACT_OPS_MIGRATION,type ContactOpsIntegrityObjects} from '../src/db/contact-ops-production-guard.ts';
+import {assertContactOpsDatabaseIdentity,contactOpsCanonicalConstraint,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,CONTACT_OPS_MIGRATION,type ContactOpsIntegrityObjects} from '../src/db/contact-ops-production-guard.ts';
 import type {AppliedMigration,Migration} from '../src/db/migration-plan.ts';
 
 async function migrations():Promise<Migration[]>{
@@ -58,7 +58,12 @@ async function main(){
        to_regclass('ls_contact_ops.profiles') IS NOT NULL AS profiles,
        to_regclass('ls_contact_ops.legacy_links') IS NOT NULL AS "legacyLinks",
        to_regclass('ls_contact_ops.command_receipts') IS NOT NULL AS "commandReceipts",
-       to_regclass('ls_contact_ops.legacy_links_by_person') IS NOT NULL AS "legacyIndex",
+       EXISTS(SELECT 1 FROM pg_index i
+         WHERE i.indexrelid=to_regclass('ls_contact_ops.legacy_links_by_person')
+           AND i.indrelid=to_regclass('ls_contact_ops.legacy_links')
+           AND i.indisvalid AND i.indisready AND i.indislive AND NOT i.indisunique
+           AND i.indnatts=2 AND i.indnkeyatts=2 AND i.indkey::text='1 6'
+           AND i.indpred IS NULL AND i.indexprs IS NULL) AS "legacyIndex",
        EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='profile_provenance'
          AND tgrelid=to_regclass('ls_contact_ops.profiles') AND NOT tgisinternal
          AND tgenabled IN ('O','A') AND tgtype=23 AND tgattr::text='' AND tgqual IS NULL
@@ -86,6 +91,23 @@ async function main(){
      const definitions=await client.query<{definition:string}>(`SELECT pg_get_constraintdef(oid) AS definition
        FROM pg_constraint WHERE conname='canonical_demo_person_key'
          AND conrelid=to_regclass('ls_demo.records')`);
+     const columns=await client.query<{catalog:unknown}>(`SELECT coalesce(json_agg(json_build_object(
+       'table',c.relname,'column',a.attname,'type',format_type(a.atttypid,a.atttypmod),
+       'notNull',a.attnotnull,'default',pg_get_expr(d.adbin,d.adrelid),
+       'identity',a.attidentity,'generated',a.attgenerated)
+       ORDER BY c.relname,a.attnum),'[]'::json) AS catalog
+       FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid
+       JOIN pg_namespace n ON n.oid=c.relnamespace
+       LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
+       WHERE n.nspname='ls_contact_ops'
+         AND c.relname IN ('profiles','legacy_links','command_receipts')
+         AND a.attnum>0 AND NOT a.attisdropped`);
+     const constraints=await client.query<{catalog:unknown}>(`SELECT coalesce(json_agg(json_build_object(
+       'table',c.relname,'name',k.conname,'type',k.contype,
+       'definition',pg_get_constraintdef(k.oid)) ORDER BY c.relname,k.conname),'[]'::json) AS catalog
+       FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid
+       JOIN pg_namespace n ON n.oid=c.relnamespace
+       WHERE n.nspname='ls_contact_ops'`);
      await client.query('COMMIT');
      const history:AppliedMigration[]=ledger.rows.map(row=>({name:row.name,checksum:row.checksum}));
      const verified=new Map(functions.rows.map(row=>[row.name,
@@ -94,7 +116,8 @@ async function main(){
        immutableFunction:verified.get('ls_demo.prevent_marker_change')===true,
        profileFunction:verified.get('ls_contact_ops.require_profile_provenance')===true,
        markerFunction:verified.get('ls_contact_ops.require_marker_compatibility')===true,
-       canonicalConstraintDefinition:definitions.rows.length===1&&contactOpsCanonicalConstraint(definitions.rows[0]?.definition)};
+       canonicalConstraintDefinition:definitions.rows.length===1&&contactOpsCanonicalConstraint(definitions.rows[0]?.definition),
+       schemaCatalog:contactOpsSchemaCatalogMatches(columns.rows[0]?.catalog,constraints.rows[0]?.catalog)};
      return contactOpsMigrationState(files,history,integrity);
     }catch(error){await client.query('ROLLBACK').catch(()=>undefined);throw error;}
    };
