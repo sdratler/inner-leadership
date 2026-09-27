@@ -32,6 +32,10 @@ describe("native shadow import preflight", () => {
   const bad = { ...source(), headers: [...headers, " Next-action date "], rows: [[...row, "2026-02-31"]] };
   await expect(importer.importNewPeople(actor, bad, decide(bad))).rejects.toThrow("IMPORT_INVALID_FOLLOWUP_DATE");
  });
+ it("accepts a tagged midnight spreadsheet date for explicit normalization before database work", async () => {
+  const dated = { ...source(), headers: [...headers, "Next-action date"], rows: [[...row, "2026-09-27 00:00:00"]], cellTypes: [[...row.map(() => "s"), "d"]] };
+  await expect(importer.importNewPeople(actor, dated, decide(dated))).rejects.toThrow("UNEXPECTED_DATABASE_ACCESS");
+ });
  it("does not apply reviewed dispositions to reordered or edited source rows", async () => {
   const other = ["LS-LEAD-other", "Other", "+15555550222", "", "Prospect"];
   const reviewed = source([row, other]);

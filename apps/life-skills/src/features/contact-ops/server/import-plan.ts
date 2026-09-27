@@ -1,5 +1,5 @@
 import { normalizePhone, normalizeEmail } from "../core/contact-resolution.js";
-import { requireThat, canonical } from "../core/validation.js";
+import { requireThat, canonical, dateOnly } from "../core/validation.js";
 import { privateDigest, stableUuid } from "./digests.js";
 export interface SheetSnapshot {
     fileId: string;
@@ -10,6 +10,8 @@ export interface SheetSnapshot {
     complete: boolean;
     headers: readonly string[];
     rows: readonly (readonly string[])[];
+    /** Optional source-native cell types aligned exactly with rows/cells. */
+    cellTypes?: readonly (readonly string[])[];
 }
 export interface ImportRow {
     legacyId: string;
@@ -25,6 +27,7 @@ export interface ImportRow {
         language: string;
         stageText: string;
         sourceFields: Record<string, string>;
+        sourceCellTypes?: Record<string, string>;
     };
     paymentVerified: false;
 }
@@ -49,6 +52,7 @@ const required = ["Lead ID", "Parent/adult name", "Phone", "Email", "Pipeline st
 export function planImport(s: SheetSnapshot, workspaceId: string, integrityKey: string): ImportPlan {
     requireThat(s.complete && Boolean(s.fileId && s.tab && s.revision && workspaceId) && Number.isSafeInteger(s.sheetId) && s.sheetId >= 0, "INCOMPLETE_SNAPSHOT");
     requireThat(s.rows.length <= 100000, "SNAPSHOT_BOUND");
+    requireThat(!s.cellTypes || s.cellTypes.length === s.rows.length, "CELL_TYPES_MISMATCH");
     const h = s.headers.map(x => x.trim());
     requireThat(h.length > 0 && new Set(h).size === h.length && h.every(Boolean), "AMBIGUOUS_HEADERS");
     for (const k of required)
@@ -61,18 +65,21 @@ export function planImport(s: SheetSnapshot, workspaceId: string, integrityKey: 
     s.rows.forEach((row, index) => {
         const sourceRow = index + 2;
         requireThat(row.length <= h.length, "UNMAPPED_EXTRA_CELLS");
+        const types = s.cellTypes?.[index];
+        requireThat(!types || types.length === row.length && types.every(type => typeof type === "string" && type.length > 0 && type.length <= 40), "CELL_TYPES_MISMATCH");
         if (row.every(v => !v.trim())) {
             blankRows++;
             return;
         }
         const fields = Object.fromEntries(s.headers.map((key, i) => [key, row[i] ?? ""]));
+        const sourceCellTypes = types ? Object.fromEntries(s.headers.map((key, i) => [key, types[i] ?? "blank"])) : undefined;
         const field = (name: string) => row[h.indexOf(name)] ?? "";
         const id = field("Lead ID").trim();
         if (!/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]+$/.test(id)) {
             conflicts.push({ sourceRow, code: "MISSING_OR_INVALID_LEGACY_ID" });
             return;
         }
-        const rd = privateDigest(fields, integrityKey), prior = ids.get(id);
+        const rd = privateDigest(sourceCellTypes ? { fields, sourceCellTypes } : fields, integrityKey), prior = ids.get(id);
         if (prior) {
             conflicts.push({ sourceRow, code: prior === rd ? "DUPLICATE_LEGACY_ID" : "CONFLICTING_LEGACY_ID" });
             return;
@@ -88,10 +95,23 @@ export function planImport(s: SheetSnapshot, workspaceId: string, integrityKey: 
         if (!phone && !email)
             issues.push("NO_ROUTABLE_ENDPOINT");
         out.push({ legacyId: id, suggestedPersonId: stableUuid(workspaceId + ":" + s.fileId + ":" + s.sheetId, id), normalizedPhone: phone, normalizedEmail: email, sourceRow, rowDigest: rd, issues,
-            protectedPayload: { displayName: field("Parent/adult name"), language: h.includes("Language") ? field("Language") : "", stageText: field("Pipeline stage"), sourceFields: fields }, paymentVerified: false });
+            protectedPayload: { displayName: field("Parent/adult name"), language: h.includes("Language") ? field("Language") : "", stageText: field("Pipeline stage"), sourceFields: fields, ...(sourceCellTypes ? { sourceCellTypes } : {}) }, paymentVerified: false });
     });
-    return { source: { fileId: s.fileId, sheetId: s.sheetId, tab: s.tab, revision: s.revision }, snapshotDigest: privateDigest({ headers: s.headers, rows: s.rows }, integrityKey), rows: out, blankRows, conflicts, canImport: conflicts.length === 0 };
+    return { source: { fileId: s.fileId, sheetId: s.sheetId, tab: s.tab, revision: s.revision }, snapshotDigest: privateDigest({ headers: s.headers, rows: s.rows, ...(s.cellTypes ? { cellTypes: s.cellTypes } : {}) }, integrityKey), rows: out, blankRows, conflicts, canImport: conflicts.length === 0 };
 }
 export function importSummary(p: ImportPlan) { return { source: p.source, snapshotDigest: p.snapshotDigest, rowCount: p.rows.length, blankRows: p.blankRows, conflicts: p.conflicts, issueCount: p.rows.reduce((n, r) => n + r.issues.length, 0), canImport: p.canImport }; }
 /** Header/key fidelity, not just a matching count, is required for reconciliation. */
 export function sameProtectedRow(a: ImportRow, b: ImportRow): boolean { return a.legacyId === b.legacyId && a.rowDigest === b.rowDigest && canonical(a.protectedPayload) === canonical(b.protectedPayload); }
+/** A typed spreadsheet date is a local civil date, not a UTC timestamp or guessed Excel serial. */
+export function importedFollowUpDate(row: ImportRow): string | null {
+    const entry = Object.entries(row.protectedPayload.sourceFields).find(([header]) => header.trim() === "Next-action date");
+    const raw = entry?.[1].trim() ?? "";
+    if (!raw) return null;
+    if (dateOnly(raw)) return raw;
+    const type = entry ? row.protectedPayload.sourceCellTypes?.[entry[0]] : undefined;
+    if (type === "d" || type === "date") {
+        const match = /^(\d{4}-\d{2}-\d{2})[ T]00:00:00(?:\.0+)?$/.exec(raw);
+        if (match && dateOnly(match[1]!)) return match[1]!;
+    }
+    throw new Error("IMPORT_INVALID_FOLLOWUP_DATE");
+}
