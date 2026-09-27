@@ -11,6 +11,7 @@ const target = {
  appServiceId: '0267d061-f3ce-4a0a-82d4-ce133e4501e9',
  databaseHost: 'postgres.railway.internal',
  databaseName: '/railway',
+ appOrigin: 'https://life-skills.bneineviimacademy.org',
 } as const;
 
 export type ContactOpsMigrationMode = 'preflight'|'apply';
@@ -23,7 +24,7 @@ export function contactOpsProductionTarget(env:Record<string,string|undefined>,a
  if(argv.length!==2 || !['--preflight','--apply'].includes(argv[0]??''))throw new Error('CONTACT_OPS_ARGUMENTS_INVALID');
  const expected=argv[1]?.match(/^--deployment=([0-9a-f-]{36})$/)?.[1];
  if(!expected || env.RAILWAY_DEPLOYMENT_ID!==expected)throw new Error('CONTACT_OPS_DEPLOYMENT_MISMATCH');
- if(env.RAILWAY_PROJECT_ID!==target.projectId || env.RAILWAY_ENVIRONMENT_ID!==target.environmentId || env.RAILWAY_SERVICE_ID!==target.appServiceId)throw new Error('CONTACT_OPS_RAILWAY_TARGET_MISMATCH');
+ if(env.RAILWAY_PROJECT_ID!==target.projectId || env.RAILWAY_ENVIRONMENT_ID!==target.environmentId || env.RAILWAY_SERVICE_ID!==target.appServiceId || env.LS_APP_ORIGIN!==target.appOrigin)throw new Error('CONTACT_OPS_RAILWAY_TARGET_MISMATCH');
  if(env.LS_DATABASE_TLS!=='verify-full' || !env.LS_DATABASE_CA?.trim())throw new Error('CONTACT_OPS_TLS_REQUIRED');
  let url:URL;
  try{url=new URL(env.LS_DATABASE_URL??'');}catch{throw new Error('CONTACT_OPS_DATABASE_URL_INVALID');}

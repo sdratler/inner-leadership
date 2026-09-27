@@ -7,6 +7,7 @@ const good={
  RAILWAY_ENVIRONMENT_ID:'dd91bd71-57cc-45e6-a75b-8c858491d7c7',
  RAILWAY_SERVICE_ID:'0267d061-f3ce-4a0a-82d4-ce133e4501e9',
  RAILWAY_DEPLOYMENT_ID:deployment,
+ LS_APP_ORIGIN:'https://life-skills.bneineviimacademy.org',
  LS_DATABASE_URL:'postgresql://test:synthetic@postgres.railway.internal:5432/railway',
  LS_DATABASE_TLS:'verify-full',LS_DATABASE_CA:'synthetic-ca',
 };
@@ -22,6 +23,7 @@ describe('registered native CRM production migration gate',()=>{
  it.each(['RAILWAY_PROJECT_ID','RAILWAY_ENVIRONMENT_ID','RAILWAY_SERVICE_ID','RAILWAY_DEPLOYMENT_ID'] as const)('rejects a changed %s',key=>{
   expect(()=>contactOpsProductionTarget({...good,[key]:'different'},args)).toThrow();
  });
+ it('rejects a different app origin',()=>expect(()=>contactOpsProductionTarget({...good,LS_APP_ORIGIN:'https://other.example'},args)).toThrow());
  it.each(['postgresql://test:synthetic@other.railway.internal:5432/railway','postgresql://test:synthetic@postgres.railway.internal:5432/other','postgresql://test:synthetic@postgres.railway.internal:5432/railway?sslmode=disable'])('rejects a different database target',url=>{
   expect(()=>contactOpsProductionTarget({...good,LS_DATABASE_URL:url},args)).toThrow();
  });
