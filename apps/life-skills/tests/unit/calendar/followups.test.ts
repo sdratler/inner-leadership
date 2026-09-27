@@ -16,13 +16,14 @@ describe('practitioner calendar follow-up layer', () => {
     const source = [
       row('LS-LEAD-synthetic-one'),
       row('LS-WAPI-synthetic-two', { dueDate: '2026-09-28', name: 'A second prospect', caseId: 'case-a' }),
+      row('LS-LEAD-formatted', { dueDate: '9/27/2026', name: 'Formatted date' }),
       row('LS-LEAD-closed', { stage: 'Archived' }),
       row('LS-LEAD-missing-date', { dueDate: '' }),
       row('LS-LEAD-invalid-date', { dueDate: '2026-02-30' }),
       row('LS-LEAD-outside', { dueDate: '2026-09-29' }),
       row('malformed-id'),
     ];
-    expect(projectCalendarFollowups(source, dates).map(item => item.leadId)).toEqual(['LS-LEAD-synthetic-one', 'LS-WAPI-synthetic-two']);
+    expect(projectCalendarFollowups(source, dates).map(item => item.leadId)).toEqual(['LS-LEAD-formatted', 'LS-LEAD-synthetic-one', 'LS-WAPI-synthetic-two']);
     expect(projectCalendarFollowups(source, dates, 'case-a').map(item => item.leadId)).toEqual(['LS-WAPI-synthetic-two']);
     expect(source[0]!.nextAction).toBe('Call back');
   });

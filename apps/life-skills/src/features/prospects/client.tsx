@@ -7,6 +7,7 @@ import {loginHref} from "../identity/login-return.ts";
 import type {Prospect} from "./bridge.ts";
 import {ProspectApiError,prospectReadFailure} from "./api-error.ts";
 import {activeProspect,paidAwaitingBooking} from "./view-state.ts";
+import {crmDueCivilDate} from "./due-date.ts";
 
 /* Remote state is loaded once per refresh and filter changes reset pagination. */
 /* eslint-disable react-hooks/set-state-in-effect */
@@ -72,7 +73,8 @@ export function ProspectsClient({locale,initialFilter="all",focusLeadId="",embed
  const today=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Jerusalem"}).format(new Date());
  const stages=useMemo(()=>[...new Set(rows.map(row=>row.stage).filter(Boolean))].sort((a,b)=>a.localeCompare(b)),[rows]);
  const shown=useMemo(()=>rows.filter(row=>{
-  if(preset==="today"&&(!row.dueDate||row.dueDate>today))return false;
+  const dueDate=crmDueCivilDate(row.dueDate);
+  if(preset==="today"&&(!dueDate||dueDate>today))return false;
   if(preset==="new"&&(row.formSent||row.formSubmitted||row.paymentVerified||active(row)))return false;
   if(preset==="intake"&&(!row.formSent||Boolean(row.formSubmitted)))return false;
   if(preset==="payment"&&(!row.formSubmitted||row.paymentVerified))return false;
@@ -81,10 +83,10 @@ export function ProspectsClient({locale,initialFilter="all",focusLeadId="",embed
   if(preset==="all"&&closed(row))return false;
   if(stage&&row.stage!==stage)return false;
   if(language&&!row.language.toLocaleLowerCase().startsWith(language))return false;
-  if(due==="today"&&(!row.dueDate||row.dueDate>today))return false;
-  if(due==="overdue"&&(!row.dueDate||row.dueDate>=today))return false;
+  if(due==="today"&&(!dueDate||dueDate>today))return false;
+  if(due==="overdue"&&(!dueDate||dueDate>=today))return false;
   const needle=query.trim().toLocaleLowerCase();return !needle||`${row.name} ${row.phone}`.toLocaleLowerCase().includes(needle);
- }).sort((a,b)=>(a.dueDate||"9999").localeCompare(b.dueDate||"9999")||a.receivedAt.localeCompare(b.receivedAt)||a.leadId.localeCompare(b.leadId)),[rows,preset,stage,language,due,query,today]);
+ }).sort((a,b)=>(crmDueCivilDate(a.dueDate)||"9999").localeCompare(crmDueCivilDate(b.dueDate)||"9999")||a.receivedAt.localeCompare(b.receivedAt)||a.leadId.localeCompare(b.leadId)),[rows,preset,stage,language,due,query,today]);
  const casesShown=(preset==="all"||preset==="archived")&&!stage&&!language&&!due
   ?visibleClientCases(clientCases,shown,query):[];
  const accessBlocked=state==="auth"||state==="forbidden"||caseState==="auth"||caseState==="forbidden";
