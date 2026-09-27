@@ -41,7 +41,10 @@ async function main(){
  const sourceEntries=await Promise.all(CONTACT_OPS_SOURCE_FILES.map(async path=>({path,bytes:await readFile(new URL(path,appRoot))})));
  if(contactOpsSourceBundle(sourceEntries)!==target.sourceBundleSha256)throw new Error('CONTACT_OPS_SOURCE_PROVENANCE_MISMATCH');
  const files=await migrations();
- if(files.at(-1)?.name!==CONTACT_OPS_MIGRATION.name)throw new Error('CONTACT_OPS_NOT_LAST_MIGRATION');
+ // 0101 may have a later, separately reviewed additive migration. The strict
+ // contactOpsMigrationState gate below checks its exact admitted suffix and
+ // refuses a partial/unapplied suffix before any write.
+ if(!files.some(file=>file.name===CONTACT_OPS_MIGRATION.name&&file.checksum===CONTACT_OPS_MIGRATION.sha256))throw new Error('CONTACT_OPS_MIGRATION_MISSING');
  const functionBodies=new Map([
   ['ls_demo.prevent_marker_change',contactOpsFunctionBody(files,'0097_ls_demo_provenance.sql','ls_demo.prevent_marker_change')],
   ['ls_contact_ops.require_profile_provenance',contactOpsFunctionBody(files,CONTACT_OPS_MIGRATION.name,'ls_contact_ops.require_profile_provenance')],

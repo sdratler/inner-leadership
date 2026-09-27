@@ -10,7 +10,8 @@ import { TOKEN_PATTERN } from '../identity/crypto.ts';
 import { calendarRuntime } from './runtime.ts';
 import { drainCalendarEventsIsolated } from './relay.ts';
 import { applyCalendarCreditEffect } from '../payments/calendar-consumer.ts';
-import { availabilitySchema, attendanceSchema, bookingSchema, exceptionSchema, listSchema, logisticsSchema, manualNoticeSchema, noticeSchema, replacementSchema, versionSchema } from './validation.ts';
+import { availabilitySchema, attendanceSchema, bookingSchema, exceptionSchema, listSchema, logisticsSchema, manualNoticeSchema, noticeSchema, replacementSchema, taskCreateSchema, taskListSchema, versionSchema } from './validation.ts';
+import { InternalTaskService } from './tasks.ts';
 import type { z } from 'zod';
 export function routeId<K extends string>(value:string,kind:K){try{return asId(value,kind);}catch{throw new AppError('INVALID_REQUEST');}}
 export function sessionToken(headers:Headers):string {
@@ -38,7 +39,7 @@ export async function handleCalendar(request:Request,path:readonly string[]):Pro
   if(request.method==='POST' && path[0]==='appointments' && path[2]==='notice'){
    earlyNotice=await readJson(request,noticeSchema);receivedAt=new Date();
   }
-  const {identity,service}=await calendarRuntime(),token=sessionToken(request.headers);
+  const {identity,service}=await calendarRuntime(),tasks=new InternalTaskService(service.db),token=sessionToken(request.headers);
   if(request.method!=='GET')verifyMutationOrigin(request,identity.config.origin);
   const actor=await identity.services.sessions.actor(token);verifiedActor=actor;audit=identity.services.audit;
   if((actor.role==='adult_client'||actor.role==='child')&&request.method!=='GET')throw new AppError('FORBIDDEN');
@@ -46,7 +47,13 @@ export async function handleCalendar(request:Request,path:readonly string[]):Pro
   await enforceRateLimit(identity.services.limits,opaqueRateLimitKey(`calendar:${actor.workspaceId}:${actor.id}:${request.method==='GET'?'read':'write'}`,identity.config.rateLimitKey),request.method==='GET'?240:60,60_000);
   const key=request.headers.get('idempotency-key')??'';
   let data:unknown;
-  if(request.method==='GET'&&path.length===1&&path[0]==='appointments'){
+  if(request.method==='GET'&&path.length===1&&path[0]==='tasks'){
+   const q=readQuery(taskListSchema,query(request,['from','to','caseId']));data=await tasks.list(actor,q.from,q.to,q.caseId);
+  }else if(request.method==='POST'&&path.length===1&&path[0]==='tasks'){
+   query(request,[]);data=await tasks.create(actor,key,await readJson(request,taskCreateSchema));
+  }else if(request.method==='POST'&&path.length===3&&path[0]==='tasks'&&path[2]==='complete'){
+   query(request,[]);data=await tasks.complete(actor,routeId(path[1]!,'task'),key,(await readJson(request,versionSchema)).expectedVersion);
+  }else if(request.method==='GET'&&path.length===1&&path[0]==='appointments'){
    data=await service.list(actor,readQuery(listSchema,query(request,['from','to','caseId','cursor'])));
   }else if(request.method==='GET'&&path.length===2&&path[0]==='appointments'){
    query(request,[]);data=await service.get(actor,routeId(path[1]!,'appointment'));
@@ -80,7 +87,7 @@ export async function handleCalendar(request:Request,path:readonly string[]):Pro
   // The command is already committed. Delivery cannot turn that success into a
   // false rollback response. Pending events and neutral retry state are durable.
   let delivery:'attempted'|'deferred'|null=null;
-  if(request.method!=='GET'){
+  if(request.method!=='GET'&&path[0]!=='tasks'){
    try{
     const retryAppointmentId=path[0]==='appointments'&&path.length===3?path[1]!:null;
     const result=await service.db.read(actor,c=>drainCalendarEventsIsolated(c,'credit_effect',applyCalendarCreditEffect,25,retryAppointmentId));

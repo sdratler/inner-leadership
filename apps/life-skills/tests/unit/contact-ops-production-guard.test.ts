@@ -16,6 +16,7 @@ const bindingHash=createHash('sha256').update(good.LS_DATABASE_URL).digest('hex'
 const args=['--apply',`--deployment=${deployment}`,`--database-binding=354b5343-9e83-45a7-b764-09396f14ae29:${bindingHash}`,`--source-bundle=${'a'.repeat(64)}`];
 const prior={name:'0100_ls_demo_prospect_marker_gate.sql',checksum:'0'.repeat(64),sql:'SELECT 1;'};
 const next={name:CONTACT_OPS_MIGRATION.name,checksum:CONTACT_OPS_MIGRATION.sha256,sql:'CREATE SCHEMA ls_contact_ops;'};
+const taskSuffix={name:'0102_ls_internal_tasks.sql',checksum:'dde1bbd0b8c92ea407611f4dffecc98bbd4dd295468509469919e5fa796565ce',sql:'CREATE TABLE ls_calendar.tasks(id uuid);'};
 const absent:ContactOpsIntegrityObjects={profiles:false,legacyLinks:false,commandReceipts:false,legacyIndex:false,profileProvenanceTrigger:false,markerCompatibilityTrigger:false,immutableDemoRecordTrigger:true,profileFunction:false,markerFunction:false,immutableFunction:true,canonicalPersonConstraint:false,canonicalConstraintDefinition:false,schemaCatalog:false,baselineRecordsCatalog:true,permanentTables:false,foreignKeysEnforced:false,foreignKeyReferencesSound:false,publicRevoked:false};
 const present:ContactOpsIntegrityObjects={profiles:true,legacyLinks:true,commandReceipts:true,legacyIndex:true,profileProvenanceTrigger:true,markerFunction:true,markerCompatibilityTrigger:true,immutableDemoRecordTrigger:true,profileFunction:true,immutableFunction:true,canonicalPersonConstraint:true,canonicalConstraintDefinition:true,schemaCatalog:true,baselineRecordsCatalog:true,permanentTables:true,foreignKeysEnforced:true,foreignKeyReferencesSound:true,publicRevoked:true};
 
@@ -79,6 +80,10 @@ describe('registered native CRM production migration gate',()=>{
  });
  it('accepts an exact idempotent readback but rejects drift or missing objects',()=>{
   expect(contactOpsMigrationState([prior,next],[prior,{name:next.name,checksum:next.checksum}],present)).toBe('applied');
+  expect(contactOpsMigrationState([prior,next,taskSuffix],[prior,next,taskSuffix].map(({name,checksum})=>({name,checksum})),present)).toBe('applied');
+  expect(()=>contactOpsMigrationState([prior,next,taskSuffix],[prior,next].map(({name,checksum})=>({name,checksum})),present)).toThrow('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+  expect(()=>contactOpsMigrationState([prior,next,{...taskSuffix,checksum:'1'.repeat(64)}],[prior,next,taskSuffix].map(({name,checksum})=>({name,checksum})),present)).toThrow('CONTACT_OPS_MANIFEST_MISMATCH');
+  expect(()=>contactOpsMigrationState([prior,next,taskSuffix,{...taskSuffix,name:'0103_unreviewed.sql'}],[prior,next,taskSuffix].map(({name,checksum})=>({name,checksum})),present)).toThrow('CONTACT_OPS_MANIFEST_MISMATCH');
   for(const key of Object.keys(present) as (keyof ContactOpsIntegrityObjects)[])
    expect(()=>contactOpsMigrationState([prior,next],[prior,{name:next.name,checksum:next.checksum}],{...present,[key]:false})).toThrow();
   const incomplete={...present} as Partial<ContactOpsIntegrityObjects>;

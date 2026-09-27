@@ -82,5 +82,9 @@
   {
     "name": "0101_ls_contact_operations.sql",
     "sha256": "a831604af25aa3ad713d7a1270007be9cebd315a8ac3a46cfa680a22b54dc25f"
+  },
+  {
+    "name": "0102_ls_internal_tasks.sql",
+    "sha256": "dde1bbd0b8c92ea407611f4dffecc98bbd4dd295468509469919e5fa796565ce"
   }
 ]
