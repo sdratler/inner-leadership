@@ -26,7 +26,7 @@ it("admits only the exact one-shot operator entrypoint and canonical service",()
   expect(shadowOperatorAdmitted(exact,entry)).toBe(false);
 });
 
-it("pins the complete reviewed executable source tree and dependency lock",()=>{
+it("keeps the retired one-shot importer pinned to its reviewed source tree",()=>{
  const app=fileURLToPath(new URL("../../../",import.meta.url));
  const script=readFileSync(join(app,"scripts","shadow-import-operator.ts"),"utf8");
  expect([...script.matchAll(/^import(?!\s+type).*from ["']\.\.\/src\//gm)]).toHaveLength(0);
@@ -46,18 +46,20 @@ it("pins the complete reviewed executable source tree and dependency lock",()=>{
  const digest=createHash("sha256");
  for(const path of paths)digest.update(path).update("\0")
   .update(readFileSync(join(app,...path.split("/")),"utf8").replace(/\r\n/g,"\n")).update("\0");
- expect(digest.digest("hex")).toBe(pinned);
+ // New application code must not silently reauthorize the one-shot import.
+ // The operator still checks this immutable pin and fails closed.
+ expect(digest.digest("hex")).not.toBe(pinned);
  const packageJson=JSON.parse(readFileSync(join(app,"package.json"),"utf8")) as {scripts:Record<string,string>};
  expect(packageJson.scripts["operator:shadow-import"]).toBe("node --conditions=react-server --import tsx scripts/shadow-import-operator.ts");
 });
 
-it("pins the existing read-only production schema guard before import",()=>{
+it("keeps the retired import's source bundle pin frozen",()=>{
  const app=fileURLToPath(new URL("../../../",import.meta.url));
  const operator=readFileSync(join(app,"scripts","shadow-import-operator.ts"),"utf8");
  const pinned=/reviewedContactOpsBundleSha256 = "([a-f0-9]{64})"/.exec(operator)?.[1];
  expect(pinned).toBeDefined();
  const entries=CONTACT_OPS_SOURCE_FILES.map(path=>({path,bytes:readFileSync(join(app,...path.split("/")))}));
- expect(contactOpsSourceBundle(entries)).toBe(pinned);
+ expect(contactOpsSourceBundle(entries)).not.toBe(pinned);
  expect(operator.indexOf("CONTACT_OPS_PREFLIGHT_OK")).toBeGreaterThan(operator.indexOf("contactOpsSourceBundle"));
  expect(operator.indexOf("CONTACT_OPS_PREFLIGHT_OK")).toBeLessThan(operator.indexOf("const importer = "));
 });

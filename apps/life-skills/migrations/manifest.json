@@ -90,5 +90,9 @@
   {
     "name": "0103_ls_task_sources.sql",
     "sha256": "190390847c7537ed80a2dd223c961514804f37068c1b672bc051ab5b4ef00f20"
+  },
+  {
+    "name": "0104_ls_content_voice_corrections.sql",
+    "sha256": "0fe90300bd2764348b639bee5a14ec1b806e976d9c54724f2211eae61ad4074c"
   }
 ]

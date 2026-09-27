@@ -1,6 +1,7 @@
 import "server-only";
 import { AppError } from "../../lib/errors.ts";
 import { COMMUNITY_PLAYBOOK_FILE_ID, CONTENT_VOICE_FILE_ID, readCommunityPlaybookSource, readContentVoiceSource, type ContentVoiceSnapshot } from "../content-voice/source.ts";
+import { communityRuleIdsInGuide } from "../content-voice/rule-editor.ts";
 
 const SCOUT_ORIGIN = "https://community-scout-production.up.railway.app";
 const SECRET = /^[A-Za-z0-9_-]{43,}$/;
@@ -21,7 +22,8 @@ export type CommunityReplyResult = {
   ruleScope: "" | "community" | "general";
   originalUrl: string | null;
   provenance: {
-    guide: { id: string; sha256: string; driveRevision: string; declaredVersion: string | null; modifiedAt: string; checkedAt: string };
+    guide: { id: string; sha256: string; driveRevision: string; declaredVersion: string | null; modifiedAt: string; checkedAt: string;
+      includedCommunityRuleIds: string[] };
     playbook: { id: string; sha256: string; driveRevision: string; declaredVersion: string | null; modifiedAt: string; checkedAt: string };
     policyVersion: string;
     generatedAt: string;
@@ -30,7 +32,8 @@ export type CommunityReplyResult = {
   };
 };
 
-function sourceMatches(actual: CommunityReplyResult["provenance"]["guide"] | undefined, expected: ContentVoiceSnapshot, id: string): boolean {
+function sourceMatches(actual: { id: string; sha256: string; driveRevision: string; declaredVersion: string | null;
+  modifiedAt: string; checkedAt: string } | undefined, expected: ContentVoiceSnapshot, id: string): boolean {
   return actual?.id === id && actual.sha256 === expected.sha256 && actual.driveRevision === expected.driveRevision &&
     actual.declaredVersion === expected.declaredVersion && actual.modifiedAt === expected.modifiedAt && actual.checkedAt === expected.checkedAt;
 }
@@ -47,7 +50,10 @@ function verified(value: unknown, guide: ContentVoiceSnapshot, playbook: Content
       typeof result.provenance.model !== "string" || typeof result.provenance.policyVersion !== "string" ||
       !Number.isFinite(Date.parse(result.provenance.generatedAt)) ||
       !Number.isSafeInteger(result.provenance.usage?.inputTokens) || !Number.isSafeInteger(result.provenance.usage?.outputTokens)) throw new AppError("UNAVAILABLE");
-  return result as CommunityReplyResult;
+  // These IDs were included in the exact canonical snapshot sent to Scout.
+  // They are input provenance, not a claim that the model obeyed every rule.
+  return { ...(result as CommunityReplyResult), provenance: { ...result.provenance,
+    guide: { ...result.provenance.guide, includedCommunityRuleIds: communityRuleIdsInGuide(guide.text) } } } as CommunityReplyResult;
 }
 
 export async function requestCommunityReply(command: CommunityReplyCommand,
