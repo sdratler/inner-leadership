@@ -14,7 +14,7 @@ import {readFile,readdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {Pool} from 'pg';
 import {migrate} from '../src/db/migration-runner.ts';
-import {assertContactOpsDatabaseIdentity,contactOpsMigrationState,contactOpsProductionTarget,CONTACT_OPS_MIGRATION,type ContactOpsIntegrityObjects} from '../src/db/contact-ops-production-guard.ts';
+import {assertContactOpsDatabaseIdentity,contactOpsCanonicalConstraint,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,CONTACT_OPS_MIGRATION,type ContactOpsIntegrityObjects} from '../src/db/contact-ops-production-guard.ts';
 import type {AppliedMigration,Migration} from '../src/db/migration-plan.ts';
 
 async function migrations():Promise<Migration[]>{
@@ -37,6 +37,11 @@ async function main(){
  const target=contactOpsProductionTarget(process.env,process.argv.slice(2));
  const files=await migrations();
  if(files.at(-1)?.name!==CONTACT_OPS_MIGRATION.name)throw new Error('CONTACT_OPS_NOT_LAST_MIGRATION');
+ const functionBodies=new Map([
+  ['ls_demo.prevent_marker_change',contactOpsFunctionBody(files,'0097_ls_demo_provenance.sql','ls_demo.prevent_marker_change')],
+  ['ls_contact_ops.require_profile_provenance',contactOpsFunctionBody(files,CONTACT_OPS_MIGRATION.name,'ls_contact_ops.require_profile_provenance')],
+  ['ls_contact_ops.require_marker_compatibility',contactOpsFunctionBody(files,CONTACT_OPS_MIGRATION.name,'ls_contact_ops.require_marker_compatibility')],
+ ]);
  const pool=new Pool({connectionString:target.url,ssl:{rejectUnauthorized:true,ca:process.env.LS_DATABASE_CA},max:1,connectionTimeoutMillis:8000,statement_timeout:30000});
  try{
   const client=await pool.connect();
@@ -69,9 +74,28 @@ async function main(){
        EXISTS(SELECT 1 FROM pg_constraint WHERE conname='canonical_demo_person_key'
          AND conrelid=to_regclass('ls_demo.records') AND contype='c'
          AND convalidated) AS "canonicalPersonConstraint"`);
+     const functions=await client.query<{name:string;body:string;plpgsql:boolean;ordinary:boolean}>(`SELECT
+       n.nspname||'.'||p.proname AS name,p.prosrc AS body,
+       p.prolang=(SELECT oid FROM pg_language WHERE lanname='plpgsql') AS plpgsql,
+       p.prokind='f' AND p.pronargs=0 AND p.prorettype='trigger'::regtype
+         AND NOT p.prosecdef AND p.proconfig IS NULL AS ordinary
+       FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+       WHERE p.pronargs=0 AND ((n.nspname='ls_demo' AND p.proname='prevent_marker_change')
+          OR (n.nspname='ls_contact_ops' AND p.proname IN
+            ('require_profile_provenance','require_marker_compatibility')))`);
+     const definitions=await client.query<{definition:string}>(`SELECT pg_get_constraintdef(oid) AS definition
+       FROM pg_constraint WHERE conname='canonical_demo_person_key'
+         AND conrelid=to_regclass('ls_demo.records')`);
      await client.query('COMMIT');
      const history:AppliedMigration[]=ledger.rows.map(row=>({name:row.name,checksum:row.checksum}));
-     return contactOpsMigrationState(files,history,objects.rows[0]!);
+     const verified=new Map(functions.rows.map(row=>[row.name,
+       row.plpgsql===true&&row.ordinary===true&&row.body===functionBodies.get(row.name)]));
+     const integrity:ContactOpsIntegrityObjects={...objects.rows[0]!,
+       immutableFunction:verified.get('ls_demo.prevent_marker_change')===true,
+       profileFunction:verified.get('ls_contact_ops.require_profile_provenance')===true,
+       markerFunction:verified.get('ls_contact_ops.require_marker_compatibility')===true,
+       canonicalConstraintDefinition:definitions.rows.length===1&&contactOpsCanonicalConstraint(definitions.rows[0]?.definition)};
+     return contactOpsMigrationState(files,history,integrity);
     }catch(error){await client.query('ROLLBACK').catch(()=>undefined);throw error;}
    };
    const before=await inspect();
