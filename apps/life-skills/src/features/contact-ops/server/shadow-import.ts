@@ -9,7 +9,7 @@ import { dateOnly, requireThat } from "../core/validation.js";
 import { planImport, type ImportRow, type SheetSnapshot } from "./import-plan.ts";
 import { crmProfileAad, type CrmProfile } from "./native-store.ts";
 
-export type NewPersonDisposition = { sourceRow: number; kind: "new_person" };
+export type NewPersonDisposition = { sourceRow: number; sourceRevision: string; legacyId: string; rowDigest: string; kind: "new_person" };
 export type ShadowImportResult = { sourceRevision: string; planned: number; created: number; replayed: number };
 
 /** This service has no HTTP or provider entry point. A trusted operator must first
@@ -39,6 +39,10 @@ export class NativeShadowImporter {
    decisions.set(item.sourceRow, item);
   }
   requireThat(decisions.size === plan.rows.length && plan.rows.every(row => decisions.has(row.sourceRow)), "IMPORT_DISPOSITION_INCOMPLETE");
+  for (const row of plan.rows) {
+   const decision = decisions.get(row.sourceRow)!;
+   requireThat(decision.sourceRevision === snapshot.revision && decision.legacyId === row.legacyId && decision.rowDigest === row.rowDigest, "IMPORT_DISPOSITION_STALE");
+  }
   const phones = new Set<string>(), emails = new Set<string>();
   for (const row of plan.rows) {
    const rawDate = sourceField(row, "Next-action date").trim();

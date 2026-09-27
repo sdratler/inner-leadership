@@ -6,6 +6,7 @@ import { seal, unseal } from "../../../src/features/identity/crypto.ts";
 import { NativeShadowImporter } from "../../../src/features/contact-ops/server/shadow-import.ts";
 import { crmProfileAad } from "../../../src/features/contact-ops/server/native-store.ts";
 import type { SheetSnapshot } from "../../../src/features/contact-ops/server/import-plan.ts";
+import { planImport } from "../../../src/features/contact-ops/server/import-plan.ts";
 
 const f = await fixture();
 afterAll(async () => { await f.pool.end(); });
@@ -20,10 +21,11 @@ const two = ["LS-LEAD-synthetic-two", "", "+15555550102", "", "Contacted", "Foll
 function snapshot(rows: string[][] = [one, two], fileId = sourceFileId): SheetSnapshot {
  return { fileId, sheetId, tab: "Leads", revision: "synthetic-revision-1", complete: true, headers, rows };
 }
+function decide(source: SheetSnapshot) { return planImport(source, f.workspaceId, key).rows.map(row => ({ sourceRow: row.sourceRow, sourceRevision: source.revision, legacyId: row.legacyId, rowDigest: row.rowDigest, kind: "new_person" as const })); }
 
 test("native PostgreSQL imports all synthetic rows encrypted in one shadow transaction and exact replay is a no-op", async () => {
  const before = await f.pool.query("SELECT count(*)::integer AS n FROM ls_identity.people WHERE workspace_id=$1", [f.workspaceId]);
- const decisions = [{ sourceRow: 2, kind: "new_person" as const }, { sourceRow: 3, kind: "new_person" as const }];
+ const decisions = decide(snapshot());
  expect(await importer.importNewPeople(f.practitioner.actor, snapshot(), decisions)).toEqual({ sourceRevision: "synthetic-revision-1", planned: 2, created: 2, replayed: 0 });
  expect(await importer.importNewPeople(f.practitioner.actor, snapshot(), decisions)).toEqual({ sourceRevision: "synthetic-revision-1", planned: 2, created: 0, replayed: 2 });
  const after = await f.pool.query("SELECT count(*)::integer AS n FROM ls_identity.people WHERE workspace_id=$1", [f.workspaceId]);
@@ -60,17 +62,18 @@ test("native PostgreSQL imports all synthetic rows encrypted in one shadow trans
  }
  const demo = await f.pool.query("SELECT count(*)::integer AS n FROM ls_demo.records WHERE workspace_id=$1 AND entity_kind='person' AND entity_key=ANY($2::text[])", [f.workspaceId, links.rows.map(row => row.person_id)]);
  expect(demo.rows[0].n).toBe(0);
- await expect(importer.importNewPeople(f.practitioner.actor, snapshot([[...one.slice(0, 7), "Changed note"], two]), decisions)).rejects.toThrow("IMPORT_EXISTING_LINK_CONFLICT");
+ const changed = snapshot([[...one.slice(0, 7), "Changed note"], two]);
+ await expect(importer.importNewPeople(f.practitioner.actor, changed, decide(changed))).rejects.toThrow("IMPORT_EXISTING_LINK_CONFLICT");
  expect((await f.pool.query("SELECT count(*)::integer AS n FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND source_file_id=$2", [f.workspaceId, sourceFileId])).rows[0].n).toBe(2);
 });
 
 test("shadow importer rejects incomplete decisions, non-practitioner and mismatched source before any contact insert", async () => {
  const otherFile = `synthetic-${randomUUID()}`;
- await expect(importer.importNewPeople(f.practitioner.actor, snapshot([one], otherFile), [{ sourceRow: 2, kind: "new_person" }])).rejects.toThrow("IMPORT_SOURCE_MISMATCH");
+ await expect(importer.importNewPeople(f.practitioner.actor, snapshot([one], otherFile), decide(snapshot([one], otherFile)))).rejects.toThrow("IMPORT_SOURCE_MISMATCH");
  await expect(importer.importNewPeople(f.practitioner.actor, snapshot([one], otherFile), [])).rejects.toThrow("IMPORT_SOURCE_MISMATCH");
  const fresh = new NativeShadowImporter(poolStore(f.pool), f.keyring, lookupKey, key, otherFile, sheetId);
  await expect(fresh.importNewPeople(f.practitioner.actor, snapshot([one], otherFile), [])).rejects.toThrow("IMPORT_DISPOSITION_INCOMPLETE");
- await expect(fresh.importNewPeople(f.parent.actor, snapshot([one], otherFile), [{ sourceRow: 2, kind: "new_person" }])).rejects.toThrow("FORBIDDEN");
+ await expect(fresh.importNewPeople(f.parent.actor, snapshot([one], otherFile), decide(snapshot([one], otherFile)))).rejects.toThrow("FORBIDDEN");
  expect((await f.pool.query("SELECT count(*)::integer AS n FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND source_file_id=$2", [f.workspaceId, otherFile])).rows[0].n).toBe(0);
 });
 
@@ -78,7 +81,8 @@ test("shadow importer refuses a live account phone collision and preserves the w
  const special = ["LS-LEAD-synthetic-collision", "Synthetic collision", "+15555550103", "", "New inquiry", "Call", "", "Private synthetic text"];
  const ciphertext = seal(special[2]!, `phone:${f.workspaceId}:${f.parent.actor.id}`, f.keyring);
  await f.pool.query("UPDATE ls_identity.accounts SET phone_ciphertext=$3 WHERE workspace_id=$1 AND id=$2", [f.workspaceId, f.parent.actor.id, ciphertext]);
- await expect(importer.importNewPeople(f.practitioner.actor, snapshot([one, two, special]), [{ sourceRow: 2, kind: "new_person" }, { sourceRow: 3, kind: "new_person" }, { sourceRow: 4, kind: "new_person" }])).rejects.toThrow("IMPORT_ACCOUNT_ENDPOINT_COLLISION");
+ const collision = snapshot([one, two, special]);
+ await expect(importer.importNewPeople(f.practitioner.actor, collision, decide(collision))).rejects.toThrow("IMPORT_ACCOUNT_ENDPOINT_COLLISION");
  expect((await f.pool.query("SELECT count(*)::integer AS n FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND source_file_id=$2", [f.workspaceId, sourceFileId])).rows[0].n).toBe(2);
 });
 
@@ -92,7 +96,8 @@ test("shadow importer waits for the identity workspace lock and sees a newly com
   await holder.query("SELECT id FROM ls_identity.workspaces WHERE id=$1 FOR UPDATE", [f.workspaceId]);
   await holder.query("UPDATE ls_identity.accounts SET phone_ciphertext=$3 WHERE workspace_id=$1 AND id=$2", [f.workspaceId, f.parent.actor.id, seal(raceRow[2]!, `phone:${f.workspaceId}:${f.parent.actor.id}`, f.keyring)]);
   let settled = false;
-  const attempt = importer.importNewPeople(f.practitioner.actor, snapshot([one, two, raceRow]), [{ sourceRow: 2, kind: "new_person" }, { sourceRow: 3, kind: "new_person" }, { sourceRow: 4, kind: "new_person" }])
+  const race = snapshot([one, two, raceRow]);
+  const attempt = importer.importNewPeople(f.practitioner.actor, race, decide(race))
    .then(() => ({ ok: true, error: null }), error => ({ ok: false, error: error as Error }))
    .finally(() => { settled = true; });
   await new Promise(resolve => setTimeout(resolve, 75));
