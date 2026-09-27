@@ -4,7 +4,7 @@ vi.mock("server-only", () => ({}));
 import { fixture, poolStore } from "../calendar/fixture.ts";
 import { seal, unseal } from "../../../src/features/identity/crypto.ts";
 import { NativeShadowImporter } from "../../../src/features/contact-ops/server/shadow-import.ts";
-import { crmProfileAad } from "../../../src/features/contact-ops/server/native-store.ts";
+import { crmProfileAad, NativeCrmStore } from "../../../src/features/contact-ops/server/native-store.ts";
 import type { SheetSnapshot } from "../../../src/features/contact-ops/server/import-plan.ts";
 import { planImport } from "../../../src/features/contact-ops/server/import-plan.ts";
 
@@ -108,6 +108,32 @@ test("shadow importer waits for the identity workspace lock and sees a newly com
   expect(result.ok).toBe(false);
   expect(result.error?.message).toContain("IMPORT_ACCOUNT_ENDPOINT_COLLISION");
   expect((await f.pool.query("SELECT count(*)::integer AS n FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND source_file_id=$2", [f.workspaceId, sourceFileId])).rows[0].n).toBe(2);
+ } finally {
+  if (open) await holder.query("ROLLBACK");
+  holder.release();
+ }
+});
+
+test("live profile creation shares the import workspace lock and an unlinked profile blocks shadow import", async () => {
+ const holder = await f.pool.connect();
+ let open = false;
+ try {
+  await holder.query("BEGIN");
+  open = true;
+  await holder.query("SELECT id FROM ls_identity.workspaces WHERE id=$1 FOR UPDATE", [f.workspaceId]);
+  const native = new NativeCrmStore(poolStore(f.pool), f.keyring, key);
+  let settled = false;
+  const create = native.create(f.practitioner.actor, { personId: f.outsider.actor.personId, stage: "New inquiry", nextAction: null, followUpDate: null, notes: "Synthetic administrative note", legacyIds: [] }, `synthetic-create-${randomUUID()}`)
+   .then(value => ({ ok: true, value, error: null }), error => ({ ok: false, value: null, error: error as Error }))
+   .finally(() => { settled = true; });
+  await new Promise(resolve => setTimeout(resolve, 75));
+  expect(settled).toBe(false);
+  await holder.query("COMMIT");
+  open = false;
+  const result = await create;
+  expect(result.ok).toBe(true);
+  expect(result.value).toEqual({ version: 1, replayed: false });
+  await expect(importer.importNewPeople(f.practitioner.actor, snapshot(), decide(snapshot()))).rejects.toThrow("IMPORT_UNLINKED_NATIVE_PROFILE_REQUIRES_REVIEW");
  } finally {
   if (open) await holder.query("ROLLBACK");
   holder.release();

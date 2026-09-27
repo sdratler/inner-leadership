@@ -3,7 +3,7 @@ import { privateDigest } from "./digests.js";
 import { requireThat } from "../core/validation.js";
 import type {IdentityStore} from "../../identity/store.ts";
 import {seal,unseal,type Keyring} from "../../identity/crypto.ts";
-import {freshActor} from "../../identity/data.ts";
+import {freshActor,lockWorkspace} from "../../identity/data.ts";
 import {requirePractitioner} from "../../cases/policy.ts";
 import {systemClock,type Actor,type IdentityClock} from "../../identity/types.ts";
 import {asId} from "../../../lib/ids.ts";
@@ -35,6 +35,9 @@ export class NativeCrmStore {
         const payloadDigest=privateDigest({action:"create",profile,actor:a.id,workspace:a.workspaceId},this.integrityKey);
         const encrypted=seal(JSON.stringify(profile),crmProfileAad(a.workspaceId,profile.personId),this.keyring);
         return this.db.transaction(async tx=>{
+            // Coordinate live profile creation with a pending shadow import's
+            // workspace-wide no-unlinked-profiles preflight.
+            await lockWorkspace(tx,a.workspaceId);
             requirePractitioner(await freshActor(tx,a,this.clock.now()));
             await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",[a.workspaceId+":crm:"+operationId]);
             const prior=await tx.query<{payload_digest:string;result_version:number;actor_account_id:string;person_id:string}>(
