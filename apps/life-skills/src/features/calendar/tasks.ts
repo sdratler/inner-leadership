@@ -11,7 +11,7 @@ import type { taskCreateSchema } from './validation.ts';
 import { internalTaskPath } from './validation.ts';
 import { crmDueCivilDate } from '../prospects/due-date.ts';
 import type { FollowupSource } from './followups.ts';
-import { demoRecordBatch } from '../demo/provenance.ts';
+import { demoCaseBatch, demoRecordBatch } from '../demo/provenance.ts';
 
 export type TaskId=Id<'task'>;
 export type TaskInput=z.infer<typeof taskCreateSchema>;
@@ -23,6 +23,7 @@ export type InternalTask={
 type TaskRow={id:string;caseId:CaseId|null;titleCiphertext:string;noteCiphertext:string|null;sourcePathCiphertext:string|null;sourceKind:'crm_followup'|null;
  dueDate:string;dueTime:string|null;state:'open'|'done';version:number;createdAt:Date;updatedAt:Date};
 type SourceTaskRow=TaskRow&{sourceRevision:string};
+function candidateCaseId(value:unknown):CaseId|null{if(typeof value!=='string')return null;try{return asId(value,'case');}catch{return null;}}
 const columns=`id,case_id AS "caseId",title_ciphertext AS "titleCiphertext",note_ciphertext AS "noteCiphertext",
  source_path_ciphertext AS "sourcePathCiphertext",to_jsonb(tasks)->>'source_kind' AS "sourceKind",due_date::text AS "dueDate",
  to_char(due_time,'HH24:MI') AS "dueTime",state,version,created_at AS "createdAt",updated_at AS "updatedAt"`;
@@ -109,15 +110,20 @@ export class InternalTaskService {
     const active=Boolean(dueDate&&title&&!archived);
     const sourcePath=`/he/app/clients?section=prospects&leadId=${encodeURIComponent(row.leadId)}`;
     if(!internalTaskPath(sourcePath)){result.unchanged++;continue;}
+    const candidate=candidateCaseId(row.caseId);
+    const assigned=candidate?await one<{id:string}>(c.tx,`SELECT id FROM ls_cases.cases
+     WHERE workspace_id=$1 AND id=$2 AND practitioner_account_id=$3`,[c.workspace,candidate,c.actor.id]):null;
+    const linkedCaseId=assigned?candidate:null;
+    if(linkedCaseId&&await demoCaseBatch(c.tx,c.workspace,linkedCaseId)){result.unchanged++;continue;}
     const clippedTitle=title.slice(0,140);
-    const revision=createHash('sha256').update(JSON.stringify({dueDate:dueDate??'',title:clippedTitle,active,sourcePath})).digest('hex');
+    const revision=createHash('sha256').update(JSON.stringify({dueDate:dueDate??'',title:clippedTitle,active,sourcePath,caseId:linkedCaseId})).digest('hex');
     if(!existing){
      if(!active){result.unchanged++;continue;}
      const id=asId(randomUUID(),'task');
      await c.tx.query(`INSERT INTO ls_calendar.tasks
       (workspace_id,id,created_by,case_id,title_ciphertext,note_ciphertext,source_path_ciphertext,due_date,due_time,state,source_kind,source_digest,source_revision,created_at,updated_at)
-      VALUES($1,$2,$3,NULL,$4,NULL,$5,$6::date,NULL,'open','crm_followup',$7,$8,$9,$9)`,
-      [c.workspace,id,c.actor.id,this.db.encrypt(c,'task-title',id,clippedTitle),this.db.encrypt(c,'task-source',id,sourcePath),dueDate,digest,revision,c.now]);
+      VALUES($1,$2,$3,$4,$5,NULL,$6,$7::date,NULL,'open','crm_followup',$8,$9,$10,$10)`,
+      [c.workspace,id,c.actor.id,linkedCaseId,this.db.encrypt(c,'task-title',id,clippedTitle),this.db.encrypt(c,'task-source',id,sourcePath),dueDate,digest,revision,c.now]);
      await c.tx.query(`INSERT INTO ls_calendar.task_history(workspace_id,id,task_id,version,action,actor_account_id,occurred_at)
       VALUES($1,$2,$3,1,'created',$4,$5)`,[c.workspace,randomUUID(),id,c.actor.id,c.now]);
      result.created++;continue;
@@ -129,8 +135,8 @@ export class InternalTaskService {
      result.resolved++;
     }else{
      await c.tx.query(`UPDATE ls_calendar.tasks SET title_ciphertext=$3,source_path_ciphertext=$4,due_date=$5::date,
-      state='open',source_revision=$6,version=version+1,updated_at=$7 WHERE workspace_id=$1 AND id=$2`,
-      [c.workspace,existing.id,this.db.encrypt(c,'task-title',existing.id,clippedTitle),this.db.encrypt(c,'task-source',existing.id,sourcePath),dueDate,revision,c.now]);
+      case_id=$6,state='open',source_revision=$7,version=version+1,updated_at=$8 WHERE workspace_id=$1 AND id=$2`,
+      [c.workspace,existing.id,this.db.encrypt(c,'task-title',existing.id,clippedTitle),this.db.encrypt(c,'task-source',existing.id,sourcePath),dueDate,linkedCaseId,revision,c.now]);
      result.updated++;
     }
     await c.tx.query(`INSERT INTO ls_calendar.task_history(workspace_id,id,task_id,version,action,actor_account_id,occurred_at)

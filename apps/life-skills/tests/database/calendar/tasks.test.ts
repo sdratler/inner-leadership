@@ -34,21 +34,24 @@ describe('internal task PostgreSQL contract',()=>{
  test('verified CRM follow-ups reconcile one encrypted linked task without duplicate or provider effects',async()=>{
   const tasks=new InternalTaskService(f.db),dueDate=civilDate(f.at(72)),newDate=shiftDay(dueDate,1);
   const row={leadId:'LS-LEAD-SYNTHETIC-1',name:'Synthetic contact',nextAction:'Review synthetic inquiry',dueDate,
-   caseId:'',stage:'New',outcome:''};
+   caseId:f.first.id,stage:'New',outcome:''};
   const before=(await f.pool.query('SELECT count(*)::int AS n FROM ls_calendar.events WHERE workspace_id=$1',[f.workspaceId])).rows[0].n;
   expect(await tasks.syncCrmFollowups(f.practitioner.actor,[row])).toEqual({created:1,updated:0,resolved:0,unchanged:0});
   expect(await tasks.syncCrmFollowups(f.practitioner.actor,[row])).toEqual({created:0,updated:0,resolved:0,unchanged:1});
   const first=(await tasks.list(f.practitioner.actor,dayStart(dueDate),dayStart(shiftDay(dueDate,1)),null))[0]!;
-  expect(first).toMatchObject({title:row.nextAction,dueDate,dueTime:null,state:'open',sourceKind:'crm_followup'});
+  expect(first).toMatchObject({title:row.nextAction,dueDate,dueTime:null,state:'open',sourceKind:'crm_followup',caseId:f.first.id});
+  expect((await tasks.list(f.practitioner.actor,dayStart(dueDate),dayStart(shiftDay(dueDate,1)),f.first.id)).map(item=>item.id)).toContain(first.id);
+  expect(await tasks.list(f.practitioner.actor,dayStart(dueDate),dayStart(shiftDay(dueDate,1)),f.second.id)).toEqual([]);
   expect(first.sourcePath).toContain('leadId=LS-LEAD-SYNTHETIC-1');
   const raw=(await f.pool.query('SELECT title_ciphertext,source_path_ciphertext,source_digest,source_revision FROM ls_calendar.tasks WHERE workspace_id=$1 AND id=$2',[f.workspaceId,first.id])).rows[0];
   expect(JSON.stringify(raw)).not.toContain(row.leadId);expect(JSON.stringify(raw)).not.toContain(row.nextAction);
   expect(raw.source_digest).toMatch(/^[a-f0-9]{64}$/);
-  expect(await tasks.syncCrmFollowups(f.practitioner.actor,[{...row,nextAction:'Call on the next day',dueDate:newDate}])).toEqual({created:0,updated:1,resolved:0,unchanged:0});
+  const staleCaseId=randomUUID();
+  expect(await tasks.syncCrmFollowups(f.practitioner.actor,[{...row,nextAction:'Call on the next day',dueDate:newDate,caseId:staleCaseId}])).toEqual({created:0,updated:1,resolved:0,unchanged:0});
   const changed=(await tasks.list(f.practitioner.actor,dayStart(newDate),dayStart(shiftDay(newDate,1)),null))[0]!;
-  expect(changed).toMatchObject({id:first.id,title:'Call on the next day',version:2,state:'open'});
+  expect(changed).toMatchObject({id:first.id,title:'Call on the next day',version:2,state:'open',caseId:null});
   const done=await tasks.complete(f.practitioner.actor,changed.id,randomUUID(),changed.version);
-  expect(await tasks.syncCrmFollowups(f.practitioner.actor,[{...row,nextAction:'Call on the next day',dueDate:newDate}])).toEqual({created:0,updated:0,resolved:0,unchanged:1});
+  expect(await tasks.syncCrmFollowups(f.practitioner.actor,[{...row,nextAction:'Call on the next day',dueDate:newDate,caseId:staleCaseId}])).toEqual({created:0,updated:0,resolved:0,unchanged:1});
   expect((await tasks.list(f.practitioner.actor,dayStart(newDate),dayStart(shiftDay(newDate,1)),null))[0]?.state).toBe('done');
   expect(await tasks.syncCrmFollowups(f.practitioner.actor,[{...row,nextAction:'',dueDate:''}])).toEqual({created:0,updated:0,resolved:1,unchanged:0});
   expect((await f.pool.query('SELECT count(*)::int AS n FROM ls_calendar.tasks WHERE workspace_id=$1 AND source_kind=$2',[f.workspaceId,'crm_followup'])).rows[0].n).toBe(1);
