@@ -244,6 +244,21 @@ it('keeps ready prospects reachable while client cases are still loading', async
  } finally { vi.unstubAllGlobals(); }
 });
 
+it('opens the selected prospect from a calendar deep link even when it belongs on a later People page', async () => {
+ const leads = Array.from({ length: 13 }, (_, index) => ({ leadId: `LS-LEAD-synthetic-${index + 1}`, caseId: '', name: `Synthetic lead ${String(index + 1).padStart(2, '0')}`, phone: '0500000000', stage: 'New inquiry', language: 'he', receivedAt: '2026-09-25T08:00:00Z', dueDate: '', formSent: '', formSubmitted: '', paymentVerified: false, bookingStatus: '', outcome: '', journeyState: '' }));
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: leads }) }));
+ try {
+  const render = () => hook.render(() => ProspectsClient({ locale: 'en', embedded: true, caseState: null, focusLeadId: 'LS-LEAD-synthetic-13' }));
+  render(); hook.flushEffects(); await tick();
+  render(); hook.flushEffects();
+  const output = render();
+  const selected = find(output, element => element.type === 'details' && element.props['data-focused'] === true);
+  expect(selected?.props.open).toBe(true);
+  expect(text(selected)).toContain('Synthetic lead 13');
+  expect(text(output)).toContain('Page 2 / 2');
+ } finally { vi.unstubAllGlobals(); }
+});
+
 it('does not call unavailable private data an empty People directory', async () => {
  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 503, json: async () => ({ ok: false, error: { code: 'UNAVAILABLE' } }) }));
  try {

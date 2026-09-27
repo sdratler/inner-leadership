@@ -82,6 +82,8 @@ describe("shared private-app sign-in destination", () => {
   });
   it("forwards only known deep-link parameters and gates People and Calendar before client rendering",()=>{
     expect(practitionerReturnPath("en","clients",{section:"active",filter:"today",other:"private"})).toBe("/en/app/clients?section=active&filter=today");
+    const focused=practitionerReturnPath("en","clients",{section:"prospects",leadId:"LS-LEAD-synthetic-one"});
+    expect(loginReturnDestination("en","practitioner",focused)).toBe("/en/app/clients?section=prospects&leadId=LS-LEAD-synthetic-one");
     expect(practitionerReturnPath("en","calendar",{date:"not-a-date",view:"unknown",caseId:"not-an-id"})).toBe("/en/app/calendar");
     for(const path of ["../../src/app/[locale]/app/calendar/page.tsx","../../src/app/[locale]/app/clients/page.tsx"]){
       const source=readFileSync(new URL(path,import.meta.url),"utf8");
@@ -95,6 +97,8 @@ describe("shared private-app sign-in destination", () => {
     expect(layout).toContain('redirect(loginHref(locale, loginReturnDestination(locale, "practitioner", requested)!))');
     expect(layout).not.toContain("PrivateWorkspaceUnavailable");
     expect(proxy).toContain('inbound.delete("x-ls-practitioner-return")');
+    expect(proxy).toContain('["section", "filter", "leadId"]');
+    expect(proxy).toContain('values.length === 1 ? values[0] : undefined');
     expect(proxy).toContain('inbound.set("x-ls-practitioner-return", practitionerReturnPath(locale, page, query))');
   });
   for (const locale of ["he", "en"] as const) {

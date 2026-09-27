@@ -7,6 +7,7 @@ import {loginHref} from "../identity/login-return.ts";
 import type {Prospect} from "./bridge.ts";
 import {ProspectApiError,prospectReadFailure} from "./api-error.ts";
 import {activeProspect,paidAwaitingBooking} from "./view-state.ts";
+import {crmDueCivilDate} from "./due-date.ts";
 
 /* Remote state is loaded once per refresh and filter changes reset pagination. */
 /* eslint-disable react-hooks/set-state-in-effect */
@@ -62,8 +63,9 @@ function whatsappNumber(phone:string):string|null{
  return null;
 }
 
-export function ProspectsClient({locale,initialFilter="all",embedded=false,clientCases=[],caseState=null,onRetryCases,showProspects=true,returnPath}:{locale:Locale;initialFilter?:Preset;embedded?:boolean;clientCases?:readonly ClientCase[];caseState?:State|null;onRetryCases?:()=>void;showProspects?:boolean;returnPath?:string}){
- const t=copy[locale],[rows,setRows]=useState<Prospect[]>([]),[state,setState]=useState<State>("loading"),preset=initialFilter,[query,setQuery]=useState(""),[stage,setStage]=useState(""),[language,setLanguage]=useState(""),[due,setDue]=useState(""),[page,setPage]=useState(1),[status,setStatus]=useState("");
+export function ProspectsClient({locale,initialFilter="all",focusLeadId="",embedded=false,clientCases=[],caseState=null,onRetryCases,showProspects=true,returnPath}:{locale:Locale;initialFilter?:Preset;focusLeadId?:string|undefined;embedded?:boolean;clientCases?:readonly ClientCase[];caseState?:State|null;onRetryCases?:()=>void;showProspects?:boolean;returnPath?:string}){
+ const focused=/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]{1,80}$/.test(focusLeadId)?focusLeadId:"";
+ const t=copy[locale],[rows,setRows]=useState<Prospect[]>([]),[state,setState]=useState<State>("loading"),preset=initialFilter,[query,setQuery]=useState(""),[stage,setStage]=useState(""),[language,setLanguage]=useState(""),[due,setDue]=useState(""),[page,setPage]=useState(1),[status,setStatus]=useState(""),[openLeads,setOpenLeads]=useState<string[]>(focused?[focused]:[]);
  const mounted=useRef(true),addRef=useRef<HTMLDetailsElement>(null);
  const load=()=>{setState("loading");void api<Prospect[]>({method:"GET"}).then(value=>{if(mounted.current){setRows(value);setState("ready")}}).catch(error=>{if(mounted.current){setRows([]);setState(error instanceof ProspectApiError?error.kind:"error")}})};
  useEffect(()=>{mounted.current=true;if(showProspects)queueMicrotask(load);return()=>{mounted.current=false}},[showProspects]);
@@ -71,7 +73,8 @@ export function ProspectsClient({locale,initialFilter="all",embedded=false,clien
  const today=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Jerusalem"}).format(new Date());
  const stages=useMemo(()=>[...new Set(rows.map(row=>row.stage).filter(Boolean))].sort((a,b)=>a.localeCompare(b)),[rows]);
  const shown=useMemo(()=>rows.filter(row=>{
-  if(preset==="today"&&(!row.dueDate||row.dueDate>today))return false;
+  const dueDate=crmDueCivilDate(row.dueDate);
+  if(preset==="today"&&(!dueDate||dueDate>today))return false;
   if(preset==="new"&&(row.formSent||row.formSubmitted||row.paymentVerified||active(row)))return false;
   if(preset==="intake"&&(!row.formSent||Boolean(row.formSubmitted)))return false;
   if(preset==="payment"&&(!row.formSubmitted||row.paymentVerified))return false;
@@ -80,14 +83,17 @@ export function ProspectsClient({locale,initialFilter="all",embedded=false,clien
   if(preset==="all"&&closed(row))return false;
   if(stage&&row.stage!==stage)return false;
   if(language&&!row.language.toLocaleLowerCase().startsWith(language))return false;
-  if(due==="today"&&(!row.dueDate||row.dueDate>today))return false;
-  if(due==="overdue"&&(!row.dueDate||row.dueDate>=today))return false;
+  if(due==="today"&&(!dueDate||dueDate>today))return false;
+  if(due==="overdue"&&(!dueDate||dueDate>=today))return false;
   const needle=query.trim().toLocaleLowerCase();return !needle||`${row.name} ${row.phone}`.toLocaleLowerCase().includes(needle);
- }).sort((a,b)=>(a.dueDate||"9999").localeCompare(b.dueDate||"9999")||a.receivedAt.localeCompare(b.receivedAt)||a.leadId.localeCompare(b.leadId)),[rows,preset,stage,language,due,query,today]);
+ }).sort((a,b)=>(crmDueCivilDate(a.dueDate)||"9999").localeCompare(crmDueCivilDate(b.dueDate)||"9999")||a.receivedAt.localeCompare(b.receivedAt)||a.leadId.localeCompare(b.leadId)),[rows,preset,stage,language,due,query,today]);
  const casesShown=(preset==="all"||preset==="archived")&&!stage&&!language&&!due
   ?visibleClientCases(clientCases,shown,query):[];
  const accessBlocked=state==="auth"||state==="forbidden"||caseState==="auth"||caseState==="forbidden";
  const allEntries=accessBlocked?[]:[...(caseState==="ready"?casesShown:[]).map(row=>({kind:"case" as const,id:row.id,name:row.displayName,row})),...(showProspects&&state==="ready"?shown:[]).map(row=>({kind:"prospect" as const,id:row.leadId,name:row.name||row.phone,row}))].sort((a,b)=>a.name.localeCompare(b.name,locale)||a.id.localeCompare(b.id));
+ const focusIndex=focused?allEntries.findIndex(entry=>entry.kind==="prospect"&&entry.id===focused):-1;
+ const focusPage=focusIndex<0?0:Math.floor(focusIndex/PAGE_SIZE)+1;
+ useEffect(()=>{if(focusPage>0)setPage(focusPage)},[focusPage]);
  const {items:entries,page:currentPage,pages}=paginateDirectory(allEntries,page);
  const sourcesReady=(!showProspects||state==="ready")&&(!caseState||caseState==="ready");
  // A slow second source must not trap ready rows beyond the first page.
@@ -102,7 +108,7 @@ export function ProspectsClient({locale,initialFilter="all",embedded=false,clien
   {(caseState==="auth"||caseState==="forbidden")&&<div className="lsw-alert" role="alert"><p>{t[caseState]}</p>{caseState==="auth"&&<a className="lsw-button lsw-button--secondary" href={loginHref(locale,returnPath??`/${locale}/app/clients`)}>{t.signIn}</a>}</div>}
   {showProspects&&state==="loading"&&<p role="status">{t.loading}</p>}{showProspects&&state==="error"&&<div className="lsw-alert" role="alert"><p>{t.failed}</p><button className="lsw-button lsw-button--secondary" onClick={load}>{t.retry}</button></div>}
   {showProspects&&(state==="auth"||state==="forbidden")&&caseState!==state&&<div className="lsw-alert" role="alert"><p>{t[state]}</p>{state==="auth"&&<a className="lsw-button lsw-button--secondary" href={loginHref(locale,returnPath??`/${locale}/app/clients`)}>{t.signIn}</a>}</div>}
-  <section className="lsu-people-results" aria-live="polite">{entries.map(entry=>entry.kind==="case"?<a className="lsw-card lsu-person-row" key={`case:${entry.id}`} href={`/${locale}/app/cases/${encodeURIComponent(entry.id)}`}><strong>{entry.row.displayName}</strong><span>{entry.row.kind==="minor"?(locale==="he"?"תיק ילד/ה":"Child case"):(locale==="he"?"תיק מבוגר/ת":"Adult case")} · {entry.row.state}</span></a>:<details className="lsw-card lsu-person-details" key={`prospect:${entry.id}`}><summary><strong>{entry.name}</strong><span>{locale==="he"?"פנייה":"Inquiry"} · {entry.row.stage||t.newLead}</span><span>{entry.row.nextAction||"—"}</span><span>{entry.row.dueDate||"—"}</span></summary><ProspectCard row={entry.row} locale={locale} action={action}/></details>)}{!entries.length&&sourcesReady&&!accessBlocked&&<p className="lsw-empty">{showProspects?t.empty:locale==="he"?"אין תיקי לקוחות שמתאימים לחיפוש.":"No client cases match this search."}</p>}</section>
+  <section className="lsu-people-results" aria-live="polite">{entries.map(entry=>entry.kind==="case"?<a className="lsw-card lsu-person-row" key={`case:${entry.id}`} href={`/${locale}/app/cases/${encodeURIComponent(entry.id)}`}><strong>{entry.row.displayName}</strong><span>{entry.row.kind==="minor"?(locale==="he"?"תיק ילד/ה":"Child case"):(locale==="he"?"תיק מבוגר/ת":"Adult case")} · {entry.row.state}</span></a>:<details className="lsw-card lsu-person-details" key={`prospect:${entry.id}`} open={openLeads.includes(entry.id)} onToggle={event=>{const isOpen=event.currentTarget.open;setOpenLeads(current=>isOpen?current.includes(entry.id)?current:[...current,entry.id]:current.filter(id=>id!==entry.id))}} data-focused={entry.id===focused}><summary><strong>{entry.name}</strong><span>{locale==="he"?"פנייה":"Inquiry"} · {entry.row.stage||t.newLead}</span><span>{entry.row.nextAction||"—"}</span><span>{entry.row.dueDate||"—"}</span></summary><ProspectCard row={entry.row} locale={locale} action={action}/></details>)}{!entries.length&&sourcesReady&&!accessBlocked&&<p className="lsw-empty">{showProspects?t.empty:locale==="he"?"אין תיקי לקוחות שמתאימים לחיפוש.":"No client cases match this search."}</p>}</section>
   {paginationReady&&!accessBlocked&&pages>1&&<nav className="lsw-actions" aria-label={t.page}><button className="lsw-button lsw-button--secondary" disabled={currentPage<=1} onClick={()=>setPage(currentPage-1)}>{t.previous}</button><span>{t.page} {currentPage} / {pages}</span><button className="lsw-button lsw-button--secondary" disabled={currentPage>=pages} onClick={()=>setPage(currentPage+1)}>{t.nextPage}</button></nav>}
   {showProspects&&!accessBlocked&&<><details ref={addRef} id="add-prospect" className="lsw-card lsu-inline-create"><summary>{t.add}</summary><AddProspect locale={locale} action={action}/></details><p className="lsw-save-result" role="status">{status}</p></>}
  </>;
