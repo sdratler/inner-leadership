@@ -28,6 +28,7 @@ export function practitionerReturnPath(locale: Locale, page: "calendar" | "clien
   } else {
     if (["all", "prospects", "paid", "active", "archived"].includes(one("section"))) params.set("section", one("section"));
     if (["all", "today", "new", "intake", "payment", "booking", "archived"].includes(one("filter"))) params.set("filter", one("filter"));
+    if (/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]{1,80}$/.test(one("leadId"))) params.set("leadId", one("leadId"));
   }
   const suffix = params.toString();
   return `/${locale}/app/${page}${suffix ? `?${suffix}` : ""}`;

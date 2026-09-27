@@ -10,7 +10,7 @@ export const revalidate = 0;
 
 export default async function Page({ params, searchParams }: {
   params: Promise<{ locale: string }>;
-  searchParams: Promise<{ section?: string; filter?: string }>;
+  searchParams: Promise<{ section?: string; filter?: string; leadId?: string }>;
 }) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
@@ -26,5 +26,5 @@ export default async function Page({ params, searchParams }: {
       <a href={returnPath}>{locale === "he" ? "ניסיון חוזר" : "Retry"}</a>
     </main>;
   }
-  return <ClientsRoster locale={locale} section={query.section} prospectFilter={query.filter} />;
+  return <ClientsRoster locale={locale} section={query.section} prospectFilter={query.filter} focusLeadId={query.leadId} />;
 }

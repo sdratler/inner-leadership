@@ -16,7 +16,7 @@ const copy={
 const closed=(state:string)=>/closed|archived|revoked/i.test(state);
 
 /** The CRM is read from its existing authenticated endpoint; this view never imports or duplicates leads. */
-export function ClientsRoster({locale,section:rawSection,prospectFilter}:{locale:Locale;section?:string|undefined;prospectFilter?:string|undefined}){
+export function ClientsRoster({locale,section:rawSection,prospectFilter,focusLeadId}:{locale:Locale;section?:string|undefined;prospectFilter?:string|undefined;focusLeadId?:string|undefined}){
  const section:Section=rawSection&&sections.has(rawSection as Section)?rawSection as Section:"all";
  const t=copy[locale],showCases=section==="all"||section==="active"||section==="archived",showProspects=section==="all"||section==="prospects"||section==="paid"||section==="archived";
  const [rows,setRows]=useState<Case[]>([]),[state,setState]=useState<"loading"|"ready"|"error"|"auth"|"forbidden">("loading"),active=useRef(true),request=useRef(0);
@@ -26,8 +26,8 @@ export function ClientsRoster({locale,section:rawSection,prospectFilter}:{locale
  const preset:Preset=section==="paid"?"booking":section==="archived"?"archived":prospectFilter&&filters.has(prospectFilter as Preset)?prospectFilter as Preset:"all";
  return <main className="lsw-main lsu-clients-directory" lang={locale} dir={locale==="he"?"rtl":"ltr"}>
   <header className="lsw-page-header"><div><p className="lsw-eyebrow">{locale==="he"?"מרחב פרטי":"Private workspace"}</p><h1>{t.title}</h1><p>{t.lead}</p></div></header>
-  <ProspectsClient key={`${section}:${preset}`} locale={locale} initialFilter={preset} embedded
+  <ProspectsClient key={`${section}:${preset}:${focusLeadId??''}`} locale={locale} initialFilter={preset} focusLeadId={focusLeadId} embedded
    clientCases={showCases&&state==="ready"?filtered:[]} caseState={showCases?state:null} onRetryCases={load} showProspects={showProspects}
-   returnPath={practitionerReturnPath(locale,"clients",{section,filter:prospectFilter})}/>
+   returnPath={practitionerReturnPath(locale,"clients",{section,filter:prospectFilter,leadId:focusLeadId})}/>
  </main>;
 }

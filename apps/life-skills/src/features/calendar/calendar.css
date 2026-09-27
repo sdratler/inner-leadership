@@ -17,6 +17,10 @@
 .ls-cal-operational .lsu-calendar-attention>a {min-height:0;padding:1rem;gap:.35rem}
 .ls-cal-operational .lsu-calendar-attention h2 {margin:0;font-size:1rem}
 .ls-cal-operational .lsu-calendar-attention strong {font-size:1.45rem}
+.ls-cal-layers {display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-block:.5rem;color:var(--lsw-ink,#20332c)}
+.ls-cal-layers label {display:inline-flex;align-items:center;gap:.5rem;min-block-size:44px;font-weight:700;cursor:pointer}
+.ls-cal-layers input {inline-size:1.1rem;block-size:1.1rem;accent-color:var(--lsw-accent,#245159)}
+.ls-cal-layers p {margin:0}
 .ls-cal-related-links {margin-block:1.25rem 0}
 .ls-cal-partial {padding:.75rem 1rem;border-inline-start:4px solid var(--lsw-warning,#a96b28);background:#fff4df}
 .ls-cal-toolbar>.lsw-field {min-inline-size:min(100%,240px)}
@@ -35,6 +39,11 @@
 .ls-cal-slot time {font-variant-numeric:tabular-nums;font-weight:700}
 .ls-cal-slot--canceled_family,.ls-cal-slot--canceled_practitioner,.ls-cal-slot--rescheduled {background:#f3ece4;border-color:#bca589;color:#55402b}
 .ls-cal-slot-state {padding-block-start:.2rem;font-size:.78rem}
+.ls-cal-followup {display:grid;gap:.15rem;margin-block:.6rem;padding:.65rem;border:1px solid #b99b58;border-inline-start:4px solid #b37b28;border-radius:.35rem;background:#fff8e8;color:var(--lsw-ink,#20332c);text-decoration:none;line-height:1.4}
+.ls-cal-followup span,.ls-cal-layer-label {font-size:.85rem;font-weight:700;color:#754c12}
+.ls-cal-followup strong {font-size:.95rem}
+.ls-cal-followup small {font-size:.86rem;overflow-wrap:anywhere}
+.ls-cal-followup:hover {text-decoration:underline}
 .ls-cal-slot:focus-visible,.ls-cal button:focus-visible,.ls-cal a:focus-visible,.ls-cal summary:focus-visible {outline:3px solid #8e491f;outline-offset:3px}
 .ls-cal-day-empty {color:#617169}
 .ls-cal-agenda-list {display:grid;gap:1rem}
