@@ -6,7 +6,7 @@ import { demoAccountBatch } from "../../demo/provenance.ts";
 import { systemClock, type Actor, type IdentityClock, type WorkspaceId } from "../../identity/types.ts";
 import { requirePractitioner } from "../../cases/policy.ts";
 import { normalizePhone } from "../core/contact-resolution.js";
-import { requireThat } from "../core/validation.js";
+import { canonical, requireThat } from "../core/validation.js";
 import { importedFollowUpDate, planImport, type ImportRow, type SheetSnapshot } from "./import-plan.ts";
 import { crmProfileAad, type CrmProfile } from "./native-store.ts";
 
@@ -111,8 +111,8 @@ export class NativeShadowImporter {
    await lockWorkspace(tx, workspaceId);
    await authorize(tx);
    await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [`${workspaceId}:crm-import:${snapshot.fileId}:${snapshot.sheetId}`]);
-   const links = await tx.query<{ legacyId: string; personId: string; rowDigest: string; sourceRevision: string }>(
-    'SELECT legacy_lead_id AS "legacyId",person_id AS "personId",row_digest AS "rowDigest",source_revision AS "sourceRevision" FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND source_file_id=$2 AND source_sheet_id=$3',
+   const links = await tx.query<{ legacyId: string; personId: string; rowDigest: string; sourceRevision: string; snapshotCiphertext: string }>(
+    'SELECT legacy_lead_id AS "legacyId",person_id AS "personId",row_digest AS "rowDigest",source_revision AS "sourceRevision",snapshot_ciphertext AS "snapshotCiphertext" FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND source_file_id=$2 AND source_sheet_id=$3',
     [workspaceId, snapshot.fileId, snapshot.sheetId],
    );
    const prior = new Map(links.map(link => [link.legacyId, link]));
@@ -154,6 +154,18 @@ export class NativeShadowImporter {
     const linked = prior.get(row.legacyId);
     if (linked) {
      requireThat(linked.personId === row.suggestedPersonId && linked.rowDigest === row.rowDigest && linked.sourceRevision === snapshot.revision, "IMPORT_EXISTING_LINK_CONFLICT");
+     const existing = await tx.query<{payloadCiphertext:string;recordMode:string;demoBatchId:string|null}>(
+      'SELECT payload_ciphertext AS "payloadCiphertext",record_mode AS "recordMode",demo_batch_id AS "demoBatchId" FROM ls_contact_ops.profiles WHERE workspace_id=$1 AND person_id=$2',
+      [workspaceId,linked.personId]);
+     requireThat(existing.length === 1 && existing[0]?.recordMode === "live" && existing[0]?.demoBatchId === null,"IMPORT_REPLAY_PROFILE_MISSING");
+     let profile:unknown,storedSnapshot:unknown;
+     try {
+      profile=JSON.parse(unseal(existing[0]!.payloadCiphertext,crmProfileAad(workspaceId,linked.personId),this.keyring));
+      storedSnapshot=JSON.parse(unseal(linked.snapshotCiphertext,legacyAad(workspaceId,snapshot,row.legacyId),this.keyring));
+     } catch { throw new Error("IMPORT_REPLAY_CIPHERTEXT_UNREADABLE"); }
+     requireThat(canonical(profile) === canonical(profileFromRow(row)) &&
+      canonical(storedSnapshot) === canonical({sourceRow:row.sourceRow,payload:row.protectedPayload}),
+      "IMPORT_REPLAY_PROTECTED_PAYLOAD_MISMATCH");
      replayed++;
      continue;
     }
