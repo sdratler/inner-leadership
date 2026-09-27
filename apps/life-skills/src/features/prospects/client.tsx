@@ -90,7 +90,8 @@ export function ProspectsClient({locale,initialFilter="all",embedded=false,clien
  const allEntries=accessBlocked?[]:[...(caseState==="ready"?casesShown:[]).map(row=>({kind:"case" as const,id:row.id,name:row.displayName,row})),...(showProspects&&state==="ready"?shown:[]).map(row=>({kind:"prospect" as const,id:row.leadId,name:row.name||row.phone,row}))].sort((a,b)=>a.name.localeCompare(b.name,locale)||a.id.localeCompare(b.id));
  const {items:entries,page:currentPage,pages}=paginateDirectory(allEntries,page);
  const sourcesReady=(!showProspects||state==="ready")&&(!caseState||caseState==="ready");
- const paginationReady=sourcesReady||(state==="error"&&caseState==="ready")||(caseState==="error"&&state==="ready");
+ // A slow second source must not trap ready rows beyond the first page.
+ const paginationReady=(showProspects&&state==="ready")||caseState==="ready";
  async function action(payload:unknown){setStatus("");const kind=(payload as {action:string}).action;try{await api({method:"POST",body:JSON.stringify(payload)});setStatus(kind==="update"?t.saved:kind==="add"?t.created:t.sent);load()}catch{setStatus(kind==="update"||kind==="add"?t.saveFailed:t.sendFailed)}}
  const content=<>
   {showProspects&&<header className={embedded?"lsw-section-header":"lsw-page-header"}><div>{!embedded&&<><p className="lsw-eyebrow">{locale==="he"?"CRM פרטי":"Private CRM"}</p><h1>{t.title}</h1><p>{t.lead}</p></>}</div>{!accessBlocked&&<button type="button" className="lsw-button lsw-button--secondary" onClick={()=>{if(addRef.current){addRef.current.open=true;addRef.current.scrollIntoView({behavior:"smooth",block:"start"});addRef.current.querySelector<HTMLInputElement>("input")?.focus()}}}>{t.add}</button>}</header>}

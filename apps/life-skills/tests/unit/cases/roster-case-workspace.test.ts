@@ -212,6 +212,38 @@ it('navigates from the visible page when the combined result shrinks', () => {
  expect(text(find(output, element => element.props.className === 'lsu-people-results'))).toContain('Synthetic case 01');
 });
 
+it('keeps ready cases reachable while the CRM request is still loading', async () => {
+ const cases = Array.from({ length: 13 }, (_, index) => ({ id: `synthetic-case-${index + 1}`, kind: 'minor' as const, state: 'active', displayName: `Synthetic case ${String(index + 1).padStart(2, '0')}` }));
+ vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise(() => {})));
+ try {
+  hook.render(() => ProspectsClient({ locale: 'en', embedded: true, clientCases: cases, caseState: 'ready' }));
+  hook.flushEffects(); await tick();
+  let output = hook.render(() => ProspectsClient({ locale: 'en', embedded: true, clientCases: cases, caseState: 'ready' }));
+  expect(text(output)).toContain('Loading the private CRM');
+  const next = find(find(output, element => element.type === 'nav' && element.props['aria-label'] === 'Page'), element => element.type === 'button' && element.props.children === 'Next');
+  expect(next?.props.disabled).toBe(false);
+  (next!.props.onClick as () => void)();
+  output = hook.render(() => ProspectsClient({ locale: 'en', embedded: true, clientCases: cases, caseState: 'ready' }));
+  expect(text(find(output, element => element.props.className === 'lsu-people-results'))).toContain('Synthetic case 13');
+ } finally { vi.unstubAllGlobals(); }
+});
+
+it('keeps ready prospects reachable while client cases are still loading', async () => {
+ const leads = Array.from({ length: 13 }, (_, index) => ({ leadId: `LS-LEAD-synthetic-${index + 1}`, caseId: '', name: `Synthetic lead ${String(index + 1).padStart(2, '0')}`, phone: '0500000000', stage: 'New inquiry', language: 'he', receivedAt: '2026-09-25T08:00:00Z', dueDate: '', formSent: '', formSubmitted: '', paymentVerified: false, bookingStatus: '', outcome: '', journeyState: '' }));
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: leads }) }));
+ try {
+  hook.render(() => ProspectsClient({ locale: 'en', embedded: true, caseState: 'loading' }));
+  hook.flushEffects(); await tick();
+  await vi.waitFor(() => expect(text(hook.render(() => ProspectsClient({ locale: 'en', embedded: true, caseState: 'loading' })))).toContain('Synthetic lead 01'));
+  let output = hook.render(() => ProspectsClient({ locale: 'en', embedded: true, caseState: 'loading' }));
+  const next = find(find(output, element => element.type === 'nav' && element.props['aria-label'] === 'Page'), element => element.type === 'button' && element.props.children === 'Next');
+  expect(next?.props.disabled).toBe(false);
+  (next!.props.onClick as () => void)();
+  output = hook.render(() => ProspectsClient({ locale: 'en', embedded: true, caseState: 'loading' }));
+  expect(text(find(output, element => element.props.className === 'lsu-people-results'))).toContain('Synthetic lead 13');
+ } finally { vi.unstubAllGlobals(); }
+});
+
 it('does not call unavailable private data an empty People directory', async () => {
  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 503, json: async () => ({ ok: false, error: { code: 'UNAVAILABLE' } }) }));
  try {
