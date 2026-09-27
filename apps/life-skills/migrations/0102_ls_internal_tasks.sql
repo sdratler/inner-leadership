@@ -32,5 +32,7 @@ CREATE TABLE ls_calendar.task_history (
  FOREIGN KEY(workspace_id,task_id) REFERENCES ls_calendar.tasks(workspace_id,id),
  FOREIGN KEY(workspace_id,actor_account_id) REFERENCES ls_identity.accounts(workspace_id,id)
 );
+CREATE TRIGGER task_history_immutable BEFORE UPDATE OR DELETE ON ls_calendar.task_history
+ FOR EACH ROW EXECUTE FUNCTION ls_calendar.append_only();
 REVOKE ALL ON ls_calendar.tasks FROM PUBLIC;
 REVOKE ALL ON ls_calendar.task_history FROM PUBLIC;

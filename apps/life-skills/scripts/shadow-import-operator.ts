@@ -23,10 +23,10 @@ const exactWorkspace = "1553e959-b299-40e4-b82e-8529597b69ec";
 // Pinned from the independently reviewed source tree: every src file,
 // package.json (including the checked-in React-server launcher) and lockfile.
 // An unrelated later deployment must fail closed until this one-shot tool is reviewed again.
-const reviewedSourceTreeSha256 = "2370b912b3bc4eda6d82019ba171965b95270291e9255582eb28a643ebc4cc0c";
+const reviewedSourceTreeSha256 = "66323f0d7c5f1da4b86a3311d53a5b6a79dc11f313ddb6189177fc5f7b0a35b3";
 // Includes the read-only production schema guard, every migration it checks,
 // its manifest and migration helpers. The attested operator pins these bytes.
-const reviewedContactOpsBundleSha256 = "ae28ae1943b177468acc6ab52243f923f2f178d5519bf0e474803abaf0c17301";
+const reviewedContactOpsBundleSha256 = "7175d21823eaa814434e03fac7aacfa41daba8b0a23d3aed71fd8fe4d9fc2b1d";
 const execFileAsync = promisify(execFile);
 
 type Input = {
@@ -153,7 +153,7 @@ async function main() {
  });
  // The existing production migration guard performs read-only catalog,
  // trigger, constraint, ACL, reference and history verification. It must say
- // 0101 is applied before either a preflight receipt or an import can proceed.
+ // the exact reviewed migration set is applied before import can proceed.
  try {
   const {stdout}=await execFileAsync(process.execPath,["--import","tsx",
    fileURLToPath(new URL("./apply-contact-ops-production.ts",import.meta.url)),"--preflight",
@@ -163,7 +163,7 @@ async function main() {
   const receipt=JSON.parse(stdout.trim().split(/\r?\n/).at(-1)??"") as Record<string,unknown>;
   if(receipt.code!=="CONTACT_OPS_PREFLIGHT_OK" || receipt.state!=="applied" ||
    receipt.databaseServiceId!==databaseService || receipt.deploymentId!==opt.deployment ||
-   receipt.migration!==contactOpsGuard.CONTACT_OPS_MIGRATION.name) fail("IMPORT_CONTACT_OPS_SCHEMA_UNVERIFIED");
+   receipt.migration!==contactOpsGuard.INTERNAL_TASKS_MIGRATION.name) fail("IMPORT_CONTACT_OPS_SCHEMA_UNVERIFIED");
  } catch { fail("IMPORT_CONTACT_OPS_SCHEMA_UNVERIFIED"); }
  const importer = new NativeShadowImporter(runtime.store, runtime.config.keyring, runtime.config.lookupKey,
   payload.integrityKey, sourceFileId, sourceSheetId);

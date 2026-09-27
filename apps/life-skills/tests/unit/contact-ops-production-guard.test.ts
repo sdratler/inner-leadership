@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {describe,expect,it} from 'vitest';
-import {assertContactOpsDatabaseIdentity,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsComparableConstraints,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,type ContactOpsIntegrityObjects} from '../../src/db/contact-ops-production-guard.ts';
+import {assertContactOpsDatabaseIdentity,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsComparableConstraints,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,INTERNAL_TASKS_MIGRATION,type ContactOpsIntegrityObjects} from '../../src/db/contact-ops-production-guard.ts';
 
 const deployment='a2d9d868-53c4-4fdd-973c-21c4b6b8987d';
 const good={
@@ -16,7 +16,7 @@ const bindingHash=createHash('sha256').update(good.LS_DATABASE_URL).digest('hex'
 const args=['--apply',`--deployment=${deployment}`,`--database-binding=354b5343-9e83-45a7-b764-09396f14ae29:${bindingHash}`,`--source-bundle=${'a'.repeat(64)}`];
 const prior={name:'0100_ls_demo_prospect_marker_gate.sql',checksum:'0'.repeat(64),sql:'SELECT 1;'};
 const next={name:CONTACT_OPS_MIGRATION.name,checksum:CONTACT_OPS_MIGRATION.sha256,sql:'CREATE SCHEMA ls_contact_ops;'};
-const taskSuffix={name:'0102_ls_internal_tasks.sql',checksum:'dde1bbd0b8c92ea407611f4dffecc98bbd4dd295468509469919e5fa796565ce',sql:'CREATE TABLE ls_calendar.tasks(id uuid);'};
+const taskSuffix={name:INTERNAL_TASKS_MIGRATION.name,checksum:INTERNAL_TASKS_MIGRATION.sha256,sql:'CREATE TABLE ls_calendar.tasks(id uuid);'};
 const absent:ContactOpsIntegrityObjects={profiles:false,legacyLinks:false,commandReceipts:false,legacyIndex:false,profileProvenanceTrigger:false,markerCompatibilityTrigger:false,immutableDemoRecordTrigger:true,profileFunction:false,markerFunction:false,immutableFunction:true,canonicalPersonConstraint:false,canonicalConstraintDefinition:false,schemaCatalog:false,baselineRecordsCatalog:true,permanentTables:false,foreignKeysEnforced:false,foreignKeyReferencesSound:false,publicRevoked:false};
 const present:ContactOpsIntegrityObjects={profiles:true,legacyLinks:true,commandReceipts:true,legacyIndex:true,profileProvenanceTrigger:true,markerFunction:true,markerCompatibilityTrigger:true,immutableDemoRecordTrigger:true,profileFunction:true,immutableFunction:true,canonicalPersonConstraint:true,canonicalConstraintDefinition:true,schemaCatalog:true,baselineRecordsCatalog:true,permanentTables:true,foreignKeysEnforced:true,foreignKeyReferencesSound:true,publicRevoked:true};
 

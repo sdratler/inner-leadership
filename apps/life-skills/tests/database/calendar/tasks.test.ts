@@ -27,6 +27,8 @@ describe('internal task PostgreSQL contract',()=>{
   expect(completed).toMatchObject({state:'done',version:2,dueDate,dueTime:null});
   await expect(tasks.complete(f.practitioner.actor,created.id,randomUUID(),created.version)).rejects.toMatchObject({code:'CONFLICT'});
   expect((await f.pool.query('SELECT action FROM ls_calendar.task_history WHERE workspace_id=$1 AND task_id=$2 ORDER BY version',[f.workspaceId,created.id])).rows.map((row:{action:string})=>row.action)).toEqual(['created','completed']);
+  await expect(f.pool.query('UPDATE ls_calendar.task_history SET action=$3 WHERE workspace_id=$1 AND task_id=$2',[f.workspaceId,created.id,'created'])).rejects.toMatchObject({code:'23514'});
+  await expect(f.pool.query('DELETE FROM ls_calendar.task_history WHERE workspace_id=$1 AND task_id=$2',[f.workspaceId,created.id])).rejects.toMatchObject({code:'23514'});
   expect((await f.pool.query('SELECT count(*)::int AS n FROM ls_calendar.events WHERE workspace_id=$1',[f.workspaceId])).rows[0].n).toBe(before);
  });
 });

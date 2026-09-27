@@ -5,9 +5,9 @@ export const CONTACT_OPS_MIGRATION = {
  name: '0101_ls_contact_operations.sql',
  sha256: 'a831604af25aa3ad713d7a1270007be9cebd315a8ac3a46cfa680a22b54dc25f',
 } as const;
-const REVIEWED_TASKS_SUFFIX = {
+export const INTERNAL_TASKS_MIGRATION = {
  name: '0102_ls_internal_tasks.sql',
- sha256: 'dde1bbd0b8c92ea407611f4dffecc98bbd4dd295468509469919e5fa796565ce',
+ sha256: '61a99c4bc62d57eeb63c99de0b4482fcec10b019e128ee4b98abb8e92aeaaa7c',
 } as const;
 
 /** Catalog fingerprint from 0101 applied to a clean, disposable native PG17
@@ -154,7 +154,7 @@ export function contactOpsMigrationState(files:readonly Migration[],history:read
  const index=files.findIndex(file=>file.name===CONTACT_OPS_MIGRATION.name);
  if(index<0||files[index]?.checksum!==CONTACT_OPS_MIGRATION.sha256)throw new Error('CONTACT_OPS_MANIFEST_MISMATCH');
  const suffix=files.slice(index+1);
- if(suffix.length>1||suffix.some(file=>file.name!==REVIEWED_TASKS_SUFFIX.name||file.checksum!==REVIEWED_TASKS_SUFFIX.sha256))throw new Error('CONTACT_OPS_MANIFEST_MISMATCH');
+ if(suffix.length>1||suffix.some(file=>file.name!==INTERNAL_TASKS_MIGRATION.name||file.checksum!==INTERNAL_TASKS_MIGRATION.sha256))throw new Error('CONTACT_OPS_MANIFEST_MISMATCH');
  const pending=planMigrations(files,history);
  const expectedKeys=['profiles','legacyLinks','commandReceipts','legacyIndex','profileProvenanceTrigger','markerCompatibilityTrigger','immutableDemoRecordTrigger','profileFunction','markerFunction','immutableFunction','canonicalPersonConstraint','canonicalConstraintDefinition','schemaCatalog','baselineRecordsCatalog','permanentTables','foreignKeysEnforced','foreignKeyReferencesSound','publicRevoked'].sort();
  if(JSON.stringify(Object.keys(objects).sort())!==JSON.stringify(expectedKeys))throw new Error('CONTACT_OPS_INTEGRITY_READBACK_INVALID');
@@ -163,7 +163,7 @@ export function contactOpsMigrationState(files:readonly Migration[],history:read
  if(!objects.immutableDemoRecordTrigger||!objects.immutableFunction||!objects.baselineRecordsCatalog)throw new Error('CONTACT_OPS_BASELINE_PROVENANCE_MISSING');
  const newlyCreated=Object.entries(objects).filter(([key])=>!['immutableDemoRecordTrigger','immutableFunction','baselineRecordsCatalog'].includes(key)).map(([,value])=>value);
  if(suffix.length===0 && pending.length===1 && pending[0]?.name===CONTACT_OPS_MIGRATION.name && newlyCreated.every(value=>!value))return 'pending';
- if(suffix.length===1 && pending.length===1 && pending[0]?.name===REVIEWED_TASKS_SUFFIX.name && values.every(Boolean))return 'pending';
+ if(suffix.length===1 && pending.length===1 && pending[0]?.name===INTERNAL_TASKS_MIGRATION.name && values.every(Boolean))return 'pending';
  if(pending.length===0 && values.every(Boolean))return 'applied';
  throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
 }
