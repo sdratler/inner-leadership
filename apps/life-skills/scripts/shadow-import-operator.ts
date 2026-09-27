@@ -21,7 +21,7 @@ const sourceSheetId = 2105699580;
 const systemIdentifier = "7682781321794240577";
 // Pinned from the independently reviewed source tree: every src file and package-lock.json.
 // An unrelated later deployment must fail closed until this one-shot tool is reviewed again.
-const reviewedSourceTreeSha256 = "4761647781245abcf74ce6efbd2ed9aff702790ca0e1532be3fb393420507907";
+const reviewedSourceTreeSha256 = "fd15eee7b2b4b0a1007ca28788e9467d9069de073cb78bba5badf18b6dbead91";
 
 type Input = {
  snapshot: SheetSnapshot;
@@ -61,8 +61,8 @@ function options(argv: string[]) {
   if (!match || out.has(match[1]!)) fail("IMPORT_OPTION_INVALID");
   out.set(match[1]!, match[2]!);
  }
- if (out.size !== 5 || !["deployment", "database-binding", "source-revision", "operator-sha256", "source-modified-at"].every(key => out.has(key))) fail("IMPORT_OPTIONS_INCOMPLETE");
- return {mode, deployment: out.get("deployment")!, databaseBinding: out.get("database-binding")!, sourceRevision: out.get("source-revision")!, operatorSha256: out.get("operator-sha256")!, sourceModifiedAt: out.get("source-modified-at")!};
+ if (out.size !== 6 || !["deployment", "database-binding", "source-revision", "operator-sha256", "source-modified-at", "reviewed-main"].every(key => out.has(key))) fail("IMPORT_OPTIONS_INCOMPLETE");
+ return {mode, deployment: out.get("deployment")!, databaseBinding: out.get("database-binding")!, sourceRevision: out.get("source-revision")!, operatorSha256: out.get("operator-sha256")!, sourceModifiedAt: out.get("source-modified-at")!, reviewedMain: out.get("reviewed-main")!};
 }
 async function input(): Promise<Input> {
  const chunks: Buffer[] = [];
@@ -84,7 +84,7 @@ async function main() {
  const permit = nativeShadowOperatorPermit();
  const opt = options(process.argv.slice(2));
  if (!/^[0-9a-f-]{36}$/.test(opt.deployment) || process.env.RAILWAY_DEPLOYMENT_ID !== opt.deployment ||
-  !/^[a-f0-9]{64}$/.test(opt.operatorSha256) ||
+  !/^[a-f0-9]{64}$/.test(opt.operatorSha256) || !/^[a-f0-9]{40}$/.test(opt.reviewedMain) ||
   !/^[a-f0-9]{64}$/.test(opt.databaseBinding.split(":")[1] ?? "") ||
   opt.databaseBinding.split(":")[0] !== databaseService ||
   !/^modified-\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(opt.sourceRevision) ||
@@ -108,7 +108,8 @@ async function main() {
  if (payload.workbookSha256 !== SHADOW_WORKBOOK_SHA256 || payload.snapshotSha256 !== SHADOW_SNAPSHOT_SHA256 ||
   snapshotSha256 !== SHADOW_SNAPSHOT_SHA256 || payload.expectedSnapshotDigest !== SHADOW_PLAN_DIGEST ||
   !verifyShadowAttestation({sourceFileId,sourceSheetId,sourceRevision:opt.sourceRevision,
-   deploymentId:opt.deployment,workbookSha256:payload.workbookSha256,
+   deploymentId:opt.deployment,reviewedMainSha:opt.reviewedMain,operatorSha256:opt.operatorSha256,
+   workbookSha256:payload.workbookSha256,
    snapshotSha256, databaseBackupSha256:payload.backupSha256},payload.attestationSignature)) fail("IMPORT_OWNER_BACKUP_ATTESTATION_INVALID");
  const runtime = await identityRuntime();
  if (runtime.config.origin !== "https://life-skills.bneineviimacademy.org") fail("IMPORT_ORIGIN_MISMATCH");
@@ -130,7 +131,7 @@ async function main() {
   payload.integrityKey, sourceFileId, sourceSheetId);
  const checked = await importer.preflightNewPeopleAsOperator(runtime.config.workspaceId, payload.snapshot, payload.dispositions, permit);
  if (opt.mode === "--preflight") {
-  process.stdout.write(JSON.stringify({code:"NATIVE_SHADOW_PREFLIGHT_OK", deploymentId: opt.deployment,
+  process.stdout.write(JSON.stringify({code:"NATIVE_SHADOW_PREFLIGHT_OK", deploymentId: opt.deployment,reviewedMainSha:opt.reviewedMain,
    sourceRevision: opt.sourceRevision, snapshotDigest: plan.snapshotDigest, planned: checked.planned,
    wouldCreate:checked.wouldCreate,replayed:checked.replayed,existingLinks: before.links,
    existingLiveProfiles: before.profiles, backupSha256: payload.backupSha256, effects:"none"}) + "\n");
@@ -143,7 +144,7 @@ async function main() {
   [runtime.config.workspaceId, sourceFileId, sourceSheetId]));
  if (after.length !== 1 || after[0]?.links !== plan.rows.length || after[0]?.profiles !== plan.rows.length ||
   result.created + result.replayed !== plan.rows.length) fail("IMPORT_POSTFLIGHT_FAILED");
- process.stdout.write(JSON.stringify({code:"NATIVE_SHADOW_IMPORTED_AND_VERIFIED", deploymentId: opt.deployment,
+ process.stdout.write(JSON.stringify({code:"NATIVE_SHADOW_IMPORTED_AND_VERIFIED", deploymentId: opt.deployment,reviewedMainSha:opt.reviewedMain,
   sourceRevision: opt.sourceRevision, snapshotDigest: plan.snapshotDigest, planned: result.planned,
   created: result.created, replayed: result.replayed, encryptedProfiles: after[0].profiles,
   legacyLinks: after[0].links, backupSha256: payload.backupSha256,
