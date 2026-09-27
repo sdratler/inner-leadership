@@ -121,6 +121,20 @@ async function main(){
        FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid
        JOIN pg_namespace n ON n.oid=c.relnamespace
        WHERE n.nspname='ls_contact_ops' AND k.contype='f'`);
+     const privileges=await client.query<{restricted:boolean}>(`SELECT
+       EXISTS(SELECT 1 FROM pg_namespace WHERE nspname='ls_contact_ops') AND
+       NOT EXISTS(SELECT 1 FROM pg_namespace n,
+         LATERAL aclexplode(coalesce(n.nspacl,acldefault('n',n.nspowner))) acl
+         WHERE n.nspname='ls_contact_ops' AND acl.grantee=0) AND
+       NOT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace,
+         LATERAL aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) acl
+         WHERE n.nspname='ls_contact_ops' AND c.relname IN
+           ('profiles','legacy_links','command_receipts') AND acl.grantee=0) AND
+       NOT EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace,
+         LATERAL aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) acl
+         WHERE n.nspname='ls_contact_ops' AND p.proname IN
+           ('require_profile_provenance','require_marker_compatibility')
+           AND acl.grantee=0) AS restricted`);
      let referencesSound=false;
      if(objects.rows[0]?.profiles&&objects.rows[0]?.legacyLinks&&objects.rows[0]?.commandReceipts){
       const orphaned=await client.query<{sound:boolean}>(`SELECT
@@ -153,7 +167,8 @@ async function main(){
        schemaCatalog:contactOpsSchemaCatalogMatches(columns.rows[0]?.catalog,constraints.rows[0]?.catalog),
        permanentTables:tables.rows[0]?.permanent===true,
        foreignKeysEnforced:foreignKeys.rows[0]?.enforced===true,
-       foreignKeyReferencesSound:referencesSound};
+       foreignKeyReferencesSound:referencesSound,
+       publicRevoked:privileges.rows[0]?.restricted===true};
      return contactOpsMigrationState(files,history,integrity);
     }catch(error){await client.query('ROLLBACK').catch(()=>undefined);throw error;}
    };
