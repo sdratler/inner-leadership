@@ -1,7 +1,7 @@
 import React from 'react';
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { projectCalendarFollowups } from '../../../src/features/calendar/followups.ts';
+import { projectCalendarFollowups, visibleCalendarFollowups } from '../../../src/features/calendar/followups.ts';
 import { CalendarAgenda, CalendarBoard } from '../../../src/features/calendar/views.tsx';
 import type { AppointmentView } from '../../../src/features/calendar/types.ts';
 
@@ -12,6 +12,13 @@ const row = (leadId: string, overrides: Record<string, string> = {}) => ({
 });
 
 describe('practitioner calendar follow-up layer', () => {
+  it('does not hide a fresh CRM card behind a stale task when synchronization fails', () => {
+    const fresh=row('LS-LEAD-synthetic-one',{nextAction:'New follow-up',dueDate:'2026-09-28'});
+    const stale=[{sourceKind:'crm_followup',state:'open',sourcePath:'/he/app/clients?section=prospects&leadId=LS-LEAD-synthetic-one'}];
+    expect(visibleCalendarFollowups([fresh],dates,'',stale,false)).toMatchObject([{leadId:fresh.leadId,nextAction:'New follow-up',dueDate:'2026-09-28'}]);
+    expect(visibleCalendarFollowups([fresh],dates,'',stale,true)).toEqual([]);
+    expect(visibleCalendarFollowups([fresh],dates,'',[{...stale[0]!,state:'done'}],true)).toHaveLength(1);
+  });
   it('projects only open, dated, authorized-period CRM records without changing their source', () => {
     const source = [
       row('LS-LEAD-synthetic-one'),

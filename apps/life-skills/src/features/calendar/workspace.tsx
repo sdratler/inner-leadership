@@ -19,7 +19,7 @@ import type { AppointmentView, SchedulePage } from './types.ts';
 import { useCalendarMutation, useDialogGuard } from './form-support.tsx';
 import { AttendanceForm, BookingForm, NoticeForm, PractitionerActionForm, type CaseChoice, type SaveForm } from './forms.tsx';
 import { CalendarAgenda, CalendarBoard, formatTime, NoticeReceipt } from './views.tsx';
-import { projectCalendarFollowups, type FollowupSource } from './followups.ts';
+import { visibleCalendarFollowups, type FollowupSource } from './followups.ts';
 import type { InternalTask } from './tasks.ts';
 import { IntakeSummaryCard } from '../prospects/summary-card.tsx';
 import { CalendarAttentionSummary } from './attention-summary.tsx';
@@ -36,17 +36,14 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  const [loading,setLoading]=useState(true),[error,setError]=useState<CalendarLoadFailure|null>(null),[caseError,setCaseError]=useState(false),[countError,setCountError]=useState(false),[count,setCount]=useState<number|null>(null);
  const [selected,setSelected]=useState<AppointmentView|null>(null),[dirty,setDirty]=useState(false),[bookingOpen,setBookingOpen]=useState(false),[checkinFor,setCheckinFor]=useState<AppointmentView|null>(null),[bookingNonce,setBookingNonce]=useState(0);
  const [history,setHistory]=useState<HistoryPage|null>(null),[historyError,setHistoryError]=useState(false),[dateInput,setDateInput]=useState(initialDate);
- const [followupRows,setFollowupRows]=useState<FollowupSource[]|null>(null),[followupFailed,setFollowupFailed]=useState(false),[followupRetry,setFollowupRetry]=useState(0),[showFollowups,setShowFollowups]=useState(true),[taskSyncFailed,setTaskSyncFailed]=useState(false);
+ const [followupRows,setFollowupRows]=useState<FollowupSource[]|null>(null),[followupFailed,setFollowupFailed]=useState(false),[followupRetry,setFollowupRetry]=useState(0),[showFollowups,setShowFollowups]=useState(true),[taskSyncFailed,setTaskSyncFailed]=useState(false),[taskSyncReady,setTaskSyncReady]=useState(false);
  const [taskRows,setTaskRows]=useState<InternalTask[]|null>(null),[taskLoadedFor,setTaskLoadedFor]=useState(''),[taskFailed,setTaskFailed]=useState(false),[taskRefresh,setTaskRefresh]=useState(0),[showTasks,setShowTasks]=useState(true);
  const [taskDraft,setTaskDraft]=useState({title:'',dueDate:initialDate,dueTime:'',note:'',sourcePath:'',caseId:initialCaseId}),[taskDirty,setTaskDirty]=useState(false);
  const mutation=useCalendarMutation(locale),generation=useRef(0),date=initialDate,view=initialView;
  const range=dateRange(date,view),basePath=`/${locale}/${practitioner?'app/calendar':role==='adult_client'||role==='child'?'client/calendar':'family/schedule'}`,caseKind=role==='adult_client'?'adult':'minor';
  const taskQueryKey=`${range.from}|${range.to}|${caseId}`;
  const tasks=practitioner&&showTasks&&taskLoadedFor===taskQueryKey&&taskRows?taskRows:[];
- const linkedLeadIds=new Set(tasks.filter(task=>task.sourceKind==='crm_followup'&&task.state==='open'&&task.sourcePath).map(task=>{
-  try{return new URL(task.sourcePath!,'https://app.invalid').searchParams.get('leadId')??'';}catch{return '';}
- }));
- const followups=practitioner&&showFollowups&&followupRows?projectCalendarFollowups(followupRows,range.dates,caseId).filter(item=>!linkedLeadIds.has(item.leadId)):[];
+ const followups=practitioner&&showFollowups&&followupRows?visibleCalendarFollowups(followupRows,range.dates,caseId,tasks,taskSyncReady):[];
  const href=(newDate:string,newView:string=view)=>basePath+'?'+new URLSearchParams({date:newDate,view:newView,...(caseId?{caseId}:{}),...(selectedClientContext&&caseId?{context:'client'}:{})});
  const names=Object.fromEntries(cases.map(c=>[c.id,c.displayName]));
  const clearDirty=useCallback(()=>setDirty(false),[]);
@@ -87,11 +84,11 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
   const controller=new AbortController();
   void fetch('/api/prospects',{credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',signal:controller.signal})
    .then(async response=>{const body=await response.json() as {ok?:boolean;data?:FollowupSource[]};if(!response.ok||body.ok!==true||!Array.isArray(body.data))throw new Error('FOLLOWUPS_UNAVAILABLE');return body.data;})
-   .then(async rows=>{if(controller.signal.aborted)return;setFollowupRows(rows);setFollowupFailed(false);
-    try{await calendarWrite('tasks/sync-followups',{},crypto.randomUUID());if(!controller.signal.aborted){setTaskSyncFailed(false);setTaskRefresh(value=>value+1);}}
-    catch{if(!controller.signal.aborted)setTaskSyncFailed(true);}
+   .then(async rows=>{if(controller.signal.aborted)return;setTaskSyncReady(false);setFollowupRows(rows);setFollowupFailed(false);
+    try{await calendarWrite('tasks/sync-followups',{},crypto.randomUUID());if(!controller.signal.aborted){setTaskRows(null);setTaskLoadedFor('');setTaskSyncReady(true);setTaskSyncFailed(false);setTaskRefresh(value=>value+1);}}
+    catch{if(!controller.signal.aborted){setTaskSyncReady(false);setTaskSyncFailed(true);}}
    })
-   .catch(()=>{if(!controller.signal.aborted){setFollowupRows(null);setFollowupFailed(true);}});
+   .catch(()=>{if(!controller.signal.aborted){setTaskSyncReady(false);setFollowupRows(null);setFollowupFailed(true);}});
   return()=>controller.abort();
  },[practitioner,followupRetry]);
  useEffect(()=>{

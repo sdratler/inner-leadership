@@ -25,3 +25,14 @@ export function projectCalendarFollowups(rows: readonly FollowupSource[], dates:
   })
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.name.localeCompare(b.name) || a.leadId.localeCompare(b.leadId));
 }
+
+/** A stale linked task must never hide a fresh authoritative CRM card. */
+export function visibleCalendarFollowups(rows:readonly FollowupSource[],dates:readonly string[],caseId:string,
+ tasks:readonly {sourceKind:string|null;state:string;sourcePath:string|null}[],syncReady:boolean):CalendarFollowup[]{
+ const projected=projectCalendarFollowups(rows,dates,caseId);
+ if(!syncReady)return projected;
+ const linked=new Set(tasks.filter(task=>task.sourceKind==='crm_followup'&&task.state==='open'&&task.sourcePath).map(task=>{
+  try{return new URL(task.sourcePath!,'https://app.invalid').searchParams.get('leadId')??'';}catch{return '';}
+ }));
+ return projected.filter(item=>!linked.has(item.leadId));
+}
