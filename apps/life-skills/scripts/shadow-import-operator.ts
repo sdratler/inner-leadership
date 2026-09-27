@@ -20,7 +20,7 @@ const exactEnvironment = "dd91bd71-57cc-45e6-a75b-8c858491d7c7";
 const exactWorkspace = "1553e959-b299-40e4-b82e-8529597b69ec";
 // Pinned from the independently reviewed source tree: every src file and package-lock.json.
 // An unrelated later deployment must fail closed until this one-shot tool is reviewed again.
-const reviewedSourceTreeSha256 = "28a5d0f4ccba05b0f3ea89bd4d5779d1967b521a9b2f4f0792f2960b6c50fd18";
+const reviewedSourceTreeSha256 = "a9a8a71d9f9fd727bc14a7f1f5d51c1f23e70f6278aa05b4d71211ea6546afd7";
 
 type Input = {
  snapshot: SheetSnapshot;

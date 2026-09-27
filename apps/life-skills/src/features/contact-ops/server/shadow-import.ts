@@ -155,7 +155,7 @@ export class NativeShadowImporter {
     if (linked) {
      requireThat(linked.personId === row.suggestedPersonId && linked.rowDigest === row.rowDigest && linked.sourceRevision === snapshot.revision, "IMPORT_EXISTING_LINK_CONFLICT");
      const existing = await tx.query<{payloadCiphertext:string;recordMode:string;demoBatchId:string|null}>(
-      'SELECT payload_ciphertext AS "payloadCiphertext",record_mode AS "recordMode",demo_batch_id AS "demoBatchId" FROM ls_contact_ops.profiles WHERE workspace_id=$1 AND person_id=$2',
+      'SELECT payload_ciphertext AS "payloadCiphertext",record_mode AS "recordMode",demo_batch_id AS "demoBatchId" FROM ls_contact_ops.profiles WHERE workspace_id=$1 AND person_id=$2 FOR UPDATE',
       [workspaceId,linked.personId]);
      requireThat(existing.length === 1 && existing[0]?.recordMode === "live" && existing[0]?.demoBatchId === null,"IMPORT_REPLAY_PROFILE_MISSING");
      let profile:unknown,storedSnapshot:unknown;

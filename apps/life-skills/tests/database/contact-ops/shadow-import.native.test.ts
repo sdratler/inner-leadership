@@ -99,6 +99,37 @@ test("native PostgreSQL imports all synthetic rows encrypted in one shadow trans
  expect((await f.pool.query("SELECT count(*)::integer AS n FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND source_file_id=$2", [f.workspaceId, sourceFileId])).rows[0].n).toBe(2);
 });
 
+test("replay waits for a concurrent profile update and refuses changed protected data", async () => {
+ const person=await f.pool.query<{person_id:string}>("SELECT person_id FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND source_file_id=$2 AND legacy_lead_id=$3",
+  [f.workspaceId,sourceFileId,one[0]]);
+ const personId=person.rows[0]!.person_id;
+ const original=await f.pool.query<{payload_ciphertext:string}>("SELECT payload_ciphertext FROM ls_contact_ops.profiles WHERE workspace_id=$1 AND person_id=$2",[f.workspaceId,personId]);
+ const ciphertext=original.rows[0]!.payload_ciphertext;
+ const opened=JSON.parse(unseal(ciphertext,crmProfileAad(f.workspaceId,personId),f.keyring));
+ const holder=await f.pool.connect();
+ let open=false,attempt:Promise<{ok:boolean;error:Error|null}>|null=null;
+ try {
+  await holder.query("BEGIN");open=true;
+  await holder.query("UPDATE ls_contact_ops.profiles SET payload_ciphertext=$3 WHERE workspace_id=$1 AND person_id=$2",
+   [f.workspaceId,personId,seal(JSON.stringify({...opened,notes:"Concurrent synthetic change"}),crmProfileAad(f.workspaceId,personId),f.keyring)]);
+  let settled=false;
+  attempt=importer.importNewPeople(f.practitioner.actor,snapshot(),decide(snapshot()))
+   .then(()=>({ok:true,error:null}),error=>({ok:false,error:error as Error})).finally(()=>{settled=true});
+  await new Promise(resolve=>setTimeout(resolve,75));
+  expect(settled).toBe(false);
+  await holder.query("COMMIT");open=false;
+  const result=await attempt;
+  expect(result.ok).toBe(false);
+  expect(result.error?.message).toContain("IMPORT_REPLAY_PROTECTED_PAYLOAD_MISMATCH");
+ } finally {
+  if(open)await holder.query("ROLLBACK");
+  holder.release();
+  if(attempt)await attempt;
+  await f.pool.query("UPDATE ls_contact_ops.profiles SET payload_ciphertext=$3 WHERE workspace_id=$1 AND person_id=$2",[f.workspaceId,personId,ciphertext]);
+ }
+ expect(await importer.importNewPeople(f.practitioner.actor,snapshot(),decide(snapshot()))).toEqual({sourceRevision:"synthetic-revision-1",planned:2,created:0,replayed:2});
+});
+
 test("shadow importer rejects incomplete decisions, non-practitioner and mismatched source before any contact insert", async () => {
  const otherFile = `synthetic-${randomUUID()}`;
  await expect(importer.importNewPeople(f.practitioner.actor, snapshot([one], otherFile), decide(snapshot([one], otherFile)))).rejects.toThrow("IMPORT_SOURCE_MISMATCH");
