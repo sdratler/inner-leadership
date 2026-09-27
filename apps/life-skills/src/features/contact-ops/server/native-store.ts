@@ -17,7 +17,7 @@ export interface CrmProfile {
     notes: string;
     legacyIds: readonly string[];
 }
-function aad(w: string, p: string) { return `ls_contact_ops/profile/v1/${w}/${p}`; }
+export function crmProfileAad(w: string, p: string) { return `ls_contact_ops/profile/v1/${w}/${p}`; }
 function validateProfile(profile:CrmProfile):void {
     requireThat(profile.personId===asId(profile.personId,"person"),"CANONICAL_PERSON_ID_REQUIRED");
     requireThat(profile.stage.length>0&&profile.stage.length<=120&&profile.notes.length<=5000,"BAD_PROFILE");
@@ -33,7 +33,7 @@ export class NativeCrmStore {
         validateProfile(profile);
         requireThat(Boolean(operationId)&&operationId.length<=128,"BAD_OPERATION");
         const payloadDigest=privateDigest({action:"create",profile,actor:a.id,workspace:a.workspaceId},this.integrityKey);
-        const encrypted=seal(JSON.stringify(profile),aad(a.workspaceId,profile.personId),this.keyring);
+        const encrypted=seal(JSON.stringify(profile),crmProfileAad(a.workspaceId,profile.personId),this.keyring);
         return this.db.transaction(async tx=>{
             requirePractitioner(await freshActor(tx,a,this.clock.now()));
             await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",[a.workspaceId+":crm:"+operationId]);
@@ -67,7 +67,7 @@ export class NativeCrmStore {
             requireThat(rows.length <= 1, "PROFILE_CARDINALITY");
             const r = rows[0];
             if (!r) return null;
-            const profile=JSON.parse(unseal(r.payload_ciphertext,aad(a.workspaceId,personId),this.keyring)) as CrmProfile;
+            const profile=JSON.parse(unseal(r.payload_ciphertext,crmProfileAad(a.workspaceId,personId),this.keyring)) as CrmProfile;
             requireThat(profile.personId===personId,"PROFILE_ID_MISMATCH");
             return {profile,version:r.version};
         });
@@ -80,7 +80,7 @@ export class NativeCrmStore {
         requireThat(Boolean(operationId) && Number.isSafeInteger(expectedVersion) && expectedVersion > 0, "BAD_OPERATION");
         requireThat(operationId.length<=128 && Boolean(profile.personId),"BAD_OPERATION");
         const payloadDigest = privateDigest({ action:"update",profile, expectedVersion, actor: a.id, workspace: a.workspaceId }, this.integrityKey);
-        const encrypted = seal(JSON.stringify(profile),aad(a.workspaceId,profile.personId),this.keyring);
+        const encrypted = seal(JSON.stringify(profile),crmProfileAad(a.workspaceId,profile.personId),this.keyring);
         return this.db.transaction(async (tx) => {
             requirePractitioner(await freshActor(tx,a,this.clock.now()));
             // The transaction-scoped lock serializes an idempotency key across concurrent retries.
