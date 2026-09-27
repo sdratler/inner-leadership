@@ -3,25 +3,23 @@
  * workbook backup. It is never logged. This does not fence the Sheet, switch
  * authority, create accounts/cases, or invoke a provider.
  */
-import "server-only";
 import { createHash } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { closeDatabase } from "../src/db/client.ts";
-import { validateDatabaseUrl } from "../src/lib/env/schema.ts";
-import { identityRuntime } from "../src/features/identity/runtime.ts";
-import { NativeShadowImporter, nativeShadowOperatorPermit, type NewPersonDisposition } from "../src/features/contact-ops/server/shadow-import.ts";
-import { planImport, type SheetSnapshot } from "../src/features/contact-ops/server/import-plan.ts";
-import { SHADOW_PLAN_DIGEST, SHADOW_SNAPSHOT_SHA256, SHADOW_WORKBOOK_SHA256, verifyShadowAttestation } from "../src/features/contact-ops/server/shadow-attestation.ts";
+import type { NewPersonDisposition } from "../src/features/contact-ops/server/shadow-import.ts";
+import type { SheetSnapshot } from "../src/features/contact-ops/server/import-plan.ts";
 
 const databaseService = "354b5343-9e83-45a7-b764-09396f14ae29";
 const sourceFileId = "1UbbkY6h74L3_sG_m2hcBZ_rmBRLJDO7pYgghrXGdARI";
 const sourceSheetId = 2105699580;
 const systemIdentifier = "7682781321794240577";
+const exactProject = "3b756632-1f66-4f75-a016-eabc37aa0d67";
+const exactService = "0267d061-f3ce-4a0a-82d4-ce133e4501e9";
+const exactEnvironment = "dd91bd71-57cc-45e6-a75b-8c858491d7c7";
 // Pinned from the independently reviewed source tree: every src file and package-lock.json.
 // An unrelated later deployment must fail closed until this one-shot tool is reviewed again.
-const reviewedSourceTreeSha256 = "fd15eee7b2b4b0a1007ca28788e9467d9069de073cb78bba5badf18b6dbead91";
+const reviewedSourceTreeSha256 = "fc46d27854feac3616526f6f35a296347f9e5314295bd1106f0bb4855c62849e";
 
 type Input = {
  snapshot: SheetSnapshot;
@@ -80,8 +78,11 @@ async function input(): Promise<Input> {
  if (!parsed || typeof parsed !== "object") fail("IMPORT_INPUT_INVALID");
  return parsed as Input;
 }
+let closeDatabase: (()=>Promise<void>) | undefined;
 async function main() {
- const permit = nativeShadowOperatorPermit();
+ if (process.env.LS_NATIVE_SHADOW_IMPORT_APPROVED !== "true" ||
+  process.env.RAILWAY_PROJECT_ID !== exactProject || process.env.RAILWAY_SERVICE_ID !== exactService ||
+  process.env.RAILWAY_ENVIRONMENT_ID !== exactEnvironment) fail("IMPORT_OPERATOR_NOT_ADMITTED");
  const opt = options(process.argv.slice(2));
  if (!/^[0-9a-f-]{36}$/.test(opt.deployment) || process.env.RAILWAY_DEPLOYMENT_ID !== opt.deployment ||
   !/^[a-f0-9]{64}$/.test(opt.operatorSha256) || !/^[a-f0-9]{40}$/.test(opt.reviewedMain) ||
@@ -92,6 +93,18 @@ async function main() {
  const script = await readFile(fileURLToPath(import.meta.url));
  if (createHash("sha256").update(script).digest("hex") !== opt.operatorSha256) fail("IMPORT_OPERATOR_SOURCE_MISMATCH");
  if (await sourceTreeSha256() !== reviewedSourceTreeSha256) fail("IMPORT_REVIEWED_SOURCE_TREE_MISMATCH");
+ // No application module is evaluated until the complete reviewed tree passes.
+ const [{closeDatabase:shutdown},{validateDatabaseUrl},{identityRuntime},
+  {NativeShadowImporter,nativeShadowOperatorPermit},{planImport},attestation] = await Promise.all([
+  import("../src/db/client.ts"),import("../src/lib/env/schema.ts"),
+  import("../src/features/identity/runtime.ts"),
+  import("../src/features/contact-ops/server/shadow-import.ts"),
+  import("../src/features/contact-ops/server/import-plan.ts"),
+  import("../src/features/contact-ops/server/shadow-attestation.ts"),
+ ]);
+ closeDatabase=shutdown;
+ const {SHADOW_PLAN_DIGEST,SHADOW_SNAPSHOT_SHA256,SHADOW_WORKBOOK_SHA256,verifyShadowAttestation}=attestation;
+ const permit=nativeShadowOperatorPermit();
  const url = process.env.LS_DATABASE_URL;
  if (!url || process.env.LS_DATABASE_TLS !== "verify-full" || !process.env.LS_DATABASE_CA) fail("IMPORT_DATABASE_CONFIGURATION_INVALID");
  const parsedUrl = validateDatabaseUrl(url, "verify-full");
@@ -138,16 +151,11 @@ async function main() {
   return;
  }
  const result = await importer.importNewPeopleAsOperator(runtime.config.workspaceId, payload.snapshot, payload.dispositions, permit);
- const after = await runtime.store.transaction(tx => tx.query<{links:number;profiles:number}>(`SELECT
-   (SELECT count(*)::integer FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND source_file_id=$2 AND source_sheet_id=$3) AS links,
-   (SELECT count(*)::integer FROM ls_contact_ops.profiles WHERE workspace_id=$1 AND record_mode='live') AS profiles`,
-  [runtime.config.workspaceId, sourceFileId, sourceSheetId]));
- if (after.length !== 1 || after[0]?.links !== plan.rows.length || after[0]?.profiles !== plan.rows.length ||
-  result.created + result.replayed !== plan.rows.length) fail("IMPORT_POSTFLIGHT_FAILED");
+ if (result.created + result.replayed !== plan.rows.length) fail("IMPORT_POSTFLIGHT_FAILED");
  process.stdout.write(JSON.stringify({code:"NATIVE_SHADOW_IMPORTED_AND_VERIFIED", deploymentId: opt.deployment,reviewedMainSha:opt.reviewedMain,
   sourceRevision: opt.sourceRevision, snapshotDigest: plan.snapshotDigest, planned: result.planned,
-  created: result.created, replayed: result.replayed, encryptedProfiles: after[0].profiles,
-  legacyLinks: after[0].links, backupSha256: payload.backupSha256,
+  created: result.created, replayed: result.replayed, encryptedProfilesVerifiedAtCommit: result.planned,
+  legacyLinksVerifiedAtCommit: result.planned, backupSha256: payload.backupSha256,
   sheetAuthority:"unchanged", appReaderAuthority:"unchanged", providerEffects:"none"}) + "\n");
 }
-main().catch(error => { const code = error instanceof Error && /^(IMPORT|NATIVE)_[A-Z0-9_]+$/.test(error.message) ? error.message : "IMPORT_OPERATION_FAILED"; process.stderr.write(code + "\n"); process.exitCode = 1; }).finally(async () => { await closeDatabase().catch(() => undefined); });
+main().catch(error => { const code = error instanceof Error && /^(IMPORT|NATIVE)_[A-Z0-9_]+$/.test(error.message) ? error.message : "IMPORT_OPERATION_FAILED"; process.stderr.write(code + "\n"); process.exitCode = 1; }).finally(async () => { await closeDatabase?.().catch(() => undefined); });

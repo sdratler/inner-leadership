@@ -27,6 +27,8 @@ it("admits only the exact one-shot operator entrypoint and canonical service",()
 it("pins the complete reviewed executable source tree and dependency lock",()=>{
  const app=fileURLToPath(new URL("../../../",import.meta.url));
  const script=readFileSync(join(app,"scripts","shadow-import-operator.ts"),"utf8");
+ expect([...script.matchAll(/^import(?!\s+type).*from ["']\.\.\/src\//gm)]).toHaveLength(0);
+ expect(script.indexOf("await sourceTreeSha256()")).toBeLessThan(script.indexOf("await Promise.all(["));
  const pinned=/reviewedSourceTreeSha256 = "([a-f0-9]{64})"/.exec(script)?.[1];
  expect(pinned).toBeDefined();
  const paths:string[]=[];

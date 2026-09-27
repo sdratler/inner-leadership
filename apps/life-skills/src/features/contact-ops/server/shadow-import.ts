@@ -174,6 +174,8 @@ export class NativeShadowImporter {
    if (apply) {
     const count = await tx.query<{ n: number }>('SELECT count(*)::integer AS n FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND source_file_id=$2 AND source_sheet_id=$3', [workspaceId, snapshot.fileId, snapshot.sheetId]);
     requireThat(count.length === 1 && count[0]!.n === plan.rows.length, "IMPORT_FINAL_LINK_COUNT_MISMATCH");
+    const profiles = await tx.query<{ n: number }>("SELECT count(*)::integer AS n FROM ls_contact_ops.profiles WHERE workspace_id=$1 AND record_mode='live'",[workspaceId]);
+    requireThat(profiles.length === 1 && profiles[0]!.n === plan.rows.length, "IMPORT_FINAL_PROFILE_COUNT_MISMATCH");
    }
    return { sourceRevision: snapshot.revision, planned: plan.rows.length, created, replayed };
   });
