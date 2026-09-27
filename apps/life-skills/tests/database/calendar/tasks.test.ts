@@ -82,6 +82,9 @@ describe('internal task PostgreSQL contract',()=>{
   expect(listed).toHaveLength(120);
   expect(new Set(listed.map(item=>item.title)).size).toBe(120);
   expect(listed.every(item=>item.sourceKind==='crm_followup'&&item.caseId===null)).toBe(true);
+  const archived={...rows[0]!,stage:'Archived',dueDate:'not-a-date'};
+  expect(await tasks.syncCrmFollowups(f.practitioner.actor,[archived])).toEqual({created:0,updated:0,resolved:1,unchanged:0});
+  expect((await tasks.list(f.practitioner.actor,dayStart(dueDate),dayStart(shiftDay(dueDate,1)),null)).find(item=>item.title==='Synthetic person 0 · Call')?.state).toBe('done');
   expect((await f.pool.query('SELECT count(*)::int AS n FROM ls_calendar.events WHERE workspace_id=$1',[f.workspaceId])).rows[0].n).toBe(before);
  });
 });

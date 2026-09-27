@@ -131,7 +131,7 @@ export class InternalTaskService {
     const archived=/archive|do not contact/i.test(`${row.stage} ${row.outcome}`);
     // Invalid dates are not source resolution. Preserve the task and surface the
     // CRM row separately until its actual source data is repaired.
-    if(row.dueDate?.trim()&&!dueDate){result.unchanged++;continue;}
+    if(!archived&&row.dueDate?.trim()&&!dueDate){result.unchanged++;continue;}
     const active=Boolean(dueDate&&title&&!archived);
     const sourcePath=`/he/app/clients?section=prospects&leadId=${encodeURIComponent(row.leadId)}`;
     if(!internalTaskPath(sourcePath)){result.unchanged++;continue;}

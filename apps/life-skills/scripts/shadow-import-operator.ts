@@ -23,7 +23,7 @@ const exactWorkspace = "1553e959-b299-40e4-b82e-8529597b69ec";
 // Pinned from the independently reviewed source tree: every src file,
 // package.json (including the checked-in React-server launcher) and lockfile.
 // An unrelated later deployment must fail closed until this one-shot tool is reviewed again.
-const reviewedSourceTreeSha256 = "b4312e75f29effe6f17f372a1e498d6849a0b37e1cdc7ef332aa9ccf76b49674";
+const reviewedSourceTreeSha256 = "d3de52f97122b8fd30bd621152b5a2e0d0297dd93845717965b9ad6623592cc4";
 // Includes the read-only production schema guard, every migration it checks,
 // its manifest and migration helpers. The attested operator pins these bytes.
 const reviewedContactOpsBundleSha256 = "322420249c727b8f86ba9cd8f9f1f662b6918669722967a9507aeaffb0832ab9";
