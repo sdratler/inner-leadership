@@ -26,7 +26,7 @@ describe("native shadow import preflight", () => {
   await expect(importer.importNewPeople(actor, { ...source(), complete: false }, [{ sourceRow: 2, kind: "new_person" }])).rejects.toThrow("INCOMPLETE_SNAPSHOT");
  });
  it("rejects a malformed nonempty follow-up date before any database work", async () => {
-  const bad = { ...source(), headers: [...headers, "Next-action date"], rows: [[...row, "2026-02-31"]] };
+  const bad = { ...source(), headers: [...headers, " Next-action date "], rows: [[...row, "2026-02-31"]] };
   await expect(importer.importNewPeople(actor, bad, [{ sourceRow: 2, kind: "new_person" }])).rejects.toThrow("IMPORT_INVALID_FOLLOWUP_DATE");
  });
  it("keeps administrative payment and booking text as unverified source fields", () => {

@@ -14,7 +14,7 @@ const lookupKey = Buffer.alloc(32, 6);
 const sourceFileId = `synthetic-${randomUUID()}`;
 const sheetId = 101;
 const importer = new NativeShadowImporter(poolStore(f.pool), f.keyring, lookupKey, key, sourceFileId, sheetId);
-const headers = ["Lead ID", "Parent/adult name", "Phone", "Email", "Pipeline stage", "Next action", "Next-action date", "General sales notes"];
+const headers = ["Lead ID", "Parent/adult name", "Phone", "Email", "Pipeline stage", " Next action ", " Next-action date ", " General sales notes "];
 const one = ["LS-LEAD-synthetic-one", "Synthetic Adult One", "+15555550101", "one@example.invalid", "New inquiry", "Call", "2026-09-27", "Synthetic administrative note one"];
 const two = ["LS-LEAD-synthetic-two", "", "+15555550102", "", "Contacted", "Follow up", "", "Synthetic administrative note two"];
 function snapshot(rows: string[][] = [one, two], fileId = sourceFileId): SheetSnapshot {
@@ -37,12 +37,15 @@ test("native PostgreSQL imports all synthetic rows encrypted in one shadow trans
   [linkedAccountId, f.workspaceId, createHash("sha256").update(linkedAccountId).digest("hex"), seal("synthetic-linked@example.invalid", `email:${f.workspaceId}:${linkedAccountId}`, f.keyring), seal(one[2]!, `phone:${f.workspaceId}:${linkedAccountId}`, f.keyring)]);
  await f.pool.query("INSERT INTO ls_identity.account_subjects(workspace_id,account_id,person_id) VALUES($1,$2,$3)", [f.workspaceId, linkedAccountId, linkedPersonId]);
  expect(await importer.importNewPeople(f.practitioner.actor, snapshot(), decisions)).toEqual({ sourceRevision: "synthetic-revision-1", planned: 2, created: 0, replayed: 2 });
+ await f.pool.query("UPDATE ls_identity.accounts SET phone_ciphertext=$3 WHERE workspace_id=$1 AND id=$2", [f.workspaceId, f.parent.actor.id, seal(one[2]!, `phone:${f.workspaceId}:${f.parent.actor.id}`, f.keyring)]);
+ await expect(importer.importNewPeople(f.practitioner.actor, snapshot(), decisions)).rejects.toThrow("IMPORT_ACCOUNT_ENDPOINT_COLLISION");
+ await f.pool.query("UPDATE ls_identity.accounts SET phone_ciphertext=NULL WHERE workspace_id=$1 AND id=$2", [f.workspaceId, f.parent.actor.id]);
  for (const link of links.rows) {
   expect(link.snapshot_ciphertext).not.toContain("Synthetic administrative note");
   expect(link.row_digest).toMatch(/^[0-9a-f]{64}$/);
   const opened = JSON.parse(unseal(link.snapshot_ciphertext, `ls_contact_ops/legacy/v1/${f.workspaceId}/${sourceFileId}/${sheetId}/${link.legacy_lead_id}`, f.keyring));
   expect(opened.sourceRow).toBe(link.legacy_lead_id === one[0] ? 2 : 3);
-  expect(opened.payload.sourceFields["General sales notes"]).toContain("Synthetic administrative note");
+  expect(opened.payload.sourceFields[" General sales notes "]).toContain("Synthetic administrative note");
  }
  const profiles = await f.pool.query("SELECT person_id,payload_ciphertext,record_mode FROM ls_contact_ops.profiles WHERE workspace_id=$1 AND person_id=ANY($2::uuid[])", [f.workspaceId, links.rows.map(row => row.person_id)]);
  expect(profiles.rowCount).toBe(2);
@@ -51,6 +54,9 @@ test("native PostgreSQL imports all synthetic rows encrypted in one shadow trans
   expect(profile.payload_ciphertext).not.toContain("Synthetic administrative note");
   const opened = JSON.parse(unseal(profile.payload_ciphertext, crmProfileAad(f.workspaceId, profile.person_id), f.keyring));
   expect(opened.legacyIds).toHaveLength(1);
+  expect(opened.nextAction).toBe(profile.person_id === linkedPersonId ? "Call" : "Follow up");
+  expect(opened.notes).toContain("Synthetic administrative note");
+  if (profile.person_id === linkedPersonId) expect(opened.followUpDate).toBe("2026-09-27");
  }
  const demo = await f.pool.query("SELECT count(*)::integer AS n FROM ls_demo.records WHERE workspace_id=$1 AND entity_kind='person' AND entity_key=ANY($2::text[])", [f.workspaceId, links.rows.map(row => row.person_id)]);
  expect(demo.rows[0].n).toBe(0);

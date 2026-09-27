@@ -41,7 +41,7 @@ export class NativeShadowImporter {
   requireThat(decisions.size === plan.rows.length && plan.rows.every(row => decisions.has(row.sourceRow)), "IMPORT_DISPOSITION_INCOMPLETE");
   const phones = new Set<string>(), emails = new Set<string>();
   for (const row of plan.rows) {
-   const rawDate = row.protectedPayload.sourceFields["Next-action date"]?.trim() || "";
+   const rawDate = sourceField(row, "Next-action date").trim();
    requireThat(!rawDate || dateOnly(rawDate), "IMPORT_INVALID_FOLLOWUP_DATE");
    if (row.normalizedPhone) {
     requireThat(!phones.has(row.normalizedPhone), "IMPORT_SHARED_ENDPOINT_REQUIRES_REVIEW");
@@ -74,22 +74,28 @@ export class NativeShadowImporter {
     [actor.workspaceId, snapshot.fileId, snapshot.sheetId],
    );
    requireThat(unrelatedProfiles.length === 1 && unrelatedProfiles[0]!.n === 0, "IMPORT_UNLINKED_NATIVE_PROFILE_REQUIRES_REVIEW");
-   const accounts = await tx.query<{ id: string; emailBlind: string; phoneCiphertext: string | null }>(
-    'SELECT id,email_blind AS "emailBlind",phone_ciphertext AS "phoneCiphertext" FROM ls_identity.accounts WHERE workspace_id=$1',
+   const accounts = await tx.query<{ id: string; personId: string | null; emailBlind: string; phoneCiphertext: string | null }>(
+    'SELECT a.id,s.person_id AS "personId",a.email_blind AS "emailBlind",a.phone_ciphertext AS "phoneCiphertext" FROM ls_identity.accounts a LEFT JOIN ls_identity.account_subjects s ON s.workspace_id=a.workspace_id AND s.account_id=a.id WHERE a.workspace_id=$1',
     [actor.workspaceId],
    );
-   const existingPhones = new Set(accounts.flatMap(account => {
-    if (!account.phoneCiphertext) return [];
-    const phone = normalizePhone(unseal(account.phoneCiphertext, `phone:${actor.workspaceId}:${account.id}`, this.keyring));
-    return phone ? [phone] : [];
-   }));
-   const existingEmails = new Set(accounts.map(account => account.emailBlind));
+   const existingPhones = new Map<string, Set<string | null>>(), existingEmails = new Map<string, Set<string | null>>();
+   for (const account of accounts) {
+    addOwner(existingEmails, account.emailBlind, account.personId);
+    if (account.phoneCiphertext) {
+     const phone = normalizePhone(unseal(account.phoneCiphertext, `phone:${actor.workspaceId}:${account.id}`, this.keyring));
+     if (phone) addOwner(existingPhones, phone, account.personId);
+    }
+   }
    for (const row of plan.rows) {
-    // A person may legitimately gain an account after the shadow import. Replaying
-    // that exact legacy link must not be mistaken for a new-person collision.
-    if (prior.has(row.legacyId)) continue;
-    requireThat(!row.normalizedPhone || !existingPhones.has(row.normalizedPhone), "IMPORT_ACCOUNT_ENDPOINT_COLLISION");
-    requireThat(!row.normalizedEmail || !existingEmails.has(blindEmail(row.normalizedEmail, this.lookupKey)), "IMPORT_ACCOUNT_ENDPOINT_COLLISION");
+    // Exact replay may follow legitimate account creation, but an endpoint now
+    // owned by a different person is never silently accepted as the same lead.
+    const linkedPersonId = prior.get(row.legacyId)?.personId;
+    const phoneOwners = row.normalizedPhone ? existingPhones.get(row.normalizedPhone) : undefined;
+    const emailOwners = row.normalizedEmail ? existingEmails.get(blindEmail(row.normalizedEmail, this.lookupKey)) : undefined;
+    for (const owners of [phoneOwners, emailOwners]) {
+     if (!owners) continue;
+     requireThat(Boolean(linkedPersonId) && [...owners].every(personId => personId === linkedPersonId), "IMPORT_ACCOUNT_ENDPOINT_COLLISION");
+    }
    }
    let created = 0, replayed = 0;
    for (const row of plan.rows) {
@@ -119,14 +125,24 @@ export class NativeShadowImporter {
 }
 
 function profileFromRow(row: ImportRow): CrmProfile {
- const fields = row.protectedPayload.sourceFields;
  const stage = row.protectedPayload.stageText.trim() || "new";
- const nextAction = fields["Next action"]?.trim() || null;
- const rawDate = fields["Next-action date"]?.trim() || "";
- const notes = fields["General sales notes"] ?? "";
+ const nextAction = sourceField(row, "Next action").trim() || null;
+ const rawDate = sourceField(row, "Next-action date").trim();
+ const notes = sourceField(row, "General sales notes");
  requireThat(stage.length <= 120 && (nextAction === null || nextAction.length <= 500) && notes.length <= 5000, "IMPORT_PROFILE_FIELD_TOO_LONG");
  requireThat(!rawDate || dateOnly(rawDate), "IMPORT_INVALID_FOLLOWUP_DATE");
  return { personId: row.suggestedPersonId, stage, nextAction, followUpDate: dateOnly(rawDate) ? rawDate : null, notes, legacyIds: [row.legacyId] };
+}
+
+function sourceField(row: ImportRow, name: string): string {
+ const entry = Object.entries(row.protectedPayload.sourceFields).find(([header]) => header.trim() === name);
+ return entry?.[1] ?? "";
+}
+
+function addOwner(owners: Map<string, Set<string | null>>, endpoint: string, personId: string | null): void {
+ const people = owners.get(endpoint) ?? new Set<string | null>();
+ people.add(personId);
+ owners.set(endpoint, people);
 }
 
 function legacyAad(workspaceId: string, source: SheetSnapshot, leadId: string): string {
