@@ -83,6 +83,7 @@ async function main(){
        n.nspname||'.'||p.proname AS name,p.prosrc AS body,
        p.prolang=(SELECT oid FROM pg_language WHERE lanname='plpgsql') AS plpgsql,
        p.prokind='f' AND p.pronargs=0 AND p.prorettype='trigger'::regtype
+         AND p.provolatile='v' AND p.proparallel='u'
          AND NOT p.prosecdef AND p.proconfig IS NULL AS ordinary
        FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
        WHERE p.pronargs=0 AND ((n.nspname='ls_demo' AND p.proname='prevent_marker_change')
@@ -108,6 +109,38 @@ async function main(){
        FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid
        JOIN pg_namespace n ON n.oid=c.relnamespace
        WHERE n.nspname='ls_contact_ops'`);
+     const tables=await client.query<{permanent:boolean}>(`SELECT count(*)=3
+       AND bool_and(c.relkind='r' AND c.relpersistence='p') AS permanent
+       FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+       WHERE n.nspname='ls_contact_ops'
+         AND c.relname IN ('profiles','legacy_links','command_receipts')`);
+     const foreignKeys=await client.query<{enforced:boolean}>(`SELECT count(*)=5
+       AND bool_and(k.convalidated AND
+         (SELECT count(*)=4 AND bool_and(t.tgenabled IN ('O','A'))
+          FROM pg_trigger t WHERE t.tgconstraint=k.oid)) AS enforced
+       FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid
+       JOIN pg_namespace n ON n.oid=c.relnamespace
+       WHERE n.nspname='ls_contact_ops' AND k.contype='f'`);
+     let referencesSound=false;
+     if(objects.rows[0]?.profiles&&objects.rows[0]?.legacyLinks&&objects.rows[0]?.commandReceipts){
+      const orphaned=await client.query<{sound:boolean}>(`SELECT
+       NOT EXISTS(SELECT 1 FROM ls_contact_ops.profiles p LEFT JOIN ls_identity.people i
+         ON i.workspace_id=p.workspace_id AND i.id=p.person_id
+         WHERE i.id IS NULL) AND
+       NOT EXISTS(SELECT 1 FROM ls_contact_ops.profiles p LEFT JOIN ls_demo.batches b
+         ON b.workspace_id=p.workspace_id AND b.batch_id=p.demo_batch_id
+         WHERE p.demo_batch_id IS NOT NULL AND b.batch_id IS NULL) AND
+       NOT EXISTS(SELECT 1 FROM ls_contact_ops.legacy_links l LEFT JOIN ls_contact_ops.profiles p
+         ON p.workspace_id=l.workspace_id AND p.person_id=l.person_id
+         WHERE p.person_id IS NULL) AND
+       NOT EXISTS(SELECT 1 FROM ls_contact_ops.command_receipts r LEFT JOIN ls_contact_ops.profiles p
+         ON p.workspace_id=r.workspace_id AND p.person_id=r.person_id
+         WHERE p.person_id IS NULL) AND
+       NOT EXISTS(SELECT 1 FROM ls_contact_ops.command_receipts r LEFT JOIN ls_identity.accounts a
+         ON a.workspace_id=r.workspace_id AND a.id=r.actor_account_id
+         WHERE a.id IS NULL) AS sound`);
+      referencesSound=orphaned.rows[0]?.sound===true;
+     }
      await client.query('COMMIT');
      const history:AppliedMigration[]=ledger.rows.map(row=>({name:row.name,checksum:row.checksum}));
      const verified=new Map(functions.rows.map(row=>[row.name,
@@ -117,7 +150,10 @@ async function main(){
        profileFunction:verified.get('ls_contact_ops.require_profile_provenance')===true,
        markerFunction:verified.get('ls_contact_ops.require_marker_compatibility')===true,
        canonicalConstraintDefinition:definitions.rows.length===1&&contactOpsCanonicalConstraint(definitions.rows[0]?.definition),
-       schemaCatalog:contactOpsSchemaCatalogMatches(columns.rows[0]?.catalog,constraints.rows[0]?.catalog)};
+       schemaCatalog:contactOpsSchemaCatalogMatches(columns.rows[0]?.catalog,constraints.rows[0]?.catalog),
+       permanentTables:tables.rows[0]?.permanent===true,
+       foreignKeysEnforced:foreignKeys.rows[0]?.enforced===true,
+       foreignKeyReferencesSound:referencesSound};
      return contactOpsMigrationState(files,history,integrity);
     }catch(error){await client.query('ROLLBACK').catch(()=>undefined);throw error;}
    };
