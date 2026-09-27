@@ -3,15 +3,18 @@
  * current full encrypted backup/restore proof and protected checks. It does
  * not import contacts, switch CRM authority, send messages or change providers.
  *
- * node --import tsx scripts/apply-contact-ops-production.ts --preflight --deployment=<Railway deployment ID>
- * node --import tsx scripts/apply-contact-ops-production.ts --apply --deployment=<same ID>
+ * First obtain an owner-private, authenticated Railway variable readback from
+ * BOTH exact service IDs: SHA-256(app LS_DATABASE_URL) must equal
+ * SHA-256(database service DATABASE_URL). Supply only that verified digest:
+ * node --import tsx scripts/apply-contact-ops-production.ts --preflight --deployment=<Railway deployment ID> --database-binding=<database service ID>:<verified digest>
+ * node --import tsx scripts/apply-contact-ops-production.ts --apply --deployment=<same ID> --database-binding=<same ID>:<same digest>
  */
 import {createHash} from 'node:crypto';
 import {readFile,readdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {Pool} from 'pg';
 import {migrate} from '../src/db/migration-runner.ts';
-import {contactOpsMigrationState,contactOpsProductionTarget,CONTACT_OPS_MIGRATION} from '../src/db/contact-ops-production-guard.ts';
+import {contactOpsMigrationState,contactOpsProductionTarget,CONTACT_OPS_MIGRATION,type ContactOpsIntegrityObjects} from '../src/db/contact-ops-production-guard.ts';
 import type {AppliedMigration,Migration} from '../src/db/migration-plan.ts';
 
 async function migrations():Promise<Migration[]>{
@@ -42,8 +45,17 @@ async function main(){
     await client.query('BEGIN READ ONLY');
     try{
      const ledger=await client.query<{name:string;checksum:string}>('SELECT name,checksum FROM ls_control.migrations ORDER BY name');
-     const objects=await client.query<{profiles:boolean;legacyLinks:boolean}>(`SELECT to_regclass('ls_contact_ops.profiles') IS NOT NULL AS profiles,
-       to_regclass('ls_contact_ops.legacy_links') IS NOT NULL AS "legacyLinks"`);
+     const objects=await client.query<ContactOpsIntegrityObjects>(`SELECT
+       to_regclass('ls_contact_ops.profiles') IS NOT NULL AS profiles,
+       to_regclass('ls_contact_ops.legacy_links') IS NOT NULL AS "legacyLinks",
+       to_regclass('ls_contact_ops.command_receipts') IS NOT NULL AS "commandReceipts",
+       to_regclass('ls_contact_ops.legacy_links_by_person') IS NOT NULL AS "legacyIndex",
+       EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='profile_provenance'
+         AND tgrelid=to_regclass('ls_contact_ops.profiles') AND NOT tgisinternal) AS "profileProvenanceTrigger",
+       EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='contact_person_marker_compatibility'
+         AND tgrelid=to_regclass('ls_demo.records') AND NOT tgisinternal) AS "markerCompatibilityTrigger",
+       EXISTS(SELECT 1 FROM pg_constraint WHERE conname='canonical_demo_person_key'
+         AND conrelid=to_regclass('ls_demo.records')) AS "canonicalPersonConstraint"`);
      await client.query('COMMIT');
      const history:AppliedMigration[]=ledger.rows.map(row=>({name:row.name,checksum:row.checksum}));
      return contactOpsMigrationState(files,history,objects.rows[0]!);
@@ -51,13 +63,13 @@ async function main(){
    };
    const before=await inspect();
    if(target.mode==='preflight'){
-    process.stdout.write(JSON.stringify({code:'CONTACT_OPS_PREFLIGHT_OK',deploymentId:target.deploymentId,migration:CONTACT_OPS_MIGRATION.name,state:before})+'\n');
+    process.stdout.write(JSON.stringify({code:'CONTACT_OPS_PREFLIGHT_OK',deploymentId:target.deploymentId,databaseServiceId:target.databaseServiceId,migration:CONTACT_OPS_MIGRATION.name,state:before})+'\n');
     return;
    }
    const result=before==='pending'?await migrate({query:(sql,values)=>client.query(sql,values?[...values]:undefined)},files,false):{applied:0,pending:0};
    const after=await inspect();
    if(after!=='applied'||result.applied!==(before==='pending'?1:0))throw new Error('CONTACT_OPS_APPLY_READBACK_FAILED');
-   process.stdout.write(JSON.stringify({code:'CONTACT_OPS_SCHEMA_VERIFIED',deploymentId:target.deploymentId,migration:CONTACT_OPS_MIGRATION.name,checksum:CONTACT_OPS_MIGRATION.sha256,applied:result.applied,state:after})+'\n');
+   process.stdout.write(JSON.stringify({code:'CONTACT_OPS_SCHEMA_VERIFIED',deploymentId:target.deploymentId,databaseServiceId:target.databaseServiceId,migration:CONTACT_OPS_MIGRATION.name,checksum:CONTACT_OPS_MIGRATION.sha256,applied:result.applied,state:after})+'\n');
   }finally{client.release();}
  }finally{await pool.end();}
 }
