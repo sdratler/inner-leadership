@@ -42,6 +42,12 @@ async function token(fetcher: typeof fetch, env: Record<string, string | undefin
   return value;
 }
 
+/** Server-only credential for the same existing Google principal used by source reads. */
+export async function contentVoiceAccessToken(fetcher: typeof fetch = fetch,
+  env: Record<string, string | undefined> = process.env): Promise<string> {
+  return token(fetcher, env);
+}
+
 async function metadata(fetcher: typeof fetch, accessToken: string): Promise<DriveMetadata> {
   const url = `https://www.googleapis.com/drive/v3/files/${CONTENT_VOICE_FILE_ID}?fields=id,name,mimeType,modifiedTime,version,size`;
   const response = await fetcher(url, { redirect: "error", cache: "no-store", signal: AbortSignal.timeout(8000),
