@@ -2,7 +2,7 @@ import { afterAll, expect, test, vi } from "vitest";
 import { createHash, randomUUID } from "node:crypto";
 vi.mock("server-only", () => ({}));
 import { fixture, poolStore } from "../calendar/fixture.ts";
-import { seal, unseal } from "../../../src/features/identity/crypto.ts";
+import { blindEmail, seal, unseal } from "../../../src/features/identity/crypto.ts";
 import { NativeShadowImporter, nativeShadowOperatorPermit } from "../../../src/features/contact-ops/server/shadow-import.ts";
 import { crmProfileAad, NativeCrmStore } from "../../../src/features/contact-ops/server/native-store.ts";
 import type { SheetSnapshot } from "../../../src/features/contact-ops/server/import-plan.ts";
@@ -27,7 +27,10 @@ test("operator preflight checks new synthetic rows without writing them", async 
  const original = process.argv[1];
  const keys = ["LS_NATIVE_SHADOW_IMPORT_APPROVED", "RAILWAY_PROJECT_ID", "RAILWAY_SERVICE_ID", "RAILWAY_ENVIRONMENT_ID"] as const;
  const previous = Object.fromEntries(keys.map(name => [name, process.env[name]]));
+ const originalBlind=await f.pool.query<{email_blind:string}>("SELECT email_blind FROM ls_identity.accounts WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.practitioner.actor.id]);
  try {
+  await f.pool.query("UPDATE ls_identity.accounts SET email_blind=$3 WHERE workspace_id=$1 AND id=$2",
+   [f.workspaceId,f.practitioner.actor.id,blindEmail(`synthetic-${f.practitioner.actor.id}@example.invalid`,lookupKey)]);
   process.argv[1] = "/app/scripts/shadow-import-operator.ts";
   process.env.LS_NATIVE_SHADOW_IMPORT_APPROVED = "true";
   process.env.RAILWAY_PROJECT_ID = "3b756632-1f66-4f75-a016-eabc37aa0d67";
@@ -39,6 +42,8 @@ test("operator preflight checks new synthetic rows without writing them", async 
   const after = await f.pool.query<{n:number}>("SELECT count(*)::integer AS n FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND source_file_id=$2",[f.workspaceId,sourceFileId]);
   expect(after.rows[0]!.n).toBe(before.rows[0]!.n);
  } finally {
+  await f.pool.query("UPDATE ls_identity.accounts SET email_blind=$3 WHERE workspace_id=$1 AND id=$2",
+   [f.workspaceId,f.practitioner.actor.id,originalBlind.rows[0]!.email_blind]);
   if (original === undefined) delete process.argv[1]; else process.argv[1] = original;
   for (const name of keys) if (previous[name] === undefined) delete process.env[name]; else process.env[name] = previous[name]!;
  }
@@ -191,13 +196,21 @@ test("exact operator permit replays the synthetic import without a browser sessi
  const original = process.argv[1];
  const keys = ["LS_NATIVE_SHADOW_IMPORT_APPROVED", "RAILWAY_PROJECT_ID", "RAILWAY_SERVICE_ID", "RAILWAY_ENVIRONMENT_ID"] as const;
  const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+ const originalBlind=await f.pool.query<{email_blind:string}>("SELECT email_blind FROM ls_identity.accounts WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.practitioner.actor.id]);
  try {
+  await f.pool.query("UPDATE ls_identity.accounts SET email_blind=$3 WHERE workspace_id=$1 AND id=$2",
+   [f.workspaceId,f.practitioner.actor.id,blindEmail(`synthetic-${f.practitioner.actor.id}@example.invalid`,lookupKey)]);
   process.argv[1] = "/app/scripts/shadow-import-operator.ts";
   process.env.LS_NATIVE_SHADOW_IMPORT_APPROVED = "true";
   process.env.RAILWAY_PROJECT_ID = "3b756632-1f66-4f75-a016-eabc37aa0d67";
   process.env.RAILWAY_SERVICE_ID = "0267d061-f3ce-4a0a-82d4-ce133e4501e9";
   process.env.RAILWAY_ENVIRONMENT_ID = "dd91bd71-57cc-45e6-a75b-8c858491d7c7";
   const permit = nativeShadowOperatorPermit();
+  const wrongLookup=new NativeShadowImporter(poolStore(f.pool),f.keyring,Buffer.alloc(32,7),key,sourceFileId,sheetId);
+  await expect(wrongLookup.importNewPeopleAsOperator(f.workspaceId,snapshot(),decide(snapshot()),permit)).rejects.toThrow("IMPORT_OPERATOR_CRYPTO_KEYS_INVALID");
+  const wrongRing={activeKeyId:f.keyring.activeKeyId,keys:{...f.keyring.keys,[f.keyring.activeKeyId]:Buffer.alloc(32,7)}};
+  const wrongDataKey=new NativeShadowImporter(poolStore(f.pool),wrongRing,lookupKey,key,sourceFileId,sheetId);
+  await expect(wrongDataKey.importNewPeopleAsOperator(f.workspaceId,snapshot(),decide(snapshot()),permit)).rejects.toThrow("IMPORT_OPERATOR_CRYPTO_KEYS_INVALID");
   await expect(importer.importNewPeopleAsOperator(f.workspaceId, snapshot(), decide(snapshot()), Symbol("forged"))).rejects.toThrow("IMPORT_OPERATOR_NOT_ADMITTED");
   await expect(importer.preflightNewPeopleAsOperator(f.workspaceId, snapshot(), decide(snapshot()), Symbol("forged"))).rejects.toThrow("IMPORT_OPERATOR_NOT_ADMITTED");
   const mixed=snapshot([one,["LS-LEAD-synthetic-mixed","Synthetic replacement","+15555550999","","New inquiry","Call","","Synthetic note"]]);
@@ -217,6 +230,8 @@ test("exact operator permit replays the synthetic import without a browser sessi
   delete process.env.LS_NATIVE_SHADOW_IMPORT_APPROVED;
   await expect(importer.importNewPeopleAsOperator(f.workspaceId, snapshot(), decide(snapshot()), permit)).rejects.toThrow("IMPORT_OPERATOR_NOT_ADMITTED");
  } finally {
+  await f.pool.query("UPDATE ls_identity.accounts SET email_blind=$3 WHERE workspace_id=$1 AND id=$2",
+   [f.workspaceId,f.practitioner.actor.id,originalBlind.rows[0]!.email_blind]);
   if (original === undefined) delete process.argv[1];
   else process.argv[1] = original;
   for (const key of keys) {

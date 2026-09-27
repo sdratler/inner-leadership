@@ -71,11 +71,20 @@ export class NativeShadowImporter {
  }
 
  private async authorizeOperator(tx: SqlSession, workspaceId: WorkspaceId): Promise<void> {
-   const owners = await tx.query<{id:string;role:"practitioner";state:"active";emailVerifiedAt:Date|null}>(
-    `SELECT id,role,state,email_verified_at AS "emailVerifiedAt" FROM ls_identity.accounts
+   const owners = await tx.query<{id:string;role:"practitioner";state:"active";emailVerifiedAt:Date|null;emailCiphertext:string;emailBlind:string}>(
+    `SELECT id,role,state,email_verified_at AS "emailVerifiedAt",email_ciphertext AS "emailCiphertext",email_blind AS "emailBlind" FROM ls_identity.accounts
      WHERE workspace_id=$1 AND role='practitioner' AND state='active'`, [workspaceId]);
    requireThat(owners.length === 1 && Boolean(owners[0]?.emailVerifiedAt), "IMPORT_OPERATOR_ACCOUNT_REQUIRES_REVIEW");
    requireThat(await demoAccountBatch(tx, workspaceId, owners[0]!.id) === null, "IMPORT_DEMO_OPERATOR_FORBIDDEN");
+   // Before any first import can write under these runtime keys, prove both the
+   // active data key and lookup key against an existing verified account.
+   try {
+    const account=owners[0]!;
+    const envelope=JSON.parse(account.emailCiphertext) as {kid?:unknown};
+    requireThat(envelope.kid === this.keyring.activeKeyId, "IMPORT_OPERATOR_CRYPTO_KEYS_INVALID");
+    const email=unseal(account.emailCiphertext,`email:${workspaceId}:${account.id}`,this.keyring);
+    requireThat(blindEmail(email,this.lookupKey) === account.emailBlind, "IMPORT_OPERATOR_CRYPTO_KEYS_INVALID");
+   } catch { throw new Error("IMPORT_OPERATOR_CRYPTO_KEYS_INVALID"); }
  }
 
  private async importAuthorized(workspaceId: WorkspaceId, snapshot: SheetSnapshot, dispositions: readonly NewPersonDisposition[], authorize: (tx: SqlSession) => Promise<void>, apply = true): Promise<ShadowImportResult> {
