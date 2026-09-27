@@ -156,16 +156,22 @@ export class NativeShadowImporter {
     const linked = prior.get(row.legacyId);
     if (linked) {
      requireThat(linked.personId === row.suggestedPersonId && linked.rowDigest === row.rowDigest && linked.sourceRevision === snapshot.revision, "IMPORT_EXISTING_LINK_CONFLICT");
+     const person = await tx.query<{kind:string;profileCiphertext:string}>(
+      'SELECT kind,profile_ciphertext AS "profileCiphertext" FROM ls_identity.people WHERE workspace_id=$1 AND id=$2 FOR UPDATE',
+      [workspaceId,linked.personId]);
+     requireThat(person.length === 1 && person[0]?.kind === "adult", "IMPORT_REPLAY_PERSON_MISSING");
      const existing = await tx.query<{payloadCiphertext:string;recordMode:string;demoBatchId:string|null}>(
       'SELECT payload_ciphertext AS "payloadCiphertext",record_mode AS "recordMode",demo_batch_id AS "demoBatchId" FROM ls_contact_ops.profiles WHERE workspace_id=$1 AND person_id=$2 FOR UPDATE',
       [workspaceId,linked.personId]);
      requireThat(existing.length === 1 && existing[0]?.recordMode === "live" && existing[0]?.demoBatchId === null,"IMPORT_REPLAY_PROFILE_MISSING");
-     let profile:unknown,storedSnapshot:unknown;
+     let identityProfile:unknown,profile:unknown,storedSnapshot:unknown;
      try {
+      identityProfile=JSON.parse(unseal(person[0]!.profileCiphertext,`person:${workspaceId}:${linked.personId}`,this.keyring));
       profile=JSON.parse(unseal(existing[0]!.payloadCiphertext,crmProfileAad(workspaceId,linked.personId),this.keyring));
       storedSnapshot=JSON.parse(unseal(linked.snapshotCiphertext,legacyAad(workspaceId,snapshot,row.legacyId),this.keyring));
      } catch { throw new Error("IMPORT_REPLAY_CIPHERTEXT_UNREADABLE"); }
-     requireThat(canonical(profile) === canonical(profileFromRow(row)) &&
+     requireThat(canonical(identityProfile) === canonical({displayName:row.protectedPayload.displayName}) &&
+      canonical(profile) === canonical(profileFromRow(row)) &&
       canonical(storedSnapshot) === canonical({sourceRow:row.sourceRow,payload:row.protectedPayload}),
       "IMPORT_REPLAY_PROTECTED_PAYLOAD_MISMATCH");
      replayed++;

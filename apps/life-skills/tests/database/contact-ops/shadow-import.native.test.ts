@@ -91,6 +91,16 @@ test("native PostgreSQL imports all synthetic rows encrypted in one shadow trans
   await f.pool.query("UPDATE ls_contact_ops.profiles SET payload_ciphertext=$3 WHERE workspace_id=$1 AND person_id=$2",
    [f.workspaceId,linkedPersonId,replayTarget.payload_ciphertext]);
  }
+ const originalPerson = await f.pool.query<{profile_ciphertext:string}>(
+  "SELECT profile_ciphertext FROM ls_identity.people WHERE workspace_id=$1 AND id=$2",[f.workspaceId,linkedPersonId]);
+ await f.pool.query("UPDATE ls_identity.people SET profile_ciphertext=$3 WHERE workspace_id=$1 AND id=$2",
+  [f.workspaceId,linkedPersonId,seal(JSON.stringify({displayName:"Different synthetic adult"}),`person:${f.workspaceId}:${linkedPersonId}`,f.keyring)]);
+ try {
+  await expect(importer.importNewPeople(f.practitioner.actor,snapshot(),decisions)).rejects.toThrow("IMPORT_REPLAY_PROTECTED_PAYLOAD_MISMATCH");
+ } finally {
+  await f.pool.query("UPDATE ls_identity.people SET profile_ciphertext=$3 WHERE workspace_id=$1 AND id=$2",
+   [f.workspaceId,linkedPersonId,originalPerson.rows[0]!.profile_ciphertext]);
+ }
  expect(await importer.importNewPeople(f.practitioner.actor,snapshot(),decisions)).toEqual({sourceRevision:"synthetic-revision-1",planned:2,created:0,replayed:2});
  const demo = await f.pool.query("SELECT count(*)::integer AS n FROM ls_demo.records WHERE workspace_id=$1 AND entity_kind='person' AND entity_key=ANY($2::text[])", [f.workspaceId, links.rows.map(row => row.person_id)]);
  expect(demo.rows[0].n).toBe(0);
