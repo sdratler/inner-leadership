@@ -56,10 +56,16 @@ async function main(){
        to_regclass('ls_contact_ops.legacy_links_by_person') IS NOT NULL AS "legacyIndex",
        EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='profile_provenance'
          AND tgrelid=to_regclass('ls_contact_ops.profiles') AND NOT tgisinternal
-         AND tgenabled IN ('O','A')) AS "profileProvenanceTrigger",
+         AND tgenabled IN ('O','A')
+         AND tgfoid=to_regprocedure('ls_contact_ops.require_profile_provenance()')) AS "profileProvenanceTrigger",
        EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='contact_person_marker_compatibility'
          AND tgrelid=to_regclass('ls_demo.records') AND NOT tgisinternal
-         AND tgenabled IN ('O','A')) AS "markerCompatibilityTrigger",
+         AND tgenabled IN ('O','A')
+         AND tgfoid=to_regprocedure('ls_contact_ops.require_marker_compatibility()')) AS "markerCompatibilityTrigger",
+       EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='immutable_demo_record'
+         AND tgrelid=to_regclass('ls_demo.records') AND NOT tgisinternal
+         AND tgenabled IN ('O','A')
+         AND tgfoid=to_regprocedure('ls_demo.prevent_marker_change()')) AS "immutableDemoRecordTrigger",
        EXISTS(SELECT 1 FROM pg_constraint WHERE conname='canonical_demo_person_key'
          AND conrelid=to_regclass('ls_demo.records')) AS "canonicalPersonConstraint"`);
      await client.query('COMMIT');

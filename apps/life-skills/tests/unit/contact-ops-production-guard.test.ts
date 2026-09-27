@@ -16,8 +16,8 @@ const bindingHash=createHash('sha256').update(good.LS_DATABASE_URL).digest('hex'
 const args=['--apply',`--deployment=${deployment}`,`--database-binding=354b5343-9e83-45a7-b764-09396f14ae29:${bindingHash}`];
 const prior={name:'0100_ls_demo_prospect_marker_gate.sql',checksum:'0'.repeat(64),sql:'SELECT 1;'};
 const next={name:CONTACT_OPS_MIGRATION.name,checksum:CONTACT_OPS_MIGRATION.sha256,sql:'CREATE SCHEMA ls_contact_ops;'};
-const absent:ContactOpsIntegrityObjects={profiles:false,legacyLinks:false,commandReceipts:false,legacyIndex:false,profileProvenanceTrigger:false,markerCompatibilityTrigger:false,canonicalPersonConstraint:false};
-const present:ContactOpsIntegrityObjects={profiles:true,legacyLinks:true,commandReceipts:true,legacyIndex:true,profileProvenanceTrigger:true,markerCompatibilityTrigger:true,canonicalPersonConstraint:true};
+const absent:ContactOpsIntegrityObjects={profiles:false,legacyLinks:false,commandReceipts:false,legacyIndex:false,profileProvenanceTrigger:false,markerCompatibilityTrigger:false,immutableDemoRecordTrigger:true,canonicalPersonConstraint:false};
+const present:ContactOpsIntegrityObjects={profiles:true,legacyLinks:true,commandReceipts:true,legacyIndex:true,profileProvenanceTrigger:true,markerCompatibilityTrigger:true,immutableDemoRecordTrigger:true,canonicalPersonConstraint:true};
 
 describe('registered native CRM production migration gate',()=>{
  it('binds the observed TLS PostgreSQL cluster to the independently read canonical database service',()=>{
@@ -50,6 +50,7 @@ describe('registered native CRM production migration gate',()=>{
  });
  it('requires exactly one pending migration and absent objects before apply',()=>{
   expect(contactOpsMigrationState([prior,next],[prior],absent)).toBe('pending');
+  expect(()=>contactOpsMigrationState([prior,next],[prior],{...absent,immutableDemoRecordTrigger:false})).toThrow('CONTACT_OPS_BASELINE_PROVENANCE_MISSING');
   expect(()=>contactOpsMigrationState([prior,next],[prior],{...absent,profiles:true})).toThrow();
   expect(()=>contactOpsMigrationState([prior,next],[],absent)).toThrow();
  });

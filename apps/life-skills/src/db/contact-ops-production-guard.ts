@@ -22,7 +22,7 @@ const target = {
 export type ContactOpsMigrationMode = 'preflight'|'apply';
 export type ContactOpsIntegrityObjects={
  profiles:boolean;legacyLinks:boolean;commandReceipts:boolean;legacyIndex:boolean;
- profileProvenanceTrigger:boolean;markerCompatibilityTrigger:boolean;canonicalPersonConstraint:boolean;
+ profileProvenanceTrigger:boolean;markerCompatibilityTrigger:boolean;immutableDemoRecordTrigger:boolean;canonicalPersonConstraint:boolean;
 };
 
 export function assertContactOpsDatabaseIdentity(systemIdentifier:unknown,ssl:unknown):void{
@@ -54,11 +54,13 @@ export function contactOpsProductionTarget(env:Record<string,string|undefined>,a
 export function contactOpsMigrationState(files:readonly Migration[],history:readonly AppliedMigration[],objects:ContactOpsIntegrityObjects):'pending'|'applied'{
  if(files.at(-1)?.name!==CONTACT_OPS_MIGRATION.name || files.at(-1)?.checksum!==CONTACT_OPS_MIGRATION.sha256)throw new Error('CONTACT_OPS_MANIFEST_MISMATCH');
  const pending=planMigrations(files,history);
- const expectedKeys=['profiles','legacyLinks','commandReceipts','legacyIndex','profileProvenanceTrigger','markerCompatibilityTrigger','canonicalPersonConstraint'].sort();
+ const expectedKeys=['profiles','legacyLinks','commandReceipts','legacyIndex','profileProvenanceTrigger','markerCompatibilityTrigger','immutableDemoRecordTrigger','canonicalPersonConstraint'].sort();
  if(JSON.stringify(Object.keys(objects).sort())!==JSON.stringify(expectedKeys))throw new Error('CONTACT_OPS_INTEGRITY_READBACK_INVALID');
  const values=Object.values(objects);
  if(values.some(value=>typeof value!=='boolean'))throw new Error('CONTACT_OPS_INTEGRITY_READBACK_INVALID');
- if(pending.length===1 && pending[0]?.name===CONTACT_OPS_MIGRATION.name && values.every(value=>!value))return 'pending';
+ if(!objects.immutableDemoRecordTrigger)throw new Error('CONTACT_OPS_BASELINE_PROVENANCE_MISSING');
+ const newlyCreated=Object.entries(objects).filter(([key])=>key!=='immutableDemoRecordTrigger').map(([,value])=>value);
+ if(pending.length===1 && pending[0]?.name===CONTACT_OPS_MIGRATION.name && newlyCreated.every(value=>!value))return 'pending';
  if(pending.length===0 && values.every(Boolean))return 'applied';
  throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
 }
