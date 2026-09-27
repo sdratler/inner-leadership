@@ -1,7 +1,7 @@
 import "server-only";
 import type { IdentityStore } from "../../identity/store.ts";
 import { blindEmail, seal, unseal, type Keyring } from "../../identity/crypto.ts";
-import { freshActor } from "../../identity/data.ts";
+import { freshActor, lockWorkspace } from "../../identity/data.ts";
 import { systemClock, type Actor, type IdentityClock } from "../../identity/types.ts";
 import { requirePractitioner } from "../../cases/policy.ts";
 import { normalizePhone } from "../core/contact-resolution.js";
@@ -41,6 +41,8 @@ export class NativeShadowImporter {
   requireThat(decisions.size === plan.rows.length && plan.rows.every(row => decisions.has(row.sourceRow)), "IMPORT_DISPOSITION_INCOMPLETE");
   const phones = new Set<string>(), emails = new Set<string>();
   for (const row of plan.rows) {
+   const rawDate = row.protectedPayload.sourceFields["Next-action date"]?.trim() || "";
+   requireThat(!rawDate || dateOnly(rawDate), "IMPORT_INVALID_FOLLOWUP_DATE");
    if (row.normalizedPhone) {
     requireThat(!phones.has(row.normalizedPhone), "IMPORT_SHARED_ENDPOINT_REQUIRES_REVIEW");
     phones.add(row.normalizedPhone);
@@ -52,7 +54,9 @@ export class NativeShadowImporter {
    }
   }
   return this.db.transaction(async tx => {
-   await tx.query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE");
+   // Identity mutations use this row lock. READ COMMITTED lets the account scan
+   // see a mutation that committed while this transaction waited for the lock.
+   await lockWorkspace(tx, actor.workspaceId);
    requirePractitioner(await freshActor(tx, actor, this.clock.now()));
    await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [`${actor.workspaceId}:crm-import:${snapshot.fileId}:${snapshot.sheetId}`]);
    const links = await tx.query<{ legacyId: string; personId: string; rowDigest: string; sourceRevision: string }>(
@@ -121,6 +125,7 @@ function profileFromRow(row: ImportRow): CrmProfile {
  const rawDate = fields["Next-action date"]?.trim() || "";
  const notes = fields["General sales notes"] ?? "";
  requireThat(stage.length <= 120 && (nextAction === null || nextAction.length <= 500) && notes.length <= 5000, "IMPORT_PROFILE_FIELD_TOO_LONG");
+ requireThat(!rawDate || dateOnly(rawDate), "IMPORT_INVALID_FOLLOWUP_DATE");
  return { personId: row.suggestedPersonId, stage, nextAction, followUpDate: dateOnly(rawDate) ? rawDate : null, notes, legacyIds: [row.legacyId] };
 }
 

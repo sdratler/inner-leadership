@@ -25,6 +25,10 @@ describe("native shadow import preflight", () => {
   await expect(importer.importNewPeople(actor, source([["bad-id", "Synthetic", "+15555550111", "", "Prospect"]]), [{ sourceRow: 2, kind: "new_person" }])).rejects.toThrow("IMPORT_PLAN_NEEDS_REVIEW");
   await expect(importer.importNewPeople(actor, { ...source(), complete: false }, [{ sourceRow: 2, kind: "new_person" }])).rejects.toThrow("INCOMPLETE_SNAPSHOT");
  });
+ it("rejects a malformed nonempty follow-up date before any database work", async () => {
+  const bad = { ...source(), headers: [...headers, "Next-action date"], rows: [[...row, "2026-02-31"]] };
+  await expect(importer.importNewPeople(actor, bad, [{ sourceRow: 2, kind: "new_person" }])).rejects.toThrow("IMPORT_INVALID_FOLLOWUP_DATE");
+ });
  it("keeps administrative payment and booking text as unverified source fields", () => {
   const enriched = { ...source(), headers: [...headers, "Payment status", "Booking status"], rows: [[...row, "Paid", "Confirmed"]] };
   const planned = planImport(enriched, actor.workspaceId, "synthetic-shadow-integrity-key-20260927");

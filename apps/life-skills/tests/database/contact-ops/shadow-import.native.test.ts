@@ -75,3 +75,30 @@ test("shadow importer refuses a live account phone collision and preserves the w
  await expect(importer.importNewPeople(f.practitioner.actor, snapshot([one, two, special]), [{ sourceRow: 2, kind: "new_person" }, { sourceRow: 3, kind: "new_person" }, { sourceRow: 4, kind: "new_person" }])).rejects.toThrow("IMPORT_ACCOUNT_ENDPOINT_COLLISION");
  expect((await f.pool.query("SELECT count(*)::integer AS n FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND source_file_id=$2", [f.workspaceId, sourceFileId])).rows[0].n).toBe(2);
 });
+
+test("shadow importer waits for the identity workspace lock and sees a newly committed account phone", async () => {
+ const raceRow = ["LS-LEAD-synthetic-race", "Synthetic race", "+15555550104", "", "New inquiry", "Call", "", "Synthetic note"];
+ const holder = await f.pool.connect();
+ let open = false;
+ try {
+  await holder.query("BEGIN");
+  open = true;
+  await holder.query("SELECT id FROM ls_identity.workspaces WHERE id=$1 FOR UPDATE", [f.workspaceId]);
+  await holder.query("UPDATE ls_identity.accounts SET phone_ciphertext=$3 WHERE workspace_id=$1 AND id=$2", [f.workspaceId, f.parent.actor.id, seal(raceRow[2]!, `phone:${f.workspaceId}:${f.parent.actor.id}`, f.keyring)]);
+  let settled = false;
+  const attempt = importer.importNewPeople(f.practitioner.actor, snapshot([one, two, raceRow]), [{ sourceRow: 2, kind: "new_person" }, { sourceRow: 3, kind: "new_person" }, { sourceRow: 4, kind: "new_person" }])
+   .then(() => ({ ok: true, error: null }), error => ({ ok: false, error: error as Error }))
+   .finally(() => { settled = true; });
+  await new Promise(resolve => setTimeout(resolve, 75));
+  expect(settled).toBe(false);
+  await holder.query("COMMIT");
+  open = false;
+  const result = await attempt;
+  expect(result.ok).toBe(false);
+  expect(result.error?.message).toContain("IMPORT_ACCOUNT_ENDPOINT_COLLISION");
+  expect((await f.pool.query("SELECT count(*)::integer AS n FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND source_file_id=$2", [f.workspaceId, sourceFileId])).rows[0].n).toBe(2);
+ } finally {
+  if (open) await holder.query("ROLLBACK");
+  holder.release();
+ }
+});
