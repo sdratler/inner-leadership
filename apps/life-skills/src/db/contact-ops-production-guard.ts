@@ -13,6 +13,15 @@ export const CONTACT_OPS_SCHEMA_CATALOG = {
  columns:25,constraints:21,
  sha256:'dde228b5f919a09ee668420517817eceb673d9a5764ed3a8552de8f980057222',
 } as const;
+export const CONTACT_OPS_SOURCE_FILES = [
+ 'migrations/0097_ls_demo_provenance.sql',
+ 'migrations/0101_ls_contact_operations.sql',
+ 'migrations/manifest.json',
+ 'scripts/apply-contact-ops-production.ts',
+ 'src/db/contact-ops-production-guard.ts',
+ 'src/db/migration-plan.ts',
+ 'src/db/migration-runner.ts',
+] as const;
 
 const target = {
  projectId: '3b756632-1f66-4f75-a016-eabc37aa0d67',
@@ -70,12 +79,14 @@ export function assertContactOpsDatabaseIdentity(systemIdentifier:unknown,ssl:un
  * continues to reject non-loopback databases. A CLI argument cannot select a
  * different project, service, environment, deployment or database.
  */
-export function contactOpsProductionTarget(env:Record<string,string|undefined>,argv:readonly string[]):{mode:ContactOpsMigrationMode;url:string;deploymentId:string;databaseServiceId:string}{
- if(argv.length!==3 || !['--preflight','--apply'].includes(argv[0]??''))throw new Error('CONTACT_OPS_ARGUMENTS_INVALID');
+export function contactOpsProductionTarget(env:Record<string,string|undefined>,argv:readonly string[]):{mode:ContactOpsMigrationMode;url:string;deploymentId:string;databaseServiceId:string;sourceBundleSha256:string}{
+ if(argv.length!==4 || !['--preflight','--apply'].includes(argv[0]??''))throw new Error('CONTACT_OPS_ARGUMENTS_INVALID');
  const expected=argv[1]?.match(/^--deployment=([0-9a-f-]{36})$/)?.[1];
  if(!expected || env.RAILWAY_DEPLOYMENT_ID!==expected)throw new Error('CONTACT_OPS_DEPLOYMENT_MISMATCH');
  const binding=argv[2]?.match(/^--database-binding=([0-9a-f-]{36}):([a-f0-9]{64})$/);
  if(!binding || binding[1]!==target.databaseServiceId)throw new Error('CONTACT_OPS_DATABASE_BINDING_REQUIRED');
+ const sourceBundleSha256=argv[3]?.match(/^--source-bundle=([a-f0-9]{64})$/)?.[1];
+ if(!sourceBundleSha256)throw new Error('CONTACT_OPS_SOURCE_PROVENANCE_REQUIRED');
  if(env.RAILWAY_PROJECT_ID!==target.projectId || env.RAILWAY_ENVIRONMENT_ID!==target.environmentId || env.RAILWAY_SERVICE_ID!==target.appServiceId || env.LS_APP_ORIGIN!==target.appOrigin)throw new Error('CONTACT_OPS_RAILWAY_TARGET_MISMATCH');
  if(env.LS_DATABASE_TLS!=='verify-full' || !env.LS_DATABASE_CA?.trim())throw new Error('CONTACT_OPS_TLS_REQUIRED');
  let url:URL;
@@ -83,7 +94,20 @@ export function contactOpsProductionTarget(env:Record<string,string|undefined>,a
  if(!['postgres:','postgresql:'].includes(url.protocol)||url.hostname!==target.databaseHost||url.port!=='5432'||url.pathname!==target.databaseName||url.search||url.hash||!url.username||!url.password)throw new Error('CONTACT_OPS_DATABASE_TARGET_MISMATCH');
  const actualDigest=createHash('sha256').update(env.LS_DATABASE_URL!,'utf8').digest('hex');
  if(binding[2]!==actualDigest)throw new Error('CONTACT_OPS_DATABASE_BINDING_MISMATCH');
- return {mode:argv[0]==='--apply'?'apply':'preflight',url:url.toString(),deploymentId:expected,databaseServiceId:target.databaseServiceId};
+ return {mode:argv[0]==='--apply'?'apply':'preflight',url:url.toString(),deploymentId:expected,databaseServiceId:target.databaseServiceId,sourceBundleSha256};
+}
+
+/** The operator compares these bytes with the exact reviewed Git head using
+ * authenticated Railway SSH before invoking the runner. This second check
+ * prevents a different file set from being substituted between readback/run. */
+export function contactOpsSourceBundle(entries:readonly {path:string;bytes:Uint8Array}[]):string{
+ if(entries.length!==CONTACT_OPS_SOURCE_FILES.length||entries.some((entry,index)=>entry.path!==CONTACT_OPS_SOURCE_FILES[index]))throw new Error('CONTACT_OPS_SOURCE_INVENTORY_MISMATCH');
+ const hash=createHash('sha256');
+ for(const entry of entries){
+  const normalized=new TextDecoder('utf-8',{fatal:true}).decode(entry.bytes).replace(/\r\n/g,'\n');
+  hash.update(entry.path).update('\0').update(createHash('sha256').update(normalized).digest('hex')).update('\n');
+ }
+ return hash.digest('hex');
 }
 
 /** No partial/unknown schema and no surprise migration may be promoted. */

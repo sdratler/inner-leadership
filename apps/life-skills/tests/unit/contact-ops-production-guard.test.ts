@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {describe,expect,it} from 'vitest';
-import {assertContactOpsDatabaseIdentity,contactOpsCanonicalConstraint,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,CONTACT_OPS_MIGRATION,type ContactOpsIntegrityObjects} from '../../src/db/contact-ops-production-guard.ts';
+import {assertContactOpsDatabaseIdentity,contactOpsCanonicalConstraint,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,type ContactOpsIntegrityObjects} from '../../src/db/contact-ops-production-guard.ts';
 
 const deployment='a2d9d868-53c4-4fdd-973c-21c4b6b8987d';
 const good={
@@ -13,13 +13,20 @@ const good={
  LS_DATABASE_TLS:'verify-full',LS_DATABASE_CA:'synthetic-ca',
 };
 const bindingHash=createHash('sha256').update(good.LS_DATABASE_URL).digest('hex');
-const args=['--apply',`--deployment=${deployment}`,`--database-binding=354b5343-9e83-45a7-b764-09396f14ae29:${bindingHash}`];
+const args=['--apply',`--deployment=${deployment}`,`--database-binding=354b5343-9e83-45a7-b764-09396f14ae29:${bindingHash}`,`--source-bundle=${'a'.repeat(64)}`];
 const prior={name:'0100_ls_demo_prospect_marker_gate.sql',checksum:'0'.repeat(64),sql:'SELECT 1;'};
 const next={name:CONTACT_OPS_MIGRATION.name,checksum:CONTACT_OPS_MIGRATION.sha256,sql:'CREATE SCHEMA ls_contact_ops;'};
 const absent:ContactOpsIntegrityObjects={profiles:false,legacyLinks:false,commandReceipts:false,legacyIndex:false,profileProvenanceTrigger:false,markerCompatibilityTrigger:false,immutableDemoRecordTrigger:true,profileFunction:false,markerFunction:false,immutableFunction:true,canonicalPersonConstraint:false,canonicalConstraintDefinition:false,schemaCatalog:false,permanentTables:false,foreignKeysEnforced:false,foreignKeyReferencesSound:false,publicRevoked:false};
 const present:ContactOpsIntegrityObjects={profiles:true,legacyLinks:true,commandReceipts:true,legacyIndex:true,profileProvenanceTrigger:true,markerFunction:true,markerCompatibilityTrigger:true,immutableDemoRecordTrigger:true,profileFunction:true,immutableFunction:true,canonicalPersonConstraint:true,canonicalConstraintDefinition:true,schemaCatalog:true,permanentTables:true,foreignKeysEnforced:true,foreignKeyReferencesSound:true,publicRevoked:true};
 
 describe('registered native CRM production migration gate',()=>{
+ it('binds a complete ordered reviewed source-file bundle',()=>{
+  const entries=CONTACT_OPS_SOURCE_FILES.map(path=>({path,bytes:Buffer.from('synthetic\r\n')}));
+  expect(contactOpsSourceBundle(entries)).toMatch(/^[a-f0-9]{64}$/);
+  expect(contactOpsSourceBundle(entries)).toBe(contactOpsSourceBundle(entries.map(entry=>({...entry,bytes:Buffer.from('synthetic\n')}))));
+  expect(contactOpsSourceBundle(entries.map((entry,index)=>index===0?{...entry,bytes:Buffer.from('changed')}:entry))).not.toBe(contactOpsSourceBundle(entries));
+  expect(()=>contactOpsSourceBundle(entries.slice(1))).toThrow('CONTACT_OPS_SOURCE_INVENTORY_MISMATCH');
+ });
  it('compares canonical marker expression and exact migration function bodies',()=>{
   expect(contactOpsCanonicalConstraint("CHECK (((entity_kind <> 'person'::text) OR (entity_key = ((entity_key)::uuid)::text)))")).toBe(true);
   expect(contactOpsCanonicalConstraint('CHECK (true)')).toBe(false);
@@ -39,7 +46,7 @@ describe('registered native CRM production migration gate',()=>{
  });
  it('admits only the exact existing deployment and database for a named mode',()=>{
   expect(contactOpsProductionTarget(good,args)).toMatchObject({mode:'apply',deploymentId:deployment});
-  expect(contactOpsProductionTarget(good,['--preflight',args[1]!,args[2]!]).mode).toBe('preflight');
+  expect(contactOpsProductionTarget(good,['--preflight',args[1]!,args[2]!,args[3]!]).mode).toBe('preflight');
  });
  it.each(['RAILWAY_PROJECT_ID','RAILWAY_ENVIRONMENT_ID','RAILWAY_SERVICE_ID','RAILWAY_DEPLOYMENT_ID'] as const)('rejects a changed %s',key=>{
   expect(()=>contactOpsProductionTarget({...good,[key]:'different'},args)).toThrow();
@@ -47,8 +54,9 @@ describe('registered native CRM production migration gate',()=>{
  it('rejects a different app origin',()=>expect(()=>contactOpsProductionTarget({...good,LS_APP_ORIGIN:'https://other.example'},args)).toThrow());
  it('requires the authenticated canonical database service binding digest',()=>{
   expect(()=>contactOpsProductionTarget(good,args.slice(0,2))).toThrow();
-  expect(()=>contactOpsProductionTarget(good,[args[0]!,args[1]!,`--database-binding=00000000-0000-0000-0000-000000000000:${bindingHash}`])).toThrow();
-  expect(()=>contactOpsProductionTarget(good,[args[0]!,args[1]!,`--database-binding=354b5343-9e83-45a7-b764-09396f14ae29:${'0'.repeat(64)}`])).toThrow();
+  expect(()=>contactOpsProductionTarget(good,args.slice(0,3))).toThrow('CONTACT_OPS_ARGUMENTS_INVALID');
+  expect(()=>contactOpsProductionTarget(good,[args[0]!,args[1]!,`--database-binding=00000000-0000-0000-0000-000000000000:${bindingHash}`,args[3]!])).toThrow();
+  expect(()=>contactOpsProductionTarget(good,[args[0]!,args[1]!,`--database-binding=354b5343-9e83-45a7-b764-09396f14ae29:${'0'.repeat(64)}`,args[3]!])).toThrow();
   expect(()=>contactOpsProductionTarget({...good,LS_DATABASE_URL:'postgresql://test:replacement@postgres.railway.internal:5432/railway'},args)).toThrow('CONTACT_OPS_DATABASE_BINDING_MISMATCH');
  });
  it.each(['postgresql://test:synthetic@other.railway.internal:5432/railway','postgresql://test:synthetic@postgres.railway.internal:5432/other','postgresql://test:synthetic@postgres.railway.internal:5432/railway?sslmode=disable'])('rejects a different database target',url=>{
@@ -58,7 +66,7 @@ describe('registered native CRM production migration gate',()=>{
   expect(()=>contactOpsProductionTarget({...good,LS_DATABASE_TLS:'disable'},args)).toThrow();
   expect(()=>contactOpsProductionTarget({...good,LS_DATABASE_CA:''},args)).toThrow();
   expect(()=>contactOpsProductionTarget(good,[])).toThrow();
-  expect(()=>contactOpsProductionTarget(good,['--apply','--deployment=00000000-0000-0000-0000-000000000000',args[2]!])).toThrow();
+  expect(()=>contactOpsProductionTarget(good,['--apply','--deployment=00000000-0000-0000-0000-000000000000',args[2]!,args[3]!])).toThrow();
  });
  it('requires exactly one pending migration and absent objects before apply',()=>{
   expect(contactOpsMigrationState([prior,next],[prior],absent)).toBe('pending');

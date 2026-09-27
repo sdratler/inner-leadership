@@ -6,15 +6,17 @@
  * First obtain an owner-private, authenticated Railway variable readback from
  * BOTH exact service IDs: SHA-256(app LS_DATABASE_URL) must equal
  * SHA-256(database service DATABASE_URL). Supply only that verified digest:
- * node --import tsx scripts/apply-contact-ops-production.ts --preflight --deployment=<Railway deployment ID> --database-binding=<database service ID>:<verified digest>
- * node --import tsx scripts/apply-contact-ops-production.ts --apply --deployment=<same ID> --database-binding=<same ID>:<same digest>
+ * Compare the seven source files by authenticated Railway SSH with the exact
+ * reviewed Git head; supply that normalized bundle digest on both calls.
+ * node --import tsx scripts/apply-contact-ops-production.ts --preflight --deployment=<Railway deployment ID> --database-binding=<database service ID>:<verified digest> --source-bundle=<reviewed remote digest>
+ * node --import tsx scripts/apply-contact-ops-production.ts --apply --deployment=<same ID> --database-binding=<same ID>:<same digest> --source-bundle=<same reviewed digest>
  */
 import {createHash} from 'node:crypto';
 import {readFile,readdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {Pool} from 'pg';
 import {migrate} from '../src/db/migration-runner.ts';
-import {assertContactOpsDatabaseIdentity,contactOpsCanonicalConstraint,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,CONTACT_OPS_MIGRATION,type ContactOpsIntegrityObjects} from '../src/db/contact-ops-production-guard.ts';
+import {assertContactOpsDatabaseIdentity,contactOpsCanonicalConstraint,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,type ContactOpsIntegrityObjects} from '../src/db/contact-ops-production-guard.ts';
 import type {AppliedMigration,Migration} from '../src/db/migration-plan.ts';
 
 async function migrations():Promise<Migration[]>{
@@ -35,6 +37,9 @@ async function migrations():Promise<Migration[]>{
 
 async function main(){
  const target=contactOpsProductionTarget(process.env,process.argv.slice(2));
+ const appRoot=new URL('../',import.meta.url);
+ const sourceEntries=await Promise.all(CONTACT_OPS_SOURCE_FILES.map(async path=>({path,bytes:await readFile(new URL(path,appRoot))})));
+ if(contactOpsSourceBundle(sourceEntries)!==target.sourceBundleSha256)throw new Error('CONTACT_OPS_SOURCE_PROVENANCE_MISMATCH');
  const files=await migrations();
  if(files.at(-1)?.name!==CONTACT_OPS_MIGRATION.name)throw new Error('CONTACT_OPS_NOT_LAST_MIGRATION');
  const functionBodies=new Map([
@@ -130,6 +135,12 @@ async function main(){
          LATERAL aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) acl
          WHERE n.nspname='ls_contact_ops' AND c.relname IN
            ('profiles','legacy_links','command_receipts') AND acl.grantee=0) AND
+       NOT EXISTS(SELECT 1 FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid
+         JOIN pg_namespace n ON n.oid=c.relnamespace,
+         LATERAL aclexplode(coalesce(a.attacl,ARRAY[]::aclitem[])) acl
+         WHERE n.nspname='ls_contact_ops' AND c.relname IN
+           ('profiles','legacy_links','command_receipts')
+           AND a.attnum>0 AND NOT a.attisdropped AND acl.grantee=0) AND
        NOT EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace,
          LATERAL aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) acl
          WHERE n.nspname='ls_contact_ops' AND p.proname IN
