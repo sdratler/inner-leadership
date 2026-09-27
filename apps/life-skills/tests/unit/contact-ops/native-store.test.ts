@@ -16,6 +16,7 @@ function fixture(){
   const before={cipher:state.cipher,version:state.version,recordMode:state.recordMode,receipts:new Map(state.receipts)};
   try{return await fn({async query<R extends object=Record<string,unknown>>(sql:string,values:readonly unknown[]=[]):Promise<R[]>{
    state.statements.push(sql);
+   if(sql.startsWith("SELECT id FROM ls_identity.workspaces WHERE id=$1 FOR UPDATE"))return [{id:actor.workspaceId}] as R[];
    if(sql.startsWith("SELECT a.id FROM ls_identity.sessions"))return (state.sessionActive?[{id:actor.id}]:[]) as R[];
    if(sql.includes("FROM ls_identity.accounts a"))return [{id:actor.id,workspaceId:actor.workspaceId,personId:actor.personId,role:state.accountRole,state:state.accountState,locale:"en"}] as R[];
    if(sql.includes("pg_advisory_xact_lock"))return [];
@@ -37,6 +38,7 @@ describe("native CRM profile candidate with existing encrypted store",()=>{
   expect(await store.create(actor,profile,"create-op")).toEqual({version:1,replayed:false});
   expect(state.cipher).not.toContain(profile.notes);
   expect(state.recordMode).toBe("live");
+  expect(state.statements.some(sql=>sql.includes("ls_identity.workspaces WHERE id=$1 FOR UPDATE"))).toBe(true);
   expect(await store.create(actor,profile,"create-op")).toEqual({version:1,replayed:true});
   await expect(store.create(actor,{...profile,notes:"other"},"create-op")).rejects.toThrow("OPERATION_REUSED_WITH_DIFFERENT_INPUT");
   await expect(store.create(actor,profile,"other-op")).rejects.toThrow("PROFILE_ALREADY_EXISTS");
