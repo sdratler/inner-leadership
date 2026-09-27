@@ -11,7 +11,17 @@ export async function readProspectJourneys(store:IdentityStore,workspaceId:strin
  if(leadIds.some(id=>typeof id!=="string"))throw new Error("INVALID_CRM_LEAD_IDS");
  const rows=await store.transaction(tx=>tx.query<{leadId:string;state:string;paymentVerified:boolean;bookingConfirmed:boolean}>(
   `SELECT j.stable_lead_ref AS "leadId",j.state,
-    j.confirmed_appointment_id IS NOT NULL AS "bookingConfirmed",
+    EXISTS (
+      WITH RECURSIVE linked AS (
+        SELECT id,status FROM ls_calendar.appointments
+        WHERE workspace_id=j.workspace_id AND id=j.confirmed_appointment_id
+        UNION
+        SELECT replacement.id,replacement.status FROM ls_calendar.appointments replacement
+        JOIN linked prior ON replacement.original_id=prior.id
+        WHERE replacement.workspace_id=j.workspace_id
+      )
+      SELECT 1 FROM linked WHERE status IN ('scheduled','completed')
+    ) AS "bookingConfirmed",
     EXISTS(SELECT 1 FROM ls_onboarding.payment_allocations a
       WHERE a.workspace_id=j.workspace_id AND a.order_id=j.first_session_order_id
       AND NOT EXISTS(SELECT 1 FROM ls_onboarding.payment_reversals r

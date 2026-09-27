@@ -17,7 +17,10 @@ describe("CRM journey projection",()=>{
   }})};
   const result=await readProspectJourneys(store,"workspace",["LS-LEAD-a","LS-LEAD-b"]);
   expect(statement).toContain("jsonb_array_elements_text($2::jsonb)");
-  expect(statement).toContain('j.confirmed_appointment_id IS NOT NULL AS "bookingConfirmed"');
+  expect(statement).toContain("WITH RECURSIVE linked AS");
+  expect(statement).toContain("id=j.confirmed_appointment_id");
+  expect(statement).toContain("replacement.original_id=prior.id");
+  expect(statement).toContain("status IN ('scheduled','completed')");
   expect(values).toEqual(["workspace",'["LS-LEAD-a","LS-LEAD-b"]']);
   expect(result.get("LS-LEAD-a")).toEqual({journeyState:"active",paymentVerified:true,bookingConfirmed:true});
   expect(result.get("LS-LEAD-b")).toEqual({journeyState:"payment_verified",paymentVerified:true,bookingConfirmed:false});
