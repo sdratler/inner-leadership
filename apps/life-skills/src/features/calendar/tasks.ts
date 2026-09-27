@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
 import { AppError } from '../../lib/errors.ts';
 import { asId, type Id, type CaseId } from '../../lib/ids.ts';
 import type { Actor } from '../identity/types.ts';
@@ -30,7 +30,12 @@ const columns=`id,case_id AS "caseId",title_ciphertext AS "titleCiphertext",note
 
 /** Practitioner-only, internal work. No outbox, invoice, booking or provider call. */
 export class InternalTaskService {
- constructor(readonly db:CalendarStore){}
+ constructor(readonly db:CalendarStore,readonly digestKey:Buffer){
+  if(digestKey.length!==32)throw new AppError('UNAVAILABLE');
+ }
+ private sourceDigest(value:unknown):string {
+  return createHmac('sha256',this.digestKey).update(JSON.stringify(['life-skills-task-source-v1',value])).digest('hex');
+ }
  private view(c:TransactionContext,row:TaskRow):InternalTask {
   const id=asId(row.id,'task');
   return {id,caseId:row.caseId,title:this.db.decrypt(c,'task-title',id,row.titleCiphertext),
@@ -99,7 +104,7 @@ export class InternalTaskService {
    const result={created:0,updated:0,resolved:0,unchanged:0};
    for(const row of rows){
     if(await demoRecordBatch(c.tx,c.workspace,'prospect',row.leadId)){result.unchanged++;continue;}
-    const digest=createHash('sha256').update(`${c.workspace}:crm_followup:${row.leadId}`).digest('hex');
+    const digest=this.sourceDigest({workspace:c.workspace,kind:'crm_followup',leadId:row.leadId});
     const existing=await one<SourceTaskRow>(c.tx,`SELECT ${columns},source_revision AS "sourceRevision" FROM ls_calendar.tasks
      WHERE workspace_id=$1 AND source_kind='crm_followup' AND source_digest=$2`,[c.workspace,digest]);
     const dueDate=crmDueCivilDate(row.dueDate),title=row.nextAction?.trim()??'';
@@ -115,8 +120,11 @@ export class InternalTaskService {
      WHERE workspace_id=$1 AND id=$2 AND practitioner_account_id=$3`,[c.workspace,candidate,c.actor.id]):null;
     const linkedCaseId=assigned?candidate:null;
     if(linkedCaseId&&await demoCaseBatch(c.tx,c.workspace,linkedCaseId)){result.unchanged++;continue;}
-    const clippedTitle=title.slice(0,140);
-    const revision=createHash('sha256').update(JSON.stringify({dueDate:dueDate??'',title:clippedTitle,active,sourcePath,caseId:linkedCaseId})).digest('hex');
+    // The previous CRM card named the person. Keep that identity visible in the
+    // encrypted task title so identical actions remain distinguishable.
+    const person=(typeof row.name==='string'&&row.name.trim()?row.name.trim():row.leadId).slice(0,64);
+    const clippedTitle=`${person} · ${title}`.slice(0,140);
+    const revision=this.sourceDigest({dueDate:dueDate??'',title:clippedTitle,active,sourcePath,caseId:linkedCaseId});
     if(!existing){
      if(!active){result.unchanged++;continue;}
      const id=asId(randomUUID(),'task');

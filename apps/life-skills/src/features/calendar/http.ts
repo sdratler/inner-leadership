@@ -39,7 +39,7 @@ export async function handleCalendar(request:Request,path:readonly string[]):Pro
   if(request.method==='POST' && path[0]==='appointments' && path[2]==='notice'){
    earlyNotice=await readJson(request,noticeSchema);receivedAt=new Date();
   }
-  const {identity,service}=await calendarRuntime(),tasks=new InternalTaskService(service.db),token=sessionToken(request.headers);
+  const {identity,service}=await calendarRuntime(),tasks=new InternalTaskService(service.db,identity.config.lookupKey),token=sessionToken(request.headers);
   if(request.method!=='GET')verifyMutationOrigin(request,identity.config.origin);
   const actor=await identity.services.sessions.actor(token);verifiedActor=actor;audit=identity.services.audit;
   if((actor.role==='adult_client'||actor.role==='child')&&request.method!=='GET')throw new AppError('FORBIDDEN');
