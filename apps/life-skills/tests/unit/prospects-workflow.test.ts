@@ -1,6 +1,6 @@
 import {readFileSync} from "node:fs";
 import {describe,expect,it,vi} from "vitest";
-import {visibleClientCases,workflowDestination} from "../../src/features/prospects/client.tsx";
+import {paginateDirectory,visibleClientCases,workflowDestination} from "../../src/features/prospects/client.tsx";
 import {activeProspect,paidAwaitingBooking} from "../../src/features/prospects/view-state.ts";
 import {sendProspectMessage} from "../../src/features/prospects/bridge.ts";
 import type {IdentityStore} from "../../src/features/identity/store.ts";
@@ -63,4 +63,11 @@ describe("live intake follow-up contract",()=>{
    expect(result.receipt.providerMessageId).toBe("test-id");
   }finally{vi.unstubAllGlobals();vi.unstubAllEnvs();}
  });
+});
+
+it('paginates the entire sorted People result rather than only one source', () => {
+ const combined=Array.from({length:14},(_,index)=>`person-${index+1}`);
+ expect(paginateDirectory(combined,1).items).toEqual(combined.slice(0,12));
+ expect(paginateDirectory(combined,2)).toEqual({items:combined.slice(12),page:2,pages:2});
+ expect(paginateDirectory(combined,99)).toEqual({items:combined.slice(12),page:2,pages:2});
 });

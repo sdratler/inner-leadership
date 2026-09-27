@@ -20,7 +20,7 @@ const hook = vi.hoisted(() => {
   flushEffects() { for (const next of pending.splice(0)) { const slot = slots[next.index]; if (slot?.kind === 'effect') { slot.cleanup?.(); slot.cleanup = next.effect() || undefined; } } },
   unmount() { mounted = false; for (const slot of slots) if (slot.kind === 'effect') slot.cleanup?.(); },
   afterUnmountUpdates: () => afterUnmountUpdates,
-  useState<T>(initial: T) { const index = cursor++; let slot = slots[index]; if (!slot) { slot = { kind: 'state', value: initial }; slots[index] = slot; } if (slot.kind !== 'state') throw new Error('HOOK_ORDER'); return [slot.value as T, (value: T) => { if (!mounted) { afterUnmountUpdates++; return; } slot.value = value; }] as const; },
+  useState<T>(initial: T) { const index = cursor++; let slot = slots[index]; if (!slot) { slot = { kind: 'state', value: initial }; slots[index] = slot; } if (slot.kind !== 'state') throw new Error('HOOK_ORDER'); return [slot.value as T, (value: T | ((current: T) => T)) => { if (!mounted) { afterUnmountUpdates++; return; } slot.value = typeof value === 'function' ? (value as (current: T) => T)(slot.value as T) : value; }] as const; },
   useRef<T>(initial: T) { const index = cursor++; let slot = slots[index]; if (!slot) { slot = { kind: 'ref', value: { current: initial } }; slots[index] = slot; } if (slot.kind !== 'ref') throw new Error('HOOK_ORDER'); return slot.value as { current: T }; },
   useMemo<T>(factory: () => T) { cursor++; return factory(); },
   useEffect(effect: () => void | (() => void), deps?: readonly unknown[]) { const index = cursor++; const slot = slots[index]; if (!slot) { slots[index] = { kind: 'effect', deps, cleanup: undefined }; pending.push({ index, effect }); return; } if (slot.kind !== 'effect') throw new Error('HOOK_ORDER'); if (changed(slot.deps, deps)) { slot.deps = deps; pending.push({ index, effect }); } },
@@ -167,5 +167,91 @@ it('shows one searchable People list without hiding a linked child case or dupli
   expect(text(output)).toContain('Synthetic case A');
   expect(find(output, element => element.props.className === 'lsu-people-results')).toBeDefined();
   expect(find(output, element => element.props.role === 'tablist')).toBeUndefined();
+ } finally { vi.unstubAllGlobals(); }
+});
+
+it('paginates cases and prospects together without repeating cases on the next page', async () => {
+ const cases = Array.from({ length: 13 }, (_, index) => ({ id: `synthetic-case-${index + 1}`, kind: 'minor' as const, state: 'active', displayName: `Synthetic case ${String(index + 1).padStart(2, '0')}` }));
+ const lead = { leadId: 'LS-LEAD-synthetic', caseId: '', name: 'ZZ prospect', phone: '0500000000', stage: 'New inquiry', language: 'he', receivedAt: '2026-09-25T08:00:00Z', dueDate: '', formSent: '', formSubmitted: '', paymentVerified: false, bookingStatus: '', outcome: '', journeyState: '' };
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: [lead] }) }));
+ try {
+  hook.render(() => ProspectsClient({ locale: 'en', embedded: true, clientCases: cases, caseState: 'ready' }));
+  hook.flushEffects(); await tick();
+  let output = hook.render(() => ProspectsClient({ locale: 'en', embedded: true, clientCases: cases, caseState: 'ready' }));
+  let results = find(output, element => element.props.className === 'lsu-people-results');
+  expect(text(results)).toContain('Synthetic case 01');
+  expect(text(results)).not.toContain('Synthetic case 13');
+  expect(text(results)).not.toContain('ZZ prospect');
+  const pagination = find(output, element => element.type === 'nav' && element.props['aria-label'] === 'Page');
+  const next = find(pagination, element => element.type === 'button' && element.props.children === 'Next');
+  expect(next?.props.disabled).toBe(false);
+  (next!.props.onClick as () => void)();
+  output = hook.render(() => ProspectsClient({ locale: 'en', embedded: true, clientCases: cases, caseState: 'ready' }));
+  results = find(output, element => element.props.className === 'lsu-people-results');
+  expect(text(results)).not.toContain('Synthetic case 01');
+  expect(text(results)).toContain('Synthetic case 13');
+  expect(text(results)).toContain('ZZ prospect');
+ } finally { vi.unstubAllGlobals(); }
+});
+
+it('navigates from the visible page when the combined result shrinks', () => {
+ const cases = Array.from({ length: 25 }, (_, index) => ({ id: `synthetic-case-${index + 1}`, kind: 'minor' as const, state: 'active', displayName: `Synthetic case ${String(index + 1).padStart(2, '0')}` }));
+ const view = (rows: typeof cases) => hook.render(() => ProspectsClient({ locale: 'en', embedded: true, showProspects: false, clientCases: rows, caseState: 'ready' }));
+ for (let step = 0; step < 2; step++) {
+  const next = find(find(view(cases), element => element.type === 'nav' && element.props['aria-label'] === 'Page'), element => element.type === 'button' && element.props.children === 'Next');
+  (next!.props.onClick as () => void)();
+ }
+ let output = view(cases.slice(0, 13));
+ let pagination = find(output, element => element.type === 'nav' && element.props['aria-label'] === 'Page');
+ expect(text(pagination)).toContain('Page 2 / 2');
+ const previous = find(pagination, element => element.type === 'button' && element.props.children === 'Previous');
+ (previous!.props.onClick as () => void)();
+ output = view(cases.slice(0, 13));
+ pagination = find(output, element => element.type === 'nav' && element.props['aria-label'] === 'Page');
+ expect(text(pagination)).toContain('Page 1 / 2');
+ expect(text(find(output, element => element.props.className === 'lsu-people-results'))).toContain('Synthetic case 01');
+});
+
+it('keeps ready cases reachable while the CRM request is still loading', async () => {
+ const cases = Array.from({ length: 13 }, (_, index) => ({ id: `synthetic-case-${index + 1}`, kind: 'minor' as const, state: 'active', displayName: `Synthetic case ${String(index + 1).padStart(2, '0')}` }));
+ vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise(() => {})));
+ try {
+  hook.render(() => ProspectsClient({ locale: 'en', embedded: true, clientCases: cases, caseState: 'ready' }));
+  hook.flushEffects(); await tick();
+  let output = hook.render(() => ProspectsClient({ locale: 'en', embedded: true, clientCases: cases, caseState: 'ready' }));
+  expect(text(output)).toContain('Loading the private CRM');
+  const next = find(find(output, element => element.type === 'nav' && element.props['aria-label'] === 'Page'), element => element.type === 'button' && element.props.children === 'Next');
+  expect(next?.props.disabled).toBe(false);
+  (next!.props.onClick as () => void)();
+  output = hook.render(() => ProspectsClient({ locale: 'en', embedded: true, clientCases: cases, caseState: 'ready' }));
+  expect(text(find(output, element => element.props.className === 'lsu-people-results'))).toContain('Synthetic case 13');
+ } finally { vi.unstubAllGlobals(); }
+});
+
+it('keeps ready prospects reachable while client cases are still loading', async () => {
+ const leads = Array.from({ length: 13 }, (_, index) => ({ leadId: `LS-LEAD-synthetic-${index + 1}`, caseId: '', name: `Synthetic lead ${String(index + 1).padStart(2, '0')}`, phone: '0500000000', stage: 'New inquiry', language: 'he', receivedAt: '2026-09-25T08:00:00Z', dueDate: '', formSent: '', formSubmitted: '', paymentVerified: false, bookingStatus: '', outcome: '', journeyState: '' }));
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: leads }) }));
+ try {
+  hook.render(() => ProspectsClient({ locale: 'en', embedded: true, caseState: 'loading' }));
+  hook.flushEffects(); await tick();
+  await vi.waitFor(() => expect(text(hook.render(() => ProspectsClient({ locale: 'en', embedded: true, caseState: 'loading' })))).toContain('Synthetic lead 01'));
+  let output = hook.render(() => ProspectsClient({ locale: 'en', embedded: true, caseState: 'loading' }));
+  const next = find(find(output, element => element.type === 'nav' && element.props['aria-label'] === 'Page'), element => element.type === 'button' && element.props.children === 'Next');
+  expect(next?.props.disabled).toBe(false);
+  (next!.props.onClick as () => void)();
+  output = hook.render(() => ProspectsClient({ locale: 'en', embedded: true, caseState: 'loading' }));
+  expect(text(find(output, element => element.props.className === 'lsu-people-results'))).toContain('Synthetic lead 13');
+ } finally { vi.unstubAllGlobals(); }
+});
+
+it('does not call unavailable private data an empty People directory', async () => {
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 503, json: async () => ({ ok: false, error: { code: 'UNAVAILABLE' } }) }));
+ try {
+  hook.render(() => ProspectsClient({ locale: 'en', embedded: true, caseState: 'error' }));
+  hook.flushEffects(); await tick();
+  await vi.waitFor(() => expect(text(hook.render(() => ProspectsClient({ locale: 'en', embedded: true, caseState: 'error' })))).toContain('The CRM could not be loaded'));
+  const output = hook.render(() => ProspectsClient({ locale: 'en', embedded: true, caseState: 'error' }));
+  expect(text(output)).toContain('The CRM could not be loaded');
+  expect(text(output)).not.toContain('No prospects match these filters');
  } finally { vi.unstubAllGlobals(); }
 });
