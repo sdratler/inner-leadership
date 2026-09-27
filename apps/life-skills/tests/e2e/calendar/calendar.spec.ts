@@ -35,6 +35,12 @@ for(const locale of ['he','en'] as const){
   const response=await page.goto(route);expect(response?.status()).toBe(200);
   await expect(page.getByRole('heading',{name:t.familyTitle,exact:true})).toBeVisible();await expect(page.locator('main.ls-cal')).toHaveAttribute('dir',locale==='he'?'rtl':'ltr');
   await expect(page.locator(`[data-appointment-id="${d.futureId}"]:visible`)).toBeVisible();
+  await expect(page.locator('main.ls-cal .ls-cal-count')).toBeVisible();
+  expect(await page.evaluate(()=>{
+   const calendar=document.querySelector('main.ls-cal .lsw-calendar');
+   const count=document.querySelector('main.ls-cal .ls-cal-count');
+   return Boolean(calendar&&count&&(calendar.compareDocumentPosition(count)&Node.DOCUMENT_POSITION_FOLLOWING));
+  }), 'Calendar precedes the attendance summary in the real parent route').toBe(true);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   await page.keyboard.press('Tab');expect(await page.evaluate(()=>document.activeElement?.tagName)).not.toBe('BODY');
   const denied=await page.request.get('/api/calendar/appointments/'+data.foreignId);expect(denied.status()).toBe(404);expect(await denied.text()).not.toContain('Synthetic case B');
