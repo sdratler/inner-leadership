@@ -12,7 +12,7 @@ import { drainCalendarEventsIsolated } from './relay.ts';
 import { applyCalendarCreditEffect } from '../payments/calendar-consumer.ts';
 import { availabilitySchema, attendanceSchema, bookingSchema, exceptionSchema, listSchema, logisticsSchema, manualNoticeSchema, noticeSchema, replacementSchema, taskCreateSchema, taskListSchema, versionSchema } from './validation.ts';
 import { InternalTaskService } from './tasks.ts';
-import type { z } from 'zod';
+import { z } from 'zod';
 export function routeId<K extends string>(value:string,kind:K){try{return asId(value,kind);}catch{throw new AppError('INVALID_REQUEST');}}
 export function sessionToken(headers:Headers):string {
  const cookies=(headers.get('cookie')??'').split(';').map(v=>v.trim()).filter(v=>v.startsWith(SESSION_COOKIE+'='));
@@ -39,7 +39,7 @@ export async function handleCalendar(request:Request,path:readonly string[]):Pro
   if(request.method==='POST' && path[0]==='appointments' && path[2]==='notice'){
    earlyNotice=await readJson(request,noticeSchema);receivedAt=new Date();
   }
-  const {identity,service}=await calendarRuntime(),tasks=new InternalTaskService(service.db),token=sessionToken(request.headers);
+  const {identity,service}=await calendarRuntime(),tasks=new InternalTaskService(service.db,identity.config.lookupKey),token=sessionToken(request.headers);
   if(request.method!=='GET')verifyMutationOrigin(request,identity.config.origin);
   const actor=await identity.services.sessions.actor(token);verifiedActor=actor;audit=identity.services.audit;
   if((actor.role==='adult_client'||actor.role==='child')&&request.method!=='GET')throw new AppError('FORBIDDEN');
@@ -49,6 +49,13 @@ export async function handleCalendar(request:Request,path:readonly string[]):Pro
   let data:unknown;
   if(request.method==='GET'&&path.length===1&&path[0]==='tasks'){
    const q=readQuery(taskListSchema,query(request,['from','to','caseId']));data=await tasks.list(actor,q.from,q.to,q.caseId);
+  }else if(request.method==='POST'&&path.length===2&&path[0]==='tasks'&&path[1]==='sync-followups'){
+   if(actor.role!=='practitioner')throw new AppError('FORBIDDEN');
+   query(request,[]);await readJson(request,z.object({}).strict());
+   // The browser never supplies CRM rows. Read the existing authoritative bridge
+   // after practitioner authentication and reconcile only internal task records.
+   const {listProspects}=await import('../prospects/bridge.ts');
+   data=await tasks.syncCrmFollowups(actor,await listProspects());
   }else if(request.method==='POST'&&path.length===1&&path[0]==='tasks'){
    query(request,[]);data=await tasks.create(actor,key,await readJson(request,taskCreateSchema));
   }else if(request.method==='POST'&&path.length===3&&path[0]==='tasks'&&path[2]==='complete'){

@@ -86,5 +86,9 @@
   {
     "name": "0102_ls_internal_tasks.sql",
     "sha256": "61a99c4bc62d57eeb63c99de0b4482fcec10b019e128ee4b98abb8e92aeaaa7c"
+  },
+  {
+    "name": "0103_ls_task_sources.sql",
+    "sha256": "190390847c7537ed80a2dd223c961514804f37068c1b672bc051ab5b4ef00f20"
   }
 ]

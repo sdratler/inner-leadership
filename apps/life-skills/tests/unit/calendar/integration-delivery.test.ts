@@ -6,7 +6,7 @@ import { handleCalendar } from '../../../src/features/calendar/http.ts';
 const f=vi.hoisted(()=>({command:vi.fn(),read:vi.fn(),drain:vi.fn(),actor:vi.fn(),audit:vi.fn(),limit:vi.fn()}));
 vi.mock('../../../src/features/calendar/relay.ts',()=>({drainCalendarEventsIsolated:f.drain}));
 vi.mock('../../../src/features/calendar/runtime.ts',()=>({calendarRuntime:async()=>({
- identity:{config:{origin:'https://app.example.test',rateLimitKey:'r'.repeat(64)},services:{
+ identity:{config:{origin:'https://app.example.test',rateLimitKey:'r'.repeat(64),lookupKey:Buffer.alloc(32,9)},services:{
   sessions:{actor:f.actor,csrf:()=> 'c'.repeat(43)},limits:{consume:f.limit},audit:{write:f.audit},
  }},service:{recordAttendance:f.command,receiveNotice:f.command,db:{read:f.read}},
 })}));

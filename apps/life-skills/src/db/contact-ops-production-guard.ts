@@ -9,9 +9,17 @@ export const INTERNAL_TASKS_MIGRATION = {
  name: '0102_ls_internal_tasks.sql',
  sha256: '61a99c4bc62d57eeb63c99de0b4482fcec10b019e128ee4b98abb8e92aeaaa7c',
 } as const;
+export const SOURCE_TASKS_MIGRATION = {
+ name: '0103_ls_task_sources.sql',
+ sha256: '190390847c7537ed80a2dd223c961514804f37068c1b672bc051ab5b4ef00f20',
+} as const;
 export const INTERNAL_TASKS_SCHEMA_CATALOG = {
  columns:20,constraints:13,
  sha256:'f05bc3595900d94aa6e507b2689b21583b34d62393da24848a8f66538a1189c1',
+} as const;
+export const SOURCE_TASKS_SCHEMA_CATALOG = {
+ columns:23,constraints:14,
+ sha256:'7d33ce774d19e7dc9bbf6aca8960b52d7171f6b5de9bffc32b8b5d539963df8d',
 } as const;
 
 /** Catalog fingerprint from 0101 applied to a clean, disposable native PG17
@@ -40,6 +48,7 @@ export const CONTACT_OPS_SOURCE_FILES = [
  'migrations/0097_ls_demo_provenance.sql',
  'migrations/0101_ls_contact_operations.sql',
  'migrations/0102_ls_internal_tasks.sql',
+ 'migrations/0103_ls_task_sources.sql',
  'migrations/manifest.json',
  'scripts/apply-contact-ops-production.ts',
  'src/db/contact-ops-production-guard.ts',
@@ -72,11 +81,17 @@ export type InternalTaskIntegrityObjects={
  tables:boolean;columns:boolean;constraints:boolean;schemaCatalog:boolean;foreignKeys:boolean;
  dueIndex:boolean;historyImmutable:boolean;appendOnlyFunction:boolean;publicRevoked:boolean;
 };
+export type SourceTaskIntegrityObjects={sourceIndex:boolean;baseCatalog:boolean;sourceCatalog:boolean};
 
 export function internalTaskSchemaCatalogMatches(columns:unknown,constraints:unknown):boolean{
  if(!Array.isArray(columns)||columns.length!==INTERNAL_TASKS_SCHEMA_CATALOG.columns||
   !Array.isArray(constraints)||constraints.length!==INTERNAL_TASKS_SCHEMA_CATALOG.constraints)return false;
  return createHash('sha256').update(JSON.stringify({columns,constraints})).digest('hex')===INTERNAL_TASKS_SCHEMA_CATALOG.sha256;
+}
+export function sourceTaskSchemaCatalogMatches(columns:unknown,constraints:unknown):boolean{
+ if(!Array.isArray(columns)||columns.length!==SOURCE_TASKS_SCHEMA_CATALOG.columns||
+  !Array.isArray(constraints)||constraints.length!==SOURCE_TASKS_SCHEMA_CATALOG.constraints)return false;
+ return createHash('sha256').update(JSON.stringify({columns,constraints})).digest('hex')===SOURCE_TASKS_SCHEMA_CATALOG.sha256;
 }
 
 export function contactOpsSchemaCatalogMatches(columns:unknown,constraints:unknown):boolean{
@@ -175,11 +190,11 @@ export function contactOpsSourceBundle(entries:readonly {path:string;bytes:Uint8
 }
 
 /** No partial/unknown schema and no surprise migration may be promoted. */
-export function contactOpsMigrationState(files:readonly Migration[],history:readonly AppliedMigration[],objects:ContactOpsIntegrityObjects,tasks:InternalTaskIntegrityObjects):'pending'|'applied'{
+export function contactOpsMigrationState(files:readonly Migration[],history:readonly AppliedMigration[],objects:ContactOpsIntegrityObjects,tasks:InternalTaskIntegrityObjects,source?:SourceTaskIntegrityObjects):'pending'|'applied'{
  const index=files.findIndex(file=>file.name===CONTACT_OPS_MIGRATION.name);
  if(index<0||files[index]?.checksum!==CONTACT_OPS_MIGRATION.sha256)throw new Error('CONTACT_OPS_MANIFEST_MISMATCH');
  const suffix=files.slice(index+1);
- if(suffix.length>1||suffix.some(file=>file.name!==INTERNAL_TASKS_MIGRATION.name||file.checksum!==INTERNAL_TASKS_MIGRATION.sha256))throw new Error('CONTACT_OPS_MANIFEST_MISMATCH');
+ if(suffix.length>2||suffix.some((file,index)=>file.name!==[INTERNAL_TASKS_MIGRATION,SOURCE_TASKS_MIGRATION][index]?.name||file.checksum!==[INTERNAL_TASKS_MIGRATION,SOURCE_TASKS_MIGRATION][index]?.sha256))throw new Error('CONTACT_OPS_MANIFEST_MISMATCH');
  const pending=planMigrations(files,history);
  const expectedKeys=['profiles','legacyLinks','commandReceipts','legacyIndex','profileProvenanceTrigger','markerCompatibilityTrigger','immutableDemoRecordTrigger','profileFunction','markerFunction','immutableFunction','canonicalPersonConstraint','canonicalConstraintDefinition','schemaCatalog','baselineRecordsCatalog','permanentTables','foreignKeysEnforced','foreignKeyReferencesSound','publicRevoked'].sort();
  if(JSON.stringify(Object.keys(objects).sort())!==JSON.stringify(expectedKeys))throw new Error('CONTACT_OPS_INTEGRITY_READBACK_INVALID');
@@ -192,6 +207,15 @@ export function contactOpsMigrationState(files:readonly Migration[],history:read
  const newTaskValues=Object.entries(tasks).filter(([key])=>key!=='appendOnlyFunction').map(([,value])=>value);
  if(!objects.immutableDemoRecordTrigger||!objects.immutableFunction||!objects.baselineRecordsCatalog)throw new Error('CONTACT_OPS_BASELINE_PROVENANCE_MISSING');
  const newlyCreated=Object.entries(objects).filter(([key])=>!['immutableDemoRecordTrigger','immutableFunction','baselineRecordsCatalog'].includes(key)).map(([,value])=>value);
+ if(suffix.length===2){
+  if(!source||JSON.stringify(Object.keys(source).sort())!==JSON.stringify(['baseCatalog','sourceCatalog','sourceIndex'])||
+   Object.values(source).some(value=>typeof value!=='boolean'))throw new Error('CONTACT_OPS_SOURCE_TASK_READBACK_INVALID');
+  if(pending.length===1&&pending[0]?.name===SOURCE_TASKS_MIGRATION.name&&values.every(Boolean)&&taskValues.every(Boolean)&&
+   source.baseCatalog&&!source.sourceCatalog&&!source.sourceIndex)return 'pending';
+  if(pending.length===0&&values.every(Boolean)&&taskValues.every(Boolean)&&
+   !source.baseCatalog&&source.sourceCatalog&&source.sourceIndex)return 'applied';
+  throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+ }
  if(suffix.length===0 && pending.length===1 && pending[0]?.name===CONTACT_OPS_MIGRATION.name && newlyCreated.every(value=>!value)&&newTaskValues.every(value=>!value))return 'pending';
  if(suffix.length===1 && pending.length===1 && pending[0]?.name===INTERNAL_TASKS_MIGRATION.name && values.every(Boolean)&&newTaskValues.every(value=>!value))return 'pending';
  if(pending.length===0 && values.every(Boolean)&&(suffix.length===0?newTaskValues.every(value=>!value):taskValues.every(Boolean)))return 'applied';

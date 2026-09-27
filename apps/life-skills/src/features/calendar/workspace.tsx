@@ -10,7 +10,7 @@ import { Dialog, openDialog, closeDialog } from '../../ui/workspace/dialogs.tsx'
 import { ErrorState, LoadingState, PageHeader, StatusChip } from '../../ui/workspace/surfaces.tsx';
 import { CalendarShell } from '../../ui/workspace/appointments.tsx';
 import { UnsavedChangesGuard } from '../../ui/workspace/draft-guard.tsx';
-import { calendarRead } from './client.ts';
+import { calendarRead, calendarWrite } from './client.ts';
 import { calendarLoadFailure, type CalendarLoadFailure } from './error-state.ts';
 import { text } from './copy.ts';
 import { civilDate, dateRange, shiftDay, shiftMonth } from './time.ts';
@@ -19,7 +19,7 @@ import type { AppointmentView, SchedulePage } from './types.ts';
 import { useCalendarMutation, useDialogGuard } from './form-support.tsx';
 import { AttendanceForm, BookingForm, NoticeForm, PractitionerActionForm, type CaseChoice, type SaveForm } from './forms.tsx';
 import { CalendarAgenda, CalendarBoard, formatTime, NoticeReceipt } from './views.tsx';
-import { projectCalendarFollowups, type FollowupSource } from './followups.ts';
+import { visibleCalendarFollowups, type FollowupSource } from './followups.ts';
 import type { InternalTask } from './tasks.ts';
 import { IntakeSummaryCard } from '../prospects/summary-card.tsx';
 import { CalendarAttentionSummary } from './attention-summary.tsx';
@@ -36,14 +36,14 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  const [loading,setLoading]=useState(true),[error,setError]=useState<CalendarLoadFailure|null>(null),[caseError,setCaseError]=useState(false),[countError,setCountError]=useState(false),[count,setCount]=useState<number|null>(null);
  const [selected,setSelected]=useState<AppointmentView|null>(null),[dirty,setDirty]=useState(false),[bookingOpen,setBookingOpen]=useState(false),[checkinFor,setCheckinFor]=useState<AppointmentView|null>(null),[bookingNonce,setBookingNonce]=useState(0);
  const [history,setHistory]=useState<HistoryPage|null>(null),[historyError,setHistoryError]=useState(false),[dateInput,setDateInput]=useState(initialDate);
- const [followupRows,setFollowupRows]=useState<FollowupSource[]|null>(null),[followupFailed,setFollowupFailed]=useState(false),[followupRetry,setFollowupRetry]=useState(0),[showFollowups,setShowFollowups]=useState(true);
+ const [followupRows,setFollowupRows]=useState<FollowupSource[]|null>(null),[followupFailed,setFollowupFailed]=useState(false),[followupRetry,setFollowupRetry]=useState(0),[showFollowups,setShowFollowups]=useState(true),[taskSyncFailed,setTaskSyncFailed]=useState(false),[taskSyncReady,setTaskSyncReady]=useState(false);
  const [taskRows,setTaskRows]=useState<InternalTask[]|null>(null),[taskLoadedFor,setTaskLoadedFor]=useState(''),[taskFailed,setTaskFailed]=useState(false),[taskRefresh,setTaskRefresh]=useState(0),[showTasks,setShowTasks]=useState(true);
  const [taskDraft,setTaskDraft]=useState({title:'',dueDate:initialDate,dueTime:'',note:'',sourcePath:'',caseId:initialCaseId}),[taskDirty,setTaskDirty]=useState(false);
  const mutation=useCalendarMutation(locale),generation=useRef(0),date=initialDate,view=initialView;
  const range=dateRange(date,view),basePath=`/${locale}/${practitioner?'app/calendar':role==='adult_client'||role==='child'?'client/calendar':'family/schedule'}`,caseKind=role==='adult_client'?'adult':'minor';
- const followups=practitioner&&showFollowups&&followupRows?projectCalendarFollowups(followupRows,range.dates,caseId):[];
  const taskQueryKey=`${range.from}|${range.to}|${caseId}`;
  const tasks=practitioner&&showTasks&&taskLoadedFor===taskQueryKey&&taskRows?taskRows:[];
+ const followups=practitioner&&showFollowups&&followupRows?visibleCalendarFollowups(followupRows,range.dates,caseId,tasks,taskSyncReady):[];
  const href=(newDate:string,newView:string=view)=>basePath+'?'+new URLSearchParams({date:newDate,view:newView,...(caseId?{caseId}:{}),...(selectedClientContext&&caseId?{context:'client'}:{})});
  const names=Object.fromEntries(cases.map(c=>[c.id,c.displayName]));
  const clearDirty=useCallback(()=>setDirty(false),[]);
@@ -84,8 +84,11 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
   const controller=new AbortController();
   void fetch('/api/prospects',{credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',signal:controller.signal})
    .then(async response=>{const body=await response.json() as {ok?:boolean;data?:FollowupSource[]};if(!response.ok||body.ok!==true||!Array.isArray(body.data))throw new Error('FOLLOWUPS_UNAVAILABLE');return body.data;})
-   .then(rows=>{if(!controller.signal.aborted){setFollowupRows(rows);setFollowupFailed(false);}})
-   .catch(()=>{if(!controller.signal.aborted){setFollowupRows(null);setFollowupFailed(true);}});
+   .then(async rows=>{if(controller.signal.aborted)return;setTaskSyncReady(false);setFollowupRows(rows);setFollowupFailed(false);
+    try{await calendarWrite('tasks/sync-followups',{},crypto.randomUUID());if(!controller.signal.aborted){setTaskRows(null);setTaskLoadedFor('');setTaskSyncReady(true);setTaskSyncFailed(false);setTaskRefresh(value=>value+1);}}
+    catch{if(!controller.signal.aborted){setTaskSyncReady(false);setTaskSyncFailed(true);}}
+   })
+   .catch(()=>{if(!controller.signal.aborted){setTaskSyncReady(false);setFollowupRows(null);setFollowupFailed(true);}});
   return()=>controller.abort();
  },[practitioner,followupRetry]);
  useEffect(()=>{
@@ -123,7 +126,7 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  <form className="ls-cal-period" action={basePath}><Input id="calendar-date" label={t.period} type="date" name="date" required value={dateInput} onChange={e=>setDateInput(e.target.value)}/><input type="hidden" name="view" value={view}/><input type="hidden" name="caseId" value={caseId}/>{selectedClientContext&&caseId&&<input type="hidden" name="context" value="client"/>}<Button type="submit">{t.go}</Button></form>
  {practitioner&&<div className="ls-cal-actions"><Button disabled={mutation.locked||!cases.length} onClick={e=>openBook(e)}>{t.newBooking}</Button><Button variant="secondary" disabled={mutation.locked} onClick={openTask}>{locale==='he'?'+ משימה':'+ Task'}</Button><a className="lsw-button lsw-button--secondary" href={`/${locale}/app/settings/availability?date=${date}`}>{t.availability}</a></div>}</div>
  {practitioner&&<div className="ls-cal-operational"><IntakeSummaryCard locale={locale}/><CalendarAttentionSummary locale={locale} caseId={caseId}/></div>}
- {practitioner&&<div className="ls-cal-layers"><label><input type="checkbox" checked={showTasks} onChange={event=>setShowTasks(event.target.checked)}/> {locale==='he'?'משימות':'Tasks'}</label><label><input type="checkbox" checked={showFollowups} onChange={event=>setShowFollowups(event.target.checked)}/> {locale==='he'?'המשך טיפול בפניות':'Prospect follow-ups'}</label>{taskFailed&&<p role="status">{locale==='he'?'המשימות לא נטענו. הפגישות עדיין מוצגות.':'Tasks could not load. Appointments are still shown.'} <Button variant="quiet" onClick={()=>{setTaskFailed(false);setTaskRefresh(value=>value+1)}}>{locale==='he'?'ניסיון חוזר':'Retry tasks'}</Button></p>}{followupFailed&&<p role="status">{locale==='he'?'המשך הטיפול בפניות לא נטען. הפגישות עדיין מוצגות.':'Prospect follow-ups could not load. Appointments are still shown.'} <Button variant="quiet" onClick={()=>{setFollowupFailed(false);setFollowupRetry(value=>value+1)}}>{locale==='he'?'ניסיון חוזר':'Retry follow-ups'}</Button></p>}</div>}
+ {practitioner&&<div className="ls-cal-layers"><label><input type="checkbox" checked={showTasks} onChange={event=>setShowTasks(event.target.checked)}/> {locale==='he'?'משימות':'Tasks'}</label><label><input type="checkbox" checked={showFollowups} onChange={event=>setShowFollowups(event.target.checked)}/> {locale==='he'?'המשך טיפול בפניות':'Prospect follow-ups'}</label>{taskFailed&&<p role="status">{locale==='he'?'המשימות לא נטענו. הפגישות עדיין מוצגות.':'Tasks could not load. Appointments are still shown.'} <Button variant="quiet" onClick={()=>{setTaskFailed(false);setTaskRefresh(value=>value+1)}}>{locale==='he'?'ניסיון חוזר':'Retry tasks'}</Button></p>}{followupFailed&&<p role="status">{locale==='he'?'המשך הטיפול בפניות לא נטען. הפגישות עדיין מוצגות.':'Prospect follow-ups could not load. Appointments are still shown.'} <Button variant="quiet" onClick={()=>{setFollowupFailed(false);setFollowupRetry(value=>value+1)}}>{locale==='he'?'ניסיון חוזר':'Retry follow-ups'}</Button></p>}{taskSyncFailed&&<p role="status">{locale==='he'?'המשך הטיפול מוצג, אך לא ניתן לעדכן את המשימות המקושרות.':'Follow-ups are visible, but linked tasks could not be synchronized.'} <Button variant="quiet" onClick={()=>setFollowupRetry(value=>value+1)}>{locale==='he'?'ניסיון חוזר':'Retry sync'}</Button></p>}</div>}
  {loading?<LoadingState locale={locale}/>:error==='auth'?<div className="lsw-alert" role="alert"><p>{locale==='he'?'פג תוקף החיבור שלך. יש להיכנס מחדש כדי לפתוח את היומן הפרטי.':'Your session has ended. Sign in to reopen the private calendar.'}</p><a className="lsw-button lsw-button--secondary" href={loginHref(locale,href(date))}>{locale==='he'?'כניסה':'Sign in'}</a></div>:error==='forbidden'?<div className="lsw-alert" role="alert"><p>{locale==='he'?'לחשבון הזה אין הרשאה לצפות ביומן הזה.':'This account is not authorized to view this calendar.'}</p></div>:error?<ErrorState locale={locale} onRetry={()=>void load()}/>:<>{caseError&&<p className="ls-cal-partial" role="status">{locale==='he'?'רשימת הלקוחות אינה זמינה כרגע. המפגשים המורשים עדיין מוצגים; שמות ותיאום חדש עשויים להיות חסרים.':'The client list is unavailable right now. Authorized appointments still appear; names and new booking may be unavailable.'} <Button variant="quiet" onClick={()=>void load()}>{locale==='he'?'ניסיון חוזר':'Retry client list'}</Button></p>}{countError&&<p className="ls-cal-partial" role="status">{locale==='he'?'ספירת המפגשים אינה זמינה כרגע. היומן עדיין מוצג.':'Attendance count is unavailable right now. The calendar is still shown.'}</p>}{!caseError&&!cases.length&&<p role="status">{t.noCases}</p>}<CalendarShell locale={locale} period={new Intl.DateTimeFormat(locale==='he'?'he-IL':'en-GB',{timeZone:'Asia/Jerusalem',month:'long',year:'numeric'}).format(new Date(date+'T12:00Z'))} view={view}
  viewHrefs={{day:href(date,'day'),week:href(date,'week'),month:href(date,'month'),agenda:href(date,'agenda')}} showViewTabs={showCalendarViewTabsInContent(role,selectedClientContext)} todayHref={href(civilDate(new Date().toISOString()))} previousHref={href(view==='month'?shiftMonth(date,-1):shiftDay(date,view==='day'?-1:view==='agenda'?-14:-7))} nextHref={href(view==='month'?shiftMonth(date,1):shiftDay(date,view==='day'?1:view==='agenda'?14:7))}
  desktop={<CalendarBoard dates={range.dates} items={items} followups={followups} tasks={tasks} locale={locale} view={view==='agenda'?'week':view} names={names} onOpen={showAppointment} onCompleteTask={practitioner?completeTask:undefined}/>}
