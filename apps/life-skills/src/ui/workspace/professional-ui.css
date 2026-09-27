@@ -71,6 +71,7 @@
 .lsw.lsu .lsu-sidebar .lsu-nav-link[aria-current=page]{background:#236674;color:#fff}
 .lsw.lsu .lsu-drawer .lsu-nav-link[aria-current=page]{background:#236674;color:#fff}
 .lsw.lsu .lsw-calendar-toolbar button[aria-pressed=true]{background:var(--ui-teal)!important;border-color:var(--ui-teal)!important;color:#fff!important}
+.lsw.lsu .lsw-calendar-toolbar a[aria-current=page]{background:#fff;color:var(--ui-deep);font-weight:750}
 @media(max-width:1023px){
   .lsu-header{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 12px}
   .lsu-brand{grid-column:1;grid-row:1}
