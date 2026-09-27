@@ -8,6 +8,7 @@ import {CalendarBoard} from "../../src/features/calendar/views.tsx";
 import {countCurrentAssignments} from "../../src/features/calendar/attention-summary.tsx";
 import {selectAuthorizedPaymentCase} from "../../src/features/payments/case-selection.ts";
 import {calendarView} from "../../src/features/calendar/time.ts";
+import {showCalendarViewTabsInContent} from "../../src/features/calendar/view-tabs.ts";
 import {paymentSection,paymentVisibleCharges,paymentVisiblePanels} from "../../src/features/payments/sections.ts";
 
 describe("operational workspace navigation",()=>{
@@ -68,6 +69,21 @@ describe("operational workspace navigation",()=>{
   expect(html).toContain("lsw-calendar--agenda");
   expect(html).toContain("Agenda entries");
   expect(html).not.toContain("aria-label=\"Calendar\"");
+ });
+ it("shows the Calendar view switcher exactly where it is needed for each role and context",()=>{
+  expect(showCalendarViewTabsInContent("practitioner",false)).toBe(false);
+  expect(showCalendarViewTabsInContent("practitioner",true)).toBe(true);
+  for(const role of ["parent","adult_client","child"] as const){
+   expect(showCalendarViewTabsInContent(role,false)).toBe(true);
+  }
+  for(const locale of ["en","he"] as const){
+   const other=locale==="en"?"he":"en";
+   const props={locale,role:"practitioner",pathname:`/${locale}/app/calendar`,view:"week",languageHref:`/${other}/app/calendar?view=week`} as React.ComponentProps<typeof WorkspaceShell>;
+   const calendar=React.createElement(CalendarShell,{locale,period:"September 2026",view:"week",viewHrefs:{day:`/${locale}/app/calendar?view=day`,week:`/${locale}/app/calendar?view=week`,month:`/${locale}/app/calendar?view=month`,agenda:`/${locale}/app/calendar?view=agenda`},showViewTabs:showCalendarViewTabsInContent("practitioner",false),todayHref:`/${locale}/app/calendar`,previousHref:`/${locale}/app/calendar?date=2026-09-16`,nextHref:`/${locale}/app/calendar?date=2026-09-30`,desktop:React.createElement("p",null,"Grid"),agenda:React.createElement("p",null,"Agenda")});
+   const html=renderToStaticMarkup(React.createElement(WorkspaceShell,props,calendar));
+   expect(html.match(new RegExp(`href="/${locale}/app/calendar\\?view=week"`,"g"))).toHaveLength(1);
+   expect(html).not.toContain(`aria-label="${locale==="he"?"יומן":"Calendar"}"`);
+  }
  });
  it("counts the latest published assignment version, never a superseded date window",()=>{
   expect(countCurrentAssignments([
