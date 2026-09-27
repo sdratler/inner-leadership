@@ -36,6 +36,7 @@ const DEMO_RECORDS_BASELINE = {
  ] as const,
 } as const;
 export const CONTACT_OPS_SOURCE_FILES = [
+ 'migrations/0030_ls_calendar_attendance_20260907.sql',
  'migrations/0097_ls_demo_provenance.sql',
  'migrations/0101_ls_contact_operations.sql',
  'migrations/0102_ls_internal_tasks.sql',
@@ -69,7 +70,7 @@ export type ContactOpsIntegrityObjects={
 };
 export type InternalTaskIntegrityObjects={
  tables:boolean;columns:boolean;constraints:boolean;schemaCatalog:boolean;foreignKeys:boolean;
- dueIndex:boolean;historyImmutable:boolean;publicRevoked:boolean;
+ dueIndex:boolean;historyImmutable:boolean;appendOnlyFunction:boolean;publicRevoked:boolean;
 };
 
 export function internalTaskSchemaCatalogMatches(columns:unknown,constraints:unknown):boolean{
@@ -113,6 +114,16 @@ export function contactOpsFunctionBody(files:readonly Migration[],migrationName:
  if(start<0||sql!.indexOf(marker,start+marker.length)>=0)throw new Error('CONTACT_OPS_FUNCTION_SOURCE_MISSING');
  const bodyStart=start+marker.length,end=sql!.indexOf('$fn$;',bodyStart);
  if(end<0)throw new Error('CONTACT_OPS_FUNCTION_SOURCE_MISSING');
+ return sql!.slice(bodyStart,end);
+}
+
+export function calendarAppendOnlyFunctionBody(files:readonly Migration[]):string{
+ const sql=files.find(file=>file.name==='0030_ls_calendar_attendance_20260907.sql')?.sql;
+ const marker='CREATE FUNCTION ls_calendar.append_only() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog AS $$';
+ const start=sql?.indexOf(marker)??-1;
+ if(start<0||sql!.indexOf(marker,start+marker.length)>=0)throw new Error('CONTACT_OPS_TASK_FUNCTION_SOURCE_MISSING');
+ const bodyStart=start+marker.length,end=sql!.indexOf('$$;',bodyStart);
+ if(end<0)throw new Error('CONTACT_OPS_TASK_FUNCTION_SOURCE_MISSING');
  return sql!.slice(bodyStart,end);
 }
 
@@ -174,13 +185,15 @@ export function contactOpsMigrationState(files:readonly Migration[],history:read
  if(JSON.stringify(Object.keys(objects).sort())!==JSON.stringify(expectedKeys))throw new Error('CONTACT_OPS_INTEGRITY_READBACK_INVALID');
  const values=Object.values(objects);
  if(values.some(value=>typeof value!=='boolean'))throw new Error('CONTACT_OPS_INTEGRITY_READBACK_INVALID');
- const taskKeys=['tables','columns','constraints','schemaCatalog','foreignKeys','dueIndex','historyImmutable','publicRevoked'].sort();
+ const taskKeys=['tables','columns','constraints','schemaCatalog','foreignKeys','dueIndex','historyImmutable','appendOnlyFunction','publicRevoked'].sort();
  if(JSON.stringify(Object.keys(tasks).sort())!==JSON.stringify(taskKeys)||Object.values(tasks).some(value=>typeof value!=='boolean'))throw new Error('CONTACT_OPS_TASK_READBACK_INVALID');
  const taskValues=Object.values(tasks);
+ if(!tasks.appendOnlyFunction)throw new Error('CONTACT_OPS_TASK_BASELINE_FUNCTION_MISSING');
+ const newTaskValues=Object.entries(tasks).filter(([key])=>key!=='appendOnlyFunction').map(([,value])=>value);
  if(!objects.immutableDemoRecordTrigger||!objects.immutableFunction||!objects.baselineRecordsCatalog)throw new Error('CONTACT_OPS_BASELINE_PROVENANCE_MISSING');
  const newlyCreated=Object.entries(objects).filter(([key])=>!['immutableDemoRecordTrigger','immutableFunction','baselineRecordsCatalog'].includes(key)).map(([,value])=>value);
- if(suffix.length===0 && pending.length===1 && pending[0]?.name===CONTACT_OPS_MIGRATION.name && newlyCreated.every(value=>!value)&&taskValues.every(value=>!value))return 'pending';
- if(suffix.length===1 && pending.length===1 && pending[0]?.name===INTERNAL_TASKS_MIGRATION.name && values.every(Boolean)&&taskValues.every(value=>!value))return 'pending';
- if(pending.length===0 && values.every(Boolean)&&(suffix.length===0?taskValues.every(value=>!value):taskValues.every(Boolean)))return 'applied';
+ if(suffix.length===0 && pending.length===1 && pending[0]?.name===CONTACT_OPS_MIGRATION.name && newlyCreated.every(value=>!value)&&newTaskValues.every(value=>!value))return 'pending';
+ if(suffix.length===1 && pending.length===1 && pending[0]?.name===INTERNAL_TASKS_MIGRATION.name && values.every(Boolean)&&newTaskValues.every(value=>!value))return 'pending';
+ if(pending.length===0 && values.every(Boolean)&&(suffix.length===0?newTaskValues.every(value=>!value):taskValues.every(Boolean)))return 'applied';
  throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
 }

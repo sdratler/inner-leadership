@@ -16,7 +16,7 @@ import {readFile,readdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {Pool} from 'pg';
 import {migrate} from '../src/db/migration-runner.ts';
-import {assertContactOpsDatabaseIdentity,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,internalTaskSchemaCatalogMatches,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,type ContactOpsIntegrityObjects,type InternalTaskIntegrityObjects} from '../src/db/contact-ops-production-guard.ts';
+import {assertContactOpsDatabaseIdentity,calendarAppendOnlyFunctionBody,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,internalTaskSchemaCatalogMatches,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,type ContactOpsIntegrityObjects,type InternalTaskIntegrityObjects} from '../src/db/contact-ops-production-guard.ts';
 import type {AppliedMigration,Migration} from '../src/db/migration-plan.ts';
 
 async function migrations():Promise<Migration[]>{
@@ -271,6 +271,13 @@ async function main(){
        JOIN pg_namespace n ON n.oid=c.relnamespace
        WHERE n.nspname='ls_calendar' AND c.relname IN ('tasks','task_history')
         AND k.contype<>'n'`);
+     const appendOnly=await client.query<{body:string;safe:boolean}>(`SELECT p.prosrc AS body,
+       p.prolang=(SELECT oid FROM pg_language WHERE lanname='plpgsql')
+        AND p.prokind='f' AND p.pronargs=0 AND p.prorettype='trigger'::regtype
+        AND p.provolatile='v' AND p.proparallel='u' AND NOT p.prosecdef
+        AND p.proconfig=ARRAY['search_path=pg_catalog']::text[]
+        AND p.proowner=(SELECT oid FROM pg_roles WHERE rolname=current_user) AS safe
+       FROM pg_proc p WHERE p.oid=to_regprocedure('ls_calendar.append_only()')`);
      let referencesSound=false;
      if(objects.rows[0]?.profiles&&objects.rows[0]?.legacyLinks&&objects.rows[0]?.commandReceipts){
       const orphaned=await client.query<{sound:boolean}>(`SELECT
@@ -307,7 +314,9 @@ async function main(){
        foreignKeyReferencesSound:referencesSound,
        publicRevoked:privileges.rows[0]?.restricted===true};
      const taskIntegrity:InternalTaskIntegrityObjects={...taskObjects.rows[0]!,
-       schemaCatalog:internalTaskSchemaCatalogMatches(taskColumns.rows[0]?.catalog,taskConstraints.rows[0]?.catalog)};
+       schemaCatalog:internalTaskSchemaCatalogMatches(taskColumns.rows[0]?.catalog,taskConstraints.rows[0]?.catalog),
+       appendOnlyFunction:appendOnly.rows.length===1&&appendOnly.rows[0]?.safe===true&&
+        appendOnly.rows[0]?.body===calendarAppendOnlyFunctionBody(files)};
      return contactOpsMigrationState(files,history,integrity,taskIntegrity);
     }catch(error){await client.query('ROLLBACK').catch(()=>undefined);throw error;}
    };
