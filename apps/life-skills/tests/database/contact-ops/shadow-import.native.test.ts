@@ -23,6 +23,27 @@ function snapshot(rows: string[][] = [one, two], fileId = sourceFileId): SheetSn
 }
 function decide(source: SheetSnapshot) { return planImport(source, f.workspaceId, key).rows.map(row => ({ sourceRow: row.sourceRow, sourceRevision: source.revision, legacyId: row.legacyId, rowDigest: row.rowDigest, kind: "new_person" as const })); }
 
+test("operator preflight checks new synthetic rows without writing them", async () => {
+ const original = process.argv[1];
+ const keys = ["LS_NATIVE_SHADOW_IMPORT_APPROVED", "RAILWAY_PROJECT_ID", "RAILWAY_SERVICE_ID", "RAILWAY_ENVIRONMENT_ID"] as const;
+ const previous = Object.fromEntries(keys.map(name => [name, process.env[name]]));
+ try {
+  process.argv[1] = "/app/scripts/shadow-import-operator.ts";
+  process.env.LS_NATIVE_SHADOW_IMPORT_APPROVED = "true";
+  process.env.RAILWAY_PROJECT_ID = "3b756632-1f66-4f75-a016-eabc37aa0d67";
+  process.env.RAILWAY_SERVICE_ID = "0267d061-f3ce-4a0a-82d4-ce133e4501e9";
+  process.env.RAILWAY_ENVIRONMENT_ID = "dd91bd71-57cc-45e6-a75b-8c858491d7c7";
+  const permit = nativeShadowOperatorPermit();
+  const before = await f.pool.query<{n:number}>("SELECT count(*)::integer AS n FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND source_file_id=$2",[f.workspaceId,sourceFileId]);
+  expect(await importer.preflightNewPeopleAsOperator(f.workspaceId,snapshot(),decide(snapshot()),permit)).toEqual({sourceRevision:"synthetic-revision-1",planned:2,wouldCreate:2,replayed:0});
+  const after = await f.pool.query<{n:number}>("SELECT count(*)::integer AS n FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND source_file_id=$2",[f.workspaceId,sourceFileId]);
+  expect(after.rows[0]!.n).toBe(before.rows[0]!.n);
+ } finally {
+  if (original === undefined) delete process.argv[1]; else process.argv[1] = original;
+  for (const name of keys) if (previous[name] === undefined) delete process.env[name]; else process.env[name] = previous[name]!;
+ }
+});
+
 test("native PostgreSQL imports all synthetic rows encrypted in one shadow transaction and exact replay is a no-op", async () => {
  const before = await f.pool.query("SELECT count(*)::integer AS n FROM ls_identity.people WHERE workspace_id=$1", [f.workspaceId]);
  const decisions = decide(snapshot());
@@ -126,6 +147,8 @@ test("exact operator permit replays the synthetic import without a browser sessi
   process.env.RAILWAY_ENVIRONMENT_ID = "dd91bd71-57cc-45e6-a75b-8c858491d7c7";
   const permit = nativeShadowOperatorPermit();
   await expect(importer.importNewPeopleAsOperator(f.workspaceId, snapshot(), decide(snapshot()), Symbol("forged"))).rejects.toThrow("IMPORT_OPERATOR_NOT_ADMITTED");
+  await expect(importer.preflightNewPeopleAsOperator(f.workspaceId, snapshot(), decide(snapshot()), Symbol("forged"))).rejects.toThrow("IMPORT_OPERATOR_NOT_ADMITTED");
+  expect(await importer.preflightNewPeopleAsOperator(f.workspaceId, snapshot(), decide(snapshot()), permit)).toEqual({sourceRevision:"synthetic-revision-1",planned:2,wouldCreate:0,replayed:2});
   expect(await importer.importNewPeopleAsOperator(f.workspaceId, snapshot(), decide(snapshot()), permit)).toEqual({sourceRevision:"synthetic-revision-1",planned:2,created:0,replayed:2});
   const prior = await f.pool.query<{email_verified_at:Date;state:string}>("SELECT email_verified_at,state FROM ls_identity.accounts WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.practitioner.actor.id]);
   // The database correctly forbids an active account without verified email.
@@ -133,6 +156,7 @@ test("exact operator permit replays the synthetic import without a browser sessi
   await f.pool.query("UPDATE ls_identity.accounts SET state='invited',email_verified_at=NULL WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.practitioner.actor.id]);
   try {
    await expect(importer.importNewPeopleAsOperator(f.workspaceId, snapshot(), decide(snapshot()), permit)).rejects.toThrow("IMPORT_OPERATOR_ACCOUNT_REQUIRES_REVIEW");
+   await expect(importer.preflightNewPeopleAsOperator(f.workspaceId, snapshot(), decide(snapshot()), permit)).rejects.toThrow("IMPORT_OPERATOR_ACCOUNT_REQUIRES_REVIEW");
   } finally {
    await f.pool.query("UPDATE ls_identity.accounts SET state=$3,email_verified_at=$4 WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.practitioner.actor.id,prior.rows[0]!.state,prior.rows[0]!.email_verified_at]);
   }

@@ -5,18 +5,23 @@
  */
 import "server-only";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { closeDatabase } from "../src/db/client.ts";
 import { validateDatabaseUrl } from "../src/lib/env/schema.ts";
 import { identityRuntime } from "../src/features/identity/runtime.ts";
 import { NativeShadowImporter, nativeShadowOperatorPermit, type NewPersonDisposition } from "../src/features/contact-ops/server/shadow-import.ts";
 import { planImport, type SheetSnapshot } from "../src/features/contact-ops/server/import-plan.ts";
+import { SHADOW_PLAN_DIGEST, SHADOW_SNAPSHOT_SHA256, SHADOW_WORKBOOK_SHA256, verifyShadowAttestation } from "../src/features/contact-ops/server/shadow-attestation.ts";
 
 const databaseService = "354b5343-9e83-45a7-b764-09396f14ae29";
 const sourceFileId = "1UbbkY6h74L3_sG_m2hcBZ_rmBRLJDO7pYgghrXGdARI";
 const sourceSheetId = 2105699580;
 const systemIdentifier = "7682781321794240577";
+// Pinned from the independently reviewed source tree: every src file and package-lock.json.
+// An unrelated later deployment must fail closed until this one-shot tool is reviewed again.
+const reviewedSourceTreeSha256 = "4761647781245abcf74ce6efbd2ed9aff702790ca0e1532be3fb393420507907";
 
 type Input = {
  snapshot: SheetSnapshot;
@@ -24,8 +29,29 @@ type Input = {
  integrityKey: string;
  expectedSnapshotDigest: string;
  backupSha256: string;
+ workbookSha256: string;
+ snapshotSha256: string;
+ attestationSignature: string;
 };
 function fail(code: string): never { throw new Error(code); }
+async function sourceTreeSha256(): Promise<string> {
+ const appRoot=fileURLToPath(new URL("../",import.meta.url));
+ const files:string[]=[];
+ async function walk(dir:string,relative:string):Promise<void> {
+  for(const entry of await readdir(dir,{withFileTypes:true})) {
+   const name=relative?`${relative}/${entry.name}`:entry.name;
+   if(entry.isDirectory()) await walk(join(dir,entry.name),name);
+   else if(entry.isFile()) files.push(`src/${name}`);
+   else fail("IMPORT_SOURCE_TREE_ENTRY_INVALID");
+  }
+ }
+ await walk(join(appRoot,"src"),"");
+ files.push("package-lock.json");files.sort();
+ const hash=createHash("sha256");
+ for(const path of files) hash.update(path).update("\0")
+  .update((await readFile(join(appRoot,...path.split("/")),"utf8")).replace(/\r\n/g,"\n")).update("\0");
+ return hash.digest("hex");
+}
 function options(argv: string[]) {
  const [mode, ...items] = argv;
  if (mode !== "--preflight" && mode !== "--apply") fail("IMPORT_MODE_REQUIRED");
@@ -65,6 +91,7 @@ async function main() {
   opt.sourceRevision !== `modified-${opt.sourceModifiedAt}`) fail("IMPORT_TARGET_OR_SOURCE_ARGUMENT_INVALID");
  const script = await readFile(fileURLToPath(import.meta.url));
  if (createHash("sha256").update(script).digest("hex") !== opt.operatorSha256) fail("IMPORT_OPERATOR_SOURCE_MISMATCH");
+ if (await sourceTreeSha256() !== reviewedSourceTreeSha256) fail("IMPORT_REVIEWED_SOURCE_TREE_MISMATCH");
  const url = process.env.LS_DATABASE_URL;
  if (!url || process.env.LS_DATABASE_TLS !== "verify-full" || !process.env.LS_DATABASE_CA) fail("IMPORT_DATABASE_CONFIGURATION_INVALID");
  const parsedUrl = validateDatabaseUrl(url, "verify-full");
@@ -76,10 +103,17 @@ async function main() {
   !payload.snapshot || payload.snapshot.fileId !== sourceFileId || payload.snapshot.sheetId !== sourceSheetId ||
   payload.snapshot.tab !== "Leads" || payload.snapshot.revision !== opt.sourceRevision || payload.snapshot.complete !== true ||
   !Array.isArray(payload.snapshot.headers) || !Array.isArray(payload.snapshot.rows) || !Array.isArray(payload.snapshot.cellTypes)) fail("IMPORT_SOURCE_PAYLOAD_INVALID");
+ const snapshotSha256=createHash("sha256").update(JSON.stringify({headers:payload.snapshot.headers,
+  rows:payload.snapshot.rows,cellTypes:payload.snapshot.cellTypes})).digest("hex");
+ if (payload.workbookSha256 !== SHADOW_WORKBOOK_SHA256 || payload.snapshotSha256 !== SHADOW_SNAPSHOT_SHA256 ||
+  snapshotSha256 !== SHADOW_SNAPSHOT_SHA256 || payload.expectedSnapshotDigest !== SHADOW_PLAN_DIGEST ||
+  !verifyShadowAttestation({sourceFileId,sourceSheetId,sourceRevision:opt.sourceRevision,
+   deploymentId:opt.deployment,workbookSha256:payload.workbookSha256,
+   snapshotSha256, databaseBackupSha256:payload.backupSha256},payload.attestationSignature)) fail("IMPORT_OWNER_BACKUP_ATTESTATION_INVALID");
  const runtime = await identityRuntime();
  if (runtime.config.origin !== "https://life-skills.bneineviimacademy.org") fail("IMPORT_ORIGIN_MISMATCH");
  const plan = planImport(payload.snapshot, runtime.config.workspaceId, payload.integrityKey);
- if (!plan.canImport || plan.rows.length < 1 || plan.rows.some(row => row.issues.length) || plan.snapshotDigest !== payload.expectedSnapshotDigest ||
+ if (!plan.canImport || plan.rows.length < 1 || plan.rows.some(row => row.issues.length) || plan.snapshotDigest !== SHADOW_PLAN_DIGEST ||
   plan.rows.length !== payload.dispositions.length || plan.rows.some(row => !payload.dispositions.some(decision => decision.kind === "new_person" && decision.sourceRow === row.sourceRow && decision.sourceRevision === opt.sourceRevision && decision.legacyId === row.legacyId && decision.rowDigest === row.rowDigest))) fail("IMPORT_PLAN_OR_DISPOSITION_INVALID");
  const before = await runtime.store.transaction(async tx => {
   const identity = await tx.query<{system_identifier: string; ssl: boolean}>(`SELECT
@@ -92,12 +126,16 @@ async function main() {
    [runtime.config.workspaceId, sourceFileId, sourceSheetId]))[0];
  });
  if (!before) fail("IMPORT_BASELINE_UNAVAILABLE");
- if (opt.mode === "--preflight") {
-  process.stdout.write(JSON.stringify({code:"NATIVE_SHADOW_PREFLIGHT_OK", deploymentId: opt.deployment, sourceRevision: opt.sourceRevision, snapshotDigest: plan.snapshotDigest, planned: plan.rows.length, existingLinks: before.links, existingLiveProfiles: before.profiles, backupSha256: payload.backupSha256, effects:"none"}) + "\n");
-  return;
- }
  const importer = new NativeShadowImporter(runtime.store, runtime.config.keyring, runtime.config.lookupKey,
   payload.integrityKey, sourceFileId, sourceSheetId);
+ const checked = await importer.preflightNewPeopleAsOperator(runtime.config.workspaceId, payload.snapshot, payload.dispositions, permit);
+ if (opt.mode === "--preflight") {
+  process.stdout.write(JSON.stringify({code:"NATIVE_SHADOW_PREFLIGHT_OK", deploymentId: opt.deployment,
+   sourceRevision: opt.sourceRevision, snapshotDigest: plan.snapshotDigest, planned: checked.planned,
+   wouldCreate:checked.wouldCreate,replayed:checked.replayed,existingLinks: before.links,
+   existingLiveProfiles: before.profiles, backupSha256: payload.backupSha256, effects:"none"}) + "\n");
+  return;
+ }
  const result = await importer.importNewPeopleAsOperator(runtime.config.workspaceId, payload.snapshot, payload.dispositions, permit);
  const after = await runtime.store.transaction(tx => tx.query<{links:number;profiles:number}>(`SELECT
    (SELECT count(*)::integer FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND source_file_id=$2 AND source_sheet_id=$3) AS links,

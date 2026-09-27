@@ -12,6 +12,7 @@ import { crmProfileAad, type CrmProfile } from "./native-store.ts";
 
 export type NewPersonDisposition = { sourceRow: number; sourceRevision: string; legacyId: string; rowDigest: string; kind: "new_person" };
 export type ShadowImportResult = { sourceRevision: string; planned: number; created: number; replayed: number };
+export type ShadowPreflightResult = { sourceRevision: string; planned: number; wouldCreate: number; replayed: number };
 
 const OPERATOR_PERMIT = Symbol("native-shadow-operator");
 const EXACT_PROJECT = "3b756632-1f66-4f75-a016-eabc37aa0d67";
@@ -60,16 +61,24 @@ export class NativeShadowImporter {
   */
  async importNewPeopleAsOperator(workspaceId: WorkspaceId, snapshot: SheetSnapshot, dispositions: readonly NewPersonDisposition[], permit: symbol): Promise<ShadowImportResult> {
   if (permit !== OPERATOR_PERMIT || !shadowOperatorAdmitted(process.env, process.argv[1])) throw new Error("IMPORT_OPERATOR_NOT_ADMITTED");
-  return this.importAuthorized(workspaceId, snapshot, dispositions, async tx => {
+  return this.importAuthorized(workspaceId, snapshot, dispositions, tx => this.authorizeOperator(tx, workspaceId));
+ }
+
+ async preflightNewPeopleAsOperator(workspaceId: WorkspaceId, snapshot: SheetSnapshot, dispositions: readonly NewPersonDisposition[], permit: symbol): Promise<ShadowPreflightResult> {
+  if (permit !== OPERATOR_PERMIT || !shadowOperatorAdmitted(process.env, process.argv[1])) throw new Error("IMPORT_OPERATOR_NOT_ADMITTED");
+  const result = await this.importAuthorized(workspaceId, snapshot, dispositions, tx => this.authorizeOperator(tx, workspaceId), false);
+  return {sourceRevision:result.sourceRevision, planned:result.planned, wouldCreate:result.created, replayed:result.replayed};
+ }
+
+ private async authorizeOperator(tx: SqlSession, workspaceId: WorkspaceId): Promise<void> {
    const owners = await tx.query<{id:string;role:"practitioner";state:"active";emailVerifiedAt:Date|null}>(
     `SELECT id,role,state,email_verified_at AS "emailVerifiedAt" FROM ls_identity.accounts
      WHERE workspace_id=$1 AND role='practitioner' AND state='active'`, [workspaceId]);
    requireThat(owners.length === 1 && Boolean(owners[0]?.emailVerifiedAt), "IMPORT_OPERATOR_ACCOUNT_REQUIRES_REVIEW");
    requireThat(await demoAccountBatch(tx, workspaceId, owners[0]!.id) === null, "IMPORT_DEMO_OPERATOR_FORBIDDEN");
-  });
  }
 
- private async importAuthorized(workspaceId: WorkspaceId, snapshot: SheetSnapshot, dispositions: readonly NewPersonDisposition[], authorize: (tx: SqlSession) => Promise<void>): Promise<ShadowImportResult> {
+ private async importAuthorized(workspaceId: WorkspaceId, snapshot: SheetSnapshot, dispositions: readonly NewPersonDisposition[], authorize: (tx: SqlSession) => Promise<void>, apply = true): Promise<ShadowImportResult> {
   requireThat(snapshot.fileId === this.sourceFileId && snapshot.sheetId === this.sourceSheetId, "IMPORT_SOURCE_MISMATCH");
   const plan = planImport(snapshot, workspaceId, this.integrityKey);
   requireThat(plan.canImport && plan.rows.length > 0 && plan.rows.every(row => row.issues.length === 0), "IMPORT_PLAN_NEEDS_REVIEW");
@@ -151,17 +160,21 @@ export class NativeShadowImporter {
     const collision = await tx.query<{ id: string }>('SELECT id FROM ls_identity.people WHERE workspace_id=$1 AND id=$2', [workspaceId, row.suggestedPersonId]);
     requireThat(collision.length === 0, "IMPORT_PERSON_ID_COLLISION");
     const profile = profileFromRow(row);
-    const personCiphertext = seal(JSON.stringify({ displayName: row.protectedPayload.displayName }), `person:${workspaceId}:${row.suggestedPersonId}`, this.keyring);
-    const profileCiphertext = seal(JSON.stringify(profile), crmProfileAad(workspaceId, row.suggestedPersonId), this.keyring);
-    const snapshotCiphertext = seal(JSON.stringify({ sourceRow: row.sourceRow, payload: row.protectedPayload }), legacyAad(workspaceId, snapshot, row.legacyId), this.keyring);
-    await tx.query("INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,'adult',$3,$4)", [row.suggestedPersonId, workspaceId, personCiphertext, this.clock.now()]);
-    await tx.query("INSERT INTO ls_contact_ops.profiles(workspace_id,person_id,payload_ciphertext,record_mode,demo_batch_id) VALUES($1,$2,$3,'live',NULL)", [workspaceId, row.suggestedPersonId, profileCiphertext]);
-    await tx.query("INSERT INTO ls_contact_ops.legacy_links(workspace_id,source_file_id,source_sheet_id,source_tab_title,legacy_lead_id,person_id,source_revision,row_digest,snapshot_ciphertext) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)", [workspaceId, snapshot.fileId, snapshot.sheetId, snapshot.tab, row.legacyId, row.suggestedPersonId, snapshot.revision, row.rowDigest, snapshotCiphertext]);
+    if (apply) {
+     const personCiphertext = seal(JSON.stringify({ displayName: row.protectedPayload.displayName }), `person:${workspaceId}:${row.suggestedPersonId}`, this.keyring);
+     const profileCiphertext = seal(JSON.stringify(profile), crmProfileAad(workspaceId, row.suggestedPersonId), this.keyring);
+     const snapshotCiphertext = seal(JSON.stringify({ sourceRow: row.sourceRow, payload: row.protectedPayload }), legacyAad(workspaceId, snapshot, row.legacyId), this.keyring);
+     await tx.query("INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,'adult',$3,$4)", [row.suggestedPersonId, workspaceId, personCiphertext, this.clock.now()]);
+     await tx.query("INSERT INTO ls_contact_ops.profiles(workspace_id,person_id,payload_ciphertext,record_mode,demo_batch_id) VALUES($1,$2,$3,'live',NULL)", [workspaceId, row.suggestedPersonId, profileCiphertext]);
+     await tx.query("INSERT INTO ls_contact_ops.legacy_links(workspace_id,source_file_id,source_sheet_id,source_tab_title,legacy_lead_id,person_id,source_revision,row_digest,snapshot_ciphertext) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)", [workspaceId, snapshot.fileId, snapshot.sheetId, snapshot.tab, row.legacyId, row.suggestedPersonId, snapshot.revision, row.rowDigest, snapshotCiphertext]);
+    }
     created++;
    }
    requireThat(created + replayed === plan.rows.length, "IMPORT_ROW_COUNT_MISMATCH");
-   const count = await tx.query<{ n: number }>('SELECT count(*)::integer AS n FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND source_file_id=$2 AND source_sheet_id=$3', [workspaceId, snapshot.fileId, snapshot.sheetId]);
-   requireThat(count.length === 1 && count[0]!.n === plan.rows.length, "IMPORT_FINAL_LINK_COUNT_MISMATCH");
+   if (apply) {
+    const count = await tx.query<{ n: number }>('SELECT count(*)::integer AS n FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND source_file_id=$2 AND source_sheet_id=$3', [workspaceId, snapshot.fileId, snapshot.sheetId]);
+    requireThat(count.length === 1 && count[0]!.n === plan.rows.length, "IMPORT_FINAL_LINK_COUNT_MISMATCH");
+   }
    return { sourceRevision: snapshot.revision, planned: plan.rows.length, created, replayed };
   });
  }
