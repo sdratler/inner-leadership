@@ -6,6 +6,7 @@ import {sessionInfo} from "../identity/client.ts";
 import {loginHref} from "../identity/login-return.ts";
 import type {Prospect} from "./bridge.ts";
 import {ProspectApiError,prospectReadFailure} from "./api-error.ts";
+import {activeProspect,paidAwaitingBooking} from "./view-state.ts";
 
 /* Remote state is loaded once per refresh and filter changes reset pagination. */
 /* eslint-disable react-hooks/set-state-in-effect */
@@ -47,7 +48,7 @@ function template(row:Prospect,kind:"return"|"missed",language:""|"he"|"en"=know
  return language==="he"?`${heGreeting} זה שלמה דרטלר מכישורי חיים. חוזר לפנייה שלך. מתי נוח לשיחה קצרה?`:`${enGreeting} this is Shlomo Dratler from Life Skills, following up on your inquiry. When is a convenient time for a brief call?`;
 }
 function closed(row:Prospect){return /archive|do not contact/i.test(`${row.stage} ${row.outcome}`);}
-function active(row:Prospect){return row.journeyState==="active"||/confirmed|active/i.test(row.bookingStatus);}
+function active(row:Prospect){return activeProspect(row)||row.bookingConfirmed===true;}
 function whatsappNumber(phone:string):string|null{
  const digits=phone.replace(/\D/g,"");
  if(/^972\d{8,9}$/.test(digits))return digits;
@@ -69,7 +70,7 @@ export function ProspectsClient({locale,initialFilter="all",embedded=false,clien
   if(preset==="new"&&(row.formSent||row.formSubmitted||row.paymentVerified||active(row)))return false;
   if(preset==="intake"&&(!row.formSent||Boolean(row.formSubmitted)))return false;
   if(preset==="payment"&&(!row.formSubmitted||row.paymentVerified))return false;
-  if(preset==="booking"&&(!row.paymentVerified||active(row)))return false;
+  if(preset==="booking"&&!paidAwaitingBooking(row))return false;
   if(preset==="archived"&&!closed(row))return false;
   if(preset==="all"&&closed(row))return false;
   if(stage&&row.stage!==stage)return false;

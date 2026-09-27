@@ -1,6 +1,6 @@
 import type {IdentityStore} from "../identity/store.ts";
 
-export type ProspectJourneyState={journeyState:string;paymentVerified:boolean};
+export type ProspectJourneyState={journeyState:string;paymentVerified:boolean;bookingConfirmed:boolean};
 
 /** Drizzle binds a JavaScript array as a scalar, not a PostgreSQL text[] literal.
  * Pass JSON text and expand it inside PostgreSQL so the existing CRM read remains
@@ -9,8 +9,9 @@ export type ProspectJourneyState={journeyState:string;paymentVerified:boolean};
 export async function readProspectJourneys(store:IdentityStore,workspaceId:string,leadIds:readonly string[]):Promise<Map<string,ProspectJourneyState>>{
  if(!leadIds.length)return new Map();
  if(leadIds.some(id=>typeof id!=="string"))throw new Error("INVALID_CRM_LEAD_IDS");
- const rows=await store.transaction(tx=>tx.query<{leadId:string;state:string;paymentVerified:boolean}>(
+ const rows=await store.transaction(tx=>tx.query<{leadId:string;state:string;paymentVerified:boolean;bookingConfirmed:boolean}>(
   `SELECT j.stable_lead_ref AS "leadId",j.state,
+    j.confirmed_appointment_id IS NOT NULL AS "bookingConfirmed",
     EXISTS(SELECT 1 FROM ls_onboarding.payment_allocations a
       WHERE a.workspace_id=j.workspace_id AND a.order_id=j.first_session_order_id
       AND NOT EXISTS(SELECT 1 FROM ls_onboarding.payment_reversals r
@@ -18,5 +19,5 @@ export async function readProspectJourneys(store:IdentityStore,workspaceId:strin
     FROM ls_onboarding.prospect_journeys j
     WHERE j.workspace_id=$1 AND j.stable_lead_ref IN (SELECT jsonb_array_elements_text($2::jsonb))`,
   [workspaceId,JSON.stringify(leadIds)]));
- return new Map(rows.map(row=>[row.leadId,{journeyState:row.state,paymentVerified:Boolean(row.paymentVerified)}]));
+ return new Map(rows.map(row=>[row.leadId,{journeyState:row.state,paymentVerified:Boolean(row.paymentVerified),bookingConfirmed:row.bookingConfirmed===true}]));
 }

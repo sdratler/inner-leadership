@@ -10,11 +10,16 @@ describe("CRM journey projection",()=>{
  it("encodes lead IDs as JSON text for the Drizzle/PostgreSQL boundary",async()=>{
   let statement="",values:readonly unknown[]=[];
   const store:IdentityStore={transaction:async work=>work({query:async <T extends object>(sql:string,args:readonly unknown[]=[])=>{
-   statement=sql;values=args;return [{leadId:"LS-LEAD-a",state:"active",paymentVerified:true}] as T[];
+   statement=sql;values=args;return [
+    {leadId:"LS-LEAD-a",state:"active",paymentVerified:true,bookingConfirmed:true},
+    {leadId:"LS-LEAD-b",state:"payment_verified",paymentVerified:true,bookingConfirmed:false},
+   ] as T[];
   }})};
   const result=await readProspectJourneys(store,"workspace",["LS-LEAD-a","LS-LEAD-b"]);
   expect(statement).toContain("jsonb_array_elements_text($2::jsonb)");
+  expect(statement).toContain('j.confirmed_appointment_id IS NOT NULL AS "bookingConfirmed"');
   expect(values).toEqual(["workspace",'["LS-LEAD-a","LS-LEAD-b"]']);
-  expect(result.get("LS-LEAD-a")).toEqual({journeyState:"active",paymentVerified:true});
+  expect(result.get("LS-LEAD-a")).toEqual({journeyState:"active",paymentVerified:true,bookingConfirmed:true});
+  expect(result.get("LS-LEAD-b")).toEqual({journeyState:"payment_verified",paymentVerified:true,bookingConfirmed:false});
  });
 });
