@@ -82,7 +82,8 @@ let closeDatabase: (()=>Promise<void>) | undefined;
 async function main() {
  if (process.env.LS_NATIVE_SHADOW_IMPORT_APPROVED !== "true" ||
   process.env.RAILWAY_PROJECT_ID !== exactProject || process.env.RAILWAY_SERVICE_ID !== exactService ||
-  process.env.RAILWAY_ENVIRONMENT_ID !== exactEnvironment) fail("IMPORT_OPERATOR_NOT_ADMITTED");
+  process.env.RAILWAY_ENVIRONMENT_ID !== exactEnvironment ||
+  !/(?:^|[\\/])scripts[\\/]shadow-import-operator\.ts$/.test(process.argv[1]??"")) fail("IMPORT_OPERATOR_NOT_ADMITTED");
  const opt = options(process.argv.slice(2));
  if (!/^[0-9a-f-]{36}$/.test(opt.deployment) || process.env.RAILWAY_DEPLOYMENT_ID !== opt.deployment ||
   !/^[a-f0-9]{64}$/.test(opt.operatorSha256) || !/^[a-f0-9]{40}$/.test(opt.reviewedMain) ||
