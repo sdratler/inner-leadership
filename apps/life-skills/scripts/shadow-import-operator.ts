@@ -133,25 +133,20 @@ async function main() {
  const plan = planImport(payload.snapshot, runtime.config.workspaceId, payload.integrityKey);
  if (!plan.canImport || plan.rows.length < 1 || plan.rows.some(row => row.issues.length) || plan.snapshotDigest !== SHADOW_PLAN_DIGEST ||
   plan.rows.length !== payload.dispositions.length || plan.rows.some(row => !payload.dispositions.some(decision => decision.kind === "new_person" && decision.sourceRow === row.sourceRow && decision.sourceRevision === opt.sourceRevision && decision.legacyId === row.legacyId && decision.rowDigest === row.rowDigest))) fail("IMPORT_PLAN_OR_DISPOSITION_INVALID");
- const before = await runtime.store.transaction(async tx => {
+ await runtime.store.transaction(async tx => {
   const identity = await tx.query<{system_identifier: string; ssl: boolean}>(`SELECT
    (SELECT system_identifier FROM pg_control_system()) AS system_identifier,
    (SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()) AS ssl`);
   if (identity.length !== 1 || identity[0]?.system_identifier !== systemIdentifier || identity[0]?.ssl !== true) fail("IMPORT_DATABASE_IDENTITY_MISMATCH");
-  return (await tx.query<{links:number;profiles:number}>(`SELECT
-    (SELECT count(*)::integer FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND source_file_id=$2 AND source_sheet_id=$3) AS links,
-    (SELECT count(*)::integer FROM ls_contact_ops.profiles WHERE workspace_id=$1 AND record_mode='live') AS profiles`,
-   [runtime.config.workspaceId, sourceFileId, sourceSheetId]))[0];
  });
- if (!before) fail("IMPORT_BASELINE_UNAVAILABLE");
  const importer = new NativeShadowImporter(runtime.store, runtime.config.keyring, runtime.config.lookupKey,
   payload.integrityKey, sourceFileId, sourceSheetId);
  const checked = await importer.preflightNewPeopleAsOperator(runtime.config.workspaceId, payload.snapshot, payload.dispositions, permit);
  if (opt.mode === "--preflight") {
   process.stdout.write(JSON.stringify({code:"NATIVE_SHADOW_PREFLIGHT_OK", deploymentId: opt.deployment,reviewedMainSha:opt.reviewedMain,
    sourceRevision: opt.sourceRevision, snapshotDigest: plan.snapshotDigest, planned: checked.planned,
-   wouldCreate:checked.wouldCreate,replayed:checked.replayed,existingLinks: before.links,
-   existingLiveProfiles: before.profiles, backupSha256: payload.backupSha256, effects:"none"}) + "\n");
+   wouldCreate:checked.wouldCreate,replayed:checked.replayed,
+   backupSha256: payload.backupSha256, effects:"none"}) + "\n");
   return;
  }
  const result = await importer.importNewPeopleAsOperator(runtime.config.workspaceId, payload.snapshot, payload.dispositions, permit);
