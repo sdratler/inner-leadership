@@ -16,7 +16,7 @@ import {readFile,readdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {Pool} from 'pg';
 import {migrate} from '../src/db/migration-runner.ts';
-import {assertContactOpsDatabaseIdentity,calendarAppendOnlyFunctionBody,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,internalTaskSchemaCatalogMatches,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,type ContactOpsIntegrityObjects,type InternalTaskIntegrityObjects} from '../src/db/contact-ops-production-guard.ts';
+import {assertContactOpsDatabaseIdentity,calendarAppendOnlyFunctionBody,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,internalTaskSchemaCatalogMatches,sourceTaskSchemaCatalogMatches,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,type ContactOpsIntegrityObjects,type InternalTaskIntegrityObjects,type SourceTaskIntegrityObjects} from '../src/db/contact-ops-production-guard.ts';
 import type {AppliedMigration,Migration} from '../src/db/migration-plan.ts';
 
 async function migrations():Promise<Migration[]>{
@@ -41,7 +41,8 @@ async function main(){
  const sourceEntries=await Promise.all(CONTACT_OPS_SOURCE_FILES.map(async path=>({path,bytes:await readFile(new URL(path,appRoot))})));
  if(contactOpsSourceBundle(sourceEntries)!==target.sourceBundleSha256)throw new Error('CONTACT_OPS_SOURCE_PROVENANCE_MISMATCH');
  const files=await migrations();
- // Only 0101 or its exact reviewed 0102 successor may be pending, never both.
+ // The state gate admits at most one exact reviewed suffix; the currently
+ // deployed 0102 baseline must be fully verified before 0103 may be applied.
  // The strict state gate refuses partial or unreviewed schema before any write.
  if(!files.some(file=>file.name===CONTACT_OPS_MIGRATION.name&&file.checksum===CONTACT_OPS_MIGRATION.sha256))throw new Error('CONTACT_OPS_MIGRATION_MISSING');
  const reviewedMigration=files.at(-1)!;
@@ -216,7 +217,7 @@ async function main(){
          AND c.relowner=(SELECT oid FROM pg_roles WHERE rolname=current_user))
         FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
         WHERE n.nspname='ls_calendar' AND c.relname IN ('tasks','task_history')) AS tables,
-       (SELECT count(*)=20 FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid
+       (SELECT count(*) IN (20,23) FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid
         JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='ls_calendar'
          AND c.relname IN ('tasks','task_history') AND a.attnum>0 AND NOT a.attisdropped)
         AND EXISTS(SELECT 1 FROM pg_attribute a WHERE a.attrelid=to_regclass('ls_calendar.tasks')
@@ -226,7 +227,7 @@ async function main(){
         AND EXISTS(SELECT 1 FROM pg_attribute a WHERE a.attrelid=to_regclass('ls_calendar.tasks')
          AND a.attname='due_time' AND a.atttypid='time without time zone'::regtype)
         AS columns,
-       (SELECT count(*)=13 AND bool_and(k.convalidated) FROM pg_constraint k
+       (SELECT count(*) IN (13,14) AND bool_and(k.convalidated) FROM pg_constraint k
         JOIN pg_class c ON c.oid=k.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace
         WHERE n.nspname='ls_calendar' AND c.relname IN ('tasks','task_history')
          AND k.contype<>'n') AS constraints,
@@ -271,6 +272,12 @@ async function main(){
        JOIN pg_namespace n ON n.oid=c.relnamespace
        WHERE n.nspname='ls_calendar' AND c.relname IN ('tasks','task_history')
         AND k.contype<>'n'`);
+     const sourceIndex=await client.query<{exact:boolean}>(`SELECT EXISTS(SELECT 1 FROM pg_index i
+       WHERE i.indexrelid=to_regclass('ls_calendar.tasks_one_source')
+        AND i.indrelid=to_regclass('ls_calendar.tasks') AND i.indisvalid AND i.indisready
+        AND i.indislive AND i.indisunique AND i.indnatts=3 AND i.indnkeyatts=3
+        AND i.indkey::text='1 14 15' AND i.indexprs IS NULL
+        AND pg_get_expr(i.indpred,i.indrelid)='(source_digest IS NOT NULL)') AS exact`);
      const appendOnly=await client.query<{body:string;safe:boolean}>(`SELECT p.prosrc AS body,
        p.prolang=(SELECT oid FROM pg_language WHERE lanname='plpgsql')
         AND p.prokind='f' AND p.pronargs=0 AND p.prorettype='trigger'::regtype
@@ -313,11 +320,14 @@ async function main(){
        foreignKeysEnforced:foreignKeys.rows[0]?.enforced===true,
        foreignKeyReferencesSound:referencesSound,
        publicRevoked:privileges.rows[0]?.restricted===true};
+     const baseCatalog=internalTaskSchemaCatalogMatches(taskColumns.rows[0]?.catalog,taskConstraints.rows[0]?.catalog);
+     const sourceCatalog=sourceTaskSchemaCatalogMatches(taskColumns.rows[0]?.catalog,taskConstraints.rows[0]?.catalog);
      const taskIntegrity:InternalTaskIntegrityObjects={...taskObjects.rows[0]!,
-       schemaCatalog:internalTaskSchemaCatalogMatches(taskColumns.rows[0]?.catalog,taskConstraints.rows[0]?.catalog),
+       schemaCatalog:baseCatalog||sourceCatalog,
        appendOnlyFunction:appendOnly.rows.length===1&&appendOnly.rows[0]?.safe===true&&
         appendOnly.rows[0]?.body===calendarAppendOnlyFunctionBody(files)};
-     return contactOpsMigrationState(files,history,integrity,taskIntegrity);
+     const sourceIntegrity:SourceTaskIntegrityObjects={baseCatalog,sourceCatalog,sourceIndex:sourceIndex.rows[0]?.exact===true};
+     return contactOpsMigrationState(files,history,integrity,taskIntegrity,sourceIntegrity);
     }catch(error){await client.query('ROLLBACK').catch(()=>undefined);throw error;}
    };
    const before=await inspect();
