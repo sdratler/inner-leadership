@@ -162,11 +162,13 @@ async function main(){
            ('profiles','legacy_links','command_receipts')) OR
            (n.nspname='ls_demo' AND c.relname='records'))
            AND a.attnum>0 AND NOT a.attisdropped AND acl.grantee<>c.relowner) AND
+       -- 0097 revoked public schema USAGE, but not the baseline trigger
+       -- function's default EXECUTE grant. Verify its owner/body/trigger above;
+       -- restrict ACLs here only for functions created by 0101.
        NOT EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace,
          LATERAL aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) acl
-         WHERE ((n.nspname='ls_contact_ops' AND p.proname IN
-           ('require_profile_provenance','require_marker_compatibility')) OR
-           (n.nspname='ls_demo' AND p.proname='prevent_marker_change'))
+         WHERE n.nspname='ls_contact_ops' AND p.proname IN
+           ('require_profile_provenance','require_marker_compatibility')
            AND acl.grantee<>p.proowner) AS restricted`);
      let referencesSound=false;
      if(objects.rows[0]?.profiles&&objects.rows[0]?.legacyLinks&&objects.rows[0]?.commandReceipts){
