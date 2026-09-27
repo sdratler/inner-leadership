@@ -9,7 +9,7 @@ export type Prospect = {
   outcome:string; notes:string; caseId:string; formSent:string; formSubmitted:string;
   paymentLinkSent:string; paymentMethod:string; paymentStatus:string; paymentAllocation:string;
   bookingStatus:string; messageReceipt:string; updateProvenance:string; firstInboundAt:string; lastInboundAt:string; owner:string;
-  journeyState:string; paymentVerified:boolean;
+  journeyState:string; paymentVerified:boolean; bookingConfirmed:boolean;
 };
 
 function config(){
