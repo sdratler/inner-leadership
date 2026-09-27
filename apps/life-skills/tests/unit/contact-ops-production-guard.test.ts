@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {describe,expect,it} from 'vitest';
-import {assertContactOpsDatabaseIdentity,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsComparableConstraints,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,type ContactOpsIntegrityObjects} from '../../src/db/contact-ops-production-guard.ts';
+import {assertContactOpsDatabaseIdentity,calendarAppendOnlyFunctionBody,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsComparableConstraints,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,internalTaskSchemaCatalogMatches,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,INTERNAL_TASKS_MIGRATION,type ContactOpsIntegrityObjects,type InternalTaskIntegrityObjects} from '../../src/db/contact-ops-production-guard.ts';
 
 const deployment='a2d9d868-53c4-4fdd-973c-21c4b6b8987d';
 const good={
@@ -16,8 +16,11 @@ const bindingHash=createHash('sha256').update(good.LS_DATABASE_URL).digest('hex'
 const args=['--apply',`--deployment=${deployment}`,`--database-binding=354b5343-9e83-45a7-b764-09396f14ae29:${bindingHash}`,`--source-bundle=${'a'.repeat(64)}`];
 const prior={name:'0100_ls_demo_prospect_marker_gate.sql',checksum:'0'.repeat(64),sql:'SELECT 1;'};
 const next={name:CONTACT_OPS_MIGRATION.name,checksum:CONTACT_OPS_MIGRATION.sha256,sql:'CREATE SCHEMA ls_contact_ops;'};
+const taskSuffix={name:INTERNAL_TASKS_MIGRATION.name,checksum:INTERNAL_TASKS_MIGRATION.sha256,sql:'CREATE TABLE ls_calendar.tasks(id uuid);'};
 const absent:ContactOpsIntegrityObjects={profiles:false,legacyLinks:false,commandReceipts:false,legacyIndex:false,profileProvenanceTrigger:false,markerCompatibilityTrigger:false,immutableDemoRecordTrigger:true,profileFunction:false,markerFunction:false,immutableFunction:true,canonicalPersonConstraint:false,canonicalConstraintDefinition:false,schemaCatalog:false,baselineRecordsCatalog:true,permanentTables:false,foreignKeysEnforced:false,foreignKeyReferencesSound:false,publicRevoked:false};
 const present:ContactOpsIntegrityObjects={profiles:true,legacyLinks:true,commandReceipts:true,legacyIndex:true,profileProvenanceTrigger:true,markerFunction:true,markerCompatibilityTrigger:true,immutableDemoRecordTrigger:true,profileFunction:true,immutableFunction:true,canonicalPersonConstraint:true,canonicalConstraintDefinition:true,schemaCatalog:true,baselineRecordsCatalog:true,permanentTables:true,foreignKeysEnforced:true,foreignKeyReferencesSound:true,publicRevoked:true};
+const taskAbsent:InternalTaskIntegrityObjects={tables:false,columns:false,constraints:false,schemaCatalog:false,foreignKeys:false,dueIndex:false,historyImmutable:false,appendOnlyFunction:true,publicRevoked:false};
+const taskPresent:InternalTaskIntegrityObjects={tables:true,columns:true,constraints:true,schemaCatalog:true,foreignKeys:true,dueIndex:true,historyImmutable:true,appendOnlyFunction:true,publicRevoked:true};
 
 describe('registered native CRM production migration gate',()=>{
  it('binds a complete ordered reviewed source-file bundle',()=>{
@@ -34,10 +37,14 @@ describe('registered native CRM production migration gate',()=>{
   const files=[{name:'0097_ls_demo_provenance.sql',checksum:'0'.repeat(64),sql:`CREATE FUNCTION ls_demo.prevent_marker_change() RETURNS trigger LANGUAGE plpgsql AS $fn$${body}$fn$;`}];
   expect(contactOpsFunctionBody(files,files[0]!.name,'ls_demo.prevent_marker_change')).toBe(body);
   expect(()=>contactOpsFunctionBody(files,files[0]!.name,'ls_demo.other')).toThrow('CONTACT_OPS_FUNCTION_SOURCE_MISSING');
+  const calendar=[{name:'0030_ls_calendar_attendance_20260907.sql',checksum:'0'.repeat(64),sql:"CREATE FUNCTION ls_calendar.append_only() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog AS $$\nBEGIN RAISE EXCEPTION 'append_only'; END $$;"}];
+  expect(calendarAppendOnlyFunctionBody(calendar)).toContain("RAISE EXCEPTION 'append_only'");
+  expect(()=>calendarAppendOnlyFunctionBody([])).toThrow('CONTACT_OPS_TASK_FUNCTION_SOURCE_MISSING');
  });
  it('rejects incomplete or changed three-table schema catalogs',()=>{
   expect(contactOpsSchemaCatalogMatches([],[])).toBe(false);
   expect(contactOpsSchemaCatalogMatches(new Array(25).fill({}),new Array(21).fill({}))).toBe(false);
+  expect(internalTaskSchemaCatalogMatches(new Array(20).fill({}),new Array(13).fill({}))).toBe(false);
   expect(contactOpsBaselineRecordsMatches([],[])).toBe(false);
   expect(contactOpsComparableConstraints([{type:'c'},{type:'n'},{type:'f'}])).toEqual([{type:'c'},{type:'f'}]);
  });
@@ -71,19 +78,30 @@ describe('registered native CRM production migration gate',()=>{
   expect(()=>contactOpsProductionTarget(good,['--apply','--deployment=00000000-0000-0000-0000-000000000000',args[2]!,args[3]!])).toThrow();
  });
  it('requires exactly one pending migration and absent objects before apply',()=>{
-  expect(contactOpsMigrationState([prior,next],[prior],absent)).toBe('pending');
-  expect(()=>contactOpsMigrationState([prior,next],[prior],{...absent,immutableDemoRecordTrigger:false})).toThrow('CONTACT_OPS_BASELINE_PROVENANCE_MISSING');
-  expect(()=>contactOpsMigrationState([prior,next],[prior],{...absent,baselineRecordsCatalog:false})).toThrow('CONTACT_OPS_BASELINE_PROVENANCE_MISSING');
-  expect(()=>contactOpsMigrationState([prior,next],[prior],{...absent,profiles:true})).toThrow();
-  expect(()=>contactOpsMigrationState([prior,next],[],absent)).toThrow();
+  expect(contactOpsMigrationState([prior,next],[prior],absent,taskAbsent)).toBe('pending');
+  expect(()=>contactOpsMigrationState([prior,next],[prior],{...absent,immutableDemoRecordTrigger:false},taskAbsent)).toThrow('CONTACT_OPS_BASELINE_PROVENANCE_MISSING');
+  expect(()=>contactOpsMigrationState([prior,next],[prior],{...absent,baselineRecordsCatalog:false},taskAbsent)).toThrow('CONTACT_OPS_BASELINE_PROVENANCE_MISSING');
+  expect(()=>contactOpsMigrationState([prior,next],[prior],{...absent,profiles:true},taskAbsent)).toThrow();
+  expect(()=>contactOpsMigrationState([prior,next],[],absent,taskAbsent)).toThrow();
  });
  it('accepts an exact idempotent readback but rejects drift or missing objects',()=>{
-  expect(contactOpsMigrationState([prior,next],[prior,{name:next.name,checksum:next.checksum}],present)).toBe('applied');
+  const through0101=[prior,next].map(({name,checksum})=>({name,checksum}));
+  expect(contactOpsMigrationState([prior,next],[prior,{name:next.name,checksum:next.checksum}],present,taskAbsent)).toBe('applied');
+  expect(contactOpsMigrationState([prior,next,taskSuffix],[prior,next,taskSuffix].map(({name,checksum})=>({name,checksum})),present,taskPresent)).toBe('applied');
+  expect(contactOpsMigrationState([prior,next,taskSuffix],through0101,present,taskAbsent)).toBe('pending');
+  expect(()=>contactOpsMigrationState([prior,next,taskSuffix],through0101,{...present,profiles:false},taskAbsent)).toThrow('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+  expect(()=>contactOpsMigrationState([prior,next,taskSuffix],through0101,present,{...taskAbsent,tables:true})).toThrow('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+  expect(()=>contactOpsMigrationState([prior,next,taskSuffix],[prior],absent,taskAbsent)).toThrow('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+  for(const key of Object.keys(taskPresent) as (keyof InternalTaskIntegrityObjects)[])
+   expect(()=>contactOpsMigrationState([prior,next,taskSuffix],[prior,next,taskSuffix].map(({name,checksum})=>({name,checksum})),present,{...taskPresent,[key]:false})).toThrow();
+  expect(()=>contactOpsMigrationState([prior,next,taskSuffix],through0101,present,{...taskAbsent,appendOnlyFunction:false})).toThrow('CONTACT_OPS_TASK_BASELINE_FUNCTION_MISSING');
+  expect(()=>contactOpsMigrationState([prior,next,{...taskSuffix,checksum:'1'.repeat(64)}],[prior,next,taskSuffix].map(({name,checksum})=>({name,checksum})),present,taskPresent)).toThrow('CONTACT_OPS_MANIFEST_MISMATCH');
+  expect(()=>contactOpsMigrationState([prior,next,taskSuffix,{...taskSuffix,name:'0103_unreviewed.sql'}],[prior,next,taskSuffix].map(({name,checksum})=>({name,checksum})),present,taskPresent)).toThrow('CONTACT_OPS_MANIFEST_MISMATCH');
   for(const key of Object.keys(present) as (keyof ContactOpsIntegrityObjects)[])
-   expect(()=>contactOpsMigrationState([prior,next],[prior,{name:next.name,checksum:next.checksum}],{...present,[key]:false})).toThrow();
+   expect(()=>contactOpsMigrationState([prior,next],[prior,{name:next.name,checksum:next.checksum}],{...present,[key]:false},taskAbsent)).toThrow();
   const incomplete={...present} as Partial<ContactOpsIntegrityObjects>;
   delete incomplete.commandReceipts;
-  expect(()=>contactOpsMigrationState([prior,next],[prior,{name:next.name,checksum:next.checksum}],incomplete as ContactOpsIntegrityObjects)).toThrow('CONTACT_OPS_INTEGRITY_READBACK_INVALID');
-  expect(()=>contactOpsMigrationState([prior,{...next,checksum:'1'.repeat(64)}],[prior],absent)).toThrow();
+  expect(()=>contactOpsMigrationState([prior,next],[prior,{name:next.name,checksum:next.checksum}],incomplete as ContactOpsIntegrityObjects,taskAbsent)).toThrow('CONTACT_OPS_INTEGRITY_READBACK_INVALID');
+  expect(()=>contactOpsMigrationState([prior,{...next,checksum:'1'.repeat(64)}],[prior],absent,taskAbsent)).toThrow();
  });
 });

@@ -5,6 +5,14 @@ export const CONTACT_OPS_MIGRATION = {
  name: '0101_ls_contact_operations.sql',
  sha256: 'a831604af25aa3ad713d7a1270007be9cebd315a8ac3a46cfa680a22b54dc25f',
 } as const;
+export const INTERNAL_TASKS_MIGRATION = {
+ name: '0102_ls_internal_tasks.sql',
+ sha256: '61a99c4bc62d57eeb63c99de0b4482fcec10b019e128ee4b98abb8e92aeaaa7c',
+} as const;
+export const INTERNAL_TASKS_SCHEMA_CATALOG = {
+ columns:20,constraints:13,
+ sha256:'f05bc3595900d94aa6e507b2689b21583b34d62393da24848a8f66538a1189c1',
+} as const;
 
 /** Catalog fingerprint from 0101 applied to a clean, disposable native PG17
  * restore. It covers every column and all 21 PK/FK/CHECK definitions across
@@ -28,8 +36,10 @@ const DEMO_RECORDS_BASELINE = {
  ] as const,
 } as const;
 export const CONTACT_OPS_SOURCE_FILES = [
+ 'migrations/0030_ls_calendar_attendance_20260907.sql',
  'migrations/0097_ls_demo_provenance.sql',
  'migrations/0101_ls_contact_operations.sql',
+ 'migrations/0102_ls_internal_tasks.sql',
  'migrations/manifest.json',
  'scripts/apply-contact-ops-production.ts',
  'src/db/contact-ops-production-guard.ts',
@@ -58,6 +68,16 @@ export type ContactOpsIntegrityObjects={
  canonicalPersonConstraint:boolean;canonicalConstraintDefinition:boolean;schemaCatalog:boolean;
  baselineRecordsCatalog:boolean;permanentTables:boolean;foreignKeysEnforced:boolean;foreignKeyReferencesSound:boolean;publicRevoked:boolean;
 };
+export type InternalTaskIntegrityObjects={
+ tables:boolean;columns:boolean;constraints:boolean;schemaCatalog:boolean;foreignKeys:boolean;
+ dueIndex:boolean;historyImmutable:boolean;appendOnlyFunction:boolean;publicRevoked:boolean;
+};
+
+export function internalTaskSchemaCatalogMatches(columns:unknown,constraints:unknown):boolean{
+ if(!Array.isArray(columns)||columns.length!==INTERNAL_TASKS_SCHEMA_CATALOG.columns||
+  !Array.isArray(constraints)||constraints.length!==INTERNAL_TASKS_SCHEMA_CATALOG.constraints)return false;
+ return createHash('sha256').update(JSON.stringify({columns,constraints})).digest('hex')===INTERNAL_TASKS_SCHEMA_CATALOG.sha256;
+}
 
 export function contactOpsSchemaCatalogMatches(columns:unknown,constraints:unknown):boolean{
  if(!Array.isArray(columns)||columns.length!==CONTACT_OPS_SCHEMA_CATALOG.columns||!Array.isArray(constraints))return false;
@@ -94,6 +114,16 @@ export function contactOpsFunctionBody(files:readonly Migration[],migrationName:
  if(start<0||sql!.indexOf(marker,start+marker.length)>=0)throw new Error('CONTACT_OPS_FUNCTION_SOURCE_MISSING');
  const bodyStart=start+marker.length,end=sql!.indexOf('$fn$;',bodyStart);
  if(end<0)throw new Error('CONTACT_OPS_FUNCTION_SOURCE_MISSING');
+ return sql!.slice(bodyStart,end);
+}
+
+export function calendarAppendOnlyFunctionBody(files:readonly Migration[]):string{
+ const sql=files.find(file=>file.name==='0030_ls_calendar_attendance_20260907.sql')?.sql;
+ const marker='CREATE FUNCTION ls_calendar.append_only() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog AS $$';
+ const start=sql?.indexOf(marker)??-1;
+ if(start<0||sql!.indexOf(marker,start+marker.length)>=0)throw new Error('CONTACT_OPS_TASK_FUNCTION_SOURCE_MISSING');
+ const bodyStart=start+marker.length,end=sql!.indexOf('$$;',bodyStart);
+ if(end<0)throw new Error('CONTACT_OPS_TASK_FUNCTION_SOURCE_MISSING');
  return sql!.slice(bodyStart,end);
 }
 
@@ -145,16 +175,25 @@ export function contactOpsSourceBundle(entries:readonly {path:string;bytes:Uint8
 }
 
 /** No partial/unknown schema and no surprise migration may be promoted. */
-export function contactOpsMigrationState(files:readonly Migration[],history:readonly AppliedMigration[],objects:ContactOpsIntegrityObjects):'pending'|'applied'{
- if(files.at(-1)?.name!==CONTACT_OPS_MIGRATION.name || files.at(-1)?.checksum!==CONTACT_OPS_MIGRATION.sha256)throw new Error('CONTACT_OPS_MANIFEST_MISMATCH');
+export function contactOpsMigrationState(files:readonly Migration[],history:readonly AppliedMigration[],objects:ContactOpsIntegrityObjects,tasks:InternalTaskIntegrityObjects):'pending'|'applied'{
+ const index=files.findIndex(file=>file.name===CONTACT_OPS_MIGRATION.name);
+ if(index<0||files[index]?.checksum!==CONTACT_OPS_MIGRATION.sha256)throw new Error('CONTACT_OPS_MANIFEST_MISMATCH');
+ const suffix=files.slice(index+1);
+ if(suffix.length>1||suffix.some(file=>file.name!==INTERNAL_TASKS_MIGRATION.name||file.checksum!==INTERNAL_TASKS_MIGRATION.sha256))throw new Error('CONTACT_OPS_MANIFEST_MISMATCH');
  const pending=planMigrations(files,history);
  const expectedKeys=['profiles','legacyLinks','commandReceipts','legacyIndex','profileProvenanceTrigger','markerCompatibilityTrigger','immutableDemoRecordTrigger','profileFunction','markerFunction','immutableFunction','canonicalPersonConstraint','canonicalConstraintDefinition','schemaCatalog','baselineRecordsCatalog','permanentTables','foreignKeysEnforced','foreignKeyReferencesSound','publicRevoked'].sort();
  if(JSON.stringify(Object.keys(objects).sort())!==JSON.stringify(expectedKeys))throw new Error('CONTACT_OPS_INTEGRITY_READBACK_INVALID');
  const values=Object.values(objects);
  if(values.some(value=>typeof value!=='boolean'))throw new Error('CONTACT_OPS_INTEGRITY_READBACK_INVALID');
+ const taskKeys=['tables','columns','constraints','schemaCatalog','foreignKeys','dueIndex','historyImmutable','appendOnlyFunction','publicRevoked'].sort();
+ if(JSON.stringify(Object.keys(tasks).sort())!==JSON.stringify(taskKeys)||Object.values(tasks).some(value=>typeof value!=='boolean'))throw new Error('CONTACT_OPS_TASK_READBACK_INVALID');
+ const taskValues=Object.values(tasks);
+ if(!tasks.appendOnlyFunction)throw new Error('CONTACT_OPS_TASK_BASELINE_FUNCTION_MISSING');
+ const newTaskValues=Object.entries(tasks).filter(([key])=>key!=='appendOnlyFunction').map(([,value])=>value);
  if(!objects.immutableDemoRecordTrigger||!objects.immutableFunction||!objects.baselineRecordsCatalog)throw new Error('CONTACT_OPS_BASELINE_PROVENANCE_MISSING');
  const newlyCreated=Object.entries(objects).filter(([key])=>!['immutableDemoRecordTrigger','immutableFunction','baselineRecordsCatalog'].includes(key)).map(([,value])=>value);
- if(pending.length===1 && pending[0]?.name===CONTACT_OPS_MIGRATION.name && newlyCreated.every(value=>!value))return 'pending';
- if(pending.length===0 && values.every(Boolean))return 'applied';
+ if(suffix.length===0 && pending.length===1 && pending[0]?.name===CONTACT_OPS_MIGRATION.name && newlyCreated.every(value=>!value)&&newTaskValues.every(value=>!value))return 'pending';
+ if(suffix.length===1 && pending.length===1 && pending[0]?.name===INTERNAL_TASKS_MIGRATION.name && values.every(Boolean)&&newTaskValues.every(value=>!value))return 'pending';
+ if(pending.length===0 && values.every(Boolean)&&(suffix.length===0?newTaskValues.every(value=>!value):taskValues.every(Boolean)))return 'applied';
  throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
 }

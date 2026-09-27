@@ -1,4 +1,4 @@
-/** One-time additive native CRM schema gate for the registered dedicated app DB.
+/** Reviewed additive native CRM/task schema gate for the registered dedicated app DB.
  * Run only inside the deployed app service after exact-deployment readback,
  * current full encrypted backup/restore proof and protected checks. It does
  * not import contacts, switch CRM authority, send messages or change providers.
@@ -6,7 +6,7 @@
  * First obtain an owner-private, authenticated Railway variable readback from
  * BOTH exact service IDs: SHA-256(app LS_DATABASE_URL) must equal
  * SHA-256(database service DATABASE_URL). Supply only that verified digest:
- * Compare the seven source files by authenticated Railway SSH with the exact
+ * Compare the reviewed source-file bundle by authenticated Railway SSH with the exact
  * reviewed Git head; supply that normalized bundle digest on both calls.
  * node --import tsx scripts/apply-contact-ops-production.ts --preflight --deployment=<Railway deployment ID> --database-binding=<database service ID>:<verified digest> --source-bundle=<reviewed remote digest>
  * node --import tsx scripts/apply-contact-ops-production.ts --apply --deployment=<same ID> --database-binding=<same ID>:<same digest> --source-bundle=<same reviewed digest>
@@ -16,7 +16,7 @@ import {readFile,readdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {Pool} from 'pg';
 import {migrate} from '../src/db/migration-runner.ts';
-import {assertContactOpsDatabaseIdentity,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,type ContactOpsIntegrityObjects} from '../src/db/contact-ops-production-guard.ts';
+import {assertContactOpsDatabaseIdentity,calendarAppendOnlyFunctionBody,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,internalTaskSchemaCatalogMatches,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,type ContactOpsIntegrityObjects,type InternalTaskIntegrityObjects} from '../src/db/contact-ops-production-guard.ts';
 import type {AppliedMigration,Migration} from '../src/db/migration-plan.ts';
 
 async function migrations():Promise<Migration[]>{
@@ -41,7 +41,10 @@ async function main(){
  const sourceEntries=await Promise.all(CONTACT_OPS_SOURCE_FILES.map(async path=>({path,bytes:await readFile(new URL(path,appRoot))})));
  if(contactOpsSourceBundle(sourceEntries)!==target.sourceBundleSha256)throw new Error('CONTACT_OPS_SOURCE_PROVENANCE_MISMATCH');
  const files=await migrations();
- if(files.at(-1)?.name!==CONTACT_OPS_MIGRATION.name)throw new Error('CONTACT_OPS_NOT_LAST_MIGRATION');
+ // Only 0101 or its exact reviewed 0102 successor may be pending, never both.
+ // The strict state gate refuses partial or unreviewed schema before any write.
+ if(!files.some(file=>file.name===CONTACT_OPS_MIGRATION.name&&file.checksum===CONTACT_OPS_MIGRATION.sha256))throw new Error('CONTACT_OPS_MIGRATION_MISSING');
+ const reviewedMigration=files.at(-1)!;
  const functionBodies=new Map([
   ['ls_demo.prevent_marker_change',contactOpsFunctionBody(files,'0097_ls_demo_provenance.sql','ls_demo.prevent_marker_change')],
   ['ls_contact_ops.require_profile_provenance',contactOpsFunctionBody(files,CONTACT_OPS_MIGRATION.name,'ls_contact_ops.require_profile_provenance')],
@@ -208,6 +211,73 @@ async function main(){
          WHERE n.nspname='ls_contact_ops' AND p.proname IN
            ('require_profile_provenance','require_marker_compatibility')
            AND acl.grantee<>p.proowner) AS restricted`);
+     const taskObjects=await client.query<Omit<InternalTaskIntegrityObjects,'schemaCatalog'>>(`SELECT
+       (SELECT count(*)=2 AND bool_and(c.relkind='r' AND c.relpersistence='p'
+         AND c.relowner=(SELECT oid FROM pg_roles WHERE rolname=current_user))
+        FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+        WHERE n.nspname='ls_calendar' AND c.relname IN ('tasks','task_history')) AS tables,
+       (SELECT count(*)=20 FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid
+        JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='ls_calendar'
+         AND c.relname IN ('tasks','task_history') AND a.attnum>0 AND NOT a.attisdropped)
+        AND EXISTS(SELECT 1 FROM pg_attribute a WHERE a.attrelid=to_regclass('ls_calendar.tasks')
+         AND a.attname='title_ciphertext' AND a.atttypid='text'::regtype AND a.attnotnull)
+        AND EXISTS(SELECT 1 FROM pg_attribute a WHERE a.attrelid=to_regclass('ls_calendar.tasks')
+         AND a.attname='due_date' AND a.atttypid='date'::regtype AND a.attnotnull)
+        AND EXISTS(SELECT 1 FROM pg_attribute a WHERE a.attrelid=to_regclass('ls_calendar.tasks')
+         AND a.attname='due_time' AND a.atttypid='time without time zone'::regtype)
+        AS columns,
+       (SELECT count(*)=13 AND bool_and(k.convalidated) FROM pg_constraint k
+        JOIN pg_class c ON c.oid=k.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+        WHERE n.nspname='ls_calendar' AND c.relname IN ('tasks','task_history')
+         AND k.contype<>'n') AS constraints,
+       (SELECT count(*)=5 AND bool_and(k.convalidated AND
+         (SELECT count(*)=4 AND bool_and(t.tgenabled IN ('O','A'))
+          FROM pg_trigger t WHERE t.tgconstraint=k.oid)) FROM pg_constraint k
+        JOIN pg_class c ON c.oid=k.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+        WHERE n.nspname='ls_calendar' AND c.relname IN ('tasks','task_history')
+         AND k.contype='f') AS "foreignKeys",
+       EXISTS(SELECT 1 FROM pg_index i WHERE i.indexrelid=to_regclass('ls_calendar.tasks_by_due')
+        AND i.indrelid=to_regclass('ls_calendar.tasks') AND i.indisvalid AND i.indisready
+        AND i.indislive AND NOT i.indisunique AND i.indnatts=4 AND i.indnkeyatts=4
+        AND i.indkey::text='1 8 9 2' AND i.indpred IS NULL AND i.indexprs IS NULL) AS "dueIndex",
+       EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='task_history_immutable'
+        AND tgrelid=to_regclass('ls_calendar.task_history') AND NOT tgisinternal
+        AND tgenabled IN ('O','A') AND tgtype=27 AND tgattr::text='' AND tgqual IS NULL
+        AND tgfoid=to_regprocedure('ls_calendar.append_only()')) AS "historyImmutable",
+       (to_regclass('ls_calendar.tasks') IS NOT NULL
+        AND to_regclass('ls_calendar.task_history') IS NOT NULL
+        AND NOT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace,
+         LATERAL aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) acl
+         WHERE n.nspname='ls_calendar' AND c.relname IN ('tasks','task_history')
+          AND acl.grantee<>c.relowner)
+        AND NOT EXISTS(SELECT 1 FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid
+         JOIN pg_namespace n ON n.oid=c.relnamespace,LATERAL aclexplode(a.attacl) acl
+         WHERE n.nspname='ls_calendar' AND c.relname IN ('tasks','task_history')
+          AND a.attnum>0 AND NOT a.attisdropped AND acl.grantee<>c.relowner)) AS "publicRevoked"`);
+     const taskColumns=await client.query<{catalog:unknown}>(`SELECT coalesce(json_agg(json_build_object(
+       'table',c.relname,'column',a.attname,'type',format_type(a.atttypid,a.atttypmod),
+       'notNull',a.attnotnull,'default',pg_get_expr(d.adbin,d.adrelid),
+       'identity',a.attidentity,'generated',a.attgenerated)
+       ORDER BY c.relname,a.attnum),'[]'::json) AS catalog
+       FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid
+       JOIN pg_namespace n ON n.oid=c.relnamespace
+       LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
+       WHERE n.nspname='ls_calendar' AND c.relname IN ('tasks','task_history')
+        AND a.attnum>0 AND NOT a.attisdropped`);
+     const taskConstraints=await client.query<{catalog:unknown}>(`SELECT coalesce(json_agg(json_build_object(
+       'table',c.relname,'name',k.conname,'type',k.contype,
+       'definition',pg_get_constraintdef(k.oid)) ORDER BY c.relname,k.conname),'[]'::json) AS catalog
+       FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid
+       JOIN pg_namespace n ON n.oid=c.relnamespace
+       WHERE n.nspname='ls_calendar' AND c.relname IN ('tasks','task_history')
+        AND k.contype<>'n'`);
+     const appendOnly=await client.query<{body:string;safe:boolean}>(`SELECT p.prosrc AS body,
+       p.prolang=(SELECT oid FROM pg_language WHERE lanname='plpgsql')
+        AND p.prokind='f' AND p.pronargs=0 AND p.prorettype='trigger'::regtype
+        AND p.provolatile='v' AND p.proparallel='u' AND NOT p.prosecdef
+        AND p.proconfig=ARRAY['search_path=pg_catalog']::text[]
+        AND p.proowner=(SELECT oid FROM pg_roles WHERE rolname=current_user) AS safe
+       FROM pg_proc p WHERE p.oid=to_regprocedure('ls_calendar.append_only()')`);
      let referencesSound=false;
      if(objects.rows[0]?.profiles&&objects.rows[0]?.legacyLinks&&objects.rows[0]?.commandReceipts){
       const orphaned=await client.query<{sound:boolean}>(`SELECT
@@ -243,18 +313,22 @@ async function main(){
        foreignKeysEnforced:foreignKeys.rows[0]?.enforced===true,
        foreignKeyReferencesSound:referencesSound,
        publicRevoked:privileges.rows[0]?.restricted===true};
-     return contactOpsMigrationState(files,history,integrity);
+     const taskIntegrity:InternalTaskIntegrityObjects={...taskObjects.rows[0]!,
+       schemaCatalog:internalTaskSchemaCatalogMatches(taskColumns.rows[0]?.catalog,taskConstraints.rows[0]?.catalog),
+       appendOnlyFunction:appendOnly.rows.length===1&&appendOnly.rows[0]?.safe===true&&
+        appendOnly.rows[0]?.body===calendarAppendOnlyFunctionBody(files)};
+     return contactOpsMigrationState(files,history,integrity,taskIntegrity);
     }catch(error){await client.query('ROLLBACK').catch(()=>undefined);throw error;}
    };
    const before=await inspect();
    if(target.mode==='preflight'){
-    process.stdout.write(JSON.stringify({code:'CONTACT_OPS_PREFLIGHT_OK',deploymentId:target.deploymentId,databaseServiceId:target.databaseServiceId,migration:CONTACT_OPS_MIGRATION.name,state:before})+'\n');
+    process.stdout.write(JSON.stringify({code:'CONTACT_OPS_PREFLIGHT_OK',deploymentId:target.deploymentId,databaseServiceId:target.databaseServiceId,migration:reviewedMigration.name,state:before})+'\n');
     return;
    }
    const result=before==='pending'?await migrate({query:(sql,values)=>client.query(sql,values?[...values]:undefined)},files,false):{applied:0,pending:0};
    const after=await inspect();
    if(after!=='applied'||result.applied!==(before==='pending'?1:0))throw new Error('CONTACT_OPS_APPLY_READBACK_FAILED');
-   process.stdout.write(JSON.stringify({code:'CONTACT_OPS_SCHEMA_VERIFIED',deploymentId:target.deploymentId,databaseServiceId:target.databaseServiceId,migration:CONTACT_OPS_MIGRATION.name,checksum:CONTACT_OPS_MIGRATION.sha256,applied:result.applied,state:after})+'\n');
+   process.stdout.write(JSON.stringify({code:'CONTACT_OPS_SCHEMA_VERIFIED',deploymentId:target.deploymentId,databaseServiceId:target.databaseServiceId,migration:reviewedMigration.name,checksum:reviewedMigration.checksum,applied:result.applied,state:after})+'\n');
   }finally{client.release();}
  }finally{await pool.end();}
 }

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { asId } from '../../lib/ids.ts';
-import { iso } from './time.ts';
+import { iso, shiftDay } from './time.ts';
 const uuid=z.string().uuid();
 const timestamp=z.string().max(40).refine(v=>{try{iso(v);return true;}catch{return false;}},'Offset-qualified valid timestamp required').transform(iso);
 const caseId=uuid.transform(v=>asId(v,'case'));
@@ -21,4 +21,16 @@ export const logisticsSchema=z.strictObject({expectedVersion:z.number().int().mi
 export const replacementSchema=z.strictObject({expectedVersion:z.number().int().min(1),booking:bookingSchema});
 export const availabilitySchema=z.strictObject({startsAt:timestamp,endsAt:timestamp,kind:z.enum(['open','blocked'])});
 export const listSchema=z.strictObject({from:timestamp,to:timestamp,caseId:caseId.nullable(),cursor:z.string().max(180).nullable()});
+const taskDate=z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v=>{try{return shiftDay(v,0)===v;}catch{return false;}});
+const taskTime=z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
+/** Task links remain within the private practitioner app. No arbitrary external URL. */
+export function internalTaskPath(value:string):boolean {
+ if(value.length>280||value.includes('..')||value.includes('//')||/[\u0000-\u001f\\#]/.test(value))return false;
+ return /^\/(?:he|en)\/app\/(?:calendar|clients|communications|reports|marketing|payments)(?:\/[A-Za-z0-9_-]+)*(?:\?[A-Za-z0-9_=&%-]+)?$/.test(value);
+}
+export const taskCreateSchema=z.strictObject({
+ title:clean(140).trim().min(1),dueDate:taskDate,dueTime:taskTime.nullable(),
+ note:clean(1000).nullable(),sourcePath:z.string().refine(internalTaskPath).nullable(),caseId:caseId.nullable()
+});
+export const taskListSchema=z.strictObject({from:timestamp,to:timestamp,caseId:caseId.nullable()});
 export function parseQuery<T>(schema:z.ZodType<T>,input:unknown):T{const r=schema.safeParse(input);if(!r.success)throw new Error('INVALID_QUERY');return r.data;}
