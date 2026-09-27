@@ -8,5 +8,6 @@ export function activeProspect(row:VerifiedJourney):boolean {
 }
 
 export function paidAwaitingBooking(row:VerifiedJourney):boolean {
- return row.paymentVerified===true && row.bookingConfirmed!==true && !activeProspect(row);
+ // A cancellation can invalidate the appointment without changing the journey state.
+ return row.paymentVerified===true && row.bookingConfirmed!==true;
 }
