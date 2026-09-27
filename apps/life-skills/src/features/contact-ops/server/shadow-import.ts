@@ -5,8 +5,8 @@ import { freshActor, lockWorkspace } from "../../identity/data.ts";
 import { systemClock, type Actor, type IdentityClock } from "../../identity/types.ts";
 import { requirePractitioner } from "../../cases/policy.ts";
 import { normalizePhone } from "../core/contact-resolution.js";
-import { dateOnly, requireThat } from "../core/validation.js";
-import { planImport, type ImportRow, type SheetSnapshot } from "./import-plan.ts";
+import { requireThat } from "../core/validation.js";
+import { importedFollowUpDate, planImport, type ImportRow, type SheetSnapshot } from "./import-plan.ts";
 import { crmProfileAad, type CrmProfile } from "./native-store.ts";
 
 export type NewPersonDisposition = { sourceRow: number; sourceRevision: string; legacyId: string; rowDigest: string; kind: "new_person" };
@@ -45,8 +45,7 @@ export class NativeShadowImporter {
   }
   const phones = new Set<string>(), emails = new Set<string>();
   for (const row of plan.rows) {
-   const rawDate = sourceField(row, "Next-action date").trim();
-   requireThat(!rawDate || dateOnly(rawDate), "IMPORT_INVALID_FOLLOWUP_DATE");
+   importedFollowUpDate(row);
    if (row.normalizedPhone) {
     requireThat(!phones.has(row.normalizedPhone), "IMPORT_SHARED_ENDPOINT_REQUIRES_REVIEW");
     phones.add(row.normalizedPhone);
@@ -131,11 +130,10 @@ export class NativeShadowImporter {
 function profileFromRow(row: ImportRow): CrmProfile {
  const stage = row.protectedPayload.stageText.trim() || "new";
  const nextAction = sourceField(row, "Next action").trim() || null;
- const rawDate = sourceField(row, "Next-action date").trim();
+ const followUpDate = importedFollowUpDate(row);
  const notes = sourceField(row, "General sales notes");
  requireThat(stage.length <= 120 && (nextAction === null || nextAction.length <= 500) && notes.length <= 5000, "IMPORT_PROFILE_FIELD_TOO_LONG");
- requireThat(!rawDate || dateOnly(rawDate), "IMPORT_INVALID_FOLLOWUP_DATE");
- return { personId: row.suggestedPersonId, stage, nextAction, followUpDate: dateOnly(rawDate) ? rawDate : null, notes, legacyIds: [row.legacyId] };
+ return { personId: row.suggestedPersonId, stage, nextAction, followUpDate, notes, legacyIds: [row.legacyId] };
 }
 
 function sourceField(row: ImportRow, name: string): string {

@@ -1,5 +1,5 @@
 import {describe,expect,it} from "vitest";
-import {importSummary,planImport,sameProtectedRow,type SheetSnapshot} from "../../../src/features/contact-ops/server/import-plan.ts";
+import {importSummary,importedFollowUpDate,planImport,sameProtectedRow,type SheetSnapshot} from "../../../src/features/contact-ops/server/import-plan.ts";
 
 const key="synthetic-test-integrity-key-123456789";
 const snapshot=(changes:Partial<SheetSnapshot>={}):SheetSnapshot=>({fileId:"synthetic-source",sheetId:101,tab:"Leads",revision:"synthetic-revision",complete:true,headers:["Lead ID","Parent/adult name","Phone","Email","Pipeline stage","Payment status","General sales notes","Update provenance","Inbound provider message IDs","Unmapped source column"],rows:[["LS-LEAD-DEMO-01","DEMO — Synthetic parent","0520000001","demo@example.invalid","Offer made","PAID","Synthetic administrative note","synthetic import","provider-event-synthetic","Preserve this extra"]],...changes});
@@ -59,5 +59,24 @@ describe("native CRM candidate source planner",()=>{
   expect(imported.normalizedEmail).toBeNull();
   expect(imported.issues).toContain("EMAIL_NEEDS_REVIEW");
   expect(imported.protectedPayload.sourceFields.Email).toBe("a..b@example.com");
+ });
+ it("preserves source-native cell types in the private payload and review digest",()=>{
+  const original=snapshot();
+  const withTypes=snapshot({cellTypes:[original.rows[0]!.map(()=>"s")]});
+  const plain=planImport(original,"synthetic-workspace",key),typed=planImport(withTypes,"synthetic-workspace",key);
+  expect(typed.rows[0]?.protectedPayload.sourceCellTypes?.["General sales notes"]).toBe("s");
+  expect(typed.rows[0]?.rowDigest).not.toBe(plain.rows[0]?.rowDigest);
+  expect(typed.snapshotDigest).not.toBe(plain.snapshotDigest);
+  expect(sameProtectedRow(typed.rows[0]!,plain.rows[0]!)).toBe(false);
+  expect(()=>planImport(snapshot({cellTypes:[]}),"synthetic-workspace",key)).toThrow("CELL_TYPES_MISMATCH");
+  expect(()=>planImport(snapshot({cellTypes:[["s"]]}),"synthetic-workspace",key)).toThrow("CELL_TYPES_MISMATCH");
+ });
+ it("normalizes only explicitly typed midnight civil dates, never guessed date strings or serials",()=>{
+  const original=snapshot(),headers=[...original.headers,"Next-action date"],values=[...original.rows[0]!,"2026-09-27 00:00:00"];
+  const typed=snapshot({headers,rows:[values],cellTypes:[[...original.rows[0]!.map(()=>"s"),"d"]]});
+  expect(importedFollowUpDate(planImport(typed,"synthetic-workspace",key).rows[0]!)).toBe("2026-09-27");
+  expect(()=>importedFollowUpDate(planImport(snapshot({headers,rows:[values]}),"synthetic-workspace",key).rows[0]!)).toThrow("IMPORT_INVALID_FOLLOWUP_DATE");
+  expect(()=>importedFollowUpDate(planImport(snapshot({headers,rows:[[...original.rows[0]!,"46562"]],cellTypes:[[...original.rows[0]!.map(()=>"s"),"d"]]}),"synthetic-workspace",key).rows[0]!)).toThrow("IMPORT_INVALID_FOLLOWUP_DATE");
+  expect(()=>importedFollowUpDate(planImport(snapshot({headers,rows:[[...original.rows[0]!,"2026-09-27 15:00:00"]],cellTypes:[[...original.rows[0]!.map(()=>"s"),"d"]]}),"synthetic-workspace",key).rows[0]!)).toThrow("IMPORT_INVALID_FOLLOWUP_DATE");
  });
 });
