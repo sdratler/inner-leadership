@@ -128,24 +128,34 @@ async function main(){
        WHERE n.nspname='ls_contact_ops' AND k.contype='f'`);
      const privileges=await client.query<{restricted:boolean}>(`SELECT
        EXISTS(SELECT 1 FROM pg_namespace WHERE nspname='ls_contact_ops') AND
+       (SELECT n.nspowner=(SELECT oid FROM pg_roles WHERE rolname=current_user)
+         FROM pg_namespace n WHERE n.nspname='ls_contact_ops') AND
+       (SELECT count(*)=3 AND bool_and(c.relowner=(SELECT oid FROM pg_roles WHERE rolname=current_user))
+         FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+         WHERE n.nspname='ls_contact_ops' AND c.relname IN
+           ('profiles','legacy_links','command_receipts')) AND
+       (SELECT count(*)=2 AND bool_and(p.proowner=(SELECT oid FROM pg_roles WHERE rolname=current_user))
+         FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+         WHERE n.nspname='ls_contact_ops' AND p.proname IN
+           ('require_profile_provenance','require_marker_compatibility')) AND
        NOT EXISTS(SELECT 1 FROM pg_namespace n,
          LATERAL aclexplode(coalesce(n.nspacl,acldefault('n',n.nspowner))) acl
-         WHERE n.nspname='ls_contact_ops' AND acl.grantee=0) AND
+         WHERE n.nspname='ls_contact_ops' AND acl.grantee<>n.nspowner) AND
        NOT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace,
          LATERAL aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) acl
          WHERE n.nspname='ls_contact_ops' AND c.relname IN
-           ('profiles','legacy_links','command_receipts') AND acl.grantee=0) AND
+           ('profiles','legacy_links','command_receipts') AND acl.grantee<>c.relowner) AND
        NOT EXISTS(SELECT 1 FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid
          JOIN pg_namespace n ON n.oid=c.relnamespace,
-         LATERAL aclexplode(coalesce(a.attacl,ARRAY[]::aclitem[])) acl
+         LATERAL aclexplode(a.attacl) acl
          WHERE n.nspname='ls_contact_ops' AND c.relname IN
            ('profiles','legacy_links','command_receipts')
-           AND a.attnum>0 AND NOT a.attisdropped AND acl.grantee=0) AND
+           AND a.attnum>0 AND NOT a.attisdropped AND acl.grantee<>c.relowner) AND
        NOT EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace,
          LATERAL aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) acl
          WHERE n.nspname='ls_contact_ops' AND p.proname IN
            ('require_profile_provenance','require_marker_compatibility')
-           AND acl.grantee=0) AS restricted`);
+           AND acl.grantee<>p.proowner) AS restricted`);
      let referencesSound=false;
      if(objects.rows[0]?.profiles&&objects.rows[0]?.legacyLinks&&objects.rows[0]?.commandReceipts){
       const orphaned=await client.query<{sound:boolean}>(`SELECT
