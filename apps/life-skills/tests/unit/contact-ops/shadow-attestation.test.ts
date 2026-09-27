@@ -5,12 +5,13 @@ import { shadowAttestationMessage, verifyShadowAttestation } from "../../../src/
 it("binds the owner attestation to the exact backup, snapshot, source and deployment", () => {
  const {privateKey,publicKey}=generateKeyPairSync("ed25519");
  const publicDer=publicKey.export({format:"der",type:"spki"}).toString("base64");
- const value={sourceFileId:"synthetic-file",sourceSheetId:42,sourceRevision:"synthetic-revision",
+ const value={workspaceId:"synthetic-workspace",sourceFileId:"synthetic-file",sourceSheetId:42,sourceRevision:"synthetic-revision",
   deploymentId:"synthetic-deployment",reviewedMainSha:"1".repeat(40),operatorSha256:"2".repeat(64),
   workbookSha256:"a".repeat(64),snapshotSha256:"b".repeat(64),databaseBackupSha256:"c".repeat(64)};
  const signature=sign(null,shadowAttestationMessage(value),privateKey).toString("base64");
  expect(verifyShadowAttestation(value,signature,publicDer)).toBe(true);
  for(const changed of [
+  {...value,workspaceId:"another-workspace"},
   {...value,sourceRevision:"other-revision"},
   {...value,deploymentId:"other-deployment"},
   {...value,reviewedMainSha:"3".repeat(40)},

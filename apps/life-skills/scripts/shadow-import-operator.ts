@@ -17,9 +17,10 @@ const systemIdentifier = "7682781321794240577";
 const exactProject = "3b756632-1f66-4f75-a016-eabc37aa0d67";
 const exactService = "0267d061-f3ce-4a0a-82d4-ce133e4501e9";
 const exactEnvironment = "dd91bd71-57cc-45e6-a75b-8c858491d7c7";
+const exactWorkspace = "1553e959-b299-40e4-b82e-8529597b69ec";
 // Pinned from the independently reviewed source tree: every src file and package-lock.json.
 // An unrelated later deployment must fail closed until this one-shot tool is reviewed again.
-const reviewedSourceTreeSha256 = "fc46d27854feac3616526f6f35a296347f9e5314295bd1106f0bb4855c62849e";
+const reviewedSourceTreeSha256 = "195f0377f0a98ffe698752d1dbc30217b36e5278dca279646c427a3b5ad18957";
 
 type Input = {
  snapshot: SheetSnapshot;
@@ -83,6 +84,7 @@ async function main() {
  if (process.env.LS_NATIVE_SHADOW_IMPORT_APPROVED !== "true" ||
   process.env.RAILWAY_PROJECT_ID !== exactProject || process.env.RAILWAY_SERVICE_ID !== exactService ||
   process.env.RAILWAY_ENVIRONMENT_ID !== exactEnvironment ||
+  process.env.LS_IDENTITY_WORKSPACE_ID !== exactWorkspace ||
   !/(?:^|[\\/])scripts[\\/]shadow-import-operator\.ts$/.test(process.argv[1]??"")) fail("IMPORT_OPERATOR_NOT_ADMITTED");
  const opt = options(process.argv.slice(2));
  if (!/^[0-9a-f-]{36}$/.test(opt.deployment) || process.env.RAILWAY_DEPLOYMENT_ID !== opt.deployment ||
@@ -121,12 +123,13 @@ async function main() {
   rows:payload.snapshot.rows,cellTypes:payload.snapshot.cellTypes})).digest("hex");
  if (payload.workbookSha256 !== SHADOW_WORKBOOK_SHA256 || payload.snapshotSha256 !== SHADOW_SNAPSHOT_SHA256 ||
   snapshotSha256 !== SHADOW_SNAPSHOT_SHA256 || payload.expectedSnapshotDigest !== SHADOW_PLAN_DIGEST ||
-  !verifyShadowAttestation({sourceFileId,sourceSheetId,sourceRevision:opt.sourceRevision,
+  !verifyShadowAttestation({workspaceId:exactWorkspace,sourceFileId,sourceSheetId,sourceRevision:opt.sourceRevision,
    deploymentId:opt.deployment,reviewedMainSha:opt.reviewedMain,operatorSha256:opt.operatorSha256,
    workbookSha256:payload.workbookSha256,
    snapshotSha256, databaseBackupSha256:payload.backupSha256},payload.attestationSignature)) fail("IMPORT_OWNER_BACKUP_ATTESTATION_INVALID");
  const runtime = await identityRuntime();
- if (runtime.config.origin !== "https://life-skills.bneineviimacademy.org") fail("IMPORT_ORIGIN_MISMATCH");
+ if (runtime.config.origin !== "https://life-skills.bneineviimacademy.org" || runtime.config.workspaceId !== exactWorkspace)
+  fail("IMPORT_ORIGIN_OR_WORKSPACE_MISMATCH");
  const plan = planImport(payload.snapshot, runtime.config.workspaceId, payload.integrityKey);
  if (!plan.canImport || plan.rows.length < 1 || plan.rows.some(row => row.issues.length) || plan.snapshotDigest !== SHADOW_PLAN_DIGEST ||
   plan.rows.length !== payload.dispositions.length || plan.rows.some(row => !payload.dispositions.some(decision => decision.kind === "new_person" && decision.sourceRow === row.sourceRow && decision.sourceRevision === opt.sourceRevision && decision.legacyId === row.legacyId && decision.rowDigest === row.rowDigest))) fail("IMPORT_PLAN_OR_DISPOSITION_INVALID");

@@ -7,14 +7,14 @@ export const SHADOW_SNAPSHOT_SHA256 = "d4a468a83862e106052767708b2e07df5b33558f3
 export const SHADOW_PLAN_DIGEST = "2ca81e1b1e2c4b5cf17256b5c7236857c0fd03529ad6231e98ffef3b76104c68";
 
 export type ShadowAttestation = {
- sourceFileId: string; sourceSheetId: number; sourceRevision: string;
+ workspaceId: string; sourceFileId: string; sourceSheetId: number; sourceRevision: string;
  deploymentId: string; reviewedMainSha: string; operatorSha256: string;
  workbookSha256: string; snapshotSha256: string; databaseBackupSha256: string;
 };
 
 export function shadowAttestationMessage(value: ShadowAttestation): Buffer {
  return Buffer.from([
-  "ls-native-shadow-v1", value.sourceFileId, String(value.sourceSheetId), value.sourceRevision,
+  "ls-native-shadow-v1", value.workspaceId, value.sourceFileId, String(value.sourceSheetId), value.sourceRevision,
   value.deploymentId, value.reviewedMainSha, value.operatorSha256,
   value.workbookSha256, value.snapshotSha256, value.databaseBackupSha256, "",
  ].join("\n"), "utf8");
