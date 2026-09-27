@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {describe,expect,it} from 'vitest';
-import {assertContactOpsDatabaseIdentity,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,type ContactOpsIntegrityObjects} from '../../src/db/contact-ops-production-guard.ts';
+import {assertContactOpsDatabaseIdentity,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsComparableConstraints,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,type ContactOpsIntegrityObjects} from '../../src/db/contact-ops-production-guard.ts';
 
 const deployment='a2d9d868-53c4-4fdd-973c-21c4b6b8987d';
 const good={
@@ -39,6 +39,7 @@ describe('registered native CRM production migration gate',()=>{
   expect(contactOpsSchemaCatalogMatches([],[])).toBe(false);
   expect(contactOpsSchemaCatalogMatches(new Array(25).fill({}),new Array(21).fill({}))).toBe(false);
   expect(contactOpsBaselineRecordsMatches([],[])).toBe(false);
+  expect(contactOpsComparableConstraints([{type:'c'},{type:'n'},{type:'f'}])).toEqual([{type:'c'},{type:'f'}]);
  });
  it('binds the observed TLS PostgreSQL cluster to the independently read canonical database service',()=>{
   expect(()=>assertContactOpsDatabaseIdentity('7682781321794240577',true)).not.toThrow();

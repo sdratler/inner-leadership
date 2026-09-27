@@ -8,7 +8,8 @@ export const CONTACT_OPS_MIGRATION = {
 
 /** Catalog fingerprint from 0101 applied to a clean, disposable native PG17
  * restore. It covers every column and all 21 PK/FK/CHECK definitions across
- * profiles, legacy_links and command_receipts, not only object names. */
+ * profiles, legacy_links and command_receipts, not only object names. PG18
+ * additionally lists NOT NULL constraints; column attnotnull covers those. */
 export const CONTACT_OPS_SCHEMA_CATALOG = {
  columns:25,constraints:21,
  sha256:'dde228b5f919a09ee668420517817eceb673d9a5764ed3a8552de8f980057222',
@@ -59,10 +60,16 @@ export type ContactOpsIntegrityObjects={
 };
 
 export function contactOpsSchemaCatalogMatches(columns:unknown,constraints:unknown):boolean{
- if(!Array.isArray(columns)||columns.length!==CONTACT_OPS_SCHEMA_CATALOG.columns||
-    !Array.isArray(constraints)||constraints.length!==CONTACT_OPS_SCHEMA_CATALOG.constraints)return false;
- const digest=createHash('sha256').update(JSON.stringify({columns,constraints})).digest('hex');
+ if(!Array.isArray(columns)||columns.length!==CONTACT_OPS_SCHEMA_CATALOG.columns||!Array.isArray(constraints))return false;
+ const materialConstraints=contactOpsComparableConstraints(constraints);
+ if(materialConstraints.length!==CONTACT_OPS_SCHEMA_CATALOG.constraints)return false;
+ const digest=createHash('sha256').update(JSON.stringify({columns,constraints:materialConstraints})).digest('hex');
  return digest===CONTACT_OPS_SCHEMA_CATALOG.sha256;
+}
+
+/** PostgreSQL 18 exposes NOT NULL as contype=n while 17 does not. */
+export function contactOpsComparableConstraints(constraints:readonly {type?:unknown}[]):readonly {type?:unknown}[]{
+ return constraints.filter(row=>row?.type!=='n');
 }
 
 export function contactOpsBaselineRecordsMatches(columns:unknown,constraints:unknown):boolean{
