@@ -5,6 +5,7 @@ import {join} from "node:path";
 import {fileURLToPath} from "node:url";
 vi.mock("server-only", () => ({}));
 import {shadowOperatorAdmitted} from "../../../src/features/contact-ops/server/shadow-import.ts";
+import {CONTACT_OPS_SOURCE_FILES,contactOpsSourceBundle} from "../../../src/db/contact-ops-production-guard.ts";
 
 const exact = {
  LS_NATIVE_SHADOW_IMPORT_APPROVED:"true",
@@ -45,4 +46,15 @@ it("pins the complete reviewed executable source tree and dependency lock",()=>{
  for(const path of paths)digest.update(path).update("\0")
   .update(readFileSync(join(app,...path.split("/")),"utf8").replace(/\r\n/g,"\n")).update("\0");
  expect(digest.digest("hex")).toBe(pinned);
+});
+
+it("pins the existing read-only production schema guard before import",()=>{
+ const app=fileURLToPath(new URL("../../../",import.meta.url));
+ const operator=readFileSync(join(app,"scripts","shadow-import-operator.ts"),"utf8");
+ const pinned=/reviewedContactOpsBundleSha256 = "([a-f0-9]{64})"/.exec(operator)?.[1];
+ expect(pinned).toBeDefined();
+ const entries=CONTACT_OPS_SOURCE_FILES.map(path=>({path,bytes:readFileSync(join(app,...path.split("/")))}));
+ expect(contactOpsSourceBundle(entries)).toBe(pinned);
+ expect(operator.indexOf("CONTACT_OPS_PREFLIGHT_OK")).toBeGreaterThan(operator.indexOf("contactOpsSourceBundle"));
+ expect(operator.indexOf("CONTACT_OPS_PREFLIGHT_OK")).toBeLessThan(operator.indexOf("const importer = "));
 });

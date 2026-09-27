@@ -4,9 +4,11 @@
  * authority, create accounts/cases, or invoke a provider.
  */
 import { createHash } from "node:crypto";
+import { execFile } from "node:child_process";
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import type { NewPersonDisposition } from "../src/features/contact-ops/server/shadow-import.ts";
 import type { SheetSnapshot } from "../src/features/contact-ops/server/import-plan.ts";
 
@@ -21,6 +23,10 @@ const exactWorkspace = "1553e959-b299-40e4-b82e-8529597b69ec";
 // Pinned from the independently reviewed source tree: every src file and package-lock.json.
 // An unrelated later deployment must fail closed until this one-shot tool is reviewed again.
 const reviewedSourceTreeSha256 = "948e1b918e562e085cd4e6ddee62fc6d4a45d589ab5de10ea8a3c043ca6f9138";
+// Includes the read-only production schema guard, every migration it checks,
+// its manifest and migration helpers. The attested operator pins these bytes.
+const reviewedContactOpsBundleSha256 = "6d7b9e15296ce5ff10a4c9801e3084ba6d572126a8aa1ca964feebde38e0ba56";
+const execFileAsync = promisify(execFile);
 
 type Input = {
  snapshot: SheetSnapshot;
@@ -98,14 +104,19 @@ async function main() {
  if (await sourceTreeSha256() !== reviewedSourceTreeSha256) fail("IMPORT_REVIEWED_SOURCE_TREE_MISMATCH");
  // No application module is evaluated until the complete reviewed tree passes.
  const [{closeDatabase:shutdown},{validateDatabaseUrl},{identityRuntime},
-  {NativeShadowImporter,nativeShadowOperatorPermit},{planImport},attestation] = await Promise.all([
+  {NativeShadowImporter,nativeShadowOperatorPermit},{planImport},attestation,contactOpsGuard] = await Promise.all([
   import("../src/db/client.ts"),import("../src/lib/env/schema.ts"),
   import("../src/features/identity/runtime.ts"),
   import("../src/features/contact-ops/server/shadow-import.ts"),
   import("../src/features/contact-ops/server/import-plan.ts"),
   import("../src/features/contact-ops/server/shadow-attestation.ts"),
+  import("../src/db/contact-ops-production-guard.ts"),
  ]);
  closeDatabase=shutdown;
+ const appRoot=fileURLToPath(new URL("../",import.meta.url));
+ const contactOpsBundle=contactOpsGuard.contactOpsSourceBundle(await Promise.all(
+  contactOpsGuard.CONTACT_OPS_SOURCE_FILES.map(async path=>({path,bytes:await readFile(join(appRoot,...path.split("/")))}))));
+ if(contactOpsBundle!==reviewedContactOpsBundleSha256) fail("IMPORT_CONTACT_OPS_SOURCE_MISMATCH");
  const {SHADOW_PLAN_DIGEST,SHADOW_SNAPSHOT_SHA256,SHADOW_WORKBOOK_SHA256,verifyShadowAttestation}=attestation;
  const permit=nativeShadowOperatorPermit();
  const url = process.env.LS_DATABASE_URL;
@@ -139,6 +150,20 @@ async function main() {
    (SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()) AS ssl`);
   if (identity.length !== 1 || identity[0]?.system_identifier !== systemIdentifier || identity[0]?.ssl !== true) fail("IMPORT_DATABASE_IDENTITY_MISMATCH");
  });
+ // The existing production migration guard performs read-only catalog,
+ // trigger, constraint, ACL, reference and history verification. It must say
+ // 0101 is applied before either a preflight receipt or an import can proceed.
+ try {
+  const {stdout}=await execFileAsync(process.execPath,["--import","tsx",
+   fileURLToPath(new URL("./apply-contact-ops-production.ts",import.meta.url)),"--preflight",
+   `--deployment=${opt.deployment}`,`--database-binding=${opt.databaseBinding}`,
+   `--source-bundle=${reviewedContactOpsBundleSha256}`],
+   {cwd:appRoot,env:process.env,windowsHide:true,timeout:60000,maxBuffer:8192});
+  const receipt=JSON.parse(stdout.trim().split(/\r?\n/).at(-1)??"") as Record<string,unknown>;
+  if(receipt.code!=="CONTACT_OPS_PREFLIGHT_OK" || receipt.state!=="applied" ||
+   receipt.databaseServiceId!==databaseService || receipt.deploymentId!==opt.deployment ||
+   receipt.migration!==contactOpsGuard.CONTACT_OPS_MIGRATION.name) fail("IMPORT_CONTACT_OPS_SCHEMA_UNVERIFIED");
+ } catch { fail("IMPORT_CONTACT_OPS_SCHEMA_UNVERIFIED"); }
  const importer = new NativeShadowImporter(runtime.store, runtime.config.keyring, runtime.config.lookupKey,
   payload.integrityKey, sourceFileId, sourceSheetId);
  const checked = await importer.preflightNewPeopleAsOperator(runtime.config.workspaceId, payload.snapshot, payload.dispositions, permit);
