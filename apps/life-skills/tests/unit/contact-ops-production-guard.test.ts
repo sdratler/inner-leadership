@@ -79,9 +79,12 @@ describe('registered native CRM production migration gate',()=>{
   expect(()=>contactOpsMigrationState([prior,next],[],absent)).toThrow();
  });
  it('accepts an exact idempotent readback but rejects drift or missing objects',()=>{
+  const through0101=[prior,next].map(({name,checksum})=>({name,checksum}));
   expect(contactOpsMigrationState([prior,next],[prior,{name:next.name,checksum:next.checksum}],present)).toBe('applied');
   expect(contactOpsMigrationState([prior,next,taskSuffix],[prior,next,taskSuffix].map(({name,checksum})=>({name,checksum})),present)).toBe('applied');
-  expect(()=>contactOpsMigrationState([prior,next,taskSuffix],[prior,next].map(({name,checksum})=>({name,checksum})),present)).toThrow('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+  expect(contactOpsMigrationState([prior,next,taskSuffix],through0101,present)).toBe('pending');
+  expect(()=>contactOpsMigrationState([prior,next,taskSuffix],through0101,{...present,profiles:false})).toThrow('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+  expect(()=>contactOpsMigrationState([prior,next,taskSuffix],[prior],absent)).toThrow('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
   expect(()=>contactOpsMigrationState([prior,next,{...taskSuffix,checksum:'1'.repeat(64)}],[prior,next,taskSuffix].map(({name,checksum})=>({name,checksum})),present)).toThrow('CONTACT_OPS_MANIFEST_MISMATCH');
   expect(()=>contactOpsMigrationState([prior,next,taskSuffix,{...taskSuffix,name:'0103_unreviewed.sql'}],[prior,next,taskSuffix].map(({name,checksum})=>({name,checksum})),present)).toThrow('CONTACT_OPS_MANIFEST_MISMATCH');
   for(const key of Object.keys(present) as (keyof ContactOpsIntegrityObjects)[])

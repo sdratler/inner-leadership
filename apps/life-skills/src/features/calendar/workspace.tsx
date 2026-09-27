@@ -48,9 +48,10 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  const names=Object.fromEntries(cases.map(c=>[c.id,c.displayName]));
  const clearDirty=useCallback(()=>setDirty(false),[]);
  const closeBooking=useCallback(()=>{setBookingOpen(false);setDirty(false);},[]);
+ const closeTask=useCallback(()=>{setTaskDirty(false);setTaskDraft({title:'',dueDate:date,dueTime:'',note:'',sourcePath:'',caseId});},[date,caseId]);
  useDialogGuard('ls-cal-detail',dirty,mutation.locked,locale,clearDirty);
  useDialogGuard('ls-cal-book',dirty,mutation.locked,locale,closeBooking);
- useDialogGuard('ls-cal-task',taskDirty,mutation.locked,locale);
+ useDialogGuard('ls-cal-task',taskDirty,mutation.locked,locale,closeTask);
 
  const load=useCallback(async (reset=true,after:string|null=null)=>{
   const current=reset?++generation.current:generation.current;setLoading(reset);setError(null);

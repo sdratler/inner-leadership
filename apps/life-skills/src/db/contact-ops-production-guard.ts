@@ -34,6 +34,7 @@ const DEMO_RECORDS_BASELINE = {
 export const CONTACT_OPS_SOURCE_FILES = [
  'migrations/0097_ls_demo_provenance.sql',
  'migrations/0101_ls_contact_operations.sql',
+ 'migrations/0102_ls_internal_tasks.sql',
  'migrations/manifest.json',
  'scripts/apply-contact-ops-production.ts',
  'src/db/contact-ops-production-guard.ts',
@@ -162,6 +163,7 @@ export function contactOpsMigrationState(files:readonly Migration[],history:read
  if(!objects.immutableDemoRecordTrigger||!objects.immutableFunction||!objects.baselineRecordsCatalog)throw new Error('CONTACT_OPS_BASELINE_PROVENANCE_MISSING');
  const newlyCreated=Object.entries(objects).filter(([key])=>!['immutableDemoRecordTrigger','immutableFunction','baselineRecordsCatalog'].includes(key)).map(([,value])=>value);
  if(suffix.length===0 && pending.length===1 && pending[0]?.name===CONTACT_OPS_MIGRATION.name && newlyCreated.every(value=>!value))return 'pending';
+ if(suffix.length===1 && pending.length===1 && pending[0]?.name===REVIEWED_TASKS_SUFFIX.name && values.every(Boolean))return 'pending';
  if(pending.length===0 && values.every(Boolean))return 'applied';
  throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
 }

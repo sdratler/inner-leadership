@@ -1,4 +1,4 @@
-/** One-time additive native CRM schema gate for the registered dedicated app DB.
+/** Reviewed additive native CRM/task schema gate for the registered dedicated app DB.
  * Run only inside the deployed app service after exact-deployment readback,
  * current full encrypted backup/restore proof and protected checks. It does
  * not import contacts, switch CRM authority, send messages or change providers.
@@ -6,7 +6,7 @@
  * First obtain an owner-private, authenticated Railway variable readback from
  * BOTH exact service IDs: SHA-256(app LS_DATABASE_URL) must equal
  * SHA-256(database service DATABASE_URL). Supply only that verified digest:
- * Compare the seven source files by authenticated Railway SSH with the exact
+ * Compare the reviewed source-file bundle by authenticated Railway SSH with the exact
  * reviewed Git head; supply that normalized bundle digest on both calls.
  * node --import tsx scripts/apply-contact-ops-production.ts --preflight --deployment=<Railway deployment ID> --database-binding=<database service ID>:<verified digest> --source-bundle=<reviewed remote digest>
  * node --import tsx scripts/apply-contact-ops-production.ts --apply --deployment=<same ID> --database-binding=<same ID>:<same digest> --source-bundle=<same reviewed digest>
@@ -41,10 +41,10 @@ async function main(){
  const sourceEntries=await Promise.all(CONTACT_OPS_SOURCE_FILES.map(async path=>({path,bytes:await readFile(new URL(path,appRoot))})));
  if(contactOpsSourceBundle(sourceEntries)!==target.sourceBundleSha256)throw new Error('CONTACT_OPS_SOURCE_PROVENANCE_MISMATCH');
  const files=await migrations();
- // 0101 may have a later, separately reviewed additive migration. The strict
- // contactOpsMigrationState gate below checks its exact admitted suffix and
- // refuses a partial/unapplied suffix before any write.
+ // Only 0101 or its exact reviewed 0102 successor may be pending, never both.
+ // The strict state gate refuses partial or unreviewed schema before any write.
  if(!files.some(file=>file.name===CONTACT_OPS_MIGRATION.name&&file.checksum===CONTACT_OPS_MIGRATION.sha256))throw new Error('CONTACT_OPS_MIGRATION_MISSING');
+ const reviewedMigration=files.at(-1)!;
  const functionBodies=new Map([
   ['ls_demo.prevent_marker_change',contactOpsFunctionBody(files,'0097_ls_demo_provenance.sql','ls_demo.prevent_marker_change')],
   ['ls_contact_ops.require_profile_provenance',contactOpsFunctionBody(files,CONTACT_OPS_MIGRATION.name,'ls_contact_ops.require_profile_provenance')],
@@ -251,13 +251,13 @@ async function main(){
    };
    const before=await inspect();
    if(target.mode==='preflight'){
-    process.stdout.write(JSON.stringify({code:'CONTACT_OPS_PREFLIGHT_OK',deploymentId:target.deploymentId,databaseServiceId:target.databaseServiceId,migration:CONTACT_OPS_MIGRATION.name,state:before})+'\n');
+    process.stdout.write(JSON.stringify({code:'CONTACT_OPS_PREFLIGHT_OK',deploymentId:target.deploymentId,databaseServiceId:target.databaseServiceId,migration:reviewedMigration.name,state:before})+'\n');
     return;
    }
    const result=before==='pending'?await migrate({query:(sql,values)=>client.query(sql,values?[...values]:undefined)},files,false):{applied:0,pending:0};
    const after=await inspect();
    if(after!=='applied'||result.applied!==(before==='pending'?1:0))throw new Error('CONTACT_OPS_APPLY_READBACK_FAILED');
-   process.stdout.write(JSON.stringify({code:'CONTACT_OPS_SCHEMA_VERIFIED',deploymentId:target.deploymentId,databaseServiceId:target.databaseServiceId,migration:CONTACT_OPS_MIGRATION.name,checksum:CONTACT_OPS_MIGRATION.sha256,applied:result.applied,state:after})+'\n');
+   process.stdout.write(JSON.stringify({code:'CONTACT_OPS_SCHEMA_VERIFIED',deploymentId:target.deploymentId,databaseServiceId:target.databaseServiceId,migration:reviewedMigration.name,checksum:reviewedMigration.checksum,applied:result.applied,state:after})+'\n');
   }finally{client.release();}
  }finally{await pool.end();}
 }
