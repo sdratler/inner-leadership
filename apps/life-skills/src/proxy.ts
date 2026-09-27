@@ -143,8 +143,10 @@ export function proxy(request: NextRequest) {
     const locale = practitionerPage[1] as "he" | "en";
     const page = practitionerPage[2] as "calendar" | "clients";
     const query: Record<string, string | undefined> = {};
-    for (const key of page === "calendar" ? ["date", "view", "caseId", "context"] : ["section", "filter"])
-      query[key] = request.nextUrl.searchParams.get(key) ?? undefined;
+    for (const key of page === "calendar" ? ["date", "view", "caseId", "context"] : ["section", "filter", "leadId"]) {
+      const values = request.nextUrl.searchParams.getAll(key);
+      query[key] = values.length === 1 ? values[0] : undefined;
+    }
     inbound.set("x-ls-practitioner-return", practitionerReturnPath(locale, page, query));
   }
   const parentPage = /^\/(he|en)\/family(?:\/|$)/.exec(pathname);
