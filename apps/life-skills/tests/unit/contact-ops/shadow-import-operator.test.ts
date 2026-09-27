@@ -41,11 +41,13 @@ it("pins the complete reviewed executable source tree and dependency lock",()=>{
    else throw new Error("UNEXPECTED_SOURCE_ENTRY");
   }
  }
- walk(join(app,"src"),"");paths.push("package-lock.json");paths.sort();
+ walk(join(app,"src"),"");paths.push("package.json","package-lock.json");paths.sort();
  const digest=createHash("sha256");
  for(const path of paths)digest.update(path).update("\0")
   .update(readFileSync(join(app,...path.split("/")),"utf8").replace(/\r\n/g,"\n")).update("\0");
  expect(digest.digest("hex")).toBe(pinned);
+ const packageJson=JSON.parse(readFileSync(join(app,"package.json"),"utf8")) as {scripts:Record<string,string>};
+ expect(packageJson.scripts["operator:shadow-import"]).toBe("node --conditions=react-server --import tsx scripts/shadow-import-operator.ts");
 });
 
 it("pins the existing read-only production schema guard before import",()=>{

@@ -20,9 +20,10 @@ const exactProject = "3b756632-1f66-4f75-a016-eabc37aa0d67";
 const exactService = "0267d061-f3ce-4a0a-82d4-ce133e4501e9";
 const exactEnvironment = "dd91bd71-57cc-45e6-a75b-8c858491d7c7";
 const exactWorkspace = "1553e959-b299-40e4-b82e-8529597b69ec";
-// Pinned from the independently reviewed source tree: every src file and package-lock.json.
+// Pinned from the independently reviewed source tree: every src file,
+// package.json (including the checked-in React-server launcher) and lockfile.
 // An unrelated later deployment must fail closed until this one-shot tool is reviewed again.
-const reviewedSourceTreeSha256 = "948e1b918e562e085cd4e6ddee62fc6d4a45d589ab5de10ea8a3c043ca6f9138";
+const reviewedSourceTreeSha256 = "012d59b96fcc196b7bf5c4565f91f1df0b0e102be1aa6d49396d8359b449a125";
 // Includes the read-only production schema guard, every migration it checks,
 // its manifest and migration helpers. The attested operator pins these bytes.
 const reviewedContactOpsBundleSha256 = "6d7b9e15296ce5ff10a4c9801e3084ba6d572126a8aa1ca964feebde38e0ba56";
@@ -51,7 +52,7 @@ async function sourceTreeSha256(): Promise<string> {
   }
  }
  await walk(join(appRoot,"src"),"");
- files.push("package-lock.json");files.sort();
+ files.push("package.json","package-lock.json");files.sort();
  const hash=createHash("sha256");
  for(const path of files) hash.update(path).update("\0")
   .update((await readFile(join(appRoot,...path.split("/")),"utf8")).replace(/\r\n/g,"\n")).update("\0");
