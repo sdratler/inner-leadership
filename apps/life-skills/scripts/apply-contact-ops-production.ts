@@ -141,6 +141,16 @@ async function main(){
          (SELECT count(*)=4 AND bool_and(t.tgenabled IN ('O','A'))
           FROM pg_trigger t WHERE t.tgconstraint=k.oid)) AS enforced
        FROM pg_constraint k WHERE k.conrelid=to_regclass('ls_demo.records') AND k.contype='f'`);
+     const baselineReferences=await client.query<{sound:boolean}>(`SELECT
+       NOT EXISTS(SELECT 1 FROM ls_demo.records r LEFT JOIN ls_demo.batches b
+         ON b.workspace_id=r.workspace_id AND b.batch_id=r.batch_id
+         WHERE b.batch_id IS NULL) AND
+       NOT EXISTS(SELECT 1 FROM ls_demo.records r LEFT JOIN ls_demo.cases c
+         ON c.workspace_id=r.workspace_id AND c.batch_id=r.batch_id AND c.case_id=r.case_id
+         WHERE r.case_id IS NOT NULL AND c.case_id IS NULL) AND
+       NOT EXISTS(SELECT 1 FROM ls_demo.records r LEFT JOIN ls_demo.accounts a
+         ON a.workspace_id=r.workspace_id AND a.batch_id=r.batch_id AND a.account_id=r.account_id
+         WHERE r.account_id IS NOT NULL AND a.account_id IS NULL) AS sound`);
      const tables=await client.query<{permanent:boolean}>(`SELECT count(*)=3
        AND bool_and(c.relkind='r' AND c.relpersistence='p') AS permanent
        FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
@@ -228,7 +238,7 @@ async function main(){
        markerFunction:verified.get('ls_contact_ops.require_marker_compatibility')===true,
        canonicalConstraintDefinition:definitions.rows.length===1&&contactOpsCanonicalConstraint(definitions.rows[0]?.definition),
        schemaCatalog:contactOpsSchemaCatalogMatches(columns.rows[0]?.catalog,constraints.rows[0]?.catalog)&&validated.rows[0]?.contactOps===true,
-       baselineRecordsCatalog:contactOpsBaselineRecordsMatches(baselineColumns.rows[0]?.catalog,baselineConstraints.rows[0]?.catalog)&&validated.rows[0]?.baseline===true&&baselineForeignKeys.rows[0]?.enforced===true,
+       baselineRecordsCatalog:contactOpsBaselineRecordsMatches(baselineColumns.rows[0]?.catalog,baselineConstraints.rows[0]?.catalog)&&validated.rows[0]?.baseline===true&&baselineForeignKeys.rows[0]?.enforced===true&&baselineReferences.rows[0]?.sound===true,
        permanentTables:tables.rows[0]?.permanent===true,
        foreignKeysEnforced:foreignKeys.rows[0]?.enforced===true,
        foreignKeyReferencesSound:referencesSound,
