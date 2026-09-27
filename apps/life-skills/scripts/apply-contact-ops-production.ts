@@ -16,7 +16,7 @@ import {readFile,readdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {Pool} from 'pg';
 import {migrate} from '../src/db/migration-runner.ts';
-import {assertContactOpsDatabaseIdentity,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,type ContactOpsIntegrityObjects} from '../src/db/contact-ops-production-guard.ts';
+import {assertContactOpsDatabaseIdentity,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,type ContactOpsIntegrityObjects,type InternalTaskIntegrityObjects} from '../src/db/contact-ops-production-guard.ts';
 import type {AppliedMigration,Migration} from '../src/db/migration-plan.ts';
 
 async function migrations():Promise<Migration[]>{
@@ -211,6 +211,49 @@ async function main(){
          WHERE n.nspname='ls_contact_ops' AND p.proname IN
            ('require_profile_provenance','require_marker_compatibility')
            AND acl.grantee<>p.proowner) AS restricted`);
+     const taskObjects=await client.query<InternalTaskIntegrityObjects>(`SELECT
+       (SELECT count(*)=2 AND bool_and(c.relkind='r' AND c.relpersistence='p'
+         AND c.relowner=(SELECT oid FROM pg_roles WHERE rolname=current_user))
+        FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+        WHERE n.nspname='ls_calendar' AND c.relname IN ('tasks','task_history')) AS tables,
+       (SELECT count(*)=20 FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid
+        JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='ls_calendar'
+         AND c.relname IN ('tasks','task_history') AND a.attnum>0 AND NOT a.attisdropped)
+        AND EXISTS(SELECT 1 FROM pg_attribute a WHERE a.attrelid=to_regclass('ls_calendar.tasks')
+         AND a.attname='title_ciphertext' AND a.atttypid='text'::regtype AND a.attnotnull)
+        AND EXISTS(SELECT 1 FROM pg_attribute a WHERE a.attrelid=to_regclass('ls_calendar.tasks')
+         AND a.attname='due_date' AND a.atttypid='date'::regtype AND a.attnotnull)
+        AND EXISTS(SELECT 1 FROM pg_attribute a WHERE a.attrelid=to_regclass('ls_calendar.tasks')
+         AND a.attname='due_time' AND a.atttypid='time without time zone'::regtype)
+        AS columns,
+       (SELECT count(*)=13 AND bool_and(k.convalidated) FROM pg_constraint k
+        JOIN pg_class c ON c.oid=k.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+        WHERE n.nspname='ls_calendar' AND c.relname IN ('tasks','task_history')
+         AND k.contype<>'n') AS constraints,
+       (SELECT count(*)=5 AND bool_and(k.convalidated AND
+         (SELECT count(*)=4 AND bool_and(t.tgenabled IN ('O','A'))
+          FROM pg_trigger t WHERE t.tgconstraint=k.oid)) FROM pg_constraint k
+        JOIN pg_class c ON c.oid=k.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+        WHERE n.nspname='ls_calendar' AND c.relname IN ('tasks','task_history')
+         AND k.contype='f') AS "foreignKeys",
+       EXISTS(SELECT 1 FROM pg_index i WHERE i.indexrelid=to_regclass('ls_calendar.tasks_by_due')
+        AND i.indrelid=to_regclass('ls_calendar.tasks') AND i.indisvalid AND i.indisready
+        AND i.indislive AND NOT i.indisunique AND i.indnatts=4 AND i.indnkeyatts=4
+        AND i.indkey::text='1 8 9 2' AND i.indpred IS NULL AND i.indexprs IS NULL) AS "dueIndex",
+       EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='task_history_immutable'
+        AND tgrelid=to_regclass('ls_calendar.task_history') AND NOT tgisinternal
+        AND tgenabled IN ('O','A') AND tgtype=27 AND tgattr::text='' AND tgqual IS NULL
+        AND tgfoid=to_regprocedure('ls_calendar.append_only()')) AS "historyImmutable",
+       (to_regclass('ls_calendar.tasks') IS NOT NULL
+        AND to_regclass('ls_calendar.task_history') IS NOT NULL
+        AND NOT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace,
+         LATERAL aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) acl
+         WHERE n.nspname='ls_calendar' AND c.relname IN ('tasks','task_history')
+          AND acl.grantee<>c.relowner)
+        AND NOT EXISTS(SELECT 1 FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid
+         JOIN pg_namespace n ON n.oid=c.relnamespace,LATERAL aclexplode(a.attacl) acl
+         WHERE n.nspname='ls_calendar' AND c.relname IN ('tasks','task_history')
+          AND a.attnum>0 AND NOT a.attisdropped AND acl.grantee<>c.relowner)) AS "publicRevoked"`);
      let referencesSound=false;
      if(objects.rows[0]?.profiles&&objects.rows[0]?.legacyLinks&&objects.rows[0]?.commandReceipts){
       const orphaned=await client.query<{sound:boolean}>(`SELECT
@@ -246,7 +289,7 @@ async function main(){
        foreignKeysEnforced:foreignKeys.rows[0]?.enforced===true,
        foreignKeyReferencesSound:referencesSound,
        publicRevoked:privileges.rows[0]?.restricted===true};
-     return contactOpsMigrationState(files,history,integrity);
+     return contactOpsMigrationState(files,history,integrity,taskObjects.rows[0]!);
     }catch(error){await client.query('ROLLBACK').catch(()=>undefined);throw error;}
    };
    const before=await inspect();

@@ -63,6 +63,10 @@ export type ContactOpsIntegrityObjects={
  canonicalPersonConstraint:boolean;canonicalConstraintDefinition:boolean;schemaCatalog:boolean;
  baselineRecordsCatalog:boolean;permanentTables:boolean;foreignKeysEnforced:boolean;foreignKeyReferencesSound:boolean;publicRevoked:boolean;
 };
+export type InternalTaskIntegrityObjects={
+ tables:boolean;columns:boolean;constraints:boolean;foreignKeys:boolean;
+ dueIndex:boolean;historyImmutable:boolean;publicRevoked:boolean;
+};
 
 export function contactOpsSchemaCatalogMatches(columns:unknown,constraints:unknown):boolean{
  if(!Array.isArray(columns)||columns.length!==CONTACT_OPS_SCHEMA_CATALOG.columns||!Array.isArray(constraints))return false;
@@ -150,7 +154,7 @@ export function contactOpsSourceBundle(entries:readonly {path:string;bytes:Uint8
 }
 
 /** No partial/unknown schema and no surprise migration may be promoted. */
-export function contactOpsMigrationState(files:readonly Migration[],history:readonly AppliedMigration[],objects:ContactOpsIntegrityObjects):'pending'|'applied'{
+export function contactOpsMigrationState(files:readonly Migration[],history:readonly AppliedMigration[],objects:ContactOpsIntegrityObjects,tasks:InternalTaskIntegrityObjects):'pending'|'applied'{
  const index=files.findIndex(file=>file.name===CONTACT_OPS_MIGRATION.name);
  if(index<0||files[index]?.checksum!==CONTACT_OPS_MIGRATION.sha256)throw new Error('CONTACT_OPS_MANIFEST_MISMATCH');
  const suffix=files.slice(index+1);
@@ -160,10 +164,13 @@ export function contactOpsMigrationState(files:readonly Migration[],history:read
  if(JSON.stringify(Object.keys(objects).sort())!==JSON.stringify(expectedKeys))throw new Error('CONTACT_OPS_INTEGRITY_READBACK_INVALID');
  const values=Object.values(objects);
  if(values.some(value=>typeof value!=='boolean'))throw new Error('CONTACT_OPS_INTEGRITY_READBACK_INVALID');
+ const taskKeys=['tables','columns','constraints','foreignKeys','dueIndex','historyImmutable','publicRevoked'].sort();
+ if(JSON.stringify(Object.keys(tasks).sort())!==JSON.stringify(taskKeys)||Object.values(tasks).some(value=>typeof value!=='boolean'))throw new Error('CONTACT_OPS_TASK_READBACK_INVALID');
+ const taskValues=Object.values(tasks);
  if(!objects.immutableDemoRecordTrigger||!objects.immutableFunction||!objects.baselineRecordsCatalog)throw new Error('CONTACT_OPS_BASELINE_PROVENANCE_MISSING');
  const newlyCreated=Object.entries(objects).filter(([key])=>!['immutableDemoRecordTrigger','immutableFunction','baselineRecordsCatalog'].includes(key)).map(([,value])=>value);
- if(suffix.length===0 && pending.length===1 && pending[0]?.name===CONTACT_OPS_MIGRATION.name && newlyCreated.every(value=>!value))return 'pending';
- if(suffix.length===1 && pending.length===1 && pending[0]?.name===INTERNAL_TASKS_MIGRATION.name && values.every(Boolean))return 'pending';
- if(pending.length===0 && values.every(Boolean))return 'applied';
+ if(suffix.length===0 && pending.length===1 && pending[0]?.name===CONTACT_OPS_MIGRATION.name && newlyCreated.every(value=>!value)&&taskValues.every(value=>!value))return 'pending';
+ if(suffix.length===1 && pending.length===1 && pending[0]?.name===INTERNAL_TASKS_MIGRATION.name && values.every(Boolean)&&taskValues.every(value=>!value))return 'pending';
+ if(pending.length===0 && values.every(Boolean)&&(suffix.length===0?taskValues.every(value=>!value):taskValues.every(Boolean)))return 'applied';
  throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
 }

@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {describe,expect,it} from 'vitest';
-import {assertContactOpsDatabaseIdentity,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsComparableConstraints,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,INTERNAL_TASKS_MIGRATION,type ContactOpsIntegrityObjects} from '../../src/db/contact-ops-production-guard.ts';
+import {assertContactOpsDatabaseIdentity,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsComparableConstraints,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,INTERNAL_TASKS_MIGRATION,type ContactOpsIntegrityObjects,type InternalTaskIntegrityObjects} from '../../src/db/contact-ops-production-guard.ts';
 
 const deployment='a2d9d868-53c4-4fdd-973c-21c4b6b8987d';
 const good={
@@ -19,6 +19,8 @@ const next={name:CONTACT_OPS_MIGRATION.name,checksum:CONTACT_OPS_MIGRATION.sha25
 const taskSuffix={name:INTERNAL_TASKS_MIGRATION.name,checksum:INTERNAL_TASKS_MIGRATION.sha256,sql:'CREATE TABLE ls_calendar.tasks(id uuid);'};
 const absent:ContactOpsIntegrityObjects={profiles:false,legacyLinks:false,commandReceipts:false,legacyIndex:false,profileProvenanceTrigger:false,markerCompatibilityTrigger:false,immutableDemoRecordTrigger:true,profileFunction:false,markerFunction:false,immutableFunction:true,canonicalPersonConstraint:false,canonicalConstraintDefinition:false,schemaCatalog:false,baselineRecordsCatalog:true,permanentTables:false,foreignKeysEnforced:false,foreignKeyReferencesSound:false,publicRevoked:false};
 const present:ContactOpsIntegrityObjects={profiles:true,legacyLinks:true,commandReceipts:true,legacyIndex:true,profileProvenanceTrigger:true,markerFunction:true,markerCompatibilityTrigger:true,immutableDemoRecordTrigger:true,profileFunction:true,immutableFunction:true,canonicalPersonConstraint:true,canonicalConstraintDefinition:true,schemaCatalog:true,baselineRecordsCatalog:true,permanentTables:true,foreignKeysEnforced:true,foreignKeyReferencesSound:true,publicRevoked:true};
+const taskAbsent:InternalTaskIntegrityObjects={tables:false,columns:false,constraints:false,foreignKeys:false,dueIndex:false,historyImmutable:false,publicRevoked:false};
+const taskPresent:InternalTaskIntegrityObjects={tables:true,columns:true,constraints:true,foreignKeys:true,dueIndex:true,historyImmutable:true,publicRevoked:true};
 
 describe('registered native CRM production migration gate',()=>{
  it('binds a complete ordered reviewed source-file bundle',()=>{
@@ -72,26 +74,29 @@ describe('registered native CRM production migration gate',()=>{
   expect(()=>contactOpsProductionTarget(good,['--apply','--deployment=00000000-0000-0000-0000-000000000000',args[2]!,args[3]!])).toThrow();
  });
  it('requires exactly one pending migration and absent objects before apply',()=>{
-  expect(contactOpsMigrationState([prior,next],[prior],absent)).toBe('pending');
-  expect(()=>contactOpsMigrationState([prior,next],[prior],{...absent,immutableDemoRecordTrigger:false})).toThrow('CONTACT_OPS_BASELINE_PROVENANCE_MISSING');
-  expect(()=>contactOpsMigrationState([prior,next],[prior],{...absent,baselineRecordsCatalog:false})).toThrow('CONTACT_OPS_BASELINE_PROVENANCE_MISSING');
-  expect(()=>contactOpsMigrationState([prior,next],[prior],{...absent,profiles:true})).toThrow();
-  expect(()=>contactOpsMigrationState([prior,next],[],absent)).toThrow();
+  expect(contactOpsMigrationState([prior,next],[prior],absent,taskAbsent)).toBe('pending');
+  expect(()=>contactOpsMigrationState([prior,next],[prior],{...absent,immutableDemoRecordTrigger:false},taskAbsent)).toThrow('CONTACT_OPS_BASELINE_PROVENANCE_MISSING');
+  expect(()=>contactOpsMigrationState([prior,next],[prior],{...absent,baselineRecordsCatalog:false},taskAbsent)).toThrow('CONTACT_OPS_BASELINE_PROVENANCE_MISSING');
+  expect(()=>contactOpsMigrationState([prior,next],[prior],{...absent,profiles:true},taskAbsent)).toThrow();
+  expect(()=>contactOpsMigrationState([prior,next],[],absent,taskAbsent)).toThrow();
  });
  it('accepts an exact idempotent readback but rejects drift or missing objects',()=>{
   const through0101=[prior,next].map(({name,checksum})=>({name,checksum}));
-  expect(contactOpsMigrationState([prior,next],[prior,{name:next.name,checksum:next.checksum}],present)).toBe('applied');
-  expect(contactOpsMigrationState([prior,next,taskSuffix],[prior,next,taskSuffix].map(({name,checksum})=>({name,checksum})),present)).toBe('applied');
-  expect(contactOpsMigrationState([prior,next,taskSuffix],through0101,present)).toBe('pending');
-  expect(()=>contactOpsMigrationState([prior,next,taskSuffix],through0101,{...present,profiles:false})).toThrow('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
-  expect(()=>contactOpsMigrationState([prior,next,taskSuffix],[prior],absent)).toThrow('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
-  expect(()=>contactOpsMigrationState([prior,next,{...taskSuffix,checksum:'1'.repeat(64)}],[prior,next,taskSuffix].map(({name,checksum})=>({name,checksum})),present)).toThrow('CONTACT_OPS_MANIFEST_MISMATCH');
-  expect(()=>contactOpsMigrationState([prior,next,taskSuffix,{...taskSuffix,name:'0103_unreviewed.sql'}],[prior,next,taskSuffix].map(({name,checksum})=>({name,checksum})),present)).toThrow('CONTACT_OPS_MANIFEST_MISMATCH');
+  expect(contactOpsMigrationState([prior,next],[prior,{name:next.name,checksum:next.checksum}],present,taskAbsent)).toBe('applied');
+  expect(contactOpsMigrationState([prior,next,taskSuffix],[prior,next,taskSuffix].map(({name,checksum})=>({name,checksum})),present,taskPresent)).toBe('applied');
+  expect(contactOpsMigrationState([prior,next,taskSuffix],through0101,present,taskAbsent)).toBe('pending');
+  expect(()=>contactOpsMigrationState([prior,next,taskSuffix],through0101,{...present,profiles:false},taskAbsent)).toThrow('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+  expect(()=>contactOpsMigrationState([prior,next,taskSuffix],through0101,present,{...taskAbsent,tables:true})).toThrow('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+  expect(()=>contactOpsMigrationState([prior,next,taskSuffix],[prior],absent,taskAbsent)).toThrow('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+  for(const key of Object.keys(taskPresent) as (keyof InternalTaskIntegrityObjects)[])
+   expect(()=>contactOpsMigrationState([prior,next,taskSuffix],[prior,next,taskSuffix].map(({name,checksum})=>({name,checksum})),present,{...taskPresent,[key]:false})).toThrow('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+  expect(()=>contactOpsMigrationState([prior,next,{...taskSuffix,checksum:'1'.repeat(64)}],[prior,next,taskSuffix].map(({name,checksum})=>({name,checksum})),present,taskPresent)).toThrow('CONTACT_OPS_MANIFEST_MISMATCH');
+  expect(()=>contactOpsMigrationState([prior,next,taskSuffix,{...taskSuffix,name:'0103_unreviewed.sql'}],[prior,next,taskSuffix].map(({name,checksum})=>({name,checksum})),present,taskPresent)).toThrow('CONTACT_OPS_MANIFEST_MISMATCH');
   for(const key of Object.keys(present) as (keyof ContactOpsIntegrityObjects)[])
-   expect(()=>contactOpsMigrationState([prior,next],[prior,{name:next.name,checksum:next.checksum}],{...present,[key]:false})).toThrow();
+   expect(()=>contactOpsMigrationState([prior,next],[prior,{name:next.name,checksum:next.checksum}],{...present,[key]:false},taskAbsent)).toThrow();
   const incomplete={...present} as Partial<ContactOpsIntegrityObjects>;
   delete incomplete.commandReceipts;
-  expect(()=>contactOpsMigrationState([prior,next],[prior,{name:next.name,checksum:next.checksum}],incomplete as ContactOpsIntegrityObjects)).toThrow('CONTACT_OPS_INTEGRITY_READBACK_INVALID');
-  expect(()=>contactOpsMigrationState([prior,{...next,checksum:'1'.repeat(64)}],[prior],absent)).toThrow();
+  expect(()=>contactOpsMigrationState([prior,next],[prior,{name:next.name,checksum:next.checksum}],incomplete as ContactOpsIntegrityObjects,taskAbsent)).toThrow('CONTACT_OPS_INTEGRITY_READBACK_INVALID');
+  expect(()=>contactOpsMigrationState([prior,{...next,checksum:'1'.repeat(64)}],[prior],absent,taskAbsent)).toThrow();
  });
 });
