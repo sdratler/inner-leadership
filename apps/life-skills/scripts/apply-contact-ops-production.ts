@@ -16,7 +16,7 @@ import {readFile,readdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {Pool} from 'pg';
 import {migrate} from '../src/db/migration-runner.ts';
-import {assertContactOpsDatabaseIdentity,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,type ContactOpsIntegrityObjects,type InternalTaskIntegrityObjects} from '../src/db/contact-ops-production-guard.ts';
+import {assertContactOpsDatabaseIdentity,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,internalTaskSchemaCatalogMatches,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,type ContactOpsIntegrityObjects,type InternalTaskIntegrityObjects} from '../src/db/contact-ops-production-guard.ts';
 import type {AppliedMigration,Migration} from '../src/db/migration-plan.ts';
 
 async function migrations():Promise<Migration[]>{
@@ -211,7 +211,7 @@ async function main(){
          WHERE n.nspname='ls_contact_ops' AND p.proname IN
            ('require_profile_provenance','require_marker_compatibility')
            AND acl.grantee<>p.proowner) AS restricted`);
-     const taskObjects=await client.query<InternalTaskIntegrityObjects>(`SELECT
+     const taskObjects=await client.query<Omit<InternalTaskIntegrityObjects,'schemaCatalog'>>(`SELECT
        (SELECT count(*)=2 AND bool_and(c.relkind='r' AND c.relpersistence='p'
          AND c.relowner=(SELECT oid FROM pg_roles WHERE rolname=current_user))
         FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
@@ -254,6 +254,23 @@ async function main(){
          JOIN pg_namespace n ON n.oid=c.relnamespace,LATERAL aclexplode(a.attacl) acl
          WHERE n.nspname='ls_calendar' AND c.relname IN ('tasks','task_history')
           AND a.attnum>0 AND NOT a.attisdropped AND acl.grantee<>c.relowner)) AS "publicRevoked"`);
+     const taskColumns=await client.query<{catalog:unknown}>(`SELECT coalesce(json_agg(json_build_object(
+       'table',c.relname,'column',a.attname,'type',format_type(a.atttypid,a.atttypmod),
+       'notNull',a.attnotnull,'default',pg_get_expr(d.adbin,d.adrelid),
+       'identity',a.attidentity,'generated',a.attgenerated)
+       ORDER BY c.relname,a.attnum),'[]'::json) AS catalog
+       FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid
+       JOIN pg_namespace n ON n.oid=c.relnamespace
+       LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
+       WHERE n.nspname='ls_calendar' AND c.relname IN ('tasks','task_history')
+        AND a.attnum>0 AND NOT a.attisdropped`);
+     const taskConstraints=await client.query<{catalog:unknown}>(`SELECT coalesce(json_agg(json_build_object(
+       'table',c.relname,'name',k.conname,'type',k.contype,
+       'definition',pg_get_constraintdef(k.oid)) ORDER BY c.relname,k.conname),'[]'::json) AS catalog
+       FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid
+       JOIN pg_namespace n ON n.oid=c.relnamespace
+       WHERE n.nspname='ls_calendar' AND c.relname IN ('tasks','task_history')
+        AND k.contype<>'n'`);
      let referencesSound=false;
      if(objects.rows[0]?.profiles&&objects.rows[0]?.legacyLinks&&objects.rows[0]?.commandReceipts){
       const orphaned=await client.query<{sound:boolean}>(`SELECT
@@ -289,7 +306,9 @@ async function main(){
        foreignKeysEnforced:foreignKeys.rows[0]?.enforced===true,
        foreignKeyReferencesSound:referencesSound,
        publicRevoked:privileges.rows[0]?.restricted===true};
-     return contactOpsMigrationState(files,history,integrity,taskObjects.rows[0]!);
+     const taskIntegrity:InternalTaskIntegrityObjects={...taskObjects.rows[0]!,
+       schemaCatalog:internalTaskSchemaCatalogMatches(taskColumns.rows[0]?.catalog,taskConstraints.rows[0]?.catalog)};
+     return contactOpsMigrationState(files,history,integrity,taskIntegrity);
     }catch(error){await client.query('ROLLBACK').catch(()=>undefined);throw error;}
    };
    const before=await inspect();

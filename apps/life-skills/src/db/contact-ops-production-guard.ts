@@ -9,6 +9,10 @@ export const INTERNAL_TASKS_MIGRATION = {
  name: '0102_ls_internal_tasks.sql',
  sha256: '61a99c4bc62d57eeb63c99de0b4482fcec10b019e128ee4b98abb8e92aeaaa7c',
 } as const;
+export const INTERNAL_TASKS_SCHEMA_CATALOG = {
+ columns:20,constraints:13,
+ sha256:'f05bc3595900d94aa6e507b2689b21583b34d62393da24848a8f66538a1189c1',
+} as const;
 
 /** Catalog fingerprint from 0101 applied to a clean, disposable native PG17
  * restore. It covers every column and all 21 PK/FK/CHECK definitions across
@@ -64,9 +68,15 @@ export type ContactOpsIntegrityObjects={
  baselineRecordsCatalog:boolean;permanentTables:boolean;foreignKeysEnforced:boolean;foreignKeyReferencesSound:boolean;publicRevoked:boolean;
 };
 export type InternalTaskIntegrityObjects={
- tables:boolean;columns:boolean;constraints:boolean;foreignKeys:boolean;
+ tables:boolean;columns:boolean;constraints:boolean;schemaCatalog:boolean;foreignKeys:boolean;
  dueIndex:boolean;historyImmutable:boolean;publicRevoked:boolean;
 };
+
+export function internalTaskSchemaCatalogMatches(columns:unknown,constraints:unknown):boolean{
+ if(!Array.isArray(columns)||columns.length!==INTERNAL_TASKS_SCHEMA_CATALOG.columns||
+  !Array.isArray(constraints)||constraints.length!==INTERNAL_TASKS_SCHEMA_CATALOG.constraints)return false;
+ return createHash('sha256').update(JSON.stringify({columns,constraints})).digest('hex')===INTERNAL_TASKS_SCHEMA_CATALOG.sha256;
+}
 
 export function contactOpsSchemaCatalogMatches(columns:unknown,constraints:unknown):boolean{
  if(!Array.isArray(columns)||columns.length!==CONTACT_OPS_SCHEMA_CATALOG.columns||!Array.isArray(constraints))return false;
@@ -164,7 +174,7 @@ export function contactOpsMigrationState(files:readonly Migration[],history:read
  if(JSON.stringify(Object.keys(objects).sort())!==JSON.stringify(expectedKeys))throw new Error('CONTACT_OPS_INTEGRITY_READBACK_INVALID');
  const values=Object.values(objects);
  if(values.some(value=>typeof value!=='boolean'))throw new Error('CONTACT_OPS_INTEGRITY_READBACK_INVALID');
- const taskKeys=['tables','columns','constraints','foreignKeys','dueIndex','historyImmutable','publicRevoked'].sort();
+ const taskKeys=['tables','columns','constraints','schemaCatalog','foreignKeys','dueIndex','historyImmutable','publicRevoked'].sort();
  if(JSON.stringify(Object.keys(tasks).sort())!==JSON.stringify(taskKeys)||Object.values(tasks).some(value=>typeof value!=='boolean'))throw new Error('CONTACT_OPS_TASK_READBACK_INVALID');
  const taskValues=Object.values(tasks);
  if(!objects.immutableDemoRecordTrigger||!objects.immutableFunction||!objects.baselineRecordsCatalog)throw new Error('CONTACT_OPS_BASELINE_PROVENANCE_MISSING');
