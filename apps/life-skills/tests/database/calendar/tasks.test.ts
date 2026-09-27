@@ -63,4 +63,19 @@ describe('internal task PostgreSQL contract',()=>{
   expect((await f.pool.query('SELECT count(*)::int AS n FROM ls_calendar.events WHERE workspace_id=$1',[f.workspaceId])).rows[0].n).toBe(before);
   expect(done.state).toBe('done');
  });
+ test('bulk reconciliation keeps many same-action prospects distinct and replay-safe',async()=>{
+  const tasks=new InternalTaskService(f.db,Buffer.alloc(32,9)),dueDate=civilDate(f.at(120));
+  const rows=Array.from({length:120},(_,index)=>({
+   leadId:`LS-LEAD-BATCH-${index}`,name:`Synthetic person ${index}`,nextAction:'Call',
+   dueDate,caseId:'',stage:'New',outcome:'',
+  }));
+  const before=(await f.pool.query('SELECT count(*)::int AS n FROM ls_calendar.events WHERE workspace_id=$1',[f.workspaceId])).rows[0].n;
+  expect(await tasks.syncCrmFollowups(f.practitioner.actor,rows)).toEqual({created:120,updated:0,resolved:0,unchanged:0});
+  expect(await tasks.syncCrmFollowups(f.practitioner.actor,rows)).toEqual({created:0,updated:0,resolved:0,unchanged:120});
+  const listed=await tasks.list(f.practitioner.actor,dayStart(dueDate),dayStart(shiftDay(dueDate,1)),null);
+  expect(listed).toHaveLength(120);
+  expect(new Set(listed.map(item=>item.title)).size).toBe(120);
+  expect(listed.every(item=>item.sourceKind==='crm_followup'&&item.caseId===null)).toBe(true);
+  expect((await f.pool.query('SELECT count(*)::int AS n FROM ls_calendar.events WHERE workspace_id=$1',[f.workspaceId])).rows[0].n).toBe(before);
+ });
 });
