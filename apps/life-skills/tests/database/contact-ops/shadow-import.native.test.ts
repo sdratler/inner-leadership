@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 vi.mock("server-only", () => ({}));
 import { fixture, poolStore } from "../calendar/fixture.ts";
 import { seal, unseal } from "../../../src/features/identity/crypto.ts";
-import { NativeShadowImporter } from "../../../src/features/contact-ops/server/shadow-import.ts";
+import { NativeShadowImporter, nativeShadowOperatorPermit } from "../../../src/features/contact-ops/server/shadow-import.ts";
 import { crmProfileAad, NativeCrmStore } from "../../../src/features/contact-ops/server/native-store.ts";
 import type { SheetSnapshot } from "../../../src/features/contact-ops/server/import-plan.ts";
 import { planImport } from "../../../src/features/contact-ops/server/import-plan.ts";
@@ -111,6 +111,40 @@ test("shadow importer waits for the identity workspace lock and sees a newly com
  } finally {
   if (open) await holder.query("ROLLBACK");
   holder.release();
+ }
+});
+
+test("exact operator permit replays the synthetic import without a browser session or new records", async () => {
+ const original = process.argv[1];
+ const keys = ["LS_NATIVE_SHADOW_IMPORT_APPROVED", "RAILWAY_PROJECT_ID", "RAILWAY_SERVICE_ID", "RAILWAY_ENVIRONMENT_ID"] as const;
+ const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+ try {
+  process.argv[1] = "/app/scripts/shadow-import-operator.ts";
+  process.env.LS_NATIVE_SHADOW_IMPORT_APPROVED = "true";
+  process.env.RAILWAY_PROJECT_ID = "3b756632-1f66-4f75-a016-eabc37aa0d67";
+  process.env.RAILWAY_SERVICE_ID = "0267d061-f3ce-4a0a-82d4-ce133e4501e9";
+  process.env.RAILWAY_ENVIRONMENT_ID = "dd91bd71-57cc-45e6-a75b-8c858491d7c7";
+  const permit = nativeShadowOperatorPermit();
+  await expect(importer.importNewPeopleAsOperator(f.workspaceId, snapshot(), decide(snapshot()), Symbol("forged"))).rejects.toThrow("IMPORT_OPERATOR_NOT_ADMITTED");
+  expect(await importer.importNewPeopleAsOperator(f.workspaceId, snapshot(), decide(snapshot()), permit)).toEqual({sourceRevision:"synthetic-revision-1",planned:2,created:0,replayed:2});
+  const prior = await f.pool.query<{email_verified_at:Date;state:string}>("SELECT email_verified_at,state FROM ls_identity.accounts WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.practitioner.actor.id]);
+  // The database correctly forbids an active account without verified email.
+  // An invited account is the valid synthetic state that must not operate.
+  await f.pool.query("UPDATE ls_identity.accounts SET state='invited',email_verified_at=NULL WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.practitioner.actor.id]);
+  try {
+   await expect(importer.importNewPeopleAsOperator(f.workspaceId, snapshot(), decide(snapshot()), permit)).rejects.toThrow("IMPORT_OPERATOR_ACCOUNT_REQUIRES_REVIEW");
+  } finally {
+   await f.pool.query("UPDATE ls_identity.accounts SET state=$3,email_verified_at=$4 WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.practitioner.actor.id,prior.rows[0]!.state,prior.rows[0]!.email_verified_at]);
+  }
+  delete process.env.LS_NATIVE_SHADOW_IMPORT_APPROVED;
+  await expect(importer.importNewPeopleAsOperator(f.workspaceId, snapshot(), decide(snapshot()), permit)).rejects.toThrow("IMPORT_OPERATOR_NOT_ADMITTED");
+ } finally {
+  if (original === undefined) delete process.argv[1];
+  else process.argv[1] = original;
+  for (const key of keys) {
+   if (previous[key] === undefined) delete process.env[key];
+   else process.env[key] = previous[key]!;
+  }
  }
 });
 
