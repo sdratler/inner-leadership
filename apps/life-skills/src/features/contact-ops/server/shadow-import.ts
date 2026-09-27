@@ -116,7 +116,9 @@ export class NativeShadowImporter {
     [workspaceId, snapshot.fileId, snapshot.sheetId],
    );
    const prior = new Map(links.map(link => [link.legacyId, link]));
-   requireThat(prior.size === links.length && links.length <= plan.rows.length, "IMPORT_EXISTING_LINK_SET_MISMATCH");
+   const plannedIds = new Set(plan.rows.map(row => row.legacyId));
+   requireThat(prior.size === links.length && links.length <= plan.rows.length &&
+    links.every(link => plannedIds.has(link.legacyId)), "IMPORT_EXISTING_LINK_SET_MISMATCH");
    const unrelatedProfiles = await tx.query<{ n: number }>(
     `SELECT count(*)::integer AS n FROM ls_contact_ops.profiles p
      WHERE p.workspace_id=$1 AND p.record_mode='live' AND NOT EXISTS(

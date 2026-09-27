@@ -190,6 +190,8 @@ test("exact operator permit replays the synthetic import without a browser sessi
   const permit = nativeShadowOperatorPermit();
   await expect(importer.importNewPeopleAsOperator(f.workspaceId, snapshot(), decide(snapshot()), Symbol("forged"))).rejects.toThrow("IMPORT_OPERATOR_NOT_ADMITTED");
   await expect(importer.preflightNewPeopleAsOperator(f.workspaceId, snapshot(), decide(snapshot()), Symbol("forged"))).rejects.toThrow("IMPORT_OPERATOR_NOT_ADMITTED");
+  const mixed=snapshot([one,["LS-LEAD-synthetic-mixed","Synthetic replacement","+15555550999","","New inquiry","Call","","Synthetic note"]]);
+  await expect(importer.preflightNewPeopleAsOperator(f.workspaceId,mixed,decide(mixed),permit)).rejects.toThrow("IMPORT_EXISTING_LINK_SET_MISMATCH");
   expect(await importer.preflightNewPeopleAsOperator(f.workspaceId, snapshot(), decide(snapshot()), permit)).toEqual({sourceRevision:"synthetic-revision-1",planned:2,wouldCreate:0,replayed:2});
   expect(await importer.importNewPeopleAsOperator(f.workspaceId, snapshot(), decide(snapshot()), permit)).toEqual({sourceRevision:"synthetic-revision-1",planned:2,created:0,replayed:2});
   const prior = await f.pool.query<{email_verified_at:Date;state:string}>("SELECT email_verified_at,state FROM ls_identity.accounts WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.practitioner.actor.id]);
