@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { matchesSubmittedInput, proposalForResult, replyFailureKind } from "../../../src/features/community-reply/input-state.ts";
+import { matchesSubmittedInput, proposalForResult, replyFailureKind, ruleDraftPromotionNeedsConfirmation } from "../../../src/features/community-reply/input-state.ts";
 
 describe("manual drafting limit feedback", () => {
   it("identifies only the API's confirmed manual limit", () => {
@@ -19,6 +19,12 @@ describe("manual reply source binding", () => {
   });
   it("never treats a missing submitted input as a current draft", () => {
     expect(matchesSubmittedInput(submitted, null)).toBe(false);
+  });
+  it("restores a completed retry while protecting another unsaved question or edited reply", () => {
+    expect(ruleDraftPromotionNeedsConfirmation({ question: "", originalUrl: "" }, submitted)).toBe(false);
+    expect(ruleDraftPromotionNeedsConfirmation(submitted, submitted)).toBe(false);
+    expect(ruleDraftPromotionNeedsConfirmation({ ...submitted, question: "שאלה חדשה" }, submitted)).toBe(true);
+    expect(ruleDraftPromotionNeedsConfirmation(submitted, submitted, true)).toBe(true);
   });
 });
 

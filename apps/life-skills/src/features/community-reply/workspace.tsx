@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { sessionInfo } from "../identity/client.ts";
 import type { CommunityInboxPage, CommunityInboxPost } from "../community-inbox/bridge.ts";
 import type { CommunityReplyResult } from "./bridge.ts";
-import { matchesSubmittedInput, proposalForResult, replyFailureKind, type CommunitySourceInput } from "./input-state.ts";
+import { matchesSubmittedInput, proposalForResult, replyFailureKind, ruleDraftPromotionNeedsConfirmation, type CommunitySourceInput } from "./input-state.ts";
 
 type Locale = "he" | "en";
 const copy = {
@@ -34,6 +34,7 @@ const copy = {
     ruleReview: "A similar rule already exists. Review it and select that rule explicitly if this correction should replace it; no source change was made.",
     ruleBefore: "Previous rule", ruleAfter: "Current rule", ruleVersion: "Current source version / last updated / last synchronized",
     retryRule: "Recheck / resume this correction", priorDraft: "Revised reply from this correction",
+    loadRuleDraft: "Open this revised reply in the editor", resumeReplace: "Replace the current unsaved question/reply with the revised reply from this correction?",
     copy: "Copy reply", open: "Open original post", copied: "Copied. Review the edited text before posting manually.",
     failed: "Generation was not confirmed. Your input is preserved; do not assume a reply was saved or posted.",
     limited: "Manual drafting has reached its approved limit. Your input is preserved; no new reply was confirmed. An ongoing limit needs owner approval before more drafts can be generated.",
@@ -71,6 +72,7 @@ const copy = {
     ruleReview: "כבר קיים כלל דומה. יש לבדוק אותו ולבחור בו במפורש אם התיקון אמור להחליף אותו; המקור לא השתנה.",
     ruleBefore: "כלל קודם", ruleAfter: "כלל נוכחי", ruleVersion: "גרסת המקור הנוכחית / עודכן לאחרונה / סונכרן לאחרונה",
     retryRule: "בדיקה חוזרת / המשך התיקון", priorDraft: "תגובה מתוקנת מהפעולה הזאת",
+    loadRuleDraft: "פתיחת התגובה המתוקנת בעורך", resumeReplace: "להחליף את השאלה והתגובה הנוכחיות שטרם נשמרו בתגובה המתוקנת מהפעולה הזאת?",
     copy: "העתקת התגובה", open: "פתיחת הפוסט המקורי", copied: "הועתק. יש לבדוק את הנוסח הערוך לפני פרסום ידני.",
     failed: "יצירת התגובה לא אומתה. הטקסט שהזנת נשמר במסך; אין להניח שתגובה נשמרה או פורסמה.",
     limited: "יצירת הטיוטות הידנית הגיעה למגבלה שאושרה. הטקסט שהזנת נשמר במסך, ולא אומתה תגובה חדשה. כדי ליצור טיוטות נוספות נדרש אישור בעל החשבון למגבלה מתמשכת.",
@@ -89,6 +91,7 @@ type RuleSaveResult = {
   savedAt?: string | null; sourceAfterSha256?: string | null;
   source?: { declaredVersion: string | null; driveRevision: string; modifiedAt: string; checkedAt: string; sha256: string } | null;
   draft?: CommunityReplyResult | null;
+  draftInput?: CommunitySourceInput | null;
 };
 const ruleOperationKey = "ls-community-rule-operation";
 
@@ -240,9 +243,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
         status === "unsafe" ? t.ruleUnsafe : status === "permission_denied" ? t.ruleDenied :
         status === "needs_review" ? t.ruleReview : status === "conflict" ? t.ruleConflict : t.ruleUnknown);
       if (status === "complete" && payload.data.draft) {
-        setResult(payload.data.draft); setDraft(payload.data.draft.reply); setReviewed(false);
-        setSubmittedInput({ question: correctionBase.question, originalUrl: correctionBase.originalUrl });
-        setProposedRule(""); setCorrectionBase(null); ruleAttempt.current = null;
+        promoteRuleDraft(payload.data);
       }
     } catch { setNotice(t.ruleUnknown); }
     finally { inFlight.current = false; setBusy(false); }
@@ -266,6 +267,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
         payload.data.status === "saved" || payload.data.status === "draft_pending" ? t.draftPending :
         payload.data.status === "permission_denied" ? t.ruleDenied :
         payload.data.status === "conflict" ? t.ruleConflict : t.ruleUnknown);
+      if (payload.data.status === "complete") promoteRuleDraft(payload.data);
     } catch { setNotice(t.ruleUnknown); }
     finally { inFlight.current = false; setBusy(false); }
   }
@@ -274,6 +276,16 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
     if (!result?.copyAllowed || stale || !reviewed || !draft.trim()) return;
     try { await navigator.clipboard.writeText(draft); setNotice(t.copied); }
     catch { setNotice(t.failed); }
+  }
+
+  function promoteRuleDraft(saved: RuleSaveResult) {
+    if (!saved.draft || !saved.draftInput) return;
+    const edited = (!!result && draft !== result.reply) || (!!correction.trim() && correctionBase?.correction !== correction.trim());
+    if (ruleDraftPromotionNeedsConfirmation({ question, originalUrl }, saved.draftInput, edited) && !window.confirm(t.resumeReplace)) return;
+    setQuestion(saved.draftInput.question); setOriginalUrl(saved.draftInput.originalUrl);
+    setResult(saved.draft); setDraft(saved.draft.reply); setReviewed(false); setSubmittedInput(saved.draftInput);
+    setCorrection(""); setProposedRule(""); setCorrectionBase(null); setTargetRuleId(null);
+    attempt.current = null; ruleAttempt.current = null;
   }
 
   return <div className="lsr-community-reply" dir={locale === "he" ? "rtl" : "ltr"}>
@@ -343,6 +355,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
       {ruleSave.savedAt && <p className="lsr-help">{t.ruleSaved} {ruleSave.savedAt}</p>}
       {ruleSave.draft && <details><summary>{t.priorDraft}</summary><p>{ruleSave.draft.reply}</p>
         <p className="lsr-help">{t.sources}: {t.guide} v{ruleSave.draft.provenance.guide.declaredVersion ?? "—"} · Drive #{ruleSave.draft.provenance.guide.driveRevision} · SHA-256 {ruleSave.draft.provenance.guide.sha256.slice(0, 12)} · {ruleSave.draft.provenance.guide.includedCommunityRuleIds.join(", ") || "—"}; {t.playbook} v{ruleSave.draft.provenance.playbook.declaredVersion ?? "—"} · Drive #{ruleSave.draft.provenance.playbook.driveRevision}</p></details>}
+      {ruleSave.draft && ruleSave.draftInput && <button type="button" disabled={busy} onClick={() => promoteRuleDraft(ruleSave)}>{t.loadRuleDraft}</button>}
       {ruleSave.status !== "complete" && ruleSave.status !== "conflict" && <button type="button" disabled={busy} onClick={() => void resumeRule()}>{t.retryRule}</button>}
     </section>}
     {notice && <p role={notice === t.failed || notice === t.limited ? "alert" : "status"} className={notice === t.failed || notice === t.limited ? "lsr-inline-error" : "lsr-status"}>{notice}</p>}

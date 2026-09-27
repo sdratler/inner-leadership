@@ -48,7 +48,8 @@ function safe(change: RuleChange, source: ContentVoiceSnapshot | null) {
   return { operationId: change.operationId, status: change.status, ruleId: change.affectedRuleId,
     before: change.before, after: change.after, savedAt: change.savedAt, revisedAt: change.revisedAt,
     source: metadata(source), sourceAfterSha256: change.sourceAfterSha256,
-    sourceAfterRevision: change.sourceAfterRevision, draft: change.draftResult };
+    sourceAfterRevision: change.sourceAfterRevision, draft: change.draftResult,
+    draftInput: change.draftResult ? { question: change.request.question, originalUrl: change.request.originalUrl ?? "" } : null };
 }
 
 export async function GET(request: Request) {

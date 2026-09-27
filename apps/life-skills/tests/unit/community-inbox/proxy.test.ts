@@ -23,4 +23,14 @@ describe("captured post inbox remains inside the private app perimeter", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("x-middleware-next")).toBe("1");
   });
+  it.each(["GET", "POST"])("keeps %s Content Voice corrections behind the same private-app gate", method => {
+    const url = `${origin}/api/content-voice/corrections?list=1`;
+    const denied = proxy(new NextRequest(url, { method }));
+    expect(denied.status).toBe(503);
+    expect(denied.headers.has("x-middleware-next")).toBe(false);
+    vi.stubEnv("LS_PRIVATE_APP_ENABLED", "true");
+    const allowed = proxy(new NextRequest(url, { method }));
+    expect(allowed.status).toBe(200);
+    expect(allowed.headers.get("x-middleware-next")).toBe("1");
+  });
 });

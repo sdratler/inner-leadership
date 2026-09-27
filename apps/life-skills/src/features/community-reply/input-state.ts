@@ -10,6 +10,12 @@ export function matchesSubmittedInput(current: CommunitySourceInput, submitted: 
   return !!submitted && current.question.trim() === submitted.question && current.originalUrl.trim() === submitted.originalUrl;
 }
 
+/** A completed retry may restore its editor, but never silently replace another unsaved question. */
+export function ruleDraftPromotionNeedsConfirmation(current: CommunitySourceInput, restored: CommunitySourceInput, editedDraft = false): boolean {
+  return editedDraft || ((current.question.trim().length > 0 || current.originalUrl.trim().length > 0) &&
+    !matchesSubmittedInput(current, restored));
+}
+
 /** A fresh generation never inherits a proposal from an earlier revision. */
 export function proposalForResult(mode: "generate" | "revise_once", suggestedRule: string, scope: "" | "community" | "general") {
   return mode === "revise_once" ? { rule: suggestedRule, scope: scope === "general" ? "general" as const : "community" as const } : { rule: "", scope: "community" as const };

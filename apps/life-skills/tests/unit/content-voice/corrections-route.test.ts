@@ -82,7 +82,8 @@ it("resumes a saved operation without a second source write and returns exact dr
   mock.reply.mockResolvedValue(draft);
   const response = await POST(post({ operationId }));
   expect(response.status).toBe(200);
-  expect((await response.json()).data).toMatchObject({ status: "complete", draft });
+  expect((await response.json()).data).toMatchObject({ status: "complete", draft,
+    draftInput: { question: command.question, originalUrl: "" } });
   expect(mock.write).not.toHaveBeenCalled();
   expect(mock.reply).toHaveBeenCalledWith({ operationId: change.draftOperationId, mode: "revise_once",
     question: command.question, correction: command.correction, previousReply: command.previousReply });
