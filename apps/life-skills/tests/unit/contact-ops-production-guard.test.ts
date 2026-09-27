@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {describe,expect,it} from 'vitest';
-import {contactOpsMigrationState,contactOpsProductionTarget,CONTACT_OPS_MIGRATION,type ContactOpsIntegrityObjects} from '../../src/db/contact-ops-production-guard.ts';
+import {assertContactOpsDatabaseIdentity,contactOpsMigrationState,contactOpsProductionTarget,CONTACT_OPS_MIGRATION,type ContactOpsIntegrityObjects} from '../../src/db/contact-ops-production-guard.ts';
 
 const deployment='a2d9d868-53c4-4fdd-973c-21c4b6b8987d';
 const good={
@@ -20,6 +20,11 @@ const absent:ContactOpsIntegrityObjects={profiles:false,legacyLinks:false,comman
 const present:ContactOpsIntegrityObjects={profiles:true,legacyLinks:true,commandReceipts:true,legacyIndex:true,profileProvenanceTrigger:true,markerCompatibilityTrigger:true,canonicalPersonConstraint:true};
 
 describe('registered native CRM production migration gate',()=>{
+ it('binds the observed TLS PostgreSQL cluster to the independently read canonical database service',()=>{
+  expect(()=>assertContactOpsDatabaseIdentity('7682781321794240577',true)).not.toThrow();
+  expect(()=>assertContactOpsDatabaseIdentity('7682781321794240578',true)).toThrow('CONTACT_OPS_DATABASE_IDENTITY_MISMATCH');
+  expect(()=>assertContactOpsDatabaseIdentity('7682781321794240577',false)).toThrow('CONTACT_OPS_DATABASE_TLS_INACTIVE');
+ });
  it('admits only the exact existing deployment and database for a named mode',()=>{
   expect(contactOpsProductionTarget(good,args)).toMatchObject({mode:'apply',deploymentId:deployment});
   expect(contactOpsProductionTarget(good,['--preflight',args[1]!,args[2]!]).mode).toBe('preflight');

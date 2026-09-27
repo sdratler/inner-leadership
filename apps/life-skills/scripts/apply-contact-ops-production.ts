@@ -14,7 +14,7 @@ import {readFile,readdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {Pool} from 'pg';
 import {migrate} from '../src/db/migration-runner.ts';
-import {contactOpsMigrationState,contactOpsProductionTarget,CONTACT_OPS_MIGRATION,type ContactOpsIntegrityObjects} from '../src/db/contact-ops-production-guard.ts';
+import {assertContactOpsDatabaseIdentity,contactOpsMigrationState,contactOpsProductionTarget,CONTACT_OPS_MIGRATION,type ContactOpsIntegrityObjects} from '../src/db/contact-ops-production-guard.ts';
 import type {AppliedMigration,Migration} from '../src/db/migration-plan.ts';
 
 async function migrations():Promise<Migration[]>{
@@ -44,6 +44,10 @@ async function main(){
    const inspect=async()=>{
     await client.query('BEGIN READ ONLY');
     try{
+     const identity=await client.query<{system_identifier:string;ssl:boolean}>(`SELECT
+       (SELECT system_identifier FROM pg_control_system()) AS system_identifier,
+       (SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()) AS ssl`);
+     assertContactOpsDatabaseIdentity(identity.rows[0]?.system_identifier,identity.rows[0]?.ssl);
      const ledger=await client.query<{name:string;checksum:string}>('SELECT name,checksum FROM ls_control.migrations ORDER BY name');
      const objects=await client.query<ContactOpsIntegrityObjects>(`SELECT
        to_regclass('ls_contact_ops.profiles') IS NOT NULL AS profiles,
@@ -51,9 +55,11 @@ async function main(){
        to_regclass('ls_contact_ops.command_receipts') IS NOT NULL AS "commandReceipts",
        to_regclass('ls_contact_ops.legacy_links_by_person') IS NOT NULL AS "legacyIndex",
        EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='profile_provenance'
-         AND tgrelid=to_regclass('ls_contact_ops.profiles') AND NOT tgisinternal) AS "profileProvenanceTrigger",
+         AND tgrelid=to_regclass('ls_contact_ops.profiles') AND NOT tgisinternal
+         AND tgenabled IN ('O','A')) AS "profileProvenanceTrigger",
        EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='contact_person_marker_compatibility'
-         AND tgrelid=to_regclass('ls_demo.records') AND NOT tgisinternal) AS "markerCompatibilityTrigger",
+         AND tgrelid=to_regclass('ls_demo.records') AND NOT tgisinternal
+         AND tgenabled IN ('O','A')) AS "markerCompatibilityTrigger",
        EXISTS(SELECT 1 FROM pg_constraint WHERE conname='canonical_demo_person_key'
          AND conrelid=to_regclass('ls_demo.records')) AS "canonicalPersonConstraint"`);
      await client.query('COMMIT');

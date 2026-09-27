@@ -11,6 +11,9 @@ const target = {
  environmentId: 'dd91bd71-57cc-45e6-a75b-8c858491d7c7',
  appServiceId: '0267d061-f3ce-4a0a-82d4-ce133e4501e9',
  databaseServiceId: '354b5343-9e83-45a7-b764-09396f14ae29',
+ // Read independently from the exact Railway database service and app DB
+ // connection on 2026-09-27. A rebound URL must not select another cluster.
+ databaseSystemIdentifier: '7682781321794240577',
  databaseHost: 'postgres.railway.internal',
  databaseName: '/railway',
  appOrigin: 'https://life-skills.bneineviimacademy.org',
@@ -21,6 +24,11 @@ export type ContactOpsIntegrityObjects={
  profiles:boolean;legacyLinks:boolean;commandReceipts:boolean;legacyIndex:boolean;
  profileProvenanceTrigger:boolean;markerCompatibilityTrigger:boolean;canonicalPersonConstraint:boolean;
 };
+
+export function assertContactOpsDatabaseIdentity(systemIdentifier:unknown,ssl:unknown):void{
+ if(ssl!==true)throw new Error('CONTACT_OPS_DATABASE_TLS_INACTIVE');
+ if(String(systemIdentifier)!==target.databaseSystemIdentifier)throw new Error('CONTACT_OPS_DATABASE_IDENTITY_MISMATCH');
+}
 
 /** This is an exceptional, one-migration production gate. The normal migrate.ts
  * continues to reject non-loopback databases. A CLI argument cannot select a
