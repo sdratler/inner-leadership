@@ -108,11 +108,11 @@ export class InternalTaskService {
     [c.workspace,rows.map(row=>row.leadId)]);
    const demoLeads=new Set(demoRows.map(row=>row.leadId));
    const caseIds=[...new Set(rows.map(row=>candidateCaseId(row.caseId)).filter((id):id is CaseId=>id!==null))];
-   const caseRows=await c.tx.query<{id:string;demoBatchId:string|null}>(`SELECT c.id,d.batch_id AS "demoBatchId"
+   const caseRows=await c.tx.query<{id:string;ownerId:string;demoBatchId:string|null}>(`SELECT c.id,
+     c.practitioner_account_id AS "ownerId",d.batch_id AS "demoBatchId"
     FROM ls_cases.cases c LEFT JOIN ls_demo.cases d ON d.workspace_id=c.workspace_id AND d.case_id=c.id
-    WHERE c.workspace_id=$1 AND c.id=ANY($2::uuid[]) AND c.practitioner_account_id=$3`,
-    [c.workspace,caseIds,c.actor.id]);
-   const validCases=new Map(caseRows.map(row=>[row.id,row.demoBatchId]));
+    WHERE c.workspace_id=$1 AND c.id=ANY($2::uuid[])`,[c.workspace,caseIds]);
+   const validCases=new Map(caseRows.map(row=>[row.id,row]));
    const digests=rows.map(row=>this.sourceDigest({workspace:c.workspace,kind:'crm_followup',leadId:row.leadId}));
    const sourceRows=await c.tx.query<SourceTaskRow>(`SELECT id,source_digest AS "sourceDigest",
     source_revision AS "sourceRevision",version FROM ls_calendar.tasks
@@ -136,8 +136,11 @@ export class InternalTaskService {
     const sourcePath=`/he/app/clients?section=prospects&leadId=${encodeURIComponent(row.leadId)}`;
     if(!internalTaskPath(sourcePath)){result.unchanged++;continue;}
     const candidate=candidateCaseId(row.caseId);
-    const linkedCaseId=candidate&&validCases.has(candidate)?candidate:null;
-    if(linkedCaseId&&validCases.get(linkedCaseId)){result.unchanged++;continue;}
+    const matched=candidate?validCases.get(candidate):null;
+    // A valid case assigned to someone else is not a stale CRM reference.
+    // Never clear or take over its link during this practitioner's sync.
+    if(matched&&(matched.ownerId!==c.actor.id||matched.demoBatchId)){result.unchanged++;continue;}
+    const linkedCaseId=matched?candidate:null;
     // The previous CRM card named the person. Keep that identity visible in the
     // encrypted task title so identical actions remain distinguishable.
     const person=(typeof row.name==='string'&&row.name.trim()?row.name.trim():row.leadId).slice(0,64);

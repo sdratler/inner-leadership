@@ -9,6 +9,12 @@ let f:Fixture;
 beforeAll(async()=>{f=await fixture();},30000);
 afterAll(async()=>{await f?.pool.end();});
 describe('internal task PostgreSQL contract',()=>{
+ test('identity schema allows only one practitioner per workspace',async()=>{
+  const index=(await f.pool.query(`SELECT pg_get_indexdef('ls_identity.one_practitioner_per_workspace'::regclass) AS definition`)).rows[0]?.definition as string;
+  expect(index).toContain('UNIQUE INDEX one_practitioner_per_workspace');
+  expect(index).toContain('WHERE');
+  expect(index).toContain("role = 'practitioner'");
+ });
  test('manual task is encrypted, practitioner-only, idempotent, all-day and has no provider/payment effect',async()=>{
   const tasks=new InternalTaskService(f.db,Buffer.alloc(32,9)),dueDate=civilDate(f.at(48)),from=dayStart(dueDate),to=dayStart(shiftDay(dueDate,1));
   const input={title:'Synthetic internal follow-up',dueDate,dueTime:null,note:'Synthetic private work note',sourcePath:'/en/app/clients',caseId:f.first.id};
