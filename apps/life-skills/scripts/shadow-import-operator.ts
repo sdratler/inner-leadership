@@ -63,7 +63,7 @@ function options(argv: string[]) {
  if (mode !== "--preflight" && mode !== "--apply") fail("IMPORT_MODE_REQUIRED");
  const out = new Map<string, string>();
  for (const item of items) {
-  const match = /^--([a-z-]+)=([A-Za-z0-9:._-]+)$/.exec(item);
+  const match = /^--([a-z0-9-]+)=([A-Za-z0-9:._-]+)$/.exec(item);
   if (!match || out.has(match[1]!)) fail("IMPORT_OPTION_INVALID");
   out.set(match[1]!, match[2]!);
  }

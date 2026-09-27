@@ -1,5 +1,6 @@
 import {expect,it,vi} from "vitest";
 import {createHash} from "node:crypto";
+import {spawnSync} from "node:child_process";
 import {readFileSync,readdirSync} from "node:fs";
 import {join} from "node:path";
 import {fileURLToPath} from "node:url";
@@ -59,4 +60,26 @@ it("pins the existing read-only production schema guard before import",()=>{
  expect(contactOpsSourceBundle(entries)).toBe(pinned);
  expect(operator.indexOf("CONTACT_OPS_PREFLIGHT_OK")).toBeGreaterThan(operator.indexOf("contactOpsSourceBundle"));
  expect(operator.indexOf("CONTACT_OPS_PREFLIGHT_OK")).toBeLessThan(operator.indexOf("const importer = "));
+});
+
+it("parses the SHA-256 option name before any database or source access",()=>{
+ const app=fileURLToPath(new URL("../../../",import.meta.url));
+ const result=spawnSync(process.execPath,["--conditions=react-server","--import","tsx",
+  "scripts/shadow-import-operator.ts","--preflight",
+  "--deployment=696c4d97-066b-43b8-a9ca-31027c3579ba",
+  `--database-binding=354b5343-9e83-45a7-b764-09396f14ae29:${"a".repeat(64)}`,
+  "--source-revision=modified-2026-09-26T18:40:03.357Z",
+  `--operator-sha256=${"b".repeat(64)}`,
+  "--reviewed-main=e634a1d43675efba6ae5da475975800ccfed4d53",
+  "--source-modified-at=2026-09-26T18:40:03.357Z"],{
+  cwd:app,encoding:"utf8",timeout:10000,
+  env:{...process.env,LS_NATIVE_SHADOW_IMPORT_APPROVED:"true",
+   RAILWAY_PROJECT_ID:"3b756632-1f66-4f75-a016-eabc37aa0d67",
+   RAILWAY_SERVICE_ID:"0267d061-f3ce-4a0a-82d4-ce133e4501e9",
+   RAILWAY_ENVIRONMENT_ID:"dd91bd71-57cc-45e6-a75b-8c858491d7c7",
+   LS_IDENTITY_WORKSPACE_ID:"1553e959-b299-40e4-b82e-8529597b69ec",
+   RAILWAY_DEPLOYMENT_ID:"696c4d97-066b-43b8-a9ca-31027c3579ba"}});
+ expect(result.status).toBe(1);
+ expect(result.stderr).toContain("IMPORT_OPERATOR_SOURCE_MISMATCH");
+ expect(result.stderr).not.toContain("IMPORT_OPTION_INVALID");
 });
