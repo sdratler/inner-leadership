@@ -194,6 +194,24 @@ it('paginates cases and prospects together without repeating cases on the next p
  } finally { vi.unstubAllGlobals(); }
 });
 
+it('navigates from the visible page when the combined result shrinks', () => {
+ const cases = Array.from({ length: 25 }, (_, index) => ({ id: `synthetic-case-${index + 1}`, kind: 'minor' as const, state: 'active', displayName: `Synthetic case ${String(index + 1).padStart(2, '0')}` }));
+ const view = (rows: typeof cases) => hook.render(() => ProspectsClient({ locale: 'en', embedded: true, showProspects: false, clientCases: rows, caseState: 'ready' }));
+ for (let step = 0; step < 2; step++) {
+  const next = find(find(view(cases), element => element.type === 'nav' && element.props['aria-label'] === 'Page'), element => element.type === 'button' && element.props.children === 'Next');
+  (next!.props.onClick as () => void)();
+ }
+ let output = view(cases.slice(0, 13));
+ let pagination = find(output, element => element.type === 'nav' && element.props['aria-label'] === 'Page');
+ expect(text(pagination)).toContain('Page 2 / 2');
+ const previous = find(pagination, element => element.type === 'button' && element.props.children === 'Previous');
+ (previous!.props.onClick as () => void)();
+ output = view(cases.slice(0, 13));
+ pagination = find(output, element => element.type === 'nav' && element.props['aria-label'] === 'Page');
+ expect(text(pagination)).toContain('Page 1 / 2');
+ expect(text(find(output, element => element.props.className === 'lsu-people-results'))).toContain('Synthetic case 01');
+});
+
 it('does not call unavailable private data an empty People directory', async () => {
  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 503, json: async () => ({ ok: false, error: { code: 'UNAVAILABLE' } }) }));
  try {
