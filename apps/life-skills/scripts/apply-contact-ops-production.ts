@@ -16,7 +16,7 @@ import {readFile,readdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {Pool} from 'pg';
 import {migrate} from '../src/db/migration-runner.ts';
-import {assertContactOpsDatabaseIdentity,contactOpsCanonicalConstraint,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,type ContactOpsIntegrityObjects} from '../src/db/contact-ops-production-guard.ts';
+import {assertContactOpsDatabaseIdentity,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,type ContactOpsIntegrityObjects} from '../src/db/contact-ops-production-guard.ts';
 import type {AppliedMigration,Migration} from '../src/db/migration-plan.ts';
 
 async function migrations():Promise<Migration[]>{
@@ -114,6 +114,33 @@ async function main(){
        FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid
        JOIN pg_namespace n ON n.oid=c.relnamespace
        WHERE n.nspname='ls_contact_ops'`);
+     const baselineColumns=await client.query<{catalog:unknown}>(`SELECT coalesce(json_agg(json_build_object(
+       'column',a.attname,'type',format_type(a.atttypid,a.atttypmod),
+       'notNull',a.attnotnull,'default',pg_get_expr(d.adbin,d.adrelid),
+       'identity',a.attidentity,'generated',a.attgenerated)
+       ORDER BY a.attnum),'[]'::json) AS catalog
+       FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid
+       JOIN pg_namespace n ON n.oid=c.relnamespace
+       LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
+       WHERE n.nspname='ls_demo' AND c.relname='records'
+         AND a.attnum>0 AND NOT a.attisdropped`);
+     const baselineConstraints=await client.query<{catalog:unknown}>(`SELECT coalesce(json_agg(json_build_object(
+       'name',k.conname,'type',k.contype,'validated',k.convalidated,
+       'definition',pg_get_constraintdef(k.oid)) ORDER BY k.conname),'[]'::json) AS catalog
+       FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid
+       JOIN pg_namespace n ON n.oid=c.relnamespace
+       WHERE n.nspname='ls_demo' AND c.relname='records' AND k.contype<>'n'`);
+     const validated=await client.query<{contactOps:boolean;baseline:boolean}>(`SELECT
+       NOT EXISTS(SELECT 1 FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid
+         JOIN pg_namespace n ON n.oid=c.relnamespace
+         WHERE n.nspname='ls_contact_ops' AND NOT k.convalidated) AS "contactOps",
+       NOT EXISTS(SELECT 1 FROM pg_constraint k
+         WHERE k.conrelid=to_regclass('ls_demo.records') AND NOT k.convalidated) AS baseline`);
+     const baselineForeignKeys=await client.query<{enforced:boolean}>(`SELECT count(*)=3
+       AND bool_and(k.convalidated AND
+         (SELECT count(*)=4 AND bool_and(t.tgenabled IN ('O','A'))
+          FROM pg_trigger t WHERE t.tgconstraint=k.oid)) AS enforced
+       FROM pg_constraint k WHERE k.conrelid=to_regclass('ls_demo.records') AND k.contype='f'`);
      const tables=await client.query<{permanent:boolean}>(`SELECT count(*)=3
        AND bool_and(c.relkind='r' AND c.relpersistence='p') AS permanent
        FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
@@ -146,7 +173,8 @@ async function main(){
          FROM pg_proc p WHERE p.oid=to_regprocedure('ls_demo.prevent_marker_change()')) AND
        NOT EXISTS(SELECT 1 FROM pg_auth_members m
          WHERE m.roleid=(SELECT oid FROM pg_roles WHERE rolname=current_user)) AND
-       (SELECT count(*)=1 FROM pg_roles WHERE rolsuper AND rolcanlogin) AND
+       (SELECT count(*)=1 AND bool_and(rolname=current_user)
+         FROM pg_roles WHERE rolsuper AND rolcanlogin) AND
        NOT EXISTS(SELECT 1 FROM pg_namespace n,
          LATERAL aclexplode(coalesce(n.nspacl,acldefault('n',n.nspowner))) acl
          WHERE n.nspname IN ('ls_contact_ops','ls_demo') AND acl.grantee<>n.nspowner) AND
@@ -199,7 +227,8 @@ async function main(){
        profileFunction:verified.get('ls_contact_ops.require_profile_provenance')===true,
        markerFunction:verified.get('ls_contact_ops.require_marker_compatibility')===true,
        canonicalConstraintDefinition:definitions.rows.length===1&&contactOpsCanonicalConstraint(definitions.rows[0]?.definition),
-       schemaCatalog:contactOpsSchemaCatalogMatches(columns.rows[0]?.catalog,constraints.rows[0]?.catalog),
+       schemaCatalog:contactOpsSchemaCatalogMatches(columns.rows[0]?.catalog,constraints.rows[0]?.catalog)&&validated.rows[0]?.contactOps===true,
+       baselineRecordsCatalog:contactOpsBaselineRecordsMatches(baselineColumns.rows[0]?.catalog,baselineConstraints.rows[0]?.catalog)&&validated.rows[0]?.baseline===true&&baselineForeignKeys.rows[0]?.enforced===true,
        permanentTables:tables.rows[0]?.permanent===true,
        foreignKeysEnforced:foreignKeys.rows[0]?.enforced===true,
        foreignKeyReferencesSound:referencesSound,

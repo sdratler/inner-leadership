@@ -13,6 +13,19 @@ export const CONTACT_OPS_SCHEMA_CATALOG = {
  columns:25,constraints:21,
  sha256:'dde228b5f919a09ee668420517817eceb673d9a5764ed3a8552de8f980057222',
 } as const;
+/** 0097 plus 0100 baseline from the canonical PG18 service, cross-checked
+ * against a PG17 restore. PostgreSQL 18 reports NOT NULL as catalog
+ * constraints; attnotnull below is the version-independent check for those. */
+const DEMO_RECORDS_BASELINE = {
+ constraints:10,
+ sha256:'50e7e9a7b86a521c711e65347440b29c7114a9e655b08c46002811b3a91240f2',
+ columns:[
+  ['workspace_id','uuid',true,null],['batch_id','text',true,null],
+  ['entity_kind','text',true,null],['entity_key','text',true,null],
+  ['source_key','text',true,null],['case_id','uuid',false,null],
+  ['account_id','uuid',false,null],['marked_at','timestamp with time zone',true,'clock_timestamp()'],
+ ] as const,
+} as const;
 export const CONTACT_OPS_SOURCE_FILES = [
  'migrations/0097_ls_demo_provenance.sql',
  'migrations/0101_ls_contact_operations.sql',
@@ -42,7 +55,7 @@ export type ContactOpsIntegrityObjects={
  profileProvenanceTrigger:boolean;markerCompatibilityTrigger:boolean;immutableDemoRecordTrigger:boolean;
  profileFunction:boolean;markerFunction:boolean;immutableFunction:boolean;
  canonicalPersonConstraint:boolean;canonicalConstraintDefinition:boolean;schemaCatalog:boolean;
- permanentTables:boolean;foreignKeysEnforced:boolean;foreignKeyReferencesSound:boolean;publicRevoked:boolean;
+ baselineRecordsCatalog:boolean;permanentTables:boolean;foreignKeysEnforced:boolean;foreignKeyReferencesSound:boolean;publicRevoked:boolean;
 };
 
 export function contactOpsSchemaCatalogMatches(columns:unknown,constraints:unknown):boolean{
@@ -50,6 +63,20 @@ export function contactOpsSchemaCatalogMatches(columns:unknown,constraints:unkno
     !Array.isArray(constraints)||constraints.length!==CONTACT_OPS_SCHEMA_CATALOG.constraints)return false;
  const digest=createHash('sha256').update(JSON.stringify({columns,constraints})).digest('hex');
  return digest===CONTACT_OPS_SCHEMA_CATALOG.sha256;
+}
+
+export function contactOpsBaselineRecordsMatches(columns:unknown,constraints:unknown):boolean{
+ if(!Array.isArray(columns)||columns.length!==DEMO_RECORDS_BASELINE.columns.length||!Array.isArray(constraints))return false;
+ if(!columns.every((row,index)=>{
+  const expected=DEMO_RECORDS_BASELINE.columns[index];
+  return row?.column===expected?.[0]&&row?.type===expected?.[1]&&row?.notNull===expected?.[2]&&
+   row?.default===expected?.[3]&&row?.identity===''&&row?.generated==='';
+ }))return false;
+ const baseline=constraints.filter(row=>row?.type!=='n'&&row?.name!=='canonical_demo_person_key');
+ if(baseline.length!==DEMO_RECORDS_BASELINE.constraints||
+    baseline.some(row=>row?.validated!==true||typeof row?.definition!=='string'))return false;
+ const normalized=baseline.map(row=>({name:row.name,type:row.type,validated:row.validated,definition:row.definition}));
+ return createHash('sha256').update(JSON.stringify(normalized)).digest('hex')===DEMO_RECORDS_BASELINE.sha256;
 }
 
 /** Match the checked-in, checksum-verified migration bodies, not mutable OIDs. */
@@ -114,12 +141,12 @@ export function contactOpsSourceBundle(entries:readonly {path:string;bytes:Uint8
 export function contactOpsMigrationState(files:readonly Migration[],history:readonly AppliedMigration[],objects:ContactOpsIntegrityObjects):'pending'|'applied'{
  if(files.at(-1)?.name!==CONTACT_OPS_MIGRATION.name || files.at(-1)?.checksum!==CONTACT_OPS_MIGRATION.sha256)throw new Error('CONTACT_OPS_MANIFEST_MISMATCH');
  const pending=planMigrations(files,history);
- const expectedKeys=['profiles','legacyLinks','commandReceipts','legacyIndex','profileProvenanceTrigger','markerCompatibilityTrigger','immutableDemoRecordTrigger','profileFunction','markerFunction','immutableFunction','canonicalPersonConstraint','canonicalConstraintDefinition','schemaCatalog','permanentTables','foreignKeysEnforced','foreignKeyReferencesSound','publicRevoked'].sort();
+ const expectedKeys=['profiles','legacyLinks','commandReceipts','legacyIndex','profileProvenanceTrigger','markerCompatibilityTrigger','immutableDemoRecordTrigger','profileFunction','markerFunction','immutableFunction','canonicalPersonConstraint','canonicalConstraintDefinition','schemaCatalog','baselineRecordsCatalog','permanentTables','foreignKeysEnforced','foreignKeyReferencesSound','publicRevoked'].sort();
  if(JSON.stringify(Object.keys(objects).sort())!==JSON.stringify(expectedKeys))throw new Error('CONTACT_OPS_INTEGRITY_READBACK_INVALID');
  const values=Object.values(objects);
  if(values.some(value=>typeof value!=='boolean'))throw new Error('CONTACT_OPS_INTEGRITY_READBACK_INVALID');
- if(!objects.immutableDemoRecordTrigger||!objects.immutableFunction)throw new Error('CONTACT_OPS_BASELINE_PROVENANCE_MISSING');
- const newlyCreated=Object.entries(objects).filter(([key])=>key!=='immutableDemoRecordTrigger'&&key!=='immutableFunction').map(([,value])=>value);
+ if(!objects.immutableDemoRecordTrigger||!objects.immutableFunction||!objects.baselineRecordsCatalog)throw new Error('CONTACT_OPS_BASELINE_PROVENANCE_MISSING');
+ const newlyCreated=Object.entries(objects).filter(([key])=>!['immutableDemoRecordTrigger','immutableFunction','baselineRecordsCatalog'].includes(key)).map(([,value])=>value);
  if(pending.length===1 && pending[0]?.name===CONTACT_OPS_MIGRATION.name && newlyCreated.every(value=>!value))return 'pending';
  if(pending.length===0 && values.every(Boolean))return 'applied';
  throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
