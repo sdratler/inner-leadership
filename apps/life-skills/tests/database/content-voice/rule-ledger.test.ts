@@ -1,10 +1,12 @@
 import { afterAll, expect, test, vi } from "vitest";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 vi.mock("server-only", () => ({}));
 import { fixture, poolStore } from "../calendar/fixture.ts";
 import { VoiceRuleLedger, type RuleRequest } from "../../../src/features/content-voice/rule-ledger.ts";
 import type { ContentVoiceSnapshot } from "../../../src/features/content-voice/source.ts";
 import type { CommunityReplyResult } from "../../../src/features/community-reply/bridge.ts";
+import { voiceRuleSchemaCatalogMatches } from "../../../src/db/contact-ops-production-guard.ts";
 
 const f = await fixture();
 afterAll(async () => { await f.pool.end(); });
@@ -66,4 +68,31 @@ test("native PostgreSQL denies a parent and records permission-denied without cl
   const denied = await ledger.markSourceResult(f.practitioner.actor, command.operationId, "permission_denied", snapshot);
   expect(denied).toMatchObject({ status: "permission_denied", savedAt: null, sourceAfterSha256: null });
   await expect(ledger.markDraft(f.practitioner.actor, command.operationId, null)).rejects.toThrow("CONFLICT");
+});
+
+test("native PostgreSQL verifies the production runner's exact catalog, index, FK, history and ACL readbacks", async () => {
+  const runner = readFileSync(new URL("../../../scripts/apply-contact-ops-production.ts", import.meta.url), "utf8");
+  const sql = (name: string) => {
+    const marker = runner.indexOf(`const ${name}=`), start = runner.indexOf("`", marker), end = runner.indexOf("`);", start);
+    if (marker < 0 || start < 0 || end < 0) throw Error("READBACK_SQL_MISSING");
+    return runner.slice(start + 1, end);
+  };
+  const objectsSql = sql("voiceObjects"), columnsSql = sql("voiceColumns"), constraintsSql = sql("voiceConstraints");
+  const objects = (await f.pool.query(objectsSql)).rows[0];
+  expect(objects).toEqual({ namespaceAbsent: false, tables: true, foreignKeys: true, ownerIndex: true,
+    historyImmutable: true, publicRevoked: true });
+  const columns = (await f.pool.query(columnsSql)).rows[0].catalog;
+  const constraints = (await f.pool.query(constraintsSql)).rows[0].catalog;
+  expect(voiceRuleSchemaCatalogMatches(columns, constraints)).toBe(true);
+  expect(voiceRuleSchemaCatalogMatches(columns.slice(1), constraints)).toBe(false);
+  const client = await f.pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("DROP INDEX ls_content_voice.rule_changes_by_owner_time");
+    await client.query("GRANT SELECT ON ls_content_voice.rule_changes TO PUBLIC");
+    await client.query("ALTER TABLE ls_content_voice.rule_change_history DISABLE TRIGGER rule_change_history_immutable");
+    const drift = (await client.query(objectsSql)).rows[0];
+    expect(drift).toMatchObject({ ownerIndex: false, publicRevoked: false, historyImmutable: false });
+  } finally { await client.query("ROLLBACK"); client.release(); }
+  expect((await f.pool.query(objectsSql)).rows[0]).toEqual(objects);
 });

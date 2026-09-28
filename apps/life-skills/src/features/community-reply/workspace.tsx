@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { sessionInfo } from "../identity/client.ts";
 import type { CommunityInboxPage, CommunityInboxPost } from "../community-inbox/bridge.ts";
 import type { CommunityReplyResult } from "./bridge.ts";
-import { matchesSubmittedInput, proposalForResult, replyFailureKind, ruleDraftPromotionNeedsConfirmation, type CommunitySourceInput } from "./input-state.ts";
+import { canResumeRuleOperation, matchesSubmittedInput, proposalForResult, replyFailureKind, ruleDraftPromotionNeedsConfirmation, type CommunitySourceInput } from "./input-state.ts";
 
 type Locale = "he" | "en";
 const copy = {
@@ -238,6 +238,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
       if (!response.ok || payload.ok !== true || !payload.data) throw Error("unconfirmed");
       setRuleSave(payload.data);
       const status = payload.data.status;
+      if (!canResumeRuleOperation(status) && status !== "complete") window.localStorage.removeItem(ruleOperationKey);
       setNotice(status === "complete" ? t.ruleComplete : status === "saved" || status === "draft_pending" ? t.draftPending :
         status === "already_applied" ? t.ruleAlready : status === "needs_playbook" ? t.rulePlaybook :
         status === "unsafe" ? t.ruleUnsafe : status === "permission_denied" ? t.ruleDenied :
@@ -250,7 +251,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
   }
 
   async function resumeRule() {
-    if (inFlight.current || !ruleSave) return;
+    if (inFlight.current || !ruleSave || !canResumeRuleOperation(ruleSave.status)) return;
     inFlight.current = true; setBusy(true); setNotice(t.savingRule);
     try {
       const session = await sessionInfo();
@@ -281,7 +282,8 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
   function promoteRuleDraft(saved: RuleSaveResult) {
     if (!saved.draft || !saved.draftInput) return;
     const edited = (!!result && draft !== result.reply) || (!!correction.trim() && correctionBase?.correction !== correction.trim());
-    if (ruleDraftPromotionNeedsConfirmation({ question, originalUrl }, saved.draftInput, edited) && !window.confirm(t.resumeReplace)) return;
+    if (ruleDraftPromotionNeedsConfirmation({ question, originalUrl }, saved.draftInput, edited,
+      result?.operationId, saved.draft.operationId) && !window.confirm(t.resumeReplace)) return;
     setQuestion(saved.draftInput.question); setOriginalUrl(saved.draftInput.originalUrl);
     setResult(saved.draft); setDraft(saved.draft.reply); setReviewed(false); setSubmittedInput(saved.draftInput);
     setCorrection(""); setProposedRule(""); setCorrectionBase(null); setTargetRuleId(null);
@@ -356,7 +358,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
       {ruleSave.draft && <details><summary>{t.priorDraft}</summary><p>{ruleSave.draft.reply}</p>
         <p className="lsr-help">{t.sources}: {t.guide} v{ruleSave.draft.provenance.guide.declaredVersion ?? "—"} · Drive #{ruleSave.draft.provenance.guide.driveRevision} · SHA-256 {ruleSave.draft.provenance.guide.sha256.slice(0, 12)} · {ruleSave.draft.provenance.guide.includedCommunityRuleIds.join(", ") || "—"}; {t.playbook} v{ruleSave.draft.provenance.playbook.declaredVersion ?? "—"} · Drive #{ruleSave.draft.provenance.playbook.driveRevision}</p></details>}
       {ruleSave.draft && ruleSave.draftInput && <button type="button" disabled={busy} onClick={() => promoteRuleDraft(ruleSave)}>{t.loadRuleDraft}</button>}
-      {ruleSave.status !== "complete" && ruleSave.status !== "conflict" && <button type="button" disabled={busy} onClick={() => void resumeRule()}>{t.retryRule}</button>}
+      {canResumeRuleOperation(ruleSave.status) && <button type="button" disabled={busy} onClick={() => void resumeRule()}>{t.retryRule}</button>}
     </section>}
     {notice && <p role={notice === t.failed || notice === t.limited ? "alert" : "status"} className={notice === t.failed || notice === t.limited ? "lsr-inline-error" : "lsr-status"}>{notice}</p>}
   </div>;
