@@ -24,15 +24,17 @@ type RosterProps={locale:Locale;section?:string|undefined;prospectFilter?:string
  * transition or failed native read cannot initialize the legacy bridge UI. */
 export function ClientsRoster(props:RosterProps){
  const {locale}=props,section=props.section&&sections.has(props.section as Section)?props.section as Section:"all";
+ const mode=props.mode==="demo"?"demo":"live",personId=props.personId&&/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(props.personId)?props.personId:undefined;
  const returnQuery={...props,filter:props.prospectFilter,leadId:props.focusLeadId};
  const [source,setSource]=useState<PeopleResponse|null>(null),[failure,setFailure]=useState<number|null>(null),lifecycle=useRef({alive:true,serial:0});
- const load=useCallback(()=>{const state=lifecycle.current,n=++state.serial;setSource(null);setFailure(null);void requestPeople(new URLSearchParams({view:section})).then(r=>{if(state.alive&&n===state.serial)setSource(r);}).catch(e=>{if(state.alive&&n===state.serial)setFailure(e instanceof PeopleRequestError?e.status:503);});},[section]);
+ const load=useCallback(()=>{const state=lifecycle.current,n=++state.serial;setSource(null);setFailure(null);void requestPeople(new URLSearchParams({view:personId?"all":section,...(mode==="demo"?{mode}:{}),...(personId?{personId}:{})})).then(r=>{if(state.alive&&n===state.serial)setSource(r);}).catch(e=>{if(state.alive&&n===state.serial)setFailure(e instanceof PeopleRequestError?e.status:503);});},[section,mode,personId]);
  useEffect(()=>{const state=lifecycle.current;state.alive=true;queueMicrotask(()=>{if(state.alive)load();});return()=>{state.alive=false;state.serial++;};},[load]);
- if(source?.source==="sheet")return <LegacyClientsRoster {...props}/>;
+ if(source?.source==="sheet"&&mode!=="demo")return <LegacyClientsRoster {...props}/>;
  const text=(en:string,he:string)=>locale==="he"?he:en;
  return <main className="lsw-main lsu-clients-directory" lang={locale} dir={locale==="he"?"rtl":"ltr"}>
   <header className="lsw-page-header"><div><p className="lsw-eyebrow">{text("Private workspace","מרחב פרטי")}</p><h1>{copy[locale].title}</h1><p>{copy[locale].lead}</p></div></header>
-  {source?.source==="native"?<NativePeopleWorkspace key={section} locale={locale} view={section} initial={source} onSheet={setSource}/>:
+  {source?.source==="native"?<NativePeopleWorkspace key={`${section}:${mode}:${personId??""}`} locale={locale} view={section} initial={source} initialMode={mode} initialPersonId={personId} onSheet={setSource}/>:
+   source?.source==="sheet"&&mode==="demo"?<p role="status">{text("The DEMO native directory is not available before the verified contact cutover. No live records are shown in DEMO.","רשימת DEMO המקומית אינה זמינה לפני המעבר המאומת של אנשי הקשר. רשומות חיות אינן מוצגות ב-DEMO.")}</p>:
    failure===null?<p role="status">{text("Loading authorized people…","טוען אנשים מורשים…")}</p>:<div className="lsw-alert" role="alert"><p>{failure===401?text("Your session ended. Sign in to continue.","פג תוקף החיבור. יש להיכנס מחדש."):failure===403?text("This account cannot access the practitioner directory.","לחשבון הזה אין גישה לרשימת המטפל/ת."):failure===409?text("Contact records are being reconciled. No fallback or changes were used.","רשומות אנשי הקשר נמצאות בהתאמה. לא הוצגו נתונים חלופיים ולא בוצעו שינויים."):text("People could not be loaded. This is not an empty directory.","לא ניתן לטעון את האנשים. אין להסיק שהרשימה ריקה.")}</p>{failure===401?<a className="lsw-button lsw-button--secondary" href={loginHref(locale,practitionerReturnPath(locale,"clients",returnQuery))}>{text("Sign in","כניסה")}</a>:failure!==403&&<button className="lsw-button lsw-button--secondary" onClick={load}>{text("Retry","ניסיון חוזר")}</button>}</div>}
  </main>;
 }

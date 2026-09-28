@@ -21,7 +21,7 @@ const hook = vi.hoisted(() => {
   flushEffects() { for (const next of pending.splice(0)) { const slot = slots[next.index]; if (slot?.kind === 'effect') { slot.cleanup?.(); slot.cleanup = next.effect() || undefined; } } },
   unmount() { mounted = false; for (const slot of slots) if (slot.kind === 'effect') slot.cleanup?.(); },
   afterUnmountUpdates: () => afterUnmountUpdates,
-  useState<T>(initial: T) { const index = cursor++; let slot = slots[index]; if (!slot) { slot = { kind: 'state', value: initial }; slots[index] = slot; } if (slot.kind !== 'state') throw new Error('HOOK_ORDER'); return [slot.value as T, (value: T | ((current: T) => T)) => { if (!mounted) { afterUnmountUpdates++; return; } slot.value = typeof value === 'function' ? (value as (current: T) => T)(slot.value as T) : value; }] as const; },
+  useState<T>(initial: T | (() => T)) { const index = cursor++; let slot = slots[index]; if (!slot) { slot = { kind: 'state', value: typeof initial === 'function' ? (initial as () => T)() : initial }; slots[index] = slot; } if (slot.kind !== 'state') throw new Error('HOOK_ORDER'); return [slot.value as T, (value: T | ((current: T) => T)) => { if (!mounted) { afterUnmountUpdates++; return; } slot.value = typeof value === 'function' ? (value as (current: T) => T)(slot.value as T) : value; }] as const; },
   useRef<T>(initial: T) { const index = cursor++; let slot = slots[index]; if (!slot) { slot = { kind: 'ref', value: { current: initial } }; slots[index] = slot; } if (slot.kind !== 'ref') throw new Error('HOOK_ORDER'); return slot.value as { current: T }; },
   useMemo<T>(factory: () => T) { cursor++; return factory(); },
   useCallback<T>(callback:T,deps:readonly unknown[]){const index=cursor++,slot=slots[index];if(!slot||slot.kind==='callback'&&changed(slot.deps,deps)){slots[index]={kind:'callback',deps,value:callback};return callback;}if(slot.kind!=='callback')throw Error('HOOK_ORDER');return slot.value as T;},
@@ -319,4 +319,38 @@ it('preserves validated selected-person and DEMO context on mid-page session exp
  expect(signIn?.props.href).toBe('/he/login?next='+encodeURIComponent(`/he/app/clients?section=active&filter=today&leadId=LS-LEAD-synthetic&personId=${personId}&mode=demo`));
  const invalid=hook.render(()=>ClientsRoster({locale:'he',personId:'../../escape',mode:'practitioner'}));
  expect(find(invalid,e=>e.type==='a')?.props.href).toBe('/he/login?next=%2Fhe%2Fapp%2Fclients');
+});
+it('binds the first native response to validated DEMO/person context, before rendering any rows',async()=>{
+ const personId='00000000-0000-4000-8000-000000000001';
+ const data={source:'native',authorityEpoch:3,page:{items:[],total:0,page:1,pageSize:12,pages:1}};
+ hook.peopleRead.mockResolvedValue(data);
+ const view=()=>hook.render(()=>ClientsRoster({locale:'en',section:'paid',personId,mode:'demo'}));
+ view();hook.flushEffects();await tick();
+ expect(hook.peopleRead).toHaveBeenCalledWith(new URLSearchParams({view:'all',mode:'demo',personId}));
+ const native=find(view(),e=>e.type===NativePeopleWorkspace);
+ expect(native?.props.initialMode).toBe('demo');expect(native?.props.initialPersonId).toBe(personId);
+});
+it('never renders live Sheet records under an explicit DEMO context',async()=>{
+ hook.peopleRead.mockResolvedValue({source:'sheet',authorityEpoch:1});
+ const view=()=>hook.render(()=>ClientsRoster({locale:'en',mode:'demo'}));view();hook.flushEffects();await tick();
+ expect(find(view(),e=>e.type===LegacyClientsRoster||e.type===ProspectsClient)).toBeUndefined();
+ expect(text(view())).toContain('No live records are shown in DEMO');
+});
+it.each([409,503])('clears live rows on DEMO transition failure %i and retries DEMO, not live',async status=>{
+ let location=new URL('https://synthetic.invalid/en/app/clients');
+ vi.stubGlobal('window',{get location(){return location;},history:{pushState(_state:unknown,_unused:string,url:URL){location=new URL(url);}},addEventListener(){},removeEventListener(){}});
+ const fetch=vi.fn().mockResolvedValue({ok:false,status,json:async()=>({ok:false})});vi.stubGlobal('fetch',fetch);
+ const row={personId:'00000000-0000-4000-8000-000000000001',displayName:'Synthetic live record',identityKind:'adult' as const,stage:'New inquiry',nextAction:null,followUpDate:null,notes:'',version:1,mode:'live' as const,archived:false,doNotContact:false,references:[]};
+ const initial={source:'native' as const,authorityEpoch:3,page:{items:[row],total:1,page:1,pageSize:12,pages:1}},onSheet=vi.fn();
+ const view=()=>hook.render(()=>NativePeopleWorkspace({locale:'en',view:'all',initial,onSheet}));
+ try{
+  expect(text(view())).toContain(row.displayName);
+  (find(view(),e=>e.type==='button'&&e.props.children==='DEMO records')!.props.onClick as()=>void)();
+  expect(location.search).toBe('?mode=demo');expect(text(view())).not.toContain(row.displayName);
+  await tick();await tick();expect(text(view())).not.toContain(row.displayName);
+  (find(view(),e=>e.type==='button'&&e.props.children==='Retry')!.props.onClick as()=>void)();
+  await tick();await tick();expect(fetch).toHaveBeenCalledTimes(2);
+  for(const [url] of fetch.mock.calls)expect(new URL(String(url),'https://synthetic.invalid').searchParams.get('mode')).toBe('demo');
+  expect(text(view())).not.toContain(row.displayName);expect(onSheet).not.toHaveBeenCalled();
+ }finally{vi.unstubAllGlobals();}
 });
