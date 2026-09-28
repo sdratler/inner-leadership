@@ -83,7 +83,7 @@ test("native inbox uses actual sessions and fresh roles; readonly capture is imp
  await expect(reader.capture(inquiry)).rejects.toThrow("UNAVAILABLE");
  const sessions=new IdentitySessions(db,{workspaceId:f.workspaceId} as IdentityConfig,systemClock);
  const deps=async()=>({origin:"https://synthetic.invalid",captureEnabled:false,bindingConfigured:false,actor:(token:string)=>sessions.actor(token),store:reader});
- const request=(token:string)=>new Request("https://synthetic.invalid/api/private/contact-inbound",{headers:{cookie:`${SESSION_COOKIE}=${token}`}});
+ const request=(token:string)=>new Request("http://127.0.0.1:8080/api/private/contact-inbound",{headers:{cookie:`${SESSION_COOKIE}=${token}`,"x-forwarded-proto":"https","x-forwarded-host":"synthetic.invalid"}});
  const first=await readInboundInbox(request(f.practitioner.token),deps);expect(first.status).toBe(200);const body=await first.json();
  expect(body.data.items).toHaveLength(1);expect(body.data.items[0].messageText).toBe(inquiry.messageText);expect(body.data.items[0].id).toMatch(/^[a-f0-9]{64}$/);
  for(const role of ["parent","child","adult_client"]){await f.pool.query("UPDATE ls_identity.accounts SET role=$2 WHERE id=$1",[f.parent.actor.id,role]);expect((await readInboundInbox(request(f.parent.token),deps)).status).toBe(403);}
