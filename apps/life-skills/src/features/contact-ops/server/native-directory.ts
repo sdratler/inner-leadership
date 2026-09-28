@@ -13,6 +13,7 @@ import type {PeopleView,Page} from "../core/types.ts";
 import type {Prospect} from "../../prospects/bridge.ts";
 import {contactSuppressed} from "../../prospects/native-edit.ts";
 import {MAX_NATIVE_CONTACTS,MAX_OPERATIONAL_PROSPECTS} from "../core/limits.ts";
+import {normalizePhone} from "../core/contact-resolution.ts";
 
 const sourceSchema=z.object({sourceRow:z.number().int().min(2),payload:z.object({
  displayName:z.string(),language:z.string(),stageText:z.string(),sourceFields:z.record(z.string(),z.string())})});
@@ -28,7 +29,9 @@ export type NativeContactReference={leadId:string;phone:string;email:string;lang
  source:string;campaign:string;outcome:string;owner?:string;sourceDoNotContact?:boolean;messageReceipt:string;
  /** Original spreadsheet values are claims/history, never payment/booking authority. */
  paymentClaim:string;bookingClaim:string;formSentClaim:string;formSubmittedClaim:string;
- sourceFileId:string;sourceSheetId:number;sourceRevision:string;journey:ProspectJourneyState};
+ sourceFileId:string|null;sourceSheetId:number|null;sourceRevision:string|null;journey:ProspectJourneyState;
+ /** Native origin has no invented workbook, sheet, revision or imported claim. */
+ nativeOrigin?:"native_manual";nativeCreatedAt?:string};
 export type NativeContactRow={personId:string;displayName:string;identityKind:"adult"|"minor";
  stage:string;nextAction:string|null;followUpDate:string|null;notes:string;version:number|null;
  mode:"live"|"demo";archived:boolean;doNotContact:boolean;references:NativeContactReference[];
@@ -90,6 +93,23 @@ export class NativeContactDirectory {
   const {rows}=await this.readAllInTransaction(tx,actor);
   return selectNativeContacts(rows,q);
  }
+ /** Matching an unverified/shared endpoint never grants identity or case access.
+  * Creation refuses every existing endpoint claim for explicit owner resolution;
+  * only the exact original operation is automatically replayed.
+  */
+ async hasPhoneClaimInTransaction(tx:SqlSession,actor:Actor,phone:string):Promise<boolean>{
+  const normalized=normalizePhone(phone);if(!normalized)throw new AppError("INVALID_REQUEST");
+  const {rows}=await this.readAllInTransaction(tx,actor);
+  if(rows.length>=MAX_CONTACTS)throw new AppError("UNAVAILABLE");
+  return rows.some(row=>row.references.some(ref=>normalizePhone(ref.phone)===normalized));
+ }
+ async nativeInquiryPersonInTransaction(tx:SqlSession,actor:Actor,leadId:string):Promise<string|null>{
+  const {rows}=await this.readAllInTransaction(tx,actor);
+  const matches=rows.filter(row=>row.references.some(ref=>ref.leadId===leadId));
+  if(matches.length>1)throw new AppError("CONFLICT");
+  const row=matches[0];
+  return row?.references.some(ref=>ref.leadId===leadId&&ref.nativeOrigin==="native_manual")?row.personId:null;
+ }
  /** Server-only compatibility projection for existing operational consumers.
   * Read all bounded rows in the caller's ONE authority-locked transaction;
   * never paginate separate transactions, expose unmapped history, or send.
@@ -111,10 +131,10 @@ export class NativeContactDirectory {
    if(row.mode!=="live")continue;
    for(const ref of row.references){
     if(seen.has(ref.leadId))throw new AppError("CONFLICT");seen.add(ref.leadId);
-    const fields=sourceFields.get(ref.leadId);if(!fields)throw new AppError("UNAVAILABLE");
-    const get=(name:string)=>field(fields,name);
+    const fields=sourceFields.get(ref.leadId);if(!fields&&!ref.nativeOrigin)throw new AppError("UNAVAILABLE");
+    const get=(name:string)=>field(fields??{},name);
     result.push({leadId:ref.leadId,name:row.displayName,phone:ref.phone,email:ref.email,language:ref.language,
-     receivedAt:get("Date received"),source:ref.source,campaign:ref.campaign,
+     receivedAt:ref.nativeCreatedAt??get("Date received"),source:ref.source,campaign:ref.campaign,
      stage:row.doNotContact?"Do not contact":row.archived?"Archived":row.stage,
      lastContact:get("Last contact"),nextAction:row.nextAction??"",dueDate:row.followUpDate??"",
      outcome:ref.outcome,notes:row.notes,
@@ -154,18 +174,22 @@ export class NativeContactDirectory {
      WHERE workspace_id=$1 AND person_id IN (SELECT value::uuid FROM jsonb_array_elements_text($2::jsonb))
      ORDER BY person_id,legacy_lead_id,source_file_id,source_sheet_id`,
      [actor.workspaceId,JSON.stringify(profiles.map(p=>p.personId))]);
-    const journeys=await readProspectJourneysFromTx(tx,actor.workspaceId,[...new Set(links.map(l=>l.leadId))]);
+    // Read the current profile first so real native inquiry IDs join the same
+    // authoritative form/payment/booking facts as genuine legacy inquiry IDs.
+    const decoded=new Map(profiles.map(p=>[p.personId,parse(crmProfileSchema,p.profileCiphertext,crmProfileAad(actor.workspaceId,p.personId),this.keyring)]));
+    const inquiryIds=profiles.flatMap(p=>decoded.get(p.personId)?.nativeInquiry?[decoded.get(p.personId)!.nativeInquiry!.leadId]:[]);
+    const journeys=await readProspectJourneysFromTx(tx,actor.workspaceId,[...new Set([...links.map(l=>l.leadId),...inquiryIds])]);
     for(const p of profiles){
      if(!Number.isSafeInteger(p.version)||p.version<1||
       !["live","demo"].includes(p.recordMode)||
       (p.recordMode==="demo"?(!p.demoBatchId||p.markerBatchId!==p.demoBatchId):p.demoBatchId!==null||p.markerBatchId!==null))throw new AppError("UNAVAILABLE");
-     const profile=parse(crmProfileSchema,p.profileCiphertext,crmProfileAad(actor.workspaceId,p.personId),this.keyring);
+     const profile=decoded.get(p.personId)!;
      const person=parse(z.object({displayName:z.string().max(120)}),p.personCiphertext,`person:${actor.workspaceId}:${p.personId}`,this.keyring);
      if(profile.personId!==p.personId)throw new AppError("UNAVAILABLE");
      const personLinks=links.filter(l=>l.personId===p.personId);
      if(new Set(personLinks.map(l=>l.leadId)).size!==personLinks.length||
       [...profile.legacyIds].sort().join("\0")!==personLinks.map(l=>l.leadId).sort().join("\0"))throw new AppError("UNAVAILABLE");
-     const references=personLinks.map(l=>{
+     const references:NativeContactReference[]=personLinks.map(l=>{
       const source=parse(sourceSchema,l.snapshotCiphertext,
        `ls_contact_ops/legacy/v1/${actor.workspaceId}/${l.sourceFileId}/${l.sourceSheetId}/${l.leadId}`,this.keyring);
       if(field(source.payload.sourceFields,"Lead ID").trim()!==l.leadId)throw new AppError("UNAVAILABLE");
@@ -181,6 +205,13 @@ export class NativeContactDirectory {
        sourceFileId:l.sourceFileId,sourceSheetId:l.sourceSheetId,sourceRevision:l.sourceRevision,
        journey:journeys.get(l.leadId)??emptyJourney()};
      });
+     if(profile.nativeInquiry){const inquiry=profile.nativeInquiry;
+      references.push({leadId:inquiry.leadId,phone:inquiry.phone,email:"",language:inquiry.language,
+       source:inquiry.source,campaign:"",outcome:profile.leadUpdates?.[inquiry.leadId]?.outcome??"",
+       owner:profile.leadUpdates?.[inquiry.leadId]?.owner??"",messageReceipt:"",paymentClaim:"",bookingClaim:"",
+       formSentClaim:"",formSubmittedClaim:"",sourceFileId:null,sourceSheetId:null,sourceRevision:null,
+       nativeOrigin:inquiry.origin,nativeCreatedAt:inquiry.createdAt,journey:journeys.get(inquiry.leadId)??emptyJourney()});
+     }
      rows.push({personId:p.personId,displayName:p.recordMode==="demo"&&!person.displayName.startsWith("DEMO — ")?`DEMO — ${person.displayName}`:person.displayName,
       identityKind:p.kind,stage:profile.stage,nextAction:profile.nextAction,followUpDate:profile.followUpDate,
       // A closed historical inquiry cannot archive another open inquiry for the

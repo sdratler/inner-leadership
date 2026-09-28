@@ -1,6 +1,8 @@
 import "server-only";
 import type {IdentityStore,SqlSession} from "../../identity/store.ts";
-import type {Keyring} from "../../identity/crypto.ts";
+import {seal,type Keyring} from "../../identity/crypto.ts";
+import {randomUUID} from "node:crypto";
+import {lockWorkspace} from "../../identity/data.ts";
 import {systemClock,type Actor,type IdentityClock} from "../../identity/types.ts";
 import {ContactCutoverStore} from "./cutover-store.ts";
 import {NativeCrmStore,type CrmProfile} from "./native-store.ts";
@@ -10,6 +12,8 @@ import {z} from "zod";
 import {ContractError} from "../core/validation.ts";
 import {privateDigest} from "./digests.ts";
 import {contactSuppressed,prospectUpdateFieldsSchema,type ProspectUpdateFields} from "../../prospects/native-edit.ts";
+import {prospectCreateFieldsSchema,type ProspectCreateFields} from "../core/people-create.ts";
+import {normalizePhone} from "../core/contact-resolution.ts";
 export type NativeAdminFields=Pick<CrmProfile,"stage"|"nextAction"|"followUpDate"|"notes">;
 
 /** Operational native CRM boundary, not an authority switch. It has no Sheet,
@@ -51,6 +55,39 @@ export class OperationalNativeCrmStore {
   return this.authority.withDestination(actor,{destination:"native",intent:"write",expectedEpoch},
    tx=>this.profileStore(tx).create(actor,profile,operationId));
  }
+ /** New administrative contact only. The one transaction owns canonical person,
+  * encrypted CRM extension, immutable native origin, receipts and write counter.
+  * No account, guardian relation, case, clinical note or provider call is made.
+  */
+ createContact(actor:Actor,input:ProspectCreateFields,operationId:string,expectedEpoch:number){
+  const parsed=prospectCreateFieldsSchema.safeParse(input);
+  if(!parsed.success||!z.string().uuid().safeParse(operationId).success)throw new AppError("INVALID_REQUEST");
+  const fields=parsed.data,phone=normalizePhone(fields.phone)!;
+  const operation="contact-create:"+operationId;
+  const digest=privateDigest({action:"contact-create",fields,expectedEpoch,actor:actor.id,workspace:actor.workspaceId},this.integrityKey);
+  return this.authority.withDestination(actor,{destination:"native",intent:"write",expectedEpoch},async tx=>{
+   await lockWorkspace(tx,actor.workspaceId);
+   const previous=await tx.query<{digest:string;actorId:string;personId:string;version:number}>(`SELECT
+    payload_digest AS digest,actor_account_id AS "actorId",person_id AS "personId",result_version AS version
+    FROM ls_contact_ops.command_receipts WHERE workspace_id=$1 AND operation_id=$2`,[actor.workspaceId,operation]);
+   if(previous[0]){
+    const prior=previous[0];if(prior.digest!==digest||prior.actorId!==actor.id)throw new AppError("CONFLICT");
+    const saved=await this.profileStore(tx).read(actor,prior.personId);
+    if(!saved?.profile.nativeInquiry||saved.profile.nativeInquiry.leadId!=="LS-LEAD-native-"+prior.personId)throw new AppError("UNAVAILABLE");
+    return {personId:prior.personId,leadId:saved.profile.nativeInquiry.leadId,version:prior.version,replayed:true};
+   }
+   if(await this.directory.hasPhoneClaimInTransaction(tx,actor,phone))throw new AppError("CONFLICT");
+   const personId=randomUUID(),leadId="LS-LEAD-native-"+personId,createdAt=this.clock.now();
+   const profile:CrmProfile={personId,stage:"New inquiry",nextAction:fields.nextAction||null,followUpDate:fields.dueDate||null,
+    notes:fields.notes,legacyIds:[],nativeInquiry:{origin:"native_manual",leadId,phone,language:fields.language,source:fields.source,createdAt:createdAt.toISOString()}};
+   await tx.query("INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,'adult',$3,$4)",
+    [personId,actor.workspaceId,seal(JSON.stringify({displayName:fields.name||phone}),`person:${actor.workspaceId}:${personId}`,this.keyring),createdAt]);
+   const result=await this.profileStore(tx).create(actor,profile,"contact-profile-create:"+operationId);
+   await tx.query(`INSERT INTO ls_contact_ops.command_receipts(workspace_id,operation_id,person_id,actor_account_id,payload_digest,result_version)
+    VALUES($1,$2,$3,$4,$5,$6)`,[actor.workspaceId,operation,personId,actor.id,digest,result.version]);
+   return {personId,leadId,version:result.version,replayed:false};
+  });
+ }
  update(actor:Actor,profile:CrmProfile,expectedVersion:number,operationId:string,expectedEpoch:number){
   return this.authority.withDestination(actor,{destination:"native",intent:"write",expectedEpoch},
    tx=>this.profileStore(tx).update(actor,profile,expectedVersion,operationId));
@@ -87,9 +124,10 @@ export class OperationalNativeCrmStore {
   return this.authority.withDestination(actor,{destination:"native",intent:"write",expectedEpoch},async tx=>{
    const links=await tx.query<{personId:string}>(`SELECT person_id AS "personId" FROM ls_contact_ops.legacy_links
     WHERE workspace_id=$1 AND legacy_lead_id=$2 ORDER BY person_id,source_file_id,source_sheet_id LIMIT 2`,[actor.workspaceId,leadId]);
-   if(!links.length)throw new AppError("NOT_FOUND");
-   if(links.length!==1)throw new AppError("CONFLICT");
-   const personId=links[0]!.personId;
+   if(links.length>1)throw new AppError("CONFLICT");
+   const nativePerson=links.length?null:await this.directory.nativeInquiryPersonInTransaction(tx,actor,leadId);
+   const personId=links[0]?.personId??nativePerson;
+   if(!personId)throw new AppError("NOT_FOUND");
    // The authority fence serializes all native operational writers. This distinct
    // operation namespace also avoids collision with the lower-level profile API.
    const previous=await tx.query<{digest:string;actorId:string;personId:string;version:number}>(`SELECT
@@ -102,7 +140,7 @@ export class OperationalNativeCrmStore {
    }
    const profiles=this.profileStore(tx),existing=await profiles.read(actor,personId);
    if(!existing)throw new AppError("NOT_FOUND");
-   if(!existing.profile.legacyIds.includes(leadId))throw new AppError("CONFLICT");
+   if(!existing.profile.legacyIds.includes(leadId)&&existing.profile.nativeInquiry?.leadId!==leadId)throw new AppError("CONFLICT");
    const priorLead=existing.profile.leadUpdates?.[leadId]??{};
    const profile:CrmProfile={...existing.profile,
     ...(existing.profile.doNotContact||contactSuppressed(existing.profile.stage)||contactSuppressed(changes.stage??"")||contactSuppressed(changes.outcome??"")||

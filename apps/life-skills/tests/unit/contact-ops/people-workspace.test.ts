@@ -9,6 +9,15 @@ import type {NativeContactRow} from "../../../src/features/contact-ops/server/na
 import {selectNativeContacts,type NativeContactReference} from "../../../src/features/contact-ops/server/native-directory.ts";
 import nextConfig from "../../../next.config.ts";
 const personId="00000000-0000-4000-8000-000000000001",fields={stage:"New inquiry",nextAction:"Synthetic next action",followUpDate:"2026-09-28",notes:"  Synthetic saved note\nהערה סינתטית שמורה  "};
+test.each(["he","en"] as const)("%s new native contact action is compact/collapsed and absent from DEMO",locale=>{
+ const props={locale,view:"all" as const,initial:{source:"native" as const,authorityEpoch:3,page:{page:1,pages:1,pageSize:12,total:0,items:[]}},onSheet:()=>{}};
+ const live=renderToStaticMarkup(createElement(NativePeopleWorkspace,props));
+ expect(live).toContain('aria-controls="native-create-contact"');expect(live).toContain('aria-expanded="false"');
+ expect(live).toContain('id="native-create-contact" hidden=""');expect((live.match(/<form/g)||[]).length).toBe(1);
+ expect(live).not.toContain('<textarea');expect(live).not.toContain('name="password"');
+ const demo=renderToStaticMarkup(createElement(NativePeopleWorkspace,{...props,initialMode:"demo"}));
+ expect(demo).not.toContain('id="native-create-contact"');expect(demo).not.toContain('Delete Demo');
+});
 test("build configuration preserves the existing engine defaults and type validation",()=>{
  expect(nextConfig).not.toHaveProperty('webpack');
  expect(nextConfig.typescript?.ignoreBuildErrors).not.toBe(true);

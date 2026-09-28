@@ -9,6 +9,8 @@ import {requirePractitioner} from "../../cases/policy.ts";
 import {systemClock,type Actor,type IdentityClock} from "../../identity/types.ts";
 import {asId} from "../../../lib/ids.ts";
 import {demoRecordBatch} from "../../demo/provenance.ts";
+import {nativeManualInquirySchema,type NativeManualInquiry} from "../core/people-create.ts";
+import {canonical} from "../core/validation.ts";
 export interface CrmProfile {
     personId: string;
     stage: string;
@@ -16,6 +18,8 @@ export interface CrmProfile {
     followUpDate: string | null;
     notes: string;
     legacyIds: readonly string[];
+    /** Server-created native inquiry; it does not claim a legacy Sheet origin. */
+    nativeInquiry?: NativeManualInquiry;
     /** Administrative changes are separate from immutable imported evidence. */
     leadUpdates?: Record<string, {outcome?:string;owner?:string}>;
     /** Sticky communication suppression, never reset by an outcome/status edit. */
@@ -25,12 +29,13 @@ export function crmProfileAad(w: string, p: string) { return `ls_contact_ops/pro
 const legacyId=z.string().regex(/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]+$/);
 export const crmProfileSchema=z.object({personId:z.string().uuid(),stage:z.string().min(1).max(120),
     nextAction:z.string().max(500).nullable(),followUpDate:z.string().refine(dateOnly).nullable(),
-    notes:z.string().max(5000),legacyIds:z.array(legacyId).max(100)
+    notes:z.string().max(5000),nativeInquiry:nativeManualInquirySchema.optional(),legacyIds:z.array(legacyId).max(100)
         .refine(ids=>new Set(ids).size===ids.length),
     leadUpdates:z.record(legacyId,z.object({outcome:z.string().max(500).optional(),owner:z.string().max(120).optional()}).strict()).optional(),
     doNotContact:z.boolean().optional()
     }).strict().refine(p=>Object.keys(p.leadUpdates??{}).length<=100&&
-        Object.keys(p.leadUpdates??{}).every(id=>p.legacyIds.includes(id)));
+        Object.keys(p.leadUpdates??{}).every(id=>p.legacyIds.includes(id)||id===p.nativeInquiry?.leadId)&&
+        (!p.nativeInquiry||(p.nativeInquiry.leadId==="LS-LEAD-native-"+p.personId&&!p.legacyIds.includes(p.nativeInquiry.leadId))));
 function validateProfile(profile:unknown):asserts profile is CrmProfile {
     requireThat(crmProfileSchema.safeParse(profile).success,"BAD_PROFILE");
     const p=profile as CrmProfile;
@@ -111,6 +116,11 @@ export class NativeCrmStore {
                 requireThat(prior[0].payload_digest === payloadDigest && prior[0].actor_account_id === a.id && prior[0].person_id === profile.personId, "OPERATION_REUSED_WITH_DIFFERENT_INPUT");
                 return { version: prior[0].result_version, replayed: true };
             }
+            const current=await tx.query<{payload_ciphertext:string}>(
+                "SELECT payload_ciphertext FROM ls_contact_ops.profiles WHERE workspace_id=$1 AND person_id=$2 FOR UPDATE",[a.workspaceId,profile.personId]);
+            requireThat(current.length===1,"STALE_PROFILE_VERSION");
+            const saved=crmProfileSchema.parse(JSON.parse(unseal(current[0]!.payload_ciphertext,crmProfileAad(a.workspaceId,profile.personId),this.keyring)));
+            requireThat(canonical(saved.nativeInquiry??null)===canonical(profile.nativeInquiry??null),"INQUIRY_ORIGIN_IMMUTABLE");
             const updated = await tx.query<{
                 version: number;
             }>("UPDATE ls_contact_ops.profiles SET payload_ciphertext=$3,version=version+1,updated_at=clock_timestamp() WHERE workspace_id=$1 AND person_id=$2 AND version=$4 RETURNING version", [a.workspaceId, profile.personId, encrypted, expectedVersion]);

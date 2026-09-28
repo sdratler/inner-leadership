@@ -302,3 +302,28 @@ test("native PostgreSQL preserves a new open inquiry alongside closed history wi
  expect((await directory.list(f.practitioner.actor,{...query,view:'all'})).items[0]).toMatchObject({personId,doNotContact:true});
  expect((await directory.list(f.practitioner.actor,query)).total).toBe(0);
 });
+
+test("genuine native manual inquiry is searchable and operational without fabricated Sheet provenance",async()=>{
+ const personId=randomUUID(),leadId="LS-LEAD-native-"+personId,phone="+972535550189",createdAt="2026-09-28T12:00:00.000Z";
+ const profile:CrmProfile={personId,stage:"New inquiry",nextAction:"Synthetic native follow up",followUpDate:q.today,
+  notes:"Synthetic native-only notes\nעברית",legacyIds:[],nativeInquiry:{origin:"native_manual",leadId,phone,language:"he",source:"Synthetic owner entry",createdAt}};
+ await f.pool.query("INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,'adult',$3,clock_timestamp())",
+  [personId,f.workspaceId,seal(JSON.stringify({displayName:"Synthetic native-only person"}),`person:${f.workspaceId}:${personId}`,f.keyring)]);
+ await native.create(f.practitioner.actor,profile,"synthetic-genuine-native-"+randomUUID());
+ const query={...q,personId,view:"prospects" as const,filter:"new" as const,locale:"he" as const,due:"today" as const};
+ const page=await directory.list(f.practitioner.actor,query);expect(page).toMatchObject({total:1,items:[{personId,notes:profile.notes,references:[{
+  leadId,phone,nativeOrigin:"native_manual",nativeCreatedAt:createdAt,sourceFileId:null,sourceSheetId:null,sourceRevision:null,
+  paymentClaim:"",bookingClaim:"",formSentClaim:"",formSubmittedClaim:"",journey:{journeyState:"prospect",paymentVerified:false,bookingConfirmed:false}}]}]});
+ expect((await directory.list(f.practitioner.actor,{...q,search:phone})).items.map(r=>r.personId)).toContain(personId);
+ const operations=await store.transaction(tx=>directory.prospectsInTransaction(tx,f.practitioner.actor,3));
+ expect(operations.find(r=>r.leadId===leadId)).toMatchObject({leadId,receivedAt:createdAt,notes:profile.notes,caseId:"",paymentVerified:false,bookingConfirmed:false});
+ expect((await f.pool.query("SELECT count(*)::int AS n FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND person_id=$2",[f.workspaceId,personId])).rows[0].n).toBe(0);
+ expect(await store.transaction(tx=>directory.hasPhoneClaimInTransaction(tx,f.practitioner.actor,"0535550189"))).toBe(true);
+ expect(await store.transaction(tx=>directory.nativeInquiryPersonInTransaction(tx,f.practitioner.actor,leadId))).toBe(personId);
+ const stored=(await f.pool.query("SELECT payload_ciphertext FROM ls_contact_ops.profiles WHERE workspace_id=$1 AND person_id=$2",[f.workspaceId,personId])).rows[0].payload_ciphertext;
+ try{
+  const forged={...profile,nativeInquiry:{...profile.nativeInquiry!,leadId:"LS-LEAD-native-"+randomUUID()}};
+  await f.pool.query("UPDATE ls_contact_ops.profiles SET payload_ciphertext=$3 WHERE workspace_id=$1 AND person_id=$2",[f.workspaceId,personId,seal(JSON.stringify(forged),crmProfileAad(f.workspaceId,personId),f.keyring)]);
+  await expect(directory.list(f.practitioner.actor,query)).rejects.toThrow("UNAVAILABLE");
+ }finally{await f.pool.query("UPDATE ls_contact_ops.profiles SET payload_ciphertext=$3 WHERE workspace_id=$1 AND person_id=$2",[f.workspaceId,personId,stored]);}
+});
