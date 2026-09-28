@@ -30,6 +30,7 @@ function readQuery<T>(schema:z.ZodType<T>,value:unknown):T{const result=schema.s
 export async function handleCalendar(request:Request,path:readonly string[]):Promise<Response>{
  const requestId=newRequestId();
  let verifiedActor:Actor|null=null,audit:AuditSink|null=null;
+ let taskSyncPhase:'gates'|'body'|'crm-read'|'task-sync'|'response'='gates';
  try {
   if(path.length>3||path.some(s=>s.length>60))throw new AppError('NOT_FOUND');
   if(request.method!=='GET' && request.method!=='POST' && request.method!=='PATCH')throw new AppError('NOT_FOUND');
@@ -51,11 +52,16 @@ export async function handleCalendar(request:Request,path:readonly string[]):Pro
    const q=readQuery(taskListSchema,query(request,['from','to','caseId']));data=await tasks.list(actor,q.from,q.to,q.caseId);
   }else if(request.method==='POST'&&path.length===2&&path[0]==='tasks'&&path[1]==='sync-followups'){
    if(actor.role!=='practitioner')throw new AppError('FORBIDDEN');
+   taskSyncPhase='body';
    query(request,[]);await readJson(request,z.object({}).strict());
    // The browser never supplies CRM rows. Read the existing authoritative bridge
    // after practitioner authentication and reconcile only internal task records.
+   taskSyncPhase='crm-read';
    const {listProspects}=await import('../prospects/bridge.ts');
-   data=await tasks.syncCrmFollowups(actor,await listProspects());
+   const rows=await listProspects();
+   taskSyncPhase='task-sync';
+   data=await tasks.syncCrmFollowups(actor,rows);
+   taskSyncPhase='response';
   }else if(request.method==='POST'&&path.length===1&&path[0]==='tasks'){
    query(request,[]);data=await tasks.create(actor,key,await readJson(request,taskCreateSchema));
   }else if(request.method==='POST'&&path.length===3&&path[0]==='tasks'&&path[2]==='complete'){
@@ -105,6 +111,12 @@ export async function handleCalendar(request:Request,path:readonly string[]):Pro
   response.headers.set('Vary','Cookie');response.headers.set('Referrer-Policy','no-referrer');response.headers.set('X-Content-Type-Options','nosniff');return response;
  }catch(error){
   let normalized=error instanceof AppError?error:new AppError('INTERNAL');
+  if(verifiedActor?.role==='practitioner'&&request.method==='POST'&&path.length===2&&path[0]==='tasks'&&path[1]==='sync-followups'){
+   // Operational diagnosis only: never log the exception message, stack, cause,
+   // request body/headers, source rows, SQL, actor IDs or provider credentials.
+   const errorKind=error instanceof TypeError?'TypeError':error instanceof ReferenceError?'ReferenceError':error instanceof AppError?'AppError':'Error';
+   try{console.error(JSON.stringify({event:'calendar_task_sync_failed',requestId,phase:taskSyncPhase,errorKind,code:normalized.code}));}catch{/* A logging failure must not change the original command result. */}
+  }
   if(verifiedActor&&audit&&['FORBIDDEN','NOT_FOUND','UNAUTHENTICATED'].includes(normalized.code)){
    try{await writeAudit(audit,{eventId:newRequestId(),requestId,workspaceId:verifiedActor.workspaceId,actorAccountId:verifiedActor.id,kind:'access_denied',outcome:'denied',occurredAt:new Date().toISOString()});}
    catch{normalized=new AppError('UNAVAILABLE');}

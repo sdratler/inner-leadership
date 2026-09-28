@@ -103,9 +103,11 @@ export class InternalTaskService {
    const result={created:0,updated:0,resolved:0,unchanged:0};
    // Load every authorization/provenance/source fact in sets before mutating.
    // CalendarStore holds the workspace lock; no SQL query scales per lead.
+   // The production identity adapter deliberately admits JS arrays only for
+   // validated UUID casts. Bind text sets as JSON, not raw arrays or SQL text.
    const demoRows=await c.tx.query<{leadId:string}>(`SELECT entity_key AS "leadId" FROM ls_demo.records
-    WHERE workspace_id=$1 AND entity_kind='prospect' AND entity_key=ANY($2::text[])`,
-    [c.workspace,rows.map(row=>row.leadId)]);
+    WHERE workspace_id=$1 AND entity_kind='prospect' AND entity_key IN (SELECT jsonb_array_elements_text($2::jsonb))`,
+    [c.workspace,JSON.stringify(rows.map(row=>row.leadId))]);
    const demoLeads=new Set(demoRows.map(row=>row.leadId));
    const caseIds=[...new Set(rows.map(row=>candidateCaseId(row.caseId)).filter((id):id is CaseId=>id!==null))];
    const caseRows=await c.tx.query<{id:string;ownerId:string;demoBatchId:string|null}>(`SELECT c.id,
@@ -116,8 +118,8 @@ export class InternalTaskService {
    const digests=rows.map(row=>this.sourceDigest({workspace:c.workspace,kind:'crm_followup',leadId:row.leadId}));
    const sourceRows=await c.tx.query<SourceTaskRow>(`SELECT id,source_digest AS "sourceDigest",
     source_revision AS "sourceRevision",version FROM ls_calendar.tasks
-    WHERE workspace_id=$1 AND source_kind='crm_followup' AND source_digest=ANY($2::text[])`,
-    [c.workspace,digests]);
+    WHERE workspace_id=$1 AND source_kind='crm_followup' AND source_digest IN (SELECT jsonb_array_elements_text($2::jsonb))`,
+    [c.workspace,JSON.stringify(digests)]);
    const existingByDigest=new Map(sourceRows.map(row=>[row.sourceDigest,row]));
    const creates:{id:string;caseId:CaseId|null;titleCiphertext:string;sourcePathCiphertext:string;dueDate:string;digest:string;revision:string}[]=[];
    const updates:{id:string;version:number;caseId:CaseId|null;titleCiphertext:string;sourcePathCiphertext:string;dueDate:string;revision:string}[]=[];
