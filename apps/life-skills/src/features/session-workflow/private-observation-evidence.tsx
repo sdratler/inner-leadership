@@ -10,7 +10,7 @@ import "../../ui/revamp/styles.css";
 /** Mounted only in practitioner workspaces; the server independently checks the current role/case.
  * This separate read model is never copied into report fields or a publication request.
  */
-export function PrivateObservationEvidencePanel({ locale, caseId, refreshToken = 0 }: { locale: Locale; caseId: string; refreshToken?: number }) {
+export function PrivateObservationEvidencePanel({ locale, caseId, refreshToken = 0 }: { locale: Locale; caseId: string; refreshToken?: number | string }) {
   const id = useId(), [open, setOpen] = useState(false), [metric, setMetric] = useState<MetricId>("engagement"), [retry, setRetry] = useState(0);
   const [data, setData] = useState<PrivateObservationEvidence | null>(null), [error, setError] = useState(false);
   useEffect(() => {
