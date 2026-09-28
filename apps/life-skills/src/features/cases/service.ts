@@ -11,6 +11,7 @@ import { seal,unseal } from "../identity/crypto.ts";
 import { recordAction } from "../identity/history.ts";
 import { loadCase,loadGuardians,loadAudience } from "./data.ts";
 import { requirePractitioner,caseAccess,audienceAccess,isCaseLifecycle,type CaseLifecycle } from "./policy.ts";
+import {CalendarStore,type TransactionContext} from '../calendar/store.ts';
 export class CaseService {
  constructor(private readonly store:IdentityStore,private readonly config:IdentityConfig,private readonly clock:IdentityClock) {}
  async create(actor:Actor,input:{kind:'minor'|'adult';displayName:string;familyLabel:string;familyId?:FamilyId},requestId:string):Promise<{caseId:CaseId}> {
@@ -67,6 +68,58 @@ export class CaseService {
    }
    await recordAction(tx,context,actor.workspaceId,actor.id,'case_created');return {caseId};
   });
+ }
+ /** Contained preparation of an already-created DEMO case; no fake payment,
+  * invite, identity/session mutation or provider call. Real cases are denied by
+  * immutable ancestry checks even if their display names begin with DEMO.
+  */
+ async prepareDemoCalendarAsOperator(practitionerId:AccountId,caseId:CaseId,batchId:string,key:string,
+  requestId:string,permission:boolean):Promise<{caseId:CaseId;engagementId:string;audienceId:AudienceId;parentIds:AccountId[];accountIds:AccountId[]}>{
+  const db=new CalendarStore(this.store,this.config.keyring,this.clock);
+  const eligible=async(c:TransactionContext)=>{
+   const {item}=await db.scope(c,caseId,true);
+   const members=await c.tx.query<{id:AccountId;role:string;state:string;verified:boolean;batchId:string|null}>(`SELECT DISTINCT a.id,a.role,a.state,
+    (a.email_verified_at IS NOT NULL) AS verified,d.batch_id AS "batchId"
+    FROM ls_identity.accounts a JOIN ls_identity.account_subjects s ON s.workspace_id=a.workspace_id AND s.account_id=a.id
+    LEFT JOIN ls_demo.accounts d ON d.workspace_id=a.workspace_id AND d.account_id=a.id
+    WHERE a.workspace_id=$1 AND (($3='minor' AND ((a.role='parent' AND EXISTS(SELECT 1 FROM ls_cases.case_guardians g
+     WHERE g.workspace_id=a.workspace_id AND g.case_id=$2 AND g.account_id=a.id AND g.revoked_at IS NULL)) OR (a.role='child' AND s.person_id=$4)))
+     OR ($3='adult' AND a.role='adult_client' AND s.person_id=$4)) ORDER BY a.id`,[c.workspace,caseId,item.kind,item.clientPersonId]);
+   if(members.length<1||members.length>3||members.some(m=>m.state!=='active'||!m.verified||m.batchId!==batchId)||
+    item.kind==='minor'&&(!members.some(m=>m.role==='parent')||!members.some(m=>m.role==='child'))||
+    item.kind==='adult'&&(members.length!==1||members[0]?.role!=='adult_client'))throw new AppError('CONFLICT');
+   // Existing synthetic configuration is reused only if its exact current
+   // audience agrees. Revoked/unpublished grants are not silently reinstated.
+   const prior=await c.tx.query<{id:AudienceId;published:boolean}>(`SELECT id,published FROM ls_cases.audiences
+    WHERE workspace_id=$1 AND case_id=$2 AND visibility='family_full' ORDER BY id LIMIT 2`,[c.workspace,caseId]);
+   if(prior.length>1)throw new AppError('CONFLICT');
+   if(prior[0]){const audience=await loadAudience(c.tx,c.workspace,caseId,prior[0].id);
+    if(!audience?.published||JSON.stringify([...audience.accountIds].sort())!==JSON.stringify(members.map(m=>m.id).sort()))throw new AppError('CONFLICT');}
+   const engagements=await c.tx.query<{id:string;termsVersion:string;currency:string;rate:number;target:number}>(`SELECT id,terms_version AS "termsVersion",currency,
+    appointment_rate_minor AS rate,attended_review_target AS target FROM ls_cases.engagements WHERE workspace_id=$1 AND case_id=$2 AND state='active' LIMIT 2`,[c.workspace,caseId]);
+   if(engagements.length>1||engagements.some(e=>e.termsVersion!=='Product2.3'||e.currency!=='ILS'||e.rate!==55000||e.target!==12)||
+    item.state==='active'&&(!engagements.length||!prior.length))throw new AppError('CONFLICT');
+   return {item,members,audienceId:prior[0]?.id??null,engagementId:engagements[0]?.id??null};
+  };
+  return db.demoOperatorCommand(this.config.workspaceId,practitionerId,caseId,batchId,'demo:case:prepare',key,
+   {recipe:'owner-calendar-v1'},permission,eligible,async c=>{
+    const {item,members,audienceId:previousAudience,engagementId:previousEngagement}=await eligible(c);
+    const historyContext={requestId,now:new Date(c.now)},engagementId=previousEngagement??randomUUID();
+    if(!previousEngagement){await c.tx.query(`INSERT INTO ls_cases.engagements(id,workspace_id,case_id,terms_version,currency,
+     appointment_rate_minor,attended_review_target,state,created_at) VALUES($1,$2,$3,'Product2.3','ILS',55000,12,'active',$4)`,[engagementId,c.workspace,caseId,c.now]);
+     await recordAction(c.tx,historyContext,c.workspace,c.actor.id,'engagement_created');}
+    const audienceId=previousAudience??asId(randomUUID(),'audience');
+    if(!previousAudience){
+     await c.tx.query(`INSERT INTO ls_cases.audiences(id,workspace_id,case_id,visibility,published,created_at)
+      VALUES($1,$2,$3,'family_full',true,$4)`,[audienceId,c.workspace,caseId,c.now]);
+     for(const m of members)await c.tx.query(`INSERT INTO ls_cases.audience_accounts(workspace_id,case_id,audience_id,account_id,granted_at)
+      VALUES($1,$2,$3,$4,$5)`,[c.workspace,caseId,audienceId,m.id,c.now]);
+     await recordAction(c.tx,historyContext,c.workspace,c.actor.id,'audience_created');
+    }
+    if(item.state!=='active'){await c.tx.query("UPDATE ls_cases.cases SET state='active',updated_at=$3 WHERE workspace_id=$1 AND id=$2",[c.workspace,caseId,c.now]);
+     await recordAction(c.tx,historyContext,c.workspace,c.actor.id,'case_status_changed');}
+    return {caseId,engagementId,audienceId,parentIds:members.filter(m=>m.role==='parent').map(m=>m.id),accountIds:members.map(m=>m.id)};
+   });
  }
  async list(actor:Actor):Promise<Array<{id:CaseId;kind:'minor'|'adult';state:CaseLifecycle;displayName:string}>> {
   return this.store.transaction(async tx=>{

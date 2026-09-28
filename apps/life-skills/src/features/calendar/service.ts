@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { AppError } from '../../lib/errors.ts';
 import { asId } from '../../lib/ids.ts';
 import { one } from '../identity/store.ts';
-import type { AccountId, Actor, AudienceId, CaseId, EngagementId } from '../identity/types.ts';
+import type { AccountId, Actor, AudienceId, CaseId, EngagementId,WorkspaceId } from '../identity/types.ts';
 import type { CreditEffectReference, RescheduleEligibilityReference } from '../identity/interfaces.ts';
 import { audienceAccess, requirePractitioner } from '../cases/policy.ts';
 import { loadAudience } from '../cases/data.ts';
@@ -114,11 +114,15 @@ export class CalendarService {
    practitionerId:item.practitionerAccountId,termsVersion:engagement.termsVersion,kind:input.kind,...times,status:'scheduled',
    parentForId:input.parentForId,originalId:original?.id??null,parentIds:[...input.parentIds],bufferBefore:input.bufferBefore,bufferAfter:input.bufferAfter,
    location:input.location,createdAt:c.now,createdBy:c.actor.id,version:1};
-  if(!demoBatch){
-   const slot=paddedSlot(a),windows=await this.privateAvailability(c,slot.startsAt,slot.endsAt);
-   const busy=await c.tx.query<{startsAt:Date;endsAt:Date}>(`SELECT a.starts_at-a.buffer_before*interval '1 minute' AS "startsAt",a.ends_at+a.buffer_after*interval '1 minute' AS "endsAt" FROM ls_calendar.appointments a
+  const slot=paddedSlot(a);
+  const busy=await c.tx.query<{startsAt:Date;endsAt:Date}>(`SELECT a.starts_at-a.buffer_before*interval '1 minute' AS "startsAt",a.ends_at+a.buffer_after*interval '1 minute' AS "endsAt" FROM ls_calendar.appointments a
     WHERE a.workspace_id=$1 AND a.practitioner_id=$2 AND a.status='scheduled' AND a.starts_at-a.buffer_before*interval '1 minute'<$4 AND a.ends_at+a.buffer_after*interval '1 minute'>$3
     AND NOT EXISTS (SELECT 1 FROM ls_demo.cases d WHERE d.workspace_id=a.workspace_id AND d.case_id=a.case_id)`,[c.workspace,c.actor.id,slot.startsAt,slot.endsAt]);
+  // Both the ordinary practitioner API and the private setup command refuse a
+  // DEMO placement over a real appointment. DEMOs still reserve no capacity.
+  if(demoBatch){if(busy.length)throw new AppError('CONFLICT');}
+  else{
+   const windows=await this.privateAvailability(c,slot.startsAt,slot.endsAt);
    assertAvailable(slot,windows,busy.map(r=>({startsAt:r.startsAt.toISOString(),endsAt:r.endsAt.toISOString()})));
   }
   await c.tx.query(`INSERT INTO ls_calendar.appointments(id,workspace_id,case_id,audience_id,engagement_id,practitioner_id,terms_version,kind,starts_at,ends_at,status,
@@ -134,6 +138,31 @@ export class CalendarService {
  create(actor:Actor,key:string,input:CreateBooking){return this.db.command(actor,'booking:create',key,input,async c=>{
   await this.db.scope(c,input.caseId,true);await this.db.audience(c,input.caseId,input.audienceId);
  },async c=>{const a=await this.createIn(c,input);return this.db.view(c,a.id);});}
+ /** One-shot internal DEMO command, not a browser-selected role or test flag.
+  * Uses normal booking validation, encryption, history, immutable provenance and
+  * replay receipts. Synthetic slots never reserve real availability or invite a
+  * provider; also refuse a fixture placement that overlaps a real appointment.
+  */
+ createDemoAsOperator(workspace:WorkspaceId,practitionerId:AccountId,batchId:string,key:string,input:CreateBooking,permission:boolean){
+  return this.db.demoOperatorCommand(workspace,practitionerId,input.caseId,batchId,'demo:booking:create',key,input,permission,async c=>{
+   await this.db.scope(c,input.caseId,true);const {item,audience}=await this.db.audience(c,input.caseId,input.audienceId);
+   if(!audience.published||audience.visibility!=='family_full')throw new AppError('CONFLICT');
+   const members=await c.tx.query<{role:string}>(`SELECT DISTINCT a.id,a.role FROM ls_identity.accounts a
+    JOIN ls_identity.account_subjects s ON s.workspace_id=a.workspace_id AND s.account_id=a.id
+    JOIN ls_demo.accounts d ON d.workspace_id=a.workspace_id AND d.account_id=a.id AND d.batch_id=$4
+    WHERE a.workspace_id=$1 AND a.id=ANY($2::uuid[]) AND a.state='active' AND a.email_verified_at IS NOT NULL
+    AND (($5='minor' AND ((a.role='child' AND s.person_id=$3) OR (a.role='parent' AND EXISTS(SELECT 1 FROM ls_cases.case_guardians g
+     WHERE g.workspace_id=a.workspace_id AND g.case_id=$6 AND g.account_id=a.id AND g.revoked_at IS NULL))))
+     OR ($5='adult' AND a.role='adult_client' AND s.person_id=$3))`,[c.workspace,audience.accountIds,item.clientPersonId,batchId,item.kind,item.id]);
+   if(members.length!==audience.accountIds.length||members.length<1||members.length>3||
+    item.kind==='minor'&&(!members.some(m=>m.role==='parent')||!members.some(m=>m.role==='child'))||
+    item.kind==='adult'&&(members.length!==1||members[0]?.role!=='adult_client'))throw new AppError('CONFLICT');
+   if(!await one(c.tx,"SELECT id FROM ls_cases.engagements WHERE workspace_id=$1 AND case_id=$2 AND state='active'",[c.workspace,item.id]))throw new AppError('CONFLICT');
+  },async c=>{
+   if(!input.location.startsWith('DEMO')||/https?:\/\//i.test(input.location))throw new AppError('INVALID_REQUEST');
+   const a=await this.createIn(c,input);return this.db.view(c,a.id);
+  });
+ }
  private async credit(c:TransactionContext,a:Appointment,n:Notice|null,effect:CreditEffectReference['effect'],suffix:string){
   if(a.kind!=='individual')return; // Joint-parent guidance is not a second child-session credit.
   const key=effect==='consume'||effect==='restore'?`credit:${a.id}:${effect}`:`credit:${a.id}:${effect}:${suffix}`;
