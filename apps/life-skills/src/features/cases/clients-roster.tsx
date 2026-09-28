@@ -19,7 +19,7 @@ const copy={
 const closed=(state:string)=>/closed|archived|revoked/i.test(state);
 
 /** The CRM is read from its existing authenticated endpoint; this view never imports or duplicates leads. */
-type RosterProps={locale:Locale;section?:string|undefined;prospectFilter?:string|undefined;focusLeadId?:string|undefined};
+type RosterProps={locale:Locale;section?:string|undefined;prospectFilter?:string|undefined;focusLeadId?:string|undefined;personId?:string|undefined;mode?:string|undefined};
 /** Choose the real durable authority before rendering one directory. A frozen
  * transition or failed native read cannot initialize the legacy bridge UI. */
 export function ClientsRoster(props:RosterProps){

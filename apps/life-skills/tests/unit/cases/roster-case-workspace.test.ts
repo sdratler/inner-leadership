@@ -311,3 +311,12 @@ it('ignores a late previous-section source response and all source responses aft
  hook.render(()=>ClientsRoster({locale:'en'}));hook.flushEffects();await tick();hook.unmount();late({source:'sheet',authorityEpoch:0});await tick();
  expect(hook.afterUnmountUpdates()).toBe(0);
 });
+it('preserves validated selected-person and DEMO context on mid-page session expiry',async()=>{
+ const personId='00000000-0000-4000-8000-000000000001';hook.peopleRead.mockRejectedValue(new PeopleRequestError(401));
+ const view=()=>hook.render(()=>ClientsRoster({locale:'he',section:'active',personId,mode:'demo'}));
+ view();hook.flushEffects();await tick();
+ const signIn=find(view(),e=>e.type==='a'&&String(e.props.href).startsWith('/he/login?next='));
+ expect(signIn?.props.href).toBe('/he/login?next='+encodeURIComponent(`/he/app/clients?section=active&personId=${personId}&mode=demo`));
+ const invalid=hook.render(()=>ClientsRoster({locale:'he',personId:'../../escape',mode:'practitioner'}));
+ expect(find(invalid,e=>e.type==='a')?.props.href).toBe('/he/login?next=%2Fhe%2Fapp%2Fclients');
+});
