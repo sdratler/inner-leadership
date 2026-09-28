@@ -72,7 +72,7 @@ export class IdentityHttp {
    const url=new URL(request.url),path=url.pathname;
    const methods=(identityRouteMethods as Record<string,readonly string[]>)[path];
    if(!methods || !methods.includes(request.method)) throw new AppError("NOT_FOUND");
-   if(url.origin!==this.config.origin || (url.search && !(['/api/identity/audiences','/api/identity/case-access'].includes(path) && request.method==='GET'))) throw new AppError("INVALID_REQUEST");
+   if(url.origin!==this.config.origin || (url.search && !(['/api/identity/audiences','/api/identity/case-access','/api/identity/cases'].includes(path) && request.method==='GET'))) throw new AppError("INVALID_REQUEST");
    const network=this.trustedNetworkHint(request);
    if(typeof network!=='string' || network.length<1 || network.length>128) throw new AppError("UNAVAILABLE");
    await this.limit('network:'+network,200);
@@ -127,7 +127,12 @@ export class IdentityHttp {
     const verifiedHash=await this.services.auth.verifyCurrentPassword(actor,input.currentPassword);
     await this.services.preferences.setUnverifiedPhone(actor,input.phone,verifiedHash,requestId);
    }else if(path==='/api/identity/cases'){
-    if(request.method==='GET') data=await this.services.cases.list(actor);
+    if(request.method==='GET'){
+     const keys=[...url.searchParams.keys()],parsed=z.enum(['live','demo']).optional().safeParse(url.searchParams.get('mode')??undefined);
+     if(keys.length>1||keys.some(key=>key!=='mode')||!parsed.success)throw new AppError('INVALID_REQUEST');
+     if(parsed.data!==undefined&&actor.role!=='practitioner')throw new AppError('FORBIDDEN');
+     data=await this.services.cases.list(actor,parsed.data);
+    }
     else{
      const input=await readJson(request,z.object({kind:z.enum(['minor','adult']),displayName:boundedLabel,familyLabel:boundedLabel,familyId:z.string().uuid().transform(v=>asId(v,'family')).optional()}).strict());
      data=await this.services.cases.create(actor,{kind:input.kind,displayName:input.displayName,familyLabel:input.familyLabel,...(input.familyId?{familyId:input.familyId}:{})},requestId);

@@ -8,7 +8,7 @@ import {CaseService} from '../../../src/features/cases/service.ts';
 import {IdentityAccountService} from '../../../src/features/identity/account-service.ts';
 import {IdentityAuthService} from '../../../src/features/identity/auth-service.ts';
 import {IdentitySessions} from '../../../src/features/identity/session-adapter.ts';
-import {unseal} from '../../../src/features/identity/crypto.ts';
+import {seal,unseal} from '../../../src/features/identity/crypto.ts';
 import {systemClock,type AccountId,type Actor} from '../../../src/features/identity/types.ts';
 import type {IdentityConfig} from '../../../src/features/identity/config.ts';
 import {realCaseEffectAllowed} from '../../../src/features/demo/provenance.ts';
@@ -53,6 +53,49 @@ test('native service fixture enforces the exact production UUID-array binding co
  const ids=[f.practitioner.actor.id];
  await expect(f.db.store.transaction(tx=>tx.query('SELECT $1 AS ids',[ids]))).rejects.toMatchObject({code:'INTERNAL'});
  expect(await f.db.store.transaction(tx=>tx.query('SELECT $1::uuid[] AS ids',[ids]))).toEqual([{ids}]);
+}));
+
+test('authorized case lists retain immutable DEMO provenance without inferring it from names or changing role access',()=>using(async f=>{
+ const rename=async(caseId:string,displayName:string)=>{
+  const person=(await f.pool.query(`SELECT cl.person_id FROM ls_cases.clients cl JOIN ls_cases.cases c
+   ON c.workspace_id=cl.workspace_id AND c.client_id=cl.id WHERE c.workspace_id=$1 AND c.id=$2`,[f.workspaceId,caseId])).rows[0].person_id;
+  await f.pool.query('UPDATE ls_identity.people SET profile_ciphertext=$3 WHERE workspace_id=$1 AND id=$2',
+   [f.workspaceId,person,seal(JSON.stringify({displayName}),`person:${f.workspaceId}:${person}`,f.keyring)]);
+ };
+ const before=await f.counts();
+ await rename(f.first.id,'DEMO is part of this real name');
+ await rename(f.minor.caseId,'Synthetic exercise record');
+ const rows=await f.cases.list(f.practitioner.actor);
+ expect(rows.find(c=>c.id===f.first.id)).toMatchObject({displayName:'DEMO is part of this real name',mode:'live'});
+ expect(rows.find(c=>c.id===f.minor.caseId)).toMatchObject({displayName:'Synthetic exercise record',mode:'demo'});
+ expect(rows.find(c=>c.id===f.adult.caseId)).toMatchObject({mode:'demo'});
+ for(const role of ['parent','child','adult']){
+  const allowed=await f.cases.list(f.actors[role]!);
+  expect(allowed.map(c=>({id:c.id,mode:c.mode}))).toEqual([{id:role==='adult'?f.adult.caseId:f.minor.caseId,mode:'demo'}]);
+  expect(Object.keys(allowed[0]!).sort()).toEqual(['displayName','id','kind','mode','state']);
+ }
+ await f.pool.query('UPDATE ls_cases.case_guardians SET revoked_at=clock_timestamp() WHERE workspace_id=$1 AND case_id=$2 AND account_id=$3',
+  [f.workspaceId,f.minor.caseId,f.actors.parent!.id]);
+ expect(await f.cases.list(f.actors.parent!)).toEqual([]);
+ await f.pool.query("UPDATE ls_identity.accounts SET state='revoked' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.actors.child!.id]);
+ await expect(f.cases.list(f.actors.child!)).rejects.toMatchObject({code:'UNAUTHENTICATED'});
+ expect(await f.counts()).toEqual(before);
+}));
+
+test('live selection precedes LIMIT100 when recent DEMO roots outnumber the entire page',()=>using(async f=>{
+ for(let i=0;i<101;i++)await f.cases.createDemoAsOperator(f.practitioner.actor.id,
+  {kind:'adult',displayName:`DEMO — Synthetic volume ${i}`,familyLabel:`DEMO — Synthetic volume ${i}`},batch,`volume-${i}`,key(),true);
+ expect((await f.cases.list(f.practitioner.actor)).some(c=>c.id===f.first.id)).toBe(false);
+ const live=await f.cases.list(f.practitioner.actor,'live');
+ expect(live.map(c=>c.id).sort()).toEqual([f.first.id,f.second.id].sort());
+ expect(live.every(c=>c.mode==='live')).toBe(true);
+ const demo=await f.cases.list(f.practitioner.actor,'demo');
+ expect(demo).toHaveLength(100);expect(demo.every(c=>c.mode==='demo')).toBe(true);
+ for(const role of ['parent','child','adult']){
+  await expect(f.cases.list(f.actors[role]!,'live')).rejects.toMatchObject({code:'FORBIDDEN'});
+  await expect(f.cases.list(f.actors[role]!,'demo')).rejects.toMatchObject({code:'FORBIDDEN'});
+  expect((await f.cases.list(f.actors[role]!)).map(c=>c.id)).toEqual([role==='adult'?f.adult.caseId:f.minor.caseId]);
+ }
 }));
 test('prepares only the existing cases; repeats reuse engagement, audience and history with no identity/payment effects',()=>using(async f=>{
  const before=await f.counts(),a=await f.prepare();expect(await f.prepare()).toEqual(a);expect(await f.counts()).toEqual(before);

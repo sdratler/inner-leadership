@@ -29,4 +29,7 @@ export async function sessionInfo(){return request<{accountId:string;role:'pract
 export async function accountAction<T>(action:'logout'|'logout-all'|'preferences'|'contacts/email'|'contacts/phone'|'cases'|'cases/state'|'invites/parent'|'invites/adult'|'invites/child'|'guardians/revoke'|'accounts/revoke'|'engagements'|'audiences',method:'POST'|'PUT'|'PATCH',body:unknown):Promise<T>{
  const session=await sessionInfo();return request<T>('/api/identity/'+action,{method,headers:{'Content-Type':'application/json','X-CSRF-Token':session.csrfToken},body:JSON.stringify(body)});
 }
-export async function accountRead<T>(resource:'contacts'|'preferences'|'cases'):Promise<T>{return request<T>('/api/identity/'+resource,{method:'GET'});}
+export async function accountRead<T>(resource:'contacts'|'preferences'|'cases',caseMode?:'live'|'demo'):Promise<T>{
+ if(caseMode!==undefined&&(resource!=='cases'||caseMode!=='live'&&caseMode!=='demo'))throw new IdentityClientError('INVALID_REQUEST');
+ return request<T>('/api/identity/'+resource+(caseMode===undefined?'':'?'+new URLSearchParams({mode:caseMode})),{method:'GET'});
+}
