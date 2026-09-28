@@ -6,7 +6,7 @@ import {AppError} from "../../../src/lib/errors.ts";
 import type {Actor} from "../../../src/features/identity/types.ts";
 import type {ContactInboundStore} from "../../../src/features/contact-ops/server/inbound-store.ts";
 const token="a".repeat(43),origin="https://synthetic.invalid";
-const request=(cookie=`${SESSION_COOKIE}=${token}`,suffix="",method="GET")=>new Request(origin+"/api/private/contact-inbound"+suffix,{method,headers:{cookie}});
+const request=(cookie=`${SESSION_COOKIE}=${token}`,suffix="",method="GET")=>new Request("http://127.0.0.1:8080/api/private/contact-inbound"+suffix,{method,headers:{cookie,"x-forwarded-proto":"https","x-forwarded-host":"synthetic.invalid"}});
 const actor={role:"practitioner"} as Actor;
 test("anonymous, duplicate and malformed cookies never load private data; no query-role override",async()=>{
  const load=vi.fn();for(const cookie of ["",`${SESSION_COOKIE}=bad`,`${SESSION_COOKIE}=${token}; ${SESSION_COOKIE}=${token}`])expect((await readInboundInbox(request(cookie),load)).status).toBe(401);
@@ -32,4 +32,12 @@ test("revocation or DB/integrity failure is an error, never a forged empty inbox
   const response=await readInboundInbox(request(),async()=>({origin,captureEnabled:false,bindingConfigured:false,actor:async()=>{throw error},store:{} as ContactInboundStore}));
   expect(response.status).toBe(error instanceof AppError?401:503);const body=await response.json();expect(body.ok).toBe(false);expect(body.data).toBeUndefined();expect(JSON.stringify(body)).not.toContain("SYNTHETIC_PRIVATE_FAILURE");
  }
+});
+test("internal URL uses exact configured HTTPS forwarding; spoofed/duplicate/protocol forwarding cannot reach private reads",async()=>{
+ const actor=vi.fn(),recent=vi.fn(),deps=async()=>({origin,captureEnabled:false,bindingConfigured:false,actor,store:{recent} as unknown as ContactInboundStore});
+ for(const [protocol,host] of [["http","synthetic.invalid"],["https","evil.invalid"],["https,http","synthetic.invalid"],["https","synthetic.invalid,evil.invalid"]]){
+  const input=new Request("http://127.0.0.1:8080/api/private/contact-inbound",{headers:{cookie:`${SESSION_COOKIE}=${token}`,"x-forwarded-proto":protocol!,"x-forwarded-host":host!}});
+  expect((await readInboundInbox(input,deps)).status).toBe(503);
+ }
+ expect(actor).not.toHaveBeenCalled();expect(recent).not.toHaveBeenCalled();
 });
