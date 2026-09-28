@@ -6,6 +6,7 @@ import { newRequestId, type RequestId } from "../../lib/ids.ts";
 import { verifyCsrfToken, verifyMutationOrigin } from "../../lib/security/csrf.ts";
 import { enforceRateLimit, opaqueRateLimitKey, type RateLimitStore } from "../../lib/security/rate-limit.ts";
 import { SESSION_COOKIE } from "../../lib/security/session.ts";
+import { canonicalForwardedRequest } from "../integration/canonical-forwarded-request.ts";
 import type { IdentityConfig } from "../identity/config.ts";
 import type { IdentitySessions } from "../identity/session-adapter.ts";
 import type { Actor, IdentityClock } from "../identity/types.ts";
@@ -57,8 +58,14 @@ export class Ls050HttpBoundary {
     let actor: Actor | undefined;
     try {
       if (!methods.includes(request.method)) throw new AppError("NOT_FOUND");
-      const url = new URL(request.url);
-      if (!this.runtime.config.enabled || url.origin !== this.runtime.config.origin || url.hash) throw new AppError("INVALID_REQUEST");
+      const inbound = new URL(request.url);
+      if (!this.runtime.config.enabled || inbound.hash) throw new AppError("INVALID_REQUEST");
+      // Next's transport URL is internal behind the HTTPS proxy. Reuse the same
+      // exact configured-host/protocol adapter as login, never arbitrary headers.
+      // Direct canonical requests remain supported by the isolated native gate.
+      const forwarded = request.headers.has("x-forwarded-proto") || request.headers.has("x-forwarded-host");
+      const url = forwarded ? new URL(canonicalForwardedRequest(request, this.runtime.config.origin).url) : inbound;
+      if (url.origin !== this.runtime.config.origin) throw new AppError("INVALID_REQUEST");
       const token = sessionCookie(request);
       actor = await this.runtime.sessions.actor(token);
       await enforceRateLimit(

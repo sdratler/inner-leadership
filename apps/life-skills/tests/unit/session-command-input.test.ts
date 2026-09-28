@@ -9,6 +9,8 @@ test.each(["observations", "recap", "share"])("removes only the matching redunda
   const body = { sessionId: id, expectedRevision: 0, values: blankMetrics(), unexpected: "strict server must reject this" };
   expect(sessionCommandInput(`/${id}/${operation}`, body)).toEqual({ expectedRevision: 0, values: body.values, unexpected: body.unexpected });
   expect(body.sessionId).toBe(id);
+  expect(sessionCommandInput(`/${id.toUpperCase()}/${operation}`, body)).toEqual({ expectedRevision: 0, values: body.values, unexpected: body.unexpected });
+  expect(sessionCommandInput(`/${id}/${operation}`, { ...body, sessionId: id.toUpperCase() })).toEqual({ expectedRevision: 0, values: body.values, unexpected: body.unexpected });
   expect(() => sessionCommandInput(`/${id}/${operation}`, { ...body, sessionId: key })).toThrow("INVALID_REQUEST");
 });
 test("does not sanitize unrelated routes, keys or invalid identities", () => {

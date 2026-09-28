@@ -5,7 +5,7 @@ import { Ls050HttpBoundary, type Ls050HttpRuntime } from "../forms/http-boundary
 import { METRICS, type MetricValues } from "./metrics.ts";
 import { FOCUS } from "./recap.ts";
 import { SessionDatabaseService } from "./database.ts";
-const uuid=z.string().uuid();
+const uuid=z.string().uuid().transform(value=>value.toLowerCase());
 const metricValue=z.strictObject({score:z.number().int().min(1).max(10).nullable(),notObservedReason:z.string().min(1).max(200).nullable(),note:z.string().max(1000)});
 const metricShape=Object.fromEntries(METRICS.map(item=>[item.id,metricValue])) as Record<(typeof METRICS)[number]["id"],typeof metricValue>;
 const observations=z.strictObject({values:z.strictObject(metricShape),expectedRevision:z.number().int().min(0)});

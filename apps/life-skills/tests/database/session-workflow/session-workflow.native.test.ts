@@ -41,6 +41,14 @@ test("native session record keeps observations private and snapshots only curren
  await f.pool.query("UPDATE ls_cases.case_guardians SET revoked_at=NULL,granted_at=clock_timestamp() WHERE workspace_id=$1 AND case_id=$2 AND account_id=$3",[f.workspaceId,f.first.id,f.parentTwo.actor.id]);
  expect(await service.sharedRecaps(f.parentTwo.actor,f.first.id)).toEqual([]);
 },30_000);
+test("uppercase real UUID routes/body projection round-trip encrypted values, replay and canonical history",async()=>{
+ const s=await httpFixture(),id=(await s.service.ensureForAppointment(s.f.practitioner.actor,s.f.first.id,await s.f.seed(s.f.at(-24)))).sessionId,path=`/${id.toUpperCase()}/observations`,key=randomUUID(),values=blankMetrics();values.engagement={score:6,notObservedReason:null,note:"Synthetic uppercase deep-link observation"};
+ const body=sessionCommandInput(path,{sessionId:id,values,expectedRevision:0}),parts=[id.toUpperCase(),"observations"];
+ const first=await s.http.handle(s.request(path,body,s.f.practitioner.token,key),parts);expect(first.status).toBe(201);const saved=(await first.json()).data;expect(saved.sessionId).toBe(id);
+ const replay=await s.http.handle(s.request(path,body,s.f.practitioner.token,key),parts);expect(replay.status).toBe(201);expect((await replay.json()).data).toEqual(saved);
+ const detail=await s.http.handle(s.request(`/${id.toUpperCase()}`),[id.toUpperCase()]);expect(detail.status).toBe(200);expect((await detail.json()).data.metrics).toEqual(values);
+ const history=await s.http.handle(s.request(`/observations?caseId=${s.f.first.id.toUpperCase()}`),["observations"]);expect(history.status).toBe(200);expect((await history.json()).data.records[0]).toEqual(saved);
+},30_000);
 
 async function httpFixture(){
  const f=await fixture();opened.push(f);const store=poolStore(f.pool),service=new SessionDatabaseService(store,f.keyring,systemClock),origin="https://synthetic.invalid";
