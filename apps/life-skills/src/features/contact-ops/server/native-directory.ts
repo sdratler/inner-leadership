@@ -7,16 +7,13 @@ import {unseal,type Keyring} from "../../identity/crypto.ts";
 import {systemClock,type Actor,type IdentityClock} from "../../identity/types.ts";
 import {requirePractitioner} from "../../cases/policy.ts";
 import {readProspectJourneysFromTx,type ProspectJourneyState} from "../../prospects/journey-read.ts";
-import {crmProfileAad} from "./native-store.ts";
+import {crmProfileAad,crmProfileSchema} from "./native-store.ts";
 import {dateOnly} from "../core/validation.ts";
 import type {PeopleView,Page} from "../core/types.ts";
 import type {Prospect} from "../../prospects/bridge.ts";
+import {contactSuppressed} from "../../prospects/native-edit.ts";
 import {MAX_NATIVE_CONTACTS,MAX_OPERATIONAL_PROSPECTS} from "../core/limits.ts";
 
-const leadId=z.string().regex(/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]+$/);
-const profileSchema=z.object({personId:z.string().uuid(),stage:z.string().min(1).max(120),
- nextAction:z.string().max(500).nullable(),followUpDate:z.string().refine(dateOnly).nullable(),
- notes:z.string().max(5000),legacyIds:z.array(leadId).max(100).refine(ids=>new Set(ids).size===ids.length)}).strict();
 const sourceSchema=z.object({sourceRow:z.number().int().min(2),payload:z.object({
  displayName:z.string(),language:z.string(),stageText:z.string(),sourceFields:z.record(z.string(),z.string())})});
 const querySchema=z.object({view:z.enum(["all","prospects","paid","active","archived"]),
@@ -28,7 +25,7 @@ const querySchema=z.object({view:z.enum(["all","prospects","paid","active","arch
  leadId:z.string().regex(/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]{1,80}$/).optional()}).strict();
 export type NativeContactQuery=z.infer<typeof querySchema>;
 export type NativeContactReference={leadId:string;phone:string;email:string;language:string;
- source:string;campaign:string;outcome:string;messageReceipt:string;
+ source:string;campaign:string;outcome:string;owner?:string;sourceDoNotContact?:boolean;messageReceipt:string;
  /** Original spreadsheet values are claims/history, never payment/booking authority. */
  paymentClaim:string;bookingClaim:string;formSentClaim:string;formSubmittedClaim:string;
  sourceFileId:string;sourceSheetId:number;sourceRevision:string;journey:ProspectJourneyState};
@@ -46,7 +43,7 @@ const emptyJourney=():ProspectJourneyState=>({journeyState:"prospect",paymentVer
 // Historic Sheet statuses are descriptive, not an enum. Preserve the existing
 // conservative archive/opt-out protection even when a reason follows the marker.
 const archived=(stage:string)=>/archive|\b(?:closed|not interested|no fit)\b/i.test(stage);
-const suppressed=(stage:string)=>/do[ _-]?not[ _-]?contact|\bopt(?:ed)?[ _-]?out\b/i.test(stage);
+const suppressed=contactSuppressed;
 function contactLocale(language:string):"he"|"en"|null{
  const value=language.trim().toLocaleLowerCase();
  return ["he","hebrew","עברית"].includes(value)?"he":["en","english"].includes(value)?"en":null;
@@ -97,7 +94,8 @@ export class NativeContactDirectory {
   * Read all bounded rows in the caller's ONE authority-locked transaction;
   * never paginate separate transactions, expose unmapped history, or send.
   */
- async prospectsInTransaction(tx:SqlSession,actor:Actor):Promise<Prospect[]>{
+ async prospectsInTransaction(tx:SqlSession,actor:Actor,expectedEpoch:number):Promise<Prospect[]>{
+  if(!Number.isSafeInteger(expectedEpoch)||expectedEpoch<0)throw new AppError("INVALID_REQUEST");
   const {rows,sourceFields}=await this.readAllInTransaction(tx,actor),seen=new Set<string>();
   const leadIds=rows.filter(r=>r.mode==="live").flatMap(r=>r.references.map(ref=>ref.leadId));
   if(leadIds.length>MAX_OPERATIONAL_PROSPECTS)throw new AppError("UNAVAILABLE");
@@ -126,7 +124,8 @@ export class NativeContactDirectory {
      formSent:ref.formSentClaim,formSubmitted:ref.formSubmittedClaim,paymentLinkSent:get("Payment link sent"),
      paymentMethod:get("Payment method"),paymentStatus:ref.paymentClaim,paymentAllocation:get("Payment allocation"),
      bookingStatus:ref.bookingClaim,messageReceipt:ref.messageReceipt,updateProvenance:get("Update provenance"),
-     firstInboundAt:get("First inbound at"),lastInboundAt:get("Last inbound at"),owner:get("Response owner"),...ref.journey});
+     firstInboundAt:get("First inbound at"),lastInboundAt:get("Last inbound at"),owner:ref.owner??get("Response owner"),...ref.journey,
+     ...(row.version===null?{}:{nativeEdit:{personId:row.personId,profileVersion:row.version,authorityEpoch:expectedEpoch}})});
    }
   }
   return result.sort((a,b)=>a.leadId.localeCompare(b.leadId));
@@ -160,7 +159,7 @@ export class NativeContactDirectory {
      if(!Number.isSafeInteger(p.version)||p.version<1||
       !["live","demo"].includes(p.recordMode)||
       (p.recordMode==="demo"?(!p.demoBatchId||p.markerBatchId!==p.demoBatchId):p.demoBatchId!==null||p.markerBatchId!==null))throw new AppError("UNAVAILABLE");
-     const profile=parse(profileSchema,p.profileCiphertext,crmProfileAad(actor.workspaceId,p.personId),this.keyring);
+     const profile=parse(crmProfileSchema,p.profileCiphertext,crmProfileAad(actor.workspaceId,p.personId),this.keyring);
      const person=parse(z.object({displayName:z.string().max(120)}),p.personCiphertext,`person:${actor.workspaceId}:${p.personId}`,this.keyring);
      if(profile.personId!==p.personId)throw new AppError("UNAVAILABLE");
      const personLinks=links.filter(l=>l.personId===p.personId);
@@ -174,7 +173,9 @@ export class NativeContactDirectory {
       if(sourceFields.has(l.leadId))throw new AppError("CONFLICT");
       sourceFields.set(l.leadId,f);
       return {leadId:l.leadId,phone:field(f,"Phone"),email:field(f,"Email"),language:source.payload.language,
-       source:field(f,"Lead source"),campaign:field(f,"Campaign"),outcome:field(f,"Outcome"),
+       source:field(f,"Lead source"),campaign:field(f,"Campaign"),outcome:profile.leadUpdates?.[l.leadId]?.outcome??field(f,"Outcome"),
+       owner:profile.leadUpdates?.[l.leadId]?.owner??field(f,"Response owner"),
+       sourceDoNotContact:suppressed(field(f,"Outcome"))||suppressed(source.payload.stageText),
        messageReceipt:field(f,"Message receipt"),paymentClaim:field(f,"Payment status"),bookingClaim:field(f,"Booking status"),
        formSentClaim:field(f,"Form sent"),formSubmittedClaim:field(f,"Form submitted"),
        sourceFileId:l.sourceFileId,sourceSheetId:l.sourceSheetId,sourceRevision:l.sourceRevision,
@@ -185,7 +186,7 @@ export class NativeContactDirectory {
       // A closed historical inquiry cannot archive another open inquiry for the
       // same canonical person. Explicit profile archival remains authoritative.
       notes:profile.notes,version:p.version,mode:p.recordMode,archived:p.persistedArchived||archived(profile.stage)||(references.length>0&&references.every(r=>archived(r.outcome))),
-      doNotContact:suppressed(profile.stage)||references.some(r=>suppressed(r.outcome)),references});
+      doNotContact:profile.doNotContact===true||suppressed(profile.stage)||references.some(r=>r.sourceDoNotContact||suppressed(r.outcome)),references});
     }
     after=profiles.at(-1)!.personId;
    }

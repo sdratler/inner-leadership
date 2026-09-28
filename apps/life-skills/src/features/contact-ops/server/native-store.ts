@@ -16,14 +16,23 @@ export interface CrmProfile {
     followUpDate: string | null;
     notes: string;
     legacyIds: readonly string[];
+    /** Administrative changes are separate from immutable imported evidence. */
+    leadUpdates?: Record<string, {outcome?:string;owner?:string}>;
+    /** Sticky communication suppression, never reset by an outcome/status edit. */
+    doNotContact?: boolean;
 }
 export function crmProfileAad(w: string, p: string) { return `ls_contact_ops/profile/v1/${w}/${p}`; }
-const profileSchema=z.object({personId:z.string().uuid(),stage:z.string().min(1).max(120),
+const legacyId=z.string().regex(/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]+$/);
+export const crmProfileSchema=z.object({personId:z.string().uuid(),stage:z.string().min(1).max(120),
     nextAction:z.string().max(500).nullable(),followUpDate:z.string().refine(dateOnly).nullable(),
-    notes:z.string().max(5000),legacyIds:z.array(z.string().regex(/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]+$/)).max(100)
-        .refine(ids=>new Set(ids).size===ids.length)}).strict();
+    notes:z.string().max(5000),legacyIds:z.array(legacyId).max(100)
+        .refine(ids=>new Set(ids).size===ids.length),
+    leadUpdates:z.record(legacyId,z.object({outcome:z.string().max(500).optional(),owner:z.string().max(120).optional()}).strict()).optional(),
+    doNotContact:z.boolean().optional()
+    }).strict().refine(p=>Object.keys(p.leadUpdates??{}).length<=100&&
+        Object.keys(p.leadUpdates??{}).every(id=>p.legacyIds.includes(id)));
 function validateProfile(profile:unknown):asserts profile is CrmProfile {
-    requireThat(profileSchema.safeParse(profile).success,"BAD_PROFILE");
+    requireThat(crmProfileSchema.safeParse(profile).success,"BAD_PROFILE");
     const p=profile as CrmProfile;
     requireThat(p.personId===asId(p.personId,"person"),"CANONICAL_PERSON_ID_REQUIRED");
 }
