@@ -33,7 +33,7 @@ export function ClientsRoster(props:RosterProps){
  if(source?.source==="sheet"&&mode!=="demo")return <LegacyClientsRoster {...props}/>;
  const text=(en:string,he:string)=>locale==="he"?he:en;
  return <main className="lsw-main lsu-clients-directory" lang={locale} dir={locale==="he"?"rtl":"ltr"}>
-  <header className="lsw-page-header"><div><p className="lsw-eyebrow">{text("Private workspace","מרחב פרטי")}</p><h1>{copy[locale].title}</h1><p>{copy[locale].lead}</p></div></header>
+  <header className="lsw-page-header"><h1>{copy[locale].title}</h1></header>
   {source?.source==="native"?<NativePeopleWorkspace key={`${section}:${mode}:${personId??leadId??""}`} locale={locale} view={section} initial={source} initialMode={mode} initialPersonId={personId??(leadId&&source.page.items.length===1?source.page.items[0]?.personId:undefined)} initialLeadId={leadId} onSheet={setSource}/>:
    source?.source==="sheet"&&mode==="demo"?<p role="status">{text("The DEMO native directory is not available before the verified contact cutover. No live records are shown in DEMO.","רשימת DEMO המקומית אינה זמינה לפני המעבר המאומת של אנשי הקשר. רשומות חיות אינן מוצגות ב-DEMO.")}</p>:
    failure===null?<p role="status">{text("Loading authorized people…","טוען אנשים מורשים…")}</p>:<div className="lsw-alert" role="alert"><p>{failure===401?text("Your session ended. Sign in to continue.","פג תוקף החיבור. יש להיכנס מחדש."):failure===403?text("This account cannot access the practitioner directory.","לחשבון הזה אין גישה לרשימת המטפל/ת."):failure===409?text("Contact records are being reconciled. No fallback or changes were used.","רשומות אנשי הקשר נמצאות בהתאמה. לא הוצגו נתונים חלופיים ולא בוצעו שינויים."):text("People could not be loaded. This is not an empty directory.","לא ניתן לטעון את האנשים. אין להסיק שהרשימה ריקה.")}</p>{failure===401?<a className="lsw-button lsw-button--secondary" href={loginHref(locale,practitionerReturnPath(locale,"clients",returnQuery))}>{text("Sign in","כניסה")}</a>:failure!==403&&<button className="lsw-button lsw-button--secondary" onClick={load}>{text("Retry","ניסיון חוזר")}</button>}</div>}
@@ -48,7 +48,7 @@ export function LegacyClientsRoster({locale,section:rawSection,prospectFilter,fo
  const filtered=rows.filter(row=>section==="all"||(section==="archived"?closed(row.state):!closed(row.state)));
  const preset:Preset=section==="paid"?"booking":section==="archived"?"archived":prospectFilter&&filters.has(prospectFilter as Preset)?prospectFilter as Preset:"all";
  return <main className="lsw-main lsu-clients-directory" lang={locale} dir={locale==="he"?"rtl":"ltr"}>
-  <header className="lsw-page-header"><div><p className="lsw-eyebrow">{locale==="he"?"מרחב פרטי":"Private workspace"}</p><h1>{t.title}</h1><p>{t.lead}</p></div></header>
+  <header className="lsw-page-header"><h1>{t.title}</h1></header>
   <ProspectsClient key={`${section}:${preset}:${focusLeadId??''}`} locale={locale} initialFilter={preset} focusLeadId={focusLeadId} embedded
    clientCases={showCases&&state==="ready"?filtered:[]} caseState={showCases?state:null} onRetryCases={load} showProspects={showProspects}
    returnPath={practitionerReturnPath(locale,"clients",{section,filter:prospectFilter,leadId:focusLeadId})}/>
