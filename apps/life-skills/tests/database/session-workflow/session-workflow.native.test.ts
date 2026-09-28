@@ -1,8 +1,15 @@
 import {afterEach,expect,test} from "vitest";
-import {randomUUID} from "node:crypto";
+import {randomBytes,randomUUID} from "node:crypto";
 import {fixture,poolStore,type Fixture} from "../calendar/fixture.ts";
 import {SessionDatabaseService} from "../../../src/features/session-workflow/database.ts";
-import {blankMetrics} from "../../../src/features/session-workflow/metrics.ts";
+import {blankMetrics,metricSeries,validateObservationEvidence} from "../../../src/features/session-workflow/metrics.ts";
+import {sessionCommandInput} from "../../../src/features/session-workflow/command-input.ts";
+import {SessionHttp} from "../../../src/features/session-workflow/http.ts";
+import {IdentitySessions} from "../../../src/features/identity/session-adapter.ts";
+import {PostgresIdentityRateStore} from "../../../src/features/identity/rate-store.ts";
+import {durableAuditSink} from "../../../src/features/identity/history.ts";
+import type {IdentityConfig} from "../../../src/features/identity/config.ts";
+import {SESSION_COOKIE} from "../../../src/lib/security/session.ts";
 import {systemClock} from "../../../src/features/identity/types.ts";
 const opened:Fixture[]=[];afterEach(async()=>{await Promise.all(opened.splice(0).map(item=>item.pool.end()));});
 test("native session record keeps observations private and snapshots only current recipients",async()=>{
@@ -33,4 +40,79 @@ test("native session record keeps observations private and snapshots only curren
  await expect(service.sharedRecaps(f.outsider.actor,f.first.id)).rejects.toMatchObject({code:"NOT_FOUND"});
  await f.pool.query("UPDATE ls_cases.case_guardians SET revoked_at=NULL,granted_at=clock_timestamp() WHERE workspace_id=$1 AND case_id=$2 AND account_id=$3",[f.workspaceId,f.first.id,f.parentTwo.actor.id]);
  expect(await service.sharedRecaps(f.parentTwo.actor,f.first.id)).toEqual([]);
+},30_000);
+
+async function httpFixture(){
+ const f=await fixture();opened.push(f);const store=poolStore(f.pool),service=new SessionDatabaseService(store,f.keyring,systemClock),origin="https://synthetic.invalid";
+ const config:IdentityConfig={enabled:true,origin,workspaceId:f.workspaceId,csrfKey:randomBytes(32),lookupKey:randomBytes(32),rateLimitKey:randomBytes(32).toString("hex"),keyring:f.keyring,sessionSeconds:28800};
+ const sessions=new IdentitySessions(store,config,systemClock),http=new SessionHttp({config,sessions,limits:new PostgresIdentityRateStore(store),audit:durableAuditSink(store),clock:systemClock},service);
+ // Native DB-backed sessions and current roles, not password/browser acceptance.
+ const request=(path:string,body?:unknown,token=f.practitioner.token,key=randomUUID(),csrf=true)=>new Request(origin+"/api/sessions"+path,{method:body===undefined?"GET":"POST",headers:{cookie:`${SESSION_COOKIE}=${token}`,...(body===undefined?{}:{origin,"content-type":"application/json","idempotency-key":key,...(csrf?{"x-csrf-token":sessions.csrf(token)}:{})})},...(body===undefined?{}:{body:JSON.stringify(body)})});
+ return {f,service,http,request};
+}
+test("real strict HTTP accepts the production UI projection, retains encrypted revisions and replay, and rejects extras/stale edits",async()=>{
+ const s=await httpFixture(),past=await s.f.seed(s.f.at(-48)),id=(await s.service.ensureForAppointment(s.f.practitioner.actor,s.f.first.id,past)).sessionId,path=`/${id}/observations`;
+ const values=blankMetrics();values.engagement={score:4,notObservedReason:null,note:"Synthetic private original — הערה"};
+ const original={sessionId:id,values,expectedRevision:0},key=randomUUID();
+ expect((await s.http.handle(s.request(path,original),[id,"observations"])).status).toBe(400);
+ const body=sessionCommandInput(path,original);
+ for(let attempt=0;attempt<2;attempt++){const response=await s.http.handle(s.request(path,body,s.f.practitioner.token,key),[id,"observations"]);expect(response.status).toBe(201);expect((await response.json()).data).toMatchObject({revision:1,values});}
+ const corrected={...values,engagement:{score:7,notObservedReason:null,note:values.engagement.note+"\nSynthetic manual correction"}};
+ const second=await s.http.handle(s.request(path,sessionCommandInput(path,{sessionId:id,values:corrected,expectedRevision:1})),[id,"observations"]);expect(second.status).toBe(201);expect((await second.json()).data.revision).toBe(2);
+ expect((await s.http.handle(s.request(path,{...body as object,unexpected:true}),[id,"observations"])).status).toBe(400);
+ expect((await s.http.handle(s.request(path,body),[id,"observations"])).status).toBe(409);
+ expect((await s.http.handle(s.request(path,{values:corrected,expectedRevision:0},s.f.practitioner.token,key),[id,"observations"])).status).toBe(409);
+ const history=await s.http.handle(s.request(`/observations?caseId=${s.f.first.id}`),["observations"]);expect(history.status).toBe(200);expect(history.headers.get("cache-control")).toBe("private, no-store");
+ const evidence=(await history.json()).data;validateObservationEvidence(evidence,s.f.first.id);expect(evidence.records.map((r:{revision:number})=>r.revision)).toEqual([1,2]);expect(evidence.records[0].values.engagement.note).toBe(values.engagement.note);expect(evidence.records[1].values.engagement.note).toBe(corrected.engagement.note);
+ expect(metricSeries(evidence.records,s.f.workspaceId,s.f.first.id,"engagement",evidence.sessions)[0]).toMatchObject({score:7,at:s.f.at(-48)});
+ expect((await s.service.detail(s.f.practitioner.actor,id)).metrics).toEqual(corrected);
+ const stored=await s.f.pool.query("SELECT values_ciphertext FROM ls_sessions.practitioner_observations WHERE workspace_id=$1 AND session_id=$2 ORDER BY revision",[s.f.workspaceId,id]);expect(stored.rows).toHaveLength(2);for(const row of stored.rows)expect(row.values_ciphertext).not.toContain("Synthetic private");
+ expect((await s.f.pool.query("SELECT count(*)::integer AS n FROM ls_sessions.recording_jobs WHERE workspace_id=$1",[s.f.workspaceId])).rows[0].n).toBe(0);
+},30_000);
+test("case history preserves a missing session as a graph gap and never uses save timestamps as session dates",async()=>{
+ const s=await httpFixture(),ids:string[]=[];
+ for(const hours of [-72,-48,-24])ids.push((await s.service.ensureForAppointment(s.f.practitioner.actor,s.f.first.id,await s.f.seed(s.f.at(hours)))).sessionId);
+ for(const [index,score] of [[0,3],[2,8]]){const values=blankMetrics();values.engagement={score:score!,notObservedReason:null,note:"Synthetic separate session"};await s.service.saveObservations(s.f.practitioner.actor,ids[index!]!,values,0,randomUUID());}
+ const evidence=await s.service.observations(s.f.practitioner.actor,s.f.first.id),points=metricSeries(evidence.records,s.f.workspaceId,s.f.first.id,"engagement",evidence.sessions);
+ expect(points.map(p=>p.score)).toEqual([3,null,8]);expect(points.map(p=>p.at)).toEqual([-72,-48,-24].map(hours=>s.f.at(hours)));
+ expect(points[1]!.note).toBe("");expect(evidence.records).toHaveLength(2);
+},30_000);
+test("parent/child/adult, cross-workspace, revoked sessions and fresh role changes deny private history and writes",async()=>{
+ const s=await httpFixture(),id=(await s.service.ensureForAppointment(s.f.practitioner.actor,s.f.first.id,await s.f.seed(s.f.at(-24)))).sessionId;
+ for(const role of ["parent","child","adult_client"]){await s.f.pool.query("UPDATE ls_identity.accounts SET role=$2 WHERE id=$1",[s.f.parent.actor.id,role]);for(const [path,parts,body] of [[`/observations?caseId=${s.f.first.id}`,["observations"],undefined],[`/${id}`,[id],undefined],[`/${id}/observations`,[id,"observations"],{values:blankMetrics(),expectedRevision:0}]] as const){const response=await s.http.handle(s.request(path,body,s.f.parent.token),parts);expect(response.status).toBe(404);expect(await response.text()).not.toContain("values");}}
+ const other=await httpFixture();expect((await s.http.handle(s.request(`/observations?caseId=${other.f.first.id}`),["observations"])).status).toBe(404);
+ expect((await s.http.handle(s.request(`/observations?caseId=${s.f.first.id}`,undefined,other.f.practitioner.token),["observations"])).status).toBe(401);
+ await s.f.pool.query("UPDATE ls_identity.accounts SET role='parent' WHERE id=$1",[s.f.practitioner.actor.id]);
+ expect((await s.http.handle(s.request(`/observations?caseId=${s.f.first.id}`),["observations"])).status).toBe(404);
+ await s.f.pool.query("UPDATE ls_identity.accounts SET role='practitioner' WHERE id=$1",[s.f.practitioner.actor.id]);
+ await s.f.pool.query("UPDATE ls_identity.sessions SET revoked_at=clock_timestamp() WHERE token_digest=$1",[s.f.practitioner.actor.sessionDigest]);
+ expect((await s.http.handle(s.request(`/observations?caseId=${s.f.first.id}`),["observations"])).status).toBe(401);
+},30_000);
+test("real HTTP retains CSRF and exact query gates and shared recap never exposes observation scores or notes",async()=>{
+ const s=await httpFixture(),id=(await s.service.ensureForAppointment(s.f.practitioner.actor,s.f.first.id,await s.f.seed(s.f.at(-24)))).sessionId,values=blankMetrics();values.engagement={score:9,notObservedReason:null,note:"PRIVATE_SYNTHETIC_NEVER_SHARED"};
+ expect((await s.http.handle(s.request(`/${id}/observations`,{values,expectedRevision:0},s.f.practitioner.token,randomUUID(),false),[id,"observations"])).status).toBe(403);
+ await s.service.saveObservations(s.f.practitioner.actor,id,values,0,randomUUID());
+ for(const query of [`?caseId=${s.f.first.id}&extra=1`,`?caseId=${s.f.first.id}&caseId=${s.f.first.id}`,"?caseId=invalid"] )expect((await s.http.handle(s.request("/observations"+query),["observations"])).status).toBe(400);
+ const recapPath=`/${id}/recap`,recapInput={sessionId:id,locale:"en",focus:["regulation"],nextStep:"Synthetic approved narrative",expectedVersion:0};
+ const saved=await s.http.handle(s.request(recapPath,sessionCommandInput(recapPath,recapInput)),[id,"recap"]);expect(saved.status).toBe(201);
+ const detail=await s.service.detail(s.f.practitioner.actor,id),sharePath=`/${id}/share`,shareInput={sessionId:id,expectedVersion:1,expectedDigest:detail.recapDigest,recipientAccountIds:detail.recipients.map(item=>item.accountId)};
+ const shared=await s.http.handle(s.request(sharePath,sessionCommandInput(sharePath,shareInput)),[id,"share"]);expect(shared.status).toBe(201);
+ const family=await s.http.handle(s.request(`/shared?caseId=${s.f.first.id}`,undefined,s.f.parent.token),["shared"]);expect(family.status).toBe(200);const raw=await family.text();expect(raw).toContain("Synthetic approved narrative");for(const key of ["PRIVATE_SYNTHETIC_NEVER_SHARED","recordedByAccountId","values","scores","practitioner_observation"])expect(raw).not.toContain(key);
+},30_000);
+test("two concurrent strict HTTP revisions have one winner and retain the losing draft as a conflict",async()=>{
+ const s=await httpFixture(),id=(await s.service.ensureForAppointment(s.f.practitioner.actor,s.f.first.id,await s.f.seed(s.f.at(-24)))).sessionId;
+ const candidates=[3,8].map(score=>({values:{...blankMetrics(),engagement:{score,notObservedReason:null,note:`Synthetic candidate ${score}`}},expectedRevision:0}));
+ const replies=await Promise.all(candidates.map(body=>s.http.handle(s.request(`/${id}/observations`,body),[id,"observations"])));
+ expect(replies.map(item=>item.status).sort()).toEqual([201,409]);
+ const winner=candidates[replies.findIndex(item=>item.status===201)]!;
+ const history=await s.service.observations(s.f.practitioner.actor,s.f.first.id);expect(history.records).toHaveLength(1);expect(history.records[0]!.values).toEqual(winner.values);
+},30_000);
+test("oversized encrypted observation history fails visibly instead of silently truncating",async()=>{
+ const s=await httpFixture(),id=(await s.service.ensureForAppointment(s.f.practitioner.actor,s.f.first.id,await s.f.seed(s.f.at(-24)))).sessionId;
+ // Only this disposable cluster: inaccessible placeholder ciphertext proves the
+ // bound is enforced before decryption, without a provider or production read.
+ await s.f.pool.query("INSERT INTO ls_sessions.practitioner_observations(workspace_id,case_id,session_id,revision,schema_version,values_ciphertext,notes_ciphertext,recorded_by_account_id,recorded_at) SELECT $1,$2,$3,n,1,'isolated-bound-placeholder','isolated-bound-placeholder',$4,clock_timestamp() FROM generate_series(1,1001) n",[s.f.workspaceId,s.f.first.id,id,s.f.practitioner.actor.id]);
+ await expect(s.service.observations(s.f.practitioner.actor,s.f.first.id)).rejects.toMatchObject({code:"UNAVAILABLE"});
+ expect((await s.http.handle(s.request(`/observations?caseId=${s.f.first.id}`),["observations"])).status).toBe(503);
+ expect((await s.f.pool.query("SELECT count(*)::integer AS n FROM ls_sessions.practitioner_observations WHERE workspace_id=$1",[s.f.workspaceId])).rows[0].n).toBe(1001);
 },30_000);
