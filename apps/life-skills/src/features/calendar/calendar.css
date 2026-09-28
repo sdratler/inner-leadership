@@ -95,5 +95,18 @@
 @media(max-width:600px){.lsw.lsu .ls-cal .ls-cal-toolbar{grid-template-columns:minmax(0,1fr)}.ls-cal-actions{grid-column:auto}.ls-cal-layers{column-gap:1rem;row-gap:0}}
 @media(max-width:800px){.lsw.lsu .ls-cal .lsw-calendar-grid{display:none!important}.lsw.lsu .ls-cal .lsw-calendar-agenda{display:block!important}.lsw.lsu .ls-cal[data-has-appointments="false"] .lsw-calendar:not(.lsw-calendar--agenda) .lsw-calendar-grid{display:block!important;overflow-x:auto;max-inline-size:100%}.lsw.lsu .ls-cal[data-has-appointments="false"] .lsw-calendar:not(.lsw-calendar--agenda) .lsw-calendar-agenda{display:none!important}.ls-cal-board--week,.ls-cal-board--month{min-inline-size:630px}.ls-cal-toolbar {align-items:stretch}.ls-cal-actions{margin-inline-start:0}.ls-cal-two{grid-template-columns:1fr}.ls-cal-facts>div{grid-template-columns:1fr;gap:.2rem}.ls-cal .lsw-page-header{align-items:start}.ls-cal .lsw-dialog{max-inline-size:94vw;padding:1.1rem}.ls-cal .lsw-calendar-toolbar{gap:.8rem}.ls-cal .lsw-calendar-toolbar h2{inline-size:100%}}
 @media(max-width:500px){.ls-cal-operational .lsw-inline-meta{grid-template-columns:repeat(2,minmax(0,1fr))}.ls-cal-operational .lsu-calendar-attention>a{padding:.75rem}.ls-cal-operational .lsu-calendar-attention h2{font-size:.95rem}}
+/* Keep the first useful Calendar content in view; no clipping, hidden inputs,
+ * smaller fonts, fixed-height app or removal of real errors/consequences. */
+@media(max-width:600px){
+ .lsw.lsu .ls-cal .ls-cal-layers>.lsw-field{grid-template-columns:minmax(7rem,.8fr) minmax(0,1fr);align-items:center;inline-size:100%;gap:.5rem}
+ .lsw.lsu .ls-cal .ls-cal-layers>.lsw-field>label{min-inline-size:0;min-block-size:44px}
+ .lsw.lsu .ls-cal .ls-cal-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));inline-size:100%;gap:.5rem;margin-inline:0}
+ .lsw.lsu .ls-cal .ls-cal-actions>:first-child{grid-column:1/-1}
+ .lsw.lsu .ls-cal .lsw-calendar-toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.5rem;align-items:center;padding:.75rem}
+ .lsw.lsu .ls-cal .lsw-calendar-toolbar>h2{inline-size:auto;margin:0}
+ .lsw.lsu .ls-cal .lsw-calendar-toolbar>nav{grid-column:1/-1;display:flex;flex-wrap:nowrap;gap:.4rem}
+ .lsw.lsu .ls-cal .lsw-calendar-toolbar>nav>a{flex:1;min-inline-size:0;justify-content:center;text-align:center}
+ .lsw.lsu .ls-cal .lsw-calendar-toolbar>small{grid-column:2;grid-row:1;justify-self:end}
+}
 @media(prefers-reduced-motion:reduce){.ls-cal *{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
 @media print{.ls-cal .ls-cal-actions,.ls-cal button,.ls-cal .lsw-dialog{display:none}.ls-cal .lsw-calendar-grid{display:block}.ls-cal .lsw-calendar-agenda{display:none}.ls-cal{max-inline-size:none;padding:0}}

@@ -35,4 +35,12 @@ describe('operational Calendar composition',()=>{
   expect(css).not.toMatch(/\.ls-cal-toolbar[^{}]*\{[^}]*overflow\s*:\s*hidden/);
   expect(css).not.toMatch(/\.ls-cal-toolbar[^{}]*\{[^}]*font-size\s*:/);
  });
+ it('keeps mobile mode, actions and date navigation compact without hiding controls or smaller text',()=>{
+  expect(css).toContain('.lsw.lsu .ls-cal .ls-cal-layers>.lsw-field{grid-template-columns:minmax(7rem,.8fr) minmax(0,1fr)');
+  expect(css).toContain('.lsw.lsu .ls-cal .ls-cal-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))');
+  expect(css).toContain('.lsw.lsu .ls-cal .ls-cal-actions>:first-child{grid-column:1/-1}');
+  expect(css).toContain('.lsw.lsu .ls-cal .lsw-calendar-toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto');
+  expect(css).toContain('.lsw.lsu .ls-cal .lsw-calendar-toolbar>nav{grid-column:1/-1');
+  expect(workspace).toContain("title={practitioner?(locale==='he'?'יומן':'Calendar'):t.familyTitle}");
+ });
 });
