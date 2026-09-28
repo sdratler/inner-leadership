@@ -7,6 +7,7 @@
 .ls-cal h4 {font-size:1rem}
 .lsw.lsu .ls-cal>.lsw-page-header {gap:.5rem;margin-block-end:.5rem}
 .lsw.lsu .ls-cal>.lsw-page-header p {margin-block-end:0}
+.lsw.lsu .ls-cal>.lsw-page-header>.lsw-button{font-size:inherit}
 .lsw.lsu .ls-cal .ls-cal-toolbar {display:grid;grid-template-columns:minmax(180px,.8fr) minmax(220px,1fr) auto;align-items:end;gap:.75rem;margin-block:.5rem}
 .ls-cal-operational {display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:.75rem;align-items:stretch;margin-block:.25rem .75rem}
 .ls-cal-operational>.lsw-card {padding:1rem;gap:.5rem}
