@@ -21,6 +21,15 @@ export const VOICE_RULE_SCHEMA_CATALOG = {
  columns:31,constraints:23,
  sha256:'98d22c1e4e01428580476131f79df1fbcd66adac26d93a2ce1dd92fd4e7fd244',
 } as const;
+export const CONTACT_AUTHORITY_MIGRATION = {
+ name:'0105_ls_contact_authority.sql',
+ sha256:'2bc7c0f24d87b88ee30e4c0e89497ba8e9e8e4a993fa92386af919c58356a429',
+} as const;
+/** Fresh native PG17.11 catalog; PG18 NOT NULL entries are compared via columns. */
+export const CONTACT_AUTHORITY_SCHEMA_CATALOG = {
+ columns:14,constraints:15,
+ sha256:'0c1c0c35d9223f11fc9023dfd30c9e5293a6ce99c7bff159455eec8cab574408',
+} as const;
 export const INTERNAL_TASKS_SCHEMA_CATALOG = {
  columns:20,constraints:13,
  sha256:'f05bc3595900d94aa6e507b2689b21583b34d62393da24848a8f66538a1189c1',
@@ -58,9 +67,11 @@ export const CONTACT_OPS_SOURCE_FILES = [
  'migrations/0102_ls_internal_tasks.sql',
  'migrations/0103_ls_task_sources.sql',
  'migrations/0104_ls_content_voice_corrections.sql',
+ 'migrations/0105_ls_contact_authority.sql',
  'migrations/manifest.json',
  'scripts/apply-contact-ops-production.ts',
  'src/db/contact-ops-production-guard.ts',
+ 'src/db/contact-authority-integrity.ts',
  'src/db/migration-plan.ts',
  'src/db/migration-runner.ts',
 ] as const;
@@ -93,6 +104,15 @@ export type InternalTaskIntegrityObjects={
 export type SourceTaskIntegrityObjects={sourceIndex:boolean;baseCatalog:boolean;sourceCatalog:boolean};
 export type VoiceRuleIntegrityObjects={namespaceAbsent:boolean;tables:boolean;schemaCatalog:boolean;foreignKeys:boolean;
  ownerIndex:boolean;historyImmutable:boolean;publicRevoked:boolean};
+export type ContactAuthorityIntegrityObjects={objectsAbsent:boolean;tables:boolean;schemaCatalog:boolean;foreignKeys:boolean;
+ historyImmutable:boolean;appendOnlyFunction:boolean;publicRevoked:boolean;referencesSound:boolean};
+
+export function contactAuthoritySchemaCatalogMatches(columns:unknown,constraints:unknown):boolean{
+ if(!Array.isArray(columns)||columns.length!==CONTACT_AUTHORITY_SCHEMA_CATALOG.columns||!Array.isArray(constraints))return false;
+ const material=contactOpsComparableConstraints(constraints);
+ if(material.length!==CONTACT_AUTHORITY_SCHEMA_CATALOG.constraints)return false;
+ return createHash('sha256').update(JSON.stringify({columns,constraints:material})).digest('hex')===CONTACT_AUTHORITY_SCHEMA_CATALOG.sha256;
+}
 
 export function voiceRuleSchemaCatalogMatches(columns:unknown,constraints:unknown):boolean{
  if(!Array.isArray(columns)||columns.length!==VOICE_RULE_SCHEMA_CATALOG.columns||!Array.isArray(constraints))return false;
@@ -208,11 +228,11 @@ export function contactOpsSourceBundle(entries:readonly {path:string;bytes:Uint8
 }
 
 /** No partial/unknown schema and no surprise migration may be promoted. */
-export function contactOpsMigrationState(files:readonly Migration[],history:readonly AppliedMigration[],objects:ContactOpsIntegrityObjects,tasks:InternalTaskIntegrityObjects,source?:SourceTaskIntegrityObjects,voice?:VoiceRuleIntegrityObjects):'pending'|'applied'{
+export function contactOpsMigrationState(files:readonly Migration[],history:readonly AppliedMigration[],objects:ContactOpsIntegrityObjects,tasks:InternalTaskIntegrityObjects,source?:SourceTaskIntegrityObjects,voice?:VoiceRuleIntegrityObjects,authority?:ContactAuthorityIntegrityObjects):'pending'|'applied'{
  const index=files.findIndex(file=>file.name===CONTACT_OPS_MIGRATION.name);
  if(index<0||files[index]?.checksum!==CONTACT_OPS_MIGRATION.sha256)throw new Error('CONTACT_OPS_MANIFEST_MISMATCH');
  const suffix=files.slice(index+1);
- const allowedSuffix=[INTERNAL_TASKS_MIGRATION,SOURCE_TASKS_MIGRATION,VOICE_RULE_MIGRATION];
+ const allowedSuffix=[INTERNAL_TASKS_MIGRATION,SOURCE_TASKS_MIGRATION,VOICE_RULE_MIGRATION,CONTACT_AUTHORITY_MIGRATION];
  if(suffix.length>allowedSuffix.length||suffix.some((file,index)=>file.name!==allowedSuffix[index]?.name||file.checksum!==allowedSuffix[index]?.sha256))throw new Error('CONTACT_OPS_MANIFEST_MISMATCH');
  const pending=planMigrations(files,history);
  const expectedKeys=['profiles','legacyLinks','commandReceipts','legacyIndex','profileProvenanceTrigger','markerCompatibilityTrigger','immutableDemoRecordTrigger','profileFunction','markerFunction','immutableFunction','canonicalPersonConstraint','canonicalConstraintDefinition','schemaCatalog','baselineRecordsCatalog','permanentTables','foreignKeysEnforced','foreignKeyReferencesSound','publicRevoked'].sort();
@@ -229,12 +249,21 @@ export function contactOpsMigrationState(files:readonly Migration[],history:read
  if(suffix.length>=2){
   if(!source||JSON.stringify(Object.keys(source).sort())!==JSON.stringify(['baseCatalog','sourceCatalog','sourceIndex'])||
    Object.values(source).some(value=>typeof value!=='boolean'))throw new Error('CONTACT_OPS_SOURCE_TASK_READBACK_INVALID');
-  if(suffix.length===3){
+  if(suffix.length>=3){
    if(!voice||JSON.stringify(Object.keys(voice).sort())!==JSON.stringify(['namespaceAbsent','tables','schemaCatalog','foreignKeys','ownerIndex','historyImmutable','publicRevoked'].sort())||
     Object.values(voice).some(value=>typeof value!=='boolean'))throw new Error('CONTACT_OPS_VOICE_READBACK_INVALID');
    if(!values.every(Boolean)||!taskValues.every(Boolean)||source.baseCatalog||!source.sourceCatalog||!source.sourceIndex)
     throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
    const newVoiceValues=Object.entries(voice).filter(([key])=>key!=='namespaceAbsent').map(([,value])=>value);
+   if(suffix.length===4){
+    if(!authority||JSON.stringify(Object.keys(authority).sort())!==JSON.stringify(['objectsAbsent','tables','schemaCatalog','foreignKeys','historyImmutable','appendOnlyFunction','publicRevoked','referencesSound'].sort())||
+     Object.values(authority).some(value=>typeof value!=='boolean'))throw new Error('CONTACT_OPS_AUTHORITY_READBACK_INVALID');
+    if(voice.namespaceAbsent||!newVoiceValues.every(Boolean))throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+    const newAuthorityValues=Object.entries(authority).filter(([key])=>key!=='objectsAbsent').map(([,value])=>value);
+    if(pending.length===1&&pending[0]?.name===CONTACT_AUTHORITY_MIGRATION.name&&authority.objectsAbsent&&newAuthorityValues.every(value=>!value))return 'pending';
+    if(pending.length===0&&!authority.objectsAbsent&&newAuthorityValues.every(Boolean))return 'applied';
+    throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+   }
    if(pending.length===1&&pending[0]?.name===VOICE_RULE_MIGRATION.name&&voice.namespaceAbsent&&newVoiceValues.every(value=>!value))return 'pending';
    if(pending.length===0&&!voice.namespaceAbsent&&newVoiceValues.every(Boolean))return 'applied';
    throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
