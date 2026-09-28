@@ -2,6 +2,32 @@ import {z} from "zod";
 import {dateOnly} from "../contact-ops/core/validation.ts";
 import type {Prospect} from "./bridge.ts";
 
+export function contactSuppressed(value:string):boolean{return /do[ _-]?not[ _-]?contact|\bopt(?:ed)?[ _-]?out\b/i.test(value);}
+export function prospectContactSuppressed(row:Pick<Prospect,"stage"|"outcome">):boolean{return contactSuppressed(row.stage)||contactSuppressed(row.outcome);}
+
+type FollowUpValues=Pick<Prospect,"notes"|"nextAction"|"dueDate"|"owner">;
+const followUpKeys=["notes","nextAction","dueDate","owner"] as const;
+export type ProspectFollowUpDraft={baseline:Prospect;values:FollowUpValues;conflict:boolean};
+export function prospectFollowUpDraft(row:Prospect):ProspectFollowUpDraft{
+ return {baseline:row,values:{notes:row.notes,nextAction:row.nextAction,dueDate:row.dueDate,owner:row.owner},conflict:false};
+}
+/** Rebase only untouched inputs. A conflicting dirty field retains its observed
+ * edit version: even if another card advances the shared profile, the server
+ * rejects this stale save and the user's actual draft stays visible.
+ */
+export function reconcileProspectFollowUp(draft:ProspectFollowUpDraft,row:Prospect):ProspectFollowUpDraft{
+ const dirty=followUpKeys.filter(key=>draft.values[key]!==draft.baseline[key]);
+ const conflict=(draft.conflict&&dirty.length>0)||
+  (dirty.length>0&&draft.baseline.nativeEdit?.authorityEpoch!==row.nativeEdit?.authorityEpoch)||
+  dirty.some(key=>row[key]!==draft.baseline[key]&&draft.values[key]!==row[key]);
+ const values={...draft.values};for(const key of followUpKeys)if(!dirty.includes(key))values[key]=row[key];
+ const baseline=conflict&&draft.baseline.nativeEdit?{...row,nativeEdit:draft.baseline.nativeEdit}:row;
+ return {baseline,values,conflict};
+}
+export function changedProspectFollowUp(draft:ProspectFollowUpDraft):ProspectUpdateFields{
+ return Object.fromEntries(followUpKeys.filter(key=>draft.values[key]!==draft.baseline[key]).map(key=>[key,draft.values[key]]));
+}
+
 export const prospectUpdateFieldsSchema=z.object({stage:z.string().min(1).max(120).optional(),
  nextAction:z.string().max(500).optional(),dueDate:z.string().refine(v=>v===""||dateOnly(v)).optional(),
  outcome:z.string().max(500).optional(),notes:z.string().max(5000).optional(),owner:z.string().max(120).optional()

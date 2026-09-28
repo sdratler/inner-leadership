@@ -9,7 +9,7 @@ import {AppError} from "../../../lib/errors.ts";
 import {z} from "zod";
 import {ContractError} from "../core/validation.ts";
 import {privateDigest} from "./digests.ts";
-import {prospectUpdateFieldsSchema,type ProspectUpdateFields} from "../../prospects/native-edit.ts";
+import {contactSuppressed,prospectUpdateFieldsSchema,type ProspectUpdateFields} from "../../prospects/native-edit.ts";
 export type NativeAdminFields=Pick<CrmProfile,"stage"|"nextAction"|"followUpDate"|"notes">;
 
 /** Operational native CRM boundary, not an authority switch. It has no Sheet,
@@ -64,7 +64,9 @@ export class OperationalNativeCrmStore {
    const profiles=this.profileStore(tx),existing=await profiles.read(actor,personId);
    if(!existing)throw new AppError("NOT_FOUND");
    const profile:CrmProfile={...existing.profile,
-    stage:fields.stage,nextAction:fields.nextAction,followUpDate:fields.followUpDate,notes:fields.notes};
+    stage:fields.stage,nextAction:fields.nextAction,followUpDate:fields.followUpDate,notes:fields.notes,
+    ...(existing.profile.doNotContact||contactSuppressed(existing.profile.stage)||contactSuppressed(fields.stage)||
+     Object.values(existing.profile.leadUpdates??{}).some(v=>contactSuppressed(v.outcome??""))?{doNotContact:true}:{})};
    return profiles.update(actor,profile,expectedVersion,operationId);
   });
  }
@@ -103,6 +105,8 @@ export class OperationalNativeCrmStore {
    if(!existing.profile.legacyIds.includes(leadId))throw new AppError("CONFLICT");
    const priorLead=existing.profile.leadUpdates?.[leadId]??{};
    const profile:CrmProfile={...existing.profile,
+    ...(existing.profile.doNotContact||contactSuppressed(existing.profile.stage)||contactSuppressed(changes.stage??"")||contactSuppressed(changes.outcome??"")||
+     Object.values(existing.profile.leadUpdates??{}).some(v=>contactSuppressed(v.outcome??""))?{doNotContact:true}:{}),
     ...(changes.stage===undefined?{}:{stage:changes.stage}),
     ...(changes.nextAction===undefined?{}:{nextAction:changes.nextAction||null}),
     ...(changes.dueDate===undefined?{}:{followUpDate:changes.dueDate||null}),

@@ -23,7 +23,7 @@ const proof=(epoch:number,writes=0):CutoverEvidence=>({batchId:"synthetic-prospe
  expectedEpoch:epoch,observedNativeWritesSinceSwitch:writes,backupRestored:true,snapshotMatched:true,imported:true,rowContentMatched:true,allRowsAccounted:true,
  identityConflicts:0,paymentsReconciled:true,writersFenced:true,inboundDurable:true,deltaDrained:true,consumersRepointed:true,sheetConsumersRepointed:true,
  nativeBrowserVerified:true,oldSchedulesDisabled:true,sourceFrozen:true,restorePlanReady:true});
-async function setup(demo=false){
+async function setup(demo=false,sourceOutcome?:string){
  const f=await fixture({demoFirst:demo});fixtures.push(f);const a=f.practitioner.actor,personId=demo?f.parent.actor.personId:randomUUID();
  const leads=["LS-LEAD-update-"+randomUUID(),"LS-LEAD-update-"+randomUUID()];
  if(demo)await f.pool.query("INSERT INTO ls_demo.records(workspace_id,batch_id,entity_kind,entity_key,source_key,account_id) VALUES($1,'ls-owner-20260925','person',$2,$3,$4)",
@@ -33,7 +33,7 @@ async function setup(demo=false){
  const profile:CrmProfile={personId,legacyIds:leads,stage:"New inquiry",nextAction:"Synthetic original action",followUpDate:"2026-09-28",notes:"Synthetic original notes — עברית English"};
  await new NativeCrmStore(drizzleIdentityStore,f.keyring,key).create(a,profile,"synthetic-update-profile-create");
  for(const [i,lead]of leads.entries()){
-  const fields={"Lead ID":lead,"Outcome":"Synthetic original outcome "+i,"Response owner":"Synthetic original owner "+i,
+  const fields={"Lead ID":lead,"Outcome":sourceOutcome??"Synthetic original outcome "+i,"Response owner":"Synthetic original owner "+i,
    "Payment status":"PAID — historical claim only","Booking status":"Confirmed — historical claim only","Phone":"+972520000001"};
   const snapshot={sourceRow:i+2,payload:{displayName:"Synthetic imported source",language:"he",stageText:"New inquiry",sourceFields:fields}};
   await f.pool.query(`INSERT INTO ls_contact_ops.legacy_links(workspace_id,source_file_id,source_sheet_id,source_tab_title,legacy_lead_id,person_id,source_revision,row_digest,snapshot_ciphertext)
@@ -142,4 +142,35 @@ test("profile extension rejects unmapped or privileged override keys, retaining 
  expect(crmProfileSchema.safeParse({...profile,leadUpdates:{"LS-LEAD-valid":{owner:"Synthetic owner"}}}).success).toBe(true);
  expect(crmProfileSchema.safeParse({...profile,leadUpdates:{"LS-LEAD-other":{owner:"Synthetic owner"}}}).success).toBe(false);
  expect(crmProfileSchema.safeParse({...profile,leadUpdates:{"LS-LEAD-valid":{paymentVerified:true}}}).success).toBe(false);
+});
+
+test("imported opt-outs remain sticky when outcome/status edits clear or replace their display values",async()=>{
+ for(const outcome of ["Do not contact — synthetic source","Opted out — synthetic source"]){
+  const s=await setup(false,outcome);await activate(s);const before=await snapshots(s);
+  await authoritativeProspectUpdate(s.a,command(s,{outcome:"Contacted",owner:"Synthetic reassigned"}),s.d);
+  await authoritativeProspectUpdate(s.a,command(s,{outcome:""},2),s.d);
+  await s.native.updateFields(s.a,s.personId,{stage:"Contacted",nextAction:"Synthetic administrative review",followUpDate:null,notes:s.profile.notes},3,"synthetic-optout-status-save",3);
+  const rows=await s.native.prospects(s.a,3);expect(rows).toHaveLength(2);expect(rows.every(row=>row.stage==="Do not contact")).toBe(true);
+  expect(await snapshots(s)).toEqual(before);
+  expect((await s.native.list(s.a,{view:"all",search:"",today:"2026-09-28",page:1,pageSize:20},3)).items.find(r=>r.personId===s.personId)?.doNotContact).toBe(true);
+ }
+});
+
+test("native opt-out becomes sticky independently of a later administrative outcome/status change",async()=>{
+ const s=await setup();await activate(s);await authoritativeProspectUpdate(s.a,command(s,{outcome:"Do not contact — synthetic new opt-out"}),s.d);
+ await authoritativeProspectUpdate(s.a,command(s,{outcome:"Contacted"},2),s.d);
+ await s.native.updateFields(s.a,s.personId,{stage:"New inquiry",nextAction:null,followUpDate:null,notes:s.profile.notes},3,"synthetic-native-optout-status",3);
+ expect(await s.native.read(s.a,s.personId,3)).toMatchObject({version:4,profile:{doNotContact:true}});
+ expect((await s.native.prospects(s.a,3)).every(row=>row.stage==="Do not contact")).toBe(true);
+});
+
+test("a sibling owner-only partial save preserves another lead's current notes; its stale competing note is denied",async()=>{
+ const s=await setup();await activate(s);
+ await authoritativeProspectUpdate(s.a,command(s,{notes:"Synthetic newer lead A note",nextAction:"Synthetic newer shared action"}),s.d);
+ const sibling={...command(s,{owner:"Synthetic lead B owner"},2),leadId:s.leads[1]!};
+ expect(await authoritativeProspectUpdate(s.a,sibling,s.d)).toMatchObject({version:3,replayed:false});
+ expect(await s.native.read(s.a,s.personId,3)).toMatchObject({version:3,profile:{notes:"Synthetic newer lead A note",nextAction:"Synthetic newer shared action",
+  leadUpdates:{[s.leads[1]!]:{owner:"Synthetic lead B owner"}}}});
+ await expect(authoritativeProspectUpdate(s.a,{...command(s,{notes:"Synthetic stale sibling note"}),leadId:s.leads[1]!},s.d)).rejects.toThrow("CONFLICT");
+ expect(await s.native.read(s.a,s.personId,3)).toMatchObject({version:3,profile:{notes:"Synthetic newer lead A note"}});
 });

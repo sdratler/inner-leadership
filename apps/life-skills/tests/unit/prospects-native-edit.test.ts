@@ -1,5 +1,6 @@
 import {describe,expect,it} from "vitest";
-import {applyNativeProspectUpdate,nativeProspectUpdateKey,prepareNativeProspectUpdate,prospectUpdateFieldsSchema} from "../../src/features/prospects/native-edit.ts";
+import {applyNativeProspectUpdate,changedProspectFollowUp,nativeProspectUpdateKey,prepareNativeProspectUpdate,prospectContactSuppressed,
+ prospectFollowUpDraft,prospectUpdateFieldsSchema,reconcileProspectFollowUp} from "../../src/features/prospects/native-edit.ts";
 import type {Prospect} from "../../src/features/prospects/bridge.ts";
 const person="11111111-1111-4111-8111-111111111111",operation="22222222-2222-4222-8222-222222222222";
 function row(leadId="LS-LEAD-synthetic"):Prospect{return {leadId,notes:"Synthetic preserved note",owner:"Synthetic original owner",outcome:"Synthetic original outcome",nextAction:"Original",
@@ -43,5 +44,33 @@ describe("native follow-up input preservation",()=>{
   expect(prospectUpdateFieldsSchema.safeParse({notes:"x".repeat(5001)}).success).toBe(false);
   for(const field of ["clinicalNotes","personId","legacyIds","paymentVerified","bookingConfirmed"])
    expect(prospectUpdateFieldsSchema.safeParse({[field]:"synthetic"}).success).toBe(false);
+ });
+ it("owner-only sibling editing submits only its dirty field and rebases untouched shared values",()=>{
+  const sibling=row("LS-LEAD-sibling"),draft=prospectFollowUpDraft(sibling);draft.values.owner="Synthetic changed owner";
+  const updated={...sibling,notes:"Synthetic newer note saved in A",nextAction:"New action in A",dueDate:"2026-09-30",nativeEdit:{...sibling.nativeEdit!,profileVersion:2}};
+  const rebased=reconcileProspectFollowUp(draft,updated);
+  expect(rebased.values).toEqual({notes:updated.notes,nextAction:updated.nextAction,dueDate:updated.dueDate,owner:"Synthetic changed owner"});
+  expect(changedProspectFollowUp(rebased)).toEqual({owner:"Synthetic changed owner"});expect(rebased.baseline.nativeEdit?.profileVersion).toBe(2);expect(rebased.conflict).toBe(false);
+ });
+ it("a conflicting sibling note stays visible but keeps its stale edit version rather than restoring old shared fields",()=>{
+  const sibling=row("LS-LEAD-sibling"),draft=prospectFollowUpDraft(sibling);draft.values.notes="Synthetic unsaved competing note";
+  const updated={...sibling,notes:"Synthetic newer note saved in A",nextAction:"New action in A",nativeEdit:{...sibling.nativeEdit!,profileVersion:2}};
+  const rebased=reconcileProspectFollowUp(draft,updated);
+  expect(rebased.values.notes).toBe("Synthetic unsaved competing note");expect(rebased.values.nextAction).toBe(updated.nextAction);expect(rebased.conflict).toBe(true);
+  expect(rebased.baseline.nativeEdit?.profileVersion).toBe(1);expect(changedProspectFollowUp(rebased)).toEqual({notes:"Synthetic unsaved competing note"});
+  expect(prepareNativeProspectUpdate(rebased.baseline,changedProspectFollowUp(rebased),operation).expectedVersion).toBe(1);
+ });
+ it("a confirmed own save reconciles cleanly, while an authority change keeps dirty input fenced",()=>{
+  const initial=row(),draft=prospectFollowUpDraft(initial);draft.values.notes="Synthetic confirmed note";
+  const saved={...initial,notes:draft.values.notes,nativeEdit:{...initial.nativeEdit!,profileVersion:2}};
+  const clean=reconcileProspectFollowUp(draft,saved);expect(clean.conflict).toBe(false);expect(changedProspectFollowUp(clean)).toEqual({});expect(clean.baseline.nativeEdit?.profileVersion).toBe(2);
+  draft.values.owner="Synthetic unsaved owner";const shifted=reconcileProspectFollowUp(draft,{...initial,nativeEdit:{...initial.nativeEdit!,authorityEpoch:4}});
+  expect(shifted.values.owner).toBe(draft.values.owner);expect(shifted.baseline.nativeEdit?.authorityEpoch).toBe(3);expect(shifted.conflict).toBe(true);
+ });
+ it("communication suppression recognizes original opt-out forms, not only one display spelling",()=>{
+  for(const value of ["Do not contact","do_not_contact","Opt out — synthetic","opted-out"])
+   expect(prospectContactSuppressed({stage:"New inquiry",outcome:value})).toBe(true);
+  expect(prospectContactSuppressed({stage:"Do not contact",outcome:"Contacted"})).toBe(true);
+  expect(prospectContactSuppressed({stage:"New inquiry",outcome:"Contacted"})).toBe(false);
  });
 });

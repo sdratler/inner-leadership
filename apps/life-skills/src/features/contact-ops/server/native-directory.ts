@@ -11,6 +11,7 @@ import {crmProfileAad,crmProfileSchema} from "./native-store.ts";
 import {dateOnly} from "../core/validation.ts";
 import type {PeopleView,Page} from "../core/types.ts";
 import type {Prospect} from "../../prospects/bridge.ts";
+import {contactSuppressed} from "../../prospects/native-edit.ts";
 import {MAX_NATIVE_CONTACTS,MAX_OPERATIONAL_PROSPECTS} from "../core/limits.ts";
 
 const sourceSchema=z.object({sourceRow:z.number().int().min(2),payload:z.object({
@@ -24,7 +25,7 @@ const querySchema=z.object({view:z.enum(["all","prospects","paid","active","arch
  leadId:z.string().regex(/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]{1,80}$/).optional()}).strict();
 export type NativeContactQuery=z.infer<typeof querySchema>;
 export type NativeContactReference={leadId:string;phone:string;email:string;language:string;
- source:string;campaign:string;outcome:string;owner?:string;messageReceipt:string;
+ source:string;campaign:string;outcome:string;owner?:string;sourceDoNotContact?:boolean;messageReceipt:string;
  /** Original spreadsheet values are claims/history, never payment/booking authority. */
  paymentClaim:string;bookingClaim:string;formSentClaim:string;formSubmittedClaim:string;
  sourceFileId:string;sourceSheetId:number;sourceRevision:string;journey:ProspectJourneyState};
@@ -42,7 +43,7 @@ const emptyJourney=():ProspectJourneyState=>({journeyState:"prospect",paymentVer
 // Historic Sheet statuses are descriptive, not an enum. Preserve the existing
 // conservative archive/opt-out protection even when a reason follows the marker.
 const archived=(stage:string)=>/archive|\b(?:closed|not interested|no fit)\b/i.test(stage);
-const suppressed=(stage:string)=>/do[ _-]?not[ _-]?contact|\bopt(?:ed)?[ _-]?out\b/i.test(stage);
+const suppressed=contactSuppressed;
 function contactLocale(language:string):"he"|"en"|null{
  const value=language.trim().toLocaleLowerCase();
  return ["he","hebrew","עברית"].includes(value)?"he":["en","english"].includes(value)?"en":null;
@@ -174,6 +175,7 @@ export class NativeContactDirectory {
       return {leadId:l.leadId,phone:field(f,"Phone"),email:field(f,"Email"),language:source.payload.language,
        source:field(f,"Lead source"),campaign:field(f,"Campaign"),outcome:profile.leadUpdates?.[l.leadId]?.outcome??field(f,"Outcome"),
        owner:profile.leadUpdates?.[l.leadId]?.owner??field(f,"Response owner"),
+       sourceDoNotContact:suppressed(field(f,"Outcome"))||suppressed(source.payload.stageText),
        messageReceipt:field(f,"Message receipt"),paymentClaim:field(f,"Payment status"),bookingClaim:field(f,"Booking status"),
        formSentClaim:field(f,"Form sent"),formSubmittedClaim:field(f,"Form submitted"),
        sourceFileId:l.sourceFileId,sourceSheetId:l.sourceSheetId,sourceRevision:l.sourceRevision,
@@ -184,7 +186,7 @@ export class NativeContactDirectory {
       // A closed historical inquiry cannot archive another open inquiry for the
       // same canonical person. Explicit profile archival remains authoritative.
       notes:profile.notes,version:p.version,mode:p.recordMode,archived:p.persistedArchived||archived(profile.stage)||(references.length>0&&references.every(r=>archived(r.outcome))),
-      doNotContact:suppressed(profile.stage)||references.some(r=>suppressed(r.outcome)),references});
+      doNotContact:profile.doNotContact===true||suppressed(profile.stage)||references.some(r=>r.sourceDoNotContact||suppressed(r.outcome)),references});
     }
     after=profiles.at(-1)!.personId;
    }
