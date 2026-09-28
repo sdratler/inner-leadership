@@ -111,3 +111,17 @@ test.each(['Archived — old inquiry','Closed — old inquiry','Not interested']
  expect(selectNativeContacts([paid],{...q,view:'paid'}).total).toBe(1);expect(selectNativeContacts([paid],{...q,filter:'booking'}).total).toBe(1);
  expect(selectNativeContacts([{...paid,archived:true}],{...q,view:'paid'}).total).toBe(0);
 });
+
+test.each(['Archived — old inquiry','Closed — old inquiry','Not interested'])("%s active historical journey cannot promote a fresh prospect to Active",outcome=>{
+ const fresh:NativeContactReference={leadId:'LS-LEAD-synthetic-open',phone:'',email:'',language:'en',source:'synthetic',campaign:'',outcome:'',messageReceipt:'',paymentClaim:'',bookingClaim:'',formSentClaim:'',formSubmittedClaim:'',sourceFileId:'synthetic',sourceSheetId:1,sourceRevision:'synthetic',journey:{journeyState:'prospect',paymentVerified:false,bookingConfirmed:false}};
+ const old:NativeContactReference={...fresh,leadId:'LS-LEAD-synthetic-closed-active',outcome,journey:{journeyState:'active',paymentVerified:true,bookingConfirmed:true}};
+ const row:NativeContactRow={personId,displayName:'Synthetic returning prospect',identityKind:'adult',...fields,version:1,mode:'live',archived:false,doNotContact:false,references:[old,fresh],caseLinks:[]};
+ const q={view:'active' as const,search:'',today:'2026-09-28',page:1,pageSize:12};
+ expect(selectNativeContacts([row],q).total).toBe(0);
+ expect(selectNativeContacts([{...row,references:[fresh,old]}],q).total).toBe(0);
+ expect(selectNativeContacts([row],{...q,view:'prospects',filter:'new'}).total).toBe(1);
+ expect(selectNativeContacts([{...row,references:[old,{...fresh,journey:{...fresh.journey,journeyState:'active'}}]}],q).total).toBe(1);
+ expect(selectNativeContacts([{...row,caseLinks:[{caseId:'synthetic-assigned',state:'active'}]}],q).total).toBe(1);
+ expect(selectNativeContacts([{...row,caseLinks:[{caseId:'synthetic-assigned',state:'paused'}]}],q).total).toBe(0);
+ expect(selectNativeContacts([{...row,references:[{...old,outcome:'Do not contact'},fresh]}],q).total).toBe(0);
+});

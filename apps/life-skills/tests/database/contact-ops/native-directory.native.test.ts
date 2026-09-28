@@ -187,7 +187,12 @@ test("native PostgreSQL reads each actual payment allocation and booked appointm
   const paid=await directory.list(f.practitioner.actor,{...q,personId:subject.id,view:'paid'});
   expect(paid).toMatchObject({total:1,items:[{personId:subject.id,archived:false}]});expect(paid.items[0]?.caseLinks??[]).toHaveLength(0);
   expect((await directory.list(f.practitioner.actor,{...q,personId:subject.id,filter:'booking'})).total).toBe(1);
+  // The older closed reference still has an actual active journey, while the
+  // open reference awaits booking. No assigned case means this is NOT Active.
+  expect(paid.items[0]?.references.find(r=>r.leadId===subject.lead)?.journey.journeyState).toBe('active');
+  expect((await directory.list(f.practitioner.actor,{...q,personId:subject.id,view:'active'})).total).toBe(0);
  }finally{await f.pool.query("UPDATE ls_contact_ops.legacy_links SET snapshot_ciphertext=$3 WHERE workspace_id=$1 AND legacy_lead_id=$2",[f.workspaceId,subject.lead,oldLink.snapshot_ciphertext]);}
+ expect((await directory.list(f.practitioner.actor,{...q,personId:subject.id,view:'active'})).total).toBe(1);
  // Closing an old paid inquiry must not create a booking follow-up merely
  // because another actual assigned case keeps this canonical client active.
  const assignedClient=randomUUID(),assignedCase=randomUUID();
