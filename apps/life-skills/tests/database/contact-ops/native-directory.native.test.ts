@@ -2,9 +2,9 @@ import {afterAll,expect,test,vi} from "vitest";
 import {randomUUID,randomBytes,createHash} from "node:crypto";
 vi.mock("server-only",()=>({}));
 import {fixture,poolStore} from "../calendar/fixture.ts";
-import {NativeContactDirectory} from "../../../src/features/contact-ops/server/native-directory.ts";
+import {NativeContactDirectory,selectNativeContacts} from "../../../src/features/contact-ops/server/native-directory.ts";
 import {NativeCrmStore,crmProfileAad,type CrmProfile} from "../../../src/features/contact-ops/server/native-store.ts";
-import {seal} from "../../../src/features/identity/crypto.ts";
+import {seal,unseal} from "../../../src/features/identity/crypto.ts";
 import type {IdentityStore,SqlSession} from "../../../src/features/identity/store.ts";
 
 const f=await fixture({demoFirst:true});
@@ -44,7 +44,8 @@ test("native PostgreSQL reads all keyset pages, searches after page one, and pre
  expect((await directory.list(f.practitioner.actor,{...q,search:tail.lead,locale:"he"})).total).toBe(1);
  expect((await directory.list(f.practitioner.actor,{...q,search:tail.lead,locale:"en"})).total).toBe(0);
  expect(JSON.stringify(result)).not.toContain("Never serialize this history field");
- expect(await directory.list(f.practitioner.actor,q)).toMatchObject({total:101,pages:6});
+ // One real authorized non-DEMO child case joins by its own canonical person.
+ expect(await directory.list(f.practitioner.actor,q)).toMatchObject({total:102,pages:6});
  expect((await directory.list(f.practitioner.actor,{...q,view:"paid"})).total).toBe(0);
  const changed={...tail.profile,notes:"Synthetic revised note preserved after reload",nextAction:"Synthetic new next action"};
  await native.update(f.practitioner.actor,changed,1,"native-edit-"+tail.id);
@@ -53,6 +54,13 @@ test("native PostgreSQL reads all keyset pages, searches after page one, and pre
  expect(encrypted.rows[0].payload_ciphertext).not.toContain(changed.notes);
  const original=await f.pool.query("SELECT source_revision FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND person_id=$2",[f.workspaceId,tail.id]);
  expect(original.rows[0].source_revision).toBe("synthetic-revision");
+});
+test("exact legacy lead lookup reaches its canonical person beyond page one, without prefix or ambiguous matching",async()=>{
+ const exact=await directory.list(f.practitioner.actor,{...q,pageSize:12,leadId:tail.lead});
+ expect(exact).toMatchObject({total:1,items:[{personId:tail.id}]});
+ expect((await directory.list(f.practitioner.actor,{...q,leadId:tail.lead.slice(0,-1)})).total).toBe(0);
+ const target=exact.items[0]!;
+ expect(()=>selectNativeContacts([target,{...target,personId:randomUUID()}],{...q,leadId:tail.lead})).toThrow("CONFLICT");
 });
 
 test("native PostgreSQL preserves persisted archives and descriptive stage/outcome opt-outs in every open queue",async()=>{
@@ -125,8 +133,26 @@ test("native PostgreSQL keeps explicit demo mode separate from the live director
  const personId=f.parent.actor.personId;
  await f.pool.query("INSERT INTO ls_demo.records(workspace_id,batch_id,entity_kind,entity_key,source_key,account_id) VALUES($1,'ls-owner-20260925','person',$2,$3,$4)",[f.workspaceId,personId,"native-read-demo-"+randomUUID(),f.parent.actor.id]);
  await native.create(f.practitioner.actor,{personId,stage:"new",nextAction:null,followUpDate:null,notes:"Synthetic demo note",legacyIds:[]},"create-demo-read-"+randomUUID());
- expect((await directory.list(f.practitioner.actor,q)).total).toBe(101);
- expect(await directory.list(f.practitioner.actor,{...q,mode:"demo"})).toMatchObject({total:1,items:[{personId,mode:"demo",displayName:"DEMO — Synthetic parent A"}]});
+ expect((await directory.list(f.practitioner.actor,q)).total).toBe(102);
+ const demos=await directory.list(f.practitioner.actor,{...q,mode:"demo"});
+ expect(demos.total).toBe(2);
+ expect(demos.items.find(r=>r.personId===personId)).toMatchObject({personId,mode:"demo",displayName:"DEMO — Synthetic parent A"});
+ expect(demos.items.filter(r=>r.version===null)).toHaveLength(1);
+});
+
+test("native PostgreSQL preserves workflow filters over the actual encrypted legacy snapshot",async()=>{
+ const linkRow=(await f.pool.query("SELECT source_file_id,source_sheet_id,snapshot_ciphertext FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND legacy_lead_id=$2",[f.workspaceId,tail.lead])).rows[0];
+ const aad=`ls_contact_ops/legacy/v1/${f.workspaceId}/${linkRow.source_file_id}/${linkRow.source_sheet_id}/${tail.lead}`;
+ const snapshot=JSON.parse(unseal(linkRow.snapshot_ciphertext,aad,f.keyring));
+ try{
+  const query={...q,search:tail.lead};expect((await directory.list(f.practitioner.actor,{...query,filter:'new'})).total).toBe(1);
+  snapshot.payload.sourceFields['Form sent']='synthetic-sent';
+  await f.pool.query("UPDATE ls_contact_ops.legacy_links SET snapshot_ciphertext=$3 WHERE workspace_id=$1 AND legacy_lead_id=$2",[f.workspaceId,tail.lead,seal(JSON.stringify(snapshot),aad,f.keyring)]);
+  expect((await directory.list(f.practitioner.actor,{...query,filter:'intake'})).total).toBe(1);expect((await directory.list(f.practitioner.actor,{...query,filter:'new'})).total).toBe(0);
+  snapshot.payload.sourceFields['Form submitted']='synthetic-submitted';snapshot.payload.sourceFields['Payment status']='Paid';
+  await f.pool.query("UPDATE ls_contact_ops.legacy_links SET snapshot_ciphertext=$3 WHERE workspace_id=$1 AND legacy_lead_id=$2",[f.workspaceId,tail.lead,seal(JSON.stringify(snapshot),aad,f.keyring)]);
+  expect((await directory.list(f.practitioner.actor,{...query,filter:'payment'})).total).toBe(1);expect((await directory.list(f.practitioner.actor,{...query,filter:'intake'})).total).toBe(0);expect((await directory.list(f.practitioner.actor,{...query,filter:'booking'})).total).toBe(0);
+ }finally{await f.pool.query("UPDATE ls_contact_ops.legacy_links SET snapshot_ciphertext=$3 WHERE workspace_id=$1 AND legacy_lead_id=$2",[f.workspaceId,tail.lead,linkRow.snapshot_ciphertext]);}
 });
 
 test("native PostgreSQL reads each actual payment allocation and booked appointment separately",async()=>{
@@ -153,7 +179,126 @@ test("native PostgreSQL reads each actual payment allocation and booked appointm
  expect(actual.references.find(r=>r.leadId===subject.lead)?.journey).toMatchObject({paymentVerified:true,bookingConfirmed:true,journeyState:"active"});
  expect(actual.references.find(r=>r.leadId===secondLead)?.journey).toMatchObject({paymentVerified:true,bookingConfirmed:false,journeyState:"awaiting_booking"});
  expect((await directory.list(f.practitioner.actor,{...q,search:subject.lead,view:"paid"})).total).toBe(1);
+ const oldLink=(await f.pool.query("SELECT snapshot_ciphertext FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND legacy_lead_id=$2",[f.workspaceId,subject.lead])).rows[0];
+ const oldAad=`ls_contact_ops/legacy/v1/${f.workspaceId}/${sourceFileId}/${sourceSheetId}/${subject.lead}`,oldSnapshot=JSON.parse(unseal(oldLink.snapshot_ciphertext,oldAad,f.keyring));
+ oldSnapshot.payload.sourceFields['Outcome']='Closed — previous inquiry';
+ try{
+  await f.pool.query("UPDATE ls_contact_ops.legacy_links SET snapshot_ciphertext=$3 WHERE workspace_id=$1 AND legacy_lead_id=$2",[f.workspaceId,subject.lead,seal(JSON.stringify(oldSnapshot),oldAad,f.keyring)]);
+  const paid=await directory.list(f.practitioner.actor,{...q,personId:subject.id,view:'paid'});
+  expect(paid).toMatchObject({total:1,items:[{personId:subject.id,archived:false}]});expect(paid.items[0]?.caseLinks??[]).toHaveLength(0);
+  expect((await directory.list(f.practitioner.actor,{...q,personId:subject.id,filter:'booking'})).total).toBe(1);
+  // The older closed reference still has an actual active journey, while the
+  // open reference awaits booking. No assigned case means this is NOT Active.
+  expect(paid.items[0]?.references.find(r=>r.leadId===subject.lead)?.journey.journeyState).toBe('active');
+  expect((await directory.list(f.practitioner.actor,{...q,personId:subject.id,view:'active'})).total).toBe(0);
+ }finally{await f.pool.query("UPDATE ls_contact_ops.legacy_links SET snapshot_ciphertext=$3 WHERE workspace_id=$1 AND legacy_lead_id=$2",[f.workspaceId,subject.lead,oldLink.snapshot_ciphertext]);}
+ expect((await directory.list(f.practitioner.actor,{...q,personId:subject.id,view:'active'})).total).toBe(1);
+ // Closing an old paid inquiry must not create a booking follow-up merely
+ // because another actual assigned case keeps this canonical client active.
+ const assignedClient=randomUUID(),assignedCase=randomUUID();
+ await f.pool.query("INSERT INTO ls_cases.clients(id,workspace_id,person_id,created_at) VALUES($1,$2,$3,clock_timestamp())",[assignedClient,f.workspaceId,subject.id]);
+ await f.pool.query("INSERT INTO ls_cases.cases(id,workspace_id,client_id,practitioner_account_id,state,created_at,updated_at) VALUES($1,$2,$3,$4,'active',clock_timestamp(),clock_timestamp())",[assignedCase,f.workspaceId,assignedClient,f.practitioner.actor.id]);
+ const paidLink=(await f.pool.query("SELECT snapshot_ciphertext FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND legacy_lead_id=$2",[f.workspaceId,secondLead])).rows[0];
+ const paidAad=`ls_contact_ops/legacy/v1/${f.workspaceId}/${sourceFileId}/${sourceSheetId}/${secondLead}`,closedPaid=JSON.parse(unseal(paidLink.snapshot_ciphertext,paidAad,f.keyring));
+ closedPaid.payload.sourceFields['Outcome']='Archived — previous paid inquiry';
+ try{
+  await f.pool.query("UPDATE ls_contact_ops.legacy_links SET snapshot_ciphertext=$3 WHERE workspace_id=$1 AND legacy_lead_id=$2",[f.workspaceId,secondLead,seal(JSON.stringify(closedPaid),paidAad,f.keyring)]);
+  expect((await directory.list(f.practitioner.actor,{...q,personId:subject.id,view:'active'})).items[0]).toMatchObject({personId:subject.id,archived:false});
+  expect((await directory.list(f.practitioner.actor,{...q,personId:subject.id,view:'paid'})).total).toBe(0);
+  expect((await directory.list(f.practitioner.actor,{...q,personId:subject.id,filter:'booking'})).total).toBe(0);
+ }finally{await f.pool.query("UPDATE ls_contact_ops.legacy_links SET snapshot_ciphertext=$3 WHERE workspace_id=$1 AND legacy_lead_id=$2",[f.workspaceId,secondLead,paidLink.snapshot_ciphertext]);}
+ expect((await directory.list(f.practitioner.actor,{...q,personId:subject.id,view:'paid'})).total).toBe(1);
  await f.pool.query("INSERT INTO ls_onboarding.payment_reversals(workspace_id,provider_account_id,transaction_id) VALUES($1,'synthetic-provider',$2)",[f.workspaceId,allocations[1]]);
  expect((await directory.list(f.practitioner.actor,{...q,search:subject.lead,view:"paid"})).total).toBe(0);
  expect((await directory.list(f.practitioner.actor,{...q,search:subject.lead,view:"active"})).total).toBe(1);
+});
+
+test("native PostgreSQL keeps active profiled clients visible and matches new inquiries per encrypted reference",async()=>{
+ const client=(await f.pool.query("SELECT cl.person_id,c.state FROM ls_cases.cases c JOIN ls_cases.clients cl ON cl.workspace_id=c.workspace_id AND cl.id=c.client_id WHERE c.workspace_id=$1 AND c.id=$2",[f.workspaceId,f.second.id])).rows[0];
+ expect(client.state).toBe('active');
+ const personId=client.person_id,oldLead='LS-LEAD-synthetic-older-'+randomBytes(4).toString('hex'),freshLead='LS-LEAD-synthetic-new-'+randomBytes(4).toString('hex');
+ const profile:CrmProfile={personId,stage:'Archived — previous inquiry',nextAction:'Synthetic returning inquiry',followUpDate:q.today,notes:'Synthetic clinical access is separate from marketing history',legacyIds:[oldLead,freshLead]};
+ await native.create(f.practitioner.actor,profile,'synthetic-active-profile-'+randomUUID());
+ await link(personId,oldLead);await link(personId,freshLead);
+ await f.pool.query("UPDATE ls_contact_ops.profiles SET archived_at=clock_timestamp() WHERE workspace_id=$1 AND person_id=$2",[f.workspaceId,personId]);
+ const historic=(await f.pool.query("SELECT snapshot_ciphertext FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND legacy_lead_id=$2",[f.workspaceId,oldLead])).rows[0];
+ const aad=`ls_contact_ops/legacy/v1/${f.workspaceId}/${sourceFileId}/${sourceSheetId}/${oldLead}`,snapshot=JSON.parse(unseal(historic.snapshot_ciphertext,aad,f.keyring));
+ snapshot.payload.sourceFields['Form sent']='synthetic-older-sent';snapshot.payload.sourceFields['Form submitted']='synthetic-older-submitted';snapshot.payload.sourceFields['Outcome']='Archived — previous inquiry';
+ await f.pool.query("UPDATE ls_contact_ops.legacy_links SET snapshot_ciphertext=$3 WHERE workspace_id=$1 AND legacy_lead_id=$2",[f.workspaceId,oldLead,seal(JSON.stringify(snapshot),aad,f.keyring)]);
+ const query={...q,personId};
+ const active=await directory.list(f.practitioner.actor,{...query,view:'active'});
+ expect(active).toMatchObject({total:1,items:[{personId,version:1,stage:profile.stage,archived:false,doNotContact:false,caseLinks:[{caseId:f.second.id,state:'active'}]}]});
+ expect((await directory.list(f.practitioner.actor,{...query,view:'archived'})).total).toBe(0);
+ expect((await directory.list(f.practitioner.actor,{...query,view:'prospects',filter:'new'})).total).toBe(1);
+ expect((await f.pool.query("SELECT archived_at FROM ls_contact_ops.profiles WHERE workspace_id=$1 AND person_id=$2",[f.workspaceId,personId])).rows[0].archived_at).not.toBeNull();
+ await native.update(f.practitioner.actor,{...profile,stage:'Archived — do not contact'},1,'synthetic-opt-out-active-'+randomUUID());
+ expect((await directory.list(f.practitioner.actor,{...query,view:'active'})).items[0]).toMatchObject({personId,archived:false,doNotContact:true});
+ expect((await directory.list(f.practitioner.actor,{...query,view:'prospects',filter:'new'})).total).toBe(0);
+});
+
+test("native PostgreSQL keeps a paused assigned client out of prospect queues until a real new inquiry exists",async()=>{
+ const personId=randomUUID(),clientId=randomUUID(),caseId=randomUUID();
+ await f.pool.query("INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,'adult',$3,clock_timestamp())",[personId,f.workspaceId,seal(JSON.stringify({displayName:'Synthetic paused client'}),`person:${f.workspaceId}:${personId}`,f.keyring)]);
+ await f.pool.query("INSERT INTO ls_cases.clients(id,workspace_id,person_id,created_at) VALUES($1,$2,$3,clock_timestamp())",[clientId,f.workspaceId,personId]);
+ await f.pool.query("INSERT INTO ls_cases.cases(id,workspace_id,client_id,practitioner_account_id,state,created_at,updated_at) VALUES($1,$2,$3,$4,'paused',clock_timestamp(),clock_timestamp())",[caseId,f.workspaceId,clientId,f.practitioner.actor.id]);
+ const query={...q,personId};
+ async function check(version:number|null,state:string){
+  await f.pool.query("UPDATE ls_cases.cases SET state=$3 WHERE workspace_id=$1 AND id=$2",[f.workspaceId,caseId,state]);
+  expect((await directory.list(f.practitioner.actor,query)).items[0]).toMatchObject({personId,version,caseLinks:[{caseId,state}]});
+  for(const view of ['prospects','active'] as const)expect((await directory.list(f.practitioner.actor,{...query,view})).total).toBe(0);
+  expect((await directory.list(f.practitioner.actor,{...query,filter:'new'})).total).toBe(0);
+ }
+ for(const state of ['paused','completed','archived'])await check(null,state);
+ const profile:CrmProfile={personId,stage:'New inquiry',nextAction:'Review synthetic returning inquiry',followUpDate:q.today,notes:'Synthetic preserved client note',legacyIds:[]};
+ await native.create(f.practitioner.actor,profile,'synthetic-paused-profile-'+randomUUID());
+ for(const state of ['paused','completed','archived'])await check(1,state);
+ await f.pool.query("UPDATE ls_cases.cases SET state='paused' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,caseId]);
+ const lead='LS-LEAD-synthetic-paused-returning-'+randomBytes(4).toString('hex');
+ await native.update(f.practitioner.actor,{...profile,legacyIds:[lead]},1,'synthetic-paused-inquiry-'+randomUUID());
+ await link(personId,lead);
+ expect((await directory.list(f.practitioner.actor,{...query,view:'prospects',filter:'new'})).items[0]).toMatchObject({personId,version:2,notes:profile.notes});
+ expect((await directory.list(f.practitioner.actor,{...query,view:'active'})).total).toBe(0);
+ // An active case preserves client visibility, not a closed inquiry's eligibility.
+ await f.pool.query("UPDATE ls_cases.cases SET state='active' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,caseId]);
+ const saved=(await f.pool.query("SELECT snapshot_ciphertext FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND legacy_lead_id=$2",[f.workspaceId,lead])).rows[0];
+ const aad=`ls_contact_ops/legacy/v1/${f.workspaceId}/${sourceFileId}/${sourceSheetId}/${lead}`,snapshot=JSON.parse(unseal(saved.snapshot_ciphertext,aad,f.keyring));
+ snapshot.payload.sourceFields['Outcome']='Archived — old inquiry';
+ await f.pool.query("UPDATE ls_contact_ops.legacy_links SET snapshot_ciphertext=$3 WHERE workspace_id=$1 AND legacy_lead_id=$2",[f.workspaceId,lead,seal(JSON.stringify(snapshot),aad,f.keyring)]);
+ expect((await directory.list(f.practitioner.actor,{...query,view:'active'})).items[0]).toMatchObject({personId,archived:false,notes:profile.notes});
+ expect((await directory.list(f.practitioner.actor,{...query,view:'prospects'})).total).toBe(0);
+ expect((await directory.list(f.practitioner.actor,{...query,filter:'new'})).total).toBe(0);
+ const freshLead='LS-LEAD-synthetic-truly-new-'+randomBytes(4).toString('hex');
+ await native.update(f.practitioner.actor,{...profile,legacyIds:[lead,freshLead]},2,'synthetic-active-returning-'+randomUUID());
+ await link(personId,freshLead);
+ expect((await directory.list(f.practitioner.actor,{...query,view:'prospects',filter:'new'})).items[0]).toMatchObject({personId,version:3,notes:profile.notes});
+});
+
+test("native PostgreSQL preserves a new open inquiry alongside closed history without an assigned case",async()=>{
+ const personId=randomUUID(),oldLead='LS-LEAD-synthetic-closed-'+randomBytes(4).toString('hex'),freshLead='LS-LEAD-synthetic-reopened-'+randomBytes(4).toString('hex');
+ const profile:CrmProfile={personId,stage:'New inquiry',nextAction:'Review synthetic open inquiry',followUpDate:q.today,notes:'Synthetic preserved returning-inquiry note',legacyIds:[oldLead,freshLead]};
+ await f.pool.query("INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,'adult',$3,clock_timestamp())",[personId,f.workspaceId,seal(JSON.stringify({displayName:'Synthetic returning prospect'}),`person:${f.workspaceId}:${personId}`,f.keyring)]);
+ await native.create(f.practitioner.actor,profile,'synthetic-mixed-history-'+randomUUID());await link(personId,oldLead);await link(personId,freshLead);
+ async function fields(lead:string,changes:Record<string,string>){
+  const stored=(await f.pool.query("SELECT snapshot_ciphertext FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND legacy_lead_id=$2",[f.workspaceId,lead])).rows[0];
+  const aad=`ls_contact_ops/legacy/v1/${f.workspaceId}/${sourceFileId}/${sourceSheetId}/${lead}`,snapshot=JSON.parse(unseal(stored.snapshot_ciphertext,aad,f.keyring));
+  Object.assign(snapshot.payload.sourceFields,changes);
+  await f.pool.query("UPDATE ls_contact_ops.legacy_links SET snapshot_ciphertext=$3 WHERE workspace_id=$1 AND legacy_lead_id=$2",[f.workspaceId,lead,seal(JSON.stringify(snapshot),aad,f.keyring)]);
+ }
+ await fields(oldLead,{'Outcome':'Archived — previous inquiry'});
+ const query={...q,personId,view:'prospects' as const};
+ for(const [filter,sent,submitted] of [['new','',''],['intake','synthetic-sent',''],['payment','synthetic-sent','synthetic-submitted']] as const){
+  await fields(freshLead,{'Form sent':sent,'Form submitted':submitted});
+  const current=await directory.list(f.practitioner.actor,{...query,filter});
+  expect(current).toMatchObject({total:1,items:[{personId,archived:false,notes:profile.notes}]});expect(current.items[0]?.caseLinks??[]).toHaveLength(0);
+ }
+ await fields(freshLead,{'Outcome':'Closed — completed inquiry'});
+ expect((await directory.list(f.practitioner.actor,{...query,view:'archived'})).items[0]).toMatchObject({personId,archived:true});
+ expect((await directory.list(f.practitioner.actor,query)).total).toBe(0);
+ await fields(freshLead,{'Outcome':''});
+ await f.pool.query("UPDATE ls_contact_ops.profiles SET archived_at=clock_timestamp() WHERE workspace_id=$1 AND person_id=$2",[f.workspaceId,personId]);
+ expect((await directory.list(f.practitioner.actor,query)).total).toBe(0);
+ await f.pool.query("UPDATE ls_contact_ops.profiles SET archived_at=NULL WHERE workspace_id=$1 AND person_id=$2",[f.workspaceId,personId]);
+ await fields(oldLead,{'Outcome':'Do not contact - requested'});
+ expect((await directory.list(f.practitioner.actor,{...query,view:'all'})).items[0]).toMatchObject({personId,doNotContact:true});
+ expect((await directory.list(f.practitioner.actor,query)).total).toBe(0);
 });

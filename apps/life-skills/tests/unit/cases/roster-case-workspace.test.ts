@@ -4,37 +4,41 @@ import { expect, it, vi, beforeEach } from 'vitest';
 type Slot =
  | { kind: 'state'; value: unknown }
  | { kind: 'ref'; value: { current: unknown } }
- | { kind: 'effect'; deps: readonly unknown[] | undefined; cleanup: (() => void) | undefined };
+ | { kind: 'effect'; deps: readonly unknown[] | undefined; cleanup: (() => void) | undefined }
+ | { kind: 'callback'; deps: readonly unknown[]; value: unknown };
 
 const hook = vi.hoisted(() => {
  const slots: Slot[] = [];
  const pending: Array<{ index: number; effect: () => void | (() => void) }> = [];
  let cursor = 0, mounted = true, afterUnmountUpdates = 0;
- const accountRead = vi.fn();
+ const accountRead = vi.fn(), peopleRead = vi.fn();
  const changed = (a: readonly unknown[] | undefined, b: readonly unknown[] | undefined) =>
   !a || !b || a.length !== b.length || a.some((value, index) => value !== b[index]);
  return {
-  accountRead,
-  reset() { slots.length = 0; pending.length = 0; cursor = 0; mounted = true; afterUnmountUpdates = 0; accountRead.mockReset(); },
+  accountRead, peopleRead,
+  reset() { slots.length = 0; pending.length = 0; cursor = 0; mounted = true; afterUnmountUpdates = 0; accountRead.mockReset(); peopleRead.mockReset(); },
   render<T>(view: () => T): T { cursor = 0; return view(); },
   flushEffects() { for (const next of pending.splice(0)) { const slot = slots[next.index]; if (slot?.kind === 'effect') { slot.cleanup?.(); slot.cleanup = next.effect() || undefined; } } },
   unmount() { mounted = false; for (const slot of slots) if (slot.kind === 'effect') slot.cleanup?.(); },
   afterUnmountUpdates: () => afterUnmountUpdates,
-  useState<T>(initial: T) { const index = cursor++; let slot = slots[index]; if (!slot) { slot = { kind: 'state', value: initial }; slots[index] = slot; } if (slot.kind !== 'state') throw new Error('HOOK_ORDER'); return [slot.value as T, (value: T | ((current: T) => T)) => { if (!mounted) { afterUnmountUpdates++; return; } slot.value = typeof value === 'function' ? (value as (current: T) => T)(slot.value as T) : value; }] as const; },
+  useState<T>(initial: T | (() => T)) { const index = cursor++; let slot = slots[index]; if (!slot) { slot = { kind: 'state', value: typeof initial === 'function' ? (initial as () => T)() : initial }; slots[index] = slot; } if (slot.kind !== 'state') throw new Error('HOOK_ORDER'); return [slot.value as T, (value: T | ((current: T) => T)) => { if (!mounted) { afterUnmountUpdates++; return; } slot.value = typeof value === 'function' ? (value as (current: T) => T)(slot.value as T) : value; }] as const; },
   useRef<T>(initial: T) { const index = cursor++; let slot = slots[index]; if (!slot) { slot = { kind: 'ref', value: { current: initial } }; slots[index] = slot; } if (slot.kind !== 'ref') throw new Error('HOOK_ORDER'); return slot.value as { current: T }; },
   useMemo<T>(factory: () => T) { cursor++; return factory(); },
+  useCallback<T>(callback:T,deps:readonly unknown[]){const index=cursor++,slot=slots[index];if(!slot||slot.kind==='callback'&&changed(slot.deps,deps)){slots[index]={kind:'callback',deps,value:callback};return callback;}if(slot.kind!=='callback')throw Error('HOOK_ORDER');return slot.value as T;},
   useEffect(effect: () => void | (() => void), deps?: readonly unknown[]) { const index = cursor++; const slot = slots[index]; if (!slot) { slots[index] = { kind: 'effect', deps, cleanup: undefined }; pending.push({ index, effect }); return; } if (slot.kind !== 'effect') throw new Error('HOOK_ORDER'); if (changed(slot.deps, deps)) { slot.deps = deps; pending.push({ index, effect }); } },
  };
 });
 
 vi.mock('react', async importOriginal => {
  const actual = await importOriginal<typeof import('react')>();
- return { ...actual, useState: hook.useState, useRef: hook.useRef, useMemo: hook.useMemo, useEffect: hook.useEffect };
+ return { ...actual, useState: hook.useState, useRef: hook.useRef, useMemo: hook.useMemo, useCallback:hook.useCallback, useEffect: hook.useEffect };
 });
 vi.mock('../../../src/features/identity/client.ts', async importOriginal => ({ ...(await importOriginal<typeof import('../../../src/features/identity/client.ts')>()), accountRead: hook.accountRead }));
+vi.mock('../../../src/features/contact-ops/native-people-workspace.tsx',async importOriginal=>({...await importOriginal<typeof import('../../../src/features/contact-ops/native-people-workspace.tsx')>(),requestPeople:hook.peopleRead}));
 
 import { CaseWorkspace } from '../../../src/features/cases/case-workspace.tsx';
-import { ClientsRoster } from '../../../src/features/cases/clients-roster.tsx';
+import { ClientsRoster,LegacyClientsRoster } from '../../../src/features/cases/clients-roster.tsx';
+import {NativePeopleWorkspace,PeopleRequestError} from '../../../src/features/contact-ops/native-people-workspace.tsx';
 import { ProspectsClient } from '../../../src/features/prospects/client.tsx';
 import { IdentityClientError } from '../../../src/features/identity/client.ts';
 
@@ -102,13 +106,13 @@ it('guards a late request after unmount/logout', async () => {
 
 it('offers an actionable retry after a roster error and reloads synthetic cases', async () => {
  hook.accountRead.mockRejectedValueOnce(new Error('synthetic offline')).mockResolvedValueOnce([caseA]);
- hook.render(() => ClientsRoster({ locale: 'en' })); hook.flushEffects(); await tick();
- let output = hook.render(() => ClientsRoster({ locale: 'en' }));
+ hook.render(() => LegacyClientsRoster({ locale: 'en' })); hook.flushEffects(); await tick();
+ let output = hook.render(() => LegacyClientsRoster({ locale: 'en' }));
  const directory = find(output, element => element.type === ProspectsClient);
  expect(directory?.props.caseState).toBe('error');
  expect(directory?.props.onRetryCases).toBeTypeOf('function');
  (directory!.props.onRetryCases as () => void)(); await tick();
- output = hook.render(() => ClientsRoster({ locale: 'en' }));
+ output = hook.render(() => LegacyClientsRoster({ locale: 'en' }));
  const recovered = find(output, element => element.type === ProspectsClient);
  expect(recovered?.props.caseState).toBe('ready');
  expect(recovered?.props.clientCases).toEqual([caseA]);
@@ -116,12 +120,12 @@ it('offers an actionable retry after a roster error and reloads synthetic cases'
 
 it('distinguishes an expired case-directory session from a CRM outage and preserves the selected People URL', async () => {
  hook.accountRead.mockRejectedValueOnce(new IdentityClientError('UNAUTHENTICATED'));
- hook.render(() => ClientsRoster({ locale: 'he', section: 'prospects', prospectFilter: 'today' })); hook.flushEffects(); await tick();
- const output = hook.render(() => ClientsRoster({ locale: 'he', section: 'prospects', prospectFilter: 'today' }));
+ hook.render(() => LegacyClientsRoster({ locale: 'he', section: 'prospects', prospectFilter: 'today' })); hook.flushEffects(); await tick();
+ const output = hook.render(() => LegacyClientsRoster({ locale: 'he', section: 'prospects', prospectFilter: 'today' }));
  const directory = find(output, element => element.type === ProspectsClient);
  expect(directory?.props.caseState).toBe(null); // The prospects-only view does not read the case directory.
- hook.render(() => ClientsRoster({ locale: 'he', section: 'all', prospectFilter: 'today' })); hook.flushEffects(); await tick();
- const active = hook.render(() => ClientsRoster({ locale: 'he', section: 'all', prospectFilter: 'today' }));
+ hook.render(() => LegacyClientsRoster({ locale: 'he', section: 'all', prospectFilter: 'today' })); hook.flushEffects(); await tick();
+ const active = hook.render(() => LegacyClientsRoster({ locale: 'he', section: 'all', prospectFilter: 'today' }));
  const cases = find(active, element => element.type === ProspectsClient);
  expect(cases?.props.caseState).toBe('auth');
  expect(cases?.props.returnPath).toBe('/he/app/clients?section=all&filter=today');
@@ -269,4 +273,173 @@ it('does not call unavailable private data an empty People directory', async () 
   expect(text(output)).toContain('The CRM could not be loaded');
   expect(text(output)).not.toContain('No prospects match these filters');
  } finally { vi.unstubAllGlobals(); }
+});
+
+it('renders exactly the durable Sheet directory, without reading native shadows',async()=>{
+ hook.peopleRead.mockResolvedValue({source:'sheet',authorityEpoch:1});
+ const view=()=>hook.render(()=>ClientsRoster({locale:'en',section:'prospects'}));view();hook.flushEffects();await tick();
+ const output=view();expect(output.type).toBe(LegacyClientsRoster);
+ expect(find(output,e=>e.type===NativePeopleWorkspace)).toBeUndefined();
+ expect(hook.peopleRead).toHaveBeenCalledWith(new URLSearchParams({view:'prospects'}));
+ expect(hook.accountRead).not.toHaveBeenCalled();
+});
+it('renders one native directory only after the server selects the actual native authority',async()=>{
+ const data={source:'native',authorityEpoch:3,page:{items:[],total:0,page:1,pageSize:12,pages:1}};
+ hook.peopleRead.mockResolvedValue(data);
+ const view=()=>hook.render(()=>ClientsRoster({locale:'he',section:'active'}));view();hook.flushEffects();await tick();
+ const output=view(),native=find(output,e=>e.type===NativePeopleWorkspace);
+ expect(native?.props.initial).toBe(data);expect(native?.props.view).toBe('active');
+ expect(find(output,e=>e.type===LegacyClientsRoster||e.type===ProspectsClient)).toBeUndefined();
+ expect(hook.accountRead).not.toHaveBeenCalled();
+});
+it.each([401,403,409,503])('source failure %i never initializes Sheet or calls a directory empty',async status=>{
+ hook.peopleRead.mockRejectedValue(new PeopleRequestError(status));
+ const view=()=>hook.render(()=>ClientsRoster({locale:'en'}));view();hook.flushEffects();await tick();
+ const output=view();expect(find(output,e=>e.type===LegacyClientsRoster||e.type===NativePeopleWorkspace||e.type===ProspectsClient)).toBeUndefined();
+ expect(find(output,e=>e.props.role==='alert')).toBeDefined();expect(text(output)).not.toContain('No people match');
+ expect(hook.accountRead).not.toHaveBeenCalled();
+});
+it('ignores a late previous-section source response and all source responses after unmount',async()=>{
+ let first!:(r:unknown)=>void,second!:(r:unknown)=>void;
+ hook.peopleRead.mockReturnValueOnce(new Promise(resolve=>{first=resolve;})).mockReturnValueOnce(new Promise(resolve=>{second=resolve;}));
+ hook.render(()=>ClientsRoster({locale:'en',section:'all'}));hook.flushEffects();await tick();
+ hook.render(()=>ClientsRoster({locale:'en',section:'active'}));hook.flushEffects();await tick();
+ second({source:'native',authorityEpoch:3,page:{items:[],total:0,page:1,pageSize:12,pages:1}});await tick();
+ first({source:'sheet',authorityEpoch:0});await tick();
+ expect(find(hook.render(()=>ClientsRoster({locale:'en',section:'active'})),e=>e.type===NativePeopleWorkspace)).toBeDefined();
+ hook.reset();let late!:(r:unknown)=>void;hook.peopleRead.mockReturnValue(new Promise(resolve=>{late=resolve;}));
+ hook.render(()=>ClientsRoster({locale:'en'}));hook.flushEffects();await tick();hook.unmount();late({source:'sheet',authorityEpoch:0});await tick();
+ expect(hook.afterUnmountUpdates()).toBe(0);
+});
+it('preserves validated selected-person and DEMO context on mid-page session expiry',async()=>{
+ const personId='00000000-0000-4000-8000-000000000001';hook.peopleRead.mockRejectedValue(new PeopleRequestError(401));
+ const view=()=>hook.render(()=>ClientsRoster({locale:'he',section:'active',prospectFilter:'today',focusLeadId:'LS-LEAD-synthetic',personId,mode:'demo'}));
+ view();hook.flushEffects();await tick();
+ const signIn=find(view(),e=>e.type==='a'&&String(e.props.href).startsWith('/he/login?next='));
+ expect(signIn?.props.href).toBe('/he/login?next='+encodeURIComponent(`/he/app/clients?section=active&filter=today&leadId=LS-LEAD-synthetic&personId=${personId}&mode=demo`));
+ const invalid=hook.render(()=>ClientsRoster({locale:'he',personId:'../../escape',mode:'practitioner'}));
+ expect(find(invalid,e=>e.type==='a')?.props.href).toBe('/he/login?next=%2Fhe%2Fapp%2Fclients');
+});
+it('binds the first native response to validated DEMO/person context, before rendering any rows',async()=>{
+ const personId='00000000-0000-4000-8000-000000000001';
+ const data={source:'native',authorityEpoch:3,page:{items:[],total:0,page:1,pageSize:12,pages:1}};
+ hook.peopleRead.mockResolvedValue(data);
+ const view=()=>hook.render(()=>ClientsRoster({locale:'en',section:'paid',personId,mode:'demo'}));
+ view();hook.flushEffects();await tick();
+ expect(hook.peopleRead).toHaveBeenCalledWith(new URLSearchParams({view:'all',mode:'demo',personId}));
+ const native=find(view(),e=>e.type===NativePeopleWorkspace);
+ expect(native?.props.initialMode).toBe('demo');expect(native?.props.initialPersonId).toBe(personId);
+});
+it('never renders live Sheet records under an explicit DEMO context',async()=>{
+ hook.peopleRead.mockResolvedValue({source:'sheet',authorityEpoch:1});
+ const view=()=>hook.render(()=>ClientsRoster({locale:'en',mode:'demo'}));view();hook.flushEffects();await tick();
+ expect(find(view(),e=>e.type===LegacyClientsRoster||e.type===ProspectsClient)).toBeUndefined();
+ expect(text(view())).toContain('No live records are shown in DEMO');
+});
+it('accepts a verified live Sheet response after returning from an initially DEMO native view',async()=>{
+ const data={source:'native',authorityEpoch:3,page:{items:[],total:0,page:1,pageSize:12,pages:1}};
+ hook.peopleRead.mockResolvedValue(data);
+ const view=()=>hook.render(()=>ClientsRoster({locale:'en',mode:'demo'}));view();hook.flushEffects();await tick();
+ const native=find(view(),e=>e.type===NativePeopleWorkspace);
+ (native!.props.onSheet as(response:{source:'sheet';authorityEpoch:number},context:{mode:'live';filter:'all'})=>void)({source:'sheet',authorityEpoch:4},{mode:'live',filter:'all'});
+ expect(view().type).toBe(LegacyClientsRoster);
+ expect(text(view())).not.toContain('No live records are shown in DEMO');
+});
+it('binds the Sheet fallback callback to the live request after leaving DEMO',async()=>{
+ let location=new URL('https://synthetic.invalid/en/app/clients?mode=demo');
+ vi.stubGlobal('window',{get location(){return location;},history:{pushState(_state:unknown,_unused:string,url:URL){location=new URL(url);}},addEventListener(){},removeEventListener(){}});
+ const sheet={source:'sheet' as const,authorityEpoch:4};
+ vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,status:200,json:async()=>({ok:true,data:sheet})}));
+ const initial={source:'native' as const,authorityEpoch:3,page:{items:[],total:0,page:1,pageSize:12,pages:1}},onSheet=vi.fn();
+ const view=()=>hook.render(()=>NativePeopleWorkspace({locale:'en',view:'all',initial,initialMode:'demo',onSheet}));
+ try{
+  (find(view(),e=>e.type==='button'&&e.props.children==='Return to live app')!.props.onClick as()=>void)();
+  await tick();await tick();expect(location.search).toBe('');
+  expect(onSheet).toHaveBeenCalledExactlyOnceWith(sheet,{mode:'live',filter:'all',personId:undefined,leadId:undefined});
+ }finally{vi.unstubAllGlobals();}
+});
+
+it('uses accepted workflow and person context after a native-to-Sheet rollback instead of original props',async()=>{
+ hook.peopleRead.mockResolvedValue({source:'native',authorityEpoch:3,page:{items:[],total:0,page:1,pageSize:12,pages:1}});
+ const view=()=>hook.render(()=>ClientsRoster({locale:'en',section:'prospects',prospectFilter:'today',focusLeadId:'LS-LEAD-synthetic-old'}));view();hook.flushEffects();await tick();
+ const native=find(view(),e=>e.type===NativePeopleWorkspace),accept=native!.props.onSheet as(response:{source:'sheet';authorityEpoch:number},context:{mode:'live';filter:'all';personId?:string;leadId?:string})=>void;
+ accept({source:'sheet',authorityEpoch:4},{mode:'live',filter:'all'});
+ expect(view().type).toBe(LegacyClientsRoster);expect(view().props.prospectFilter).toBe('all');expect(view().props.focusLeadId).toBeUndefined();
+ accept({source:'sheet',authorityEpoch:4},{mode:'live',filter:'all',leadId:'LS-LEAD-synthetic-current'});
+ expect(view().props.focusLeadId).toBe('LS-LEAD-synthetic-current');
+ accept({source:'sheet',authorityEpoch:4},{mode:'live',filter:'all',personId:'00000000-0000-4000-8000-000000000001'});
+ expect(view().type).not.toBe(LegacyClientsRoster);expect(text(view())).toContain('No unrelated records are shown.');
+});
+
+it('carries the cleared workflow preset in the actual Sheet fallback request',async()=>{
+ let location=new URL('https://synthetic.invalid/en/app/clients?filter=today');
+ vi.stubGlobal('window',{get location(){return location;},history:{pushState(_state:unknown,_unused:string,url:URL){location=new URL(url);}},addEventListener(){},removeEventListener(){}});
+ const sheet={source:'sheet' as const,authorityEpoch:4},onSheet=vi.fn(),initial={source:'native' as const,authorityEpoch:3,page:{items:[],total:0,page:1,pageSize:12,pages:1}};
+ vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,status:200,json:async()=>({ok:true,data:sheet})}));
+ try{
+  const view=()=>hook.render(()=>NativePeopleWorkspace({locale:'en',view:'prospects',initial,initialFilter:'today',onSheet}));
+  (find(view(),e=>e.type==='button'&&e.props.children==='Clear workflow filter')!.props.onClick as()=>void)();await tick();await tick();
+  expect(location.search).toBe('');expect(onSheet).toHaveBeenCalledExactlyOnceWith(sheet,{mode:'live',filter:'all',personId:undefined,leadId:undefined});
+ }finally{vi.unstubAllGlobals();}
+});
+it('resolves a Calendar lead deep link through the native API before rendering its person',async()=>{
+ const personId='00000000-0000-4000-8000-000000000001',leadId='LS-LEAD-synthetic-follow-up';
+ const data={source:'native',authorityEpoch:3,page:{items:[{personId}],total:1,page:1,pageSize:12,pages:1}};
+ hook.peopleRead.mockResolvedValue(data);
+ const view=()=>hook.render(()=>ClientsRoster({locale:'en',section:'prospects',focusLeadId:leadId}));view();hook.flushEffects();await tick();
+ expect(hook.peopleRead).toHaveBeenCalledWith(new URLSearchParams({view:'all',leadId}));
+ const native=find(view(),e=>e.type===NativePeopleWorkspace);
+ expect(native?.props.initialLeadId).toBe(leadId);expect(native?.props.initialPersonId).toBe(personId);
+});
+it.each(['today','new','intake','payment','booking','archived'] as const)('preserves the validated legacy %s workflow before the native list renders',async filter=>{
+ const data={source:'native',authorityEpoch:3,page:{items:[],total:0,page:1,pageSize:12,pages:1}};hook.peopleRead.mockResolvedValue(data);
+ const view=()=>hook.render(()=>ClientsRoster({locale:'en',section:'prospects',prospectFilter:filter}));view();hook.flushEffects();await tick();
+ expect(hook.peopleRead).toHaveBeenCalledWith(new URLSearchParams({view:'prospects',filter}));
+ expect(find(view(),e=>e.type===NativePeopleWorkspace)?.props.initialFilter).toBe(filter);
+});
+it('does not allow a workflow filter to hide the selected Calendar person',async()=>{
+ hook.peopleRead.mockResolvedValue({source:'native',authorityEpoch:3,page:{items:[],total:0,page:1,pageSize:12,pages:1}});
+ const view=()=>hook.render(()=>ClientsRoster({locale:'he',section:'prospects',prospectFilter:'today',focusLeadId:'LS-LEAD-synthetic'}));view();hook.flushEffects();await tick();
+ expect(hook.peopleRead).toHaveBeenCalledWith(new URLSearchParams({view:'all',leadId:'LS-LEAD-synthetic'}));
+});
+it('keeps URL workflow context on reload and Back and clears it explicitly without unrelated filters',async()=>{
+ let location=new URL('https://synthetic.invalid/en/app/clients?section=prospects&filter=today'),popstate:(()=>void)|undefined;
+ vi.stubGlobal('window',{get location(){return location;},history:{pushState(_state:unknown,_unused:string,url:URL){location=new URL(url);}},addEventListener(event:string,listener:()=>void){if(event==='popstate')popstate=listener;},removeEventListener(){}});
+ const initial={source:'native' as const,authorityEpoch:3,page:{items:[],total:0,page:1,pageSize:12,pages:1}};
+ const fetch=vi.fn().mockResolvedValue({ok:true,status:200,json:async()=>({ok:true,data:initial})});vi.stubGlobal('fetch',fetch);
+ const view=()=>hook.render(()=>NativePeopleWorkspace({locale:'en',view:'prospects',initial,initialFilter:'today',onSheet:()=>{}}));
+ try{
+  view();hook.flushEffects();await tick();await tick();
+  expect(new URL(String(fetch.mock.calls[0]![0]),'https://synthetic.invalid').searchParams.get('filter')).toBe('today');
+  expect(text(view())).toContain('Due today');
+  (find(view(),e=>e.type==='button'&&e.props.children==='Clear workflow filter')!.props.onClick as()=>void)();await tick();await tick();
+  expect(location.search).toBe('?section=prospects');expect(text(view())).not.toContain('Clear workflow filter');
+  expect(new URL(String(fetch.mock.calls.at(-1)![0]),'https://synthetic.invalid').searchParams.has('filter')).toBe(false);
+  location=new URL('https://synthetic.invalid/en/app/clients?section=prospects&filter=today');popstate!();await tick();await tick();
+  expect(new URL(String(fetch.mock.calls.at(-1)![0]),'https://synthetic.invalid').searchParams.get('filter')).toBe('today');
+ }finally{vi.unstubAllGlobals();}
+});
+it('keeps an unresolved native lead in an explicit person context instead of an unrelated first page',async()=>{
+ hook.peopleRead.mockResolvedValue({source:'native',authorityEpoch:3,page:{items:[],total:0,page:1,pageSize:12,pages:1}});
+ const view=()=>hook.render(()=>ClientsRoster({locale:'he',focusLeadId:'LS-LEAD-synthetic-missing'}));view();hook.flushEffects();await tick();
+ const native=find(view(),e=>e.type===NativePeopleWorkspace);
+ expect(native?.props.initialLeadId).toBe('LS-LEAD-synthetic-missing');expect(native?.props.initialPersonId).toBeUndefined();
+});
+it.each([409,503])('clears live rows on DEMO transition failure %i and retries DEMO, not live',async status=>{
+ let location=new URL('https://synthetic.invalid/en/app/clients');
+ vi.stubGlobal('window',{get location(){return location;},history:{pushState(_state:unknown,_unused:string,url:URL){location=new URL(url);}},addEventListener(){},removeEventListener(){}});
+ const fetch=vi.fn().mockResolvedValue({ok:false,status,json:async()=>({ok:false})});vi.stubGlobal('fetch',fetch);
+ const row={personId:'00000000-0000-4000-8000-000000000001',displayName:'Synthetic live record',identityKind:'adult' as const,stage:'New inquiry',nextAction:null,followUpDate:null,notes:'',version:1,mode:'live' as const,archived:false,doNotContact:false,references:[]};
+ const initial={source:'native' as const,authorityEpoch:3,page:{items:[row],total:1,page:1,pageSize:12,pages:1}},onSheet=vi.fn();
+ const view=()=>hook.render(()=>NativePeopleWorkspace({locale:'en',view:'all',initial,onSheet}));
+ try{
+  expect(text(view())).toContain(row.displayName);
+  (find(view(),e=>e.type==='button'&&e.props.children==='DEMO records')!.props.onClick as()=>void)();
+  expect(location.search).toBe('?mode=demo');expect(text(view())).not.toContain(row.displayName);
+  await tick();await tick();expect(text(view())).not.toContain(row.displayName);
+  (find(view(),e=>e.type==='button'&&e.props.children==='Retry')!.props.onClick as()=>void)();
+  await tick();await tick();expect(fetch).toHaveBeenCalledTimes(2);
+  for(const [url] of fetch.mock.calls)expect(new URL(String(url),'https://synthetic.invalid').searchParams.get('mode')).toBe('demo');
+  expect(text(view())).not.toContain(row.displayName);expect(onSheet).not.toHaveBeenCalled();
+ }finally{vi.unstubAllGlobals();}
 });

@@ -1,0 +1,32 @@
+.lsu-native-people { min-width: 0; }
+.lsw.lsu .lsw-main.lsu-clients-directory { padding: 20px; gap: 12px; }
+.lsw.lsu .lsu-clients-directory > .lsw-page-header { margin-block-end: 0; }
+.lsw.lsu .lsu-clients-directory > .lsw-page-header h1 { margin: 0; }
+.lsw.lsu .lsu-native-people .lsu-people-toolbar { padding: 12px; }
+.lsu-native-table { overflow-x: auto; margin-block: .5rem; }
+.lsu-native-table table { border-collapse: collapse; width: 100%; background: var(--ls-paper); }
+.lsu-native-table caption { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.lsu-native-table th, .lsu-native-table td { text-align: start; padding: .75rem; border-block-end: 1px solid var(--ls-line); overflow-wrap: anywhere; }
+.lsu-native-table th { font-weight: 700; }
+.lsu-native-table td:last-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.lsu-native-table th:first-child { width: 40%; }
+.lsu-native-people pre { overflow-wrap: anywhere; font: inherit; }
+.lsu-native-cards { display: none; }
+@media (min-width: 768px) and (max-width: 1279px) {
+ .lsw.lsu .lsu-native-people .lsu-people-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+ .lsu-native-people .lsu-people-toolbar > label:first-child { grid-column: 1 / -1; }
+}
+@media (max-width: 767px) {
+ .lsu-native-table { display: none; }
+ .lsu-native-cards { display: grid; }
+ .lsw.lsu .lsu-native-people .lsu-native-cards .lsu-person-row {
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px;
+  padding: 14px; min-height: 96px; text-align: start; width: 100%;
+  white-space: normal; overflow-wrap: anywhere; line-height: 1.6; font-weight: 400;
+ }
+ .lsu-native-cards .lsu-person-row > * { min-width: 0; }
+ .lsu-native-cards .lsu-person-row > strong { font-size: 19px; }
+ .lsw.lsu .lsu-native-people .lsu-people-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+ .lsu-native-people .lsu-people-toolbar > label:first-child { grid-column: 1 / -1; }
+ .lsw.lsu .lsw-main.lsu-clients-directory { padding: 16px; }
+}
