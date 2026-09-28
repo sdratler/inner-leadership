@@ -59,13 +59,14 @@ describe("native CRM profile candidate with existing encrypted store",()=>{
  });
  it("saves and reads encrypted synthetic profile under the same person AAD",async()=>{
   const {state,store}=fixture();
+  await store.create(actor,profile,"seed-profile");
   expect(await store.update(actor,profile,1,"synthetic-op")).toEqual({version:2,replayed:false});
   expect(state.cipher).not.toContain(profile.notes);
   expect(await store.read(actor,profile.personId)).toMatchObject({version:2,profile});
   await expect(store.read(actor,"different-person")).rejects.toThrow();
  });
  it("replays one command once and rejects reused operation IDs or stale versions",async()=>{
-  const {state,store}=fixture();await store.update(actor,profile,1,"synthetic-op");
+  const {state,store}=fixture();await store.create(actor,profile,"seed-profile");await store.update(actor,profile,1,"synthetic-op");
   expect(await store.update(actor,profile,1,"synthetic-op")).toEqual({version:2,replayed:true});
   expect(state.version).toBe(2);
   await expect(store.update(actor,{...profile,notes:"Different synthetic note"},1,"synthetic-op")).rejects.toThrow("OPERATION_REUSED_WITH_DIFFERENT_INPUT");
@@ -73,6 +74,7 @@ describe("native CRM profile candidate with existing encrypted store",()=>{
  });
  it("revalidates the actual session and role before every private read or write",async()=>{
   const {state,store}=fixture();
+  await store.create(actor,profile,"seed-profile");
   state.sessionActive=false;
   await expect(store.read(actor,profile.personId)).rejects.toThrow("UNAUTHENTICATED");
   state.sessionActive=true;state.accountRole="parent";
@@ -82,5 +84,12 @@ describe("native CRM profile candidate with existing encrypted store",()=>{
   state.accountState="active";
   await store.update(actor,{...profile,notes:"'; DROP TABLE x;--"},1,"synthetic-op");
   expect(state.statements.every(sql=>!sql.includes("DROP TABLE"))).toBe(true);
+ });
+ it("a locked update cannot manufacture a missing profile or command receipt",async()=>{
+  const {state,store}=fixture();
+  await expect(store.update(actor,profile,1,"missing-profile")).rejects.toThrow("STALE_PROFILE_VERSION");
+  expect(state.cipher).toBe("");expect(state.version).toBe(1);expect(state.receipts.size).toBe(0);
+  expect(state.statements.some(sql=>sql.includes("SELECT payload_ciphertext FROM ls_contact_ops.profiles")&&sql.endsWith("FOR UPDATE"))).toBe(true);
+  expect(state.statements.some(sql=>sql.startsWith("UPDATE ls_contact_ops.profiles"))).toBe(false);
  });
 });
