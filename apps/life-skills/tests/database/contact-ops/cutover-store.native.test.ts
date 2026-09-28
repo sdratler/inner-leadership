@@ -1,0 +1,85 @@
+import {afterAll,expect,test,vi} from "vitest";
+import {randomUUID} from "node:crypto";
+vi.mock("server-only",()=>({}));
+import {fixture,poolStore,type Fixture} from "../calendar/fixture.ts";
+import {ContactCutoverStore} from "../../../src/features/contact-ops/server/cutover-store.ts";
+import type {CutoverProof} from "../../../src/features/contact-ops/core/cutover.ts";
+const fixtures:Fixture[]=[];
+afterAll(async()=>{for(const f of fixtures)await f.pool.end();});
+async function setup(){const f=await fixture();fixtures.push(f);return {f,store:new ContactCutoverStore(poolStore(f.pool),f.keyring,"synthetic-authority-integrity-key-20260928")};}
+const proof=(epoch:number,patch:Partial<CutoverProof>={}):CutoverProof=>({batchId:"synthetic-cutover-batch",sourceFileId:"synthetic-workbook",sourceRevision:"synthetic-frozen-revision",expectedEpoch:epoch,
+ backupRestored:true,snapshotMatched:true,imported:true,rowContentMatched:true,allRowsAccounted:true,identityConflicts:0,paymentsReconciled:true,writersFenced:true,
+ inboundDurable:true,deltaDrained:true,consumersRepointed:true,sheetConsumersRepointed:true,nativeBrowserVerified:true,oldSchedulesDisabled:true,sourceFrozen:true,restorePlanReady:true,...patch});
+// These are isolated synthetic proof fixtures, NOT live receiver/backup/browser proof.
+
+test("native cutover persists encrypted exact-epoch transitions and immutable idempotent results",async()=>{
+ const {f,store}=await setup(),a=f.practitioner.actor;
+ expect(await store.read(a)).toMatchObject({phase:"sheet_active",epoch:0});
+ await expect(store.advance(a,{action:"prepare",proof:proof(0,{allRowsAccounted:false}),operationId:"invalid-prepare"})).rejects.toThrow("CONFLICT");
+ expect((await f.pool.query("SELECT count(*)::integer AS n FROM ls_contact_ops.cutover WHERE workspace_id=$1",[f.workspaceId])).rows[0].n).toBe(0);
+ const input={action:"prepare" as const,proof:proof(0),operationId:"prepare-synthetic"};
+ expect(await store.advance(a,input)).toMatchObject({state:{phase:"shadow_ready",epoch:1},replayed:false});
+ expect(await store.advance(a,input)).toMatchObject({state:{phase:"shadow_ready",epoch:1},replayed:true});
+ await expect(store.advance(a,{...input,proof:proof(0,{sourceRevision:"different"})})).rejects.toThrow("CONFLICT");
+ await store.advance(a,{action:"freeze",proof:proof(1),operationId:"freeze-synthetic"});
+ expect(await store.advance(a,input)).toMatchObject({state:{phase:"shadow_ready",epoch:1},replayed:true});
+ expect(await store.read(a)).toMatchObject({phase:"frozen",epoch:2});
+ const rows=(await f.pool.query("SELECT state_ciphertext FROM ls_contact_ops.cutover WHERE workspace_id=$1",[f.workspaceId])).rows;
+ expect(rows[0].state_ciphertext).not.toContain("synthetic-workbook");
+ expect((await f.pool.query("SELECT count(*)::integer AS n FROM ls_contact_ops.cutover_history WHERE workspace_id=$1",[f.workspaceId])).rows[0].n).toBe(2);
+ for(const command of ["UPDATE ls_contact_ops.cutover_history SET action='prepare' WHERE workspace_id=$1","DELETE FROM ls_contact_ops.cutover_history WHERE workspace_id=$1"])
+  await expect(f.pool.query(command,[f.workspaceId])).rejects.toThrow("CONTACT_CUTOVER_HISTORY_APPEND_ONLY");
+ await expect(f.pool.query("TRUNCATE ls_contact_ops.cutover_history")).rejects.toThrow("CONTACT_CUTOVER_HISTORY_APPEND_ONLY");
+});
+
+test("native cutover serializes competing transitions instead of admitting two epochs",async()=>{
+ const {f,store}=await setup(),a=f.practitioner.actor;
+ const outcomes=await Promise.allSettled(["first","second"].map(operationId=>store.advance(a,{action:"prepare",proof:proof(0),operationId})));
+ expect(outcomes.filter(r=>r.status==="fulfilled")).toHaveLength(1);
+ expect(outcomes.filter(r=>r.status==="rejected")).toHaveLength(1);
+ expect(await store.read(a)).toMatchObject({phase:"shadow_ready",epoch:1});
+ expect((await f.pool.query("SELECT count(*)::integer AS n FROM ls_contact_ops.cutover_history WHERE workspace_id=$1",[f.workspaceId])).rows[0].n).toBe(1);
+});
+
+test("native cutover fences stale/legacy writes, counts only committed native writes and requires reconciled rollback",async()=>{
+ const {f,store}=await setup(),a=f.practitioner.actor;
+ await store.advance(a,{action:"prepare",proof:proof(0),operationId:"prepare"});
+ await store.advance(a,{action:"freeze",proof:proof(1),operationId:"freeze"});
+ let invoked=false;
+ const work=async()=>{invoked=true;return true;};
+ for(const destination of ["sheet","native"] as const)await expect(store.withDestination(a,{destination,intent:"write",expectedEpoch:2},work)).rejects.toThrow("CONFLICT");
+ expect(invoked).toBe(false);
+ await expect(store.advance(a,{action:"switch_native",proof:proof(2,{inboundDurable:false}),operationId:"unsafe"})).rejects.toThrow("CONFLICT");
+ await store.advance(a,{action:"switch_native",proof:proof(2),operationId:"activate"});
+ await expect(store.withDestination(a,{destination:"sheet",intent:"write",expectedEpoch:3},work)).rejects.toThrow("CONFLICT");
+ await expect(store.withDestination(a,{destination:"native",intent:"write",expectedEpoch:2},work)).rejects.toThrow("CONFLICT");
+ const countBefore=(await f.pool.query("SELECT count(*)::integer AS n FROM ls_identity.people WHERE workspace_id=$1",[f.workspaceId])).rows[0].n;
+ await expect(store.withDestination(a,{destination:"native",intent:"write",expectedEpoch:3},async tx=>{
+  await tx.query("INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,'adult','synthetic-rolled-back',clock_timestamp())",[randomUUID(),f.workspaceId]);
+  throw new Error("Synthetic required save failure");
+ })).rejects.toThrow("Synthetic required save failure");
+ expect((await f.pool.query("SELECT count(*)::integer AS n FROM ls_identity.people WHERE workspace_id=$1",[f.workspaceId])).rows[0].n).toBe(countBefore);
+ expect((await store.read(a)).nativeWritesSinceSwitch).toBe(0);
+ await store.withDestination(a,{destination:"native",intent:"read",expectedEpoch:3},async tx=>(await tx.query("SELECT 1 AS n"))[0]);
+ expect((await store.read(a)).nativeWritesSinceSwitch).toBe(0);
+ await Promise.all([1,2].map(()=>store.withDestination(a,{destination:"native",intent:"write",expectedEpoch:3},async tx=>tx.query("SELECT 1 AS n"))));
+ expect((await store.read(a)).nativeWritesSinceSwitch).toBe(2);
+ await store.advance(a,{action:"prepare_rollback",proof:proof(3),operationId:"rollback"});
+ await expect(store.advance(a,{action:"finish_rollback",proof:proof(4,{deltaDrained:false}),operationId:"unsafe-rollback"})).rejects.toThrow("CONFLICT");
+ await store.advance(a,{action:"finish_rollback",proof:proof(4),operationId:"finish-rollback"});
+ expect(await store.read(a)).toMatchObject({phase:"sheet_active",epoch:5,nativeWritesSinceSwitch:0,batchId:null});
+});
+
+test("native cutover denies parent/revoked/cross-workspace actors and corrupted persisted authority",async()=>{
+ const {f,store}=await setup(),a=f.practitioner.actor;
+ await expect(store.read(f.parent.actor)).rejects.toThrow("FORBIDDEN");
+ await expect(store.advance(f.parent.actor,{action:"prepare",proof:proof(0),operationId:"parent"})).rejects.toThrow("FORBIDDEN");
+ await expect(store.read({...a,workspaceId:randomUUID() as typeof a.workspaceId})).rejects.toThrow("UNAUTHENTICATED");
+ await store.advance(a,{action:"prepare",proof:proof(0),operationId:"prepare"});
+ await f.pool.query("UPDATE ls_identity.sessions SET revoked_at=clock_timestamp() WHERE token_digest=$1",[a.sessionDigest]);
+ await expect(store.read(a)).rejects.toThrow("UNAUTHENTICATED");
+ await f.pool.query("UPDATE ls_identity.sessions SET revoked_at=NULL WHERE token_digest=$1",[a.sessionDigest]);
+ await f.pool.query("UPDATE ls_contact_ops.cutover SET state_ciphertext='invalid-encrypted-state' WHERE workspace_id=$1",[f.workspaceId]);
+ await expect(store.read(a)).rejects.toThrow("UNAVAILABLE");
+ await expect(store.withDestination(a,{destination:"sheet",intent:"read",expectedEpoch:1},async()=>true)).rejects.toThrow("UNAVAILABLE");
+});
