@@ -1,6 +1,6 @@
 /** Server-side integrity helpers. Never expose the HMAC key or its raw inputs in logs. */
 import { createHash, createHmac } from "node:crypto";
-import { canonical, requireThat } from "../core/validation.js";
+import { canonical, requireThat } from "../core/validation.ts";
 export function digest(value: unknown): string { return createHash("sha256").update(canonical(value)).digest("hex"); }
 export function privateDigest(value: unknown, key: string): string {
     requireThat(key.length >= 32, "HMAC_KEY_REQUIRED");

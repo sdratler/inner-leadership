@@ -98,5 +98,9 @@
   {
     "name": "0105_ls_contact_authority.sql",
     "sha256": "2bc7c0f24d87b88ee30e4c0e89497ba8e9e8e4a993fa92386af919c58356a429"
+  },
+  {
+    "name": "0106_ls_contact_inbound_receipts.sql",
+    "sha256": "bf67d47e1f3bd6a23d098c4a78c50b0bd9c787719a1bc59a3b7c10a0f549a062"
   }
 ]
