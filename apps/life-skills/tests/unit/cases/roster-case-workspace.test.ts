@@ -72,7 +72,7 @@ it.each(['all', 'active', 'archived'])('keeps %s live cases separate from DEMO u
  const directory = find(view(), element => element.type === ProspectsClient);
  expect(directory?.props.caseState).toBe('ready');
  expect(directory?.props.clientCases).toEqual([live]);
- expect(hook.accountRead).toHaveBeenCalledExactlyOnceWith('cases');
+ expect(hook.accountRead).toHaveBeenCalledExactlyOnceWith('cases','live');
 });
 
 it.each([undefined, 'unknown', null])('treats an unavailable case provenance %s as an error, not an empty/live directory', async mode => {

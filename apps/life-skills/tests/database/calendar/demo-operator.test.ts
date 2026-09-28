@@ -81,6 +81,22 @@ test('authorized case lists retain immutable DEMO provenance without inferring i
  await expect(f.cases.list(f.actors.child!)).rejects.toMatchObject({code:'UNAUTHENTICATED'});
  expect(await f.counts()).toEqual(before);
 }));
+
+test('live selection precedes LIMIT100 when recent DEMO roots outnumber the entire page',()=>using(async f=>{
+ for(let i=0;i<101;i++)await f.cases.createDemoAsOperator(f.practitioner.actor.id,
+  {kind:'adult',displayName:`DEMO — Synthetic volume ${i}`,familyLabel:`DEMO — Synthetic volume ${i}`},batch,`volume-${i}`,key(),true);
+ expect((await f.cases.list(f.practitioner.actor)).some(c=>c.id===f.first.id)).toBe(false);
+ const live=await f.cases.list(f.practitioner.actor,'live');
+ expect(live.map(c=>c.id).sort()).toEqual([f.first.id,f.second.id].sort());
+ expect(live.every(c=>c.mode==='live')).toBe(true);
+ const demo=await f.cases.list(f.practitioner.actor,'demo');
+ expect(demo).toHaveLength(100);expect(demo.every(c=>c.mode==='demo')).toBe(true);
+ for(const role of ['parent','child','adult']){
+  await expect(f.cases.list(f.actors[role]!,'live')).rejects.toMatchObject({code:'FORBIDDEN'});
+  await expect(f.cases.list(f.actors[role]!,'demo')).rejects.toMatchObject({code:'FORBIDDEN'});
+  expect((await f.cases.list(f.actors[role]!)).map(c=>c.id)).toEqual([role==='adult'?f.adult.caseId:f.minor.caseId]);
+ }
+}));
 test('prepares only the existing cases; repeats reuse engagement, audience and history with no identity/payment effects',()=>using(async f=>{
  const before=await f.counts(),a=await f.prepare();expect(await f.prepare()).toEqual(a);expect(await f.counts()).toEqual(before);
  expect(a.accountIds.sort()).toEqual([f.actors.parent!.id,f.actors.child!.id].sort());

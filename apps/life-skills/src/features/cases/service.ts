@@ -121,9 +121,11 @@ export class CaseService {
     return {caseId,engagementId,audienceId,parentIds:members.filter(m=>m.role==='parent').map(m=>m.id),accountIds:members.map(m=>m.id)};
    });
  }
- async list(actor:Actor):Promise<Array<{id:CaseId;kind:'minor'|'adult';state:CaseLifecycle;displayName:string;mode:'live'|'demo'}>> {
+ async list(actor:Actor,mode?:'live'|'demo'):Promise<Array<{id:CaseId;kind:'minor'|'adult';state:CaseLifecycle;displayName:string;mode:'live'|'demo'}>> {
+  if(mode!==undefined&&mode!=='live'&&mode!=='demo')throw new AppError('INVALID_REQUEST');
   return this.store.transaction(async tx=>{
    const current=await freshActor(tx,actor,this.clock.now());
+   if(mode!==undefined&&current.role!=='practitioner')throw new AppError('FORBIDDEN');
    const rows=await tx.query<{id:CaseId;kind:'minor'|'adult';state:CaseLifecycle;personId:string;profileCiphertext:string;demoBatchId:string|null;markerBatchId:string|null}>(`SELECT c.id,p.kind,c.state,p.id AS "personId",p.profile_ciphertext AS "profileCiphertext",
     c.demo_batch_id AS "demoBatchId",d.batch_id AS "markerBatchId"
     FROM ls_cases.cases c JOIN ls_cases.clients cl ON cl.workspace_id=c.workspace_id AND cl.id=c.client_id
@@ -133,7 +135,9 @@ export class CaseService {
      ($3='adult_client' AND p.kind='adult' AND p.id=$4) OR
      ($3='child' AND p.kind='minor' AND p.id=$4) OR
      ($3='parent' AND p.kind='minor' AND EXISTS(SELECT 1 FROM ls_cases.case_guardians g WHERE g.workspace_id=c.workspace_id AND g.case_id=c.id AND g.account_id=$2 AND g.revoked_at IS NULL)))
-    ORDER BY c.created_at DESC,c.id LIMIT 100`,[actor.workspaceId,actor.id,current.role,current.personId]);
+    AND (c.demo_batch_id IS DISTINCT FROM d.batch_id OR $5::text IS NULL OR
+     ($5='live' AND c.demo_batch_id IS NULL) OR ($5='demo' AND c.demo_batch_id IS NOT NULL))
+    ORDER BY c.created_at DESC,c.id LIMIT 100`,[actor.workspaceId,actor.id,current.role,current.personId,mode??null]);
    return rows.map(row=>{
     // Preserve authorized DEMO contexts, but never classify synthetic roots by
     // display name or treat missing/inconsistent ancestry as a live record.
