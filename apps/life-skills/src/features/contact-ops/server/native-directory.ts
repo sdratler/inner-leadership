@@ -163,9 +163,15 @@ export class NativeContactDirectory {
    }
    // A person may have both an archived case and an active case. Canonical
    // grouping must not classify them from whichever UUID was encountered first.
-   for(const row of rows)if(row.version===null&&row.caseLinks?.length){
-    row.stage=row.caseLinks.some(c=>c.state==="active")?"active":row.caseLinks[0]!.state;
-    row.archived=row.caseLinks.every(c=>["completed","archived"].includes(c.state));
+   for(const row of rows)if(row.caseLinks?.length){
+    const activeCase=row.caseLinks.some(c=>c.state==="active");
+    // Assigned clinical access survives archived marketing history. This is a
+    // projection, not an unarchive or permission to contact an opted-out person.
+    if(activeCase)row.archived=false;
+    if(row.version===null){
+     row.stage=activeCase?"active":row.caseLinks[0]!.state;
+     row.archived=row.caseLinks.every(c=>["completed","archived"].includes(c.state));
+    }
    }
    return selectNativeContacts(rows,q);
  }
@@ -176,23 +182,23 @@ export function selectNativeContacts(rows:readonly NativeContactRow[],input:Nati
  const q=querySchema.parse(input),text=q.search.trim().toLocaleLowerCase(),view=q.filter==="archived"?"archived":q.filter==="booking"?"paid":q.view;
  if(q.leadId&&rows.filter(r=>r.mode===(q.mode??"live")&&r.references.some(ref=>ref.leadId===q.leadId)).length>1)throw new AppError("CONFLICT");
  const filtered=rows.filter(r=>{
-  const closed=r.archived||r.doNotContact;
+  const activeCase=r.caseLinks?.some(c=>c.state==="active")??false;
+  const closed=(r.archived&&!activeCase)||r.doNotContact;
   // Synthetic records need an explicit administrative demo view. They do not
   // silently mix into the default live contact directory.
   if(r.mode!==(q.mode??"live"))return false;
   if(q.personId&&r.personId!==q.personId)return false;
   if(q.leadId&&!r.references.some(ref=>ref.leadId===q.leadId))return false;
   if(view==="archived"&&!closed)return false;
-  if(view!=="all"&&view!=="archived"&&closed)return false;
+  if(view!=="all"&&view!=="archived"&&closed&&!(view==="active"&&activeCase))return false;
   const facts=r.references.map(ref=>ref.journey);
-  const activeCase=r.caseLinks?.some(c=>c.state==="active")??false;
   if(view==="active"&&!activeCase&&!facts.some(j=>j.journeyState==="active"))return false;
   if(view==="paid"&&!facts.some(j=>j.paymentVerified&&!j.bookingConfirmed&&j.journeyState!=="hold"))return false;
   if(view==="prospects"&&(facts.length?!facts.some(j=>!["active","hold"].includes(j.journeyState)):activeCase))return false;
   // Preserve existing workflow links without promoting historic payment/booking
   // claims to verified facts. Real journey state supersedes an older form claim.
   if(q.filter==="today"&&(!r.followUpDate||r.followUpDate>q.today))return false;
-  if(q.filter==="new"&&(r.version===null||activeCase||r.references.some(ref=>ref.formSentClaim||ref.formSubmittedClaim||ref.journey.paymentVerified||ref.journey.bookingConfirmed||ref.journey.journeyState!=="prospect")))return false;
+  if(q.filter==="new"&&(r.version===null||(r.references.length?!r.references.some(ref=>!ref.formSentClaim&&!ref.formSubmittedClaim&&!ref.journey.paymentVerified&&!ref.journey.bookingConfirmed&&ref.journey.journeyState==="prospect"):activeCase)))return false;
   if(q.filter==="intake"&&!r.references.some(ref=>ref.formSentClaim&&!ref.formSubmittedClaim&&ref.journey.journeyState==="prospect"&&!ref.journey.paymentVerified))return false;
   if(q.filter==="payment"&&!r.references.some(ref=>(ref.formSubmittedClaim||ref.journey.journeyState==="awaiting_payment")&&!ref.journey.paymentVerified&&!["active","hold"].includes(ref.journey.journeyState)))return false;
   if(q.stage&&q.stage!==r.stage)return false;
