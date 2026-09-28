@@ -36,6 +36,13 @@ export class OperationalNativeCrmStore {
   return this.authority.withDestination(actor,{destination:"native",intent:"read",expectedEpoch},
    tx=>this.directory.listInTransaction(tx,actor,input));
  }
+ /** Existing Calendar/intake/digest readers must not keep a hidden Sheet
+  * dependency after cutover. No page limit may truncate operational follow-ups.
+  */
+ prospects(actor:Actor,expectedEpoch:number){
+  return this.authority.withDestination(actor,{destination:"native",intent:"read",expectedEpoch},
+   tx=>this.directory.prospectsInTransaction(tx,actor));
+ }
  create(actor:Actor,profile:CrmProfile,operationId:string,expectedEpoch:number){
   return this.authority.withDestination(actor,{destination:"native",intent:"write",expectedEpoch},
    tx=>this.profileStore(tx).create(actor,profile,operationId));

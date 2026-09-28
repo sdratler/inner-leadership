@@ -10,6 +10,7 @@ import {readProspectJourneysFromTx,type ProspectJourneyState} from "../../prospe
 import {crmProfileAad} from "./native-store.ts";
 import {dateOnly} from "../core/validation.ts";
 import type {PeopleView,Page} from "../core/types.ts";
+import type {Prospect} from "../../prospects/bridge.ts";
 
 const leadId=z.string().regex(/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]+$/);
 const profileSchema=z.object({personId:z.string().uuid(),stage:z.string().min(1).max(120),
@@ -81,8 +82,42 @@ export class NativeContactDirectory {
   const parsed=querySchema.safeParse(input);
   if(!parsed.success)throw new AppError("INVALID_REQUEST");
   const q=parsed.data;
+  const {rows}=await this.readAllInTransaction(tx,actor);
+  return selectNativeContacts(rows,q);
+ }
+ /** Server-only compatibility projection for existing operational consumers.
+  * Read all bounded rows in the caller's ONE authority-locked transaction;
+  * never paginate separate transactions, expose unmapped history, or send.
+  */
+ async prospectsInTransaction(tx:SqlSession,actor:Actor):Promise<Prospect[]>{
+  const {rows,sourceFields}=await this.readAllInTransaction(tx,actor),seen=new Set<string>();
+  const result:Prospect[]=[];
+  for(const row of rows){
+   if(row.mode!=="live")continue;
+   for(const ref of row.references){
+    if(seen.has(ref.leadId))throw new AppError("CONFLICT");seen.add(ref.leadId);
+    const fields=sourceFields.get(ref.leadId);if(!fields)throw new AppError("UNAVAILABLE");
+    const get=(name:string)=>field(fields,name),claimedCase=get("Enrolled case ID");
+    result.push({leadId:ref.leadId,name:row.displayName,phone:ref.phone,email:ref.email,language:ref.language,
+     receivedAt:get("Date received"),source:ref.source,campaign:ref.campaign,
+     stage:row.doNotContact?"Do not contact":row.archived?"Archived":row.stage,
+     lastContact:get("Last contact"),nextAction:row.nextAction??"",dueDate:row.followUpDate??"",
+     outcome:ref.outcome,notes:row.notes,
+     // A historical UUID is not a case link. Preserve its source snapshot but
+     // expose only a canonical case assigned to this practitioner/person.
+     caseId:row.caseLinks?.some(c=>c.caseId===claimedCase)?claimedCase:"",
+     formSent:ref.formSentClaim,formSubmitted:ref.formSubmittedClaim,paymentLinkSent:get("Payment link sent"),
+     paymentMethod:get("Payment method"),paymentStatus:ref.paymentClaim,paymentAllocation:get("Payment allocation"),
+     bookingStatus:ref.bookingClaim,messageReceipt:ref.messageReceipt,updateProvenance:get("Update provenance"),
+     firstInboundAt:get("First inbound at"),lastInboundAt:get("Last inbound at"),owner:get("Response owner"),...ref.journey});
+   }
+  }
+  return result.sort((a,b)=>a.leadId.localeCompare(b.leadId));
+ }
+ private async readAllInTransaction(tx:SqlSession,actor:Actor):Promise<{rows:NativeContactRow[];sourceFields:Map<string,Record<string,string>>}>{
    requirePractitioner(await freshActor(tx,actor,this.clock.now()));
    const rows:NativeContactRow[]=[];
+   const sourceFields=new Map<string,Record<string,string>>();
    let after:string|null=null;
    for(;;){
     const profiles:StoredProfile[]=await tx.query<StoredProfile>(`SELECT p.person_id AS "personId",i.kind,
@@ -119,6 +154,8 @@ export class NativeContactDirectory {
        `ls_contact_ops/legacy/v1/${actor.workspaceId}/${l.sourceFileId}/${l.sourceSheetId}/${l.leadId}`,this.keyring);
       if(field(source.payload.sourceFields,"Lead ID").trim()!==l.leadId)throw new AppError("UNAVAILABLE");
       const f=source.payload.sourceFields;
+      if(sourceFields.has(l.leadId))throw new AppError("CONFLICT");
+      sourceFields.set(l.leadId,f);
       return {leadId:l.leadId,phone:field(f,"Phone"),email:field(f,"Email"),language:source.payload.language,
        source:field(f,"Lead source"),campaign:field(f,"Campaign"),outcome:field(f,"Outcome"),
        messageReceipt:field(f,"Message receipt"),paymentClaim:field(f,"Payment status"),bookingClaim:field(f,"Booking status"),
@@ -175,7 +212,7 @@ export class NativeContactDirectory {
      row.archived=row.caseLinks.every(c=>["completed","archived"].includes(c.state));
     }
    }
-   return selectNativeContacts(rows,q);
+   return {rows,sourceFields};
  }
 }
 

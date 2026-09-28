@@ -6,7 +6,7 @@ import { InternalTaskService } from '../../../src/features/calendar/tasks.ts';
 
 const f=vi.hoisted(()=>({command:vi.fn(),read:vi.fn(),drain:vi.fn(),actor:vi.fn(),audit:vi.fn(),limit:vi.fn(),prospects:vi.fn()}));
 vi.mock('../../../src/features/calendar/relay.ts',()=>({drainCalendarEventsIsolated:f.drain}));
-vi.mock('../../../src/features/prospects/bridge.ts',()=>({listProspects:f.prospects}));
+vi.mock('../../../src/features/contact-ops/server/authoritative-prospects.ts',()=>({readAuthoritativeProspects:f.prospects}));
 vi.mock('../../../src/features/calendar/runtime.ts',()=>({calendarRuntime:async()=>({
  identity:{config:{origin:'https://app.example.test',rateLimitKey:'r'.repeat(64),lookupKey:Buffer.alloc(32,9)},services:{
   sessions:{actor:f.actor,csrf:()=> 'c'.repeat(43)},limits:{consume:f.limit},audit:{write:f.audit},
@@ -59,6 +59,7 @@ describe('privacy-safe task sync transport diagnostics',()=>{
   const result={created:0,updated:0,resolved:0,unchanged:0},sync=vi.spyOn(InternalTaskService.prototype,'syncCrmFollowups').mockResolvedValue(result),log=vi.spyOn(console,'error').mockImplementation(()=>{});
   const response=await handleCalendar(syncRequest(),['tasks','sync-followups']);expect(response.status).toBe(200);expect((await response.json()).data).toEqual(result);
   expect(sync).toHaveBeenCalledOnce();expect(log).not.toHaveBeenCalled();expect(f.drain).not.toHaveBeenCalled();expect(f.command).not.toHaveBeenCalled();
+  expect(f.prospects).toHaveBeenCalledWith(expect.objectContaining({role:'practitioner'}),expect.objectContaining({config:expect.objectContaining({origin:'https://app.example.test'})}));
  });
  it.each([{origin:'https://other.example.test'},{'x-csrf-token':'x'.repeat(43)},{cookie:''}])('preserves origin, CSRF and missing-session denial before source/task access: %s',async(headers)=>{
   const sync=vi.spyOn(InternalTaskService.prototype,'syncCrmFollowups');vi.spyOn(console,'error').mockImplementation(()=>{});

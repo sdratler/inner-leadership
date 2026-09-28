@@ -54,11 +54,11 @@ export async function handleCalendar(request:Request,path:readonly string[]):Pro
    if(actor.role!=='practitioner')throw new AppError('FORBIDDEN');
    taskSyncPhase='body';
    query(request,[]);await readJson(request,z.object({}).strict());
-   // The browser never supplies CRM rows. Read the existing authoritative bridge
+   // The browser never supplies CRM rows. Read the one durable CRM authority
    // after practitioner authentication and reconcile only internal task records.
    taskSyncPhase='crm-read';
-   const {listProspects}=await import('../prospects/bridge.ts');
-   const rows=await listProspects();
+   const {readAuthoritativeProspects}=await import('../contact-ops/server/authoritative-prospects.ts');
+   const rows=await readAuthoritativeProspects(actor,identity);
    taskSyncPhase='task-sync';
    data=await tasks.syncCrmFollowups(actor,rows);
    taskSyncPhase='response';
