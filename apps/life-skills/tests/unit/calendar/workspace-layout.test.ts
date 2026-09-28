@@ -43,4 +43,10 @@ describe('operational Calendar composition',()=>{
   expect(css).toContain('.lsw.lsu .ls-cal .lsw-calendar-toolbar>nav{grid-column:1/-1');
   expect(workspace).toContain("title={practitioner?(locale==='he'?'יומן':'Calendar'):t.familyTitle}");
  });
+ it('compacts only Calendar filters and places the actual timezone span beside the period',()=>{
+  expect(css).toContain('.lsw.lsu .ls-cal :is(.ls-cal-layers>.lsw-field,.ls-cal-toolbar>.lsw-field,.ls-cal-period>.lsw-field){margin-block-end:0}');
+  expect(css).toContain('.lsw.lsu .ls-cal .ls-cal-toolbar>.lsw-field{grid-template-columns:minmax(7rem,.8fr) minmax(0,1fr)');
+  expect(css).toContain('.lsw.lsu .ls-cal .lsw-calendar-toolbar>.lsw-help{grid-column:2;grid-row:1;justify-self:end}');
+  expect(css).not.toContain('.lsw-calendar-toolbar>small{');
+ });
 });

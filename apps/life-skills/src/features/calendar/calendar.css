@@ -98,15 +98,18 @@
 /* Keep the first useful Calendar content in view; no clipping, hidden inputs,
  * smaller fonts, fixed-height app or removal of real errors/consequences. */
 @media(max-width:600px){
+ .lsw.lsu .ls-cal :is(.ls-cal-layers>.lsw-field,.ls-cal-toolbar>.lsw-field,.ls-cal-period>.lsw-field){margin-block-end:0}
  .lsw.lsu .ls-cal .ls-cal-layers>.lsw-field{grid-template-columns:minmax(7rem,.8fr) minmax(0,1fr);align-items:center;inline-size:100%;gap:.5rem}
  .lsw.lsu .ls-cal .ls-cal-layers>.lsw-field>label{min-inline-size:0;min-block-size:44px}
+ .lsw.lsu .ls-cal .ls-cal-toolbar>.lsw-field{grid-template-columns:minmax(7rem,.8fr) minmax(0,1fr);align-items:center;gap:.5rem}
+ .lsw.lsu .ls-cal .ls-cal-toolbar>.lsw-field>label{min-inline-size:0;min-block-size:44px;display:flex;align-items:center}
  .lsw.lsu .ls-cal .ls-cal-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));inline-size:100%;gap:.5rem;margin-inline:0}
  .lsw.lsu .ls-cal .ls-cal-actions>:first-child{grid-column:1/-1}
  .lsw.lsu .ls-cal .lsw-calendar-toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.5rem;align-items:center;padding:.75rem}
  .lsw.lsu .ls-cal .lsw-calendar-toolbar>h2{inline-size:auto;margin:0}
  .lsw.lsu .ls-cal .lsw-calendar-toolbar>nav{grid-column:1/-1;display:flex;flex-wrap:nowrap;gap:.4rem}
  .lsw.lsu .ls-cal .lsw-calendar-toolbar>nav>a{flex:1;min-inline-size:0;justify-content:center;text-align:center}
- .lsw.lsu .ls-cal .lsw-calendar-toolbar>small{grid-column:2;grid-row:1;justify-self:end}
+ .lsw.lsu .ls-cal .lsw-calendar-toolbar>.lsw-help{grid-column:2;grid-row:1;justify-self:end}
 }
 @media(prefers-reduced-motion:reduce){.ls-cal *{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
 @media print{.ls-cal .ls-cal-actions,.ls-cal button,.ls-cal .lsw-dialog{display:none}.ls-cal .lsw-calendar-grid{display:block}.ls-cal .lsw-calendar-agenda{display:none}.ls-cal{max-inline-size:none;padding:0}}
