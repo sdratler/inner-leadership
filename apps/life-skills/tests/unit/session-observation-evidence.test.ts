@@ -14,7 +14,9 @@ test("graph uses actual session dates/latest revisions, retaining unrecorded ses
 test.each(["en", "he"] as const)("accessible %s individual graph never bridges a missing observation", locale => {
   const e = evidence(), markup = renderToStaticMarkup(createElement(PrivateMetricTrend, { locale, records: e.records, sessions: e.sessions, workspaceId: e.workspaceId, caseId: e.caseId, metric: "engagement" }));
   expect((markup.match(/<circle /g) ?? [])).toHaveLength(2);
-  expect(markup).not.toContain('stroke-width="3"'); expect(markup).toContain("<table>"); expect(markup).toContain("<summary>");
+  expect(markup).not.toContain('stroke-width="3"'); expect(markup).toContain("<table "); expect(markup).toContain("<summary>");
+  expect(markup).toContain('min-width:480px'); expect(markup).toContain('min-width:620px;table-layout:fixed');
+  expect(markup).toContain('role="region"'); expect(markup).toContain('tabindex="0"'); expect(markup).toContain('<colgroup>');
   expect(markup).toContain(locale === "he" ? "לא נצפה" : "Not observed"); expect(markup).toContain("Synthetic private context");
 });
 test("history rejects mixed scopes, duplicated revisions, orphan sessions and invalid dates", () => {
