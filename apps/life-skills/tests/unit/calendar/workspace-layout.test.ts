@@ -38,10 +38,18 @@ describe('operational Calendar composition',()=>{
  it('keeps mobile mode, actions and date navigation compact without hiding controls or smaller text',()=>{
   expect(css).toContain('.lsw.lsu .ls-cal .ls-cal-layers>.lsw-field{grid-template-columns:minmax(7rem,.8fr) minmax(0,1fr)');
   expect(css).toContain('.lsw.lsu .ls-cal .ls-cal-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))');
-  expect(css).toContain('.lsw.lsu .ls-cal .ls-cal-actions>:first-child{grid-column:1/-1}');
   expect(css).toContain('.lsw.lsu .ls-cal .lsw-calendar-toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto');
   expect(css).toContain('.lsw.lsu .ls-cal .lsw-calendar-toolbar>nav{grid-column:1/-1');
   expect(workspace).toContain("title={practitioner?(locale==='he'?'יומן':'Calendar'):t.familyTitle}");
+ });
+ it('offers one practitioner booking action beside the title and reduces unused agenda spacing',()=>{
+  expect(workspace).toContain("action={practitioner?<Button disabled={mutation.locked||!cases.length} onClick={e=>openBook(e)}>");
+  expect(workspace).toContain("{livePractitioner&&<div className=\"ls-cal-actions\">");
+  expect(workspace.match(/onClick=\{e=>openBook\(e\)\}/g)).toHaveLength(1);
+  expect(css).toContain('.lsw.lsu.lsu--practitioner .ls-cal>.lsw-page-header{display:grid;grid-template-columns:minmax(0,1fr) auto');
+  expect(css).toContain('.lsw.lsu .ls-cal .lsw-calendar-agenda{padding-block-start:.5rem}');
+  expect(css).toContain('.lsw.lsu .ls-cal .lsw-calendar-agenda>h3{margin-block:.5rem}');
+  expect(css).not.toContain('.ls-cal-actions>:first-child{');
  });
  it('compacts only Calendar filters and places the actual timezone span beside the period',()=>{
   expect(css).toContain('.lsw.lsu .ls-cal :is(.ls-cal-layers>.lsw-field,.ls-cal-toolbar>.lsw-field,.ls-cal-period>.lsw-field){margin-block-end:0}');
