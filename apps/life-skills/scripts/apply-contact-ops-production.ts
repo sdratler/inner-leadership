@@ -16,7 +16,7 @@ import {readFile,readdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {Pool} from 'pg';
 import {migrate} from '../src/db/migration-runner.ts';
-import {assertContactOpsDatabaseIdentity,calendarAppendOnlyFunctionBody,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,internalTaskSchemaCatalogMatches,sourceTaskSchemaCatalogMatches,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,type ContactOpsIntegrityObjects,type InternalTaskIntegrityObjects,type SourceTaskIntegrityObjects} from '../src/db/contact-ops-production-guard.ts';
+import {assertContactOpsDatabaseIdentity,calendarAppendOnlyFunctionBody,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,internalTaskSchemaCatalogMatches,sourceTaskSchemaCatalogMatches,voiceRuleSchemaCatalogMatches,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,type ContactOpsIntegrityObjects,type InternalTaskIntegrityObjects,type SourceTaskIntegrityObjects,type VoiceRuleIntegrityObjects} from '../src/db/contact-ops-production-guard.ts';
 import type {AppliedMigration,Migration} from '../src/db/migration-plan.ts';
 
 async function migrations():Promise<Migration[]>{
@@ -42,7 +42,7 @@ async function main(){
  if(contactOpsSourceBundle(sourceEntries)!==target.sourceBundleSha256)throw new Error('CONTACT_OPS_SOURCE_PROVENANCE_MISMATCH');
  const files=await migrations();
  // The state gate admits at most one exact reviewed suffix; the currently
- // deployed 0102 baseline must be fully verified before 0103 may be applied.
+ // deployed 0103 baseline must be fully verified before 0104 may be applied.
  // The strict state gate refuses partial or unreviewed schema before any write.
  if(!files.some(file=>file.name===CONTACT_OPS_MIGRATION.name&&file.checksum===CONTACT_OPS_MIGRATION.sha256))throw new Error('CONTACT_OPS_MIGRATION_MISSING');
  const reviewedMigration=files.at(-1)!;
@@ -278,6 +278,50 @@ async function main(){
         AND i.indislive AND i.indisunique AND i.indnatts=3 AND i.indnkeyatts=3
         AND i.indkey::text='1 14 15' AND i.indexprs IS NULL
         AND pg_get_expr(i.indpred,i.indrelid)='(source_digest IS NOT NULL)') AS exact`);
+     const voiceObjects=await client.query<Omit<VoiceRuleIntegrityObjects,'schemaCatalog'>>(`SELECT
+       to_regnamespace('ls_content_voice') IS NULL AS "namespaceAbsent",
+       (SELECT count(*)=2 AND bool_and(c.relkind='r' AND c.relpersistence='p'
+         AND c.relowner=(SELECT oid FROM pg_roles WHERE rolname=current_user))
+        FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+        WHERE n.nspname='ls_content_voice' AND c.relname IN ('rule_changes','rule_change_history')) AS tables,
+       (SELECT count(*)=4 AND bool_and(k.convalidated AND
+         (SELECT count(*)=4 AND bool_and(t.tgenabled IN ('O','A')) FROM pg_trigger t WHERE t.tgconstraint=k.oid))
+        FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+        WHERE n.nspname='ls_content_voice' AND c.relname IN ('rule_changes','rule_change_history') AND k.contype='f') AS "foreignKeys",
+       EXISTS(SELECT 1 FROM pg_index i WHERE i.indexrelid=to_regclass('ls_content_voice.rule_changes_by_owner_time')
+        AND i.indrelid=to_regclass('ls_content_voice.rule_changes') AND i.indisvalid AND i.indisready AND i.indislive
+        AND NOT i.indisunique AND i.indnatts=3 AND i.indnkeyatts=3 AND i.indkey::text='1 3 20'
+        AND i.indoption::text='0 0 3' AND i.indpred IS NULL AND i.indexprs IS NULL) AS "ownerIndex",
+       EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='rule_change_history_immutable'
+        AND tgrelid=to_regclass('ls_content_voice.rule_change_history') AND NOT tgisinternal
+        AND tgenabled IN ('O','A') AND tgtype=27 AND tgattr::text='' AND tgqual IS NULL
+        AND tgfoid=to_regprocedure('ls_calendar.append_only()')) AS "historyImmutable",
+       (EXISTS(SELECT 1 FROM pg_namespace WHERE nspname='ls_content_voice')
+        AND (SELECT n.nspowner=(SELECT oid FROM pg_roles WHERE rolname=current_user)
+         FROM pg_namespace n WHERE n.nspname='ls_content_voice')
+        AND (SELECT count(*)=2 AND bool_and(c.relowner=(SELECT oid FROM pg_roles WHERE rolname=current_user))
+         FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+         WHERE n.nspname='ls_content_voice' AND c.relname IN ('rule_changes','rule_change_history'))
+        AND NOT EXISTS(SELECT 1 FROM pg_namespace n,
+         LATERAL aclexplode(coalesce(n.nspacl,acldefault('n',n.nspowner))) acl
+         WHERE n.nspname='ls_content_voice' AND acl.grantee<>n.nspowner)
+        AND NOT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace,
+         LATERAL aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) acl
+         WHERE n.nspname='ls_content_voice' AND c.relname IN ('rule_changes','rule_change_history') AND acl.grantee<>c.relowner)
+        AND NOT EXISTS(SELECT 1 FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid
+         JOIN pg_namespace n ON n.oid=c.relnamespace,LATERAL aclexplode(a.attacl) acl
+         WHERE n.nspname='ls_content_voice' AND c.relname IN ('rule_changes','rule_change_history')
+          AND a.attnum>0 AND NOT a.attisdropped AND acl.grantee<>c.relowner)) AS "publicRevoked"`);
+     const voiceColumns=await client.query<{catalog:unknown}>(`SELECT coalesce(json_agg(json_build_object(
+       'table',c.relname,'column',a.attname,'type',format_type(a.atttypid,a.atttypmod),
+       'notNull',a.attnotnull,'default',pg_get_expr(d.adbin,d.adrelid),'identity',a.attidentity,'generated',a.attgenerated)
+       ORDER BY c.relname,a.attnum),'[]'::json) AS catalog FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid
+       JOIN pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
+       WHERE n.nspname='ls_content_voice' AND c.relname IN ('rule_changes','rule_change_history') AND a.attnum>0 AND NOT a.attisdropped`);
+     const voiceConstraints=await client.query<{catalog:unknown}>(`SELECT coalesce(json_agg(json_build_object(
+       'table',c.relname,'name',k.conname,'type',k.contype,'definition',pg_get_constraintdef(k.oid)) ORDER BY c.relname,k.conname),'[]'::json) AS catalog
+       FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+       WHERE n.nspname='ls_content_voice' AND c.relname IN ('rule_changes','rule_change_history') AND k.contype<>'n'`);
      const appendOnly=await client.query<{body:string;safe:boolean}>(`SELECT p.prosrc AS body,
        p.prolang=(SELECT oid FROM pg_language WHERE lanname='plpgsql')
         AND p.prokind='f' AND p.pronargs=0 AND p.prorettype='trigger'::regtype
@@ -327,7 +371,9 @@ async function main(){
        appendOnlyFunction:appendOnly.rows.length===1&&appendOnly.rows[0]?.safe===true&&
         appendOnly.rows[0]?.body===calendarAppendOnlyFunctionBody(files)};
      const sourceIntegrity:SourceTaskIntegrityObjects={baseCatalog,sourceCatalog,sourceIndex:sourceIndex.rows[0]?.exact===true};
-     return contactOpsMigrationState(files,history,integrity,taskIntegrity,sourceIntegrity);
+     const voiceIntegrity:VoiceRuleIntegrityObjects={...voiceObjects.rows[0]!,
+       schemaCatalog:voiceRuleSchemaCatalogMatches(voiceColumns.rows[0]?.catalog,voiceConstraints.rows[0]?.catalog)};
+     return contactOpsMigrationState(files,history,integrity,taskIntegrity,sourceIntegrity,voiceIntegrity);
     }catch(error){await client.query('ROLLBACK').catch(()=>undefined);throw error;}
    };
    const before=await inspect();

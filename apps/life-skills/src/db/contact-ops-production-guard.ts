@@ -13,6 +13,14 @@ export const SOURCE_TASKS_MIGRATION = {
  name: '0103_ls_task_sources.sql',
  sha256: '190390847c7537ed80a2dd223c961514804f37068c1b672bc051ab5b4ef00f20',
 } as const;
+export const VOICE_RULE_MIGRATION = {
+ name:'0104_ls_content_voice_corrections.sql',
+ sha256:'421fe7e93e4d2ac9ff6685916a54c762183f36daeb1d18f9bd8d9d9dcc5fb579',
+} as const;
+export const VOICE_RULE_SCHEMA_CATALOG = {
+ columns:31,constraints:23,
+ sha256:'98d22c1e4e01428580476131f79df1fbcd66adac26d93a2ce1dd92fd4e7fd244',
+} as const;
 export const INTERNAL_TASKS_SCHEMA_CATALOG = {
  columns:20,constraints:13,
  sha256:'f05bc3595900d94aa6e507b2689b21583b34d62393da24848a8f66538a1189c1',
@@ -49,6 +57,7 @@ export const CONTACT_OPS_SOURCE_FILES = [
  'migrations/0101_ls_contact_operations.sql',
  'migrations/0102_ls_internal_tasks.sql',
  'migrations/0103_ls_task_sources.sql',
+ 'migrations/0104_ls_content_voice_corrections.sql',
  'migrations/manifest.json',
  'scripts/apply-contact-ops-production.ts',
  'src/db/contact-ops-production-guard.ts',
@@ -82,6 +91,15 @@ export type InternalTaskIntegrityObjects={
  dueIndex:boolean;historyImmutable:boolean;appendOnlyFunction:boolean;publicRevoked:boolean;
 };
 export type SourceTaskIntegrityObjects={sourceIndex:boolean;baseCatalog:boolean;sourceCatalog:boolean};
+export type VoiceRuleIntegrityObjects={namespaceAbsent:boolean;tables:boolean;schemaCatalog:boolean;foreignKeys:boolean;
+ ownerIndex:boolean;historyImmutable:boolean;publicRevoked:boolean};
+
+export function voiceRuleSchemaCatalogMatches(columns:unknown,constraints:unknown):boolean{
+ if(!Array.isArray(columns)||columns.length!==VOICE_RULE_SCHEMA_CATALOG.columns||!Array.isArray(constraints))return false;
+ const material=contactOpsComparableConstraints(constraints);
+ if(material.length!==VOICE_RULE_SCHEMA_CATALOG.constraints)return false;
+ return createHash('sha256').update(JSON.stringify({columns,constraints:material})).digest('hex')===VOICE_RULE_SCHEMA_CATALOG.sha256;
+}
 
 export function internalTaskSchemaCatalogMatches(columns:unknown,constraints:unknown):boolean{
  if(!Array.isArray(columns)||columns.length!==INTERNAL_TASKS_SCHEMA_CATALOG.columns||
@@ -190,11 +208,12 @@ export function contactOpsSourceBundle(entries:readonly {path:string;bytes:Uint8
 }
 
 /** No partial/unknown schema and no surprise migration may be promoted. */
-export function contactOpsMigrationState(files:readonly Migration[],history:readonly AppliedMigration[],objects:ContactOpsIntegrityObjects,tasks:InternalTaskIntegrityObjects,source?:SourceTaskIntegrityObjects):'pending'|'applied'{
+export function contactOpsMigrationState(files:readonly Migration[],history:readonly AppliedMigration[],objects:ContactOpsIntegrityObjects,tasks:InternalTaskIntegrityObjects,source?:SourceTaskIntegrityObjects,voice?:VoiceRuleIntegrityObjects):'pending'|'applied'{
  const index=files.findIndex(file=>file.name===CONTACT_OPS_MIGRATION.name);
  if(index<0||files[index]?.checksum!==CONTACT_OPS_MIGRATION.sha256)throw new Error('CONTACT_OPS_MANIFEST_MISMATCH');
  const suffix=files.slice(index+1);
- if(suffix.length>2||suffix.some((file,index)=>file.name!==[INTERNAL_TASKS_MIGRATION,SOURCE_TASKS_MIGRATION][index]?.name||file.checksum!==[INTERNAL_TASKS_MIGRATION,SOURCE_TASKS_MIGRATION][index]?.sha256))throw new Error('CONTACT_OPS_MANIFEST_MISMATCH');
+ const allowedSuffix=[INTERNAL_TASKS_MIGRATION,SOURCE_TASKS_MIGRATION,VOICE_RULE_MIGRATION];
+ if(suffix.length>allowedSuffix.length||suffix.some((file,index)=>file.name!==allowedSuffix[index]?.name||file.checksum!==allowedSuffix[index]?.sha256))throw new Error('CONTACT_OPS_MANIFEST_MISMATCH');
  const pending=planMigrations(files,history);
  const expectedKeys=['profiles','legacyLinks','commandReceipts','legacyIndex','profileProvenanceTrigger','markerCompatibilityTrigger','immutableDemoRecordTrigger','profileFunction','markerFunction','immutableFunction','canonicalPersonConstraint','canonicalConstraintDefinition','schemaCatalog','baselineRecordsCatalog','permanentTables','foreignKeysEnforced','foreignKeyReferencesSound','publicRevoked'].sort();
  if(JSON.stringify(Object.keys(objects).sort())!==JSON.stringify(expectedKeys))throw new Error('CONTACT_OPS_INTEGRITY_READBACK_INVALID');
@@ -207,9 +226,19 @@ export function contactOpsMigrationState(files:readonly Migration[],history:read
  const newTaskValues=Object.entries(tasks).filter(([key])=>key!=='appendOnlyFunction').map(([,value])=>value);
  if(!objects.immutableDemoRecordTrigger||!objects.immutableFunction||!objects.baselineRecordsCatalog)throw new Error('CONTACT_OPS_BASELINE_PROVENANCE_MISSING');
  const newlyCreated=Object.entries(objects).filter(([key])=>!['immutableDemoRecordTrigger','immutableFunction','baselineRecordsCatalog'].includes(key)).map(([,value])=>value);
- if(suffix.length===2){
+ if(suffix.length>=2){
   if(!source||JSON.stringify(Object.keys(source).sort())!==JSON.stringify(['baseCatalog','sourceCatalog','sourceIndex'])||
    Object.values(source).some(value=>typeof value!=='boolean'))throw new Error('CONTACT_OPS_SOURCE_TASK_READBACK_INVALID');
+  if(suffix.length===3){
+   if(!voice||JSON.stringify(Object.keys(voice).sort())!==JSON.stringify(['namespaceAbsent','tables','schemaCatalog','foreignKeys','ownerIndex','historyImmutable','publicRevoked'].sort())||
+    Object.values(voice).some(value=>typeof value!=='boolean'))throw new Error('CONTACT_OPS_VOICE_READBACK_INVALID');
+   if(!values.every(Boolean)||!taskValues.every(Boolean)||source.baseCatalog||!source.sourceCatalog||!source.sourceIndex)
+    throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+   const newVoiceValues=Object.entries(voice).filter(([key])=>key!=='namespaceAbsent').map(([,value])=>value);
+   if(pending.length===1&&pending[0]?.name===VOICE_RULE_MIGRATION.name&&voice.namespaceAbsent&&newVoiceValues.every(value=>!value))return 'pending';
+   if(pending.length===0&&!voice.namespaceAbsent&&newVoiceValues.every(Boolean))return 'applied';
+   throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+  }
   if(pending.length===1&&pending[0]?.name===SOURCE_TASKS_MIGRATION.name&&values.every(Boolean)&&taskValues.every(Boolean)&&
    source.baseCatalog&&!source.sourceCatalog&&!source.sourceIndex)return 'pending';
   if(pending.length===0&&values.every(Boolean)&&taskValues.every(Boolean)&&

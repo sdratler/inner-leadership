@@ -33,11 +33,21 @@ describe("authenticated app to existing Scout bridge", () => {
     const fetcher = vi.fn().mockResolvedValue(Response.json({ ok: true, data }));
     const result = await requestCommunityReply(command, fetcher as typeof fetch, { LS_COMMUNITY_SCOUT_BRIDGE_SECRET: secret });
     expect(result.reply).toBe(data.reply);
+    expect(result.provenance.guide.includedCommunityRuleIds).toEqual([]);
     expect(fetcher).toHaveBeenCalledTimes(1);
     const [url, options] = fetcher.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("https://community-scout-production.up.railway.app/internal/life-skills/reply");
     expect(options.headers).toMatchObject({ Authorization: `Bearer ${secret}` });
     expect(JSON.parse(String(options.body))).toMatchObject({ operationId: command.operationId, guide: { id: data.provenance.guide.id }, playbook: { id: data.provenance.playbook.id } });
+  });
+  it("reports scoped rule IDs from the exact canonical guide sent for generation", async () => {
+    const guide = snapshot("174-EqMG0QIH5rCuRgn2xYYPMX-XWJZNn");
+    sources.guide.mockResolvedValue({ ...guide, text: `# Synthetic guide\n### Community-reply writing preferences\n\n**CR-12345678123441238123123456789abc — scope: community; language: en; created: 2026-09-28T00:00:00Z; updated: 2026-09-28T00:00:00Z** Keep replies concise.\n\n## 2. Article structure\n` });
+    const fetcher = vi.fn().mockResolvedValue(Response.json({ ok: true, data }));
+    const result = await requestCommunityReply(command, fetcher as typeof fetch, { LS_COMMUNITY_SCOUT_BRIDGE_SECRET: secret });
+    expect(result.provenance.guide.includedCommunityRuleIds).toEqual(["CR-12345678123441238123123456789abc"]);
+    const [, options] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(options.body)).guide.text).toContain("CR-12345678123441238123123456789abc");
   });
   it("fails closed on mismatched source provenance or unconfirmed provider output", async () => {
     const fetcher = vi.fn().mockResolvedValueOnce(Response.json({ ok: true, data: { ...data, provenance: { ...data.provenance, guide: { ...data.provenance.guide, id: "wrong" } } } }))

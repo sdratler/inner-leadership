@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { matchesSubmittedInput, proposalForResult, replyFailureKind } from "../../../src/features/community-reply/input-state.ts";
+import { canResumeRuleOperation, matchesSubmittedInput, proposalForResult, replyFailureKind, ruleDraftPromotionNeedsConfirmation } from "../../../src/features/community-reply/input-state.ts";
 
 describe("manual drafting limit feedback", () => {
   it("identifies only the API's confirmed manual limit", () => {
@@ -19,6 +19,24 @@ describe("manual reply source binding", () => {
   });
   it("never treats a missing submitted input as a current draft", () => {
     expect(matchesSubmittedInput(submitted, null)).toBe(false);
+  });
+  it("restores a completed retry while protecting another unsaved question or edited reply", () => {
+    expect(ruleDraftPromotionNeedsConfirmation({ question: "", originalUrl: "" }, submitted)).toBe(false);
+    expect(ruleDraftPromotionNeedsConfirmation(submitted, submitted)).toBe(false);
+    expect(ruleDraftPromotionNeedsConfirmation({ ...submitted, question: "שאלה חדשה" }, submitted)).toBe(true);
+    expect(ruleDraftPromotionNeedsConfirmation(submitted, submitted, true)).toBe(true);
+  });
+  it("asks before replacing a different generated reply even when its question and link match", () => {
+    expect(ruleDraftPromotionNeedsConfirmation(submitted, submitted, false, "new-generation", "saved-correction")).toBe(true);
+    expect(ruleDraftPromotionNeedsConfirmation(submitted, submitted, false, "saved-correction", "saved-correction")).toBe(false);
+    expect(ruleDraftPromotionNeedsConfirmation({ question: "", originalUrl: "" }, submitted, false, undefined, "saved-correction")).toBe(false);
+  });
+});
+
+describe("correction resumption", () => {
+  it("offers retries only for persisted resumable states", () => {
+    for (const status of ["pending", "permission_denied", "unknown", "saved", "draft_pending"]) expect(canResumeRuleOperation(status)).toBe(true);
+    for (const status of ["already_applied", "needs_review", "needs_playbook", "unsafe", "conflict", "draft_conflict", "complete", "unrecognized"]) expect(canResumeRuleOperation(status)).toBe(false);
   });
 });
 

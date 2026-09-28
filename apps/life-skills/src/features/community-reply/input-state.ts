@@ -10,6 +10,19 @@ export function matchesSubmittedInput(current: CommunitySourceInput, submitted: 
   return !!submitted && current.question.trim() === submitted.question && current.originalUrl.trim() === submitted.originalUrl;
 }
 
+/** Restoring a correction must not silently replace another question, edit or generated reply. */
+export function ruleDraftPromotionNeedsConfirmation(current: CommunitySourceInput, restored: CommunitySourceInput, editedDraft = false,
+  activeOperationId?: string, restoredOperationId?: string): boolean {
+  return editedDraft || (!!activeOperationId && activeOperationId !== restoredOperationId) ||
+    ((current.question.trim().length > 0 || current.originalUrl.trim().length > 0) &&
+    !matchesSubmittedInput(current, restored));
+}
+
+/** Validation-only results have no stored command to resume. Conflicts need fresh source review. */
+export function canResumeRuleOperation(status: string): boolean {
+  return ["pending", "permission_denied", "unknown", "saved", "draft_pending"].includes(status);
+}
+
 /** A fresh generation never inherits a proposal from an earlier revision. */
 export function proposalForResult(mode: "generate" | "revise_once", suggestedRule: string, scope: "" | "community" | "general") {
   return mode === "revise_once" ? { rule: suggestedRule, scope: scope === "general" ? "general" as const : "community" as const } : { rule: "", scope: "community" as const };
