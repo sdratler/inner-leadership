@@ -13,6 +13,7 @@ test.each(["he","en"] as const)("%s new native contact action is compact/collaps
  const props={locale,view:"all" as const,initial:{source:"native" as const,authorityEpoch:3,page:{page:1,pages:1,pageSize:12,total:0,items:[]}},onSheet:()=>{}};
  const live=renderToStaticMarkup(createElement(NativePeopleWorkspace,props));
  expect(live).toContain('aria-controls="native-create-contact"');expect(live).toContain('aria-expanded="false"');
+ expect(live.match(/<div class="lsw-actions">(.+?)<\/div>/)?.[1]).toContain('aria-controls="native-create-contact"');
  expect(live).toContain('id="native-create-contact" hidden=""');expect((live.match(/<form/g)||[]).length).toBe(1);
  expect(live).not.toContain('<textarea');expect(live).not.toContain('name="password"');
  const demo=renderToStaticMarkup(createElement(NativePeopleWorkspace,{...props,initialMode:"demo"}));
