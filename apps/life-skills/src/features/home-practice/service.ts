@@ -292,7 +292,7 @@ export class HomePracticeService implements PracticeVersionReader {
       const versionId = asId(randomUUID(), "coordination_version");
       await tx.query(`INSERT INTO ls_practice.task_coordination_versions
         (id,workspace_id,assignment_id,version,case_id,audience_id,assignee_account_ids,completion_mode,reminder_candidate_account_ids,effective_from,changed_by_account_id,created_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, [versionId, actor.workspaceId, input.assignmentId, row.nextVersion, row.caseId, row.audienceId, assignees, input.completionMode, input.reminderCandidateAccountIds, new Date(effectiveFrom), actor.id, now]);
+        VALUES ($1,$2,$3,$4,$5,$6,$7::uuid[],$8,$9::uuid[],$10,$11,$12)`, [versionId, actor.workspaceId, input.assignmentId, row.nextVersion, row.caseId, row.audienceId, assignees, input.completionMode, input.reminderCandidateAccountIds, new Date(effectiveFrom), actor.id, now]);
       await recordPracticeAction(tx, { requestId, now }, actor.workspaceId, actor.id, "practice_coordination_changed");
       return { versionId, caseId: row.caseId, audienceId: row.audienceId, assigneeAccountIds: assignees, completionMode: input.completionMode, effectiveFrom, changedByAccountId: actor.id };
     });

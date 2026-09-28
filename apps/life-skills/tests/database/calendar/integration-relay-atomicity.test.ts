@@ -46,7 +46,10 @@ test('isolated relay rolls back a partial write after a PostgreSQL error and com
             // This is deliberately not a JavaScript-only throw or mocked query failure.
             await tx.query('SELECT 1 / 0 AS synthetic_division_by_zero');
           } catch (error) {
-            sqlErrorCode = error && typeof error === 'object' && 'code' in error ? String(error.code) : undefined;
+            // The actual production Drizzle driver wraps the PostgreSQL error.
+            // Still require the exact native code, not a JS/mock substitute.
+            const native = error && typeof error === 'object' && 'cause' in error ? error.cause : error;
+            sqlErrorCode = native && typeof native === 'object' && 'code' in native ? String(native.code) : undefined;
             throw error;
           }
         }

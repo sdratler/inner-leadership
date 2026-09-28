@@ -66,8 +66,8 @@ test("native cutover fences stale/legacy writes, counts only committed native wr
  // Prove the actual PostgreSQL boundary, not a mocked intent check.
  await expect(store.withDestination(a,{destination:"native",intent:"read",expectedEpoch:3},async tx=>tx.query(
   "INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,'adult','synthetic-illegal-read-write',clock_timestamp())",[randomUUID(),f.workspaceId]
- ))).rejects.toMatchObject({code:"25006"});
- await expect(store.withDestination(a,{destination:"native",intent:"read",expectedEpoch:3},async tx=>tx.query("SET TRANSACTION READ WRITE"))).rejects.toMatchObject({code:"25001"});
+ ))).rejects.toMatchObject({cause:{code:"25006"}});
+ await expect(store.withDestination(a,{destination:"native",intent:"read",expectedEpoch:3},async tx=>tx.query("SET TRANSACTION READ WRITE"))).rejects.toMatchObject({cause:{code:"25001"}});
  expect((await f.pool.query("SELECT count(*)::integer AS n FROM ls_identity.people WHERE workspace_id=$1",[f.workspaceId])).rows[0].n).toBe(countBefore);
  expect((await store.read(a)).nativeWritesSinceSwitch).toBe(0);
  const staleRollback=proof(3);

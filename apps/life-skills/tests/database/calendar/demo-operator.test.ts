@@ -49,6 +49,11 @@ async function setup(){
  }catch(error){await f.pool.end();throw error;}
 }
 async function using(work:(f:Awaited<ReturnType<typeof setup>>)=>Promise<void>){const f=await setup();try{await work(f);}finally{await f.pool.end();}}
+test('native service fixture enforces the exact production UUID-array binding contract',()=>using(async f=>{
+ const ids=[f.practitioner.actor.id];
+ await expect(f.db.store.transaction(tx=>tx.query('SELECT $1 AS ids',[ids]))).rejects.toMatchObject({code:'INTERNAL'});
+ expect(await f.db.store.transaction(tx=>tx.query('SELECT $1::uuid[] AS ids',[ids]))).toEqual([{ids}]);
+}));
 test('prepares only the existing cases; repeats reuse engagement, audience and history with no identity/payment effects',()=>using(async f=>{
  const before=await f.counts(),a=await f.prepare();expect(await f.prepare()).toEqual(a);expect(await f.counts()).toEqual(before);
  expect(a.accountIds.sort()).toEqual([f.actors.parent!.id,f.actors.child!.id].sort());
