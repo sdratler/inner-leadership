@@ -21,3 +21,12 @@ test('loads this shared directory stylesheet through the actual live authority-s
  expect(roster).toContain('lsu-clients-directory');
  expect(native).toContain('import "./native-people.css"');
 });
+
+test('gives the mobile native count and compact actions separate full-width rows',()=>{
+ expect(mobile).toContain('.lsw.lsu .lsu-native-people > .lsw-section-header { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }');
+ expect(mobile).toContain('.lsw.lsu .lsu-native-people > .lsw-section-header > .lsw-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }');
+});
+
+test('wraps mobile native action captions at words without shrinking readable controls',()=>{
+ expect(mobile).toContain('.lsw.lsu .lsu-native-people > .lsw-section-header > .lsw-actions > .lsw-button { min-width: 0; width: 100%; white-space: normal; overflow-wrap: normal; word-break: normal; }');
+});
