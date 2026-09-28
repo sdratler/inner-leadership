@@ -11,7 +11,7 @@ const config: NextConfig = {
   serverExternalPackages: ["pg"],
   // An explicit local build resource option, not a validation or runtime bypass.
   // Ordinary production/CI builds retain their existing cache configuration.
-  ...localBuildCacheOptions(process.env),
+  ...localBuildCacheOptions({LS_LOCAL_BUILD_NO_DISK_CACHE: process.env.LS_LOCAL_BUILD_NO_DISK_CACHE, CI: process.env.CI}),
   async headers() {
     return [{ source: "/:path*", headers: [
       { key: "X-Content-Type-Options", value: "nosniff" },
