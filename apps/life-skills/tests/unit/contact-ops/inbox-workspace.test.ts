@@ -16,7 +16,7 @@ test("WhatsApp links reject injected URLs and never infer a login/customer/case"
 });
 test.each(["he","en"] as const)("%s only the Communications contextual tabs replace a view and retain case separation",locale=>{
  expect(practitionerContext(`/${locale}/app/feedback`,null).map(x=>x.key)).toEqual(["app_updates","whatsapp"]);
- const props={locale,role:"practitioner" as const,pathname:`/${locale}/app/feedback`,section:"whatsapp",languageHref:`/${locale==="he"?"en":"he"}/app/feedback?section=whatsapp`,children:undefined};
+ const props={locale,role:"practitioner" as const,pathname:`/${locale}/app/feedback`,caseId:"123e4567-e89b-12d3-a456-426614174000",section:"whatsapp",languageHref:`/${locale==="he"?"en":"he"}/app/feedback?section=whatsapp`,children:undefined};
  const html=renderToStaticMarkup(createElement(WorkspaceShell,props,"Synthetic main"));
  expect(html).toContain(`href="/${locale}/app/feedback?section=whatsapp" aria-current="page"`);expect(html).toContain('class="lsu-top-tabs"');expect(html).toContain(locale==="he"?'dir="rtl"':'dir="ltr"');
  const id="123e4567-e89b-12d3-a456-426614174000";expect(practitionerContext(`/${locale}/app/feedback`,id,true).some(x=>x.key==="whatsapp")).toBe(false);

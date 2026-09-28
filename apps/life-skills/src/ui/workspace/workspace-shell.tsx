@@ -27,6 +27,9 @@ export function WorkspaceShell({ locale, role, pathname, caseId, selectedClient=
   const contextHref = (entry: ContextItem) => {
     const url = new URL(href(entry.path), "https://private.invalid");
     for (const [key, value] of Object.entries(entry.query ?? {})) url.searchParams.set(key, value);
+    // Business receipts have no clinical case context; leave the selected case
+    // only on this explicit global tab, never by inferring identity from phone.
+    if(entry.key==="whatsapp"&&!clientContext){url.searchParams.delete("caseId");url.searchParams.delete("context");}
     if (entry.path === "app/calendar" && date && /^\d{4}-\d{2}-\d{2}$/.test(date)) url.searchParams.set("date", date);
     return url.pathname + url.search;
   };
