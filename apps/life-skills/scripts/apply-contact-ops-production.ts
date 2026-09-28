@@ -17,6 +17,7 @@ import {fileURLToPath} from 'node:url';
 import {Pool} from 'pg';
 import {migrate} from '../src/db/migration-runner.ts';
 import {contactAuthorityIntegrity} from '../src/db/contact-authority-integrity.ts';
+import {contactInboundIntegrity} from '../src/db/contact-inbound-integrity.ts';
 import {assertContactOpsDatabaseIdentity,calendarAppendOnlyFunctionBody,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,internalTaskSchemaCatalogMatches,sourceTaskSchemaCatalogMatches,voiceRuleSchemaCatalogMatches,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,type ContactOpsIntegrityObjects,type InternalTaskIntegrityObjects,type SourceTaskIntegrityObjects,type VoiceRuleIntegrityObjects} from '../src/db/contact-ops-production-guard.ts';
 import type {AppliedMigration,Migration} from '../src/db/migration-plan.ts';
 
@@ -352,6 +353,8 @@ async function main(){
      }
      const authorityIntegrity=await contactAuthorityIntegrity({query:async <R extends object>(statement:string,values:readonly unknown[]=[])=>
       (await client.query<R>(statement,[...values])).rows},files);
+     const inboundIntegrity=await contactInboundIntegrity({query:async <R extends object>(statement:string,values:readonly unknown[]=[])=>
+       (await client.query<R>(statement,[...values])).rows},files);
      await client.query('COMMIT');
      const history:AppliedMigration[]=ledger.rows.map(row=>({name:row.name,checksum:row.checksum}));
      const verified=new Map(functions.rows.map(row=>[row.name,
@@ -376,7 +379,7 @@ async function main(){
      const sourceIntegrity:SourceTaskIntegrityObjects={baseCatalog,sourceCatalog,sourceIndex:sourceIndex.rows[0]?.exact===true};
      const voiceIntegrity:VoiceRuleIntegrityObjects={...voiceObjects.rows[0]!,
        schemaCatalog:voiceRuleSchemaCatalogMatches(voiceColumns.rows[0]?.catalog,voiceConstraints.rows[0]?.catalog)};
-     return contactOpsMigrationState(files,history,integrity,taskIntegrity,sourceIntegrity,voiceIntegrity,authorityIntegrity);
+     return contactOpsMigrationState(files,history,integrity,taskIntegrity,sourceIntegrity,voiceIntegrity,authorityIntegrity,inboundIntegrity);
     }catch(error){await client.query('ROLLBACK').catch(()=>undefined);throw error;}
    };
    const before=await inspect();
