@@ -58,8 +58,8 @@ export function selectPeople(rows: readonly PersonRow[], q: PeopleQuery): Page<P
     requireThat(Number.isSafeInteger(q.pageSize) && q.pageSize >= 1 && q.pageSize <= 100, "BAD_PAGE_SIZE");
     const text = q.search.trim().toLocaleLowerCase();
     const filtered = rows.filter(r => {
-        if (q.view === "all" && (r.archived || r.doNotContact))
-            return false;
+        // All is an administrative directory, not an outbound audience. Keep
+        // archived/opted-out people visible; open queues still exclude them.
         if (q.view === "prospects" && (!r.openProspect || r.archived || r.doNotContact))
             return false;
         if (q.view === "paid" && (!r.paidAwaitingBooking || r.archived || r.doNotContact))
