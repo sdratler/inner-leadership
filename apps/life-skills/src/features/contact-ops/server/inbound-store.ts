@@ -19,11 +19,13 @@ type Stored={binding:string;event:string;message:string;digest:string;cipher:str
  */
 export class ContactInboundStore {
  constructor(private readonly db:IdentityStore,private readonly workspaceId:string,private readonly keyring:Keyring,
-  private readonly integrityKey:string,private readonly expectedBindingDigest:string,private readonly clock:IdentityClock=systemClock){
+  private readonly integrityKey:string,private readonly expectedBindingDigest:string|null,private readonly clock:IdentityClock=systemClock){
   asId(workspaceId,"workspace");
-  if(!/^[a-f0-9]{64}$/.test(expectedBindingDigest))throw new AppError("UNAVAILABLE");
+  if(expectedBindingDigest!==null&&!/^[a-f0-9]{64}$/.test(expectedBindingDigest))throw new AppError("UNAVAILABLE");
  }
  async capture(input:unknown):Promise<{replayed:boolean;storedAt:string}>{
+  // A read-only inbox has no capture binding, even when called accidentally.
+  if(this.expectedBindingDigest===null)throw new AppError("UNAVAILABLE");
   const parsed=inboundInquirySchema.safeParse(input);if(!parsed.success)throw new AppError("INVALID_REQUEST");
   const inquiry=parsed.data;if(inboundBindingDigest(inquiry)!==this.expectedBindingDigest)throw new AppError("FORBIDDEN");
   const binding=privateDigest({domain:"contact-binding-v1",binding:this.expectedBindingDigest,workspace:this.workspaceId},this.integrityKey);
@@ -46,7 +48,7 @@ export class ContactInboundStore {
  /** Private future inbox projection only, not an API/history scan. Bounded to
   * receipts already captured here. Clinical/case data is never joined/shared.
   */
- async recent(actor:Actor,limit=50):Promise<{inquiry:InboundInquiry;storedAt:string}[]>{
+ async recent(actor:Actor,limit=50):Promise<{receiptKey:string;inquiry:InboundInquiry;storedAt:string}[]>{
   if(actor.workspaceId!==this.workspaceId)throw new AppError("FORBIDDEN");
   if(!Number.isSafeInteger(limit)||limit<1||limit>100)throw new AppError("INVALID_REQUEST");
   return this.db.transaction(async tx=>{
@@ -60,7 +62,7 @@ export class ContactInboundStore {
     if(binding!==row.binding||privateDigest({domain:"contact-event-v1",binding,id:inquiry.providerEventId},this.integrityKey)!==row.event||
      privateDigest({domain:"contact-message-v1",binding,id:inquiry.providerMessageId},this.integrityKey)!==row.message||
      privateDigest({domain:"contact-payload-v1",workspace:this.workspaceId,inquiry},this.integrityKey)!==row.digest||row.occurredAt.toISOString()!==inquiry.occurredAt)throw new AppError("UNAVAILABLE");
-    return {inquiry,storedAt:row.storedAt.toISOString()};
+    return {receiptKey:row.event,inquiry,storedAt:row.storedAt.toISOString()};
    });
   });
  }

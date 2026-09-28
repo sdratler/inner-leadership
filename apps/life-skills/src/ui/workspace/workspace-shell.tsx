@@ -23,10 +23,13 @@ export function WorkspaceShell({ locale, role, pathname, caseId, selectedClient=
   const link = (entry: NavItem) => <a className="lsu-nav-link" key={entry.key} href={href(entry.path)} aria-current={active?.key === entry.key ? "page" : undefined}>{entry[locale]}</a>;
   const clientContext = Boolean(caseId && (selectedClient || pathname.includes("/app/cases/")));
   const contextItems = role === "practitioner" ? practitionerContext(pathname, caseId ?? null, clientContext) : primaryNavigation[role];
-  const currentContext = clientContext ? pathname.endsWith("/settings") ? "access" : pathname.includes("/sessions") ? "sessions" : pathname.includes("/app/calendar") ? "calendar" : pathname.includes("/app/practice") ? "practice" : pathname.includes("/app/feedback") ? "communications" : pathname.includes("/app/reports") ? "reports" : pathname.includes("/app/forms") ? "forms" : "overview" : pathname.includes("/app/calendar") ? (view ?? "week") : pathname.includes("/app/clients") || pathname.includes("/app/prospects") ? (section ?? "all") : section ?? (pathname.includes("/app/reports") ? "due" : "overview");
+  const currentContext = clientContext ? pathname.endsWith("/settings") ? "access" : pathname.includes("/sessions") ? "sessions" : pathname.includes("/app/calendar") ? "calendar" : pathname.includes("/app/practice") ? "practice" : pathname.includes("/app/feedback") ? "communications" : pathname.includes("/app/reports") ? "reports" : pathname.includes("/app/forms") ? "forms" : "overview" : pathname.includes("/app/calendar") ? (view ?? "week") : pathname.includes("/app/clients") || pathname.includes("/app/prospects") ? (section ?? "all") : section ?? (pathname.includes("/app/reports") ? "due" : pathname.includes("/app/feedback") ? "app_updates" : "overview");
   const contextHref = (entry: ContextItem) => {
     const url = new URL(href(entry.path), "https://private.invalid");
     for (const [key, value] of Object.entries(entry.query ?? {})) url.searchParams.set(key, value);
+    // Business receipts have no clinical case context; leave the selected case
+    // only on this explicit global tab, never by inferring identity from phone.
+    if(entry.key==="whatsapp"&&!clientContext){url.searchParams.delete("caseId");url.searchParams.delete("context");}
     if (entry.path === "app/calendar" && date && /^\d{4}-\d{2}-\d{2}$/.test(date)) url.searchParams.set("date", date);
     return url.pathname + url.search;
   };

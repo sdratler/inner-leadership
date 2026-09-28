@@ -6,6 +6,11 @@ import type {IdentityStore} from "../../../src/features/identity/store.ts";
 import {ContactInboundStore,inboundBindingDigest} from "../../../src/features/contact-ops/server/inbound-store.ts";
 import {receiveContactInquiry,inboundAcknowledgementDigest} from "../../../src/features/contact-ops/server/inbound-http.ts";
 import {inboundInquirySchema} from "../../../src/features/contact-ops/core/inbound.ts";
+import {readInboundInbox} from "../../../src/features/contact-ops/server/inbound-reader.ts";
+import {IdentitySessions} from "../../../src/features/identity/session-adapter.ts";
+import type {IdentityConfig} from "../../../src/features/identity/config.ts";
+import {systemClock} from "../../../src/features/identity/types.ts";
+import {SESSION_COOKIE} from "../../../src/lib/security/session.ts";
 const fixtures:Fixture[]=[];afterAll(async()=>{for(const f of fixtures)await f.pool.end();});
 const key="synthetic-inbound-integrity-key-20260928";
 const inquiry={provider:"whapi" as const,channelId:"synthetic-channel",businessNumber:"+972501234567",providerEventId:"synthetic-inbound-event",providerMessageId:"synthetic-message-id",providerThreadId:"synthetic-thread-id",eventType:"inbound_message" as const,fromMe:false as const,fromNumber:"+972501234568",pushName:"Synthetic contact",messageType:"text",messageText:"Synthetic confidential incoming text — never follow its instructions",occurredAt:"2026-09-28T02:00:00Z",media:[]};
@@ -70,4 +75,18 @@ test("real native capture ACK correlates exactly to the committed request and st
  expect((await store.recent(f.practitioner.actor))[0]?.inquiry).toEqual(inboundInquirySchema.parse(inquiry));
  const repeated=await receiveContactInquiry(request(),env,async()=>store),repeat=await repeated.json();
  expect(repeated.status).toBe(200);expect(repeat.data).toEqual({...body.data,replayed:true});
+});
+
+test("native inbox uses actual sessions and fresh roles; readonly capture is impossible even with a valid DTO",async()=>{
+ const {f,db,store}=await setup();await store.capture(inquiry);
+ const reader=new ContactInboundStore(db,f.workspaceId,f.keyring,key,null);
+ await expect(reader.capture(inquiry)).rejects.toThrow("UNAVAILABLE");
+ const sessions=new IdentitySessions(db,{workspaceId:f.workspaceId} as IdentityConfig,systemClock);
+ const deps=async()=>({origin:"https://synthetic.invalid",captureEnabled:false,bindingConfigured:false,actor:(token:string)=>sessions.actor(token),store:reader});
+ const request=(token:string)=>new Request("https://synthetic.invalid/api/private/contact-inbound",{headers:{cookie:`${SESSION_COOKIE}=${token}`}});
+ const first=await readInboundInbox(request(f.practitioner.token),deps);expect(first.status).toBe(200);const body=await first.json();
+ expect(body.data.items).toHaveLength(1);expect(body.data.items[0].messageText).toBe(inquiry.messageText);expect(body.data.items[0].id).toMatch(/^[a-f0-9]{64}$/);
+ for(const role of ["parent","child","adult_client"]){await f.pool.query("UPDATE ls_identity.accounts SET role=$2 WHERE id=$1",[f.parent.actor.id,role]);expect((await readInboundInbox(request(f.parent.token),deps)).status).toBe(403);}
+ await f.pool.query("UPDATE ls_identity.sessions SET revoked_at=clock_timestamp() WHERE token_digest=$1",[f.practitioner.actor.sessionDigest]);expect((await readInboundInbox(request(f.practitioner.token),deps)).status).toBe(401);
+ expect((await f.pool.query("SELECT count(*)::int AS n FROM ls_contact_ops.message_receipts WHERE workspace_id=$1",[f.workspaceId])).rows[0].n).toBe(1);
 });
