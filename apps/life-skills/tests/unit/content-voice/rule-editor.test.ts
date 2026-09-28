@@ -113,4 +113,23 @@ describe("owner-reviewed Community writing-rule edit", () => {
     expect(consolidated.state).toBe("ready"); expect(consolidated.ruleId).toBe(english.ruleId);
     expect(communityRulesInGuide(consolidated.text)).toEqual([{ id: english.ruleId, language: "both", rule: change.rule }]);
   });
+  it("never widens a different target while leaving an exact overlapping rule behind", () => {
+    const english = composeCommunityRule(source, change);
+    const other = composeCommunityRule(english.text, { ...change, operationId: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      rule: "Use everyday vocabulary rather than technical terms." });
+    expect(other.state).toBe("ready");
+    const wrongTarget = composeCommunityRule(other.text, { ...change, operationId: "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+      language: "both", targetRuleId: other.ruleId });
+    expect(wrongTarget.state).toBe("needs_review"); expect(wrongTarget.ruleId).toBe(english.ruleId);
+    expect(wrongTarget.text).toBe(other.text);
+  });
+  it("refuses consolidation if another exact language overlap would remain", () => {
+    const english = composeCommunityRule(source, change);
+    const hebrew = composeCommunityRule(english.text, { ...change, operationId: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", language: "he" });
+    expect(hebrew.state).toBe("ready");
+    const widened = composeCommunityRule(hebrew.text, { ...change, operationId: "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+      language: "both", targetRuleId: english.ruleId });
+    expect(widened.state).toBe("needs_review"); expect(widened.ruleId).toBe(hebrew.ruleId);
+    expect(widened.text).toBe(hebrew.text);
+  });
 });

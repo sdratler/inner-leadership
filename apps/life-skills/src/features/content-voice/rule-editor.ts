@@ -81,7 +81,10 @@ export function composeCommunityRule(source: string, change: CommunityRuleChange
   const found = entries(source);
   const replay = found.find(entry => entry.id === ruleId);
   if (replay) return result(replay.rule === rule ? "already_applied" : "needs_review", source, replay.id, replay.full, replay.full);
-  const exact = found.find(entry => languagesOverlap(entry.language, change.language) && normalized(entry.rule) === normalized(rule));
+  const exactMatches = found.filter(entry => languagesOverlap(entry.language, change.language) && normalized(entry.rule) === normalized(rule));
+  const otherExact = exactMatches.find(entry => change.targetRuleId && entry.id !== change.targetRuleId);
+  if (otherExact) return result("needs_review", source, otherExact.id, otherExact.full, null);
+  const exact = exactMatches[0];
   if (exact && (exact.language === change.language || exact.language === "both")) return result("already_applied", source, exact.id, exact.full, exact.full);
   // Widening an existing single-language rule requires explicit consolidation,
   // not a second overlapping entry or an unapproved scope change.
