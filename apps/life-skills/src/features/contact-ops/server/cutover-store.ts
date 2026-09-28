@@ -106,6 +106,8 @@ export class ContactCutoverStore {
   if(!safeEpoch.safeParse(input.expectedEpoch).success||!["sheet","native"].includes(input.destination)||!["read","write"].includes(input.intent))throw new AppError("INVALID_REQUEST");
   if(input.destination!=="native")throw new AppError("CONFLICT");
   return this.db.transaction(async tx=>{
+   // Keep READ COMMITTED: after waiting for the authority lock, the following
+   // query must observe its newly committed epoch, not a pre-lock snapshot.
    if(input.intent==="read")await tx.query("SET TRANSACTION READ ONLY");
    await this.lock(tx,a);
    const current=await this.current(tx,a,input.intent==="write");
