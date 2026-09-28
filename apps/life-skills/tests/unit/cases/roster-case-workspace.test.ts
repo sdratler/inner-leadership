@@ -367,6 +367,34 @@ it('resolves a Calendar lead deep link through the native API before rendering i
  const native=find(view(),e=>e.type===NativePeopleWorkspace);
  expect(native?.props.initialLeadId).toBe(leadId);expect(native?.props.initialPersonId).toBe(personId);
 });
+it.each(['today','new','intake','payment','booking','archived'] as const)('preserves the validated legacy %s workflow before the native list renders',async filter=>{
+ const data={source:'native',authorityEpoch:3,page:{items:[],total:0,page:1,pageSize:12,pages:1}};hook.peopleRead.mockResolvedValue(data);
+ const view=()=>hook.render(()=>ClientsRoster({locale:'en',section:'prospects',prospectFilter:filter}));view();hook.flushEffects();await tick();
+ expect(hook.peopleRead).toHaveBeenCalledWith(new URLSearchParams({view:'prospects',filter}));
+ expect(find(view(),e=>e.type===NativePeopleWorkspace)?.props.initialFilter).toBe(filter);
+});
+it('does not allow a workflow filter to hide the selected Calendar person',async()=>{
+ hook.peopleRead.mockResolvedValue({source:'native',authorityEpoch:3,page:{items:[],total:0,page:1,pageSize:12,pages:1}});
+ const view=()=>hook.render(()=>ClientsRoster({locale:'he',section:'prospects',prospectFilter:'today',focusLeadId:'LS-LEAD-synthetic'}));view();hook.flushEffects();await tick();
+ expect(hook.peopleRead).toHaveBeenCalledWith(new URLSearchParams({view:'all',leadId:'LS-LEAD-synthetic'}));
+});
+it('keeps URL workflow context on reload and Back and clears it explicitly without unrelated filters',async()=>{
+ let location=new URL('https://synthetic.invalid/en/app/clients?section=prospects&filter=today'),popstate:(()=>void)|undefined;
+ vi.stubGlobal('window',{get location(){return location;},history:{pushState(_state:unknown,_unused:string,url:URL){location=new URL(url);}},addEventListener(event:string,listener:()=>void){if(event==='popstate')popstate=listener;},removeEventListener(){}});
+ const initial={source:'native' as const,authorityEpoch:3,page:{items:[],total:0,page:1,pageSize:12,pages:1}};
+ const fetch=vi.fn().mockResolvedValue({ok:true,status:200,json:async()=>({ok:true,data:initial})});vi.stubGlobal('fetch',fetch);
+ const view=()=>hook.render(()=>NativePeopleWorkspace({locale:'en',view:'prospects',initial,initialFilter:'today',onSheet:()=>{}}));
+ try{
+  view();hook.flushEffects();await tick();await tick();
+  expect(new URL(String(fetch.mock.calls[0]![0]),'https://synthetic.invalid').searchParams.get('filter')).toBe('today');
+  expect(text(view())).toContain('Due today');
+  (find(view(),e=>e.type==='button'&&e.props.children==='Clear workflow filter')!.props.onClick as()=>void)();await tick();await tick();
+  expect(location.search).toBe('?section=prospects');expect(text(view())).not.toContain('Clear workflow filter');
+  expect(new URL(String(fetch.mock.calls.at(-1)![0]),'https://synthetic.invalid').searchParams.has('filter')).toBe(false);
+  location=new URL('https://synthetic.invalid/en/app/clients?section=prospects&filter=today');popstate!();await tick();await tick();
+  expect(new URL(String(fetch.mock.calls.at(-1)![0]),'https://synthetic.invalid').searchParams.get('filter')).toBe('today');
+ }finally{vi.unstubAllGlobals();}
+});
 it('keeps an unresolved native lead in an explicit person context instead of an unrelated first page',async()=>{
  hook.peopleRead.mockResolvedValue({source:'native',authorityEpoch:3,page:{items:[],total:0,page:1,pageSize:12,pages:1}});
  const view=()=>hook.render(()=>ClientsRoster({locale:'he',focusLeadId:'LS-LEAD-synthetic-missing'}));view();hook.flushEffects();await tick();

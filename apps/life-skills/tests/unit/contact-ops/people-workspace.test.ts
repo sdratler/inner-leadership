@@ -6,6 +6,7 @@ import {NativePeopleWorkspace} from "../../../src/features/contact-ops/native-pe
 import {peopleEdit,sameAdministrativeFields} from "../../../src/features/contact-ops/core/people-edit.ts";
 import {practitionerReturnPath,loginReturnDestination} from "../../../src/features/identity/login-return.ts";
 import type {NativeContactRow} from "../../../src/features/contact-ops/server/native-directory.ts";
+import {selectNativeContacts,type NativeContactReference} from "../../../src/features/contact-ops/server/native-directory.ts";
 const personId="00000000-0000-4000-8000-000000000001",fields={stage:"New inquiry",nextAction:"Synthetic next action",followUpDate:"2026-09-28",notes:"  Synthetic saved note\nהערה סינתטית שמורה  "};
 test("native edit has exact version/epoch/operation; preserves notes and denies grants/actions",()=>{const input={action:"update" as const,personId,expectedEpoch:3,expectedVersion:1,operationId:"00000000-0000-4000-8000-000000000002",fields};const op=peopleEdit(input);expect(op.fields.notes).toBe(fields.notes);expect(sameAdministrativeFields(op.fields,fields)).toBe(true);expect(sameAdministrativeFields({...op.fields,notes:fields.notes.trim()},fields)).toBe(false);for(const bad of [{...input,role:"practitioner"},{...input,expectedVersion:0},{...input,fields:{...fields,legacyIds:["LS-LEAD-synthetic"]}},{...input,fields:{...fields,followUpDate:"2026-02-30"}}])expect(()=>peopleEdit(bad)).toThrow();});
 test.each(["he","en"] as const)("%s render contract has one toolbar, real pagination and semantic desktop/mobile rows",locale=>{const html=renderToStaticMarkup(createElement(NativePeopleWorkspace,{locale,view:"all",initial:{source:"native",authorityEpoch:3,page:{page:1,pages:2,pageSize:12,total:13,items:[{personId,displayName:"DEMO — Synthetic אדם "+"long ".repeat(20),identityKind:"adult",...fields,version:1,mode:"demo",archived:false,doNotContact:false,references:[],caseLinks:[]}]}},onSheet:()=>{}}));expect((html.match(/<form/g)||[]).length).toBe(1);expect(html).toContain('<table>');expect(html).toContain('scope="col"');expect(html).toContain('type="search"');expect(html).toContain('lsu-native-cards');expect(html).not.toContain('id="add-prospect"');expect(html).not.toContain('role="switch"');expect(html).not.toContain('href="#');expect(html).not.toContain(fields.notes);});
@@ -20,4 +21,21 @@ test.each([["live",false,true],["live",true,false],["demo",false,false]] as cons
 test("missing legacy lead never exposes an unrelated directory or empty-directory success",()=>{
  const html=renderToStaticMarkup(createElement(NativePeopleWorkspace,{locale:"en",view:"prospects",initial:{source:"native",authorityEpoch:3,page:{page:1,pages:1,pageSize:12,total:0,items:[]}},initialLeadId:"LS-LEAD-synthetic-missing",onSheet:()=>{}}));
  expect(html).toContain("This person is not in the authorized view.");expect(html).not.toContain("lsu-people-toolbar");expect(html).not.toContain("No people match these filters.");
+});
+test("legacy workflows filter the whole native result and never treat a historical paid claim as verification",()=>{
+ const ref:NativeContactReference={leadId:'LS-LEAD-synthetic',phone:'',email:'',language:'en',source:'synthetic',campaign:'',outcome:'',messageReceipt:'',paymentClaim:'Paid',bookingClaim:'Confirmed',formSentClaim:'',formSubmittedClaim:'',sourceFileId:'synthetic',sourceSheetId:1,sourceRevision:'synthetic',journey:{journeyState:'prospect',paymentVerified:false,bookingConfirmed:false}};
+ const row:NativeContactRow={personId,displayName:'Synthetic inquiry',identityKind:'adult',...fields,version:1,mode:'live',archived:false,doNotContact:false,references:[ref]};
+ const q={view:'prospects' as const,search:'',today:'2026-09-28',page:1,pageSize:12};
+ expect(selectNativeContacts([row,{...row,personId:'later',followUpDate:'2026-09-29'}],{...q,filter:'today'}).total).toBe(1);
+ expect(selectNativeContacts([row],{...q,filter:'new'}).total).toBe(1);
+ expect(selectNativeContacts([row],{...q,filter:'booking'}).total).toBe(0);
+ const intake={...row,references:[{...ref,formSentClaim:'synthetic-sent'}]};
+ expect(selectNativeContacts([intake],{...q,filter:'intake'}).total).toBe(1);expect(selectNativeContacts([intake],{...q,filter:'new'}).total).toBe(0);
+ const submitted={...intake,references:[{...ref,formSentClaim:'synthetic-sent',formSubmittedClaim:'synthetic-submitted'}]};
+ expect(selectNativeContacts([submitted],{...q,filter:'payment'}).total).toBe(1);expect(selectNativeContacts([submitted],{...q,filter:'intake'}).total).toBe(0);
+ const realSubmitted={...row,references:[{...ref,journey:{...ref.journey,journeyState:'awaiting_payment'}}]};
+ expect(selectNativeContacts([realSubmitted],{...q,filter:'payment'}).total).toBe(1);expect(selectNativeContacts([realSubmitted],{...q,filter:'new'}).total).toBe(0);
+ const paid={...submitted,references:[{...ref,journey:{journeyState:'awaiting_booking',paymentVerified:true,bookingConfirmed:false}}]};
+ expect(selectNativeContacts([paid],{...q,filter:'payment'}).total).toBe(0);expect(selectNativeContacts([paid],{...q,filter:'booking'}).total).toBe(1);
+ expect(selectNativeContacts([{...row,archived:true}],{...q,filter:'archived'}).total).toBe(1);
 });

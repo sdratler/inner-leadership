@@ -4,7 +4,7 @@ vi.mock("server-only",()=>({}));
 import {fixture,poolStore} from "../calendar/fixture.ts";
 import {NativeContactDirectory,selectNativeContacts} from "../../../src/features/contact-ops/server/native-directory.ts";
 import {NativeCrmStore,crmProfileAad,type CrmProfile} from "../../../src/features/contact-ops/server/native-store.ts";
-import {seal} from "../../../src/features/identity/crypto.ts";
+import {seal,unseal} from "../../../src/features/identity/crypto.ts";
 import type {IdentityStore,SqlSession} from "../../../src/features/identity/store.ts";
 
 const f=await fixture({demoFirst:true});
@@ -138,6 +138,21 @@ test("native PostgreSQL keeps explicit demo mode separate from the live director
  expect(demos.total).toBe(2);
  expect(demos.items.find(r=>r.personId===personId)).toMatchObject({personId,mode:"demo",displayName:"DEMO — Synthetic parent A"});
  expect(demos.items.filter(r=>r.version===null)).toHaveLength(1);
+});
+
+test("native PostgreSQL preserves workflow filters over the actual encrypted legacy snapshot",async()=>{
+ const linkRow=(await f.pool.query("SELECT source_file_id,source_sheet_id,snapshot_ciphertext FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND legacy_lead_id=$2",[f.workspaceId,tail.lead])).rows[0];
+ const aad=`ls_contact_ops/legacy/v1/${f.workspaceId}/${linkRow.source_file_id}/${linkRow.source_sheet_id}/${tail.lead}`;
+ const snapshot=JSON.parse(unseal(linkRow.snapshot_ciphertext,aad,f.keyring));
+ try{
+  const query={...q,search:tail.lead};expect((await directory.list(f.practitioner.actor,{...query,filter:'new'})).total).toBe(1);
+  snapshot.payload.sourceFields['Form sent']='synthetic-sent';
+  await f.pool.query("UPDATE ls_contact_ops.legacy_links SET snapshot_ciphertext=$3 WHERE workspace_id=$1 AND legacy_lead_id=$2",[f.workspaceId,tail.lead,seal(JSON.stringify(snapshot),aad,f.keyring)]);
+  expect((await directory.list(f.practitioner.actor,{...query,filter:'intake'})).total).toBe(1);expect((await directory.list(f.practitioner.actor,{...query,filter:'new'})).total).toBe(0);
+  snapshot.payload.sourceFields['Form submitted']='synthetic-submitted';snapshot.payload.sourceFields['Payment status']='Paid';
+  await f.pool.query("UPDATE ls_contact_ops.legacy_links SET snapshot_ciphertext=$3 WHERE workspace_id=$1 AND legacy_lead_id=$2",[f.workspaceId,tail.lead,seal(JSON.stringify(snapshot),aad,f.keyring)]);
+  expect((await directory.list(f.practitioner.actor,{...query,filter:'payment'})).total).toBe(1);expect((await directory.list(f.practitioner.actor,{...query,filter:'intake'})).total).toBe(0);expect((await directory.list(f.practitioner.actor,{...query,filter:'booking'})).total).toBe(0);
+ }finally{await f.pool.query("UPDATE ls_contact_ops.legacy_links SET snapshot_ciphertext=$3 WHERE workspace_id=$1 AND legacy_lead_id=$2",[f.workspaceId,tail.lead,linkRow.snapshot_ciphertext]);}
 });
 
 test("native PostgreSQL reads each actual payment allocation and booked appointment separately",async()=>{

@@ -20,6 +20,7 @@ const sourceSchema=z.object({sourceRow:z.number().int().min(2),payload:z.object(
 const querySchema=z.object({view:z.enum(["all","prospects","paid","active","archived"]),
  search:z.string().max(200),stage:z.string().max(120).optional(),locale:z.enum(["he","en"]).optional(),
  due:z.enum(["any","today","overdue"]).optional(),today:z.string().refine(dateOnly),
+ filter:z.enum(["all","today","new","intake","payment","booking","archived"]).optional(),
  page:z.number().int().min(1).max(100000),pageSize:z.number().int().min(1).max(100),
  mode:z.enum(["live","demo"]).optional(),personId:z.string().uuid().optional(),
  leadId:z.string().regex(/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]{1,80}$/).optional()}).strict();
@@ -172,7 +173,7 @@ export class NativeContactDirectory {
 
 /** Called after the entire authorized native result was read, never a client page. */
 export function selectNativeContacts(rows:readonly NativeContactRow[],input:NativeContactQuery):Page<NativeContactRow>{
- const q=querySchema.parse(input),text=q.search.trim().toLocaleLowerCase();
+ const q=querySchema.parse(input),text=q.search.trim().toLocaleLowerCase(),view=q.filter==="archived"?"archived":q.filter==="booking"?"paid":q.view;
  if(q.leadId&&rows.filter(r=>r.mode===(q.mode??"live")&&r.references.some(ref=>ref.leadId===q.leadId)).length>1)throw new AppError("CONFLICT");
  const filtered=rows.filter(r=>{
   const closed=r.archived||r.doNotContact;
@@ -181,13 +182,19 @@ export function selectNativeContacts(rows:readonly NativeContactRow[],input:Nati
   if(r.mode!==(q.mode??"live"))return false;
   if(q.personId&&r.personId!==q.personId)return false;
   if(q.leadId&&!r.references.some(ref=>ref.leadId===q.leadId))return false;
-  if(q.view==="archived"&&!closed)return false;
-  if(q.view!=="all"&&q.view!=="archived"&&closed)return false;
+  if(view==="archived"&&!closed)return false;
+  if(view!=="all"&&view!=="archived"&&closed)return false;
   const facts=r.references.map(ref=>ref.journey);
   const activeCase=r.caseLinks?.some(c=>c.state==="active")??false;
-  if(q.view==="active"&&!activeCase&&!facts.some(j=>j.journeyState==="active"))return false;
-  if(q.view==="paid"&&!facts.some(j=>j.paymentVerified&&!j.bookingConfirmed&&j.journeyState!=="hold"))return false;
-  if(q.view==="prospects"&&(facts.length?!facts.some(j=>!["active","hold"].includes(j.journeyState)):activeCase))return false;
+  if(view==="active"&&!activeCase&&!facts.some(j=>j.journeyState==="active"))return false;
+  if(view==="paid"&&!facts.some(j=>j.paymentVerified&&!j.bookingConfirmed&&j.journeyState!=="hold"))return false;
+  if(view==="prospects"&&(facts.length?!facts.some(j=>!["active","hold"].includes(j.journeyState)):activeCase))return false;
+  // Preserve existing workflow links without promoting historic payment/booking
+  // claims to verified facts. Real journey state supersedes an older form claim.
+  if(q.filter==="today"&&(!r.followUpDate||r.followUpDate>q.today))return false;
+  if(q.filter==="new"&&(r.version===null||activeCase||r.references.some(ref=>ref.formSentClaim||ref.formSubmittedClaim||ref.journey.paymentVerified||ref.journey.bookingConfirmed||ref.journey.journeyState!=="prospect")))return false;
+  if(q.filter==="intake"&&!r.references.some(ref=>ref.formSentClaim&&!ref.formSubmittedClaim&&ref.journey.journeyState==="prospect"&&!ref.journey.paymentVerified))return false;
+  if(q.filter==="payment"&&!r.references.some(ref=>(ref.formSubmittedClaim||ref.journey.journeyState==="awaiting_payment")&&!ref.journey.paymentVerified&&!["active","hold"].includes(ref.journey.journeyState)))return false;
   if(q.stage&&q.stage!==r.stage)return false;
   if(q.locale&&!r.references.some(ref=>contactLocale(ref.language)===q.locale))return false;
   if(q.due==="today"&&(!r.followUpDate||r.followUpDate>q.today))return false;

@@ -4,6 +4,7 @@ import type {Locale} from "../../lib/locale.ts";
 import {IdentityClientError,sessionInfo} from "../identity/client.ts";
 import {loginHref} from "../identity/login-return.ts";
 import type {PeopleView} from "./core/types.ts";
+import type {Preset} from "../prospects/client.tsx";
 import {peopleEdit,type PeopleEdit,type AdministrativeFields} from "./core/people-edit.ts";
 import {normalizePhone} from "./core/contact-resolution.ts";
 import "./native-people.css";
@@ -20,19 +21,21 @@ export async function requestPeople(params:URLSearchParams):Promise<PeopleRespon
 const pick=(row:NativeContactRow):AdministrativeFields=>({stage:row.stage,nextAction:row.nextAction,followUpDate:row.followUpDate,notes:row.notes});
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const leadPattern=/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]{1,80}$/;
-export function NativePeopleWorkspace({locale,view,initial,onSheet,initialMode="live",initialPersonId,initialLeadId}:{locale:Locale;view:PeopleView;initial:NativeData;initialMode?:"live"|"demo";initialPersonId?:string|undefined;initialLeadId?:string|undefined;onSheet:(source:Extract<PeopleResponse,{source:"sheet"}>,requestMode:"live")=>void}){
+const validPresets=new Set<Preset>(["all","today","new","intake","payment","booking","archived"]);
+export function NativePeopleWorkspace({locale,view,initial,onSheet,initialMode="live",initialFilter="all",initialPersonId,initialLeadId}:{locale:Locale;view:PeopleView;initial:NativeData;initialMode?:"live"|"demo";initialFilter?:Preset;initialPersonId?:string|undefined;initialLeadId?:string|undefined;onSheet:(source:Extract<PeopleResponse,{source:"sheet"}>,requestMode:"live")=>void}){
  const he=locale==="he",text=(en:string,heText:string)=>he?heText:en;
  const [data,setData]=useState(initial),[query,setQuery]=useState(""),[stage,setStage]=useState(""),[language,setLanguage]=useState(""),[due,setDue]=useState("any"),[mode,setMode]=useState<"live"|"demo">(initialMode);
  const [busy,setBusy]=useState(false),[failure,setFailure]=useState<number|null>(null),[selected,setSelected]=useState<string|null>(initialPersonId??null),[selectedRow,setSelectedRow]=useState<NativeContactRow|null>(initialPersonId?initial.page.items.find(row=>row.personId===initialPersonId)??null:null);
  const [focusedLead,setFocusedLead]=useState<string|null>(initialLeadId??null);
+ const [preset,setPreset]=useState<Preset>(initialFilter);
  const lifecycle=useRef({serial:0,alive:true,authorized:true}),locationKey=useRef<string|null>(null);
  const [drafts,setDrafts]=useState(()=>new Map<string,Draft>());
- const load=useCallback(async(page=1,personId?:string,nextMode:"live"|"demo"=mode,leadId?:string)=>{
-  const state=lifecycle.current,current=++state.serial;setBusy(true);setFailure(null);setMode(nextMode);
+ const load=useCallback(async(page=1,personId?:string,nextMode:"live"|"demo"=mode,leadId?:string,nextPreset:Preset=preset)=>{
+  const state=lifecycle.current,current=++state.serial;setBusy(true);setFailure(null);setMode(nextMode);setPreset(nextPreset);
   // A pending/failed context change must never expose rows from the old context.
   setSelectedRow(null);setData(d=>({...d,page:{...d.page,items:[],total:0}}));
   const parameters=new URLSearchParams({view:personId||leadId?"all":view,mode:nextMode,page:String(page),...(personId?{personId}:{}),...(leadId?{leadId}:{}),
-   ...(!personId&&!leadId?{search:query,...(stage?{stage}:{}),...(language?{language}:{}),due}:{})});
+   ...(!personId&&!leadId?{search:query,...(stage?{stage}:{}),...(language?{language}:{}),due,...(nextPreset!=="all"?{filter:nextPreset}:{})}:{})});
   try{const result=await requestPeople(parameters);if(!state.alive||current!==state.serial)return;
    if(result.source==="sheet"){if(nextMode==="demo")throw new PeopleRequestError(409);onSheet(result,nextMode);return;}
    state.authorized=true;
@@ -41,8 +44,8 @@ export function NativePeopleWorkspace({locale,view,initial,onSheet,initialMode="
    else setData(result);
   }catch(error){if(state.alive&&current===state.serial){const status=error instanceof PeopleRequestError?error.status:503;setFailure(status);if(status===401||status===403){state.authorized=false;setData(d=>({...d,page:{items:[],page:1,pages:1,pageSize:12,total:0}}));setSelectedRow(null);setDrafts(new Map());}}}
   finally{if(state.alive&&current===state.serial)setBusy(false);}
- },[view,mode,query,stage,language,due,onSheet]);
- const fromUrl=useCallback(()=>{locationKey.current=window.location.pathname+window.location.search;const params=new URLSearchParams(window.location.search),value=params.get("personId"),lead=params.get("leadId"),urlMode=params.get("mode")==="demo"?"demo":"live";const id=value&&uuid.test(value)?value:null,leadId=lead&&leadPattern.test(lead)?lead:null;setSelected(id);setFocusedLead(leadId);setSelectedRow(null);void load(1,id??undefined,urlMode,leadId??undefined);},[load]);
+ },[view,mode,query,stage,language,due,preset,onSheet]);
+ const fromUrl=useCallback(()=>{locationKey.current=window.location.pathname+window.location.search;const params=new URLSearchParams(window.location.search),value=params.get("personId"),lead=params.get("leadId"),rawFilter=params.get("filter"),filter=rawFilter&&validPresets.has(rawFilter as Preset)?rawFilter as Preset:"all",urlMode=params.get("mode")==="demo"?"demo":"live";const id=value&&uuid.test(value)?value:null,leadId=lead&&leadPattern.test(lead)?lead:null;setSelected(id);setFocusedLead(leadId);setSelectedRow(null);void load(1,id??undefined,urlMode,leadId??undefined,filter);},[load]);
  // The ordinary route can be hard-reloaded or opened directly. Popstate, not an
  // anchor jump, restores the selected main view. Drafts stay in authorized memory.
  useEffect(()=>{const state=lifecycle.current;state.alive=true;return()=>{state.alive=false;state.serial++;};},[]);
@@ -53,13 +56,15 @@ export function NativePeopleWorkspace({locale,view,initial,onSheet,initialMode="
  },[fromUrl]);
  function select(row:NativeContactRow|null){const url=new URL(window.location.href);url.searchParams.delete("leadId");if(row)url.searchParams.set("personId",row.personId);else url.searchParams.delete("personId");if(mode==="demo")url.searchParams.set("mode","demo");else url.searchParams.delete("mode");window.history.pushState(null,"",url);locationKey.current=url.pathname+url.search;setFocusedLead(null);setSelected(row?.personId??null);setSelectedRow(row);if(!row)void load(data.page.page);}
  function switchMode(next:"live"|"demo"){const url=new URL(window.location.href);url.searchParams.delete("leadId");url.searchParams.delete("personId");if(next==="demo")url.searchParams.set("mode","demo");else url.searchParams.delete("mode");window.history.pushState(null,"",url);locationKey.current=url.pathname+url.search;setFocusedLead(null);setSelected(null);void load(1,undefined,next);}
+ function clearPreset(){const url=new URL(window.location.href);url.searchParams.delete("filter");window.history.pushState(null,"",url);locationKey.current=url.pathname+url.search;void load(1,undefined,mode,undefined,"all");}
+ const presetLabels:Record<Preset,string>={all:text("All","הכול"),today:text("Due today","לטיפול היום"),new:text("New inquiries","פניות חדשות"),intake:text("Intake","טופס היכרות"),payment:text("Awaiting verified payment","ממתינים לתשלום מאומת"),booking:text("Paid — awaiting booking","שולם — ממתינים לקביעת מועד"),archived:text("Archived","בארכיון")};
  const denied=failure===401||failure===403;
  return <section className="lsu-native-people" aria-busy={busy}>
   {failure!==null&&<div className="lsw-alert" role="alert"><p>{failure===401?text("Your session ended. Sign in to continue.","פג תוקף החיבור. יש להיכנס מחדש."):failure===403?text("This account cannot access the practitioner directory.","לחשבון הזה אין גישה לרשימת המטפל/ת."):failure===409?text("Contact records are being reconciled. No fallback data or changes were used.","רשומות אנשי הקשר נמצאות בהתאמה. לא הוצגו נתונים חלופיים ולא בוצעו שינויים."):text("The current records could not be loaded. No unrefreshed records are shown. Your authorized draft remains in this session.","לא ניתן לטעון את הרשומות העדכניות. רשומות שלא רועננו אינן מוצגות. הטיוטה המורשית שלך נשמרת בחיבור הנוכחי.")}</p>{failure===401?<a className="lsw-button lsw-button--secondary" href={loginHref(locale,window.location.pathname+window.location.search)}>{text("Sign in","כניסה")}</a>:!denied&&<button className="lsw-button lsw-button--secondary" onClick={()=>void load(data.page.page,focusedLead?undefined:selected??undefined,mode,focusedLead??undefined)}>{text("Retry","ניסיון חוזר")}</button>}</div>}
   {!denied&&(selected||focusedLead?<><nav aria-label={text("Person context","הקשר איש קשר")} className="lsw-breadcrumbs"><button className="lsw-button lsw-button--quiet" onClick={()=>select(null)}>{text("People","אנשים")}</button><span aria-current="page">{selectedRow?.displayName??text("Person","איש קשר")}</span></nav>
     {selectedRow?<NativePerson key={selectedRow.personId} row={selectedRow} epoch={data.authorityEpoch} locale={locale} draft={drafts.get(selectedRow.personId)}
      remember={(fields,version,pending,conflict)=>{if(lifecycle.current.alive&&lifecycle.current.authorized)setDrafts(previous=>new Map(previous).set(selectedRow.personId,{fields,version,pending:pending??null,conflict:conflict??false}));}} denied={status=>{lifecycle.current.authorized=false;lifecycle.current.serial++;setBusy(false);setFailure(status);setSelectedRow(null);setDrafts(new Map());}}/>:!busy&&failure===null&&<p role="status">{text("This person is not in the authorized view.","איש הקשר אינו נמצא בתצוגה המורשית.")}</p>}</>:
-   <><div className="lsw-section-header"><span>{data.page.total} {text("people","אנשים")}</span>{mode==="demo"?<button className="lsw-button lsw-button--secondary" disabled={busy} onClick={()=>switchMode("live")}>{text("Return to live app","חזרה ליישום החי")}</button>:<button className="lsw-button lsw-button--quiet" disabled={busy} onClick={()=>switchMode("demo")}>{text("DEMO records","רשומות DEMO")}</button>}</div>
+   <><div className="lsw-section-header"><span>{data.page.total} {text("people","אנשים")}{preset!=="all"&&<> · {presetLabels[preset]} <button className="lsw-button lsw-button--quiet" disabled={busy} onClick={clearPreset}>{text("Clear workflow filter","ניקוי מסנן תהליך")}</button></>}</span>{mode==="demo"?<button className="lsw-button lsw-button--secondary" disabled={busy} onClick={()=>switchMode("live")}>{text("Return to live app","חזרה ליישום החי")}</button>:<button className="lsw-button lsw-button--quiet" disabled={busy} onClick={()=>switchMode("demo")}>{text("DEMO records","רשומות DEMO")}</button>}</div>
     {mode==="demo"&&<p role="status">{text("Clearly marked synthetic records. Real sending, billing and booking effects are blocked.","רשומות סינתטיות מסומנות. שליחה, חיוב וקביעת תורים אמיתיים חסומים.")}</p>}
     <form className="lsw-card lsu-people-toolbar" onSubmit={e=>{e.preventDefault();void load(1);}} aria-label={text("Search and filters","חיפוש ומסננים")}>
      <label className="lsw-field">{text("Search name, phone or email","חיפוש לפי שם, טלפון או דוא״ל")}<input className="lsw-input" type="search" maxLength={200} value={query} onChange={e=>setQuery(e.target.value)}/></label>
