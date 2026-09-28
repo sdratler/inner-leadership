@@ -12,6 +12,7 @@ import type {PeopleResponse} from "./server/people-http.ts";
 import type {NativeContactRow} from "./server/native-directory.ts";
 type NativeData=Extract<PeopleResponse,{source:"native"}>;
 type Draft={fields:AdministrativeFields;version:number;pending?:PeopleEdit|null;conflict?:boolean};
+export type SheetRequestContext={mode:"live";filter:Preset;personId?:string|undefined;leadId?:string|undefined};
 export class PeopleRequestError extends Error{constructor(readonly status:number){super("PEOPLE_REQUEST_FAILED");}}
 export async function requestPeople(params:URLSearchParams):Promise<PeopleResponse>{
  const r=await fetch("/api/private/people?"+params.toString(),{credentials:"same-origin",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer"});
@@ -22,7 +23,7 @@ const pick=(row:NativeContactRow):AdministrativeFields=>({stage:row.stage,nextAc
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const leadPattern=/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]{1,80}$/;
 const validPresets=new Set<Preset>(["all","today","new","intake","payment","booking","archived"]);
-export function NativePeopleWorkspace({locale,view,initial,onSheet,initialMode="live",initialFilter="all",initialPersonId,initialLeadId}:{locale:Locale;view:PeopleView;initial:NativeData;initialMode?:"live"|"demo";initialFilter?:Preset;initialPersonId?:string|undefined;initialLeadId?:string|undefined;onSheet:(source:Extract<PeopleResponse,{source:"sheet"}>,requestMode:"live")=>void}){
+export function NativePeopleWorkspace({locale,view,initial,onSheet,initialMode="live",initialFilter="all",initialPersonId,initialLeadId}:{locale:Locale;view:PeopleView;initial:NativeData;initialMode?:"live"|"demo";initialFilter?:Preset;initialPersonId?:string|undefined;initialLeadId?:string|undefined;onSheet:(source:Extract<PeopleResponse,{source:"sheet"}>,context:SheetRequestContext)=>void}){
  const he=locale==="he",text=(en:string,heText:string)=>he?heText:en;
  const [data,setData]=useState(initial),[query,setQuery]=useState(""),[stage,setStage]=useState(""),[language,setLanguage]=useState(""),[due,setDue]=useState("any"),[mode,setMode]=useState<"live"|"demo">(initialMode);
  const [busy,setBusy]=useState(false),[failure,setFailure]=useState<number|null>(null),[selected,setSelected]=useState<string|null>(initialPersonId??null),[selectedRow,setSelectedRow]=useState<NativeContactRow|null>(initialPersonId?initial.page.items.find(row=>row.personId===initialPersonId)??null:null);
@@ -37,7 +38,7 @@ export function NativePeopleWorkspace({locale,view,initial,onSheet,initialMode="
   const parameters=new URLSearchParams({view:personId||leadId?"all":view,mode:nextMode,page:String(page),...(personId?{personId}:{}),...(leadId?{leadId}:{}),
    ...(!personId&&!leadId?{search:query,...(stage?{stage}:{}),...(language?{language}:{}),due,...(nextPreset!=="all"?{filter:nextPreset}:{})}:{})});
   try{const result=await requestPeople(parameters);if(!state.alive||current!==state.serial)return;
-   if(result.source==="sheet"){if(nextMode==="demo")throw new PeopleRequestError(409);onSheet(result,nextMode);return;}
+   if(result.source==="sheet"){if(nextMode==="demo")throw new PeopleRequestError(409);onSheet(result,{mode:nextMode,filter:nextPreset,personId,leadId});return;}
    state.authorized=true;
    setMode(nextMode);
    if(personId||leadId){const row=result.page.items.find(r=>personId?r.personId===personId:r.references.some(ref=>ref.leadId===leadId))??null;setSelected(row?.personId??personId??null);setSelectedRow(row);setData(d=>({...d,authorityEpoch:result.authorityEpoch}));}

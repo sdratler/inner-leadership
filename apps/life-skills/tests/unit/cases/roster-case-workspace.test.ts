@@ -341,7 +341,7 @@ it('accepts a verified live Sheet response after returning from an initially DEM
  hook.peopleRead.mockResolvedValue(data);
  const view=()=>hook.render(()=>ClientsRoster({locale:'en',mode:'demo'}));view();hook.flushEffects();await tick();
  const native=find(view(),e=>e.type===NativePeopleWorkspace);
- (native!.props.onSheet as(response:{source:'sheet';authorityEpoch:number},mode:'live')=>void)({source:'sheet',authorityEpoch:4},'live');
+ (native!.props.onSheet as(response:{source:'sheet';authorityEpoch:number},context:{mode:'live';filter:'all'})=>void)({source:'sheet',authorityEpoch:4},{mode:'live',filter:'all'});
  expect(view().type).toBe(LegacyClientsRoster);
  expect(text(view())).not.toContain('No live records are shown in DEMO');
 });
@@ -355,7 +355,31 @@ it('binds the Sheet fallback callback to the live request after leaving DEMO',as
  try{
   (find(view(),e=>e.type==='button'&&e.props.children==='Return to live app')!.props.onClick as()=>void)();
   await tick();await tick();expect(location.search).toBe('');
-  expect(onSheet).toHaveBeenCalledExactlyOnceWith(sheet,'live');
+  expect(onSheet).toHaveBeenCalledExactlyOnceWith(sheet,{mode:'live',filter:'all',personId:undefined,leadId:undefined});
+ }finally{vi.unstubAllGlobals();}
+});
+
+it('uses accepted workflow and person context after a native-to-Sheet rollback instead of original props',async()=>{
+ hook.peopleRead.mockResolvedValue({source:'native',authorityEpoch:3,page:{items:[],total:0,page:1,pageSize:12,pages:1}});
+ const view=()=>hook.render(()=>ClientsRoster({locale:'en',section:'prospects',prospectFilter:'today',focusLeadId:'LS-LEAD-synthetic-old'}));view();hook.flushEffects();await tick();
+ const native=find(view(),e=>e.type===NativePeopleWorkspace),accept=native!.props.onSheet as(response:{source:'sheet';authorityEpoch:number},context:{mode:'live';filter:'all';personId?:string;leadId?:string})=>void;
+ accept({source:'sheet',authorityEpoch:4},{mode:'live',filter:'all'});
+ expect(view().type).toBe(LegacyClientsRoster);expect(view().props.prospectFilter).toBe('all');expect(view().props.focusLeadId).toBeUndefined();
+ accept({source:'sheet',authorityEpoch:4},{mode:'live',filter:'all',leadId:'LS-LEAD-synthetic-current'});
+ expect(view().props.focusLeadId).toBe('LS-LEAD-synthetic-current');
+ accept({source:'sheet',authorityEpoch:4},{mode:'live',filter:'all',personId:'00000000-0000-4000-8000-000000000001'});
+ expect(view().type).not.toBe(LegacyClientsRoster);expect(text(view())).toContain('No unrelated records are shown.');
+});
+
+it('carries the cleared workflow preset in the actual Sheet fallback request',async()=>{
+ let location=new URL('https://synthetic.invalid/en/app/clients?filter=today');
+ vi.stubGlobal('window',{get location(){return location;},history:{pushState(_state:unknown,_unused:string,url:URL){location=new URL(url);}},addEventListener(){},removeEventListener(){}});
+ const sheet={source:'sheet' as const,authorityEpoch:4},onSheet=vi.fn(),initial={source:'native' as const,authorityEpoch:3,page:{items:[],total:0,page:1,pageSize:12,pages:1}};
+ vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,status:200,json:async()=>({ok:true,data:sheet})}));
+ try{
+  const view=()=>hook.render(()=>NativePeopleWorkspace({locale:'en',view:'prospects',initial,initialFilter:'today',onSheet}));
+  (find(view(),e=>e.type==='button'&&e.props.children==='Clear workflow filter')!.props.onClick as()=>void)();await tick();await tick();
+  expect(location.search).toBe('');expect(onSheet).toHaveBeenCalledExactlyOnceWith(sheet,{mode:'live',filter:'all',personId:undefined,leadId:undefined});
  }finally{vi.unstubAllGlobals();}
 });
 it('resolves a Calendar lead deep link through the native API before rendering its person',async()=>{
