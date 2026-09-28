@@ -16,6 +16,7 @@ import {readFile,readdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {Pool} from 'pg';
 import {migrate} from '../src/db/migration-runner.ts';
+import {contactAuthorityIntegrity} from '../src/db/contact-authority-integrity.ts';
 import {assertContactOpsDatabaseIdentity,calendarAppendOnlyFunctionBody,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,internalTaskSchemaCatalogMatches,sourceTaskSchemaCatalogMatches,voiceRuleSchemaCatalogMatches,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,type ContactOpsIntegrityObjects,type InternalTaskIntegrityObjects,type SourceTaskIntegrityObjects,type VoiceRuleIntegrityObjects} from '../src/db/contact-ops-production-guard.ts';
 import type {AppliedMigration,Migration} from '../src/db/migration-plan.ts';
 
@@ -42,7 +43,7 @@ async function main(){
  if(contactOpsSourceBundle(sourceEntries)!==target.sourceBundleSha256)throw new Error('CONTACT_OPS_SOURCE_PROVENANCE_MISMATCH');
  const files=await migrations();
  // The state gate admits at most one exact reviewed suffix; the currently
- // deployed 0103 baseline must be fully verified before 0104 may be applied.
+ // deployed 0104 baseline must be fully verified before 0105 may be applied.
  // The strict state gate refuses partial or unreviewed schema before any write.
  if(!files.some(file=>file.name===CONTACT_OPS_MIGRATION.name&&file.checksum===CONTACT_OPS_MIGRATION.sha256))throw new Error('CONTACT_OPS_MIGRATION_MISSING');
  const reviewedMigration=files.at(-1)!;
@@ -117,7 +118,7 @@ async function main(){
        'definition',pg_get_constraintdef(k.oid)) ORDER BY c.relname,k.conname),'[]'::json) AS catalog
        FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid
        JOIN pg_namespace n ON n.oid=c.relnamespace
-       WHERE n.nspname='ls_contact_ops'`);
+       WHERE n.nspname='ls_contact_ops' AND c.relname IN ('profiles','legacy_links','command_receipts')`);
      const baselineColumns=await client.query<{catalog:unknown}>(`SELECT coalesce(json_agg(json_build_object(
        'column',a.attname,'type',format_type(a.atttypid,a.atttypmod),
        'notNull',a.attnotnull,'default',pg_get_expr(d.adbin,d.adrelid),
@@ -137,7 +138,7 @@ async function main(){
      const validated=await client.query<{contactOps:boolean;baseline:boolean}>(`SELECT
        NOT EXISTS(SELECT 1 FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid
          JOIN pg_namespace n ON n.oid=c.relnamespace
-         WHERE n.nspname='ls_contact_ops' AND NOT k.convalidated) AS "contactOps",
+         WHERE n.nspname='ls_contact_ops' AND c.relname IN ('profiles','legacy_links','command_receipts') AND NOT k.convalidated) AS "contactOps",
        NOT EXISTS(SELECT 1 FROM pg_constraint k
          WHERE k.conrelid=to_regclass('ls_demo.records') AND NOT k.convalidated) AS baseline`);
      const baselineForeignKeys=await client.query<{enforced:boolean}>(`SELECT count(*)=3
@@ -166,7 +167,7 @@ async function main(){
           FROM pg_trigger t WHERE t.tgconstraint=k.oid)) AS enforced
        FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid
        JOIN pg_namespace n ON n.oid=c.relnamespace
-       WHERE n.nspname='ls_contact_ops' AND k.contype='f'`);
+       WHERE n.nspname='ls_contact_ops' AND c.relname IN ('profiles','legacy_links','command_receipts') AND k.contype='f'`);
      const privileges=await client.query<{restricted:boolean}>(`SELECT
        EXISTS(SELECT 1 FROM pg_namespace WHERE nspname='ls_contact_ops') AND
        (SELECT n.nspowner=(SELECT oid FROM pg_roles WHERE rolname=current_user)
@@ -349,6 +350,8 @@ async function main(){
          WHERE a.id IS NULL) AS sound`);
       referencesSound=orphaned.rows[0]?.sound===true;
      }
+     const authorityIntegrity=await contactAuthorityIntegrity({query:async <R extends object>(statement:string,values:readonly unknown[]=[])=>
+      (await client.query<R>(statement,[...values])).rows},files);
      await client.query('COMMIT');
      const history:AppliedMigration[]=ledger.rows.map(row=>({name:row.name,checksum:row.checksum}));
      const verified=new Map(functions.rows.map(row=>[row.name,
@@ -373,7 +376,7 @@ async function main(){
      const sourceIntegrity:SourceTaskIntegrityObjects={baseCatalog,sourceCatalog,sourceIndex:sourceIndex.rows[0]?.exact===true};
      const voiceIntegrity:VoiceRuleIntegrityObjects={...voiceObjects.rows[0]!,
        schemaCatalog:voiceRuleSchemaCatalogMatches(voiceColumns.rows[0]?.catalog,voiceConstraints.rows[0]?.catalog)};
-     return contactOpsMigrationState(files,history,integrity,taskIntegrity,sourceIntegrity,voiceIntegrity);
+     return contactOpsMigrationState(files,history,integrity,taskIntegrity,sourceIntegrity,voiceIntegrity,authorityIntegrity);
     }catch(error){await client.query('ROLLBACK').catch(()=>undefined);throw error;}
    };
    const before=await inspect();

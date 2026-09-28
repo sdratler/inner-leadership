@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {describe,expect,it} from 'vitest';
-import {assertContactOpsDatabaseIdentity,calendarAppendOnlyFunctionBody,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsComparableConstraints,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,internalTaskSchemaCatalogMatches,sourceTaskSchemaCatalogMatches,voiceRuleSchemaCatalogMatches,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,INTERNAL_TASKS_MIGRATION,SOURCE_TASKS_MIGRATION,VOICE_RULE_MIGRATION,type ContactOpsIntegrityObjects,type InternalTaskIntegrityObjects,type SourceTaskIntegrityObjects,type VoiceRuleIntegrityObjects} from '../../src/db/contact-ops-production-guard.ts';
+import {assertContactOpsDatabaseIdentity,calendarAppendOnlyFunctionBody,contactAuthoritySchemaCatalogMatches,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsComparableConstraints,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,internalTaskSchemaCatalogMatches,sourceTaskSchemaCatalogMatches,voiceRuleSchemaCatalogMatches,CONTACT_AUTHORITY_MIGRATION,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,INTERNAL_TASKS_MIGRATION,SOURCE_TASKS_MIGRATION,VOICE_RULE_MIGRATION,type ContactAuthorityIntegrityObjects,type ContactOpsIntegrityObjects,type InternalTaskIntegrityObjects,type SourceTaskIntegrityObjects,type VoiceRuleIntegrityObjects} from '../../src/db/contact-ops-production-guard.ts';
 
 const deployment='a2d9d868-53c4-4fdd-973c-21c4b6b8987d';
 const good={
@@ -19,6 +19,7 @@ const next={name:CONTACT_OPS_MIGRATION.name,checksum:CONTACT_OPS_MIGRATION.sha25
 const taskSuffix={name:INTERNAL_TASKS_MIGRATION.name,checksum:INTERNAL_TASKS_MIGRATION.sha256,sql:'CREATE TABLE ls_calendar.tasks(id uuid);'};
 const sourceSuffix={name:SOURCE_TASKS_MIGRATION.name,checksum:SOURCE_TASKS_MIGRATION.sha256,sql:'ALTER TABLE ls_calendar.tasks ADD COLUMN source_digest text;'};
 const voiceSuffix={name:VOICE_RULE_MIGRATION.name,checksum:VOICE_RULE_MIGRATION.sha256,sql:'CREATE SCHEMA ls_content_voice;'};
+const authoritySuffix={name:CONTACT_AUTHORITY_MIGRATION.name,checksum:CONTACT_AUTHORITY_MIGRATION.sha256,sql:'CREATE TABLE ls_contact_ops.cutover(workspace_id uuid);'};
 const absent:ContactOpsIntegrityObjects={profiles:false,legacyLinks:false,commandReceipts:false,legacyIndex:false,profileProvenanceTrigger:false,markerCompatibilityTrigger:false,immutableDemoRecordTrigger:true,profileFunction:false,markerFunction:false,immutableFunction:true,canonicalPersonConstraint:false,canonicalConstraintDefinition:false,schemaCatalog:false,baselineRecordsCatalog:true,permanentTables:false,foreignKeysEnforced:false,foreignKeyReferencesSound:false,publicRevoked:false};
 const present:ContactOpsIntegrityObjects={profiles:true,legacyLinks:true,commandReceipts:true,legacyIndex:true,profileProvenanceTrigger:true,markerFunction:true,markerCompatibilityTrigger:true,immutableDemoRecordTrigger:true,profileFunction:true,immutableFunction:true,canonicalPersonConstraint:true,canonicalConstraintDefinition:true,schemaCatalog:true,baselineRecordsCatalog:true,permanentTables:true,foreignKeysEnforced:true,foreignKeyReferencesSound:true,publicRevoked:true};
 const taskAbsent:InternalTaskIntegrityObjects={tables:false,columns:false,constraints:false,schemaCatalog:false,foreignKeys:false,dueIndex:false,historyImmutable:false,appendOnlyFunction:true,publicRevoked:false};
@@ -27,6 +28,8 @@ const sourcePending:SourceTaskIntegrityObjects={sourceIndex:false,baseCatalog:tr
 const sourceApplied:SourceTaskIntegrityObjects={sourceIndex:true,baseCatalog:false,sourceCatalog:true};
 const voiceAbsent:VoiceRuleIntegrityObjects={namespaceAbsent:true,tables:false,schemaCatalog:false,foreignKeys:false,ownerIndex:false,historyImmutable:false,publicRevoked:false};
 const voicePresent:VoiceRuleIntegrityObjects={namespaceAbsent:false,tables:true,schemaCatalog:true,foreignKeys:true,ownerIndex:true,historyImmutable:true,publicRevoked:true};
+const authorityAbsent:ContactAuthorityIntegrityObjects={objectsAbsent:true,tables:false,schemaCatalog:false,foreignKeys:false,historyImmutable:false,appendOnlyFunction:false,publicRevoked:false,referencesSound:false};
+const authorityPresent:ContactAuthorityIntegrityObjects={objectsAbsent:false,tables:true,schemaCatalog:true,foreignKeys:true,historyImmutable:true,appendOnlyFunction:true,publicRevoked:true,referencesSound:true};
 
 describe('registered native CRM production migration gate',()=>{
  it('binds a complete ordered reviewed source-file bundle',()=>{
@@ -53,6 +56,7 @@ describe('registered native CRM production migration gate',()=>{
   expect(internalTaskSchemaCatalogMatches(new Array(20).fill({}),new Array(13).fill({}))).toBe(false);
   expect(sourceTaskSchemaCatalogMatches(new Array(23).fill({}),new Array(14).fill({}))).toBe(false);
   expect(voiceRuleSchemaCatalogMatches(new Array(31).fill({}),new Array(23).fill({}))).toBe(false);
+  expect(contactAuthoritySchemaCatalogMatches(new Array(14).fill({}),new Array(15).fill({}))).toBe(false);
   expect(contactOpsBaselineRecordsMatches([],[])).toBe(false);
   expect(contactOpsComparableConstraints([{type:'c'},{type:'n'},{type:'f'}])).toEqual([{type:'c'},{type:'f'}]);
  });
@@ -138,5 +142,29 @@ describe('registered native CRM production migration gate',()=>{
   expect(()=>contactOpsMigrationState(files,through0103,present,taskPresent,sourcePending,voiceAbsent)).toThrow('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
   expect(()=>contactOpsMigrationState([prior,next,taskSuffix,sourceSuffix,{...voiceSuffix,checksum:'0'.repeat(64)}],through0103,present,taskPresent,sourceApplied,voiceAbsent)).toThrow('CONTACT_OPS_MANIFEST_MISMATCH');
   expect(()=>contactOpsMigrationState([...files,{...voiceSuffix,name:'0105_unreviewed.sql'}],through0103,present,taskPresent,sourceApplied,voiceAbsent)).toThrow('CONTACT_OPS_MANIFEST_MISMATCH');
+ });
+ it('admits only exact 0105 with complete prior baseline and strict absent/applied catalog proof',()=>{
+  const before=[prior,next,taskSuffix,sourceSuffix,voiceSuffix],files=[...before,authoritySuffix];
+  expect(contactOpsMigrationState(files,before,present,taskPresent,sourceApplied,voicePresent,authorityAbsent)).toBe('pending');
+  expect(contactOpsMigrationState(files,files,present,taskPresent,sourceApplied,voicePresent,authorityPresent)).toBe('applied');
+  expect(()=>contactOpsMigrationState(files,before,present,taskPresent,sourceApplied,voicePresent)).toThrow('CONTACT_OPS_AUTHORITY_READBACK_INVALID');
+  for(const key of Object.keys(authorityPresent).filter(key=>key!=='objectsAbsent') as (keyof ContactAuthorityIntegrityObjects)[]){
+   expect(()=>contactOpsMigrationState(files,before,present,taskPresent,sourceApplied,voicePresent,{...authorityAbsent,[key]:true})).toThrow('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+   expect(()=>contactOpsMigrationState(files,files,present,taskPresent,sourceApplied,voicePresent,{...authorityPresent,[key]:false})).toThrow('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+  }
+  expect(()=>contactOpsMigrationState(files,before,present,taskPresent,sourceApplied,voicePresent,{...authorityAbsent,objectsAbsent:false})).toThrow('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+  expect(()=>contactOpsMigrationState(files,files,present,taskPresent,sourceApplied,voicePresent,{...authorityPresent,objectsAbsent:true})).toThrow('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+  expect(()=>contactOpsMigrationState(files,before,present,taskPresent,sourceApplied,voiceAbsent,authorityAbsent)).toThrow('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+  for(const key of Object.keys(voicePresent).filter(key=>key!=='namespaceAbsent') as (keyof VoiceRuleIntegrityObjects)[])
+   expect(()=>contactOpsMigrationState(files,before,present,taskPresent,sourceApplied,{...voicePresent,[key]:false},authorityAbsent)).toThrow('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+  for(const key of Object.keys(present) as (keyof ContactOpsIntegrityObjects)[])
+   expect(()=>contactOpsMigrationState(files,before,{...present,[key]:false},taskPresent,sourceApplied,voicePresent,authorityAbsent)).toThrow();
+  const incomplete={...authorityPresent} as Partial<ContactAuthorityIntegrityObjects>;delete incomplete.referencesSound;
+  expect(()=>contactOpsMigrationState(files,files,present,taskPresent,sourceApplied,voicePresent,incomplete as ContactAuthorityIntegrityObjects)).toThrow('CONTACT_OPS_AUTHORITY_READBACK_INVALID');
+  expect(()=>contactOpsMigrationState(files,files,present,taskPresent,sourceApplied,voicePresent,{...authorityPresent,extra:true} as ContactAuthorityIntegrityObjects)).toThrow('CONTACT_OPS_AUTHORITY_READBACK_INVALID');
+  expect(()=>contactOpsMigrationState(files,files,present,taskPresent,sourceApplied,voicePresent,{...authorityPresent,tables:1} as unknown as ContactAuthorityIntegrityObjects)).toThrow('CONTACT_OPS_AUTHORITY_READBACK_INVALID');
+  expect(()=>contactOpsMigrationState([...before,{...authoritySuffix,checksum:'0'.repeat(64)}],before,present,taskPresent,sourceApplied,voicePresent,authorityAbsent)).toThrow('CONTACT_OPS_MANIFEST_MISMATCH');
+  expect(()=>contactOpsMigrationState([...files,{...authoritySuffix,name:'0106_unreviewed.sql'}],files,present,taskPresent,sourceApplied,voicePresent,authorityPresent)).toThrow('CONTACT_OPS_MANIFEST_MISMATCH');
+  expect(()=>contactOpsMigrationState(files,before.slice(0,-1),present,taskPresent,sourceApplied,voicePresent,authorityAbsent)).toThrow('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
  });
 });
