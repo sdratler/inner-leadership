@@ -1,6 +1,6 @@
 import {describe,expect,it} from "vitest";
 import {applyNativeProspectUpdate,changedProspectFollowUp,nativeProspectUpdateKey,prepareNativeProspectUpdate,prospectContactSuppressed,
- prospectFollowUpDraft,prospectUpdateFieldsSchema,reconcileProspectFollowUp} from "../../src/features/prospects/native-edit.ts";
+ prospectFollowUpDraft,prospectUpdateFieldsSchema,reconcileProspectFollowUp,prepareProspectUpdate,prospectEditContext} from "../../src/features/prospects/native-edit.ts";
 import type {Prospect} from "../../src/features/prospects/bridge.ts";
 const person="11111111-1111-4111-8111-111111111111",operation="22222222-2222-4222-8222-222222222222";
 function row(leadId="LS-LEAD-synthetic"):Prospect{return {leadId,notes:"Synthetic preserved note",owner:"Synthetic original owner",outcome:"Synthetic original outcome",nextAction:"Original",
@@ -72,5 +72,30 @@ describe("native follow-up input preservation",()=>{
    expect(prospectContactSuppressed({stage:"New inquiry",outcome:value})).toBe(true);
   expect(prospectContactSuppressed({stage:"Do not contact",outcome:"Contacted"})).toBe(true);
   expect(prospectContactSuppressed({stage:"New inquiry",outcome:"Contacted"})).toBe(false);
+ });
+ it("preserves a dirty Sheet-origin fence across native cutover and repeated reconciliation",()=>{
+  const legacy={...row()};delete legacy.nativeEdit;
+  let draft=prospectFollowUpDraft(legacy);draft.values.notes="Synthetic Sheet-era unsaved note";
+  for(const native of [row(),{...row(),nativeEdit:{...row().nativeEdit!,profileVersion:2}}]){
+   draft=reconcileProspectFollowUp(draft,native);
+   expect(draft.baseline.nativeEdit).toBeUndefined();expect(draft.conflict).toBe(true);
+   expect(draft.values.notes).toBe("Synthetic Sheet-era unsaved note");
+   expect(()=>prepareProspectUpdate(native,changedProspectFollowUp(draft),operation,prospectEditContext(draft.baseline))).toThrow("STALE_PROSPECT_EDIT_CONTEXT");
+  }
+ });
+ it("preserves native preconditions when a dirty draft survives rollback to Sheet",()=>{
+  const native=row(),legacy={...native};delete legacy.nativeEdit;
+  const draft=prospectFollowUpDraft(native);draft.values.notes="Synthetic native-era unsaved note";
+  const reconciled=reconcileProspectFollowUp(draft,legacy);
+  expect(reconciled.conflict).toBe(true);expect(reconciled.baseline.nativeEdit).toEqual(native.nativeEdit);
+  const request=prepareProspectUpdate(legacy,changedProspectFollowUp(reconciled),operation,prospectEditContext(reconciled.baseline));
+  expect(request).toEqual({action:"update",leadId:native.leadId,fields:{notes:draft.values.notes},expectedEpoch:3,expectedVersion:1,operationId:operation});
+ });
+ it("a clean draft can adopt the current source, but a native person's identity cannot silently change",()=>{
+  const legacy={...row()};delete legacy.nativeEdit;
+  const adopted=reconcileProspectFollowUp(prospectFollowUpDraft(legacy),row());
+  expect(adopted.conflict).toBe(false);expect(adopted.baseline.nativeEdit).toEqual(row().nativeEdit);
+  expect(prepareProspectUpdate(legacy,{owner:"Synthetic owner"},operation,prospectEditContext(legacy))).toEqual({action:"update",leadId:legacy.leadId,fields:{owner:"Synthetic owner"}});
+  expect(()=>prepareProspectUpdate({...row(),nativeEdit:{...row().nativeEdit!,personId:operation}},{owner:"Synthetic owner"},operation,prospectEditContext(row()))).toThrow("STALE_PROSPECT_EDIT_CONTEXT");
  });
 });

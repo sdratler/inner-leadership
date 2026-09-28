@@ -3,6 +3,8 @@ vi.mock("server-only",()=>({}));
 import {authoritativeProspectUpdate,prospectUpdateSchema} from "../../../src/features/contact-ops/server/authoritative-prospect-update.ts";
 import type {Actor} from "../../../src/features/identity/types.ts";
 import type {CutoverState,Phase} from "../../../src/features/contact-ops/core/cutover.ts";
+import type {Prospect} from "../../../src/features/prospects/bridge.ts";
+import {changedProspectFollowUp,prepareProspectUpdate,prospectEditContext,prospectFollowUpDraft,reconcileProspectFollowUp} from "../../../src/features/prospects/native-edit.ts";
 const actor={role:"practitioner"} as Actor,operation="11111111-1111-4111-8111-111111111111";
 const legacy={action:"update" as const,leadId:"LS-LEAD-synthetic-update",fields:{nextAction:"Synthetic next action"}};
 const request={...legacy,expectedEpoch:3,expectedVersion:1,operationId:operation};
@@ -29,6 +31,14 @@ describe("one authoritative administrative prospect update",()=>{
  });
  it("never applies a pre-rollback native tab to the Sheet writer",async()=>{
   const d=deps("sheet_active");await expect(authoritativeProspectUpdate(actor,request,d)).rejects.toMatchObject({code:"CONFLICT"});expect(d.sheet.update).not.toHaveBeenCalled();
+ });
+ it("the actual draft-to-command path retains its native fence after rollback and performs zero writes",async()=>{
+  const native={...legacy.fields,leadId:legacy.leadId,notes:"Synthetic saved",dueDate:"",owner:"",nativeEdit:{personId:operation,profileVersion:1,authorityEpoch:3}} as Prospect;
+  const sheet={...native};delete sheet.nativeEdit;
+  const draft=prospectFollowUpDraft(native);draft.values.notes="Synthetic unsaved native note";
+  const reconciled=reconcileProspectFollowUp(draft,sheet),command=prepareProspectUpdate(sheet,changedProspectFollowUp(reconciled),operation,prospectEditContext(reconciled.baseline));
+  const d=deps("sheet_active");await expect(authoritativeProspectUpdate(actor,command,d)).rejects.toMatchObject({code:"CONFLICT"});
+  expect(d.sheet.update).not.toHaveBeenCalled();expect(d.native.updateProspectFields).not.toHaveBeenCalled();
  });
  it("never falls back after an authority/native failure",async()=>{
   const d=deps("native_active");d.native.updateProspectFields.mockRejectedValue(Error("Synthetic native failure"));

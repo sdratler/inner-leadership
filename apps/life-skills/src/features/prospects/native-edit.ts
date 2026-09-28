@@ -21,7 +21,10 @@ export function reconcileProspectFollowUp(draft:ProspectFollowUpDraft,row:Prospe
   (dirty.length>0&&draft.baseline.nativeEdit?.authorityEpoch!==row.nativeEdit?.authorityEpoch)||
   dirty.some(key=>row[key]!==draft.baseline[key]&&draft.values[key]!==row[key]);
  const values={...draft.values};for(const key of followUpKeys)if(!dirty.includes(key))values[key]=row[key];
- const baseline=conflict&&draft.baseline.nativeEdit?{...row,nativeEdit:draft.baseline.nativeEdit}:row;
+ // Absence is also an authority fence: a Sheet-era draft must not acquire
+ // native credentials merely because refreshed rows now come from native.
+ const baseline={...row};
+ if(conflict){if(draft.baseline.nativeEdit)baseline.nativeEdit=draft.baseline.nativeEdit;else delete baseline.nativeEdit;}
  return {baseline,values,conflict};
 }
 export function changedProspectFollowUp(draft:ProspectFollowUpDraft):ProspectUpdateFields{
@@ -36,6 +39,23 @@ export type ProspectUpdateFields=z.infer<typeof prospectUpdateFieldsSchema>;
 export type NativeProspectUpdate={action:"update";leadId:string;fields:ProspectUpdateFields;
  expectedEpoch:number;expectedVersion:number;operationId:string};
 export type NativeProspectUpdateResult={updated:true;source:"native";personId:string;version:number;replayed:boolean};
+export type ProspectEditContext={source:"sheet"}|{source:"native";nativeEdit:NonNullable<Prospect["nativeEdit"]>};
+export function prospectEditContext(row:Prospect):ProspectEditContext{
+ return row.nativeEdit?{source:"native",nativeEdit:row.nativeEdit}:{source:"sheet"};
+}
+/** Retain the draft's source, not the latest row's source. Legacy-to-native
+ * changes fail before dispatch; native-to-legacy changes keep their native
+ * preconditions so the authoritative server rejects them before Sheet writes.
+ */
+export function prepareProspectUpdate(row:Prospect,fields:ProspectUpdateFields,operationId:string,context:ProspectEditContext):
+ NativeProspectUpdate|{action:"update";leadId:string;fields:ProspectUpdateFields}{
+ if(context.source==="native"){
+  if(row.nativeEdit&&row.nativeEdit.personId!==context.nativeEdit.personId)throw Error("STALE_PROSPECT_EDIT_CONTEXT");
+  return prepareNativeProspectUpdate({...row,nativeEdit:context.nativeEdit},fields,operationId);
+ }
+ if(row.nativeEdit)throw Error("STALE_PROSPECT_EDIT_CONTEXT");
+ return {action:"update",leadId:row.leadId,fields:prospectUpdateFieldsSchema.parse(fields)};
+}
 
 /** One exact retry key, never browser-selected authority or person identity. */
 export function prepareNativeProspectUpdate(row:Prospect,fields:ProspectUpdateFields,operationId:string):NativeProspectUpdate{
