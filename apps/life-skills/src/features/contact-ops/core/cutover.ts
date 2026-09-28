@@ -1,4 +1,4 @@
-import { requireThat } from "./validation.js";
+import { requireThat } from "./validation.ts";
 export type Phase = "sheet_active" | "shadow_ready" | "frozen" | "native_active" | "retired" | "rollback_prepared";
 export interface CutoverState {
     phase: Phase;

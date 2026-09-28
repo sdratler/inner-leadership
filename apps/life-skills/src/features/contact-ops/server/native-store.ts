@@ -1,13 +1,12 @@
 import "server-only";
-import { privateDigest } from "./digests.js";
-import { requireThat } from "../core/validation.js";
+import { privateDigest } from "./digests.ts";
+import { requireThat,dateOnly } from "../core/validation.ts";
 import type {IdentityStore} from "../../identity/store.ts";
 import {seal,unseal,type Keyring} from "../../identity/crypto.ts";
 import {freshActor,lockWorkspace} from "../../identity/data.ts";
 import {requirePractitioner} from "../../cases/policy.ts";
 import {systemClock,type Actor,type IdentityClock} from "../../identity/types.ts";
 import {asId} from "../../../lib/ids.ts";
-import {dateOnly} from "../core/validation.js";
 import {demoRecordBatch} from "../../demo/provenance.ts";
 export interface CrmProfile {
     personId: string;
@@ -72,6 +71,8 @@ export class NativeCrmStore {
             if (!r) return null;
             const profile=JSON.parse(unseal(r.payload_ciphertext,crmProfileAad(a.workspaceId,personId),this.keyring)) as CrmProfile;
             requireThat(profile.personId===personId,"PROFILE_ID_MISMATCH");
+            validateProfile(profile);
+            requireThat(Number.isSafeInteger(r.version)&&r.version>0,"BAD_PROFILE_VERSION");
             return {profile,version:r.version};
         });
     }

@@ -5,6 +5,8 @@ import {systemClock,type Actor,type IdentityClock} from "../../identity/types.ts
 import {ContactCutoverStore} from "./cutover-store.ts";
 import {NativeCrmStore,type CrmProfile} from "./native-store.ts";
 import {NativeContactDirectory,type NativeContactQuery} from "./native-directory.ts";
+import {AppError} from "../../../lib/errors.ts";
+export type NativeAdminFields=Pick<CrmProfile,"stage"|"nextAction"|"followUpDate"|"notes">;
 
 /** Operational native CRM boundary, not an authority switch. It has no Sheet,
  * network or provider dependency. Routes must supply the observed durable epoch;
@@ -41,5 +43,18 @@ export class OperationalNativeCrmStore {
  update(actor:Actor,profile:CrmProfile,expectedVersion:number,operationId:string,expectedEpoch:number){
   return this.authority.withDestination(actor,{destination:"native",intent:"write",expectedEpoch},
    tx=>this.profileStore(tx).update(actor,profile,expectedVersion,operationId));
+ }
+ /** One authority-locked transaction owns read/merge/write. The browser cannot
+  * change canonical person or legacy mappings through an administrative edit.
+  * The existing receipt binds retries to the exact fields and original version.
+  */
+ updateFields(actor:Actor,personId:string,fields:NativeAdminFields,expectedVersion:number,operationId:string,expectedEpoch:number){
+  return this.authority.withDestination(actor,{destination:"native",intent:"write",expectedEpoch},async tx=>{
+   const profiles=this.profileStore(tx),existing=await profiles.read(actor,personId);
+   if(!existing)throw new AppError("NOT_FOUND");
+   const profile:CrmProfile={personId:existing.profile.personId,legacyIds:existing.profile.legacyIds,
+    stage:fields.stage,nextAction:fields.nextAction,followUpDate:fields.followUpDate,notes:fields.notes};
+   return profiles.update(actor,profile,expectedVersion,operationId);
+  });
  }
 }
