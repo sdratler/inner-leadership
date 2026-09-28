@@ -206,3 +206,25 @@ test("native PostgreSQL keeps active profiled clients visible and matches new in
  expect((await directory.list(f.practitioner.actor,{...query,view:'active'})).items[0]).toMatchObject({personId,archived:false,doNotContact:true});
  expect((await directory.list(f.practitioner.actor,{...query,view:'prospects',filter:'new'})).total).toBe(0);
 });
+
+test("native PostgreSQL keeps a paused assigned client out of prospect queues until a real new inquiry exists",async()=>{
+ const personId=randomUUID(),clientId=randomUUID(),caseId=randomUUID();
+ await f.pool.query("INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,'adult',$3,clock_timestamp())",[personId,f.workspaceId,seal(JSON.stringify({displayName:'Synthetic paused client'}),`person:${f.workspaceId}:${personId}`,f.keyring)]);
+ await f.pool.query("INSERT INTO ls_cases.clients(id,workspace_id,person_id,created_at) VALUES($1,$2,$3,clock_timestamp())",[clientId,f.workspaceId,personId]);
+ await f.pool.query("INSERT INTO ls_cases.cases(id,workspace_id,client_id,practitioner_account_id,state,created_at,updated_at) VALUES($1,$2,$3,$4,'paused',clock_timestamp(),clock_timestamp())",[caseId,f.workspaceId,clientId,f.practitioner.actor.id]);
+ const query={...q,personId};
+ async function check(version:number|null){
+  expect((await directory.list(f.practitioner.actor,query)).items[0]).toMatchObject({personId,version,caseLinks:[{caseId,state:'paused'}]});
+  for(const view of ['prospects','active'] as const)expect((await directory.list(f.practitioner.actor,{...query,view})).total).toBe(0);
+  expect((await directory.list(f.practitioner.actor,{...query,filter:'new'})).total).toBe(0);
+ }
+ await check(null);
+ const profile:CrmProfile={personId,stage:'New inquiry',nextAction:'Review synthetic returning inquiry',followUpDate:q.today,notes:'Synthetic preserved client note',legacyIds:[]};
+ await native.create(f.practitioner.actor,profile,'synthetic-paused-profile-'+randomUUID());
+ await check(1);
+ const lead='LS-LEAD-synthetic-paused-returning-'+randomBytes(4).toString('hex');
+ await native.update(f.practitioner.actor,{...profile,legacyIds:[lead]},1,'synthetic-paused-inquiry-'+randomUUID());
+ await link(personId,lead);
+ expect((await directory.list(f.practitioner.actor,{...query,view:'prospects',filter:'new'})).items[0]).toMatchObject({personId,version:2,notes:profile.notes});
+ expect((await directory.list(f.practitioner.actor,{...query,view:'active'})).total).toBe(0);
+});

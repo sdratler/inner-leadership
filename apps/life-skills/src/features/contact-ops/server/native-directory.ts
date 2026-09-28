@@ -183,6 +183,7 @@ export function selectNativeContacts(rows:readonly NativeContactRow[],input:Nati
  if(q.leadId&&rows.filter(r=>r.mode===(q.mode??"live")&&r.references.some(ref=>ref.leadId===q.leadId)).length>1)throw new AppError("CONFLICT");
  const filtered=rows.filter(r=>{
   const activeCase=r.caseLinks?.some(c=>c.state==="active")??false;
+  const assignedClient=r.caseLinks?.some(c=>!["completed","archived"].includes(c.state))??false;
   const closed=(r.archived&&!activeCase)||r.doNotContact;
   // Synthetic records need an explicit administrative demo view. They do not
   // silently mix into the default live contact directory.
@@ -194,11 +195,11 @@ export function selectNativeContacts(rows:readonly NativeContactRow[],input:Nati
   const facts=r.references.map(ref=>ref.journey);
   if(view==="active"&&!activeCase&&!facts.some(j=>j.journeyState==="active"))return false;
   if(view==="paid"&&!facts.some(j=>j.paymentVerified&&!j.bookingConfirmed&&j.journeyState!=="hold"))return false;
-  if(view==="prospects"&&(facts.length?!facts.some(j=>!["active","hold"].includes(j.journeyState)):activeCase))return false;
+  if(view==="prospects"&&(facts.length?!facts.some(j=>!["active","hold"].includes(j.journeyState)):assignedClient))return false;
   // Preserve existing workflow links without promoting historic payment/booking
   // claims to verified facts. Real journey state supersedes an older form claim.
   if(q.filter==="today"&&(!r.followUpDate||r.followUpDate>q.today))return false;
-  if(q.filter==="new"&&(r.version===null||(r.references.length?!r.references.some(ref=>!ref.formSentClaim&&!ref.formSubmittedClaim&&!ref.journey.paymentVerified&&!ref.journey.bookingConfirmed&&ref.journey.journeyState==="prospect"):activeCase)))return false;
+  if(q.filter==="new"&&(r.version===null||(r.references.length?!r.references.some(ref=>!ref.formSentClaim&&!ref.formSubmittedClaim&&!ref.journey.paymentVerified&&!ref.journey.bookingConfirmed&&ref.journey.journeyState==="prospect"):assignedClient)))return false;
   if(q.filter==="intake"&&!r.references.some(ref=>ref.formSentClaim&&!ref.formSubmittedClaim&&ref.journey.journeyState==="prospect"&&!ref.journey.paymentVerified))return false;
   if(q.filter==="payment"&&!r.references.some(ref=>(ref.formSubmittedClaim||ref.journey.journeyState==="awaiting_payment")&&!ref.journey.paymentVerified&&!["active","hold"].includes(ref.journey.journeyState)))return false;
   if(q.stage&&q.stage!==r.stage)return false;

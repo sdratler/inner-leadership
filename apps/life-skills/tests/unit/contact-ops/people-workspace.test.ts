@@ -68,3 +68,17 @@ test("archived marketing history and contact opt-out never revoke an active assi
  expect(selectNativeContacts([{...optedOut,caseLinks:[]}],q).total).toBe(0);
  expect(selectNativeContacts([optedOut],{...q,view:'prospects'}).total).toBe(0);
 });
+
+test.each(['invited','intake','paused'])("assigned %s clients are not invented prospects or active clients",state=>{
+ const row:NativeContactRow={personId,displayName:'Synthetic assigned client',identityKind:'adult',...fields,version:1,mode:'live',archived:false,doNotContact:false,references:[],caseLinks:[{caseId:'synthetic-case',state}]};
+ const q={view:'all' as const,search:'',today:'2026-09-28',page:1,pageSize:12};
+ for(const version of [null,1]){
+  const current={...row,version};
+  expect(selectNativeContacts([current],q).total).toBe(1);
+  expect(selectNativeContacts([current],{...q,view:'prospects'}).total).toBe(0);
+  expect(selectNativeContacts([current],{...q,view:'active'}).total).toBe(0);
+  expect(selectNativeContacts([current],{...q,filter:'new'}).total).toBe(0);
+ }
+ const ref:NativeContactReference={leadId:'LS-LEAD-synthetic-returning',phone:'',email:'',language:'en',source:'synthetic',campaign:'',outcome:'',messageReceipt:'',paymentClaim:'',bookingClaim:'',formSentClaim:'',formSubmittedClaim:'',sourceFileId:'synthetic',sourceSheetId:1,sourceRevision:'synthetic',journey:{journeyState:'prospect',paymentVerified:false,bookingConfirmed:false}};
+ expect(selectNativeContacts([{...row,references:[ref]}],{...q,view:'prospects',filter:'new'}).total).toBe(1);
+});
