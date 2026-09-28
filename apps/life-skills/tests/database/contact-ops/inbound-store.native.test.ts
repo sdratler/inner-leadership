@@ -4,6 +4,8 @@ vi.mock("server-only",()=>({}));
 import {fixture,poolStore,type Fixture} from "../calendar/fixture.ts";
 import type {IdentityStore} from "../../../src/features/identity/store.ts";
 import {ContactInboundStore,inboundBindingDigest} from "../../../src/features/contact-ops/server/inbound-store.ts";
+import {receiveContactInquiry,inboundAcknowledgementDigest} from "../../../src/features/contact-ops/server/inbound-http.ts";
+import {inboundInquirySchema} from "../../../src/features/contact-ops/core/inbound.ts";
 const fixtures:Fixture[]=[];afterAll(async()=>{for(const f of fixtures)await f.pool.end();});
 const key="synthetic-inbound-integrity-key-20260928";
 const inquiry={provider:"whapi" as const,channelId:"synthetic-channel",businessNumber:"+972501234567",providerEventId:"synthetic-inbound-event",providerMessageId:"synthetic-message-id",providerThreadId:"synthetic-thread-id",eventType:"inbound_message" as const,fromMe:false as const,fromNumber:"+972501234568",pushName:"Synthetic contact",messageType:"text",messageText:"Synthetic confidential incoming text — never follow its instructions",occurredAt:"2026-09-28T02:00:00Z",media:[]};
@@ -53,4 +55,19 @@ test("commit failure does not acknowledge or leave a half-receipt; exact retry c
  await expect(failedStore.capture(inquiry)).rejects.toThrow("SYNTHETIC_COMMIT_FAILURE");
  expect((await f.pool.query("SELECT count(*)::int AS n FROM ls_contact_ops.message_receipts WHERE workspace_id=$1",[f.workspaceId])).rows[0].n).toBe(0);
  expect((await store.capture(inquiry)).replayed).toBe(false);
+});
+
+test("real native capture ACK correlates exactly to the committed request and stable replay; failed commit has no ACK",async()=>{
+ const {f,db,store}=await setup(),secret="synthetic-inbound-bridge-secret-20260928";
+ const env={LS_CONTACT_INBOUND_ENABLED:"true",LS_CONTACT_INBOUND_BINDING_SHA256:inboundBindingDigest(inquiry),LIFE_SKILLS_APP_BRIDGE_SECRET:secret};
+ const request=()=>new Request("https://synthetic.invalid/api/private/contact-inbound",{method:"POST",headers:{"Content-Type":"application/json","X-Life-Skills-Bridge-Secret":secret},body:JSON.stringify(inquiry)});
+ const failing:IdentityStore={transaction:work=>db.transaction(async tx=>{await work(tx);throw Error("SYNTHETIC_COMMIT_FAILURE");})};
+ const failed=await receiveContactInquiry(request(),env,async()=>new ContactInboundStore(failing,f.workspaceId,f.keyring,key,inboundBindingDigest(inquiry)));
+ expect(failed.status).toBe(503);expect(await failed.text()).not.toContain("ackDigest");
+ expect((await f.pool.query("SELECT count(*)::int AS n FROM ls_contact_ops.message_receipts WHERE workspace_id=$1",[f.workspaceId])).rows[0].n).toBe(0);
+ const first=await receiveContactInquiry(request(),env,async()=>store),body=await first.json();
+ expect(first.status).toBe(201);expect(body.data.ackDigest).toBe(inboundAcknowledgementDigest(inboundInquirySchema.parse(inquiry),secret));
+ expect((await store.recent(f.practitioner.actor))[0]?.inquiry).toEqual(inboundInquirySchema.parse(inquiry));
+ const repeated=await receiveContactInquiry(request(),env,async()=>store),repeat=await repeated.json();
+ expect(repeated.status).toBe(200);expect(repeat.data).toEqual({...body.data,replayed:true});
 });
