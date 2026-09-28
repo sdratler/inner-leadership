@@ -114,6 +114,9 @@ test('unpublished audience and canceled engagement are not resurrected by cached
 test('real appointments and buffers are respected; a DEMO does not reserve real capacity',()=>using(async f=>{
  const ready=await f.prepare(),input=f.booking(ready.audienceId);
  await f.seed(f.at(49));await expect(f.book({...input,bufferAfter:1})).rejects.toMatchObject({code:'CONFLICT'});
+ // The real ordinary route invokes create(), not the private operator path.
+ await expect(f.service.create(f.practitioner.actor,key(),{...input,bufferAfter:1})).rejects.toMatchObject({code:'CONFLICT'});
+ await expect(f.service.create(f.practitioner.actor,key(),{...input,startsAt:f.at(49)})).rejects.toMatchObject({code:'CONFLICT'});
  const a=await f.book({...input,startsAt:f.at(52)});
  const real=await f.service.create(f.practitioner.actor,key(),f.realBooking(f.at(52),f.second));expect(real.id).not.toBe(a.id);
 }));

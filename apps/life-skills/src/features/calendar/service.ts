@@ -114,11 +114,15 @@ export class CalendarService {
    practitionerId:item.practitionerAccountId,termsVersion:engagement.termsVersion,kind:input.kind,...times,status:'scheduled',
    parentForId:input.parentForId,originalId:original?.id??null,parentIds:[...input.parentIds],bufferBefore:input.bufferBefore,bufferAfter:input.bufferAfter,
    location:input.location,createdAt:c.now,createdBy:c.actor.id,version:1};
-  if(!demoBatch){
-   const slot=paddedSlot(a),windows=await this.privateAvailability(c,slot.startsAt,slot.endsAt);
-   const busy=await c.tx.query<{startsAt:Date;endsAt:Date}>(`SELECT a.starts_at-a.buffer_before*interval '1 minute' AS "startsAt",a.ends_at+a.buffer_after*interval '1 minute' AS "endsAt" FROM ls_calendar.appointments a
+  const slot=paddedSlot(a);
+  const busy=await c.tx.query<{startsAt:Date;endsAt:Date}>(`SELECT a.starts_at-a.buffer_before*interval '1 minute' AS "startsAt",a.ends_at+a.buffer_after*interval '1 minute' AS "endsAt" FROM ls_calendar.appointments a
     WHERE a.workspace_id=$1 AND a.practitioner_id=$2 AND a.status='scheduled' AND a.starts_at-a.buffer_before*interval '1 minute'<$4 AND a.ends_at+a.buffer_after*interval '1 minute'>$3
     AND NOT EXISTS (SELECT 1 FROM ls_demo.cases d WHERE d.workspace_id=a.workspace_id AND d.case_id=a.case_id)`,[c.workspace,c.actor.id,slot.startsAt,slot.endsAt]);
+  // Both the ordinary practitioner API and the private setup command refuse a
+  // DEMO placement over a real appointment. DEMOs still reserve no capacity.
+  if(demoBatch){if(busy.length)throw new AppError('CONFLICT');}
+  else{
+   const windows=await this.privateAvailability(c,slot.startsAt,slot.endsAt);
    assertAvailable(slot,windows,busy.map(r=>({startsAt:r.startsAt.toISOString(),endsAt:r.endsAt.toISOString()})));
   }
   await c.tx.query(`INSERT INTO ls_calendar.appointments(id,workspace_id,case_id,audience_id,engagement_id,practitioner_id,terms_version,kind,starts_at,ends_at,status,
@@ -156,12 +160,6 @@ export class CalendarService {
    if(!await one(c.tx,"SELECT id FROM ls_cases.engagements WHERE workspace_id=$1 AND case_id=$2 AND state='active'",[c.workspace,item.id]))throw new AppError('CONFLICT');
   },async c=>{
    if(!input.location.startsWith('DEMO')||/https?:\/\//i.test(input.location))throw new AppError('INVALID_REQUEST');
-   const end=new Date(ms(input.startsAt)+(input.kind==='individual'?60:15)*60_000).toISOString();
-   const slot=paddedSlot({startsAt:iso(input.startsAt),endsAt:end,bufferBefore:input.bufferBefore,bufferAfter:input.bufferAfter});
-   const busy=await one(c.tx,`SELECT a.id FROM ls_calendar.appointments a WHERE a.workspace_id=$1 AND a.practitioner_id=$2
-    AND a.status='scheduled' AND a.starts_at-a.buffer_before*interval '1 minute'<$4 AND a.ends_at+a.buffer_after*interval '1 minute'>$3
-    AND NOT EXISTS(SELECT 1 FROM ls_demo.cases d WHERE d.workspace_id=a.workspace_id AND d.case_id=a.case_id) LIMIT 1`,[c.workspace,c.actor.id,slot.startsAt,slot.endsAt]);
-   if(busy)throw new AppError('CONFLICT');
    const a=await this.createIn(c,input);return this.db.view(c,a.id);
   });
  }
