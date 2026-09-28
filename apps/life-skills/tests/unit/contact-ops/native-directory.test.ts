@@ -24,6 +24,13 @@ describe("complete native contact result selection",()=>{
   expect(selectNativeContacts(rows,query({view:"paid"})).total).toBe(0);
   expect(selectNativeContacts(rows,query({view:"active"})).total).toBe(0);
  });
+ it("filters actual persisted language labels without changing their historic values",()=>{
+  const rows=[row("he",{references:[reference({language:" Hebrew "})]}),row("en",{references:[reference({language:"English"})]}),
+   row("he-code"),row("he-label",{references:[reference({language:"עברית"})]}),row("unknown",{references:[reference({language:"unknown"})]})];
+  expect(selectNativeContacts(rows,query({locale:"he"})).items.map(p=>p.personId)).toEqual(["he","he-code","he-label"]);
+  expect(selectNativeContacts(rows,query({locale:"en"})).items.map(p=>p.personId)).toEqual(["en"]);
+  expect(rows[0]?.references[0]?.language).toBe(" Hebrew ");
+ });
  it("keeps independent linked journeys rather than promoting siblings through one paid flag",()=>{
   const rows=[row("family",{references:[reference({leadId:"LS-LEAD-child-a",journey:{journeyState:"active",paymentVerified:true,bookingConfirmed:true}}),
    reference({leadId:"LS-LEAD-child-b",journey:{journeyState:"awaiting_booking",paymentVerified:true,bookingConfirmed:false}})]})];

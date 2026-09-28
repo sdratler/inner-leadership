@@ -32,13 +32,19 @@ export type NativeContactRow={personId:string;displayName:string;identityKind:"a
  stage:string;nextAction:string|null;followUpDate:string|null;notes:string;version:number;
  mode:"live"|"demo";archived:boolean;doNotContact:boolean;references:NativeContactReference[]};
 type StoredProfile={personId:string;kind:"adult"|"minor";personCiphertext:string;profileCiphertext:string;
- version:number;recordMode:"live"|"demo";demoBatchId:string|null;markerBatchId:string|null};
+ version:number;recordMode:"live"|"demo";demoBatchId:string|null;markerBatchId:string|null;persistedArchived:boolean};
 type StoredLink={personId:string;sourceFileId:string;sourceSheetId:number;sourceRevision:string;
  leadId:string;snapshotCiphertext:string};
 const BATCH=100,MAX_CONTACTS=10000;
 const emptyJourney=():ProspectJourneyState=>({journeyState:"prospect",paymentVerified:false,bookingConfirmed:false});
-const archived=(stage:string)=>/^(?:archived|closed|not interested|no fit)$/i.test(stage.trim());
-const suppressed=(stage:string)=>/^(?:do[ _-]?not[ _-]?contact|opt[ _-]?out|opted[ _-]?out)$/i.test(stage.trim());
+// Historic Sheet statuses are descriptive, not an enum. Preserve the existing
+// conservative archive/opt-out protection even when a reason follows the marker.
+const archived=(stage:string)=>/archive|\b(?:closed|not interested|no fit)\b/i.test(stage);
+const suppressed=(stage:string)=>/do[ _-]?not[ _-]?contact|\bopt(?:ed)?[ _-]?out\b/i.test(stage);
+function contactLocale(language:string):"he"|"en"|null{
+ const value=language.trim().toLocaleLowerCase();
+ return ["he","hebrew","עברית"].includes(value)?"he":["en","english"].includes(value)?"en":null;
+}
 function field(fields:Record<string,string>,name:string):string{
  return Object.entries(fields).find(([header])=>header.trim()===name)?.[1]??"";
 }
@@ -67,7 +73,8 @@ export class NativeContactDirectory {
    for(;;){
     const profiles:StoredProfile[]=await tx.query<StoredProfile>(`SELECT p.person_id AS "personId",i.kind,
      i.profile_ciphertext AS "personCiphertext",p.payload_ciphertext AS "profileCiphertext",
-     p.version,p.record_mode AS "recordMode",p.demo_batch_id AS "demoBatchId",d.batch_id AS "markerBatchId"
+     p.version,p.record_mode AS "recordMode",p.demo_batch_id AS "demoBatchId",d.batch_id AS "markerBatchId",
+     (p.archived_at IS NOT NULL) AS "persistedArchived"
      FROM ls_contact_ops.profiles p JOIN ls_identity.people i ON i.workspace_id=p.workspace_id AND i.id=p.person_id
      LEFT JOIN ls_demo.records d ON d.workspace_id=p.workspace_id AND d.entity_kind='person' AND d.entity_key=p.person_id::text
      WHERE p.workspace_id=$1 AND ($2::uuid IS NULL OR p.person_id>$2::uuid)
@@ -99,7 +106,7 @@ export class NativeContactDirectory {
       if(field(source.payload.sourceFields,"Lead ID").trim()!==l.leadId)throw new AppError("UNAVAILABLE");
       const f=source.payload.sourceFields;
       return {leadId:l.leadId,phone:field(f,"Phone"),email:field(f,"Email"),language:source.payload.language,
-       source:field(f,"Source"),campaign:field(f,"Campaign"),outcome:field(f,"Contact outcome"),
+       source:field(f,"Lead source"),campaign:field(f,"Campaign"),outcome:field(f,"Outcome"),
        messageReceipt:field(f,"Message receipt"),paymentClaim:field(f,"Payment status"),bookingClaim:field(f,"Booking status"),
        formSentClaim:field(f,"Form sent"),formSubmittedClaim:field(f,"Form submitted"),
        sourceFileId:l.sourceFileId,sourceSheetId:l.sourceSheetId,sourceRevision:l.sourceRevision,
@@ -107,7 +114,7 @@ export class NativeContactDirectory {
      });
      rows.push({personId:p.personId,displayName:p.recordMode==="demo"&&!person.displayName.startsWith("DEMO — ")?`DEMO — ${person.displayName}`:person.displayName,
       identityKind:p.kind,stage:profile.stage,nextAction:profile.nextAction,followUpDate:profile.followUpDate,
-      notes:profile.notes,version:p.version,mode:p.recordMode,archived:archived(profile.stage),
+      notes:profile.notes,version:p.version,mode:p.recordMode,archived:p.persistedArchived||archived(profile.stage)||references.some(r=>archived(r.outcome)),
       doNotContact:suppressed(profile.stage)||references.some(r=>suppressed(r.outcome)),references});
     }
     after=profiles.at(-1)!.personId;
@@ -132,7 +139,7 @@ export function selectNativeContacts(rows:readonly NativeContactRow[],input:Nati
   if(q.view==="paid"&&!facts.some(j=>j.paymentVerified&&!j.bookingConfirmed&&j.journeyState!=="hold"))return false;
   if(q.view==="prospects"&&facts.length&&!facts.some(j=>!["active","hold"].includes(j.journeyState)))return false;
   if(q.stage&&q.stage!==r.stage)return false;
-  if(q.locale&&!r.references.some(ref=>ref.language===q.locale))return false;
+  if(q.locale&&!r.references.some(ref=>contactLocale(ref.language)===q.locale))return false;
   if(q.due==="today"&&(!r.followUpDate||r.followUpDate>q.today))return false;
   if(q.due==="overdue"&&(!r.followUpDate||r.followUpDate>=q.today))return false;
   return !text||[r.displayName,...r.references.flatMap(ref=>[ref.phone,ref.email,ref.leadId])].some(v=>v.toLocaleLowerCase().includes(text));

@@ -28,10 +28,10 @@ await f.pool.query("UPDATE ls_identity.people SET profile_ciphertext=$3 WHERE wo
  seal(JSON.stringify({displayName:"Synthetic searchable beyond first page"}),`person:${f.workspaceId}:${tail.id}`,f.keyring)]);
 
 async function link(personId:string,lead:string){
- const payload={displayName:"Synthetic historic name",language:"he",stageText:"PAID",sourceFields:{
+ const payload={displayName:"Synthetic historic name",language:"Hebrew",stageText:"PAID",sourceFields:{
   "Lead ID":lead,"Parent/adult name":"Synthetic historic name","Phone":"+972520000001",
   "Email":"synthetic+native@example.invalid","Pipeline stage":"PAID","Payment status":"PAID",
-  "Booking status":"Confirmed","General sales notes":"Synthetic preserved source note","Private unmapped field":"Never serialize this history field"}};
+  "Booking status":"Confirmed","Lead source":"WhatsApp","Outcome":"Synthetic follow-up","General sales notes":"Synthetic preserved source note","Private unmapped field":"Never serialize this history field"}};
  await f.pool.query(`INSERT INTO ls_contact_ops.legacy_links(workspace_id,source_file_id,source_sheet_id,source_tab_title,legacy_lead_id,person_id,source_revision,row_digest,snapshot_ciphertext)
   VALUES($1,$2,$3,'Synthetic Leads',$4,$5,'synthetic-revision',$6,$7)`,[f.workspaceId,sourceFileId,sourceSheetId,lead,personId,
   createHash("sha256").update(lead).digest("hex"),seal(JSON.stringify({sourceRow:2,payload}),`ls_contact_ops/legacy/v1/${f.workspaceId}/${sourceFileId}/${sourceSheetId}/${lead}`,f.keyring)]);
@@ -40,7 +40,9 @@ async function link(personId:string,lead:string){
 test("native PostgreSQL reads all keyset pages, searches after page one, and preserves encrypted notes",async()=>{
  const result=await directory.list(f.practitioner.actor,{...q,search:"beyond first page"});
  expect(result).toMatchObject({total:1,page:1,pages:1,items:[{personId:tail.id,version:1,notes:tail.profile.notes}]});
- expect(result.items[0]?.references[0]).toMatchObject({leadId:tail.lead,paymentClaim:"PAID",bookingClaim:"Confirmed",journey:{paymentVerified:false,bookingConfirmed:false,journeyState:"prospect"}});
+ expect(result.items[0]?.references[0]).toMatchObject({leadId:tail.lead,language:"Hebrew",source:"WhatsApp",outcome:"Synthetic follow-up",paymentClaim:"PAID",bookingClaim:"Confirmed",journey:{paymentVerified:false,bookingConfirmed:false,journeyState:"prospect"}});
+ expect((await directory.list(f.practitioner.actor,{...q,search:tail.lead,locale:"he"})).total).toBe(1);
+ expect((await directory.list(f.practitioner.actor,{...q,search:tail.lead,locale:"en"})).total).toBe(0);
  expect(JSON.stringify(result)).not.toContain("Never serialize this history field");
  expect(await directory.list(f.practitioner.actor,q)).toMatchObject({total:101,pages:6});
  expect((await directory.list(f.practitioner.actor,{...q,view:"paid"})).total).toBe(0);
@@ -51,6 +53,32 @@ test("native PostgreSQL reads all keyset pages, searches after page one, and pre
  expect(encrypted.rows[0].payload_ciphertext).not.toContain(changed.notes);
  const original=await f.pool.query("SELECT source_revision FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND person_id=$2",[f.workspaceId,tail.id]);
  expect(original.rows[0].source_revision).toBe("synthetic-revision");
+});
+
+test("native PostgreSQL preserves persisted archives and descriptive stage/outcome opt-outs in every open queue",async()=>{
+ const selected=rows.slice(0,4),originals=await f.pool.query("SELECT person_id,payload_ciphertext,archived_at FROM ls_contact_ops.profiles WHERE workspace_id=$1 AND person_id IN (SELECT value::uuid FROM jsonb_array_elements_text($2::jsonb))",[f.workspaceId,JSON.stringify(selected.map(r=>r.id))]);
+ const originalLink=(await f.pool.query("SELECT snapshot_ciphertext FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND legacy_lead_id=$2",[f.workspaceId,selected[3]!.lead])).rows[0].snapshot_ciphertext;
+ try{
+  await f.pool.query("UPDATE ls_contact_ops.profiles SET archived_at=clock_timestamp() WHERE workspace_id=$1 AND person_id=$2",[f.workspaceId,selected[0]!.id]);
+  for(const [index,stage] of [[1,"Archived — duplicate"],[2,"Do not contact - requested"]] as const){
+   const r=selected[index]!;
+   await f.pool.query("UPDATE ls_contact_ops.profiles SET payload_ciphertext=$3 WHERE workspace_id=$1 AND person_id=$2",[f.workspaceId,r.id,seal(JSON.stringify({...r.profile,stage}),crmProfileAad(f.workspaceId,r.id),f.keyring)]);
+  }
+  const r=selected[3]!,payload={displayName:"Synthetic historic name",language:"English",stageText:"new",sourceFields:{"Lead ID":r.lead,"Outcome":"Do not contact - requested","Lead source":"WhatsApp"}};
+  await f.pool.query("UPDATE ls_contact_ops.legacy_links SET snapshot_ciphertext=$3 WHERE workspace_id=$1 AND legacy_lead_id=$2",[f.workspaceId,r.lead,seal(JSON.stringify({sourceRow:2,payload}),`ls_contact_ops/legacy/v1/${f.workspaceId}/${sourceFileId}/${sourceSheetId}/${r.lead}`,f.keyring)]);
+  for(let i=0;i<selected.length;i++){
+   const search=selected[i]!.lead;
+   const all=await directory.list(f.practitioner.actor,{...q,search});
+   expect(all.total).toBe(1);
+   expect(all.items[0]![i<2?"archived":"doNotContact"]).toBe(true);
+   expect((await directory.list(f.practitioner.actor,{...q,search,view:"archived"})).total).toBe(1);
+   for(const view of ["prospects","paid","active"] as const)expect((await directory.list(f.practitioner.actor,{...q,search,view})).total).toBe(0);
+  }
+  expect((await directory.list(f.practitioner.actor,{...q,search:r.lead,locale:"en"})).total).toBe(1);
+ }finally{
+  for(const r of originals.rows)await f.pool.query("UPDATE ls_contact_ops.profiles SET payload_ciphertext=$3,archived_at=$4 WHERE workspace_id=$1 AND person_id=$2",[f.workspaceId,r.person_id,r.payload_ciphertext,r.archived_at]);
+  await f.pool.query("UPDATE ls_contact_ops.legacy_links SET snapshot_ciphertext=$3 WHERE workspace_id=$1 AND legacy_lead_id=$2",[f.workspaceId,selected[3]!.lead,originalLink]);
+ }
 });
 
 test("native PostgreSQL uses one repeatable read snapshot across keyset pages and actual journey queries",async()=>{
