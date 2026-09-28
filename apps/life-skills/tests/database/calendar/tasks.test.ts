@@ -1,9 +1,13 @@
 /** Disposable, already-migrated native PostgreSQL only; no provider adapters. */
 import { createHash, randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
+vi.mock('server-only',()=>({}));
+import { closeDatabase } from '../../../src/db/client.ts';
+import { drizzleIdentityStore } from '../../../src/features/identity/drizzle-store.ts';
+import { CalendarStore } from '../../../src/features/calendar/store.ts';
 import { InternalTaskService } from '../../../src/features/calendar/tasks.ts';
 import { civilDate, dayStart, shiftDay } from '../../../src/features/calendar/time.ts';
-import { fixture, type Fixture } from './fixture.ts';
+import { fixture, safeTestUrl, type Fixture } from './fixture.ts';
 
 let f:Fixture;
 beforeAll(async()=>{f=await fixture();},30000);
@@ -86,5 +90,44 @@ describe('internal task PostgreSQL contract',()=>{
   expect(await tasks.syncCrmFollowups(f.practitioner.actor,[archived])).toEqual({created:0,updated:0,resolved:1,unchanged:0});
   expect((await tasks.list(f.practitioner.actor,dayStart(dueDate),dayStart(shiftDay(dueDate,1)),null)).find(item=>item.title==='Synthetic person 0 · Call')?.state).toBe('done');
   expect((await f.pool.query('SELECT count(*)::int AS n FROM ls_calendar.events WHERE workspace_id=$1',[f.workspaceId])).rows[0].n).toBe(before);
+ });
+ test('production Drizzle binding reconciles, replays and resolves native follow-ups without admitting demo or unauthorized work',async()=>{
+  const native=await fixture({demoFirst:true}),previousUrl=process.env.LS_DATABASE_URL,previousTls=process.env.LS_DATABASE_TLS;
+  try{
+   await closeDatabase();
+   process.env.LS_DATABASE_URL=safeTestUrl();process.env.LS_DATABASE_TLS='disable';
+   // Exercise the SAME adapter used by the production Calendar, not the raw-pg
+   // fixture store. Only the server-only package marker is mocked above.
+   const tasks=new InternalTaskService(new CalendarStore(drizzleIdentityStore,native.keyring,native.db.clock),Buffer.alloc(32,9));
+   const dueDate=civilDate(native.at(168)),from=dayStart(dueDate),to=dayStart(shiftDay(dueDate,2));
+   const row={leadId:'LS-LEAD-DRIZZLE-SYNTHETIC',name:'Synthetic binding contact',nextAction:'Review "quoted" synthetic inquiry',dueDate,caseId:native.second.id,stage:'New',outcome:''};
+   const unlinked={...row,leadId:'LS-LEAD-DRIZZLE-UNLINKED',caseId:''};
+   const demo={...row,leadId:'LS-LEAD-DRIZZLE-DEMO',caseId:native.first.id};
+   await native.pool.query(`INSERT INTO ls_demo.records(workspace_id,batch_id,entity_kind,entity_key,source_key,case_id)
+    VALUES($1,'ls-owner-20260925','prospect',$2,'calendar-drizzle-demo',$3)`,[native.workspaceId,demo.leadId,native.first.id]);
+   const before=(await native.pool.query('SELECT count(*)::int AS n FROM ls_calendar.events WHERE workspace_id=$1',[native.workspaceId])).rows[0].n;
+   expect(await tasks.syncCrmFollowups(native.practitioner.actor,[])).toEqual({created:0,updated:0,resolved:0,unchanged:0});
+   expect(await tasks.syncCrmFollowups(native.practitioner.actor,[row,unlinked,demo])).toEqual({created:2,updated:0,resolved:0,unchanged:1});
+   expect(await tasks.syncCrmFollowups(native.practitioner.actor,[row,unlinked,demo])).toEqual({created:0,updated:0,resolved:0,unchanged:3});
+   const listed=await tasks.list(native.practitioner.actor,from,to,null);
+   expect(listed).toHaveLength(2);expect(listed.map(item=>item.caseId)).toEqual(expect.arrayContaining([native.second.id,null]));
+   expect(listed.every(item=>item.title===`${row.name} · ${row.nextAction}`&&item.version===1)).toBe(true);
+   const linked=listed.find(item=>item.caseId===native.second.id)!;
+   expect(await tasks.syncCrmFollowups(native.practitioner.actor,[{...row,dueDate:shiftDay(dueDate,1),nextAction:'Updated synthetic action'}])).toEqual({created:0,updated:1,resolved:0,unchanged:0});
+   expect((await tasks.list(native.practitioner.actor,from,to,native.second.id))[0]).toMatchObject({id:linked.id,version:2,state:'open',dueDate:shiftDay(dueDate,1),title:'Synthetic binding contact · Updated synthetic action'});
+   expect(await tasks.syncCrmFollowups(native.practitioner.actor,[{...row,stage:'Archived',dueDate:'not-a-date'}])).toEqual({created:0,updated:0,resolved:1,unchanged:0});
+   expect((await tasks.list(native.practitioner.actor,from,to,native.second.id))[0]).toMatchObject({id:linked.id,version:3,state:'done'});
+   await expect(tasks.syncCrmFollowups(native.parent.actor,[row])).rejects.toMatchObject({code:'FORBIDDEN'});
+   await expect(tasks.syncCrmFollowups(native.outsider.actor,[row])).rejects.toMatchObject({code:'FORBIDDEN'});
+   await expect(tasks.syncCrmFollowups(native.practitioner.actor,[row,row])).rejects.toMatchObject({code:'UNAVAILABLE'});
+   expect((await native.pool.query('SELECT action FROM ls_calendar.task_history WHERE workspace_id=$1 AND task_id=$2 ORDER BY version',[native.workspaceId,linked.id])).rows.map((item:{action:string})=>item.action)).toEqual(['created','source_updated','source_resolved']);
+   const encrypted=(await native.pool.query('SELECT title_ciphertext,source_path_ciphertext FROM ls_calendar.tasks WHERE workspace_id=$1',[native.workspaceId])).rows;
+   expect(JSON.stringify(encrypted)).not.toContain(row.name);expect(JSON.stringify(encrypted)).not.toContain(row.leadId);
+   expect((await native.pool.query('SELECT count(*)::int AS n FROM ls_calendar.events WHERE workspace_id=$1',[native.workspaceId])).rows[0].n).toBe(before);
+  }finally{
+   await closeDatabase();await native.pool.end();
+   if(previousUrl===undefined)delete process.env.LS_DATABASE_URL;else process.env.LS_DATABASE_URL=previousUrl;
+   if(previousTls===undefined)delete process.env.LS_DATABASE_TLS;else process.env.LS_DATABASE_TLS=previousTls;
+  }
  });
 });
