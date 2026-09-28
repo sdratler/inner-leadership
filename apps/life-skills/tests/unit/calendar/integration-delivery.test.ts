@@ -44,7 +44,7 @@ describe('privacy-safe task sync transport diagnostics',()=>{
   expect(log).toHaveBeenCalledOnce();expect(JSON.parse(log.mock.calls[0]![0])).toEqual({event:'calendar_task_sync_failed',requestId:body.requestId,phase:'crm-read',errorKind:'Error',code:'INTERNAL'});
   expect(JSON.stringify(log.mock.calls)).not.toContain(privateMessage);
  });
- it.each([[new TypeError('Synthetic confidential payload'),'TypeError','INTERNAL',500],[new AppError('UNAVAILABLE'),'AppError','UNAVAILABLE',503]] as const)('distinguishes actual internal sync failures without exposing their payload: %s',async(error,errorKind,code,status)=>{
+ it.each([[new TypeError('Synthetic confidential payload'),'TypeError','INTERNAL',500],[new ReferenceError('Synthetic confidential payload'),'ReferenceError','INTERNAL',500],[new AppError('UNAVAILABLE'),'AppError','UNAVAILABLE',503]] as const)('distinguishes actual internal sync failures without exposing their payload: %s',async(error,errorKind,code,status)=>{
   const sync=vi.spyOn(InternalTaskService.prototype,'syncCrmFollowups').mockRejectedValue(error),log=vi.spyOn(console,'error').mockImplementation(()=>{});
   const response=await handleCalendar(syncRequest(),['tasks','sync-followups']);const body=await response.json();
   expect(response.status).toBe(status);expect(body.error.code).toBe(code);expect(sync).toHaveBeenCalledWith(expect.objectContaining({role:'practitioner'}),[]);
