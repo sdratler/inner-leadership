@@ -8,6 +8,8 @@ import type {Prospect} from "./bridge.ts";
 import {ProspectApiError,prospectReadFailure} from "./api-error.ts";
 import {activeProspect,paidAwaitingBooking} from "./view-state.ts";
 import {crmDueCivilDate} from "./due-date.ts";
+import {applyNativeProspectUpdate,nativeProspectUpdateKey,prepareNativeProspectUpdate,
+ prospectUpdateFieldsSchema,type NativeProspectUpdate,type NativeProspectUpdateResult,type ProspectUpdateFields} from "./native-edit.ts";
 
 /* Remote state is loaded once per refresh and filter changes reset pagination. */
 /* eslint-disable react-hooks/set-state-in-effect */
@@ -67,6 +69,7 @@ export function ProspectsClient({locale,initialFilter="all",focusLeadId="",embed
  const focused=/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]{1,80}$/.test(focusLeadId)?focusLeadId:"";
  const t=copy[locale],[rows,setRows]=useState<Prospect[]>([]),[state,setState]=useState<State>("loading"),preset=initialFilter,[query,setQuery]=useState(""),[stage,setStage]=useState(""),[language,setLanguage]=useState(""),[due,setDue]=useState(""),[page,setPage]=useState(1),[status,setStatus]=useState(""),[openLeads,setOpenLeads]=useState<string[]>(focused?[focused]:[]);
  const mounted=useRef(true),addRef=useRef<HTMLDetailsElement>(null);
+ const pendingUpdates=useRef(new Map<string,{key:string;request:NativeProspectUpdate}>()),saving=useRef(new Set<string>());
  const load=()=>{setState("loading");void api<Prospect[]>({method:"GET"}).then(value=>{if(mounted.current){setRows(value);setState("ready")}}).catch(error=>{if(mounted.current){setRows([]);setState(error instanceof ProspectApiError?error.kind:"error")}})};
  useEffect(()=>{mounted.current=true;if(showProspects)queueMicrotask(load);return()=>{mounted.current=false}},[showProspects]);
  useEffect(()=>setPage(1),[preset,query,stage,language,due]);
@@ -98,7 +101,36 @@ export function ProspectsClient({locale,initialFilter="all",focusLeadId="",embed
  const sourcesReady=(!showProspects||state==="ready")&&(!caseState||caseState==="ready");
  // A slow second source must not trap ready rows beyond the first page.
  const paginationReady=(showProspects&&state==="ready")||caseState==="ready";
- async function action(payload:unknown){setStatus("");const kind=(payload as {action:string}).action;try{await api({method:"POST",body:JSON.stringify(payload)});setStatus(kind==="update"?t.saved:kind==="add"?t.created:t.sent);load()}catch{setStatus(kind==="update"||kind==="add"?t.saveFailed:t.sendFailed)}}
+ async function action(payload:unknown){
+  setStatus("");const input=payload as {action:string;leadId?:string;fields?:ProspectUpdateFields},kind=input.action;
+  let lock:string|undefined;
+  try{
+   const row=kind==="update"?rows.find(r=>r.leadId===input.leadId):undefined;
+   if(kind==="update"){
+    if(!row||!input.fields)throw Error("INVALID_UPDATE");
+    const fields=prospectUpdateFieldsSchema.parse(input.fields);
+    const target=row.nativeEdit?.personId??row.leadId;if(saving.current.has(target))return;lock=target;saving.current.add(lock);
+    if(row.nativeEdit){
+     const key=nativeProspectUpdateKey(row,fields),prior=pendingUpdates.current.get(row.leadId);
+     const request=prior?.key===key?prior.request:prepareNativeProspectUpdate(row,fields,crypto.randomUUID());
+     pendingUpdates.current.set(row.leadId,{key,request});
+     const result=await api<NativeProspectUpdateResult>({method:"POST",body:JSON.stringify(request)});
+     applyNativeProspectUpdate(rows,request,result);
+     if(mounted.current){setRows(current=>current.some(r=>r.leadId===request.leadId&&r.nativeEdit?.personId===result.personId)
+      ?applyNativeProspectUpdate(current,request,result):current);setStatus(t.saved);}
+     pendingUpdates.current.delete(row.leadId);
+    }else{
+     await api({method:"POST",body:JSON.stringify({action:"update",leadId:row.leadId,fields})});
+     // Keep the same cards mounted, including unrelated unsaved follow-ups.
+     const changes=Object.fromEntries(Object.entries(fields).filter((entry):entry is [string,string]=>typeof entry[1]==="string"));
+     if(mounted.current){setRows(current=>current.map(r=>r.leadId===row.leadId?{...r,...changes}:r));setStatus(t.saved);}
+    }
+    return;
+   }
+   await api({method:"POST",body:JSON.stringify(payload)});if(mounted.current){setStatus(kind==="add"?t.created:t.sent);load();}
+  }catch{if(mounted.current)setStatus(kind==="update"||kind==="add"?t.saveFailed:t.sendFailed);}
+  finally{if(lock)saving.current.delete(lock);}
+ }
  const content=<>
   {showProspects&&<header className={embedded?"lsw-section-header":"lsw-page-header"}><div>{!embedded&&<><p className="lsw-eyebrow">{locale==="he"?"CRM פרטי":"Private CRM"}</p><h1>{t.title}</h1><p>{t.lead}</p></>}</div>{!accessBlocked&&<button type="button" className="lsw-button lsw-button--secondary" onClick={()=>{if(addRef.current){addRef.current.open=true;addRef.current.scrollIntoView({behavior:"smooth",block:"start"});addRef.current.querySelector<HTMLInputElement>("input")?.focus()}}}>{t.add}</button>}</header>}
   {!embedded&&<nav className="lsw-tabs" aria-label={t.title}><a className="lsw-button lsw-button--quiet" href={`/${locale}/app/clients`}>{t.clients}</a><a className="lsw-button lsw-button--primary" aria-current="page" href={`/${locale}/app/clients?section=prospects`}>{t.prospects}</a></nav>}
