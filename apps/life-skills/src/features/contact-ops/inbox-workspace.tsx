@@ -1,0 +1,27 @@
+"use client";
+import {useEffect,useState} from "react";
+import type {Locale} from "../../lib/locale.ts";
+import type {InboundInboxEntry} from "./server/inbound-reader.ts";
+const copy={en:{title:"Business WhatsApp",intro:"Messages captured by this app's future-inquiry receiver. Clinical notes and app feedback remain separate.",refresh:"Refresh",loading:"Loading captured messages…",failure:"Messages could not be loaded. Retry; this is not an empty inbox.",empty:"No messages have been captured here yet.",off:"Future-message capture is not enabled. This view does not scan or recover WhatsApp history.",ready:"Private capture is enabled. Provider acceptance alone does not prove delivery here.",search:"Find a sender or message",open:"Open WhatsApp",details:"Read captured message",media:"Attachment metadata",fallback:"WhatsApp contact",limit:"Up to the latest 50 captured messages. This is not a full conversation history.",none:"No captured message matches this filter.",time:"Received",stored:"Saved in app"},he:{title:"WhatsApp עסקי",intro:"הודעות שנקלטו במקלט הפניות העתידיות של האפליקציה. רשימות קליניות ומשוב באפליקציה נשארים נפרדים.",refresh:"רענון",loading:"טוען הודעות שנקלטו…",failure:"לא ניתן לטעון את ההודעות. נסו שוב; זו אינה תיבה ריקה.",empty:"עדיין לא נקלטו כאן הודעות.",off:"קליטת הודעות עתידיות אינה פעילה. התצוגה אינה סורקת או משחזרת היסטוריית WhatsApp.",ready:"הקליטה הפרטית פעילה. אישור מהספק לבדו אינו מוכיח שההודעה הגיעה לכאן.",search:"חיפוש שולח או הודעה",open:"פתיחת WhatsApp",details:"קריאת ההודעה שנקלטה",media:"פרטי קובץ מצורף",fallback:"איש קשר ב־WhatsApp",limit:"עד 50 ההודעות האחרונות שנקלטו. זו אינה היסטוריית שיחה מלאה.",none:"אין הודעה שנקלטה המתאימה לסינון.",time:"התקבלה",stored:"נשמרה באפליקציה"}} as const;
+export function whatsappContactHref(number:string):string|null{return /^\+[1-9][0-9]{7,14}$/.test(number)?`https://wa.me/${number.slice(1)}`:null;}
+export function CapturedMessageList({locale,items,query=""}:{locale:Locale;items:readonly InboundInboxEntry[];query?:string}){
+ const t=copy[locale],filter=query.trim().toLocaleLowerCase(locale),visible=items.filter(row=>[row.fromNumber,row.pushName,row.messageText].some(text=>text.toLocaleLowerCase(locale).includes(filter)));
+ const time=(value:string)=>new Intl.DateTimeFormat(locale==="he"?"he-IL":"en-GB",{dateStyle:"medium",timeStyle:"short"}).format(new Date(value));
+ if(!visible.length)return <p role="status">{query.trim()?t.none:t.empty}</p>;
+ return <div className="lsw-stack">{visible.map(row=>{const href=whatsappContactHref(row.fromNumber);return <article className="lsw-card lsw-stack" key={row.id}>
+  <div className="lsw-section-header"><div><strong>{row.pushName||t.fallback}</strong><p className="lsw-help"><bdi>{row.fromNumber}</bdi> · {t.time}: {time(row.occurredAt)}</p></div>{href&&<a className="lsw-button lsw-button--secondary" href={href} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">{t.open}</a>}</div>
+  <details className="lsw-details"><summary>{t.details} · {row.messageType}</summary>{row.messageText&&<p style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{row.messageText}</p>}{row.media.length>0&&<section><h3>{t.media}</h3><ul>{row.media.map((media,index)=><li key={index}>{media.fileName||media.mimeType||row.messageType}{media.sizeBytes!==null?` · ${media.sizeBytes} bytes`:""}</li>)}</ul></section>}<p className="lsw-help">{t.stored}: {time(row.storedAt)}</p></details>
+ </article>})}</div>;
+}
+export function InboundInboxWorkspace({locale}:{locale:Locale}){
+ const t=copy[locale],[revision,setRevision]=useState(0),[query,setQuery]=useState(""),[state,setState]=useState<{kind:"loading"}|{kind:"error"}|{kind:"ready";items:InboundInboxEntry[];enabled:boolean}>({kind:"loading"});
+ useEffect(()=>{const controller=new AbortController();queueMicrotask(()=>{if(!controller.signal.aborted)setState({kind:"loading"})});
+  void fetch("/api/private/contact-inbound",{credentials:"same-origin",cache:"no-store",signal:controller.signal}).then(async response=>{const body=await response.json() as {ok?:boolean;data?:{items?:InboundInboxEntry[];captureEnabled?:boolean;bindingConfigured?:boolean}};
+   if(!response.ok||body.ok!==true||!Array.isArray(body.data?.items))throw Error("UNAVAILABLE");
+   if(!controller.signal.aborted)setState({kind:"ready",items:body.data.items,enabled:body.data.captureEnabled===true&&body.data.bindingConfigured===true});
+  }).catch(()=>{if(!controller.signal.aborted)setState({kind:"error"})});return()=>controller.abort();
+ },[revision]);
+ return <section className="lsw-stack" aria-labelledby="business-whatsapp-title"><header className="lsw-page-header"><div><h1 id="business-whatsapp-title">{t.title}</h1><p>{t.intro}</p></div><button className="lsw-button lsw-button--secondary" type="button" onClick={()=>setRevision(value=>value+1)} disabled={state.kind==="loading"}>{t.refresh}</button></header>
+  {state.kind==="loading"?<p role="status">{t.loading}</p>:state.kind==="error"?<p role="alert">{t.failure}</p>:<><p className="lsw-help">{state.enabled?t.ready:t.off}</p><div className="lsw-field"><label htmlFor="captured-message-search">{t.search}</label><input id="captured-message-search" className="lsw-input" type="search" value={query} maxLength={160} onChange={event=>setQuery(event.target.value)}/></div><CapturedMessageList locale={locale} items={state.items} query={query}/><p className="lsw-help">{t.limit}</p></>}
+ </section>;
+}
