@@ -11,7 +11,7 @@ import type { taskCreateSchema } from './validation.ts';
 import { internalTaskPath } from './validation.ts';
 import { crmDueCivilDate } from '../prospects/due-date.ts';
 import type { FollowupSource } from './followups.ts';
-import { MAX_OPERATIONAL_PROSPECTS } from '../contact-ops/core/limits.ts';
+import { MAX_CALENDAR_TASKS, MAX_OPERATIONAL_PROSPECTS } from '../contact-ops/core/limits.ts';
 
 export type TaskId=Id<'task'>;
 export type TaskInput=z.infer<typeof taskCreateSchema>;
@@ -53,8 +53,8 @@ export class InternalTaskService {
    const rows=await c.tx.query<TaskRow>(`SELECT ${columns} FROM ls_calendar.tasks
     WHERE workspace_id=$1 AND due_date>=$2::date AND due_date<$3::date
       AND ($4::uuid IS NULL OR case_id=$4::uuid)
-    ORDER BY due_date,due_time NULLS FIRST,id LIMIT $5`,[c.workspace,first,last,caseId,MAX_OPERATIONAL_PROSPECTS+1]);
-   if(rows.length>MAX_OPERATIONAL_PROSPECTS)throw new AppError('UNAVAILABLE');
+    ORDER BY due_date,due_time NULLS FIRST,id LIMIT $5`,[c.workspace,first,last,caseId,MAX_CALENDAR_TASKS+1]);
+   if(rows.length>MAX_CALENDAR_TASKS)throw new AppError('UNAVAILABLE');
    return rows.map(row=>this.view(c,row));
   });
  }

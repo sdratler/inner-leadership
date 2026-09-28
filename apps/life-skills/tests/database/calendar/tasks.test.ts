@@ -8,7 +8,7 @@ import { CalendarStore } from '../../../src/features/calendar/store.ts';
 import { InternalTaskService } from '../../../src/features/calendar/tasks.ts';
 import { civilDate, dayStart, shiftDay } from '../../../src/features/calendar/time.ts';
 import { fixture, safeTestUrl, type Fixture } from './fixture.ts';
-import { MAX_OPERATIONAL_PROSPECTS } from '../../../src/features/contact-ops/core/limits.ts';
+import { MAX_CALENDAR_TASKS, MAX_OPERATIONAL_PROSPECTS } from '../../../src/features/contact-ops/core/limits.ts';
 
 let f:Fixture;
 beforeAll(async()=>{f=await fixture();},30000);
@@ -156,4 +156,34 @@ describe('internal task PostgreSQL contract',()=>{
    if(previousTls===undefined)delete process.env.LS_DATABASE_TLS;else process.env.LS_DATABASE_TLS=previousTls;
   }
  });
+ test('full supported CRM directory leaves capacity for manual tasks in the same range',async()=>{
+  const native=await fixture(),previousUrl=process.env.LS_DATABASE_URL,previousTls=process.env.LS_DATABASE_TLS;
+  try{
+   await closeDatabase();process.env.LS_DATABASE_URL=safeTestUrl();process.env.LS_DATABASE_TLS='disable';
+   const tasks=new InternalTaskService(new CalendarStore(drizzleIdentityStore,native.keyring,native.db.clock),Buffer.alloc(32,9));
+   const dueDate=civilDate(native.at(120)),from=dayStart(dueDate),to=dayStart(shiftDay(dueDate,1));
+   const rows=Array.from({length:MAX_OPERATIONAL_PROSPECTS},(_,index)=>({leadId:`LS-LEAD-CAPACITY-${index}`,name:`Synthetic capacity ${index}`,nextAction:'Review synthetic inquiry',dueDate,caseId:'',stage:'New',outcome:''}));
+   expect(await tasks.syncCrmFollowups(native.practitioner.actor,rows)).toEqual({created:MAX_OPERATIONAL_PROSPECTS,updated:0,resolved:0,unchanged:0});
+   const manual=await tasks.create(native.practitioner.actor,randomUUID(),{title:'Synthetic manual task alongside full CRM',note:null,sourcePath:null,caseId:null,dueDate,dueTime:null});
+   const listed=await tasks.list(native.practitioner.actor,from,to,null);
+   expect(listed).toHaveLength(MAX_OPERATIONAL_PROSPECTS+1);
+   expect(listed.filter(row=>row.sourceKind==='crm_followup')).toHaveLength(MAX_OPERATIONAL_PROSPECTS);
+   expect(listed.find(row=>row.id===manual.id)).toEqual(manual);
+   expect(await tasks.syncCrmFollowups(native.practitioner.actor,rows)).toEqual({created:0,updated:0,resolved:0,unchanged:MAX_OPERATIONAL_PROSPECTS});
+   await expect(tasks.list(native.parent.actor,from,to,null)).rejects.toMatchObject({code:'FORBIDDEN'});
+   expect((await native.pool.query('SELECT count(*)::int AS n FROM ls_calendar.events WHERE workspace_id=$1',[native.workspaceId])).rows[0].n).toBe(0);
+   // Retain an explicit total safety gate, not a silently truncated success.
+   // These overflow-only fixture rows are never returned/decrypted or sent.
+   await native.pool.query(`INSERT INTO ls_calendar.tasks
+    (workspace_id,id,created_by,title_ciphertext,due_date,created_at,updated_at)
+    SELECT workspace_id,gen_random_uuid(),created_by,title_ciphertext,due_date,created_at,updated_at
+    FROM ls_calendar.tasks CROSS JOIN generate_series(1,$3::int)
+    WHERE workspace_id=$1 AND id=$2`,[native.workspaceId,manual.id,MAX_CALENDAR_TASKS-MAX_OPERATIONAL_PROSPECTS]);
+   await expect(tasks.list(native.practitioner.actor,from,to,null)).rejects.toMatchObject({code:'UNAVAILABLE'});
+  }finally{
+   await closeDatabase();await native.pool.end();
+   if(previousUrl===undefined)delete process.env.LS_DATABASE_URL;else process.env.LS_DATABASE_URL=previousUrl;
+   if(previousTls===undefined)delete process.env.LS_DATABASE_TLS;else process.env.LS_DATABASE_TLS=previousTls;
+  }
+ },60000);
 });
