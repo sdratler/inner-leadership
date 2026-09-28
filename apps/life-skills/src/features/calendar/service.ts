@@ -127,7 +127,7 @@ export class CalendarService {
   }
   await c.tx.query(`INSERT INTO ls_calendar.appointments(id,workspace_id,case_id,audience_id,engagement_id,practitioner_id,terms_version,kind,starts_at,ends_at,status,
    parent_for_id,original_id,parent_ids,buffer_before,buffer_after,location_ciphertext,created_by,created_at,checkin_exception_ciphertext)
-   VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'scheduled',$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+   VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'scheduled',$11,$12,$13::uuid[],$14,$15,$16,$17,$18,$19)`,
    [a.id,c.workspace,a.caseId,a.audienceId,a.engagementId,a.practitionerId,a.termsVersion,a.kind,a.startsAt,a.endsAt,a.parentForId,a.originalId,a.parentIds,a.bufferBefore,a.bufferAfter,
     this.db.encrypt(c,'location',id,a.location),c.actor.id,c.now,input.checkinExceptionReason?this.db.encrypt(c,'checkin',id,input.checkinExceptionReason):null]);
   if(demoBatch)await c.tx.query(`INSERT INTO ls_demo.records(workspace_id,batch_id,entity_kind,entity_key,source_key,case_id)

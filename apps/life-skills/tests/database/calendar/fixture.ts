@@ -3,6 +3,9 @@
  */
 import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import pg from 'pg';
+import {drizzle} from 'drizzle-orm/node-postgres';
+import {bindStatement} from '../../../src/features/identity/sql-binding.ts';
+import {normalizeDatabaseRows,type DatabaseField} from '../../../src/features/integration/normalize-database-result.ts';
 import { asId } from '../../../src/lib/ids.ts';
 import { seal, tokenDigest, type Keyring } from '../../../src/features/identity/crypto.ts';
 import { systemClock, type Actor, type AccountRole } from '../../../src/features/identity/types.ts';
@@ -26,10 +29,18 @@ export function safeTestUrl():string {
  if(!['postgres:','postgresql:'].includes(url.protocol)||!['localhost','127.0.0.1','[::1]'].includes(url.hostname)||!/^\/ls_calendar_test_[A-Za-z0-9_]+$/.test(url.pathname)||url.search||url.hash)throw new Error('CALENDAR_TEST_DATABASE_NOT_DISPOSABLE_LOOPBACK');
  return raw;
 }
-export function poolStore(pool:pg.Pool):IdentityStore {return {async transaction<T>(work:(tx:SqlSession)=>Promise<T>):Promise<T>{
- const client=await pool.connect();try{await client.query('BEGIN');const tx:SqlSession={async query<R extends object>(statement:string,values:readonly unknown[]=[]){return (await client.query(statement,[...values])).rows as R[];}};const result=await work(tx);await client.query('COMMIT');return result;}
- catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
-}};}
+export function poolStore(pool:pg.Pool):IdentityStore {
+ // Use the production binder, driver transaction and timestamp normalization.
+ // Direct pg accepts JS arrays that the intentionally strict deployed adapter
+ // refuses without an explicit cast; native service tests must catch that gap.
+ const database=drizzle(pool);
+ return {transaction<T>(work:(tx:SqlSession)=>Promise<T>):Promise<T>{
+  return database.transaction(tx=>work({async query<R extends object>(statement:string,values:readonly unknown[]=[]){
+   const result=await tx.execute(bindStatement(statement,values)) as unknown as {rows:Record<string,unknown>[];fields:DatabaseField[]};
+   return normalizeDatabaseRows(result.rows,result.fields) as R[];
+  }}));
+ }};
+}
 export async function fixture(options:{workspaceId?:string;keyring?:Keyring;termsVersion?:string;demoFirst?:boolean}={}){
  const pool=new pg.Pool({connectionString:safeTestUrl(),max:8});
  const check=await pool.query("SELECT to_regclass('ls_calendar.appointments') AS calendar,to_regclass('ls_cases.cases') AS identity");
