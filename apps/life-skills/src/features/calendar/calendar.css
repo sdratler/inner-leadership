@@ -99,6 +99,8 @@
 /* Keep the first useful Calendar content in view; no clipping, hidden inputs,
  * smaller fonts, fixed-height app or removal of real errors/consequences. */
 @media(max-width:600px){
+ .lsw.lsu .lsu-page:has(>main.ls-cal){padding-block-start:0}
+ .lsw.lsu .lsu-content:has(>.lsu-page>main.ls-cal)>.lsu-breadcrumbs{margin-block-end:.5rem}
  .lsw.lsu.lsu--practitioner .ls-cal>.lsw-page-header{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:.5rem}
  .lsw.lsu.lsu--practitioner .ls-cal>.lsw-page-header h1{margin:0}
  .lsw.lsu.lsu--practitioner .ls-cal>.lsw-page-header>.lsw-button{padding-inline:.75rem}

@@ -58,4 +58,11 @@ describe('operational Calendar composition',()=>{
   expect(css).toContain('.lsw.lsu .ls-cal .lsw-calendar-toolbar>.lsw-help{grid-column:2;grid-row:1;justify-self:end}');
   expect(css).not.toContain('.lsw-calendar-toolbar>small{');
  });
+ it('removes duplicated mobile Calendar container padding while keeping visible synthetic provenance',()=>{
+  expect(css).toContain('.lsw.lsu .lsu-page:has(>main.ls-cal){padding-block-start:0}');
+  expect(css).toContain('.lsw.lsu .lsu-content:has(>.lsu-page>main.ls-cal)>.lsu-breadcrumbs{margin-block-end:.5rem}');
+  expect(workspace).toContain('DEMO — synthetic data; external effects disabled.');
+  expect(workspace).toContain('DEMO — נתונים סינתטיים, ללא השפעות חיצוניות.');
+  expect(workspace).toContain('Return to live calendar');
+ });
 });
