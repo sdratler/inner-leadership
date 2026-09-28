@@ -1,4 +1,4 @@
-import { requireThat } from "./validation.js";
+import { requireThat } from "./validation.ts";
 /** Preserve +aliases and dots. This normalizes a contact endpoint, not an authentication identity. */
 export function normalizeEmail(value: string): string | null {
     const v = value.trim();
