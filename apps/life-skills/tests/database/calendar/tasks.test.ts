@@ -8,6 +8,7 @@ import { CalendarStore } from '../../../src/features/calendar/store.ts';
 import { InternalTaskService } from '../../../src/features/calendar/tasks.ts';
 import { civilDate, dayStart, shiftDay } from '../../../src/features/calendar/time.ts';
 import { fixture, safeTestUrl, type Fixture } from './fixture.ts';
+import { MAX_OPERATIONAL_PROSPECTS } from '../../../src/features/contact-ops/core/limits.ts';
 
 let f:Fixture;
 beforeAll(async()=>{f=await fixture();},30000);
@@ -90,6 +91,29 @@ describe('internal task PostgreSQL contract',()=>{
   expect(await tasks.syncCrmFollowups(f.practitioner.actor,[archived])).toEqual({created:0,updated:0,resolved:1,unchanged:0});
   expect((await tasks.list(f.practitioner.actor,dayStart(dueDate),dayStart(shiftDay(dueDate,1)),null)).find(item=>item.title==='Synthetic person 0 · Call')?.state).toBe('done');
   expect((await f.pool.query('SELECT count(*)::int AS n FROM ls_calendar.events WHERE workspace_id=$1',[f.workspaceId])).rows[0].n).toBe(before);
+ });
+ test('production adapter reconciles and lists more than1000 follow-ups completely, without duplicates or partial oversized writes',async()=>{
+  const native=await fixture({demoFirst:true}),previousUrl=process.env.LS_DATABASE_URL,previousTls=process.env.LS_DATABASE_TLS;
+  try{
+   await closeDatabase();process.env.LS_DATABASE_URL=safeTestUrl();process.env.LS_DATABASE_TLS='disable';
+   const tasks=new InternalTaskService(new CalendarStore(drizzleIdentityStore,native.keyring,native.db.clock),Buffer.alloc(32,9));
+   const dueDate=civilDate(native.at(120)),rows=Array.from({length:1001},(_,index)=>({leadId:`LS-LEAD-LARGE-${index}`,name:`Synthetic large directory ${index}`,nextAction:'Synthetic follow-up',dueDate,caseId:'',stage:'New',outcome:''}));
+   expect(await tasks.syncCrmFollowups(native.practitioner.actor,rows)).toEqual({created:1001,updated:0,resolved:0,unchanged:0});
+   expect(await tasks.syncCrmFollowups(native.practitioner.actor,rows)).toEqual({created:0,updated:0,resolved:0,unchanged:1001});
+   const listed=await tasks.list(native.practitioner.actor,dayStart(dueDate),dayStart(shiftDay(dueDate,1)),null);
+   expect(listed).toHaveLength(1001);expect(new Set(listed.map(r=>r.id)).size).toBe(1001);expect(new Set(listed.map(r=>r.title)).size).toBe(1001);
+   expect((await native.pool.query('SELECT count(*)::int AS n FROM ls_calendar.task_history WHERE workspace_id=$1',[native.workspaceId])).rows[0].n).toBe(1001);
+   const oversized=Array.from({length:MAX_OPERATIONAL_PROSPECTS+1},(_,index)=>({...rows[0]!,leadId:`LS-LEAD-OVER-${index}`}));
+   await expect(tasks.syncCrmFollowups(native.practitioner.actor,oversized)).rejects.toMatchObject({code:'UNAVAILABLE'});
+   await expect(tasks.syncCrmFollowups(native.practitioner.actor,[...rows,rows[1000]!])).rejects.toMatchObject({code:'UNAVAILABLE'});
+   await expect(tasks.syncCrmFollowups(native.parent.actor,rows)).rejects.toMatchObject({code:'FORBIDDEN'});
+   expect((await native.pool.query('SELECT count(*)::int AS n FROM ls_calendar.tasks WHERE workspace_id=$1',[native.workspaceId])).rows[0].n).toBe(1001);
+   expect((await native.pool.query('SELECT count(*)::int AS n FROM ls_calendar.events WHERE workspace_id=$1',[native.workspaceId])).rows[0].n).toBe(0);
+  }finally{
+   await closeDatabase();await native.pool.end();
+   if(previousUrl===undefined)delete process.env.LS_DATABASE_URL;else process.env.LS_DATABASE_URL=previousUrl;
+   if(previousTls===undefined)delete process.env.LS_DATABASE_TLS;else process.env.LS_DATABASE_TLS=previousTls;
+  }
  });
  test('production Drizzle binding reconciles, replays and resolves native follow-ups without admitting demo or unauthorized work',async()=>{
   const native=await fixture({demoFirst:true}),previousUrl=process.env.LS_DATABASE_URL,previousTls=process.env.LS_DATABASE_TLS;

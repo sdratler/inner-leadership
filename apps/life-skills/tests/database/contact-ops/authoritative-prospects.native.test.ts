@@ -71,6 +71,40 @@ test("save/read/replay uses the same notes, source history and canonical authori
  expect((await f.pool.query("SELECT source_revision FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND legacy_lead_id=$2",[f.workspaceId,target.lead])).rows[0].source_revision).toBe("synthetic-revision");
  expect((await f.pool.query("SELECT count(*)::int AS n FROM ls_calendar.events WHERE workspace_id=$1",[f.workspaceId])).rows[0].n).toBe(0);expect(legacy).not.toHaveBeenCalled();
 });
+test("canonical assignments survive absent or stale Sheet claims; multiple cases require the genuine same-person order",async()=>{
+ const personId=(await f.pool.query("SELECT cl.person_id FROM ls_cases.cases c JOIN ls_cases.clients cl ON cl.workspace_id=c.workspace_id AND cl.id=c.client_id WHERE c.workspace_id=$1 AND c.id=$2",[f.workspaceId,f.second.id])).rows[0].person_id;
+ const lead="LS-LEAD-canonical-read-"+randomUUID(),profile:CrmProfile={personId,legacyIds:[lead],stage:"New inquiry",nextAction:"Synthetic assigned follow-up",followUpDate:"2026-09-28",notes:"Synthetic canonical client note"};
+ // Seed ONLY this disposable fixture. No production import/create or case grant.
+ await new NativeCrmStore(drizzleIdentityStore,f.keyring,key).create(f.practitioner.actor,profile,"synthetic-canonical-profile");
+ const snapshot={sourceRow:2,payload:{displayName:"Synthetic canonical history",language:"he",stageText:"New inquiry",sourceFields:{"Lead ID":lead,"Enrolled case ID":""}}};
+ const aad=`ls_contact_ops/legacy/v1/${f.workspaceId}/${source}/${sheet}/${lead}`;
+ await f.pool.query(`INSERT INTO ls_contact_ops.legacy_links(workspace_id,source_file_id,source_sheet_id,source_tab_title,legacy_lead_id,person_id,source_revision,row_digest,snapshot_ciphertext)
+  VALUES($1,$2,$3,'Synthetic Leads',$4,$5,'synthetic-revision',$6,$7)`,[f.workspaceId,source,sheet,lead,personId,createHash("sha256").update(lead).digest("hex"),seal(JSON.stringify(snapshot),aad,f.keyring)]);
+ expect((await read()).find(r=>r.leadId===lead)?.caseId).toBe(f.second.id);
+ snapshot.payload.sourceFields["Enrolled case ID"]=f.first.id;
+ await f.pool.query("UPDATE ls_contact_ops.legacy_links SET snapshot_ciphertext=$3 WHERE workspace_id=$1 AND legacy_lead_id=$2",[f.workspaceId,lead,seal(JSON.stringify(snapshot),aad,f.keyring)]);
+ expect((await read()).find(r=>r.leadId===lead)?.caseId).toBe(f.second.id);
+ const secondCase=randomUUID();
+ await f.pool.query(`INSERT INTO ls_cases.cases(id,workspace_id,client_id,family_id,practitioner_account_id,state,created_at,updated_at)
+  SELECT $3,workspace_id,client_id,family_id,practitioner_account_id,'intake',clock_timestamp(),clock_timestamp()
+  FROM ls_cases.cases WHERE workspace_id=$1 AND id=$2`,[f.workspaceId,f.second.id,secondCase]);
+ expect((await read()).find(r=>r.leadId===lead)?.caseId).toBe("");
+ const order="synthetic-canonical-order-"+randomUUID();
+ await f.pool.query("INSERT INTO ls_onboarding.first_session_orders(workspace_id,order_id,case_id,child_id,amount_minor,currency,purpose) VALUES($1,$2,$3,$4,55000,'ILS','first_session')",[f.workspaceId,order,secondCase,personId]);
+ for(const stableLead of [lead,profiles[1]!.lead]){
+  const invitation=randomUUID(),receipt=randomUUID();
+  await f.pool.query(`INSERT INTO ls_intake.pre_enrollment_invitations(workspace_id,invitation_id,token_digest,stable_lead_ref,child_slots,expires_at,created_at,created_by_account_id)
+   VALUES($1,$2,$3,$4,'["synthetic-slot"]'::jsonb,clock_timestamp()+interval '1 day',clock_timestamp(),$5)`,[f.workspaceId,invitation,createHash("sha256").update(invitation).digest("hex"),stableLead,f.practitioner.actor.id]);
+  await f.pool.query(`INSERT INTO ls_intake.pre_enrollment_receipts(workspace_id,receipt_id,invitation_id,idempotency_key,payload_ciphertext,payload_digest,consent_version,consent_hash,received_at)
+   VALUES($1,$2,$3,$4,'synthetic-unused-intake-ciphertext',$5,'synthetic-consent',$5,clock_timestamp())`,[f.workspaceId,receipt,invitation,randomUUID(),"a".repeat(64)]);
+  await f.pool.query(`INSERT INTO ls_onboarding.prospect_journeys(workspace_id,stable_lead_ref,intake_receipt_id,first_session_order_id,state,created_at,updated_at)
+   VALUES($1,$2,$3,$4,'awaiting_payment',clock_timestamp(),clock_timestamp())`,[f.workspaceId,stableLead,receipt,order]);
+ }
+ expect((await read()).find(r=>r.leadId===lead)).toMatchObject({caseId:secondCase,paymentVerified:false,bookingConfirmed:false});
+ expect((await read()).find(r=>r.leadId===profiles[1]!.lead)?.caseId).toBe("");
+ expect(legacy).not.toHaveBeenCalled();
+ expect((await f.pool.query("SELECT count(*)::int AS n FROM ls_calendar.events WHERE workspace_id=$1",[f.workspaceId])).rows[0].n).toBe(0);
+});
 test("stale epoch, other roles, revoked sessions and corrupt encrypted source deny rather than falling back",async()=>{
  await expect(native.prospects(f.practitioner.actor,2)).rejects.toMatchObject({code:"CONFLICT"});
  await expect(authoritativeProspects(f.parent.actor,{authority,native,sheet:{list:legacy}})).rejects.toMatchObject({code:"FORBIDDEN"});
