@@ -14,14 +14,14 @@ import type {PeopleView,Page} from "../core/types.ts";
 const leadId=z.string().regex(/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]+$/);
 const profileSchema=z.object({personId:z.string().uuid(),stage:z.string().min(1).max(120),
  nextAction:z.string().max(500).nullable(),followUpDate:z.string().refine(dateOnly).nullable(),
- notes:z.string().max(5000),legacyIds:z.array(leadId).max(100).refine(ids=>new Set(ids).size===ids.length)});
+ notes:z.string().max(5000),legacyIds:z.array(leadId).max(100).refine(ids=>new Set(ids).size===ids.length)}).strict();
 const sourceSchema=z.object({sourceRow:z.number().int().min(2),payload:z.object({
  displayName:z.string(),language:z.string(),stageText:z.string(),sourceFields:z.record(z.string(),z.string())})});
 const querySchema=z.object({view:z.enum(["all","prospects","paid","active","archived"]),
  search:z.string().max(200),stage:z.string().max(120).optional(),locale:z.enum(["he","en"]).optional(),
  due:z.enum(["any","today","overdue"]).optional(),today:z.string().refine(dateOnly),
  page:z.number().int().min(1).max(100000),pageSize:z.number().int().min(1).max(100),
- mode:z.enum(["live","demo"]).optional()}).strict();
+ mode:z.enum(["live","demo"]).optional(),personId:z.string().uuid().optional()}).strict();
 export type NativeContactQuery=z.infer<typeof querySchema>;
 export type NativeContactReference={leadId:string;phone:string;email:string;language:string;
  source:string;campaign:string;outcome:string;messageReceipt:string;
@@ -29,8 +29,10 @@ export type NativeContactReference={leadId:string;phone:string;email:string;lang
  paymentClaim:string;bookingClaim:string;formSentClaim:string;formSubmittedClaim:string;
  sourceFileId:string;sourceSheetId:number;sourceRevision:string;journey:ProspectJourneyState};
 export type NativeContactRow={personId:string;displayName:string;identityKind:"adult"|"minor";
- stage:string;nextAction:string|null;followUpDate:string|null;notes:string;version:number;
- mode:"live"|"demo";archived:boolean;doNotContact:boolean;references:NativeContactReference[]};
+ stage:string;nextAction:string|null;followUpDate:string|null;notes:string;version:number|null;
+ mode:"live"|"demo";archived:boolean;doNotContact:boolean;references:NativeContactReference[];
+ /** Real assigned cases, joined by canonical person UUID. Never phone/name matching. */
+ caseLinks?:{caseId:string;state:string}[]};
 type StoredProfile={personId:string;kind:"adult"|"minor";personCiphertext:string;profileCiphertext:string;
  version:number;recordMode:"live"|"demo";demoBatchId:string|null;markerBatchId:string|null;persistedArchived:boolean};
 type StoredLink={personId:string;sourceFileId:string;sourceSheetId:number;sourceRevision:string;
@@ -129,6 +131,40 @@ export class NativeContactDirectory {
     }
     after=profiles.at(-1)!.personId;
    }
+   // Retain authorized clients without a CRM profile. They are not fabricated
+   // prospects: a null version explicitly prevents administrative profile edits.
+   // No clinical note, score, family membership or other practitioner's case is read.
+   const cases=await tx.query<{personId:string;caseId:string;state:string;kind:"adult"|"minor";
+    personCiphertext:string;demoBatchId:string|null;markerBatchId:string|null}>(`SELECT p.id AS "personId",c.id AS "caseId",c.state,p.kind,
+    p.profile_ciphertext AS "personCiphertext",c.demo_batch_id AS "demoBatchId",d.batch_id AS "markerBatchId"
+    FROM ls_cases.cases c JOIN ls_cases.clients cl ON cl.workspace_id=c.workspace_id AND cl.id=c.client_id
+    JOIN ls_identity.people p ON p.workspace_id=cl.workspace_id AND p.id=cl.person_id
+    LEFT JOIN ls_demo.cases d ON d.workspace_id=c.workspace_id AND d.case_id=c.id
+    WHERE c.workspace_id=$1 AND c.practitioner_account_id=$2 ORDER BY p.id,c.id LIMIT $3`,
+    [actor.workspaceId,actor.id,MAX_CONTACTS+1]);
+   if(cases.length>MAX_CONTACTS)throw new AppError("UNAVAILABLE");
+   const byPerson=new Map(rows.map(r=>[r.personId,r]));
+   for(const c of cases){
+    if(c.demoBatchId!==c.markerBatchId)throw new AppError("UNAVAILABLE");
+    const mode=c.demoBatchId?"demo":"live";
+    let row=byPerson.get(c.personId);
+    if(row&&(row.mode!==mode||row.identityKind!==c.kind))throw new AppError("UNAVAILABLE");
+    if(!row){
+     const p=parse(z.object({displayName:z.string().max(120)}),c.personCiphertext,`person:${actor.workspaceId}:${c.personId}`,this.keyring);
+     row={personId:c.personId,displayName:mode==="demo"&&!p.displayName.startsWith("DEMO — ")?`DEMO — ${p.displayName}`:p.displayName,
+      identityKind:c.kind,stage:c.state,nextAction:null,followUpDate:null,notes:"",version:null,mode,
+      archived:archived(c.state)||/discharged|revoked/i.test(c.state),doNotContact:false,references:[],caseLinks:[]};
+     rows.push(row);byPerson.set(c.personId,row);
+     if(rows.length>MAX_CONTACTS)throw new AppError("UNAVAILABLE");
+    }
+   (row.caseLinks??=[]).push({caseId:c.caseId,state:c.state});
+   }
+   // A person may have both an archived case and an active case. Canonical
+   // grouping must not classify them from whichever UUID was encountered first.
+   for(const row of rows)if(row.version===null&&row.caseLinks?.length){
+    row.stage=row.caseLinks.some(c=>c.state==="active")?"active":row.caseLinks[0]!.state;
+    row.archived=row.caseLinks.every(c=>["completed","archived"].includes(c.state));
+   }
    return selectNativeContacts(rows,q);
  }
 }
@@ -141,12 +177,14 @@ export function selectNativeContacts(rows:readonly NativeContactRow[],input:Nati
   // Synthetic records need an explicit administrative demo view. They do not
   // silently mix into the default live contact directory.
   if(r.mode!==(q.mode??"live"))return false;
+  if(q.personId&&r.personId!==q.personId)return false;
   if(q.view==="archived"&&!closed)return false;
   if(q.view!=="all"&&q.view!=="archived"&&closed)return false;
   const facts=r.references.map(ref=>ref.journey);
-  if(q.view==="active"&&!facts.some(j=>j.journeyState==="active"))return false;
+  const activeCase=r.caseLinks?.some(c=>c.state==="active")??false;
+  if(q.view==="active"&&!activeCase&&!facts.some(j=>j.journeyState==="active"))return false;
   if(q.view==="paid"&&!facts.some(j=>j.paymentVerified&&!j.bookingConfirmed&&j.journeyState!=="hold"))return false;
-  if(q.view==="prospects"&&facts.length&&!facts.some(j=>!["active","hold"].includes(j.journeyState)))return false;
+  if(q.view==="prospects"&&(facts.length?!facts.some(j=>!["active","hold"].includes(j.journeyState)):activeCase))return false;
   if(q.stage&&q.stage!==r.stage)return false;
   if(q.locale&&!r.references.some(ref=>contactLocale(ref.language)===q.locale))return false;
   if(q.due==="today"&&(!r.followUpDate||r.followUpDate>q.today))return false;

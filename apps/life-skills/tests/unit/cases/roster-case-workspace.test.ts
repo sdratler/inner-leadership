@@ -4,18 +4,19 @@ import { expect, it, vi, beforeEach } from 'vitest';
 type Slot =
  | { kind: 'state'; value: unknown }
  | { kind: 'ref'; value: { current: unknown } }
- | { kind: 'effect'; deps: readonly unknown[] | undefined; cleanup: (() => void) | undefined };
+ | { kind: 'effect'; deps: readonly unknown[] | undefined; cleanup: (() => void) | undefined }
+ | { kind: 'callback'; deps: readonly unknown[]; value: unknown };
 
 const hook = vi.hoisted(() => {
  const slots: Slot[] = [];
  const pending: Array<{ index: number; effect: () => void | (() => void) }> = [];
  let cursor = 0, mounted = true, afterUnmountUpdates = 0;
- const accountRead = vi.fn();
+ const accountRead = vi.fn(), peopleRead = vi.fn();
  const changed = (a: readonly unknown[] | undefined, b: readonly unknown[] | undefined) =>
   !a || !b || a.length !== b.length || a.some((value, index) => value !== b[index]);
  return {
-  accountRead,
-  reset() { slots.length = 0; pending.length = 0; cursor = 0; mounted = true; afterUnmountUpdates = 0; accountRead.mockReset(); },
+  accountRead, peopleRead,
+  reset() { slots.length = 0; pending.length = 0; cursor = 0; mounted = true; afterUnmountUpdates = 0; accountRead.mockReset(); peopleRead.mockReset(); },
   render<T>(view: () => T): T { cursor = 0; return view(); },
   flushEffects() { for (const next of pending.splice(0)) { const slot = slots[next.index]; if (slot?.kind === 'effect') { slot.cleanup?.(); slot.cleanup = next.effect() || undefined; } } },
   unmount() { mounted = false; for (const slot of slots) if (slot.kind === 'effect') slot.cleanup?.(); },
@@ -23,18 +24,21 @@ const hook = vi.hoisted(() => {
   useState<T>(initial: T) { const index = cursor++; let slot = slots[index]; if (!slot) { slot = { kind: 'state', value: initial }; slots[index] = slot; } if (slot.kind !== 'state') throw new Error('HOOK_ORDER'); return [slot.value as T, (value: T | ((current: T) => T)) => { if (!mounted) { afterUnmountUpdates++; return; } slot.value = typeof value === 'function' ? (value as (current: T) => T)(slot.value as T) : value; }] as const; },
   useRef<T>(initial: T) { const index = cursor++; let slot = slots[index]; if (!slot) { slot = { kind: 'ref', value: { current: initial } }; slots[index] = slot; } if (slot.kind !== 'ref') throw new Error('HOOK_ORDER'); return slot.value as { current: T }; },
   useMemo<T>(factory: () => T) { cursor++; return factory(); },
+  useCallback<T>(callback:T,deps:readonly unknown[]){const index=cursor++,slot=slots[index];if(!slot||slot.kind==='callback'&&changed(slot.deps,deps)){slots[index]={kind:'callback',deps,value:callback};return callback;}if(slot.kind!=='callback')throw Error('HOOK_ORDER');return slot.value as T;},
   useEffect(effect: () => void | (() => void), deps?: readonly unknown[]) { const index = cursor++; const slot = slots[index]; if (!slot) { slots[index] = { kind: 'effect', deps, cleanup: undefined }; pending.push({ index, effect }); return; } if (slot.kind !== 'effect') throw new Error('HOOK_ORDER'); if (changed(slot.deps, deps)) { slot.deps = deps; pending.push({ index, effect }); } },
  };
 });
 
 vi.mock('react', async importOriginal => {
  const actual = await importOriginal<typeof import('react')>();
- return { ...actual, useState: hook.useState, useRef: hook.useRef, useMemo: hook.useMemo, useEffect: hook.useEffect };
+ return { ...actual, useState: hook.useState, useRef: hook.useRef, useMemo: hook.useMemo, useCallback:hook.useCallback, useEffect: hook.useEffect };
 });
 vi.mock('../../../src/features/identity/client.ts', async importOriginal => ({ ...(await importOriginal<typeof import('../../../src/features/identity/client.ts')>()), accountRead: hook.accountRead }));
+vi.mock('../../../src/features/contact-ops/native-people-workspace.tsx',async importOriginal=>({...await importOriginal<typeof import('../../../src/features/contact-ops/native-people-workspace.tsx')>(),requestPeople:hook.peopleRead}));
 
 import { CaseWorkspace } from '../../../src/features/cases/case-workspace.tsx';
-import { ClientsRoster } from '../../../src/features/cases/clients-roster.tsx';
+import { ClientsRoster,LegacyClientsRoster } from '../../../src/features/cases/clients-roster.tsx';
+import {NativePeopleWorkspace,PeopleRequestError} from '../../../src/features/contact-ops/native-people-workspace.tsx';
 import { ProspectsClient } from '../../../src/features/prospects/client.tsx';
 import { IdentityClientError } from '../../../src/features/identity/client.ts';
 
@@ -102,13 +106,13 @@ it('guards a late request after unmount/logout', async () => {
 
 it('offers an actionable retry after a roster error and reloads synthetic cases', async () => {
  hook.accountRead.mockRejectedValueOnce(new Error('synthetic offline')).mockResolvedValueOnce([caseA]);
- hook.render(() => ClientsRoster({ locale: 'en' })); hook.flushEffects(); await tick();
- let output = hook.render(() => ClientsRoster({ locale: 'en' }));
+ hook.render(() => LegacyClientsRoster({ locale: 'en' })); hook.flushEffects(); await tick();
+ let output = hook.render(() => LegacyClientsRoster({ locale: 'en' }));
  const directory = find(output, element => element.type === ProspectsClient);
  expect(directory?.props.caseState).toBe('error');
  expect(directory?.props.onRetryCases).toBeTypeOf('function');
  (directory!.props.onRetryCases as () => void)(); await tick();
- output = hook.render(() => ClientsRoster({ locale: 'en' }));
+ output = hook.render(() => LegacyClientsRoster({ locale: 'en' }));
  const recovered = find(output, element => element.type === ProspectsClient);
  expect(recovered?.props.caseState).toBe('ready');
  expect(recovered?.props.clientCases).toEqual([caseA]);
@@ -116,12 +120,12 @@ it('offers an actionable retry after a roster error and reloads synthetic cases'
 
 it('distinguishes an expired case-directory session from a CRM outage and preserves the selected People URL', async () => {
  hook.accountRead.mockRejectedValueOnce(new IdentityClientError('UNAUTHENTICATED'));
- hook.render(() => ClientsRoster({ locale: 'he', section: 'prospects', prospectFilter: 'today' })); hook.flushEffects(); await tick();
- const output = hook.render(() => ClientsRoster({ locale: 'he', section: 'prospects', prospectFilter: 'today' }));
+ hook.render(() => LegacyClientsRoster({ locale: 'he', section: 'prospects', prospectFilter: 'today' })); hook.flushEffects(); await tick();
+ const output = hook.render(() => LegacyClientsRoster({ locale: 'he', section: 'prospects', prospectFilter: 'today' }));
  const directory = find(output, element => element.type === ProspectsClient);
  expect(directory?.props.caseState).toBe(null); // The prospects-only view does not read the case directory.
- hook.render(() => ClientsRoster({ locale: 'he', section: 'all', prospectFilter: 'today' })); hook.flushEffects(); await tick();
- const active = hook.render(() => ClientsRoster({ locale: 'he', section: 'all', prospectFilter: 'today' }));
+ hook.render(() => LegacyClientsRoster({ locale: 'he', section: 'all', prospectFilter: 'today' })); hook.flushEffects(); await tick();
+ const active = hook.render(() => LegacyClientsRoster({ locale: 'he', section: 'all', prospectFilter: 'today' }));
  const cases = find(active, element => element.type === ProspectsClient);
  expect(cases?.props.caseState).toBe('auth');
  expect(cases?.props.returnPath).toBe('/he/app/clients?section=all&filter=today');
@@ -269,4 +273,41 @@ it('does not call unavailable private data an empty People directory', async () 
   expect(text(output)).toContain('The CRM could not be loaded');
   expect(text(output)).not.toContain('No prospects match these filters');
  } finally { vi.unstubAllGlobals(); }
+});
+
+it('renders exactly the durable Sheet directory, without reading native shadows',async()=>{
+ hook.peopleRead.mockResolvedValue({source:'sheet',authorityEpoch:1});
+ const view=()=>hook.render(()=>ClientsRoster({locale:'en',section:'prospects'}));view();hook.flushEffects();await tick();
+ const output=view();expect(output.type).toBe(LegacyClientsRoster);
+ expect(find(output,e=>e.type===NativePeopleWorkspace)).toBeUndefined();
+ expect(hook.peopleRead).toHaveBeenCalledWith(new URLSearchParams({view:'prospects'}));
+ expect(hook.accountRead).not.toHaveBeenCalled();
+});
+it('renders one native directory only after the server selects the actual native authority',async()=>{
+ const data={source:'native',authorityEpoch:3,page:{items:[],total:0,page:1,pageSize:12,pages:1}};
+ hook.peopleRead.mockResolvedValue(data);
+ const view=()=>hook.render(()=>ClientsRoster({locale:'he',section:'active'}));view();hook.flushEffects();await tick();
+ const output=view(),native=find(output,e=>e.type===NativePeopleWorkspace);
+ expect(native?.props.initial).toBe(data);expect(native?.props.view).toBe('active');
+ expect(find(output,e=>e.type===LegacyClientsRoster||e.type===ProspectsClient)).toBeUndefined();
+ expect(hook.accountRead).not.toHaveBeenCalled();
+});
+it.each([401,403,409,503])('source failure %i never initializes Sheet or calls a directory empty',async status=>{
+ hook.peopleRead.mockRejectedValue(new PeopleRequestError(status));
+ const view=()=>hook.render(()=>ClientsRoster({locale:'en'}));view();hook.flushEffects();await tick();
+ const output=view();expect(find(output,e=>e.type===LegacyClientsRoster||e.type===NativePeopleWorkspace||e.type===ProspectsClient)).toBeUndefined();
+ expect(find(output,e=>e.props.role==='alert')).toBeDefined();expect(text(output)).not.toContain('No people match');
+ expect(hook.accountRead).not.toHaveBeenCalled();
+});
+it('ignores a late previous-section source response and all source responses after unmount',async()=>{
+ let first!:(r:unknown)=>void,second!:(r:unknown)=>void;
+ hook.peopleRead.mockReturnValueOnce(new Promise(resolve=>{first=resolve;})).mockReturnValueOnce(new Promise(resolve=>{second=resolve;}));
+ hook.render(()=>ClientsRoster({locale:'en',section:'all'}));hook.flushEffects();await tick();
+ hook.render(()=>ClientsRoster({locale:'en',section:'active'}));hook.flushEffects();await tick();
+ second({source:'native',authorityEpoch:3,page:{items:[],total:0,page:1,pageSize:12,pages:1}});await tick();
+ first({source:'sheet',authorityEpoch:0});await tick();
+ expect(find(hook.render(()=>ClientsRoster({locale:'en',section:'active'})),e=>e.type===NativePeopleWorkspace)).toBeDefined();
+ hook.reset();let late!:(r:unknown)=>void;hook.peopleRead.mockReturnValue(new Promise(resolve=>{late=resolve;}));
+ hook.render(()=>ClientsRoster({locale:'en'}));hook.flushEffects();await tick();hook.unmount();late({source:'sheet',authorityEpoch:0});await tick();
+ expect(hook.afterUnmountUpdates()).toBe(0);
 });

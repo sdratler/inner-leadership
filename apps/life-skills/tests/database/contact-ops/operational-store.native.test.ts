@@ -44,10 +44,14 @@ test("one real transaction binds native create/read/list/update, notes, replay a
  expect(await store.read(a,p.personId,3)).toMatchObject({profile:p,version:1});
  expect(transactions).toBe(2);
  statements.length=0;
- expect(await store.list(a,query,3)).toMatchObject({total:1,items:[{personId:p.personId,notes:p.notes}]});
+ expect(await store.list(a,{...query,personId:p.personId},3)).toMatchObject({total:1,items:[{personId:p.personId,notes:p.notes}]});
  expect(transactions).toBe(3);
  expect(statements[0]).toBe("SET TRANSACTION READ ONLY");
  expect(statements.filter(sql=>sql.startsWith("SET TRANSACTION"))).toHaveLength(1);
+ const directory=await store.list(a,query,3);
+ expect(directory.total).toBe(3);
+ expect(new Set(directory.items.map(row=>row.personId)).size).toBe(3);
+ expect(directory.items.filter(row=>row.version===null)).toHaveLength(2);
  const updated={...p,nextAction:"Follow up tomorrow"};
  expect(await store.update(a,updated,1,"native-update",3)).toEqual({version:2,replayed:false});
  expect(await store.update(a,updated,1,"native-update",3)).toEqual({version:2,replayed:true});
@@ -127,7 +131,7 @@ test("real session/role/workspace denial applies to every operational method inc
 test("retired native authority remains usable; rollback hold and corrupted state deny access",async()=>{
  const s=await setup();await activate(s);const a=s.f.practitioner.actor,p=profile(a.personId);await s.store.create(a,p,"create",3);
  await s.authority.advance(a,{action:"retire_sheet",proof:proof(3,1),operationId:"retire"});
- expect(await s.store.list(a,query,4)).toMatchObject({total:1});
+ expect(await s.store.list(a,{...query,personId:p.personId},4)).toMatchObject({total:1});
  expect(await s.store.update(a,{...p,notes:"Synthetic retired native note"},1,"retired-update",4)).toEqual({version:2,replayed:false});
  // Corrupted authority must not leak the existing profile through any fallback.
  await s.f.pool.query("UPDATE ls_contact_ops.cutover SET state_ciphertext='invalid-cipher' WHERE workspace_id=$1",[a.workspaceId]);

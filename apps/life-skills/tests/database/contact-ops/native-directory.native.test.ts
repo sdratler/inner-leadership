@@ -44,7 +44,8 @@ test("native PostgreSQL reads all keyset pages, searches after page one, and pre
  expect((await directory.list(f.practitioner.actor,{...q,search:tail.lead,locale:"he"})).total).toBe(1);
  expect((await directory.list(f.practitioner.actor,{...q,search:tail.lead,locale:"en"})).total).toBe(0);
  expect(JSON.stringify(result)).not.toContain("Never serialize this history field");
- expect(await directory.list(f.practitioner.actor,q)).toMatchObject({total:101,pages:6});
+ // One real authorized non-DEMO child case joins by its own canonical person.
+ expect(await directory.list(f.practitioner.actor,q)).toMatchObject({total:102,pages:6});
  expect((await directory.list(f.practitioner.actor,{...q,view:"paid"})).total).toBe(0);
  const changed={...tail.profile,notes:"Synthetic revised note preserved after reload",nextAction:"Synthetic new next action"};
  await native.update(f.practitioner.actor,changed,1,"native-edit-"+tail.id);
@@ -125,8 +126,11 @@ test("native PostgreSQL keeps explicit demo mode separate from the live director
  const personId=f.parent.actor.personId;
  await f.pool.query("INSERT INTO ls_demo.records(workspace_id,batch_id,entity_kind,entity_key,source_key,account_id) VALUES($1,'ls-owner-20260925','person',$2,$3,$4)",[f.workspaceId,personId,"native-read-demo-"+randomUUID(),f.parent.actor.id]);
  await native.create(f.practitioner.actor,{personId,stage:"new",nextAction:null,followUpDate:null,notes:"Synthetic demo note",legacyIds:[]},"create-demo-read-"+randomUUID());
- expect((await directory.list(f.practitioner.actor,q)).total).toBe(101);
- expect(await directory.list(f.practitioner.actor,{...q,mode:"demo"})).toMatchObject({total:1,items:[{personId,mode:"demo",displayName:"DEMO — Synthetic parent A"}]});
+ expect((await directory.list(f.practitioner.actor,q)).total).toBe(102);
+ const demos=await directory.list(f.practitioner.actor,{...q,mode:"demo"});
+ expect(demos.total).toBe(2);
+ expect(demos.items.find(r=>r.personId===personId)).toMatchObject({personId,mode:"demo",displayName:"DEMO — Synthetic parent A"});
+ expect(demos.items.filter(r=>r.version===null)).toHaveLength(1);
 });
 
 test("native PostgreSQL reads each actual payment allocation and booked appointment separately",async()=>{

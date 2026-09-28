@@ -1,0 +1,13 @@
+.lsu-native-people { min-width: 0; }
+.lsu-native-table { overflow-x: auto; margin-block: 1rem; }
+.lsu-native-table table { border-collapse: collapse; width: 100%; background: var(--ls-paper); }
+.lsu-native-table caption { text-align: start; font-weight: 700; padding-block: .75rem; }
+.lsu-native-table th, .lsu-native-table td { text-align: start; padding: .75rem; border-block-end: 1px solid var(--ls-line); overflow-wrap: anywhere; }
+.lsu-native-table th { font-weight: 700; }
+.lsu-native-people pre { overflow-wrap: anywhere; font: inherit; }
+.lsu-native-cards { display: none; }
+@media (max-width: 767px) {
+ .lsu-native-table { display: none; }
+ .lsu-native-cards { display: grid; }
+ .lsu-native-cards .lsu-person-row { text-align: start; width: 100%; overflow-wrap: anywhere; }
+}
