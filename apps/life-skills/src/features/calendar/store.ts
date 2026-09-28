@@ -11,6 +11,8 @@ import { audienceAccess, caseAccess, requirePractitioner, type AudienceFacts, ty
 import type { Appointment, AppointmentId, AppointmentView, Attendance, CalendarEvent, Notice } from './types.ts';
 import { authorizeAppointment } from './policy.ts';
 import { countsAsChildSession } from '../attendance/policy.ts';
+import {demoOperatorContext} from '../demo/operator-context.ts';
+import type {AccountId} from '../identity/types.ts';
 export interface TransactionContext { tx: SqlSession; actor: AccountFacts; workspace: WorkspaceId; now: string; }
 export interface AuthorizedAppointment { item: Appointment; caseFacts: CaseFacts; audience: AudienceFacts; guardians: GuardianFacts[]; }
 export const APPOINTMENT_SELECT = `SELECT id,workspace_id AS "workspaceId",case_id AS "caseId",audience_id AS "audienceId",
@@ -49,7 +51,31 @@ export class CalendarStore {
  async command<T>(actor:Actor,operation:string,key:string,body:unknown,authorize:(c:TransactionContext)=>Promise<unknown>,work:(c:TransactionContext)=>Promise<T>):Promise<T> {
   if(!/^[A-Za-z0-9_-]{16,100}$/.test(key))throw new AppError('INVALID_REQUEST');
   const digest=createHash('sha256').update(canonical(body)).digest('hex');
-  return this.read(actor,async c=>{
+  return this.read(actor,c=>this.commandIn(c,operation,key,digest,authorize,work));
+ }
+ /** Private synthetic setup only. Ordinary routes still require freshActor.
+  * Explicit capability verifies the real owner plus exact immutable case/batch,
+  * and shares the existing encrypted command receipt and calendar transaction.
+  */
+ async demoOperatorCommand<T>(workspace:WorkspaceId,practitionerId:AccountId,caseId:CaseId,batchId:string,
+  operation:string,key:string,body:unknown,permission:boolean,authorize:(c:TransactionContext)=>Promise<unknown>,work:(c:TransactionContext)=>Promise<T>):Promise<T>{
+  if(permission!==true)throw new AppError('FORBIDDEN');
+  if(!/^demo:[a-z:_-]{1,100}$/.test(operation)||!/^[A-Za-z0-9_-]{16,100}$/.test(key))throw new AppError('INVALID_REQUEST');
+  const digest=createHash('sha256').update(canonical({caseId,batchId,body})).digest('hex');
+  try{return await this.store.transaction(async tx=>{
+   await lockWorkspace(tx,workspace);
+   const account=await demoOperatorContext(tx,workspace,practitionerId,caseId,batchId,permission);
+   const time=await one<{now:Date}>(tx,'SELECT clock_timestamp() AS now');if(!time)throw new AppError('UNAVAILABLE');
+   const c={tx,actor:account,workspace,now:stamp(time.now)};
+   return this.commandIn(c,operation,key,digest,authorize,work);
+  });}catch(error){
+   if(error instanceof AppError)throw error;
+   if(['23505','23514','23503','23P01'].includes(String((error as {code?:unknown})?.code)))throw new AppError('CONFLICT');
+   throw new AppError('UNAVAILABLE');
+  }
+ }
+ private async commandIn<T>(c:TransactionContext,operation:string,key:string,digest:string,
+  authorize:(c:TransactionContext)=>Promise<unknown>,work:(c:TransactionContext)=>Promise<T>):Promise<T>{
    // Reauthorization precedes replay, so revocation is not bypassed by an old key.
    await authorize(c);
    const previous=await one<{digest:string;result:string}>(c.tx,`SELECT body_digest AS digest,result_ciphertext AS result FROM ls_calendar.commands
@@ -60,7 +86,6 @@ export class CalendarStore {
    await c.tx.query(`INSERT INTO ls_calendar.commands(workspace_id,account_id,operation,command_key,body_digest,result_ciphertext,created_at)
     VALUES($1,$2,$3,$4,$5,$6,$7)`,[c.workspace,c.actor.id,operation,key,digest,this.encrypt(c,'command',resultId,JSON.stringify(result)),c.now]);
    return result;
-  });
  }
  async scope(c:TransactionContext,caseId:CaseId,write=false) {
   const item=await loadCase(c.tx,c.workspace,caseId),guardians=await loadGuardians(c.tx,c.workspace,caseId);
