@@ -23,7 +23,7 @@ export function PrivateObservationEvidencePanel({ locale, caseId, refreshToken =
       void sessionRead<PrivateObservationEvidence>(`/observations?caseId=${encodeURIComponent(caseId)}`, controller.signal).then(value => {
         validateObservationEvidence(value, caseId);
         if (!controller.signal.aborted) { setData(value); setPending(false); }
-      }).catch(() => { if (!controller.signal.aborted) { setError(true); setPending(false); } });
+      }).catch(() => { if (!controller.signal.aborted) { setData(null); setError(true); setPending(false); } });
     });
     return () => controller.abort();
   }, [caseId, open, refreshToken, retry]);
