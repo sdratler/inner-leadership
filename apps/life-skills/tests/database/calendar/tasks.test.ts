@@ -103,8 +103,10 @@ describe('internal task PostgreSQL contract',()=>{
    const row={leadId:'LS-LEAD-DRIZZLE-SYNTHETIC',name:'Synthetic binding contact',nextAction:'Review "quoted" synthetic inquiry',dueDate,caseId:native.second.id,stage:'New',outcome:''};
    const unlinked={...row,leadId:'LS-LEAD-DRIZZLE-UNLINKED',caseId:''};
    const demo={...row,leadId:'LS-LEAD-DRIZZLE-DEMO',caseId:native.first.id};
-   await native.pool.query(`INSERT INTO ls_demo.records(workspace_id,batch_id,entity_kind,entity_key,source_key,case_id)
-    VALUES($1,'ls-owner-20260925','prospect',$2,'calendar-drizzle-demo',$3)`,[native.workspaceId,demo.leadId,native.first.id]);
+   // The current schema forbids attaching a free-form prospect demo marker.
+   // Preserve that denial; use the fixture's genuine demo case provenance instead.
+   await expect(native.pool.query(`INSERT INTO ls_demo.records(workspace_id,batch_id,entity_kind,entity_key,source_key,case_id)
+    VALUES($1,'ls-owner-20260925','prospect',$2,'calendar-drizzle-demo',$3)`,[native.workspaceId,demo.leadId,native.first.id])).rejects.toMatchObject({code:'23514'});
    const before=(await native.pool.query('SELECT count(*)::int AS n FROM ls_calendar.events WHERE workspace_id=$1',[native.workspaceId])).rows[0].n;
    expect(await tasks.syncCrmFollowups(native.practitioner.actor,[])).toEqual({created:0,updated:0,resolved:0,unchanged:0});
    expect(await tasks.syncCrmFollowups(native.practitioner.actor,[row,unlinked,demo])).toEqual({created:2,updated:0,resolved:0,unchanged:1});
