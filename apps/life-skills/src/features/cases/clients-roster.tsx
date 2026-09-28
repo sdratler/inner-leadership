@@ -1,5 +1,6 @@
 "use client";
 import {useCallback,useEffect,useRef,useState} from "react";
+import {z} from "zod";
 import {accountRead,IdentityClientError} from "../identity/client.ts";
 import {practitionerReturnPath} from "../identity/login-return.ts";
 import {ProspectsClient,type Preset} from "../prospects/client.tsx";
@@ -8,7 +9,8 @@ import {NativePeopleWorkspace,requestPeople,PeopleRequestError,type SheetRequest
 import type {PeopleResponse} from "../contact-ops/server/people-http.ts";
 import {loginHref} from "../identity/login-return.ts";
 
-type Case={id:string;kind:"minor"|"adult";state:string;displayName:string};
+const caseRows=z.array(z.object({id:z.uuid(),kind:z.enum(["minor","adult"]),state:z.string().min(1),displayName:z.string().min(1),mode:z.enum(["live","demo"])}));
+type Case=z.infer<typeof caseRows>[number];
 type Section="all"|"prospects"|"paid"|"active"|"archived";
 const sections=new Set<Section>(["all","prospects","paid","active","archived"]);
 const filters=new Set<Preset>(["all","today","new","intake","payment","booking","archived"]);
@@ -45,7 +47,7 @@ export function LegacyClientsRoster({locale,section:rawSection,prospectFilter,fo
  const section:Section=rawSection&&sections.has(rawSection as Section)?rawSection as Section:"all";
  const t=copy[locale],showCases=section==="all"||section==="active"||section==="archived",showProspects=section==="all"||section==="prospects"||section==="paid"||section==="archived";
  const [rows,setRows]=useState<Case[]>([]),[state,setState]=useState<"loading"|"ready"|"error"|"auth"|"forbidden">("loading"),active=useRef(true),request=useRef(0);
- const load=()=>{const current=++request.current;setState("loading");void accountRead<Case[]>("cases").then(value=>{if(active.current&&current===request.current){setRows(value);setState("ready")}}).catch(error=>{if(active.current&&current===request.current){setRows([]);setState(error instanceof IdentityClientError&&error.code==="UNAUTHENTICATED"?"auth":error instanceof IdentityClientError&&error.code==="FORBIDDEN"?"forbidden":"error")}})};
+ const load=()=>{const current=++request.current;setState("loading");void accountRead<unknown>("cases").then(value=>{if(active.current&&current===request.current){setRows(caseRows.parse(value).filter(row=>row.mode==="live"));setState("ready")}}).catch(error=>{if(active.current&&current===request.current){setRows([]);setState(error instanceof IdentityClientError&&error.code==="UNAUTHENTICATED"?"auth":error instanceof IdentityClientError&&error.code==="FORBIDDEN"?"forbidden":"error")}})};
  useEffect(()=>{active.current=true;if(showCases)queueMicrotask(load);return()=>{active.current=false}},[showCases]);
  const filtered=rows.filter(row=>section==="all"||(section==="archived"?closed(row.state):!closed(row.state)));
  const preset:Preset=section==="paid"?"booking":section==="archived"?"archived":prospectFilter&&filters.has(prospectFilter as Preset)?prospectFilter as Preset:"all";

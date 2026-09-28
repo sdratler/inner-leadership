@@ -42,8 +42,8 @@ import {NativePeopleWorkspace,PeopleRequestError} from '../../../src/features/co
 import { ProspectsClient } from '../../../src/features/prospects/client.tsx';
 import { IdentityClientError } from '../../../src/features/identity/client.ts';
 
-const caseA = { id: '123e4567-e89b-12d3-a456-426614174000', kind: 'minor' as const, state: 'active', displayName: 'Synthetic case A' };
-const caseB = { id: '223e4567-e89b-12d3-a456-426614174000', kind: 'minor' as const, state: 'active', displayName: 'Synthetic case B' };
+const caseA = { id: '123e4567-e89b-12d3-a456-426614174000', kind: 'minor' as const, state: 'active', displayName: 'Synthetic case A', mode: 'live' as const };
+const caseB = { id: '223e4567-e89b-12d3-a456-426614174000', kind: 'minor' as const, state: 'active', displayName: 'Synthetic case B', mode: 'live' as const };
 const tick = async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); };
 function text(node: unknown): string {
  if (node === null || node === undefined || typeof node === 'boolean') return '';
@@ -61,6 +61,43 @@ function find(node: unknown, predicate: (element: ReactElement<Record<string, un
 }
 
 beforeEach(() => hook.reset());
+
+it.each(['all', 'active', 'archived'])('keeps %s live cases separate from DEMO using provenance, not a name prefix', async section => {
+ const state = section === 'archived' ? 'archived' : 'active';
+ const live = {...caseA, state, displayName: 'DEMO is part of this real name'};
+ const demo = {...caseB, state, displayName: 'Synthetic exercise record', mode: 'demo' as const};
+ hook.accountRead.mockResolvedValue([live, demo]);
+ const view = () => hook.render(() => LegacyClientsRoster({locale: 'en', section}));
+ view(); hook.flushEffects(); await tick();
+ const directory = find(view(), element => element.type === ProspectsClient);
+ expect(directory?.props.caseState).toBe('ready');
+ expect(directory?.props.clientCases).toEqual([live]);
+ expect(hook.accountRead).toHaveBeenCalledExactlyOnceWith('cases');
+});
+
+it.each([undefined, 'unknown', null])('treats an unavailable case provenance %s as an error, not an empty/live directory', async mode => {
+ hook.accountRead.mockResolvedValue([{...caseA, mode}]);
+ const view = () => hook.render(() => LegacyClientsRoster({locale: 'he'}));
+ view(); hook.flushEffects(); await tick();
+ const directory = find(view(), element => element.type === ProspectsClient);
+ expect(directory?.props.caseState).toBe('error');
+ expect(directory?.props.clientCases).toEqual([]);
+});
+
+it('retries an invalid provenance read without resurrecting cached case rows', async () => {
+ hook.accountRead.mockResolvedValueOnce([caseA]).mockResolvedValueOnce([{...caseA, mode: undefined}]).mockResolvedValueOnce([caseA]);
+ const view = () => hook.render(() => LegacyClientsRoster({locale: 'en'}));
+ view(); hook.flushEffects(); await tick();
+ let directory = find(view(), element => element.type === ProspectsClient);
+ expect(directory?.props.clientCases).toEqual([caseA]);
+ (directory!.props.onRetryCases as () => void)(); await tick();
+ directory = find(view(), element => element.type === ProspectsClient);
+ expect(directory?.props.caseState).toBe('error'); expect(directory?.props.clientCases).toEqual([]);
+ (directory!.props.onRetryCases as () => void)();
+ directory = find(view(), element => element.type === ProspectsClient);
+ expect(directory?.props.caseState).toBe('loading'); expect(directory?.props.clientCases).toEqual([]);
+ await tick(); expect(find(view(), element => element.type === ProspectsClient)?.props.clientCases).toEqual([caseA]);
+});
 
 it('does not let a late A response replace the selected B case', async () => {
  let resolveA!: (rows: typeof caseA[]) => void, resolveB!: (rows: typeof caseB[]) => void;
