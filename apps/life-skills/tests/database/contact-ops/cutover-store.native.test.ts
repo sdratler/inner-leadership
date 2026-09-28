@@ -2,18 +2,20 @@ import {afterAll,expect,test,vi} from "vitest";
 import {randomUUID} from "node:crypto";
 vi.mock("server-only",()=>({}));
 import {fixture,poolStore,type Fixture} from "../calendar/fixture.ts";
-import {ContactCutoverStore} from "../../../src/features/contact-ops/server/cutover-store.ts";
-import type {CutoverProof} from "../../../src/features/contact-ops/core/cutover.ts";
+import {ContactCutoverStore,type CutoverEvidence} from "../../../src/features/contact-ops/server/cutover-store.ts";
 const fixtures:Fixture[]=[];
 afterAll(async()=>{for(const f of fixtures)await f.pool.end();});
 async function setup(){const f=await fixture();fixtures.push(f);return {f,store:new ContactCutoverStore(poolStore(f.pool),f.keyring,"synthetic-authority-integrity-key-20260928")};}
-const proof=(epoch:number,patch:Partial<CutoverProof>={}):CutoverProof=>({batchId:"synthetic-cutover-batch",sourceFileId:"synthetic-workbook",sourceRevision:"synthetic-frozen-revision",expectedEpoch:epoch,
+const proof=(epoch:number,patch:Partial<CutoverEvidence>={}):CutoverEvidence=>({batchId:"synthetic-cutover-batch",sourceFileId:"synthetic-workbook",sourceRevision:"synthetic-frozen-revision",expectedEpoch:epoch,observedNativeWritesSinceSwitch:0,
  backupRestored:true,snapshotMatched:true,imported:true,rowContentMatched:true,allRowsAccounted:true,identityConflicts:0,paymentsReconciled:true,writersFenced:true,
  inboundDurable:true,deltaDrained:true,consumersRepointed:true,sheetConsumersRepointed:true,nativeBrowserVerified:true,oldSchedulesDisabled:true,sourceFrozen:true,restorePlanReady:true,...patch});
 // These are isolated synthetic proof fixtures, NOT live receiver/backup/browser proof.
 
 test("native cutover persists encrypted exact-epoch transitions and immutable idempotent results",async()=>{
  const {f,store}=await setup(),a=f.practitioner.actor;
+ let invoked=false;
+ for(const intent of ["read","write"] as const)await expect(store.withDestination(a,{destination:"sheet",intent,expectedEpoch:0},async()=>{invoked=true;return true;})).rejects.toThrow("CONFLICT");
+ expect(invoked).toBe(false);
  expect(await store.read(a)).toMatchObject({phase:"sheet_active",epoch:0});
  await expect(store.advance(a,{action:"prepare",proof:proof(0,{allRowsAccounted:false}),operationId:"invalid-prepare"})).rejects.toThrow("CONFLICT");
  expect((await f.pool.query("SELECT count(*)::integer AS n FROM ls_contact_ops.cutover WHERE workspace_id=$1",[f.workspaceId])).rows[0].n).toBe(0);
@@ -61,12 +63,23 @@ test("native cutover fences stale/legacy writes, counts only committed native wr
  expect((await f.pool.query("SELECT count(*)::integer AS n FROM ls_identity.people WHERE workspace_id=$1",[f.workspaceId])).rows[0].n).toBe(countBefore);
  expect((await store.read(a)).nativeWritesSinceSwitch).toBe(0);
  await store.withDestination(a,{destination:"native",intent:"read",expectedEpoch:3},async tx=>(await tx.query("SELECT 1 AS n"))[0]);
+ // Prove the actual PostgreSQL boundary, not a mocked intent check.
+ await expect(store.withDestination(a,{destination:"native",intent:"read",expectedEpoch:3},async tx=>tx.query(
+  "INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,'adult','synthetic-illegal-read-write',clock_timestamp())",[randomUUID(),f.workspaceId]
+ ))).rejects.toMatchObject({code:"25006"});
+ await expect(store.withDestination(a,{destination:"native",intent:"read",expectedEpoch:3},async tx=>tx.query("SET TRANSACTION READ WRITE"))).rejects.toMatchObject({code:"25001"});
+ expect((await f.pool.query("SELECT count(*)::integer AS n FROM ls_identity.people WHERE workspace_id=$1",[f.workspaceId])).rows[0].n).toBe(countBefore);
  expect((await store.read(a)).nativeWritesSinceSwitch).toBe(0);
+ const staleRollback=proof(3);
  await Promise.all([1,2].map(()=>store.withDestination(a,{destination:"native",intent:"write",expectedEpoch:3},async tx=>tx.query("SELECT 1 AS n"))));
  expect((await store.read(a)).nativeWritesSinceSwitch).toBe(2);
- await store.advance(a,{action:"prepare_rollback",proof:proof(3),operationId:"rollback"});
- await expect(store.advance(a,{action:"finish_rollback",proof:proof(4,{deltaDrained:false}),operationId:"unsafe-rollback"})).rejects.toThrow("CONFLICT");
- await store.advance(a,{action:"finish_rollback",proof:proof(4),operationId:"finish-rollback"});
+ await expect(store.advance(a,{action:"prepare_rollback",proof:staleRollback,operationId:"stale-rollback"})).rejects.toThrow("CONFLICT");
+ expect(await store.read(a)).toMatchObject({phase:"native_active",epoch:3,nativeWritesSinceSwitch:2});
+ await store.advance(a,{action:"prepare_rollback",proof:proof(3,{observedNativeWritesSinceSwitch:2}),operationId:"rollback"});
+ await expect(store.withDestination(a,{destination:"native",intent:"write",expectedEpoch:4},work)).rejects.toThrow("CONFLICT");
+ await expect(store.advance(a,{action:"finish_rollback",proof:proof(4),operationId:"stale-finish-rollback"})).rejects.toThrow("CONFLICT");
+ await expect(store.advance(a,{action:"finish_rollback",proof:proof(4,{observedNativeWritesSinceSwitch:2,deltaDrained:false}),operationId:"unsafe-rollback"})).rejects.toThrow("CONFLICT");
+ await store.advance(a,{action:"finish_rollback",proof:proof(4,{observedNativeWritesSinceSwitch:2}),operationId:"finish-rollback"});
  expect(await store.read(a)).toMatchObject({phase:"sheet_active",epoch:5,nativeWritesSinceSwitch:0,batchId:null});
 });
 
@@ -81,5 +94,5 @@ test("native cutover denies parent/revoked/cross-workspace actors and corrupted 
  await f.pool.query("UPDATE ls_identity.sessions SET revoked_at=NULL WHERE token_digest=$1",[a.sessionDigest]);
  await f.pool.query("UPDATE ls_contact_ops.cutover SET state_ciphertext='invalid-encrypted-state' WHERE workspace_id=$1",[f.workspaceId]);
  await expect(store.read(a)).rejects.toThrow("UNAVAILABLE");
- await expect(store.withDestination(a,{destination:"sheet",intent:"read",expectedEpoch:1},async()=>true)).rejects.toThrow("UNAVAILABLE");
+ await expect(store.withDestination(a,{destination:"native",intent:"read",expectedEpoch:1},async()=>true)).rejects.toThrow("UNAVAILABLE");
 });

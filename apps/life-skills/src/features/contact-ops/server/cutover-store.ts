@@ -14,7 +14,9 @@ const phase=z.enum(["sheet_active","shadow_ready","frozen","native_active","reti
 const source=z.string().min(1).max(200);
 const stateSchema=z.object({phase,epoch:safeEpoch,batchId:source.nullable(),sourceFileId:source.nullable(),
  sourceRevision:source.nullable(),nativeWritesSinceSwitch:safeEpoch}).strict();
+export type CutoverEvidence=CutoverProof & {observedNativeWritesSinceSwitch:number};
 const proofSchema=z.object({batchId:source,sourceFileId:source,sourceRevision:source,expectedEpoch:safeEpoch,
+ observedNativeWritesSinceSwitch:safeEpoch,
  backupRestored:z.boolean(),snapshotMatched:z.boolean(),imported:z.boolean(),rowContentMatched:z.boolean(),allRowsAccounted:z.boolean(),
  identityConflicts:z.number().int().min(0),paymentsReconciled:z.boolean(),writersFenced:z.boolean(),inboundDurable:z.boolean(),
  deltaDrained:z.boolean(),consumersRepointed:z.boolean(),sheetConsumersRepointed:z.boolean(),nativeBrowserVerified:z.boolean(),
@@ -44,9 +46,9 @@ export class ContactCutoverStore {
  private decode<T>(schema:z.ZodType<T>,ciphertext:string,aad:string):T{
   try{return schema.parse(JSON.parse(unseal(ciphertext,aad,this.keyring)));}catch{throw new AppError("UNAVAILABLE");}
  }
- private async current(tx:SqlSession,a:Actor):Promise<CutoverState>{
+ private async current(tx:SqlSession,a:Actor,forUpdate=true):Promise<CutoverState>{
   const rows=await tx.query<StoredState>(`SELECT epoch::text,phase,state_ciphertext AS ciphertext
-   FROM ls_contact_ops.cutover WHERE workspace_id=$1 FOR UPDATE`,[a.workspaceId]);
+   FROM ls_contact_ops.cutover WHERE workspace_id=$1${forUpdate?" FOR UPDATE":""}`,[a.workspaceId]);
   if(rows.length>1)throw new AppError("UNAVAILABLE");
   const r=rows[0];if(!r)return initial();
   const epoch=Number(r.epoch);
@@ -62,8 +64,10 @@ export class ContactCutoverStore {
    ON CONFLICT(workspace_id) DO UPDATE SET epoch=EXCLUDED.epoch,phase=EXCLUDED.phase,state_ciphertext=EXCLUDED.state_ciphertext,updated_at=clock_timestamp()`,
    [a.workspaceId,s.epoch,s.phase,seal(JSON.stringify(s),stateAad(a.workspaceId,s.epoch),this.keyring)]);
  }
- async read(a:Actor):Promise<CutoverState>{return this.db.transaction(async tx=>{await this.lock(tx,a);return this.current(tx,a);});}
- async advance(a:Actor,input:{action:CutoverAction;proof:CutoverProof;operationId:string}):Promise<{state:CutoverState;replayed:boolean}>{
+ async read(a:Actor):Promise<CutoverState>{return this.db.transaction(async tx=>{
+  await tx.query("SET TRANSACTION READ ONLY");await this.lock(tx,a);return this.current(tx,a,false);
+ });}
+ async advance(a:Actor,input:{action:CutoverAction;proof:CutoverEvidence;operationId:string}):Promise<{state:CutoverState;replayed:boolean}>{
   const proof=proofSchema.parse(input.proof),action=actionSchema.parse(input.action),operation=operationSchema.parse(input.operationId);
   const digest=privateDigest({actorId:a.id,workspaceId:a.workspaceId,action,proof},this.integrityKey);
   return this.db.transaction(async tx=>{
@@ -79,7 +83,9 @@ export class ContactCutoverStore {
     return {state:record.state,replayed:true};
    }
    const current=await this.current(tx,a);
-   if(current.epoch!==proof.expectedEpoch||current.epoch>=Number.MAX_SAFE_INTEGER-1)throw new AppError("CONFLICT");
+   // Writes keep the phase epoch but advance this counter. Bind EVERY transition's
+   // evidence to both, so an intervening write invalidates a rollback/delta proof.
+   if(current.epoch!==proof.expectedEpoch||current.nativeWritesSinceSwitch!==proof.observedNativeWritesSinceSwitch||current.epoch>=Number.MAX_SAFE_INTEGER-1)throw new AppError("CONFLICT");
    let next:CutoverState;
    try{next=advanceCutover(current,action,proof,proof.batchId);}catch{throw new AppError("CONFLICT");}
    await this.save(tx,a,next);
@@ -90,15 +96,19 @@ export class ContactCutoverStore {
    return {state:next,replayed:false};
   });
  }
- /** Never wraps a network/provider effect. Use this same tx for DB operations;
-  * do not open a nested transaction or select authority and write later.
+ /** Native DB operations only, never Sheet/network/provider effects. The legacy
+  * Sheet writer must use its own durable external fence, not a DB callback.
+  * Read intents are PostgreSQL READ ONLY, not a caller promise. Use this same tx
+  * for native writes; never select authority and commit a separate transaction.
   */
  async withDestination<T>(a:Actor,input:{destination:"sheet"|"native";intent:"read"|"write";expectedEpoch:number},
   work:(tx:SqlSession,state:CutoverState)=>Promise<T>):Promise<T>{
   if(!safeEpoch.safeParse(input.expectedEpoch).success||!["sheet","native"].includes(input.destination)||!["read","write"].includes(input.intent))throw new AppError("INVALID_REQUEST");
+  if(input.destination!=="native")throw new AppError("CONFLICT");
   return this.db.transaction(async tx=>{
+   if(input.intent==="read")await tx.query("SET TRANSACTION READ ONLY");
    await this.lock(tx,a);
-   const current=await this.current(tx,a);
+   const current=await this.current(tx,a,input.intent==="write");
    if(current.epoch!==input.expectedEpoch||writeDestination(current.phase)!==input.destination)throw new AppError("CONFLICT");
    const result=await work(tx,{...current});
    if(input.intent==="write"&&input.destination==="native"){
