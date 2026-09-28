@@ -1,0 +1,33 @@
+import {readFileSync} from 'node:fs';
+import {describe,expect,it} from 'vitest';
+
+const workspace=readFileSync(new URL('../../../src/features/calendar/workspace.tsx',import.meta.url),'utf8');
+const css=readFileSync(new URL('../../../src/features/calendar/calendar.css',import.meta.url),'utf8');
+
+describe('operational Calendar composition',()=>{
+ it('places the functioning Calendar before practitioner summary cards and attendance totals',()=>{
+  const grid=workspace.indexOf('<CalendarShell ');
+  expect(grid).toBeGreaterThan(0);
+  expect(workspace.indexOf('<div className="ls-cal-operational">')).toBeGreaterThan(grid);
+  expect(workspace.indexOf('<aside className="ls-cal-count">')).toBeGreaterThan(grid);
+  expect(workspace.match(/<IntakeSummaryCard /g)).toHaveLength(1);
+  expect(workspace.match(/<CalendarAttentionSummary /g)).toHaveLength(1);
+ });
+ it('preserves visible real partial failures, role-specific grid and draft guards',()=>{
+  for(const failure of ['taskFailed&&','followupFailed&&','taskSyncFailed&&','error===\'auth\'','error===\'forbidden\'','caseError&&','countError&&']){
+   expect(workspace.indexOf(failure)).toBeLessThan(workspace.indexOf('<CalendarShell '));
+  }
+  expect(workspace).toContain('<UnsavedChangesGuard dirty={dirty||taskDirty||mutation.uncertain}');
+  expect(workspace).toContain('practitioner&&<div className="ls-cal-operational">');
+  expect(workspace).not.toContain('<details className="ls-cal-operational');
+ });
+ it('reduces unused spacing rather than clipping content or shrinking readable controls',()=>{
+  expect(css).toContain('grid-template-columns:minmax(180px,.8fr) minmax(220px,1fr) auto');
+  expect(css).toContain('.ls-cal-period>.lsw-field {flex:1;min-inline-size:0}');
+  expect(css).toContain('.ls-cal-toolbar>.lsw-field {min-inline-size:0}');
+  expect(css).toContain('@media(max-width:1279px)');
+  expect(css).toContain('@media(max-width:600px)');
+  expect(css).not.toMatch(/\.ls-cal-toolbar[^{}]*\{[^}]*overflow\s*:\s*hidden/);
+  expect(css).not.toMatch(/\.ls-cal-toolbar[^{}]*\{[^}]*font-size\s*:/);
+ });
+});
