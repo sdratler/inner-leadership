@@ -1,13 +1,13 @@
 import "server-only";
-import { privateDigest } from "./digests.js";
-import { requireThat } from "../core/validation.js";
+import {z} from "zod";
+import { privateDigest } from "./digests.ts";
+import { requireThat,dateOnly } from "../core/validation.ts";
 import type {IdentityStore} from "../../identity/store.ts";
 import {seal,unseal,type Keyring} from "../../identity/crypto.ts";
 import {freshActor,lockWorkspace} from "../../identity/data.ts";
 import {requirePractitioner} from "../../cases/policy.ts";
 import {systemClock,type Actor,type IdentityClock} from "../../identity/types.ts";
 import {asId} from "../../../lib/ids.ts";
-import {dateOnly} from "../core/validation.js";
 import {demoRecordBatch} from "../../demo/provenance.ts";
 export interface CrmProfile {
     personId: string;
@@ -18,12 +18,14 @@ export interface CrmProfile {
     legacyIds: readonly string[];
 }
 export function crmProfileAad(w: string, p: string) { return `ls_contact_ops/profile/v1/${w}/${p}`; }
-function validateProfile(profile:CrmProfile):void {
-    requireThat(profile.personId===asId(profile.personId,"person"),"CANONICAL_PERSON_ID_REQUIRED");
-    requireThat(profile.stage.length>0&&profile.stage.length<=120&&profile.notes.length<=5000,"BAD_PROFILE");
-    requireThat(profile.nextAction===null||profile.nextAction.length<=500,"BAD_PROFILE");
-    requireThat(profile.followUpDate===null||dateOnly(profile.followUpDate),"BAD_PROFILE");
-    requireThat(profile.legacyIds.length<=100&&new Set(profile.legacyIds).size===profile.legacyIds.length&&profile.legacyIds.every(id=>/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]+$/.test(id)),"BAD_PROFILE");
+const profileSchema=z.object({personId:z.string().uuid(),stage:z.string().min(1).max(120),
+    nextAction:z.string().max(500).nullable(),followUpDate:z.string().refine(dateOnly).nullable(),
+    notes:z.string().max(5000),legacyIds:z.array(z.string().regex(/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]+$/)).max(100)
+        .refine(ids=>new Set(ids).size===ids.length)}).strict();
+function validateProfile(profile:unknown):asserts profile is CrmProfile {
+    requireThat(profileSchema.safeParse(profile).success,"BAD_PROFILE");
+    const p=profile as CrmProfile;
+    requireThat(p.personId===asId(p.personId,"person"),"CANONICAL_PERSON_ID_REQUIRED");
 }
 /** Existing identity people remain canonical. This stores only their administrative CRM extension. */
 export class NativeCrmStore {
@@ -70,8 +72,10 @@ export class NativeCrmStore {
             requireThat(rows.length <= 1, "PROFILE_CARDINALITY");
             const r = rows[0];
             if (!r) return null;
-            const profile=JSON.parse(unseal(r.payload_ciphertext,crmProfileAad(a.workspaceId,personId),this.keyring)) as CrmProfile;
+            const profile:unknown=JSON.parse(unseal(r.payload_ciphertext,crmProfileAad(a.workspaceId,personId),this.keyring));
+            validateProfile(profile);
             requireThat(profile.personId===personId,"PROFILE_ID_MISMATCH");
+            requireThat(Number.isSafeInteger(r.version)&&r.version>0,"BAD_PROFILE_VERSION");
             return {profile,version:r.version};
         });
     }
