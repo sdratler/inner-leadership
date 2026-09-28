@@ -17,3 +17,7 @@ test.each([["live",false,true],["live",true,false],["demo",false,false]] as cons
  expect(html.includes("Do not contact: communication actions are unavailable.")).toBe(doNotContact);
  expect(html).not.toContain('class="lsu-person-row"');
 });
+test("missing legacy lead never exposes an unrelated directory or empty-directory success",()=>{
+ const html=renderToStaticMarkup(createElement(NativePeopleWorkspace,{locale:"en",view:"prospects",initial:{source:"native",authorityEpoch:3,page:{page:1,pages:1,pageSize:12,total:0,items:[]}},initialLeadId:"LS-LEAD-synthetic-missing",onSheet:()=>{}}));
+ expect(html).toContain("This person is not in the authorized view.");expect(html).not.toContain("lsu-people-toolbar");expect(html).not.toContain("No people match these filters.");
+});

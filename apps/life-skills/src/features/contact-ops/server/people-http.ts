@@ -18,6 +18,7 @@ const querySchema=z.object({view:z.enum(["all","prospects","paid","active","arch
  search:z.string().max(200).default(""),stage:z.string().min(1).max(120).optional(),
  language:z.enum(["he","en"]).optional(),due:z.enum(["any","today","overdue"]).default("any"),
  mode:z.enum(["live","demo"]).default("live"),personId:z.string().uuid().optional(),
+ leadId:z.string().regex(/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]{1,80}$/).optional(),
  page:z.string().regex(/^[1-9]\d{0,4}$/).default("1")}).strict();
 /** Ordinary practitioner read. No browser flag can choose native authority,
  * reveal a shadow, activate cutover, or turn a failed native read into Sheet data.
@@ -41,7 +42,7 @@ export async function peopleHttp(request:Request,load:()=>Promise<PeopleHttpDepe
   else{
    const today=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Jerusalem"}).format(d.now()),q=input.data;
    const page=await d.directory.list(actor,{view:q.view,search:q.search,...(q.stage?{stage:q.stage}:{}),
-    ...(q.language?{locale:q.language}:{}),...(q.personId?{personId:q.personId}:{}),due:q.due,mode:q.mode,today,page:Number(q.page),pageSize:12},current.epoch);
+    ...(q.language?{locale:q.language}:{}),...(q.personId?{personId:q.personId}:{}),...(q.leadId?{leadId:q.leadId}:{}),due:q.due,mode:q.mode,today,page:Number(q.page),pageSize:12},current.epoch);
    result={source:"native",authorityEpoch:current.epoch,page};
   }
   response=successResponse(result,id);

@@ -336,6 +336,21 @@ it('never renders live Sheet records under an explicit DEMO context',async()=>{
  expect(find(view(),e=>e.type===LegacyClientsRoster||e.type===ProspectsClient)).toBeUndefined();
  expect(text(view())).toContain('No live records are shown in DEMO');
 });
+it('resolves a Calendar lead deep link through the native API before rendering its person',async()=>{
+ const personId='00000000-0000-4000-8000-000000000001',leadId='LS-LEAD-synthetic-follow-up';
+ const data={source:'native',authorityEpoch:3,page:{items:[{personId}],total:1,page:1,pageSize:12,pages:1}};
+ hook.peopleRead.mockResolvedValue(data);
+ const view=()=>hook.render(()=>ClientsRoster({locale:'en',section:'prospects',focusLeadId:leadId}));view();hook.flushEffects();await tick();
+ expect(hook.peopleRead).toHaveBeenCalledWith(new URLSearchParams({view:'all',leadId}));
+ const native=find(view(),e=>e.type===NativePeopleWorkspace);
+ expect(native?.props.initialLeadId).toBe(leadId);expect(native?.props.initialPersonId).toBe(personId);
+});
+it('keeps an unresolved native lead in an explicit person context instead of an unrelated first page',async()=>{
+ hook.peopleRead.mockResolvedValue({source:'native',authorityEpoch:3,page:{items:[],total:0,page:1,pageSize:12,pages:1}});
+ const view=()=>hook.render(()=>ClientsRoster({locale:'he',focusLeadId:'LS-LEAD-synthetic-missing'}));view();hook.flushEffects();await tick();
+ const native=find(view(),e=>e.type===NativePeopleWorkspace);
+ expect(native?.props.initialLeadId).toBe('LS-LEAD-synthetic-missing');expect(native?.props.initialPersonId).toBeUndefined();
+});
 it.each([409,503])('clears live rows on DEMO transition failure %i and retries DEMO, not live',async status=>{
  let location=new URL('https://synthetic.invalid/en/app/clients');
  vi.stubGlobal('window',{get location(){return location;},history:{pushState(_state:unknown,_unused:string,url:URL){location=new URL(url);}},addEventListener(){},removeEventListener(){}});

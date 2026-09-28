@@ -21,7 +21,8 @@ const querySchema=z.object({view:z.enum(["all","prospects","paid","active","arch
  search:z.string().max(200),stage:z.string().max(120).optional(),locale:z.enum(["he","en"]).optional(),
  due:z.enum(["any","today","overdue"]).optional(),today:z.string().refine(dateOnly),
  page:z.number().int().min(1).max(100000),pageSize:z.number().int().min(1).max(100),
- mode:z.enum(["live","demo"]).optional(),personId:z.string().uuid().optional()}).strict();
+ mode:z.enum(["live","demo"]).optional(),personId:z.string().uuid().optional(),
+ leadId:z.string().regex(/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]{1,80}$/).optional()}).strict();
 export type NativeContactQuery=z.infer<typeof querySchema>;
 export type NativeContactReference={leadId:string;phone:string;email:string;language:string;
  source:string;campaign:string;outcome:string;messageReceipt:string;
@@ -172,12 +173,14 @@ export class NativeContactDirectory {
 /** Called after the entire authorized native result was read, never a client page. */
 export function selectNativeContacts(rows:readonly NativeContactRow[],input:NativeContactQuery):Page<NativeContactRow>{
  const q=querySchema.parse(input),text=q.search.trim().toLocaleLowerCase();
+ if(q.leadId&&rows.filter(r=>r.mode===(q.mode??"live")&&r.references.some(ref=>ref.leadId===q.leadId)).length>1)throw new AppError("CONFLICT");
  const filtered=rows.filter(r=>{
   const closed=r.archived||r.doNotContact;
   // Synthetic records need an explicit administrative demo view. They do not
   // silently mix into the default live contact directory.
   if(r.mode!==(q.mode??"live"))return false;
   if(q.personId&&r.personId!==q.personId)return false;
+  if(q.leadId&&!r.references.some(ref=>ref.leadId===q.leadId))return false;
   if(q.view==="archived"&&!closed)return false;
   if(q.view!=="all"&&q.view!=="archived"&&closed)return false;
   const facts=r.references.map(ref=>ref.journey);

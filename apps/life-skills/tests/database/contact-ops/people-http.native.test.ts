@@ -1,10 +1,12 @@
 import {afterAll,expect,test,vi} from "vitest";
-import {randomUUID,randomBytes} from "node:crypto";
+import {randomUUID,randomBytes,createHash} from "node:crypto";
 import pg from "pg";
 vi.mock("server-only",()=>({}));
 import {fixture,poolStore,safeTestUrl,type Fixture} from "../calendar/fixture.ts";
 import {ContactCutoverStore,type CutoverEvidence} from "../../../src/features/contact-ops/server/cutover-store.ts";
 import {OperationalNativeCrmStore} from "../../../src/features/contact-ops/server/operational-store.ts";
+import {NativeCrmStore} from "../../../src/features/contact-ops/server/native-store.ts";
+import {seal} from "../../../src/features/identity/crypto.ts";
 import {peopleHttp} from "../../../src/features/contact-ops/server/people-http.ts";
 import {nativeProfileHttp} from "../../../src/features/contact-ops/server/profile-http.ts";
 import {IdentitySessions} from "../../../src/features/identity/session-adapter.ts";
@@ -38,6 +40,19 @@ test("real native list and versioned save/reload preserve one canonical person a
  expect((await exact.json()).data.page).toMatchObject({total:1,items:[{personId,version:2,notes:changed.notes}]});
  const profiles=(await s.f.pool.query("SELECT count(*)::int AS n FROM ls_contact_ops.profiles WHERE workspace_id=$1",[s.f.workspaceId])).rows[0].n;
  expect(profiles).toBe(1);
+});
+test("actual native Calendar lead deep link resolves only its canonical person and assigned case",async()=>{
+ const s=await setup(),leadId="LS-LEAD-synthetic-calendar-"+randomUUID(),sourceFileId="synthetic-sheet",sourceSheetId=5;
+ const personId=(await s.f.pool.query("SELECT cl.person_id FROM ls_cases.cases c JOIN ls_cases.clients cl ON cl.workspace_id=c.workspace_id AND cl.id=c.client_id WHERE c.workspace_id=$1 AND c.id=$2",[s.f.workspaceId,s.f.first.id])).rows[0].person_id;
+ await new NativeCrmStore(s.db,s.f.keyring,key).create(s.f.practitioner.actor,{personId,stage:"New inquiry",nextAction:"Synthetic calendar follow-up",followUpDate:"2026-09-28",notes:"Synthetic preserved note",legacyIds:[leadId]},"synthetic-create-"+randomUUID());
+ const snapshot={sourceRow:2,payload:{displayName:"Synthetic contact",language:"he",stageText:"new",sourceFields:{"Lead ID":leadId}}};
+ await s.f.pool.query(`INSERT INTO ls_contact_ops.legacy_links(workspace_id,source_file_id,source_sheet_id,source_tab_title,legacy_lead_id,person_id,source_revision,row_digest,snapshot_ciphertext)
+  VALUES($1,$2,$3,'Synthetic Leads',$4,$5,'synthetic-revision',$6,$7)`,[s.f.workspaceId,sourceFileId,sourceSheetId,leadId,personId,createHash("sha256").update(leadId).digest("hex"),seal(JSON.stringify(snapshot),`ls_contact_ops/legacy/v1/${s.f.workspaceId}/${sourceFileId}/${sourceSheetId}/${leadId}`,s.f.keyring)]);
+ await activate(s);
+ const r=await peopleHttp(s.request("?leadId="+leadId),s.deps);expect(r.status).toBe(200);
+ expect((await r.json()).data.page).toMatchObject({total:1,items:[{personId,caseLinks:[{caseId:s.f.first.id,state:"active"}]}]});
+ const missing=await peopleHttp(s.request("?leadId=LS-LEAD-synthetic-missing"),s.deps);
+ expect((await missing.json()).data.page).toMatchObject({total:0,items:[]});
 });
 test("fresh customer roles, workspace and revoked sessions never expose People",async()=>{const s=await setup();await activate(s);for(const role of ["parent","child","adult_client"]){await s.f.pool.query("UPDATE ls_identity.accounts SET role=$2 WHERE id=$1",[s.f.parent.actor.id,role]);expect((await peopleHttp(s.request("?mode=demo",s.f.parent.token),s.deps)).status).toBe(403);}const other=await setup();expect((await peopleHttp(s.request("",other.f.practitioner.token),s.deps)).status).toBe(401);await s.f.pool.query("UPDATE ls_identity.sessions SET revoked_at=clock_timestamp() WHERE token_digest=$1",[s.f.practitioner.actor.sessionDigest]);expect((await peopleHttp(s.request(),s.deps)).status).toBe(401);});
 test("multiple actual assigned cases stay one person, active beats archived, and unassigned case links are absent",async()=>{

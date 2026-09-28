@@ -2,7 +2,7 @@ import {afterAll,expect,test,vi} from "vitest";
 import {randomUUID,randomBytes,createHash} from "node:crypto";
 vi.mock("server-only",()=>({}));
 import {fixture,poolStore} from "../calendar/fixture.ts";
-import {NativeContactDirectory} from "../../../src/features/contact-ops/server/native-directory.ts";
+import {NativeContactDirectory,selectNativeContacts} from "../../../src/features/contact-ops/server/native-directory.ts";
 import {NativeCrmStore,crmProfileAad,type CrmProfile} from "../../../src/features/contact-ops/server/native-store.ts";
 import {seal} from "../../../src/features/identity/crypto.ts";
 import type {IdentityStore,SqlSession} from "../../../src/features/identity/store.ts";
@@ -54,6 +54,13 @@ test("native PostgreSQL reads all keyset pages, searches after page one, and pre
  expect(encrypted.rows[0].payload_ciphertext).not.toContain(changed.notes);
  const original=await f.pool.query("SELECT source_revision FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND person_id=$2",[f.workspaceId,tail.id]);
  expect(original.rows[0].source_revision).toBe("synthetic-revision");
+});
+test("exact legacy lead lookup reaches its canonical person beyond page one, without prefix or ambiguous matching",async()=>{
+ const exact=await directory.list(f.practitioner.actor,{...q,pageSize:12,leadId:tail.lead});
+ expect(exact).toMatchObject({total:1,items:[{personId:tail.id}]});
+ expect((await directory.list(f.practitioner.actor,{...q,leadId:tail.lead.slice(0,-1)})).total).toBe(0);
+ const target=exact.items[0]!;
+ expect(()=>selectNativeContacts([target,{...target,personId:randomUUID()}],{...q,leadId:tail.lead})).toThrow("CONFLICT");
 });
 
 test("native PostgreSQL preserves persisted archives and descriptive stage/outcome opt-outs in every open queue",async()=>{
