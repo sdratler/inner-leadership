@@ -1,7 +1,7 @@
 import "server-only";
 import {z} from "zod";
 import {AppError} from "../../../lib/errors.ts";
-import type {IdentityStore} from "../../identity/store.ts";
+import type {IdentityStore,SqlSession} from "../../identity/store.ts";
 import {freshActor} from "../../identity/data.ts";
 import {unseal,type Keyring} from "../../identity/crypto.ts";
 import {systemClock,type Actor,type IdentityClock} from "../../identity/types.ts";
@@ -61,12 +61,22 @@ export class NativeContactDirectory {
  constructor(private readonly db:IdentityStore,private readonly keyring:Keyring,
   private readonly clock:IdentityClock=systemClock){}
  async list(actor:Actor,input:NativeContactQuery):Promise<Page<NativeContactRow>>{
+  if(!querySchema.safeParse(input).success)throw new AppError("INVALID_REQUEST");
+  return this.db.transaction(async tx=>{
+   // The unactivated shadow read model retains its own isolated snapshot.
+   await tx.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY");
+   return this.listInTransaction(tx,actor,input);
+  });
+ }
+ /** Internal composition only: the authority adapter owns this read-only
+  * transaction and contact-write fence. Never start another transaction or
+  * change its isolation after the epoch check. Journey facts are observations,
+  * not permission to bill, book, activate or send.
+  */
+ async listInTransaction(tx:SqlSession,actor:Actor,input:NativeContactQuery):Promise<Page<NativeContactRow>>{
   const parsed=querySchema.safeParse(input);
   if(!parsed.success)throw new AppError("INVALID_REQUEST");
   const q=parsed.data;
-  return this.db.transaction(async tx=>{
-   // Keyset pages and actual payment/booking facts share one immutable snapshot.
-   await tx.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY");
    requirePractitioner(await freshActor(tx,actor,this.clock.now()));
    const rows:NativeContactRow[]=[];
    let after:string|null=null;
@@ -120,7 +130,6 @@ export class NativeContactDirectory {
     after=profiles.at(-1)!.personId;
    }
    return selectNativeContacts(rows,q);
-  });
  }
 }
 
