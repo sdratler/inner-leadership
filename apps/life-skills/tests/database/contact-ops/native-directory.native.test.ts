@@ -179,6 +179,21 @@ test("native PostgreSQL reads each actual payment allocation and booked appointm
  expect(actual.references.find(r=>r.leadId===subject.lead)?.journey).toMatchObject({paymentVerified:true,bookingConfirmed:true,journeyState:"active"});
  expect(actual.references.find(r=>r.leadId===secondLead)?.journey).toMatchObject({paymentVerified:true,bookingConfirmed:false,journeyState:"awaiting_booking"});
  expect((await directory.list(f.practitioner.actor,{...q,search:subject.lead,view:"paid"})).total).toBe(1);
+ // Closing an old paid inquiry must not create a booking follow-up merely
+ // because another actual assigned case keeps this canonical client active.
+ const assignedClient=randomUUID(),assignedCase=randomUUID();
+ await f.pool.query("INSERT INTO ls_cases.clients(id,workspace_id,person_id,created_at) VALUES($1,$2,$3,clock_timestamp())",[assignedClient,f.workspaceId,subject.id]);
+ await f.pool.query("INSERT INTO ls_cases.cases(id,workspace_id,client_id,practitioner_account_id,state,created_at,updated_at) VALUES($1,$2,$3,$4,'active',clock_timestamp(),clock_timestamp())",[assignedCase,f.workspaceId,assignedClient,f.practitioner.actor.id]);
+ const paidLink=(await f.pool.query("SELECT snapshot_ciphertext FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND legacy_lead_id=$2",[f.workspaceId,secondLead])).rows[0];
+ const paidAad=`ls_contact_ops/legacy/v1/${f.workspaceId}/${sourceFileId}/${sourceSheetId}/${secondLead}`,closedPaid=JSON.parse(unseal(paidLink.snapshot_ciphertext,paidAad,f.keyring));
+ closedPaid.payload.sourceFields['Outcome']='Archived — previous paid inquiry';
+ try{
+  await f.pool.query("UPDATE ls_contact_ops.legacy_links SET snapshot_ciphertext=$3 WHERE workspace_id=$1 AND legacy_lead_id=$2",[f.workspaceId,secondLead,seal(JSON.stringify(closedPaid),paidAad,f.keyring)]);
+  expect((await directory.list(f.practitioner.actor,{...q,personId:subject.id,view:'active'})).items[0]).toMatchObject({personId:subject.id,archived:false});
+  expect((await directory.list(f.practitioner.actor,{...q,personId:subject.id,view:'paid'})).total).toBe(0);
+  expect((await directory.list(f.practitioner.actor,{...q,personId:subject.id,filter:'booking'})).total).toBe(0);
+ }finally{await f.pool.query("UPDATE ls_contact_ops.legacy_links SET snapshot_ciphertext=$3 WHERE workspace_id=$1 AND legacy_lead_id=$2",[f.workspaceId,secondLead,paidLink.snapshot_ciphertext]);}
+ expect((await directory.list(f.practitioner.actor,{...q,personId:subject.id,view:'paid'})).total).toBe(1);
  await f.pool.query("INSERT INTO ls_onboarding.payment_reversals(workspace_id,provider_account_id,transaction_id) VALUES($1,'synthetic-provider',$2)",[f.workspaceId,allocations[1]]);
  expect((await directory.list(f.practitioner.actor,{...q,search:subject.lead,view:"paid"})).total).toBe(0);
  expect((await directory.list(f.practitioner.actor,{...q,search:subject.lead,view:"active"})).total).toBe(1);

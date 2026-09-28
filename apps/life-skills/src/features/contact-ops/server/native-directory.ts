@@ -193,9 +193,9 @@ export function selectNativeContacts(rows:readonly NativeContactRow[],input:Nati
   if(view==="archived"&&!closed)return false;
   if(view!=="all"&&view!=="archived"&&closed&&!(view==="active"&&activeCase))return false;
   const facts=r.references.map(ref=>ref.journey);
-  if(view==="active"&&!activeCase&&!facts.some(j=>j.journeyState==="active"))return false;
-  if(view==="paid"&&!facts.some(j=>j.paymentVerified&&!j.bookingConfirmed&&j.journeyState!=="hold"))return false;
   const openReferences=r.references.filter(ref=>!archived(ref.outcome)&&!suppressed(ref.outcome));
+  if(view==="active"&&!activeCase&&!facts.some(j=>j.journeyState==="active"))return false;
+  if(view==="paid"&&!openReferences.some(ref=>ref.journey.paymentVerified&&!ref.journey.bookingConfirmed&&ref.journey.journeyState!=="hold"))return false;
   if(view==="prospects"&&(facts.length?!openReferences.some(ref=>!["active","hold"].includes(ref.journey.journeyState)):assignedClient))return false;
   // Preserve existing workflow links without promoting historic payment/booking
   // claims to verified facts. Real journey state supersedes an older form claim.

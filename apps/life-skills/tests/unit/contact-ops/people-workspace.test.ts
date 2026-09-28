@@ -90,5 +90,9 @@ test.each(['Archived — old inquiry','Closed — old inquiry','Not interested']
  expect(selectNativeContacts([row],q).total).toBe(0);
  for(const [filter,formSentClaim,formSubmittedClaim] of [['new','',''],['intake','sent',''],['payment','sent','submitted']] as const)expect(selectNativeContacts([{...row,references:[{...ref,formSentClaim,formSubmittedClaim}]}],{...q,filter}).total).toBe(0);
  expect(selectNativeContacts([row],{...q,view:'active'}).total).toBe(1);
+ const paid={...ref,journey:{journeyState:'awaiting_booking',paymentVerified:true,bookingConfirmed:false}};
+ expect(selectNativeContacts([{...row,references:[paid]}],{...q,view:'paid'}).total).toBe(0);
+ expect(selectNativeContacts([{...row,references:[paid]}],{...q,filter:'booking'}).total).toBe(0);
+ expect(selectNativeContacts([{...row,references:[paid,{...paid,leadId:'LS-LEAD-synthetic-open-paid',outcome:''}]}],{...q,view:'paid'}).total).toBe(1);
  expect(selectNativeContacts([{...row,references:[ref,{...ref,leadId:'LS-LEAD-synthetic-fresh',outcome:''}]}],{...q,filter:'new'}).total).toBe(1);
 });
