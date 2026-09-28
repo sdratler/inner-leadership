@@ -46,6 +46,7 @@ const metadata = (snapshot: ContentVoiceSnapshot | null) => snapshot ? ({
 }) : null;
 function safe(change: RuleChange, source: ContentVoiceSnapshot | null) {
   return { operationId: change.operationId, status: change.status, ruleId: change.affectedRuleId,
+    draftSourceConflict: change.status === "draft_conflict",
     before: change.before, after: change.after, savedAt: change.savedAt, revisedAt: change.revisedAt,
     source: metadata(source), sourceAfterSha256: change.sourceAfterSha256,
     sourceAfterRevision: change.sourceAfterRevision, draft: change.draftResult,
@@ -90,6 +91,8 @@ export async function POST(request: Request) {
       }
       change = prepared;
     }
+    if (change.status === "draft_conflict")
+      return NextResponse.json({ ok: true, data: safe(change, source) }, { headers });
     if (!["saved", "draft_pending", "complete"].includes(change.status)) {
       if (!change.desiredText) throw new AppError("UNAVAILABLE");
       const outcome = await writeContentVoiceIfUnchanged(
@@ -101,7 +104,7 @@ export async function POST(request: Request) {
     }
     if (change.status === "saved" || change.status === "draft_pending") {
       change = await ledger.markDraft(actor, change.operationId, null);
-      if (source?.sha256 === change.sourceAfterSha256) {
+      if (source?.sha256 === change.sourceAfterSha256 && source.driveRevision === change.sourceAfterRevision) {
         try {
           const reply = await requestCommunityReply({ operationId: change.draftOperationId, mode: "revise_once",
             question: change.request.question, ...(change.request.originalUrl ? { originalUrl: change.request.originalUrl } : {}),
@@ -111,6 +114,8 @@ export async function POST(request: Request) {
           // Source save remains durable; a draft failure is an explicit retryable
           // state, never a false claim that either the source or reply was saved.
         }
+      } else if (source) {
+        change = await ledger.markDraftSourceConflict(actor, change.operationId, source);
       }
     }
     if (!source || source.sha256 !== change.sourceAfterSha256) source = await readContentVoiceSource().catch(() => null);

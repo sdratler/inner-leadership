@@ -18,7 +18,7 @@ CREATE TABLE ls_content_voice.rule_changes (
  affected_rule_id text NOT NULL CHECK(affected_rule_id ~ '^CR-[0-9a-f]{32}$'),
  language text NOT NULL CHECK(language IN ('he','en','both')),
  status text NOT NULL DEFAULT 'pending' CHECK(status IN
-  ('pending','permission_denied','conflict','unknown','saved','draft_pending','complete')),
+  ('pending','permission_denied','conflict','unknown','saved','draft_pending','draft_conflict','complete')),
  source_after_sha256 text CHECK(source_after_sha256 ~ '^[0-9a-f]{64}$'),
  source_after_revision text CHECK(source_after_revision ~ '^[0-9]+$'),
  draft_operation_id uuid NOT NULL,
@@ -32,7 +32,7 @@ CREATE TABLE ls_content_voice.rule_changes (
  FOREIGN KEY(workspace_id,actor_account_id) REFERENCES ls_identity.accounts(workspace_id,id),
  CHECK((source_after_sha256 IS NULL AND source_after_revision IS NULL AND saved_at IS NULL)
   OR (source_after_sha256 IS NOT NULL AND source_after_revision IS NOT NULL AND saved_at IS NOT NULL)),
- CHECK((status IN ('saved','draft_pending','complete'))=(saved_at IS NOT NULL)),
+ CHECK((status IN ('saved','draft_pending','draft_conflict','complete'))=(saved_at IS NOT NULL)),
  CHECK((status='complete')=(revised_at IS NOT NULL))
 );
 CREATE INDEX rule_changes_by_owner_time ON ls_content_voice.rule_changes
@@ -43,7 +43,7 @@ CREATE TABLE ls_content_voice.rule_change_history (
  operation_id uuid NOT NULL,
  actor_account_id uuid NOT NULL,
  state text NOT NULL CHECK(state IN
-  ('prepared','permission_denied','conflict','unknown','saved','draft_pending','complete')),
+  ('prepared','permission_denied','conflict','unknown','saved','draft_pending','draft_conflict','complete')),
  source_sha256 text CHECK(source_sha256 ~ '^[0-9a-f]{64}$'),
  source_revision text CHECK(source_revision ~ '^[0-9]+$'),
  occurred_at timestamptz NOT NULL,

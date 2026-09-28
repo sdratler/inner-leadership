@@ -23,6 +23,7 @@ const entryPattern = /^\*\*(CR-[0-9a-f]{32}) — scope: community; language: (en
 const digest = (text: string) => createHash("sha256").update(text, "utf8").digest("hex");
 const normalized = (text: string) => text.normalize("NFKC").toLocaleLowerCase().replace(/[\p{P}\p{S}]/gu, " ").replace(/\s+/g, " ").trim();
 const words = (text: string) => new Set(normalized(text).split(" ").filter(word => word.length >= 3));
+const languagesOverlap = (a: CommunityRuleChange["language"], b: CommunityRuleChange["language"]) => a === b || a === "both" || b === "both";
 function similarity(a: string, b: string): number {
   const left = words(a), right = words(b);
   if (!left.size || !right.size) return 0;
@@ -80,15 +81,18 @@ export function composeCommunityRule(source: string, change: CommunityRuleChange
   const found = entries(source);
   const replay = found.find(entry => entry.id === ruleId);
   if (replay) return result(replay.rule === rule ? "already_applied" : "needs_review", source, replay.id, replay.full, replay.full);
-  const exact = found.find(entry => entry.language === change.language && normalized(entry.rule) === normalized(rule));
-  if (exact) return result("already_applied", source, exact.id, exact.full, exact.full);
+  const exact = found.find(entry => languagesOverlap(entry.language, change.language) && normalized(entry.rule) === normalized(rule));
+  if (exact && (exact.language === change.language || exact.language === "both")) return result("already_applied", source, exact.id, exact.full, exact.full);
+  // Widening an existing single-language rule requires explicit consolidation,
+  // not a second overlapping entry or an unapproved scope change.
+  if (exact && !change.targetRuleId) return result("needs_review", source, exact.id, exact.full, null);
   let target: Entry | undefined;
   if (change.targetRuleId) {
     if (!idPattern.test(change.targetRuleId)) return result("unsafe", source, null, null, null);
-    target = found.find(entry => entry.id === change.targetRuleId && entry.language === change.language);
-    if (!target) return result("needs_review", source, null, null, null);
+    target = found.find(entry => entry.id === change.targetRuleId && languagesOverlap(entry.language, change.language));
+    if (!target || (target.language === "both" && change.language !== "both")) return result("needs_review", source, target?.id ?? null, target?.full ?? null, null);
   } else {
-    const matches = found.filter(entry => entry.language === change.language)
+    const matches = found.filter(entry => languagesOverlap(entry.language, change.language))
       .map(entry => ({ entry, score: similarity(entry.rule, rule) })).filter(item => item.score >= 0.6)
       .sort((a, b) => b.score - a.score);
     // A semantic match is shown to the owner for explicit selection. Similarity

@@ -15,11 +15,11 @@ export const SOURCE_TASKS_MIGRATION = {
 } as const;
 export const VOICE_RULE_MIGRATION = {
  name:'0104_ls_content_voice_corrections.sql',
- sha256:'0fe90300bd2764348b639bee5a14ec1b806e976d9c54724f2211eae61ad4074c',
+ sha256:'421fe7e93e4d2ac9ff6685916a54c762183f36daeb1d18f9bd8d9d9dcc5fb579',
 } as const;
 export const VOICE_RULE_SCHEMA_CATALOG = {
  columns:31,constraints:23,
- sha256:'a5f831b7c393da683c714858103192a71961d1e2e3a64a68e719cad0e8f7e156',
+ sha256:'98d22c1e4e01428580476131f79df1fbcd66adac26d93a2ce1dd92fd4e7fd244',
 } as const;
 export const INTERNAL_TASKS_SCHEMA_CATALOG = {
  columns:20,constraints:13,

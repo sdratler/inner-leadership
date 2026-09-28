@@ -70,6 +70,29 @@ test("native PostgreSQL denies a parent and records permission-denied without cl
   await expect(ledger.markDraft(f.practitioner.actor, command.operationId, null)).rejects.toThrow("CONFLICT");
 });
 
+test("native PostgreSQL retains a saved rule while terminal source drift prevents endless draft retries", async () => {
+  const command = request();
+  const prepared = await ledger.prepare(f.practitioner.actor, command, snapshot);
+  if (!("status" in prepared)) throw Error("not prepared");
+  const source = { ...snapshot, text: prepared.desiredText!, sha256: prepared.desiredSha256, driveRevision: "14" };
+  const saved = await ledger.markSourceResult(f.practitioner.actor, command.operationId, "saved", source);
+  await ledger.markDraft(f.practitioner.actor, command.operationId, null);
+  const changed = { ...source, driveRevision: "15" };
+  const conflict = await ledger.markDraftSourceConflict(f.practitioner.actor, command.operationId, changed);
+  expect(conflict).toMatchObject({ status: "draft_conflict", savedAt: saved.savedAt, sourceAfterSha256: source.sha256,
+    sourceAfterRevision: "14", desiredText: null, draftResult: null });
+  expect(await ledger.markDraftSourceConflict(f.practitioner.actor, command.operationId, changed)).toEqual(conflict);
+  expect(await ledger.markSourceResult(f.practitioner.actor, command.operationId, "saved", source)).toEqual(conflict);
+  await expect(f.pool.query("UPDATE ls_content_voice.rule_changes SET status='pending' WHERE workspace_id=$1 AND operation_id=$2",
+    [f.workspaceId, command.operationId])).rejects.toThrow("check constraint");
+  await expect(f.pool.query("UPDATE ls_content_voice.rule_changes SET saved_at=NULL WHERE workspace_id=$1 AND operation_id=$2",
+    [f.workspaceId, command.operationId])).rejects.toThrow("check constraint");
+  await expect(ledger.markDraft(f.practitioner.actor, command.operationId, null)).rejects.toThrow("CONFLICT");
+  await expect(ledger.markDraftSourceConflict(f.parent.actor, command.operationId, changed)).rejects.toThrow("FORBIDDEN");
+  expect((await f.pool.query("SELECT count(*)::int AS n FROM ls_content_voice.rule_change_history WHERE workspace_id=$1 AND operation_id=$2 AND state='draft_conflict'",
+    [f.workspaceId, command.operationId])).rows[0].n).toBe(1);
+});
+
 test("native PostgreSQL verifies the production runner's exact catalog, index, FK, history and ACL readbacks", async () => {
   const runner = readFileSync(new URL("../../../scripts/apply-contact-ops-production.ts", import.meta.url), "utf8");
   const sql = (name: string) => {

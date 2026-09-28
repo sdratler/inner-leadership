@@ -36,7 +36,7 @@ describe("manual reply source binding", () => {
 describe("correction resumption", () => {
   it("offers retries only for persisted resumable states", () => {
     for (const status of ["pending", "permission_denied", "unknown", "saved", "draft_pending"]) expect(canResumeRuleOperation(status)).toBe(true);
-    for (const status of ["already_applied", "needs_review", "needs_playbook", "unsafe", "conflict", "complete", "unrecognized"]) expect(canResumeRuleOperation(status)).toBe(false);
+    for (const status of ["already_applied", "needs_review", "needs_playbook", "unsafe", "conflict", "draft_conflict", "complete", "unrecognized"]) expect(canResumeRuleOperation(status)).toBe(false);
   });
 });
 

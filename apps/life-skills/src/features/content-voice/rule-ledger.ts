@@ -23,7 +23,7 @@ export type RuleRequest = {
   originalUrl?: string;
   previousReply: string;
 };
-export type RuleStatus = "pending" | "permission_denied" | "conflict" | "unknown" | "saved" | "draft_pending" | "complete";
+export type RuleStatus = "pending" | "permission_denied" | "conflict" | "unknown" | "saved" | "draft_pending" | "draft_conflict" | "complete";
 export type RuleChange = {
   operationId: string;
   actorId: string;
@@ -157,7 +157,7 @@ export class VoiceRuleLedger {
        WHERE workspace_id=$1 AND operation_id=$2 AND actor_account_id=$3 FOR UPDATE`,
       [this.workspace, operationId, actor.id]);
       if (!row) throw new AppError("NOT_FOUND");
-      if (["saved", "draft_pending", "complete"].includes(row.status)) return this.view(row);
+      if (["saved", "draft_pending", "draft_conflict", "complete"].includes(row.status)) return this.view(row);
       if (row.status === outcome && outcome !== "saved") return this.view(row);
       if (outcome === "saved" && (!snapshot || snapshot.sha256 !== row.desiredSha256)) throw new AppError("CONFLICT");
       const at = new Date();
@@ -193,6 +193,27 @@ export class VoiceRuleLedger {
         reply ? seal(JSON.stringify(reply), this.aad(operationId, "reply"), this.ring) : null, reply ? at : null, at]);
       if (!changed) throw new AppError("UNAVAILABLE");
       await this.history(tx, actor, operationId, status, row.sourceAfterSha256, row.sourceAfterRevision, at);
+      return this.view(changed);
+    });
+  }
+  /** The rule stays saved, but an older source-bound draft cannot be resumed after source drift. */
+  async markDraftSourceConflict(actor: Actor, operationId: string, snapshot: ContentVoiceSnapshot): Promise<RuleChange> {
+    this.owner(actor);
+    return this.store.transaction(async tx => {
+      const row = await one<Row>(tx, `SELECT ${columns} FROM ls_content_voice.rule_changes
+       WHERE workspace_id=$1 AND operation_id=$2 AND actor_account_id=$3 FOR UPDATE`,
+      [this.workspace, operationId, actor.id]);
+      if (!row) throw new AppError("NOT_FOUND");
+      if (row.status === "complete" || row.status === "draft_conflict") return this.view(row);
+      if (!["saved", "draft_pending"].includes(row.status) || !row.savedAt ||
+        (snapshot.sha256 === row.sourceAfterSha256 && snapshot.driveRevision === row.sourceAfterRevision))
+        throw new AppError("CONFLICT");
+      const at = new Date();
+      const changed = await one<Row>(tx, `UPDATE ls_content_voice.rule_changes SET status='draft_conflict',updated_at=$4
+       WHERE workspace_id=$1 AND operation_id=$2 AND actor_account_id=$3 RETURNING ${columns}`,
+      [this.workspace, operationId, actor.id, at]);
+      if (!changed) throw new AppError("UNAVAILABLE");
+      await this.history(tx, actor, operationId, "draft_conflict", snapshot.sha256, snapshot.driveRevision, at);
       return this.view(changed);
     });
   }

@@ -22,6 +22,7 @@ const copy = {
     savingRule: "Checking and saving the canonical Content Voice file…",
     ruleDenied: "The app's Google account cannot edit the canonical Content Voice file. No writing rule was saved; your correction is preserved.",
     ruleConflict: "The Content Voice source changed since this draft. No rule was overwritten. Generate a fresh reply, then review the correction again.",
+    ruleDraftConflict: "This rule was saved, but the guide changed before its revised reply completed. This older draft cannot be resumed. Generate a fresh reply using the current guide; do not save the same rule again.",
     ruleUnknown: "The source save could not be confirmed. Retry the same correction; the app will read back the canonical file before writing again.",
     ruleSaved: "Writing rule saved and read back from the canonical Content Voice file.",
     draftPending: "The rule is saved, but the revised reply is not confirmed. Retry to resume the same operation.",
@@ -60,6 +61,7 @@ const copy = {
     savingRule: "בודק ושומר את קובץ המקור של מדריך סגנון הכתיבה…",
     ruleDenied: "לחשבון Google של האפליקציה אין הרשאת עריכה לקובץ המקור. לא נשמר כלל כתיבה; התיקון שהזנת נשמר במסך.",
     ruleConflict: "מקור סגנון הכתיבה השתנה מאז יצירת הטיוטה. לא נדרס כלל. יש ליצור תגובה חדשה ולבדוק שוב את התיקון.",
+    ruleDraftConflict: "הכלל נשמר, אך המדריך השתנה לפני השלמת התגובה המתוקנת. לא ניתן להמשיך את הטיוטה הישנה. יש ליצור תגובה חדשה עם המדריך הנוכחי; אין לשמור שוב את אותו כלל.",
     ruleUnknown: "לא ניתן לאמת את שמירת המקור. יש לנסות שוב את אותו התיקון; האפליקציה תקרא את קובץ המקור לפני כתיבה נוספת.",
     ruleSaved: "כלל הכתיבה נשמר ונקרא מחדש מקובץ המקור.",
     draftPending: "הכלל נשמר, אך התגובה המתוקנת לא אומתה. אפשר לנסות שוב את אותה פעולה.",
@@ -89,6 +91,7 @@ const copy = {
 type RuleSaveResult = {
   operationId: string; status: string; ruleId?: string; before?: string | null; after?: string;
   savedAt?: string | null; sourceAfterSha256?: string | null;
+  draftSourceConflict?: boolean;
   source?: { declaredVersion: string | null; driveRevision: string; modifiedAt: string; checkedAt: string; sha256: string } | null;
   draft?: CommunityReplyResult | null;
   draftInput?: CommunitySourceInput | null;
@@ -242,7 +245,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
       setNotice(status === "complete" ? t.ruleComplete : status === "saved" || status === "draft_pending" ? t.draftPending :
         status === "already_applied" ? t.ruleAlready : status === "needs_playbook" ? t.rulePlaybook :
         status === "unsafe" ? t.ruleUnsafe : status === "permission_denied" ? t.ruleDenied :
-        status === "needs_review" ? t.ruleReview : status === "conflict" ? t.ruleConflict : t.ruleUnknown);
+        status === "needs_review" ? t.ruleReview : status === "draft_conflict" ? t.ruleDraftConflict : status === "conflict" ? t.ruleConflict : t.ruleUnknown);
       if (status === "complete" && payload.data.draft) {
         promoteRuleDraft(payload.data);
       }
@@ -267,7 +270,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
       setNotice(payload.data.status === "complete" ? t.ruleComplete :
         payload.data.status === "saved" || payload.data.status === "draft_pending" ? t.draftPending :
         payload.data.status === "permission_denied" ? t.ruleDenied :
-        payload.data.status === "conflict" ? t.ruleConflict : t.ruleUnknown);
+        payload.data.status === "draft_conflict" ? t.ruleDraftConflict : payload.data.status === "conflict" ? t.ruleConflict : t.ruleUnknown);
       if (payload.data.status === "complete") promoteRuleDraft(payload.data);
     } catch { setNotice(t.ruleUnknown); }
     finally { inFlight.current = false; setBusy(false); }
@@ -337,8 +340,12 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
       {proposedRule && <div className="lsr-form-grid"><label>{t.proposed}<textarea value={proposedRule} maxLength={400} onChange={event => setProposedRule(event.target.value)} /></label>
         <label>{t.scope}<select value={ruleScope} onChange={event => setRuleScope(event.target.value === "general" ? "general" : "community")}><option value="community">{t.community}</option><option value="general">{t.general}</option></select></label>
         <label>{t.language}<select value={ruleLanguage} onChange={event => { setRuleLanguage(event.target.value === "both" ? "both" : event.target.value === "he" ? "he" : "en"); setTargetRuleId(null); }}><option value="he">{t.hebrew}</option><option value="en">{t.english}</option><option value="both">{t.both}</option></select></label></div>}
-      {proposedRule && existingRules.some(rule => rule.language === ruleLanguage) && <label>{t.existingRule}<select value={targetRuleId ?? ""} onChange={event => setTargetRuleId(event.target.value || null)}>
-        <option value="">{t.addRule}</option>{existingRules.filter(rule => rule.language === ruleLanguage).map(rule =>
+      {proposedRule && existingRules.some(rule => rule.language === ruleLanguage || rule.language === "both" || ruleLanguage === "both") && <label>{t.existingRule}<select value={targetRuleId ?? ""} onChange={event => {
+        const selected = existingRules.find(rule => rule.id === event.target.value);
+        setTargetRuleId(selected?.id ?? null);
+        if (selected?.language === "both") setRuleLanguage("both");
+      }}>
+        <option value="">{t.addRule}</option>{existingRules.filter(rule => rule.language === ruleLanguage || rule.language === "both" || ruleLanguage === "both").map(rule =>
           <option key={rule.id} value={rule.id}>{rule.id}: {rule.rule.slice(0, 120)}</option>)}</select></label>}
       {targetRuleId && <p className="lsr-help">{t.ruleBefore}: {existingRules.find(rule => rule.id === targetRuleId)?.rule}</p>}
       {existingSourceSha !== null && existingSourceSha !== result.provenance.guide.sha256 && <p role="alert" className="lsr-inline-error">{t.ruleConflict}</p>}
@@ -350,7 +357,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
         ruleSave.status === "saved" || ruleSave.status === "draft_pending" ? t.draftPending :
         ruleSave.status === "already_applied" ? t.ruleAlready : ruleSave.status === "needs_playbook" ? t.rulePlaybook :
         ruleSave.status === "unsafe" ? t.ruleUnsafe : ruleSave.status === "permission_denied" ? t.ruleDenied :
-        ruleSave.status === "needs_review" ? t.ruleReview : ruleSave.status === "conflict" ? t.ruleConflict : t.ruleUnknown}</p>
+        ruleSave.status === "needs_review" ? t.ruleReview : ruleSave.status === "draft_conflict" ? t.ruleDraftConflict : ruleSave.status === "conflict" ? t.ruleConflict : t.ruleUnknown}</p>
       {ruleSave.before && <details><summary>{t.ruleBefore}</summary><p>{ruleSave.before}</p></details>}
       {ruleSave.after && <p>{t.ruleAfter}: {ruleSave.after}</p>}
       {ruleSave.source && <p className="lsr-help">{t.ruleVersion}: v{ruleSave.source.declaredVersion ?? "—"} · Drive #{ruleSave.source.driveRevision} · {ruleSave.source.modifiedAt} · {ruleSave.source.checkedAt}</p>}

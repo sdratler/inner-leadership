@@ -91,4 +91,26 @@ describe("owner-reviewed Community writing-rule edit", () => {
     expect(hebrew.text).toContain("language: en");
     expect(hebrew.text).toContain("language: he");
   });
+
+  it("deduplicates single-language proposals already covered by a both-language rule", () => {
+    const both = composeCommunityRule(source, { ...change, language: "both" });
+    for (const language of ["en", "he"] as const) {
+      const exact = composeCommunityRule(both.text, { ...change, operationId: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", language });
+      expect(exact.state).toBe("already_applied"); expect(exact.text).toBe(both.text);
+      const similar = composeCommunityRule(both.text, { ...change, operationId: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", language,
+        rule: "Keep community replies concise and conversational, with one clear example." });
+      expect(similar.state).toBe("needs_review"); expect(similar.ruleId).toBe(both.ruleId);
+      expect(similar.text).toBe(both.text);
+    }
+  });
+
+  it("requires explicit consolidation before widening a single-language rule to both", () => {
+    const english = composeCommunityRule(source, change);
+    const proposed = { ...change, operationId: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", language: "both" as const };
+    const review = composeCommunityRule(english.text, proposed);
+    expect(review.state).toBe("needs_review"); expect(review.text).toBe(english.text);
+    const consolidated = composeCommunityRule(english.text, { ...proposed, targetRuleId: english.ruleId });
+    expect(consolidated.state).toBe("ready"); expect(consolidated.ruleId).toBe(english.ruleId);
+    expect(communityRulesInGuide(consolidated.text)).toEqual([{ id: english.ruleId, language: "both", rule: change.rule }]);
+  });
 });

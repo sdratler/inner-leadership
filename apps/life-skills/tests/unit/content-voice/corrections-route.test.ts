@@ -4,7 +4,7 @@ import { AppError } from "../../../src/lib/errors.ts";
 vi.mock("server-only", () => ({}));
 const mock = vi.hoisted(() => ({
   actor: vi.fn(), csrf: vi.fn(), origin: vi.fn(), csrfGuard: vi.fn(),
-  get: vi.fn(), getForRequest: vi.fn(), prepare: vi.fn(), markSourceResult: vi.fn(), markDraft: vi.fn(),
+  get: vi.fn(), getForRequest: vi.fn(), prepare: vi.fn(), markSourceResult: vi.fn(), markDraft: vi.fn(), markDraftSourceConflict: vi.fn(),
   readSource: vi.fn(), write: vi.fn(), reply: vi.fn(),
 }));
 vi.mock("../../../src/features/identity/runtime.ts", () => ({ identityRuntime: async () => ({
@@ -15,7 +15,7 @@ vi.mock("../../../src/features/identity/runtime.ts", () => ({ identityRuntime: a
 vi.mock("../../../src/lib/security/csrf.ts", () => ({ verifyCsrfToken: mock.csrfGuard, verifyMutationOrigin: mock.origin }));
 vi.mock("../../../src/features/content-voice/rule-ledger.ts", () => ({ VoiceRuleLedger: class {
   get = mock.get; getForRequest = mock.getForRequest; prepare = mock.prepare;
-  markSourceResult = mock.markSourceResult; markDraft = mock.markDraft;
+  markSourceResult = mock.markSourceResult; markDraft = mock.markDraft; markDraftSourceConflict = mock.markDraftSourceConflict;
 } }));
 vi.mock("../../../src/features/content-voice/source.ts", () => ({ readContentVoiceSource: mock.readSource }));
 vi.mock("../../../src/features/content-voice/drive-cas.ts", () => ({ writeContentVoiceIfUnchanged: mock.write }));
@@ -39,8 +39,24 @@ function post(body: unknown) { return new Request("https://life-skills.example.i
     origin: "https://life-skills.example.invalid", "x-csrf-token": "synthetic-csrf" }, body: JSON.stringify(body),
 }); }
 beforeEach(() => {
-  vi.clearAllMocks(); mock.actor.mockResolvedValue(actor); mock.readSource.mockResolvedValue(snapshot);
+  vi.resetAllMocks(); mock.actor.mockResolvedValue(actor); mock.readSource.mockResolvedValue(snapshot);
   mock.getForRequest.mockResolvedValue(null); mock.prepare.mockResolvedValue(change);
+});
+
+it.each(["changed-bytes", "same-bytes-new-revision"])("stops a saved draft retry on source drift (%s), preserving its save", async mode => {
+  const saved = { ...change, status: "draft_pending", desiredText: null, sourceAfterSha256: change.desiredSha256,
+    sourceAfterRevision: "14", savedAt: "2026-09-28T00:02:00Z" };
+  const current = { ...snapshot, sha256: mode === "changed-bytes" ? "c".repeat(64) : change.desiredSha256, driveRevision: "15" };
+  mock.get.mockResolvedValue(saved); mock.getForRequest.mockResolvedValue(saved); mock.readSource.mockResolvedValue(current);
+  mock.markDraft.mockResolvedValue(saved); mock.markDraftSourceConflict.mockResolvedValue({ ...saved, status: "draft_conflict" });
+  const response = await POST(post({ operationId }));
+  expect((await response.json()).data).toMatchObject({ status: "draft_conflict", savedAt: saved.savedAt, draftSourceConflict: true, draft: null });
+  expect(mock.markDraftSourceConflict).toHaveBeenCalledWith(actor, operationId, current);
+  expect(mock.reply).not.toHaveBeenCalled(); expect(mock.write).not.toHaveBeenCalled();
+  mock.getForRequest.mockResolvedValue({ ...saved, status: "draft_conflict" });
+  await POST(post({ operationId }));
+  expect(mock.markDraftSourceConflict).toHaveBeenCalledOnce();
+  expect(mock.reply).not.toHaveBeenCalled(); expect(mock.write).not.toHaveBeenCalled();
 });
 
 it("rejects a parent before touching the guide or ledger", async () => {
