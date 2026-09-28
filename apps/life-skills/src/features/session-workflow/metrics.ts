@@ -28,6 +28,31 @@ export interface MetricRecord {
     revision: number;
     values: MetricValues;
 }
+export interface ObservationSession { sessionId: string; startsAt: string; }
+/** Never included in a shared recap or monthly-report publication DTO. */
+export interface PrivateObservationEvidence {
+    workspaceId: string;
+    caseId: string;
+    records: MetricRecord[];
+    sessions: ObservationSession[];
+}
+export function validateObservationEvidence(evidence: PrivateObservationEvidence, caseId: string): void {
+    invariant(evidence.caseId === caseId && typeof evidence.workspaceId === "string" && evidence.workspaceId.length > 0, "METRIC_SCOPE");
+    invariant(Array.isArray(evidence.records) && Array.isArray(evidence.sessions), "METRIC_METADATA");
+    const sessions = new Set<string>();
+    for (const item of evidence.sessions) {
+        invariant(typeof item.sessionId === "string" && item.sessionId.length > 0 && validIso(item.startsAt) && !sessions.has(item.sessionId), "METRIC_METADATA");
+        sessions.add(item.sessionId);
+    }
+    const revisions = new Set<string>();
+    for (const record of evidence.records) {
+        invariant(record.workspaceId === evidence.workspaceId && record.caseId === caseId && sessions.has(record.sessionId), "METRIC_SCOPE");
+        validateMetricRecord(record);
+        const key = `${record.sessionId}:${record.revision}`;
+        invariant(!revisions.has(key), "METRIC_METADATA");
+        revisions.add(key);
+    }
+}
 export function blankMetrics(): MetricValues {
     return Object.fromEntries(METRICS.map(m => [m.id, { score: null, notObservedReason: "Not recorded", note: "" }])) as MetricValues;
 }
@@ -42,7 +67,7 @@ export function validateMetricRecord(record: MetricRecord): void {
     }
 }
 /** No composite score, imputation, normative ranking or parent/client projection. */
-export function metricSeries(records: readonly MetricRecord[], workspaceId: string, caseId: string, metric: MetricId) {
+export function metricSeries(records: readonly MetricRecord[], workspaceId: string, caseId: string, metric: MetricId, sessions: readonly ObservationSession[] = []) {
     invariant(METRICS.some(m => m.id === metric), "METRIC_UNKNOWN");
     const latest = new Map<string, MetricRecord>();
     for (const r of records) {
@@ -52,6 +77,15 @@ export function metricSeries(records: readonly MetricRecord[], workspaceId: stri
         if (!existing || existing.revision < r.revision)
             latest.set(r.sessionId, r);
     }
-    return [...latest.values()].sort((a, b) => Date.parse(a.recordedAt) - Date.parse(b.recordedAt)).map(r => ({ sessionId: r.sessionId, at: r.recordedAt, score: r.values[metric].score, note: r.values[metric].note }));
+    const dates = new Map<string, string>();
+    for (const item of sessions) {
+        invariant(validIso(item.startsAt) && !dates.has(item.sessionId), "METRIC_METADATA");
+        dates.set(item.sessionId, item.startsAt);
+    }
+    for (const record of latest.values()) if (!dates.has(record.sessionId)) dates.set(record.sessionId, record.recordedAt);
+    return [...dates].map(([sessionId, at]) => {
+        const value = latest.get(sessionId)?.values[metric];
+        return { sessionId, at, score: value?.score ?? null, note: value?.note ?? "", notObservedReason: value?.notObservedReason ?? null };
+    }).sort((a, b) => Date.parse(a.at) - Date.parse(b.at) || a.sessionId.localeCompare(b.sessionId));
 }
 export const METRIC_NOTICE = "Private practitioner observations, not a validated diagnostic scale. Missing observations stay blank. Eye contact and response speed are contextual observations, not standalone measures of wellbeing or compliance.";
