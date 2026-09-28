@@ -7,6 +7,7 @@ import {ContactCutoverStore,type CutoverEvidence} from "../../../src/features/co
 import {OperationalNativeCrmStore} from "../../../src/features/contact-ops/server/operational-store.ts";
 import type {CrmProfile} from "../../../src/features/contact-ops/server/native-store.ts";
 import {NativeCrmStore} from "../../../src/features/contact-ops/server/native-store.ts";
+import {seal} from "../../../src/features/identity/crypto.ts";
 const fixtures:Fixture[]=[];
 afterAll(async()=>{for(const f of fixtures)await f.pool.end();});
 const key="synthetic-operational-integrity-key-20260928";
@@ -235,4 +236,50 @@ test("native inquiry origin/endpoint is immutable during administrative edits an
  await expect(low.update(a,withoutOrigin,1,"synthetic-dropped-origin")).rejects.toThrow("INQUIRY_ORIGIN_IMMUTABLE");
  await expect(low.update(a,{...saved.profile,nativeInquiry:{...saved.profile.nativeInquiry!,leadId:"LS-LEAD-native-"+randomUUID()}},1,"synthetic-forged-reference")).rejects.toThrow("BAD_PROFILE");
  expect(await contactCounts(s)).toEqual(before);expect((await s.store.read(a,created.personId,3))!.profile).toEqual(saved.profile);
+});
+
+test.each([false,true])("case-only/account/shared phone claims block creation even when verified=%s",async verified=>{
+ const s=await setup();await activate(s);const a=s.f.practitioner.actor,phone="+972535550187";
+ const person=(await s.f.pool.query(`SELECT cl.person_id FROM ls_cases.cases c JOIN ls_cases.clients cl
+  ON cl.workspace_id=c.workspace_id AND cl.id=c.client_id WHERE c.workspace_id=$1 AND c.id=$2`,[a.workspaceId,s.f.first.id])).rows[0].person_id;
+ const account=randomUUID();
+ await s.f.pool.query(`INSERT INTO ls_identity.accounts(id,workspace_id,role,state,locale,email_blind,email_ciphertext,phone_ciphertext,phone_verified_at,email_verified_at,password_hash,created_at,updated_at)
+  VALUES($1,$2,'child','active','he',$3,$4,$5,$6,clock_timestamp(),'synthetic-non-login-hash',clock_timestamp(),clock_timestamp())`,
+  [account,a.workspaceId,account.replaceAll("-","").padEnd(64,"0"),seal("synthetic-case-only@example.invalid",`email:${a.workspaceId}:${account}`,s.f.keyring),
+   seal(phone,`phone:${a.workspaceId}:${account}`,s.f.keyring),verified?new Date():null]);
+ await s.f.pool.query("INSERT INTO ls_identity.account_subjects(workspace_id,account_id,person_id) VALUES($1,$2,$3)",[a.workspaceId,account,person]);
+ expect((await s.store.list(a,{...query,personId:person},3)).items[0]).toMatchObject({version:null,references:[]});
+ const before=await contactCounts(s);
+ await expect(s.store.createContact(a,contactFields,randomUUID(),3)).rejects.toThrow("CONFLICT");
+ for(const parent of [s.f.parent.actor,s.f.parentTwo.actor])await s.f.pool.query("UPDATE ls_identity.accounts SET phone_ciphertext=$3 WHERE workspace_id=$1 AND id=$2",[a.workspaceId,parent.id,seal(phone,`phone:${a.workspaceId}:${parent.id}`,s.f.keyring)]);
+ await expect(s.store.createContact(a,contactFields,randomUUID(),3)).rejects.toThrow("CONFLICT");
+ expect(await contactCounts(s)).toEqual(before);expect((await s.authority.read(a)).nativeWritesSinceSwitch).toBe(0);
+});
+
+test("contact creation waits for identity mutation and sees its committed account phone",async()=>{
+ const s=await setup();await activate(s);const a=s.f.practitioner.actor,before=await contactCounts(s),holder=await s.f.pool.connect();
+ let markWaiting!:(pid:number)=>void;const waiting=new Promise<number>(resolve=>{markWaiting=resolve;});
+ const observed:IdentityStore={transaction:work=>s.db.transaction(tx=>work({query:async<T extends object>(sql:string,v?:readonly unknown[])=>{
+  if(sql.startsWith("SELECT id FROM ls_identity.workspaces WHERE id=$1 FOR UPDATE")){const [r]=await tx.query<{pid:number}>("SELECT pg_backend_pid() AS pid");markWaiting(r!.pid);}
+  return tx.query<T>(sql,v);
+ }}))};
+ let open=false,attempt:Promise<{error?:string;value?:unknown}>|undefined;
+ try{
+  await holder.query("BEGIN");open=true;await holder.query("SELECT id FROM ls_identity.workspaces WHERE id=$1 FOR UPDATE",[a.workspaceId]);
+  await holder.query("UPDATE ls_identity.accounts SET phone_ciphertext=$3 WHERE workspace_id=$1 AND id=$2",[a.workspaceId,s.f.parent.actor.id,
+   seal("+972535550187",`phone:${a.workspaceId}:${s.f.parent.actor.id}`,s.f.keyring)]);
+  attempt=new OperationalNativeCrmStore(observed,s.f.keyring,key).createContact(a,contactFields,randomUUID(),3).then(value=>({value}),error=>({error:String(error)}));
+  const pid=await waiting;let blocked=false;
+  for(let n=0;n<100;n++){const row=(await s.f.pool.query("SELECT wait_event_type FROM pg_stat_activity WHERE pid=$1",[pid])).rows[0];if(row?.wait_event_type==="Lock"){blocked=true;break;}await new Promise(resolve=>setTimeout(resolve,5));}
+  expect(blocked).toBe(true);await holder.query("COMMIT");open=false;
+  expect(await attempt).toMatchObject({error:expect.stringContaining("CONFLICT")});
+  expect(await contactCounts(s)).toEqual(before);expect((await s.authority.read(a)).nativeWritesSinceSwitch).toBe(0);
+ }finally{if(open)await holder.query("ROLLBACK");holder.release();if(attempt)await attempt;}
+});
+
+test("invalid encrypted identity phone fails closed before any contact creation",async()=>{
+ const s=await setup();await activate(s);const a=s.f.practitioner.actor,before=await contactCounts(s);
+ await s.f.pool.query("UPDATE ls_identity.accounts SET phone_ciphertext='synthetic-corrupt-ciphertext' WHERE workspace_id=$1 AND id=$2",[a.workspaceId,s.f.parent.actor.id]);
+ await expect(s.store.createContact(a,contactFields,randomUUID(),3)).rejects.toThrow("UNAVAILABLE");
+ expect(await contactCounts(s)).toEqual(before);expect((await s.authority.read(a)).nativeWritesSinceSwitch).toBe(0);
 });

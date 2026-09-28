@@ -101,7 +101,23 @@ export class NativeContactDirectory {
   const normalized=normalizePhone(phone);if(!normalized)throw new AppError("INVALID_REQUEST");
   const {rows}=await this.readAllInTransaction(tx,actor);
   if(rows.length>=MAX_CONTACTS)throw new AppError("UNAVAILABLE");
-  return rows.some(row=>row.references.some(ref=>normalizePhone(ref.phone)===normalized));
+  if(rows.some(row=>row.references.some(ref=>normalizePhone(ref.phone)===normalized)))return true;
+  // Accounts can belong to case-only people or share a household endpoint with
+  // no CRM profile/reference. Every workspace account claim blocks creation;
+  // verification, role or state must not turn this into an identity merge.
+  // The caller holds the same workspace lock used by identity phone mutations.
+  const accounts=await tx.query<{id:string;phoneCiphertext:string}>(`SELECT id,phone_ciphertext AS "phoneCiphertext"
+   FROM ls_identity.accounts WHERE workspace_id=$1 AND phone_ciphertext IS NOT NULL
+   ORDER BY id LIMIT $2`,[actor.workspaceId,MAX_CONTACTS+1]);
+  if(accounts.length>MAX_CONTACTS)throw new AppError("UNAVAILABLE");
+  for(const account of accounts){
+   let claim:string|null;
+   try{claim=normalizePhone(unseal(account.phoneCiphertext,`phone:${actor.workspaceId}:${account.id}`,this.keyring));}
+   catch{throw new AppError("UNAVAILABLE");}
+   if(!claim)throw new AppError("UNAVAILABLE");
+   if(claim===normalized)return true;
+  }
+  return false;
  }
  async nativeInquiryPersonInTransaction(tx:SqlSession,actor:Actor,leadId:string):Promise<string|null>{
   const {rows}=await this.readAllInTransaction(tx,actor);
