@@ -9,19 +9,30 @@ export function authorizeAppointment(actor: AccountFacts, item: CaseFacts | null
  audienceAccess(actor,item,guardians,audience);
  if (practitionerOnly) caseAccess(actor,item,guardians,'write');
 }
-export function validateBooking(actor: AccountFacts, item: CaseFacts, guardians: readonly GuardianFacts[], audience: AudienceFacts, input: CreateBooking, now: string) {
+function validateBookingDetails(actor: AccountFacts, item: CaseFacts, guardians: readonly GuardianFacts[], audience: AudienceFacts, input: CreateBooking) {
  requirePractitioner(actor); caseAccess(actor,item,guardians,'write');
  if (!['active','intake'].includes(item.state)) throw new AppError('CONFLICT');
  if (input.caseId!==item.id || audience.caseId!==item.id || input.audienceId!==audience.id || !audience.published || audience.visibility==='private') throw new AppError('INVALID_REQUEST');
  if (!['individual','parent_guidance'].includes(input.kind)) throw new AppError('INVALID_REQUEST');
  if (!Number.isInteger(input.bufferBefore) || !Number.isInteger(input.bufferAfter) || input.bufferBefore<0 || input.bufferAfter<0 || input.bufferBefore>120 || input.bufferAfter>120) throw new AppError('INVALID_REQUEST');
- if (ms(input.startsAt)<=ms(now) || ms(input.startsAt)>ms(now)+366*86_400_000) throw new AppError('INVALID_REQUEST');
  if (input.location.length>280 || /[\u0000-\u001f]/.test(input.location)) throw new AppError('INVALID_REQUEST');
  if (item.kind==='adult'&&input.kind!=='individual') throw new AppError('INVALID_REQUEST');
  if (input.kind==='parent_guidance') {
   if (!input.parentForId) throw new AppError('INVALID_REQUEST'); validateAssignees(actor,item,guardians,audience,input.parentIds);
  } else if (input.parentForId!==null || input.parentIds.length) throw new AppError('INVALID_REQUEST');
  return {startsAt:iso(input.startsAt), endsAt:endOfAppointment(input.startsAt,input.kind)};
+}
+export function validateBooking(actor: AccountFacts, item: CaseFacts, guardians: readonly GuardianFacts[], audience: AudienceFacts, input: CreateBooking, now: string) {
+ const times=validateBookingDetails(actor,item,guardians,audience,input);
+ if (ms(input.startsAt)<=ms(now) || ms(input.startsAt)>ms(now)+366*86_400_000) throw new AppError('INVALID_REQUEST');
+ return times;
+}
+/** Only the immutable DEMO operator may use this separate historical validator.
+ * Ordinary booking never accepts past time or a caller-selected clock/flag. */
+export function validateDemoHistoryBooking(actor: AccountFacts, item: CaseFacts, guardians: readonly GuardianFacts[], audience: AudienceFacts, input: CreateBooking, now: string) {
+ const times=validateBookingDetails(actor,item,guardians,audience,input);
+ if(input.kind!=='individual'||input.bufferBefore!==0||input.bufferAfter!==0||input.checkinExceptionReason!==null||!input.location.startsWith('DEMO')||/https?:\/\//i.test(input.location)||ms(times.endsAt)>ms(now)||ms(times.startsAt)<ms(now)-31*86_400_000)throw new AppError('INVALID_REQUEST');
+ return times;
 }
 export function paddedSlot(a: Pick<Appointment,'startsAt'|'endsAt'|'bufferBefore'|'bufferAfter'>) {
  return {startsAt:new Date(ms(a.startsAt)-a.bufferBefore*MINUTE_MS).toISOString(), endsAt:new Date(ms(a.endsAt)+a.bufferAfter*MINUTE_MS).toISOString()};

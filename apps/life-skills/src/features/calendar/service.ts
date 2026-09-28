@@ -8,7 +8,7 @@ import { audienceAccess, requirePractitioner } from '../cases/policy.ts';
 import { loadAudience } from '../cases/data.ts';
 import type { Appointment, AppointmentId, AppointmentView, AttendanceInput, Availability, CreateBooking, ManualNoticeInput, Notice, NoticeInput, SchedulePage } from './types.ts';
 import { CalendarStore, type TransactionContext } from './store.ts';
-import { assertAvailable, makeNoticeFields, paddedSlot, validateBooking } from './policy.ts';
+import { assertAvailable, makeNoticeFields, paddedSlot, validateBooking,validateDemoHistoryBooking } from './policy.ts';
 import { iso, ms } from './time.ts';
 import { validateAttendance } from '../attendance/policy.ts';
 import { demoCaseBatch } from '../demo/provenance.ts';
@@ -20,7 +20,8 @@ export class CalendarService {
  readonly db: CalendarStore;
  constructor(db:CalendarStore){this.db=db;}
  get(actor:Actor,id:AppointmentId){return this.db.read(actor,c=>this.db.view(c,id));}
- async list(actor:Actor,query:{from:string;to:string;caseId:CaseId|null;cursor:string|null}):Promise<SchedulePage> {
+ async list(actor:Actor,query:{from:string;to:string;caseId:CaseId|null;cursor:string|null;mode?:'live'|'demo'|null|undefined}):Promise<SchedulePage> {
+  if(query.mode!==undefined&&query.mode!==null&&query.mode!=='live'&&query.mode!=='demo')throw new AppError('INVALID_REQUEST');
   const from=iso(query.from),to=iso(query.to);
   if(ms(to)<=ms(from)||ms(to)-ms(from)>63*86_400_000)throw new AppError('INVALID_REQUEST');
   let cursorTime=from,cursorId='00000000-0000-0000-0000-000000000000';
@@ -31,13 +32,27 @@ export class CalendarService {
    if(ms(cursorTime)<ms(from)||ms(cursorTime)>=ms(to))throw new AppError('INVALID_REQUEST');
   }
   return this.db.read(actor,async c=>{
+   if(query.mode!=null&&c.actor.role!=='practitioner')throw new AppError('FORBIDDEN');
+   const mode=c.actor.role==='practitioner'?query.mode??'live':null;
    if(query.caseId)await this.db.scope(c,query.caseId);
    if(c.actor.role!=='practitioner' && !query.caseId)throw new AppError('INVALID_REQUEST');
-   const rows=await c.tx.query<{id:AppointmentId;startsAt:Date}>(`SELECT a.id,a.starts_at AS "startsAt" FROM ls_calendar.appointments a
+   if(query.caseId&&mode){
+    const origin=await one<{origin:string|null;marker:string|null}>(c.tx,`SELECT cs.demo_batch_id AS origin,d.batch_id AS marker FROM ls_cases.cases cs
+     LEFT JOIN ls_demo.cases d ON d.workspace_id=cs.workspace_id AND d.case_id=cs.id WHERE cs.workspace_id=$1 AND cs.id=$2`,[c.workspace,query.caseId]);
+    if(!origin||origin.origin!==origin.marker||origin.origin!==null&&!/^ls-owner-[0-9]{8}$/.test(origin.origin))throw new AppError('UNAVAILABLE');
+    if((origin.origin===null?'live':'demo')!==mode)throw new AppError('NOT_FOUND');
+   }
+   const rows=await c.tx.query<{id:AppointmentId;startsAt:Date;caseId:CaseId;origin:string|null;marker:string|null;recordBatch:string|null;recordCase:string|null}>(`SELECT a.id,a.starts_at AS "startsAt",a.case_id AS "caseId",
+    cs.demo_batch_id AS origin,d.batch_id AS marker,r.batch_id AS "recordBatch",r.case_id AS "recordCase" FROM ls_calendar.appointments a
     JOIN ls_cases.cases cs ON cs.workspace_id=a.workspace_id AND cs.id=a.case_id
     JOIN ls_cases.audiences au ON au.workspace_id=a.workspace_id AND au.case_id=a.case_id AND au.id=a.audience_id
+    LEFT JOIN ls_demo.cases d ON d.workspace_id=cs.workspace_id AND d.case_id=cs.id
+    LEFT JOIN ls_demo.records r ON r.workspace_id=a.workspace_id AND r.entity_kind='appointment' AND r.entity_key=a.id::text
     WHERE a.workspace_id=$1 AND ($2::uuid IS NULL OR a.case_id=$2) AND a.starts_at>=$3 AND a.starts_at<$4
     AND (a.starts_at,a.id)>($5::timestamptz,$6::uuid)
+    AND (cs.demo_batch_id IS DISTINCT FROM d.batch_id OR cs.demo_batch_id IS DISTINCT FROM r.batch_id OR
+     (r.batch_id IS NOT NULL AND r.case_id IS DISTINCT FROM a.case_id) OR $9::text IS NULL OR
+     ($9='live' AND cs.demo_batch_id IS NULL) OR ($9='demo' AND cs.demo_batch_id IS NOT NULL))
     AND (($7='practitioner' AND cs.practitioner_account_id=$8) OR ($7='parent' AND au.published AND au.visibility<>'private'
      AND EXISTS(SELECT 1 FROM ls_cases.case_guardians g WHERE g.workspace_id=a.workspace_id AND g.case_id=a.case_id AND g.account_id=$8 AND g.revoked_at IS NULL)
      AND EXISTS(SELECT 1 FROM ls_cases.audience_accounts aa WHERE aa.workspace_id=a.workspace_id AND aa.case_id=a.case_id AND aa.audience_id=a.audience_id AND aa.account_id=$8 AND aa.revoked_at IS NULL))
@@ -47,7 +62,11 @@ export class CalendarService {
      OR ($7='child' AND au.published AND au.visibility<>'private'
      AND EXISTS(SELECT 1 FROM ls_cases.clients cl JOIN ls_identity.account_subjects s ON s.workspace_id=cl.workspace_id AND s.person_id=cl.person_id WHERE cl.workspace_id=cs.workspace_id AND cl.id=cs.client_id AND s.account_id=$8)
      AND EXISTS(SELECT 1 FROM ls_cases.audience_accounts aa WHERE aa.workspace_id=a.workspace_id AND aa.case_id=a.case_id AND aa.audience_id=a.audience_id AND aa.account_id=$8 AND aa.revoked_at IS NULL)))
-    ORDER BY a.starts_at,a.id LIMIT 101`,[c.workspace,query.caseId,from,to,cursorTime,cursorId,c.actor.role,c.actor.id]);
+    ORDER BY a.starts_at,a.id LIMIT 101`,[c.workspace,query.caseId,from,to,cursorTime,cursorId,c.actor.role,c.actor.id,mode]);
+   // Invalid provenance remains a real recoverable error in either mode,
+   // rather than disappearing or being mislabeled as a live appointment.
+   for(const row of rows)if(row.origin!==row.marker||row.origin!==row.recordBatch||row.origin!==null&&
+    (row.recordCase!==row.caseId||!/^ls-owner-[0-9]{8}$/.test(row.origin)))throw new AppError('UNAVAILABLE');
    const items:AppointmentView[]=[];for(const r of rows.slice(0,100))items.push(await this.db.view(c,r.id));
    const last=rows[99];return {items,nextCursor:rows.length>100&&last?Buffer.from(JSON.stringify([last.startsAt.toISOString(),last.id])).toString('base64url'):null,serverNow:c.now};
   });
@@ -95,10 +114,11 @@ export class CalendarService {
    if(!rows.length)throw new AppError('CONFLICT');await this.db.history(c,null,'availability_changed');return {id,active:false};
   });
  }
- private async createIn(c:TransactionContext,input:CreateBooking,original:Appointment|null=null):Promise<Appointment> {
+ private async createIn(c:TransactionContext,input:CreateBooking,original:Appointment|null=null,historicalDemoBatch:string|null=null):Promise<Appointment> {
   const {item,guardians,audience}=await this.db.audience(c,input.caseId,input.audienceId);
   const demoBatch=await demoCaseBatch(c.tx,c.workspace,input.caseId);
-  const times=validateBooking(c.actor,item,guardians,audience,input,c.now);
+  if(historicalDemoBatch!==null&&demoBatch!==historicalDemoBatch)throw new AppError('NOT_FOUND');
+  const times=historicalDemoBatch!==null?validateDemoHistoryBooking(c.actor,item,guardians,audience,input,c.now):validateBooking(c.actor,item,guardians,audience,input,c.now);
   for(const id of input.parentIds)await this.db.assertParentActive(c,id);
   if(item.kind==='minor'&&!audience.accountIds.some(id=>guardians.some(g=>g.accountId===id&&!g.revoked)))throw new AppError('INVALID_REQUEST');
   if(item.kind==='adult'){const adult=await one(c.tx,`SELECT a.id FROM ls_identity.accounts a JOIN ls_identity.account_subjects s ON s.workspace_id=a.workspace_id AND s.account_id=a.id WHERE a.workspace_id=$1 AND a.state='active' AND a.role='adult_client' AND s.person_id=$2 AND a.id=ANY($3::uuid[])`,[c.workspace,item.clientPersonId,audience.accountIds]);if(!adult)throw new AppError('INVALID_REQUEST');}
@@ -144,7 +164,20 @@ export class CalendarService {
   * provider; also refuse a fixture placement that overlaps a real appointment.
   */
  createDemoAsOperator(workspace:WorkspaceId,practitionerId:AccountId,batchId:string,key:string,input:CreateBooking,permission:boolean){
-  return this.db.demoOperatorCommand(workspace,practitionerId,input.caseId,batchId,'demo:booking:create',key,input,permission,async c=>{
+  return this.db.demoOperatorCommand(workspace,practitionerId,input.caseId,batchId,'demo:booking:create',key,input,permission,c=>this.authorizeDemoBooking(c,batchId,input),async c=>{
+   if(!input.location.startsWith('DEMO')||/https?:\/\//i.test(input.location))throw new AppError('INVALID_REQUEST');
+   const a=await this.createIn(c,input);return this.db.view(c,a.id);
+  });
+ }
+ /** Five supplied historical samples use real DB time and the same encrypted
+  * appointment/attendance transaction. No HTTP route, provider or fake clock. */
+ createDemoHistoryAsOperator(workspace:WorkspaceId,practitionerId:AccountId,batchId:string,key:string,input:CreateBooking,permission:boolean){
+  return this.db.demoOperatorCommand(workspace,practitionerId,input.caseId,batchId,'demo:booking:history',key,input,permission,c=>this.authorizeDemoBooking(c,batchId,input),async c=>{
+   const a=await this.createIn(c,input,null,batchId);
+   return this.recordAttendanceIn(c,a.id,{state:'present',arrivedAt:a.startsAt,expectedVersion:0,correctionReason:null});
+  });
+ }
+ private async authorizeDemoBooking(c:TransactionContext,batchId:string,input:CreateBooking){
    await this.db.scope(c,input.caseId,true);const {item,audience}=await this.db.audience(c,input.caseId,input.audienceId);
    if(!audience.published||audience.visibility!=='family_full')throw new AppError('CONFLICT');
    const members=await c.tx.query<{role:string}>(`SELECT DISTINCT a.id,a.role FROM ls_identity.accounts a
@@ -158,10 +191,6 @@ export class CalendarService {
     item.kind==='minor'&&(!members.some(m=>m.role==='parent')||!members.some(m=>m.role==='child'))||
     item.kind==='adult'&&(members.length!==1||members[0]?.role!=='adult_client'))throw new AppError('CONFLICT');
    if(!await one(c.tx,"SELECT id FROM ls_cases.engagements WHERE workspace_id=$1 AND case_id=$2 AND state='active'",[c.workspace,item.id]))throw new AppError('CONFLICT');
-  },async c=>{
-   if(!input.location.startsWith('DEMO')||/https?:\/\//i.test(input.location))throw new AppError('INVALID_REQUEST');
-   const a=await this.createIn(c,input);return this.db.view(c,a.id);
-  });
  }
  private async credit(c:TransactionContext,a:Appointment,n:Notice|null,effect:CreditEffectReference['effect'],suffix:string){
   if(a.kind!=='individual')return; // Joint-parent guidance is not a second child-session credit.
@@ -258,7 +287,9 @@ export class CalendarService {
   });
  }
  recordAttendance(actor:Actor,id:AppointmentId,key:string,input:AttendanceInput){
-  return this.db.command(actor,`attendance:${id}`,key,input,c=>this.db.authorized(c,id,true),async c=>{
+  return this.db.command(actor,`attendance:${id}`,key,input,c=>this.db.authorized(c,id,true),c=>this.recordAttendanceIn(c,id,input));
+ }
+ private async recordAttendanceIn(c:TransactionContext,id:AppointmentId,input:AttendanceInput){
    const {item:a}=await this.db.authorized(c,id,true),prior=await this.db.attendance(c,a),value=validateAttendance(a,prior,input,c.now);
    const values=[c.workspace,a.caseId,id,value.state,value.attended,value.arrivedAt,value.version,c.actor.id,c.now];
    await c.tx.query(`INSERT INTO ls_attendance.records(workspace_id,case_id,appointment_id,state,attended,arrived_at,version,recorded_by,recorded_at)
@@ -271,7 +302,6 @@ export class CalendarService {
    if(['present','late','no_show'].includes(value.state)&&!protectedCredit)await this.credit(c,a,notice,'consume','attendance');
    if(a.status==='scheduled' && value.state!=='canceled')await this.db.setStatus(c,a,'completed');
    return this.db.view(c,id);
-  });
  }
  attendanceHistory(actor:Actor,id:AppointmentId,beforeVersion:number|null){return this.db.read(actor,async c=>{
   await this.db.authorized(c,id,true);

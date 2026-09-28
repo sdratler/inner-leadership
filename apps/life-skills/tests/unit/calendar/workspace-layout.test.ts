@@ -18,7 +18,12 @@ describe('operational Calendar composition',()=>{
    expect(workspace.indexOf(failure)).toBeLessThan(workspace.indexOf('<CalendarShell '));
   }
   expect(workspace).toContain('<UnsavedChangesGuard dirty={dirty||taskDirty||mutation.uncertain}');
-  expect(workspace).toContain('practitioner&&<div className="ls-cal-operational">');
+  expect(workspace).toContain('livePractitioner&&<div className="ls-cal-operational">');
+  expect(workspace.match(/if\(!livePractitioner\)return;/g)).toHaveLength(2);
+  expect(workspace).toContain("const tasks=livePractitioner&&showTasks");
+  expect(workspace).toContain("const followups=livePractitioner&&showFollowups");
+  expect(workspace).toContain('Return to live calendar');
+  expect(workspace).toContain('calendarCasesForMode(value,mode!)');
   expect(workspace).not.toContain('<details className="ls-cal-operational');
  });
  it('reduces unused spacing rather than clipping content or shrinking readable controls',()=>{

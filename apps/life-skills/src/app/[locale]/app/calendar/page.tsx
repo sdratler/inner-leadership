@@ -6,6 +6,7 @@ import { isLocale } from '../../../../lib/locale.ts';
 import { text } from '../../../../features/calendar/copy.ts';
 import { AppError } from '../../../../lib/errors.ts';
 import { loginHref, practitionerReturnPath } from '../../../../features/identity/login-return.ts';
+import {calendarMode,type CalendarMode} from '../../../../features/calendar/mode.ts';
 import '../../../../ui/workspace/workspace.css';
 export const dynamic='force-dynamic';
 export const revalidate=0;
@@ -22,6 +23,7 @@ export default async function Page({params,searchParams}:Props){
  let date=civilDate(new Date().toISOString());
  try{if(typeof query.date==='string')date=shiftDay(query.date,0);}catch{notFound();}
  const view=calendarView(query.view);
+ let mode:CalendarMode;try{mode=calendarMode(query.mode);}catch{notFound();}
  const caseId=typeof query.caseId==='string'&&/^[0-9a-f-]{36}$/i.test(query.caseId)?query.caseId:'';
- return <CalendarWorkspace locale={locale} role="practitioner" initialDate={date} initialView={view} initialCaseId={caseId} selectedClientContext={query.context==='client'&&Boolean(caseId)}/>;
+ return <CalendarWorkspace key={mode} locale={locale} role="practitioner" initialDate={date} initialView={view} initialCaseId={caseId} initialMode={mode} selectedClientContext={query.context==='client'&&Boolean(caseId)}/>;
 }
