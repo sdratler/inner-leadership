@@ -130,11 +130,20 @@ test("actual PostgreSQL permission denial stays a sanitized service error, not s
  }finally{await denied.end();await s.f.pool.query(`DROP ROLE "${role}"`);}
 });
 
-test("malformed encrypted administrative data fails closed before success or a replacement write",async()=>{
+test.each([
+ {followUpDate:"2026-02-30"},
+ {stage:["New inquiry"]},
+ {notes:["Synthetic note pretending to be a string"]},
+ {nextAction:{length:1}},
+ {unexpectedPersistedNote:"Must not be silently removed"},
+ {legacyIds:["LS-LEAD-synthetic-preserved","LS-LEAD-synthetic-preserved"]},
+ {legacyIds:[12]},
+ {notes:null}
+])("malformed encrypted administrative data %j fails closed before success or a replacement write",async invalid=>{
  const s=await setup();await activate(s);
  // Corrupt ONLY this disposable fixture, with authentic encryption but invalid
  // profile shape. A decryptable payload is not sufficient evidence of validity.
- const malformed={personId:s.personId,...fields,followUpDate:"2026-02-30",legacyIds:["LS-LEAD-synthetic-preserved"]};
+ const malformed={personId:s.personId,...fields,legacyIds:["LS-LEAD-synthetic-preserved"],...invalid};
  await s.f.pool.query("UPDATE ls_contact_ops.profiles SET payload_ciphertext=$3 WHERE workspace_id=$1 AND person_id=$2",
   [s.f.workspaceId,s.personId,seal(JSON.stringify(malformed),crmProfileAad(s.f.workspaceId,s.personId),s.f.keyring)]);
  for(const method of ["GET","POST"]){
