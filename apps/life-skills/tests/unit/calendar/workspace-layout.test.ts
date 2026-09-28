@@ -59,10 +59,15 @@ describe('operational Calendar composition',()=>{
   expect(css).not.toContain('.lsw-calendar-toolbar>small{');
  });
  it('removes duplicated mobile Calendar container padding while keeping visible synthetic provenance',()=>{
-  expect(css).toContain('.lsw.lsu .lsu-page:has(>main.ls-cal){padding-block-start:0}');
+  expect(css).toContain('.lsw.lsu .lsu-page:has(>main.ls-cal){padding-block-start:0;');
   expect(css).toContain('.lsw.lsu .lsu-content:has(>.lsu-page>main.ls-cal)>.lsu-breadcrumbs{margin-block-end:.5rem}');
   expect(workspace).toContain('DEMO — synthetic data; external effects disabled.');
   expect(workspace).toContain('DEMO — נתונים סינתטיים, ללא השפעות חיצוניות.');
   expect(workspace).toContain('Return to live calendar');
+ });
+ it('uses the available narrow-screen width without clipping or reducing typography',()=>{
+  expect(css).toContain('.lsw.lsu .lsu-page:has(>main.ls-cal){padding-block-start:0;padding-inline:0}');
+  expect(css).toContain('.lsw.lsu .ls-cal .lsw-calendar-toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.5rem;align-items:center;padding:.5rem}');
+  expect(css).not.toMatch(/\.ls-cal[^{}]*\{[^}]*overflow\s*:\s*hidden/);
  });
 });
