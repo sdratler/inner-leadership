@@ -96,3 +96,18 @@ test.each(['Archived — old inquiry','Closed — old inquiry','Not interested']
  expect(selectNativeContacts([{...row,references:[paid,{...paid,leadId:'LS-LEAD-synthetic-open-paid',outcome:''}]}],{...q,view:'paid'}).total).toBe(1);
  expect(selectNativeContacts([{...row,references:[ref,{...ref,leadId:'LS-LEAD-synthetic-fresh',outcome:''}]}],{...q,filter:'new'}).total).toBe(1);
 });
+
+test.each(['Archived — old inquiry','Closed — old inquiry','Not interested'])("%s history does not hide an open inquiry without an active assigned case",outcome=>{
+ const ref:NativeContactReference={leadId:'LS-LEAD-synthetic-open',phone:'',email:'',language:'en',source:'synthetic',campaign:'',outcome:'',messageReceipt:'',paymentClaim:'',bookingClaim:'',formSentClaim:'',formSubmittedClaim:'',sourceFileId:'synthetic',sourceSheetId:1,sourceRevision:'synthetic',journey:{journeyState:'prospect',paymentVerified:false,bookingConfirmed:false}};
+ const row:NativeContactRow={personId,displayName:'Synthetic returning prospect',identityKind:'adult',...fields,version:1,mode:'live',archived:false,doNotContact:false,references:[{...ref,leadId:'LS-LEAD-synthetic-history',outcome},ref],caseLinks:[]};
+ const q={view:'prospects' as const,search:'',today:'2026-09-28',page:1,pageSize:12};
+ for(const [filter,formSentClaim,formSubmittedClaim] of [['new','',''],['intake','sent',''],['payment','sent','submitted']] as const){
+  const current={...row,references:[row.references[0]!,{...ref,formSentClaim,formSubmittedClaim}]};
+  expect(selectNativeContacts([current],{...q,filter}).total).toBe(1);
+  expect(selectNativeContacts([{...current,archived:true}],{...q,filter}).total).toBe(0);
+  expect(selectNativeContacts([{...current,doNotContact:true}],{...q,filter}).total).toBe(0);
+ }
+ const paid={...row,references:[row.references[0]!,{...ref,journey:{journeyState:'awaiting_booking',paymentVerified:true,bookingConfirmed:false}}]};
+ expect(selectNativeContacts([paid],{...q,view:'paid'}).total).toBe(1);expect(selectNativeContacts([paid],{...q,filter:'booking'}).total).toBe(1);
+ expect(selectNativeContacts([{...paid,archived:true}],{...q,view:'paid'}).total).toBe(0);
+});

@@ -128,7 +128,9 @@ export class NativeContactDirectory {
      });
      rows.push({personId:p.personId,displayName:p.recordMode==="demo"&&!person.displayName.startsWith("DEMO — ")?`DEMO — ${person.displayName}`:person.displayName,
       identityKind:p.kind,stage:profile.stage,nextAction:profile.nextAction,followUpDate:profile.followUpDate,
-      notes:profile.notes,version:p.version,mode:p.recordMode,archived:p.persistedArchived||archived(profile.stage)||references.some(r=>archived(r.outcome)),
+      // A closed historical inquiry cannot archive another open inquiry for the
+      // same canonical person. Explicit profile archival remains authoritative.
+      notes:profile.notes,version:p.version,mode:p.recordMode,archived:p.persistedArchived||archived(profile.stage)||(references.length>0&&references.every(r=>archived(r.outcome))),
       doNotContact:suppressed(profile.stage)||references.some(r=>suppressed(r.outcome)),references});
     }
     after=profiles.at(-1)!.personId;
