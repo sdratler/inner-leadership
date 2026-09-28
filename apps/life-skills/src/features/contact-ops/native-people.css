@@ -11,7 +11,7 @@
 .lsu-native-table th:first-child { width: 40%; }
 .lsu-native-people pre { overflow-wrap: anywhere; font: inherit; }
 .lsu-native-cards { display: none; }
-@media (min-width: 768px) and (max-width: 1023px) {
+@media (min-width: 768px) and (max-width: 1279px) {
  .lsw.lsu .lsu-native-people .lsu-people-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
  .lsu-native-people .lsu-people-toolbar > label:first-child { grid-column: 1 / -1; }
 }

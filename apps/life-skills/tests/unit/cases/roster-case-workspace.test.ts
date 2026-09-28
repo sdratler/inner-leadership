@@ -336,6 +336,28 @@ it('never renders live Sheet records under an explicit DEMO context',async()=>{
  expect(find(view(),e=>e.type===LegacyClientsRoster||e.type===ProspectsClient)).toBeUndefined();
  expect(text(view())).toContain('No live records are shown in DEMO');
 });
+it('accepts a verified live Sheet response after returning from an initially DEMO native view',async()=>{
+ const data={source:'native',authorityEpoch:3,page:{items:[],total:0,page:1,pageSize:12,pages:1}};
+ hook.peopleRead.mockResolvedValue(data);
+ const view=()=>hook.render(()=>ClientsRoster({locale:'en',mode:'demo'}));view();hook.flushEffects();await tick();
+ const native=find(view(),e=>e.type===NativePeopleWorkspace);
+ (native!.props.onSheet as(response:{source:'sheet';authorityEpoch:number},mode:'live')=>void)({source:'sheet',authorityEpoch:4},'live');
+ expect(view().type).toBe(LegacyClientsRoster);
+ expect(text(view())).not.toContain('No live records are shown in DEMO');
+});
+it('binds the Sheet fallback callback to the live request after leaving DEMO',async()=>{
+ let location=new URL('https://synthetic.invalid/en/app/clients?mode=demo');
+ vi.stubGlobal('window',{get location(){return location;},history:{pushState(_state:unknown,_unused:string,url:URL){location=new URL(url);}},addEventListener(){},removeEventListener(){}});
+ const sheet={source:'sheet' as const,authorityEpoch:4};
+ vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,status:200,json:async()=>({ok:true,data:sheet})}));
+ const initial={source:'native' as const,authorityEpoch:3,page:{items:[],total:0,page:1,pageSize:12,pages:1}},onSheet=vi.fn();
+ const view=()=>hook.render(()=>NativePeopleWorkspace({locale:'en',view:'all',initial,initialMode:'demo',onSheet}));
+ try{
+  (find(view(),e=>e.type==='button'&&e.props.children==='Return to live app')!.props.onClick as()=>void)();
+  await tick();await tick();expect(location.search).toBe('');
+  expect(onSheet).toHaveBeenCalledExactlyOnceWith(sheet,'live');
+ }finally{vi.unstubAllGlobals();}
+});
 it('resolves a Calendar lead deep link through the native API before rendering its person',async()=>{
  const personId='00000000-0000-4000-8000-000000000001',leadId='LS-LEAD-synthetic-follow-up';
  const data={source:'native',authorityEpoch:3,page:{items:[{personId}],total:1,page:1,pageSize:12,pages:1}};

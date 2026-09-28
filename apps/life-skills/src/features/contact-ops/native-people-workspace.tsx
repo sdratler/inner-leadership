@@ -20,7 +20,7 @@ export async function requestPeople(params:URLSearchParams):Promise<PeopleRespon
 const pick=(row:NativeContactRow):AdministrativeFields=>({stage:row.stage,nextAction:row.nextAction,followUpDate:row.followUpDate,notes:row.notes});
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const leadPattern=/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]{1,80}$/;
-export function NativePeopleWorkspace({locale,view,initial,onSheet,initialMode="live",initialPersonId,initialLeadId}:{locale:Locale;view:PeopleView;initial:NativeData;initialMode?:"live"|"demo";initialPersonId?:string|undefined;initialLeadId?:string|undefined;onSheet:(source:Extract<PeopleResponse,{source:"sheet"}>)=>void}){
+export function NativePeopleWorkspace({locale,view,initial,onSheet,initialMode="live",initialPersonId,initialLeadId}:{locale:Locale;view:PeopleView;initial:NativeData;initialMode?:"live"|"demo";initialPersonId?:string|undefined;initialLeadId?:string|undefined;onSheet:(source:Extract<PeopleResponse,{source:"sheet"}>,requestMode:"live")=>void}){
  const he=locale==="he",text=(en:string,heText:string)=>he?heText:en;
  const [data,setData]=useState(initial),[query,setQuery]=useState(""),[stage,setStage]=useState(""),[language,setLanguage]=useState(""),[due,setDue]=useState("any"),[mode,setMode]=useState<"live"|"demo">(initialMode);
  const [busy,setBusy]=useState(false),[failure,setFailure]=useState<number|null>(null),[selected,setSelected]=useState<string|null>(initialPersonId??null),[selectedRow,setSelectedRow]=useState<NativeContactRow|null>(initialPersonId?initial.page.items.find(row=>row.personId===initialPersonId)??null:null);
@@ -34,7 +34,7 @@ export function NativePeopleWorkspace({locale,view,initial,onSheet,initialMode="
   const parameters=new URLSearchParams({view:personId||leadId?"all":view,mode:nextMode,page:String(page),...(personId?{personId}:{}),...(leadId?{leadId}:{}),
    ...(!personId&&!leadId?{search:query,...(stage?{stage}:{}),...(language?{language}:{}),due}:{})});
   try{const result=await requestPeople(parameters);if(!state.alive||current!==state.serial)return;
-   if(result.source==="sheet"){if(nextMode==="demo")throw new PeopleRequestError(409);onSheet(result);return;}
+   if(result.source==="sheet"){if(nextMode==="demo")throw new PeopleRequestError(409);onSheet(result,nextMode);return;}
    state.authorized=true;
    setMode(nextMode);
    if(personId||leadId){const row=result.page.items.find(r=>personId?r.personId===personId:r.references.some(ref=>ref.leadId===leadId))??null;setSelected(row?.personId??personId??null);setSelectedRow(row);setData(d=>({...d,authorityEpoch:result.authorityEpoch}));}
