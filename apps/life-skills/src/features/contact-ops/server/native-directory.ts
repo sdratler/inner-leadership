@@ -10,6 +10,8 @@ import {readProspectJourneysFromTx,type ProspectJourneyState} from "../../prospe
 import {crmProfileAad} from "./native-store.ts";
 import {dateOnly} from "../core/validation.ts";
 import type {PeopleView,Page} from "../core/types.ts";
+import type {Prospect} from "../../prospects/bridge.ts";
+import {MAX_NATIVE_CONTACTS,MAX_OPERATIONAL_PROSPECTS} from "../core/limits.ts";
 
 const leadId=z.string().regex(/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]+$/);
 const profileSchema=z.object({personId:z.string().uuid(),stage:z.string().min(1).max(120),
@@ -39,7 +41,7 @@ type StoredProfile={personId:string;kind:"adult"|"minor";personCiphertext:string
  version:number;recordMode:"live"|"demo";demoBatchId:string|null;markerBatchId:string|null;persistedArchived:boolean};
 type StoredLink={personId:string;sourceFileId:string;sourceSheetId:number;sourceRevision:string;
  leadId:string;snapshotCiphertext:string};
-const BATCH=100,MAX_CONTACTS=10000;
+const BATCH=100,MAX_CONTACTS=MAX_NATIVE_CONTACTS;
 const emptyJourney=():ProspectJourneyState=>({journeyState:"prospect",paymentVerified:false,bookingConfirmed:false});
 // Historic Sheet statuses are descriptive, not an enum. Preserve the existing
 // conservative archive/opt-out protection even when a reason follows the marker.
@@ -51,6 +53,13 @@ function contactLocale(language:string):"he"|"en"|null{
 }
 function field(fields:Record<string,string>,name:string):string{
  return Object.entries(fields).find(([header])=>header.trim()===name)?.[1]??"";
+}
+/** Only genuine same-person, practitioner-assigned case links are eligible.
+ * Historical Sheet claims neither grant access nor select an ambiguous case. */
+export function canonicalProspectCase(links:NativeContactRow["caseLinks"],orderCaseId:string|null):string{
+ const allowed=[...new Set((links??[]).map(c=>c.caseId))];
+ if(allowed.length===1)return allowed[0]!;
+ return orderCaseId&&allowed.includes(orderCaseId)?orderCaseId:"";
 }
 function parse<T>(schema:z.ZodType<T>,ciphertext:string,aad:string,keyring:Keyring):T{
  try{return schema.parse(JSON.parse(unseal(ciphertext,aad,keyring)));}
@@ -81,8 +90,51 @@ export class NativeContactDirectory {
   const parsed=querySchema.safeParse(input);
   if(!parsed.success)throw new AppError("INVALID_REQUEST");
   const q=parsed.data;
+  const {rows}=await this.readAllInTransaction(tx,actor);
+  return selectNativeContacts(rows,q);
+ }
+ /** Server-only compatibility projection for existing operational consumers.
+  * Read all bounded rows in the caller's ONE authority-locked transaction;
+  * never paginate separate transactions, expose unmapped history, or send.
+  */
+ async prospectsInTransaction(tx:SqlSession,actor:Actor):Promise<Prospect[]>{
+  const {rows,sourceFields}=await this.readAllInTransaction(tx,actor),seen=new Set<string>();
+  const leadIds=rows.filter(r=>r.mode==="live").flatMap(r=>r.references.map(ref=>ref.leadId));
+  if(leadIds.length>MAX_OPERATIONAL_PROSPECTS)throw new AppError("UNAVAILABLE");
+  const orders=leadIds.length?await tx.query<{leadId:string;caseId:string}>(`SELECT j.stable_lead_ref AS "leadId",o.case_id AS "caseId"
+   FROM ls_onboarding.prospect_journeys j JOIN ls_onboarding.first_session_orders o
+    ON o.workspace_id=j.workspace_id AND o.order_id=j.first_session_order_id
+   WHERE j.workspace_id=$1 AND j.stable_lead_ref IN (SELECT jsonb_array_elements_text($2::jsonb))`,
+   [actor.workspaceId,JSON.stringify(leadIds)]):[];
+  if(new Set(orders.map(o=>o.leadId)).size!==orders.length)throw new AppError("CONFLICT");
+  const orderCases=new Map(orders.map(o=>[o.leadId,o.caseId]));
+  const result:Prospect[]=[];
+  for(const row of rows){
+   if(row.mode!=="live")continue;
+   for(const ref of row.references){
+    if(seen.has(ref.leadId))throw new AppError("CONFLICT");seen.add(ref.leadId);
+    const fields=sourceFields.get(ref.leadId);if(!fields)throw new AppError("UNAVAILABLE");
+    const get=(name:string)=>field(fields,name);
+    result.push({leadId:ref.leadId,name:row.displayName,phone:ref.phone,email:ref.email,language:ref.language,
+     receivedAt:get("Date received"),source:ref.source,campaign:ref.campaign,
+     stage:row.doNotContact?"Do not contact":row.archived?"Archived":row.stage,
+     lastContact:get("Last contact"),nextAction:row.nextAction??"",dueDate:row.followUpDate??"",
+     outcome:ref.outcome,notes:row.notes,
+     // Missing/stale Sheet claims must not unlink a genuine canonical client.
+     // Multiple cases need the exact real journey/order relation, not a guess.
+     caseId:canonicalProspectCase(row.caseLinks,orderCases.get(ref.leadId)??null),
+     formSent:ref.formSentClaim,formSubmitted:ref.formSubmittedClaim,paymentLinkSent:get("Payment link sent"),
+     paymentMethod:get("Payment method"),paymentStatus:ref.paymentClaim,paymentAllocation:get("Payment allocation"),
+     bookingStatus:ref.bookingClaim,messageReceipt:ref.messageReceipt,updateProvenance:get("Update provenance"),
+     firstInboundAt:get("First inbound at"),lastInboundAt:get("Last inbound at"),owner:get("Response owner"),...ref.journey});
+   }
+  }
+  return result.sort((a,b)=>a.leadId.localeCompare(b.leadId));
+ }
+ private async readAllInTransaction(tx:SqlSession,actor:Actor):Promise<{rows:NativeContactRow[];sourceFields:Map<string,Record<string,string>>}>{
    requirePractitioner(await freshActor(tx,actor,this.clock.now()));
    const rows:NativeContactRow[]=[];
+   const sourceFields=new Map<string,Record<string,string>>();
    let after:string|null=null;
    for(;;){
     const profiles:StoredProfile[]=await tx.query<StoredProfile>(`SELECT p.person_id AS "personId",i.kind,
@@ -119,6 +171,8 @@ export class NativeContactDirectory {
        `ls_contact_ops/legacy/v1/${actor.workspaceId}/${l.sourceFileId}/${l.sourceSheetId}/${l.leadId}`,this.keyring);
       if(field(source.payload.sourceFields,"Lead ID").trim()!==l.leadId)throw new AppError("UNAVAILABLE");
       const f=source.payload.sourceFields;
+      if(sourceFields.has(l.leadId))throw new AppError("CONFLICT");
+      sourceFields.set(l.leadId,f);
       return {leadId:l.leadId,phone:field(f,"Phone"),email:field(f,"Email"),language:source.payload.language,
        source:field(f,"Lead source"),campaign:field(f,"Campaign"),outcome:field(f,"Outcome"),
        messageReceipt:field(f,"Message receipt"),paymentClaim:field(f,"Payment status"),bookingClaim:field(f,"Booking status"),
@@ -175,7 +229,7 @@ export class NativeContactDirectory {
      row.archived=row.caseLinks.every(c=>["completed","archived"].includes(c.state));
     }
    }
-   return selectNativeContacts(rows,q);
+   return {rows,sourceFields};
  }
 }
 

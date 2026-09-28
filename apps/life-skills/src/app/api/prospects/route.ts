@@ -6,7 +6,8 @@ import {readJson} from "@/lib/http/json.ts";
 import {verifyCsrfToken,verifyMutationOrigin} from "@/lib/security/csrf.ts";
 import {SESSION_COOKIE} from "@/lib/security/session.ts";
 import {identityRuntime} from "@/features/identity/runtime.ts";
-import {createProspect,listProspects,sendProspectMessage,updateProspect} from "@/features/prospects/bridge.ts";
+import {createProspect,sendProspectMessage,updateProspect} from "@/features/prospects/bridge.ts";
+import {readAuthoritativeProspects} from "@/features/contact-ops/server/authoritative-prospects.ts";
 import {readProspectJourneys} from "@/features/prospects/journey-read.ts";
 import {paidAwaitingBooking} from "@/features/prospects/view-state.ts";
 import {PreEnrollmentStaffService} from "@/features/forms/pre-enrollment/staff.ts";
@@ -25,7 +26,7 @@ function fail(error:unknown){const e=errorEnvelope(error instanceof AppError?err
 async function session(request:Request){const values=(request.headers.get("cookie")||"").split(";").map(v=>v.trim()).filter(v=>v.startsWith(SESSION_COOKIE+"="));if(values.length!==1)throw new AppError("UNAUTHENTICATED");const runtime=await identityRuntime(),token=values[0]!.slice(SESSION_COOKIE.length+1),actor=await runtime.services.sessions.actor(token);if(actor.role!=="practitioner")throw new AppError("FORBIDDEN");return {runtime,token,actor};}
 async function project(leadId:string,fields:Record<string,string>){try{await updateProspect(leadId,fields);return false;}catch{return true;}}
 async function requireContactableProspect(runtime:Awaited<ReturnType<typeof identityRuntime>>,leadId:string){const batch=await runtime.store.transaction(tx=>demoRecordBatch(tx,runtime.config.workspaceId,'prospect',leadId));if(batch)throw new AppError('FORBIDDEN');}
-export async function GET(request:Request){try{const s=await session(request),rows=await listProspects(),states=await readProspectJourneys(s.runtime.store,s.runtime.config.workspaceId,rows.map(row=>row.leadId));return NextResponse.json({ok:true,data:rows.map(row=>({...row,...(states.get(row.leadId)??{journeyState:"prospect",paymentVerified:false,bookingConfirmed:false})})),requestId:randomUUID()},{headers:{"Cache-Control":"private, no-store","Referrer-Policy":"no-referrer"}})}catch(e){return fail(e)}}
+export async function GET(request:Request){try{const s=await session(request),rows=await readAuthoritativeProspects(s.actor,s.runtime),states=await readProspectJourneys(s.runtime.store,s.runtime.config.workspaceId,rows.map(row=>row.leadId));return NextResponse.json({ok:true,data:rows.map(row=>({...row,...(states.get(row.leadId)??{journeyState:"prospect",paymentVerified:false,bookingConfirmed:false})})),requestId:randomUUID()},{headers:{"Cache-Control":"private, no-store","Referrer-Policy":"no-referrer"}})}catch(e){return fail(e)}}
 export async function POST(request:Request){try{const s=await session(request);verifyMutationOrigin(request,s.runtime.config.origin);verifyCsrfToken(request.headers.get("x-csrf-token"),s.runtime.services.sessions.csrf(s.token));const input=await readJson(request,body);
  const sendContext={store:s.runtime.store,workspaceId:s.runtime.config.workspaceId};
  if(input.action==="add"){const created=await createProspect(input);return NextResponse.json({ok:true,data:created.result,requestId:randomUUID()},{status:created.result.action==="created"?201:200,headers:{"Cache-Control":"private, no-store"}})}
