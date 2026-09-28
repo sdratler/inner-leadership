@@ -69,7 +69,7 @@ test("archived marketing history and contact opt-out never revoke an active assi
  expect(selectNativeContacts([optedOut],{...q,view:'prospects'}).total).toBe(0);
 });
 
-test.each(['invited','intake','paused'])("assigned %s clients are not invented prospects or active clients",state=>{
+test.each(['invited','intake','paused','completed','archived'])("assigned %s clients are not invented prospects or active clients",state=>{
  const row:NativeContactRow={personId,displayName:'Synthetic assigned client',identityKind:'adult',...fields,version:1,mode:'live',archived:false,doNotContact:false,references:[],caseLinks:[{caseId:'synthetic-case',state}]};
  const q={view:'all' as const,search:'',today:'2026-09-28',page:1,pageSize:12};
  for(const version of [null,1]){
@@ -81,4 +81,14 @@ test.each(['invited','intake','paused'])("assigned %s clients are not invented p
  }
  const ref:NativeContactReference={leadId:'LS-LEAD-synthetic-returning',phone:'',email:'',language:'en',source:'synthetic',campaign:'',outcome:'',messageReceipt:'',paymentClaim:'',bookingClaim:'',formSentClaim:'',formSubmittedClaim:'',sourceFileId:'synthetic',sourceSheetId:1,sourceRevision:'synthetic',journey:{journeyState:'prospect',paymentVerified:false,bookingConfirmed:false}};
  expect(selectNativeContacts([{...row,references:[ref]}],{...q,view:'prospects',filter:'new'}).total).toBe(1);
+});
+
+test.each(['Archived — old inquiry','Closed — old inquiry','Not interested'])("%s reference does not fabricate a returning inquiry for an active client",outcome=>{
+ const ref:NativeContactReference={leadId:'LS-LEAD-synthetic-old',phone:'',email:'',language:'en',source:'synthetic',campaign:'',outcome,messageReceipt:'',paymentClaim:'',bookingClaim:'',formSentClaim:'',formSubmittedClaim:'',sourceFileId:'synthetic',sourceSheetId:1,sourceRevision:'synthetic',journey:{journeyState:'prospect',paymentVerified:false,bookingConfirmed:false}};
+ const row:NativeContactRow={personId,displayName:'Synthetic active client',identityKind:'adult',...fields,version:1,mode:'live',archived:false,doNotContact:false,references:[ref],caseLinks:[{caseId:'synthetic-case',state:'active'}]};
+ const q={view:'prospects' as const,search:'',today:'2026-09-28',page:1,pageSize:12};
+ expect(selectNativeContacts([row],q).total).toBe(0);
+ for(const [filter,formSentClaim,formSubmittedClaim] of [['new','',''],['intake','sent',''],['payment','sent','submitted']] as const)expect(selectNativeContacts([{...row,references:[{...ref,formSentClaim,formSubmittedClaim}]}],{...q,filter}).total).toBe(0);
+ expect(selectNativeContacts([row],{...q,view:'active'}).total).toBe(1);
+ expect(selectNativeContacts([{...row,references:[ref,{...ref,leadId:'LS-LEAD-synthetic-fresh',outcome:''}]}],{...q,filter:'new'}).total).toBe(1);
 });

@@ -213,18 +213,33 @@ test("native PostgreSQL keeps a paused assigned client out of prospect queues un
  await f.pool.query("INSERT INTO ls_cases.clients(id,workspace_id,person_id,created_at) VALUES($1,$2,$3,clock_timestamp())",[clientId,f.workspaceId,personId]);
  await f.pool.query("INSERT INTO ls_cases.cases(id,workspace_id,client_id,practitioner_account_id,state,created_at,updated_at) VALUES($1,$2,$3,$4,'paused',clock_timestamp(),clock_timestamp())",[caseId,f.workspaceId,clientId,f.practitioner.actor.id]);
  const query={...q,personId};
- async function check(version:number|null){
-  expect((await directory.list(f.practitioner.actor,query)).items[0]).toMatchObject({personId,version,caseLinks:[{caseId,state:'paused'}]});
+ async function check(version:number|null,state:string){
+  await f.pool.query("UPDATE ls_cases.cases SET state=$3 WHERE workspace_id=$1 AND id=$2",[f.workspaceId,caseId,state]);
+  expect((await directory.list(f.practitioner.actor,query)).items[0]).toMatchObject({personId,version,caseLinks:[{caseId,state}]});
   for(const view of ['prospects','active'] as const)expect((await directory.list(f.practitioner.actor,{...query,view})).total).toBe(0);
   expect((await directory.list(f.practitioner.actor,{...query,filter:'new'})).total).toBe(0);
  }
- await check(null);
+ for(const state of ['paused','completed','archived'])await check(null,state);
  const profile:CrmProfile={personId,stage:'New inquiry',nextAction:'Review synthetic returning inquiry',followUpDate:q.today,notes:'Synthetic preserved client note',legacyIds:[]};
  await native.create(f.practitioner.actor,profile,'synthetic-paused-profile-'+randomUUID());
- await check(1);
+ for(const state of ['paused','completed','archived'])await check(1,state);
+ await f.pool.query("UPDATE ls_cases.cases SET state='paused' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,caseId]);
  const lead='LS-LEAD-synthetic-paused-returning-'+randomBytes(4).toString('hex');
  await native.update(f.practitioner.actor,{...profile,legacyIds:[lead]},1,'synthetic-paused-inquiry-'+randomUUID());
  await link(personId,lead);
  expect((await directory.list(f.practitioner.actor,{...query,view:'prospects',filter:'new'})).items[0]).toMatchObject({personId,version:2,notes:profile.notes});
  expect((await directory.list(f.practitioner.actor,{...query,view:'active'})).total).toBe(0);
+ // An active case preserves client visibility, not a closed inquiry's eligibility.
+ await f.pool.query("UPDATE ls_cases.cases SET state='active' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,caseId]);
+ const saved=(await f.pool.query("SELECT snapshot_ciphertext FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND legacy_lead_id=$2",[f.workspaceId,lead])).rows[0];
+ const aad=`ls_contact_ops/legacy/v1/${f.workspaceId}/${sourceFileId}/${sourceSheetId}/${lead}`,snapshot=JSON.parse(unseal(saved.snapshot_ciphertext,aad,f.keyring));
+ snapshot.payload.sourceFields['Outcome']='Archived — old inquiry';
+ await f.pool.query("UPDATE ls_contact_ops.legacy_links SET snapshot_ciphertext=$3 WHERE workspace_id=$1 AND legacy_lead_id=$2",[f.workspaceId,lead,seal(JSON.stringify(snapshot),aad,f.keyring)]);
+ expect((await directory.list(f.practitioner.actor,{...query,view:'active'})).items[0]).toMatchObject({personId,archived:false,notes:profile.notes});
+ expect((await directory.list(f.practitioner.actor,{...query,view:'prospects'})).total).toBe(0);
+ expect((await directory.list(f.practitioner.actor,{...query,filter:'new'})).total).toBe(0);
+ const freshLead='LS-LEAD-synthetic-truly-new-'+randomBytes(4).toString('hex');
+ await native.update(f.practitioner.actor,{...profile,legacyIds:[lead,freshLead]},2,'synthetic-active-returning-'+randomUUID());
+ await link(personId,freshLead);
+ expect((await directory.list(f.practitioner.actor,{...query,view:'prospects',filter:'new'})).items[0]).toMatchObject({personId,version:3,notes:profile.notes});
 });
