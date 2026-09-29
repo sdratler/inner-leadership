@@ -27,8 +27,9 @@ import { ReportsPage, ReportCaseWorkspace, ReportEditor, ReportReadout, type Rev
 
 const ids = { caseId: "123e4567-e89b-12d3-a456-426614174000", audienceId: "223e4567-e89b-12d3-a456-426614174000", otherAudienceId: "323e4567-e89b-12d3-a456-426614174000" };
 const narrative = { taughtAndPractised: ["Synthetic teaching"], parentReportedExamples: [], practitionerObservations: ["Synthetic observation"], usefulChanges: ["Synthetic useful change"], continuingDifficulty: ["Synthetic difficulty"], uncertainty: "Synthetic uncertainty", nextAdjustment: "Synthetic next", informationLimits: "Synthetic limits" };
-const review = (id: string, state: "draft" | "published", audienceId = ids.audienceId): Review => ({ id, caseId: ids.caseId, audienceId, periodStart: "2026-09-01", periodEnd: "2026-09-29", attendedSessionCount: 2, state, narrative });
-const tick = async () => { for (let index = 0; index < 12; index++) await Promise.resolve(); };
+const review = (id: string, state: "draft" | "published", audienceId = ids.audienceId): Review => ({ id, caseId: ids.caseId, audienceId, periodStart: "2026-09-01", periodEnd: "2026-09-29", attendedSessionCount: 2, state, narrative, revision: 1 });
+// A revision now awaits POST, operation readback and current-head readback.
+const tick = async () => { for (let index = 0; index < 60; index++) await Promise.resolve(); };
 type Change = (event: { target: { value: string } }) => void;
 type Click = () => void;
 function find(node: unknown, predicate: (element: ReactElement<Record<string, unknown>>) => boolean): ReactElement<Record<string, unknown>> | undefined { if (!node || typeof node !== "object") return undefined; if (Array.isArray(node)) return node.map((item) => find(item, predicate)).find(Boolean); const item = node as ReactElement<Record<string, unknown>>; return predicate(item) ? item : find(item.props?.children, predicate); }
@@ -132,10 +133,12 @@ it("blocks publish when selected draft has unsaved edits", async () => {
 });
 
 it("writes once for a double-click and sends CSRF-bound new-draft data", async () => {
-  let resolve!: (response: Response) => void; fetchMock.mockImplementation(() => new Promise<Response>((done) => { resolve = done; })); const onSaved = vi.fn(); let output = hook.render(() => ReportEditor({ locale: "en", ...ids, reviews: [], onSaved })); hook.flushEffects(); fillEditor(output);
+  let resolve!: (response: Response) => void,readback!: (response:Response)=>void; fetchMock.mockImplementationOnce(() => new Promise<Response>((done) => { resolve = done; })).mockImplementationOnce(()=>new Promise<Response>(done=>{readback=done;})); const onSaved = vi.fn(); let output = hook.render(() => ReportEditor({ locale: "en", ...ids, reviews: [], onSaved })); hook.flushEffects(); fillEditor(output);
   output = hook.render(() => ReportEditor({ locale: "en", ...ids, reviews: [], onSaved })); const saveButton = find(output, (element) => element.type === "button" && element.props.children === "Save new draft version"); expect(saveButton?.props.disabled).toBe(false); const save = click(output, "Save new draft version"); save(); save(); await tick(); expect(sessionInfo).toHaveBeenCalledTimes(1); output = hook.render(() => ReportEditor({ locale: "en", ...ids, reviews: [], onSaved })); expect(text(output)).not.toContain("Complete the required fields"); expect(fetchMock).toHaveBeenCalledTimes(1);
   const request = fetchMock.mock.calls[0]![1] as RequestInit; expect(request.headers).toMatchObject({ "X-CSRF-Token": "c".repeat(43) }); expect(JSON.parse(String(request.body))).toMatchObject({ caseId: ids.caseId, audienceId: ids.audienceId, parentReportIds: [], assignmentVersionIds: [] });
-  resolve(Response.json({ ok: true, data: { reviewId: "723e4567-e89b-12d3-a456-426614174000", attendedSessionCount: 3 } })); await tick(); expect(onSaved).toHaveBeenCalledTimes(1);
+  resolve(Response.json({ ok: true, data: { reviewId: "723e4567-e89b-12d3-a456-426614174000", attendedSessionCount: 3,revision:1 } })); await tick(); expect(onSaved).not.toHaveBeenCalled();expect(fetchMock).toHaveBeenCalledTimes(2);
+  const saved={...review('723e4567-e89b-12d3-a456-426614174000','draft'),attendedSessionCount:3,narrative:JSON.parse(String(request.body)).narrative};
+  readback(Response.json({ok:true,data:[saved]}));await tick();expect(onSaved).toHaveBeenCalledExactlyOnceWith(saved);
 });
 
 it("suppresses onSaved after unmount", async () => {
@@ -156,4 +159,64 @@ for(const locale of ['en','he'] as const)it(`${locale}: a confirmed duplicate-pe
 });
 it('keeps an unrecognized409 response behind the existing ambiguous-write lock',async()=>{
  fetchMock.mockResolvedValueOnce(Response.json({ok:false,error:{code:'UNEXPECTED'}},{status:409}));const onSaved=vi.fn(),props={locale:'en' as const,...ids,reviews:[],onSaved};let output=hook.render(()=>ReportEditor(props));hook.flushEffects();fillEditor(output);click(hook.render(()=>ReportEditor(props)),'Save new draft version')();await tick();output=hook.render(()=>ReportEditor(props));expect(text(output)).toContain('Reload reports');expect(text(output)).not.toContain('A report for this period already exists');expect(onSaved).not.toHaveBeenCalled();
+});
+
+for(const locale of ['en','he'] as const){
+ it(`${locale}: edits a fixed saved period using one revision request, preserved attribution and actual readback after a lost response`,async()=>{
+  const original={...review('423e4567-e89b-12d3-a456-426614174000','draft'),parentReports:[{reportId:'synthetic-parent-report'}],assignmentVersionIds:['synthetic-version'],narrative:{...narrative,parentReportedExamples:['Synthetic attributed example to preserve']}};
+  let sent:Record<string,unknown>|undefined;
+  fetchMock.mockImplementation(async(url:string,options?:RequestInit)=>{
+   if(options?.method==='POST'){sent=JSON.parse(String(options.body));throw Error('Synthetic response lost after commit');}
+   const saved={...original,revision:2,narrative:sent!.narrative};
+   return Response.json({ok:true,data:url.includes('/revisions?')?{reviewId:original.id,currentRevision:2,state:'draft',hasMore:false,nextBefore:null,revisions:[{revision:2,operationId:sent!.operationId,savedAt:'2026-09-29T10:00:00Z',authorAccountId:'synthetic-owner',narrative:sent!.narrative}]}:[saved]});
+  });
+  const onSaved=vi.fn(),props={locale,...ids,reviews:[original],onSaved};let output=hook.render(()=>ReportEditor(props));hook.flushEffects();
+  (find(output,e=>e.type==='select')!.props.onChange as Change)({target:{value:original.id}});output=hook.render(()=>ReportEditor(props));
+  expect(find(output,e=>e.type==='input')?.props.disabled).toBe(true);
+  (all(output,e=>e.type==='textarea')[5]!.props.onChange as Change)({target:{value:'Synthetic revised next'}});
+  output=hook.render(()=>ReportEditor(props));const save=click(output,locale==='he'?'שמירת גרסת הטיוטה':'Save draft revision');save();save();await tick();
+  expect(fetchMock.mock.calls.filter(call=>(call[1] as RequestInit)?.method==='POST')).toHaveLength(1);
+  expect(sent).toMatchObject({reviewId:original.id,expectedRevision:1,narrative:{...original.narrative,nextAdjustment:'Synthetic revised next'}});
+  expect(sent).not.toHaveProperty('periodStart');expect(sent).not.toHaveProperty('parentReportIds');
+  expect(onSaved).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({id:original.id,revision:2,narrative:sent!.narrative}));
+  expect(text(hook.render(()=>ReportEditor(props)))).toContain(locale==='he'?'אומתה בקריאה חוזרת':'saved and read back');
+ });
+}
+
+it('an interrupted revision read stays locked, preserves input, and retries the identical request after real readback is unavailable',async()=>{
+ const original=review('423e4567-e89b-12d3-a456-426614174000','draft'),requests:unknown[]=[];
+ let unavailable=true;
+ fetchMock.mockImplementation(async(url:string,options?:RequestInit)=>{
+  if(options?.method==='POST'){const body=JSON.parse(String(options.body));requests.push(body);return Response.json({ok:true,data:{reviewId:body.reviewId,revision:2,operationId:body.operationId}});}
+  if(unavailable)return Response.json({ok:false,error:{code:'RATE_LIMITED'}},{status:429});
+  const body=requests[0] as {operationId:string;narrative:typeof narrative};
+  return Response.json({ok:true,data:url.includes('/revisions?')?{reviewId:original.id,currentRevision:2,state:'draft',hasMore:false,nextBefore:null,revisions:[{revision:2,operationId:body.operationId,savedAt:'2026-09-29T10:00:00Z',authorAccountId:'synthetic-owner',narrative:body.narrative}]}:[{...original,revision:2,narrative:body.narrative}]});
+ });
+ const onSaved=vi.fn(),props={locale:'en' as const,...ids,reviews:[original],onSaved};let output=hook.render(()=>ReportEditor(props));hook.flushEffects();
+ (find(output,e=>e.type==='select')!.props.onChange as Change)({target:{value:original.id}});output=hook.render(()=>ReportEditor(props));
+ (all(output,e=>e.type==='textarea')[5]!.props.onChange as Change)({target:{value:'Synthetic preserved uncertain edit'}});
+ click(hook.render(()=>ReportEditor(props)),'Save draft revision')();await tick();output=hook.render(()=>ReportEditor(props));
+ expect(onSaved).not.toHaveBeenCalled();expect(all(output,e=>e.type==='textarea')[5]?.props.value).toBe('Synthetic preserved uncertain edit');expect(find(output,e=>e.type==='select')?.props.disabled).toBe(true);
+ unavailable=false;click(output,'Retry the same revision')();await tick();
+ expect(requests).toHaveLength(2);expect(requests[1]).toEqual(requests[0]);expect(onSaved).toHaveBeenCalledTimes(1);
+});
+
+it('a confirmed newer draft keeps the loser text, blocks blind publication and offers an explicit reviewed rebase',async()=>{
+ const original=review('423e4567-e89b-12d3-a456-426614174000','draft'),newer={...original,revision:2,narrative:{...narrative,nextAdjustment:'Synthetic other tab saved'}};
+ fetchMock.mockImplementation(async(url:string,options?:RequestInit)=>Response.json(options?.method==='POST'?{ok:false,error:{code:'CONFLICT'}}:{ok:true,data:url.includes('/revisions?')?{reviewId:original.id,currentRevision:2,state:'draft',hasMore:false,nextBefore:null,revisions:[]}:[newer]},{status:options?.method==='POST'?409:200}));
+ const confirm=vi.fn(()=>false);vi.stubGlobal('window',{confirm});
+ const onSaved=vi.fn(),props={locale:'en' as const,...ids,reviews:[original],onSaved};let output=hook.render(()=>ReportEditor(props));hook.flushEffects();
+ (find(output,e=>e.type==='select')!.props.onChange as Change)({target:{value:original.id}});output=hook.render(()=>ReportEditor(props));(all(output,e=>e.type==='textarea')[5]!.props.onChange as Change)({target:{value:'Synthetic unsaved loser'}});
+ click(hook.render(()=>ReportEditor(props)),'Save draft revision')();await tick();output=hook.render(()=>ReportEditor(props));
+ expect(text(output)).toContain('Another saved revision exists');expect(all(output,e=>e.type==='textarea')[5]?.props.value).toBe('Synthetic unsaved loser');expect(find(output,e=>e.type==='button'&&e.props.children==='Publish saved draft')?.props.disabled).toBe(true);
+ click(output,'Keep my text and use this saved revision as the base')();expect(confirm).toHaveBeenCalledTimes(1);expect(find(hook.render(()=>ReportEditor(props)),e=>e.type==='select')?.props.disabled).toBe(true);
+ confirm.mockReturnValue(true);click(hook.render(()=>ReportEditor(props)),'Keep my text and use this saved revision as the base')();output=hook.render(()=>ReportEditor(props));expect(all(output,e=>e.type==='textarea')[5]?.props.value).toBe('Synthetic unsaved loser');expect(find(output,e=>e.type==='button'&&e.props.children==='Save draft revision')?.props.disabled).toBe(false);
+});
+
+it('publishes only the exact reviewed revision and does not claim success until the published narrative is read back',async()=>{
+ const original={...review('423e4567-e89b-12d3-a456-426614174000','draft'),revision:3};let readback!:(value:Response)=>void;
+ fetchMock.mockResolvedValueOnce(Response.json({ok:true,data:{reviewId:original.id,revision:3,attendedSessionCount:2}})).mockImplementationOnce(()=>new Promise<Response>(done=>{readback=done;}));
+ const onSaved=vi.fn(),props={locale:'en' as const,...ids,reviews:[original],onSaved};const output=hook.render(()=>ReportEditor(props));hook.flushEffects();(find(output,e=>e.type==='select')!.props.onChange as Change)({target:{value:original.id}});
+ click(hook.render(()=>ReportEditor(props)),'Publish saved draft')();await tick();expect(JSON.parse(String((fetchMock.mock.calls[0]![1] as RequestInit).body))).toEqual({reviewId:original.id,expectedRevision:3});expect(onSaved).not.toHaveBeenCalled();
+ readback(Response.json({ok:true,data:[{...original,state:'published'}]}));await tick();expect(onSaved).toHaveBeenCalledExactlyOnceWith({...original,state:'published'});
 });

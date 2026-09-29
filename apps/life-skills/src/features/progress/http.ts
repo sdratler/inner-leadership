@@ -4,13 +4,15 @@ import { asId, type CaseId } from "../../lib/ids.ts";
 import { readJson } from "../../lib/http/json.ts";
 import type { Actor } from "../identity/types.ts";
 import { Ls050HttpBoundary, type Ls050HttpRuntime } from "../forms/http-boundary.ts";
-import { contextualTargetInputSchema, qualitativePublishInputSchema, qualitativeReviewInputSchema } from "./schema.ts";
+import { contextualTargetInputSchema, qualitativePublishInputSchema, qualitativeReviewInputSchema, qualitativeRevisionInputSchema, qualitativeRevisionQuerySchema } from "./schema.ts";
 import { ProgressService } from "./service.ts";
 
 const methods = Object.freeze({
   "/api/progress/targets": ["GET", "POST"],
   "/api/progress/reviews": ["GET", "POST"],
   "/api/progress/reviews/publish": ["POST"],
+  "/api/progress/reviews/revise": ["POST"],
+  "/api/progress/reviews/revisions": ["GET"],
 } satisfies Record<string, readonly string[]>);
 const caseId = z.uuid().transform((value) => asId(value, "case"));
 
@@ -44,7 +46,17 @@ export class ProgressHttp {
     if (path === "/api/progress/reviews/publish") {
       if (url.search) throw new AppError("INVALID_REQUEST");
       const input = await readJson(request, qualitativePublishInputSchema);
-      return { data: await this.progress.publishReview(actor, input.reviewId, requestId) };
+      return { data: await this.progress.publishReview(actor, input.reviewId, requestId, input.expectedRevision) };
+    }
+    if (path === "/api/progress/reviews/revise") {
+      if (url.search) throw new AppError("INVALID_REQUEST");
+      const data = await this.progress.reviseReview(actor, await readJson(request, qualitativeRevisionInputSchema), requestId);
+      return { data, status: data.replayed ? 200 : 201 };
+    }
+    if (path === "/api/progress/reviews/revisions") {
+      const parsed = qualitativeRevisionQuerySchema.safeParse(Object.fromEntries(url.searchParams));
+      if (!parsed.success || new Set(url.searchParams.keys()).size !== [...url.searchParams.keys()].length) throw new AppError("INVALID_REQUEST");
+      return { data: await this.progress.listReviewRevisions(actor, parsed.data) };
     }
     throw new AppError("NOT_FOUND");
   }

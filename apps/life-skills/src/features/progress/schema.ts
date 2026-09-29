@@ -37,7 +37,19 @@ export const qualitativeReviewInputSchema = z.strictObject({
   parentReportIds: z.array(uuid("parent_report")).max(80),
   narrative: qualitativeNarrativeSchema,
 });
-export const qualitativePublishInputSchema = z.strictObject({ reviewId: uuid("qualitative_review") });
+export const qualitativeRevisionInputSchema = z.strictObject({
+  reviewId: uuid("qualitative_review"), expectedRevision: z.number().int().min(1).max(999_999),
+  operationId: z.uuid(), narrative: qualitativeNarrativeSchema,
+});
+export const qualitativeRevisionQuerySchema = z.strictObject({
+  reviewId: uuid("qualitative_review"), before: z.coerce.number().int().min(1).max(1_000_001).optional(),
+  operationId: z.uuid().optional(),
+}).refine(input => !(input.before !== undefined && input.operationId !== undefined));
+// Backwards compatibility is limited to unchanged revision 1. The service
+// rejects an omitted version once any saved draft revision exists.
+export const qualitativePublishInputSchema = z.strictObject({
+  reviewId: uuid("qualitative_review"), expectedRevision: z.number().int().min(1).max(1_000_000).optional(),
+});
 
 function utcDate(value: string): number {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error("INVALID_PERIOD");

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { AppError } from "../../lib/errors.ts";
 import { asId, type Id } from "../../lib/ids.ts";
 import type { CaseScope } from "../../lib/workspace.ts";
@@ -8,10 +8,10 @@ import { seal, unseal } from "../identity/crypto.ts";
 import { freshActor, lockWorkspace } from "../identity/data.ts";
 import type { IdentityConfig } from "../identity/config.ts";
 import type { PracticeVersionId, PracticeVersionReader } from "../identity/interfaces.ts";
-import type { IdentityStore } from "../identity/store.ts";
+import type { IdentityStore, SqlSession } from "../identity/store.ts";
 import { one } from "../identity/store.ts";
 import type { Actor, AudienceId, CaseId, IdentityClock } from "../identity/types.ts";
-import { assertFourWeekPeriod, assertSourceHonesty, type QualitativeNarrative } from "./schema.ts";
+import { assertFourWeekPeriod, assertSourceHonesty, qualitativeRevisionInputSchema, type QualitativeNarrative } from "./schema.ts";
 import type { AttendanceReader, ParentReportId, ParentReportReader, ParentReportReference } from "./sources.ts";
 import { recordLs050Action } from "./history.ts";
 
@@ -30,6 +30,7 @@ export interface QualitativeReviewProjection {
   parentReports: readonly { reportId: ParentReportId; authorAccountId: Actor["id"]; submittedAt: string; sourceType: "parent_report" }[];
   assignmentVersionIds: readonly PracticeVersionId[];
   publishedAt: string | null;
+  revision: number;
 }
 
 interface ReviewRow {
@@ -42,6 +43,12 @@ interface ReviewRow {
   narrativeCiphertext: string;
   state: "draft" | "published";
   publishedAt: Date | null;
+  revision: number;
+}
+
+interface RevisionRow {
+  revision: number; narrativeCiphertext: string; authorAccountId: Actor["id"];
+  savedAt: Date; operationId: string | null; requestDigest: string | null;
 }
 
 const unavailablePracticeVersionReader: PracticeVersionReader = Object.freeze({
@@ -179,18 +186,105 @@ export class ProgressService {
         (workspace_id,review_id,report_id,author_account_id,submitted_at,source_type) VALUES ($1,$2,$3,$4,$5,'parent_report')`,
       [actor.workspaceId, id, reference.reportId, reference.authorAccountId, reference.submittedAt]);
       await recordLs050Action(tx, { requestId, now }, actor.workspaceId, actor.id, "qualitative_review_drafted");
-      return { reviewId: id, attendedSessionCount };
+      return { reviewId: id, attendedSessionCount, revision: 1 };
     });
   }
 
-  async publishReview(actor: Actor, reviewId: QualitativeReviewId, requestId: string) {
+  /** Private history and mutations always recheck the real case owner and the
+   * exact published audience. A family grant never conveys revision access. */
+  private async authorizedReview(tx: SqlSession, actor: Actor, reviewId: QualitativeReviewId) {
+    const current = await freshActor(tx, actor, this.clock.now());
+    requirePractitioner(current);
+    const row = await one<ReviewRow>(tx, `SELECT id,case_id AS "caseId",audience_id AS "audienceId",period_start::text AS "periodStart",
+      period_end::text AS "periodEnd",attended_session_count AS "attendedSessionCount",narrative_ciphertext AS "narrativeCiphertext",
+      state,published_at AS "publishedAt",revision FROM ls_progress.qualitative_reviews WHERE workspace_id=$1 AND id=$2`, [actor.workspaceId, reviewId]);
+    if (!row) throw new AppError("NOT_FOUND");
+    const item = await loadCase(tx, actor.workspaceId, row.caseId);
+    const guardians = await loadGuardians(tx, actor.workspaceId, row.caseId);
+    const scope = caseAccess(current, item, guardians, "publish");
+    const audience = await loadAudience(tx, actor.workspaceId, row.caseId, row.audienceId);
+    if (!audience || !audience.published || audience.visibility !== "family_full") throw new AppError("NOT_FOUND");
+    audienceAccess(current, item, guardians, audience);
+    return { row, scope, audience };
+  }
+
+  async reviseReview(actor: Actor, raw: { reviewId: QualitativeReviewId; expectedRevision: number; operationId: string; narrative: QualitativeNarrative }, requestId: string) {
+    const parsed = qualitativeRevisionInputSchema.safeParse(raw);
+    if (!parsed.success) throw new AppError("INVALID_REQUEST");
+    const input = parsed.data;
+    // A keyed digest prevents a database reader from dictionary-testing private
+    // narrative text; schema parsing gives a stable field order for retry.
+    const digest = createHmac("sha256", this.config.lookupKey).update(JSON.stringify({
+      purpose: "qualitative-review-revision", workspaceId: actor.workspaceId, actorId: actor.id, ...input,
+    })).digest("hex");
+    return this.store.transaction(async tx => {
+      await lockWorkspace(tx, actor.workspaceId);
+      const { row, scope, audience } = await this.authorizedReview(tx, actor, input.reviewId);
+      const sources = await tx.query<{ reportId: ParentReportId; authorAccountId: Actor["id"]; submittedAt: Date }>(
+        `SELECT report_id AS "reportId",author_account_id AS "authorAccountId",submitted_at AS "submittedAt"
+         FROM ls_progress.review_parent_reports WHERE workspace_id=$1 AND review_id=$2 ORDER BY report_id`, [actor.workspaceId, row.id]);
+      try { assertSourceHonesty(sources.length, input.narrative); } catch { throw new AppError("INVALID_REQUEST"); }
+      for (const source of sources) {
+        const reference = await this.parentReports.getAuthorizedReport(scope, source.reportId);
+        if (!reference || reference.workspaceId !== actor.workspaceId || reference.caseId !== row.caseId || reference.audienceId !== row.audienceId ||
+          reference.sourceType !== "parent_report" || reference.authorAccountId !== source.authorAccountId ||
+          new Date(reference.submittedAt).toISOString() !== new Date(source.submittedAt).toISOString() || !audience.accountIds.includes(source.authorAccountId)) throw new AppError("NOT_FOUND");
+      }
+      const versions = await tx.query<{ versionId: PracticeVersionId; digest: string }>(
+        `SELECT version_id AS "versionId",immutable_snapshot_digest AS digest FROM ls_progress.review_practice_versions
+         WHERE workspace_id=$1 AND review_id=$2 ORDER BY version_id`, [actor.workspaceId, row.id]);
+      for (const source of versions) {
+        const reference = await this.practiceVersions.getAuthorizedVersion(scope, source.versionId);
+        if (!reference || reference.workspaceId !== actor.workspaceId || reference.caseId !== row.caseId || reference.audienceId !== row.audienceId ||
+          reference.immutableSnapshotDigest !== source.digest) throw new AppError("NOT_FOUND");
+      }
+      const existing = await one<RevisionRow>(tx, `SELECT revision,narrative_ciphertext AS "narrativeCiphertext",author_account_id AS "authorAccountId",
+        saved_at AS "savedAt",operation_id AS "operationId",request_digest AS "requestDigest"
+        FROM ls_progress.qualitative_review_revisions WHERE workspace_id=$1 AND review_id=$2 AND operation_id=$3`, [actor.workspaceId, row.id, input.operationId]);
+      if (existing) {
+        if (existing.requestDigest !== digest || existing.authorAccountId !== actor.id) throw new AppError("CONFLICT");
+        return { reviewId: row.id, revision: existing.revision, operationId: input.operationId, savedAt: new Date(existing.savedAt).toISOString(), replayed: true };
+      }
+      if (row.state !== "draft" || row.revision !== input.expectedRevision) throw new AppError("CONFLICT");
+      const revision = row.revision + 1, now = this.clock.now();
+      const ciphertext = seal(JSON.stringify(input.narrative), `qualitative-review:${actor.workspaceId}:${row.id}`, this.config.keyring);
+      await tx.query(`INSERT INTO ls_progress.qualitative_review_revisions
+        (workspace_id,review_id,revision,narrative_ciphertext,author_account_id,saved_at,operation_id,request_digest)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, [actor.workspaceId, row.id, revision, ciphertext, actor.id, now, input.operationId, digest]);
+      const changed = await tx.query<{ id: QualitativeReviewId }>(`UPDATE ls_progress.qualitative_reviews SET narrative_ciphertext=$3,revision=$4
+        WHERE workspace_id=$1 AND id=$2 AND state='draft' AND revision=$5 RETURNING id`, [actor.workspaceId, row.id, ciphertext, revision, input.expectedRevision]);
+      if (changed.length !== 1) throw new AppError("CONFLICT");
+      await recordLs050Action(tx, { requestId, now }, actor.workspaceId, actor.id, "qualitative_review_revised");
+      return { reviewId: row.id, revision, operationId: input.operationId, savedAt: now.toISOString(), replayed: false };
+    });
+  }
+
+  async listReviewRevisions(actor: Actor, input: { reviewId: QualitativeReviewId; before?: number | undefined; operationId?: string | undefined }) {
+    return this.store.transaction(async tx => {
+      const { row } = await this.authorizedReview(tx, actor, input.reviewId);
+      const rows = await tx.query<RevisionRow>(`SELECT revision,narrative_ciphertext AS "narrativeCiphertext",author_account_id AS "authorAccountId",
+        saved_at AS "savedAt",operation_id AS "operationId",request_digest AS "requestDigest"
+        FROM ls_progress.qualitative_review_revisions WHERE workspace_id=$1 AND review_id=$2
+        AND ($3::integer IS NULL OR revision<$3) AND ($4::uuid IS NULL OR operation_id=$4)
+        ORDER BY revision DESC LIMIT 101`, [actor.workspaceId, row.id, input.before ?? null, input.operationId ?? null]);
+      const page = rows.slice(0, 100), hasMore = rows.length > 100;
+      return { reviewId: row.id, currentRevision: row.revision, state: row.state, hasMore,
+        nextBefore: hasMore ? page.at(-1)!.revision : null,
+        revisions: page.map(r => ({ revision: r.revision, operationId: r.operationId, authorAccountId: r.authorAccountId,
+          savedAt: new Date(r.savedAt).toISOString(), narrative: JSON.parse(unseal(r.narrativeCiphertext,
+            `qualitative-review:${actor.workspaceId}:${row.id}`, this.config.keyring)) as QualitativeNarrative })) };
+    });
+  }
+
+  async publishReview(actor: Actor, reviewId: QualitativeReviewId, requestId: string, expectedRevision?: number) {
     const candidate = await this.store.transaction(async (tx) => {
       const current = await freshActor(tx, actor, this.clock.now());
       requirePractitioner(current);
       const row = await one<ReviewRow>(tx, `SELECT id,case_id AS "caseId",audience_id AS "audienceId",period_start::text AS "periodStart",
-        period_end::text AS "periodEnd",attended_session_count AS "attendedSessionCount",narrative_ciphertext AS "narrativeCiphertext",state,published_at AS "publishedAt"
+        period_end::text AS "periodEnd",attended_session_count AS "attendedSessionCount",narrative_ciphertext AS "narrativeCiphertext",state,published_at AS "publishedAt",revision
         FROM ls_progress.qualitative_reviews WHERE workspace_id=$1 AND id=$2`, [actor.workspaceId, reviewId]);
       if (!row || row.state !== "draft") throw new AppError("NOT_FOUND");
+      if (row.revision !== (expectedRevision ?? 1)) throw new AppError("CONFLICT");
       const item = await loadCase(tx, actor.workspaceId, row.caseId);
       const guardians = await loadGuardians(tx, actor.workspaceId, row.caseId);
       const scope = caseAccess(current, item, guardians, "publish");
@@ -214,12 +308,12 @@ export class ProgressService {
       if (!audience || !audience.published || audience.visibility !== "family_full") throw new AppError("NOT_FOUND");
       audienceAccess(current, item, guardians, audience);
       const changed = await tx.query<{ id: QualitativeReviewId }>(`UPDATE ls_progress.qualitative_reviews SET state='published',attended_session_count=$3,
-        published_by_account_id=$4,published_at=$5 WHERE workspace_id=$1 AND id=$2 AND state='draft' RETURNING id`,
-      [actor.workspaceId, reviewId, attendedSessionCount, actor.id, now]);
+        published_by_account_id=$4,published_at=$5 WHERE workspace_id=$1 AND id=$2 AND state='draft' AND revision=$6 RETURNING id`,
+      [actor.workspaceId, reviewId, attendedSessionCount, actor.id, now, candidate.row.revision]);
       if (changed.length !== 1) throw new AppError("CONFLICT");
       await recordLs050Action(tx, { requestId, now }, actor.workspaceId, actor.id, "qualitative_review_published");
     });
-    return { reviewId, attendedSessionCount, publishedAt: now.toISOString() };
+    return { reviewId, attendedSessionCount, revision: candidate.row.revision, publishedAt: now.toISOString() };
   }
 
   async listReviews(actor: Actor, caseId: CaseId): Promise<QualitativeReviewProjection[]> {
@@ -230,7 +324,7 @@ export class ProgressService {
       caseAccess(current, item, guardians, "read");
       const rows = await tx.query<ReviewRow>(`SELECT id,case_id AS "caseId",audience_id AS "audienceId",period_start::text AS "periodStart",
         period_end::text AS "periodEnd",attended_session_count AS "attendedSessionCount",narrative_ciphertext AS "narrativeCiphertext",state,
-        published_at AS "publishedAt" FROM ls_progress.qualitative_reviews WHERE workspace_id=$1 AND case_id=$2
+        published_at AS "publishedAt",revision FROM ls_progress.qualitative_reviews WHERE workspace_id=$1 AND case_id=$2
         ORDER BY period_start DESC,id LIMIT 100`, [actor.workspaceId, caseId]);
       const result: QualitativeReviewProjection[] = [];
       for (const row of rows) {
@@ -254,6 +348,7 @@ export class ProgressService {
           periodEnd: row.periodEnd,
           attendedSessionCount: row.attendedSessionCount,
           state: row.state,
+          revision: row.revision,
           narrative: JSON.parse(unseal(row.narrativeCiphertext, `qualitative-review:${actor.workspaceId}:${row.id}`, this.config.keyring)) as QualitativeNarrative,
           parentReports: parentReports.map((reference) => ({ ...reference, submittedAt: new Date(reference.submittedAt).toISOString() })),
           assignmentVersionIds: versions.map((reference) => reference.versionId),

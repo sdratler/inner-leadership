@@ -5,7 +5,7 @@ import type { SqlSession } from "../identity/store.ts";
 export const ls050Actions = [
   "form_template_created", "form_assigned", "form_submitted", "form_reviewed",
   "resource_created", "resource_assigned", "resource_completion_reported",
-  "contextual_target_created", "qualitative_review_drafted", "qualitative_review_published",
+  "contextual_target_created", "qualitative_review_drafted", "qualitative_review_published", "qualitative_review_revised",
 ] as const;
 export type Ls050Action = (typeof ls050Actions)[number];
 

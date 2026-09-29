@@ -106,5 +106,9 @@
   {
     "name": "0107_ls_practice_subject_guards.sql",
     "sha256": "7608bc445e4d394b9041745a85bb1d1f36850e7c4841e5acbc0114724b72b720"
+  },
+  {
+    "name": "0108_ls_progress_review_revisions.sql",
+    "sha256": "42b2f3f5828289d15f0bdf6efd3175a33e7f722416bc998ba6f9c2779f8287af"
   }
 ]
