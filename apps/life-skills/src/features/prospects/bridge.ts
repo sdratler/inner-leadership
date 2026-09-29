@@ -10,6 +10,7 @@ export type Prospect = {
   paymentLinkSent:string; paymentMethod:string; paymentStatus:string; paymentAllocation:string;
   bookingStatus:string; messageReceipt:string; updateProvenance:string; firstInboundAt:string; lastInboundAt:string; owner:string;
   journeyState:string; paymentVerified:boolean; bookingConfirmed:boolean;
+  projectionPending?:boolean;
   nativeEdit?:{personId:string;profileVersion:number;authorityEpoch:number};
 };
 

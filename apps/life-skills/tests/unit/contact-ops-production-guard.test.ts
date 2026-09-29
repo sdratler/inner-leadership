@@ -3,6 +3,7 @@ import {describe,expect,it} from 'vitest';
 import {PRACTICE_SUBJECT_GUARDS_MIGRATION,practiceFunctionBody,type PracticeSubjectIntegrity} from '../../src/db/practice-subject-integrity.ts';
 import {PROGRESS_REVIEW_REVISIONS_MIGRATION,type ProgressReviewIntegrity} from '../../src/db/progress-review-integrity.ts';
 import {CONTACT_INBOUND_PROJECTION_MIGRATION,type ContactInboundProjectionIntegrity} from '../../src/db/contact-inbound-projection-integrity.ts';
+import {CONTACT_OUTBOUND_PROJECTION_MIGRATION,type ContactOutboundProjectionIntegrity} from '../../src/db/contact-outbound-projection-integrity.ts';
 import {CONTACT_INBOUND_MIGRATION,contactInboundSchemaCatalogMatches,type ContactInboundIntegrityObjects} from '../../src/db/contact-ops-production-guard.ts';
 import {assertContactOpsDatabaseIdentity,calendarAppendOnlyFunctionBody,contactAuthoritySchemaCatalogMatches,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsComparableConstraints,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,internalTaskSchemaCatalogMatches,sourceTaskSchemaCatalogMatches,voiceRuleSchemaCatalogMatches,CONTACT_AUTHORITY_MIGRATION,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,INTERNAL_TASKS_MIGRATION,SOURCE_TASKS_MIGRATION,VOICE_RULE_MIGRATION,type ContactAuthorityIntegrityObjects,type ContactOpsIntegrityObjects,type InternalTaskIntegrityObjects,type SourceTaskIntegrityObjects,type VoiceRuleIntegrityObjects} from '../../src/db/contact-ops-production-guard.ts';
 
@@ -269,6 +270,30 @@ describe('registered native CRM production migration gate',()=>{
   expect(()=>contactOpsMigrationState(files,before,present,taskPresent,sourceApplied,voicePresent,authorityPresent,inboundPresent,practice,progress)).toThrow('CONTACT_OPS_PROJECTION_READBACK_INVALID');
   expect(()=>contactOpsMigrationState([...before,{...suffix,checksum:'0'.repeat(64)}],before,present,taskPresent,sourceApplied,voicePresent,authorityPresent,inboundPresent,practice,progress,old)).toThrow('CONTACT_OPS_MANIFEST_MISMATCH');
   expect(()=>contactOpsMigrationState([...files,{...suffix,name:'0110_unreviewed.sql'}],files,present,taskPresent,sourceApplied,voicePresent,authorityPresent,inboundPresent,practice,progress,current)).toThrow('CONTACT_OPS_MANIFEST_MISMATCH');
+ });
+ it('admits only the exact 0110 outbound ledger after the 0109 baseline is intact',()=>{
+  const practice:PracticeSubjectIntegrity={baselineFunctions:false,reviewedFunctions:true,immutableHistory:true,schemaCatalog:true,foreignKeys:true,permissions:true,referencesSound:true};
+  const progress:ProgressReviewIntegrity={baselineCatalog:false,revisedCatalog:true,publishedGuards:true,revisionGuards:true,foreignKeys:true,permissions:true,referencesSound:true};
+  const inboundProjection:ContactInboundProjectionIntegrity={objectsAbsent:false,tables:true,schemaCatalog:true,foreignKeys:true,historyImmutable:true,livePersonGuards:true,reviewedFunctions:true,permissions:true,referencesSound:true};
+  const before=[prior,next,taskSuffix,sourceSuffix,voiceSuffix,authoritySuffix,inboundSuffix,
+   {name:PRACTICE_SUBJECT_GUARDS_MIGRATION.name,checksum:PRACTICE_SUBJECT_GUARDS_MIGRATION.sha256,sql:'SELECT 1;'},
+   {name:PROGRESS_REVIEW_REVISIONS_MIGRATION.name,checksum:PROGRESS_REVIEW_REVISIONS_MIGRATION.sha256,sql:'SELECT 1;'},
+   {name:CONTACT_INBOUND_PROJECTION_MIGRATION.name,checksum:CONTACT_INBOUND_PROJECTION_MIGRATION.sha256,sql:'SELECT 1;'}];
+  const suffix={name:CONTACT_OUTBOUND_PROJECTION_MIGRATION.name,checksum:CONTACT_OUTBOUND_PROJECTION_MIGRATION.sha256,sql:'SELECT 1;'};
+  const files=[...before,suffix];
+  const absent:ContactOutboundProjectionIntegrity={objectsAbsent:true,table:false,schemaCatalog:false,foreignKeys:false,pendingIndex:false,permissions:false,referencesSound:false};
+  const applied:ContactOutboundProjectionIntegrity={objectsAbsent:false,table:true,schemaCatalog:true,foreignKeys:true,pendingIndex:true,permissions:true,referencesSound:true};
+  const state=(history=before,proof:ContactOutboundProjectionIntegrity|undefined=absent,oldInbound=inboundProjection)=>
+   contactOpsMigrationState(files,history,present,taskPresent,sourceApplied,voicePresent,authorityPresent,inboundPresent,practice,progress,oldInbound,proof);
+  expect(state()).toBe('pending');expect(state(files,applied)).toBe('applied');
+  expect(()=>state(before.slice(0,-1))).toThrow();expect(()=>state(before,applied)).toThrow();expect(()=>state(files,absent)).toThrow();
+  expect(()=>state(before,absent,{...inboundProjection,referencesSound:false})).toThrow();
+  for(const key of Object.keys(applied).filter(key=>key!=='objectsAbsent') as (keyof ContactOutboundProjectionIntegrity)[]){
+   expect(()=>state(before,{...absent,[key]:true})).toThrow();expect(()=>state(files,{...applied,[key]:false})).toThrow();
+  }
+  expect(()=>contactOpsMigrationState(files,before,present,taskPresent,sourceApplied,voicePresent,authorityPresent,inboundPresent,practice,progress,inboundProjection)).toThrow('CONTACT_OPS_OUTBOUND_READBACK_INVALID');
+  expect(()=>state(before,{...absent,extra:true} as ContactOutboundProjectionIntegrity)).toThrow('CONTACT_OPS_OUTBOUND_READBACK_INVALID');
+  expect(()=>contactOpsMigrationState([...before,{...suffix,checksum:'0'.repeat(64)}],before,present,taskPresent,sourceApplied,voicePresent,authorityPresent,inboundPresent,practice,progress,inboundProjection,absent)).toThrow('CONTACT_OPS_MANIFEST_MISMATCH');
  });
  it('admits exact0108 only after all27 prior gates, exact baseline/current catalogs and private immutable revision guards',()=>{
   const practice:PracticeSubjectIntegrity={baselineFunctions:false,reviewedFunctions:true,immutableHistory:true,schemaCatalog:true,foreignKeys:true,permissions:true,referencesSound:true};

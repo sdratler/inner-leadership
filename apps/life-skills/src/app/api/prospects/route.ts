@@ -18,6 +18,7 @@ import {PreEnrollmentStaffService} from "@/features/forms/pre-enrollment/staff.t
 import {respondentLink} from "@/features/forms/pre-enrollment/staff-link.ts";
 import {demoRecordBatch} from "@/features/demo/provenance.ts";
 import {prospectContactSuppressed} from "@/features/prospects/native-edit.ts";
+import {OutboundProjectionStore,type OutboundReceipt} from "@/features/contact-ops/server/outbound-projection-store.ts";
 const lead=z.string().regex(/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]+$/);
 const body=z.discriminatedUnion("action",[
  prospectCreateSchema,
@@ -28,7 +29,10 @@ const body=z.discriminatedUnion("action",[
 ]);
 function fail(error:unknown){const e=errorEnvelope(error instanceof AppError?error:new AppError("UNAVAILABLE"),randomUUID());return NextResponse.json(e.body,{status:e.status,headers:{"Cache-Control":"private, no-store","Referrer-Policy":"no-referrer"}})}
 async function session(request:Request){const values=(request.headers.get("cookie")||"").split(";").map(v=>v.trim()).filter(v=>v.startsWith(SESSION_COOKIE+"="));if(values.length!==1)throw new AppError("UNAUTHENTICATED");const runtime=await identityRuntime(),token=values[0]!.slice(SESSION_COOKIE.length+1),actor=await runtime.services.sessions.actor(token);if(actor.role!=="practitioner")throw new AppError("FORBIDDEN");return {runtime,token,actor};}
-async function project(actor:Actor,runtime:Awaited<ReturnType<typeof identityRuntime>>,leadId:string,fields:Record<string,string>,epoch:number){return projectLegacyProspectAfterSend(actor,runtime,leadId,fields,epoch);}
+async function project(actor:Actor,runtime:Awaited<ReturnType<typeof identityRuntime>>,leadId:string,
+ fields:Record<string,string>,epoch:number,operationId:string,receipt:OutboundReceipt){
+ return projectLegacyProspectAfterSend(actor,runtime,leadId,fields,epoch,operationId,receipt);
+}
 async function requireContactableProspect(runtime:Awaited<ReturnType<typeof identityRuntime>>,actor:Actor,leadId:string){
  const batch=await runtime.store.transaction(tx=>demoRecordBatch(tx,runtime.config.workspaceId,'prospect',leadId));if(batch)throw new AppError('FORBIDDEN');
  // A disabled button is not an opt-out boundary. Recheck the actual current
@@ -36,12 +40,55 @@ async function requireContactableProspect(runtime:Awaited<ReturnType<typeof iden
  const row=(await readAuthoritativeProspects(actor,runtime)).find(row=>row.leadId===leadId);
  if(!row)throw new AppError('NOT_FOUND');if(prospectContactSuppressed(row))throw new AppError('FORBIDDEN');
 }
-export async function GET(request:Request){try{const s=await session(request),rows=await readAuthoritativeProspects(s.actor,s.runtime),states=await readProspectJourneys(s.runtime.store,s.runtime.config.workspaceId,rows.map(row=>row.leadId));return NextResponse.json({ok:true,data:rows.map(row=>({...row,...(states.get(row.leadId)??{journeyState:"prospect",paymentVerified:false,bookingConfirmed:false})})),requestId:randomUUID()},{headers:{"Cache-Control":"private, no-store","Referrer-Policy":"no-referrer"}})}catch(e){return fail(e)}}
+export async function GET(request:Request){try{
+ const s=await session(request),rows=await readAuthoritativeProspects(s.actor,s.runtime);
+ const states=await readProspectJourneys(s.runtime.store,s.runtime.config.workspaceId,rows.map(row=>row.leadId));
+ const pending=await new OutboundProjectionStore(s.runtime.store,s.runtime.config.keyring,
+  s.runtime.config.lookupKey.toString("hex"),s.runtime.clock).pendingLeads(s.actor,rows.map(row=>row.leadId));
+ return NextResponse.json({ok:true,data:rows.map(row=>({...row,...(states.get(row.leadId)??{
+  journeyState:"prospect",paymentVerified:false,bookingConfirmed:false}),projectionPending:pending.has(row.leadId)})),
+  requestId:randomUUID()},{headers:{"Cache-Control":"private, no-store","Referrer-Policy":"no-referrer"}});
+}catch(e){return fail(e)}}
 export async function POST(request:Request){try{const s=await session(request);verifyMutationOrigin(request,s.runtime.config.origin);verifyCsrfToken(request.headers.get("x-csrf-token"),s.runtime.services.sessions.csrf(s.token));const input=await readJson(request,body);
  if(input.action==="add"){const result=await createAuthoritativeProspect(s.actor,input,s.runtime);return NextResponse.json({ok:true,data:result,requestId:randomUUID()},{status:result.action==="created"?201:200,headers:{"Cache-Control":"private, no-store","Referrer-Policy":"no-referrer"}})}
  if(input.action==="update"){const result=await updateAuthoritativeProspect(s.actor,input,s.runtime);return NextResponse.json({ok:true,data:result,requestId:randomUUID()},{headers:{"Cache-Control":"private, no-store"}})}
- if(input.action==="send_message"){await requireContactableProspect(s.runtime,s.actor,input.leadId);const sent=await sendAuthoritativeProspectMessage(s.actor,s.runtime,input.leadId,input.message);const projectionPending=await project(s.actor,s.runtime,input.leadId,{...(input.nextAction?{nextAction:input.nextAction}:{}),...(input.dueDate?{dueDate:input.dueDate}:{}),stage:"Contacted",updateProvenance:"private-app:practitioner-click"},sent.authorityEpoch);return NextResponse.json({ok:true,data:{...sent.receipt,projectionPending},requestId:randomUUID()},{headers:{"Cache-Control":"private, no-store"}})}
- if(input.action==="send_intake"){await requireContactableProspect(s.runtime,s.actor,input.leadId);const epoch=await assertLegacyProspectSenderAvailable(s.actor,s.runtime);const issued=await new PreEnrollmentStaffService(s.runtime.store,s.runtime.config.keyring,()=>s.runtime.clock.now()).issue(s.actor,input.leadId,input.childCount);const href=respondentLink(s.runtime.config.origin,issued.token,input.locale);if(!href)throw new AppError("UNAVAILABLE");const hello=input.locale==="he"?(input.firstName?`שלום ${input.firstName},`:`שלום,`):(input.firstName?`Hi ${input.firstName},`:`Hi,`);const message=input.locale==="he"?`${hello} בהמשך לשיחה שלנו, זה הקישור לטופס ההיכרות: ${href}. לאחר מילוי הטופס אפשר להמשיך לתשלום עבור הפגישה הראשונה.`:`${hello} following our conversation, here is the intake form: ${href}. After submitting it, you can continue to payment for the first session.`;const sent=await sendAuthoritativeProspectMessage(s.actor,s.runtime,input.leadId,message,undefined,epoch),sentAt=sent.receipt.sentAt??new Date().toISOString();const projectionPending=await project(s.actor,s.runtime,input.leadId,{formSent:sentAt,stage:"Intake sent",nextAction:"Review submitted intake",dueDate:"",messageReceipt:sent.receipt.providerMessageId??`Whapi delivery confirmed at ${sentAt}`,updateProvenance:"private-app:intake-sent"},sent.authorityEpoch);return NextResponse.json({ok:true,data:{sentAt,expiresAt:issued.expiresAt,projectionPending},requestId:randomUUID()},{headers:{"Cache-Control":"private, no-store"}})}
+ if(input.action==="send_message"){
+  await requireContactableProspect(s.runtime,s.actor,input.leadId);
+  const fields={...(input.nextAction?{nextAction:input.nextAction}:{}),...(input.dueDate?{dueDate:input.dueDate}:{}),
+   stage:"Contacted",updateProvenance:"private-app:practitioner-click"};
+  const sent=await sendAuthoritativeProspectMessage(s.actor,s.runtime,input.leadId,input.message,fields);
+  const projection=await project(s.actor,s.runtime,input.leadId,fields,sent.authorityEpoch,sent.operationId,sent.receipt);
+  return NextResponse.json({ok:true,data:{...sent.receipt,...projection},requestId:randomUUID()},
+   {headers:{"Cache-Control":"private, no-store"}});
+ }
+ if(input.action==="send_intake"){
+  await requireContactableProspect(s.runtime,s.actor,input.leadId);
+  const epoch=await assertLegacyProspectSenderAvailable(s.actor,s.runtime);
+  const issued=await new PreEnrollmentStaffService(s.runtime.store,s.runtime.config.keyring,()=>s.runtime.clock.now())
+   .issue(s.actor,input.leadId,input.childCount);
+  const href=respondentLink(s.runtime.config.origin,issued.token,input.locale);if(!href)throw new AppError("UNAVAILABLE");
+  const hello=input.locale==="he"?(input.firstName?`שלום ${input.firstName},`:`שלום,`):
+   (input.firstName?`Hi ${input.firstName},`:`Hi,`);
+  const message=input.locale==="he"?`${hello} בהמשך לשיחה שלנו, זה הקישור לטופס ההיכרות: ${href}. לאחר מילוי הטופס אפשר להמשיך לתשלום עבור הפגישה הראשונה.`:
+   `${hello} following our conversation, here is the intake form: ${href}. After submitting it, you can continue to payment for the first session.`;
+  const planned={stage:"Intake sent",nextAction:"Review submitted intake",dueDate:"",updateProvenance:"private-app:intake-sent"};
+  const sent=await sendAuthoritativeProspectMessage(s.actor,s.runtime,input.leadId,message,planned,undefined,epoch);
+  const sentAt=sent.receipt.sentAt??new Date().toISOString();
+  const fields={...planned,formSent:sentAt,messageReceipt:sent.receipt.providerMessageId??`Whapi delivery confirmed at ${sentAt}`};
+  const projection=await project(s.actor,s.runtime,input.leadId,fields,sent.authorityEpoch,sent.operationId,sent.receipt);
+  return NextResponse.json({ok:true,data:{sentAt,expiresAt:issued.expiresAt,...projection},requestId:randomUUID()},
+   {headers:{"Cache-Control":"private, no-store"}});
+ }
  await requireContactableProspect(s.runtime,s.actor,input.leadId);
- const journey=(await readProspectJourneys(s.runtime.store,s.runtime.config.workspaceId,[input.leadId])).get(input.leadId);if(!journey||!paidAwaitingBooking(journey))throw new AppError("CONFLICT");const message=input.locale==="he"?`התשלום התקבל. כאן אפשר לבחור מועד לפגישה: ${input.bookingLink}. הפגישה נקבעת לאחר קבלת אישור המועד.`:`Payment has been received. You can choose an appointment here: ${input.bookingLink}. The appointment is booked once the time is confirmed.`;const sent=await sendAuthoritativeProspectMessage(s.actor,s.runtime,input.leadId,message),sentAt=sent.receipt.sentAt??new Date().toISOString();const projectionPending=await project(s.actor,s.runtime,input.leadId,{bookingStatus:"Link sent; awaiting confirmed appointment",nextAction:"Confirm first appointment",messageReceipt:sent.receipt.providerMessageId??`Whapi delivery confirmed at ${sentAt}`,updateProvenance:"private-app:booking-link-sent"},sent.authorityEpoch);return NextResponse.json({ok:true,data:{...sent.receipt,projectionPending},requestId:randomUUID()},{headers:{"Cache-Control":"private, no-store"}});
+ const journey=(await readProspectJourneys(s.runtime.store,s.runtime.config.workspaceId,[input.leadId])).get(input.leadId);
+ if(!journey||!paidAwaitingBooking(journey))throw new AppError("CONFLICT");
+ const message=input.locale==="he"?`התשלום התקבל. כאן אפשר לבחור מועד לפגישה: ${input.bookingLink}. הפגישה נקבעת לאחר קבלת אישור המועד.`:
+  `Payment has been received. You can choose an appointment here: ${input.bookingLink}. The appointment is booked once the time is confirmed.`;
+ const planned={bookingStatus:"Link sent; awaiting confirmed appointment",nextAction:"Confirm first appointment",
+  updateProvenance:"private-app:booking-link-sent"};
+ const sent=await sendAuthoritativeProspectMessage(s.actor,s.runtime,input.leadId,message,planned),sentAt=sent.receipt.sentAt??new Date().toISOString();
+ const fields={...planned,messageReceipt:sent.receipt.providerMessageId??`Whapi delivery confirmed at ${sentAt}`};
+ const projection=await project(s.actor,s.runtime,input.leadId,fields,sent.authorityEpoch,sent.operationId,sent.receipt);
+ return NextResponse.json({ok:true,data:{...sent.receipt,...projection},requestId:randomUUID()},
+  {headers:{"Cache-Control":"private, no-store"}});
  }catch(e){return fail(e)}}

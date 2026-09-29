@@ -6,11 +6,15 @@ import {sendProspectMessage,updateProspect} from "../../prospects/bridge.ts";
 import {writeDestination,type CutoverState} from "../core/cutover.ts";
 import {readCutoverState} from "./cutover-state.ts";
 import {ContactCutoverStore} from "./cutover-store.ts";
+import {OutboundProjectionStore,type OutboundReceipt} from "./outbound-projection-store.ts";
 
 type Runtime=Pick<Awaited<ReturnType<typeof identityRuntime>>,"store"|"config"|"clock">;
 type Authority={read:(actor:Actor)=>Promise<CutoverState>};
 type Sender=(leadId:string,message:string,context:{store:Runtime["store"];workspaceId:string})=>ReturnType<typeof sendProspectMessage>;
 type LegacyUpdate=(leadId:string,fields:Record<string,string>)=>Promise<unknown>;
+type Ledger=Pick<OutboundProjectionStore,"prepare"|"confirm"|"projected">;
+const ledger=(runtime:Runtime)=>new OutboundProjectionStore(runtime.store,runtime.config.keyring,
+ runtime.config.lookupKey.toString("hex"),runtime.clock);
 
 /** Legacy transport is tied to the Sheet CRM. A native or frozen authority must
  * never send through it merely because an old browser still has a lead ID.
@@ -26,11 +30,12 @@ export async function assertLegacyProspectSenderAvailable(actor:Actor,runtime:Ru
  return state.epoch;
 }
 export async function sendAuthoritativeProspectMessage(actor:Actor,runtime:Runtime,leadId:string,message:string,
- dependencies?:{authority:Authority;sender:Sender},expectedEpoch?:number){
+ plannedFields:Record<string,string>,dependencies?:{authority:Authority;sender:Sender;ledger:Ledger},expectedEpoch?:number){
  const authorityEpoch=await assertLegacyProspectSenderAvailable(actor,runtime,dependencies?.authority);
  if(expectedEpoch!==undefined&&authorityEpoch!==expectedEpoch)throw new AppError("CONFLICT");
+ const operationId=await (dependencies?.ledger??ledger(runtime)).prepare(actor,leadId,authorityEpoch,message,plannedFields);
  const sent=await (dependencies?.sender??sendProspectMessage)(leadId,message,{store:runtime.store,workspaceId:runtime.config.workspaceId});
- return {...sent,authorityEpoch};
+ return {...sent,authorityEpoch,operationId};
 }
 
 /** Provider delivery and a Sheet update are not atomic. If authority changed
@@ -38,16 +43,27 @@ export async function sendAuthoritativeProspectMessage(actor:Actor,runtime:Runti
  * projection for explicit cutover reconciliation; never revive the old writer.
  */
 export async function projectLegacyProspectAfterSend(actor:Actor,runtime:Runtime,leadId:string,
- fields:Record<string,string>,expectedEpoch:number,dependencies?:{authority:Authority;update:LegacyUpdate}):Promise<boolean>{
+ fields:Record<string,string>,expectedEpoch:number,operationId:string,receipt:OutboundReceipt,
+ dependencies?:{authority:Authority;update:LegacyUpdate;ledger:Ledger}):Promise<{projectionPending:boolean;receiptPersistencePending:boolean}>{
  if(actor.role!=="practitioner")throw new AppError("FORBIDDEN");
+ const pending={projectionPending:true,receiptPersistencePending:false};
+ const selectedLedger=dependencies?.ledger??ledger(runtime);
+ // The prepared encrypted intent already contains the requested fields. Store
+ // the provider receipt and final fields before any Sheet projection is tried.
+ try{await selectedLedger.confirm(actor,operationId,receipt,fields);}
+ catch{return {...pending,receiptPersistencePending:true};}
  const authority=dependencies?.authority??new ContactCutoverStore(runtime.store,runtime.config.keyring,
   runtime.config.lookupKey.toString("hex"),runtime.clock);
  // Delivery already succeeded. A failed authority read must not turn the
  // response into an apparent send failure that could prompt a duplicate send.
  let state:CutoverState;
- try{state=await authority.read(actor);}catch{return true;}
- if(state.epoch!==expectedEpoch||writeDestination(state.phase)!=="sheet")return true;
- try{await (dependencies?.update??updateProspect)(leadId,fields);return false;}catch{return true;}
+ try{state=await authority.read(actor);}catch{return pending;}
+ if(state.epoch!==expectedEpoch||writeDestination(state.phase)!=="sheet")return pending;
+ try{
+  await (dependencies?.update??updateProspect)(leadId,fields);
+  await selectedLedger.projected(actor,operationId);
+  return {projectionPending:false,receiptPersistencePending:false};
+ }catch{return pending;}
 }
 
 /** A submitted form is already durable in the private onboarding store. Its

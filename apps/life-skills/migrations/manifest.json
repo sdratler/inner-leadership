@@ -114,5 +114,9 @@
   {
     "name": "0109_ls_contact_inbound_projection.sql",
     "sha256": "b7dfad436d24a2a44fe08f74658d4571d6288ad9e5fa973f495cec5514444218"
+  },
+  {
+    "name": "0110_ls_contact_outbound_projection.sql",
+    "sha256": "fc96798be857b1bcbe5b68fe971e2dc6b18172886fd8663951f1a1f4b8c38c15"
   }
 ]
