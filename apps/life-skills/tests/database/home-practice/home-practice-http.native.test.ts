@@ -1,7 +1,8 @@
 /** Native HTTP/service/SQL proof on the existing disposable loopback-only fixture.
  * Persisted fixture sessions test authorization, not ordinary password login.
  */
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
+import { NextRequest } from "next/server";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { fixture, poolStore, type Fixture } from "../calendar/fixture.ts";
 import { asId } from "../../../src/lib/ids.ts";
@@ -17,9 +18,10 @@ import { CommitmentService } from "../../../src/features/commitments/service.ts"
 import { CheckInService } from "../../../src/features/checkins/service.ts";
 import { HomePracticeService } from "../../../src/features/home-practice/service.ts";
 import { Ls040Http } from "../../../src/features/home-practice/http.ts";
+import { proxy } from "../../../src/proxy.ts";
 
 const opened: Fixture[] = [];
-afterEach(async () => { await Promise.all(opened.splice(0).map(f => f.pool.end())); });
+afterEach(async () => { vi.unstubAllEnvs(); await Promise.all(opened.splice(0).map(f => f.pool.end())); });
 async function setup() {
   const f = await fixture(); opened.push(f);
   const config: IdentityConfig = { enabled: true, origin: "https://synthetic.example.invalid", workspaceId: f.workspaceId,
@@ -40,6 +42,28 @@ async function setup() {
     for (const [key, value] of Object.entries(extraHeaders)) headers.set(key, value);
     return http.handle(new Request((forwarded ? "http://127.0.0.1:8080" : config.origin) + path,
       { method, headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }));
+  }
+  async function proxyRequest(method: "GET" | "POST", path: string, body?: unknown,
+    token: string | null = f.practitioner.token, extraHeaders: Record<string, string> = {}) {
+    vi.stubEnv("NODE_ENV", "production"); vi.stubEnv("LS_APP_MODE", "foundation_locked");
+    vi.stubEnv("LS_APP_ORIGIN", config.origin); vi.stubEnv("LS_PRIVATE_APP_ENABLED", "true");
+    const headers = new Headers({ host: new URL(config.origin).host, "x-forwarded-host": new URL(config.origin).host, "x-forwarded-proto": "https" });
+    if (token) headers.set("Cookie", `${SESSION_COOKIE}=${token}`);
+    if (method === "POST") {
+      headers.set("Origin", config.origin); headers.set("Content-Type", "application/json");
+      if (token) headers.set("X-CSRF-Token", sessions.csrf(token));
+    }
+    for (const [key, value] of Object.entries(extraHeaders)) headers.set(key, value);
+    const inbound = new NextRequest("http://127.0.0.1:8080" + path,
+      { method, headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+    const perimeter = proxy(inbound);
+    if (perimeter.headers.get("x-middleware-next") !== "1") return perimeter;
+    const forwardedHeaders = new Headers(inbound.headers);
+    for (const key of (perimeter.headers.get("x-middleware-override-headers") ?? "").split(",").filter(Boolean)) {
+      const value = perimeter.headers.get("x-middleware-request-" + key);
+      if (value === null) forwardedHeaders.delete(key); else forwardedHeaders.set(key, value);
+    }
+    return http.handle(new Request(inbound, { headers: forwardedHeaders }));
   }
   const listPath = (c = f.first, kind = "home-practice") => `/api/${kind}?caseId=${c.id}&audienceId=${c.audienceId}`;
   const draftInput = (c = f.first) => ({ action: "create_draft", caseId: c.id, audienceId: c.audienceId,
@@ -73,8 +97,35 @@ async function setup() {
     } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
     return { actor, token };
   }
-  return { f, config, sessions, practice, request, listPath, draftInput, draft, publish, clientIdentity };
+  return { f, config, sessions, practice, request, proxyRequest, listPath, draftInput, draft, publish, clientIdentity };
 }
+
+test("native full Next proxy chain rejects invalid forwarding before persistence and preserves valid body, authentication and case checks", async () => {
+  const h = await setup(), { f } = h;
+  const before = await f.pool.query("SELECT count(*)::integer AS count FROM ls_identity.foundation_audit WHERE workspace_id=$1", [f.workspaceId]);
+  for (const path of ["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins"]) {
+    for (const headers of [{ "x-forwarded-proto": "http" }, { "x-forwarded-proto": "https,http" },
+      { "x-forwarded-host": "evil.invalid" }, { "x-forwarded-host": "synthetic.example.invalid,evil.invalid" }, { host: "evil.invalid" }]) {
+      const response = await h.proxyRequest("POST", path, h.draftInput(), f.practitioner.token, headers);
+      expect(response.status).toBe(503); expect(await response.json()).toMatchObject({ ok: false, error: { code: "UNAVAILABLE" } });
+      expect(response.headers.get("x-middleware-next")).toBeNull();
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+    }
+  }
+  const untouched = await f.pool.query("SELECT count(*)::integer AS count FROM ls_practice.practice_assignment_versions WHERE workspace_id=$1", [f.workspaceId]);
+  expect(untouched.rows[0].count).toBe(0);
+  const after = await f.pool.query("SELECT count(*)::integer AS count FROM ls_identity.foundation_audit WHERE workspace_id=$1", [f.workspaceId]);
+  expect(after.rows).toEqual(before.rows);
+  expect((await h.proxyRequest("GET", h.listPath(), undefined, null)).status).toBe(401);
+  expect((await h.proxyRequest("POST", "/api/home-practice", h.draftInput(), f.practitioner.token, { "x-csrf-token": "wrong" })).status).toBe(403);
+  const created = await h.proxyRequest("POST", "/api/home-practice", h.draftInput()); expect(created.status).toBe(201);
+  const saved = (await created.json()).data;
+  const hidden = await h.proxyRequest("GET", h.listPath(), undefined, f.parent.token); expect(hidden.status).toBe(200); expect((await hidden.json()).data).toEqual([]);
+  expect((await h.proxyRequest("POST", "/api/home-practice", { action: "publish", ...saved })).status).toBe(201);
+  const visible = await h.proxyRequest("GET", h.listPath(), undefined, f.parent.token); expect(visible.status).toBe(200);
+  expect((await visible.json()).data).toMatchObject([{ ...saved, instructions: h.draftInput().instructions }]);
+  expect((await h.proxyRequest("GET", h.listPath(f.second), undefined, f.parent.token)).status).toBe(404);
+});
 
 test("native HTTPS-forwarded practice preserves encrypted draft, explicit publication and authorized parent readback", async () => {
   const h = await setup(), { f } = h;

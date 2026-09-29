@@ -6,6 +6,7 @@ import { runtimePublicConsent } from "./features/forms/pre-enrollment/consent.ts
 import { ownerPreviewConfig } from "./features/forms/pre-enrollment/owner-preview.ts";
 import { intakeStaffEntry } from "./features/forms/pre-enrollment/public-origin.ts";
 import { parentReturnPath, practitionerDetailReturnPath, practitionerReturnPath } from "./features/identity/login-return.ts";
+import { canonicalForwardedRequest } from "./features/integration/canonical-forwarded-request.ts";
 
 const intakeIdentityRoutes = new Set([
   "/api/identity/csrf", "/api/identity/login", "/api/identity/session",
@@ -65,6 +66,21 @@ export function proxy(request: NextRequest) {
   }
   const headers = securityHeaders(nonce, env.NODE_ENV === "development", env.LS_APP_ORIGIN.startsWith("https:"));
   const pathname = request.nextUrl.pathname;
+  const canonicalOrigin = new URL(env.LS_APP_ORIGIN);
+  const requestHost = (request.headers.get("host") ?? request.nextUrl.host).trim().toLowerCase();
+  // These APIs depend on strict canonical HTTPS forwarding. Validate the original
+  // transport before the request-header rewrite below can hide an invalid chain.
+  // Forwarding never grants a session, role, case or audience permission.
+  if (["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins"].includes(pathname)) {
+    try {
+      if (request.nextUrl.hash || requestHost !== canonicalOrigin.host.toLowerCase()) throw new Error("invalid transport");
+      if (request.headers.has("x-forwarded-proto") || request.headers.has("x-forwarded-host")) {
+        canonicalForwardedRequest(request.clone(), env.LS_APP_ORIGIN);
+      } else if (request.nextUrl.protocol !== canonicalOrigin.protocol) throw new Error("invalid transport");
+    } catch {
+      return decorate(NextResponse.json({ ok: false, error: { code: "UNAVAILABLE" }, requestId: crypto.randomUUID() }, { status: 503 }), headers);
+    }
+  }
   if (process.env.LS_PRIVATE_APP_ENABLED !== "true" && intakeReleasePath("/en/intake/staff", process.env)) {
     try {
       const entry = intakeStaffEntry(request, process.env);
@@ -108,8 +124,6 @@ export function proxy(request: NextRequest) {
   const robots = pathname === "/robots.txt";
   const isolatedPreview = env.LS_APP_MODE === "isolated_preview";
   const isolatedPreviewPage = pathname === "/" || /^\/(he|en)\/preview(?:\/|$)/.test(pathname);
-  const canonicalOrigin = new URL(env.LS_APP_ORIGIN);
-  const requestHost = (request.headers.get("host") ?? request.nextUrl.host).trim().toLowerCase();
   // Railway may retain its internal service hostname in nextUrl even when the
   // edge-routed Host is the registered custom domain. Host/proto select the
   // perimeter only; identity, role and case authorization still gate data.
