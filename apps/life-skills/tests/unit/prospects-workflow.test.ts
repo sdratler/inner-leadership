@@ -41,6 +41,16 @@ describe("live intake follow-up contract",()=>{
   expect(boundary).toContain('destination==="durable_queue_only"');expect(boundary).toContain("d.native.createContact");
   expect(boundary).toContain("sheet:{create:createProspect}");expect(boundary).not.toContain("sendProspectMessage");
  });
+ it("routes every provider send and public-intake projection through the cutover fence",()=>{
+  const prospects=read("app/api/prospects/route.ts"),intake=read("app/api/intake/route.ts");
+  expect((prospects.match(/sendAuthoritativeProspectMessage\(s\.actor/g)??[]).length).toBe(3);
+  expect(prospects).toContain("assertLegacyProspectSenderAvailable(s.actor,s.runtime)");
+  expect(prospects).toContain("sent.authorityEpoch");
+  expect(prospects).not.toContain("sendProspectMessage(");
+  expect(prospects).not.toContain("updateProspect(");
+  expect(intake).toContain("projectIntakeToLegacyIfCurrent(");
+  expect(intake).not.toContain("updateProspect(");
+ });
  it("does not expose import or history-scan actions",()=>{const route=read("app/api/prospects/route.ts");expect(route).not.toMatch(/history.scan|backfill|bulk.import/i);});
  it("rejects a marked demo prospect at the final WhatsApp bridge without calling the provider",async()=>{
   const fetchMock=vi.fn();vi.stubGlobal("fetch",fetchMock);
