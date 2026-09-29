@@ -157,6 +157,33 @@ test('verified existing person gets a separate WhatsApp inquiry without smearing
   {state:'needs_resolution',reason:'ambiguous_endpoint',person_id:null}]);
  expect((await crm.prospects(actor,3)).find(r=>r.leadId===received.leadId)).toMatchObject({phone:inquiry.fromNumber,notes:received.notes,lastInboundAt:received.lastInboundAt});
 });
+test('immutable imported Outcome/stage opt-outs remain review-only for first and subsequent inbound messages',async()=>{
+ for(const restriction of [{outcome:'Do not contact — synthetic owner restriction',stage:'New inquiry'},
+  {outcome:'Opted out',stage:'New inquiry'},{outcome:'',stage:'Do-not-contact'}]){
+  const {f,db,actor,crm,store,activate,count}=await setup(),personId=f.parent.actor.personId!;
+  const leadId='LS-LEAD-imported-opt-out';
+  await new NativeCrmStore(db,f.keyring,key).create(actor,{personId,stage:'New inquiry',nextAction:null,
+   followUpDate:null,notes:'Preserve imported administrative note — לא ליצור קשר',legacyIds:[leadId]},randomUUID());
+  const snapshot={sourceRow:2,payload:{displayName:'Synthetic opted-out inquiry',language:'en',stageText:restriction.stage,
+   sourceFields:{'Lead ID':leadId,Phone:'+972501234585',Outcome:restriction.outcome}}};
+  const ciphertext=seal(JSON.stringify(snapshot),`ls_contact_ops/legacy/v1/${f.workspaceId}/synthetic-opt-out-workbook/1/${leadId}`,f.keyring);
+  await f.pool.query(`INSERT INTO ls_contact_ops.legacy_links(workspace_id,source_file_id,source_sheet_id,source_tab_title,
+   legacy_lead_id,person_id,source_revision,row_digest,snapshot_ciphertext) VALUES($1,'synthetic-opt-out-workbook',1,'Synthetic Leads',$2,$3,'preserved-opt-out-revision',$4,$5)`,
+   [f.workspaceId,leadId,personId,'b'.repeat(64),ciphertext]);
+  await f.pool.query('UPDATE ls_identity.accounts SET phone_ciphertext=$2,phone_verified_at=clock_timestamp() WHERE id=$1',
+   [f.parent.actor.id,seal(inquiry.fromNumber,`phone:${f.workspaceId}:${f.parent.actor.id}`,f.keyring)]);
+  await activate();const people=await count('ls_identity.people'),accounts=await count('ls_identity.accounts'),cases=await count('ls_cases.cases');
+  const all=()=>crm.list(actor,{view:'all',search:'',today:'2026-09-29',page:1,pageSize:100,personId},3);
+  expect((await all()).items[0]?.doNotContact).toBe(true);
+  await store.capture(inquiry);await store.capture({...inquiry,providerEventId:'opt-out-second',providerMessageId:'opt-out-second',occurredAt:'2026-09-28T03:00:00Z'});
+  const row=(await all()).items[0]!;expect(row).toMatchObject({personId,doNotContact:true,nextAction:'Review inbound inquiry',
+   notes:'Preserve imported administrative note — לא ליצור קשר',inboundActivity:{messageCount:2}});
+  expect(row.followUpDate).toBe(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jerusalem'}).format(new Date()));
+  expect((await crm.prospects(actor,3)).every(r=>r.stage==='Do not contact'&&r.nextAction==='Review inbound inquiry')).toBe(true);
+  expect((await f.pool.query('SELECT snapshot_ciphertext FROM ls_contact_ops.legacy_links WHERE workspace_id=$1',[f.workspaceId])).rows[0].snapshot_ciphertext).toBe(ciphertext);
+  expect(await count('ls_identity.people')).toBe(people);expect(await count('ls_identity.accounts')).toBe(accounts);expect(await count('ls_cases.cases')).toBe(cases);
+ }
+});
 test('demo account endpoints cannot create live contacts, and ordinary profile edits cannot rewrite provider provenance/activity',async()=>{
  const {f,db,actor,store,activate,list,count}=await setup({demoFirst:true});await activate();
  await f.pool.query('UPDATE ls_identity.accounts SET phone_ciphertext=$2,phone_verified_at=clock_timestamp() WHERE id=$1',

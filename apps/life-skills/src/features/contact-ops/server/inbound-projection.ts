@@ -27,7 +27,7 @@ const resolutionSchema=z.object({state:z.enum(["projected","needs_resolution"]),
 type Resolution=z.infer<typeof resolutionSchema>;
 type ProfileRow={personId:string;ciphertext:string;version:number;mode:"live"|"demo";demoBatch:string|null};
 const resolutionAad=(workspace:string,binding:string,message:string)=>`ls_contact_ops/inbound-projection/v1/${workspace}/${binding}/${message}`;
-const sourceSchema=z.object({payload:z.object({sourceFields:z.record(z.string(),z.string())})});
+const sourceSchema=z.object({payload:z.object({stageText:z.string(),sourceFields:z.record(z.string(),z.string())})});
 const phoneField=(fields:Record<string,string>)=>Object.entries(fields).find(([header])=>header.trim()==="Phone")?.[1]??"";
 const whatsappOrigin=(personId:string,inquiry:InboundInquiry,keys:InboundProjectionKeys)=>({
  origin:"native_whatsapp",leadId:"LS-WAPI-native-"+personId,phone:inquiry.fromNumber,
@@ -56,6 +56,26 @@ export class NativeInboundProjection {
   if(row.mode!=="live"||row.demoBatch!==null||!Number.isSafeInteger(row.version)||row.version<1||row.version>=2147483647)throw new AppError("CONFLICT");
   const profile=this.decode(crmProfileSchema,row.ciphertext,crmProfileAad(this.workspace,personId));
   if(profile.personId!==personId)throw new AppError("UNAVAILABLE");return {row,profile:profile as CrmProfile};
+ }
+ /** Imported restrictions remain authoritative even when the editable profile
+  * has no opt-out flag, or a later inquiry has a different outcome. Match the
+  * directory's conservative source protection; never infer consent from inbound.
+  */
+ private async sourceSuppressed(tx:SqlSession,profile:CrmProfile):Promise<boolean>{
+  const links=await tx.query<{leadId:string;fileId:string;sheetId:number;ciphertext:string}>(`SELECT
+   legacy_lead_id AS "leadId",source_file_id AS "fileId",source_sheet_id AS "sheetId",snapshot_ciphertext AS ciphertext
+   FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND person_id=$2 ORDER BY legacy_lead_id LIMIT $3`,
+   [this.workspace,profile.personId,MAX_NATIVE_CONTACTS*100+1]);
+  if(links.length>MAX_NATIVE_CONTACTS*100||new Set(links.map(link=>link.leadId)).size!==links.length||
+   [...profile.legacyIds].sort().join("\0")!==links.map(link=>link.leadId).sort().join("\0"))throw new AppError("UNAVAILABLE");
+  let suppressed=false;
+  for(const link of links){
+   const source=this.decode(sourceSchema,link.ciphertext,`ls_contact_ops/legacy/v1/${this.workspace}/${link.fileId}/${link.sheetId}/${link.leadId}`);
+   const field=(name:string)=>Object.entries(source.payload.sourceFields).find(([header])=>header.trim()===name)?.[1]??"";
+   if(field("Lead ID").trim()!==link.leadId)throw new AppError("UNAVAILABLE");
+   suppressed=contactSuppressed(source.payload.stageText)||contactSuppressed(field("Outcome"))||suppressed;
+  }
+  return suppressed;
  }
  /** An imported/unverified/shared phone is never upgraded to verified merely
   * because a business message arrived. Reserved inactive/demo accounts still
@@ -172,7 +192,8 @@ export class NativeInboundProjection {
   }
   if(existing&&outcome.personId){
    const saved=existing.profile,today=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Jerusalem"}).format(this.clock.now());
-   const suppressed=saved.doNotContact===true||contactSuppressed(saved.stage)||Object.values(saved.leadUpdates??{}).some(v=>contactSuppressed(v.outcome??""));
+   const sourceSuppressed=await this.sourceSuppressed(tx,saved);
+   const suppressed=sourceSuppressed||saved.doNotContact===true||contactSuppressed(saved.stage)||Object.values(saved.leadUpdates??{}).some(v=>contactSuppressed(v.outcome??""));
    const merged=crmProfileSchema.parse({...saved,...inboundFollowUp(saved,today,suppressed),
     // Each person has its own explicit provider inquiry. Historical/manual
     // references remain separate; never smear a new message across all leads.
