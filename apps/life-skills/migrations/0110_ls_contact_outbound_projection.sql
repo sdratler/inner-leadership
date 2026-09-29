@@ -10,13 +10,15 @@ CREATE TABLE ls_contact_ops.outbound_projections (
  request_digest text NOT NULL CHECK(request_digest ~ '^[a-f0-9]{64}$'),
  projection_ciphertext text NOT NULL CHECK(length(projection_ciphertext)>0),
  receipt_ciphertext text,
- state text NOT NULL DEFAULT 'prepared' CHECK(state IN ('prepared','sent_pending','projected')),
+ state text NOT NULL DEFAULT 'prepared' CHECK(state IN ('prepared','sent_pending','projected','not_delivered')),
  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ resolution_ciphertext text,
  PRIMARY KEY(workspace_id,operation_id),
  FOREIGN KEY(workspace_id,actor_account_id) REFERENCES ls_identity.accounts(workspace_id,id),
- CHECK((state='prepared' AND receipt_ciphertext IS NULL) OR
-       (state IN ('sent_pending','projected') AND receipt_ciphertext IS NOT NULL AND length(receipt_ciphertext)>0))
+ CHECK((state='prepared' AND receipt_ciphertext IS NULL AND resolution_ciphertext IS NULL) OR
+       (state IN ('sent_pending','projected') AND receipt_ciphertext IS NOT NULL AND length(receipt_ciphertext)>0 AND resolution_ciphertext IS NULL) OR
+       (state='not_delivered' AND receipt_ciphertext IS NULL AND resolution_ciphertext IS NOT NULL AND length(resolution_ciphertext)>0))
 );
 CREATE INDEX outbound_projections_pending ON ls_contact_ops.outbound_projections(workspace_id,state,created_at)
  WHERE state<>'projected';

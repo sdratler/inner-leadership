@@ -29,13 +29,13 @@ test("encrypted pre-send intent and receipt survive reload and forbid another se
  expect(raw.projection_ciphertext).not.toContain("Synthetic follow-up");
  expect(await ledger.read(a,operation)).toMatchObject({leadId:lead,state:"prepared",message:"Synthetic provider message",fields:planned,receipt:null});
  expect(await ledger.pendingLeads(a,[lead])).toEqual(new Set([lead]));
- expect(await ledger.pendingForLeads(a,[lead])).toEqual(new Map([[lead,{operationId:operation,state:"prepared"}]]));
+ expect((await ledger.pendingForLeads(a,[lead])).get(lead)).toMatchObject({operationId:operation,state:"prepared",message:"Synthetic provider message"});
  await expect(ledger.prepare(a,lead,0,"Second synthetic message",planned)).rejects.toMatchObject({code:"CONFLICT"});
  const receipt={provider:"synthetic",providerMessageId:"synthetic-provider-id",sentAt:"2026-09-30T00:00:00Z"};
  await ledger.confirm(a,operation,receipt,{...planned,messageReceipt:"synthetic-provider-id"});
  const finalFields={...planned,messageReceipt:"synthetic-provider-id"};
  expect(await ledger.read(a,operation)).toMatchObject({state:"sent_pending",message:"Synthetic provider message",receipt,fields:finalFields});
- expect(await ledger.pendingForLeads(a,[lead])).toEqual(new Map([[lead,{operationId:operation,state:"sent_pending"}]]));
+ expect((await ledger.pendingForLeads(a,[lead])).get(lead)).toMatchObject({operationId:operation,state:"sent_pending",message:"Synthetic provider message"});
  let visible={...planned};
  const update=vi.fn().mockImplementation(async (_lead:string,fields:typeof finalFields)=>{visible={...fields};});
  const list=vi.fn().mockImplementation(async()=>[{leadId:lead,...visible}]);
@@ -53,13 +53,31 @@ test("encrypted pre-send intent and receipt survive reload and forbid another se
 test("authority cannot freeze while a provider attempt or projection remains unresolved",async()=>{
  const {f,ledger,cutover}=await setup(),a=f.practitioner.actor,lead="LS-LEAD-SYNTHETIC-DRAIN";
  const operation=await ledger.prepare(a,lead,0,"Synthetic provider message",{stage:"Contacted"});
- await cutover.advance(a,{action:"prepare",proof:proof(0),operationId:"synthetic-outbound-prepare"});
- await expect(cutover.advance(a,{action:"freeze",proof:proof(1),operationId:"synthetic-outbound-freeze"}))
+ await expect(cutover.advance(a,{action:"prepare",proof:proof(0),operationId:"synthetic-outbound-prepare"}))
   .rejects.toMatchObject({code:"CONFLICT"});
  await ledger.confirm(a,operation,{provider:"synthetic",providerMessageId:"synthetic-id",sentAt:"2026-09-30T00:00:00Z"},{stage:"Contacted"});
- await expect(cutover.advance(a,{action:"freeze",proof:proof(1),operationId:"synthetic-outbound-freeze"}))
+ await expect(cutover.advance(a,{action:"prepare",proof:proof(0),operationId:"synthetic-outbound-prepare"}))
   .rejects.toMatchObject({code:"CONFLICT"});
  await ledger.projected(a,operation);
+ await cutover.advance(a,{action:"prepare",proof:proof(0),operationId:"synthetic-outbound-prepare"});
  expect(await cutover.advance(a,{action:"freeze",proof:proof(1),operationId:"synthetic-outbound-freeze"}))
   .toMatchObject({state:{phase:"frozen",epoch:2}});
+});
+
+test("a documented provider non-delivery can close an old prepared hold without sending or erasing evidence",async()=>{
+ const {f,ledger,cutover}=await setup(),a=f.practitioner.actor,lead="LS-LEAD-SYNTHETIC-NOT-DELIVERED";
+ const operation=await ledger.prepare(a,lead,0,"Synthetic undelivered message",{stage:"Contacted"});
+ const evidence={provider:"whapi" as const,source:"provider_support_case" as const,
+  reference:"WHAPI-SUPPORT-12345",checkedAt:new Date().toISOString(),
+  acknowledgement:"I verified this exact message was not delivered" as const};
+ await expect(ledger.notDelivered(a,operation,evidence)).rejects.toMatchObject({code:"INVALID_REQUEST"});
+ await f.pool.query("UPDATE ls_contact_ops.outbound_projections SET created_at=clock_timestamp()-interval '20 minutes' WHERE workspace_id=$1 AND operation_id=$2",[f.workspaceId,operation]);
+ await expect(ledger.notDelivered(f.parent.actor,operation,evidence)).rejects.toMatchObject({code:"FORBIDDEN"});
+ await ledger.notDelivered(a,operation,evidence);
+ expect(await ledger.read(a,operation)).toMatchObject({state:"not_delivered",message:"Synthetic undelivered message",receipt:null,resolution:evidence});
+ const raw=(await f.pool.query("SELECT receipt_ciphertext,resolution_ciphertext FROM ls_contact_ops.outbound_projections WHERE workspace_id=$1 AND operation_id=$2",[f.workspaceId,operation])).rows[0];
+ expect(raw.receipt_ciphertext).toBeNull();expect(raw.resolution_ciphertext).not.toContain(evidence.reference);
+ expect(await ledger.pendingLeads(a,[lead])).toEqual(new Set());
+ expect(await cutover.advance(a,{action:"prepare",proof:proof(0),operationId:"synthetic-not-delivered-prepare"}))
+  .toMatchObject({state:{phase:"shadow_ready",epoch:1}});
 });

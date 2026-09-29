@@ -1,12 +1,12 @@
 import {describe,expect,it,vi} from "vitest";
 vi.mock("server-only",()=>({}));
 import {assertLegacyProspectSenderAvailable,projectIntakeToLegacyIfCurrent,
- projectLegacyProspectAfterSend,reconcileLegacyProspectProjection,sendAuthoritativeProspectMessage} from "../../../src/features/contact-ops/server/authoritative-prospect-send.ts";
+ projectLegacyProspectAfterSend,reconcileLegacyProspectProjection,resolvePreparedProspectSend,sendAuthoritativeProspectMessage} from "../../../src/features/contact-ops/server/authoritative-prospect-send.ts";
 import type {Actor} from "../../../src/features/identity/types.ts";
 import type {CutoverState,Phase} from "../../../src/features/contact-ops/core/cutover.ts";
 
 const actor={id:"synthetic-owner",role:"practitioner",workspaceId:"synthetic-workspace"} as Actor;
-const runtime={store:{},config:{workspaceId:"synthetic-workspace"}} as Parameters<typeof sendAuthoritativeProspectMessage>[1];
+const runtime={store:{},config:{workspaceId:"synthetic-workspace"},clock:{now:()=>new Date("2026-09-29T01:00:00Z")}} as Parameters<typeof sendAuthoritativeProspectMessage>[1];
 const state=(phase:Phase):CutoverState=>({phase,epoch:3,batchId:"synthetic",sourceFileId:"synthetic",
  sourceRevision:"synthetic",nativeWritesSinceSwitch:0});
 const authority=(phase:Phase)=>({read:vi.fn().mockResolvedValue(state(phase))});
@@ -157,5 +157,42 @@ describe("confirmed-send reconciliation without provider resend",()=>{
   await expect(reconcileLegacyProspectProjection({...actor,role:"parent"},runtime,record.operationId,
    {authority:authority("sheet_active"),update:vi.fn(),list:list(fields),ledger:saved})).rejects.toMatchObject({code:"FORBIDDEN"});
   expect(saved.read).not.toHaveBeenCalled();
+ });
+});
+
+describe("manual provider-evidence resolution of an ambiguous prepared send",()=>{
+ const prepared={operationId:"synthetic-operation",leadId:"LS-LEAD-synthetic",authorityEpoch:3,
+  createdAt:"2026-09-29T00:00:00Z",state:"prepared" as const,message:"Synthetic exact message",
+  fields:{stage:"Intake sent",updateProvenance:"private-app:intake-sent"},receipt:null,resolution:null};
+ const verification={outcome:"delivered" as const,source:"provider_delivery_log" as const,
+  reference:"synthetic-provider-id",providerMessageId:"synthetic-provider-id",
+  sentAt:"2026-09-29T00:15:00Z",checkedAt:"2026-09-29T00:20:00Z",verifiedExactMessage:true as const};
+ it("records exact provider receipt and derived intake fields before CRM readback, never resending",async()=>{
+  sender.mockClear();
+  const final={...prepared.fields,formSent:verification.sentAt,messageReceipt:verification.providerMessageId};
+  const update=vi.fn().mockResolvedValue(undefined),saved={...ledger,read:vi.fn().mockResolvedValue(prepared),confirm:vi.fn().mockResolvedValue(undefined),projected:vi.fn().mockResolvedValue(undefined),notDelivered:vi.fn()};
+  expect(await resolvePreparedProspectSend(actor,runtime,prepared.operationId,verification,
+   {authority:authority("sheet_active"),update,list:list(final),ledger:saved})).toMatchObject({outcome:"delivered",providerSend:false,projectionPending:false});
+  expect(saved.confirm).toHaveBeenCalledWith(actor,prepared.operationId,expect.objectContaining({provider:"whapi",providerMessageId:verification.providerMessageId,
+   manualVerification:{source:verification.source,reference:verification.reference,checkedAt:verification.checkedAt}}),final);
+  expect(update).toHaveBeenCalledWith(prepared.leadId,final);expect(sender).not.toHaveBeenCalled();
+ });
+ it("records a negative provider attestation without a send or Sheet write",async()=>{
+  sender.mockClear();const update=vi.fn(),saved={...ledger,read:vi.fn().mockResolvedValue(prepared),notDelivered:vi.fn().mockResolvedValue(undefined)};
+  const input={outcome:"not_delivered" as const,source:"provider_support_case" as const,reference:"WHAPI-SUPPORT-12345",
+   checkedAt:"2026-09-29T00:20:00Z",verifiedExactMessage:true as const};
+  expect(await resolvePreparedProspectSend(actor,runtime,prepared.operationId,input,
+   {authority:authority("sheet_active"),update,list:list({}),ledger:saved})).toEqual({outcome:"not_delivered",providerSend:false});
+  expect(saved.notDelivered).toHaveBeenCalledOnce();expect(update).not.toHaveBeenCalled();expect(sender).not.toHaveBeenCalled();
+ });
+ it("rejects a stale authority or unverified negative claim without changing the ledger",async()=>{
+  const saved={...ledger,read:vi.fn().mockResolvedValue(prepared),notDelivered:vi.fn()};
+  await expect(resolvePreparedProspectSend(actor,runtime,prepared.operationId,
+   {...verification,outcome:"not_delivered"},
+   {authority:authority("native_active"),update:vi.fn(),list:list({}),ledger:saved})).rejects.toMatchObject({code:"CONFLICT"});
+  await expect(resolvePreparedProspectSend(actor,runtime,prepared.operationId,
+   {...verification,verifiedExactMessage:false as never},
+   {authority:authority("sheet_active"),update:vi.fn(),list:list({}),ledger:saved})).rejects.toMatchObject({code:"INVALID_REQUEST"});
+  expect(saved.notDelivered).not.toHaveBeenCalled();
  });
 });

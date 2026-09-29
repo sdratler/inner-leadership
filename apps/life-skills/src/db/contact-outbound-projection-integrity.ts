@@ -2,10 +2,10 @@ import {createHash} from "node:crypto";
 import type {SqlSession} from "../features/identity/store.ts";
 
 export const CONTACT_OUTBOUND_PROJECTION_MIGRATION={name:"0110_ls_contact_outbound_projection.sql",
- sha256:"fc96798be857b1bcbe5b68fe971e2dc6b18172886fd8663951f1a1f4b8c38c15"} as const;
+ sha256:"b881b9b074cb217d48d2b6fb8bb62b39d3ced3a0447353beaa35809fde862e76"} as const;
 /** Exact isolated PostgreSQL 17.11 catalog of this additive private table. */
-export const CONTACT_OUTBOUND_PROJECTION_CATALOG={columns:11,constraints:9,
- sha256:"527c67a2c223310feb65fcc6a06808d7b261cd0feb6dc0b5dd3b00be4f2dc32b"} as const;
+export const CONTACT_OUTBOUND_PROJECTION_CATALOG={columns:12,constraints:9,
+ sha256:"da1f1923db64bf2f8beb1d5fa79648de975e236aa0d12bbf27d04ea2194dd031"} as const;
 export type ContactOutboundProjectionIntegrity={objectsAbsent:boolean;table:boolean;schemaCatalog:boolean;
  foreignKeys:boolean;pendingIndex:boolean;permissions:boolean;referencesSound:boolean};
 
@@ -52,7 +52,8 @@ export async function contactOutboundProjectionIntegrity(tx:SqlSession):Promise<
   SELECT 1 FROM ls_contact_ops.outbound_projections o LEFT JOIN ls_identity.workspaces w ON w.id=o.workspace_id
   LEFT JOIN ls_identity.accounts a ON a.workspace_id=o.workspace_id AND a.id=o.actor_account_id
   WHERE w.id IS NULL OR a.id IS NULL OR
-   (o.state='prepared' AND o.receipt_ciphertext IS NOT NULL) OR
-   (o.state<>'prepared' AND o.receipt_ciphertext IS NULL)) AS sound`))[0]?.sound===true;
+   (o.state='prepared' AND (o.receipt_ciphertext IS NOT NULL OR o.resolution_ciphertext IS NOT NULL)) OR
+   (o.state IN ('sent_pending','projected') AND (o.receipt_ciphertext IS NULL OR o.resolution_ciphertext IS NOT NULL)) OR
+   (o.state='not_delivered' AND (o.receipt_ciphertext IS NOT NULL OR o.resolution_ciphertext IS NULL))) AS sound`))[0]?.sound===true;
  return {...objects,schemaCatalog:constraints?.validated===true&&outboundProjectionCatalogMatches(columns,constraints.catalog),referencesSound};
 }

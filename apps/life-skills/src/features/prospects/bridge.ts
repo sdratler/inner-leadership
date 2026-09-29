@@ -12,6 +12,7 @@ export type Prospect = {
   journeyState:string; paymentVerified:boolean; bookingConfirmed:boolean;
   projectionPending?:boolean;
   projectionOperationId?:string;projectionState?:"prepared"|"sent_pending";
+  projectionMessage?:string;projectionCreatedAt?:string;
   nativeEdit?:{personId:string;profileVersion:number;authorityEpoch:number};
 };
 

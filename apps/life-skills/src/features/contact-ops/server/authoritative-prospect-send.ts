@@ -6,7 +6,7 @@ import {listProspects,sendProspectMessage,updateProspect,type Prospect} from "..
 import {writeDestination,type CutoverState} from "../core/cutover.ts";
 import {readCutoverState} from "./cutover-state.ts";
 import {ContactCutoverStore} from "./cutover-store.ts";
-import {OutboundProjectionStore,type OutboundReceipt} from "./outbound-projection-store.ts";
+import {OutboundProjectionStore,type NoDeliveryEvidence,type OutboundReceipt} from "./outbound-projection-store.ts";
 
 type Runtime=Pick<Awaited<ReturnType<typeof identityRuntime>>,"store"|"config"|"clock">;
 type Authority={read:(actor:Actor)=>Promise<CutoverState>};
@@ -103,6 +103,52 @@ export async function reconcileLegacyProspectProjection(actor:Actor,runtime:Runt
  try{await selectedLedger.projected(actor,operationId);}
  catch{if((await selectedLedger.read(actor,operationId))?.state!=="projected")throw new AppError("UNAVAILABLE");}
  return {projected:true};
+}
+
+export type PreparedSendVerification={outcome:"delivered"|"not_delivered";
+ source:NoDeliveryEvidence["source"];reference:string;checkedAt:string;verifiedExactMessage:true;
+ providerMessageId?:string|undefined;sentAt?:string|undefined};
+
+/** Exception path for a prepared intent whose provider result was ambiguous.
+ * A practitioner must independently inspect the exact provider record and
+ * attest its reference; this is not an automatic provider lookup or a resend.
+ */
+export async function resolvePreparedProspectSend(actor:Actor,runtime:Runtime,operationId:string,
+ verification:PreparedSendVerification,dependencies?:{authority:Authority;update:LegacyUpdate;list:LegacyList;
+  ledger:Ledger&Pick<OutboundProjectionStore,"notDelivered">}){
+ if(actor.role!=="practitioner")throw new AppError("FORBIDDEN");
+ const selectedLedger=dependencies?.ledger??ledger(runtime),record=await selectedLedger.read(actor,operationId);
+ if(!record||record.state!=="prepared"||!record.message||verification.verifiedExactMessage!==true||
+  !["provider_delivery_log","provider_support_case"].includes(verification.source)||
+  !/^[A-Za-z0-9][A-Za-z0-9:._@/-]{7,199}$/.test(verification.reference)||
+  !Number.isFinite(Date.parse(verification.checkedAt))||
+  Date.parse(verification.checkedAt)<Date.parse(record.createdAt)||
+  Date.parse(verification.checkedAt)>runtime.clock.now().getTime()+300000)throw new AppError("INVALID_REQUEST");
+ const authority=dependencies?.authority??new ContactCutoverStore(runtime.store,runtime.config.keyring,
+  runtime.config.lookupKey.toString("hex"),runtime.clock);
+ const state=await authority.read(actor);
+ if(state.epoch!==record.authorityEpoch||writeDestination(state.phase)!=="sheet")throw new AppError("CONFLICT");
+ if(verification.outcome==="not_delivered"){
+  if(verification.providerMessageId||verification.sentAt)throw new AppError("INVALID_REQUEST");
+  await selectedLedger.notDelivered(actor,operationId,{provider:"whapi",source:verification.source,
+   reference:verification.reference,checkedAt:verification.checkedAt,
+   acknowledgement:"I verified this exact message was not delivered"});
+  return {outcome:"not_delivered" as const,providerSend:false};
+ }
+ const id=verification.providerMessageId,at=verification.sentAt;
+ if(!id||!/^[^\s]{8,200}$/.test(id)||!at||!Number.isFinite(Date.parse(at))||
+  Date.parse(at)<Date.parse(record.createdAt)||Date.parse(at)>Date.parse(verification.checkedAt)||
+  verification.source==="provider_delivery_log"&&verification.reference!==id)throw new AppError("INVALID_REQUEST");
+ const receipt:OutboundReceipt={provider:"whapi",providerMessageId:id,sentAt:at,
+  manualVerification:{source:verification.source,reference:verification.reference,checkedAt:verification.checkedAt}};
+ const fields={...record.fields};
+ if(fields.updateProvenance==="private-app:intake-sent"){
+  fields.formSent=at;fields.messageReceipt=id;
+ }else if(fields.updateProvenance==="private-app:booking-link-sent")fields.messageReceipt=id;
+ const projected=await projectLegacyProspectAfterSend(actor,runtime,record.leadId,fields,record.authorityEpoch,
+  operationId,receipt,{authority,update:dependencies?.update??updateProspect,list:dependencies?.list??listProspects,
+   ledger:selectedLedger});
+ return {outcome:"delivered" as const,providerSend:false,...projected};
 }
 
 /** A submitted form is already durable in the private onboarding store. Its

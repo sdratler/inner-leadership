@@ -68,11 +68,12 @@ export class ContactCutoverStore {
     return {state:record.state,replayed:true};
    }
    const current=await this.current(tx,a);
-   if(action==="freeze"||action==="switch_native"||action==="retire_sheet"){
-    // The same authority lock protects pre-send intents. Never switch away
-    // while a provider result or Sheet projection still needs reconciliation.
+   if(action==="prepare"||action==="freeze"||action==="switch_native"||action==="retire_sheet"){
+    // The same authority lock protects pre-send intents. Even prepare advances
+    // the epoch while Sheet remains writable, so it must not strand a send
+    // whose receipt or Sheet projection still needs reconciliation.
     const pending=await tx.query(`SELECT operation_id FROM ls_contact_ops.outbound_projections
-     WHERE workspace_id=$1 AND state<>'projected' LIMIT 1`,[a.workspaceId]);
+     WHERE workspace_id=$1 AND state IN ('prepared','sent_pending') LIMIT 1`,[a.workspaceId]);
     if(pending.length)throw new AppError("CONFLICT");
    }
    // Writes keep the phase epoch but advance this counter. Bind EVERY transition's
