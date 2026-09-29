@@ -40,7 +40,7 @@ export function Ls040FeaturePage({ locale, kind, caseId, audienceId, assignmentI
     <section className="lsw-card" aria-labelledby="current-items">
       <h2 id="current-items">{locale === "he" ? "פריטים נוכחיים" : "Current items"}</h2>
       {kind === "checkins"
-        ? <PracticeOccurrenceWorkspace locale={locale} role={role} caseId={caseId} audienceId={audienceId} />
+        ? <><p><a className="lsw-button lsw-button--secondary" href={base + "/practice" + (practiceQuery.size ? "?" + practiceQuery : "")}>{locale === "he" ? "חזרה להנחיות" : "Back to instructions"}</a></p><PracticeOccurrenceWorkspace locale={locale} role={role} caseId={caseId} audienceId={audienceId} /></>
         : <PracticeList locale={locale} kind={kind} caseId={caseId} audienceId={audienceId} selectedAssignmentId={assignmentId} role={role} />}
     </section>
     <aside className="lsw-attention" aria-label={locale === "he" ? "פרטיות" : "Privacy"}><div>

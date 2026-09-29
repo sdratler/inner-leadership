@@ -128,9 +128,15 @@ export class Ls040Http {
         }
       } else if (url.pathname === "/api/checkins") {
         if (request.method === "GET") {
+          if (url.searchParams.has("scope")) {
+            const parsed = z.object({ occurrenceId, scope: z.literal("own") }).strict().safeParse(exactQuery(url, ["occurrenceId", "scope"]));
+            if (!parsed.success) throw new AppError("INVALID_REQUEST");
+            data = await this.services.checkins.list(actor, parsed.data.occurrenceId, true);
+          } else {
           const parsed = z.object({ occurrenceId }).strict().safeParse(exactQuery(url, ["occurrenceId"]));
           if (!parsed.success) throw new AppError("INVALID_REQUEST");
           data = await this.services.checkins.list(actor, parsed.data.occurrenceId);
+          }
         } else data = await this.services.checkins.submit(actor, await readJson(request, checkIn), requestId);
       } else throw new AppError("NOT_FOUND");
       return secure(successResponse(data, requestId, request.method === "POST" ? 201 : 200));

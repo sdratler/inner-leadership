@@ -17,6 +17,19 @@ describe("public static perimeter", () => {
 });
 
 afterEach(() => vi.unstubAllEnvs());
+describe("actual parent check-in deep-link proxy", () => {
+  it("projects one bounded section and strips repeated or caller-supplied values", () => {
+    const origin="https://life-skills.bneineviimacademy.org", id="123e4567-e89b-42d3-a456-426614174000";
+    vi.stubEnv("NODE_ENV","production");vi.stubEnv("LS_APP_MODE","foundation_locked");vi.stubEnv("LS_APP_ORIGIN",origin);vi.stubEnv("LS_PRIVATE_APP_ENABLED","true");
+    const path=`/he/family/practice?caseId=${id}&audienceId=${id}`;
+    const valid=proxy(new NextRequest(origin+path+"&section=checkins",{headers:{"x-ls-parent-return":"/he/family/settings"}}));
+    expect(valid.headers.get("x-middleware-request-x-ls-parent-return")).toBe(path+"&section=checkins");
+    for(const query of ["&section=checkins&section=checkins","&section=untrusted"]){
+      const response=proxy(new NextRequest(origin+path+query));
+      expect(response.headers.get("x-middleware-request-x-ls-parent-return")).toBe(path);
+    }
+  });
+});
 describe("actual practitioner Calendar login return perimeter", () => {
   const origin = "https://life-skills.bneineviimacademy.org";
   function returned(query: string, supplied = "https://untrusted.invalid/private") {

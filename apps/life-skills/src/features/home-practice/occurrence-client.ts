@@ -1,6 +1,6 @@
 import { IdentityClientError, sessionInfo } from "../identity/client.ts";
 import type { IdentityClientErrorCode } from "../identity/client.ts";
-import type { CompletionStatus, CompletionView, PracticeOccurrencePage } from "./types.ts";
+import type { CompletionStatus, OwnCompletionView, PracticeOccurrencePage } from "./types.ts";
 
 const codes: readonly IdentityClientErrorCode[] = ["INVALID_REQUEST", "UNAUTHENTICATED", "FORBIDDEN", "NOT_FOUND", "CONFLICT", "RATE_LIMITED", "UNAVAILABLE", "INTERNAL"];
 async function privateRequest<T>(path: string, init: RequestInit, signal?: AbortSignal): Promise<T> {
@@ -42,12 +42,19 @@ export async function submitPracticeCheckIn(attempt: CheckInAttempt, signal: Abo
   if (signal.aborted) throw new DOMException("Aborted", "AbortError");
   await privateRequest("/api/checkins", { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": session.csrfToken }, body: JSON.stringify(attempt) }, signal);
 }
-export async function ownCheckInHistory(occurrenceId: string, signal: AbortSignal): Promise<CompletionView[]> {
+export async function ownCheckInHistory(occurrenceId: string, signal: AbortSignal): Promise<OwnCompletionView[]> {
   const session = await sessionInfo();
   if (signal.aborted) throw new DOMException("Aborted", "AbortError");
-  const rows = await privateRequest<CompletionView[]>("/api/checkins?" + new URLSearchParams({ occurrenceId }), { method: "GET" }, signal);
-  if (!Array.isArray(rows)) throw new IdentityClientError("UNAVAILABLE");
-  return rows.filter(row => row.authorAccountId === session.accountId);
+  const rows = await privateRequest<OwnCompletionView[]>("/api/checkins?" + new URLSearchParams({ occurrenceId, scope: "own" }), { method: "GET" }, signal);
+  if (!Array.isArray(rows) || rows.some(row => row.authorAccountId !== session.accountId || typeof row.idempotencyKey !== "string")) throw new IdentityClientError("UNAVAILABLE");
+  return rows;
+}
+/** Reconcile the actual retry receipt, not merely the newest visible status. */
+export function checkInReadback(attempt: CheckInAttempt, rows: readonly OwnCompletionView[]): "pending" | "recorded" | "superseded" {
+  const recorded = rows.find(row => row.idempotencyKey === attempt.idempotencyKey);
+  if (!recorded) return "pending";
+  if (recorded.occurrenceId !== attempt.occurrenceId || recorded.status !== attempt.status || recorded.correctedReportId !== (attempt.correctsReportId ?? null)) throw new IdentityClientError("UNAVAILABLE");
+  return rows.at(-1)?.reportId === recorded.reportId ? "recorded" : "superseded";
 }
 export function practiceAccessLost(error: unknown): boolean {
   return error instanceof IdentityClientError && ["UNAUTHENTICATED", "FORBIDDEN", "NOT_FOUND"].includes(error.code);

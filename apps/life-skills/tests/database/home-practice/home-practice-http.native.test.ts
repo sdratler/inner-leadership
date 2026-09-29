@@ -172,6 +172,11 @@ test("native occurrence projection does not expose another assignee or title-onl
   const other = (await (await h.request("GET", path, undefined, f.parentTwo.token)).json()).data.items[0];
   expect(other).toMatchObject({ canReport: false, ownReport: null, occurrence: {state:"closed"} });
   expect(JSON.stringify(other)).not.toContain(f.parent.actor.id); expect(JSON.stringify(other)).not.toContain("instructionsCiphertext");
+  const ownPath = `/api/checkins?occurrenceId=${occurrenceId}&scope=own`;
+  const emptyHistory=await h.request("GET",ownPath,undefined,f.parentTwo.token);expect(emptyHistory.status).toBe(200);expect((await emptyHistory.json()).data).toEqual([]);
+  const ownHistory=await h.request("GET",ownPath,undefined,f.parent.token);expect(ownHistory.status).toBe(200);
+  expect((await ownHistory.json()).data).toMatchObject([{authorAccountId:f.parent.actor.id,status:"done",idempotencyKey:expect.any(String)}]);
+  for(const query of ["&scope=own","&authorAccountId="+f.parent.actor.id])expect((await h.request("GET",ownPath+query,undefined,f.parentTwo.token)).status).toBe(400);
   await f.pool.query("UPDATE ls_cases.audiences SET visibility='family_title_completion' WHERE workspace_id=$1 AND id=$2", [f.workspaceId, f.first.audienceId]);
   const limited = (await (await h.request("GET", path, undefined, f.parent.token)).json()).data.items[0];
   expect(limited.practice.instructions).toBe(""); expect(JSON.stringify(limited)).not.toContain(h.draftInput().instructions);

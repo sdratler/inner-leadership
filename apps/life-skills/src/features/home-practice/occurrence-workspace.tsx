@@ -6,7 +6,7 @@ import { loginHref } from "../identity/login-return.ts";
 import { civilDate } from "../calendar/time.ts";
 import { Button, Input, Select } from "../../ui/workspace/controls.tsx";
 import { UnsavedChangesGuard } from "../../ui/workspace/draft-guard.tsx";
-import { checkInAttempt, ownCheckInHistory, practiceAccessLost, practiceAudience, practiceOccurrences, practiceSaveUncertain, submitPracticeCheckIn, type CheckInAttempt } from "./occurrence-client.ts";
+import { checkInAttempt, checkInReadback, ownCheckInHistory, practiceAccessLost, practiceAudience, practiceOccurrences, practiceSaveUncertain, submitPracticeCheckIn, type CheckInAttempt } from "./occurrence-client.ts";
 import { occurrenceRange, shiftOccurrenceDay } from "./occurrence-range.ts";
 import { completionStatuses, type CompletionStatus, type CompletionView, type PracticeOccurrenceItem, type PracticeOccurrencePage } from "./types.ts";
 
@@ -81,7 +81,9 @@ export function PracticeOccurrenceCard({ locale, item, onReadback, onAccessLost,
       const rows = await ownCheckInHistory(id, current.signal);
       if (!mounted.current || current.signal.aborted) return;
       const latest = rows.at(-1);
-      if (!latest || latest.status !== body.status || latest.correctedReportId !== (body.correctsReportId ?? null)) throw new IdentityClientError("UNAVAILABLE");
+      const receipt = checkInReadback(body, rows);
+      if (!latest || receipt === "pending") throw new IdentityClientError("UNAVAILABLE");
+      if (receipt === "superseded") { setSavedReport(latest); setHistory(rows); setPhase("conflict"); attempt.current = null; return; }
       setSavedReport(latest); setHistory(rows); setPhase("saved"); setStatus(""); attempt.current = null; onDirty(id, false); onReadback();
     } catch (error) {
       if (!mounted.current || current.signal.aborted) return;
@@ -92,11 +94,12 @@ export function PracticeOccurrenceCard({ locale, item, onReadback, onAccessLost,
     }
   }
   async function refreshReport() {
-    if (phase === "saving" || phase === "uncertain") return;
+    if (phase === "saving") return;
     controller.current?.abort(); const current = new AbortController(); controller.current = current;
     try {
       const rows = await ownCheckInHistory(id, current.signal);
       if (current.signal.aborted || !mounted.current) return;
+      if (phase === "uncertain" && attempt.current && checkInReadback(attempt.current, rows) === "pending") { setHistoryFailed(false); return; }
       setSavedReport(rows.at(-1) ?? null); setHistory(rows); setHistoryFailed(false); setPhase("idle"); attempt.current = null;
     } catch (error) {
       if (current.signal.aborted || !mounted.current) return;
@@ -111,7 +114,7 @@ export function PracticeOccurrenceCard({ locale, item, onReadback, onAccessLost,
     {canSave ? <details className="lsw-details"><summary>{t.own}</summary><form className="lsw-stack" onSubmit={event => { event.preventDefault(); if (event.currentTarget.checkValidity()) void save(); }}>
       <Select id={`practice-result-${id}`} label={t.status} required value={status} disabled={phase === "saving" || phase === "uncertain"} onChange={event => { setStatus(event.target.value as CompletionStatus); setPhase(current => current === "conflict" ? "conflict" : "idle"); attempt.current = null; onDirty(id, Boolean(event.target.value)); }}><option value="">{t.chooseStatus}</option>{completionStatuses.map(value => <option value={value} key={value}>{t[value]}</option>)}</Select>
       <Button type="submit" busy={phase === "saving"} disabled={!status || phase === "conflict"}>{phase === "uncertain" ? t.retry : savedReport ? t.correct : t.save}</Button>
-      {phase === "conflict" && <Button variant="secondary" onClick={() => void refreshReport()}>{t.refresh}</Button>}
+      {(phase === "conflict" || phase === "uncertain") && <Button variant="secondary" onClick={() => void refreshReport()}>{t.refresh}</Button>}
     </form></details> : <p>{t.readOnly}</p>}
     {phase === "saved" && <p role="status">{t.saved}</p>}
     {["error", "uncertain", "conflict"].includes(phase) && <p role="alert">{phase === "uncertain" ? t.uncertain : phase === "conflict" ? t.conflict : t.failure}</p>}

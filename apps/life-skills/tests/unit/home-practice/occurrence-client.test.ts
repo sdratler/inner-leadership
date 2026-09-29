@@ -1,6 +1,8 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { IdentityClientError } from "../../../src/features/identity/client.ts";
-import { checkInAttempt, ownCheckInHistory, practiceAccessLost, practiceAudience, practiceOccurrences, practiceSaveUncertain, submitPracticeCheckIn } from "../../../src/features/home-practice/occurrence-client.ts";
+import { checkInAttempt, checkInReadback, ownCheckInHistory, practiceAccessLost, practiceAudience, practiceOccurrences, practiceSaveUncertain, submitPracticeCheckIn } from "../../../src/features/home-practice/occurrence-client.ts";
+import { asId } from "../../../src/lib/ids.ts";
+import type { OwnCompletionView } from "../../../src/features/home-practice/types.ts";
 afterEach(() => vi.unstubAllGlobals());
 const id = "00000000-0000-4000-8000-000000000001";
 const ok = (data: unknown) => new Response(JSON.stringify({ ok: true, data }), { status: 200 });
@@ -20,12 +22,23 @@ test("uncertain write retries the exact immutable body with fresh real-session C
 test("read paths never mutate and history returns only the current account's records", async () => {
   const fetcher = vi.fn().mockResolvedValueOnce(ok([{ id, published: true, visibility: "private" }, { id: "shared", published: true, visibility: "family_full" }]))
     .mockResolvedValueOnce(ok({ items: [], hasMore: false })).mockResolvedValueOnce(ok({ accountId: id }))
-    .mockResolvedValueOnce(ok([{ authorAccountId: "other", status: "not_done" }, { authorAccountId: id, status: "done" }]));
+    .mockResolvedValueOnce(ok([{ authorAccountId: id, status: "done", idempotencyKey:id }]));
   vi.stubGlobal("fetch", fetcher); const signal = new AbortController().signal;
   expect(await practiceAudience(id, signal)).toBe("shared");
   expect(await practiceOccurrences(id, "shared", "2026-09-29", "2026-09-30", signal)).toEqual({ items: [], hasMore: false });
-  expect(await ownCheckInHistory(id, signal)).toEqual([{ authorAccountId: id, status: "done" }]);
+  expect(await ownCheckInHistory(id, signal)).toEqual([{ authorAccountId: id, status: "done", idempotencyKey:id }]);
+  expect(fetcher.mock.calls[3]![0]).toBe(`/api/checkins?occurrenceId=${id}&scope=own`);
   for (const call of fetcher.mock.calls) expect(call[1].method).toBe("GET");
+});
+test("own-history rejects an unexpectedly shared response rather than concealing a server disclosure", async () => {
+  const fetcher=vi.fn().mockResolvedValueOnce(ok({accountId:id})).mockResolvedValueOnce(ok([{authorAccountId:"other",status:"done",idempotencyKey:id}]));vi.stubGlobal("fetch",fetcher);
+  await expect(ownCheckInHistory(id,new AbortController().signal)).rejects.toMatchObject({code:"UNAVAILABLE"});
+});
+test.each(["recorded","superseded","pending"] as const)("receipt readback reconciles %s without comparing only the latest status", state => {
+  const attempt=checkInAttempt(id,"done");
+  const row:OwnCompletionView={reportId:asId(id,"completion_report"),occurrenceId:asId(id,"occurrence"),authorAccountId:asId(id,"account"),status:"done",revision:1,reportedAt:"2026-09-29T06:00:00.000Z",correctedReportId:null,idempotencyKey:attempt.idempotencyKey};
+  const newer:OwnCompletionView={...row,reportId:asId("00000000-0000-4000-8000-000000000002","completion_report"),status:"not_done",revision:2,correctedReportId:row.reportId,idempotencyKey:crypto.randomUUID()};
+  expect(checkInReadback(attempt,state==="pending"?[]:state==="superseded"?[row,newer]:[row])).toBe(state);
 });
 test.each(["UNAUTHENTICATED", "FORBIDDEN", "NOT_FOUND"] as const)("%s is an access denial, not an uncertain retry", code => {
   const error = new IdentityClientError(code); expect(practiceAccessLost(error)).toBe(true); expect(practiceSaveUncertain(error)).toBe(false);

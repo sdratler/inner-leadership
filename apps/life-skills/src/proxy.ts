@@ -172,7 +172,7 @@ export function proxy(request: NextRequest) {
   const parentPage = /^\/(he|en)\/family(?:\/|$)/.exec(pathname);
   if (parentPage) {
     const query: Record<string, string | undefined> = {};
-    for (const key of ["caseId", "date", "view", "audienceId", "assignmentId", "practiceVersionId"]) {
+    for (const key of ["caseId", "date", "view", "audienceId", "assignmentId", "practiceVersionId", "section"]) {
       const values = request.nextUrl.searchParams.getAll(key);
       query[key] = values.length === 1 ? values[0] : undefined;
     }
