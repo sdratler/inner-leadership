@@ -97,3 +97,6 @@
 .lsw.lsu .lsr button{font-size:17px;font-weight:700;min-height:48px}
 .lsw.lsu .lsr .lsr-primary,.lsw.lsu .lsr .lsr-tabs button[aria-pressed=true]{background:var(--ui-teal);border-color:var(--ui-teal);color:#fff}
 .lsw.lsu .lsr .lsr-primary:hover:not(:disabled),.lsw.lsu .lsr .lsr-tabs button[aria-pressed=true]:hover:not(:disabled){background:var(--ui-teal);color:#fff;filter:brightness(.93)}
+.lsw.lsu .lsr-report-view-tabs{display:flex;min-width:0;max-width:100%;gap:12px;flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-inline:contain;scroll-snap-type:x proximity;padding:4px}
+.lsw.lsu .lsr-report-view-tabs>a{flex:0 0 auto;white-space:nowrap;word-break:normal;overflow-wrap:normal;min-height:48px;padding:11px 20px;border:1px solid var(--ui-line);border-radius:10px;display:inline-flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;line-height:1.45;text-decoration:none;scroll-snap-align:start}
+.lsw.lsu .lsr-report-view-tabs>a[aria-current=page]{background:var(--ui-teal);color:#fff;border-color:var(--ui-teal)}

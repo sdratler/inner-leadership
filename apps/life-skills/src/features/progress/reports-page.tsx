@@ -57,20 +57,25 @@ export function ReportsPage({ locale, role, caseId, audienceId,mode='live',navig
  </section>;
 }
 export function ReportCaseWorkspace({ locale, role, caseId, initialAudienceId,onEditorStateChange,section,navigationContext={} }: { locale: Locale; role: Role; caseId: string; initialAudienceId?: string | undefined;onEditorStateChange?:(state:EditorState)=>void;section?:ReportSection|undefined;navigationContext?:WorkspaceContext }) {
- const router=useRouter(),t = words[locale]; const [data, setData] = useState<{ audiences: Audience[]; reviews: Review[] } | null>(null), [error, setError] = useState(false), [selected, setSelected] = useState(initialAudienceId ?? "");
+ const router=useRouter(),t = words[locale],selectedSection=reportSection(section),nav=useRef<HTMLElement>(null); const [data, setData] = useState<{ audiences: Audience[]; reviews: Review[] } | null>(null), [error, setError] = useState(false), [selected, setSelected] = useState(initialAudienceId ?? "");
  const [editorState,setEditorState]=useState<EditorState>(idleEditor);
  useEffect(()=>{onEditorStateChange?.(editorState);},[editorState,onEditorStateChange]);
+ useEffect(()=>{
+  const container=nav.current,active=container?.querySelector<HTMLElement>('[aria-current=page]');if(!container||!active)return;
+  const frame=container.getBoundingClientRect(),link=active.getBoundingClientRect(),delta=link.right>frame.right?link.right-frame.right:link.left<frame.left?link.left-frame.left:0;
+  if(delta)container.scrollBy({left:delta,behavior:'instant'});
+ },[data,selectedSection]);
  useEffect(() => { const controller = new AbortController(); let active = true; void Promise.all([read<Audience[]>(`/api/identity/audiences?caseId=${encodeURIComponent(caseId)}`, controller.signal), read<Review[]>(`/api/progress/reviews?caseId=${encodeURIComponent(caseId)}`, controller.signal)]).then(([audiences,reviews]) => { if (!active) return; const allowed = audiences.filter(item => item.published && item.visibility === "family_full"); setData({ audiences: allowed, reviews: reviews.filter(item => item.caseId === caseId && allowed.some(audience => audience.id === item.audienceId) && (role === "practitioner" || item.state === "published")) }); }).catch(() => { if (active && !controller.signal.aborted) setError(true); }); return () => { active = false; controller.abort(); }; }, [caseId,role]);
  if (error) return <p role="alert">{t.error}</p>; if (!data) return <p role="status">{t.loading}</p>;
  const activeAudience = selected?data.audiences.find(item => item.id === selected)?.id??'':data.audiences[0]?.id??'';
  if(!activeAudience)return selected?<p role="alert">{locale==='he'?'קהל המשפחה שנבחר אינו זמין. לא נבחר קהל אחר. חזרו לרשימה ובחרו קהל מורשה.':'The selected family audience is unavailable. No other audience was selected. Return to the list and choose an authorized audience.'}</p>:<p>{t.noAudience}</p>;
  const reviews = data.reviews.filter(item => item.audienceId === activeAudience);
- const selectedSection=reportSection(section),v=reportViewWords[locale],visible=role==='practitioner'?reportVisibleReviews(reviews,selectedSection,reportToday()):reviews;
+ const v=reportViewWords[locale],visible=role==='practitioner'?reportVisibleReviews(reviews,selectedSection,reportToday()):reviews;
  const sectionHref=(next:ReportSection,audience=activeAudience)=>{const url=new URL(workspaceHref(locale,'app/reports',caseId,navigationContext),'https://private.invalid');url.searchParams.set('audienceId',audience);url.searchParams.set('section',next);return url.pathname+url.search;};
  function saved(review: Review) { setData(previous => previous ? { ...previous, reviews: [...previous.reviews.filter(item => item.id !== review.id), review] } : previous); }
  function chooseAudience(id:string){if(editorState.busy||editorState.uncertain||id===activeAudience||!data?.audiences.some(item=>item.id===id))return;if(editorState.dirty&&!window.confirm(discardMessage(locale)))return;setEditorState(idleEditor);setSelected(id);if(role==='practitioner')router.replace(sectionHref(selectedSection,id));}
  return <div className="lsw-stack"><label>{t.audience}<select value={activeAudience} disabled={editorState.busy||editorState.uncertain} onChange={event=>chooseAudience(event.target.value)}>{data.audiences.map((item,index) => <option key={item.id} value={item.id}>{t.audience} {index+1}</option>)}</select></label>
-  {role==='practitioner'&&navigationContext.context==='client'&&<nav className="lsw-actions" aria-label={v.views}>{reportSections.map(next=><a key={next} href={sectionHref(next)} aria-current={next===selectedSection?'page':undefined}>{v[next]}</a>)}</nav>}
+   {role==='practitioner'&&navigationContext.context==='client'&&<nav ref={nav} className="lsr-report-view-tabs" aria-label={v.views} tabIndex={0}>{reportSections.map(next=><a key={next} href={sectionHref(next)} aria-current={next===selectedSection?'page':undefined}>{v[next]}</a>)}</nav>}
   {role==='practitioner'?<><h2>{v[selectedSection]}</h2>{selectedSection==='due'&&<p>{v.dueHelp}</p>}{!visible.length&&<p role="status">{v[`${selectedSection}Empty`]}</p>}
    {visible.map(review=><details className="lsw-card" key={review.id}><summary>{review.periodStart}–{review.periodEnd} · {review.state==='published'?t.published:t.draft} · {revisionWords[locale].version} {review.revision}</summary><ReportReadout locale={locale} review={review}/>{selectedSection==='history'&&<PrivateRevisionHistory locale={locale} review={review}/>}</details>)}
    {selectedSection==='drafts'&&<ReportEditor key={`${caseId}:${activeAudience}`} locale={locale} caseId={caseId} audienceId={activeAudience} reviews={reviews} onSaved={saved} onStateChange={setEditorState}/>}
