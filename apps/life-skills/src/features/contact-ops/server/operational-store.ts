@@ -140,7 +140,7 @@ export class OperationalNativeCrmStore {
    }
    const profiles=this.profileStore(tx),existing=await profiles.read(actor,personId);
    if(!existing)throw new AppError("NOT_FOUND");
-   if(!existing.profile.legacyIds.includes(leadId)&&existing.profile.nativeInquiry?.leadId!==leadId)throw new AppError("CONFLICT");
+   if(!existing.profile.legacyIds.includes(leadId)&&existing.profile.nativeInquiry?.leadId!==leadId&&existing.profile.whatsappInquiry?.leadId!==leadId)throw new AppError("CONFLICT");
    const priorLead=existing.profile.leadUpdates?.[leadId]??{};
    const profile:CrmProfile={...existing.profile,
     ...(existing.profile.doNotContact||contactSuppressed(existing.profile.stage)||contactSuppressed(changes.stage??"")||contactSuppressed(changes.outcome??"")||

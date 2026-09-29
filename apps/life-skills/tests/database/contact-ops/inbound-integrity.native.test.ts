@@ -32,10 +32,11 @@ test('native inquiry proof binds exact migration, complete receipt catalog and i
 
 test('native inquiry proof distinguishes fully absent from partial objects and makes no repair',async()=>{
  const f=await setup();
- await probe(f,['DROP TABLE ls_contact_ops.message_receipts','DROP FUNCTION ls_contact_ops.deny_message_receipt_mutation()'],async tx=>{
+ const dependentTables=['DROP TABLE ls_contact_ops.inbound_projections','DROP TABLE ls_contact_ops.inbound_threads'];
+ await probe(f,[...dependentTables,'DROP TABLE ls_contact_ops.message_receipts','DROP FUNCTION ls_contact_ops.deny_message_receipt_mutation()'],async tx=>{
   expect(await contactInboundIntegrity(tx,files)).toEqual({objectsAbsent:true,tables:false,schemaCatalog:false,foreignKeys:false,historyImmutable:false,appendOnlyFunction:false,publicRevoked:false,referencesSound:false});
  });
- await probe(f,['DROP TABLE ls_contact_ops.message_receipts'],async tx=>{
+ await probe(f,[...dependentTables,'DROP TABLE ls_contact_ops.message_receipts'],async tx=>{
   expect(await contactInboundIntegrity(tx,files)).toMatchObject({objectsAbsent:false,tables:false,schemaCatalog:false,historyImmutable:false,appendOnlyFunction:true});
  });
  await probe(f,[],async tx=>expect(await contactInboundIntegrity(tx,files)).toEqual(present));

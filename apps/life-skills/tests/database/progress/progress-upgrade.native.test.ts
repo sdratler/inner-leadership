@@ -27,7 +27,10 @@ test('native populated27→28 backfills exact encrypted narratives/attribution a
  try {
   await admin.query(`CREATE DATABASE "${db}"`); created = true;
   const manifest = JSON.parse(readFileSync(new URL('../../../migrations/manifest.json', import.meta.url), 'utf8')) as { name: string; sha256: string }[];
-  const files: Migration[] = manifest.map(entry => { const bytes = readFileSync(new URL(`../../../migrations/${entry.name}`, import.meta.url)); expect(createHash('sha256').update(bytes).digest('hex')).toBe(entry.sha256); return { name: entry.name, checksum: entry.sha256, sql: bytes.toString('utf8') }; });
+  const inventory: Migration[] = manifest.map(entry => { const bytes = readFileSync(new URL(`../../../migrations/${entry.name}`, import.meta.url)); expect(createHash('sha256').update(bytes).digest('hex')).toBe(entry.sha256); return { name: entry.name, checksum: entry.sha256, sql: bytes.toString('utf8') }; });
+  // Preserve this genuine historical27→28 scope when later additive migrations
+  // exist. Verify EVERY inventory checksum above, as the26→27 test already does.
+  const files=inventory.slice(0,inventory.findIndex(file=>file.name===PROGRESS_REVIEW_REVISIONS_MIGRATION.name)+1);
   expect(files).toHaveLength(28); expect(files.at(-1)).toMatchObject({ name: PROGRESS_REVIEW_REVISIONS_MIGRATION.name, checksum: PROGRESS_REVIEW_REVISIONS_MIGRATION.sha256 });
   client = await pool.connect();
   const adapter: MigrationClient = { query: async (sql, values) => await client!.query(sql, values ? [...values] : undefined) };

@@ -14,6 +14,7 @@ import type {Prospect} from "../../prospects/bridge.ts";
 import {contactSuppressed} from "../../prospects/native-edit.ts";
 import {MAX_NATIVE_CONTACTS,MAX_OPERATIONAL_PROSPECTS} from "../core/limits.ts";
 import {normalizePhone} from "../core/contact-resolution.ts";
+import type {InboundActivity} from "../core/inbound-projection.ts";
 
 const sourceSchema=z.object({sourceRow:z.number().int().min(2),payload:z.object({
  displayName:z.string(),language:z.string(),stageText:z.string(),sourceFields:z.record(z.string(),z.string())})});
@@ -31,10 +32,10 @@ export type NativeContactReference={leadId:string;phone:string;email:string;lang
  paymentClaim:string;bookingClaim:string;formSentClaim:string;formSubmittedClaim:string;
  sourceFileId:string|null;sourceSheetId:number|null;sourceRevision:string|null;journey:ProspectJourneyState;
  /** Native origin has no invented workbook, sheet, revision or imported claim. */
- nativeOrigin?:"native_manual";nativeCreatedAt?:string};
+  nativeOrigin?:"native_manual"|"native_whatsapp";nativeCreatedAt?:string};
 export type NativeContactRow={personId:string;displayName:string;identityKind:"adult"|"minor";
  stage:string;nextAction:string|null;followUpDate:string|null;notes:string;version:number|null;
- mode:"live"|"demo";archived:boolean;doNotContact:boolean;references:NativeContactReference[];
+  mode:"live"|"demo";archived:boolean;doNotContact:boolean;references:NativeContactReference[];inboundActivity?:InboundActivity;
  /** Real assigned cases, joined by canonical person UUID. Never phone/name matching. */
  caseLinks?:{caseId:string;state:string}[]};
 type StoredProfile={personId:string;kind:"adult"|"minor";personCiphertext:string;profileCiphertext:string;
@@ -124,7 +125,7 @@ export class NativeContactDirectory {
   const matches=rows.filter(row=>row.references.some(ref=>ref.leadId===leadId));
   if(matches.length>1)throw new AppError("CONFLICT");
   const row=matches[0];
-  return row?.references.some(ref=>ref.leadId===leadId&&ref.nativeOrigin==="native_manual")?row.personId:null;
+   return row?.references.some(ref=>ref.leadId===leadId&&Boolean(ref.nativeOrigin))?row.personId:null;
  }
  /** Server-only compatibility projection for existing operational consumers.
   * Read all bounded rows in the caller's ONE authority-locked transaction;
@@ -152,15 +153,15 @@ export class NativeContactDirectory {
     result.push({leadId:ref.leadId,name:row.displayName,phone:ref.phone,email:ref.email,language:ref.language,
      receivedAt:ref.nativeCreatedAt??get("Date received"),source:ref.source,campaign:ref.campaign,
      stage:row.doNotContact?"Do not contact":row.archived?"Archived":row.stage,
-     lastContact:get("Last contact"),nextAction:row.nextAction??"",dueDate:row.followUpDate??"",
+      lastContact:row.inboundActivity?.lastInboundAt??get("Last contact"),nextAction:row.nextAction??"",dueDate:row.followUpDate??"",
      outcome:ref.outcome,notes:row.notes,
      // Missing/stale Sheet claims must not unlink a genuine canonical client.
      // Multiple cases need the exact real journey/order relation, not a guess.
      caseId:canonicalProspectCase(row.caseLinks,orderCases.get(ref.leadId)??null),
      formSent:ref.formSentClaim,formSubmitted:ref.formSubmittedClaim,paymentLinkSent:get("Payment link sent"),
      paymentMethod:get("Payment method"),paymentStatus:ref.paymentClaim,paymentAllocation:get("Payment allocation"),
-     bookingStatus:ref.bookingClaim,messageReceipt:ref.messageReceipt,updateProvenance:get("Update provenance"),
-     firstInboundAt:get("First inbound at"),lastInboundAt:get("Last inbound at"),owner:ref.owner??get("Response owner"),...ref.journey,
+      bookingStatus:ref.bookingClaim,messageReceipt:row.inboundActivity?.lastMessageKey??ref.messageReceipt,updateProvenance:get("Update provenance"),
+      firstInboundAt:row.inboundActivity?.firstInboundAt??get("First inbound at"),lastInboundAt:row.inboundActivity?.lastInboundAt??get("Last inbound at"),owner:ref.owner??get("Response owner"),...ref.journey,
      ...(row.version===null?{}:{nativeEdit:{personId:row.personId,profileVersion:row.version,authorityEpoch:expectedEpoch}})});
    }
   }
@@ -193,7 +194,7 @@ export class NativeContactDirectory {
     // Read the current profile first so real native inquiry IDs join the same
     // authoritative form/payment/booking facts as genuine legacy inquiry IDs.
     const decoded=new Map(profiles.map(p=>[p.personId,parse(crmProfileSchema,p.profileCiphertext,crmProfileAad(actor.workspaceId,p.personId),this.keyring)]));
-    const inquiryIds=profiles.flatMap(p=>decoded.get(p.personId)?.nativeInquiry?[decoded.get(p.personId)!.nativeInquiry!.leadId]:[]);
+     const inquiryIds=profiles.flatMap(p=>{const profile=decoded.get(p.personId)!;return [profile.nativeInquiry?.leadId,profile.whatsappInquiry?.leadId].filter((id):id is string=>Boolean(id));});
     const journeys=await readProspectJourneysFromTx(tx,actor.workspaceId,[...new Set([...links.map(l=>l.leadId),...inquiryIds])]);
     for(const p of profiles){
      if(!Number.isSafeInteger(p.version)||p.version<1||
@@ -221,10 +222,10 @@ export class NativeContactDirectory {
        sourceFileId:l.sourceFileId,sourceSheetId:l.sourceSheetId,sourceRevision:l.sourceRevision,
        journey:journeys.get(l.leadId)??emptyJourney()};
      });
-     if(profile.nativeInquiry){const inquiry=profile.nativeInquiry;
+      for(const inquiry of [profile.nativeInquiry,profile.whatsappInquiry]){if(!inquiry)continue;
       references.push({leadId:inquiry.leadId,phone:inquiry.phone,email:"",language:inquiry.language,
        source:inquiry.source,campaign:"",outcome:profile.leadUpdates?.[inquiry.leadId]?.outcome??"",
-       owner:profile.leadUpdates?.[inquiry.leadId]?.owner??"",messageReceipt:"",paymentClaim:"",bookingClaim:"",
+       owner:profile.leadUpdates?.[inquiry.leadId]?.owner??"",messageReceipt:inquiry.origin==="native_whatsapp"?profile.inboundActivity?.lastMessageKey??"":"",paymentClaim:"",bookingClaim:"",
        formSentClaim:"",formSubmittedClaim:"",sourceFileId:null,sourceSheetId:null,sourceRevision:null,
        nativeOrigin:inquiry.origin,nativeCreatedAt:inquiry.createdAt,journey:journeys.get(inquiry.leadId)??emptyJourney()});
      }
@@ -233,7 +234,8 @@ export class NativeContactDirectory {
       // A closed historical inquiry cannot archive another open inquiry for the
       // same canonical person. Explicit profile archival remains authoritative.
       notes:profile.notes,version:p.version,mode:p.recordMode,archived:p.persistedArchived||archived(profile.stage)||(references.length>0&&references.every(r=>archived(r.outcome))),
-      doNotContact:profile.doNotContact===true||suppressed(profile.stage)||references.some(r=>r.sourceDoNotContact||suppressed(r.outcome)),references});
+      doNotContact:profile.doNotContact===true||suppressed(profile.stage)||references.some(r=>r.sourceDoNotContact||suppressed(r.outcome)),references,
+      ...(profile.inboundActivity?{inboundActivity:profile.inboundActivity}:{})});
     }
     after=profiles.at(-1)!.personId;
    }

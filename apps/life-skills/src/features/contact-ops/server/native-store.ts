@@ -11,6 +11,7 @@ import {asId} from "../../../lib/ids.ts";
 import {demoRecordBatch} from "../../demo/provenance.ts";
 import {nativeManualInquirySchema,type NativeManualInquiry} from "../core/people-create.ts";
 import {canonical} from "../core/validation.ts";
+import {nativeWhatsappInquirySchema,inboundActivitySchema,type NativeWhatsappInquiry,type InboundActivity} from "../core/inbound-projection.ts";
 export interface CrmProfile {
     personId: string;
     stage: string;
@@ -20,6 +21,10 @@ export interface CrmProfile {
     legacyIds: readonly string[];
     /** Server-created native inquiry; it does not claim a legacy Sheet origin. */
     nativeInquiry?: NativeManualInquiry;
+    /** Provider-origin administrative inquiry; never a manual/Sheet/account claim. */
+    whatsappInquiry?: NativeWhatsappInquiry;
+    /** Committed incoming activity only, separate from authored notes. */
+    inboundActivity?: InboundActivity;
     /** Administrative changes are separate from immutable imported evidence. */
     leadUpdates?: Record<string, {outcome?:string;owner?:string}>;
     /** Sticky communication suppression, never reset by an outcome/status edit. */
@@ -29,13 +34,16 @@ export function crmProfileAad(w: string, p: string) { return `ls_contact_ops/pro
 const legacyId=z.string().regex(/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]+$/);
 export const crmProfileSchema=z.object({personId:z.string().uuid(),stage:z.string().min(1).max(120),
     nextAction:z.string().max(500).nullable(),followUpDate:z.string().refine(dateOnly).nullable(),
-    notes:z.string().max(5000),nativeInquiry:nativeManualInquirySchema.optional(),legacyIds:z.array(legacyId).max(100)
+    notes:z.string().max(5000),nativeInquiry:nativeManualInquirySchema.optional(),
+    whatsappInquiry:nativeWhatsappInquirySchema.optional(),inboundActivity:inboundActivitySchema.optional(),legacyIds:z.array(legacyId).max(100)
         .refine(ids=>new Set(ids).size===ids.length),
     leadUpdates:z.record(legacyId,z.object({outcome:z.string().max(500).optional(),owner:z.string().max(120).optional()}).strict()).optional(),
     doNotContact:z.boolean().optional()
     }).strict().refine(p=>Object.keys(p.leadUpdates??{}).length<=100&&
-        Object.keys(p.leadUpdates??{}).every(id=>p.legacyIds.includes(id)||id===p.nativeInquiry?.leadId)&&
-        (!p.nativeInquiry||(p.nativeInquiry.leadId==="LS-LEAD-native-"+p.personId&&!p.legacyIds.includes(p.nativeInquiry.leadId))));
+        Object.keys(p.leadUpdates??{}).every(id=>p.legacyIds.includes(id)||id===p.nativeInquiry?.leadId||id===p.whatsappInquiry?.leadId)&&
+        (!p.nativeInquiry||(p.nativeInquiry.leadId==="LS-LEAD-native-"+p.personId&&!p.legacyIds.includes(p.nativeInquiry.leadId)))&&
+        (!p.whatsappInquiry||(p.whatsappInquiry.leadId==="LS-WAPI-native-"+p.personId&&!p.legacyIds.includes(p.whatsappInquiry.leadId)))&&
+        !(p.nativeInquiry&&p.whatsappInquiry));
 function validateProfile(profile:unknown):asserts profile is CrmProfile {
     requireThat(crmProfileSchema.safeParse(profile).success,"BAD_PROFILE");
     const p=profile as CrmProfile;
@@ -47,6 +55,7 @@ export class NativeCrmStore {
     /** The caller must have created the canonical identity person first. No Sheet write occurs. */
     async create(a:Actor,profile:CrmProfile,operationId:string):Promise<{version:number;replayed:boolean}> {
         validateProfile(profile);
+        requireThat(profile.whatsappInquiry===undefined&&profile.inboundActivity===undefined,"PROVIDER_FIELDS_REQUIRE_INBOUND_RECEIPT");
         requireThat(Boolean(operationId)&&operationId.length<=128,"BAD_OPERATION");
         const payloadDigest=privateDigest({action:"create",profile,actor:a.id,workspace:a.workspaceId},this.integrityKey);
         const encrypted=seal(JSON.stringify(profile),crmProfileAad(a.workspaceId,profile.personId),this.keyring);
@@ -121,6 +130,8 @@ export class NativeCrmStore {
             requireThat(current.length===1,"STALE_PROFILE_VERSION");
             const saved=crmProfileSchema.parse(JSON.parse(unseal(current[0]!.payload_ciphertext,crmProfileAad(a.workspaceId,profile.personId),this.keyring)));
             requireThat(canonical(saved.nativeInquiry??null)===canonical(profile.nativeInquiry??null),"INQUIRY_ORIGIN_IMMUTABLE");
+            requireThat(canonical(saved.whatsappInquiry??null)===canonical(profile.whatsappInquiry??null),"INQUIRY_ORIGIN_IMMUTABLE");
+            requireThat(canonical(saved.inboundActivity??null)===canonical(profile.inboundActivity??null),"INBOUND_ACTIVITY_IMMUTABLE");
             const updated = await tx.query<{
                 version: number;
             }>("UPDATE ls_contact_ops.profiles SET payload_ciphertext=$3,version=version+1,updated_at=clock_timestamp() WHERE workspace_id=$1 AND person_id=$2 AND version=$4 RETURNING version", [a.workspaceId, profile.personId, encrypted, expectedVersion]);
