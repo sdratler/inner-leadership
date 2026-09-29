@@ -88,6 +88,8 @@ export const CONTACT_OPS_SOURCE_FILES = [
  'src/db/practice-subject-integrity.ts',
  'src/db/migration-plan.ts',
  'src/db/migration-runner.ts',
+ 'scripts/release-intake.ts',
+ 'src/db/intake-migration-scope.ts',
 ] as const;
 
 const target = {
