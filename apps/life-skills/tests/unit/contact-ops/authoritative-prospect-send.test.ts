@@ -4,9 +4,12 @@ import {assertLegacyProspectSenderAvailable,projectIntakeToLegacyIfCurrent,
  projectLegacyProspectAfterSend,reconcileLegacyProspectProjection,resolvePreparedProspectSend,sendAuthoritativeProspectMessage} from "../../../src/features/contact-ops/server/authoritative-prospect-send.ts";
 import type {Actor} from "../../../src/features/identity/types.ts";
 import type {CutoverState,Phase} from "../../../src/features/contact-ops/core/cutover.ts";
+import type {SqlSession} from "../../../src/features/identity/store.ts";
 
 const actor={id:"synthetic-owner",role:"practitioner",workspaceId:"synthetic-workspace"} as Actor;
-const runtime={store:{},config:{workspaceId:"synthetic-workspace"},clock:{now:()=>new Date("2026-09-29T01:00:00Z")}} as Parameters<typeof sendAuthoritativeProspectMessage>[1];
+const intakeQueries=vi.fn().mockResolvedValue([]);
+const runtime={store:{transaction:<T>(work:(tx:SqlSession)=>Promise<T>)=>work({query:intakeQueries} as unknown as SqlSession)},
+ config:{workspaceId:"synthetic-workspace"},clock:{now:()=>new Date("2026-09-29T01:00:00Z")}} as Parameters<typeof sendAuthoritativeProspectMessage>[1];
 const state=(phase:Phase):CutoverState=>({phase,epoch:3,batchId:"synthetic",sourceFileId:"synthetic",
  sourceRevision:"synthetic",nativeWritesSinceSwitch:0});
 const authority=(phase:Phase)=>({read:vi.fn().mockResolvedValue(state(phase))});
@@ -120,8 +123,12 @@ describe("post-effect legacy projection fence",()=>{
  });
  it("preserves a submitted form and legacy projection while Sheet is authority",async()=>{
   const update=vi.fn().mockResolvedValue(undefined);
+  intakeQueries.mockClear();
   expect(await projectIntakeToLegacyIfCurrent(runtime,"LS-LEAD-synthetic",{formSubmitted:"synthetic"},
    {read:async()=>state("sheet_active"),update})).toBe(false);expect(update).toHaveBeenCalledOnce();
+  expect(intakeQueries).toHaveBeenNthCalledWith(1,"SET TRANSACTION READ ONLY");
+  expect(intakeQueries).toHaveBeenNthCalledWith(2,"SELECT pg_advisory_xact_lock(hashtextextended($1,0))",
+   ["synthetic-workspace:contact-authority"]);
  });
 });
 

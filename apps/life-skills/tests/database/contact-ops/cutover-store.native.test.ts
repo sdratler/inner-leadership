@@ -3,6 +3,7 @@ import {randomUUID} from "node:crypto";
 vi.mock("server-only",()=>({}));
 import {fixture,poolStore,type Fixture} from "../calendar/fixture.ts";
 import {ContactCutoverStore,type CutoverEvidence} from "../../../src/features/contact-ops/server/cutover-store.ts";
+import {projectIntakeToLegacyIfCurrent} from "../../../src/features/contact-ops/server/authoritative-prospect-send.ts";
 const fixtures:Fixture[]=[];
 afterAll(async()=>{for(const f of fixtures)await f.pool.end();});
 async function setup(){const f=await fixture();fixtures.push(f);return {f,store:new ContactCutoverStore(poolStore(f.pool),f.keyring,"synthetic-authority-integrity-key-20260928")};}
@@ -41,6 +42,34 @@ test("native cutover serializes competing transitions instead of admitting two e
  expect(outcomes.filter(r=>r.status==="rejected")).toHaveLength(1);
  expect(await store.read(a)).toMatchObject({phase:"shadow_ready",epoch:1});
  expect((await f.pool.query("SELECT count(*)::integer AS n FROM ls_contact_ops.cutover_history WHERE workspace_id=$1",[f.workspaceId])).rows[0].n).toBe(1);
+});
+
+test("public intake Sheet projection holds the authority fence through its external write",async()=>{
+ const {f,store}=await setup(),a=f.practitioner.actor;
+ let entered!:()=>void,released!:()=>void;
+ const started=new Promise<void>(resolve=>{entered=resolve;});
+ const finish=new Promise<void>(resolve=>{released=resolve;});
+ const order:string[]=[];
+ const runtime={store:poolStore(f.pool),config:{workspaceId:f.workspaceId,keyring:f.keyring}} as Parameters<typeof projectIntakeToLegacyIfCurrent>[0];
+ const update=vi.fn(async()=>{order.push("sheet-start");entered();await finish;order.push("sheet-end");});
+ const projection=projectIntakeToLegacyIfCurrent(runtime,"LS-LEAD-synthetic",{formSubmitted:"synthetic"},{update});
+ await started;
+ let advanced=false;
+ const transition=store.advance(a,{action:"prepare",proof:proof(0),operationId:"after-intake"}).then(result=>{
+  advanced=true;order.push("transition");return result;
+ });
+ try{
+  await new Promise(resolve=>setTimeout(resolve,100));
+  expect(advanced).toBe(false);
+ }finally{released();}
+ expect(await projection).toBe(false);
+ expect(await transition).toMatchObject({state:{phase:"shadow_ready",epoch:1}});
+ expect(order).toEqual(["sheet-start","sheet-end","transition"]);
+ await store.advance(a,{action:"freeze",proof:proof(1),operationId:"freeze-after-intake"});
+ const staleUpdate=vi.fn();
+ expect(await projectIntakeToLegacyIfCurrent(runtime,"LS-LEAD-synthetic",{formSubmitted:"synthetic"},
+  {update:staleUpdate})).toBe(true);
+ expect(staleUpdate).not.toHaveBeenCalled();
 });
 
 test("native cutover fences stale/legacy writes, counts only committed native writes and requires reconciled rollback",async()=>{

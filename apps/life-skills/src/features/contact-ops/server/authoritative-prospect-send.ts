@@ -156,9 +156,15 @@ export async function resolvePreparedProspectSend(actor:Actor,runtime:Runtime,op
  * Native form facts must be read from onboarding data, not invented from Sheet.
  */
 export async function projectIntakeToLegacyIfCurrent(runtime:Runtime,leadId:string,fields:Record<string,string>,
- dependencies?:{read:()=>Promise<CutoverState>;update:LegacyUpdate}):Promise<boolean>{
- const state=await (dependencies?.read??(()=>runtime.store.transaction(tx=>
-  readCutoverState(tx,runtime.config.workspaceId,runtime.config.keyring,false))))();
- if(writeDestination(state.phase)!=="sheet")return true;
- try{await (dependencies?.update??updateProspect)(leadId,fields);return false;}catch{return true;}
+ dependencies?:{read?:()=>Promise<CutoverState>;update:LegacyUpdate}):Promise<boolean>{
+ // The submission is already durable. Hold the same workspace authority fence
+ // through the legacy PATCH so a cutover transition cannot advance its epoch
+ // between the Sheet-authority read and completion of this external write.
+ return runtime.store.transaction(async tx=>{
+  await tx.query("SET TRANSACTION READ ONLY");
+  await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",[`${runtime.config.workspaceId}:contact-authority`]);
+  const state=await (dependencies?.read??(()=>readCutoverState(tx,runtime.config.workspaceId,runtime.config.keyring,false)))();
+  if(writeDestination(state.phase)!=="sheet")return true;
+  try{await (dependencies?.update??updateProspect)(leadId,fields);return false;}catch{return true;}
+ });
 }
