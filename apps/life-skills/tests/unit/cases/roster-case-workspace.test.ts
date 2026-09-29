@@ -199,7 +199,7 @@ it('offers same-locale sign-in instead of a false CRM outage when the private le
 
 it('shows one searchable People list without hiding a linked child case or duplicating status tabs', async () => {
  const lead = { leadId: 'synthetic-lead', caseId: caseA.id, name: 'Synthetic parent', phone: '0500000000', stage: 'New inquiry', language: 'he', receivedAt: '2026-09-25T08:00:00Z', dueDate: '', formSent: '', formSubmitted: '', paymentVerified: false, bookingStatus: '', outcome: '', journeyState: '' };
- vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: [lead], pendingOperations: [], pendingNext: null }) }));
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: [lead], pendingOperations: [], pendingNext: null, ledgerReady: true }) }));
  try {
   hook.render(() => ProspectsClient({ locale: 'en', embedded: true, clientCases: [caseA], caseState: 'ready' }));
   hook.flushEffects(); await tick();
@@ -216,7 +216,7 @@ it('keeps an orphaned pending send discoverable on a later ledger page without o
  const orphan={leadId:'LS-LEAD-synthetic-missing',operationId:'00000000-0000-4000-8000-000000000002',
   state:'sent_pending',message:'Synthetic message',createdAt:'2026-09-29T00:00:00Z'};
  const fetch=vi.fn().mockImplementation(async (url:string)=>({ok:true,status:200,json:async()=>({ok:true,data:[],
-  pendingOperations:url.includes('pendingAfter=')?[orphan]:[],pendingNext:url.includes('pendingAfter=')?null:cursor})}));
+  pendingOperations:url.includes('pendingAfter=')?[orphan]:[],pendingNext:url.includes('pendingAfter=')?null:cursor,ledgerReady:true})}));
  vi.stubGlobal('fetch',fetch);
  try{
   const view=()=>hook.render(()=>ProspectsClient({locale:'en',embedded:true,caseState:'ready'}));
@@ -232,10 +232,25 @@ it('keeps an orphaned pending send discoverable on a later ledger page without o
  }finally{vi.unstubAllGlobals();}
 });
 
+it('keeps People readable but disables provider sends while the outbound ledger is unavailable',async()=>{
+ const lead={leadId:'LS-LEAD-synthetic-safe',caseId:'',name:'Synthetic lead',phone:'0500000000',stage:'New inquiry',language:'he',
+  receivedAt:'2026-09-25T08:00:00Z',dueDate:'',formSent:'',formSubmitted:'',paymentVerified:false,bookingStatus:'',outcome:'',journeyState:''};
+ vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,status:200,json:async()=>({ok:true,data:[lead],
+  pendingOperations:[],pendingNext:null,ledgerReady:false})}));
+ try{
+  const view=()=>hook.render(()=>ProspectsClient({locale:'en',embedded:true,caseState:'ready'}));
+  view();hook.flushEffects();await tick();
+  await vi.waitFor(()=>expect(text(view())).toContain('Synthetic lead'));
+  expect(text(view())).toContain('private outbound ledger is unavailable');
+  const card=find(view(),element=>typeof element.type==='function'&&element.type.name==='ProspectCard');
+  expect(card?.props.sendsReady).toBe(false);
+ }finally{vi.unstubAllGlobals();}
+});
+
 it('paginates cases and prospects together without repeating cases on the next page', async () => {
  const cases = Array.from({ length: 13 }, (_, index) => ({ id: `synthetic-case-${index + 1}`, kind: 'minor' as const, state: 'active', displayName: `Synthetic case ${String(index + 1).padStart(2, '0')}` }));
  const lead = { leadId: 'LS-LEAD-synthetic', caseId: '', name: 'ZZ prospect', phone: '0500000000', stage: 'New inquiry', language: 'he', receivedAt: '2026-09-25T08:00:00Z', dueDate: '', formSent: '', formSubmitted: '', paymentVerified: false, bookingStatus: '', outcome: '', journeyState: '' };
- vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: [lead], pendingOperations: [], pendingNext: null }) }));
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: [lead], pendingOperations: [], pendingNext: null, ledgerReady: true }) }));
  try {
   hook.render(() => ProspectsClient({ locale: 'en', embedded: true, clientCases: cases, caseState: 'ready' }));
   hook.flushEffects(); await tick();
@@ -292,7 +307,7 @@ it('keeps ready cases reachable while the CRM request is still loading', async (
 
 it('keeps ready prospects reachable while client cases are still loading', async () => {
  const leads = Array.from({ length: 13 }, (_, index) => ({ leadId: `LS-LEAD-synthetic-${index + 1}`, caseId: '', name: `Synthetic lead ${String(index + 1).padStart(2, '0')}`, phone: '0500000000', stage: 'New inquiry', language: 'he', receivedAt: '2026-09-25T08:00:00Z', dueDate: '', formSent: '', formSubmitted: '', paymentVerified: false, bookingStatus: '', outcome: '', journeyState: '' }));
- vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: leads, pendingOperations: [], pendingNext: null }) }));
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: leads, pendingOperations: [], pendingNext: null, ledgerReady: true }) }));
  try {
   hook.render(() => ProspectsClient({ locale: 'en', embedded: true, caseState: 'loading' }));
   hook.flushEffects(); await tick();
@@ -308,7 +323,7 @@ it('keeps ready prospects reachable while client cases are still loading', async
 
 it('opens the selected prospect from a calendar deep link even when it belongs on a later People page', async () => {
  const leads = Array.from({ length: 13 }, (_, index) => ({ leadId: `LS-LEAD-synthetic-${index + 1}`, caseId: '', name: `Synthetic lead ${String(index + 1).padStart(2, '0')}`, phone: '0500000000', stage: 'New inquiry', language: 'he', receivedAt: '2026-09-25T08:00:00Z', dueDate: '', formSent: '', formSubmitted: '', paymentVerified: false, bookingStatus: '', outcome: '', journeyState: '' }));
- vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: leads, pendingOperations: [], pendingNext: null }) }));
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: leads, pendingOperations: [], pendingNext: null, ledgerReady: true }) }));
  try {
   const render = () => hook.render(() => ProspectsClient({ locale: 'en', embedded: true, caseState: null, focusLeadId: 'LS-LEAD-synthetic-13' }));
   render(); hook.flushEffects(); await tick();

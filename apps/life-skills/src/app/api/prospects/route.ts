@@ -7,7 +7,7 @@ import {verifyCsrfToken,verifyMutationOrigin} from "@/lib/security/csrf.ts";
 import {SESSION_COOKIE} from "@/lib/security/session.ts";
 import {identityRuntime} from "@/features/identity/runtime.ts";
 import type {Actor} from "@/features/identity/types.ts";
-import {assertLegacyProspectSenderAvailable,projectLegacyProspectAfterSend,reconcileLegacyProspectProjection,resolvePreparedProspectSend,sendAuthoritativeProspectMessage} from "@/features/contact-ops/server/authoritative-prospect-send.ts";
+import {assertLegacyProspectSenderAvailable,outboundLedgerAvailable,projectLegacyProspectAfterSend,reconcileLegacyProspectProjection,resolvePreparedProspectSend,sendAuthoritativeProspectMessage} from "@/features/contact-ops/server/authoritative-prospect-send.ts";
 import {prospectCreateSchema} from "@/features/contact-ops/core/people-create.ts";
 import {createAuthoritativeProspect} from "@/features/contact-ops/server/authoritative-prospect-create.ts";
 import {readAuthoritativeProspects} from "@/features/contact-ops/server/authoritative-prospects.ts";
@@ -51,14 +51,15 @@ export async function GET(request:Request){try{
  const ledger=new OutboundProjectionStore(s.runtime.store,s.runtime.config.keyring,
   s.runtime.config.lookupKey.toString("hex"),s.runtime.clock),cursor=new URL(request.url).searchParams.getAll("pendingAfter");
  if(cursor.length>1)throw new AppError("INVALID_REQUEST");
- const [pending,pendingPage]=await Promise.all([ledger.pendingForLeads(s.actor,rows.map(row=>row.leadId)),
-  ledger.pendingPage(s.actor,cursor[0]??null)]);
+ const ledgerReady=await outboundLedgerAvailable(s.runtime);
+ const [pending,pendingPage]=ledgerReady?await Promise.all([ledger.pendingForLeads(s.actor,rows.map(row=>row.leadId)),
+  ledger.pendingPage(s.actor,cursor[0]??null)]):[new Map(),{items:[],nextCursor:null}];
  return NextResponse.json({ok:true,data:rows.map(row=>({...row,...(states.get(row.leadId)??{
   journeyState:"prospect",paymentVerified:false,bookingConfirmed:false}),projectionPending:pending.has(row.leadId),
   projectionOperationId:pending.get(row.leadId)?.operationId,projectionState:pending.get(row.leadId)?.state,
   projectionMessage:pending.get(row.leadId)?.state==="prepared"?pending.get(row.leadId)?.message:undefined,
   projectionCreatedAt:pending.get(row.leadId)?.createdAt})),
-  pendingOperations:pendingPage.items,pendingNext:pendingPage.nextCursor,
+  pendingOperations:pendingPage.items,pendingNext:pendingPage.nextCursor,ledgerReady,
   requestId:randomUUID()},{headers:{"Cache-Control":"private, no-store","Referrer-Policy":"no-referrer"}});
 }catch(e){return fail(e)}}
 export async function POST(request:Request){try{const s=await session(request);verifyMutationOrigin(request,s.runtime.config.origin);verifyCsrfToken(request.headers.get("x-csrf-token"),s.runtime.services.sessions.csrf(s.token));const input=await readJson(request,body);

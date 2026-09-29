@@ -7,7 +7,7 @@ import type {CutoverState,Phase} from "../../../src/features/contact-ops/core/cu
 import type {SqlSession} from "../../../src/features/identity/store.ts";
 
 const actor={id:"synthetic-owner",role:"practitioner",workspaceId:"synthetic-workspace"} as Actor;
-const intakeQueries=vi.fn().mockResolvedValue([]);
+const intakeQueries=vi.fn(async(sql:string)=>sql.includes("to_regclass")?[{available:true}]:[]);
 const runtime={store:{transaction:<T>(work:(tx:SqlSession)=>Promise<T>)=>work({query:intakeQueries} as unknown as SqlSession)},
  config:{workspaceId:"synthetic-workspace"},clock:{now:()=>new Date("2026-09-29T01:00:00Z")}} as Parameters<typeof sendAuthoritativeProspectMessage>[1];
 const state=(phase:Phase):CutoverState=>({phase,epoch:3,batchId:"synthetic",sourceFileId:"synthetic",
@@ -27,6 +27,15 @@ describe("Sheet-bound prospect send fence",()=>{
    {stage:"Contacted"},{authority:a,sender,ledger});
   expect(a.read).toHaveBeenCalledWith(actor);expect(ledger.prepare).toHaveBeenCalledOnce();expect(sender).toHaveBeenCalledOnce();
   expect(ledger.prepare.mock.invocationCallOrder[0]).toBeLessThan(sender.mock.invocationCallOrder[0]!);
+ });
+ it("pauses before provider contact when the outbound ledger migration is pending",async()=>{
+  const a=authority("sheet_active");sender.mockClear();ledger.prepare.mockClear();
+  intakeQueries.mockImplementation(async(sql:string)=>sql.includes("to_regclass")?[{available:false}]:[]);
+  try{
+   await expect(sendAuthoritativeProspectMessage(actor,runtime,"LS-LEAD-synthetic","synthetic message",
+    {stage:"Contacted"},{authority:a,sender,ledger})).rejects.toMatchObject({code:"UNAVAILABLE"});
+   expect(ledger.prepare).not.toHaveBeenCalled();expect(sender).not.toHaveBeenCalled();
+  }finally{intakeQueries.mockImplementation(async(sql:string)=>sql.includes("to_regclass")?[{available:true}]:[]);}
  });
  it.each(["frozen","native_active","retired","rollback_prepared"] as const)("does not send through Sheet in %s",async phase=>{
   sender.mockClear();const a=authority(phase);

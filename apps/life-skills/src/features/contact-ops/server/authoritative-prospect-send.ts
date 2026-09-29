@@ -16,6 +16,12 @@ type LegacyList=()=>Promise<Prospect[]>;
 type Ledger=Pick<OutboundProjectionStore,"prepare"|"confirm"|"projected"|"read">;
 const ledger=(runtime:Runtime)=>new OutboundProjectionStore(runtime.store,runtime.config.keyring,
  runtime.config.lookupKey.toString("hex"),runtime.clock);
+export async function outboundLedgerAvailable(runtime:Runtime):Promise<boolean>{
+ const rows=await runtime.store.transaction(tx=>tx.query<{available:boolean}>(
+  "SELECT to_regclass('ls_contact_ops.outbound_projections') IS NOT NULL AS available"));
+ if(rows.length!==1)throw new AppError("UNAVAILABLE");
+ return rows[0]?.available===true;
+}
 
 /** Legacy transport is tied to the Sheet CRM. A native or frozen authority must
  * never send through it merely because an old browser still has a lead ID.
@@ -28,6 +34,9 @@ export async function assertLegacyProspectSenderAvailable(actor:Actor,runtime:Ru
   runtime.config.lookupKey.toString("hex"),runtime.clock);
  const state=await selected.read(actor);
  if(writeDestination(state.phase)!=="sheet")throw new AppError("CONFLICT");
+ // A reviewed app may briefly start before its separately guarded additive
+ // migration. Fail before issuing an intake token or contacting the provider.
+ if(!await outboundLedgerAvailable(runtime))throw new AppError("UNAVAILABLE");
  return state.epoch;
 }
 export async function sendAuthoritativeProspectMessage(actor:Actor,runtime:Runtime,leadId:string,message:string,
