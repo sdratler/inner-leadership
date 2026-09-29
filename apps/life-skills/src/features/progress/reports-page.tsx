@@ -160,7 +160,7 @@ export function ReportEditor({ locale, caseId, audienceId, reviews, onSaved,onSt
  const fields = [["taught",t.taught],["observations",t.observations],["useful",t.useful],["difficulty",t.difficulty],["uncertainty",t.uncertainty],["next",t.next],["limits",t.limits]] as const;
  return <section className="lsw-card lsw-stack">
   <PrivateObservationEvidencePanel locale={locale} caseId={caseId}/>
-  <label>{t.select}<select value={selectedId} disabled={busy||uncertain} onChange={event=>choose(event.target.value)}><option value="">{t.newDraft}</option>{reviews.filter(item=>item.state==='draft'||item.id===selectedId).map(item=><option key={item.id} value={item.id}>{item.periodStart}–{item.periodEnd} · {r.version} {item.revision}</option>)}</select></label>
+  <label>{t.select}<select aria-label={t.select} value={selectedId} disabled={busy||uncertain} onChange={event=>choose(event.target.value)}><option value="">{t.newDraft}</option>{reviews.filter(item=>item.state==='draft'||item.id===selectedId).map(item=><option key={item.id} value={item.id}>{item.periodStart}–{item.periodEnd} · {r.version} {item.revision}</option>)}</select></label>
   <p>{selected?r.sourcePreserved:t.sources}</p>{selected&&<p>{r.version}: {selected.revision} · {selected.state==='published'?t.published:t.draft}</p>}
   <label>{t.start}<input type="date" value={draft.periodStart} disabled={busy||uncertain||Boolean(selected)} onChange={event=>change('periodStart',event.target.value)}/></label>
   <p>{t.end}: {periodEnd(draft.periodStart)||'—'}</p>

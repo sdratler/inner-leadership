@@ -171,6 +171,7 @@ for(const locale of ['en','he'] as const){
    return Response.json({ok:true,data:url.includes('/revisions?')?{reviewId:original.id,currentRevision:2,state:'draft',hasMore:false,nextBefore:null,revisions:[{revision:2,operationId:sent!.operationId,savedAt:'2026-09-29T10:00:00Z',authorAccountId:'synthetic-owner',narrative:sent!.narrative}]}:[saved]});
   });
   const onSaved=vi.fn(),props={locale,...ids,reviews:[original],onSaved};let output=hook.render(()=>ReportEditor(props));hook.flushEffects();
+  expect(find(output,e=>e.type==='select')?.props['aria-label']).toBe(locale==='he'?'טיוטה שמורה':'Saved draft');
   (find(output,e=>e.type==='select')!.props.onChange as Change)({target:{value:original.id}});output=hook.render(()=>ReportEditor(props));
   expect(find(output,e=>e.type==='input')?.props.disabled).toBe(true);
   (all(output,e=>e.type==='textarea')[5]!.props.onChange as Change)({target:{value:'Synthetic revised next'}});
