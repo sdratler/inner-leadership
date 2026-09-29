@@ -61,11 +61,11 @@ for(const locale of ['he','en'] as const){
   expect(response?.status(),'IR-LS030-PROXY must be accepted and installed; do not bypass the foundation lock').toBe(200);
   await expect(page.getByRole('heading',{name:locale==='he'?'יומן':'Calendar',exact:true})).toBeVisible();
   await expect(page.locator('main.ls-cal .lsw-calendar')).toBeVisible();
-  expect(await page.evaluate(()=>{
+  await expect.poll(()=>page.evaluate(()=>{
    const calendar=document.querySelector('main.ls-cal .lsw-calendar');
    const summaries=document.querySelector('main.ls-cal .ls-cal-operational');
    return Boolean(calendar&&summaries&&(calendar.compareDocumentPosition(summaries)&Node.DOCUMENT_POSITION_FOLLOWING));
-  }), 'The actual practitioner Calendar precedes operational summaries without hiding them').toBe(true);
+  }), {message:'The actual practitioner Calendar precedes operational summaries without hiding them'}).toBe(true);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   await page.locator(`[data-appointment-id="${d.pastId}"]:visible`).click();const dialog=page.locator('#ls-cal-detail');
   await dialog.locator('#attendance-state').selectOption('no_show');await dialog.getByRole('button',{name:t.recordAttendance,exact:true}).click();
@@ -93,11 +93,11 @@ test('an empty calendar keeps its grid on mobile, while populated dates keep the
  const empty=await page.goto('/en/app/calendar?date=2040-01-02&view=week');expect(empty?.status()).toBe(200);
  await expect(page.locator('main.ls-cal')).toHaveAttribute('data-has-appointments','false');
  await expect(page.locator('[data-ls-calendar-grid]')).toBeVisible();
- expect(await page.evaluate(()=>{
+ await expect.poll(()=>page.evaluate(()=>{
   const calendar=document.querySelector('main.ls-cal .lsw-calendar');
   const summaries=document.querySelector('main.ls-cal .ls-cal-operational');
   return Boolean(calendar&&summaries&&(calendar.compareDocumentPosition(summaries)&Node.DOCUMENT_POSITION_FOLLOWING));
- }), 'An empty Calendar also precedes the retained operational summaries').toBe(true);
+ }), {message:'An empty Calendar also precedes the retained operational summaries'}).toBe(true);
  const d=data.cases[info.project.name+':en']!;
  const populated=await page.goto(`/en/app/calendar?date=${d.pastDate}&view=day&caseId=${data.caseId}`);expect(populated?.status()).toBe(200);
  await expect(page.locator('main.ls-cal')).toHaveAttribute('data-has-appointments','true');
