@@ -199,7 +199,7 @@ it('offers same-locale sign-in instead of a false CRM outage when the private le
 
 it('shows one searchable People list without hiding a linked child case or duplicating status tabs', async () => {
  const lead = { leadId: 'synthetic-lead', caseId: caseA.id, name: 'Synthetic parent', phone: '0500000000', stage: 'New inquiry', language: 'he', receivedAt: '2026-09-25T08:00:00Z', dueDate: '', formSent: '', formSubmitted: '', paymentVerified: false, bookingStatus: '', outcome: '', journeyState: '' };
- vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: [lead] }) }));
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: [lead], pendingOperations: [], pendingNext: null }) }));
  try {
   hook.render(() => ProspectsClient({ locale: 'en', embedded: true, clientCases: [caseA], caseState: 'ready' }));
   hook.flushEffects(); await tick();
@@ -211,10 +211,31 @@ it('shows one searchable People list without hiding a linked child case or dupli
  } finally { vi.unstubAllGlobals(); }
 });
 
+it('keeps an orphaned pending send discoverable on a later ledger page without offering a resend', async () => {
+ const cursor='00000000-0000-4000-8000-000000000001';
+ const orphan={leadId:'LS-LEAD-synthetic-missing',operationId:'00000000-0000-4000-8000-000000000002',
+  state:'sent_pending',message:'Synthetic message',createdAt:'2026-09-29T00:00:00Z'};
+ const fetch=vi.fn().mockImplementation(async (url:string)=>({ok:true,status:200,json:async()=>({ok:true,data:[],
+  pendingOperations:url.includes('pendingAfter=')?[orphan]:[],pendingNext:url.includes('pendingAfter=')?null:cursor})}));
+ vi.stubGlobal('fetch',fetch);
+ try{
+  const view=()=>hook.render(()=>ProspectsClient({locale:'en',embedded:true,caseState:'ready'}));
+  view();hook.flushEffects();await tick();
+  await vi.waitFor(()=>expect(text(view())).toContain('Load more pending send attempts'));
+  expect(text(view())).not.toContain(orphan.leadId);
+  const more=find(view(),element=>element.type==='button'&&element.props.children==='Load more pending send attempts');
+  (more!.props.onClick as()=>void)();
+  await vi.waitFor(()=>expect(text(view())).toContain(orphan.leadId));
+  expect(text(view())).toContain('Restore the exact source record and lead ID');
+  expect(text(view())).toContain('Verify restored lead and update CRM (no resend)');
+  expect(fetch).toHaveBeenCalledWith(`/api/prospects?pendingAfter=${cursor}`,expect.anything());
+ }finally{vi.unstubAllGlobals();}
+});
+
 it('paginates cases and prospects together without repeating cases on the next page', async () => {
  const cases = Array.from({ length: 13 }, (_, index) => ({ id: `synthetic-case-${index + 1}`, kind: 'minor' as const, state: 'active', displayName: `Synthetic case ${String(index + 1).padStart(2, '0')}` }));
  const lead = { leadId: 'LS-LEAD-synthetic', caseId: '', name: 'ZZ prospect', phone: '0500000000', stage: 'New inquiry', language: 'he', receivedAt: '2026-09-25T08:00:00Z', dueDate: '', formSent: '', formSubmitted: '', paymentVerified: false, bookingStatus: '', outcome: '', journeyState: '' };
- vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: [lead] }) }));
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: [lead], pendingOperations: [], pendingNext: null }) }));
  try {
   hook.render(() => ProspectsClient({ locale: 'en', embedded: true, clientCases: cases, caseState: 'ready' }));
   hook.flushEffects(); await tick();
@@ -271,7 +292,7 @@ it('keeps ready cases reachable while the CRM request is still loading', async (
 
 it('keeps ready prospects reachable while client cases are still loading', async () => {
  const leads = Array.from({ length: 13 }, (_, index) => ({ leadId: `LS-LEAD-synthetic-${index + 1}`, caseId: '', name: `Synthetic lead ${String(index + 1).padStart(2, '0')}`, phone: '0500000000', stage: 'New inquiry', language: 'he', receivedAt: '2026-09-25T08:00:00Z', dueDate: '', formSent: '', formSubmitted: '', paymentVerified: false, bookingStatus: '', outcome: '', journeyState: '' }));
- vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: leads }) }));
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: leads, pendingOperations: [], pendingNext: null }) }));
  try {
   hook.render(() => ProspectsClient({ locale: 'en', embedded: true, caseState: 'loading' }));
   hook.flushEffects(); await tick();
@@ -287,7 +308,7 @@ it('keeps ready prospects reachable while client cases are still loading', async
 
 it('opens the selected prospect from a calendar deep link even when it belongs on a later People page', async () => {
  const leads = Array.from({ length: 13 }, (_, index) => ({ leadId: `LS-LEAD-synthetic-${index + 1}`, caseId: '', name: `Synthetic lead ${String(index + 1).padStart(2, '0')}`, phone: '0500000000', stage: 'New inquiry', language: 'he', receivedAt: '2026-09-25T08:00:00Z', dueDate: '', formSent: '', formSubmitted: '', paymentVerified: false, bookingStatus: '', outcome: '', journeyState: '' }));
- vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: leads }) }));
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: leads, pendingOperations: [], pendingNext: null }) }));
  try {
   const render = () => hook.render(() => ProspectsClient({ locale: 'en', embedded: true, caseState: null, focusLeadId: 'LS-LEAD-synthetic-13' }));
   render(); hook.flushEffects(); await tick();
