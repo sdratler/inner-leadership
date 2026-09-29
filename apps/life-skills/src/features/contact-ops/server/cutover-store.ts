@@ -68,14 +68,12 @@ export class ContactCutoverStore {
     return {state:record.state,replayed:true};
    }
    const current=await this.current(tx,a);
-   if(action==="prepare"||action==="freeze"||action==="switch_native"||action==="retire_sheet"){
-    // The same authority lock protects pre-send intents. Even prepare advances
-    // the epoch while Sheet remains writable, so it must not strand a send
-    // whose receipt or Sheet projection still needs reconciliation.
-    const pending=await tx.query(`SELECT operation_id FROM ls_contact_ops.outbound_projections
-     WHERE workspace_id=$1 AND state IN ('prepared','sent_pending') LIMIT 1`,[a.workspaceId]);
-    if(pending.length)throw new AppError("CONFLICT");
-   }
+   // Every action, including prepare and both rollback steps, advances the
+   // authority epoch. The same lock protects pre-send intents: no transition
+   // may strand a receipt or Sheet projection awaiting reconciliation.
+   const pending=await tx.query(`SELECT operation_id FROM ls_contact_ops.outbound_projections
+    WHERE workspace_id=$1 AND state IN ('prepared','sent_pending') LIMIT 1`,[a.workspaceId]);
+   if(pending.length)throw new AppError("CONFLICT");
    // Writes keep the phase epoch but advance this counter. Bind EVERY transition's
    // evidence to both, so an intervening write invalidates a rollback/delta proof.
    if(current.epoch!==proof.expectedEpoch||current.nativeWritesSinceSwitch!==proof.observedNativeWritesSinceSwitch||current.epoch>=Number.MAX_SAFE_INTEGER-1)throw new AppError("CONFLICT");

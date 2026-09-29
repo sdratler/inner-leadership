@@ -81,3 +81,19 @@ test("a documented provider non-delivery can close an old prepared hold without 
  expect(await cutover.advance(a,{action:"prepare",proof:proof(0),operationId:"synthetic-not-delivered-prepare"}))
   .toMatchObject({state:{phase:"shadow_ready",epoch:1}});
 });
+
+test("rollback cannot advance a Sheet-writable epoch while an outbound result is unresolved",async()=>{
+ const {f,ledger,cutover}=await setup(),a=f.practitioner.actor,lead="LS-LEAD-SYNTHETIC-ROLLBACK";
+ await cutover.advance(a,{action:"prepare",proof:proof(0),operationId:"synthetic-rollback-prepare"});
+ const operation=await ledger.prepare(a,lead,1,"Synthetic in-flight message",{stage:"Contacted"});
+ await expect(cutover.advance(a,{action:"prepare_rollback",proof:proof(1),operationId:"synthetic-rollback-hold"}))
+  .rejects.toMatchObject({code:"CONFLICT"});
+ await ledger.confirm(a,operation,{provider:"synthetic",providerMessageId:"synthetic-rollback-id",sentAt:"2026-09-30T00:00:00Z"},{stage:"Contacted"});
+ await expect(cutover.advance(a,{action:"prepare_rollback",proof:proof(1),operationId:"synthetic-rollback-hold"}))
+  .rejects.toMatchObject({code:"CONFLICT"});
+ await ledger.projected(a,operation);
+ expect(await cutover.advance(a,{action:"prepare_rollback",proof:proof(1),operationId:"synthetic-rollback-hold"}))
+  .toMatchObject({state:{phase:"rollback_prepared",epoch:2}});
+ expect(await cutover.advance(a,{action:"finish_rollback",proof:proof(2),operationId:"synthetic-rollback-finish"}))
+  .toMatchObject({state:{phase:"sheet_active",epoch:3}});
+});

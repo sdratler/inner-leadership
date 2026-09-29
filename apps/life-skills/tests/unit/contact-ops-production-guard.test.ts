@@ -42,9 +42,13 @@ const inboundPresent:ContactInboundIntegrityObjects={objectsAbsent:false,tables:
 describe('registered native CRM production migration gate',()=>{
  it('binds a complete ordered reviewed source-file bundle',()=>{
   const entries=CONTACT_OPS_SOURCE_FILES.map(path=>({path,bytes:Buffer.from('synthetic\r\n')}));
+  expect(CONTACT_OPS_SOURCE_FILES).toContain('migrations/0110_ls_contact_outbound_projection.sql');
+  expect(CONTACT_OPS_SOURCE_FILES).toContain('src/db/contact-outbound-projection-integrity.ts');
   expect(contactOpsSourceBundle(entries)).toMatch(/^[a-f0-9]{64}$/);
   expect(contactOpsSourceBundle(entries)).toBe(contactOpsSourceBundle(entries.map(entry=>({...entry,bytes:Buffer.from('synthetic\n')}))));
   expect(contactOpsSourceBundle(entries.map((entry,index)=>index===0?{...entry,bytes:Buffer.from('changed')}:entry))).not.toBe(contactOpsSourceBundle(entries));
+  const outboundVerifier=entries.findIndex(entry=>entry.path==='src/db/contact-outbound-projection-integrity.ts');
+  expect(contactOpsSourceBundle(entries.map((entry,index)=>index===outboundVerifier?{...entry,bytes:Buffer.from('changed')}:entry))).not.toBe(contactOpsSourceBundle(entries));
   expect(()=>contactOpsSourceBundle(entries.slice(1))).toThrow('CONTACT_OPS_SOURCE_INVENTORY_MISMATCH');
  });
  it('compares canonical marker expression and exact migration function bodies',()=>{
