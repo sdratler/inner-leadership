@@ -102,11 +102,14 @@ export function PracticeOccurrenceCard({ locale, item, onReadback, onAccessLost,
   const canSave = item.canReport && (item.occurrence.state === "open" || savedReport !== null);
   async function save() {
     if (!status || !canSave || phase === "saving" || phase === "conflict") return;
+    const retryingUnconfirmed = attempt.current !== null;
     const body = attempt.current ?? checkInAttempt(id, status, savedReport?.reportId);
     attempt.current = body; controller.current?.abort(); const current = new AbortController(); controller.current = current;
     setPhase("saving"); onDirty(id, true);
+    let mutationConfirmed = false;
     try {
       await submitPracticeCheckIn(body, current.signal);
+      mutationConfirmed = true;
       // A successful HTTP mutation is not enough: read its persisted report back.
       const rows = await ownCheckInHistory(id, current.signal);
       if (!mounted.current || current.signal.aborted) return;
@@ -118,7 +121,8 @@ export function PracticeOccurrenceCard({ locale, item, onReadback, onAccessLost,
     } catch (error) {
       if (!mounted.current || current.signal.aborted) return;
       if (practiceAccessLost(error)) { onDirty(id, false); onAccessLost(id, (error as IdentityClientError).code); return; }
-      const uncertain = practiceSaveUncertain(error);
+      // A rejected retry cannot disprove an earlier uncertain/confirmed write.
+      const uncertain = practiceSaveUncertain(error, mutationConfirmed || retryingUnconfirmed);
       setPhase(uncertain ? "uncertain" : error instanceof IdentityClientError && error.code === "CONFLICT" ? "conflict" : "error");
       if (!uncertain) attempt.current = null;
     }

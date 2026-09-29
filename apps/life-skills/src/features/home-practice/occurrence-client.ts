@@ -101,6 +101,6 @@ export function checkInReadback(attempt: CheckInAttempt, rows: readonly OwnCompl
 export function practiceAccessLost(error: unknown): boolean {
   return error instanceof IdentityClientError && ["UNAUTHENTICATED", "FORBIDDEN", "NOT_FOUND"].includes(error.code);
 }
-export function practiceSaveUncertain(error: unknown): boolean {
-  return !(error instanceof IdentityClientError) || ["UNAVAILABLE", "INTERNAL"].includes(error.code);
+export function practiceSaveUncertain(error: unknown, attemptMayBeRecorded = false): boolean {
+  return attemptMayBeRecorded || !(error instanceof IdentityClientError) || ["UNAVAILABLE", "INTERNAL"].includes(error.code);
 }

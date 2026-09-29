@@ -85,3 +85,8 @@ test("conflict preserves selection but requires readback; malformed data is not 
   const fetcher = vi.fn().mockResolvedValue(ok({ items: "not-an-array", hasMore: false })); vi.stubGlobal("fetch", fetcher);
   await expect(practiceOccurrences(id, id, "2026-09-29", "2026-09-30", new AbortController().signal)).rejects.toMatchObject({ code: "UNAVAILABLE" });
 });
+test.each(["RATE_LIMITED","CONFLICT","INVALID_REQUEST"] as const)("a confirmed mutation followed by %s readback retains its uncertain receipt",code=>{
+ const error=new IdentityClientError(code);
+ expect(practiceSaveUncertain(error)).toBe(false);
+ expect(practiceSaveUncertain(error,true)).toBe(true);
+});
