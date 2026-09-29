@@ -12,6 +12,10 @@ import {showCalendarViewTabsInContent} from "../../src/features/calendar/view-ta
 import {paymentSection,paymentVisibleCharges,paymentVisiblePanels} from "../../src/features/payments/sections.ts";
 
 describe("operational workspace navigation",()=>{
+ for(const locale of ['he','en'] as const)it(`${locale}: all contextual Calendar views preserve explicit demo context and date`,()=>{
+  const html=renderToStaticMarkup(React.createElement(WorkspaceShell,{locale,role:'practitioner',pathname:`/${locale}/app/calendar`,view:'week',date:'2026-09-28',mode:'demo',languageHref:`/${locale==='he'?'en':'he'}/app/calendar?mode=demo`} as React.ComponentProps<typeof WorkspaceShell>,React.createElement('h1',null,'Calendar')));
+  for(const view of ['day','week','month','agenda'])expect(html).toContain(`/${locale}/app/calendar?view=${view}&amp;date=2026-09-28&amp;mode=demo`);
+ });
  it("limits the practitioner sidebar to the six owner-selected destinations",()=>{
   expect(primaryNavigation.practitioner.map(item=>item.en)).toEqual(["Calendar","People","Communications","Reports","Marketing","Payments"]);
   expect(primaryNavigation.parent.map(item=>item.en)).toEqual(["Calendar","Home","Practice","Messages"]);

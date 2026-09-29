@@ -59,7 +59,7 @@ for(const locale of ['he','en'] as const){
   await context.addCookies([{name:'__Host-ls-session',value:data.practitioner,url:data.origin,httpOnly:true,secure:true,sameSite:'Lax'}]);
   const response=await page.goto(`/${locale}/app/calendar?date=${d.pastDate}&view=day&caseId=${data.caseId}`);
   expect(response?.status(),'IR-LS030-PROXY must be accepted and installed; do not bypass the foundation lock').toBe(200);
-  await expect(page.getByRole('heading',{name:t.title,exact:true})).toBeVisible();
+  await expect(page.getByRole('heading',{name:locale==='he'?'יומן':'Calendar',exact:true})).toBeVisible();
   await expect(page.locator('main.ls-cal .lsw-calendar')).toBeVisible();
   expect(await page.evaluate(()=>{
    const calendar=document.querySelector('main.ls-cal .lsw-calendar');

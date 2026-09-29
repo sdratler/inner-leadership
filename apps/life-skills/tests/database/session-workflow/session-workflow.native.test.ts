@@ -58,6 +58,30 @@ async function httpFixture(){
  const request=(path:string,body?:unknown,token=f.practitioner.token,key=randomUUID(),csrf=true)=>new Request(origin+"/api/sessions"+path,{method:body===undefined?"GET":"POST",headers:{cookie:`${SESSION_COOKIE}=${token}`,...(body===undefined?{}:{origin,"content-type":"application/json","idempotency-key":key,...(csrf?{"x-csrf-token":sessions.csrf(token)}:{})})},...(body===undefined?{}:{body:JSON.stringify(body)})});
  return {f,service,http,request};
 }
+test("exact Calendar appointment is filtered before the bounded session list without granting or creating a record",async()=>{
+ const s=await httpFixture();
+ // Extend only this disposable fixture so its genuine Calendar constraint
+ // admits synthetic historical appointments; no production rule is changed.
+ await s.f.pool.query("INSERT INTO ls_calendar.availability(id,workspace_id,practitioner_id,starts_at,ends_at,kind) VALUES($1,$2,$3,$4,$5,'open')",[randomUUID(),s.f.workspaceId,s.f.practitioner.actor.id,s.f.at(-24*141),s.f.at(-24*139)]);
+ const old=await s.f.seed(s.f.at(-24*140));
+ for(let hour=120;hour>=20;hour--)await s.f.seed(s.f.at(-hour));
+ const recent=await s.service.list(s.f.practitioner.actor,s.f.first.id);
+ expect(recent).toHaveLength(100);expect(recent.some(item=>item.appointmentId===old)).toBe(false);
+ const path=`?appointmentId=${old.toUpperCase()}&caseId=${s.f.first.id.toUpperCase()}`;
+ const response=await s.http.handle(s.request(path),[]);expect(response.status).toBe(200);
+ expect((await response.json()).data).toMatchObject([{appointmentId:old,sessionId:null,startsAt:s.f.at(-24*140)}]);
+ expect((await s.f.pool.query('SELECT count(*)::int AS n FROM ls_sessions.sessions WHERE workspace_id=$1',[s.f.workspaceId])).rows[0].n).toBe(0);
+ const ensured=await s.service.ensureForAppointment(s.f.practitioner.actor,s.f.first.id,old);
+ const reloaded=await s.http.handle(s.request(path),[]);expect(reloaded.status).toBe(200);
+ expect((await reloaded.json()).data).toMatchObject([{appointmentId:old,sessionId:ensured.sessionId}]);
+ expect((await s.service.detail(s.f.practitioner.actor,ensured.sessionId)).appointments.some(item=>item.id===old)).toBe(true);
+ const other=await s.f.seed(s.f.at(48),s.f.second);
+ const wrong=await s.http.handle(s.request(`?caseId=${s.f.first.id}&appointmentId=${other}`),[]);expect(wrong.status).toBe(200);expect((await wrong.json()).data).toEqual([]);
+ for(const query of [`?caseId=${s.f.first.id}&appointmentId=${old}&extra=1`,`?caseId=${s.f.first.id}&appointmentId=${old}&appointmentId=${old}`,`?caseId=${s.f.first.id}&caseId=${s.f.first.id}&appointmentId=${old}`,`?caseId=${s.f.first.id}&appointmentId=invalid`,`?caseId=${s.f.first.id}&appointmentId=`])expect((await s.http.handle(s.request(query),[])).status).toBe(400);
+ for(const role of ['parent','child','adult_client']){await s.f.pool.query('UPDATE ls_identity.accounts SET role=$2 WHERE id=$1',[s.f.parent.actor.id,role]);expect((await s.http.handle(s.request(path,undefined,s.f.parent.token),[])).status).toBe(404);}
+ const foreign=await httpFixture();expect((await s.http.handle(s.request(`?caseId=${foreign.f.first.id}&appointmentId=${old}`),[])).status).toBe(404);
+ await s.f.pool.query("UPDATE ls_identity.accounts SET role='parent' WHERE id=$1",[s.f.practitioner.actor.id]);expect((await s.http.handle(s.request(path),[])).status).toBe(404);
+},30_000);
 test("real strict HTTP accepts the production UI projection, retains encrypted revisions and replay, and rejects extras/stale edits",async()=>{
  const s=await httpFixture(),past=await s.f.seed(s.f.at(-48)),id=(await s.service.ensureForAppointment(s.f.practitioner.actor,s.f.first.id,past)).sessionId,path=`/${id}/observations`;
  const values=blankMetrics();values.engagement={score:4,notObservedReason:null,note:"Synthetic private original — הערה"};

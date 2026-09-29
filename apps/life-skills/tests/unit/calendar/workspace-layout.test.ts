@@ -18,7 +18,12 @@ describe('operational Calendar composition',()=>{
    expect(workspace.indexOf(failure)).toBeLessThan(workspace.indexOf('<CalendarShell '));
   }
   expect(workspace).toContain('<UnsavedChangesGuard dirty={dirty||taskDirty||mutation.uncertain}');
-  expect(workspace).toContain('practitioner&&<div className="ls-cal-operational">');
+  expect(workspace).toContain('livePractitioner&&<div className="ls-cal-operational">');
+  expect(workspace.match(/if\(!livePractitioner\)return;/g)).toHaveLength(2);
+  expect(workspace).toContain("const tasks=livePractitioner&&showTasks");
+  expect(workspace).toContain("const followups=livePractitioner&&showFollowups");
+  expect(workspace).toContain('Return to live calendar');
+  expect(workspace).toContain('calendarCasesForMode(value,mode!)');
   expect(workspace).not.toContain('<details className="ls-cal-operational');
  });
  it('reduces unused spacing rather than clipping content or shrinking readable controls',()=>{
@@ -29,5 +34,40 @@ describe('operational Calendar composition',()=>{
   expect(css).toContain('@media(max-width:600px)');
   expect(css).not.toMatch(/\.ls-cal-toolbar[^{}]*\{[^}]*overflow\s*:\s*hidden/);
   expect(css).not.toMatch(/\.ls-cal-toolbar[^{}]*\{[^}]*font-size\s*:/);
+ });
+ it('keeps mobile mode, actions and date navigation compact without hiding controls or smaller text',()=>{
+  expect(css).toContain('.lsw.lsu .ls-cal .ls-cal-layers>.lsw-field{grid-template-columns:minmax(7rem,.8fr) minmax(0,1fr)');
+  expect(css).toContain('.lsw.lsu .ls-cal .ls-cal-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))');
+  expect(css).toContain('.lsw.lsu .ls-cal .lsw-calendar-toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto');
+  expect(css).toContain('.lsw.lsu .ls-cal .lsw-calendar-toolbar>nav{grid-column:1/-1');
+  expect(workspace).toContain("title={practitioner?(locale==='he'?'יומן':'Calendar'):t.familyTitle}");
+ });
+ it('offers one practitioner booking action beside the title and reduces unused agenda spacing',()=>{
+  expect(workspace).toContain("action={practitioner?<Button disabled={mutation.locked||!cases.length} onClick={e=>openBook(e)}>");
+  expect(workspace).toContain("{livePractitioner&&<div className=\"ls-cal-actions\">");
+  expect(workspace.match(/onClick=\{e=>openBook\(e\)\}/g)).toHaveLength(1);
+  expect(css).toContain('.lsw.lsu.lsu--practitioner .ls-cal>.lsw-page-header{display:grid;grid-template-columns:minmax(0,1fr) auto');
+  expect(css).toContain('.lsw.lsu .ls-cal>.lsw-page-header>.lsw-button{font-size:inherit}');
+  expect(css).toContain('.lsw.lsu .ls-cal .lsw-calendar-agenda{padding-block-start:.5rem}');
+  expect(css).toContain('.lsw.lsu .ls-cal .lsw-calendar-agenda>h3{margin-block:.5rem}');
+  expect(css).not.toContain('.ls-cal-actions>:first-child{');
+ });
+ it('compacts only Calendar filters and places the actual timezone span beside the period',()=>{
+  expect(css).toContain('.lsw.lsu .ls-cal :is(.ls-cal-layers>.lsw-field,.ls-cal-toolbar>.lsw-field,.ls-cal-period>.lsw-field){margin-block-end:0}');
+  expect(css).toContain('.lsw.lsu .ls-cal .ls-cal-toolbar>.lsw-field{grid-template-columns:minmax(7rem,.8fr) minmax(0,1fr)');
+  expect(css).toContain('.lsw.lsu .ls-cal .lsw-calendar-toolbar>.lsw-help{grid-column:2;grid-row:1;justify-self:end}');
+  expect(css).not.toContain('.lsw-calendar-toolbar>small{');
+ });
+ it('removes duplicated mobile Calendar container padding while keeping visible synthetic provenance',()=>{
+  expect(css).toContain('.lsw.lsu .lsu-page:has(>main.ls-cal){padding-block-start:0;');
+  expect(css).toContain('.lsw.lsu .lsu-content:has(>.lsu-page>main.ls-cal)>.lsu-breadcrumbs{margin-block-end:.5rem}');
+  expect(workspace).toContain('DEMO — synthetic data; external effects disabled.');
+  expect(workspace).toContain('DEMO — נתונים סינתטיים, ללא השפעות חיצוניות.');
+  expect(workspace).toContain('Return to live calendar');
+ });
+ it('uses the available narrow-screen width without clipping or reducing typography',()=>{
+  expect(css).toContain('.lsw.lsu .lsu-page:has(>main.ls-cal){padding-block-start:0;padding-inline:0}');
+  expect(css).toContain('.lsw.lsu .ls-cal .lsw-calendar-toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.5rem;align-items:center;padding:.5rem}');
+  expect(css).not.toMatch(/\.ls-cal[^{}]*\{[^}]*overflow\s*:\s*hidden/);
  });
 });

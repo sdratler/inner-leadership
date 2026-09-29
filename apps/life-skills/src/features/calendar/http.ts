@@ -67,7 +67,7 @@ export async function handleCalendar(request:Request,path:readonly string[]):Pro
   }else if(request.method==='POST'&&path.length===3&&path[0]==='tasks'&&path[2]==='complete'){
    query(request,[]);data=await tasks.complete(actor,routeId(path[1]!,'task'),key,(await readJson(request,versionSchema)).expectedVersion);
   }else if(request.method==='GET'&&path.length===1&&path[0]==='appointments'){
-   data=await service.list(actor,readQuery(listSchema,query(request,['from','to','caseId','cursor'])));
+   data=await service.list(actor,readQuery(listSchema,query(request,['from','to','caseId','cursor','mode'])));
   }else if(request.method==='GET'&&path.length===2&&path[0]==='appointments'){
    query(request,[]);data=await service.get(actor,routeId(path[1]!,'appointment'));
   }else if(request.method==='POST'&&path.length===1&&path[0]==='appointments'){

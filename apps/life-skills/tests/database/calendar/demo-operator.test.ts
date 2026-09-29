@@ -1,20 +1,25 @@
 /** Actual production adapters on the guarded disposable native PostgreSQL.
  * Invitation/password/login tokens stay in memory; no transport is constructed.
  */
-import {expect,test} from 'vitest';
+import {expect,test,vi} from 'vitest';
 import {randomBytes,randomUUID} from 'node:crypto';
 import {fixture} from './fixture.ts';
 import {CaseService} from '../../../src/features/cases/service.ts';
 import {IdentityAccountService} from '../../../src/features/identity/account-service.ts';
 import {IdentityAuthService} from '../../../src/features/identity/auth-service.ts';
 import {IdentitySessions} from '../../../src/features/identity/session-adapter.ts';
-import {seal,unseal} from '../../../src/features/identity/crypto.ts';
+import {blindEmail,seal,unseal} from '../../../src/features/identity/crypto.ts';
+import {prepareDemoHistory} from '../../../src/features/demo/history-operator.ts';
+import {civilDate,possibleInstants,shiftDay} from '../../../src/features/calendar/time.ts';
 import {systemClock,type AccountId,type Actor} from '../../../src/features/identity/types.ts';
 import type {IdentityConfig} from '../../../src/features/identity/config.ts';
 import {realCaseEffectAllowed} from '../../../src/features/demo/provenance.ts';
 import {drainCalendarEvents} from '../../../src/features/calendar/relay.ts';
 import {applyCalendarCreditEffect} from '../../../src/features/payments/calendar-consumer.ts';
 const key=()=>randomUUID(),batch='ls-owner-20260927';
+// Only the build-time server import marker is stubbed. Every store, clock,
+// authorization, transaction and current domain service remains real native PG.
+vi.mock('server-only',()=>({}));
 async function setup(){
  const f=await fixture();
  try{
@@ -45,7 +50,7 @@ async function setup(){
   (SELECT count(*)::int FROM ls_onboarding.provider_receipts WHERE workspace_id=$1) AS payments,
   (SELECT count(*)::int FROM ls_payments.credit_events WHERE workspace_id=$1) AS credits,
   (SELECT count(*)::int FROM ls_payments.credit_blocks WHERE workspace_id=$1) AS blocks`,[f.workspaceId]);return r.rows[0];};
- return {...f,cases,accounts,auth,config,actors,minor,adult,prepare,command,booking,realBooking:f.booking,book,counts};
+ return {...f,cases,accounts,auth,config,addresses,actors,minor,adult,prepare,command,booking,realBooking:f.booking,book,counts};
  }catch(error){await f.pool.end();throw error;}
 }
 async function using(work:(f:Awaited<ReturnType<typeof setup>>)=>Promise<void>){const f=await setup();try{await work(f);}finally{await f.pool.end();}}
@@ -192,3 +197,138 @@ test('a case marker alone without immutable person/client/family ancestry is ins
   await expect(f.db.demoOperatorCommand(f.workspaceId,f.practitioner.actor.id,f.first.id,'ls-owner-20260925','demo:case:prepare',key(),{},true,async()=>{},async()=>({accepted:true}))).rejects.toMatchObject({code:'NOT_FOUND'});
  }finally{await f.pool.end();}
 });
+
+test('historical DEMO uses actual past time, completed attendance, encrypted history and exact replay',()=>using(async f=>{
+ const ready=await f.prepare(),input=f.booking(ready.audienceId,f.at(-48)),command=key(),before=await f.counts();
+ const create=()=>f.service.createDemoHistoryAsOperator(f.workspaceId,f.practitioner.actor.id,batch,command,input,true);
+ const a=await create();expect(a.status).toBe('completed');expect(a.attendance).toMatchObject({state:'present',attended:true,version:1,arrivedAt:input.startsAt});
+ expect(await create()).toEqual(a);expect(await f.counts()).toEqual(before);
+ await expect(f.service.createDemoHistoryAsOperator(f.workspaceId,f.practitioner.actor.id,batch,command,{...input,startsAt:f.at(-47)},true)).rejects.toMatchObject({code:'CONFLICT'});
+ expect((await f.service.get(f.actors.parent!,a.id)).status).toBe('completed');
+ expect((await f.pool.query("SELECT count(*)::int AS n FROM ls_demo.records WHERE workspace_id=$1 AND entity_kind='appointment' AND entity_key=$2 AND batch_id=$3 AND case_id=$4",[f.workspaceId,a.id,batch,f.minor.caseId])).rows[0].n).toBe(1);
+ expect((await f.pool.query('SELECT count(*)::int AS n FROM ls_attendance.history WHERE workspace_id=$1 AND appointment_id=$2',[f.workspaceId,a.id])).rows[0].n).toBe(1);
+ await expect(f.service.create(f.practitioner.actor,key(),input)).rejects.toMatchObject({code:'INVALID_REQUEST'});
+ await expect(f.book(input)).rejects.toMatchObject({code:'INVALID_REQUEST'});
+}));
+test('historical setup cannot backdate a real case, cross a batch or replace real owner authorization',()=>using(async f=>{
+ const ready=await f.prepare(),input=f.booking(ready.audienceId,f.at(-48));
+ const create=(owner=f.practitioner.actor.id,b=batch,i=input,permission=true)=>f.service.createDemoHistoryAsOperator(f.workspaceId,owner,b,key(),i,permission);
+ await expect(create(f.practitioner.actor.id,batch,input,false)).rejects.toMatchObject({code:'FORBIDDEN'});
+ await expect(create(f.actors.parent!.id)).rejects.toMatchObject({code:'FORBIDDEN'});
+ await expect(create(f.practitioner.actor.id,'ls-owner-20260926')).rejects.toMatchObject({code:'NOT_FOUND'});
+ await expect(create(f.practitioner.actor.id,batch,{...input,caseId:f.first.id,audienceId:f.first.audienceId})).rejects.toMatchObject({code:'NOT_FOUND'});
+ for(const bad of [{...input,startsAt:f.at(1)},{...input,startsAt:f.at(-32*24)},{...input,kind:'parent_guidance' as const,parentForId:asAppointment(input.caseId),parentIds:ready.parentIds},{...input,location:'DEMO https://meet.google.com/invented'},{...input,bufferBefore:1}])await expect(create(f.practitioner.actor.id,batch,bad)).rejects.toMatchObject({code:'INVALID_REQUEST'});
+}));
+function asAppointment(id:string){return id as import('../../../src/features/calendar/types.ts').AppointmentId;}
+test('historical replay rechecks revoked owner and audience without restoring access',()=>using(async f=>{
+ const ready=await f.prepare(),input=f.booking(ready.audienceId,f.at(-48)),command=key();
+ const create=()=>f.service.createDemoHistoryAsOperator(f.workspaceId,f.practitioner.actor.id,batch,command,input,true);await create();
+ await f.pool.query('UPDATE ls_cases.audience_accounts SET revoked_at=clock_timestamp() WHERE workspace_id=$1 AND audience_id=$2 AND account_id=$3',[f.workspaceId,ready.audienceId,f.actors.child!.id]);
+ await expect(create()).rejects.toMatchObject({code:'CONFLICT'});
+ await f.pool.query("UPDATE ls_identity.accounts SET state='revoked' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.practitioner.actor.id]);
+ await expect(create()).rejects.toMatchObject({code:'FORBIDDEN'});
+}));
+test('historical DEMO placement respects real appointment buffers',()=>using(async f=>{
+ const ready=await f.prepare(),input=f.booking(ready.audienceId,f.at(-48));await f.seed(input.startsAt);
+ await expect(f.service.createDemoHistoryAsOperator(f.workspaceId,f.practitioner.actor.id,batch,key(),input,true)).rejects.toMatchObject({code:'CONFLICT'});
+}));
+test('historical transaction rejects completed real appointment buffers without a partial DEMO write',()=>using(async f=>{
+ const ready=await f.prepare(),input=f.booking(ready.audienceId,f.at(-48)),real=await f.seed(input.startsAt);
+ await f.pool.query("UPDATE ls_calendar.appointments SET status='completed' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,real]);
+ const snapshot=async()=>(await f.pool.query(`SELECT
+  (SELECT count(*)::int FROM ls_calendar.appointments WHERE workspace_id=$1 AND case_id=$2) AS appointments,
+  (SELECT count(*)::int FROM ls_attendance.records WHERE workspace_id=$1 AND case_id=$2) AS attendance,
+  (SELECT count(*)::int FROM ls_calendar.history WHERE workspace_id=$1 AND case_id=$2) AS history,
+  (SELECT count(*)::int FROM ls_calendar.commands WHERE workspace_id=$1) AS commands,
+  (SELECT count(*)::int FROM ls_calendar.events WHERE workspace_id=$1 AND case_id=$2) AS events`,[f.workspaceId,f.minor.caseId])).rows[0];
+ const before=await snapshot();
+ await expect(f.service.createDemoHistoryAsOperator(f.workspaceId,f.practitioner.actor.id,batch,key(),input,true)).rejects.toMatchObject({code:'CONFLICT'});
+ expect(await snapshot()).toEqual(before);
+}));
+test('historical attendance reaches the existing credit consumer but suppresses actual money effects',()=>using(async f=>{
+ const ready=await f.prepare(),before=await f.counts(),a=await f.service.createDemoHistoryAsOperator(f.workspaceId,f.practitioner.actor.id,batch,key(),f.booking(ready.audienceId,f.at(-48)),true);
+ expect(await f.db.read(f.practitioner.actor,c=>drainCalendarEvents(c,'credit_effect',applyCalendarCreditEffect))).toBe(1);
+ expect(await f.db.read(f.practitioner.actor,c=>drainCalendarEvents(c,'credit_effect',applyCalendarCreditEffect))).toBe(0);
+ expect(await f.counts()).toEqual(before);expect(await f.db.store.transaction(tx=>realCaseEffectAllowed(tx,f.workspaceId,a.caseId))).toBe(false);
+ expect((await f.pool.query('SELECT count(*)::int AS n FROM ls_demo.suppressed_effects WHERE workspace_id=$1 AND case_id=$2',[f.workspaceId,a.caseId])).rows[0].n).toBe(1);
+}));
+function historyRecipe(){const anchorDate=civilDate(new Date().toISOString()),dates:string[]=[];
+ for(let i=1;dates.length<5;i++){const date=shiftDay(anchorDate,-i),day=new Date(date+'T12:00Z').getUTCDay();if(day!==5&&day!==6)dates.unshift(date);}
+ const common={isDemo:true,demoBatchId:batch,source:'owner-acceptance-demo',externalEffects:'deny',realAnalytics:'exclude'},ids=['engagement','regulation','frustration_tolerance','initiative','reflective_capacity','impulse_control','responsiveness','participation','social_engagement'];
+ return {schemaVersion:1,recipeOnly:true,notExecuted:true,batchId:batch,anchorDate,timezone:'Asia/Jerusalem',
+ appointments:dates.map((localDate,i)=>({...common,stableKey:`session-${i+1}`,caseKey:'case-a',state:'completed',attendance:'present',durationMinutes:60,blocksRealAvailability:false,timezone:'Asia/Jerusalem',localTime:'11:00',localDate})),
+ observations:dates.map((observedDate,i)=>({...common,stableKey:`observation-${i+1}`,caseKey:'case-a',sessionKey:`session-${i+1}`,observedDate,visibility:'practitioner_private',values:Object.fromEntries(ids.map((id,j)=>[id,{score:i===2&&j===8?null:3+(i+j)%5,note:'Synthetic observation for interface verification only.'}]))}))};
+}
+test('full historical preflight refuses a completed real slot before any of the five writes',()=>using(async f=>{
+ await f.prepare();const ownerEmail='fixtureowner@example.invalid',recipe=historyRecipe();
+ await f.pool.query('UPDATE ls_identity.accounts SET email_blind=$3,email_ciphertext=$4 WHERE workspace_id=$1 AND id=$2',[f.workspaceId,f.practitioner.actor.id,blindEmail(ownerEmail,f.config.lookupKey),seal(ownerEmail,`email:${f.workspaceId}:${f.practitioner.actor.id}`,f.keyring)]);
+ const startsAt=possibleInstants(recipe.appointments[0]!.localDate+'T11:00')[0]!;
+ await f.pool.query("INSERT INTO ls_calendar.availability(id,workspace_id,practitioner_id,starts_at,ends_at,kind) VALUES($1,$2,$3,$4,$5,'open')",[key(),f.workspaceId,f.practitioner.actor.id,startsAt,new Date(Date.parse(startsAt)+3600000).toISOString()]);
+ const real=await f.seed(startsAt);
+ await f.pool.query("UPDATE ls_calendar.appointments SET status='completed' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,real]);
+ const before=await f.counts();
+ await expect(prepareDemoHistory({config:f.config,store:f.db.store,clock:systemClock},{batch,ownerEmail,addresses:f.addresses},recipe,true)).rejects.toMatchObject({code:'CONFLICT'});
+ expect((await f.pool.query('SELECT count(*)::int AS n FROM ls_calendar.appointments WHERE workspace_id=$1 AND case_id=$2',[f.workspaceId,f.minor.caseId])).rows[0].n).toBe(0);
+ expect(await f.counts()).toEqual(before);
+}));
+test('full existing-history operator reads real owner and identities, persists five once and never seeds observations',()=>using(async f=>{
+ await f.prepare();const ownerEmail='fixtureowner@example.invalid';
+ await f.pool.query('UPDATE ls_identity.accounts SET email_blind=$3,email_ciphertext=$4 WHERE workspace_id=$1 AND id=$2',[f.workspaceId,f.practitioner.actor.id,blindEmail(ownerEmail,f.config.lookupKey),seal(ownerEmail,`email:${f.workspaceId}:${f.practitioner.actor.id}`,f.keyring)]);
+ const runtime={config:f.config,store:f.db.store,clock:systemClock},selection={batch,ownerEmail,addresses:f.addresses},recipe=historyRecipe(),before=await f.counts();
+ await expect(prepareDemoHistory(runtime,selection,recipe,false)).rejects.toMatchObject({code:'FORBIDDEN'});
+ const first=await prepareDemoHistory(runtime,selection,recipe,true);expect(first).toEqual({batch,createdOrReused:5,accountChanges:0,providerEffects:0,paymentEffects:0,observationsWritten:0});
+ const snapshot=async()=>{const r=await f.pool.query(`SELECT
+  (SELECT count(*)::int FROM ls_calendar.appointments WHERE workspace_id=$1 AND case_id=$2 AND status='completed') AS appointments,
+  (SELECT count(*)::int FROM ls_attendance.records WHERE workspace_id=$1 AND case_id=$2 AND state='present') AS attendance,
+  (SELECT count(*)::int FROM ls_calendar.history WHERE workspace_id=$1 AND case_id=$2) AS history,
+  (SELECT count(*)::int FROM ls_calendar.commands WHERE workspace_id=$1) AS commands,
+  (SELECT count(*)::int FROM ls_sessions.practitioner_observations WHERE workspace_id=$1) AS observations`,[f.workspaceId,f.minor.caseId]);return r.rows[0];};
+ const once=await snapshot();expect(once).toMatchObject({appointments:5,attendance:5,observations:0});
+ expect(await prepareDemoHistory(runtime,selection,recipe,true)).toEqual(first);expect(await snapshot()).toEqual(once);expect(await f.counts()).toEqual(before);
+ await f.pool.query('UPDATE ls_cases.audience_accounts SET revoked_at=clock_timestamp() WHERE workspace_id=$1 AND case_id=$2 AND account_id=$3',[f.workspaceId,f.minor.caseId,f.actors.child!.id]);
+ await expect(prepareDemoHistory(runtime,selection,recipe,true)).rejects.toMatchObject({code:'CONFLICT'});expect(await snapshot()).toEqual(once);
+}));
+test('failed historical attendance rolls back its entire appointment, marker, history and receipt transaction',()=>using(async f=>{
+ const ready=await f.prepare(),input=f.booking(ready.audienceId,f.at(-48));
+ const snapshot=async()=>{const r=await f.pool.query(`SELECT (SELECT count(*)::int FROM ls_calendar.appointments WHERE workspace_id=$1) AS appointments,
+  (SELECT count(*)::int FROM ls_attendance.records WHERE workspace_id=$1) AS attendance,
+  (SELECT count(*)::int FROM ls_calendar.history WHERE workspace_id=$1) AS history,
+  (SELECT count(*)::int FROM ls_calendar.commands WHERE workspace_id=$1) AS commands,
+  (SELECT count(*)::int FROM ls_demo.records WHERE workspace_id=$1) AS markers,
+  (SELECT count(*)::int FROM ls_calendar.events WHERE workspace_id=$1) AS events`,[f.workspaceId]);return r.rows[0];};
+ const before=await snapshot(),functionName='synthetic_attendance_failure_'+randomUUID().replaceAll('-','');
+ try{await f.pool.query(`CREATE FUNCTION ${functionName}() RETURNS trigger LANGUAGE plpgsql AS $$BEGIN IF NEW.workspace_id='${f.workspaceId}'::uuid THEN RAISE EXCEPTION 'synthetic failure'; END IF; RETURN NEW; END$$`);
+  await f.pool.query(`CREATE TRIGGER ${functionName} BEFORE INSERT ON ls_attendance.history FOR EACH ROW EXECUTE FUNCTION ${functionName}()`);
+  await expect(f.service.createDemoHistoryAsOperator(f.workspaceId,f.practitioner.actor.id,batch,key(),input,true)).rejects.toMatchObject({code:'UNAVAILABLE'});expect(await snapshot()).toEqual(before);
+ }finally{await f.pool.query(`DROP TRIGGER IF EXISTS ${functionName} ON ls_attendance.history`);await f.pool.query(`DROP FUNCTION IF EXISTS ${functionName}()`);}
+}));
+
+test('practitioner Calendar defaults to live, separates immutable demo origins and rejects mismatched selected context',()=>using(async f=>{
+ const ready=await f.prepare(),demo=await f.book(f.booking(ready.audienceId,f.at(48))),real=await f.seed(f.at(96));
+ const query={from:f.at(0),to:f.at(240),caseId:null,cursor:null};
+ expect((await f.service.list(f.practitioner.actor,query)).items.map(a=>a.id)).toEqual([real]);
+ expect((await f.service.list(f.practitioner.actor,{...query,mode:'demo'})).items.map(a=>a.id)).toEqual([demo.id]);
+ await expect(f.service.list(f.practitioner.actor,{...query,caseId:f.minor.caseId,mode:'live'})).rejects.toMatchObject({code:'NOT_FOUND'});
+ await expect(f.service.list(f.practitioner.actor,{...query,caseId:f.first.id,mode:'demo'})).rejects.toMatchObject({code:'NOT_FOUND'});
+ for(const role of ['parent','child','adult'] as const)await expect(f.service.list(f.actors[role]!,{...query,caseId:role==='adult'?f.adult.caseId:f.minor.caseId,mode:'demo'})).rejects.toMatchObject({code:'FORBIDDEN'});
+ expect((await f.service.list(f.actors.parent!,{...query,caseId:f.minor.caseId})).items.map(a=>a.id)).toEqual([demo.id]);
+}));
+test('Calendar applies live/demo selection before pagination and preserves the matching demo page',()=>using(async f=>{
+ const ready=await f.prepare(),first=await f.book(f.booking(ready.audienceId,f.at(48))),real=await f.seed(f.at(96));
+ for(let i=0;i<101;i++){const id=randomUUID();
+  await f.pool.query(`INSERT INTO ls_calendar.appointments(id,workspace_id,case_id,audience_id,engagement_id,practitioner_id,terms_version,kind,starts_at,ends_at,parent_ids,buffer_before,buffer_after,location_ciphertext,created_by,created_at)
+   SELECT $3,workspace_id,case_id,audience_id,engagement_id,practitioner_id,terms_version,kind,starts_at,ends_at,parent_ids,buffer_before,buffer_after,$4,created_by,created_at FROM ls_calendar.appointments WHERE workspace_id=$1 AND id=$2`,[f.workspaceId,first.id,id,seal('DEMO — Synthetic pagination sample',`calendar:location:${f.workspaceId}:${id}`,f.keyring)]);
+  await f.pool.query("INSERT INTO ls_demo.records(workspace_id,batch_id,entity_kind,entity_key,source_key,case_id) VALUES($1,$2,'appointment',$3,$3,$4)",[f.workspaceId,batch,id,f.minor.caseId]);
+ }
+ const query={from:f.at(0),to:f.at(240),caseId:null,cursor:null};
+ expect(await f.service.list(f.practitioner.actor,query)).toMatchObject({items:[{id:real}],nextCursor:null});
+ const page=await f.service.list(f.practitioner.actor,{...query,mode:'demo'});expect(page.items).toHaveLength(100);expect(page.nextCursor).not.toBeNull();
+ const next=await f.service.list(f.practitioner.actor,{...query,mode:'demo',cursor:page.nextCursor});expect(next.items).toHaveLength(2);expect(next.nextCursor).toBeNull();
+ expect(new Set([...page.items,...next.items].map(a=>a.id)).size).toBe(102);expect([...page.items,...next.items].every(a=>a.caseId===f.minor.caseId)).toBe(true);
+}));
+test('a calendar appointment marker inconsistent with real immutable case origin is an error, not a live or empty result',()=>using(async f=>{
+ const real=await f.seed(f.at(48));await f.pool.query("INSERT INTO ls_demo.records(workspace_id,batch_id,entity_kind,entity_key,source_key,case_id) VALUES($1,$2,'appointment',$3,$3,$4)",[f.workspaceId,batch,real,f.minor.caseId]);
+ const query={from:f.at(0),to:f.at(240),caseId:null,cursor:null};
+ await expect(f.service.list(f.practitioner.actor,query)).rejects.toMatchObject({code:'UNAVAILABLE'});
+ await expect(f.service.list(f.practitioner.actor,{...query,mode:'demo'})).rejects.toMatchObject({code:'UNAVAILABLE'});
+}));

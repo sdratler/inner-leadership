@@ -20,7 +20,7 @@ export const versionSchema=z.strictObject({expectedVersion:z.number().int().min(
 export const logisticsSchema=z.strictObject({expectedVersion:z.number().int().min(1),location:clean(280)});
 export const replacementSchema=z.strictObject({expectedVersion:z.number().int().min(1),booking:bookingSchema});
 export const availabilitySchema=z.strictObject({startsAt:timestamp,endsAt:timestamp,kind:z.enum(['open','blocked'])});
-export const listSchema=z.strictObject({from:timestamp,to:timestamp,caseId:caseId.nullable(),cursor:z.string().max(180).nullable()});
+export const listSchema=z.strictObject({from:timestamp,to:timestamp,caseId:caseId.nullable(),cursor:z.string().max(180).nullable(),mode:z.enum(['live','demo']).nullable().optional()});
 const taskDate=z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v=>{try{return shiftDay(v,0)===v;}catch{return false;}});
 const taskTime=z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 /** Task links remain within the private practitioner app. No arbitrary external URL. */

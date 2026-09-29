@@ -25,6 +25,7 @@ export function practitionerReturnPath(locale: Locale, page: "calendar" | "clien
     if (["day", "week", "month", "agenda"].includes(one("view"))) params.set("view", one("view"));
     if (/^[0-9a-f-]{36}$/i.test(one("caseId"))) params.set("caseId", one("caseId"));
     if (one("context") === "client") params.set("context", "client");
+    if (one("mode") === "demo") params.set("mode", "demo");
   } else {
     if (["all", "prospects", "paid", "active", "archived"].includes(one("section"))) params.set("section", one("section"));
     if (["all", "today", "new", "intake", "payment", "booking", "archived"].includes(one("filter"))) params.set("filter", one("filter"));

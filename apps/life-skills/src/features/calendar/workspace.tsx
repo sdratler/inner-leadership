@@ -25,13 +25,15 @@ import { IntakeSummaryCard } from '../prospects/summary-card.tsx';
 import { CalendarAttentionSummary } from './attention-summary.tsx';
 import { readPractitionerCalendar } from './practitioner-load.ts';
 import { showCalendarViewTabsInContent } from './view-tabs.ts';
+import {calendarCasesForMode,type CalendarMode} from './mode.ts';
 import './calendar.css';
 type HistoryPage={items:Array<{version:number;state:'present'|'late'|'no_show'|'canceled';recordedAt:string;reason:string|null}>;nextVersion:number|null};
 import { verifiedGoogleMeetUrl } from './meeting-url.ts';
 export { verifiedGoogleMeetUrl } from './meeting-url.ts';
-export function CalendarWorkspace({locale,role,initialDate,initialView,initialCaseId,selectedClientContext=false}:{locale:Locale;role:'parent'|'adult_client'|'child'|'practitioner';initialDate:string;initialView:'day'|'week'|'month'|'agenda';initialCaseId:string;selectedClientContext?:boolean}){
+export function CalendarWorkspace({locale,role,initialDate,initialView,initialCaseId,initialMode='live',selectedClientContext=false}:{locale:Locale;role:'parent'|'adult_client'|'child'|'practitioner';initialDate:string;initialView:'day'|'week'|'month'|'agenda';initialCaseId:string;initialMode?:CalendarMode;selectedClientContext?:boolean}){
  const router=useRouter();
  const t=text(locale),practitioner=role==='practitioner';
+ const mode=practitioner?initialMode:null,livePractitioner=practitioner&&mode==='live';
  const [cases,setCases]=useState<CaseChoice[]>([]),[caseId,setCaseId]=useState(initialCaseId),[items,setItems]=useState<AppointmentView[]>([]),[cursor,setCursor]=useState<string|null>(null);
  const [loading,setLoading]=useState(true),[error,setError]=useState<CalendarLoadFailure|null>(null),[caseError,setCaseError]=useState(false),[countError,setCountError]=useState(false),[count,setCount]=useState<number|null>(null);
  const [selected,setSelected]=useState<AppointmentView|null>(null),[dirty,setDirty]=useState(false),[bookingOpen,setBookingOpen]=useState(false),[checkinFor,setCheckinFor]=useState<AppointmentView|null>(null),[bookingNonce,setBookingNonce]=useState(0);
@@ -42,9 +44,9 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  const mutation=useCalendarMutation(locale),generation=useRef(0),date=initialDate,view=initialView;
  const range=dateRange(date,view),basePath=`/${locale}/${practitioner?'app/calendar':role==='adult_client'||role==='child'?'client/calendar':'family/schedule'}`,caseKind=role==='adult_client'?'adult':'minor';
  const taskQueryKey=`${range.from}|${range.to}|${caseId}`;
- const tasks=practitioner&&showTasks&&taskLoadedFor===taskQueryKey&&taskRows?taskRows:[];
- const followups=practitioner&&showFollowups&&followupRows?visibleCalendarFollowups(followupRows,range.dates,caseId,tasks,taskSyncReady):[];
- const href=(newDate:string,newView:string=view)=>basePath+'?'+new URLSearchParams({date:newDate,view:newView,...(caseId?{caseId}:{}),...(selectedClientContext&&caseId?{context:'client'}:{})});
+ const tasks=livePractitioner&&showTasks&&taskLoadedFor===taskQueryKey&&taskRows?taskRows:[];
+ const followups=livePractitioner&&showFollowups&&followupRows?visibleCalendarFollowups(followupRows,range.dates,caseId,tasks,taskSyncReady):[];
+ const href=(newDate:string,newView:string=view)=>basePath+'?'+new URLSearchParams({date:newDate,view:newView,...(caseId?{caseId}:{}),...(selectedClientContext&&caseId?{context:'client'}:{}),...(mode==='demo'?{mode}:{})});
  const names=Object.fromEntries(cases.map(c=>[c.id,c.displayName]));
  const clearDirty=useCallback(()=>setDirty(false),[]);
  const closeBooking=useCallback(()=>{setBookingOpen(false);setDirty(false);},[]);
@@ -59,8 +61,8 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
    let selectedCase=caseId;
    let page:SchedulePage;
    if(practitioner){
-    const params=new URLSearchParams({from:range.from,to:range.to,...(selectedCase?{caseId:selectedCase}:{}),...(!reset&&after?{cursor:after}:{})});
-    const result=await readPractitionerCalendar(()=>accountRead<CaseChoice[]>('cases'),()=>calendarRead<SchedulePage>('appointments?'+params));
+    const params=new URLSearchParams({from:range.from,to:range.to,...(selectedCase?{caseId:selectedCase}:{}),...(!reset&&after?{cursor:after}:{}),mode:mode!});
+    const result=await readPractitionerCalendar(()=>accountRead<unknown>('cases',mode!).then(value=>calendarCasesForMode(value,mode!)),()=>calendarRead<SchedulePage>('appointments?'+params));
     if(current!==generation.current)return;
     setCases(result.cases);setCaseError(result.casesUnavailable);page=result.page;
    }else{
@@ -77,10 +79,10 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
    }else{setCount(null);setCountError(false);}
   }catch(cause){if(current===generation.current){setError(calendarLoadFailure(cause));if(reset){setItems([]);setCases([]);setCursor(null);setCount(null);}}}
   finally{if(current===generation.current)setLoading(false);}
- },[caseId,caseKind,range.from,range.to,practitioner,role]);
+ },[caseId,caseKind,range.from,range.to,practitioner,role,mode]);
  useEffect(()=>{const timer=window.setTimeout(()=>{void load();},0);return()=>{window.clearTimeout(timer);generation.current+=1;};},[load]); // owned query state; no global navigation registration
  useEffect(()=>{
-  if(!practitioner)return;
+  if(!livePractitioner)return;
   const controller=new AbortController();
   void fetch('/api/prospects',{credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',signal:controller.signal})
    .then(async response=>{const body=await response.json() as {ok?:boolean;data?:FollowupSource[]};if(!response.ok||body.ok!==true||!Array.isArray(body.data))throw new Error('FOLLOWUPS_UNAVAILABLE');return body.data;})
@@ -90,9 +92,9 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
    })
    .catch(()=>{if(!controller.signal.aborted){setTaskSyncReady(false);setFollowupRows(null);setFollowupFailed(true);}});
   return()=>controller.abort();
- },[practitioner,followupRetry]);
+ },[livePractitioner,followupRetry]);
  useEffect(()=>{
-  if(!practitioner)return;
+  if(!livePractitioner)return;
   const controller=new AbortController();
   const params=new URLSearchParams({from:range.from,to:range.to,...(caseId?{caseId}:{})});
   queueMicrotask(()=>{if(!controller.signal.aborted){setTaskRows(null);setTaskLoadedFor('');setTaskFailed(false);}});
@@ -101,7 +103,7 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
    .then(rows=>{if(!controller.signal.aborted){setTaskRows(rows);setTaskLoadedFor(`${range.from}|${range.to}|${caseId}`);setTaskFailed(false);}})
    .catch(()=>{if(!controller.signal.aborted){setTaskRows(null);setTaskLoadedFor('');setTaskFailed(true);}});
   return()=>controller.abort();
- },[practitioner,range.from,range.to,caseId,taskRefresh]);
+ },[livePractitioner,range.from,range.to,caseId,taskRefresh]);
  async function refreshSelected(id=selected?.id){if(!id)return;try{setSelected(await calendarRead<AppointmentView>('appointments/'+id));}catch(cause){setSelected(null);setError(calendarLoadFailure(cause));}}
  const save:SaveForm=(path,body,done,method='POST')=>mutation.run(path,body,async value=>{
   done?.();setDirty(false);setHistory(null);
@@ -112,7 +114,8 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
   }
   await load();setTimeout(()=>{if(selected)document.getElementById('receipt-'+selected.id)?.focus();},0);
  },method);
- function selectCase(nextCaseId:string){setCaseId(nextCaseId);const query=new URLSearchParams({date,view,...(nextCaseId?{caseId:nextCaseId}:{}),...(selectedClientContext&&nextCaseId?{context:'client'}:{})});router.replace(basePath+'?'+query.toString(),{scroll:false});}
+ function selectCase(nextCaseId:string){setCaseId(nextCaseId);const query=new URLSearchParams({date,view,...(nextCaseId?{caseId:nextCaseId}:{}),...(selectedClientContext&&nextCaseId?{context:'client'}:{}),...(mode==='demo'?{mode}:{})});router.replace(basePath+'?'+query.toString(),{scroll:false});}
+ function selectMode(next:CalendarMode){if(next===mode||mutation.locked)return;if((dirty||taskDirty||mutation.uncertain)&&!window.confirm(t.dirty))return;router.push(basePath+'?'+new URLSearchParams({date,view,...(next==='demo'?{mode:next}:{})}),{scroll:false});}
  function showAppointment(a:AppointmentView,e:MouseEvent<HTMLButtonElement>){if(mutation.locked)return;setSelected(a);setHistory(null);setHistoryError(false);setDirty(false);openDialog('ls-cal-detail',e);}
  function openBook(e:MouseEvent<HTMLButtonElement>,child:AppointmentView|null=null){if(mutation.locked)return;if(dirty&&!window.confirm(t.dirty))return;closeDialog('ls-cal-detail');setCheckinFor(child);setBookingNonce(v=>v+1);setBookingOpen(true);setDirty(false);openDialog('ls-cal-book',e);}
  function openTask(e:MouseEvent<HTMLButtonElement>){if(mutation.locked)return;setTaskDraft(current=>({...current,caseId:taskDirty?current.caseId:caseId,dueDate:taskDirty?current.dueDate:date}));openDialog('ls-cal-task',e);}
@@ -121,18 +124,19 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  async function loadHistory(next=false){if(!selected)return;setHistoryError(false);try{const p=await calendarRead<HistoryPage>(`appointments/${selected.id}/attendance-history`+(next&&history?.nextVersion?'?beforeVersion='+history.nextVersion:''));setHistory(old=>next&&old?{items:[...old.items,...p.items],nextVersion:p.nextVersion}:p);}catch{setHistoryError(true);}}
  return <main className="ls-cal lsw" dir={locale==='he'?'rtl':'ltr'} lang={locale} data-has-appointments={items.length+followups.length+tasks.length>0}>
  <UnsavedChangesGuard dirty={dirty||taskDirty||mutation.uncertain} message={t.dirty}/>
- <PageHeader title={practitioner?t.title:t.familyTitle} context={practitioner?t.context:t.familyContext}/>
+ <PageHeader title={practitioner?(locale==='he'?'יומן':'Calendar'):t.familyTitle} action={practitioner?<Button disabled={mutation.locked||!cases.length} onClick={e=>openBook(e)}>{locale==='he'?'קביעת פגישה':'Book appointment'}</Button>:null} {...(!practitioner?{context:t.familyContext}:{})}/>
+ {practitioner&&<div className="ls-cal-layers"><Select id="calendar-mode" label={locale==='he'?'רשומות היומן':'Calendar records'} value={mode!} disabled={mutation.locked} onChange={event=>selectMode(event.target.value as CalendarMode)}><option value="live">{locale==='he'?'רשומות אמיתיות':'Live records'}</option><option value="demo">DEMO</option></Select>{mode==='demo'&&<p role="status">{locale==='he'?'DEMO — נתונים סינתטיים, ללא השפעות חיצוניות.':'DEMO — synthetic data; external effects disabled.'} <a className="lsw-button lsw-button--secondary" href={basePath+'?'+new URLSearchParams({date,view})}>{locale==='he'?'חזרה ליומן האמיתי':'Return to live calendar'}</a></p>}</div>}
  <div className="ls-cal-toolbar"><Select id="calendar-case" label={t.case} value={caseId} onChange={e=>selectCase(e.target.value)} disabled={mutation.locked||caseError}>{practitioner&&<option value="">{t.allCases}</option>}{caseError&&caseId&&<option value={caseId}>{locale==='he'?'לקוח נבחר — הרשימה אינה זמינה':'Selected client — list unavailable'}</option>}{cases.filter(c=>practitioner||c.kind===caseKind).map(c=><option key={c.id} value={c.id}>{c.displayName}</option>)}</Select>
- <form className="ls-cal-period" action={basePath}><Input id="calendar-date" label={t.period} type="date" name="date" required value={dateInput} onChange={e=>setDateInput(e.target.value)}/><input type="hidden" name="view" value={view}/><input type="hidden" name="caseId" value={caseId}/>{selectedClientContext&&caseId&&<input type="hidden" name="context" value="client"/>}<Button type="submit">{t.go}</Button></form>
- {practitioner&&<div className="ls-cal-actions"><Button disabled={mutation.locked||!cases.length} onClick={e=>openBook(e)}>{t.newBooking}</Button><Button variant="secondary" disabled={mutation.locked} onClick={openTask}>{locale==='he'?'+ משימה':'+ Task'}</Button><a className="lsw-button lsw-button--secondary" href={`/${locale}/app/settings/availability?date=${date}`}>{t.availability}</a></div>}</div>
- {practitioner&&<div className="ls-cal-layers"><label><input type="checkbox" checked={showTasks} onChange={event=>setShowTasks(event.target.checked)}/> {locale==='he'?'משימות':'Tasks'}</label><label><input type="checkbox" checked={showFollowups} onChange={event=>setShowFollowups(event.target.checked)}/> {locale==='he'?'המשך טיפול בפניות':'Prospect follow-ups'}</label>{taskFailed&&<p role="status">{locale==='he'?'המשימות לא נטענו. הפגישות עדיין מוצגות.':'Tasks could not load. Appointments are still shown.'} <Button variant="quiet" onClick={()=>{setTaskFailed(false);setTaskRefresh(value=>value+1)}}>{locale==='he'?'ניסיון חוזר':'Retry tasks'}</Button></p>}{followupFailed&&<p role="status">{locale==='he'?'המשך הטיפול בפניות לא נטען. הפגישות עדיין מוצגות.':'Prospect follow-ups could not load. Appointments are still shown.'} <Button variant="quiet" onClick={()=>{setFollowupFailed(false);setFollowupRetry(value=>value+1)}}>{locale==='he'?'ניסיון חוזר':'Retry follow-ups'}</Button></p>}{taskSyncFailed&&<p role="status">{locale==='he'?'המשך הטיפול מוצג, אך לא ניתן לעדכן את המשימות המקושרות.':'Follow-ups are visible, but linked tasks could not be synchronized.'} <Button variant="quiet" onClick={()=>setFollowupRetry(value=>value+1)}>{locale==='he'?'ניסיון חוזר':'Retry sync'}</Button></p>}</div>}
+ <form className="ls-cal-period" action={basePath}><Input id="calendar-date" label={t.period} type="date" name="date" required value={dateInput} onChange={e=>setDateInput(e.target.value)}/><input type="hidden" name="view" value={view}/><input type="hidden" name="caseId" value={caseId}/>{mode==='demo'&&<input type="hidden" name="mode" value={mode}/>} {selectedClientContext&&caseId&&<input type="hidden" name="context" value="client"/>}<Button type="submit">{t.go}</Button></form>
+ {livePractitioner&&<div className="ls-cal-actions"><Button variant="secondary" disabled={mutation.locked} onClick={openTask}>{locale==='he'?'+ משימה':'+ Task'}</Button><a className="lsw-button lsw-button--secondary" href={`/${locale}/app/settings/availability?date=${date}`}>{t.availability}</a></div>}</div>
+ {livePractitioner&&<div className="ls-cal-layers"><label><input type="checkbox" checked={showTasks} onChange={event=>setShowTasks(event.target.checked)}/> {locale==='he'?'משימות':'Tasks'}</label><label><input type="checkbox" checked={showFollowups} onChange={event=>setShowFollowups(event.target.checked)}/> {locale==='he'?'המשך טיפול בפניות':'Prospect follow-ups'}</label>{taskFailed&&<p role="status">{locale==='he'?'המשימות לא נטענו. הפגישות עדיין מוצגות.':'Tasks could not load. Appointments are still shown.'} <Button variant="quiet" onClick={()=>{setTaskFailed(false);setTaskRefresh(value=>value+1)}}>{locale==='he'?'ניסיון חוזר':'Retry tasks'}</Button></p>}{followupFailed&&<p role="status">{locale==='he'?'המשך הטיפול בפניות לא נטען. הפגישות עדיין מוצגות.':'Prospect follow-ups could not load. Appointments are still shown.'} <Button variant="quiet" onClick={()=>{setFollowupFailed(false);setFollowupRetry(value=>value+1)}}>{locale==='he'?'ניסיון חוזר':'Retry follow-ups'}</Button></p>}{taskSyncFailed&&<p role="status">{locale==='he'?'המשך הטיפול מוצג, אך לא ניתן לעדכן את המשימות המקושרות.':'Follow-ups are visible, but linked tasks could not be synchronized.'} <Button variant="quiet" onClick={()=>setFollowupRetry(value=>value+1)}>{locale==='he'?'ניסיון חוזר':'Retry sync'}</Button></p>}</div>}
  {loading?<LoadingState locale={locale}/>:error==='auth'?<div className="lsw-alert" role="alert"><p>{locale==='he'?'פג תוקף החיבור שלך. יש להיכנס מחדש כדי לפתוח את היומן הפרטי.':'Your session has ended. Sign in to reopen the private calendar.'}</p><a className="lsw-button lsw-button--secondary" href={loginHref(locale,href(date))}>{locale==='he'?'כניסה':'Sign in'}</a></div>:error==='forbidden'?<div className="lsw-alert" role="alert"><p>{locale==='he'?'לחשבון הזה אין הרשאה לצפות ביומן הזה.':'This account is not authorized to view this calendar.'}</p></div>:error?<ErrorState locale={locale} onRetry={()=>void load()}/>:<>{caseError&&<p className="ls-cal-partial" role="status">{locale==='he'?'רשימת הלקוחות אינה זמינה כרגע. המפגשים המורשים עדיין מוצגים; שמות ותיאום חדש עשויים להיות חסרים.':'The client list is unavailable right now. Authorized appointments still appear; names and new booking may be unavailable.'} <Button variant="quiet" onClick={()=>void load()}>{locale==='he'?'ניסיון חוזר':'Retry client list'}</Button></p>}{countError&&<p className="ls-cal-partial" role="status">{locale==='he'?'ספירת המפגשים אינה זמינה כרגע. היומן עדיין מוצג.':'Attendance count is unavailable right now. The calendar is still shown.'}</p>}{!caseError&&!cases.length&&<p role="status">{t.noCases}</p>}<CalendarShell locale={locale} period={new Intl.DateTimeFormat(locale==='he'?'he-IL':'en-GB',{timeZone:'Asia/Jerusalem',month:'long',year:'numeric'}).format(new Date(date+'T12:00Z'))} view={view}
  viewHrefs={{day:href(date,'day'),week:href(date,'week'),month:href(date,'month'),agenda:href(date,'agenda')}} showViewTabs={showCalendarViewTabsInContent(role,selectedClientContext)} todayHref={href(civilDate(new Date().toISOString()))} previousHref={href(view==='month'?shiftMonth(date,-1):shiftDay(date,view==='day'?-1:view==='agenda'?-14:-7))} nextHref={href(view==='month'?shiftMonth(date,1):shiftDay(date,view==='day'?1:view==='agenda'?14:7))}
  desktop={<CalendarBoard dates={range.dates} items={items} followups={followups} tasks={tasks} locale={locale} view={view==='agenda'?'week':view} names={names} onOpen={showAppointment} onCompleteTask={practitioner?completeTask:undefined}/>}
  agenda={<CalendarAgenda items={items} followups={followups} tasks={tasks} locale={locale} names={names} onOpen={showAppointment} onCompleteTask={practitioner?completeTask:undefined}/>}/></>}
- {practitioner&&<div className="ls-cal-operational"><IntakeSummaryCard locale={locale}/><CalendarAttentionSummary locale={locale} caseId={caseId}/></div>}
+ {livePractitioner&&<div className="ls-cal-operational"><IntakeSummaryCard locale={locale}/><CalendarAttentionSummary locale={locale} caseId={caseId}/></div>}
  {count!==null&&<aside className="ls-cal-count"><strong>{t.attendedCount}: {new Intl.NumberFormat(locale).format(count)}</strong><p>{t.attendanceOnly}</p></aside>}
- {practitioner&&<nav className="lsu-attention-links ls-cal-related-links" aria-label={locale==='he'?'לעבודה הקרובה':'Immediate work'}><a href={`/${locale}/app/prospects`}>{locale==='he'?'קליטת מתעניינים':'Prospect intake'}</a><a href={`/${locale}/app/feedback${caseId?'?caseId='+encodeURIComponent(caseId):''}`}>{locale==='he'?'משוב לבדיקה':'Review feedback'}</a><a href={`/${locale}/app/clients${caseId?'?caseId='+encodeURIComponent(caseId):''}`}>{locale==='he'?'פתיחת תיק':'Open a case'}</a><a href={`/${locale}/app/reports${caseId?'?caseId='+encodeURIComponent(caseId):''}`}>{locale==='he'?'דוחות חודשיים':'Monthly reports'}</a></nav>}
+ {livePractitioner&&<nav className="lsu-attention-links ls-cal-related-links" aria-label={locale==='he'?'לעבודה הקרובה':'Immediate work'}><a href={`/${locale}/app/prospects`}>{locale==='he'?'קליטת מתעניינים':'Prospect intake'}</a><a href={`/${locale}/app/feedback${caseId?'?caseId='+encodeURIComponent(caseId):''}`}>{locale==='he'?'משוב לבדיקה':'Review feedback'}</a><a href={`/${locale}/app/clients${caseId?'?caseId='+encodeURIComponent(caseId):''}`}>{locale==='he'?'פתיחת תיק':'Open a case'}</a><a href={`/${locale}/app/reports${caseId?'?caseId='+encodeURIComponent(caseId):''}`}>{locale==='he'?'דוחות חודשיים':'Monthly reports'}</a></nav>}
  {cursor&&<div className="ls-cal-pagination"><p>{t.partial}</p><Button onClick={()=>void load(false,cursor)} disabled={loading}>{t.loadMore}</Button></div>}
  <p className="ls-cal-muted">{t.remaining}</p>
 
@@ -145,6 +149,7 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  <NoticeReceipt appointment={selected} locale={locale} onReplacement={()=>void refreshSelected(selected.replacementId??selected.notice?.replacementId??undefined)}/>
  <Button variant="quiet" disabled={mutation.locked} onClick={()=>{if(!dirty||window.confirm(t.dirty)){setDirty(false);void refreshSelected();}}}>{t.refresh}</Button>
  {practitioner?<>
+ {selected.kind==='individual'&&!mutation.locked&&<p><a className="lsw-button lsw-button--secondary" href={`/${locale}/app/cases/${selected.caseId}/sessions?appointmentId=${selected.id}`}>{locale==='he'?'פתיחת רשומת מפגש פרטית':'Open private session record'}</a></p>}
  <details className="ls-cal-section" open><summary>{t.attendance}</summary><AttendanceForm locale={locale} appointment={selected} locked={mutation.locked} onDirty={setDirty} save={save}/></details>
  {selected.kind==='individual'&&<Button variant="secondary" disabled={mutation.locked} onClick={e=>openBook(e,selected)}>{t.parent_guidance}</Button>}
  <details className="ls-cal-section"><summary>{t.manual}</summary><NoticeForm locale={locale} appointment={selected} manual locked={mutation.locked} onDirty={setDirty} save={save}/></details>

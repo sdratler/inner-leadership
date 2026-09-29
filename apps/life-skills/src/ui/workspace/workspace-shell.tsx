@@ -7,8 +7,8 @@ const copy = {
   en: { skip: "Skip to content", nav: "Workspace navigation", more: "More", close: "Close navigation", menu: "Open navigation", account: "Account menu", settings: "Settings", practitioner: "Practitioner workspace", parent: "Family workspace", client: "Client workspace", location: "You are here", language: "עברית", privacy: "Access is limited to your authorized workspace." },
   he: { skip: "דילוג לתוכן", nav: "ניווט במרחב", more: "עוד", close: "סגירת התפריט", menu: "פתיחת התפריט", account: "תפריט החשבון", settings: "הגדרות", practitioner: "מרחב המטפל", parent: "מרחב המשפחה", client: "מרחב לקוח/ה", location: "המיקום שלכם", language: "English", privacy: "הגישה מוגבלת למרחב המורשה שלכם." },
 } as const;
-export type WorkspaceShellProps = { locale: Locale; role: WorkspaceRole; pathname: string; caseId?: string | null; selectedClient?: boolean; section?: string | null | undefined; view?: string | null | undefined; date?: string | null | undefined; languageHref: string; children: ReactNode; toHref?: (path: string) => string; notice?: ReactNode };
-export function WorkspaceShell({ locale, role, pathname, caseId, selectedClient=false, section, view, date, languageHref, children, toHref, notice }: WorkspaceShellProps) {
+export type WorkspaceShellProps = { locale: Locale; role: WorkspaceRole; pathname: string; caseId?: string | null; selectedClient?: boolean; section?: string | null | undefined; view?: string | null | undefined; date?: string | null | undefined; mode?: string | null | undefined; languageHref: string; children: ReactNode; toHref?: (path: string) => string; notice?: ReactNode };
+export function WorkspaceShell({ locale, role, pathname, caseId, selectedClient=false, section, view, date, mode, languageHref, children, toHref, notice }: WorkspaceShellProps) {
   const t = copy[locale], active = role === "practitioner" && selectedClient && caseId ? primaryNavigation.practitioner.find(item=>item.key==="clients") : activeItem(pathname, locale, role);
   const drawer = useRef<HTMLDialogElement>(null), trigger = useRef<HTMLButtonElement>(null), account = useRef<HTMLDetailsElement>(null);
   const drawerId = useId(), titleId = useId();
@@ -31,6 +31,7 @@ export function WorkspaceShell({ locale, role, pathname, caseId, selectedClient=
     // only on this explicit global tab, never by inferring identity from phone.
     if(entry.key==="whatsapp"&&!clientContext){url.searchParams.delete("caseId");url.searchParams.delete("context");}
     if (entry.path === "app/calendar" && date && /^\d{4}-\d{2}-\d{2}$/.test(date)) url.searchParams.set("date", date);
+    if (entry.path === "app/calendar" && mode === "demo") url.searchParams.set("mode", "demo");
     return url.pathname + url.search;
   };
   const topTabs = <nav className="lsu-top-tabs" aria-label={role === "practitioner" ? (locale === "he" ? "תצוגות הדף הנוכחי" : "Current page views") : (locale === "he" ? "חלקי המרחב" : "Workspace sections")}>{contextItems.map(entry => <a key={entry.key} href={role === "practitioner" ? contextHref(entry) : href(entry.path)} aria-current={role === "practitioner" ? (currentContext === entry.key ? "page" : undefined) : (active?.key === entry.key ? "page" : undefined)}>{entry[locale]}</a>)}</nav>;
