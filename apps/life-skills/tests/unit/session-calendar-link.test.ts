@@ -50,20 +50,21 @@ it("links an individual Calendar appointment to its exact private case/session c
   const label = source.indexOf("Open private session record");
   expect(label).toBeGreaterThan(source.indexOf("{practitioner?<>"));
   expect(source).toContain("selected.kind==='individual'&&!mutation.locked");
-  expect(source).toContain("workspaceHref(locale,`app/cases/${selected.caseId}/sessions`,selected.caseId,{mode:mode!,date,view})");
+  expect(source).toContain("workspaceHref(locale,`app/cases/${selected.caseId}/sessions`,selected.caseId,{mode:mode!,date,view,");
+  expect(source).toContain("selectedClientContext?{context:'client' as const}:{}");
   expect(source).toContain("appointmentId=${selected.id}");
 });
-it.each(['en','he'] as const)('%s: preserves explicit mode/date/view through exact session list and detail routes',async locale=>{
- const query={appointmentId:selected,mode:'demo',date:'2026-09-22',view:'day'};
+it.each(['en','he'] as const)('%s: preserves explicit selected-client and mode/date/view through exact session list and detail routes',async locale=>{
+ const query={appointmentId:selected,mode:'demo',date:'2026-09-22',view:'day',context:'client'};
  const list=await Page({params:Promise.resolve({locale,caseId}),searchParams:Promise.resolve(query)});
- expect(list.props.navigationContext).toEqual({mode:'demo',date:'2026-09-22',view:'day'});
+ expect(list.props.navigationContext).toEqual({mode:'demo',date:'2026-09-22',view:'day',context:'client'});
  const detail=await DetailPage({params:Promise.resolve({locale,caseId,sessionId:selected}),searchParams:Promise.resolve(query)});
  expect(detail.props.caseId).toBe(caseId);expect(detail.props.navigationContext).toEqual(list.props.navigationContext);
  const href=workspaceHref(locale,`app/cases/${caseId}/sessions/${selected}`,caseId,list.props.navigationContext);
  const url=new URL(href,'https://private.invalid');expect(url.pathname).toBe(`/${locale}/app/cases/${caseId}/sessions/${selected}`);
- expect(Object.fromEntries(url.searchParams)).toEqual({caseId,mode:'demo',date:'2026-09-22',view:'day'});
+ expect(Object.fromEntries(url.searchParams)).toEqual({caseId,mode:'demo',date:'2026-09-22',view:'day',context:'client'});
 });
-it.each([{mode:['demo','live']},{mode:'all'},{date:'2026-02-30'},{view:'private'},{view:['day','week']},{caseId:selected},{caseId:[caseId,caseId]}])('rejects invalid/repeated/mismatched session navigation context %j',async query=>{
+it.each([{mode:['demo','live']},{mode:'all'},{date:'2026-02-30'},{view:'private'},{view:['day','week']},{caseId:selected},{caseId:[caseId,caseId]},{context:['client','client']},{context:'owner'}])('rejects invalid/repeated/mismatched session navigation context %j',async query=>{
  await expect(Page({params:Promise.resolve({locale:'en',caseId}),searchParams:Promise.resolve(query)})).rejects.toThrow('404');
  await expect(DetailPage({params:Promise.resolve({locale:'en',caseId,sessionId:selected}),searchParams:Promise.resolve(query)})).rejects.toThrow('404');
 });

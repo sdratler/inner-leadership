@@ -39,15 +39,15 @@ export function selectedCaseId(pathname: string, queryCaseId: string | null): st
   if (isCaseId(pathCase)) return pathCase;
   return null;
 }
-export type WorkspaceContext = {mode?: 'live'|'demo';date?:string;view?:'day'|'week'|'month'|'agenda'};
+export type WorkspaceContext = {mode?: 'live'|'demo';date?:string;view?:'day'|'week'|'month'|'agenda';context?:'client'};
 /** Presentation hints only. Every destination still rechecks account/case authorization. */
 export function workspaceContext(query:Record<string,unknown>,strict=false):WorkspaceContext {
   const result:WorkspaceContext={};
-  for(const key of ['mode','date','view'] as const){
+  for(const key of ['mode','date','view','context'] as const){
     const value=query[key];if(value===undefined||value===null)continue;
-    const valid=typeof value==='string'&&(key==='mode'?value==='live'||value==='demo':key==='view'?['day','week','month','agenda'].includes(value):/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(new Date(value+'T00:00:00Z').getTime())&&new Date(value+'T00:00:00Z').toISOString().slice(0,10)===value);
+    const valid=typeof value==='string'&&(key==='mode'?value==='live'||value==='demo':key==='view'?['day','week','month','agenda'].includes(value):key==='context'?value==='client':/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(new Date(value+'T00:00:00Z').getTime())&&new Date(value+'T00:00:00Z').toISOString().slice(0,10)===value);
     if(!valid){if(strict)throw new Error('INVALID_WORKSPACE_CONTEXT');continue;}
-    if(key==='mode')result.mode=value as 'live'|'demo';else if(key==='view')result.view=value as 'day'|'week'|'month'|'agenda';else result.date=value as string;
+    if(key==='mode')result.mode=value as 'live'|'demo';else if(key==='view')result.view=value as 'day'|'week'|'month'|'agenda';else if(key==='context')result.context='client';else result.date=value as string;
   }
   return result;
 }

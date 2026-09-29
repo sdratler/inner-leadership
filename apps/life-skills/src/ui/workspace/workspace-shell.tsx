@@ -12,7 +12,7 @@ export function WorkspaceShell({ locale, role, pathname, caseId, selectedClient=
   const t = copy[locale], active = role === "practitioner" && selectedClient && caseId ? primaryNavigation.practitioner.find(item=>item.key==="clients") : activeItem(pathname, locale, role);
   const drawer = useRef<HTMLDialogElement>(null), trigger = useRef<HTMLButtonElement>(null), account = useRef<HTMLDetailsElement>(null);
   const drawerId = useId(), titleId = useId();
-  const navigationContext=role==='practitioner'?workspaceContext({mode,date,view}):{};
+  const navigationContext=role==='practitioner'?workspaceContext({mode,date,view,context:selectedClient&&caseId?'client':undefined}):{};
   const href = (path: string) => toHref ? toHref(path) : workspaceHref(locale, path, caseId,navigationContext);
   const close = () => { drawer.current?.close(); trigger.current?.focus(); };
   useEffect(() => {

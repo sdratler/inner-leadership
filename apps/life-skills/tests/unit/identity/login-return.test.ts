@@ -14,7 +14,7 @@ it('preserves only bounded report and session context on a same-locale practitio
   const url=new URL(practitionerDetailReturnPath('he',path,{...context,caseId:sessionId}),'https://private.invalid');
   expect(url.pathname).toBe(path);expect(Object.fromEntries(url.searchParams)).toEqual({mode:'demo',date:'2026-09-22',view:'day'});
  }
- expect(practitionerDetailReturnPath('he','/he/app/reports',{...context,caseId,audienceId:sessionId,context:'client'})).toBe(`/he/app/reports?mode=demo&date=2026-09-22&view=day&caseId=${caseId}&audienceId=${sessionId}&context=client`);
+ const report=new URL(practitionerDetailReturnPath('he','/he/app/reports',{...context,caseId,audienceId:sessionId,context:'client'}),'https://private.invalid');expect(report.pathname).toBe('/he/app/reports');expect(Object.fromEntries(report.searchParams)).toEqual({mode:'demo',date:'2026-09-22',view:'day',caseId,audienceId:sessionId,context:'client'});
  for(const path of ['/en/app/reports','/he/family/reports','//untrusted.invalid/app/reports',`/he/app/cases/${caseId}/sessions/../../private`])expect(practitionerDetailReturnPath('he',path,context)).toBe('/he/app/calendar');
  expect(practitionerDetailReturnPath('he','/he/app/reports',{mode:['demo','live'],date:'2026-02-30',view:'private',caseId:'not-a-case'})).toBe('/he/app/reports');
 });
@@ -22,4 +22,9 @@ it('preserves an exact practitioner demo Calendar destination, not repeated or i
  expect(practitionerReturnPath('he','calendar',{date:'2026-09-28',view:'month',mode:'demo'})).toBe('/he/app/calendar?date=2026-09-28&view=month&mode=demo');
  expect(practitionerReturnPath('en','calendar',{mode:['demo','live']})).toBe('/en/app/calendar');
  expect(practitionerReturnPath('en','calendar',{mode:'all'})).toBe('/en/app/calendar');
+});
+it('keeps only the validated selected-client marker on a private session login return',()=>{
+ const path=`/he/app/cases/${caseId}/sessions/${sessionId}`;
+ const result=new URL(practitionerDetailReturnPath('he',path,{context:'client',mode:'demo',role:'parent'}),'https://private.invalid');expect(Object.fromEntries(result.searchParams)).toEqual({mode:'demo',context:'client'});
+ for(const context of ['owner',['client','client']])expect(practitionerDetailReturnPath('he',path,{context})).toBe(path);
 });

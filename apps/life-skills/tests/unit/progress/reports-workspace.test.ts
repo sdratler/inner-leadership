@@ -85,10 +85,10 @@ it('shows a failed case read with a bounded retry and does not update state afte
 });
 it('updates the practitioner deep link and clears the old case audience only after a permitted case switch',async()=>{
  const other=ids.otherAudienceId;accountRead.mockResolvedValue([{id:ids.caseId,displayName:'Synthetic A',kind:'minor',state:'active',mode:'demo'},{id:other,displayName:'Synthetic B',kind:'adult',state:'active',mode:'demo'}]);
- const props={locale:'en' as const,role:'practitioner' as const,mode:'demo' as const,caseId:ids.caseId,audienceId:ids.audienceId,navigationContext:{date:'2026-09-21',view:'agenda' as const}};
+ const props={locale:'en' as const,role:'practitioner' as const,mode:'demo' as const,caseId:ids.caseId,audienceId:ids.audienceId,navigationContext:{date:'2026-09-21',view:'agenda' as const,context:'client' as const}};
  hook.render(()=>ReportsPage(props));hook.flushEffects();await tick();const output=hook.render(()=>ReportsPage(props));
  (find(output,e=>e.type==='select')!.props.onChange as Change)({target:{value:other}});
- const target=new URL(replace.mock.calls[0]![0],'https://app.example');expect(target.pathname).toBe('/en/app/reports');expect(Object.fromEntries(target.searchParams)).toEqual({caseId:other,date:'2026-09-21',view:'agenda',mode:'demo'});
+ const target=new URL(replace.mock.calls[0]![0],'https://app.example');expect(target.pathname).toBe('/en/app/reports');expect(Object.fromEntries(target.searchParams)).toEqual({caseId:other,date:'2026-09-21',view:'agenda',mode:'demo',context:'client'});
  expect(find(hook.render(()=>ReportsPage(props)),e=>e.type===ReportCaseWorkspace)?.props.initialAudienceId).toBeUndefined();
 });
 it('does not navigate or discard when a dirty practitioner case switch is cancelled',async()=>{
