@@ -13,7 +13,7 @@ test.each([
  current,approved.slice(0,-1),[...approved].reverse(),
  [...approved,{name:'0092_unreviewed.sql',sha256:'a'.repeat(64)}],
  approved.map((entry,index)=>index===10?{...entry,sha256:'0'.repeat(64)}:entry),
-])('intake-only scope rejects evolved, missing, reordered or changed registry',entries=>{
+].map(entries=>({entries})))('intake-only scope rejects evolved, missing, reordered or changed registry',({entries})=>{
  expect(()=>assertIntakeMigrationScope(entries)).toThrow('INTAKE_MIGRATION_SCOPE_MISMATCH');
 });
 test('actual intake entry rejects the evolved manifest before creating any database pool or calling migrate',async()=>{
