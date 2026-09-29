@@ -65,10 +65,10 @@ export class ContactInboundStore {
     FROM ls_contact_ops.message_receipts r WHERE r.workspace_id=$1 AND r.channel='whatsapp' AND r.provider_binding_id=$2
      AND ($3::timestamptz IS NULL OR (r.stored_at,r.provider_event_key)>($3::timestamptz,$4::text))
     ORDER BY r.stored_at,r.provider_event_key LIMIT $5`,[this.workspaceId,binding,after?.storedAt??null,after?.eventKey??null,limit+1]);
-   const projector=new NativeInboundProjection(this.workspaceId,this.keyring,this.integrityKey,this.clock);
+   const pending=rows.slice(0,limit).map(row=>({row,inquiry:this.decodeStored(row)}));
+   const projector=new NativeInboundProjection(this.workspaceId,this.keyring,this.integrityKey,this.clock,pending.map(item=>item.inquiry.fromNumber));
    const result={processed:0,projected:0,needsResolution:0,replayed:0,cursor:after,hasMore:rows.length>limit};
-   for(const row of rows.slice(0,limit)){
-    const inquiry=this.decodeStored(row);
+   for(const {row,inquiry} of pending){
     const outcome=await projector.projectInTransaction(tx,inquiry,inboundProjectionKeys(this.workspaceId,row.binding,row.event,row.message,row.digest,inquiry,this.integrityKey));
     if(outcome.state==="receipt_only")throw new AppError("CONFLICT");
     result.processed++;if(outcome.replayed)result.replayed++;

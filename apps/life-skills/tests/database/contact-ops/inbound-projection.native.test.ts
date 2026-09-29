@@ -7,7 +7,7 @@ import {seal} from '../../../src/features/identity/crypto.ts';
 import {ContactInboundStore,inboundBindingDigest} from '../../../src/features/contact-ops/server/inbound-store.ts';
 import {ContactCutoverStore,type CutoverEvidence} from '../../../src/features/contact-ops/server/cutover-store.ts';
 import {OperationalNativeCrmStore} from '../../../src/features/contact-ops/server/operational-store.ts';
-import {NativeCrmStore} from '../../../src/features/contact-ops/server/native-store.ts';
+import {NativeCrmStore,crmProfileAad} from '../../../src/features/contact-ops/server/native-store.ts';
 const fixtures:Fixture[]=[];afterAll(async()=>{for(const f of fixtures)await f.pool.end();});
 const key='synthetic-inbound-projection-integrity-20260929';
 const inquiry={provider:'whapi' as const,channelId:'synthetic-projection-channel',businessNumber:'+972501234567',
@@ -183,6 +183,47 @@ test('immutable imported Outcome/stage opt-outs remain review-only for first and
   expect((await f.pool.query('SELECT snapshot_ciphertext FROM ls_contact_ops.legacy_links WHERE workspace_id=$1',[f.workspaceId])).rows[0].snapshot_ciphertext).toBe(ciphertext);
   expect(await count('ls_identity.people')).toBe(people);expect(await count('ls_identity.accounts')).toBe(accounts);expect(await count('ls_cases.cases')).toBe(cases);
  }
+});
+test('multi-page endpoint matching groups bounded links once per locked drain and never reuses stale claims across transactions',async()=>{
+ const {f,db,actor,crm,store,prepare,authority,count}=await setup();
+ for(let i=0;i<101;i++){
+  const personId=randomUUID(),legacyIds=['LS-LEAD-linear-'+i+'-a','LS-LEAD-linear-'+i+'-b'];
+  await f.pool.query("INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,'adult',$3,clock_timestamp())",
+   [personId,f.workspaceId,seal(JSON.stringify({displayName:'Synthetic indexed contact '+i}),`person:${f.workspaceId}:${personId}`,f.keyring)]);
+  await f.pool.query("INSERT INTO ls_contact_ops.profiles(workspace_id,person_id,payload_ciphertext,record_mode,demo_batch_id) VALUES($1,$2,$3,'live',NULL)",
+   [f.workspaceId,personId,seal(JSON.stringify({personId,stage:'New inquiry',nextAction:null,followUpDate:null,notes:'Keep indexed note '+i,legacyIds}),crmProfileAad(f.workspaceId,personId),f.keyring)]);
+  for(const leadId of legacyIds){
+   const snapshot={sourceRow:i+2,payload:{displayName:'Synthetic indexed contact '+i,language:'en',stageText:'New inquiry',
+    sourceFields:{'Lead ID':leadId,Phone:'+97250'+String(1000000+i)}}};
+   await f.pool.query(`INSERT INTO ls_contact_ops.legacy_links(workspace_id,source_file_id,source_sheet_id,source_tab_title,
+    legacy_lead_id,person_id,source_revision,row_digest,snapshot_ciphertext) VALUES($1,'synthetic-indexed-workbook',1,'Synthetic Leads',$2,$3,'indexed-revision',$4,$5)`,
+    [f.workspaceId,leadId,personId,'c'.repeat(64),seal(JSON.stringify(snapshot),`ls_contact_ops/legacy/v1/${f.workspaceId}/synthetic-indexed-workbook/1/${leadId}`,f.keyring)]);
+  }
+ }
+ await store.capture(inquiry);await prepare();
+ await store.capture({...inquiry,providerEventId:'indexed-second',providerMessageId:'indexed-second',occurredAt:'2026-09-28T03:00:00Z'});
+ await store.capture({...inquiry,providerEventId:'indexed-new-thread',providerMessageId:'indexed-new-thread',providerThreadId:'indexed-new-thread'});
+ await authority.advance(actor,{action:'switch_native',proof:proof(2),operationId:'activate'});
+ const observed={profilePages:0,linkPages:0,accountScans:0,limits:[] as number[]};
+ const instrumented:IdentityStore={transaction:work=>db.transaction(tx=>work({query:async <R extends object>(sql:string,values:readonly unknown[]=[])=>{
+  if(sql.includes('FROM ls_contact_ops.profiles')&&sql.includes('ORDER BY person_id LIMIT $3')){observed.profilePages++;expect(values[2]).toBe(100);}
+  if(sql.includes('FROM ls_contact_ops.legacy_links')&&sql.includes('jsonb_array_elements_text')){observed.linkPages++;observed.limits.push(Number(values[2]));}
+  if(sql.includes('LEFT JOIN ls_identity.account_subjects'))observed.accountScans++;
+  return tx.query<R>(sql,values);
+ }}))};
+ const drain=new ContactInboundStore(instrumented,f.workspaceId,f.keyring,key,inboundBindingDigest(inquiry));
+ expect(await drain.drain(actor,3)).toMatchObject({processed:3,projected:2,needsResolution:1,replayed:0,hasMore:false});
+ expect(observed).toEqual({profilePages:2,linkPages:2,accountScans:1,limits:[10001,101]});
+ expect(await count('ls_contact_ops.profiles')).toBe(102);expect(await count('ls_contact_ops.legacy_links')).toBe(202);
+ const all=await crm.list(actor,{view:'all',search:inquiry.fromNumber,today:'2026-09-29',page:1,pageSize:100},3);
+ expect(all.items).toHaveLength(1);expect(all.items[0]?.inboundActivity?.messageCount).toBe(2);
+ // The newly created unverified endpoint also protects a different thread in
+ // this same batch; it must not produce a second person from the cached scan.
+ await f.pool.query('UPDATE ls_identity.accounts SET phone_ciphertext=$2,phone_verified_at=clock_timestamp() WHERE id=$1',
+  [f.parent.actor.id,seal(inquiry.fromNumber,`phone:${f.workspaceId}:${f.parent.actor.id}`,f.keyring)]);
+ await store.capture({...inquiry,providerEventId:'indexed-fresh-shared',providerMessageId:'indexed-fresh-shared'});
+ expect(await count('ls_contact_ops.profiles')).toBe(102);
+ expect((await f.pool.query("SELECT count(*)::int AS n FROM ls_contact_ops.inbound_projections WHERE workspace_id=$1 AND state='needs_resolution'",[f.workspaceId])).rows[0].n).toBe(2);
 });
 test('demo account endpoints cannot create live contacts, and ordinary profile edits cannot rewrite provider provenance/activity',async()=>{
  const {f,db,actor,store,activate,list,count}=await setup({demoFirst:true});await activate();

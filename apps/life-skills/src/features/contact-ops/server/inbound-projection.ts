@@ -26,6 +26,7 @@ const resolutionSchema=z.object({state:z.enum(["projected","needs_resolution"]),
  v.personId===null&&v.reason==="ambiguous_endpoint"&&v.candidateIds.length>0));
 type Resolution=z.infer<typeof resolutionSchema>;
 type ProfileRow={personId:string;ciphertext:string;version:number;mode:"live"|"demo";demoBatch:string|null};
+type LegacyClaimRow={personId:string;leadId:string;fileId:string;sheetId:number;ciphertext:string};
 const resolutionAad=(workspace:string,binding:string,message:string)=>`ls_contact_ops/inbound-projection/v1/${workspace}/${binding}/${message}`;
 const sourceSchema=z.object({payload:z.object({stageText:z.string(),sourceFields:z.record(z.string(),z.string())})});
 const phoneField=(fields:Record<string,string>)=>Object.entries(fields).find(([header])=>header.trim()==="Phone")?.[1]??"";
@@ -40,9 +41,12 @@ const whatsappOrigin=(personId:string,inquiry:InboundInquiry,keys:InboundProject
  * The ordinary practitioner CRM keeps its existing fresh-actor checks. */
 export class NativeInboundProjection {
  private readonly workspace:WorkspaceId;
+ private claimSnapshot:{tx:SqlSession;byPhone:Map<string,EndpointClaim[]>}|null=null;
  constructor(workspace:string,private readonly keyring:Keyring,
-  private readonly integrityKey:string,private readonly clock:IdentityClock=systemClock){
+  private readonly integrityKey:string,private readonly clock:IdentityClock=systemClock,
+  private readonly drainPhones:readonly string[]=[]){
   this.workspace=asId(workspace,"workspace");
+  if(drainPhones.length>100||drainPhones.some(phone=>normalizePhone(phone)!==phone))throw new AppError("INVALID_REQUEST");
  }
  private decode<T>(schema:z.ZodType<T>,ciphertext:string,aad:string):T{
   try{return schema.parse(JSON.parse(unseal(ciphertext,aad,this.keyring)));}catch{throw new AppError("UNAVAILABLE");}
@@ -65,8 +69,8 @@ export class NativeInboundProjection {
   const links=await tx.query<{leadId:string;fileId:string;sheetId:number;ciphertext:string}>(`SELECT
    legacy_lead_id AS "leadId",source_file_id AS "fileId",source_sheet_id AS "sheetId",snapshot_ciphertext AS ciphertext
    FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND person_id=$2 ORDER BY legacy_lead_id LIMIT $3`,
-   [this.workspace,profile.personId,MAX_NATIVE_CONTACTS*100+1]);
-  if(links.length>MAX_NATIVE_CONTACTS*100||new Set(links.map(link=>link.leadId)).size!==links.length||
+   [this.workspace,profile.personId,101]);
+  if(links.length>100||new Set(links.map(link=>link.leadId)).size!==links.length||
    [...profile.legacyIds].sort().join("\0")!==links.map(link=>link.leadId).sort().join("\0"))throw new AppError("UNAVAILABLE");
   let suppressed=false;
   for(const link of links){
@@ -81,30 +85,49 @@ export class NativeInboundProjection {
   * because a business message arrived. Reserved inactive/demo accounts still
   * block new-person creation; no phone/name/account/case merging happens here. */
  private async claims(tx:SqlSession,phone:string,senderKey:string):Promise<EndpointClaim[]>{
-  const profiles=await tx.query<ProfileRow>(`SELECT person_id AS "personId",payload_ciphertext AS ciphertext,
-   version,record_mode AS mode,demo_batch_id AS "demoBatch" FROM ls_contact_ops.profiles
-   WHERE workspace_id=$1 ORDER BY person_id LIMIT $2`,[this.workspace,MAX_NATIVE_CONTACTS+1]);
-  if(profiles.length>MAX_NATIVE_CONTACTS)throw new AppError("UNAVAILABLE");
-  const links=await tx.query<{personId:string;leadId:string;fileId:string;sheetId:number;ciphertext:string}>(`SELECT person_id AS "personId",
-   legacy_lead_id AS "leadId",source_file_id AS "fileId",source_sheet_id AS "sheetId",snapshot_ciphertext AS ciphertext
-   FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 ORDER BY person_id,legacy_lead_id LIMIT $2`,[this.workspace,MAX_NATIVE_CONTACTS*100+1]);
-  if(links.length>MAX_NATIVE_CONTACTS*100)throw new AppError("UNAVAILABLE");
-  const claims:EndpointClaim[]=[];
+  const endpoint=(number:string)=>privateDigest({domain:"contact-endpoint-v1",workspace:this.workspace,phone:number},this.integrityKey);
+  if(endpoint(phone)!==senderKey)throw new AppError("CONFLICT");
+  if(this.claimSnapshot?.tx===tx&&this.claimSnapshot.byPhone.has(phone))return this.claimSnapshot.byPhone.get(phone)!;
+  // A drain's workspace lock keeps account/source endpoint claims stable. Cache
+  // ONLY its <=100 target phones within this exact transaction, never sessions.
+  const targets=new Set([...this.drainPhones,phone]);if(targets.size>100)throw new AppError("UNAVAILABLE");
+  const byPhone=new Map([...targets].map(number=>[number,[] as EndpointClaim[]]));
   const add=(personId:string,value:string,verified:boolean,shared:boolean)=>{
-   if(normalizePhone(value)===phone)claims.push({personId,workspaceId:this.workspace,endpointKey:senderKey,verified,shared,revoked:false});
+   const normalized=normalizePhone(value),claims=normalized?byPhone.get(normalized):undefined;
+   if(claims&&normalized)claims.push({personId,workspaceId:this.workspace,endpointKey:endpoint(normalized),verified,shared,revoked:false});
   };
-  for(const row of profiles){
-   const profile=this.decode(crmProfileSchema,row.ciphertext,crmProfileAad(this.workspace,row.personId));
-   if(profile.personId!==row.personId||!["live","demo"].includes(row.mode)||(row.mode==="live"?row.demoBatch!==null:!row.demoBatch))throw new AppError("UNAVAILABLE");
-   const owned=links.filter(link=>link.personId===row.personId);
-   if(new Set(owned.map(link=>link.leadId)).size!==owned.length||[...profile.legacyIds].sort().join("\0")!==owned.map(link=>link.leadId).sort().join("\0"))throw new AppError("UNAVAILABLE");
-   for(const link of owned){
-    const source=this.decode(sourceSchema,link.ciphertext,`ls_contact_ops/legacy/v1/${this.workspace}/${link.fileId}/${link.sheetId}/${link.leadId}`);
-    if(Object.entries(source.payload.sourceFields).find(([header])=>header.trim()==="Lead ID")?.[1]?.trim()!==link.leadId)throw new AppError("UNAVAILABLE");
-    add(row.personId,phoneField(source.payload.sourceFields),false,row.mode==="demo");
+  let after:string|null=null,total=0;
+  const batchSize=100;
+  for(;;){
+   const profiles:ProfileRow[]=await tx.query<ProfileRow>(`SELECT person_id AS "personId",payload_ciphertext AS ciphertext,
+    version,record_mode AS mode,demo_batch_id AS "demoBatch" FROM ls_contact_ops.profiles
+    WHERE workspace_id=$1 AND ($2::uuid IS NULL OR person_id>$2::uuid) ORDER BY person_id LIMIT $3`,[this.workspace,after,batchSize]);
+   if(!profiles.length)break;
+   total+=profiles.length;
+   if(total>MAX_NATIVE_CONTACTS||profiles.length>batchSize||profiles.some((r,i)=>i>0&&r.personId<=profiles[i-1]!.personId)||after!==null&&profiles[0]!.personId<=after)throw new AppError("UNAVAILABLE");
+   // Use the existing legacy_links_by_person index and group each bounded batch
+   // once: O(profiles + links), not a workspace-wide filter for every profile.
+   const links:LegacyClaimRow[]=await tx.query<LegacyClaimRow>(`SELECT person_id AS "personId",
+    legacy_lead_id AS "leadId",source_file_id AS "fileId",source_sheet_id AS "sheetId",snapshot_ciphertext AS ciphertext
+    FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND person_id IN (SELECT value::uuid FROM jsonb_array_elements_text($2::jsonb))
+    ORDER BY person_id,legacy_lead_id LIMIT $3`,[this.workspace,JSON.stringify(profiles.map(row=>row.personId)),profiles.length*100+1]);
+   if(links.length>profiles.length*100)throw new AppError("UNAVAILABLE");
+   const grouped=new Map<string,LegacyClaimRow[]>(profiles.map(row=>[row.personId,[]]));
+   for(const link of links){const owned=grouped.get(link.personId);if(!owned)throw new AppError("UNAVAILABLE");owned.push(link);}
+   for(const row of profiles){
+    const profile=this.decode(crmProfileSchema,row.ciphertext,crmProfileAad(this.workspace,row.personId));
+    if(profile.personId!==row.personId||!["live","demo"].includes(row.mode)||(row.mode==="live"?row.demoBatch!==null:!row.demoBatch))throw new AppError("UNAVAILABLE");
+    const owned=grouped.get(row.personId)!;
+    if(new Set(owned.map(link=>link.leadId)).size!==owned.length||[...profile.legacyIds].sort().join("\0")!==owned.map(link=>link.leadId).sort().join("\0"))throw new AppError("UNAVAILABLE");
+    for(const link of owned){
+     const source=this.decode(sourceSchema,link.ciphertext,`ls_contact_ops/legacy/v1/${this.workspace}/${link.fileId}/${link.sheetId}/${link.leadId}`);
+     if(Object.entries(source.payload.sourceFields).find(([header])=>header.trim()==="Lead ID")?.[1]?.trim()!==link.leadId)throw new AppError("UNAVAILABLE");
+     add(row.personId,phoneField(source.payload.sourceFields),false,row.mode==="demo");
+    }
+    if(profile.nativeInquiry)add(row.personId,profile.nativeInquiry.phone,false,row.mode==="demo");
+    if(profile.whatsappInquiry)add(row.personId,profile.whatsappInquiry.phone,false,row.mode==="demo");
    }
-   if(profile.nativeInquiry)add(row.personId,profile.nativeInquiry.phone,false,row.mode==="demo");
-   if(profile.whatsappInquiry)add(row.personId,profile.whatsappInquiry.phone,false,row.mode==="demo");
+   after=profiles.at(-1)!.personId;if(profiles.length<batchSize)break;
   }
   const accounts=await tx.query<{id:string;personId:string|null;phoneCiphertext:string;verifiedAt:Date|null;state:string;demo:boolean}>(`SELECT a.id,
    s.person_id AS "personId",a.phone_ciphertext AS "phoneCiphertext",a.phone_verified_at AS "verifiedAt",a.state,
@@ -121,7 +144,7 @@ export class NativeInboundProjection {
    if(!claimed)throw new AppError("UNAVAILABLE");
    add(account.personId,claimed,account.state==="active"&&account.verifiedAt!==null&&!account.demo,account.demo);
   }
-  return claims;
+  this.claimSnapshot={tx,byPhone};return byPhone.get(phone)!;
  }
  async projectInTransaction(tx:SqlSession,inquiry:InboundInquiry,input:InboundProjectionKeys):Promise<{state:"receipt_only"|"projected"|"needs_resolution";replayed:boolean}>{
   const keys=receiptKeys.parse(input);
@@ -203,6 +226,14 @@ export class NativeInboundProjection {
    const updated=await tx.query<{version:number}>("UPDATE ls_contact_ops.profiles SET payload_ciphertext=$3,version=version+1,updated_at=clock_timestamp() WHERE workspace_id=$1 AND person_id=$2 AND version=$4 RETURNING version",
     [this.workspace,outcome.personId,seal(JSON.stringify(merged),crmProfileAad(this.workspace,outcome.personId),this.keyring),existing.row.version]);
    if(updated.length!==1)throw new AppError("CONFLICT");
+   if(this.claimSnapshot?.tx===tx){
+    // The only endpoint mutation performed by this locked drain is its newly
+    // created WhatsApp inquiry. Add that UNVERIFIED claim before another item;
+    // a new thread must still hold it instead of guessing identity/consent.
+    const claims=this.claimSnapshot.byPhone.get(inquiry.fromNumber);
+    if(claims&&!claims.some(claim=>claim.personId===outcome.personId&&!claim.verified&&!claim.shared))claims.push({personId:outcome.personId,
+     workspaceId:this.workspace,endpointKey:keys.sender,verified:false,shared:false,revoked:false});
+   }
   }
   await tx.query(`INSERT INTO ls_contact_ops.inbound_projections(workspace_id,channel,provider_binding_id,provider_message_key,provider_event_key,
    provider_thread_key,message_digest,state,reason,person_id,authority_epoch,resolution_ciphertext)
