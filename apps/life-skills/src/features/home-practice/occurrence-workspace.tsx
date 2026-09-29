@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { IdentityClientError } from "../identity/client.ts";
+import { IdentityClientError, type IdentityClientErrorCode } from "../identity/client.ts";
 import { loginHref } from "../identity/login-return.ts";
 import { civilDate } from "../calendar/time.ts";
 import { Button, Input, Select } from "../../ui/workspace/controls.tsx";
 import { UnsavedChangesGuard } from "../../ui/workspace/draft-guard.tsx";
-import { checkInAttempt, checkInReadback, ownCheckInHistory, practiceAccessLost, practiceRangeOccurrences, practiceSaveUncertain, submitPracticeCheckIn, type CheckInAttempt } from "./occurrence-client.ts";
+import { checkInAttempt, checkInReadback, incomingPracticeReport, ownCheckInHistory, practiceAccessLossPage, practiceAccessLost, practiceDraftIds, practiceRangeOccurrences, practiceSaveUncertain, submitPracticeCheckIn, type CheckInAttempt } from "./occurrence-client.ts";
 import { occurrenceRange, shiftOccurrenceDay } from "./occurrence-range.ts";
 import { completionStatuses, type CompletionStatus, type CompletionView, type PracticeOccurrenceItem, type PracticeOccurrencePage } from "./types.ts";
 
@@ -33,6 +33,14 @@ export function PracticeOccurrenceWorkspace({ locale, role, caseId, audienceId, 
     const current = dirty.current.size > 0; setHasDirty(current); onDirtyChange?.(current);
   }, [onDirtyChange]);
   useEffect(() => {
+    const ids = practiceDraftIds(dirty.current, state.page);
+    if (ids.length === dirty.current.size && hasDirty === (ids.length > 0)) return;
+    dirty.current = new Set(ids);
+    let canceled = false;
+    queueMicrotask(() => { if (!canceled) { const current = dirty.current.size > 0; setHasDirty(current); onDirtyChange?.(current); } });
+    return () => { canceled = true; };
+  }, [state.page, hasDirty, onDirtyChange]);
+  useEffect(() => {
     if (!caseId) return;
     const controller = new AbortController();
     // Same-scope readback must not unmount another occurrence's unsaved form.
@@ -50,7 +58,12 @@ export function PracticeOccurrenceWorkspace({ locale, role, caseId, audienceId, 
     return () => controller.abort();
   }, [caseId, audienceId, start, end, key, refresh, refreshToken, onDirtyChange]);
   const reload = useCallback(() => setRefresh(value => value + 1), []);
-  const accessLost = useCallback(() => { setState({ key: "", status: "ready", page: { items: [], hasMore: false } }); setRefresh(value => value + 1); }, []);
+  const accessLost = useCallback((id: string, code: IdentityClientErrorCode) => {
+    // Functional update also handles another card's concurrent readback. Never
+    // restore a stale page captured when this card's request began.
+    setState(previous => ({ ...previous, status: code === "UNAUTHENTICATED" ? "error" : "ready", code, page: practiceAccessLossPage(previous.page, id, code) }));
+    setRefresh(value => value + 1);
+  }, []);
   const returnPath = base + "/practice?" + new URLSearchParams({ section: "checkins", ...(caseId ? { caseId } : {}), ...(audienceId ? { audienceId } : {}) });
   return <section className="lsw-stack" aria-label={t.title} dir={locale === "he" ? "rtl" : "ltr"}>
     <UnsavedChangesGuard dirty={hasDirty} message={t.dirty} />
@@ -64,7 +77,7 @@ export function PracticeOccurrenceWorkspace({ locale, role, caseId, audienceId, 
 }
 
 export function PracticeOccurrenceCard({ locale, item, onReadback, onAccessLost, onDirty }: {
-  locale: "en" | "he"; item: PracticeOccurrenceItem; onReadback: () => void; onAccessLost: () => void; onDirty: (id: string, dirty: boolean) => void;
+  locale: "en" | "he"; item: PracticeOccurrenceItem; onReadback: () => void; onAccessLost: (id: string, code: IdentityClientErrorCode) => void; onDirty: (id: string, dirty: boolean) => void;
 }) {
   const t = copy[locale], id = item.occurrence.id;
   const [status, setStatus] = useState<CompletionStatus | "">("");
@@ -74,6 +87,13 @@ export function PracticeOccurrenceCard({ locale, item, onReadback, onAccessLost,
   const attempt = useRef<CheckInAttempt | null>(null), controller = useRef<AbortController | null>(null);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; controller.current?.abort(); }; }, []);
+  useEffect(() => {
+    const incoming = incomingPracticeReport(savedReport, item.ownReport, Boolean(status), attempt.current !== null || ["saving", "uncertain", "conflict"].includes(phase));
+    if (incoming === savedReport) return;
+    let canceled = false;
+    queueMicrotask(() => { if (!canceled) { setSavedReport(incoming); setHistory(null); setHistoryFailed(false); setPhase("idle"); } });
+    return () => { canceled = true; };
+  }, [item.ownReport, savedReport, status, phase]);
   const canSave = item.canReport && (item.occurrence.state === "open" || savedReport !== null);
   async function save() {
     if (!status || !canSave || phase === "saving" || phase === "conflict") return;
@@ -92,7 +112,7 @@ export function PracticeOccurrenceCard({ locale, item, onReadback, onAccessLost,
       setSavedReport(latest); setHistory(rows); setPhase("saved"); setStatus(""); attempt.current = null; onDirty(id, false); onReadback();
     } catch (error) {
       if (!mounted.current || current.signal.aborted) return;
-      if (practiceAccessLost(error)) { onDirty(id, false); onAccessLost(); return; }
+      if (practiceAccessLost(error)) { onDirty(id, false); onAccessLost(id, (error as IdentityClientError).code); return; }
       const uncertain = practiceSaveUncertain(error);
       setPhase(uncertain ? "uncertain" : error instanceof IdentityClientError && error.code === "CONFLICT" ? "conflict" : "error");
       if (!uncertain) attempt.current = null;
@@ -112,7 +132,7 @@ export function PracticeOccurrenceCard({ locale, item, onReadback, onAccessLost,
       setSavedReport(rows.at(-1) ?? null); setHistory(rows); setHistoryFailed(false); setPhase("idle"); attempt.current = null;
     } catch (error) {
       if (current.signal.aborted || !mounted.current) return;
-      if (practiceAccessLost(error)) { onDirty(id, false); onAccessLost(); } else setHistoryFailed(true);
+      if (practiceAccessLost(error)) { onDirty(id, false); onAccessLost(id, (error as IdentityClientError).code); } else setHistoryFailed(true);
     }
   }
   const format = (value: string) => new Intl.DateTimeFormat(locale === "he" ? "he-IL" : "en-GB", { timeZone: "Asia/Jerusalem", dateStyle: "medium" }).format(new Date(value + "T12:00:00Z"));

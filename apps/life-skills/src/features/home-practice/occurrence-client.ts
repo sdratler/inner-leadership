@@ -1,6 +1,6 @@
 import { IdentityClientError, sessionInfo } from "../identity/client.ts";
 import type { IdentityClientErrorCode } from "../identity/client.ts";
-import type { CompletionStatus, OwnCompletionView, PracticeOccurrencePage } from "./types.ts";
+import type { CompletionStatus, CompletionView, OwnCompletionView, PracticeOccurrencePage } from "./types.ts";
 import { isVisibility } from "../../lib/visibility.ts";
 
 const codes: readonly IdentityClientErrorCode[] = ["INVALID_REQUEST", "UNAUTHENTICATED", "FORBIDDEN", "NOT_FOUND", "CONFLICT", "RATE_LIMITED", "UNAVAILABLE", "INTERNAL"];
@@ -38,6 +38,22 @@ export async function practiceRangeOccurrences(caseId: string, audienceId: strin
   const items = [...new Map(pages.flatMap(page => page.items).map(item => [item.occurrence.id, item])).values()]
     .sort((a, b) => a.occurrence.occursOn.localeCompare(b.occurrence.occursOn) || (a.occurrence.period === b.occurrence.period ? 0 : a.occurrence.period === "morning" ? -1 : 1) || a.occurrence.id.localeCompare(b.occurrence.id));
   return { items: items.slice(0, 500), hasMore: items.length > 500 || pages.some(page => page.hasMore) };
+}
+
+/** Prune vanished/noneditable drafts without discarding still-authorized input. */
+export function practiceDraftIds(ids: Iterable<string>, page: PracticeOccurrencePage): string[] {
+  const editable = new Set(page.items.filter(item => item.canReport && (item.occurrence.state === "open" || item.ownReport !== null)).map(item => item.occurrence.id as string));
+  return [...ids].filter(id => editable.has(id));
+}
+/** A card denial is scoped; fresh discovery subsequently rechecks the whole case. */
+export function practiceAccessLossPage(page: PracticeOccurrencePage, id: string, code: IdentityClientErrorCode): PracticeOccurrencePage {
+  if (code === "UNAUTHENTICATED") return { items: [], hasMore: false };
+  const audience = page.items.find(item => item.occurrence.id === id)?.practice.audienceId;
+  return { ...page, items: page.items.filter(item => audience ? item.practice.audienceId !== audience : item.occurrence.id !== id) };
+}
+/** Ignore stale projection after a local save; never replace an active attempt. */
+export function incomingPracticeReport(current: CompletionView | null, incoming: CompletionView | null, dirty: boolean, locked: boolean): CompletionView | null {
+  return !dirty && !locked && incoming && (!current || incoming.revision > current.revision) ? incoming : current;
 }
 
 export interface CheckInAttempt {
