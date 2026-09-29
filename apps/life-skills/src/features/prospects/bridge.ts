@@ -11,6 +11,7 @@ export type Prospect = {
   bookingStatus:string; messageReceipt:string; updateProvenance:string; firstInboundAt:string; lastInboundAt:string; owner:string;
   journeyState:string; paymentVerified:boolean; bookingConfirmed:boolean;
   projectionPending?:boolean;
+  projectionOperationId?:string;projectionState?:"prepared"|"sent_pending";
   nativeEdit?:{personId:string;profileVersion:number;authorityEpoch:number};
 };
 

@@ -1,7 +1,7 @@
 import {describe,expect,it,vi} from "vitest";
 vi.mock("server-only",()=>({}));
 import {assertLegacyProspectSenderAvailable,projectIntakeToLegacyIfCurrent,
- projectLegacyProspectAfterSend,sendAuthoritativeProspectMessage} from "../../../src/features/contact-ops/server/authoritative-prospect-send.ts";
+ projectLegacyProspectAfterSend,reconcileLegacyProspectProjection,sendAuthoritativeProspectMessage} from "../../../src/features/contact-ops/server/authoritative-prospect-send.ts";
 import type {Actor} from "../../../src/features/identity/types.ts";
 import type {CutoverState,Phase} from "../../../src/features/contact-ops/core/cutover.ts";
 
@@ -12,8 +12,10 @@ const state=(phase:Phase):CutoverState=>({phase,epoch:3,batchId:"synthetic",sour
 const authority=(phase:Phase)=>({read:vi.fn().mockResolvedValue(state(phase))});
 const sender=vi.fn().mockResolvedValue({success:true,receipt:{provider:"synthetic",providerMessageId:"synthetic-id",sentAt:"2026-09-29T00:00:00Z"}});
 const receipt={provider:"synthetic",providerMessageId:"synthetic-id",sentAt:"2026-09-29T00:00:00Z"};
-const ledger={prepare:vi.fn().mockResolvedValue("synthetic-operation"),confirm:vi.fn().mockResolvedValue(undefined),
+const ledger={prepare:vi.fn().mockResolvedValue("synthetic-operation"),confirm:vi.fn().mockResolvedValue(undefined),read:vi.fn().mockResolvedValue(null),
  projected:vi.fn().mockResolvedValue(undefined)};
+const projectedRow=(fields:Record<string,string>)=>[{leadId:"LS-LEAD-synthetic",...fields}] as unknown as Awaited<ReturnType<typeof import("../../../src/features/prospects/bridge.ts").listProspects>>;
+const list=(fields:Record<string,string>)=>vi.fn().mockResolvedValue(projectedRow(fields));
 
 describe("Sheet-bound prospect send fence",()=>{
  it.each(["sheet_active","shadow_ready"] as const)("preserves the existing transport in %s",async phase=>{
@@ -63,38 +65,54 @@ describe("post-effect legacy projection fence",()=>{
  it("keeps the provider receipt pending after an in-flight native switch",async()=>{
   const update=vi.fn();ledger.confirm.mockClear();
   expect(await projectLegacyProspectAfterSend(actor,runtime,"LS-LEAD-synthetic",{stage:"Contacted"},3,
-   "synthetic-operation",receipt,{authority:authority("native_active"),update,ledger}))
-   .toEqual({projectionPending:true,receiptPersistencePending:false});
+   "synthetic-operation",receipt,{authority:authority("native_active"),update,list:list({stage:"Contacted"}),ledger}))
+   .toEqual({projectionPending:true});
   expect(ledger.confirm).toHaveBeenCalledOnce();expect(update).not.toHaveBeenCalled();
  });
  it("does not project after an epoch change even if Sheet became active again",async()=>{
   const update=vi.fn();expect(await projectLegacyProspectAfterSend(actor,runtime,"LS-LEAD-synthetic",{stage:"Contacted"},2,
-   "synthetic-operation",receipt,{authority:authority("sheet_active"),update,ledger}))
+   "synthetic-operation",receipt,{authority:authority("sheet_active"),update,list:list({stage:"Contacted"}),ledger}))
    .toMatchObject({projectionPending:true});expect(update).not.toHaveBeenCalled();
  });
  it("retains current Sheet projection, but reports a real projection failure",async()=>{
   const update=vi.fn().mockResolvedValue(undefined),a=authority("sheet_active");
   ledger.projected.mockClear();
   expect(await projectLegacyProspectAfterSend(actor,runtime,"LS-LEAD-synthetic",{stage:"Contacted"},3,
-   "synthetic-operation",receipt,{authority:a,update,ledger})).toEqual({projectionPending:false,receiptPersistencePending:false});
+   "synthetic-operation",receipt,{authority:a,update,list:list({stage:"Contacted"}),ledger})).toEqual({projectionPending:false});
   expect(ledger.confirm.mock.invocationCallOrder.at(-1)).toBeLessThan(update.mock.invocationCallOrder[0]!);
   expect(ledger.projected).toHaveBeenCalledOnce();
   expect(update).toHaveBeenCalledOnce();update.mockRejectedValue(Error("synthetic Sheet unavailable"));
   expect(await projectLegacyProspectAfterSend(actor,runtime,"LS-LEAD-synthetic",{stage:"Contacted"},3,
-   "synthetic-operation",receipt,{authority:a,update,ledger})).toMatchObject({projectionPending:true});
+   "synthetic-operation",receipt,{authority:a,update,list:list({stage:"Contacted"}),ledger})).toMatchObject({projectionPending:true});
  });
  it("keeps a confirmed send visible when the post-send authority read fails",async()=>{
   const update=vi.fn(),a=authority("sheet_active");a.read.mockRejectedValue(Error("synthetic database unavailable"));
   expect(await projectLegacyProspectAfterSend(actor,runtime,"LS-LEAD-synthetic",{stage:"Contacted"},3,
-   "synthetic-operation",receipt,{authority:a,update,ledger})).toMatchObject({projectionPending:true});
+   "synthetic-operation",receipt,{authority:a,update,list:list({stage:"Contacted"}),ledger})).toMatchObject({projectionPending:true});
   expect(update).not.toHaveBeenCalled();
  });
  it("does not claim a persisted receipt when its durable confirmation fails",async()=>{
-  const update=vi.fn(),failed={...ledger,confirm:vi.fn().mockRejectedValue(Error("synthetic database unavailable"))};
-  expect(await projectLegacyProspectAfterSend(actor,runtime,"LS-LEAD-synthetic",{stage:"Contacted"},3,
-   "synthetic-operation",receipt,{authority:authority("sheet_active"),update,ledger:failed}))
-   .toEqual({projectionPending:true,receiptPersistencePending:true});
-  expect(update).not.toHaveBeenCalled();
+  const update=vi.fn(),failed={...ledger,confirm:vi.fn().mockRejectedValue(Error("synthetic database unavailable")),read:vi.fn().mockRejectedValue(Error("synthetic database unavailable"))};
+  await expect(projectLegacyProspectAfterSend(actor,runtime,"LS-LEAD-synthetic",{stage:"Contacted"},3,
+   "synthetic-operation",receipt,{authority:authority("sheet_active"),update,list:list({stage:"Contacted"}),ledger:failed}))
+   .rejects.toMatchObject({code:"UNAVAILABLE"});
+  expect(failed.confirm).toHaveBeenCalledTimes(3);expect(update).not.toHaveBeenCalled();
+ });
+ it("accepts a lost confirmation response only after reading back the durable receipt",async()=>{
+  const fields={stage:"Contacted"},update=vi.fn().mockResolvedValue(undefined);
+  const saved={state:"sent_pending",fields,receipt},uncertain={...ledger,confirm:vi.fn().mockRejectedValue(Error("response lost")),read:vi.fn().mockResolvedValue(saved)};
+  expect(await projectLegacyProspectAfterSend(actor,runtime,"LS-LEAD-synthetic",fields,3,
+   "synthetic-operation",receipt,{authority:authority("sheet_active"),update,list:list(fields),ledger:uncertain}))
+   .toEqual({projectionPending:false});
+  expect(uncertain.confirm).toHaveBeenCalledOnce();expect(update).toHaveBeenCalledOnce();
+ });
+ it("keeps projection pending until the Sheet update is visible on readback",async()=>{
+  const fields={stage:"Contacted"},update=vi.fn().mockResolvedValue(undefined),unreadable=list({stage:"New"});
+  ledger.projected.mockClear();
+  expect(await projectLegacyProspectAfterSend(actor,runtime,"LS-LEAD-synthetic",fields,3,
+   "synthetic-operation",receipt,{authority:authority("sheet_active"),update,list:unreadable,ledger}))
+   .toEqual({projectionPending:true});
+  expect(update).toHaveBeenCalledOnce();expect(ledger.projected).not.toHaveBeenCalled();
  });
  it.each(["frozen","native_active","retired","rollback_prepared"] as const)("does not project submitted intake to Sheet in %s",async phase=>{
   const update=vi.fn();expect(await projectIntakeToLegacyIfCurrent(runtime,"LS-LEAD-synthetic",{formSubmitted:"synthetic"},
@@ -104,5 +122,40 @@ describe("post-effect legacy projection fence",()=>{
   const update=vi.fn().mockResolvedValue(undefined);
   expect(await projectIntakeToLegacyIfCurrent(runtime,"LS-LEAD-synthetic",{formSubmitted:"synthetic"},
    {read:async()=>state("sheet_active"),update})).toBe(false);expect(update).toHaveBeenCalledOnce();
+ });
+});
+
+describe("confirmed-send reconciliation without provider resend",()=>{
+ const fields={stage:"Contacted",nextAction:"Synthetic follow-up"};
+ const record={operationId:"synthetic-operation",leadId:"LS-LEAD-synthetic",authorityEpoch:3,state:"sent_pending" as const,
+  message:"Synthetic message",fields,receipt};
+ it("reapplies the exact confirmed fields and verifies their Sheet readback",async()=>{
+  sender.mockClear();
+  const update=vi.fn().mockResolvedValue(undefined),listed=list(fields),saved={...ledger,read:vi.fn().mockResolvedValue(record),projected:vi.fn().mockResolvedValue(undefined)};
+  expect(await reconcileLegacyProspectProjection(actor,runtime,record.operationId,
+   {authority:authority("sheet_active"),update,list:listed,ledger:saved})).toEqual({projected:true});
+  expect(update).toHaveBeenCalledWith(record.leadId,fields);expect(listed).toHaveBeenCalledOnce();
+  expect(saved.projected).toHaveBeenCalledOnce();expect(sender).not.toHaveBeenCalled();
+ });
+ it("refuses an uncertain prepared send or a changed authority",async()=>{
+  const update=vi.fn(),saved={...ledger,read:vi.fn().mockResolvedValue({...record,state:"prepared"})};
+  await expect(reconcileLegacyProspectProjection(actor,runtime,record.operationId,
+   {authority:authority("sheet_active"),update,list:list(fields),ledger:saved})).rejects.toMatchObject({code:"CONFLICT"});
+  saved.read.mockResolvedValue(record);
+  await expect(reconcileLegacyProspectProjection(actor,runtime,record.operationId,
+   {authority:authority("native_active"),update,list:list(fields),ledger:saved})).rejects.toMatchObject({code:"CONFLICT"});
+  expect(update).not.toHaveBeenCalled();
+ });
+ it("does not drain the fence when the Sheet readback is stale",async()=>{
+  const update=vi.fn().mockResolvedValue(undefined),saved={...ledger,read:vi.fn().mockResolvedValue(record),projected:vi.fn()};
+  await expect(reconcileLegacyProspectProjection(actor,runtime,record.operationId,
+   {authority:authority("sheet_active"),update,list:list({stage:"New"}),ledger:saved})).rejects.toMatchObject({code:"UNAVAILABLE"});
+  expect(saved.projected).not.toHaveBeenCalled();
+ });
+ it("denies a parent before reading the receipt",async()=>{
+  const saved={...ledger,read:vi.fn()};
+  await expect(reconcileLegacyProspectProjection({...actor,role:"parent"},runtime,record.operationId,
+   {authority:authority("sheet_active"),update:vi.fn(),list:list(fields),ledger:saved})).rejects.toMatchObject({code:"FORBIDDEN"});
+  expect(saved.read).not.toHaveBeenCalled();
  });
 });

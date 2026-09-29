@@ -13,11 +13,19 @@ import {readCutoverState} from "./cutover-state.ts";
 
 export type OutboundReceipt={provider:string;providerMessageId:string|null;sentAt:string|null;replaySuppressed?:boolean;sheetUpdated?:boolean};
 export type OutboundProjection={operationId:string;leadId:string;authorityEpoch:number;state:"prepared"|"sent_pending"|"projected";
- fields:Record<string,string>;receipt:OutboundReceipt|null};
+ message:string;fields:Record<string,string>;receipt:OutboundReceipt|null};
+export type PendingOutboundProjection={operationId:string;state:"prepared"|"sent_pending"};
 const aad=(workspace:string,operation:string,kind:"fields"|"receipt")=>`ls_contact_ops/outbound-projection/v1/${workspace}/${operation}/${kind}`;
 const leadPattern=/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]+$/;
 const fieldsValid=(fields:Record<string,string>)=>Object.keys(fields).length<=20&&Object.entries(fields).every(([key,value])=>
  /^[A-Za-z][A-Za-z0-9]{0,63}$/.test(key)&&typeof value==="string"&&value.length<=4000);
+const payload=(message:string,fields:Record<string,string>)=>JSON.stringify({message,fields});
+function decoded(raw:string):{message:string;fields:Record<string,string>}{
+ const value=JSON.parse(raw) as {message:unknown;fields:Record<string,string>};
+ if(typeof value.message!=="string"||!value.message.trim()||value.message.length>4000||
+  !value.fields||typeof value.fields!=="object"||Array.isArray(value.fields)||!fieldsValid(value.fields))throw Error("invalid outbound payload");
+ return {message:value.message,fields:value.fields};
+}
 
 /** A committed pre-send intent keeps requested administrative fields even if
  * the provider result or the subsequent Sheet projection becomes uncertain.
@@ -32,8 +40,8 @@ export class OutboundProjectionStore {
   await this.actor(tx,a);
  }
  async prepare(a:Actor,leadId:string,authorityEpoch:number,message:string,fields:Record<string,string>):Promise<string>{
-  if(!leadPattern.test(leadId)||!Number.isSafeInteger(authorityEpoch)||authorityEpoch<0||!fieldsValid(fields)||!message.trim())throw new AppError("INVALID_REQUEST");
-  const operationId=randomUUID(),ciphertext=seal(JSON.stringify(fields),aad(a.workspaceId,operationId,"fields"),this.keyring);
+  if(!leadPattern.test(leadId)||!Number.isSafeInteger(authorityEpoch)||authorityEpoch<0||!fieldsValid(fields)||!message.trim()||message.length>4000)throw new AppError("INVALID_REQUEST");
+  const operationId=randomUUID(),ciphertext=seal(payload(message,fields),aad(a.workspaceId,operationId,"fields"),this.keyring);
   const digest=privateDigest({leadId,message,fields,actor:a.id,authorityEpoch},this.integrityKey);
   return this.db.transaction(async tx=>{
    await this.lock(tx,a);
@@ -54,10 +62,17 @@ export class OutboundProjectionStore {
    typeof receipt.sentAt!=="string"&&receipt.sentAt!==null)throw new AppError("INVALID_REQUEST");
   await this.db.transaction(async tx=>{
    await this.actor(tx,a);
+   const prepared=await tx.query<{projectionCiphertext:string}>(`SELECT projection_ciphertext AS "projectionCiphertext"
+    FROM ls_contact_ops.outbound_projections WHERE workspace_id=$1 AND operation_id=$2
+    AND actor_account_id=$3 AND state='prepared' FOR UPDATE`,[a.workspaceId,operationId,a.id]);
+   if(prepared.length!==1)throw new AppError("CONFLICT");
+   let message:string;
+   try{message=decoded(unseal(prepared[0]!.projectionCiphertext,aad(a.workspaceId,operationId,"fields"),this.keyring)).message;}
+   catch{throw new AppError("UNAVAILABLE");}
    const rows=await tx.query<{state:string}>(`UPDATE ls_contact_ops.outbound_projections SET
     projection_ciphertext=$4,receipt_ciphertext=$5,state='sent_pending',updated_at=clock_timestamp()
     WHERE workspace_id=$1 AND operation_id=$2 AND actor_account_id=$3 AND state='prepared' RETURNING state`,
-    [a.workspaceId,operationId,a.id,seal(JSON.stringify(fields),aad(a.workspaceId,operationId,"fields"),this.keyring),
+    [a.workspaceId,operationId,a.id,seal(payload(message,fields),aad(a.workspaceId,operationId,"fields"),this.keyring),
      seal(JSON.stringify(receipt),aad(a.workspaceId,operationId,"receipt"),this.keyring)]);
    if(rows.length!==1)throw new AppError("CONFLICT");
   });
@@ -81,22 +96,27 @@ export class OutboundProjectionStore {
    if(rows.length>1)throw new AppError("UNAVAILABLE");
    const row=rows[0];if(!row)return null;
    try{
-    const fields=JSON.parse(unseal(row.projectionCiphertext,aad(a.workspaceId,operationId,"fields"),this.keyring)) as Record<string,string>;
+    const {message,fields}=decoded(unseal(row.projectionCiphertext,aad(a.workspaceId,operationId,"fields"),this.keyring));
     const receipt=row.receiptCiphertext?JSON.parse(unseal(row.receiptCiphertext,aad(a.workspaceId,operationId,"receipt"),this.keyring)) as OutboundReceipt:null;
-    if(!fieldsValid(fields)||!leadPattern.test(row.legacyLeadId)||Boolean(receipt)!==(row.state!=="prepared"))throw Error("invalid ledger");
-    return {operationId,leadId:row.legacyLeadId,authorityEpoch:row.authorityEpoch,state:row.state,fields,receipt};
+    if(!leadPattern.test(row.legacyLeadId)||Boolean(receipt)!==(row.state!=="prepared"))throw Error("invalid ledger");
+    return {operationId,leadId:row.legacyLeadId,authorityEpoch:row.authorityEpoch,state:row.state,message,fields,receipt};
    }catch{throw new AppError("UNAVAILABLE");}
   });
  }
  async pendingLeads(a:Actor,leadIds:readonly string[]):Promise<Set<string>>{
+  return new Set((await this.pendingForLeads(a,leadIds)).keys());
+ }
+ async pendingForLeads(a:Actor,leadIds:readonly string[]):Promise<Map<string,PendingOutboundProjection>>{
   if(leadIds.length>10000||leadIds.some(id=>!leadPattern.test(id)))throw new AppError("INVALID_REQUEST");
-  if(!leadIds.length)return new Set();
+  if(!leadIds.length)return new Map();
   return this.db.transaction(async tx=>{
    await this.actor(tx,a);
-   const rows=await tx.query<{leadId:string}>(`SELECT DISTINCT legacy_lead_id AS "leadId"
+   const rows=await tx.query<{leadId:string;operationId:string;state:PendingOutboundProjection["state"]}>(`SELECT legacy_lead_id AS "leadId",operation_id AS "operationId",state
     FROM ls_contact_ops.outbound_projections WHERE workspace_id=$1 AND state<>'projected'
      AND legacy_lead_id IN (SELECT jsonb_array_elements_text($2::jsonb))`,[a.workspaceId,JSON.stringify(leadIds)]);
-   return new Set(rows.map(row=>row.leadId));
+   const result=new Map<string,PendingOutboundProjection>();
+   for(const row of rows){if(result.has(row.leadId))throw new AppError("UNAVAILABLE");result.set(row.leadId,{operationId:row.operationId,state:row.state});}
+   return result;
   });
  }
 }

@@ -2,7 +2,7 @@ import "server-only";
 import {AppError} from "../../../lib/errors.ts";
 import type {Actor} from "../../identity/types.ts";
 import type {identityRuntime} from "../../identity/runtime.ts";
-import {sendProspectMessage,updateProspect} from "../../prospects/bridge.ts";
+import {listProspects,sendProspectMessage,updateProspect,type Prospect} from "../../prospects/bridge.ts";
 import {writeDestination,type CutoverState} from "../core/cutover.ts";
 import {readCutoverState} from "./cutover-state.ts";
 import {ContactCutoverStore} from "./cutover-store.ts";
@@ -12,7 +12,8 @@ type Runtime=Pick<Awaited<ReturnType<typeof identityRuntime>>,"store"|"config"|"
 type Authority={read:(actor:Actor)=>Promise<CutoverState>};
 type Sender=(leadId:string,message:string,context:{store:Runtime["store"];workspaceId:string})=>ReturnType<typeof sendProspectMessage>;
 type LegacyUpdate=(leadId:string,fields:Record<string,string>)=>Promise<unknown>;
-type Ledger=Pick<OutboundProjectionStore,"prepare"|"confirm"|"projected">;
+type LegacyList=()=>Promise<Prospect[]>;
+type Ledger=Pick<OutboundProjectionStore,"prepare"|"confirm"|"projected"|"read">;
 const ledger=(runtime:Runtime)=>new OutboundProjectionStore(runtime.store,runtime.config.keyring,
  runtime.config.lookupKey.toString("hex"),runtime.clock);
 
@@ -44,14 +45,25 @@ export async function sendAuthoritativeProspectMessage(actor:Actor,runtime:Runti
  */
 export async function projectLegacyProspectAfterSend(actor:Actor,runtime:Runtime,leadId:string,
  fields:Record<string,string>,expectedEpoch:number,operationId:string,receipt:OutboundReceipt,
- dependencies?:{authority:Authority;update:LegacyUpdate;ledger:Ledger}):Promise<{projectionPending:boolean;receiptPersistencePending:boolean}>{
+ dependencies?:{authority:Authority;update:LegacyUpdate;list:LegacyList;ledger:Ledger}):Promise<{projectionPending:boolean}>{
  if(actor.role!=="practitioner")throw new AppError("FORBIDDEN");
- const pending={projectionPending:true,receiptPersistencePending:false};
+ const pending={projectionPending:true};
  const selectedLedger=dependencies?.ledger??ledger(runtime);
  // The prepared encrypted intent already contains the requested fields. Store
  // the provider receipt and final fields before any Sheet projection is tried.
- try{await selectedLedger.confirm(actor,operationId,receipt,fields);}
- catch{return {...pending,receiptPersistencePending:true};}
+ let confirmed=false;
+ for(let attempt=0;attempt<3&&!confirmed;attempt++){
+  try{await selectedLedger.confirm(actor,operationId,receipt,fields);confirmed=true;}
+  catch{
+   // A committed transaction can lose its response. Read back before retrying
+   // or declaring failure, and never acknowledge an unpersisted provider send.
+   try{const saved=await selectedLedger.read(actor,operationId);
+    confirmed=saved?.state==="sent_pending"&&JSON.stringify(saved.receipt)===JSON.stringify(receipt)&&
+     JSON.stringify(saved.fields)===JSON.stringify(fields);
+   }catch{confirmed=false;}
+  }
+ }
+ if(!confirmed)throw new AppError("UNAVAILABLE");
  const authority=dependencies?.authority??new ContactCutoverStore(runtime.store,runtime.config.keyring,
   runtime.config.lookupKey.toString("hex"),runtime.clock);
  // Delivery already succeeded. A failed authority read must not turn the
@@ -61,9 +73,36 @@ export async function projectLegacyProspectAfterSend(actor:Actor,runtime:Runtime
  if(state.epoch!==expectedEpoch||writeDestination(state.phase)!=="sheet")return pending;
  try{
   await (dependencies?.update??updateProspect)(leadId,fields);
+  await verifyLegacyProjection(leadId,fields,dependencies?.list??listProspects);
   await selectedLedger.projected(actor,operationId);
-  return {projectionPending:false,receiptPersistencePending:false};
+  return {projectionPending:false};
  }catch{return pending;}
+}
+
+async function verifyLegacyProjection(leadId:string,fields:Record<string,string>,list:LegacyList):Promise<void>{
+ const observed=(await list()).find(row=>row.leadId===leadId);
+ if(!observed||!Object.entries(fields).every(([field,value])=>
+  (observed as unknown as Record<string,unknown>)[field]===value))throw new AppError("UNAVAILABLE");
+}
+
+/** Explicit practitioner reconciliation of a durably confirmed send. Never
+ * resend the provider message. Read back the Sheet fields before draining the
+ * authority fence; prepared/uncertain sends need separate provider evidence.
+ */
+export async function reconcileLegacyProspectProjection(actor:Actor,runtime:Runtime,operationId:string,
+ dependencies?:{authority:Authority;update:LegacyUpdate;list:LegacyList;ledger:Ledger}):Promise<{projected:true}>{
+ if(actor.role!=="practitioner")throw new AppError("FORBIDDEN");
+ const selectedLedger=dependencies?.ledger??ledger(runtime),record=await selectedLedger.read(actor,operationId);
+ if(!record||record.state!=="sent_pending"||!record.receipt)throw new AppError("CONFLICT");
+ const authority=dependencies?.authority??new ContactCutoverStore(runtime.store,runtime.config.keyring,
+  runtime.config.lookupKey.toString("hex"),runtime.clock);
+ const state=await authority.read(actor);
+ if(state.epoch!==record.authorityEpoch||writeDestination(state.phase)!=="sheet")throw new AppError("CONFLICT");
+ await (dependencies?.update??updateProspect)(record.leadId,record.fields);
+ await verifyLegacyProjection(record.leadId,record.fields,dependencies?.list??listProspects);
+ try{await selectedLedger.projected(actor,operationId);}
+ catch{if((await selectedLedger.read(actor,operationId))?.state!=="projected")throw new AppError("UNAVAILABLE");}
+ return {projected:true};
 }
 
 /** A submitted form is already durable in the private onboarding store. Its

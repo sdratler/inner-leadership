@@ -38,11 +38,8 @@ const copy={
  he:{title:"לקוחות ומתעניינים",lead:"מעקב אחר כל פנייה מהקשר הראשון, דרך טופס ההיכרות והתשלום המאומת, ועד לקביעת פגישה ראשונה.",clients:"לקוחות",prospects:"מתעניינים / קליטה",all:"כל הפניות הפתוחות",today:"לטיפול היום",newLead:"פניות חדשות",intake:"טופס היכרות",payment:"ממתינים לתשלום מאומת",booking:"שולם — ממתינים לקביעת מועד",archived:"בארכיון",empty:"אין פניות שמתאימות למסננים.",retry:"ניסיון נוסף",save:"שמירת המשך טיפול",send:"שליחת WhatsApp",sendIntake:"שליחת טופס היכרות",bookingLink:"קישור מאובטח לקביעת מועד",sendBooking:"שליחת קישור לקביעת מועד",children:"מספר ילדים בטופס",notes:"הערה מנהלית",next:"הפעולה הבאה",due:"תאריך יעד",owner:"אחראי/ת",loading:"טוען את ה-CRM הפרטי…",failed:"לא ניתן לטעון את ה-CRM. אפשר לנסות שוב.",auth:"פג תוקף החיבור שלך. יש להיכנס מחדש כדי לפתוח את רשימת האנשים הפרטית.",forbidden:"לחשבון הזה אין הרשאה לצפות ברשימת האנשים של המטפל/ת.",signIn:"כניסה",saved:"נשמר.",created:"המתעניין נשמר בלי לשלוח דבר.",sent:"השליחה ב-WhatsApp אושרה.",sentPending:"השליחה ב-WhatsApp אושרה, אך עדכון ה-CRM ממתין. יש לבדוק את הרשומה לפני ניסיון נוסף; אין לשלוח את ההודעה שוב.",saveFailed:"לא ניתן לאשר את השמירה. העריכה נשארה כאן; כדאי לבדוק את הרשומה לפני ניסיון נוסף.",sendFailed:"לא ניתן לאשר את המסירה. יש לבדוק את הפעילות המתועדת לפני שליחה נוספת.",paymentGate:"אפשר לשלוח קישור לקביעת מועד רק לאחר אימות תשלום מאובטח.",intakeHelp:"הפעולה שולחת את טופס ההיכרות הפרטי הקיים. לאחר ההגשה עוברים ישירות לתשלום; אין שלב קבלה נוסף.",search:"חיפוש לפי שם או טלפון",stage:"שלב",language:"שפה",dueFilter:"מועד טיפול",any:"הכול",overdue:"באיחור",add:"הוספת מתעניין",name:"שם (לא חובה)",phone:"טלפון",source:"מקור",previous:"הקודם",nextPage:"הבא",page:"עמוד"}
 } as const;
 
-export function prospectActionStatus(kind:string,result:{projectionPending?:boolean;receiptPersistencePending?:boolean}|undefined,locale:Locale):string{
+export function prospectActionStatus(kind:string,result:{projectionPending?:boolean}|undefined,locale:Locale):string{
  const t=copy[locale];
- if(result?.receiptPersistencePending)return locale==="he"?
-  "השליחה ב-WhatsApp אושרה, אך רישום המסירה דורש בירור. אין לשלוח שוב; יש לבדוק את רשומת ההמתנה והספק.":
-  "WhatsApp delivery was confirmed, but its receipt needs reconciliation. Do not resend; check the pending record and provider.";
  return kind==="add"?t.created:result?.projectionPending?t.sentPending:t.sent;
 }
 async function api<T>(init?:RequestInit):Promise<T>{
@@ -110,7 +107,7 @@ export function ProspectsClient({locale,initialFilter="all",focusLeadId="",embed
  // A slow second source must not trap ready rows beyond the first page.
  const paginationReady=(showProspects&&state==="ready")||caseState==="ready";
  async function action(payload:unknown){
-  setStatus("");const input=payload as {action:string;leadId?:string;fields?:ProspectUpdateFields;editContext?:ProspectEditContext},kind=input.action;
+  setStatus("");const input=payload as {action:string;leadId?:string;operationId?:string;fields?:ProspectUpdateFields;editContext?:ProspectEditContext},kind=input.action;
   let lock:string|undefined;
   try{
    const row=kind==="update"?rows.find(r=>r.leadId===input.leadId):undefined;
@@ -137,9 +134,24 @@ export function ProspectsClient({locale,initialFilter="all",focusLeadId="",embed
     }
     return;
    }
-   const result=await api<{projectionPending?:boolean;receiptPersistencePending?:boolean}>({method:"POST",body:JSON.stringify(payload)});
-   if(mounted.current){setStatus(prospectActionStatus(kind,result,locale));load();}
-  }catch{if(mounted.current)setStatus(kind==="update"||kind==="add"?t.saveFailed:t.sendFailed);}
+   if(kind==="reconcile_projection"){
+    if(!input.operationId||saving.current.has(input.operationId))return;
+    lock=input.operationId;saving.current.add(lock);
+   }
+   const pendingRow=kind.startsWith("send_")?rows.find(row=>row.leadId===input.leadId&&row.projectionPending):undefined;
+   if(pendingRow){
+    setStatus(pendingRow.projectionState==="prepared"?(locale==="he"?
+     "תוצאת המסירה אינה ודאית. יש לבדוק מול הספק לפני ניסיון שליחה נוסף.":
+     "Delivery outcome is uncertain. Verify with the provider before another send."):t.sentPending);return;
+   }
+   const result=await api<{projectionPending?:boolean}>({method:"POST",body:JSON.stringify(payload)});
+   if(mounted.current){setStatus(kind==="reconcile_projection"?(locale==="he"?
+    "עדכון ה-CRM אומת ונרשם; לא נשלחה הודעה נוספת.":"CRM readback verified and recorded; no message was resent."):
+    prospectActionStatus(kind,result,locale));load();}
+  }catch{if(mounted.current){setStatus(kind==="reconcile_projection"?(locale==="he"?
+   "עדכון ה-CRM לא אומת. הרשומה עדיין ממתינה; אין לשלוח שוב.":
+   "CRM readback was not verified. This record remains pending; do not resend."):
+   kind==="update"||kind==="add"?t.saveFailed:t.sendFailed);if(kind.startsWith("send_"))load();}}
   finally{if(lock)saving.current.delete(lock);}
  }
  const content=<>
@@ -151,9 +163,16 @@ export function ProspectsClient({locale,initialFilter="all",focusLeadId="",embed
   {(caseState==="auth"||caseState==="forbidden")&&<div className="lsw-alert" role="alert"><p>{t[caseState]}</p>{caseState==="auth"&&<a className="lsw-button lsw-button--secondary" href={loginHref(locale,returnPath??`/${locale}/app/clients`)}>{t.signIn}</a>}</div>}
   {showProspects&&state==="loading"&&<p role="status">{t.loading}</p>}{showProspects&&state==="error"&&<div className="lsw-alert" role="alert"><p>{t.failed}</p><button className="lsw-button lsw-button--secondary" onClick={load}>{t.retry}</button></div>}
   {showProspects&&(state==="auth"||state==="forbidden")&&caseState!==state&&<div className="lsw-alert" role="alert"><p>{t[state]}</p>{state==="auth"&&<a className="lsw-button lsw-button--secondary" href={loginHref(locale,returnPath??`/${locale}/app/clients`)}>{t.signIn}</a>}</div>}
-  {showProspects&&rows.some(row=>row.projectionPending)&&<p className="lsw-alert" role="status">{locale==="he"?
-   "לכמה פניות יש שליחה או עדכון CRM שממתינים לבירור. אין לשלוח שוב דרך האפליקציה עד לבדיקת הרשומה והמסירה.":
-   "Some inquiries have an unresolved send or CRM update. Do not send again through the app until delivery and the record are reconciled."}</p>}
+  {showProspects&&rows.some(row=>row.projectionPending)&&<section className="lsw-alert" role="status" aria-label={locale==="he"?"שליחות ממתינות לבירור":"Pending delivery reconciliation"}>
+   <p>{locale==="he"?"יש שליחות או עדכוני CRM שממתינים לבירור. אין לשלוח שוב עד לבדיקת הרשומה והמסירה.":
+    "Some sends or CRM updates need reconciliation. Do not resend until delivery and the record are checked."}</p>
+   <ul>{rows.filter(row=>row.projectionPending).map(row=><li key={row.leadId}>
+    <strong>{row.name||row.phone}</strong>{" — "}{row.projectionState==="sent_pending"?
+     <button type="button" className="lsw-button lsw-button--secondary" onClick={()=>action({action:"reconcile_projection",operationId:row.projectionOperationId})}>
+      {locale==="he"?"אימות ועדכון ה-CRM (ללא שליחה)":"Verify and update CRM (no resend)"}</button>:
+     <span>{locale==="he"?"תוצאת המסירה אינה ודאית; נדרש אימות מול הספק לפני סגירה.":
+      "Delivery outcome is uncertain; verify with the provider before clearing this hold."}</span>}</li>)}</ul>
+  </section>}
   <section className="lsu-people-results" aria-live="polite">{entries.map(entry=>entry.kind==="case"?<a className="lsw-card lsu-person-row" key={`case:${entry.id}`} href={`/${locale}/app/cases/${encodeURIComponent(entry.id)}`}><strong>{entry.row.displayName}</strong><span>{entry.row.kind==="minor"?(locale==="he"?"תיק ילד/ה":"Child case"):(locale==="he"?"תיק מבוגר/ת":"Adult case")} · {entry.row.state}</span></a>:<details className="lsw-card lsu-person-details" key={`prospect:${entry.id}`} open={openLeads.includes(entry.id)} onToggle={event=>{const isOpen=event.currentTarget.open;setOpenLeads(current=>isOpen?current.includes(entry.id)?current:[...current,entry.id]:current.filter(id=>id!==entry.id))}} data-focused={entry.id===focused}><summary><strong>{entry.name}</strong><span>{locale==="he"?"פנייה":"Inquiry"} · {entry.row.stage||t.newLead}</span><span>{entry.row.nextAction||"—"}</span><span>{entry.row.dueDate||"—"}</span></summary><ProspectCard row={entry.row} locale={locale} action={action}/></details>)}{!entries.length&&sourcesReady&&!accessBlocked&&<p className="lsw-empty">{showProspects?t.empty:locale==="he"?"אין תיקי לקוחות שמתאימים לחיפוש.":"No client cases match this search."}</p>}</section>
   {paginationReady&&!accessBlocked&&pages>1&&<nav className="lsw-actions" aria-label={t.page}><button className="lsw-button lsw-button--secondary" disabled={currentPage<=1} onClick={()=>setPage(currentPage-1)}>{t.previous}</button><span>{t.page} {currentPage} / {pages}</span><button className="lsw-button lsw-button--secondary" disabled={currentPage>=pages} onClick={()=>setPage(currentPage+1)}>{t.nextPage}</button></nav>}
   {showProspects&&!accessBlocked&&<><details ref={addRef} id="add-prospect" className="lsw-card lsu-inline-create"><summary>{t.add}</summary><AddProspect locale={locale} action={action}/></details><p className="lsw-save-result" role="status">{status}</p></>}

@@ -7,7 +7,7 @@ import {verifyCsrfToken,verifyMutationOrigin} from "@/lib/security/csrf.ts";
 import {SESSION_COOKIE} from "@/lib/security/session.ts";
 import {identityRuntime} from "@/features/identity/runtime.ts";
 import type {Actor} from "@/features/identity/types.ts";
-import {assertLegacyProspectSenderAvailable,projectLegacyProspectAfterSend,sendAuthoritativeProspectMessage} from "@/features/contact-ops/server/authoritative-prospect-send.ts";
+import {assertLegacyProspectSenderAvailable,projectLegacyProspectAfterSend,reconcileLegacyProspectProjection,sendAuthoritativeProspectMessage} from "@/features/contact-ops/server/authoritative-prospect-send.ts";
 import {prospectCreateSchema} from "@/features/contact-ops/core/people-create.ts";
 import {createAuthoritativeProspect} from "@/features/contact-ops/server/authoritative-prospect-create.ts";
 import {readAuthoritativeProspects} from "@/features/contact-ops/server/authoritative-prospects.ts";
@@ -26,6 +26,7 @@ const body=z.discriminatedUnion("action",[
  z.object({action:z.literal("send_message"),leadId:lead,message:z.string().trim().min(1).max(2000),nextAction:z.string().max(500).optional(),dueDate:z.string().max(40).optional()}).strict(),
  z.object({action:z.literal("send_intake"),leadId:lead,firstName:z.string().trim().max(120),locale:z.enum(["he","en"]),childCount:z.number().int().min(1).max(8)}).strict(),
  z.object({action:z.literal("send_booking"),leadId:lead,firstName:z.string().trim().max(120),locale:z.enum(["he","en"]),bookingLink:z.string().url().startsWith("https://").max(1000)}).strict(),
+ z.object({action:z.literal("reconcile_projection"),operationId:z.string().uuid()}).strict(),
 ]);
 function fail(error:unknown){const e=errorEnvelope(error instanceof AppError?error:new AppError("UNAVAILABLE"),randomUUID());return NextResponse.json(e.body,{status:e.status,headers:{"Cache-Control":"private, no-store","Referrer-Policy":"no-referrer"}})}
 async function session(request:Request){const values=(request.headers.get("cookie")||"").split(";").map(v=>v.trim()).filter(v=>v.startsWith(SESSION_COOKIE+"="));if(values.length!==1)throw new AppError("UNAUTHENTICATED");const runtime=await identityRuntime(),token=values[0]!.slice(SESSION_COOKIE.length+1),actor=await runtime.services.sessions.actor(token);if(actor.role!=="practitioner")throw new AppError("FORBIDDEN");return {runtime,token,actor};}
@@ -44,14 +45,19 @@ export async function GET(request:Request){try{
  const s=await session(request),rows=await readAuthoritativeProspects(s.actor,s.runtime);
  const states=await readProspectJourneys(s.runtime.store,s.runtime.config.workspaceId,rows.map(row=>row.leadId));
  const pending=await new OutboundProjectionStore(s.runtime.store,s.runtime.config.keyring,
-  s.runtime.config.lookupKey.toString("hex"),s.runtime.clock).pendingLeads(s.actor,rows.map(row=>row.leadId));
+  s.runtime.config.lookupKey.toString("hex"),s.runtime.clock).pendingForLeads(s.actor,rows.map(row=>row.leadId));
  return NextResponse.json({ok:true,data:rows.map(row=>({...row,...(states.get(row.leadId)??{
-  journeyState:"prospect",paymentVerified:false,bookingConfirmed:false}),projectionPending:pending.has(row.leadId)})),
+  journeyState:"prospect",paymentVerified:false,bookingConfirmed:false}),projectionPending:pending.has(row.leadId),
+  projectionOperationId:pending.get(row.leadId)?.operationId,projectionState:pending.get(row.leadId)?.state})),
   requestId:randomUUID()},{headers:{"Cache-Control":"private, no-store","Referrer-Policy":"no-referrer"}});
 }catch(e){return fail(e)}}
 export async function POST(request:Request){try{const s=await session(request);verifyMutationOrigin(request,s.runtime.config.origin);verifyCsrfToken(request.headers.get("x-csrf-token"),s.runtime.services.sessions.csrf(s.token));const input=await readJson(request,body);
  if(input.action==="add"){const result=await createAuthoritativeProspect(s.actor,input,s.runtime);return NextResponse.json({ok:true,data:result,requestId:randomUUID()},{status:result.action==="created"?201:200,headers:{"Cache-Control":"private, no-store","Referrer-Policy":"no-referrer"}})}
  if(input.action==="update"){const result=await updateAuthoritativeProspect(s.actor,input,s.runtime);return NextResponse.json({ok:true,data:result,requestId:randomUUID()},{headers:{"Cache-Control":"private, no-store"}})}
+ if(input.action==="reconcile_projection"){
+  const result=await reconcileLegacyProspectProjection(s.actor,s.runtime,input.operationId);
+  return NextResponse.json({ok:true,data:result,requestId:randomUUID()},{headers:{"Cache-Control":"private, no-store"}});
+ }
  if(input.action==="send_message"){
   await requireContactableProspect(s.runtime,s.actor,input.leadId);
   const fields={...(input.nextAction?{nextAction:input.nextAction}:{}),...(input.dueDate?{dueDate:input.dueDate}:{}),

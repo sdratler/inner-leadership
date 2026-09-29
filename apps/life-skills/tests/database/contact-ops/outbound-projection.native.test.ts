@@ -3,6 +3,8 @@ vi.mock("server-only",()=>({}));
 import {fixture,poolStore,type Fixture} from "../calendar/fixture.ts";
 import {OutboundProjectionStore} from "../../../src/features/contact-ops/server/outbound-projection-store.ts";
 import {ContactCutoverStore,type CutoverEvidence} from "../../../src/features/contact-ops/server/cutover-store.ts";
+import {reconcileLegacyProspectProjection} from "../../../src/features/contact-ops/server/authoritative-prospect-send.ts";
+import type {Prospect} from "../../../src/features/prospects/bridge.ts";
 
 const fixtures:Fixture[]=[];
 afterAll(async()=>{for(const f of fixtures)await f.pool.end();});
@@ -25,13 +27,23 @@ test("encrypted pre-send intent and receipt survive reload and forbid another se
  const raw=(await f.pool.query("SELECT projection_ciphertext,receipt_ciphertext,state FROM ls_contact_ops.outbound_projections WHERE workspace_id=$1 AND operation_id=$2",[f.workspaceId,operation])).rows[0];
  expect(raw.state).toBe("prepared");expect(raw.receipt_ciphertext).toBeNull();
  expect(raw.projection_ciphertext).not.toContain("Synthetic follow-up");
- expect(await ledger.read(a,operation)).toMatchObject({leadId:lead,state:"prepared",fields:planned,receipt:null});
+ expect(await ledger.read(a,operation)).toMatchObject({leadId:lead,state:"prepared",message:"Synthetic provider message",fields:planned,receipt:null});
  expect(await ledger.pendingLeads(a,[lead])).toEqual(new Set([lead]));
+ expect(await ledger.pendingForLeads(a,[lead])).toEqual(new Map([[lead,{operationId:operation,state:"prepared"}]]));
  await expect(ledger.prepare(a,lead,0,"Second synthetic message",planned)).rejects.toMatchObject({code:"CONFLICT"});
  const receipt={provider:"synthetic",providerMessageId:"synthetic-provider-id",sentAt:"2026-09-30T00:00:00Z"};
  await ledger.confirm(a,operation,receipt,{...planned,messageReceipt:"synthetic-provider-id"});
- expect(await ledger.read(a,operation)).toMatchObject({state:"sent_pending",receipt,fields:{messageReceipt:"synthetic-provider-id"}});
- await ledger.projected(a,operation);
+ const finalFields={...planned,messageReceipt:"synthetic-provider-id"};
+ expect(await ledger.read(a,operation)).toMatchObject({state:"sent_pending",message:"Synthetic provider message",receipt,fields:finalFields});
+ expect(await ledger.pendingForLeads(a,[lead])).toEqual(new Map([[lead,{operationId:operation,state:"sent_pending"}]]));
+ let visible={...planned};
+ const update=vi.fn().mockImplementation(async (_lead:string,fields:typeof finalFields)=>{visible={...fields};});
+ const list=vi.fn().mockImplementation(async()=>[{leadId:lead,...visible}]);
+ const runtime={store:poolStore(f.pool),config:{workspaceId:f.workspaceId}} as unknown as Parameters<typeof reconcileLegacyProspectProjection>[1];
+ expect(await reconcileLegacyProspectProjection(a,runtime,operation,
+  {authority:{read:actor=>new ContactCutoverStore(poolStore(f.pool),f.keyring,"synthetic-authority-integrity-key-20260928").read(actor)},
+   update,list:list as unknown as ()=>Promise<Prospect[]>,ledger})).toEqual({projected:true});
+ expect(update).toHaveBeenCalledWith(lead,finalFields);expect(list).toHaveBeenCalledOnce();
  expect(await ledger.pendingLeads(a,[lead])).toEqual(new Set());
  expect(await ledger.read(a,operation)).toMatchObject({state:"projected",receipt});
  await expect(ledger.read(f.parent.actor,operation)).rejects.toMatchObject({code:"FORBIDDEN"});
