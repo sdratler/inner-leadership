@@ -3,7 +3,7 @@ import { expect, test, vi } from "vitest";
 import { asId } from "../../../src/lib/ids.ts";
 import { SESSION_COOKIE } from "../../../src/lib/security/session.ts";
 import { Ls040Http, type Ls040HttpServices } from "../../../src/features/home-practice/http.ts";
-import type { IdentityConfig } from "../../../src/features/identity/config.ts";
+import { parseIdentityConfig, type IdentityConfig } from "../../../src/features/identity/config.ts";
 import { systemClock, type Actor } from "../../../src/features/identity/types.ts";
 
 const origin = "https://synthetic.example.invalid", token = "s".repeat(43), csrf = "c".repeat(43);
@@ -11,6 +11,29 @@ const caseId = asId("123e4567-e89b-42d3-a456-426614174000", "case");
 const audienceId = asId("223e4567-e89b-42d3-a456-426614174000", "audience");
 const occurrenceId = asId("323e4567-e89b-42d3-a456-426614174000", "occurrence");
 const query = `?caseId=${caseId}&audienceId=${audienceId}`;
+function runtimeInput(appOrigin: string): Record<string, string> {
+  return { LS_IDENTITY_ENABLED: "true", LS_APP_ORIGIN: appOrigin, LS_IDENTITY_WORKSPACE_ID: randomUUID(),
+    LS_IDENTITY_CSRF_KEY: randomBytes(32).toString("base64url"), LS_IDENTITY_LOOKUP_KEY: randomBytes(32).toString("base64url"),
+    LS_IDENTITY_RATE_KEY: randomBytes(32).toString("base64url"), LS_IDENTITY_ACTIVE_KEY_ID: "synthetic",
+    LS_IDENTITY_DATA_KEYS: JSON.stringify({ synthetic: randomBytes(32).toString("base64url") }) };
+}
+
+test.each(["http://127.0.0.1:3001", "http://localhost:3001", "http://[::1]:3001"])("private runtime remains HTTPS-only; foundation %s is not an authenticated configuration", appOrigin => {
+  const input = runtimeInput(appOrigin);
+  expect(parseIdentityConfig({ ...input, LS_APP_ORIGIN: "https://localhost:3001" }).origin).toBe("https://localhost:3001");
+  expect(() => parseIdentityConfig(input)).toThrowError("UNAVAILABLE");
+});
+
+test("the actual private configuration accepts a local HTTPS origin and forwards its real authenticated request", async () => {
+  const h = setup(), config = parseIdentityConfig(runtimeInput("https://localhost:3001"));
+  const http = new Ls040Http(config, systemClock, { sessions: h.sessions, limits: h.limits, audit: h.audit,
+    goals: h.goals, commitments: h.commitments, practice: h.practice, checkins: h.checkins } as unknown as Ls040HttpServices);
+  const response = await http.handle(new Request("http://127.0.0.1:8080/api/home-practice" + query, {
+    headers: { host: "localhost:3001", "x-forwarded-host": "localhost:3001", "x-forwarded-proto": "https", cookie: `${SESSION_COOKIE}=${token}` },
+  }));
+  expect(response.status).toBe(200); expect(h.sessions.actor).toHaveBeenCalledWith(token);
+  expect(h.practice.list).toHaveBeenCalledWith(h.actor, caseId, audienceId);
+});
 function setup() {
   const actor: Actor = { id: asId(randomUUID(), "account"), workspaceId: asId(randomUUID(), "workspace"),
     personId: asId(randomUUID(), "person"), role: "practitioner", state: "active", locale: "en",

@@ -97,7 +97,7 @@ describe("actual practice proxy validates transport before header rewriting", ()
       new NextRequest("http://127.0.0.1:8080/api/home-practice", { headers: { host: new URL(origin).host, "x-forwarded-proto": "https" } })])
       expect(proxy(request).headers.get("x-middleware-next")).toBe("1");
   });
-  it("preserves the existing direct development loopback without manufacturing HTTPS", () => {
+  it("does not manufacture HTTPS for a foundation HTTP loopback (not private authentication proof)", () => {
     configured(); vi.stubEnv("NODE_ENV", "development"); vi.stubEnv("LS_APP_ORIGIN", "http://127.0.0.1:3001");
     const response = proxy(new NextRequest("http://127.0.0.1:3001/api/home-practice", { headers: { host: "127.0.0.1:3001" } }));
     expect(response.headers.get("x-middleware-next")).toBe("1");
