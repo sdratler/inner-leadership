@@ -64,6 +64,7 @@ export function parentReturnPath(locale: Locale, pathname: string, query: Record
   }
   if (["/practice", "/feedback", "/reports"].includes(suffix)) uuid("audienceId");
   if (suffix === "/practice") uuid("assignmentId");
+  if (suffix === "/practice" && query.section === "checkins") params.set("section", "checkins");
   if (suffix === "/feedback") uuid("practiceVersionId");
   const search = params.toString();
   return root + suffix + (search ? `?${search}` : "");

@@ -20,6 +20,7 @@ import { one, type IdentityStore } from "../identity/store.ts";
 import type { AccountId, Actor, AudienceId, CaseId, IdentityClock } from "../identity/types.ts";
 import { assertCalendarDate, assertPeriod } from "./policy.ts";
 import { recordPracticeAction } from "./history.ts";
+import { readPracticeOccurrences } from "./occurrences.ts";
 import type {
   CommitmentId,
   CompletionMode,
@@ -333,6 +334,10 @@ export class HomePracticeService implements PracticeVersionReader {
       const rows = await tx.query<VersionRow>(VERSION_SELECT + " WHERE a.workspace_id=$1 AND a.case_id=$2 AND a.audience_id=$3 AND v.state='published' ORDER BY v.published_at DESC,v.id LIMIT 100", [actor.workspaceId, caseId, audienceId]);
       return rows.map(row => this.project(row));
     });
+  }
+
+  async occurrences(actor: Actor, caseId: CaseId, audienceId: AudienceId, from: string, to: string) {
+    return readPracticeOccurrences<VersionRow>(this.store, this.clock, actor, caseId, audienceId, from, to, VERSION_SELECT, row => this.project(row));
   }
 
   async getAuthorizedVersion(scope: CaseScope, versionId: PracticeVersionId): Promise<PracticeVersionReference | null> {

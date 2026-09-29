@@ -1,18 +1,19 @@
 import { Breadcrumb } from "../../ui/workspace/surfaces.tsx";
 import { PracticeList } from "./practice-list.tsx";
+import { PracticeOccurrenceWorkspace } from "./occurrence-workspace.tsx";
 
 const content = {
   en: {
     "home-practice": ["Home practice", "Published instructions stay tied to the version you received. Morning and evening are separate check-ins."],
     goals: ["Goals", "Goals connect the work to a clear, shared purpose."],
     commitments: ["Commitments", "Commitments turn a goal into a practical next step."],
-    checkins: ["Check-ins", "A parent can report done, partly done, not done, rescheduled, or not applicable. Corrections keep their history."],
+    checkins: ["Check-ins", "Report your own assigned morning or evening practice. Corrections preserve the recorded history."],
   },
   he: {
     "home-practice": ["תרגול בבית", "ההנחיות שפורסמו נשארות מקושרות לגרסה שקיבלתם. בוקר וערב הם דיווחים נפרדים."],
     goals: ["מטרות", "המטרות מחברות את העבודה לכיוון משותף וברור."],
     commitments: ["מחויבויות", "מחויבות הופכת מטרה לצעד מעשי הבא."],
-    checkins: ["דיווחים", "הורה יכול לדווח: בוצע, בוצע חלקית, לא בוצע, נדחה או לא רלוונטי. תיקונים שומרים את ההיסטוריה."],
+    checkins: ["דיווחים", "דיווח על תרגול הבוקר או הערב שהוקצה לך. תיקונים שומרים את היסטוריית הדיווחים."],
   },
 } as const;
 
@@ -26,9 +27,10 @@ export function Ls040FeaturePage({ locale, kind, caseId, audienceId, assignmentI
 }) {
   const [title, description] = content[locale][kind];
   const base = `/${locale}/${role === "parent" ? "family" : role === "practitioner" ? "app" : "client"}`;
+  const practiceQuery = new URLSearchParams({ ...(caseId ? {caseId} : {}), ...(audienceId ? {audienceId} : {}) });
   return <main className="lsw-stack lsw-feature-page" aria-labelledby="ls-practice-page-title">
     <Breadcrumb label={locale === "he" ? "מיקום" : "Location"} items={[
-      { label: locale === "he" ? "תרגול" : "Practice", href: base + "/practice" },
+      { label: locale === "he" ? "תרגול" : "Practice", href: base + "/practice" + (practiceQuery.size ? "?" + practiceQuery : "") },
       { label: assignmentId ? (locale === "he" ? "הנחיה נוכחית" : "Current instruction") : title },
     ]} />
     <header className="lsw-page-header"><div>
@@ -38,7 +40,7 @@ export function Ls040FeaturePage({ locale, kind, caseId, audienceId, assignmentI
     <section className="lsw-card" aria-labelledby="current-items">
       <h2 id="current-items">{locale === "he" ? "פריטים נוכחיים" : "Current items"}</h2>
       {kind === "checkins"
-        ? <p>{locale === "he" ? "בחרו תרגול מהמסך הראשי כדי לצפות בהיסטוריית הדיווחים." : "Choose a practice item from Home to view its check-in history."}</p>
+        ? <PracticeOccurrenceWorkspace locale={locale} role={role} caseId={caseId} audienceId={audienceId} />
         : <PracticeList locale={locale} kind={kind} caseId={caseId} audienceId={audienceId} selectedAssignmentId={assignmentId} role={role} />}
     </section>
     <aside className="lsw-attention" aria-label={locale === "he" ? "פרטיות" : "Privacy"}><div>

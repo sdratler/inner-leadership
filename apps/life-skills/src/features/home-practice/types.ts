@@ -67,3 +67,15 @@ export interface CompletionView {
   correctedReportId: CompletionReportId | null;
 }
 
+/** Read projection only; responsibility and instruction version stay frozen. */
+export interface PracticeOccurrenceItem {
+  occurrence: ScheduledOccurrence;
+  practice: PublishedPracticeVersion;
+  canReport: boolean;
+  ownReport: CompletionView | null;
+}
+export interface PracticeOccurrencePage {
+  items: PracticeOccurrenceItem[];
+  hasMore: boolean;
+}
+

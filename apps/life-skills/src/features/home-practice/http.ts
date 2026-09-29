@@ -108,9 +108,16 @@ export class Ls040Http {
         } else data = await this.services.commitments.create(actor, await readJson(request, createCommitment), requestId);
       } else if (url.pathname === "/api/home-practice") {
         if (request.method === "GET") {
+          if (url.searchParams.has("view")) {
+            const parsed = z.object({ view: z.literal("occurrences"), caseId, audienceId, from: calendarDate, to: calendarDate }).strict()
+              .safeParse(exactQuery(url, ["view", "caseId", "audienceId", "from", "to"]));
+            if (!parsed.success) throw new AppError("INVALID_REQUEST");
+            data = await this.services.practice.occurrences(actor, parsed.data.caseId, parsed.data.audienceId, parsed.data.from, parsed.data.to);
+          } else {
           const parsed = createGoal.pick({ caseId: true, audienceId: true }).safeParse(exactQuery(url, ["caseId", "audienceId"]));
           if (!parsed.success) throw new AppError("INVALID_REQUEST");
           data = await this.services.practice.list(actor, parsed.data.caseId, parsed.data.audienceId);
+          }
         } else {
           const input = await readJson(request, homeAction);
           if (input.action === "create_draft") data = await this.services.practice.createDraft(actor, input, requestId);

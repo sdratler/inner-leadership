@@ -100,6 +100,85 @@ async function setup() {
   return { f, config, sessions, practice, request, proxyRequest, listPath, draftInput, draft, publish, clientIdentity };
 }
 
+test.each(["parent", "child", "adult_client"] as const)("native %s occurrence read returns frozen instructions and only its own latest check-in", async role => {
+  const h = await setup(), { f } = h;
+  const subject = role === "parent" ? f.parent : await h.clientIdentity(role);
+  const saved = await h.publish();
+  const coordinate = { action: "coordinate", assignmentId: saved.assignmentId, assigneeAccountIds: [subject.actor.id],
+    completionMode: "any_assignee", reminderCandidateAccountIds: [], effectiveFrom: new Date(Date.now() + 1000).toISOString() };
+  if (role === "adult_client") {
+    // Reuse the existing native adult-participant recipe. This does NOT claim
+    // that the parent-only coordination HTTP action can initialize an adult case.
+    await f.pool.query(`INSERT INTO ls_practice.task_coordination_versions
+      (id,workspace_id,assignment_id,version,case_id,audience_id,assignee_account_ids,completion_mode,reminder_candidate_account_ids,effective_from,changed_by_account_id,created_at)
+      VALUES($1,$2,$3,1,$4,$5,ARRAY[$6]::uuid[],'any_assignee','{}',$7,$8,clock_timestamp())`,
+    [randomUUID(), f.workspaceId, saved.assignmentId, f.first.id, f.first.audienceId, subject.actor.id, coordinate.effectiveFrom, f.parent.actor.id]);
+    expect((await h.request("POST", "/api/home-practice", coordinate, subject.token)).status).toBe(404);
+  } else expect((await h.request("POST", "/api/home-practice", coordinate, f.parent.token)).status).toBe(201);
+  const from = f.at(48).slice(0, 10), to = f.at(72).slice(0, 10);
+  for (const period of ["morning", "evening"]) expect((await h.request("POST", "/api/home-practice", { action: "schedule", assignmentId: saved.assignmentId, occursOn: from, period })).status).toBe(201);
+  const path = `/api/home-practice?view=occurrences&caseId=${f.first.id}&audienceId=${f.first.audienceId}&from=${from}&to=${to}`;
+  const first = await h.proxyRequest("GET", path, undefined, subject.token);
+  expect(first.status).toBe(200); expect(first.headers.get("cache-control")).toBe("private, no-store");
+  const page = (await first.json()).data;
+  expect(page.hasMore).toBe(false); expect(page.items).toHaveLength(2);
+  expect(page.items.map((row: { occurrence: { period: string } }) => row.occurrence.period)).toEqual(["morning", "evening"]);
+  expect(page.items).toMatchObject([{
+    occurrence: { practiceVersionId: saved.versionId, occursOn: from, state: "open" },
+    practice: { instructions: h.draftInput().instructions, versionId: saved.versionId }, canReport: true, ownReport: null,
+  }, { canReport: true, ownReport: null }]);
+  const occurrenceId = page.items[0].occurrence.id, body = { occurrenceId, status: "done", idempotencyKey: randomUUID() };
+  const submitted = await h.request("POST", "/api/checkins", body, subject.token); expect(submitted.status).toBe(201);
+  const prior = (await (await h.request("GET", `/api/checkins?occurrenceId=${occurrenceId}`, undefined, subject.token)).json()).data[0];
+  expect((await h.request("POST", "/api/checkins", { ...body, status: "partly_done", idempotencyKey: randomUUID(), correctsReportId: prior.reportId }, subject.token)).status).toBe(201);
+  const revised = (await (await h.request("GET", path, undefined, subject.token)).json()).data.items[0];
+  expect(revised.ownReport).toMatchObject({ status: "partly_done", revision: 2, correctedReportId: prior.reportId, authorAccountId: subject.actor.id });
+  const clinician = (await (await h.request("GET", path)).json()).data.items[0];
+  expect(clinician).toMatchObject({ canReport: false, ownReport: null });
+  expect(JSON.stringify(clinician)).not.toContain(subject.actor.id);
+  const revision = await h.request("POST", "/api/home-practice", { action: "revise", assignmentId: saved.assignmentId, instructions: "Synthetic newer instruction", startsOn: from });
+  expect(revision.status).toBe(201);
+  expect((await h.request("POST", "/api/home-practice", { action: "publish", assignmentId: saved.assignmentId, versionId: (await revision.json()).data.versionId })).status).toBe(201);
+  const frozen = (await (await h.request("GET", path, undefined, subject.token)).json()).data.items[0];
+  expect(frozen.practice).toMatchObject({ versionId: saved.versionId, instructions: h.draftInput().instructions });
+  await f.pool.query("UPDATE ls_cases.audience_accounts SET revoked_at=clock_timestamp() WHERE workspace_id=$1 AND case_id=$2 AND account_id=$3", [f.workspaceId, f.first.id, subject.actor.id]);
+  expect((await h.request("GET", path, undefined, subject.token)).status).toBe(404);
+});
+
+test("native occurrence query rejects malformed/unbounded ranges and exact-scope or transport forgeries", async () => {
+  const h = await setup(), { f } = h;
+  const path = `/api/home-practice?view=occurrences&caseId=${f.first.id}&audienceId=${f.first.audienceId}&from=2026-09-29&to=2026-09-30`;
+  expect((await h.request("GET", path, undefined, f.parent.token)).status).toBe(200);
+  for (const bad of [path + "&view=occurrences", path + "&unknown=1", path.replace("2026-09-29", "2026-02-30"), path.replace("2026-09-30", "2026-09-29"), path.replace("2026-09-30", "2027-09-30"), path.replace("view=occurrences", "view=all")])
+    expect((await h.request("GET", bad, undefined, f.parent.token)).status).toBe(400);
+  expect((await h.request("GET", path.replace(f.first.id, f.second.id), undefined, f.parent.token)).status).toBe(404);
+  expect((await h.request("GET", path.replace(f.first.audienceId, f.second.audienceId), undefined, f.parent.token)).status).toBe(404);
+  expect((await h.request("GET", path, undefined, f.outsider.token)).status).toBe(404);
+  expect((await h.request("GET", path, undefined, null)).status).toBe(401);
+  expect((await h.proxyRequest("GET", path, undefined, f.parent.token, { "x-forwarded-host": "evil.invalid" })).status).toBe(503);
+  await f.pool.query("UPDATE ls_cases.audiences SET published=false WHERE workspace_id=$1 AND id=$2", [f.workspaceId, f.first.audienceId]);
+  expect((await h.request("GET", path, undefined, f.parent.token)).status).toBe(404);
+});
+
+test("native occurrence projection does not expose another assignee or title-only instruction text", async () => {
+  const h = await setup(), { f } = h, saved = await h.publish();
+  expect((await h.request("POST", "/api/home-practice", { action: "coordinate", assignmentId: saved.assignmentId,
+    assigneeAccountIds: [f.parent.actor.id], completionMode: "any_assignee", reminderCandidateAccountIds: [], effectiveFrom: new Date(Date.now() + 1000).toISOString() }, f.parent.token)).status).toBe(201);
+  const from = f.at(48).slice(0, 10), to = f.at(72).slice(0, 10);
+  const scheduled = await h.request("POST", "/api/home-practice", { action: "schedule", assignmentId: saved.assignmentId, occursOn: from, period: "morning" });
+  expect(scheduled.status).toBe(201); const occurrenceId = (await scheduled.json()).data.id;
+  expect((await h.request("POST", "/api/checkins", { occurrenceId, status: "done", idempotencyKey: randomUUID() }, f.parent.token)).status).toBe(201);
+  const path = `/api/home-practice?view=occurrences&caseId=${f.first.id}&audienceId=${f.first.audienceId}&from=${from}&to=${to}`;
+  const other = (await (await h.request("GET", path, undefined, f.parentTwo.token)).json()).data.items[0];
+  expect(other).toMatchObject({ canReport: false, ownReport: null, occurrence: {state:"closed"} });
+  expect(JSON.stringify(other)).not.toContain(f.parent.actor.id); expect(JSON.stringify(other)).not.toContain("instructionsCiphertext");
+  await f.pool.query("UPDATE ls_cases.audiences SET visibility='family_title_completion' WHERE workspace_id=$1 AND id=$2", [f.workspaceId, f.first.audienceId]);
+  const limited = (await (await h.request("GET", path, undefined, f.parent.token)).json()).data.items[0];
+  expect(limited.practice.instructions).toBe(""); expect(JSON.stringify(limited)).not.toContain(h.draftInput().instructions);
+  const clinician = (await (await h.request("GET", path)).json()).data.items[0];
+  expect(clinician.practice.instructions).toBe(h.draftInput().instructions);
+});
+
 test("native full Next proxy chain rejects invalid forwarding before persistence and preserves valid body, authentication and case checks", async () => {
   const h = await setup(), { f } = h;
   const before = await f.pool.query("SELECT count(*)::integer AS count FROM ls_identity.foundation_audit WHERE workspace_id=$1", [f.workspaceId]);

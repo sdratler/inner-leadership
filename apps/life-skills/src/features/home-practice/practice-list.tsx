@@ -56,10 +56,10 @@ export function PracticeList({ locale, kind, caseId, audienceId, selectedAssignm
       const feedback = new URLSearchParams({ caseId: caseId ?? "", audienceId: effectiveAudienceId ?? "", ...(versionId ? { practiceVersionId: versionId } : {}) });
       return <li key={String(item.assignmentId ?? item.id ?? index)} className="lsw-card">
         <div className="lsw-section-header"><div><strong>{String(item.title ?? item.templateKey ?? "Practice")}</strong>{typeof item.version === "number" ? <p className="lsw-help">{copy[locale].version} {item.version}</p> : null}</div><a className="lsw-button lsw-button--secondary" href={`${basePath}/practice?${params}`}>{copy[locale].open}</a></div>
-        {current && <details className="lsw-details" open><summary>{copy[locale].current}</summary><div className="lsw-stack">{typeof item.instructions === "string" ? <p className="lsw-practice-instruction">{item.instructions}</p> : null}{role === "parent" && versionId ? <a href={`${basePath}/feedback?${feedback}`}>{copy[locale].feedback}</a> : null}</div></details>}
+        {current && <details className="lsw-details"><summary>{copy[locale].current}</summary><div className="lsw-stack">{typeof item.instructions === "string" ? <p className="lsw-practice-instruction">{item.instructions}</p> : null}{role === "parent" && versionId ? <a href={`${basePath}/feedback?${feedback}`}>{copy[locale].feedback}</a> : null}</div></details>}
         {typeof item.state === "string" ? <small>{item.state}</small> : null}
       </li>;
     })}</ul>
-    {kind === "home-practice" ? <p><small>{copy[locale].unreported}</small></p> : null}
+    {kind === "home-practice" ? <p><a className="lsw-button lsw-button--secondary" href={`${basePath}/practice?${new URLSearchParams({caseId,audienceId:effectiveAudienceId,section:"checkins"})}`}>{locale === "he" ? "תרגול בוקר וערב ודיווחים" : "Morning/evening practice & check-ins"}</a><br /><small>{copy[locale].unreported}</small></p> : null}
   </div>;
 }
