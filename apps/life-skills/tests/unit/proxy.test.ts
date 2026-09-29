@@ -17,6 +17,33 @@ describe("public static perimeter", () => {
 });
 
 afterEach(() => vi.unstubAllEnvs());
+describe("actual parent check-in deep-link proxy", () => {
+  it("projects one bounded section and strips repeated or caller-supplied values", () => {
+    const origin="https://life-skills.bneineviimacademy.org", id="123e4567-e89b-42d3-a456-426614174000";
+    vi.stubEnv("NODE_ENV","production");vi.stubEnv("LS_APP_MODE","foundation_locked");vi.stubEnv("LS_APP_ORIGIN",origin);vi.stubEnv("LS_PRIVATE_APP_ENABLED","true");
+    const path=`/he/family/practice?caseId=${id}&audienceId=${id}`;
+    const valid=proxy(new NextRequest(origin+path+"&section=checkins",{headers:{"x-ls-parent-return":"/he/family/settings"}}));
+    expect(valid.headers.get("x-middleware-request-x-ls-parent-return")).toBe(path+"&section=checkins");
+    for(const query of ["&section=checkins&section=checkins","&section=untrusted"]){
+      const response=proxy(new NextRequest(origin+path+query));
+      expect(response.headers.get("x-middleware-request-x-ls-parent-return")).toBe(path);
+    }
+  });
+});
+describe("actual client check-in deep-link proxy", () => {
+  it.each(["he", "en"])("projects a bounded %s client destination and rejects repeated values", locale => {
+    const origin="https://life-skills.bneineviimacademy.org", id="123e4567-e89b-42d3-a456-426614174000";
+    vi.stubEnv("NODE_ENV","production");vi.stubEnv("LS_APP_MODE","foundation_locked");vi.stubEnv("LS_APP_ORIGIN",origin);vi.stubEnv("LS_PRIVATE_APP_ENABLED","true");
+    const path=`/${locale}/client/practice?caseId=${id}&audienceId=${id}`;
+    const valid=proxy(new NextRequest(origin+path+"&section=checkins&secret=private",{headers:{"x-ls-client-return":"https://untrusted.invalid"}}));
+    expect(valid.headers.get("x-middleware-request-x-ls-client-return")).toBe(path+"&section=checkins");
+    for(const query of ["&section=checkins&section=checkins","&section=untrusted"])expect(proxy(new NextRequest(origin+path+query)).headers.get("x-middleware-request-x-ls-client-return")).toBe(path);
+  });
+  it("strips a caller-supplied client return on unrelated pages", () => {
+    vi.stubEnv("NODE_ENV","production");vi.stubEnv("LS_APP_MODE","foundation_locked");vi.stubEnv("LS_APP_ORIGIN","https://life-skills.bneineviimacademy.org");vi.stubEnv("LS_PRIVATE_APP_ENABLED","true");
+    expect(proxy(new NextRequest("https://life-skills.bneineviimacademy.org/en/login",{headers:{"x-ls-client-return":"/en/client/practice?section=checkins"}})).headers.get("x-middleware-request-x-ls-client-return")).toBeNull();
+  });
+});
 describe("actual practitioner Calendar login return perimeter", () => {
   const origin = "https://life-skills.bneineviimacademy.org";
   function returned(query: string, supplied = "https://untrusted.invalid/private") {
@@ -31,6 +58,13 @@ describe("actual practitioner Calendar login return perimeter", () => {
   it("preserves an explicit DEMO mode with the actual bounded date/view context", () => {
     expect(returned("?date=2026-09-22&view=agenda&mode=demo&untrusted=private"))
       .toBe("/he/app/calendar?date=2026-09-22&view=agenda&mode=demo");
+  });
+  it.each(['he','en'])('projects %s practitioner Practice from the real path, never caller headers',locale=>{
+    returned('');const id='123e4567-e89b-42d3-a456-426614174000';
+    const response=proxy(new NextRequest(`${origin}/${locale}/app/practice?caseId=${id}&audienceId=${id}&section=checkins&secret=private`,{headers:{'x-ls-practitioner-return':'https://untrusted.invalid'}}));
+    expect(response.headers.get('x-middleware-request-x-ls-practitioner-return')).toBe(`/${locale}/app/practice?caseId=${id}&audienceId=${id}&section=checkins`);
+    const repeated=proxy(new NextRequest(`${origin}/${locale}/app/practice?caseId=${id}&caseId=${id}&section=checkins&section=checkins`,{headers:{'x-ls-practitioner-return':`/${locale}/app/practice?caseId=${id}`}}));
+    expect(repeated.headers.get('x-middleware-request-x-ls-practitioner-return')).toBe(`/${locale}/app/practice`);
   });
   it.each(["?mode=demo&mode=live", "?mode=all", "?mode=parent", ""])("rejects unsafe mode and caller return headers: %s", query => {
     expect(returned(query)).toBe("/he/app/calendar");

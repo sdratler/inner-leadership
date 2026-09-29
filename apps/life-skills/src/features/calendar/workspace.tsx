@@ -27,6 +27,7 @@ import { CalendarAttentionSummary } from './attention-summary.tsx';
 import { readPractitionerCalendar } from './practitioner-load.ts';
 import { showCalendarViewTabsInContent } from './view-tabs.ts';
 import {calendarCasesForMode,type CalendarMode} from './mode.ts';
+import { PracticeOccurrenceWorkspace } from '../home-practice/occurrence-workspace.tsx';
 import './calendar.css';
 type HistoryPage={items:Array<{version:number;state:'present'|'late'|'no_show'|'canceled';recordedAt:string;reason:string|null}>;nextVersion:number|null};
 import { verifiedGoogleMeetUrl } from './meeting-url.ts';
@@ -42,6 +43,8 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  const [followupRows,setFollowupRows]=useState<FollowupSource[]|null>(null),[followupFailed,setFollowupFailed]=useState(false),[followupRetry,setFollowupRetry]=useState(0),[showFollowups,setShowFollowups]=useState(true),[taskSyncFailed,setTaskSyncFailed]=useState(false),[taskSyncReady,setTaskSyncReady]=useState(false);
  const [taskRows,setTaskRows]=useState<InternalTask[]|null>(null),[taskLoadedFor,setTaskLoadedFor]=useState(''),[taskFailed,setTaskFailed]=useState(false),[taskRefresh,setTaskRefresh]=useState(0),[showTasks,setShowTasks]=useState(true);
  const [taskDraft,setTaskDraft]=useState({title:'',dueDate:initialDate,dueTime:'',note:'',sourcePath:'',caseId:initialCaseId}),[taskDirty,setTaskDirty]=useState(false);
+ const [showPractice,setShowPractice]=useState(!practitioner),[practiceDirty,setPracticeDirty]=useState(false);
+ const [practiceRefresh,setPracticeRefresh]=useState(0);
  const mutation=useCalendarMutation(locale),generation=useRef(0),date=initialDate,view=initialView;
  const range=dateRange(date,view),basePath=`/${locale}/${practitioner?'app/calendar':role==='adult_client'||role==='child'?'client/calendar':'family/schedule'}`,caseKind=role==='adult_client'?'adult':'minor';
  const taskQueryKey=`${range.from}|${range.to}|${caseId}`;
@@ -58,6 +61,7 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
 
  const load=useCallback(async (reset=true,after:string|null=null)=>{
   const current=reset?++generation.current:generation.current;setLoading(reset);setError(null);
+  if(reset)setPracticeRefresh(value=>value+1);
   try{
    let selectedCase=caseId;
    let page:SchedulePage;
@@ -115,15 +119,15 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
   }
   await load();setTimeout(()=>{if(selected)document.getElementById('receipt-'+selected.id)?.focus();},0);
  },method);
- function selectCase(nextCaseId:string){setCaseId(nextCaseId);const query=new URLSearchParams({date,view,...(nextCaseId?{caseId:nextCaseId}:{}),...(selectedClientContext&&nextCaseId?{context:'client'}:{}),...(mode==='demo'?{mode}:{})});router.replace(basePath+'?'+query.toString(),{scroll:false});}
- function selectMode(next:CalendarMode){if(next===mode||mutation.locked)return;if((dirty||taskDirty||mutation.uncertain)&&!window.confirm(t.dirty))return;router.push(basePath+'?'+new URLSearchParams({date,view,...(next==='demo'?{mode:next}:{})}),{scroll:false});}
+ function selectCase(nextCaseId:string){if(practiceDirty&&!window.confirm(t.dirty))return;setPracticeDirty(false);setCaseId(nextCaseId);const query=new URLSearchParams({date,view,...(nextCaseId?{caseId:nextCaseId}:{}),...(selectedClientContext&&nextCaseId?{context:'client'}:{}),...(mode==='demo'?{mode}:{})});router.replace(basePath+'?'+query.toString(),{scroll:false});}
+ function selectMode(next:CalendarMode){if(next===mode||mutation.locked)return;if((dirty||taskDirty||practiceDirty||mutation.uncertain)&&!window.confirm(t.dirty))return;setPracticeDirty(false);router.push(basePath+'?'+new URLSearchParams({date,view,...(next==='demo'?{mode:next}:{})}),{scroll:false});}
  function showAppointment(a:AppointmentView,e:MouseEvent<HTMLButtonElement>){if(mutation.locked)return;setSelected(a);setHistory(null);setHistoryError(false);setDirty(false);openDialog('ls-cal-detail',e);}
  function openBook(e:MouseEvent<HTMLButtonElement>,child:AppointmentView|null=null){if(mutation.locked)return;if(dirty&&!window.confirm(t.dirty))return;closeDialog('ls-cal-detail');setCheckinFor(child);setBookingNonce(v=>v+1);setBookingOpen(true);setDirty(false);openDialog('ls-cal-book',e);}
  function openTask(e:MouseEvent<HTMLButtonElement>){if(mutation.locked)return;setTaskDraft(current=>({...current,caseId:taskDirty?current.caseId:caseId,dueDate:taskDirty?current.dueDate:date}));openDialog('ls-cal-task',e);}
  function saveTask(){const body={title:taskDraft.title,dueDate:taskDraft.dueDate,dueTime:taskDraft.dueTime||null,note:taskDraft.note||null,sourcePath:taskDraft.sourcePath||null,caseId:taskDraft.caseId||null};mutation.run('tasks',body,async()=>{setTaskDirty(false);setTaskDraft({title:'',dueDate:date,dueTime:'',note:'',sourcePath:'',caseId});closeDialog('ls-cal-task');setTaskRefresh(value=>value+1);});}
  function completeTask(task:InternalTask){mutation.run(`tasks/${task.id}/complete`,{expectedVersion:task.version},async()=>{setTaskRefresh(value=>value+1);});}
  async function loadHistory(next=false){if(!selected)return;setHistoryError(false);try{const p=await calendarRead<HistoryPage>(`appointments/${selected.id}/attendance-history`+(next&&history?.nextVersion?'?beforeVersion='+history.nextVersion:''));setHistory(old=>next&&old?{items:[...old.items,...p.items],nextVersion:p.nextVersion}:p);}catch{setHistoryError(true);}}
- return <main className="ls-cal lsw" dir={locale==='he'?'rtl':'ltr'} lang={locale} data-has-appointments={items.length+followups.length+tasks.length>0}>
+ return <main className="ls-cal lsw" dir={locale==='he'?'rtl':'ltr'} lang={locale} data-has-appointments={items.length+followups.length+tasks.length>0} onSubmitCapture={event=>{if((event.target as HTMLFormElement).classList.contains('ls-cal-period')&&practiceDirty&&!window.confirm(t.dirty))event.preventDefault();}}>
  <UnsavedChangesGuard dirty={dirty||taskDirty||mutation.uncertain} message={t.dirty}/>
  <PageHeader title={practitioner?(locale==='he'?'יומן':'Calendar'):t.familyTitle} action={practitioner?<Button disabled={mutation.locked||!cases.length} onClick={e=>openBook(e)}>{locale==='he'?'קביעת פגישה':'Book appointment'}</Button>:null} {...(!practitioner?{context:t.familyContext}:{})}/>
  {practitioner&&<div className="ls-cal-layers"><Select id="calendar-mode" label={locale==='he'?'רשומות היומן':'Calendar records'} value={mode!} disabled={mutation.locked} onChange={event=>selectMode(event.target.value as CalendarMode)}><option value="live">{locale==='he'?'רשומות אמיתיות':'Live records'}</option><option value="demo">DEMO</option></Select>{mode==='demo'&&<p role="status">{locale==='he'?'DEMO — נתונים סינתטיים, ללא השפעות חיצוניות.':'DEMO — synthetic data; external effects disabled.'} <a className="lsw-button lsw-button--secondary" href={basePath+'?'+new URLSearchParams({date,view})}>{locale==='he'?'חזרה ליומן האמיתי':'Return to live calendar'}</a></p>}</div>}
@@ -139,6 +143,8 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  {count!==null&&<aside className="ls-cal-count"><strong>{t.attendedCount}: {new Intl.NumberFormat(locale).format(count)}</strong><p>{t.attendanceOnly}</p></aside>}
  {livePractitioner&&<nav className="lsu-attention-links ls-cal-related-links" aria-label={locale==='he'?'לעבודה הקרובה':'Immediate work'}><a href={`/${locale}/app/prospects`}>{locale==='he'?'קליטת מתעניינים':'Prospect intake'}</a><a href={`/${locale}/app/feedback${caseId?'?caseId='+encodeURIComponent(caseId):''}`}>{locale==='he'?'משוב לבדיקה':'Review feedback'}</a><a href={`/${locale}/app/clients${caseId?'?caseId='+encodeURIComponent(caseId):''}`}>{locale==='he'?'פתיחת תיק':'Open a case'}</a><a href={`/${locale}/app/reports${caseId?'?caseId='+encodeURIComponent(caseId):''}`}>{locale==='he'?'דוחות חודשיים':'Monthly reports'}</a></nav>}
  {cursor&&<div className="ls-cal-pagination"><p>{t.partial}</p><Button onClick={()=>void load(false,cursor)} disabled={loading}>{t.loadMore}</Button></div>}
+ <div className="ls-cal-layers"><label><input type="checkbox" checked={showPractice} onChange={event=>{if(practiceDirty&&!window.confirm(t.dirty))return;setPracticeDirty(false);setShowPractice(event.target.checked);}}/> {locale==='he'?'תרגול בבית':'Home practice'}</label></div>
+ {showPractice&&error!=='auth'&&error!=='forbidden'&&<section className="lsw-card" aria-labelledby="calendar-practice-title"><h2 id="calendar-practice-title">{locale==='he'?'תרגול בוקר וערב':'Morning & evening practice'}</h2><PracticeOccurrenceWorkspace key={`${caseId}|${range.from}|${range.to}|${mode??''}`} locale={locale} role={role} caseId={caseId||undefined} from={range.dates[0]} to={shiftDay(range.dates[range.dates.length-1]!,1)} refreshToken={practiceRefresh} onDirtyChange={setPracticeDirty}/></section>}
  <p className="ls-cal-muted">{t.remaining}</p>
 
  <div className="ls-cal-page-feedback">{mutation.feedback}</div>

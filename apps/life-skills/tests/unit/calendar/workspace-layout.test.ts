@@ -5,6 +5,11 @@ const workspace=readFileSync(new URL('../../../src/features/calendar/workspace.t
 const css=readFileSync(new URL('../../../src/features/calendar/calendar.css',import.meta.url),'utf8');
 
 describe('operational Calendar composition',()=>{
+ it('keeps the same-context practice workspace mounted through ordinary reloads while authorization failures remove it',()=>{
+  const layer=workspace.split('\n').find(line=>line.includes('<PracticeOccurrenceWorkspace '))!;
+  expect(layer).not.toContain('!loading');expect(layer).not.toContain('!caseError');
+  expect(layer).toContain("error!=='auth'");expect(layer).toContain("error!=='forbidden'");
+ });
  it('places the functioning Calendar before practitioner summary cards and attendance totals',()=>{
   const grid=workspace.indexOf('<CalendarShell ');
   expect(grid).toBeGreaterThan(0);

@@ -8,7 +8,7 @@ import type { CompletionReportReference, CoordinationSnapshot, CoordinationVersi
 import { one, type IdentityStore, type SqlSession } from "../identity/store.ts";
 import type { AccountId, Actor, AudienceId, CaseId, IdentityClock } from "../identity/types.ts";
 import { assertAssigneeMayReport, assertCompletionStatus, occurrenceShouldClose } from "../home-practice/policy.ts";
-import type { CompletionReportId, CompletionStatus, CompletionView } from "../home-practice/types.ts";
+import type { CompletionReportId, CompletionStatus, CompletionView, OwnCompletionView } from "../home-practice/types.ts";
 import { recordPracticeAction } from "../home-practice/history.ts";
 
 interface OccurrenceRow {
@@ -100,7 +100,9 @@ export class CheckInService {
     });
   }
 
-  async list(actor: Actor, occurrenceId: OccurrenceId): Promise<CompletionView[]> {
+  async list(actor: Actor, occurrenceId: OccurrenceId, ownOnly: true): Promise<OwnCompletionView[]>;
+  async list(actor: Actor, occurrenceId: OccurrenceId, ownOnly?: false): Promise<CompletionView[]>;
+  async list(actor: Actor, occurrenceId: OccurrenceId, ownOnly = false): Promise<Array<CompletionView | OwnCompletionView>> {
     return this.store.transaction(async tx => {
       const occurrence = await this.requireOccurrence(tx, actor, occurrenceId);
       const current = await freshActor(tx, actor, this.clock.now());
@@ -110,8 +112,10 @@ export class CheckInService {
       const rows = await tx.query<CompletionRow>(
         `SELECT id AS "reportId",occurrence_id AS "occurrenceId",author_account_id AS "authorAccountId",status,revision,
          reported_at AS "reportedAt",idempotency_key AS "idempotencyKey",corrects_report_id AS "correctsReportId"
-         FROM ls_practice.completion_reports WHERE workspace_id=$1 AND occurrence_id=$2 ORDER BY author_account_id,revision`, [actor.workspaceId, occurrenceId]);
-      return rows.map(row => ({ reportId: row.reportId, occurrenceId: row.occurrenceId, authorAccountId: row.authorAccountId, status: row.status, revision: row.revision, reportedAt: row.reportedAt.toISOString(), correctedReportId: row.correctsReportId }));
+         FROM ls_practice.completion_reports WHERE workspace_id=$1 AND occurrence_id=$2
+          AND ($3::uuid IS NULL OR author_account_id=$3) ORDER BY author_account_id,revision`, [actor.workspaceId, occurrenceId, ownOnly ? current.id : null]);
+      return rows.map(row => ({ reportId: row.reportId, occurrenceId: row.occurrenceId, authorAccountId: row.authorAccountId, status: row.status, revision: row.revision, reportedAt: row.reportedAt.toISOString(), correctedReportId: row.correctsReportId,
+        ...(ownOnly ? { idempotencyKey: row.idempotencyKey } : {}) }));
     });
   }
 

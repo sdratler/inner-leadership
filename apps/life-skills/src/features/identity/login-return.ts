@@ -18,7 +18,7 @@ export function loginReturnDestination(locale: Locale, role: Role, requested: st
   } catch { return defaultPath; }
 }
 
-export function practitionerReturnPath(locale: Locale, page: "calendar" | "clients", query: Record<string, string | string[] | undefined>): string {
+export function practitionerReturnPath(locale: Locale, page: "calendar" | "clients" | "practice", query: Record<string, string | string[] | undefined>): string {
   const params = new URLSearchParams();
   const one = (key: string) => typeof query[key] === "string" ? query[key] as string : "";
   if (page === "calendar") {
@@ -27,6 +27,9 @@ export function practitionerReturnPath(locale: Locale, page: "calendar" | "clien
     if (/^[0-9a-f-]{36}$/i.test(one("caseId"))) params.set("caseId", one("caseId"));
     if (one("context") === "client") params.set("context", "client");
     if (one("mode") === "demo") params.set("mode", "demo");
+  } else if (page === "practice") {
+    for (const key of ["caseId", "audienceId", "assignmentId"]) if (isCaseId(one(key))) params.set(key, one(key));
+    if (one("section") === "checkins") params.set("section", "checkins");
   } else {
     if (["all", "prospects", "paid", "active", "archived"].includes(one("section"))) params.set("section", one("section"));
     if (["all", "today", "new", "intake", "payment", "booking", "archived"].includes(one("filter"))) params.set("filter", one("filter"));
@@ -64,6 +67,7 @@ export function parentReturnPath(locale: Locale, pathname: string, query: Record
   }
   if (["/practice", "/feedback", "/reports"].includes(suffix)) uuid("audienceId");
   if (suffix === "/practice") uuid("assignmentId");
+  if (suffix === "/practice" && query.section === "checkins") params.set("section", "checkins");
   if (suffix === "/feedback") uuid("practiceVersionId");
   const search = params.toString();
   return root + suffix + (search ? `?${search}` : "");
@@ -71,4 +75,23 @@ export function parentReturnPath(locale: Locale, pathname: string, query: Record
 
 export function loginHref(locale: Locale, returnPath: string): string {
   return `/${locale}/login?next=${encodeURIComponent(returnPath)}`;
+}
+
+/** Named child/adult destinations; request headers never supply an arbitrary URL. */
+export function clientReturnPath(locale: Locale, pathname: string, query: Record<string, string | undefined>): string {
+  const root = `/${locale}/client`;
+  const suffix = pathname.startsWith(`${root}/`) ? pathname.slice(root.length) : pathname === root ? "" : null;
+  const allowed = new Set(["", "/calendar", "/practice", "/messages", "/settings", "/settings/account", "/settings/notifications"]);
+  if (suffix === null || !allowed.has(suffix)) return root;
+  const params = new URLSearchParams();
+  if (["", "/calendar", "/practice", "/messages"].includes(suffix) && isCaseId(query.caseId)) params.set("caseId", query.caseId!);
+  if (suffix === "/calendar") {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(query.date ?? "")) params.set("date", query.date!);
+    if (["day", "week", "month", "agenda"].includes(query.view ?? "")) params.set("view", query.view!);
+  }
+  if (suffix === "/practice") {
+    for (const key of ["audienceId", "assignmentId"]) if (isCaseId(query[key])) params.set(key, query[key]!);
+    if (query.section === "checkins") params.set("section", "checkins");
+  }
+  return root + suffix + (params.size ? "?" + params.toString() : "");
 }

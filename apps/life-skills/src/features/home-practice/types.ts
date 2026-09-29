@@ -67,3 +67,18 @@ export interface CompletionView {
   correctedReportId: CompletionReportId | null;
 }
 
+/** Only the authenticated own-history endpoint includes retry receipt keys. */
+export interface OwnCompletionView extends CompletionView { idempotencyKey: string; }
+
+/** Read projection only; responsibility and instruction version stay frozen. */
+export interface PracticeOccurrenceItem {
+  occurrence: ScheduledOccurrence;
+  practice: PublishedPracticeVersion;
+  canReport: boolean;
+  ownReport: CompletionView | null;
+}
+export interface PracticeOccurrencePage {
+  items: PracticeOccurrenceItem[];
+  hasMore: boolean;
+}
+
