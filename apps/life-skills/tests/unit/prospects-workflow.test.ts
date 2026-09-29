@@ -33,7 +33,14 @@ describe("live intake follow-up contract",()=>{
   expect(paidAwaitingBooking({...noteOnly,journeyState:"active"})).toBe(true);
   expect(paidAwaitingBooking({...noteOnly,paymentVerified:false})).toBe(false);
  });
- it("keeps manual add separate from all sends",()=>{const route=read("app/api/prospects/route.ts");const add=route.slice(route.indexOf('if(input.action==="add")'),route.indexOf('if(input.action==="update")'));expect(add).toContain("createProspect");expect(add).not.toContain("sendProspectMessage");});
+ it("keeps authority-fenced manual add separate from all sends",()=>{
+  const route=read("app/api/prospects/route.ts"),boundary=read("features/contact-ops/server/authoritative-prospect-create.ts");
+  const add=route.slice(route.indexOf('if(input.action==="add")'),route.indexOf('if(input.action==="update")'));
+  expect(add).toContain("createAuthoritativeProspect(s.actor,input,s.runtime)");expect(add).not.toContain("sendProspectMessage");
+  expect(add).not.toContain("createProspect(");expect(boundary).toContain("writeDestination(state.phase)");
+  expect(boundary).toContain('destination==="durable_queue_only"');expect(boundary).toContain("d.native.createContact");
+  expect(boundary).toContain("sheet:{create:createProspect}");expect(boundary).not.toContain("sendProspectMessage");
+ });
  it("does not expose import or history-scan actions",()=>{const route=read("app/api/prospects/route.ts");expect(route).not.toMatch(/history.scan|backfill|bulk.import/i);});
  it("rejects a marked demo prospect at the final WhatsApp bridge without calling the provider",async()=>{
   const fetchMock=vi.fn();vi.stubGlobal("fetch",fetchMock);
