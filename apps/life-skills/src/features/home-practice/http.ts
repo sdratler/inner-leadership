@@ -16,6 +16,7 @@ import type { GoalService } from "../goals/service.ts";
 import type { CommitmentService } from "../commitments/service.ts";
 import type { CheckInService } from "../checkins/service.ts";
 import type { HomePracticeService } from "./service.ts";
+import { canonicalForwardedRequest } from "../integration/canonical-forwarded-request.ts";
 
 const id = <K extends string>(kind: K) => z.string().uuid().transform(value => asId(value, kind));
 const caseId = id("case"), audienceId = id("audience"), goalId = id("goal"), commitmentId = id("commitment");
@@ -74,7 +75,13 @@ export class Ls040Http {
     const requestId = newRequestId(); let actor: Actor | undefined;
     try {
       if (!this.config.enabled) throw new AppError("UNAVAILABLE");
-      const url = new URL(request.url);
+      const inbound = new URL(request.url);
+      if (inbound.hash) throw new AppError("NOT_FOUND");
+      // Railway's transport URL is internal. Reuse the existing strict HTTPS
+      // configured-host adapter; headers never grant identity or case access.
+      // Keep the original request for cookie, CSRF and strict body validation.
+      const forwarded = request.headers.has("x-forwarded-proto") || request.headers.has("x-forwarded-host");
+      const url = forwarded ? new URL(canonicalForwardedRequest(request, this.config.origin).url) : inbound;
       if (url.origin !== this.config.origin || !["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins"].includes(url.pathname)) throw new AppError("NOT_FOUND");
       if (!['GET', 'POST'].includes(request.method)) throw new AppError("NOT_FOUND");
       if (request.method === "POST" && url.search) throw new AppError("INVALID_REQUEST");
