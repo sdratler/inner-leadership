@@ -48,13 +48,17 @@ async function requireContactableProspect(runtime:Awaited<ReturnType<typeof iden
 export async function GET(request:Request){try{
  const s=await session(request),rows=await readAuthoritativeProspects(s.actor,s.runtime);
  const states=await readProspectJourneys(s.runtime.store,s.runtime.config.workspaceId,rows.map(row=>row.leadId));
- const pending=await new OutboundProjectionStore(s.runtime.store,s.runtime.config.keyring,
-  s.runtime.config.lookupKey.toString("hex"),s.runtime.clock).pendingForLeads(s.actor,rows.map(row=>row.leadId));
+ const ledger=new OutboundProjectionStore(s.runtime.store,s.runtime.config.keyring,
+  s.runtime.config.lookupKey.toString("hex"),s.runtime.clock),cursor=new URL(request.url).searchParams.getAll("pendingAfter");
+ if(cursor.length>1)throw new AppError("INVALID_REQUEST");
+ const [pending,pendingPage]=await Promise.all([ledger.pendingForLeads(s.actor,rows.map(row=>row.leadId)),
+  ledger.pendingPage(s.actor,cursor[0]??null)]);
  return NextResponse.json({ok:true,data:rows.map(row=>({...row,...(states.get(row.leadId)??{
   journeyState:"prospect",paymentVerified:false,bookingConfirmed:false}),projectionPending:pending.has(row.leadId),
   projectionOperationId:pending.get(row.leadId)?.operationId,projectionState:pending.get(row.leadId)?.state,
   projectionMessage:pending.get(row.leadId)?.state==="prepared"?pending.get(row.leadId)?.message:undefined,
   projectionCreatedAt:pending.get(row.leadId)?.createdAt})),
+  pendingOperations:pendingPage.items,pendingNext:pendingPage.nextCursor,
   requestId:randomUUID()},{headers:{"Cache-Control":"private, no-store","Referrer-Policy":"no-referrer"}});
 }catch(e){return fail(e)}}
 export async function POST(request:Request){try{const s=await session(request);verifyMutationOrigin(request,s.runtime.config.origin);verifyCsrfToken(request.headers.get("x-csrf-token"),s.runtime.services.sessions.csrf(s.token));const input=await readJson(request,body);

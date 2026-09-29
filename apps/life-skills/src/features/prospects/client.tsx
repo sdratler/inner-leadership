@@ -15,6 +15,8 @@ import {changedProspectFollowUp,prospectFollowUpDraft,prospectContactSuppressed,
 /* Remote state is loaded once per refresh and filter changes reset pagination. */
 /* eslint-disable react-hooks/set-state-in-effect */
 type State="loading"|"ready"|"error"|"auth"|"forbidden";
+type PendingOperation={leadId:string;operationId:string;state:"prepared"|"sent_pending";message:string;createdAt:string};
+type DirectoryPage={rows:Prospect[];pendingOperations:PendingOperation[];pendingNext:string|null};
 export type Preset="all"|"today"|"new"|"intake"|"payment"|"booking"|"archived";
 export function workflowDestination(locale:Locale,preset:Preset):string{
  const section=preset==="booking"?"paid":preset==="archived"?"archived":preset==="all"?"all":"prospects";
@@ -52,6 +54,15 @@ async function api<T>(init?:RequestInit):Promise<T>{
  if(!response.ok||!body?.ok)throw new ProspectApiError(prospectReadFailure(response.status,body));
  return body.data as T;
 }
+async function readDirectory(after?:string):Promise<DirectoryPage>{
+ const url=after?`/api/prospects?pendingAfter=${encodeURIComponent(after)}`:"/api/prospects";
+ const response=await fetch(url,{credentials:"same-origin",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer"});
+ let body:{ok?:boolean;data?:Prospect[];pendingOperations?:PendingOperation[];pendingNext?:string|null};
+ try{body=await response.json() as typeof body;}catch{throw new ProspectApiError(prospectReadFailure(response.status,null));}
+ if(!response.ok||body?.ok!==true||!Array.isArray(body.data)||!Array.isArray(body.pendingOperations)||
+  (body.pendingNext!==null&&typeof body.pendingNext!=="string"))throw new ProspectApiError(prospectReadFailure(response.status,body));
+ return {rows:body.data,pendingOperations:body.pendingOperations,pendingNext:body.pendingNext};
+}
 function firstName(row:Prospect){return row.name.trim().split(/\s+/)[0]||row.name||"";}
 function knownLanguage(row:Prospect):""|"he"|"en"{return /hebrew|עברית|^he$/i.test(row.language)?"he":/english|^en$/i.test(row.language)?"en":"";}
 function template(row:Prospect,kind:"return"|"missed",language:""|"he"|"en"=knownLanguage(row)){
@@ -73,9 +84,17 @@ function whatsappNumber(phone:string):string|null{
 export function ProspectsClient({locale,initialFilter="all",focusLeadId="",embedded=false,clientCases=[],caseState=null,onRetryCases,showProspects=true,returnPath}:{locale:Locale;initialFilter?:Preset;focusLeadId?:string|undefined;embedded?:boolean;clientCases?:readonly ClientCase[];caseState?:State|null;onRetryCases?:()=>void;showProspects?:boolean;returnPath?:string}){
  const focused=/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]{1,80}$/.test(focusLeadId)?focusLeadId:"";
  const t=copy[locale],[rows,setRows]=useState<Prospect[]>([]),[state,setState]=useState<State>("loading"),preset=initialFilter,[query,setQuery]=useState(""),[stage,setStage]=useState(""),[language,setLanguage]=useState(""),[due,setDue]=useState(""),[page,setPage]=useState(1),[status,setStatus]=useState(""),[openLeads,setOpenLeads]=useState<string[]>(focused?[focused]:[]);
+ const [pendingOperations,setPendingOperations]=useState<PendingOperation[]>([]),[pendingNext,setPendingNext]=useState<string|null>(null),
+  [pendingMoreState,setPendingMoreState]=useState<"idle"|"loading"|"error">("idle");
  const mounted=useRef(true),addRef=useRef<HTMLDetailsElement>(null);
  const pendingUpdates=useRef(new Map<string,{key:string;request:NativeProspectUpdate}>()),saving=useRef(new Set<string>());
- const load=()=>{setState("loading");void api<Prospect[]>({method:"GET"}).then(value=>{if(mounted.current){setRows(value);setState("ready")}}).catch(error=>{if(mounted.current){setRows([]);setState(error instanceof ProspectApiError?error.kind:"error")}})};
+ const load=()=>{setState("loading");void readDirectory().then(value=>{if(mounted.current){setRows(value.rows);setPendingOperations(value.pendingOperations);setPendingNext(value.pendingNext);setPendingMoreState("idle");setState("ready")}}).catch(error=>{if(mounted.current){setRows([]);setPendingOperations([]);setPendingNext(null);setState(error instanceof ProspectApiError?error.kind:"error")}})};
+ async function loadMorePending(){if(!pendingNext||pendingMoreState==="loading")return;
+  setPendingMoreState("loading");try{const value=await readDirectory(pendingNext);if(mounted.current){setPendingOperations(current=>[
+   ...current,...value.pendingOperations.filter(item=>!current.some(previous=>previous.operationId===item.operationId))]);
+   setPendingNext(value.pendingNext);setPendingMoreState("idle");}}
+  catch{if(mounted.current)setPendingMoreState("error");}
+ }
  useEffect(()=>{mounted.current=true;if(showProspects)queueMicrotask(load);return()=>{mounted.current=false}},[showProspects]);
  useEffect(()=>setPage(1),[preset,query,stage,language,due]);
  const today=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Jerusalem"}).format(new Date());
@@ -104,6 +123,7 @@ export function ProspectsClient({locale,initialFilter="all",focusLeadId="",embed
  useEffect(()=>{if(focusPage>0)setPage(focusPage)},[focusPage]);
  const {items:entries,page:currentPage,pages}=paginateDirectory(allEntries,page);
  const sourcesReady=(!showProspects||state==="ready")&&(!caseState||caseState==="ready");
+ const orphanPending=state==="ready"?pendingOperations.filter(item=>!rows.some(row=>row.leadId===item.leadId)):[];
  // A slow second source must not trap ready rows beyond the first page.
  const paginationReady=(showProspects&&state==="ready")||caseState==="ready";
  async function action(payload:unknown){
@@ -177,6 +197,18 @@ export function ProspectsClient({locale,initialFilter="all",focusLeadId="",embed
       {locale==="he"?"אימות ועדכון ה-CRM (ללא שליחה)":"Verify and update CRM (no resend)"}</button>:
      <PreparedResolution row={row} locale={locale} action={action}/>}</li>)}</ul>
   </section>}
+  {showProspects&&orphanPending.length>0&&<section className="lsw-alert" role="alert" aria-label={locale==="he"?"שליחות ממתינות ללא רשומת פנייה":"Pending sends with missing CRM leads"}>
+   <p>{locale==="he"?
+    "ניסיון שליחה שמור, אך מזהה הפנייה חסר כרגע ב-CRM. אין לשלוח שוב או ליצור פנייה חדשה כתחליף. יש לשחזר את אותה רשומת מקור ומזהה פנייה מתוך מקור מוסמך, ואז לאמת את העדכון ללא שליחה נוספת.":
+    "A send attempt is preserved, but its lead ID is missing from the authoritative CRM. Do not resend or create a replacement lead. Restore the exact source record and lead ID from an authoritative backup, then verify the projection without another send."}</p>
+   <ul>{orphanPending.map(item=><li key={item.operationId}><strong>{item.leadId}</strong>{" — "}{item.state==="sent_pending"?
+    <button type="button" className="lsw-button lsw-button--secondary" onClick={()=>action({action:"reconcile_projection",operationId:item.operationId})}>
+     {locale==="he"?"בדיקת הרשומה ששוחזרה ועדכון ה-CRM (ללא שליחה)":"Verify restored lead and update CRM (no resend)"}</button>:
+    <PreparedResolution row={{projectionOperationId:item.operationId,projectionMessage:item.message,projectionCreatedAt:item.createdAt}} locale={locale} action={action}/>}</li>)}</ul>
+  </section>}
+  {showProspects&&state==="ready"&&pendingNext&&<button type="button" className="lsw-button lsw-button--secondary" disabled={pendingMoreState==="loading"} onClick={loadMorePending}>
+   {locale==="he"?"טעינת ניסיונות שליחה ממתינים נוספים":"Load more pending send attempts"}</button>}
+  {showProspects&&pendingMoreState==="error"&&<p role="alert">{locale==="he"?"טעינת ניסיונות נוספים נכשלה. אפשר לנסות שוב.":"More pending attempts could not be loaded. Try again."}</p>}
   <section className="lsu-people-results" aria-live="polite">{entries.map(entry=>entry.kind==="case"?<a className="lsw-card lsu-person-row" key={`case:${entry.id}`} href={`/${locale}/app/cases/${encodeURIComponent(entry.id)}`}><strong>{entry.row.displayName}</strong><span>{entry.row.kind==="minor"?(locale==="he"?"תיק ילד/ה":"Child case"):(locale==="he"?"תיק מבוגר/ת":"Adult case")} · {entry.row.state}</span></a>:<details className="lsw-card lsu-person-details" key={`prospect:${entry.id}`} open={openLeads.includes(entry.id)} onToggle={event=>{const isOpen=event.currentTarget.open;setOpenLeads(current=>isOpen?current.includes(entry.id)?current:[...current,entry.id]:current.filter(id=>id!==entry.id))}} data-focused={entry.id===focused}><summary><strong>{entry.name}</strong><span>{locale==="he"?"פנייה":"Inquiry"} · {entry.row.stage||t.newLead}</span><span>{entry.row.nextAction||"—"}</span><span>{entry.row.dueDate||"—"}</span></summary><ProspectCard row={entry.row} locale={locale} action={action}/></details>)}{!entries.length&&sourcesReady&&!accessBlocked&&<p className="lsw-empty">{showProspects?t.empty:locale==="he"?"אין תיקי לקוחות שמתאימים לחיפוש.":"No client cases match this search."}</p>}</section>
   {paginationReady&&!accessBlocked&&pages>1&&<nav className="lsw-actions" aria-label={t.page}><button className="lsw-button lsw-button--secondary" disabled={currentPage<=1} onClick={()=>setPage(currentPage-1)}>{t.previous}</button><span>{t.page} {currentPage} / {pages}</span><button className="lsw-button lsw-button--secondary" disabled={currentPage>=pages} onClick={()=>setPage(currentPage+1)}>{t.nextPage}</button></nav>}
   {showProspects&&!accessBlocked&&<><details ref={addRef} id="add-prospect" className="lsw-card lsu-inline-create"><summary>{t.add}</summary><AddProspect locale={locale} action={action}/></details><p className="lsw-save-result" role="status">{status}</p></>}
@@ -189,7 +221,7 @@ function AddProspect({locale,action}:{locale:Locale;action:(payload:unknown)=>Pr
  return <div className="lsw-stack"><div className="lsw-two-fields"><label className="lsw-field">{t.name}<input className="lsw-input" value={name} onChange={event=>setName(event.target.value)}/></label><label className="lsw-field">{t.phone}<input className="lsw-input" inputMode="tel" required value={phone} onChange={event=>setPhone(event.target.value)}/></label><label className="lsw-field">{t.language}<select className="lsw-input" value={language} onChange={event=>setLanguage(event.target.value as ""|"he"|"en")}><option value="">{t.any}</option><option value="he">עברית</option><option value="en">English</option></select></label><label className="lsw-field">{t.source}<input className="lsw-input" value={source} onChange={event=>setSource(event.target.value)}/></label><label className="lsw-field">{t.next}<input className="lsw-input" value={next} onChange={event=>setNext(event.target.value)}/></label><label className="lsw-field">{t.due}<input className="lsw-input" type="date" value={due} onChange={event=>setDue(event.target.value)}/></label></div><label className="lsw-field">{t.notes}<textarea className="lsw-input" value={notes} onChange={event=>setNotes(event.target.value)}/></label><button className="lsw-button lsw-button--primary" disabled={phone.trim().length<8} onClick={()=>action({action:"add",name,phone,language,source,notes,nextAction:next,dueDate:due})}>{t.add}</button></div>;
 }
 
-function PreparedResolution({row,locale,action}:{row:Prospect;locale:Locale;action:(payload:unknown)=>Promise<void>}){
+function PreparedResolution({row,locale,action}:{row:Pick<Prospect,"projectionOperationId"|"projectionMessage"|"projectionCreatedAt">;locale:Locale;action:(payload:unknown)=>Promise<void>}){
  const [outcome,setOutcome]=useState<"delivered"|"not_delivered">("delivered"),[source,setSource]=useState<"provider_delivery_log"|"provider_support_case">("provider_delivery_log"),
   [reference,setReference]=useState(""),[providerMessageId,setProviderMessageId]=useState(""),[sentAt,setSentAt]=useState(""),[verified,setVerified]=useState(false),[now,setNow]=useState(0);
  useEffect(()=>{setNow(Date.now());const timer=window.setInterval(()=>setNow(Date.now()),60000);return()=>window.clearInterval(timer)},[]);

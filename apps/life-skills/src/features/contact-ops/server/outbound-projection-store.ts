@@ -18,6 +18,7 @@ export type NoDeliveryEvidence={provider:"whapi";source:"provider_delivery_log"|
 export type OutboundProjection={operationId:string;leadId:string;authorityEpoch:number;createdAt:string;state:"prepared"|"sent_pending"|"projected"|"not_delivered";
  message:string;fields:Record<string,string>;receipt:OutboundReceipt|null;resolution:NoDeliveryEvidence|null};
 export type PendingOutboundProjection={operationId:string;state:"prepared"|"sent_pending";message:string;createdAt:string};
+export type PendingWorkspaceProjection=PendingOutboundProjection&{leadId:string};
 const aad=(workspace:string,operation:string,kind:"fields"|"receipt"|"resolution")=>`ls_contact_ops/outbound-projection/v1/${workspace}/${operation}/${kind}`;
 const leadPattern=/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]+$/;
 const fieldsValid=(fields:Record<string,string>)=>Object.keys(fields).length<=20&&Object.entries(fields).every(([key,value])=>
@@ -143,6 +144,32 @@ export class OutboundProjectionStore {
  }
  async pendingLeads(a:Actor,leadIds:readonly string[]):Promise<Set<string>>{
   return new Set((await this.pendingForLeads(a,leadIds)).keys());
+ }
+ /** Enumerate outstanding intents without depending on the Sheet still
+  * containing their lead IDs. The opaque UUID cursor keeps each response
+  * bounded while allowing an orphaned record to remain discoverable. */
+ async pendingPage(a:Actor,after:string|null=null,pageSize=100):Promise<{items:PendingWorkspaceProjection[];nextCursor:string|null}>{
+  if(after!==null&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(after)||
+   !Number.isSafeInteger(pageSize)||pageSize<1||pageSize>100)throw new AppError("INVALID_REQUEST");
+  return this.db.transaction(async tx=>{
+   await this.actor(tx,a);
+   const rows=await tx.query<{leadId:string;operationId:string;state:PendingWorkspaceProjection["state"];
+    projectionCiphertext:string;createdAt:Date|string}>(`SELECT legacy_lead_id AS "leadId",operation_id AS "operationId",state,
+    projection_ciphertext AS "projectionCiphertext",created_at AS "createdAt"
+    FROM ls_contact_ops.outbound_projections WHERE workspace_id=$1 AND actor_account_id=$2
+    AND state IN ('prepared','sent_pending') AND ($3::uuid IS NULL OR operation_id>$3::uuid)
+    ORDER BY operation_id LIMIT $4`,[a.workspaceId,a.id,after,pageSize+1]);
+   const items:PendingWorkspaceProjection[]=[];
+   for(const row of rows.slice(0,pageSize)){
+    if(!leadPattern.test(row.leadId))throw new AppError("UNAVAILABLE");
+    let message:string;
+    try{message=decoded(unseal(row.projectionCiphertext,aad(a.workspaceId,row.operationId,"fields"),this.keyring)).message;}
+    catch{throw new AppError("UNAVAILABLE");}
+    items.push({leadId:row.leadId,operationId:row.operationId,state:row.state,message,
+     createdAt:row.createdAt instanceof Date?row.createdAt.toISOString():row.createdAt});
+   }
+   return {items,nextCursor:rows.length>pageSize?items.at(-1)!.operationId:null};
+  });
  }
  async pendingForLeads(a:Actor,leadIds:readonly string[]):Promise<Map<string,PendingOutboundProjection>>{
   if(leadIds.length>10000||leadIds.some(id=>!leadPattern.test(id)))throw new AppError("INVALID_REQUEST");

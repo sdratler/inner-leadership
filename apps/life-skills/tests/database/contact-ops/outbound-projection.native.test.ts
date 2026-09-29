@@ -97,3 +97,36 @@ test("rollback cannot advance a Sheet-writable epoch while an outbound result is
  expect(await cutover.advance(a,{action:"finish_rollback",proof:proof(2),operationId:"synthetic-rollback-finish"}))
   .toMatchObject({state:{phase:"sheet_active",epoch:3}});
 });
+
+test("a pending send remains discoverable and unreconciled when its authoritative lead is missing",async()=>{
+ const {f,ledger,cutover}=await setup(),a=f.practitioner.actor,lead="LS-LEAD-SYNTHETIC-MISSING";
+ const operation=await ledger.prepare(a,lead,0,"Synthetic orphaned message",{stage:"Contacted"});
+ expect(await ledger.pendingForLeads(a,[])).toEqual(new Map());
+ expect((await ledger.pendingPage(a)).items).toMatchObject([{leadId:lead,operationId:operation,state:"prepared"}]);
+ await ledger.confirm(a,operation,{provider:"synthetic",providerMessageId:"synthetic-orphan-id",sentAt:"2026-09-30T00:00:00Z"},{stage:"Contacted"});
+ const runtime={store:poolStore(f.pool),config:{workspaceId:f.workspaceId}} as unknown as Parameters<typeof reconcileLegacyProspectProjection>[1];
+ const update=vi.fn().mockResolvedValue(undefined),missing=vi.fn().mockResolvedValue([]);
+ await expect(reconcileLegacyProspectProjection(a,runtime,operation,
+  {authority:{read:actor=>cutover.read(actor)},update,list:missing,ledger})).rejects.toMatchObject({code:"UNAVAILABLE"});
+ expect(await ledger.read(a,operation)).toMatchObject({state:"sent_pending",leadId:lead});
+ expect((await ledger.pendingPage(a)).items).toMatchObject([{leadId:lead,operationId:operation,state:"sent_pending"}]);
+ await expect(cutover.advance(a,{action:"prepare",proof:proof(0),operationId:"orphaned-hold"})).rejects.toMatchObject({code:"CONFLICT"});
+ const restored=vi.fn().mockResolvedValue([{leadId:lead,stage:"Contacted"}]);
+ expect(await reconcileLegacyProspectProjection(a,runtime,operation,
+  {authority:{read:actor=>cutover.read(actor)},update,list:restored as unknown as ()=>Promise<Prospect[]>,ledger})).toEqual({projected:true});
+ expect((await ledger.pendingPage(a)).items).toEqual([]);
+ expect(await cutover.advance(a,{action:"prepare",proof:proof(0),operationId:"orphaned-hold"})).toMatchObject({state:{phase:"shadow_ready"}});
+});
+
+test("pending-ledger enumeration is practitioner-only and cursor-bounded",async()=>{
+ const {f,ledger}=await setup(),a=f.practitioner.actor;
+ await ledger.prepare(a,"LS-LEAD-SYNTHETIC-PAGE-A",0,"Synthetic message A",{stage:"Contacted"});
+ await ledger.prepare(a,"LS-LEAD-SYNTHETIC-PAGE-B",0,"Synthetic message B",{stage:"Contacted"});
+ const first=await ledger.pendingPage(a,null,1);
+ expect(first.items).toHaveLength(1);expect(first.nextCursor).toBe(first.items[0]!.operationId);
+ const second=await ledger.pendingPage(a,first.nextCursor,1);
+ expect(second.items).toHaveLength(1);expect(second.nextCursor).toBeNull();
+ expect(second.items[0]!.operationId).not.toBe(first.items[0]!.operationId);
+ await expect(ledger.pendingPage(f.parent.actor)).rejects.toMatchObject({code:"FORBIDDEN"});
+ await expect(ledger.pendingPage(a,"invalid-cursor")).rejects.toMatchObject({code:"INVALID_REQUEST"});
+});
