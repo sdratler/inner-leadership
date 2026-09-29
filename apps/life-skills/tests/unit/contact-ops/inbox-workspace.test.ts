@@ -1,10 +1,20 @@
 import {createElement} from "react";
 import {renderToStaticMarkup} from "react-dom/server";
 import {expect,test} from "vitest";
-import {CapturedMessageList,whatsappContactHref} from "../../../src/features/contact-ops/inbox-workspace.tsx";
+import {CapturedMessageList,InboundInboxWorkspace,whatsappContactHref} from "../../../src/features/contact-ops/inbox-workspace.tsx";
 import {practitionerContext,breadcrumbItems} from "../../../src/ui/workspace/navigation-model.ts";
 import {WorkspaceShell} from "../../../src/ui/workspace/workspace-shell.tsx";
 const entry={id:"synthetic-blind-id",fromNumber:"+972501234567",pushName:"DEMO <script>",messageType:"text",messageText:"<script>Untrusted</script> שלום "+"Long synthetic text ".repeat(1000),occurredAt:"2026-09-28T03:00:00Z",storedAt:"2026-09-28T04:00:00Z",media:[]};
+
+test.each(["he","en"] as const)("%s real Communications inbox has one named directional main inside the existing shell",locale=>{
+ const inbox=createElement(InboundInboxWorkspace,{locale});
+ const props={locale,role:"practitioner" as const,pathname:`/${locale}/app/feedback`,section:"whatsapp",languageHref:`/${locale==="he"?"en":"he"}/app/feedback?section=whatsapp`,children:inbox};
+ const html=renderToStaticMarkup(createElement(WorkspaceShell,props));
+ expect(html.match(/<main\b/g)).toHaveLength(1);expect(html.match(/<\/main>/g)).toHaveLength(1);
+ expect(html).toContain(`lang="${locale}" dir="${locale==="he"?"rtl":"ltr"}" aria-labelledby="business-whatsapp-title"`);
+ expect(html).toContain('<h1 id="business-whatsapp-title">');expect(html).toContain('href="#lsw-main"');
+ expect(html).toContain('role="status"');expect(html).not.toContain(entry.messageText);
+});
 test.each(["he","en"] as const)("%s captured messages use collapsed escaped actual content and exact stored-number action",locale=>{
  const html=renderToStaticMarkup(createElement(CapturedMessageList,{locale,items:[entry]}));
  expect(html).toContain('<details class="lsw-details">');expect(html).not.toContain("<details open");expect(html).not.toContain("<script>");expect(html).toContain("&lt;script&gt;");expect(html).toContain("שלום");expect(html).toContain("https://wa.me/972501234567");expect(html).not.toContain("?text=");expect(html).toContain("noopener noreferrer");expect(html).toContain("overflow-wrap:anywhere");

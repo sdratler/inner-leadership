@@ -21,7 +21,7 @@ export function InboundInboxWorkspace({locale}:{locale:Locale}){
    if(!controller.signal.aborted)setState({kind:"ready",items:body.data.items,enabled:body.data.captureEnabled===true&&body.data.bindingConfigured===true});
   }).catch(()=>{if(!controller.signal.aborted)setState({kind:"error"})});return()=>controller.abort();
  },[revision]);
- return <section className="lsw-stack" aria-labelledby="business-whatsapp-title"><header className="lsw-page-header"><div><h1 id="business-whatsapp-title">{t.title}</h1><p>{t.intro}</p></div><button className="lsw-button lsw-button--secondary" type="button" onClick={()=>setRevision(value=>value+1)} disabled={state.kind==="loading"}>{t.refresh}</button></header>
+ return <main className="lsw-stack" lang={locale} dir={locale==="he"?"rtl":"ltr"} aria-labelledby="business-whatsapp-title"><header className="lsw-page-header"><div><h1 id="business-whatsapp-title">{t.title}</h1><p>{t.intro}</p></div><button className="lsw-button lsw-button--secondary" type="button" onClick={()=>setRevision(value=>value+1)} disabled={state.kind==="loading"}>{t.refresh}</button></header>
   {state.kind==="loading"?<p role="status">{t.loading}</p>:state.kind==="error"?<p role="alert">{t.failure}</p>:<><p className="lsw-help">{state.enabled?t.ready:t.off}</p><div className="lsw-field"><label htmlFor="captured-message-search">{t.search}</label><input id="captured-message-search" className="lsw-input" type="search" value={query} maxLength={160} onChange={event=>setQuery(event.target.value)}/></div><CapturedMessageList locale={locale} items={state.items} query={query}/><p className="lsw-help">{t.limit}</p></>}
- </section>;
+ </main>;
 }
