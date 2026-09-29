@@ -153,15 +153,16 @@ export class NativeContactDirectory {
     result.push({leadId:ref.leadId,name:row.displayName,phone:ref.phone,email:ref.email,language:ref.language,
      receivedAt:ref.nativeCreatedAt??get("Date received"),source:ref.source,campaign:ref.campaign,
      stage:row.doNotContact?"Do not contact":row.archived?"Archived":row.stage,
-      lastContact:row.inboundActivity?.lastInboundAt??get("Last contact"),nextAction:row.nextAction??"",dueDate:row.followUpDate??"",
+      lastContact:(ref.nativeOrigin==="native_whatsapp"?row.inboundActivity?.lastInboundAt:undefined)??get("Last contact"),nextAction:row.nextAction??"",dueDate:row.followUpDate??"",
      outcome:ref.outcome,notes:row.notes,
      // Missing/stale Sheet claims must not unlink a genuine canonical client.
      // Multiple cases need the exact real journey/order relation, not a guess.
      caseId:canonicalProspectCase(row.caseLinks,orderCases.get(ref.leadId)??null),
      formSent:ref.formSentClaim,formSubmitted:ref.formSubmittedClaim,paymentLinkSent:get("Payment link sent"),
      paymentMethod:get("Payment method"),paymentStatus:ref.paymentClaim,paymentAllocation:get("Payment allocation"),
-      bookingStatus:ref.bookingClaim,messageReceipt:row.inboundActivity?.lastMessageKey??ref.messageReceipt,updateProvenance:get("Update provenance"),
-      firstInboundAt:row.inboundActivity?.firstInboundAt??get("First inbound at"),lastInboundAt:row.inboundActivity?.lastInboundAt??get("Last inbound at"),owner:ref.owner??get("Response owner"),...ref.journey,
+      bookingStatus:ref.bookingClaim,messageReceipt:(ref.nativeOrigin==="native_whatsapp"?row.inboundActivity?.lastMessageKey:undefined)??ref.messageReceipt,updateProvenance:get("Update provenance"),
+      firstInboundAt:(ref.nativeOrigin==="native_whatsapp"?row.inboundActivity?.firstInboundAt:undefined)??get("First inbound at"),
+      lastInboundAt:(ref.nativeOrigin==="native_whatsapp"?row.inboundActivity?.lastInboundAt:undefined)??get("Last inbound at"),owner:ref.owner??get("Response owner"),...ref.journey,
      ...(row.version===null?{}:{nativeEdit:{personId:row.personId,profileVersion:row.version,authorityEpoch:expectedEpoch}})});
    }
   }

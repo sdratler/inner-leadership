@@ -43,7 +43,7 @@ export const crmProfileSchema=z.object({personId:z.string().uuid(),stage:z.strin
         Object.keys(p.leadUpdates??{}).every(id=>p.legacyIds.includes(id)||id===p.nativeInquiry?.leadId||id===p.whatsappInquiry?.leadId)&&
         (!p.nativeInquiry||(p.nativeInquiry.leadId==="LS-LEAD-native-"+p.personId&&!p.legacyIds.includes(p.nativeInquiry.leadId)))&&
         (!p.whatsappInquiry||(p.whatsappInquiry.leadId==="LS-WAPI-native-"+p.personId&&!p.legacyIds.includes(p.whatsappInquiry.leadId)))&&
-        !(p.nativeInquiry&&p.whatsappInquiry));
+        (!p.inboundActivity||Boolean(p.whatsappInquiry)));
 function validateProfile(profile:unknown):asserts profile is CrmProfile {
     requireThat(crmProfileSchema.safeParse(profile).success,"BAD_PROFILE");
     const p=profile as CrmProfile;

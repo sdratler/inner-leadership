@@ -29,6 +29,10 @@ type ProfileRow={personId:string;ciphertext:string;version:number;mode:"live"|"d
 const resolutionAad=(workspace:string,binding:string,message:string)=>`ls_contact_ops/inbound-projection/v1/${workspace}/${binding}/${message}`;
 const sourceSchema=z.object({payload:z.object({sourceFields:z.record(z.string(),z.string())})});
 const phoneField=(fields:Record<string,string>)=>Object.entries(fields).find(([header])=>header.trim()==="Phone")?.[1]??"";
+const whatsappOrigin=(personId:string,inquiry:InboundInquiry,keys:InboundProjectionKeys)=>({
+ origin:"native_whatsapp",leadId:"LS-WAPI-native-"+personId,phone:inquiry.fromNumber,
+ language:/[\u0590-\u05ff]/.test(inquiry.messageText)?"he":inquiry.messageText.trim()?"en":"",source:"WhatsApp",
+ createdAt:inquiry.occurredAt,providerBindingKey:keys.binding,providerThreadKey:keys.thread});
 
 /** Internal trusted-receipt composition, NOT a public role/session bypass. Only
  * ContactInboundStore calls this after the configured binding and exact durable
@@ -144,15 +148,18 @@ export class NativeInboundProjection {
    else{
     const personId=match.kind==="matched"?match.personId:randomUUID();
     existing=await this.profile(tx,personId);
+    if(existing?.profile.whatsappInquiry){
+     // A different thread/endpoint is not permission to relabel an existing
+     // immutable WhatsApp inquiry. Keep the new receipt for explicit review.
+     outcome={state:"needs_resolution",reason:"ambiguous_endpoint",personId:null,candidateIds:[personId]};existing=null;
+    }else{
     if(!existing){
      const capacity=await tx.query<{n:number}>("SELECT count(*)::int AS n FROM ls_contact_ops.profiles WHERE workspace_id=$1",[this.workspace]);
      if(capacity.length!==1||capacity[0]!.n>=MAX_NATIVE_CONTACTS)throw new AppError("UNAVAILABLE");
      if(match.kind==="new")await tx.query("INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,'adult',$3,$4)",
       [personId,this.workspace,seal(JSON.stringify({displayName:inquiry.pushName||inquiry.fromNumber}),`person:${this.workspace}:${personId}`,this.keyring),this.clock.now()]);
      const profile=crmProfileSchema.parse({personId,stage:"New inquiry",nextAction:null,followUpDate:null,notes:"",legacyIds:[],
-      whatsappInquiry:{origin:"native_whatsapp",leadId:"LS-WAPI-native-"+personId,phone:inquiry.fromNumber,
-       language:/[\u0590-\u05ff]/.test(inquiry.messageText)?"he":inquiry.messageText.trim()?"en":"",source:"WhatsApp",createdAt:this.clock.now().toISOString(),
-       providerBindingKey:keys.binding,providerThreadKey:keys.thread}});
+      whatsappInquiry:whatsappOrigin(personId,inquiry,keys)});
      await tx.query("INSERT INTO ls_contact_ops.profiles(workspace_id,person_id,payload_ciphertext,record_mode,demo_batch_id) VALUES($1,$2,$3,'live',NULL)",
       [this.workspace,personId,seal(JSON.stringify(profile),crmProfileAad(this.workspace,personId),this.keyring)]);
      existing=await this.profile(tx,personId);if(!existing)throw new AppError("UNAVAILABLE");
@@ -160,12 +167,17 @@ export class NativeInboundProjection {
     outcome={state:"projected",reason:match.kind==="new"?"new_contact":"verified_endpoint",personId,candidateIds:[]};
     await tx.query("INSERT INTO ls_contact_ops.inbound_threads(workspace_id,provider_binding_id,provider_thread_key,sender_endpoint_key,person_id) VALUES($1,$2,$3,$4,$5)",
      [this.workspace,keys.binding,keys.thread,keys.sender,personId]);
+    }
    }
   }
   if(existing&&outcome.personId){
    const saved=existing.profile,today=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Jerusalem"}).format(this.clock.now());
    const suppressed=saved.doNotContact===true||contactSuppressed(saved.stage)||Object.values(saved.leadUpdates??{}).some(v=>contactSuppressed(v.outcome??""));
-   const merged=crmProfileSchema.parse({...saved,...inboundFollowUp(saved,today,suppressed),inboundActivity:nextInboundActivity(saved.inboundActivity,inquiry,keys.message)});
+   const merged=crmProfileSchema.parse({...saved,...inboundFollowUp(saved,today,suppressed),
+    // Each person has its own explicit provider inquiry. Historical/manual
+    // references remain separate; never smear a new message across all leads.
+    whatsappInquiry:saved.whatsappInquiry??whatsappOrigin(outcome.personId,inquiry,keys),
+    inboundActivity:nextInboundActivity(saved.inboundActivity,inquiry,keys.message)});
    if(merged.notes!==saved.notes)throw new AppError("UNAVAILABLE");
    const updated=await tx.query<{version:number}>("UPDATE ls_contact_ops.profiles SET payload_ciphertext=$3,version=version+1,updated_at=clock_timestamp() WHERE workspace_id=$1 AND person_id=$2 AND version=$4 RETURNING version",
     [this.workspace,outcome.personId,seal(JSON.stringify(merged),crmProfileAad(this.workspace,outcome.personId),this.keyring),existing.row.version]);

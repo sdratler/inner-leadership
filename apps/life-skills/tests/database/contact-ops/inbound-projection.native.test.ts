@@ -69,6 +69,9 @@ test('sheet/frozen receipts do not change CRM; exact native drain projects each 
  expect(await store.drain(actor,3,1,second.cursor)).toEqual({processed:0,projected:0,needsResolution:0,replayed:0,cursor:second.cursor,hasMore:false});
  expect(await store.drain(actor,3)).toMatchObject({processed:2,projected:0,needsResolution:0,replayed:2});
  expect((await list()).total).toBe(1);expect((await list()).items[0]?.inboundActivity?.messageCount).toBe(2);
+ const drained=(await list()).items[0]!;
+ expect(drained.references[0]?.nativeCreatedAt).toBe('2026-09-28T02:00:00.000Z');
+ expect(drained.inboundActivity?.firstInboundAt).toBe('2026-09-28T02:00:00.000Z');
  expect((await authority.read(actor)).nativeWritesSinceSwitch).toBe(2);
 });
 test('drain validates every frozen replay envelope instead of silently skipping a conflicting known message',async()=>{
@@ -113,6 +116,46 @@ test('unverified/shared/inactive endpoints require resolution; a unique verified
  await store.capture({...inquiry,fromNumber:'+972501234572',providerEventId:'inactive',providerMessageId:'inactive',providerThreadId:'inactive'});
  expect((await list()).total).toBe(1);expect(await count('ls_identity.people')).toBe(people);
  expect((await f.pool.query("SELECT count(*)::int AS n FROM ls_contact_ops.inbound_projections WHERE workspace_id=$1 AND state='needs_resolution'",[f.workspaceId])).rows[0].n).toBe(3);
+});
+test('verified existing person gets a separate WhatsApp inquiry without smearing historical/manual reference activity',async()=>{
+ const {f,db,actor,crm,store,activate,list,count}=await setup(),personId=f.parent.actor.personId!;
+ const legacyIds=['LS-LEAD-preserved-reference-a','LS-LEAD-preserved-reference-b'];
+ const manualId='LS-LEAD-native-'+personId;
+ await new NativeCrmStore(db,f.keyring,key).create(actor,{personId,stage:'Contacted',nextAction:'Authored next action',
+  followUpDate:'2026-10-01',notes:'Original authored notes — הערה שמורה',legacyIds,
+  nativeInquiry:{origin:'native_manual',leadId:manualId,phone:'+972501234580',language:'en',
+   source:'Synthetic manual inquiry',createdAt:'2026-09-20T00:00:00.000Z'}},randomUUID());
+ for(const [i,leadId] of legacyIds.entries()){
+  const sourceFields={'Lead ID':leadId,Phone:'+97250123458'+(i+2),'Last contact':'2026-09-10',
+   'First inbound at':'2026-09-01','Last inbound at':'2026-09-02','Message receipt':'historical-'+i};
+  const snapshot={sourceRow:i+2,payload:{displayName:'Synthetic historical inquiry',language:'en',stageText:'Contacted',sourceFields}};
+  await f.pool.query(`INSERT INTO ls_contact_ops.legacy_links(workspace_id,source_file_id,source_sheet_id,source_tab_title,
+   legacy_lead_id,person_id,source_revision,row_digest,snapshot_ciphertext) VALUES($1,'synthetic-reference-workbook',1,'Synthetic Leads',$2,$3,'preserved-revision',$4,$5)`,
+   [f.workspaceId,leadId,personId,'a'.repeat(64),seal(JSON.stringify(snapshot),
+    `ls_contact_ops/legacy/v1/${f.workspaceId}/synthetic-reference-workbook/1/${leadId}`,f.keyring)]);
+ }
+ await f.pool.query('UPDATE ls_identity.accounts SET phone_ciphertext=$2,phone_verified_at=clock_timestamp() WHERE id=$1',
+  [f.parent.actor.id,seal(inquiry.fromNumber,`phone:${f.workspaceId}:${f.parent.actor.id}`,f.keyring)]);
+ await activate();const people=await count('ls_identity.people'),cases=await count('ls_cases.cases');
+ await store.capture(inquiry);await store.capture({...inquiry,providerEventId:'reference-second',providerMessageId:'reference-second',occurredAt:'2026-09-28T03:00:00Z'});
+ const rows=await crm.prospects(actor,3);expect(rows).toHaveLength(4);
+ for(const [i,leadId] of legacyIds.entries())expect(rows.find(r=>r.leadId===leadId)).toMatchObject({
+  lastContact:'2026-09-10',firstInboundAt:'2026-09-01',lastInboundAt:'2026-09-02',messageReceipt:'historical-'+i});
+ expect(rows.find(r=>r.leadId===manualId)).toMatchObject({receivedAt:'2026-09-20T00:00:00.000Z',lastContact:'',firstInboundAt:'',lastInboundAt:'',messageReceipt:''});
+ const received=rows.find(r=>r.leadId==='LS-WAPI-native-'+personId)!;
+ expect(received).toMatchObject({receivedAt:'2026-09-28T02:00:00.000Z',firstInboundAt:'2026-09-28T02:00:00.000Z',
+  lastInboundAt:'2026-09-28T03:00:00.000Z',lastContact:'2026-09-28T03:00:00.000Z',notes:'Original authored notes — הערה שמורה',
+  nextAction:'Authored next action',dueDate:'2026-10-01'});
+ expect(received.messageReceipt).toMatch(/^[a-f0-9]{64}$/);
+ expect((await list()).total).toBe(1);expect(await count('ls_identity.people')).toBe(people);expect(await count('ls_cases.cases')).toBe(cases);
+ // A newly verified endpoint may not relabel this first immutable conversation.
+ await f.pool.query('UPDATE ls_identity.accounts SET phone_ciphertext=$2,phone_verified_at=clock_timestamp() WHERE id=$1',
+  [f.parent.actor.id,seal('+972501234578',`phone:${f.workspaceId}:${f.parent.actor.id}`,f.keyring)]);
+ await store.capture({...inquiry,fromNumber:'+972501234578',providerEventId:'new-existing-endpoint',providerMessageId:'new-existing-endpoint',providerThreadId:'new-existing-thread'});
+ expect((await list()).items[0]?.inboundActivity?.messageCount).toBe(2);
+ expect((await f.pool.query("SELECT state,reason,person_id FROM ls_contact_ops.inbound_projections WHERE workspace_id=$1 AND state='needs_resolution'",[f.workspaceId])).rows).toEqual([
+  {state:'needs_resolution',reason:'ambiguous_endpoint',person_id:null}]);
+ expect((await crm.prospects(actor,3)).find(r=>r.leadId===received.leadId)).toMatchObject({phone:inquiry.fromNumber,notes:received.notes,lastInboundAt:received.lastInboundAt});
 });
 test('demo account endpoints cannot create live contacts, and ordinary profile edits cannot rewrite provider provenance/activity',async()=>{
  const {f,db,actor,store,activate,list,count}=await setup({demoFirst:true});await activate();
