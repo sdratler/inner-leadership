@@ -9,7 +9,7 @@ export function CapturedMessageList({locale,items,query=""}:{locale:Locale;items
  const time=(value:string)=>new Intl.DateTimeFormat(locale==="he"?"he-IL":"en-GB",{dateStyle:"medium",timeStyle:"short"}).format(new Date(value));
  if(!visible.length)return <p role="status">{query.trim()?t.none:t.empty}</p>;
  return <div className="lsw-stack">{visible.map(row=>{const href=whatsappContactHref(row.fromNumber);return <article className="lsw-card lsw-stack" key={row.id}>
-  <div className="lsw-section-header"><div><strong>{row.pushName||t.fallback}</strong><p className="lsw-help"><bdi>{row.fromNumber}</bdi> · {t.time}: {time(row.occurredAt)}</p></div>{href&&<a className="lsw-button lsw-button--secondary" href={href} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">{t.open}</a>}</div>
+   <div className="lsw-section-header" style={{flexWrap:"wrap"}}><div><strong>{row.pushName||t.fallback}</strong><p className="lsw-help"><bdi>{row.fromNumber}</bdi> · {t.time}: {time(row.occurredAt)}</p></div>{href&&<a className="lsw-button lsw-button--secondary" style={{flexShrink:0,whiteSpace:"nowrap"}} href={href} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">{t.open}</a>}</div>
   <details className="lsw-details"><summary>{t.details} · {row.messageType}</summary>{row.messageText&&<p style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{row.messageText}</p>}{row.media.length>0&&<section><h3>{t.media}</h3><ul>{row.media.map((media,index)=><li key={index}>{media.fileName||media.mimeType||row.messageType}{media.sizeBytes!==null?` · ${media.sizeBytes} bytes`:""}</li>)}</ul></section>}<p className="lsw-help">{t.stored}: {time(row.storedAt)}</p></details>
  </article>})}</div>;
 }

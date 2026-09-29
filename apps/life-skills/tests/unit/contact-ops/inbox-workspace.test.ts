@@ -18,6 +18,7 @@ test.each(["he","en"] as const)("%s real Communications inbox has one named dire
 test.each(["he","en"] as const)("%s captured messages use collapsed escaped actual content and exact stored-number action",locale=>{
  const html=renderToStaticMarkup(createElement(CapturedMessageList,{locale,items:[entry]}));
  expect(html).toContain('<details class="lsw-details">');expect(html).not.toContain("<details open");expect(html).not.toContain("<script>");expect(html).toContain("&lt;script&gt;");expect(html).toContain("שלום");expect(html).toContain("https://wa.me/972501234567");expect(html).not.toContain("?text=");expect(html).toContain("noopener noreferrer");expect(html).toContain("overflow-wrap:anywhere");
+ expect(html).toContain("flex-wrap:wrap");expect(html).toContain("flex-shrink:0");expect(html).toContain("white-space:nowrap");
  const filtered=renderToStaticMarkup(createElement(CapturedMessageList,{locale,items:[entry],query:"no-match"}));expect(filtered).not.toContain("Untrusted");expect(filtered).toContain('role="status"');
 });
 test("WhatsApp links reject injected URLs and never infer a login/customer/case",()=>{
