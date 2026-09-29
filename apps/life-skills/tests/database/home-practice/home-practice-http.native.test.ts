@@ -192,8 +192,8 @@ test("native forwarded goal and linked commitment mutations keep strict bodies, 
 
 test("native morning/evening occurrences and current guardian assignee check-ins retain replay and correction history through HTTPS forwarding", async () => {
   const h = await setup(), { f } = h, saved = await h.publish();
-  // Current database coordination admits guardians. Child reads are proven above;
-  // the service/SQL child-assignee mismatch is a separately recorded migration gate.
+  // Preserve the original two-guardian recipe as well as the exact-subject
+  // child/adult participant regressions below. Coordination remains parent-authored.
   const assignee = f.parentTwo;
   const coordination = await h.request("POST", "/api/home-practice", { action: "coordinate", assignmentId: saved.assignmentId,
     assigneeAccountIds: [f.parent.actor.id, assignee.actor.id], completionMode: "each_assignee", reminderCandidateAccountIds: [], effectiveFrom: new Date(Date.now() + 1000).toISOString() }, f.parent.token);
@@ -217,4 +217,76 @@ test("native morning/evening occurrences and current guardian assignee check-ins
   expect((await h.request("POST", "/api/checkins", { ...body, idempotencyKey: randomUUID() }, f.outsider.token)).status).toBe(404);
   const states = await f.pool.query("SELECT period,state FROM ls_practice.practice_occurrences WHERE workspace_id=$1 ORDER BY period", [f.workspaceId]);
   expect(states.rows).toEqual([{ period: "evening", state: "open" }, { period: "morning", state: "closed" }]);
+});
+
+test("native authorized child assignment and persistent check-in preserve replay, correction, frozen responsibility and current-access denials", async () => {
+  const h = await setup(), { f } = h;
+  const child = await h.clientIdentity("child"), otherChild = await h.clientIdentity("child", f.second);
+  const saved = await h.publish();
+  const coordinate = { action: "coordinate", assignmentId: saved.assignmentId,
+    assigneeAccountIds: [f.parent.actor.id, child.actor.id], completionMode: "each_assignee",
+    reminderCandidateAccountIds: [], effectiveFrom: new Date(Date.now() + 1000).toISOString() };
+  expect((await h.request("POST", "/api/home-practice", coordinate, f.parent.token)).status).toBe(201);
+  expect((await h.request("POST", "/api/home-practice", coordinate, child.token)).status).toBe(404);
+  expect((await h.request("POST", "/api/home-practice", { ...coordinate, assigneeAccountIds: [otherChild.actor.id] }, f.parent.token)).status).toBe(404);
+  const occurrences: string[] = [];
+  for (const period of ["morning", "evening"]) {
+    const r = await h.request("POST", "/api/home-practice", { action: "schedule", assignmentId: saved.assignmentId, occursOn: f.at(48).slice(0, 10), period });
+    expect(r.status).toBe(201); occurrences.push((await r.json()).data.id as string);
+  }
+  const occurrenceId = occurrences[0]!, body = { occurrenceId, status: "done", idempotencyKey: randomUUID() };
+  expect((await h.request("POST", "/api/checkins", body, child.token, { "x-csrf-token": "wrong" })).status).toBe(403);
+  expect((await h.request("POST", "/api/checkins", body, child.token)).status).toBe(201);
+  expect((await h.request("POST", "/api/checkins", body, child.token)).status).toBe(201);
+  expect((await h.request("POST", "/api/checkins", { ...body, status: "not_done" }, child.token)).status).toBe(409);
+  expect((await h.request("POST", "/api/checkins", { ...body, idempotencyKey: randomUUID() }, otherChild.token)).status).toBe(404);
+  expect((await h.request("POST", "/api/checkins", { ...body, idempotencyKey: randomUUID() }, f.parentTwo.token)).status).toBe(404);
+  expect((await f.pool.query("SELECT state FROM ls_practice.practice_occurrences WHERE workspace_id=$1 AND id=$2", [f.workspaceId, occurrenceId])).rows[0].state).toBe("open");
+  const firstRead = await h.request("GET", `/api/checkins?occurrenceId=${occurrenceId}`, undefined, child.token);
+  expect(firstRead.status).toBe(200); expect(firstRead.headers.get("cache-control")).toBe("private, no-store");
+  const previous = (await firstRead.json()).data[0];
+  expect(previous).toMatchObject({ authorAccountId: child.actor.id, revision: 1, status: "done" });
+  expect((await h.request("POST", "/api/checkins", { ...body, status: "partly_done", idempotencyKey: randomUUID(), correctsReportId: previous.reportId }, child.token)).status).toBe(201);
+  expect((await h.request("POST", "/api/checkins", { ...body, idempotencyKey: randomUUID() }, f.parent.token)).status).toBe(201);
+  const history = (await (await h.request("GET", `/api/checkins?occurrenceId=${occurrenceId}`, undefined, child.token)).json()).data;
+  expect(history).toHaveLength(3);
+  expect(history).toMatchObject(expect.arrayContaining([previous, expect.objectContaining({ authorAccountId: child.actor.id, revision: 2, status: "partly_done", correctedReportId: previous.reportId })]));
+  const frozen = await f.pool.query("SELECT assignee_account_ids FROM ls_practice.task_coordination_versions WHERE workspace_id=$1 AND assignment_id=$2", [f.workspaceId, saved.assignmentId]);
+  expect(frozen.rows[0].assignee_account_ids).toEqual(coordinate.assigneeAccountIds);
+  expect((await f.pool.query("SELECT period,state FROM ls_practice.practice_occurrences WHERE workspace_id=$1 ORDER BY period", [f.workspaceId])).rows).toEqual([{ period: "evening", state: "open" }, { period: "morning", state: "closed" }]);
+  await expect(f.pool.query("UPDATE ls_practice.completion_reports SET status='not_done' WHERE workspace_id=$1 AND id=$2", [f.workspaceId, previous.reportId])).rejects.toMatchObject({ code: "55000" });
+  await expect(f.pool.query("DELETE FROM ls_practice.task_coordination_versions WHERE workspace_id=$1 AND assignment_id=$2", [f.workspaceId, saved.assignmentId])).rejects.toMatchObject({ code: "55000" });
+  await f.pool.query("UPDATE ls_cases.audience_accounts SET revoked_at=clock_timestamp() WHERE workspace_id=$1 AND case_id=$2 AND account_id=$3", [f.workspaceId, f.first.id, child.actor.id]);
+  expect((await h.request("POST", "/api/checkins", body, child.token)).status).toBe(404);
+  expect((await h.request("GET", `/api/checkins?occurrenceId=${occurrenceId}`, undefined, child.token)).status).toBe(404);
+  await expect(f.pool.query(`INSERT INTO ls_practice.completion_reports(id,workspace_id,occurrence_id,author_account_id,status,revision,reported_at,idempotency_key)
+    VALUES($1,$2,$3,$4,'done',1,clock_timestamp(),$5)`, [randomUUID(), f.workspaceId, occurrences[1], child.actor.id, randomUUID()])).rejects.toMatchObject({ code: "23514" });
+  expect((await f.pool.query("SELECT count(*)::integer AS count FROM ls_practice.completion_reports WHERE workspace_id=$1", [f.workspaceId])).rows[0].count).toBe(3);
+});
+
+test.each(["child", "adult_client"] as const)("native %s SQL participant guard requires exact case subject and current published audience without granting coordination authorship", async role => {
+  const h = await setup(), { f } = h, subject = await h.clientIdentity(role), unrelated = await h.clientIdentity(role, f.second);
+  const saved = await h.publish();
+  const insert = (candidate: string, changedBy: string = f.parent.actor.id) => f.pool.query(`INSERT INTO ls_practice.task_coordination_versions
+    (id,workspace_id,assignment_id,version,case_id,audience_id,assignee_account_ids,completion_mode,reminder_candidate_account_ids,effective_from,changed_by_account_id,created_at)
+    VALUES($1,$2,$3,1,$4,$5,ARRAY[$6]::uuid[],'any_assignee','{}',clock_timestamp(),$7,clock_timestamp())`,
+  [randomUUID(), f.workspaceId, saved.assignmentId, f.first.id, f.first.audienceId, candidate, changedBy]);
+  // Even an explicit audience grant cannot make another case's subject eligible.
+  await f.pool.query("INSERT INTO ls_cases.audience_accounts(workspace_id,case_id,audience_id,account_id,granted_at) VALUES($1,$2,$3,$4,clock_timestamp())", [f.workspaceId, f.first.id, f.first.audienceId, unrelated.actor.id]);
+  await expect(insert(unrelated.actor.id)).rejects.toMatchObject({ code: "23514" });
+  await expect(insert(subject.actor.id, subject.actor.id)).rejects.toMatchObject({ code: "23514" });
+  await expect(insert(subject.actor.id, f.outsider.actor.id)).rejects.toMatchObject({ code: "23514" });
+  await f.pool.query("UPDATE ls_cases.audiences SET published=false WHERE workspace_id=$1 AND id=$2", [f.workspaceId, f.first.audienceId]);
+  await expect(insert(subject.actor.id)).rejects.toMatchObject({ code: "23514" });
+  await f.pool.query("UPDATE ls_cases.audiences SET published=true,visibility='private' WHERE workspace_id=$1 AND id=$2", [f.workspaceId, f.first.audienceId]);
+  await expect(insert(subject.actor.id)).rejects.toMatchObject({ code: "23514" });
+  await f.pool.query("UPDATE ls_cases.audiences SET visibility='family_full' WHERE workspace_id=$1 AND id=$2", [f.workspaceId, f.first.audienceId]);
+  await insert(subject.actor.id);
+  const scheduled = await h.request("POST", "/api/home-practice", { action: "schedule", assignmentId: saved.assignmentId, occursOn: f.at(48).slice(0, 10), period: "morning" });
+  expect(scheduled.status).toBe(201);
+  const occurrenceId = (await scheduled.json()).data.id;
+  expect((await h.request("POST", "/api/checkins", { occurrenceId, status: "done", idempotencyKey: randomUUID() }, subject.token)).status).toBe(201);
+  await f.pool.query("UPDATE ls_identity.accounts SET state='revoked' WHERE workspace_id=$1 AND id=$2", [f.workspaceId, subject.actor.id]);
+  await expect(f.pool.query(`INSERT INTO ls_practice.completion_reports(id,workspace_id,occurrence_id,author_account_id,status,revision,reported_at,idempotency_key)
+    VALUES($1,$2,$3,$4,'done',1,clock_timestamp(),$5)`, [randomUUID(), f.workspaceId, occurrenceId, subject.actor.id, randomUUID()])).rejects.toMatchObject({ code: "23514" });
 });

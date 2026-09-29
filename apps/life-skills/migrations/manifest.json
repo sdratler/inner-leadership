@@ -102,5 +102,9 @@
   {
     "name": "0106_ls_contact_inbound_receipts.sql",
     "sha256": "bf67d47e1f3bd6a23d098c4a78c50b0bd9c787719a1bc59a3b7c10a0f549a062"
+  },
+  {
+    "name": "0107_ls_practice_subject_guards.sql",
+    "sha256": "7608bc445e4d394b9041745a85bb1d1f36850e7c4841e5acbc0114724b72b720"
   }
 ]

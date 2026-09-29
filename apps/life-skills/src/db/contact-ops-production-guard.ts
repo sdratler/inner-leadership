@@ -1,5 +1,6 @@
 import {createHash} from 'node:crypto';
 import {planMigrations, type AppliedMigration, type Migration} from './migration-plan.ts';
+import {PRACTICE_SUBJECT_GUARDS_MIGRATION,type PracticeSubjectIntegrity} from './practice-subject-integrity.ts';
 
 export const CONTACT_OPS_MIGRATION = {
  name: '0101_ls_contact_operations.sql',
@@ -70,6 +71,7 @@ const DEMO_RECORDS_BASELINE = {
 } as const;
 export const CONTACT_OPS_SOURCE_FILES = [
  'migrations/0030_ls_calendar_attendance_20260907.sql',
+ 'migrations/0040_ls_home_practice_20260911.sql',
  'migrations/0097_ls_demo_provenance.sql',
  'migrations/0101_ls_contact_operations.sql',
  'migrations/0102_ls_internal_tasks.sql',
@@ -77,13 +79,17 @@ export const CONTACT_OPS_SOURCE_FILES = [
  'migrations/0104_ls_content_voice_corrections.sql',
  'migrations/0105_ls_contact_authority.sql',
  'migrations/0106_ls_contact_inbound_receipts.sql',
+ 'migrations/0107_ls_practice_subject_guards.sql',
  'migrations/manifest.json',
  'scripts/apply-contact-ops-production.ts',
  'src/db/contact-ops-production-guard.ts',
  'src/db/contact-authority-integrity.ts',
  'src/db/contact-inbound-integrity.ts',
+ 'src/db/practice-subject-integrity.ts',
  'src/db/migration-plan.ts',
  'src/db/migration-runner.ts',
+ 'scripts/release-intake.ts',
+ 'src/db/intake-migration-scope.ts',
 ] as const;
 
 const target = {
@@ -246,13 +252,25 @@ export function contactOpsSourceBundle(entries:readonly {path:string;bytes:Uint8
 }
 
 /** No partial/unknown schema and no surprise migration may be promoted. */
-export function contactOpsMigrationState(files:readonly Migration[],history:readonly AppliedMigration[],objects:ContactOpsIntegrityObjects,tasks:InternalTaskIntegrityObjects,source?:SourceTaskIntegrityObjects,voice?:VoiceRuleIntegrityObjects,authority?:ContactAuthorityIntegrityObjects,inbound?:ContactInboundIntegrityObjects):'pending'|'applied'{
+export function contactOpsMigrationState(files:readonly Migration[],history:readonly AppliedMigration[],objects:ContactOpsIntegrityObjects,tasks:InternalTaskIntegrityObjects,source?:SourceTaskIntegrityObjects,voice?:VoiceRuleIntegrityObjects,authority?:ContactAuthorityIntegrityObjects,inbound?:ContactInboundIntegrityObjects,practice?:PracticeSubjectIntegrity):'pending'|'applied'{
  const index=files.findIndex(file=>file.name===CONTACT_OPS_MIGRATION.name);
  if(index<0||files[index]?.checksum!==CONTACT_OPS_MIGRATION.sha256)throw new Error('CONTACT_OPS_MANIFEST_MISMATCH');
  const suffix=files.slice(index+1);
- const allowedSuffix=[INTERNAL_TASKS_MIGRATION,SOURCE_TASKS_MIGRATION,VOICE_RULE_MIGRATION,CONTACT_AUTHORITY_MIGRATION,CONTACT_INBOUND_MIGRATION];
+ const allowedSuffix=[INTERNAL_TASKS_MIGRATION,SOURCE_TASKS_MIGRATION,VOICE_RULE_MIGRATION,CONTACT_AUTHORITY_MIGRATION,CONTACT_INBOUND_MIGRATION,PRACTICE_SUBJECT_GUARDS_MIGRATION];
  if(suffix.length>allowedSuffix.length||suffix.some((file,index)=>file.name!==allowedSuffix[index]?.name||file.checksum!==allowedSuffix[index]?.sha256))throw new Error('CONTACT_OPS_MANIFEST_MISMATCH');
  const pending=planMigrations(files,history);
+ if(suffix.length===6){
+  // Reuse EVERY 0101..0106 baseline gate, requiring it already applied. This
+  // new suffix may neither admit an earlier pending migration nor ignore drift.
+  const baselineHistory=history.filter(row=>row.name!==PRACTICE_SUBJECT_GUARDS_MIGRATION.name);
+  if(contactOpsMigrationState(files.slice(0,-1),baselineHistory,objects,tasks,source,voice,authority,inbound)!=='applied')throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+  const keys=['baselineFunctions','reviewedFunctions','immutableHistory','schemaCatalog','foreignKeys','permissions','referencesSound'].sort();
+  if(!practice||JSON.stringify(Object.keys(practice).sort())!==JSON.stringify(keys)||Object.values(practice).some(value=>typeof value!=='boolean'))throw new Error('CONTACT_OPS_PRACTICE_READBACK_INVALID');
+  if(!practice.immutableHistory||!practice.schemaCatalog||!practice.foreignKeys||!practice.permissions||!practice.referencesSound)throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+  if(pending.length===1&&pending[0]?.name===PRACTICE_SUBJECT_GUARDS_MIGRATION.name&&practice.baselineFunctions&&!practice.reviewedFunctions)return 'pending';
+  if(pending.length===0&&!practice.baselineFunctions&&practice.reviewedFunctions)return 'applied';
+  throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+ }
  const expectedKeys=['profiles','legacyLinks','commandReceipts','legacyIndex','profileProvenanceTrigger','markerCompatibilityTrigger','immutableDemoRecordTrigger','profileFunction','markerFunction','immutableFunction','canonicalPersonConstraint','canonicalConstraintDefinition','schemaCatalog','baselineRecordsCatalog','permanentTables','foreignKeysEnforced','foreignKeyReferencesSound','publicRevoked'].sort();
  if(JSON.stringify(Object.keys(objects).sort())!==JSON.stringify(expectedKeys))throw new Error('CONTACT_OPS_INTEGRITY_READBACK_INVALID');
  const values=Object.values(objects);

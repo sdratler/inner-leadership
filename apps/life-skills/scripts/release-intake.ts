@@ -9,6 +9,7 @@ import { validateDatabaseUrl } from "../src/lib/env/schema.ts";
 import { migrate } from "../src/db/migration-runner.ts";
 import type { Migration } from "../src/db/migration-plan.ts";
 import { verifyReleaseSourceProvenance } from "../src/features/forms/pre-enrollment/release-provenance.ts";
+import { assertIntakeMigrationScope } from "../src/db/intake-migration-scope.ts";
 
 const target = Object.freeze({
   projectId:"3b756632-1f66-4f75-a016-eabc37aa0d67",
@@ -52,6 +53,10 @@ async function main():Promise<void>{
   const root=new URL("../migrations/",import.meta.url),manifestBytes=await readFile(new URL("manifest.json",root));
   if(hash(manifestBytes)!==proof.manifestSha256)throw Error("MANIFEST_CHANGED");
   const manifest=z.array(z.strictObject({name:z.string().regex(/^\d{4}_[a-z][a-z0-9_]*\.sql$/),sha256:sha})).parse(JSON.parse(manifestBytes.toString("utf8")));
+  // This historical approval ends at0091. A newer proof/hash cannot authorize
+  // unrelated contact, practice or other schema changes through this runner.
+  // Reject BEFORE creating a database connection, not after a partial migrate.
+  assertIntakeMigrationScope(manifest);
   const actual=(await readdir(root)).filter(name=>name.endsWith(".sql")).sort();
   if(JSON.stringify(actual)!==JSON.stringify(manifest.map(entry=>entry.name).sort()))throw Error("INVENTORY");
   const files:Migration[]=[];
