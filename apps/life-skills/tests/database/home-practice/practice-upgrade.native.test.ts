@@ -34,11 +34,14 @@ test('native populated 26-to-27 upgrade preserves every historical row and admit
  try{
   await admin.query(`CREATE DATABASE "${db}"`);created=true;
   const manifest=JSON.parse(readFileSync(new URL('../../../migrations/manifest.json',import.meta.url),'utf8')) as {name:string;sha256:string}[];
-  const files:Migration[]=manifest.map(entry=>{
+  const inventory:Migration[]=manifest.map(entry=>{
    const bytes=readFileSync(new URL(`../../../migrations/${entry.name}`,import.meta.url));
    expect(createHash('sha256').update(bytes).digest('hex')).toBe(entry.sha256);
    return {name:entry.name,checksum:entry.sha256,sql:bytes.toString('utf8')};
   });
+  // Keep this historical upgrade's exact 26→27 scope when a later additive
+  // migration is present. Every inventory checksum is still verified above.
+  const files=inventory.slice(0,inventory.findIndex(file=>file.name===PRACTICE_SUBJECT_GUARDS_MIGRATION.name)+1);
   expect(files).toHaveLength(27);expect(files.at(-1)?.name).toBe(PRACTICE_SUBJECT_GUARDS_MIGRATION.name);
   client=await pool.connect();
   const migrationClient:MigrationClient={query:async(sql,values)=>(await client!.query(sql,values?[...values]:undefined))};

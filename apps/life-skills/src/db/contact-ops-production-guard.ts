@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 import {planMigrations, type AppliedMigration, type Migration} from './migration-plan.ts';
 import {PRACTICE_SUBJECT_GUARDS_MIGRATION,type PracticeSubjectIntegrity} from './practice-subject-integrity.ts';
+import {PROGRESS_REVIEW_REVISIONS_MIGRATION,type ProgressReviewIntegrity} from './progress-review-integrity.ts';
 
 export const CONTACT_OPS_MIGRATION = {
  name: '0101_ls_contact_operations.sql',
@@ -72,6 +73,7 @@ const DEMO_RECORDS_BASELINE = {
 export const CONTACT_OPS_SOURCE_FILES = [
  'migrations/0030_ls_calendar_attendance_20260907.sql',
  'migrations/0040_ls_home_practice_20260911.sql',
+ 'migrations/0050_forms_resources_qualitative_reviews_20260911.sql',
  'migrations/0097_ls_demo_provenance.sql',
  'migrations/0101_ls_contact_operations.sql',
  'migrations/0102_ls_internal_tasks.sql',
@@ -80,12 +82,14 @@ export const CONTACT_OPS_SOURCE_FILES = [
  'migrations/0105_ls_contact_authority.sql',
  'migrations/0106_ls_contact_inbound_receipts.sql',
  'migrations/0107_ls_practice_subject_guards.sql',
+ 'migrations/0108_ls_progress_review_revisions.sql',
  'migrations/manifest.json',
  'scripts/apply-contact-ops-production.ts',
  'src/db/contact-ops-production-guard.ts',
  'src/db/contact-authority-integrity.ts',
  'src/db/contact-inbound-integrity.ts',
  'src/db/practice-subject-integrity.ts',
+ 'src/db/progress-review-integrity.ts',
  'src/db/migration-plan.ts',
  'src/db/migration-runner.ts',
  'scripts/release-intake.ts',
@@ -252,13 +256,25 @@ export function contactOpsSourceBundle(entries:readonly {path:string;bytes:Uint8
 }
 
 /** No partial/unknown schema and no surprise migration may be promoted. */
-export function contactOpsMigrationState(files:readonly Migration[],history:readonly AppliedMigration[],objects:ContactOpsIntegrityObjects,tasks:InternalTaskIntegrityObjects,source?:SourceTaskIntegrityObjects,voice?:VoiceRuleIntegrityObjects,authority?:ContactAuthorityIntegrityObjects,inbound?:ContactInboundIntegrityObjects,practice?:PracticeSubjectIntegrity):'pending'|'applied'{
+export function contactOpsMigrationState(files:readonly Migration[],history:readonly AppliedMigration[],objects:ContactOpsIntegrityObjects,tasks:InternalTaskIntegrityObjects,source?:SourceTaskIntegrityObjects,voice?:VoiceRuleIntegrityObjects,authority?:ContactAuthorityIntegrityObjects,inbound?:ContactInboundIntegrityObjects,practice?:PracticeSubjectIntegrity,progress?:ProgressReviewIntegrity):'pending'|'applied'{
  const index=files.findIndex(file=>file.name===CONTACT_OPS_MIGRATION.name);
  if(index<0||files[index]?.checksum!==CONTACT_OPS_MIGRATION.sha256)throw new Error('CONTACT_OPS_MANIFEST_MISMATCH');
  const suffix=files.slice(index+1);
- const allowedSuffix=[INTERNAL_TASKS_MIGRATION,SOURCE_TASKS_MIGRATION,VOICE_RULE_MIGRATION,CONTACT_AUTHORITY_MIGRATION,CONTACT_INBOUND_MIGRATION,PRACTICE_SUBJECT_GUARDS_MIGRATION];
+ const allowedSuffix=[INTERNAL_TASKS_MIGRATION,SOURCE_TASKS_MIGRATION,VOICE_RULE_MIGRATION,CONTACT_AUTHORITY_MIGRATION,CONTACT_INBOUND_MIGRATION,PRACTICE_SUBJECT_GUARDS_MIGRATION,PROGRESS_REVIEW_REVISIONS_MIGRATION];
  if(suffix.length>allowedSuffix.length||suffix.some((file,index)=>file.name!==allowedSuffix[index]?.name||file.checksum!==allowedSuffix[index]?.sha256))throw new Error('CONTACT_OPS_MANIFEST_MISMATCH');
  const pending=planMigrations(files,history);
+ if(suffix.length===7){
+  // Require all 27 prior migrations and EVERY prior catalog/body/FK/ACL gate.
+  // This operator may apply only the exact reviewed additive 0108 suffix.
+  const baselineHistory=history.filter(row=>row.name!==PROGRESS_REVIEW_REVISIONS_MIGRATION.name);
+  if(contactOpsMigrationState(files.slice(0,-1),baselineHistory,objects,tasks,source,voice,authority,inbound,practice)!=='applied')throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+  const keys=['baselineCatalog','revisedCatalog','publishedGuards','revisionGuards','foreignKeys','permissions','referencesSound'].sort();
+  if(!progress||JSON.stringify(Object.keys(progress).sort())!==JSON.stringify(keys)||Object.values(progress).some(value=>typeof value!=='boolean'))throw new Error('CONTACT_OPS_PROGRESS_READBACK_INVALID');
+  if(!progress.publishedGuards||!progress.foreignKeys||!progress.permissions||!progress.referencesSound)throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+  if(pending.length===1&&pending[0]?.name===PROGRESS_REVIEW_REVISIONS_MIGRATION.name&&progress.baselineCatalog&&!progress.revisedCatalog&&!progress.revisionGuards)return 'pending';
+  if(pending.length===0&&!progress.baselineCatalog&&progress.revisedCatalog&&progress.revisionGuards)return 'applied';
+  throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+ }
  if(suffix.length===6){
   // Reuse EVERY 0101..0106 baseline gate, requiring it already applied. This
   // new suffix may neither admit an earlier pending migration nor ignore drift.

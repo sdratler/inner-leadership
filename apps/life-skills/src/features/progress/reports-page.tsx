@@ -6,11 +6,12 @@ import { PrivateObservationEvidencePanel } from "../session-workflow/private-obs
 import {calendarCasesForMode,type CalendarMode} from '../calendar/mode.ts';
 import {workspaceHref,type WorkspaceContext} from '../../ui/workspace/navigation-model.ts';
 import {UnsavedChangesGuard} from '../../ui/workspace/draft-guard.tsx';
+import {reconcileRevisionAttempt,sameNarrative,validNarrativeForSave,type RevisionAttempt,type RevisionReadback} from './draft-revision-client.ts';
 type Locale = "en" | "he"; type Role = "practitioner" | "parent";
 type Case = { id: string; displayName: string; kind: string };
 type Audience = { id: string; visibility: string; published: boolean };
 export type Narrative = { taughtAndPractised: string[]; parentReportedExamples: string[]; practitionerObservations: string[]; usefulChanges: string[]; continuingDifficulty: string[]; uncertainty: string; nextAdjustment: string; informationLimits: string };
-export type Review = { id: string; caseId: string; audienceId: string; periodStart: string; periodEnd: string; attendedSessionCount: number; state: "draft" | "published"; narrative: Narrative };
+export type Review = { id: string; caseId: string; audienceId: string; periodStart: string; periodEnd: string; attendedSessionCount: number; state: "draft" | "published"; narrative: Narrative; revision: number; parentReports?: readonly {reportId:string}[]; assignmentVersionIds?: readonly string[] };
 type Draft = { periodStart: string; taught: string; observations: string; useful: string; difficulty: string; uncertainty: string; next: string; limits: string };
 const blank: Draft = { periodStart: "", taught: "", observations: "", useful: "", difficulty: "", uncertainty: "", next: "", limits: "" };
 const words = {
@@ -20,12 +21,19 @@ const words = {
 const lines = (text: string) => text.split("\n").map(value => value.trim()).filter(Boolean);
 const periodConflictCopy={en:'A report for this period already exists. Your changes were not saved; your text is still here. Review the saved report or choose another period.',he:'כבר קיים דוח לתקופה הזו. השינויים לא נשמרו; הטקסט שלכם עדיין כאן. בדקו את הדוח השמור או בחרו תקופה אחרת.'} as const;
 class DuplicateReportPeriod extends Error {}
+class RevisionConflict extends Error {}
+class ReportValidationFailure extends Error {}
+
+const revisionWords={
+ en:{save:'Save draft revision',saved:'Draft revision saved and read back.',check:'Check saved revision',retry:'Retry the same revision',pending:'This revision is not yet confirmed. Your text is preserved. Check the saved revision or retry the same request; do not create a new request.',conflict:'Another saved revision exists. Your text is preserved. Review the current saved draft before continuing.',superseded:'Your revision was recorded, but a newer saved version exists. Your text is preserved; review the current version.',current:'Current saved version — review before continuing',keep:'Keep my text and use this saved revision as the base',load:'Load saved draft (discard my edits)',keepConfirm:'Use the displayed saved revision as the base while keeping your text? Your next save will revise that version. Nothing is published.',history:'Private draft revision history',historyNote:'This history is practitioner-only. Only the explicitly published report is shared with the family.',loadHistory:'Load revision history',more:'Earlier revisions',historyError:'Could not load private revision history. Your edits are unchanged.',version:'Revision',sourcePreserved:'Existing attributed parent examples and attached source references are preserved. This editor does not change source attachments.',dirty:'Save these edits before publishing.',publishedConflict:'Publication was not confirmed for the version you reviewed. Your text is preserved. Review the current saved report.'},
+ he:{save:'שמירת גרסת הטיוטה',saved:'גרסת הטיוטה נשמרה ואומתה בקריאה חוזרת.',check:'בדיקת הגרסה השמורה',retry:'ניסיון חוזר של אותה שמירה',pending:'שמירת הגרסה עדיין לא אושרה. הטקסט נשמר בעורך. בדקו את הגרסה השמורה או נסו שוב את אותה בקשה; אין ליצור בקשה חדשה.',conflict:'קיימת גרסה שמורה אחרת. הטקסט נשמר בעורך. בדקו את הטיוטה השמורה העדכנית לפני שממשיכים.',superseded:'הגרסה שלכם נרשמה, אך קיימת גרסה שמורה חדשה יותר. הטקסט נשמר בעורך; בדקו את הגרסה העדכנית.',current:'הגרסה השמורה העדכנית — יש לבדוק לפני שממשיכים',keep:'שמירת הטקסט שלי והמשך על בסיס הגרסה השמורה הזו',load:'טעינת הטיוטה השמורה (ויתור על השינויים שלי)',keepConfirm:'להמשיך על בסיס הגרסה השמורה המוצגת, עם הטקסט שלכם? השמירה הבאה תעדכן את הגרסה הזו. דבר לא יפורסם.',history:'היסטוריית גרסאות טיוטה פרטית',historyNote:'היסטוריה זו מיועדת לאיש המקצוע בלבד. רק הדוח שפורסם במפורש משותף עם המשפחה.',loadHistory:'טעינת היסטוריית גרסאות',more:'גרסאות קודמות',historyError:'לא ניתן לטעון את היסטוריית הגרסאות הפרטית. השינויים בעורך לא השתנו.',version:'גרסה',sourcePreserved:'דוגמאות ההורים המיוחסות וההפניות למקורות הקיימים נשמרות. עורך זה אינו משנה את המקורות המצורפים.',dirty:'יש לשמור את השינויים לפני הפרסום.',publishedConflict:'לא ניתן לאשר פרסום של הגרסה שבדקתם. הטקסט נשמר בעורך. בדקו את הדוח השמור העדכני.'},
+} as const;
 type EditorState={dirty:boolean;busy:boolean;uncertain:boolean};
 const idleEditor:EditorState={dirty:false,busy:false,uncertain:false};
 const discardMessage=(locale:Locale)=>locale==='he'?'יש שינויים שלא נשמרו. לעבור ולוותר עליהם?':'You have unsaved report edits. Leave and discard them?';
 export function periodEnd(start: string) { if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) return ""; const date = new Date(`${start}T00:00:00Z`); if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0,10) !== start) return ""; date.setUTCDate(date.getUTCDate() + 28); return date.toISOString().slice(0,10); }
 async function read<T>(url: string, signal: AbortSignal): Promise<T> { const response = await fetch(url, { credentials: "same-origin", cache: "no-store", signal }); const payload = await response.json(); if (!response.ok || payload.ok !== true) throw Error("READ_FAILED"); return payload.data as T; }
-async function post<T>(url: string, body: unknown): Promise<T> { const session = await sessionInfo(); const response = await fetch(url, { method: "POST", credentials: "same-origin", cache: "no-store", headers: { "Content-Type": "application/json", "X-CSRF-Token": session.csrfToken }, body: JSON.stringify(body) }); const payload = await response.json(); if(url==='/api/progress/reviews'&&response.status===409&&payload.ok===false&&payload.error?.code==='CONFLICT')throw new DuplicateReportPeriod(); if (!response.ok || payload.ok !== true) throw Error("MUTATION_UNCONFIRMED"); return payload.data as T; }
+async function post<T>(url: string, body: unknown): Promise<T> { const session = await sessionInfo(); const response = await fetch(url, { method: "POST", credentials: "same-origin", cache: "no-store", headers: { "Content-Type": "application/json", "X-CSRF-Token": session.csrfToken }, body: JSON.stringify(body) }); const payload = await response.json(); if(response.status===409&&payload.ok===false&&payload.error?.code==='CONFLICT'){if(url==='/api/progress/reviews')throw new DuplicateReportPeriod();throw new RevisionConflict();} if(response.status===400&&payload.ok===false&&payload.error?.code==='INVALID_REQUEST')throw new ReportValidationFailure(); if (!response.ok || payload.ok !== true) throw Error("MUTATION_UNCONFIRMED"); return payload.data as T; }
 export function ReportsPage({ locale, role, caseId, audienceId,mode='live',navigationContext={} }: { locale: Locale; role: Role; caseId?: string | undefined; audienceId?: string | undefined;mode?:CalendarMode;navigationContext?:WorkspaceContext }) {
  const router=useRouter(),context={...navigationContext,mode};
  const t=words[locale],contextKey=`${role}:${role==='practitioner'?mode:'authorized'}:${caseId??''}`;
@@ -61,21 +69,118 @@ export function ReportCaseWorkspace({ locale, role, caseId, initialAudienceId,on
  return <div className="lsw-stack"><label>{t.audience}<select value={activeAudience} disabled={editorState.busy||editorState.uncertain} onChange={event=>chooseAudience(event.target.value)}>{data.audiences.map((item,index) => <option key={item.id} value={item.id}>{t.audience} {index+1}</option>)}</select></label>{role === "practitioner" ? <ReportEditor key={`${caseId}:${activeAudience}`} locale={locale} caseId={caseId} audienceId={activeAudience} reviews={reviews} onSaved={saved} onStateChange={setEditorState}/> : <p>{t.family}</p>}{!reviews.length && <p>{t.empty}</p>}{reviews.map(review => <ReportReadout key={review.id} locale={locale} review={review} />)}</div>;
 }
 export function ReportEditor({ locale, caseId, audienceId, reviews, onSaved,onStateChange }: { locale: Locale; caseId: string; audienceId: string; reviews: Review[]; onSaved: (review: Review) => void;onStateChange?:(state:EditorState)=>void }) {
- const t = words[locale]; const [draft, setDraft] = useState<Draft>(blank), [selectedId, setSelectedId] = useState(""), [dirty, setDirty] = useState(false), [busy, setBusy] = useState(false), [uncertain, setUncertain] = useState(false), [notice, setNotice] = useState(""); const lock = useRef(false), mounted = useRef(false);
- const [periodConflict,setPeriodConflict]=useState(false);
+ const t = words[locale],r=revisionWords[locale];
+ const [draft,setDraft]=useState<Draft>(blank),[selectedId,setSelectedId]=useState(''),[base,setBase]=useState<Review|null>(null);
+ const [dirty,setDirty]=useState(false),[busy,setBusy]=useState(false),[uncertain,setUncertain]=useState(false),[notice,setNotice]=useState('');
+ const [periodConflict,setPeriodConflict]=useState(false),[currentSaved,setCurrentSaved]=useState<Review|null>(null);
+ const [pendingKind,setPendingKind]=useState<'revision'|'publication'|null>(null);
+ const lock=useRef(false),mounted=useRef(false),attempt=useRef<RevisionAttempt|null>(null),publication=useRef<Review|null>(null);
  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
  useEffect(()=>{onStateChange?.({dirty,busy,uncertain});},[dirty,busy,uncertain,onStateChange]);
- const selected = reviews.find(item => item.id === selectedId && item.caseId === caseId && item.audienceId === audienceId);
- function change(field: keyof Draft, value: string) { if (lock.current) return; setDraft(previous => ({ ...previous, [field]: value })); setDirty(true);if(periodConflict){setPeriodConflict(false);setNotice('');} }
- function choose(id: string) { if (lock.current||uncertain||id===selectedId) return;if(dirty&&!window.confirm(discardMessage(locale)))return; const review = reviews.find(item => item.id === id&&item.caseId===caseId&&item.audienceId===audienceId); if (!review) { setDraft(blank); setSelectedId(""); setDirty(false); return; } const n = review.narrative; setDraft({ periodStart: review.periodStart, taught: n.taughtAndPractised.join("\n"), observations: n.practitionerObservations.join("\n"), useful: n.usefulChanges.join("\n"), difficulty: n.continuingDifficulty.join("\n"), uncertainty: n.uncertainty, next: n.nextAdjustment, limits: n.informationLimits }); setSelectedId(id); setDirty(false); setNotice(""); }
- async function save() { if (lock.current || uncertain || !dirty) return; const end = periodEnd(draft.periodStart), narrative: Narrative = { taughtAndPractised: lines(draft.taught), parentReportedExamples: [], practitionerObservations: lines(draft.observations), usefulChanges: lines(draft.useful), continuingDifficulty: lines(draft.difficulty), uncertainty: draft.uncertainty.trim(), nextAdjustment: draft.next.trim(), informationLimits: draft.limits.trim() }; if (!end || !narrative.taughtAndPractised.length || !narrative.uncertainty || !narrative.nextAdjustment || !narrative.informationLimits) { setNotice(t.required); return; } lock.current = true; setBusy(true); setNotice("");
-  setPeriodConflict(false);
-  try { const result = await post<{ reviewId: string; attendedSessionCount: number }>("/api/progress/reviews", { caseId, audienceId, periodStart: draft.periodStart, periodEnd: end, assignmentVersionIds: [], parentReportIds: [], narrative }); if (!result.reviewId || !Number.isSafeInteger(result.attendedSessionCount)) throw Error("INVALID_RECEIPT"); if (mounted.current) { onSaved({ id: result.reviewId, caseId, audienceId, periodStart: draft.periodStart, periodEnd: end, attendedSessionCount: result.attendedSessionCount, state: "draft", narrative }); setSelectedId(result.reviewId); setDirty(false); setNotice(t.saved); } } catch(error) { if (mounted.current) { if(error instanceof DuplicateReportPeriod){setPeriodConflict(true);setNotice(periodConflictCopy[locale]);}else{setUncertain(true);setNotice(t.failed);} } } finally { lock.current = false; if (mounted.current) setBusy(false); }
+ const selected=base?.id===selectedId&&base.caseId===caseId&&base.audienceId===audienceId?base:null;
+ function loadDraft(review:Review|null){
+  const n=review?.narrative;
+  setDraft(review&&n?{periodStart:review.periodStart,taught:n.taughtAndPractised.join('\n'),observations:n.practitionerObservations.join('\n'),useful:n.usefulChanges.join('\n'),difficulty:n.continuingDifficulty.join('\n'),uncertainty:n.uncertainty,next:n.nextAdjustment,limits:n.informationLimits}:blank);
+  setBase(review);setSelectedId(review?.id??'');setDirty(false);setUncertain(false);setPeriodConflict(false);setCurrentSaved(null);setNotice('');attempt.current=null;publication.current=null;setPendingKind(null);
  }
- async function publish() { if (lock.current || uncertain || dirty || !selected || selected.state !== "draft") return; lock.current = true; setBusy(true); setNotice(""); const snapshot = selected;
-  try { const result = await post<{ reviewId: string; attendedSessionCount: number }>("/api/progress/reviews/publish", { reviewId: snapshot.id }); if (result.reviewId !== snapshot.id || !Number.isSafeInteger(result.attendedSessionCount)) throw Error("INVALID_RECEIPT"); if (mounted.current) { onSaved({ ...snapshot, state: "published", attendedSessionCount: result.attendedSessionCount }); setNotice(t.publishedNow); } } catch { if (mounted.current) { setUncertain(true); setNotice(t.failed); } } finally { lock.current = false; if (mounted.current) setBusy(false); }
+ function change(field:keyof Draft,value:string){if(lock.current||uncertain||currentSaved||selected?.state==='published'||(field==='periodStart'&&selected))return;setDraft(previous=>({...previous,[field]:value}));setDirty(true);if(periodConflict){setPeriodConflict(false);setNotice('');}}
+ function choose(id:string){if(lock.current||uncertain||id===selectedId)return;if(dirty&&!window.confirm(discardMessage(locale)))return;loadDraft(reviews.find(item=>item.id===id&&item.caseId===caseId&&item.audienceId===audienceId&&item.state==='draft')??null);}
+ async function savedReview(id:string):Promise<Review>{
+  const items=await read<Review[]>(`/api/progress/reviews?caseId=${encodeURIComponent(caseId)}`,new AbortController().signal);
+  const saved=items.find(item=>item.id===id&&item.caseId===caseId&&item.audienceId===audienceId);
+  if(!saved||!Number.isSafeInteger(saved.revision)||saved.revision<1||!Number.isSafeInteger(saved.attendedSessionCount)||!['draft','published'].includes(saved.state))throw Error('INVALID_SAVED_REPORT');
+  return saved;
+ }
+ function comparison(saved:Review,message:string){if(!mounted.current)return;onSaved(saved);setCurrentSaved(saved);setUncertain(true);setNotice(message);}
+ async function confirmRevision(input:RevisionAttempt,confirmedConflict=false){
+  const receipt=await read<RevisionReadback>(`/api/progress/reviews/revisions?reviewId=${encodeURIComponent(input.reviewId)}&operationId=${encodeURIComponent(input.operationId)}`,new AbortController().signal);
+  const outcome=reconcileRevisionAttempt(input,receipt);
+  if(outcome.state==='pending'){
+   if(confirmedConflict||receipt.currentRevision!==input.expectedRevision||receipt.state!=='draft')comparison(await savedReview(input.reviewId),r.conflict);
+   else if(mounted.current){setUncertain(true);setNotice(r.pending);}
+   return;
+  }
+  const saved=await savedReview(input.reviewId);
+  if(outcome.state==='superseded'||saved.revision!==outcome.saved.revision||!sameNarrative(saved.narrative,input.narrative)){comparison(saved,r.superseded);return;}
+  if(mounted.current){onSaved(saved);setBase(saved);setDirty(false);setUncertain(false);setCurrentSaved(null);attempt.current=null;setPendingKind(null);setNotice(saved.state==='published'?t.publishedNow:r.saved);}
+ }
+ async function sendRevision(input:RevisionAttempt){
+  let conflict=false;
+  try{
+   const result=await post<{reviewId:string;revision:number;operationId:string}>('/api/progress/reviews/revise',input);
+   if(result.reviewId!==input.reviewId||result.revision!==input.expectedRevision+1||result.operationId!==input.operationId)throw Error('INVALID_REVISION_RECEIPT');
+  }catch(error){if(error instanceof ReportValidationFailure)throw error;conflict=error instanceof RevisionConflict;}
+  // Even a 201 or a lost response is reconciled against persisted history.
+  await confirmRevision(input,conflict);
+ }
+ async function save(){
+  if(lock.current||uncertain||!dirty||selected?.state==='published')return;
+  const end=periodEnd(draft.periodStart),narrative:Narrative={taughtAndPractised:lines(draft.taught),parentReportedExamples:selected?.narrative.parentReportedExamples??[],practitionerObservations:lines(draft.observations),usefulChanges:lines(draft.useful),continuingDifficulty:lines(draft.difficulty),uncertainty:draft.uncertainty.trim(),nextAdjustment:draft.next.trim(),informationLimits:draft.limits.trim()};
+  if(!end||!validNarrativeForSave(narrative)){setPeriodConflict(true);setNotice(locale==='he'?'מלאו את שדות החובה. עד 30 שורות בכל רשימה, עד 500 תווים לשורת לימוד ועד 1,500 לשורה אחרת; עד 3,000 תווים בשדה הסבר ועד 64KB בסך הכול. הטקסט לא נשלח.':'Complete required fields. Use at most 30 lines per list, 500 characters per teaching line, 1,500 per other line, 3,000 per explanation and 64KB in total. The text was not sent.');return;}
+  lock.current=true;setBusy(true);setNotice('');setPeriodConflict(false);
+  try{
+   if(selected){
+    const input:RevisionAttempt={reviewId:selected.id,expectedRevision:selected.revision,operationId:crypto.randomUUID(),narrative};attempt.current=input;setPendingKind('revision');
+    await sendRevision(input);
+   }else{
+    const result=await post<{reviewId:string;attendedSessionCount:number;revision:number}>('/api/progress/reviews',{caseId,audienceId,periodStart:draft.periodStart,periodEnd:end,assignmentVersionIds:[],parentReportIds:[],narrative});
+    if(!result.reviewId||result.revision!==1||!Number.isSafeInteger(result.attendedSessionCount))throw Error('INVALID_RECEIPT');
+    const saved=await savedReview(result.reviewId);
+    if(saved.periodStart!==draft.periodStart||saved.periodEnd!==end||saved.revision!==1||!sameNarrative(saved.narrative,narrative))throw Error('UNCONFIRMED_NEW_DRAFT');
+    if(mounted.current){onSaved(saved);setSelectedId(saved.id);setBase(saved);setDirty(false);setNotice(saved.state==='published'?t.publishedNow:t.saved);}
+   }
+  }catch(error){if(mounted.current){if(error instanceof DuplicateReportPeriod){setPeriodConflict(true);setNotice(periodConflictCopy[locale]);}else if(error instanceof ReportValidationFailure){attempt.current=null;setPendingKind(null);setUncertain(false);setPeriodConflict(true);setNotice(locale==='he'?'השרת דחה את תוכן הטיוטה לפני השמירה. הטקסט עדיין כאן; בדקו את שדות החובה ואורך השורות ונסו שוב.':'The server rejected the draft content before saving. Your text is still here; check required fields and line lengths, then try again.');}else{setUncertain(true);setNotice(attempt.current?r.pending:t.failed);}}}
+  finally{lock.current=false;if(mounted.current)setBusy(false);}
+ }
+ async function recover(retry=false){
+  if(lock.current)return;const input=attempt.current,snapshot=publication.current;if(!input&&!snapshot)return;
+  lock.current=true;setBusy(true);
+  try{
+   if(input){if(retry)await sendRevision(input);else await confirmRevision(input);}
+   else if(snapshot){const saved=await savedReview(snapshot.id);if(saved.state==='published'&&saved.revision===snapshot.revision&&sameNarrative(saved.narrative,snapshot.narrative)){if(mounted.current){onSaved(saved);setBase(saved);setUncertain(false);setNotice(t.publishedNow);publication.current=null;setPendingKind(null);}}else comparison(saved,r.publishedConflict);}
+  }catch{if(mounted.current)setNotice(input?r.pending:t.failed);}
+  finally{lock.current=false;if(mounted.current)setBusy(false);}
+ }
+ async function publish(){
+  if(lock.current||uncertain||dirty||!selected||selected.state!=='draft')return;
+  lock.current=true;setBusy(true);setNotice('');const snapshot=selected;publication.current=snapshot;setPendingKind('publication');
+  try{
+   await post('/api/progress/reviews/publish',{reviewId:snapshot.id,expectedRevision:snapshot.revision});
+   const saved=await savedReview(snapshot.id);
+   if(saved.state!=='published'||saved.revision!==snapshot.revision||!sameNarrative(saved.narrative,snapshot.narrative))throw Error('UNCONFIRMED_PUBLICATION');
+   if(mounted.current){onSaved(saved);setBase(saved);publication.current=null;setPendingKind(null);setNotice(t.publishedNow);}
+  }catch(error){if(mounted.current){setUncertain(true);setNotice(error instanceof RevisionConflict?r.publishedConflict:t.failed);}}
+  finally{lock.current=false;if(mounted.current)setBusy(false);}
+ }
+ function adoptCurrent(keepText:boolean){
+  if(lock.current||!currentSaved)return;
+  if(keepText){if(currentSaved.state!=='draft'||!window.confirm(r.keepConfirm))return;setBase(currentSaved);setDirty(true);setUncertain(false);setCurrentSaved(null);setNotice('');attempt.current=null;publication.current=null;setPendingKind(null);}
+  else{if(dirty&&!window.confirm(discardMessage(locale)))return;loadDraft(currentSaved);}
  }
  const fields = [["taught",t.taught],["observations",t.observations],["useful",t.useful],["difficulty",t.difficulty],["uncertainty",t.uncertainty],["next",t.next],["limits",t.limits]] as const;
- return <section className="lsw-card lsw-stack"><PrivateObservationEvidencePanel locale={locale} caseId={caseId}/><label>{t.select}<select value={selectedId} disabled={busy} onChange={event => choose(event.target.value)}><option value="">{t.newDraft}</option>{reviews.filter(item => item.state === "draft").map(item => <option key={item.id} value={item.id}>{item.periodStart}–{item.periodEnd}</option>)}</select></label><p>{t.sources}</p><label>{t.start}<input type="date" value={draft.periodStart} disabled={busy} onChange={event => change("periodStart",event.target.value)} /></label><p>{t.end}: {periodEnd(draft.periodStart) || "—"}</p>{fields.map(([field,label]) => <label key={field}>{label}<textarea value={draft[field]} disabled={busy} maxLength={field === "uncertainty" || field === "next" || field === "limits" ? 3000 : 12000} onChange={event => change(field,event.target.value)} /></label>)}<div className="lsw-actions"><button type="button" disabled={busy || uncertain || !dirty} onClick={() => void save()}>{busy ? t.busy : t.save}</button><button type="button" disabled={busy || uncertain || dirty || !selected || selected.state !== "draft"} onClick={() => void publish()}>{t.publish}</button></div>{dirty && <p>{t.dirty}</p>}{notice && <p role={periodConflict?'alert':'status'}>{notice}</p>}{uncertain && <button type="button" onClick={() => window.location.reload()}>{t.reload}</button>}</section>;
+ return <section className="lsw-card lsw-stack">
+  <PrivateObservationEvidencePanel locale={locale} caseId={caseId}/>
+  <label>{t.select}<select aria-label={t.select} value={selectedId} disabled={busy||uncertain} onChange={event=>choose(event.target.value)}><option value="">{t.newDraft}</option>{reviews.filter(item=>item.state==='draft'||item.id===selectedId).map(item=><option key={item.id} value={item.id}>{item.periodStart}–{item.periodEnd} · {r.version} {item.revision}</option>)}</select></label>
+  <p>{selected?r.sourcePreserved:t.sources}</p>{selected&&<p>{r.version}: {selected.revision} · {selected.state==='published'?t.published:t.draft}</p>}
+  <label>{t.start}<input type="date" value={draft.periodStart} disabled={busy||uncertain||Boolean(selected)} onChange={event=>change('periodStart',event.target.value)}/></label>
+  <p>{t.end}: {periodEnd(draft.periodStart)||'—'}</p>
+  {fields.map(([field,label])=><label key={field}>{label}<textarea value={draft[field]} disabled={busy||uncertain||selected?.state==='published'} maxLength={field==='uncertainty'||field==='next'||field==='limits'?3000:12000} onChange={event=>change(field,event.target.value)}/></label>)}
+  <div className="lsw-actions"><button type="button" disabled={busy||uncertain||!dirty||selected?.state==='published'} onClick={()=>void save()}>{busy?t.busy:selected?r.save:t.save}</button><button type="button" disabled={busy||uncertain||dirty||!selected||selected.state!=='draft'} onClick={()=>void publish()}>{t.publish}</button></div>
+  {dirty&&<p>{r.dirty}</p>}{notice&&<p role={periodConflict||uncertain?'alert':'status'}>{notice}</p>}
+  {uncertain&&pendingKind&&<div className="lsw-actions"><button type="button" disabled={busy} onClick={()=>void recover()}>{r.check}</button>{pendingKind==='revision'&&!currentSaved&&<button type="button" disabled={busy} onClick={()=>void recover(true)}>{r.retry}</button>}</div>}
+  {currentSaved&&<details><summary>{r.current}</summary><ReportReadout locale={locale} review={currentSaved}/><div className="lsw-actions">{currentSaved.state==='draft'&&<button type="button" disabled={busy} onClick={()=>adoptCurrent(true)}>{r.keep}</button>}<button type="button" disabled={busy} onClick={()=>adoptCurrent(false)}>{r.load}</button></div></details>}
+  {uncertain&&!pendingKind&&<button type="button" onClick={()=>{if(!dirty||window.confirm(discardMessage(locale)))window.location.reload();}}>{t.reload}</button>}
+  {selected&&<PrivateRevisionHistory key={`${selected.id}:${selected.revision}`} locale={locale} review={selected}/>}
+ </section>;
+}
+function PrivateRevisionHistory({locale,review}:{locale:Locale;review:Review}){
+ const r=revisionWords[locale],[data,setData]=useState<RevisionReadback|null>(null),[error,setError]=useState(false),[busy,setBusy]=useState(false),lock=useRef(false),mounted=useRef(false);
+ useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
+ async function load(more=false){if(lock.current)return;lock.current=true;setBusy(true);setError(false);try{
+  const page=await read<RevisionReadback>(`/api/progress/reviews/revisions?reviewId=${encodeURIComponent(review.id)}${more&&data?.nextBefore?`&before=${data.nextBefore}`:''}`,new AbortController().signal);
+  if(page.reviewId!==review.id||!Array.isArray(page.revisions))throw Error('INVALID_HISTORY');
+  if(mounted.current)setData(previous=>({...page,revisions:more&&previous?[...previous.revisions,...page.revisions]:page.revisions}));
+ }catch{if(mounted.current)setError(true);}finally{lock.current=false;if(mounted.current)setBusy(false);}}
+ return <details><summary>{r.history}</summary><p>{r.historyNote}</p>{!data&&<button type="button" disabled={busy} onClick={()=>void load()}>{r.loadHistory}</button>}{error&&<p role="alert">{r.historyError} <button type="button" disabled={busy} onClick={()=>void load(Boolean(data))}>{locale==='he'?'ניסיון חוזר':'Retry'}</button></p>}{data?.revisions.map(saved=><details key={saved.revision}><summary>{r.version} {saved.revision} · <time dateTime={saved.savedAt}>{new Date(saved.savedAt).toLocaleString(locale==='he'?'he-IL':'en-GB')}</time></summary><ReportReadout locale={locale} review={{...review,revision:saved.revision,state:'draft',narrative:saved.narrative}}/></details>)}{data?.hasMore&&<button type="button" disabled={busy} onClick={()=>void load(true)}>{r.more}</button>}</details>;
 }
 export function ReportReadout({ locale, review }: { locale: Locale; review: Review }) { const t = words[locale], n = review.narrative; const sections = [[t.taught,n.taughtAndPractised],[t.observations,n.practitionerObservations],[locale === "he" ? "דיווחי הורים מיוחסים" : "Attributed parent reports",n.parentReportedExamples],[t.useful,n.usefulChanges],[t.difficulty,n.continuingDifficulty],[t.uncertainty,[n.uncertainty]],[t.next,[n.nextAdjustment]],[t.limits,[n.informationLimits]]] as const; return <article className="lsw-card"><h2>{review.periodStart}–{review.periodEnd} · {review.state === "published" ? t.published : t.draft}</h2><p>{t.attended}: {review.attendedSessionCount}</p>{sections.filter(([,values]) => values.length).map(([label,values]) => <section key={label}><h3>{label}</h3>{values.map((text,index) => <p key={index}>{text}</p>)}</section>)}</article>; }
