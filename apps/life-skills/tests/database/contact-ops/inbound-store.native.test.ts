@@ -25,7 +25,10 @@ test("native receipt is encrypted, blinded, immutable and replay-safe without ch
  await expect(store.capture({...inquiry,messageText:"Different body under same provider event"})).rejects.toThrow("CONFLICT");
  for(const sql of ["UPDATE ls_contact_ops.message_receipts SET payload_ciphertext='changed' WHERE workspace_id=$1","DELETE FROM ls_contact_ops.message_receipts WHERE workspace_id=$1"])
   await expect(f.pool.query(sql,[f.workspaceId])).rejects.toThrow("CONTACT_MESSAGE_RECEIPT_APPEND_ONLY");
- await expect(f.pool.query("TRUNCATE ls_contact_ops.message_receipts")).rejects.toThrow("CONTACT_MESSAGE_RECEIPT_APPEND_ONLY");
+ await expect(f.pool.query("TRUNCATE ls_contact_ops.message_receipts")).rejects.toMatchObject({code:"0A000"});
+ // Naming the exact new FK-dependent table lets PostgreSQL reach the original
+ // append-only trigger; it must still refuse, not truncate either table.
+ await expect(f.pool.query("TRUNCATE ls_contact_ops.message_receipts,ls_contact_ops.inbound_projections")).rejects.toThrow("CONTACT_MESSAGE_RECEIPT_APPEND_ONLY");
  expect((await f.pool.query("SELECT count(*)::int AS n FROM ls_identity.people WHERE workspace_id=$1",[f.workspaceId])).rows[0].n).toBe(before);
  expect((await f.pool.query("SELECT count(*)::int AS n FROM ls_contact_ops.profiles WHERE workspace_id=$1",[f.workspaceId])).rows[0].n).toBe(0);
  expect((await f.pool.query("SELECT count(*)::int AS n FROM ls_contact_ops.cutover WHERE workspace_id=$1",[f.workspaceId])).rows[0].n).toBe(0);

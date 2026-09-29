@@ -2,6 +2,7 @@ import {createHash} from 'node:crypto';
 import {describe,expect,it} from 'vitest';
 import {PRACTICE_SUBJECT_GUARDS_MIGRATION,practiceFunctionBody,type PracticeSubjectIntegrity} from '../../src/db/practice-subject-integrity.ts';
 import {PROGRESS_REVIEW_REVISIONS_MIGRATION,type ProgressReviewIntegrity} from '../../src/db/progress-review-integrity.ts';
+import {CONTACT_INBOUND_PROJECTION_MIGRATION,type ContactInboundProjectionIntegrity} from '../../src/db/contact-inbound-projection-integrity.ts';
 import {CONTACT_INBOUND_MIGRATION,contactInboundSchemaCatalogMatches,type ContactInboundIntegrityObjects} from '../../src/db/contact-ops-production-guard.ts';
 import {assertContactOpsDatabaseIdentity,calendarAppendOnlyFunctionBody,contactAuthoritySchemaCatalogMatches,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsComparableConstraints,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,internalTaskSchemaCatalogMatches,sourceTaskSchemaCatalogMatches,voiceRuleSchemaCatalogMatches,CONTACT_AUTHORITY_MIGRATION,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,INTERNAL_TASKS_MIGRATION,SOURCE_TASKS_MIGRATION,VOICE_RULE_MIGRATION,type ContactAuthorityIntegrityObjects,type ContactOpsIntegrityObjects,type InternalTaskIntegrityObjects,type SourceTaskIntegrityObjects,type VoiceRuleIntegrityObjects} from '../../src/db/contact-ops-production-guard.ts';
 
@@ -238,6 +239,36 @@ describe('registered native CRM production migration gate',()=>{
   expect(()=>practiceFunctionBody([{...file,sql:sql+sql}],file.name,'ls_practice.check_completion_author')).toThrow('CONTACT_OPS_PRACTICE_FUNCTION_SOURCE_MISSING');
   expect(()=>practiceFunctionBody([file],file.name,'ls_practice.missing')).toThrow('CONTACT_OPS_PRACTICE_FUNCTION_SOURCE_MISSING');
   expect(()=>practiceFunctionBody([file],file.name,'ls_practice.any()')).toThrow('CONTACT_OPS_PRACTICE_FUNCTION_SOURCE_INVALID');
+ });
+ it('admits exact0109 only after all28 old gates and exact absent/applied immutable projection proof',()=>{
+  const practice:PracticeSubjectIntegrity={baselineFunctions:false,reviewedFunctions:true,immutableHistory:true,schemaCatalog:true,foreignKeys:true,permissions:true,referencesSound:true};
+  const progress:ProgressReviewIntegrity={baselineCatalog:false,revisedCatalog:true,publishedGuards:true,revisionGuards:true,foreignKeys:true,permissions:true,referencesSound:true};
+  const before=[prior,next,taskSuffix,sourceSuffix,voiceSuffix,authoritySuffix,inboundSuffix,
+   {name:PRACTICE_SUBJECT_GUARDS_MIGRATION.name,checksum:PRACTICE_SUBJECT_GUARDS_MIGRATION.sha256,sql:'SELECT 1;'},
+   {name:PROGRESS_REVIEW_REVISIONS_MIGRATION.name,checksum:PROGRESS_REVIEW_REVISIONS_MIGRATION.sha256,sql:'SELECT 1;'}];
+  const suffix={name:CONTACT_INBOUND_PROJECTION_MIGRATION.name,checksum:CONTACT_INBOUND_PROJECTION_MIGRATION.sha256,sql:'SELECT 1;'},files=[...before,suffix];
+  const old:ContactInboundProjectionIntegrity={objectsAbsent:true,tables:false,schemaCatalog:false,foreignKeys:false,historyImmutable:false,livePersonGuards:false,reviewedFunctions:false,permissions:false,referencesSound:false};
+  const current:ContactInboundProjectionIntegrity={objectsAbsent:false,tables:true,schemaCatalog:true,foreignKeys:true,historyImmutable:true,livePersonGuards:true,reviewedFunctions:true,permissions:true,referencesSound:true};
+  const state=(history=before,proof:ContactInboundProjectionIntegrity|undefined=old,oldProgress=progress)=>
+   contactOpsMigrationState(files,history,present,taskPresent,sourceApplied,voicePresent,authorityPresent,inboundPresent,practice,oldProgress,proof);
+  expect(state()).toBe('pending');expect(state(files,current)).toBe('applied');
+  expect(()=>state(before.slice(0,-1))).toThrow();expect(()=>state(before,current)).toThrow();expect(()=>state(files,old)).toThrow();
+  for(const key of Object.keys(current).filter(k=>k!=='objectsAbsent') as (keyof ContactInboundProjectionIntegrity)[]){
+   expect(()=>state(before,{...old,[key]:true})).toThrow();expect(()=>state(files,{...current,[key]:false})).toThrow();
+  }
+  for(const key of ['publishedGuards','revisionGuards','revisedCatalog','foreignKeys','permissions','referencesSound'] as const)
+   expect(()=>state(before,old,{...progress,[key]:false})).toThrow();
+  for(const key of Object.keys(present) as (keyof ContactOpsIntegrityObjects)[])
+   expect(()=>contactOpsMigrationState(files,before,{...present,[key]:false},taskPresent,sourceApplied,voicePresent,authorityPresent,inboundPresent,practice,progress,old)).toThrow();
+  for(const key of Object.keys(taskPresent) as (keyof InternalTaskIntegrityObjects)[])
+   expect(()=>contactOpsMigrationState(files,before,present,{...taskPresent,[key]:false},sourceApplied,voicePresent,authorityPresent,inboundPresent,practice,progress,old)).toThrow();
+  const incomplete={...old} as Partial<ContactInboundProjectionIntegrity>;delete incomplete.permissions;
+  expect(()=>state(before,incomplete as ContactInboundProjectionIntegrity)).toThrow('CONTACT_OPS_PROJECTION_READBACK_INVALID');
+  expect(()=>state(before,{...old,extra:true} as ContactInboundProjectionIntegrity)).toThrow('CONTACT_OPS_PROJECTION_READBACK_INVALID');
+  expect(()=>state(before,{...old,permissions:1} as unknown as ContactInboundProjectionIntegrity)).toThrow('CONTACT_OPS_PROJECTION_READBACK_INVALID');
+  expect(()=>contactOpsMigrationState(files,before,present,taskPresent,sourceApplied,voicePresent,authorityPresent,inboundPresent,practice,progress)).toThrow('CONTACT_OPS_PROJECTION_READBACK_INVALID');
+  expect(()=>contactOpsMigrationState([...before,{...suffix,checksum:'0'.repeat(64)}],before,present,taskPresent,sourceApplied,voicePresent,authorityPresent,inboundPresent,practice,progress,old)).toThrow('CONTACT_OPS_MANIFEST_MISMATCH');
+  expect(()=>contactOpsMigrationState([...files,{...suffix,name:'0110_unreviewed.sql'}],files,present,taskPresent,sourceApplied,voicePresent,authorityPresent,inboundPresent,practice,progress,current)).toThrow('CONTACT_OPS_MANIFEST_MISMATCH');
  });
  it('admits exact0108 only after all27 prior gates, exact baseline/current catalogs and private immutable revision guards',()=>{
   const practice:PracticeSubjectIntegrity={baselineFunctions:false,reviewedFunctions:true,immutableHistory:true,schemaCatalog:true,foreignKeys:true,permissions:true,referencesSound:true};

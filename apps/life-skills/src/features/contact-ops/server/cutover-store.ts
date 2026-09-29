@@ -8,12 +8,9 @@ import {systemClock,type Actor,type IdentityClock} from "../../identity/types.ts
 import {requirePractitioner} from "../../cases/policy.ts";
 import {advanceCutover,writeDestination,type CutoverState,type CutoverProof,type CutoverAction} from "../core/cutover.ts";
 import {privateDigest} from "./digests.ts";
+import {cutoverEpochSchema as safeEpoch,cutoverStateSchema as stateSchema,cutoverStateAad as stateAad,readCutoverState} from "./cutover-state.ts";
 
-const safeEpoch=z.number().int().min(0).max(Number.MAX_SAFE_INTEGER-1);
-const phase=z.enum(["sheet_active","shadow_ready","frozen","native_active","retired","rollback_prepared"]);
 const source=z.string().min(1).max(200);
-const stateSchema=z.object({phase,epoch:safeEpoch,batchId:source.nullable(),sourceFileId:source.nullable(),
- sourceRevision:source.nullable(),nativeWritesSinceSwitch:safeEpoch}).strict();
 export type CutoverEvidence=CutoverProof & {observedNativeWritesSinceSwitch:number};
 const proofSchema=z.object({batchId:source,sourceFileId:source,sourceRevision:source,expectedEpoch:safeEpoch,
  observedNativeWritesSinceSwitch:safeEpoch,
@@ -23,10 +20,7 @@ const proofSchema=z.object({batchId:source,sourceFileId:source,sourceRevision:so
  oldSchedulesDisabled:z.boolean(),sourceFrozen:z.boolean(),restorePlanReady:z.boolean()}).strict();
 const actionSchema=z.enum(["prepare","freeze","switch_native","retire_sheet","prepare_rollback","finish_rollback"]);
 const operationSchema=z.string().min(1).max(128);
-const initial=():CutoverState=>({phase:"sheet_active",epoch:0,batchId:null,sourceFileId:null,sourceRevision:null,nativeWritesSinceSwitch:0});
-const stateAad=(workspace:string,epoch:number)=>`ls_contact_ops/cutover/v1/${workspace}/${epoch}`;
 const historyAad=(workspace:string,operation:string)=>`ls_contact_ops/cutover-history/v1/${workspace}/${operation}`;
-type StoredState={epoch:string;phase:CutoverState["phase"];ciphertext:string};
 type Prior={digest:string;actorId:string;ciphertext:string;resultEpoch:string};
 
 /** Durable adapter for the existing pure gate. Internal server/operator use only:
@@ -47,16 +41,7 @@ export class ContactCutoverStore {
   try{return schema.parse(JSON.parse(unseal(ciphertext,aad,this.keyring)));}catch{throw new AppError("UNAVAILABLE");}
  }
  private async current(tx:SqlSession,a:Actor,forUpdate=true):Promise<CutoverState>{
-  const rows=await tx.query<StoredState>(`SELECT epoch::text,phase,state_ciphertext AS ciphertext
-   FROM ls_contact_ops.cutover WHERE workspace_id=$1${forUpdate?" FOR UPDATE":""}`,[a.workspaceId]);
-  if(rows.length>1)throw new AppError("UNAVAILABLE");
-  const r=rows[0];if(!r)return initial();
-  const epoch=Number(r.epoch);
-  if(!safeEpoch.safeParse(epoch).success)throw new AppError("UNAVAILABLE");
-  const s=this.decode(stateSchema,r.ciphertext,stateAad(a.workspaceId,epoch));
-  if(s.epoch!==epoch||s.phase!==r.phase||
-   (s.phase==="sheet_active"?(s.batchId!==null||s.sourceFileId!==null||s.sourceRevision!==null||s.nativeWritesSinceSwitch!==0):!s.batchId||!s.sourceFileId||!s.sourceRevision))throw new AppError("UNAVAILABLE");
-  return s;
+  return readCutoverState(tx,a.workspaceId,this.keyring,forUpdate);
  }
  private async save(tx:SqlSession,a:Actor,s:CutoverState){
   stateSchema.parse(s);
