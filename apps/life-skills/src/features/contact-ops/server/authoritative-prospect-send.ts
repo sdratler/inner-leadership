@@ -42,7 +42,10 @@ export async function projectLegacyProspectAfterSend(actor:Actor,runtime:Runtime
  if(actor.role!=="practitioner")throw new AppError("FORBIDDEN");
  const authority=dependencies?.authority??new ContactCutoverStore(runtime.store,runtime.config.keyring,
   runtime.config.lookupKey.toString("hex"),runtime.clock);
- const state=await authority.read(actor);
+ // Delivery already succeeded. A failed authority read must not turn the
+ // response into an apparent send failure that could prompt a duplicate send.
+ let state:CutoverState;
+ try{state=await authority.read(actor);}catch{return true;}
  if(state.epoch!==expectedEpoch||writeDestination(state.phase)!=="sheet")return true;
  try{await (dependencies?.update??updateProspect)(leadId,fields);return false;}catch{return true;}
 }

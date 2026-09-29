@@ -58,6 +58,12 @@ describe("post-effect legacy projection fence",()=>{
   expect(update).toHaveBeenCalledOnce();update.mockRejectedValue(Error("synthetic Sheet unavailable"));
   expect(await projectLegacyProspectAfterSend(actor,runtime,"LS-LEAD-synthetic",{stage:"Contacted"},3,{authority:a,update})).toBe(true);
  });
+ it("keeps a confirmed send visible when the post-send authority read fails",async()=>{
+  const update=vi.fn(),a=authority("sheet_active");a.read.mockRejectedValue(Error("synthetic database unavailable"));
+  expect(await projectLegacyProspectAfterSend(actor,runtime,"LS-LEAD-synthetic",{stage:"Contacted"},3,
+   {authority:a,update})).toBe(true);
+  expect(update).not.toHaveBeenCalled();
+ });
  it.each(["frozen","native_active","retired","rollback_prepared"] as const)("does not project submitted intake to Sheet in %s",async phase=>{
   const update=vi.fn();expect(await projectIntakeToLegacyIfCurrent(runtime,"LS-LEAD-synthetic",{formSubmitted:"synthetic"},
    {read:async()=>state(phase),update})).toBe(true);expect(update).not.toHaveBeenCalled();
