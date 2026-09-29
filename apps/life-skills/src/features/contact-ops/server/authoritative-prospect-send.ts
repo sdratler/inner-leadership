@@ -136,8 +136,13 @@ export async function resolvePreparedProspectSend(actor:Actor,runtime:Runtime,op
   return {outcome:"not_delivered" as const,providerSend:false};
  }
  const id=verification.providerMessageId,at=verification.sentAt;
- if(!id||!/^[^\s]{8,200}$/.test(id)||!at||!Number.isFinite(Date.parse(at))||
-  Date.parse(at)<Date.parse(record.createdAt)||Date.parse(at)>Date.parse(verification.checkedAt)||
+ // A provider timestamp recorded only to whole seconds can precede the
+ // subsecond local intent timestamp by <1s even for a genuine later send.
+ const createdAt=Date.parse(record.createdAt);
+ const secondPrecision=Boolean(at&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})$/.test(at));
+ const earliestSentAt=secondPrecision?Math.floor(createdAt/1000)*1000:createdAt;
+ if(!id||!/^[^\s]{8,200}$/.test(id)||!at||!Number.isFinite(createdAt)||!Number.isFinite(Date.parse(at))||
+  Date.parse(at)<earliestSentAt||Date.parse(at)>Date.parse(verification.checkedAt)||
   verification.source==="provider_delivery_log"&&verification.reference!==id)throw new AppError("INVALID_REQUEST");
  const receipt:OutboundReceipt={provider:"whapi",providerMessageId:id,sentAt:at,
   manualVerification:{source:verification.source,reference:verification.reference,checkedAt:verification.checkedAt}};

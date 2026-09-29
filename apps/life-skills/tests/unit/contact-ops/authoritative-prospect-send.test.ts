@@ -184,6 +184,22 @@ describe("manual provider-evidence resolution of an ambiguous prepared send",()=
    manualVerification:{source:verification.source,reference:verification.reference,checkedAt:verification.checkedAt}}),final);
   expect(update).toHaveBeenCalledWith(prepared.leadId,final);expect(sender).not.toHaveBeenCalled();
  });
+ it("accepts a whole-second provider time within the intent's subsecond precision only",async()=>{
+  const subsecond={...prepared,createdAt:"2026-09-29T00:15:00.850Z"};
+  const wholeSecond={...verification,sentAt:"2026-09-29T00:15:00Z"};
+  const final={...prepared.fields,formSent:wholeSecond.sentAt,messageReceipt:wholeSecond.providerMessageId};
+  const saved={...ledger,read:vi.fn().mockResolvedValue(subsecond),confirm:vi.fn().mockResolvedValue(undefined),
+   projected:vi.fn().mockResolvedValue(undefined),notDelivered:vi.fn()};
+  expect(await resolvePreparedProspectSend(actor,runtime,prepared.operationId,wholeSecond,
+   {authority:authority("sheet_active"),update:vi.fn(),list:list(final),ledger:saved})).toMatchObject({outcome:"delivered",projectionPending:false});
+  expect(saved.confirm).toHaveBeenCalledOnce();
+  await expect(resolvePreparedProspectSend(actor,runtime,prepared.operationId,
+   {...wholeSecond,sentAt:"2026-09-29T00:14:59Z"},
+   {authority:authority("sheet_active"),update:vi.fn(),list:list(final),ledger:saved})).rejects.toMatchObject({code:"INVALID_REQUEST"});
+  await expect(resolvePreparedProspectSend(actor,runtime,prepared.operationId,
+   {...wholeSecond,sentAt:"2026-09-29T00:15:00.849Z"},
+   {authority:authority("sheet_active"),update:vi.fn(),list:list(final),ledger:saved})).rejects.toMatchObject({code:"INVALID_REQUEST"});
+ });
  it("records a negative provider attestation without a send or Sheet write",async()=>{
   sender.mockClear();const update=vi.fn(),saved={...ledger,read:vi.fn().mockResolvedValue(prepared),notDelivered:vi.fn().mockResolvedValue(undefined)};
   const input={outcome:"not_delivered" as const,source:"provider_support_case" as const,reference:"WHAPI-SUPPORT-12345",
