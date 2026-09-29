@@ -6,5 +6,5 @@ export default async function Page({params,searchParams}:{params:Promise<{locale
  const {locale,caseId}=await params,query=await searchParams??{},appointmentId=query.appointmentId;
  if(!isLocale(locale)||!/^[0-9a-f-]{36}$/i.test(caseId))notFound();
  if(appointmentId!==undefined&&(typeof appointmentId!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(appointmentId)))notFound();
- return <SessionListWorkspace key={`${caseId}:${appointmentId??'all'}`} locale={locale} caseId={caseId} {...(appointmentId?{selectedAppointmentId:appointmentId}:{})}/>;
+ return <SessionListWorkspace key={`${caseId.toLowerCase()}:${appointmentId?.toLowerCase()??'all'}`} locale={locale} caseId={caseId.toLowerCase()} {...(appointmentId?{selectedAppointmentId:appointmentId.toLowerCase()}:{})}/>;
 }

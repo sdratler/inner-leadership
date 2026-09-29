@@ -136,8 +136,8 @@ export class CalendarService {
    location:input.location,createdAt:c.now,createdBy:c.actor.id,version:1};
   const slot=paddedSlot(a);
   const busy=await c.tx.query<{startsAt:Date;endsAt:Date}>(`SELECT a.starts_at-a.buffer_before*interval '1 minute' AS "startsAt",a.ends_at+a.buffer_after*interval '1 minute' AS "endsAt" FROM ls_calendar.appointments a
-    WHERE a.workspace_id=$1 AND a.practitioner_id=$2 AND a.status='scheduled' AND a.starts_at-a.buffer_before*interval '1 minute'<$4 AND a.ends_at+a.buffer_after*interval '1 minute'>$3
-    AND NOT EXISTS (SELECT 1 FROM ls_demo.cases d WHERE d.workspace_id=a.workspace_id AND d.case_id=a.case_id)`,[c.workspace,c.actor.id,slot.startsAt,slot.endsAt]);
+    WHERE a.workspace_id=$1 AND a.practitioner_id=$2 AND (a.status='scheduled' OR ($5::boolean AND a.status='completed')) AND a.starts_at-a.buffer_before*interval '1 minute'<$4 AND a.ends_at+a.buffer_after*interval '1 minute'>$3
+    AND NOT EXISTS (SELECT 1 FROM ls_demo.cases d WHERE d.workspace_id=a.workspace_id AND d.case_id=a.case_id)`,[c.workspace,c.actor.id,slot.startsAt,slot.endsAt,historicalDemoBatch!==null]);
   // Both the ordinary practitioner API and the private setup command refuse a
   // DEMO placement over a real appointment. DEMOs still reserve no capacity.
   if(demoBatch){if(busy.length)throw new AppError('CONFLICT');}

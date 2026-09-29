@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, it, vi } from "vitest";
-import { visibleSessionAppointments } from "../../src/features/session-workflow/workspace.tsx";
+import { sessionAppointmentListPath, visibleSessionAppointments } from "../../src/features/session-workflow/workspace.tsx";
 import type { SessionListItem } from "../../src/features/session-workflow/database.ts";
 import Page from "../../src/app/[locale]/app/cases/[caseId]/sessions/page.tsx";
 
@@ -21,6 +21,13 @@ it("passes a single valid selected appointment to the actual case page", async (
   const element = await Page({ params: Promise.resolve({ locale: "he", caseId }), searchParams: Promise.resolve({ appointmentId: selected }) });
   expect(element.props.selectedAppointmentId).toBe(selected);
 });
+it('sends the exact canonical appointment context to the server before its list cap',async()=>{
+ const mixed='abcdefab-abcd-4abc-8abc-abcdefabcdef';
+ expect(sessionAppointmentListPath(caseId,mixed.toUpperCase())).toBe(`?caseId=${caseId}&appointmentId=${mixed}`);
+ expect(sessionAppointmentListPath(caseId)).toBe(`?caseId=${caseId}`);
+ const element=await Page({params:Promise.resolve({locale:'en',caseId}),searchParams:Promise.resolve({appointmentId:mixed.toUpperCase()})});
+ expect(element.props.selectedAppointmentId).toBe(mixed);
+});
 it.each([[selected, selected], "../../private", "not-an-id"])("rejects an invalid or repeated appointment context", async appointmentId => {
   await expect(Page({ params: Promise.resolve({ locale: "en", caseId }), searchParams: Promise.resolve({ appointmentId }) })).rejects.toThrow("404");
 });
@@ -28,6 +35,8 @@ it("keeps the session ensure mutation on the practitioner's explicit button, not
   const source = readFileSync(new URL("../../src/features/session-workflow/workspace.tsx", import.meta.url), "utf8");
   const effect = source.slice(source.indexOf("useEffect("), source.indexOf("async function open("));
   expect(effect).not.toContain("sessionEnsure");
+  expect(effect).toContain('sessionAppointmentListPath(caseId,selectedAppointmentId)');
+  expect(effect).toContain('controller.signal.aborted');
   expect(source).toContain("onClick={()=>void open(item)}");
   expect(source).toContain("Return to all sessions");
   expect(source).toContain("timeZone:\"Asia/Jerusalem\"");

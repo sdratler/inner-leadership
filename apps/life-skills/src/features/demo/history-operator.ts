@@ -39,7 +39,7 @@ export async function prepareDemoHistory(runtime:Runtime,selection:ReturnType<ty
   const time=await tx.query<{now:Date}>('SELECT clock_timestamp() AS now');if(time.length!==1)throw new AppError('UNAVAILABLE');
   for(const sample of plan.items){const start=Date.parse(sample.startsAt),end=start+60*60_000;
    if(end>time[0]!.now.valueOf()||start<time[0]!.now.valueOf()-31*86_400_000)throw new AppError('INVALID_REQUEST');
-   if((await tx.query(`SELECT a.id FROM ls_calendar.appointments a WHERE a.workspace_id=$1 AND a.practitioner_id=$2 AND a.status='scheduled'
+   if((await tx.query(`SELECT a.id FROM ls_calendar.appointments a WHERE a.workspace_id=$1 AND a.practitioner_id=$2 AND a.status IN ('scheduled','completed')
     AND a.starts_at-a.buffer_before*interval '1 minute'<$4 AND a.ends_at+a.buffer_after*interval '1 minute'>$3
     AND NOT EXISTS(SELECT 1 FROM ls_demo.cases d WHERE d.workspace_id=a.workspace_id AND d.case_id=a.case_id) LIMIT 1`,[runtime.config.workspaceId,owner.id,sample.startsAt,new Date(end).toISOString()])).length)throw new AppError('CONFLICT');}
   return {ownerId:owner.id,caseId:item.caseId,audienceId:audience.id};

@@ -10,7 +10,7 @@ import {IdentityAuthService} from '../../../src/features/identity/auth-service.t
 import {IdentitySessions} from '../../../src/features/identity/session-adapter.ts';
 import {blindEmail,seal,unseal} from '../../../src/features/identity/crypto.ts';
 import {prepareDemoHistory} from '../../../src/features/demo/history-operator.ts';
-import {civilDate,shiftDay} from '../../../src/features/calendar/time.ts';
+import {civilDate,possibleInstants,shiftDay} from '../../../src/features/calendar/time.ts';
 import {systemClock,type AccountId,type Actor} from '../../../src/features/identity/types.ts';
 import type {IdentityConfig} from '../../../src/features/identity/config.ts';
 import {realCaseEffectAllowed} from '../../../src/features/demo/provenance.ts';
@@ -232,6 +232,19 @@ test('historical DEMO placement respects real appointment buffers',()=>using(asy
  const ready=await f.prepare(),input=f.booking(ready.audienceId,f.at(-48));await f.seed(input.startsAt);
  await expect(f.service.createDemoHistoryAsOperator(f.workspaceId,f.practitioner.actor.id,batch,key(),input,true)).rejects.toMatchObject({code:'CONFLICT'});
 }));
+test('historical transaction rejects completed real appointment buffers without a partial DEMO write',()=>using(async f=>{
+ const ready=await f.prepare(),input=f.booking(ready.audienceId,f.at(-48)),real=await f.seed(input.startsAt);
+ await f.pool.query("UPDATE ls_calendar.appointments SET status='completed' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,real]);
+ const snapshot=async()=>(await f.pool.query(`SELECT
+  (SELECT count(*)::int FROM ls_calendar.appointments WHERE workspace_id=$1 AND case_id=$2) AS appointments,
+  (SELECT count(*)::int FROM ls_attendance.records WHERE workspace_id=$1 AND case_id=$2) AS attendance,
+  (SELECT count(*)::int FROM ls_calendar.history WHERE workspace_id=$1 AND case_id=$2) AS history,
+  (SELECT count(*)::int FROM ls_calendar.commands WHERE workspace_id=$1) AS commands,
+  (SELECT count(*)::int FROM ls_calendar.events WHERE workspace_id=$1 AND case_id=$2) AS events`,[f.workspaceId,f.minor.caseId])).rows[0];
+ const before=await snapshot();
+ await expect(f.service.createDemoHistoryAsOperator(f.workspaceId,f.practitioner.actor.id,batch,key(),input,true)).rejects.toMatchObject({code:'CONFLICT'});
+ expect(await snapshot()).toEqual(before);
+}));
 test('historical attendance reaches the existing credit consumer but suppresses actual money effects',()=>using(async f=>{
  const ready=await f.prepare(),before=await f.counts(),a=await f.service.createDemoHistoryAsOperator(f.workspaceId,f.practitioner.actor.id,batch,key(),f.booking(ready.audienceId,f.at(-48)),true);
  expect(await f.db.read(f.practitioner.actor,c=>drainCalendarEvents(c,'credit_effect',applyCalendarCreditEffect))).toBe(1);
@@ -246,6 +259,18 @@ function historyRecipe(){const anchorDate=civilDate(new Date().toISOString()),da
  appointments:dates.map((localDate,i)=>({...common,stableKey:`session-${i+1}`,caseKey:'case-a',state:'completed',attendance:'present',durationMinutes:60,blocksRealAvailability:false,timezone:'Asia/Jerusalem',localTime:'11:00',localDate})),
  observations:dates.map((observedDate,i)=>({...common,stableKey:`observation-${i+1}`,caseKey:'case-a',sessionKey:`session-${i+1}`,observedDate,visibility:'practitioner_private',values:Object.fromEntries(ids.map((id,j)=>[id,{score:i===2&&j===8?null:3+(i+j)%5,note:'Synthetic observation for interface verification only.'}]))}))};
 }
+test('full historical preflight refuses a completed real slot before any of the five writes',()=>using(async f=>{
+ await f.prepare();const ownerEmail='fixtureowner@example.invalid',recipe=historyRecipe();
+ await f.pool.query('UPDATE ls_identity.accounts SET email_blind=$3,email_ciphertext=$4 WHERE workspace_id=$1 AND id=$2',[f.workspaceId,f.practitioner.actor.id,blindEmail(ownerEmail,f.config.lookupKey),seal(ownerEmail,`email:${f.workspaceId}:${f.practitioner.actor.id}`,f.keyring)]);
+ const startsAt=possibleInstants(recipe.appointments[0]!.localDate+'T11:00')[0]!;
+ await f.pool.query("INSERT INTO ls_calendar.availability(id,workspace_id,practitioner_id,starts_at,ends_at,kind) VALUES($1,$2,$3,$4,$5,'open')",[key(),f.workspaceId,f.practitioner.actor.id,startsAt,new Date(Date.parse(startsAt)+3600000).toISOString()]);
+ const real=await f.seed(startsAt);
+ await f.pool.query("UPDATE ls_calendar.appointments SET status='completed' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,real]);
+ const before=await f.counts();
+ await expect(prepareDemoHistory({config:f.config,store:f.db.store,clock:systemClock},{batch,ownerEmail,addresses:f.addresses},recipe,true)).rejects.toMatchObject({code:'CONFLICT'});
+ expect((await f.pool.query('SELECT count(*)::int AS n FROM ls_calendar.appointments WHERE workspace_id=$1 AND case_id=$2',[f.workspaceId,f.minor.caseId])).rows[0].n).toBe(0);
+ expect(await f.counts()).toEqual(before);
+}));
 test('full existing-history operator reads real owner and identities, persists five once and never seeds observations',()=>using(async f=>{
  await f.prepare();const ownerEmail='fixtureowner@example.invalid';
  await f.pool.query('UPDATE ls_identity.accounts SET email_blind=$3,email_ciphertext=$4 WHERE workspace_id=$1 AND id=$2',[f.workspaceId,f.practitioner.actor.id,blindEmail(ownerEmail,f.config.lookupKey),seal(ownerEmail,`email:${f.workspaceId}:${f.practitioner.actor.id}`,f.keyring)]);
