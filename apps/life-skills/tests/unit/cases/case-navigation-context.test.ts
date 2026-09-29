@@ -17,3 +17,14 @@ for (const locale of ['en', 'he'] as const) {
   expect(markup).toContain(`lang="${locale}"`); expect(markup).toContain(`dir="${locale === 'he' ? 'rtl' : 'ltr'}"`);
  });
 }
+for(const locale of ['en','he'] as const)it(`${locale}: session header, sidebar and breadcrumbs keep demo Calendar and report context`,()=>{
+ navigation.pathname=`/${locale}/app/cases/${id}/sessions/223e4567-e89b-42d3-a456-426614174000`;
+ navigation.query=new URLSearchParams({mode:'demo',date:'2026-09-22',view:'day'});
+ const html=renderToStaticMarkup(CoreNavigation({locale,role:'practitioner',children:'Synthetic session'}));
+ const hrefs=[...html.matchAll(/href="([^"]+)"/g)].map(match=>new URL(match[1]!.replaceAll('&amp;','&'),'https://private.invalid'));
+ for(const path of ['app/calendar','app/reports',`app/cases/${id}/sessions`]){
+  const links=hrefs.filter(url=>url.pathname===`/${locale}/${path}`);expect(links.length).toBeGreaterThan(0);
+  for(const url of links){expect(url.searchParams.get('mode')).toBe('demo');expect(url.searchParams.get('date')).toBe('2026-09-22');expect(url.searchParams.get('view')).toBe('day');expect(url.searchParams.get('caseId')).toBe(id);}
+ }
+ expect(html).toContain(locale==='he'?'רשומת מפגש':'Session record');
+});

@@ -10,11 +10,14 @@ import {selectAuthorizedPaymentCase} from "../../src/features/payments/case-sele
 import {calendarView} from "../../src/features/calendar/time.ts";
 import {showCalendarViewTabsInContent} from "../../src/features/calendar/view-tabs.ts";
 import {paymentSection,paymentVisibleCharges,paymentVisiblePanels} from "../../src/features/payments/sections.ts";
+const links=(html:string)=>[...html.matchAll(/href="([^"]+)"/g)].map(match=>new URL(match[1]!.replaceAll('&amp;','&'),'https://private.invalid'));
+const topLinks=(html:string)=>links(html.match(/<nav class="lsu-top-tabs"[^>]*>(.*?)<\/nav>/)?.[1]??'');
 
 describe("operational workspace navigation",()=>{
  for(const locale of ['he','en'] as const)it(`${locale}: all contextual Calendar views preserve explicit demo context and date`,()=>{
   const html=renderToStaticMarkup(React.createElement(WorkspaceShell,{locale,role:'practitioner',pathname:`/${locale}/app/calendar`,view:'week',date:'2026-09-28',mode:'demo',languageHref:`/${locale==='he'?'en':'he'}/app/calendar?mode=demo`} as React.ComponentProps<typeof WorkspaceShell>,React.createElement('h1',null,'Calendar')));
-  for(const view of ['day','week','month','agenda'])expect(html).toContain(`/${locale}/app/calendar?view=${view}&amp;date=2026-09-28&amp;mode=demo`);
+  const contextual=topLinks(html);expect(contextual).toHaveLength(4);
+  for(const view of ['day','week','month','agenda'])expect(contextual.some(url=>url.pathname===`/${locale}/app/calendar`&&url.searchParams.get('view')===view&&url.searchParams.get('date')==='2026-09-28'&&url.searchParams.get('mode')==='demo')).toBe(true);
  });
  it("limits the practitioner sidebar to the six owner-selected destinations",()=>{
   expect(primaryNavigation.practitioner.map(item=>item.en)).toEqual(["Calendar","People","Communications","Reports","Marketing","Payments"]);
@@ -37,7 +40,7 @@ describe("operational workspace navigation",()=>{
   it(`${locale}: changes the contextual toolbar with the current page`,()=>{
    const props={locale,role:"practitioner",pathname:`/${locale}/app/calendar`,view:"agenda",date:"2026-09-24",languageHref:`/${locale==="he"?"en":"he"}/app/calendar?view=agenda&date=2026-09-24`} as React.ComponentProps<typeof WorkspaceShell>;
    const html=renderToStaticMarkup(React.createElement(WorkspaceShell,props,React.createElement("h1",null,"Content")));
-   expect(html).toContain(`/${locale}/app/calendar?view=agenda&amp;date=2026-09-24`);
+   expect(topLinks(html).some(url=>url.pathname===`/${locale}/app/calendar`&&url.searchParams.get('view')==='agenda'&&url.searchParams.get('date')==='2026-09-24')).toBe(true);
    expect(html).toContain(`aria-label="${locale==="he"?"תצוגות הדף הנוכחי":"Current page views"}"`);
    expect(html).not.toContain(`href="/${locale}/app/prospects"`);
    expect(html).not.toContain(`href="/${locale}/app/practice"`);
@@ -79,8 +82,9 @@ describe("operational workspace navigation",()=>{
   expect(isCaseId(caseId)).toBe(true);
   expect(caseDestinationHref("en","app/calendar",caseId)).toBe(`/en/app/calendar?caseId=${caseId}&context=client`);
   const html=renderToStaticMarkup(React.createElement(WorkspaceShell,{locale:"en",role:"practitioner",pathname:"/en/app/calendar",view:"week",caseId,selectedClient:true,languageHref:`/he/app/calendar?view=week&caseId=${caseId}&context=client`} as React.ComponentProps<typeof WorkspaceShell>,React.createElement(CalendarShell,{locale:"en",period:"September 2026",view:"week",viewHrefs:{day:`/en/app/calendar?view=day&caseId=${caseId}&context=client`,week:`/en/app/calendar?view=week&caseId=${caseId}&context=client`,month:`/en/app/calendar?view=month&caseId=${caseId}&context=client`,agenda:`/en/app/calendar?view=agenda&caseId=${caseId}&context=client`},showViewTabs:showCalendarViewTabsInContent("practitioner",true),todayHref:"/en/app/calendar",previousHref:"/en/app/calendar?date=2026-09-16",nextHref:"/en/app/calendar?date=2026-09-30",desktop:React.createElement("p",null,"Grid"),agenda:React.createElement("p",null,"Agenda")})));
-  expect(html).toContain(`href="/en/app/calendar?caseId=${caseId}&amp;context=client"`);
-  expect(html.match(new RegExp(`href="/en/app/calendar\\?view=week&amp;caseId=${caseId}&amp;context=client"`,"g"))).toHaveLength(1);
+  expect(topLinks(html).filter(url=>url.pathname==='/en/app/calendar'&&url.searchParams.get('caseId')===caseId&&url.searchParams.get('context')==='client'&&url.searchParams.get('view')==='week')).toHaveLength(1);
+  const content=html.match(/<div id="lsw-main"[^>]*>(.*?)<\/div><\/div><\/div><dialog/)?.[1]??'';
+  expect(links(content).filter(url=>url.pathname==='/en/app/calendar'&&url.searchParams.get('view')==='week'&&url.searchParams.get('context')==='client')).toHaveLength(1);
  });
  it("shows the Calendar view switcher exactly where it is needed for each role and context",()=>{
   expect(showCalendarViewTabsInContent("practitioner",false)).toBe(false);
@@ -93,7 +97,7 @@ describe("operational workspace navigation",()=>{
    const props={locale,role:"practitioner",pathname:`/${locale}/app/calendar`,view:"week",languageHref:`/${other}/app/calendar?view=week`} as React.ComponentProps<typeof WorkspaceShell>;
    const calendar=React.createElement(CalendarShell,{locale,period:"September 2026",view:"week",viewHrefs:{day:`/${locale}/app/calendar?view=day`,week:`/${locale}/app/calendar?view=week`,month:`/${locale}/app/calendar?view=month`,agenda:`/${locale}/app/calendar?view=agenda`},showViewTabs:showCalendarViewTabsInContent("practitioner",false),todayHref:`/${locale}/app/calendar`,previousHref:`/${locale}/app/calendar?date=2026-09-16`,nextHref:`/${locale}/app/calendar?date=2026-09-30`,desktop:React.createElement("p",null,"Grid"),agenda:React.createElement("p",null,"Agenda")});
    const html=renderToStaticMarkup(React.createElement(WorkspaceShell,props,calendar));
-   expect(html.match(new RegExp(`href="/${locale}/app/calendar\\?view=week"`,"g"))).toHaveLength(1);
+   expect(topLinks(html).filter(url=>url.pathname===`/${locale}/app/calendar`&&url.searchParams.get('view')==='week')).toHaveLength(1);
    expect(html).not.toContain(`aria-label="${locale==="he"?"יומן":"Calendar"}"`);
   }
  });

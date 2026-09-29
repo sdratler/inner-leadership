@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import type { Locale } from "../../lib/locale.ts";
-import { activeItem, breadcrumbItems, navigationGroups, practitionerContext, primaryNavigation, workspaceHref, type ContextItem, type NavItem, type WorkspaceRole } from "./navigation-model.ts";
+import { activeItem, breadcrumbItems, navigationGroups, practitionerContext, primaryNavigation, workspaceContext, workspaceHref, type ContextItem, type NavItem, type WorkspaceRole } from "./navigation-model.ts";
 import "./professional-ui.css";
 const copy = {
   en: { skip: "Skip to content", nav: "Workspace navigation", more: "More", close: "Close navigation", menu: "Open navigation", account: "Account menu", settings: "Settings", practitioner: "Practitioner workspace", parent: "Family workspace", client: "Client workspace", location: "You are here", language: "עברית", privacy: "Access is limited to your authorized workspace." },
@@ -12,7 +12,8 @@ export function WorkspaceShell({ locale, role, pathname, caseId, selectedClient=
   const t = copy[locale], active = role === "practitioner" && selectedClient && caseId ? primaryNavigation.practitioner.find(item=>item.key==="clients") : activeItem(pathname, locale, role);
   const drawer = useRef<HTMLDialogElement>(null), trigger = useRef<HTMLButtonElement>(null), account = useRef<HTMLDetailsElement>(null);
   const drawerId = useId(), titleId = useId();
-  const href = (path: string) => toHref ? toHref(path) : workspaceHref(locale, path, caseId);
+  const navigationContext=role==='practitioner'?workspaceContext({mode,date,view}):{};
+  const href = (path: string) => toHref ? toHref(path) : workspaceHref(locale, path, caseId,navigationContext);
   const close = () => { drawer.current?.close(); trigger.current?.focus(); };
   useEffect(() => {
     const outside = (event: PointerEvent) => { if (event.target instanceof Node && account.current && !account.current.contains(event.target)) account.current.open = false; };
@@ -30,8 +31,6 @@ export function WorkspaceShell({ locale, role, pathname, caseId, selectedClient=
     // Business receipts have no clinical case context; leave the selected case
     // only on this explicit global tab, never by inferring identity from phone.
     if(entry.key==="whatsapp"&&!clientContext){url.searchParams.delete("caseId");url.searchParams.delete("context");}
-    if (entry.path === "app/calendar" && date && /^\d{4}-\d{2}-\d{2}$/.test(date)) url.searchParams.set("date", date);
-    if (entry.path === "app/calendar" && mode === "demo") url.searchParams.set("mode", "demo");
     return url.pathname + url.search;
   };
   const topTabs = <nav className="lsu-top-tabs" aria-label={role === "practitioner" ? (locale === "he" ? "תצוגות הדף הנוכחי" : "Current page views") : (locale === "he" ? "חלקי המרחב" : "Workspace sections")}>{contextItems.map(entry => <a key={entry.key} href={role === "practitioner" ? contextHref(entry) : href(entry.path)} aria-current={role === "practitioner" ? (currentContext === entry.key ? "page" : undefined) : (active?.key === entry.key ? "page" : undefined)}>{entry[locale]}</a>)}</nav>;
