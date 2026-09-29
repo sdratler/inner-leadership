@@ -85,10 +85,10 @@ export function ProspectsClient({locale,initialFilter="all",focusLeadId="",embed
  const focused=/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]{1,80}$/.test(focusLeadId)?focusLeadId:"";
  const t=copy[locale],[rows,setRows]=useState<Prospect[]>([]),[state,setState]=useState<State>("loading"),preset=initialFilter,[query,setQuery]=useState(""),[stage,setStage]=useState(""),[language,setLanguage]=useState(""),[due,setDue]=useState(""),[page,setPage]=useState(1),[status,setStatus]=useState(""),[openLeads,setOpenLeads]=useState<string[]>(focused?[focused]:[]);
  const [pendingOperations,setPendingOperations]=useState<PendingOperation[]>([]),[pendingNext,setPendingNext]=useState<string|null>(null),
-  [pendingMoreState,setPendingMoreState]=useState<"idle"|"loading"|"error">("idle"),[ledgerReady,setLedgerReady]=useState(true);
+  [pendingMoreState,setPendingMoreState]=useState<"idle"|"loading"|"error">("idle"),[ledgerReady,setLedgerReady]=useState(false);
  const mounted=useRef(true),addRef=useRef<HTMLDetailsElement>(null);
  const pendingUpdates=useRef(new Map<string,{key:string;request:NativeProspectUpdate}>()),saving=useRef(new Set<string>());
- const load=()=>{setState("loading");void readDirectory().then(value=>{if(mounted.current){setRows(value.rows);setPendingOperations(value.pendingOperations);setPendingNext(value.pendingNext);setLedgerReady(value.ledgerReady);setPendingMoreState("idle");setState("ready")}}).catch(error=>{if(mounted.current){setRows([]);setPendingOperations([]);setPendingNext(null);setState(error instanceof ProspectApiError?error.kind:"error")}})};
+ const load=()=>{setState("loading");setLedgerReady(false);void readDirectory().then(value=>{if(mounted.current){setRows(value.rows);setPendingOperations(value.pendingOperations);setPendingNext(value.pendingNext);setLedgerReady(value.ledgerReady);setPendingMoreState("idle");setState("ready")}}).catch(error=>{if(mounted.current){setRows([]);setPendingOperations([]);setPendingNext(null);setLedgerReady(false);setState(error instanceof ProspectApiError?error.kind:"error")}})};
  async function loadMorePending(){if(!pendingNext||pendingMoreState==="loading")return;
   setPendingMoreState("loading");try{const value=await readDirectory(pendingNext);if(mounted.current){setPendingOperations(current=>[
    ...current,...value.pendingOperations.filter(item=>!current.some(previous=>previous.operationId===item.operationId))]);
