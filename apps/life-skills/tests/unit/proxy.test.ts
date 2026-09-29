@@ -17,6 +17,19 @@ describe("public static perimeter", () => {
 });
 
 afterEach(() => vi.unstubAllEnvs());
+describe('actual practitioner report section login return perimeter',()=>{
+ const origin='https://life-skills.bneineviimacademy.org',id='123e4567-e89b-42d3-a456-426614174000';
+ const configured=()=>{vi.stubEnv('NODE_ENV','production');vi.stubEnv('LS_APP_MODE','foundation_locked');vi.stubEnv('LS_APP_ORIGIN',origin);vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');};
+ for(const locale of ['he','en'])for(const section of ['due','drafts','published','history'])it(`${locale}: projects actual ${section} report deep link instead of caller return header`,()=>{
+  configured();const path=`/${locale}/app/reports`,query=`mode=demo&date=2026-09-22&view=agenda&caseId=${id}&audienceId=${id}&context=client&section=${section}`;
+  const response=proxy(new NextRequest(`${origin}${path}?${query}&secret=not-forwarded`,{headers:{'x-ls-practitioner-return':'https://untrusted.invalid/private'}}));
+  expect(response.status).toBe(200);const returned=new URL(response.headers.get('x-middleware-request-x-ls-practitioner-return')!,origin);expect(returned.pathname).toBe(path);expect(Object.fromEntries(returned.searchParams)).toEqual(Object.fromEntries(new URLSearchParams(query)));
+ });
+ it('drops invalid/repeated section values and does not add report views to private session return paths',()=>{
+  configured();for(const query of ['section=history&section=history','section=checkins','section=private'])expect(proxy(new NextRequest(`${origin}/en/app/reports?${query}`)).headers.get('x-middleware-request-x-ls-practitioner-return')).toBe('/en/app/reports');
+  const path=`/he/app/cases/${id}/sessions/${id}`;expect(proxy(new NextRequest(`${origin}${path}?section=history`)).headers.get('x-middleware-request-x-ls-practitioner-return')).toBe(path);
+ });
+});
 describe("actual parent check-in deep-link proxy", () => {
   it("projects one bounded section and strips repeated or caller-supplied values", () => {
     const origin="https://life-skills.bneineviimacademy.org", id="123e4567-e89b-42d3-a456-426614174000";
