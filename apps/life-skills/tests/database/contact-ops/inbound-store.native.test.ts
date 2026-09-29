@@ -87,12 +87,29 @@ test("same provider message ID stays separate for a different verified business 
  expect(new Set(recent.map(x=>x.inquiry.channelId)).size).toBe(2);
 });
 
-test("excessive replay envelopes fail closed rather than showing a partially validated message",async()=>{
+test("excessive workspace history fails closed before grouping instead of hiding an older conflicting envelope",async()=>{
  const {f,store}=await setup();
  for(let start=0;start<1001;start+=25)await Promise.all(Array.from({length:Math.min(25,1001-start)},(_,i)=>store.capture({...inquiry,providerEventId:`synthetic-bounded-replay-${start+i}`})));
  await expect(store.recent(f.practitioner.actor,1)).rejects.toThrow("UNAVAILABLE");
  expect((await f.pool.query("SELECT count(*)::int AS n FROM ls_contact_ops.message_receipts WHERE workspace_id=$1",[f.workspaceId])).rows[0].n).toBe(1001);
 },60000);
+
+test("bounded reader keeps SQL microsecond first-receipt ordering and supports the existing primary-key access path",async()=>{
+ const {f,store}=await setup();await store.capture(inquiry);
+ for(let i=0;i<10;i++)await store.capture({...inquiry,providerEventId:`000-lexically-earlier-${i}`,pushName:"Later envelope name"});
+ expect((await store.recent(f.practitioner.actor))[0]!.inquiry.pushName).toBe(inquiry.pushName);
+ // An isolated planner probe demonstrates the exact ordered prefix has a
+ // primary-key access path; no production setting or security control changes.
+ const client=await f.pool.connect();
+ try{
+  await client.query("BEGIN; SET LOCAL enable_seqscan=off");
+  const result=await client.query(`EXPLAIN (FORMAT JSON) SELECT provider_binding_id,provider_event_key
+   FROM ls_contact_ops.message_receipts WHERE workspace_id=$1 AND channel='whatsapp'
+   ORDER BY provider_binding_id,provider_event_key LIMIT 1001`,[f.workspaceId]);
+  expect(JSON.stringify(result.rows)).toContain("message_receipts_pkey");
+  expect(JSON.stringify(result.rows)).not.toContain('"Node Type":"Aggregate"');
+ }finally{await client.query("ROLLBACK");client.release();}
+});
 
 test("wrong provider binding/invalid payload is refused; real parent/revoked/cross-workspace read permissions remain denied",async()=>{
  const {f,store}=await setup();

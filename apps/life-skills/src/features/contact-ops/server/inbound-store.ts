@@ -16,9 +16,9 @@ export const inboundBindingDigest=(input:Pick<InboundInquiry,"provider"|"channel
  digest({provider:input.provider,channelId:input.channelId,businessNumber:input.businessNumber});
 const aad=(w:string,b:string,e:string)=>`ls_contact_ops/message-receipt/v1/${w}/whatsapp/${b}/${e}`;
 type Stored={binding:string;event:string;message:string;digest:string;cipher:string;occurredAt:Date;storedAt:Date};
-// A selected business message is never shown after validating only some of its
-// envelopes. Fail closed on an excessive replay set rather than silently hiding
-// a conflicting payload, or loading unbounded decrypted data into the inbox.
+// This future-receipt reader has a fail-closed workspace scan budget, not an
+// unbounded history aggregation. Never show a partial window that could hide a
+// conflicting envelope or mistake a redelivery for an original message.
 const MAX_INBOX_ENVELOPES=1000;
 const drainCursorSchema=z.object({storedAt:z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/).refine(v=>Number.isFinite(Date.parse(v))),
  eventKey:z.string().regex(/^[a-f0-9]{64}$/)}).strict();
@@ -119,29 +119,26 @@ export class ContactInboundStore {
   if(!Number.isSafeInteger(limit)||limit<1||limit>100)throw new AppError("INVALID_REQUEST");
   return this.db.transaction(async tx=>{
    await tx.query("SET TRANSACTION READ ONLY");requirePractitioner(await freshActor(tx,actor,this.clock.now()));
-   // Limit distinct messages, not delivery events: repeated deliveries must not
-   // crowd out other messages or move an old message to the top of the inbox.
-   // One statement gives selection and all selected envelopes one SQL snapshot.
-   const rows=await tx.query<Stored>(`WITH selected AS (
-    SELECT provider_binding_id,provider_message_key,min(stored_at) AS first_stored_at
+   // The existing primary key starts with workspace/channel/binding/event.
+   // Read at most budget+1 in that indexed order BEFORE decrypting or grouping;
+   // no full-history aggregate, sort, join or partial-history success. Exact SQL
+   // microseconds retain the true first receipt even within one JS millisecond.
+   const rows=await tx.query<Stored&{storedOrder:string}>(`SELECT provider_binding_id AS binding,provider_event_key AS event,provider_message_key AS message,
+    payload_digest AS digest,payload_ciphertext AS cipher,occurred_at AS "occurredAt",stored_at AS "storedAt",
+    to_char(stored_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "storedOrder"
     FROM ls_contact_ops.message_receipts WHERE workspace_id=$1 AND channel='whatsapp'
-    GROUP BY provider_binding_id,provider_message_key
-    ORDER BY min(stored_at) DESC,provider_binding_id,provider_message_key LIMIT $2
-   ) SELECT r.provider_binding_id AS binding,r.provider_event_key AS event,r.provider_message_key AS message,
-    r.payload_digest AS digest,r.payload_ciphertext AS cipher,r.occurred_at AS "occurredAt",r.stored_at AS "storedAt"
-    FROM selected s JOIN ls_contact_ops.message_receipts r
-     ON r.workspace_id=$1 AND r.channel='whatsapp' AND r.provider_binding_id=s.provider_binding_id AND r.provider_message_key=s.provider_message_key
-    ORDER BY s.first_stored_at DESC,r.provider_binding_id,r.provider_message_key,r.stored_at,r.provider_event_key LIMIT $3`,[this.workspaceId,limit,MAX_INBOX_ENVELOPES+1]);
+    ORDER BY provider_binding_id,provider_event_key LIMIT $2`,[this.workspaceId,MAX_INBOX_ENVELOPES+1]);
    if(rows.length>MAX_INBOX_ENVELOPES)throw new AppError("UNAVAILABLE");
-   const messages=new Map<string,{receiptKey:string;inquiry:InboundInquiry;storedAt:string;messageDigest:string}>();
+   const messages=new Map<string,{receiptKey:string;inquiry:InboundInquiry;storedAt:string;messageDigest:string;storedOrder:string}>();
    for(const row of rows){
     const inquiry=this.decodeStored(row);
     const keys=inboundProjectionKeys(this.workspaceId,row.binding,row.event,row.message,row.digest,inquiry,this.integrityKey);
     const group=`${row.binding}:${row.message}`,previous=messages.get(group);
-    if(previous){if(previous.messageDigest!==keys.messageDigest)throw new AppError("CONFLICT");}
-    else messages.set(group,{receiptKey:row.message,inquiry,storedAt:row.storedAt.toISOString(),messageDigest:keys.messageDigest});
+    if(previous&&previous.messageDigest!==keys.messageDigest)throw new AppError("CONFLICT");
+    if(!previous||row.storedOrder<previous.storedOrder)messages.set(group,{receiptKey:row.message,inquiry,storedAt:row.storedAt.toISOString(),messageDigest:keys.messageDigest,storedOrder:row.storedOrder});
    }
-   return Array.from(messages.values(),({messageDigest:_digest,...item})=>{void _digest;return item;});
+   return Array.from(messages.entries()).sort(([a,x],[b,y])=>x.storedOrder===y.storedOrder?(a<b?-1:a>b?1:0):x.storedOrder<y.storedOrder?1:-1)
+    .slice(0,limit).map(([, {messageDigest:_digest,storedOrder:_order,...item}])=>{void _digest;void _order;return item;});
   });
  }
 }
