@@ -99,7 +99,11 @@ export function PracticeOccurrenceCard({ locale, item, onReadback, onAccessLost,
     try {
       const rows = await ownCheckInHistory(id, current.signal);
       if (current.signal.aborted || !mounted.current) return;
-      if (phase === "uncertain" && attempt.current && checkInReadback(attempt.current, rows) === "pending") { setHistoryFailed(false); return; }
+      const receipt = phase === "uncertain" && attempt.current ? checkInReadback(attempt.current, rows) : null;
+      if (receipt === "pending") { setHistoryFailed(false); return; }
+      if (receipt === "recorded") {
+        setSavedReport(rows.at(-1) ?? null); setHistory(rows); setHistoryFailed(false); setPhase("saved"); setStatus(""); attempt.current = null; onDirty(id, false); onReadback(); return;
+      }
       setSavedReport(rows.at(-1) ?? null); setHistory(rows); setHistoryFailed(false); setPhase("idle"); attempt.current = null;
     } catch (error) {
       if (current.signal.aborted || !mounted.current) return;

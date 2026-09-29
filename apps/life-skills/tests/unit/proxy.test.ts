@@ -30,6 +30,20 @@ describe("actual parent check-in deep-link proxy", () => {
     }
   });
 });
+describe("actual client check-in deep-link proxy", () => {
+  it.each(["he", "en"])("projects a bounded %s client destination and rejects repeated values", locale => {
+    const origin="https://life-skills.bneineviimacademy.org", id="123e4567-e89b-42d3-a456-426614174000";
+    vi.stubEnv("NODE_ENV","production");vi.stubEnv("LS_APP_MODE","foundation_locked");vi.stubEnv("LS_APP_ORIGIN",origin);vi.stubEnv("LS_PRIVATE_APP_ENABLED","true");
+    const path=`/${locale}/client/practice?caseId=${id}&audienceId=${id}`;
+    const valid=proxy(new NextRequest(origin+path+"&section=checkins&secret=private",{headers:{"x-ls-client-return":"https://untrusted.invalid"}}));
+    expect(valid.headers.get("x-middleware-request-x-ls-client-return")).toBe(path+"&section=checkins");
+    for(const query of ["&section=checkins&section=checkins","&section=untrusted"])expect(proxy(new NextRequest(origin+path+query)).headers.get("x-middleware-request-x-ls-client-return")).toBe(path);
+  });
+  it("strips a caller-supplied client return on unrelated pages", () => {
+    vi.stubEnv("NODE_ENV","production");vi.stubEnv("LS_APP_MODE","foundation_locked");vi.stubEnv("LS_APP_ORIGIN","https://life-skills.bneineviimacademy.org");vi.stubEnv("LS_PRIVATE_APP_ENABLED","true");
+    expect(proxy(new NextRequest("https://life-skills.bneineviimacademy.org/en/login",{headers:{"x-ls-client-return":"/en/client/practice?section=checkins"}})).headers.get("x-middleware-request-x-ls-client-return")).toBeNull();
+  });
+});
 describe("actual practitioner Calendar login return perimeter", () => {
   const origin = "https://life-skills.bneineviimacademy.org";
   function returned(query: string, supplied = "https://untrusted.invalid/private") {
