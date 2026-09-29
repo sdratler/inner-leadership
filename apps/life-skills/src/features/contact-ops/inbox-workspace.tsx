@@ -9,7 +9,7 @@ export function CapturedMessageList({locale,items,query=""}:{locale:Locale;items
  const time=(value:string)=>new Intl.DateTimeFormat(locale==="he"?"he-IL":"en-GB",{dateStyle:"medium",timeStyle:"short"}).format(new Date(value));
  if(!visible.length)return <p role="status">{query.trim()?t.none:t.empty}</p>;
  return <div className="lsw-stack">{visible.map(row=>{const href=whatsappContactHref(row.fromNumber);return <article className="lsw-card lsw-stack" key={row.id}>
-  <div className="lsw-section-header"><div><strong>{row.pushName||t.fallback}</strong><p className="lsw-help"><bdi>{row.fromNumber}</bdi> · {t.time}: {time(row.occurredAt)}</p></div>{href&&<a className="lsw-button lsw-button--secondary" href={href} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">{t.open}</a>}</div>
+   <div className="lsw-section-header" style={{flexWrap:"wrap"}}><div><strong>{row.pushName||t.fallback}</strong><p className="lsw-help"><bdi>{row.fromNumber}</bdi> · {t.time}: {time(row.occurredAt)}</p></div>{href&&<a className="lsw-button lsw-button--secondary" style={{flexShrink:0,whiteSpace:"nowrap"}} href={href} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">{t.open}</a>}</div>
   <details className="lsw-details"><summary>{t.details} · {row.messageType}</summary>{row.messageText&&<p style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{row.messageText}</p>}{row.media.length>0&&<section><h3>{t.media}</h3><ul>{row.media.map((media,index)=><li key={index}>{media.fileName||media.mimeType||row.messageType}{media.sizeBytes!==null?` · ${media.sizeBytes} bytes`:""}</li>)}</ul></section>}<p className="lsw-help">{t.stored}: {time(row.storedAt)}</p></details>
  </article>})}</div>;
 }
@@ -21,7 +21,7 @@ export function InboundInboxWorkspace({locale}:{locale:Locale}){
    if(!controller.signal.aborted)setState({kind:"ready",items:body.data.items,enabled:body.data.captureEnabled===true&&body.data.bindingConfigured===true});
   }).catch(()=>{if(!controller.signal.aborted)setState({kind:"error"})});return()=>controller.abort();
  },[revision]);
- return <section className="lsw-stack" aria-labelledby="business-whatsapp-title"><header className="lsw-page-header"><div><h1 id="business-whatsapp-title">{t.title}</h1><p>{t.intro}</p></div><button className="lsw-button lsw-button--secondary" type="button" onClick={()=>setRevision(value=>value+1)} disabled={state.kind==="loading"}>{t.refresh}</button></header>
+ return <main className="lsw-stack" lang={locale} dir={locale==="he"?"rtl":"ltr"} aria-labelledby="business-whatsapp-title"><header className="lsw-page-header"><div><h1 id="business-whatsapp-title">{t.title}</h1><p>{t.intro}</p></div><button className="lsw-button lsw-button--secondary" type="button" onClick={()=>setRevision(value=>value+1)} disabled={state.kind==="loading"}>{t.refresh}</button></header>
   {state.kind==="loading"?<p role="status">{t.loading}</p>:state.kind==="error"?<p role="alert">{t.failure}</p>:<><p className="lsw-help">{state.enabled?t.ready:t.off}</p><div className="lsw-field"><label htmlFor="captured-message-search">{t.search}</label><input id="captured-message-search" className="lsw-input" type="search" value={query} maxLength={160} onChange={event=>setQuery(event.target.value)}/></div><CapturedMessageList locale={locale} items={state.items} query={query}/><p className="lsw-help">{t.limit}</p></>}
- </section>;
+ </main>;
 }

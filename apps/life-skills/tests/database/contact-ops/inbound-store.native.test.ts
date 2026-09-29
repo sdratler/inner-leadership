@@ -43,6 +43,74 @@ test("concurrent provider replay stores exactly one receipt; the next inquiry re
  expect((await store.recent(f.practitioner.actor)).map(x=>x.inquiry.messageText)).toContain(inquiry.messageText);
 });
 
+test("inbox renders one stable original business message across new delivery events and name changes",async()=>{
+ const {f,store}=await setup();await store.capture(inquiry);
+ const original=(await store.recent(f.practitioner.actor))[0]!;
+ for(let i=0;i<6;i++)await store.capture({...inquiry,providerEventId:`synthetic-redelivery-${i}`,pushName:`Changed display name ${i}`});
+ const recent=await store.recent(f.practitioner.actor);
+ expect(recent).toEqual([original]);
+ expect((await f.pool.query("SELECT count(*)::int AS n FROM ls_contact_ops.message_receipts WHERE workspace_id=$1",[f.workspaceId])).rows[0].n).toBe(7);
+ expect((await f.pool.query("SELECT count(*)::int AS n FROM ls_contact_ops.profiles WHERE workspace_id=$1",[f.workspaceId])).rows[0].n).toBe(0);
+});
+
+test("inbox limits distinct messages; delivery replay neither crowds out nor reorders earlier messages",async()=>{
+ const {f,store}=await setup();await store.capture(inquiry);
+ await store.capture({...inquiry,providerEventId:"synthetic-next-event",providerMessageId:"synthetic-next-message",messageText:"Second distinct message"});
+ const before=await store.recent(f.practitioner.actor,2);expect(before).toHaveLength(2);
+ expect(before[0]!.inquiry.providerMessageId).toBe("synthetic-next-message");
+ for(let i=0;i<8;i++)await store.capture({...inquiry,providerEventId:`synthetic-old-redelivery-${i}`});
+ expect(await store.recent(f.practitioner.actor,2)).toEqual(before);
+ expect(await store.recent(f.practitioner.actor,1)).toEqual([before[0]]);
+});
+
+test("inbox refuses conflicting semantic replays even when the changed delivery falls outside an event limit",async()=>{
+ for(const change of [{messageText:"Conflicting message body"},{fromNumber:"+972501234599"},{providerThreadId:"synthetic-other-thread"},{occurredAt:"2026-09-28T03:00:00Z"},
+  {messageType:"document",media:[{providerMediaId:"synthetic-document",fileName:"synthetic.txt",mimeType:"text/plain",sizeBytes:4}]}]){
+  const {f,db,store}=await setup();await store.capture(inquiry);
+  // Sheet/capture-only authority intentionally preserves both event envelopes.
+  // The private reader must detect the conflict, not pretend either is verified.
+  await store.capture({...inquiry,...change,providerEventId:randomUUID()});
+  const sessions=new IdentitySessions(db,{workspaceId:f.workspaceId} as IdentityConfig,systemClock);
+  const deps=async()=>({origin:"https://synthetic.invalid",captureEnabled:true,bindingConfigured:true,actor:(token:string)=>sessions.actor(token),store});
+  await expect(store.recent(f.practitioner.actor,1)).rejects.toThrow("CONFLICT");
+  const response=await readInboundInbox(new Request("http://127.0.0.1:8080/api/private/contact-inbound",{headers:{cookie:`${SESSION_COOKIE}=${f.practitioner.token}`,"x-forwarded-proto":"https","x-forwarded-host":"synthetic.invalid"}}),deps);
+  expect(response.status).toBe(409);expect(await response.text()).not.toContain(inquiry.messageText);
+ }
+});
+
+test("same provider message ID stays separate for a different verified business binding",async()=>{
+ const {f,db,store}=await setup();await store.capture(inquiry);
+ const other={...inquiry,channelId:"synthetic-second-channel",businessNumber:"+972501234599",providerEventId:"synthetic-other-binding-event"};
+ await new ContactInboundStore(db,f.workspaceId,f.keyring,key,inboundBindingDigest(other)).capture(other);
+ const recent=await store.recent(f.practitioner.actor,2);expect(recent).toHaveLength(2);
+ expect(new Set(recent.map(x=>x.receiptKey)).size).toBe(2);
+ expect(new Set(recent.map(x=>x.inquiry.channelId)).size).toBe(2);
+});
+
+test("excessive workspace history fails closed before grouping instead of hiding an older conflicting envelope",async()=>{
+ const {f,store}=await setup();
+ for(let start=0;start<1001;start+=25)await Promise.all(Array.from({length:Math.min(25,1001-start)},(_,i)=>store.capture({...inquiry,providerEventId:`synthetic-bounded-replay-${start+i}`})));
+ await expect(store.recent(f.practitioner.actor,1)).rejects.toThrow("UNAVAILABLE");
+ expect((await f.pool.query("SELECT count(*)::int AS n FROM ls_contact_ops.message_receipts WHERE workspace_id=$1",[f.workspaceId])).rows[0].n).toBe(1001);
+},60000);
+
+test("bounded reader keeps SQL microsecond first-receipt ordering and supports the existing primary-key access path",async()=>{
+ const {f,store}=await setup();await store.capture(inquiry);
+ for(let i=0;i<10;i++)await store.capture({...inquiry,providerEventId:`000-lexically-earlier-${i}`,pushName:"Later envelope name"});
+ expect((await store.recent(f.practitioner.actor))[0]!.inquiry.pushName).toBe(inquiry.pushName);
+ // An isolated planner probe demonstrates the exact ordered prefix has a
+ // primary-key access path; no production setting or security control changes.
+ const client=await f.pool.connect();
+ try{
+  await client.query("BEGIN; SET LOCAL enable_seqscan=off");
+  const result=await client.query(`EXPLAIN (FORMAT JSON) SELECT provider_binding_id,provider_event_key
+   FROM ls_contact_ops.message_receipts WHERE workspace_id=$1 AND channel='whatsapp'
+   ORDER BY provider_binding_id,provider_event_key LIMIT 1001`,[f.workspaceId]);
+  expect(JSON.stringify(result.rows)).toContain("message_receipts_pkey");
+  expect(JSON.stringify(result.rows)).not.toContain('"Node Type":"Aggregate"');
+ }finally{await client.query("ROLLBACK");client.release();}
+});
+
 test("wrong provider binding/invalid payload is refused; real parent/revoked/cross-workspace read permissions remain denied",async()=>{
  const {f,store}=await setup();
  await expect(store.capture({...inquiry,channelId:"another-business-channel"})).rejects.toThrow("FORBIDDEN");
@@ -89,7 +157,10 @@ test("native inbox uses actual sessions and fresh roles; readonly capture is imp
  const request=(token:string)=>new Request("http://127.0.0.1:8080/api/private/contact-inbound",{headers:{cookie:`${SESSION_COOKIE}=${token}`,"x-forwarded-proto":"https","x-forwarded-host":"synthetic.invalid"}});
  const first=await readInboundInbox(request(f.practitioner.token),deps);expect(first.status).toBe(200);const body=await first.json();
  expect(body.data.items).toHaveLength(1);expect(body.data.items[0].messageText).toBe(inquiry.messageText);expect(body.data.items[0].id).toMatch(/^[a-f0-9]{64}$/);
+ await store.capture({...inquiry,providerEventId:"synthetic-http-new-delivery",pushName:"Changed incoming display name"});
+ const replay=await readInboundInbox(request(f.practitioner.token),deps);expect(replay.status).toBe(200);
+ expect((await replay.json()).data.items).toEqual(body.data.items);
  for(const role of ["parent","child","adult_client"]){await f.pool.query("UPDATE ls_identity.accounts SET role=$2 WHERE id=$1",[f.parent.actor.id,role]);expect((await readInboundInbox(request(f.parent.token),deps)).status).toBe(403);}
  await f.pool.query("UPDATE ls_identity.sessions SET revoked_at=clock_timestamp() WHERE token_digest=$1",[f.practitioner.actor.sessionDigest]);expect((await readInboundInbox(request(f.practitioner.token),deps)).status).toBe(401);
- expect((await f.pool.query("SELECT count(*)::int AS n FROM ls_contact_ops.message_receipts WHERE workspace_id=$1",[f.workspaceId])).rows[0].n).toBe(1);
+ expect((await f.pool.query("SELECT count(*)::int AS n FROM ls_contact_ops.message_receipts WHERE workspace_id=$1",[f.workspaceId])).rows[0].n).toBe(2);
 });
