@@ -8,6 +8,16 @@ it('preserves only a bounded legacy lead ID on a practitioner People return link
     .toBe('/en/app/clients');
 });
 const caseId='123e4567-e89b-42d3-a456-426614174000',sessionId='223e4567-e89b-42d3-a456-426614174000';
+for(const locale of ['he','en'] as const)for(const section of ['due','drafts','published','history'])it(`${locale}: preserves exact report ${section} through the bounded practitioner login return`,()=>{
+ const result=new URL(practitionerDetailReturnPath(locale,`/${locale}/app/reports`,{caseId,audienceId:sessionId,section,mode:'demo',context:'client',date:'2026-09-22',view:'agenda',secret:'not-forwarded',role:'parent'}),'https://private.invalid');
+ expect(Object.fromEntries(result.searchParams)).toEqual({mode:'demo',date:'2026-09-22',view:'agenda',caseId,audienceId:sessionId,context:'client',section});
+ expect(loginReturnDestination(locale,'practitioner',result.pathname+result.search)).toBe(result.pathname+result.search);
+ expect(loginReturnDestination(locale,'parent',result.pathname+result.search)).toBe(`/${locale}/family/schedule`);
+});
+it('drops invalid/repeated report sections and never forwards them to a private session',()=>{
+ for(const section of ['checkins','all','private',['history','history']])expect(practitionerDetailReturnPath('en','/en/app/reports',{section})).toBe('/en/app/reports');
+ expect(practitionerDetailReturnPath('he',`/he/app/cases/${caseId}/sessions/${sessionId}`,{section:'history'})).toBe(`/he/app/cases/${caseId}/sessions/${sessionId}`);
+});
 it.each(['he','en'] as const)('preserves exact bounded %s practitioner check-in login context',locale=>{
  const path=practitionerReturnPath(locale,'practice',{caseId,audienceId:sessionId,assignmentId:caseId,section:'checkins',secret:'not-forwarded',mode:'demo'});
  expect(path).toBe(`/${locale}/app/practice?caseId=${caseId}&audienceId=${sessionId}&assignmentId=${caseId}&section=checkins`);
