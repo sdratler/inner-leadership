@@ -10,6 +10,7 @@ import { Dialog, openDialog, closeDialog } from '../../ui/workspace/dialogs.tsx'
 import { ErrorState, LoadingState, PageHeader, StatusChip } from '../../ui/workspace/surfaces.tsx';
 import { CalendarShell } from '../../ui/workspace/appointments.tsx';
 import { UnsavedChangesGuard } from '../../ui/workspace/draft-guard.tsx';
+import {workspaceHref} from '../../ui/workspace/navigation-model.ts';
 import { calendarRead, calendarWrite } from './client.ts';
 import { calendarLoadFailure, type CalendarLoadFailure } from './error-state.ts';
 import { text } from './copy.ts';
@@ -149,7 +150,7 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  <NoticeReceipt appointment={selected} locale={locale} onReplacement={()=>void refreshSelected(selected.replacementId??selected.notice?.replacementId??undefined)}/>
  <Button variant="quiet" disabled={mutation.locked} onClick={()=>{if(!dirty||window.confirm(t.dirty)){setDirty(false);void refreshSelected();}}}>{t.refresh}</Button>
  {practitioner?<>
- {selected.kind==='individual'&&!mutation.locked&&<p><a className="lsw-button lsw-button--secondary" href={`/${locale}/app/cases/${selected.caseId}/sessions?appointmentId=${selected.id}`}>{locale==='he'?'פתיחת רשומת מפגש פרטית':'Open private session record'}</a></p>}
+ {selected.kind==='individual'&&!mutation.locked&&<p><a className="lsw-button lsw-button--secondary" href={workspaceHref(locale,`app/cases/${selected.caseId}/sessions`,selected.caseId,{mode:mode!,date,view,...(selectedClientContext?{context:'client' as const}:{})})+`&appointmentId=${selected.id}`}>{locale==='he'?'פתיחת רשומת מפגש פרטית':'Open private session record'}</a></p>}
  <details className="ls-cal-section" open><summary>{t.attendance}</summary><AttendanceForm locale={locale} appointment={selected} locked={mutation.locked} onDirty={setDirty} save={save}/></details>
  {selected.kind==='individual'&&<Button variant="secondary" disabled={mutation.locked} onClick={e=>openBook(e,selected)}>{t.parent_guidance}</Button>}
  <details className="ls-cal-section"><summary>{t.manual}</summary><NoticeForm locale={locale} appointment={selected} manual locked={mutation.locked} onDirty={setDirty} save={save}/></details>

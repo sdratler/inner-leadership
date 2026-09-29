@@ -1,4 +1,5 @@
 import type { Locale } from "../../lib/locale.ts";
+import {isCaseId,workspaceContext} from '../../ui/workspace/navigation-model.ts';
 
 type Role = "practitioner" | "parent" | "adult_client" | "child";
 
@@ -35,6 +36,17 @@ export function practitionerReturnPath(locale: Locale, page: "calendar" | "clien
   }
   const suffix = params.toString();
   return `/${locale}/app/${page}${suffix ? `?${suffix}` : ""}`;
+}
+
+/** Named practitioner deep links only; no arbitrary caller/header path is trusted. */
+export function practitionerDetailReturnPath(locale:Locale,pathname:string,query:Record<string,string|string[]|undefined>):string {
+ const reports=pathname===`/${locale}/app/reports`,session=pathname.match(new RegExp(`^/${locale}/app/cases/([^/]+)/sessions(?:/([^/]+))?$`));
+ if(!reports&&(!session||!isCaseId(session[1])||session[2]!==undefined&&!isCaseId(session[2])))return `/${locale}/app/calendar`;
+ const params=new URLSearchParams(workspaceContext(query) as Record<string,string>);
+ const one=(key:string)=>typeof query[key]==='string'?query[key] as string:'';
+ if(reports){for(const key of ['caseId','audienceId'])if(isCaseId(one(key)))params.set(key,one(key).toLowerCase());if(one('context')==='client')params.set('context','client');}
+ else if(!session?.[2]&&isCaseId(one('appointmentId')))params.set('appointmentId',one('appointmentId').toLowerCase());
+ return pathname+(params.size?'?'+params.toString():'');
 }
 
 /** Preserve known parent destinations without forwarding arbitrary query text into login. */

@@ -39,9 +39,27 @@ export function selectedCaseId(pathname: string, queryCaseId: string | null): st
   if (isCaseId(pathCase)) return pathCase;
   return null;
 }
-export function workspaceHref(locale: Locale, path: string, caseId?: string | null): string {
+export type WorkspaceContext = {mode?: 'live'|'demo';date?:string;view?:'day'|'week'|'month'|'agenda';context?:'client'};
+/** Global destinations keep their own toolbar; Payments may still retain a case filter. */
+export function isClientWorkspacePath(path:string):boolean {
+  return ['app/calendar','app/practice','app/feedback','app/forms','app/reports'].includes(path)||path.startsWith('app/cases/')&&isCaseId(path.split('/')[2]);
+}
+/** Presentation hints only. Every destination still rechecks account/case authorization. */
+export function workspaceContext(query:Record<string,unknown>,strict=false):WorkspaceContext {
+  const result:WorkspaceContext={};
+  for(const key of ['mode','date','view','context'] as const){
+    const value=query[key];if(value===undefined||value===null)continue;
+    const valid=typeof value==='string'&&(key==='mode'?value==='live'||value==='demo':key==='view'?['day','week','month','agenda'].includes(value):key==='context'?value==='client':/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(new Date(value+'T00:00:00Z').getTime())&&new Date(value+'T00:00:00Z').toISOString().slice(0,10)===value);
+    if(!valid){if(strict)throw new Error('INVALID_WORKSPACE_CONTEXT');continue;}
+    if(key==='mode')result.mode=value as 'live'|'demo';else if(key==='view')result.view=value as 'day'|'week'|'month'|'agenda';else if(key==='context')result.context='client';else result.date=value as string;
+  }
+  return result;
+}
+export function workspaceHref(locale: Locale, path: string, caseId?: string | null, context:WorkspaceContext={}): string {
   if (!/^(app|family|client)(?:\/[a-zA-Z0-9_-]+)*$/.test(path)) throw new Error("INVALID_WORKSPACE_PATH");
-  return `/${locale}/${path}` + (isCaseId(caseId) ? `?caseId=${encodeURIComponent(caseId)}` : "");
+  const query=new URLSearchParams();if(isCaseId(caseId))query.set('caseId',caseId);
+  if(path==='app'||path.startsWith('app/'))for(const [key,value] of Object.entries(workspaceContext(context)))if(key!=='context'||isClientWorkspacePath(path))query.set(key,value);
+  return `/${locale}/${path}`+(query.size?'?'+query.toString():'');
 }
 export function caseDestinationHref(locale: Locale, path: string, caseId: string): string {
   if (!isCaseId(caseId)) throw new Error("INVALID_CASE_CONTEXT");
@@ -72,7 +90,10 @@ export function breadcrumbItems(locale: Locale, role: WorkspaceRole, pathname: s
   if (pathname.includes("/app/cases/")) {
     const id=pathname.match(/\/app\/cases\/([^/]+)/)?.[1];
     if(pathname.endsWith("/settings")&&isCaseId(id))return [home,{label:locale==="he"?"אנשים":"People",path:"app/clients"},{label:locale==="he"?"התיק הנבחר":"Selected case",path:`app/cases/${id}`},{label:locale==="he"?"גישה ומשתתפים":"Access & participants"}];
-    if(pathname.includes("/sessions")&&isCaseId(id))return [home,{label:locale==="he"?"אנשים":"People",path:"app/clients"},{label:locale==="he"?"התיק הנבחר":"Selected case",path:`app/cases/${id}`},{label:locale==="he"?"מפגשים":"Sessions"}];
+    if(pathname.includes("/sessions")&&isCaseId(id)){
+      const sessions={label:locale==='he'?'מפגשים':'Sessions',...(pathname.endsWith('/sessions')?{}:{path:`app/cases/${id}/sessions`})};
+      return [home,{label:locale==="he"?"אנשים":"People",path:"app/clients"},{label:locale==="he"?"התיק הנבחר":"Selected case",path:`app/cases/${id}`},sessions,...(pathname.endsWith('/sessions')?[]:[{label:locale==='he'?'רשומת מפגש':'Session record'}])];
+    }
     return [home, { label: locale === "he" ? "אנשים" : "People", path: "app/clients" }, { label: locale === "he" ? "התיק הנבחר" : "Selected case" }];
   }
   if(role==="practitioner"&&selectedClient&&isCaseId(caseId)){

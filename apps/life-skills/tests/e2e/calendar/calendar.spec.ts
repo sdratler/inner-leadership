@@ -71,6 +71,20 @@ for(const locale of ['he','en'] as const){
   await dialog.locator('#attendance-state').selectOption('no_show');await dialog.getByRole('button',{name:t.recordAttendance,exact:true}).click();
   await expect.poll(async()=>{const r=await page.request.get('/api/calendar/appointments/'+d.pastId);return (await r.json()).data.attendance?.state;}).toBe('no_show');
   const a=(await (await page.request.get('/api/calendar/appointments/'+d.pastId)).json()).data;expect(a.countsAsChildSession).toBe(false);expect(a.creditException).toBeNull();
+  const privateLink=dialog.getByRole('link',{name:locale==='he'?'פתיחת רשומת מפגש פרטית':'Open private session record',exact:true});
+  const destination=new URL((await privateLink.getAttribute('href'))!,data.origin);
+  expect(destination.pathname).toBe(`/${locale}/app/cases/${data.caseId}/sessions`);
+  expect(Object.fromEntries(destination.searchParams)).toEqual({caseId:data.caseId,mode:'live',date:d.pastDate,view:'day',appointmentId:d.pastId});
+  await privateLink.click();await expect(page.locator('main.lsw-main [data-appointment-id]')).toHaveCount(1);
+  await expect(page.locator(`main.lsw-main [data-appointment-id="${d.pastId}"]`)).toBeVisible();
+  await page.getByRole('button',{name:locale==='he'?'פתיחת רשומת מפגש':'Open session record',exact:true}).click();
+  await expect(page.getByText(locale==='he'?'לא נרשמה הסכמה':'No consent recorded',{exact:true})).toBeVisible();
+  const detail=new URL(page.url());expect(detail.pathname).toMatch(new RegExp(`^/${locale}/app/cases/${data.caseId}/sessions/[0-9a-f-]{36}$`));
+  for(const [key,value] of Object.entries({caseId:data.caseId,mode:'live',date:d.pastDate,view:'day'}))expect(detail.searchParams.get(key)).toBe(value);
+  const back=page.getByRole('link',{name:locale==='he'?'חזרה ליומן':'Return to calendar',exact:true});await back.click();
+  const returned=new URL(page.url());expect(returned.pathname).toBe(`/${locale}/app/calendar`);
+  for(const [key,value] of Object.entries({caseId:data.caseId,mode:'live',date:d.pastDate,view:'day'}))expect(returned.searchParams.get(key)).toBe(value);
+  await expect(page.locator(`[data-appointment-id="${d.pastId}"]:visible`)).toBeVisible();
   await page.screenshot({path:info.outputPath(`practitioner-${locale}-attendance.png`),fullPage:true});
  });
 }

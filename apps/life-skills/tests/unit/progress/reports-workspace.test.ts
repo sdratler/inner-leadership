@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach,beforeEach, expect, it, vi } from "vitest";
 
 type Slot = { kind: "state"; value: unknown } | { kind: "ref"; value: { current: unknown } } | { kind: "effect"; deps: readonly unknown[] | undefined; cleanup: (() => void) | undefined };
 const hook = vi.hoisted(() => {
@@ -19,9 +19,11 @@ const hook = vi.hoisted(() => {
 const accountRead = vi.hoisted(() => vi.fn());
 const sessionInfo = vi.hoisted(() => vi.fn(async () => ({ csrfToken: "c".repeat(43) })));
 const fetchMock = vi.hoisted(() => vi.fn());
+const replace=vi.hoisted(()=>vi.fn());
+vi.mock('next/navigation',()=>({useRouter:()=>({replace})}));
 vi.mock("react", async importOriginal => { const actual = await importOriginal<typeof import("react")>(); return { ...actual, useEffect: hook.useEffect, useRef: hook.useRef, useState: hook.useState }; });
 vi.mock("../../../src/features/identity/client.ts", () => ({ accountRead, sessionInfo }));
-import { ReportCaseWorkspace, ReportEditor, ReportReadout, type Review } from "../../../src/features/progress/reports-page.tsx";
+import { ReportsPage, ReportCaseWorkspace, ReportEditor, ReportReadout, type Review } from "../../../src/features/progress/reports-page.tsx";
 
 const ids = { caseId: "123e4567-e89b-12d3-a456-426614174000", audienceId: "223e4567-e89b-12d3-a456-426614174000", otherAudienceId: "323e4567-e89b-12d3-a456-426614174000" };
 const narrative = { taughtAndPractised: ["Synthetic teaching"], parentReportedExamples: [], practitionerObservations: ["Synthetic observation"], usefulChanges: ["Synthetic useful change"], continuingDifficulty: ["Synthetic difficulty"], uncertainty: "Synthetic uncertainty", nextAdjustment: "Synthetic next", informationLimits: "Synthetic limits" };
@@ -35,7 +37,78 @@ function all(node: unknown, predicate: (element: ReactElement<Record<string, unk
 function click(output: unknown, label: string) { const button = find(output, (element) => element.type === "button" && element.props.children === label); if (!button) throw new Error(`Missing button ${label}`); return button.props.onClick as Click; }
 function fillEditor(output: unknown) { const input = find(output, (element) => element.type === "input"); if (!input) throw new Error("missing period input"); (input.props.onChange as Change)({ target: { value: "2026-09-01" } }); const fields = all(output, (element) => element.type === "textarea"); const values = ["Synthetic taught", "Synthetic observation", "Synthetic useful", "Synthetic difficulty", "Synthetic uncertainty", "Synthetic next", "Synthetic limits"]; fields.forEach((field, index) => (field.props.onChange as Change)({ target: { value: values[index]! } })); }
 
-beforeEach(() => { hook.reset(); accountRead.mockReset(); sessionInfo.mockClear(); fetchMock.mockReset(); vi.stubGlobal("fetch", fetchMock); });
+beforeEach(() => { hook.reset(); accountRead.mockReset(); sessionInfo.mockClear(); fetchMock.mockReset();replace.mockClear(); vi.stubGlobal("fetch", fetchMock); });
+afterEach(()=>vi.unstubAllGlobals());
+
+it('loads practitioner cases in the explicit authorized mode and never substitutes an unavailable requested case',async()=>{
+ accountRead.mockResolvedValue([{id:ids.otherAudienceId,displayName:'Synthetic other',kind:'minor',state:'active',mode:'demo'}]);
+ const props={locale:'en' as const,role:'practitioner' as const,caseId:ids.caseId,mode:'demo' as const};
+ hook.render(()=>ReportsPage(props));hook.flushEffects();await tick();const output=hook.render(()=>ReportsPage(props));
+ expect(accountRead).toHaveBeenCalledWith('cases','demo');expect(find(output,e=>e.type===ReportCaseWorkspace)).toBeUndefined();
+ expect(text(output)).toContain('The selected case is unavailable');expect(text(output)).toContain('No other case was opened');
+});
+it('keeps parent cases on the ordinary authorized API without a practitioner mode request',async()=>{
+ accountRead.mockResolvedValue([{id:ids.caseId,displayName:'Synthetic child',kind:'minor'}]);
+ const props={locale:'he' as const,role:'parent' as const,caseId:ids.caseId};hook.render(()=>ReportsPage(props));hook.flushEffects();await tick();
+ expect(accountRead).toHaveBeenCalledWith('cases');expect(find(hook.render(()=>ReportsPage(props)),e=>e.type===ReportCaseWorkspace)?.props.caseId).toBe(ids.caseId);
+});
+it('rejects mixed practitioner provenance instead of hiding a corrupt response as an empty list',async()=>{
+ accountRead.mockResolvedValue([{id:ids.caseId,displayName:'Synthetic child',kind:'minor',state:'active',mode:'live'}]);
+ const props={locale:'en' as const,role:'practitioner' as const,mode:'demo' as const};hook.render(()=>ReportsPage(props));hook.flushEffects();await tick();
+ const output=hook.render(()=>ReportsPage(props));expect(find(output,e=>e.type===ReportCaseWorkspace)).toBeUndefined();expect(find(output,e=>e.props.role==='alert')).toBeDefined();
+});
+it('ignores a stale case-list response after explicit live/demo context changes',async()=>{
+ let resolve!:(items:unknown)=>void;accountRead.mockImplementationOnce(()=>new Promise(done=>{resolve=done;})).mockResolvedValueOnce([{id:ids.caseId,displayName:'Synthetic demo',kind:'minor',state:'active',mode:'demo'}]);
+ hook.render(()=>ReportsPage({locale:'en',role:'practitioner',mode:'live'}));hook.flushEffects();
+ const next={locale:'en' as const,role:'practitioner' as const,mode:'demo' as const};hook.render(()=>ReportsPage(next));hook.flushEffects();await tick();
+ resolve([{id:ids.otherAudienceId,displayName:'Stale live',kind:'minor',state:'active',mode:'live'}]);await tick();
+ expect(find(hook.render(()=>ReportsPage(next)),e=>e.type===ReportCaseWorkspace)?.props.caseId).toBe(ids.caseId);
+ expect(hook.afterUnmountUpdates()).toBe(0);
+});
+it('preserves a dirty report when the practitioner declines changing the selected case, and blocks an unknown write state',async()=>{
+ const other=ids.otherAudienceId;accountRead.mockResolvedValue([{id:ids.caseId,displayName:'Synthetic A',kind:'minor',state:'active',mode:'demo'},{id:other,displayName:'Synthetic B',kind:'adult',state:'active',mode:'demo'}]);
+ const confirm=vi.fn(()=>false);vi.stubGlobal('window',{confirm});const props={locale:'en' as const,role:'practitioner' as const,mode:'demo' as const,caseId:ids.caseId};
+ hook.render(()=>ReportsPage(props));hook.flushEffects();await tick();let output=hook.render(()=>ReportsPage(props));
+ const child=find(output,e=>e.type===ReportCaseWorkspace)!;(child.props.onEditorStateChange as (s:unknown)=>void)({dirty:true,busy:false,uncertain:false});
+ output=hook.render(()=>ReportsPage(props));(find(output,e=>e.type==='select')!.props.onChange as Change)({target:{value:other}});
+ expect(confirm).toHaveBeenCalledTimes(1);expect(find(hook.render(()=>ReportsPage(props)),e=>e.type===ReportCaseWorkspace)?.props.caseId).toBe(ids.caseId);
+ (child.props.onEditorStateChange as (s:unknown)=>void)({dirty:true,busy:false,uncertain:true});output=hook.render(()=>ReportsPage(props));
+ expect(find(output,e=>e.type==='select')?.props.disabled).toBe(true);(find(output,e=>e.type==='select')!.props.onChange as Change)({target:{value:other}});
+ expect(confirm).toHaveBeenCalledTimes(1);expect(find(hook.render(()=>ReportsPage(props)),e=>e.type===ReportCaseWorkspace)?.props.caseId).toBe(ids.caseId);
+});
+it('shows a failed case read with a bounded retry and does not update state after unmount',async()=>{
+ accountRead.mockRejectedValueOnce(Error('synthetic failure')).mockResolvedValueOnce([{id:ids.caseId,displayName:'Synthetic A',kind:'minor',state:'active',mode:'demo'}]);
+ const props={locale:'en' as const,role:'practitioner' as const,mode:'demo' as const};hook.render(()=>ReportsPage(props));hook.flushEffects();await tick();
+ click(hook.render(()=>ReportsPage(props)),'Retry case list')();hook.render(()=>ReportsPage(props));hook.flushEffects();await tick();
+ expect(find(hook.render(()=>ReportsPage(props)),e=>e.type===ReportCaseWorkspace)?.props.caseId).toBe(ids.caseId);expect(accountRead).toHaveBeenCalledTimes(2);
+ hook.reset();let resolve!:(data:unknown)=>void;accountRead.mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));hook.render(()=>ReportsPage(props));hook.flushEffects();hook.unmount();resolve([]);await tick();expect(hook.afterUnmountUpdates()).toBe(0);
+});
+it('updates the practitioner deep link and clears the old case audience only after a permitted case switch',async()=>{
+ const other=ids.otherAudienceId;accountRead.mockResolvedValue([{id:ids.caseId,displayName:'Synthetic A',kind:'minor',state:'active',mode:'demo'},{id:other,displayName:'Synthetic B',kind:'adult',state:'active',mode:'demo'}]);
+ const props={locale:'en' as const,role:'practitioner' as const,mode:'demo' as const,caseId:ids.caseId,audienceId:ids.audienceId,navigationContext:{date:'2026-09-21',view:'agenda' as const,context:'client' as const}};
+ hook.render(()=>ReportsPage(props));hook.flushEffects();await tick();const output=hook.render(()=>ReportsPage(props));
+ (find(output,e=>e.type==='select')!.props.onChange as Change)({target:{value:other}});
+ const target=new URL(replace.mock.calls[0]![0],'https://app.example');expect(target.pathname).toBe('/en/app/reports');expect(Object.fromEntries(target.searchParams)).toEqual({caseId:other,date:'2026-09-21',view:'agenda',mode:'demo',context:'client'});
+ expect(find(hook.render(()=>ReportsPage(props)),e=>e.type===ReportCaseWorkspace)?.props.initialAudienceId).toBeUndefined();
+});
+it('does not navigate or discard when a dirty practitioner case switch is cancelled',async()=>{
+ const other=ids.otherAudienceId;accountRead.mockResolvedValue([{id:ids.caseId,displayName:'Synthetic A',kind:'minor',state:'active',mode:'demo'},{id:other,displayName:'Synthetic B',kind:'adult',state:'active',mode:'demo'}]);
+ vi.stubGlobal('window',{confirm:()=>false});const props={locale:'he' as const,role:'practitioner' as const,mode:'demo' as const,caseId:ids.caseId,audienceId:ids.audienceId};
+ hook.render(()=>ReportsPage(props));hook.flushEffects();await tick();const child=find(hook.render(()=>ReportsPage(props)),e=>e.type===ReportCaseWorkspace)!;
+ (child.props.onEditorStateChange as (s:unknown)=>void)({dirty:true,busy:false,uncertain:false});const output=hook.render(()=>ReportsPage(props));(find(output,e=>e.type==='select')!.props.onChange as Change)({target:{value:other}});
+ expect(replace).not.toHaveBeenCalled();expect(find(hook.render(()=>ReportsPage(props)),e=>e.type===ReportCaseWorkspace)?.props.initialAudienceId).toBe(ids.audienceId);
+});
+it('does not substitute another published family audience for an unavailable deep link',async()=>{
+ fetchMock.mockImplementation(async(url:string)=>Response.json({ok:true,data:url.startsWith('/api/identity/audiences')?[{id:ids.audienceId,visibility:'family_full',published:true}]:[]}));
+ const props={locale:'en' as const,role:'practitioner' as const,caseId:ids.caseId,initialAudienceId:ids.otherAudienceId};hook.render(()=>ReportCaseWorkspace(props));hook.flushEffects();await tick();const output=hook.render(()=>ReportCaseWorkspace(props));
+ expect(text(output)).toContain('No other audience was selected');expect(find(output,e=>e.type===ReportEditor)).toBeUndefined();
+});
+it('keeps private evidence separate from the blank family draft and preserves text on a cancelled draft switch',()=>{
+ const confirm=vi.fn(()=>false);vi.stubGlobal('window',{confirm});const props={locale:'en' as const,...ids,reviews:[review('423e4567-e89b-12d3-a456-426614174000','draft')],onSaved:vi.fn()};
+ let output=hook.render(()=>ReportEditor(props));expect(all(output,e=>e.type==='textarea').every(e=>e.props.value==='')).toBe(true);fillEditor(output);
+ output=hook.render(()=>ReportEditor(props));(find(output,e=>e.type==='select')!.props.onChange as Change)({target:{value:'423e4567-e89b-12d3-a456-426614174000'}});
+ expect(confirm).toHaveBeenCalledTimes(1);expect(all(hook.render(()=>ReportEditor(props)),e=>e.type==='textarea')[0]?.props.value).toBe('Synthetic taught');expect(fetchMock).not.toHaveBeenCalled();
+});
 
 it("renders only authorized published parent reports after case/audience/review Promise.all", async () => {
   fetchMock.mockImplementation(async (url: string) => url.startsWith("/api/identity/audiences") ? Response.json({ ok: true, data: [{ id: ids.audienceId, visibility: "family_full", published: true }, { id: ids.otherAudienceId, visibility: "private", published: true }] }) : Response.json({ ok: true, data: [review("423e4567-e89b-12d3-a456-426614174000", "published"), review("523e4567-e89b-12d3-a456-426614174000", "draft"), review("623e4567-e89b-12d3-a456-426614174000", "published", ids.otherAudienceId)] }));

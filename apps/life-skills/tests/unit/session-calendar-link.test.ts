@@ -3,12 +3,16 @@ import { expect, it, vi } from "vitest";
 import { sessionAppointmentListPath, visibleSessionAppointments } from "../../src/features/session-workflow/workspace.tsx";
 import type { SessionListItem } from "../../src/features/session-workflow/database.ts";
 import Page from "../../src/app/[locale]/app/cases/[caseId]/sessions/page.tsx";
+import DetailPage from "../../src/app/[locale]/app/cases/[caseId]/sessions/[sessionId]/page.tsx";
+import ReportsRoute from '../../src/app/[locale]/app/reports/page.tsx';
+import { workspaceContext, workspaceHref } from "../../src/ui/workspace/navigation-model.ts";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }), notFound: () => { throw Error("404"); } }));
 // The existing Vitest runtime has no Next @ alias resolver. Resolve these two
 // aliases to the same real modules; no page, list, authorization or mutation mock.
 vi.mock("@/lib/locale.ts", async () => import("../../src/lib/locale.ts"));
 vi.mock("@/features/session-workflow/workspace.tsx", async () => import("../../src/features/session-workflow/workspace.tsx"));
+vi.mock('@/features/progress/reports-page.tsx',async()=>import('../../src/features/progress/reports-page.tsx'));
 const caseId = "11111111-1111-4111-8111-111111111111", selected = "22222222-2222-4222-8222-222222222222";
 const items: SessionListItem[] = [selected, "33333333-3333-4333-8333-333333333333"].map(appointmentId => ({ appointmentId, sessionId: null, startsAt: "2026-09-22T08:00:00Z", endsAt: "2026-09-22T09:00:00Z", state: null, processingState: null, audioState: null }));
 it("shows only the exact appointment from the already-authorized case list, never a fallback record", () => {
@@ -46,5 +50,30 @@ it("links an individual Calendar appointment to its exact private case/session c
   const label = source.indexOf("Open private session record");
   expect(label).toBeGreaterThan(source.indexOf("{practitioner?<>"));
   expect(source).toContain("selected.kind==='individual'&&!mutation.locked");
-  expect(source).toContain("app/cases/${selected.caseId}/sessions?appointmentId=${selected.id}");
+  expect(source).toContain("workspaceHref(locale,`app/cases/${selected.caseId}/sessions`,selected.caseId,{mode:mode!,date,view,");
+  expect(source).toContain("selectedClientContext?{context:'client' as const}:{}");
+  expect(source).toContain("appointmentId=${selected.id}");
+});
+it.each(['en','he'] as const)('%s: preserves explicit selected-client and mode/date/view through exact session list and detail routes',async locale=>{
+ const query={appointmentId:selected,mode:'demo',date:'2026-09-22',view:'day',context:'client'};
+ const list=await Page({params:Promise.resolve({locale,caseId}),searchParams:Promise.resolve(query)});
+ expect(list.props.navigationContext).toEqual({mode:'demo',date:'2026-09-22',view:'day',context:'client'});
+ const detail=await DetailPage({params:Promise.resolve({locale,caseId,sessionId:selected}),searchParams:Promise.resolve(query)});
+ expect(detail.props.caseId).toBe(caseId);expect(detail.props.navigationContext).toEqual(list.props.navigationContext);
+ const href=workspaceHref(locale,`app/cases/${caseId}/sessions/${selected}`,caseId,list.props.navigationContext);
+ const url=new URL(href,'https://private.invalid');expect(url.pathname).toBe(`/${locale}/app/cases/${caseId}/sessions/${selected}`);
+ expect(Object.fromEntries(url.searchParams)).toEqual({caseId,mode:'demo',date:'2026-09-22',view:'day',context:'client'});
+});
+it.each([{mode:['demo','live']},{mode:'all'},{date:'2026-02-30'},{view:'private'},{view:['day','week']},{caseId:selected},{caseId:[caseId,caseId]},{context:['client','client']},{context:'owner'}])('rejects invalid/repeated/mismatched session navigation context %j',async query=>{
+ await expect(Page({params:Promise.resolve({locale:'en',caseId}),searchParams:Promise.resolve(query)})).rejects.toThrow('404');
+ await expect(DetailPage({params:Promise.resolve({locale:'en',caseId,sessionId:selected}),searchParams:Promise.resolve(query)})).rejects.toThrow('404');
+});
+it('does not infer demo mode or forward unknown permission/query data',()=>{
+ expect(workspaceContext({role:'parent',mode:undefined,token:'private'},true)).toEqual({});
+ expect(workspaceHref('en','family/reports',caseId,{mode:'demo',date:'2026-09-22',view:'day'})).toBe(`/en/family/reports?caseId=${caseId}`);
+});
+it('validates the real Reports route without accepting repeated/invalid mode or case/audience identifiers',async()=>{
+ const element=await ReportsRoute({params:Promise.resolve({locale:'he'}),searchParams:Promise.resolve({mode:'demo',caseId,audienceId:selected})});
+ expect(element.props).toMatchObject({mode:'demo',caseId,audienceId:selected,role:'practitioner'});
+ for(const query of [{caseId:'not-a-case'},{caseId:[caseId,selected]},{audienceId:'../private'},{mode:['demo','live']},{date:'2026-02-30'}])await expect(ReportsRoute({params:Promise.resolve({locale:'en'}),searchParams:Promise.resolve(query)})).rejects.toThrow('404');
 });
