@@ -160,10 +160,15 @@ export class ProgressService {
       if (reportReferences.some((reference) => !audience.accountIds.includes(reference.authorAccountId))) throw new AppError("NOT_FOUND");
       const id = asId(randomUUID(), "qualitative_review");
       const narrative = seal(JSON.stringify(input.narrative), `qualitative-review:${actor.workspaceId}:${id}`, this.config.keyring);
-      await tx.query(`INSERT INTO ls_progress.qualitative_reviews
+      const inserted = await tx.query<{id:QualitativeReviewId}>(`INSERT INTO ls_progress.qualitative_reviews
         (id,workspace_id,case_id,audience_id,period_start,period_end,attended_session_count,narrative_ciphertext,state,created_by_account_id,created_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'draft',$9,$10)`,
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'draft',$9,$10)
+        ON CONFLICT (workspace_id,case_id,period_start) DO NOTHING RETURNING id`,
       [id, actor.workspaceId, input.caseId, input.audienceId, input.periodStart, input.periodEnd, attendedSessionCount, narrative, actor.id, now]);
+      // The existing case/period constraint remains the authority. A duplicate
+      // never overwrites a draft/published narrative or appends source/history.
+      if(inserted.length===0)throw new AppError('CONFLICT');
+      if(inserted.length!==1||inserted[0]?.id!==id)throw new AppError('INTERNAL');
       for (const reference of practiceReferences) {
         if (!reference) throw new AppError("INTERNAL");
         await tx.query(`INSERT INTO ls_progress.review_practice_versions

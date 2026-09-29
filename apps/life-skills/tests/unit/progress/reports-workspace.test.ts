@@ -147,3 +147,13 @@ it("locks an ambiguous mutation failure behind explicit reload", async () => {
   output = hook.render(() => ReportEditor({ locale: "en", ...ids, reviews: [], onSaved })); click(output, "Save new draft version")(); await tick(); output = hook.render(() => ReportEditor({ locale: "en", ...ids, reviews: [], onSaved })); expect(text(output)).toContain("Reload reports"); click(output, "Save new draft version")(); await tick();
   expect(fetchMock).toHaveBeenCalledTimes(1); expect(onSaved).not.toHaveBeenCalled();
 });
+
+for(const locale of ['en','he'] as const)it(`${locale}: a confirmed duplicate-period409 keeps text and permits choosing another period, without claiming a save`,async()=>{
+ fetchMock.mockResolvedValueOnce(Response.json({ok:false,error:{code:'CONFLICT'}},{status:409}));const onSaved=vi.fn(),props={locale,...ids,reviews:[],onSaved};
+ let output=hook.render(()=>ReportEditor(props));hook.flushEffects();fillEditor(output);output=hook.render(()=>ReportEditor(props));click(output,locale==='he'?'שמירת גרסת טיוטה חדשה':'Save new draft version')();await tick();output=hook.render(()=>ReportEditor(props));
+ expect(onSaved).not.toHaveBeenCalled();expect(all(output,e=>e.type==='textarea')[0]?.props.value).toBe('Synthetic taught');expect(text(output)).toContain(locale==='he'?'כבר קיים דוח לתקופה הזו':'A report for this period already exists');expect(text(output)).not.toContain(locale==='he'?'נשמרה טיוטה חדשה':'New draft saved');expect(find(output,e=>e.props.role==='alert')).toBeDefined();expect(text(output)).not.toContain(locale==='he'?'טעינת דוחות מחדש':'Reload reports');
+ const input=find(output,e=>e.type==='input')!;(input.props.onChange as Change)({target:{value:'2026-10-01'}});output=hook.render(()=>ReportEditor(props));expect(all(output,e=>e.type==='textarea')[0]?.props.value).toBe('Synthetic taught');expect(find(output,e=>e.type==='button'&&e.props.children===(locale==='he'?'שמירת גרסת טיוטה חדשה':'Save new draft version'))?.props.disabled).toBe(false);
+});
+it('keeps an unrecognized409 response behind the existing ambiguous-write lock',async()=>{
+ fetchMock.mockResolvedValueOnce(Response.json({ok:false,error:{code:'UNEXPECTED'}},{status:409}));const onSaved=vi.fn(),props={locale:'en' as const,...ids,reviews:[],onSaved};let output=hook.render(()=>ReportEditor(props));hook.flushEffects();fillEditor(output);click(hook.render(()=>ReportEditor(props)),'Save new draft version')();await tick();output=hook.render(()=>ReportEditor(props));expect(text(output)).toContain('Reload reports');expect(text(output)).not.toContain('A report for this period already exists');expect(onSaved).not.toHaveBeenCalled();
+});
