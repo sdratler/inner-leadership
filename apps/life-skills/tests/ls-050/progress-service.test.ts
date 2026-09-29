@@ -34,7 +34,7 @@ const narrative = {
   informationLimits: "The report was not witnessed by the practitioner.",
 };
 
-function harness(reportAuthor = parentId) {
+function harness(reportAuthor = parentId, periodAlreadyExists = false) {
   const writes: Array<{ statement: string; values: readonly unknown[] }> = [];
   const tx: SqlSession = { async query<T extends object>(statement: string, values: readonly unknown[] = []): Promise<T[]> {
     if (statement.includes("FROM ls_identity.workspaces")) return [{ id: workspaceId }] as T[];
@@ -50,6 +50,7 @@ function harness(reportAuthor = parentId) {
     if (statement.includes("FROM ls_cases.audiences")) return [{ id: audienceId, workspaceId, caseId, visibility: "family_full", published: true }] as T[];
     if (statement.includes("FROM ls_cases.audience_accounts")) return [{ accountId: parentId }] as T[];
     writes.push({ statement, values });
+    if(statement.includes('INSERT INTO ls_progress.qualitative_reviews'))return (periodAlreadyExists?[]:[{id:values[0]}]) as T[];
     return [];
   } };
   const service = new ProgressService(
@@ -68,6 +69,15 @@ function harness(reportAuthor = parentId) {
 }
 
 describe("qualitative review service", () => {
+  it('returns a confirmed conflict without writing references/history when the case period already exists',async()=>{
+    const {service,writes}=harness(parentId,true);
+    await expect(service.createReview(actor,{caseId,audienceId,periodStart:'2026-01-01',periodEnd:'2026-01-29',assignmentVersionIds:[practiceVersionId],parentReportIds:[reportId],narrative},'10000000-0000-4000-8000-000000000011')).rejects.toMatchObject({code:'CONFLICT'});
+    const insert=writes.find(write=>write.statement.includes('INSERT INTO ls_progress.qualitative_reviews'));
+    expect(insert?.statement).toContain('ON CONFLICT (workspace_id,case_id,period_start) DO NOTHING');
+    expect(insert?.statement).not.toContain('DO UPDATE');
+    expect(writes.some(write=>write.statement.includes('INSERT INTO ls_progress.review_'))).toBe(false);
+    expect(writes.some(write=>write.statement.includes('ls_progress.feature_history'))).toBe(false);
+  });
   it("uses trusted attendance and preserves verified source references", async () => {
     const { service, writes } = harness();
     const result = await service.createReview(actor, {
