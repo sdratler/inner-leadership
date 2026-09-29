@@ -40,6 +40,10 @@ export function selectedCaseId(pathname: string, queryCaseId: string | null): st
   return null;
 }
 export type WorkspaceContext = {mode?: 'live'|'demo';date?:string;view?:'day'|'week'|'month'|'agenda';context?:'client'};
+/** Global destinations keep their own toolbar; Payments may still retain a case filter. */
+export function isClientWorkspacePath(path:string):boolean {
+  return ['app/calendar','app/practice','app/feedback','app/forms','app/reports'].includes(path)||path.startsWith('app/cases/')&&isCaseId(path.split('/')[2]);
+}
 /** Presentation hints only. Every destination still rechecks account/case authorization. */
 export function workspaceContext(query:Record<string,unknown>,strict=false):WorkspaceContext {
   const result:WorkspaceContext={};
@@ -54,7 +58,7 @@ export function workspaceContext(query:Record<string,unknown>,strict=false):Work
 export function workspaceHref(locale: Locale, path: string, caseId?: string | null, context:WorkspaceContext={}): string {
   if (!/^(app|family|client)(?:\/[a-zA-Z0-9_-]+)*$/.test(path)) throw new Error("INVALID_WORKSPACE_PATH");
   const query=new URLSearchParams();if(isCaseId(caseId))query.set('caseId',caseId);
-  if(path==='app'||path.startsWith('app/'))for(const [key,value] of Object.entries(workspaceContext(context)))query.set(key,value);
+  if(path==='app'||path.startsWith('app/'))for(const [key,value] of Object.entries(workspaceContext(context)))if(key!=='context'||isClientWorkspacePath(path))query.set(key,value);
   return `/${locale}/${path}`+(query.size?'?'+query.toString():'');
 }
 export function caseDestinationHref(locale: Locale, path: string, caseId: string): string {

@@ -28,3 +28,16 @@ for(const locale of ['en','he'] as const)it(`${locale}: session header, sidebar 
  }
  expect(html).toContain(locale==='he'?'רשומת מפגש':'Session record');
 });
+for(const locale of ['en','he'] as const)it(`${locale}: leaving a client keeps global destinations' own toolbar and bounded payment filter`,()=>{
+ navigation.pathname=`/${locale}/app/cases/${id}/sessions/223e4567-e89b-42d3-a456-426614174000`;navigation.query=new URLSearchParams({caseId:id,context:'client',mode:'demo',date:'2026-09-22',view:'day'});
+ const source=renderToStaticMarkup(CoreNavigation({locale,role:'practitioner',children:'Synthetic session'}));
+ const urls=[...source.matchAll(/href="([^"]+)"/g)].map(match=>new URL(match[1]!.replaceAll('&amp;','&'),'https://private.invalid'));
+ for(const destination of ['app/clients','app/marketing','app/payments','app/settings']){
+  const links=urls.filter(url=>url.pathname===`/${locale}/${destination}`);expect(links.length).toBeGreaterThan(0);for(const url of links)expect(url.searchParams.has('context')).toBe(false);
+ }
+ expect(urls.find(url=>url.pathname===`/${locale}/app/payments`)?.searchParams.get('caseId')).toBe(id);
+ // Old or caller-supplied global URLs must not hijack the destination's menu either.
+ navigation.pathname=`/${locale}/app/marketing`;navigation.query=new URLSearchParams({caseId:id,context:'client',mode:'demo'});
+ const destination=renderToStaticMarkup(CoreNavigation({locale,role:'practitioner',children:'Synthetic marketing'}));
+ expect(destination).toContain(locale==='he'?'יומן תוכן':'Content Calendar');expect(destination).toContain(locale==='he'?'מודעות':'Ads');expect(destination).not.toContain(locale==='he'?'התיק הנבחר':'Selected case');
+});
