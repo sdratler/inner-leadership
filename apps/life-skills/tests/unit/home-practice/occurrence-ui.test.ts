@@ -41,6 +41,13 @@ test("one denied audience removes only its private cards, preserving other audie
   expect(practiceClient.practiceDraftIds([first.occurrence.id,other.occurrence.id],next)).toEqual([other.occurrence.id]);
   expect(practiceClient.practiceAccessLossPage(page,first.occurrence.id,"UNAUTHENTICATED")).toEqual({items:[],hasMore:false});
 });
+test("a discovery/read race removes the exact denied audience even without a denied card ID",()=>{
+ const first=item(),other={...item(),occurrence:{...item().occurrence,id:asId("00000000-0000-4000-8000-000000000002","occurrence")},practice:{...item().practice,audienceId:asId("00000000-0000-4000-8000-000000000002","audience")}};
+ const page:PracticeOccurrencePage={items:[first,other],hasMore:true};
+ expect(practiceClient.practiceAudienceLossPage(page,first.practice.audienceId)).toEqual({items:[other],hasMore:true});
+ expect(practiceClient.practiceAudienceLossPage(page,"already-absent")).toEqual(page);
+ expect(page.items).toEqual([first,other]);
+});
 test("fresh discovery prunes removed or newly read-only dirty cards rather than warning about invisible input", () => {
   const first=item(),second={...item(),occurrence:{...item().occurrence,id:asId("00000000-0000-4000-8000-000000000002","occurrence")},canReport:false};
   expect(practiceClient.practiceDraftIds([first.occurrence.id,second.occurrence.id,"removed"],{items:[first,second],hasMore:false})).toEqual([first.occurrence.id]);

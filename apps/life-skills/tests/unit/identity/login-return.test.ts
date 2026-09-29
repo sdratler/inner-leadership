@@ -8,6 +8,12 @@ it('preserves only a bounded legacy lead ID on a practitioner People return link
     .toBe('/en/app/clients');
 });
 const caseId='123e4567-e89b-42d3-a456-426614174000',sessionId='223e4567-e89b-42d3-a456-426614174000';
+it.each(['he','en'] as const)('preserves exact bounded %s practitioner check-in login context',locale=>{
+ const path=practitionerReturnPath(locale,'practice',{caseId,audienceId:sessionId,assignmentId:caseId,section:'checkins',secret:'not-forwarded',mode:'demo'});
+ expect(path).toBe(`/${locale}/app/practice?caseId=${caseId}&audienceId=${sessionId}&assignmentId=${caseId}&section=checkins`);
+ expect(loginReturnDestination(locale,'practitioner',path)).toBe(path);
+ expect(practitionerReturnPath(locale,'practice',{caseId:['valid','repeated'],audienceId:'malformed',section:'private'})).toBe(`/${locale}/app/practice`);
+});
 it('retains exact client check-in context for both real subject roles',()=>{
  for(const locale of ['he','en'] as const){
   const path=clientReturnPath(locale,`/${locale}/client/practice`,{caseId,audienceId:sessionId,section:'checkins',secret:'not-forwarded'});

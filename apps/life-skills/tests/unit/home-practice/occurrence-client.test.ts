@@ -52,7 +52,11 @@ test("combined practice applies an honest global 500-item cap and deduplicates o
 });
 test("a failed authorized audience is not silently converted to partial success or an empty Calendar",async()=>{
  vi.stubGlobal("fetch",vi.fn().mockResolvedValueOnce(ok(audiences)).mockResolvedValueOnce(ok({items:[occurrence("first")],hasMore:false})).mockResolvedValueOnce(new Response(JSON.stringify({ok:false,error:{code:"NOT_FOUND"}}),{status:404})));
- await expect(practiceRangeOccurrences(id,undefined,"2026-09-29","2026-09-30",new AbortController().signal)).rejects.toMatchObject({code:"NOT_FOUND"});
+ await expect(practiceRangeOccurrences(id,undefined,"2026-09-29","2026-09-30",new AbortController().signal)).rejects.toMatchObject({code:"NOT_FOUND",audienceId:"second"});
+});
+test.each(["UNAUTHENTICATED","UNAVAILABLE"])("%s is not an audience-scoped loss",async code=>{
+ vi.stubGlobal("fetch",vi.fn().mockResolvedValueOnce(ok(audiences)).mockResolvedValueOnce(new Response(JSON.stringify({ok:false,error:{code}}),{status:code==="UNAUTHENTICATED"?401:503})).mockResolvedValueOnce(ok({items:[],hasMore:false})));
+ try{await practiceRangeOccurrences(id,undefined,"2026-09-29","2026-09-30",new AbortController().signal);throw Error("Expected read failure");}catch(error){expect(error).toMatchObject({code});expect(error).not.toHaveProperty("audienceId");}
 });
 test("an explicit protected audience does not discover or substitute unrelated audiences",async()=>{
  const fetcher=vi.fn().mockResolvedValueOnce(ok({items:[],hasMore:true}));vi.stubGlobal("fetch",fetcher);

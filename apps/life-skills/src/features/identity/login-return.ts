@@ -18,7 +18,7 @@ export function loginReturnDestination(locale: Locale, role: Role, requested: st
   } catch { return defaultPath; }
 }
 
-export function practitionerReturnPath(locale: Locale, page: "calendar" | "clients", query: Record<string, string | string[] | undefined>): string {
+export function practitionerReturnPath(locale: Locale, page: "calendar" | "clients" | "practice", query: Record<string, string | string[] | undefined>): string {
   const params = new URLSearchParams();
   const one = (key: string) => typeof query[key] === "string" ? query[key] as string : "";
   if (page === "calendar") {
@@ -27,6 +27,9 @@ export function practitionerReturnPath(locale: Locale, page: "calendar" | "clien
     if (/^[0-9a-f-]{36}$/i.test(one("caseId"))) params.set("caseId", one("caseId"));
     if (one("context") === "client") params.set("context", "client");
     if (one("mode") === "demo") params.set("mode", "demo");
+  } else if (page === "practice") {
+    for (const key of ["caseId", "audienceId", "assignmentId"]) if (isCaseId(one(key))) params.set(key, one(key));
+    if (one("section") === "checkins") params.set("section", "checkins");
   } else {
     if (["all", "prospects", "paid", "active", "archived"].includes(one("section"))) params.set("section", one("section"));
     if (["all", "today", "new", "intake", "payment", "booking", "archived"].includes(one("filter"))) params.set("filter", one("filter"));

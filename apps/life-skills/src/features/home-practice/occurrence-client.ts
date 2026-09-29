@@ -28,12 +28,21 @@ export async function practiceOccurrences(caseId: string, audienceId: string, fr
   return page;
 }
 /** All freshly authorized audiences, bounded concurrency and an explicit global cap. */
+export class PracticeAudienceAccessError extends IdentityClientError {
+  constructor(readonly audienceId: string, code: "FORBIDDEN" | "NOT_FOUND") { super(code); }
+}
 export async function practiceRangeOccurrences(caseId: string, audienceId: string | undefined, from: string, to: string, signal: AbortSignal): Promise<PracticeOccurrencePage> {
   const audiences = audienceId ? [audienceId] : await practiceAudiences(caseId, signal);
   const pages: PracticeOccurrencePage[] = [];
   for (let index = 0; index < audiences.length; index += 4) {
     if (signal.aborted) throw new DOMException("Aborted", "AbortError");
-    pages.push(...await Promise.all(audiences.slice(index, index + 4).map(id => practiceOccurrences(caseId, id, from, to, signal))));
+    pages.push(...await Promise.all(audiences.slice(index, index + 4).map(async id => {
+      try { return await practiceOccurrences(caseId, id, from, to, signal); }
+      catch (error) {
+        if (error instanceof IdentityClientError && (error.code === "FORBIDDEN" || error.code === "NOT_FOUND")) throw new PracticeAudienceAccessError(id, error.code);
+        throw error;
+      }
+    })));
   }
   const items = [...new Map(pages.flatMap(page => page.items).map(item => [item.occurrence.id, item])).values()]
     .sort((a, b) => a.occurrence.occursOn.localeCompare(b.occurrence.occursOn) || (a.occurrence.period === b.occurrence.period ? 0 : a.occurrence.period === "morning" ? -1 : 1) || a.occurrence.id.localeCompare(b.occurrence.id));
@@ -49,7 +58,11 @@ export function practiceDraftIds(ids: Iterable<string>, page: PracticeOccurrence
 export function practiceAccessLossPage(page: PracticeOccurrencePage, id: string, code: IdentityClientErrorCode): PracticeOccurrencePage {
   if (code === "UNAUTHENTICATED") return { items: [], hasMore: false };
   const audience = page.items.find(item => item.occurrence.id === id)?.practice.audienceId;
-  return { ...page, items: page.items.filter(item => audience ? item.practice.audienceId !== audience : item.occurrence.id !== id) };
+  return audience ? practiceAudienceLossPage(page, audience) : { ...page, items: page.items.filter(item => item.occurrence.id !== id) };
+}
+/** Preserve unaffected cached cards on a fresh discovery/read revocation race. */
+export function practiceAudienceLossPage(page: PracticeOccurrencePage, audienceId: string): PracticeOccurrencePage {
+  return { ...page, items: page.items.filter(item => item.practice.audienceId !== audienceId) };
 }
 /** Ignore stale projection after a local save; never replace an active attempt. */
 export function incomingPracticeReport(current: CompletionView | null, incoming: CompletionView | null, dirty: boolean, locked: boolean): CompletionView | null {

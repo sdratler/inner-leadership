@@ -59,6 +59,13 @@ describe("actual practitioner Calendar login return perimeter", () => {
     expect(returned("?date=2026-09-22&view=agenda&mode=demo&untrusted=private"))
       .toBe("/he/app/calendar?date=2026-09-22&view=agenda&mode=demo");
   });
+  it.each(['he','en'])('projects %s practitioner Practice from the real path, never caller headers',locale=>{
+    returned('');const id='123e4567-e89b-42d3-a456-426614174000';
+    const response=proxy(new NextRequest(`${origin}/${locale}/app/practice?caseId=${id}&audienceId=${id}&section=checkins&secret=private`,{headers:{'x-ls-practitioner-return':'https://untrusted.invalid'}}));
+    expect(response.headers.get('x-middleware-request-x-ls-practitioner-return')).toBe(`/${locale}/app/practice?caseId=${id}&audienceId=${id}&section=checkins`);
+    const repeated=proxy(new NextRequest(`${origin}/${locale}/app/practice?caseId=${id}&caseId=${id}&section=checkins&section=checkins`,{headers:{'x-ls-practitioner-return':`/${locale}/app/practice?caseId=${id}`}}));
+    expect(repeated.headers.get('x-middleware-request-x-ls-practitioner-return')).toBe(`/${locale}/app/practice`);
+  });
   it.each(["?mode=demo&mode=live", "?mode=all", "?mode=parent", ""])("rejects unsafe mode and caller return headers: %s", query => {
     expect(returned(query)).toBe("/he/app/calendar");
   });

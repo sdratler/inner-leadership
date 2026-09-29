@@ -153,12 +153,12 @@ export function proxy(request: NextRequest) {
   inbound.delete("x-ls-practitioner-return");
   inbound.delete("x-ls-parent-return");
   inbound.delete("x-ls-client-return");
-  const practitionerPage = /^\/(he|en)\/app\/(calendar|clients)\/?$/.exec(pathname);
+  const practitionerPage = /^\/(he|en)\/app\/(calendar|clients|practice)\/?$/.exec(pathname);
   if (practitionerPage) {
     const locale = practitionerPage[1] as "he" | "en";
-    const page = practitionerPage[2] as "calendar" | "clients";
+    const page = practitionerPage[2] as "calendar" | "clients" | "practice";
     const query: Record<string, string | undefined> = {};
-    for (const key of page === "calendar" ? ["date", "view", "caseId", "context", "mode"] : ["section", "filter", "leadId", "personId", "mode"]) {
+    for (const key of page === "calendar" ? ["date", "view", "caseId", "context", "mode"] : page === "practice" ? ["caseId", "audienceId", "assignmentId", "section"] : ["section", "filter", "leadId", "personId", "mode"]) {
       const values = request.nextUrl.searchParams.getAll(key);
       query[key] = values.length === 1 ? values[0] : undefined;
     }
