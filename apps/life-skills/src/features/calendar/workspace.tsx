@@ -44,6 +44,7 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  const [taskRows,setTaskRows]=useState<InternalTask[]|null>(null),[taskLoadedFor,setTaskLoadedFor]=useState(''),[taskFailed,setTaskFailed]=useState(false),[taskRefresh,setTaskRefresh]=useState(0),[showTasks,setShowTasks]=useState(true);
  const [taskDraft,setTaskDraft]=useState({title:'',dueDate:initialDate,dueTime:'',note:'',sourcePath:'',caseId:initialCaseId}),[taskDirty,setTaskDirty]=useState(false);
  const [showPractice,setShowPractice]=useState(!practitioner),[practiceDirty,setPracticeDirty]=useState(false);
+ const [practiceRefresh,setPracticeRefresh]=useState(0);
  const mutation=useCalendarMutation(locale),generation=useRef(0),date=initialDate,view=initialView;
  const range=dateRange(date,view),basePath=`/${locale}/${practitioner?'app/calendar':role==='adult_client'||role==='child'?'client/calendar':'family/schedule'}`,caseKind=role==='adult_client'?'adult':'minor';
  const taskQueryKey=`${range.from}|${range.to}|${caseId}`;
@@ -60,6 +61,7 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
 
  const load=useCallback(async (reset=true,after:string|null=null)=>{
   const current=reset?++generation.current:generation.current;setLoading(reset);setError(null);
+  if(reset)setPracticeRefresh(value=>value+1);
   try{
    let selectedCase=caseId;
    let page:SchedulePage;
@@ -142,7 +144,7 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  {livePractitioner&&<nav className="lsu-attention-links ls-cal-related-links" aria-label={locale==='he'?'לעבודה הקרובה':'Immediate work'}><a href={`/${locale}/app/prospects`}>{locale==='he'?'קליטת מתעניינים':'Prospect intake'}</a><a href={`/${locale}/app/feedback${caseId?'?caseId='+encodeURIComponent(caseId):''}`}>{locale==='he'?'משוב לבדיקה':'Review feedback'}</a><a href={`/${locale}/app/clients${caseId?'?caseId='+encodeURIComponent(caseId):''}`}>{locale==='he'?'פתיחת תיק':'Open a case'}</a><a href={`/${locale}/app/reports${caseId?'?caseId='+encodeURIComponent(caseId):''}`}>{locale==='he'?'דוחות חודשיים':'Monthly reports'}</a></nav>}
  {cursor&&<div className="ls-cal-pagination"><p>{t.partial}</p><Button onClick={()=>void load(false,cursor)} disabled={loading}>{t.loadMore}</Button></div>}
  <div className="ls-cal-layers"><label><input type="checkbox" checked={showPractice} onChange={event=>{if(practiceDirty&&!window.confirm(t.dirty))return;setPracticeDirty(false);setShowPractice(event.target.checked);}}/> {locale==='he'?'תרגול בבית':'Home practice'}</label></div>
- {showPractice&&!loading&&!error&&!caseError&&<section className="lsw-card" aria-labelledby="calendar-practice-title"><h2 id="calendar-practice-title">{locale==='he'?'תרגול בוקר וערב':'Morning & evening practice'}</h2><PracticeOccurrenceWorkspace key={`${caseId}|${range.from}|${range.to}|${mode??''}`} locale={locale} role={role} caseId={caseId||undefined} from={range.dates[0]} to={shiftDay(range.dates[range.dates.length-1]!,1)} onDirtyChange={setPracticeDirty}/></section>}
+ {showPractice&&error!=='auth'&&error!=='forbidden'&&<section className="lsw-card" aria-labelledby="calendar-practice-title"><h2 id="calendar-practice-title">{locale==='he'?'תרגול בוקר וערב':'Morning & evening practice'}</h2><PracticeOccurrenceWorkspace key={`${caseId}|${range.from}|${range.to}|${mode??''}`} locale={locale} role={role} caseId={caseId||undefined} from={range.dates[0]} to={shiftDay(range.dates[range.dates.length-1]!,1)} refreshToken={practiceRefresh} onDirtyChange={setPracticeDirty}/></section>}
  <p className="ls-cal-muted">{t.remaining}</p>
 
  <div className="ls-cal-page-feedback">{mutation.feedback}</div>

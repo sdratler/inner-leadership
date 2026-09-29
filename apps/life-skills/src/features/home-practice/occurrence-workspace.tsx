@@ -6,7 +6,7 @@ import { loginHref } from "../identity/login-return.ts";
 import { civilDate } from "../calendar/time.ts";
 import { Button, Input, Select } from "../../ui/workspace/controls.tsx";
 import { UnsavedChangesGuard } from "../../ui/workspace/draft-guard.tsx";
-import { checkInAttempt, checkInReadback, ownCheckInHistory, practiceAccessLost, practiceAudience, practiceOccurrences, practiceSaveUncertain, submitPracticeCheckIn, type CheckInAttempt } from "./occurrence-client.ts";
+import { checkInAttempt, checkInReadback, ownCheckInHistory, practiceAccessLost, practiceRangeOccurrences, practiceSaveUncertain, submitPracticeCheckIn, type CheckInAttempt } from "./occurrence-client.ts";
 import { occurrenceRange, shiftOccurrenceDay } from "./occurrence-range.ts";
 import { completionStatuses, type CompletionStatus, type CompletionView, type PracticeOccurrenceItem, type PracticeOccurrencePage } from "./types.ts";
 
@@ -17,9 +17,9 @@ const copy = {
 type Role = "parent" | "adult_client" | "child" | "practitioner";
 
 /** Same components on Practice and Calendar; no role switching or synthetic data. */
-export function PracticeOccurrenceWorkspace({ locale, role, caseId, audienceId, from, to, onDirtyChange }: {
+export function PracticeOccurrenceWorkspace({ locale, role, caseId, audienceId, from, to, refreshToken = 0, onDirtyChange }: {
   locale: "en" | "he"; role: Role; caseId?: string | undefined; audienceId?: string | undefined;
-  from?: string | undefined; to?: string | undefined; onDirtyChange?: ((dirty: boolean) => void) | undefined;
+  from?: string | undefined; to?: string | undefined; refreshToken?: number | undefined; onDirtyChange?: ((dirty: boolean) => void) | undefined;
 }) {
   const t = copy[locale], base = `/${locale}/${role === "parent" ? "family" : role === "practitioner" ? "app" : "client"}`;
   const [selectedDate, setSelectedDate] = useState(() => civilDate(new Date().toISOString()));
@@ -39,20 +39,25 @@ export function PracticeOccurrenceWorkspace({ locale, role, caseId, audienceId, 
     queueMicrotask(() => { if (!controller.signal.aborted) setState(previous => previous.key === key ? previous : { key: "", status: "ready", page: { items: [], hasMore: false } }); });
     void (async () => {
       occurrenceRange(start, end);
-      const authorizedAudience = audienceId ?? await practiceAudience(caseId, controller.signal);
-      const page = authorizedAudience ? await practiceOccurrences(caseId, authorizedAudience, start, end, controller.signal) : { items: [], hasMore: false };
+      const page = await practiceRangeOccurrences(caseId, audienceId, start, end, controller.signal);
       if (!controller.signal.aborted) setState({ key, status: "ready", page });
-    })().catch(error => { if (!controller.signal.aborted) setState({ key, status: "error", code: error instanceof IdentityClientError ? error.code : "UNAVAILABLE", page: { items: [], hasMore: false } }); });
+    })().catch(error => {
+      if (controller.signal.aborted) return;
+      const denied = practiceAccessLost(error);
+      if (denied) { dirty.current.clear(); setHasDirty(false); onDirtyChange?.(false); }
+      setState(previous => ({ key, status: "error", code: error instanceof IdentityClientError ? error.code : "UNAVAILABLE", page: !denied && previous.key === key ? previous.page : { items: [], hasMore: false } }));
+    });
     return () => controller.abort();
-  }, [caseId, audienceId, start, end, key, refresh]);
+  }, [caseId, audienceId, start, end, key, refresh, refreshToken, onDirtyChange]);
   const reload = useCallback(() => setRefresh(value => value + 1), []);
   const accessLost = useCallback(() => { setState({ key: "", status: "ready", page: { items: [], hasMore: false } }); setRefresh(value => value + 1); }, []);
   const returnPath = base + "/practice?" + new URLSearchParams({ section: "checkins", ...(caseId ? { caseId } : {}), ...(audienceId ? { audienceId } : {}) });
   return <section className="lsw-stack" aria-label={t.title} dir={locale === "he" ? "rtl" : "ltr"}>
     <UnsavedChangesGuard dirty={hasDirty} message={t.dirty} />
     {!from && <form className="lsw-toolbar" onSubmit={event => { event.preventDefault(); if (!event.currentTarget.checkValidity()) return; if (hasDirty && !window.confirm(t.dirty)) return; dirty.current.clear(); setHasDirty(false); onDirtyChange?.(false); setSelectedDate(dateInput); }}><Input id="practice-from" label={t.date} type="date" required value={dateInput} onChange={event => setDateInput(event.target.value)} /><Button type="submit">{t.go}</Button></form>}
-    {!caseId ? <p>{t.choose}</p> : state.key !== key ? <p role="status">{t.loading}</p> : state.status === "error" ? <div role="alert"><p>{state.code === "UNAUTHENTICATED" ? t.auth : ["FORBIDDEN", "NOT_FOUND"].includes(state.code ?? "") ? t.denied : t.error}</p>{state.code === "UNAUTHENTICATED" ? <a className="lsw-button lsw-button--secondary" href={loginHref(locale, returnPath)}>{t.signIn}</a> : <Button variant="secondary" onClick={reload}>{t.retry}</Button>}</div> : <>
-      {!state.page.items.length ? <p role="status">{t.empty}</p> : <div className="lsw-stack">{state.page.items.map(item => <PracticeOccurrenceCard key={key + ":" + item.occurrence.id} locale={locale} item={item} onReadback={reload} onAccessLost={accessLost} onDirty={dirtyChange} />)}</div>}
+    {!caseId ? <p>{t.choose}</p> : state.key !== key ? <p role="status">{t.loading}</p> : <>
+      {state.status === "error" && <div role="alert"><p>{state.code === "UNAUTHENTICATED" ? t.auth : ["FORBIDDEN", "NOT_FOUND"].includes(state.code ?? "") ? t.denied : t.error}</p>{state.code === "UNAUTHENTICATED" ? <a className="lsw-button lsw-button--secondary" href={loginHref(locale, returnPath)}>{t.signIn}</a> : <Button variant="secondary" onClick={reload}>{t.retry}</Button>}</div>}
+      {!state.page.items.length ? state.status === "ready" && <p role="status">{t.empty}</p> : <div className="lsw-stack">{state.page.items.map(item => <PracticeOccurrenceCard key={key + ":" + item.occurrence.id} locale={locale} item={item} onReadback={reload} onAccessLost={accessLost} onDirty={dirtyChange} />)}</div>}
       {state.page.hasMore && <p role="status">{t.overflow}</p>}
     </>}
   </section>;

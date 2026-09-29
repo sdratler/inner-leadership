@@ -1,6 +1,7 @@
 import { IdentityClientError, sessionInfo } from "../identity/client.ts";
 import type { IdentityClientErrorCode } from "../identity/client.ts";
 import type { CompletionStatus, OwnCompletionView, PracticeOccurrencePage } from "./types.ts";
+import { isVisibility } from "../../lib/visibility.ts";
 
 const codes: readonly IdentityClientErrorCode[] = ["INVALID_REQUEST", "UNAUTHENTICATED", "FORBIDDEN", "NOT_FOUND", "CONFLICT", "RATE_LIMITED", "UNAVAILABLE", "INTERNAL"];
 async function privateRequest<T>(path: string, init: RequestInit, signal?: AbortSignal): Promise<T> {
@@ -15,16 +16,28 @@ async function privateRequest<T>(path: string, init: RequestInit, signal?: Abort
     throw new IdentityClientError("UNAVAILABLE");
   }
 }
-export async function practiceAudience(caseId: string, signal: AbortSignal): Promise<string | null> {
+export async function practiceAudiences(caseId: string, signal: AbortSignal): Promise<string[]> {
   const rows = await privateRequest<Array<{ id: string; published: boolean; visibility: string }>>(
     "/api/identity/audiences?" + new URLSearchParams({ caseId }), { method: "GET" }, signal);
-  if (!Array.isArray(rows)) throw new IdentityClientError("UNAVAILABLE");
-  return rows.find(row => row.published && row.visibility !== "private")?.id ?? null;
+  if (!Array.isArray(rows) || rows.some(row => !row || typeof row.id !== "string" || !row.id || typeof row.published !== "boolean" || !isVisibility(row.visibility))) throw new IdentityClientError("UNAVAILABLE");
+  return [...new Set(rows.filter(row => row.published && row.visibility !== "private").map(row => row.id))];
 }
 export async function practiceOccurrences(caseId: string, audienceId: string, from: string, to: string, signal: AbortSignal): Promise<PracticeOccurrencePage> {
   const page = await privateRequest<PracticeOccurrencePage>("/api/home-practice?" + new URLSearchParams({ view: "occurrences", caseId, audienceId, from, to }), { method: "GET" }, signal);
   if (!page || !Array.isArray(page.items) || typeof page.hasMore !== "boolean") throw new IdentityClientError("UNAVAILABLE");
   return page;
+}
+/** All freshly authorized audiences, bounded concurrency and an explicit global cap. */
+export async function practiceRangeOccurrences(caseId: string, audienceId: string | undefined, from: string, to: string, signal: AbortSignal): Promise<PracticeOccurrencePage> {
+  const audiences = audienceId ? [audienceId] : await practiceAudiences(caseId, signal);
+  const pages: PracticeOccurrencePage[] = [];
+  for (let index = 0; index < audiences.length; index += 4) {
+    if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+    pages.push(...await Promise.all(audiences.slice(index, index + 4).map(id => practiceOccurrences(caseId, id, from, to, signal))));
+  }
+  const items = [...new Map(pages.flatMap(page => page.items).map(item => [item.occurrence.id, item])).values()]
+    .sort((a, b) => a.occurrence.occursOn.localeCompare(b.occurrence.occursOn) || (a.occurrence.period === b.occurrence.period ? 0 : a.occurrence.period === "morning" ? -1 : 1) || a.occurrence.id.localeCompare(b.occurrence.id));
+  return { items: items.slice(0, 500), hasMore: items.length > 500 || pages.some(page => page.hasMore) };
 }
 
 export interface CheckInAttempt {
