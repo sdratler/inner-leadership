@@ -1,5 +1,7 @@
 # Life Skills private application
 
+Reports supports route-based Due, Drafts, Published and History views. Existing no-query authoring bookmarks remain Drafts. Due means only an actual saved draft period whose end has passed in Asia/Jerusalem; it does not invent an unsaved reporting cadence. Saved narrative details and practitioner-only revision history stay collapsed/lazy; only Drafts mounts the existing conflict-safe editor. Authorized case, audience and explicit DEMO context are preserved by view links and rechecked by existing APIs. These UI changes do not schedule/send/publish, change providers or add a database. Missing production demo reports and actual practitioner publication evidence remain separate acceptance work.
+
 The existing application source is isolated under `apps/life-skills`. The current implementation target is **LS-REVAMP-20260922-01** following source reconciliation **LS-SOT-20260922-01**. The audited source and owner-selected six-character password correction are merged through protected PRs 37 and 38. The canonical private preview deployment and its limits are recorded in the [September 22 execution receipt](docs/runtime/w4-revamp-20260922.md).
 
 ## Current sources and execution

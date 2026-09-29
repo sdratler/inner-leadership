@@ -14,6 +14,16 @@ const links=(html:string)=>[...html.matchAll(/href="([^"]+)"/g)].map(match=>new 
 const topLinks=(html:string)=>links(html.match(/<nav class="lsu-top-tabs"[^>]*>(.*?)<\/nav>/)?.[1]??'');
 
 describe("operational workspace navigation",()=>{
+ for(const locale of ['he','en'] as const)it(`${locale}: report views preserve validated case/audience/demo/date context in one toolbar`,()=>{
+  const caseId='123e4567-e89b-42d3-a456-426614174000',audienceId='223e4567-e89b-42d3-a456-426614174000';
+  expect(practitionerContext(`/${locale}/app/reports`,null).map(item=>item.key)).toEqual(['due','drafts','published','history']);
+  const props={locale,role:'practitioner' as const,pathname:`/${locale}/app/reports`,caseId,audienceId,mode:'demo',date:'2026-09-29',section:'history',languageHref:`/${locale==='en'?'he':'en'}/app/reports`,children:'Reports'};
+  const html=renderToStaticMarkup(React.createElement(WorkspaceShell,props,React.createElement('h1',null,'Reports'))),tabs=topLinks(html);expect(tabs).toHaveLength(4);
+  for(const url of tabs){expect(url.searchParams.get('caseId')).toBe(caseId);expect(url.searchParams.get('audienceId')).toBe(audienceId);expect(url.searchParams.get('mode')).toBe('demo');expect(url.searchParams.get('date')).toBe('2026-09-29');expect(url.hash).toBe('');}
+  expect(html).toContain('aria-current="page"');
+  const invalid=renderToStaticMarkup(React.createElement(WorkspaceShell,{...props,audienceId:'untrusted'},'Reports'));expect(topLinks(invalid).every(url=>!url.searchParams.has('audienceId'))).toBe(true);
+  const legacy=renderToStaticMarkup(React.createElement(WorkspaceShell,{...props,section:undefined},'Reports'));expect(legacy).toContain('section=drafts&amp;audienceId=');
+ });
  for(const locale of ['he','en'] as const)it(`${locale}: all contextual Calendar views preserve explicit demo context and date`,()=>{
   const html=renderToStaticMarkup(React.createElement(WorkspaceShell,{locale,role:'practitioner',pathname:`/${locale}/app/calendar`,view:'week',date:'2026-09-28',mode:'demo',languageHref:`/${locale==='he'?'en':'he'}/app/calendar?mode=demo`} as React.ComponentProps<typeof WorkspaceShell>,React.createElement('h1',null,'Calendar')));
   const contextual=topLinks(html);expect(contextual).toHaveLength(4);

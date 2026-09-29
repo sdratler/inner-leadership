@@ -124,6 +124,24 @@ it("renders the actual parent-published report readout without implied parent at
   expect(text(output)).toContain("Synthetic observation"); expect(text(output)).toContain("2026-09-29"); expect(text(output)).not.toContain("Attributed parent reports");
 });
 
+for(const section of ['due','drafts','published','history'] as const)it(`renders only ${section} report content without an unrelated editor or expanded readouts`,async()=>{
+ const draft={...review('423e4567-e89b-12d3-a456-426614174000','draft'),periodStart:'2000-01-01',periodEnd:'2000-01-29'},published=review('523e4567-e89b-12d3-a456-426614174000','published');
+ fetchMock.mockImplementation(async(url:string)=>Response.json({ok:true,data:url.startsWith('/api/identity/audiences')?[{id:ids.audienceId,visibility:'family_full',published:true}]:[draft,published]}));
+ const props={locale:'en' as const,role:'practitioner' as const,caseId:ids.caseId,section,navigationContext:{mode:'demo' as const,context:'client' as const,date:'2026-09-29'}};
+ hook.render(()=>ReportCaseWorkspace(props));hook.flushEffects();await tick();const output=hook.render(()=>ReportCaseWorkspace(props));
+ const readouts=all(output,e=>e.type===ReportReadout);expect(readouts.map(e=>(e.props.review as Review).state)).toEqual(section==='published'?['published']:section==='history'?['draft','published']:['draft']);
+ expect(all(output,e=>e.type===ReportEditor)).toHaveLength(section==='drafts'?1:0);
+ expect(all(output,e=>e.type==='details').every(e=>e.props.open===undefined)).toBe(true);
+ const tabs=all(output,e=>e.type==='a'&&typeof e.props.href==='string'&&e.props['aria-current']==='page');expect(tabs).toHaveLength(1);expect(tabs[0]?.props.href).toContain(`audienceId=${ids.audienceId}&section=${section}`);
+ expect(fetchMock).toHaveBeenCalledTimes(2);expect(fetchMock.mock.calls.every(call=>!call[1]||(call[1] as RequestInit).method!=='POST')).toBe(true);
+});
+
+it('a forged parent view hint cannot render practitioner editing or private history',async()=>{
+ fetchMock.mockImplementation(async(url:string)=>Response.json({ok:true,data:url.startsWith('/api/identity/audiences')?[{id:ids.audienceId,visibility:'family_full',published:true}]:[review('423e4567-e89b-12d3-a456-426614174000','draft')]}));
+ const props={locale:'he' as const,role:'parent' as const,caseId:ids.caseId,section:'history' as const};hook.render(()=>ReportCaseWorkspace(props));hook.flushEffects();await tick();const output=hook.render(()=>ReportCaseWorkspace(props));
+ expect(all(output,e=>e.type===ReportEditor)).toHaveLength(0);expect(all(output,e=>e.type===ReportReadout)).toHaveLength(0);expect(all(output,e=>e.type==='nav')).toHaveLength(0);expect(text(output)).toContain('אין דוחות להצגה.');
+});
+
 it("blocks publish when selected draft has unsaved edits", async () => {
   const onSaved = vi.fn(); let output = hook.render(() => ReportEditor({ locale: "en", ...ids, reviews: [review("423e4567-e89b-12d3-a456-426614174000", "draft")], onSaved }));
   const select = find(output, (element) => element.type === "select"); if (!select) throw new Error("missing draft select"); (select.props.onChange as Change)({ target: { value: "423e4567-e89b-12d3-a456-426614174000" } });

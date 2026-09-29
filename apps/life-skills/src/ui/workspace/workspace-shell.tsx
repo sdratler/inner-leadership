@@ -1,14 +1,14 @@
 "use client";
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import type { Locale } from "../../lib/locale.ts";
-import { activeItem, breadcrumbItems, isClientWorkspacePath, navigationGroups, practitionerContext, primaryNavigation, workspaceContext, workspaceHref, type ContextItem, type NavItem, type WorkspaceRole } from "./navigation-model.ts";
+import { activeItem, breadcrumbItems, isCaseId, isClientWorkspacePath, navigationGroups, practitionerContext, primaryNavigation, workspaceContext, workspaceHref, type ContextItem, type NavItem, type WorkspaceRole } from "./navigation-model.ts";
 import "./professional-ui.css";
 const copy = {
   en: { skip: "Skip to content", nav: "Workspace navigation", more: "More", close: "Close navigation", menu: "Open navigation", account: "Account menu", settings: "Settings", practitioner: "Practitioner workspace", parent: "Family workspace", client: "Client workspace", location: "You are here", language: "עברית", privacy: "Access is limited to your authorized workspace." },
   he: { skip: "דילוג לתוכן", nav: "ניווט במרחב", more: "עוד", close: "סגירת התפריט", menu: "פתיחת התפריט", account: "תפריט החשבון", settings: "הגדרות", practitioner: "מרחב המטפל", parent: "מרחב המשפחה", client: "מרחב לקוח/ה", location: "המיקום שלכם", language: "English", privacy: "הגישה מוגבלת למרחב המורשה שלכם." },
 } as const;
-export type WorkspaceShellProps = { locale: Locale; role: WorkspaceRole; pathname: string; caseId?: string | null; selectedClient?: boolean; section?: string | null | undefined; view?: string | null | undefined; date?: string | null | undefined; mode?: string | null | undefined; languageHref: string; children: ReactNode; toHref?: (path: string) => string; notice?: ReactNode };
-export function WorkspaceShell({ locale, role, pathname, caseId, selectedClient=false, section, view, date, mode, languageHref, children, toHref, notice }: WorkspaceShellProps) {
+export type WorkspaceShellProps = { locale: Locale; role: WorkspaceRole; pathname: string; caseId?: string | null; audienceId?:string|null; selectedClient?: boolean; section?: string | null | undefined; view?: string | null | undefined; date?: string | null | undefined; mode?: string | null | undefined; languageHref: string; children: ReactNode; toHref?: (path: string) => string; notice?: ReactNode };
+export function WorkspaceShell({ locale, role, pathname, caseId, audienceId, selectedClient=false, section, view, date, mode, languageHref, children, toHref, notice }: WorkspaceShellProps) {
   const effectiveSelectedClient=selectedClient&&isClientWorkspacePath(pathname.slice(locale.length+2));
   const t = copy[locale], active = role === "practitioner" && effectiveSelectedClient && caseId ? primaryNavigation.practitioner.find(item=>item.key==="clients") : activeItem(pathname, locale, role);
   const drawer = useRef<HTMLDialogElement>(null), trigger = useRef<HTMLButtonElement>(null), account = useRef<HTMLDetailsElement>(null);
@@ -25,10 +25,11 @@ export function WorkspaceShell({ locale, role, pathname, caseId, selectedClient=
   const link = (entry: NavItem) => <a className="lsu-nav-link" key={entry.key} href={href(entry.path)} aria-current={active?.key === entry.key ? "page" : undefined}>{entry[locale]}</a>;
   const clientContext = Boolean(caseId && (effectiveSelectedClient || pathname.includes("/app/cases/")));
   const contextItems = role === "practitioner" ? practitionerContext(pathname, caseId ?? null, clientContext) : primaryNavigation[role];
-  const currentContext = clientContext ? pathname.endsWith("/settings") ? "access" : pathname.includes("/sessions") ? "sessions" : pathname.includes("/app/calendar") ? "calendar" : pathname.includes("/app/practice") ? "practice" : pathname.includes("/app/feedback") ? "communications" : pathname.includes("/app/reports") ? "reports" : pathname.includes("/app/forms") ? "forms" : "overview" : pathname.includes("/app/calendar") ? (view ?? "week") : pathname.includes("/app/clients") || pathname.includes("/app/prospects") ? (section ?? "all") : section ?? (pathname.includes("/app/reports") ? "due" : pathname.includes("/app/feedback") ? "app_updates" : "overview");
+  const currentContext = clientContext ? pathname.endsWith("/settings") ? "access" : pathname.includes("/sessions") ? "sessions" : pathname.includes("/app/calendar") ? "calendar" : pathname.includes("/app/practice") ? "practice" : pathname.includes("/app/feedback") ? "communications" : pathname.includes("/app/reports") ? "reports" : pathname.includes("/app/forms") ? "forms" : "overview" : pathname.includes("/app/calendar") ? (view ?? "week") : pathname.includes("/app/clients") || pathname.includes("/app/prospects") ? (section ?? "all") : section ?? (pathname.includes("/app/reports") ? "drafts" : pathname.includes("/app/feedback") ? "app_updates" : "overview");
   const contextHref = (entry: ContextItem) => {
     const url = new URL(href(entry.path), "https://private.invalid");
     for (const [key, value] of Object.entries(entry.query ?? {})) url.searchParams.set(key, value);
+    if(entry.path==='app/reports'&&isCaseId(caseId)&&isCaseId(audienceId))url.searchParams.set('audienceId',audienceId);
     // Business receipts have no clinical case context; leave the selected case
     // only on this explicit global tab, never by inferring identity from phone.
     if(entry.key==="whatsapp"&&!clientContext){url.searchParams.delete("caseId");url.searchParams.delete("context");}
