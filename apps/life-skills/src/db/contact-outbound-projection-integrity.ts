@@ -30,7 +30,8 @@ export async function contactOutboundProjectionIntegrity(tx:SqlSession):Promise<
    AND pg_get_indexdef(i.indexrelid)='CREATE INDEX outbound_projections_pending ON ls_contact_ops.outbound_projections USING btree (workspace_id, state, created_at) WHERE (state <> ''projected''::text)')
    FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid JOIN pg_namespace n ON n.oid=c.relnamespace
    WHERE n.nspname='ls_contact_ops' AND c.relname='outbound_projections_pending') AS "pendingIndex",
-  NOT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace,
+  to_regclass('ls_contact_ops.outbound_projections') IS NOT NULL
+   AND NOT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace,
    LATERAL aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) acl
    WHERE n.nspname='ls_contact_ops' AND c.relname='outbound_projections' AND acl.grantee<>c.relowner)
    AND NOT EXISTS(SELECT 1 FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace,
