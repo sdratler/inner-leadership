@@ -6,6 +6,8 @@ import type {IdentityStore} from "../../../src/features/identity/store.ts";
 import {ContactCutoverStore,type CutoverEvidence} from "../../../src/features/contact-ops/server/cutover-store.ts";
 import {OperationalNativeCrmStore} from "../../../src/features/contact-ops/server/operational-store.ts";
 import type {CrmProfile} from "../../../src/features/contact-ops/server/native-store.ts";
+import {NativeCrmStore} from "../../../src/features/contact-ops/server/native-store.ts";
+import {seal} from "../../../src/features/identity/crypto.ts";
 const fixtures:Fixture[]=[];
 afterAll(async()=>{for(const f of fixtures)await f.pool.end();});
 const key="synthetic-operational-integrity-key-20260928";
@@ -139,4 +141,145 @@ test("retired native authority remains usable; rollback hold and corrupted state
  await expect(s.store.read(a,p.personId,4)).rejects.toThrow("UNAVAILABLE");
  const held=await setup();await activate(held);await held.authority.advance(held.f.practitioner.actor,{action:"prepare_rollback",proof:proof(3),operationId:"hold"});
  await expect(held.store.list(held.f.practitioner.actor,query,4)).rejects.toThrow("CONFLICT");
+});
+
+const contactFields={name:"Synthetic new contact — עברית",phone:"053-555-0187",language:"he" as const,source:"Synthetic owner entry",
+ notes:"  Synthetic original administrative note\nעברית / English\n  ",nextAction:"Synthetic follow up",dueDate:"2026-09-28"};
+async function contactCounts(s:Awaited<ReturnType<typeof setup>>){return (await s.f.pool.query(`SELECT
+ (SELECT count(*)::int FROM ls_identity.people WHERE workspace_id=$1) AS people,
+ (SELECT count(*)::int FROM ls_identity.accounts WHERE workspace_id=$1) AS accounts,
+ (SELECT count(*)::int FROM ls_identity.account_subjects WHERE workspace_id=$1) AS subjects,
+ (SELECT count(*)::int FROM ls_cases.cases WHERE workspace_id=$1) AS cases,
+ (SELECT count(*)::int FROM ls_cases.case_guardians WHERE workspace_id=$1) AS guardians,
+ (SELECT count(*)::int FROM ls_contact_ops.profiles WHERE workspace_id=$1) AS profiles,
+ (SELECT count(*)::int FROM ls_contact_ops.legacy_links WHERE workspace_id=$1) AS links,
+ (SELECT count(*)::int FROM ls_contact_ops.command_receipts WHERE workspace_id=$1) AS receipts`,[s.f.workspaceId])).rows[0];}
+
+test("native manual creation commits one canonical encrypted contact, honest origin and no account/case grants",async()=>{
+ const s=await setup();await activate(s);const a=s.f.practitioner.actor,before=await contactCounts(s),operation=randomUUID();
+ const created=await s.store.createContact(a,contactFields,operation,3);
+ expect(created).toMatchObject({leadId:"LS-LEAD-native-"+created.personId,version:1,replayed:false});
+ expect(await contactCounts(s)).toEqual({...before,people:before.people+1,profiles:1,receipts:2});
+ const current=await s.store.read(a,created.personId,3);
+ expect(current).toMatchObject({version:1,profile:{personId:created.personId,legacyIds:[],notes:contactFields.notes,
+  nativeInquiry:{origin:"native_manual",leadId:created.leadId,phone:"+972535550187",language:"he",source:contactFields.source}}});
+ const selected=await s.store.list(a,{...query,personId:created.personId},3);
+ expect(selected.items[0]).toMatchObject({displayName:contactFields.name,references:[{leadId:created.leadId,nativeOrigin:"native_manual",
+  sourceFileId:null,sourceSheetId:null,sourceRevision:null,phone:"+972535550187",paymentClaim:"",bookingClaim:"",formSentClaim:"",formSubmittedClaim:"",
+  journey:{journeyState:"prospect",paymentVerified:false,bookingConfirmed:false}}]});
+ const prospects=await s.store.prospects(a,3);expect(prospects).toHaveLength(1);
+ expect(prospects[0]).toMatchObject({leadId:created.leadId,phone:"+972535550187",name:contactFields.name,notes:contactFields.notes,caseId:"",
+  paymentVerified:false,bookingConfirmed:false,nativeEdit:{personId:created.personId,profileVersion:1,authorityEpoch:3}});
+ expect(prospects[0]!.receivedAt).toBe(current!.profile.nativeInquiry!.createdAt);
+ const stored=(await s.f.pool.query("SELECT p.payload_ciphertext,i.profile_ciphertext FROM ls_contact_ops.profiles p JOIN ls_identity.people i ON i.workspace_id=p.workspace_id AND i.id=p.person_id WHERE p.workspace_id=$1 AND p.person_id=$2",[a.workspaceId,created.personId])).rows[0];
+ for(const value of Object.values(stored))for(const secret of [contactFields.notes,contactFields.name,"+972535550187"])expect(value).not.toContain(secret);
+});
+
+test("native create replay after a later note edit returns the original result without overwriting notes",async()=>{
+ const s=await setup();await activate(s);const a=s.f.practitioner.actor,operation=randomUUID(),created=await s.store.createContact(a,contactFields,operation,3);
+ const notes="Synthetic later notes must survive create replay";
+ await s.store.updateFields(a,created.personId,{stage:"Contacted",nextAction:"Synthetic later action",followUpDate:null,notes},1,"synthetic-after-create",3);
+ const before=await contactCounts(s);expect(await s.store.createContact(a,contactFields,operation,3)).toEqual({...created,replayed:true});
+ expect(await contactCounts(s)).toEqual(before);expect(await s.store.read(a,created.personId,3)).toMatchObject({version:2,profile:{notes,nextAction:"Synthetic later action"}});
+ await expect(s.store.createContact(a,{...contactFields,notes:"Different input"},operation,3)).rejects.toThrow("CONFLICT");
+ expect(await contactCounts(s)).toEqual(before);
+ const update=await s.store.updateProspectFields(a,created.leadId,{owner:"Synthetic owner",outcome:"Synthetic recorded outcome"},2,randomUUID(),3);
+ expect(update).toMatchObject({personId:created.personId,version:3,replayed:false});
+ expect((await s.store.prospects(a,3))[0]).toMatchObject({notes,owner:"Synthetic owner",outcome:"Synthetic recorded outcome"});
+});
+
+test("concurrent exact native create replay is one contact; a separate normalized endpoint claim fails closed",async()=>{
+ const s=await setup();await activate(s);const a=s.f.practitioner.actor,operation=randomUUID();
+ const created=await Promise.all([s.store.createContact(a,contactFields,operation,3),s.store.createContact(a,contactFields,operation,3)]);
+ expect(new Set(created.map(r=>r.personId)).size).toBe(1);expect(created.map(r=>r.replayed).sort()).toEqual([false,true]);
+ const before=await contactCounts(s);
+ await expect(s.store.createContact(a,{...contactFields,name:"Synthetic different person",phone:"+972535550187",notes:"Must not overwrite"},randomUUID(),3)).rejects.toThrow("CONFLICT");
+ expect(await contactCounts(s)).toEqual(before);expect((await s.store.read(a,created[0]!.personId,3))!.profile.notes).toBe(contactFields.notes);
+ expect((await s.authority.read(a)).nativeWritesSinceSwitch).toBe(2);
+});
+
+test("counter save failure rolls back canonical contact, profile and both receipts atomically",async()=>{
+ const s=await setup();await activate(s);const a=s.f.practitioner.actor,before=await contactCounts(s),operation=randomUUID();
+ const failing:IdentityStore={transaction:work=>s.db.transaction(tx=>work({query:async<T extends object>(sql:string,v?:readonly unknown[])=>{
+  if(sql.startsWith("INSERT INTO ls_contact_ops.cutover("))throw Error("SYNTHETIC_CREATE_COUNTER_FAILURE");return tx.query<T>(sql,v);
+ }}))};
+ await expect(new OperationalNativeCrmStore(failing,s.f.keyring,key).createContact(a,contactFields,operation,3)).rejects.toThrow("SYNTHETIC_CREATE_COUNTER_FAILURE");
+ expect(await contactCounts(s)).toEqual(before);expect((await s.authority.read(a)).nativeWritesSinceSwitch).toBe(0);
+ expect(await s.store.createContact(a,contactFields,operation,3)).toMatchObject({version:1,replayed:false});
+});
+
+test("native contact creation denies pre-cutover/frozen/stale and actual current customer roles/revoked sessions",async()=>{
+ const s=await setup(),a=s.f.practitioner.actor,before=await contactCounts(s);
+ for(const epoch of [0,1,2]){
+  await expect(s.store.createContact(a,contactFields,randomUUID(),epoch)).rejects.toThrow("CONFLICT");
+  if(epoch<2)await s.authority.advance(a,{action:epoch===0?"prepare":"freeze",proof:proof(epoch),operationId:"creation-phase-"+epoch});
+ }
+ await s.authority.advance(a,{action:"switch_native",proof:proof(2),operationId:"creation-switch"});
+ await expect(s.store.createContact(a,contactFields,randomUUID(),2)).rejects.toThrow("CONFLICT");
+ for(const role of ["parent","child","adult_client"]){
+  // Synthetic fixture changes only: the service must use the persisted role,
+  // not a client-selected role or the previously cached parent actor object.
+  await s.f.pool.query("UPDATE ls_identity.accounts SET role=$3 WHERE workspace_id=$1 AND id=$2",[a.workspaceId,s.f.parent.actor.id,role]);
+  await expect(s.store.createContact(s.f.parent.actor,contactFields,randomUUID(),3)).rejects.toThrow("FORBIDDEN");
+ }
+ await s.f.pool.query("UPDATE ls_identity.sessions SET revoked_at=clock_timestamp() WHERE token_digest=$1",[a.sessionDigest]);
+ await expect(s.store.createContact(a,contactFields,randomUUID(),3)).rejects.toThrow("UNAUTHENTICATED");
+ expect(await contactCounts(s)).toEqual(before);
+});
+
+test("native inquiry origin/endpoint is immutable during administrative edits and cannot invent legacy provenance",async()=>{
+ const s=await setup();await activate(s);const a=s.f.practitioner.actor,created=await s.store.createContact(a,contactFields,randomUUID(),3),saved=(await s.store.read(a,created.personId,3))!;
+ const low=new NativeCrmStore(s.db,s.f.keyring,key),before=await contactCounts(s);
+ await expect(low.update(a,{...saved.profile,nativeInquiry:{...saved.profile.nativeInquiry!,phone:"+972535550188"}},1,"synthetic-forged-endpoint")).rejects.toThrow("INQUIRY_ORIGIN_IMMUTABLE");
+ const {nativeInquiry:_origin,...withoutOrigin}=saved.profile;
+ expect(_origin?.origin).toBe("native_manual");
+ await expect(low.update(a,withoutOrigin,1,"synthetic-dropped-origin")).rejects.toThrow("INQUIRY_ORIGIN_IMMUTABLE");
+ await expect(low.update(a,{...saved.profile,nativeInquiry:{...saved.profile.nativeInquiry!,leadId:"LS-LEAD-native-"+randomUUID()}},1,"synthetic-forged-reference")).rejects.toThrow("BAD_PROFILE");
+ expect(await contactCounts(s)).toEqual(before);expect((await s.store.read(a,created.personId,3))!.profile).toEqual(saved.profile);
+});
+
+test.each([false,true])("case-only/account/shared phone claims block creation even when verified=%s",async verified=>{
+ const s=await setup();await activate(s);const a=s.f.practitioner.actor,phone="+972535550187";
+ const person=(await s.f.pool.query(`SELECT cl.person_id FROM ls_cases.cases c JOIN ls_cases.clients cl
+  ON cl.workspace_id=c.workspace_id AND cl.id=c.client_id WHERE c.workspace_id=$1 AND c.id=$2`,[a.workspaceId,s.f.first.id])).rows[0].person_id;
+ const account=randomUUID();
+ await s.f.pool.query(`INSERT INTO ls_identity.accounts(id,workspace_id,role,state,locale,email_blind,email_ciphertext,phone_ciphertext,phone_verified_at,email_verified_at,password_hash,created_at,updated_at)
+  VALUES($1,$2,'child','active','he',$3,$4,$5,$6,clock_timestamp(),'synthetic-non-login-hash',clock_timestamp(),clock_timestamp())`,
+  [account,a.workspaceId,account.replaceAll("-","").padEnd(64,"0"),seal("synthetic-case-only@example.invalid",`email:${a.workspaceId}:${account}`,s.f.keyring),
+   seal(phone,`phone:${a.workspaceId}:${account}`,s.f.keyring),verified?new Date():null]);
+ await s.f.pool.query("INSERT INTO ls_identity.account_subjects(workspace_id,account_id,person_id) VALUES($1,$2,$3)",[a.workspaceId,account,person]);
+ expect((await s.store.list(a,{...query,personId:person},3)).items[0]).toMatchObject({version:null,references:[]});
+ const before=await contactCounts(s);
+ await expect(s.store.createContact(a,contactFields,randomUUID(),3)).rejects.toThrow("CONFLICT");
+ for(const parent of [s.f.parent.actor,s.f.parentTwo.actor])await s.f.pool.query("UPDATE ls_identity.accounts SET phone_ciphertext=$3 WHERE workspace_id=$1 AND id=$2",[a.workspaceId,parent.id,seal(phone,`phone:${a.workspaceId}:${parent.id}`,s.f.keyring)]);
+ await expect(s.store.createContact(a,contactFields,randomUUID(),3)).rejects.toThrow("CONFLICT");
+ expect(await contactCounts(s)).toEqual(before);expect((await s.authority.read(a)).nativeWritesSinceSwitch).toBe(0);
+});
+
+test("contact creation waits for identity mutation and sees its committed account phone",async()=>{
+ const s=await setup();await activate(s);const a=s.f.practitioner.actor,before=await contactCounts(s),holder=await s.f.pool.connect();
+ let markWaiting!:(pid:number)=>void;const waiting=new Promise<number>(resolve=>{markWaiting=resolve;});
+ const observed:IdentityStore={transaction:work=>s.db.transaction(tx=>work({query:async<T extends object>(sql:string,v?:readonly unknown[])=>{
+  if(sql.startsWith("SELECT id FROM ls_identity.workspaces WHERE id=$1 FOR UPDATE")){const [r]=await tx.query<{pid:number}>("SELECT pg_backend_pid() AS pid");markWaiting(r!.pid);}
+  return tx.query<T>(sql,v);
+ }}))};
+ let open=false,attempt:Promise<{error?:string;value?:unknown}>|undefined;
+ try{
+  await holder.query("BEGIN");open=true;await holder.query("SELECT id FROM ls_identity.workspaces WHERE id=$1 FOR UPDATE",[a.workspaceId]);
+  await holder.query("UPDATE ls_identity.accounts SET phone_ciphertext=$3 WHERE workspace_id=$1 AND id=$2",[a.workspaceId,s.f.parent.actor.id,
+   seal("+972535550187",`phone:${a.workspaceId}:${s.f.parent.actor.id}`,s.f.keyring)]);
+  attempt=new OperationalNativeCrmStore(observed,s.f.keyring,key).createContact(a,contactFields,randomUUID(),3).then(value=>({value}),error=>({error:String(error)}));
+  const pid=await waiting;let blocked=false;
+  for(let n=0;n<100;n++){const row=(await s.f.pool.query("SELECT wait_event_type FROM pg_stat_activity WHERE pid=$1",[pid])).rows[0];if(row?.wait_event_type==="Lock"){blocked=true;break;}await new Promise(resolve=>setTimeout(resolve,5));}
+  expect(blocked).toBe(true);await holder.query("COMMIT");open=false;
+  expect(await attempt).toMatchObject({error:expect.stringContaining("CONFLICT")});
+  expect(await contactCounts(s)).toEqual(before);expect((await s.authority.read(a)).nativeWritesSinceSwitch).toBe(0);
+ }finally{if(open)await holder.query("ROLLBACK");holder.release();if(attempt)await attempt;}
+});
+
+test("invalid encrypted identity phone fails closed before any contact creation",async()=>{
+ const s=await setup();await activate(s);const a=s.f.practitioner.actor,before=await contactCounts(s);
+ await s.f.pool.query("UPDATE ls_identity.accounts SET phone_ciphertext='synthetic-corrupt-ciphertext' WHERE workspace_id=$1 AND id=$2",[a.workspaceId,s.f.parent.actor.id]);
+ await expect(s.store.createContact(a,contactFields,randomUUID(),3)).rejects.toThrow("UNAVAILABLE");
+ expect(await contactCounts(s)).toEqual(before);expect((await s.authority.read(a)).nativeWritesSinceSwitch).toBe(0);
 });

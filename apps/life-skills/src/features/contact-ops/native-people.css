@@ -18,6 +18,10 @@
  .lsu-native-people .lsu-people-toolbar > label:first-child { grid-column: 1 / -1; }
 }
 @media (max-width: 767px) {
+ .lsw.lsu .lsu-native-people > .lsw-section-header { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+ .lsw.lsu .lsu-native-people > .lsw-section-header > * { min-width: 0; }
+ .lsw.lsu .lsu-native-people > .lsw-section-header > .lsw-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+ .lsw.lsu .lsu-native-people > .lsw-section-header > .lsw-actions > .lsw-button { min-width: 0; width: 100%; white-space: normal; overflow-wrap: normal; word-break: normal; }
  .lsu-native-table { display: none; }
  .lsu-native-cards { display: grid; }
  .lsw.lsu .lsu-native-people .lsu-native-cards .lsu-person-row {

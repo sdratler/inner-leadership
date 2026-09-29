@@ -7,7 +7,9 @@ import {verifyCsrfToken,verifyMutationOrigin} from "@/lib/security/csrf.ts";
 import {SESSION_COOKIE} from "@/lib/security/session.ts";
 import {identityRuntime} from "@/features/identity/runtime.ts";
 import type {Actor} from "@/features/identity/types.ts";
-import {createProspect,sendProspectMessage,updateProspect} from "@/features/prospects/bridge.ts";
+import {sendProspectMessage,updateProspect} from "@/features/prospects/bridge.ts";
+import {prospectCreateSchema} from "@/features/contact-ops/core/people-create.ts";
+import {createAuthoritativeProspect} from "@/features/contact-ops/server/authoritative-prospect-create.ts";
 import {readAuthoritativeProspects} from "@/features/contact-ops/server/authoritative-prospects.ts";
 import {prospectUpdateSchema,updateAuthoritativeProspect} from "@/features/contact-ops/server/authoritative-prospect-update.ts";
 import {readProspectJourneys} from "@/features/prospects/journey-read.ts";
@@ -18,7 +20,7 @@ import {demoRecordBatch} from "@/features/demo/provenance.ts";
 import {prospectContactSuppressed} from "@/features/prospects/native-edit.ts";
 const lead=z.string().regex(/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]+$/);
 const body=z.discriminatedUnion("action",[
- z.object({action:z.literal("add"),name:z.string().trim().max(120),phone:z.string().trim().min(8).max(64),language:z.enum(["","he","en"]),source:z.string().trim().max(120),notes:z.string().trim().max(5000),nextAction:z.string().trim().max(500),dueDate:z.union([z.literal(""),z.string().date()])}).strict(),
+ prospectCreateSchema,
  prospectUpdateSchema,
  z.object({action:z.literal("send_message"),leadId:lead,message:z.string().trim().min(1).max(2000),nextAction:z.string().max(500).optional(),dueDate:z.string().max(40).optional()}).strict(),
  z.object({action:z.literal("send_intake"),leadId:lead,firstName:z.string().trim().max(120),locale:z.enum(["he","en"]),childCount:z.number().int().min(1).max(8)}).strict(),
@@ -37,7 +39,7 @@ async function requireContactableProspect(runtime:Awaited<ReturnType<typeof iden
 export async function GET(request:Request){try{const s=await session(request),rows=await readAuthoritativeProspects(s.actor,s.runtime),states=await readProspectJourneys(s.runtime.store,s.runtime.config.workspaceId,rows.map(row=>row.leadId));return NextResponse.json({ok:true,data:rows.map(row=>({...row,...(states.get(row.leadId)??{journeyState:"prospect",paymentVerified:false,bookingConfirmed:false})})),requestId:randomUUID()},{headers:{"Cache-Control":"private, no-store","Referrer-Policy":"no-referrer"}})}catch(e){return fail(e)}}
 export async function POST(request:Request){try{const s=await session(request);verifyMutationOrigin(request,s.runtime.config.origin);verifyCsrfToken(request.headers.get("x-csrf-token"),s.runtime.services.sessions.csrf(s.token));const input=await readJson(request,body);
  const sendContext={store:s.runtime.store,workspaceId:s.runtime.config.workspaceId};
- if(input.action==="add"){const created=await createProspect(input);return NextResponse.json({ok:true,data:created.result,requestId:randomUUID()},{status:created.result.action==="created"?201:200,headers:{"Cache-Control":"private, no-store"}})}
+ if(input.action==="add"){const result=await createAuthoritativeProspect(s.actor,input,s.runtime);return NextResponse.json({ok:true,data:result,requestId:randomUUID()},{status:result.action==="created"?201:200,headers:{"Cache-Control":"private, no-store","Referrer-Policy":"no-referrer"}})}
  if(input.action==="update"){const result=await updateAuthoritativeProspect(s.actor,input,s.runtime);return NextResponse.json({ok:true,data:result,requestId:randomUUID()},{headers:{"Cache-Control":"private, no-store"}})}
  if(input.action==="send_message"){await requireContactableProspect(s.runtime,s.actor,input.leadId);const sent=await sendProspectMessage(input.leadId,input.message,sendContext);const projectionPending=await project(input.leadId,{...(input.nextAction?{nextAction:input.nextAction}:{}),...(input.dueDate?{dueDate:input.dueDate}:{}),stage:"Contacted",updateProvenance:"private-app:practitioner-click"});return NextResponse.json({ok:true,data:{...sent.receipt,projectionPending},requestId:randomUUID()},{headers:{"Cache-Control":"private, no-store"}})}
  if(input.action==="send_intake"){await requireContactableProspect(s.runtime,s.actor,input.leadId);const issued=await new PreEnrollmentStaffService(s.runtime.store,s.runtime.config.keyring,()=>s.runtime.clock.now()).issue(s.actor,input.leadId,input.childCount);const href=respondentLink(s.runtime.config.origin,issued.token,input.locale);if(!href)throw new AppError("UNAVAILABLE");const hello=input.locale==="he"?(input.firstName?`שלום ${input.firstName},`:`שלום,`):(input.firstName?`Hi ${input.firstName},`:`Hi,`);const message=input.locale==="he"?`${hello} בהמשך לשיחה שלנו, זה הקישור לטופס ההיכרות: ${href}. לאחר מילוי הטופס אפשר להמשיך לתשלום עבור הפגישה הראשונה.`:`${hello} following our conversation, here is the intake form: ${href}. After submitting it, you can continue to payment for the first session.`;const sent=await sendProspectMessage(input.leadId,message,sendContext),sentAt=sent.receipt.sentAt??new Date().toISOString();const projectionPending=await project(input.leadId,{formSent:sentAt,stage:"Intake sent",nextAction:"Review submitted intake",dueDate:"",messageReceipt:sent.receipt.providerMessageId??`Whapi delivery confirmed at ${sentAt}`,updateProvenance:"private-app:intake-sent"});return NextResponse.json({ok:true,data:{sentAt,expiresAt:issued.expiresAt,projectionPending},requestId:randomUUID()},{headers:{"Cache-Control":"private, no-store"}})}
