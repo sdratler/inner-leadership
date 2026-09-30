@@ -21,6 +21,7 @@ import {contactInboundIntegrity} from '../src/db/contact-inbound-integrity.ts';
 import {practiceSubjectIntegrity,PRACTICE_SUBJECT_GUARDS_MIGRATION} from '../src/db/practice-subject-integrity.ts';
 import {progressReviewIntegrity,PROGRESS_REVIEW_REVISIONS_MIGRATION} from '../src/db/progress-review-integrity.ts';
 import {contactInboundProjectionIntegrity,CONTACT_INBOUND_PROJECTION_MIGRATION} from '../src/db/contact-inbound-projection-integrity.ts';
+import {contactOutboundProjectionIntegrity,CONTACT_OUTBOUND_PROJECTION_MIGRATION} from '../src/db/contact-outbound-projection-integrity.ts';
 import {assertContactOpsDatabaseIdentity,calendarAppendOnlyFunctionBody,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,internalTaskSchemaCatalogMatches,sourceTaskSchemaCatalogMatches,voiceRuleSchemaCatalogMatches,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,type ContactOpsIntegrityObjects,type InternalTaskIntegrityObjects,type SourceTaskIntegrityObjects,type VoiceRuleIntegrityObjects} from '../src/db/contact-ops-production-guard.ts';
 import type {AppliedMigration,Migration} from '../src/db/migration-plan.ts';
 
@@ -46,8 +47,8 @@ async function main(){
  const sourceEntries=await Promise.all(CONTACT_OPS_SOURCE_FILES.map(async path=>({path,bytes:await readFile(new URL(path,appRoot))})));
  if(contactOpsSourceBundle(sourceEntries)!==target.sourceBundleSha256)throw new Error('CONTACT_OPS_SOURCE_PROVENANCE_MISMATCH');
  const files=await migrations();
- // The state gate admits at most one exact reviewed suffix; the currently
-  // deployed 0108 baseline must be fully verified before 0109 may be applied.
+ // The state gate admits at most one exact reviewed suffix. Every preceding
+ // body, catalog and permission gate must pass before 0110 may be applied.
  // The strict state gate refuses partial or unreviewed schema before any write.
  if(!files.some(file=>file.name===CONTACT_OPS_MIGRATION.name&&file.checksum===CONTACT_OPS_MIGRATION.sha256))throw new Error('CONTACT_OPS_MIGRATION_MISSING');
  const reviewedMigration=files.at(-1)!;
@@ -364,6 +365,8 @@ async function main(){
        (await client.query<R>(statement,[...values])).rows},files):undefined;
      const projectionIntegrity=files.some(file=>file.name===CONTACT_INBOUND_PROJECTION_MIGRATION.name)?await contactInboundProjectionIntegrity({query:async <R extends object>(statement:string,values:readonly unknown[]=[])=>
        (await client.query<R>(statement,[...values])).rows},files):undefined;
+     const outboundIntegrity=files.some(file=>file.name===CONTACT_OUTBOUND_PROJECTION_MIGRATION.name)?await contactOutboundProjectionIntegrity({query:async <R extends object>(statement:string,values:readonly unknown[]=[])=>
+       (await client.query<R>(statement,[...values])).rows}):undefined;
      await client.query('COMMIT');
      const history:AppliedMigration[]=ledger.rows.map(row=>({name:row.name,checksum:row.checksum}));
      const verified=new Map(functions.rows.map(row=>[row.name,
@@ -388,7 +391,7 @@ async function main(){
      const sourceIntegrity:SourceTaskIntegrityObjects={baseCatalog,sourceCatalog,sourceIndex:sourceIndex.rows[0]?.exact===true};
      const voiceIntegrity:VoiceRuleIntegrityObjects={...voiceObjects.rows[0]!,
        schemaCatalog:voiceRuleSchemaCatalogMatches(voiceColumns.rows[0]?.catalog,voiceConstraints.rows[0]?.catalog)};
-     return contactOpsMigrationState(files,history,integrity,taskIntegrity,sourceIntegrity,voiceIntegrity,authorityIntegrity,inboundIntegrity,practiceIntegrity,progressIntegrity,projectionIntegrity);
+     return contactOpsMigrationState(files,history,integrity,taskIntegrity,sourceIntegrity,voiceIntegrity,authorityIntegrity,inboundIntegrity,practiceIntegrity,progressIntegrity,projectionIntegrity,outboundIntegrity);
     }catch(error){await client.query('ROLLBACK').catch(()=>undefined);throw error;}
    };
    const before=await inspect();
