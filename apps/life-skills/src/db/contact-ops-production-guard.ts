@@ -3,6 +3,7 @@ import {planMigrations, type AppliedMigration, type Migration} from './migration
 import {PRACTICE_SUBJECT_GUARDS_MIGRATION,type PracticeSubjectIntegrity} from './practice-subject-integrity.ts';
 import {PROGRESS_REVIEW_REVISIONS_MIGRATION,type ProgressReviewIntegrity} from './progress-review-integrity.ts';
 import {CONTACT_INBOUND_PROJECTION_MIGRATION,type ContactInboundProjectionIntegrity} from './contact-inbound-projection-integrity.ts';
+import {CONTACT_OUTBOUND_PROJECTION_MIGRATION,type ContactOutboundProjectionIntegrity} from './contact-outbound-projection-integrity.ts';
 
 export const CONTACT_OPS_MIGRATION = {
  name: '0101_ls_contact_operations.sql',
@@ -85,6 +86,7 @@ export const CONTACT_OPS_SOURCE_FILES = [
  'migrations/0107_ls_practice_subject_guards.sql',
  'migrations/0108_ls_progress_review_revisions.sql',
  'migrations/0109_ls_contact_inbound_projection.sql',
+ 'migrations/0110_ls_contact_outbound_projection.sql',
  'migrations/manifest.json',
  'scripts/apply-contact-ops-production.ts',
  'src/db/contact-ops-production-guard.ts',
@@ -93,6 +95,7 @@ export const CONTACT_OPS_SOURCE_FILES = [
  'src/db/practice-subject-integrity.ts',
  'src/db/progress-review-integrity.ts',
  'src/db/contact-inbound-projection-integrity.ts',
+ 'src/db/contact-outbound-projection-integrity.ts',
  'src/db/migration-plan.ts',
  'src/db/migration-runner.ts',
  'scripts/release-intake.ts',
@@ -259,13 +262,23 @@ export function contactOpsSourceBundle(entries:readonly {path:string;bytes:Uint8
 }
 
 /** No partial/unknown schema and no surprise migration may be promoted. */
-export function contactOpsMigrationState(files:readonly Migration[],history:readonly AppliedMigration[],objects:ContactOpsIntegrityObjects,tasks:InternalTaskIntegrityObjects,source?:SourceTaskIntegrityObjects,voice?:VoiceRuleIntegrityObjects,authority?:ContactAuthorityIntegrityObjects,inbound?:ContactInboundIntegrityObjects,practice?:PracticeSubjectIntegrity,progress?:ProgressReviewIntegrity,projection?:ContactInboundProjectionIntegrity):'pending'|'applied'{
+export function contactOpsMigrationState(files:readonly Migration[],history:readonly AppliedMigration[],objects:ContactOpsIntegrityObjects,tasks:InternalTaskIntegrityObjects,source?:SourceTaskIntegrityObjects,voice?:VoiceRuleIntegrityObjects,authority?:ContactAuthorityIntegrityObjects,inbound?:ContactInboundIntegrityObjects,practice?:PracticeSubjectIntegrity,progress?:ProgressReviewIntegrity,projection?:ContactInboundProjectionIntegrity,outbound?:ContactOutboundProjectionIntegrity):'pending'|'applied'{
  const index=files.findIndex(file=>file.name===CONTACT_OPS_MIGRATION.name);
  if(index<0||files[index]?.checksum!==CONTACT_OPS_MIGRATION.sha256)throw new Error('CONTACT_OPS_MANIFEST_MISMATCH');
  const suffix=files.slice(index+1);
- const allowedSuffix=[INTERNAL_TASKS_MIGRATION,SOURCE_TASKS_MIGRATION,VOICE_RULE_MIGRATION,CONTACT_AUTHORITY_MIGRATION,CONTACT_INBOUND_MIGRATION,PRACTICE_SUBJECT_GUARDS_MIGRATION,PROGRESS_REVIEW_REVISIONS_MIGRATION,CONTACT_INBOUND_PROJECTION_MIGRATION];
+ const allowedSuffix=[INTERNAL_TASKS_MIGRATION,SOURCE_TASKS_MIGRATION,VOICE_RULE_MIGRATION,CONTACT_AUTHORITY_MIGRATION,CONTACT_INBOUND_MIGRATION,PRACTICE_SUBJECT_GUARDS_MIGRATION,PROGRESS_REVIEW_REVISIONS_MIGRATION,CONTACT_INBOUND_PROJECTION_MIGRATION,CONTACT_OUTBOUND_PROJECTION_MIGRATION];
  if(suffix.length>allowedSuffix.length||suffix.some((file,index)=>file.name!==allowedSuffix[index]?.name||file.checksum!==allowedSuffix[index]?.sha256))throw new Error('CONTACT_OPS_MANIFEST_MISMATCH');
  const pending=planMigrations(files,history);
+ if(suffix.length===9){
+  const baselineHistory=history.filter(row=>row.name!==CONTACT_OUTBOUND_PROJECTION_MIGRATION.name);
+  if(contactOpsMigrationState(files.slice(0,-1),baselineHistory,objects,tasks,source,voice,authority,inbound,practice,progress,projection)!=='applied')throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+  const keys=['objectsAbsent','table','schemaCatalog','foreignKeys','pendingIndex','permissions','referencesSound'].sort();
+  if(!outbound||JSON.stringify(Object.keys(outbound).sort())!==JSON.stringify(keys)||Object.values(outbound).some(value=>typeof value!=='boolean'))throw new Error('CONTACT_OPS_OUTBOUND_READBACK_INVALID');
+  const created=Object.entries(outbound).filter(([key])=>key!=='objectsAbsent').map(([,value])=>value);
+  if(pending.length===1&&pending[0]?.name===CONTACT_OUTBOUND_PROJECTION_MIGRATION.name&&outbound.objectsAbsent&&created.every(v=>!v))return 'pending';
+  if(pending.length===0&&!outbound.objectsAbsent&&created.every(Boolean))return 'applied';
+  throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+ }
  if(suffix.length===8){
   // All 28 prior migrations and their exact bodies/catalogs/ACL/FK/permission
   // gates must already be applied. This is only the reviewed additive 0109.
