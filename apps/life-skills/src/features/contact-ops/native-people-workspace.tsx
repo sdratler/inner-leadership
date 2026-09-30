@@ -34,13 +34,13 @@ export function peopleFiltersFromQuery(params:URLSearchParams):DirectoryFilters{
  return {query:search.length<=200?search:"",stage:stage.length<=120?stage:"",language:language==="he"||language==="en"?language:"",due:due==="today"||due==="overdue"?due:"any"};
 }
 const emptyCreation:ProspectCreateFields={name:"",phone:"",language:"",source:"",notes:"",nextAction:"",dueDate:""};
-export function NativePeopleWorkspace({locale,view,initial,onSheet,initialMode="live",initialFilter="all",initialPersonId,initialLeadId}:{locale:Locale;view:PeopleView;initial:NativeData;initialMode?:"live"|"demo";initialFilter?:Preset;initialPersonId?:string|undefined;initialLeadId?:string|undefined;onSheet:(source:Extract<PeopleResponse,{source:"sheet"}>,context:SheetRequestContext)=>void}){
+export function NativePeopleWorkspace({locale,view,initial,onSheet,initialMode="live",initialFilter="all",initialFilters,initialLoadedContext=false,initialPersonId,initialLeadId}:{locale:Locale;view:PeopleView;initial:NativeData;initialMode?:"live"|"demo";initialFilter?:Preset;initialFilters?:DirectoryFilters;initialLoadedContext?:boolean;initialPersonId?:string|undefined;initialLeadId?:string|undefined;onSheet:(source:Extract<PeopleResponse,{source:"sheet"}>,context:SheetRequestContext)=>void}){
  const he=locale==="he",text=(en:string,heText:string)=>he?heText:en;
- const [data,setData]=useState(initial),[query,setQuery]=useState(""),[stage,setStage]=useState(""),[language,setLanguage]=useState(""),[due,setDue]=useState("any"),[mode,setMode]=useState<"live"|"demo">(initialMode);
+ const [data,setData]=useState(initial),[query,setQuery]=useState(initialFilters?.query??""),[stage,setStage]=useState(initialFilters?.stage??""),[language,setLanguage]=useState(initialFilters?.language??""),[due,setDue]=useState<string>(initialFilters?.due??"any"),[mode,setMode]=useState<"live"|"demo">(initialMode);
  const [busy,setBusy]=useState(false),[failure,setFailure]=useState<number|null>(null),[selected,setSelected]=useState<string|null>(initialPersonId??null),[selectedRow,setSelectedRow]=useState<NativeContactRow|null>(initialPersonId?initial.page.items.find(row=>row.personId===initialPersonId)??null:null);
  const [focusedLead,setFocusedLead]=useState<string|null>(initialLeadId??null);
  const [preset,setPreset]=useState<Preset>(initialFilter);
- const lifecycle=useRef({serial:0,alive:true,authorized:true}),locationKey=useRef<string|null>(null);
+ const lifecycle=useRef({serial:0,alive:true,authorized:true}),locationKey=useRef<string|null>(initialLoadedContext&&typeof window!=="undefined"?window.location.pathname+window.location.search:null);
  const [drafts,setDrafts]=useState(()=>new Map<string,Draft>());
  const [creation,setCreation]=useState<ProspectCreateFields>(emptyCreation),[createOpen,setCreateOpen]=useState(false),
   [createBusy,setCreateBusy]=useState(false),[createPending,setCreatePending]=useState<PeopleCreate|null>(null),[createMessage,setCreateMessage]=useState("");
@@ -95,7 +95,7 @@ export function NativePeopleWorkspace({locale,view,initial,onSheet,initialMode="
    setCreateMessage(text("Contact saved without sending anything or creating a login.","איש הקשר נשמר בלי לשלוח דבר ובלי ליצור חשבון כניסה."));
    // Back/context navigation can occur while the request is in flight. Confirm
    // its outcome without returning the user to the old live context.
-   if(startedSerial===lifecycle.current.serial)await load(1);
+   if(startedSerial===lifecycle.current.serial){const url=new URL(window.location.href);if(url.searchParams.has("page")){url.searchParams.delete("page");window.history.replaceState(window.history.state,"",url);locationKey.current=url.pathname+url.search;}await load(1);}
   }catch(error){if(lifecycle.current.alive){
    const status=error instanceof PeopleRequestError?error.status:error instanceof IdentityClientError&&error.code==="UNAUTHENTICATED"?401:error instanceof IdentityClientError&&error.code==="FORBIDDEN"?403:503;
    if(status===401||status===403){lifecycle.current.authorized=false;lifecycle.current.serial++;setFailure(status);setSelectedRow(null);setDrafts(new Map());setCreation(emptyCreation);setCreatePending(null);setCreateMessage("");}
