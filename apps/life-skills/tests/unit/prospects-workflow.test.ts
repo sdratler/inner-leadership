@@ -1,12 +1,18 @@
 import {readFileSync} from "node:fs";
 import {describe,expect,it,vi} from "vitest";
-import {paginateDirectory,visibleClientCases,workflowDestination} from "../../src/features/prospects/client.tsx";
+import {paginateDirectory,prospectActionStatus,visibleClientCases,workflowDestination} from "../../src/features/prospects/client.tsx";
 import {activeProspect,paidAwaitingBooking} from "../../src/features/prospects/view-state.ts";
 import {sendProspectMessage} from "../../src/features/prospects/bridge.ts";
 import type {IdentityStore} from "../../src/features/identity/store.ts";
 vi.mock("server-only",()=>({}));
 const read=(path:string)=>readFileSync(new URL(`../../src/${path}`,import.meta.url),"utf8");
 describe("live intake follow-up contract",()=>{
+ it("distinguishes confirmed delivery from a pending CRM projection in both languages",()=>{
+  expect(prospectActionStatus("send_message",{projectionPending:true},"en")).toContain("do not resend");
+  expect(prospectActionStatus("send_intake",{projectionPending:true},"he")).toContain("אין לשלוח");
+  expect(prospectActionStatus("send_booking",{projectionPending:false},"en")).toBe("WhatsApp delivery confirmed.");
+  expect(prospectActionStatus("add",{projectionPending:true},"en")).toBe("Prospect saved without sending anything.");
+ });
  it("does not mistake a lead's linked child case for that same person",()=>{
   const minor={id:"case-a",kind:"minor" as const,state:"active",displayName:"Synthetic Child Case"},adult={id:"case-b",kind:"adult" as const,state:"active",displayName:"Synthetic Adult Case"},cases=[minor,adult];
   expect(visibleClientCases(cases,[{caseId:"case-a"},{caseId:"case-b"}],"")).toEqual([minor]);
@@ -40,6 +46,16 @@ describe("live intake follow-up contract",()=>{
   expect(add).not.toContain("createProspect(");expect(boundary).toContain("writeDestination(state.phase)");
   expect(boundary).toContain('destination==="durable_queue_only"');expect(boundary).toContain("d.native.createContact");
   expect(boundary).toContain("sheet:{create:createProspect}");expect(boundary).not.toContain("sendProspectMessage");
+ });
+ it("routes every provider send and public-intake projection through the cutover fence",()=>{
+  const prospects=read("app/api/prospects/route.ts"),intake=read("app/api/intake/route.ts");
+  expect((prospects.match(/sendAuthoritativeProspectMessage\(s\.actor/g)??[]).length).toBe(3);
+  expect(prospects).toContain("assertLegacyProspectSenderAvailable(s.actor,s.runtime)");
+  expect(prospects).toContain("sent.authorityEpoch");
+  expect(prospects).not.toContain("sendProspectMessage(");
+  expect(prospects).not.toContain("updateProspect(");
+  expect(intake).toContain("projectIntakeToLegacyIfCurrent(");
+  expect(intake).not.toContain("updateProspect(");
  });
  it("does not expose import or history-scan actions",()=>{const route=read("app/api/prospects/route.ts");expect(route).not.toMatch(/history.scan|backfill|bulk.import/i);});
  it("rejects a marked demo prospect at the final WhatsApp bridge without calling the provider",async()=>{
