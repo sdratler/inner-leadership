@@ -19,7 +19,9 @@ for(const locale of ["en","he"] as const){
    await expect(viewNav).toHaveCSS("overflow-x","auto");
    for(const link of await links.all()){
     await expect(link).toHaveCSS("white-space","nowrap");
-    expect(await link.evaluate(node=>node.getBoundingClientRect().height)).toBeLessThan(55);
+    const height=await link.evaluate(node=>node.getBoundingClientRect().height);
+    expect(height).toBeGreaterThanOrEqual(44);
+    expect(height).toBeLessThan(55);
     expect(await link.evaluate(node=>node.getBoundingClientRect().width)).toBeGreaterThanOrEqual(44);
    }
    expect(await viewNav.evaluate(node=>node.scrollWidth-node.clientWidth)).toBeLessThanOrEqual(1);
