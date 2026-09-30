@@ -1,5 +1,5 @@
 import { instant,formatInstant as foundationFormatInstant } from '../../lib/time.ts';
-import messages from './messages.json';
+import messages from './messages.json' with { type: 'json' };
 import type { Locale } from '../../lib/locale.ts';
 export type MessageKey = keyof typeof messages.en;
 export function uiCopy(locale: Locale) { return messages[locale]; }

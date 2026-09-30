@@ -2,24 +2,24 @@ import type { Locale } from "../../lib/locale.ts";
 
 // These are app-owned administrative labels. Unknown or practitioner-written text
 // stays verbatim; presentation must never rewrite the CRM's stored values.
-const hebrewStages: Readonly<Record<string, string>> = {
-  "New inquiry": "פנייה חדשה",
-  "Contacted": "נוצר קשר",
-  "Offer made": "ניתנה הצעה",
-  "Prospect": "מתעניין/ת",
-};
+const hebrewStages = new Map<string, string>([
+  ["New inquiry", "פנייה חדשה"],
+  ["Contacted", "נוצר קשר"],
+  ["Offer made", "ניתנה הצעה"],
+  ["Prospect", "מתעניין/ת"],
+]);
 
-const hebrewActions: Readonly<Record<string, string>> = {
-  "Respond to inbound WhatsApp inquiry": "מענה לפניית WhatsApp נכנסת",
-  "Review inbound inquiry": "בדיקת פנייה נכנסת",
-};
+const hebrewActions = new Map<string, string>([
+  ["Respond to inbound WhatsApp inquiry", "מענה לפניית WhatsApp נכנסת"],
+  ["Review inbound inquiry", "בדיקת פנייה נכנסת"],
+]);
 
 export function administrativeStageLabel(value: string, locale: Locale): string {
-  return locale === "he" ? hebrewStages[value] ?? value : value;
+  return locale === "he" ? hebrewStages.get(value) ?? value : value;
 }
 
 export function administrativeActionLabel(value: string, locale: Locale): string {
-  return locale === "he" ? hebrewActions[value] ?? value : value;
+  return locale === "he" ? hebrewActions.get(value) ?? value : value;
 }
 
 export function linkedInquiryTaskTitle(title: string, sourceKind: "crm_followup" | null, locale: Locale): string {

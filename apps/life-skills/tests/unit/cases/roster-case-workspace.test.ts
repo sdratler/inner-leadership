@@ -211,6 +211,25 @@ it('shows one searchable People list without hiding a linked child case or dupli
  } finally { vi.unstubAllGlobals(); }
 });
 
+it('keeps Sheet-backed stage keys and practitioner text intact for inherited-property names', async () => {
+ const leads = [
+  { leadId: 'LS-LEAD-synthetic-known', name: 'Synthetic known', stage: 'New inquiry', nextAction: 'Respond to inbound WhatsApp inquiry' },
+  { leadId: 'LS-LEAD-synthetic-unknown', name: 'Synthetic unknown', stage: 'constructor', nextAction: 'toString' },
+ ].map(row => ({ ...row, caseId: '', phone: '0500000000', language: 'he', receivedAt: '2026-09-25T08:00:00Z', dueDate: '', formSent: '', formSubmitted: '', paymentVerified: false, bookingStatus: '', outcome: '', journeyState: '' }));
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: leads, pendingOperations: [], pendingNext: null, ledgerReady: true }) }));
+ try {
+  const view = () => hook.render(() => ProspectsClient({ locale: 'he', embedded: true, caseState: 'ready' }));
+  view(); hook.flushEffects(); await tick();
+  const output = view();
+  expect(text(output)).toContain('פנייה חדשה');
+  expect(text(output)).toContain('מענה לפניית WhatsApp נכנסת');
+  expect(text(output)).toContain('constructor');
+  expect(text(output)).toContain('toString');
+  expect(find(output, element => element.type === 'option' && element.props.value === 'New inquiry')).toBeDefined();
+  expect(find(output, element => element.type === 'option' && element.props.value === 'constructor')).toBeDefined();
+ } finally { vi.unstubAllGlobals(); }
+});
+
 it('keeps an orphaned pending send discoverable on a later ledger page without offering a resend', async () => {
  const cursor='00000000-0000-4000-8000-000000000001';
  const orphan={leadId:'LS-LEAD-synthetic-missing',operationId:'00000000-0000-4000-8000-000000000002',

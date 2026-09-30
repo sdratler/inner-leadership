@@ -9,12 +9,26 @@ describe("administrative presentation labels", () => {
     expect(administrativeStageLabel("Prospect", "he")).toBe("מתעניין/ת");
     expect(administrativeStageLabel("New inquiry", "en")).toBe("New inquiry");
     expect(administrativeStageLabel("Custom stage", "he")).toBe("Custom stage");
+    expect(administrativeStageLabel("", "he")).toBe("");
   });
+
+  it.each(["constructor", "toString", "__proto__"])(
+    "preserves inherited-property-looking stage and action text: %s",
+    (value) => {
+      expect(administrativeStageLabel(value, "he")).toBe(value);
+      expect(administrativeActionLabel(value, "he")).toBe(value);
+      expect(administrativeStageLabel(value, "en")).toBe(value);
+      expect(administrativeActionLabel(value, "en")).toBe(value);
+      expect(linkedInquiryTaskTitle(`SYNTHETIC-ID · ${value}`, "crm_followup", "he"))
+        .toBe(`SYNTHETIC-ID · ${value}`);
+    },
+  );
 
   it("leaves practitioner-authored next actions verbatim", () => {
     expect(administrativeActionLabel("Respond to inbound WhatsApp inquiry", "he")).toBe("מענה לפניית WhatsApp נכנסת");
     expect(administrativeActionLabel("Review inbound inquiry", "he")).toBe("בדיקת פנייה נכנסת");
     expect(administrativeActionLabel("Call on Tuesday about a new time", "he")).toBe("Call on Tuesday about a new time");
+    expect(administrativeActionLabel("", "he")).toBe("");
     expect(administrativeActionLabel("Respond to inbound WhatsApp inquiry", "en")).toBe("Respond to inbound WhatsApp inquiry");
   });
 

@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { text } from '../../../src/features/calendar/copy.ts';
-type Data={origin:string;cases:Record<string,{futureId:string;pastId:string;futureDate:string;pastDate:string}>;caseId:string;foreignId:string;parent:string;practitioner:string};
+type Data={origin:string;cases:Record<string,{futureId:string;pastId:string;futureDate:string;pastDate:string}>;caseId:string;foreignId:string;adminDisplayDate:string;parent:string;practitioner:string};
 const file=process.env.LS_CALENDAR_FIXTURE_PATH;
 if(!file){
  if(process.env.LS_CALENDAR_TEST_RUNNER_ACTIVE==='true')throw new Error('ISOLATED_CALENDAR_FIXTURE_REQUIRED');
@@ -105,6 +105,16 @@ test('an empty calendar keeps its grid on mobile, while populated dates keep the
   await expect(page.locator('.lsw-calendar-agenda')).toBeVisible();
   await expect(page.locator('.lsw-calendar-grid')).toBeHidden();
  }else await expect(page.locator('[data-ls-calendar-grid]')).toBeVisible();
+});
+for(const locale of ['he','en'] as const)test(`practitioner ${locale}: generated intake action is localized on the actual Calendar route`,async({page,context},info)=>{
+ await context.addCookies([{name:'__Host-ls-session',value:data.practitioner,url:data.origin,httpOnly:true,secure:true,sameSite:'Lax'}]);
+ const response=await page.goto(`/${locale}/app/calendar?date=${data.adminDisplayDate}&view=week`);
+ expect(response?.status()).toBe(200);
+ const calendar=page.locator('main.ls-cal');await expect(calendar).toBeVisible();
+ const generated=locale==='he'?'Synthetic inquiry · מענה לפניית WhatsApp נכנסת':'Synthetic inquiry · Respond to inbound WhatsApp inquiry';
+ await expect(calendar.getByText(generated,{exact:true}).filter({visible:true})).toBeVisible();
+ await expect(calendar.getByText('Synthetic unknown · constructor',{exact:true}).filter({visible:true})).toBeVisible();
+ await page.screenshot({path:info.outputPath(`practitioner-${locale}-admin-display.png`),fullPage:true});
 });
 test('API denies unauthenticated access and timestamp-forged notices; no secret response or partial receipt',async({page,context})=>{
  const noSession=await page.request.get('/api/calendar/appointments/'+data.foreignId);expect(noSession.status()).toBe(401);
