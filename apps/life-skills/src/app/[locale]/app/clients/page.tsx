@@ -10,11 +10,12 @@ export const revalidate = 0;
 
 export default async function Page({ params, searchParams }: {
   params: Promise<{ locale: string }>;
-  searchParams: Promise<{ section?: string; filter?: string; leadId?: string; personId?:string; mode?:string }>;
+  searchParams: Promise<Record<string,string|string[]|undefined>>;
 }) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const query = await searchParams;
+  const one=(key:string)=>typeof query[key]==="string"?query[key] as string:undefined;
   const returnPath = practitionerReturnPath(locale, "clients", query);
   try { await requireWorkspaceRole("practitioner"); }
   catch (error) {
@@ -26,5 +27,5 @@ export default async function Page({ params, searchParams }: {
       <a href={returnPath}>{locale === "he" ? "ניסיון חוזר" : "Retry"}</a>
     </main>;
   }
-  return <ClientsRoster locale={locale} section={query.section} prospectFilter={query.filter} focusLeadId={query.leadId} personId={query.personId} mode={query.mode} />;
+  return <ClientsRoster locale={locale} section={one("section")} prospectFilter={one("filter")} focusLeadId={one("leadId")} personId={one("personId")} mode={one("mode")} page={one("page")} search={one("search")} stage={one("stage")} language={one("language")} due={one("due")} />;
 }

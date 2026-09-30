@@ -13,11 +13,22 @@
 .lsu-native-table th:first-child { width: 40%; }
 .lsu-native-people pre { overflow-wrap: anywhere; font: inherit; }
 .lsu-native-cards { display: none; }
+.lsu-native-people > nav.lsw-actions { align-items: center; gap: 10px; }
+.lsu-native-people > nav.lsw-actions > .lsw-button {
+ min-width: 88px; min-height: 44px; white-space: nowrap;
+ overflow-wrap: normal; word-break: normal;
+}
+.lsu-native-people > nav.lsw-actions > span { white-space: nowrap; font-variant-numeric: tabular-nums; }
 @media (min-width: 768px) and (max-width: 1279px) {
  .lsw.lsu .lsu-native-people .lsu-people-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
  .lsu-native-people .lsu-people-toolbar > label:first-child { grid-column: 1 / -1; }
 }
 @media (max-width: 767px) {
+ .lsu-native-people > nav.lsw-actions {
+  display: grid; grid-template-columns: minmax(88px, 1fr) auto minmax(88px, 1fr);
+  gap: 8px; width: 100%;
+ }
+ .lsu-native-people > nav.lsw-actions > .lsw-button { width: 100%; }
  .lsw.lsu .lsu-native-people > .lsw-section-header { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
  .lsw.lsu .lsu-native-people > .lsw-section-header > * { min-width: 0; }
  .lsw.lsu .lsu-native-people > .lsw-section-header > .lsw-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
