@@ -10,7 +10,7 @@ export const revalidate = 0;
 
 export default async function Page({ params, searchParams }: {
   params: Promise<{ locale: string }>;
-  searchParams: Promise<{ section?: string; filter?: string; leadId?: string; personId?:string; mode?:string }>;
+  searchParams: Promise<{ section?: string; filter?: string; leadId?: string; personId?:string; mode?:string; page?:string; search?:string; stage?:string; language?:string; due?:string }>;
 }) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();

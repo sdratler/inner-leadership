@@ -50,6 +50,8 @@ describe("shared private-app sign-in destination", () => {
     expect(loginReturnDestination("he","practitioner",calendar)).toBe(calendar);
     const people=practitionerReturnPath("en","clients",{section:"paid",filter:"booking"});
     expect(loginReturnDestination("en","practitioner",people)).toBe("/en/app/clients?section=paid&filter=booking");
+    const pageTwo=practitionerReturnPath("en","clients",{section:"prospects",page:"2",search:"synthetic",language:"he",due:"overdue"});
+    expect(loginReturnDestination("en","practitioner",pageTwo)).toBe("/en/app/clients?section=prospects&page=2&search=synthetic&language=he&due=overdue");
   });
   it("sends a signed-out parent to login without disguising forbidden access or outages",()=>{
     const layout=readFileSync(new URL("../../src/app/[locale]/family/layout.tsx",import.meta.url),"utf8");
@@ -97,13 +99,14 @@ describe("shared private-app sign-in destination", () => {
     expect(layout).toContain('redirect(loginHref(locale, loginReturnDestination(locale, "practitioner", requested)!))');
     expect(layout).not.toContain("PrivateWorkspaceUnavailable");
     expect(proxy).toContain('inbound.delete("x-ls-practitioner-return")');
-    expect(proxy).toContain('["section", "filter", "leadId", "personId", "mode"]');
+    expect(proxy).toContain('["section", "filter", "leadId", "personId", "mode", "page", "search", "stage", "language", "due"]');
     expect(proxy).toContain('values.length === 1 ? values[0] : undefined');
     expect(proxy).toContain('inbound.set("x-ls-practitioner-return", practitionerReturnPath(locale, page, query))');
     const personId="00000000-0000-4000-8000-000000000001";
     expect(practitionerReturnPath("he","clients",{personId,mode:"demo",role:"parent",unknown:"private"})).toBe(`/he/app/clients?personId=${personId}&mode=demo`);
     expect(practitionerReturnPath("he","clients",{personId:[personId,personId],mode:["demo","live"]})).toBe("/he/app/clients");
     expect(practitionerReturnPath("he","clients",{personId:"../../private",mode:"practitioner"})).toBe("/he/app/clients");
+    expect(practitionerReturnPath("en","clients",{page:"0",search:"x".repeat(201),stage:"line\nbreak",language:"other",due:"tomorrow"})).toBe("/en/app/clients");
   });
   for (const locale of ["he", "en"] as const) {
     it(`${locale}: uses the approved local logo and an accessible password visibility control`,()=>{

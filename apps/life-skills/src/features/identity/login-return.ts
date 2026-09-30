@@ -37,6 +37,10 @@ export function practitionerReturnPath(locale: Locale, page: "calendar" | "clien
     if (/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]{1,80}$/.test(one("leadId"))) params.set("leadId", one("leadId"));
     if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(one("personId"))) params.set("personId",one("personId"));
     if(one("mode")==="demo")params.set("mode","demo");
+    if(/^[1-9]\d{0,4}$/.test(one("page")))params.set("page",one("page"));
+    for(const [key,max] of [["search",200],["stage",120]] as const){const value=one(key);if(value&&value.length<=max&&!/[\u0000-\u001f\u007f]/.test(value))params.set(key,value);}
+    if(["he","en"].includes(one("language")))params.set("language",one("language"));
+    if(["today","overdue"].includes(one("due")))params.set("due",one("due"));
   }
   const suffix = params.toString();
   return `/${locale}/app/${page}${suffix ? `?${suffix}` : ""}`;
