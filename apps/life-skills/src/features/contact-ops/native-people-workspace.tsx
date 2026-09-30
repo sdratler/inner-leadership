@@ -28,6 +28,11 @@ const validPresets=new Set<Preset>(["all","today","new","intake","payment","book
 export function peoplePageFromQuery(params:URLSearchParams):number{
  const raw=params.get("page");return raw&&/^[1-9]\d{0,4}$/.test(raw)?Number(raw):1;
 }
+type DirectoryFilters={query:string;stage:string;language:string;due:"any"|"today"|"overdue"};
+export function peopleFiltersFromQuery(params:URLSearchParams):DirectoryFilters{
+ const search=params.get("search")??"",stage=params.get("stage")??"",language=params.get("language")??"",due=params.get("due")??"any";
+ return {query:search.length<=200?search:"",stage:stage.length<=120?stage:"",language:language==="he"||language==="en"?language:"",due:due==="today"||due==="overdue"?due:"any"};
+}
 const emptyCreation:ProspectCreateFields={name:"",phone:"",language:"",source:"",notes:"",nextAction:"",dueDate:""};
 export function NativePeopleWorkspace({locale,view,initial,onSheet,initialMode="live",initialFilter="all",initialPersonId,initialLeadId}:{locale:Locale;view:PeopleView;initial:NativeData;initialMode?:"live"|"demo";initialFilter?:Preset;initialPersonId?:string|undefined;initialLeadId?:string|undefined;onSheet:(source:Extract<PeopleResponse,{source:"sheet"}>,context:SheetRequestContext)=>void}){
  const he=locale==="he",text=(en:string,heText:string)=>he?heText:en;
@@ -40,12 +45,13 @@ export function NativePeopleWorkspace({locale,view,initial,onSheet,initialMode="
  const [creation,setCreation]=useState<ProspectCreateFields>(emptyCreation),[createOpen,setCreateOpen]=useState(false),
   [createBusy,setCreateBusy]=useState(false),[createPending,setCreatePending]=useState<PeopleCreate|null>(null),[createMessage,setCreateMessage]=useState("");
  const createGuard=useRef(false);
- const load=useCallback(async(page=1,personId?:string,nextMode:"live"|"demo"=mode,leadId?:string,nextPreset:Preset=preset)=>{
+ const load=useCallback(async(page=1,personId?:string,nextMode:"live"|"demo"=mode,leadId?:string,nextPreset:Preset=preset,filters?:DirectoryFilters)=>{
   const state=lifecycle.current,current=++state.serial;setBusy(true);setFailure(null);setMode(nextMode);setPreset(nextPreset);
+  const applied=filters??peopleFiltersFromQuery(new URLSearchParams(window.location.search));
   // A pending/failed context change must never expose rows from the old context.
   setSelectedRow(null);setData(d=>({...d,page:{...d.page,items:[],total:0}}));
   const parameters=new URLSearchParams({view:personId||leadId?"all":view,mode:nextMode,page:String(page),...(personId?{personId}:{}),...(leadId?{leadId}:{}),
-   ...(!personId&&!leadId?{search:query,...(stage?{stage}:{}),...(language?{language}:{}),due,...(nextPreset!=="all"?{filter:nextPreset}:{})}:{})});
+   ...(!personId&&!leadId?{search:applied.query,...(applied.stage?{stage:applied.stage}:{}),...(applied.language?{language:applied.language}:{}),due:applied.due,...(nextPreset!=="all"?{filter:nextPreset}:{})}:{})});
   try{const result=await requestPeople(parameters);if(!state.alive||current!==state.serial)return;
    if(result.source==="sheet"){if(nextMode==="demo")throw new PeopleRequestError(409);onSheet(result,{mode:nextMode,filter:nextPreset,personId,leadId});return;}
    state.authorized=true;
@@ -54,8 +60,8 @@ export function NativePeopleWorkspace({locale,view,initial,onSheet,initialMode="
    else setData(result);
   }catch(error){if(state.alive&&current===state.serial){const status=error instanceof PeopleRequestError?error.status:503;setFailure(status);if(status===401||status===403){state.authorized=false;setData(d=>({...d,page:{items:[],page:1,pages:1,pageSize:12,total:0}}));setSelectedRow(null);setDrafts(new Map());setCreation(emptyCreation);setCreatePending(null);setCreateMessage("");}}}
   finally{if(state.alive&&current===state.serial)setBusy(false);}
- },[view,mode,query,stage,language,due,preset,onSheet]);
- const fromUrl=useCallback(()=>{locationKey.current=window.location.pathname+window.location.search;const params=new URLSearchParams(window.location.search),value=params.get("personId"),lead=params.get("leadId"),rawFilter=params.get("filter"),filter=rawFilter&&validPresets.has(rawFilter as Preset)?rawFilter as Preset:"all",urlMode=params.get("mode")==="demo"?"demo":"live";const id=value&&uuid.test(value)?value:null,leadId=lead&&leadPattern.test(lead)?lead:null;setSelected(id);setFocusedLead(leadId);setSelectedRow(null);void load(id||leadId?1:peoplePageFromQuery(params),id??undefined,urlMode,leadId??undefined,filter);},[load]);
+ },[view,mode,preset,onSheet]);
+ const fromUrl=useCallback(()=>{locationKey.current=window.location.pathname+window.location.search;const params=new URLSearchParams(window.location.search),value=params.get("personId"),lead=params.get("leadId"),rawFilter=params.get("filter"),filter=rawFilter&&validPresets.has(rawFilter as Preset)?rawFilter as Preset:"all",urlMode=params.get("mode")==="demo"?"demo":"live";const id=value&&uuid.test(value)?value:null,leadId=lead&&leadPattern.test(lead)?lead:null,applied=peopleFiltersFromQuery(params);setQuery(applied.query);setStage(applied.stage);setLanguage(applied.language);setDue(applied.due);setSelected(id);setFocusedLead(leadId);setSelectedRow(null);void load(id||leadId?1:peoplePageFromQuery(params),id??undefined,urlMode,leadId??undefined,filter,applied);},[load]);
  // The ordinary route can be hard-reloaded or opened directly. Popstate, not an
  // anchor jump, restores the selected main view. Drafts stay in authorized memory.
  useEffect(()=>{const state=lifecycle.current;state.alive=true;return()=>{state.alive=false;state.serial++;};},[]);
@@ -68,7 +74,7 @@ export function NativePeopleWorkspace({locale,view,initial,onSheet,initialMode="
  function switchMode(next:"live"|"demo"){const url=new URL(window.location.href);url.searchParams.delete("leadId");url.searchParams.delete("personId");url.searchParams.delete("page");if(next==="demo")url.searchParams.set("mode","demo");else url.searchParams.delete("mode");window.history.pushState(null,"",url);locationKey.current=url.pathname+url.search;setFocusedLead(null);setSelected(null);void load(1,undefined,next);}
  function clearPreset(){const url=new URL(window.location.href);url.searchParams.delete("filter");url.searchParams.delete("page");window.history.pushState(null,"",url);locationKey.current=url.pathname+url.search;void load(1,undefined,mode,undefined,"all");}
  function changePage(page:number){const url=new URL(window.location.href);if(page===1)url.searchParams.delete("page");else url.searchParams.set("page",String(page));window.history.pushState(null,"",url);locationKey.current=url.pathname+url.search;void load(page);}
- function applyFilters(){const url=new URL(window.location.href);if(url.searchParams.has("page")){url.searchParams.delete("page");window.history.pushState(null,"",url);locationKey.current=url.pathname+url.search;}void load(1);}
+ function applyFilters(){const url=new URL(window.location.href);for(const [key,value] of [["search",query],["stage",stage],["language",language],["due",due==="any"?"":due]] as const){if(value)url.searchParams.set(key,value);else url.searchParams.delete(key);}url.searchParams.delete("page");if(url.href!==window.location.href)window.history.pushState(null,"",url);locationKey.current=url.pathname+url.search;void load(1,undefined,mode,undefined,preset,{query,stage,language,due:due==="today"||due==="overdue"?due:"any"});}
  async function createContact(){
   if(createGuard.current||mode!=="live"||!lifecycle.current.authorized)return;
   let operation:PeopleCreate;

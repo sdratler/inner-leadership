@@ -2,7 +2,7 @@ import {expect,test,vi} from "vitest";
 import {renderToStaticMarkup} from "react-dom/server";
 import {createElement} from "react";
 vi.mock("server-only",()=>({}));
-import {NativePeopleWorkspace,peoplePageFromQuery} from "../../../src/features/contact-ops/native-people-workspace.tsx";
+import {NativePeopleWorkspace,peopleFiltersFromQuery,peoplePageFromQuery} from "../../../src/features/contact-ops/native-people-workspace.tsx";
 import {peopleEdit,sameAdministrativeFields} from "../../../src/features/contact-ops/core/people-edit.ts";
 import {practitionerReturnPath,loginReturnDestination} from "../../../src/features/identity/login-return.ts";
 import type {NativeContactRow} from "../../../src/features/contact-ops/server/native-directory.ts";
@@ -12,6 +12,11 @@ const personId="00000000-0000-4000-8000-000000000001",fields={stage:"New inquiry
 test("People page deep links accept only the bounded server page form",()=>{
  for(const [query,page] of [["",1],["page=2",2],["page=99999",99999],["page=0",1],["page=01",1],["page=100000",1],["page=-2",1],["page=2.5",1],["page=abc",1]] as const)
   expect(peoplePageFromQuery(new URLSearchParams(query))).toBe(page);
+});
+test("People Back/deep links recover only valid applied directory filters",()=>{
+ expect(peopleFiltersFromQuery(new URLSearchParams("search=synthetic+name&stage=New+inquiry&language=he&due=overdue"))).toEqual({query:"synthetic name",stage:"New inquiry",language:"he",due:"overdue"});
+ expect(peopleFiltersFromQuery(new URLSearchParams("language=xx&due=tomorrow"))).toEqual({query:"",stage:"",language:"",due:"any"});
+ expect(peopleFiltersFromQuery(new URLSearchParams({search:"x".repeat(201),stage:"y".repeat(121)}))).toEqual({query:"",stage:"",language:"",due:"any"});
 });
 test.each(["he","en"] as const)("%s new native contact action is compact/collapsed and absent from DEMO",locale=>{
  const props={locale,view:"all" as const,initial:{source:"native" as const,authorityEpoch:3,page:{page:1,pages:1,pageSize:12,total:0,items:[]}},onSheet:()=>{}};
