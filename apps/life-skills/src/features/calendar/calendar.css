@@ -112,8 +112,8 @@
  .lsw.lsu .ls-cal .ls-cal-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));inline-size:100%;gap:.5rem;margin-inline:0}
  .lsw.lsu .ls-cal .lsw-calendar-toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.5rem;align-items:center;padding:.5rem}
  .lsw.lsu .ls-cal .lsw-calendar-toolbar>h2{inline-size:auto;margin:0}
- .lsw.lsu .ls-cal .lsw-calendar-toolbar>nav{grid-column:1/-1;display:flex;flex-wrap:nowrap;gap:.4rem}
- .lsw.lsu .ls-cal .lsw-calendar-toolbar>nav>a{flex:1;min-inline-size:0;justify-content:center;text-align:center}
+ .lsw.lsu .ls-cal .lsw-calendar-toolbar>nav{grid-column:1/-1;display:flex;flex-wrap:nowrap;gap:.4rem;min-inline-size:0;max-inline-size:100%;overflow-x:auto;overscroll-behavior-inline:contain;scroll-snap-type:inline proximity}
+ .lsw.lsu .ls-cal .lsw-calendar-toolbar>nav>a{flex:1 0 auto;min-inline-size:44px;padding-inline:.5rem;justify-content:center;text-align:center;white-space:nowrap;overflow-wrap:normal;scroll-snap-align:start}
  .lsw.lsu .ls-cal .lsw-calendar-toolbar>.lsw-help{grid-column:2;grid-row:1;justify-self:end}
  .lsw.lsu .ls-cal .lsw-calendar-agenda{padding-block-start:.5rem}
  .lsw.lsu .ls-cal .lsw-calendar-agenda>h3{margin-block:.5rem}
