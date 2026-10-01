@@ -6,6 +6,7 @@ import { consentRecordPort, consentWithdrawalPort, readConsentVersion } from "..
 import { SessionConsentPanel } from "../../src/features/session-workflow/consent-panel.tsx";
 import type { SessionDetail } from "../../src/features/session-workflow/database.ts";
 import { blankMetrics } from "../../src/features/session-workflow/metrics.ts";
+import { PractitionerSessionDesk, sessionAppointmentLabel } from "../../src/ui/revamp/session-desk.tsx";
 
 vi.mock("../../src/features/identity/client.ts", () => ({ sessionInfo: vi.fn(async () => ({ csrfToken: "synthetic-csrf" })) }));
 const scope = { workspaceId: "123e4567-e89b-42d3-a456-426614174000", caseId: "223e4567-e89b-42d3-a456-426614174000", sessionId: "323e4567-e89b-42d3-a456-426614174000" };
@@ -104,4 +105,13 @@ it.each(["en", "he"] as const)("the retained %s component requires actual signat
   expect(markup).toContain('type="datetime-local"'); expect(markup).not.toContain(input.signedAt); expect(markup).not.toContain(input.policyVersion);
   expect(markup).toContain('value="" selected=""'); expect(markup).not.toContain("<details class=\"lsw-details\" open");
   expect(markup).toContain(locale === "en" ? "does not establish that one parent" : "אינה קובעת שהסכמת הורה אחד");
+  const command = { async execute() { return { state: "rejected" as const, message: "unit-only" }; }, async reconcile() { return { state: "rejected" as const, message: "unit-only" }; } };
+  const session = renderToStaticMarkup(createElement(PractitionerSessionDesk, { locale, model: { ...model, processing: { ...model.processing, message: "No recording uploaded." } }, actions: { upload: vi.fn(), refresh: vi.fn(), selectAnalysisLanguage: vi.fn(), saveRecap: command, speakers: command, metrics: command, share: command }, consentPanel: createElement(SessionConsentPanel, { locale, model, refresh: vi.fn() }) }));
+  expect(session.indexOf("<h1>")).toBeLessThan(session.indexOf("lsw-consent")); expect(session.indexOf('aria-label="' + (locale === "en" ? "Session sections" : "חלקי המפגש") + '"')).toBeLessThan(session.indexOf("lsw-consent"));
+  expect(session).toContain(locale === "en" ? "No recording uploaded." : "לא הועלתה הקלטה.");
+});
+it("formats actual appointment instants in the agreed Jerusalem zone without changing IDs or unknown labels", () => {
+  expect(sessionAppointmentLabel("2026-09-24T08:00:00.000Z", "en")).toBe(new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jerusalem" }).format(new Date("2026-09-24T08:00:00.000Z")));
+  expect(sessionAppointmentLabel("2026-09-24T08:00:00.000Z", "he")).not.toContain("T08:00");
+  for (const label of ["constructor", "Unknown imported appointment text", "2026-02-30T08:00:00.000Z"]) expect(sessionAppointmentLabel(label, "he")).toBe(label);
 });

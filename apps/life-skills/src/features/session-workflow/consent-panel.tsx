@@ -28,10 +28,11 @@ function ConsentPanelInner({ locale, model, refresh }: { locale: Locale; model: 
   const fmt = (value: string) => new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
   const error = record.error || withdraw.error;
   return <section className="lsw-card lsw-stack lsw-consent" lang={locale} dir={locale === "he" ? "rtl" : "ltr"} aria-labelledby={titleId}>
-    <UnsavedChangesGuard dirty={dirty || locked} message={t.dirty} /><h2 id={titleId}>{t.title}</h2><p>{t.help}</p>
+    <UnsavedChangesGuard dirty={dirty || locked} message={t.dirty} /><h2 id={titleId}>{t.title}</h2>
     {current ? <p role="status">{t.version} {current.version} · {current.withdrawnAt ? t.withdrawn : t[current.authorityState]} · {t.signature}: <time dateTime={current.signedAt}>{fmt(current.signedAt)}</time> · <span dir="auto">{current.policyVersion}</span></p> : <p role="status">{t.none}</p>}
     {saved && !dirty && <p role="status">{t.saved} · {t.version} {saved.version}</p>}
     <details className="lsw-details" open={open} onToggle={event => setOpen(event.currentTarget.open)}><summary>{t.new}</summary>
+      <p>{t.help}</p>
       {!model.consentSigners.length && <p role="alert">{t.noSigner}</p>}
       <form className="lsw-stack" onSubmit={event => { event.preventDefault(); if (locked) return; if (!signedAt || Date.parse(signedAt) > Date.now()) { setValidation(true); return; } setValidation(false); if (validSigner) void record.execute({ signedByAccountId: signer, signedAt, authorityState: authority, recordingAllowed: recording, transcriptionAllowed: transcription, aiProcessingAllowed: ai, childInformed: informed, policyVersion: policy, evidence, expectedVersion: current?.version ?? 0 }); }}>
         <fieldset className="lsw-stack" disabled={locked || !model.consentSigners.length}><legend>{t.new}</legend>
