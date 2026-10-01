@@ -4,6 +4,7 @@ import {PRACTICE_SUBJECT_GUARDS_MIGRATION,practiceFunctionBody,type PracticeSubj
 import {PROGRESS_REVIEW_REVISIONS_MIGRATION,type ProgressReviewIntegrity} from '../../src/db/progress-review-integrity.ts';
 import {CONTACT_INBOUND_PROJECTION_MIGRATION,type ContactInboundProjectionIntegrity} from '../../src/db/contact-inbound-projection-integrity.ts';
 import {CONTACT_OUTBOUND_PROJECTION_MIGRATION,type ContactOutboundProjectionIntegrity} from '../../src/db/contact-outbound-projection-integrity.ts';
+import {PRACTICE_ADULT_COORDINATION_MIGRATION,type PracticeAdultCoordinationIntegrity} from '../../src/db/practice-adult-coordination-integrity.ts';
 import {CONTACT_INBOUND_MIGRATION,contactInboundSchemaCatalogMatches,type ContactInboundIntegrityObjects} from '../../src/db/contact-ops-production-guard.ts';
 import {assertContactOpsDatabaseIdentity,calendarAppendOnlyFunctionBody,contactAuthoritySchemaCatalogMatches,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsComparableConstraints,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,internalTaskSchemaCatalogMatches,sourceTaskSchemaCatalogMatches,voiceRuleSchemaCatalogMatches,CONTACT_AUTHORITY_MIGRATION,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,INTERNAL_TASKS_MIGRATION,SOURCE_TASKS_MIGRATION,VOICE_RULE_MIGRATION,type ContactAuthorityIntegrityObjects,type ContactOpsIntegrityObjects,type InternalTaskIntegrityObjects,type SourceTaskIntegrityObjects,type VoiceRuleIntegrityObjects} from '../../src/db/contact-ops-production-guard.ts';
 
@@ -40,6 +41,37 @@ const inboundAbsent:ContactInboundIntegrityObjects={objectsAbsent:true,tables:fa
 const inboundPresent:ContactInboundIntegrityObjects={objectsAbsent:false,tables:true,schemaCatalog:true,foreignKeys:true,historyImmutable:true,appendOnlyFunction:true,publicRevoked:true,referencesSound:true};
 
 describe('registered native CRM production migration gate',()=>{
+ it('admits only the exact forward adult guard after all30 prior migrations and both independently checked function frames',()=>{
+  const practice:PracticeSubjectIntegrity={baselineFunctions:false,reviewedFunctions:true,immutableHistory:true,schemaCatalog:true,foreignKeys:true,permissions:true,referencesSound:true};
+  const progress:ProgressReviewIntegrity={baselineCatalog:false,revisedCatalog:true,publishedGuards:true,revisionGuards:true,foreignKeys:true,permissions:true,referencesSound:true};
+  const projection:ContactInboundProjectionIntegrity={objectsAbsent:false,tables:true,schemaCatalog:true,foreignKeys:true,historyImmutable:true,livePersonGuards:true,reviewedFunctions:true,permissions:true,referencesSound:true};
+  const outbound:ContactOutboundProjectionIntegrity={objectsAbsent:false,table:true,schemaCatalog:true,foreignKeys:true,pendingIndex:true,permissions:true,referencesSound:true};
+  const before=[prior,next,taskSuffix,sourceSuffix,voiceSuffix,authoritySuffix,inboundSuffix,...[PRACTICE_SUBJECT_GUARDS_MIGRATION,PROGRESS_REVIEW_REVISIONS_MIGRATION,CONTACT_INBOUND_PROJECTION_MIGRATION,CONTACT_OUTBOUND_PROJECTION_MIGRATION].map(m=>({name:m.name,checksum:m.sha256,sql:'SELECT 1;'}))];
+  const suffix={name:PRACTICE_ADULT_COORDINATION_MIGRATION.name,checksum:PRACTICE_ADULT_COORDINATION_MIGRATION.sha256,sql:'SELECT 1;'},files=[...before,suffix];
+  const pending:PracticeAdultCoordinationIntegrity={prior:practice,current:{...practice,reviewedFunctions:false}},applied:PracticeAdultCoordinationIntegrity={prior:{...practice,reviewedFunctions:false},current:practice};
+  const state=(history=before,proof:PracticeAdultCoordinationIntegrity|undefined=pending,baseObjects=present,baseOutbound=outbound)=>contactOpsMigrationState(files,history,baseObjects,taskPresent,sourceApplied,voicePresent,authorityPresent,inboundPresent,practice,progress,projection,baseOutbound,proof);
+  expect(state()).toBe('pending');expect(state(files,applied)).toBe('applied');
+  expect(()=>state(before.slice(0,-1))).toThrow();expect(()=>state(before,applied)).toThrow();expect(()=>state(files,pending)).toThrow();
+  for(const frame of ['prior','current'] as const)for(const key of ['immutableHistory','schemaCatalog','foreignKeys','permissions','referencesSound'] as const){
+   expect(()=>state(before,{...pending,[frame]:{...pending[frame],[key]:false}})).toThrow();expect(()=>state(files,{...applied,[frame]:{...applied[frame],[key]:false}})).toThrow();
+  }
+  for(const frame of ['prior','current'] as const){
+   expect(()=>state(before,{...pending,[frame]:{...pending[frame],baselineFunctions:true}})).toThrow();
+   expect(()=>state(before,{...pending,[frame]:{...pending[frame],extra:true}} as PracticeAdultCoordinationIntegrity)).toThrow('CONTACT_OPS_ADULT_COORDINATION_READBACK_INVALID');
+   expect(()=>state(before,{...pending,[frame]:{...pending[frame],permissions:1}} as unknown as PracticeAdultCoordinationIntegrity)).toThrow('CONTACT_OPS_ADULT_COORDINATION_READBACK_INVALID');
+   const missing={...pending[frame]} as Partial<PracticeSubjectIntegrity>;delete missing.permissions;
+   expect(()=>state(before,{...pending,[frame]:missing} as PracticeAdultCoordinationIntegrity)).toThrow('CONTACT_OPS_ADULT_COORDINATION_READBACK_INVALID');
+  }
+  expect(()=>contactOpsMigrationState(files,before,present,taskPresent,sourceApplied,voicePresent,authorityPresent,inboundPresent,practice,progress,projection,outbound)).toThrow('CONTACT_OPS_ADULT_COORDINATION_READBACK_INVALID');
+  expect(()=>state(before,{...pending,extra:true} as PracticeAdultCoordinationIntegrity)).toThrow('CONTACT_OPS_ADULT_COORDINATION_READBACK_INVALID');
+  expect(()=>state(before,{prior:practice,current:practice})).toThrow();expect(()=>state(before,{prior:applied.prior,current:pending.current})).toThrow();
+  for(const key of Object.keys(present) as (keyof ContactOpsIntegrityObjects)[])expect(()=>state(before,pending,{...present,[key]:false})).toThrow();
+  for(const key of Object.keys(outbound).filter(key=>key!=='objectsAbsent') as (keyof ContactOutboundProjectionIntegrity)[])expect(()=>state(before,pending,present,{...outbound,[key]:false})).toThrow();
+  expect(()=>contactOpsMigrationState(files,before,present,taskPresent,sourcePending,voicePresent,authorityPresent,inboundPresent,practice,progress,projection,outbound,pending)).toThrow();
+  expect(()=>contactOpsMigrationState(files,before,present,taskPresent,sourceApplied,voicePresent,authorityPresent,inboundPresent,practice,{...progress,revisionGuards:false},projection,outbound,pending)).toThrow();
+  expect(()=>contactOpsMigrationState([...before,{...suffix,checksum:'0'.repeat(64)}],before,present,taskPresent,sourceApplied,voicePresent,authorityPresent,inboundPresent,practice,progress,projection,outbound,pending)).toThrow('CONTACT_OPS_MANIFEST_MISMATCH');
+  expect(()=>contactOpsMigrationState([...files,{...suffix,name:'0112_unreviewed.sql'}],files,present,taskPresent,sourceApplied,voicePresent,authorityPresent,inboundPresent,practice,progress,projection,outbound,applied)).toThrow('CONTACT_OPS_MANIFEST_MISMATCH');
+ });
  it('binds a complete ordered reviewed source-file bundle',()=>{
   const entries=CONTACT_OPS_SOURCE_FILES.map(path=>({path,bytes:Buffer.from('synthetic\r\n')}));
   expect(CONTACT_OPS_SOURCE_FILES).toContain('migrations/0110_ls_contact_outbound_projection.sql');

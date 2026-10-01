@@ -108,7 +108,11 @@ export class Ls040Http {
         } else data = await this.services.commitments.create(actor, await readJson(request, createCommitment), requestId);
       } else if (url.pathname === "/api/home-practice") {
         if (request.method === "GET") {
-          if (url.searchParams.get("view") === "management") {
+          if (url.searchParams.get("view") === "coordination") {
+            const parsed = z.object({ view: z.literal("coordination"), assignmentId }).strict().safeParse(exactQuery(url, ["view", "assignmentId"]));
+            if (!parsed.success) throw new AppError("INVALID_REQUEST");
+            data = await this.services.practice.coordination(actor, parsed.data.assignmentId);
+          } else if (url.searchParams.get("view") === "management") {
             const parsed = z.object({ view: z.literal("management"), caseId, audienceId }).strict()
               .safeParse(exactQuery(url, ["view", "caseId", "audienceId"]));
             if (!parsed.success) throw new AppError("INVALID_REQUEST");

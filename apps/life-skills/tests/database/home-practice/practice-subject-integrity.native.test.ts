@@ -14,7 +14,12 @@ async function setup(){const f=await fixture();opened.push(f);return f;}
 const present={baselineFunctions:false,reviewedFunctions:true,immutableHistory:true,schemaCatalog:true,foreignKeys:true,permissions:true,referencesSound:true};
 async function probe(f:Fixture,statements:readonly string[],work:(tx:SqlSession)=>Promise<void>){
  const client=await f.pool.connect();try{
-  await client.query('BEGIN');for(const sql of statements)await client.query(sql);
+  await client.query('BEGIN');
+  // Preserve the historical 0107 guard/attack inventory in its actual native
+  // frame. 0111 intentionally supersedes this one actor body; restore it only
+  // inside this rollback-only fixture transaction, never the live runtime.
+  await client.query(`CREATE OR REPLACE FUNCTION ls_practice.check_coordination_actor_and_assignees() RETURNS trigger LANGUAGE plpgsql AS $fn$${practiceFunctionBody(files,PRACTICE_SUBJECT_GUARDS_MIGRATION.name,'ls_practice.check_coordination_actor_and_assignees')}$fn$;`);
+  for(const sql of statements)await client.query(sql);
   await work({query:async <R extends object>(sql:string,values:readonly unknown[]=[]) => (await client.query<R>(sql,[...values])).rows});
  }finally{await client.query('ROLLBACK');client.release();}
 }

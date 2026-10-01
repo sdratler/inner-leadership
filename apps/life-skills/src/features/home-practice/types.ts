@@ -56,6 +56,14 @@ export interface CoordinationVersion {
   changedByAccountId: AccountId;
 }
 
+export interface PracticeCoordinationPage {
+  ownAccountId: AccountId;
+  role: "parent" | "adult_client";
+  eligibleAccountIds: readonly AccountId[];
+  versions: CoordinationVersion[];
+  hasMore: boolean;
+}
+
 export interface ScheduledOccurrence {
   id: OccurrenceId;
   assignmentId: PracticeAssignmentId;

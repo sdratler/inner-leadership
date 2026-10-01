@@ -1,0 +1,49 @@
+import {afterEach,expect,test,vi} from 'vitest';
+import {coordinationCommand,coordinationReadback,readCoordination,saveCoordination} from '../../../src/features/home-practice/coordination-client.ts';
+import {coordinationAssignees} from '../../../src/features/home-practice/policy.ts';
+import {asId} from '../../../src/lib/ids.ts';
+import type {AccountFacts} from '../../../src/features/identity/types.ts';
+import type {PracticeCoordinationPage} from '../../../src/features/home-practice/types.ts';
+const account=asId('123e4567-e89b-12d3-a456-426614174000','account'),other=asId('123e4567-e89b-12d3-a456-426614174001','account'),workspace=asId('123e4567-e89b-12d3-a456-426614174002','workspace'),person=asId('123e4567-e89b-12d3-a456-426614174003','person'),caseId=asId('123e4567-e89b-12d3-a456-426614174004','case'),audienceId=asId('123e4567-e89b-12d3-a456-426614174005','audience'),assignment=asId('123e4567-e89b-12d3-a456-426614174006','practice_assignment'),version=asId('123e4567-e89b-12d3-a456-426614174007','coordination_version');
+const actor:AccountFacts={id:account,workspaceId:workspace,personId:person,role:'adult_client',state:'active',locale:'en'};
+const item={id:caseId,workspaceId:workspace,clientPersonId:person,practitionerAccountId:other,kind:'adult' as const,state:'active' as const};
+const audience={id:audienceId,workspaceId:workspace,caseId,visibility:'family_full' as const,published:true,accountIds:[account,other]};
+const page:PracticeCoordinationPage={ownAccountId:account,role:'adult_client',eligibleAccountIds:[account],hasMore:false,versions:[]};
+afterEach(()=>vi.unstubAllGlobals());
+test('coordination policy allows only an active exact-subject adult self-assignment in the published audience',()=>{
+ expect(coordinationAssignees(actor,item,[],audience,[account],[account])).toEqual([account]);
+ for(const args of [
+  [{...actor,role:'child'},item,audience,[account]],
+  [actor,{...item,kind:'minor'},audience,[account]],
+  [{...actor,personId:asId('123e4567-e89b-12d3-a456-426614174099','person')},item,audience,[account]],
+  [actor,item,{...audience,published:false},[account]],
+  [actor,item,{...audience,visibility:'private'},[account]],
+  [actor,item,audience,[other]],
+  [actor,item,audience,[account,other]],
+  [{...actor,state:'revoked'},item,audience,[account]],
+ ] as const)expect(()=>coordinationAssignees(args[0] as AccountFacts,args[1],[],args[2] as typeof audience,args[3],[account,other])).toThrow('NOT_FOUND');
+});
+test('coordination freezes one prospective request and validates distinct assignees/reminder routing',()=>{
+ const command=coordinationCommand(assignment,[account],'any_assignee',[account],Date.parse('2026-10-01T12:00:00Z'));
+ expect(command.effectiveFrom).toBe('2026-10-01T12:01:00.000Z');expect(Object.isFrozen(command)).toBe(true);expect(Object.isFrozen(command.assigneeAccountIds)).toBe(true);
+ for(const fn of [()=>coordinationCommand(assignment,[],'any_assignee',[]),()=>coordinationCommand(assignment,[account,account],'any_assignee',[]),()=>coordinationCommand(assignment,[account],'each_assignee',[]),()=>coordinationCommand(assignment,[account],'any_assignee',[other])])expect(fn).toThrow('INVALID_REQUEST');
+});
+test('readback binds the exact writer, version, future time, completion mode and routing',()=>{
+ const command=coordinationCommand(assignment,[account],'any_assignee',[account],0),row={versionId:version,assignmentId:assignment,caseId,audienceId,assigneeAccountIds:[account],completionMode:'any_assignee' as const,reminderCandidateAccountIds:[account],effectiveFrom:command.effectiveFrom,changedByAccountId:account};
+ expect(coordinationReadback(command,{...page,versions:[row]},version)).toEqual(row);
+ for(const changed of [{changedByAccountId:other},{versionId:asId('123e4567-e89b-12d3-a456-426614174098','coordination_version')},{reminderCandidateAccountIds:[]},{effectiveFrom:'2026-10-01T00:00:00Z'},{assigneeAccountIds:[other]},{completionMode:'each_assignee' as const}])expect(coordinationReadback(command,{...page,versions:[{...row,...changed}]},version)).toBeNull();
+ expect(coordinationReadback(command,{...page,versions:[row]})).toEqual(row);
+});
+test('read bridge validates case/assignment envelopes and keeps abort/no-store same-origin policy',async()=>{
+ const fetcher=vi.fn(async(_path:string,_init?:RequestInit)=>{void _path;void _init;return Response.json({ok:true,data:page});});vi.stubGlobal('fetch',fetcher);
+ expect(await readCoordination(assignment,caseId,audienceId)).toEqual(page);expect(fetcher.mock.calls[0]?.[0]).toContain('view=coordination');
+ expect(fetcher.mock.calls[0]?.[1]).toMatchObject({credentials:'same-origin',cache:'no-store',redirect:'error'});
+ for(const malformed of [{...page,eligibleAccountIds:[other]},{...page,role:'child'},{...page,versions:[{assignmentId:'another',caseId,audienceId}]},{...page,versions:Array(21).fill({})}]){fetcher.mockImplementation(async()=>Response.json({ok:true,data:malformed}));await expect(readCoordination(assignment,caseId,audienceId)).rejects.toThrow('UNAVAILABLE');}
+ fetcher.mockImplementation(async()=>Response.json({ok:false,error:{code:'UNAUTHENTICATED'}},{status:401}));await expect(readCoordination(assignment,caseId,audienceId)).rejects.toThrow('UNAUTHENTICATED');
+});
+test('mutation uses ordinary session CSRF and refuses mismatched role/account without posting',async()=>{
+ const command=coordinationCommand(assignment,[account],'any_assignee',[],0),fetcher=vi.fn(async(path:string,_init?:RequestInit)=>{void _init;return Response.json({ok:true,data:path==='/api/identity/session'?{accountId:account,role:'adult_client',csrfToken:'synthetic-csrf'}:{versionId:version}});});vi.stubGlobal('fetch',fetcher);
+ expect(await saveCoordination(command,account,'adult_client')).toEqual({versionId:version});expect(fetcher.mock.calls).toHaveLength(2);expect(fetcher.mock.calls[1]?.[1]).toMatchObject({method:'POST',headers:{'X-CSRF-Token':'synthetic-csrf'},body:JSON.stringify(command)});
+ fetcher.mockClear();await expect(saveCoordination(command,other,'adult_client')).rejects.toThrow('NOT_FOUND');expect(fetcher.mock.calls).toHaveLength(1);
+ fetcher.mockClear();await expect(saveCoordination(command,account,'parent')).rejects.toThrow('NOT_FOUND');expect(fetcher.mock.calls).toHaveLength(1);
+});

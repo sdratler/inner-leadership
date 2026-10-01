@@ -118,5 +118,9 @@
   {
     "name": "0110_ls_contact_outbound_projection.sql",
     "sha256": "b881b9b074cb217d48d2b6fb8bb62b39d3ced3a0447353beaa35809fde862e76"
+  },
+  {
+    "name": "0111_ls_adult_practice_coordination.sql",
+    "sha256": "5df0781c711dc8da332d6d74736b2c7bff6044932d7c60b9e6af7f442d3a3c42"
   }
 ]
