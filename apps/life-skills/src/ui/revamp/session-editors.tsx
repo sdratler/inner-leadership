@@ -1,9 +1,12 @@
 "use client";
-import { useState } from "react";
+import { useEffect,useState } from "react";
 import type { BroadFocus, Locale, RoutineRecap, Transcript } from "../../features/session-workflow/types.ts";
 import { FOCUS_LABELS } from "../../features/session-workflow/presentation.ts";
 import { SaveStatus, word } from "./primitives.tsx";
 import { useCommand, type CommandPort } from "./use-command.ts";
+import {sameSpeakerLabels} from "../../features/session-workflow/speaker-corrections.ts";
+import type {SpeakerSaveReceipt} from "../../features/session-workflow/client.ts";
+import type {TranscriptReadMetadata} from "../../features/session-workflow/private-records.ts";
 export interface RecapEditInput {
     sessionId: string;
     expectedVersion: number;
@@ -35,20 +38,30 @@ export function RoutineRecapEditor({ sessionId, initial, locale, port, onSaved, 
 export interface SpeakerEditInput {
     sessionId: string;
     transcriptVersion: number;
+    expectedRevision:number;
     labels: Readonly<Record<string, string>>;
 }
-export function SpeakerLabelsEditor({ sessionId, transcript, locale, port, onSaved }: {
+export function SpeakerLabelsEditor({ sessionId, transcript,saved, locale, port, onSaved }: {
     sessionId: string;
     transcript: Transcript;
+    saved?:TranscriptReadMetadata|null|undefined;
     locale: Locale;
-    port: CommandPort<SpeakerEditInput, {
-        version: number;
-    }>;
+    port: CommandPort<SpeakerEditInput,SpeakerSaveReceipt>;
     onSaved: () => void;
 }) {
-    const speakers = [...new Set(transcript.segments.map(s => s.speaker))];
-    const [labels, setLabels] = useState<Record<string, string>>(Object.fromEntries(speakers.map(s => [s, s])));
-    const command = useCommand(port, () => onSaved());
-    return <details className="lsr"><summary>{word(locale, "Name the speakers", "שמות הדוברים")}</summary><form onSubmit={e => { e.preventDefault(); void command.execute({ sessionId, transcriptVersion: transcript.version, labels }); }}>
- <p>{word(locale, "Name speakers yourself. The source labels stay unchanged; this creates a separate version. There is no voiceprint identification.", "ניתן לתת שמות לדוברים. סימוני המקור נשמרים ללא שינוי ונוצרת גרסה נפרדת. אין זיהוי ביומטרי של הקול.")}</p>{speakers.map(s => <label key={s}>{s}<input maxLength={80} required value={labels[s] ?? s} disabled={command.locked} onChange={e => setLabels(v => ({ ...v, [s]: e.target.value }))}/></label>)}<button className="lsr-primary" type="submit" disabled={command.locked}>{word(locale, "Save speaker labels", "שמירת שמות הדוברים")}</button><SaveStatus locale={locale} phase={command.phase} error={command.error} onReconcile={() => void command.reconcile()}/></form></details>;
+    const fromSaved=()=>Object.fromEntries([...new Set(transcript.segments.map(segment=>segment.speaker))].map(key=>[key,saved&&Object.hasOwn(saved.speakers,key)?saved.speakers[key]!:key]));
+    const [source,setSource]=useState(transcript),[labels,setLabels]=useState<Record<string,string>>(fromSaved),[baseline,setBaseline]=useState(fromSaved),[revision,setRevision]=useState(saved?.speakerHistory.revision??0);
+    const dirty=!sameSpeakerLabels(labels,baseline),speakers=[...new Set(source.segments.map(segment=>segment.speaker))];
+    const command=useCommand(port,result=>{setBaseline(labels);setRevision(result.revision);onSaved();});
+    const newer=source.version!==transcript.version||saved&&saved.speakerHistory.revision!==revision;
+    useEffect(()=>{if(!dirty&&!command.locked)return;const warn=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue="";};window.addEventListener("beforeunload",warn);return()=>window.removeEventListener("beforeunload",warn);},[dirty,command.locked]);
+    const error=command.error==="CONFLICT"?word(locale,"A newer transcript or speaker revision exists. Your labels are still here. Read the current session and compare its saved history before choosing to discard these edits.","יש גרסת תמלול או דוברים חדשה יותר. השמות שערכת עדיין כאן. יש לקרוא את המפגש ולהשוות להיסטוריה לפני בחירה בביטול השינויים."):command.error?word(locale,"Speaker labels were not saved. Your edits are still here; check your authorized session and the label fields.","שמות הדוברים לא נשמרו. השינויים שלך עדיין כאן; יש לבדוק את הרשאת המפגש ואת השדות."):null;
+    return <details className="lsr"><summary>{word(locale,"Name the speakers","שמות הדוברים")}</summary><form onSubmit={event=>{event.preventDefault();void command.execute({sessionId,transcriptVersion:source.version,expectedRevision:revision,labels});}}>
+      <p>{word(locale,"Name speakers yourself. Source labels and text stay unchanged; each correction has a separate saved revision. There is no voiceprint identification or new AI request.","ניתן לתת שמות לדוברים. סימוני המקור והטקסט אינם משתנים; כל תיקון נשמר בגרסה נפרדת. אין זיהוי ביומטרי או בקשה חדשה לבינה מלאכותית.")}</p>
+      <p className="lsr-help">{word(locale,"Editing transcript version","עריכת גרסת תמלול")} {source.version} · {word(locale,"Speaker revision","גרסת דוברים")} {revision}</p>
+      {newer&&<p role="alert">{word(locale,"The current saved version differs from this draft. Your edits were not replaced.","הגרסה השמורה שונה מהטיוטה הזאת. השינויים שלך לא הוחלפו.")}</p>}
+      {speakers.map(key=><label key={key}>{key}<input dir="auto" maxLength={100} required value={Object.hasOwn(labels,key)?labels[key]!:key} disabled={command.locked} onChange={event=>setLabels(value=>({...value,[key]:event.target.value}))}/></label>)}
+      <div className="lsr-actions"><button className="lsr-primary" type="submit" disabled={command.locked||!dirty||Boolean(newer)}>{word(locale,"Save speaker labels","שמירת שמות הדוברים")}</button><button type="button" disabled={command.locked} onClick={()=>{const current=fromSaved();setSource(transcript);setLabels(current);setBaseline(current);setRevision(saved?.speakerHistory.revision??0);}}>{word(locale,"Discard edits / use saved labels","ביטול שינויים / שימוש בשמות השמורים")}</button></div>
+      <SaveStatus locale={locale} phase={command.phase} error={error} onReconcile={()=>void command.reconcile()}/>
+    </form>{saved&&<details><summary>{word(locale,"Saved speaker revision history","היסטוריית גרסאות דוברים שמורות")}</summary><p>{word(locale,"Original saved mapping — author/date were not recorded","מיפוי מקורי שנשמר — מחבר ותאריך לא נרשמו")}</p>{Object.entries(saved.speakerHistory.originalLabels).map(([key,value])=><p key={key} dir="auto">{key}: {value}</p>)}{saved.speakerHistory.versions.map(version=><section key={version.revision}><h3>{word(locale,"Revision","גרסה")} {version.revision}</h3><p>{new Intl.DateTimeFormat(locale,{dateStyle:"medium",timeStyle:"short",timeZone:"Asia/Jerusalem"}).format(new Date(version.recordedAt))} · {word(locale,"Recorded by practitioner","נרשם על ידי המטפל")}</p>{Object.entries(version.labels).map(([key,value])=><p key={key} dir="auto">{key}: {value}</p>)}</section>)}</details>}</details>;
 }

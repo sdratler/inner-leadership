@@ -3,9 +3,10 @@ import { AppError } from "../../lib/errors.ts";
 import { seal, unseal, type Keyring } from "../identity/crypto.ts";
 import { transcriptDigest, validateTranscript, validateCleanSegments, validateAnalysis, validateTranscriptionCompletion, speakerNames } from "./transcript.ts";
 import type { CleanSegment, Locale, PrivateAnalysis, Transcript } from "./types.ts";
+import {readSpeakerHistory,currentSpeakerLabels,type SpeakerHistory} from "./speaker-corrections.ts";
 
 export interface PrivateSessionScope { workspaceId: string; caseId: string; sessionId: string; }
-export interface TranscriptReadMetadata { version: number; digest: string; createdAt: string; completeVerified: true; cleaned: readonly CleanSegment[]; speakers: Readonly<Record<string, string>>; }
+export interface TranscriptReadMetadata { version: number; digest: string; createdAt: string; completeVerified: true; cleaned: readonly CleanSegment[]; speakers: Readonly<Record<string, string>>; speakerHistory:SpeakerHistory; }
 export interface AnalysisReadMetadata { locale: Locale; transcriptVersion: number; revision: number; promptVersion: string; modelVersion: string; createdAt: string; }
 export interface PrivateSessionReadMetadata { analysisLocale: Locale; transcript: TranscriptReadMetadata | null; analysis: AnalysisReadMetadata | null; }
 export interface StoredTranscriptRow {
@@ -17,7 +18,6 @@ const positiveVersion = z.number().int().min(1).max(2147483647), digest = z.stri
 const text = (max: number) => z.string().min(1).max(max).refine(value => value.trim().length > 0);
 const transcriptSchema = z.strictObject({ version: positiveVersion, durationMs: z.number().int().min(1).max(7200000), languages: z.array(z.enum(["en", "he"])).min(1).max(2), source: z.literal("machine_transcript"), segments: z.array(z.strictObject({ id: text(100), speaker: text(100), startMs: z.number().int().min(0), endMs: z.number().int().min(1), text: text(16000) })).min(1).max(20000) });
 const cleanedSchema = z.array(z.strictObject({ sourceSegmentId: text(100), text: text(16000) })).min(1).max(20000);
-const mappingSchema = z.record(text(100), text(100));
 const completionSchema = z.strictObject({ sourceDigest: digest, sourceDurationMs: z.number().int().min(1).max(7200000), coveredDurationMs: z.number().min(0).max(7201000), expectedChunks: z.number().int().min(1).max(500), completedChunks: z.number().int().min(1).max(500), providerCompleted: z.literal(true) });
 const analysisItem = z.strictObject({ text: text(1800), evidence: z.array(z.strictObject({ segmentId: text(100), quote: text(1600) })).min(1).max(30) });
 const analysisSchema = z.strictObject({ schemaVersion: z.literal(1), locale: z.enum(["en", "he"]), transcriptVersion: positiveVersion, summary: z.array(analysisItem).max(30), observations: z.array(analysisItem).max(30), possibleInterpretations: z.array(analysisItem).max(30), nextSessionTopics: z.array(analysisItem).max(30), limitations: z.array(text(800)).max(15) });
@@ -64,11 +64,9 @@ export function readPrivateTranscript(row: StoredTranscriptRow, scope: PrivateSe
     const cleaned = cleanedSchema.parse(unsealPrivateRecord(row.cleanedCiphertext, privateRecordAad("cleaned-transcript", scope, row.version), ring, 4000000));
     validateCleanSegments(transcript, cleaned);
     const mapping = row.speakerMappingCiphertext ? unsealPrivateRecord(row.speakerMappingCiphertext, privateRecordAad("speakers", scope, row.version), ring, 2000000) : {};
-    mappingSchema.parse(mapping);
-    const speakers = mapping as Record<string, string>;
-    if (Object.keys(speakers).length > 20000) throw new Error();
+    const speakerHistory=readSpeakerHistory(mapping,transcript),speakers=currentSpeakerLabels(speakerHistory);
     speakerNames(transcript, speakers);
-    return { transcript, metadata: { version: row.version, digest: row.contentDigest, createdAt: savedTime(row.createdAt), completeVerified: true, cleaned, speakers } };
+    return { transcript, metadata: { version: row.version, digest: row.contentDigest, createdAt: savedTime(row.createdAt), completeVerified: true, cleaned, speakers,speakerHistory } };
   } catch { throw new AppError("UNAVAILABLE"); }
 }
 export function readPrivateAnalysis(row: StoredAnalysisRow, scope: PrivateSessionScope, ring: Keyring, transcript: Transcript, locale: Locale): { analysis: PrivateAnalysis; metadata: AnalysisReadMetadata } {

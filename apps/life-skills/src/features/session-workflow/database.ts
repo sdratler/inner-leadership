@@ -9,7 +9,8 @@ import type { Actor, IdentityClock } from "../identity/types.ts";
 import { blankMetrics, validateMetricRecord, validateObservationEvidence, type PrivateObservationEvidence, type MetricRecord, type MetricValues } from "./metrics.ts";
 import { recapFromReviewedFields, shareDigest, validateRecap } from "./recap.ts";
 import type { AudioState, BroadFocus, ProcessingStage, RoutineRecap, SharedPractice, Transcript, PrivateAnalysis, Locale } from "./types.ts";
-import { readPrivateTranscript, readPrivateAnalysis, type PrivateSessionReadMetadata, type StoredTranscriptRow, type StoredAnalysisRow } from "./private-records.ts";
+import { readPrivateTranscript, readPrivateAnalysis, sealPrivateRecord,privateRecordAad, type PrivateSessionReadMetadata, type StoredTranscriptRow, type StoredAnalysisRow } from "./private-records.ts";
+import {appendSpeakerCorrection,type SpeakerCorrectionInput} from "./speaker-corrections.ts";
 import { FOCUS } from "./recap.ts";
 import { nonempty, validIso } from "./policy.ts";
 import { consentVersionSchema, type ConsentVersion, type ConsentRecordInput } from "./consent-contract.ts";
@@ -59,6 +60,19 @@ export interface SharedRecapView {publicationId:string;sessionId:string;sharedAt
 export type RecordConsentInput = ConsentRecordInput;
 export class SessionDatabaseService {
   constructor(private readonly store:IdentityStore,private readonly ring:Keyring,private readonly clock:IdentityClock){}
+  async saveSpeakers(actor:Actor,sessionId:string,input:SpeakerCorrectionInput,key:string):Promise<{version:number;revision:number;recordedAt:string}>{return this.store.transaction(async tx=>{
+    await lockWorkspace(tx,actor.workspaceId);const row=await sessionRow(tx,actor.workspaceId,sessionId,true);await owner(tx,actor,row.caseId,this.clock);
+    return command(tx,this.ring,actor,row,"save_speakers",key,input,async()=>{
+      const stored=await one<StoredTranscriptRow>(tx,'SELECT t.version,t.job_id AS "jobId",t.source_ciphertext AS "sourceCiphertext",t.cleaned_ciphertext AS "cleanedCiphertext",t.speaker_mapping_ciphertext AS "speakerMappingCiphertext",t.content_digest AS "contentDigest",t.source_kind AS "sourceKind",t.created_at AS "createdAt",j.transcript_complete_verified AS "completeVerified",j.transcript_version AS "jobTranscriptVersion",j.transcript_digest AS "jobTranscriptDigest",j.source_digest AS "sourceDigest",j.duration_milliseconds AS "durationMs",j.completion_receipt_ciphertext AS "completionReceiptCiphertext" FROM ls_sessions.transcripts t JOIN ls_sessions.recording_jobs j ON j.workspace_id=t.workspace_id AND j.case_id=t.case_id AND j.session_id=t.session_id AND j.id=t.job_id WHERE t.workspace_id=$1 AND t.case_id=$2 AND t.session_id=$3 ORDER BY t.version DESC LIMIT 1 FOR UPDATE OF t',[actor.workspaceId,row.caseId,sessionId]);
+      if(!stored)throw new AppError("NOT_FOUND");const scope={workspaceId:actor.workspaceId,caseId:row.caseId,sessionId},saved=readPrivateTranscript(stored,scope,this.ring),recordedAt=this.clock.now().toISOString();
+      const history=appendSpeakerCorrection(saved.metadata.speakerHistory,saved.transcript,input,actor.id,recordedAt);
+      // Only the versioned mapping changes. Source, cleaned text, digest, job and analysis remain untouched.
+      const encrypted=sealPrivateRecord(history,privateRecordAad("speakers",scope,stored.version),this.ring);
+      if(Buffer.byteLength(JSON.stringify(history),"utf8")>2000000)throw new AppError("UNAVAILABLE");
+      await tx.query('UPDATE ls_sessions.transcripts SET speaker_mapping_ciphertext=$5 WHERE workspace_id=$1 AND case_id=$2 AND session_id=$3 AND version=$4',[actor.workspaceId,row.caseId,sessionId,stored.version,encrypted]);
+      return {version:stored.version,revision:history.revision,recordedAt};
+    });
+  });}
   private async disclosureView(tx:SqlSession,actor:Actor,row:SessionRow,item:DisclosureRow):Promise<DisclosureView>{
     const decode=(field:string,ciphertext:string)=>unsealJson<unknown>(ciphertext,aad(`disclosure-${field}`,actor.workspaceId,row.caseId,item.id,1),this.ring);
     const authority=decode("authority",item.authorityEvidenceCiphertext) as {authorityBasis:unknown;authorityState:unknown};

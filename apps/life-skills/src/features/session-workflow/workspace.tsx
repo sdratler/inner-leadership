@@ -4,7 +4,8 @@ import {useRouter} from "next/navigation";
 import type {Locale} from "./types.ts";
 import type {SessionDetail,SessionListItem} from "./database.ts";
 import {PractitionerSessionDesk,type SessionDeskActions} from "../../ui/revamp/session-desk.tsx";
-import {sessionCommand,sessionEnsure,sessionRead} from "./client.ts";
+import {sessionCommand,sessionEnsure,sessionRead,sessionSpeakerCommand} from "./client.ts";
+import {sessionProcessingLabel} from "./presentation.ts";
 import {SessionConsentPanel} from "./consent-panel.tsx";
 import {SessionDisclosurePanel} from "./disclosure-panel.tsx";
 import {workspaceHref,type WorkspaceContext} from '../../ui/workspace/navigation-model.ts';
@@ -25,7 +26,7 @@ export function SessionListWorkspace({locale,caseId,selectedAppointmentId,naviga
   {error&&<p role="alert">{he?"לא ניתן לאשר את המצב. יש לטעון מחדש לפני ניסיון נוסף.":"The current state could not be confirmed. Reload before trying again."}</p>}
   {visible===null?<p role="status">{he?"טוען…":"Loading…"}</p>:visible.length?<div className="lsw-card-list">{visible.map(item=><article className="lsw-card" key={item.appointmentId} data-appointment-id={item.appointmentId}>
    <h2><time dateTime={item.startsAt}>{new Intl.DateTimeFormat(he?"he-IL":"en-IL",{dateStyle:"medium",timeStyle:"short",timeZone:"Asia/Jerusalem"}).format(new Date(item.startsAt))}</time></h2>
-   <p>{item.processingState?`${item.processingState} · ${item.audioState}`:(he?"ללא הקלטה":"No recording")}</p>
+    <p>{sessionProcessingLabel(item.processingState,item.audioState,locale)}</p>
    <button className="lsw-button" type="button" disabled={busy!==null} onClick={()=>void open(item)}>{busy===item.appointmentId?(he?"פותח…":"Opening…"):(he?"פתיחת רשומת מפגש":"Open session record")}</button>
   </article>)}</div>:<p role="status">{selectedAppointmentId?(he?"הפגישה שנבחרה אינה זמינה בתיק הזה. לא נפתחה רשומה אחרת.":"The selected appointment is unavailable in this case. No other record was opened."):(he?"אין פגישות יחיד בתיק הזה.":"No individual appointments are available for this case.")}</p>}
  </main>;
@@ -37,7 +38,7 @@ export function SessionDetailWorkspace({locale,sessionId,caseId,navigationContex
  const actions=useMemo<SessionDeskActions>(()=>({
   async upload(){throw new Error("SESSION_PROVIDER_NOT_CONFIGURED");},
   async refresh(){setRevision(value=>value+1);},
-  saveRecap:sessionCommand(`/${sessionId}/recap`),speakers:sessionCommand(`/${sessionId}/speakers`),metrics:sessionCommand(`/${sessionId}/observations`),share:sessionCommand(`/${sessionId}/share`),selectAnalysisLanguage(value){setAnalysisLocale(value);},
+  saveRecap:sessionCommand(`/${sessionId}/recap`),speakers:sessionSpeakerCommand(sessionId),metrics:sessionCommand(`/${sessionId}/observations`),share:sessionCommand(`/${sessionId}/share`),selectAnalysisLanguage(value){setAnalysisLocale(value);},
  }),[sessionId]);
  const retry=<div role="alert"><p>{he?"לא ניתן לאשר מחדש את רשומת המפגש. קלט שלא נשמר נשאר כאן כאשר הגישה עדיין מורשית.":"The session record could not be confirmed again. Unsaved input stays here when access is still authorized."}</p><button className="lsw-button" type="button" onClick={()=>setRevision(value=>value+1)}>{he?"ניסיון קריאה חוזר":"Retry this read"}</button></div>;
  if(error&&!model)return <main className="lsw-main">{retry}</main>;

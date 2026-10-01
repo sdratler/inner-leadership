@@ -12,7 +12,7 @@ import type {IdentityConfig} from "../../../src/features/identity/config.ts";
 import {SESSION_COOKIE} from "../../../src/lib/security/session.ts";
 import {systemClock} from "../../../src/features/identity/types.ts";
 import {unseal} from "../../../src/features/identity/crypto.ts";
-import {privateRecordAad,sealPrivateRecord} from "../../../src/features/session-workflow/private-records.ts";
+import {privateRecordAad,sealPrivateRecord,unsealPrivateRecord} from "../../../src/features/session-workflow/private-records.ts";
 import {transcriptDigest,cleanWhitespace} from "../../../src/features/session-workflow/transcript.ts";
 import type {Transcript,PrivateAnalysis} from "../../../src/features/session-workflow/types.ts";
 const opened:Fixture[]=[];afterEach(async()=>{await Promise.all(opened.splice(0).map(item=>item.pool.end()));});
@@ -165,6 +165,41 @@ async function privateReadFixture(){
  for(const [locale,revision]of [["en",1],["en",2],["he",1]]as const){const body={...analysis,locale,summary:[{...analysis.summary[0]!,text:locale==="he"?"DEMO — סיכום פרטי בעברית":`DEMO — Private English revision ${revision}`}]};await s.f.pool.query("INSERT INTO ls_sessions.private_analyses(workspace_id,case_id,session_id,transcript_version,locale,revision,body_ciphertext,prompt_version,model_version) VALUES($1,$2,$3,1,$4,$5,$6,'DEMO-prompt-v3','DEMO-model')",[scope.workspaceId,scope.caseId,sessionId,locale,revision,encode("analysis",body,`${locale}:${revision}`)]);}
  return {...s,scope,sessionId,jobId,transcript,encode};
 }
+test("native speaker corrections preserve immutable source/cleaned/analysis, encrypted baseline/history and exact replay",async()=>{
+ const s=await privateReadFixture(),path=`/${s.sessionId}/speakers`,input={transcriptVersion:1,expectedRevision:0,labels:{constructor:"DEMO — Corrected speaker"}},key=randomUUID();
+ const snapshot=async()=>({transcripts:(await s.f.pool.query('SELECT * FROM ls_sessions.transcripts WHERE workspace_id=$1',[s.f.workspaceId])).rows,jobs:(await s.f.pool.query('SELECT * FROM ls_sessions.recording_jobs WHERE workspace_id=$1',[s.f.workspaceId])).rows,analyses:(await s.f.pool.query('SELECT * FROM ls_sessions.private_analyses WHERE workspace_id=$1 ORDER BY locale,revision',[s.f.workspaceId])).rows});
+ const before=await snapshot();const first=await s.http.handle(s.request(path,input,s.f.practitioner.token,key),[s.sessionId,"speakers"]);expect(first.status).toBe(201);const result=(await first.json()).data;expect(result).toMatchObject({version:1,revision:1});
+ const replay=await s.http.handle(s.request(path,input,s.f.practitioner.token,key),[s.sessionId,"speakers"]);expect((await replay.json()).data).toEqual(result);
+ let detail=await s.service.detail(s.f.practitioner.actor,s.sessionId);expect(detail.transcript).toEqual(s.transcript);expect(detail.privateRecords?.transcript?.speakers).toEqual(input.labels);expect(detail.privateRecords?.transcript?.speakerHistory).toMatchObject({schemaVersion:1,revision:1,originalLabels:{constructor:"DEMO — Saved speaker"},versions:[{revision:1,recordedAt:result.recordedAt,recordedByAccountId:s.f.practitioner.actor.id,labels:input.labels}]});
+ const next={...input,expectedRevision:1,labels:{constructor:"DEMO — Later correction"}},second=await s.service.saveSpeakers(s.f.practitioner.actor,s.sessionId,next,randomUUID());expect(second.revision).toBe(2);expect(await s.service.saveSpeakers(s.f.practitioner.actor,s.sessionId,input,key)).toEqual(result);
+ detail=await s.service.detail(s.f.practitioner.actor,s.sessionId,"he");expect(detail.privateRecords?.transcript?.speakerHistory.versions).toHaveLength(2);expect(detail.privateRecords?.transcript?.speakers).toEqual(next.labels);
+ const after=await snapshot();expect(after.jobs).toEqual(before.jobs);expect(after.analyses).toEqual(before.analyses);expect({...after.transcripts[0],speaker_mapping_ciphertext:before.transcripts[0].speaker_mapping_ciphertext}).toEqual(before.transcripts[0]);expect(after.transcripts[0].speaker_mapping_ciphertext).not.toContain('Corrected speaker');
+ const scope={workspaceId:s.f.workspaceId,caseId:s.f.first.id,sessionId:s.sessionId};expect(unsealPrivateRecord(after.transcripts[0].speaker_mapping_ciphertext,privateRecordAad("speakers",scope,1),s.f.keyring,2000000)).toEqual(detail.privateRecords?.transcript?.speakerHistory);
+ expect(()=>unsealPrivateRecord(after.transcripts[0].speaker_mapping_ciphertext,privateRecordAad("speakers",{...scope,caseId:s.f.second.id},1),s.f.keyring,2000000)).toThrow("UNAVAILABLE");
+ expect((await s.f.pool.query("SELECT count(*)::integer AS n FROM ls_sessions.command_receipts WHERE workspace_id=$1 AND operation='save_speakers'",[s.f.workspaceId])).rows[0].n).toBe(2);
+ for(const table of ['processing_attempts','publications','publication_events'])expect((await s.f.pool.query(`SELECT count(*)::integer AS n FROM ls_sessions.${table} WHERE workspace_id=$1`,[s.f.workspaceId])).rows[0].n).toBe(0);
+},30_000);
+test("native strict HTTP parsing preserves prototype-named own speaker labels and rejects invalid values",async()=>{
+ const s=await privateReadFixture(),transcript={...s.transcript,segments:[{...s.transcript.segments[0]!,speaker:"__proto__"}]},digest=transcriptDigest(transcript);
+ await s.f.pool.query('UPDATE ls_sessions.transcripts SET source_ciphertext=$2,content_digest=$3,speaker_mapping_ciphertext=$4 WHERE workspace_id=$1',[s.f.workspaceId,s.encode("transcript",transcript),digest,s.encode("speakers",Object.fromEntries([["__proto__","DEMO — Original own"]]))]);await s.f.pool.query('UPDATE ls_sessions.recording_jobs SET transcript_digest=$2 WHERE workspace_id=$1',[s.f.workspaceId,digest]);
+ const path=`/${s.sessionId}/speakers`,parts=[s.sessionId,"speakers"],input={transcriptVersion:1,expectedRevision:0,labels:Object.fromEntries([["__proto__","DEMO — Corrected own"]])};
+ expect((await s.http.handle(s.request(path,{...input,labels:Object.fromEntries([["__proto__"," "]])}),parts)).status).toBe(400);
+ const result=await s.http.handle(s.request(path,input),parts);expect(result.status).toBe(201);const detail=await s.service.detail(s.f.practitioner.actor,s.sessionId);expect(detail.privateRecords?.transcript?.speakers).toEqual(input.labels);expect(Object.hasOwn(detail.privateRecords!.transcript!.speakerHistory.versions[0]!.labels,"__proto__")).toBe(true);expect(detail.transcript).toEqual(transcript);
+},30_000);
+test("native speaker strict input, fresh permissions, source/version conflicts, concurrent writes and failed encryption roll back",async()=>{
+ const s=await privateReadFixture(),path=`/${s.sessionId}/speakers`,parts=[s.sessionId,"speakers"],input={transcriptVersion:1,expectedRevision:0,labels:{constructor:"DEMO — New"}};
+ for(const changed of [{...input,extra:true},{...input,labels:{unknown:"no"}},{...input,labels:{constructor:" "}},{...input,expectedRevision:-1}])expect((await s.http.handle(s.request(path,changed),parts)).status).toBe(400);
+ for(const changed of [{...input,transcriptVersion:2},{...input,expectedRevision:1}])expect((await s.http.handle(s.request(path,changed),parts)).status).toBe(409);
+ expect((await s.http.handle(s.request(path,input,s.f.practitioner.token,randomUUID(),false),parts)).status).toBe(403);
+ for(const role of ['parent','child','adult_client']){await s.f.pool.query('UPDATE ls_identity.accounts SET role=$2 WHERE id=$1',[s.f.parent.actor.id,role]);expect((await s.http.handle(s.request(path,input,s.f.parent.token),parts)).status).toBe(404);}
+ await expect(s.service.saveSpeakers(s.f.outsider.actor,s.sessionId,input,randomUUID())).rejects.toMatchObject({code:"NOT_FOUND"});
+ const other=(await s.service.ensureForAppointment(s.f.practitioner.actor,s.f.second.id,await s.f.seed(s.f.at(-48),s.f.second))).sessionId;await expect(s.service.saveSpeakers(s.f.practitioner.actor,other,input,randomUUID())).rejects.toMatchObject({code:"NOT_FOUND"});
+ const original=(await s.f.pool.query('SELECT speaker_mapping_ciphertext FROM ls_sessions.transcripts WHERE workspace_id=$1',[s.f.workspaceId])).rows[0].speaker_mapping_ciphertext;
+ const unavailable=new SessionDatabaseService(poolStore(s.f.pool),{activeKeyId:"wrong",keys:{wrong:randomBytes(32)}},systemClock);await expect(unavailable.saveSpeakers(s.f.practitioner.actor,s.sessionId,input,randomUUID())).rejects.toMatchObject({code:"UNAVAILABLE"});expect((await s.f.pool.query('SELECT speaker_mapping_ciphertext FROM ls_sessions.transcripts WHERE workspace_id=$1',[s.f.workspaceId])).rows[0].speaker_mapping_ciphertext).toBe(original);
+ const race=await Promise.all([input,{...input,labels:{constructor:"DEMO — Other"}}].map(body=>s.service.saveSpeakers(s.f.practitioner.actor,s.sessionId,body,randomUUID()).then(()=>"accepted",error=>error.code)));expect(race.sort()).toEqual(["CONFLICT","accepted"]);
+ await s.f.pool.query("UPDATE ls_identity.accounts SET role='parent' WHERE id=$1",[s.f.practitioner.actor.id]);expect((await s.http.handle(s.request(path,{...input,expectedRevision:1}),parts)).status).toBe(404);
+ await s.f.pool.query("UPDATE ls_identity.accounts SET role='practitioner' WHERE id=$1",[s.f.practitioner.actor.id]);await s.f.pool.query('UPDATE ls_identity.sessions SET revoked_at=clock_timestamp() WHERE token_digest=$1',[s.f.practitioner.actor.sessionDigest]);expect((await s.http.handle(s.request(path,{...input,expectedRevision:1}),parts)).status).toBe(401);
+},30_000);
 test("native protected detail returns exact durable transcript/cleaned/speakers and latest requested analysis without writes",async()=>{
  const s=await privateReadFixture(),path=`/${s.sessionId}`;
  const snapshot=async()=>({transcripts:(await s.f.pool.query('SELECT * FROM ls_sessions.transcripts WHERE workspace_id=$1 ORDER BY version',[s.f.workspaceId])).rows,jobs:(await s.f.pool.query('SELECT * FROM ls_sessions.recording_jobs WHERE workspace_id=$1 ORDER BY id',[s.f.workspaceId])).rows,analysis:(await s.f.pool.query('SELECT * FROM ls_sessions.private_analyses WHERE workspace_id=$1 ORDER BY locale,revision',[s.f.workspaceId])).rows});

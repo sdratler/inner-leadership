@@ -2,16 +2,25 @@ import {createHash} from "node:crypto";
 import type {SqlSession} from "../features/identity/store.ts";
 import type {Migration} from "./migration-plan.ts";
 export const SCOPED_DISCLOSURE_USE_MIGRATION={name:"0112_ls_scoped_disclosure_use.sql",sha256:"e59e9bf09dfdcb9bcd899824d42c61e0b4305e459a8d477423eb2ab10a81d99b"} as const;
+export const SPEAKER_CORRECTION_RECEIPTS_MIGRATION={name:"0113_ls_speaker_correction_receipts.sql",sha256:"482b5d58b0605587a1425bbefc89de07ac9dcdc839e30d7d07ebb4f1ad225510"} as const;
 // Clean 31-migration native17.11 baseline observed in the populated upgrade
 // fixture; excludes only the separately compared operation CHECK. History and
 // older catalog fingerprints are not changed to admit this forward suffix.
 export const SCOPED_DISCLOSURE_BASE_CATALOG="ac997c4d78d025425e5b7343817190e10f73f46c909e3a3f4c397330bd0fc0e9";
 export type ScopedDisclosureIntegrity={baselineOperation:boolean;currentOperation:boolean;schemaCatalog:boolean;foreignKeys:boolean;permissions:boolean};
+export type SpeakerReceiptIntegrity={prior:ScopedDisclosureIntegrity;current:ScopedDisclosureIntegrity};
 const operations=["upload","save_observations","save_recap","share_recap","record_consent","withdraw_consent","authorize_disclosure","revoke_disclosure"];
-export function disclosureOperationMatches(value:unknown,current:boolean):boolean{
- if(typeof value!=="string")return false;const values=current?[...operations,"record_disclosure_use"]:operations;
+export function disclosureOperationMatches(value:unknown,current:boolean|"speakers"):boolean{
+ if(typeof value!=="string")return false;const values=current==="speakers"?[...operations,"record_disclosure_use","save_speakers"]:current?[...operations,"record_disclosure_use"]:operations;
  const expected=`CHECKoperation=ANYARRAY[${values.map(v=>`'${v}'`).join(",")}]`;
  return value.replace(/\s+/g,"").replace(/::text/g,"").replace(/[()]/g,"")===expected;
+}
+/** Observe both exact operation frames, sharing unchanged catalog/FK/ACL checks.
+ * Do not alter historical fingerprints or claim the old CHECK survived replacement. */
+export async function speakerReceiptIntegrity(tx:SqlSession,files:readonly Migration[]):Promise<SpeakerReceiptIntegrity>{
+ if(!files.some(file=>file.name===SPEAKER_CORRECTION_RECEIPTS_MIGRATION.name&&file.checksum===SPEAKER_CORRECTION_RECEIPTS_MIGRATION.sha256))throw Error("SPEAKER_MIGRATION_SOURCE_MISMATCH");
+ const prior=await scopedDisclosureIntegrity(tx,files),catalog=await scopedDisclosureCatalog(tx);
+ return {prior,current:{...prior,baselineOperation:false,currentOperation:catalog.validated&&disclosureOperationMatches(catalog.operation,"speakers")}};
 }
 /** Every original session table/column/check/FK/index/trigger remains bound;
  * only the one named operation CHECK is compared as prior/current frames. */

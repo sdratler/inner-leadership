@@ -6,6 +6,7 @@ import { METRICS, type MetricValues } from "./metrics.ts";
 import { FOCUS } from "./recap.ts";
 import { SessionDatabaseService } from "./database.ts";
 import {disclosureInputSchema,disclosureUseSchema,disclosureRevokeSchema} from "./disclosure-contract.ts";
+import {speakerCorrectionInput} from "./speaker-corrections.ts";
 const uuid=z.string().uuid().transform(value=>value.toLowerCase());
 const metricValue=z.strictObject({score:z.number().int().min(1).max(10).nullable(),notObservedReason:z.string().min(1).max(200).nullable(),note:z.string().max(1000)});
 const metricShape=Object.fromEntries(METRICS.map(item=>[item.id,metricValue])) as Record<(typeof METRICS)[number]["id"],typeof metricValue>;
@@ -46,6 +47,7 @@ export class SessionHttp {
     }
     if(path.length!==2||request.method!=="POST"||url.search)throw new AppError("NOT_FOUND");const sessionId=uuid.parse(path[0]);
     if(path[1]==="observations"){const body=await readJson(request,observations);return {data:await this.service.saveObservations(actor,sessionId,body.values as MetricValues,body.expectedRevision,key(request)),status:201};}
+    if(path[1]==="speakers")return {data:await this.service.saveSpeakers(actor,sessionId,await readJson(request,speakerCorrectionInput),key(request)),status:201};
     if(path[1]==="recap"){const body=await readJson(request,recap);return {data:await this.service.saveRecap(actor,sessionId,{...body,practices:[]},key(request)),status:201};}
     if(path[1]==="share"){return {data:await this.service.share(actor,sessionId,await readJson(request,share),key(request)),status:201};}
     if(path[1]==="consent"){return {data:await this.service.recordConsent(actor,sessionId,await readJson(request,consent),key(request)),status:201};}

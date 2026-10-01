@@ -126,5 +126,9 @@
   {
     "name": "0112_ls_scoped_disclosure_use.sql",
     "sha256": "e59e9bf09dfdcb9bcd899824d42c61e0b4305e459a8d477423eb2ab10a81d99b"
+  },
+  {
+    "name": "0113_ls_speaker_correction_receipts.sql",
+    "sha256": "482b5d58b0605587a1425bbefc89de07ac9dcdc839e30d7d07ebb4f1ad225510"
   }
 ]
