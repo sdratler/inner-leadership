@@ -27,7 +27,7 @@ function ConsentPanelInner({ locale, model, refresh }: { locale: Locale; model: 
   const validSigner = model.consentSigners.some(item => item.accountId === signer), active = current?.withdrawnAt === null;
   const fmt = (value: string) => new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
   const error = record.error || withdraw.error;
-  return <section className="lsw-card lsw-stack" lang={locale} dir={locale === "he" ? "rtl" : "ltr"} aria-labelledby={titleId}>
+  return <section className="lsw-card lsw-stack lsw-consent" lang={locale} dir={locale === "he" ? "rtl" : "ltr"} aria-labelledby={titleId}>
     <UnsavedChangesGuard dirty={dirty || locked} message={t.dirty} /><h2 id={titleId}>{t.title}</h2><p>{t.help}</p>
     {current ? <p role="status">{t.version} {current.version} · {current.withdrawnAt ? t.withdrawn : t[current.authorityState]} · {t.signature}: <time dateTime={current.signedAt}>{fmt(current.signedAt)}</time> · <span dir="auto">{current.policyVersion}</span></p> : <p role="status">{t.none}</p>}
     {saved && !dirty && <p role="status">{t.saved} · {t.version} {saved.version}</p>}
@@ -41,7 +41,7 @@ function ConsentPanelInner({ locale, model, refresh }: { locale: Locale; model: 
           <label className="lsw-field">{t.policy}<input aria-label={t.policy} dir="auto" required maxLength={100} value={policy} onChange={event => { setPolicy(event.target.value); setSaved(null); }} /></label>
           <label className="lsw-field">{t.authority}<select aria-label={t.authority} value={authority} onChange={event => { if (["needs_review", "checked", "restricted"].includes(event.target.value)) setAuthority(event.target.value as ConsentVersion["authorityState"]); }}><option value="needs_review">{t.needs_review}</option><option value="checked">{t.checked}</option><option value="restricted">{t.restricted}</option></select></label>
           <label className="lsw-field">{t.evidence}<textarea aria-label={t.evidence} dir="auto" rows={5} required maxLength={4000} value={evidence} onChange={event => { setEvidence(event.target.value); setSaved(null); }} /></label>
-          {([[recording, setRecording, t.recording], [transcription, setTranscription, t.transcription], [ai, setAi, t.ai], [informed, setInformed, t.informed]] as const).map(([checked, setChecked, label]) => <label key={label}><input type="checkbox" checked={checked} onChange={event => setChecked(event.target.checked)} /> {label}</label>)}
+          {([[recording, setRecording, t.recording], [transcription, setTranscription, t.transcription], [ai, setAi, t.ai], [informed, setInformed, t.informed]] as const).map(([checked, setChecked, label]) => <label className="lsw-choice" key={label}><input type="checkbox" checked={checked} onChange={event => setChecked(event.target.checked)} /> {label}</label>)}
           <p className="lsw-help">{t.flagsOff}</p><p className="lsw-help">{t.neutral}</p><div className="lsw-actions"><button className="lsw-button lsw-button--primary" type="submit" disabled={locked || !validSigner}>{record.phase === "pending" ? t.saving : t.save}</button><button className="lsw-button lsw-button--secondary" type="button" onClick={() => { if (!dirty || window.confirm(t.discard)) { clear(); setPolicy(current?.policyVersion ?? ""); setOpen(false); } }}>{t.cancel}</button></div>
         </fieldset>
       </form>

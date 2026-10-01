@@ -99,6 +99,7 @@ it.each(["en", "he"] as const)("the retained %s component requires actual signat
   const model: SessionDetail = { ...scope, clientDisplayName: "DEMO — Authorized client", selectedAppointmentId: consentId, appointments: [], processing: { state: null, audioState: null, message: "", permissionToRecord: false, consent: null }, transcript: null, analysis: null, metrics: blankMetrics(), metricsRevision: 0, recap: null, recapDigest: null, recipients: [{ accountId: signer, name: "DEMO — Parent" }], consentSigners: [{ accountId: signer, name: "DEMO — Parent" }] };
   const markup = renderToStaticMarkup(createElement(SessionConsentPanel, { locale, model, refresh: vi.fn() }));
   expect(markup).toContain(`dir="${locale === "he" ? "rtl" : "ltr"}"`);
+  expect(markup).toContain('lsw-consent'); expect(markup.match(/class="lsw-choice"/g)).toHaveLength(4);
   expect(markup).toContain('value="needs_review" selected=""'); expect(markup).not.toContain('type="checkbox" checked');
   expect(markup).toContain('type="datetime-local"'); expect(markup).not.toContain(input.signedAt); expect(markup).not.toContain(input.policyVersion);
   expect(markup).toContain('value="" selected=""'); expect(markup).not.toContain("<details class=\"lsw-details\" open");
