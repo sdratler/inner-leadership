@@ -2,7 +2,7 @@
 
 This is a derived entry point, not a product master. Prepared under SYS033 at `b4276f563240bd3337366aa1d24de2216eb9fb55`. Current Drive contracts govern intent; Build Control governs work; exact Git commits govern code; authenticated provider evidence governs deployment. Original LS000 build provenance remains unchanged in `apps/life-skills/docs/historical/ls000-source-snapshot.json`.
 
-These are stable document identities, not pinned versions. Read the linked CURRENT documents to establish their current revisions. The maintained completion instruction is [LS-PROCESS-20260930-03](https://docs.google.com/document/d/1NJnQXZcWMFZUFH-7c9apkqGRRRL9TzsvNd7x-GM2040/edit); it supersedes earlier process-continuation editions without reopening accepted product decisions or authorizing deferred provider/billing work.
+These are stable document identities, not pinned versions. Read the linked CURRENT documents to establish their current revisions. The maintained completion instruction is [LS-GOAL-20261001-01](https://docs.google.com/document/d/1NJnQXZcWMFZUFH-7c9apkqGRRRL9TzsvNd7x-GM2040/edit); it supersedes earlier process-continuation editions without reopening accepted product decisions or authorizing deferred provider/billing work.
 
 - registry: https://docs.google.com/document/d/1XZS-MzUtjc3T488lyrSbtDX0Yq5UCl7Wzh5uN_YOvMg/edit
 - product: https://docs.google.com/document/d/1kJug8ojFwdGgZoPUx8BJt9fLKBjGYvX0wwbtarGTIIg/edit
