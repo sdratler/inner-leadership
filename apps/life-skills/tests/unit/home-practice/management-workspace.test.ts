@@ -10,6 +10,7 @@ test.each(["en", "he"] as const)("%s authoring requires actual case context and 
   expect(missing).toContain(`/${locale}/app/clients`); expect(missing).not.toContain("<form");
   const html = renderToStaticMarkup(createElement(PracticeAuthoringForm, { ...props, locale, kind: "home-practice" }));
   expect(html).toContain("Retained unsaved input"); expect(html).toContain('type="date" required=""');
+  for(const label of locale==='he'?['הנחיות','מטרה','מחויבות']:['Instructions','Goal','Commitment'])expect(html).toContain(`aria-label="${label}"`);
   expect(html).toContain('maxLength="8000"'); expect(html).toContain('type="submit"'); expect(html).not.toContain("Publish");
   expect(html).toContain(locale === "he" ? "שמירה אינה מפרסמת" : "Saving does not publish");
   const locked = renderToStaticMarkup(createElement(PracticeAuthoringForm, { ...props, locale, kind: "home-practice", locked: true }));
