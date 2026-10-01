@@ -122,5 +122,9 @@
   {
     "name": "0111_ls_adult_practice_coordination.sql",
     "sha256": "5df0781c711dc8da332d6d74736b2c7bff6044932d7c60b9e6af7f442d3a3c42"
+  },
+  {
+    "name": "0112_ls_scoped_disclosure_use.sql",
+    "sha256": "e59e9bf09dfdcb9bcd899824d42c61e0b4305e459a8d477423eb2ab10a81d99b"
   }
 ]

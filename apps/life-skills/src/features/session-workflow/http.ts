@@ -5,6 +5,7 @@ import { Ls050HttpBoundary, type Ls050HttpRuntime } from "../forms/http-boundary
 import { METRICS, type MetricValues } from "./metrics.ts";
 import { FOCUS } from "./recap.ts";
 import { SessionDatabaseService } from "./database.ts";
+import {disclosureInputSchema,disclosureUseSchema,disclosureRevokeSchema} from "./disclosure-contract.ts";
 const uuid=z.string().uuid().transform(value=>value.toLowerCase());
 const metricValue=z.strictObject({score:z.number().int().min(1).max(10).nullable(),notObservedReason:z.string().min(1).max(200).nullable(),note:z.string().max(1000)});
 const metricShape=Object.fromEntries(METRICS.map(item=>[item.id,metricValue])) as Record<(typeof METRICS)[number]["id"],typeof metricValue>;
@@ -28,6 +29,15 @@ export class SessionHttp {
     }
     if(path.length===1&&path[0]==="ensure"){if(request.method!=="POST"||url.search)throw new AppError("INVALID_REQUEST");const body=await readJson(request,z.strictObject({caseId:uuid,appointmentId:uuid}));return {data:await this.service.ensureForAppointment(actor,body.caseId,body.appointmentId),status:201};}
     if(path.length===1){if(request.method!=="GET"||url.search)throw new AppError("INVALID_REQUEST");return {data:await this.service.detail(actor,uuid.parse(path[0]))};}
+    if(path.length===2&&path[1]==="disclosures"&&request.method==="GET"){
+      const query=url.searchParams,id=query.has("disclosureId")?uuid.safeParse(query.get("disclosureId")):null;
+      if([...query.keys()].some(name=>name!=="disclosureId")||query.getAll("disclosureId").length>1||id&&!id.success)throw new AppError("INVALID_REQUEST");return {data:await this.service.disclosures(actor,uuid.parse(path[0]),id?.success?id.data:undefined)};
+    }
+    if(path.length===4&&path[1]==="disclosures"&&request.method==="POST"&&!url.search){const sessionId=uuid.parse(path[0]),id=uuid.parse(path[2]);
+      if(path[3]==="revoke")return {data:await this.service.revokeDisclosure(actor,sessionId,id,await readJson(request,disclosureRevokeSchema),key(request)),status:201};
+      if(path[3]==="use")return {data:await this.service.recordDisclosureUse(actor,sessionId,id,await readJson(request,disclosureUseSchema),key(request)),status:201};
+      throw new AppError("NOT_FOUND");
+    }
     if(path.length===3&&path[1]==="consent"&&path[2]==="withdraw"&&request.method==="POST"&&!url.search){const body=await readJson(request,withdrawal);return {data:await this.service.withdrawConsent(actor,uuid.parse(path[0]),body.expectedVersion,key(request)),status:201};}
     if(path.length===2&&path[1]==="consent"&&request.method==="GET"){
       const query=url.searchParams,v=query.get("version"),consentId=uuid.safeParse(query.get("consentId"));
@@ -39,6 +49,7 @@ export class SessionHttp {
     if(path[1]==="recap"){const body=await readJson(request,recap);return {data:await this.service.saveRecap(actor,sessionId,{...body,practices:[]},key(request)),status:201};}
     if(path[1]==="share"){return {data:await this.service.share(actor,sessionId,await readJson(request,share),key(request)),status:201};}
     if(path[1]==="consent"){return {data:await this.service.recordConsent(actor,sessionId,await readJson(request,consent),key(request)),status:201};}
+    if(path[1]==="disclosures"){return {data:await this.service.authorizeDisclosure(actor,sessionId,await readJson(request,disclosureInputSchema),key(request)),status:201};}
     if(path[1]==="upload")throw new AppError("UNAVAILABLE");
     throw new AppError("NOT_FOUND");
   });}

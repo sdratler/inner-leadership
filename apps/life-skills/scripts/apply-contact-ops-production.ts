@@ -23,6 +23,7 @@ import {progressReviewIntegrity,PROGRESS_REVIEW_REVISIONS_MIGRATION} from '../sr
 import {contactInboundProjectionIntegrity,CONTACT_INBOUND_PROJECTION_MIGRATION} from '../src/db/contact-inbound-projection-integrity.ts';
 import {contactOutboundProjectionIntegrity,CONTACT_OUTBOUND_PROJECTION_MIGRATION} from '../src/db/contact-outbound-projection-integrity.ts';
 import {practiceAdultCoordinationIntegrity,PRACTICE_ADULT_COORDINATION_MIGRATION} from '../src/db/practice-adult-coordination-integrity.ts';
+import {scopedDisclosureIntegrity,SCOPED_DISCLOSURE_USE_MIGRATION} from '../src/db/scoped-disclosure-integrity.ts';
 import {assertContactOpsDatabaseIdentity,calendarAppendOnlyFunctionBody,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,internalTaskSchemaCatalogMatches,sourceTaskSchemaCatalogMatches,voiceRuleSchemaCatalogMatches,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,type ContactOpsIntegrityObjects,type InternalTaskIntegrityObjects,type SourceTaskIntegrityObjects,type VoiceRuleIntegrityObjects} from '../src/db/contact-ops-production-guard.ts';
 import type {AppliedMigration,Migration} from '../src/db/migration-plan.ts';
 
@@ -370,6 +371,8 @@ async function main(){
        (await client.query<R>(statement,[...values])).rows}):undefined;
      const adultIntegrity=files.some(file=>file.name===PRACTICE_ADULT_COORDINATION_MIGRATION.name)?await practiceAdultCoordinationIntegrity({query:async <R extends object>(statement:string,values:readonly unknown[]=[])=>
        (await client.query<R>(statement,[...values])).rows},files):undefined;
+     const disclosureIntegrity=files.some(file=>file.name===SCOPED_DISCLOSURE_USE_MIGRATION.name)?await scopedDisclosureIntegrity({query:async <R extends object>(statement:string,values:readonly unknown[]=[])=>
+       (await client.query<R>(statement,[...values])).rows},files):undefined;
      await client.query('COMMIT');
      const history:AppliedMigration[]=ledger.rows.map(row=>({name:row.name,checksum:row.checksum}));
      const verified=new Map(functions.rows.map(row=>[row.name,
@@ -394,7 +397,7 @@ async function main(){
      const sourceIntegrity:SourceTaskIntegrityObjects={baseCatalog,sourceCatalog,sourceIndex:sourceIndex.rows[0]?.exact===true};
      const voiceIntegrity:VoiceRuleIntegrityObjects={...voiceObjects.rows[0]!,
        schemaCatalog:voiceRuleSchemaCatalogMatches(voiceColumns.rows[0]?.catalog,voiceConstraints.rows[0]?.catalog)};
-     return contactOpsMigrationState(files,history,integrity,taskIntegrity,sourceIntegrity,voiceIntegrity,authorityIntegrity,inboundIntegrity,practiceIntegrity,progressIntegrity,projectionIntegrity,outboundIntegrity,adultIntegrity);
+     return contactOpsMigrationState(files,history,integrity,taskIntegrity,sourceIntegrity,voiceIntegrity,authorityIntegrity,inboundIntegrity,practiceIntegrity,progressIntegrity,projectionIntegrity,outboundIntegrity,adultIntegrity,disclosureIntegrity);
     }catch(error){await client.query('ROLLBACK').catch(()=>undefined);throw error;}
    };
    const before=await inspect();

@@ -12,9 +12,15 @@ import type { AudioState, BroadFocus, ProcessingStage, RoutineRecap, SharedPract
 import { FOCUS } from "./recap.ts";
 import { nonempty, validIso } from "./policy.ts";
 import { consentVersionSchema, type ConsentVersion, type ConsentRecordInput } from "./consent-contract.ts";
+import {disclosureSchema,disclosureInputSchema,disclosureUseSchema,disclosureRevokeSchema,type DisclosureInput,type DisclosureView} from "./disclosure-contract.ts";
 
 type SessionRow = { sessionId:string; caseId:string; appointmentId:string; practitionerAccountId:string; state:"open"|"completed"|"archived"; startsAt:Date; endsAt:Date };
 type ConsentRow = { id:string; version:number; signedByAccountId:string; signedAt:Date; policyVersion:string; authorityState:"checked"|"needs_review"|"restricted"; recordingAllowed:boolean; transcriptionAllowed:boolean; aiProcessingAllowed:boolean; childInformed:boolean; withdrawnAt:Date|null };
+type DisclosureRow={id:string;sessionId:string|null;recipientCiphertext:string;purposeCiphertext:string;topicCiphertext:string;authorityEvidenceCiphertext:string;channel:DisclosureInput["channel"];authorizedByAccountId:string;recordedByPractitionerId:string;childDiscussionRecorded:boolean;authorizedAt:Date;expiresAt:Date;revokedAt:Date|null;usedAt:Date|null};
+const disclosureColumns='id,session_id AS "sessionId",recipient_ciphertext AS "recipientCiphertext",purpose_ciphertext AS "purposeCiphertext",topic_ciphertext AS "topicCiphertext",authority_evidence_ciphertext AS "authorityEvidenceCiphertext",channel,authorized_by_account_id AS "authorizedByAccountId",recorded_by_practitioner_id AS "recordedByPractitionerId",child_discussion_recorded AS "childDiscussionRecorded",authorized_at AS "authorizedAt",expires_at AS "expiresAt",revoked_at AS "revokedAt",used_at AS "usedAt"';
+
+/** Account membership is necessary, not a legal finding that one parent's signature suffices. */
+async function disclosureSigner(tx:SqlSession,actor:Actor,caseId:string,accountId:string):Promise<{kind:"minor"|"adult"}|null>{return one(tx,`SELECT cp.kind FROM ls_identity.accounts a JOIN ls_identity.account_subjects s ON s.workspace_id=a.workspace_id AND s.account_id=a.id JOIN ls_cases.cases c ON c.workspace_id=a.workspace_id AND c.id=$2 JOIN ls_cases.clients cl ON cl.workspace_id=c.workspace_id AND cl.id=c.client_id JOIN ls_identity.people cp ON cp.workspace_id=cl.workspace_id AND cp.id=cl.person_id LEFT JOIN ls_cases.case_guardians g ON g.workspace_id=a.workspace_id AND g.case_id=c.id AND g.account_id=a.id WHERE a.workspace_id=$1 AND a.id=$3 AND a.state='active' AND c.state<>'archived' AND ((a.role='parent' AND cp.kind='minor' AND g.account_id IS NOT NULL AND g.revoked_at IS NULL) OR (a.role='adult_client' AND cp.kind='adult' AND s.person_id=cl.person_id))`,[actor.workspaceId,caseId,accountId]);}
 
 function digest(value: unknown): string { return createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
 function aad(kind:string, workspaceId:string, caseId:string, id:string, version:number|string):string { return `session:${kind}:${workspaceId}:${caseId}:${id}:${version}`; }
@@ -52,6 +58,49 @@ export interface SharedRecapView {publicationId:string;sessionId:string;sharedAt
 export type RecordConsentInput = ConsentRecordInput;
 export class SessionDatabaseService {
   constructor(private readonly store:IdentityStore,private readonly ring:Keyring,private readonly clock:IdentityClock){}
+  private async disclosureView(tx:SqlSession,actor:Actor,row:SessionRow,item:DisclosureRow):Promise<DisclosureView>{
+    const decode=(field:string,ciphertext:string)=>unsealJson<unknown>(ciphertext,aad(`disclosure-${field}`,actor.workspaceId,row.caseId,item.id,1),this.ring);
+    const authority=decode("authority",item.authorityEvidenceCiphertext) as {authorityBasis:unknown;authorityState:unknown};
+    const signer=await disclosureSigner(tx,actor,row.caseId,item.authorizedByAccountId),now=this.clock.now();
+    const parsed=disclosureSchema.safeParse({workspaceId:actor.workspaceId,caseId:row.caseId,sessionId:item.sessionId,id:item.id,recipient:decode("recipient",item.recipientCiphertext),purpose:decode("purpose",item.purposeCiphertext),topic:decode("topic",item.topicCiphertext),...authority,channel:item.channel,authorizedByAccountId:item.authorizedByAccountId,recordedByPractitionerId:item.recordedByPractitionerId,childDiscussionRecorded:item.childDiscussionRecorded,authorizedAt:item.authorizedAt.toISOString(),expiresAt:item.expiresAt.toISOString(),revokedAt:item.revokedAt?.toISOString()??null,usedAt:item.usedAt?.toISOString()??null,effective:Boolean(signer&&authority?.authorityState==="checked"&&(signer.kind==="adult"||item.childDiscussionRecorded)&&item.authorizedAt<=now&&now<item.expiresAt&&!item.revokedAt&&!item.usedAt)});
+    if(!parsed.success)throw new AppError("UNAVAILABLE");return parsed.data;
+  }
+  async disclosures(actor:Actor,sessionId:string,disclosureId?:string):Promise<DisclosureView[]>{return this.store.transaction(async tx=>{
+    await tx.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY");const row=await sessionRow(tx,actor.workspaceId,sessionId);await owner(tx,actor,row.caseId,this.clock);
+    const records=await tx.query<DisclosureRow>(`SELECT ${disclosureColumns} FROM ls_sessions.disclosure_authorizations WHERE workspace_id=$1 AND case_id=$2 AND session_id=$3 AND ($4::uuid IS NULL OR id=$4) ORDER BY authorized_at DESC,id LIMIT 101`,[actor.workspaceId,row.caseId,sessionId,disclosureId??null]);
+    if(records.length>100)throw new AppError("UNAVAILABLE");if(disclosureId&&!records.length)throw new AppError("NOT_FOUND");return Promise.all(records.map(item=>this.disclosureView(tx,actor,row,item)));
+  });}
+  async authorizeDisclosure(actor:Actor,sessionId:string,input:DisclosureInput,key:string):Promise<{disclosureId:string;revokedAt:null;usedAt:null}>{return this.store.transaction(async tx=>{
+    await lockWorkspace(tx,actor.workspaceId);const row=await sessionRow(tx,actor.workspaceId,sessionId,true);await owner(tx,actor,row.caseId,this.clock);
+    return command(tx,this.ring,actor,row,"authorize_disclosure",key,input,async()=>{
+      const parsed=disclosureInputSchema.safeParse(input);if(!parsed.success||Date.parse(input.authorizedAt)>this.clock.now().getTime()||Date.parse(input.expiresAt)<=Date.parse(input.authorizedAt))throw new AppError("INVALID_REQUEST");
+      if(!await disclosureSigner(tx,actor,row.caseId,input.authorizedByAccountId))throw new AppError("NOT_FOUND");
+      const id=randomUUID(),encode=(field:string,value:unknown)=>sealJson(value,aad(`disclosure-${field}`,actor.workspaceId,row.caseId,id,1),this.ring);
+      await tx.query('INSERT INTO ls_sessions.disclosure_authorizations(workspace_id,case_id,id,session_id,recipient_ciphertext,purpose_ciphertext,topic_ciphertext,authority_evidence_ciphertext,channel,authorized_by_account_id,recorded_by_practitioner_id,child_discussion_recorded,authorized_at,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)',[actor.workspaceId,row.caseId,id,sessionId,encode("recipient",input.recipient),encode("purpose",input.purpose),encode("topic",input.topic),encode("authority",{authorityBasis:input.authorityBasis,authorityState:input.authorityState}),input.channel,input.authorizedByAccountId,actor.id,input.childDiscussionRecorded,new Date(input.authorizedAt),new Date(input.expiresAt)]);
+      return {disclosureId:id,revokedAt:null,usedAt:null};
+    });
+  });}
+  async revokeDisclosure(actor:Actor,sessionId:string,id:string,input:{expectedUsedAt:string|null},key:string):Promise<{disclosureId:string;revokedAt:string;usedAt:string|null}>{return this.store.transaction(async tx=>{
+    await lockWorkspace(tx,actor.workspaceId);const row=await sessionRow(tx,actor.workspaceId,sessionId,true);await owner(tx,actor,row.caseId,this.clock);
+    return command(tx,this.ring,actor,row,"revoke_disclosure",key,{id,...input},async()=>{
+      if(!disclosureRevokeSchema.safeParse(input).success)throw new AppError("INVALID_REQUEST");
+      const prior=await one<DisclosureRow>(tx,`SELECT ${disclosureColumns} FROM ls_sessions.disclosure_authorizations WHERE workspace_id=$1 AND case_id=$2 AND session_id=$3 AND id=$4 FOR UPDATE`,[actor.workspaceId,row.caseId,sessionId,id]);if(!prior)throw new AppError("NOT_FOUND");
+      if(prior.revokedAt||(prior.usedAt?.toISOString()??null)!==input.expectedUsedAt)throw new AppError("CONFLICT");const revokedAt=this.clock.now();
+      await tx.query('UPDATE ls_sessions.disclosure_authorizations SET revoked_at=$5 WHERE workspace_id=$1 AND case_id=$2 AND session_id=$3 AND id=$4',[actor.workspaceId,row.caseId,sessionId,id,revokedAt]);
+      return {disclosureId:id,revokedAt:revokedAt.toISOString(),usedAt:prior.usedAt?.toISOString()??null};
+    });
+  });}
+  async recordDisclosureUse(actor:Actor,sessionId:string,id:string,input:{usedAt:string},key:string):Promise<{disclosureId:string;revokedAt:null;usedAt:string}>{return this.store.transaction(async tx=>{
+    await lockWorkspace(tx,actor.workspaceId);const row=await sessionRow(tx,actor.workspaceId,sessionId,true);await owner(tx,actor,row.caseId,this.clock);
+    return command(tx,this.ring,actor,row,"record_disclosure_use",key,{id,...input},async()=>{
+      if(!disclosureUseSchema.safeParse(input).success)throw new AppError("INVALID_REQUEST");
+      const prior=await one<DisclosureRow>(tx,`SELECT ${disclosureColumns} FROM ls_sessions.disclosure_authorizations WHERE workspace_id=$1 AND case_id=$2 AND session_id=$3 AND id=$4 FOR UPDATE`,[actor.workspaceId,row.caseId,sessionId,id]);if(!prior)throw new AppError("NOT_FOUND");
+      const current=await this.disclosureView(tx,actor,row,prior);if(!current.effective)throw new AppError("CONFLICT");
+      const usedAt=new Date(input.usedAt);if(usedAt<prior.authorizedAt||usedAt>=prior.expiresAt||usedAt>this.clock.now())throw new AppError("INVALID_REQUEST");
+      await tx.query('UPDATE ls_sessions.disclosure_authorizations SET used_at=$5 WHERE workspace_id=$1 AND case_id=$2 AND session_id=$3 AND id=$4',[actor.workspaceId,row.caseId,sessionId,id,usedAt]);
+      return {disclosureId:id,revokedAt:null,usedAt:usedAt.toISOString()};
+    });
+  });}
   async observations(actor:Actor,caseId:string):Promise<PrivateObservationEvidence>{return this.store.transaction(async tx=>{
     await tx.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY");
     await owner(tx,actor,caseId,this.clock);

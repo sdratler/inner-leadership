@@ -6,6 +6,7 @@ import type {SessionDetail,SessionListItem} from "./database.ts";
 import {PractitionerSessionDesk,type SessionDeskActions} from "../../ui/revamp/session-desk.tsx";
 import {sessionCommand,sessionEnsure,sessionRead} from "./client.ts";
 import {SessionConsentPanel} from "./consent-panel.tsx";
+import {SessionDisclosurePanel} from "./disclosure-panel.tsx";
 import {workspaceHref,type WorkspaceContext} from '../../ui/workspace/navigation-model.ts';
 
 /** A query only selects from the server-authorized list. It never opens,
@@ -41,5 +42,5 @@ export function SessionDetailWorkspace({locale,sessionId,caseId,navigationContex
  const retry=<div role="alert"><p>{he?"לא ניתן לאשר מחדש את רשומת המפגש. קלט שלא נשמר נשאר כאן כאשר הגישה עדיין מורשית.":"The session record could not be confirmed again. Unsaved input stays here when access is still authorized."}</p><button className="lsw-button" type="button" onClick={()=>setRevision(value=>value+1)}>{he?"ניסיון קריאה חוזר":"Retry this read"}</button></div>;
  if(error&&!model)return <main className="lsw-main">{retry}</main>;
  if(!model||model.sessionId!==sessionId||caseId&&model.caseId!==caseId)return <main className="lsw-main"><p role="status">{he?"טוען רשומת מפגש…":"Loading session record…"}</p></main>;
- return <>{error&&retry}<p><a className="lsw-button lsw-button--secondary" href={workspaceHref(locale,'app/calendar',model.caseId,navigationContext)}>{he?'חזרה ליומן':'Return to calendar'}</a></p><PractitionerSessionDesk locale={locale} model={model} actions={actions} consentPanel={<SessionConsentPanel locale={locale} model={model} refresh={()=>setRevision(value=>value+1)}/>}/></>;
+ return <>{error&&retry}<p><a className="lsw-button lsw-button--secondary" href={workspaceHref(locale,'app/calendar',model.caseId,navigationContext)}>{he?'חזרה ליומן':'Return to calendar'}</a></p><PractitionerSessionDesk locale={locale} model={model} actions={actions} consentPanel={<><SessionConsentPanel locale={locale} model={model} refresh={()=>setRevision(value=>value+1)}/><SessionDisclosurePanel locale={locale} model={model}/></>}/></>;
 }
