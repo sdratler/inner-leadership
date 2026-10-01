@@ -1,10 +1,18 @@
 import { createElement } from "react";
+import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vitest";
 import { PracticeAuthoringForm, PracticeManagementWorkspace } from "../../../src/features/home-practice/management-workspace.tsx";
 const draft = { title: "", reference: "", instructions: "Retained unsaved input", startsOn: "2026-10-02", endsOn: "", goalId: "", commitmentId: "", revision: null };
 const data = { practice: { items: [], hasMore: false }, goals: [], commitments: [] };
 const props = { draft, data, locked: false, busy: false, onChange: () => {}, onSave: () => {}, onCancel: () => {} };
+test("practice management has a scoped readable single-column list and mobile date fields", () => {
+  const html = renderToStaticMarkup(createElement(PracticeManagementWorkspace, { locale: "en", kind: "home-practice", caseId: "123e4567-e89b-12d3-a456-426614174000" }));
+  expect(html).toContain('lsw-practice-management');
+  const css = readFileSync(new URL('../../../src/ui/workspace/professional-ui.css', import.meta.url), 'utf8');
+  expect(css).toContain('.lsw.lsu .lsw-practice-management .lsw-card-list{grid-template-columns:minmax(0,1fr);list-style:none;padding:0;');
+  expect(css).toContain('@media(max-width:600px){.lsw.lsu .lsw-practice-management .lsw-two-fields{grid-template-columns:minmax(0,1fr)}}');
+});
 test.each(["en", "he"] as const)("%s authoring requires actual case context and retains ordinary labeled form controls", locale => {
   const missing = renderToStaticMarkup(createElement(PracticeManagementWorkspace, { locale, kind: "home-practice" }));
   expect(missing).toContain(`/${locale}/app/clients`); expect(missing).not.toContain("<form");

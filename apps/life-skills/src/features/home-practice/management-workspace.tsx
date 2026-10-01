@@ -75,7 +75,7 @@ function ManagementEditor({ locale, kind, caseId, initialAudienceId }: { locale:
       : { action: "create_draft", caseId, audienceId: selected, templateKey: draft.reference.trim(), templateVersion: "manual-1", instructions: draft.instructions.trim(), startsOn: draft.startsOn, endsOn: draft.endsOn || null, ...(draft.goalId ? { goalId: draft.goalId } : {}), ...(draft.commitmentId ? { commitmentId: draft.commitmentId } : {}) };
     void run(command);
   };
-  return <div className="lsw-stack"><UnsavedChangesGuard dirty={dirty || attempt !== null} message={t.dirty} />
+  return <div className="lsw-stack lsw-practice-management"><UnsavedChangesGuard dirty={dirty || attempt !== null} message={t.dirty} />
     {loaded && <label className="lsw-field">{t.audience}<select aria-label={t.audience} disabled={locked} value={selected} onChange={event => { if (dirty && !window.confirm(t.discard)) return; clear(); setLoaded(null); setLoading(true); setSelected(event.target.value); }}>
       {loaded.audiences.map((row, index) => <option key={row.id} value={row.id}>{index + 1} · {row.visibility === "private" ? t.private : row.visibility === "family_full" ? t.full : t.limited}{row.published ? "" : " · " + t.unpublished}</option>)}
     </select></label>}
