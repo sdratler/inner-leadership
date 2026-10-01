@@ -12,6 +12,7 @@ const hook=vi.hoisted(()=>{const slots:Slot[]=[],pending:Array<{index:number;eff
 const fetchMock=vi.hoisted(()=>vi.fn());
 vi.mock('react',async original=>({...await original<typeof import('react')>(),useState:hook.useState,useRef:hook.useRef,useEffect:hook.useEffect}));
 import {FormsCaseWorkspace,FormsWorkspace,FormField} from '../../src/features/forms/workspace.tsx';
+import {UnsavedChangesGuard} from '../../src/ui/workspace/draft-guard.tsx';
 import type {FormDefinition} from '../../src/features/forms/schema.ts';
 const caseId='123e4567-e89b-12d3-a456-426614174000',templateId='223e4567-e89b-12d3-a456-426614174000',parentId='323e4567-e89b-12d3-a456-426614174000';
 const definition:FormDefinition={title:'Synthetic questions',introduction:'Synthetic intro',fields:[{key:'long',kind:'long_text',label:'Long answer',required:true},{key:'one',kind:'single_choice',label:'One answer',required:true,options:[{value:'a',label:'First'}]},{key:'many',kind:'multiple_choice',label:'Many answers',required:true,options:[{value:'a',label:'First'},{value:'b',label:'Second'}]}]};
@@ -35,3 +36,25 @@ it('submits all actual parent answers and retries an uncertain result with the e
 it('does not apply parent submission results after the family workspace unmounts',async()=>{let resolve!:(value:Response)=>void;fetchMock.mockImplementation((url:string,init?:RequestInit)=>init?.method==='POST'?new Promise<Response>(done=>{resolve=done}):Promise.resolve(reads(url)));const output=fillParent(await ready('parent'));void submitForm(output)({preventDefault(){}});await tick();hook.unmount();resolve(Response.json({ok:true,data:{submissionId:'receipt'}}));await tick();expect(hook.afterUnmount()).toBe(0)});
 it('keys all pending forms state by role, language and authorized case',()=>{const view=FormsWorkspace({role:'parent',locale:'he',csrfToken:'c',cases:[{id:caseId,label:'Synthetic'}]});expect(view.key).toBe(`parent:he:${caseId}`)});
 it('assigns only explicitly chosen authorized template and respondent identifiers',async()=>{fetchMock.mockImplementation((url:string,init?:RequestInit)=>Promise.resolve(init?.method==='POST'?Response.json({ok:true,data:{assignmentId:assignment.id}}):reads(url)));let output=await ready();const selects=all(output,item=>item.type==='select');(selects[0]!.props.onChange as Change)({target:{value:templateId}});(selects[1]!.props.onChange as Change)({target:{value:parentId}});output=render();await submitForm(output,1)({preventDefault(){}});expect(JSON.parse(String((posts()[0]![1] as RequestInit).body))).toEqual({caseId,templateId,assignedAccountId:parentId,dueDate:null,postSubmissionAudienceId:null})});
+it('warns for a real template draft, then clears the entire saved draft instead of leaving a false dirty key',async()=>{
+ fetchMock.mockImplementation((url:string,init?:RequestInit)=>Promise.resolve(init?.method==='POST'?Response.json({ok:true,data:{templateId}}):reads(url)));
+ let output=fillTemplate(await ready());expect(all(output,item=>item.type===UnsavedChangesGuard)[0]?.props.dirty).toBe(true);
+ await submitForm(output)({preventDefault(){}});output=render();expect(all(output,item=>item.type===UnsavedChangesGuard)[0]?.props.dirty).toBe(false);
+ expect(all(output,item=>item.type==='input')[0]?.props.value).toBe('');
+});
+it('retains filled answers when reopening the same assignment and refuses to discard them without confirmation',async()=>{
+ fetchMock.mockImplementation((url:string)=>Promise.resolve(reads(url)));vi.stubGlobal('window',{confirm:vi.fn(()=>false)});
+ let output=fillParent(await ready('parent'));button(output,'Fill in')();output=render('parent');
+ expect(all(output,item=>item.type===FormField)[0]?.props.value).toBe('Synthetic actual long answer');
+ button(output,'Cancel answering')();output=render('parent');expect(all(output,item=>item.type===FormField)[0]?.props.value).toBe('Synthetic actual long answer');
+ expect(all(output,item=>item.type===UnsavedChangesGuard)[0]?.props.dirty).toBe(true);
+ vi.stubGlobal('window',{confirm:vi.fn(()=>true)});button(output,'Cancel answering')();output=render('parent');expect(all(output,item=>item.type===FormField)).toHaveLength(0);
+ expect(posts()).toHaveLength(0);
+});
+it('does not allow cancellation of an uncertain submission or mutation of its preserved retry',async()=>{
+ fetchMock.mockImplementation((url:string,init?:RequestInit)=>Promise.resolve(init?.method==='POST'?new Response('',{status:503}):reads(url)));
+ let output=fillParent(await ready('parent'));await submitForm(output)({preventDefault(){}});output=render('parent');
+ expect(all(output,item=>item.type==='button'&&text(item.props.children)==='Cancel answering')[0]?.props.disabled).toBe(true);
+ expect(all(output,item=>item.type===UnsavedChangesGuard)[0]?.props.dirty).toBe(true);
+ button(output,'Retry the same submission')();await tick();expect((posts()[0]![1] as RequestInit).body).toBe((posts()[1]![1] as RequestInit).body);
+});

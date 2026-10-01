@@ -164,7 +164,7 @@ export function proxy(request: NextRequest) {
     }
     inbound.set("x-ls-practitioner-return", practitionerReturnPath(locale, page, query));
   }
-  const practitionerDetail=/^\/(he|en)\/app\/(?:reports|cases\/[^/]+\/sessions(?:\/[^/]+)?)$/.exec(pathname);
+  const practitionerDetail=/^\/(he|en)\/app\/(?:reports|forms|resources|cases\/[^/]+\/sessions(?:\/[^/]+)?)$/.exec(pathname);
   if(practitionerDetail){
     const query:Record<string,string|undefined>={};
     for(const key of ['mode','date','view','caseId','audienceId','appointmentId','context','section']){const values=request.nextUrl.searchParams.getAll(key);query[key]=values.length===1?values[0]:undefined;}

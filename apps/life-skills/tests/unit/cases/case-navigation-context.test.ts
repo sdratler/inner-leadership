@@ -28,10 +28,10 @@ for (const locale of ['en', 'he'] as const) {
  it(`${locale}: case-route context reaches each practitioner destination in desktop and mobile navigation`, () => {
   navigation.pathname = `/${locale}/app/cases/${id}`; navigation.query = new URLSearchParams();
   const markup = renderToStaticMarkup(CoreNavigation({ locale, role: 'practitioner', children: 'Synthetic case' }));
-  for (const path of ['app/calendar', 'app/practice', 'app/feedback', 'app/forms', 'app/reports']) {
+  for (const path of ['app/calendar', 'app/practice', 'app/feedback', 'app/forms', 'app/resources', 'app/reports']) {
    expect(markup.match(new RegExp(`href="/${locale}/${path}\\?caseId=${id}&amp;context=client"`, 'g'))?.length ?? 0).toBe(1);
   }
-  expect(markup).not.toContain(`href="/${locale}/app/resources`);
+  expect(markup).toContain(locale==='he'?'חומרים ותרגילים':'Materials &amp; exercises');
   expect(markup).toContain(`lang="${locale}"`); expect(markup).toContain(`dir="${locale === 'he' ? 'rtl' : 'ltr'}"`);
  });
 }
@@ -45,6 +45,15 @@ for(const locale of ['en','he'] as const)it(`${locale}: session header, sidebar 
   for(const url of links){expect(url.searchParams.get('mode')).toBe('demo');expect(url.searchParams.get('date')).toBe('2026-09-22');expect(url.searchParams.get('view')).toBe('day');expect(url.searchParams.get('caseId')).toBe(id);expect(url.searchParams.get('context')).toBe('client');}
  }
  expect(html).toContain(locale==='he'?'רשומת מפגש':'Session record');
+});
+for(const locale of ['en','he'] as const)for(const page of ['forms','resources'])it(`${locale}: adult ${page} has one scoped shared-items strip and no child form shortcuts`,()=>{
+ navigation.pathname=`/${locale}/client/${page}`;navigation.query=new URLSearchParams({caseId:id});
+ const html=renderToStaticMarkup(CoreNavigation({locale,role:'client',clientRole:'adult_client',children:'Synthetic shared items'}));
+ const toolbar=html.match(/<nav class="lsu-top-tabs"[^>]*>(.*?)<\/nav>/)?.[1]??'';
+ const links=[...toolbar.matchAll(/<a[^>]+href="([^"]+)"([^>]*)>(.*?)<\/a>/g)];expect(links).toHaveLength(2);
+ expect(links.filter(link=>link[2]!.includes('aria-current="page"'))).toHaveLength(1);
+ expect(toolbar).not.toContain('/client/calendar');expect(toolbar).toContain(`/${locale}/client/forms?caseId=${id}`);expect(toolbar).toContain(`/${locale}/client/resources?caseId=${id}`);
+ const child=renderToStaticMarkup(CoreNavigation({locale,role:'client',clientRole:'child',children:'Synthetic child'}));expect(child).not.toContain(`href="/${locale}/client/forms`);expect(child).not.toContain(`href="/${locale}/client/resources`);
 });
 for(const locale of ['en','he'] as const)it(`${locale}: leaving a client keeps global destinations' own toolbar and bounded payment filter`,()=>{
  navigation.pathname=`/${locale}/app/cases/${id}/sessions/223e4567-e89b-42d3-a456-426614174000`;navigation.query=new URLSearchParams({caseId:id,context:'client',mode:'demo',date:'2026-09-22',view:'day'});

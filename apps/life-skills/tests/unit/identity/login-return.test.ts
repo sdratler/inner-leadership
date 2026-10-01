@@ -8,6 +8,14 @@ it('preserves only a bounded legacy lead ID on a practitioner People return link
     .toBe('/en/app/clients');
 });
 const caseId='123e4567-e89b-42d3-a456-426614174000',sessionId='223e4567-e89b-42d3-a456-426614174000';
+for(const locale of ['he','en'] as const)for(const page of ['forms','resources'])it(`${locale}: preserves named ${page} through ordinary adult and practitioner login without arbitrary query data`,()=>{
+ const client=clientReturnPath(locale,`/${locale}/client/${page}`,{caseId,role:'practitioner',secret:'not-forwarded'});
+ expect(client).toBe(`/${locale}/client/${page}?caseId=${caseId}`);expect(loginReturnDestination(locale,'adult_client',client)).toBe(client);
+ expect(loginReturnDestination(locale,'parent',client)).toBe(`/${locale}/family/schedule`);
+ const staff=practitionerDetailReturnPath(locale,`/${locale}/app/${page}`,{caseId,context:'client',mode:'demo',role:'parent',secret:'not-forwarded'});
+ expect(new URL(staff,'https://private.invalid').searchParams.get('caseId')).toBe(caseId);expect(staff).toContain('/'+page+'?');expect(staff).not.toContain('secret');
+ expect(practitionerDetailReturnPath(locale,`/${locale}/app/${page}`,{caseId:[caseId,caseId],context:['client','client']})).toBe(`/${locale}/app/${page}`);
+});
 for(const locale of ['he','en'] as const)for(const section of ['due','drafts','published','history'])it(`${locale}: preserves exact report ${section} through the bounded practitioner login return`,()=>{
  const result=new URL(practitionerDetailReturnPath(locale,`/${locale}/app/reports`,{caseId,audienceId:sessionId,section,mode:'demo',context:'client',date:'2026-09-22',view:'agenda',secret:'not-forwarded',role:'parent'}),'https://private.invalid');
  expect(Object.fromEntries(result.searchParams)).toEqual({mode:'demo',date:'2026-09-22',view:'agenda',caseId,audienceId:sessionId,context:'client',section});
