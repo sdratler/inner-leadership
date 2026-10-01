@@ -11,6 +11,7 @@ import {durableAuditSink} from "../../../src/features/identity/history.ts";
 import type {IdentityConfig} from "../../../src/features/identity/config.ts";
 import {SESSION_COOKIE} from "../../../src/lib/security/session.ts";
 import {systemClock} from "../../../src/features/identity/types.ts";
+import {unseal} from "../../../src/features/identity/crypto.ts";
 const opened:Fixture[]=[];afterEach(async()=>{await Promise.all(opened.splice(0).map(item=>item.pool.end()));});
 test("native session record keeps observations private and snapshots only current recipients",async()=>{
  const f=await fixture();opened.push(f);const service=new SessionDatabaseService(poolStore(f.pool),f.keyring,systemClock);
@@ -41,6 +42,32 @@ test("native session record keeps observations private and snapshots only curren
  await f.pool.query("UPDATE ls_cases.case_guardians SET revoked_at=NULL,granted_at=clock_timestamp() WHERE workspace_id=$1 AND case_id=$2 AND account_id=$3",[f.workspaceId,f.first.id,f.parentTwo.actor.id]);
  expect(await service.sharedRecaps(f.parentTwo.actor,f.first.id)).toEqual([]);
 },30_000);
+test("withdrawal preserves immutable evidence and binds the new ciphertext to its own consent version",async()=>{
+ const s=await httpFixture(),id=(await s.service.ensureForAppointment(s.f.practitioner.actor,s.f.first.id,await s.f.seed(s.f.at(-24)))).sessionId;
+ const evidence="Synthetic private consent evidence — ראיה\n".repeat(20),input={signedByAccountId:s.f.parent.actor.id,signedAt:s.f.at(-48),authorityState:"checked" as const,recordingAllowed:true,transcriptionAllowed:true,aiProcessingAllowed:true,childInformed:true,policyVersion:"synthetic-recording-v1",evidence};
+ const recorded=await s.service.recordConsent(s.f.practitioner.actor,id,input,randomUUID());
+ const before=(await s.f.pool.query("SELECT evidence_ciphertext FROM ls_sessions.recording_consents WHERE workspace_id=$1 AND case_id=$2 AND version=$3",[s.f.workspaceId,s.f.first.id,recorded.version])).rows[0].evidence_ciphertext;
+ const key=randomUUID(),withdrawn=await s.service.withdrawConsent(s.f.practitioner.actor,id,recorded.version,key);
+ expect(await s.service.withdrawConsent(s.f.practitioner.actor,id,recorded.version,key)).toEqual(withdrawn);
+ const stored=await s.f.pool.query("SELECT id,version,evidence_ciphertext,withdrawn_at FROM ls_sessions.recording_consents WHERE workspace_id=$1 AND case_id=$2 ORDER BY version",[s.f.workspaceId,s.f.first.id]);
+ expect(stored.rows).toHaveLength(2);expect(stored.rows[0].evidence_ciphertext).toBe(before);
+ const decode=(ciphertext:string,caseId:string,version:number)=>{
+  const envelope=JSON.parse(ciphertext) as {v:number;chunks:string[]};expect(envelope.v).toBe(1);
+  return JSON.parse(Buffer.concat(envelope.chunks.map((chunk,index)=>Buffer.from(unseal(chunk,`session:consent:${s.f.workspaceId}:${caseId}:${recorded.consentId}:${version}:${index}`,s.f.keyring),"base64url"))).toString("utf8"));
+ };
+ expect(decode(before,s.f.first.id,recorded.version)).toEqual({evidence});
+ const latest=stored.rows[1];expect(decode(latest.evidence_ciphertext,s.f.first.id,withdrawn.version)).toEqual({evidence});
+ expect(latest.evidence_ciphertext).not.toBe(before);
+ expect(()=>decode(latest.evidence_ciphertext,s.f.second.id,withdrawn.version)).toThrow();
+ expect(()=>decode(latest.evidence_ciphertext,s.f.first.id,recorded.version)).toThrow();
+ for(const row of stored.rows)expect(row.evidence_ciphertext).not.toContain("Synthetic private consent");
+ expect(latest.withdrawn_at.toISOString()).toBe(withdrawn.withdrawnAt);
+ expect((await s.service.detail(s.f.practitioner.actor,id)).processing.permissionToRecord).toBe(false);
+ await expect(s.service.withdrawConsent(s.f.practitioner.actor,id,recorded.version,randomUUID())).rejects.toMatchObject({code:"CONFLICT"});
+ await expect(s.service.withdrawConsent(s.f.parent.actor,id,withdrawn.version,key)).rejects.toMatchObject({code:"NOT_FOUND"});
+ expect((await s.f.pool.query("SELECT count(*)::integer AS n FROM ls_sessions.recording_jobs WHERE workspace_id=$1",[s.f.workspaceId])).rows[0].n).toBe(0);
+},30_000);
+
 test("uppercase real UUID routes/body projection round-trip encrypted values, replay and canonical history",async()=>{
  const s=await httpFixture(),id=(await s.service.ensureForAppointment(s.f.practitioner.actor,s.f.first.id,await s.f.seed(s.f.at(-24)))).sessionId,path=`/${id.toUpperCase()}/observations`,key=randomUUID(),values=blankMetrics();values.engagement={score:6,notObservedReason:null,note:"Synthetic uppercase deep-link observation"};
  const body=sessionCommandInput(path,{sessionId:id,values,expectedRevision:0}),parts=[id.toUpperCase(),"observations"];
@@ -48,6 +75,35 @@ test("uppercase real UUID routes/body projection round-trip encrypted values, re
  const replay=await s.http.handle(s.request(path,body,s.f.practitioner.token,key),parts);expect(replay.status).toBe(201);expect((await replay.json()).data).toEqual(saved);
  const detail=await s.http.handle(s.request(`/${id.toUpperCase()}`),[id.toUpperCase()]);expect(detail.status).toBe(200);expect((await detail.json()).data.metrics).toEqual(values);
  const history=await s.http.handle(s.request(`/observations?caseId=${s.f.first.id.toUpperCase()}`),["observations"]);expect(history.status).toBe(200);expect((await history.json()).data.records[0]).toEqual(saved);
+},30_000);
+
+test("withdrawal rotates to the active key without altering old evidence or replaying another version",async()=>{
+ const s=await httpFixture(),id=(await s.service.ensureForAppointment(s.f.practitioner.actor,s.f.first.id,await s.f.seed(s.f.at(-24)))).sessionId;
+ const input={signedByAccountId:s.f.parent.actor.id,signedAt:s.f.at(-48),authorityState:"checked" as const,recordingAllowed:true,transcriptionAllowed:true,aiProcessingAllowed:true,childInformed:true,policyVersion:"synthetic-rotation-v1",evidence:"SYNTHETIC_ROTATION_EVIDENCE"};
+ const recorded=await s.service.recordConsent(s.f.practitioner.actor,id,input,randomUUID());
+ const original=(await s.f.pool.query("SELECT evidence_ciphertext FROM ls_sessions.recording_consents WHERE workspace_id=$1 AND case_id=$2",[s.f.workspaceId,s.f.first.id])).rows[0].evidence_ciphertext;
+ const ring={activeKeyId:"rotated",keys:{...s.f.keyring.keys,rotated:randomBytes(32)}},rotated=new SessionDatabaseService(poolStore(s.f.pool),ring,systemClock),key=randomUUID();
+ const result=await rotated.withdrawConsent(s.f.practitioner.actor,id,recorded.version,key);
+ const stored=(await s.f.pool.query("SELECT version,evidence_ciphertext FROM ls_sessions.recording_consents WHERE workspace_id=$1 AND case_id=$2 ORDER BY version",[s.f.workspaceId,s.f.first.id])).rows;
+ expect(stored).toHaveLength(2);expect(stored[0].evidence_ciphertext).toBe(original);
+ const chunks=(JSON.parse(stored[1].evidence_ciphertext) as {chunks:string[]}).chunks;
+ expect(chunks.every(chunk=>JSON.parse(chunk).kid==="rotated")).toBe(true);
+ const decoded=JSON.parse(Buffer.concat(chunks.map((chunk,index)=>Buffer.from(unseal(chunk,`session:consent:${s.f.workspaceId}:${s.f.first.id}:${recorded.consentId}:${result.version}:${index}`,ring),"base64url"))).toString("utf8"));
+ expect(decoded).toEqual({evidence:input.evidence});expect(()=>unseal(chunks[0]!,`session:consent:${s.f.workspaceId}:${s.f.first.id}:${recorded.consentId}:${result.version}:0`,s.f.keyring)).toThrow();
+ expect(await rotated.withdrawConsent(s.f.practitioner.actor,id,recorded.version,key)).toEqual(result);
+ expect((await rotated.detail(s.f.practitioner.actor,id)).processing.permissionToRecord).toBe(false);
+},30_000);
+
+test("unverifiable evidence cannot be silently copied or leave a partially committed withdrawal receipt",async()=>{
+ const s=await httpFixture(),id=(await s.service.ensureForAppointment(s.f.practitioner.actor,s.f.first.id,await s.f.seed(s.f.at(-24)))).sessionId;
+ const input={signedByAccountId:s.f.parent.actor.id,signedAt:s.f.at(-48),authorityState:"needs_review" as const,recordingAllowed:false,transcriptionAllowed:false,aiProcessingAllowed:false,childInformed:false,policyVersion:"synthetic-unavailable-v1",evidence:"SYNTHETIC_UNAVAILABLE_EVIDENCE"};
+ const recorded=await s.service.recordConsent(s.f.practitioner.actor,id,input,randomUUID()),key=randomUUID();
+ const unavailable=new SessionDatabaseService(poolStore(s.f.pool),{activeKeyId:"other",keys:{other:randomBytes(32)}},systemClock);
+ await expect(unavailable.withdrawConsent(s.f.practitioner.actor,id,recorded.version,key)).rejects.toMatchObject({code:"UNAVAILABLE"});
+ expect((await s.f.pool.query("SELECT version,withdrawn_at FROM ls_sessions.recording_consents WHERE workspace_id=$1 AND case_id=$2",[s.f.workspaceId,s.f.first.id])).rows).toMatchObject([{version:1,withdrawn_at:null}]);
+ expect((await s.f.pool.query("SELECT count(*)::integer AS n FROM ls_sessions.command_receipts WHERE workspace_id=$1 AND operation='withdraw_consent' AND idempotency_key=$2",[s.f.workspaceId,key])).rows[0].n).toBe(0);
+ const result=await s.service.withdrawConsent(s.f.practitioner.actor,id,recorded.version,key);expect(result.version).toBe(2);
+ expect((await s.service.detail(s.f.practitioner.actor,id)).processing.permissionToRecord).toBe(false);
 },30_000);
 
 async function httpFixture(){
