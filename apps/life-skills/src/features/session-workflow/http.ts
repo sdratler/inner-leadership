@@ -28,7 +28,7 @@ export class SessionHttp {
       return {data:await this.service.list(actor,caseId.data,selected?.success?selected.data:undefined)};
     }
     if(path.length===1&&path[0]==="ensure"){if(request.method!=="POST"||url.search)throw new AppError("INVALID_REQUEST");const body=await readJson(request,z.strictObject({caseId:uuid,appointmentId:uuid}));return {data:await this.service.ensureForAppointment(actor,body.caseId,body.appointmentId),status:201};}
-    if(path.length===1){if(request.method!=="GET"||url.search)throw new AppError("INVALID_REQUEST");return {data:await this.service.detail(actor,uuid.parse(path[0]))};}
+    if(path.length===1){const query=url.searchParams,locale=query.has("analysisLocale")?z.enum(["en","he"]).safeParse(query.get("analysisLocale")):null;if(request.method!=="GET"||[...query.keys()].some(name=>name!=="analysisLocale")||query.getAll("analysisLocale").length>1||locale&&!locale.success)throw new AppError("INVALID_REQUEST");return {data:await this.service.detail(actor,uuid.parse(path[0]),locale?.success?locale.data:"en")};}
     if(path.length===2&&path[1]==="disclosures"&&request.method==="GET"){
       const query=url.searchParams,id=query.has("disclosureId")?uuid.safeParse(query.get("disclosureId")):null;
       if([...query.keys()].some(name=>name!=="disclosureId")||query.getAll("disclosureId").length>1||id&&!id.success)throw new AppError("INVALID_REQUEST");return {data:await this.service.disclosures(actor,uuid.parse(path[0]),id?.success?id.data:undefined)};
