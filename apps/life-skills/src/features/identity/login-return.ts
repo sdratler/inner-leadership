@@ -30,7 +30,7 @@ export function practitionerReturnPath(locale: Locale, page: "calendar" | "clien
     if (one("mode") === "demo") params.set("mode", "demo");
   } else if (page === "practice") {
     for (const key of ["caseId", "audienceId", "assignmentId"]) if (isCaseId(one(key))) params.set(key, one(key));
-    if (one("section") === "checkins") params.set("section", "checkins");
+    if (["goals", "commitments", "checkins"].includes(one("section"))) params.set("section", one("section"));
   } else {
     if (["all", "prospects", "paid", "active", "archived"].includes(one("section"))) params.set("section", one("section"));
     if (["all", "today", "new", "intake", "payment", "booking", "archived"].includes(one("filter"))) params.set("filter", one("filter"));

@@ -6,6 +6,24 @@ vi.mock('next/navigation', () => ({ usePathname: () => navigation.pathname, useS
 import { CoreNavigation } from '../../../src/ui/workspace/core-navigation.tsx';
 
 const id = '123e4567-e89b-12d3-a456-426614174000';
+const audienceId='223e4567-e89b-42d3-a456-426614174000';
+for(const locale of ['en','he'] as const)for(const section of ['practice','goals','commitments','checkins'])it(`${locale}: practice ${section} uses one contextual toolbar, preserving authorized case and audience hints`,()=>{
+ navigation.pathname=`/${locale}/app/practice`;navigation.query=new URLSearchParams({caseId:id,audienceId,context:'client',...(section==='practice'?{}:{section})});
+ const html=renderToStaticMarkup(CoreNavigation({locale,role:'practitioner',children:'Synthetic practice'}));
+ const toolbar=html.match(/<nav class="lsu-top-tabs"[^>]*>(.*?)<\/nav>/)?.[1]??'';
+ const links=[...toolbar.matchAll(/<a[^>]+href="([^"]+)"([^>]*)>(.*?)<\/a>/g)];
+ expect(links).toHaveLength(4);expect(links.filter(link=>link[2]!.includes('aria-current="page"'))).toHaveLength(1);
+ for(const [i,key] of ['practice','goals','commitments','checkins'].entries()){
+  const link=links[i]!;const url=new URL(link[1]!.replaceAll('&amp;','&'),'https://private.invalid');
+  expect(url.pathname).toBe(`/${locale}/app/practice`);expect(url.hash).toBe('');
+  expect(url.searchParams.get('caseId')).toBe(id);expect(url.searchParams.get('audienceId')).toBe(audienceId);expect(url.searchParams.get('context')).toBe('client');
+  expect(url.searchParams.get('section')).toBe(key==='practice'?null:key);
+  expect(link[2]!.includes('aria-current="page"')).toBe(key===section);
+ }
+ expect(toolbar).not.toContain(locale==='he'?'הגדרות':'Settings');
+ const label=({en:{practice:'Instructions',goals:'Goals',commitments:'Commitments',checkins:'Check-ins'},he:{practice:'הנחיות',goals:'מטרות',commitments:'מחויבויות',checkins:'דיווחים'}} as const)[locale][section as 'practice'|'goals'|'commitments'|'checkins'];
+ expect(html.match(/<nav class="lsu-breadcrumbs"[^>]*>(.*?)<\/nav>/)?.[1]).toContain(label);
+});
 for (const locale of ['en', 'he'] as const) {
  it(`${locale}: case-route context reaches each practitioner destination in desktop and mobile navigation`, () => {
   navigation.pathname = `/${locale}/app/cases/${id}`; navigation.query = new URLSearchParams();

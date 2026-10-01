@@ -24,6 +24,13 @@ it.each(['he','en'] as const)('preserves exact bounded %s practitioner check-in 
  expect(loginReturnDestination(locale,'practitioner',path)).toBe(path);
  expect(practitionerReturnPath(locale,'practice',{caseId:['valid','repeated'],audienceId:'malformed',section:'private'})).toBe(`/${locale}/app/practice`);
 });
+for(const locale of ['he','en'] as const)for(const section of ['goals','commitments'])it(`${locale}: preserves the authorized practitioner practice ${section} view through normal login`,()=>{
+ const path=practitionerReturnPath(locale,'practice',{caseId,audienceId:sessionId,section,role:'parent',secret:'not-forwarded'});
+ expect(path).toBe(`/${locale}/app/practice?caseId=${caseId}&audienceId=${sessionId}&section=${section}`);
+ expect(loginReturnDestination(locale,'practitioner',path)).toBe(path);
+ expect(loginReturnDestination(locale,'child',path)).toBe(`/${locale}/client`);
+ expect(practitionerReturnPath(locale,'practice',{section:[section,section]})).toBe(`/${locale}/app/practice`);
+});
 it('retains exact client check-in context for both real subject roles',()=>{
  for(const locale of ['he','en'] as const){
   const path=clientReturnPath(locale,`/${locale}/client/practice`,{caseId,audienceId:sessionId,section:'checkins',secret:'not-forwarded'});
