@@ -2,6 +2,8 @@
 
 This implements the owner's 11 September request to clarify rambles, save decisions and complete work economically. It extends the existing registered Operating Protocol; it does not introduce another control workbook, SDK or business master. Current task-specific authorization remains valid.
 
+For the current Life Skills app completion, read [LS-PROCESS-20260930-03](https://docs.google.com/document/d/1NJnQXZcWMFZUFH-7c9apkqGRRRL9TzsvNd7x-GM2040/edit) after the CURRENT source entries. It replaces earlier process-continuation editions. This repository workflow remains derived: later scoped native People and protected same-target release decisions are not undone by an older local-only snapshot, and the process pointer grants no new provider, spending, data or deferred billing authority.
+
 ## Authority by domain
 
 | Question | Authority | Evidence of completion |
