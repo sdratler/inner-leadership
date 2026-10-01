@@ -2,6 +2,7 @@ import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {expect,test} from 'vitest';
 import {asId} from '../../../src/lib/ids.ts';
+import {readFileSync} from 'node:fs';
 import {CoordinationForm,PracticeCoordinationWorkspace} from '../../../src/features/home-practice/coordination-workspace.tsx';
 const own=asId('123e4567-e89b-12d3-a456-426614174000','account'),other=asId('123e4567-e89b-12d3-a456-426614174001','account');
 const handlers={onChange:()=>{},onSave:()=>{},onCancel:()=>{}};
@@ -17,4 +18,11 @@ test.each(['en','he'] as const)('%s authorized shared parents can choose explici
  const html=renderToStaticMarkup(createElement(CoordinationForm,{...handlers,locale,page,assignees:[own,other],reminders:[own],mode:'each_assignee',locked:false}));
  expect(html).toContain('value="each_assignee" selected=""');expect(html).toContain('value="any_assignee"');expect(html).toContain('<legend');expect(html).toContain(locale==='he'?'הורה מורשה 2':'Authorized parent 2');
  const empty=renderToStaticMarkup(createElement(CoordinationForm,{...handlers,locale,page,assignees:[],reminders:[],mode:'any_assignee',locked:false}));expect(empty).toContain('type="submit" disabled=""');
+});
+test('participant labels stay consistent when selection order differs, and phone actions wrap as complete readable buttons',()=>{
+ const page={ownAccountId:own,role:'parent' as const,eligibleAccountIds:[other,own],versions:[],hasMore:false};
+ const html=renderToStaticMarkup(createElement(CoordinationForm,{...handlers,locale:'en',page,assignees:[own,other],reminders:[],mode:'each_assignee',locked:false}));
+ expect(html.match(/Authorized parent 1/g)).toHaveLength(2);expect(html).not.toContain('Authorized parent 2');
+ const css=readFileSync(new URL('../../../src/features/home-practice/coordination.css',import.meta.url),'utf8');
+ expect(css).toContain('flex-wrap: wrap');expect(css).toContain('min-inline-size: 0');expect(css).toContain('word-break: normal');expect(css).toContain('(max-width: 520px)');
 });
