@@ -9,6 +9,23 @@ import type {NativeContactRow} from "../../../src/features/contact-ops/server/na
 import {selectNativeContacts,type NativeContactReference} from "../../../src/features/contact-ops/server/native-directory.ts";
 import nextConfig from "../../../next.config.ts";
 const personId="00000000-0000-4000-8000-000000000001",fields={stage:"New inquiry",nextAction:"Synthetic next action",followUpDate:"2026-09-28",notes:"  Synthetic saved note\nהערה סינתטית שמורה  "};
+test.each(["he","en"] as const)("%s native People labels are display-only in the list and profile",locale=>{
+ const row:NativeContactRow={personId,displayName:"Synthetic person",identityKind:"adult",...fields,nextAction:"Respond to inbound WhatsApp inquiry",version:1,mode:"live",archived:false,doNotContact:false,references:[],caseLinks:[]};
+ const props={locale,view:"all" as const,initial:{source:"native" as const,authorityEpoch:3,page:{page:1,pages:1,pageSize:12,total:1,items:[row]}},initialFilters:{query:"",stage:"New inquiry",language:"",due:"any" as const},onSheet:()=>{}};
+ const list=renderToStaticMarkup(createElement(NativePeopleWorkspace,props));
+ const stage=locale==="he"?"פנייה חדשה":"New inquiry",action=locale==="he"?"מענה לפניית WhatsApp נכנסת":"Respond to inbound WhatsApp inquiry";
+ expect(list).toContain(`<td>${stage}</td>`);expect(list).toContain(`<td>${action}</td>`);expect(list).toContain(`<span>${action}</span>`);
+ expect(list).toContain('value="New inquiry"');
+ const profile=renderToStaticMarkup(createElement(NativePeopleWorkspace,{...props,initialPersonId:personId}));
+ expect(profile).toContain(`<p>${stage}</p>`);expect(profile).toContain('value="New inquiry"');expect(profile).toContain('value="Respond to inbound WhatsApp inquiry"');
+ expect(row.stage).toBe("New inquiry");expect(row.nextAction).toBe("Respond to inbound WhatsApp inquiry");
+});
+test.each(["constructor","toString","__proto__","  Practitioner-written stage  "])("native People preserves unknown %s text in Hebrew",stage=>{
+ const row:NativeContactRow={personId,displayName:"Synthetic person",identityKind:"adult",...fields,stage,nextAction:stage,version:1,mode:"live",archived:false,doNotContact:false,references:[],caseLinks:[]};
+ const props={locale:"he" as const,view:"all" as const,initial:{source:"native" as const,authorityEpoch:3,page:{page:1,pages:1,pageSize:12,total:1,items:[row]}},onSheet:()=>{}};
+ const list=renderToStaticMarkup(createElement(NativePeopleWorkspace,props));expect(list).toContain(`<td>${stage}</td>`);expect(list).toContain(`<span>${stage}</span>`);
+ const profile=renderToStaticMarkup(createElement(NativePeopleWorkspace,{...props,initialPersonId:personId}));expect(profile).toContain(`<p>${stage}</p>`);expect(profile).toContain(`value="${stage}"`);
+});
 test("People page deep links accept only the bounded server page form",()=>{
  for(const [query,page] of [["",1],["page=2",2],["page=99999",99999],["page=0",1],["page=01",1],["page=100000",1],["page=-2",1],["page=2.5",1],["page=abc",1]] as const)
   expect(peoplePageFromQuery(new URLSearchParams(query))).toBe(page);
