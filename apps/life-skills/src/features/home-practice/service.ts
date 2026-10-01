@@ -26,6 +26,7 @@ import type {
   CompletionMode,
   GoalId,
   OccurrencePeriod,
+  PracticeManagementPage,
   PublishedPracticeVersion,
   ScheduledOccurrence,
 } from "./types.ts";
@@ -333,6 +334,23 @@ export class HomePracticeService implements PracticeVersionReader {
       audienceAccess(current, await loadCase(tx, actor.workspaceId, caseId), await loadGuardians(tx, actor.workspaceId, caseId), audience);
       const rows = await tx.query<VersionRow>(VERSION_SELECT + " WHERE a.workspace_id=$1 AND a.case_id=$2 AND a.audience_id=$3 AND v.state='published' ORDER BY v.published_at DESC,v.id LIMIT 100", [actor.workspaceId, caseId, audienceId]);
       return rows.map(row => this.project(row));
+    });
+  }
+
+  async management(actor: Actor, caseId: CaseId, audienceId: AudienceId): Promise<PracticeManagementPage> {
+    return this.store.transaction(async tx => {
+      const current = await freshActor(tx, actor, this.clock.now());
+      // Ordinary practitioner ownership is required even for published rows.
+      // A family grant, role header or matching account name cannot read drafts.
+      caseAccess(current, await loadCase(tx, actor.workspaceId, caseId), await loadGuardians(tx, actor.workspaceId, caseId), "write");
+      if (!await loadAudience(tx, actor.workspaceId, caseId, audienceId)) throw new AppError("NOT_FOUND");
+      const select = VERSION_SELECT.replace("\n FROM ls_practice.practice_assignments", ",v.state,COALESCE(a.active_version_id=v.id,false) AS active\n FROM ls_practice.practice_assignments");
+      const rows = await tx.query<VersionRow & { state: "draft" | "published"; active: boolean }>(select +
+        " WHERE a.workspace_id=$1 AND a.case_id=$2 AND a.audience_id=$3 ORDER BY v.created_at DESC,v.id LIMIT 101", [actor.workspaceId, caseId, audienceId]);
+      return { hasMore: rows.length > 100, items: rows.slice(0, 100).map(row => {
+        const { instructionsCiphertext, publishedAt, ...fields } = row;
+        return { ...fields, instructions: unseal(instructionsCiphertext, instructionsAad(row.workspaceId, row.versionId), this.config.keyring), publishedAt: publishedAt?.toISOString() ?? null };
+      }) };
     });
   }
 

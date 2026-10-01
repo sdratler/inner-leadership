@@ -35,6 +35,15 @@ export interface PublishedPracticeVersion {
   immutableSnapshotDigest: string;
 }
 
+/** Practitioner-only authoring projection. Drafts never enter the client list. */
+export interface ManagedPracticeVersion extends Omit<PublishedPracticeVersion, "publishedAt" | "immutableSnapshotDigest"> {
+  state: "draft" | "published";
+  active: boolean;
+  publishedAt: string | null;
+  immutableSnapshotDigest: string | null;
+}
+export interface PracticeManagementPage { items: ManagedPracticeVersion[]; hasMore: boolean; }
+
 export interface CoordinationVersion {
   versionId: CoordinationVersionId;
   assignmentId: PracticeAssignmentId;

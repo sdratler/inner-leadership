@@ -1,6 +1,7 @@
 import { Breadcrumb } from "../../ui/workspace/surfaces.tsx";
 import { PracticeList } from "./practice-list.tsx";
 import { PracticeOccurrenceWorkspace } from "./occurrence-workspace.tsx";
+import { PracticeManagementWorkspace } from "./management-workspace.tsx";
 
 const content = {
   en: {
@@ -41,7 +42,9 @@ export function Ls040FeaturePage({ locale, kind, caseId, audienceId, assignmentI
       <h2 id="current-items">{locale === "he" ? "פריטים נוכחיים" : "Current items"}</h2>
       {kind === "checkins"
         ? <><p><a className="lsw-button lsw-button--secondary" href={base + "/practice" + (practiceQuery.size ? "?" + practiceQuery : "")}>{locale === "he" ? "חזרה להנחיות" : "Back to instructions"}</a></p><PracticeOccurrenceWorkspace locale={locale} role={role} caseId={caseId} audienceId={audienceId} /></>
-        : <PracticeList locale={locale} kind={kind} caseId={caseId} audienceId={audienceId} selectedAssignmentId={assignmentId} role={role} />}
+        : role === "practitioner"
+          ? <PracticeManagementWorkspace locale={locale} kind={kind} caseId={caseId} audienceId={audienceId} />
+          : <PracticeList locale={locale} kind={kind} caseId={caseId} audienceId={audienceId} selectedAssignmentId={assignmentId} role={role} />}
     </section>
     <aside className="lsw-attention" aria-label={locale === "he" ? "פרטיות" : "Privacy"}><div>
       <h2>{locale === "he" ? "מידע פרטי" : "Private information"}</h2>

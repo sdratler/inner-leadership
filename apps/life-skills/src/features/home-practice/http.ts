@@ -108,7 +108,12 @@ export class Ls040Http {
         } else data = await this.services.commitments.create(actor, await readJson(request, createCommitment), requestId);
       } else if (url.pathname === "/api/home-practice") {
         if (request.method === "GET") {
-          if (url.searchParams.has("view")) {
+          if (url.searchParams.get("view") === "management") {
+            const parsed = z.object({ view: z.literal("management"), caseId, audienceId }).strict()
+              .safeParse(exactQuery(url, ["view", "caseId", "audienceId"]));
+            if (!parsed.success) throw new AppError("INVALID_REQUEST");
+            data = await this.services.practice.management(actor, parsed.data.caseId, parsed.data.audienceId);
+          } else if (url.searchParams.has("view")) {
             const parsed = z.object({ view: z.literal("occurrences"), caseId, audienceId, from: calendarDate, to: calendarDate }).strict()
               .safeParse(exactQuery(url, ["view", "caseId", "audienceId", "from", "to"]));
             if (!parsed.success) throw new AppError("INVALID_REQUEST");

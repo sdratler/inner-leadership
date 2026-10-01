@@ -100,6 +100,36 @@ async function setup() {
   return { f, config, sessions, practice, request, proxyRequest, listPath, draftInput, draft, publish, clientIdentity };
 }
 
+test("native practitioner authoring reads saved drafts and exact active versions without exposing drafts to clients", async () => {
+  const h = await setup(), { f } = h, saved = await h.draft();
+  const path = `/api/home-practice?view=management&caseId=${f.first.id}&audienceId=${f.first.audienceId}`;
+  const read = await h.proxyRequest("GET", path);
+  expect(read.status).toBe(200); expect(read.headers.get("cache-control")).toBe("private, no-store");
+  expect((await read.json()).data).toMatchObject({ hasMore: false, items: [{ ...saved, state: "draft", active: false, instructions: h.draftInput().instructions, publishedAt: null }] });
+  expect((await (await h.request("GET", h.listPath(), undefined, f.parent.token)).json()).data).toEqual([]);
+  for (const subject of [f.parent, f.outsider, await h.clientIdentity("child")])
+    expect((await h.request("GET", path, undefined, subject.token)).status).toBe(404);
+  expect((await h.request("GET", path, undefined, null)).status).toBe(401);
+  expect((await h.request("GET", path.replace(f.first.id, f.second.id))).status).toBe(404);
+  expect((await h.request("GET", path + "&unknown=1")).status).toBe(400);
+  expect((await h.request("POST", "/api/home-practice", { action: "publish", ...saved })).status).toBe(201);
+  const revision = await h.request("POST", "/api/home-practice", { action: "revise", assignmentId: saved.assignmentId, instructions: "Synthetic reviewed revision", startsOn: h.draftInput().startsOn });
+  expect(revision.status).toBe(201); const revised = (await revision.json()).data;
+  const versions = (await (await h.request("GET", path)).json()).data.items;
+  expect(versions).toEqual(expect.arrayContaining([
+    expect.objectContaining({ versionId: saved.versionId, state: "published", active: true, instructions: h.draftInput().instructions }),
+    expect.objectContaining({ versionId: revised.versionId, state: "draft", active: false, instructions: "Synthetic reviewed revision" }),
+  ]));
+  const childRead = (await (await h.request("GET", h.listPath(), undefined, f.parent.token)).json()).data;
+  expect(childRead).toHaveLength(1); expect(childRead[0].versionId).toBe(saved.versionId);
+  expect((await h.request("POST", "/api/home-practice", { action: "publish", assignmentId: saved.assignmentId, versionId: revised.versionId })).status).toBe(201);
+  const published = (await (await h.request("GET", path)).json()).data.items;
+  expect(published.find((v: { versionId: string }) => v.versionId === saved.versionId).active).toBe(false);
+  expect(published.find((v: { versionId: string }) => v.versionId === revised.versionId).active).toBe(true);
+  await f.pool.query("UPDATE ls_identity.accounts SET state='revoked' WHERE workspace_id=$1 AND id=$2", [f.workspaceId, f.practitioner.actor.id]);
+  expect((await h.request("GET", path)).status).toBe(401);
+});
+
 test.each(["parent", "child", "adult_client"] as const)("native %s occurrence read returns frozen instructions and only its own latest check-in", async role => {
   const h = await setup(), { f } = h;
   const subject = role === "parent" ? f.parent : await h.clientIdentity(role);
