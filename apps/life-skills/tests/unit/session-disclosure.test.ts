@@ -37,3 +37,7 @@ test("actual use and revocation require exact protected status readback; no loca
 test.each(["en","he"] as const)("%s retained panel starts collapsed, unchecked, with no automatic signature or clinical unlock",locale=>{
  const model={...scope,consentSigners:[{accountId:signer,name:"DEMO Parent"}]} as SessionDetail,html=renderToStaticMarkup(createElement(SessionDisclosurePanel,{locale,model}));expect(html).toContain(locale==="en"?"Scoped disclosure records":"תיעוד מסירת מידע מוגדרת");expect(html).not.toMatch(/<details[^>]* open/);expect(html).not.toMatch(/checked=""/);expect(html).toContain('value="needs_review"');expect(html).toContain(locale==="en"?"not a blanket waiver":"אינו ויתור גורף");expect(html).toContain('step="1"');expect(html).not.toContain('role="alert"');
 });
+test.each(["en","he"] as const)("%s scoped authority and channel expose exact names without option-text contamination",locale=>{
+ const model={...scope,consentSigners:[{accountId:signer,name:"DEMO Parent"}]} as SessionDetail,html=renderToStaticMarkup(createElement(SessionDisclosurePanel,{locale,model}));
+ expect(html).toContain(`aria-label="${locale==="en"?"Authority status":"מצב הסמכות"}"`);expect(html).toContain(`aria-label="${locale==="en"?"Authorized communication channel":"ערוץ התקשורת שהותר"}"`);
+});
