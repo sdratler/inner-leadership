@@ -3,7 +3,7 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import {useRouter,useSearchParams} from 'next/navigation';
 import type {Locale} from '../../lib/locale.ts';
 import {accountRead,sessionInfo} from '../identity/client.ts';
-import {FormsWorkspace} from '../forms/workspace.tsx';
+import {FormsTemplatesWorkspace,FormsWorkspace} from '../forms/workspace.tsx';
 import {ResourcesWorkspace} from '../resources/workspace.tsx';
 import {workspaceContext,workspaceHref} from '../../ui/workspace/navigation-model.ts';
 type Role='parent'|'practitioner'|'adult_client';
@@ -24,11 +24,20 @@ export function AuthorizedItems({locale,role,mode,initialCaseId=''}:Props){
  const [cases,setCases]=useState<Case[]|null>(null),[error,setError]=useState(false),[revision,setRevision]=useState(0),[selected,setSelected]=useState(initialCaseId);
  useEffect(()=>{let active=true;void accountRead<Case[]>('cases').then(rows=>{if(active){setCases(role==='parent'?rows.filter(row=>row.kind==='minor'):role==='adult_client'?rows.filter(row=>row.kind==='adult'):rows);setError(false)}}).catch(()=>{if(active){setCases(null);setError(true)}});return()=>{active=false}},[role,revision]);
  const current=cases?.find(item=>item.id===selected)||(!selected?cases?.[0]:undefined),invalid=Boolean(cases&&selected&&!current);
- return <section className="lsw-stack" lang={locale} dir={locale==='he'?'rtl':'ltr'}><h1>{t[mode]}</h1>{mode==='forms'&&role==='practitioner'&&<aside className="lsu-state"><strong>{locale==='he'?'טופס היכרות, הסכמה וגילוי':'Intake, consent and disclosure'}</strong><p>{locale==='he'?'טופס ההיכרות הקיים מנוהל בנפרד מטפסים שמוקצים לתיק.':'The existing intake form is managed separately from forms assigned to a client case.'}</p><a href={`/${locale}/intake/staff`}>{locale==='he'?'פתיחת ניהול טופס ההיכרות':'Open intake form management'}</a></aside>}{error||invalid?<div role="alert"><p>{t.error}</p><button onClick={()=>setRevision(n=>n+1)}>{t.retry}</button></div>:!cases?<p role="status">{t.load}</p>:!cases.length?<p>{t.empty}</p>:<>
+ return <section className="lsw-stack lsw-shared-items" lang={locale} dir={locale==='he'?'rtl':'ltr'}><h1>{t[mode]}</h1>{error||invalid?<div role="alert"><p>{t.error}</p><button onClick={()=>setRevision(n=>n+1)}>{t.retry}</button></div>:!cases?<p role="status">{t.load}</p>:!cases.length?<p>{t.empty}</p>:<>
  <label className="lsw-field">{t.case}<select aria-label={t.case} className="lsw-input" value={current?.id??''} onChange={event=>{const next=event.target.value;if(next===current?.id||!cases.some(item=>item.id===next))return;if((dirty.current.forms||dirty.current.resources)&&!window.confirm(locale==='he'?'יש קלט שלא נשמר או פעולה שטרם אושרה. לעבור לתיק אחר ולאבד את הקלט?':'There is unsaved input or an unconfirmed action. Switch cases and discard this input?'))return;dirty.current={forms:false,resources:false};setSelected(next);const root=role==='parent'?'family':role==='adult_client'?'client':'app',context=workspaceContext(Object.fromEntries(query));router.replace(workspaceHref(locale,`${root}/${mode==='both'?'resources':mode}`,next,context),{scroll:false})}}>{cases.map(item=><option value={item.id} key={item.id}>{item.displayName}</option>)}</select></label>
  {current&&(mode==='forms'||mode==='both')&&<AuthorizedForms key={`${locale}:${role}:${current.id}`} locale={locale} role={role} item={current} onDirtyChange={formsDirty}/>}
  {current&&(mode==='resources'||mode==='both')&&<ResourcesWorkspace key={`${locale}:${role}:${current.id}`} locale={locale} role={role} caseId={current.id} onDirtyChange={resourcesDirty}/>}</>}
+ {mode==='forms'&&role==='practitioner'&&<details className="lsw-card"><summary>{locale==='he'?'טופס היכרות, הסכמה וגילוי':'Intake, consent and disclosure'}</summary><p>{locale==='he'?'טופס ההיכרות הקיים מנוהל בנפרד מטפסים שמוקצים לתיק.':'The existing intake form is managed separately from forms assigned to a client case.'}</p><a href={`/${locale}/intake/staff`}>{locale==='he'?'פתיחת ניהול טופס ההיכרות':'Open intake form management'}</a></details>}
  </section>;
+}
+/** Same template service and authoring controls; no invented case or parallel template store. */
+export function AuthorizedTemplates({locale}:{locale:Locale}){
+ const [csrf,setCsrf]=useState<string|null>(null),[error,setError]=useState(false),[revision,setRevision]=useState(0);
+ useEffect(()=>{let active=true;void sessionInfo().then(session=>{if(session.role!=='practitioner')throw Error('ROLE_MISMATCH');if(active){setCsrf(session.csrfToken);setError(false)}}).catch(()=>{if(active){setCsrf(null);setError(true)}});return()=>{active=false}},[revision]);
+ if(error)return <section role='alert'><p>{words[locale].error}</p><button onClick={()=>setRevision(value=>value+1)}>{words[locale].retry}</button></section>;
+ if(!csrf)return <p role='status'>{words[locale].load}</p>;
+ return <FormsTemplatesWorkspace locale={locale} csrfToken={csrf}/>;
 }
 export function AuthorizedForms({locale,role,item,onDirtyChange}:{locale:Locale;role:Role;item:Case;onDirtyChange?:(dirty:boolean)=>void}){
  const t=words[locale];const [data,setData]=useState<{csrf:string;audiences:Option[];responders:Option[]}|null>(null),[error,setError]=useState(false),[revision,setRevision]=useState(0);

@@ -10,8 +10,8 @@ const hook=vi.hoisted(()=>{const slots:Slot[]=[],pending:Array<{index:number;eff
  useEffect(effect:()=>void|(()=>void),deps?:readonly unknown[]){const index=cursor++,slot=slots[index];if(!slot){slots[index]={kind:'effect',deps,cleanup:undefined};pending.push({index,effect});return}if(slot.kind!=='effect')throw Error('HOOK_ORDER');if(!deps||!slot.deps||deps.length!==slot.deps.length||deps.some((v,i)=>v!==slot.deps?.[i])){slot.deps=deps;pending.push({index,effect})}}
 }});
 const fetchMock=vi.hoisted(()=>vi.fn());
-vi.mock('react',async original=>({...await original<typeof import('react')>(),useState:hook.useState,useRef:hook.useRef,useEffect:hook.useEffect}));
-import {FormsCaseWorkspace,FormsWorkspace,FormField} from '../../src/features/forms/workspace.tsx';
+vi.mock('react',async original=>({...await original<typeof import('react')>(),useState:hook.useState,useRef:hook.useRef,useEffect:hook.useEffect,useCallback:<T,>(callback:T)=>callback}));
+import {FormsCaseWorkspace,FormsTemplatesWorkspace,FormsWorkspace,FormField} from '../../src/features/forms/workspace.tsx';
 import {UnsavedChangesGuard} from '../../src/ui/workspace/draft-guard.tsx';
 import type {FormDefinition} from '../../src/features/forms/schema.ts';
 const caseId='123e4567-e89b-12d3-a456-426614174000',templateId='223e4567-e89b-12d3-a456-426614174000',parentId='323e4567-e89b-12d3-a456-426614174000';
@@ -57,4 +57,30 @@ it('does not allow cancellation of an uncertain submission or mutation of its pr
  expect(all(output,item=>item.type==='button'&&text(item.props.children)==='Cancel answering')[0]?.props.disabled).toBe(true);
  expect(all(output,item=>item.type===UnsavedChangesGuard)[0]?.props.dirty).toBe(true);
  button(output,'Retry the same submission')();await tick();expect((posts()[0]![1] as RequestInit).body).toBe((posts()[1]![1] as RequestInit).body);
+});
+it('loads Settings templates without a fabricated case or assignment read and has no assign/respond/review controls',async()=>{
+ fetchMock.mockImplementation((url:string)=>Promise.resolve(reads(url)));
+ const view=()=>hook.render(()=>FormsCaseWorkspace({role:'practitioner',locale:'en',csrfToken:'synthetic-csrf',cases:[],caseKind:'adult',templateOnly:true}));
+ view();hook.flush();await tick();const output=view();
+ expect(fetchMock.mock.calls.map(call=>call[0])).toEqual(['/api/forms/templates?locale=en']);
+ expect(all(output,node=>node.type==='form')).toHaveLength(1);
+ expect(text(output)).not.toContain('Assign form');expect(text(output)).not.toContain('Forms assigned to this client');
+ expect(all(output,node=>node.type==='a')).toHaveLength(0);expect(posts()).toHaveLength(0);
+});
+it('keeps saved assignments ahead of optional authoring and distinguishes template versions from completed forms',async()=>{
+ fetchMock.mockImplementation((url:string)=>Promise.resolve(reads(url)));const output=await ready();
+ const labels=text(output);expect(labels.indexOf('Forms assigned to this client')).toBeLessThan(labels.indexOf('Author a new template version'));
+ expect(labels).toContain('Templates in Settings');expect(labels).toContain('Awaiting response');
+});
+it('preserves a dirty Settings template when an audience change is cancelled and switches only after confirmation',()=>{
+ vi.stubGlobal('window',{confirm:vi.fn(()=>false)});
+ const view=()=>hook.render(()=>FormsTemplatesWorkspace({locale:'en',csrfToken:'synthetic-csrf'}));let output=view();
+ const workspace=all(output,node=>node.type===FormsCaseWorkspace)[0]!;
+ (workspace.props.onDirtyChange as (value:boolean)=>void)(true);
+ (all(output,node=>node.type==='select')[0]!.props.onChange as Change)({target:{value:'adult'}});
+ output=view();expect(all(output,node=>node.type===FormsCaseWorkspace)[0]?.props.caseKind).toBe('minor');
+ vi.stubGlobal('window',{confirm:vi.fn(()=>true)});(all(output,node=>node.type==='select')[0]!.props.onChange as Change)({target:{value:'adult'}});
+ output=view();expect(all(output,node=>node.type===FormsCaseWorkspace)[0]?.props.caseKind).toBe('adult');
+ expect(all(output,node=>node.type===FormsCaseWorkspace)[0]?.props.cases).toEqual([]);
+ expect(text(output)).toContain('Template versions are not signed agreements');
 });

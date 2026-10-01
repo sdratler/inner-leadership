@@ -71,3 +71,10 @@ it('keeps only the validated selected-client marker on a private session login r
  const result=new URL(practitionerDetailReturnPath('he',path,{context:'client',mode:'demo',role:'parent'}),'https://private.invalid');expect(Object.fromEntries(result.searchParams)).toEqual({mode:'demo',context:'client'});
  for(const context of ['owner',['client','client']])expect(practitionerDetailReturnPath('he',path,{context})).toBe(path);
 });
+it.each(['he','en'] as const)('preserves only the exact %s practitioner Settings templates login destination',locale=>{
+ const path=`/${locale}/app/settings/templates`;
+ expect(practitionerDetailReturnPath(locale,path,{caseId,role:'parent',secret:'not-forwarded',mode:'demo'})).toBe(path);
+ expect(loginReturnDestination(locale,'practitioner',path)).toBe(path);
+ for(const role of ['parent','adult_client','child'] as const)expect(loginReturnDestination(locale,role,path)).not.toBe(path);
+ for(const other of ['/he/app/settings/templates/other','//external.invalid/en/app/settings/templates','/en/family/settings/templates'])expect(practitionerDetailReturnPath(locale,other,{})).toBe(`/${locale}/app/calendar`);
+});

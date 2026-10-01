@@ -105,3 +105,16 @@
 .lsw.lsu .lsw-practice-management .lsw-card{min-inline-size:0;max-inline-size:none}
 .lsw.lsu .lsw-practice-management .lsw-two-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
 @media(max-width:600px){.lsw.lsu .lsw-practice-management .lsw-two-fields{grid-template-columns:minmax(0,1fr)}}
+/* Client forms and materials start with saved work; authoring stays optional. */
+.lsw.lsu .lsw-shared-items{min-inline-size:0;gap:16px}
+.lsw.lsu .lsw-shared-items :is(section,article,fieldset,details){min-inline-size:0;max-inline-size:100%}
+.lsw.lsu .lsw-shared-items>label{display:grid;gap:6px;max-inline-size:44rem}
+.lsw.lsu .lsw-shared-items .lsw-stack{gap:16px}
+.lsw.lsu .lsw-shared-items .lsu-task-switcher{margin-block:0}
+.lsw.lsu .lsw-shared-items details>summary{cursor:pointer;min-height:48px;padding-block:8px;font-weight:700}
+.lsw.lsu .lsw-shared-items :is(p,dd,li){overflow-wrap:anywhere}
+.lsw.lsu .lsw-shared-items article>h3{margin-block:0 8px}
+.lsw.lsu .lsw-shared-items fieldset{display:grid;gap:12px}
+.lsw.lsu .lsw-shared-items fieldset>label{display:grid;gap:6px;margin-block:0}
+.lsw.lsu .lsw-shared-items fieldset>label:has(input[type=checkbox]){display:flex;align-items:center;gap:10px;min-height:44px}
+@media(max-width:600px){.lsw.lsu .lsw-shared-items .lsu-task-content{padding-inline:12px}.lsw.lsu .lsw-shared-items fieldset{padding:12px}.lsw.lsu .lsw-shared-items .lsw-card{padding:16px}}
