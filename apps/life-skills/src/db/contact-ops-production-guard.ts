@@ -6,6 +6,7 @@ import {CONTACT_INBOUND_PROJECTION_MIGRATION,type ContactInboundProjectionIntegr
 import {CONTACT_OUTBOUND_PROJECTION_MIGRATION,type ContactOutboundProjectionIntegrity} from './contact-outbound-projection-integrity.ts';
 import {PRACTICE_ADULT_COORDINATION_MIGRATION,type PracticeAdultCoordinationIntegrity} from './practice-adult-coordination-integrity.ts';
 import {SCOPED_DISCLOSURE_USE_MIGRATION,SPEAKER_CORRECTION_RECEIPTS_MIGRATION,type ScopedDisclosureIntegrity,type SpeakerReceiptIntegrity} from './scoped-disclosure-integrity.ts';
+import {PRACTICE_RESPONSIBILITY_MIGRATION,type PracticeResponsibilityIntegrity,type PracticeResponsibilityFrame} from './practice-responsibility-integrity.ts';
 
 export const CONTACT_OPS_MIGRATION = {
  name: '0101_ls_contact_operations.sql',
@@ -91,7 +92,8 @@ export const CONTACT_OPS_SOURCE_FILES = [
  'migrations/0110_ls_contact_outbound_projection.sql',
  'migrations/0111_ls_adult_practice_coordination.sql',
  'migrations/0112_ls_scoped_disclosure_use.sql',
- 'migrations/0113_ls_speaker_correction_receipts.sql',
+  'migrations/0113_ls_speaker_correction_receipts.sql',
+  'migrations/0114_ls_practice_responsibilities.sql',
  'migrations/0093_ls_session_records.sql',
  'migrations/manifest.json',
  'scripts/apply-contact-ops-production.ts',
@@ -99,7 +101,8 @@ export const CONTACT_OPS_SOURCE_FILES = [
  'src/db/contact-authority-integrity.ts',
  'src/db/contact-inbound-integrity.ts',
  'src/db/practice-subject-integrity.ts',
- 'src/db/practice-adult-coordination-integrity.ts',
+  'src/db/practice-adult-coordination-integrity.ts',
+  'src/db/practice-responsibility-integrity.ts',
  'src/db/scoped-disclosure-integrity.ts',
  'src/db/progress-review-integrity.ts',
  'src/db/contact-inbound-projection-integrity.ts',
@@ -270,13 +273,28 @@ export function contactOpsSourceBundle(entries:readonly {path:string;bytes:Uint8
 }
 
 /** No partial/unknown schema and no surprise migration may be promoted. */
-export function contactOpsMigrationState(files:readonly Migration[],history:readonly AppliedMigration[],objects:ContactOpsIntegrityObjects,tasks:InternalTaskIntegrityObjects,source?:SourceTaskIntegrityObjects,voice?:VoiceRuleIntegrityObjects,authority?:ContactAuthorityIntegrityObjects,inbound?:ContactInboundIntegrityObjects,practice?:PracticeSubjectIntegrity,progress?:ProgressReviewIntegrity,projection?:ContactInboundProjectionIntegrity,outbound?:ContactOutboundProjectionIntegrity,adult?:PracticeAdultCoordinationIntegrity,disclosure?:ScopedDisclosureIntegrity,speakers?:SpeakerReceiptIntegrity):'pending'|'applied'{
+export function contactOpsMigrationState(files:readonly Migration[],history:readonly AppliedMigration[],objects:ContactOpsIntegrityObjects,tasks:InternalTaskIntegrityObjects,source?:SourceTaskIntegrityObjects,voice?:VoiceRuleIntegrityObjects,authority?:ContactAuthorityIntegrityObjects,inbound?:ContactInboundIntegrityObjects,practice?:PracticeSubjectIntegrity,progress?:ProgressReviewIntegrity,projection?:ContactInboundProjectionIntegrity,outbound?:ContactOutboundProjectionIntegrity,adult?:PracticeAdultCoordinationIntegrity,disclosure?:ScopedDisclosureIntegrity,speakers?:SpeakerReceiptIntegrity,responsibility?:PracticeResponsibilityIntegrity):'pending'|'applied'{
+ // Only the FULL exact 0114 suffix may admit the separately observed current
+ // practice frame. Older callers cannot inject it to bypass historical gates.
+ let acceptedResponsibility:PracticeResponsibilityFrame|undefined;
+ const inspect=(files:readonly Migration[],history:readonly AppliedMigration[],objects:ContactOpsIntegrityObjects,tasks:InternalTaskIntegrityObjects,source?:SourceTaskIntegrityObjects,voice?:VoiceRuleIntegrityObjects,authority?:ContactAuthorityIntegrityObjects,inbound?:ContactInboundIntegrityObjects,practice?:PracticeSubjectIntegrity,progress?:ProgressReviewIntegrity,projection?:ContactInboundProjectionIntegrity,outbound?:ContactOutboundProjectionIntegrity,adult?:PracticeAdultCoordinationIntegrity,disclosure?:ScopedDisclosureIntegrity,speakers?:SpeakerReceiptIntegrity):'pending'|'applied'=>{
  const index=files.findIndex(file=>file.name===CONTACT_OPS_MIGRATION.name);
  if(index<0||files[index]?.checksum!==CONTACT_OPS_MIGRATION.sha256)throw new Error('CONTACT_OPS_MANIFEST_MISMATCH');
  const suffix=files.slice(index+1);
- const allowedSuffix=[INTERNAL_TASKS_MIGRATION,SOURCE_TASKS_MIGRATION,VOICE_RULE_MIGRATION,CONTACT_AUTHORITY_MIGRATION,CONTACT_INBOUND_MIGRATION,PRACTICE_SUBJECT_GUARDS_MIGRATION,PROGRESS_REVIEW_REVISIONS_MIGRATION,CONTACT_INBOUND_PROJECTION_MIGRATION,CONTACT_OUTBOUND_PROJECTION_MIGRATION,PRACTICE_ADULT_COORDINATION_MIGRATION,SCOPED_DISCLOSURE_USE_MIGRATION,SPEAKER_CORRECTION_RECEIPTS_MIGRATION];
+  const allowedSuffix=[INTERNAL_TASKS_MIGRATION,SOURCE_TASKS_MIGRATION,VOICE_RULE_MIGRATION,CONTACT_AUTHORITY_MIGRATION,CONTACT_INBOUND_MIGRATION,PRACTICE_SUBJECT_GUARDS_MIGRATION,PROGRESS_REVIEW_REVISIONS_MIGRATION,CONTACT_INBOUND_PROJECTION_MIGRATION,CONTACT_OUTBOUND_PROJECTION_MIGRATION,PRACTICE_ADULT_COORDINATION_MIGRATION,SCOPED_DISCLOSURE_USE_MIGRATION,SPEAKER_CORRECTION_RECEIPTS_MIGRATION,PRACTICE_RESPONSIBILITY_MIGRATION];
  if(suffix.length>allowedSuffix.length||suffix.some((file,index)=>file.name!==allowedSuffix[index]?.name||file.checksum!==allowedSuffix[index]?.sha256))throw new Error('CONTACT_OPS_MANIFEST_MISMATCH');
- const pending=planMigrations(files,history);
+  const pending=planMigrations(files,history);
+  if(suffix.length===13){
+   const priorKeys=['baselineFunctions','reviewedFunctions','immutableHistory','schemaCatalog','foreignKeys','permissions','referencesSound'].sort(),currentKeys=['metadataAbsent','reviewedFunctions','immutableHistory','schemaCatalog','foreignKeys','permissions','referencesSound'].sort();
+   if(!responsibility||JSON.stringify(Object.keys(responsibility).sort())!==JSON.stringify(['current','prior'])||!responsibility.prior||!responsibility.current||JSON.stringify(Object.keys(responsibility.prior).sort())!==JSON.stringify(priorKeys)||JSON.stringify(Object.keys(responsibility.current).sort())!==JSON.stringify(currentKeys)||[...Object.values(responsibility.prior),...Object.values(responsibility.current)].some(value=>typeof value!=='boolean'))throw Error('PRACTICE_RESPONSIBILITY_READBACK_INVALID');
+   const prior=responsibility.prior,current=responsibility.current;
+   const isPending=pending.length===1&&pending[0]?.name===PRACTICE_RESPONSIBILITY_MIGRATION.name&&!prior.baselineFunctions&&prior.reviewedFunctions&&prior.immutableHistory&&prior.schemaCatalog&&prior.foreignKeys&&prior.permissions&&prior.referencesSound&&current.metadataAbsent&&current.immutableHistory&&Object.entries(current).filter(([key])=>!['metadataAbsent','immutableHistory'].includes(key)).every(([,value])=>!value);
+   const isApplied=pending.length===0&&!current.metadataAbsent&&Object.entries(current).filter(([key])=>key!=='metadataAbsent').every(([,value])=>value)&&prior.immutableHistory&&Object.entries(prior).filter(([key])=>key!=='immutableHistory').every(([,value])=>!value);
+   if(!isPending&&!isApplied)throw Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+   if(isApplied)acceptedResponsibility=current;
+   if(inspect(files.slice(0,-1),history.filter(row=>row.name!==PRACTICE_RESPONSIBILITY_MIGRATION.name),objects,tasks,source,voice,authority,inbound,practice,progress,projection,outbound,adult,disclosure,speakers)!=='applied')throw Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+   return isPending?'pending':'applied';
+  }
  if(suffix.length===12){
   const keys=['baselineOperation','currentOperation','schemaCatalog','foreignKeys','permissions'].sort();
   if(!speakers||JSON.stringify(Object.keys(speakers).sort())!==JSON.stringify(['current','prior'])||[speakers.prior,speakers.current].some(frame=>!frame||JSON.stringify(Object.keys(frame).sort())!==JSON.stringify(keys)||Object.values(frame).some(value=>typeof value!=='boolean')))throw Error('SPEAKER_INTEGRITY_READBACK_INVALID');
@@ -286,7 +304,7 @@ export function contactOpsMigrationState(files:readonly Migration[],history:read
   const isPending=pending.length===1&&pending[0]?.name===SPEAKER_CORRECTION_RECEIPTS_MIGRATION.name&&speakers.prior.currentOperation&&!speakers.current.currentOperation;
   const isApplied=pending.length===0&&!speakers.prior.currentOperation&&speakers.current.currentOperation;
   if(!isPending&&!isApplied)throw Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
-  if(contactOpsMigrationState(files.slice(0,-1),history.filter(row=>row.name!==SPEAKER_CORRECTION_RECEIPTS_MIGRATION.name),objects,tasks,source,voice,authority,inbound,practice,progress,projection,outbound,adult,isApplied?speakers.current:speakers.prior)!=='applied')throw Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+   if(inspect(files.slice(0,-1),history.filter(row=>row.name!==SPEAKER_CORRECTION_RECEIPTS_MIGRATION.name),objects,tasks,source,voice,authority,inbound,practice,progress,projection,outbound,adult,isApplied?speakers.current:speakers.prior)!=='applied')throw Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
   return isPending?'pending':'applied';
  }
  if(suffix.length===11){
@@ -296,12 +314,16 @@ export function contactOpsMigrationState(files:readonly Migration[],history:read
   const isPending=pending.length===1&&pending[0]?.name===SCOPED_DISCLOSURE_USE_MIGRATION.name&&disclosure.baselineOperation&&!disclosure.currentOperation;
   const isApplied=pending.length===0&&!disclosure.baselineOperation&&disclosure.currentOperation;
   if(!isPending&&!isApplied)throw Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
-  if(contactOpsMigrationState(files.slice(0,-1),history.filter(row=>row.name!==SCOPED_DISCLOSURE_USE_MIGRATION.name),objects,tasks,source,voice,authority,inbound,practice,progress,projection,outbound,adult)!=='applied')throw Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+   if(inspect(files.slice(0,-1),history.filter(row=>row.name!==SCOPED_DISCLOSURE_USE_MIGRATION.name),objects,tasks,source,voice,authority,inbound,practice,progress,projection,outbound,adult)!=='applied')throw Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
   return isPending?'pending':'applied';
  }
  if(suffix.length===10){
   const keys=['baselineFunctions','reviewedFunctions','immutableHistory','schemaCatalog','foreignKeys','permissions','referencesSound'].sort();
-  if(!adult||JSON.stringify(Object.keys(adult).sort())!==JSON.stringify(['current','prior'])||[adult.prior,adult.current].some(frame=>!frame||JSON.stringify(Object.keys(frame).sort())!==JSON.stringify(keys)||Object.values(frame).some(value=>typeof value!=='boolean')))throw new Error('CONTACT_OPS_ADULT_COORDINATION_READBACK_INVALID');
+   if(!adult||JSON.stringify(Object.keys(adult).sort())!==JSON.stringify(['current','prior'])||[adult.prior,adult.current].some(frame=>!frame||JSON.stringify(Object.keys(frame).sort())!==JSON.stringify(keys)||Object.values(frame).some(value=>typeof value!=='boolean')))throw new Error('CONTACT_OPS_ADULT_COORDINATION_READBACK_INVALID');
+   if(acceptedResponsibility){
+    if(pending.length!==0||inspect(files.slice(0,-1),history.filter(row=>row.name!==PRACTICE_ADULT_COORDINATION_MIGRATION.name),objects,tasks,source,voice,authority,inbound,practice,progress,projection,outbound)!=='applied')throw Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+    return 'applied';
+   }
   // Check both independently observed frames. The new exact body supersedes
   // only the coordination actor function; no historical hash is changed.
   for(const frame of [adult.prior,adult.current])if(frame.baselineFunctions||!frame.immutableHistory||!frame.schemaCatalog||!frame.foreignKeys||!frame.permissions||!frame.referencesSound)throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
@@ -312,12 +334,12 @@ export function contactOpsMigrationState(files:readonly Migration[],history:read
   // All preceding data/catalog/privacy gates still run. After 0111 the exact
   // current actor body is the accepted replacement frame, not a fabricated
   // claim that the old 0107 body is still serving.
-  if(contactOpsMigrationState(files.slice(0,-1),baselineHistory,objects,tasks,source,voice,authority,inbound,isApplied?adult.current:adult.prior,progress,projection,outbound)!=='applied')throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+   if(inspect(files.slice(0,-1),baselineHistory,objects,tasks,source,voice,authority,inbound,isApplied?adult.current:adult.prior,progress,projection,outbound)!=='applied')throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
   return isPending?'pending':'applied';
  }
  if(suffix.length===9){
   const baselineHistory=history.filter(row=>row.name!==CONTACT_OUTBOUND_PROJECTION_MIGRATION.name);
-  if(contactOpsMigrationState(files.slice(0,-1),baselineHistory,objects,tasks,source,voice,authority,inbound,practice,progress,projection)!=='applied')throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+   if(inspect(files.slice(0,-1),baselineHistory,objects,tasks,source,voice,authority,inbound,practice,progress,projection)!=='applied')throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
   const keys=['objectsAbsent','table','schemaCatalog','foreignKeys','pendingIndex','permissions','referencesSound'].sort();
   if(!outbound||JSON.stringify(Object.keys(outbound).sort())!==JSON.stringify(keys)||Object.values(outbound).some(value=>typeof value!=='boolean'))throw new Error('CONTACT_OPS_OUTBOUND_READBACK_INVALID');
   const created=Object.entries(outbound).filter(([key])=>key!=='objectsAbsent').map(([,value])=>value);
@@ -329,7 +351,7 @@ export function contactOpsMigrationState(files:readonly Migration[],history:read
   // All 28 prior migrations and their exact bodies/catalogs/ACL/FK/permission
   // gates must already be applied. This is only the reviewed additive 0109.
   const baselineHistory=history.filter(row=>row.name!==CONTACT_INBOUND_PROJECTION_MIGRATION.name);
-  if(contactOpsMigrationState(files.slice(0,-1),baselineHistory,objects,tasks,source,voice,authority,inbound,practice,progress)!=='applied')throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+   if(inspect(files.slice(0,-1),baselineHistory,objects,tasks,source,voice,authority,inbound,practice,progress)!=='applied')throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
   const keys=['objectsAbsent','tables','schemaCatalog','foreignKeys','historyImmutable','livePersonGuards','reviewedFunctions','permissions','referencesSound'].sort();
   if(!projection||JSON.stringify(Object.keys(projection).sort())!==JSON.stringify(keys)||Object.values(projection).some(value=>typeof value!=='boolean'))throw new Error('CONTACT_OPS_PROJECTION_READBACK_INVALID');
   const created=Object.entries(projection).filter(([key])=>key!=='objectsAbsent').map(([,value])=>value);
@@ -341,7 +363,7 @@ export function contactOpsMigrationState(files:readonly Migration[],history:read
   // Require all 27 prior migrations and EVERY prior catalog/body/FK/ACL gate.
   // This operator may apply only the exact reviewed additive 0108 suffix.
   const baselineHistory=history.filter(row=>row.name!==PROGRESS_REVIEW_REVISIONS_MIGRATION.name);
-  if(contactOpsMigrationState(files.slice(0,-1),baselineHistory,objects,tasks,source,voice,authority,inbound,practice)!=='applied')throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+   if(inspect(files.slice(0,-1),baselineHistory,objects,tasks,source,voice,authority,inbound,practice)!=='applied')throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
   const keys=['baselineCatalog','revisedCatalog','publishedGuards','revisionGuards','foreignKeys','permissions','referencesSound'].sort();
   if(!progress||JSON.stringify(Object.keys(progress).sort())!==JSON.stringify(keys)||Object.values(progress).some(value=>typeof value!=='boolean'))throw new Error('CONTACT_OPS_PROGRESS_READBACK_INVALID');
   if(!progress.publishedGuards||!progress.foreignKeys||!progress.permissions||!progress.referencesSound)throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
@@ -353,9 +375,10 @@ export function contactOpsMigrationState(files:readonly Migration[],history:read
   // Reuse EVERY 0101..0106 baseline gate, requiring it already applied. This
   // new suffix may neither admit an earlier pending migration nor ignore drift.
   const baselineHistory=history.filter(row=>row.name!==PRACTICE_SUBJECT_GUARDS_MIGRATION.name);
-  if(contactOpsMigrationState(files.slice(0,-1),baselineHistory,objects,tasks,source,voice,authority,inbound)!=='applied')throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+   if(inspect(files.slice(0,-1),baselineHistory,objects,tasks,source,voice,authority,inbound)!=='applied')throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
   const keys=['baselineFunctions','reviewedFunctions','immutableHistory','schemaCatalog','foreignKeys','permissions','referencesSound'].sort();
-  if(!practice||JSON.stringify(Object.keys(practice).sort())!==JSON.stringify(keys)||Object.values(practice).some(value=>typeof value!=='boolean'))throw new Error('CONTACT_OPS_PRACTICE_READBACK_INVALID');
+   if(!practice||JSON.stringify(Object.keys(practice).sort())!==JSON.stringify(keys)||Object.values(practice).some(value=>typeof value!=='boolean'))throw new Error('CONTACT_OPS_PRACTICE_READBACK_INVALID');
+   if(acceptedResponsibility){if(pending.length!==0)throw Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');return 'applied';}
   if(!practice.immutableHistory||!practice.schemaCatalog||!practice.foreignKeys||!practice.permissions||!practice.referencesSound)throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
   if(pending.length===1&&pending[0]?.name===PRACTICE_SUBJECT_GUARDS_MIGRATION.name&&practice.baselineFunctions&&!practice.reviewedFunctions)return 'pending';
   if(pending.length===0&&!practice.baselineFunctions&&practice.reviewedFunctions)return 'applied';
@@ -411,6 +434,8 @@ export function contactOpsMigrationState(files:readonly Migration[],history:read
  }
  if(suffix.length===0 && pending.length===1 && pending[0]?.name===CONTACT_OPS_MIGRATION.name && newlyCreated.every(value=>!value)&&newTaskValues.every(value=>!value))return 'pending';
  if(suffix.length===1 && pending.length===1 && pending[0]?.name===INTERNAL_TASKS_MIGRATION.name && values.every(Boolean)&&newTaskValues.every(value=>!value))return 'pending';
- if(pending.length===0 && values.every(Boolean)&&(suffix.length===0?newTaskValues.every(value=>!value):taskValues.every(Boolean)))return 'applied';
- throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+  if(pending.length===0 && values.every(Boolean)&&(suffix.length===0?newTaskValues.every(value=>!value):taskValues.every(Boolean)))return 'applied';
+  throw new Error('CONTACT_OPS_SCHEMA_STATE_CONFLICT');
+ };
+ return inspect(files,history,objects,tasks,source,voice,authority,inbound,practice,progress,projection,outbound,adult,disclosure,speakers);
 }

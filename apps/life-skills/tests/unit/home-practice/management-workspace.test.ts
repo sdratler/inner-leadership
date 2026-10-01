@@ -3,9 +3,15 @@ import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vitest";
 import { PracticeAuthoringForm, PracticeManagementWorkspace } from "../../../src/features/home-practice/management-workspace.tsx";
+import {blankResponsibility} from "../../../src/features/home-practice/responsibility-editor.tsx";
 const draft = { title: "", reference: "", instructions: "Retained unsaved input", startsOn: "2026-10-02", endsOn: "", goalId: "", commitmentId: "", revision: null };
 const data = { practice: { items: [], hasMore: false }, goals: [], commitments: [] };
 const props = { draft, data, locked: false, busy: false, onChange: () => {}, onSave: () => {}, onCancel: () => {} };
+test.each(["en","he"] as const)("%s timed practice marks end date required while preserving oversized unsaved input",locale=>{
+ const retained="Synthetic long input ".repeat(110),html=renderToStaticMarkup(createElement(PracticeAuthoringForm,{...props,locale,kind:"home-practice",draft:{...draft,instructions:retained,responsibility:blankResponsibility()}}));
+ expect(html).toContain(retained);expect(html).toContain('maxLength="2000"');expect(html).toContain(locale==="he"?"מסתיים בתאריך (חובה)":"Ends on (required)");expect(html).not.toContain(locale==="he"?"מסתיים בתאריך (רשות)":"Ends on (optional)");
+ expect(html.match(/type="date"[^>]*required=""/g)).toHaveLength(2);
+});
 test("practice management has a scoped readable single-column list and mobile date fields", () => {
   const html = renderToStaticMarkup(createElement(PracticeManagementWorkspace, { locale: "en", kind: "home-practice", caseId: "123e4567-e89b-12d3-a456-426614174000" }));
   expect(html).toContain('lsw-practice-management');

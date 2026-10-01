@@ -6,6 +6,11 @@ import {readFileSync} from 'node:fs';
 import {CoordinationForm,PracticeCoordinationWorkspace} from '../../../src/features/home-practice/coordination-workspace.tsx';
 const own=asId('123e4567-e89b-12d3-a456-426614174000','account'),other=asId('123e4567-e89b-12d3-a456-426614174001','account');
 const handlers={onChange:()=>{},onSave:()=>{},onCancel:()=>{}};
+test.each(['en','he'] as const)('%s child practice gives an honest parent read-only explanation, not a failing parent-assignment form',locale=>{
+ const page={ownAccountId:own,role:'parent' as const,eligibleAccountIds:[],versions:[],hasMore:false,readOnlyReason:'client_responsibility' as const};
+ const html=renderToStaticMarkup(createElement(CoordinationForm,{...handlers,locale,page,assignees:[],reminders:[],mode:'any_assignee',locked:false}));
+ expect(html).not.toContain('<form');expect(html).not.toContain('type="submit"');expect(html).toContain(locale==='he'?'זהו התרגול של הילד':'This is the child’s practice');
+});
 test.each(['en','he'] as const)('%s adult self-coordination has no parent selector, preserves routing semantics and locks uncertain input',locale=>{
  const page={ownAccountId:own,role:'adult_client' as const,eligibleAccountIds:[own],versions:[],hasMore:false};
  const html=renderToStaticMarkup(createElement(CoordinationForm,{...handlers,locale,page,assignees:[own],reminders:[],mode:'any_assignee',locked:false}));

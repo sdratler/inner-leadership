@@ -9,10 +9,19 @@ async function request<T>(path:string,init:RequestInit,signal?:AbortSignal):Prom
   throw new IdentityClientError(codes.includes(payload?.error?.code as IdentityClientErrorCode)?payload.error!.code as IdentityClientErrorCode:'UNAVAILABLE');
  }catch(error){if(signal?.aborted||error instanceof IdentityClientError)throw error;throw new IdentityClientError('UNAVAILABLE');}
 }
-const ids=(value:unknown):value is string[]=>Array.isArray(value)&&value.length<=2&&value.every(id=>typeof id==='string'&&/^[a-f0-9-]{36}$/i.test(id))&&new Set(value).size===value.length;
+const ids=(value:unknown,max=2):value is string[]=>Array.isArray(value)&&value.length<=max&&value.every(id=>typeof id==='string'&&/^[a-f0-9-]{36}$/i.test(id))&&new Set(value).size===value.length;
+function validVersion(row:CoordinationVersion,assignmentId:string,caseId:string,audienceId:string):boolean{
+ if(!row||row.assignmentId!==assignmentId||row.caseId!==caseId||row.audienceId!==audienceId||typeof row.versionId!=='string'||!ids(row.assigneeAccountIds)||!['any_assignee','each_assignee'].includes(row.completionMode)||!Number.isFinite(Date.parse(row.effectiveFrom))||typeof row.changedByAccountId!=='string')return false;
+ if(row.responsibilityVersionId==null)return row.participant==null&&row.assistedParentAccountIds==null&&row.assigneeAccountIds.length>0&&ids(row.reminderCandidateAccountIds)&&row.reminderCandidateAccountIds.every(id=>row.assigneeAccountIds.includes(id));
+ return ids([row.responsibilityVersionId])&&['client','parent'].includes(row.participant??'')&&ids(row.assistedParentAccountIds)&&ids(row.reminderCandidateAccountIds,3)&&
+  !row.assigneeAccountIds.some(id=>row.assistedParentAccountIds!.includes(id))&&
+  (row.participant==='parent'?row.assigneeAccountIds.length>0&&row.assistedParentAccountIds.length===0:row.assigneeAccountIds.length<=1&&row.assigneeAccountIds.length+row.assistedParentAccountIds.length>0)&&
+  (row.completionMode!=='each_assignee'||row.participant==='parent'&&row.assigneeAccountIds.length===2);
+}
 export async function readCoordination(assignmentId:string,caseId:string,audienceId:string,signal?:AbortSignal):Promise<PracticeCoordinationPage>{
  const value=await request<PracticeCoordinationPage>('/api/home-practice?'+new URLSearchParams({view:'coordination',assignmentId}),{method:'GET'},signal);
- if(!value||!['parent','adult_client'].includes(value.role)||typeof value.ownAccountId!=='string'||!ids(value.eligibleAccountIds)||typeof value.hasMore!=='boolean'||!Array.isArray(value.versions)||value.versions.length>20||value.versions.some(row=>!row||row.assignmentId!==assignmentId||row.caseId!==caseId||row.audienceId!==audienceId||typeof row.versionId!=='string'||!ids(row.assigneeAccountIds)||!ids(row.reminderCandidateAccountIds)||row.reminderCandidateAccountIds.some(id=>!row.assigneeAccountIds.includes(id))||!['any_assignee','each_assignee'].includes(row.completionMode)||!Number.isFinite(Date.parse(row.effectiveFrom))||typeof row.changedByAccountId!=='string'))throw new IdentityClientError('UNAVAILABLE');
+ if(!value||!['parent','adult_client'].includes(value.role)||typeof value.ownAccountId!=='string'||!ids(value.eligibleAccountIds)||typeof value.hasMore!=='boolean'||!Array.isArray(value.versions)||value.versions.length>20||value.versions.some(row=>!validVersion(row,assignmentId,caseId,audienceId)))throw new IdentityClientError('UNAVAILABLE');
+ if(value.readOnlyReason!==undefined&&(value.readOnlyReason!=='client_responsibility'||value.role!=='parent'||value.eligibleAccountIds.length!==0))throw new IdentityClientError('UNAVAILABLE');
  if(value.role==='adult_client'&&(value.eligibleAccountIds.length!==1||value.eligibleAccountIds[0]!==value.ownAccountId))throw new IdentityClientError('UNAVAILABLE');
  return value;
 }

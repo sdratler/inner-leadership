@@ -10,6 +10,15 @@ const item={id:caseId,workspaceId:workspace,clientPersonId:person,practitionerAc
 const audience={id:audienceId,workspaceId:workspace,caseId,visibility:'family_full' as const,published:true,accountIds:[account,other]};
 const page:PracticeCoordinationPage={ownAccountId:account,role:'adult_client',eligibleAccountIds:[account],hasMore:false,versions:[]};
 afterEach(()=>vi.unstubAllGlobals());
+test('native child responsibility reads real assisted actors and separate reminder routing without granting parent coordination',async()=>{
+ const source=asId('123e4567-e89b-12d3-a456-426614174008','practice_version'),third=asId('123e4567-e89b-12d3-a456-426614174009','account');
+ const row={versionId:version,assignmentId:assignment,caseId,audienceId,assigneeAccountIds:[],assistedParentAccountIds:[account],responsibilityVersionId:source,participant:'client' as const,completionMode:'any_assignee' as const,reminderCandidateAccountIds:[account,other,third],effectiveFrom:'2026-10-02T18:45:00.000Z',changedByAccountId:other};
+ const readOnly:PracticeCoordinationPage={...page,role:'parent',readOnlyReason:'client_responsibility',eligibleAccountIds:[],versions:[row]};
+ vi.stubGlobal('fetch',vi.fn(async()=>Response.json({ok:true,data:readOnly})));expect(await readCoordination(assignment,caseId,audienceId)).toEqual(readOnly);
+ for(const malformed of [{...readOnly,readOnlyReason:'unknown'},{...readOnly,eligibleAccountIds:[account]},{...readOnly,role:'adult_client'},{...readOnly,versions:[{...row,reminderCandidateAccountIds:[account,other,third,workspace]}]},{...readOnly,versions:[{...row,assistedParentAccountIds:[]}]},{...readOnly,versions:[{...row,responsibilityVersionId:null}]},{...readOnly,versions:[{...row,participant:'parent'}]},{...readOnly,versions:[{...row,completionMode:'each_assignee'}]}]){
+  vi.stubGlobal('fetch',vi.fn(async()=>Response.json({ok:true,data:malformed})));await expect(readCoordination(assignment,caseId,audienceId)).rejects.toThrow('UNAVAILABLE');
+ }
+});
 test('coordination policy allows only an active exact-subject adult self-assignment in the published audience',()=>{
  expect(coordinationAssignees(actor,item,[],audience,[account],[account])).toEqual([account]);
  for(const args of [

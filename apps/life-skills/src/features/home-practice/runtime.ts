@@ -13,7 +13,7 @@ async function construct() {
   const practice = new HomePracticeService(identity.store, identity.config, identity.clock);
   const goals = new GoalService(identity.store, identity.config, identity.clock);
   const commitments = new CommitmentService(identity.store, identity.config, identity.clock);
-  const checkins = new CheckInService(identity.store, identity.clock);
+  const checkins = new CheckInService(identity.store, identity.clock,identity.config.keyring);
   const http = new Ls040Http(identity.config, identity.clock, {
     sessions: identity.services.sessions, limits: identity.services.limits, audit: identity.services.audit,
     goals, commitments, practice, checkins,

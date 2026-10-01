@@ -2,11 +2,28 @@ import { afterEach, expect, test, vi } from "vitest";
 import { authoringReadback, readPracticeManagement, savePracticeAuthoring, type PracticeAuthoringCommand, type PracticeManagementData } from "../../../src/features/home-practice/management-client.ts";
 import { IdentityClientError } from "../../../src/features/identity/client.ts";
 import { asId } from "../../../src/lib/ids.ts";
+import type { ResponsibilityInput } from "../../../src/features/home-practice/responsibility-input.ts";
 const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const scope = { caseId: uuid(1), audienceId: uuid(2) };
 const command: PracticeAuthoringCommand = { action: "create_draft", ...scope, instructions: "Retained instruction", startsOn: "2026-10-02", endsOn: null, templateKey: "W01", templateVersion: "manual-1" };
 const data: PracticeManagementData = { practice: { hasMore: false, items: [{ workspaceId: asId(uuid(3), "workspace"), caseId: asId(scope.caseId, "case"), audienceId: asId(scope.audienceId, "audience"), assignmentId: asId(uuid(4), "practice_assignment"), versionId: asId(uuid(5), "practice_version"), version: 1, goalId: null, commitmentId: null, templateKey: "W01", templateVersion: "manual-1", instructions: command.instructions, startsOn: command.startsOn, endsOn: null, state: "draft", active: false, publishedAt: null, immutableSnapshotDigest: null }] }, goals: [], commitments: [] };
 afterEach(() => vi.unstubAllGlobals());
+test("responsibility readback compares every saved schedule/actor/routing field without relying on array order", () => {
+  const responsibility: ResponsibilityInput = {participant:"client",period:"morning",assigneeAccountIds:[],assistedByParentAccountIds:[uuid(7),uuid(8)],reminderRecipients:[{accountId:uuid(7),purpose:"support"},{accountId:uuid(8),purpose:"remind_child"}],completionMode:"any_assignee",weekdays:[1,3],localTime:"18:45",timezone:"UTC",timeOrigin:"practitioner",foldChoice:null};
+  const saved = {...data,practice:{...data.practice,items:[{...data.practice.items[0]!,responsibility}]}};
+  const exact: PracticeAuthoringCommand = {...command,responsibility};
+  expect(authoringReadback(exact,{assignmentId:uuid(4),versionId:uuid(5)},saved)).toBe(true);
+  expect(authoringReadback({...exact,responsibility:{...responsibility,assistedByParentAccountIds:[uuid(8),uuid(7)],weekdays:[3,1],reminderRecipients:[...responsibility.reminderRecipients].reverse()}},{assignmentId:uuid(4),versionId:uuid(5)},saved)).toBe(true);
+  for(const changed of [{localTime:"19:00"},{timezone:"Asia/Jerusalem"},{timeOrigin:"session_agreement" as const},{period:"evening" as const},{participant:"parent" as const},{weekdays:[1]},{assistedByParentAccountIds:[uuid(7)]},{reminderRecipients:[{accountId:uuid(7),purpose:"self" as const}]},{foldChoice:"earlier" as const}])expect(authoringReadback({...exact,responsibility:{...responsibility,...changed}},{assignmentId:uuid(4),versionId:uuid(5)},saved)).toBe(false);
+  expect(authoringReadback(exact,{assignmentId:uuid(4),versionId:uuid(5)},data)).toBe(false);
+});
+test("scheduled readback requires the actual native occurrence, source, coordination and instant and rejects cancelled rows", () => {
+  const scheduled = {id:asId(uuid(6),"occurrence"),assignmentId:asId(uuid(4),"practice_assignment"),practiceVersionId:asId(uuid(5),"practice_version"),coordinationVersionId:asId(uuid(7),"coordination_version"),occursOn:"2026-10-02",period:"morning" as const,state:"open" as const,occursAt:"2026-10-02T18:45:00.000Z"};
+  const schedule:PracticeAuthoringCommand={action:"schedule",assignmentId:uuid(4),occursOn:scheduled.occursOn,period:scheduled.period};
+  expect(authoringReadback(schedule,scheduled,{...data,scheduled:[scheduled]})).toBe(true);
+  for(const changed of [{id:asId(uuid(99),"occurrence")},{practiceVersionId:asId(uuid(99),"practice_version")},{coordinationVersionId:asId(uuid(99),"coordination_version")},{occursAt:"2026-10-02T18:46:00.000Z"},{state:"cancelled" as const},{period:"evening" as const}])expect(authoringReadback(schedule,scheduled,{...data,scheduled:[{...scheduled,...changed}]})).toBe(false);
+  expect(authoringReadback(schedule,scheduled,data)).toBe(false);
+});
 test("readback requires exact assignment/version and saved text, scope and links", () => {
   const receipt = { assignmentId: uuid(4), versionId: uuid(5) };
   expect(authoringReadback(command, receipt, data)).toBe(true);

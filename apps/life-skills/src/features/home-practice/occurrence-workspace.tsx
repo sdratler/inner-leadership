@@ -6,9 +6,10 @@ import { loginHref } from "../identity/login-return.ts";
 import { civilDate } from "../calendar/time.ts";
 import { Button, Input, Select } from "../../ui/workspace/controls.tsx";
 import { UnsavedChangesGuard } from "../../ui/workspace/draft-guard.tsx";
-import { checkInAttempt, checkInReadback, incomingPracticeReport, ownCheckInHistory, practiceAccessLossPage, practiceAccessLost, PracticeAudienceAccessError, practiceAudienceLossPage, practiceDraftIds, practiceRangeOccurrences, practiceSaveUncertain, submitPracticeCheckIn, type CheckInAttempt } from "./occurrence-client.ts";
+import { checkInAttempt, checkInReadback, incomingPracticeReport, ownCheckInHistory, practitionerCheckInHistory,practiceAccessLossPage, practiceAccessLost, PracticeAudienceAccessError, practiceAudienceLossPage, practiceDraftIds, practiceRangeOccurrences, practiceSaveUncertain, submitPracticeCheckIn, type CheckInAttempt } from "./occurrence-client.ts";
 import { occurrenceRange, shiftOccurrenceDay } from "./occurrence-range.ts";
 import { completionStatuses, type CompletionStatus, type CompletionView, type PracticeOccurrenceItem, type PracticeOccurrencePage } from "./types.ts";
+import {responsibilityWords} from "./responsibility-editor.tsx";
 
 const copy = {
   en: { title: "Morning & evening practice", choose: "Choose a case to view scheduled practice.", loading: "Loading practice…", empty: "No practice is scheduled in this period.", error: "Practice could not load. Appointments are not affected.", retry: "Retry", unreported: "Unreported", morning: "Morning", evening: "Evening", instruction: "Instruction for this occurrence", version: "Published version", own: "Your check-in", status: "What happened?", chooseStatus: "Choose a result", save: "Save check-in", correct: "Save correction", saved: "Saved and read back.", uncertain: "The save result is not confirmed. Your selection is kept. Retry the same save before changing it.", conflict: "A newer report may exist. Your selection is kept; refresh the recorded result before saving a correction.", failure: "The check-in was not saved. Your selection is kept. Try again.", refresh: "Refresh recorded result", history: "Your check-in history", historyError: "History could not load. Try opening it again.", closed: "This occurrence is closed.", readOnly: "You are not assigned to report this occurrence.", auth: "Sign in again to reopen your private practice.", denied: "Your account no longer has access to this practice.", signIn: "Sign in", overflow: "Only the first 500 occurrences are shown. Choose a shorter date range to see the remaining items.", date: "From date", go: "Show 14 days", dirty: "Your unsaved check-in will be lost. Leave this view?", revision: "Revision", done: "Done", partly_done: "Partly done", not_done: "Not done", rescheduled: "Rescheduled", not_applicable: "Not applicable" },
@@ -75,17 +76,18 @@ export function PracticeOccurrenceWorkspace({ locale, role, caseId, audienceId, 
     {!from && <form className="lsw-toolbar" onSubmit={event => { event.preventDefault(); if (!event.currentTarget.checkValidity()) return; if (hasDirty && !window.confirm(t.dirty)) return; dirty.current.clear(); setHasDirty(false); onDirtyChange?.(false); setSelectedDate(dateInput); }}><Input id="practice-from" label={t.date} type="date" required value={dateInput} onChange={event => setDateInput(event.target.value)} /><Button type="submit">{t.go}</Button></form>}
     {!caseId ? <p>{t.choose}</p> : state.key !== key ? <p role="status">{t.loading}</p> : <>
       {state.status === "error" && <div role="alert"><p>{state.code === "AUDIENCE_ACCESS_CHANGED" ? audienceChanged[locale] : state.code === "UNAUTHENTICATED" ? t.auth : ["FORBIDDEN", "NOT_FOUND"].includes(state.code ?? "") ? t.denied : t.error}</p>{state.code === "UNAUTHENTICATED" ? <a className="lsw-button lsw-button--secondary" href={loginHref(locale, returnPath)}>{t.signIn}</a> : <Button variant="secondary" onClick={reload}>{t.retry}</Button>}</div>}
-      {!state.page.items.length ? state.status === "ready" && <p role="status">{t.empty}</p> : <div className="lsw-stack">{state.page.items.map(item => <PracticeOccurrenceCard key={key + ":" + item.occurrence.id} locale={locale} item={item} onReadback={reload} onAccessLost={accessLost} onDirty={dirtyChange} />)}</div>}
+      {!state.page.items.length ? state.status === "ready" && <p role="status">{t.empty}</p> : <div className="lsw-stack">{state.page.items.map(item => <PracticeOccurrenceCard key={key + ":" + item.occurrence.id} locale={locale} role={role} item={item} onReadback={reload} onAccessLost={accessLost} onDirty={dirtyChange} />)}</div>}
       {state.page.hasMore && <p role="status">{t.overflow}</p>}
     </>}
   </section>;
 }
 
-export function PracticeOccurrenceCard({ locale, item, onReadback, onAccessLost, onDirty }: {
-  locale: "en" | "he"; item: PracticeOccurrenceItem; onReadback: () => void; onAccessLost: (id: string, code: IdentityClientErrorCode) => void; onDirty: (id: string, dirty: boolean) => void;
+export function PracticeOccurrenceCard({ locale,role, item, onReadback, onAccessLost, onDirty }: {
+  locale: "en" | "he";role?:Role; item: PracticeOccurrenceItem; onReadback: () => void; onAccessLost: (id: string, code: IdentityClientErrorCode) => void; onDirty: (id: string, dirty: boolean) => void;
 }) {
   const t = copy[locale], id = item.occurrence.id;
   const [status, setStatus] = useState<CompletionStatus | "">("");
+  const [assistance,setAssistance]=useState<""|"together"|"parent_report">(""),[note,setNote]=useState("");
   const [savedReport, setSavedReport] = useState(item.ownReport);
   const [phase, setPhase] = useState<"idle" | "saving" | "uncertain" | "conflict" | "error" | "saved">("idle");
   const [history, setHistory] = useState<CompletionView[] | null>(null), [historyFailed, setHistoryFailed] = useState(false);
@@ -93,17 +95,17 @@ export function PracticeOccurrenceCard({ locale, item, onReadback, onAccessLost,
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; controller.current?.abort(); }; }, []);
   useEffect(() => {
-    const incoming = incomingPracticeReport(savedReport, item.ownReport, Boolean(status), attempt.current !== null || ["saving", "uncertain", "conflict"].includes(phase));
+    const incoming = incomingPracticeReport(savedReport, item.ownReport, Boolean(status||assistance||note), attempt.current !== null || ["saving", "uncertain", "conflict"].includes(phase));
     if (incoming === savedReport) return;
     let canceled = false;
     queueMicrotask(() => { if (!canceled) { setSavedReport(incoming); setHistory(null); setHistoryFailed(false); setPhase("idle"); } });
     return () => { canceled = true; };
-  }, [item.ownReport, savedReport, status, phase]);
-  const canSave = item.canReport && (item.occurrence.state === "open" || savedReport !== null);
+  }, [item.ownReport, savedReport, status, assistance,note,phase]);
+  const canSave = item.canReport && item.occurrence.state!=="cancelled" && (item.occurrence.state === "open" || savedReport !== null);
   async function save() {
-    if (!status || !canSave || phase === "saving" || phase === "conflict") return;
+    if (!status || !canSave || phase === "saving" || phase === "conflict"||item.assistanceModes?.length&&!assistance) return;
     const retryingUnconfirmed = attempt.current !== null;
-    const body = attempt.current ?? checkInAttempt(id, status, savedReport?.reportId);
+    const body = attempt.current ?? checkInAttempt(id, status, savedReport?.reportId,assistance?{mode:assistance,note}:undefined);
     attempt.current = body; controller.current?.abort(); const current = new AbortController(); controller.current = current;
     setPhase("saving"); onDirty(id, true);
     let mutationConfirmed = false;
@@ -117,7 +119,7 @@ export function PracticeOccurrenceCard({ locale, item, onReadback, onAccessLost,
       const receipt = checkInReadback(body, rows);
       if (!latest || receipt === "pending") throw new IdentityClientError("UNAVAILABLE");
       if (receipt === "superseded") { setSavedReport(latest); setHistory(rows); setPhase("conflict"); attempt.current = null; return; }
-      setSavedReport(latest); setHistory(rows); setPhase("saved"); setStatus(""); attempt.current = null; onDirty(id, false); onReadback();
+      setSavedReport(latest); setHistory(rows); setPhase("saved"); setStatus("");setAssistance("");setNote(""); attempt.current = null; onDirty(id, false); onReadback();
     } catch (error) {
       if (!mounted.current || current.signal.aborted) return;
       if (practiceAccessLost(error)) { onDirty(id, false); onAccessLost(id, (error as IdentityClientError).code); return; }
@@ -136,7 +138,7 @@ export function PracticeOccurrenceCard({ locale, item, onReadback, onAccessLost,
       const receipt = phase === "uncertain" && attempt.current ? checkInReadback(attempt.current, rows) : null;
       if (receipt === "pending") { setHistoryFailed(false); return; }
       if (receipt === "recorded") {
-        setSavedReport(rows.at(-1) ?? null); setHistory(rows); setHistoryFailed(false); setPhase("saved"); setStatus(""); attempt.current = null; onDirty(id, false); onReadback(); return;
+        setSavedReport(rows.at(-1) ?? null); setHistory(rows); setHistoryFailed(false); setPhase("saved"); setStatus("");setAssistance("");setNote(""); attempt.current = null; onDirty(id, false); onReadback(); return;
       }
       setSavedReport(rows.at(-1) ?? null); setHistory(rows); setHistoryFailed(false); setPhase("idle"); attempt.current = null; onReadback();
     } catch (error) {
@@ -145,17 +147,27 @@ export function PracticeOccurrenceCard({ locale, item, onReadback, onAccessLost,
     }
   }
   const format = (value: string) => new Intl.DateTimeFormat(locale === "he" ? "he-IL" : "en-GB", { timeZone: "Asia/Jerusalem", dateStyle: "medium" }).format(new Date(value + "T12:00:00Z"));
+  async function refreshPractitionerReports(){
+    controller.current?.abort();const current=new AbortController();controller.current=current;
+    try{const rows=await practitionerCheckInHistory(id,current.signal);if(mounted.current&&!current.signal.aborted){setHistory(rows);setHistoryFailed(false);}}
+    catch(error){if(mounted.current&&!current.signal.aborted){if(practiceAccessLost(error))onAccessLost(id,(error as IdentityClientError).code);else setHistoryFailed(true);}}
+  }
+  const authorship=(report:CompletionView)=>report.attribution?.authorship==="parent_assisted_child"?(locale==="he"?"יחד במכשיר של ההורה":"Together on the parent’s device"):report.attribution?.authorship==="parent_reporting_child"?(locale==="he"?"ההורה דיווח עבור הילד":"Parent reported for the child"):locale==="he"?"דיווח עצמי":"Self report";
+  const reportHistory=history&&<ol>{history.map(report=><li key={report.reportId}><p>{t.revision} {report.revision} · {t[report.status]} · {new Intl.DateTimeFormat(locale==="he"?"he-IL":"en-GB",{timeZone:"Asia/Jerusalem",dateStyle:"medium",timeStyle:"short"}).format(new Date(report.reportedAt))}</p>{report.attribution&&<><p>{authorship(report)} · {locale==="he"?"החשבון שדיווח":"Reporting account"}: <bdi>{report.authorAccountId.slice(-8)}</bdi></p>{report.attribution.note&&<p className="lsw-practice-instruction">{report.attribution.note}</p>}</>}</li>)}</ol>;
   return <article className="lsw-card lsw-stack" aria-labelledby={`practice-${id}`}>
     <header className="lsw-section-header"><div><h3 id={`practice-${id}`}>{format(item.occurrence.occursOn)} · {t[item.occurrence.period]}</h3><p>{item.practice.templateKey} · {t.version} {item.practice.version}</p></div><strong>{savedReport ? t[savedReport.status] : t.unreported}</strong></header>
     {item.occurrence.state === "closed" && <p>{t.closed}</p>}
+    {item.occurrence.state==="cancelled"&&<p>{locale==="he"?"מועד זה בוטל בעקבות גרסה חדשה. אין לדווח עליו.":"This occurrence was cancelled by a new version. It cannot be reported."}</p>}
+    <p>{item.schedule?`${item.schedule.participant==="parent"?responsibilityWords[locale].parent:responsibilityWords[locale].client} · ${item.schedule.localTime} · ${item.schedule.timezone}`:responsibilityWords[locale].notRecorded}</p>
     {item.practice.instructions && <details className="lsw-details"><summary>{t.instruction}</summary><p className="lsw-practice-instruction">{item.practice.instructions}</p></details>}
     {canSave ? <details className="lsw-details"><summary>{t.own}</summary><form className="lsw-stack" onSubmit={event => { event.preventDefault(); if (event.currentTarget.checkValidity()) void save(); }}>
-      <Select id={`practice-result-${id}`} label={t.status} required value={status} disabled={phase === "saving" || phase === "uncertain"} onChange={event => { setStatus(event.target.value as CompletionStatus); setPhase(current => current === "conflict" ? "conflict" : "idle"); attempt.current = null; onDirty(id, Boolean(event.target.value)); }}><option value="">{t.chooseStatus}</option>{completionStatuses.map(value => <option value={value} key={value}>{t[value]}</option>)}</Select>
-      <Button type="submit" busy={phase === "saving"} disabled={!status || phase === "conflict"}>{phase === "uncertain" ? t.retry : savedReport ? t.correct : t.save}</Button>
+      <Select id={`practice-result-${id}`} label={t.status} required value={status} disabled={phase === "saving" || phase === "uncertain"} onChange={event => { setStatus(event.target.value as CompletionStatus); setPhase(current => current === "conflict" ? "conflict" : "idle"); attempt.current = null; onDirty(id, Boolean(event.target.value||assistance||note)); }}><option value="">{t.chooseStatus}</option>{completionStatuses.map(value => <option value={value} key={value}>{t[value]}</option>)}</Select>
+      {item.assistanceModes?.length&&<><Select id={`practice-assisted-${id}`} label={locale==="he"?"איך התרגול דווח?":"How was this practice reported?"} required value={assistance} disabled={phase==="saving"||phase==="uncertain"} onChange={event=>{setAssistance(event.target.value as typeof assistance);attempt.current=null;setPhase(value=>value==="conflict"?value:"idle");onDirty(id,Boolean(status||event.target.value||note));}}><option value="">{locale==="he"?"בחירת אופן הדיווח":"Choose reporting mode"}</option>{item.assistanceModes.map(value=><option key={value} value={value}>{value==="together"?(locale==="he"?"יחד במכשיר של ההורה":"Together on the parent’s device"):(locale==="he"?"ההורה מדווח עבור הילד":"Parent reports for the child")}</option>)}</Select><details className="lsw-details"><summary>{locale==="he"?"משוב נוסף (רשות)":"Optional feedback"}</summary><label className="lsw-field">{locale==="he"?"הערה לאיש המקצוע":"Note for the practitioner"}<textarea rows={4} maxLength={2000} value={note} disabled={phase==="saving"||phase==="uncertain"} onChange={event=>{setNote(event.target.value);attempt.current=null;setPhase(value=>value==="conflict"?value:"idle");onDirty(id,Boolean(status||assistance||event.target.value));}}/></label></details></>}
+      <Button type="submit" busy={phase === "saving"} disabled={!status || phase === "conflict"||Boolean(item.assistanceModes?.length&&!assistance)}>{phase === "uncertain" ? t.retry : savedReport ? t.correct : t.save}</Button>
       {(phase === "conflict" || phase === "uncertain") && <Button variant="secondary" onClick={() => void refreshReport()}>{t.refresh}</Button>}
     </form></details> : <p>{t.readOnly}</p>}
     {phase === "saved" && <p role="status">{t.saved}</p>}
     {["error", "uncertain", "conflict"].includes(phase) && <p role="alert">{phase === "uncertain" ? t.uncertain : phase === "conflict" ? t.conflict : t.failure}</p>}
-    {savedReport && <details className="lsw-details" onToggle={event => { if (event.currentTarget.open && !history && phase !== "saving" && phase !== "uncertain") void refreshReport(); }}><summary>{t.history}</summary>{historyFailed ? <p role="alert">{t.historyError}</p> : history ? <ol>{history.map(report => <li key={report.reportId}>{t.revision} {report.revision} · {t[report.status]} · {new Intl.DateTimeFormat(locale === "he" ? "he-IL" : "en-GB", { timeZone: "Asia/Jerusalem", dateStyle: "medium", timeStyle: "short" }).format(new Date(report.reportedAt))}</li>)}</ol> : <p role="status">{t.loading}</p>}</details>}
+    {(savedReport||role==="practitioner")&&<details className="lsw-details" onToggle={event=>{if(event.currentTarget.open&&!history&&phase!=="saving"&&phase!=="uncertain")void(role==="practitioner"?refreshPractitionerReports():refreshReport());}}><summary>{role==="practitioner"?(locale==="he"?"הדיווחים שנשמרו":"Saved reports"):t.history}</summary>{historyFailed?<div role="alert"><p>{t.historyError}</p><Button variant="secondary" onClick={()=>void(role==="practitioner"?refreshPractitionerReports():refreshReport())}>{t.retry}</Button></div>:history?history.length?reportHistory:<p>{t.unreported}</p>:<p role="status">{t.loading}</p>}</details>}
   </article>;
 }

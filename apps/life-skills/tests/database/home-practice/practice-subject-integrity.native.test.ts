@@ -1,23 +1,25 @@
-import {afterAll,expect,test} from 'vitest';
+import {beforeAll,afterAll,expect,test,vi} from 'vitest';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {fixture,type Fixture} from '../calendar/fixture.ts';
 import type {SqlSession} from '../../../src/features/identity/store.ts';
 import {practiceFunctionBody,practiceSubjectIntegrity,PRACTICE_SUBJECT_GUARDS_MIGRATION} from '../../../src/db/practice-subject-integrity.ts';
+import {historicalPracticeDatabase} from './legacy-practice-fixture.ts';
 const files=['0040_ls_home_practice_20260911.sql',PRACTICE_SUBJECT_GUARDS_MIGRATION.name].map(name=>{
  const sql=readFileSync(new URL(`../../../migrations/${name}`,import.meta.url),'utf8');
  return {name,sql,checksum:createHash('sha256').update(sql.replace(/\r\n/g,'\n')).digest('hex')};
 });
 const opened:Fixture[]=[];
-afterAll(async()=>{for(const f of opened)await f.pool.end();});
+let historical:Awaited<ReturnType<typeof historicalPracticeDatabase>>;
+beforeAll(async()=>{historical=await historicalPracticeDatabase('0107_ls_practice_subject_guards.sql');vi.stubEnv('TEST_DATABASE_URL',historical.url);vi.stubEnv('LS_CALENDAR_TEST_ALLOW','true');});
+afterAll(async()=>{for(const f of opened)await f.pool.end();vi.unstubAllEnvs();await historical?.close();});
 async function setup(){const f=await fixture();opened.push(f);return f;}
 const present={baselineFunctions:false,reviewedFunctions:true,immutableHistory:true,schemaCatalog:true,foreignKeys:true,permissions:true,referencesSound:true};
 async function probe(f:Fixture,statements:readonly string[],work:(tx:SqlSession)=>Promise<void>){
  const client=await f.pool.connect();try{
   await client.query('BEGIN');
-  // Preserve the historical 0107 guard/attack inventory in its actual native
-  // frame. 0111 intentionally supersedes this one actor body; restore it only
-  // inside this rollback-only fixture transaction, never the live runtime.
+  // This suite has its own EXACT27 native schema, not an attempted rewrite of
+  // the final34 schema. All historical attacks remain rollback-only.
   await client.query(`CREATE OR REPLACE FUNCTION ls_practice.check_coordination_actor_and_assignees() RETURNS trigger LANGUAGE plpgsql AS $fn$${practiceFunctionBody(files,PRACTICE_SUBJECT_GUARDS_MIGRATION.name,'ls_practice.check_coordination_actor_and_assignees')}$fn$;`);
   for(const sql of statements)await client.query(sql);
   await work({query:async <R extends object>(sql:string,values:readonly unknown[]=[]) => (await client.query<R>(sql,[...values])).rows});

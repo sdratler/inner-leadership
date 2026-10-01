@@ -130,5 +130,9 @@
   {
     "name": "0113_ls_speaker_correction_receipts.sql",
     "sha256": "482b5d58b0605587a1425bbefc89de07ac9dcdc839e30d7d07ebb4f1ad225510"
+  },
+  {
+    "name": "0114_ls_practice_responsibilities.sql",
+    "sha256": "f0403ceccdcd45638f8ab3bca23e757d79e769c77747869c7a0b7a0cf071e0ab"
   }
 ]

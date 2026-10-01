@@ -17,6 +17,8 @@ import {systemClock,type Actor} from '../../../src/features/identity/types.ts';
 import type {IdentityConfig} from '../../../src/features/identity/config.ts';
 import {seal,tokenDigest} from '../../../src/features/identity/crypto.ts';
 import {asId} from '../../../src/lib/ids.ts';
+import {legacyPracticeSeed,legacyCoordination} from './legacy-practice-fixture.ts';
+import {practiceResponsibilityIntegrity} from '../../../src/db/practice-responsibility-integrity.ts';
 
 test('native populated 30-to-31 preserves immutable history and old checksums while enabling only exact adult self coordination',async()=>{
  const cluster=new URL(safeTestUrl());expect(['127.0.0.1','localhost','[::1]']).toContain(cluster.hostname);expect(cluster.search).toBe('');expect(cluster.hash).toBe('');
@@ -36,11 +38,7 @@ test('native populated 30-to-31 preserves immutable history and old checksums wh
   vi.stubEnv('TEST_DATABASE_URL',testUrl.toString());vi.stubEnv('LS_CALENDAR_TEST_ALLOW','true');f=await fixture();
   const store=poolStore(f.pool),config:IdentityConfig={enabled:true,origin:'https://synthetic.example.invalid',workspaceId:f.workspaceId,csrfKey:randomBytes(32),lookupKey:randomBytes(32),rateLimitKey:randomUUID(),keyring:f.keyring,sessionSeconds:3600};
   const practice=new HomePracticeService(store,config,systemClock),checkins=new CheckInService(store,systemClock);
-  const saved=await practice.createDraft(f.practitioner.actor,{caseId:f.first.id,audienceId:f.first.audienceId,templateKey:'W01',templateVersion:'synthetic-adult-upgrade-v1',instructions:'Synthetic retained instructions',startsOn:f.at(-24).slice(0,10),endsOn:null},randomUUID());
-  await practice.publish(f.practitioner.actor,saved.assignmentId,saved.versionId,randomUUID());
-  const oldCoord=await practice.coordinate(f.parent.actor,{assignmentId:saved.assignmentId,assigneeAccountIds:[f.parent.actor.id],completionMode:'any_assignee',reminderCandidateAccountIds:[],effectiveFrom:f.at(1)},randomUUID());
-  const oldOccurrence=await practice.schedule(f.practitioner.actor,{assignmentId:saved.assignmentId,occursOn:f.at(48).slice(0,10),period:'morning'},randomUUID());
-  await checkins.submit(f.parent.actor,{occurrenceId:oldOccurrence.id,status:'done',idempotencyKey:randomUUID()},randomUUID());
+  const {saved,oldCoord,oldOccurrence}=await legacyPracticeSeed(f);
   const person=asId((await f.pool.query('SELECT cl.person_id FROM ls_cases.cases c JOIN ls_cases.clients cl ON cl.workspace_id=c.workspace_id AND cl.id=c.client_id WHERE c.workspace_id=$1 AND c.id=$2',[f.workspaceId,f.first.id])).rows[0].person_id as string,'person');
   const id=asId(randomUUID(),'account'),token=randomBytes(32).toString('base64url'),now=new Date();
   const adult:Actor={id,workspaceId:f.workspaceId,personId:person,role:'adult_client',state:'active',locale:'en',sessionDigest:tokenDigest(token),expiresAt:Date.now()+3600000};
@@ -54,7 +52,7 @@ test('native populated 30-to-31 preserves immutable history and old checksums wh
   const sound={baselineFunctions:false,reviewedFunctions:true,immutableHistory:true,schemaCatalog:true,foreignKeys:true,permissions:true,referencesSound:true};
   expect(await practiceAdultCoordinationIntegrity(tx,files)).toEqual({prior:sound,current:{...sound,reviewedFunctions:false}});
   const self={assignmentId:saved.assignmentId,assigneeAccountIds:[id],completionMode:'any_assignee' as const,reminderCandidateAccountIds:[id],effectiveFrom:f.at(2)};
-  await expect(practice.coordinate(adult,self,randomUUID())).rejects.toMatchObject({cause:{code:'23514',message:'LS_PRACTICE_PARENT_REQUIRED'}});
+  await expect(legacyCoordination(f,saved.assignmentId,adult,[id],f.at(2))).rejects.toMatchObject({code:'23514',message:'LS_PRACTICE_PARENT_REQUIRED'});
   const tables=['practice_assignments','practice_assignment_versions','task_coordination_versions','practice_occurrences','completion_reports','action_history'] as const;
   const snapshot=async()=>{const result:Record<string,unknown>={};for(const table of tables)result[table]=(await client!.query(`SELECT to_jsonb(t) AS row FROM ls_practice.${table} t WHERE workspace_id=$1 ORDER BY id`,[f!.workspaceId])).rows;return result;};
   const before=await snapshot(),ledger=(await client.query('SELECT * FROM ls_control.migrations ORDER BY name')).rows;
@@ -62,20 +60,31 @@ test('native populated 30-to-31 preserves immutable history and old checksums wh
   expect((await client.query('SELECT * FROM ls_control.migrations WHERE name<>$1 ORDER BY name',[PRACTICE_ADULT_COORDINATION_MIGRATION.name])).rows).toEqual(ledger);
   expect(await migrate(migrationClient,files,false)).toEqual({applied:0,pending:0});expect(await migrate(migrationClient,files,true)).toEqual({applied:0,pending:0});
   const proof={prior:{...sound,reviewedFunctions:false},current:sound};expect(await practiceAdultCoordinationIntegrity(tx,files)).toEqual(proof);
+  // Inspect all historical drift probes on the ACTUAL31 frame, then migrate
+  // forward and test the retained services against the final native schema.
+  for(const [statement,key] of [
+   ['ALTER FUNCTION ls_practice.check_coordination_actor_and_assignees() SECURITY DEFINER','reviewedFunctions'],
+   ['ALTER TABLE ls_practice.task_coordination_versions DISABLE TRIGGER check_coordination_actor_and_assignees','schemaCatalog'],
+   ['GRANT SELECT ON ls_practice.completion_reports TO PUBLIC','permissions'],
+  ] as const){await client.query('BEGIN');try{await client.query(statement);expect((await practiceAdultCoordinationIntegrity(tx,files)).current[key]).toBe(false);}finally{await client.query('ROLLBACK');}}
+  await legacyCoordination(f,saved.assignmentId,adult,[id],f.at(2));
+  expect(await practiceAdultCoordinationIntegrity(tx,files)).toEqual(proof);
+  expect(await migrate(migrationClient,inventory,false)).toEqual({applied:3,pending:0});
+  const modernProof={metadataAbsent:false,schemaCatalog:true,foreignKeys:true,permissions:true,reviewedFunctions:true,immutableHistory:true,referencesSound:true};
   const changed=await practice.coordinate(adult,self,randomUUID());
   const newOccurrence=await practice.schedule(f.practitioner.actor,{assignmentId:saved.assignmentId,occursOn:f.at(72).slice(0,10),period:'evening'},randomUUID());expect(newOccurrence.coordinationVersionId).toBe(changed.versionId);
   expect((await f.pool.query('SELECT coordination_version_id FROM ls_practice.practice_occurrences WHERE workspace_id=$1 AND id=$2',[f.workspaceId,oldOccurrence.id])).rows[0].coordination_version_id).toBe(oldCoord.versionId);
   const checkin={occurrenceId:newOccurrence.id,status:'done' as const,idempotencyKey:randomUUID()};await checkins.submit(adult,checkin,randomUUID());await checkins.submit(adult,checkin,randomUUID());expect(await checkins.list(adult,newOccurrence.id)).toHaveLength(1);
   await expect(practice.coordinate(adult,{...self,assigneeAccountIds:[f.parent.actor.id]},randomUUID())).rejects.toMatchObject({code:'NOT_FOUND'});
   await expect(checkins.submit(f.parent.actor,{...checkin,idempotencyKey:randomUUID()},randomUUID())).rejects.toMatchObject({code:'NOT_FOUND'});
-  expect(await practiceAdultCoordinationIntegrity(tx,files)).toEqual(proof);
-  // Actual installed 0111 frame, with attack readbacks rolled back individually.
+  expect((await practiceResponsibilityIntegrity(tx,inventory)).current).toEqual(modernProof);
+  // Preserve the same attacks against the final frame too.
   for(const [statement,key] of [
    ['ALTER FUNCTION ls_practice.check_coordination_actor_and_assignees() SECURITY DEFINER','reviewedFunctions'],
    ['ALTER TABLE ls_practice.task_coordination_versions DISABLE TRIGGER check_coordination_actor_and_assignees','schemaCatalog'],
    ['GRANT SELECT ON ls_practice.completion_reports TO PUBLIC','permissions'],
-  ] as const){await client.query('BEGIN');try{await client.query(statement);expect((await practiceAdultCoordinationIntegrity(tx,files)).current[key]).toBe(false);}finally{await client.query('ROLLBACK');}}
-  expect(await practiceAdultCoordinationIntegrity(tx,files)).toEqual(proof);
+  ] as const){await client.query('BEGIN');try{await client.query(statement);expect((await practiceResponsibilityIntegrity(tx,inventory)).current[key]).toBe(false);}finally{await client.query('ROLLBACK');}}
+  expect((await practiceResponsibilityIntegrity(tx,inventory)).current).toEqual(modernProof);
   // The original source's immutable body and checksum remain accessible, not rewritten.
   expect(files.find(file=>file.name===PRACTICE_SUBJECT_GUARDS_MIGRATION.name)?.checksum).toBe(PRACTICE_SUBJECT_GUARDS_MIGRATION.sha256);
   expect(practiceFunctionBody(files,PRACTICE_SUBJECT_GUARDS_MIGRATION.name,'ls_practice.check_coordination_actor_and_assignees')).not.toBe(practiceFunctionBody(files,PRACTICE_ADULT_COORDINATION_MIGRATION.name,'ls_practice.check_coordination_actor_and_assignees'));

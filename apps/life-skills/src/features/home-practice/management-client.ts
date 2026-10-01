@@ -1,10 +1,11 @@
 import { IdentityClientError, sessionInfo, type IdentityClientErrorCode } from "../identity/client.ts";
 import type { GoalView } from "../goals/types.ts";
 import type { CommitmentView } from "../commitments/types.ts";
-import type { PracticeManagementPage } from "./types.ts";
+import type { PracticeManagementPage,ScheduledOccurrence } from "./types.ts";
+import {sameResponsibilityInput,type ResponsibilityInput,type ResponsibilityParticipants} from "./responsibility-input.ts";
 
 export interface PracticeAudience { id: string; published: boolean; visibility: "private" | "family_full" | "family_title_completion"; }
-export interface PracticeManagementData { practice: PracticeManagementPage; goals: GoalView[]; commitments: CommitmentView[]; }
+export interface PracticeManagementData { practice: PracticeManagementPage; goals: GoalView[]; commitments: CommitmentView[];participants?:ResponsibilityParticipants;scheduled?:ScheduledOccurrence[]; }
 const codes: readonly IdentityClientErrorCode[] = ["INVALID_REQUEST", "UNAUTHENTICATED", "FORBIDDEN", "NOT_FOUND", "CONFLICT", "RATE_LIMITED", "UNAVAILABLE", "INTERNAL"];
 async function request<T>(path: string, init: RequestInit, signal?: AbortSignal): Promise<T> {
   try {
@@ -35,9 +36,10 @@ export async function readPracticeManagement(caseId: string, audienceId: string,
   return { practice, goals, commitments };
 }
 export type PracticeAuthoringCommand =
-  | { action: "create_draft"; caseId: string; audienceId: string; instructions: string; startsOn: string; endsOn: string | null; templateKey: string; templateVersion: string; goalId?: string; commitmentId?: string }
-  | { action: "revise"; assignmentId: string; instructions: string; startsOn: string; endsOn: string | null }
+  | { action: "create_draft"; caseId: string; audienceId: string; instructions: string; startsOn: string; endsOn: string | null; templateKey: string; templateVersion: string; goalId?: string; commitmentId?: string;responsibility?:ResponsibilityInput }
+  | { action: "revise"; assignmentId: string; instructions: string; startsOn: string; endsOn: string | null;responsibility?:ResponsibilityInput }
   | { action: "publish"; assignmentId: string; versionId: string }
+  | { action:"schedule";assignmentId:string;occursOn:string;period:"morning"|"evening" }
   | { action: "goal"; caseId: string; audienceId: string; title: string }
   | { action: "commitment"; caseId: string; audienceId: string; goalId: string; title: string };
 export async function savePracticeAuthoring(command: PracticeAuthoringCommand): Promise<Record<string, unknown>> {
@@ -52,6 +54,7 @@ export async function savePracticeAuthoring(command: PracticeAuthoringCommand): 
 }
 /** Verify the exact returned version/ID; a matching title is not save evidence. */
 export function authoringReadback(command: PracticeAuthoringCommand, receipt: Record<string, unknown>, data: PracticeManagementData): boolean {
+  if(command.action==="schedule")return data.scheduled?.some(row=>row.id===receipt.id&&row.assignmentId===command.assignmentId&&row.practiceVersionId===receipt.practiceVersionId&&row.coordinationVersionId===receipt.coordinationVersionId&&row.occursOn===command.occursOn&&row.period===command.period&&row.occursAt===receipt.occursAt&&row.state!=="cancelled")===true;
   if (command.action === "goal") return data.goals.some(row => row.id === receipt.id && row.caseId === command.caseId && row.audienceId === command.audienceId && row.title === command.title);
   if (command.action === "commitment") return data.commitments.some(row => row.id === receipt.id && row.goalId === command.goalId && row.caseId === command.caseId && row.audienceId === command.audienceId && row.title === command.title);
   const versionId = command.action === "publish" ? command.versionId : receipt.versionId;
@@ -60,5 +63,6 @@ export function authoringReadback(command: PracticeAuthoringCommand, receipt: Re
   if (!row) return false;
   if (command.action === "publish") return row.state === "published" && row.active && Boolean(row.publishedAt && row.immutableSnapshotDigest);
   return row.state === "draft" && row.instructions === command.instructions && row.startsOn === command.startsOn && row.endsOn === command.endsOn &&
+    (command.responsibility===undefined||sameResponsibilityInput(row.responsibility,command.responsibility))&&
     (command.action !== "create_draft" || row.caseId === command.caseId && row.audienceId === command.audienceId && row.goalId === (command.goalId ?? null) && row.commitmentId === (command.commitmentId ?? null));
 }
