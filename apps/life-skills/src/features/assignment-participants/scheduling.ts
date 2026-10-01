@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { invariant, nonempty, validDate, validIso, validTimezone } from "../session-workflow/policy.ts";
 import type { Responsibility, SavedPracticeDefault, PracticeOccurrence } from "./contracts.ts";
-export const validClock = (s: unknown): s is string => typeof s === "string" && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(s);
+import { validClock, wallTimeCandidates } from "./wall-time.ts";
+export { validClock, wallTimeCandidates } from "./wall-time.ts";
 export function resolvePracticeTime(r: Responsibility, saved: SavedPracticeDefault | null): {
     localTime: string;
     timezone: string;
@@ -14,26 +15,6 @@ export function resolvePracticeTime(r: Responsibility, saved: SavedPracticeDefau
     }
     invariant(saved && validClock(saved.localTime) && saved.timezone === r.timezone && nonempty(saved.selectedByAccountId) && validIso(saved.selectedAt), "PRACTICE_TIME_REQUIRED");
     return { localTime: saved.localTime, timezone: saved.timezone, timeOrigin: "case_default" };
-}
-function wallParts(instant: number, timezone: string) {
-    const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(instant).filter(x => x.type !== "literal").map(x => [x.type, x.value]));
-    return { date: `${parts.year}-${parts.month}-${parts.day}`, time: `${parts.hour}:${parts.minute}` };
-}
-/** Returns actual instants for a local wall time. Zero=gap; two=fold, never a silent +24h shift. */
-export function wallTimeCandidates(date: string, time: string, timezone: string): readonly string[] {
-    invariant(validDate(date) && validClock(time) && validTimezone(timezone), "LOCAL_TIME_INVALID");
-    const wall = Date.parse(`${date}T${time}:00Z`), offsets = new Set<number>();
-    for (const hours of [-36, -12, 0, 12, 36]) {
-        const probe = wall + hours * 3600000, p = wallParts(probe, timezone);
-        offsets.add(Date.parse(`${p.date}T${p.time}:00Z`) - probe);
-    }
-    const results = new Set<string>();
-    for (const offset of offsets) {
-        const candidate = wall - offset, p = wallParts(candidate, timezone);
-        if (p.date === date && p.time === time)
-            results.add(new Date(candidate).toISOString());
-    }
-    return [...results].sort();
 }
 export function validateResponsibility(r: Responsibility): void {
     invariant([r.id, r.assignmentId, r.workspaceId, r.caseId, r.subjectPersonId].every(x => nonempty(x)), "RESPONSIBILITY_IDS");
