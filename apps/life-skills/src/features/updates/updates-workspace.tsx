@@ -1,7 +1,6 @@
 "use client";
 import {useEffect,useMemo,useRef,useState,type FormEvent} from "react";
 import type {Locale} from "../../lib/locale.ts";
-import {Breadcrumb} from "../../ui/workspace/surfaces.tsx";
 import {accountRead,sessionInfo,IdentityClientError} from "../identity/client.ts";
 import {sharedRecapListSchema} from "../session-workflow/recap-contract.ts";
 import {RecapPreview} from "../../ui/revamp/recap-preview.tsx";
@@ -91,7 +90,6 @@ export function UpdatesWorkspace({locale,role="parent",initialCaseId="",initialA
   </article>);
   return <main className="lsw-stack lsw-feedback" lang={locale} dir={he?'rtl':'ltr'}>
    <UnsavedChangesGuard dirty={dirty} message={word('You have unsaved or unverified text. Leave this page?','יש טקסט שלא נשמר או שלא אומת. לצאת מהעמוד?')}/>
-   <Breadcrumb label={word('Location','מיקום')} items={[{label:word('Calendar','יומן'),href:`${base}/${role==='parent'?'schedule':'calendar'}${selectedCaseId?'?'+new URLSearchParams({caseId:selectedCaseId}):''}`},{label:title}]}/>
    <header className="lsw-page-header"><div><p className="lsw-eyebrow">{familyMember?word('Messages and updates','הודעות ועדכונים'):word('Parent feedback','משוב מהורים')}</p><h1>{title}</h1><p>{reporter?t.intro:word('Authorized shared updates and replies for the selected client.','עדכונים ותגובות מורשים ששותפו בתיק הנבחר.')}</p></div></header>
    {(reporter||role==='practitioner')&&<aside className="lsw-attention"><p>{t.notice}</p></aside>}
    {casesState==='loading'?<p role="status">{t.loading}</p>:casesState==='error'?<div role="alert"><p>{word('Authorized contexts could not be loaded.','לא ניתן לטעון את ההקשרים המורשים.')}</p><button className="lsw-button" type="button" disabled={locked} onClick={()=>setCaseRevision(value=>value+1)}>{word('Retry contexts','ניסיון טעינת ההקשרים מחדש')}</button></div>:!choices.length?<p role="status">{role==='adult_client'?word('No authorized client context is available.','אין הקשר תיק מורשה זמין.'):t.noCases}</p>:<>

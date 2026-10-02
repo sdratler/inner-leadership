@@ -14,6 +14,14 @@ const links=(html:string)=>[...html.matchAll(/href="([^"]+)"/g)].map(match=>new 
 const topLinks=(html:string)=>links(html.match(/<nav class="lsu-top-tabs"[^>]*>(.*?)<\/nav>/)?.[1]??'');
 
 describe("operational workspace navigation",()=>{
+ for(const locale of ['en','he'] as const)for(const role of ['parent','client','practitioner'] as const)it(`${locale}/${role}: Messages uses the visible shell Calendar breadcrumb and preserves case context`,()=>{
+  const caseId='123e4567-e89b-42d3-a456-426614174000',path=role==='parent'?'family/feedback':role==='client'?'client/messages':'app/feedback',calendar=role==='parent'?'family/schedule':role==='client'?'client/calendar':'app/calendar';
+  const crumbs=breadcrumbItems(locale,role,`/${locale}/${path}`);expect(crumbs[0]).toEqual({label:locale==='he'?'יומן':'Calendar',path:calendar});expect(crumbs.at(-1)?.label).toBe(role==='practitioner'?(locale==='he'?'תקשורת':'Communications'):(locale==='he'?'הודעות':'Messages'));
+  const html=renderToStaticMarkup(React.createElement(WorkspaceShell,{locale,role,pathname:`/${locale}/${path}`,caseId,mode:'demo',section:role==='practitioner'?'app_updates':undefined,languageHref:`/${locale==='en'?'he':'en'}/${path}`} as React.ComponentProps<typeof WorkspaceShell>,React.createElement('h1',null,'Messages'))),nav=html.match(/<nav class="lsu-breadcrumbs"[^>]*>(.*?)<\/nav>/)?.[1]??'',destinations=links(nav);
+  expect(destinations.filter(url=>url.pathname===`/${locale}/${calendar}`&&url.searchParams.get('caseId')===caseId)).toHaveLength(1);
+  if(role==='practitioner'){expect(destinations[0]?.searchParams.get('mode')).toBe('demo');expect(nav).toContain(locale==='he'?'משוב באפליקציה':'App feedback');}
+  expect(nav).not.toContain(locale==='he'?'>בית<':'>Home<');
+ });
  for(const locale of ['he','en'] as const)it(`${locale}: report views preserve validated case/audience/demo/date context in one toolbar`,()=>{
   const caseId='123e4567-e89b-42d3-a456-426614174000',audienceId='223e4567-e89b-42d3-a456-426614174000';
   expect(practitionerContext(`/${locale}/app/reports`,null).map(item=>item.key)).toEqual(['due','drafts','published','history']);

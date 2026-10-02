@@ -84,7 +84,8 @@ export function activeItem(pathname: string, locale: Locale, role: WorkspaceRole
 export type Crumb = { label: string; path?: string };
 export function breadcrumbItems(locale: Locale, role: WorkspaceRole, pathname: string, section?: string | null, view?: string | null, selectedClient=false, caseId?: string | null): Crumb[] {
   const base = role === "parent" ? "family" : role === "client" ? "client" : "app";
-  const home = { label: locale === "he" ? "בית" : "Home", path: role === "parent" ? "family" : role === "client" ? "client" : "app/calendar" };
+  const messagesPath=role==='parent'?'family/feedback':role==='client'?'client/messages':'app/feedback',inMessages=pathname===`/${locale}/${messagesPath}`;
+  const home = inMessages?{label:locale==='he'?'יומן':'Calendar',path:role==='parent'?'family/schedule':role==='client'?'client/calendar':'app/calendar'}:{ label: locale === "he" ? "בית" : "Home", path: role === "parent" ? "family" : role === "client" ? "client" : "app/calendar" };
   const settings = `${base}/settings`;
   if (pathname === `/${locale}/${settings}`) return [home, { label: locale === "he" ? "הגדרות" : "Settings" }];
   if (pathname.startsWith(`/${locale}/${settings}/`)) {
