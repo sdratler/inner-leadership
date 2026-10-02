@@ -8,7 +8,7 @@ export type InstallEvent = Event & {
         outcome: "accepted" | "dismissed";
     }>;
 };
-export async function requestAppInstallation(event: InstallEvent): Promise<"accepted" | "dismissed"> {
+export async function requestAppInstallation(event: Pick<InstallEvent,"prompt"|"userChoice">): Promise<"accepted" | "dismissed"> {
     await event.prompt();
     const choice = await event.userChoice;
     if (choice.outcome !== "accepted" && choice.outcome !== "dismissed")
