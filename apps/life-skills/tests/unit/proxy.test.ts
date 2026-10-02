@@ -21,8 +21,10 @@ afterEach(() => vi.unstubAllEnvs());
 describe('owned community draft API stays behind the existing private perimeter',()=>{
  it('keeps the explicit app enablement gate instead of relying on a generic success page',()=>{
   const origin='https://life-skills.bneineviimacademy.org';vi.stubEnv('NODE_ENV','production');vi.stubEnv('LS_APP_MODE','foundation_locked');vi.stubEnv('LS_APP_ORIGIN',origin);
-  vi.stubEnv('LS_PRIVATE_APP_ENABLED','false');expect(proxy(new NextRequest(origin+'/api/community-drafts')).status).toBe(503);
-  vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');expect(proxy(new NextRequest(origin+'/api/community-drafts')).status).toBe(200);
+   for(const path of ['/api/community-drafts','/api/community-settings']){
+    vi.stubEnv('LS_PRIVATE_APP_ENABLED','false');expect(proxy(new NextRequest(origin+path)).status).toBe(503);
+    vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');expect(proxy(new NextRequest(origin+path)).status).toBe(200);
+   }
  });
 });
 describe('actual bounded Marketing login-return proxy',()=>{
