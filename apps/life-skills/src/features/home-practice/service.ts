@@ -44,6 +44,8 @@ function immutableVersionDigest(row: VersionRow): string {
     row.startsOn, row.endsOn,...(row.responsibility===null?[]:[row.responsibility]),
   ]), "utf8").digest("hex");
 }
+/** Reuse the native source identity and AAD at authorized integration boundaries. */
+export { immutableVersionDigest as practiceVersionSnapshotDigest, instructionsAad as practiceInstructionsAad };
 
 interface VersionRow {
   workspaceId: Actor["workspaceId"];
