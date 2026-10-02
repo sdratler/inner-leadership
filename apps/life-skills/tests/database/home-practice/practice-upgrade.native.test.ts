@@ -84,7 +84,7 @@ test('native populated 26-to-27 upgrade preserves every historical row and admit
   expect(await practiceSubjectIntegrity(tx,files)).toEqual({...oldProof,baselineFunctions:false,reviewedFunctions:true});
   // Now exercise the retained current services on the final schema, including
   // old unspecified metadata and exact-subject replay/permission behavior.
-  expect(await migrate(migrationClient,inventory,false)).toEqual({applied:7,pending:0});
+  expect(await migrate(migrationClient,inventory,false)).toEqual({applied:8,pending:0});
   const newCoord=await practice.coordinate(f.parent.actor,{assignmentId:saved.assignmentId,assigneeAccountIds:[id],completionMode:'any_assignee',reminderCandidateAccountIds:[],effectiveFrom:f.at(2)},randomUUID());
   const newOccurrence=await practice.schedule(f.practitioner.actor,{assignmentId:saved.assignmentId,occursOn:f.at(72).slice(0,10),period:'evening'},randomUUID());
   expect(newOccurrence.coordinationVersionId).toBe(newCoord.versionId);
