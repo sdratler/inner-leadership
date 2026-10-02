@@ -8,6 +8,7 @@ import type {Locale} from "../../lib/locale.ts";
 import {NativePeopleWorkspace,peopleFiltersFromQuery,peoplePageFromQuery,requestPeople,PeopleRequestError,type SheetRequestContext} from "../contact-ops/native-people-workspace.tsx";
 import type {PeopleResponse} from "../contact-ops/server/people-http.ts";
 import {loginHref} from "../identity/login-return.ts";
+import {AcquisitionWorkspace} from "../contact-ops/acquisition-workspace.tsx";
 
 const caseRows=z.array(z.object({id:z.uuid(),kind:z.enum(["minor","adult"]),state:z.string().min(1),displayName:z.string().min(1),mode:z.enum(["live","demo"])}));
 type Case=z.infer<typeof caseRows>[number];
@@ -25,6 +26,7 @@ type RosterProps={locale:Locale;section?:string|undefined;prospectFilter?:string
 /** Choose the real durable authority before rendering one directory. A frozen
  * transition or failed native read cannot initialize the legacy bridge UI. */
 export function ClientsRoster(props:RosterProps){
+ const needsReview=props.section==="needs_review";
  const {locale}=props,section=props.section&&sections.has(props.section as Section)?props.section as Section:"all";
  const mode=props.mode==="demo"?"demo":"live",personId=props.personId&&/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(props.personId)?props.personId:undefined;
  const leadId=props.focusLeadId&&/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]{1,80}$/.test(props.focusLeadId)?props.focusLeadId:undefined;
@@ -34,8 +36,9 @@ export function ClientsRoster(props:RosterProps){
  const returnQuery={...props,filter:props.prospectFilter,leadId:props.focusLeadId};
  const [source,setSource]=useState<PeopleResponse|null>(null),[sourceContext,setSourceContext]=useState<{mode:"live"|"demo";filter:Preset;personId?:string|undefined;leadId?:string|undefined}>({mode,filter,personId,leadId}),[failure,setFailure]=useState<number|null>(null),lifecycle=useRef({alive:true,serial:0});
  const acceptSheet=useCallback((response:Extract<PeopleResponse,{source:"sheet"}>,context:SheetRequestContext)=>{if(lifecycle.current.alive){setSourceContext(context);setSource(response);}},[]);
- const load=useCallback(()=>{const state=lifecycle.current,n=++state.serial;setSource(null);setSourceContext({mode,filter,personId,leadId});setFailure(null);void requestPeople(new URLSearchParams({view:personId||leadId?"all":section,...(mode==="demo"?{mode}:{}),...(personId?{personId}:{}),...(leadId?{leadId}:{}),...(!personId&&!leadId?{...(filter!=="all"?{filter}:{}),...(initialPage>1?{page:String(initialPage)}:{}),...(initialFilters.query?{search:initialFilters.query}:{}),...(initialFilters.stage?{stage:initialFilters.stage}:{}),...(initialFilters.language?{language:initialFilters.language}:{}),...(initialFilters.due!=="any"?{due:initialFilters.due}:{})}:{})})).then(r=>{if(state.alive&&n===state.serial)setSource(r);}).catch(e=>{if(state.alive&&n===state.serial)setFailure(e instanceof PeopleRequestError?e.status:503);});},[section,mode,personId,leadId,filter,initialPage,initialFilters.query,initialFilters.stage,initialFilters.language,initialFilters.due]);
+ const load=useCallback(()=>{if(needsReview)return;const state=lifecycle.current,n=++state.serial;setSource(null);setSourceContext({mode,filter,personId,leadId});setFailure(null);void requestPeople(new URLSearchParams({view:personId||leadId?"all":section,...(mode==="demo"?{mode}:{}),...(personId?{personId}:{}),...(leadId?{leadId}:{}),...(!personId&&!leadId?{...(filter!=="all"?{filter}:{}),...(initialPage>1?{page:String(initialPage)}:{}),...(initialFilters.query?{search:initialFilters.query}:{}),...(initialFilters.stage?{stage:initialFilters.stage}:{}),...(initialFilters.language?{language:initialFilters.language}:{}),...(initialFilters.due!=="any"?{due:initialFilters.due}:{})}:{})})).then(r=>{if(state.alive&&n===state.serial)setSource(r);}).catch(e=>{if(state.alive&&n===state.serial)setFailure(e instanceof PeopleRequestError?e.status:503);});},[needsReview,section,mode,personId,leadId,filter,initialPage,initialFilters.query,initialFilters.stage,initialFilters.language,initialFilters.due]);
  useEffect(()=>{const state=lifecycle.current;state.alive=true;queueMicrotask(()=>{if(state.alive)load();});return()=>{state.alive=false;state.serial++;};},[load]);
+ if(needsReview)return <AcquisitionWorkspace locale={locale} mode={props.mode}/>;
  if(source?.source==="sheet"&&sourceContext.mode!=="demo"&&(!sourceContext.personId||sourceContext.leadId))return <LegacyClientsRoster {...props} mode="live" prospectFilter={sourceContext.filter} focusLeadId={sourceContext.leadId} personId={sourceContext.personId}/>;
  const text=(en:string,he:string)=>locale==="he"?he:en;
  return <main className="lsw-main lsu-clients-directory" lang={locale} dir={locale==="he"?"rtl":"ltr"}>
