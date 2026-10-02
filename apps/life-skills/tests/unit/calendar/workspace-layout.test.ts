@@ -8,7 +8,8 @@ describe('operational Calendar composition',()=>{
  it('keeps the same-context practice workspace mounted through ordinary reloads while authorization failures remove it',()=>{
   const layer=workspace.split('\n').find(line=>line.includes('<PracticeOccurrenceWorkspace '))!;
   expect(layer).not.toContain('!loading');expect(layer).not.toContain('!caseError');
-  expect(layer).toContain("error!=='auth'");expect(layer).toContain("error!=='forbidden'");
+   expect(layer).toContain("readEnabled={showPractice&&error!=='auth'&&error!=='forbidden'}");
+   expect(layer).toContain('renderCalendar=');
  });
  it('places the functioning Calendar before practitioner summary cards and attendance totals',()=>{
   const grid=workspace.indexOf('<CalendarShell ');
@@ -45,8 +46,18 @@ describe('operational Calendar composition',()=>{
   expect(css).toContain('.lsw.lsu .ls-cal .ls-cal-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))');
   expect(css).toContain('.lsw.lsu .ls-cal .lsw-calendar-toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto');
   expect(css).toContain('.lsw.lsu .ls-cal .lsw-calendar-toolbar>nav{grid-column:1/-1');
-  expect(workspace).toContain("title={practitioner?(locale==='he'?'יומן':'Calendar'):t.familyTitle}");
- });
+   expect(workspace).toContain("title={locale==='he'?'יומן':'Calendar'}");
+  });
+  it('puts the optional practice layer before the dated Calendar and counts actual practice in the mobile empty-grid decision',()=>{
+   expect(workspace.indexOf('checked={showPractice}')).toBeLessThan(workspace.indexOf('<CalendarShell '));
+   expect(workspace).toContain('data-has-entries={items.length+followups.length+tasks.length+practice.length>0}');
+   expect(workspace.match(/practice=\{practice\}/g)).toHaveLength(2);
+   expect(workspace).not.toContain('calendar-practice-title');
+   expect(css).toContain('.ls-cal-schedule[data-has-entries="false"]');
+   expect(css).not.toContain('min-block-size:330px');
+   expect(css).not.toContain('max-inline-size:880px');
+   expect(css).toContain('font-family:inherit');
+  });
  it('offers one practitioner booking action beside the title and reduces unused agenda spacing',()=>{
   expect(workspace).toContain("action={practitioner?<Button disabled={mutation.locked||!cases.length} onClick={e=>openBook(e)}>");
   expect(workspace).toContain("{livePractitioner&&<div className=\"ls-cal-actions\">");
