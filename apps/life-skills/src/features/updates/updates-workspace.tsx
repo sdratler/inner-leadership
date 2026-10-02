@@ -45,13 +45,16 @@ export function UpdatesWorkspace({locale,role="parent",initialCaseId="",initialA
   const parentReady=reporter&&audienceReady&&activeAudienceId===initialAudienceId&&feedbackContextReady(initialCaseId,selectedCaseId,initialAudienceId,initialPracticeVersionId)&&audiences.some(item=>item.id===initialAudienceId&&item.visibility==='family_full');
   const contextKey=`${selectedCaseId}:${activeAudienceId}`,draftKey=`${initialCaseId}:${initialAudienceId}:${initialPracticeVersionId}`,body=parentReady?(drafts[draftKey]??''):'';
   useEffect(()=>()=>{generation.current++},[contextKey]);
+  function clearDeniedAccess(){generation.current++;setCases([]);setCasesState('error');setAudiences([]);setThreads([]);setDrafts({});setReplyBodies({});setComposerOpen(false);writeRef.current=null;mutations.current={};setWrite(null);setStatus(null);}
   async function readThreads(signal?:AbortSignal){
-   const query=new URLSearchParams({caseId:selectedCaseId,audienceId:activeAudienceId}),response=await fetch(`/api/updates?${query}`,{credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',...(signal?{signal}:{})}),payload=await response.json() as {ok?:unknown;data?:unknown};
+   const query=new URLSearchParams({caseId:selectedCaseId,audienceId:activeAudienceId}),response=await fetch(`/api/updates?${query}`,{credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',...(signal?{signal}:{})});
+   if([401,403,404].includes(response.status))throw new IdentityClientError(response.status===401?'UNAUTHENTICATED':response.status===403?'FORBIDDEN':'NOT_FOUND');
+   const payload=await response.json() as {ok?:unknown;data?:unknown};
    if(!response.ok||payload.ok!==true)throw Error('UNAVAILABLE');return parseUpdateThreads(payload.data,selectedCaseId,activeAudienceId,role==='practitioner');
   }
   useEffect(()=>{const controller=new AbortController();if(!selectedCaseId||!activeAudienceId){queueMicrotask(()=>{if(!controller.signal.aborted)setThreadsState({key:contextKey,status:'idle'})});return()=>controller.abort()}
    queueMicrotask(()=>{if(!controller.signal.aborted){setThreads([]);setThreadsState({key:contextKey,status:'loading'})}});
-   void readThreads(controller.signal).then(rows=>{if(!controller.signal.aborted){setThreads(rows);setThreadsState({key:contextKey,status:'ready'})}}).catch(()=>{if(!controller.signal.aborted){setThreads([]);setThreadsState({key:contextKey,status:'error'})}});return()=>controller.abort();
+   void readThreads(controller.signal).then(rows=>{if(!controller.signal.aborted){setThreads(rows);setThreadsState({key:contextKey,status:'ready'})}}).catch(error=>{if(!controller.signal.aborted){if(error instanceof IdentityClientError&&['UNAUTHENTICATED','FORBIDDEN','NOT_FOUND'].includes(error.code)){clearDeniedAccess();return;}setThreads([]);setThreadsState({key:contextKey,status:'error'})}});return()=>controller.abort();
    // The exact selected case/audience and locale-independent reader own this effect.
    // eslint-disable-next-line react-hooks/exhaustive-deps
   },[activeAudienceId,contextKey,selectedCaseId,revision,role]);
@@ -60,14 +63,17 @@ export function UpdatesWorkspace({locale,role="parent",initialCaseId="",initialA
   async function post(slot:string,payload:Record<string,unknown>,retry=false){
    if(!mounted.current||inFlight.current||writeRef.current&&!retry||!activeAudienceId)return false;
    inFlight.current=true;const epoch=generation.current,current=()=>mounted.current&&generation.current===epoch,next:Write={slot,payload,state:'sending'};writeRef.current=next;setWrite(next);setStatus(null);let definiteFailure=false,writeSent=false,accessDenied=false;
-   try{const session=await sessionInfo();if(!current())return false;writeSent=true;const response=await fetch('/api/updates',{method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',headers:{'Content-Type':'application/json','X-CSRF-Token':session.csrfToken},body:JSON.stringify(payload)}),result=await response.json() as {ok?:unknown;data?:unknown;error?:{code?:unknown}};
-    if(!response.ok||result.ok!==true){definiteFailure=response.status>=400&&response.status<500;accessDenied=[401,403,404].includes(response.status);throw Error('UNAVAILABLE')}
+   try{const session=await sessionInfo();if(!current())return false;writeSent=true;const response=await fetch('/api/updates',{method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',headers:{'Content-Type':'application/json','X-CSRF-Token':session.csrfToken},body:JSON.stringify(payload)});
+    definiteFailure=response.status>=400&&response.status<500;accessDenied=[401,403,404].includes(response.status);
+    if(accessDenied)throw Error('UNAVAILABLE');
+    const result=await response.json() as {ok?:unknown;data?:unknown;error?:{code?:unknown}};
+    if(!response.ok||result.ok!==true)throw Error('UNAVAILABLE');
     if(!current())return false;const rows=await readThreads();if(!updateSaveVerified(rows,payload,result.data))throw Error('UNVERIFIED');if(!current())return false;
     setThreads(rows);setThreadsState({key:contextKey,status:'ready'});setStatus({kind:'saved',text:word('Saved and verified.','נשמר ואומת.')});clearSavedInput(payload);writeRef.current=null;setWrite(null);return true;
    }catch(error){if(current()){
     definiteFailure||=!writeSent&&error instanceof IdentityClientError&&['INVALID_REQUEST','UNAUTHENTICATED','FORBIDDEN','NOT_FOUND','CONFLICT','RATE_LIMITED'].includes(error.code);
     accessDenied||=error instanceof IdentityClientError&&['UNAUTHENTICATED','FORBIDDEN','NOT_FOUND'].includes(error.code);
-    if(accessDenied){setCases([]);setCasesState('error');setAudiences([]);setThreads([]);setDrafts({});setReplyBodies({});setComposerOpen(false)}
+     if(accessDenied){clearDeniedAccess();setStatus({kind:'error',text:word('This context could not be authorized. Private information has been cleared. Reload your authorized contexts before retrying.','לא ניתן לאשר גישה להקשר הזה. המידע הפרטי נוקה. טענו מחדש את ההקשרים המורשים לפני ניסיון נוסף.')});return false;}
     if(definiteFailure){writeRef.current=null;setWrite(null);setStatus({kind:'error',text:t.failure})}
     else{const uncertain:Write={slot,payload,state:'unknown'};writeRef.current=uncertain;setWrite(uncertain);setStatus({kind:'error',text:word('The saved result could not be verified. Your text is retained; retry this exact action before starting another.','לא ניתן לאמת את התוצאה השמורה. הטקסט נשמר כאן; נסו שוב את אותה פעולה לפני התחלת פעולה חדשה.')})}
    }return false;}finally{inFlight.current=false;}

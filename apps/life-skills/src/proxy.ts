@@ -71,7 +71,7 @@ export function proxy(request: NextRequest) {
   // These APIs depend on strict canonical HTTPS forwarding. Validate the original
   // transport before the request-header rewrite below can hide an invalid chain.
   // Forwarding never grants a session, role, case or audience permission.
-  if (["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins"].includes(pathname)||/^\/api\/notifications(?:\/|$)/.test(pathname)) {
+  if (["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins", "/api/updates"].includes(pathname)||/^\/api\/notifications(?:\/|$)/.test(pathname)) {
     try {
       if (request.nextUrl.hash || requestHost !== canonicalOrigin.host.toLowerCase()) throw new Error("invalid transport");
       if (request.headers.has("x-forwarded-proto") || request.headers.has("x-forwarded-host")) {

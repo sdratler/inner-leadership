@@ -24,14 +24,35 @@ const token = "t".repeat(43), csrf = "c".repeat(43);
 
 function makeFixture(count = 1) {
   const list = vi.fn(async () => []);
+  const review = vi.fn(async () => ({id:uuid(6)}));
   const sessions = { actor: vi.fn(async () => actor), csrf: vi.fn(() => csrf) } as unknown as IdentitySessions;
   const limits: RateLimitStore = { consume: vi.fn(async () => ({ count, retryAfterMs: 1_000 })) };
   const audit: AuditSink = { write: vi.fn(async () => undefined) };
-  const updates = { list } as unknown as UpdateService;
-  return { http: new Ls080Http(config, clock, { sessions, limits, audit, updates }), list, audit };
+  const updates = { list, review } as unknown as UpdateService;
+  return { http: new Ls080Http(config, clock, { sessions, limits, audit, updates }), list, review, sessions, audit };
 }
 
 describe("LS-080 HTTP boundary", () => {
+  it('accepts only the configured single HTTPS forwarding chain without changing actor or mutation validation',async()=>{
+    const f=makeFixture(),headers={host:'app.example.test','x-forwarded-host':'app.example.test','x-forwarded-proto':'https',cookie:`__Host-ls-session=${token}`};
+    const read=await f.http.handle(new Request(`http://127.0.0.1:8080/api/updates?caseId=${uuid(4)}&audienceId=${uuid(5)}`,{headers}));
+    expect(read.status).toBe(200);expect(f.list).toHaveBeenCalledWith(actor,uuid(4),uuid(5));
+    const request=(extra:Record<string,string>)=>new Request('http://127.0.0.1:8080/api/updates',{method:'POST',headers:{...headers,Origin:config.origin,'Content-Type':'application/json','X-CSRF-Token':csrf,...extra},body:JSON.stringify({action:'review',reportId:uuid(6)})});
+    expect((await f.http.handle(request({}))).status).toBe(201);expect(f.review).toHaveBeenCalledWith(actor,uuid(6),expect.any(String));
+    expect((await f.http.handle(request({Origin:'https://foreign.invalid'}))).status).toBe(403);
+    expect((await f.http.handle(request({'X-CSRF-Token':'invalid'}))).status).toBe(403);expect(f.review).toHaveBeenCalledTimes(1);
+  });
+  it.each([
+    {'x-forwarded-proto':'http','x-forwarded-host':'app.example.test'},
+    {'x-forwarded-proto':'https,http','x-forwarded-host':'app.example.test'},
+    {'x-forwarded-proto':'https','x-forwarded-host':'foreign.invalid'},
+    {'x-forwarded-proto':'https','x-forwarded-host':'app.example.test,foreign.invalid'},
+    {'x-forwarded-host':'app.example.test'},
+    {'x-forwarded-proto':'https'},
+  ])('rejects an invalid forwarding chain before identity or feature access: %j',async headers=>{
+    const f=makeFixture();const response=await f.http.handle(new Request(`http://127.0.0.1:8080/api/updates?caseId=${uuid(4)}&audienceId=${uuid(5)}`,{headers:{...headers,cookie:`__Host-ls-session=${token}`}}));
+    expect(response.status).toBe(503);expect(f.sessions.actor).not.toHaveBeenCalled();expect(f.list).not.toHaveBeenCalled();expect(response.headers.get('cache-control')).toBe('private, no-store');
+  });
   it("accepts only the exact configured origin and route", async () => {
     const fixture = makeFixture();
     const response = await fixture.http.handle(new Request(`https://evil.example/api/updates?caseId=${uuid(4)}&audienceId=${uuid(5)}`, { headers: { cookie: `__Host-ls-session=${token}` } }));

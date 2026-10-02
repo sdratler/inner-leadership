@@ -128,3 +128,20 @@ it('exposes a retry for a genuine audience failure without opening a composer fr
   const props={locale:'en' as const,role:'parent' as const,initialCaseId:caseA,initialAudienceId:audienceA,initialPracticeVersionId:'version-a'};let output=await ready(props);expect(text(output)).toContain('Shared practice contexts could not be loaded.');expect(find(output,e=>e.type==='form')).toBeUndefined();expect(find(output,e=>e.type==='button'&&e.props.children==='Add feedback')).toBeUndefined();
   failed=false;(find(output,e=>e.type==='button'&&e.props.children==='Retry shared contexts')?.props.onClick as Click)();output=await ready(props);expect(find(output,e=>e.type==='button'&&e.props.children==='Add feedback')).toBeDefined();
 });
+
+it.each([401,403,404])('clears private unsaved input on an actual denied%d feedback read, including a malformed denial body',async code=>{
+ accountRead.mockResolvedValue([{id:caseA,displayName:'Synthetic A',kind:'minor'}]);let denied=false;
+ fetchMock.mockImplementation(async(url:string)=>url.startsWith('/api/updates?')?new Response('',{status:denied?code:500}):authorizedRead(url));
+ const props={locale:'en' as const,role:'parent' as const,initialCaseId:caseA,initialAudienceId:audienceA,initialPracticeVersionId:'version-a'};let output=await ready(props);
+ (find(output,e=>e.type==='button'&&e.props.children==='Add feedback')?.props.onClick as Click)();output=render(props);(find(output,e=>e.type==='textarea')?.props.onChange as Change)({target:{value:'DEMO revoked read private draft'}});output=render(props);expect(find(output,e=>e.type==='textarea')?.props.value).toBe('DEMO revoked read private draft');
+ denied=true;(find(output,e=>e.type==='button'&&e.props.children==='Retry feedback read')?.props.onClick as Click)();output=await ready(props);
+ expect(find(output,e=>e.type==='textarea')).toBeUndefined();expect(JSON.stringify(output)).not.toContain('DEMO revoked read private draft');expect(text(output)).toContain('Authorized contexts could not be loaded.');expect(postBodies()).toHaveLength(0);
+});
+
+it.each([401,403,404])('clears private input after an actual denied%d write even when its denial body is malformed',async code=>{
+ accountRead.mockResolvedValue([{id:caseA,displayName:'Synthetic A',kind:'minor'}]);fetchMock.mockImplementation(async(url:string,init?:RequestInit)=>init?.method==='POST'?new Response('',{status:code}):authorizedRead(url));
+ const props={locale:'en' as const,role:'parent' as const,initialCaseId:caseA,initialAudienceId:audienceA,initialPracticeVersionId:'version-a'};let output=await ready(props);
+ (find(output,e=>e.type==='button'&&e.props.children==='Add feedback')?.props.onClick as Click)();output=render(props);(find(output,e=>e.type==='textarea')?.props.onChange as Change)({target:{value:'DEMO denied write private draft'}});output=render(props);
+ (find(output,e=>e.type==='form')?.props.onSubmit as Submit)({preventDefault(){}});await tick();output=render(props);
+ expect(find(output,e=>e.type==='textarea')).toBeUndefined();expect(JSON.stringify(output)).not.toContain('DEMO denied write private draft');expect(find(output,e=>e.type==='button'&&e.props.children==='Retry this exact action')).toBeUndefined();expect(text(output)).toContain('Private information has been cleared.');expect(postBodies()).toHaveLength(1);
+});
