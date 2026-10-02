@@ -143,8 +143,11 @@
 .lsw.lsu .ls-cal>.ls-cal-demo-notice {display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-block:.25rem .5rem}
 .ls-cal-demo-notice>.lsw-button {flex-shrink:0}
 @media(min-width:1280px){
- .lsw.lsu .ls-cal .ls-cal-toolbar[data-practitioner="true"] {grid-template-columns:minmax(330px,1fr) minmax(280px,1fr) auto}
- .ls-cal-toolbar[data-practitioner="true"] .ls-cal-case-context {display:grid;grid-template-columns:minmax(120px,.4fr) minmax(180px,1fr);gap:.75rem}
+ .lsw.lsu .ls-cal .ls-cal-toolbar[data-practitioner="true"] {grid-template-columns:minmax(370px,1fr) minmax(280px,1fr) auto}
+ .ls-cal-toolbar[data-practitioner="true"] .ls-cal-case-context {display:grid;grid-template-columns:minmax(160px,.55fr) minmax(180px,1fr);gap:.75rem;align-items:end}
+ .lsw.lsu .ls-cal>.lsw-page-header {margin-block-end:.25rem}
+ .lsw.lsu .ls-cal .lsw-calendar-toolbar {padding-block:.25rem}
+ .ls-cal-day h3 {margin-block-end:.25rem;padding-block-end:.25rem}
 }
 @media(max-width:1279px){.ls-cal-toolbar[data-practitioner="true"] .ls-cal-case-context {grid-column:1/-1;display:grid;grid-template-columns:minmax(0,.7fr) minmax(0,1fr);gap:.75rem}}
 @media(max-width:600px){
