@@ -114,8 +114,8 @@
  .lsw.lsu .ls-cal .lsw-calendar-toolbar>nav{grid-column:1/-1;display:flex;flex-wrap:nowrap;gap:.4rem;min-inline-size:0;max-inline-size:100%;overflow-x:auto;overscroll-behavior-inline:contain;scroll-snap-type:inline proximity}
  .lsw.lsu .ls-cal .lsw-calendar-toolbar>nav>a{flex:1 0 auto;min-inline-size:44px;padding-inline:.5rem;justify-content:center;text-align:center;white-space:nowrap;overflow-wrap:normal;scroll-snap-align:start}
  .lsw.lsu .ls-cal .lsw-calendar-toolbar>.lsw-help{grid-column:2;grid-row:1;justify-self:end}
- .lsw.lsu .ls-cal .lsw-calendar-agenda{padding-block-start:.5rem}
- .lsw.lsu .ls-cal .lsw-calendar-agenda>h3{margin-block:.5rem}
+  .lsw.lsu .ls-cal .lsw-calendar-agenda{padding-block-start:.25rem}
+  .lsw.lsu .ls-cal .lsw-calendar-agenda>h3{margin-block:.25rem}
 }
 @media(prefers-reduced-motion:reduce){.ls-cal *{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
 .lsw.lsu .ls-cal .ls-cal-practice {display:grid;gap:.2rem;inline-size:100%;min-block-size:48px;margin-block:.4rem;padding:.6rem .75rem;text-align:start;font:inherit;background:#f3f8f9;color:var(--ui-deep,#163f48);border:1px solid var(--ui-line,#cddcdf);border-inline-start:4px solid var(--ui-teal,#245159);border-radius:.5rem}

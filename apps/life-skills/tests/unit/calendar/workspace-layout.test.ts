@@ -65,8 +65,8 @@ describe('operational Calendar composition',()=>{
   expect(workspace.match(/onClick=\{e=>openBook\(e\)\}/g)).toHaveLength(1);
   expect(css).toContain('.lsw.lsu.lsu--practitioner .ls-cal>.lsw-page-header{display:grid;grid-template-columns:minmax(0,1fr) auto');
   expect(css).toContain('.lsw.lsu .ls-cal>.lsw-page-header>.lsw-button{font-size:inherit}');
-  expect(css).toContain('.lsw.lsu .ls-cal .lsw-calendar-agenda{padding-block-start:.5rem}');
-  expect(css).toContain('.lsw.lsu .ls-cal .lsw-calendar-agenda>h3{margin-block:.5rem}');
+   expect(css).toContain('.lsw.lsu .ls-cal .lsw-calendar-agenda{padding-block-start:.25rem}');
+   expect(css).toContain('.lsw.lsu .ls-cal .lsw-calendar-agenda>h3{margin-block:.25rem}');
   expect(css).not.toContain('.ls-cal-actions>:first-child{');
  });
  it('compacts only Calendar filters and places the actual timezone span beside the period',()=>{
