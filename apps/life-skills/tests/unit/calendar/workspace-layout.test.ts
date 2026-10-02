@@ -53,7 +53,8 @@ describe('operational Calendar composition',()=>{
    expect(workspace).toContain('data-has-entries={items.length+followups.length+tasks.length+practice.length>0}');
    expect(workspace.match(/practice=\{practice\}/g)).toHaveLength(2);
    expect(workspace).not.toContain('calendar-practice-title');
-   expect(css).toContain('.ls-cal-schedule[data-has-entries="false"]');
+    expect(css).toContain('.ls-cal-schedule[data-has-entries="false"]');
+    expect(css).toContain('.lsw.lsu .ls-cal .ls-cal-schedule[data-has-entries="true"] .lsw-calendar-grid{display:none!important}');
    expect(css).not.toContain('min-block-size:330px');
    expect(css).not.toContain('max-inline-size:880px');
    expect(css).toContain('font-family:inherit');

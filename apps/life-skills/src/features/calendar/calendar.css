@@ -142,6 +142,9 @@
 .lsw.lsu .ls-cal .ls-cal-case-context select {min-inline-size:0;max-inline-size:100%}
 .lsw.lsu .ls-cal>.ls-cal-demo-notice {display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-block:0}
 .ls-cal-demo-notice>.lsw-button {flex-shrink:0}
+/* A practice-only Calendar is populated too. Override the older appointment-only
+ * empty-grid rule so mobile shows one agenda, not the grid and agenda twice. */
+@media(max-width:800px){.lsw.lsu .ls-cal .ls-cal-schedule[data-has-entries="true"] .lsw-calendar-grid{display:none!important}}
 @media(min-width:1280px){
  .lsw.lsu .ls-cal .ls-cal-toolbar[data-practitioner="true"] {grid-template-columns:minmax(370px,1fr) minmax(280px,1fr) auto}
  .ls-cal-toolbar[data-practitioner="true"] .ls-cal-case-context {display:grid;grid-template-columns:minmax(160px,.55fr) minmax(180px,1fr);gap:.75rem;align-items:end}
