@@ -53,6 +53,7 @@ export function practitionerDetailReturnPath(locale:Locale,pathname:string,query
  if(pathname===`/${locale}/app/marketing`){
   const params=new URLSearchParams(),one=(key:string)=>typeof query[key]==='string'?query[key] as string:'';
   if(['overview','content_calendar','creatives','needs_approval','community','ads'].includes(one('section')))params.set('section',one('section'));
+  if(one('section')==='community'&&isCaseId(one('threadId')))params.set('threadId',one('threadId'));
   if(['all','queued','drafts','published','history','he_status','he_feed','en_feed','ad_eligible','in_live_ads'].includes(one('filter')))params.set('filter',one('filter'));
   if(/^20\d{2}-(?:0[1-9]|1[0-2])$/.test(one('month')))params.set('month',one('month'));
   if(['month','week','agenda'].includes(one('layout')))params.set('layout',one('layout'));

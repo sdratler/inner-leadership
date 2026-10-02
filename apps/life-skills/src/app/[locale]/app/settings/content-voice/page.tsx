@@ -28,7 +28,8 @@ export default async function Page({ params }: { params: Promise<{ locale: strin
           <div><dt>SHA-256</dt><dd className={styles.hash}>{source.sha256}</dd></div>
         </dl>
         <p role="status">{he ? "קריאה עדכנית אומתה; זה אינו אישור לשמירת שינוי או לשימוש במחולל תשובות. זמן העדכון של Drive עשוי להשתנות גם בעקבות שינוי הרשאות." : "Fresh source read verified; this does not confirm a correction was saved or used by a reply generator. Drive's modified time can also change after permission updates."}</p>
-        <p>{he ? "עדכון כללי הכתיבה מתוך האפליקציה ממתין למנגנון שמירה בטוח מול עריכות מקבילות." : "Updating writing rules from this app is pending a safe writer for concurrent edits."}</p>
+        <p>{he ? "תיקונים נעשים בשיווק ← קהילה: בודקים את העדפת הכתיבה שהמערכת הבינה, ואז בוחרים אם לתקן רק את התגובה או לעדכן את מקור כללי הקהילה. שמירה מאומתת רק לאחר קריאה חוזרת של אותו קובץ מקור; עריכה מקבילה אינה נדרסת." : "Make corrections in Marketing → Community: review the understood writing preference, then choose a one-off reply revision or update the canonical community writing rules. A save is verified only after the same source file is read back; concurrent edits are not overwritten."}</p>
+        <a className="lsw-button" href={`/${locale}/app/marketing?section=community`}>{he ? "פתיחת תגובות הקהילה והתיקונים" : "Open Community replies and corrections"}</a>
       </section>
       <section className="lsw-card lsw-stack" aria-labelledby="voice-text-title"><h2 id="voice-text-title">{he ? "תוכן המקור הנוכחי" : "Current source text"}</h2><pre className={styles.sourceText}>{source.text}</pre></section>
     </>}
