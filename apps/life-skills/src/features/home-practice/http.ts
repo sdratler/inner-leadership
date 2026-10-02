@@ -18,6 +18,7 @@ import type { CheckInService } from "../checkins/service.ts";
 import type { HomePracticeService } from "./service.ts";
 import { canonicalForwardedRequest } from "../integration/canonical-forwarded-request.ts";
 import {responsibilityInput,assistedCheckInInput} from "./responsibility-input.ts";
+import {recurrenceInput,recurrenceCommand} from "./recurrence-input.ts";
 
 const id = <K extends string>(kind: K) => z.string().uuid().transform(value => asId(value, kind));
 const caseId = id("case"), audienceId = id("audience"), goalId = id("goal"), commitmentId = id("commitment");
@@ -36,6 +37,7 @@ const homeAction = z.discriminatedUnion("action", [
   z.object({ action: z.literal("publish"), assignmentId, versionId }).strict(),
   z.object({ action: z.literal("coordinate"), assignmentId, assigneeAccountIds: accountIds, completionMode: z.enum(completionModes), reminderCandidateAccountIds: z.array(id("account")).max(2), effectiveFrom: instantValue }).strict(),
   z.object({ action: z.literal("schedule"), assignmentId, occursOn: calendarDate, period: z.enum(occurrencePeriods) }).strict(),
+  z.object({action:z.literal("schedule_range"),...recurrenceCommand.shape}).strict(),
 ]);
 const checkIn = z.object({ occurrenceId, status: z.enum(completionStatuses), idempotencyKey: z.string().uuid(), correctsReportId: completionReportId.optional(),assistance:assistedCheckInInput.optional() }).strict();
 
@@ -109,7 +111,11 @@ export class Ls040Http {
         } else data = await this.services.commitments.create(actor, await readJson(request, createCommitment), requestId);
       } else if (url.pathname === "/api/home-practice") {
         if (request.method === "GET") {
-          if (url.searchParams.get("view") === "participants") {
+          if(url.searchParams.get("view")==="recurrence"){
+            const {view,...fields}=exactQuery(url,["view","assignmentId","expectedVersionId","expectedSnapshotDigest","from","to"]);
+            const parsed=recurrenceInput.safeParse(fields);if(view!=="recurrence"||!parsed.success)throw new AppError("INVALID_REQUEST");
+            data=await this.services.practice.recurrence(actor,parsed.data);
+          } else if (url.searchParams.get("view") === "participants") {
             const parsed=z.object({view:z.literal("participants"),caseId,audienceId}).strict().safeParse(exactQuery(url,["view","caseId","audienceId"]));
             if(!parsed.success)throw new AppError("INVALID_REQUEST");
             data=await this.services.practice.participants(actor,parsed.data.caseId,parsed.data.audienceId);
@@ -138,6 +144,7 @@ export class Ls040Http {
           else if (input.action === "revise") data = await this.services.practice.revise(actor, input, requestId);
           else if (input.action === "publish") data = await this.services.practice.publish(actor, input.assignmentId, input.versionId, requestId);
           else if (input.action === "coordinate") data = await this.services.practice.coordinate(actor, input, requestId);
+          else if(input.action==="schedule_range"){const {action,...command}=input;void action;data=await this.services.practice.scheduleRange(actor,command,requestId);}
           else data = await this.services.practice.schedule(actor, input, requestId);
         }
       } else if (url.pathname === "/api/checkins") {
