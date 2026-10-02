@@ -5,6 +5,7 @@ import { Input, Select, Button } from '../../ui/workspace/controls.tsx';
 import { calendarWrite, CalendarClientError } from './client.ts';
 import { possibleInstants, localMinute } from './time.ts';
 import { text } from './copy.ts';
+import { finalizeDialogClose } from '../../ui/workspace/dialogs.tsx';
 export interface WallTime {wall:string;choice:string;}
 export function wallTime(instant?:string):WallTime{return {wall:instant?localMinute(instant):'',choice:instant??''};}
 export function resolveWall(value:WallTime):string {
@@ -44,7 +45,7 @@ export function useDialogGuard(id:string,dirty:boolean,locked:boolean,locale:Loc
   const shouldClose=()=>!locked&&(!dirty||window.confirm(text(locale).dirty));
   const cancel=(e:Event)=>{if(!shouldClose())e.preventDefault();};
   const click=(e:MouseEvent)=>{const target=e.target instanceof Element?e.target.closest('button'):null;if(target===dialog.querySelector(':scope > header button')&&!shouldClose()){e.preventDefault();e.stopPropagation();}};
-  const closed=()=>onClosed?.();dialog.addEventListener('cancel',cancel);dialog.addEventListener('click',click,true);dialog.addEventListener('close',closed);
+  const closed=()=>finalizeDialogClose(dialog,()=>onClosed?.());dialog.addEventListener('cancel',cancel);dialog.addEventListener('click',click,true);dialog.addEventListener('close',closed);
   return()=>{dialog.removeEventListener('cancel',cancel);dialog.removeEventListener('click',click,true);dialog.removeEventListener('close',closed);};
  },[id,dirty,locked,locale,onClosed]);
 }
