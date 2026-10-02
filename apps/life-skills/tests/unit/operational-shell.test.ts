@@ -44,7 +44,7 @@ describe("operational workspace navigation",()=>{
  });
   for(const locale of ["he","en"] as const){
    it(`${locale}: legacy Needs approval deep links retain Creatives active context without a sixth toolbar destination`,()=>{
-    const html=renderToStaticMarkup(React.createElement(WorkspaceShell,{locale,role:'practitioner',pathname:`/${locale}/app/marketing`,section:'needs_approval',languageHref:`/${locale==='he'?'en':'he'}/app/marketing?section=needs_approval`,children:'Existing creative view'}));
+    const html=renderToStaticMarkup(React.createElement(WorkspaceShell,{locale,role:'practitioner',pathname:`/${locale}/app/marketing`,section:'needs_approval',languageHref:`/${locale==='he'?'en':'he'}/app/marketing?section=needs_approval`} as React.ComponentProps<typeof WorkspaceShell>,'Existing creative view'));
     expect(topLinks(html)).toHaveLength(5);expect(html).toContain(`href="/${locale}/app/marketing?section=creatives" aria-current="page"`);
     expect(topLinks(html).some(url=>url.searchParams.get('section')==='needs_approval')).toBe(false);
     expect(breadcrumbItems(locale,'practitioner',`/${locale}/app/marketing`,'needs_approval').at(-1)?.label).toBe(locale==='he'?'קריאייטיב':'Creatives');
