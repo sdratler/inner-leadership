@@ -1,5 +1,5 @@
 import { describe,expect,it,vi } from 'vitest';
-import { finalizeDialogClose } from '../../../src/ui/workspace/dialogs.tsx';
+import { finalizeDialogClose,restoreDialogOpenerFocus } from '../../../src/ui/workspace/dialogs.tsx';
 
 describe('native dialog close finalization',()=>{
  it('finalizes a genuinely closed dialog',()=>{
@@ -24,5 +24,21 @@ describe('native dialog close finalization',()=>{
  });
  it('does not swallow an actual close callback failure',()=>{
   expect(()=>finalizeDialogClose({open:false},()=>{throw new Error('actual callback');})).toThrow('actual callback');
+ });
+});
+
+describe('late native close focus restoration',()=>{
+ const setup=()=>{const focus=vi.fn(),opener={isConnected:true,focus} as unknown as HTMLElement,body={} as HTMLElement,inside={} as HTMLElement,next={} as HTMLElement;const ownerDocument={activeElement:inside,body} as unknown as Document;const dialog={ownerDocument,contains:(node:Node|null)=>node===inside};return {focus,opener,body,inside,next,ownerDocument,dialog};};
+ it('returns remaining dialog focus to its connected opener',()=>{
+  const {dialog,opener,focus}=setup();expect(restoreDialogOpenerFocus(dialog,opener)).toBe(true);expect(focus).toHaveBeenCalledOnce();
+ });
+ it('restores focus when the browser leaves it on the document body',()=>{
+  const {dialog,ownerDocument,body,opener,focus}=setup();Object.defineProperty(ownerDocument,'activeElement',{value:body});expect(restoreDialogOpenerFocus(dialog,opener)).toBe(true);expect(focus).toHaveBeenCalledOnce();
+ });
+ it('does not steal focus from the next Calendar item before its Enter key',()=>{
+  const {dialog,ownerDocument,next,opener,focus}=setup();Object.defineProperty(ownerDocument,'activeElement',{value:next});expect(restoreDialogOpenerFocus(dialog,opener)).toBe(false);expect(focus).not.toHaveBeenCalled();
+ });
+ it('does not focus a removed opener',()=>{
+  const {dialog,opener,focus}=setup();Object.defineProperty(opener,'isConnected',{value:false});expect(restoreDialogOpenerFocus(dialog,opener)).toBe(false);expect(restoreDialogOpenerFocus(dialog,undefined)).toBe(false);expect(focus).not.toHaveBeenCalled();
  });
 });
