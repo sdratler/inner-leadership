@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { NextRequest } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { proxy, publicStaticAsset } from "../../src/proxy.ts";
+import {settingsItems} from '../../src/ui/workspace/navigation-model.ts';
 
 describe("public static perimeter", () => {
   it("serves only the shipped app fonts via GET or HEAD", () => {
@@ -17,6 +18,17 @@ describe("public static perimeter", () => {
 });
 
 afterEach(() => vi.unstubAllEnvs());
+describe('actual named practitioner Settings proxy login return',()=>{
+ it.each(['he','en']as const)('projects exact %s maintained Settings destinations and strips supplied headers and private query',locale=>{
+  const origin='https://life-skills.bneineviimacademy.org';vi.stubEnv('NODE_ENV','production');vi.stubEnv('LS_APP_MODE','foundation_locked');vi.stubEnv('LS_APP_ORIGIN',origin);vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');
+  for(const path of [`/${locale}/app/settings`,...settingsItems('practitioner').map(item=>`/${locale}/${item.path}`)]){
+   const response=proxy(new NextRequest(origin+path+'?caseId=123e4567-e89b-42d3-a456-426614174000&role=parent&secret=not-forwarded',{headers:{'x-ls-practitioner-return':'https://untrusted.invalid'}}));
+   expect(response.status).toBe(200);expect(response.headers.get('x-middleware-request-x-ls-practitioner-return')).toBe(path);
+  }
+  const unknown=proxy(new NextRequest(origin+`/${locale}/app/settings/unknown`,{headers:{'x-ls-practitioner-return':`/${locale}/app/settings/notifications`}}));expect(unknown.headers.get('x-middleware-request-x-ls-practitioner-return')).toBe(`/${locale}/app/calendar`);
+  const nested=proxy(new NextRequest(origin+`/${locale}/app/settings/account/unknown`,{headers:{'x-ls-practitioner-return':`/${locale}/app/settings/notifications`}}));expect(nested.headers.get('x-middleware-request-x-ls-practitioner-return')).toBeNull();
+ });
+});
 describe('actual practitioner report section login return perimeter',()=>{
  const origin='https://life-skills.bneineviimacademy.org',id='123e4567-e89b-42d3-a456-426614174000';
  const configured=()=>{vi.stubEnv('NODE_ENV','production');vi.stubEnv('LS_APP_MODE','foundation_locked');vi.stubEnv('LS_APP_ORIGIN',origin);vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');};
