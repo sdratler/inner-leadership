@@ -49,6 +49,19 @@ test("one denied audience removes only its private cards, preserving other audie
   expect(practiceClient.practiceDraftIds([first.occurrence.id,other.occurrence.id],next)).toEqual([other.occurrence.id]);
   expect(practiceClient.practiceAccessLossPage(page,first.occurrence.id,"UNAUTHENTICATED")).toEqual({items:[],hasMore:false});
 });
+test.each(["en", "he"] as const)("%s practitioner heading shows the actual occurrence state, not a nonexistent own report", locale => {
+  const labels = locale === "he" ? { open: "פתוח", closed: "סגור", cancelled: "בוטל" } : { open: "Open", closed: "Closed", cancelled: "Cancelled" };
+  for (const state of ["open", "closed", "cancelled"] as const) {
+    const row: PracticeOccurrenceItem = { ...item(), canReport: false, occurrence: { ...item().occurrence, state } };
+    const html = renderToStaticMarkup(createElement(PracticeOccurrenceCard, { locale, role: "practitioner", item: row, onReadback: noop, onAccessLost: noop, onDirty: noop }));
+    expect(html).toContain(`<strong>${labels[state]}</strong>`);
+    expect(html).not.toContain(`<strong>${locale === "he" ? "טרם דווח" : "Unreported"}</strong>`);
+    expect(html).not.toContain("<form");
+  }
+  const own = { ...item(), occurrence: { ...item().occurrence, state: "closed" as const }, ownReport: { reportId: asId(id, "completion_report"), occurrenceId: asId(id, "occurrence"), authorAccountId: asId(id, "account"), status: "partly_done" as const, revision: 1, reportedAt: "2026-09-29T06:00:00.000Z", correctedReportId: null } };
+  const customer = renderToStaticMarkup(createElement(PracticeOccurrenceCard, { locale, role: "parent", item: own, onReadback: noop, onAccessLost: noop, onDirty: noop }));
+  expect(customer).toContain(`<strong>${locale === "he" ? "בוצע חלקית" : "Partly done"}</strong>`);
+});
 test("a discovery/read race removes the exact denied audience even without a denied card ID",()=>{
  const first=item(),other={...item(),occurrence:{...item().occurrence,id:asId("00000000-0000-4000-8000-000000000002","occurrence")},practice:{...item().practice,audienceId:asId("00000000-0000-4000-8000-000000000002","audience")}};
  const page:PracticeOccurrencePage={items:[first,other],hasMore:true};
