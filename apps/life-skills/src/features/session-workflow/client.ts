@@ -21,7 +21,7 @@ export function sessionRecapCommand(sessionId:string):CommandPort<RecapCommandIn
  const submit=async(input:RecapDraftInput,key:string):Promise<CommandOutcome<RecapVersionView>>=>{
   const result=await write<RecapVersionView>(path,input,key);if(result.state!=="accepted"){if(result.state==="rejected")pending.delete(key);return result;}
   try{const receipt=recapVersionViewSchema.parse(result.value),saved=recapVersionViewSchema.parse(await read(`${path}?version=${receipt.recap.version}`)),recap=saved.recap;
-   if(JSON.stringify(saved)!==JSON.stringify(receipt)||recap.sessionId!==sessionId||recap.version!==input.expectedVersion+1||recap.locale!==input.locale||JSON.stringify(recap.focus)!==JSON.stringify(input.focus)||recap.nextStep!==input.nextStep||recap.practices.length!==(input.practiceSelections?.length??0)||!recap.practices.every(row=>input.practiceSelections?.some(selected=>selected.versionId===row.responsibilityId&&selected.instructions===row.instructions)))return {state:"unknown"};
+   if(JSON.stringify(saved)!==JSON.stringify(receipt)||recap.sessionId!==sessionId||recap.version!==input.expectedVersion+1||recap.locale!==input.locale||JSON.stringify(recap.focus)!==JSON.stringify(input.focus)||recap.nextStep!==input.nextStep.trim()||recap.practices.length!==(input.practiceSelections?.length??0)||!recap.practices.every(row=>input.practiceSelections?.some(selected=>selected.versionId===row.responsibilityId&&selected.instructions===row.instructions)))return {state:"unknown"};
    pending.delete(key);return {state:"accepted",value:saved};
   }catch{return {state:"unknown"};}
  };

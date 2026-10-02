@@ -1,6 +1,7 @@
 import type {Locale,RoutineRecap} from "../../features/session-workflow/types.ts";
 import {FOCUS_LABELS,attendanceLabel} from "../../features/session-workflow/presentation.ts";
 import {word} from "./primitives.tsx";
+import "./styles.css";
 /** The same routine-only projection is rendered for author and recipients.
  * Never accept a transcript, analysis, recording or metric record here. */
 export function RecapPreview({recap,locale}:{recap:RoutineRecap;locale:Locale}){

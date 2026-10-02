@@ -6,6 +6,9 @@ const recap={schemaVersion:1 as const,sessionId:id,caseId:person,version:1,local
 const input={sessionId:id,expectedVersion:0,locale:recap.locale,focus:recap.focus,nextStep:recap.nextStep},saved={recap,digest},receipt={publicationId,sharedAt:"2026-10-02T10:00:00.000Z"},share={sessionId:id,expectedVersion:1,expectedDigest:digest,recipientAccountIds:[person]},proof={...receipt,sessionId:id,caseId:person,contentDigest:digest,recipientAccountIds:[person],recap};
 const response=(data:unknown,status=200)=>new Response(JSON.stringify({ok:true,data}),{status});
 afterEach(()=>{vi.unstubAllGlobals();vi.clearAllMocks();});
+test("accepts the existing server's reviewed-text trim without altering the attempted command or stored version",async()=>{
+ const fetcher=vi.fn().mockResolvedValueOnce(response(saved,201)).mockResolvedValueOnce(response(saved));vi.stubGlobal("fetch",fetcher);expect(await sessionRecapCommand(id).execute({...input,nextStep:"  "+input.nextStep+"  "},publicationId)).toEqual({state:"accepted",value:saved});expect(JSON.parse(String(fetcher.mock.calls[0]![1].body)).nextStep).toBe("  "+input.nextStep+"  ");
+});
 test("accepted save waits for exact authorized immutable readback; lost read retries the same body and key",async()=>{
  const fetcher=vi.fn().mockResolvedValueOnce(response(saved,201)).mockRejectedValueOnce(new Error("DEMO lost read")).mockResolvedValueOnce(response(saved,201)).mockResolvedValueOnce(response(saved));vi.stubGlobal("fetch",fetcher);const port=sessionRecapCommand(id),key=publicationId;
  expect(await port.execute(input,key)).toEqual({state:"unknown"});expect(await port.reconcile(key)).toEqual({state:"accepted",value:saved});expect(await port.reconcile(key)).toMatchObject({state:"rejected"});
