@@ -9,6 +9,13 @@ it('preserves only a bounded legacy lead ID on a practitioner People return link
     .toBe('/en/app/clients');
 });
 const caseId='123e4567-e89b-42d3-a456-426614174000',sessionId='223e4567-e89b-42d3-a456-426614174000';
+it.each(['he','en'] as const)('preserves exact bounded %s Marketing context through ordinary login, never another role or arbitrary query',locale=>{
+ const path=`/${locale}/app/marketing`,query={section:'content_calendar',filter:'queued',month:'2026-10',layout:'week',date:'2026-10-02',channel:'whatsapp_status',state:'scheduled',from:'2026-10-01',to:'2026-10-09',publication:'DEMO-status-123'};
+ const next=practitionerDetailReturnPath(locale,path,{...query,role:'parent',secret:'not-forwarded',caseId});expect(Object.fromEntries(new URL(next,'https://private.invalid').searchParams)).toEqual(query);expect(loginReturnDestination(locale,'practitioner',next)).toBe(next);
+ for(const role of ['parent','child','adult_client'] as const)expect(loginReturnDestination(locale,role,next)).not.toBe(next);
+ for(const value of ['constructor','__proto__','private',['queued','queued']])expect(practitionerDetailReturnPath(locale,path,{filter:value,channel:value,state:value,layout:value,publication:'https://untrusted.invalid',from:'2026-02-30'})).toBe(path);
+ for(const other of [path+'/unknown',`/${locale==='he'?'en':'he'}/app/marketing`,`//untrusted.invalid${path}`])expect(practitionerDetailReturnPath(locale,other,query)).toBe(`/${locale}/app/calendar`);
+});
 it.each(['he','en'] as const)('preserves the existing %s Communications destination and bounded selected case through normal login',locale=>{
  const path=`/${locale}/app/feedback`;
  for(const section of ['app_updates','whatsapp']){

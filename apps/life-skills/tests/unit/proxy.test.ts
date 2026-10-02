@@ -18,6 +18,16 @@ describe("public static perimeter", () => {
 });
 
 afterEach(() => vi.unstubAllEnvs());
+describe('actual bounded Marketing login-return proxy',()=>{
+ it.each(['he','en']as const)('projects %s Marketing URL filters and rejects repeats, unsafe paths and caller headers',locale=>{
+  const origin='https://life-skills.bneineviimacademy.org',path=`/${locale}/app/marketing`;vi.stubEnv('NODE_ENV','production');vi.stubEnv('LS_APP_MODE','foundation_locked');vi.stubEnv('LS_APP_ORIGIN',origin);vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');
+  const query='section=content_calendar&filter=queued&month=2026-10&layout=agenda&date=2026-10-02&from=2026-10-01&to=2026-10-09&channel=whatsapp_status&state=scheduled&publication=DEMO-status';
+  const returned=proxy(new NextRequest(origin+path+'?'+query+'&role=parent&secret=not-forwarded',{headers:{'x-ls-practitioner-return':'https://untrusted.invalid'}})).headers.get('x-middleware-request-x-ls-practitioner-return');
+  expect(Object.fromEntries(new URL(returned!,origin).searchParams)).toEqual(Object.fromEntries(new URLSearchParams(query)));
+  for(const query of ['section=ads&section=ads&layout=week&layout=week','channel=constructor&state=__proto__&month=invalid&publication=javascript:alert(1)'])expect(proxy(new NextRequest(origin+path+'?'+query)).headers.get('x-middleware-request-x-ls-practitioner-return')).toBe(path);
+  expect(proxy(new NextRequest(origin+path+'/unknown',{headers:{'x-ls-practitioner-return':path}})).headers.get('x-middleware-request-x-ls-practitioner-return')).toBeNull();
+ });
+});
 describe('actual practitioner Communications login return perimeter',()=>{
  it.each(['he','en'] as const)('preserves the existing %s route and exact context without caller header injection',locale=>{
   const origin='https://life-skills.bneineviimacademy.org',id='123e4567-e89b-42d3-a456-426614174000',path=`/${locale}/app/feedback`;
@@ -112,7 +122,7 @@ describe("actual practitioner Calendar login return perimeter", () => {
       expect(response.headers.get('x-middleware-request-x-ls-practitioner-return')).toBe(path+'?mode=demo&date=2026-09-22&view=day');
     }
     const response=proxy(new NextRequest(`${origin}/he/app/marketing`,{headers:{'x-ls-practitioner-return':'/he/app/reports?mode=demo'}}));
-    expect(response.headers.get('x-middleware-request-x-ls-practitioner-return')).toBeNull();
+    expect(response.headers.get('x-middleware-request-x-ls-practitioner-return')).toBe('/he/app/marketing');
   });
 });
 
