@@ -1,11 +1,7 @@
 import {createHash} from "node:crypto";
-import type {OwnerDigest,ActionCode} from "./model.ts";
+import {actionText,type OwnerDigest} from "./model.ts";
 import {dateOnly} from "../contact-ops/core/validation.ts";
 export const OWNER_REPORT_RECIPIENT="sdratler@gmail.com";
-export const actionText:Record<"en"|"he",Record<ActionCode,string>>={
- en:{crm_unavailable:"People follow-up counts are unavailable. Retry the signed-in People page; do not treat this as no leads.",tasks_unavailable:"Internal task counts are unavailable. Check the Calendar task connection.",journeys_unavailable:"Intake/payment/booking evidence is unavailable; administrative labels are not verification.",dates_need_attention:"Some follow-ups have a missing or invalid date. Review People without inventing a due date.",content_unavailable:"Creative inventory is unavailable. Check the existing asset registry connection.",meta_unavailable:"Direct Meta readback is unavailable. Keep ads paused; check the existing connection.",content_partial:"Content inventory is partial. Counts and the loaded queue do not establish complete coverage.",publication_unconfirmed:"A publication result needs checking. Provider acceptance or manual marking is not verified publication."},
- he:{crm_unavailable:"מספרי המעקב באנשים אינם זמינים. יש לנסות שוב בעמוד האנשים לאחר כניסה; אין לפרש זאת כאין פניות.",tasks_unavailable:"מספרי המשימות הפנימיות אינם זמינים. יש לבדוק את חיבור המשימות ביומן.",journeys_unavailable:"אסמכתאות טופס, תשלום ותיאום אינן זמינות; תווית מנהלית אינה אימות.",dates_need_attention:"לחלק מפעולות המעקב חסר תאריך או שהתאריך אינו תקין. יש לבדוק באנשים בלי להמציא מועד.",content_unavailable:"מלאי הקריאייטיב אינו זמין. יש לבדוק את החיבור למאגר הנכסים הקיים.",meta_unavailable:"הקריאה הישירה מ-Meta אינה זמינה. יש להשאיר מודעות מושהות ולבדוק את החיבור הקיים.",content_partial:"מלאי התוכן חלקי. המספרים והתור שנטען אינם מוכיחים כיסוי מלא.",publication_unconfirmed:"תוצאת פרסום דורשת בדיקה. קבלת ספק או סימון ידני אינם פרסום מאומת."},
-};
 const escape=(value:unknown)=>String(value).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");
 export function ownerReportDateKey(date:string,recipient=OWNER_REPORT_RECIPIENT,subject="Life Skills daily overview"){
  if(!dateOnly(date)||recipient.toLowerCase()!==OWNER_REPORT_RECIPIENT||!["Life Skills daily overview","Life Skills follow-ups"].includes(subject))throw Error("INVALID_OWNER_REPORT_IDENTITY");
