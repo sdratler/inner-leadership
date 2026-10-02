@@ -78,14 +78,15 @@ describe('operational Calendar composition',()=>{
   it('removes duplicated mobile Calendar container padding while keeping visible synthetic provenance',()=>{
   expect(css).toContain('.lsw.lsu .lsu-page:has(>main.ls-cal){padding-block-start:0;');
   expect(css).toContain('.lsw.lsu .lsu-content:has(>.lsu-page>main.ls-cal)>.lsu-breadcrumbs{margin-block-end:.5rem}');
-  expect(workspace).toContain('DEMO — synthetic data; external effects disabled.');
-  expect(workspace).toContain('DEMO — נתונים סינתטיים, ללא השפעות חיצוניות.');
+   expect(workspace).toContain('DEMO — synthetic only.');
+   expect(workspace).toContain('DEMO — נתונים סינתטיים בלבד.');
    expect(workspace).toContain('Return to live calendar');
   });
   it('groups practitioner record source and authorized case in one toolbar without hiding DEMO provenance',()=>{
     expect(workspace).toContain('className="ls-cal-case-context"');
     expect(workspace).toContain('className="ls-cal-demo-notice" role="status"');
-    expect(css).toContain('.ls-cal-toolbar[data-practitioner="true"] .ls-cal-case-context');
+     expect(css).toContain('.ls-cal-toolbar[data-practitioner="true"] .ls-cal-case-context');
+     expect(css).toContain('.ls-cal-toolbar[data-practitioner="true"] .ls-cal-case-context {grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem}');
     expect(workspace.match(/id="calendar-mode"/g)).toHaveLength(1);
     expect(workspace.match(/id="calendar-case"/g)).toHaveLength(1);
   });
