@@ -2,7 +2,9 @@ import {afterEach,expect,test,vi} from 'vitest';
 import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {readReminders,markReminderRead,reminderWasRead} from '../../../src/features/reminders/client.ts';
-import {reminderCalendarHref} from '../../../src/features/reminders/inbox-workspace.tsx';
+import {reminderCalendarHref,ReminderItems} from '../../../src/features/reminders/inbox-workspace.tsx';
+import {createElement} from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
 import {deliveryChannels,updatePreference,type Preference} from '../../../src/ui/workspace/preference-model.ts';
 import type {ReminderItem} from '../../../src/features/reminders/service.ts';
 afterEach(()=>vi.unstubAllGlobals());
@@ -27,4 +29,10 @@ test('exposes own in-app opt-out without generating missing preferences or touch
  expect(updatePreference([row],'practice_due','in_app',false)).toEqual([{...row,enabled:false}]);expect(updatePreference([row],'summary_published','email',true)).toEqual([row]);
  const view=readFileSync(new URL('../../../src/ui/workspace/account-settings.tsx',import.meta.url),'utf8');expect(view).toContain('section==="notifications"&&<ReminderInbox');
  const inbox=readFileSync(new URL('../../../src/features/reminders/inbox-workspace.tsx',import.meta.url),'utf8');expect(inbox).not.toMatch(/localStorage|sessionStorage|Notification\.requestPermission|navigator\.serviceWorker/);expect(inbox).toContain('setPage(null)');expect(inbox).toContain('reminderWasRead(loaded.items');
+});
+test.each(['en','he']as const)('keeps %s active reminders readable and optional external diagnostics collapsed',locale=>{
+ const own=item(),blocked:ReminderItem={...item(),channel:'email',state:'blocked',reason:'demo_external_denied'},html=renderToStaticMarkup(createElement(ReminderItems,{locale,role:'parent',items:[blocked,own],busy:false,pending:null,onMark:()=>{}}));
+ expect(html.indexOf(own.caseId)).toBeLessThan(html.indexOf('<details'));expect(html.indexOf(blocked.caseId)).toBeGreaterThan(html.indexOf('<details'));
+ expect(html).toMatch(/<details class="lsw-card">/);expect(html).not.toMatch(/<details[^>]*\sopen/);expect(html).toContain(locale==='he'?'מצב מסירה בערוצים חיצוניים':'External delivery status');expect(html).toContain('(1)');expect(html).toContain('minmax(min(100%,14rem),1fr)');
+ const locked=renderToStaticMarkup(createElement(ReminderItems,{locale,role:'parent',items:[own],busy:false,pending:own.id,onMark:()=>{}}));expect(locked).toContain('disabled');
 });

@@ -14,6 +14,17 @@ export function reminderCalendarHref(locale:Locale,role:WorkspaceRole,item:Pick<
  const path=role==='parent'?'family/schedule':role==='client'?'client/calendar':'app/calendar';
  const url=new URL(workspaceHref(locale,path,item.caseId),'https://private.invalid');url.searchParams.set('date',item.occursOn);return url.pathname+url.search;
 }
+/** Active in-app items first. Optional, non-delivered channel diagnostics stay
+ * collapsed without hiding genuine read/save errors or the delivery warning. */
+export function ReminderItems({locale,role,items,busy,pending,onMark}:{locale:Locale;role:WorkspaceRole;items:ReminderItem[];busy:boolean;pending:string|null;onMark:(id:string)=>void}){
+ const t=words[locale],list=(rows:ReminderItem[])=><ul className="lsw-stack" style={{listStyle:'none',padding:0,margin:0}}>{rows.map(item=><li className="lsw-card lsw-stack" key={item.id}>
+  <h3>{t[item.purpose]}</h3><p><bdi>{new Intl.DateTimeFormat(locale==='he'?'he-IL':'en-GB',{timeZone:item.timezone,dateStyle:'medium',timeStyle:'short'}).format(new Date(item.dueAt))}</bdi> · <bdi>{item.timezone}</bdi> · {t[item.channel]}</p>
+  {item.state==='blocked'&&<p role="status">{t.blocked}: {item.reason==='demo_external_denied'?t.demo_external_denied:item.reason==='channel_not_verified'?t.channel_not_verified:item.reason==='do_not_disturb'?t.do_not_disturb:t.provider_not_configured}</p>}
+  <div className="lsw-actions" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,14rem),1fr))'}}><a className="lsw-button" href={reminderCalendarHref(locale,role,item)}>{t.open}</a>{item.channel==='in_app'&&(item.readAt?<span>{t.read}</span>:<button type="button" disabled={busy||pending!==null} onClick={()=>onMark(item.id)}>{t.mark}</button>)}</div>
+ </li>)}</ul>;
+ const external=items.filter(item=>item.channel!=='in_app');
+ return <>{list(items.filter(item=>item.channel==='in_app'))}{!!external.length&&<details className="lsw-card"><summary>{locale==='he'?'מצב מסירה בערוצים חיצוניים':'External delivery status'} <bdi>({external.length})</bdi></summary>{list(external)}</details>}</>;
+}
 export function ReminderInbox({locale,role}:{locale:Locale;role:WorkspaceRole}){
  const t=words[locale],[page,setPage]=useState<ReminderPage|null>(null),[cursor,setCursor]=useState<string|null>(null),[history,setHistory]=useState<(string|null)[]>([]);
  const [busy,setBusy]=useState(false),[status,setStatus]=useState(''),[pending,setPending]=useState<string|null>(null);
@@ -32,15 +43,11 @@ export function ReminderInbox({locale,role}:{locale:Locale;role:WorkspaceRole}){
   }catch(error){if(mounted.current&&run===generation.current){setPage(null);setStatus(denied(error)?t.signedOut:t.uncertain);if(denied(error))setPending(null);}}
   finally{inFlight.current=false;if(mounted.current&&run===generation.current)setBusy(false);}
  }
- return <section className="lsu-panel lsw-stack" aria-labelledby="reminder-inbox-title"><div className="lsw-actions"><h2 id="reminder-inbox-title">{t.title}</h2><button type="button" disabled={busy} onClick={()=>void load()}>{t.refresh}</button></div>
+  return <section className="lsu-panel lsw-stack" aria-labelledby="reminder-inbox-title"><div className="lsw-stack"><h2 id="reminder-inbox-title">{t.title}</h2><button type="button" disabled={busy} onClick={()=>void load()}>{t.refresh}</button></div>
   {busy&&<p role="status">{t.loading}</p>}{status&&<p role={pending||!page?'alert':'status'}>{status}</p>}
   {!busy&&!page&&!pending&&<button type="button" onClick={()=>void load()}>{t.retry}</button>}
   {pending&&<div className="lsw-actions"><button type="button" disabled={busy} onClick={()=>void mark(pending,true)}>{t.verify}</button><button type="button" disabled={busy} onClick={()=>void mark(pending)}>{t.retryMark}</button></div>}
-  {page&&<>{!page.items.length&&<p>{t.empty}</p>}<ul className="lsw-stack" style={{listStyle:'none',padding:0,margin:0}}>{page.items.map(item=><li className="lsu-panel lsw-stack" key={item.id}>
-   <h3>{t[item.purpose]}</h3><p><bdi>{new Intl.DateTimeFormat(locale==='he'?'he-IL':'en-GB',{timeZone:item.timezone,dateStyle:'medium',timeStyle:'short'}).format(new Date(item.dueAt))}</bdi> · <bdi>{item.timezone}</bdi> · {t[item.channel]}</p>
-   {item.state==='blocked'&&<p role="status">{t.blocked}: {item.reason==='demo_external_denied'?t.demo_external_denied:item.reason==='channel_not_verified'?t.channel_not_verified:item.reason==='do_not_disturb'?t.do_not_disturb:t.provider_not_configured}</p>}
-   <div className="lsw-actions"><a className="lsw-button" href={reminderCalendarHref(locale,role,item)}>{t.open}</a>{item.channel==='in_app'&&(item.readAt?<span>{t.read}</span>:<button type="button" disabled={busy||pending!==null} onClick={()=>void mark(item.id)}>{t.mark}</button>)}</div>
-  </li>)}</ul>{page.morePending&&<p>{t.more}</p>}
+  {page&&<>{!page.items.length&&<p>{t.empty}</p>}<ReminderItems locale={locale} role={role} items={page.items} busy={busy} pending={pending} onMark={id=>void mark(id)}/>{page.morePending&&<p>{t.more}</p>}
   <div className="lsw-actions">{!!history.length&&<button type="button" disabled={busy||pending!==null} onClick={()=>{setCursor(history.at(-1)??null);setHistory(history.slice(0,-1));setPage(null);}}>{t.previous}</button>}{page.nextCursor&&<button type="button" disabled={busy||pending!==null} onClick={()=>{setHistory([...history,cursor]);setCursor(page.nextCursor);setPage(null);}}>{t.next}</button>}</div></>}
   <p className="lsw-help">{t.external}</p>
  </section>;
