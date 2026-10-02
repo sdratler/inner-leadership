@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { AppError } from "../../lib/errors.ts";
+import {enqueuePracticeReminder} from "../reminders/queue.ts";
 import { asId, type Id } from "../../lib/ids.ts";
 import { instant } from "../../lib/time.ts";
 import type { CaseScope } from "../../lib/workspace.ts";
@@ -377,7 +378,8 @@ export class HomePracticeService implements PracticeVersionReader {
       if(responsibility&&await one(tx,"SELECT id FROM ls_practice.practice_occurrences WHERE workspace_id=$1 AND assignment_id=$2 AND occurs_on=$3::date AND period=$4 AND state<>'cancelled'",[actor.workspaceId,input.assignmentId,occursOn,period]))throw new AppError("CONFLICT");
       await tx.query(`INSERT INTO ls_practice.practice_occurrences
         (id,workspace_id,assignment_id,practice_version_id,coordination_version_id,occurs_on,period,state,created_at,occurs_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,'open',$8,$9)`, [id, actor.workspaceId, input.assignmentId, assignment.practiceVersionId, coordination.versionId, occursOn, period, now,occursAt]);
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'open',$8,$9)`, [id, actor.workspaceId, input.assignmentId, assignment.practiceVersionId, coordination.versionId, occursOn, period, now,occursAt]);
+      if(responsibility)await enqueuePracticeReminder(tx,actor.workspaceId,id,now);
       await recordPracticeAction(tx, { requestId, now }, actor.workspaceId, actor.id, "practice_occurrence_scheduled");
       return { id, assignmentId: input.assignmentId, practiceVersionId: assignment.practiceVersionId, coordinationVersionId: coordination.versionId, occursOn, period, state: "open",...(responsibility?{occursAt}:{}) };
     });

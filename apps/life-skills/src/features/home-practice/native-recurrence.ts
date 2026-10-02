@@ -1,5 +1,6 @@
 import {createHash} from "node:crypto";
 import {AppError} from "../../lib/errors.ts";
+import {asId} from "../../lib/ids.ts";
 import {loadCase,loadGuardians,loadAudience} from "../cases/data.ts";
 import {caseAccess} from "../cases/policy.ts";
 import {freshActor,lockWorkspace} from "../identity/data.ts";
@@ -10,6 +11,7 @@ import type {practiceVersionSnapshotDigest} from "./service.ts";
 import {authorizeResponsibility,parseSavedResponsibility,nativeResponsibility,nativeResponsibilityOccurrences,nativeOccurrenceId} from "./responsibility-service.ts";
 import {recurrenceInput,recurrenceCommand,recurrencePlan,type RecurrenceInput,type RecurrenceCommand,type RecurrencePlan} from "./recurrence-input.ts";
 import {recordPracticeAction} from "./history.ts";
+import {enqueuePracticeReminder} from "../reminders/queue.ts";
 type Source=Parameters<typeof practiceVersionSnapshotDigest>[0];
 type Ports={store:IdentityStore;clock:IdentityClock;ring:Keyring;versionSelect:string;digest:(source:Source)=>string;instructionsAad:(workspaceId:string,versionId:string)=>string};
 
@@ -54,7 +56,7 @@ export async function nativeRecurrence(ports:Ports,actor:Actor,value:RecurrenceI
    if(!('expectedPlanDigest' in input)||input.expectedPlanDigest!==planDigest)throw new AppError("CONFLICT");const fresh=rows.filter(row=>!row.existing);
    if(fresh.length){const inserted=await tx.query<{id:string}>(`INSERT INTO ls_practice.practice_occurrences(id,workspace_id,assignment_id,practice_version_id,coordination_version_id,occurs_on,period,state,created_at,occurs_at)
     SELECT p.id,$1,$2,$3,p."coordinationVersionId",p."occursOn",$4,'open',$5,p."occursAt" FROM jsonb_to_recordset($6::jsonb) AS p(id uuid,"coordinationVersionId" uuid,"occursOn" date,"occursAt" timestamptz) RETURNING id`,[actor.workspaceId,input.assignmentId,source.versionId,responsibility.period,now,JSON.stringify(fresh)]);
-    if(inserted.length!==fresh.length)throw new AppError("CONFLICT");await recordPracticeAction(tx,{requestId,now},actor.workspaceId,actor.id,"practice_occurrence_scheduled");
+     if(inserted.length!==fresh.length)throw new AppError("CONFLICT");for(const row of inserted)await enqueuePracticeReminder(tx,actor.workspaceId,asId(row.id,'occurrence'),now);await recordPracticeAction(tx,{requestId,now},actor.workspaceId,actor.id,"practice_occurrence_scheduled");
    }
    for(const row of rows)row.existing=true;
   }
