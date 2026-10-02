@@ -7,7 +7,7 @@ import { freshActor, lockWorkspace } from "../identity/data.ts";
 import { seal, unseal, type Keyring } from "../identity/crypto.ts";
 import { one, type IdentityStore, type SqlSession } from "../identity/store.ts";
 import type { Actor, IdentityClock } from "../identity/types.ts";
-import type { Lease, ProcessingStore, TranscriptReceipt } from "./processing.ts";
+import type { AudioStore, Lease, ProcessingStore, TranscriptReceipt } from "./processing.ts";
 import type { ProcessingJob, Transcript, PrivateAnalysis } from "./types.ts";
 import { WorkflowError } from "./policy.ts";
 import { cleanWhitespace, transcriptDigest, validateAnalysis, validateCleanSegments, validateTranscript, validateTranscriptionCompletion, type TranscriptionCompletion } from "./transcript.ts";
@@ -50,10 +50,14 @@ export class PostgresSessionProcessingStore implements ProcessingStore {
      WHERE j.workspace_id=$1 AND j.id=$2 ${lock?"FOR UPDATE OF j":""}`,[this.actor.workspaceId,id]);
     if(!row)throw new AppError("NOT_FOUND");return row;
   }
-  private async permission(tx:SqlSession,row:JobRow){
+  private async authority(tx:SqlSession,row:JobRow){
     const current=await freshActor(tx,this.actor,this.now());
     if(current.role!=="practitioner"||row.practitionerAccountId!==current.id)throw new AppError("NOT_FOUND");
     caseAccess(current,await loadCase(tx,current.workspaceId,row.caseId as never),await loadGuardians(tx,current.workspaceId,row.caseId as never),"write");
+    return current;
+  }
+  private async permission(tx:SqlSession,row:JobRow){
+    const current=await this.authority(tx,row);
     const consent=await one<{id:string;version:number;eligible:boolean}>(tx,`SELECT rc.id,rc.version,
       (rc.withdrawn_at IS NULL AND rc.signed_at<=$3 AND rc.authority_state='checked'
        AND rc.recording_allowed AND rc.transcription_allowed AND rc.ai_processing_allowed
@@ -89,13 +93,40 @@ export class PostgresSessionProcessingStore implements ProcessingStore {
     if(permission)await this.permission(tx,row);return row;
   }
   private transaction<T>(work:(tx:SqlSession)=>Promise<T>){return this.store.transaction(async tx=>{await lockWorkspace(tx,this.actor.workspaceId);return work(tx);});}
-  async claim(jobId:string):Promise<Lease|null>{return this.transaction(async tx=>{
-    const row=await this.row(tx,jobId);await this.permission(tx,row);
-    if(row.state==="ready"||row.state==="canceled"||row.leaseUntil&&row.leaseUntil.getTime()>this.now().getTime())return null;
+  private async ownLease(tx:SqlSession,row:JobRow):Promise<Lease>{
     const owner=randomUUID(),fence=(BigInt(row.fence)+1n).toString(),until=new Date(this.now().getTime()+300000);
     await tx.query('UPDATE ls_sessions.recording_jobs SET lease_owner=$3,lease_until=$4,fence=$5,revision=revision+1 WHERE workspace_id=$1 AND id=$2',[row.workspaceId,row.id,owner,until,fence]);
     const current=await this.row(tx,row.id);return {job:this.job(current),fencingToken:`${owner}:${fence}`};
+  }
+  async claim(jobId:string):Promise<Lease|null>{return this.transaction(async tx=>{
+    const row=await this.row(tx,jobId);await this.permission(tx,row);
+    if(row.state==="ready"||row.state==="canceled"||row.leaseUntil&&row.leaseUntil.getTime()>this.now().getTime())return null;
+    return this.ownLease(tx,row);
   });}
+  /** Cleanup is not consent to purchase processing. No source text or new-provider path is exposed. */
+  async cleanupSavedAudio(jobId:string,audio:Pick<AudioStore,"deleteAndVerify">){
+    const lease=await this.transaction(async tx=>{
+      const row=await this.row(tx,jobId);await this.authority(tx,row);
+      if(row.audioState==="deleted"||row.leaseUntil&&row.leaseUntil.getTime()>this.now().getTime())return null;
+      if(!row.transcriptCompleteVerified||row.transcriptVersion===null)throw new WorkflowError("TRANSCRIPT_SAVE_REQUIRED");
+      await this.transcript(tx,row);return this.ownLease(tx,row);
+    });
+    if(!lease)return {status:"no_pending_or_already_running" as const};
+    const checkpoint=async(audioState:"delete_pending"|"deleted"|"deletion_failed")=>this.transaction(async tx=>{
+      const row=await this.fenced(tx,lease,false);await this.authority(tx,row);await this.transcript(tx,row);
+      if(!row.transcriptCompleteVerified)throw new WorkflowError("TRANSCRIPT_SAVE_REQUIRED");
+      if(row.audioState==="deleted"&&audioState!=="deleted")throw new WorkflowError("AUDIO_ALREADY_DELETED");
+      await tx.query(`UPDATE ls_sessions.recording_jobs SET audio_state=$3,
+        audio_deleted_at=CASE WHEN $3='deleted' THEN coalesce(audio_deleted_at,$4) ELSE NULL END,
+        revision=revision+1 WHERE workspace_id=$1 AND id=$2`,[row.workspaceId,row.id,audioState,this.now()]);
+      lease.job=this.job(await this.row(tx,row.id));
+    });
+    try{
+      await checkpoint("delete_pending");
+      try{await audio.deleteAndVerify(lease);}catch{await checkpoint("deletion_failed");return {status:"audio_deletion_failed" as const};}
+      await checkpoint("deleted");return {status:"audio_deleted" as const};
+    }finally{await this.release(lease);}
+  }
   async assertCurrentPermission(lease:Lease):Promise<void>{await this.transaction(async tx=>{await this.fenced(tx,lease);});}
   async checkpoint(lease:Lease,input:Parameters<ProcessingStore["checkpoint"]>[1]):Promise<void>{
     const parsed=patchSchema.safeParse(input);if(!parsed.success)throw new AppError("INVALID_REQUEST");const patch=parsed.data;

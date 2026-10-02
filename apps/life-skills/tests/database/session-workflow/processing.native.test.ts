@@ -81,3 +81,26 @@ test("unknown provider outcome cannot be reset into a second purchase; ready ana
   await ready.f.pool.query("UPDATE ls_sessions.recording_jobs SET lease_until=clock_timestamp()-interval '1 second' WHERE workspace_id=$1 AND id=$2",[ready.f.workspaceId,ready.id]);
   expect(await ready.store.claim(ready.id)).toBeNull();expect((await ready.service.detail(ready.f.practitioner.actor,ready.sessionId)).analysis).toEqual(analysis);
 },30000);
+test("complete saved-audio cleanup survives consent withdrawal without granting processing or private customer access",async()=>{
+  const s=await prepared(),lease=(await s.store.claim(s.id))!;await saved(s,lease);await s.store.checkpoint(lease,{audioState:"deletion_failed"});await s.store.fail(lease,"AUDIO_DELETION_FAILED");await s.store.release(lease);
+  await s.service.withdrawConsent(s.f.practitioner.actor,s.sessionId,s.consent.version,randomUUID());
+  await expect(s.store.claim(s.id)).rejects.toMatchObject({code:"RECORDING_CONSENT_REQUIRED"});
+  let deleted=0;const audio={deleteAndVerify:async(owned:Lease)=>{deleted++;expect(owned.job.sourceDigest).toBe(sourceDigest);expect(owned.job.transcriptCompleteVerified).toBe(true);return "already_absent" as const;}};
+  const parent=new PostgresSessionProcessingStore(poolStore(s.f.pool),s.f.keyring,s.f.parent.actor,systemClock,provenance);
+  await expect(parent.cleanupSavedAudio(s.id,audio)).rejects.toMatchObject({code:"NOT_FOUND"});expect(deleted).toBe(0);
+  expect(await s.store.cleanupSavedAudio(s.id,audio)).toEqual({status:"audio_deleted"});expect(deleted).toBe(1);
+  const detail=await s.service.detail(s.f.practitioner.actor,s.sessionId);expect(detail.processing).toMatchObject({audioState:"deleted",permissionToRecord:false,state:"failed"});expect(detail.analysis).toBeNull();
+  expect(await s.store.cleanupSavedAudio(s.id,audio)).toEqual({status:"no_pending_or_already_running"});expect(deleted).toBe(1);
+  await expect(s.store.claim(s.id)).rejects.toMatchObject({code:"RECORDING_CONSENT_REQUIRED"});
+},30000);
+test("cleanup-only path denies partial/corrupt source and retries deletion without altering provider state",async()=>{
+  const s=await prepared();let deleted=0;const audio={deleteAndVerify:async()=>{deleted++;return "deleted" as const;}};
+  await expect(s.store.cleanupSavedAudio(s.id,audio)).rejects.toMatchObject({code:"TRANSCRIPT_SAVE_REQUIRED"});expect(deleted).toBe(0);
+  const lease=(await s.store.claim(s.id))!;await saved(s,lease);await s.store.release(lease);
+  expect(await s.store.cleanupSavedAudio(s.id,{deleteAndVerify:async()=>{throw Error("DEMO cleanup-only fault");}})).toEqual({status:"audio_deletion_failed"});
+  expect((await s.service.detail(s.f.practitioner.actor,s.sessionId)).processing).toMatchObject({state:"transcript_saved",audioState:"deletion_failed"});
+  await s.f.pool.query("UPDATE ls_sessions.transcripts SET source_ciphertext='corrupt' WHERE workspace_id=$1 AND job_id=$2",[s.f.workspaceId,s.id]);
+  await expect(s.store.cleanupSavedAudio(s.id,audio)).rejects.toMatchObject({code:"UNAVAILABLE"});expect(deleted).toBe(0);
+  await s.f.pool.query("UPDATE ls_identity.accounts SET state='revoked' WHERE workspace_id=$1 AND id=$2",[s.f.workspaceId,s.f.practitioner.actor.id]);
+  await expect(s.store.cleanupSavedAudio(s.id,audio)).rejects.toBeDefined();expect(deleted).toBe(0);
+},30000);
