@@ -39,19 +39,19 @@
 .ls-cal-day {min-block-size:120px;min-inline-size:0;border:1px solid var(--ui-line,#cddcdf);border-radius:.5rem;padding:.6rem;background:#fff}
 .ls-cal-day h3 {font-size:1rem;margin:.1rem 0 .5rem;border-block-end:1px solid var(--ui-line,#cddcdf);padding-block-end:.5rem}
 .ls-cal-board--week .ls-cal-day {min-block-size:180px}
-.ls-cal-slot {display:flex;inline-size:100%;flex-direction:column;gap:.2rem;text-align:start;cursor:pointer;background:#eaf0e9;border:1px solid #a5bba8;border-inline-start:4px solid #315c49;border-radius:.35rem;padding:.7rem .55rem;margin-block:.6rem;font:inherit;font-size:.84rem;line-height:1.45;color:#183829}
-.ls-cal-slot strong {font-size:.97rem}
+.ls-cal-slot {display:flex;inline-size:100%;flex-direction:column;gap:.2rem;text-align:start;cursor:pointer;background:#f3f8f9;border:1px solid var(--ui-line,#cddcdf);border-inline-start:4px solid var(--ui-teal,#245159);border-radius:.5rem;padding:.7rem .75rem;margin-block:.6rem;font:inherit;line-height:1.5;color:var(--ui-deep,#163f48)}
+.ls-cal-slot strong {font-size:1rem}
 .ls-cal-slot time {font-variant-numeric:tabular-nums;font-weight:700}
 .ls-cal-slot--canceled_family,.ls-cal-slot--canceled_practitioner,.ls-cal-slot--rescheduled {background:#f3ece4;border-color:#bca589;color:#55402b}
-.ls-cal-slot-state {padding-block-start:.2rem;font-size:.78rem}
+.ls-cal-slot-state {padding-block-start:.2rem;font-size:1rem}
 .ls-cal-followup {display:grid;gap:.15rem;margin-block:.6rem;padding:.65rem;border:1px solid #b99b58;border-inline-start:4px solid #b37b28;border-radius:.35rem;background:#fff8e8;color:var(--lsw-ink,#20332c);text-decoration:none;line-height:1.4}
-.ls-cal-followup span,.ls-cal-layer-label {font-size:.85rem;font-weight:700;color:#754c12}
-.ls-cal-followup strong {font-size:.95rem}
-.ls-cal-followup small {font-size:.86rem;overflow-wrap:anywhere}
+.ls-cal-followup span,.ls-cal-layer-label {font-size:1rem;font-weight:700;color:#754c12}
+.ls-cal-followup strong {font-size:1rem}
+.ls-cal-followup small {font-size:1rem;overflow-wrap:anywhere}
 .ls-cal-followup:hover {text-decoration:underline}
 .ls-cal-task {display:grid;gap:.25rem;margin-block:.6rem;padding:.65rem;border:1px solid #8daeb6;border-inline-start:4px solid #245159;border-radius:.35rem;background:#edf7f8;color:var(--lsw-ink,#20332c);line-height:1.45;overflow-wrap:anywhere}
-.ls-cal-task>span:first-child {font-size:.85rem;font-weight:700;color:#245159}
-.ls-cal-task strong {font-size:.97rem}
+.ls-cal-task>span:first-child {font-size:1rem;font-weight:700;color:var(--ui-teal,#245159)}
+.ls-cal-task strong {font-size:1rem}
 .ls-cal-task button {justify-self:start;min-block-size:44px;border:1px solid #245159;border-radius:.3rem;background:#fff;color:#163f48;font:inherit;font-weight:700;padding:.45rem .7rem;cursor:pointer}
 .ls-cal-task a {color:#163f48;font-weight:700}
 .ls-cal-slot:focus-visible,.ls-cal button:focus-visible,.ls-cal a:focus-visible,.ls-cal summary:focus-visible {outline:3px solid #8e491f;outline-offset:3px}
@@ -88,7 +88,7 @@
 .ls-cal .lsw-calendar-toolbar {display:flex;flex-wrap:wrap;align-items:center;gap:1rem;justify-content:space-between}
 .ls-cal .lsw-calendar-toolbar nav {display:flex;gap:.6rem;flex-wrap:wrap}
 .ls-cal .lsw-calendar-toolbar a {padding:.5rem .7rem;border:1px solid #aabdad;border-radius:.3rem;text-decoration:none;color:inherit;min-block-size:44px;box-sizing:border-box}
-.ls-cal .lsw-calendar-toolbar a[aria-current=page] {background:#315c49;color:white}
+.ls-cal .lsw-calendar-toolbar a[aria-current=page] {background:var(--ui-teal,#245159);color:white}
 .ls-cal .lsw-calendar-agenda {display:none}
 @media(max-width:1279px){.lsw.lsu .ls-cal .ls-cal-toolbar{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.ls-cal-actions{grid-column:1/-1;margin-inline-start:0}}
 @media(max-width:1000px){.ls-cal-operational{grid-template-columns:1fr}.ls-cal-operational .lsu-calendar-attention{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -126,4 +126,5 @@
 .lsw.lsu .ls-cal .ls-cal-toolbar {max-inline-size:100%}
 .lsw.lsu .ls-cal .ls-cal-toolbar>.lsw-field>:is(select,input) {min-inline-size:0;max-inline-size:100%}
 .lsw.lsu .ls-cal .ls-cal-period>.lsw-field {margin-block-end:0}
+.lsw.lsu #ls-calendar-practice-detail>.lsw-card {padding:0;border:0;background:#fff}
 @media print{.ls-cal .ls-cal-actions,.ls-cal button,.ls-cal .lsw-dialog{display:none}.ls-cal .lsw-calendar-grid{display:block}.ls-cal .lsw-calendar-agenda{display:none}.ls-cal{max-inline-size:none;padding:0}}

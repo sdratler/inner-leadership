@@ -1,4 +1,4 @@
-/** Mounted, authenticated, real-DB browser tests. NOT RUN in GPT. No network mocking or auth bypass. */
+/** Mounted, authenticated, real-DB component browser tests. Ordinary login proof is recorded separately. No network mocking. */
 import { test,expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { execFile } from 'node:child_process';
@@ -33,7 +33,7 @@ for(const locale of ['he','en'] as const){
   await context.addCookies([{name:'__Host-ls-session',value:data.parent,url:data.origin,httpOnly:true,secure:true,sameSite:'Lax'}]);
   const route=`/${locale}/family/schedule?date=${d.futureDate}&view=day&caseId=${data.caseId}`;
   const response=await page.goto(route);expect(response?.status()).toBe(200);
-  await expect(page.getByRole('heading',{name:t.familyTitle,exact:true})).toBeVisible();await expect(page.locator('main.ls-cal')).toHaveAttribute('dir',locale==='he'?'rtl':'ltr');
+  await expect(page.getByRole('heading',{name:locale==='he'?'יומן':'Calendar',exact:true})).toBeVisible();await expect(page.locator('main.ls-cal')).toHaveAttribute('dir',locale==='he'?'rtl':'ltr');
   await expect(page.locator(`[data-appointment-id="${d.futureId}"]:visible`)).toBeVisible();
   await expect(page.locator('main.ls-cal .ls-cal-count')).toBeVisible();
   expect(await page.evaluate(()=>{
