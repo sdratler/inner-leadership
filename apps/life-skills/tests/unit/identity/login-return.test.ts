@@ -9,6 +9,12 @@ it('preserves only a bounded legacy lead ID on a practitioner People return link
     .toBe('/en/app/clients');
 });
 const caseId='123e4567-e89b-42d3-a456-426614174000',sessionId='223e4567-e89b-42d3-a456-426614174000';
+it.each(['he','en'] as const)('retains bounded %s creative filters through login, without inherited, repeated or control values',locale=>{
+ const path=`/${locale}/app/marketing`,query={section:'creatives',language:'he',placement:'whatsapp_status',approval:'needs_approval',search:'שלום new topic'};
+ expect(Object.fromEntries(new URL(practitionerDetailReturnPath(locale,path,query),'https://private.invalid').searchParams)).toEqual(query);
+ for(const value of ['constructor','__proto__',['he','he']])expect(practitionerDetailReturnPath(locale,path,{language:value,placement:value,approval:value,search:['one','two']})).toBe(path);
+ expect(practitionerDetailReturnPath(locale,path,{search:'a'.repeat(201)})).toBe(path);expect(practitionerDetailReturnPath(locale,path,{search:'bad\ntext'})).toBe(path);
+});
 it.each(['he','en'] as const)('preserves exact bounded %s Marketing context through ordinary login, never another role or arbitrary query',locale=>{
  const path=`/${locale}/app/marketing`,query={section:'content_calendar',filter:'queued',month:'2026-10',layout:'week',date:'2026-10-02',channel:'whatsapp_status',state:'scheduled',from:'2026-10-01',to:'2026-10-09',publication:'DEMO-status-123'};
  const next=practitionerDetailReturnPath(locale,path,{...query,role:'parent',secret:'not-forwarded',caseId});expect(Object.fromEntries(new URL(next,'https://private.invalid').searchParams)).toEqual(query);expect(loginReturnDestination(locale,'practitioner',next)).toBe(next);

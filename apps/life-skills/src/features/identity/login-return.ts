@@ -2,6 +2,7 @@ import type { Locale } from "../../lib/locale.ts";
 import {isCaseId,settingsItems,workspaceContext} from '../../ui/workspace/navigation-model.ts';
 import {isReportSection} from '../progress/report-views.ts';
 import {contentChannel,contentDate,contentState} from '../marketing-overview/calendar-model.ts';
+import {creativeApprovals,creativePlacements} from '../marketing-overview/creative-filters.ts';
 
 type Role = "practitioner" | "parent" | "adult_client" | "child";
 
@@ -59,6 +60,10 @@ export function practitionerDetailReturnPath(locale:Locale,pathname:string,query
   if(contentChannel(one('channel')))params.set('channel',one('channel'));
   if(contentState(one('state')))params.set('state',one('state'));
   if(/^[A-Za-z0-9_-]{1,160}$/.test(one('publication')))params.set('publication',one('publication'));
+  if(['all','he','en'].includes(one('language')))params.set('language',one('language'));
+  if(creativePlacements.some(value=>value===one('placement')))params.set('placement',one('placement'));
+  if(creativeApprovals.some(value=>value===one('approval')))params.set('approval',one('approval'));
+  if(one('search')&&one('search').length<=200&&!/[\u0000-\u001f\u007f]/.test(one('search')))params.set('search',one('search'));
   return pathname+(params.size?'?'+params:'');
  }
  // Account destinations are global, not case-scoped. Preserve only the exact
