@@ -18,6 +18,16 @@ describe("public static perimeter", () => {
 });
 
 afterEach(() => vi.unstubAllEnvs());
+describe('actual practitioner Communications login return perimeter',()=>{
+ it.each(['he','en'] as const)('preserves the existing %s route and exact context without caller header injection',locale=>{
+  const origin='https://life-skills.bneineviimacademy.org',id='123e4567-e89b-42d3-a456-426614174000',path=`/${locale}/app/feedback`;
+  vi.stubEnv('NODE_ENV','production');vi.stubEnv('LS_APP_MODE','foundation_locked');vi.stubEnv('LS_APP_ORIGIN',origin);vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');
+  const response=proxy(new NextRequest(`${origin}${path}?mode=demo&context=client&caseId=${id}&section=app_updates&role=parent&secret=not-forwarded`,{headers:{'x-ls-practitioner-return':'https://untrusted.invalid'}}));
+  expect(response.status).toBe(200);expect(response.headers.get('x-middleware-request-x-ls-practitioner-return')).toBe(`${path}?mode=demo&context=client&caseId=${id}&section=app_updates`);
+  for(const query of [`caseId=${id}&caseId=${id}&section=whatsapp&section=whatsapp`,'caseId=unknown&section=private'])expect(proxy(new NextRequest(`${origin}${path}?${query}`)).headers.get('x-middleware-request-x-ls-practitioner-return')).toBe(path);
+  expect(proxy(new NextRequest(origin+path+'/unknown',{headers:{'x-ls-practitioner-return':path}})).headers.get('x-middleware-request-x-ls-practitioner-return')).toBeNull();
+ });
+});
 describe('actual named practitioner Settings proxy login return',()=>{
  it.each(['he','en']as const)('projects exact %s maintained Settings destinations and strips supplied headers and private query',locale=>{
   const origin='https://life-skills.bneineviimacademy.org';vi.stubEnv('NODE_ENV','production');vi.stubEnv('LS_APP_MODE','foundation_locked');vi.stubEnv('LS_APP_ORIGIN',origin);vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');
