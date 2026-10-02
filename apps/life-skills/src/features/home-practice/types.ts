@@ -103,7 +103,7 @@ export interface PracticeOccurrenceItem {
   canReport: boolean;
   ownReport: CompletionView | null;
   assistanceModes?:readonly ("together"|"parent_report")[];
-  schedule?:{participant:"parent"|"client";localTime:string;timezone:string;timeOrigin:ResponsibilityInput["timeOrigin"]};
+  schedule?:{participant:"parent"|"client";caseKind?:"minor"|"adult";localTime:string;timezone:string;timeOrigin:ResponsibilityInput["timeOrigin"]};
 }
 export interface PracticeOccurrencePage {
   items: PracticeOccurrenceItem[];

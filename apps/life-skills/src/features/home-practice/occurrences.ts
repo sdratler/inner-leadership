@@ -35,7 +35,8 @@ export async function readPracticeOccurrences<Version extends { versionId: Publi
     const current = await freshActor(tx, actor, clock.now());
     const audience = await loadAudience(tx, actor.workspaceId, caseId, audienceId);
     if (!audience || !audience.published || audience.visibility === "private") throw new AppError("NOT_FOUND");
-    audienceAccess(current, await loadCase(tx, actor.workspaceId, caseId), await loadGuardians(tx, actor.workspaceId, caseId), audience);
+    const item=await loadCase(tx,actor.workspaceId,caseId);if(!item)throw new AppError("NOT_FOUND");
+    audienceAccess(current, item, await loadGuardians(tx, actor.workspaceId, caseId), audience);
     const rows = await tx.query<OccurrenceRow>(`SELECT o.id,o.assignment_id AS "assignmentId",o.practice_version_id AS "practiceVersionId",
       o.coordination_version_id AS "coordinationVersionId",o.occurs_on::text AS "occursOn",o.period,o.state,
       c.assignee_account_ids AS "assigneeAccountIds",o.practice_version_id AS "versionId",
@@ -80,7 +81,7 @@ export async function readPracticeOccurrences<Version extends { versionId: Publi
       return {
         occurrence: { id: row.id, assignmentId: row.assignmentId, practiceVersionId: row.practiceVersionId,
           coordinationVersionId: row.coordinationVersionId, occursOn: row.occursOn, period: row.period, state: row.state,...(row.occursAtValue?{occursAt:row.occursAtValue.toISOString()}:{}) },
-        ...(published.responsibility?{schedule:{participant:published.responsibility.participant,localTime:published.responsibility.localTime,timezone:published.responsibility.timezone,timeOrigin:published.responsibility.timeOrigin}}:{}),
+        ...(published.responsibility?{schedule:{participant:published.responsibility.participant,caseKind:item.kind,localTime:published.responsibility.localTime,timezone:published.responsibility.timezone,timeOrigin:published.responsibility.timeOrigin}}:{}),
         ...(assisted?{assistanceModes:["together","parent_report"] as const}:{}),
         practice, canReport: current.role !== "practitioner" && (row.assigneeAccountIds.includes(current.id)||assisted) && row.state!=="cancelled" && (row.state === "open" || row.reportId !== null),
         ownReport: row.reportId && row.reportStatus && row.revision && row.reportedAt ? {
