@@ -15,7 +15,8 @@ const captureReasons:Record<'he'|'en',Record<string,string>>={
 };
 export function captureReasonLabel(locale:'he'|'en',reason:string|null|undefined):string{
  if(reason==null)return '';
- return Object.hasOwn(captureReasons[locale],reason)?captureReasons[locale][reason]:locale==='he'?'לא ניתן לאמת את מצב קליטת התגובות.':'Response capture status could not be verified.';
+ const unavailable=locale==='he'?'לא ניתן לאמת את מצב קליטת התגובות.':'Response capture status could not be verified.';
+ return Object.hasOwn(captureReasons[locale],reason)?captureReasons[locale][reason]??unavailable:unavailable;
 }
 export function CommunityThreadPanel({locale,posts}:{locale:'he'|'en';posts:CommunityInboxPost[]}){
  const t=labels[locale],[data,setData]=useState<CommunityThreads|null>(null),[loading,setLoading]=useState(true),[error,setError]=useState(false),[postId,setPostId]=useState(''),[commentUrl,setCommentUrl]=useState(''),[confirmed,setConfirmed]=useState(false),[busy,setBusy]=useState(false),[notice,setNotice]=useState(''),[taskError,setTaskError]=useState(false),[moreTasks,setMoreTasks]=useState(false),[linked,setLinked]=useState<number|null>(null);
