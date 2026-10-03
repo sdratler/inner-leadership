@@ -7,10 +7,10 @@ import { seal, unseal, type Keyring } from "../identity/crypto.ts";
 import { one, type IdentityStore, type SqlSession } from "../identity/store.ts";
 import type { Actor, IdentityClock } from "../identity/types.ts";
 import { blankMetrics, validateMetricRecord, validateObservationEvidence, type PrivateObservationEvidence, type MetricRecord, type MetricValues } from "./metrics.ts";
-import { recapFromReviewedFields, shareDigest, validateRecap } from "./recap.ts";
-import type { AudioState, BroadFocus, ProcessingStage, RoutineRecap, SharedPractice, Transcript, PrivateAnalysis, Locale } from "./types.ts";
+import { recapFromReviewedFields, recipientRecap, shareDigest, validateRecap } from "./recap.ts";
+import type { AudioState, BroadFocus, ProcessingStage, RoutineRecap, RecipientRoutineRecap, SharedPractice, Transcript, PrivateAnalysis, Locale } from "./types.ts";
 import { readPrivateTranscript, readPrivateAnalysis, sealPrivateRecord,privateRecordAad, type PrivateSessionReadMetadata, type StoredTranscriptRow, type StoredAnalysisRow } from "./private-records.ts";
-import {appendSpeakerCorrection,type SpeakerCorrectionInput} from "./speaker-corrections.ts";
+import {MAX_SPEAKER_RECORD_BYTES,appendSpeakerCorrection,type SpeakerCorrectionInput} from "./speaker-corrections.ts";
 import { nonempty, validIso } from "./policy.ts";
 import { consentVersionSchema, type ConsentVersion, type ConsentRecordInput } from "./consent-contract.ts";
 import {MAX_DISCLOSURE_RECORDS,disclosureSchema,disclosureInputSchema,disclosureUseSchema,disclosureRevokeSchema,type DisclosureInput,type DisclosureView} from "./disclosure-contract.ts";
@@ -57,7 +57,7 @@ export interface SessionDetail {
   recipients:{accountId:string;name:string}[];
   consentSigners:{accountId:string;name:string}[];
 }
-export interface SharedRecapView {publicationId:string;sessionId:string;sharedAt:string;recap:RoutineRecap;}
+export interface SharedRecapView {publicationId:string;sessionId:string;sharedAt:string;recap:RecipientRoutineRecap;}
 export type RecordConsentInput = ConsentRecordInput;
 type SavedRecapRow={version:number;bodyCiphertext:string;contentDigest:string};
 type RoutineRecipientRow={accountId:string;role:"parent"|"child"|"adult_client";profileCiphertext:string;personId:string};
@@ -105,8 +105,8 @@ export class SessionDatabaseService {
       if(!stored)throw new AppError("NOT_FOUND");const scope={workspaceId:actor.workspaceId,caseId:row.caseId,sessionId},saved=readPrivateTranscript(stored,scope,this.ring),recordedAt=this.clock.now().toISOString();
       const history=appendSpeakerCorrection(saved.metadata.speakerHistory,saved.transcript,input,actor.id,recordedAt);
       // Only the versioned mapping changes. Source, cleaned text, digest, job and analysis remain untouched.
+      if(Buffer.byteLength(JSON.stringify(history),"utf8")>MAX_SPEAKER_RECORD_BYTES)throw new AppError("UNAVAILABLE");
       const encrypted=sealPrivateRecord(history,privateRecordAad("speakers",scope,stored.version),this.ring);
-      if(Buffer.byteLength(JSON.stringify(history),"utf8")>2000000)throw new AppError("UNAVAILABLE");
       await tx.query('UPDATE ls_sessions.transcripts SET speaker_mapping_ciphertext=$5 WHERE workspace_id=$1 AND case_id=$2 AND session_id=$3 AND version=$4',[actor.workspaceId,row.caseId,sessionId,stored.version,encrypted]);
       return {version:stored.version,revision:history.revision,recordedAt};
     });
@@ -176,8 +176,9 @@ export class SessionDatabaseService {
     const rows=await tx.query<{sessionId:string|null;appointmentId:string;startsAt:Date;endsAt:Date;state:string|null;processingState:string|null;audioState:string|null}>(`SELECT s.id AS "sessionId",a.id AS "appointmentId",a.starts_at AS "startsAt",a.ends_at AS "endsAt",s.state,j.state AS "processingState",j.audio_state AS "audioState" FROM ls_calendar.appointments a LEFT JOIN ls_sessions.sessions s ON s.workspace_id=a.workspace_id AND s.case_id=a.case_id AND s.appointment_id=a.id LEFT JOIN LATERAL(SELECT state,audio_state FROM ls_sessions.recording_jobs j WHERE j.workspace_id=s.workspace_id AND j.session_id=s.id ORDER BY j.created_at DESC LIMIT 1)j ON true WHERE a.workspace_id=$1 AND a.case_id=$2 AND a.kind='individual' AND ($3::uuid IS NULL OR a.id=$3::uuid) ORDER BY a.starts_at DESC,a.id LIMIT 100`,[actor.workspaceId,caseId,appointmentId?.toLowerCase()??null]);return rows.map(x=>({...x,startsAt:x.startsAt.toISOString(),endsAt:x.endsAt.toISOString()}));
   });}
   async ensureForAppointment(actor:Actor,caseId:string,appointmentId:string):Promise<{sessionId:string}>{return this.store.transaction(async tx=>{await lockWorkspace(tx,actor.workspaceId);await owner(tx,actor,caseId,this.clock);const appointment=await one<{practitionerId:string}>(tx,"SELECT practitioner_id AS \"practitionerId\" FROM ls_calendar.appointments WHERE workspace_id=$1 AND case_id=$2 AND id=$3 AND kind='individual'",[actor.workspaceId,caseId,appointmentId]);if(!appointment||appointment.practitionerId!==actor.id)throw new AppError("NOT_FOUND");const existing=await one<{sessionId:string}>(tx,'SELECT id AS "sessionId" FROM ls_sessions.sessions WHERE workspace_id=$1 AND case_id=$2 AND appointment_id=$3',[actor.workspaceId,caseId,appointmentId]);if(existing)return existing;const sessionId=randomUUID();await tx.query("INSERT INTO ls_sessions.sessions(workspace_id,case_id,id,appointment_id,practitioner_account_id,state) VALUES($1,$2,$3,$4,$5,'open')",[actor.workspaceId,caseId,sessionId,appointmentId,actor.id]);return {sessionId};});}
-  async detail(actor:Actor,sessionId:string,analysisLocale:Locale="en"):Promise<SessionDetail>{
+  async detail(actor:Actor,sessionId:string,analysisLocale:Locale="en",transcriptVersion?:number):Promise<SessionDetail>{
     if(analysisLocale!=="en"&&analysisLocale!=="he")throw new AppError("INVALID_REQUEST");
+    if(transcriptVersion!==undefined&&(!Number.isInteger(transcriptVersion)||transcriptVersion<1||transcriptVersion>2147483647))throw new AppError("INVALID_REQUEST");
     return this.store.transaction(async tx=>{
     await tx.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY");
     const row=await sessionRow(tx,actor.workspaceId,sessionId);await owner(tx,actor,row.caseId,this.clock);
@@ -185,9 +186,10 @@ export class SessionDatabaseService {
     const client=await one<{profileCiphertext:string;personId:string;kind:"adult"|"minor"}>(tx,'SELECT p.profile_ciphertext AS "profileCiphertext",p.id AS "personId",p.kind FROM ls_cases.cases c JOIN ls_cases.clients cl ON cl.workspace_id=c.workspace_id AND cl.id=c.client_id JOIN ls_identity.people p ON p.workspace_id=cl.workspace_id AND p.id=cl.person_id WHERE c.workspace_id=$1 AND c.id=$2',[actor.workspaceId,row.caseId]);
     const job=await one<{state:ProcessingStage;audioState:AudioState}>(tx,'SELECT state,audio_state AS "audioState" FROM ls_sessions.recording_jobs WHERE workspace_id=$1 AND case_id=$2 AND session_id=$3 ORDER BY created_at DESC,id DESC LIMIT 1',[actor.workspaceId,row.caseId,sessionId]);
     // A later pending recording must not erase the previous durable transcript.
-    // Read the newest stored version, then verify its exact job/completion binding;
+    // Read the requested saved version (latest by default), then verify its exact job/completion binding;
     // never silently filter a damaged/incomplete latest row into an empty view.
-    const transcriptRow=await one<StoredTranscriptRow>(tx,'SELECT t.version,t.job_id AS "jobId",t.source_ciphertext AS "sourceCiphertext",t.cleaned_ciphertext AS "cleanedCiphertext",t.speaker_mapping_ciphertext AS "speakerMappingCiphertext",t.content_digest AS "contentDigest",t.source_kind AS "sourceKind",t.created_at AS "createdAt",j.transcript_complete_verified AS "completeVerified",j.transcript_version AS "jobTranscriptVersion",j.transcript_digest AS "jobTranscriptDigest",j.source_digest AS "sourceDigest",j.duration_milliseconds AS "durationMs",j.completion_receipt_ciphertext AS "completionReceiptCiphertext" FROM ls_sessions.transcripts t JOIN ls_sessions.recording_jobs j ON j.workspace_id=t.workspace_id AND j.case_id=t.case_id AND j.session_id=t.session_id AND j.id=t.job_id WHERE t.workspace_id=$1 AND t.case_id=$2 AND t.session_id=$3 ORDER BY t.version DESC LIMIT 1',[actor.workspaceId,row.caseId,sessionId]);
+    const transcriptRow=await one<StoredTranscriptRow>(tx,'SELECT t.version,t.job_id AS "jobId",t.source_ciphertext AS "sourceCiphertext",t.cleaned_ciphertext AS "cleanedCiphertext",t.speaker_mapping_ciphertext AS "speakerMappingCiphertext",t.content_digest AS "contentDigest",t.source_kind AS "sourceKind",t.created_at AS "createdAt",j.transcript_complete_verified AS "completeVerified",j.transcript_version AS "jobTranscriptVersion",j.transcript_digest AS "jobTranscriptDigest",j.source_digest AS "sourceDigest",j.duration_milliseconds AS "durationMs",j.completion_receipt_ciphertext AS "completionReceiptCiphertext" FROM ls_sessions.transcripts t JOIN ls_sessions.recording_jobs j ON j.workspace_id=t.workspace_id AND j.case_id=t.case_id AND j.session_id=t.session_id AND j.id=t.job_id WHERE t.workspace_id=$1 AND t.case_id=$2 AND t.session_id=$3 AND ($4::integer IS NULL OR t.version=$4) ORDER BY t.version DESC LIMIT 1',[actor.workspaceId,row.caseId,sessionId,transcriptVersion??null]);
+    if(transcriptVersion!==undefined&&!transcriptRow)throw new AppError("NOT_FOUND");
     const scope={workspaceId:actor.workspaceId,caseId:row.caseId,sessionId},savedTranscript=transcriptRow?readPrivateTranscript(transcriptRow,scope,this.ring):null;
     const analysisRow=savedTranscript?await one<StoredAnalysisRow>(tx,'SELECT transcript_version AS "transcriptVersion",locale,revision,body_ciphertext AS "bodyCiphertext",prompt_version AS "promptVersion",model_version AS "modelVersion",created_at AS "createdAt" FROM ls_sessions.private_analyses WHERE workspace_id=$1 AND case_id=$2 AND session_id=$3 AND transcript_version=$4 AND locale=$5 ORDER BY revision DESC LIMIT 1',[actor.workspaceId,row.caseId,sessionId,savedTranscript.transcript.version,analysisLocale]):null;
     const savedAnalysis=analysisRow&&savedTranscript?readPrivateAnalysis(analysisRow,scope,this.ring,savedTranscript.transcript,analysisLocale):null;
@@ -251,7 +253,7 @@ export class SessionDatabaseService {
       WHERE p.workspace_id=$1 AND p.case_id=$2 ORDER BY p.shared_at DESC,p.id DESC LIMIT 100`,[actor.workspaceId,caseId,actor.id]);
     return rows.map(item=>{const value=unsealJson<unknown>(item.bodyCiphertext,aad("recap",actor.workspaceId,caseId,item.sessionId,item.recapVersion),this.ring),parsed=routineRecapSchema.safeParse(value);
       if(!parsed.success||parsed.data.caseId!==caseId||parsed.data.sessionId!==item.sessionId||parsed.data.version!==item.recapVersion||digest(value)!==item.contentDigest)throw new AppError("UNAVAILABLE");
-      return {publicationId:item.publicationId,sessionId:item.sessionId,sharedAt:item.sharedAt.toISOString(),recap:parsed.data};});
+      return {publicationId:item.publicationId,sessionId:item.sessionId,sharedAt:item.sharedAt.toISOString(),recap:recipientRecap(parsed.data)};});
   });}
   async saveObservations(actor:Actor,sessionId:string,values:MetricValues,expectedRevision:number,key:string):Promise<MetricRecord>{return this.store.transaction(async tx=>{await lockWorkspace(tx,actor.workspaceId);const row=await sessionRow(tx,actor.workspaceId,sessionId,true);await owner(tx,actor,row.caseId,this.clock);return command(tx,this.ring,actor,row,"save_observations",key,{values,expectedRevision},async()=>{const current=await one<{revision:number}>(tx,'SELECT revision FROM ls_sessions.practitioner_observations WHERE workspace_id=$1 AND case_id=$2 AND session_id=$3 ORDER BY revision DESC LIMIT 1',[actor.workspaceId,row.caseId,sessionId]);if((current?.revision??0)!==expectedRevision)throw new AppError("CONFLICT");const record:MetricRecord={schemaVersion:1,workspaceId:actor.workspaceId,caseId:row.caseId,sessionId,recordedByAccountId:actor.id,source:"practitioner_observation",recordedAt:this.clock.now().toISOString(),revision:expectedRevision+1,values};validateMetricRecord(record);await tx.query('INSERT INTO ls_sessions.practitioner_observations(workspace_id,case_id,session_id,revision,schema_version,values_ciphertext,notes_ciphertext,recorded_by_account_id,recorded_at) VALUES($1,$2,$3,$4,1,$5,$6,$7,$8)',[actor.workspaceId,row.caseId,sessionId,record.revision,sealJson(values,aad("metrics",actor.workspaceId,row.caseId,sessionId,record.revision),this.ring),sealJson({},aad("metric-notes",actor.workspaceId,row.caseId,sessionId,record.revision),this.ring),actor.id,new Date(record.recordedAt)]);return record;});});}
 

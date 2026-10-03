@@ -3,7 +3,7 @@ import { AppError } from "../../lib/errors.ts";
 import { seal, unseal, type Keyring } from "../identity/crypto.ts";
 import { transcriptDigest, validateTranscript, validateCleanSegments, validateAnalysis, validateTranscriptionCompletion, speakerNames } from "./transcript.ts";
 import type { CleanSegment, Locale, PrivateAnalysis, Transcript } from "./types.ts";
-import {readSpeakerHistory,currentSpeakerLabels,type SpeakerHistory} from "./speaker-corrections.ts";
+import {MAX_SPEAKER_RECORD_BYTES,readSpeakerHistory,currentSpeakerLabels,type SpeakerHistory} from "./speaker-corrections.ts";
 
 export interface PrivateSessionScope { workspaceId: string; caseId: string; sessionId: string; }
 export interface TranscriptReadMetadata { version: number; digest: string; createdAt: string; completeVerified: true; cleaned: readonly CleanSegment[]; speakers: Readonly<Record<string, string>>; speakerHistory:SpeakerHistory; }
@@ -63,7 +63,7 @@ export function readPrivateTranscript(row: StoredTranscriptRow, scope: PrivateSe
     validateTranscriptionCompletion(transcript, completion, row.durationMs, row.sourceDigest);
     const cleaned = cleanedSchema.parse(unsealPrivateRecord(row.cleanedCiphertext, privateRecordAad("cleaned-transcript", scope, row.version), ring, 4000000));
     validateCleanSegments(transcript, cleaned);
-    const mapping = row.speakerMappingCiphertext ? unsealPrivateRecord(row.speakerMappingCiphertext, privateRecordAad("speakers", scope, row.version), ring, 2000000) : {};
+    const mapping = row.speakerMappingCiphertext ? unsealPrivateRecord(row.speakerMappingCiphertext, privateRecordAad("speakers", scope, row.version), ring, MAX_SPEAKER_RECORD_BYTES) : {};
     const speakerHistory=readSpeakerHistory(mapping,transcript),speakers=currentSpeakerLabels(speakerHistory);
     speakerNames(transcript, speakers);
     return { transcript, metadata: { version: row.version, digest: row.contentDigest, createdAt: savedTime(row.createdAt), completeVerified: true, cleaned, speakers,speakerHistory } };
