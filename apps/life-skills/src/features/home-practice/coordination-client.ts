@@ -22,6 +22,7 @@ export async function readCoordination(assignmentId:string,caseId:string,audienc
  const value=await request<PracticeCoordinationPage>('/api/home-practice?'+new URLSearchParams({view:'coordination',assignmentId}),{method:'GET'},signal);
  if(!value||!['parent','adult_client'].includes(value.role)||typeof value.ownAccountId!=='string'||!ids(value.eligibleAccountIds)||typeof value.hasMore!=='boolean'||typeof value.asOf!=='string'||!Number.isFinite(Date.parse(value.asOf))||!Array.isArray(value.versions)||value.versions.length>20||value.versions.some(row=>!validVersion(row,assignmentId,caseId,audienceId))||value.currentVersion!==null&&(!validVersion(value.currentVersion,assignmentId,caseId,audienceId)||Date.parse(value.currentVersion.effectiveFrom)>Date.parse(value.asOf)))throw new IdentityClientError('UNAVAILABLE');
  if(value.readOnlyReason!==undefined&&(!['client_responsibility','legacy_child_assignment'].includes(value.readOnlyReason)||value.role!=='parent'||value.eligibleAccountIds.length!==0))throw new IdentityClientError('UNAVAILABLE');
+ if(value.nextEffectiveFrom!==null&&(typeof value.nextEffectiveFrom!=='string'||!Number.isFinite(Date.parse(value.nextEffectiveFrom))||Date.parse(value.nextEffectiveFrom)<=Date.parse(value.asOf)))throw new IdentityClientError('UNAVAILABLE');
  if(value.role==='adult_client'&&(value.eligibleAccountIds.length!==1||value.eligibleAccountIds[0]!==value.ownAccountId))throw new IdentityClientError('UNAVAILABLE');
  return value;
 }
@@ -35,8 +36,8 @@ export function coordinationDefaults(page:PracticeCoordinationPage):{assignees:s
  * on a timestamp or incidental history pagination. */
 export function coordinationFrameKey(page:PracticeCoordinationPage):string{return JSON.stringify([page.ownAccountId,page.role,page.currentVersion?.versionId??null,page.readOnlyReason??null,[...page.eligibleAccountIds].sort()]);}
 export function coordinationRefreshDelay(page:PracticeCoordinationPage,elapsed:number):number|null{
- const asOf=Date.parse(page.asOf),pending=page.versions.map(row=>Date.parse(row.effectiveFrom)).filter(at=>at>asOf);
- return pending.length?Math.min(2_147_483_647,Math.max(100,Math.min(...pending)-asOf-Math.max(0,elapsed)+100)):null;
+ if(page.nextEffectiveFrom===null)return null;
+ return Math.min(2_147_483_647,Math.max(100,Date.parse(page.nextEffectiveFrom)-Date.parse(page.asOf)-Math.max(0,elapsed)+100));
 }
 export type CoordinationCommand=Readonly<{action:'coordinate';assignmentId:string;assigneeAccountIds:readonly string[];completionMode:CompletionMode;reminderCandidateAccountIds:readonly string[];effectiveFrom:string;expectedCurrentVersionId?:string|null}>;
 export function coordinationCommand(assignmentId:string,assignees:readonly string[],mode:CompletionMode,reminders:readonly string[],now:number,expectedCurrentVersionId?:string|null):CoordinationCommand{
