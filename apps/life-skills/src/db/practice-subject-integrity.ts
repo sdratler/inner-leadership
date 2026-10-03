@@ -28,7 +28,7 @@ export function practiceFunctionBody(files:readonly Migration[],migration:string
 
 /** Read-only, payload-free proof for the existing one-migration operator.
  * Never repairs drift, grants roles, or rewrites historical responsibility. */
-export async function practiceSubjectIntegrity(tx:SqlSession,files:readonly Migration[]):Promise<PracticeSubjectIntegrity>{
+export async function practiceSubjectIntegrity(tx:SqlSession,files:readonly Migration[],coordinationSource:'0107_ls_practice_subject_guards.sql'|'0111_ls_adult_practice_coordination.sql'=PRACTICE_SUBJECT_GUARDS_MIGRATION.name):Promise<PracticeSubjectIntegrity>{
  const catalog=(await tx.query<{catalog:unknown}>(`SELECT json_build_object(
   'columns',(SELECT json_agg(json_build_object('table',c.relname,'column',a.attname,'type',format_type(a.atttypid,a.atttypmod),'notNull',a.attnotnull,'default',pg_get_expr(d.adbin,d.adrelid),'identity',a.attidentity,'generated',a.attgenerated) ORDER BY c.relname,a.attnum)
    FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum WHERE n.nspname='ls_practice' AND c.relkind='r' AND a.attnum>0 AND NOT a.attisdropped),
@@ -79,7 +79,7 @@ export async function practiceSubjectIntegrity(tx:SqlSession,files:readonly Migr
    WHERE o.id IS NULL OR c.id IS NULL OR NOT (r.author_account_id=ANY(c.assignee_account_ids)) OR (r.corrects_report_id IS NOT NULL AND p.id IS NULL)) AS sound`))[0]?.sound===true;
  return {
   baselineFunctions:participants.every(name=>matches(BASELINE,name)),
-  reviewedFunctions:participants.every(name=>matches(PRACTICE_SUBJECT_GUARDS_MIGRATION.name,name)),
+  reviewedFunctions:matches(coordinationSource,'check_coordination_actor_and_assignees')&&matches(PRACTICE_SUBJECT_GUARDS_MIGRATION.name,'check_completion_author'),
   immutableHistory:matches(BASELINE,'protect_immutable_row')&&matches(BASELINE,'check_active_version')&&unique.length===1&&unique[0]?.safe===true&&!!expectedUnique&&unique[0]?.body.replace(/\r\n/g,'\n')===expectedUnique,
   schemaCatalog,foreignKeys:objects?.foreignKeys===true,permissions:objects?.permissions===true,referencesSound,
  };

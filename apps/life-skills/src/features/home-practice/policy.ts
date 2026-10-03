@@ -1,5 +1,7 @@
 import { AppError } from "../../lib/errors.ts";
-import type { AccountId } from "../identity/types.ts";
+import type { AccountFacts, AccountId } from "../identity/types.ts";
+import type { AudienceFacts, CaseFacts, GuardianFacts } from "../cases/policy.ts";
+import { validateAssignees } from "../cases/policy.ts";
 import type { CoordinationSnapshot } from "../identity/interfaces.ts";
 import type { CompletionStatus, OccurrencePeriod } from "./types.ts";
 
@@ -42,4 +44,12 @@ export function selectReminderCandidates(
 ): readonly AccountId[] {
   const enabled = new Set(enabledAccountIds);
   return snapshot.reminderCandidateAccountIds.filter(id => snapshot.assigneeAccountIds.includes(id) && enabled.has(id));
+}
+
+/** A client can coordinate only their own adult case and own responsibility.
+ * Child permission, an audience grant or a reminder recipient is not ownership. */
+export function coordinationAssignees(actor: AccountFacts, item: CaseFacts | null, guardians: readonly GuardianFacts[], audience: AudienceFacts, assignees: readonly AccountId[], clientAccountIds: readonly AccountId[]): readonly AccountId[] {
+  if (!item || !audience.published || audience.visibility === "private" || !["parent", "adult_client"].includes(actor.role)) throw new AppError("NOT_FOUND");
+  if (actor.role === "adult_client" && (item.kind !== "adult" || actor.personId !== item.clientPersonId || assignees.length !== 1 || assignees[0] !== actor.id)) throw new AppError("NOT_FOUND");
+  return validateAssignees(actor, item, guardians, audience, assignees, clientAccountIds);
 }

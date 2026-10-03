@@ -34,7 +34,7 @@ const homeAction = z.discriminatedUnion("action", [
   z.object({ action: z.literal("create_draft"), caseId, audienceId, goalId: goalId.optional(), commitmentId: commitmentId.optional(), templateKey: z.string().trim().min(1).max(100), templateVersion: z.string().trim().min(1).max(100), instructions, startsOn: calendarDate, endsOn: calendarDate.nullable().optional() }).strict(),
   z.object({ action: z.literal("revise"), assignmentId, instructions, startsOn: calendarDate, endsOn: calendarDate.nullable().optional() }).strict(),
   z.object({ action: z.literal("publish"), assignmentId, versionId }).strict(),
-  z.object({ action: z.literal("coordinate"), assignmentId, assigneeAccountIds: accountIds, completionMode: z.enum(completionModes), reminderCandidateAccountIds: z.array(id("account")).max(2), effectiveFrom: instantValue }).strict(),
+  z.object({ action: z.literal("coordinate"), assignmentId, assigneeAccountIds: accountIds, completionMode: z.enum(completionModes), reminderCandidateAccountIds: z.array(id("account")).max(2), effectiveFrom: instantValue, expectedCurrentVersionId:id("coordination_version").nullable().optional() }).strict(),
   z.object({ action: z.literal("schedule"), assignmentId, occursOn: calendarDate, period: z.enum(occurrencePeriods) }).strict(),
 ]);
 const checkIn = z.object({ occurrenceId, status: z.enum(completionStatuses), idempotencyKey: z.string().uuid(), correctsReportId: completionReportId.optional() }).strict();
@@ -113,7 +113,11 @@ export class Ls040Http {
         } else data = await this.services.commitments.create(actor, await readJson(request, createCommitment), requestId);
       } else if (url.pathname === "/api/home-practice") {
         if (request.method === "GET") {
-          if (url.searchParams.get("view") === "management") {
+          if (url.searchParams.get("view") === "coordination") {
+            const parsed = z.object({ view: z.literal("coordination"), assignmentId }).strict().safeParse(exactQuery(url, ["view", "assignmentId"]));
+            if (!parsed.success) throw new AppError("INVALID_REQUEST");
+            data = await this.services.practice.coordination(actor, parsed.data.assignmentId);
+          } else if (url.searchParams.get("view") === "management") {
             const parsed = z.object({ view: z.literal("management"), caseId, audienceId }).strict()
               .safeParse(exactQuery(url, ["view", "caseId", "audienceId"]));
             if (!parsed.success) throw new AppError("INVALID_REQUEST");

@@ -1,0 +1,28 @@
+/* Compact prospective settings, not nested narrow columns on a phone. */
+.lsw .lsw-coordination fieldset {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  box-sizing: border-box;
+  padding: 1rem;
+}
+.lsw .lsw-coordination-routing {
+  display: grid;
+  gap: .75rem;
+}
+.lsw .lsw-coordination .lsw-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .75rem;
+}
+.lsw .lsw-coordination .lsw-actions > button {
+  flex: 1 1 10rem;
+  min-inline-size: 0;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+@media (max-width: 520px) {
+  .lsw .lsw-practice-list > ul > li.lsw-card { padding: .75rem; }
+  .lsw .lsw-coordination fieldset { padding: .625rem; }
+  .lsw .lsw-coordination .lsw-actions > button { inline-size: 100%; }
+}

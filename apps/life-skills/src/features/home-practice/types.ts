@@ -56,6 +56,21 @@ export interface CoordinationVersion {
   changedByAccountId: AccountId;
 }
 
+export interface PracticeCoordinationPage {
+  ownAccountId: AccountId;
+  role: "parent" | "adult_client";
+  eligibleAccountIds: readonly AccountId[];
+  /** Parent-only editing must not silently remove retained child responsibility. */
+  readOnlyReason?: "legacy_child_assignment";
+  /** Server-clock effective selection, independent of the bounded history. */
+  asOf: string;
+  currentVersion: CoordinationVersion | null;
+  /** Earliest pending effective instant, also independent of bounded history. */
+  nextEffectiveFrom: string | null;
+  versions: CoordinationVersion[];
+  hasMore: boolean;
+}
+
 export interface ScheduledOccurrence {
   id: OccurrenceId;
   assignmentId: PracticeAssignmentId;
