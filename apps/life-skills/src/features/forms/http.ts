@@ -7,12 +7,14 @@ import { formAssignmentInputSchema, formSubmissionInputSchema, formTemplateInput
 import type { FormAssignmentId } from "./service.ts";
 import { FormsService } from "./service.ts";
 import { Ls050HttpBoundary, type Ls050HttpRuntime } from "./http-boundary.ts";
+import { consentHistoryCursorSchema, consentHistoryKinds } from "./consent-history.ts";
 
 const methods = Object.freeze({
   "/api/forms/templates": ["GET", "POST"],
   "/api/forms/assignments": ["GET", "POST"],
   "/api/forms/submissions": ["GET", "POST"],
   "/api/forms/submissions/review": ["PATCH"],
+  "/api/forms/consent-history": ["GET"],
 } satisfies Record<string, readonly string[]>);
 const caseId = z.uuid().transform((value) => asId(value, "case"));
 const assignmentId = z.uuid().transform((value) => asId(value, "form_assignment"));
@@ -36,6 +38,10 @@ export class FormsHttp {
   }
 
   private async dispatch(actor: Actor, requestId: string, url: URL, path: string, request: Request) {
+    if (path === "/api/forms/consent-history") {
+      const query = exactQuery(url, z.strictObject({ caseId, kind: z.enum(consentHistoryKinds), cursor: consentHistoryCursorSchema.optional() })) as { caseId: ReturnType<typeof asId<"case">>; kind: (typeof consentHistoryKinds)[number]; cursor?: string };
+      return { data: await this.forms.consentHistory(actor, query.caseId, query.kind, query.cursor ?? null) };
+    }
     if (path === "/api/forms/templates") {
       if (request.method === "GET") {
         const query = exactQuery(url, z.strictObject({ locale })) as { locale: "he" | "en" };
@@ -47,8 +53,8 @@ export class FormsHttp {
     }
     if (path === "/api/forms/assignments") {
       if (request.method === "GET") {
-        const query = exactQuery(url, z.strictObject({ caseId })) as { caseId: ReturnType<typeof asId<"case">> };
-        return { data: await this.forms.listAssignments(actor, query.caseId) };
+        const query = exactQuery(url, z.strictObject({ caseId, assignmentId: assignmentId.optional() })) as { caseId: ReturnType<typeof asId<"case">>; assignmentId?: FormAssignmentId };
+        return { data: await this.forms.listAssignments(actor, query.caseId, query.assignmentId ?? null) };
       }
       if (url.search) throw new AppError("INVALID_REQUEST");
       const input = await readJson(request, formAssignmentInputSchema);

@@ -7,7 +7,7 @@ import {caseDestinationHref} from '../../ui/workspace/navigation-model.ts';
 type Case={id:string;kind:'minor'|'adult';state:string;displayName:string};
 const groups=[
  {en:'Care and communication',he:'ליווי ותקשורת',links:[['calendar','Calendar & appointments','יומן ופגישות'],['practice','Assignments','משימות'],['feedback','Related app communications','תקשורת בתיק'],['sessions','Sessions & recordings','מפגשים והקלטות']]},
- {en:'Forms and materials',he:'טפסים וחומרים',links:[['forms','Assigned forms','טפסים שהוקצו'],['resources','Materials & exercises','חומרים ותרגילים'],['reports','Monthly reports','דוחות חודשיים']]},
+ {en:'Forms and materials',he:'טפסים וחומרים',links:[['forms','Forms & consent','טפסים והסכמות'],['resources','Materials & exercises','חומרים ותרגילים'],['reports','Monthly reports','דוחות חודשיים']]},
  {en:'Private administration',he:'ניהול פרטי',links:[['payments','Client payments','תשלומי לקוח'],['private-notes','Private case notes','הערות פרטיות']]},
 ] as const;
 export function CaseWorkspace({locale,caseId,section="overview"}:{locale:Locale;caseId:string;section?:"overview"|"settings"}){
