@@ -64,6 +64,17 @@ export interface AdDailyPoint {
     linkClicks: number | null;
     providerResults: number | null;
 }
+/** Completed account-local periods, never inferred from campaign names/currency. */
+export interface AdReporting {
+    accountId: string;
+    currency: string;
+    timezone: string;
+    fetchedAt: string;
+    attribution: "provider_default";
+    current: { since: string; until: string };
+    previous: { since: string; until: string };
+    days: readonly AdDailyPoint[];
+}
 export interface MarketingInventory {
     files: number;
     concepts: number;
@@ -89,6 +100,7 @@ export interface MarketingSnapshot {
     ads: readonly AdSnapshot[];
     inventory?: MarketingInventory;
     adSeries?: readonly AdDailyPoint[];
+    adReporting?: AdReporting;
     workbookUrl?: string | null;
     connectionErrors?: readonly string[];
     scout: {

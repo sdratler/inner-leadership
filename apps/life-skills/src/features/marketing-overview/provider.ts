@@ -48,6 +48,7 @@ export async function loadMarketingSnapshot(): Promise<MarketingSnapshot> {
     workbookUrl: registry?.workbookUrl ?? null,
     ads: meta?.ads ?? [],
     adSeries: meta?.adSeries ?? [],
+    ...(meta?{adReporting:meta.adReporting}:{}),
     connectionErrors: errors,
   };
 }
