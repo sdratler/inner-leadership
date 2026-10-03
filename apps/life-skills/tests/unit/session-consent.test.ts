@@ -18,23 +18,36 @@ const envelope = (data: unknown) => Response.json({ ok: true, data });
 afterEach(() => vi.unstubAllGlobals());
 
 it("refreshes a pristine consent policy without treating the incoming record as an unsaved edit", () => {
-  const draft = { value: "document-v1", baseline: "document-v1", observed: "document-v1" };
-  expect(refreshConsentPolicyDraft(draft, "document-v1", false, false)).toBe(draft);
-  expect(refreshConsentPolicyDraft(draft, "document-v2", false, false)).toEqual({ value: "document-v2", baseline: "document-v2", observed: "document-v2" });
-  expect(refreshConsentPolicyDraft(draft, "", false, false)).toEqual({ value: "", baseline: "", observed: "" });
+  const draft = { value: "document-v1", baseline: "document-v1", expectedVersion: 1, awaitingVersion: null };
+  expect(refreshConsentPolicyDraft(draft, "document-v1", 1, false, false)).toBe(draft);
+  expect(refreshConsentPolicyDraft(draft, "document-v2", 2, false, false)).toEqual({ value: "document-v2", baseline: "document-v2", expectedVersion: 2, awaitingVersion: null });
+  expect(refreshConsentPolicyDraft(draft, "", 0, false, false)).toEqual({ value: "", baseline: "", expectedVersion: 0, awaitingVersion: null });
 });
 it.each([[true, false], [false, true], [true, true]])("preserves the actual consent draft and baseline during refresh (dirty=%s locked=%s)", (dirty, locked) => {
   for (const value of ["document-v1", "Actual unsaved document correction"]) {
-    const draft = { value, baseline: "document-v1", observed: "document-v1" };
-    const refreshed = refreshConsentPolicyDraft(draft, "document-v2", dirty, locked);
-    expect(refreshed).toEqual({ ...draft, observed: "document-v2" });
-    expect(refreshConsentPolicyDraft(refreshed, "document-v2", dirty, locked)).toBe(refreshed);
+    const draft = { value, baseline: "document-v1", expectedVersion: 1, awaitingVersion: null };
+    const refreshed = refreshConsentPolicyDraft(draft, "document-v2", 2, dirty, locked);
+    expect(refreshed).toBe(draft);
+    expect(refreshed.expectedVersion).toBe(1);
+    expect(refreshConsentPolicyDraft(refreshed, "document-v2", 2, dirty, locked)).toBe(refreshed);
   }
 });
 it("does not replace a verified saved policy with the briefly retained old model while awaiting its refresh", () => {
-  const savedDraft = { value: "document-v2", baseline: "document-v2", observed: "document-v1" };
-  expect(refreshConsentPolicyDraft(savedDraft, "document-v1", false, false)).toBe(savedDraft);
-  expect(refreshConsentPolicyDraft(savedDraft, "document-v2", false, false)).toEqual({ value: "document-v2", baseline: "document-v2", observed: "document-v2" });
+  const savedDraft = { value: "document-v2", baseline: "document-v2", expectedVersion: 2, awaitingVersion: 2 };
+  expect(refreshConsentPolicyDraft(savedDraft, "document-v1", 1, false, false)).toBe(savedDraft);
+  expect(refreshConsentPolicyDraft(savedDraft, "document-v2", 2, false, false)).toEqual({ value: "document-v2", baseline: "document-v2", expectedVersion: 2, awaitingVersion: null });
+});
+it("does not rebase a dirty consent draft when withdrawal changes the version but not the policy", () => {
+  const draft = { value: "document-v1", baseline: "document-v1", expectedVersion: 1, awaitingVersion: null };
+  expect(refreshConsentPolicyDraft(draft, "document-v1", 2, true, false)).toBe(draft);
+  expect(refreshConsentPolicyDraft(draft, "document-v1", 2, false, true)).toBe(draft);
+  expect(refreshConsentPolicyDraft(draft, "document-v1", 2, false, false)).toEqual({ ...draft, expectedVersion: 2 });
+});
+it("resynchronizes a previously preserved policy/version after the user manually restores every changed field", () => {
+  const draft = { value: "document-v1", baseline: "document-v1", expectedVersion: 1, awaitingVersion: null };
+  const preserved = refreshConsentPolicyDraft(draft, "document-v2", 2, true, false);
+  expect(preserved).toBe(draft);
+  expect(refreshConsentPolicyDraft(preserved, "document-v2", 2, false, false)).toEqual({ value: "document-v2", baseline: "document-v2", expectedVersion: 2, awaitingVersion: null });
 });
 
 it("requires exact bounded consent metadata, not a concurrency guard or private ciphertext", () => {
