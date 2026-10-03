@@ -39,16 +39,21 @@ export class GoalService {
     });
   }
 
-  async list(actor: Actor, caseId: CaseId, audienceId: AudienceId): Promise<GoalView[]> {
+  async list(actor: Actor, caseId: CaseId, audienceId: AudienceId, view: "shared" | "management" = "shared"): Promise<GoalView[]> {
     return this.store.transaction(async tx => {
       const current = await freshActor(tx, actor, this.clock.now());
       const audience = await loadAudience(tx, actor.workspaceId, caseId, audienceId);
       if (!audience) throw new AppError("NOT_FOUND");
-      audienceAccess(current, await loadCase(tx, actor.workspaceId, caseId), await loadGuardians(tx, actor.workspaceId, caseId), audience);
+      const item = await loadCase(tx, actor.workspaceId, caseId), guardians = await loadGuardians(tx, actor.workspaceId, caseId);
+      if (view === "management") caseAccess(current, item, guardians, "write");
+      else audienceAccess(current, item, guardians, audience);
+      // Authoring must read back a new receipt even after the first 100 items.
+      // Preserve the shared view's ordering and the bounded page size.
+      const order = view === "management" ? "created_at DESC,id DESC" : "created_at,id";
       const rows = await tx.query<{ id: GoalId; titleCiphertext: string; state: "active" | "closed"; createdAt: Date }>(
         `SELECT id,title_ciphertext AS "titleCiphertext",state,created_at AS "createdAt"
          FROM ls_practice.goals WHERE workspace_id=$1 AND case_id=$2 AND audience_id=$3
-         ORDER BY created_at,id LIMIT 100`, [actor.workspaceId, caseId, audienceId],
+         ORDER BY ${order} LIMIT 100`, [actor.workspaceId, caseId, audienceId],
       );
       return rows.map(row => ({
         id: row.id, workspaceId: actor.workspaceId, caseId, audienceId,
