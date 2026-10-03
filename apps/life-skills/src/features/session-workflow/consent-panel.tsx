@@ -13,16 +13,25 @@ const words = {
 export function SessionConsentPanel(props: { locale: Locale; model: SessionDetail; refresh: () => void }) {
   return <ConsentPanelInner key={`${props.model.caseId}:${props.model.sessionId}`} {...props} />;
 }
+type ConsentPolicyDraft = { value: string; baseline: string; observed: string };
+/** A refreshed record is not a user edit. Real or unconfirmed input keeps its original baseline. */
+export function refreshConsentPolicyDraft(draft: ConsentPolicyDraft, currentPolicy: string, dirty: boolean, locked: boolean): ConsentPolicyDraft {
+  if (draft.observed === currentPolicy) return draft;
+  return dirty || locked ? { ...draft, observed: currentPolicy } : { value: currentPolicy, baseline: currentPolicy, observed: currentPolicy };
+}
 function ConsentPanelInner({ locale, model, refresh }: { locale: Locale; model: SessionDetail; refresh: () => void }) {
   const t = words[locale], titleId = useId(), current = model.processing.consent;
   const [signer, setSigner] = useState(""), [signedTime, setSignedTime] = useState(""), [timezone, setTimezone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone), [fold, setFold] = useState("");
-  const [policy, setPolicy] = useState(current?.policyVersion ?? ""), [evidence, setEvidence] = useState(""), [authority, setAuthority] = useState<ConsentVersion["authorityState"]>("needs_review");
+  const [policyDraft, setPolicyDraft] = useState<ConsentPolicyDraft>(() => ({ value: current?.policyVersion ?? "", baseline: current?.policyVersion ?? "", observed: current?.policyVersion ?? "" })), [evidence, setEvidence] = useState(""), [authority, setAuthority] = useState<ConsentVersion["authorityState"]>("needs_review");
+  const policy = policyDraft.value;
   const [recording, setRecording] = useState(false), [transcription, setTranscription] = useState(false), [ai, setAi] = useState(false), [informed, setInformed] = useState(false), [saved, setSaved] = useState<ConsentVersion | null>(null), [validation, setValidation] = useState(false), [open, setOpen] = useState(false);
   const scope = useMemo(() => ({ workspaceId: model.workspaceId, caseId: model.caseId, sessionId: model.sessionId }), [model.workspaceId, model.caseId, model.sessionId]);
   const recordPort = useMemo(() => consentRecordPort(scope), [scope]), withdrawalPort = useMemo(() => consentWithdrawalPort(scope), [scope]);
   const clear = () => { setSigner(""); setSignedTime(""); setFold(""); setEvidence(""); setAuthority("needs_review"); setRecording(false); setTranscription(false); setAi(false); setInformed(false); setValidation(false); };
-  const record = useCommand(recordPort, value => { setSaved(value); setPolicy(value.policyVersion); clear(); setOpen(false); refresh(); }), withdraw = useCommand(withdrawalPort, value => { setSaved(value); refresh(); });
-  const locked = record.locked || withdraw.locked, dirty = Boolean(signer || signedTime || evidence || policy !== (current?.policyVersion ?? "") || authority !== "needs_review" || recording || transcription || ai || informed);
+  const record = useCommand(recordPort, value => { setSaved(value); setPolicyDraft(draft => ({ ...draft, value: value.policyVersion, baseline: value.policyVersion })); clear(); setOpen(false); refresh(); }), withdraw = useCommand(withdrawalPort, value => { setSaved(value); setPolicyDraft(draft => ({ ...draft, value: value.policyVersion, baseline: value.policyVersion })); refresh(); });
+  const locked = record.locked || withdraw.locked, dirty = Boolean(signer || signedTime || evidence || policy !== policyDraft.baseline || authority !== "needs_review" || recording || transcription || ai || informed);
+  const refreshedPolicyDraft = refreshConsentPolicyDraft(policyDraft, current?.policyVersion ?? "", dirty, locked);
+  if (refreshedPolicyDraft !== policyDraft) setPolicyDraft(refreshedPolicyDraft);
   const candidates = useMemo(() => consentTimeCandidates(signedTime, timezone), [signedTime, timezone]), signedAt = candidates.length === 1 ? candidates[0] : candidates.includes(fold) ? fold : null;
   const validSigner = model.consentSigners.some(item => item.accountId === signer), active = current?.withdrawnAt === null;
   const fmt = (value: string) => new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
@@ -39,11 +48,11 @@ function ConsentPanelInner({ locale, model, refresh }: { locale: Locale; model: 
           <label className="lsw-field">{t.signer}<select aria-label={t.signer} required value={signer} onChange={event => { setSigner(event.target.value); setSaved(null); }}><option value="">{t.choose}</option>{model.consentSigners.map(item => <option key={item.accountId} value={item.accountId}>{item.name}</option>)}</select></label>
           <div className="lsw-two-fields"><label className="lsw-field">{t.signed}<input aria-label={t.signed} type="datetime-local" step="1" required value={signedTime} onChange={event => { setSignedTime(event.target.value); setFold(""); setSaved(null); }} /></label><label className="lsw-field">{t.zone}<input aria-label={t.zone} dir="ltr" required value={timezone} maxLength={100} onChange={event => { setTimezone(event.target.value); setFold(""); }} /></label></div>
           {candidates.length > 1 && <label className="lsw-field">{t.fold}<select required value={fold} onChange={event => setFold(event.target.value)}><option value="">{t.fold}</option>{candidates.map(value => <option key={value} value={value}>{new Intl.DateTimeFormat(locale, { timeZone: timezone, hour: "numeric", minute: "numeric", timeZoneName: "shortOffset" }).format(new Date(value))}</option>)}</select></label>}
-          <label className="lsw-field">{t.policy}<input aria-label={t.policy} dir="auto" required maxLength={100} value={policy} onChange={event => { setPolicy(event.target.value); setSaved(null); }} /></label>
+          <label className="lsw-field">{t.policy}<input aria-label={t.policy} dir="auto" required maxLength={100} value={policy} onChange={event => { const value = event.target.value; setPolicyDraft(draft => ({ ...draft, value })); setSaved(null); }} /></label>
           <label className="lsw-field">{t.authority}<select aria-label={t.authority} value={authority} onChange={event => { if (["needs_review", "checked", "restricted"].includes(event.target.value)) setAuthority(event.target.value as ConsentVersion["authorityState"]); }}><option value="needs_review">{t.needs_review}</option><option value="checked">{t.checked}</option><option value="restricted">{t.restricted}</option></select></label>
           <label className="lsw-field">{t.evidence}<textarea aria-label={t.evidence} dir="auto" rows={5} required maxLength={4000} value={evidence} onChange={event => { setEvidence(event.target.value); setSaved(null); }} /></label>
           {([[recording, setRecording, t.recording], [transcription, setTranscription, t.transcription], [ai, setAi, t.ai], [informed, setInformed, t.informed]] as const).map(([checked, setChecked, label]) => <label className="lsw-choice" key={label}><input type="checkbox" checked={checked} onChange={event => setChecked(event.target.checked)} /> {label}</label>)}
-          <p className="lsw-help">{t.flagsOff}</p><p className="lsw-help">{t.neutral}</p><div className="lsw-actions"><button className="lsw-button lsw-button--primary" type="submit" disabled={locked || !validSigner}>{record.phase === "pending" ? t.saving : t.save}</button><button className="lsw-button lsw-button--secondary" type="button" onClick={() => { if (!dirty || window.confirm(t.discard)) { clear(); setPolicy(current?.policyVersion ?? ""); setOpen(false); } }}>{t.cancel}</button></div>
+          <p className="lsw-help">{t.flagsOff}</p><p className="lsw-help">{t.neutral}</p><div className="lsw-actions"><button className="lsw-button lsw-button--primary" type="submit" disabled={locked || !validSigner}>{record.phase === "pending" ? t.saving : t.save}</button><button className="lsw-button lsw-button--secondary" type="button" onClick={() => { if (!dirty || window.confirm(t.discard)) { clear(); const value = current?.policyVersion ?? ""; setPolicyDraft({ value, baseline: value, observed: value }); setOpen(false); } }}>{t.cancel}</button></div>
         </fieldset>
       </form>
     </details>
