@@ -13,9 +13,13 @@ afterEach(()=>vi.unstubAllGlobals());
 test.each(["recipient","purpose","topic","authorityBasis"] as const)("local whitespace-only %s rejects before creating an attempt or sending, then corrected input uses the same key",async field=>{
  const fetch=vi.fn(async(_url:unknown,options?:RequestInit)=>options?.method==="POST"?response({disclosureId:id,usedAt:null,revokedAt:null},201):response([saved]));vi.stubGlobal("fetch",fetch);
  const port=disclosureRecordPort(scope);
- expect(await port.execute({...input,[field]:"   "},key)).toEqual({state:"rejected",message:"INVALID_REQUEST"});
+ expect(await port.execute({...input,[field]:"   "},key)).toEqual({state:"rejected",message:"LOCAL_INVALID_REQUEST"});
  expect(fetch).not.toHaveBeenCalled();expect(await port.reconcile(key)).toEqual({state:"rejected",message:"INVALID_REQUEST"});expect(fetch).not.toHaveBeenCalled();
  expect(await port.execute(input,key)).toEqual({state:"accepted",value:saved});expect(fetch).toHaveBeenCalledTimes(2);
+});
+test("a remote rejection remains distinct from local validation and is not reported as an unsent change",async()=>{
+ const fetch=vi.fn(async()=>new Response(JSON.stringify({error:{code:"INVALID_REQUEST"}}),{status:400,headers:{"content-type":"application/json"}}));vi.stubGlobal("fetch",fetch);
+ expect(await disclosureRecordPort(scope).execute(input,key)).toEqual({state:"rejected",message:"INVALID_REQUEST"});expect(fetch).toHaveBeenCalledTimes(1);
 });
 test("the shared 100-record envelope accepts its boundary and rejects overflow without truncation",async()=>{
  expect(MAX_DISCLOSURE_RECORDS).toBe(100);
