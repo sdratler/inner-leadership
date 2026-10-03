@@ -9,6 +9,19 @@ it('preserves only a bounded legacy lead ID on a practitioner People return link
     .toBe('/en/app/clients');
 });
 const caseId='123e4567-e89b-42d3-a456-426614174000',sessionId='223e4567-e89b-42d3-a456-426614174000';
+it.each(['he','en'] as const)('preserves the existing %s Communications destination and bounded selected case through normal login',locale=>{
+ const path=`/${locale}/app/feedback`;
+ for(const section of ['app_updates','whatsapp']){
+  const next=practitionerDetailReturnPath(locale,path,{caseId,audienceId:sessionId,section,context:'client',mode:'demo',role:'parent',secret:'not-forwarded'});
+  expect(new URL(next,'https://private.invalid').pathname).toBe(path);
+  expect(Object.fromEntries(new URL(next,'https://private.invalid').searchParams)).toEqual({mode:'demo',context:'client',caseId,section});
+  expect(loginReturnDestination(locale,'practitioner',next)).toBe(next);
+  for(const role of ['parent','child','adult_client'] as const)expect(loginReturnDestination(locale,role,next)).not.toBe(next);
+ }
+ expect(practitionerDetailReturnPath(locale,path,{caseId:[caseId,caseId],section:['whatsapp','app_updates'],context:['client','client']})).toBe(path);
+ expect(practitionerDetailReturnPath(locale,path,{caseId:'malformed',section:'private',secret:'not-forwarded'})).toBe(path);
+ for(const other of [path+'/unknown',`/${locale==='he'?'en':'he'}/app/feedback`, `//untrusted.invalid${path}`])expect(practitionerDetailReturnPath(locale,other,{})).toBe(`/${locale}/app/calendar`);
+});
 for(const locale of ['he','en'] as const)for(const page of ['forms','resources'])it(`${locale}: preserves named ${page} through ordinary adult and practitioner login without arbitrary query data`,()=>{
  const client=clientReturnPath(locale,`/${locale}/client/${page}`,{caseId,role:'practitioner',secret:'not-forwarded'});
  expect(client).toBe(`/${locale}/client/${page}?caseId=${caseId}`);expect(loginReturnDestination(locale,'adult_client',client)).toBe(client);

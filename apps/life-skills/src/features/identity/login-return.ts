@@ -51,11 +51,12 @@ export function practitionerDetailReturnPath(locale:Locale,pathname:string,query
  // Account destinations are global, not case-scoped. Preserve only the exact
  // maintained Settings routes; never forward caller-supplied role or query text.
  if(pathname===`/${locale}/app/settings`||settingsItems('practitioner').some(item=>pathname===`/${locale}/${item.path}`))return pathname;
- const reports=pathname===`/${locale}/app/reports`,sharedItems=[`/${locale}/app/forms`,`/${locale}/app/resources`].includes(pathname),session=pathname.match(new RegExp(`^/${locale}/app/cases/([^/]+)/sessions(?:/([^/]+))?$`));
- if(!reports&&!sharedItems&&(!session||!isCaseId(session[1])||session[2]!==undefined&&!isCaseId(session[2])))return `/${locale}/app/calendar`;
+  const reports=pathname===`/${locale}/app/reports`,communications=pathname===`/${locale}/app/feedback`,sharedItems=[`/${locale}/app/forms`,`/${locale}/app/resources`].includes(pathname),session=pathname.match(new RegExp(`^/${locale}/app/cases/([^/]+)/sessions(?:/([^/]+))?$`));
+  if(!reports&&!communications&&!sharedItems&&(!session||!isCaseId(session[1])||session[2]!==undefined&&!isCaseId(session[2])))return `/${locale}/app/calendar`;
  const params=new URLSearchParams(workspaceContext(query) as Record<string,string>);
  const one=(key:string)=>typeof query[key]==='string'?query[key] as string:'';
- if(reports){for(const key of ['caseId','audienceId'])if(isCaseId(one(key)))params.set(key,one(key).toLowerCase());if(one('context')==='client')params.set('context','client');if(isReportSection(one('section')))params.set('section',one('section'));}
+  if(reports){for(const key of ['caseId','audienceId'])if(isCaseId(one(key)))params.set(key,one(key).toLowerCase());if(one('context')==='client')params.set('context','client');if(isReportSection(one('section')))params.set('section',one('section'));}
+  else if(communications){if(isCaseId(one('caseId')))params.set('caseId',one('caseId').toLowerCase());if(['app_updates','whatsapp'].includes(one('section')))params.set('section',one('section'));}
  else if(sharedItems){if(isCaseId(one('caseId')))params.set('caseId',one('caseId').toLowerCase());}
  else if(!session?.[2]&&isCaseId(one('appointmentId')))params.set('appointmentId',one('appointmentId').toLowerCase());
  return pathname+(params.size?'?'+params.toString():'');

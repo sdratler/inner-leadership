@@ -12,7 +12,7 @@ const accountRead = vi.hoisted(() => vi.fn());
 const sessionInfo = vi.hoisted(() => vi.fn(async () => ({ csrfToken: "c".repeat(43) })));
 const fetchMock = vi.hoisted(() => vi.fn());
 vi.mock("react", async importOriginal => { const actual = await importOriginal<typeof import("react")>(); return { ...actual, useEffect: hook.useEffect, useMemo: hook.useMemo, useRef: hook.useRef, useState: hook.useState }; });
-vi.mock("../../../src/features/identity/client.ts", () => ({ accountRead, sessionInfo }));
+vi.mock("../../../src/features/identity/client.ts", async importOriginal => ({ ...await importOriginal<typeof import('../../../src/features/identity/client.ts')>(), accountRead, sessionInfo }));
 import { feedbackContextReady, UpdatesWorkspace } from "../../../src/features/updates/updates-workspace.tsx";
 
 const caseA = "123e4567-e89b-12d3-a456-426614174000", caseB = "223e4567-e89b-12d3-a456-426614174000", audienceA = "323e4567-e89b-12d3-a456-426614174000", audienceB = "423e4567-e89b-12d3-a456-426614174000";
@@ -24,6 +24,8 @@ function find(node: unknown, predicate: (element: ReactElement<Record<string, un
 function text(node: unknown): string { if (node === null || node === undefined || typeof node === "boolean") return ""; if (typeof node === "string" || typeof node === "number") return String(node); if (Array.isArray(node)) return node.map(text).join(""); return text((node as ReactElement<{ children?: unknown }>).props?.children); }
 function render(props: Parameters<typeof UpdatesWorkspace>[0]) { return hook.render(() => UpdatesWorkspace(props)); }
 function postBodies() { return fetchMock.mock.calls.filter((call) => (call[1] as RequestInit | undefined)?.method === "POST").map((call) => JSON.parse(String((call[1] as RequestInit).body))); }
+async function ready(props: Parameters<typeof UpdatesWorkspace>[0]) { for (let index = 0; index < 5; index++) { render(props); hook.flushEffects(); await tick(); } return render(props); }
+const authorizedRead = (url: string) => Response.json({ ok: true, data: url.startsWith('/api/identity/audiences') ? [{ id: audienceA, visibility: 'family_full' }] : [] });
 
 beforeEach(() => { hook.reset(); accountRead.mockReset(); sessionInfo.mockClear(); fetchMock.mockReset(); vi.stubGlobal("fetch", fetchMock); vi.spyOn(crypto, "randomUUID").mockRestore(); });
 
@@ -35,24 +37,111 @@ it("does not render old case/audience data after a delayed switch", async () => 
   fetchMock.mockImplementation((url: string) => { if (url.includes(encodeURIComponent(caseA))) return new Promise<Response>((resolve) => { resolveA = resolve; }); if (url.includes(encodeURIComponent(caseB))) return new Promise<Response>((resolve) => { resolveB = resolve; }); return Promise.resolve(Response.json({ ok: true, data: [] })); });
   render({ locale: "en", role: "practitioner" }); hook.flushEffects(); await tick(); let output = render({ locale: "en", role: "practitioner" }); hook.flushEffects(); await tick();
   const select = find(output, (element) => element.type === "select" && element.props.id === "update-case"); if (!select) throw new Error("missing case select"); (select.props.onChange as Change)({ target: { value: caseB } }); output = render({ locale: "en", role: "practitioner" }); hook.flushEffects(); await tick();
-  resolveB(Response.json({ ok: true, data: [{ id: audienceB, visibility: "family_full" }] })); await tick(); output = render({ locale: "en", role: "practitioner" }); expect(text(output)).toContain("family_full");
+   resolveB(Response.json({ ok: true, data: [{ id: audienceB, visibility: "family_full" }] })); await tick(); output = render({ locale: "en", role: "practitioner" }); expect(text(output)).toContain("Authorized participants");
   resolveA(Response.json({ ok: true, data: [{ id: audienceA, visibility: "family_full" }] })); await tick(); output = render({ locale: "en", role: "practitioner" }); expect(JSON.stringify(output)).not.toContain(audienceA); expect(JSON.stringify(output)).toContain(audienceB);
 });
 
-it("keeps an exact failed retry key and rotates it after a changed payload", async () => {
+it("keeps an exact known-rejected retry key and rotates it after a changed payload", async () => {
   accountRead.mockResolvedValue([{ id: caseA, displayName: "Synthetic A", kind: "minor" }]); let next = 0; vi.spyOn(crypto, "randomUUID").mockImplementation(() => `00000000-0000-4000-8000-00000000000${++next}`);
-  fetchMock.mockImplementation(async (_url: string, init?: RequestInit) => (init?.method === "POST" ? new Response("", { status: 500 }) : Response.json({ ok: true, data: [] }))); const props = { locale: "en" as const, role: "parent" as const, initialCaseId: caseA, initialAudienceId: audienceA, initialPracticeVersionId: "version-a" };
-  render(props); hook.flushEffects(); await tick(); let output = render(props); const open = find(output, (element) => element.type === "button" && element.props.children === "Add feedback"); if (!open) throw new Error("missing composer"); (open.props.onClick as Click)(); output = render(props); const area = find(output, (element) => element.type === "textarea" && element.props.id === "update-body"); const form = find(output, (element) => element.type === "form"); if (!area || !form) throw new Error("missing composer form"); (area.props.onChange as Change)({ target: { value: "Synthetic retry" } }); output = render(props); const submit = find(output, (element) => element.type === "form"); (submit?.props.onSubmit as Submit)({ preventDefault() {} }); await tick(); output = render(props); (find(output, (element) => element.type === "form")?.props.onSubmit as Submit)({ preventDefault() {} }); await tick(); let bodies = postBodies(); expect(bodies).toHaveLength(2); expect(bodies[0].idempotencyKey).toBe(bodies[1].idempotencyKey);
+   fetchMock.mockImplementation(async (url: string, init?: RequestInit) => (init?.method === "POST" ? Response.json({ok:false,error:{code:'INVALID_REQUEST'}},{status:400}) : authorizedRead(url))); const props = { locale: "en" as const, role: "parent" as const, initialCaseId: caseA, initialAudienceId: audienceA, initialPracticeVersionId: "version-a" };
+   let output = await ready(props); const open = find(output, (element) => element.type === "button" && element.props.children === "Add feedback"); if (!open) throw new Error("missing composer"); (open.props.onClick as Click)(); output = render(props); const area = find(output, (element) => element.type === "textarea" && element.props.id === "update-body"); const form = find(output, (element) => element.type === "form"); if (!area || !form) throw new Error("missing composer form"); (area.props.onChange as Change)({ target: { value: "Synthetic retry" } }); output = render(props); const submit = find(output, (element) => element.type === "form"); (submit?.props.onSubmit as Submit)({ preventDefault() {} }); await tick(); output = render(props); (find(output, (element) => element.type === "form")?.props.onSubmit as Submit)({ preventDefault() {} }); await tick(); let bodies = postBodies(); expect(bodies).toHaveLength(2); expect(bodies[0].idempotencyKey).toBe(bodies[1].idempotencyKey);
   const changed = find(output, (element) => element.type === "textarea" && element.props.id === "update-body"); if (!changed) throw new Error("missing changed body"); (changed.props.onChange as Change)({ target: { value: "Synthetic changed" } }); output = render(props); (find(output, (element) => element.type === "form")?.props.onSubmit as Submit)({ preventDefault() {} }); await tick(); bodies = postBodies(); expect(bodies).toHaveLength(3); expect(bodies[2].idempotencyKey).not.toBe(bodies[0].idempotencyKey);
 });
 
 it("submits only one write for two same-tick clicks", async () => {
-  accountRead.mockResolvedValue([{ id: caseA, displayName: "Synthetic A", kind: "minor" }]); let resolve!: (response: Response) => void; fetchMock.mockImplementation((_url: string, init?: RequestInit) => init?.method === "POST" ? new Promise<Response>((done) => { resolve = done; }) : Promise.resolve(Response.json({ ok: true, data: [] }))); const props = { locale: "en" as const, role: "parent" as const, initialCaseId: caseA, initialAudienceId: audienceA, initialPracticeVersionId: "version-a" };
-  render(props); hook.flushEffects(); await tick(); let output = render(props); (find(output, (element) => element.type === "button" && element.props.children === "Add feedback")?.props.onClick as Click)(); output = render(props); (find(output, (element) => element.type === "textarea" && element.props.id === "update-body")?.props.onChange as Change)({ target: { value: "Synthetic same tick" } }); output = render(props); const submit = find(output, (element) => element.type === "form")?.props.onSubmit as Submit; submit({ preventDefault() {} }); submit({ preventDefault() {} }); await tick(); expect(postBodies()).toHaveLength(1);
-  resolve(Response.json({ ok: true, data: {} }));
+   accountRead.mockResolvedValue([{ id: caseA, displayName: "Synthetic A", kind: "minor" }]); let resolve!: (response: Response) => void; fetchMock.mockImplementation((url: string, init?: RequestInit) => init?.method === "POST" ? new Promise<Response>((done) => { resolve = done; }) : Promise.resolve(authorizedRead(url))); const props = { locale: "en" as const, role: "parent" as const, initialCaseId: caseA, initialAudienceId: audienceA, initialPracticeVersionId: "version-a" };
+   let output = await ready(props); (find(output, (element) => element.type === "button" && element.props.children === "Add feedback")?.props.onClick as Click)(); output = render(props); (find(output, (element) => element.type === "textarea" && element.props.id === "update-body")?.props.onChange as Change)({ target: { value: "Synthetic same tick" } }); output = render(props); const submit = find(output, (element) => element.type === "form")?.props.onSubmit as Submit; submit({ preventDefault() {} }); submit({ preventDefault() {} }); await tick(); expect(postBodies()).toHaveLength(1);
+   resolve(Response.json({ ok: true, data: {} })); await tick();
 });
 
 it("suppresses pending callbacks after unmount", async () => {
-  accountRead.mockResolvedValue([{ id: caseA, displayName: "Synthetic A", kind: "minor" }]); let resolve!: (response: Response) => void; fetchMock.mockImplementation((_url: string, init?: RequestInit) => init?.method === "POST" ? new Promise<Response>((done) => { resolve = done; }) : Promise.resolve(Response.json({ ok: true, data: [] }))); const props = { locale: "en" as const, role: "parent" as const, initialCaseId: caseA, initialAudienceId: audienceA, initialPracticeVersionId: "version-a" };
-  render(props); hook.flushEffects(); await tick(); let output = render(props); (find(output, (element) => element.type === "button" && element.props.children === "Add feedback")?.props.onClick as Click)(); output = render(props); (find(output, (element) => element.type === "textarea" && element.props.id === "update-body")?.props.onChange as Change)({ target: { value: "Synthetic pending" } }); output = render(props); (find(output, (element) => element.type === "form")?.props.onSubmit as Submit)({ preventDefault() {} }); await tick(); hook.unmount(); resolve(Response.json({ ok: true, data: {} })); await tick(); expect(hook.afterUnmountUpdates()).toBe(0);
+   accountRead.mockResolvedValue([{ id: caseA, displayName: "Synthetic A", kind: "minor" }]); let resolve!: (response: Response) => void; fetchMock.mockImplementation((url: string, init?: RequestInit) => init?.method === "POST" ? new Promise<Response>((done) => { resolve = done; }) : Promise.resolve(authorizedRead(url))); const props = { locale: "en" as const, role: "parent" as const, initialCaseId: caseA, initialAudienceId: audienceA, initialPracticeVersionId: "version-a" };
+   let output = await ready(props); (find(output, (element) => element.type === "button" && element.props.children === "Add feedback")?.props.onClick as Click)(); output = render(props); (find(output, (element) => element.type === "textarea" && element.props.id === "update-body")?.props.onChange as Change)({ target: { value: "Synthetic pending" } }); output = render(props); (find(output, (element) => element.type === "form")?.props.onSubmit as Submit)({ preventDefault() {} }); await tick(); hook.unmount(); resolve(Response.json({ ok: true, data: {} })); await tick(); expect(hook.afterUnmountUpdates()).toBe(0);
+});
+
+it("reads parent feedback history from Messages without a composer version", async () => {
+  accountRead.mockResolvedValue([{ id: caseA, displayName: "Synthetic A", kind: "minor" }]);
+  fetchMock.mockImplementation(async (url: string) => Response.json({ ok: true, data: url.startsWith('/api/identity/audiences') ? [{ id: audienceA, visibility: 'family_full' }] : [] }));
+  const props = { locale: 'en' as const, role: 'parent' as const, initialCaseId: caseA };
+  for (let index = 0; index < 5; index++) { render(props); hook.flushEffects(); await tick(); }
+  expect(fetchMock.mock.calls.some(([url]) => String(url).startsWith('/api/updates?') && String(url).includes(audienceA))).toBe(true);
+  expect(find(render(props), element => element.type === 'form')).toBeUndefined();
+});
+
+it("shows a genuine failed case read and a working retry instead of false empty context", async () => {
+  accountRead.mockRejectedValueOnce(new Error('UNAVAILABLE')).mockResolvedValue([{ id: caseA, displayName: 'Synthetic A', kind: 'minor' }]);
+  fetchMock.mockResolvedValue(Response.json({ ok: true, data: [] }));
+  const props = { locale: 'en' as const, role: 'parent' as const };
+  render(props); hook.flushEffects(); await tick(); let output = render(props);
+  const alert = find(output, element => element.props.role === 'alert');
+  expect(text(alert)).toContain('Authorized contexts could not be loaded.');
+  const retry = find(output, element => element.type === 'button' && element.props.children === 'Retry contexts');
+  expect(retry).toBeDefined(); (retry?.props.onClick as Click)();
+  for (let index = 0; index < 4; index++) { output = render(props); hook.flushEffects(); await tick(); }
+  expect(text(render(props))).toContain('Synthetic A'); expect(accountRead).toHaveBeenCalledTimes(2);
+});
+
+it('retains cancelled composer text without leaking it into another case', async () => {
+  accountRead.mockResolvedValue([{id:caseA,displayName:'Synthetic A',kind:'minor'},{id:caseB,displayName:'Synthetic B',kind:'minor'}]);
+  fetchMock.mockImplementation(async (url:string)=>authorizedRead(url));
+  const props={locale:'en' as const,role:'parent' as const,initialCaseId:caseA,initialAudienceId:audienceA,initialPracticeVersionId:'version-a'};
+  let output=await ready(props);(find(output,e=>e.type==='button'&&e.props.children==='Add feedback')?.props.onClick as Click)();output=render(props);
+  (find(output,e=>e.type==='textarea'&&e.props.id==='update-body')?.props.onChange as Change)({target:{value:'DEMO unsaved private text'}});output=render(props);
+  (find(output,e=>e.type==='button'&&e.props.children==='Cancel')?.props.onClick as Click)();output=render(props);expect(find(output,e=>e.type==='textarea')).toBeUndefined();
+  (find(output,e=>e.type==='button'&&e.props.children==='Add feedback')?.props.onClick as Click)();output=render(props);expect(find(output,e=>e.type==='textarea')?.props.value).toBe('DEMO unsaved private text');
+  (find(output,e=>e.type==='select'&&e.props.id==='update-case')?.props.onChange as Change)({target:{value:caseB}});output=await ready(props);expect(find(output,e=>e.type==='form')).toBeUndefined();expect(JSON.stringify(output)).not.toContain('DEMO unsaved private text');
+  (find(output,e=>e.type==='select'&&e.props.id==='update-case')?.props.onChange as Change)({target:{value:caseA}});output=await ready(props);(find(output,e=>e.type==='button'&&e.props.children==='Add feedback')?.props.onClick as Click)();output=render(props);expect(find(output,e=>e.type==='textarea')?.props.value).toBe('DEMO unsaved private text');
+});
+
+it('does not substitute a different family for an unavailable requested case',async()=>{
+  accountRead.mockResolvedValue([{id:caseA,displayName:'Synthetic A',kind:'minor'}]);fetchMock.mockImplementation(async(url:string)=>authorizedRead(url));
+  const output=await ready({locale:'he',role:'parent',initialCaseId:caseB});expect(text(output)).toContain('ההקשר שהתבקש אינו זמין');expect(fetchMock).not.toHaveBeenCalled();expect(find(output,e=>e.type==='form')).toBeUndefined();
+});
+
+it('locks an unknown500 save and replays exactly the frozen body and key',async()=>{
+  accountRead.mockResolvedValue([{id:caseA,displayName:'Synthetic A',kind:'minor'}]);fetchMock.mockImplementation(async(url:string,init?:RequestInit)=>init?.method==='POST'?new Response('',{status:500}):authorizedRead(url));
+  const props={locale:'en' as const,role:'parent' as const,initialCaseId:caseA,initialAudienceId:audienceA,initialPracticeVersionId:'version-a'};let output=await ready(props);
+  (find(output,e=>e.type==='button'&&e.props.children==='Add feedback')?.props.onClick as Click)();output=render(props);(find(output,e=>e.type==='textarea')?.props.onChange as Change)({target:{value:'DEMO exact lost action'}});output=render(props);
+  (find(output,e=>e.type==='form')?.props.onSubmit as Submit)({preventDefault(){}});await tick();output=render(props);expect(text(output)).not.toContain('Saved and verified.');expect(find(output,e=>e.type==='textarea')?.props.disabled).toBe(true);expect(find(output,e=>e.type==='textarea')?.props.value).toBe('DEMO exact lost action');
+  (find(output,e=>e.type==='button'&&e.props.children==='Retry this exact action')?.props.onClick as Click)();await tick();output=render(props);expect(postBodies()).toHaveLength(2);expect(postBodies()[1]).toEqual(postBodies()[0]);expect(find(output,e=>e.type==='textarea')?.props.disabled).toBe(true);
+});
+
+it('does not offer the old practice composer while another audience is selected',async()=>{
+  accountRead.mockResolvedValue([{id:caseA,displayName:'Synthetic A',kind:'minor'}]);fetchMock.mockImplementation(async(url:string)=>Response.json({ok:true,data:url.startsWith('/api/identity/audiences')?[{id:audienceA,visibility:'family_full'},{id:audienceB,visibility:'family_full'}]:[]}));
+  const props={locale:'en' as const,role:'parent' as const,initialCaseId:caseA,initialAudienceId:audienceA,initialPracticeVersionId:'version-a'};let output=await ready(props);(find(output,e=>e.type==='button'&&e.props.children==='Add feedback')?.props.onClick as Click)();output=render(props);expect(find(output,e=>e.type==='form')).toBeDefined();
+  (find(output,e=>e.type==='select'&&e.props.id==='update-audience')?.props.onChange as Change)({target:{value:audienceB}});output=await ready(props);expect(find(output,e=>e.type==='form')).toBeUndefined();expect(find(output,e=>e.type==='button'&&e.props.children==='Add feedback')).toBeUndefined();
+});
+
+it('follows a changed case deep link without a stale first render from the previous family',async()=>{
+  accountRead.mockResolvedValue([{id:caseA,displayName:'Synthetic A',kind:'minor'},{id:caseB,displayName:'Synthetic B',kind:'minor'}]);fetchMock.mockImplementation(async(url:string)=>authorizedRead(url));await ready({locale:'en',role:'parent',initialCaseId:caseA});
+  const output=render({locale:'en',role:'parent',initialCaseId:caseB});expect(find(output,e=>e.type==='select'&&e.props.id==='update-case')?.props.value).toBe(caseB);expect(find(output,e=>e.type==='form')).toBeUndefined();expect(text(output)).not.toContain('No feedback has been shared');
+});
+
+it('removes private composer text after an actual404 response instead of retaining a stale authorized view',async()=>{
+  accountRead.mockResolvedValue([{id:caseA,displayName:'Synthetic A',kind:'minor'}]);fetchMock.mockImplementation(async(url:string,init?:RequestInit)=>init?.method==='POST'?Response.json({ok:false,error:{code:'NOT_FOUND'}},{status:404}):authorizedRead(url));
+  const props={locale:'en' as const,role:'parent' as const,initialCaseId:caseA,initialAudienceId:audienceA,initialPracticeVersionId:'version-a'};let output=await ready(props);(find(output,e=>e.type==='button'&&e.props.children==='Add feedback')?.props.onClick as Click)();output=render(props);(find(output,e=>e.type==='textarea')?.props.onChange as Change)({target:{value:'DEMO revoked private draft'}});output=render(props);
+  (find(output,e=>e.type==='form')?.props.onSubmit as Submit)({preventDefault(){}});await tick();output=render(props);expect(find(output,e=>e.type==='textarea')).toBeUndefined();expect(JSON.stringify(output)).not.toContain('DEMO revoked private draft');expect(text(output)).not.toContain('Saved and verified.');expect(text(output)).toContain('Authorized contexts could not be loaded.');
+});
+
+it('exposes a retry for a genuine audience failure without opening a composer from query strings',async()=>{
+  accountRead.mockResolvedValue([{id:caseA,displayName:'Synthetic A',kind:'minor'}]);let failed=true;fetchMock.mockImplementation(async(url:string)=>url.startsWith('/api/identity/audiences')&&failed?new Response('',{status:500}):authorizedRead(url));
+  const props={locale:'en' as const,role:'parent' as const,initialCaseId:caseA,initialAudienceId:audienceA,initialPracticeVersionId:'version-a'};let output=await ready(props);expect(text(output)).toContain('Shared practice contexts could not be loaded.');expect(find(output,e=>e.type==='form')).toBeUndefined();expect(find(output,e=>e.type==='button'&&e.props.children==='Add feedback')).toBeUndefined();
+  failed=false;(find(output,e=>e.type==='button'&&e.props.children==='Retry shared contexts')?.props.onClick as Click)();output=await ready(props);expect(find(output,e=>e.type==='button'&&e.props.children==='Add feedback')).toBeDefined();
+});
+
+it.each([401,403,404])('clears private unsaved input on an actual denied%d feedback read, including a malformed denial body',async code=>{
+ accountRead.mockResolvedValue([{id:caseA,displayName:'Synthetic A',kind:'minor'}]);let denied=false;
+ fetchMock.mockImplementation(async(url:string)=>url.startsWith('/api/updates?')?new Response('',{status:denied?code:500}):authorizedRead(url));
+ const props={locale:'en' as const,role:'parent' as const,initialCaseId:caseA,initialAudienceId:audienceA,initialPracticeVersionId:'version-a'};let output=await ready(props);
+ (find(output,e=>e.type==='button'&&e.props.children==='Add feedback')?.props.onClick as Click)();output=render(props);(find(output,e=>e.type==='textarea')?.props.onChange as Change)({target:{value:'DEMO revoked read private draft'}});output=render(props);expect(find(output,e=>e.type==='textarea')?.props.value).toBe('DEMO revoked read private draft');
+ denied=true;(find(output,e=>e.type==='button'&&e.props.children==='Retry feedback read')?.props.onClick as Click)();output=await ready(props);
+ expect(find(output,e=>e.type==='textarea')).toBeUndefined();expect(JSON.stringify(output)).not.toContain('DEMO revoked read private draft');expect(text(output)).toContain('Authorized contexts could not be loaded.');expect(postBodies()).toHaveLength(0);
+});
+
+it.each([401,403,404])('clears private input after an actual denied%d write even when its denial body is malformed',async code=>{
+ accountRead.mockResolvedValue([{id:caseA,displayName:'Synthetic A',kind:'minor'}]);fetchMock.mockImplementation(async(url:string,init?:RequestInit)=>init?.method==='POST'?new Response('',{status:code}):authorizedRead(url));
+ const props={locale:'en' as const,role:'parent' as const,initialCaseId:caseA,initialAudienceId:audienceA,initialPracticeVersionId:'version-a'};let output=await ready(props);
+ (find(output,e=>e.type==='button'&&e.props.children==='Add feedback')?.props.onClick as Click)();output=render(props);(find(output,e=>e.type==='textarea')?.props.onChange as Change)({target:{value:'DEMO denied write private draft'}});output=render(props);
+ (find(output,e=>e.type==='form')?.props.onSubmit as Submit)({preventDefault(){}});await tick();output=render(props);
+ expect(find(output,e=>e.type==='textarea')).toBeUndefined();expect(JSON.stringify(output)).not.toContain('DEMO denied write private draft');expect(find(output,e=>e.type==='button'&&e.props.children==='Retry this exact action')).toBeUndefined();expect(text(output)).toContain('Private information has been cleared.');expect(postBodies()).toHaveLength(1);
 });
