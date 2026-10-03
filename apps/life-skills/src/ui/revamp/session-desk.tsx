@@ -67,7 +67,7 @@ export interface SessionDeskActions {
     }>;
     /** Locale change affects your private analysis only; live AI regeneration requires its own capped job receipt. */
     selectAnalysisLanguage(locale: Locale): void;
-    loadRecapPractices?:(signal:AbortSignal)=>Promise<RecapPracticeChoices>;
+    loadRecapPractices?:(signal:AbortSignal,cursor?:string)=>Promise<RecapPracticeChoices>;
     previewRecap?:(version:number,recipients:readonly string[],signal:AbortSignal)=>Promise<RecapSharePreview>;
 }
 export function sessionAppointmentLabel(label: string, locale: Locale): string {
