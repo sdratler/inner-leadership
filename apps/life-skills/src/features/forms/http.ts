@@ -53,8 +53,8 @@ export class FormsHttp {
     }
     if (path === "/api/forms/assignments") {
       if (request.method === "GET") {
-        const query = exactQuery(url, z.strictObject({ caseId })) as { caseId: ReturnType<typeof asId<"case">> };
-        return { data: await this.forms.listAssignments(actor, query.caseId) };
+        const query = exactQuery(url, z.strictObject({ caseId, assignmentId: assignmentId.optional() })) as { caseId: ReturnType<typeof asId<"case">>; assignmentId?: FormAssignmentId };
+        return { data: await this.forms.listAssignments(actor, query.caseId, query.assignmentId ?? null) };
       }
       if (url.search) throw new AppError("INVALID_REQUEST");
       const input = await readJson(request, formAssignmentInputSchema);
