@@ -70,6 +70,8 @@ export interface PracticeCoordinationPage {
   /** Server-clock effective selection, independent of the bounded history. */
   asOf: string;
   currentVersion: CoordinationVersion | null;
+  /** Earliest pending effective instant, also independent of bounded history. */
+  nextEffectiveFrom: string | null;
   versions: CoordinationVersion[];
   hasMore: boolean;
 }
