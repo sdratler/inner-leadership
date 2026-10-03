@@ -9,7 +9,7 @@ export interface PracticeManagementData { practice: PracticeManagementPage; goal
 /** Keep section/case context while making the selected audience navigable. */
 export function practiceAudienceHref(pathname: string, search: string, caseId: string, audienceId: string): string {
   const query = new URLSearchParams(search);
-  query.set("caseId", caseId); query.set("audienceId", audienceId);
+  query.set("caseId", caseId.toLowerCase()); query.set("audienceId", audienceId.toLowerCase());
   return pathname + "?" + query;
 }
 const codes: readonly IdentityClientErrorCode[] = ["INVALID_REQUEST", "UNAUTHENTICATED", "FORBIDDEN", "NOT_FOUND", "CONFLICT", "RATE_LIMITED", "UNAVAILABLE", "INTERNAL"];
@@ -25,11 +25,12 @@ async function request<T>(path: string, init: RequestInit, signal?: AbortSignal)
   }
 }
 export async function managementAudiences(caseId: string, signal: AbortSignal): Promise<PracticeAudience[]> {
-  const rows = await request<PracticeAudience[]>("/api/identity/audiences?" + new URLSearchParams({ caseId }), { method: "GET" }, signal);
+  const rows = await request<PracticeAudience[]>("/api/identity/audiences?" + new URLSearchParams({ caseId: caseId.toLowerCase(), view: "management" }), { method: "GET" }, signal);
   if (!Array.isArray(rows) || rows.some(row => !row || typeof row.id !== "string" || typeof row.published !== "boolean" || !["private", "family_full", "family_title_completion"].includes(row.visibility))) throw new IdentityClientError("UNAVAILABLE");
   return rows;
 }
 export async function readPracticeManagement(caseId: string, audienceId: string, signal: AbortSignal): Promise<PracticeManagementData> {
+  caseId = caseId.toLowerCase(); audienceId = audienceId.toLowerCase();
   const query = new URLSearchParams({ view: "management", caseId, audienceId });
   const [practice, goals, commitments] = await Promise.all([
     request<PracticeManagementPage>("/api/home-practice?" + new URLSearchParams({ view: "management", caseId, audienceId }), { method: "GET" }, signal),

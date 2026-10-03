@@ -23,6 +23,7 @@ export function PracticeManagementWorkspace({ locale, kind, caseId, audienceId }
   // The keyed editor below prevents stale case/audience data being reused after
   // navigation. The shared draft guard warns before ordinary navigation.
   if (!caseId) return <p>{words[locale].choose} <a href={`/${locale}/app/clients`}>{words[locale].case}</a></p>;
+  caseId = caseId.toLowerCase(); audienceId = audienceId?.toLowerCase();
   return <ManagementEditor key={`${locale}:${kind}:${caseId}:${audienceId ?? ""}`} locale={locale} kind={kind} caseId={caseId} initialAudienceId={audienceId} />;
 }
 function ManagementEditor({ locale, kind, caseId, initialAudienceId }: { locale: "en" | "he"; kind: Kind; caseId: string; initialAudienceId?: string | undefined }) {
@@ -100,7 +101,9 @@ function ManagementEditor({ locale, kind, caseId, initialAudienceId }: { locale:
       const target = event.target.value;
       if (locked || target === selected || !loaded.audiences.some(row => row.id === target) || dirty && !window.confirm(t.discard)) return;
       const next = practiceAudienceHref(window.location.pathname, window.location.search, caseId, target);
-      clear(); setLoaded(null); setLoading(true); setSelected(target); router.push(next, { scroll: false });
+      // A selector replaces this page's context, not a new client-side history
+      // entry that Back could remove without the document's draft warning.
+      clear(); setLoaded(null); setLoading(true); setSelected(target); router.replace(next, { scroll: false });
     }}>
       {loaded.audiences.map((row, index) => <option key={row.id} value={row.id}>{index + 1} · {row.visibility === "private" ? t.private : row.visibility === "family_full" ? t.full : t.limited}{row.published ? "" : " · " + t.unpublished}</option>)}
     </select></label>}
