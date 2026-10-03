@@ -21,6 +21,24 @@ for(const path of ['/api/identity/child/login','/api/identity/student/reset','/a
 });
 test('protected API denies missing session before any body mutation',async()=>{const f=fixture(),response=await f.http.handle(new Request(f.config.origin+'/api/identity/cases'));assert.ok(response.status===401 && response.headers.get('Cache-Control')==='private, no-store');});
 
+test('audience management is an explicit owning-practitioner view, not a broadened shared read',async()=>{
+ const f=fixture('practitioner'),id=asId(randomUUID(),'case'),audiences=vi.fn(async(...args:unknown[])=>{void args;return[];});
+ f.services.cases.audiences=audiences;
+ const headers={Cookie:'__Host-ls-session='+f.token};
+ assert.equal((await f.http.handle(new Request(f.config.origin+'/api/identity/audiences?caseId='+id,{headers}))).status,200);
+ assert.deepEqual(audiences.mock.calls,[[f.actor,id]]);audiences.mockClear();
+ assert.equal((await f.http.handle(new Request(f.config.origin+'/api/identity/audiences?caseId='+id+'&view=management',{headers}))).status,200);
+ assert.deepEqual(audiences.mock.calls,[[f.actor,id,'management']]);audiences.mockClear();
+ for(const query of ['&view=shared','&view=','&view=management&view=management','&view=management&audienceId='+randomUUID(),'&role=practitioner'])
+  assert.equal((await f.http.handle(new Request(f.config.origin+'/api/identity/audiences?caseId='+id+query,{headers}))).status,400);
+ assert.equal(audiences.mock.calls.length,0);
+});
+test.each(['parent','child','adult_client'] as const)('%s cannot discover unpublished management audiences',async role=>{
+ const f=fixture(role),audiences=vi.fn(async(...args:unknown[])=>{void args;return[];});f.services.cases.audiences=audiences;
+ assert.equal((await f.http.handle(new Request(f.config.origin+'/api/identity/audiences?caseId='+randomUUID()+'&view=management',{headers:{Cookie:'__Host-ls-session='+f.token}}))).status,404);
+ assert.equal(audiences.mock.calls.length,0);
+});
+
 test.each(['live','demo'] as const)('passes only a validated practitioner %s case query to the pre-limit service',async mode=>{
  const f=fixture('practitioner'),response=await f.http.handle(new Request(f.config.origin+'/api/identity/cases?mode='+mode,{headers:{Cookie:'__Host-ls-session='+f.token}}));
  assert.equal(response.status,200);assert.equal(response.headers.get('Cache-Control'),'private, no-store');
