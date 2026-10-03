@@ -43,7 +43,9 @@ export function appendSpeakerCorrection(history:SpeakerHistory,transcript:Transc
   if(!speakerCorrectionInput.safeParse(input).success)throw new AppError("INVALID_REQUEST");
   try{validateLabels(input.labels,transcript);}catch{throw new AppError("INVALID_REQUEST");}
   if(input.transcriptVersion!==transcript.version||input.expectedRevision!==history.revision)throw new AppError("CONFLICT");
-  if(history.revision>=100)throw new AppError("UNAVAILABLE"); // never trim private revision history
+  // A known capacity rejection is terminal, not an ambiguous server outage.
+  // Retain every private revision; never trim history to admit another write.
+  if(history.revision>=100)throw new AppError("PAYLOAD_TOO_LARGE");
   const version={revision:history.revision+1,recordedByAccountId:actorId,recordedAt,labels:input.labels};
   return readSpeakerHistory({schemaVersion:1,revision:version.revision,originalLabels:history.originalLabels,versions:[...history.versions,version]},transcript);
 }
