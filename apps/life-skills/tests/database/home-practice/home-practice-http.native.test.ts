@@ -488,7 +488,7 @@ test('native retained exact-subject child coordination remains read-only before 
  const input={assignmentId,assigneeAccountIds:[f.parent.actor.id],completionMode:'any_assignee' as const,reminderCandidateAccountIds:[]};
  const parent=await practice.coordinate(f.parent.actor,{...input,effectiveFrom:new Date(start+1000).toISOString()},randomUUID());asOf=start+2000;
  const retained=await practice.coordinate(f.parent.actor,{...input,assigneeAccountIds:[f.parent.actor.id,child.actor.id],completionMode:'each_assignee',reminderCandidateAccountIds:[child.actor.id],effectiveFrom:new Date(start+60000).toISOString()},randomUUID());
- for(let index=0;index<21;index++)await practice.coordinate(f.parent.actor,{...input,effectiveFrom:new Date(start+3*86400000+index*1000).toISOString()},randomUUID());
+ for(let index=0;index<21;index++)await practice.coordinate(f.parent.actor,{...input,assigneeAccountIds:[f.parent.actor.id,child.actor.id],completionMode:'each_assignee',effectiveFrom:new Date(start+3*86400000+index*1000).toISOString()},randomUUID());
  let page=await practice.coordination(f.parent.actor,assignmentId);expect(page).toMatchObject({readOnlyReason:'legacy_child_assignment',eligibleAccountIds:[],hasMore:true});expect(page.currentVersion?.versionId).toBe(parent.versionId);expect(page.versions).toHaveLength(20);expect(page.versions.some(row=>row.versionId===retained.versionId)).toBe(false);
  await expect(practice.coordinate(f.parent.actor,{...input,effectiveFrom:new Date(start+120000).toISOString(),expectedCurrentVersionId:parent.versionId},randomUUID())).rejects.toMatchObject({code:'CONFLICT'});
  asOf=start+90000;page=await practice.coordination(f.parent.actor,assignmentId);expect(page.currentVersion).toMatchObject({versionId:retained.versionId,assigneeAccountIds:[f.parent.actor.id,child.actor.id],reminderCandidateAccountIds:[child.actor.id],completionMode:'each_assignee'});expect(page.readOnlyReason).toBe('legacy_child_assignment');
@@ -496,6 +496,33 @@ test('native retained exact-subject child coordination remains read-only before 
  await f.pool.query('UPDATE ls_cases.audience_accounts SET revoked_at=clock_timestamp() WHERE workspace_id=$1 AND audience_id=$2 AND account_id=$3',[f.workspaceId,f.first.audienceId,child.actor.id]);
  page=await practice.coordination(f.parent.actor,assignmentId);expect(page.readOnlyReason).toBeUndefined();expect(page.currentVersion?.assigneeAccountIds).toContain(child.actor.id);expect(page.versions).toHaveLength(20);
  expect((await f.pool.query('SELECT count(*)::integer AS count FROM ls_practice.task_coordination_versions WHERE workspace_id=$1 AND assignment_id=$2',[f.workspaceId,assignmentId])).rows[0].count).toBe(23);
+});
+
+test('native parent-only coordination cannot drop a retained child by omitting the optional effective-version token',async()=>{
+ const h=await setup(),{f}=h,child=await h.clientIdentity('child'),saved=await h.publish(),start=Date.now();let asOf=start;
+ const practice=new HomePracticeService(poolStore(f.pool),h.config,{now:()=>new Date(asOf)}),assignmentId=asId(saved.assignmentId,'practice_assignment');
+ const input={assignmentId,assigneeAccountIds:[f.parent.actor.id],completionMode:'any_assignee' as const,reminderCandidateAccountIds:[],effectiveFrom:new Date(start+120000).toISOString()};
+ await practice.coordinate(f.parent.actor,{...input,assigneeAccountIds:[f.parent.actor.id,child.actor.id],completionMode:'each_assignee',effectiveFrom:new Date(start+60000).toISOString()},randomUUID());
+ await expect(practice.coordinate(f.parent.actor,input,randomUUID())).rejects.toMatchObject({code:'CONFLICT'});
+ asOf=start+90000;
+ await expect(practice.coordinate(f.parent.actor,input,randomUUID())).rejects.toMatchObject({code:'CONFLICT'});
+ expect((await f.pool.query('SELECT count(*)::integer AS count FROM ls_practice.task_coordination_versions WHERE workspace_id=$1 AND assignment_id=$2',[f.workspaceId,assignmentId])).rows[0].count).toBe(1);
+ // The retained native child-inclusive operation remains valid; it is not a
+ // parent-only editor and deliberately preserves the child's responsibility.
+ await expect(practice.coordinate(f.parent.actor,{...input,assigneeAccountIds:[f.parent.actor.id,child.actor.id],completionMode:'each_assignee'},randomUUID())).resolves.toMatchObject({assigneeAccountIds:[f.parent.actor.id,child.actor.id]});
+});
+
+test('native coordination exposes the next effective boundary independently from twenty-row history',async()=>{
+ const h=await setup(),{f}=h,saved=await h.publish(),start=Date.now();let asOf=start;
+ const practice=new HomePracticeService(poolStore(f.pool),h.config,{now:()=>new Date(asOf)}),assignmentId=asId(saved.assignmentId,'practice_assignment');
+ const input={assignmentId,assigneeAccountIds:[f.parent.actor.id],completionMode:'any_assignee' as const,reminderCandidateAccountIds:[]};
+ const first=await practice.coordinate(f.parent.actor,{...input,effectiveFrom:new Date(start+60000).toISOString()},randomUUID());
+ for(let index=0;index<21;index++)await practice.coordinate(f.parent.actor,{...input,effectiveFrom:new Date(start+3*3600000+index*1000).toISOString()},randomUUID());
+ const page=await practice.coordination(f.parent.actor,assignmentId);
+ expect(page).toMatchObject({nextEffectiveFrom:new Date(start+60000).toISOString(),hasMore:true,currentVersion:null});
+ expect(page.versions).toHaveLength(20);expect(page.versions.some(row=>row.versionId===first.versionId)).toBe(false);
+ asOf=start+90000;expect(await practice.coordination(f.parent.actor,assignmentId)).toMatchObject({nextEffectiveFrom:new Date(start+3*3600000).toISOString(),currentVersion:{versionId:first.versionId}});
+ asOf=start+4*3600000;expect(await practice.coordination(f.parent.actor,assignmentId)).toMatchObject({nextEffectiveFrom:null});
 });
 
 test('native coordination selects effective time independently from bounded insertion history and scheduling agrees',async()=>{
