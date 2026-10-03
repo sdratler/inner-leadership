@@ -1,5 +1,5 @@
 import {afterEach,expect,test,vi} from 'vitest';
-import {coordinationCommand,coordinationReadback,readCoordination,saveCoordination} from '../../../src/features/home-practice/coordination-client.ts';
+import {coordinationCommand,coordinationDefaults,coordinationReadback,readCoordination,saveCoordination} from '../../../src/features/home-practice/coordination-client.ts';
 import {coordinationAssignees} from '../../../src/features/home-practice/policy.ts';
 import {asId} from '../../../src/lib/ids.ts';
 import type {AccountFacts} from '../../../src/features/identity/types.ts';
@@ -8,7 +8,7 @@ const account=asId('123e4567-e89b-12d3-a456-426614174000','account'),other=asId(
 const actor:AccountFacts={id:account,workspaceId:workspace,personId:person,role:'adult_client',state:'active',locale:'en'};
 const item={id:caseId,workspaceId:workspace,clientPersonId:person,practitionerAccountId:other,kind:'adult' as const,state:'active' as const};
 const audience={id:audienceId,workspaceId:workspace,caseId,visibility:'family_full' as const,published:true,accountIds:[account,other]};
-const page:PracticeCoordinationPage={ownAccountId:account,role:'adult_client',eligibleAccountIds:[account],hasMore:false,versions:[]};
+const page:PracticeCoordinationPage={ownAccountId:account,role:'adult_client',eligibleAccountIds:[account],asOf:'2026-10-01T12:00:00Z',currentVersion:null,hasMore:false,versions:[]};
 afterEach(()=>vi.unstubAllGlobals());
 test('coordination policy allows only an active exact-subject adult self-assignment in the published audience',()=>{
  expect(coordinationAssignees(actor,item,[],audience,[account],[account])).toEqual([account]);
@@ -46,4 +46,21 @@ test('mutation uses ordinary session CSRF and refuses mismatched role/account wi
  expect(await saveCoordination(command,account,'adult_client')).toEqual({versionId:version});expect(fetcher.mock.calls).toHaveLength(2);expect(fetcher.mock.calls[1]?.[1]).toMatchObject({method:'POST',headers:{'X-CSRF-Token':'synthetic-csrf'},body:JSON.stringify(command)});
  fetcher.mockClear();await expect(saveCoordination(command,other,'adult_client')).rejects.toThrow('NOT_FOUND');expect(fetcher.mock.calls).toHaveLength(1);
  fetcher.mockClear();await expect(saveCoordination(command,account,'parent')).rejects.toThrow('NOT_FOUND');expect(fetcher.mock.calls).toHaveLength(1);
+});
+
+test('coordination defaults use the effective selection outside history, not newest insertion or future changes',()=>{
+ const row={versionId:version,assignmentId:assignment,caseId,audienceId,assigneeAccountIds:[account,other],completionMode:'each_assignee' as const,reminderCandidateAccountIds:[other],effectiveFrom:'2026-10-01T11:00:00Z',changedByAccountId:account};
+ const future={...row,versionId:asId('123e4567-e89b-12d3-a456-426614174008','coordination_version'),assigneeAccountIds:[account],completionMode:'any_assignee' as const,reminderCandidateAccountIds:[],effectiveFrom:'2026-10-02T11:00:00Z'};
+ const current={...page,role:'parent' as const,eligibleAccountIds:[account,other],currentVersion:row,versions:[future],hasMore:true};
+ expect(coordinationDefaults(current)).toEqual({assignees:[account,other],reminders:[other],mode:'each_assignee'});
+ expect(coordinationDefaults({...current,currentVersion:null})).toEqual({assignees:[account],reminders:[],mode:'any_assignee'});
+ expect(coordinationDefaults({...current,eligibleAccountIds:[account]})).toEqual({assignees:[account],reminders:[],mode:'any_assignee'});
+ expect(coordinationDefaults({...current,role:'adult_client',eligibleAccountIds:[account]})).toEqual({assignees:[account],reminders:[],mode:'any_assignee'});
+});
+
+test('read bridge validates the separate effective selection and server time without requiring it in bounded history',async()=>{
+ const row={versionId:version,assignmentId:assignment,caseId,audienceId,assigneeAccountIds:[account],completionMode:'any_assignee' as const,reminderCandidateAccountIds:[],effectiveFrom:'2026-10-01T11:00:00Z',changedByAccountId:account},valid={...page,currentVersion:row,hasMore:true};
+ const fetcher=vi.fn(async()=>Response.json({ok:true,data:valid}));vi.stubGlobal('fetch',fetcher);
+ expect(await readCoordination(assignment,caseId,audienceId)).toEqual(valid);
+ for(const invalid of [{...valid,asOf:undefined},{...valid,asOf:'not-time'},{...valid,currentVersion:undefined},{...valid,currentVersion:{...row,caseId:other}},{...valid,currentVersion:{...row,effectiveFrom:'2026-10-02T11:00:00Z'}}]){fetcher.mockImplementation(async()=>Response.json({ok:true,data:invalid}));await expect(readCoordination(assignment,caseId,audienceId)).rejects.toThrow('UNAVAILABLE');}
 });

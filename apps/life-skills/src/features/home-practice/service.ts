@@ -340,8 +340,9 @@ export class HomePracticeService implements PracticeVersionReader {
 
   /** Current real participants and bounded immutable versions; no mutation. */
   async coordination(actor: Actor, assignmentId: PracticeAssignmentId): Promise<PracticeCoordinationPage> {
+    const now = this.clock.now();
     return this.store.transaction(async tx => {
-      const current = await freshActor(tx, actor, this.clock.now());
+      const current = await freshActor(tx, actor, now);
       if (current.role !== "parent" && current.role !== "adult_client") throw new AppError("NOT_FOUND");
       const row = await one<{ caseId: CaseId; audienceId: AudienceId }>(tx, "SELECT case_id AS \"caseId\",audience_id AS \"audienceId\" FROM ls_practice.practice_assignments WHERE workspace_id=$1 AND id=$2 AND state='published'", [actor.workspaceId, assignmentId]);
       if (!row) throw new AppError("NOT_FOUND");
@@ -352,10 +353,18 @@ export class HomePracticeService implements PracticeVersionReader {
         JOIN ls_cases.case_guardians g ON g.workspace_id=a.workspace_id AND g.account_id=a.id
         WHERE a.workspace_id=$1 AND a.role='parent' AND a.state='active' AND g.case_id=$2 AND g.revoked_at IS NULL
           AND a.id=ANY($3::uuid[]) ORDER BY a.id LIMIT 2`, [actor.workspaceId, row.caseId, audience.accountIds])).map(value => value.id);
-      const versions = await tx.query<Omit<CoordinationVersion, "effectiveFrom"> & { effectiveFrom: Date }>(`SELECT id AS "versionId",assignment_id AS "assignmentId",case_id AS "caseId",audience_id AS "audienceId",
+      type CoordinationRow = Omit<CoordinationVersion, "effectiveFrom"> & { effectiveFrom: Date };
+      const select = `SELECT id AS "versionId",assignment_id AS "assignmentId",case_id AS "caseId",audience_id AS "audienceId",
         assignee_account_ids AS "assigneeAccountIds",completion_mode AS "completionMode",reminder_candidate_account_ids AS "reminderCandidateAccountIds",effective_from AS "effectiveFrom",changed_by_account_id AS "changedByAccountId"
-        FROM ls_practice.task_coordination_versions WHERE workspace_id=$1 AND assignment_id=$2 AND case_id=$3 AND audience_id=$4 ORDER BY version DESC LIMIT 21`, [actor.workspaceId, assignmentId, row.caseId, row.audienceId]);
-      return { ownAccountId: current.id, role: current.role, eligibleAccountIds: eligible, hasMore: versions.length > 20, versions: versions.slice(0, 20).map(value => ({ ...value, effectiveFrom: value.effectiveFrom.toISOString() })) };
+        FROM ls_practice.task_coordination_versions WHERE workspace_id=$1 AND assignment_id=$2 AND case_id=$3 AND audience_id=$4`;
+      const scope = [actor.workspaceId, assignmentId, row.caseId, row.audienceId];
+      const versions = await tx.query<CoordinationRow>(select + " ORDER BY version DESC LIMIT 21", scope);
+      // Match scheduling's effective-time ordering. An older insertion can be
+      // current even when more than twenty newer future revisions exist.
+      const effective = await one<CoordinationRow>(tx, select + " AND effective_from<=$5 ORDER BY effective_from DESC,version DESC LIMIT 1", [...scope, now]);
+      const project = (value: CoordinationRow): CoordinationVersion => ({ ...value, effectiveFrom: value.effectiveFrom.toISOString() });
+      return { ownAccountId: current.id, role: current.role, eligibleAccountIds: eligible, asOf: now.toISOString(), currentVersion: effective ? project(effective) : null,
+        hasMore: versions.length > 20, versions: versions.slice(0, 20).map(project) };
     });
   }
 

@@ -471,6 +471,29 @@ test.each(["child", "adult_client"] as const)("native %s SQL participant guard r
     VALUES($1,$2,$3,$4,'done',1,clock_timestamp(),$5)`, [randomUUID(), f.workspaceId, occurrenceId, subject.actor.id, randomUUID()])).rejects.toMatchObject({ code: "23514" });
 });
 
+test('native coordination selects effective time independently from bounded insertion history and scheduling agrees',async()=>{
+ const h=await setup(),{f}=h,saved=await h.publish(),start=Date.now();let asOf=start;
+ const practice=new HomePracticeService(poolStore(f.pool),h.config,{now:()=>new Date(asOf)});
+ const base={assignmentId:asId(saved.assignmentId,'practice_assignment'),assigneeAccountIds:[f.parent.actor.id],completionMode:'any_assignee' as const,reminderCandidateAccountIds:[]};
+ const later=await practice.coordinate(f.parent.actor,{...base,effectiveFrom:new Date(start+120000).toISOString()},randomUUID());
+ const newer=await practice.coordinate(f.parent.actor,{...base,reminderCandidateAccountIds:[f.parent.actor.id],effectiveFrom:new Date(start+60000).toISOString()},randomUUID());
+ expect((await practice.coordination(f.parent.actor,base.assignmentId)).currentVersion).toBeNull();
+ asOf=start+90000;expect((await practice.coordination(f.parent.actor,base.assignmentId)).currentVersion?.versionId).toBe(newer.versionId);
+ asOf=start+150000;let page=await practice.coordination(f.parent.actor,base.assignmentId);
+ expect(page.asOf).toBe(new Date(asOf).toISOString());expect(page.versions[0]?.versionId).toBe(newer.versionId);expect(page.currentVersion?.versionId).toBe(later.versionId);expect(page.currentVersion?.reminderCandidateAccountIds).toEqual([]);
+ for(let index=0;index<21;index++)await practice.coordinate(f.parent.actor,{...base,effectiveFrom:new Date(start+3*86400000+index*1000).toISOString()},randomUUID());
+ page=await practice.coordination(f.parent.actor,base.assignmentId);expect(page.hasMore).toBe(true);expect(page.versions).toHaveLength(20);expect(page.versions.some(row=>row.versionId===later.versionId)).toBe(false);expect(page.currentVersion?.versionId).toBe(later.versionId);
+ const occurrence=await practice.schedule(f.practitioner.actor,{assignmentId:base.assignmentId,occursOn:new Date(start+86400000).toISOString().slice(0,10),period:'morning'},randomUUID());expect(occurrence.coordinationVersionId).toBe(page.currentVersion?.versionId);
+});
+
+test('native equal-effective coordination chooses the newest revision without rewriting prior versions',async()=>{
+ const h=await setup(),{f}=h,saved=await h.publish(),start=Date.now();let asOf=start;
+ const practice=new HomePracticeService(poolStore(f.pool),h.config,{now:()=>new Date(asOf)}),assignmentId=asId(saved.assignmentId,'practice_assignment');
+ const input={assignmentId,assigneeAccountIds:[f.parent.actor.id],completionMode:'any_assignee' as const,reminderCandidateAccountIds:[],effectiveFrom:new Date(start+60000).toISOString()};
+ const first=await practice.coordinate(f.parent.actor,input,randomUUID()),second=await practice.coordinate(f.parent.actor,{...input,reminderCandidateAccountIds:[f.parent.actor.id]},randomUUID());
+ asOf=start+90000;const page=await practice.coordination(f.parent.actor,assignmentId);expect(page.currentVersion?.versionId).toBe(second.versionId);expect(page.versions.map(row=>row.versionId)).toEqual([second.versionId,first.versionId]);expect(page.versions[1]?.reminderCandidateAccountIds).toEqual([]);
+});
+
 test('native ordinary adult coordination read/write is self-only, prospective, immutable and denies wrong-family/revoked/private grants',async()=>{
  const h=await setup(),{f}=h,adult=await h.clientIdentity('adult_client'),other=await h.clientIdentity('adult_client',f.second),saved=await h.publish();
  const path='/api/home-practice?view=coordination&assignmentId='+saved.assignmentId;

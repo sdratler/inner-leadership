@@ -60,6 +60,9 @@ export interface PracticeCoordinationPage {
   ownAccountId: AccountId;
   role: "parent" | "adult_client";
   eligibleAccountIds: readonly AccountId[];
+  /** Server-clock effective selection, independent of the bounded history. */
+  asOf: string;
+  currentVersion: CoordinationVersion | null;
   versions: CoordinationVersion[];
   hasMore: boolean;
 }
