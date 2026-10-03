@@ -1,5 +1,5 @@
 import {afterEach,expect,test,vi} from 'vitest';
-import {coordinationCommand,coordinationDefaults,coordinationFrameKey,coordinationRefreshDelay,coordinationReadback,prepareCoordinationSave,readCoordination,saveCoordination} from '../../../src/features/home-practice/coordination-client.ts';
+import {coordinationCommand,coordinationDefaults,coordinationFrameKey,coordinationRefreshDelay,coordinationReadback,coordinationReminderChoices,prepareCoordinationSave,readCoordination,saveCoordination} from '../../../src/features/home-practice/coordination-client.ts';
 import {coordinationAssignees} from '../../../src/features/home-practice/policy.ts';
 import {asId} from '../../../src/lib/ids.ts';
 import type {AccountFacts} from '../../../src/features/identity/types.ts';
@@ -72,6 +72,19 @@ test('coordination freezes one prospective request and validates distinct assign
  const command=coordinationCommand(assignment,[account],'any_assignee',[account],Date.parse('2026-10-01T12:00:00Z'));
  expect(command.effectiveFrom).toBe('2026-10-01T12:01:00.000Z');expect(Object.isFrozen(command)).toBe(true);expect(Object.isFrozen(command.assigneeAccountIds)).toBe(true);
  for(const fn of [()=>coordinationCommand(assignment,[],'any_assignee',[],0),()=>coordinationCommand(assignment,[account,account],'any_assignee',[],0),()=>coordinationCommand(assignment,[account],'each_assignee',[],0),()=>coordinationCommand(assignment,[account],'any_assignee',[other],0)])expect(fn).toThrow('INVALID_REQUEST');
+});
+
+test('native parent coordination preserves reminder-only routing without adding a reporting assignee',()=>{
+ const source=asId('123e4567-e89b-12d3-a456-426614174008','practice_version'),row={versionId:version,assignmentId:assignment,caseId,audienceId,assigneeAccountIds:[account],assistedParentAccountIds:[],responsibilityVersionId:source,participant:'parent' as const,completionMode:'any_assignee' as const,reminderCandidateAccountIds:[other],effectiveFrom:'2026-10-01T11:00:00Z',changedByAccountId:account};
+ const native={...page,role:'parent' as const,eligibleAccountIds:[account,other],currentVersion:row,versions:[row]};
+ expect(coordinationDefaults(native)).toEqual({assignees:[account],reminders:[other],mode:'any_assignee'});
+ expect(coordinationReminderChoices(native,[account])).toEqual([account,other]);
+ const command=coordinationCommand(assignment,[account],'any_assignee',[other],0,version,coordinationReminderChoices(native,[account]));
+ expect(command.assigneeAccountIds).toEqual([account]);expect(command.reminderCandidateAccountIds).toEqual([other]);
+ expect(coordinationReadback(command,{...native,versions:[{...row,effectiveFrom:command.effectiveFrom}]},version)?.reminderCandidateAccountIds).toEqual([other]);
+ expect(coordinationDefaults({...native,eligibleAccountIds:[account]}).reminders).toEqual([]);
+ expect(()=>coordinationCommand(assignment,[account],'any_assignee',[workspace],0,version,coordinationReminderChoices(native,[account]))).toThrow('INVALID_REQUEST');
+ expect(coordinationReminderChoices({...native,currentVersion:{...row,responsibilityVersionId:null}},[account])).toEqual([account]);
 });
 test('readback binds the exact writer, version, future time, completion mode and routing',()=>{
  const command=coordinationCommand(assignment,[account],'any_assignee',[account],0),row={versionId:version,assignmentId:assignment,caseId,audienceId,assigneeAccountIds:[account],completionMode:'any_assignee' as const,reminderCandidateAccountIds:[account],effectiveFrom:command.effectiveFrom,changedByAccountId:account};

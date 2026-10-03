@@ -38,6 +38,14 @@ test.each(['en','he'] as const)('%s authorized shared parents can choose explici
  expect(html).toContain('value="each_assignee" selected=""');expect(html).toContain('value="any_assignee"');expect(html).toContain('<legend');expect(html).toContain(locale==='he'?'הורה מורשה 2':'Authorized parent 2');
  const empty=renderToStaticMarkup(createElement(CoordinationForm,{...handlers,locale,page,assignees:[],reminders:[],mode:'any_assignee',locked:false}));expect(empty).toContain('type="submit" disabled=""');
 });
+
+test.each(['en','he'] as const)('%s native parent editor keeps the checked support recipient outside assigned participants',locale=>{
+ const current={versionId:asId('123e4567-e89b-12d3-a456-426614174005','coordination_version'),assignmentId:asId('123e4567-e89b-12d3-a456-426614174002','practice_assignment'),caseId:asId('123e4567-e89b-12d3-a456-426614174003','case'),audienceId:asId('123e4567-e89b-12d3-a456-426614174004','audience'),assigneeAccountIds:[own],completionMode:'any_assignee' as const,reminderCandidateAccountIds:[other],effectiveFrom:'2026-10-01T11:00:00Z',changedByAccountId:own,responsibilityVersionId:asId('123e4567-e89b-12d3-a456-426614174006','practice_version'),participant:'parent' as const,assistedParentAccountIds:[]};
+ const page={ownAccountId:own,role:'parent' as const,eligibleAccountIds:[own,other],asOf:'2026-10-01T12:00:00Z',currentVersion:current,nextEffectiveFrom:null,versions:[current],hasMore:false};
+ const html=renderToStaticMarkup(createElement(CoordinationForm,{...handlers,locale,page,...coordinationDefaults(page),locked:false})),routing=html.split('class="lsw-coordination-routing"')[1]?.split('</fieldset>')[0];
+ expect(routing).toContain(locale==='he'?'הורה מורשה 2':'Authorized parent 2');expect(routing?.match(/checked=""/g)).toHaveLength(1);
+ expect(html.split('class="lsw-coordination-routing"')[0]?.match(/checked=""/g)).toHaveLength(1);expect(html).not.toContain('<select');
+});
 test('participant labels stay consistent when selection order differs, and phone actions wrap as complete readable buttons',()=>{
  const page={ownAccountId:own,role:'parent' as const,eligibleAccountIds:[other,own],asOf:'2026-10-01T12:00:00Z',currentVersion:null,nextEffectiveFrom:null,versions:[],hasMore:false};
  const html=renderToStaticMarkup(createElement(CoordinationForm,{...handlers,locale:'en',page,assignees:[own,other],reminders:[],mode:'each_assignee',locked:false}));
