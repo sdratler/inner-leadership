@@ -67,8 +67,9 @@ export class AcquisitionCandidateStore{
  async captureInTransaction(tx:SqlSession,workspace:string,inquiry:InboundInquiry,input:Keys):Promise<{replayed:boolean}>{
   const keys=keysSchema.parse(input);
   if(await this.priorInTransaction(tx,workspace,keys))return {replayed:true};
-  const count=await tx.query<{n:number}>("SELECT count(*)::int AS n FROM ls_contact_ops.inbound_activity_candidates WHERE workspace_id=$1",[workspace]);
-  if(count.length!==1||count[0]!.n>=MAX_CANDIDATES)throw new AppError("UNAVAILABLE");
+  // MAX_CANDIDATES bounds the pending review read, not append-only lifetime
+  // storage. A full review window must never roll back the durable incoming
+  // receipt. Replay/conflict, encryption and every read-envelope gate remain.
   const metadata=acquisitionCandidateMetadataSchema.parse({id:randomUUID(),source:"organic_whatsapp",
    phone:inquiry.fromNumber,displayName:inquiry.pushName,occurredAt:inquiry.occurredAt});
   await tx.query(`INSERT INTO ls_contact_ops.inbound_activity_candidates(workspace_id,id,provider_binding_id,
