@@ -41,7 +41,9 @@ export class SessionHttp {
     if(path.length===3&&path[1]==="consent"&&path[2]==="withdraw"&&request.method==="POST"&&!url.search){const body=await readJson(request,withdrawal);return {data:await this.service.withdrawConsent(actor,uuid.parse(path[0]),body.expectedVersion,key(request)),status:201};}
     if(path.length===3&&path[1]==="publications"&&request.method==="GET"){if(url.search)throw new AppError("INVALID_REQUEST");return {data:await this.service.publication(actor,recapId(path[0]),recapId(path[2]))};}
     if(path.length===2&&request.method==="GET"&&path[1]==="practice-choices"){
-      if(url.search)throw new AppError("INVALID_REQUEST");return {data:await this.service.recapPracticeChoices(actor,recapId(path[0]))};
+      const query=url.searchParams,cursor=query.has('cursor')?uuid.safeParse(query.get('cursor')):null;
+      if([...query.keys()].some(name=>name!=='cursor')||query.getAll('cursor').length>1||cursor&&!cursor.success)throw new AppError("INVALID_REQUEST");
+      return {data:await this.service.recapPracticeChoices(actor,recapId(path[0]),cursor?.success?cursor.data:undefined)};
     }
     if(path.length===2&&request.method==="GET"&&(path[1]==="recap"||path[1]==="recap-preview")){
       const query=url.searchParams,value=query.get("version"),preview=path[1]==="recap-preview";
