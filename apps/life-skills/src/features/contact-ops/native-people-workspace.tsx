@@ -5,7 +5,7 @@ import {IdentityClientError,sessionInfo} from "../identity/client.ts";
 import {loginHref} from "../identity/login-return.ts";
 import type {PeopleView} from "./core/types.ts";
 import type {Preset} from "../prospects/client.tsx";
-import {administrativeStageLabel,administrativeActionLabel} from "../prospects/admin-display.ts";
+import {administrativeStageLabel,administrativeStageChoices,administrativeActionLabel} from "../prospects/admin-display.ts";
 import {peopleEdit,type PeopleEdit,type AdministrativeFields} from "./core/people-edit.ts";
 import {compareAdministrativeEdits,resolveAdministrativeEdits,type AdministrativeField,type FieldChoice} from "./core/people-merge.ts";
 import {normalizePhone} from "./core/contact-resolution.ts";
@@ -26,18 +26,25 @@ const pick=(row:NativeContactRow):AdministrativeFields=>({stage:row.stage,nextAc
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const leadPattern=/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]{1,80}$/;
 const validPresets=new Set<Preset>(["all","today","new","intake","payment","booking","archived"]);
+// Match the route/proxy's one-value rule on every later browser navigation.
+// Even identical repeated values are ambiguous, not a retained applied filter.
+function oneQuery(params:URLSearchParams,key:string):string|undefined{
+ const values=params.getAll(key);return values.length===1?values[0]:undefined;
+}
 export function peoplePageFromQuery(params:URLSearchParams):number{
- const raw=params.get("page");return raw&&/^[1-9]\d{0,4}$/.test(raw)?Number(raw):1;
+ const raw=oneQuery(params,"page");return raw&&/^[1-9]\d{0,4}$/.test(raw)?Number(raw):1;
 }
 type DirectoryFilters={query:string;stage:string;language:string;due:"any"|"today"|"overdue"};
 export function peopleFiltersFromQuery(params:URLSearchParams):DirectoryFilters{
- const search=params.get("search")??"",stage=params.get("stage")??"",language=params.get("language")??"",due=params.get("due")??"any";
+ const search=oneQuery(params,"search")??"",stage=oneQuery(params,"stage")??"",language=oneQuery(params,"language")??"",due=oneQuery(params,"due")??"any";
  return {query:search.length<=200?search:"",stage:stage.length<=120?stage:"",language:language==="he"||language==="en"?language:"",due:due==="today"||due==="overdue"?due:"any"};
 }
 const emptyCreation:ProspectCreateFields={name:"",phone:"",language:"",source:"",notes:"",nextAction:"",dueDate:""};
 export function NativePeopleWorkspace({locale,view,initial,onSheet,initialMode="live",initialFilter="all",initialFilters,initialLoadedContext=false,initialPersonId,initialLeadId}:{locale:Locale;view:PeopleView;initial:NativeData;initialMode?:"live"|"demo";initialFilter?:Preset;initialFilters?:DirectoryFilters;initialLoadedContext?:boolean;initialPersonId?:string|undefined;initialLeadId?:string|undefined;onSheet:(source:Extract<PeopleResponse,{source:"sheet"}>,context:SheetRequestContext)=>void}){
  const he=locale==="he",text=(en:string,heText:string)=>he?heText:en;
+ const stageChoices=administrativeStageChoices(locale),isCustomStage=(value:string)=>value!==""&&!stageChoices.some(choice=>choice.value===value);
  const [data,setData]=useState(initial),[query,setQuery]=useState(initialFilters?.query??""),[stage,setStage]=useState(initialFilters?.stage??""),[language,setLanguage]=useState(initialFilters?.language??""),[due,setDue]=useState<string>(initialFilters?.due??"any"),[mode,setMode]=useState<"live"|"demo">(initialMode);
+ const [customStage,setCustomStage]=useState(()=>isCustomStage(initialFilters?.stage??""));
  const [busy,setBusy]=useState(false),[failure,setFailure]=useState<number|null>(null),[selected,setSelected]=useState<string|null>(initialPersonId??null),[selectedRow,setSelectedRow]=useState<NativeContactRow|null>(initialPersonId?initial.page.items.find(row=>row.personId===initialPersonId)??null:null);
  const [focusedLead,setFocusedLead]=useState<string|null>(initialLeadId??null);
  const [preset,setPreset]=useState<Preset>(initialFilter);
@@ -62,7 +69,7 @@ export function NativePeopleWorkspace({locale,view,initial,onSheet,initialMode="
   }catch(error){if(state.alive&&current===state.serial){const status=error instanceof PeopleRequestError?error.status:503;setFailure(status);if(status===401||status===403){state.authorized=false;setData(d=>({...d,page:{items:[],page:1,pages:1,pageSize:12,total:0}}));setSelectedRow(null);setDrafts(new Map());setCreation(emptyCreation);setCreatePending(null);setCreateMessage("");}}}
   finally{if(state.alive&&current===state.serial)setBusy(false);}
  },[view,mode,preset,onSheet]);
- const fromUrl=useCallback(()=>{locationKey.current=window.location.pathname+window.location.search;const params=new URLSearchParams(window.location.search),value=params.get("personId"),lead=params.get("leadId"),rawFilter=params.get("filter"),filter=rawFilter&&validPresets.has(rawFilter as Preset)?rawFilter as Preset:"all",urlMode=params.get("mode")==="demo"?"demo":"live";const id=value&&uuid.test(value)?value:null,leadId=lead&&leadPattern.test(lead)?lead:null,applied=peopleFiltersFromQuery(params);setQuery(applied.query);setStage(applied.stage);setLanguage(applied.language);setDue(applied.due);setSelected(id);setFocusedLead(leadId);setSelectedRow(null);void load(id||leadId?1:peoplePageFromQuery(params),id??undefined,urlMode,leadId??undefined,filter,applied);},[load]);
+ const fromUrl=useCallback(()=>{locationKey.current=window.location.pathname+window.location.search;const params=new URLSearchParams(window.location.search),value=oneQuery(params,"personId"),lead=oneQuery(params,"leadId"),rawFilter=oneQuery(params,"filter"),filter=rawFilter&&validPresets.has(rawFilter as Preset)?rawFilter as Preset:"all",urlMode=oneQuery(params,"mode")==="demo"?"demo":"live";const id=value&&uuid.test(value)?value:null,leadId=lead&&leadPattern.test(lead)?lead:null,applied=peopleFiltersFromQuery(params);setQuery(applied.query);setStage(applied.stage);setCustomStage(applied.stage!==""&&!administrativeStageChoices("en").some(choice=>choice.value===applied.stage));setLanguage(applied.language);setDue(applied.due);setSelected(id);setFocusedLead(leadId);setSelectedRow(null);void load(id||leadId?1:peoplePageFromQuery(params),id??undefined,urlMode,leadId??undefined,filter,applied);},[load]);
  // The ordinary route can be hard-reloaded or opened directly. Popstate, not an
  // anchor jump, restores the selected main view. Drafts stay in authorized memory.
  useEffect(()=>{const state=lifecycle.current;state.alive=true;return()=>{state.alive=false;state.serial++;};},[]);
@@ -130,7 +137,9 @@ export function NativePeopleWorkspace({locale,view,initial,onSheet,initialMode="
      </form>}</div>{createMessage&&<p role="status">{createMessage}</p>}</>}
     <form className="lsw-card lsu-people-toolbar" onSubmit={e=>{e.preventDefault();applyFilters();}} aria-label={text("Search and filters","חיפוש ומסננים")}>
      <label className="lsw-field">{text("Search name, phone or email","חיפוש לפי שם, טלפון או דוא״ל")}<input className="lsw-input" type="search" maxLength={200} value={query} onChange={e=>setQuery(e.target.value)}/></label>
-     <label className="lsw-field">{text("Exact stage","שלב מדויק")}<input className="lsw-input" maxLength={120} value={stage} onChange={e=>setStage(e.target.value)}/></label>
+     <div className="lsw-field"><label className="lsw-field">{text("Exact stage","שלב מדויק")}<select className="lsw-select" value={customStage?"__custom__":stage} onChange={e=>{const custom=e.target.value==="__custom__";setCustomStage(custom);setStage(custom?isCustomStage(stage)?stage:"":e.target.value);}}>
+      <option value="">{text("All stages","כל השלבים")}</option>{stageChoices.map(choice=><option key={choice.value} value={choice.value}>{choice.label}</option>)}<option value="__custom__">{text("Custom exact stage","שלב מותאם מדויק")}</option>
+     </select></label>{customStage&&<label className="lsw-field">{text("Custom exact stage text","טקסט השלב המותאם המדויק")}<input className="lsw-input" maxLength={120} value={stage} onChange={e=>setStage(e.target.value)}/></label>}</div>
      <label className="lsw-field">{text("Language","שפה")}<select className="lsw-input" value={language} onChange={e=>setLanguage(e.target.value)}><option value="">{text("All","הכול")}</option><option value="he">עברית</option><option value="en">English</option></select></label>
      <label className="lsw-field">{text("Follow-up","המשך טיפול")}<select className="lsw-input" value={due} onChange={e=>setDue(e.target.value)}><option value="any">{text("Any date","כל המועדים")}</option><option value="today">{text("Today","היום")}</option><option value="overdue">{text("Overdue","באיחור")}</option></select></label>
      <button className="lsw-button lsw-button--primary" disabled={busy}>{text("Apply filters","הצגת המסננים")}</button>
