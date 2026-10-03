@@ -219,11 +219,11 @@ export class CaseService {
    return {caseId,kind:item.kind,childAccountsEnabled:this.config.childAccountsEnabled===true,members};
   });
  }
- async audiences(actor:Actor,caseId:CaseId):Promise<Array<{id:AudienceId;visibility:Visibility;published:boolean}>> {
+ async audiences(actor:Actor,caseId:CaseId,view:'shared'|'management'='shared'):Promise<Array<{id:AudienceId;visibility:Visibility;published:boolean}>> {
   return this.store.transaction(async tx=>{
    const current=await freshActor(tx,actor,this.clock.now()),item=await loadCase(tx,actor.workspaceId,caseId),guardians=await loadGuardians(tx,actor.workspaceId,caseId);
-   caseAccess(current,item,guardians,'read');
-   const rows=await tx.query<{id:AudienceId;visibility:Visibility;published:boolean}>("SELECT id,visibility,published FROM ls_cases.audiences WHERE workspace_id=$1 AND case_id=$2 AND published ORDER BY created_at DESC,id",[actor.workspaceId,caseId]);
+   caseAccess(current,item,guardians,view==='management'?'write':'read');
+   const rows=await tx.query<{id:AudienceId;visibility:Visibility;published:boolean}>(`SELECT id,visibility,published FROM ls_cases.audiences WHERE workspace_id=$1 AND case_id=$2${view==='management'?'':' AND published'} ORDER BY created_at DESC,id`,[actor.workspaceId,caseId]);
    if(current.role==='practitioner')return rows;
    const allowed:typeof rows=[];
    for(const row of rows){const audience=await loadAudience(tx,actor.workspaceId,caseId,row.id);if(!audience)continue;try{audienceAccess(current,item,guardians,audience);allowed.push(row)}catch(error){if(!(error instanceof AppError)||error.code!=='NOT_FOUND')throw error}}
