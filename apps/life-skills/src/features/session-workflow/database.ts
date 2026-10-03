@@ -255,10 +255,10 @@ export class SessionDatabaseService {
   });}
   async saveObservations(actor:Actor,sessionId:string,values:MetricValues,expectedRevision:number,key:string):Promise<MetricRecord>{return this.store.transaction(async tx=>{await lockWorkspace(tx,actor.workspaceId);const row=await sessionRow(tx,actor.workspaceId,sessionId,true);await owner(tx,actor,row.caseId,this.clock);return command(tx,this.ring,actor,row,"save_observations",key,{values,expectedRevision},async()=>{const current=await one<{revision:number}>(tx,'SELECT revision FROM ls_sessions.practitioner_observations WHERE workspace_id=$1 AND case_id=$2 AND session_id=$3 ORDER BY revision DESC LIMIT 1',[actor.workspaceId,row.caseId,sessionId]);if((current?.revision??0)!==expectedRevision)throw new AppError("CONFLICT");const record:MetricRecord={schemaVersion:1,workspaceId:actor.workspaceId,caseId:row.caseId,sessionId,recordedByAccountId:actor.id,source:"practitioner_observation",recordedAt:this.clock.now().toISOString(),revision:expectedRevision+1,values};validateMetricRecord(record);await tx.query('INSERT INTO ls_sessions.practitioner_observations(workspace_id,case_id,session_id,revision,schema_version,values_ciphertext,notes_ciphertext,recorded_by_account_id,recorded_at) VALUES($1,$2,$3,$4,1,$5,$6,$7,$8)',[actor.workspaceId,row.caseId,sessionId,record.revision,sealJson(values,aad("metrics",actor.workspaceId,row.caseId,sessionId,record.revision),this.ring),sealJson({},aad("metric-notes",actor.workspaceId,row.caseId,sessionId,record.revision),this.ring),actor.id,new Date(record.recordedAt)]);return record;});});}
 
-  async recapPracticeChoices(actor:Actor,sessionId:string):Promise<RecapPracticeChoices>{return this.store.transaction(async tx=>{
+  async recapPracticeChoices(actor:Actor,sessionId:string,cursor?:string):Promise<RecapPracticeChoices>{return this.store.transaction(async tx=>{
     await tx.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY");
     const row=await sessionRow(tx,actor.workspaceId,sessionId),current=await owner(tx,actor,row.caseId,this.clock);
-    return nativeRecapPracticeChoices(tx,current,row.caseId,this.ring,this.clock.now());
+    return nativeRecapPracticeChoices(tx,current,row.caseId,this.ring,this.clock.now(),cursor);
   });}
   async recapVersion(actor:Actor,sessionId:string,version:number):Promise<RecapVersionView>{return this.store.transaction(async tx=>{
     await tx.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY");
