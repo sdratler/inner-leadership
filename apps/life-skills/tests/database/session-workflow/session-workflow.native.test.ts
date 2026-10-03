@@ -154,7 +154,7 @@ async function httpFixture(){
 }
 async function privateReadFixture(){
  const s=await httpFixture(),sessionId=(await s.service.ensureForAppointment(s.f.practitioner.actor,s.f.first.id,await s.f.seed(s.f.at(-24)))).sessionId,jobId=randomUUID(),scope={workspaceId:s.f.workspaceId,caseId:s.f.first.id,sessionId};
- const consent=await s.service.recordConsent(s.f.practitioner.actor,sessionId,{signedByAccountId:s.f.parent.actor.id,signedAt:s.f.at(-48),authorityState:"checked",recordingAllowed:true,transcriptionAllowed:true,aiProcessingAllowed:true,childInformed:true,policyVersion:"DEMO-native-read-v1",evidence:"DEMO — Isolated native reader fixture; not provider execution."},randomUUID());
+ const consent=await s.service.recordConsent(s.f.practitioner.actor,sessionId,{signedByAccountId:s.f.parent.actor.id,signedAt:s.f.at(-48),authorityState:"checked",recordingAllowed:true,transcriptionAllowed:true,aiProcessingAllowed:true,childInformed:true,policyVersion:"DEMO-native-read-v1",evidence:"DEMO — Isolated native reader fixture; not provider execution.",expectedVersion:0},randomUUID());
  const transcript:Transcript={source:"machine_transcript",languages:["en","he"],segments:[{id:"s1",speaker:"constructor",startMs:0,endMs:1000,text:"DEMO —  Private source בלבד"}],durationMs:1000,version:1},contentDigest=transcriptDigest(transcript),sourceDigest="a".repeat(64),completion={sourceDigest,sourceDurationMs:1000,coveredDurationMs:1000,expectedChunks:1,completedChunks:1,providerCompleted:true};
  const encode=(kind:Parameters<typeof privateRecordAad>[0],body:unknown,version:number|string=1,identity?:string)=>sealPrivateRecord(body,privateRecordAad(kind,scope,version,identity),s.f.keyring);
  // These exact encrypted rows establish read-path behavior only. They are not
@@ -264,7 +264,7 @@ test("current recording permission requires the actual consent signer to retain 
  const saved=await s.service.recordConsent(s.f.practitioner.actor,sessionId,input,randomUUID());expect(saved.permissionToRecord).toBe(true);expect((await s.service.detail(s.f.practitioner.actor,sessionId)).processing.permissionToRecord).toBe(true);
  await s.f.pool.query('UPDATE ls_cases.case_guardians SET revoked_at=clock_timestamp() WHERE workspace_id=$1 AND case_id=$2 AND account_id=$3',[s.f.workspaceId,s.f.first.id,input.signedByAccountId]);
  const detail=await s.service.detail(s.f.practitioner.actor,sessionId);expect(detail.processing.permissionToRecord).toBe(false);expect(detail.consentSigners.map(row=>row.accountId)).not.toContain(input.signedByAccountId);
- expect(await s.service.consentVersion(s.f.practitioner.actor,sessionId,saved.consentId,1)).toMatchObject({...input,version:1,withdrawnAt:null});
+ const {expectedVersion,...evidence}=input;expect(expectedVersion).toBe(0);expect(await s.service.consentVersion(s.f.practitioner.actor,sessionId,saved.consentId,1)).toMatchObject({...evidence,version:1,withdrawnAt:null});
  expect((await s.f.pool.query('SELECT count(*)::integer AS n FROM ls_sessions.recording_jobs WHERE workspace_id=$1',[s.f.workspaceId])).rows[0].n).toBe(0);
 },30_000);
 test("exact protected consent readback retains signature/evidence, denies customer or wrong case, and preserves prior versions",async()=>{
