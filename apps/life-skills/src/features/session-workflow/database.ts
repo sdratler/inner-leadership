@@ -7,8 +7,8 @@ import { seal, unseal, type Keyring } from "../identity/crypto.ts";
 import { one, type IdentityStore, type SqlSession } from "../identity/store.ts";
 import type { Actor, IdentityClock } from "../identity/types.ts";
 import { blankMetrics, validateMetricRecord, validateObservationEvidence, type PrivateObservationEvidence, type MetricRecord, type MetricValues } from "./metrics.ts";
-import { recapFromReviewedFields, shareDigest, validateRecap } from "./recap.ts";
-import type { AudioState, BroadFocus, ProcessingStage, RoutineRecap, SharedPractice, Transcript, PrivateAnalysis, Locale } from "./types.ts";
+import { recapFromReviewedFields, recipientRecap, shareDigest, validateRecap } from "./recap.ts";
+import type { AudioState, BroadFocus, ProcessingStage, RoutineRecap, RecipientRoutineRecap, SharedPractice, Transcript, PrivateAnalysis, Locale } from "./types.ts";
 import { readPrivateTranscript, readPrivateAnalysis, sealPrivateRecord,privateRecordAad, type PrivateSessionReadMetadata, type StoredTranscriptRow, type StoredAnalysisRow } from "./private-records.ts";
 import {MAX_SPEAKER_RECORD_BYTES,appendSpeakerCorrection,type SpeakerCorrectionInput} from "./speaker-corrections.ts";
 import { nonempty, validIso } from "./policy.ts";
@@ -57,7 +57,7 @@ export interface SessionDetail {
   recipients:{accountId:string;name:string}[];
   consentSigners:{accountId:string;name:string}[];
 }
-export interface SharedRecapView {publicationId:string;sessionId:string;sharedAt:string;recap:RoutineRecap;}
+export interface SharedRecapView {publicationId:string;sessionId:string;sharedAt:string;recap:RecipientRoutineRecap;}
 export type RecordConsentInput = ConsentRecordInput;
 type SavedRecapRow={version:number;bodyCiphertext:string;contentDigest:string};
 type RoutineRecipientRow={accountId:string;role:"parent"|"child"|"adult_client";profileCiphertext:string;personId:string};
@@ -253,7 +253,7 @@ export class SessionDatabaseService {
       WHERE p.workspace_id=$1 AND p.case_id=$2 ORDER BY p.shared_at DESC,p.id DESC LIMIT 100`,[actor.workspaceId,caseId,actor.id]);
     return rows.map(item=>{const value=unsealJson<unknown>(item.bodyCiphertext,aad("recap",actor.workspaceId,caseId,item.sessionId,item.recapVersion),this.ring),parsed=routineRecapSchema.safeParse(value);
       if(!parsed.success||parsed.data.caseId!==caseId||parsed.data.sessionId!==item.sessionId||parsed.data.version!==item.recapVersion||digest(value)!==item.contentDigest)throw new AppError("UNAVAILABLE");
-      return {publicationId:item.publicationId,sessionId:item.sessionId,sharedAt:item.sharedAt.toISOString(),recap:parsed.data};});
+      return {publicationId:item.publicationId,sessionId:item.sessionId,sharedAt:item.sharedAt.toISOString(),recap:recipientRecap(parsed.data)};});
   });}
   async saveObservations(actor:Actor,sessionId:string,values:MetricValues,expectedRevision:number,key:string):Promise<MetricRecord>{return this.store.transaction(async tx=>{await lockWorkspace(tx,actor.workspaceId);const row=await sessionRow(tx,actor.workspaceId,sessionId,true);await owner(tx,actor,row.caseId,this.clock);return command(tx,this.ring,actor,row,"save_observations",key,{values,expectedRevision},async()=>{const current=await one<{revision:number}>(tx,'SELECT revision FROM ls_sessions.practitioner_observations WHERE workspace_id=$1 AND case_id=$2 AND session_id=$3 ORDER BY revision DESC LIMIT 1',[actor.workspaceId,row.caseId,sessionId]);if((current?.revision??0)!==expectedRevision)throw new AppError("CONFLICT");const record:MetricRecord={schemaVersion:1,workspaceId:actor.workspaceId,caseId:row.caseId,sessionId,recordedByAccountId:actor.id,source:"practitioner_observation",recordedAt:this.clock.now().toISOString(),revision:expectedRevision+1,values};validateMetricRecord(record);await tx.query('INSERT INTO ls_sessions.practitioner_observations(workspace_id,case_id,session_id,revision,schema_version,values_ciphertext,notes_ciphertext,recorded_by_account_id,recorded_at) VALUES($1,$2,$3,$4,1,$5,$6,$7,$8)',[actor.workspaceId,row.caseId,sessionId,record.revision,sealJson(values,aad("metrics",actor.workspaceId,row.caseId,sessionId,record.revision),this.ring),sealJson({},aad("metric-notes",actor.workspaceId,row.caseId,sessionId,record.revision),this.ring),actor.id,new Date(record.recordedAt)]);return record;});});}
 
