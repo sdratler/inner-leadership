@@ -25,7 +25,9 @@ import {contactOutboundProjectionIntegrity,CONTACT_OUTBOUND_PROJECTION_MIGRATION
 import {practiceAdultCoordinationIntegrity,PRACTICE_ADULT_COORDINATION_MIGRATION} from '../src/db/practice-adult-coordination-integrity.ts';
 import {scopedDisclosureIntegrity,SCOPED_DISCLOSURE_USE_MIGRATION,speakerReceiptIntegrity,SPEAKER_CORRECTION_RECEIPTS_MIGRATION} from '../src/db/scoped-disclosure-integrity.ts';
 import {practiceResponsibilityIntegrity,PRACTICE_RESPONSIBILITY_MIGRATION} from '../src/db/practice-responsibility-integrity.ts';
-import {assertContactOpsDatabaseIdentity,calendarAppendOnlyFunctionBody,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,internalTaskSchemaCatalogMatches,sourceTaskSchemaCatalogMatches,voiceRuleSchemaCatalogMatches,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,type ContactOpsIntegrityObjects,type InternalTaskIntegrityObjects,type SourceTaskIntegrityObjects,type VoiceRuleIntegrityObjects} from '../src/db/contact-ops-production-guard.ts';
+import {practiceReminderIntegrity,PRACTICE_REMINDER_MIGRATION} from '../src/db/practice-reminder-integrity.ts';
+import {contactAcquisitionIntegrity,ACQUISITION_CANDIDATES_MIGRATION,ACQUISITION_DECISIONS_MIGRATION} from '../src/db/contact-acquisition-integrity.ts';
+import {assertContactOpsDatabaseIdentity,calendarAppendOnlyFunctionBody,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsFunctionBody,contactOpsMigrationPrefix,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,internalTaskSchemaCatalogMatches,sourceTaskSchemaCatalogMatches,voiceRuleSchemaCatalogMatches,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,type ContactOpsIntegrityObjects,type InternalTaskIntegrityObjects,type SourceTaskIntegrityObjects,type VoiceRuleIntegrityObjects} from '../src/db/contact-ops-production-guard.ts';
 import type {AppliedMigration,Migration} from '../src/db/migration-plan.ts';
 
 async function migrations():Promise<Migration[]>{
@@ -49,9 +51,11 @@ async function main(){
  const appRoot=new URL('../',import.meta.url);
  const sourceEntries=await Promise.all(CONTACT_OPS_SOURCE_FILES.map(async path=>({path,bytes:await readFile(new URL(path,appRoot))})));
  if(contactOpsSourceBundle(sourceEntries)!==target.sourceBundleSha256)throw new Error('CONTACT_OPS_SOURCE_PROVENANCE_MISMATCH');
- const files=await migrations();
+ // Never validate only a conveniently shortened inventory. The full source
+ // bundle and every manifest byte are checked before an explicit prefix.
+ const files=contactOpsMigrationPrefix(await migrations(),target.through);
  // The state gate admits at most one exact reviewed suffix. Every preceding
- // body, catalog and permission gate must pass before 0110 may be applied.
+ // body, catalog and permission gate must pass before the selected suffix.
  // The strict state gate refuses partial or unreviewed schema before any write.
  if(!files.some(file=>file.name===CONTACT_OPS_MIGRATION.name&&file.checksum===CONTACT_OPS_MIGRATION.sha256))throw new Error('CONTACT_OPS_MIGRATION_MISSING');
  const reviewedMigration=files.at(-1)!;
@@ -378,6 +382,13 @@ async function main(){
          (await client.query<R>(statement,[...values])).rows},files):undefined;
        const responsibilityIntegrity=files.some(file=>file.name===PRACTICE_RESPONSIBILITY_MIGRATION.name)?await practiceResponsibilityIntegrity({query:async <R extends object>(statement:string,values:readonly unknown[]=[])=>
          (await client.query<R>(statement,[...values])).rows},files):undefined;
+       const reminderReadback=files.some(file=>file.name===PRACTICE_REMINDER_MIGRATION.name)?await practiceReminderIntegrity({query:async <R extends object>(statement:string,values:readonly unknown[]=[])=>
+         (await client.query<R>(statement,[...values])).rows},files):undefined;
+       const reminderIntegrity=reminderReadback?{prior:reminderReadback.prior,current:reminderReadback.current}:undefined;
+       const acquisitionIntegrity=files.some(file=>file.name===ACQUISITION_CANDIDATES_MIGRATION.name)?await contactAcquisitionIntegrity({query:async <R extends object>(statement:string,values:readonly unknown[]=[])=>
+         (await client.query<R>(statement,[...values])).rows},files,'candidate'):undefined;
+       const decisionIntegrity=files.some(file=>file.name===ACQUISITION_DECISIONS_MIGRATION.name)?await contactAcquisitionIntegrity({query:async <R extends object>(statement:string,values:readonly unknown[]=[])=>
+         (await client.query<R>(statement,[...values])).rows},files,'decisions'):undefined;
      await client.query('COMMIT');
      const history:AppliedMigration[]=ledger.rows.map(row=>({name:row.name,checksum:row.checksum}));
      const verified=new Map(functions.rows.map(row=>[row.name,
@@ -402,7 +413,7 @@ async function main(){
      const sourceIntegrity:SourceTaskIntegrityObjects={baseCatalog,sourceCatalog,sourceIndex:sourceIndex.rows[0]?.exact===true};
      const voiceIntegrity:VoiceRuleIntegrityObjects={...voiceObjects.rows[0]!,
        schemaCatalog:voiceRuleSchemaCatalogMatches(voiceColumns.rows[0]?.catalog,voiceConstraints.rows[0]?.catalog)};
-       return contactOpsMigrationState(files,history,integrity,taskIntegrity,sourceIntegrity,voiceIntegrity,authorityIntegrity,inboundIntegrity,practiceIntegrity,progressIntegrity,projectionIntegrity,outboundIntegrity,adultIntegrity,disclosureIntegrity,speakersIntegrity,responsibilityIntegrity);
+       return contactOpsMigrationState(files,history,integrity,taskIntegrity,sourceIntegrity,voiceIntegrity,authorityIntegrity,inboundIntegrity,practiceIntegrity,progressIntegrity,projectionIntegrity,outboundIntegrity,adultIntegrity,disclosureIntegrity,speakersIntegrity,responsibilityIntegrity,reminderIntegrity,acquisitionIntegrity,decisionIntegrity);
     }catch(error){await client.query('ROLLBACK').catch(()=>undefined);throw error;}
    };
    const before=await inspect();
@@ -417,4 +428,4 @@ async function main(){
   }finally{client.release();}
  }finally{await pool.end();}
 }
-main().catch(error=>{const code=error instanceof Error && /^(CONTACT_OPS|MIGRATION)_[A-Z0-9_]+$/.test(error.message)?error.message:'CONTACT_OPS_OPERATION_FAILED';process.stderr.write(code+'\n');process.exitCode=1;});
+main().catch(error=>{const code=error instanceof Error && /^(CONTACT_OPS|CONTACT_ACQUISITION|PRACTICE_REMINDER|MIGRATION)_[A-Z0-9_]+$/.test(error.message)?error.message:'CONTACT_OPS_OPERATION_FAILED';process.stderr.write(code+'\n');process.exitCode=1;});
