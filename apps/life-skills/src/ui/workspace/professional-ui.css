@@ -11,6 +11,12 @@
 @media(max-width:340px){.lsu-header{padding-inline:16px}.lsu-brand img{width:78px}.lsu-brand strong{font-size:16px}.lsu-content{padding-inline:16px}.lsw.lsu .lsw-two-fields{grid-template-columns:1fr}.lsu-family-primary a{font-size:14px}.lsu-header-controls{gap:4px}}
 @media(prefers-reduced-motion:reduce){.lsw.lsu *, .lsw.lsu *::before,.lsw.lsu *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 
+/* Keep Calendar quick actions readable instead of four narrow mobile columns. */
+@media(max-width:600px){
+ .lsw.lsu .lsu-attention-links{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+ .lsw.lsu .lsu-attention-links a{min-inline-size:0;display:flex;align-items:center;justify-content:center;text-align:center;overflow-wrap:normal;word-break:normal}
+}
+
 /* The operational shell uses white content and a clear teal navigation state. */
 .lsw.lsu{--ui-paper:#fff;background:#f5f8f8}
 .lsu-header{background:#fff}
