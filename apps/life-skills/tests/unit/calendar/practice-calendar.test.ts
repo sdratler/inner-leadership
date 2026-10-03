@@ -54,3 +54,9 @@ test("re-enabling practice requires a new read binding before any cached private
   expect(source).toContain('const selected = calendarItems.find');
   expect(source).toContain('!denied && previous.key === key && previous.readBinding === readBinding ? previous.page');
 });
+test("appointment unavailability stays visible without suppressing independent layers or exposing stale appointments",()=>{
+  const source=readFileSync(new URL('../../../src/features/calendar/workspace.tsx',import.meta.url),'utf8');
+  expect(source).toContain("readEnabled={showPractice&&error!=='auth'&&error!=='forbidden'}");
+  expect(source).not.toContain(':error?<ErrorState');expect(source).toContain('Appointments could not load. Other available calendar layers are still shown.');expect(source).toContain('Retry appointments');
+  expect(source.match(/items=\{error\?\[\]:items\}/g)).toHaveLength(2);expect(source).toContain('!error&&!caseError&&!cases.length');
+});
