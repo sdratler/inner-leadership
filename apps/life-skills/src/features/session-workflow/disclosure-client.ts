@@ -1,10 +1,10 @@
 import {z} from "zod";
 import {sessionCommand,sessionRead} from "./client.ts";
-import {disclosureSchema,disclosureInputSchema,disclosureReceiptSchema,disclosureRecordReadback,type DisclosureInput,type DisclosureView} from "./disclosure-contract.ts";
+import {MAX_DISCLOSURE_RECORDS,disclosureSchema,disclosureInputSchema,disclosureReceiptSchema,disclosureRecordReadback,type DisclosureInput,type DisclosureView} from "./disclosure-contract.ts";
 import type {CommandOutcome,CommandPort} from "../../ui/revamp/use-command.ts";
 type Scope={workspaceId:string;caseId:string;sessionId:string};
 export async function readDisclosures(scope:Scope,id?:string,signal?:AbortSignal):Promise<DisclosureView[]>{
- const raw=await sessionRead<unknown>(`/${scope.sessionId}/disclosures${id?"?"+new URLSearchParams({disclosureId:id}):""}`,signal),parsed=z.array(disclosureSchema).max(100).safeParse(raw);
+ const raw=await sessionRead<unknown>(`/${scope.sessionId}/disclosures${id?"?"+new URLSearchParams({disclosureId:id}):""}`,signal),parsed=z.array(disclosureSchema).max(MAX_DISCLOSURE_RECORDS).safeParse(raw);
  if(!parsed.success||parsed.data.some(row=>row.workspaceId!==scope.workspaceId||row.caseId!==scope.caseId||row.sessionId!==scope.sessionId||id&&row.id!==id)||new Set(parsed.data.map(row=>row.id)).size!==parsed.data.length||id&&parsed.data.length!==1)throw Error("UNAVAILABLE");return parsed.data;
 }
 function verifiedPort<I>(scope:Scope,mode:"record"|"revoke"|"use",id?:string):CommandPort<I,DisclosureView>{
