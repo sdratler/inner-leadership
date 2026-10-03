@@ -4,7 +4,7 @@ import {useRouter} from "next/navigation";
 import type {Locale} from "./types.ts";
 import type {SessionDetail,SessionListItem} from "./database.ts";
 import {PractitionerSessionDesk,type SessionDeskActions} from "../../ui/revamp/session-desk.tsx";
-import {sessionCommand,sessionEnsure,sessionRead,sessionSpeakerCommand} from "./client.ts";
+import {sessionCommand,sessionEnsure,sessionRead,sessionSpeakerCommand,sessionRecapCommand,sessionRecapShareCommand,sessionRecapPracticeChoices,sessionRecapPreview} from "./client.ts";
 import {sessionProcessingLabel} from "./presentation.ts";
 import {SessionConsentPanel} from "./consent-panel.tsx";
 import {SessionDisclosurePanel} from "./disclosure-panel.tsx";
@@ -38,10 +38,10 @@ export function SessionDetailWorkspace({locale,sessionId,caseId,navigationContex
  const actions=useMemo<SessionDeskActions>(()=>({
   async upload(){throw new Error("SESSION_PROVIDER_NOT_CONFIGURED");},
   async refresh(){setRevision(value=>value+1);},
-  saveRecap:sessionCommand(`/${sessionId}/recap`),speakers:sessionSpeakerCommand(sessionId),metrics:sessionCommand(`/${sessionId}/observations`),share:sessionCommand(`/${sessionId}/share`),selectAnalysisLanguage(value){setAnalysisLocale(value);},
+   saveRecap:sessionRecapCommand(sessionId),speakers:sessionSpeakerCommand(sessionId),metrics:sessionCommand(`/${sessionId}/observations`),share:sessionRecapShareCommand(sessionId),loadRecapPractices(signal,cursor){return sessionRecapPracticeChoices(sessionId,signal,cursor);},previewRecap(version,recipients,signal){return sessionRecapPreview(sessionId,version,recipients,signal);},selectAnalysisLanguage(value){setAnalysisLocale(value);},
  }),[sessionId]);
  const retry=<div role="alert"><p>{he?"לא ניתן לאשר מחדש את רשומת המפגש. קלט שלא נשמר נשאר כאן כאשר הגישה עדיין מורשית.":"The session record could not be confirmed again. Unsaved input stays here when access is still authorized."}</p><button className="lsw-button" type="button" onClick={()=>setRevision(value=>value+1)}>{he?"ניסיון קריאה חוזר":"Retry this read"}</button></div>;
  if(error&&!model)return <main className="lsw-main">{retry}</main>;
  if(!model||model.sessionId!==sessionId||caseId&&model.caseId!==caseId)return <main className="lsw-main"><p role="status">{he?"טוען רשומת מפגש…":"Loading session record…"}</p></main>;
- return <>{error&&retry}<p><a className="lsw-button lsw-button--secondary" href={workspaceHref(locale,'app/calendar',model.caseId,navigationContext)}>{he?'חזרה ליומן':'Return to calendar'}</a></p><PractitionerSessionDesk locale={locale} model={model} actions={actions} consentPanel={<><SessionConsentPanel locale={locale} model={model} refresh={()=>setRevision(value=>value+1)}/><SessionDisclosurePanel locale={locale} model={model}/></>}/></>;
+  return <main className="lsw-main">{error&&retry}<p><a className="lsw-button lsw-button--secondary" href={workspaceHref(locale,'app/calendar',model.caseId,navigationContext)}>{he?'חזרה ליומן':'Return to calendar'}</a></p><PractitionerSessionDesk locale={locale} model={model} actions={actions} consentPanel={<><SessionConsentPanel locale={locale} model={model} refresh={()=>setRevision(value=>value+1)}/><SessionDisclosurePanel locale={locale} model={model}/></>}/></main>;
 }
