@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { consentRecordReadback, consentTimeCandidates, consentVersionSchema, type ConsentRecordInput, type ConsentVersion } from "../../src/features/session-workflow/consent-contract.ts";
 import { consentRecordPort, consentWithdrawalPort, readConsentVersion } from "../../src/features/session-workflow/consent-client.ts";
-import { SessionConsentPanel, refreshConsentPolicyDraft } from "../../src/features/session-workflow/consent-panel.tsx";
+import { SessionConsentPanel, ConsentReauthenticationLink, refreshConsentPolicyDraft } from "../../src/features/session-workflow/consent-panel.tsx";
 import type { SessionDetail } from "../../src/features/session-workflow/database.ts";
 import { blankMetrics } from "../../src/features/session-workflow/metrics.ts";
 import { PractitionerSessionDesk, sessionAppointmentLabel } from "../../src/ui/revamp/session-desk.tsx";
@@ -19,6 +19,27 @@ it("does not treat an unversioned legacy consent input as verified saved readbac
   expect(consentRecordReadback(saved, scope.sessionId, receipt, { ...input, expectedVersion: undefined } as unknown as ConsentRecordInput)).toBe(false);
 });
 afterEach(() => vi.unstubAllGlobals());
+
+it.each(["en", "he"] as const)("%s reauthentication opens an isolated new tab without discarding the pending page", locale => {
+  const markup = renderToStaticMarkup(createElement(ConsentReauthenticationLink, { locale, caseId: scope.caseId, sessionId: scope.sessionId }));
+  expect(markup).toContain('target="_blank"'); expect(markup).toContain('rel="noopener noreferrer"');
+  expect(markup).toContain(`/${locale}/login?` + new URLSearchParams({ next: `/${locale}/app/cases/${scope.caseId}/sessions/${scope.sessionId}` }));
+  expect(markup).toContain(locale === "en" ? "return here and check this same attempt" : "לחזור לכאן ולבדוק את הניסיון הזה");
+});
+it("a committed attempt keeps its original receipt through expired authentication and a newer withdrawn head", async () => {
+  let authenticated = false;
+  const fetch = vi.fn(async (url: unknown, init?: RequestInit) => {
+    if (init?.method === "POST") return envelope(receipt);
+    if (!authenticated) return Response.json({ ok: false, error: { code: "UNAUTHENTICATED" } }, { status: 401 });
+    return envelope(String(url).includes("version=1") ? saved : { ...saved, version: 2, withdrawnAt: "2026-10-01T12:00:00.000Z" });
+  });
+  vi.stubGlobal("fetch", fetch); const port = consentRecordPort(scope);
+  expect(await port.execute(input, key)).toEqual({ state: "unknown" });
+  expect(await port.reconcile(key)).toEqual({ state: "unknown" }); authenticated = true;
+  expect(await port.reconcile(key)).toEqual({ state: "accepted", value: saved });
+  expect(fetch.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
+  for (const [url, init] of fetch.mock.calls.filter(([, init]) => init?.method !== "POST")) { expect(String(url)).toContain("version=1"); expect(init).toMatchObject({ credentials: "same-origin", cache: "no-store" }); }
+});
 
 it("refreshes a pristine consent policy without treating the incoming record as an unsaved edit", () => {
   const draft = { value: "document-v1", baseline: "document-v1", expectedVersion: 1, awaitingVersion: null };
