@@ -6,7 +6,7 @@ import { METRICS, type MetricValues } from "./metrics.ts";
 import { FOCUS } from "./recap.ts";
 import { SessionDatabaseService } from "./database.ts";
 import {disclosureInputSchema,disclosureUseSchema,disclosureRevokeSchema} from "./disclosure-contract.ts";
-import {speakerCorrectionInput} from "./speaker-corrections.ts";
+import {MAX_SPEAKER_RECORD_BYTES,speakerCorrectionInput} from "./speaker-corrections.ts";
 const uuid=z.string().uuid().transform(value=>value.toLowerCase());
 const metricValue=z.strictObject({score:z.number().int().min(1).max(10).nullable(),notObservedReason:z.string().min(1).max(200).nullable(),note:z.string().max(1000)});
 const metricShape=Object.fromEntries(METRICS.map(item=>[item.id,metricValue])) as Record<(typeof METRICS)[number]["id"],typeof metricValue>;
@@ -29,7 +29,11 @@ export class SessionHttp {
       return {data:await this.service.list(actor,caseId.data,selected?.success?selected.data:undefined)};
     }
     if(path.length===1&&path[0]==="ensure"){if(request.method!=="POST"||url.search)throw new AppError("INVALID_REQUEST");const body=await readJson(request,z.strictObject({caseId:uuid,appointmentId:uuid}));return {data:await this.service.ensureForAppointment(actor,body.caseId,body.appointmentId),status:201};}
-    if(path.length===1){const query=url.searchParams,locale=query.has("analysisLocale")?z.enum(["en","he"]).safeParse(query.get("analysisLocale")):null;if(request.method!=="GET"||[...query.keys()].some(name=>name!=="analysisLocale")||query.getAll("analysisLocale").length>1||locale&&!locale.success)throw new AppError("INVALID_REQUEST");return {data:await this.service.detail(actor,uuid.parse(path[0]),locale?.success?locale.data:"en")};}
+    if(path.length===1){
+      const query=url.searchParams,locale=query.has("analysisLocale")?z.enum(["en","he"]).safeParse(query.get("analysisLocale")):null,version=query.get("transcriptVersion");
+      if(request.method!=="GET"||[...query.keys()].some(name=>name!=="analysisLocale"&&name!=="transcriptVersion")||query.getAll("analysisLocale").length>1||query.getAll("transcriptVersion").length>1||locale&&!locale.success||version!==null&&(!/^[1-9]\d{0,9}$/.test(version)||Number(version)>2147483647))throw new AppError("INVALID_REQUEST");
+      return {data:await this.service.detail(actor,uuid.parse(path[0]),locale?.success?locale.data:"en",version===null?undefined:Number(version))};
+    }
     if(path.length===2&&path[1]==="disclosures"&&request.method==="GET"){
       const query=url.searchParams,id=query.has("disclosureId")?uuid.safeParse(query.get("disclosureId")):null;
       if([...query.keys()].some(name=>name!=="disclosureId")||query.getAll("disclosureId").length>1||id&&!id.success)throw new AppError("INVALID_REQUEST");return {data:await this.service.disclosures(actor,uuid.parse(path[0]),id?.success?id.data:undefined)};
@@ -47,7 +51,7 @@ export class SessionHttp {
     }
     if(path.length!==2||request.method!=="POST"||url.search)throw new AppError("NOT_FOUND");const sessionId=uuid.parse(path[0]);
     if(path[1]==="observations"){const body=await readJson(request,observations);return {data:await this.service.saveObservations(actor,sessionId,body.values as MetricValues,body.expectedRevision,key(request)),status:201};}
-    if(path[1]==="speakers")return {data:await this.service.saveSpeakers(actor,sessionId,await readJson(request,speakerCorrectionInput),key(request)),status:201};
+    if(path[1]==="speakers")return {data:await this.service.saveSpeakers(actor,sessionId,await readJson(request,speakerCorrectionInput,MAX_SPEAKER_RECORD_BYTES),key(request)),status:201};
     if(path[1]==="recap"){const body=await readJson(request,recap);return {data:await this.service.saveRecap(actor,sessionId,{...body,practices:[]},key(request)),status:201};}
     if(path[1]==="share"){return {data:await this.service.share(actor,sessionId,await readJson(request,share),key(request)),status:201};}
     if(path[1]==="consent"){return {data:await this.service.recordConsent(actor,sessionId,await readJson(request,consent),key(request)),status:201};}

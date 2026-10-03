@@ -3,6 +3,9 @@ import {AppError} from "../../lib/errors.ts";
 import {validIso} from "./policy.ts";
 import type {Transcript} from "./types.ts";
 
+// The route cannot accept more label bytes than the existing complete encrypted
+// revision record can retain. This does not change the general JSON body limit.
+export const MAX_SPEAKER_RECORD_BYTES=2000000;
 const label=z.string().min(1).max(100).refine(value=>value.trim().length>0);
 // z.record normalizes reserved own keys such as __proto__; retain the exact
 // caller's plain dictionary while validating every own key/value instead.

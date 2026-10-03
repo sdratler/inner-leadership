@@ -18,7 +18,7 @@ export function sessionSpeakerCommand(sessionId:string):CommandPort<SpeakerCorre
   const result=await write<SpeakerSaveReceipt>(path,input,key);
   if(result.state!=="accepted"){if(result.state==="rejected")pending.delete(key);return result;}
   try{
-   const receipt=result.value,detail=await read<SessionDetail>(`/${sessionId}`),saved=detail.privateRecords?.transcript;
+   const receipt=result.value,detail=await read<SessionDetail>(`/${sessionId}?transcriptVersion=${input.transcriptVersion}`),saved=detail.privateRecords?.transcript;
    const revision=saved?.speakerHistory.versions.find(row=>row.revision===receipt.revision);
    if(detail.sessionId!==sessionId||saved?.version!==input.transcriptVersion||receipt.version!==input.transcriptVersion||receipt.revision!==input.expectedRevision+1||!revision||revision.recordedAt!==receipt.recordedAt||!sameSpeakerLabels(input.labels,revision.labels))return {state:"unknown"};
    pending.delete(key);return result;
