@@ -49,6 +49,22 @@ test("People Back/deep links recover only valid applied directory filters",()=>{
  expect(peopleFiltersFromQuery(new URLSearchParams("language=xx&due=tomorrow"))).toEqual({query:"",stage:"",language:"",due:"any"});
  expect(peopleFiltersFromQuery(new URLSearchParams({search:"x".repeat(201),stage:"y".repeat(121)}))).toEqual({query:"",stage:"",language:"",due:"any"});
 });
+test.each([
+ ["search", "Synthetic name", "Another name", "query", ""],
+ ["stage", "New inquiry", "Contacted", "stage", ""],
+ ["language", "he", "en", "language", ""],
+ ["due", "today", "overdue", "due", "any"],
+] as const)("People rejects every duplicated %s key without changing other exact filters",(key,first,second,field,fallback)=>{
+ const baseline={query:"  Exact name  ",stage:"  Exact stage  ",language:"he",due:"overdue" as const};
+ for(const repeated of [second,first,""]){
+  const params=new URLSearchParams({search:baseline.query,stage:baseline.stage,language:baseline.language,due:baseline.due});
+  params.set(key,first);params.append(key,repeated);
+  expect(peopleFiltersFromQuery(params)).toEqual({...baseline,[field]:fallback});
+ }
+});
+test.each(["page=2&page=3","page=2&page=2","page=2&page=","page=&page=2"])("People duplicated page uses the same server default: %s",query=>{
+ expect(peoplePageFromQuery(new URLSearchParams(query))).toBe(1);
+});
 test.each(["he","en"] as const)("%s new native contact action is compact/collapsed and absent from DEMO",locale=>{
  const props={locale,view:"all" as const,initial:{source:"native" as const,authorityEpoch:3,page:{page:1,pages:1,pageSize:12,total:0,items:[]}},onSheet:()=>{}};
  const live=renderToStaticMarkup(createElement(NativePeopleWorkspace,props));
