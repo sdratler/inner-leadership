@@ -30,6 +30,7 @@ const instantValue = z.iso.datetime({ offset: true });
 const accountIds = z.array(id("account")).min(1).max(2);
 const createGoal = z.object({ caseId, audienceId, title }).strict();
 const createCommitment = z.object({ caseId, audienceId, goalId, title }).strict();
+const readAuthoringItems = z.object({ caseId, audienceId, view: z.literal("management").optional() }).strict();
 const homeAction = z.discriminatedUnion("action", [
   z.object({ action: z.literal("create_draft"), caseId, audienceId, goalId: goalId.optional(), commitmentId: commitmentId.optional(), templateKey: z.string().trim().min(1).max(100), templateVersion: z.string().trim().min(1).max(100), instructions, startsOn: calendarDate, endsOn: calendarDate.nullable().optional(),responsibility:responsibilityInput.optional() }).strict(),
   z.object({ action: z.literal("revise"), assignmentId, instructions, startsOn: calendarDate, endsOn: calendarDate.nullable().optional(),responsibility:responsibilityInput.optional() }).strict(),
@@ -97,15 +98,19 @@ export class Ls040Http {
       let data: unknown;
       if (url.pathname === "/api/goals") {
         if (request.method === "GET") {
-          const parsed = createGoal.pick({ caseId: true, audienceId: true }).safeParse(exactQuery(url, ["caseId", "audienceId"]));
+          const parsed = readAuthoringItems.safeParse(exactQuery(url, url.searchParams.has("view") ? ["caseId", "audienceId", "view"] : ["caseId", "audienceId"]));
           if (!parsed.success) throw new AppError("INVALID_REQUEST");
-          data = await this.services.goals.list(actor, parsed.data.caseId, parsed.data.audienceId);
+          data = parsed.data.view === "management"
+            ? await this.services.goals.list(actor, parsed.data.caseId, parsed.data.audienceId, "management")
+            : await this.services.goals.list(actor, parsed.data.caseId, parsed.data.audienceId);
         } else data = await this.services.goals.create(actor, await readJson(request, createGoal), requestId);
       } else if (url.pathname === "/api/commitments") {
         if (request.method === "GET") {
-          const parsed = createGoal.pick({ caseId: true, audienceId: true }).safeParse(exactQuery(url, ["caseId", "audienceId"]));
+          const parsed = readAuthoringItems.safeParse(exactQuery(url, url.searchParams.has("view") ? ["caseId", "audienceId", "view"] : ["caseId", "audienceId"]));
           if (!parsed.success) throw new AppError("INVALID_REQUEST");
-          data = await this.services.commitments.list(actor, parsed.data.caseId, parsed.data.audienceId);
+          data = parsed.data.view === "management"
+            ? await this.services.commitments.list(actor, parsed.data.caseId, parsed.data.audienceId, "management")
+            : await this.services.commitments.list(actor, parsed.data.caseId, parsed.data.audienceId);
         } else data = await this.services.commitments.create(actor, await readJson(request, createCommitment), requestId);
       } else if (url.pathname === "/api/home-practice") {
         if (request.method === "GET") {
