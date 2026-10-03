@@ -23,7 +23,7 @@ export async function managementAudiences(caseId: string, signal: AbortSignal): 
   return rows;
 }
 export async function readPracticeManagement(caseId: string, audienceId: string, signal: AbortSignal): Promise<PracticeManagementData> {
-  const query = new URLSearchParams({ caseId, audienceId });
+  const query = new URLSearchParams({ view: "management", caseId, audienceId });
   const [practice, goals, commitments] = await Promise.all([
     request<PracticeManagementPage>("/api/home-practice?" + new URLSearchParams({ view: "management", caseId, audienceId }), { method: "GET" }, signal),
     request<GoalView[]>("/api/goals?" + query, { method: "GET" }, signal),

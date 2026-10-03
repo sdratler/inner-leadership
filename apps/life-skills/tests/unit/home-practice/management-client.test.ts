@@ -7,6 +7,21 @@ const scope = { caseId: uuid(1), audienceId: uuid(2) };
 const command: PracticeAuthoringCommand = { action: "create_draft", ...scope, instructions: "Retained instruction", startsOn: "2026-10-02", endsOn: null, templateKey: "W01", templateVersion: "manual-1" };
 const data: PracticeManagementData = { practice: { hasMore: false, items: [{ workspaceId: asId(uuid(3), "workspace"), caseId: asId(scope.caseId, "case"), audienceId: asId(scope.audienceId, "audience"), assignmentId: asId(uuid(4), "practice_assignment"), versionId: asId(uuid(5), "practice_version"), version: 1, goalId: null, commitmentId: null, templateKey: "W01", templateVersion: "manual-1", instructions: command.instructions, startsOn: command.startsOn, endsOn: null, state: "draft", active: false, publishedAt: null, immutableSnapshotDigest: null }] }, goals: [], commitments: [] };
 afterEach(() => vi.unstubAllGlobals());
+test("authoring requests newest bounded practitioner pages for goals and commitments", async () => {
+  const paths: string[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (path: string) => {
+    paths.push(path);
+    return Response.json({ ok: true, data: path.includes("home-practice") ? data.practice : [] });
+  }));
+  await readPracticeManagement(scope.caseId, scope.audienceId, new AbortController().signal);
+  expect(paths).toHaveLength(3);
+  for (const path of paths) {
+    const url = new URL(path, "https://synthetic.example.invalid");
+    expect(url.searchParams.get("view")).toBe("management");
+    expect(url.searchParams.get("caseId")).toBe(scope.caseId);
+    expect(url.searchParams.get("audienceId")).toBe(scope.audienceId);
+  }
+});
 test("readback requires exact assignment/version and saved text, scope and links", () => {
   const receipt = { assignmentId: uuid(4), versionId: uuid(5) };
   expect(authoringReadback(command, receipt, data)).toBe(true);
