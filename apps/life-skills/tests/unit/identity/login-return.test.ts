@@ -9,6 +9,12 @@ it('preserves only a bounded legacy lead ID on a practitioner People return link
     .toBe('/en/app/clients');
 });
 const caseId='123e4567-e89b-42d3-a456-426614174000',sessionId='223e4567-e89b-42d3-a456-426614174000';
+it.each(['he','en']as const)('keeps only a bounded %s Community thread link through ordinary login',locale=>{
+ const path=`/${locale}/app/marketing`,result=practitionerDetailReturnPath(locale,path,{section:'community',threadId:caseId,ownerId:sessionId});expect(result).toBe(path+'?section=community&threadId='+caseId);expect(loginReturnDestination(locale,'practitioner',result)).toBe(result);
+ for(const role of ['parent','child','adult_client']as const)expect(loginReturnDestination(locale,role,result)).not.toBe(result);
+ for(const threadId of ['constructor','../private',[caseId,caseId]])expect(practitionerDetailReturnPath(locale,path,{section:'community',threadId})).toBe(path+'?section=community');
+ expect(practitionerDetailReturnPath(locale,path,{section:'ads',threadId:caseId})).toBe(path+'?section=ads');
+});
 it.each(['he','en'] as const)('retains bounded %s creative filters through login, without inherited, repeated or control values',locale=>{
  const path=`/${locale}/app/marketing`,query={section:'creatives',language:'he',placement:'whatsapp_status',approval:'needs_approval',search:'שלום new topic'};
  expect(Object.fromEntries(new URL(practitionerDetailReturnPath(locale,path,query),'https://private.invalid').searchParams)).toEqual(query);
