@@ -2,7 +2,7 @@ import React from "react";
 import {describe,expect,it} from "vitest";
 import {renderToStaticMarkup} from "react-dom/server";
 import {WorkspaceShell} from "../../src/ui/workspace/workspace-shell.tsx";
-import {breadcrumbItems,caseDestinationHref,isCaseId,practitionerContext,primaryNavigation,workspaceHref} from "../../src/ui/workspace/navigation-model.ts";
+import {breadcrumbItems,caseDestinationHref,isCaseId,practitionerContext,primaryNavigation,settingsItems,workspaceHref} from "../../src/ui/workspace/navigation-model.ts";
 import {CalendarShell} from "../../src/ui/workspace/appointments.tsx";
 import {CalendarBoard} from "../../src/features/calendar/views.tsx";
 import {countCurrentAssignments} from "../../src/features/calendar/attention-summary.tsx";
@@ -14,6 +14,12 @@ const links=(html:string)=>[...html.matchAll(/href="([^"]+)"/g)].map(match=>new 
 const topLinks=(html:string)=>links(html.match(/<nav class="lsu-top-tabs"[^>]*>(.*?)<\/nav>/)?.[1]??'');
 
 describe("operational workspace navigation",()=>{
+ it('centralizes Community Scout only under practitioner Settings without a new global section',()=>{
+  expect(settingsItems('practitioner').filter(item=>item.key==='community')).toEqual([{key:'community',path:'app/settings/community',en:'Community Scout',he:'Community Scout'}]);
+  for(const role of ['parent','client'] as const)expect(settingsItems(role).some(item=>item.key==='community')).toBe(false);
+  for(const locale of ['he','en'] as const)expect(breadcrumbItems(locale,'practitioner',`/${locale}/app/settings/community`).map(item=>item.label)).toEqual([locale==='he'?'בית':'Home',locale==='he'?'הגדרות':'Settings','Community Scout']);
+  expect(practitionerContext('/en/app/settings/community',null)).toEqual([]);
+ });
  for(const locale of ['en','he'] as const)for(const role of ['parent','client','practitioner'] as const)it(`${locale}/${role}: Messages uses the visible shell Calendar breadcrumb and preserves case context`,()=>{
   const caseId='123e4567-e89b-42d3-a456-426614174000',path=role==='parent'?'family/feedback':role==='client'?'client/messages':'app/feedback',calendar=role==='parent'?'family/schedule':role==='client'?'client/calendar':'app/calendar';
   const crumbs=breadcrumbItems(locale,role,`/${locale}/${path}`);expect(crumbs[0]).toEqual({label:locale==='he'?'יומן':'Calendar',path:calendar});expect(crumbs.at(-1)?.label).toBe(role==='practitioner'?(locale==='he'?'תקשורת':'Communications'):(locale==='he'?'הודעות':'Messages'));
