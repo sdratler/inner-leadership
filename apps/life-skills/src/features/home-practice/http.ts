@@ -35,7 +35,7 @@ const homeAction = z.discriminatedUnion("action", [
   z.object({ action: z.literal("create_draft"), caseId, audienceId, goalId: goalId.optional(), commitmentId: commitmentId.optional(), templateKey: z.string().trim().min(1).max(100), templateVersion: z.string().trim().min(1).max(100), instructions, startsOn: calendarDate, endsOn: calendarDate.nullable().optional(),responsibility:responsibilityInput.optional() }).strict(),
   z.object({ action: z.literal("revise"), assignmentId, instructions, startsOn: calendarDate, endsOn: calendarDate.nullable().optional(),responsibility:responsibilityInput.optional() }).strict(),
   z.object({ action: z.literal("publish"), assignmentId, versionId }).strict(),
-  z.object({ action: z.literal("coordinate"), assignmentId, assigneeAccountIds: accountIds, completionMode: z.enum(completionModes), reminderCandidateAccountIds: z.array(id("account")).max(2), effectiveFrom: instantValue }).strict(),
+  z.object({ action: z.literal("coordinate"), assignmentId, assigneeAccountIds: accountIds, completionMode: z.enum(completionModes), reminderCandidateAccountIds: z.array(id("account")).max(2), effectiveFrom: instantValue, expectedCurrentVersionId:id("coordination_version").nullable().optional() }).strict(),
   z.object({ action: z.literal("schedule"), assignmentId, occursOn: calendarDate, period: z.enum(occurrencePeriods) }).strict(),
 ]);
 const checkIn = z.object({ occurrenceId, status: z.enum(completionStatuses), idempotencyKey: z.string().uuid(), correctsReportId: completionReportId.optional(),assistance:assistedCheckInInput.optional() }).strict();
