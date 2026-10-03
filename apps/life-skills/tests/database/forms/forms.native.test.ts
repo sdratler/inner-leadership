@@ -60,7 +60,9 @@ test("targeted native assignment readback survives case-list overflow without wi
   expect(await forms.listAssignments(f.practitioner.actor,f.first.id,original.assignmentId)).toMatchObject([{id:original.assignmentId,submissionId:submitted.submissionId}]);
   expect(targeted[0]).not.toHaveProperty('answers');expect(JSON.stringify(targeted)).not.toContain('Synthetic retained answer');
   expect(await forms.submit(f.parent.actor,{assignmentId:original.assignmentId,answers,idempotencyKey:key},randomUUID())).toMatchObject({submissionId:submitted.submissionId,duplicate:true});
-  expect(await forms.listAssignments(f.parent.actor,f.second.id,original.assignmentId)).toEqual([]);
+  await expect(forms.listAssignments(f.parent.actor,f.second.id,original.assignmentId)).rejects.toMatchObject({code:'NOT_FOUND'});
+  expect(await forms.listAssignments(f.practitioner.actor,f.second.id,original.assignmentId)).toEqual([]);
+  expect(await forms.listAssignments(f.parentTwo.actor,f.first.id,original.assignmentId)).toEqual([]);
   await expect(forms.listAssignments(f.outsider.actor,f.first.id,original.assignmentId)).rejects.toMatchObject({code:'NOT_FOUND'});
   const sessions=new IdentitySessions(store,config,systemClock),http=new FormsHttp({config,clock:systemClock,sessions,limits:new PostgresIdentityRateStore(store),audit:durableAuditSink(store)},forms);
   const path=`/api/forms/assignments?caseId=${f.first.id}&assignmentId=${original.assignmentId}`;
