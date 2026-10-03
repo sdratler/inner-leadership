@@ -105,6 +105,15 @@ describe("LS-040 services", () => {
     const parent = actor("parent"); const fixture = fixtureStore(parent);
     await expect(new HomePracticeService(fixture.store, config, clock).coordinate(parent, { assignmentId: ids.assignment, assigneeAccountIds: [ids.parentA], completionMode: "any_assignee", reminderCandidateAccountIds: [ids.parentB], effectiveFrom: "2026-09-11T14:00:01.000Z" }, uuid(37))).rejects.toEqual(new AppError("INVALID_REQUEST"));
   });
+  it("rechecks prospective coordination time after acquiring the workspace lock", async () => {
+    const parent = actor("parent"); const fixture = fixtureStore(parent); let reads = 0;
+    const advancingClock: IdentityClock = { now: () => new Date(now.getTime() + (reads++ === 0 ? 0 : 2_000)) };
+    await expect(new HomePracticeService(fixture.store, config, advancingClock).coordinate(parent, { assignmentId: ids.assignment, assigneeAccountIds: [ids.parentA], completionMode: "any_assignee", reminderCandidateAccountIds: [], effectiveFrom: "2026-09-11T14:00:01.000Z" }, uuid(38))).rejects.toEqual(new AppError("INVALID_REQUEST"));
+    expect(reads).toBe(2);
+    expect(fixture.queries).toHaveLength(1);
+    expect(fixture.queries[0]?.sql).toContain("FROM ls_identity.workspaces");
+    expect(fixture.queries.some(query => query.sql.includes("INSERT"))).toBe(false);
+  });
   it("atomically closes any-assignee occurrence after the first report", async () => {
     const parent = actor("parent"); const fixture = fixtureStore(parent);
     const result = await new CheckInService(fixture.store, clock).submit(parent, { occurrenceId: ids.occurrence, status: "partly_done", idempotencyKey: uuid(40) }, uuid(41));
