@@ -10,6 +10,13 @@ const scope={workspaceId:"00000000-0000-4000-8000-000000000001",caseId:"00000000
 const input:DisclosureInput={recipient:"DEMO — Specific person",purpose:"Synthetic agreed support",topic:"Specific agreed practice",authorityBasis:"Synthetic signed authority and restrictions",authorityState:"needs_review",channel:"phone",authorizedByAccountId:signer,childDiscussionRecorded:false,authorizedAt:"2026-09-01T10:00:00Z",expiresAt:"2026-10-03T10:00:00Z"},saved={...scope,...input,id,recordedByPractitionerId:signer,effective:false,usedAt:null,revokedAt:null};
 const response=(data:unknown,status=200)=>new Response(JSON.stringify({ok:true,data}),{status,headers:{"content-type":"application/json"}});
 afterEach(()=>vi.unstubAllGlobals());
+test.each(["recipient","purpose","topic","authorityBasis"] as const)("local whitespace-only %s rejects before creating an attempt or sending, then corrected input uses the same key",async field=>{
+ const fetch=vi.fn(async(_url:unknown,options?:RequestInit)=>options?.method==="POST"?response({disclosureId:id,usedAt:null,revokedAt:null},201):response([saved]));vi.stubGlobal("fetch",fetch);
+ const port=disclosureRecordPort(scope);
+ expect(await port.execute({...input,[field]:"   "},key)).toEqual({state:"rejected",message:"INVALID_REQUEST"});
+ expect(fetch).not.toHaveBeenCalled();expect(await port.reconcile(key)).toEqual({state:"rejected",message:"INVALID_REQUEST"});expect(fetch).not.toHaveBeenCalled();
+ expect(await port.execute(input,key)).toEqual({state:"accepted",value:saved});expect(fetch).toHaveBeenCalledTimes(2);
+});
 test("the shared 100-record envelope accepts its boundary and rejects overflow without truncation",async()=>{
  expect(MAX_DISCLOSURE_RECORDS).toBe(100);
  const rows=Array.from({length:MAX_DISCLOSURE_RECORDS},(_,index)=>({...saved,id:`00000000-0000-4000-8000-${String(index+100).padStart(12,"0")}`}));
