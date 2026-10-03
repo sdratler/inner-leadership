@@ -140,6 +140,11 @@ export interface RoutineRecap {
     nextStep: string;
     nextAppointment: NextAppointmentSnapshot | null;
 }
+/** Customer-visible content never includes account IDs used to authorize the
+ * immutable stored practice snapshot or its publication. */
+export type RecipientRoutineRecap = Omit<RoutineRecap, "practices"> & {
+    practices: readonly Omit<SharedPractice, "audienceAccountIds">[];
+};
 export interface SharedRecapRecord {
     id: string;
     workspaceId: string;
