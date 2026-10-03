@@ -95,6 +95,21 @@ it('does not show Saved before the persisted submission readback resolves',async
  resolve(Response.json({ok:true,data:[{...assignment,state:'submitted',submissionId:'receipt',submissionAuthorAccountId:parentId,submittedAt:'2026-10-01T12:00:00.000Z'}]}));await submitting;
  expect(text(render('parent'))).toContain('Saved');
 });
+it('confirms the exact assignment after newer assignments move it outside the capped case list',async()=>{
+ let submitted=false;
+ fetchMock.mockImplementation((url:string,init?:RequestInit)=>{
+  if(init?.method==='POST'){submitted=true;return Promise.resolve(Response.json({ok:true,data:{submissionId:'receipt'}}))}
+  if(submitted&&url.includes('/assignments')){
+   const targeted=new URL(url,'https://synthetic.example.invalid').searchParams.get('assignmentId')===assignment.id;
+   return Promise.resolve(Response.json({ok:true,data:targeted?[{...assignment,state:'submitted',submissionId:'receipt',submissionAuthorAccountId:parentId,submittedAt:'2026-10-01T12:00:00.000Z'}]:Array.from({length:100},(_,i)=>({...assignment,id:`newer-${i}`}))}));
+  }
+  return Promise.resolve(reads(url));
+ });
+ const output=fillParent(await ready('parent'));await submitForm(output)({preventDefault(){}});
+ expect(text(render('parent'))).toContain('Saved');expect(all(render('parent'),item=>item.type===FormField)).toHaveLength(0);
+ expect(fetchMock.mock.calls.some(([url])=>String(url).includes(`assignmentId=${assignment.id}`))).toBe(true);
+ expect(posts()).toHaveLength(1);
+});
 it('keys all pending forms state by role, language and authorized case',()=>{const view=FormsWorkspace({role:'parent',locale:'he',csrfToken:'c',cases:[{id:caseId,label:'Synthetic'}]});expect(view.key).toBe(`parent:he:${caseId}`)});
 it('assigns only explicitly chosen authorized template and respondent identifiers',async()=>{fetchMock.mockImplementation((url:string,init?:RequestInit)=>Promise.resolve(init?.method==='POST'?Response.json({ok:true,data:{assignmentId:assignment.id}}):reads(url)));let output=await ready();const selects=all(output,item=>item.type==='select');(selects[0]!.props.onChange as Change)({target:{value:templateId}});(selects[1]!.props.onChange as Change)({target:{value:parentId}});output=render();await submitForm(output,1)({preventDefault(){}});expect(JSON.parse(String((posts()[0]![1] as RequestInit).body))).toEqual({caseId,templateId,assignedAccountId:parentId,dueDate:null,postSubmissionAudienceId:null})});
 it('warns for a real template draft, then clears the entire saved draft instead of leaving a false dirty key',async()=>{
