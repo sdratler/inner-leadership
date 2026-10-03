@@ -15,7 +15,7 @@ export function WorkspaceShell({ locale, role, clientRole, pathname, caseId, aud
   const drawer = useRef<HTMLDialogElement>(null), trigger = useRef<HTMLButtonElement>(null), account = useRef<HTMLDetailsElement>(null);
   const drawerId = useId(), titleId = useId();
   const navigationContext=role==='practitioner'?workspaceContext({mode,date,view,context:effectiveSelectedClient&&caseId?'client':undefined}):{};
-  const href = (path: string) => toHref ? toHref(path) : workspaceHref(locale, path, caseId,navigationContext);
+  const href = (path: string) => toHref ? toHref(path) : workspaceHref(locale, path, caseId,navigationContext,role === 'practitioner' ? audienceId : undefined);
   const close = () => { drawer.current?.close(); trigger.current?.focus(); };
   useEffect(() => {
     const outside = (event: PointerEvent) => { if (event.target instanceof Node && account.current && !account.current.contains(event.target)) account.current.open = false; };
@@ -31,7 +31,9 @@ export function WorkspaceShell({ locale, role, clientRole, pathname, caseId, aud
   const contextHref = (entry: ContextItem) => {
     const url = new URL(href(entry.path), "https://private.invalid");
     for (const [key, value] of Object.entries(entry.query ?? {})) url.searchParams.set(key, value);
-    if(['app/reports','app/practice'].includes(entry.path)&&isCaseId(caseId)&&isCaseId(audienceId))url.searchParams.set('audienceId',audienceId);
+    if(['app/reports','app/practice'].includes(entry.path)&&isCaseId(caseId)&&isCaseId(audienceId)){
+      url.searchParams.delete('audienceId');url.searchParams.set('audienceId',audienceId);
+    }
     // Business receipts have no clinical case context; leave the selected case
     // only on this explicit global tab, never by inferring identity from phone.
     if(entry.key==="whatsapp"&&!clientContext){url.searchParams.delete("caseId");url.searchParams.delete("context");}
