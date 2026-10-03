@@ -9,6 +9,20 @@ import type {NativeContactRow} from "../../../src/features/contact-ops/server/na
 import {selectNativeContacts,type NativeContactReference} from "../../../src/features/contact-ops/server/native-directory.ts";
 import nextConfig from "../../../next.config.ts";
 const personId="00000000-0000-4000-8000-000000000001",fields={stage:"New inquiry",nextAction:"Synthetic next action",followUpDate:"2026-09-28",notes:"  Synthetic saved note\nהערה סינתטית שמורה  "};
+test.each(["he","en"] as const)("%s exact-stage choice is localized without changing its filter key",locale=>{
+ const row:NativeContactRow={personId,displayName:"Synthetic stage filter",identityKind:"adult",...fields,version:1,mode:"live",archived:false,doNotContact:false,references:[],caseLinks:[]};
+ const html=renderToStaticMarkup(createElement(NativePeopleWorkspace,{locale,view:"all",initial:{source:"native",authorityEpoch:3,page:{page:1,pages:1,pageSize:12,total:1,items:[row]}},initialFilters:{query:"",stage:"New inquiry",language:"",due:"any"},onSheet:()=>{}}));
+ expect(html).toContain(`<option value="New inquiry" selected="">${locale==="he"?"פנייה חדשה":"New inquiry"}</option>`);
+ expect(selectNativeContacts([row],{view:"all",search:"",stage:"New inquiry",today:"2026-10-03",page:1,pageSize:12}).items).toEqual([row]);
+ expect(row.stage).toBe("New inquiry");expect(html.match(/lsu-people-toolbar/g)).toHaveLength(1);
+});
+test.each(["constructor","toString","__proto__","__custom__","פנייה חדשה","  Practitioner-written stage  "])("exact-stage custom filter retains literal %s through deep-link initialization",stage=>{
+ const initialFilters=peopleFiltersFromQuery(new URLSearchParams({stage}));
+ expect(initialFilters.stage).toBe(stage);
+ const html=renderToStaticMarkup(createElement(NativePeopleWorkspace,{locale:"he",view:"all",initial:{source:"native",authorityEpoch:3,page:{page:1,pages:1,pageSize:12,total:0,items:[]}},initialFilters,onSheet:()=>{}}));
+ expect(html).toContain('<option value="__custom__" selected="">שלב מותאם מדויק</option>');
+ expect(html).toContain(`maxLength="120" value="${stage}"`);
+});
 test.each(["he","en"] as const)("%s native People labels are display-only in the list and profile",locale=>{
  const row:NativeContactRow={personId,displayName:"Synthetic person",identityKind:"adult",...fields,nextAction:"Respond to inbound WhatsApp inquiry",version:1,mode:"live",archived:false,doNotContact:false,references:[],caseLinks:[]};
  const props={locale,view:"all" as const,initial:{source:"native" as const,authorityEpoch:3,page:{page:1,pages:1,pageSize:12,total:1,items:[row]}},initialFilters:{query:"",stage:"New inquiry",language:"",due:"any" as const},onSheet:()=>{}};
