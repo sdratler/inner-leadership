@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { authoringReadback, readPracticeManagement, savePracticeAuthoring, type PracticeAuthoringCommand, type PracticeManagementData } from "../../../src/features/home-practice/management-client.ts";
+import { authoringReadback, practiceAudienceHref, readPracticeManagement, savePracticeAuthoring, type PracticeAuthoringCommand, type PracticeManagementData } from "../../../src/features/home-practice/management-client.ts";
 import { IdentityClientError } from "../../../src/features/identity/client.ts";
 import { asId } from "../../../src/lib/ids.ts";
 import type { ResponsibilityInput } from "../../../src/features/home-practice/responsibility-input.ts";
@@ -23,6 +23,31 @@ test("scheduled readback requires the actual native occurrence, source, coordina
   expect(authoringReadback(schedule,scheduled,{...data,scheduled:[scheduled]})).toBe(true);
   for(const changed of [{id:asId(uuid(99),"occurrence")},{practiceVersionId:asId(uuid(99),"practice_version")},{coordinationVersionId:asId(uuid(99),"coordination_version")},{occursAt:"2026-10-02T18:46:00.000Z"},{state:"cancelled" as const},{period:"evening" as const}])expect(authoringReadback(schedule,scheduled,{...data,scheduled:[{...scheduled,...changed}]})).toBe(false);
   expect(authoringReadback(schedule,scheduled,data)).toBe(false);
+});
+test.each(["en", "he"])("%s audience navigation keeps the current section and replaces stale or repeated scope keys", locale => {
+  const path = `/${locale}/app/practice`;
+  const next = practiceAudienceHref(path, `?section=commitments&context=client&caseId=${uuid(9)}&audienceId=${uuid(9)}&audienceId=${uuid(8)}`, scope.caseId, scope.audienceId);
+  const url = new URL(next, "https://synthetic.example.invalid");
+  expect(url.pathname).toBe(path); expect(url.searchParams.get("section")).toBe("commitments");
+  expect(url.searchParams.get("context")).toBe("client");
+  expect(url.searchParams.getAll("caseId")).toEqual([scope.caseId]);
+  expect(url.searchParams.getAll("audienceId")).toEqual([scope.audienceId]);
+  expect(new URL(practiceAudienceHref(path, "", scope.caseId, scope.audienceId), url).searchParams.get("audienceId")).toBe(scope.audienceId);
+});
+test("authoring requests newest bounded practitioner pages for goals and commitments", async () => {
+  const paths: string[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (path: string) => {
+    paths.push(path);
+    return Response.json({ ok: true, data: path.includes("home-practice") ? data.practice : [] });
+  }));
+  await readPracticeManagement(scope.caseId, scope.audienceId, new AbortController().signal);
+  expect(paths).toHaveLength(3);
+  for (const path of paths) {
+    const url = new URL(path, "https://synthetic.example.invalid");
+    expect(url.searchParams.get("view")).toBe("management");
+    expect(url.searchParams.get("caseId")).toBe(scope.caseId);
+    expect(url.searchParams.get("audienceId")).toBe(scope.audienceId);
+  }
 });
 test("readback requires exact assignment/version and saved text, scope and links", () => {
   const receipt = { assignmentId: uuid(4), versionId: uuid(5) };
