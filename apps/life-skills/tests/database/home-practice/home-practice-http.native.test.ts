@@ -19,6 +19,7 @@ import { CheckInService } from "../../../src/features/checkins/service.ts";
 import { HomePracticeService } from "../../../src/features/home-practice/service.ts";
 import { Ls040Http } from "../../../src/features/home-practice/http.ts";
 import { authoringReadback } from "../../../src/features/home-practice/management-client.ts";
+import { CaseService } from "../../../src/features/cases/service.ts";
 import { proxy } from "../../../src/proxy.ts";
 
 const opened: Fixture[] = [];
@@ -100,6 +101,20 @@ async function setup() {
   }
   return { f, config, sessions, practice, request, proxyRequest, listPath, draftInput, draft, publish, clientIdentity };
 }
+
+test("native unpublished audience discovery is owner-only and leaves shared reads unchanged", async () => {
+  const h = await setup(), { f } = h, cases = new CaseService(poolStore(f.pool), h.config, systemClock);
+  const draft = await cases.createAudience(f.practitioner.actor, f.first.id, { visibility: "private", published: false }, randomUUID());
+  const shared = [{ id: f.first.audienceId, visibility: "family_full", published: true }];
+  expect(await cases.audiences(f.practitioner.actor, f.first.id)).toEqual(shared);
+  expect(await cases.audiences(f.parent.actor, f.first.id)).toEqual(shared);
+  expect(await cases.audiences(f.practitioner.actor, f.first.id, "management")).toContainEqual({ id: draft.audienceId, visibility: "private", published: false });
+  for (const subject of [f.parent, f.outsider, await h.clientIdentity("child"), await h.clientIdentity("adult_client", f.second)])
+    await expect(cases.audiences(subject.actor, f.first.id, "management")).rejects.toMatchObject({ code: "NOT_FOUND" });
+  await expect(cases.audiences(f.practitioner.actor, asId(randomUUID(), "case"), "management")).rejects.toMatchObject({ code: "NOT_FOUND" });
+  await f.pool.query("UPDATE ls_identity.accounts SET state='revoked' WHERE workspace_id=$1 AND id=$2", [f.workspaceId, f.practitioner.actor.id]);
+  await expect(cases.audiences(f.practitioner.actor, f.first.id, "management")).rejects.toMatchObject({ code: "UNAUTHENTICATED" });
+});
 
 test.each(["goals", "commitments"] as const)("native authoring reads back the exact 101st %s without increasing the page bound", async kind => {
   const h = await setup(), { f } = h, store = poolStore(f.pool);
