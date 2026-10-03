@@ -7,6 +7,12 @@ import {recurrenceInput,recurrenceCommand,recurrencePlan,type RecurrenceInput,ty
 
 export interface PracticeAudience { id: string; published: boolean; visibility: "private" | "family_full" | "family_title_completion"; }
 export interface PracticeManagementData { practice: PracticeManagementPage; goals: GoalView[]; commitments: CommitmentView[];participants?:ResponsibilityParticipants;scheduled?:ScheduledOccurrence[]; }
+/** Keep section/case context while making the selected audience navigable. */
+export function practiceAudienceHref(pathname: string, search: string, caseId: string, audienceId: string): string {
+  const query = new URLSearchParams(search);
+  query.set("caseId", caseId); query.set("audienceId", audienceId);
+  return pathname + "?" + query;
+}
 const codes: readonly IdentityClientErrorCode[] = ["INVALID_REQUEST", "UNAUTHENTICATED", "FORBIDDEN", "NOT_FOUND", "CONFLICT", "RATE_LIMITED", "UNAVAILABLE", "INTERNAL"];
 async function request<T>(path: string, init: RequestInit, signal?: AbortSignal): Promise<T> {
   try {
@@ -25,7 +31,7 @@ export async function managementAudiences(caseId: string, signal: AbortSignal): 
   return rows;
 }
 export async function readPracticeManagement(caseId: string, audienceId: string, signal: AbortSignal): Promise<PracticeManagementData> {
-  const query = new URLSearchParams({ caseId, audienceId });
+  const query = new URLSearchParams({ view: "management", caseId, audienceId });
   const [practice, goals, commitments] = await Promise.all([
     request<PracticeManagementPage>("/api/home-practice?" + new URLSearchParams({ view: "management", caseId, audienceId }), { method: "GET" }, signal),
     request<GoalView[]>("/api/goals?" + query, { method: "GET" }, signal),
