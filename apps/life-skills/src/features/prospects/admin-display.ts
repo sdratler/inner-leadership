@@ -29,8 +29,11 @@ export function administrativeActionLabel(value: string, locale: Locale): string
 
 export function linkedInquiryTaskTitle(title: string, sourceKind: "crm_followup" | null, locale: Locale): string {
   if (locale !== "he" || sourceKind !== "crm_followup") return title;
-  const separator = " · ", split = title.lastIndexOf(separator);
-  if (split < 0) return title;
+  const separator = " · ", split = title.indexOf(separator);
+  // An old linked title has no separate action field. Only a single boundary
+  // can identify the complete app-owned phrase; never translate a fragment of
+  // custom action text (or a name that itself contains the separator).
+  if (split < 0 || split !== title.lastIndexOf(separator)) return title;
   const action = title.slice(split + separator.length);
   const label = administrativeActionLabel(action, locale);
   return label === action ? title : title.slice(0, split + separator.length) + label;
