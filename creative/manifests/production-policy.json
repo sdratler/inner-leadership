@@ -24,6 +24,21 @@
     "allow_crop": false,
     "hidden_semantics": "Exact equivalent of raster copy; no visible duplicate"
   },
+  "shareCards": {
+    "hebrewMasterId": "LS-OG-MASTER-HE",
+    "family": "minimal_link_preview_and_organic",
+    "preserveExactBytes": true,
+    "localizedOpenGraphRequired": true,
+    "crawlerVisibleServerRenderedMetadata": true,
+    "whatsappUnfurlRequiresActualPostReleaseVerification": true,
+    "fullStaticAdsRemainSeparate": true,
+    "fullStaticAdsRetain": [
+      "three_labeled_benefits",
+      "static_whatsapp_cta"
+    ],
+    "automaticWhatsAppReplies": false,
+    "generationRequiredForReviewedOrganicReuse": false
+  },
   "openart": {
     "projectName": "life skills",
     "defaultProjectForbidden": true,
