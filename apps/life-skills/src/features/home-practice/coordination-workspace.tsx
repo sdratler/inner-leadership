@@ -21,7 +21,7 @@ export function PracticeCoordinationWorkspace({locale,role,caseId,audienceId,ass
  // One application-side read at the known pending boundary; elapsed time is
  // monotonic, so a wrong device wall clock cannot move the effective deadline.
  useEffect(()=>{
-  if(!page||busy||attempt)return;const delay=coordinationRefreshDelay(page,performance.now()-frameReceived.current);if(delay===null)return;
+  if(!page||busy||attempt||error)return;const delay=coordinationRefreshDelay(page,performance.now()-frameReceived.current);if(delay===null)return;
   let cancelled=false;const controller=new AbortController();const timer=setTimeout(()=>{
    if(inFlight.current)return;inFlight.current=true;
    void readCoordination(assignmentId,caseId,audienceId,controller.signal).then(value=>{
@@ -30,7 +30,7 @@ export function PracticeCoordinationWorkspace({locale,role,caseId,audienceId,ass
    }).catch(failure=>{if(!cancelled){const next=failure instanceof IdentityClientError?failure.code:'UNAVAILABLE';setCode(next);setError(t.error);if(['UNAUTHENTICATED','FORBIDDEN','NOT_FOUND'].includes(next))setPage(null);}}).finally(()=>{inFlight.current=false;});
   },delay);
   return()=>{cancelled=true;clearTimeout(timer);controller.abort();};
- },[page,busy,attempt,dirty,assignmentId,caseId,audienceId,role,acceptPage,initialize,e.changed,t.error]);
+ },[page,busy,attempt,error,dirty,assignmentId,caseId,audienceId,role,acceptPage,initialize,e.changed,t.error]);
  const failed=(failure:unknown,message:string)=>{const value=failure instanceof IdentityClientError?failure.code:'UNAVAILABLE';setCode(value);setError(message);if(['UNAUTHENTICATED','FORBIDDEN','NOT_FOUND'].includes(value))setPage(null);};
  const load=async()=>{const value=await readCoordination(assignmentId,caseId,audienceId);if(value.role!==role)throw new IdentityClientError('NOT_FOUND');return value;};
  const refresh=async()=>{if(inFlight.current)return;inFlight.current=true;setBusy(true);try{const value=await load();if(!mounted.current)return;acceptPage(value);setChecked(true);const row=attempt?coordinationReadback(attempt.command,value,attempt.versionId):null;if(row){setAttempt(null);setDirty(false);initialize(value);setError('');setCode('');setNotice(t.saved);}else if(!attempt){if(dirty&&editingBase.current!==coordinationFrameKey(value)){setCode('CONFLICT');setError(e.changed);}else{setError('');setCode('');if(!dirty)initialize(value);}}}catch(failure){if(mounted.current)failed(failure,t.error);}finally{inFlight.current=false;if(mounted.current)setBusy(false);}};
