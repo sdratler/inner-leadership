@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { IdentityClientError, type IdentityClientErrorCode } from "../identity/client.ts";
 import { loginHref } from "../identity/login-return.ts";
@@ -34,7 +34,10 @@ export function PracticeOccurrenceWorkspace({ locale, role, caseId, audienceId, 
   const [selectedDate, setSelectedDate] = useState(() => civilDate(new Date().toISOString()));
   const [dateInput, setDateInput] = useState(selectedDate), [refresh, setRefresh] = useState(0);
   const start = from ?? selectedDate, end = to ?? shiftOccurrenceDay(start, 14), key = `${caseId ?? ""}|${audienceId ?? ""}|${start}|${end}`;
-  const [state, setState] = useState<{ key: string; status: "ready" | "error"; code?: string; page: PracticeOccurrencePage }>({ key: "", status: "ready", page: { items: [], hasMore: false } });
+  // A newly enabled layer must complete a fresh authorized read before exposing
+  // retained private data. Invalidate synchronously, not in a later effect.
+  const readBinding = useMemo(() => ({ key, readEnabled }), [key, readEnabled]);
+  const [state, setState] = useState<{ key: string; readBinding: typeof readBinding | null; status: "ready" | "error"; code?: string; page: PracticeOccurrencePage }>({ key: "", readBinding: null, status: "ready", page: { items: [], hasMore: false } });
   const dirty = useRef(new Set<string>());
   const [hasDirty, setHasDirty] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null), [calendarLocked, setCalendarLocked] = useState(false);
@@ -56,23 +59,23 @@ export function PracticeOccurrenceWorkspace({ locale, role, caseId, audienceId, 
     if (!caseId || !readEnabled) return;
     const controller = new AbortController();
     // Same-scope readback must not unmount another occurrence's unsaved form.
-    queueMicrotask(() => { if (!controller.signal.aborted) setState(previous => previous.key === key ? previous : { key: "", status: "ready", page: { items: [], hasMore: false } }); });
+    queueMicrotask(() => { if (!controller.signal.aborted) setState(previous => previous.key === key && previous.readBinding === readBinding ? previous : { key: "", readBinding: null, status: "ready", page: { items: [], hasMore: false } }); });
     void (async () => {
       occurrenceRange(start, end);
       const page = await practiceRangeOccurrences(caseId, audienceId, start, end, controller.signal);
-      if (!controller.signal.aborted) setState({ key, status: "ready", page });
+      if (!controller.signal.aborted) setState({ key, readBinding, status: "ready", page });
     })().catch(error => {
       if (controller.signal.aborted) return;
       if (error instanceof PracticeAudienceAccessError) {
-        setState(previous => ({ key, status: "error", code: "AUDIENCE_ACCESS_CHANGED", page: previous.key === key ? practiceAudienceLossPage(previous.page, error.audienceId) : { items: [], hasMore: false } }));
+        setState(previous => ({ key, readBinding, status: "error", code: "AUDIENCE_ACCESS_CHANGED", page: previous.key === key && previous.readBinding === readBinding ? practiceAudienceLossPage(previous.page, error.audienceId) : { items: [], hasMore: false } }));
         return;
       }
       const denied = practiceAccessLost(error);
       if (denied) { dirty.current.clear(); setHasDirty(false); onDirtyChange?.(false); }
-      setState(previous => ({ key, status: "error", code: error instanceof IdentityClientError ? error.code : "UNAVAILABLE", page: !denied && previous.key === key ? previous.page : { items: [], hasMore: false } }));
+      setState(previous => ({ key, readBinding, status: "error", code: error instanceof IdentityClientError ? error.code : "UNAVAILABLE", page: !denied && previous.key === key && previous.readBinding === readBinding ? previous.page : { items: [], hasMore: false } }));
     });
     return () => controller.abort();
-  }, [caseId, audienceId, start, end, key, refresh, refreshToken, onDirtyChange, readEnabled]);
+  }, [caseId, audienceId, start, end, key, refresh, refreshToken, onDirtyChange, readEnabled, readBinding]);
   const reload = useCallback(() => setRefresh(value => value + 1), []);
   const accessLost = useCallback((id: string, code: IdentityClientErrorCode) => {
     // Functional update also handles another card's concurrent readback. Never
@@ -81,7 +84,7 @@ export function PracticeOccurrenceWorkspace({ locale, role, caseId, audienceId, 
     setRefresh(value => value + 1);
   }, []);
   const returnPath = base + "/practice?" + new URLSearchParams({ section: "checkins", ...(caseId ? { caseId } : {}), ...(audienceId ? { audienceId } : {}) });
-  const calendarItems = readEnabled && caseId && state.key === key ? state.page.items : [];
+  const calendarItems = readEnabled && caseId && state.key === key && state.readBinding === readBinding ? state.page.items : [];
   const selected = calendarItems.find(item => item.occurrence.id === selectedId);
   useEffect(() => {
     if (!renderCalendar || !selectedId || selected) return;
@@ -99,7 +102,7 @@ export function PracticeOccurrenceWorkspace({ locale, role, caseId, audienceId, 
   return <section className="lsw-stack" aria-label={t.title} dir={locale === "he" ? "rtl" : "ltr"}>
     <UnsavedChangesGuard dirty={hasDirty} message={t.dirty} />
     {!from && <form className="lsw-toolbar" onSubmit={event => { event.preventDefault(); if (!event.currentTarget.checkValidity()) return; if (hasDirty && !window.confirm(t.dirty)) return; dirty.current.clear(); setHasDirty(false); onDirtyChange?.(false); setSelectedDate(dateInput); }}><Input id="practice-from" label={t.date} type="date" required value={dateInput} onChange={event => setDateInput(event.target.value)} /><Button type="submit">{t.go}</Button></form>}
-    {readEnabled && (!caseId ? <p>{t.choose}</p> : state.key !== key ? <p role="status">{t.loading}</p> : <>
+    {readEnabled && (!caseId ? <p>{t.choose}</p> : state.key !== key || state.readBinding !== readBinding ? <p role="status">{t.loading}</p> : <>
       {state.status === "error" && <div role="alert"><p>{state.code === "AUDIENCE_ACCESS_CHANGED" ? audienceChanged[locale] : state.code === "UNAUTHENTICATED" ? t.auth : ["FORBIDDEN", "NOT_FOUND"].includes(state.code ?? "") ? t.denied : t.error}</p>{state.code === "UNAUTHENTICATED" ? <a className="lsw-button lsw-button--secondary" href={loginHref(locale, returnPath)}>{t.signIn}</a> : <Button variant="secondary" onClick={reload}>{t.retry}</Button>}</div>}
       {!state.page.items.length ? state.status === "ready" && <p role="status">{t.empty}</p> : !renderCalendar && <div className="lsw-stack">{state.page.items.map(item => <PracticeOccurrenceCard key={key + ":" + item.occurrence.id} locale={locale} role={role} item={item} onReadback={reload} onAccessLost={accessLost} onDirty={dirtyChange} />)}</div>}
       {state.page.hasMore && <p role="status">{t.overflow}</p>}
