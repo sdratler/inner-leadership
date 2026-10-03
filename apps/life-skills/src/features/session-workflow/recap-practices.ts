@@ -46,7 +46,9 @@ export async function nativeRecapPracticeChoices(tx: SqlSession, actor: AccountF
   // anchor is scoped to this case; it is not a grant or a source of copied text.
   const rows = await tx.query<SourceRow>(sourceSql + ` AND ($3::uuid IS NULL OR (v.published_at,v.id)<(
    SELECT anchor.published_at,anchor.id FROM ls_practice.practice_assignment_versions anchor
-   WHERE anchor.workspace_id=$1 AND anchor.case_id=$2 AND anchor.id=$3))
+   JOIN ls_practice.practice_assignments anchor_assignment
+   ON anchor_assignment.workspace_id=anchor.workspace_id AND anchor_assignment.id=anchor.assignment_id
+   WHERE anchor.workspace_id=$1 AND anchor_assignment.case_id=$2 AND anchor.id=$3))
    ORDER BY v.published_at DESC,v.id LIMIT 21`, [actor.workspaceId, caseId, cursor??null]);
   const items: RecapPracticeChoice[] = [];
   for (const row of rows.slice(0, 20)) {
