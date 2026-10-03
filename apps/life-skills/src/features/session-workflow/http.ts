@@ -12,7 +12,7 @@ function recapId(value:unknown){const parsed=uuid.safeParse(value);if(!parsed.su
 const metricValue=z.strictObject({score:z.number().int().min(1).max(10).nullable(),notObservedReason:z.string().min(1).max(200).nullable(),note:z.string().max(1000)});
 const metricShape=Object.fromEntries(METRICS.map(item=>[item.id,metricValue])) as Record<(typeof METRICS)[number]["id"],typeof metricValue>;
 const observations=z.strictObject({values:z.strictObject(metricShape),expectedRevision:z.number().int().min(0)});
-const consent=z.strictObject({signedByAccountId:uuid,signedAt:z.string().datetime({offset:true}),authorityState:z.enum(["checked","needs_review","restricted"]),recordingAllowed:z.boolean(),transcriptionAllowed:z.boolean(),aiProcessingAllowed:z.boolean(),childInformed:z.boolean(),policyVersion:z.string().min(1).max(100),evidence:z.string().min(1).max(4000),expectedVersion:z.number().int().min(0).optional()});
+const consent=z.strictObject({signedByAccountId:uuid,signedAt:z.string().datetime({offset:true}),authorityState:z.enum(["checked","needs_review","restricted"]),recordingAllowed:z.boolean(),transcriptionAllowed:z.boolean(),aiProcessingAllowed:z.boolean(),childInformed:z.boolean(),policyVersion:z.string().min(1).max(100),evidence:z.string().min(1).max(4000),expectedVersion:z.number().int().min(0).max(2147483647)});
 const withdrawal=z.strictObject({expectedVersion:z.number().int().min(1)});
 function key(request:Request){const value=request.headers.get("idempotency-key")??"";if(!uuid.safeParse(value).success)throw new AppError("INVALID_REQUEST");return value;}
 export class SessionHttp {

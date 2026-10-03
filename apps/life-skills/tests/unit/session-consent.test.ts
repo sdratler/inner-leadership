@@ -15,6 +15,9 @@ const input: ConsentRecordInput = { signedByAccountId: signer, signedAt: "2026-0
 const saved: ConsentVersion = { ...scope, consentId, version: 1, signedByAccountId: signer, signedAt: input.signedAt, authorityState: input.authorityState, recordingAllowed: false, transcriptionAllowed: false, aiProcessingAllowed: false, childInformed: false, policyVersion: input.policyVersion, evidence: input.evidence, withdrawnAt: null };
 const receipt = { consentId, version: 1, permissionToRecord: false };
 const envelope = (data: unknown) => Response.json({ ok: true, data });
+it("does not treat an unversioned legacy consent input as verified saved readback", () => {
+  expect(consentRecordReadback(saved, scope.sessionId, receipt, { ...input, expectedVersion: undefined } as unknown as ConsentRecordInput)).toBe(false);
+});
 afterEach(() => vi.unstubAllGlobals());
 
 it("refreshes a pristine consent policy without treating the incoming record as an unsaved edit", () => {
