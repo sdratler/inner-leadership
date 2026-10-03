@@ -1,7 +1,8 @@
 import { createElement } from "react";
 import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
+vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: vi.fn(), push: vi.fn() }) }));
 import { PracticeAuthoringForm, PracticeManagementWorkspace } from "../../../src/features/home-practice/management-workspace.tsx";
 import {blankResponsibility} from "../../../src/features/home-practice/responsibility-editor.tsx";
 const draft = { title: "", reference: "", instructions: "Retained unsaved input", startsOn: "2026-10-02", endsOn: "", goalId: "", commitmentId: "", revision: null };
