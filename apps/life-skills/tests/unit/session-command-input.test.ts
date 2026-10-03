@@ -50,3 +50,8 @@ test.each(["scope","labels","revision","timestamp"])("speaker readback mismatch 
  vi.stubGlobal("fetch",vi.fn().mockResolvedValueOnce(Response.json({ok:true,data:receipt})).mockResolvedValueOnce(Response.json({ok:true,data:detail})));
  expect(await sessionSpeakerCommand(id).execute(input,key)).toEqual({state:"unknown"});
 });
+test("speaker receipt is confirmed from its protected historical version after a newer transcript arrives",async()=>{
+ const receipt={version:1,revision:1,recordedAt:"2026-10-01T21:00:00.000Z"},input={sessionId:id,transcriptVersion:1,expectedRevision:0,labels:{constructor:"DEMO — Historical correction"}};
+ const fetcher=vi.fn(async(path:string,options?:RequestInit)=>options?.method==="POST"?Response.json({ok:true,data:receipt}):Response.json({ok:true,data:{sessionId:id,privateRecords:{transcript:{version:path.endsWith('?transcriptVersion=1')?1:2,speakerHistory:{versions:[{revision:1,recordedAt:receipt.recordedAt,labels:input.labels}]}}}}}));
+ vi.stubGlobal("fetch",fetcher);expect(await sessionSpeakerCommand(id).execute(input,key)).toEqual({state:"accepted",value:receipt});expect(fetcher.mock.calls[1]![0]).toBe(`/api/sessions/${id}?transcriptVersion=1`);
+});
