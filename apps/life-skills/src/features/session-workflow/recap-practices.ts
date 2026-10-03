@@ -41,14 +41,21 @@ async function project(tx: SqlSession, actor: AccountFacts, caseId: string, row:
 }
 /** Read a bounded page of actual currently published timed versions. No AI,
  * scheduling, recipient grants or copied private session records. */
-export async function nativeRecapPracticeChoices(tx: SqlSession, actor: AccountFacts, caseId: string, ring: Keyring, now: Date) {
-  const rows = await tx.query<SourceRow>(sourceSql + " ORDER BY v.published_at DESC,v.id LIMIT 21", [actor.workspaceId, caseId]);
+export async function nativeRecapPracticeChoices(tx: SqlSession, actor: AccountFacts, caseId: string, ring: Keyring, now: Date, cursor?: string) {
+  // Page the raw bounded source, including skipped ineligible versions. The
+  // anchor is scoped to this case; it is not a grant or a source of copied text.
+  const rows = await tx.query<SourceRow>(sourceSql + ` AND ($3::uuid IS NULL OR (v.published_at,v.id)<(
+   SELECT anchor.published_at,anchor.id FROM ls_practice.practice_assignment_versions anchor
+   JOIN ls_practice.practice_assignments anchor_assignment
+   ON anchor_assignment.workspace_id=anchor.workspace_id AND anchor_assignment.id=anchor.assignment_id
+   WHERE anchor.workspace_id=$1 AND anchor_assignment.case_id=$2 AND anchor.id=$3))
+   ORDER BY v.published_at DESC,v.id LIMIT 21`, [actor.workspaceId, caseId, cursor??null]);
   const items: RecapPracticeChoice[] = [];
   for (const row of rows.slice(0, 20)) {
     try { items.push(await project(tx, actor, caseId, row, ring, now)); }
     catch (error) { if (!(error instanceof AppError) || !["NOT_FOUND", "CONFLICT"].includes(error.code)) throw error; }
   }
-  return { items, hasMore: rows.length > 20 };
+  return { items, hasMore: rows.length > 20, nextCursor: rows.length > 20 ? rows[19]!.versionId : null };
 }
 export async function reviewedNativeRecapPractices(tx: SqlSession, actor: AccountFacts, caseId: string, selections: readonly RecapPracticeSelection[], ring: Keyring, now: Date): Promise<SharedPractice[]> {
   if (selections.length > 20 || new Set(selections.map(row => row.versionId)).size !== selections.length) throw new AppError("INVALID_REQUEST");
