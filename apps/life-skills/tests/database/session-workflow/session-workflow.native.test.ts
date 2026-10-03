@@ -17,6 +17,25 @@ import {transcriptDigest,cleanWhitespace} from "../../../src/features/session-wo
 import type {Transcript,PrivateAnalysis} from "../../../src/features/session-workflow/types.ts";
 const opened:Fixture[]=[];afterEach(async()=>{await Promise.all(opened.splice(0).map(item=>item.pool.end()));});
 const scopedInput=(f:Fixture)=>({recipient:"DEMO — Synthetic authorized school contact",purpose:"Synthetic agreed classroom support",topic:"Only the agreed grounding practice",authorityBasis:"DEMO — Actual synthetic signed scope, authority checked and no restrictions recorded. Not a legal certificate.",authorityState:"checked" as const,channel:"phone" as const,authorizedByAccountId:f.parent.actor.id,childDiscussionRecorded:true,authorizedAt:f.at(-24),expiresAt:f.at(24)});
+test("the bounded disclosure history rejects its 101st record atomically while replay, reading, use and revocation remain available",async()=>{
+ const s=await httpFixture(),sessionId=(await s.service.ensureForAppointment(s.f.practitioner.actor,s.f.first.id,await s.f.seed(s.f.at(-24)))).sessionId,path=`/${sessionId}/disclosures`,input=scopedInput(s.f);
+ for(let index=0;index<99;index++)await s.service.authorizeDisclosure(s.f.practitioner.actor,sessionId,{...input,recipient:`DEMO — Synthetic recipient ${index}`},randomUUID());
+ const attempts=[randomUUID(),randomUUID()].map(key=>({key,input:{...input,recipient:`DEMO — Synthetic capacity ${key}`}}));
+ const outcomes=await Promise.all(attempts.map(async attempt=>({attempt,response:await s.http.handle(s.request(path,attempt.input,s.f.practitioner.token,attempt.key),[sessionId,"disclosures"])})));
+ expect(outcomes.map(result=>result.response.status).sort()).toEqual([201,409]);
+ const accepted=outcomes.find(result=>result.response.status===201)!,denied=outcomes.find(result=>result.response.status===409)!,receipt=(await accepted.response.json()).data;
+ const replay=await s.http.handle(s.request(path,accepted.attempt.input,s.f.practitioner.token,accepted.attempt.key),[sessionId,"disclosures"]);expect(replay.status).toBe(201);expect((await replay.json()).data).toEqual(receipt);
+ const stored=async()=>(await s.f.pool.query('SELECT * FROM ls_sessions.disclosure_authorizations WHERE workspace_id=$1 AND case_id=$2 AND session_id=$3 ORDER BY id',[s.f.workspaceId,s.f.first.id,sessionId])).rows;
+ const before=await stored();expect(before).toHaveLength(100);
+ const retryDenied=await s.http.handle(s.request(path,denied.attempt.input,s.f.practitioner.token,denied.attempt.key),[sessionId,"disclosures"]);expect(retryDenied.status).toBe(409);expect(await stored()).toEqual(before);
+ expect((await s.f.pool.query("SELECT count(*)::integer AS n FROM ls_sessions.command_receipts WHERE workspace_id=$1 AND operation='authorize_disclosure'",[s.f.workspaceId])).rows[0].n).toBe(100);
+ expect((await s.f.pool.query("SELECT count(*)::integer AS n FROM ls_sessions.command_receipts WHERE workspace_id=$1 AND idempotency_key=$2",[s.f.workspaceId,denied.attempt.key])).rows[0].n).toBe(0);
+ const read=await s.http.handle(s.request(path),[sessionId,"disclosures"]);expect(read.status).toBe(200);expect((await read.json()).data).toHaveLength(100);
+ const usedAt=s.f.at(-1),used=await s.service.recordDisclosureUse(s.f.practitioner.actor,sessionId,receipt.disclosureId,{usedAt},randomUUID());expect(used.usedAt).toBe(usedAt);
+ await s.service.revokeDisclosure(s.f.practitioner.actor,sessionId,receipt.disclosureId,{expectedUsedAt:usedAt},randomUUID());
+ const after=await s.service.disclosures(s.f.practitioner.actor,sessionId);expect(after).toHaveLength(100);expect(after.find(item=>item.id===receipt.disclosureId)).toMatchObject({usedAt,effective:false});
+ expect((await stored()).filter(row=>row.id!==receipt.disclosureId)).toEqual(before.filter(row=>row.id!==receipt.disclosureId));
+},60_000);
 test("real scoped disclosure writers preserve encrypted scope, exact readback, replay, use and revocation without delivery",async()=>{
  const s=await httpFixture(),sessionId=(await s.service.ensureForAppointment(s.f.practitioner.actor,s.f.first.id,await s.f.seed(s.f.at(-24)))).sessionId,path=`/${sessionId}/disclosures`,input=scopedInput(s.f),key=randomUUID();
  const first=await s.http.handle(s.request(path,input,s.f.practitioner.token,key),[sessionId,"disclosures"]);expect(first.status).toBe(201);const receipt=(await first.json()).data;
