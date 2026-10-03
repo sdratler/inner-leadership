@@ -24,6 +24,14 @@ test("publication must read back its exact version, recipient set, source digest
  expect(await port.execute(share,publicationId)).toEqual({state:"unknown"});expect(await port.reconcile(publicationId)).toEqual({state:"accepted",value:receipt});expect(fetcher.mock.calls[0]![1]).toEqual(fetcher.mock.calls[2]![1]);expect(fetcher.mock.calls[1]![0]).toBe(`/api/sessions/${id}/publications/${publicationId}`);
  for(const wrong of [{...proof,recipientAccountIds:[id]},{...proof,contentDigest:"b".repeat(64)},{...proof,sharedAt:"2026-10-02T11:00:00Z"},{...proof,recap:{...recap,version:2}},{...proof,caseId:id}]){fetcher.mockResolvedValueOnce(response(receipt,201)).mockResolvedValueOnce(response(wrong));expect(await sessionRecapShareCommand(id).execute(share,publicationId)).toEqual({state:"unknown"});}
 });
+test("practice paging retains the requested cursor and rejects malformed or unpageable envelopes",async()=>{
+ const fetcher=vi.fn().mockResolvedValueOnce(response({items:[],hasMore:true,nextCursor:person})).mockResolvedValueOnce(response({items:[],hasMore:false,nextCursor:null}));vi.stubGlobal("fetch",fetcher);
+ expect((await sessionRecapPracticeChoices(id)).nextCursor).toBe(person);
+ expect((await sessionRecapPracticeChoices(id,undefined,person)).hasMore).toBe(false);expect(fetcher.mock.calls[1]![0]).toBe(`/api/sessions/${id}/practice-choices?cursor=${person}`);
+ await expect(sessionRecapPracticeChoices(id,undefined,'constructor')).rejects.toThrow();expect(fetcher).toHaveBeenCalledTimes(2);
+ fetcher.mockResolvedValueOnce(response({items:[],hasMore:true}));await expect(sessionRecapPracticeChoices(id)).rejects.toThrow();
+});
+
 test("strict projections deny invented selectors before writes and preview checks exact selected audience",async()=>{
  const fetcher=vi.fn();vi.stubGlobal("fetch",fetcher);expect(await sessionRecapCommand(id).execute({...input,sessionId:person},publicationId)).toMatchObject({state:"rejected"});expect(await sessionRecapShareCommand(id).execute({...share,recipientAccountIds:[person,person]},publicationId)).toMatchObject({state:"rejected"});expect(fetcher).not.toHaveBeenCalled();
  fetcher.mockResolvedValueOnce(response({recap,digest,recipients:[{accountId:person,name:"DEMO — Parent"}]}));expect((await sessionRecapPreview(id,1,[person])).recipients).toHaveLength(1);expect(fetcher.mock.calls[0]![0]).toBe(`/api/sessions/${id}/recap-preview?version=1&recipient=${person}`);
