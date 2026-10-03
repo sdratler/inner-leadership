@@ -13,7 +13,7 @@ const metricShape=Object.fromEntries(METRICS.map(item=>[item.id,metricValue])) a
 const observations=z.strictObject({values:z.strictObject(metricShape),expectedRevision:z.number().int().min(0)});
 const recap=z.strictObject({locale:z.enum(["en","he"]),focus:z.array(z.enum(FOCUS)).max(3),nextStep:z.string().max(300),expectedVersion:z.number().int().min(0)});
 const share=z.strictObject({expectedVersion:z.number().int().min(1),expectedDigest:z.string().regex(/^[a-f0-9]{64}$/),recipientAccountIds:z.array(uuid).min(1).max(8)});
-const consent=z.strictObject({signedByAccountId:uuid,signedAt:z.string().datetime({offset:true}),authorityState:z.enum(["checked","needs_review","restricted"]),recordingAllowed:z.boolean(),transcriptionAllowed:z.boolean(),aiProcessingAllowed:z.boolean(),childInformed:z.boolean(),policyVersion:z.string().min(1).max(100),evidence:z.string().min(1).max(4000),expectedVersion:z.number().int().min(0).optional()});
+const consent=z.strictObject({signedByAccountId:uuid,signedAt:z.string().datetime({offset:true}),authorityState:z.enum(["checked","needs_review","restricted"]),recordingAllowed:z.boolean(),transcriptionAllowed:z.boolean(),aiProcessingAllowed:z.boolean(),childInformed:z.boolean(),policyVersion:z.string().min(1).max(100),evidence:z.string().min(1).max(4000),expectedVersion:z.number().int().min(0).max(2147483647)});
 const withdrawal=z.strictObject({expectedVersion:z.number().int().min(1)});
 function key(request:Request){const value=request.headers.get("idempotency-key")??"";if(!uuid.safeParse(value).success)throw new AppError("INVALID_REQUEST");return value;}
 export class SessionHttp {
