@@ -17,6 +17,7 @@ export const navigationGroups: Record<WorkspaceRole, readonly NavGroup[]> = {
 const context = (key: string, path: string, en: string, he: string, query?: Record<string,string>): ContextItem => ({ key, path, en, he, ...(query ? { query } : {}) });
 /** Context links are views within the selected workspace section, never a second global menu. */
 export function practitionerContext(pathname: string, caseId: string | null, selectedClient=false): readonly ContextItem[] {
+  if (pathname.endsWith("/app/practice")) return [context("practice","app/practice","Instructions","הנחיות"),context("goals","app/practice","Goals","מטרות",{section:"goals"}),context("commitments","app/practice","Commitments","מחויבויות",{section:"commitments"}),context("checkins","app/practice","Check-ins","דיווחים",{section:"checkins"})];
   if (caseId && (selectedClient || /\/app\/cases\/[0-9a-f-]{36}(?:\/|$)/i.test(pathname))) {
     const base = `app/cases/${caseId}`;
     const query={caseId,context:"client"};
@@ -56,10 +57,13 @@ export function workspaceContext(query:Record<string,unknown>,strict=false):Work
   }
   return result;
 }
-export function workspaceHref(locale: Locale, path: string, caseId?: string | null, context:WorkspaceContext={}): string {
+export function workspaceHref(locale: Locale, path: string, caseId?: string | null, context:WorkspaceContext={}, audienceId?: string | null): string {
   if (!/^(app|family|client)(?:\/[a-zA-Z0-9_-]+)*$/.test(path)) throw new Error("INVALID_WORKSPACE_PATH");
   const query=new URLSearchParams();if(isCaseId(caseId))query.set('caseId',caseId);
   if(path==='app'||path.startsWith('app/'))for(const [key,value] of Object.entries(workspaceContext(context)))if(key!=='context'||isClientWorkspacePath(path))query.set(key,value);
+  // The same audience hint belongs on section tabs and their breadcrumbs, not
+  // on unrelated global destinations. Actual access is rechecked server-side.
+  if (isCaseId(caseId) && isCaseId(audienceId) && ['app/practice','app/reports'].includes(path)) query.set('audienceId',audienceId);
   return `/${locale}/${path}`+(query.size?'?'+query.toString():'');
 }
 export function caseDestinationHref(locale: Locale, path: string, caseId: string): string {
@@ -74,7 +78,7 @@ export function settingsItems(role: WorkspaceRole): readonly NavItem[] {
 }
 export function activeItem(pathname: string, locale: Locale, role: WorkspaceRole): NavItem | undefined {
   const path = pathname.replace(new RegExp(`^/${locale}/`), "").replace(/\/$/, "");
-  if (/^app\/cases\//.test(path)) return primaryNavigation.practitioner.find(x => x.key === "clients");
+  if (/^app\/cases\//.test(path) || role === "practitioner" && path === "app/practice") return primaryNavigation.practitioner.find(x => x.key === "clients");
   if (path === "app/prospects") return primaryNavigation.practitioner.find(x => x.key === "clients");
   return [...primaryNavigation[role], ...navigationGroups[role].flatMap(g => g.items), ...settingsItems(role), ...(role === "practitioner" ? [item("private-notes","app/private-notes","Private case notes","רשימות פרטיות בתיק")] : [])].find(x => x.path === path);
 }
@@ -96,6 +100,10 @@ export function breadcrumbItems(locale: Locale, role: WorkspaceRole, pathname: s
       return [home,{label:locale==="he"?"אנשים":"People",path:"app/clients"},{label:locale==="he"?"התיק הנבחר":"Selected case",path:`app/cases/${id}`},sessions,...(pathname.endsWith('/sessions')?[]:[{label:locale==='he'?'רשומת מפגש':'Session record'}])];
     }
     return [home, { label: locale === "he" ? "אנשים" : "People", path: "app/clients" }, { label: locale === "he" ? "התיק הנבחר" : "Selected case" }];
+  }
+  if(role==="practitioner"&&pathname.endsWith("/app/practice")){
+    const child=practitionerContext(pathname,caseId??null).find(item=>item.key===(section??"practice"));
+    return [home,{label:locale==="he"?"אנשים":"People",path:"app/clients"},...(isCaseId(caseId)?[{label:locale==="he"?"התיק הנבחר":"Selected case",path:`app/cases/${caseId}`}]:[]),{label:locale==="he"?"תרגול ביתי":"Home practice",path:"app/practice"},{label:child?.[locale]??(locale==="he"?"הנחיות":"Instructions")}];
   }
   if(role==="practitioner"&&selectedClient&&isCaseId(caseId)){
     const key=pathname.includes("/app/calendar")?"calendar":pathname.includes("/app/practice")?"practice":pathname.includes("/app/feedback")?"communications":pathname.includes("/app/reports")?"reports":pathname.includes("/app/forms")?"forms":"overview";

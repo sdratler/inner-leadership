@@ -14,7 +14,7 @@ export function WorkspaceShell({ locale, role, pathname, caseId, audienceId, sel
   const drawer = useRef<HTMLDialogElement>(null), trigger = useRef<HTMLButtonElement>(null), account = useRef<HTMLDetailsElement>(null);
   const drawerId = useId(), titleId = useId();
   const navigationContext=role==='practitioner'?workspaceContext({mode,date,view,context:effectiveSelectedClient&&caseId?'client':undefined}):{};
-  const href = (path: string) => toHref ? toHref(path) : workspaceHref(locale, path, caseId,navigationContext);
+  const href = (path: string) => toHref ? toHref(path) : workspaceHref(locale, path, caseId,navigationContext,role === 'practitioner' ? audienceId : undefined);
   const close = () => { drawer.current?.close(); trigger.current?.focus(); };
   useEffect(() => {
     const outside = (event: PointerEvent) => { if (event.target instanceof Node && account.current && !account.current.contains(event.target)) account.current.open = false; };
@@ -25,11 +25,13 @@ export function WorkspaceShell({ locale, role, pathname, caseId, audienceId, sel
   const link = (entry: NavItem) => <a className="lsu-nav-link" key={entry.key} href={href(entry.path)} aria-current={active?.key === entry.key ? "page" : undefined}>{entry[locale]}</a>;
   const clientContext = Boolean(caseId && (effectiveSelectedClient || pathname.includes("/app/cases/")));
   const contextItems = role === "practitioner" ? practitionerContext(pathname, caseId ?? null, clientContext) : primaryNavigation[role];
-  const currentContext = clientContext ? pathname.endsWith("/settings") ? "access" : pathname.includes("/sessions") ? "sessions" : pathname.includes("/app/calendar") ? "calendar" : pathname.includes("/app/practice") ? "practice" : pathname.includes("/app/feedback") ? "communications" : pathname.includes("/app/reports") ? "reports" : pathname.includes("/app/forms") ? "forms" : "overview" : pathname.includes("/app/calendar") ? (view ?? "week") : pathname.includes("/app/clients") || pathname.includes("/app/prospects") ? (section ?? "all") : section ?? (pathname.includes("/app/reports") ? "drafts" : pathname.includes("/app/feedback") ? "app_updates" : "overview");
+  const currentContext = pathname.endsWith("/app/practice") ? (section ?? "practice") : clientContext ? pathname.endsWith("/settings") ? "access" : pathname.includes("/sessions") ? "sessions" : pathname.includes("/app/calendar") ? "calendar" : pathname.includes("/app/feedback") ? "communications" : pathname.includes("/app/reports") ? "reports" : pathname.includes("/app/forms") ? "forms" : "overview" : pathname.includes("/app/calendar") ? (view ?? "week") : pathname.includes("/app/clients") || pathname.includes("/app/prospects") ? (section ?? "all") : section ?? (pathname.includes("/app/reports") ? "drafts" : pathname.includes("/app/feedback") ? "app_updates" : "overview");
   const contextHref = (entry: ContextItem) => {
     const url = new URL(href(entry.path), "https://private.invalid");
     for (const [key, value] of Object.entries(entry.query ?? {})) url.searchParams.set(key, value);
-    if(entry.path==='app/reports'&&isCaseId(caseId)&&isCaseId(audienceId))url.searchParams.set('audienceId',audienceId);
+    if(['app/reports','app/practice'].includes(entry.path)&&isCaseId(caseId)&&isCaseId(audienceId)){
+      url.searchParams.delete('audienceId');url.searchParams.set('audienceId',audienceId);
+    }
     // Business receipts have no clinical case context; leave the selected case
     // only on this explicit global tab, never by inferring identity from phone.
     if(entry.key==="whatsapp"&&!clientContext){url.searchParams.delete("caseId");url.searchParams.delete("context");}

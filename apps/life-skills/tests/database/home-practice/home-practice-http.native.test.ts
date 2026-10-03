@@ -18,6 +18,8 @@ import { CommitmentService } from "../../../src/features/commitments/service.ts"
 import { CheckInService } from "../../../src/features/checkins/service.ts";
 import { HomePracticeService } from "../../../src/features/home-practice/service.ts";
 import { Ls040Http } from "../../../src/features/home-practice/http.ts";
+import { authoringReadback } from "../../../src/features/home-practice/management-client.ts";
+import { CaseService } from "../../../src/features/cases/service.ts";
 import { proxy } from "../../../src/proxy.ts";
 
 const opened: Fixture[] = [];
@@ -99,6 +101,103 @@ async function setup() {
   }
   return { f, config, sessions, practice, request, proxyRequest, listPath, draftInput, draft, publish, clientIdentity };
 }
+
+test("native unpublished audience discovery is owner-only and leaves shared reads unchanged", async () => {
+  const h = await setup(), { f } = h, cases = new CaseService(poolStore(f.pool), h.config, systemClock);
+  const draft = await cases.createAudience(f.practitioner.actor, f.first.id, { visibility: "private", published: false }, randomUUID());
+  const shared = [{ id: f.first.audienceId, visibility: "family_full", published: true }];
+  expect(await cases.audiences(f.practitioner.actor, f.first.id)).toEqual(shared);
+  expect(await cases.audiences(f.parent.actor, f.first.id)).toEqual(shared);
+  expect(await cases.audiences(f.practitioner.actor, f.first.id, "management")).toContainEqual({ id: draft.audienceId, visibility: "private", published: false });
+  for (const subject of [f.parent, f.outsider, await h.clientIdentity("child"), await h.clientIdentity("adult_client", f.second)])
+    await expect(cases.audiences(subject.actor, f.first.id, "management")).rejects.toMatchObject({ code: "NOT_FOUND" });
+  await expect(cases.audiences(f.practitioner.actor, asId(randomUUID(), "case"), "management")).rejects.toMatchObject({ code: "NOT_FOUND" });
+  await f.pool.query("UPDATE ls_identity.accounts SET state='revoked' WHERE workspace_id=$1 AND id=$2", [f.workspaceId, f.practitioner.actor.id]);
+  await expect(cases.audiences(f.practitioner.actor, f.first.id, "management")).rejects.toMatchObject({ code: "UNAUTHENTICATED" });
+});
+
+test.each(["goals", "commitments"] as const)("native authoring reads back the exact 101st %s without increasing the page bound", async kind => {
+  const h = await setup(), { f } = h, store = poolStore(f.pool);
+  const goals = new GoalService(store, h.config, systemClock), commitments = new CommitmentService(store, h.config, systemClock);
+  const scope = { caseId: f.first.id, audienceId: f.first.audienceId };
+  const linkedGoal = kind === "commitments" ? await goals.create(f.practitioner.actor, { ...scope, title: "Synthetic linked goal" }, randomUUID()) : null;
+  // Normal retained services create encrypted, authorized records; fixture setup
+  // does not reset the HTTP rate counter or introduce a permissive adapter.
+  for (let index = 0; index < 100; index++) {
+    const input = { ...scope, title: `Synthetic previous ${index}` };
+    if (linkedGoal) await commitments.create(f.practitioner.actor, { ...input, goalId: linkedGoal.id }, randomUUID());
+    else await goals.create(f.practitioner.actor, input, randomUUID());
+  }
+  const input = { ...scope, title: "Synthetic exact 101st receipt", ...(linkedGoal ? { goalId: linkedGoal.id } : {}) };
+  const posted = await h.proxyRequest("POST", `/api/${kind}`, input); expect(posted.status).toBe(201);
+  const receipt = (await posted.json()).data;
+  const path = h.listPath(f.first, kind) + "&view=management";
+  const read = await h.proxyRequest("GET", path); expect(read.status).toBe(200);
+  expect(read.headers.get("cache-control")).toBe("private, no-store");
+  const rows = (await read.json()).data; expect(rows).toHaveLength(100);
+  expect(authoringReadback({ action: kind === "goals" ? "goal" : "commitment", ...input } as Parameters<typeof authoringReadback>[0], receipt,
+    { practice: { items: [], hasMore: false }, goals: kind === "goals" ? rows : [], commitments: kind === "commitments" ? rows : [] })).toBe(true);
+  const expected = await f.pool.query(`SELECT id FROM ls_practice.${kind} WHERE workspace_id=$1 AND case_id=$2 AND audience_id=$3 ORDER BY created_at DESC,id DESC LIMIT 100`, [f.workspaceId, scope.caseId, scope.audienceId]);
+  expect(rows.map((row: { id: string }) => row.id)).toEqual(expected.rows.map(row => row.id));
+  // The original shared/customer read keeps its ordering and excludes the new
+  // 101st item rather than silently changing existing consumers' filter keys.
+  for (const subject of [f.practitioner, f.parent]) {
+    const shared = await h.proxyRequest("GET", h.listPath(f.first, kind), undefined, subject.token); expect(shared.status).toBe(200);
+    const sharedRows = (await shared.json()).data; expect(sharedRows).toHaveLength(100);
+    const prior = await f.pool.query(`SELECT id FROM ls_practice.${kind} WHERE workspace_id=$1 AND case_id=$2 AND audience_id=$3 ORDER BY created_at,id LIMIT 100`, [f.workspaceId, scope.caseId, scope.audienceId]);
+    expect(sharedRows.map((row: { id: string }) => row.id)).toEqual(prior.rows.map(row => row.id));
+    expect(sharedRows.some((row: { id: string }) => row.id === receipt.id)).toBe(false);
+  }
+  expect((await f.pool.query(`SELECT count(*)::int AS n FROM ls_practice.${kind} WHERE workspace_id=$1 AND case_id=$2 AND audience_id=$3`, [f.workspaceId, scope.caseId, scope.audienceId])).rows[0].n).toBe(101);
+});
+
+test.each(["goals", "commitments"] as const)("native %s management reads enforce owner scope, revocation and exact query validation", async kind => {
+  const h = await setup(), { f } = h;
+  const path = h.listPath(f.first, kind) + "&view=management";
+  for (const subject of [f.parent, f.outsider, await h.clientIdentity("child"), await h.clientIdentity("adult_client", f.second)])
+    expect((await h.proxyRequest("GET", path, undefined, subject.token)).status).toBe(404);
+  expect((await h.proxyRequest("GET", path, undefined, null)).status).toBe(401);
+  expect((await h.proxyRequest("GET", path.replace(f.first.id, f.second.id))).status).toBe(404);
+  expect((await h.proxyRequest("GET", path.replace(f.first.audienceId, f.second.audienceId))).status).toBe(404);
+  for (const invalid of [path + "&unknown=1", path + "&view=management", path.replace("view=management", "view=shared"), path.replace("view=management", "view="), path + "&caseId=" + f.first.id])
+    expect((await h.proxyRequest("GET", invalid)).status).toBe(400);
+  // Unpublished/private audiences remain authorable only by the actual owner.
+  await f.pool.query("UPDATE ls_cases.audiences SET published=false,visibility='private' WHERE workspace_id=$1 AND case_id=$2 AND id=$3", [f.workspaceId, f.first.id, f.first.audienceId]);
+  expect((await h.proxyRequest("GET", path)).status).toBe(200);
+  expect((await h.proxyRequest("GET", path, undefined, f.parent.token)).status).toBe(404);
+  await f.pool.query("UPDATE ls_identity.accounts SET state='revoked' WHERE workspace_id=$1 AND id=$2", [f.workspaceId, f.practitioner.actor.id]);
+  expect((await h.proxyRequest("GET", path)).status).toBe(401);
+});
+
+test("native practitioner authoring reads saved drafts and exact active versions without exposing drafts to clients", async () => {
+  const h = await setup(), { f } = h, saved = await h.draft();
+  const path = `/api/home-practice?view=management&caseId=${f.first.id}&audienceId=${f.first.audienceId}`;
+  const read = await h.proxyRequest("GET", path);
+  expect(read.status).toBe(200); expect(read.headers.get("cache-control")).toBe("private, no-store");
+  expect((await read.json()).data).toMatchObject({ hasMore: false, items: [{ ...saved, state: "draft", active: false, instructions: h.draftInput().instructions, publishedAt: null }] });
+  expect((await (await h.request("GET", h.listPath(), undefined, f.parent.token)).json()).data).toEqual([]);
+  for (const subject of [f.parent, f.outsider, await h.clientIdentity("child")])
+    expect((await h.request("GET", path, undefined, subject.token)).status).toBe(404);
+  expect((await h.request("GET", path, undefined, null)).status).toBe(401);
+  expect((await h.request("GET", path.replace(f.first.id, f.second.id))).status).toBe(404);
+  expect((await h.request("GET", path + "&unknown=1")).status).toBe(400);
+  expect((await h.request("POST", "/api/home-practice", { action: "publish", ...saved })).status).toBe(201);
+  const revision = await h.request("POST", "/api/home-practice", { action: "revise", assignmentId: saved.assignmentId, instructions: "Synthetic reviewed revision", startsOn: h.draftInput().startsOn });
+  expect(revision.status).toBe(201); const revised = (await revision.json()).data;
+  const versions = (await (await h.request("GET", path)).json()).data.items;
+  expect(versions).toEqual(expect.arrayContaining([
+    expect.objectContaining({ versionId: saved.versionId, state: "published", active: true, instructions: h.draftInput().instructions }),
+    expect.objectContaining({ versionId: revised.versionId, state: "draft", active: false, instructions: "Synthetic reviewed revision" }),
+  ]));
+  const childRead = (await (await h.request("GET", h.listPath(), undefined, f.parent.token)).json()).data;
+  expect(childRead).toHaveLength(1); expect(childRead[0].versionId).toBe(saved.versionId);
+  expect((await h.request("POST", "/api/home-practice", { action: "publish", assignmentId: saved.assignmentId, versionId: revised.versionId })).status).toBe(201);
+  const published = (await (await h.request("GET", path)).json()).data.items;
+  expect(published.find((v: { versionId: string }) => v.versionId === saved.versionId).active).toBe(false);
+  expect(published.find((v: { versionId: string }) => v.versionId === revised.versionId).active).toBe(true);
+  await f.pool.query("UPDATE ls_identity.accounts SET state='revoked' WHERE workspace_id=$1 AND id=$2", [f.workspaceId, f.practitioner.actor.id]);
+  expect((await h.request("GET", path)).status).toBe(401);
+});
 
 test.each(["parent", "child", "adult_client"] as const)("native %s occurrence read returns frozen instructions and only its own latest check-in", async role => {
   const h = await setup(), { f } = h;
