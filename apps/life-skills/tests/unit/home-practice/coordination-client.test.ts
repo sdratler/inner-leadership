@@ -8,7 +8,7 @@ const account=asId('123e4567-e89b-12d3-a456-426614174000','account'),other=asId(
 const actor:AccountFacts={id:account,workspaceId:workspace,personId:person,role:'adult_client',state:'active',locale:'en'};
 const item={id:caseId,workspaceId:workspace,clientPersonId:person,practitionerAccountId:other,kind:'adult' as const,state:'active' as const};
 const audience={id:audienceId,workspaceId:workspace,caseId,visibility:'family_full' as const,published:true,accountIds:[account,other]};
-const page:PracticeCoordinationPage={ownAccountId:account,role:'adult_client',eligibleAccountIds:[account],asOf:'2026-10-01T12:00:00Z',currentVersion:null,hasMore:false,versions:[]};
+const page:PracticeCoordinationPage={ownAccountId:account,role:'adult_client',eligibleAccountIds:[account],asOf:'2026-10-01T12:00:00Z',currentVersion:null,nextEffectiveFrom:null,hasMore:false,versions:[]};
 afterEach(()=>{vi.unstubAllGlobals();vi.restoreAllMocks();});
 test('native child responsibility reads real assisted actors and separate reminder routing without granting parent coordination',async()=>{
  const source=asId('123e4567-e89b-12d3-a456-426614174008','practice_version'),third=asId('123e4567-e89b-12d3-a456-426614174009','account');
@@ -41,7 +41,13 @@ test('effective-frame comparison ignores clock/history churn but detects changed
 });
 test('pending refresh is relative to the server frame and monotonic elapsed time, with no wall-clock dependency',()=>{
  const future={versionId:version,assignmentId:assignment,caseId,audienceId,assigneeAccountIds:[account],completionMode:'any_assignee' as const,reminderCandidateAccountIds:[],effectiveFrom:'2026-10-01T12:01:00Z',changedByAccountId:account};
- expect(coordinationRefreshDelay({...page,versions:[future]},10_000)).toBe(50_100);expect(coordinationRefreshDelay({...page,versions:[future]},70_000)).toBe(100);expect(coordinationRefreshDelay(page,0)).toBeNull();
+ expect(coordinationRefreshDelay({...page,nextEffectiveFrom:future.effectiveFrom,versions:[future]},10_000)).toBe(50_100);expect(coordinationRefreshDelay({...page,nextEffectiveFrom:future.effectiveFrom,versions:[future]},70_000)).toBe(100);expect(coordinationRefreshDelay(page,0)).toBeNull();
+});
+test('pending refresh uses the earliest effective boundary outside the twenty-row history',()=>{
+ const future={versionId:version,assignmentId:assignment,caseId,audienceId,assigneeAccountIds:[account],completionMode:'any_assignee' as const,reminderCandidateAccountIds:[],effectiveFrom:'2026-10-04T12:00:00Z',changedByAccountId:account};
+ const bounded={...page,nextEffectiveFrom:'2026-10-01T12:01:00Z',hasMore:true,versions:Array.from({length:20},()=>future)};
+ expect(coordinationRefreshDelay(bounded,10_000)).toBe(50_100);
+ expect(coordinationRefreshDelay(bounded,70_000)).toBe(100);
 });
 test('read-only legacy child responsibility is preserved, not filtered into a parent-only edit',async()=>{
  const current={versionId:version,assignmentId:assignment,caseId,audienceId,assigneeAccountIds:[account,other],completionMode:'each_assignee' as const,reminderCandidateAccountIds:[other],effectiveFrom:'2026-10-01T11:00:00Z',changedByAccountId:account};
@@ -101,5 +107,6 @@ test('read bridge validates the separate effective selection and server time wit
  const row={versionId:version,assignmentId:assignment,caseId,audienceId,assigneeAccountIds:[account],completionMode:'any_assignee' as const,reminderCandidateAccountIds:[],effectiveFrom:'2026-10-01T11:00:00Z',changedByAccountId:account},valid={...page,currentVersion:row,hasMore:true};
  const fetcher=vi.fn(async()=>Response.json({ok:true,data:valid}));vi.stubGlobal('fetch',fetcher);
  expect(await readCoordination(assignment,caseId,audienceId)).toEqual(valid);
- for(const invalid of [{...valid,asOf:undefined},{...valid,asOf:'not-time'},{...valid,currentVersion:undefined},{...valid,currentVersion:{...row,caseId:other}},{...valid,currentVersion:{...row,effectiveFrom:'2026-10-02T11:00:00Z'}}]){fetcher.mockImplementation(async()=>Response.json({ok:true,data:invalid}));await expect(readCoordination(assignment,caseId,audienceId)).rejects.toThrow('UNAVAILABLE');}
+ for(const invalid of [{...valid,asOf:undefined},{...valid,asOf:'not-time'},{...valid,currentVersion:undefined},{...valid,currentVersion:{...row,caseId:other}},{...valid,currentVersion:{...row,effectiveFrom:'2026-10-02T11:00:00Z'}},{...valid,nextEffectiveFrom:undefined},{...valid,nextEffectiveFrom:'not-time'},{...valid,nextEffectiveFrom:valid.asOf},{...valid,nextEffectiveFrom:'2026-10-01T11:59:59Z'}]){fetcher.mockImplementation(async()=>Response.json({ok:true,data:invalid}));await expect(readCoordination(assignment,caseId,audienceId)).rejects.toThrow('UNAVAILABLE');}
+ fetcher.mockImplementation(async()=>Response.json({ok:true,data:{...valid,nextEffectiveFrom:'2026-10-01T12:01:00Z'}}));expect((await readCoordination(assignment,caseId,audienceId)).nextEffectiveFrom).toBe('2026-10-01T12:01:00Z');
 });
