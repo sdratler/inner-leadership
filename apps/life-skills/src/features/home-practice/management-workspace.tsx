@@ -7,9 +7,10 @@ import { authoringReadback, managementAudiences, practiceAudienceHref, readPract
 import type { ManagedPracticeVersion } from "./types.ts";
 import {responsibilityInput,type ResponsibilityInput} from "./responsibility-input.ts";
 import {readResponsibilityParticipants} from "./responsibility-client.ts";
-import {blankResponsibility,ResponsibilityEditor,responsibilityWords} from "./responsibility-editor.tsx";
+import {blankResponsibility,ResponsibilityEditor,responsibilityWords,responsibilityParticipantLabel} from "./responsibility-editor.tsx";
 import {practiceOccurrences} from "./occurrence-client.ts";
 import {shiftOccurrenceDay} from "./occurrence-range.ts";
+import {RecurrenceControls} from "./recurrence-controls.tsx";
 
 const words = {
   en: { loading: "Loading authorized practice…", choose: "Choose a case to manage practice.", case: "Choose case", audience: "Audience", full: "Shared details", limited: "Title & completion only", private: "Practitioner only", unpublished: "Audience not published", empty: "No items in this audience yet.", loadFailed: "Practice could not be read. Your input is still here.", retry: "Read again", create: "Create", reference: "Practice reference", instructions: "Instructions", start: "Starts on", end: "Ends on (optional)", title: "Title", goal: "Goal", commitment: "Commitment", optional: "Not linked", draft: "Draft — not shared", published: "Published", current: "Current version", previous: "Earlier version", details: "Instruction details", save: "Save draft", saving: "Saving…", saved: "Saved and verified.", revision: "Prepare a revision", cancel: "Cancel editing", discard: "Discard this unsaved input?", publish: "Publish this exact version", confirm: "Share this exact instruction version with this audience? This does not send a provider message or schedule an occurrence.", version: "Version", failed: "The change could not be saved. Your input is still here; read the saved state before retrying.", conflict: "The saved version changed. Read it again before choosing a version to publish.", uncertain: "The result is uncertain. Do not submit again: check saved versions first. Your input is retained.", check: "Check saved versions", reviewed: "I checked the saved list; discard this attempt", uncertainDiscard: "Only discard after checking the saved list. A prior request may already have saved. Discard this retained attempt?", dirty: "You have unsaved practice changes. Leave this page?", bounded: "Only the 100 newest versions are shown. Older records are retained.", needGoal: "Create a goal in Goals before adding a commitment.", noEffects: "Saving does not publish, send a message or book anything. Publication is a separate explicit action.", noDraftEdit: "Saved drafts are retained unchanged. Review the saved version before publication." },
@@ -31,8 +32,14 @@ function ManagementEditor({ locale, kind, caseId, initialAudienceId }: { locale:
   const t = words[locale], [selected, setSelected] = useState(initialAudienceId ?? ""), [loaded, setLoaded] = useState<{ id: string; audiences: PracticeAudience[]; data: PracticeManagementData } | null>(null);
   const [draft, setDraft] = useState<Draft>(blank), [loading, setLoading] = useState(true), [busy, setBusy] = useState(false), [notice, setNotice] = useState(""), [error, setError] = useState("");
   const [attempt, setAttempt] = useState<{ command: PracticeAuthoringCommand; receipt: Record<string, unknown> | null } | null>(null), [checked, setChecked] = useState(false), [editorOpen, setEditorOpen] = useState(false);
+  const [ranges,setRanges]=useState<Record<string,{dirty:boolean;locked:boolean}>>({});
+  const rangeState=useCallback((id:string,value:{dirty:boolean;locked:boolean})=>setRanges(current=>{
+    if(current[id]?.dirty===value.dirty&&current[id]?.locked===value.locked)return current;
+    if(!value.dirty&&!value.locked){if(!current[id])return current;const next={...current};delete next[id];return next;}
+    return {...current,[id]:value};
+  }),[]);
   const inFlight = useRef(false), generation = useRef(0), mounted = useRef(false);
-  const dirty = Boolean(draft.title || draft.reference || draft.instructions || draft.startsOn || draft.endsOn || draft.goalId || draft.commitmentId || draft.revision);
+  const draftDirty = Boolean(draft.title || draft.reference || draft.instructions || draft.startsOn || draft.endsOn || draft.goalId || draft.commitmentId || draft.revision),rangeDirty=Object.values(ranges).some(value=>value.dirty),dirty=draftDirty||rangeDirty;
   const load = useCallback(async (id: string, signal: AbortSignal,command?:PracticeAuthoringCommand) => {
     const audiences = await managementAudiences(caseId, signal), target = id || audiences[0]?.id;
     if (!target) return { id: "", audiences, data: { practice: { items: [], hasMore: false }, goals: [], commitments: [] } };
@@ -60,7 +67,7 @@ function ManagementEditor({ locale, kind, caseId, initialAudienceId }: { locale:
     void load(selected, controller.signal).then(result => { if (!controller.signal.aborted && current === generation.current) { setLoaded(result); setSelected(result.id); setLoading(false); } }).catch(() => { if (!controller.signal.aborted && current === generation.current) { setLoaded(null); setLoading(false); setError(t.loadFailed); } });
     return () => { mounted.current = false; generation.current += 1; controller.abort(); };
   }, [load, selected, t.loadFailed]);
-  const locked = busy || loading || attempt !== null, data = loaded?.id === selected ? loaded.data : null;
+  const parentLocked=busy||loading||attempt!==null,locked = parentLocked||Object.values(ranges).some(value=>value.locked), data = loaded?.id === selected ? loaded.data : null;
   const clear = () => { setDraft(blank()); setEditorOpen(false); setAttempt(null); setChecked(false); };
   const run = async (command: PracticeAuthoringCommand) => {
     if (inFlight.current || locked || !selected || !data) return;
@@ -112,15 +119,16 @@ function ManagementEditor({ locale, kind, caseId, initialAudienceId }: { locale:
     {data && <>
       {kind === "home-practice" ? <ul className="lsw-card-list">{data.practice.items.map(row => <li className="lsw-card lsw-stack" key={row.versionId}>
         <strong>{row.templateKey}</strong><span>{t.version} {row.version} · {row.state === "draft" ? t.draft : row.active ? t.current : t.previous}</span>
-        <details className="lsw-details"><summary>{t.details}</summary><p className="lsw-practice-instruction">{row.instructions}</p><p><time>{row.startsOn}</time>{row.endsOn ? " — " + row.endsOn : ""}</p><p>{row.responsibility?`${row.responsibility.participant==="parent"?responsibilityWords[locale].parent:responsibilityWords[locale].client} · ${row.responsibility.localTime} · ${row.responsibility.timezone}`:responsibilityWords[locale].notRecorded}</p></details>
+        <details className="lsw-details"><summary>{t.details}</summary><p className="lsw-practice-instruction">{row.instructions}</p><p><time>{row.startsOn}</time>{row.endsOn ? " — " + row.endsOn : ""}</p><p>{row.responsibility?`${responsibilityParticipantLabel(locale,row.responsibility.participant,data.participants?.caseKind)} · ${row.responsibility.localTime} · ${row.responsibility.timezone}`:responsibilityWords[locale].notRecorded}</p></details>
         {row.state === "draft" ? <><p className="lsw-help">{t.noDraftEdit}</p><button className="lsw-button lsw-button--primary" type="button" disabled={locked || dirty} onClick={() => { if (window.confirm(`${t.confirm}\n${responsibilityWords[locale].cancelFuture}\n\n${row.templateKey} · ${t.version} ${row.version}\n${t.audience}: ${selected}\n\n${row.instructions}`)) void run({ action: "publish", assignmentId: row.assignmentId, versionId: row.versionId }); }}>{t.publish}</button></>
           : row.active && <><button className="lsw-button lsw-button--secondary" type="button" disabled={locked || dirty || data.practice.items.some(item => item.assignmentId === row.assignmentId && item.state === "draft")} onClick={() => { setDraft({ ...blank(), instructions: row.instructions, startsOn: row.startsOn, endsOn: row.endsOn ?? "", revision: row,...(row.responsibility?{responsibility:row.responsibility}:{}) }); setEditorOpen(true); }}>{t.revision}</button>{row.responsibility&&<details className="lsw-details"><summary>{responsibilityWords[locale].schedule}</summary><form className="lsw-stack" onSubmit={event=>{event.preventDefault();if(!locked&&!dirty&&event.currentTarget.checkValidity()){const date=String(new FormData(event.currentTarget).get("occursOn")??"");void run({action:"schedule",assignmentId:row.assignmentId,occursOn:date,period:row.responsibility!.period});}}}><label className="lsw-field">{responsibilityWords[locale].date}<input name="occursOn" type="date" required min={row.startsOn} max={row.endsOn??undefined} disabled={locked||dirty}/></label><p>{row.responsibility.localTime} · {row.responsibility.timezone}</p><button type="submit" className="lsw-button lsw-button--primary" disabled={locked||dirty}>{responsibilityWords[locale].schedule}</button></form></details>}</>}
+        {row.active&&row.state==="published"&&row.responsibility&&<RecurrenceControls locale={locale} row={row} disabled={parentLocked||draftDirty||Object.entries(ranges).some(([id,value])=>id!==row.versionId&&(value.dirty||value.locked))} onState={value=>rangeState(row.versionId,value)}/>}
       </li>)}</ul> : <ul className="lsw-card-list">{(kind === "goals" ? data.goals : data.commitments).map(row => <li className="lsw-card" key={row.id}>{row.title}</li>)}</ul>}
       {!(kind === "home-practice" ? data.practice.items : kind === "goals" ? data.goals : data.commitments).length && <p>{t.empty}</p>}
       {kind === "home-practice" && data.practice.hasMore && <p role="status">{t.bounded}</p>}
       {(data.goals.length === 100 || data.commitments.length === 100) && <p role="status">{locale === "he" ? "במטרות ובמחויבויות מוצגים עד 100 הפריטים האחרונים בכל קהל. הרשומות הקודמות נשמרו." : "Goals and commitments show up to 100 newest items per audience. Older records are retained."}</p>}
       {selected && <details className="lsw-details" open={editorOpen} onToggle={event => setEditorOpen(event.currentTarget.open)}><summary>{draft.revision ? t.revision : t.create}</summary>
-        <PracticeAuthoringForm locale={locale} kind={kind} draft={draft} data={data} locked={locked} busy={busy} onChange={setDraft} onSave={save} onCancel={() => { if (!dirty || window.confirm(t.discard)) clear(); }} />
+         <PracticeAuthoringForm locale={locale} kind={kind} draft={draft} data={data} locked={locked||rangeDirty} busy={busy} onChange={setDraft} onSave={save} onCancel={() => { if (!draftDirty || window.confirm(t.discard)) clear(); }} />
       </details>}
     </>}
   </div>;

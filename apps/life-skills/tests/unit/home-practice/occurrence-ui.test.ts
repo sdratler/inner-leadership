@@ -14,6 +14,19 @@ function item(): PracticeOccurrenceItem {
     practice: { workspaceId: asId(id, "workspace"), caseId: asId(id, "case"), assignmentId: asId(id, "practice_assignment"), versionId: asId(id, "practice_version"), audienceId: asId(id, "audience"), version: 1, goalId: null, commitmentId: null, templateKey: "DEMO practice", templateVersion: "synthetic-v1", instructions: "<script>DEMO — synthetic instruction</script>", startsOn: "2026-09-29", endsOn: null, publishedAt: "2026-09-29T06:00:00.000Z", immutableSnapshotDigest: "a".repeat(64) }, canReport: true, ownReport: null };
 }
 const noop = () => {};
+test.each(["en", "he"] as const)("%s practice labels follow the authorized case kind, never the viewer role", locale => {
+  const labels = locale === "he" ? { minor: "תרגול לילד", adult: "תרגול לבוגר", unknown: "תרגול למטופל", parent: "תמיכת הורים" } : { minor: "Child practice", adult: "Adult practice", unknown: "Client practice", parent: "Parent support" };
+  for (const caseKind of ["minor", "adult", undefined] as const) {
+    for (const role of ["parent", "adult_client", "child", "practitioner"] as const) {
+      const row: PracticeOccurrenceItem = { ...item(), schedule: { participant: "client", localTime: "18:45", timezone: "UTC", timeOrigin: "practitioner", ...(caseKind ? { caseKind } : {}) } };
+      const html = renderToStaticMarkup(createElement(PracticeOccurrenceCard, { locale, role, item: row, onReadback: noop, onAccessLost: noop, onDirty: noop }));
+      expect(html).toContain(`${caseKind ? labels[caseKind] : labels.unknown} · 18:45 · UTC`);
+      expect(html).not.toContain(locale === "he" ? "תרגול לילד או לבוגר" : "Child / adult practice");
+      const parent = renderToStaticMarkup(createElement(PracticeOccurrenceCard, { locale, role, item: { ...row, schedule: { ...row.schedule!, participant: "parent" } }, onReadback: noop, onAccessLost: noop, onDirty: noop }));
+      expect(parent).toContain(`${labels.parent} · 18:45 · UTC`);
+    }
+  }
+});
 test("parent check-in deep link remains a bounded real practice route across sign-in", () => {
   expect(parentReturnPath("he", "/he/family/practice", {caseId:id,audienceId:id,section:"checkins",unknown:"bad"})).toBe(`/he/family/practice?caseId=${id}&audienceId=${id}&section=checkins`);
   expect(parentReturnPath("en", "/en/family/practice", {section:"untrusted"})).toBe("/en/family/practice");
