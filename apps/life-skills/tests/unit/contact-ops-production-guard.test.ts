@@ -8,6 +8,9 @@ import {PRACTICE_ADULT_COORDINATION_MIGRATION,type PracticeAdultCoordinationInte
 import {SCOPED_DISCLOSURE_USE_MIGRATION,SPEAKER_CORRECTION_RECEIPTS_MIGRATION,disclosureOperationMatches,type ScopedDisclosureIntegrity,type SpeakerReceiptIntegrity} from '../../src/db/scoped-disclosure-integrity.ts';
 import {CONTACT_INBOUND_MIGRATION,contactInboundSchemaCatalogMatches,type ContactInboundIntegrityObjects} from '../../src/db/contact-ops-production-guard.ts';
 import {PRACTICE_RESPONSIBILITY_MIGRATION,type PracticeResponsibilityIntegrity} from '../../src/db/practice-responsibility-integrity.ts';
+import {PRACTICE_REMINDER_MIGRATION,type PracticeReminderIntegrity} from '../../src/db/practice-reminder-integrity.ts';
+import {ACQUISITION_CANDIDATES_MIGRATION,ACQUISITION_DECISIONS_MIGRATION,type ContactAcquisitionIntegrity} from '../../src/db/contact-acquisition-integrity.ts';
+import {contactOpsMigrationPrefix} from '../../src/db/contact-ops-production-guard.ts';
 import {assertContactOpsDatabaseIdentity,calendarAppendOnlyFunctionBody,contactAuthoritySchemaCatalogMatches,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsComparableConstraints,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,internalTaskSchemaCatalogMatches,sourceTaskSchemaCatalogMatches,voiceRuleSchemaCatalogMatches,CONTACT_AUTHORITY_MIGRATION,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,INTERNAL_TASKS_MIGRATION,SOURCE_TASKS_MIGRATION,VOICE_RULE_MIGRATION,type ContactAuthorityIntegrityObjects,type ContactOpsIntegrityObjects,type InternalTaskIntegrityObjects,type SourceTaskIntegrityObjects,type VoiceRuleIntegrityObjects} from '../../src/db/contact-ops-production-guard.ts';
 
 const deployment='a2d9d868-53c4-4fdd-973c-21c4b6b8987d';
@@ -43,6 +46,47 @@ const inboundAbsent:ContactInboundIntegrityObjects={objectsAbsent:true,tables:fa
 const inboundPresent:ContactInboundIntegrityObjects={objectsAbsent:false,tables:true,schemaCatalog:true,foreignKeys:true,historyImmutable:true,appendOnlyFunction:true,publicRevoked:true,referencesSound:true};
 
 describe('registered native CRM production migration gate',()=>{
+ it('admits only one exact0115/0116/0117 suffix with all prior catalog/privacy gates intact',()=>{
+  const superseded:PracticeSubjectIntegrity={baselineFunctions:false,reviewedFunctions:false,immutableHistory:true,schemaCatalog:false,foreignKeys:false,permissions:false,referencesSound:false};
+  const progress:ProgressReviewIntegrity={baselineCatalog:false,revisedCatalog:true,publishedGuards:true,revisionGuards:true,foreignKeys:true,permissions:true,referencesSound:true};
+  const projection:ContactInboundProjectionIntegrity={objectsAbsent:false,tables:true,schemaCatalog:true,foreignKeys:true,historyImmutable:true,livePersonGuards:true,reviewedFunctions:true,permissions:true,referencesSound:true},outbound:ContactOutboundProjectionIntegrity={objectsAbsent:false,table:true,schemaCatalog:true,foreignKeys:true,pendingIndex:true,permissions:true,referencesSound:true};
+  const disclosure:ScopedDisclosureIntegrity={baselineOperation:false,currentOperation:true,schemaCatalog:true,foreignKeys:true,permissions:true},speakers:SpeakerReceiptIntegrity={prior:{...disclosure,currentOperation:false},current:disclosure};
+  const responsibility:PracticeResponsibilityIntegrity={prior:superseded,current:{metadataAbsent:false,immutableHistory:true,reviewedFunctions:true,schemaCatalog:true,foreignKeys:true,permissions:true,referencesSound:true}};
+  const before=[prior,next,taskSuffix,sourceSuffix,voiceSuffix,authoritySuffix,inboundSuffix,...[PRACTICE_SUBJECT_GUARDS_MIGRATION,PROGRESS_REVIEW_REVISIONS_MIGRATION,CONTACT_INBOUND_PROJECTION_MIGRATION,CONTACT_OUTBOUND_PROJECTION_MIGRATION,PRACTICE_ADULT_COORDINATION_MIGRATION,SCOPED_DISCLOSURE_USE_MIGRATION,SPEAKER_CORRECTION_RECEIPTS_MIGRATION,PRACTICE_RESPONSIBILITY_MIGRATION].map(m=>({name:m.name,checksum:m.sha256,sql:'SELECT 1;'}))];
+  const additions=[PRACTICE_REMINDER_MIGRATION,ACQUISITION_CANDIDATES_MIGRATION,ACQUISITION_DECISIONS_MIGRATION].map(m=>({name:m.name,checksum:m.sha256,sql:'SELECT 1;'})),full=[...before,...additions];
+  const reminder:PracticeReminderIntegrity={prior:responsibility.current,current:{metadataAbsent:false,schemaCatalog:true,foreignKeys:true,permissions:true,reviewedFunctions:true,referencesSound:true}},pendingReminder:PracticeReminderIntegrity={prior:responsibility.current,current:{metadataAbsent:true,schemaCatalog:false,foreignKeys:false,permissions:false,reviewedFunctions:false,referencesSound:false}};
+  const applied:ContactAcquisitionIntegrity={objectsAbsent:false,tables:true,schemaCatalog:true,foreignKeys:true,historyImmutable:true,reviewedFunctions:true,permissions:true,referencesSound:true},pendingCandidate:ContactAcquisitionIntegrity={objectsAbsent:true,tables:false,schemaCatalog:false,foreignKeys:false,historyImmutable:false,reviewedFunctions:false,permissions:false,referencesSound:false},pendingDecision={...pendingCandidate,reviewedFunctions:true};
+  const state=(files=full,history=full,r:PracticeReminderIntegrity|undefined=reminder,c:ContactAcquisitionIntegrity|undefined=applied,d:ContactAcquisitionIntegrity|undefined=applied,base=present,tasks=taskPresent)=>contactOpsMigrationState(files,history,base,tasks,sourceApplied,voicePresent,authorityPresent,inboundPresent,superseded,progress,projection,outbound,{prior:superseded,current:superseded},disclosure,speakers,responsibility,r,c,d);
+  for(const [index,pendingFrame]of [[0,pendingReminder],[1,pendingCandidate],[2,pendingDecision]]as const){
+   const files=full.slice(0,before.length+index+1),history=files.slice(0,-1);
+   expect(state(files,history,index===0?pendingFrame as PracticeReminderIntegrity:reminder,index===1?pendingFrame as ContactAcquisitionIntegrity:applied,index===2?pendingFrame as ContactAcquisitionIntegrity:applied)).toBe('pending');
+   expect(state(files,files)).toBe('applied');
+   expect(()=>state(files,history.slice(0,-1))).toThrow();
+   expect(()=>state(files,history)).toThrow();
+   expect(()=>state([...files.slice(0,-1),{...files.at(-1)!,checksum:'0'.repeat(64)}],history)).toThrow('CONTACT_OPS_MANIFEST_MISMATCH');
+  }
+  expect(()=>state(full,before,pendingReminder,pendingCandidate,pendingDecision)).toThrow();
+  for(const key of Object.keys(applied)as (keyof ContactAcquisitionIntegrity)[]){
+   expect(()=>state(full,full,reminder,{...applied,[key]:!applied[key]})).toThrow();
+   expect(()=>state(full,full,reminder,applied,{...applied,[key]:!applied[key]})).toThrow();
+  }
+  for(const frame of ['prior','current']as const)for(const key of Object.keys(reminder[frame]))expect(()=>state(full,full,{...reminder,[frame]:{...reminder[frame],[key]:!reminder[frame][key as keyof typeof reminder[typeof frame]]}})).toThrow();
+  for(const key of Object.keys(present)as (keyof ContactOpsIntegrityObjects)[])expect(()=>state(full,full,reminder,applied,applied,{...present,[key]:false})).toThrow();
+  for(const key of Object.keys(taskPresent)as (keyof InternalTaskIntegrityObjects)[])expect(()=>state(full,full,reminder,applied,applied,present,{...taskPresent,[key]:false})).toThrow();
+  expect(()=>state(full,full,{...reminder,extra:true}as PracticeReminderIntegrity)).toThrow('PRACTICE_REMINDER_READBACK_INVALID');
+  for(const proof of [{...applied,extra:true},{...applied,permissions:1},{...applied,permissions:undefined}])expect(()=>state(full,full,reminder,proof as ContactAcquisitionIntegrity)).toThrow('CONTACT_ACQUISITION_READBACK_INVALID');
+  expect(()=>state(full.slice(0,-1),full)).toThrow(); // no historical downgrade.
+  expect(contactOpsMigrationPrefix(full,ACQUISITION_CANDIDATES_MIGRATION.name)).toEqual(full.slice(0,-1));
+  expect(contactOpsMigrationPrefix(full)).toBe(full);
+  for(const bad of ['0118_unreviewed.sql','../0115_ls_practice_notification_outbox.sql','0115_bad.sql'])expect(()=>contactOpsMigrationPrefix(full,bad)).toThrow('CONTACT_OPS_MIGRATION_PREFIX_INVALID');
+  expect(()=>contactOpsMigrationPrefix(full.map(file=>file.name===ACQUISITION_CANDIDATES_MIGRATION.name?{...file,checksum:'0'.repeat(64)}:file),ACQUISITION_CANDIDATES_MIGRATION.name)).toThrow();
+ });
+ it('accepts only one ordered registered through argument without loosening target binding or TLS',()=>{
+  for(const migration of [PRACTICE_REMINDER_MIGRATION,ACQUISITION_CANDIDATES_MIGRATION,ACQUISITION_DECISIONS_MIGRATION])expect(contactOpsProductionTarget(good,[...args,'--through='+migration.name]).through).toBe(migration.name);
+  for(const bad of ['--through=0118_unreviewed.sql','--through=../0115_ls_practice_notification_outbox.sql','--through=','--ignore-checks'])expect(()=>contactOpsProductionTarget(good,[...args,bad])).toThrow();
+  expect(()=>contactOpsProductionTarget(good,[...args,'--through='+PRACTICE_REMINDER_MIGRATION.name,'--through='+ACQUISITION_CANDIDATES_MIGRATION.name])).toThrow('CONTACT_OPS_ARGUMENTS_INVALID');
+  expect(()=>contactOpsProductionTarget({...good,LS_DATABASE_TLS:'disable'},[...args,'--through='+PRACTICE_REMINDER_MIGRATION.name])).toThrow('CONTACT_OPS_TLS_REQUIRED');
+ });
  it('admits exact0114 with an explicit new practice frame while ALL unrelated gates and old fingerprints remain enforced',()=>{
   const oldPractice:PracticeSubjectIntegrity={baselineFunctions:false,reviewedFunctions:true,immutableHistory:true,schemaCatalog:true,foreignKeys:true,permissions:true,referencesSound:true},superseded:PracticeSubjectIntegrity={baselineFunctions:false,reviewedFunctions:false,immutableHistory:true,schemaCatalog:false,foreignKeys:false,permissions:false,referencesSound:false};
   const progress:ProgressReviewIntegrity={baselineCatalog:false,revisedCatalog:true,publishedGuards:true,revisionGuards:true,foreignKeys:true,permissions:true,referencesSound:true},projection:ContactInboundProjectionIntegrity={objectsAbsent:false,tables:true,schemaCatalog:true,foreignKeys:true,historyImmutable:true,livePersonGuards:true,reviewedFunctions:true,permissions:true,referencesSound:true},outbound:ContactOutboundProjectionIntegrity={objectsAbsent:false,table:true,schemaCatalog:true,foreignKeys:true,pendingIndex:true,permissions:true,referencesSound:true};

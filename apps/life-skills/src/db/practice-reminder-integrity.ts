@@ -5,6 +5,8 @@ import {practiceResponsibilityIntegrity} from './practice-responsibility-integri
 export const PRACTICE_REMINDER_MIGRATION={name:'0115_ls_practice_notification_outbox.sql',sha256:'0a5bdcb355d8d9ace91e431851a1c027a00499de0fb705cc28cadaf3052fbae7'}as const;
 /** The new namespace is observed independently; historical practice hashes stay frozen. */
 export const PRACTICE_REMINDER_SCHEMA_SHA256='1c730b840faf71dcbe851dcf5f5a41e7ba33bd5033dc950a14106aee5ba04e1a';
+export type PracticeReminderFrame={metadataAbsent:boolean;schemaCatalog:boolean;foreignKeys:boolean;permissions:boolean;reviewedFunctions:boolean;referencesSound:boolean};
+export type PracticeReminderIntegrity={prior:Awaited<ReturnType<typeof practiceResponsibilityIntegrity>>['current'];current:PracticeReminderFrame};
 export async function practiceReminderCatalog(tx:SqlSession):Promise<unknown>{
  return (await tx.query<{catalog:unknown}>(`SELECT json_build_object(
  'columns',(SELECT json_agg(json_build_object('table',c.relname,'column',a.attname,'type',format_type(a.atttypid,a.atttypmod),'notNull',a.attnotnull,'default',pg_get_expr(d.adbin,d.adrelid),'identity',a.attidentity,'generated',a.attgenerated) ORDER BY c.relname,a.attnum)
