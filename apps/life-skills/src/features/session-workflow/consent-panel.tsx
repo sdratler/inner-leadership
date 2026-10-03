@@ -13,24 +13,28 @@ const words = {
 export function SessionConsentPanel(props: { locale: Locale; model: SessionDetail; refresh: () => void }) {
   return <ConsentPanelInner key={`${props.model.caseId}:${props.model.sessionId}`} {...props} />;
 }
-type ConsentPolicyDraft = { value: string; baseline: string; observed: string };
+type ConsentPolicyDraft = { value: string; baseline: string; expectedVersion: number; awaitingVersion: number | null };
 /** A refreshed record is not a user edit. Real or unconfirmed input keeps its original baseline. */
-export function refreshConsentPolicyDraft(draft: ConsentPolicyDraft, currentPolicy: string, dirty: boolean, locked: boolean): ConsentPolicyDraft {
-  if (draft.observed === currentPolicy) return draft;
-  return dirty || locked ? { ...draft, observed: currentPolicy } : { value: currentPolicy, baseline: currentPolicy, observed: currentPolicy };
+export function refreshConsentPolicyDraft(draft: ConsentPolicyDraft, currentPolicy: string, currentVersion: number, dirty: boolean, locked: boolean): ConsentPolicyDraft {
+  // The accepted command has read back a newer version, but its parent may still
+  // render the old model until refresh completes. Do not roll that baseline back.
+  if ((draft.awaitingVersion !== null && currentVersion < draft.awaitingVersion) || dirty || locked) return draft;
+  if (draft.value === currentPolicy && draft.baseline === currentPolicy && draft.expectedVersion === currentVersion && draft.awaitingVersion === null) return draft;
+  return { value: currentPolicy, baseline: currentPolicy, expectedVersion: currentVersion, awaitingVersion: null };
 }
 function ConsentPanelInner({ locale, model, refresh }: { locale: Locale; model: SessionDetail; refresh: () => void }) {
   const t = words[locale], titleId = useId(), current = model.processing.consent;
   const [signer, setSigner] = useState(""), [signedTime, setSignedTime] = useState(""), [timezone, setTimezone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone), [fold, setFold] = useState("");
-  const [policyDraft, setPolicyDraft] = useState<ConsentPolicyDraft>(() => ({ value: current?.policyVersion ?? "", baseline: current?.policyVersion ?? "", observed: current?.policyVersion ?? "" })), [evidence, setEvidence] = useState(""), [authority, setAuthority] = useState<ConsentVersion["authorityState"]>("needs_review");
+  const [policyDraft, setPolicyDraft] = useState<ConsentPolicyDraft>(() => ({ value: current?.policyVersion ?? "", baseline: current?.policyVersion ?? "", expectedVersion: current?.version ?? 0, awaitingVersion: null })), [evidence, setEvidence] = useState(""), [authority, setAuthority] = useState<ConsentVersion["authorityState"]>("needs_review");
   const policy = policyDraft.value;
   const [recording, setRecording] = useState(false), [transcription, setTranscription] = useState(false), [ai, setAi] = useState(false), [informed, setInformed] = useState(false), [saved, setSaved] = useState<ConsentVersion | null>(null), [validation, setValidation] = useState(false), [open, setOpen] = useState(false);
   const scope = useMemo(() => ({ workspaceId: model.workspaceId, caseId: model.caseId, sessionId: model.sessionId }), [model.workspaceId, model.caseId, model.sessionId]);
   const recordPort = useMemo(() => consentRecordPort(scope), [scope]), withdrawalPort = useMemo(() => consentWithdrawalPort(scope), [scope]);
   const clear = () => { setSigner(""); setSignedTime(""); setFold(""); setEvidence(""); setAuthority("needs_review"); setRecording(false); setTranscription(false); setAi(false); setInformed(false); setValidation(false); };
-  const record = useCommand(recordPort, value => { setSaved(value); setPolicyDraft(draft => ({ ...draft, value: value.policyVersion, baseline: value.policyVersion })); clear(); setOpen(false); refresh(); }), withdraw = useCommand(withdrawalPort, value => { setSaved(value); setPolicyDraft(draft => ({ ...draft, value: value.policyVersion, baseline: value.policyVersion })); refresh(); });
+  const acceptedDraft = (value: ConsentVersion): ConsentPolicyDraft => ({ value: value.policyVersion, baseline: value.policyVersion, expectedVersion: value.version, awaitingVersion: value.version });
+  const record = useCommand(recordPort, value => { setSaved(value); setPolicyDraft(acceptedDraft(value)); clear(); setOpen(false); refresh(); }), withdraw = useCommand(withdrawalPort, value => { setSaved(value); setPolicyDraft(acceptedDraft(value)); refresh(); });
   const locked = record.locked || withdraw.locked, dirty = Boolean(signer || signedTime || evidence || policy !== policyDraft.baseline || authority !== "needs_review" || recording || transcription || ai || informed);
-  const refreshedPolicyDraft = refreshConsentPolicyDraft(policyDraft, current?.policyVersion ?? "", dirty, locked);
+  const refreshedPolicyDraft = refreshConsentPolicyDraft(policyDraft, current?.policyVersion ?? "", current?.version ?? 0, dirty, locked);
   if (refreshedPolicyDraft !== policyDraft) setPolicyDraft(refreshedPolicyDraft);
   const candidates = useMemo(() => consentTimeCandidates(signedTime, timezone), [signedTime, timezone]), signedAt = candidates.length === 1 ? candidates[0] : candidates.includes(fold) ? fold : null;
   const validSigner = model.consentSigners.some(item => item.accountId === signer), active = current?.withdrawnAt === null;
@@ -43,7 +47,7 @@ function ConsentPanelInner({ locale, model, refresh }: { locale: Locale; model: 
     <details className="lsw-details" open={open} onToggle={event => setOpen(event.currentTarget.open)}><summary>{t.new}</summary>
       <p>{t.help}</p>
       {!model.consentSigners.length && <p role="alert">{t.noSigner}</p>}
-      <form className="lsw-stack" onSubmit={event => { event.preventDefault(); if (locked) return; if (!signedAt || Date.parse(signedAt) > Date.now()) { setValidation(true); return; } setValidation(false); if (validSigner) void record.execute({ signedByAccountId: signer, signedAt, authorityState: authority, recordingAllowed: recording, transcriptionAllowed: transcription, aiProcessingAllowed: ai, childInformed: informed, policyVersion: policy, evidence, expectedVersion: current?.version ?? 0 }); }}>
+      <form className="lsw-stack" onSubmit={event => { event.preventDefault(); if (locked) return; if (!signedAt || Date.parse(signedAt) > Date.now()) { setValidation(true); return; } setValidation(false); if (validSigner) void record.execute({ signedByAccountId: signer, signedAt, authorityState: authority, recordingAllowed: recording, transcriptionAllowed: transcription, aiProcessingAllowed: ai, childInformed: informed, policyVersion: policy, evidence, expectedVersion: policyDraft.expectedVersion }); }}>
         <fieldset className="lsw-stack" disabled={locked || !model.consentSigners.length}><legend>{t.new}</legend>
           <label className="lsw-field">{t.signer}<select aria-label={t.signer} required value={signer} onChange={event => { setSigner(event.target.value); setSaved(null); }}><option value="">{t.choose}</option>{model.consentSigners.map(item => <option key={item.accountId} value={item.accountId}>{item.name}</option>)}</select></label>
           <div className="lsw-two-fields"><label className="lsw-field">{t.signed}<input aria-label={t.signed} type="datetime-local" step="1" required value={signedTime} onChange={event => { setSignedTime(event.target.value); setFold(""); setSaved(null); }} /></label><label className="lsw-field">{t.zone}<input aria-label={t.zone} dir="ltr" required value={timezone} maxLength={100} onChange={event => { setTimezone(event.target.value); setFold(""); }} /></label></div>
@@ -52,12 +56,12 @@ function ConsentPanelInner({ locale, model, refresh }: { locale: Locale; model: 
           <label className="lsw-field">{t.authority}<select aria-label={t.authority} value={authority} onChange={event => { if (["needs_review", "checked", "restricted"].includes(event.target.value)) setAuthority(event.target.value as ConsentVersion["authorityState"]); }}><option value="needs_review">{t.needs_review}</option><option value="checked">{t.checked}</option><option value="restricted">{t.restricted}</option></select></label>
           <label className="lsw-field">{t.evidence}<textarea aria-label={t.evidence} dir="auto" rows={5} required maxLength={4000} value={evidence} onChange={event => { setEvidence(event.target.value); setSaved(null); }} /></label>
           {([[recording, setRecording, t.recording], [transcription, setTranscription, t.transcription], [ai, setAi, t.ai], [informed, setInformed, t.informed]] as const).map(([checked, setChecked, label]) => <label className="lsw-choice" key={label}><input type="checkbox" checked={checked} onChange={event => setChecked(event.target.checked)} /> {label}</label>)}
-          <p className="lsw-help">{t.flagsOff}</p><p className="lsw-help">{t.neutral}</p><div className="lsw-actions"><button className="lsw-button lsw-button--primary" type="submit" disabled={locked || !validSigner}>{record.phase === "pending" ? t.saving : t.save}</button><button className="lsw-button lsw-button--secondary" type="button" onClick={() => { if (!dirty || window.confirm(t.discard)) { clear(); const value = current?.policyVersion ?? ""; setPolicyDraft({ value, baseline: value, observed: value }); setOpen(false); } }}>{t.cancel}</button></div>
+          <p className="lsw-help">{t.flagsOff}</p><p className="lsw-help">{t.neutral}</p><div className="lsw-actions"><button className="lsw-button lsw-button--primary" type="submit" disabled={locked || !validSigner}>{record.phase === "pending" ? t.saving : t.save}</button><button className="lsw-button lsw-button--secondary" type="button" onClick={() => { if (!dirty || window.confirm(t.discard)) { clear(); const value = current?.policyVersion ?? ""; setPolicyDraft({ value, baseline: value, expectedVersion: current?.version ?? 0, awaitingVersion: null }); setOpen(false); } }}>{t.cancel}</button></div>
         </fieldset>
       </form>
     </details>
     {validation && <p role="alert">{t.invalidTime}</p>}
-    {error && <div role="alert"><p>{error === "CONFLICT" ? t.conflict : t.failed}</p><button className="lsw-button lsw-button--secondary" type="button" disabled={locked} onClick={refresh}>{t.reload}</button></div>}
+    {error && <div role="alert"><p>{error === "CONFLICT" ? t.conflict + (locale === "en" ? " To start a new version, cancel editing and enter a fresh draft." : " כדי להתחיל גרסה חדשה, יש לבטל את העריכה ולהזין טיוטה חדשה.") : t.failed}</p><button className="lsw-button lsw-button--secondary" type="button" disabled={locked} onClick={refresh}>{t.reload}</button></div>}
     {(record.phase === "unknown" || withdraw.phase === "unknown") && <div role="alert"><p>{t.uncertain}</p><button className="lsw-button" type="button" onClick={() => void (record.phase === "unknown" ? record.reconcile() : withdraw.reconcile())}>{t.reconcile}</button><a href={`/${locale}/login?` + new URLSearchParams({ next: `/${locale}/app/cases/${model.caseId}/sessions/${model.sessionId}` })}>{t.login}</a></div>}
     {active && <button className="lsw-button lsw-button--secondary" type="button" disabled={locked || dirty} onClick={() => { if (window.confirm(t.confirmWithdraw)) void withdraw.execute({ expectedVersion: current.version }); }}>{withdraw.phase === "pending" ? t.saving : t.withdraw}</button>}
   </section>;
