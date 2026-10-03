@@ -12,6 +12,11 @@ test.each(['en','he'] as const)('%s child practice gives an honest parent read-o
  const html=renderToStaticMarkup(createElement(CoordinationForm,{...handlers,locale,page,assignees:[],reminders:[],mode:'any_assignee',locked:false}));
  expect(html).not.toContain('<form');expect(html).not.toContain('type="submit"');expect(html).toContain(locale==='he'?'זהו התרגול של הילד':'This is the child’s practice');
 });
+test.each(['en','he'] as const)('%s retained legacy child coordination is read-only with no parent-only save control',locale=>{
+ const page={ownAccountId:own,role:'parent' as const,eligibleAccountIds:[],readOnlyReason:'legacy_child_assignment' as const,asOf:'2026-10-01T12:00:00Z',currentVersion:null,versions:[],hasMore:false};
+ const html=renderToStaticMarkup(createElement(CoordinationForm,{...handlers,locale,page,assignees:[own,other],reminders:[other],mode:'each_assignee',locked:false}));
+ expect(html).toContain(locale==='he'?'לא הוסרה אחריות':'No responsibility or reminder routing has been removed');expect(html).not.toContain('<form');expect(html).not.toContain('<input');expect(html).not.toContain('<button');
+});
 
 test.each(['en','he'] as const)('%s form explains and renders effective defaults while a newer recorded change is pending',locale=>{
  const assignmentId=asId('123e4567-e89b-12d3-a456-426614174002','practice_assignment'),caseId=asId('123e4567-e89b-12d3-a456-426614174003','case'),audienceId=asId('123e4567-e89b-12d3-a456-426614174004','audience');

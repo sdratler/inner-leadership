@@ -471,6 +471,33 @@ test.each(["child", "adult_client"] as const)("native %s SQL participant guard r
     VALUES($1,$2,$3,$4,'done',1,clock_timestamp(),$5)`, [randomUUID(), f.workspaceId, occurrenceId, subject.actor.id, randomUUID()])).rejects.toMatchObject({ code: "23514" });
 });
 
+test('native effective-version guard rejects a stale editor at the locked save boundary without appending',async()=>{
+ const h=await setup(),{f}=h,saved=await h.publish(),start=Date.now();let asOf=start;
+ const practice=new HomePracticeService(poolStore(f.pool),h.config,{now:()=>new Date(asOf)}),assignmentId=asId(saved.assignmentId,'practice_assignment');
+ const input={assignmentId,assigneeAccountIds:[f.parent.actor.id],completionMode:'any_assignee' as const,reminderCandidateAccountIds:[],effectiveFrom:new Date(start+60000).toISOString(),expectedCurrentVersionId:null};
+ const first=await practice.coordinate(f.parent.actor,input,randomUUID());asOf=start+90000;
+ await expect(practice.coordinate(f.parent.actor,{...input,effectiveFrom:new Date(asOf+60000).toISOString()},randomUUID())).rejects.toMatchObject({code:'CONFLICT'});
+ expect((await f.pool.query('SELECT count(*)::integer AS count FROM ls_practice.task_coordination_versions WHERE workspace_id=$1 AND assignment_id=$2',[f.workspaceId,assignmentId])).rows[0].count).toBe(1);
+ const next=await practice.coordinate(f.parent.actor,{...input,effectiveFrom:new Date(asOf+60000).toISOString(),expectedCurrentVersionId:first.versionId},randomUUID());expect(next.versionId).not.toBe(first.versionId);
+ const malformed=await h.request('POST','/api/home-practice',{action:'coordinate',...input,expectedCurrentVersionId:'constructor'},f.parent.token);expect(malformed.status).toBe(400);
+});
+
+test('native retained exact-subject child coordination remains read-only before and after its effective time outside bounded history',async()=>{
+ const h=await setup(),{f}=h,child=await h.clientIdentity('child'),saved=await h.publish(),start=Date.now();let asOf=start;
+ const practice=new HomePracticeService(poolStore(f.pool),h.config,{now:()=>new Date(asOf)}),assignmentId=asId(saved.assignmentId,'practice_assignment');
+ const input={assignmentId,assigneeAccountIds:[f.parent.actor.id],completionMode:'any_assignee' as const,reminderCandidateAccountIds:[]};
+ const parent=await practice.coordinate(f.parent.actor,{...input,effectiveFrom:new Date(start+1000).toISOString()},randomUUID());asOf=start+2000;
+ const retained=await practice.coordinate(f.parent.actor,{...input,assigneeAccountIds:[f.parent.actor.id,child.actor.id],completionMode:'each_assignee',reminderCandidateAccountIds:[child.actor.id],effectiveFrom:new Date(start+60000).toISOString()},randomUUID());
+ for(let index=0;index<21;index++)await practice.coordinate(f.parent.actor,{...input,effectiveFrom:new Date(start+3*86400000+index*1000).toISOString()},randomUUID());
+ let page=await practice.coordination(f.parent.actor,assignmentId);expect(page).toMatchObject({readOnlyReason:'legacy_child_assignment',eligibleAccountIds:[],hasMore:true});expect(page.currentVersion?.versionId).toBe(parent.versionId);expect(page.versions).toHaveLength(20);expect(page.versions.some(row=>row.versionId===retained.versionId)).toBe(false);
+ await expect(practice.coordinate(f.parent.actor,{...input,effectiveFrom:new Date(start+120000).toISOString(),expectedCurrentVersionId:parent.versionId},randomUUID())).rejects.toMatchObject({code:'CONFLICT'});
+ asOf=start+90000;page=await practice.coordination(f.parent.actor,assignmentId);expect(page.currentVersion).toMatchObject({versionId:retained.versionId,assigneeAccountIds:[f.parent.actor.id,child.actor.id],reminderCandidateAccountIds:[child.actor.id],completionMode:'each_assignee'});expect(page.readOnlyReason).toBe('legacy_child_assignment');
+ await expect(practice.coordination(child.actor,assignmentId)).rejects.toMatchObject({code:'NOT_FOUND'});
+ await f.pool.query('UPDATE ls_cases.audience_accounts SET revoked_at=clock_timestamp() WHERE workspace_id=$1 AND audience_id=$2 AND account_id=$3',[f.workspaceId,f.first.audienceId,child.actor.id]);
+ page=await practice.coordination(f.parent.actor,assignmentId);expect(page.readOnlyReason).toBeUndefined();expect(page.currentVersion?.assigneeAccountIds).toContain(child.actor.id);expect(page.versions).toHaveLength(20);
+ expect((await f.pool.query('SELECT count(*)::integer AS count FROM ls_practice.task_coordination_versions WHERE workspace_id=$1 AND assignment_id=$2',[f.workspaceId,assignmentId])).rows[0].count).toBe(23);
+});
+
 test('native coordination selects effective time independently from bounded insertion history and scheduling agrees',async()=>{
  const h=await setup(),{f}=h,saved=await h.publish(),start=Date.now();let asOf=start;
  const practice=new HomePracticeService(poolStore(f.pool),h.config,{now:()=>new Date(asOf)});
