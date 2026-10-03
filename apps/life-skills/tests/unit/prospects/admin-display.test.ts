@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { administrativeActionLabel, administrativeStageLabel, linkedInquiryTaskTitle } from "../../../src/features/prospects/admin-display.ts";
+import { administrativeActionLabel, administrativeStageLabel, administrativeStageChoices, linkedInquiryTaskTitle } from "../../../src/features/prospects/admin-display.ts";
 
 describe("administrative presentation labels", () => {
+  it("offers localized stage choices with identical raw values in both languages", () => {
+    const en = administrativeStageChoices("en"), he = administrativeStageChoices("he");
+    expect(he.map(choice => choice.value)).toEqual(en.map(choice => choice.value));
+    expect(he).toContainEqual({value: "New inquiry", label: "פנייה חדשה"});
+    expect(en).toContainEqual({value: "New inquiry", label: "New inquiry"});
+    expect(new Set(he.map(choice => choice.value)).size).toBe(he.length);
+    expect(he.some(choice => ["constructor", "toString", "__proto__"].includes(choice.value))).toBe(false);
+  });
   it("localizes only known app-owned stage values without changing the source key", () => {
     expect(administrativeStageLabel("New inquiry", "he")).toBe("פנייה חדשה");
     expect(administrativeStageLabel("Contacted", "he")).toBe("נוצר קשר");
