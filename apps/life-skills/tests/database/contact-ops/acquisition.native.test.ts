@@ -107,6 +107,55 @@ test("current authority, fresh role/session, candidate workspace and exact opera
  await f.pool.query("UPDATE ls_identity.sessions SET revoked_at=clock_timestamp() WHERE token_digest=$1",[actor.sessionDigest]);
  await expect(decisions.decide(actor,command)).rejects.toThrow("UNAUTHENTICATED");expect(await count("ls_contact_ops.profiles")).toBe(0);
 });
+test.each(["session","account","role"] as const)("a queued %s revocation denies every acquisition decision and replay without saved effects",async boundary=>{
+ for(const action of ["promote","match","not_lead","replay"] as const){
+  const {f,db,actor,crm,capture,promote,decisions}=await setup(),candidate=await capture();
+  let command:AcquisitionDecision=promote(candidate.id);
+  if(action==="match"){
+   const existing=await crm.createContact(actor,{name:"Existing synthetic revocation target",phone:inquiry.fromNumber,language:"en",source:"Owner entered",
+    notes:"Preserve this existing note",nextAction:"Keep this action",dueDate:"2026-10-05"},randomUUID(),3);
+   command={action:"match",candidateId:candidate.id,operationId:randomUUID(),expectedEpoch:3,personId:existing.personId,expectedVersion:1};
+  }else if(action==="not_lead")command={action:"not_lead",candidateId:candidate.id,operationId:randomUUID(),expectedEpoch:3};
+  else if(action==="replay")await decisions.decide(actor,command);
+  // Snapshot the actual encrypted rows and authority counter, not only counts.
+  // The revoker below changes identity/session facts only, never these records.
+  const tables=["ls_identity.people","ls_cases.cases","ls_calendar.tasks","ls_contact_ops.profiles","ls_contact_ops.inbound_threads",
+   "ls_contact_ops.inbound_activity_candidates","ls_contact_ops.message_receipts","ls_contact_ops.lead_promotion_operations",
+   "ls_contact_ops.acquisition_projection_status","ls_contact_ops.cutover"];
+  const snapshot=()=>Promise.all(tables.map(async table=>(await f.pool.query(`SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb) AS value
+   FROM ${table} t WHERE workspace_id=$1`,[f.workspaceId])).rows[0].value));
+  const before=await snapshot(),accountsBefore=(await f.pool.query("SELECT count(*)::int AS n FROM ls_identity.accounts WHERE workspace_id=$1",[f.workspaceId])).rows[0].n;
+  const revoker=await f.pool.connect();let outcome:Promise<{error:unknown}>|null=null;
+  try{
+   await revoker.query("BEGIN");await revoker.query("SELECT id FROM ls_identity.workspaces WHERE id=$1 FOR UPDATE",[f.workspaceId]);
+   const blocker=(await revoker.query("SELECT pg_backend_pid() AS pid")).rows[0].pid as number;
+   if(boundary==="session")await revoker.query("UPDATE ls_identity.sessions SET revoked_at=clock_timestamp() WHERE token_digest=$1",[actor.sessionDigest]);
+   else if(boundary==="account")await revoker.query("UPDATE ls_identity.accounts SET state='revoked' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,actor.id]);
+   else await revoker.query("UPDATE ls_identity.accounts SET role='parent' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,actor.id]);
+   let reportPid!:(pid:number)=>void;const ready=new Promise<number>(resolve=>{reportPid=resolve;});
+   const observedDb:IdentityStore={transaction:work=>db.transaction(async tx=>{
+    await tx.query("SET LOCAL statement_timeout='10s'");const [backend]=await tx.query<{pid:number}>("SELECT pg_backend_pid() AS pid");
+    reportPid(backend!.pid);return work(tx);
+   })};
+   // Observe the real production-style adapter's transaction; do not mock its
+   // authorization, lock, isolation level, result or commit.
+   outcome=new AcquisitionDecisionStore(observedDb,f.keyring,key).decide(actor,command).then(()=>({error:null}),error=>({error}));
+   const decisionPid=await ready,deadline=Date.now()+5000;let blocked=false;
+   while(Date.now()<deadline){
+    blocked=(await f.pool.query("SELECT $2::int=ANY(pg_blocking_pids($1::int)) AS blocked",[decisionPid,blocker])).rows[0].blocked;
+    if(blocked)break;await new Promise<void>(resolve=>setTimeout(resolve,10));
+   }
+   expect(blocked,"decision must actually wait behind the uncommitted revocation").toBe(true);
+   await revoker.query("COMMIT");
+   expect((await outcome).error).toMatchObject({code:boundary==="role"?"FORBIDDEN":"UNAUTHENTICATED"});
+   expect(await snapshot()).toEqual(before);
+   expect((await f.pool.query("SELECT count(*)::int AS n FROM ls_identity.accounts WHERE workspace_id=$1",[f.workspaceId])).rows[0].n).toBe(accountsBefore);
+  }finally{
+   await revoker.query("ROLLBACK");revoker.release();if(outcome)await outcome;
+   await f.pool.end();fixtures.splice(fixtures.indexOf(f),1);
+  }
+ }
+});
 test("legacy/frozen authority never accepts a browser promotion or reads native shadow candidates",async()=>{
  const {actor,authority,decisions}=await setup(false);
  await expect(decisions.list(actor,0,{page:1,search:""})).rejects.toThrow("CONFLICT");

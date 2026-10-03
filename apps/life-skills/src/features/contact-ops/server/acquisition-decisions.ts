@@ -60,10 +60,12 @@ export class AcquisitionDecisionStore{
   const command=parsed.data,digest=privateDigest({command,workspace:actor.workspaceId,actor:actor.id},this.integrityKey);
   return this.db.transaction(async tx=>{
    await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",[`${actor.workspaceId}:contact-authority`]);
+   // Identity logout/revocation uses this same workspace row lock. Recheck only
+   // after acquiring it so a queued decision cannot use pre-revocation facts.
+   await lockWorkspace(tx,actor.workspaceId);
    requirePractitioner(await freshActor(tx,actor,this.clock.now()));
    const authority=await readCutoverState(tx,actor.workspaceId,this.keyring,true);
    if(authority.epoch!==command.expectedEpoch||writeDestination(authority.phase)!=="native")throw new AppError("CONFLICT");
-   await lockWorkspace(tx,actor.workspaceId);
    const previous=await tx.query<{digest:string;actorId:string;candidateId:string;state:string;personId:string|null;ciphertext:string}>(`SELECT
     payload_digest AS digest,actor_account_id AS "actorId",candidate_id AS "candidateId",state,person_id AS "personId",result_ciphertext AS ciphertext
     FROM ls_contact_ops.lead_promotion_operations WHERE workspace_id=$1 AND operation_id=$2`,[actor.workspaceId,command.operationId]);
