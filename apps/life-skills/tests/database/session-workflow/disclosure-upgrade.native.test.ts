@@ -17,6 +17,8 @@ test("populated native disclosure upgrade preserves all original scopes/receipts
  const admin=new pg.Pool({connectionString:adminUrl.toString(),ssl:false,max:1}),pool=new pg.Pool({connectionString:dbUrl.toString(),ssl:false,max:1});let created=false,client:pg.PoolClient|undefined,f:Fixture|undefined;
  try{await admin.query(`CREATE DATABASE "${name}"`);created=true;client=await pool.connect();
   const manifest=JSON.parse(readFileSync(new URL("../../../migrations/manifest.json",import.meta.url),"utf8")) as {name:string;sha256:string}[],files:Migration[]=manifest.map(m=>{const sql=readFileSync(new URL(`../../../migrations/${m.name}`,import.meta.url),"utf8");expect(createHash("sha256").update(sql).digest("hex")).toBe(m.sha256);return {name:m.name,checksum:m.sha256,sql};});
+  // Keep this historical 31→32 test exact, even when later registered suffixes exist.
+  files.splice(files.findIndex(file=>file.name===SCOPED_DISCLOSURE_USE_MIGRATION.name)+1);
   expect(files).toHaveLength(32);expect(files.at(-1)?.name).toBe(SCOPED_DISCLOSURE_USE_MIGRATION.name);
   const runner:MigrationClient={query:async(sql,args)=>client!.query(sql,args?[...args]:undefined)},tx:SqlSession={query:async <R extends object>(sql:string,args:readonly unknown[]=[]) => (await client!.query<R>(sql,[...args])).rows};
   expect(await migrate(runner,files.slice(0,-1),false)).toEqual({applied:31,pending:0});vi.stubEnv("TEST_DATABASE_URL",dbUrl.toString());vi.stubEnv("LS_CALENDAR_TEST_ALLOW","true");f=await fixture();
