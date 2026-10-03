@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { CreativeVersion, MarketingSnapshot, Publication } from "../../../src/features/marketing-overview/contracts.ts";
-import { adjacentMonth, calendarDates, contentDayKey, contentMonth, contentView, contentViewPublications, monthPublications, nextHebrewStatus, orderedPublicationQueue, publicationDisplayTime, publicationTimeIssue, publicationStatusText } from "../../../src/features/marketing-overview/calendar-model.ts";
+import { adjacentMonth, calendarDates, contentDayKey, contentMonth, contentView, contentViewPublications, contentChannel, contentDate, contentLayout, contentState, contentWeekDates, dateFilteredContent, shiftContentDate, monthPublications, nextHebrewStatus, orderedPublicationQueue, publicationDisplayTime, publicationTimeIssue, publicationStatusText } from "../../../src/features/marketing-overview/calendar-model.ts";
 import { MarketingDashboard } from "../../../src/ui/revamp/marketing-dashboard.tsx";
 
 const creative = { assetId: "he-status-1", revision: 2, locale: "he", review: "approved", contentDigest: "a".repeat(64), approvedDigest: "a".repeat(64) } as CreativeVersion;
@@ -14,6 +14,13 @@ const post = (id: string, scheduledFor: string | null, state: Publication["state
 const snapshot = (publications: Publication[]): MarketingSnapshot => ({ source: "synthetic", fetchedAt: "2026-09-25T08:00:00Z", creatives: [creative], publications, ads: [], scout: { readyDrafts: null, sourceUrl: null, lastChecked: null, status: "unbound" } });
 
 describe("read-only Marketing content calendar", () => {
+  it("keeps week/date arithmetic independent of Jerusalem DST and validates real filter keys",()=>{
+    expect(contentWeekDates("2026-10-01")).toEqual(["2026-09-27","2026-09-28","2026-09-29","2026-09-30","2026-10-01","2026-10-02","2026-10-03"]);
+    expect(contentWeekDates("2000-01-01")[0]).toBe("1999-12-26");expect(shiftContentDate("2026-10-24",7)).toBe("2026-10-31");
+    expect(contentDate("2026-02-30")).toBeNull();expect(contentChannel("constructor")).toBeNull();expect(contentState("toString")).toBeNull();expect(contentLayout("week")).toBe("week");expect(contentLayout("constructor")).toBe("month");
+    const records=[post("local-first","2026-09-30T21:15:00Z"),post("previous","2026-09-30T20:00:00Z"),post("undated",null,"ready")];
+    expect(dateFilteredContent(records,"2026-10-01","2026-10-01").map(item=>item.id)).toEqual(["local-first"]);expect(dateFilteredContent(records,null,null)).toHaveLength(3);
+  });
   it("keeps Jerusalem publication dates across UTC midnight and month boundaries", () => {
     expect(contentDayKey("2026-09-30T21:15:00Z")).toBe("2026-10-01");
     expect(monthPublications([post("status", "2026-09-30T21:15:00Z")], "2026-10").get("2026-10-01")?.[0]?.id).toBe("status");

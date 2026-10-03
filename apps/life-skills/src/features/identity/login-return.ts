@@ -1,6 +1,8 @@
 import type { Locale } from "../../lib/locale.ts";
 import {isCaseId,settingsItems,workspaceContext} from '../../ui/workspace/navigation-model.ts';
 import {isReportSection} from '../progress/report-views.ts';
+import {contentChannel,contentDate,contentState} from '../marketing-overview/calendar-model.ts';
+import {creativeApprovals,creativePlacements} from '../marketing-overview/creative-filters.ts';
 
 type Role = "practitioner" | "parent" | "adult_client" | "child";
 
@@ -48,6 +50,22 @@ export function practitionerReturnPath(locale: Locale, page: "calendar" | "clien
 
 /** Named practitioner deep links only; no arbitrary caller/header path is trusted. */
 export function practitionerDetailReturnPath(locale:Locale,pathname:string,query:Record<string,string|string[]|undefined>):string {
+ if(pathname===`/${locale}/app/marketing`){
+  const params=new URLSearchParams(),one=(key:string)=>typeof query[key]==='string'?query[key] as string:'';
+  if(['overview','content_calendar','creatives','needs_approval','community','ads'].includes(one('section')))params.set('section',one('section'));
+  if(['all','queued','drafts','published','history','he_status','he_feed','en_feed','ad_eligible','in_live_ads'].includes(one('filter')))params.set('filter',one('filter'));
+  if(/^20\d{2}-(?:0[1-9]|1[0-2])$/.test(one('month')))params.set('month',one('month'));
+  if(['month','week','agenda'].includes(one('layout')))params.set('layout',one('layout'));
+  for(const key of ['date','from','to'])if(contentDate(one(key)))params.set(key,one(key));
+  if(contentChannel(one('channel')))params.set('channel',one('channel'));
+  if(contentState(one('state')))params.set('state',one('state'));
+  if(/^[A-Za-z0-9_-]{1,160}$/.test(one('publication')))params.set('publication',one('publication'));
+  if(['all','he','en'].includes(one('language')))params.set('language',one('language'));
+  if(creativePlacements.some(value=>value===one('placement')))params.set('placement',one('placement'));
+  if(creativeApprovals.some(value=>value===one('approval')))params.set('approval',one('approval'));
+  if(one('search')&&one('search').length<=200&&!/[\u0000-\u001f\u007f]/.test(one('search')))params.set('search',one('search'));
+  return pathname+(params.size?'?'+params:'');
+ }
  // Account destinations are global, not case-scoped. Preserve only the exact
  // maintained Settings routes; never forward caller-supplied role or query text.
  if(pathname===`/${locale}/app/settings`||settingsItems('practitioner').some(item=>pathname===`/${locale}/${item.path}`))return pathname;

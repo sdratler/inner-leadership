@@ -1,6 +1,6 @@
-import type { CreativeVersion, Publication } from "./contracts.ts";
+import type { Channel, CreativeVersion, Publication } from "./contracts.ts";
 import { publicationLabel } from "./read-model.ts";
-import { validIso } from "../session-workflow/policy.ts";
+import { validDate, validIso } from "../session-workflow/policy.ts";
 
 export const CONTENT_TIMEZONE = "Asia/Jerusalem";
 const hebrewPublicationLabels: Readonly<Record<string, string>> = {
@@ -93,4 +93,32 @@ export function monthPublications(publications: readonly Publication[], month: s
   }
   for (const list of days.values()) list.sort((a, b) => instant(publicationDisplayTime(a)) - instant(publicationDisplayTime(b)) || a.id.localeCompare(b.id));
   return days;
+}
+
+export type ContentLayout = "month" | "week" | "agenda";
+export const CONTENT_CHANNELS: readonly Channel[] = ["whatsapp_status", "facebook_page", "instagram", "facebook_group_manual", "whatsapp_group_manual"];
+export const CONTENT_STATES: readonly Publication["state"][] = ["draft", "ready", "scheduled", "sending", "published", "failed", "unknown", "skipped", "manually_reported"];
+export function contentLayout(value: string | undefined): ContentLayout { return value === "week" || value === "agenda" ? value : "month"; }
+export function contentChannel(value: string | undefined): Channel | null { return CONTENT_CHANNELS.find(channel => channel === value) ?? null; }
+export function contentState(value: string | undefined): Publication["state"] | null { return CONTENT_STATES.find(state => state === value) ?? null; }
+export function contentDate(value: string | undefined): string | null { return value && validDate(value) && MONTH.test(value.slice(0, 7)) ? value : null; }
+export function shiftContentDate(value: string, days: number): string {
+  if (!contentDate(value) || !Number.isInteger(days) || Math.abs(days) > 31) throw Error("INVALID_DATE");
+  const date = new Date(`${value}T12:00:00Z`);date.setUTCDate(date.getUTCDate() + days);return date.toISOString().slice(0, 10);
+}
+export function contentWeekDates(value: string): readonly string[] {
+  if (!contentDate(value)) throw Error("INVALID_DATE");
+  const start = shiftContentDate(value, -new Date(`${value}T12:00:00Z`).getUTCDay());
+  return Array.from({length:7}, (_, index) => {const date=new Date(`${start}T12:00:00Z`);date.setUTCDate(date.getUTCDate()+index);return date.toISOString().slice(0,10);});
+}
+export function orderedContentRecords(items: readonly Publication[]): readonly Publication[] {
+  return items.slice().sort((a, b) => instant(publicationDisplayTime(a)) - instant(publicationDisplayTime(b)) || a.id.localeCompare(b.id));
+}
+export function dateFilteredContent(items: readonly Publication[], from: string | null, to: string | null): readonly Publication[] {
+  return items.filter(item => {
+    const instant = publicationDisplayTime(item);
+    // Undated/malformed records are rendered separately, never assigned a guessed day.
+    if (!instant) return !from && !to;
+    const day = contentDayKey(instant);return (!from || day >= from) && (!to || day <= to);
+  });
 }
