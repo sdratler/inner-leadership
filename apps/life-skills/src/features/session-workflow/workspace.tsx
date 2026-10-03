@@ -38,7 +38,7 @@ export function SessionDetailWorkspace({locale,sessionId,caseId,navigationContex
  const actions=useMemo<SessionDeskActions>(()=>({
   async upload(){throw new Error("SESSION_PROVIDER_NOT_CONFIGURED");},
   async refresh(){setRevision(value=>value+1);},
-   saveRecap:sessionRecapCommand(sessionId),speakers:sessionSpeakerCommand(sessionId),metrics:sessionCommand(`/${sessionId}/observations`),share:sessionRecapShareCommand(sessionId),loadRecapPractices(signal){return sessionRecapPracticeChoices(sessionId,signal);},previewRecap(version,recipients,signal){return sessionRecapPreview(sessionId,version,recipients,signal);},selectAnalysisLanguage(value){setAnalysisLocale(value);},
+   saveRecap:sessionRecapCommand(sessionId),speakers:sessionSpeakerCommand(sessionId),metrics:sessionCommand(`/${sessionId}/observations`),share:sessionRecapShareCommand(sessionId),loadRecapPractices(signal,cursor){return sessionRecapPracticeChoices(sessionId,signal,cursor);},previewRecap(version,recipients,signal){return sessionRecapPreview(sessionId,version,recipients,signal);},selectAnalysisLanguage(value){setAnalysisLocale(value);},
  }),[sessionId]);
  const retry=<div role="alert"><p>{he?"לא ניתן לאשר מחדש את רשומת המפגש. קלט שלא נשמר נשאר כאן כאשר הגישה עדיין מורשית.":"The session record could not be confirmed again. Unsaved input stays here when access is still authorized."}</p><button className="lsw-button" type="button" onClick={()=>setRevision(value=>value+1)}>{he?"ניסיון קריאה חוזר":"Retry this read"}</button></div>;
  if(error&&!model)return <main className="lsw-main">{retry}</main>;

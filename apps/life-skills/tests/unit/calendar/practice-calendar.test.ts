@@ -41,7 +41,16 @@ test("Calendar keeps one selected retained report form, same-scope reloads, dirt
   expect(source).toContain('onLockChange?.(phase === "saving" || phase === "uncertain")');
   expect(source).toContain('!renderCalendar && <div');
   expect(source).toContain('if (calendarLocked || (hasDirty && !window.confirm(t.dirty))) return;');
-  expect(source).toContain('previous.key === key ? previous');
-  expect(source).toContain('readEnabled && caseId && state.key === key ? state.page.items : []');
+  expect(source).toContain('previous.key === key && previous.readBinding === readBinding ? previous');
+  expect(source).toContain('readEnabled && caseId && state.key === key && state.readBinding === readBinding ? state.page.items : []');
   expect(source).toContain('PracticeOccurrenceCard key={key + ":" + selected.occurrence.id}');
+});
+
+test("re-enabling practice requires a new read binding before any cached private cards or dialog can render", () => {
+  const source=readFileSync(new URL('../../../src/features/home-practice/occurrence-workspace.tsx',import.meta.url),'utf8');
+  expect(source).toContain('useMemo(() => ({ key, readEnabled }), [key, readEnabled])');
+  expect(source).toContain('setState({ key, readBinding, status: "ready", page })');
+  expect(source).toContain('state.key !== key || state.readBinding !== readBinding ? <p role="status">{t.loading}</p>');
+  expect(source).toContain('const selected = calendarItems.find');
+  expect(source).toContain('!denied && previous.key === key && previous.readBinding === readBinding ? previous.page');
 });
