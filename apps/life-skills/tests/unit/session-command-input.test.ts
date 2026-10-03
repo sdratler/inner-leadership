@@ -5,6 +5,12 @@ vi.mock("../../src/features/identity/client.ts", () => ({ sessionInfo: async () 
 import { sessionCommand,sessionSpeakerCommand } from "../../src/features/session-workflow/client.ts";
 const id = "123e4567-e89b-42d3-a456-426614174000", key = "223e4567-e89b-42d3-a456-426614174000";
 afterEach(() => vi.unstubAllGlobals());
+test("speaker capacity rejection clears the pending request without retrying a permanent failure",async()=>{
+ const input={sessionId:id,transcriptVersion:1,expectedRevision:100,labels:{constructor:"DEMO — Unsaved correction"}},fetcher=vi.fn().mockResolvedValue(Response.json({ok:false,error:{code:"PAYLOAD_TOO_LARGE"}},{status:413}));
+ vi.stubGlobal("fetch",fetcher);const port=sessionSpeakerCommand(id);
+ expect(await port.execute(input,key)).toEqual({state:"rejected",message:"PAYLOAD_TOO_LARGE"});expect(input.labels.constructor).toBe("DEMO — Unsaved correction");
+ expect(await port.reconcile(key)).toEqual({state:"rejected",message:"No unresolved request"});expect(fetcher).toHaveBeenCalledTimes(1);
+});
 test.each(["observations", "recap", "share","speakers"])("removes only the matching redundant session identity for %s", operation => {
   const body = { sessionId: id, expectedRevision: 0, values: blankMetrics(), unexpected: "strict server must reject this" };
   expect(sessionCommandInput(`/${id}/${operation}`, body)).toEqual({ expectedRevision: 0, values: body.values, unexpected: body.unexpected });

@@ -14,6 +14,7 @@ import {systemClock} from "../../../src/features/identity/types.ts";
 import {unseal} from "../../../src/features/identity/crypto.ts";
 import {privateRecordAad,sealPrivateRecord,unsealPrivateRecord} from "../../../src/features/session-workflow/private-records.ts";
 import {transcriptDigest,cleanWhitespace} from "../../../src/features/session-workflow/transcript.ts";
+import {MAX_SPEAKER_RECORD_BYTES,readSpeakerHistory,appendSpeakerCorrection} from "../../../src/features/session-workflow/speaker-corrections.ts";
 import type {Transcript,PrivateAnalysis} from "../../../src/features/session-workflow/types.ts";
 const opened:Fixture[]=[];afterEach(async()=>{await Promise.all(opened.splice(0).map(item=>item.pool.end()));});
 const scopedInput=(f:Fixture)=>({recipient:"DEMO — Synthetic authorized school contact",purpose:"Synthetic agreed classroom support",topic:"Only the agreed grounding practice",authorityBasis:"DEMO — Actual synthetic signed scope, authority checked and no restrictions recorded. Not a legal certificate.",authorityState:"checked" as const,channel:"phone" as const,authorizedByAccountId:f.parent.actor.id,childDiscussionRecorded:true,authorizedAt:f.at(-24),expiresAt:f.at(24)});
@@ -220,6 +221,18 @@ test("speaker HTTP transport accepts a source-bound long mapping within the encr
  const replay=await s.http.handle(s.request(path,input,s.f.practitioner.token,key),[s.sessionId,"speakers"]);expect((await replay.json()).data).toEqual(receipt);
  const tooLarge=await s.http.handle(s.request(path,{...input,expectedRevision:1,padding:'x'.repeat(2000001)}),[s.sessionId,"speakers"]);expect(tooLarge.status).toBe(413);expect((await tooLarge.json()).error.code).toBe("PAYLOAD_TOO_LARGE");
  expect((await s.f.pool.query("SELECT count(*)::integer AS n FROM ls_sessions.command_receipts WHERE workspace_id=$1 AND operation='save_speakers'",[s.f.workspaceId])).rows[0].n).toBe(1);expect((await s.service.detail(s.f.practitioner.actor,s.sessionId)).privateRecords?.transcript?.speakerHistory.revision).toBe(1);
+},30_000);
+
+test.each(["revisions","bytes"] as const)("speaker %s capacity is a terminal atomic rejection without trimming or a durable command",async bound=>{
+ const s=await privateReadFixture(),transcript=bound==="bytes"?{...s.transcript,segments:Array.from({length:200},(_,index)=>({id:`s${index}`,speaker:`DEMO-${index}-`+'x'.repeat(85),startMs:index*5,endMs:(index+1)*5,text:index===1?s.transcript.segments[0]!.text:"DEMO — Capacity-bound source"}))}:s.transcript;
+ const labels=Object.fromEntries(transcript.segments.map(segment=>[segment.speaker,'ד'.repeat(100)]));let history=readSpeakerHistory({},transcript);
+ while(history.revision<100){const next=appendSpeakerCorrection(history,transcript,{transcriptVersion:1,expectedRevision:history.revision,labels},s.f.practitioner.actor.id,s.f.at(-1));if(Buffer.byteLength(JSON.stringify(next),'utf8')>MAX_SPEAKER_RECORD_BYTES)break;history=next;}
+ expect(history.revision).toBeGreaterThan(0);if(bound==="revisions")expect(history.revision).toBe(100);else{expect(history.revision).toBeLessThan(100);expect(Buffer.byteLength(JSON.stringify(appendSpeakerCorrection(history,transcript,{transcriptVersion:1,expectedRevision:history.revision,labels},s.f.practitioner.actor.id,s.f.at(-1))),'utf8')).toBeGreaterThan(MAX_SPEAKER_RECORD_BYTES);}
+ const digest=transcriptDigest(transcript);await s.f.pool.query('UPDATE ls_sessions.transcripts SET source_ciphertext=$2,cleaned_ciphertext=$3,content_digest=$4,speaker_mapping_ciphertext=$5 WHERE workspace_id=$1',[s.f.workspaceId,s.encode("transcript",transcript),s.encode("cleaned-transcript",cleanWhitespace(transcript)),digest,s.encode("speakers",history)]);await s.f.pool.query('UPDATE ls_sessions.recording_jobs SET transcript_digest=$2 WHERE workspace_id=$1',[s.f.workspaceId,digest]);
+ const snapshot=async()=>({transcripts:(await s.f.pool.query('SELECT * FROM ls_sessions.transcripts WHERE workspace_id=$1',[s.f.workspaceId])).rows,jobs:(await s.f.pool.query('SELECT * FROM ls_sessions.recording_jobs WHERE workspace_id=$1',[s.f.workspaceId])).rows,analyses:(await s.f.pool.query('SELECT * FROM ls_sessions.private_analyses WHERE workspace_id=$1 ORDER BY locale,revision',[s.f.workspaceId])).rows}),before=await snapshot(),path=`/${s.sessionId}/speakers`,input={transcriptVersion:1,expectedRevision:history.revision,labels},key=randomUUID();
+ expect((await s.service.detail(s.f.practitioner.actor,s.sessionId)).privateRecords?.transcript?.speakerHistory).toEqual(history);
+ for(let attempt=0;attempt<2;attempt++){const response=await s.http.handle(s.request(path,input,s.f.practitioner.token,key),[s.sessionId,"speakers"]);expect(response.status).toBe(413);expect((await response.json()).error.code).toBe("PAYLOAD_TOO_LARGE");}
+ expect(await snapshot()).toEqual(before);expect((await s.f.pool.query("SELECT count(*)::integer AS n FROM ls_sessions.command_receipts WHERE workspace_id=$1 AND operation='save_speakers'",[s.f.workspaceId])).rows[0].n).toBe(0);expect((await s.service.detail(s.f.practitioner.actor,s.sessionId)).privateRecords?.transcript?.speakerHistory).toEqual(history);
 },30_000);
 
 test("native strict HTTP parsing preserves prototype-named own speaker labels and rejects invalid values",async()=>{
