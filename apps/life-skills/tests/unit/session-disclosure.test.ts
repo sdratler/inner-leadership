@@ -1,7 +1,7 @@
 import {afterEach,expect,test,vi} from "vitest";
 import {createElement} from "react";
 import {renderToStaticMarkup} from "react-dom/server";
-import {disclosureInputSchema,disclosureSchema,disclosureRecordReadback,type DisclosureInput} from "../../src/features/session-workflow/disclosure-contract.ts";
+import {MAX_DISCLOSURE_RECORDS,disclosureInputSchema,disclosureSchema,disclosureRecordReadback,type DisclosureInput} from "../../src/features/session-workflow/disclosure-contract.ts";
 import {disclosureRecordPort,disclosureRevokePort,disclosureUsePort,readDisclosures} from "../../src/features/session-workflow/disclosure-client.ts";
 import {SessionDisclosurePanel} from "../../src/features/session-workflow/disclosure-panel.tsx";
 import type {SessionDetail} from "../../src/features/session-workflow/database.ts";
@@ -10,6 +10,12 @@ const scope={workspaceId:"00000000-0000-4000-8000-000000000001",caseId:"00000000
 const input:DisclosureInput={recipient:"DEMO — Specific person",purpose:"Synthetic agreed support",topic:"Specific agreed practice",authorityBasis:"Synthetic signed authority and restrictions",authorityState:"needs_review",channel:"phone",authorizedByAccountId:signer,childDiscussionRecorded:false,authorizedAt:"2026-09-01T10:00:00Z",expiresAt:"2026-10-03T10:00:00Z"},saved={...scope,...input,id,recordedByPractitionerId:signer,effective:false,usedAt:null,revokedAt:null};
 const response=(data:unknown,status=200)=>new Response(JSON.stringify({ok:true,data}),{status,headers:{"content-type":"application/json"}});
 afterEach(()=>vi.unstubAllGlobals());
+test("the shared 100-record envelope accepts its boundary and rejects overflow without truncation",async()=>{
+ expect(MAX_DISCLOSURE_RECORDS).toBe(100);
+ const rows=Array.from({length:MAX_DISCLOSURE_RECORDS},(_,index)=>({...saved,id:`00000000-0000-4000-8000-${String(index+100).padStart(12,"0")}`}));
+ vi.stubGlobal("fetch",vi.fn(async()=>response(rows)));expect(await readDisclosures(scope)).toEqual(rows);
+ vi.stubGlobal("fetch",vi.fn(async()=>response([...rows,{...saved,id}])));await expect(readDisclosures(scope)).rejects.toThrow("UNAVAILABLE");
+});
 test("strict scoped record rejects missing evidence, impossible time, extra/private fields and wrong projected scope",async()=>{
  expect(disclosureSchema.parse(saved)).toEqual(saved);expect(disclosureRecordReadback(saved,input)).toBe(true);
  for(const change of [{recipient:" "},{authorityBasis:""},{authorizedAt:"2026-02-30T10:00:00Z"},{channel:"whatsapp"},{clinicalNotes:"not accepted"}])expect(disclosureInputSchema.safeParse({...input,...change}).success).toBe(false);

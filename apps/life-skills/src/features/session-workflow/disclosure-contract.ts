@@ -1,5 +1,6 @@
 import {z} from "zod";
 import {validIso} from "./policy.ts";
+export const MAX_DISCLOSURE_RECORDS=100;
 const uuid=z.string().uuid().transform(value=>value.toLowerCase()),time=z.string().refine(validIso),text=(max:number)=>z.string().min(1).max(max).refine(value=>value.trim().length>0);
 export const disclosureInputSchema=z.strictObject({recipient:text(200),purpose:text(500),topic:text(800),authorityBasis:text(4000),authorityState:z.enum(["checked","needs_review","restricted"]),channel:z.enum(["phone","meeting","secure_message"]),authorizedByAccountId:uuid,childDiscussionRecorded:z.boolean(),authorizedAt:time,expiresAt:time});
 export type DisclosureInput=z.infer<typeof disclosureInputSchema>;
