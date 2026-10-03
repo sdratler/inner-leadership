@@ -20,10 +20,16 @@ function validVersion(row:CoordinationVersion,assignmentId:string,caseId:string,
 }
 export async function readCoordination(assignmentId:string,caseId:string,audienceId:string,signal?:AbortSignal):Promise<PracticeCoordinationPage>{
  const value=await request<PracticeCoordinationPage>('/api/home-practice?'+new URLSearchParams({view:'coordination',assignmentId}),{method:'GET'},signal);
- if(!value||!['parent','adult_client'].includes(value.role)||typeof value.ownAccountId!=='string'||!ids(value.eligibleAccountIds)||typeof value.hasMore!=='boolean'||!Array.isArray(value.versions)||value.versions.length>20||value.versions.some(row=>!validVersion(row,assignmentId,caseId,audienceId)))throw new IdentityClientError('UNAVAILABLE');
+ if(!value||!['parent','adult_client'].includes(value.role)||typeof value.ownAccountId!=='string'||!ids(value.eligibleAccountIds)||typeof value.hasMore!=='boolean'||typeof value.asOf!=='string'||!Number.isFinite(Date.parse(value.asOf))||!Array.isArray(value.versions)||value.versions.length>20||value.versions.some(row=>!validVersion(row,assignmentId,caseId,audienceId))||value.currentVersion!==null&&(!validVersion(value.currentVersion,assignmentId,caseId,audienceId)||Date.parse(value.currentVersion.effectiveFrom)>Date.parse(value.asOf)))throw new IdentityClientError('UNAVAILABLE');
  if(value.readOnlyReason!==undefined&&(value.readOnlyReason!=='client_responsibility'||value.role!=='parent'||value.eligibleAccountIds.length!==0))throw new IdentityClientError('UNAVAILABLE');
  if(value.role==='adult_client'&&(value.eligibleAccountIds.length!==1||value.eligibleAccountIds[0]!==value.ownAccountId))throw new IdentityClientError('UNAVAILABLE');
  return value;
+}
+/** Defaults follow the server's current selection, never insertion order or
+ * the browser clock. Future changes remain visible in immutable history. */
+export function coordinationDefaults(page:PracticeCoordinationPage):{assignees:string[];reminders:string[];mode:CompletionMode}{
+ const current=page.currentVersion,assignees=page.role==='adult_client'?[page.ownAccountId]:current?.assigneeAccountIds.filter(id=>page.eligibleAccountIds.includes(id))??[page.ownAccountId].filter(id=>page.eligibleAccountIds.includes(id));
+ return {assignees,reminders:current?.reminderCandidateAccountIds.filter(id=>assignees.includes(id))??[],mode:assignees.length===2&&current?.completionMode==='each_assignee'?'each_assignee':'any_assignee'};
 }
 export type CoordinationCommand=Readonly<{action:'coordinate';assignmentId:string;assigneeAccountIds:readonly string[];completionMode:CompletionMode;reminderCandidateAccountIds:readonly string[];effectiveFrom:string}>;
 export function coordinationCommand(assignmentId:string,assignees:readonly string[],mode:CompletionMode,reminders:readonly string[],now=Date.now()):CoordinationCommand{

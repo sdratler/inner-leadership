@@ -411,10 +411,11 @@ export class HomePracticeService implements PracticeVersionReader {
   }
 
   async coordination(actor: Actor, assignmentId: PracticeAssignmentId): Promise<PracticeCoordinationPage> {
+    const now = this.clock.now();
     return this.store.transaction(async tx => {
-      const current = await freshActor(tx, actor, this.clock.now());
+      const current = await freshActor(tx, actor, now);
       if (current.role !== "parent" && current.role !== "adult_client") throw new AppError("NOT_FOUND");
-      const row = await one<{ caseId: CaseId; audienceId: AudienceId; responsibility: unknown }>(tx, `SELECT a.case_id AS "caseId",a.audience_id AS "audienceId",v.responsibility FROM ls_practice.practice_assignments a JOIN ls_practice.practice_assignment_versions v ON v.workspace_id=a.workspace_id AND v.id=a.active_version_id WHERE a.workspace_id=$1 AND a.id=$2 AND a.state='published'`, [actor.workspaceId, assignmentId]);
+      const row = await one<{ caseId: CaseId; audienceId: AudienceId; responsibility: unknown; responsibilityVersionId: PracticeVersionId }>(tx, `SELECT a.case_id AS "caseId",a.audience_id AS "audienceId",v.responsibility,a.active_version_id AS "responsibilityVersionId" FROM ls_practice.practice_assignments a JOIN ls_practice.practice_assignment_versions v ON v.workspace_id=a.workspace_id AND v.id=a.active_version_id WHERE a.workspace_id=$1 AND a.id=$2 AND a.state='published'`, [actor.workspaceId, assignmentId]);
       if (!row) throw new AppError("NOT_FOUND");
       const item = await loadCase(tx, actor.workspaceId, row.caseId), guardians = await loadGuardians(tx, actor.workspaceId, row.caseId), audience = await loadAudience(tx, actor.workspaceId, row.caseId, row.audienceId);
       if (!item || !audience || !audience.published || audience.visibility === "private") throw new AppError("NOT_FOUND");
@@ -424,10 +425,19 @@ export class HomePracticeService implements PracticeVersionReader {
         JOIN ls_cases.case_guardians g ON g.workspace_id=a.workspace_id AND g.account_id=a.id
         WHERE a.workspace_id=$1 AND a.role='parent' AND a.state='active' AND g.case_id=$2 AND g.revoked_at IS NULL
           AND a.id=ANY($3::uuid[]) ORDER BY a.id LIMIT 2`, [actor.workspaceId, row.caseId, audience.accountIds])).map(value => value.id);
-      const versions = await tx.query<Omit<CoordinationVersion, "effectiveFrom"> & { effectiveFrom: Date }>(`SELECT id AS "versionId",assignment_id AS "assignmentId",case_id AS "caseId",audience_id AS "audienceId",
+      type CoordinationRow = Omit<CoordinationVersion, "effectiveFrom"> & { effectiveFrom: Date };
+      const select = `SELECT id AS "versionId",assignment_id AS "assignmentId",case_id AS "caseId",audience_id AS "audienceId",
         assignee_account_ids AS "assigneeAccountIds",completion_mode AS "completionMode",reminder_candidate_account_ids AS "reminderCandidateAccountIds",effective_from AS "effectiveFrom",changed_by_account_id AS "changedByAccountId",responsibility_version_id AS "responsibilityVersionId",participant,assisted_parent_account_ids AS "assistedParentAccountIds"
-        FROM ls_practice.task_coordination_versions WHERE workspace_id=$1 AND assignment_id=$2 AND case_id=$3 AND audience_id=$4 ORDER BY version DESC LIMIT 21`, [actor.workspaceId, assignmentId, row.caseId, row.audienceId]);
-      return { ownAccountId: current.id, role: current.role, eligibleAccountIds: readOnly ? [] : eligible, hasMore: versions.length > 20, versions: versions.slice(0, 20).map(value => ({ ...value, effectiveFrom: value.effectiveFrom.toISOString() })), ...(readOnly ? {readOnlyReason: "client_responsibility" as const} : {}) };
+        FROM ls_practice.task_coordination_versions WHERE workspace_id=$1 AND assignment_id=$2 AND case_id=$3 AND audience_id=$4`;
+      const scope = [actor.workspaceId, assignmentId, row.caseId, row.audienceId];
+      const versions = await tx.query<CoordinationRow>(select + " ORDER BY version DESC LIMIT 21", scope);
+      // Match scheduling's effective-time ordering. An older insertion can be
+      // current even when more than twenty newer future revisions exist.
+      const responsibilityVersion = parseSavedResponsibility(row.responsibility) ? row.responsibilityVersionId : null;
+      const effective = await one<CoordinationRow>(tx, select + " AND effective_from<=$5 AND (($6::uuid IS NULL AND responsibility_version_id IS NULL) OR responsibility_version_id=$6) ORDER BY effective_from DESC,version DESC LIMIT 1", [...scope, now, responsibilityVersion]);
+      const project = (value: CoordinationRow): CoordinationVersion => ({ ...value, effectiveFrom: value.effectiveFrom.toISOString() });
+      return { ownAccountId: current.id, role: current.role, eligibleAccountIds: readOnly ? [] : eligible, asOf: now.toISOString(), currentVersion: effective ? project(effective) : null,
+        hasMore: versions.length > 20, versions: versions.slice(0, 20).map(project), ...(readOnly ? {readOnlyReason: "client_responsibility" as const} : {}) };
     });
   }
 
