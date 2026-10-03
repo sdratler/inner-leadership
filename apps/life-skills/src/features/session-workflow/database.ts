@@ -13,7 +13,7 @@ import { readPrivateTranscript, readPrivateAnalysis, sealPrivateRecord,privateRe
 import {appendSpeakerCorrection,type SpeakerCorrectionInput} from "./speaker-corrections.ts";
 import { nonempty, validIso } from "./policy.ts";
 import { consentVersionSchema, type ConsentVersion, type ConsentRecordInput } from "./consent-contract.ts";
-import {disclosureSchema,disclosureInputSchema,disclosureUseSchema,disclosureRevokeSchema,type DisclosureInput,type DisclosureView} from "./disclosure-contract.ts";
+import {MAX_DISCLOSURE_RECORDS,disclosureSchema,disclosureInputSchema,disclosureUseSchema,disclosureRevokeSchema,type DisclosureInput,type DisclosureView} from "./disclosure-contract.ts";
 import {recapDraftSchema,recapVersionViewSchema,recapSharePreviewSchema,recapPublicationSchema,routineRecapSchema,type RecapDraftInput,type RecapVersionView,type RecapSharePreview,type RecapPublication,type RecapPracticeChoices} from "./recap-contract.ts";
 import {nativeRecapPracticeChoices,reviewedNativeRecapPractices,assertRecapPracticeRecipients} from "./recap-practices.ts";
 
@@ -120,14 +120,18 @@ export class SessionDatabaseService {
   }
   async disclosures(actor:Actor,sessionId:string,disclosureId?:string):Promise<DisclosureView[]>{return this.store.transaction(async tx=>{
     await tx.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY");const row=await sessionRow(tx,actor.workspaceId,sessionId);await owner(tx,actor,row.caseId,this.clock);
-    const records=await tx.query<DisclosureRow>(`SELECT ${disclosureColumns} FROM ls_sessions.disclosure_authorizations WHERE workspace_id=$1 AND case_id=$2 AND session_id=$3 AND ($4::uuid IS NULL OR id=$4) ORDER BY authorized_at DESC,id LIMIT 101`,[actor.workspaceId,row.caseId,sessionId,disclosureId??null]);
-    if(records.length>100)throw new AppError("UNAVAILABLE");if(disclosureId&&!records.length)throw new AppError("NOT_FOUND");return Promise.all(records.map(item=>this.disclosureView(tx,actor,row,item)));
+    const records=await tx.query<DisclosureRow>(`SELECT ${disclosureColumns} FROM ls_sessions.disclosure_authorizations WHERE workspace_id=$1 AND case_id=$2 AND session_id=$3 AND ($4::uuid IS NULL OR id=$4) ORDER BY authorized_at DESC,id LIMIT ${MAX_DISCLOSURE_RECORDS+1}`,[actor.workspaceId,row.caseId,sessionId,disclosureId??null]);
+    if(records.length>MAX_DISCLOSURE_RECORDS)throw new AppError("UNAVAILABLE");if(disclosureId&&!records.length)throw new AppError("NOT_FOUND");return Promise.all(records.map(item=>this.disclosureView(tx,actor,row,item)));
   });}
   async authorizeDisclosure(actor:Actor,sessionId:string,input:DisclosureInput,key:string):Promise<{disclosureId:string;revokedAt:null;usedAt:null}>{return this.store.transaction(async tx=>{
     await lockWorkspace(tx,actor.workspaceId);const row=await sessionRow(tx,actor.workspaceId,sessionId,true);await owner(tx,actor,row.caseId,this.clock);
     return command(tx,this.ring,actor,row,"authorize_disclosure",key,input,async()=>{
       const parsed=disclosureInputSchema.safeParse(input);if(!parsed.success||Date.parse(input.authorizedAt)>this.clock.now().getTime()||Date.parse(input.expiresAt)<=Date.parse(input.authorizedAt))throw new AppError("INVALID_REQUEST");
       if(!await disclosureSigner(tx,actor,row.caseId,input.authorizedByAccountId))throw new AppError("NOT_FOUND");
+      // Keep the existing bounded history readable. Workspace/session locks
+      // serialize competing writers; command replay is checked before this cap.
+      const capacity=await one<{count:number}>(tx,`SELECT count(*)::integer AS count FROM (SELECT 1 FROM ls_sessions.disclosure_authorizations WHERE workspace_id=$1 AND case_id=$2 AND session_id=$3 LIMIT ${MAX_DISCLOSURE_RECORDS}) bounded`,[actor.workspaceId,row.caseId,sessionId]);
+      if(!capacity||capacity.count>=MAX_DISCLOSURE_RECORDS)throw new AppError("CONFLICT");
       const id=randomUUID(),encode=(field:string,value:unknown)=>sealJson(value,aad(`disclosure-${field}`,actor.workspaceId,row.caseId,id,1),this.ring);
       await tx.query('INSERT INTO ls_sessions.disclosure_authorizations(workspace_id,case_id,id,session_id,recipient_ciphertext,purpose_ciphertext,topic_ciphertext,authority_evidence_ciphertext,channel,authorized_by_account_id,recorded_by_practitioner_id,child_discussion_recorded,authorized_at,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)',[actor.workspaceId,row.caseId,id,sessionId,encode("recipient",input.recipient),encode("purpose",input.purpose),encode("topic",input.topic),encode("authority",{authorityBasis:input.authorityBasis,authorityState:input.authorityState}),input.channel,input.authorizedByAccountId,actor.id,input.childDiscussionRecorded,new Date(input.authorizedAt),new Date(input.expiresAt)]);
       return {disclosureId:id,revokedAt:null,usedAt:null};
