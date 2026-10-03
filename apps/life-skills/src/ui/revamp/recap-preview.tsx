@@ -1,10 +1,10 @@
-import type {Locale,RoutineRecap} from "../../features/session-workflow/types.ts";
+import type {Locale,RecipientRoutineRecap} from "../../features/session-workflow/types.ts";
 import {FOCUS_LABELS,attendanceLabel} from "../../features/session-workflow/presentation.ts";
 import {word} from "./primitives.tsx";
 import "./styles.css";
 /** The same routine-only projection is rendered for author and recipients.
  * Never accept a transcript, analysis, recording or metric record here. */
-export function RecapPreview({recap,locale}:{recap:RoutineRecap;locale:Locale}){
+export function RecapPreview({recap,locale}:{recap:RecipientRoutineRecap;locale:Locale}){
  const time=(value:string,zone:string)=>new Intl.DateTimeFormat(locale,{dateStyle:"medium",timeStyle:"short",timeZone:zone}).format(new Date(value));
  return <div className="lsr" lang={recap.locale} dir={recap.locale==="he"?"rtl":"ltr"}><p className="lsr-help">{word(locale,"Reviewed update version","גרסת עדכון שנבדקה")} {recap.version} · {recap.locale==="he"?"עברית":"English"}</p><dl className="lsr-recap">
   <dt>{word(locale,"Attendance","נוכחות")}</dt><dd>{attendanceLabel(recap.attendance,locale)}</dd>

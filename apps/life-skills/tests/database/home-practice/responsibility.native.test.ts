@@ -87,6 +87,26 @@ test("revision cancels only unreported future timed rows and retains immutable v
  const versions=(await practice.management(f.practitioner.actor,f.first.id,f.first.audienceId)).items;expect(versions.find(row=>row.versionId===old.versionId)).toEqual({...old,active:false});
  await expect(checkins.submit(f.parent.actor,{occurrenceId:future.id,status:"done",idempotencyKey:randomUUID(),assistance:{mode:"together",note:"not sent"}},randomUUID())).rejects.toMatchObject({code:"CONFLICT"});
 },30000);
+test("publication waiting for the workspace lock preserves an occurrence that starts before cancellation executes",async()=>{
+ const h=await setup(),target=new Date(Date.now()+1800),today=target.toISOString().slice(0,10),responsibility={...h.input,localTime:target.toISOString().slice(11,16)},draft=await h.practice.createDraft(f.practitioner.actor,{caseId:f.first.id,audienceId:f.first.audienceId,templateKey:"W01",templateVersion:"synthetic-lock-boundary",instructions:"DEMO — Boundary original",startsOn:today,endsOn:h.endsOn,responsibility},randomUUID());
+ await h.practice.publish(f.practitioner.actor,draft.assignmentId,draft.versionId,randomUUID());
+ const future=await h.practice.schedule(f.practitioner.actor,{assignmentId:draft.assignmentId,occursOn:h.occursOn,period:"morning"},randomUUID()),startedId=asId(randomUUID(),"occurrence"),revised=await h.practice.revise(f.practitioner.actor,{assignmentId:draft.assignmentId,instructions:"DEMO — Boundary revised",startsOn:today,endsOn:h.endsOn},randomUUID());
+ // Valid isolated timestamp fixture: source date/time/coordination remain bound,
+ // and the unchanged DB trigger still decides whether cancellation is legal.
+ await f.pool.query("INSERT INTO ls_practice.practice_occurrences(id,workspace_id,assignment_id,practice_version_id,coordination_version_id,occurs_on,period,state,created_at,occurs_at) VALUES($1,$2,$3,$4,$5,$6,'morning','open',clock_timestamp(),$7)",[startedId,f.workspaceId,draft.assignmentId,draft.versionId,future.coordinationVersionId,today,target]);
+ const blocker=await f.pool.connect();let pending:Promise<{ok:boolean;message?:string}>|undefined;
+ try{
+  await blocker.query("BEGIN");await blocker.query("SELECT id FROM ls_identity.workspaces WHERE id=$1 FOR UPDATE",[f.workspaceId]);const pid=(await blocker.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+  expect(target.getTime()).toBeGreaterThan(Date.now());pending=h.practice.publish(f.practitioner.actor,draft.assignmentId,revised.versionId,randomUUID()).then(()=>({ok:true}),error=>({ok:false,message:error.message}));
+  let waiting=false;for(let tries=0;tries<100&&!waiting;tries++){waiting=(await f.pool.query("SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE $1=ANY(pg_blocking_pids(pid))) AS waiting",[pid])).rows[0].waiting;if(!waiting)await new Promise(resolve=>setTimeout(resolve,10));}expect(waiting).toBe(true);
+  await blocker.query("SELECT pg_sleep(GREATEST(0,extract(epoch FROM ($1::timestamptz-clock_timestamp()))+0.1))",[target]);await blocker.query("COMMIT");
+  expect(await pending).toEqual({ok:true});
+  expect((await f.pool.query("SELECT state,cancelled_at,superseded_by_version_id FROM ls_practice.practice_occurrences WHERE id=$1",[startedId])).rows[0]).toEqual({state:"open",cancelled_at:null,superseded_by_version_id:null});
+  expect((await f.pool.query("SELECT state FROM ls_practice.practice_occurrences WHERE id=$1",[future.id])).rows[0].state).toBe("cancelled");
+  await expect(f.pool.query("UPDATE ls_practice.practice_occurrences SET state='cancelled',cancelled_at=clock_timestamp(),superseded_by_version_id=$2 WHERE id=$1",[startedId,revised.versionId])).rejects.toMatchObject({code:"23514"});
+ }finally{await blocker.query("ROLLBACK");blocker.release();if(pending)await pending;}
+},30000);
+
 test("strict ownership, subject/routing fences, date and DST gaps fail closed without native writes",async()=>{
  const {practice,input,startsOn,endsOn,publish}=await setup();
  await expect(practice.participants(f.parent.actor,f.first.id,f.first.audienceId)).rejects.toMatchObject({code:"NOT_FOUND"});
