@@ -11,15 +11,16 @@ import {SessionHttp} from "../../../src/features/session-workflow/http.ts";
 import {IdentitySessions} from "../../../src/features/identity/session-adapter.ts";
 import {PostgresIdentityRateStore} from "../../../src/features/identity/rate-store.ts";
 import {durableAuditSink} from "../../../src/features/identity/history.ts";
-import {systemClock} from "../../../src/features/identity/types.ts";
+import {systemClock,type IdentityClock} from "../../../src/features/identity/types.ts";
 import type {IdentityConfig} from "../../../src/features/identity/config.ts";
 import {SESSION_COOKIE} from "../../../src/lib/security/session.ts";
 import {blankMetrics} from "../../../src/features/session-workflow/metrics.ts";
+import {recipientRecap} from "../../../src/features/session-workflow/recap.ts";
 const opened:Fixture[]=[];
 afterEach(async()=>{await Promise.all(opened.splice(0).map(f=>f.pool.end()));});
-async function setup(){
+async function setup(clock:IdentityClock=systemClock){
  const f=await fixture();opened.push(f);const store=poolStore(f.pool),origin="https://synthetic.invalid",config:IdentityConfig={enabled:true,origin,workspaceId:f.workspaceId,csrfKey:randomBytes(32),lookupKey:randomBytes(32),rateLimitKey:randomBytes(32).toString("hex"),keyring:f.keyring,sessionSeconds:28800};
- const sessions=new IdentitySessions(store,config,systemClock),service=new SessionDatabaseService(store,f.keyring,systemClock),practice=new HomePracticeService(store,config,systemClock),http=new SessionHttp({config,sessions,limits:new PostgresIdentityRateStore(store),audit:durableAuditSink(store),clock:systemClock},service);
+ const sessions=new IdentitySessions(store,config,clock),service=new SessionDatabaseService(store,f.keyring,clock),practice=new HomePracticeService(store,config,clock),http=new SessionHttp({config,sessions,limits:new PostgresIdentityRateStore(store),audit:durableAuditSink(store),clock},service);
  const sessionId=(await service.ensureForAppointment(f.practitioner.actor,f.first.id,await f.seed(f.at(-48)))).sessionId;
  const request=(path:string,body?:unknown,token=f.practitioner.token,key=randomUUID(),csrf=true)=>new Request(origin+"/api/sessions"+path,{method:body===undefined?"GET":"POST",headers:{cookie:`${SESSION_COOKIE}=${token}`,...(body===undefined?{}:{origin,"content-type":"application/json","idempotency-key":key,...(csrf?{"x-csrf-token":sessions.csrf(token)}:{})})},...(body===undefined?{}:{body:JSON.stringify(body)})});
  const draft={locale:"he" as const,focus:["regulation" as const],nextStep:"DEMO — הצעד הבא בלבד",expectedVersion:0};
@@ -60,6 +61,27 @@ test("bounded source pages can reach eligible practice behind twenty-one ineligi
  for(const query of ['?cursor=constructor','?cursor='+randomUUID()+'&cursor='+randomUUID(),'?cursor='+randomUUID()+'&extra=1'])expect((await s.http.handle(s.request(`/${s.sessionId}/practice-choices${query}`),[s.sessionId,'practice-choices'])).status).toBe(400);
 },30000);
 
+test("tied publication timestamps page every source once without skipping or repeating UUIDs",async()=>{
+ const now=new Date(),s=await setup({now:()=>now}),versions:string[]=[];
+ for(let i=0;i<25;i++)versions.push((await s.publish(`DEMO — Tied source ${i}`)).versionId);
+ expect((await s.f.pool.query("SELECT count(DISTINCT published_at)::int AS n FROM ls_practice.practice_assignment_versions WHERE workspace_id=$1",[s.f.workspaceId])).rows[0].n).toBe(1);
+ const found:string[]=[];let cursor:string|undefined;
+ for(let page=0;page<3;page++){const choices=await s.service.recapPracticeChoices(s.f.practitioner.actor,s.sessionId,cursor);expect(choices.items.length).toBeLessThanOrEqual(20);found.push(...choices.items.map(row=>row.versionId));if(!choices.hasMore)break;expect(choices.nextCursor).not.toBe(cursor);cursor=choices.nextCursor!;}
+ expect(found).toEqual([...versions].sort());expect(new Set(found).size).toBe(25);
+},30000);
+
+test("recipient recap strips authorization-only audience IDs while retaining exact encrypted publication history",async()=>{
+ const s=await setup(),practice=await s.publish(),choice=(await s.service.recapPracticeChoices(s.f.practitioner.actor,s.sessionId)).items[0]!;
+ await s.service.saveRecap(s.f.practitioner.actor,s.sessionId,{...s.draft,practices:[],practiceSelections:[{versionId:practice.versionId,expectedSourceDigest:choice.sourceDigest,instructions:"DEMO — Selected family routine only"}]},randomUUID());
+ const stored=await s.service.recapVersion(s.f.practitioner.actor,s.sessionId,1);expect(stored.recap.practices[0]!.audienceAccountIds).toContain(s.f.parentTwo.actor.id);
+ const preview=await s.service.recapPreview(s.f.practitioner.actor,s.sessionId,1,[s.f.parent.actor.id]),published=await s.service.share(s.f.practitioner.actor,s.sessionId,{expectedVersion:1,expectedDigest:preview.digest,recipientAccountIds:[s.f.parent.actor.id]},randomUUID()),before=(await s.f.pool.query("SELECT * FROM ls_sessions.routine_recap_versions WHERE workspace_id=$1",[s.f.workspaceId])).rows;
+ const path=`/shared?caseId=${s.f.first.id}`,response=await s.http.handle(s.request(path,undefined,s.f.parent.token),["shared"]);expect(response.status).toBe(200);expect(response.headers.get("cache-control")).toBe("private, no-store");const body=await response.json(),raw=JSON.stringify(body);
+ expect(body.data[0].recap.practices[0]).toMatchObject({responsibilityId:practice.versionId,instructions:"DEMO — Selected family routine only"});expect(raw).not.toContain("audienceAccountIds");expect(raw).not.toContain(s.f.parentTwo.actor.id);
+ expect((await s.http.handle(s.request(path,undefined,s.f.parentTwo.token),["shared"])).status).toBe(200);expect(await s.service.sharedRecaps(s.f.parentTwo.actor,s.f.first.id)).toEqual([]);
+ expect((await s.service.publication(s.f.practitioner.actor,s.sessionId,published.publicationId)).recap).toEqual(stored.recap);expect((await s.f.pool.query("SELECT * FROM ls_sessions.routine_recap_versions WHERE workspace_id=$1",[s.f.workspaceId])).rows).toEqual(before);
+ await expect(s.service.sharedRecaps(s.f.outsider.actor,s.f.first.id)).rejects.toMatchObject({code:"NOT_FOUND"});await s.f.pool.query("UPDATE ls_cases.case_guardians SET revoked_at=clock_timestamp() WHERE workspace_id=$1 AND case_id=$2 AND account_id=$3",[s.f.workspaceId,s.f.first.id,s.f.parent.actor.id]);expect((await s.http.handle(s.request(path,undefined,s.f.parent.token),["shared"])).status).toBe(404);
+},30000);
+
 test("exact source practices, current future meeting and version readback persist; publication is one receipt across keys",async()=>{
  const s=await setup();await s.f.seed(s.f.at(-24));const next=await s.f.seed(s.f.at(48)),practice=await s.publish(),choices=await s.service.recapPracticeChoices(s.f.practitioner.actor,s.sessionId),choice=choices.items[0]!;
  expect(choice).toMatchObject({versionId:practice.versionId,participant:"client",localTime:"18:45",timezone:"UTC",completionMode:"any_assignee"});expect(choices.hasMore).toBe(false);
@@ -72,7 +94,7 @@ test("exact source practices, current future meeting and version readback persis
  const proof=await s.service.publication(s.f.practitioner.actor,s.sessionId,results[0]!.publicationId);expect(proof).toMatchObject({...results[0],contentDigest:preview.digest,recap:saved.recap});
  for(const table of ["publications","publication_events"])expect((await s.f.pool.query(`SELECT count(*)::int AS n FROM ls_sessions.${table} WHERE workspace_id=$1`,[s.f.workspaceId])).rows[0].n).toBe(1);
  const stored=(await s.f.pool.query("SELECT body_ciphertext FROM ls_sessions.routine_recap_versions WHERE workspace_id=$1",[s.f.workspaceId])).rows[0];expect(stored.body_ciphertext).not.toContain(input.practiceSelections[0]!.instructions);
- for(const actor of [s.f.parent.actor,s.f.parentTwo.actor]){const read=await s.service.sharedRecaps(actor,s.f.first.id);expect(read).toHaveLength(1);expect(read[0]!.recap).toEqual(saved.recap);}
+ for(const actor of [s.f.parent.actor,s.f.parentTwo.actor]){const read=await s.service.sharedRecaps(actor,s.f.first.id);expect(read).toHaveLength(1);expect(read[0]!.recap).toEqual(recipientRecap(saved.recap));expect(JSON.stringify(read)).not.toContain("audienceAccountIds");}
 },30000);
 test("privacy whitelist and exact recipient history never expose private observations or auto-grant an added parent",async()=>{
  const s=await setup(),values=blankMetrics();values.engagement={score:9,notObservedReason:null,note:"DEMO_PRIVATE_NEVER_SHARED"};await s.service.saveObservations(s.f.practitioner.actor,s.sessionId,values,0,randomUUID());
