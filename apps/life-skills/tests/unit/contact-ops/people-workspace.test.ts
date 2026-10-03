@@ -2,13 +2,69 @@ import {expect,test,vi} from "vitest";
 import {renderToStaticMarkup} from "react-dom/server";
 import {createElement} from "react";
 vi.mock("server-only",()=>({}));
-import {NativePeopleWorkspace} from "../../../src/features/contact-ops/native-people-workspace.tsx";
+import {NativePeopleWorkspace,peopleFiltersFromQuery,peoplePageFromQuery} from "../../../src/features/contact-ops/native-people-workspace.tsx";
 import {peopleEdit,sameAdministrativeFields} from "../../../src/features/contact-ops/core/people-edit.ts";
 import {practitionerReturnPath,loginReturnDestination} from "../../../src/features/identity/login-return.ts";
 import type {NativeContactRow} from "../../../src/features/contact-ops/server/native-directory.ts";
 import {selectNativeContacts,type NativeContactReference} from "../../../src/features/contact-ops/server/native-directory.ts";
 import nextConfig from "../../../next.config.ts";
 const personId="00000000-0000-4000-8000-000000000001",fields={stage:"New inquiry",nextAction:"Synthetic next action",followUpDate:"2026-09-28",notes:"  Synthetic saved note\nהערה סינתטית שמורה  "};
+test.each(["he","en"] as const)("%s exact-stage choice is localized without changing its filter key",locale=>{
+ const row:NativeContactRow={personId,displayName:"Synthetic stage filter",identityKind:"adult",...fields,version:1,mode:"live",archived:false,doNotContact:false,references:[],caseLinks:[]};
+ const html=renderToStaticMarkup(createElement(NativePeopleWorkspace,{locale,view:"all",initial:{source:"native",authorityEpoch:3,page:{page:1,pages:1,pageSize:12,total:1,items:[row]}},initialFilters:{query:"",stage:"New inquiry",language:"",due:"any"},onSheet:()=>{}}));
+ expect(html).toContain(`<option value="New inquiry" selected="">${locale==="he"?"פנייה חדשה":"New inquiry"}</option>`);
+ expect(selectNativeContacts([row],{view:"all",search:"",stage:"New inquiry",today:"2026-10-03",page:1,pageSize:12}).items).toEqual([row]);
+ expect(row.stage).toBe("New inquiry");expect(html.match(/lsu-people-toolbar/g)).toHaveLength(1);
+});
+test.each(["constructor","toString","__proto__","__custom__","פנייה חדשה","  Practitioner-written stage  "])("exact-stage custom filter retains literal %s through deep-link initialization",stage=>{
+ const initialFilters=peopleFiltersFromQuery(new URLSearchParams({stage}));
+ expect(initialFilters.stage).toBe(stage);
+ const html=renderToStaticMarkup(createElement(NativePeopleWorkspace,{locale:"he",view:"all",initial:{source:"native",authorityEpoch:3,page:{page:1,pages:1,pageSize:12,total:0,items:[]}},initialFilters,onSheet:()=>{}}));
+ expect(html).toContain('<option value="__custom__" selected="">שלב מותאם מדויק</option>');
+ expect(html).toContain(`maxLength="120" value="${stage}"`);
+});
+test.each(["he","en"] as const)("%s native People labels are display-only in the list and profile",locale=>{
+ const row:NativeContactRow={personId,displayName:"Synthetic person",identityKind:"adult",...fields,nextAction:"Respond to inbound WhatsApp inquiry",version:1,mode:"live",archived:false,doNotContact:false,references:[],caseLinks:[]};
+ const props={locale,view:"all" as const,initial:{source:"native" as const,authorityEpoch:3,page:{page:1,pages:1,pageSize:12,total:1,items:[row]}},initialFilters:{query:"",stage:"New inquiry",language:"",due:"any" as const},onSheet:()=>{}};
+ const list=renderToStaticMarkup(createElement(NativePeopleWorkspace,props));
+ const stage=locale==="he"?"פנייה חדשה":"New inquiry",action=locale==="he"?"מענה לפניית WhatsApp נכנסת":"Respond to inbound WhatsApp inquiry";
+ expect(list).toContain(`<td>${stage}</td>`);expect(list).toContain(`<td>${action}</td>`);expect(list).toContain(`<span>${action}</span>`);
+ expect(list).toContain('value="New inquiry"');
+ const profile=renderToStaticMarkup(createElement(NativePeopleWorkspace,{...props,initialPersonId:personId}));
+ expect(profile).toContain(`<p>${stage}</p>`);expect(profile).toContain('value="New inquiry"');expect(profile).toContain('value="Respond to inbound WhatsApp inquiry"');
+ expect(row.stage).toBe("New inquiry");expect(row.nextAction).toBe("Respond to inbound WhatsApp inquiry");
+});
+test.each(["constructor","toString","__proto__","  Practitioner-written stage  "])("native People preserves unknown %s text in Hebrew",stage=>{
+ const row:NativeContactRow={personId,displayName:"Synthetic person",identityKind:"adult",...fields,stage,nextAction:stage,version:1,mode:"live",archived:false,doNotContact:false,references:[],caseLinks:[]};
+ const props={locale:"he" as const,view:"all" as const,initial:{source:"native" as const,authorityEpoch:3,page:{page:1,pages:1,pageSize:12,total:1,items:[row]}},onSheet:()=>{}};
+ const list=renderToStaticMarkup(createElement(NativePeopleWorkspace,props));expect(list).toContain(`<td>${stage}</td>`);expect(list).toContain(`<span>${stage}</span>`);
+ const profile=renderToStaticMarkup(createElement(NativePeopleWorkspace,{...props,initialPersonId:personId}));expect(profile).toContain(`<p>${stage}</p>`);expect(profile).toContain(`value="${stage}"`);
+});
+test("People page deep links accept only the bounded server page form",()=>{
+ for(const [query,page] of [["",1],["page=2",2],["page=99999",99999],["page=0",1],["page=01",1],["page=100000",1],["page=-2",1],["page=2.5",1],["page=abc",1]] as const)
+  expect(peoplePageFromQuery(new URLSearchParams(query))).toBe(page);
+});
+test("People Back/deep links recover only valid applied directory filters",()=>{
+ expect(peopleFiltersFromQuery(new URLSearchParams("search=synthetic+name&stage=New+inquiry&language=he&due=overdue"))).toEqual({query:"synthetic name",stage:"New inquiry",language:"he",due:"overdue"});
+ expect(peopleFiltersFromQuery(new URLSearchParams("language=xx&due=tomorrow"))).toEqual({query:"",stage:"",language:"",due:"any"});
+ expect(peopleFiltersFromQuery(new URLSearchParams({search:"x".repeat(201),stage:"y".repeat(121)}))).toEqual({query:"",stage:"",language:"",due:"any"});
+});
+test.each([
+ ["search", "Synthetic name", "Another name", "query", ""],
+ ["stage", "New inquiry", "Contacted", "stage", ""],
+ ["language", "he", "en", "language", ""],
+ ["due", "today", "overdue", "due", "any"],
+] as const)("People rejects every duplicated %s key without changing other exact filters",(key,first,second,field,fallback)=>{
+ const baseline={query:"  Exact name  ",stage:"  Exact stage  ",language:"he",due:"overdue" as const};
+ for(const repeated of [second,first,""]){
+  const params=new URLSearchParams({search:baseline.query,stage:baseline.stage,language:baseline.language,due:baseline.due});
+  params.set(key,first);params.append(key,repeated);
+  expect(peopleFiltersFromQuery(params)).toEqual({...baseline,[field]:fallback});
+ }
+});
+test.each(["page=2&page=3","page=2&page=2","page=2&page=","page=&page=2"])("People duplicated page uses the same server default: %s",query=>{
+ expect(peoplePageFromQuery(new URLSearchParams(query))).toBe(1);
+});
 test.each(["he","en"] as const)("%s new native contact action is compact/collapsed and absent from DEMO",locale=>{
  const props={locale,view:"all" as const,initial:{source:"native" as const,authorityEpoch:3,page:{page:1,pages:1,pageSize:12,total:0,items:[]}},onSheet:()=>{}};
  const live=renderToStaticMarkup(createElement(NativePeopleWorkspace,props));

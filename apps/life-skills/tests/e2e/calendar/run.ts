@@ -6,18 +6,20 @@ import { spawn,execFileSync, type ChildProcess } from 'node:child_process';
 import { createServer as httpsServer } from 'node:https';
 import { request as httpRequest } from 'node:http';
 import { randomUUID,randomBytes } from 'node:crypto';
-import { mkdtempSync,writeFileSync,readFileSync,rmSync } from 'node:fs';
+import { mkdtempSync,writeFileSync,readFileSync,rmSync,existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join,resolve } from 'node:path';
 import { once } from 'node:events';
 import { fixture,safeTestUrl } from '../../database/calendar/fixture.ts';
 import { civilDate } from '../../../src/features/calendar/time.ts';
+import { InternalTaskService } from '../../../src/features/calendar/tasks.ts';
 const project=process.env.LS_CALENDAR_TEST_PROJECT;
 if(project!==undefined&&!['desktop','mobile'].includes(project))throw new Error('CALENDAR_BROWSER_PROJECT_NOT_SUPPORTED');
 const tlsPort=project==='mobile'?3446:3445,port=project==='mobile'?3104:3103,origin=`https://127.0.0.1:${tlsPort}`;
 if(process.env.LS_CALENDAR_TEST_SHARED_ROUTES_ACCEPTED!=='true')throw new Error('IR_LS030_PROXY_ACCEPTANCE_REQUIRED_NO_BYPASS');
 const databaseUrl=safeTestUrl(),folder=mkdtempSync(join(tmpdir(),'ls030-private-browser-'));
 let app:ChildProcess|null=null,tests:ChildProcess|null=null,tls:ReturnType<typeof httpsServer>|null=null,f:Awaited<ReturnType<typeof fixture>>|null=null;
+let phase='fixture';
 async function terminate(child:ChildProcess|null){if(!child||child.exitCode!==null)return;child.kill('SIGTERM');await Promise.race([once(child,'exit'),new Promise(r=>setTimeout(r,5000))]);if(child.exitCode===null)child.kill('SIGKILL');}
 let cleanupPromise:Promise<void>|null=null;
 function cleanup(){
@@ -46,24 +48,38 @@ try{
   cases[name]={futureId:await f.seed(future),pastId:await f.seed(past),futureDate:civilDate(future),pastDate:civilDate(past)};
  }
  const foreignId=await f.seed(f.at(140),f.second);
+ phase='admin-display-task-seed';
+ const adminDisplayDate=cases['desktop:he']!.futureDate,lookupKey=randomBytes(32);
+ await new InternalTaskService(f.db,lookupKey).syncCrmFollowups(f.practitioner.actor,[
+  {leadId:'LS-LEAD-SYNTHETIC-ADMIN',name:'Synthetic inquiry',nextAction:'Respond to inbound WhatsApp inquiry',dueDate:adminDisplayDate,caseId:'',stage:'New inquiry',outcome:''},
+  {leadId:'LS-LEAD-SYNTHETIC-UNKNOWN',name:'Synthetic unknown',nextAction:'constructor',dueDate:adminDisplayDate,caseId:'',stage:'New inquiry',outcome:''},
+ ]);
  const auth=join(folder,'synthetic-runtime.json');
+ phase='app-start';
  // Generated test-session material exists only in a mode-0600 temporary file. Never attach it to reports.
- writeFileSync(auth,JSON.stringify({origin,cases,caseId:f.first.id,foreignId,parent:f.parent.token,practitioner:f.practitioner.token}),{mode:0o600});
+ writeFileSync(auth,JSON.stringify({origin,cases,caseId:f.first.id,foreignId,adminDisplayDate,parent:f.parent.token,practitioner:f.practitioner.token}),{mode:0o600});
  const key=join(folder,'tls.key'),cert=join(folder,'tls.crt');
- execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',key,'-out',cert,'-days','1','-subj','/CN=localhost','-addext','subjectAltName=DNS:localhost,IP:127.0.0.1'],{stdio:'ignore'});
- const env:NodeJS.ProcessEnv={...process.env,NODE_ENV:'production',NEXT_TELEMETRY_DISABLED:'1',LS_APP_MODE:'foundation_preview',LS_APP_ORIGIN:origin,LS_DATABASE_URL:databaseUrl,LS_DATABASE_TLS:'disable',LS_IDENTITY_ENABLED:'true',LS_CALENDAR_ENABLED:'true',LS_IDENTITY_WORKSPACE_ID:workspaceId,LS_IDENTITY_ACTIVE_KEY_ID:'synthetic',LS_IDENTITY_DATA_KEYS:JSON.stringify({synthetic:dataKey.toString('base64url')}),LS_IDENTITY_CSRF_KEY:randomBytes(32).toString('base64url'),LS_IDENTITY_LOOKUP_KEY:randomBytes(32).toString('base64url'),LS_IDENTITY_RATE_KEY:randomBytes(32).toString('base64url'),LS_CALENDAR_FIXTURE_PATH:auth};
+ phase='tls-certificate';
+ const gitOpenSsl='C:/Program Files/Git/mingw64/bin/openssl.exe';
+ const openssl=process.platform==='win32'&&existsSync(gitOpenSsl)?gitOpenSsl:'openssl';
+ execFileSync(openssl,['req','-x509','-newkey','rsa:2048','-nodes','-keyout',key,'-out',cert,'-days','1','-subj','/CN=localhost','-addext','subjectAltName=DNS:localhost,IP:127.0.0.1'],{stdio:'ignore'});
+ phase='next-app-start';
+ const env:NodeJS.ProcessEnv={...process.env,NODE_ENV:'production',NEXT_TELEMETRY_DISABLED:'1',LS_APP_MODE:'foundation_preview',LS_APP_ORIGIN:origin,LS_DATABASE_URL:databaseUrl,LS_DATABASE_TLS:'disable',LS_IDENTITY_ENABLED:'true',LS_CALENDAR_ENABLED:'true',LS_IDENTITY_WORKSPACE_ID:workspaceId,LS_IDENTITY_ACTIVE_KEY_ID:'synthetic',LS_IDENTITY_DATA_KEYS:JSON.stringify({synthetic:dataKey.toString('base64url')}),LS_IDENTITY_CSRF_KEY:randomBytes(32).toString('base64url'),LS_IDENTITY_LOOKUP_KEY:lookupKey.toString('base64url'),LS_IDENTITY_RATE_KEY:randomBytes(32).toString('base64url'),LS_CALENDAR_FIXTURE_PATH:auth};
  const startedApp=spawn(process.execPath,[resolve('node_modules/next/dist/bin/next'),'start','--hostname','127.0.0.1','--port',String(port)],{env,stdio:'ignore'});app=startedApp;
+ phase='next-health';
  let healthy=false;
  for(let i=0;i<100;i++){if(startedApp.exitCode!==null)throw new Error('ISOLATED_APP_START_FAILED');try{const r=await fetch(`http://127.0.0.1:${port}/api/health`);if(r.ok){healthy=true;break;}}catch{}await new Promise(r=>setTimeout(r,200));}
  if(!healthy)throw new Error('ISOLATED_APP_HEALTH_TIMEOUT');
+ phase='tls-proxy';
  tls=httpsServer({key:readFileSync(key),cert:readFileSync(cert)},(req,res)=>{
   const upstream=httpRequest({hostname:'127.0.0.1',port,path:req.url,method:req.method,headers:{...req.headers,'x-forwarded-proto':'https'}},response=>{res.writeHead(response.statusCode??502,response.headers);response.pipe(res);});
   upstream.on('error',()=>{if(res.headersSent)res.destroy();else{res.writeHead(502);res.end('Isolated upstream unavailable');}});req.pipe(upstream);
  });tls.listen(tlsPort,'127.0.0.1');await once(tls,'listening');
+ phase='browser-tests';
  env.LS_CALENDAR_TEST_RUNNER_ACTIVE='true';
  const selection=project?['--project',project,'--output',`tests/e2e/calendar/test-results/isolated-${project}`]:[];
  const startedTests=spawn(process.execPath,[resolve('node_modules/@playwright/test/cli.js'),'test','--config','tests/e2e/calendar/playwright.config.ts',...selection],{env,stdio:['ignore','inherit','inherit']});tests=startedTests;
  const [code]=await once(startedTests,'exit');if(code!==0)throw new Error('CALENDAR_BROWSER_ACCEPTANCE_FAILED');
  console.log('LS-030 isolated browser suite completed. Only synthetic fixtures used; no deployment.');
-}catch{console.error('LS-030 browser verification failed. Inspect sanitized test assertions; no runtime credentials are printed.');process.exitCode=1;}
+}catch(error){console.error(`LS-030 browser verification failed at ${phase} (${error instanceof Error?error.name:'unknown error'}). Inspect sanitized test assertions; no runtime credentials are printed.`);process.exitCode=1;}
 finally{await cleanup();}

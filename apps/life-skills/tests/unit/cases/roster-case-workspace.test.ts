@@ -211,6 +211,25 @@ it('shows one searchable People list without hiding a linked child case or dupli
  } finally { vi.unstubAllGlobals(); }
 });
 
+it('keeps Sheet-backed stage keys and practitioner text intact for inherited-property names', async () => {
+ const leads = [
+  { leadId: 'LS-LEAD-synthetic-known', name: 'Synthetic known', stage: 'New inquiry', nextAction: 'Respond to inbound WhatsApp inquiry' },
+  { leadId: 'LS-LEAD-synthetic-unknown', name: 'Synthetic unknown', stage: 'constructor', nextAction: 'toString' },
+ ].map(row => ({ ...row, caseId: '', phone: '0500000000', language: 'he', receivedAt: '2026-09-25T08:00:00Z', dueDate: '', formSent: '', formSubmitted: '', paymentVerified: false, bookingStatus: '', outcome: '', journeyState: '' }));
+ vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: leads, pendingOperations: [], pendingNext: null, ledgerReady: true }) }));
+ try {
+  const view = () => hook.render(() => ProspectsClient({ locale: 'he', embedded: true, caseState: 'ready' }));
+  view(); hook.flushEffects(); await tick();
+  const output = view();
+  expect(text(output)).toContain('פנייה חדשה');
+  expect(text(output)).toContain('מענה לפניית WhatsApp נכנסת');
+  expect(text(output)).toContain('constructor');
+  expect(text(output)).toContain('toString');
+  expect(find(output, element => element.type === 'option' && element.props.value === 'New inquiry')).toBeDefined();
+  expect(find(output, element => element.type === 'option' && element.props.value === 'constructor')).toBeDefined();
+ } finally { vi.unstubAllGlobals(); }
+});
+
 it('keeps an orphaned pending send discoverable on a later ledger page without offering a resend', async () => {
  const cursor='00000000-0000-4000-8000-000000000001';
  const orphan={leadId:'LS-LEAD-synthetic-missing',operationId:'00000000-0000-4000-8000-000000000002',
@@ -364,6 +383,43 @@ it('renders one native directory only after the server selects the actual native
  expect(native?.props.initial).toBe(data);expect(native?.props.view).toBe('active');
  expect(find(output,e=>e.type===LegacyClientsRoster||e.type===ProspectsClient)).toBeUndefined();
  expect(hook.accountRead).not.toHaveBeenCalled();
+});
+it('requests the validated People deep-link page and filters before showing native rows',async()=>{
+ const data={source:'native',authorityEpoch:3,page:{items:[],total:0,page:2,pageSize:12,pages:2}};
+ hook.peopleRead.mockResolvedValue(data);
+ const view=()=>hook.render(()=>ClientsRoster({locale:'en',section:'prospects',page:'2',search:'synthetic name',stage:'New inquiry',language:'he',due:'overdue'}));
+ view();hook.flushEffects();await tick();
+ expect(hook.peopleRead).toHaveBeenCalledExactlyOnceWith(new URLSearchParams({view:'prospects',page:'2',search:'synthetic name',stage:'New inquiry',language:'he',due:'overdue'}));
+ const native=find(view(),e=>e.type===NativePeopleWorkspace);
+ expect(native?.props.initial).toBe(data);
+ expect(native?.props.initialFilters).toEqual({query:'synthetic name',stage:'New inquiry',language:'he',due:'overdue'});
+ expect(native?.props.initialLoadedContext).toBe(true);
+});
+it('does not refetch a native directory already loaded for its exact URL context',async()=>{
+ const location=new URL('https://synthetic.invalid/en/app/clients?search=synthetic&page=2');
+ vi.stubGlobal('window',{location,addEventListener(){},removeEventListener(){}});
+ const fetch=vi.fn();vi.stubGlobal('fetch',fetch);
+ const initial={source:'native' as const,authorityEpoch:3,page:{items:[],total:0,page:2,pageSize:12,pages:2}};
+ try{const view=()=>hook.render(()=>NativePeopleWorkspace({locale:'en',view:'all',initial,initialLoadedContext:true,initialFilters:{query:'synthetic',stage:'',language:'',due:'any'},onSheet:()=>{}}));view();hook.flushEffects();await tick();expect(fetch).not.toHaveBeenCalled();}
+ finally{vi.unstubAllGlobals();}
+});
+it('resets a persisted directory page after a confirmed native contact save',async()=>{
+ let location=new URL('https://synthetic.invalid/en/app/clients?page=2');
+ vi.stubGlobal('window',{get location(){return location;},history:{state:null,replaceState(_state:unknown,_unused:string,url:URL){location=new URL(url);}},addEventListener(){},removeEventListener(){}});
+ const personId='00000000-0000-4000-8000-000000000001',initial={source:'native' as const,authorityEpoch:3,page:{items:[],total:13,page:2,pageSize:12,pages:2}};
+ const fetch=vi.fn(async(url:string)=>({ok:true,status:200,json:async()=>url==='/api/identity/session'?{ok:true,data:{csrfToken:'synthetic'}}:url==='/api/prospects'?{ok:true,data:{source:'native',action:'created',personId,leadId:'LS-LEAD-native-'+personId,version:1,authorityEpoch:3}}:{ok:true,data:{...initial,page:{...initial.page,page:1}}}}));
+ vi.stubGlobal('fetch',fetch);
+ try{
+  const view=()=>hook.render(()=>NativePeopleWorkspace({locale:'en',view:'all',initial,initialLoadedContext:true,onSheet:()=>{}}));
+  (find(view(),e=>e.type==='button'&&e.props.children==='Add prospect')!.props.onClick as()=>void)();
+  const phoneLabel=find(view(),e=>e.type==='label'&&text(e).startsWith('Phone'))!;
+  (find(phoneLabel,e=>e.type==='input')!.props.onChange as(e:{target:{value:string}})=>void)({target:{value:'+972535550199'}});
+  const form=find(view(),e=>e.type==='form'&&e.props['aria-label']==='New administrative contact')!;
+  (form.props.onSubmit as(e:{preventDefault:()=>void})=>void)({preventDefault(){}});
+  await vi.waitFor(()=>expect(location.search).toBe(''));
+  expect(fetch.mock.calls.map(([url])=>String(url))).toContain('/api/private/people?view=all&mode=live&page=1&search=&due=any');
+  expect(fetch.mock.calls.some(([url])=>String(url).includes('send'))).toBe(false);
+ }finally{vi.unstubAllGlobals();}
 });
 it.each([401,403,409,503])('source failure %i never initializes Sheet or calls a directory empty',async status=>{
  hook.peopleRead.mockRejectedValue(new PeopleRequestError(status));

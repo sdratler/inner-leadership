@@ -158,7 +158,7 @@ export function proxy(request: NextRequest) {
     const locale = practitionerPage[1] as "he" | "en";
     const page = practitionerPage[2] as "calendar" | "clients" | "practice";
     const query: Record<string, string | undefined> = {};
-    for (const key of page === "calendar" ? ["date", "view", "caseId", "context", "mode"] : page === "practice" ? ["caseId", "audienceId", "assignmentId", "section"] : ["section", "filter", "leadId", "personId", "mode"]) {
+    for (const key of page === "calendar" ? ["date", "view", "caseId", "context", "mode"] : page === "practice" ? ["caseId", "audienceId", "assignmentId", "section"] : ["section", "filter", "leadId", "personId", "mode", "page", "search", "stage", "language", "due"]) {
       const values = request.nextUrl.searchParams.getAll(key);
       query[key] = values.length === 1 ? values[0] : undefined;
     }
