@@ -13,6 +13,60 @@ import {SESSION_COOKIE} from "../../../src/lib/security/session.ts";
 import {systemClock} from "../../../src/features/identity/types.ts";
 import {unseal} from "../../../src/features/identity/crypto.ts";
 const opened:Fixture[]=[];afterEach(async()=>{await Promise.all(opened.splice(0).map(item=>item.pool.end()));});
+const scopedInput=(f:Fixture)=>({recipient:"DEMO — Synthetic authorized school contact",purpose:"Synthetic agreed classroom support",topic:"Only the agreed grounding practice",authorityBasis:"DEMO — Actual synthetic signed scope, authority checked and no restrictions recorded. Not a legal certificate.",authorityState:"checked" as const,channel:"phone" as const,authorizedByAccountId:f.parent.actor.id,childDiscussionRecorded:true,authorizedAt:f.at(-24),expiresAt:f.at(24)});
+test("the bounded disclosure history rejects its 101st record atomically while replay, reading, use and revocation remain available",async()=>{
+ const s=await httpFixture(),sessionId=(await s.service.ensureForAppointment(s.f.practitioner.actor,s.f.first.id,await s.f.seed(s.f.at(-24)))).sessionId,path=`/${sessionId}/disclosures`,input=scopedInput(s.f);
+ for(let index=0;index<99;index++)await s.service.authorizeDisclosure(s.f.practitioner.actor,sessionId,{...input,recipient:`DEMO — Synthetic recipient ${index}`},randomUUID());
+ const attempts=[randomUUID(),randomUUID()].map(key=>({key,input:{...input,recipient:`DEMO — Synthetic capacity ${key}`}}));
+ const outcomes=await Promise.all(attempts.map(async attempt=>({attempt,response:await s.http.handle(s.request(path,attempt.input,s.f.practitioner.token,attempt.key),[sessionId,"disclosures"])})));
+ expect(outcomes.map(result=>result.response.status).sort()).toEqual([201,409]);
+ const accepted=outcomes.find(result=>result.response.status===201)!,denied=outcomes.find(result=>result.response.status===409)!,receipt=(await accepted.response.json()).data;
+ const replay=await s.http.handle(s.request(path,accepted.attempt.input,s.f.practitioner.token,accepted.attempt.key),[sessionId,"disclosures"]);expect(replay.status).toBe(201);expect((await replay.json()).data).toEqual(receipt);
+ const stored=async()=>(await s.f.pool.query('SELECT * FROM ls_sessions.disclosure_authorizations WHERE workspace_id=$1 AND case_id=$2 AND session_id=$3 ORDER BY id',[s.f.workspaceId,s.f.first.id,sessionId])).rows;
+ const before=await stored();expect(before).toHaveLength(100);
+ const retryDenied=await s.http.handle(s.request(path,denied.attempt.input,s.f.practitioner.token,denied.attempt.key),[sessionId,"disclosures"]);expect(retryDenied.status).toBe(409);expect(await stored()).toEqual(before);
+ expect((await s.f.pool.query("SELECT count(*)::integer AS n FROM ls_sessions.command_receipts WHERE workspace_id=$1 AND operation='authorize_disclosure'",[s.f.workspaceId])).rows[0].n).toBe(100);
+ expect((await s.f.pool.query("SELECT count(*)::integer AS n FROM ls_sessions.command_receipts WHERE workspace_id=$1 AND idempotency_key=$2",[s.f.workspaceId,denied.attempt.key])).rows[0].n).toBe(0);
+ const read=await s.http.handle(s.request(path),[sessionId,"disclosures"]);expect(read.status).toBe(200);expect((await read.json()).data).toHaveLength(100);
+ const usedAt=s.f.at(-1),used=await s.service.recordDisclosureUse(s.f.practitioner.actor,sessionId,receipt.disclosureId,{usedAt},randomUUID());expect(used.usedAt).toBe(usedAt);
+ await s.service.revokeDisclosure(s.f.practitioner.actor,sessionId,receipt.disclosureId,{expectedUsedAt:usedAt},randomUUID());
+ const after=await s.service.disclosures(s.f.practitioner.actor,sessionId);expect(after).toHaveLength(100);expect(after.find(item=>item.id===receipt.disclosureId)).toMatchObject({usedAt,effective:false});
+ expect((await stored()).filter(row=>row.id!==receipt.disclosureId)).toEqual(before.filter(row=>row.id!==receipt.disclosureId));
+},60_000);
+test("real scoped disclosure writers preserve encrypted scope, exact readback, replay, use and revocation without delivery",async()=>{
+ const s=await httpFixture(),sessionId=(await s.service.ensureForAppointment(s.f.practitioner.actor,s.f.first.id,await s.f.seed(s.f.at(-24)))).sessionId,path=`/${sessionId}/disclosures`,input=scopedInput(s.f),key=randomUUID();
+ const first=await s.http.handle(s.request(path,input,s.f.practitioner.token,key),[sessionId,"disclosures"]);expect(first.status).toBe(201);const receipt=(await first.json()).data;
+ const replay=await s.http.handle(s.request(path,input,s.f.practitioner.token,key),[sessionId,"disclosures"]);expect((await replay.json()).data).toEqual(receipt);
+ const read=await s.http.handle(s.request(`${path}?disclosureId=${receipt.disclosureId}`),[sessionId,"disclosures"]);expect(read.status).toBe(200);expect(read.headers.get("cache-control")).toBe("private, no-store");const saved=(await read.json()).data[0];expect(saved).toMatchObject({...input,id:receipt.disclosureId,workspaceId:s.f.workspaceId,caseId:s.f.first.id,sessionId,recordedByPractitionerId:s.f.practitioner.actor.id,effective:true,usedAt:null,revokedAt:null});
+ const before=(await s.f.pool.query('SELECT * FROM ls_sessions.disclosure_authorizations WHERE workspace_id=$1 AND id=$2',[s.f.workspaceId,receipt.disclosureId])).rows[0];for(const field of ['recipient_ciphertext','purpose_ciphertext','topic_ciphertext','authority_evidence_ciphertext'])expect(before[field]).not.toContain('Synthetic');
+ const use={usedAt:s.f.at(-1)},useKey=randomUUID(),useParts=[sessionId,"disclosures",receipt.disclosureId,"use"],usePath=`${path}/${receipt.disclosureId}/use`;
+ for(let attempt=0;attempt<2;attempt++){const result=await s.http.handle(s.request(usePath,use,s.f.practitioner.token,useKey),useParts);expect(result.status).toBe(201);expect((await result.json()).data).toMatchObject({disclosureId:receipt.disclosureId,usedAt:use.usedAt,revokedAt:null});}
+ expect((await s.service.disclosures(s.f.practitioner.actor,sessionId,receipt.disclosureId))[0]).toMatchObject({usedAt:use.usedAt,effective:false});
+ expect((await s.http.handle(s.request(usePath,use),useParts)).status).toBe(409);
+ const revokeKey=randomUUID(),revokePath=`${path}/${receipt.disclosureId}/revoke`,revokeParts=[sessionId,"disclosures",receipt.disclosureId,"revoke"];
+ expect((await s.http.handle(s.request(revokePath,{expectedUsedAt:null}),revokeParts)).status).toBe(409);
+ const revoked=await s.http.handle(s.request(revokePath,{expectedUsedAt:use.usedAt},s.f.practitioner.token,revokeKey),revokeParts);expect(revoked.status).toBe(201);const revokedReceipt=(await revoked.json()).data;
+ expect((await (await s.http.handle(s.request(revokePath,{expectedUsedAt:use.usedAt},s.f.practitioner.token,revokeKey),revokeParts)).json()).data).toEqual(revokedReceipt);
+ const after=(await s.f.pool.query('SELECT * FROM ls_sessions.disclosure_authorizations WHERE workspace_id=$1 AND id=$2',[s.f.workspaceId,receipt.disclosureId])).rows[0];expect({...after,used_at:null,revoked_at:null}).toEqual(before);
+ expect((await s.f.pool.query('SELECT operation,count(*)::integer AS n FROM ls_sessions.command_receipts WHERE workspace_id=$1 GROUP BY operation ORDER BY operation',[s.f.workspaceId])).rows).toEqual([{operation:"authorize_disclosure",n:1},{operation:"record_disclosure_use",n:1},{operation:"revoke_disclosure",n:1}]);
+ for(const table of ['recording_jobs','publication_events','publications'])expect((await s.f.pool.query(`SELECT count(*)::integer AS n FROM ls_sessions.${table} WHERE workspace_id=$1`,[s.f.workspaceId])).rows[0].n).toBe(0);
+},30_000);
+test("scoped disclosure authority, expiry, strict queries, CSRF, role/case privacy and concurrency fail closed",async()=>{
+ const s=await httpFixture(),id=(await s.service.ensureForAppointment(s.f.practitioner.actor,s.f.first.id,await s.f.seed(s.f.at(-24)))).sessionId,path=`/${id}/disclosures`,input=scopedInput(s.f);
+ for(const change of [{recipient:" "},{authorityBasis:" "},{authorizedAt:s.f.at(1)},{authorizedAt:"2026-02-30T10:00:00Z"},{expiresAt:input.authorizedAt}])await expect(s.service.authorizeDisclosure(s.f.practitioner.actor,id,{...input,...change},randomUUID())).rejects.toMatchObject({code:"INVALID_REQUEST"});
+ expect((await s.http.handle(s.request(path,{...input,privateNotes:"never accepted"}),[id,"disclosures"])).status).toBe(400);
+ expect((await s.http.handle(s.request(path,input,s.f.practitioner.token,randomUUID(),false),[id,"disclosures"])).status).toBe(403);
+ const record=await s.service.authorizeDisclosure(s.f.practitioner.actor,id,input,randomUUID()),parts=[id,"disclosures",record.disclosureId,"use"],usePath=`${path}/${record.disclosureId}/use`;
+ for(const usedAt of [s.f.at(1),s.f.at(-48),"2026-02-30T11:00:00Z"])expect((await s.http.handle(s.request(usePath,{usedAt}),parts)).status).toBe(400);
+ for(const query of ['?extra=1',`?disclosureId=${record.disclosureId}&disclosureId=${record.disclosureId}`,'?disclosureId=invalid'])expect((await s.http.handle(s.request(path+query),[id,"disclosures"])).status).toBe(400);
+ const other=(await s.service.ensureForAppointment(s.f.practitioner.actor,s.f.second.id,await s.f.seed(s.f.at(48),s.f.second))).sessionId;expect((await s.http.handle(s.request(`/${other}/disclosures?disclosureId=${record.disclosureId}`),[other,"disclosures"])).status).toBe(404);
+ for(const role of ["parent","child","adult_client"]){await s.f.pool.query('UPDATE ls_identity.accounts SET role=$2 WHERE id=$1',[s.f.parent.actor.id,role]);for(const [p,body,segments] of [[path,undefined,[id,"disclosures"]],[path,input,[id,"disclosures"]],[usePath,{usedAt:s.f.at(-1)},parts]] as const){const denied=await s.http.handle(s.request(p,body,s.f.parent.token),segments);expect(denied.status).toBe(404);expect(await denied.text()).not.toContain(input.topic);}}
+ await s.f.pool.query("UPDATE ls_identity.accounts SET role='parent' WHERE id=$1",[s.f.parent.actor.id]);
+ await s.f.pool.query('UPDATE ls_cases.case_guardians SET revoked_at=clock_timestamp() WHERE workspace_id=$1 AND case_id=$2 AND account_id=$3',[s.f.workspaceId,s.f.first.id,input.authorizedByAccountId]);expect((await s.service.disclosures(s.f.practitioner.actor,id,record.disclosureId))[0]?.effective).toBe(false);expect((await s.http.handle(s.request(usePath,{usedAt:s.f.at(-1)}),parts)).status).toBe(409);
+ await expect(s.service.authorizeDisclosure(s.f.practitioner.actor,id,input,randomUUID())).rejects.toMatchObject({code:"NOT_FOUND"});
+ const restricted=await s.service.authorizeDisclosure(s.f.practitioner.actor,id,{...input,authorizedByAccountId:s.f.parentTwo.actor.id,authorityState:"restricted"},randomUUID());await expect(s.service.recordDisclosureUse(s.f.practitioner.actor,id,restricted.disclosureId,{usedAt:s.f.at(-1)},randomUUID())).rejects.toMatchObject({code:"CONFLICT"});
+ const active=await s.service.authorizeDisclosure(s.f.practitioner.actor,id,{...input,authorizedByAccountId:s.f.parentTwo.actor.id},randomUUID());const results=await Promise.all([s.service.recordDisclosureUse(s.f.practitioner.actor,id,active.disclosureId,{usedAt:s.f.at(-1)},randomUUID()),s.service.recordDisclosureUse(s.f.practitioner.actor,id,active.disclosureId,{usedAt:s.f.at(-2)},randomUUID())].map(p=>p.then(()=>"accepted",error=>error.code)));expect(results.sort()).toEqual(["CONFLICT","accepted"]);
+},30_000);
 test("native session record keeps observations private and snapshots only current recipients",async()=>{
  const f=await fixture();opened.push(f);const service=new SessionDatabaseService(poolStore(f.pool),f.keyring,systemClock);
  const past=await f.seed(f.at(-24)),future=await f.seed(f.at(48));const ensured=await service.ensureForAppointment(f.practitioner.actor,f.first.id,past);
