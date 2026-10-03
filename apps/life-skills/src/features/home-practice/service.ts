@@ -36,14 +36,15 @@ import type {
 const instructionsAad = (workspaceId: string, versionId: string) => `practice-version:${workspaceId}:${versionId}`;
 /** The guardian editor cannot replace retained exact-subject child assignments.
  * Current and pending versions are inspected without expanding bounded history. */
-async function retainedChildCoordination(tx:SqlSession,workspaceId:string,assignmentId:string,caseId:string,audienceId:string,currentVersionId:string|null,now:Date):Promise<boolean>{
+async function retainedChildCoordination(tx:SqlSession,workspaceId:string,assignmentId:string,caseId:string,audienceId:string,currentVersionId:string|null,now:Date,preservedAccountIds:readonly AccountId[]=[]):Promise<boolean>{
  const row=await one<{retained:boolean}>(tx,`SELECT EXISTS(SELECT 1 FROM ls_practice.task_coordination_versions c
   JOIN ls_identity.accounts a ON a.workspace_id=c.workspace_id AND a.role='child' AND a.state='active' AND a.id=ANY(c.assignee_account_ids)
   JOIN ls_identity.account_subjects s ON s.workspace_id=a.workspace_id AND s.account_id=a.id
   JOIN ls_cases.cases ca ON ca.workspace_id=c.workspace_id AND ca.id=c.case_id
   JOIN ls_cases.clients cl ON cl.workspace_id=ca.workspace_id AND cl.id=ca.client_id AND cl.person_id=s.person_id
   JOIN ls_cases.audience_accounts aa ON aa.workspace_id=c.workspace_id AND aa.case_id=c.case_id AND aa.audience_id=c.audience_id AND aa.account_id=a.id AND aa.revoked_at IS NULL
-  WHERE c.workspace_id=$1 AND c.assignment_id=$2 AND c.case_id=$3 AND c.audience_id=$4 AND (c.id=$5::uuid OR c.effective_from>$6)) AS retained`,[workspaceId,assignmentId,caseId,audienceId,currentVersionId,now]);
+  WHERE c.workspace_id=$1 AND c.assignment_id=$2 AND c.case_id=$3 AND c.audience_id=$4 AND (c.id=$5::uuid OR c.effective_from>$6)
+  AND NOT(a.id=ANY($7::uuid[]))) AS retained`,[workspaceId,assignmentId,caseId,audienceId,currentVersionId,now,preservedAccountIds]);
  return row?.retained===true;
 }
 function immutableVersionDigest(row: VersionRow): string {
@@ -305,9 +306,12 @@ export class HomePracticeService implements PracticeVersionReader {
         AND (($3='minor' AND a.role='child') OR ($3='adult' AND a.role='adult_client'))
         AND a.id=ANY($4::uuid[])`,[actor.workspaceId,item.clientPersonId,item.kind,audience.accountIds]):[];
       const assignees = coordinationAssignees(current, item, guardians, audience, input.assigneeAccountIds, clientAccounts.map(row=>row.id));
-      if(input.expectedCurrentVersionId!==undefined){
+      if(current.role==='parent'||input.expectedCurrentVersionId!==undefined){
         const effective=await one<{id:CoordinationVersionId}>(tx,`SELECT id FROM ls_practice.task_coordination_versions WHERE workspace_id=$1 AND assignment_id=$2 AND case_id=$3 AND audience_id=$4 AND effective_from<=$5 ORDER BY effective_from DESC,version DESC LIMIT 1`,[actor.workspaceId,input.assignmentId,row.caseId,row.audienceId,now]);
-        if((effective?.id??null)!==input.expectedCurrentVersionId||current.role==='parent'&&await retainedChildCoordination(tx,actor.workspaceId,input.assignmentId,row.caseId,row.audienceId,effective?.id??null,now))throw new AppError("CONFLICT");
+        if(input.expectedCurrentVersionId!==undefined&&(effective?.id??null)!==input.expectedCurrentVersionId)throw new AppError("CONFLICT");
+        // Optional optimistic tokens must not gate retained child protection.
+        // Deliberate native child-inclusive operations preserve those accounts.
+        if(current.role==='parent'&&await retainedChildCoordination(tx,actor.workspaceId,input.assignmentId,row.caseId,row.audienceId,effective?.id??null,now,assignees))throw new AppError("CONFLICT");
       }
       if (input.completionMode === "each_assignee" && assignees.length < 2) throw new AppError("INVALID_REQUEST");
       if (new Set(input.reminderCandidateAccountIds).size !== input.reminderCandidateAccountIds.length || input.reminderCandidateAccountIds.some(id => !assignees.includes(id))) throw new AppError("INVALID_REQUEST");
@@ -381,9 +385,10 @@ export class HomePracticeService implements PracticeVersionReader {
       // Match scheduling's effective-time ordering. An older insertion can be
       // current even when more than twenty newer future revisions exist.
       const effective = await one<CoordinationRow>(tx, select + " AND effective_from<=$5 ORDER BY effective_from DESC,version DESC LIMIT 1", [...scope, now]);
+      const next = await one<{effectiveFrom:Date}>(tx, `SELECT effective_from AS "effectiveFrom" FROM ls_practice.task_coordination_versions WHERE workspace_id=$1 AND assignment_id=$2 AND case_id=$3 AND audience_id=$4 AND effective_from>$5 ORDER BY effective_from ASC,version DESC LIMIT 1`, [...scope, now]);
       const readOnly=current.role==='parent'&&await retainedChildCoordination(tx,actor.workspaceId,assignmentId,row.caseId,row.audienceId,effective?.versionId??null,now);
       const project = (value: CoordinationRow): CoordinationVersion => ({ ...value, effectiveFrom: value.effectiveFrom.toISOString() });
-      return { ownAccountId: current.id, role: current.role, eligibleAccountIds: readOnly?[]:eligible, asOf: now.toISOString(), currentVersion: effective ? project(effective) : null,
+      return { ownAccountId: current.id, role: current.role, eligibleAccountIds: readOnly?[]:eligible, asOf: now.toISOString(), currentVersion: effective ? project(effective) : null, nextEffectiveFrom: next?.effectiveFrom.toISOString() ?? null,
         hasMore: versions.length > 20, versions: versions.slice(0, 20).map(project),...(readOnly?{readOnlyReason:'legacy_child_assignment' as const}:{}) };
     });
   }
