@@ -64,6 +64,7 @@ export const recapPracticeChoiceSchema = z.strictObject({
   weekdays: z.array(z.number().int().min(0).max(6)).min(1).max(7).refine(rows => new Set(rows).size === rows.length),
   completionMode: z.enum(["any_assignee", "each_assignee"]),
 }).refine(row => row.startsOn <= row.endsOn);
-export const recapPracticeChoicesSchema = z.strictObject({ items: z.array(recapPracticeChoiceSchema).max(20), hasMore: z.boolean() });
+export const recapPracticeCursorSchema = uuid;
+export const recapPracticeChoicesSchema = z.strictObject({ items: z.array(recapPracticeChoiceSchema).max(20), hasMore: z.boolean(), nextCursor: uuid.nullable().optional() }).refine(page => !page.hasMore || Boolean(page.nextCursor));
 export type RecapPracticeChoice = z.infer<typeof recapPracticeChoiceSchema>;
 export type RecapPracticeChoices = z.infer<typeof recapPracticeChoicesSchema>;

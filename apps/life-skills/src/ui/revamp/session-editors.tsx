@@ -29,7 +29,7 @@ export function RoutineRecapEditor({ sessionId, initial, locale, port, onSaved, 
     }>;
     onSaved: () => void;
     onCancel: () => void;
-    loadPractices?:((signal:AbortSignal)=>Promise<RecapPracticeChoices>)|undefined;
+    loadPractices?:((signal:AbortSignal,cursor?:string)=>Promise<RecapPracticeChoices>)|undefined;
 }) {
     const fromSaved=(value:RoutineRecap|null)=>value?.practices.map(row=>({versionId:row.responsibilityId,expectedSourceDigest:"",instructions:row.instructions}))??[];
     const [base,setBase]=useState(initial),[focus, setFocus] = useState<readonly BroadFocus[]>(initial?.focus ?? []), [nextStep, setNextStep] = useState(initial?.nextStep ?? ""), [language, setLanguage] = useState<Locale>(initial?.locale ?? locale),[practices,setPractices]=useState<RecapPracticeSelection[]>(()=>fromSaved(initial));
