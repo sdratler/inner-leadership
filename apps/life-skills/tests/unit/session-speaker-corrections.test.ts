@@ -19,11 +19,16 @@ it("rejects wrong source/revision, extra/invented/empty labels and invalid store
  for(const changed of [{...input,expectedRevision:1},{...input,transcriptVersion:2}])expect(()=>appendSpeakerCorrection(base,transcript,changed,actor,at)).toThrow("CONFLICT");
  for(const labels of [{unknown:"no"},{constructor:" "}])expect(()=>appendSpeakerCorrection(base,transcript,{...input,labels},actor,at)).toThrow("INVALID_REQUEST");
  for(const changed of [{...first,revision:2},{...first,extra:true},{...first,versions:[{...first.versions[0]!,revision:2}]},{...first,versions:[{...first.versions[0]!,recordedAt:"2026-02-30T00:00:00Z"}]},{...first,versions:[{...first.versions[0]!,labels:{unknown:"no"}}]}])expect(()=>readSpeakerHistory(changed,transcript)).toThrow("UNAVAILABLE");
- let history=base;for(let revision=0;revision<100;revision++)history=appendSpeakerCorrection(history,transcript,{...input,expectedRevision:revision},actor,at);expect(history.versions).toHaveLength(100);expect(()=>appendSpeakerCorrection(history,transcript,{...input,expectedRevision:100},actor,at)).toThrow("UNAVAILABLE");
+ let history=base;for(let revision=0;revision<100;revision++)history=appendSpeakerCorrection(history,transcript,{...input,expectedRevision:revision},actor,at);expect(history.versions).toHaveLength(100);const before=JSON.stringify(history);expect(()=>appendSpeakerCorrection(history,transcript,{...input,expectedRevision:100},actor,at)).toThrow("PAYLOAD_TOO_LARGE");expect(JSON.stringify(history)).toBe(before);
 });
 it("does not use inherited mapping values, recognizes all stored processing/audio states and preserves unknown text",()=>{
  expect(sameSpeakerLabels({constructor:"DEMO"},{})).toBe(false);expect(sameSpeakerLabels(original,{...original})).toBe(true);
  for(const locale of ["en","he"] as const){const text=sessionProcessingLabel("transcript_saved","delete_pending",locale);expect(text).not.toContain("transcript_saved");expect(text).not.toContain("delete_pending");expect(sessionProcessingLabel("constructor","toString",locale)).toBe("constructor · toString");}
  const port={async execute(){throw Error("NO_WRITE");},async reconcile(){throw Error("NO_WRITE");}};
  const html=renderToStaticMarkup(createElement(SpeakerLabelsEditor,{sessionId:actor,transcript,locale:"he",port,onSaved(){}}));expect(html).toContain('value="__proto__"');expect(html).not.toContain("function Object");expect(html).not.toContain("[object Object]");expect(html).toContain('maxLength="100"');
+});
+it("shows the full-history disabled reason in English and Hebrew without hiding stored revisions",()=>{
+ let history=readSpeakerHistory(original,transcript);for(let revision=0;revision<100;revision++)history=appendSpeakerCorrection(history,transcript,{transcriptVersion:1,expectedRevision:revision,labels:original},actor,at);
+ const port={async execute(){throw Error("NO_WRITE");},async reconcile(){throw Error("NO_WRITE");}},saved={version:1,digest:'a'.repeat(64),createdAt:at,completeVerified:true as const,cleaned:[],speakers:original,speakerHistory:history};
+ for(const locale of ['en','he'] as const){const html=renderToStaticMarkup(createElement(SpeakerLabelsEditor,{sessionId:actor,transcript,saved,locale,port,onSaved(){}}));expect(html).toContain(locale==='en'?'The speaker correction history is full.':'היסטוריית תיקוני הדוברים מלאה.');expect(html).toContain(locale==='en'?'Saved speaker revision history':'היסטוריית גרסאות דוברים שמורות');expect(html).toMatch(/<button class="lsr-primary" type="submit" disabled=""/);expect(html).toMatch(/<button type="button">/);}
 });
