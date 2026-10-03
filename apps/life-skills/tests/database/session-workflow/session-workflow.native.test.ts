@@ -154,7 +154,7 @@ async function httpFixture(){
 }
 async function privateReadFixture(){
  const s=await httpFixture(),sessionId=(await s.service.ensureForAppointment(s.f.practitioner.actor,s.f.first.id,await s.f.seed(s.f.at(-24)))).sessionId,jobId=randomUUID(),scope={workspaceId:s.f.workspaceId,caseId:s.f.first.id,sessionId};
- const consent=await s.service.recordConsent(s.f.practitioner.actor,sessionId,{signedByAccountId:s.f.parent.actor.id,signedAt:s.f.at(-48),authorityState:"checked",recordingAllowed:true,transcriptionAllowed:true,aiProcessingAllowed:true,childInformed:true,policyVersion:"DEMO-native-read-v1",evidence:"DEMO — Isolated native reader fixture; not provider execution."},randomUUID());
+ const consent=await s.service.recordConsent(s.f.practitioner.actor,sessionId,{signedByAccountId:s.f.parent.actor.id,signedAt:s.f.at(-48),authorityState:"checked",recordingAllowed:true,transcriptionAllowed:true,aiProcessingAllowed:true,childInformed:true,policyVersion:"DEMO-native-read-v1",evidence:"DEMO — Isolated native reader fixture; not provider execution.",expectedVersion:0},randomUUID());
  const transcript:Transcript={source:"machine_transcript",languages:["en","he"],segments:[{id:"s1",speaker:"constructor",startMs:0,endMs:1000,text:"DEMO —  Private source בלבד"}],durationMs:1000,version:1},contentDigest=transcriptDigest(transcript),sourceDigest="a".repeat(64),completion={sourceDigest,sourceDurationMs:1000,coveredDurationMs:1000,expectedChunks:1,completedChunks:1,providerCompleted:true};
  const encode=(kind:Parameters<typeof privateRecordAad>[0],body:unknown,version:number|string=1,identity?:string)=>sealPrivateRecord(body,privateRecordAad(kind,scope,version,identity),s.f.keyring);
  // These exact encrypted rows establish read-path behavior only. They are not
