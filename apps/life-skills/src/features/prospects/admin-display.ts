@@ -18,6 +18,11 @@ export function administrativeStageLabel(value: string, locale: Locale): string 
   return locale === "he" ? hebrewStages.get(value) ?? value : value;
 }
 
+/** Choice labels are localized; their values remain the original stored keys. */
+export function administrativeStageChoices(locale: Locale): {value: string; label: string}[] {
+  return [...hebrewStages.keys()].map(value => ({value, label: administrativeStageLabel(value, locale)}));
+}
+
 export function administrativeActionLabel(value: string, locale: Locale): string {
   return locale === "he" ? hebrewActions.get(value) ?? value : value;
 }
