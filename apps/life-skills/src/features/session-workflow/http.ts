@@ -11,7 +11,7 @@ const metricShape=Object.fromEntries(METRICS.map(item=>[item.id,metricValue])) a
 const observations=z.strictObject({values:z.strictObject(metricShape),expectedRevision:z.number().int().min(0)});
 const recap=z.strictObject({locale:z.enum(["en","he"]),focus:z.array(z.enum(FOCUS)).max(3),nextStep:z.string().max(300),expectedVersion:z.number().int().min(0)});
 const share=z.strictObject({expectedVersion:z.number().int().min(1),expectedDigest:z.string().regex(/^[a-f0-9]{64}$/),recipientAccountIds:z.array(uuid).min(1).max(8)});
-const consent=z.strictObject({signedByAccountId:uuid,signedAt:z.string().datetime({offset:true}),authorityState:z.enum(["checked","needs_review","restricted"]),recordingAllowed:z.boolean(),transcriptionAllowed:z.boolean(),aiProcessingAllowed:z.boolean(),childInformed:z.boolean(),policyVersion:z.string().min(1).max(100),evidence:z.string().min(1).max(4000)});
+const consent=z.strictObject({signedByAccountId:uuid,signedAt:z.string().datetime({offset:true}),authorityState:z.enum(["checked","needs_review","restricted"]),recordingAllowed:z.boolean(),transcriptionAllowed:z.boolean(),aiProcessingAllowed:z.boolean(),childInformed:z.boolean(),policyVersion:z.string().min(1).max(100),evidence:z.string().min(1).max(4000),expectedVersion:z.number().int().min(0).max(2147483647)});
 const withdrawal=z.strictObject({expectedVersion:z.number().int().min(1)});
 function key(request:Request){const value=request.headers.get("idempotency-key")??"";if(!uuid.safeParse(value).success)throw new AppError("INVALID_REQUEST");return value;}
 export class SessionHttp {
@@ -29,6 +29,11 @@ export class SessionHttp {
     if(path.length===1&&path[0]==="ensure"){if(request.method!=="POST"||url.search)throw new AppError("INVALID_REQUEST");const body=await readJson(request,z.strictObject({caseId:uuid,appointmentId:uuid}));return {data:await this.service.ensureForAppointment(actor,body.caseId,body.appointmentId),status:201};}
     if(path.length===1){if(request.method!=="GET"||url.search)throw new AppError("INVALID_REQUEST");return {data:await this.service.detail(actor,uuid.parse(path[0]))};}
     if(path.length===3&&path[1]==="consent"&&path[2]==="withdraw"&&request.method==="POST"&&!url.search){const body=await readJson(request,withdrawal);return {data:await this.service.withdrawConsent(actor,uuid.parse(path[0]),body.expectedVersion,key(request)),status:201};}
+    if(path.length===2&&path[1]==="consent"&&request.method==="GET"){
+      const query=url.searchParams,v=query.get("version"),consentId=uuid.safeParse(query.get("consentId"));
+      if([...query.keys()].some(k=>k!=="consentId"&&k!=="version")||query.getAll("consentId").length!==1||query.getAll("version").length!==1||!consentId.success||!v||!/^[1-9]\d{0,9}$/.test(v)||Number(v)>2147483647)throw new AppError("INVALID_REQUEST");
+      return {data:await this.service.consentVersion(actor,uuid.parse(path[0]),consentId.data,Number(v))};
+    }
     if(path.length!==2||request.method!=="POST"||url.search)throw new AppError("NOT_FOUND");const sessionId=uuid.parse(path[0]);
     if(path[1]==="observations"){const body=await readJson(request,observations);return {data:await this.service.saveObservations(actor,sessionId,body.values as MetricValues,body.expectedRevision,key(request)),status:201};}
     if(path[1]==="recap"){const body=await readJson(request,recap);return {data:await this.service.saveRecap(actor,sessionId,{...body,practices:[]},key(request)),status:201};}

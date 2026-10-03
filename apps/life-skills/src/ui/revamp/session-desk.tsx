@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { validIso } from "../../features/session-workflow/policy.ts";
 import type { Locale, PrivateAnalysis, RoutineRecap, Transcript, ProcessingStage, AudioState } from "../../features/session-workflow/types.ts";
 import type { MetricValues, MetricRecord } from "../../features/session-workflow/metrics.ts";
 import { FOCUS_LABELS, attendanceLabel } from "../../features/session-workflow/presentation.ts";
@@ -64,17 +65,22 @@ export interface SessionDeskActions {
     /** Locale change affects your private analysis only; live AI regeneration requires its own capped job receipt. */
     selectAnalysisLanguage(locale: Locale): void;
 }
+export function sessionAppointmentLabel(label: string, locale: Locale): string {
+    return validIso(label) ? new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jerusalem" }).format(new Date(label)) : label;
+}
 export function PractitionerSessionDesk(props: {
     locale: Locale;
     model: SessionDeskModel;
     actions: SessionDeskActions;
+    consentPanel?: ReactNode;
 }) {
     return <SessionDeskInner key={`${props.model.caseId}:${props.model.sessionId}`} {...props}/>;
 }
-function SessionDeskInner({ locale, model, actions }: {
+function SessionDeskInner({ locale, model, actions, consentPanel }: {
     locale: Locale;
     model: SessionDeskModel;
     actions: SessionDeskActions;
+    consentPanel?: ReactNode;
 }) {
     const [tab, setTab] = useState<"overview" | "transcript" | "observations" | "update">("overview"), [appointment, setAppointment] = useState(model.selectedAppointmentId), [progress, setProgress] = useState<number | null>(null), [uploadError, setUploadError] = useState<string | null>(null), [metrics, setMetrics] = useState(model.metrics), [metricRevision, setMetricRevision] = useState(model.metricsRevision), [shared, setShared] = useState<string | null>(null);
     const [editing, setEditing] = useState(false), [pending, setPending] = useState(false), [analysisLocale, setAnalysisLocale] = useState<Locale>("en"), controller = useRef<AbortController | null>(null), alive = useRef(true), busy = useRef(false);
@@ -131,11 +137,12 @@ function SessionDeskInner({ locale, model, actions }: {
     return <div className="lsr" lang={locale} dir={locale === "he" ? "rtl" : "ltr"}>
     <header className="lsr-page-heading"><div><p className="lsr-eyebrow">{word(locale, "Client session", "מפגש בתיק")}</p><h1>{model.clientDisplayName}</h1><p>{word(locale, "Recording and analysis are private. Only the short update you share is visible to its recipients.", "ההקלטה והניתוח פרטיים. רק העדכון הקצר שתשתף יהיה גלוי לנמענים שלו.")}</p></div></header>
     <nav className="lsr-tabs" aria-label={word(locale, "Session sections", "חלקי המפגש")}>{([["overview", "Session", "המפגש"], ["transcript", "Transcript", "תמלול"], ["observations", "My observations", "התצפיות שלי"], ["update", "Shared update", "עדכון לשיתוף"]] as const).map(([id, en, he]) => <button type="button" aria-pressed={tab === id} key={id} onClick={() => setTab(id)}>{word(locale, en, he)}</button>)}</nav>
+    {consentPanel}
     {tab === "overview" && <><Section title={word(locale, "Add session recording", "הוספת הקלטת מפגש")} privateOnly>
-      <div className="lsr-form-grid"><label>{word(locale, "Attach to appointment", "שיוך למפגש ביומן")}<select disabled={pending || activeProcessing || uploadError !== null} value={appointment} onChange={e => setAppointment(e.target.value)}>{model.appointments.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}</select></label><label className="lsr-upload">{word(locale, "Choose audio recording", "בחירת קובץ שמע")}<input type="file" accept=".mp3,.m4a,.wav,.ogg,.webm,.flac" disabled={pending || activeProcessing || uploadError !== null || !model.processing.permissionToRecord} onChange={e => { const file = e.currentTarget.files?.[0] ?? null; e.currentTarget.value = ""; void upload(file); }}/></label></div>
+      <div className="lsr-form-grid"><label>{word(locale, "Attach to appointment", "שיוך למפגש ביומן")}<select disabled={pending || activeProcessing || uploadError !== null} value={appointment} onChange={e => setAppointment(e.target.value)}>{model.appointments.map(a => <option key={a.id} value={a.id}>{sessionAppointmentLabel(a.label,locale)}</option>)}</select></label><label className="lsr-upload">{word(locale, "Choose audio recording", "בחירת קובץ שמע")}<input type="file" accept=".mp3,.m4a,.wav,.ogg,.webm,.flac" disabled={pending || activeProcessing || uploadError !== null || !model.processing.permissionToRecord} onChange={e => { const file = e.currentTarget.files?.[0] ?? null; e.currentTarget.value = ""; void upload(file); }}/></label></div>
       {!model.processing.permissionToRecord && <p role="alert">{word(locale, "Recording/AI consent or authority requires attention before upload.", "יש להסדיר הסכמה להקלטה ולעיבוד או הרשאה לפני העלאה.")}</p>}
       {pending && <div><label>{word(locale, "Uploading", "מעלה הקלטה")} <progress value={progress ?? 0} max={100}/></label><button type="button" onClick={() => controller.current?.abort()}>{word(locale, "Stop upload", "עצירת העלאה")}</button></div>}
-      <p role="status" aria-live="polite">{model.processing.message}</p>{uploadError && <div role="alert"><p>{uploadError}</p><button type="button" onClick={() => void actions.refresh()}>{word(locale, "Check session status", "בדיקת מצב המפגש")}</button><p>{word(locale, "A new upload must wait until the previous request is reconciled.", "העלאה חדשה תתאפשר אחרי בירור תוצאת הבקשה הקודמת.")}</p></div>}
+      <p role="status" aria-live="polite">{model.processing.message==="No recording uploaded."?word(locale,"No recording uploaded.","לא הועלתה הקלטה."):model.processing.message}</p>{uploadError && <div role="alert"><p>{uploadError}</p><button type="button" onClick={() => void actions.refresh()}>{word(locale, "Check session status", "בדיקת מצב המפגש")}</button><p>{word(locale, "A new upload must wait until the previous request is reconciled.", "העלאה חדשה תתאפשר אחרי בירור תוצאת הבקשה הקודמת.")}</p></div>}
       <p className="lsr-help">{word(locale, "Raw audio is deleted after the complete source transcript is saved and verified. If processing fails, the session shows the unresolved status.", "קובץ השמע יימחק לאחר שהתמלול המקורי המלא יישמר וייבדק. כישלון בעיבוד יוצג במפגש.")}</p>
     </Section><Section title={word(locale, "Private session analysis", "ניתוח מפגש פרטי")} privateOnly>
       <label>{word(locale, "My summary language", "שפת הסיכום שלי")}<select value={analysisLocale} onChange={e => { const l = e.target.value as Locale; setAnalysisLocale(l); actions.selectAnalysisLanguage(l); }}><option value="en">English</option><option value="he">עברית</option></select></label>

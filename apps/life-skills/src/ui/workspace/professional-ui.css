@@ -94,6 +94,9 @@
 @media(max-width:800px){.lsw.lsu .lsu-people-toolbar{grid-template-columns:repeat(2,minmax(0,1fr))}.lsu-person-row,.lsu-person-details>summary{grid-template-columns:minmax(0,1fr) auto}.lsu-person-details>summary>span:nth-of-type(n+2){display:none}}
 @media(max-width:520px){.lsw.lsu .lsu-people-toolbar{grid-template-columns:1fr}.lsu-person-row,.lsu-person-details>summary{padding:12px}}
 /* Private-session controls must win over the shared legacy button fallback. */
+.lsw.lsu .lsw-consent button{font-size:17px;font-weight:700;min-height:48px}
+.lsw.lsu .lsw-consent .lsw-choice{flex-direction:row}
+.lsw.lsu .lsw-consent .lsw-choice input{width:20px;min-height:20px;height:20px;padding:0}
 .lsw.lsu .lsr button{font-size:17px;font-weight:700;min-height:48px}
 .lsw.lsu .lsr .lsr-primary,.lsw.lsu .lsr .lsr-tabs button[aria-pressed=true]{background:var(--ui-teal);border-color:var(--ui-teal);color:#fff}
 .lsw.lsu .lsr .lsr-primary:hover:not(:disabled),.lsw.lsu .lsr .lsr-tabs button[aria-pressed=true]:hover:not(:disabled){background:var(--ui-teal);color:#fff;filter:brightness(.93)}
