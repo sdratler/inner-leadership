@@ -19,7 +19,7 @@ test("native session record keeps observations private and snapshots only curren
  expect(await service.ensureForAppointment(f.practitioner.actor,f.first.id,past)).toEqual(ensured);
  await expect(service.list(f.parent.actor,f.first.id)).rejects.toMatchObject({code:"NOT_FOUND"});
  await expect(service.detail(f.outsider.actor,ensured.sessionId)).rejects.toMatchObject({code:"NOT_FOUND"});
- const consentKey=randomUUID(),consentInput={signedByAccountId:f.parent.actor.id,signedAt:new Date().toISOString(),authorityState:"checked" as const,recordingAllowed:true,transcriptionAllowed:true,aiProcessingAllowed:true,childInformed:true,policyVersion:"session-recording-v1",evidence:"Synthetic signed consent evidence"},consent=await service.recordConsent(f.practitioner.actor,ensured.sessionId,consentInput,consentKey);
+ const consentKey=randomUUID(),consentInput={signedByAccountId:f.parent.actor.id,signedAt:new Date().toISOString(),authorityState:"checked" as const,recordingAllowed:true,transcriptionAllowed:true,aiProcessingAllowed:true,childInformed:true,policyVersion:"session-recording-v1",evidence:"Synthetic signed consent evidence",expectedVersion:0},consent=await service.recordConsent(f.practitioner.actor,ensured.sessionId,consentInput,consentKey);
  expect(consent.permissionToRecord).toBe(true);expect(await service.recordConsent(f.practitioner.actor,ensured.sessionId,consentInput,consentKey)).toEqual(consent);
  expect((await service.detail(f.practitioner.actor,ensured.sessionId)).processing.permissionToRecord).toBe(true);
  const withdrawn=await service.withdrawConsent(f.practitioner.actor,ensured.sessionId,consent.version,randomUUID());expect(withdrawn.version).toBe(consent.version+1);expect((await service.detail(f.practitioner.actor,ensured.sessionId)).processing.permissionToRecord).toBe(false);
@@ -44,7 +44,7 @@ test("native session record keeps observations private and snapshots only curren
 },30_000);
 test("withdrawal preserves immutable evidence and binds the new ciphertext to its own consent version",async()=>{
  const s=await httpFixture(),id=(await s.service.ensureForAppointment(s.f.practitioner.actor,s.f.first.id,await s.f.seed(s.f.at(-24)))).sessionId;
- const evidence="Synthetic private consent evidence — ראיה\n".repeat(20),input={signedByAccountId:s.f.parent.actor.id,signedAt:s.f.at(-48),authorityState:"checked" as const,recordingAllowed:true,transcriptionAllowed:true,aiProcessingAllowed:true,childInformed:true,policyVersion:"synthetic-recording-v1",evidence};
+ const evidence="Synthetic private consent evidence — ראיה\n".repeat(20),input={signedByAccountId:s.f.parent.actor.id,signedAt:s.f.at(-48),authorityState:"checked" as const,recordingAllowed:true,transcriptionAllowed:true,aiProcessingAllowed:true,childInformed:true,policyVersion:"synthetic-recording-v1",evidence,expectedVersion:0};
  const recorded=await s.service.recordConsent(s.f.practitioner.actor,id,input,randomUUID());
  const before=(await s.f.pool.query("SELECT evidence_ciphertext FROM ls_sessions.recording_consents WHERE workspace_id=$1 AND case_id=$2 AND version=$3",[s.f.workspaceId,s.f.first.id,recorded.version])).rows[0].evidence_ciphertext;
  const key=randomUUID(),withdrawn=await s.service.withdrawConsent(s.f.practitioner.actor,id,recorded.version,key);
@@ -79,7 +79,7 @@ test("uppercase real UUID routes/body projection round-trip encrypted values, re
 
 test("withdrawal rotates to the active key without altering old evidence or replaying another version",async()=>{
  const s=await httpFixture(),id=(await s.service.ensureForAppointment(s.f.practitioner.actor,s.f.first.id,await s.f.seed(s.f.at(-24)))).sessionId;
- const input={signedByAccountId:s.f.parent.actor.id,signedAt:s.f.at(-48),authorityState:"checked" as const,recordingAllowed:true,transcriptionAllowed:true,aiProcessingAllowed:true,childInformed:true,policyVersion:"synthetic-rotation-v1",evidence:"SYNTHETIC_ROTATION_EVIDENCE"};
+ const input={signedByAccountId:s.f.parent.actor.id,signedAt:s.f.at(-48),authorityState:"checked" as const,recordingAllowed:true,transcriptionAllowed:true,aiProcessingAllowed:true,childInformed:true,policyVersion:"synthetic-rotation-v1",evidence:"SYNTHETIC_ROTATION_EVIDENCE",expectedVersion:0};
  const recorded=await s.service.recordConsent(s.f.practitioner.actor,id,input,randomUUID());
  const original=(await s.f.pool.query("SELECT evidence_ciphertext FROM ls_sessions.recording_consents WHERE workspace_id=$1 AND case_id=$2",[s.f.workspaceId,s.f.first.id])).rows[0].evidence_ciphertext;
  const ring={activeKeyId:"rotated",keys:{...s.f.keyring.keys,rotated:randomBytes(32)}},rotated=new SessionDatabaseService(poolStore(s.f.pool),ring,systemClock),key=randomUUID();
@@ -96,7 +96,7 @@ test("withdrawal rotates to the active key without altering old evidence or repl
 
 test("unverifiable evidence cannot be silently copied or leave a partially committed withdrawal receipt",async()=>{
  const s=await httpFixture(),id=(await s.service.ensureForAppointment(s.f.practitioner.actor,s.f.first.id,await s.f.seed(s.f.at(-24)))).sessionId;
- const input={signedByAccountId:s.f.parent.actor.id,signedAt:s.f.at(-48),authorityState:"needs_review" as const,recordingAllowed:false,transcriptionAllowed:false,aiProcessingAllowed:false,childInformed:false,policyVersion:"synthetic-unavailable-v1",evidence:"SYNTHETIC_UNAVAILABLE_EVIDENCE"};
+ const input={signedByAccountId:s.f.parent.actor.id,signedAt:s.f.at(-48),authorityState:"needs_review" as const,recordingAllowed:false,transcriptionAllowed:false,aiProcessingAllowed:false,childInformed:false,policyVersion:"synthetic-unavailable-v1",evidence:"SYNTHETIC_UNAVAILABLE_EVIDENCE",expectedVersion:0};
  const recorded=await s.service.recordConsent(s.f.practitioner.actor,id,input,randomUUID()),key=randomUUID();
  const unavailable=new SessionDatabaseService(poolStore(s.f.pool),{activeKeyId:"other",keys:{other:randomBytes(32)}},systemClock);
  await expect(unavailable.withdrawConsent(s.f.practitioner.actor,id,recorded.version,key)).rejects.toMatchObject({code:"UNAVAILABLE"});
@@ -141,7 +141,7 @@ test("exact Calendar appointment is filtered before the bounded session list wit
 
 test("current recording permission requires the actual consent signer to retain current case authority",async()=>{
  const s=await httpFixture(),sessionId=(await s.service.ensureForAppointment(s.f.practitioner.actor,s.f.first.id,await s.f.seed(s.f.at(-24)))).sessionId;
- const input={signedByAccountId:s.f.parent.actor.id,signedAt:s.f.at(-48),authorityState:"checked" as const,recordingAllowed:true,transcriptionAllowed:true,aiProcessingAllowed:true,childInformed:true,policyVersion:"DEMO-existing-document-v1",evidence:"DEMO — Synthetic checked authority only; no provider job."};
+ const input={signedByAccountId:s.f.parent.actor.id,signedAt:s.f.at(-48),authorityState:"checked" as const,recordingAllowed:true,transcriptionAllowed:true,aiProcessingAllowed:true,childInformed:true,policyVersion:"DEMO-existing-document-v1",evidence:"DEMO — Synthetic checked authority only; no provider job.",expectedVersion:0};
  const saved=await s.service.recordConsent(s.f.practitioner.actor,sessionId,input,randomUUID());expect(saved.permissionToRecord).toBe(true);expect((await s.service.detail(s.f.practitioner.actor,sessionId)).processing.permissionToRecord).toBe(true);
  await s.f.pool.query('UPDATE ls_cases.case_guardians SET revoked_at=clock_timestamp() WHERE workspace_id=$1 AND case_id=$2 AND account_id=$3',[s.f.workspaceId,s.f.first.id,input.signedByAccountId]);
  const detail=await s.service.detail(s.f.practitioner.actor,sessionId);expect(detail.processing.permissionToRecord).toBe(false);expect(detail.consentSigners.map(row=>row.accountId)).not.toContain(input.signedByAccountId);
@@ -170,7 +170,7 @@ test("exact protected consent readback retains signature/evidence, denies custom
 test("consent writers reject impossible/future signatures, blank evidence and stale versions without normalizing or overwriting",async()=>{
  const s=await httpFixture(),sessionId=(await s.service.ensureForAppointment(s.f.practitioner.actor,s.f.first.id,await s.f.seed(s.f.at(-24)))).sessionId,path=`/${sessionId}/consent`;
  const input={signedByAccountId:s.f.parent.actor.id,signedAt:s.f.at(-48),authorityState:"restricted" as const,recordingAllowed:false,transcriptionAllowed:false,aiProcessingAllowed:false,childInformed:false,policyVersion:"DEMO-restricted-document-v1",evidence:"DEMO — Synthetic known restriction; no provider authorization.",expectedVersion:0};
- for(const change of [{signedAt:"2026-02-30T11:00:00Z"},{signedAt:s.f.at(24)},{policyVersion:" "},{evidence:" "},{evidence:"x".repeat(4001)},{expectedVersion:-1}])await expect(s.service.recordConsent(s.f.practitioner.actor,sessionId,{...input,...change},randomUUID())).rejects.toMatchObject({code:"INVALID_REQUEST"});
+ for(const change of [{signedAt:"2026-02-30T11:00:00Z"},{signedAt:s.f.at(24)},{policyVersion:" "},{evidence:" "},{evidence:"x".repeat(4001)},{expectedVersion:-1},{expectedVersion:0.5},{expectedVersion:2147483648},{expectedVersion:NaN}])await expect(s.service.recordConsent(s.f.practitioner.actor,sessionId,{...input,...change},randomUUID())).rejects.toMatchObject({code:"INVALID_REQUEST"});
  expect((await s.http.handle(s.request(path,{...input,signatureVerified:true}),[sessionId,"consent"])).status).toBe(400);
  const replies=await Promise.all([s.http.handle(s.request(path,input),[sessionId,"consent"]),s.http.handle(s.request(path,{...input,evidence:"DEMO — Other synthetic concurrent restriction."}),[sessionId,"consent"])]);expect(replies.map(row=>row.status).sort()).toEqual([201,409]);
  const stored=await s.f.pool.query('SELECT version,evidence_ciphertext FROM ls_sessions.recording_consents WHERE workspace_id=$1 AND case_id=$2',[s.f.workspaceId,s.f.first.id]);expect(stored.rows).toHaveLength(1);expect(stored.rows[0].version).toBe(1);
@@ -179,6 +179,19 @@ test("consent writers reject impossible/future signatures, blank evidence and st
  await s.f.pool.query("UPDATE ls_identity.accounts SET role='parent' WHERE id=$1",[s.f.practitioner.actor.id]);
  const id=(await replies.find(row=>row.status===201)!.json()).data.consentId;expect((await s.http.handle(s.request(`${path}?consentId=${id}&version=1`),[sessionId,"consent"])).status).toBe(404);
 },30_000);
+test.each(["http","service"] as const)("%s consent writes cannot omit the expected version after withdrawal",async mode=>{
+ const s=await httpFixture(),sessionId=(await s.service.ensureForAppointment(s.f.practitioner.actor,s.f.first.id,await s.f.seed(s.f.at(-24)))).sessionId,path=`/${sessionId}/consent`;
+ const input={signedByAccountId:s.f.parent.actor.id,signedAt:s.f.at(-48),authorityState:"checked" as const,recordingAllowed:true,transcriptionAllowed:true,aiProcessingAllowed:true,childInformed:true,policyVersion:"DEMO-version-required",evidence:"DEMO — Synthetic consent prepared before withdrawal.",expectedVersion:0};
+ const recorded=await s.service.recordConsent(s.f.practitioner.actor,sessionId,input,randomUUID()),withdrawn=await s.service.withdrawConsent(s.f.practitioner.actor,sessionId,recorded.version,randomUUID());
+ const before=(await s.f.pool.query('SELECT version,evidence_ciphertext,withdrawn_at FROM ls_sessions.recording_consents WHERE workspace_id=$1 AND case_id=$2 ORDER BY version',[s.f.workspaceId,s.f.first.id])).rows;
+ const legacy={...input,expectedVersion:undefined};
+ if(mode==="http")expect((await s.http.handle(s.request(path,legacy),[sessionId,"consent"])).status).toBe(400);
+ else await expect(s.service.recordConsent(s.f.practitioner.actor,sessionId,legacy as unknown as Parameters<SessionDatabaseService["recordConsent"]>[2],randomUUID())).rejects.toMatchObject({code:"INVALID_REQUEST"});
+ const after=(await s.f.pool.query('SELECT version,evidence_ciphertext,withdrawn_at FROM ls_sessions.recording_consents WHERE workspace_id=$1 AND case_id=$2 ORDER BY version',[s.f.workspaceId,s.f.first.id])).rows;expect(after).toEqual(before);
+ const detail=await s.service.detail(s.f.practitioner.actor,sessionId);expect(detail.processing.permissionToRecord).toBe(false);expect(detail.processing.consent?.version).toBe(withdrawn.version);
+ expect((await s.f.pool.query('SELECT count(*)::integer AS n FROM ls_sessions.recording_jobs WHERE workspace_id=$1',[s.f.workspaceId])).rows[0].n).toBe(0);
+},30_000);
+
 test("real strict HTTP accepts the production UI projection, retains encrypted revisions and replay, and rejects extras/stale edits",async()=>{
  const s=await httpFixture(),past=await s.f.seed(s.f.at(-48)),id=(await s.service.ensureForAppointment(s.f.practitioner.actor,s.f.first.id,past)).sessionId,path=`/${id}/observations`;
  const values=blankMetrics();values.engagement={score:4,notObservedReason:null,note:"Synthetic private original — הערה"};
