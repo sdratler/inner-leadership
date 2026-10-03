@@ -33,6 +33,14 @@ test("unassigned or closed/unreported occurrences never expose a reporting form"
     expect(html).not.toContain("<form"); expect(html).toContain("Unreported");
   }
 });
+test.each(["en","he"]as const)("%s authorized parent-assisted form keeps optional feedback collapsed and exact clock visible",locale=>{
+ const row:PracticeOccurrenceItem={...item(),assistanceModes:["together","parent_report"],schedule:{participant:"client",localTime:"18:45",timezone:"UTC",timeOrigin:"practitioner"}};
+ const html=renderToStaticMarkup(createElement(PracticeOccurrenceCard,{locale,item:row,onReadback:noop,onAccessLost:noop,onDirty:noop}));
+ expect(html).toContain('value="together"');expect(html).toContain('value="parent_report"');expect(html).toContain('maxLength="2000"');expect(html).not.toContain('<details open');expect(html).toContain("18:45 · UTC");
+ expect(html).toContain(locale==="he"?"משוב נוסף (רשות)":"Optional feedback");
+ const cancelled=renderToStaticMarkup(createElement(PracticeOccurrenceCard,{locale,item:{...row,occurrence:{...row.occurrence,state:"cancelled"}},onReadback:noop,onAccessLost:noop,onDirty:noop}));expect(cancelled).not.toContain("<form");expect(cancelled).toContain(locale==="he"?"אין לדווח עליו":"cannot be reported");
+ const owner=renderToStaticMarkup(createElement(PracticeOccurrenceCard,{locale,role:"practitioner",item:{...row,canReport:false},onReadback:noop,onAccessLost:noop,onDirty:noop}));expect(owner).toContain(locale==="he"?"הדיווחים שנשמרו":"Saved reports");expect(owner).not.toContain("<form");
+});
 test("one denied audience removes only its private cards, preserving other audience drafts", () => {
   const first=item(),other={...item(),occurrence:{...item().occurrence,id:asId("00000000-0000-4000-8000-000000000002","occurrence")},practice:{...item().practice,audienceId:asId("00000000-0000-4000-8000-000000000002","audience")}};
   const page:PracticeOccurrencePage={items:[first,other],hasMore:false};
@@ -40,6 +48,19 @@ test("one denied audience removes only its private cards, preserving other audie
   expect(next.items).toEqual([other]);expect(page.items).toEqual([first,other]);
   expect(practiceClient.practiceDraftIds([first.occurrence.id,other.occurrence.id],next)).toEqual([other.occurrence.id]);
   expect(practiceClient.practiceAccessLossPage(page,first.occurrence.id,"UNAUTHENTICATED")).toEqual({items:[],hasMore:false});
+});
+test.each(["en", "he"] as const)("%s practitioner heading shows the actual occurrence state, not a nonexistent own report", locale => {
+  const labels = locale === "he" ? { open: "פתוח", closed: "סגור", cancelled: "בוטל" } : { open: "Open", closed: "Closed", cancelled: "Cancelled" };
+  for (const state of ["open", "closed", "cancelled"] as const) {
+    const row: PracticeOccurrenceItem = { ...item(), canReport: false, occurrence: { ...item().occurrence, state } };
+    const html = renderToStaticMarkup(createElement(PracticeOccurrenceCard, { locale, role: "practitioner", item: row, onReadback: noop, onAccessLost: noop, onDirty: noop }));
+    expect(html).toContain(`<strong>${labels[state]}</strong>`);
+    expect(html).not.toContain(`<strong>${locale === "he" ? "טרם דווח" : "Unreported"}</strong>`);
+    expect(html).not.toContain("<form");
+  }
+  const own = { ...item(), occurrence: { ...item().occurrence, state: "closed" as const }, ownReport: { reportId: asId(id, "completion_report"), occurrenceId: asId(id, "occurrence"), authorAccountId: asId(id, "account"), status: "partly_done" as const, revision: 1, reportedAt: "2026-09-29T06:00:00.000Z", correctedReportId: null } };
+  const customer = renderToStaticMarkup(createElement(PracticeOccurrenceCard, { locale, role: "parent", item: own, onReadback: noop, onAccessLost: noop, onDirty: noop }));
+  expect(customer).toContain(`<strong>${locale === "he" ? "בוצע חלקית" : "Partly done"}</strong>`);
 });
 test("a discovery/read race removes the exact denied audience even without a denied card ID",()=>{
  const first=item(),other={...item(),occurrence:{...item().occurrence,id:asId("00000000-0000-4000-8000-000000000002","occurrence")},practice:{...item().practice,audienceId:asId("00000000-0000-4000-8000-000000000002","audience")}};

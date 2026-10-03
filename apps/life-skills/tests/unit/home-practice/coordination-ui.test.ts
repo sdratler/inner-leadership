@@ -7,6 +7,11 @@ import {CoordinationForm,PracticeCoordinationWorkspace} from '../../../src/featu
 import {coordinationDefaults} from '../../../src/features/home-practice/coordination-client.ts';
 const own=asId('123e4567-e89b-12d3-a456-426614174000','account'),other=asId('123e4567-e89b-12d3-a456-426614174001','account');
 const handlers={onChange:()=>{},onSave:()=>{},onCancel:()=>{}};
+test.each(['en','he'] as const)('%s child practice gives an honest parent read-only explanation, not a failing parent-assignment form',locale=>{
+ const page={ownAccountId:own,role:'parent' as const,eligibleAccountIds:[],asOf:'2026-10-01T12:00:00Z',currentVersion:null,nextEffectiveFrom:null,versions:[],hasMore:false,readOnlyReason:'client_responsibility' as const};
+ const html=renderToStaticMarkup(createElement(CoordinationForm,{...handlers,locale,page,assignees:[],reminders:[],mode:'any_assignee',locked:false}));
+ expect(html).not.toContain('<form');expect(html).not.toContain('type="submit"');expect(html).toContain(locale==='he'?'זהו התרגול של הילד':'This is the child’s practice');
+});
 test.each(['en','he'] as const)('%s retained legacy child coordination is read-only with no parent-only save control',locale=>{
  const page={ownAccountId:own,role:'parent' as const,eligibleAccountIds:[],readOnlyReason:'legacy_child_assignment' as const,asOf:'2026-10-01T12:00:00Z',currentVersion:null,nextEffectiveFrom:null,versions:[],hasMore:false};
  const html=renderToStaticMarkup(createElement(CoordinationForm,{...handlers,locale,page,assignees:[own,other],reminders:[other],mode:'each_assignee',locked:false}));

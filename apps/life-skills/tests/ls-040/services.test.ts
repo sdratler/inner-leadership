@@ -46,11 +46,11 @@ function fixtureStore(current: Actor, overrides: Partial<{ existingIdempotency: 
       ] as T[];
       if (sql.includes("FROM ls_cases.audiences")) return [{ id: ids.audience, workspaceId: ids.workspace, caseId: ids.case, visibility: "family_full", published: true }] as T[];
       if (sql.includes("FROM ls_cases.audience_accounts")) return [{ accountId: ids.parentA }, { accountId: ids.parentB }] as T[];
-      if (sql.includes("COALESCE(MAX(c.version)")) return [{ caseId: ids.case, audienceId: ids.audience, nextVersion: 2 }] as T[];
-      if (sql.includes("FROM ls_practice.practice_occurrences o JOIN")) return [{ occurrenceId: ids.occurrence, caseId: ids.case, audienceId: ids.audience, coordinationVersionId: ids.coordination, state: overrides.occurrenceState ?? "open", assigneeAccountIds: [ids.parentA, ids.parentB], completionMode: "any_assignee", effectiveFrom: now, changedByAccountId: ids.parentA }] as T[];
+      if (sql.includes("COALESCE(MAX(c.version)")) return [{ caseId: ids.case, audienceId: ids.audience, nextVersion: 2, versionId: ids.version, responsibility: null, instructionsCiphertext, startsOn: "2026-09-12", endsOn: null }] as T[];
+      if (sql.includes("FROM ls_practice.practice_occurrences o JOIN")) return [{ occurrenceId: ids.occurrence, caseId: ids.case, audienceId: ids.audience, coordinationVersionId: ids.coordination, state: overrides.occurrenceState ?? "open", assigneeAccountIds: [ids.parentA, ids.parentB], completionMode: "any_assignee", effectiveFrom: now, changedByAccountId: ids.parentA, responsibilityVersionId: null, participant: null, assistedParentAccountIds: null, subjectPersonId: ids.person }] as T[];
       if (sql.includes("author_account_id=$2 AND idempotency_key=$3")) return (overrides.existingIdempotency ?? []) as T[];
       if (sql.includes("SELECT DISTINCT ON (author_account_id)")) return (overrides.reported ?? [{ authorAccountId: current.id }]) as T[];
-      if (sql.includes("FROM ls_practice.practice_assignments a JOIN ls_practice.practice_assignment_versions v")) return [{ workspaceId: ids.workspace, caseId: ids.case, assignmentId: ids.assignment, versionId: ids.version, version: 1, audienceId: ids.audience, goalId: null, commitmentId: null, templateKey: "W01", templateVersion: "Program2.1", instructionsCiphertext, startsOn: "2026-09-12", endsOn: null, publishedAt: null, immutableSnapshotDigest: null }] as T[];
+      if (sql.includes("FROM ls_practice.practice_assignments a JOIN ls_practice.practice_assignment_versions v")) return [{ workspaceId: ids.workspace, caseId: ids.case, assignmentId: ids.assignment, versionId: ids.version, version: 1, nextVersion: 2, audienceId: ids.audience, goalId: null, commitmentId: null, templateKey: "W01", templateVersion: "Program2.1", instructionsCiphertext, startsOn: "2026-09-12", endsOn: null, publishedAt: null, immutableSnapshotDigest: null, responsibility: null }] as T[];
       return [];
     },
   };
@@ -122,7 +122,7 @@ describe("LS-040 services", () => {
   });
   it("returns the original report for the same idempotency key", async () => {
     const parent = actor("parent");
-    const fixture = fixtureStore(parent, { existingIdempotency: [{ reportId: asId(uuid(42), "completion_report"), occurrenceId: ids.occurrence, authorAccountId: ids.parentA, status: "done", revision: 1, reportedAt: now, idempotencyKey: uuid(43), correctsReportId: null }] });
+    const fixture = fixtureStore(parent, { existingIdempotency: [{ reportId: asId(uuid(42), "completion_report"), occurrenceId: ids.occurrence, authorAccountId: ids.parentA, status: "done", revision: 1, reportedAt: now, idempotencyKey: uuid(43), correctsReportId: null, authorship: null, subjectPersonId: null, noteCiphertext: null }] });
     const result = await new CheckInService(fixture.store, clock).submit(parent, { occurrenceId: ids.occurrence, status: "done", idempotencyKey: uuid(43) }, uuid(44));
     expect(result.reportedAt).toBe(now.toISOString());
     expect(fixture.queries.some(query => query.sql.includes("INSERT INTO ls_practice.completion_reports"))).toBe(false);

@@ -2,6 +2,7 @@ import { IdentityClientError, sessionInfo } from "../identity/client.ts";
 import type { IdentityClientErrorCode } from "../identity/client.ts";
 import type { CompletionStatus, CompletionView, OwnCompletionView, PracticeOccurrencePage } from "./types.ts";
 import { isVisibility } from "../../lib/visibility.ts";
+import type {AssistedCheckInInput} from "./responsibility-input.ts";
 
 const codes: readonly IdentityClientErrorCode[] = ["INVALID_REQUEST", "UNAUTHENTICATED", "FORBIDDEN", "NOT_FOUND", "CONFLICT", "RATE_LIMITED", "UNAVAILABLE", "INTERNAL"];
 async function privateRequest<T>(path: string, init: RequestInit, signal?: AbortSignal): Promise<T> {
@@ -74,10 +75,11 @@ export interface CheckInAttempt {
   readonly status: CompletionStatus;
   readonly idempotencyKey: string;
   readonly correctsReportId?: string;
+  readonly assistance?:Readonly<AssistedCheckInInput>;
 }
 /** Retain this exact body on uncertain failure; never generate a key per retry. */
-export function checkInAttempt(occurrenceId: string, status: CompletionStatus, correctsReportId?: string): CheckInAttempt {
-  return Object.freeze({ occurrenceId, status, idempotencyKey: crypto.randomUUID(), ...(correctsReportId ? { correctsReportId } : {}) });
+export function checkInAttempt(occurrenceId: string, status: CompletionStatus, correctsReportId?: string,assistance?:AssistedCheckInInput): CheckInAttempt {
+  return Object.freeze({ occurrenceId, status, idempotencyKey: crypto.randomUUID(), ...(correctsReportId ? { correctsReportId } : {}),...(assistance?{assistance:Object.freeze({...assistance})}:{}) });
 }
 export async function submitPracticeCheckIn(attempt: CheckInAttempt, signal: AbortSignal): Promise<void> {
   const session = await sessionInfo();
@@ -91,11 +93,21 @@ export async function ownCheckInHistory(occurrenceId: string, signal: AbortSigna
   if (!Array.isArray(rows) || rows.some(row => row.authorAccountId !== session.accountId || typeof row.idempotencyKey !== "string")) throw new IdentityClientError("UNAVAILABLE");
   return rows;
 }
+/** Ordinary owner case policy still controls this practitioner read. */
+export async function practitionerCheckInHistory(occurrenceId:string,signal:AbortSignal):Promise<CompletionView[]>{
+  const rows=await privateRequest<CompletionView[]>("/api/checkins?"+new URLSearchParams({occurrenceId}),{method:"GET"},signal);
+  if(!Array.isArray(rows)||rows.some(row=>row.occurrenceId!==occurrenceId||Object.hasOwn(row,"idempotencyKey")))throw new IdentityClientError("UNAVAILABLE");
+  return rows;
+}
 /** Reconcile the actual retry receipt, not merely the newest visible status. */
 export function checkInReadback(attempt: CheckInAttempt, rows: readonly OwnCompletionView[]): "pending" | "recorded" | "superseded" {
   const recorded = rows.find(row => row.idempotencyKey === attempt.idempotencyKey);
   if (!recorded) return "pending";
   if (recorded.occurrenceId !== attempt.occurrenceId || recorded.status !== attempt.status || recorded.correctedReportId !== (attempt.correctsReportId ?? null)) throw new IdentityClientError("UNAVAILABLE");
+  if(attempt.assistance){
+    const authorship=attempt.assistance.mode==="together"?"parent_assisted_child":"parent_reporting_child";
+    if(!recorded.attribution||recorded.attribution.authorship!==authorship||recorded.attribution.note!==attempt.assistance.note)throw new IdentityClientError("UNAVAILABLE");
+  }else if(recorded.attribution&&recorded.attribution.authorship!=="self")throw new IdentityClientError("UNAVAILABLE");
   return rows.at(-1)?.reportId === recorded.reportId ? "recorded" : "superseded";
 }
 export function practiceAccessLost(error: unknown): boolean {

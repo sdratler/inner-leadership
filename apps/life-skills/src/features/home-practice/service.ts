@@ -21,6 +21,9 @@ import type { AccountId, Actor, AudienceId, CaseId, IdentityClock } from "../ide
 import { assertCalendarDate, assertPeriod, coordinationAssignees } from "./policy.ts";
 import { recordPracticeAction } from "./history.ts";
 import { readPracticeOccurrences } from "./occurrences.ts";
+import {authorizeResponsibility,nativeResponsibilityParticipants,parseSavedResponsibility,nativeResponsibility,nativeResponsibilityOccurrences,nativeOccurrenceId} from "./responsibility-service.ts";
+import type {ResponsibilityInput} from "./responsibility-input.ts";
+import type {PracticeOccurrence} from "../assignment-participants/contracts.ts";
 import type {
   CommitmentId,
   CompletionMode,
@@ -43,7 +46,7 @@ async function retainedChildCoordination(tx:SqlSession,workspaceId:string,assign
   JOIN ls_cases.cases ca ON ca.workspace_id=c.workspace_id AND ca.id=c.case_id
   JOIN ls_cases.clients cl ON cl.workspace_id=ca.workspace_id AND cl.id=ca.client_id AND cl.person_id=s.person_id
   JOIN ls_cases.audience_accounts aa ON aa.workspace_id=c.workspace_id AND aa.case_id=c.case_id AND aa.audience_id=c.audience_id AND aa.account_id=a.id AND aa.revoked_at IS NULL
-  WHERE c.workspace_id=$1 AND c.assignment_id=$2 AND c.case_id=$3 AND c.audience_id=$4 AND (c.id=$5::uuid OR c.effective_from>$6)
+  WHERE c.workspace_id=$1 AND c.assignment_id=$2 AND c.case_id=$3 AND c.audience_id=$4 AND c.responsibility_version_id IS NULL AND (c.id=$5::uuid OR c.effective_from>$6)
   AND NOT(a.id=ANY($7::uuid[]))) AS retained`,[workspaceId,assignmentId,caseId,audienceId,currentVersionId,now,preservedAccountIds]);
  return row?.retained===true;
 }
@@ -51,7 +54,7 @@ function immutableVersionDigest(row: VersionRow): string {
   return createHash("sha256").update(JSON.stringify([
     row.workspaceId, row.caseId, row.assignmentId, row.versionId, row.version, row.audienceId,
     row.goalId, row.commitmentId, row.templateKey, row.templateVersion, row.instructionsCiphertext,
-    row.startsOn, row.endsOn,
+    row.startsOn, row.endsOn,...(row.responsibility===null?[]:[row.responsibility]),
   ]), "utf8").digest("hex");
 }
 
@@ -71,6 +74,7 @@ interface VersionRow {
   endsOn: string | null;
   publishedAt: Date | null;
   immutableSnapshotDigest: string | null;
+  responsibility:unknown;
 }
 
 interface AdaptationInput {
@@ -108,7 +112,7 @@ const VERSION_SELECT = `SELECT a.workspace_id AS "workspaceId",a.case_id AS "cas
  v.id AS "versionId",v.version,a.audience_id AS "audienceId",a.goal_id AS "goalId",a.commitment_id AS "commitmentId",
  v.template_key AS "templateKey",v.template_version AS "templateVersion",v.instructions_ciphertext AS "instructionsCiphertext",
  v.starts_on::text AS "startsOn",v.ends_on::text AS "endsOn",v.published_at AS "publishedAt",
- v.immutable_snapshot_digest AS "immutableSnapshotDigest"
+ v.immutable_snapshot_digest AS "immutableSnapshotDigest",v.responsibility
  FROM ls_practice.practice_assignments a JOIN ls_practice.practice_assignment_versions v
  ON v.workspace_id=a.workspace_id AND v.assignment_id=a.id`;
 
@@ -117,11 +121,13 @@ export class HomePracticeService implements PracticeVersionReader {
 
   private project(row: VersionRow): PublishedPracticeVersion {
     if (!row.publishedAt || !row.immutableSnapshotDigest) throw new AppError("UNAVAILABLE");
+    const {instructionsCiphertext,responsibility,...fields}=row;
     return {
-      ...row,
-      instructions: unseal(row.instructionsCiphertext, instructionsAad(row.workspaceId, row.versionId), this.config.keyring),
+      ...fields,
+      instructions: unseal(instructionsCiphertext, instructionsAad(row.workspaceId, row.versionId), this.config.keyring),
       publishedAt: row.publishedAt.toISOString(),
       immutableSnapshotDigest: row.immutableSnapshotDigest,
+      ...(responsibility===null?{}:{responsibility:parseSavedResponsibility(responsibility)}),
     };
   }
 
@@ -184,12 +190,19 @@ export class HomePracticeService implements PracticeVersionReader {
       if (!next || !Number.isSafeInteger(Number(next.version))) throw new AppError("UNAVAILABLE");
 
       const newVersionId = asId(randomUUID(), "practice_version");
+      const responsibility=parseSavedResponsibility(active.responsibility);
+      if(responsibility){
+        const item=await loadCase(tx,scope.workspaceId,scope.caseId),audience=await loadAudience(tx,scope.workspaceId,scope.caseId,active.audienceId);
+        const account=await one<Actor>(tx,"SELECT id,workspace_id AS \"workspaceId\",role,state FROM ls_identity.accounts WHERE workspace_id=$1 AND id=$2",[scope.workspaceId,scope.accountId]);
+        if(!item||!audience||!account)throw new AppError("NOT_FOUND");
+        await authorizeResponsibility(tx,account,item,audience,responsibility,active.startsOn,active.endsOn,input.adaptedInstructions);
+      }
       const ciphertext = seal(input.adaptedInstructions, instructionsAad(scope.workspaceId, newVersionId), this.config.keyring);
       await tx.query(`INSERT INTO ls_practice.practice_assignment_versions
-        (id,workspace_id,assignment_id,version,template_key,template_version,instructions_ciphertext,starts_on,ends_on,state,created_by_account_id,created_at,supersedes_version_id)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'draft',$10,$11,$12)`,
+        (id,workspace_id,assignment_id,version,template_key,template_version,instructions_ciphertext,starts_on,ends_on,state,created_by_account_id,created_at,supersedes_version_id,responsibility)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'draft',$10,$11,$12,$13::jsonb)`,
       [newVersionId, scope.workspaceId, active.assignmentId, Number(next.version), active.templateKey, active.templateVersion,
-        ciphertext, active.startsOn, active.endsOn, input.practitionerAccountId, now, active.versionId]);
+        ciphertext, active.startsOn, active.endsOn, input.practitionerAccountId, now, active.versionId,responsibility?JSON.stringify(responsibility):null]);
       await tx.query(`INSERT INTO ls_integration.practice_adaptation_receipts
         (workspace_id,source_report_id,idempotency_key,request_digest,case_id,assignment_id,previous_version_id,new_version_id,practitioner_account_id,state,created_at)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'draft',$10)`,
@@ -202,7 +215,7 @@ export class HomePracticeService implements PracticeVersionReader {
 
   async createDraft(actor: Actor, input: {
     caseId: CaseId; audienceId: AudienceId; goalId?: GoalId | undefined; commitmentId?: CommitmentId | undefined;
-    templateKey: string; templateVersion: string; instructions: string; startsOn: string; endsOn?: string | null | undefined;
+    templateKey: string; templateVersion: string; instructions: string; startsOn: string; endsOn?: string | null | undefined; responsibility?:ResponsibilityInput|undefined;
   }, requestId: string): Promise<{ assignmentId: PracticeAssignmentId; versionId: PracticeVersionId }> {
     const startsOn = assertCalendarDate(input.startsOn);
     const endsOn = input.endsOn ? assertCalendarDate(input.endsOn) : null;
@@ -216,6 +229,7 @@ export class HomePracticeService implements PracticeVersionReader {
       caseAccess(current, item, guardians, "write");
       const audience = await loadAudience(tx, actor.workspaceId, input.caseId, input.audienceId);
       if (!audience) throw new AppError("NOT_FOUND");
+      const responsibility=input.responsibility===undefined?null:await authorizeResponsibility(tx,current,item!,audience,input.responsibility,startsOn,endsOn,input.instructions);
       if (input.goalId && !await one(tx, "SELECT id FROM ls_practice.goals WHERE workspace_id=$1 AND case_id=$2 AND audience_id=$3 AND id=$4", [actor.workspaceId, input.caseId, input.audienceId, input.goalId])) throw new AppError("NOT_FOUND");
       if (input.commitmentId && !await one(tx, "SELECT id FROM ls_practice.commitments WHERE workspace_id=$1 AND case_id=$2 AND audience_id=$3 AND id=$4 AND ($5::uuid IS NULL OR goal_id=$5)", [actor.workspaceId, input.caseId, input.audienceId, input.commitmentId, input.goalId ?? null])) throw new AppError("NOT_FOUND");
       const assignmentId = asId(randomUUID(), "practice_assignment");
@@ -225,21 +239,21 @@ export class HomePracticeService implements PracticeVersionReader {
         (id,workspace_id,case_id,audience_id,goal_id,commitment_id,state,active_version_id,created_by_account_id,created_at)
         VALUES ($1,$2,$3,$4,$5,$6,'draft',NULL,$7,$8)`, [assignmentId, actor.workspaceId, input.caseId, input.audienceId, input.goalId ?? null, input.commitmentId ?? null, actor.id, now]);
       await tx.query(`INSERT INTO ls_practice.practice_assignment_versions
-        (id,workspace_id,assignment_id,version,template_key,template_version,instructions_ciphertext,starts_on,ends_on,state,created_by_account_id,created_at)
-        VALUES ($1,$2,$3,1,$4,$5,$6,$7,$8,'draft',$9,$10)`, [versionId, actor.workspaceId, assignmentId, input.templateKey, input.templateVersion, ciphertext, startsOn, endsOn, actor.id, now]);
+        (id,workspace_id,assignment_id,version,template_key,template_version,instructions_ciphertext,starts_on,ends_on,state,created_by_account_id,created_at,responsibility)
+        VALUES ($1,$2,$3,1,$4,$5,$6,$7,$8,'draft',$9,$10,$11::jsonb)`, [versionId, actor.workspaceId, assignmentId, input.templateKey, input.templateVersion, ciphertext, startsOn, endsOn, actor.id, now,responsibility===null?null:JSON.stringify(responsibility)]);
       await recordPracticeAction(tx, { requestId, now }, actor.workspaceId, actor.id, "practice_assignment_draft_created");
       return { assignmentId, versionId };
     });
   }
 
-  async revise(actor: Actor, input: { assignmentId: PracticeAssignmentId; instructions: string; startsOn: string; endsOn?: string | null | undefined }, requestId: string): Promise<{ versionId: PracticeVersionId; version: number }> {
+  async revise(actor: Actor, input: { assignmentId: PracticeAssignmentId; instructions: string; startsOn: string; endsOn?: string | null | undefined;responsibility?:ResponsibilityInput|undefined }, requestId: string): Promise<{ versionId: PracticeVersionId; version: number }> {
     const startsOn = assertCalendarDate(input.startsOn), endsOn = input.endsOn ? assertCalendarDate(input.endsOn) : null;
     if (endsOn && endsOn < startsOn) throw new AppError("INVALID_REQUEST");
     const now = this.clock.now();
     return this.store.transaction(async tx => {
       await lockWorkspace(tx, actor.workspaceId);
-      const assignment = await one<{ caseId: CaseId; activeVersionId: PracticeVersionId; templateKey: string; templateVersion: string; nextVersion: number }>(tx,
-        `SELECT a.case_id AS "caseId",a.active_version_id AS "activeVersionId",v.template_key AS "templateKey",v.template_version AS "templateVersion",
+      const assignment = await one<{ caseId: CaseId; audienceId:AudienceId; activeVersionId: PracticeVersionId; templateKey: string; templateVersion: string; nextVersion: number;responsibility:unknown }>(tx,
+        `SELECT a.case_id AS "caseId",a.audience_id AS "audienceId",a.active_version_id AS "activeVersionId",v.template_key AS "templateKey",v.template_version AS "templateVersion",v.responsibility,
          (SELECT COALESCE(MAX(allv.version),0)+1 FROM ls_practice.practice_assignment_versions allv
           WHERE allv.workspace_id=a.workspace_id AND allv.assignment_id=a.id) AS "nextVersion"
          FROM ls_practice.practice_assignments a
@@ -249,28 +263,48 @@ export class HomePracticeService implements PracticeVersionReader {
       if (!assignment) throw new AppError("NOT_FOUND");
       const current = await freshActor(tx, actor, now);
       caseAccess(current, await loadCase(tx, actor.workspaceId, assignment.caseId), await loadGuardians(tx, actor.workspaceId, assignment.caseId), "write");
+      const item=await loadCase(tx,actor.workspaceId,assignment.caseId),audience=await loadAudience(tx,actor.workspaceId,assignment.caseId,assignment.audienceId);
+      if(!item||!audience)throw new AppError("NOT_FOUND");
+      // A text-only revision preserves the exact participant/timing snapshot;
+      // changing it is explicit, and the published prior version remains intact.
+      const previous=parseSavedResponsibility(assignment.responsibility),proposed=input.responsibility??previous;
+      const responsibility=proposed===null?null:await authorizeResponsibility(tx,current,item,audience,proposed,startsOn,endsOn,input.instructions);
       if (await one(tx, "SELECT id FROM ls_practice.practice_assignment_versions WHERE workspace_id=$1 AND assignment_id=$2 AND state='draft'", [actor.workspaceId, input.assignmentId])) throw new AppError("CONFLICT");
       const versionId = asId(randomUUID(), "practice_version");
       const ciphertext = seal(input.instructions, instructionsAad(actor.workspaceId, versionId), this.config.keyring);
       await tx.query(`INSERT INTO ls_practice.practice_assignment_versions
-        (id,workspace_id,assignment_id,version,template_key,template_version,instructions_ciphertext,starts_on,ends_on,state,created_by_account_id,created_at,supersedes_version_id)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'draft',$10,$11,$12)`, [versionId, actor.workspaceId, input.assignmentId, assignment.nextVersion, assignment.templateKey, assignment.templateVersion, ciphertext, startsOn, endsOn, actor.id, now, assignment.activeVersionId]);
+        (id,workspace_id,assignment_id,version,template_key,template_version,instructions_ciphertext,starts_on,ends_on,state,created_by_account_id,created_at,supersedes_version_id,responsibility)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'draft',$10,$11,$12,$13::jsonb)`, [versionId, actor.workspaceId, input.assignmentId, assignment.nextVersion, assignment.templateKey, assignment.templateVersion, ciphertext, startsOn, endsOn, actor.id, now, assignment.activeVersionId,responsibility===null?null:JSON.stringify(responsibility)]);
       await recordPracticeAction(tx, { requestId, now }, actor.workspaceId, actor.id, "practice_assignment_revision_drafted");
       return { versionId, version: Number(assignment.nextVersion) };
     });
   }
 
   async publish(actor: Actor, assignmentId: PracticeAssignmentId, versionId: PracticeVersionId, requestId: string): Promise<PracticeVersionReference> {
-    const now = this.clock.now();
     return this.store.transaction(async tx => {
       await lockWorkspace(tx, actor.workspaceId);
+      const now = this.clock.now();
       const row = await one<VersionRow>(tx, VERSION_SELECT + " WHERE a.workspace_id=$1 AND a.id=$2 AND v.id=$3 AND v.state='draft' FOR UPDATE OF a,v", [actor.workspaceId, assignmentId, versionId]);
       if (!row) throw new AppError("NOT_FOUND");
       const current = await freshActor(tx, actor, now);
       caseAccess(current, await loadCase(tx, actor.workspaceId, row.caseId), await loadGuardians(tx, actor.workspaceId, row.caseId), "publish");
+      const responsibility=parseSavedResponsibility(row.responsibility),item=await loadCase(tx,actor.workspaceId,row.caseId),audience=await loadAudience(tx,actor.workspaceId,row.caseId,row.audienceId);
+      if(responsibility){if(!item||!audience?.published||audience.visibility==="private")throw new AppError("NOT_FOUND");await authorizeResponsibility(tx,current,item,audience,responsibility,row.startsOn,row.endsOn,unseal(row.instructionsCiphertext,instructionsAad(actor.workspaceId,row.versionId),this.config.keyring));}
       const immutableSnapshotDigest = immutableVersionDigest(row);
       await tx.query("UPDATE ls_practice.practice_assignment_versions SET state='published',published_by_account_id=$4,published_at=$5,immutable_snapshot_digest=$6 WHERE workspace_id=$1 AND assignment_id=$2 AND id=$3 AND state='draft'", [actor.workspaceId, assignmentId, versionId, actor.id, now, immutableSnapshotDigest]);
       await tx.query("UPDATE ls_practice.practice_assignments SET state='published',active_version_id=$3 WHERE workspace_id=$1 AND id=$2", [actor.workspaceId, assignmentId, versionId]);
+      // Cancel only unreported FUTURE timed occurrences from older versions.
+      // Historical, completed and unspecified-clock legacy rows are untouched.
+      // Select and timestamp cancellations with one database clock after the
+      // workspace lock. A queued publish must not cancel an occurrence that
+      // started while it waited; the immutable DB trigger still rejects that.
+      await tx.query(`WITH cutoff AS MATERIALIZED(SELECT clock_timestamp() AS at)
+       UPDATE ls_practice.practice_occurrences o SET state='cancelled',cancelled_at=cutoff.at,superseded_by_version_id=$3 FROM cutoff
+       WHERE o.workspace_id=$1 AND o.assignment_id=$2 AND o.practice_version_id<>$3 AND o.state='open'
+        AND o.occurs_at>cutoff.at AND NOT EXISTS(SELECT 1 FROM ls_practice.completion_reports r WHERE r.workspace_id=o.workspace_id AND r.occurrence_id=o.id)`,[actor.workspaceId,assignmentId,versionId]);
+      if(responsibility){const versionId=asId(randomUUID(),"coordination_version"),next=await one<{version:number}>(tx,"SELECT coalesce(max(version),0)+1 AS version FROM ls_practice.task_coordination_versions WHERE workspace_id=$1 AND assignment_id=$2",[actor.workspaceId,assignmentId]);
+        await tx.query(`INSERT INTO ls_practice.task_coordination_versions(id,workspace_id,assignment_id,version,case_id,audience_id,assignee_account_ids,completion_mode,reminder_candidate_account_ids,effective_from,changed_by_account_id,created_at,responsibility_version_id,participant,assisted_parent_account_ids)
+         VALUES($1,$2,$3,$4,$5,$6,$7::uuid[],$8,$9::uuid[],$10,$11,$10,$12,$13,$14::uuid[])`,[versionId,actor.workspaceId,assignmentId,Number(next!.version),row.caseId,row.audienceId,responsibility.assigneeAccountIds,responsibility.completionMode,responsibility.reminderRecipients.map(value=>value.accountId),now,actor.id,row.versionId,responsibility.participant,responsibility.assistedByParentAccountIds]);}
       await recordPracticeAction(tx, { requestId, now }, actor.workspaceId, actor.id, "practice_assignment_published");
       return { workspaceId: actor.workspaceId, caseId: row.caseId, assignmentId, versionId, audienceId: row.audienceId, visibility: (await loadAudience(tx, actor.workspaceId, row.caseId, row.audienceId))?.visibility ?? "private", publishedAt: now.toISOString(), immutableSnapshotDigest };
     });
@@ -288,11 +322,11 @@ export class HomePracticeService implements PracticeVersionReader {
       await lockWorkspace(tx, actor.workspaceId);
       const now = this.clock.now();
       if (Date.parse(effectiveFrom) < now.getTime()) throw new AppError("INVALID_REQUEST");
-      const row = await one<{ caseId: CaseId; audienceId: AudienceId; nextVersion: number }>(tx,
-        `SELECT a.case_id AS "caseId",a.audience_id AS "audienceId",
+      const row = await one<{ caseId: CaseId; audienceId: AudienceId; nextVersion: number;versionId:PracticeVersionId;responsibility:unknown;instructionsCiphertext:string;startsOn:string;endsOn:string|null }>(tx,
+        `SELECT a.case_id AS "caseId",a.audience_id AS "audienceId",v.id AS "versionId",v.responsibility,v.instructions_ciphertext AS "instructionsCiphertext",v.starts_on::text AS "startsOn",v.ends_on::text AS "endsOn",
          (SELECT COALESCE(MAX(c.version),0)+1 FROM ls_practice.task_coordination_versions c
           WHERE c.workspace_id=a.workspace_id AND c.assignment_id=a.id) AS "nextVersion"
-         FROM ls_practice.practice_assignments a
+         FROM ls_practice.practice_assignments a JOIN ls_practice.practice_assignment_versions v ON v.workspace_id=a.workspace_id AND v.id=a.active_version_id
          WHERE a.workspace_id=$1 AND a.id=$2 AND a.state='published'
          FOR UPDATE OF a`, [actor.workspaceId, input.assignmentId]);
       if (!row) throw new AppError("NOT_FOUND");
@@ -300,6 +334,12 @@ export class HomePracticeService implements PracticeVersionReader {
       const item = await loadCase(tx, actor.workspaceId, row.caseId), guardians = await loadGuardians(tx, actor.workspaceId, row.caseId);
       const audience = await loadAudience(tx, actor.workspaceId, row.caseId, row.audienceId);
       if (!audience) throw new AppError("NOT_FOUND");
+      const responsibility=parseSavedResponsibility(row.responsibility);
+      if(responsibility){
+        if(!item||responsibility.participant==="client"&&current.role!=="adult_client"||responsibility.participant==="parent"&&current.role!=="parent")throw new AppError("NOT_FOUND");
+        audienceAccess(current,item,guardians,audience);
+        await authorizeResponsibility(tx,current,item,audience,{...responsibility,assigneeAccountIds:input.assigneeAccountIds,completionMode:input.completionMode,reminderRecipients:input.reminderCandidateAccountIds.map(accountId=>({accountId,purpose:"self"}))},row.startsOn,row.endsOn,unseal(row.instructionsCiphertext,instructionsAad(actor.workspaceId,row.versionId),this.config.keyring));
+      }
       const clientAccounts=item?await tx.query<{id:AccountId}>(`SELECT a.id FROM ls_identity.accounts a
         JOIN ls_identity.account_subjects s ON s.workspace_id=a.workspace_id AND s.account_id=a.id
         WHERE a.workspace_id=$1 AND a.state='active' AND s.person_id=$2
@@ -307,18 +347,18 @@ export class HomePracticeService implements PracticeVersionReader {
         AND a.id=ANY($4::uuid[])`,[actor.workspaceId,item.clientPersonId,item.kind,audience.accountIds]):[];
       const assignees = coordinationAssignees(current, item, guardians, audience, input.assigneeAccountIds, clientAccounts.map(row=>row.id));
       if(current.role==='parent'||input.expectedCurrentVersionId!==undefined){
-        const effective=await one<{id:CoordinationVersionId}>(tx,`SELECT id FROM ls_practice.task_coordination_versions WHERE workspace_id=$1 AND assignment_id=$2 AND case_id=$3 AND audience_id=$4 AND effective_from<=$5 ORDER BY effective_from DESC,version DESC LIMIT 1`,[actor.workspaceId,input.assignmentId,row.caseId,row.audienceId,now]);
+        const effective=await one<{id:CoordinationVersionId}>(tx,`SELECT id FROM ls_practice.task_coordination_versions WHERE workspace_id=$1 AND assignment_id=$2 AND case_id=$3 AND audience_id=$4 AND effective_from<=$5 AND (($6::uuid IS NULL AND responsibility_version_id IS NULL) OR responsibility_version_id=$6) ORDER BY effective_from DESC,version DESC LIMIT 1`,[actor.workspaceId,input.assignmentId,row.caseId,row.audienceId,now,responsibility?row.versionId:null]);
         if(input.expectedCurrentVersionId!==undefined&&(effective?.id??null)!==input.expectedCurrentVersionId)throw new AppError("CONFLICT");
         // Optional optimistic tokens must not gate retained child protection.
         // Deliberate native child-inclusive operations preserve those accounts.
-        if(current.role==='parent'&&await retainedChildCoordination(tx,actor.workspaceId,input.assignmentId,row.caseId,row.audienceId,effective?.id??null,now,assignees))throw new AppError("CONFLICT");
+        if(!responsibility&&current.role==='parent'&&await retainedChildCoordination(tx,actor.workspaceId,input.assignmentId,row.caseId,row.audienceId,effective?.id??null,now,assignees))throw new AppError("CONFLICT");
       }
       if (input.completionMode === "each_assignee" && assignees.length < 2) throw new AppError("INVALID_REQUEST");
       if (new Set(input.reminderCandidateAccountIds).size !== input.reminderCandidateAccountIds.length || input.reminderCandidateAccountIds.some(id => !assignees.includes(id))) throw new AppError("INVALID_REQUEST");
       const versionId = asId(randomUUID(), "coordination_version");
       await tx.query(`INSERT INTO ls_practice.task_coordination_versions
-        (id,workspace_id,assignment_id,version,case_id,audience_id,assignee_account_ids,completion_mode,reminder_candidate_account_ids,effective_from,changed_by_account_id,created_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7::uuid[],$8,$9::uuid[],$10,$11,$12)`, [versionId, actor.workspaceId, input.assignmentId, row.nextVersion, row.caseId, row.audienceId, assignees, input.completionMode, input.reminderCandidateAccountIds, new Date(effectiveFrom), actor.id, now]);
+        (id,workspace_id,assignment_id,version,case_id,audience_id,assignee_account_ids,completion_mode,reminder_candidate_account_ids,effective_from,changed_by_account_id,created_at,responsibility_version_id,participant,assisted_parent_account_ids)
+        VALUES ($1,$2,$3,$4,$5,$6,$7::uuid[],$8,$9::uuid[],$10,$11,$12,$13,$14,$15::uuid[])`, [versionId, actor.workspaceId, input.assignmentId, row.nextVersion, row.caseId, row.audienceId, assignees, input.completionMode, input.reminderCandidateAccountIds, new Date(effectiveFrom), actor.id, now,responsibility?row.versionId:null,responsibility?.participant??null,responsibility?.assistedByParentAccountIds??null]);
       await recordPracticeAction(tx, { requestId, now }, actor.workspaceId, actor.id, "practice_coordination_changed");
       return { versionId, caseId: row.caseId, audienceId: row.audienceId, assigneeAccountIds: assignees, completionMode: input.completionMode, effectiveFrom, changedByAccountId: actor.id };
     });
@@ -328,25 +368,41 @@ export class HomePracticeService implements PracticeVersionReader {
     const occursOn = assertCalendarDate(input.occursOn), period = assertPeriod(input.period), now = this.clock.now();
     return this.store.transaction(async tx => {
       await lockWorkspace(tx, actor.workspaceId);
-      const assignment = await one<{ caseId: CaseId; practiceVersionId: PracticeVersionId }>(tx,
-        `SELECT a.case_id AS "caseId",a.active_version_id AS "practiceVersionId" FROM ls_practice.practice_assignments a
+      const assignment = await one<{caseId:CaseId;practiceVersionId:PracticeVersionId;audienceId:AudienceId;responsibility:unknown;version:number;startsOn:string;endsOn:string|null;instructionsCiphertext:string}>(tx,
+        `SELECT a.case_id AS "caseId",a.audience_id AS "audienceId",a.active_version_id AS "practiceVersionId",v.responsibility,v.version,v.starts_on::text AS "startsOn",v.ends_on::text AS "endsOn",v.instructions_ciphertext AS "instructionsCiphertext" FROM ls_practice.practice_assignments a
          JOIN ls_practice.practice_assignment_versions v ON v.workspace_id=a.workspace_id AND v.id=a.active_version_id
          WHERE a.workspace_id=$1 AND a.id=$2 AND a.state='published' AND v.state='published'
           AND v.starts_on<=$3::date AND (v.ends_on IS NULL OR v.ends_on>=$3::date) FOR UPDATE OF a`, [actor.workspaceId, input.assignmentId, occursOn]);
       if (!assignment) throw new AppError("NOT_FOUND");
-      const current = await freshActor(tx, actor, now);
-      caseAccess(current, await loadCase(tx, actor.workspaceId, assignment.caseId), await loadGuardians(tx, actor.workspaceId, assignment.caseId), "write");
+      const current = await freshActor(tx, actor, now),item=await loadCase(tx,actor.workspaceId,assignment.caseId);
+      caseAccess(current, item, await loadGuardians(tx, actor.workspaceId, assignment.caseId), "write");
+      const responsibility=parseSavedResponsibility(assignment.responsibility);let planned:PracticeOccurrence|null=null;
+      if(responsibility){
+        if(period!==responsibility.period)throw new AppError("INVALID_REQUEST");
+        const audience=await loadAudience(tx,actor.workspaceId,assignment.caseId,assignment.audienceId);
+        if(!item||!audience?.published||audience.visibility==="private")throw new AppError("NOT_FOUND");
+        const instructions=unseal(assignment.instructionsCiphertext,instructionsAad(actor.workspaceId,assignment.practiceVersionId),this.config.keyring);
+        await authorizeResponsibility(tx,current,item,audience,responsibility,assignment.startsOn,assignment.endsOn,instructions);
+        const value=nativeResponsibility({workspaceId:actor.workspaceId,caseId:assignment.caseId,assignmentId:input.assignmentId,versionId:assignment.practiceVersionId,version:assignment.version,instructions,startsOn:assignment.startsOn,endsOn:assignment.endsOn},item.clientPersonId,responsibility,audience.accountIds);
+        const plan=nativeResponsibilityOccurrences(value,responsibility,occursOn,1);
+        if(plan.unresolved.length||plan.occurrences.length!==1)throw new AppError("CONFLICT");
+        planned=plan.occurrences[0]!;
+      }
+      const occursAt=planned?.startsAt??null;
       const coordination = await one<{ versionId: CoordinationVersionId }>(tx,
         `SELECT id AS "versionId" FROM ls_practice.task_coordination_versions
-         WHERE workspace_id=$1 AND assignment_id=$2 AND effective_from<=($3::date + CASE WHEN $4='morning' THEN time '08:00' ELSE time '20:00' END) AT TIME ZONE 'Asia/Jerusalem'
-         ORDER BY effective_from DESC,version DESC LIMIT 1`, [actor.workspaceId, input.assignmentId, occursOn, period]);
+          WHERE workspace_id=$1 AND assignment_id=$2 AND effective_from<=coalesce($5::timestamptz,($3::date + CASE WHEN $4='morning' THEN time '08:00' ELSE time '20:00' END) AT TIME ZONE 'Asia/Jerusalem')
+           AND (($6::uuid IS NULL AND responsibility_version_id IS NULL) OR responsibility_version_id=$6)
+          ORDER BY effective_from DESC,version DESC LIMIT 1`, [actor.workspaceId, input.assignmentId, occursOn, period,occursAt,responsibility?assignment.practiceVersionId:null]);
       if (!coordination) throw new AppError("CONFLICT");
-      const id = asId(randomUUID(), "occurrence");
+      const id = planned?nativeOccurrenceId(planned.id):asId(randomUUID(), "occurrence");
+      if(responsibility){const existing=await one<{id:ScheduledOccurrence["id"];practiceVersionId:PracticeVersionId;coordinationVersionId:CoordinationVersionId;state:ScheduledOccurrence["state"];occursAt:Date}>(tx,"SELECT id,practice_version_id AS \"practiceVersionId\",coordination_version_id AS \"coordinationVersionId\",state,occurs_at AS \"occursAt\" FROM ls_practice.practice_occurrences WHERE workspace_id=$1 AND id=$2",[actor.workspaceId,id]);if(existing){if(existing.practiceVersionId!==assignment.practiceVersionId||existing.coordinationVersionId!==coordination.versionId||existing.occursAt?.toISOString()!==occursAt||existing.state==="cancelled")throw new AppError("CONFLICT");return {id,assignmentId:input.assignmentId,practiceVersionId:assignment.practiceVersionId,coordinationVersionId:coordination.versionId,occursOn,period,state:existing.state,occursAt};}}
+      if(responsibility&&await one(tx,"SELECT id FROM ls_practice.practice_occurrences WHERE workspace_id=$1 AND assignment_id=$2 AND occurs_on=$3::date AND period=$4 AND state<>'cancelled'",[actor.workspaceId,input.assignmentId,occursOn,period]))throw new AppError("CONFLICT");
       await tx.query(`INSERT INTO ls_practice.practice_occurrences
-        (id,workspace_id,assignment_id,practice_version_id,coordination_version_id,occurs_on,period,state,created_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,'open',$8)`, [id, actor.workspaceId, input.assignmentId, assignment.practiceVersionId, coordination.versionId, occursOn, period, now]);
+        (id,workspace_id,assignment_id,practice_version_id,coordination_version_id,occurs_on,period,state,created_at,occurs_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,'open',$8,$9)`, [id, actor.workspaceId, input.assignmentId, assignment.practiceVersionId, coordination.versionId, occursOn, period, now,occursAt]);
       await recordPracticeAction(tx, { requestId, now }, actor.workspaceId, actor.id, "practice_occurrence_scheduled");
-      return { id, assignmentId: input.assignmentId, practiceVersionId: assignment.practiceVersionId, coordinationVersionId: coordination.versionId, occursOn, period, state: "open" };
+      return { id, assignmentId: input.assignmentId, practiceVersionId: assignment.practiceVersionId, coordinationVersionId: coordination.versionId, occursOn, period, state: "open",...(responsibility?{occursAt}:{}) };
     });
   }
 
@@ -357,39 +413,52 @@ export class HomePracticeService implements PracticeVersionReader {
       if (!audience) throw new AppError("NOT_FOUND");
       audienceAccess(current, await loadCase(tx, actor.workspaceId, caseId), await loadGuardians(tx, actor.workspaceId, caseId), audience);
       const rows = await tx.query<VersionRow>(VERSION_SELECT + " WHERE a.workspace_id=$1 AND a.case_id=$2 AND a.audience_id=$3 AND v.state='published' ORDER BY v.published_at DESC,v.id LIMIT 100", [actor.workspaceId, caseId, audienceId]);
-      return rows.map(row => this.project(row));
+      return rows.map(row => {const value=this.project(row);return current.role!=="practitioner"?{...value,...(audience.visibility==="family_title_completion"?{instructions:""}:{}),responsibility:null}:value;});
     });
   }
 
   /** Current real participants and bounded immutable versions; no mutation. */
+  async participants(actor:Actor,caseId:CaseId,audienceId:AudienceId){
+    return this.store.transaction(async tx=>{
+      const current=await freshActor(tx,actor,this.clock.now()),item=await loadCase(tx,actor.workspaceId,caseId);
+      caseAccess(current,item,await loadGuardians(tx,actor.workspaceId,caseId),"write");
+      const audience=await loadAudience(tx,actor.workspaceId,caseId,audienceId);
+      if(!item||!audience||audience.visibility==="private")throw new AppError("NOT_FOUND");
+      return nativeResponsibilityParticipants(tx,current,item,audience);
+    });
+  }
+
   async coordination(actor: Actor, assignmentId: PracticeAssignmentId): Promise<PracticeCoordinationPage> {
     const now = this.clock.now();
     return this.store.transaction(async tx => {
       const current = await freshActor(tx, actor, now);
       if (current.role !== "parent" && current.role !== "adult_client") throw new AppError("NOT_FOUND");
-      const row = await one<{ caseId: CaseId; audienceId: AudienceId }>(tx, "SELECT case_id AS \"caseId\",audience_id AS \"audienceId\" FROM ls_practice.practice_assignments WHERE workspace_id=$1 AND id=$2 AND state='published'", [actor.workspaceId, assignmentId]);
+      const row = await one<{ caseId: CaseId; audienceId: AudienceId; responsibility: unknown; responsibilityVersionId: PracticeVersionId }>(tx, `SELECT a.case_id AS "caseId",a.audience_id AS "audienceId",v.responsibility,a.active_version_id AS "responsibilityVersionId" FROM ls_practice.practice_assignments a JOIN ls_practice.practice_assignment_versions v ON v.workspace_id=a.workspace_id AND v.id=a.active_version_id WHERE a.workspace_id=$1 AND a.id=$2 AND a.state='published'`, [actor.workspaceId, assignmentId]);
       if (!row) throw new AppError("NOT_FOUND");
       const item = await loadCase(tx, actor.workspaceId, row.caseId), guardians = await loadGuardians(tx, actor.workspaceId, row.caseId), audience = await loadAudience(tx, actor.workspaceId, row.caseId, row.audienceId);
       if (!item || !audience || !audience.published || audience.visibility === "private") throw new AppError("NOT_FOUND");
       audienceAccess(current, item, guardians, audience);
+      const readOnly = current.role === "parent" && parseSavedResponsibility(row.responsibility)?.participant === "client";
       const eligible = current.role === "adult_client" ? [current.id] : (await tx.query<{ id: AccountId }>(`SELECT a.id FROM ls_identity.accounts a
         JOIN ls_cases.case_guardians g ON g.workspace_id=a.workspace_id AND g.account_id=a.id
         WHERE a.workspace_id=$1 AND a.role='parent' AND a.state='active' AND g.case_id=$2 AND g.revoked_at IS NULL
           AND a.id=ANY($3::uuid[]) ORDER BY a.id LIMIT 2`, [actor.workspaceId, row.caseId, audience.accountIds])).map(value => value.id);
       type CoordinationRow = Omit<CoordinationVersion, "effectiveFrom"> & { effectiveFrom: Date };
       const select = `SELECT id AS "versionId",assignment_id AS "assignmentId",case_id AS "caseId",audience_id AS "audienceId",
-        assignee_account_ids AS "assigneeAccountIds",completion_mode AS "completionMode",reminder_candidate_account_ids AS "reminderCandidateAccountIds",effective_from AS "effectiveFrom",changed_by_account_id AS "changedByAccountId"
+        assignee_account_ids AS "assigneeAccountIds",completion_mode AS "completionMode",reminder_candidate_account_ids AS "reminderCandidateAccountIds",effective_from AS "effectiveFrom",changed_by_account_id AS "changedByAccountId",responsibility_version_id AS "responsibilityVersionId",participant,assisted_parent_account_ids AS "assistedParentAccountIds"
         FROM ls_practice.task_coordination_versions WHERE workspace_id=$1 AND assignment_id=$2 AND case_id=$3 AND audience_id=$4`;
       const scope = [actor.workspaceId, assignmentId, row.caseId, row.audienceId];
       const versions = await tx.query<CoordinationRow>(select + " ORDER BY version DESC LIMIT 21", scope);
       // Match scheduling's effective-time ordering. An older insertion can be
       // current even when more than twenty newer future revisions exist.
-      const effective = await one<CoordinationRow>(tx, select + " AND effective_from<=$5 ORDER BY effective_from DESC,version DESC LIMIT 1", [...scope, now]);
-      const next = await one<{effectiveFrom:Date}>(tx, `SELECT effective_from AS "effectiveFrom" FROM ls_practice.task_coordination_versions WHERE workspace_id=$1 AND assignment_id=$2 AND case_id=$3 AND audience_id=$4 AND effective_from>$5 ORDER BY effective_from ASC,version DESC LIMIT 1`, [...scope, now]);
-      const readOnly=current.role==='parent'&&await retainedChildCoordination(tx,actor.workspaceId,assignmentId,row.caseId,row.audienceId,effective?.versionId??null,now);
+      const responsibilityVersion = parseSavedResponsibility(row.responsibility) ? row.responsibilityVersionId : null;
+      const effective = await one<CoordinationRow>(tx, select + " AND effective_from<=$5 AND (($6::uuid IS NULL AND responsibility_version_id IS NULL) OR responsibility_version_id=$6) ORDER BY effective_from DESC,version DESC LIMIT 1", [...scope, now, responsibilityVersion]);
+      const next = await one<{effectiveFrom:Date}>(tx, `SELECT effective_from AS "effectiveFrom" FROM ls_practice.task_coordination_versions WHERE workspace_id=$1 AND assignment_id=$2 AND case_id=$3 AND audience_id=$4 AND effective_from>$5 AND (($6::uuid IS NULL AND responsibility_version_id IS NULL) OR responsibility_version_id=$6) ORDER BY effective_from ASC,version DESC LIMIT 1`, [...scope, now, responsibilityVersion]);
+      const legacyChild=!responsibilityVersion&&current.role==='parent'&&await retainedChildCoordination(tx,actor.workspaceId,assignmentId,row.caseId,row.audienceId,effective?.versionId??null,now);
+      const readOnlyReason=readOnly?'client_responsibility' as const:legacyChild?'legacy_child_assignment' as const:undefined;
       const project = (value: CoordinationRow): CoordinationVersion => ({ ...value, effectiveFrom: value.effectiveFrom.toISOString() });
-      return { ownAccountId: current.id, role: current.role, eligibleAccountIds: readOnly?[]:eligible, asOf: now.toISOString(), currentVersion: effective ? project(effective) : null, nextEffectiveFrom: next?.effectiveFrom.toISOString() ?? null,
-        hasMore: versions.length > 20, versions: versions.slice(0, 20).map(project),...(readOnly?{readOnlyReason:'legacy_child_assignment' as const}:{}) };
+      return { ownAccountId: current.id, role: current.role, eligibleAccountIds: readOnlyReason ? [] : eligible, asOf: now.toISOString(), currentVersion: effective ? project(effective) : null, nextEffectiveFrom: next?.effectiveFrom.toISOString() ?? null,
+        hasMore: versions.length > 20, versions: versions.slice(0, 20).map(project), ...(readOnlyReason ? {readOnlyReason} : {}) };
     });
   }
 
@@ -404,14 +473,14 @@ export class HomePracticeService implements PracticeVersionReader {
       const rows = await tx.query<VersionRow & { state: "draft" | "published"; active: boolean }>(select +
         " WHERE a.workspace_id=$1 AND a.case_id=$2 AND a.audience_id=$3 ORDER BY v.created_at DESC,v.id LIMIT 101", [actor.workspaceId, caseId, audienceId]);
       return { hasMore: rows.length > 100, items: rows.slice(0, 100).map(row => {
-        const { instructionsCiphertext, publishedAt, ...fields } = row;
-        return { ...fields, instructions: unseal(instructionsCiphertext, instructionsAad(row.workspaceId, row.versionId), this.config.keyring), publishedAt: publishedAt?.toISOString() ?? null };
+        const { instructionsCiphertext, publishedAt, responsibility,...fields } = row;
+        return { ...fields, instructions: unseal(instructionsCiphertext, instructionsAad(row.workspaceId, row.versionId), this.config.keyring), publishedAt: publishedAt?.toISOString() ?? null,...(responsibility===null?{}:{responsibility:parseSavedResponsibility(responsibility)}) };
       }) };
     });
   }
 
   async occurrences(actor: Actor, caseId: CaseId, audienceId: AudienceId, from: string, to: string) {
-    return readPracticeOccurrences<VersionRow>(this.store, this.clock, actor, caseId, audienceId, from, to, VERSION_SELECT, row => this.project(row));
+    return readPracticeOccurrences<VersionRow>(this.store, this.clock, actor, caseId, audienceId, from, to, VERSION_SELECT, row => this.project(row),this.config.keyring);
   }
 
   async getAuthorizedVersion(scope: CaseScope, versionId: PracticeVersionId): Promise<PracticeVersionReference | null> {

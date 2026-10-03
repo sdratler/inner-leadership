@@ -1,5 +1,6 @@
 import type { Id } from "../../lib/ids.ts";
 import type { AccountId, AudienceId, CaseId, WorkspaceId } from "../identity/types.ts";
+import type {ResponsibilityInput} from "./responsibility-input.ts";
 import type {
   CoordinationVersionId,
   OccurrenceId,
@@ -33,6 +34,8 @@ export interface PublishedPracticeVersion {
   endsOn: string | null;
   publishedAt: string;
   immutableSnapshotDigest: string;
+  /** Absent historical metadata stays absent; never infer a clock/participant. */
+  responsibility?:ResponsibilityInput|null;
 }
 
 /** Practitioner-only authoring projection. Drafts never enter the client list. */
@@ -45,6 +48,9 @@ export interface ManagedPracticeVersion extends Omit<PublishedPracticeVersion, "
 export interface PracticeManagementPage { items: ManagedPracticeVersion[]; hasMore: boolean; }
 
 export interface CoordinationVersion {
+  responsibilityVersionId?: PracticeVersionId | null;
+  participant?: "parent" | "client" | null;
+  assistedParentAccountIds?: readonly AccountId[] | null;
   versionId: CoordinationVersionId;
   assignmentId: PracticeAssignmentId;
   caseId: CaseId;
@@ -57,11 +63,10 @@ export interface CoordinationVersion {
 }
 
 export interface PracticeCoordinationPage {
+  readOnlyReason?: "client_responsibility" | "legacy_child_assignment";
   ownAccountId: AccountId;
   role: "parent" | "adult_client";
   eligibleAccountIds: readonly AccountId[];
-  /** Parent-only editing must not silently remove retained child responsibility. */
-  readOnlyReason?: "legacy_child_assignment";
   /** Server-clock effective selection, independent of the bounded history. */
   asOf: string;
   currentVersion: CoordinationVersion | null;
@@ -78,7 +83,8 @@ export interface ScheduledOccurrence {
   coordinationVersionId: CoordinationVersionId;
   occursOn: string;
   period: OccurrencePeriod;
-  state: "open" | "closed";
+  state: "open" | "closed" | "cancelled";
+  occursAt?:string|null;
 }
 
 export interface CompletionView {
@@ -89,6 +95,7 @@ export interface CompletionView {
   revision: number;
   reportedAt: string;
   correctedReportId: CompletionReportId | null;
+  attribution?:{subjectPersonId:string;authorship:"self"|"parent_assisted_child"|"parent_reporting_child";note:string};
 }
 
 /** Only the authenticated own-history endpoint includes retry receipt keys. */
@@ -100,6 +107,8 @@ export interface PracticeOccurrenceItem {
   practice: PublishedPracticeVersion;
   canReport: boolean;
   ownReport: CompletionView | null;
+  assistanceModes?:readonly ("together"|"parent_report")[];
+  schedule?:{participant:"parent"|"client";localTime:string;timezone:string;timeOrigin:ResponsibilityInput["timeOrigin"]};
 }
 export interface PracticeOccurrencePage {
   items: PracticeOccurrenceItem[];
