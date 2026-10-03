@@ -315,6 +315,9 @@ export class HomePracticeService implements PracticeVersionReader {
     reminderCandidateAccountIds: readonly AccountId[]; effectiveFrom: string; expectedCurrentVersionId?:CoordinationVersionId|null|undefined;
   }, requestId: string): Promise<CoordinationSnapshot> {
     const effectiveFrom = instant(input.effectiveFrom);
+    // Reject already-invalid input without acquiring a workspace lock. Still
+    // recheck after the lock: a formerly future instant can expire while waiting.
+    if (Date.parse(effectiveFrom) < this.clock.now().getTime()) throw new AppError("INVALID_REQUEST");
     return this.store.transaction(async tx => {
       await lockWorkspace(tx, actor.workspaceId);
       const now = this.clock.now();
