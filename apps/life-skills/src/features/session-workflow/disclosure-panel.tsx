@@ -45,7 +45,7 @@ function DisclosureInner({locale,model}:{locale:Locale;model:SessionDetail}){
     </fieldset>
    </form>
   </details>
-  {invalid&&<p role="alert">{t.invalid}</p>}{command.error&&<p role="alert">{command.error==="CONFLICT"?t.conflict:t.failed}</p>}{command.phase==="unknown"&&<div role="alert"><p>{t.unknown}</p><button className="lsw-button" type="button" onClick={()=>void command.reconcile()}>{t.check}</button></div>}
+  {invalid&&<p role="alert">{t.invalid}</p>}{command.error&&<div role="alert"><p>{command.error==="CONFLICT"?t.conflict:t.failed}</p><button className="lsw-button" type="button" disabled={command.locked} onClick={refresh}>{t.retry}</button></div>}{command.phase==="unknown"&&<div role="alert"><p>{t.unknown}</p><button className="lsw-button" type="button" onClick={()=>void command.reconcile()}>{t.check}</button></div>}
   {(command.phase==="unknown"||command.error==="UNAUTHENTICATED")&&<ConsentReauthenticationLink locale={locale} caseId={scope.caseId} sessionId={scope.sessionId}/>}
  </section>;
 }
