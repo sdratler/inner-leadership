@@ -141,11 +141,16 @@ test("coordination preserves an eligible support reminder without granting its p
  const input={assignmentId:draft.assignmentId,assigneeAccountIds:[f.parent.actor.id],completionMode:"any_assignee" as const,reminderCandidateAccountIds:[f.parentTwo.actor.id],effectiveFrom:f.at(1)};
  const saved=await h.practice.coordinate(f.parent.actor,input,randomUUID());
  const page=await h.practice.coordination(f.parent.actor,draft.assignmentId);expect(page.versions.find(row=>row.versionId===saved.versionId)).toMatchObject({assigneeAccountIds:[f.parent.actor.id],reminderCandidateAccountIds:[f.parentTwo.actor.id]});
+ expect(page).toMatchObject({reminderRoutingAccountIds:[f.parentTwo.actor.id]});
+ await h.practice.coordinate(f.parent.actor,{...input,reminderCandidateAccountIds:[],effectiveFrom:f.at(2)},randomUUID());
+ const deselected=await h.practice.coordination(f.parent.actor,draft.assignmentId);expect(deselected).toMatchObject({reminderRoutingAccountIds:[f.parentTwo.actor.id]});
+ await h.practice.coordinate(f.parent.actor,{...input,effectiveFrom:f.at(3)},randomUUID());
  const occurrence=await h.practice.schedule(f.practitioner.actor,{assignmentId:draft.assignmentId,occursOn:h.occursOn,period:"morning"},randomUUID());
  await expect(h.checkins.submit(f.parentTwo.actor,{occurrenceId:occurrence.id,status:"done",idempotencyKey:randomUUID()},randomUUID())).rejects.toMatchObject({code:"NOT_FOUND"});
  expect((await h.practice.management(f.practitioner.actor,f.first.id,f.first.audienceId)).items[0]?.responsibility?.reminderRecipients).toEqual([{accountId:f.parentTwo.actor.id,purpose:"support"}]);
  await expect(h.practice.coordinate(f.parent.actor,{...input,reminderCandidateAccountIds:[f.outsider.actor.id]},randomUUID())).rejects.toMatchObject({code:"NOT_FOUND"});
  await f.pool.query("UPDATE ls_cases.case_guardians SET revoked_at=clock_timestamp() WHERE workspace_id=$1 AND case_id=$2 AND account_id=$3",[f.workspaceId,f.first.id,f.parentTwo.actor.id]);
+ expect(await h.practice.coordination(f.parent.actor,draft.assignmentId)).toMatchObject({reminderRoutingAccountIds:[]});
  await expect(h.practice.coordinate(f.parent.actor,input,randomUUID())).rejects.toMatchObject({code:"NOT_FOUND"});
 },30000);
 

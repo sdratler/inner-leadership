@@ -484,9 +484,10 @@ export class HomePracticeService implements PracticeVersionReader {
       const next = await one<{effectiveFrom:Date}>(tx, `SELECT effective_from AS "effectiveFrom" FROM ls_practice.task_coordination_versions WHERE workspace_id=$1 AND assignment_id=$2 AND case_id=$3 AND audience_id=$4 AND effective_from>$5 AND (($6::uuid IS NULL AND responsibility_version_id IS NULL) OR responsibility_version_id=$6) ORDER BY effective_from ASC,version DESC LIMIT 1`, [...scope, now, responsibilityVersion]);
       const legacyChild=!responsibilityVersion&&current.role==='parent'&&await retainedChildCoordination(tx,actor.workspaceId,assignmentId,row.caseId,row.audienceId,effective?.versionId??null,now);
       const readOnlyReason=readOnly?'client_responsibility' as const:legacyChild?'legacy_child_assignment' as const:undefined;
+      const reminderRoutingAccountIds=responsibilityVersion?eligible.filter(id=>!readOnlyReason&&parseSavedResponsibility(row.responsibility)!.reminderRecipients.some(value=>value.accountId===id)):undefined;
       const project = (value: CoordinationRow): CoordinationVersion => ({ ...value, effectiveFrom: value.effectiveFrom.toISOString() });
       return { ownAccountId: current.id, role: current.role, eligibleAccountIds: readOnlyReason ? [] : eligible, asOf: now.toISOString(), currentVersion: effective ? project(effective) : null, nextEffectiveFrom: next?.effectiveFrom.toISOString() ?? null,
-        hasMore: versions.length > 20, versions: versions.slice(0, 20).map(project), ...(readOnlyReason ? {readOnlyReason} : {}) };
+        hasMore: versions.length > 20, versions: versions.slice(0, 20).map(project), ...(readOnlyReason ? {readOnlyReason} : {}),...(reminderRoutingAccountIds===undefined?{}:{reminderRoutingAccountIds}) };
     });
   }
 

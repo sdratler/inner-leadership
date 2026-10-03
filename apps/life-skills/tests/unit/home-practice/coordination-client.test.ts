@@ -76,7 +76,7 @@ test('coordination freezes one prospective request and validates distinct assign
 
 test('native parent coordination preserves reminder-only routing without adding a reporting assignee',()=>{
  const source=asId('123e4567-e89b-12d3-a456-426614174008','practice_version'),row={versionId:version,assignmentId:assignment,caseId,audienceId,assigneeAccountIds:[account],assistedParentAccountIds:[],responsibilityVersionId:source,participant:'parent' as const,completionMode:'any_assignee' as const,reminderCandidateAccountIds:[other],effectiveFrom:'2026-10-01T11:00:00Z',changedByAccountId:account};
- const native={...page,role:'parent' as const,eligibleAccountIds:[account,other],currentVersion:row,versions:[row]};
+ const native={...page,role:'parent' as const,eligibleAccountIds:[account,other],reminderRoutingAccountIds:[other],currentVersion:row,versions:[row]};
  expect(coordinationDefaults(native)).toEqual({assignees:[account],reminders:[other],mode:'any_assignee'});
  expect(coordinationReminderChoices(native,[account])).toEqual([account,other]);
  const command=coordinationCommand(assignment,[account],'any_assignee',[other],0,version,coordinationReminderChoices(native,[account]));
@@ -85,6 +85,15 @@ test('native parent coordination preserves reminder-only routing without adding 
  expect(coordinationDefaults({...native,eligibleAccountIds:[account]}).reminders).toEqual([]);
  expect(()=>coordinationCommand(assignment,[account],'any_assignee',[workspace],0,version,coordinationReminderChoices(native,[account]))).toThrow('INVALID_REQUEST');
  expect(coordinationReminderChoices({...native,currentVersion:{...row,responsibilityVersionId:null}},[account])).toEqual([account]);
+});
+test('deselected native support routing remains an authorized choice, separate from the current selection',()=>{
+ const row={versionId:version,assignmentId:assignment,caseId,audienceId,assigneeAccountIds:[account],assistedParentAccountIds:[],responsibilityVersionId:asId('123e4567-e89b-12d3-a456-426614174008','practice_version'),participant:'parent' as const,completionMode:'any_assignee' as const,reminderCandidateAccountIds:[],effectiveFrom:'2026-10-01T11:00:00Z',changedByAccountId:account};
+ const native={...page,role:'parent' as const,eligibleAccountIds:[account,other],reminderRoutingAccountIds:[other],currentVersion:row,versions:[row]};
+ expect(coordinationDefaults(native)).toEqual({assignees:[account],reminders:[],mode:'any_assignee'});
+ expect(coordinationReminderChoices(native,[account])).toEqual([account,other]);
+ expect(coordinationCommand(assignment,[account],'any_assignee',[other],0,version,coordinationReminderChoices(native,[account])).reminderCandidateAccountIds).toEqual([other]);
+ expect(coordinationReminderChoices({...native,eligibleAccountIds:[account]},[account])).toEqual([account]);
+ expect(coordinationFrameKey(native)).not.toBe(coordinationFrameKey({...native,reminderRoutingAccountIds:[]}));
 });
 test('readback binds the exact writer, version, future time, completion mode and routing',()=>{
  const command=coordinationCommand(assignment,[account],'any_assignee',[account],0),row={versionId:version,assignmentId:assignment,caseId,audienceId,assigneeAccountIds:[account],completionMode:'any_assignee' as const,reminderCandidateAccountIds:[account],effectiveFrom:command.effectiveFrom,changedByAccountId:account};
