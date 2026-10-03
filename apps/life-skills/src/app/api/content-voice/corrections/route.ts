@@ -106,7 +106,7 @@ export async function POST(request: Request) {
       change = await ledger.markDraft(actor, change.operationId, null);
       if (source?.sha256 === change.sourceAfterSha256 && source.driveRevision === change.sourceAfterRevision) {
         try {
-          const reply = await requestCommunityReply({ operationId: change.draftOperationId, mode: "revise_once",
+          const reply = await requestCommunityReply({ operationId: change.draftOperationId, ownerId: actor.id, mode: "revise_once",
             question: change.request.question, ...(change.request.originalUrl ? { originalUrl: change.request.originalUrl } : {}),
             correction: change.request.correction, previousReply: change.request.previousReply });
           change = await ledger.markDraft(actor, change.operationId, reply);

@@ -7,6 +7,8 @@ const SCOUT_ORIGIN = "https://community-scout-production.up.railway.app";
 const SECRET = /^[A-Za-z0-9_-]{43,}$/;
 export type CommunityReplyCommand = {
   operationId: string;
+  /** Trusted server session only; never accepted from a browser command. */
+  ownerId?: string;
   mode: "generate" | "revise_once";
   question: string;
   originalUrl?: string | undefined;
@@ -61,6 +63,7 @@ export async function requestCommunityReply(command: CommunityReplyCommand,
   env: Record<string, string | undefined> = process.env): Promise<CommunityReplyResult> {
   const secret = env.LS_COMMUNITY_SCOUT_BRIDGE_SECRET;
   if (!secret || !SECRET.test(secret)) throw new AppError("UNAVAILABLE");
+  if (command.ownerId !== undefined && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(command.ownerId)) throw new AppError("UNAVAILABLE");
   let originalUrl: string | null = null;
   try { originalUrl = command.originalUrl ? new URL(command.originalUrl).toString() : null; }
   catch { throw new AppError("UNAVAILABLE"); }
@@ -73,7 +76,7 @@ export async function requestCommunityReply(command: CommunityReplyCommand,
       method: "POST", redirect: "error", cache: "no-store", signal: AbortSignal.timeout(70_000),
       headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
       body: JSON.stringify({ ...command, ...(originalUrl ? { originalUrl } : {}),
-        guide: { id: CONTENT_VOICE_FILE_ID, ...guide },
+        guide: { id: CONTENT_VOICE_FILE_ID, ...guide, includedCommunityRuleIds: communityRuleIdsInGuide(guide.text) },
         playbook: { id: COMMUNITY_PLAYBOOK_FILE_ID, ...playbook },
       }),
     });

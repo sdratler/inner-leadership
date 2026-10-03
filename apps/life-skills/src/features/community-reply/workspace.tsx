@@ -4,11 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { sessionInfo } from "../identity/client.ts";
 import type { CommunityInboxPage, CommunityInboxPost } from "../community-inbox/bridge.ts";
 import type { CommunityReplyResult } from "./bridge.ts";
+import type { CommunitySavedDraft } from "./drafts-bridge.ts";
+import { UnsavedChangesGuard } from "../../ui/workspace/draft-guard.tsx";
 import { canResumeRuleOperation, matchesSubmittedInput, proposalForResult, replyFailureKind, ruleDraftPromotionNeedsConfirmation, type CommunitySourceInput } from "./input-state.ts";
 
 type Locale = "he" | "en";
 const copy = {
   en: {
+    savedDrafts: "Saved community drafts", savedHelp: "Your latest 20 unexpired drafts. Public reply text only; no clinical notes. Opening or saving does not generate, send or publish anything.", savedLoading: "Loading saved drafts…", savedEmpty: "No saved drafts yet.", savedUnavailable: "Saved drafts could not be loaded. Your editor is unchanged; retry when the connection is available.", savedRetry: "Reload saved drafts", savedOpen: "Open saved draft", savedReplace: "Replace the unsaved text in this editor with this saved draft?", saveDraft: "Save edited reply", saveSaving: "Saving this exact reply…", saveVerified: "Saved and read back from Scout", saveFailed: "This save is unconfirmed. Your text is preserved. Retry the same save; do not assume it was stored.", saveConflict: "The saved version changed elsewhere. Your text is preserved. Open the saved version to compare before editing again; no text was overwritten.", savedVersion: "Draft version", savedAt: "Last edit", savedHistorical: "This saved draft shows the source versions recorded at generation. Generate a new reply to check the current writing guide.", saveBeforeCopy: "Save and verify your edited reply before reviewing and copying it.", leaveUnsaved: "Leave without saving the community reply changes?", unmeteredCost: "Monetary cost is not returned by this backend; unknown is not zero.",
     inbox: "Community post inbox", inboxHelp: "Captured public posts for manual review. No comments or conversation history are captured; nothing is posted automatically.",
     inboxAll: "All", inboxReady: "Ready", inboxNew: "New", inboxReplied: "Marked replied", inboxEmpty: "No captured posts in this view. If you expected posts, check the approved groups and Scout collection status.",
     inboxUnavailable: "The captured-post inbox could not load. Your draft input is preserved. Retry when the Scout connection is available.", inboxLoading: "Loading captured posts…", inboxRetry: "Retry inbox", inboxMore: "More posts", inboxUse: "Use this post for a draft", inboxReplace: "Replace the current unsaved question and link with this post?", inboxOriginal: "Open original Facebook post", inboxDraft: "Saved suggestion", inboxNoDraft: "No saved suggestion yet", inboxCaptured: "Captured", inboxNoComments: "Comments not captured", inboxStatus: "Workflow status",
@@ -48,6 +51,7 @@ const copy = {
     reviewed: "I reviewed this exact reply for accuracy, privacy and no private-contact invitation.",
   },
   he: {
+    savedDrafts: "טיוטות קהילה שמורות", savedHelp: "20 הטיוטות האחרונות שלך שעדיין בתוקף. רק תגובות ציבוריות, ללא הערות קליניות. פתיחה ושמירה אינן יוצרות, שולחות או מפרסמות דבר.", savedLoading: "טוען טיוטות שמורות…", savedEmpty: "אין עדיין טיוטות שמורות.", savedUnavailable: "לא ניתן לטעון טיוטות שמורות. העורך לא השתנה; אפשר לנסות שוב כשהחיבור זמין.", savedRetry: "טעינה מחדש של טיוטות שמורות", savedOpen: "פתיחת הטיוטה השמורה", savedReplace: "להחליף את הטקסט שטרם נשמר בעורך בטיוטה הזאת?", saveDraft: "שמירת התגובה הערוכה", saveSaving: "שומר את התגובה המדויקת הזאת…", saveVerified: "נשמר ונקרא מחדש מ־Scout", saveFailed: "השמירה לא אומתה. הטקסט נשמר במסך. יש לנסות שוב את אותה שמירה; אין להניח שהוא נשמר במערכת.", saveConflict: "הגרסה השמורה השתנתה במקום אחר. הטקסט שלך נשמר במסך. יש לפתוח את הגרסה השמורה להשוואה לפני עריכה נוספת; לא נדרס טקסט.", savedVersion: "גרסת טיוטה", savedAt: "עריכה אחרונה", savedHistorical: "הטיוטה השמורה מציגה את גרסאות המקור שנרשמו בעת היצירה. יש ליצור תגובה חדשה כדי לבדוק את המדריך הנוכחי.", saveBeforeCopy: "יש לשמור ולאמת את התגובה הערוכה לפני בדיקה והעתקה.", leaveUnsaved: "לצאת בלי לשמור את השינויים בתגובת הקהילה?", unmeteredCost: "השרת אינו מחזיר עלות כספית; לא ידוע אינו אפס.",
     inbox: "תיבת פוסטים מהקהילה", inboxHelp: "פוסטים ציבוריים שנקלטו לבדיקה ידנית. תגובות והיסטוריית שיחה אינן נקלטות; דבר אינו מתפרסם אוטומטית.",
     inboxAll: "הכול", inboxReady: "מוכן", inboxNew: "חדש", inboxReplied: "סומן כנענה", inboxEmpty: "אין פוסטים שנקלטו בתצוגה זו. אם ציפית לפוסטים, בדוק את הקבוצות שאושרו ואת מצב האיסוף.",
     inboxUnavailable: "לא ניתן לטעון את תיבת הפוסטים. הטיוטה שלך נשמרה במסך. אפשר לנסות שוב כשהחיבור זמין.", inboxLoading: "טוען פוסטים שנקלטו…", inboxRetry: "ניסיון חוזר", inboxMore: "עוד פוסטים", inboxUse: "שימוש בפוסט הזה ליצירת טיוטה", inboxReplace: "להחליף את השאלה והקישור שהוזנו ועדיין לא נשמרו בפוסט הזה?", inboxOriginal: "פתיחת הפוסט המקורי", inboxDraft: "הצעה שמורה", inboxNoDraft: "אין עדיין הצעה שמורה", inboxCaptured: "נקלט", inboxNoComments: "תגובות לא נקלטו", inboxStatus: "סטטוס טיפול",
@@ -97,6 +101,12 @@ type RuleSaveResult = {
   draftInput?: CommunitySourceInput | null;
 };
 const ruleOperationKey = "ls-community-rule-operation";
+async function readSaved(draftId?: string, signal?: AbortSignal): Promise<CommunitySavedDraft[]> {
+  const response=await fetch('/api/community-drafts'+(draftId?'?draftId='+encodeURIComponent(draftId):''),{credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',signal:signal??null});
+  const payload=await response.json() as {ok?:boolean;data?:{drafts?:CommunitySavedDraft[]}};
+  if(!response.ok||!payload.ok||!Array.isArray(payload.data?.drafts))throw Error('saved');
+  return payload.data.drafts;
+}
 
 export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
   const t = copy[locale];
@@ -122,11 +132,73 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
   const [inboxCursor, setInboxCursor] = useState<string | null>(null);
   const [inboxLoading, setInboxLoading] = useState(true);
   const [inboxError, setInboxError] = useState(false);
+  const [savedDrafts, setSavedDrafts] = useState<CommunitySavedDraft[]>([]);
+  const [savedLoading, setSavedLoading] = useState(true);
+  const [savedError, setSavedError] = useState(false);
+  const [persisted, setPersisted] = useState<CommunitySavedDraft | null>(null);
+  const [historical, setHistorical] = useState(false);
+  const [draftNotice, setDraftNotice] = useState("");
+  const [draftSaveError, setDraftSaveError] = useState(false);
   const inFlight = useRef(false);
   const inboxRequest = useRef(0);
   const attempt = useRef<{ fingerprint: string; operationId: string } | null>(null);
   const ruleAttempt = useRef<{ fingerprint: string; operationId: string } | null>(null);
+  const draftAttempt = useRef<{ fingerprint: string; operationId: string } | null>(null);
+  const savedReadEpoch=useRef(0),draftReadEpoch=useRef(0);
   const stale = !!result && !matchesSubmittedInput({ question, originalUrl }, submittedInput);
+  const dirty = !!result && draft !== (persisted?.draft ?? result.reply);
+  const unsaved = dirty || stale || !!correction.trim() || (!result && !!(question.trim() || originalUrl.trim()));
+  const copyAllowed = !!result?.copyAllowed && !!persisted?.copyAllowed && !dirty && !stale;
+
+  const loadSaved = useCallback(async (signal?:AbortSignal)=>{
+    const epoch=++savedReadEpoch.current;
+    try{const rows=await readSaved(undefined,signal);if(!signal?.aborted&&epoch===savedReadEpoch.current){setSavedDrafts(rows);setSavedError(false);}}
+    catch{if(!signal?.aborted&&epoch===savedReadEpoch.current){setSavedDrafts([]);setSavedError(true);}}
+    finally{if(!signal?.aborted&&epoch===savedReadEpoch.current)setSavedLoading(false);}
+  },[]);
+  useEffect(()=>{const controller=new AbortController(),epoch=++savedReadEpoch.current;
+    void readSaved(undefined,controller.signal)
+      .then(rows=>{if(!controller.signal.aborted&&epoch===savedReadEpoch.current){setSavedDrafts(rows);setSavedError(false);}})
+      .catch(()=>{if(!controller.signal.aborted&&epoch===savedReadEpoch.current){setSavedDrafts([]);setSavedError(true);}})
+      .finally(()=>{if(!controller.signal.aborted&&epoch===savedReadEpoch.current)setSavedLoading(false);});
+    return()=>controller.abort();
+  },[]);
+  async function confirmGenerated(value:CommunityReplyResult){
+    const epoch=++draftReadEpoch.current;
+    try{const row=(await readSaved(value.operationId))[0];
+      if(epoch!==draftReadEpoch.current)return;
+      if(!row||row.generated.reply!==value.reply||row.generated.provenance.guide.sha256!==value.provenance.guide.sha256||row.generated.provenance.playbook.sha256!==value.provenance.playbook.sha256)throw Error('binding');
+      savedReadEpoch.current++;setSavedLoading(false);setSavedError(false);
+      setPersisted(row);setSavedDrafts(previous=>[row,...previous.filter(item=>item.draftId!==row.draftId)].slice(0,20));setDraftSaveError(false);
+      setDraftNotice(row.draft===value.reply?`${t.saveVerified} · ${t.savedVersion} ${row.revision}`:t.saveConflict);
+    }catch{if(epoch===draftReadEpoch.current){setDraftSaveError(true);setDraftNotice(t.saveFailed);}}
+  }
+  async function openSaved(row:CommunitySavedDraft){
+    if(inFlight.current||(unsaved&&!window.confirm(t.savedReplace)))return;
+    draftReadEpoch.current++;
+    inFlight.current=true;setBusy(true);
+    try{const latest=(await readSaved(row.draftId))[0];if(!latest)throw Error('saved');
+      setQuestion(latest.question);setOriginalUrl(latest.originalUrl??'');setResult(latest.generated);setDraft(latest.draft);setPersisted(latest);setHistorical(true);
+      setSubmittedInput({question:latest.question,originalUrl:latest.originalUrl??''});setReviewed(false);setCorrection('');setCorrectionBase(null);setProposedRule('');setTargetRuleId(null);setExistingRules([]);setExistingSourceSha(null);setRuleSave(null);
+      attempt.current=null;ruleAttempt.current=null;draftAttempt.current=null;setNotice('');setDraftSaveError(false);setDraftNotice(`${t.saveVerified} · ${t.savedVersion} ${latest.revision}`);
+    }catch{setDraftSaveError(true);setDraftNotice(t.savedUnavailable);}
+    finally{inFlight.current=false;setBusy(false);}
+  }
+  async function saveEdited(){
+    if(inFlight.current||!result||!persisted||stale||draft.trim().length<10||!dirty)return;
+    inFlight.current=true;setBusy(true);setDraftSaveError(false);setDraftNotice(t.saveSaving);
+    try{const session=await sessionInfo();if(session.role!=='practitioner')throw Error('role');
+      const value={draftId:persisted.draftId,expectedRevision:persisted.revision,draft};const fingerprint=JSON.stringify(value);
+      if(draftAttempt.current?.fingerprint!==fingerprint)draftAttempt.current={fingerprint,operationId:crypto.randomUUID()};
+      const response=await fetch('/api/community-drafts',{method:'PUT',credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',headers:{'Content-Type':'application/json','X-CSRF-Token':session.csrfToken},body:JSON.stringify({operationId:draftAttempt.current.operationId,...value})});
+      if(response.status===409)throw Error('conflict');
+      const payload=await response.json() as {ok?:boolean;data?:CommunitySavedDraft};if(!response.ok||!payload.ok||!payload.data)throw Error('save');
+      const readback=(await readSaved(value.draftId))[0];if(!readback||readback.revision!==payload.data.revision||readback.draft!==value.draft)throw Error('conflict');
+      savedReadEpoch.current++;setSavedLoading(false);setSavedError(false);
+      setPersisted(readback);setSavedDrafts(previous=>[readback,...previous.filter(item=>item.draftId!==readback.draftId)].slice(0,20));draftAttempt.current=null;setReviewed(false);setDraftNotice(`${t.saveVerified} · ${t.savedVersion} ${readback.revision}`);
+    }catch(error){setDraftSaveError(true);setDraftNotice(error instanceof Error&&error.message==='conflict'?t.saveConflict:t.saveFailed);}
+    finally{inFlight.current=false;setBusy(false);}
+  }
 
   const loadInbox = useCallback(async (status: string, cursor = "") => {
     const requestId = ++inboxRequest.current;
@@ -180,11 +252,14 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
     if ((question.trim() || originalUrl.trim()) && !window.confirm(t.inboxReplace)) return;
     setQuestion(post.excerpt); setOriginalUrl(post.postUrl); setResult(null); setDraft(""); setCorrection(""); setReviewed(false);
     setSubmittedInput(null); setNotice(""); setCorrectionBase(null); setProposedRule(""); setTargetRuleId(null); attempt.current = null;
+    setPersisted(null);setHistorical(false);setDraftNotice('');setDraftSaveError(false);draftAttempt.current=null;
+    draftReadEpoch.current++;
   }
 
   async function request(mode: "generate" | "revise_once") {
     if (inFlight.current || question.trim().length < 8 || (mode === "revise_once" && (stale || draft.trim().length < 10 || correction.trim().length < 3))) return;
     inFlight.current = true; setBusy(true); setNotice("");
+    draftReadEpoch.current++;
     try {
       const session = await sessionInfo();
       if (session.role !== "practitioner") throw Error("role");
@@ -203,6 +278,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
       attempt.current = null;
       setSubmittedInput({ question: command.question, originalUrl: command.originalUrl ?? "" });
       setResult(payload.data); setDraft(payload.data.reply); setReviewed(false);
+      setPersisted(null);setHistorical(false);draftAttempt.current=null;await confirmGenerated(payload.data);
       const proposal = proposalForResult(mode, payload.data.suggestedRule, payload.data.ruleScope);
       setProposedRule(proposal.rule); setRuleScope(proposal.scope);
       setTargetRuleId(null); setExistingRules([]); setExistingSourceSha(null);
@@ -277,7 +353,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
   }
 
   async function copyDraft() {
-    if (!result?.copyAllowed || stale || !reviewed || !draft.trim()) return;
+    if (!copyAllowed || !reviewed || !draft.trim()) return;
     try { await navigator.clipboard.writeText(draft); setNotice(t.copied); }
     catch { setNotice(t.failed); }
   }
@@ -289,11 +365,19 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
       result?.operationId, saved.draft.operationId) && !window.confirm(t.resumeReplace)) return;
     setQuestion(saved.draftInput.question); setOriginalUrl(saved.draftInput.originalUrl);
     setResult(saved.draft); setDraft(saved.draft.reply); setReviewed(false); setSubmittedInput(saved.draftInput);
+    setPersisted(null);setHistorical(false);draftAttempt.current=null;void confirmGenerated(saved.draft);
     setCorrection(""); setProposedRule(""); setCorrectionBase(null); setTargetRuleId(null);
     attempt.current = null; ruleAttempt.current = null;
   }
 
   return <div className="lsr-community-reply" dir={locale === "he" ? "rtl" : "ltr"}>
+    <UnsavedChangesGuard dirty={unsaved} message={t.leaveUnsaved}/>
+    {savedError&&<p role="alert" className="lsr-inline-error">{t.savedUnavailable} <button type="button" disabled={busy||savedLoading} onClick={()=>{setSavedLoading(true);void loadSaved();}}>{t.savedRetry}</button></p>}
+    <details><summary>{t.savedDrafts}: {savedDrafts.length}</summary><p>{t.savedHelp}</p>
+      {savedLoading&&<p role="status">{t.savedLoading}</p>}{!savedLoading&&!savedError&&!savedDrafts.length&&<p>{t.savedEmpty}</p>}
+      {savedDrafts.map(row=><article className="lsr-publication-row" key={row.draftId}><h3>{row.question}</h3><p>{t.savedVersion} {row.revision} · {t.savedAt}: {row.editedAt??row.generated.provenance.generatedAt}</p><button type="button" disabled={busy} onClick={()=>void openSaved(row)}>{t.savedOpen}</button></article>)}
+      <button type="button" disabled={busy||savedLoading} onClick={()=>{setSavedLoading(true);void loadSaved();}}>{t.savedRetry}</button>
+    </details>
     <section className="lsr-panel" aria-label={t.inbox}>
       <h3>{t.inbox}</h3><p className="lsr-help">{t.inboxHelp}</p>
       <div className="lsr-tabs" role="group" aria-label={t.inboxStatus}>
@@ -320,10 +404,15 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
     {result && <>
       {stale && <p role="alert" className="lsr-inline-error">{t.stale}</p>}
       <label>{t.reply}<textarea value={draft} disabled={busy} maxLength={3000} onChange={event => { setDraft(event.target.value); setReviewed(false); setProposedRule(""); setCorrectionBase(null); }} /></label>
+      <div className="lsr-actions"><button type="button" disabled={busy||stale||!persisted||!dirty||draft.trim().length<10} onClick={()=>void saveEdited()}>{t.saveDraft}</button>
+        {persisted&&<button type="button" disabled={busy} onClick={()=>void openSaved(persisted)}>{t.savedOpen}</button>}</div>
+      {historical&&<p className="lsr-help">{t.savedHistorical}</p>}
+      {(dirty||!persisted)&&<p className="lsr-help">{t.saveBeforeCopy}</p>}
+      {persisted&&<p className="lsr-help">{t.savedVersion} {persisted.revision} · {t.savedAt}: {persisted.editedAt??persisted.generated.provenance.generatedAt}</p>}
       {draft !== result.reply && <p className="lsr-help">{t.warning}</p>}
-      {!result.copyAllowed && <p role="alert" className="lsr-inline-error">{t.blocked} {result.reviewFlags.join(", ")}</p>}
-      <label className="lsr-community-review"><input type="checkbox" checked={reviewed} disabled={busy || stale || !result.copyAllowed} onChange={event => setReviewed(event.target.checked)} />{t.reviewed}</label>
-      <div className="lsr-actions"><button type="button" disabled={busy || stale || !reviewed || !result.copyAllowed || !draft.trim()} onClick={() => void copyDraft()}>{t.copy}</button>
+      {(!result.copyAllowed||persisted?.copyAllowed===false) && <p role="alert" className="lsr-inline-error">{t.blocked} {(persisted?.reviewFlags??result.reviewFlags).join(", ")}</p>}
+      <label className="lsr-community-review"><input type="checkbox" checked={reviewed} disabled={busy || !copyAllowed} onChange={event => setReviewed(event.target.checked)} />{t.reviewed}</label>
+      <div className="lsr-actions"><button type="button" disabled={busy || !reviewed || !copyAllowed || !draft.trim()} onClick={() => void copyDraft()}>{t.copy}</button>
         {!stale && result.originalUrl && <a className="lsr-button" href={result.originalUrl} target="_blank" rel="noopener noreferrer">{t.open}</a>}</div>
       <details><summary>{t.sources}</summary><dl className="lsr-community-sources">
         <dt><a href="https://drive.google.com/file/d/174-EqMG0QIH5rCuRgn2xYYPMX-XWJZNn/view" target="_blank" rel="noopener noreferrer">{t.guide}</a></dt><dd>v{result.provenance.guide.declaredVersion ?? "—"} · Drive #{result.provenance.guide.driveRevision} · {result.provenance.guide.modifiedAt} · SHA-256 {result.provenance.guide.sha256.slice(0, 12)}</dd>
@@ -332,6 +421,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
         <dt>{t.synced}</dt><dd>{result.provenance.guide.checkedAt} · {result.provenance.playbook.checkedAt}</dd>
         <dt>{t.generation}</dt><dd>{result.provenance.generatedAt} · {result.provenance.model} · {result.provenance.policyVersion}</dd>
         <dt>{t.usage}</dt><dd>{result.provenance.usage.inputTokens} / {result.provenance.usage.outputTokens}</dd>
+        <dt>{t.unmeteredCost}</dt><dd>—</dd>
       </dl></details>
       <label>{t.correction}<textarea value={correction} disabled={busy} maxLength={1000} onChange={event => { setCorrection(event.target.value); setProposedRule(""); setCorrectionBase(null); }} /></label>
       <div className="lsr-actions"><button type="button" disabled={busy || stale || draft.trim().length < 10 || correction.trim().length < 3} onClick={() => void request("revise_once")}>{t.revise}</button>
@@ -352,6 +442,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
       {ruleScope === "general" && <p className="lsr-help">{t.generalGate}</p>}
       {!proposedRule && <p className="lsr-help">{t.interpret}</p>}
     </>}
+    {draftNotice&&<p role={draftSaveError?'alert':'status'} className={draftSaveError?'lsr-inline-error':'lsr-status'}>{draftNotice}</p>}
     {ruleSave && <section className="lsr-panel" aria-live="polite">
       <h3>{t.persistent}</h3><p>{ruleSave.status === "complete" ? t.ruleComplete :
         ruleSave.status === "saved" || ruleSave.status === "draft_pending" ? t.draftPending :

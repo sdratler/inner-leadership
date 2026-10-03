@@ -101,7 +101,7 @@ it("resumes a saved operation without a second source write and returns exact dr
   expect((await response.json()).data).toMatchObject({ status: "complete", draft,
     draftInput: { question: command.question, originalUrl: "" } });
   expect(mock.write).not.toHaveBeenCalled();
-  expect(mock.reply).toHaveBeenCalledWith({ operationId: change.draftOperationId, mode: "revise_once",
+  expect(mock.reply).toHaveBeenCalledWith({ operationId: change.draftOperationId, ownerId: "22222222-2222-4222-8222-222222222222", mode: "revise_once",
     question: command.question, correction: command.correction, previousReply: command.previousReply });
   const read = await GET(new Request(`https://life-skills.example.invalid/api/content-voice/corrections?operationId=${operationId}`,
     { headers: { cookie: "__Host-ls-session=synthetic" } }));
