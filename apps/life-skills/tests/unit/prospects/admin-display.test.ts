@@ -49,4 +49,13 @@ describe("administrative presentation labels", () => {
     expect(linkedInquiryTaskTitle("SYNTHETIC-ID · Discuss school", "crm_followup", "he"))
       .toBe("SYNTHETIC-ID · Discuss school");
   });
+  it.each([
+    "SYNTHETIC-ID · Call parent · Review inbound inquiry",
+    "SYNTHETIC-ID · Call parent · Respond to inbound WhatsApp inquiry",
+    "Synthetic · custom name · Review inbound inquiry",
+  ])("preserves an ambiguous or custom action boundary verbatim: %s", title => {
+    expect(linkedInquiryTaskTitle(title, "crm_followup", "he")).toBe(title);
+    expect(linkedInquiryTaskTitle(title, "crm_followup", "en")).toBe(title);
+    expect(linkedInquiryTaskTitle(title, null, "he")).toBe(title);
+  });
 });
