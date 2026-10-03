@@ -14,7 +14,7 @@ export function WorkspaceShell({ locale, role, pathname, caseId, audienceId, sel
   const drawer = useRef<HTMLDialogElement>(null), trigger = useRef<HTMLButtonElement>(null), account = useRef<HTMLDetailsElement>(null);
   const drawerId = useId(), titleId = useId();
   const navigationContext=role==='practitioner'?workspaceContext({mode,date,view,context:effectiveSelectedClient&&caseId?'client':undefined}):{};
-  const href = (path: string) => toHref ? toHref(path) : workspaceHref(locale, path, caseId,navigationContext);
+  const href = (path: string) => toHref ? toHref(path) : workspaceHref(locale, path, caseId,navigationContext,role === 'practitioner' ? audienceId : undefined);
   const close = () => { drawer.current?.close(); trigger.current?.focus(); };
   useEffect(() => {
     const outside = (event: PointerEvent) => { if (event.target instanceof Node && account.current && !account.current.contains(event.target)) account.current.open = false; };

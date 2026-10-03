@@ -57,10 +57,13 @@ export function workspaceContext(query:Record<string,unknown>,strict=false):Work
   }
   return result;
 }
-export function workspaceHref(locale: Locale, path: string, caseId?: string | null, context:WorkspaceContext={}): string {
+export function workspaceHref(locale: Locale, path: string, caseId?: string | null, context:WorkspaceContext={}, audienceId?: string | null): string {
   if (!/^(app|family|client)(?:\/[a-zA-Z0-9_-]+)*$/.test(path)) throw new Error("INVALID_WORKSPACE_PATH");
   const query=new URLSearchParams();if(isCaseId(caseId))query.set('caseId',caseId);
   if(path==='app'||path.startsWith('app/'))for(const [key,value] of Object.entries(workspaceContext(context)))if(key!=='context'||isClientWorkspacePath(path))query.set(key,value);
+  // The same audience hint belongs on section tabs and their breadcrumbs, not
+  // on unrelated global destinations. Actual access is rechecked server-side.
+  if (isCaseId(caseId) && isCaseId(audienceId) && ['app/practice','app/reports'].includes(path)) query.set('audienceId',audienceId);
   return `/${locale}/${path}`+(query.size?'?'+query.toString():'');
 }
 export function caseDestinationHref(locale: Locale, path: string, caseId: string): string {
