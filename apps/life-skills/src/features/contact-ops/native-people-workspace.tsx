@@ -26,12 +26,17 @@ const pick=(row:NativeContactRow):AdministrativeFields=>({stage:row.stage,nextAc
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const leadPattern=/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]{1,80}$/;
 const validPresets=new Set<Preset>(["all","today","new","intake","payment","booking","archived"]);
+// Match the route/proxy's one-value rule on every later browser navigation.
+// Even identical repeated values are ambiguous, not a retained applied filter.
+function oneQuery(params:URLSearchParams,key:string):string|undefined{
+ const values=params.getAll(key);return values.length===1?values[0]:undefined;
+}
 export function peoplePageFromQuery(params:URLSearchParams):number{
- const raw=params.get("page");return raw&&/^[1-9]\d{0,4}$/.test(raw)?Number(raw):1;
+ const raw=oneQuery(params,"page");return raw&&/^[1-9]\d{0,4}$/.test(raw)?Number(raw):1;
 }
 type DirectoryFilters={query:string;stage:string;language:string;due:"any"|"today"|"overdue"};
 export function peopleFiltersFromQuery(params:URLSearchParams):DirectoryFilters{
- const search=params.get("search")??"",stage=params.get("stage")??"",language=params.get("language")??"",due=params.get("due")??"any";
+ const search=oneQuery(params,"search")??"",stage=oneQuery(params,"stage")??"",language=oneQuery(params,"language")??"",due=oneQuery(params,"due")??"any";
  return {query:search.length<=200?search:"",stage:stage.length<=120?stage:"",language:language==="he"||language==="en"?language:"",due:due==="today"||due==="overdue"?due:"any"};
 }
 const emptyCreation:ProspectCreateFields={name:"",phone:"",language:"",source:"",notes:"",nextAction:"",dueDate:""};
@@ -64,7 +69,7 @@ export function NativePeopleWorkspace({locale,view,initial,onSheet,initialMode="
   }catch(error){if(state.alive&&current===state.serial){const status=error instanceof PeopleRequestError?error.status:503;setFailure(status);if(status===401||status===403){state.authorized=false;setData(d=>({...d,page:{items:[],page:1,pages:1,pageSize:12,total:0}}));setSelectedRow(null);setDrafts(new Map());setCreation(emptyCreation);setCreatePending(null);setCreateMessage("");}}}
   finally{if(state.alive&&current===state.serial)setBusy(false);}
  },[view,mode,preset,onSheet]);
- const fromUrl=useCallback(()=>{locationKey.current=window.location.pathname+window.location.search;const params=new URLSearchParams(window.location.search),value=params.get("personId"),lead=params.get("leadId"),rawFilter=params.get("filter"),filter=rawFilter&&validPresets.has(rawFilter as Preset)?rawFilter as Preset:"all",urlMode=params.get("mode")==="demo"?"demo":"live";const id=value&&uuid.test(value)?value:null,leadId=lead&&leadPattern.test(lead)?lead:null,applied=peopleFiltersFromQuery(params);setQuery(applied.query);setStage(applied.stage);setCustomStage(applied.stage!==""&&!administrativeStageChoices("en").some(choice=>choice.value===applied.stage));setLanguage(applied.language);setDue(applied.due);setSelected(id);setFocusedLead(leadId);setSelectedRow(null);void load(id||leadId?1:peoplePageFromQuery(params),id??undefined,urlMode,leadId??undefined,filter,applied);},[load]);
+ const fromUrl=useCallback(()=>{locationKey.current=window.location.pathname+window.location.search;const params=new URLSearchParams(window.location.search),value=oneQuery(params,"personId"),lead=oneQuery(params,"leadId"),rawFilter=oneQuery(params,"filter"),filter=rawFilter&&validPresets.has(rawFilter as Preset)?rawFilter as Preset:"all",urlMode=oneQuery(params,"mode")==="demo"?"demo":"live";const id=value&&uuid.test(value)?value:null,leadId=lead&&leadPattern.test(lead)?lead:null,applied=peopleFiltersFromQuery(params);setQuery(applied.query);setStage(applied.stage);setCustomStage(applied.stage!==""&&!administrativeStageChoices("en").some(choice=>choice.value===applied.stage));setLanguage(applied.language);setDue(applied.due);setSelected(id);setFocusedLead(leadId);setSelectedRow(null);void load(id||leadId?1:peoplePageFromQuery(params),id??undefined,urlMode,leadId??undefined,filter,applied);},[load]);
  // The ordinary route can be hard-reloaded or opened directly. Popstate, not an
  // anchor jump, restores the selected main view. Drafts stay in authorized memory.
  useEffect(()=>{const state=lifecycle.current;state.alive=true;return()=>{state.alive=false;state.serial++;};},[]);
