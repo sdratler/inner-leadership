@@ -66,6 +66,7 @@ test("match uses the existing exact phone/person and preserves notes, stage and 
  expect(acquisitionProjections).toHaveLength(2);expect(acquisitionProjections).toEqual(expect.arrayContaining([
   expect.objectContaining({channel:"google_contacts",state:"pending",reason:"provider_not_verified"}),
   expect.objectContaining({channel:"whatsapp",state:"pending",reason:"provider_not_verified"})]));
+ expect(JSON.parse(JSON.stringify((await contacts()).items[0])).acquisitionProjections).toEqual(acquisitionProjections);
  await store.capture({...inquiry,providerEventId:"matched-second",providerMessageId:"matched-second",occurredAt:"2026-10-02T11:00:00Z"});
  const after=(await contacts()).items[0]!;expect(after.personId).toBe(original.personId);expect(after.notes).toBe(current.notes);expect(after.stage).toBe(current.stage);
  expect(after.nextAction).toBe(current.nextAction);expect(after.references).toHaveLength(1);expect(after.references[0]!.leadId).toBe(original.leadId);

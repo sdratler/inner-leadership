@@ -319,7 +319,8 @@ export class NativeContactDirectory {
     for(const projection of projections){const row=byPerson.get(projection.personId);
      if(!row||!["google_contacts","whatsapp"].includes(projection.channel)||!projectionReasons.has(projection.state)||
       projectionReasons.get(projection.state)!==projection.reason)throw new AppError("UNAVAILABLE");
-     const list=row.acquisitionProjections??=[];
+     const list=row.acquisitionProjections??[];
+     row.acquisitionProjections=list;
      // Latest persisted result per channel; never derive applied from an owner click.
      if(!list.some(value=>value.channel===projection.channel))list.push({channel:projection.channel as "google_contacts"|"whatsapp",
       state:projection.state as "applied"|"no_chat"|"pending"|"failed",reason:projection.reason as "provider_not_verified"|"provider_applied"|"no_chat"|"provider_failed",updatedAt:projection.updatedAt.toISOString()});
