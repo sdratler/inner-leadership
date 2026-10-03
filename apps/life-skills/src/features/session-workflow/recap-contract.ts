@@ -32,7 +32,8 @@ const sharedPractice = z.strictObject({
   participant: z.enum(["client", "parent"]), instructions: z.string().min(1).max(500),
   localTime: clock, timezone: zone, startsOn: date, endsOn: date,
 }).refine(value => value.startsOn <= value.endsOn);
-/** Strict public whitelist. Never accept a private record spread into a recap. */
+/** Strict stored routine whitelist, including server-only audience evidence.
+ * Never accept a private clinical record spread into a recap. */
 export const routineRecapSchema = z.strictObject({
   schemaVersion: z.literal(1), sessionId: identifier, caseId: identifier,
   version: z.number().int().positive(), locale: z.enum(["en", "he"]),
@@ -54,7 +55,11 @@ export type RecapSharePreview = z.infer<typeof recapSharePreviewSchema>;
 export const recapPublicationSchema = z.strictObject({ publicationId: uuid, sessionId: uuid, caseId: uuid,
   sharedAt: iso, contentDigest: digest, recipientAccountIds: accounts, recap: routineRecapSchema }).refine(row=>row.sessionId===row.recap.sessionId&&row.caseId===row.recap.caseId);
 export type RecapPublication = z.infer<typeof recapPublicationSchema>;
-export const sharedRecapViewSchema = z.strictObject({ publicationId: uuid, sessionId: uuid, sharedAt: iso, recap: routineRecapSchema });
+const recipientPractice = z.strictObject(sharedPractice.shape).omit({ audienceAccountIds: true }).refine(value => value.startsOn <= value.endsOn);
+export const recipientRoutineRecapSchema = routineRecapSchema.extend({
+  practices: z.array(recipientPractice).max(20).refine(rows => unique(rows.map(row => row.responsibilityId))),
+});
+export const sharedRecapViewSchema = z.strictObject({ publicationId: uuid, sessionId: uuid, sharedAt: iso, recap: recipientRoutineRecapSchema });
 export const sharedRecapListSchema = z.array(sharedRecapViewSchema).max(100);
 
 export const recapPracticeChoiceSchema = z.strictObject({
