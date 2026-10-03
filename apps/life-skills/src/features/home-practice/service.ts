@@ -283,9 +283,9 @@ export class HomePracticeService implements PracticeVersionReader {
   }
 
   async publish(actor: Actor, assignmentId: PracticeAssignmentId, versionId: PracticeVersionId, requestId: string): Promise<PracticeVersionReference> {
-    const now = this.clock.now();
     return this.store.transaction(async tx => {
       await lockWorkspace(tx, actor.workspaceId);
+      const now = this.clock.now();
       const row = await one<VersionRow>(tx, VERSION_SELECT + " WHERE a.workspace_id=$1 AND a.id=$2 AND v.id=$3 AND v.state='draft' FOR UPDATE OF a,v", [actor.workspaceId, assignmentId, versionId]);
       if (!row) throw new AppError("NOT_FOUND");
       const current = await freshActor(tx, actor, now);
@@ -297,9 +297,13 @@ export class HomePracticeService implements PracticeVersionReader {
       await tx.query("UPDATE ls_practice.practice_assignments SET state='published',active_version_id=$3 WHERE workspace_id=$1 AND id=$2", [actor.workspaceId, assignmentId, versionId]);
       // Cancel only unreported FUTURE timed occurrences from older versions.
       // Historical, completed and unspecified-clock legacy rows are untouched.
-      await tx.query(`UPDATE ls_practice.practice_occurrences o SET state='cancelled',cancelled_at=$4,superseded_by_version_id=$3
+      // Select and timestamp cancellations with one database clock after the
+      // workspace lock. A queued publish must not cancel an occurrence that
+      // started while it waited; the immutable DB trigger still rejects that.
+      await tx.query(`WITH cutoff AS MATERIALIZED(SELECT clock_timestamp() AS at)
+       UPDATE ls_practice.practice_occurrences o SET state='cancelled',cancelled_at=cutoff.at,superseded_by_version_id=$3 FROM cutoff
        WHERE o.workspace_id=$1 AND o.assignment_id=$2 AND o.practice_version_id<>$3 AND o.state='open'
-        AND o.occurs_at>$4 AND NOT EXISTS(SELECT 1 FROM ls_practice.completion_reports r WHERE r.workspace_id=o.workspace_id AND r.occurrence_id=o.id)`,[actor.workspaceId,assignmentId,versionId,now]);
+        AND o.occurs_at>cutoff.at AND NOT EXISTS(SELECT 1 FROM ls_practice.completion_reports r WHERE r.workspace_id=o.workspace_id AND r.occurrence_id=o.id)`,[actor.workspaceId,assignmentId,versionId]);
       if(responsibility){const versionId=asId(randomUUID(),"coordination_version"),next=await one<{version:number}>(tx,"SELECT coalesce(max(version),0)+1 AS version FROM ls_practice.task_coordination_versions WHERE workspace_id=$1 AND assignment_id=$2",[actor.workspaceId,assignmentId]);
         await tx.query(`INSERT INTO ls_practice.task_coordination_versions(id,workspace_id,assignment_id,version,case_id,audience_id,assignee_account_ids,completion_mode,reminder_candidate_account_ids,effective_from,changed_by_account_id,created_at,responsibility_version_id,participant,assisted_parent_account_ids)
          VALUES($1,$2,$3,$4,$5,$6,$7::uuid[],$8,$9::uuid[],$10,$11,$10,$12,$13,$14::uuid[])`,[versionId,actor.workspaceId,assignmentId,Number(next!.version),row.caseId,row.audienceId,responsibility.assigneeAccountIds,responsibility.completionMode,responsibility.reminderRecipients.map(value=>value.accountId),now,actor.id,row.versionId,responsibility.participant,responsibility.assistedByParentAccountIds]);}
