@@ -17,7 +17,7 @@ function verifiedPort<I>(scope:Scope,mode:"record"|"revoke"|"use",id?:string):Co
    if(saved.revokedAt!==receipt.revokedAt||saved.usedAt!==receipt.usedAt)throw Error("UNAVAILABLE");attempts.delete(key);return {state:"accepted",value:saved};
   }catch{return {state:"unknown"};}
  }
- return {async execute(input,key){if(attempts.has(key))return {state:"rejected",message:"CONFLICT"};const stable=structuredClone(mode==="record"?disclosureInputSchema.parse(input):input) as I;attempts.set(key,{input:stable,receipt:null,committed:false});return settle(key,await command.execute(stable,key));},async reconcile(key){const attempt=attempts.get(key);if(!attempt)return {state:"rejected",message:"INVALID_REQUEST"};return settle(key,attempt.committed?{state:"accepted",value:attempt.receipt}:await command.execute(attempt.input,key));}};
+ return {async execute(input,key){if(attempts.has(key))return {state:"rejected",message:"CONFLICT"};const parsed=mode==="record"?disclosureInputSchema.safeParse(input):{success:true,data:input};if(!parsed.success)return {state:"rejected",message:"INVALID_REQUEST"};const stable=structuredClone(parsed.data) as I;attempts.set(key,{input:stable,receipt:null,committed:false});return settle(key,await command.execute(stable,key));},async reconcile(key){const attempt=attempts.get(key);if(!attempt)return {state:"rejected",message:"INVALID_REQUEST"};return settle(key,attempt.committed?{state:"accepted",value:attempt.receipt}:await command.execute(attempt.input,key));}};
 }
 export const disclosureRecordPort=(scope:Scope)=>verifiedPort<DisclosureInput>(scope,"record");
 export const disclosureRevokePort=(scope:Scope,id:string)=>verifiedPort<{expectedUsedAt:string|null}>(scope,"revoke",id);
