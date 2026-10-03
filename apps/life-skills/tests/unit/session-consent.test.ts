@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { consentRecordReadback, consentTimeCandidates, consentVersionSchema, type ConsentRecordInput, type ConsentVersion } from "../../src/features/session-workflow/consent-contract.ts";
 import { consentRecordPort, consentWithdrawalPort, readConsentVersion } from "../../src/features/session-workflow/consent-client.ts";
-import { SessionConsentPanel } from "../../src/features/session-workflow/consent-panel.tsx";
+import { SessionConsentPanel, refreshConsentPolicyDraft } from "../../src/features/session-workflow/consent-panel.tsx";
 import type { SessionDetail } from "../../src/features/session-workflow/database.ts";
 import { blankMetrics } from "../../src/features/session-workflow/metrics.ts";
 import { PractitionerSessionDesk, sessionAppointmentLabel } from "../../src/ui/revamp/session-desk.tsx";
@@ -16,6 +16,26 @@ const saved: ConsentVersion = { ...scope, consentId, version: 1, signedByAccount
 const receipt = { consentId, version: 1, permissionToRecord: false };
 const envelope = (data: unknown) => Response.json({ ok: true, data });
 afterEach(() => vi.unstubAllGlobals());
+
+it("refreshes a pristine consent policy without treating the incoming record as an unsaved edit", () => {
+  const draft = { value: "document-v1", baseline: "document-v1", observed: "document-v1" };
+  expect(refreshConsentPolicyDraft(draft, "document-v1", false, false)).toBe(draft);
+  expect(refreshConsentPolicyDraft(draft, "document-v2", false, false)).toEqual({ value: "document-v2", baseline: "document-v2", observed: "document-v2" });
+  expect(refreshConsentPolicyDraft(draft, "", false, false)).toEqual({ value: "", baseline: "", observed: "" });
+});
+it.each([[true, false], [false, true], [true, true]])("preserves the actual consent draft and baseline during refresh (dirty=%s locked=%s)", (dirty, locked) => {
+  for (const value of ["document-v1", "Actual unsaved document correction"]) {
+    const draft = { value, baseline: "document-v1", observed: "document-v1" };
+    const refreshed = refreshConsentPolicyDraft(draft, "document-v2", dirty, locked);
+    expect(refreshed).toEqual({ ...draft, observed: "document-v2" });
+    expect(refreshConsentPolicyDraft(refreshed, "document-v2", dirty, locked)).toBe(refreshed);
+  }
+});
+it("does not replace a verified saved policy with the briefly retained old model while awaiting its refresh", () => {
+  const savedDraft = { value: "document-v2", baseline: "document-v2", observed: "document-v1" };
+  expect(refreshConsentPolicyDraft(savedDraft, "document-v1", false, false)).toBe(savedDraft);
+  expect(refreshConsentPolicyDraft(savedDraft, "document-v2", false, false)).toEqual({ value: "document-v2", baseline: "document-v2", observed: "document-v2" });
+});
 
 it("requires exact bounded consent metadata, not a concurrency guard or private ciphertext", () => {
   expect(consentVersionSchema.safeParse(saved).success).toBe(true);
