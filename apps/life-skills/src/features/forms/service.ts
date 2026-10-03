@@ -125,11 +125,14 @@ export class FormsService {
     });
   }
 
-  async listAssignments(actor: Actor, caseId: CaseId) {
+  async listAssignments(actor: Actor, caseId: CaseId, assignmentId: FormAssignmentId | null = null) {
     return this.store.transaction(async (tx) => {
       const current = await freshActor(tx, actor, this.clock.now());
       caseAccess(current, await loadCase(tx, actor.workspaceId, caseId), await loadGuardians(tx, actor.workspaceId, caseId), "read");
       const accountClause = current.role === "practitioner" ? "" : " AND a.assigned_account_id=$3";
+      const parameters: unknown[] = current.role === "practitioner" ? [actor.workspaceId, caseId] : [actor.workspaceId, caseId, actor.id];
+      if (assignmentId !== null) parameters.push(assignmentId);
+      const assignmentClause = assignmentId === null ? "" : ` AND a.id=$${parameters.length}`;
       const rows = await tx.query<Omit<AssignmentRow, "workspaceId"> & { assignedAt: Date; submittedAt: Date | null; reviewedAt: Date | null; submissionId: FormSubmissionId | null; submissionAuthorAccountId: AccountId | null }>(`SELECT a.id,a.case_id AS "caseId",a.template_id AS "templateId",
         a.assigned_account_id AS "assignedAccountId",a.due_date::text AS "dueDate",a.state,
         a.post_submission_audience_id AS "postSubmissionAudienceId",t.definition,t.target_role AS "targetRole",
@@ -138,8 +141,7 @@ export class FormsService {
         FROM ls_forms.form_assignments a JOIN ls_forms.form_templates t ON t.workspace_id=a.workspace_id AND t.id=a.template_id
         LEFT JOIN LATERAL (SELECT id,author_account_id,submitted_at,reviewed_at FROM ls_forms.form_submissions
           WHERE workspace_id=a.workspace_id AND assignment_id=a.id AND case_id=a.case_id ORDER BY submitted_at DESC,id DESC LIMIT 1) s ON true
-        WHERE a.workspace_id=$1 AND a.case_id=$2${accountClause} ORDER BY a.assigned_at DESC,a.id LIMIT 100`,
-      current.role === "practitioner" ? [actor.workspaceId, caseId] : [actor.workspaceId, caseId, actor.id]);
+        WHERE a.workspace_id=$1 AND a.case_id=$2${accountClause}${assignmentClause} ORDER BY a.assigned_at DESC,a.id LIMIT 100`, parameters);
       return rows.map(row => ({ ...row, assignedAt: row.assignedAt.toISOString(), submittedAt: row.submittedAt?.toISOString() ?? null, reviewedAt: row.reviewedAt?.toISOString() ?? null }));
     });
   }
