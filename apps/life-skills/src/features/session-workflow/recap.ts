@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { AttendanceSnapshot, CaseContext, Principal, RoutineRecap, SharedRecapRecord, SharedPractice, NextAppointmentSnapshot } from "./types.ts";
+import type { AttendanceSnapshot, CaseContext, Principal, RoutineRecap, RecipientRoutineRecap, SharedRecapRecord, SharedPractice, NextAppointmentSnapshot } from "./types.ts";
 import { assertPractitioner, assertCasePrincipal, invariant, nonempty, routineRecipients, validDate, validTimezone, validIso } from "./policy.ts";
 export const FOCUS = ["responsibility", "communication", "regulation", "values", "planning", "relationships", "problem_solving"] as const;
 const exactKeys = (value: object, keys: readonly string[], code: string) => invariant(Object.keys(value).sort().join() === [...keys].sort().join(), code);
@@ -118,11 +118,21 @@ export async function shareUpdate(repository: ShareRepository, input: {
         return record;
     });
 }
-export function readSharedRecap(actor: Principal, context: CaseContext, record: SharedRecapRecord): RoutineRecap {
+/** Project only reviewed content after validating the full immutable record.
+ * Do not alter the stored snapshot, its digest or authorization history. */
+export function recipientRecap(recap: RoutineRecap): RecipientRoutineRecap {
+    validateRecap(recap);
+    return { schemaVersion: 1, sessionId: recap.sessionId, caseId: recap.caseId, version: recap.version, locale: recap.locale,
+        attendance: structuredClone(recap.attendance), focus: [...recap.focus], nextStep: recap.nextStep,
+        nextAppointment: structuredClone(recap.nextAppointment), practices: recap.practices.map(p => ({
+            assignmentId: p.assignmentId, version: p.version, responsibilityId: p.responsibilityId,
+            participant: p.participant, instructions: p.instructions, localTime: p.localTime,
+            timezone: p.timezone, startsOn: p.startsOn, endsOn: p.endsOn })) };
+}
+export function readSharedRecap(actor: Principal, context: CaseContext, record: SharedRecapRecord): RecipientRoutineRecap {
     assertCasePrincipal(actor, context);
     invariant(record.caseId === context.caseId && record.workspaceId === context.workspaceId, "NOT_FOUND");
     if (actor.role !== "practitioner")
         invariant(routineRecipients(context).includes(actor.accountId) && record.recipientAccountIds.includes(actor.accountId), "NOT_FOUND");
-    validateRecap(record.recap);
-    return structuredClone(record.recap);
+    return recipientRecap(record.recap);
 }
