@@ -3,6 +3,7 @@
 import {afterEach,expect,test} from "vitest";
 import {createHash,randomBytes,randomUUID} from "node:crypto";
 import {seal} from "../../../src/features/identity/crypto.ts";
+import {asId} from "../../../src/lib/ids.ts";
 import {fixture,poolStore,type Fixture} from "../calendar/fixture.ts";
 import {SessionDatabaseService} from "../../../src/features/session-workflow/database.ts";
 import {HomePracticeService} from "../../../src/features/home-practice/service.ts";
@@ -25,27 +26,26 @@ async function setup(){
  async function publish(instructions="DEMO — Published child practice",audienceId=f.first.audienceId){const result=await practice.createDraft(f.practitioner.actor,{caseId:f.first.id,audienceId,templateKey:"W01",templateVersion:"DEMO-recap-source",instructions,startsOn:f.at(24).slice(0,10),endsOn:f.at(240).slice(0,10),responsibility:{participant:"client",period:"morning",assigneeAccountIds:[],assistedByParentAccountIds:[f.parent.actor.id],reminderRecipients:[],completionMode:"any_assignee",weekdays:[0,1,2,3,4,5,6],localTime:"18:45",timezone:"UTC",timeOrigin:"practitioner",foldChoice:null}},randomUUID());await practice.publish(f.practitioner.actor,result.assignmentId,result.versionId,randomUUID());return result;}
  return {f,service,practice,http,request,sessionId,draft,publish};
 }
-test("nine authorized accounts do not block session details or consent signers; publication still accepts at most eight",async()=>{
- const s=await setup(),ids=[s.f.parent.actor.id,s.f.parentTwo.actor.id] as string[];
- for(let i=0;i<7;i++){
-  const accountId=randomUUID(),personId=randomUUID(),now=new Date();ids.push(accountId);
-  await s.f.pool.query("INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,'adult',$3,$4)",[personId,s.f.workspaceId,seal(JSON.stringify({displayName:`DEMO — authorized parent ${i}`}),`person:${s.f.workspaceId}:${personId}`,s.f.keyring),now]);
-  await s.f.pool.query("INSERT INTO ls_identity.accounts(id,workspace_id,role,state,locale,email_blind,email_ciphertext,email_verified_at,password_hash,created_at,updated_at) VALUES($1,$2,'parent','active','en',$3,$4,$5,'synthetic-non-login-hash',$5,$5)",[accountId,s.f.workspaceId,createHash('sha256').update(accountId).digest('hex'),seal(`demo-${accountId}@example.invalid`,`email:${s.f.workspaceId}:${accountId}`,s.f.keyring),now]);
-  await s.f.pool.query('INSERT INTO ls_identity.account_subjects(workspace_id,account_id,person_id) VALUES($1,$2,$3)',[s.f.workspaceId,accountId,personId]);
-  await s.f.pool.query('INSERT INTO ls_cases.case_guardians(workspace_id,case_id,account_id,granted_at) VALUES($1,$2,$3,$4)',[s.f.workspaceId,s.f.first.id,accountId,now]);
- }
+test("the retained native constraints bound case recipients to two guardians and one optional child without blocking session detail",async()=>{
+ const s=await setup(),childId=randomUUID(),now=new Date(),ids=[s.f.parent.actor.id,s.f.parentTwo.actor.id,childId];
+ const personId=(await s.f.pool.query('SELECT cl.person_id FROM ls_cases.cases c JOIN ls_cases.clients cl ON cl.workspace_id=c.workspace_id AND cl.id=c.client_id WHERE c.workspace_id=$1 AND c.id=$2',[s.f.workspaceId,s.f.first.id])).rows[0].person_id;
+ for(const accountId of [childId,randomUUID()])await s.f.pool.query("INSERT INTO ls_identity.accounts(id,workspace_id,role,state,locale,email_blind,email_ciphertext,email_verified_at,password_hash,created_at,updated_at) VALUES($1,$2,'child','active','en',$3,$4,$5,'synthetic-non-login-hash',$5,$5)",[accountId,s.f.workspaceId,createHash('sha256').update(accountId).digest('hex'),seal(`demo-${accountId}@example.invalid`,`email:${s.f.workspaceId}:${accountId}`,s.f.keyring),now]);
+ await s.f.pool.query('INSERT INTO ls_identity.account_subjects(workspace_id,account_id,person_id) VALUES($1,$2,$3)',[s.f.workspaceId,childId,personId]);
+ const extraChild=(await s.f.pool.query("SELECT id FROM ls_identity.accounts WHERE workspace_id=$1 AND role='child' AND id<>$2",[s.f.workspaceId,childId])).rows[0].id;
+ await expect(s.f.pool.query('INSERT INTO ls_identity.account_subjects(workspace_id,account_id,person_id) VALUES($1,$2,$3)',[s.f.workspaceId,extraChild,personId])).rejects.toMatchObject({code:'23505'});
+ await expect(s.f.pool.query('INSERT INTO ls_cases.case_guardians(workspace_id,case_id,account_id,granted_at) VALUES($1,$2,$3,$4)',[s.f.workspaceId,s.f.first.id,s.f.outsider.actor.id,now])).rejects.toMatchObject({code:'23514',message:'CASE_GUARDIAN_LIMIT'});
  const detail=await s.service.detail(s.f.practitioner.actor,s.sessionId);
- expect(detail.recipients.map(row=>row.accountId).sort()).toEqual([...ids].sort());expect(detail.consentSigners.map(row=>row.accountId).sort()).toEqual([...ids].sort());
+ expect(detail.recipients.map(row=>row.accountId).sort()).toEqual([...ids].sort());expect(detail.consentSigners.map(row=>row.accountId).sort()).toEqual(ids.slice(0,2).sort());
  await s.service.saveObservations(s.f.practitioner.actor,s.sessionId,blankMetrics(),0,randomUUID());
  await s.service.saveRecap(s.f.practitioner.actor,s.sessionId,{...s.draft,practices:[]},randomUUID());
- expect((await s.service.recapPreview(s.f.practitioner.actor,s.sessionId,1,[ids[8]!])).recipients.map(row=>row.accountId)).toEqual([ids[8]!]);
- const query=new URLSearchParams({version:'1'});ids.forEach(id=>query.append('recipient',id));
+ expect((await s.service.recapPreview(s.f.practitioner.actor,s.sessionId,1,[ids[1]!])).recipients.map(row=>row.accountId)).toEqual([ids[1]!]);
+ const tooMany=Array.from({length:9},()=>randomUUID()),query=new URLSearchParams({version:'1'});tooMany.forEach(id=>query.append('recipient',id));
  expect((await s.http.handle(s.request(`/${s.sessionId}/recap-preview?${query}`),[s.sessionId,'recap-preview'])).status).toBe(400);
- expect((await s.http.handle(s.request(`/${s.sessionId}/share`,{expectedVersion:1,expectedDigest:'a'.repeat(64),recipientAccountIds:ids}),[s.sessionId,'share'])).status).toBe(400);
+ expect((await s.http.handle(s.request(`/${s.sessionId}/share`,{expectedVersion:1,expectedDigest:'a'.repeat(64),recipientAccountIds:tooMany}),[s.sessionId,'share'])).status).toBe(400);
 },30000);
 
 test("bounded source pages can reach eligible practice behind twenty-one ineligible newer versions",async()=>{
- const s=await setup(),eligible=await s.publish(),audienceId=randomUUID();
+ const s=await setup(),eligible=await s.publish(),audienceId=asId(randomUUID(),'audience');
  await s.f.pool.query("INSERT INTO ls_cases.audiences(id,workspace_id,case_id,visibility,published,created_at) VALUES($1,$2,$3,'family_title_completion',true,clock_timestamp())",[audienceId,s.f.workspaceId,s.f.first.id]);
  for(const accountId of [s.f.parent.actor.id,s.f.parentTwo.actor.id])await s.f.pool.query('INSERT INTO ls_cases.audience_accounts(workspace_id,case_id,audience_id,account_id,granted_at) VALUES($1,$2,$3,$4,clock_timestamp())',[s.f.workspaceId,s.f.first.id,audienceId,accountId]);
  for(let i=0;i<21;i++)await s.publish(`DEMO — ineligible full-routine source ${i}`,audienceId);
