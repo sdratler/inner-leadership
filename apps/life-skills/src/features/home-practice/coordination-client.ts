@@ -15,18 +15,37 @@ export async function readCoordination(assignmentId:string,caseId:string,audienc
  const valid=(row:CoordinationVersion)=>row&&row.assignmentId===assignmentId&&row.caseId===caseId&&row.audienceId===audienceId&&typeof row.versionId==='string'&&ids(row.assigneeAccountIds)&&ids(row.reminderCandidateAccountIds)&&row.reminderCandidateAccountIds.every(id=>row.assigneeAccountIds.includes(id))&&['any_assignee','each_assignee'].includes(row.completionMode)&&Number.isFinite(Date.parse(row.effectiveFrom))&&typeof row.changedByAccountId==='string';
  if(!value||!['parent','adult_client'].includes(value.role)||typeof value.ownAccountId!=='string'||!ids(value.eligibleAccountIds)||typeof value.hasMore!=='boolean'||typeof value.asOf!=='string'||!Number.isFinite(Date.parse(value.asOf))||!Array.isArray(value.versions)||value.versions.length>20||value.versions.some(row=>!valid(row))||value.currentVersion!==null&&(!valid(value.currentVersion)||Date.parse(value.currentVersion.effectiveFrom)>Date.parse(value.asOf)))throw new IdentityClientError('UNAVAILABLE');
  if(value.role==='adult_client'&&(value.eligibleAccountIds.length!==1||value.eligibleAccountIds[0]!==value.ownAccountId))throw new IdentityClientError('UNAVAILABLE');
+ if(value.readOnlyReason!==undefined&&(value.readOnlyReason!=='legacy_child_assignment'||value.role!=='parent'||value.eligibleAccountIds.length!==0))throw new IdentityClientError('UNAVAILABLE');
  return value;
 }
 /** Defaults follow the server's current selection, never insertion order or
  * the browser clock. Future changes remain visible in immutable history. */
 export function coordinationDefaults(page:PracticeCoordinationPage):{assignees:string[];reminders:string[];mode:CompletionMode}{
- const current=page.currentVersion,assignees=page.role==='adult_client'?[page.ownAccountId]:current?.assigneeAccountIds.filter(id=>page.eligibleAccountIds.includes(id))??[page.ownAccountId].filter(id=>page.eligibleAccountIds.includes(id));
+ const current=page.currentVersion,assignees=page.readOnlyReason?[...(current?.assigneeAccountIds??[])]:page.role==='adult_client'?[page.ownAccountId]:current?.assigneeAccountIds.filter(id=>page.eligibleAccountIds.includes(id))??[page.ownAccountId].filter(id=>page.eligibleAccountIds.includes(id));
  return {assignees,reminders:current?.reminderCandidateAccountIds.filter(id=>assignees.includes(id))??[],mode:assignees.length===2&&current?.completionMode==='each_assignee'?'each_assignee':'any_assignee'};
 }
-export type CoordinationCommand=Readonly<{action:'coordinate';assignmentId:string;assigneeAccountIds:readonly string[];completionMode:CompletionMode;reminderCandidateAccountIds:readonly string[];effectiveFrom:string}>;
-export function coordinationCommand(assignmentId:string,assignees:readonly string[],mode:CompletionMode,reminders:readonly string[],now=Date.now()):CoordinationCommand{
+/** A draft is based on effective responsibility and current authorization, not
+ * on a timestamp or incidental history pagination. */
+export function coordinationFrameKey(page:PracticeCoordinationPage):string{return JSON.stringify([page.ownAccountId,page.role,page.currentVersion?.versionId??null,page.readOnlyReason??null,[...page.eligibleAccountIds].sort()]);}
+export function coordinationRefreshDelay(page:PracticeCoordinationPage,elapsed:number):number|null{
+ const asOf=Date.parse(page.asOf),pending=page.versions.map(row=>Date.parse(row.effectiveFrom)).filter(at=>at>asOf);
+ return pending.length?Math.min(2_147_483_647,Math.max(100,Math.min(...pending)-asOf-Math.max(0,elapsed)+100)):null;
+}
+export type CoordinationCommand=Readonly<{action:'coordinate';assignmentId:string;assigneeAccountIds:readonly string[];completionMode:CompletionMode;reminderCandidateAccountIds:readonly string[];effectiveFrom:string;expectedCurrentVersionId?:string|null}>;
+export function coordinationCommand(assignmentId:string,assignees:readonly string[],mode:CompletionMode,reminders:readonly string[],now:number,expectedCurrentVersionId?:string|null):CoordinationCommand{
  if(!ids([...assignees])||!assignees.length||!ids([...reminders])||reminders.some(id=>!assignees.includes(id))||mode==='each_assignee'&&assignees.length!==2||!['any_assignee','each_assignee'].includes(mode)||!Number.isFinite(now))throw new IdentityClientError('INVALID_REQUEST');
- return Object.freeze({action:'coordinate',assignmentId,assigneeAccountIds:Object.freeze([...assignees]),completionMode:mode,reminderCandidateAccountIds:Object.freeze([...reminders]),effectiveFrom:new Date(now+60_000).toISOString()});
+ if(expectedCurrentVersionId!==undefined&&expectedCurrentVersionId!==null&&!ids([expectedCurrentVersionId]))throw new IdentityClientError('INVALID_REQUEST');
+ return Object.freeze({action:'coordinate',assignmentId,assigneeAccountIds:Object.freeze([...assignees]),completionMode:mode,reminderCandidateAccountIds:Object.freeze([...reminders]),effectiveFrom:new Date(now+60_000).toISOString(),...(expectedCurrentVersionId===undefined?{}:{expectedCurrentVersionId})});
+}
+/** Complete the potentially slow ordinary session lookup before obtaining a
+ * fresh server-clock frame. The closure posts once with that session's CSRF;
+ * server authentication and the effective-version guard remain authoritative. */
+export async function prepareCoordinationSave(assignmentId:string,caseId:string,audienceId:string,ownAccountId:string,role:'parent'|'adult_client'){
+ const session=await sessionInfo();
+ if(session.accountId!==ownAccountId||session.role!==role)throw new IdentityClientError('NOT_FOUND');
+ const page=await readCoordination(assignmentId,caseId,audienceId);
+ if(page.ownAccountId!==ownAccountId||page.role!==role)throw new IdentityClientError('NOT_FOUND');
+ return {page,submit:(command:CoordinationCommand):Promise<{versionId:string}>=>request('/api/home-practice',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':session.csrfToken},body:JSON.stringify(command)})};
 }
 export async function saveCoordination(command:CoordinationCommand,ownAccountId:string,role:'parent'|'adult_client'):Promise<{versionId:string}>{
  const session=await sessionInfo();
