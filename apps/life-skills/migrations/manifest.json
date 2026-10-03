@@ -134,5 +134,9 @@
   {
     "name": "0114_ls_practice_responsibilities.sql",
     "sha256": "f0403ceccdcd45638f8ab3bca23e757d79e769c77747869c7a0b7a0cf071e0ab"
+  },
+  {
+    "name": "0115_ls_practice_notification_outbox.sql",
+    "sha256": "0a5bdcb355d8d9ace91e431851a1c027a00499de0fb705cc28cadaf3052fbae7"
   }
 ]

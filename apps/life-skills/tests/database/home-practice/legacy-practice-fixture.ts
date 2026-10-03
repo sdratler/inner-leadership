@@ -14,7 +14,7 @@ export function practiceMigrationInventory():Migration[]{
  const entries=JSON.parse(readFileSync(new URL("../../../migrations/manifest.json",import.meta.url),"utf8"))as {name:string;sha256:string}[];
  return entries.map(entry=>{const bytes=readFileSync(new URL("../../../migrations/"+entry.name,import.meta.url));if(createHash("sha256").update(bytes).digest("hex")!==entry.sha256)throw Error("HISTORICAL_FIXTURE_SOURCE_MISMATCH");return {name:entry.name,checksum:entry.sha256,sql:bytes.toString("utf8")};});
 }
-export async function historicalPracticeDatabase(last:"0107_ls_practice_subject_guards.sql"|"0111_ls_adult_practice_coordination.sql"|"0113_ls_speaker_correction_receipts.sql"){
+export async function historicalPracticeDatabase(last:"0107_ls_practice_subject_guards.sql"|"0111_ls_adult_practice_coordination.sql"|"0113_ls_speaker_correction_receipts.sql"|"0114_ls_practice_responsibilities.sql"){
  const url=new URL(safeTestUrl()),db="ls_calendar_test_practice_history_"+randomBytes(8).toString("hex");
  if(!["127.0.0.1","localhost","[::1]"].includes(url.hostname)||url.search||url.hash||!/^ls_calendar_test_practice_history_[a-f0-9]{16}$/.test(db))throw Error("HISTORICAL_FIXTURE_TARGET_INVALID");
  const adminUrl=new URL(url);adminUrl.pathname="/postgres";url.pathname="/"+db;

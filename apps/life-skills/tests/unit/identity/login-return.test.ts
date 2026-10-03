@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 import { clientReturnPath, loginReturnDestination, practitionerDetailReturnPath, practitionerReturnPath } from '../../../src/features/identity/login-return.ts';
+import {settingsItems} from '../../../src/ui/workspace/navigation-model.ts';
 
 it('preserves only a bounded legacy lead ID on a practitioner People return link', () => {
   expect(practitionerReturnPath('he', 'clients', { section: 'prospects', leadId: 'LS-LEAD-synthetic-one' }))
@@ -77,4 +78,14 @@ it.each(['he','en'] as const)('preserves only the exact %s practitioner Settings
  expect(loginReturnDestination(locale,'practitioner',path)).toBe(path);
  for(const role of ['parent','adult_client','child'] as const)expect(loginReturnDestination(locale,role,path)).not.toBe(path);
  for(const other of ['/he/app/settings/templates/other','//external.invalid/en/app/settings/templates','/en/family/settings/templates'])expect(practitionerDetailReturnPath(locale,other,{})).toBe(`/${locale}/app/calendar`);
+});
+it.each(['he','en'] as const)('preserves the current %s practitioner Settings destinations without reflecting private context or unknown routes',locale=>{
+ const paths=[`/${locale}/app/settings`,...settingsItems('practitioner').map(item=>`/${locale}/${item.path}`)];
+ for(const path of paths){
+  expect(practitionerDetailReturnPath(locale,path,{caseId,role:'parent',secret:'not-forwarded',mode:'demo',section:['private','all']})).toBe(path);
+  expect(loginReturnDestination(locale,'practitioner',path)).toBe(path);
+  for(const role of ['parent','adult_client','child'] as const)expect(loginReturnDestination(locale,role,path)).not.toBe(path);
+  expect(practitionerDetailReturnPath(locale,path+'/other',{})).toBe(`/${locale}/app/calendar`);
+ }
+ for(const path of [`/${locale}/app/settings/unknown`,`/${locale}/app/settings/../private-notes`,`/${locale==='en'?'he':'en'}/app/settings/notifications`,`//untrusted.invalid/${locale}/app/settings/notifications`])expect(practitionerDetailReturnPath(locale,path,{})).toBe(`/${locale}/app/calendar`);
 });

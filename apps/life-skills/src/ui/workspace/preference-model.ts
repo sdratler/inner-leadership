@@ -3,7 +3,7 @@ export type EventType = "practice_due" | "appointment_changed" | "new_reply" | "
 export type Channel = "in_app" | "email" | "push" | "whatsapp";
 export type Preference = { eventType: EventType; channel: Channel; enabled: boolean; locale: Locale; timezone: string; quietStart: string | null; quietEnd: string | null };
 export const preferenceEvents: readonly EventType[] = ["practice_due", "appointment_changed", "new_reply", "summary_published"];
-export const deliveryChannels: readonly Exclude<Channel, "in_app">[] = ["email", "push", "whatsapp"];
+export const deliveryChannels: readonly Channel[] = ["in_app", "email", "push", "whatsapp"];
 export function updatePreference(rows: Preference[], eventType: EventType, channel: Channel, enabled: boolean): Preference[] {
   // A missing preference is not permission to create one. Its control is disabled in the view.
   return rows.map(row => row.eventType === eventType && row.channel === channel ? { ...row, enabled } : row);
