@@ -48,11 +48,13 @@ export function practitionerReturnPath(locale: Locale, page: "calendar" | "clien
 
 /** Named practitioner deep links only; no arbitrary caller/header path is trusted. */
 export function practitionerDetailReturnPath(locale:Locale,pathname:string,query:Record<string,string|string[]|undefined>):string {
- const reports=pathname===`/${locale}/app/reports`,session=pathname.match(new RegExp(`^/${locale}/app/cases/([^/]+)/sessions(?:/([^/]+))?$`));
- if(!reports&&(!session||!isCaseId(session[1])||session[2]!==undefined&&!isCaseId(session[2])))return `/${locale}/app/calendar`;
+ if(pathname===`/${locale}/app/settings/templates`)return pathname;
+ const reports=pathname===`/${locale}/app/reports`,sharedItems=[`/${locale}/app/forms`,`/${locale}/app/resources`].includes(pathname),session=pathname.match(new RegExp(`^/${locale}/app/cases/([^/]+)/sessions(?:/([^/]+))?$`));
+ if(!reports&&!sharedItems&&(!session||!isCaseId(session[1])||session[2]!==undefined&&!isCaseId(session[2])))return `/${locale}/app/calendar`;
  const params=new URLSearchParams(workspaceContext(query) as Record<string,string>);
  const one=(key:string)=>typeof query[key]==='string'?query[key] as string:'';
  if(reports){for(const key of ['caseId','audienceId'])if(isCaseId(one(key)))params.set(key,one(key).toLowerCase());if(one('context')==='client')params.set('context','client');if(isReportSection(one('section')))params.set('section',one('section'));}
+ else if(sharedItems){if(isCaseId(one('caseId')))params.set('caseId',one('caseId').toLowerCase());}
  else if(!session?.[2]&&isCaseId(one('appointmentId')))params.set('appointmentId',one('appointmentId').toLowerCase());
  return pathname+(params.size?'?'+params.toString():'');
 }
@@ -86,10 +88,10 @@ export function loginHref(locale: Locale, returnPath: string): string {
 export function clientReturnPath(locale: Locale, pathname: string, query: Record<string, string | undefined>): string {
   const root = `/${locale}/client`;
   const suffix = pathname.startsWith(`${root}/`) ? pathname.slice(root.length) : pathname === root ? "" : null;
-  const allowed = new Set(["", "/calendar", "/practice", "/messages", "/settings", "/settings/account", "/settings/notifications"]);
+  const allowed = new Set(["", "/calendar", "/practice", "/messages", "/forms", "/resources", "/settings", "/settings/account", "/settings/notifications"]);
   if (suffix === null || !allowed.has(suffix)) return root;
   const params = new URLSearchParams();
-  if (["", "/calendar", "/practice", "/messages"].includes(suffix) && isCaseId(query.caseId)) params.set("caseId", query.caseId!);
+  if (["", "/calendar", "/practice", "/messages", "/forms", "/resources"].includes(suffix) && isCaseId(query.caseId)) params.set("caseId", query.caseId!);
   if (suffix === "/calendar") {
     if (/^\d{4}-\d{2}-\d{2}$/.test(query.date ?? "")) params.set("date", query.date!);
     if (["day", "week", "month", "agenda"].includes(query.view ?? "")) params.set("view", query.view!);

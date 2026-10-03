@@ -12,7 +12,8 @@ import "@/ui/workspace/w4-v2.css";
 export const dynamic="force-dynamic";
 export default async function ClientLayout({children,params}:{children:ReactNode;params:Promise<{locale:string}>}){
  const {locale}=await params;if(!isLocale(locale))notFound();
- try{await requireWorkspaceRoles(["adult_client","child"]);}
+ let clientRole:'adult_client'|'child';
+ try{const session=await requireWorkspaceRoles(["adult_client","child"]);if(session.role!=='adult_client'&&session.role!=='child')notFound();clientRole=session.role;}
  catch(error){
   if(error instanceof AppError&&error.code==="UNAUTHENTICATED"){
    const requested=(await headers()).get("x-ls-client-return");
@@ -21,5 +22,5 @@ export default async function ClientLayout({children,params}:{children:ReactNode
   if(error instanceof AppError&&(error.code==="FORBIDDEN"||error.code==="NOT_FOUND"))notFound();
   throw error;
  }
- return <><link rel="manifest" href={`/${locale}/pwa/client/manifest.webmanifest`}/><meta name="theme-color" content="#245159"/><PwaRegistration/><CoreNavigation locale={locale} role="client">{children}</CoreNavigation></>;
+ return <><link rel="manifest" href={`/${locale}/pwa/client/manifest.webmanifest`}/><meta name="theme-color" content="#245159"/><PwaRegistration/><CoreNavigation locale={locale} role="client" clientRole={clientRole}>{children}</CoreNavigation></>;
 }

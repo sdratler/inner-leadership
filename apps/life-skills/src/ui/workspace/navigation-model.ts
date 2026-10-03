@@ -11,9 +11,11 @@ export const primaryNavigation: Record<WorkspaceRole, readonly NavItem[]> = {
 };
 export const navigationGroups: Record<WorkspaceRole, readonly NavGroup[]> = {
   parent: [{ key: "materials", en: "Shared with you", he: "שותף איתכם", items: [item("forms", "family/forms", "Forms to complete", "טפסים למילוי"), item("resources", "family/resources", "Materials & exercises", "חומרים ותרגילים"), item("reports", "family/reports", "Shared reports", "דוחות משותפים")] }],
-  client: [],
+  client: [{key:'materials',en:'Shared with you',he:'שותף איתכם',items:[item('forms','client/forms','Forms to complete','טפסים למילוי'),item('resources','client/resources','Materials & exercises','חומרים ותרגילים')]}],
   practitioner: [],
 };
+/** The server supplies the actual subject role. Unknown/child clients get no adult-form shortcuts. */
+export function workspaceGroups(role:WorkspaceRole,clientRole?:'adult_client'|'child'):readonly NavGroup[]{return role==='client'&&clientRole!=='adult_client'?[]:navigationGroups[role]}
 const context = (key: string, path: string, en: string, he: string, query?: Record<string,string>): ContextItem => ({ key, path, en, he, ...(query ? { query } : {}) });
 /** Context links are views within the selected workspace section, never a second global menu. */
 export function practitionerContext(pathname: string, caseId: string | null, selectedClient=false): readonly ContextItem[] {
@@ -21,7 +23,7 @@ export function practitionerContext(pathname: string, caseId: string | null, sel
   if (caseId && (selectedClient || /\/app\/cases\/[0-9a-f-]{36}(?:\/|$)/i.test(pathname))) {
     const base = `app/cases/${caseId}`;
     const query={caseId,context:"client"};
-    return [context("overview",base,"Overview","סקירה"),context("calendar","app/calendar","Calendar","יומן",query),context("practice","app/practice","Home practice","תרגול ביתי",query),context("communications","app/feedback","Communications","תקשורת",query),context("sessions",`${base}/sessions`,"Sessions","מפגשים"),context("reports","app/reports","Reports","דוחות",query),context("forms","app/forms","Forms & consent","טפסים והסכמות",query),context("access",`${base}/settings`,"Access","גישה")];
+    return [context("overview",base,"Overview","סקירה"),context("calendar","app/calendar","Calendar","יומן",query),context("practice","app/practice","Home practice","תרגול ביתי",query),context("communications","app/feedback","Communications","תקשורת",query),context("sessions",`${base}/sessions`,"Sessions","מפגשים"),context("reports","app/reports","Reports","דוחות",query),context("forms","app/forms","Forms & consent","טפסים והסכמות",query),context('resources','app/resources','Materials & exercises','חומרים ותרגילים',query),context("access",`${base}/settings`,"Access","גישה")];
   }
   if (pathname.includes("/app/feedback")) return [context("app_updates","app/feedback","App feedback","משוב באפליקציה",{section:"app_updates"}),context("whatsapp","app/feedback","Business WhatsApp","WhatsApp עסקי",{section:"whatsapp"})];
   if (pathname.includes("/app/reports")) return [context("due","app/reports","Due","להשלמה",{section:"due"}),context("drafts","app/reports","Drafts","טיוטות",{section:"drafts"}),context("published","app/reports","Published","פורסמו",{section:"published"}),context("history","app/reports","History","היסטוריה",{section:"history"})];
@@ -44,7 +46,7 @@ export function selectedCaseId(pathname: string, queryCaseId: string | null): st
 export type WorkspaceContext = {mode?: 'live'|'demo';date?:string;view?:'day'|'week'|'month'|'agenda';context?:'client'};
 /** Global destinations keep their own toolbar; Payments may still retain a case filter. */
 export function isClientWorkspacePath(path:string):boolean {
-  return ['app/calendar','app/practice','app/feedback','app/forms','app/reports'].includes(path)||path.startsWith('app/cases/')&&isCaseId(path.split('/')[2]);
+  return ['app/calendar','app/practice','app/feedback','app/forms','app/resources','app/reports'].includes(path)||path.startsWith('app/cases/')&&isCaseId(path.split('/')[2]);
 }
 /** Presentation hints only. Every destination still rechecks account/case authorization. */
 export function workspaceContext(query:Record<string,unknown>,strict=false):WorkspaceContext {
@@ -74,11 +76,11 @@ export function caseDestinationHref(locale: Locale, path: string, caseId: string
 }
 export function settingsItems(role: WorkspaceRole): readonly NavItem[] {
   const base = role === "parent" ? "family/settings" : role === "client" ? "client/settings" : "app/settings";
-  return [item("account", `${base}/account`, "Account & language", "חשבון ושפה"), item("notifications", `${base}/notifications`, "Notifications", "התראות"), ...(role === "parent" ? [item("coordination", `${base}/coordination`, "Task coordination", "תיאום משימות"), item("credits", `${base}/credits`, "Appointment credits", "יתרת מפגשים")] : role === "practitioner" ? [item("availability", `${base}/availability`, "Availability", "זמינות"), item("content_voice", `${base}/content-voice`, "Content Voice", "קול התוכן")] : [])];
+  return [item("account", `${base}/account`, "Account & language", "חשבון ושפה"), item("notifications", `${base}/notifications`, "Notifications", "התראות"), ...(role === "parent" ? [item("coordination", `${base}/coordination`, "Task coordination", "תיאום משימות"), item("credits", `${base}/credits`, "Appointment credits", "יתרת מפגשים")] : role === "practitioner" ? [item("availability", `${base}/availability`, "Availability", "זמינות"), item("templates", `${base}/templates`, "Form templates", "תבניות טפסים"), item("content_voice", `${base}/content-voice`, "Content Voice", "קול התוכן")] : [])];
 }
 export function activeItem(pathname: string, locale: Locale, role: WorkspaceRole): NavItem | undefined {
   const path = pathname.replace(new RegExp(`^/${locale}/`), "").replace(/\/$/, "");
-  if (/^app\/cases\//.test(path) || role === "practitioner" && path === "app/practice") return primaryNavigation.practitioner.find(x => x.key === "clients");
+  if (/^app\/cases\//.test(path) || role === "practitioner" && ['app/practice','app/forms','app/resources'].includes(path)) return primaryNavigation.practitioner.find(x => x.key === "clients");
   if (path === "app/prospects") return primaryNavigation.practitioner.find(x => x.key === "clients");
   return [...primaryNavigation[role], ...navigationGroups[role].flatMap(g => g.items), ...settingsItems(role), ...(role === "practitioner" ? [item("private-notes","app/private-notes","Private case notes","רשימות פרטיות בתיק")] : [])].find(x => x.path === path);
 }
@@ -106,7 +108,7 @@ export function breadcrumbItems(locale: Locale, role: WorkspaceRole, pathname: s
     return [home,{label:locale==="he"?"אנשים":"People",path:"app/clients"},...(isCaseId(caseId)?[{label:locale==="he"?"התיק הנבחר":"Selected case",path:`app/cases/${caseId}`}]:[]),{label:locale==="he"?"תרגול ביתי":"Home practice",path:"app/practice"},{label:child?.[locale]??(locale==="he"?"הנחיות":"Instructions")}];
   }
   if(role==="practitioner"&&selectedClient&&isCaseId(caseId)){
-    const key=pathname.includes("/app/calendar")?"calendar":pathname.includes("/app/practice")?"practice":pathname.includes("/app/feedback")?"communications":pathname.includes("/app/reports")?"reports":pathname.includes("/app/forms")?"forms":"overview";
+    const key=pathname.includes("/app/calendar")?"calendar":pathname.includes("/app/practice")?"practice":pathname.includes("/app/feedback")?"communications":pathname.includes("/app/reports")?"reports":pathname.includes("/app/forms")?"forms":pathname.includes('/app/resources')?'resources':"overview";
     const child=practitionerContext(pathname,caseId,true).find(item=>item.key===key);
     return [home,{label:locale==="he"?"אנשים":"People",path:"app/clients"},{label:locale==="he"?"התיק הנבחר":"Selected case",path:`app/cases/${caseId}`},{label:child?.[locale]??(locale==="he"?"סקירה":"Overview")}];
   }

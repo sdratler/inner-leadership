@@ -10,6 +10,7 @@ const fetchMock = vi.hoisted(() => vi.fn());
 vi.mock("react", async original => { const actual = await original<typeof import("react")>(); return { ...actual, useEffect: hook.useEffect, useRef: hook.useRef, useState: hook.useState }; });
 vi.mock("../../src/features/identity/client.ts", () => ({ sessionInfo }));
 import { ResourceContext, ResourceReadout, resourceReferenceForInput } from "../../src/features/resources/workspace.tsx";
+import {UnsavedChangesGuard} from '../../src/ui/workspace/draft-guard.tsx';
 
 const caseId = "123e4567-e89b-12d3-a456-426614174000", audienceId = "223e4567-e89b-12d3-a456-426614174000", resourceId = "323e4567-e89b-12d3-a456-426614174000", assignmentId = "423e4567-e89b-12d3-a456-426614174000";
 const tick = async () => { for (let index = 0; index < 16; index++) await Promise.resolve(); };
@@ -28,6 +29,14 @@ function createForm(output: unknown) { const form = all(output, item => item.typ
 beforeEach(() => { hook.reset(); sessionInfo.mockClear(); fetchMock.mockReset(); vi.stubGlobal("fetch", fetchMock); });
 
 it("maps only text and HTTPS links into client create references", () => { expect(resourceReferenceForInput("text", "Synthetic content")).toEqual({ kind: "inline_text", value: "Synthetic content" }); expect(resourceReferenceForInput("link", "https://example.invalid/resource")).toEqual({ kind: "url", value: "https://example.invalid/resource" }); });
+it('preserves unsaved material input until explicit discard and keeps uncertain commands dirty',async()=>{
+ fetchMock.mockImplementation(readPayload());vi.stubGlobal('window',{confirm:vi.fn(()=>false)});
+ let output=await ready();fillCreate(output);output=render();expect(find(output,node=>node.type===UnsavedChangesGuard)?.props.dirty).toBe(true);
+ const cancel=find(output,node=>node.type==='button'&&node.props.children==='Discard material draft');expect(cancel).toBeDefined();(cancel!.props.onClick as ()=>void)();
+ output=render();expect(all(output,node=>node.type==='input')[0]?.props.value).toBe('Synthetic title');
+ vi.stubGlobal('window',{confirm:vi.fn(()=>true)});(find(output,node=>node.type==='button'&&node.props.children==='Discard material draft')!.props.onClick as ()=>void)();
+ expect(find(render(),node=>node.type===UnsavedChangesGuard)?.props.dirty).toBe(false);expect(posts()).toHaveLength(0);
+});
 
 it("submits the operator create payload with the session CSRF token", async () => { fetchMock.mockImplementation(readPayload()); let output = await ready(); fillCreate(output); output = render(); createForm(output)({ preventDefault() {} }); await tick(); expect(posts()).toHaveLength(1); expect(posts()[0]!.url).toBe("/api/resources"); expect(posts()[0]!.init.headers).toMatchObject({ "X-CSRF-Token": "c".repeat(43) }); expect(JSON.parse(String(posts()[0]!.init.body))).toMatchObject({ type: "text", title: "Synthetic title", reference: { kind: "inline_text", value: "Synthetic content" }, downloadable: false, locale: "en" }); });
 
@@ -38,3 +47,12 @@ it("keeps ambiguous create locked after a failed reload", async () => { let read
 it("retries failed completion with the same idempotency key", async () => { const item: ResourceProjection = { assignmentId: asId(assignmentId, "resource_assignment"), resourceId: asId(resourceId, "resource"), title: "Synthetic resource", completed: false, detailsAvailable: true, type: "text", description: "Synthetic", reference: { kind: "inline_text", value: "Synthetic" }, downloadable: false, locale: "en", dueDate: null, displayDate: "2026-09-18", completionEnabled: true, completedByAccountId: null }; fetchMock.mockImplementation((url: string, init?: RequestInit) => init?.method === "POST" ? Promise.resolve(new Response("", { status: 500 })) : readPayload([item])(url, init)); let output = await ready("parent"); const complete = find(output, node => node.type === "button" && node.props.children === "Mark complete")?.props.onClick as () => void; complete(); await tick(); output = render("parent"); (find(output, node => node.type === "button" && node.props.children === "Mark complete")?.props.onClick as () => void)(); await tick(); const writes = posts(); expect(writes).toHaveLength(2); expect(JSON.parse(String(writes[0]!.init.body)).idempotencyKey).toBe(JSON.parse(String(writes[1]!.init.body)).idempotencyKey); });
 
 it("renders title-only rows without injected details and never links storage keys", () => { const titleOnly: ResourceProjection = { assignmentId: asId(assignmentId, "resource_assignment"), resourceId: asId(resourceId, "resource"), title: "Family title", completed: false, detailsAvailable: false }; const privateFile: ResourceProjection = { assignmentId: asId(assignmentId, "resource_assignment"), resourceId: asId(resourceId, "resource"), title: "Private file", completed: false, detailsAvailable: true, type: "pdf", description: "Injected details must not leak", reference: { kind: "storage_key", value: "private/resource.pdf" }, downloadable: false, locale: "en", dueDate: null, displayDate: "2026-09-18", completionEnabled: true, completedByAccountId: null }; const titleView = ResourceReadout({ locale: "en", item: titleOnly }), fileView = ResourceReadout({ locale: "en", item: privateFile }); expect(text(titleView)).toContain("Only the title"); expect(text(titleView)).not.toContain("Injected"); expect(JSON.stringify(fileView)).not.toContain("href"); expect(text(fileView)).toContain("Private file delivery"); });
+it('keeps saved materials before optional authoring and collapses long instruction details without concealing completion',async()=>{
+ const item:ResourceProjection={assignmentId:asId(assignmentId,'resource_assignment'),resourceId:asId(resourceId,'resource'),title:'Synthetic material',completed:true,detailsAvailable:true,type:'text',description:'Synthetic description',reference:{kind:'inline_text',value:'Synthetic long instructions'},downloadable:false,locale:'he',dueDate:null,displayDate:'2026-10-01',completionEnabled:true,completedByAccountId:null};
+ fetchMock.mockImplementation(readPayload([item]));const output=await ready();
+ const labels=all(output,node=>node.type===ResourceReadout);expect(labels).toHaveLength(1);
+ const sections=all(output,node=>node.type==='section');expect(sections[1]?.props['aria-label']).toBe('Assigned materials');
+ const readout=ResourceReadout({locale:'he',item});expect(text(readout)).toContain('הושלם');
+ const details=find(readout,node=>node.type==='details');expect(details).toBeDefined();expect(details?.props.open).toBeUndefined();
+ expect(text(details)).toContain('Synthetic long instructions');expect(posts()).toHaveLength(0);
+});
