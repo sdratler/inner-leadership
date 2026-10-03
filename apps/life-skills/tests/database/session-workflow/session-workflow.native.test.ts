@@ -12,6 +12,9 @@ import type {IdentityConfig} from "../../../src/features/identity/config.ts";
 import {SESSION_COOKIE} from "../../../src/lib/security/session.ts";
 import {systemClock} from "../../../src/features/identity/types.ts";
 import {unseal} from "../../../src/features/identity/crypto.ts";
+import {privateRecordAad,sealPrivateRecord} from "../../../src/features/session-workflow/private-records.ts";
+import {transcriptDigest,cleanWhitespace} from "../../../src/features/session-workflow/transcript.ts";
+import type {Transcript,PrivateAnalysis} from "../../../src/features/session-workflow/types.ts";
 const opened:Fixture[]=[];afterEach(async()=>{await Promise.all(opened.splice(0).map(item=>item.pool.end()));});
 const scopedInput=(f:Fixture)=>({recipient:"DEMO — Synthetic authorized school contact",purpose:"Synthetic agreed classroom support",topic:"Only the agreed grounding practice",authorityBasis:"DEMO — Actual synthetic signed scope, authority checked and no restrictions recorded. Not a legal certificate.",authorityState:"checked" as const,channel:"phone" as const,authorizedByAccountId:f.parent.actor.id,childDiscussionRecorded:true,authorizedAt:f.at(-24),expiresAt:f.at(24)});
 test("the bounded disclosure history rejects its 101st record atomically while replay, reading, use and revocation remain available",async()=>{
@@ -166,8 +169,54 @@ async function httpFixture(){
  const sessions=new IdentitySessions(store,config,systemClock),http=new SessionHttp({config,sessions,limits:new PostgresIdentityRateStore(store),audit:durableAuditSink(store),clock:systemClock},service);
  // Native DB-backed sessions and current roles, not password/browser acceptance.
  const request=(path:string,body?:unknown,token=f.practitioner.token,key=randomUUID(),csrf=true)=>new Request(origin+"/api/sessions"+path,{method:body===undefined?"GET":"POST",headers:{cookie:`${SESSION_COOKIE}=${token}`,...(body===undefined?{}:{origin,"content-type":"application/json","idempotency-key":key,...(csrf?{"x-csrf-token":sessions.csrf(token)}:{})})},...(body===undefined?{}:{body:JSON.stringify(body)})});
- return {f,service,http,request};
+  return {f,service,http,request};
 }
+async function privateReadFixture(){
+ const s=await httpFixture(),sessionId=(await s.service.ensureForAppointment(s.f.practitioner.actor,s.f.first.id,await s.f.seed(s.f.at(-24)))).sessionId,jobId=randomUUID(),scope={workspaceId:s.f.workspaceId,caseId:s.f.first.id,sessionId};
+ const consent=await s.service.recordConsent(s.f.practitioner.actor,sessionId,{signedByAccountId:s.f.parent.actor.id,signedAt:s.f.at(-48),authorityState:"checked",recordingAllowed:true,transcriptionAllowed:true,aiProcessingAllowed:true,childInformed:true,policyVersion:"DEMO-native-read-v1",evidence:"DEMO — Isolated native reader fixture; not provider execution.",expectedVersion:0},randomUUID());
+ const transcript:Transcript={source:"machine_transcript",languages:["en","he"],segments:[{id:"s1",speaker:"constructor",startMs:0,endMs:1000,text:"DEMO —  Private source בלבד"}],durationMs:1000,version:1},contentDigest=transcriptDigest(transcript),sourceDigest="a".repeat(64),completion={sourceDigest,sourceDurationMs:1000,coveredDurationMs:1000,expectedChunks:1,completedChunks:1,providerCompleted:true};
+ const encode=(kind:Parameters<typeof privateRecordAad>[0],body:unknown,version:number|string=1,identity?:string)=>sealPrivateRecord(body,privateRecordAad(kind,scope,version,identity),s.f.keyring);
+ // These exact encrypted rows establish read-path behavior only. They are not
+ // evidence of provider transcription, audio deletion or ordinary password login.
+ await s.f.pool.query("INSERT INTO ls_sessions.recording_jobs(workspace_id,case_id,session_id,id,consent_id,consent_version,source_digest,source_bytes,duration_milliseconds,object_reference_ciphertext,state,audio_state,attempt_id,transcript_complete_verified,completion_receipt_ciphertext,transcript_version,transcript_digest,raw_expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,8,1000,$8,'transcript_saved','delete_pending',$9,true,$10,1,$11,$12)",[scope.workspaceId,scope.caseId,sessionId,jobId,consent.consentId,consent.version,sourceDigest,encode("transcript-completion",{object:"DEMO-local-not-a-storage-object"},1,jobId),randomUUID(),encode("transcript-completion",completion,1,jobId),contentDigest,s.f.at(24)]);
+ await s.f.pool.query("INSERT INTO ls_sessions.transcripts(workspace_id,case_id,session_id,job_id,version,source_ciphertext,cleaned_ciphertext,content_digest,speaker_mapping_ciphertext,source_kind) VALUES($1,$2,$3,$4,1,$5,$6,$7,$8,'machine_transcript')",[scope.workspaceId,scope.caseId,sessionId,jobId,encode("transcript",transcript),encode("cleaned-transcript",cleanWhitespace(transcript)),contentDigest,encode("speakers",{constructor:"DEMO — Saved speaker"})]);
+ const analysis:PrivateAnalysis={schemaVersion:1,locale:"en",transcriptVersion:1,summary:[{text:"DEMO — Private English summary",evidence:[{segmentId:"s1",quote:"Private source"}]}],observations:[],possibleInterpretations:[],nextSessionTopics:[],limitations:["DEMO — Isolated read proof, not clinical validation."]};
+ for(const [locale,revision]of [["en",1],["en",2],["he",1]]as const){const body={...analysis,locale,summary:[{...analysis.summary[0]!,text:locale==="he"?"DEMO — סיכום פרטי בעברית":`DEMO — Private English revision ${revision}`}]};await s.f.pool.query("INSERT INTO ls_sessions.private_analyses(workspace_id,case_id,session_id,transcript_version,locale,revision,body_ciphertext,prompt_version,model_version) VALUES($1,$2,$3,1,$4,$5,$6,'DEMO-prompt-v3','DEMO-model')",[scope.workspaceId,scope.caseId,sessionId,locale,revision,encode("analysis",body,`${locale}:${revision}`)]);}
+ return {...s,scope,sessionId,jobId,transcript,encode};
+}
+test("native protected detail returns exact durable transcript/cleaned/speakers and latest requested analysis without writes",async()=>{
+ const s=await privateReadFixture(),path=`/${s.sessionId}`;
+ const snapshot=async()=>({transcripts:(await s.f.pool.query('SELECT * FROM ls_sessions.transcripts WHERE workspace_id=$1 ORDER BY version',[s.f.workspaceId])).rows,jobs:(await s.f.pool.query('SELECT * FROM ls_sessions.recording_jobs WHERE workspace_id=$1 ORDER BY id',[s.f.workspaceId])).rows,analysis:(await s.f.pool.query('SELECT * FROM ls_sessions.private_analyses WHERE workspace_id=$1 ORDER BY locale,revision',[s.f.workspaceId])).rows});
+ const before=await snapshot();
+ for(const [query,locale,revision]of [["","en",2],["?analysisLocale=en","en",2],["?analysisLocale=he","he",1]]as const){const response=await s.http.handle(s.request(path+query),[s.sessionId]);expect(response.status).toBe(200);expect(response.headers.get("cache-control")).toBe("private, no-store");const saved=(await response.json()).data;expect(JSON.stringify(saved.transcript)).toBe(JSON.stringify(s.transcript));expect(saved.privateRecords).toMatchObject({analysisLocale:locale,transcript:{completeVerified:true,version:1,speakers:{constructor:"DEMO — Saved speaker"},cleaned:[{sourceSegmentId:"s1",text:"DEMO — Private source בלבד"}]},analysis:{locale,revision,transcriptVersion:1,promptVersion:"DEMO-prompt-v3",modelVersion:"DEMO-model"}});expect(saved.analysis.locale).toBe(locale);for(const field of ["Ciphertext","object_reference","providerRequestId","completionReceiptCiphertext"])expect(JSON.stringify(saved)).not.toContain(field);expect(saved.processing.audioState).toBe("delete_pending");}
+ expect(await snapshot()).toEqual(before);
+ await s.f.pool.query("DELETE FROM ls_sessions.private_analyses WHERE workspace_id=$1 AND locale='he'",[s.f.workspaceId]);const missing=await s.service.detail(s.f.practitioner.actor,s.sessionId,"he");expect(missing.analysis).toBeNull();expect(missing.privateRecords?.analysis).toBeNull();expect(missing.transcript).toEqual(s.transcript);
+ for(const table of ['publications','publication_events','processing_attempts'])expect((await s.f.pool.query(`SELECT count(*)::integer AS n FROM ls_sessions.${table} WHERE workspace_id=$1`,[s.f.workspaceId])).rows[0].n).toBe(0);
+},30_000);
+test("native private reader rejects query tricks and fresh customer/cross-family/revoked-role access without leaking source",async()=>{
+ const s=await privateReadFixture(),path=`/${s.sessionId}`;
+ for(const query of ['?analysisLocale=fr','?analysisLocale=','?analysisLocale=he&analysisLocale=en','?analysisLocale=en&extra=1','?caseId='+s.f.second.id])expect((await s.http.handle(s.request(path+query),[s.sessionId])).status).toBe(400);
+ for(const role of ['parent','child','adult_client']){await s.f.pool.query('UPDATE ls_identity.accounts SET role=$2 WHERE id=$1',[s.f.parent.actor.id,role]);const response=await s.http.handle(s.request(path+'?analysisLocale=he',undefined,s.f.parent.token),[s.sessionId]);expect(response.status).toBe(404);expect(await response.text()).not.toContain('Private source');}
+ const otherSession=(await s.service.ensureForAppointment(s.f.practitioner.actor,s.f.second.id,await s.f.seed(s.f.at(-48),s.f.second))).sessionId;expect((await s.service.detail(s.f.practitioner.actor,otherSession)).transcript).toBeNull();
+ await s.f.pool.query("UPDATE ls_identity.accounts SET role='parent' WHERE id=$1",[s.f.practitioner.actor.id]);expect((await s.http.handle(s.request(path),[s.sessionId])).status).toBe(404);
+ await s.f.pool.query("UPDATE ls_identity.accounts SET role='practitioner' WHERE id=$1",[s.f.practitioner.actor.id]);await s.f.pool.query('UPDATE ls_identity.sessions SET revoked_at=clock_timestamp() WHERE token_digest=$1',[s.f.practitioner.actor.sessionDigest]);expect((await s.http.handle(s.request(path),[s.sessionId])).status).toBe(401);
+},30_000);
+test("native damaged/incomplete source is unavailable, never empty or a mismatched analysis",async()=>{
+ const s=await privateReadFixture(),path=`/${s.sessionId}`,request=()=>s.http.handle(s.request(path),[s.sessionId]);
+ const original=(await s.f.pool.query('SELECT * FROM ls_sessions.transcripts WHERE workspace_id=$1',[s.f.workspaceId])).rows[0];
+ await s.f.pool.query('UPDATE ls_sessions.transcripts SET source_ciphertext=$2 WHERE workspace_id=$1',[s.f.workspaceId,s.encode("transcript",{...s.transcript,durationMs:2000})]);expect((await request()).status).toBe(503);
+ await s.f.pool.query('UPDATE ls_sessions.transcripts SET source_ciphertext=$2 WHERE workspace_id=$1',[s.f.workspaceId,original.source_ciphertext]);expect((await request()).status).toBe(200);
+ await s.f.pool.query('UPDATE ls_sessions.recording_jobs SET transcript_complete_verified=false WHERE workspace_id=$1',[s.f.workspaceId]);expect((await request()).status).toBe(503);
+ await s.f.pool.query('UPDATE ls_sessions.recording_jobs SET transcript_complete_verified=true WHERE workspace_id=$1',[s.f.workspaceId]);expect((await request()).status).toBe(200);
+ await s.f.pool.query('UPDATE ls_sessions.transcripts SET cleaned_ciphertext=$2 WHERE workspace_id=$1',[s.f.workspaceId,s.encode("cleaned-transcript",[])]);expect((await request()).status).toBe(503);
+ await s.f.pool.query('UPDATE ls_sessions.transcripts SET cleaned_ciphertext=$2 WHERE workspace_id=$1',[s.f.workspaceId,original.cleaned_ciphertext]);expect((await request()).status).toBe(200);
+ await s.f.pool.query("UPDATE ls_sessions.private_analyses SET body_ciphertext=$2 WHERE workspace_id=$1 AND locale='en' AND revision=2",[s.f.workspaceId,'not-a-ciphertext']);expect((await request()).status).toBe(503);expect((await s.http.handle(s.request(path+'?analysisLocale=he'),[s.sessionId])).status).toBe(200);
+},30_000);
+test("later pending recording does not hide the previous verified transcript or imply deleted audio",async()=>{
+ const s=await privateReadFixture(),job=(await s.f.pool.query('SELECT * FROM ls_sessions.recording_jobs WHERE workspace_id=$1',[s.f.workspaceId])).rows[0];
+ await s.f.pool.query("INSERT INTO ls_sessions.recording_jobs(workspace_id,case_id,session_id,id,consent_id,consent_version,source_digest,source_bytes,duration_milliseconds,object_reference_ciphertext,state,audio_state,attempt_id,created_at,raw_expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,8,1000,$8,'queued','temporary',$9,$10,$11)",[s.f.workspaceId,s.scope.caseId,s.sessionId,randomUUID(),job.consent_id,job.consent_version,'b'.repeat(64),job.object_reference_ciphertext,randomUUID(),s.f.at(1),s.f.at(25)]);
+ const detail=await s.service.detail(s.f.practitioner.actor,s.sessionId);expect(detail.transcript).toEqual(s.transcript);expect(detail.privateRecords?.analysis?.revision).toBe(2);expect(detail.processing).toMatchObject({state:'queued',audioState:'temporary'});
+},30_000);
 test("exact Calendar appointment is filtered before the bounded session list without granting or creating a record",async()=>{
  const s=await httpFixture();
  // Extend only this disposable fixture so its genuine Calendar constraint

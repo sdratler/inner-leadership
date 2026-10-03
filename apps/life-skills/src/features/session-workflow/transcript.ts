@@ -27,17 +27,20 @@ export function cleanWhitespace(transcript: Transcript): readonly CleanSegment[]
 }
 export function validateCleanSegments(transcript: Transcript, cleaned: readonly CleanSegment[]): void {
     invariant(cleaned.length === transcript.segments.length, "CLEAN_TRANSCRIPT_COVERAGE");
-    const seen = new Set<string>();
+    const seen = new Set<string>(), sourceIds = new Set(transcript.segments.map(segment => segment.id));
+    let chars = 0;
     for (const s of cleaned) {
-        invariant(transcript.segments.some(v => v.id === s.sourceSegmentId) && !seen.has(s.sourceSegmentId) && nonempty(s.text, 16000), "CLEAN_TRANSCRIPT_REFERENCE");
+        invariant(sourceIds.has(s.sourceSegmentId) && !seen.has(s.sourceSegmentId) && nonempty(s.text, 16000), "CLEAN_TRANSCRIPT_REFERENCE");
         seen.add(s.sourceSegmentId);
+        chars += s.text.length;
     }
+    invariant(chars <= MAX_TRANSCRIPT_CHARS, "CLEAN_TRANSCRIPT_SIZE");
 }
 export function speakerNames(transcript: Transcript, assignments: Readonly<Record<string, string>>) {
     const speakers = new Set(transcript.segments.map(s => s.speaker));
     for (const [id, name] of Object.entries(assignments))
         invariant(speakers.has(id) && nonempty(name, 100), "SPEAKER_MAPPING");
-    return transcript.segments.map(s => ({ ...s, displaySpeaker: assignments[s.speaker] ?? s.speaker }));
+    return transcript.segments.map(s => ({ ...s, displaySpeaker: Object.hasOwn(assignments, s.speaker) ? assignments[s.speaker]! : s.speaker }));
 }
 export function validateAnalysis(analysis: PrivateAnalysis, transcript: Transcript): void {
     invariant(analysis.schemaVersion === 1 && analysis.transcriptVersion === transcript.version && ["en", "he"].includes(analysis.locale), "ANALYSIS_VERSION");

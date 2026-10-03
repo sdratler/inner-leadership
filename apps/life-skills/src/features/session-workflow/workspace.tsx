@@ -32,12 +32,12 @@ export function SessionListWorkspace({locale,caseId,selectedAppointmentId,naviga
 }
 
 export function SessionDetailWorkspace({locale,sessionId,caseId,navigationContext={}}:{locale:Locale;sessionId:string;caseId?:string;navigationContext?:WorkspaceContext}){
- const [model,setModel]=useState<SessionDetail|null>(null),[error,setError]=useState(false),[revision,setRevision]=useState(0),he=locale==="he";
- useEffect(()=>{const controller=new AbortController();queueMicrotask(()=>{if(controller.signal.aborted)return;void sessionRead<SessionDetail>(`/${sessionId}`,controller.signal).then(value=>{if(controller.signal.aborted)return;if(value.sessionId!==sessionId||caseId&&value.caseId!==caseId){setModel(null);setError(true);return;}setModel(value);setError(false);}).catch(reason=>{if(controller.signal.aborted)return;if(reason instanceof Error&&["UNAUTHENTICATED","FORBIDDEN","NOT_FOUND"].includes(reason.message))setModel(null);setError(true);});});return()=>controller.abort();},[sessionId,caseId,revision]);
+ const [model,setModel]=useState<SessionDetail|null>(null),[error,setError]=useState(false),[revision,setRevision]=useState(0),[analysisLocale,setAnalysisLocale]=useState<Locale>("en"),he=locale==="he";
+ useEffect(()=>{const controller=new AbortController();queueMicrotask(()=>{if(controller.signal.aborted)return;void sessionRead<SessionDetail>(`/${sessionId}?analysisLocale=${analysisLocale}`,controller.signal).then(value=>{if(controller.signal.aborted)return;if(value.sessionId!==sessionId||caseId&&value.caseId!==caseId||value.privateRecords?.analysisLocale!==analysisLocale){setModel(null);setError(true);return;}setModel(value);setError(false);}).catch(reason=>{if(controller.signal.aborted)return;if(reason instanceof Error&&["UNAUTHENTICATED","FORBIDDEN","NOT_FOUND"].includes(reason.message))setModel(null);setError(true);});});return()=>controller.abort();},[sessionId,caseId,revision,analysisLocale]);
  const actions=useMemo<SessionDeskActions>(()=>({
   async upload(){throw new Error("SESSION_PROVIDER_NOT_CONFIGURED");},
   async refresh(){setRevision(value=>value+1);},
-  saveRecap:sessionCommand(`/${sessionId}/recap`),speakers:sessionCommand(`/${sessionId}/speakers`),metrics:sessionCommand(`/${sessionId}/observations`),share:sessionCommand(`/${sessionId}/share`),selectAnalysisLanguage(){setRevision(value=>value+1);},
+  saveRecap:sessionCommand(`/${sessionId}/recap`),speakers:sessionCommand(`/${sessionId}/speakers`),metrics:sessionCommand(`/${sessionId}/observations`),share:sessionCommand(`/${sessionId}/share`),selectAnalysisLanguage(value){setAnalysisLocale(value);},
  }),[sessionId]);
  const retry=<div role="alert"><p>{he?"לא ניתן לאשר מחדש את רשומת המפגש. קלט שלא נשמר נשאר כאן כאשר הגישה עדיין מורשית.":"The session record could not be confirmed again. Unsaved input stays here when access is still authorized."}</p><button className="lsw-button" type="button" onClick={()=>setRevision(value=>value+1)}>{he?"ניסיון קריאה חוזר":"Retry this read"}</button></div>;
  if(error&&!model)return <main className="lsw-main">{retry}</main>;
