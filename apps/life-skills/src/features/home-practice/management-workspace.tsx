@@ -108,6 +108,7 @@ function ManagementEditor({ locale, kind, caseId, initialAudienceId }: { locale:
       </li>)}</ul> : <ul className="lsw-card-list">{(kind === "goals" ? data.goals : data.commitments).map(row => <li className="lsw-card" key={row.id}>{row.title}</li>)}</ul>}
       {!(kind === "home-practice" ? data.practice.items : kind === "goals" ? data.goals : data.commitments).length && <p>{t.empty}</p>}
       {kind === "home-practice" && data.practice.hasMore && <p role="status">{t.bounded}</p>}
+      {(data.goals.length === 100 || data.commitments.length === 100) && <p role="status">{locale === "he" ? "במטרות ובמחויבויות מוצגים עד 100 הפריטים האחרונים בכל קהל. הרשומות הקודמות נשמרו." : "Goals and commitments show up to 100 newest items per audience. Older records are retained."}</p>}
       {selected && <details className="lsw-details" open={editorOpen} onToggle={event => setEditorOpen(event.currentTarget.open)}><summary>{draft.revision ? t.revision : t.create}</summary>
          <PracticeAuthoringForm locale={locale} kind={kind} draft={draft} data={data} locked={locked||rangeDirty} busy={busy} onChange={setDraft} onSave={save} onCancel={() => { if (!draftDirty || window.confirm(t.discard)) clear(); }} />
       </details>}
