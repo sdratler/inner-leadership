@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { authoringReadback, practiceAudienceHref, readPracticeManagement, savePracticeAuthoring, type PracticeAuthoringCommand, type PracticeManagementData } from "../../../src/features/home-practice/management-client.ts";
+import { authoringReadback, managementAudiences, practiceAudienceHref, readPracticeManagement, savePracticeAuthoring, type PracticeAuthoringCommand, type PracticeManagementData } from "../../../src/features/home-practice/management-client.ts";
 import { IdentityClientError } from "../../../src/features/identity/client.ts";
 import { asId } from "../../../src/lib/ids.ts";
 const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -7,6 +7,26 @@ const scope = { caseId: uuid(1), audienceId: uuid(2) };
 const command: PracticeAuthoringCommand = { action: "create_draft", ...scope, instructions: "Retained instruction", startsOn: "2026-10-02", endsOn: null, templateKey: "W01", templateVersion: "manual-1" };
 const data: PracticeManagementData = { practice: { hasMore: false, items: [{ workspaceId: asId(uuid(3), "workspace"), caseId: asId(scope.caseId, "case"), audienceId: asId(scope.audienceId, "audience"), assignmentId: asId(uuid(4), "practice_assignment"), versionId: asId(uuid(5), "practice_version"), version: 1, goalId: null, commitmentId: null, templateKey: "W01", templateVersion: "manual-1", instructions: command.instructions, startsOn: command.startsOn, endsOn: null, state: "draft", active: false, publishedAt: null, immutableSnapshotDigest: null }] }, goals: [], commitments: [] };
 afterEach(() => vi.unstubAllGlobals());
+test("authoring discovers unpublished audiences only through the owner management view", async () => {
+  const fetch = vi.fn(async (path: string) => { expect(path).toContain("/api/identity/audiences?"); return Response.json({ ok: true, data: [{ id: scope.audienceId, published: false, visibility: "private" }] }); });
+  vi.stubGlobal("fetch", fetch);
+  expect(await managementAudiences(scope.caseId, new AbortController().signal)).toEqual([{ id: scope.audienceId, published: false, visibility: "private" }]);
+  const url = new URL(String(fetch.mock.calls[0]?.[0]), "https://synthetic.example.invalid");
+  expect(url.searchParams.get("view")).toBe("management");
+  expect(url.searchParams.get("caseId")).toBe(scope.caseId);
+});
+test("valid uppercase UUID bookmarks read the canonical authorized scope", async () => {
+  const caseId = "abcdefab-abcd-4abc-8abc-abcdefabcdef", audienceId = "fedcbafe-fedc-4fed-8fed-fedcbafedcba", paths: string[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (path: string) => {
+    paths.push(path);
+    return Response.json({ ok: true, data: path.includes("home-practice") ? { ...data.practice, items: [{ ...data.practice.items[0], caseId, audienceId }] } : [] });
+  }));
+  await expect(readPracticeManagement(caseId.toUpperCase(), audienceId.toUpperCase(), new AbortController().signal)).resolves.toMatchObject({ practice: { items: [{ caseId, audienceId }] } });
+  for (const path of paths) {
+    const query = new URL(path, "https://synthetic.example.invalid").searchParams;
+    expect(query.get("caseId")).toBe(caseId); expect(query.get("audienceId")).toBe(audienceId);
+  }
+});
 test.each(["en", "he"])("%s audience navigation keeps the current section and replaces stale or repeated scope keys", locale => {
   const path = `/${locale}/app/practice`;
   const next = practiceAudienceHref(path, `?section=commitments&context=client&caseId=${uuid(9)}&audienceId=${uuid(9)}&audienceId=${uuid(8)}`, scope.caseId, scope.audienceId);
