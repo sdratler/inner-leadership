@@ -105,7 +105,7 @@ export class SessionDatabaseService {
       if(!stored)throw new AppError("NOT_FOUND");const scope={workspaceId:actor.workspaceId,caseId:row.caseId,sessionId},saved=readPrivateTranscript(stored,scope,this.ring),recordedAt=this.clock.now().toISOString();
       const history=appendSpeakerCorrection(saved.metadata.speakerHistory,saved.transcript,input,actor.id,recordedAt);
       // Only the versioned mapping changes. Source, cleaned text, digest, job and analysis remain untouched.
-      if(Buffer.byteLength(JSON.stringify(history),"utf8")>MAX_SPEAKER_RECORD_BYTES)throw new AppError("UNAVAILABLE");
+      if(Buffer.byteLength(JSON.stringify(history),"utf8")>MAX_SPEAKER_RECORD_BYTES)throw new AppError("PAYLOAD_TOO_LARGE");
       const encrypted=sealPrivateRecord(history,privateRecordAad("speakers",scope,stored.version),this.ring);
       await tx.query('UPDATE ls_sessions.transcripts SET speaker_mapping_ciphertext=$5 WHERE workspace_id=$1 AND case_id=$2 AND session_id=$3 AND version=$4',[actor.workspaceId,row.caseId,sessionId,stored.version,encrypted]);
       return {version:stored.version,revision:history.revision,recordedAt};
