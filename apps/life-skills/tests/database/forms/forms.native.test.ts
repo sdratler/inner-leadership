@@ -42,6 +42,37 @@ test("FormsService native flow enforces authorization and exact idempotent repla
   const other=await fixture();opened.push(other);await expect(forms.listAssignments(other.practitioner.actor,f.first.id)).rejects.toMatchObject({code:'NOT_FOUND'});
 });
 
+test("targeted native assignment readback survives case-list overflow without widening role or case access", async () => {
+  const f=await fixture();opened.push(f);
+  const config:IdentityConfig={enabled:true,origin:'https://synthetic.example.invalid',workspaceId:f.workspaceId,csrfKey:randomBytes(32),lookupKey:randomBytes(32),rateLimitKey:randomUUID(),keyring:f.keyring,sessionSeconds:3600};
+  const store=poolStore(f.pool),forms=new FormsService(store,config,systemClock);
+  const template=await forms.createTemplate(f.practitioner.actor,{key:'SYNTHETIC_OVERFLOW',version:1,locale:'en',targetRole:'parent',definition,provenance:'native-test',published:true},randomUUID());
+  const original=await forms.assign(f.practitioner.actor,{caseId:f.first.id,templateId:template.templateId,assignedAccountId:f.parent.actor.id,dueDate:null,postSubmissionAudienceId:null},randomUUID());
+  const seed=async(from:number,to:number)=>f.pool.query(`INSERT INTO ls_forms.form_assignments(id,workspace_id,case_id,template_id,assigned_account_id,state,assigned_by_account_id,assigned_at)
+    SELECT gen_random_uuid(),workspace_id,case_id,template_id,assigned_account_id,'assigned',assigned_by_account_id,assigned_at+n*interval '1 millisecond'
+    FROM ls_forms.form_assignments CROSS JOIN generate_series($2::int,$3::int) n WHERE workspace_id=$1 AND id=$4`,[f.workspaceId,from,to,original.assignmentId]);
+  await seed(1,99);expect((await forms.listAssignments(f.parent.actor,f.first.id)).at(-1)?.id).toBe(original.assignmentId);
+  await seed(100,100);const listed=await forms.listAssignments(f.parent.actor,f.first.id);expect(listed).toHaveLength(100);expect(listed.some(row=>row.id===original.assignmentId)).toBe(false);
+  const key=randomUUID(),answers={summary:'Synthetic retained answer',done:false};
+  const submitted=await forms.submit(f.parent.actor,{assignmentId:original.assignmentId,answers,idempotencyKey:key},randomUUID());
+  const targeted=await forms.listAssignments(f.parent.actor,f.first.id,original.assignmentId);
+  expect(targeted).toHaveLength(1);expect(targeted[0]).toMatchObject({id:original.assignmentId,state:'submitted',submissionId:submitted.submissionId,submissionAuthorAccountId:f.parent.actor.id});
+  expect(await forms.listAssignments(f.practitioner.actor,f.first.id,original.assignmentId)).toMatchObject([{id:original.assignmentId,submissionId:submitted.submissionId}]);
+  expect(targeted[0]).not.toHaveProperty('answers');expect(JSON.stringify(targeted)).not.toContain('Synthetic retained answer');
+  expect(await forms.submit(f.parent.actor,{assignmentId:original.assignmentId,answers,idempotencyKey:key},randomUUID())).toMatchObject({submissionId:submitted.submissionId,duplicate:true});
+  expect(await forms.listAssignments(f.parent.actor,f.second.id,original.assignmentId)).toEqual([]);
+  await expect(forms.listAssignments(f.outsider.actor,f.first.id,original.assignmentId)).rejects.toMatchObject({code:'NOT_FOUND'});
+  const sessions=new IdentitySessions(store,config,systemClock),http=new FormsHttp({config,clock:systemClock,sessions,limits:new PostgresIdentityRateStore(store),audit:durableAuditSink(store)},forms);
+  const path=`/api/forms/assignments?caseId=${f.first.id}&assignmentId=${original.assignmentId}`;
+  const request=(suffix='',token:string|null=f.parent.token)=>http.handle(new Request('http://127.0.0.1:8080'+path+suffix,{headers:{'x-forwarded-host':'synthetic.example.invalid','x-forwarded-proto':'https',...(token?{cookie:`__Host-ls-session=${token}`}:{})}}));
+  const read=await request();expect(read.status).toBe(200);expect(read.headers.get('cache-control')).toBe('private, no-store');expect((await read.json()).data).toMatchObject([{id:original.assignmentId,submissionId:submitted.submissionId}]);
+  expect((await request('',f.practitioner.token)).status).toBe(200);
+  expect((await request('',null)).status).toBe(401);expect((await request('',f.outsider.token)).status).toBe(404);
+  expect((await request('&assignmentId='+original.assignmentId)).status).toBe(400);expect((await request('&unexpected=1')).status).toBe(400);
+  await f.pool.query('UPDATE ls_cases.case_guardians SET revoked_at=now() WHERE workspace_id=$1 AND case_id=$2 AND account_id=$3',[f.workspaceId,f.first.id,f.parent.actor.id]);
+  await expect(forms.listAssignments(f.parent.actor,f.first.id,original.assignmentId)).rejects.toMatchObject({code:'NOT_FOUND'});
+});
+
 test("native case consent history reads every version without granting customer access or changing records", async () => {
   const f=await fixture();opened.push(f);
   const config:IdentityConfig={enabled:true,origin:'https://synthetic.example.invalid',workspaceId:f.workspaceId,csrfKey:randomBytes(32),lookupKey:randomBytes(32),rateLimitKey:randomUUID(),keyring:f.keyring,sessionSeconds:3600};
