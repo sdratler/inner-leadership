@@ -1,8 +1,9 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { IdentityClientError } from "../identity/client.ts";
 import { UnsavedChangesGuard } from "../../ui/workspace/draft-guard.tsx";
-import { authoringReadback, managementAudiences, readPracticeManagement, savePracticeAuthoring, type PracticeAudience, type PracticeAuthoringCommand, type PracticeManagementData } from "./management-client.ts";
+import { authoringReadback, managementAudiences, practiceAudienceHref, readPracticeManagement, savePracticeAuthoring, type PracticeAudience, type PracticeAuthoringCommand, type PracticeManagementData } from "./management-client.ts";
 import type { ManagedPracticeVersion } from "./types.ts";
 
 const words = {
@@ -20,6 +21,7 @@ export function PracticeManagementWorkspace({ locale, kind, caseId, audienceId }
   return <ManagementEditor key={`${locale}:${kind}:${caseId}:${audienceId ?? ""}`} locale={locale} kind={kind} caseId={caseId} initialAudienceId={audienceId} />;
 }
 function ManagementEditor({ locale, kind, caseId, initialAudienceId }: { locale: "en" | "he"; kind: Kind; caseId: string; initialAudienceId?: string | undefined }) {
+  const router = useRouter();
   const t = words[locale], [selected, setSelected] = useState(initialAudienceId ?? ""), [loaded, setLoaded] = useState<{ id: string; audiences: PracticeAudience[]; data: PracticeManagementData } | null>(null);
   const [draft, setDraft] = useState<Draft>(blank), [loading, setLoading] = useState(true), [busy, setBusy] = useState(false), [notice, setNotice] = useState(""), [error, setError] = useState("");
   const [attempt, setAttempt] = useState<{ command: PracticeAuthoringCommand; receipt: Record<string, unknown> | null } | null>(null), [checked, setChecked] = useState(false), [editorOpen, setEditorOpen] = useState(false);
@@ -37,6 +39,14 @@ function ManagementEditor({ locale, kind, caseId, initialAudienceId }: { locale:
     catch { if (mounted.current && generation.current === current) { setLoaded(null); setError(t.loadFailed); } }
     finally { if (mounted.current && generation.current === current) setLoading(false); }
   }, [load, selected, t.loadFailed]);
+  useEffect(() => {
+    if (!selected || loaded?.id !== selected) return;
+    // Resolve a missing initial audience only after the authorized read. Native
+    // page navigation then gives the shell, language switch and Back/reload the
+    // same context; it never grants access or changes saved records.
+    const next = practiceAudienceHref(window.location.pathname, window.location.search, caseId, selected);
+    if (next !== window.location.pathname + window.location.search) router.replace(next, { scroll: false });
+  }, [caseId, selected, loaded, router]);
   useEffect(() => { mounted.current = true; const controller = new AbortController(), current = ++generation.current;
     void load(selected, controller.signal).then(result => { if (!controller.signal.aborted && current === generation.current) { setLoaded(result); setSelected(result.id); setLoading(false); } }).catch(() => { if (!controller.signal.aborted && current === generation.current) { setLoaded(null); setLoading(false); setError(t.loadFailed); } });
     return () => { mounted.current = false; generation.current += 1; controller.abort(); };
@@ -76,7 +86,12 @@ function ManagementEditor({ locale, kind, caseId, initialAudienceId }: { locale:
     void run(command);
   };
   return <div className="lsw-stack lsw-practice-management"><UnsavedChangesGuard dirty={dirty || attempt !== null} message={t.dirty} />
-    {loaded && <label className="lsw-field">{t.audience}<select aria-label={t.audience} disabled={locked} value={selected} onChange={event => { if (dirty && !window.confirm(t.discard)) return; clear(); setLoaded(null); setLoading(true); setSelected(event.target.value); }}>
+    {loaded && <label className="lsw-field">{t.audience}<select aria-label={t.audience} disabled={locked} value={selected} onChange={event => {
+      const target = event.target.value;
+      if (locked || target === selected || !loaded.audiences.some(row => row.id === target) || dirty && !window.confirm(t.discard)) return;
+      const next = practiceAudienceHref(window.location.pathname, window.location.search, caseId, target);
+      clear(); setLoaded(null); setLoading(true); setSelected(target); router.push(next, { scroll: false });
+    }}>
       {loaded.audiences.map((row, index) => <option key={row.id} value={row.id}>{index + 1} · {row.visibility === "private" ? t.private : row.visibility === "family_full" ? t.full : t.limited}{row.published ? "" : " · " + t.unpublished}</option>)}
     </select></label>}
     {loading && <p role="status">{t.loading}</p>}{error && <div role="alert"><p>{error}</p>{attempt ? <><button type="button" disabled={busy} onClick={() => void check()}>{t.check}</button>{checked && <button type="button" disabled={busy} onClick={() => { if (window.confirm(t.uncertainDiscard)) { clear(); setError(""); } }}>{t.reviewed}</button>}</> : <button type="button" disabled={busy || loading} onClick={() => void refresh()}>{t.retry}</button>}</div>}
