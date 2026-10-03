@@ -8,6 +8,8 @@ import {ContactCutoverStore,type CutoverEvidence} from "../../../src/features/co
 import {OperationalNativeCrmStore} from "../../../src/features/contact-ops/server/operational-store.ts";
 import {AcquisitionDecisionStore} from "../../../src/features/contact-ops/server/acquisition-decisions.ts";
 import {AcquisitionCandidateStore} from "../../../src/features/contact-ops/server/acquisition-store.ts";
+import {inboundInquirySchema} from "../../../src/features/contact-ops/core/inbound.ts";
+import {privateDigest} from "../../../src/features/contact-ops/server/digests.ts";
 import type {AcquisitionDecision} from "../../../src/features/contact-ops/core/acquisition.ts";
 const fixtures:Fixture[]=[];afterAll(async()=>{for(const f of fixtures)await f.pool.end();});
 const key="synthetic-acquisition-integrity-only";
@@ -220,6 +222,29 @@ test("the bounded review budget never rolls back a new durable receipt or candid
  expect(await count("ls_contact_ops.message_receipts")).toBe(1002);
  expect(await count("ls_contact_ops.inbound_activity_candidates")).toBe(1002);
  expect((await decisions.list(actor,3,{page:1,search:""})).total).toBe(1);
+},60000);
+
+test("latest person/channel projection is bounded by contact capacity, not 1001 historical decisions",async()=>{
+ const {f,db,actor,crm,decisions,contacts,count}=await setup(),candidates=new AcquisitionCandidateStore(db,f.keyring,key);
+ const person=await crm.createContact(actor,{name:"Synthetic history contact",phone:inquiry.fromNumber,language:"en",source:"Owner entered",notes:"Preserve historical note",nextAction:"Keep historical action",dueDate:"2026-10-05"},randomUUID(),3);
+ let firstOperation:string|undefined;
+ for(let i=0;i<1001;i++){
+  const message=privateDigest({domain:"synthetic-history-message",i},key),binding="a".repeat(64),thread=privateDigest({domain:"synthetic-history-thread",i},key);
+  const id=await db.transaction(async tx=>{
+   await candidates.captureInTransaction(tx,f.workspaceId,inboundInquirySchema.parse({...inquiry,providerEventId:"history-event-"+i,providerMessageId:"history-message-"+i,providerThreadId:"history-thread-"+i}),
+    {binding,message,thread,messageDigest:privateDigest({domain:"synthetic-history-payload",i},key),sender:privateDigest({domain:"contact-endpoint-v1",workspace:f.workspaceId,phone:inquiry.fromNumber},key)});
+   return (await tx.query<{id:string}>("SELECT id FROM ls_contact_ops.inbound_activity_candidates WHERE workspace_id=$1 AND provider_binding_id=$2 AND provider_message_key=$3",[f.workspaceId,binding,message]))[0]!.id;
+  });
+  const operationId=randomUUID();firstOperation??=operationId;
+  await decisions.decide(actor,{action:"match",candidateId:id,operationId,expectedEpoch:3,personId:person.personId,expectedVersion:1});
+ }
+ expect(await count("ls_contact_ops.lead_promotion_operations")).toBe(1001);expect(await count("ls_contact_ops.acquisition_projection_status")).toBe(2002);
+ // Controlled persisted status fixture, not a claim of actual provider delivery.
+ await f.pool.query("UPDATE ls_contact_ops.acquisition_projection_status SET state='applied',reason='provider_applied',updated_at='2000-01-01T00:00:00Z' WHERE workspace_id=$1 AND operation_id=$2",[f.workspaceId,firstOperation]);
+ const rows=await contacts();expect(rows.total).toBe(1);
+ expect(rows.items[0]).toMatchObject({personId:person.personId,notes:"Preserve historical note",nextAction:"Keep historical action",version:1});
+ expect(rows.items[0]!.acquisitionProjections).toHaveLength(2);expect(rows.items[0]!.acquisitionProjections!.every(p=>p.state==="pending"&&p.reason==="provider_not_verified")).toBe(true);
+ expect((await decisions.list(actor,3,{page:1,search:""})).total).toBe(0);
 },60000);
 
 test("new acquisition tables enforce ciphertext, workspace foreign keys and public permission denials",async()=>{

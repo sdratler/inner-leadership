@@ -309,13 +309,16 @@ export class NativeContactDirectory {
     }
    }
    if(rows.length){
-    const projections=await tx.query<{personId:string;channel:string;state:string;reason:string;updatedAt:Date}>(`SELECT
+    // Bound the latest two channel results per authorized person, not the
+    // immutable lifetime decision history. Deduplicate before applying the cap.
+    const projectionBudget=rows.length*2;
+    const projections=await tx.query<{personId:string;channel:string;state:string;reason:string;updatedAt:Date}>(`SELECT DISTINCT ON(d.person_id,p.channel)
      d.person_id AS "personId",p.channel,p.state,p.reason,p.updated_at AS "updatedAt"
      FROM ls_contact_ops.lead_promotion_operations d JOIN ls_contact_ops.acquisition_projection_status p
       ON p.workspace_id=d.workspace_id AND p.operation_id=d.operation_id
      WHERE d.workspace_id=$1 AND d.person_id IN(SELECT value::uuid FROM jsonb_array_elements_text($2::jsonb))
-     ORDER BY d.person_id,p.channel,p.updated_at DESC,d.operation_id LIMIT 2001`,[actor.workspaceId,JSON.stringify(rows.map(row=>row.personId))]);
-    if(projections.length>2000)throw new AppError("UNAVAILABLE");
+     ORDER BY d.person_id,p.channel,p.updated_at DESC,d.operation_id LIMIT $3`,[actor.workspaceId,JSON.stringify(rows.map(row=>row.personId)),projectionBudget+1]);
+    if(projections.length>projectionBudget)throw new AppError("UNAVAILABLE");
     for(const projection of projections){const row=byPerson.get(projection.personId);
      if(!row||!["google_contacts","whatsapp"].includes(projection.channel)||!projectionReasons.has(projection.state)||
       projectionReasons.get(projection.state)!==projection.reason)throw new AppError("UNAVAILABLE");
