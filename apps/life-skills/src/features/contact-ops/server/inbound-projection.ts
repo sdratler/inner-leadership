@@ -15,6 +15,8 @@ import {crmProfileAad,crmProfileSchema,type CrmProfile} from "./native-store.ts"
 import {digest,privateDigest} from "./digests.ts";
 import {readCutoverState,cutoverStateSchema,cutoverStateAad} from "./cutover-state.ts";
 import {contactSuppressed} from "../../prospects/native-edit.ts";
+import {qualifiedNewInbound} from "../core/acquisition.ts";
+import {AcquisitionCandidateStore} from "./acquisition-store.ts";
 
 const key=z.string().regex(/^[a-f0-9]{64}$/);
 const receiptKeys=z.object({binding:key,event:key,message:key,thread:key,sender:key,payloadDigest:key,messageDigest:key}).strict();
@@ -146,7 +148,7 @@ export class NativeInboundProjection {
   }
   this.claimSnapshot={tx,byPhone};return byPhone.get(phone)!;
  }
- async projectInTransaction(tx:SqlSession,inquiry:InboundInquiry,input:InboundProjectionKeys):Promise<{state:"receipt_only"|"projected"|"needs_resolution";replayed:boolean}>{
+ async projectInTransaction(tx:SqlSession,inquiry:InboundInquiry,input:InboundProjectionKeys):Promise<{state:"receipt_only"|"projected"|"needs_resolution"|"needs_review";replayed:boolean}>{
   const keys=receiptKeys.parse(input);
   const expectedBinding=privateDigest({domain:"contact-binding-v1",binding:digest({provider:inquiry.provider,
    channelId:inquiry.channelId,businessNumber:inquiry.businessNumber}),workspace:this.workspace},this.integrityKey);
@@ -170,6 +172,8 @@ export class NativeInboundProjection {
    if(outcome.state!==prior[0].state||outcome.reason!==prior[0].reason||outcome.personId!==prior[0].personId)throw new AppError("UNAVAILABLE");
    return {state:outcome.state,replayed:true};
   }
+  const candidates=new AcquisitionCandidateStore({transaction:work=>work(tx)},this.keyring,this.integrityKey,this.clock);
+  if(await candidates.priorInTransaction(tx,this.workspace,keys))return {state:"needs_review",replayed:true};
   if(authority.nativeWritesSinceSwitch>=Number.MAX_SAFE_INTEGER-1)throw new AppError("UNAVAILABLE");
   await lockWorkspace(tx,this.workspace);
   const thread=await tx.query<{personId:string;sender:string}>(`SELECT person_id AS "personId",sender_endpoint_key AS sender
@@ -189,6 +193,16 @@ export class NativeInboundProjection {
    const match=resolveEndpoint(this.workspace,keys.sender,await this.claims(tx,inquiry.fromNumber,keys.sender));
    if(match.kind==="ambiguous")outcome={state:"needs_resolution",reason:"ambiguous_endpoint",personId:null,candidateIds:[...match.candidateIds]};
    else{
+    if(match.kind==="new"&&!qualifiedNewInbound(inquiry)){
+     const candidate=await candidates.captureInTransaction(tx,this.workspace,inquiry,keys);
+     if(!candidate.replayed){
+      const next=cutoverStateSchema.parse({...authority,nativeWritesSinceSwitch:authority.nativeWritesSinceSwitch+1});
+      const advanced=await tx.query<{epoch:string}>("UPDATE ls_contact_ops.cutover SET state_ciphertext=$3,updated_at=clock_timestamp() WHERE workspace_id=$1 AND epoch=$2 RETURNING epoch::text",
+       [this.workspace,authority.epoch,seal(JSON.stringify(next),cutoverStateAad(this.workspace,authority.epoch),this.keyring)]);
+      if(advanced.length!==1)throw new AppError("CONFLICT");
+     }
+     return {state:"needs_review",replayed:candidate.replayed};
+    }
     const personId=match.kind==="matched"?match.personId:randomUUID();
     existing=await this.profile(tx,personId);
     if(existing?.profile.whatsappInquiry){
@@ -215,12 +229,21 @@ export class NativeInboundProjection {
   }
   if(existing&&outcome.personId){
    const saved=existing.profile,today=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Jerusalem"}).format(this.clock.now());
+   // Only an explicit owner match retains the chosen existing lead instead of
+   // manufacturing an additional inquiry. Existing provider-origin/history
+   // behavior remains unchanged for automatically verified endpoint matches.
+   const ownerMatch=await tx.query(`SELECT d.operation_id FROM ls_contact_ops.lead_promotion_operations d
+    JOIN ls_contact_ops.inbound_activity_candidates c ON c.workspace_id=d.workspace_id AND c.id=d.candidate_id
+    WHERE d.workspace_id=$1 AND d.person_id=$2 AND d.state='MATCHED' AND c.provider_binding_id=$3
+     AND c.provider_thread_key=$4 AND c.sender_endpoint_key=$5 LIMIT 1`,[this.workspace,outcome.personId,keys.binding,keys.thread,keys.sender]);
+   const keepOwnerMatchedLead=ownerMatch.length===1&&Boolean(saved.nativeInquiry||saved.legacyIds.length);
    const sourceSuppressed=await this.sourceSuppressed(tx,saved);
    const suppressed=sourceSuppressed||saved.doNotContact===true||contactSuppressed(saved.stage)||Object.values(saved.leadUpdates??{}).some(v=>contactSuppressed(v.outcome??""));
    const merged=crmProfileSchema.parse({...saved,...inboundFollowUp(saved,today,suppressed),
     // Each person has its own explicit provider inquiry. Historical/manual
     // references remain separate; never smear a new message across all leads.
-    whatsappInquiry:saved.whatsappInquiry??whatsappOrigin(outcome.personId,inquiry,keys),
+    ...(saved.whatsappInquiry||keepOwnerMatchedLead?{}:
+     {whatsappInquiry:whatsappOrigin(outcome.personId,inquiry,keys)}),
     inboundActivity:nextInboundActivity(saved.inboundActivity,inquiry,keys.message)});
    if(merged.notes!==saved.notes)throw new AppError("UNAVAILABLE");
    const updated=await tx.query<{version:number}>("UPDATE ls_contact_ops.profiles SET payload_ciphertext=$3,version=version+1,updated_at=clock_timestamp() WHERE workspace_id=$1 AND person_id=$2 AND version=$4 RETURNING version",

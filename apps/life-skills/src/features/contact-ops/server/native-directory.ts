@@ -15,6 +15,7 @@ import {contactSuppressed} from "../../prospects/native-edit.ts";
 import {MAX_NATIVE_CONTACTS,MAX_OPERATIONAL_PROSPECTS} from "../core/limits.ts";
 import {normalizePhone} from "../core/contact-resolution.ts";
 import type {InboundActivity} from "../core/inbound-projection.ts";
+import type {AcquisitionReviewItem} from "../core/acquisition.ts";
 
 const sourceSchema=z.object({sourceRow:z.number().int().min(2),payload:z.object({
  displayName:z.string(),language:z.string(),stageText:z.string(),sourceFields:z.record(z.string(),z.string())})});
@@ -37,12 +38,15 @@ export type NativeContactRow={personId:string;displayName:string;identityKind:"a
  stage:string;nextAction:string|null;followUpDate:string|null;notes:string;version:number|null;
   mode:"live"|"demo";archived:boolean;doNotContact:boolean;references:NativeContactReference[];inboundActivity?:InboundActivity;
  /** Real assigned cases, joined by canonical person UUID. Never phone/name matching. */
- caseLinks?:{caseId:string;state:string}[]};
+ caseLinks?:{caseId:string;state:string}[];
+ acquisitionProjections?:{channel:"google_contacts"|"whatsapp";state:"applied"|"no_chat"|"pending"|"failed";
+  reason:"provider_not_verified"|"provider_applied"|"no_chat"|"provider_failed";updatedAt:string}[]};
 type StoredProfile={personId:string;kind:"adult"|"minor";personCiphertext:string;profileCiphertext:string;
  version:number;recordMode:"live"|"demo";demoBatchId:string|null;markerBatchId:string|null;persistedArchived:boolean};
 type StoredLink={personId:string;sourceFileId:string;sourceSheetId:number;sourceRevision:string;
  leadId:string;snapshotCiphertext:string};
 const BATCH=100,MAX_CONTACTS=MAX_NATIVE_CONTACTS;
+const projectionReasons=new Map<string,string>([["applied","provider_applied"],["no_chat","no_chat"],["pending","provider_not_verified"],["failed","provider_failed"]]);
 const emptyJourney=():ProspectJourneyState=>({journeyState:"prospect",paymentVerified:false,bookingConfirmed:false});
 // Historic Sheet statuses are descriptive, not an enum. Preserve the existing
 // conservative archive/opt-out protection even when a reason follows the marker.
@@ -119,6 +123,30 @@ export class NativeContactDirectory {
    if(claim===normalized)return true;
   }
   return false;
+ }
+ /** Exact endpoint candidates only, not a name-based identity merge. Return
+  * minimal administrative matches; account-only/demo claims reserve the number
+  * without disclosing account or clinical details or enabling a match. */
+ async acquisitionMatchesInTransaction(tx:SqlSession,actor:Actor,phones:readonly string[]):Promise<Map<string,AcquisitionReviewItem["matching"]>>{
+  if(phones.length>100||phones.some(phone=>normalizePhone(phone)!==phone))throw new AppError("INVALID_REQUEST");
+  const {rows}=await this.readAllInTransaction(tx,actor),wanted=new Set(phones);
+  const matches=new Map([...wanted].map(phone=>[phone,new Map<string,NativeContactRow>()]));
+  const reserved=new Set<string>();
+  for(const row of rows)for(const ref of row.references){const phone=normalizePhone(ref.phone);if(phone&&wanted.has(phone)){
+   if(row.mode!=="live")reserved.add(phone);else matches.get(phone)!.set(row.personId,row);
+  }}
+  const accounts=await tx.query<{id:string;personId:string|null;ciphertext:string}>(`SELECT a.id,s.person_id AS "personId",a.phone_ciphertext AS ciphertext
+   FROM ls_identity.accounts a LEFT JOIN ls_identity.account_subjects s ON s.workspace_id=a.workspace_id AND s.account_id=a.id
+   WHERE a.workspace_id=$1 AND a.phone_ciphertext IS NOT NULL ORDER BY a.id LIMIT $2`,[actor.workspaceId,MAX_CONTACTS+1]);
+  if(accounts.length>MAX_CONTACTS)throw new AppError("UNAVAILABLE");
+  for(const account of accounts){const phone=normalizePhone(unseal(account.ciphertext,`phone:${actor.workspaceId}:${account.id}`,this.keyring));
+   if(!phone)throw new AppError("UNAVAILABLE");if(wanted.has(phone)&&(!account.personId||!matches.get(phone)!.has(account.personId)))reserved.add(phone);
+  }
+  return new Map([...wanted].map(phone=>{const found=[...matches.get(phone)!.values()],blocked=reserved.has(phone);
+   return [phone,{state:blocked?"reserved":found.length>1?"ambiguous":found.length?"existing":"unmatched",
+    people:found.map(row=>({personId:row.personId,displayName:row.displayName,version:row.version,
+     eligible:!blocked&&row.identityKind==="adult"&&row.version!==null&&!row.archived&&!row.doNotContact}))}];
+  }));
  }
  async nativeInquiryPersonInTransaction(tx:SqlSession,actor:Actor,leadId:string):Promise<string|null>{
   const {rows}=await this.readAllInTransaction(tx,actor);
@@ -278,6 +306,27 @@ export class NativeContactDirectory {
     if(row.version===null){
      row.stage=activeCase?"active":row.caseLinks[0]!.state;
      row.archived=row.caseLinks.every(c=>["completed","archived"].includes(c.state));
+    }
+   }
+   if(rows.length){
+    // Bound the latest two channel results per authorized person, not the
+    // immutable lifetime decision history. Deduplicate before applying the cap.
+    const projectionBudget=rows.length*2;
+    const projections=await tx.query<{personId:string;channel:string;state:string;reason:string;updatedAt:Date}>(`SELECT DISTINCT ON(d.person_id,p.channel)
+     d.person_id AS "personId",p.channel,p.state,p.reason,p.updated_at AS "updatedAt"
+     FROM ls_contact_ops.lead_promotion_operations d JOIN ls_contact_ops.acquisition_projection_status p
+      ON p.workspace_id=d.workspace_id AND p.operation_id=d.operation_id
+     WHERE d.workspace_id=$1 AND d.person_id IN(SELECT value::uuid FROM jsonb_array_elements_text($2::jsonb))
+     ORDER BY d.person_id,p.channel,p.updated_at DESC,d.operation_id LIMIT $3`,[actor.workspaceId,JSON.stringify(rows.map(row=>row.personId)),projectionBudget+1]);
+    if(projections.length>projectionBudget)throw new AppError("UNAVAILABLE");
+    for(const projection of projections){const row=byPerson.get(projection.personId);
+     if(!row||!["google_contacts","whatsapp"].includes(projection.channel)||!projectionReasons.has(projection.state)||
+      projectionReasons.get(projection.state)!==projection.reason)throw new AppError("UNAVAILABLE");
+     const list=row.acquisitionProjections??[];
+     row.acquisitionProjections=list;
+     // Latest persisted result per channel; never derive applied from an owner click.
+     if(!list.some(value=>value.channel===projection.channel))list.push({channel:projection.channel as "google_contacts"|"whatsapp",
+      state:projection.state as "applied"|"no_chat"|"pending"|"failed",reason:projection.reason as "provider_not_verified"|"provider_applied"|"no_chat"|"provider_failed",updatedAt:projection.updatedAt.toISOString()});
     }
    }
    return {rows,sourceFields};

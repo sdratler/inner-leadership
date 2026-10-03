@@ -69,7 +69,9 @@ test('native populated 30-to-31 preserves immutable history and old checksums wh
   ] as const){await client.query('BEGIN');try{await client.query(statement);expect((await practiceAdultCoordinationIntegrity(tx,files)).current[key]).toBe(false);}finally{await client.query('ROLLBACK');}}
   await legacyCoordination(f,saved.assignmentId,adult,[id],f.at(2));
   expect(await practiceAdultCoordinationIntegrity(tx,files)).toEqual(proof);
-  expect(await migrate(migrationClient,inventory,false)).toEqual({applied:4,pending:0});
+  const historicalLedger=(await client.query('SELECT * FROM ls_control.migrations ORDER BY name')).rows;
+  expect(await migrate(migrationClient,inventory,false)).toEqual({applied:inventory.length-files.length,pending:0});
+  expect((await client.query('SELECT * FROM ls_control.migrations WHERE name=ANY($1::text[]) ORDER BY name',[files.map(file=>file.name)])).rows).toEqual(historicalLedger);
   const modernProof={metadataAbsent:false,schemaCatalog:true,foreignKeys:true,permissions:true,reviewedFunctions:true,immutableHistory:true,referencesSound:true};
   const changed=await practice.coordinate(adult,self,randomUUID());
   const newOccurrence=await practice.schedule(f.practitioner.actor,{assignmentId:saved.assignmentId,occursOn:f.at(72).slice(0,10),period:'evening'},randomUUID());expect(newOccurrence.coordinationVersionId).toBe(changed.versionId);
