@@ -17,7 +17,7 @@ const provenance={locale:"en" as const,promptVersion:"DEMO-prompt-v1",modelVersi
 async function prepared(){
   const f=await fixture();opened.push(f);const service=new SessionDatabaseService(poolStore(f.pool),f.keyring,systemClock);
   const sessionId=(await service.ensureForAppointment(f.practitioner.actor,f.first.id,await f.seed(f.at(-24)))).sessionId;
-  const consent=await service.recordConsent(f.practitioner.actor,sessionId,{signedByAccountId:f.parent.actor.id,signedAt:f.at(-48),authorityState:"checked",recordingAllowed:true,transcriptionAllowed:true,aiProcessingAllowed:true,childInformed:true,policyVersion:"DEMO-recording-v1",evidence:"DEMO synthetic standing consent"},randomUUID());
+  const consent=await service.recordConsent(f.practitioner.actor,sessionId,{signedByAccountId:f.parent.actor.id,signedAt:f.at(-48),authorityState:"checked",recordingAllowed:true,transcriptionAllowed:true,aiProcessingAllowed:true,childInformed:true,policyVersion:"DEMO-recording-v1",evidence:"DEMO synthetic standing consent",expectedVersion:0},randomUUID());
   const id=randomUUID(),attempt=randomUUID();await f.pool.query(`INSERT INTO ls_sessions.recording_jobs(workspace_id,case_id,session_id,id,consent_id,consent_version,source_digest,source_bytes,duration_milliseconds,object_reference_ciphertext,state,audio_state,attempt_id,raw_expires_at)
    VALUES($1,$2,$3,$4,$5,$6,$7,$8,60000,$9,'queued','temporary',$10,clock_timestamp()+interval '1 hour')`,[f.workspaceId,f.first.id,sessionId,id,consent.consentId,consent.version,sourceDigest,sourceBytes.length,seal("DEMO isolated restricted object reference",`DEMO-object:${id}`,f.keyring),attempt]);
   const store=new PostgresSessionProcessingStore(poolStore(f.pool),f.keyring,f.practitioner.actor,systemClock,provenance);
