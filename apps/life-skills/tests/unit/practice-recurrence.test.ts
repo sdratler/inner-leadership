@@ -6,6 +6,12 @@ import {readRecurrence,saveRecurrence,recurrenceReadback} from "../../src/featur
 import {RecurrenceControls} from "../../src/features/home-practice/recurrence-controls.tsx";
 import type {ManagedPracticeVersion} from "../../src/features/home-practice/types.ts";
 import {asId} from "../../src/lib/ids.ts";
+import {readFileSync} from "node:fs";
+test('the containing workspace owns one guard for recurrence drafts and authoring input',()=>{
+ const control=readFileSync(new URL('../../src/features/home-practice/recurrence-controls.tsx',import.meta.url),'utf8'),workspace=readFileSync(new URL('../../src/features/home-practice/management-workspace.tsx',import.meta.url),'utf8');
+ expect(control).not.toContain('UnsavedChangesGuard');expect(control).toContain('stateRef.current({dirty,locked})');
+ expect(workspace).toContain('dirty=draftDirty||rangeDirty');expect(workspace.match(/<UnsavedChangesGuard/g)).toHaveLength(1);
+});
 const ids=Array.from({length:7},(_,i)=>`00000000-0000-4000-8000-${String(i+1).padStart(12,"0")}`),digest="a".repeat(64);
 const input={assignmentId:ids[0]!,expectedVersionId:ids[1]!,expectedSnapshotDigest:digest,from:"2026-10-02",to:"2026-10-03"};
 const plan:RecurrencePlan={assignmentId:ids[0]!,practiceVersionId:ids[1]!,caseId:ids[2]!,audienceId:ids[3]!,from:input.from,to:input.to,localTime:"18:45",timezone:"UTC",weekdays:[5,6],planDigest:"b".repeat(64),items:[2,3].map((day,index)=>({id:ids[4+index]!,assignmentId:ids[0]!,practiceVersionId:ids[1]!,coordinationVersionId:ids[6]!,occursOn:`2026-10-0${day}`,period:"morning",occursAt:`2026-10-0${day}T18:45:00.000Z`,state:"open",existing:false}))};
