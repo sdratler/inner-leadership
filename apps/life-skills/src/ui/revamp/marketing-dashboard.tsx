@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Locale } from "../../features/session-workflow/types.ts";
 import type { AdDailyPoint, MarketingSnapshot } from "../../features/marketing-overview/contracts.ts";
 import { safeMarketingUrl } from "../../features/marketing-overview/read-model.ts";
+import {creativeMediaPath} from "../../features/marketing-overview/media-link.ts";
 import {creativeApprovals,creativeFilters,creativePlacements,creativeReviewState,filterCreatives,type CreativeQuery} from "../../features/marketing-overview/creative-filters.ts";
 import { MarketingContentCalendar, type ContentCalendarQuery } from "./marketing-content-calendar.tsx";
 import { CommunityReplyWorkspace } from "../../features/community-reply/workspace.tsx";
@@ -15,12 +16,6 @@ const headings = {
   en: { overview: "Overview", content_calendar: "Content calendar", creatives: "Creatives", needs_approval: "Needs approval", community: "Community", ads: "Ads" },
   he: { overview: "סקירה", content_calendar: "יומן תוכן", creatives: "קריאייטיב", needs_approval: "דורש אישור", community: "קהילה", ads: "מודעות" },
 };
-
-function driveThumbnail(value: string | null): string | null {
-  const safe=safeMarketingUrl(value,["drive.google.com","lh3.googleusercontent.com"]);if(!safe)return null;
-  const parsed=new URL(safe),match=parsed.hostname==="drive.google.com"?parsed.pathname.match(/^\/file\/d\/([A-Za-z0-9_-]+)(?:\/|$)/):null;
-  return match ? `https://drive.google.com/thumbnail?id=${encodeURIComponent(match[1]!)}&sz=w600` : safe;
-}
 
 function CreativeThumbnail({ image, sourceAvailable, title, width, height, locale }: { image: string | null; sourceAvailable: boolean; title: string; width: number; height: number; locale: Locale }) {
   const [failed, setFailed] = useState(false);
@@ -80,14 +75,14 @@ export function MarketingDashboard({ locale, snapshot, initialSection, initialFi
         <div className="lsr-creative-filter-actions"><button type="submit">{word(locale,'Apply filters','החלת סינון')}</button><a href={clearCreativeHref}>{word(locale,'Clear filters','ניקוי סינון')}</a></div>
       </form>
       <p className="lsr-creative-counts" role="status">{word(locale,`${visibleCreatives.length} revisions · ${new Set(visibleCreatives.map(asset=>`${asset.locale}:${asset.width}x${asset.height}`)).size} language/size variants`,`${visibleCreatives.length} גרסאות · ${new Set(visibleCreatives.map(asset=>`${asset.locale}:${asset.width}x${asset.height}`)).size} שילובי שפה וגודל`)}{inventory?.partial?` · ${word(locale,'Partial inventory','מלאי חלקי')}`:''}</p>
-      <div className="lsr-creative-grid">{visibleCreatives.map(asset => { const image = safeMarketingUrl(driveThumbnail(asset.imageUrl), ["drive.google.com", "lh3.googleusercontent.com"]); const source = safeMarketingUrl(asset.sourceUrl ?? null, ["drive.google.com", "docs.google.com", "github.com"]) ?? safeMarketingUrl(asset.imageUrl, ["drive.google.com", "docs.google.com", "github.com"]);const state=creativeReviewState(asset); return <article className="lsr-creative-card" key={`${asset.assetId}:${asset.revision}:${asset.contentDigest}`}><CreativeThumbnail key={`${asset.assetId}:${asset.revision}:${asset.imageUrl}`} image={image} sourceAvailable={source !== null} title={asset.title} width={asset.width} height={asset.height} locale={locale}/><h3>{asset.title}</h3><p>{asset.locale.toUpperCase()} · {asset.surface ?? word(locale,'No registered placement','אין מיקום רשום')} · {asset.width}×{asset.height} · v{asset.revision}</p><p>{state==='unapproved'?asset.holdReason??word(locale,'Needs review of this exact version','נדרשת בדיקת הגרסה המדויקת'):approvalLabels[state]}</p>{source && <a href={source} target="_blank" rel="noopener noreferrer">{word(locale, "Open asset", "פתיחת הנכס")}</a>}</article>; })}</div>
+      <div className="lsr-creative-grid">{visibleCreatives.map(asset => { const image = creativeMediaPath(asset); const source = safeMarketingUrl(asset.sourceUrl ?? null, ["drive.google.com", "docs.google.com", "github.com"]) ?? safeMarketingUrl(asset.imageUrl, ["drive.google.com", "docs.google.com", "github.com"]);const state=creativeReviewState(asset); return <article className="lsr-creative-card" key={`${asset.assetId}:${asset.revision}:${asset.contentDigest}`}><CreativeThumbnail key={`${asset.assetId}:${asset.revision}:${asset.imageUrl}`} image={image} sourceAvailable={source !== null} title={asset.title} width={asset.width} height={asset.height} locale={locale}/><h3>{asset.title}</h3><p>{asset.locale.toUpperCase()} · {asset.surface ?? word(locale,'No registered placement','אין מיקום רשום')} · {asset.width}×{asset.height} · v{asset.revision}</p><p>{state==='unapproved'?asset.holdReason??word(locale,'Needs review of this exact version','נדרשת בדיקת הגרסה המדויקת'):approvalLabels[state]}</p>{source && <a href={source} target="_blank" rel="noopener noreferrer">{word(locale, "Open asset", "פתיחת הנכס")}</a>}</article>; })}</div>
       {!visibleCreatives.length&&<p>{snapshot.connectionErrors?.includes('creative_inventory_unavailable')?word(locale,'The source could not be loaded. Retry this page; an unavailable source is not an empty inventory.','לא ניתן לטעון את המקור. אפשר לנסות שוב; מקור לא זמין אינו מלאי ריק.'):word(locale,'No registered revisions match these filters.','אין גרסאות רשומות המתאימות לסינון.')} <a href={clearCreativeHref}>{word(locale,'Clear filters','ניקוי סינון')}</a></p>}
       {inventory&&<details className="lsr-creative-inventory"><summary>{word(locale,'Files, concepts and usable posts','קבצים, רעיונות ופוסטים שמישים')}</summary><p>{word(locale,`${inventory.files} registered files · ${inventory.concepts} concepts · ${inventory.publishablePosts} publishable posts`,`${inventory.files} קבצים רשומים · ${inventory.concepts} רעיונות · ${inventory.publishablePosts} פוסטים מוכנים לפרסום`)}</p><p>{word(locale,'Loaded revisions and language/size combinations are not ready-post totals. Approval is bound to the exact digest; source edits never inherit approval.','גרסאות טעונות ושילובי שפה וגודל אינם מספר הפוסטים המוכנים. האישור קשור לתוכן המדויק; עריכה במקור אינה יורשת אישור.')}</p><time>{inventory.asOf}</time>{workbook&&<p><a href={workbook} target="_blank" rel="noopener noreferrer">{word(locale,'Open source workbook','פתיחת חוברת המקור')}</a></p>}</details>}
     </Section>}
     {section === "content_calendar" && <MarketingContentCalendar locale={locale} snapshot={snapshot}
       query={{filter:initialFilter,month:initialMonth,...calendarQuery}} renderedAt={renderedAt}
       thumbnail={asset=><CreativeThumbnail key={`${asset.assetId}:${asset.revision}:${asset.imageUrl}`}
-        image={safeMarketingUrl(driveThumbnail(asset.imageUrl),["drive.google.com","lh3.googleusercontent.com"])}
+        image={creativeMediaPath(asset)}
         sourceAvailable={Boolean(safeMarketingUrl(asset.sourceUrl??null,["drive.google.com","docs.google.com","github.com"])??safeMarketingUrl(asset.imageUrl,["drive.google.com","docs.google.com","github.com"]))}
         title={asset.title} width={asset.width} height={asset.height} locale={locale}/>} />}
     {section === "community" && <Section title={h[section]}><CommunityReplyWorkspace locale={locale} /></Section>}

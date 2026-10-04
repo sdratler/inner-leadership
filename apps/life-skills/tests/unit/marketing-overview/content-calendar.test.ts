@@ -9,6 +9,15 @@ const publication=(id:string,time:string|null,state:Publication["state"]="schedu
 const snapshot=(items:readonly Publication[],creatives:readonly CreativeVersion[]=[asset]):MarketingSnapshot=>({source:"synthetic",fetchedAt:"2026-10-01T08:00:00Z",creatives,publications:items,ads:[],scout:{readyDrafts:null,sourceUrl:null,lastChecked:null,status:"unbound"}});
 const render=(items:readonly Publication[],query:ContentCalendarQuery={},locale:"en"|"he"="en",creatives:readonly CreativeVersion[]=[asset])=>renderToStaticMarkup(React.createElement(MarketingContentCalendar,{locale,snapshot:snapshot(items,creatives),query,renderedAt:"2026-10-01T08:00:00Z",thumbnail:a=>React.createElement("span",{"data-thumbnail":a.assetId+":"+a.revision},"DEMO exact thumbnail")}));
 describe("retained read-only Marketing calendar controls",()=>{
+ it.each(['en','he'] as const)("uses only exact same-origin CSP-compatible originals for %s calendar and gallery images",locale=>{
+  const original={...asset,imageUrl:'https://drive.google.com/file/d/synthetic_original/view'},items=[publication('same-origin','2026-10-01T17:00:00Z')];
+  const expected=`/api/marketing/assets/${original.assetId}?revision=2&amp;digest=${digest}`;
+  for(const section of ['content_calendar','calendar_detail','creatives']){
+   const html=renderToStaticMarkup(React.createElement(MarketingDashboard,{locale,snapshot:snapshot(items,[original]),initialSection:section==='calendar_detail'?'content_calendar':section,calendarQuery:section==='calendar_detail'?{publication:'same-origin'}:{},initialMonth:'2026-10',renderedAt:'2026-10-01T08:00:00Z'}));
+   const images=[...html.matchAll(/<img[^>]*src="([^"]+)"/g)].map(match=>match[1]);
+   expect(images.length).toBeGreaterThan(0);expect(images.every(src=>src===expected)).toBe(true);expect(html).not.toContain('thumbnail?id=');if(section!=='content_calendar')expect(html).toContain('href="https://drive.google.com/file/d/demo-exact/view"');
+  }
+ });
   it("replaces month/week/agenda main views while retaining an empty calendar and usable controls",()=>{
     const month=render([],{layout:"month",month:"2026-10"}),week=render([],{layout:"week",date:"2026-10-01"}),agenda=render([],{layout:"agenda"});
     expect(month).toContain('aria-label="Monthly content calendar"');expect(month).not.toContain('aria-label="Content agenda"');
