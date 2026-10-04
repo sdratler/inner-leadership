@@ -84,6 +84,18 @@ it('reads each distinct pending thread once and accepts only its matching parent
 it('does not request thread metadata when no task responses are pending',async()=>{
  fetcher.mockResolvedValueOnce(Response.json({ok:true,data:{responses:[],more:false}}));expect(await pendingCommunityResponses(owner,fetcher,env)).toEqual({responses:[],more:false});expect(fetcher).toHaveBeenCalledTimes(1);
 });
+it.each(['read','project'] as const)('rejects duplicate canonical public replies under different response UUIDs before %s',async action=>{
+ const duplicate={...response,id:'212302a8-3694-4718-9a3b-e5de1a78de6e',commentUrl:'https://m.facebook.com/groups/DEMO/permalink/10?comment_id=101&reply_comment_id=202&fbclid=ignored'};
+ if(action==='read'){
+  fetcher.mockResolvedValueOnce(Response.json({ok:true,data:{...data,responses:[response,duplicate]}}));
+  await expect(readCommunityThreads(owner,undefined,fetcher,env)).rejects.toMatchObject({code:'UNAVAILABLE'});
+ }else{
+  fetcher.mockResolvedValueOnce(Response.json({ok:true,data:{responses:[response,duplicate],more:false}}));
+  const create=vi.fn().mockResolvedValue({id}),acknowledge=vi.fn(),actor={id:owner,role:'practitioner',state:'active'} as Actor;
+  await expect(projectCommunityTasks(actor,{create}as unknown as InternalTaskService,{pending:()=>pendingCommunityResponses(owner,fetcher,env),acknowledge})).rejects.toMatchObject({code:'UNAVAILABLE'});
+  expect(create).not.toHaveBeenCalled();expect(acknowledge).not.toHaveBeenCalled();expect(fetcher).toHaveBeenCalledTimes(1);
+ }
+});
 it('creates only internal receipt-bound tasks from server captures, with stable retry data and no narrative or case join',async()=>{
  const create=vi.fn().mockResolvedValue({id}),acknowledge=vi.fn().mockResolvedValue(undefined),pending=vi.fn().mockResolvedValue({responses:[response],more:false}),actor={id:owner,role:'practitioner',state:'active'} as Actor;
  expect(await projectCommunityTasks(actor,{create}as unknown as InternalTaskService,{pending,acknowledge})).toEqual({linked:1,more:false});expect(pending).toHaveBeenCalledWith(owner);expect(create.mock.calls[0]?.[1]).toBe('community_response_'+rid);expect(create.mock.calls[0]?.[2]).toMatchObject({caseId:null,note:null,dueDate:'2026-10-02',sourcePath:'/he/app/marketing?section=community&threadId='+id});expect(JSON.stringify(create.mock.calls[0])).not.toContain('DEMO public response');expect(acknowledge).toHaveBeenCalledWith(owner,rid,id);
