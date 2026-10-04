@@ -3,6 +3,7 @@ import type { GoalView } from "../goals/types.ts";
 import type { CommitmentView } from "../commitments/types.ts";
 import type { PracticeManagementPage,ScheduledOccurrence } from "./types.ts";
 import {sameResponsibilityInput,type ResponsibilityInput,type ResponsibilityParticipants} from "./responsibility-input.ts";
+import {recurrenceInput,recurrenceCommand,recurrencePlan,type RecurrenceInput,type RecurrenceCommand,type RecurrencePlan} from "./recurrence-input.ts";
 
 export interface PracticeAudience { id: string; published: boolean; visibility: "private" | "family_full" | "family_title_completion"; }
 export interface PracticeManagementData { practice: PracticeManagementPage; goals: GoalView[]; commitments: CommitmentView[];participants?:ResponsibilityParticipants;scheduled?:ScheduledOccurrence[]; }
@@ -72,4 +73,21 @@ export function authoringReadback(command: PracticeAuthoringCommand, receipt: Re
   return row.state === "draft" && row.instructions === command.instructions && row.startsOn === command.startsOn && row.endsOn === command.endsOn &&
     (command.responsibility===undefined||sameResponsibilityInput(row.responsibility,command.responsibility))&&
     (command.action !== "create_draft" || row.caseId === command.caseId && row.audienceId === command.audienceId && row.goalId === (command.goalId ?? null) && row.commitmentId === (command.commitmentId ?? null));
+}
+
+function checkedRecurrence(value:unknown,input:RecurrenceInput,caseId:string,audienceId:string):RecurrencePlan{
+ const parsed=recurrencePlan.safeParse(value);if(!parsed.success)throw new IdentityClientError("UNAVAILABLE");const plan=parsed.data;
+ if(plan.caseId!==caseId||plan.audienceId!==audienceId||plan.assignmentId!==input.assignmentId||plan.practiceVersionId!==input.expectedVersionId||plan.from!==input.from||plan.to!==input.to||new Set(plan.items.map(row=>row.id)).size!==plan.items.length||plan.items.some(row=>row.assignmentId!==input.assignmentId||row.practiceVersionId!==input.expectedVersionId||row.occursOn<input.from||row.occursOn>input.to))throw new IdentityClientError("UNAVAILABLE");
+ return plan;
+}
+export async function readRecurrence(input:RecurrenceInput,caseId:string,audienceId:string,signal?:AbortSignal):Promise<RecurrencePlan>{
+ const parsed=recurrenceInput.safeParse(input);if(!parsed.success)throw new IdentityClientError("INVALID_REQUEST");
+ return checkedRecurrence(await request("/api/home-practice?"+new URLSearchParams({view:"recurrence",...parsed.data}),{method:"GET"},signal),parsed.data,caseId,audienceId);
+}
+export async function saveRecurrence(input:RecurrenceCommand,caseId:string,audienceId:string):Promise<RecurrencePlan>{
+ const parsed=recurrenceCommand.safeParse(input);if(!parsed.success)throw new IdentityClientError("INVALID_REQUEST");const session=await sessionInfo();if(session.role!=="practitioner")throw new IdentityClientError("NOT_FOUND");
+ return checkedRecurrence(await request("/api/home-practice",{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-Token":session.csrfToken},body:JSON.stringify({action:"schedule_range",...parsed.data})}),parsed.data,caseId,audienceId);
+}
+export function recurrenceReadback(approved:RecurrencePlan,saved:RecurrencePlan):boolean{
+  return saved.planDigest===approved.planDigest&&saved.assignmentId===approved.assignmentId&&saved.practiceVersionId===approved.practiceVersionId&&saved.caseId===approved.caseId&&saved.audienceId===approved.audienceId&&saved.from===approved.from&&saved.to===approved.to&&saved.localTime===approved.localTime&&saved.timezone===approved.timezone&&JSON.stringify(saved.weekdays)===JSON.stringify(approved.weekdays)&&saved.items.length===approved.items.length&&saved.items.every((row,index)=>{const original=approved.items[index];return row.existing&&original!==undefined&&row.id===original.id&&row.assignmentId===original.assignmentId&&row.practiceVersionId===original.practiceVersionId&&row.coordinationVersionId===original.coordinationVersionId&&row.occursAt===original.occursAt&&row.occursOn===original.occursOn&&row.period===original.period;});
 }

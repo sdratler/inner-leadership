@@ -24,6 +24,8 @@ import { readPracticeOccurrences } from "./occurrences.ts";
 import {authorizeResponsibility,nativeResponsibilityParticipants,parseSavedResponsibility,nativeResponsibility,nativeResponsibilityOccurrences,nativeOccurrenceId} from "./responsibility-service.ts";
 import type {ResponsibilityInput} from "./responsibility-input.ts";
 import type {PracticeOccurrence} from "../assignment-participants/contracts.ts";
+import {nativeRecurrence} from "./native-recurrence.ts";
+import type {RecurrenceInput,RecurrenceCommand} from "./recurrence-input.ts";
 import type {
   CommitmentId,
   CompletionMode,
@@ -446,6 +448,9 @@ export class HomePracticeService implements PracticeVersionReader {
       return rows.map(row => {const value=this.project(row);return current.role!=="practitioner"?{...value,...(audience.visibility==="family_title_completion"?{instructions:""}:{}),responsibility:null}:value;});
     });
   }
+
+  recurrence(actor:Actor,input:RecurrenceInput){return nativeRecurrence({store:this.store,clock:this.clock,ring:this.config.keyring,versionSelect:VERSION_SELECT,digest:immutableVersionDigest,instructionsAad},actor,input);}
+  scheduleRange(actor:Actor,input:RecurrenceCommand,requestId:string){return nativeRecurrence({store:this.store,clock:this.clock,ring:this.config.keyring,versionSelect:VERSION_SELECT,digest:immutableVersionDigest,instructionsAad},actor,input,requestId);}
 
   /** Current real participants and bounded immutable versions; no mutation. */
   async participants(actor:Actor,caseId:CaseId,audienceId:AudienceId){
