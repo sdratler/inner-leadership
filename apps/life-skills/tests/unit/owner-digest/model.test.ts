@@ -5,6 +5,11 @@ const now=new Date("2026-10-02T21:30:00Z"),today="2026-10-03";
 const base={leadId:"LS-LEAD-a",stage:"Prospect",outcome:"",nextAction:"Owner action",dueDate:"10/3/2026",journeyState:"prospect",paymentVerified:false,bookingConfirmed:false};
 const marketing:MarketingSnapshot={source:"registry_only",fetchedAt:null,creatives:[],publications:[],ads:[],scout:{readyDrafts:null,sourceUrl:null,lastChecked:null,status:"unbound"}};
 describe("bounded private aggregate projection",()=>{
+ it.each(['opt out','opted-out','OPT_OUT','do_not_contact','Do-Not-Contact'])('excludes suppressed %s from every operational count without altering stored text',value=>{
+  const rows=[{...base,leadId:'LS-LEAD-suppressed-stage',stage:value,journeyState:'awaiting_payment'},{...base,leadId:'LS-LEAD-suppressed-outcome',outcome:value,paymentVerified:true}];
+  expect(summarizeProspects(rows,today,true)).toEqual({due:0,overdue:0,future:0,missingDate:0,invalidDate:0,prospects:0,otherStages:0,awaitingForm:0,awaitingPayment:0,awaitingBooking:0});
+  expect(rows[0]!.stage).toBe(value);expect(rows[1]!.outcome).toBe(value);
+ });
  it("keeps Prospect valid, preserves missing dates and trusts actual journey proof only",()=>{
   const rows=[base,{...base,leadId:"LS-LEAD-b",dueDate:"2026-10-02",stage:"constructor",journeyState:"awaiting_payment"},{...base,leadId:"LS-LEAD-c",dueDate:"",paymentVerified:true},{...base,leadId:"LS-LEAD-d",dueDate:"2/30/2026"},{...base,leadId:"LS-LEAD-e",stage:"Archived",dueDate:"2020-01-01"}];
   expect(summarizeProspects(rows,today,true)).toMatchObject({due:1,overdue:1,missingDate:1,invalidDate:1,prospects:4,otherStages:1,awaitingPayment:1,awaitingBooking:1});
