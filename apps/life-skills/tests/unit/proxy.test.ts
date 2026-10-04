@@ -148,7 +148,7 @@ describe("actual practitioner Calendar login return perimeter", () => {
 
 describe("actual practice proxy validates transport before header rewriting", () => {
   const origin = "https://life-skills.bneineviimacademy.org";
-  const paths = ["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins", "/api/updates", "/api/owner-digest"];
+  const paths = ["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins", "/api/updates", "/api/owner-digest", "/en/app/marketing", "/he/app/marketing", "/en/app/clients", "/he/app/reports", "/he/app/settings/content-voice", "/en/family/calendar", "/he/client/calendar"];
   function configured() {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("LS_APP_MODE", "foundation_locked");
@@ -205,6 +205,15 @@ describe("actual practice proxy validates transport before header rewriting", ()
       expect(response.headers.get("x-middleware-override-headers")).toBeNull();
     }
     expect(proxy(new NextRequest(origin + "/api/owner-digest")).headers.get("x-middleware-next")).toBe("1");
+  });
+  it('preserves the synthetic review perimeter without admitting operational pages through it',()=>{
+    configured();vi.stubEnv('LS_APP_MODE','isolated_preview');vi.stubEnv('LS_PREVIEW_ACCESS_KEY','synthetic_sample_gate_key_1234567890');
+    const service='https://private-app-preview.example.test',authorization='Basic '+btoa('preview:synthetic_sample_gate_key_1234567890');
+    for(const locale of ['en','he']){
+      expect(proxy(new NextRequest(`${service}/${locale}/sample`)).status).toBe(401);
+      expect(proxy(new NextRequest(`${service}/${locale}/sample`,{headers:{authorization}})).headers.get('x-middleware-next')).toBe('1');
+      const operational=proxy(new NextRequest(`${service}/${locale}/app/marketing`,{headers:{authorization}}));expect(operational.status).toBe(503);expect(operational.headers.get('x-middleware-next')).toBeNull();
+    }
   });
   it("does not manufacture HTTPS for a foundation HTTP loopback (not private authentication proof)", () => {
     configured(); vi.stubEnv("NODE_ENV", "development"); vi.stubEnv("LS_APP_ORIGIN", "http://127.0.0.1:3001");

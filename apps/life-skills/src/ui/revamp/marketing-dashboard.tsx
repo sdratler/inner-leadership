@@ -2,7 +2,7 @@
 import Image from "next/image";
 import { useState } from "react";
 import type { Locale } from "../../features/session-workflow/types.ts";
-import type { AdDailyPoint, MarketingSnapshot } from "../../features/marketing-overview/contracts.ts";
+import { normalizeMarketingSection, type AdDailyPoint, type MarketingSnapshot } from "../../features/marketing-overview/contracts.ts";
 import { safeMarketingUrl } from "../../features/marketing-overview/read-model.ts";
 import {creativeMediaPath} from "../../features/marketing-overview/media-link.ts";
 import {creativeApprovals,creativeFilters,creativePlacements,creativeReviewState,filterCreatives,type CreativeQuery} from "../../features/marketing-overview/creative-filters.ts";
@@ -13,7 +13,6 @@ import "./styles.css";
 import type {OwnerDigest} from "../../features/owner-digest/model.ts";
 import {OwnerDigestSummary} from "./owner-digest-summary.tsx";
 
-const sections = ["overview", "content_calendar", "creatives", "needs_approval", "community", "ads"] as const;
 const headings = {
   en: { overview: "Overview", content_calendar: "Content calendar", creatives: "Creatives", needs_approval: "Needs approval", community: "Community", ads: "Ads" },
   he: { overview: "סקירה", content_calendar: "יומן תוכן", creatives: "קריאייטיב", needs_approval: "דורש אישור", community: "קהילה", ads: "מודעות" },
@@ -37,7 +36,7 @@ function MetricBars({ locale, points, metric, currencyCode }: { locale: Locale; 
 }
 
 export function MarketingDashboard({ locale, snapshot, ownerDigest, initialSection, initialFilter, initialMonth, calendarQuery, creativeQuery, renderedAt }: { locale: Locale; snapshot: MarketingSnapshot; ownerDigest?:OwnerDigest|undefined; initialSection?: string | undefined; initialFilter?: string | undefined; initialMonth?: string | undefined; calendarQuery?:ContentCalendarQuery|undefined;creativeQuery?:CreativeQuery|undefined; renderedAt: string }) {
-  const section = sections.find(value => value === initialSection) ?? "overview";
+  const section = normalizeMarketingSection(initialSection);
   const h = headings[locale];
   const actual = snapshot.source === "provider_readback";
   const inventory = snapshot.inventory;
