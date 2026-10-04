@@ -92,6 +92,10 @@ export interface MarketingInventory {
     partial: boolean;
     asOf: string;
 }
+/** Shared by the server read decision and the actual dashboard view. */
+export function normalizeMarketingSection(value:unknown){
+    return (["overview", "content_calendar", "creatives", "needs_approval", "community", "ads"] as const).find(section=>section===value)??"overview";
+}
 export interface MarketingSnapshot {
     source: "synthetic" | "provider_readback" | "registry_only";
     fetchedAt: string | null;

@@ -64,7 +64,9 @@ export async function loadOwnerDigest(actor:Actor,runtime:Runtime,marketing:Mark
  const rows=prospects.status==="fulfilled"?prospects.value:null;
  const intake=rows?await readIntakeFacts(runtime.store,actor,rows,now).catch(error=>{if(error instanceof AppError&&["UNAUTHENTICATED","FORBIDDEN"].includes(error.code))throw error;return null;}):null;
  const facts=rows?.map(row=>({...row,...(intake?.journeys.get(row.leadId)??{journeyState:"prospect",paymentVerified:false,bookingConfirmed:false})}));
- const counts=facts?summarizeProspects(facts,contentDayKey(now.toISOString()),Boolean(intake)):null;
+ let counts=null;
+ try{counts=facts?summarizeProspects(facts,contentDayKey(now.toISOString()),Boolean(intake)):null;}
+ catch(error){if(!(error instanceof Error)||error.message!=="INVALID_DIGEST_PROSPECTS")throw error;}
  if(counts)counts.awaitingForm=intake?.awaitingForm??null;
  // Do not return aggregates after revocation or a role change during remote reads.
  await assertOwner(runtime.store,actor,runtime.clock.now());
