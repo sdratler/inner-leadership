@@ -3,6 +3,7 @@ import { AppError } from "../../lib/errors.ts";
 import { COMMUNITY_PLAYBOOK_FILE_ID, CONTENT_VOICE_FILE_ID, readCommunityPlaybookSource, readContentVoiceSource, type ContentVoiceSnapshot } from "../content-voice/source.ts";
 import { communityRuleIdsInGuide } from "../content-voice/rule-editor.ts";
 import { isCommunitySourceUrl } from "./input-state.ts";
+import { communityReplyResultSchema } from "./drafts-bridge.ts";
 
 const SCOUT_ORIGIN = "https://community-scout-production.up.railway.app";
 const SECRET = /^[A-Za-z0-9_-]{43,}$/;
@@ -43,20 +44,15 @@ function sourceMatches(actual: { id: string; sha256: string; driveRevision: stri
 function verified(value: unknown, guide: ContentVoiceSnapshot, playbook: ContentVoiceSnapshot, command: CommunityReplyCommand, originalUrl: string | null): CommunityReplyResult {
   if (!value || typeof value !== "object") throw new AppError("UNAVAILABLE");
   const result = value as Partial<CommunityReplyResult>;
-  if (result.operationId !== command.operationId || typeof result.reply !== "string" || result.reply.length > 3000 || typeof result.copyAllowed !== "boolean" ||
-      !Array.isArray(result.reviewFlags) || result.reviewFlags.some(item => typeof item !== "string") ||
-      typeof result.suggestedRule !== "string" || result.suggestedRule.length > 400 ||
-      !["", "community", "general"].includes(String(result.ruleScope)) ||
-      result.originalUrl !== originalUrl ||
+  if (result.operationId !== command.operationId || result.originalUrl !== originalUrl ||
       !result.provenance || !sourceMatches(result.provenance.guide, guide, CONTENT_VOICE_FILE_ID) ||
-      !sourceMatches(result.provenance.playbook, playbook, COMMUNITY_PLAYBOOK_FILE_ID) ||
-      typeof result.provenance.model !== "string" || typeof result.provenance.policyVersion !== "string" ||
-      !Number.isFinite(Date.parse(result.provenance.generatedAt)) ||
-      !Number.isSafeInteger(result.provenance.usage?.inputTokens) || !Number.isSafeInteger(result.provenance.usage?.outputTokens)) throw new AppError("UNAVAILABLE");
+      !sourceMatches(result.provenance.playbook, playbook, COMMUNITY_PLAYBOOK_FILE_ID)) throw new AppError("UNAVAILABLE");
   // These IDs were included in the exact canonical snapshot sent to Scout.
   // They are input provenance, not a claim that the model obeyed every rule.
-  return { ...(result as CommunityReplyResult), provenance: { ...result.provenance,
-    guide: { ...result.provenance.guide, includedCommunityRuleIds: communityRuleIdsInGuide(guide.text) } } } as CommunityReplyResult;
+  const parsed=communityReplyResultSchema.safeParse({ ...result, provenance: { ...result.provenance,
+    guide: { ...result.provenance.guide, includedCommunityRuleIds: communityRuleIdsInGuide(guide.text) } } });
+  if(!parsed.success)throw new AppError("UNAVAILABLE");
+  return parsed.data;
 }
 
 export async function requestCommunityReply(command: CommunityReplyCommand,
