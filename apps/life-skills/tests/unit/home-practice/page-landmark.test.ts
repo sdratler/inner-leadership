@@ -16,3 +16,16 @@ test.each(variants)("$locale $role $kind has one named real main landmark", ({ l
   expect(html).toContain('id="current-items"');
   expect(html).not.toContain('role="switch"');
 });
+
+test.each(variants.filter(value => value.kind === "checkins"))("$locale $role check-ins have one contextual return route and no nested outer card", ({ locale, role, kind }) => {
+  const html = renderToStaticMarkup(createElement(Ls040FeaturePage, { locale, role, kind, caseId: "case-one", audienceId: "audience-one" }));
+  expect(html).toContain('lsw-practice-checkins');
+  expect(html).toContain('<section class="lsw-stack" aria-labelledby="current-items">');
+  expect(html).toContain('class="lsw-practice-visually-hidden"');
+  expect(html).toContain('lsw-practice-range');
+  expect(html).toContain('id="practice-from"');
+  expect(html).toContain('caseId=case-one&amp;audienceId=audience-one');
+  expect(html).not.toContain('Back to instructions');
+  expect(html).not.toContain('חזרה להנחיות');
+  expect(html).not.toContain('lsw-eyebrow');
+});

@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { asId } from "../../../src/lib/ids.ts";
 import { CalendarAgenda, CalendarBoard } from "../../../src/features/calendar/views.tsx";
 import { PracticeCalendarEntry } from "../../../src/features/home-practice/calendar-entry.tsx";
+import { calendarCopy } from "../../../src/features/calendar/copy.ts";
 import type { PracticeOccurrenceItem } from "../../../src/features/home-practice/types.ts";
 const id = "00000000-0000-4000-8000-000000000001", noop = () => {};
 const row: PracticeOccurrenceItem = {
@@ -17,7 +18,7 @@ test.each(["en","he"] as const)("%s Calendar uses the actual dated protected occ
   expect(board).toContain(`data-practice-occurrence-id="${id}"`);
   const first = board.slice(board.indexOf('aria-labelledby="day-2026-10-05"'),board.indexOf('aria-labelledby="day-2026-10-06"'));
   expect(first).not.toContain('ls-cal-day-empty'); expect(board).toContain('ls-cal-day-empty');
-  expect(first).toContain("07:35"); expect(first).toContain("Asia/Jerusalem");
+  expect(first).toContain("07:35"); expect(first).toContain("Asia/<wbr/>Jerusalem");
   expect(first).toContain(locale==="he"?"תרגול לילד":"Child practice");
   expect(board).not.toContain("<form"); expect(board).not.toContain(row.practice.instructions);
   expect(board).toContain('aria-controls="ls-calendar-practice-detail"');expect(board).not.toContain('href="#');
@@ -33,6 +34,18 @@ test.each(["en","he"] as const)("%s Calendar retains canceled/completed state an
   expect(old).toContain(locale==="he"?"לא נרשמה שעה":"Time not recorded");expect(old).not.toContain("07:35");
   const adult = renderToStaticMarkup(createElement(PracticeCalendarEntry, {item:{...row,schedule:{...row.schedule!,caseKind:"adult"}},locale,onOpen:noop}));
   expect(adult).toContain(locale==="he"?"תרגול לבוגר":"Adult practice");expect(adult).not.toContain(locale==="he"?"תרגול לילד":"Child practice");
+});
+
+test.each(["en","he"] as const)("%s individual appointments do not assume a child and compact entries retain timezone and action semantics", locale => {
+  expect(calendarCopy[locale].individual).toBe(locale === "he" ? "פגישה אישית · 60 דקות" : "Individual appointment · 60 minutes");
+  const html = renderToStaticMarkup(createElement(PracticeCalendarEntry, {item:row,locale,onOpen:noop}));
+  expect(html).toContain('<bdi>07:35</bdi>');
+  expect(html).toContain('<bdi class="ls-cal-practice-zone">Asia/<wbr/>Jerusalem</bdi>');
+  expect(html).toContain('class="ls-cal-practice-open"');
+  expect(html).toContain(locale === "he" ? "פתיחת התרגול" : "Open practice");
+  const otherZone = renderToStaticMarkup(createElement(PracticeCalendarEntry, {item:{...row,schedule:{...row.schedule!,timezone:"Europe/London"}},locale,onOpen:noop}));
+  expect(otherZone).toContain('<bdi>Europe/<wbr/>London</bdi>');
+  expect(otherZone).not.toContain('class="ls-cal-practice-zone"');
 });
 test("Calendar keeps one selected retained report form, same-scope reloads, dirty-close confirmation and uncertain-save lock", () => {
   const source=readFileSync(new URL('../../../src/features/home-practice/occurrence-workspace.tsx',import.meta.url),'utf8');

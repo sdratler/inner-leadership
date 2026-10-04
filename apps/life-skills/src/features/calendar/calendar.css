@@ -38,7 +38,7 @@
 .ls-cal-board--day {grid-template-columns:1fr}
 .ls-cal-day {min-block-size:120px;min-inline-size:0;border:1px solid var(--ui-line,#cddcdf);border-radius:.5rem;padding:.6rem;background:#fff}
 .ls-cal-day h3 {font-size:1rem;margin:.1rem 0 .5rem;border-block-end:1px solid var(--ui-line,#cddcdf);padding-block-end:.5rem}
-.ls-cal-board--week .ls-cal-day {min-block-size:180px}
+.ls-cal-board--week .ls-cal-day {min-block-size:180px;padding-inline:.35rem}
 .ls-cal-slot {display:flex;inline-size:100%;flex-direction:column;gap:.2rem;text-align:start;cursor:pointer;background:#f3f8f9;border:1px solid var(--ui-line,#cddcdf);border-inline-start:4px solid var(--ui-teal,#245159);border-radius:.5rem;padding:.7rem .75rem;margin-block:.6rem;font:inherit;line-height:1.5;color:var(--ui-deep,#163f48)}
 .ls-cal-slot strong {font-size:1rem}
 .ls-cal-slot time {font-variant-numeric:tabular-nums;font-weight:700}
@@ -120,6 +120,12 @@
 @media(prefers-reduced-motion:reduce){.ls-cal *{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
 .lsw.lsu .ls-cal .ls-cal-practice {display:grid;gap:.2rem;inline-size:100%;min-block-size:48px;margin-block:.4rem;padding:.6rem .75rem;text-align:start;font:inherit;background:#f3f8f9;color:var(--ui-deep,#163f48);border:1px solid var(--ui-line,#cddcdf);border-inline-start:4px solid var(--ui-teal,#245159);border-radius:.5rem}
 .ls-cal-practice span {font-size:1rem}
+.ls-cal-practice-time {display:flex;flex-wrap:wrap;justify-content:space-between;gap:.15rem .5rem;font-variant-numeric:tabular-nums}
+.ls-cal-practice-time>bdi:first-child {white-space:nowrap;font-weight:700}
+.ls-cal-practice-result>bdi {min-inline-size:0;overflow-wrap:anywhere}
+.lsw.lsu .ls-cal .ls-cal-board .ls-cal-practice {padding-inline:.4rem;line-height:1.35}
+.ls-cal-practice-result {display:flex;align-items:center;justify-content:space-between;gap:.5rem}
+.ls-cal-practice-open {font-weight:700;flex-shrink:0}
 .ls-cal-practice-agenda {border:1px solid var(--ui-line,#cddcdf);border-radius:.5rem;padding:.75rem;background:#fff}
 .ls-cal-practice-agenda>time {font-weight:700}
 .lsw.lsu .ls-cal>section.lsw-stack {gap:.5rem}
