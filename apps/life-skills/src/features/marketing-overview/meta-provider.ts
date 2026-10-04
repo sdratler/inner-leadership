@@ -1,4 +1,4 @@
-import type { AdDailyPoint, AdSnapshot } from "./contracts.ts";
+import type { AdDailyPoint, AdReporting, AdSnapshot } from "./contracts.ts";
 
 type GraphRow = Record<string, unknown>;
 type GraphPage = { data?: GraphRow[]; paging?: { next?: string } };
@@ -16,6 +16,7 @@ function addDays(localDate: string, days: number): string {
 }
 
 function number(value: unknown): number | null {
+  if (typeof value !== "number" && (typeof value !== "string" || !/^(?:\d+)(?:\.\d+)?$/.test(value))) return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
@@ -24,17 +25,19 @@ function countAction(actions: unknown, pattern: RegExp): number | null {
   if (!Array.isArray(actions)) return null;
   const matched = actions.filter(action => action && typeof action === "object" && pattern.test(String((action as GraphRow).action_type ?? "")));
   if (!matched.length) return null;
-  return matched.reduce((sum, action) => sum + (number((action as GraphRow).value) ?? 0), 0);
+  const values=matched.map(action=>number((action as GraphRow).value));
+  return values.some(value=>value===null) ? null : values.reduce<number>((sum,value)=>sum+value!,0);
 }
 
 function moneyMinor(value: unknown): number | null {
   const parsed = number(value);
-  return parsed === null ? null : Math.round(parsed * 100);
+  const minor=parsed===null?null:Math.round(parsed*100);
+  return minor!==null&&Number.isSafeInteger(minor)?minor:null;
 }
 
 function safeInteger(value: unknown): number | null {
   const parsed = number(value);
-  return parsed === null ? null : Math.round(parsed);
+  return parsed!==null&&Number.isSafeInteger(parsed)?parsed:null;
 }
 
 async function graphJson(fetcher: typeof fetch, url: URL): Promise<GraphRow> {
@@ -49,13 +52,14 @@ async function graphRows(fetcher: typeof fetch, first: URL): Promise<GraphRow[]>
   let next: URL | null = first;
   for (let page = 0; next && page < 20; page += 1) {
     const body = await graphJson(fetcher, next) as GraphPage;
-    rows.push(...(Array.isArray(body.data) ? body.data : []));
-    if (!body.paging?.next) break;
+    if(!Array.isArray(body.data)||rows.length+body.data.length>10000)throw new Error("meta_graph_envelope_unverified");
+    rows.push(...body.data);
+    if (!body.paging?.next) return rows;
     const candidate = new URL(body.paging.next);
     if (candidate.protocol !== "https:" || candidate.hostname !== "graph.facebook.com") throw new Error("meta_graph_pagination_rejected");
     next = candidate;
   }
-  return rows;
+  throw new Error("meta_graph_page_bound_exceeded");
 }
 
 function url(version: string, path: string, token: string, params: Record<string, string>): URL {
@@ -79,6 +83,7 @@ export async function readDirectMetaAds({
 }: { env?: NodeJS.ProcessEnv; fetcher?: typeof fetch; now?: Date } = {}): Promise<{
   ads: AdSnapshot[];
   adSeries: AdDailyPoint[];
+  adReporting: AdReporting;
   fetchedAt: string;
   account: { id: string; name: string; currency: string; timezone: string };
 }> {
@@ -88,8 +93,10 @@ export async function readDirectMetaAds({
   if (token.length < 32 || !/^(?:act_)?\d+$/.test(rawAccount) || !/^v\d+\.\d+$/.test(version)) throw new Error("meta_direct_connection_not_configured");
   const accountId = rawAccount.startsWith("act_") ? rawAccount : `act_${rawAccount}`;
   const accountBody = await graphJson(fetcher, url(version, accountId, token, { fields: "id,name,currency,timezone_name,account_status" }));
-  const timezone = String(accountBody.timezone_name ?? "Asia/Jerusalem");
-  const currency = String(accountBody.currency ?? "USD");
+  const timezone = typeof accountBody.timezone_name==="string"?accountBody.timezone_name:"";
+  const currency = typeof accountBody.currency==="string"?accountBody.currency:"";
+  if(String(accountBody.id??"").replace(/^act_/,"")!==accountId.replace(/^act_/,"")||!timezone||!/^\w{3}$/.test(currency)||!/^\d+$/.test(accountId.replace(/^act_/,"")))throw new Error("meta_account_identity_unverified");
+  try{new Intl.DateTimeFormat("en",{timeZone:timezone}).format(now);new Intl.NumberFormat("en",{style:"currency",currency}).format(0);}catch{throw new Error("meta_account_identity_unverified");}
   const today = dateInZone(now, timezone);
   const currentEnd = addDays(today, -1);
   const currentStart = addDays(currentEnd, -6);
@@ -100,12 +107,12 @@ export async function readDirectMetaAds({
     graphRows(fetcher, url(version, `${accountId}/campaigns`, token, { fields: "id,name,status,effective_status,start_time,stop_time", limit: "200" })),
     graphRows(fetcher, url(version, `${accountId}/insights`, token, { level: "campaign", fields: insightsFields, time_range: JSON.stringify({ since: currentStart, until: currentEnd }), limit: "500" })),
     graphRows(fetcher, url(version, `${accountId}/insights`, token, { level: "campaign", fields: "campaign_id,spend", time_range: JSON.stringify({ since: previousStart, until: previousEnd }), limit: "500" })),
-    graphRows(fetcher, url(version, `${accountId}/insights`, token, { level: "account", fields: "spend,inline_link_clicks,actions", time_range: JSON.stringify({ since: currentStart, until: currentEnd }), time_increment: "1", limit: "100" })),
+    graphRows(fetcher, url(version, `${accountId}/insights`, token, { level: "account", fields: "spend,inline_link_clicks,actions", time_range: JSON.stringify({ since: previousStart, until: currentEnd }), time_increment: "1", limit: "100" })),
   ]);
   const campaignById = new Map(campaigns.map(row => [String(row.id), row]));
   const currentById = new Map(current.map(row => [String(row.campaign_id), row]));
   const previousById = new Map(previous.map(row => [String(row.campaign_id), row]));
-  const ids = new Set([...campaignById.keys(), ...currentById.keys()]);
+  const ids = new Set([...campaignById.keys(), ...currentById.keys(), ...previousById.keys()]);
   const ads = [...ids].map(id => {
     const campaign = campaignById.get(id) ?? {};
     const metrics = currentById.get(id) ?? {};
@@ -138,9 +145,10 @@ export async function readDirectMetaAds({
       manageUrl: `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${accountId.replace(/^act_/, "")}&selected_campaign_ids=${encodeURIComponent(id)}`,
     } satisfies AdSnapshot;
   }).sort((a, b) => (b.spendMinor ?? -1) - (a.spendMinor ?? -1));
-  const dailyByDate = new Map(daily.map(row => [String(row.date_start ?? ""), row]));
-  const dates = Array.from({ length: 7 }, (_, index) => addDays(currentStart, index));
-  const adSeries = dates.map(date => {
+  const dailyByDate = new Map<string,GraphRow>();
+  for(const row of daily){const date=String(row.date_start??"");if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||date<previousStart||date>currentEnd||dailyByDate.has(date))throw new Error("meta_daily_period_unverified");dailyByDate.set(date,row);}
+  const dates = Array.from({ length: 14 }, (_, index) => addDays(previousStart, index));
+  const days = dates.map(date => {
     const row = dailyByDate.get(date);
     return {
       date,
@@ -149,5 +157,6 @@ export async function readDirectMetaAds({
       providerResults: row ? countAction(row.actions, /messaging_conversation_started/i) : null,
     };
   });
-  return { ads, adSeries, fetchedAt: now.toISOString(), account: { id: String(accountBody.id ?? accountId), name: String(accountBody.name ?? "Life Skills Ads"), currency, timezone } };
+  const fetchedAt=now.toISOString(),adSeries=days.slice(7),adReporting:AdReporting={accountId,currency,timezone,fetchedAt,attribution:"provider_default",current:{since:currentStart,until:currentEnd},previous:{since:previousStart,until:previousEnd},days};
+  return { ads, adSeries, adReporting, fetchedAt, account: { id: String(accountBody.id), name: String(accountBody.name ?? accountId), currency, timezone } };
 }

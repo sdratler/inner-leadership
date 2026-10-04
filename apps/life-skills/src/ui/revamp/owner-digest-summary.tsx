@@ -1,0 +1,14 @@
+import {actionText,type OwnerDigest} from "../../features/owner-digest/model.ts";
+import {Section,word} from "./primitives.tsx";
+export function OwnerDigestSummary({digest:d,locale}:{digest:OwnerDigest;locale:"he"|"en"}){
+ const unknown=word(locale,"Unknown","לא ידוע"),count=(n:number|null|undefined)=>n??unknown;
+ return <Section title={word(locale,"Daily owner overview","סקירה יומית לבעלים")}><p>{d.reportDate} · Asia/Jerusalem</p>
+  <div className="lsr-metric-row"><span>{word(locale,"Follow-ups today","מעקב להיום")}: <strong>{count(d.followups?.data.due)}</strong></span><span>{word(locale,"Overdue follow-ups","מעקב באיחור")}: <strong>{count(d.followups?.data.overdue)}</strong></span><span>{word(locale,"Missing / invalid date","תאריך חסר / לא תקין")}: <strong>{count(d.followups?.data.missingDate)} / {count(d.followups?.data.invalidDate)}</strong></span><span>{word(locale,"Internal tasks today / overdue","משימות פנימיות להיום / באיחור")}: <strong>{count(d.tasks?.data.due)} / {count(d.tasks?.data.overdue)}</strong></span></div>
+  {d.followups&&d.followups.data.due===0&&d.followups.data.overdue===0&&<p>{word(locale,"No dated follow-ups due. Missing dates remain separate.","אין מעקב עם תאריך המיועד לטיפול. תאריכים חסרים מוצגים בנפרד.")}</p>}
+  <p><a href={`/${locale}/app/clients?section=prospects`}>{word(locale,"Open follow-ups and intake","פתיחת מעקב וקליטה")}</a> · <a href={`/${locale}/app/calendar`}>{word(locale,"Open internal tasks","פתיחת משימות פנימיות")}</a></p>
+  {!!d.actions.length&&<div aria-label={word(locale,"Needs your attention","דורש תשומת לב")}><strong>{word(locale,"Needs your attention","דורש תשומת לב")}</strong><ul>{d.actions.map(code=><li key={code}>{actionText[locale][code]}</li>)}</ul></div>}
+  <details><summary>{word(locale,"Intake evidence and report readiness","אסמכתאות קליטה ומוכנות הדוח")}</summary><p>{word(locale,"Forms awaiting submission","טפסים הממתינים להגשה")}: {count(d.followups?.data.awaitingForm)} · {word(locale,"Awaiting verified payment","ממתינים לתשלום מאומת")}: {count(d.followups?.data.awaitingPayment)} · {word(locale,"Verified payment; booking not confirmed","תשלום מאומת; תיאום לא אושר")}: {count(d.followups?.data.awaitingBooking)}</p>
+   <p>{word(locale,"This app and the prepared email use the same projection. The existing 08:00 daily sender has not been handed over or independently verified here; no new schedule or email is enabled.","האפליקציה ותצוגת הדוא״ל משתמשות באותם נתונים. העברת השולח היומי הקיים בשעה 08:00 לא אומתה כאן; לא הופעלו לוח זמנים או דוא״ל חדשים.")}</p><a href="/api/owner-digest" target="_blank" rel="noopener noreferrer">{word(locale,"Read authenticated report / email preview (no send)","קריאת דוח / תצוגת דוא״ל לאחר אימות (ללא שליחה)")}</a><p>{word(locale,"Administrative aggregates only; no clinical content.","סיכומים מנהליים בלבד; ללא תוכן קליני.")}</p>
+  </details><time>{d.asOf}</time>
+ </Section>;
+}

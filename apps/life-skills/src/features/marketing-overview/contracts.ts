@@ -64,6 +64,17 @@ export interface AdDailyPoint {
     linkClicks: number | null;
     providerResults: number | null;
 }
+/** Completed account-local periods, never inferred from campaign names/currency. */
+export interface AdReporting {
+    accountId: string;
+    currency: string;
+    timezone: string;
+    fetchedAt: string;
+    attribution: "provider_default";
+    current: { since: string; until: string };
+    previous: { since: string; until: string };
+    days: readonly AdDailyPoint[];
+}
 export interface MarketingInventory {
     files: number;
     concepts: number;
@@ -81,6 +92,10 @@ export interface MarketingInventory {
     partial: boolean;
     asOf: string;
 }
+/** Shared by the server read decision and the actual dashboard view. */
+export function normalizeMarketingSection(value:unknown){
+    return (["overview", "content_calendar", "creatives", "needs_approval", "community", "ads"] as const).find(section=>section===value)??"overview";
+}
 export interface MarketingSnapshot {
     source: "synthetic" | "provider_readback" | "registry_only";
     fetchedAt: string | null;
@@ -89,6 +104,7 @@ export interface MarketingSnapshot {
     ads: readonly AdSnapshot[];
     inventory?: MarketingInventory;
     adSeries?: readonly AdDailyPoint[];
+    adReporting?: AdReporting;
     workbookUrl?: string | null;
     connectionErrors?: readonly string[];
     scout: {

@@ -2,7 +2,7 @@
 import Image from "next/image";
 import { useState } from "react";
 import type { Locale } from "../../features/session-workflow/types.ts";
-import type { AdDailyPoint, MarketingSnapshot } from "../../features/marketing-overview/contracts.ts";
+import { normalizeMarketingSection, type AdDailyPoint, type MarketingSnapshot } from "../../features/marketing-overview/contracts.ts";
 import { safeMarketingUrl } from "../../features/marketing-overview/read-model.ts";
 import {creativeMediaPath} from "../../features/marketing-overview/media-link.ts";
 import {creativeApprovals,creativeFilters,creativePlacements,creativeReviewState,filterCreatives,type CreativeQuery} from "../../features/marketing-overview/creative-filters.ts";
@@ -10,8 +10,9 @@ import { MarketingContentCalendar, type ContentCalendarQuery } from "./marketing
 import { CommunityReplyWorkspace } from "../../features/community-reply/workspace.tsx";
 import { Section, word } from "./primitives.tsx";
 import "./styles.css";
+import type {OwnerDigest} from "../../features/owner-digest/model.ts";
+import {OwnerDigestSummary} from "./owner-digest-summary.tsx";
 
-const sections = ["overview", "content_calendar", "creatives", "needs_approval", "community", "ads"] as const;
 const headings = {
   en: { overview: "Overview", content_calendar: "Content calendar", creatives: "Creatives", needs_approval: "Needs approval", community: "Community", ads: "Ads" },
   he: { overview: "סקירה", content_calendar: "יומן תוכן", creatives: "קריאייטיב", needs_approval: "דורש אישור", community: "קהילה", ads: "מודעות" },
@@ -31,15 +32,15 @@ function MetricBars({ locale, points, metric, currencyCode }: { locale: Locale; 
   const values = points.map(point => point[metric]);
   const maximum = Math.max(1, ...values.map(value => value ?? 0));
   const label = metric === "spendMinor" ? word(locale, "Spend by completed local day", "הוצאה לפי יום מקומי שהושלם") : word(locale, "Link clicks by completed local day", "קליקים על קישור לפי יום מקומי שהושלם");
-  return <figure className="lsr-chart"><figcaption><strong>{label}</strong></figcaption><div className="lsr-chart-bars">{points.map(point => <div key={point.date} className="lsr-chart-point"><div className="lsr-chart-track"><span style={{ height: `${Math.max(4, ((point[metric] ?? 0) / maximum) * 100)}%` }} /></div><small>{point.date.slice(5)}</small><span className="sr-only">{point.date}: {metric === "spendMinor" ? currency(locale, currencyCode, point.spendMinor) : point.linkClicks ?? word(locale, "Unavailable", "לא זמין")}</span></div>)}</div></figure>;
+  return <figure className="lsr-chart"><figcaption><strong>{label}</strong></figcaption><div className="lsr-chart-bars">{points.map(point => <div key={point.date} className="lsr-chart-point"><div className="lsr-chart-track">{point[metric]===null?<span className="sr-only">{word(locale,"Unavailable","לא זמין")}</span>:<span style={{ height: `${(point[metric]! / maximum) * 100}%` }} />}</div><small>{point.date.slice(5)}</small><span className="sr-only">{point.date}: {metric === "spendMinor" ? currency(locale, currencyCode, point.spendMinor) : point.linkClicks ?? word(locale, "Unavailable", "לא זמין")}</span></div>)}</div></figure>;
 }
 
-export function MarketingDashboard({ locale, snapshot, initialSection, initialFilter, initialMonth, calendarQuery, creativeQuery, renderedAt }: { locale: Locale; snapshot: MarketingSnapshot; initialSection?: string | undefined; initialFilter?: string | undefined; initialMonth?: string | undefined; calendarQuery?:ContentCalendarQuery|undefined;creativeQuery?:CreativeQuery|undefined; renderedAt: string }) {
-  const section = sections.find(value => value === initialSection) ?? "overview";
+export function MarketingDashboard({ locale, snapshot, ownerDigest, initialSection, initialFilter, initialMonth, calendarQuery, creativeQuery, renderedAt }: { locale: Locale; snapshot: MarketingSnapshot; ownerDigest?:OwnerDigest|undefined; initialSection?: string | undefined; initialFilter?: string | undefined; initialMonth?: string | undefined; calendarQuery?:ContentCalendarQuery|undefined;creativeQuery?:CreativeQuery|undefined; renderedAt: string }) {
+  const section = normalizeMarketingSection(initialSection);
   const h = headings[locale];
   const actual = snapshot.source === "provider_readback";
   const inventory = snapshot.inventory;
-  const adsCurrency = snapshot.ads.find(ad => ad.currency)?.currency ?? null;
+  const adsCurrency = snapshot.adReporting?.currency ?? snapshot.ads.find(ad => ad.currency)?.currency ?? null;
   const workbook = safeMarketingUrl(snapshot.workbookUrl ?? null, ["docs.google.com"]);
   const inventoryCards = inventory ? [
     ["he_status", word(locale, "Hebrew WhatsApp Status", "סטטוס WhatsApp בעברית"), inventory.heStatusReady, "creatives"],
@@ -58,6 +59,7 @@ export function MarketingDashboard({ locale, snapshot, initialSection, initialFi
   return <section className="lsr">
     <header className="lsr-page-heading"><h1>{word(locale, "Marketing", "שיווק")}</h1><details className="lsr-source-detail" open={section==='overview'}><summary>{word(locale,'Sources and verification','מקורות ואימות')}</summary><p>{word(locale, "Actual creative inventory, publishing records and direct Meta account readback. No client records or leads appear here.", "מלאי קריאייטיב, רשומות פרסום וקריאה ישירה מחשבון Meta. אין כאן רשומות לקוחות או לידים.")}</p><p className="lsr-status">{actual ? word(locale, "Live readback available; provider acceptance and confirmed publication remain distinct.", "זמינה קריאה חיה; קבלת הספק ואישור פרסום מוצגים בנפרד.") : word(locale, "One or more live readbacks are unavailable.", "קריאה חיה אחת או יותר אינה זמינה.")}</p></details>{snapshot.connectionErrors?.map(error => <p role="status" className="lsr-inline-error" key={error}>{error === "direct_meta_readback_unavailable" ? word(locale, "Direct Meta metrics are temporarily unavailable.", "נתוני Meta הישירים אינם זמינים כרגע.") : word(locale, "Creative inventory is temporarily unavailable.", "מלאי הקריאייטיב אינו זמין כרגע.")}</p>)}</header>
     {section === "overview" && <>
+      {ownerDigest&&<OwnerDigestSummary locale={locale} digest={ownerDigest}/>}
       <div className="lsr-summary-grid">{inventoryCards.map(([filter, label, value, destination]) => <Section title={label} key={filter}><a className="lsr-stat-link" href={`/${locale}/app/marketing?section=${destination}&filter=${filter}`} aria-label={`${label}: ${value}`}><strong className="lsr-stat">{value}</strong><span>{word(locale, "View records", "הצגת הרשומות")}</span></a></Section>)}</div>
       {inventory && <Section title={word(locale, "Inventory meaning", "משמעות המלאי")}><p>{word(locale, `${inventory.files} registered files represent ${inventory.concepts} concepts; files, concepts, publishable posts and placements are counted separately.`, `${inventory.files} קבצים רשומים מייצגים ${inventory.concepts} רעיונות; קבצים, רעיונות, פוסטים מוכנים ומיקומים נספרים בנפרד.`)}</p><p><a href={`/${locale}/app/marketing?section=creatives&approval=needs_approval`}>{word(locale, "Needs approval in loaded revisions", "דורש אישור בגרסאות שנטענו")}: {actionableLoaded}</a> · {word(locale, "Needs resize or caption", "דורש התאמת גודל או כיתוב")}: {inventory.needsResizeOrCaption} · {word(locale, "Held or missing", "בהשהיה או חסר")}: {inventory.heldMissing}</p><p><time>{inventory.asOf}</time>{inventory.partial ? ` · ${word(locale, "Partial inventory; unknown is not zero", "מלאי חלקי; לא ידוע אינו אפס")}` : ""}</p>{workbook && <a href={workbook} target="_blank" rel="noopener noreferrer">{word(locale, "Open source workbook", "פתיחת חוברת המקור")}</a>}</Section>}
     </>}
