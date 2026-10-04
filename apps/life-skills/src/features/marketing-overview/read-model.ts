@@ -43,11 +43,24 @@ export function assertMarketingOwner(actor: {
 }): void {
     invariant(actor.active && actor.role === "practitioner" && actor.workspaceId === owner.workspaceId && actor.accountId === owner.accountId, "NOT_FOUND");
 }
+function validateCreative(asset: CreativeVersion): void {
+    invariant(typeof asset === "object" && asset !== null && !Array.isArray(asset), "CREATIVE_FIELDS");
+    const required = ["assetId", "revision", "locale", "width", "height", "imageUrl", "title", "caption", "contentDigest", "review", "approvedDigest"];
+    invariant(required.every(key => Object.hasOwn(asset, key)), "CREATIVE_FIELDS");
+    invariant(typeof asset.assetId === "string" && /^[A-Za-z0-9._-]{1,200}$/.test(asset.assetId) && Number.isSafeInteger(asset.revision) && asset.revision > 0 && asset.revision <= 999999 && ["en", "he"].includes(asset.locale), "CREATIVE_IDENTITY");
+    // Zero means an unrecorded size: preserve the record, but never use it as a
+    // valid next/image dimension or infer placement eligibility from it.
+    invariant([asset.width, asset.height].every(value => Number.isSafeInteger(value) && value >= 0 && value <= 32768), "CREATIVE_DIMENSIONS");
+    invariant(typeof asset.title === "string" && typeof asset.caption === "string" && typeof asset.contentDigest === "string" && /^[a-f0-9]{64}$/.test(asset.contentDigest) && ["draft", "in_review", "approved", "retired"].includes(asset.review), "CREATIVE_FIELDS");
+    invariant((asset.imageUrl === null || typeof asset.imageUrl === "string") && (asset.approvedDigest === null || typeof asset.approvedDigest === "string" && /^[a-f0-9]{64}$/.test(asset.approvedDigest)), "CREATIVE_FIELDS");
+    invariant(["surface", "libraryState"].every(key => !Object.hasOwn(asset, key) || typeof asset[key as "surface" | "libraryState"] === "string") && ["sourceUrl", "holdReason"].every(key => !Object.hasOwn(asset, key) || asset[key as "sourceUrl" | "holdReason"] === null || typeof asset[key as "sourceUrl" | "holdReason"] === "string"), "CREATIVE_FIELDS");
+}
 export function validateMarketingSnapshot(snapshot: MarketingSnapshot): void {
     const allowed = new Set(["source", "fetchedAt", "creatives", "publications", "ads", "scout", "inventory", "adSeries", "adReporting", "workbookUrl", "connectionErrors", "inventoryReadback"]);
     invariant(Object.keys(snapshot).every(key => allowed.has(key)) && ["source", "fetchedAt", "creatives", "publications", "ads", "scout"].every(key => key in snapshot), "MARKETING_FIELDS");
     invariant(["synthetic", "provider_readback", "registry_only"].includes(snapshot.source) && (snapshot.fetchedAt === null || validIso(snapshot.fetchedAt)), "MARKETING_PROVENANCE");
     invariant(snapshot.creatives.length <= 1000 && snapshot.publications.length <= 2000 && snapshot.ads.length <= 200, "MARKETING_PAGE_BOUND");
+    for (const asset of snapshot.creatives) validateCreative(asset);
     if(snapshot.inventoryReadback){const read=snapshot.inventoryReadback;invariant(validIso(read.lastAttemptAt)&&(read.lastSuccessfulReadAt===null||validIso(read.lastSuccessfulReadAt))&&(read.status==="available"?read.lastSuccessfulReadAt!==null&&read.errorCode===null:read.status==="error"&&read.errorCode==="creative_inventory_unavailable"),"MARKETING_INVENTORY_PROVENANCE");}
     if(snapshot.inventory!==undefined){
         const counts=snapshot.inventory;

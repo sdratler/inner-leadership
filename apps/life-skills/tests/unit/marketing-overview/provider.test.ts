@@ -27,3 +27,15 @@ test.each([undefined,null,{},[],{...inventory(),files:undefined},{...inventory()
  mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,inventory:invalid}});
  const snapshot=await loadMarketingSnapshot();expect(snapshot.inventoryReadback).toMatchObject({status:"error",lastSuccessfulReadAt:readAt,errorCode:"creative_inventory_unavailable"});expect(snapshot.inventory).toBeUndefined();expect(snapshot.creatives).toEqual([]);expect(snapshot.fetchedAt).toBe(metaAt);expect(snapshot.connectionErrors).toEqual(["creative_inventory_unavailable"]);
 });
+
+test.each([{locale:undefined},{locale:"fr"},{width:"1080"},{height:NaN},{width:-1},{height:0.5},{title:{}},{caption:undefined},{revision:"1"},{review:"unknown"},{approvedDigest:42},{surface:[]},{sourceUrl:{}},{holdReason:17},{libraryState:[]}])("malformed creative UI fields never become a fresh available read",async patch=>{
+ const {loadMarketingSnapshot}=await import("../../../src/features/marketing-overview/provider.ts");await loadMarketingSnapshot();
+ mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,creatives:[{...registry().snapshot.creatives[0],...patch}]}});
+ const snapshot=await loadMarketingSnapshot();expect(snapshot.inventoryReadback).toMatchObject({status:"error",lastSuccessfulReadAt:readAt,errorCode:"creative_inventory_unavailable"});expect(snapshot.creatives).toEqual([]);expect(snapshot.inventory).toBeUndefined();expect(snapshot.fetchedAt).toBe(metaAt);
+});
+
+test("an unknown size or optional owner text stays visible without inventing valid dimensions",async()=>{
+ const asset={...registry().snapshot.creatives[0],width:0,height:0,surface:"Owner specific placement",holdReason:"Awaiting actual dimensions",libraryState:"Owner specific state"};
+ mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,creatives:[asset]}});const {loadMarketingSnapshot}=await import("../../../src/features/marketing-overview/provider.ts");
+ expect((await loadMarketingSnapshot()).creatives[0]).toMatchObject({width:0,height:0,surface:asset.surface,holdReason:asset.holdReason,libraryState:asset.libraryState});
+});

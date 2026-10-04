@@ -15,7 +15,7 @@ export default async function Page({params,searchParams}:{params:Promise<{locale
  try{await requireWorkspaceRole("practitioner");}catch{notFound();}
  const snapshot=await loadMarketingSnapshot();
   const rawQuery=await searchParams;
- const query:ContentCalendarQuery&CreativeQuery&{section?:string|undefined}=Object.fromEntries(["section","filter","month","layout","date","channel","state","from","to","publication","language","placement","approval","search"].map(key=>[key,typeof rawQuery[key]==="string"?rawQuery[key]:undefined]));
+ const query:ContentCalendarQuery&CreativeQuery&{section?:string|undefined}=Object.fromEntries(["section","filter","month","layout","date","channel","state","from","to","publication","language","placement","approval","search","page"].map(key=>[key,typeof rawQuery[key]==="string"?rawQuery[key]:undefined]));
   const digest=(query.section??"overview")==="overview"?await (async()=>{const context=await ownerDigestContext((await headers()).get("cookie"));return loadOwnerDigest(context.actor,context.runtime,snapshot,locale);})():undefined;
   return <MarketingDashboard locale={locale} snapshot={snapshot} ownerDigest={digest} initialSection={query.section} initialFilter={query.filter} initialMonth={query.month} calendarQuery={query} creativeQuery={query} renderedAt={new Date().toISOString()}/>;
 }
