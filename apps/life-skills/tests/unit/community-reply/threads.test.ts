@@ -30,6 +30,24 @@ it('registration validates exact server readback and pending task data never acc
  fetcher.mockResolvedValueOnce(Response.json({ok:true,data:{...thread,postId:11}}));await expect(registerCommunityThread(owner,command,fetcher,env)).rejects.toMatchObject({code:'UNAVAILABLE'});
  fetcher.mockResolvedValueOnce(Response.json({ok:true,data:{responses:[{...response,taskId:id}],more:false}}));await expect(pendingCommunityResponses(owner,fetcher,env)).rejects.toMatchObject({code:'UNAVAILABLE'});
 });
+it.each(['parent','post','missing'] as const)('rejects a self-consistent pending response with an unrelated %s thread before any task write',async mismatch=>{
+ const captured=mismatch==='parent'?{...thread,commentId:'999',commentUrl:post+'?comment_id=999'}:mismatch==='post'?{...thread,postId:11,postUrl:post+'1',commentUrl:post+'1?comment_id=101'}:null;
+ fetcher.mockResolvedValueOnce(Response.json({ok:true,data:{responses:[response],more:false}}));
+ fetcher.mockResolvedValueOnce(Response.json({ok:true,data:{...data,threads:captured?[captured]:[],responses:[]}}));
+ const create=vi.fn(),acknowledge=vi.fn(),actor={id:owner,role:'practitioner',state:'active'} as Actor;
+ await expect(projectCommunityTasks(actor,{create} as unknown as InternalTaskService,{pending:()=>pendingCommunityResponses(owner,fetcher,env),acknowledge})).rejects.toMatchObject({code:'UNAVAILABLE'});
+ expect(create).not.toHaveBeenCalled();expect(acknowledge).not.toHaveBeenCalled();
+});
+it('reads each distinct pending thread once and accepts only its matching parent/post binding',async()=>{
+ const second={...response,id:'212302a8-3694-4718-9a3b-e5de1a78de6e',commentId:'203',commentUrl:post+'?comment_id=101&reply_comment_id=203'};
+ const pending={responses:[response,second],more:true};
+ fetcher.mockResolvedValueOnce(Response.json({ok:true,data:pending}));fetcher.mockResolvedValueOnce(Response.json({ok:true,data}));
+ expect(await pendingCommunityResponses(owner,fetcher,env)).toEqual(pending);expect(fetcher).toHaveBeenCalledTimes(2);
+ const readUrl=new URL(String(fetcher.mock.calls[1]?.[0]));expect(readUrl.searchParams.get('ownerId')).toBe(owner);expect(readUrl.searchParams.get('threadId')).toBe(id);
+});
+it('does not request thread metadata when no task responses are pending',async()=>{
+ fetcher.mockResolvedValueOnce(Response.json({ok:true,data:{responses:[],more:false}}));expect(await pendingCommunityResponses(owner,fetcher,env)).toEqual({responses:[],more:false});expect(fetcher).toHaveBeenCalledTimes(1);
+});
 it('creates only internal receipt-bound tasks from server captures, with stable retry data and no narrative or case join',async()=>{
  const create=vi.fn().mockResolvedValue({id}),acknowledge=vi.fn().mockResolvedValue(undefined),pending=vi.fn().mockResolvedValue({responses:[response],more:false}),actor={id:owner,role:'practitioner',state:'active'} as Actor;
  expect(await projectCommunityTasks(actor,{create}as unknown as InternalTaskService,{pending,acknowledge})).toEqual({linked:1,more:false});expect(pending).toHaveBeenCalledWith(owner);expect(create.mock.calls[0]?.[1]).toBe('community_response_'+rid);expect(create.mock.calls[0]?.[2]).toMatchObject({caseId:null,note:null,dueDate:'2026-10-02',sourcePath:'/he/app/marketing?section=community&threadId='+id});expect(JSON.stringify(create.mock.calls[0])).not.toContain('DEMO public response');expect(acknowledge).toHaveBeenCalledWith(owner,rid,id);

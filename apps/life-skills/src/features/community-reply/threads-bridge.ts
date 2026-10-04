@@ -41,7 +41,18 @@ export async function registerCommunityThread(ownerId:string,command:ThreadComma
 }
 export async function pendingCommunityResponses(ownerId:string,fetcher:typeof fetch=fetch,env:Record<string,string|undefined>=process.env):Promise<{responses:CommunityResponse[];more:boolean}>{
  const value=z.object({responses:z.array(response).max(25),more:z.boolean()}).strict().safeParse(await exchange(ownerId,'/internal/life-skills/threads?'+new URLSearchParams({ownerId,pending:'true'}),'GET',undefined,fetcher,env));
- if(!value.success||new Set(value.data.responses.map(r=>r.id)).size!==value.data.responses.length||value.data.responses.some(r=>r.taskId!==null))throw new AppError('UNAVAILABLE');return value.data;
+ if(!value.success||new Set(value.data.responses.map(r=>r.id)).size!==value.data.responses.length||value.data.responses.some(r=>r.taskId!==null))throw new AppError('UNAVAILABLE');
+ // Validate the whole bounded pending batch before any task is created. A URL
+ // agreeing with its own parent ID is insufficient: its actual tracked thread
+ // must bind that parent and post. Deduplicate readbacks (at most25) per batch.
+ const threadIds=[...new Set(value.data.responses.map(r=>r.threadId))];
+ const tracked=new Map(await Promise.all(threadIds.map(async id=>{
+  const read=await readCommunityThreads(ownerId,id,fetcher,env),item=read.threads[0];
+  if(read.threads.length!==1||!item||item.id!==id)throw new AppError('UNAVAILABLE');
+  return [id,item] as const;
+ })));
+ if(value.data.responses.some(r=>{const item=tracked.get(r.threadId);return !item||item.commentId!==r.parentCommentId||item.postUrl!==commentLink(r.commentUrl)?.postUrl;}))throw new AppError('UNAVAILABLE');
+ return value.data;
 }
 export async function acknowledgeCommunityTask(ownerId:string,responseId:string,taskId:string,fetcher:typeof fetch=fetch,env:Record<string,string|undefined>=process.env):Promise<void>{
  const value=z.object({responseId:z.literal(responseId),taskId:z.literal(taskId)}).strict().safeParse(await exchange(ownerId,'/internal/life-skills/threads/tasks','PUT',{responseId,taskId},fetcher,env));if(!value.success)throw new AppError('UNAVAILABLE');
