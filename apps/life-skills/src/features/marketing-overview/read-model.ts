@@ -49,6 +49,12 @@ export function validateMarketingSnapshot(snapshot: MarketingSnapshot): void {
     invariant(["synthetic", "provider_readback", "registry_only"].includes(snapshot.source) && (snapshot.fetchedAt === null || validIso(snapshot.fetchedAt)), "MARKETING_PROVENANCE");
     invariant(snapshot.creatives.length <= 1000 && snapshot.publications.length <= 2000 && snapshot.ads.length <= 200, "MARKETING_PAGE_BOUND");
     if(snapshot.inventoryReadback){const read=snapshot.inventoryReadback;invariant(validIso(read.lastAttemptAt)&&(read.lastSuccessfulReadAt===null||validIso(read.lastSuccessfulReadAt))&&(read.status==="available"?read.lastSuccessfulReadAt!==null&&read.errorCode===null:read.status==="error"&&read.errorCode==="creative_inventory_unavailable"),"MARKETING_INVENTORY_PROVENANCE");}
+    if(snapshot.inventory!==undefined){
+        const counts=snapshot.inventory;
+        invariant(typeof counts==="object"&&counts!==null&&!Array.isArray(counts),"MARKETING_INVENTORY_FIELDS");
+        const numericFields=["files","concepts","publishablePosts","heStatusReady","heFeedReady","enFeedReady","adEligible","queued","published","needsApproval","needsResizeOrCaption","heldMissing"] as const;
+        invariant(numericFields.every(key=>Object.hasOwn(counts,key)&&Number.isSafeInteger(counts[key])&&counts[key]>=0)&&Object.hasOwn(counts,"inLiveAds")&&(counts.inLiveAds===null||Number.isSafeInteger(counts.inLiveAds)&&counts.inLiveAds>=0)&&Object.hasOwn(counts,"partial")&&typeof counts.partial==="boolean"&&Object.hasOwn(counts,"asOf")&&typeof counts.asOf==="string"&&validIso(counts.asOf),"MARKETING_INVENTORY_FIELDS");
+    }
     for (const p of snapshot.publications)
         invariant(validTimezone(p.timezone) && (p.scheduledFor === null || validIso(p.scheduledFor)), "PUBLICATION_TIME");
     for (const a of snapshot.ads)

@@ -35,8 +35,8 @@ function registrySnapshot(result:PromiseSettledResult<RegistryReadback>):Registr
   if(result.status!=="fulfilled"||result.value?.success!==true)return null;
   try{
     const snapshot=result.value.snapshot;
-    if(!snapshot||typeof snapshot.fetchedAt!=="string"||!Array.isArray(snapshot.creatives)||!Array.isArray(snapshot.publications))return null;
-    validateMarketingSnapshot({...empty,source:"provider_readback",fetchedAt:snapshot.fetchedAt,creatives:snapshot.creatives,publications:snapshot.publications});
+    if(!snapshot||typeof snapshot.fetchedAt!=="string"||!Array.isArray(snapshot.creatives)||!Array.isArray(snapshot.publications)||snapshot.inventory===undefined)return null;
+    validateMarketingSnapshot({...empty,source:"provider_readback",fetchedAt:snapshot.fetchedAt,creatives:snapshot.creatives,publications:snapshot.publications,inventory:snapshot.inventory});
     // Validate the actual media mapping before advertising this read as fresh.
     const creatives=snapshot.creatives.map(asset=>({...asset,imageUrl:creativeMediaPath(asset)}));
     return {...snapshot,creatives};
