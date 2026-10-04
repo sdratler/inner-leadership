@@ -2,12 +2,20 @@ import {expect,test,vi} from "vitest";
 import {createElement} from "react";
 import {renderToStaticMarkup} from "react-dom/server";
 vi.mock("server-only",()=>({}));
-import {AcquisitionWorkspace,AcquisitionReviewCard,AcquisitionWindowSummary} from "../../../src/features/contact-ops/acquisition-workspace.tsx";
+import {AcquisitionWorkspace,AcquisitionReviewCard,AcquisitionWindowSummary,AcquisitionSignIn} from "../../../src/features/contact-ops/acquisition-workspace.tsx";
 import {acquisitionDecisionSchema,acquisitionPageSchema,acquisitionDecisionResultSchema,type AcquisitionReviewItem} from "../../../src/features/contact-ops/core/acquisition.ts";
 import {practitionerContext,breadcrumbItems} from "../../../src/ui/workspace/navigation-model.ts";
 import {practitionerReturnPath,loginReturnDestination} from "../../../src/features/identity/login-return.ts";
 const item:AcquisitionReviewItem={id:"00000000-0000-4000-8000-000000000001",source:"organic_whatsapp",phone:"+15550001001",displayName:"Synthetic אדם",
  occurredAt:"2026-10-02T10:00:00.000Z",state:"NEEDS_REVIEW",matching:{state:"unmatched",people:[]}};
+test.each(["en","he"] as const)("%s expired acquisition sign-in retains its validated page",locale=>{
+ const html=renderToStaticMarkup(createElement(AcquisitionSignIn,{locale,page:"2",search:""}));
+ const href=html.match(/href="([^"]+)"/)![1]!.replaceAll("&amp;","&");
+ const target=new URL(href,"https://synthetic.invalid").searchParams.get("next")!;
+ expect(target).toBe(`/${locale}/app/clients?section=needs_review&page=2`);
+ expect(loginReturnDestination(locale,"practitioner",target)).toBe(target);
+ for(const page of ["0","-2","2x","100000"]){const bad=renderToStaticMarkup(createElement(AcquisitionSignIn,{locale,page,search:""}));expect(decodeURIComponent(bad)).not.toContain("&page=");}
+});
 test.each(["en","he"] as const)("%s review is one contextual view with collapsed administrative actions",locale=>{
  const html=renderToStaticMarkup(createElement(AcquisitionWorkspace,{locale}));expect(html).toContain(locale==="he"?'dir="rtl"':'dir="ltr"');
  expect((html.match(/<form/g)??[])).toHaveLength(1);expect(html).not.toContain("Synthetic אדם");expect(html).not.toContain("role-switch");
