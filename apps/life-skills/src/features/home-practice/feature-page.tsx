@@ -2,6 +2,7 @@ import { Breadcrumb } from "../../ui/workspace/surfaces.tsx";
 import { PracticeList } from "./practice-list.tsx";
 import { PracticeOccurrenceWorkspace } from "./occurrence-workspace.tsx";
 import { PracticeManagementWorkspace } from "./management-workspace.tsx";
+import "./practice.css";
 
 const content = {
   en: {
@@ -29,19 +30,19 @@ export function Ls040FeaturePage({ locale, kind, caseId, audienceId, assignmentI
   const [title, description] = content[locale][kind];
   const base = `/${locale}/${role === "parent" ? "family" : role === "practitioner" ? "app" : "client"}`;
   const practiceQuery = new URLSearchParams({ ...(caseId ? {caseId} : {}), ...(audienceId ? {audienceId} : {}) });
-  return <main className="lsw-stack lsw-feature-page" aria-labelledby="ls-practice-page-title">
+  return <main className={`lsw-stack lsw-feature-page${kind === "checkins" ? " lsw-practice-checkins" : ""}`} aria-labelledby="ls-practice-page-title">
     <Breadcrumb label={locale === "he" ? "מיקום" : "Location"} items={[
       { label: locale === "he" ? "תרגול" : "Practice", href: base + "/practice" + (practiceQuery.size ? "?" + practiceQuery : "") },
       { label: assignmentId ? (locale === "he" ? "הנחיה נוכחית" : "Current instruction") : title },
     ]} />
     <header className="lsw-page-header"><div>
-      <p className="lsw-eyebrow">{locale === "he" ? "תרגול משותף" : "Shared practice"}</p>
+      {kind !== "checkins" && <p className="lsw-eyebrow">{locale === "he" ? "תרגול משותף" : "Shared practice"}</p>}
       <h1 id="ls-practice-page-title">{title}</h1><p>{description}</p>
     </div></header>
-    <section className="lsw-card" aria-labelledby="current-items">
-      <h2 id="current-items">{locale === "he" ? "פריטים נוכחיים" : "Current items"}</h2>
+    <section className={kind === "checkins" ? "lsw-stack" : "lsw-card"} aria-labelledby="current-items">
+      <h2 id="current-items" className={kind === "checkins" ? "lsw-practice-visually-hidden" : undefined}>{locale === "he" ? "פריטים נוכחיים" : "Current items"}</h2>
       {kind === "checkins"
-        ? <><p><a className="lsw-button lsw-button--secondary" href={base + "/practice" + (practiceQuery.size ? "?" + practiceQuery : "")}>{locale === "he" ? "חזרה להנחיות" : "Back to instructions"}</a></p><PracticeOccurrenceWorkspace locale={locale} role={role} caseId={caseId} audienceId={audienceId} /></>
+        ? <PracticeOccurrenceWorkspace locale={locale} role={role} caseId={caseId} audienceId={audienceId} />
         : role === "practitioner"
           ? <PracticeManagementWorkspace locale={locale} kind={kind} caseId={caseId} audienceId={audienceId} />
           : <PracticeList locale={locale} kind={kind} caseId={caseId} audienceId={audienceId} selectedAssignmentId={assignmentId} role={role} />}
