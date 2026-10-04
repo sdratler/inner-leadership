@@ -11,7 +11,7 @@ import {MAX_OPERATIONAL_PROSPECTS} from '../../../src/features/contact-ops/core/
 import type {MarketingSnapshot} from '../../../src/features/marketing-overview/contracts.ts';
 const actor={id:'DEMO-owner',workspaceId:'DEMO-workspace',role:'practitioner',state:'active',sessionDigest:'DEMO-session'} as Actor;
 it.each(['opt out','opted-out','OPT_OUT','do_not_contact','Do-Not-Contact','Closed','Not interested','No fit','CLOSED','Closed — older inquiry'])('excludes %s before both actual intake and journey queries',async value=>{
- const rows=[{leadId:'LS-LEAD-stage',stage:value,outcome:''},{leadId:'LS-LEAD-outcome',stage:'Prospect',outcome:value},{leadId:'LS-LEAD-archive',stage:'Archived',outcome:''},{leadId:'LS-LEAD-allowed',stage:'Prospect',outcome:''}] as Prospect[];
+ const rows=[{leadId:'LS-LEAD-stage',stage:value,outcome:''},{leadId:'LS-LEAD-outcome',stage:'Prospect',outcome:value},{leadId:'LS-LEAD-archive',stage:'Archived',outcome:''},{leadId:'LS-LEAD-allowed',stage:'Prospect',outcome:''}].map(row=>({...row,nextAction:'',dueDate:''})) as Prospect[];
  const facts:(readonly unknown[])[]=[];
  const store:IdentityStore={transaction:async work=>work({query:async<T extends object>(sql:string,args:readonly unknown[]=[])=>{
   if(sql.includes('SELECT a.id FROM ls_identity.sessions'))return [{id:actor.id}] as T[];
@@ -47,6 +47,11 @@ const invalidProjections=[
  ['malformed ID',[{...prospect,leadId:'not-a-lead'}]],
  ['excessively long ID',[{...prospect,leadId:'LS-LEAD-'+'a'.repeat(81)}]],
  ['more than the unchanged operational bound',Array.from({length:MAX_OPERATIONAL_PROSPECTS+1},(_,i)=>({...prospect,leadId:`LS-LEAD-${i}`}))],
+ ...(['stage','outcome','nextAction','dueDate'] as const).flatMap(key=>[
+  [`null ${key}`,[{...prospect,[key]:null} as unknown as Prospect]] as const,
+  [`missing ${key}`,[Object.fromEntries(Object.entries(prospect).filter(([field])=>field!==key)) as Prospect]] as const,
+  [`nonstring ${key}`,[{...prospect,[key]:123} as unknown as Prospect]] as const,
+ ]),
 ] as const;
 it.each(invalidProjections)('keeps tasks and content when CRM has %s, without converting it to zero or truncating it',async(_label,rows)=>{
  const originalLead=rows[0]!.leadId;

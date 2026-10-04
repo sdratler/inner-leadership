@@ -22,7 +22,7 @@ test("native production binder counts encrypted internal tasks without double co
 test("intake counts use the existing invitation/receipt ledger, not imported sent/payment claims",async()=>{
  const lead="LS-LEAD-digest-"+randomUUID(),invite=randomUUID(),slot=randomUUID(),token=createHash("sha256").update(invite).digest("hex");
  await f.pool.query("INSERT INTO ls_intake.pre_enrollment_invitations(workspace_id,invitation_id,token_digest,stable_lead_ref,child_slots,expires_at,created_at,created_by_account_id) VALUES($1,$2,$3,$4,$5::jsonb,$6,$7,$8)",[f.workspaceId,invite,token,lead,JSON.stringify([slot]),new Date(now.getTime()+86400000),now,f.practitioner.actor.id]);
- const row={leadId:lead,stage:"Prospect",outcome:"",paymentStatus:"Paid claim only",bookingStatus:"Confirmed claim only"} as Prospect;
+ const row={leadId:lead,stage:"Prospect",outcome:"",nextAction:"",dueDate:"",paymentStatus:"Paid claim only",bookingStatus:"Confirmed claim only"} as Prospect;
  const result=await readIntakeFacts(store(),f.practitioner.actor,[row],now);expect(result.awaitingForm).toBe(1);expect(result.journeys.size).toBe(0);
  expect((await readIntakeFacts(store(),f.practitioner.actor,[{...row,stage:"Archived"}],now)).awaitingForm).toBe(0);
  for(const value of ['opt out','opted-out','OPT_OUT','do_not_contact','Do-Not-Contact','Closed','Not interested','No fit','CLOSED','Closed — older inquiry']){

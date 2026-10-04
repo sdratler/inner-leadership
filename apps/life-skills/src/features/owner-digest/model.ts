@@ -25,11 +25,12 @@ const canonicalStages=new Set(["New inquiry","Contacted","Offer made","Prospect"
 type ProspectFacts=Pick<Prospect,"leadId"|"stage"|"outcome"|"dueDate"|"nextAction"|"journeyState"|"paymentVerified"|"bookingConfirmed">;
 /** Validate before serializing IDs or querying local ledgers. The identifier
  * bound matches the existing native People API; never truncate a corrupt read. */
-export function validateDigestProspects(rows:readonly Pick<Prospect,"leadId">[]):void {
+export function validateDigestProspects(rows:readonly Pick<Prospect,"leadId"|"stage"|"outcome"|"nextAction"|"dueDate">[]):void {
  if(!Array.isArray(rows)||rows.length>MAX_OPERATIONAL_PROSPECTS)throw Error("INVALID_DIGEST_PROSPECTS");
  const seen=new Set<string>();
  for(const row of rows){
-  if(!row||typeof row.leadId!=="string"||!/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]{1,80}$/.test(row.leadId)||seen.has(row.leadId))throw Error("INVALID_DIGEST_PROSPECTS");
+  if(!row||typeof row.leadId!=="string"||!/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]{1,80}$/.test(row.leadId)||seen.has(row.leadId)||
+   ["stage","outcome","nextAction","dueDate"].some(key=>typeof row[key as "stage"|"outcome"|"nextAction"|"dueDate"]!=="string"))throw Error("INVALID_DIGEST_PROSPECTS");
   seen.add(row.leadId);
  }
 }
