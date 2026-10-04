@@ -15,7 +15,7 @@ export interface ProcessingStore {
     /** Exclusive, expiring lease with fencing token; expired ownership cannot commit. */
     claim(jobId: string): Promise<Lease | null>;
     /** Recheck live account/case authority + consent; never rely only on upload-time authorization. */
-    assertCurrentPermission(lease: Lease): Promise<void>;
+    assertCurrentPermission(lease: Lease, summaryLocale?: "en" | "he"): Promise<void>;
     checkpoint(lease: Lease, patch: Partial<Pick<ProcessingJob, "state" | "audioState" | "transcriptVersion" | "transcriptDigest" | "providerRequestId" | "failureCode" | "transcriptCompleteVerified">>): Promise<void>;
     /** Atomically persist transcript, cleaned segments, provider receipt AND job transcript pointer/state. */
     saveTranscript(lease: Lease, transcript: Transcript, cleaned: ReturnType<typeof cleanWhitespace>, providerRequestId: string, completion: TranscriptionCompletion): Promise<TranscriptReceipt>;
@@ -72,7 +72,7 @@ export async function processSession(jobId: string, ports: ProcessingPorts, summ
         return { status: "already_running_or_complete" as const };
     let uncertainPhase: "transcription" | "analysis" | null = null;
     try {
-        await ports.store.assertCurrentPermission(lease);
+        await ports.store.assertCurrentPermission(lease, summaryLocale);
         invariant(lease.job.state !== "canceled" && lease.job.state !== "ready", "JOB_NOT_PROCESSABLE");
         let transcript: Transcript;
         if (lease.job.transcriptVersion !== null) {
@@ -85,20 +85,27 @@ export async function processSession(jobId: string, ports: ProcessingPorts, summ
             // A lost response is not permission to re-send audio. Reconciliation chooses a new authorized attempt.
             invariant(lease.job.state !== "transcribing" && lease.job.failureCode !== "PROVIDER_OUTCOME_UNKNOWN", "PROVIDER_OUTCOME_UNKNOWN");
             await ports.budget.reserve(lease.job.attemptId, "transcription");
-            await ports.store.checkpoint(lease, { state: "transcribing", failureCode: null });
             const bytes = await ports.audio.readVerified(lease);
             try {
-                await ports.store.assertCurrentPermission(lease);
+                await ports.store.assertCurrentPermission(lease, summaryLocale);
+                // Download/lease failures before this point are not ambiguous provider calls.
+                // Persist the in-flight fence immediately before sending verified bytes.
+                await ports.store.checkpoint(lease, { state: "transcribing", failureCode: null });
                 uncertainPhase = "transcription";
                 const result = await ports.transcriber.transcribe({ bytes, attemptId: lease.job.attemptId, sourceDigest: lease.job.sourceDigest, languages: ["he", "en"], speakerIdentification: "labels_only" });
                 transcript = result.transcript;
                 validateTranscript(transcript);
                 validateTranscriptionCompletion(transcript, result.completion, lease.job.sourceDurationMs, lease.job.sourceDigest);
-                await ports.store.assertCurrentPermission(lease);
+                await ports.store.assertCurrentPermission(lease, summaryLocale);
                 const receipt = await ports.store.saveTranscript(lease, transcript, cleanWhitespace(transcript), result.requestId, result.completion);
-                invariant(receipt.durable === true && receipt.completeVerified === true && receipt.digest === transcriptDigest(transcript) && receipt.version === transcript.version, "TRANSCRIPT_SAVE_FAILED");
+                invariant(receipt.durable === true && receipt.completeVerified === true, "TRANSCRIPT_SAVE_FAILED");
                 const stored = await ports.store.readTranscript(lease);
-                invariant(transcriptDigest(stored) === receipt.digest, "TRANSCRIPT_READBACK_FAILED");
+                validateTranscript(stored);
+                invariant(stored.version === receipt.version && transcriptDigest(stored) === receipt.digest
+                    && transcriptDigest({ ...stored, version: transcript.version }) === transcriptDigest(transcript), "TRANSCRIPT_READBACK_FAILED");
+                // The native store owns session version allocation, not the external provider.
+                // Only adopt its complete readback after proving all source content is unchanged.
+                transcript = stored;
                 await ports.store.checkpoint(lease, { state: "transcript_saved", transcriptVersion: receipt.version, transcriptDigest: receipt.digest, providerRequestId: result.requestId, transcriptCompleteVerified: true, audioState: "delete_pending" });
                 lease.job.transcriptCompleteVerified = true;
                 lease.job.transcriptVersion = receipt.version;
@@ -110,23 +117,25 @@ export async function processSession(jobId: string, ports: ProcessingPorts, summ
             }
         }
         // Immediate after durable transcription, not after eventual Share update or manual review.
-        await ports.store.checkpoint(lease, { audioState: "delete_pending" });
-        try {
-            await ports.audio.deleteAndVerify(lease);
-            await ports.store.checkpoint(lease, { audioState: "deleted" });
+        if (lease.job.audioState !== "deleted") {
+            await ports.store.checkpoint(lease, { audioState: "delete_pending" });
+            try {
+                await ports.audio.deleteAndVerify(lease);
+                await ports.store.checkpoint(lease, { audioState: "deleted" });
+            }
+            catch {
+                await ports.store.checkpoint(lease, { audioState: "deletion_failed" });
+                throw new WorkflowError("AUDIO_DELETION_FAILED");
+            }
         }
-        catch {
-            await ports.store.checkpoint(lease, { audioState: "deletion_failed" });
-            throw new WorkflowError("AUDIO_DELETION_FAILED");
-        }
-        await ports.store.assertCurrentPermission(lease);
+        await ports.store.assertCurrentPermission(lease, summaryLocale);
         invariant(lease.job.state !== "analyzing" && lease.job.failureCode !== "ANALYSIS_OUTCOME_UNKNOWN", "ANALYSIS_OUTCOME_UNKNOWN");
         await ports.budget.reserve(`${lease.job.attemptId}:analysis:${transcript.version}:${summaryLocale}`, "analysis");
         await ports.store.checkpoint(lease, { state: "analyzing" });
         uncertainPhase = "analysis";
         const analysis = await ports.analyst.analyze(transcript, summaryLocale);
         validateAnalysis(analysis, transcript);
-        await ports.store.assertCurrentPermission(lease);
+        await ports.store.assertCurrentPermission(lease, summaryLocale);
         await ports.store.saveAnalysis(lease, analysis);
         await ports.store.complete(lease);
         uncertainPhase = null;
