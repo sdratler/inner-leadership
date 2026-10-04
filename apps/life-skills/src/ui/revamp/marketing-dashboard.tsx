@@ -11,18 +11,14 @@ import { Section, word } from "./primitives.tsx";
 import "./styles.css";
 import type {OwnerDigest} from "../../features/owner-digest/model.ts";
 import {OwnerDigestSummary} from "./owner-digest-summary.tsx";
+import {creativeMediaPath} from "../../features/marketing-overview/media-link.ts";
+import {CreativePreview} from "./creative-preview.tsx";
 
 const sections = ["overview", "content_calendar", "creatives", "needs_approval", "community", "ads"] as const;
 const headings = {
   en: { overview: "Overview", content_calendar: "Content calendar", creatives: "Creatives", needs_approval: "Needs approval", community: "Community", ads: "Ads" },
   he: { overview: "סקירה", content_calendar: "יומן תוכן", creatives: "קריאייטיב", needs_approval: "דורש אישור", community: "קהילה", ads: "מודעות" },
 };
-
-function driveThumbnail(value: string | null): string | null {
-  const safe=safeMarketingUrl(value,["drive.google.com","lh3.googleusercontent.com"]);if(!safe)return null;
-  const parsed=new URL(safe),match=parsed.hostname==="drive.google.com"?parsed.pathname.match(/^\/file\/d\/([A-Za-z0-9_-]+)(?:\/|$)/):null;
-  return match ? `https://drive.google.com/thumbnail?id=${encodeURIComponent(match[1]!)}&sz=w600` : safe;
-}
 
 function CreativeThumbnail({ image, sourceAvailable, title, width, height, locale }: { image: string | null; sourceAvailable: boolean; title: string; width: number; height: number; locale: Locale }) {
   const [failed, setFailed] = useState(false);
@@ -44,7 +40,7 @@ function MetricBars({ locale, points, metric, currencyCode }: { locale: Locale; 
 export function MarketingDashboard({ locale, snapshot, ownerDigest, initialSection, initialFilter, initialMonth, calendarQuery, creativeQuery, renderedAt }: { locale: Locale; snapshot: MarketingSnapshot; ownerDigest?:OwnerDigest|undefined; initialSection?: string | undefined; initialFilter?: string | undefined; initialMonth?: string | undefined; calendarQuery?:ContentCalendarQuery|undefined;creativeQuery?:CreativeQuery|undefined; renderedAt: string }) {
   const section = sections.find(value => value === initialSection) ?? "overview";
   const h = headings[locale];
-  const actual = snapshot.source === "provider_readback";
+  const actual = snapshot.inventoryReadback?.status==="available" || snapshot.source === "provider_readback" && !snapshot.connectionErrors?.includes("creative_inventory_unavailable");
   const inventory = snapshot.inventory;
   const adsCurrency = snapshot.adReporting?.currency ?? snapshot.ads.find(ad => ad.currency)?.currency ?? null;
   const workbook = safeMarketingUrl(snapshot.workbookUrl ?? null, ["docs.google.com"]);
@@ -64,6 +60,7 @@ export function MarketingDashboard({ locale, snapshot, ownerDigest, initialSecti
   const approvalLabels={all:word(locale,'All approval states','כל מצבי האישור'),needs_approval:word(locale,'Needs approval','דורש אישור'),approved:word(locale,'Approved exact version','הגרסה המדויקת מאושרת'),retired:word(locale,'Retired','הוצא משימוש'),rejected:word(locale,'Rejected','נדחה'),unknown:word(locale,'Unknown approval state','מצב אישור לא ידוע')};
   return <section className="lsr">
     <header className="lsr-page-heading"><h1>{word(locale, "Marketing", "שיווק")}</h1><details className="lsr-source-detail" open={section==='overview'}><summary>{word(locale,'Sources and verification','מקורות ואימות')}</summary><p>{word(locale, "Actual creative inventory, publishing records and direct Meta account readback. No client records or leads appear here.", "מלאי קריאייטיב, רשומות פרסום וקריאה ישירה מחשבון Meta. אין כאן רשומות לקוחות או לידים.")}</p><p className="lsr-status">{actual ? word(locale, "Live readback available; provider acceptance and confirmed publication remain distinct.", "זמינה קריאה חיה; קבלת הספק ואישור פרסום מוצגים בנפרד.") : word(locale, "One or more live readbacks are unavailable.", "קריאה חיה אחת או יותר אינה זמינה.")}</p></details>{snapshot.connectionErrors?.map(error => <p role="status" className="lsr-inline-error" key={error}>{error === "direct_meta_readback_unavailable" ? word(locale, "Direct Meta metrics are temporarily unavailable.", "נתוני Meta הישירים אינם זמינים כרגע.") : word(locale, "Creative inventory is temporarily unavailable.", "מלאי הקריאייטיב אינו זמין כרגע.")}</p>)}</header>
+    {snapshot.inventoryReadback&&<p className="lsr-inventory-readback" role="status">{word(locale,"Creative inventory last successful read","קריאה מוצלחת אחרונה של מלאי הקריאייטיב")}: {snapshot.inventoryReadback.lastSuccessfulReadAt?<time>{snapshot.inventoryReadback.lastSuccessfulReadAt}</time>:word(locale,"Not verified in this runtime","טרם אומת בזמן ריצה זה")} · {word(locale,"Last attempt","ניסיון אחרון")}: <time>{snapshot.inventoryReadback.lastAttemptAt}</time> · {snapshot.inventoryReadback.status==="available"?word(locale,"Available","זמין"):word(locale,"Read failed — reload to retry; unknown is not empty","הקריאה נכשלה — רעננו לניסיון נוסף; לא ידוע אינו מלאי ריק")}</p>}
     {section === "overview" && <>
       {ownerDigest&&<OwnerDigestSummary locale={locale} digest={ownerDigest}/>}
       <div className="lsr-summary-grid">{inventoryCards.map(([filter, label, value, destination]) => <Section title={label} key={filter}><a className="lsr-stat-link" href={filter==="he_status"?`/${locale}/app/marketing?section=content_calendar&filter=queued&channel=whatsapp_status&layout=agenda`:`/${locale}/app/marketing?section=${destination}&filter=${filter}`} aria-label={`${label}: ${value}`}><strong className="lsr-stat">{value}</strong><span>{word(locale, "View records", "הצגת הרשומות")}</span></a></Section>)}</div>
@@ -83,14 +80,14 @@ export function MarketingDashboard({ locale, snapshot, ownerDigest, initialSecti
         <div className="lsr-creative-filter-actions"><button type="submit">{word(locale,'Apply filters','החלת סינון')}</button><a href={clearCreativeHref}>{word(locale,'Clear filters','ניקוי סינון')}</a></div>
       </form>
       <p className="lsr-creative-counts" role="status">{word(locale,`${visibleCreatives.length} revisions · ${new Set(visibleCreatives.map(asset=>`${asset.locale}:${asset.width}x${asset.height}`)).size} language/size variants`,`${visibleCreatives.length} גרסאות · ${new Set(visibleCreatives.map(asset=>`${asset.locale}:${asset.width}x${asset.height}`)).size} שילובי שפה וגודל`)}{inventory?.partial?` · ${word(locale,'Partial inventory','מלאי חלקי')}`:''}</p>
-      <div className="lsr-creative-grid">{visibleCreatives.map(asset => { const image = safeMarketingUrl(driveThumbnail(asset.imageUrl), ["drive.google.com", "lh3.googleusercontent.com"]); const source = safeMarketingUrl(asset.sourceUrl ?? null, ["drive.google.com", "docs.google.com", "github.com"]) ?? safeMarketingUrl(asset.imageUrl, ["drive.google.com", "docs.google.com", "github.com"]);const state=creativeReviewState(asset); return <article className="lsr-creative-card" key={`${asset.assetId}:${asset.revision}:${asset.contentDigest}`}><CreativeThumbnail key={`${asset.assetId}:${asset.revision}:${asset.imageUrl}`} image={image} sourceAvailable={source !== null} title={asset.title} width={asset.width} height={asset.height} locale={locale}/><h3>{asset.title}</h3><p>{asset.locale.toUpperCase()} · {asset.surface ?? word(locale,'No registered placement','אין מיקום רשום')} · {asset.width}×{asset.height} · v{asset.revision}</p><p>{state==='unapproved'?asset.holdReason??word(locale,'Needs review of this exact version','נדרשת בדיקת הגרסה המדויקת'):approvalLabels[state]}</p>{source && <a href={source} target="_blank" rel="noopener noreferrer">{word(locale, "Open asset", "פתיחת הנכס")}</a>}</article>; })}</div>
+      <div className="lsr-creative-grid">{visibleCreatives.map(asset => { const image = creativeMediaPath(asset); const source = safeMarketingUrl(asset.sourceUrl ?? null, ["drive.google.com", "docs.google.com", "github.com"]);const state=creativeReviewState(asset); return <article className="lsr-creative-card" key={`${asset.assetId}:${asset.revision}:${asset.contentDigest}`}><CreativeThumbnail key={`${asset.assetId}:${asset.revision}:${asset.imageUrl}`} image={image} sourceAvailable={source !== null} title={asset.title} width={asset.width} height={asset.height} locale={locale}/><h3>{asset.title}</h3><p>{asset.locale.toUpperCase()} · {asset.surface ?? word(locale,'No registered placement','אין מיקום רשום')} · {asset.width}×{asset.height} · v{asset.revision}</p><p>{state==='unapproved'?asset.holdReason??word(locale,'Needs review of this exact version','נדרשת בדיקת הגרסה המדויקת'):approvalLabels[state]}</p><CreativePreview asset={asset} locale={locale}/>{source && <a href={source} target="_blank" rel="noopener noreferrer">{word(locale, "Open asset", "פתיחת הנכס")}</a>}</article>; })}</div>
       {!visibleCreatives.length&&<p>{snapshot.connectionErrors?.includes('creative_inventory_unavailable')?word(locale,'The source could not be loaded. Retry this page; an unavailable source is not an empty inventory.','לא ניתן לטעון את המקור. אפשר לנסות שוב; מקור לא זמין אינו מלאי ריק.'):word(locale,'No registered revisions match these filters.','אין גרסאות רשומות המתאימות לסינון.')} <a href={clearCreativeHref}>{word(locale,'Clear filters','ניקוי סינון')}</a></p>}
       {inventory&&<details className="lsr-creative-inventory"><summary>{word(locale,'Files, concepts and usable posts','קבצים, רעיונות ופוסטים שמישים')}</summary><p>{word(locale,`${inventory.files} registered files · ${inventory.concepts} concepts · ${inventory.publishablePosts} publishable posts`,`${inventory.files} קבצים רשומים · ${inventory.concepts} רעיונות · ${inventory.publishablePosts} פוסטים מוכנים לפרסום`)}</p><p>{word(locale,'Loaded revisions and language/size combinations are not ready-post totals. Approval is bound to the exact digest; source edits never inherit approval.','גרסאות טעונות ושילובי שפה וגודל אינם מספר הפוסטים המוכנים. האישור קשור לתוכן המדויק; עריכה במקור אינה יורשת אישור.')}</p><time>{inventory.asOf}</time>{workbook&&<p><a href={workbook} target="_blank" rel="noopener noreferrer">{word(locale,'Open source workbook','פתיחת חוברת המקור')}</a></p>}</details>}
     </Section>}
     {section === "content_calendar" && <MarketingContentCalendar locale={locale} snapshot={snapshot}
       query={{filter:initialFilter,month:initialMonth,...calendarQuery}} renderedAt={renderedAt}
       thumbnail={asset=><CreativeThumbnail key={`${asset.assetId}:${asset.revision}:${asset.imageUrl}`}
-        image={safeMarketingUrl(driveThumbnail(asset.imageUrl),["drive.google.com","lh3.googleusercontent.com"])}
+        image={creativeMediaPath(asset)}
         sourceAvailable={Boolean(safeMarketingUrl(asset.sourceUrl??asset.imageUrl??null,["drive.google.com","docs.google.com","github.com"]))}
         title={asset.title} width={asset.width} height={asset.height} locale={locale}/>} />}
     {section === "community" && <Section title={h[section]}><CommunityReplyWorkspace locale={locale} /></Section>}

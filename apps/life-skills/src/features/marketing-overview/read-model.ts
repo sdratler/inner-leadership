@@ -44,10 +44,11 @@ export function assertMarketingOwner(actor: {
     invariant(actor.active && actor.role === "practitioner" && actor.workspaceId === owner.workspaceId && actor.accountId === owner.accountId, "NOT_FOUND");
 }
 export function validateMarketingSnapshot(snapshot: MarketingSnapshot): void {
-    const allowed = new Set(["source", "fetchedAt", "creatives", "publications", "ads", "scout", "inventory", "adSeries", "adReporting", "workbookUrl", "connectionErrors"]);
+    const allowed = new Set(["source", "fetchedAt", "creatives", "publications", "ads", "scout", "inventory", "adSeries", "adReporting", "workbookUrl", "connectionErrors", "inventoryReadback"]);
     invariant(Object.keys(snapshot).every(key => allowed.has(key)) && ["source", "fetchedAt", "creatives", "publications", "ads", "scout"].every(key => key in snapshot), "MARKETING_FIELDS");
     invariant(["synthetic", "provider_readback", "registry_only"].includes(snapshot.source) && (snapshot.fetchedAt === null || validIso(snapshot.fetchedAt)), "MARKETING_PROVENANCE");
     invariant(snapshot.creatives.length <= 1000 && snapshot.publications.length <= 2000 && snapshot.ads.length <= 200, "MARKETING_PAGE_BOUND");
+    if(snapshot.inventoryReadback){const read=snapshot.inventoryReadback;invariant(validIso(read.lastAttemptAt)&&(read.lastSuccessfulReadAt===null||validIso(read.lastSuccessfulReadAt))&&(read.status==="available"?read.lastSuccessfulReadAt!==null&&read.errorCode===null:read.status==="error"&&read.errorCode==="creative_inventory_unavailable"),"MARKETING_INVENTORY_PROVENANCE");}
     for (const p of snapshot.publications)
         invariant(validTimezone(p.timezone) && (p.scheduledFor === null || validIso(p.scheduledFor)), "PUBLICATION_TIME");
     for (const a of snapshot.ads)
