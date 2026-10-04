@@ -4,8 +4,8 @@ import {commentLink,readCommunityThreads,registerCommunityThread,pendingCommunit
 import {projectCommunityTasks} from '../../../src/features/community-reply/threads.ts';
 import type {InternalTaskService} from '../../../src/features/calendar/tasks.ts';
 import type {Actor} from '../../../src/features/identity/types.ts';
-const owner='9fe575fe-fba2-4a4b-a136-bb28560b13f2',id='412302a8-3694-4718-9a3b-e5de1a78de6e',rid='112302a8-3694-4718-9a3b-e5de1a78de6e',post='https://www.facebook.com/groups/demo/posts/10',at='2026-10-02T06:00:00Z',env={LS_COMMUNITY_SCOUT_BRIDGE_SECRET:'a'.repeat(43)};
-const thread={id,postId:10,postUrl:post,commentId:'101',commentUrl:post+'?comment_id=101',registeredAt:at,expiresAt:'2026-10-30T06:00:00Z'},response={id:rid,threadId:id,commentId:'202',parentCommentId:'101',commentUrl:post+'?comment_id=101&reply_comment_id=202',text:'DEMO public response',postedAt:at,capturedAt:at,expiresAt:thread.expiresAt,taskId:null};
+const owner='9fe575fe-fba2-4a4b-a136-bb28560b13f2',id='412302a8-3694-4718-9a3b-e5de1a78de6e',rid='112302a8-3694-4718-9a3b-e5de1a78de6e',post='https://www.facebook.com/groups/demo/posts/10',at='2026-10-02T06:00:00.000Z',env={LS_COMMUNITY_SCOUT_BRIDGE_SECRET:'a'.repeat(43)};
+const thread={id,postId:10,postUrl:post,commentId:'101',commentUrl:post+'?comment_id=101',registeredAt:at,expiresAt:'2026-10-30T06:00:00.000Z'},response={id:rid,threadId:id,commentId:'202',parentCommentId:'101',commentUrl:post+'?comment_id=101&reply_comment_id=202',text:'DEMO public response',postedAt:at,capturedAt:at,expiresAt:thread.expiresAt,taskId:null};
 const data={threads:[thread],responses:[response],partial:true,captureStatus:null,autonomousCollectionEnabled:false};
 const fetcher=vi.fn<typeof fetch>();beforeEach(()=>{fetcher.mockReset();fetcher.mockResolvedValue(Response.json({ok:true,data}));});
 it('retains only exact supported post/comment links rather than guesses or unsafe targets',()=>{
@@ -16,6 +16,22 @@ it('binds trusted owner, exact parent/post relationship and bounded envelopes on
  expect(await readCommunityThreads(owner,undefined,fetcher,env)).toEqual(data);expect(fetcher.mock.calls[0]?.[0]).toContain('https://community-scout-production.up.railway.app/internal/life-skills/threads?ownerId='+owner);
  for(const altered of [{...data,responses:[{...response,parentCommentId:'999'}]},{...data,responses:[{...response,threadId:rid}]},{...data,responses:[response,response]},{...data,autonomousCollectionEnabled:true},{...data,threads:Array(21).fill(thread)}]){fetcher.mockResolvedValueOnce(Response.json({ok:true,data:altered}));await expect(readCommunityThreads(owner,undefined,fetcher,env)).rejects.toMatchObject({code:'UNAVAILABLE'});}
  fetcher.mockResolvedValueOnce(new Response('x'.repeat(1_000_001)));await expect(readCommunityThreads(owner,undefined,fetcher,env)).rejects.toMatchObject({code:'UNAVAILABLE'});
+});
+it.each(['2026-10-02T06:00:00','2026-10-02','2026-02-30T06:00:00Z'])('rejects noncanonical instants before rendering or task projection: %s',async invalid=>{
+ for(const malformed of [
+  {...data,threads:[{...thread,registeredAt:invalid}]}, {...data,threads:[{...thread,expiresAt:invalid}]},
+  ...['postedAt','capturedAt','expiresAt'].map(field=>({...data,responses:[{...response,[field]:invalid}]})),
+  {...data,captureStatus:{checkedAt:invalid,reason:null,observedRunCostCents:null}},
+ ]){fetcher.mockResolvedValueOnce(Response.json({ok:true,data:malformed}));await expect(readCommunityThreads(owner,undefined,fetcher,env)).rejects.toMatchObject({code:'UNAVAILABLE'});}
+ fetcher.mockResolvedValueOnce(Response.json({ok:true,data:{responses:[{...response,capturedAt:invalid}],more:false}}));
+ const create=vi.fn().mockResolvedValue({id}),acknowledge=vi.fn(),actor={id:owner,role:'practitioner',state:'active'} as Actor;
+ await expect(projectCommunityTasks(actor,{create} as unknown as InternalTaskService,{pending:()=>pendingCommunityResponses(owner,fetcher,env),acknowledge})).rejects.toMatchObject({code:'UNAVAILABLE'});
+ expect(create).not.toHaveBeenCalled();expect(acknowledge).not.toHaveBeenCalled();
+});
+it('normalizes explicit provider offsets to the same UTC instant used by Calendar',async()=>{
+ const offset='2026-10-02T09:00:00+03:00';fetcher.mockResolvedValueOnce(Response.json({ok:true,data:{...data,threads:[{...thread,registeredAt:offset}],responses:[{...response,capturedAt:offset}],captureStatus:{checkedAt:offset,reason:null,observedRunCostCents:null}}}));
+ const actual=await readCommunityThreads(owner,undefined,fetcher,env);
+ expect(actual.threads[0]?.registeredAt).toBe('2026-10-02T06:00:00.000Z');expect(actual.responses[0]?.capturedAt).toBe('2026-10-02T06:00:00.000Z');expect(actual.captureStatus?.checkedAt).toBe('2026-10-02T06:00:00.000Z');
 });
 it('rejects a response URL whose root comment disagrees with its declared parent, including pending task projection',async()=>{
  const wrong={...response,commentUrl:post+'?comment_id=999&reply_comment_id=202'};

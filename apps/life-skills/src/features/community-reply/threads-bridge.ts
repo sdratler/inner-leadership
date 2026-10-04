@@ -1,8 +1,11 @@
 import 'server-only';
 import {z} from 'zod';
 import {AppError} from '../../lib/errors.ts';
+import {instant} from '../../lib/time.ts';
 const origin='https://community-scout-production.up.railway.app';
-const date=z.string().max(40).refine(v=>Number.isFinite(Date.parse(v)));
+const date=z.string().max(40).transform((value,context):string=>{
+ try{return instant(value);}catch{context.addIssue({code:'custom',message:'Expected an offset-qualified instant'});return z.NEVER;}
+});
 const commentId=z.string().regex(/^[0-9]{1,100}$/);
 export function commentLink(value:string):{postUrl:string;commentId:string;rootCommentId:string;url:string}|null{
  let u:URL;try{u=new URL(value);}catch{return null;}
