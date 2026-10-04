@@ -33,6 +33,26 @@ it('normalizes explicit provider offsets to the same UTC instant used by Calenda
  const actual=await readCommunityThreads(owner,undefined,fetcher,env);
  expect(actual.threads[0]?.registeredAt).toBe('2026-10-02T06:00:00.000Z');expect(actual.responses[0]?.capturedAt).toBe('2026-10-02T06:00:00.000Z');expect(actual.captureStatus?.checkedAt).toBe('2026-10-02T06:00:00.000Z');
 });
+it.each([
+ {postedAt:'2026-10-02T06:00:01.000Z'},
+ {expiresAt:'2026-10-02T05:59:59.000Z'},
+])('rejects impossible response chronology before rendering or any task write: %j',async change=>{
+ const wrong={...response,...change};fetcher.mockResolvedValueOnce(Response.json({ok:true,data:{...data,responses:[wrong]}}));
+ await expect(readCommunityThreads(owner,undefined,fetcher,env)).rejects.toMatchObject({code:'UNAVAILABLE'});
+ fetcher.mockResolvedValueOnce(Response.json({ok:true,data:{responses:[wrong],more:false}}));fetcher.mockResolvedValueOnce(Response.json({ok:true,data:{...data,responses:[]}}));
+ const create=vi.fn().mockResolvedValue({id}),acknowledge=vi.fn(),actor={id:owner,role:'practitioner',state:'active'} as Actor;
+ await expect(projectCommunityTasks(actor,{create} as unknown as InternalTaskService,{pending:()=>pendingCommunityResponses(owner,fetcher,env),acknowledge})).rejects.toMatchObject({code:'UNAVAILABLE'});
+ expect(create).not.toHaveBeenCalled();expect(acknowledge).not.toHaveBeenCalled();
+});
+it('rejects a tracked thread expiring before registration on both list and registration readback',async()=>{
+ const wrong={...thread,expiresAt:'2026-10-02T05:59:59.000Z'};
+ fetcher.mockResolvedValueOnce(Response.json({ok:true,data:{...data,threads:[wrong],responses:[]}}));await expect(readCommunityThreads(owner,undefined,fetcher,env)).rejects.toMatchObject({code:'UNAVAILABLE'});
+ fetcher.mockResolvedValueOnce(Response.json({ok:true,data:wrong}));await expect(registerCommunityThread(owner,{operationId:rid,postId:10,commentUrl:thread.commentUrl,confirmManualReply:true},fetcher,env)).rejects.toMatchObject({code:'UNAVAILABLE'});
+});
+it('accepts equal chronological boundaries and a response posted before manual tracking',async()=>{
+ const same={...data,threads:[{...thread,registeredAt:at,expiresAt:at}],responses:[{...response,postedAt:'2026-10-01T06:00:00.000Z',capturedAt:at,expiresAt:at}]};
+ fetcher.mockResolvedValueOnce(Response.json({ok:true,data:same}));expect(await readCommunityThreads(owner,undefined,fetcher,env)).toEqual(same);
+});
 it('rejects a response URL whose root comment disagrees with its declared parent, including pending task projection',async()=>{
  const wrong={...response,commentUrl:post+'?comment_id=999&reply_comment_id=202'};
  fetcher.mockResolvedValueOnce(Response.json({ok:true,data:{...data,responses:[wrong]}}));await expect(readCommunityThreads(owner,undefined,fetcher,env)).rejects.toMatchObject({code:'UNAVAILABLE'});
