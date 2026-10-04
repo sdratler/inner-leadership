@@ -1,5 +1,9 @@
 import {describe,expect,it} from "vitest";
-import {buildOwnerDigest,summarizeProspects} from "../../../src/features/owner-digest/model.ts";
+import React from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
+import {buildOwnerDigest,summarizeProspects,actionText} from "../../../src/features/owner-digest/model.ts";
+import {ownerDigestEmail} from '../../../src/features/owner-digest/email.ts';
+import {OwnerDigestSummary} from '../../../src/ui/revamp/owner-digest-summary.tsx';
 import type {MarketingSnapshot,AdReporting,CreativeVersion,Publication} from "../../../src/features/marketing-overview/contracts.ts";
 const now=new Date("2026-10-02T21:30:00Z"),today="2026-10-03";
 const base={leadId:"LS-LEAD-a",stage:"Prospect",outcome:"",nextAction:"Owner action",dueDate:"10/3/2026",journeyState:"prospect",paymentVerified:false,bookingConfirmed:false};
@@ -13,6 +17,10 @@ describe("bounded private aggregate projection",()=>{
   const manual=buildOwnerDigest(input);expect(manual.actions).toContain('publication_unconfirmed');expect(manual.content.confirmedPublished).toBe(0);
   const verified=buildOwnerDigest({...input,marketing:{...input.marketing,publications:[{...item,state:'published',receiptKind:'publication',providerReceiptId:'DEMO-receipt',providerReadAt:now.toISOString()}]}});
   expect(verified.actions).not.toContain('publication_unconfirmed');expect(verified.content.confirmedPublished).toBe(1);
+  const unavailable=buildOwnerDigest({...input,followups:null,tasks:null,journeysAvailable:false,marketing:{...marketing,creatives:[creative],publications:[item]}});
+  expect(unavailable.actions).toEqual(['crm_unavailable','tasks_unavailable','journeys_unavailable','content_unavailable','meta_unavailable','publication_unconfirmed']);
+  const html=renderToStaticMarkup(React.createElement(OwnerDigestSummary,{digest:unavailable,locale})),email=ownerDigestEmail(unavailable,'https://life-skills.bneineviimacademy.org',locale);
+  for(const code of unavailable.actions){expect(html).toContain(actionText[locale][code]);expect(email.text).toContain(actionText[locale][code]);expect(email.html).toContain(actionText[locale][code]);}
  });
  it.each(['opt out','opted-out','OPT_OUT','do_not_contact','Do-Not-Contact'])('excludes suppressed %s from every operational count without altering stored text',value=>{
   const rows=[{...base,leadId:'LS-LEAD-suppressed-stage',stage:value,journeyState:'awaiting_payment'},{...base,leadId:'LS-LEAD-suppressed-outcome',outcome:value,paymentVerified:true}];
@@ -27,7 +35,7 @@ describe("bounded private aggregate projection",()=>{
  });
  it("never exports notes/identities, treats unavailable independently and enables no sender",()=>{
   const d=buildOwnerDigest({now,marketing,followups:null,tasks:{data:{due:0,overdue:0,future:1},asOf:now.toISOString()},journeysAvailable:false,locale:"he"});
-  expect(d.reportDate).toBe(today);expect(d.followups).toBeNull();expect(d.tasks?.data.due).toBe(0);expect(d.content.heStatusReady).toBeNull();expect(d.ads.currency).toBeNull();expect(d.actions).toHaveLength(3);expect(d.delivery.enabled).toBe(false);
+  expect(d.reportDate).toBe(today);expect(d.followups).toBeNull();expect(d.tasks?.data.due).toBe(0);expect(d.content.heStatusReady).toBeNull();expect(d.ads.currency).toBeNull();expect(d.actions).toEqual(['crm_unavailable','journeys_unavailable','content_unavailable','meta_unavailable']);expect(d.delivery.enabled).toBe(false);
   expect(JSON.stringify(d)).not.toMatch(/notes|phone|clinical|emailCiphertext|token/);
  });
  it("compares exact complete account-local periods without inventing zeros or mixed currencies",()=>{
