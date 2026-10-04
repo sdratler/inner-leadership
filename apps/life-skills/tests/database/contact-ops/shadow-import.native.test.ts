@@ -23,6 +23,39 @@ function snapshot(rows: string[][] = [one, two], fileId = sourceFileId): SheetSn
 }
 function decide(source: SheetSnapshot) { return planImport(source, f.workspaceId, key).rows.map(row => ({ sourceRow: row.sourceRow, sourceRevision: source.revision, legacyId: row.legacyId, rowDigest: row.rowDigest, kind: "new_person" as const })); }
 
+test("native final-delta preflight preserves existing identities and notes without writing or switching authority", async()=>{
+ const d=await fixture();
+ try {
+  const store=poolStore(d.pool), service=new NativeShadowImporter(store,d.keyring,lookupKey,key,sourceFileId,sheetId);
+  const old=snapshot([one]), next={...snapshot([one,two]),revision:"synthetic-revision-2"};
+  const decisions=planImport(old,d.workspaceId,key).rows.map(row=>({sourceRow:row.sourceRow,sourceRevision:old.revision,legacyId:row.legacyId,rowDigest:row.rowDigest,kind:"new_person" as const}));
+  await service.importNewPeople(d.practitioner.actor,old,decisions);
+  const initial=await d.pool.query("SELECT person_id,payload_ciphertext,version FROM ls_contact_ops.profiles WHERE workspace_id=$1",[d.workspaceId]);
+  const result=await service.preflightDelta(d.practitioner.actor,old,next);
+  expect(result).toMatchObject({expectedEpoch:0,phase:"sheet_active",existingRowsReconciled:true,newIdentityDecisionsRequired:true,effects:"none",conflicts:[]});
+  expect(result.existing).toHaveLength(1);expect(result.newRows).toEqual([two[0]]);
+  expect(result.existing[0]).toMatchObject({personId:initial.rows[0].person_id,expectedVersion:1,profileChanged:false});
+  expect((await d.pool.query("SELECT person_id,payload_ciphertext,version FROM ls_contact_ops.profiles WHERE workspace_id=$1",[d.workspaceId])).rows).toEqual(initial.rows);
+  expect((await d.pool.query("SELECT * FROM ls_contact_ops.cutover WHERE workspace_id=$1",[d.workspaceId])).rows).toEqual([]);
+  for(const actor of [d.parent.actor,d.parentTwo.actor,d.outsider.actor]) await expect(service.preflightDelta(actor,old,next)).rejects.toThrow();
+  const personId=initial.rows[0].person_id, aad=crmProfileAad(d.workspaceId,personId);
+  const current=JSON.parse(unseal(initial.rows[0].payload_ciphertext,aad,d.keyring));
+  await d.pool.query("UPDATE ls_contact_ops.profiles SET payload_ciphertext=$3,version=2 WHERE workspace_id=$1 AND person_id=$2",
+   [d.workspaceId,personId,seal(JSON.stringify({...current,notes:"New native authored note",doNotContact:true}),aad,d.keyring)]);
+  const sourceOnly=[...one];sourceOnly[5]="New source action";
+  const merge=await service.preflightDelta(d.practitioner.actor,old,{...next,rows:[sourceOnly]});
+  expect(merge.existingRowsReconciled).toBe(true);expect(merge.existing[0]).toMatchObject({expectedVersion:2,sourceChanged:true,profileChanged:true});
+  sourceOnly[7]="Competing source note";
+  const conflict=await service.preflightDelta(d.practitioner.actor,old,{...next,rows:[sourceOnly]});
+  expect(conflict.existingRowsReconciled).toBe(false);expect(conflict.conflicts).toEqual([{legacyId:one[0],fields:["notes"]}]);
+  const persisted=(await d.pool.query("SELECT payload_ciphertext,version FROM ls_contact_ops.profiles WHERE workspace_id=$1 AND person_id=$2",[d.workspaceId,personId])).rows[0];
+  expect(persisted.version).toBe(2);expect(JSON.parse(unseal(persisted.payload_ciphertext,aad,d.keyring))).toMatchObject({notes:"New native authored note",nextAction:"Call",doNotContact:true});
+  await expect(service.preflightDelta(d.practitioner.actor,{...old,revision:"wrong-prior"},next)).rejects.toThrow("DELTA_PRIOR_BINDING_MISMATCH");
+  await d.pool.query("UPDATE ls_contact_ops.legacy_links SET snapshot_ciphertext=$2 WHERE workspace_id=$1",[d.workspaceId,seal(JSON.stringify({sourceRow:2,payload:{fake:true}}),`ls_contact_ops/legacy/v1/${d.workspaceId}/${sourceFileId}/${sheetId}/${one[0]}`,d.keyring)]);
+  await expect(service.preflightDelta(d.practitioner.actor,old,next)).rejects.toThrow("DELTA_PRIOR_CONTENT_MISMATCH");
+ } finally {await d.pool.end();}
+});
+
 test("operator preflight checks new synthetic rows without writing them", async () => {
  const original = process.argv[1];
  const keys = ["LS_NATIVE_SHADOW_IMPORT_APPROVED", "RAILWAY_PROJECT_ID", "RAILWAY_SERVICE_ID", "RAILWAY_ENVIRONMENT_ID"] as const;

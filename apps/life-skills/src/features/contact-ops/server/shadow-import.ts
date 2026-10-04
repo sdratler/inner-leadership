@@ -8,7 +8,10 @@ import { requirePractitioner } from "../../cases/policy.ts";
 import { normalizePhone } from "../core/contact-resolution.js";
 import { canonical, requireThat } from "../core/validation.js";
 import { importedFollowUpDate, planImport, type ImportRow, type SheetSnapshot } from "./import-plan.ts";
-import { crmProfileAad, type CrmProfile } from "./native-store.ts";
+import { crmProfileAad, crmProfileSchema, type CrmProfile } from "./native-store.ts";
+import {planSourceDelta, reconcileImportedProfile} from "./import-delta.ts";
+import {readCutoverState} from "./cutover-state.ts";
+import {MAX_NATIVE_CONTACTS} from "../core/limits.ts";
 
 export type NewPersonDisposition = { sourceRow: number; sourceRevision: string; legacyId: string; rowDigest: string; kind: "new_person" };
 export type ShadowImportResult = { sourceRevision: string; planned: number; created: number; replayed: number };
@@ -52,6 +55,72 @@ export class NativeShadowImporter {
  async importNewPeople(actor: Actor, snapshot: SheetSnapshot, dispositions: readonly NewPersonDisposition[]): Promise<ShadowImportResult> {
   return this.importAuthorized(actor.workspaceId, snapshot, dispositions, async tx => {
    requirePractitioner(await freshActor(tx, actor, this.clock.now()));
+  });
+ }
+
+ /** Read-only preparation for the existing final-delta runbook. Every prior
+  * encrypted row must match the supplied historical snapshot, not a row-count
+  * assertion. The returned versions are observations, not an apply permit:
+  * the eventual writer must recheck them under its authority/write locks.
+  * No browser endpoint exposes this owner-private source material. */
+ async preflightDelta(actor: Actor, previous: SheetSnapshot, next: SheetSnapshot) {
+  requireThat(previous.fileId === this.sourceFileId && previous.sheetId === this.sourceSheetId, "DELTA_SOURCE_MISMATCH");
+  const delta = planSourceDelta(previous, next, actor.workspaceId, this.integrityKey);
+  requireThat(delta.rows.length <= MAX_NATIVE_CONTACTS, "DELTA_DIRECTORY_BOUND");
+  const oldPlan = planImport(previous, actor.workspaceId, this.integrityKey);
+  return this.db.transaction(async tx => {
+   await tx.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+   requirePractitioner(await freshActor(tx, actor, this.clock.now()));
+   const state = await readCutoverState(tx, actor.workspaceId, this.keyring, false);
+   requireThat(["sheet_active", "shadow_ready", "frozen"].includes(state.phase) && state.nativeWritesSinceSwitch === 0,
+    "DELTA_AUTHORITY_NOT_PRE_NATIVE");
+   if(state.phase !== "sheet_active") requireThat(state.sourceFileId === previous.fileId &&
+    state.sourceRevision === previous.revision, "DELTA_AUTHORITY_SOURCE_MISMATCH");
+   const links = await tx.query<{legacyId:string;personId:string;rowDigest:string;sourceRevision:string;snapshotCiphertext:string;
+    profileCiphertext:string;identityCiphertext:string;version:number;recordMode:string;demoBatchId:string|null;archivedAt:Date|null}>(
+    `SELECT l.legacy_lead_id AS "legacyId",l.person_id AS "personId",l.row_digest AS "rowDigest",
+     l.source_revision AS "sourceRevision",l.snapshot_ciphertext AS "snapshotCiphertext",
+     p.payload_ciphertext AS "profileCiphertext",i.profile_ciphertext AS "identityCiphertext",
+     p.version,p.record_mode AS "recordMode",p.demo_batch_id AS "demoBatchId",p.archived_at AS "archivedAt"
+     FROM ls_contact_ops.legacy_links l JOIN ls_contact_ops.profiles p ON p.workspace_id=l.workspace_id AND p.person_id=l.person_id
+     JOIN ls_identity.people i ON i.workspace_id=p.workspace_id AND i.id=p.person_id
+     WHERE l.workspace_id=$1 AND l.source_file_id=$2 AND l.source_sheet_id=$3 LIMIT $4`,
+    [actor.workspaceId,previous.fileId,previous.sheetId,MAX_NATIVE_CONTACTS+1]);
+   requireThat(links.length <= MAX_NATIVE_CONTACTS && links.length === oldPlan.rows.length &&
+    new Set(links.map(link=>link.legacyId)).size === links.length, "DELTA_PRIOR_LINK_SET_MISMATCH");
+   const current = new Map(links.map(link=>[link.legacyId,link]));
+   const incoming = new Map(delta.rows.map(row=>[row.after.legacyId,row]));
+   const reviewIds = new Set(delta.review.map(row=>row.legacyId));
+   const conflicts: {legacyId:string;fields:readonly string[]}[] = [];
+   const existing = [];
+   for(const before of oldPlan.rows) {
+    const link = current.get(before.legacyId);
+    requireThat(link && link.personId === before.suggestedPersonId && link.rowDigest === before.rowDigest &&
+     link.sourceRevision === previous.revision && link.recordMode === "live" && link.demoBatchId === null &&
+     link.archivedAt === null && Number.isSafeInteger(link.version) && link.version > 0, "DELTA_PRIOR_BINDING_MISMATCH");
+    const snapshot=JSON.parse(unseal(link.snapshotCiphertext,legacyAad(actor.workspaceId,previous,before.legacyId),this.keyring));
+    requireThat(canonical(snapshot) === canonical({sourceRow:before.sourceRow,payload:before.protectedPayload}), "DELTA_PRIOR_CONTENT_MISMATCH");
+    const profile=crmProfileSchema.parse(JSON.parse(unseal(link.profileCiphertext,crmProfileAad(actor.workspaceId,link.personId),this.keyring))) as CrmProfile;
+    requireThat(profile.personId === link.personId, "DELTA_PRIOR_BINDING_MISMATCH");
+    const identity=JSON.parse(unseal(link.identityCiphertext,`person:${actor.workspaceId}:${link.personId}`,this.keyring));
+    requireThat(typeof identity?.displayName === "string", "DELTA_IDENTITY_CONTENT_INVALID");
+    const item=incoming.get(before.legacyId);
+    if(!item || reviewIds.has(before.legacyId)) continue;
+    const merged=reconcileImportedProfile(before,item.after,profile), rowConflicts:string[]=[...merged.conflicts];
+    const nameChanged=before.protectedPayload.displayName !== item.after.protectedPayload.displayName;
+    if(nameChanged && identity.displayName !== before.protectedPayload.displayName && identity.displayName !== item.after.protectedPayload.displayName)
+     rowConflicts.push("displayName");
+    if(rowConflicts.length) conflicts.push({legacyId:before.legacyId,fields:rowConflicts});
+    existing.push({legacyId:before.legacyId,personId:link.personId,expectedVersion:link.version,
+     expectedRowDigest:link.rowDigest,sourceChanged:before.rowDigest!==item.after.rowDigest,
+     profileChanged:merged.changed,conflicts:rowConflicts});
+   }
+   // New rows still need the existing explicit identity dispositions and live
+   // account/endpoint-collision checks. This read cannot authorize their import.
+   const newRows=delta.rows.filter(row=>row.kind === "new").map(row=>row.after.legacyId);
+   return {source:delta,expectedEpoch:state.epoch,phase:state.phase,existing,conflicts,newRows,
+    existingRowsReconciled:delta.ready && conflicts.length===0,
+    newIdentityDecisionsRequired:newRows.length>0,effects:"none" as const};
   });
  }
 
