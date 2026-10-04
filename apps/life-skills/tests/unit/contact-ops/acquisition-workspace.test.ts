@@ -2,7 +2,7 @@ import {expect,test,vi} from "vitest";
 import {createElement} from "react";
 import {renderToStaticMarkup} from "react-dom/server";
 vi.mock("server-only",()=>({}));
-import {AcquisitionWorkspace,AcquisitionReviewCard} from "../../../src/features/contact-ops/acquisition-workspace.tsx";
+import {AcquisitionWorkspace,AcquisitionReviewCard,AcquisitionWindowSummary} from "../../../src/features/contact-ops/acquisition-workspace.tsx";
 import {acquisitionDecisionSchema,acquisitionPageSchema,acquisitionDecisionResultSchema,type AcquisitionReviewItem} from "../../../src/features/contact-ops/core/acquisition.ts";
 import {practitionerContext,breadcrumbItems} from "../../../src/ui/workspace/navigation-model.ts";
 import {practitionerReturnPath,loginReturnDestination} from "../../../src/features/identity/login-return.ts";
@@ -41,9 +41,24 @@ test("promotion preserves owner note and normal name, while excluding external-s
  for(const bad of [{...command,send:true},{...command,fields:{...command.fields,whatsappLabel:"applied"}},{...command,fields:{...command.fields,caseId:item.id}}])expect(acquisitionDecisionSchema.safeParse(bad).success).toBe(false);
 });
 test("malformed or over-broad metadata cannot masquerade as a loaded review page",()=>{
- const page={items:[item],total:1,page:1,pages:1,authorityEpoch:3};expect(acquisitionPageSchema.safeParse(page).success).toBe(true);
+ const page={items:[item],total:1,page:1,pages:1,authorityEpoch:3,hasMore:false};expect(acquisitionPageSchema.safeParse(page).success).toBe(true);
  for(const bad of [{...page,total:0},{...page,pages:2},{...page,items:[{...item,messageText:"private body"}]},
   {...page,items:[{...item,matching:{state:"existing",people:[{personId:item.id,displayName:"Synthetic",version:1,eligible:true,role:"child"}]}}]}])expect(acquisitionPageSchema.safeParse(bad).success).toBe(false);
+});
+
+test("bounded review windows carry explicit completeness without increasing the response envelope",()=>{
+ const page={items:[item],total:1000,page:1,pages:84,authorityEpoch:3,hasMore:true};
+ expect(acquisitionPageSchema.safeParse(page).success).toBe(true);
+ expect(acquisitionPageSchema.safeParse({...page,items:[],total:0,pages:1}).success).toBe(true); // Search may match none of this partial window.
+ const missing={items:page.items,total:page.total,page:page.page,pages:page.pages,authorityEpoch:page.authorityEpoch};expect(acquisitionPageSchema.safeParse(missing).success).toBe(false);
+ for(const bad of [{...page,total:1001},{...page,hasMore:"true"},{...page,hasMore:undefined},{...page,items:Array.from({length:13},()=>item)}])expect(acquisitionPageSchema.safeParse(bad).success).toBe(false);
+});
+
+test.each(['en','he'] as const)('%s renders explicit partial-search scope even for no matches, not a false total or failure',locale=>{
+ const partial=renderToStaticMarkup(createElement(AcquisitionWindowSummary,{locale,total:0,hasMore:true}));
+ expect(partial).toContain('role="status"');expect(partial).toContain('1,000');expect(partial).toContain(locale==='en'?'Search and counts apply to this window':'החיפוש והספירה מתייחסים לחלון הזה');
+ expect(partial).toContain(locale==='en'?'older pending records appear as decisions are saved':'רשומות קודמות יופיעו ככל שהחלטות יישמרו');
+ const complete=renderToStaticMarkup(createElement(AcquisitionWindowSummary,{locale,total:1,hasMore:false}));expect(complete).not.toContain('role="status"');expect(complete).not.toContain('1,000');
 });
 test("a save acknowledgement cannot fabricate an applied label, account grant or inconsistent person",()=>{
  const result={candidateId:item.id,state:"NOT_A_LEAD",personId:null,version:null,authorityEpoch:3,replayed:false,projections:null};

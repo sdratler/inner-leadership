@@ -38,13 +38,14 @@ export class AcquisitionDecisionStore{
   return new ContactCutoverStore(this.db,this.keyring,this.integrityKey,this.clock)
    .withDestination(actor,{destination:"native",intent:"read",expectedEpoch},async tx=>{
     const query=input.search.trim().toLocaleLowerCase();
-    const candidates=(await this.candidates.pendingInTransaction(tx,actor)).filter(row=>!query||
+    const window=await this.candidates.pendingInTransaction(tx,actor);
+    const candidates=window.items.filter(row=>!query||
      row.metadata.displayName.toLocaleLowerCase().includes(query)||row.metadata.phone.includes(query));
     const pageSize=12,pages=Math.max(1,Math.ceil(candidates.length/pageSize)),page=Math.min(input.page,pages);
     const selected=candidates.slice((page-1)*pageSize,page*pageSize);
     const matches=await this.directory.acquisitionMatchesInTransaction(tx,actor,selected.map(row=>row.metadata.phone));
     return {items:selected.map(row=>({...row.metadata,state:"NEEDS_REVIEW" as const,matching:matches.get(row.metadata.phone)!})),
-     total:candidates.length,page,pages,authorityEpoch:expectedEpoch};
+     total:candidates.length,page,pages,authorityEpoch:expectedEpoch,hasMore:window.hasMore};
    });
  }
  private async bindThread(tx:SqlSession,workspace:string,keys:{binding:string;thread:string;sender:string},personId:string){

@@ -43,7 +43,7 @@ export class AcquisitionCandidateStore{
   if(!rows.length)throw new AppError("NOT_FOUND");if(rows.length!==1)throw new AppError("UNAVAILABLE");
   return {...keysSchema.parse(rows[0]),metadata:this.decode(workspace,rows[0]!)};
  }
- async pendingInTransaction(tx:SqlSession,actor:Actor):Promise<StoredAcquisitionCandidate[]>{
+ async pendingInTransaction(tx:SqlSession,actor:Actor):Promise<{items:StoredAcquisitionCandidate[];hasMore:boolean}>{
   requirePractitioner(await freshActor(tx,actor,this.clock.now()));
   const rows=await tx.query<Row>(`SELECT c.id,c.provider_binding_id AS binding,c.provider_message_key AS message,
    c.provider_thread_key AS thread,c.sender_endpoint_key AS sender,c.message_digest AS "messageDigest",
@@ -51,8 +51,8 @@ export class AcquisitionCandidateStore{
    WHERE c.workspace_id=$1 AND NOT EXISTS(SELECT 1 FROM ls_contact_ops.lead_promotion_operations d
     WHERE d.workspace_id=c.workspace_id AND d.candidate_id=c.id)
    ORDER BY c.occurred_at DESC,c.id DESC LIMIT $2`,[actor.workspaceId,MAX_CANDIDATES+1]);
-  if(rows.length>MAX_CANDIDATES)throw new AppError("UNAVAILABLE");
-  return rows.map(row=>({...keysSchema.parse(row),metadata:this.decode(actor.workspaceId,row)}));
+  return {items:rows.slice(0,MAX_CANDIDATES).map(row=>({...keysSchema.parse(row),metadata:this.decode(actor.workspaceId,row)})),
+   hasMore:rows.length>MAX_CANDIDATES};
  }
  async priorInTransaction(tx:SqlSession,workspace:string,input:Keys):Promise<boolean>{
   const keys=keysSchema.parse(input);
