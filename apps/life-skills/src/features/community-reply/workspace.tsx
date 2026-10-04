@@ -257,6 +257,11 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
     draftReadEpoch.current++;
   }
 
+  async function retryGenerated(){
+    if(inFlight.current||!result||persisted||stale)return;
+    inFlight.current=true;setBusy(true);
+    try{if(await confirmGenerated(result))attempt.current=null;}finally{inFlight.current=false;setBusy(false);}
+  }
   async function request(mode: "generate" | "revise_once") {
     if (inFlight.current || question.trim().length < 8 || (mode === "revise_once" && (stale || draft.trim().length < 10 || correction.trim().length < 3))) return;
     inFlight.current = true; setBusy(true); setNotice("");
@@ -443,6 +448,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
       {!proposedRule && <p className="lsr-help">{t.interpret}</p>}
     </>}
     {draftNotice&&<p role={draftSaveError?'alert':'status'} className={draftSaveError?'lsr-inline-error':'lsr-status'}>{draftNotice}</p>}
+    {draftSaveError&&result&&!persisted&&<button type="button" disabled={busy||stale} onClick={()=>void retryGenerated()}>{locale==='en'?'Retry this draft’s verification':'ניסיון חוזר לאימות הטיוטה הזאת'}</button>}
     {ruleSave && <section className="lsr-panel" aria-live="polite">
       <h3>{t.persistent}</h3><p>{ruleSave.status === "complete" ? t.ruleComplete :
         ruleSave.status === "saved" || ruleSave.status === "draft_pending" ? t.draftPending :
