@@ -33,12 +33,20 @@ export function UpdatesWorkspace({locale,role="parent",initialCaseId="",initialA
   type ReplyPage={key:string;reportId:string;before:string|null;busy:boolean;error:boolean};
   const [replyPage,setReplyPage]=useState<ReplyPage>({key:'',reportId:'',before:null,busy:false,error:false}),[olderReplies,setOlderReplies]=useState<Record<string,boolean>>({});
   const [drafts,setDrafts]=useState<Record<string,string>>({}),[replyBodies,setReplyBodies]=useState<Record<string,string>>({}),[composerOpen,setComposerOpen]=useState(false),[status,setStatus]=useState<{kind:'saved'|'error';text:string}|null>(null);
-  type Write={slot:string;payload:Record<string,unknown>;state:'sending'|'unknown'};
-  const [write,setWrite]=useState<Write|null>(null),writeRef=useRef<Write|null>(null),mutations=useRef<Record<string,{body:string;key:string}>>({}),mounted=useRef(false),inFlight=useRef<object|null>(null),generation=useRef(0),replyRead=useRef<{controller:AbortController;request:ReplyPage}|null>(null);
+  type Write={context:string;slot:string;payload:Record<string,unknown>;state:'sending'|'unknown'};
+  const [write,setWrite]=useState<Write|null>(null),[unverified,setUnverified]=useState<Record<string,Write>>({}),unverifiedRef=useRef<Record<string,Write>>({}),writeRef=useRef<Write|null>(null),mutations=useRef<Record<string,{body:string;key:string}>>({}),mounted=useRef(false),inFlight=useRef<object|null>(null),generation=useRef(0),replyRead=useRef<{controller:AbortController;request:ReplyPage}|null>(null),writeRequest=useRef<{controller:AbortController;next:Write;sent:boolean;definiteFailure:boolean}|null>(null);
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false}},[]);
   useEffect(()=>{let live=true;queueMicrotask(()=>{if(live){setCases([]);setCasesState('loading')}});void accountRead<unknown>('cases').then(value=>{const rows=parseUpdateCases(value);if(live){setCases(rows);setCasesState('ready')}}).catch(()=>{if(live){setCases([]);setCasesState('error')}});return()=>{live=false}},[caseRevision]);
   function abandonReplyRead(){const pending=replyRead.current;if(!pending)return;replyRead.current=null;pending.controller.abort();if(inFlight.current===pending.request)inFlight.current=null;if(mounted.current)setReplyPage(previous=>previous===pending.request?{...previous,busy:false}:previous);}
-  function clearDeniedAccess(){generation.current++;abandonReplyRead();setCases([]);setCasesState('error');setAudiences([]);setThreads([]);setOlderReplies({});setReplyPage({key:'',reportId:'',before:null,busy:false,error:false});setDrafts({});setReplyBodies({});setComposerOpen(false);writeRef.current=null;mutations.current={};setWrite(null);setStatus(null);}
+  function rememberUnverified(value:Write){unverifiedRef.current={...unverifiedRef.current,[value.context]:value};if(mounted.current)setUnverified(unverifiedRef.current);}
+  function forgetUnverified(value:Write){if(unverifiedRef.current[value.context]?.payload!==value.payload)return;const remaining={...unverifiedRef.current};delete remaining[value.context];unverifiedRef.current=remaining;if(mounted.current)setUnverified(remaining);}
+  function abandonWrite(){
+   const pending=writeRequest.current,previous=writeRef.current;
+   if(pending){writeRequest.current=null;pending.controller.abort();if(pending.sent&&!pending.definiteFailure)rememberUnverified({...pending.next,state:'unknown'});if(inFlight.current===pending.next)inFlight.current=null;}
+   if(!pending||previous===pending.next){writeRef.current=null;if(mounted.current)setWrite(value=>value===previous?null:value);}
+  }
+  function abandonContext(){generation.current++;abandonReplyRead();abandonWrite();}
+  function clearDeniedAccess(){abandonContext();setCases([]);setCasesState('error');setAudiences([]);setThreads([]);setOlderReplies({});setReplyPage({key:'',reportId:'',before:null,busy:false,error:false});setDrafts({});setReplyBodies({});setComposerOpen(false);writeRef.current=null;unverifiedRef.current={};setUnverified({});mutations.current={};setWrite(null);setStatus(null);}
   const choices=useMemo(()=>visibleUpdateCases(role,cases),[cases,role]),selectedCaseId=selectedUpdateCase(choices,caseId);
   const routeAudienceId=!initialCaseId||selectedCaseId===initialCaseId?initialAudienceId:'',audienceScopeKey=`${selectedCaseId}:${routeAudienceId}`,
    audienceId=audienceSelection.route===audienceScopeKey?audienceSelection.selected:routeAudienceId,
@@ -64,7 +72,13 @@ export function UpdatesWorkspace({locale,role="parent",initialCaseId="",initialA
    audienceReady=audienceCurrent&&audienceState.status==='ready',activeAudienceId=audienceReady&&(reporter||role==='practitioner')&&audiences.some(item=>item.id===audienceId)?audienceId:'';
   const parentReady=reporter&&audienceReady&&activeAudienceId===initialAudienceId&&feedbackContextReady(initialCaseId,selectedCaseId,initialAudienceId,initialPracticeVersionId)&&audiences.some(item=>item.id===initialAudienceId&&item.visibility==='family_full');
   const contextKey=`${selectedCaseId}:${activeAudienceId}`,draftKey=`${initialCaseId}:${initialAudienceId}:${initialPracticeVersionId}`,body=parentReady?(drafts[draftKey]??''):'';
-  useEffect(()=>()=>{generation.current++;abandonReplyRead()},[contextKey]);
+  useEffect(()=>{
+   const epoch=generation.current,retained=unverifiedRef.current[contextKey]??null;writeRef.current=retained;
+   queueMicrotask(()=>{if(mounted.current&&generation.current===epoch){setWrite(retained);setStatus(retained?{kind:'error',text:word('The saved result could not be verified. Your text is retained; retry this exact action before starting another.','לא ניתן לאמת את התוצאה השמורה. הטקסט נשמר כאן; נסו שוב את אותה פעולה לפני התחלת פעולה חדשה.')}:null)}});
+   return abandonContext;
+   // The originating case/audience owns both requests and exact-action reconciliation.
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[contextKey]);
   async function readThreads(signal?:AbortSignal,history?:{reportId:string;before:string|null}){
    const query=new URLSearchParams({caseId:selectedCaseId,audienceId:activeAudienceId});if(history){query.set('reportId',history.reportId);if(history.before)query.set('beforeReplyId',history.before);}
    const response=await fetch(`/api/updates?${query}`,{credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',...(signal?{signal}:{})});
@@ -96,32 +110,30 @@ export function UpdatesWorkspace({locale,role="parent",initialCaseId="",initialA
   function clearSavedInput(payload:Record<string,unknown>){if(payload.action==='submit_report'){setDrafts(current=>current[draftKey]===payload.body?{...current,[draftKey]:''}:current);setComposerOpen(false)}else if(payload.action==='reply')setReplyBodies(current=>current[String(payload.reportId)]===payload.body?{...current,[String(payload.reportId)]:''}:current);}
   async function post(slot:string,payload:Record<string,unknown>,retry=false){
    if(!mounted.current||inFlight.current||writeRef.current&&!retry||!activeAudienceId)return false;
-   const epoch=generation.current,current=()=>mounted.current&&generation.current===epoch,next:Write={slot,payload,state:'sending'};inFlight.current=next;writeRef.current=next;setWrite(next);setStatus(null);let definiteFailure=false,writeSent=false,accessDenied=false;
-   try{const session=await sessionInfo();if(!current())return false;writeSent=true;const response=await fetch('/api/updates',{method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',headers:{'Content-Type':'application/json','X-CSRF-Token':session.csrfToken},body:JSON.stringify(payload)});
-    definiteFailure=response.status>=400&&response.status<500;accessDenied=[401,403,404].includes(response.status);
+   if(retry&&(writeRef.current?.context!==contextKey||writeRef.current.payload!==payload))return false;
+   const wasUnverified=unverifiedRef.current[contextKey]?.payload===payload,epoch=generation.current,controller=new AbortController(),current=()=>mounted.current&&generation.current===epoch&&!controller.signal.aborted,next:Write={context:contextKey,slot,payload,state:'sending'},pending={controller,next,sent:false,definiteFailure:false};inFlight.current=next;writeRef.current=next;writeRequest.current=pending;setWrite(next);setStatus(null);let definiteFailure=false,writeSent=false,accessDenied=false;
+   try{const session=await sessionInfo();if(!current())return false;writeSent=true;pending.sent=true;const response=await fetch('/api/updates',{method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',signal:controller.signal,headers:{'Content-Type':'application/json','X-CSRF-Token':session.csrfToken},body:JSON.stringify(payload)});
+    if(!current())return false;definiteFailure=response.status>=400&&response.status<500;pending.definiteFailure=definiteFailure;accessDenied=[401,403,404].includes(response.status);
     if(accessDenied)throw Error('UNAVAILABLE');
     const result=await response.json() as {ok?:unknown;data?:unknown;error?:{code?:unknown}};
     if(!response.ok||result.ok!==true)throw Error('UNAVAILABLE');
-    if(!current())return false;const rows=await readThreads();if(!updateSaveVerified(rows,payload,result.data))throw Error('UNVERIFIED');if(!current())return false;
-    setThreads(rows);setOlderReplies({});setThreadsState({key:contextKey,status:'ready'});setStatus({kind:'saved',text:word('Saved and verified.','נשמר ואומת.')});clearSavedInput(payload);writeRef.current=null;setWrite(null);return true;
+    if(!current())return false;const rows=await readThreads(controller.signal);if(!updateSaveVerified(rows,payload,result.data))throw Error('UNVERIFIED');if(!current())return false;
+    setThreads(rows);setOlderReplies({});setThreadsState({key:contextKey,status:'ready'});setStatus({kind:'saved',text:word('Saved and verified.','נשמר ואומת.')});clearSavedInput(payload);forgetUnverified(next);writeRef.current=null;setWrite(null);return true;
    }catch(error){if(current()){
     definiteFailure||=!writeSent&&error instanceof IdentityClientError&&['INVALID_REQUEST','UNAUTHENTICATED','FORBIDDEN','NOT_FOUND','CONFLICT','RATE_LIMITED'].includes(error.code);
     accessDenied||=error instanceof IdentityClientError&&['UNAUTHENTICATED','FORBIDDEN','NOT_FOUND'].includes(error.code);
      if(accessDenied){clearDeniedAccess();setStatus({kind:'error',text:word('This context could not be authorized. Private information has been cleared. Reload your authorized contexts before retrying.','לא ניתן לאשר גישה להקשר הזה. המידע הפרטי נוקה. טענו מחדש את ההקשרים המורשים לפני ניסיון נוסף.')});return false;}
-    if(definiteFailure){writeRef.current=null;setWrite(null);setStatus({kind:'error',text:t.failure})}
-    else{const uncertain:Write={slot,payload,state:'unknown'};writeRef.current=uncertain;setWrite(uncertain);setStatus({kind:'error',text:word('The saved result could not be verified. Your text is retained; retry this exact action before starting another.','לא ניתן לאמת את התוצאה השמורה. הטקסט נשמר כאן; נסו שוב את אותה פעולה לפני התחלת פעולה חדשה.')})}
+    if(definiteFailure&&!wasUnverified){forgetUnverified(next);writeRef.current=null;setWrite(null);setStatus({kind:'error',text:t.failure})}
+    else{const uncertain:Write={...next,state:'unknown'};rememberUnverified(uncertain);writeRef.current=uncertain;setWrite(uncertain);setStatus({kind:'error',text:word('The saved result could not be verified. Your text is retained; retry this exact action before starting another.','לא ניתן לאמת את התוצאה השמורה. הטקסט נשמר כאן; נסו שוב את אותה פעולה לפני התחלת פעולה חדשה.')})}
    }return false;}finally{
-    if(mounted.current&&!current()&&writeRef.current===next){
-     writeRef.current=null;setWrite(null);
-     setStatus(writeSent&&!definiteFailure?{kind:'error',text:word('The previous action could not be verified in its original context. Return there and retry the unchanged text; no saved result is assumed.','לא ניתן לאמת את הפעולה הקודמת בהקשר המקורי שלה. חזרו אליו ונסו שוב את הטקסט ללא שינוי; אין להניח שהתוצאה נשמרה.')}:null);
-    }
+    if(writeRequest.current===pending)writeRequest.current=null;
     if(inFlight.current===next)inFlight.current=null;
    }
   }
   async function submit(e:FormEvent){e.preventDefault();if(!parentReady||!body.trim()||writeRef.current)return;const slot=`report:${draftKey}`;await post(slot,{action:'submit_report',caseId:selectedCaseId,audienceId:initialAudienceId,practiceVersionId:initialPracticeVersionId,body,idempotencyKey:mutation(slot,body)})}
   async function reply(reportId:string){const value=replyBodies[reportId]??'',slot=`reply:${reportId}`;if(!value.trim()||writeRef.current)return;await post(slot,{action:'reply',reportId,body:value,publish:true,idempotencyKey:mutation(slot,value)})}
   async function review(reportId:string){await post(`review:${reportId}`,{action:'review',reportId})}
-  const locked=write!==null||replyPage.key===contextKey&&replyPage.busy,visible=threadsState.key===contextKey,dirty=Object.values(drafts).some(Boolean)||Object.values(replyBodies).some(Boolean)||write!==null;
+  const currentWrite=write?.context===contextKey?write:null,locked=currentWrite!==null||replyPage.key===contextKey&&replyPage.busy,visible=threadsState.key===contextKey,dirty=Object.values(drafts).some(Boolean)||Object.values(replyBodies).some(Boolean)||write!==null||Object.keys(unverified).length>0;
   const retryRead=<button className="lsw-button lsw-button--secondary" type="button" disabled={locked} onClick={()=>setRevision(value=>value+1)}>{word('Retry feedback read','ניסיון קריאת משוב נוסף')}</button>;
   const showThreads=!visible||threadsState.status==='loading'?<p role="status">{t.loadingUpdates}</p>:threadsState.status==='error'?<div role="alert"><p>{word('Feedback could not be loaded. Previously loaded information has been cleared.','לא ניתן לטעון את המשוב. המידע שנטען קודם נוקה.')}</p>{retryRead}</div>:threadsState.status==='ready'&&!threads.length?<p>{t.noUpdates}</p>:threads.map(thread=><article className="lsw-card lsw-stack" key={thread.report.id}>
    <div className="lsw-section-header"><div><strong>{t.submitted}</strong><p className="lsw-help">{readableTime(locale,thread.report.submittedAt)}</p></div><span className="lsw-context">{t.status}: {word({new:'New',reviewed:'Reviewed',replied:'Replied',adapted:'Adapted'}[thread.report.reviewState],{new:'חדש',reviewed:'נבדק',replied:'נשלחה תגובה',adapted:'הותאם'}[thread.report.reviewState])}</span></div>
@@ -148,7 +160,7 @@ export function UpdatesWorkspace({locale,role="parent",initialCaseId="",initialA
      </>:null}
     </>}
    </>}
-   {status&&<div className="lsw-save-result" role={status.kind==='error'?'alert':'status'} aria-live="polite"><p>{status.text}</p>{write?.state==='unknown'&&<button className="lsw-button" type="button" onClick={()=>void post(write.slot,write.payload,true)}>{word('Retry this exact action','ניסיון חוזר של אותה פעולה')}</button>}</div>}
-   {write?.state==='sending'&&<p role="status">{word('Saving and checking the stored result…','שומר ובודק את התוצאה השמורה…')}</p>}
+   {status&&<div className="lsw-save-result" role={status.kind==='error'?'alert':'status'} aria-live="polite"><p>{status.text}</p>{currentWrite?.state==='unknown'&&<button className="lsw-button" type="button" onClick={()=>void post(currentWrite.slot,currentWrite.payload,true)}>{word('Retry this exact action','ניסיון חוזר של אותה פעולה')}</button>}</div>}
+   {currentWrite?.state==='sending'&&<p role="status">{word('Saving and checking the stored result…','שומר ובודק את התוצאה השמורה…')}</p>}
   </main>;
 }
