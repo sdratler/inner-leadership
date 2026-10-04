@@ -10,6 +10,7 @@ import {demoOperatorContext} from './operator-context.ts';
 import {demoPracticePlan} from './practice-plan.ts';
 import {HomePracticeService} from '../home-practice/service.ts';
 import type {ResponsibilityInput} from '../home-practice/responsibility-input.ts';
+import {possibleInstants} from '../calendar/time.ts';
 type Runtime=Pick<Awaited<ReturnType<typeof identityRuntime>>,'config'|'store'|'clock'>;
 
 /** Reuse existing verified demo identities and cases. No credential access,
@@ -39,6 +40,15 @@ export async function prepareDemoPractice(runtime:Runtime,selection:ReturnType<t
    if(JSON.stringify(members.map(row=>row.id))!==JSON.stringify(expected))throw new AppError('CONFLICT');
    await demoOperatorContext(tx,runtime.config.workspaceId,owner.id,rows[0]!.caseId,batch,permission);
    cases[source]=rows[0]!;
+  }
+  // Validate the whole pending recipe before committing its first item. Existing
+  // receipts still pass through the service's exact-body and access checks.
+  const now=runtime.clock.now().getTime();
+  for(const item of plan){
+   const saved=await tx.query('SELECT 1 FROM ls_calendar.commands WHERE workspace_id=$1 AND account_id=$2 AND operation=$3 AND command_key=$4',
+    [runtime.config.workspaceId,owner.id,'demo:practice',item.commandKey]);
+   const instants=possibleInstants(item.occursOn+'T'+item.localTime);
+   if(instants.length!==1||(!saved.length&&Date.parse(instants[0]!)<=now))throw new AppError('INVALID_REQUEST');
   }
   return {ownerId:owner.id,accounts,cases};
  });

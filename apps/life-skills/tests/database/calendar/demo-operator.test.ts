@@ -409,6 +409,9 @@ test('private practice recipe resolves only retained demo identities; rerun pres
  ]};
  const runtime={config:f.config,store:f.db.store,clock:systemClock},selection={batch,ownerEmail,addresses:f.addresses},before=await f.counts();
  await expect(prepareDemoPractice(runtime,selection,recipe,date,false)).rejects.toMatchObject({code:'FORBIDDEN'});
+ const between={...runtime,clock:{now:()=>new Date(possibleInstants(date+'T18:27')[0]!)}};
+ await expect(prepareDemoPractice(between,selection,recipe,date,true)).rejects.toMatchObject({code:'INVALID_REQUEST'});
+ expect((await f.pool.query('SELECT count(*)::int AS count FROM ls_practice.practice_assignments WHERE workspace_id=$1',[f.workspaceId])).rows[0].count).toBe(0);
  for(const [caseId,audienceId] of [[f.minor.caseId,minor.audienceId],[f.adult.caseId,adult.audienceId]]){
   await f.pool.query('INSERT INTO ls_cases.audience_accounts(workspace_id,case_id,audience_id,account_id,granted_at) VALUES($1,$2,$3,$4,clock_timestamp())',[f.workspaceId,caseId,audienceId,f.outsider.actor.id]);
   await expect(prepareDemoPractice(runtime,selection,recipe,date,true)).rejects.toMatchObject({code:'CONFLICT'});
@@ -422,6 +425,8 @@ test('private practice recipe resolves only retained demo identities; rerun pres
   (SELECT count(*)::int FROM ls_calendar.commands WHERE workspace_id=$1 AND operation='demo:practice') AS receipts`,[f.workspaceId])).rows[0];
  const once=await snapshot();expect(once.assignments).toHaveLength(3);expect(once.occurrences).toHaveLength(3);expect(once.receipts).toBe(3);
  await prepareDemoPractice(runtime,selection,recipe,date,true);expect(await snapshot()).toEqual(once);expect(await f.counts()).toEqual(before);
+ await prepareDemoPractice({...runtime,clock:{now:()=>new Date(possibleInstants(shiftDay(date,1)+'T12:00')[0]!)}},selection,recipe,date,true);
+ expect(await snapshot()).toEqual(once);
  expect((await f.pool.query('SELECT count(*)::int AS count FROM ls_notifications.notification_outbox WHERE workspace_id=$1',[f.workspaceId])).rows[0].count).toBe(0);
  await f.pool.query("UPDATE ls_identity.accounts SET state='revoked' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.actors.child!.id]);
  await expect(prepareDemoPractice(runtime,selection,recipe,date,true)).rejects.toMatchObject({code:'CONFLICT'});expect(await snapshot()).toEqual(once);
