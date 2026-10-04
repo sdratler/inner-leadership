@@ -88,7 +88,7 @@ export function MarketingDashboard({ locale, snapshot, initialSection, initialFi
       query={{filter:initialFilter,month:initialMonth,...calendarQuery}} renderedAt={renderedAt}
       thumbnail={asset=><CreativeThumbnail key={`${asset.assetId}:${asset.revision}:${asset.imageUrl}`}
         image={safeMarketingUrl(driveThumbnail(asset.imageUrl),["drive.google.com","lh3.googleusercontent.com"])}
-        sourceAvailable={Boolean(safeMarketingUrl(asset.sourceUrl??asset.imageUrl??null,["drive.google.com","docs.google.com","github.com"]))}
+        sourceAvailable={Boolean(safeMarketingUrl(asset.sourceUrl??null,["drive.google.com","docs.google.com","github.com"])??safeMarketingUrl(asset.imageUrl,["drive.google.com","docs.google.com","github.com"]))}
         title={asset.title} width={asset.width} height={asset.height} locale={locale}/>} />}
     {section === "community" && <Section title={h[section]}><CommunityReplyWorkspace locale={locale} /></Section>}
   </section>;

@@ -83,10 +83,10 @@ export class PostgresSessionProcessingStore implements ProcessingStore {
       providerRequestId:row.providerRequestCiphertext?unseal(row.providerRequestCiphertext,this.providerAad(row),this.ring):null,
       failureCode:row.failureCode,revision:row.revision};
   }
-  private async fenced(tx:SqlSession,lease:Lease,permission=true):Promise<JobRow>{
+  private async fenced(tx:SqlSession,lease:Lease,permission=true,terminalFailure=false):Promise<JobRow>{
     const row=await this.row(tx,lease.job.id),parts=lease.fencingToken.split(":");
     if(parts.length!==2||!uuid.safeParse(parts[0]).success||!/^\d+$/.test(parts[1]??"")
-      ||row.leaseOwner!==parts[0]||row.fence!==parts[1]||!row.leaseUntil||row.leaseUntil.getTime()<=this.now().getTime())throw new WorkflowError("PROCESSING_LEASE_LOST");
+      ||row.leaseOwner!==parts[0]||row.fence!==parts[1]||!row.leaseUntil||!terminalFailure&&row.leaseUntil.getTime()<=this.now().getTime())throw new WorkflowError("PROCESSING_LEASE_LOST");
     if(lease.job.workspaceId!==row.workspaceId||lease.job.caseId!==row.caseId||lease.job.appointmentId!==row.appointmentId
       ||lease.job.consentId!==row.consentId||lease.job.consentVersion!==row.consentVersion
       ||lease.job.sourceDigest!==row.sourceDigest||lease.job.sourceDurationMs!==row.durationMs||lease.job.attemptId!==row.attemptId)throw new WorkflowError("PROCESSING_LEASE_LOST");
@@ -98,9 +98,17 @@ export class PostgresSessionProcessingStore implements ProcessingStore {
     await tx.query('UPDATE ls_sessions.recording_jobs SET lease_owner=$3,lease_until=$4,fence=$5,revision=revision+1 WHERE workspace_id=$1 AND id=$2',[row.workspaceId,row.id,owner,until,fence]);
     const current=await this.row(tx,row.id);return {job:this.job(current),fencingToken:`${owner}:${fence}`};
   }
+  private unknownOutcome(row:JobRow):string|null{
+    if(row.failureCode==='PROVIDER_OUTCOME_UNKNOWN'||row.failureCode==='ANALYSIS_OUTCOME_UNKNOWN')return row.failureCode;
+    return row.state==='transcribing'&&row.transcriptVersion===null?'PROVIDER_OUTCOME_UNKNOWN':row.state==='analyzing'?'ANALYSIS_OUTCOME_UNKNOWN':null;
+  }
   async claim(jobId:string):Promise<Lease|null>{return this.transaction(async tx=>{
     const row=await this.row(tx,jobId);await this.permission(tx,row);
     if(row.state==="ready"||row.state==="canceled"||row.leaseUntil&&row.leaseUntil.getTime()>this.now().getTime())return null;
+    // A stranded in-flight phase is not evidence the provider did nothing.
+    // Mark uncertainty atomically before ownership changes, preserving attempt/source.
+    const unknown=this.unknownOutcome(row);
+    if(unknown&&['transcribing','analyzing'].includes(row.state))await tx.query("UPDATE ls_sessions.recording_jobs SET state='failed',failure_code=$3,revision=revision+1 WHERE workspace_id=$1 AND id=$2",[row.workspaceId,row.id,unknown]);
     return this.ownLease(tx,row);
   });}
   /** Cleanup is not consent to purchase processing. No source text or new-provider path is exposed. */
@@ -132,6 +140,7 @@ export class PostgresSessionProcessingStore implements ProcessingStore {
     const parsed=patchSchema.safeParse(input);if(!parsed.success)throw new AppError("INVALID_REQUEST");const patch=parsed.data;
     await this.transaction(async tx=>{
       const row=await this.fenced(tx,lease);
+      if(patch.failureCode!==undefined&&['PROVIDER_OUTCOME_UNKNOWN','ANALYSIS_OUTCOME_UNKNOWN'].includes(row.failureCode??'')&&patch.failureCode!==row.failureCode)throw new WorkflowError(row.failureCode!);
       if(patch.transcriptVersion!==undefined&&patch.transcriptVersion!==row.transcriptVersion
         ||patch.transcriptDigest!==undefined&&patch.transcriptDigest!==row.transcriptDigest
         ||patch.transcriptCompleteVerified!==undefined&&patch.transcriptCompleteVerified!==row.transcriptCompleteVerified)throw new WorkflowError("TRANSCRIPT_SAVE_REQUIRED");
@@ -217,8 +226,10 @@ export class PostgresSessionProcessingStore implements ProcessingStore {
   });}
   async fail(lease:Lease,code:string):Promise<void>{
     if(!/^[A-Z][A-Z0-9_]{0,99}$/.test(code))throw new AppError("INVALID_REQUEST");
-    await this.transaction(async tx=>{const row=await this.fenced(tx,lease,false);if(row.state==="ready"||row.state==="canceled")return;
-      await tx.query("UPDATE ls_sessions.recording_jobs SET state='failed',failure_code=$3,revision=revision+1 WHERE workspace_id=$1 AND id=$2",[row.workspaceId,row.id,code]);});
+    await this.transaction(async tx=>{const row=await this.fenced(tx,lease,false,true);if(row.state==="ready"||row.state==="canceled")return;
+      // Only terminal failure bookkeeping may outlive the time lease, and still
+      // requires the exact current owner/fence/scope. It cannot save clinical data.
+      await tx.query("UPDATE ls_sessions.recording_jobs SET state='failed',failure_code=$3,revision=revision+1 WHERE workspace_id=$1 AND id=$2",[row.workspaceId,row.id,this.unknownOutcome(row)??code]);});
   }
   async release(lease:Lease):Promise<void>{await this.transaction(async tx=>{
     const row=await this.row(tx,lease.job.id),parts=lease.fencingToken.split(":");

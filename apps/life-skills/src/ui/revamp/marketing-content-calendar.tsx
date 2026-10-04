@@ -11,7 +11,7 @@ const stateLabels:Readonly<Record<string,readonly[string,string]>>={draft:["Draf
 function named(value:string,labels:typeof channelLabels,locale:"en"|"he"){const pair=Object.hasOwn(labels,value)?labels[value]:null;return pair?word(locale,pair[0],pair[1]):value;}
 function dateTime(value:string,locale:"en"|"he"){return new Intl.DateTimeFormat(locale,{dateStyle:"medium",timeStyle:"short",timeZone:CONTENT_TIMEZONE}).format(new Date(value));}
 function timeIssue(item:Publication,locale:"en"|"he"){const issue=publicationTimeIssue(item);return issue==="manual"?word(locale,"Invalid manual report date — check source","תאריך דיווח ידני שגוי — יש לבדוק במקור"):issue==="scheduled"?word(locale,"Invalid scheduled date — check source","תאריך מתוזמן שגוי — יש לבדוק במקור"):null;}
-function sourceLink(asset:CreativeVersion|undefined){return safeMarketingUrl(asset?.sourceUrl??asset?.imageUrl??null,["drive.google.com","docs.google.com","github.com"]);}
+function sourceLink(asset:CreativeVersion|undefined){return safeMarketingUrl(asset?.sourceUrl??null,["drive.google.com","docs.google.com","github.com"])??safeMarketingUrl(asset?.imageUrl??null,["drive.google.com","docs.google.com","github.com"]);}
 function Evidence({item,locale,showError=true}:{item:Publication;locale:"en"|"he";showError?:boolean}){return <>{showError&&item.errorCode&&<p className="lsr-inline-error" role="alert">{word(locale,"Attention needed","דורש טיפול")}: {item.errorCode}</p>}{item.providerReceiptId&&<p>{word(locale,"Provider receipt","אסמכתת ספק")}: {item.providerReceiptId}</p>}{item.providerReadAt&&<p>{word(locale,"Last provider readback","קריאה אחרונה מהספק")}: {item.providerReadAt}</p>}</>;}
 
 /** The registered snapshot is read-only. Navigation never changes approvals or schedules. */
