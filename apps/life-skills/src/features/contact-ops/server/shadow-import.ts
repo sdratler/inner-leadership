@@ -10,7 +10,7 @@ import { canonical, requireThat } from "../core/validation.js";
 import { importedFollowUpDate, planImport, type ImportRow, type SheetSnapshot } from "./import-plan.ts";
 import { crmProfileAad, crmProfileSchema, type CrmProfile } from "./native-store.ts";
 import {planSourceDelta, reconcileImportedProfile} from "./import-delta.ts";
-import {readCutoverState,cutoverStateAad} from "./cutover-state.ts";
+import {readCutoverState,cutoverStateAad,cutoverStateSchema} from "./cutover-state.ts";
 import {MAX_NATIVE_CONTACTS} from "../core/limits.ts";
 import {privateDigest} from "./digests.ts";
 import {z} from "zod";
@@ -220,6 +220,7 @@ export class NativeShadowImporter {
    }
    const changed=plan.updates.filter(row=>row.profileChanged||row.nameChanged).length;
    const nextAuthority={...plan.state,epoch:plan.state.epoch+1,sourceRevision:next.revision};
+   requireThat(cutoverStateSchema.safeParse(nextAuthority).success,"DELTA_AUTHORITY_INVALID");
    const result=deltaResultSchema.parse({sourceRevision:next.revision,previousRevision:previous.revision,
     authorityEpoch:nextAuthority.epoch,snapshotDigest:plan.source.nextSnapshotDigest,planned:plan.source.rows.length,
     created:newRows.length,updated:changed,unchanged:plan.updates.length-changed});

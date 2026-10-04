@@ -143,6 +143,25 @@ test("oversized delta names cannot change identities, profiles, source receipts 
  }finally{await d.pool.end();}
 });
 
+test("delta rejects an unreadable advanced authority revision before any write and accepts the exact bound",async()=>{
+ const d=await fixture();
+ try{
+  const service=new NativeShadowImporter(poolStore(d.pool),d.keyring,lookupKey,key,sourceFileId,sheetId),old=snapshot([one]);
+  const decisions=planImport(old,d.workspaceId,key).rows.map(row=>({sourceRow:row.sourceRow,sourceRevision:old.revision,legacyId:row.legacyId,rowDigest:row.rowDigest,kind:"new_person" as const}));
+  await service.importNewPeople(d.practitioner.actor,old,decisions);
+  const state={phase:"frozen",epoch:2,batchId:"synthetic-revision-bound",sourceFileId,sourceRevision:old.revision,nativeWritesSinceSwitch:0};
+  await d.pool.query("INSERT INTO ls_contact_ops.cutover(workspace_id,epoch,phase,state_ciphertext) VALUES($1,2,'frozen',$2)",[d.workspaceId,seal(JSON.stringify(state),cutoverStateAad(d.workspaceId,2),d.keyring)]);
+  const preserve=async()=>Promise.all(["ls_identity.people","ls_contact_ops.profiles","ls_contact_ops.legacy_links","ls_contact_ops.cutover","ls_contact_ops.delta_operations","ls_contact_ops.delta_history"].map(async table=>(await d.pool.query(`SELECT to_jsonb(t) AS row FROM ${table} t WHERE workspace_id=$1 ORDER BY to_jsonb(t)::text`,[d.workspaceId])).rows));
+  const before=await preserve(),input={operationId:"synthetic-revision-bound",expectedEpoch:2,versions:[{legacyId:one[0]!,version:1}],newPeople:[]};
+  await expect(service.applyDelta(d.practitioner.actor,old,{...old,revision:"r".repeat(201)},input)).rejects.toThrow("DELTA_AUTHORITY_INVALID");
+  expect(await preserve()).toEqual(before);
+  const next={...old,revision:"r".repeat(200)};
+  expect(await service.applyDelta(d.practitioner.actor,old,next,input)).toMatchObject({sourceRevision:next.revision,authorityEpoch:3,replayed:false});
+  const persisted=(await d.pool.query("SELECT state_ciphertext FROM ls_contact_ops.cutover WHERE workspace_id=$1",[d.workspaceId])).rows[0].state_ciphertext;
+  expect(JSON.parse(unseal(persisted,cutoverStateAad(d.workspaceId,3),d.keyring))).toEqual({...state,epoch:3,sourceRevision:next.revision});
+ }finally{await d.pool.end();}
+});
+
 test("first import waits for the authority fence and observes the newly committed phase", async()=>{
  const d=await fixture(),holder=await d.pool.connect();
  let open=false,attempt:Promise<{ok:boolean;error:string|null}>|undefined;
