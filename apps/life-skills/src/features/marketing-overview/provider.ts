@@ -50,7 +50,7 @@ export async function loadMarketingSnapshot(): Promise<MarketingSnapshot> {
     readDirectMetaAds(),
   ]);
   const registry = registrySnapshot(registryResult);
-  if(registry)lastInventoryReadAt=registry.fetchedAt;
+  if(registry&&(lastInventoryReadAt===null||Date.parse(registry.fetchedAt)>Date.parse(lastInventoryReadAt)))lastInventoryReadAt=registry.fetchedAt;
   const inventoryReadback:NonNullable<MarketingSnapshot["inventoryReadback"]>={status:registry?"available":"error",lastSuccessfulReadAt:lastInventoryReadAt,lastAttemptAt,errorCode:registry?null:"creative_inventory_unavailable"};
   const meta = metaResult.status === "fulfilled" ? metaResult.value : null;
   const errors = [

@@ -18,6 +18,21 @@ test("failed inventory read retains only an honest last successful time, not sta
 test("Meta failure does not block the independent graphics inventory",async()=>{
  mocks.meta.mockRejectedValue(Error("unavailable"));const {loadMarketingSnapshot}=await import("../../../src/features/marketing-overview/provider.ts"),snapshot=await loadMarketingSnapshot();expect(snapshot.creatives).toHaveLength(1);expect(snapshot.inventoryReadback?.status).toBe("available");expect(snapshot.connectionErrors).toEqual(["direct_meta_readback_unavailable"]);
 });
+test("an older overlapping load cannot move successful inventory freshness backward",async()=>{
+ const newerAt="2026-10-03T18:30:00.000Z";
+ let releaseOlderMeta!:()=>void;
+ const delayedMeta=new Promise(resolve=>{releaseOlderMeta=()=>resolve({fetchedAt:metaAt,ads:[],adSeries:[],adReporting:{}});});
+ mocks.registry.mockResolvedValueOnce(registry()).mockResolvedValueOnce({success:true,snapshot:{...registry().snapshot,fetchedAt:newerAt}});
+ mocks.meta.mockReturnValueOnce(delayedMeta);
+ const {loadMarketingSnapshot}=await import("../../../src/features/marketing-overview/provider.ts");
+ const older=loadMarketingSnapshot();
+ expect((await loadMarketingSnapshot()).inventoryReadback?.lastSuccessfulReadAt).toBe(newerAt);
+ releaseOlderMeta();await older;
+ mocks.registry.mockRejectedValueOnce(Error("unavailable"));
+ const failed=await loadMarketingSnapshot();
+ expect(failed.inventoryReadback).toMatchObject({status:"error",lastSuccessfulReadAt:newerAt});
+ expect(failed.creatives).toEqual([]);
+});
 test.each([{success:false},{success:true,snapshot:{}},{success:true,snapshot:{...registry().snapshot,fetchedAt:"invalid"}},{success:true,snapshot:{...registry().snapshot,fetchedAt:null}},{success:true,snapshot:{...registry().snapshot,creatives:[null]}},{success:true,snapshot:{...registry().snapshot,creatives:Array(1001).fill(registry().snapshot.creatives[0])}}])("malformed inventory is unavailable without losing independent Meta data",async payload=>{
  const {loadMarketingSnapshot}=await import("../../../src/features/marketing-overview/provider.ts");await loadMarketingSnapshot();mocks.registry.mockResolvedValue(payload);
  const snapshot=await loadMarketingSnapshot();expect(snapshot.inventoryReadback).toMatchObject({status:"error",lastSuccessfulReadAt:readAt});expect(snapshot.creatives).toEqual([]);expect(snapshot.fetchedAt).toBe(metaAt);expect(snapshot.connectionErrors).toEqual(["creative_inventory_unavailable"]);
