@@ -11,6 +11,7 @@ vi.mock("../../../src/features/content-voice/source.ts", () => ({
   readCommunityPlaybookSource: sources.playbook,
 }));
 import { requestCommunityReply } from "../../../src/features/community-reply/bridge.ts";
+import { readCommunityDrafts } from "../../../src/features/community-reply/drafts-bridge.ts";
 
 const secret = "s".repeat(43);
 const command = { operationId: "412302a8-3694-4718-9a3b-e5de1a78de6e", mode: "generate" as const,
@@ -28,6 +29,22 @@ describe("authenticated app to existing Scout bridge", () => {
   it("requires a server-only shared secret and makes no source or provider call when absent", async () => {
     const fetcher = vi.fn(); await expect(requestCommunityReply(command, fetcher as typeof fetch, {})).rejects.toMatchObject({ code: "UNAVAILABLE" });
     expect(fetcher).not.toHaveBeenCalled(); expect(sources.guide).not.toHaveBeenCalled();
+  });
+  it.each(['short reply','many flags','long flag','empty model','long model','empty policy','long policy','negative input','negative output'] as const)('rejects %s with the same bounds as saved-draft parsing',async field=>{
+    const result=structuredClone(data);
+    switch(field){
+      case 'short reply':result.reply='too short';break;
+      case 'many flags':result.reviewFlags=Array.from({length:41},()=> 'REVIEW') as never[];break;
+      case 'long flag':result.reviewFlags=['x'.repeat(101)] as never[];break;
+      case 'empty model':result.provenance.model='';break;
+      case 'long model':result.provenance.model='x'.repeat(101);break;
+      case 'empty policy':result.provenance.policyVersion='';break;
+      case 'long policy':result.provenance.policyVersion='x'.repeat(101);break;
+      case 'negative input':result.provenance.usage.inputTokens=-1;break;
+      case 'negative output':result.provenance.usage.outputTokens=-1;break;
+    }
+    const fetcher=vi.fn().mockResolvedValue(Response.json({ok:true,data:result}));
+    await expect(requestCommunityReply(command,fetcher as typeof fetch,{LS_COMMUNITY_SCOUT_BRIDGE_SECRET:secret})).rejects.toMatchObject({code:'UNAVAILABLE'});
   });
   it("rejects unsupported source URLs before canonical reads or provider work",async()=>{
     sources.guide.mockClear();sources.playbook.mockClear();const fetcher=vi.fn();
@@ -48,7 +65,14 @@ describe("authenticated app to existing Scout bridge", () => {
     expect(JSON.parse(String(options.body))).toMatchObject({ operationId: command.operationId, guide: { id: data.provenance.guide.id }, playbook: { id: data.provenance.playbook.id } });
     expect(JSON.parse(String(options.body)).ownerId).toBe(ownerId);
   });
+  it('accepts the same boundary result through generation and persisted readback',async()=>{
+    const boundary={...data,reply:'x'.repeat(10),copyAllowed:false,reviewFlags:Array.from({length:40},()=> 'x'.repeat(100)),provenance:{...data.provenance,model:'x'.repeat(100),policyVersion:'x'.repeat(100),usage:{inputTokens:0,outputTokens:0}}};
+    const result=await requestCommunityReply(command,vi.fn().mockResolvedValue(Response.json({ok:true,data:boundary})),{LS_COMMUNITY_SCOUT_BRIDGE_SECRET:secret});
+    const row={draftId:result.operationId,question:command.question,originalUrl:result.originalUrl,generated:result,draft:result.reply,revision:1,editedAt:null,expiresAt:'2026-11-01T08:02:00Z',copyAllowed:result.copyAllowed,reviewFlags:result.reviewFlags};
+    await expect(readCommunityDrafts('9fe575fe-fba2-4a4b-a136-bb28560b13f2',result.operationId,vi.fn().mockResolvedValue(Response.json({ok:true,data:{drafts:[row],limit:20}})),{LS_COMMUNITY_SCOUT_BRIDGE_SECRET:secret})).resolves.toEqual({drafts:[row],limit:20});
+  });
   it("reports scoped rule IDs from the exact canonical guide sent for generation", async () => {
+    // The bounds are shared; this source check remains independent of saved drafts.
     const guide = snapshot("174-EqMG0QIH5rCuRgn2xYYPMX-XWJZNn");
     sources.guide.mockResolvedValue({ ...guide, text: `# Synthetic guide\n### Community-reply writing preferences\n\n**CR-12345678123441238123123456789abc — scope: community; language: en; created: 2026-09-28T00:00:00Z; updated: 2026-09-28T00:00:00Z** Keep replies concise.\n\n## 2. Article structure\n` });
     const fetcher = vi.fn().mockResolvedValue(Response.json({ ok: true, data }));
@@ -59,6 +83,7 @@ describe("authenticated app to existing Scout bridge", () => {
     expect(JSON.parse(String(options.body)).guide.includedCommunityRuleIds).toEqual(["CR-12345678123441238123123456789abc"]);
   });
   it("fails closed on mismatched source provenance or unconfirmed provider output", async () => {
+    // Source mismatch is rejected even when the structural result schema passes.
     const fetcher = vi.fn().mockResolvedValueOnce(Response.json({ ok: true, data: { ...data, provenance: { ...data.provenance, guide: { ...data.provenance.guide, id: "wrong" } } } }))
       .mockResolvedValueOnce(Response.json({ ok: true, data: { ...data, provenance: { ...data.provenance, playbook: { ...data.provenance.playbook, sha256: "c".repeat(64) } } } }))
       .mockResolvedValueOnce(Response.json({ ok: true, data: { ...data, provenance: { ...data.provenance, playbook: { ...data.provenance.playbook, declaredVersion: "wrong" } } } }))

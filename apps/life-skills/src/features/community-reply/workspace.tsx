@@ -6,7 +6,7 @@ import type { CommunityInboxPage, CommunityInboxPost } from "../community-inbox/
 import type { CommunityReplyResult } from "./bridge.ts";
 import type { CommunitySavedDraft } from "./drafts-bridge.ts";
 import { UnsavedChangesGuard } from "../../ui/workspace/draft-guard.tsx";
-import { canResumeRuleOperation, matchesSubmittedInput, proposalForResult, replyFailureKind, ruleDraftPromotionNeedsConfirmation, type CommunitySourceInput } from "./input-state.ts";
+import { canResumeRuleOperation, matchesGeneratedReadback, matchesSubmittedInput, proposalForResult, replyFailureKind, ruleDraftPromotionNeedsConfirmation, type CommunitySourceInput } from "./input-state.ts";
 
 type Locale = "he" | "en";
 const copy = {
@@ -163,11 +163,12 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
       .finally(()=>{if(!controller.signal.aborted&&epoch===savedReadEpoch.current)setSavedLoading(false);});
     return()=>controller.abort();
   },[]);
-  async function confirmGenerated(value:CommunityReplyResult):Promise<boolean>{
+  async function confirmGenerated(value:CommunityReplyResult,input:CommunitySourceInput|null):Promise<boolean>{
     const epoch=++draftReadEpoch.current;
     try{const row=(await readSaved(value.operationId))[0];
       if(epoch!==draftReadEpoch.current)return false;
-      if(!row||row.generated.reply!==value.reply||row.generated.provenance.guide.sha256!==value.provenance.guide.sha256||row.generated.provenance.playbook.sha256!==value.provenance.playbook.sha256)throw Error('binding');
+      if(!matchesGeneratedReadback(row,value,input))throw Error('binding');
+      if(!row)throw Error('binding');
       savedReadEpoch.current++;setSavedLoading(false);setSavedError(false);
       setPersisted(row);setSavedDrafts(previous=>[row,...previous.filter(item=>item.draftId!==row.draftId)].slice(0,20));setDraftSaveError(false);
       setDraftNotice(row.draft===value.reply?`${t.saveVerified} · ${t.savedVersion} ${row.revision}`:t.saveConflict);
@@ -260,7 +261,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
   async function retryGenerated(){
     if(inFlight.current||!result||persisted||stale)return;
     inFlight.current=true;setBusy(true);
-    try{if(await confirmGenerated(result))attempt.current=null;}finally{inFlight.current=false;setBusy(false);}
+    try{if(await confirmGenerated(result,submittedInput))attempt.current=null;}finally{inFlight.current=false;setBusy(false);}
   }
   async function request(mode: "generate" | "revise_once") {
     if (inFlight.current || question.trim().length < 8 || (mode === "revise_once" && (stale || draft.trim().length < 10 || correction.trim().length < 3))) return;
@@ -283,7 +284,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
       if (!response.ok || payload.ok !== true || !payload.data) throw Error("unconfirmed");
       setSubmittedInput({ question: command.question, originalUrl: command.originalUrl ?? "" });
       setResult(payload.data); setDraft(payload.data.reply); setReviewed(false);
-      setPersisted(null);setHistorical(false);draftAttempt.current=null;if(await confirmGenerated(payload.data))attempt.current=null;
+      setPersisted(null);setHistorical(false);draftAttempt.current=null;if(await confirmGenerated(payload.data,{question:command.question,originalUrl:command.originalUrl??''}))attempt.current=null;
       const proposal = proposalForResult(mode, payload.data.suggestedRule, payload.data.ruleScope);
       setProposedRule(proposal.rule); setRuleScope(proposal.scope);
       setTargetRuleId(null); setExistingRules([]); setExistingSourceSha(null);
@@ -370,7 +371,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
       result?.operationId, saved.draft.operationId) && !window.confirm(t.resumeReplace)) return;
     setQuestion(saved.draftInput.question); setOriginalUrl(saved.draftInput.originalUrl);
     setResult(saved.draft); setDraft(saved.draft.reply); setReviewed(false); setSubmittedInput(saved.draftInput);
-    setPersisted(null);setHistorical(false);draftAttempt.current=null;void confirmGenerated(saved.draft);
+    setPersisted(null);setHistorical(false);draftAttempt.current=null;void confirmGenerated(saved.draft,saved.draftInput);
     setCorrection(""); setProposedRule(""); setCorrectionBase(null); setTargetRuleId(null);
     attempt.current = null; ruleAttempt.current = null;
   }
