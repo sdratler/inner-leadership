@@ -8,6 +8,12 @@ import { crmProfileAad, NativeCrmStore } from "../../../src/features/contact-ops
 import type { SheetSnapshot } from "../../../src/features/contact-ops/server/import-plan.ts";
 import { planImport } from "../../../src/features/contact-ops/server/import-plan.ts";
 import {cutoverStateAad} from "../../../src/features/contact-ops/server/cutover-state.ts";
+import {readFile} from "node:fs/promises";
+import {contactDeltaCatalog,contactDeltaCatalogDigest,contactDeltaIntegrity,CONTACT_DELTA_CATALOG_SHA256,CONTACT_DELTA_MIGRATION} from "../../../src/db/contact-delta-integrity.ts";
+import {historicalPracticeDatabase} from "../home-practice/legacy-practice-fixture.ts";
+import {migrate} from "../../../src/db/migration-runner.ts";
+import {contactOpsMigrationPrefix} from "../../../src/db/contact-ops-production-guard.ts";
+import {advanceCutover,type CutoverProof} from "../../../src/features/contact-ops/core/cutover.ts";
 
 const f = await fixture();
 afterAll(async () => { await f.pool.end(); });
@@ -23,6 +29,62 @@ function snapshot(rows: string[][] = [one, two], fileId = sourceFileId): SheetSn
  return { fileId, sheetId, tab: "Leads", revision: "synthetic-revision-1", complete: true, headers, rows };
 }
 function decide(source: SheetSnapshot) { return planImport(source, f.workspaceId, key).rows.map(row => ({ sourceRow: row.sourceRow, sourceRevision: source.revision, legacyId: row.legacyId, rowDigest: row.rowDigest, kind: "new_person" as const })); }
+
+test("exact native delta catalog, functions and ACLs must match the reviewed additive frame",async()=>{
+ const sql=await readFile(new URL("../../../migrations/0118_ls_contact_delta_history.sql",import.meta.url),"utf8");
+ const files=[{name:CONTACT_DELTA_MIGRATION.name,checksum:CONTACT_DELTA_MIGRATION.sha256,sql}];
+ const applied={objectsAbsent:false,tables:true,schemaCatalog:true,foreignKeys:true,historyImmutable:true,reviewedFunctions:true,permissions:true,referencesSound:true};
+ const db=poolStore(f.pool);
+ const catalog=await db.transaction(tx=>contactDeltaCatalog(tx));
+ console.log(JSON.stringify({deltaCatalogSha256:contactDeltaCatalogDigest(catalog)}));
+ expect(contactDeltaCatalogDigest(catalog)).toBe(CONTACT_DELTA_CATALOG_SHA256);
+ expect(await db.transaction(tx=>contactDeltaIntegrity(tx,files))).toEqual(applied);
+ await expect(db.transaction(tx=>contactDeltaIntegrity(tx,[{...files[0]!,sql:sql+"-- drift"}]))).rejects.toThrow("CONTACT_DELTA_SOURCE_MISMATCH");
+ const client=await f.pool.connect();
+ try {
+  const tx={query:async<R extends object>(statement:string,values:readonly unknown[]=[]) => (await client.query<R>(statement,[...values])).rows};
+  for(const [statement,field] of [
+   ["CREATE INDEX synthetic_delta_extra ON ls_contact_ops.delta_history(person_id)","schemaCatalog"],
+   ["ALTER TABLE ls_contact_ops.delta_history DISABLE TRIGGER delta_history_no_edit","historyImmutable"],
+   ["GRANT SELECT ON ls_contact_ops.delta_history TO PUBLIC","permissions"],
+   ["GRANT SELECT(evidence_ciphertext) ON ls_contact_ops.delta_history TO PUBLIC","permissions"],
+   ["GRANT EXECUTE ON FUNCTION ls_contact_ops.deny_delta_history_mutation() TO PUBLIC","permissions"],
+   ["ALTER FUNCTION ls_contact_ops.deny_delta_history_mutation() SECURITY DEFINER","reviewedFunctions"],
+   ["ALTER TABLE ls_contact_ops.delta_history ENABLE ROW LEVEL SECURITY","schemaCatalog"],
+  ] as const){
+   await client.query("BEGIN");try{await client.query(statement);expect((await contactDeltaIntegrity(tx,files))[field]).toBe(false);}finally{await client.query("ROLLBACK");}
+  }
+ } finally {client.release();}
+ expect(await db.transaction(tx=>contactDeltaIntegrity(tx,files))).toEqual(applied);
+});
+
+test("populated37 to38 delta-history migration preserves original contacts and ledger, then repeats without writes",async()=>{
+ const historical=await historicalPracticeDatabase("0114_ls_practice_responsibilities.sql");
+ let d:Awaited<ReturnType<typeof fixture>>|undefined;
+ try {
+  const prior=contactOpsMigrationPrefix(historical.inventory,"0117_ls_acquisition_decisions.sql");
+  const client=await historical.pool.connect();
+  try{await migrate({query:(sql,values)=>client.query(sql,values?[...values]:undefined)},prior,false);}finally{client.release();}
+  vi.stubEnv("TEST_DATABASE_URL",historical.url);vi.stubEnv("LS_CALENDAR_TEST_ALLOW","true");d=await fixture();
+  const store=poolStore(d.pool),service=new NativeShadowImporter(store,d.keyring,lookupKey,key,sourceFileId,sheetId),source=snapshot([one]);
+  const dispositions=planImport(source,d.workspaceId,key).rows.map(row=>({sourceRow:row.sourceRow,sourceRevision:source.revision,legacyId:row.legacyId,rowDigest:row.rowDigest,kind:"new_person" as const}));
+  await service.importNewPeople(d.practitioner.actor,source,dispositions);
+  const preserve=async()=>Promise.all(["ls_identity.people","ls_contact_ops.profiles","ls_contact_ops.legacy_links"].map(async table=>(await d!.pool.query(`SELECT to_jsonb(t) AS row FROM ${table} t WHERE workspace_id=$1 ORDER BY to_jsonb(t)::text`,[d!.workspaceId])).rows));
+  const before=await preserve(),ledger=(await d.pool.query("SELECT * FROM ls_control.migrations ORDER BY name")).rows;
+  expect(ledger).toHaveLength(37);
+  expect(await store.transaction(tx=>contactDeltaIntegrity(tx,historical.inventory))).toEqual({objectsAbsent:true,tables:false,schemaCatalog:false,foreignKeys:false,historyImmutable:false,reviewedFunctions:false,permissions:false,referencesSound:false});
+  const migrationClient=await historical.pool.connect();
+  try{
+   const runner={query:(sql:string,values?:readonly unknown[])=>migrationClient.query(sql,values?[...values]:undefined)};
+   expect(await migrate(runner,historical.inventory,false)).toEqual({applied:1,pending:0});
+   expect(await migrate(runner,historical.inventory,false)).toEqual({applied:0,pending:0});
+   expect(await migrate(runner,historical.inventory,true)).toEqual({applied:0,pending:0});
+  }finally{migrationClient.release();}
+  expect(await preserve()).toEqual(before);
+  expect((await d.pool.query("SELECT * FROM ls_control.migrations WHERE name<>$1 ORDER BY name",[CONTACT_DELTA_MIGRATION.name])).rows).toEqual(ledger);
+  expect(await store.transaction(tx=>contactDeltaIntegrity(tx,historical.inventory))).toEqual({objectsAbsent:false,tables:true,schemaCatalog:true,foreignKeys:true,historyImmutable:true,reviewedFunctions:true,permissions:true,referencesSound:true});
+ }finally{await d?.pool.end();vi.unstubAllEnvs();await historical.close();}
+});
 
 test("first-import path cannot write after authority preparation, freeze or native activation", async()=>{
  const d=await fixture();
@@ -85,7 +147,7 @@ test("first import waits for the authority fence and observes the newly committe
  }
 });
 
-test("frozen delta applies once with encrypted immutable history, native notes preserved and no account or authority changes", async()=>{
+test("frozen delta applies once with encrypted immutable history, native notes preserved and no account creation or activation", async()=>{
  const d=await fixture();
  try {
   const service=new NativeShadowImporter(poolStore(d.pool),d.keyring,lookupKey,key,sourceFileId,sheetId);
@@ -108,7 +170,8 @@ test("frozen delta applies once with encrypted immutable history, native notes p
   await expect(service.applyDelta(d.practitioner.actor,old,next,{...input,versions:[{legacyId:one[0]!,version:1}]})).rejects.toThrow("DELTA_VERSION_CONFLICT");
   await expect(service.applyDelta(d.practitioner.actor,old,next,{...input,newPeople:[]})).rejects.toThrow("DELTA_DISPOSITION_INCOMPLETE");
   const accountsBefore=(await d.pool.query("SELECT id FROM ls_identity.accounts WHERE workspace_id=$1 ORDER BY id",[d.workspaceId])).rows;
-  const expected={sourceRevision:next.revision,planned:2,created:1,updated:1,unchanged:0};
+  const expected={sourceRevision:next.revision,previousRevision:old.revision,authorityEpoch:3,
+   snapshotDigest:planImport(next,d.workspaceId,key).snapshotDigest,planned:2,created:1,updated:1,unchanged:0};
   expect(await service.applyDelta(d.practitioner.actor,old,next,input)).toEqual({...expected,replayed:false});
   expect(await service.applyDelta(d.practitioner.actor,old,next,input)).toEqual({...expected,replayed:true});
   await expect(service.applyDelta(d.practitioner.actor,old,next,{...input,expectedEpoch:3})).rejects.toThrow("DELTA_OPERATION_CONFLICT");
@@ -124,7 +187,18 @@ test("frozen delta applies once with encrypted immutable history, native notes p
   const originalSnapshot=JSON.parse(unseal(evidence.before.snapshotCiphertext,`ls_contact_ops/legacy/v1/${d.workspaceId}/${sourceFileId}/${sheetId}/${one[0]}`,d.keyring));
   expect(originalSnapshot.payload.sourceFields[" General sales notes "]).toBe(one[7]);
   expect((await d.pool.query("SELECT source_revision FROM ls_contact_ops.legacy_links WHERE workspace_id=$1",[d.workspaceId])).rows.every(row=>row.source_revision===next.revision)).toBe(true);
-  expect((await d.pool.query("SELECT state_ciphertext FROM ls_contact_ops.cutover WHERE workspace_id=$1",[d.workspaceId])).rows[0].state_ciphertext).toBe(authorityCiphertext);
+  const authority=(await d.pool.query("SELECT epoch,phase,state_ciphertext FROM ls_contact_ops.cutover WHERE workspace_id=$1",[d.workspaceId])).rows[0];
+  expect(Number(authority.epoch)).toBe(3);expect(authority.phase).toBe("frozen");
+  const frozen=JSON.parse(unseal(authority.state_ciphertext,cutoverStateAad(d.workspaceId,3),d.keyring));
+  expect(frozen).toEqual({...state,epoch:3,sourceRevision:next.revision});
+  const syntheticProof:CutoverProof={batchId:state.batchId,sourceFileId,sourceRevision:old.revision,expectedEpoch:3,
+   backupRestored:true,snapshotMatched:true,imported:true,rowContentMatched:true,allRowsAccounted:true,identityConflicts:0,
+   paymentsReconciled:true,writersFenced:true,inboundDurable:true,deltaDrained:true,consumersRepointed:true,
+   sheetConsumersRepointed:true,nativeBrowserVerified:true,oldSchedulesDisabled:true,sourceFrozen:true,restorePlanReady:true};
+  // Pure isolated gate proof only: an old revision cannot activate the applied
+  // new snapshot, even if the caller supplies the new epoch and all flags.
+  expect(()=>advanceCutover(frozen,"switch_native",syntheticProof,state.batchId)).toThrow("PROOF_MISMATCH");
+  expect(advanceCutover(frozen,"switch_native",{...syntheticProof,sourceRevision:next.revision},state.batchId)).toMatchObject({phase:"native_active",epoch:4,sourceRevision:next.revision});
   expect((await d.pool.query("SELECT id FROM ls_identity.accounts WHERE workspace_id=$1 ORDER BY id",[d.workspaceId])).rows).toEqual(accountsBefore);
   for(const table of ["delta_operations","delta_history"]){
    await expect(d.pool.query(`UPDATE ls_contact_ops.${table} SET operation_id=operation_id WHERE workspace_id=$1`,[d.workspaceId])).rejects.toThrow("CONTACT_DELTA_HISTORY_IMMUTABLE");
@@ -177,6 +251,9 @@ test("native final-delta preflight preserves existing identities and notes witho
   const result=await service.preflightDelta(d.practitioner.actor,old,next);
   expect(result).toMatchObject({expectedEpoch:0,phase:"sheet_active",existingRowsReconciled:true,newIdentityDecisionsRequired:true,effects:"none",conflicts:[]});
   expect(result.existing).toHaveLength(1);expect(result.newRows).toEqual([two[0]]);
+  const serialized=JSON.stringify(result);
+  for(const value of [one[1],one[2],one[3],one[7],"protectedPayload","sourceFields"])
+   expect(serialized).not.toContain(value);
   expect(result.existing[0]).toMatchObject({personId:initial.rows[0].person_id,expectedVersion:1,profileChanged:false});
   expect((await d.pool.query("SELECT person_id,payload_ciphertext,version FROM ls_contact_ops.profiles WHERE workspace_id=$1",[d.workspaceId])).rows).toEqual(initial.rows);
   expect((await d.pool.query("SELECT * FROM ls_contact_ops.cutover WHERE workspace_id=$1",[d.workspaceId])).rows).toEqual([]);

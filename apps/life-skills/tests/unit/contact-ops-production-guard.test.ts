@@ -10,6 +10,7 @@ import {CONTACT_INBOUND_MIGRATION,contactInboundSchemaCatalogMatches,type Contac
 import {PRACTICE_RESPONSIBILITY_MIGRATION,type PracticeResponsibilityIntegrity} from '../../src/db/practice-responsibility-integrity.ts';
 import {PRACTICE_REMINDER_MIGRATION,type PracticeReminderIntegrity} from '../../src/db/practice-reminder-integrity.ts';
 import {ACQUISITION_CANDIDATES_MIGRATION,ACQUISITION_DECISIONS_MIGRATION,type ContactAcquisitionIntegrity} from '../../src/db/contact-acquisition-integrity.ts';
+import {CONTACT_DELTA_MIGRATION,type ContactDeltaIntegrity} from '../../src/db/contact-delta-integrity.ts';
 import {contactOpsMigrationPrefix} from '../../src/db/contact-ops-production-guard.ts';
 import {assertContactOpsDatabaseIdentity,calendarAppendOnlyFunctionBody,contactAuthoritySchemaCatalogMatches,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsComparableConstraints,contactOpsFunctionBody,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,internalTaskSchemaCatalogMatches,sourceTaskSchemaCatalogMatches,voiceRuleSchemaCatalogMatches,CONTACT_AUTHORITY_MIGRATION,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,INTERNAL_TASKS_MIGRATION,SOURCE_TASKS_MIGRATION,VOICE_RULE_MIGRATION,type ContactAuthorityIntegrityObjects,type ContactOpsIntegrityObjects,type InternalTaskIntegrityObjects,type SourceTaskIntegrityObjects,type VoiceRuleIntegrityObjects} from '../../src/db/contact-ops-production-guard.ts';
 
@@ -80,9 +81,23 @@ describe('registered native CRM production migration gate',()=>{
   expect(contactOpsMigrationPrefix(full)).toBe(full);
   for(const bad of ['0118_unreviewed.sql','../0115_ls_practice_notification_outbox.sql','0115_bad.sql'])expect(()=>contactOpsMigrationPrefix(full,bad)).toThrow('CONTACT_OPS_MIGRATION_PREFIX_INVALID');
   expect(()=>contactOpsMigrationPrefix(full.map(file=>file.name===ACQUISITION_CANDIDATES_MIGRATION.name?{...file,checksum:'0'.repeat(64)}:file),ACQUISITION_CANDIDATES_MIGRATION.name)).toThrow();
+  // The new frame is additive; every old prerequisite remains mandatory.
+  const deltaFiles=[...full,{name:CONTACT_DELTA_MIGRATION.name,checksum:CONTACT_DELTA_MIGRATION.sha256,sql:'SELECT 1;'}];
+  const deltaState=(history=full,proof:ContactDeltaIntegrity|undefined=pendingCandidate,priorDecisions=applied)=>
+   contactOpsMigrationState(deltaFiles,history,present,taskPresent,sourceApplied,voicePresent,authorityPresent,inboundPresent,superseded,progress,projection,outbound,{prior:superseded,current:superseded},disclosure,speakers,responsibility,reminder,applied,priorDecisions,proof);
+  expect(deltaState()).toBe('pending');expect(deltaState(deltaFiles,applied)).toBe('applied');
+  expect(()=>deltaState(full.slice(0,-1))).toThrow();expect(()=>deltaState(full,applied)).toThrow();expect(()=>deltaState(deltaFiles,pendingCandidate)).toThrow();
+  for(const key of Object.keys(applied)as (keyof ContactDeltaIntegrity)[]){
+   expect(()=>deltaState(deltaFiles,{...applied,[key]:!applied[key]})).toThrow();
+   expect(()=>deltaState(full,pendingCandidate,{...applied,[key]:!applied[key]})).toThrow();
+  }
+  for(const proof of [{...applied,extra:true},{...applied,permissions:1},{...applied,permissions:undefined}])
+   expect(()=>deltaState(deltaFiles,proof as ContactDeltaIntegrity)).toThrow('CONTACT_DELTA_READBACK_INVALID');
+  expect(contactOpsMigrationPrefix(deltaFiles,CONTACT_DELTA_MIGRATION.name)).toEqual(deltaFiles);
+  expect(()=>contactOpsMigrationPrefix(deltaFiles.map(file=>file.name===CONTACT_DELTA_MIGRATION.name?{...file,checksum:'0'.repeat(64)}:file),CONTACT_DELTA_MIGRATION.name)).toThrow();
  });
  it('accepts only one ordered registered through argument without loosening target binding or TLS',()=>{
-  for(const migration of [PRACTICE_REMINDER_MIGRATION,ACQUISITION_CANDIDATES_MIGRATION,ACQUISITION_DECISIONS_MIGRATION])expect(contactOpsProductionTarget(good,[...args,'--through='+migration.name]).through).toBe(migration.name);
+  for(const migration of [PRACTICE_REMINDER_MIGRATION,ACQUISITION_CANDIDATES_MIGRATION,ACQUISITION_DECISIONS_MIGRATION,CONTACT_DELTA_MIGRATION])expect(contactOpsProductionTarget(good,[...args,'--through='+migration.name]).through).toBe(migration.name);
   for(const bad of ['--through=0118_unreviewed.sql','--through=../0115_ls_practice_notification_outbox.sql','--through=','--ignore-checks'])expect(()=>contactOpsProductionTarget(good,[...args,bad])).toThrow();
   expect(()=>contactOpsProductionTarget(good,[...args,'--through='+PRACTICE_REMINDER_MIGRATION.name,'--through='+ACQUISITION_CANDIDATES_MIGRATION.name])).toThrow('CONTACT_OPS_ARGUMENTS_INVALID');
   expect(()=>contactOpsProductionTarget({...good,LS_DATABASE_TLS:'disable'},[...args,'--through='+PRACTICE_REMINDER_MIGRATION.name])).toThrow('CONTACT_OPS_TLS_REQUIRED');

@@ -10,7 +10,7 @@ import { canonical, requireThat } from "../core/validation.js";
 import { importedFollowUpDate, planImport, type ImportRow, type SheetSnapshot } from "./import-plan.ts";
 import { crmProfileAad, crmProfileSchema, type CrmProfile } from "./native-store.ts";
 import {planSourceDelta, reconcileImportedProfile} from "./import-delta.ts";
-import {readCutoverState} from "./cutover-state.ts";
+import {readCutoverState,cutoverStateAad} from "./cutover-state.ts";
 import {MAX_NATIVE_CONTACTS} from "../core/limits.ts";
 import {privateDigest} from "./digests.ts";
 import {z} from "zod";
@@ -24,7 +24,8 @@ export interface DeltaApplication {
  versions:readonly {legacyId:string;version:number}[];
  newPeople:readonly NewPersonDisposition[];
 }
-const deltaResultSchema=z.object({sourceRevision:z.string().min(1),planned:z.number().int().nonnegative(),
+const deltaResultSchema=z.object({sourceRevision:z.string().min(1),previousRevision:z.string().min(1),
+ authorityEpoch:z.number().int().positive().max(Number.MAX_SAFE_INTEGER-1),snapshotDigest:z.string().regex(/^[a-f0-9]{64}$/),planned:z.number().int().nonnegative(),
  created:z.number().int().nonnegative(),updated:z.number().int().nonnegative(),unchanged:z.number().int().nonnegative()}).strict();
 const deltaOperationAad=(workspace:string,operation:string)=>`ls_contact_ops/delta-operation/v1/${workspace}/${operation}`;
 const deltaHistoryAad=(workspace:string,operation:string,legacyId:string)=>`ls_contact_ops/delta-history/v1/${workspace}/${operation}/${legacyId}`;
@@ -78,11 +79,14 @@ export class NativeShadowImporter {
  async preflightDelta(actor: Actor, previous: SheetSnapshot, next: SheetSnapshot) {
   return this.db.transaction(async tx=>{
    await tx.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
-   const {updates,...result}=await this.inspectDelta(tx,actor,previous,next,false);
+   const {updates,source,state,...result}=await this.inspectDelta(tx,actor,previous,next,false);
    // Keep decrypted merge material inside the service, not even its private
-   // preflight output; versions/digests are sufficient for the reviewed operator.
-   void updates;
-   return result;
+   // preflight output; stable IDs, versions, digests and conflict labels suffice.
+   void updates;void state;
+   return {...result,source:{previousRevision:source.previousRevision,nextRevision:source.nextRevision,
+    previousSnapshotDigest:source.previousSnapshotDigest,nextSnapshotDigest:source.nextSnapshotDigest,
+    ready:source.ready,missingLegacyIds:source.missingLegacyIds,review:source.review,
+    rows:source.rows.map(row=>({kind:row.kind,legacyId:row.after.legacyId,sourceRow:row.after.sourceRow,rowDigest:row.after.rowDigest}))}};
   });
  }
 
@@ -169,18 +173,19 @@ export class NativeShadowImporter {
    // New rows still need the existing explicit identity dispositions and live
    // account/endpoint-collision checks. This read cannot authorize their import.
    const newRows=delta.rows.filter(row=>row.kind === "new").map(row=>row.after.legacyId);
-   return {source:delta,expectedEpoch:state.epoch,phase:state.phase,existing,updates,conflicts,identityConflicts,newRows,
+   return {source:delta,state,expectedEpoch:state.epoch,phase:state.phase,existing,updates,conflicts,identityConflicts,newRows,
     existingRowsReconciled:delta.ready && conflicts.length===0 && identityConflicts.length===0,
     newIdentityDecisionsRequired:newRows.length>0,effects:"none" as const};
  }
 
  /** Internal transaction only, deliberately no HTTP/CLI route. The release
   * operator must first establish the real external writer freeze/durable inbox
-  * recorded by the cutover service. This does not switch authority or send.
+  * recorded by the cutover service. It advances the frozen epoch/revision with
+  * an immutable delta receipt; it does not activate native authority or send.
   * Replays return the immutable operation result, not a new reconciliation. */
  async applyDelta(actor:Actor,previous:SheetSnapshot,next:SheetSnapshot,input:DeltaApplication){
   requireThat(/^[A-Za-z0-9_-]{1,128}$/.test(input.operationId) && Number.isSafeInteger(input.expectedEpoch) &&
-   input.expectedEpoch>=0,"DELTA_APPLICATION_INVALID");
+   input.expectedEpoch>=0 && input.expectedEpoch<Number.MAX_SAFE_INTEGER-1,"DELTA_APPLICATION_INVALID");
   requireThat(input.versions.length<=MAX_NATIVE_CONTACTS && input.newPeople.length<=MAX_NATIVE_CONTACTS,"DELTA_DIRECTORY_BOUND");
   const digest=privateDigest({actorId:actor.id,previous,next,input},this.integrityKey);
   return this.db.transaction(async tx=>{
@@ -197,6 +202,8 @@ export class NativeShadowImporter {
    const plan=await this.inspectDelta(tx,actor,previous,next,true);
    requireThat(plan.phase==="frozen" && plan.expectedEpoch===input.expectedEpoch,"DELTA_REQUIRES_EXACT_FREEZE");
    requireThat(plan.existingRowsReconciled,"DELTA_RECONCILIATION_REQUIRED");
+   const pending=await tx.query("SELECT operation_id FROM ls_contact_ops.outbound_projections WHERE workspace_id=$1 AND state IN ('prepared','sent_pending') LIMIT 1",[actor.workspaceId]);
+   requireThat(pending.length===0,"DELTA_PENDING_OUTBOUND_RECONCILIATION");
    const versions=new Map(input.versions.map(item=>[item.legacyId,item.version]));
    requireThat(versions.size===input.versions.length && versions.size===plan.existing.length &&
     plan.existing.every(row=>versions.get(row.legacyId)===row.expectedVersion),"DELTA_VERSION_CONFLICT");
@@ -212,7 +219,9 @@ export class NativeShadowImporter {
     profileFromRow(row); // Validate every new row before the first insert.
    }
    const changed=plan.updates.filter(row=>row.profileChanged||row.nameChanged).length;
-   const result=deltaResultSchema.parse({sourceRevision:next.revision,planned:plan.source.rows.length,
+   const nextAuthority={...plan.state,epoch:plan.state.epoch+1,sourceRevision:next.revision};
+   const result=deltaResultSchema.parse({sourceRevision:next.revision,previousRevision:previous.revision,
+    authorityEpoch:nextAuthority.epoch,snapshotDigest:plan.source.nextSnapshotDigest,planned:plan.source.rows.length,
     created:newRows.length,updated:changed,unchanged:plan.updates.length-changed});
    await tx.query(`INSERT INTO ls_contact_ops.delta_operations(workspace_id,operation_id,actor_account_id,authority_epoch,payload_digest,result_ciphertext)
     VALUES($1,$2,$3,$4,$5,$6)`,[actor.workspaceId,input.operationId,actor.id,input.expectedEpoch,digest,
@@ -246,6 +255,13 @@ export class NativeShadowImporter {
     await this.recordDeltaRow(tx,actor,input,row,{sourceFileId:next.fileId,sourceSheetId:next.sheetId,before:null,after:{sourceRevision:next.revision,rowDigest:row.rowDigest,
      sourceTab:next.tab,sourceRow:row.sourceRow,profileCiphertext,identityCiphertext,snapshotCiphertext,version:1}});
    }
+   // Bind final snapshot r2 to the frozen authority in the SAME transaction as
+   // its rows/history. All old r1/epoch proofs now fail the existing cutover gate.
+   const advanced=await tx.query(`UPDATE ls_contact_ops.cutover SET epoch=$3,state_ciphertext=$4,updated_at=clock_timestamp()
+    WHERE workspace_id=$1 AND epoch=$2 AND phase='frozen' RETURNING workspace_id`,
+    [actor.workspaceId,input.expectedEpoch,nextAuthority.epoch,
+     seal(JSON.stringify(nextAuthority),cutoverStateAad(actor.workspaceId,nextAuthority.epoch),this.keyring)]);
+   requireThat(advanced.length===1,"DELTA_AUTHORITY_CHANGED");
    return {...result,replayed:false};
   });
  }
