@@ -206,6 +206,15 @@ describe("actual practice proxy validates transport before header rewriting", ()
     }
     expect(proxy(new NextRequest(origin + "/api/owner-digest")).headers.get("x-middleware-next")).toBe("1");
   });
+  it('preserves the synthetic review perimeter without admitting operational pages through it',()=>{
+    configured();vi.stubEnv('LS_APP_MODE','isolated_preview');vi.stubEnv('LS_PREVIEW_ACCESS_KEY','synthetic_sample_gate_key_1234567890');
+    const service='https://private-app-preview.example.test',authorization='Basic '+btoa('preview:synthetic_sample_gate_key_1234567890');
+    for(const locale of ['en','he']){
+      expect(proxy(new NextRequest(`${service}/${locale}/sample`)).status).toBe(401);
+      expect(proxy(new NextRequest(`${service}/${locale}/sample`,{headers:{authorization}})).headers.get('x-middleware-next')).toBe('1');
+      const operational=proxy(new NextRequest(`${service}/${locale}/app/marketing`,{headers:{authorization}}));expect(operational.status).toBe(503);expect(operational.headers.get('x-middleware-next')).toBeNull();
+    }
+  });
   it("does not manufacture HTTPS for a foundation HTTP loopback (not private authentication proof)", () => {
     configured(); vi.stubEnv("NODE_ENV", "development"); vi.stubEnv("LS_APP_ORIGIN", "http://127.0.0.1:3001");
     const response = proxy(new NextRequest("http://127.0.0.1:3001/api/home-practice", { headers: { host: "127.0.0.1:3001" } }));
