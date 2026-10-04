@@ -137,6 +137,44 @@ it("reads parent feedback history from Messages without a composer version", asy
   expect(find(render(props), element => element.type === 'form')).toBeUndefined();
 });
 
+it.each(['en','he'] as const)('never substitutes another audience for an unavailable explicit route (%s)',async locale=>{
+ accountRead.mockResolvedValue([{id:caseA,displayName:'DEMO A',kind:'minor'}]);
+ fetchMock.mockImplementation(async(url:string)=>url.startsWith('/api/identity/audiences')&&new URL(url,'https://synthetic.invalid').searchParams.has('audienceId')?Response.json({ok:false},{status:404}):authorizedRead(url));
+ const output=await ready({locale,role:'parent',initialCaseId:caseA,initialAudienceId:audienceB,initialPracticeVersionId:'version-b'});
+ expect(fetchMock.mock.calls.some(([url])=>String(url).startsWith('/api/updates?'))).toBe(false);expect(find(output,e=>e.type==='form')).toBeUndefined();
+ expect(text(output)).toContain(locale==='en'?'The requested shared practice context is unavailable.':'הקשר התרגול המשותף שהתבקש אינו זמין.');
+});
+
+it.each(['en','he'] as const)('an audience route change uses the new exact participant context, never the retained selection (%s)',async locale=>{
+ accountRead.mockResolvedValue([{id:caseA,displayName:'DEMO A',kind:'minor'}]);fetchMock.mockImplementation(async(url:string)=>Response.json({ok:true,data:url.startsWith('/api/identity/audiences')?[{id:audienceA,visibility:'family_full'},{id:audienceB,visibility:'family_full'}]:[]}));
+ const a={locale,role:'parent' as const,initialCaseId:caseA,initialAudienceId:audienceA,initialPracticeVersionId:'version-a'},b={...a,initialAudienceId:audienceB,initialPracticeVersionId:'version-b'};
+ await ready(a);fetchMock.mockClear();const immediate=render(b);expect(find(immediate,e=>e.type==='form')).toBeUndefined();
+ await ready(b);const reads=fetchMock.mock.calls.filter(([url])=>String(url).startsWith('/api/updates?'));expect(reads.length).toBeGreaterThan(0);
+ expect(reads.every(([url])=>new URL(String(url),'https://synthetic.invalid').searchParams.get('audienceId')===audienceB)).toBe(true);
+});
+
+it.each(['en','he'] as const)('pages retained shared contexts, pins an exact older route, and preserves scoped draft through retry (%s)',async locale=>{
+ accountRead.mockResolvedValue([{id:caseA,displayName:'DEMO A',kind:'minor'}]);
+ const page=Array.from({length:100},(_,i)=>({id:`80000000-0000-4000-8000-${String(i).padStart(12,'0')}`,visibility:'family_full'})),cursor=page.at(-1)!.id;let fail=true;
+ fetchMock.mockImplementation(async(url:string)=>{
+  if(!url.startsWith('/api/identity/audiences'))return Response.json({ok:true,data:[]});const q=new URL(url,'https://synthetic.invalid').searchParams;
+  if(q.has('audienceId'))return Response.json({ok:true,data:{id:audienceA,visibility:'family_full',published:true}});
+  if(q.has('beforeAudienceId'))return fail?Response.json({ok:false},{status:503}):Response.json({ok:true,data:[{id:audienceB,visibility:'family_full',published:true}]});
+  return Response.json({ok:true,data:page});
+ });
+ const props={locale,role:'parent' as const,initialCaseId:caseA,initialAudienceId:audienceA,initialPracticeVersionId:'version-a'};
+ let output=await ready(props);expect(find(output,e=>e.type==='select'&&e.props.id==='update-audience')!.props.value).toBe(audienceA);
+ (find(output,e=>e.type==='button'&&e.props.children===(locale==='en'?'Add feedback':'הוספת משוב'))!.props.onClick as Click)();output=render(props);
+ (find(output,e=>e.type==='textarea')!.props.onChange as Change)({target:{value:'DEMO scoped page draft'}});output=render(props);
+ (find(output,e=>e.type==='button'&&e.props.children===(locale==='en'?'Older shared contexts':'הקשרים משותפים קודמים'))!.props.onClick as Click)();output=await ready(props);
+ expect(text(output)).toContain(locale==='en'?'Shared practice contexts could not be loaded.':'לא ניתן לטעון את הקשרי התרגול המשותף.');
+ expect(fetchMock.mock.calls.some(([url])=>new URL(String(url),'https://synthetic.invalid').searchParams.get('beforeAudienceId')===cursor)).toBe(true);
+ fail=false;(find(output,e=>e.type==='button'&&e.props.children===(locale==='en'?'Retry shared contexts':'ניסיון טעינת ההקשרים המשותפים מחדש'))!.props.onClick as Click)();output=await ready(props);
+ expect(find(output,e=>e.type==='select'&&e.props.id==='update-audience')!.props.value).toBe(audienceA);expect(find(output,e=>e.type==='textarea')!.props.value).toBe('DEMO scoped page draft');
+ (find(output,e=>e.type==='button'&&e.props.children===(locale==='en'?'Latest shared contexts':'הקשרים משותפים אחרונים'))!.props.onClick as Click)();output=await ready(props);
+ expect(find(output,e=>e.type==='textarea')!.props.value).toBe('DEMO scoped page draft');expect(postBodies()).toHaveLength(0);
+});
+
 it("shows a genuine failed case read and a working retry instead of false empty context", async () => {
   accountRead.mockRejectedValueOnce(new Error('UNAVAILABLE')).mockResolvedValue([{ id: caseA, displayName: 'Synthetic A', kind: 'minor' }]);
   fetchMock.mockResolvedValue(Response.json({ ok: true, data: [] }));
