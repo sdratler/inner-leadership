@@ -50,6 +50,11 @@ describe('registered creative filters',()=>{
   const html=renderToStaticMarkup(createElement(MarketingDashboard,{locale,snapshot,initialSection:'creatives',creativeQuery:{page:'2',language:'he',search:'DEMO'},renderedAt:'2026-10-04T06:00:00Z'}));
   expect(html.match(/class="lsr-creative-card"/g)).toHaveLength(12);expect(html).toContain('page=1');expect(html).toContain('page=3');expect(html).toContain('language=he');expect(html).toContain('search=DEMO');expect(html).toContain('loading="lazy"');expect(html).not.toContain('DEMO-30-r1');
  });
+ it.each(['en','he'] as const)('collapses successful-read timestamps but keeps actual %s inventory failure and recovery visible',locale=>{
+  const snapshot:MarketingSnapshot={source:'registry_only',fetchedAt:null,creatives:[],publications:[],ads:[],scout:{readyDrafts:null,sourceUrl:null,lastChecked:null,status:'unbound'},inventoryReadback:{status:'error',lastSuccessfulReadAt:null,lastAttemptAt:'2026-10-04T07:00:00Z',errorCode:'creative_inventory_unavailable'},connectionErrors:['creative_inventory_unavailable']};
+  const html=renderToStaticMarkup(createElement(MarketingDashboard,{locale,snapshot,initialSection:'content_calendar',renderedAt:'2026-10-04T07:00:00Z'}));
+  expect(html).toContain('<details class="lsr-inventory-readback"><summary>');expect(html).not.toContain('<details class="lsr-inventory-readback" open');expect(html).toContain(locale==='he'?'הקריאה נכשלה':'Read failed');expect(html).toContain(locale==='he'?'מלאי הקריאייטיב אינו זמין כרגע.':'Creative inventory is temporarily unavailable.');expect(html).toContain('dir="ltr"');
+ });
  it.each(['en','he'] as const)('renders dedicated compact filters and exact-revision actionable counts in %s',locale=>{
   const rows=[asset(),asset({assetId:'retired',review:'retired'}),asset({assetId:'rejected',libraryState:'REJECTED'})];
   const snapshot:MarketingSnapshot={source:'synthetic',fetchedAt:null,creatives:rows,publications:[],ads:[],scout:{readyDrafts:null,sourceUrl:null,lastChecked:null,status:'unbound'}};
