@@ -54,8 +54,9 @@ function secure(response: Response): Response {
 }
 
 function exactListQuery(url: URL) {
-  if ([...url.searchParams.keys()].length !== 2 || !url.searchParams.has("caseId") || !url.searchParams.has("audienceId")) throw new AppError("INVALID_REQUEST");
-  const result = z.object({ caseId, audienceId }).strict().safeParse(Object.fromEntries(url.searchParams));
+  const keys=[...url.searchParams.keys()];
+  if(new Set(keys).size!==keys.length)throw new AppError("INVALID_REQUEST");
+  const result = z.union([z.object({caseId,audienceId}).strict(),z.object({caseId,audienceId,reportId}).strict(),z.object({caseId,audienceId,reportId,beforeReplyId:replyId}).strict()]).safeParse(Object.fromEntries(url.searchParams));
   if (!result.success) throw new AppError("INVALID_REQUEST");
   return result.data;
 }
@@ -83,7 +84,7 @@ export class Ls080Http {
       let data: unknown;
       if (request.method === "GET") {
         const query = exactListQuery(url);
-        data = await this.services.updates.list(actor, query.caseId, query.audienceId);
+        data = 'reportId' in query ? await this.services.updates.list(actor,query.caseId,query.audienceId,{reportId:query.reportId,...('beforeReplyId' in query ? {beforeReplyId:query.beforeReplyId} : {})}) : await this.services.updates.list(actor, query.caseId, query.audienceId);
       } else {
         verifyMutationOrigin(request, this.config.origin);
         verifyCsrfToken(request.headers.get("x-csrf-token"), this.services.sessions.csrf(token));
