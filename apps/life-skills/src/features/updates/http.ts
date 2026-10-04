@@ -12,6 +12,7 @@ import { TOKEN_PATTERN } from "../identity/crypto.ts";
 import type { IdentitySessions } from "../identity/session-adapter.ts";
 import type { Actor, IdentityClock } from "../identity/types.ts";
 import type { UpdateService } from "./service.ts";
+import {canonicalForwardedRequest} from "../integration/canonical-forwarded-request.ts";
 
 const id = <K extends string>(kind: K) => z.string().uuid().transform(value => asId(value, kind));
 const caseId = id("case");
@@ -53,8 +54,9 @@ function secure(response: Response): Response {
 }
 
 function exactListQuery(url: URL) {
-  if ([...url.searchParams.keys()].length !== 2 || !url.searchParams.has("caseId") || !url.searchParams.has("audienceId")) throw new AppError("INVALID_REQUEST");
-  const result = z.object({ caseId, audienceId }).strict().safeParse(Object.fromEntries(url.searchParams));
+  const keys=[...url.searchParams.keys()];
+  if(new Set(keys).size!==keys.length)throw new AppError("INVALID_REQUEST");
+  const result = z.union([z.object({caseId,audienceId}).strict(),z.object({caseId,audienceId,reportId}).strict(),z.object({caseId,audienceId,reportId,beforeReplyId:replyId}).strict()]).safeParse(Object.fromEntries(url.searchParams));
   if (!result.success) throw new AppError("INVALID_REQUEST");
   return result.data;
 }
@@ -67,7 +69,12 @@ export class Ls080Http {
     let actor: Actor | undefined;
     try {
       if (!this.config.enabled) throw new AppError("UNAVAILABLE");
-      const url = new URL(request.url);
+      const inbound=new URL(request.url);
+      if(inbound.hash)throw new AppError('NOT_FOUND');
+      // Reuse the strict configured-host HTTPS adapter for internal Railway
+      // transport. Keep the original request for cookie, origin, CSRF and body.
+      const forwarded=request.headers.has('x-forwarded-proto')||request.headers.has('x-forwarded-host');
+      const url=forwarded?new URL(canonicalForwardedRequest(request,this.config.origin).url):inbound;
       if (url.origin !== this.config.origin || url.pathname !== "/api/updates" || !["GET", "POST"].includes(request.method)) throw new AppError("NOT_FOUND");
       if (request.method === "POST" && url.search) throw new AppError("INVALID_REQUEST");
       const token = cookie(request);
@@ -77,7 +84,7 @@ export class Ls080Http {
       let data: unknown;
       if (request.method === "GET") {
         const query = exactListQuery(url);
-        data = await this.services.updates.list(actor, query.caseId, query.audienceId);
+        data = 'reportId' in query ? await this.services.updates.list(actor,query.caseId,query.audienceId,{reportId:query.reportId,...('beforeReplyId' in query ? {beforeReplyId:query.beforeReplyId} : {})}) : await this.services.updates.list(actor, query.caseId, query.audienceId);
       } else {
         verifyMutationOrigin(request, this.config.origin);
         verifyCsrfToken(request.headers.get("x-csrf-token"), this.services.sessions.csrf(token));
