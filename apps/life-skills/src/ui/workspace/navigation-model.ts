@@ -29,7 +29,7 @@ export function practitionerContext(pathname: string, caseId: string | null, sel
   if (pathname.includes("/app/reports")) return [context("due","app/reports","Due","להשלמה",{section:"due"}),context("drafts","app/reports","Drafts","טיוטות",{section:"drafts"}),context("published","app/reports","Published","פורסמו",{section:"published"}),context("history","app/reports","History","היסטוריה",{section:"history"})];
   if (pathname.includes("/app/calendar")) return [context("day","app/calendar","Day","יום",{view:"day"}),context("week","app/calendar","Week","שבוע",{view:"week"}),context("month","app/calendar","Month","חודש",{view:"month"}),context("agenda","app/calendar","Agenda","סדר יום",{view:"agenda"})];
   if (pathname.includes("/app/clients") || pathname.includes("/app/prospects")) return [context("all","app/clients","All","הכול",{section:"all"}),context("prospects","app/clients","Prospects","מתעניינים",{section:"prospects"}),context("paid","app/clients","Paid awaiting booking","שולם, ממתינים למועד",{section:"paid"}),context("active","app/clients","Active","פעילים",{section:"active"}),context("archived","app/clients","Archived","בארכיון",{section:"archived"})];
-  if (pathname.includes("/app/marketing")) return [context("overview","app/marketing","Overview","סקירה",{section:"overview"}),context("content_calendar","app/marketing","Content Calendar","יומן תוכן",{section:"content_calendar"}),context("creatives","app/marketing","Creatives","חומרים",{section:"creatives"}),context("needs_approval","app/marketing","Needs approval","ממתינים לאישור",{section:"needs_approval"}),context("community","app/marketing","Community","קהילה",{section:"community"}),context("ads","app/marketing","Ads","מודעות",{section:"ads"})];
+  if (pathname.includes("/app/marketing")) return [context("overview","app/marketing","Overview","סקירה",{section:"overview"}),context("content_calendar","app/marketing","Content Calendar","יומן תוכן",{section:"content_calendar"}),context("creatives","app/marketing","Creatives","קריאייטיב",{section:"creatives"}),context("community","app/marketing","Community","קהילה",{section:"community"}),context("ads","app/marketing","Ads","מודעות",{section:"ads"})];
   if (pathname.includes("/app/payments")) return [context("overview","app/payments","Overview","סקירה",{section:"overview"}),context("awaiting","app/payments","Awaiting","ממתינים",{section:"awaiting"}),context("paid","app/payments","Paid","שולמו",{section:"paid"}),context("credits","app/payments","Credits","יתרות",{section:"credits"}),context("refunds","app/payments","Refunds","החזרים",{section:"refunds"})];
   return [];
 }
@@ -115,7 +115,7 @@ export function breadcrumbItems(locale: Locale, role: WorkspaceRole, pathname: s
   }
   const found = activeItem(pathname, locale, role);
   if (role === "practitioner" && found) {
-    const child = practitionerContext(pathname, null).find(x => x.key === (found.key === "calendar" ? view : section));
+    const child = practitionerContext(pathname, null).find(x => x.key === (found.key === "calendar" ? view : found.key==='marketing'&&section==='needs_approval'?'creatives':section));
     if (child) return [home, { label: found[locale], path: found.path }, { label: child[locale] }];
   }
   return found && found.path !== home.path ? [home, { label: found[locale] }] : [{ label: found ? found[locale] : home.label }];

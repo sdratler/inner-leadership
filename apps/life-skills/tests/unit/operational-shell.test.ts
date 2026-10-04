@@ -40,9 +40,15 @@ describe("operational workspace navigation",()=>{
  it("limits the practitioner sidebar to the six owner-selected destinations",()=>{
   expect(primaryNavigation.practitioner.map(item=>item.en)).toEqual(["Calendar","People","Communications","Reports","Marketing","Payments"]);
   expect(primaryNavigation.parent.map(item=>item.en)).toEqual(["Calendar","Home","Practice","Messages"]);
-  expect(practitionerContext("/en/app/marketing",null).map(item=>item.en)).toEqual(["Overview","Content Calendar","Creatives","Needs approval","Community","Ads"]);
+   expect(practitionerContext("/en/app/marketing",null).map(item=>item.en)).toEqual(["Overview","Content Calendar","Creatives","Community","Ads"]);
  });
- for(const locale of ["he","en"] as const){
+  for(const locale of ["he","en"] as const){
+   it(`${locale}: legacy Needs approval deep links retain Creatives active context without a sixth toolbar destination`,()=>{
+    const html=renderToStaticMarkup(React.createElement(WorkspaceShell,{locale,role:'practitioner',pathname:`/${locale}/app/marketing`,section:'needs_approval',languageHref:`/${locale==='he'?'en':'he'}/app/marketing?section=needs_approval`} as React.ComponentProps<typeof WorkspaceShell>,'Existing creative view'));
+    expect(topLinks(html)).toHaveLength(5);expect(html).toContain(`href="/${locale}/app/marketing?section=creatives" aria-current="page"`);
+    expect(topLinks(html).some(url=>url.searchParams.get('section')==='needs_approval')).toBe(false);
+    expect(breadcrumbItems(locale,'practitioner',`/${locale}/app/marketing`,'needs_approval').at(-1)?.label).toBe(locale==='he'?'קריאייטיב':'Creatives');
+   });
   it(`${locale}: keeps desktop and mobile sections route-based with one account Settings entry`,()=>{
    const props={locale,role:"practitioner",pathname:`/${locale}/app/marketing`,section:"ads",languageHref:`/${locale==="he"?"en":"he"}/app/marketing`} as React.ComponentProps<typeof WorkspaceShell>;
    const html=renderToStaticMarkup(React.createElement(WorkspaceShell,props,React.createElement("h1",null,"Content")));
