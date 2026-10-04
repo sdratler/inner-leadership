@@ -21,7 +21,10 @@ const thread=z.object({id:z.string().uuid(),postId:z.number().int().positive().m
  .refine(v=>Date.parse(v.registeredAt)<=Date.parse(v.expiresAt));
 const response=z.object({id:z.string().uuid(),threadId:z.string().uuid(),commentId,parentCommentId:commentId,commentUrl:link,text:z.string().min(1).max(4000),postedAt:date,capturedAt:date,expiresAt:date,taskId:z.string().uuid().nullable()}).strict().refine(v=>commentLink(v.commentUrl)?.commentId===v.commentId&&commentLink(v.commentUrl)?.rootCommentId===v.parentCommentId&&v.commentId!==v.parentCommentId)
  .refine(v=>Date.parse(v.postedAt)<=Date.parse(v.capturedAt)&&Date.parse(v.capturedAt)<=Date.parse(v.expiresAt));
-const page=z.object({threads:z.array(thread).max(20),responses:z.array(response).max(100),partial:z.boolean(),captureStatus:z.object({checkedAt:date,reason:z.string().max(100).nullable(),observedRunCostCents:z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).nullable()}).strict().nullable(),autonomousCollectionEnabled:z.literal(false)}).strict().refine(v=>new Set(v.threads.map(t=>t.id)).size===v.threads.length&&new Set(v.responses.map(r=>r.id)).size===v.responses.length&&v.responses.every(r=>{const t=v.threads.find(t=>t.id===r.threadId);return t&&t.commentId===r.parentCommentId&&t.postUrl===commentLink(r.commentUrl)?.postUrl;}));
+function uniqueResponseComments(rows:z.infer<typeof response>[]):boolean{
+ return new Set(rows.map(r=>JSON.stringify([commentLink(r.commentUrl)?.postUrl,r.commentId]))).size===rows.length;
+}
+const page=z.object({threads:z.array(thread).max(20),responses:z.array(response).max(100),partial:z.boolean(),captureStatus:z.object({checkedAt:date,reason:z.string().max(100).nullable(),observedRunCostCents:z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).nullable()}).strict().nullable(),autonomousCollectionEnabled:z.literal(false)}).strict().refine(v=>new Set(v.threads.map(t=>t.id)).size===v.threads.length&&new Set(v.responses.map(r=>r.id)).size===v.responses.length&&uniqueResponseComments(v.responses)&&v.responses.every(r=>{const t=v.threads.find(t=>t.id===r.threadId);return t&&t.commentId===r.parentCommentId&&t.postUrl===commentLink(r.commentUrl)?.postUrl;}));
 export type CommunityThread=z.infer<typeof thread>;
 export type CommunityResponse=z.infer<typeof response>;
 export type CommunityThreads=z.infer<typeof page>;
@@ -46,7 +49,7 @@ export async function registerCommunityThread(ownerId:string,command:ThreadComma
 }
 export async function pendingCommunityResponses(ownerId:string,fetcher:typeof fetch=fetch,env:Record<string,string|undefined>=process.env):Promise<{responses:CommunityResponse[];more:boolean}>{
  const value=z.object({responses:z.array(response).max(25),more:z.boolean()}).strict().safeParse(await exchange(ownerId,'/internal/life-skills/threads?'+new URLSearchParams({ownerId,pending:'true'}),'GET',undefined,fetcher,env));
- if(!value.success||new Set(value.data.responses.map(r=>r.id)).size!==value.data.responses.length||value.data.responses.some(r=>r.taskId!==null))throw new AppError('UNAVAILABLE');
+ if(!value.success||new Set(value.data.responses.map(r=>r.id)).size!==value.data.responses.length||!uniqueResponseComments(value.data.responses)||value.data.responses.some(r=>r.taskId!==null))throw new AppError('UNAVAILABLE');
  // Validate the whole bounded pending batch before any task is created. A URL
  // agreeing with its own parent ID is insufficient: its actual tracked thread
  // must bind that parent and post. Deduplicate readbacks (at most25) per batch.
