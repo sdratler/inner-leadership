@@ -1,7 +1,7 @@
 import type {AdDailyPoint,MarketingSnapshot} from "../marketing-overview/contracts.ts";
 import type {Prospect} from "../prospects/bridge.ts";
 import {crmDueCivilDate} from "../prospects/due-date.ts";
-import {prospectContactSuppressed} from "../prospects/native-edit.ts";
+import {prospectContactSuppressed,prospectArchived} from "../prospects/native-edit.ts";
 import {nextHebrewStatus,publicationStatusText,contentDayKey,orderedPublicationQueue} from "../marketing-overview/calendar-model.ts";
 import {MAX_OPERATIONAL_PROSPECTS} from "../contact-ops/core/limits.ts";
 
@@ -29,7 +29,7 @@ export function summarizeProspects(rows:readonly ProspectFacts[],today:string,jo
  if(rows.length>MAX_OPERATIONAL_PROSPECTS||new Set(rows.map(row=>row.leadId)).size!==rows.length||rows.some(row=>!/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]+$/.test(row.leadId)))throw Error("INVALID_DIGEST_PROSPECTS");
  const result:AdminCounts={due:0,overdue:0,future:0,missingDate:0,invalidDate:0,prospects:0,otherStages:0,awaitingForm:journeysAvailable?0:null,awaitingPayment:journeysAvailable?0:null,awaitingBooking:journeysAvailable?0:null};
  for(const row of rows){
-  if(/archive/i.test(`${row.stage} ${row.outcome}`)||prospectContactSuppressed(row))continue;
+  if(prospectArchived(row)||prospectContactSuppressed(row))continue;
   if(row.journeyState!=="active")result.prospects++;
   if(!canonicalStages.has(row.stage))result.otherStages++;
   if(row.nextAction.trim()){

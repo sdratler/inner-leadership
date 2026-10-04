@@ -25,7 +25,7 @@ test("intake counts use the existing invitation/receipt ledger, not imported sen
  const row={leadId:lead,stage:"Prospect",outcome:"",paymentStatus:"Paid claim only",bookingStatus:"Confirmed claim only"} as Prospect;
  const result=await readIntakeFacts(store(),f.practitioner.actor,[row],now);expect(result.awaitingForm).toBe(1);expect(result.journeys.size).toBe(0);
  expect((await readIntakeFacts(store(),f.practitioner.actor,[{...row,stage:"Archived"}],now)).awaitingForm).toBe(0);
- for(const value of ['opt out','opted-out','OPT_OUT','do_not_contact','Do-Not-Contact']){
+ for(const value of ['opt out','opted-out','OPT_OUT','do_not_contact','Do-Not-Contact','Closed','Not interested','No fit','CLOSED','Closed — older inquiry']){
   for(const suppressed of [{...row,stage:value},{...row,outcome:value}]){
    expect((await readIntakeFacts(store(),f.practitioner.actor,[suppressed],now)).awaitingForm,value).toBe(0);
   }
