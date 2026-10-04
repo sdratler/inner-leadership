@@ -26,6 +26,12 @@ test("existing match has an explicit selection and never a second create form",(
 test("DEMO review never mixes actual inbound records or offers live effects",()=>{
  const html=renderToStaticMarkup(createElement(AcquisitionWorkspace,{locale:"en",mode:"demo"}));expect(html).toContain("Live inbound candidates are not shown in DEMO");expect(html).not.toContain("<form");expect(html).not.toContain("Delete Demo");
 });
+test.each(["en","he"] as const)("%s restores the explicit match selection after conflict refresh without replaying the stale command",locale=>{
+ const draft={fields:{name:"Synthetic",stage:"New inquiry",language:"" as const,note:"Keep authored note",nextAction:"",dueDate:""},person:item.id,pending:null,conflict:false};
+ const html=renderToStaticMarkup(createElement(AcquisitionReviewCard,{item:{...item,matching:{state:"existing",people:[{personId:item.id,displayName:"Existing synthetic person",version:3,eligible:true}]}},locale,epoch:4,draft,remember:()=>{},saved:()=>{},denied:()=>{},refresh:()=>{}}));
+ expect(html).toContain(`<option value="${item.id}" selected="">`);
+ expect(html).not.toContain(locale==="en"?"Retry this decision":"ניסיון חוזר של ההחלטה");
+});
 test.each(["en","he"] as const)("%s Needs review menu, breadcrumb and login return preserve real section/deep-link context",locale=>{
  const nav=practitionerContext(`/${locale}/app/clients`,null),review=nav.find(value=>value.key==="needs_review")!;
  expect(review.query).toEqual({section:"needs_review"});expect(nav.map(v=>v.path)).not.toContain("app/marketing");
