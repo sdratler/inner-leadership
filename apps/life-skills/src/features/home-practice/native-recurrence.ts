@@ -44,8 +44,10 @@ export async function nativeRecurrence(ports:Ports,actor:Actor,value:RecurrenceI
   if(stored.length>84)throw new AppError("UNAVAILABLE");
   const existing=new Map(stored.map(row=>[row.id,row]));
   const rows=proposals.map(proposal=>{
-   const found=existing.get(proposal.id),coordinationVersionId=coordinations.get(proposal.id);if(!coordinationVersionId)throw new AppError("UNAVAILABLE");
-   if(found&&(found.practiceVersionId!==source.versionId||found.coordinationVersionId!==coordinationVersionId||found.occursAt?.toISOString()!==proposal.occursAt||!['open','closed'].includes(found.state)))throw new AppError("CONFLICT");
+   // Existing entries keep their frozen coordination, including exact replay.
+   // Only missing entries use the currently effective coordination version.
+   const found=existing.get(proposal.id),coordinationVersionId=found?found.coordinationVersionId:coordinations.get(proposal.id);if(!coordinationVersionId)throw new AppError("UNAVAILABLE");
+   if(found&&(found.practiceVersionId!==source.versionId||found.occursAt?.toISOString()!==proposal.occursAt||!['open','closed'].includes(found.state)))throw new AppError("CONFLICT");
    if(stored.some(row=>row.occursOn===proposal.occursOn&&row.id!==proposal.id&&row.state!=='cancelled'))throw new AppError("CONFLICT");
    return {...proposal,assignmentId:input.assignmentId,practiceVersionId:source.versionId,coordinationVersionId,period:responsibility.period,state:found?.state??"open",existing:Boolean(found)};
   });
