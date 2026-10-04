@@ -19,4 +19,6 @@
 @media(max-width:700px){.lsr-creative-filters{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.lsr-creative-image{max-height:320px}.lsr-content-month-nav .lsr-button{padding-inline:12px}.lsr-content-filters{margin-block:8px}}
 .lsr-stat-link span{font-size:14px;text-decoration:underline}
 .lsr-creative-preview{display:grid;gap:12px;min-width:0}.lsr-creative-preview img{display:block;width:100%;height:auto;max-height:70vh;object-fit:contain}.lsr-creative-preview code{display:block;overflow-wrap:anywhere;font-size:13px}.lsr-creative-preview a{justify-self:start}.lsr-inventory-readback{font-size:14px;overflow-wrap:anywhere}.lsr-creative-card .lsw-button{margin-block:6px;min-height:44px}.lsr-creative-card>a{display:block;margin-block:8px}
+/* Compact contextual controls without shrinking type, touch targets or errors. */
+@media(max-width:700px){.lsr:has(.lsr-content-month-nav) .lsr-section-heading{padding-bottom:12px;margin-bottom:12px}.lsr-content-layouts,.lsr-content-views{margin-block:6px;padding-bottom:4px}.lsr-content-filters>summary{padding-block:8px}.lsr-content-month-nav{margin-block:8px;gap:8px}}
 @media(max-width:700px){.lsr-chart-grid{grid-template-columns:1fr}.lsr-metric-row{grid-template-columns:1fr 1fr}}
