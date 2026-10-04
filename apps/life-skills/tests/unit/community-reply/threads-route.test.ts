@@ -1,0 +1,23 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+import {SESSION_COOKIE} from '../../../src/lib/security/session.ts';
+const hooks=vi.hoisted(()=>({actor:vi.fn(),read:vi.fn(),register:vi.fn(),project:vi.fn(),csrf:vi.fn()}));
+vi.mock('server-only',()=>({}));
+vi.mock('../../../src/features/identity/runtime.ts',()=>({identityRuntime:async()=>({config:{origin:'https://life-skills.bneineviimacademy.org',lookupKey:Buffer.alloc(32)},services:{sessions:{actor:hooks.actor,csrf:hooks.csrf}}})}));
+vi.mock('../../../src/features/community-reply/threads-bridge.ts',()=>({readCommunityThreads:hooks.read,registerCommunityThread:hooks.register,commentLink:(v:string)=>v.includes('?comment_id=101')?{}:null}));
+vi.mock('../../../src/features/community-reply/threads.ts',()=>({projectCommunityTasks:hooks.project}));
+vi.mock('../../../src/features/calendar/store.ts',()=>({CalendarStore:class {}}));vi.mock('../../../src/features/calendar/tasks.ts',()=>({InternalTaskService:class {}}));
+import {GET,POST,PUT} from '../../../src/app/api/community-threads/route.ts';
+const origin='https://life-skills.bneineviimacademy.org',owner='9fe575fe-fba2-4a4b-a136-bb28560b13f2',id='412302a8-3694-4718-9a3b-e5de1a78de6e',cookie=`${SESSION_COOKIE}=synthetic-token`,csrf='a'.repeat(43);
+const value={operationId:owner,postId:10,commentUrl:'https://www.facebook.com/groups/demo/posts/10?comment_id=101',confirmManualReply:true};
+const req=(method='POST',body:unknown=value,extra={})=>new Request(origin+'/api/community-threads',{method,headers:{cookie,origin,'content-type':'application/json','x-csrf-token':csrf,...extra},body:JSON.stringify(body)});
+beforeEach(()=>{vi.clearAllMocks();vi.stubEnv('LS_CALENDAR_ENABLED','true');hooks.actor.mockResolvedValue({id:owner,role:'practitioner'});hooks.csrf.mockReturnValue(csrf);hooks.read.mockResolvedValue({threads:[],responses:[]});hooks.register.mockResolvedValue({id});hooks.project.mockResolvedValue({linked:0,more:false});});
+it.each(['parent','child','adult_client'])('denies %s before any source read, tracking or internal task write',async role=>{hooks.actor.mockResolvedValue({id:owner,role});expect((await GET(new Request(origin+'/api/community-threads',{headers:{cookie}}))).status).toBe(403);expect((await POST(req())).status).toBe(403);expect((await PUT(req('PUT',{}))).status).toBe(403);expect(hooks.read).not.toHaveBeenCalled();expect(hooks.register).not.toHaveBeenCalled();expect(hooks.project).not.toHaveBeenCalled();});
+it('binds one ordinary owner session, fixed query, explicit confirmation and protected mutation origin/CSRF',async()=>{
+ for(const headers of [{},{cookie:cookie+';'+cookie}])expect((await GET(new Request(origin+'/api/community-threads',{headers}))).status).toBe(401);
+ for(const query of ['ownerId='+owner,'threadId='+id+'&threadId='+id])expect((await GET(new Request(origin+'/api/community-threads?'+query,{headers:{cookie}}))).status).toBe(400);
+ for(const body of [{...value,ownerId:id},{...value,confirmManualReply:false},{...value,commentUrl:'https://untrusted.invalid'}])expect((await POST(req('POST',body))).status).toBe(400);
+ for(const extra of [{origin:'https://untrusted.invalid'},{'x-csrf-token':'b'.repeat(43)}])expect((await POST(req('POST',value,extra))).status).toBe(403);
+ const good=await POST(req());expect(good.status).toBe(200);expect(good.headers.get('cache-control')).toBe('private, no-store');expect(hooks.register).toHaveBeenCalledWith(owner,value);
+ expect((await PUT(req('PUT',{responseId:id}))).status).toBe(400);expect(hooks.project).not.toHaveBeenCalled();expect((await PUT(req('PUT',{}))).status).toBe(200);expect(hooks.project.mock.calls[0]?.[0]).toMatchObject({id:owner});
+});
+it('fresh role reauthorization after a slow source read prevents stale practitioner data from returning',async()=>{hooks.actor.mockResolvedValueOnce({id:owner,role:'practitioner'}).mockResolvedValueOnce({id:owner,role:'parent'});expect((await GET(new Request(origin+'/api/community-threads',{headers:{cookie}}))).status).toBe(403);expect(hooks.read).toHaveBeenCalledTimes(1);});

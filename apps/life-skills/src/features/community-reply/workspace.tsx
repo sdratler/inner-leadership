@@ -5,6 +5,7 @@ import { sessionInfo } from "../identity/client.ts";
 import type { CommunityInboxPage, CommunityInboxPost } from "../community-inbox/bridge.ts";
 import type { CommunityReplyResult } from "./bridge.ts";
 import type { CommunitySavedDraft } from "./drafts-bridge.ts";
+import {CommunityThreadPanel} from './thread-panel.tsx';
 import { UnsavedChangesGuard } from "../../ui/workspace/draft-guard.tsx";
 import { canResumeRuleOperation, matchesEditedDraftReadback, matchesGeneratedReadback, matchesSavedDraftBinding, matchesSubmittedInput, proposalForResult, replyFailureKind, ruleDraftPromotionNeedsConfirmation, type CommunitySourceInput } from "./input-state.ts";
 
@@ -12,7 +13,7 @@ type Locale = "he" | "en";
 const copy = {
   en: {
     savedDrafts: "Saved community drafts", savedHelp: "Your latest 20 unexpired drafts. Public reply text only; no clinical notes. Opening or saving does not generate, send or publish anything.", savedLoading: "Loading saved drafts…", savedEmpty: "No saved drafts yet.", savedUnavailable: "Saved drafts could not be loaded. Your editor is unchanged; retry when the connection is available.", savedRetry: "Reload saved drafts", savedOpen: "Open saved draft", savedReplace: "Replace the unsaved text in this editor with this saved draft?", saveDraft: "Save edited reply", saveSaving: "Saving this exact reply…", saveVerified: "Saved and read back from Scout", saveFailed: "This save is unconfirmed. Your text is preserved. Retry the same save; do not assume it was stored.", saveConflict: "The saved version changed elsewhere. Your text is preserved. Open the saved version to compare before editing again; no text was overwritten.", savedVersion: "Draft version", savedAt: "Last edit", savedHistorical: "This saved draft shows the source versions recorded at generation. Generate a new reply to check the current writing guide.", saveBeforeCopy: "Save and verify your edited reply before reviewing and copying it.", leaveUnsaved: "Leave without saving the community reply changes?", unmeteredCost: "Monetary cost is not returned by this backend; unknown is not zero.",
-    inbox: "Community post inbox", inboxHelp: "Captured public posts for manual review. No comments or conversation history are captured; nothing is posted automatically.",
+    inbox: "Community post inbox", inboxHelp: "Captured public posts for manual review. Exact captured responses are shown separately under tracked replies; this post list is not complete conversation history. Nothing is posted automatically.",
     inboxAll: "All", inboxReady: "Ready", inboxNew: "New", inboxReplied: "Marked replied", inboxEmpty: "No captured posts in this view. If you expected posts, check the approved groups and Scout collection status.",
     inboxUnavailable: "The captured-post inbox could not load. Your draft input is preserved. Retry when the Scout connection is available.", inboxLoading: "Loading captured posts…", inboxRetry: "Retry inbox", inboxMore: "More posts", inboxUse: "Use this post for a draft", inboxReplace: "Replace the current unsaved question and link with this post?", inboxOriginal: "Open original Facebook post", inboxDraft: "Saved suggestion", inboxNoDraft: "No saved suggestion yet", inboxCaptured: "Captured", inboxNoComments: "Comments not captured", inboxStatus: "Workflow status",
     intro: "Draft a reply to a public community question. Paste only the minimum public question text; remove names, phone numbers and private child details. Nothing is posted or sent automatically.",
@@ -52,7 +53,7 @@ const copy = {
   },
   he: {
     savedDrafts: "טיוטות קהילה שמורות", savedHelp: "20 הטיוטות האחרונות שלך שעדיין בתוקף. רק תגובות ציבוריות, ללא הערות קליניות. פתיחה ושמירה אינן יוצרות, שולחות או מפרסמות דבר.", savedLoading: "טוען טיוטות שמורות…", savedEmpty: "אין עדיין טיוטות שמורות.", savedUnavailable: "לא ניתן לטעון טיוטות שמורות. העורך לא השתנה; אפשר לנסות שוב כשהחיבור זמין.", savedRetry: "טעינה מחדש של טיוטות שמורות", savedOpen: "פתיחת הטיוטה השמורה", savedReplace: "להחליף את הטקסט שטרם נשמר בעורך בטיוטה הזאת?", saveDraft: "שמירת התגובה הערוכה", saveSaving: "שומר את התגובה המדויקת הזאת…", saveVerified: "נשמר ונקרא מחדש מ־Scout", saveFailed: "השמירה לא אומתה. הטקסט נשמר במסך. יש לנסות שוב את אותה שמירה; אין להניח שהוא נשמר במערכת.", saveConflict: "הגרסה השמורה השתנתה במקום אחר. הטקסט שלך נשמר במסך. יש לפתוח את הגרסה השמורה להשוואה לפני עריכה נוספת; לא נדרס טקסט.", savedVersion: "גרסת טיוטה", savedAt: "עריכה אחרונה", savedHistorical: "הטיוטה השמורה מציגה את גרסאות המקור שנרשמו בעת היצירה. יש ליצור תגובה חדשה כדי לבדוק את המדריך הנוכחי.", saveBeforeCopy: "יש לשמור ולאמת את התגובה הערוכה לפני בדיקה והעתקה.", leaveUnsaved: "לצאת בלי לשמור את השינויים בתגובת הקהילה?", unmeteredCost: "השרת אינו מחזיר עלות כספית; לא ידוע אינו אפס.",
-    inbox: "תיבת פוסטים מהקהילה", inboxHelp: "פוסטים ציבוריים שנקלטו לבדיקה ידנית. תגובות והיסטוריית שיחה אינן נקלטות; דבר אינו מתפרסם אוטומטית.",
+    inbox: "תיבת פוסטים מהקהילה", inboxHelp: "פוסטים ציבוריים שנקלטו לבדיקה ידנית. תגובות שנקלטו במדויק מוצגות בנפרד תחת תגובות במעקב; רשימת הפוסטים אינה היסטוריית שיחה מלאה. דבר אינו מתפרסם אוטומטית.",
     inboxAll: "הכול", inboxReady: "מוכן", inboxNew: "חדש", inboxReplied: "סומן כנענה", inboxEmpty: "אין פוסטים שנקלטו בתצוגה זו. אם ציפית לפוסטים, בדוק את הקבוצות שאושרו ואת מצב האיסוף.",
     inboxUnavailable: "לא ניתן לטעון את תיבת הפוסטים. הטיוטה שלך נשמרה במסך. אפשר לנסות שוב כשהחיבור זמין.", inboxLoading: "טוען פוסטים שנקלטו…", inboxRetry: "ניסיון חוזר", inboxMore: "עוד פוסטים", inboxUse: "שימוש בפוסט הזה ליצירת טיוטה", inboxReplace: "להחליף את השאלה והקישור שהוזנו ועדיין לא נשמרו בפוסט הזה?", inboxOriginal: "פתיחת הפוסט המקורי", inboxDraft: "הצעה שמורה", inboxNoDraft: "אין עדיין הצעה שמורה", inboxCaptured: "נקלט", inboxNoComments: "תגובות לא נקלטו", inboxStatus: "סטטוס טיפול",
     intro: "טיוטת תגובה לשאלה ציבורית בקהילה. יש להדביק רק את הקטע הציבורי הנחוץ, ללא שמות, טלפונים או פרטים אישיים על ילדים. דבר אינו מתפרסם או נשלח אוטומטית.",
@@ -109,7 +110,7 @@ async function readSaved(draftId?: string, signal?: AbortSignal): Promise<Commun
 }
 
 export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
-  const t = copy[locale];
+  const t = {...copy[locale],inboxNoComments:locale==='he'?'קטע הפוסט בלבד; תגובות במעקב מוצגות בנפרד':'Post excerpt only; tracked responses are separate'};
   const [question, setQuestion] = useState("");
   const [originalUrl, setOriginalUrl] = useState("");
   const [correction, setCorrection] = useState("");
@@ -202,7 +203,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
     finally{inFlight.current=false;setBusy(false);}
   }
 
-  const loadInbox = useCallback(async (status: string, cursor = "") => {
+  async function loadInbox(status: string, cursor = "") {
     const requestId = ++inboxRequest.current;
     try {
       const params = new URLSearchParams({ status }); if (cursor) params.set("cursor", cursor);
@@ -214,7 +215,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
       setInboxCursor(payload.data.nextCursor);
     } catch { if (requestId === inboxRequest.current) setInboxError(true); }
     finally { if (requestId === inboxRequest.current) setInboxLoading(false); }
-  }, []);
+  }
   useEffect(() => {
     const controller = new AbortController();
     const requestId = ++inboxRequest.current;
@@ -403,6 +404,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
       </article>)}
       {inboxCursor && <button type="button" disabled={inboxLoading} onClick={() => { setInboxLoading(true); setInboxError(false); void loadInbox(inboxStatus, inboxCursor); }}>{t.inboxMore}</button>}
     </section>
+    <CommunityThreadPanel locale={locale} posts={inbox}/>
     <p className="lsr-instruction">{t.intro}</p>
     <div className="lsr-form-grid"><label>{t.question}<textarea value={question} disabled={busy} maxLength={2000} onChange={event => setQuestion(event.target.value)} /></label>
       <label>{t.url}<input type="url" value={originalUrl} disabled={busy} maxLength={1000} onChange={event => setOriginalUrl(event.target.value)} placeholder="https://www.facebook.com/groups/…" /></label></div>
