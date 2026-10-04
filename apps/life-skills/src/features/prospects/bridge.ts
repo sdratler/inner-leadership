@@ -29,6 +29,12 @@ export async function crmBridge<T>(path:string,init:RequestInit={}):Promise<T>{
   if(!response.ok||!body||typeof body!=="object"||!("success" in body)||(body as {success:boolean}).success!==true)throw new Error(response.status===401?"crm_bridge_unauthorized":"crm_bridge_unavailable");
   return body as T;
 }
+/** Fixed, read-only graphics endpoint; never a caller-controlled remote proxy. */
+export async function crmBridgeImage(assetId:string,revision:number,digest:string,download=false):Promise<Response>{
+  if(!/^[A-Za-z0-9._-]{1,200}$/.test(assetId)||!Number.isSafeInteger(revision)||revision<1||revision>999999||! /^[a-f0-9]{64}$/.test(digest))throw new AppError("INVALID_REQUEST");
+  const {origin,secret}=config(),query=new URLSearchParams({revision:String(revision),digest,...(download?{download:"1"}:{})});
+  return fetch(`${origin}/api/bna/life-skills-app/marketing/assets/${encodeURIComponent(assetId)}?${query}`,{method:"GET",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer",signal:AbortSignal.timeout(30000),headers:{"X-Life-Skills-Bridge-Secret":secret}});
+}
 export async function listProspects(){return (await crmBridge<{success:true;prospects:Prospect[]}>("/api/bna/life-skills-app/prospects")).prospects;}
 export async function createProspect(input:{name:string;phone:string;language:""|"he"|"en";source:string;notes:string;nextAction:string;dueDate:string}){return crmBridge<{success:true;result:{action:"created"|"existing";leadId:string;row:number}}>("/api/bna/life-skills-app/prospects",{method:"POST",body:JSON.stringify(input)});}
 export async function updateProspect(leadId:string,fields:Record<string,string>){return crmBridge(`/api/bna/life-skills-app/prospects/${encodeURIComponent(leadId)}`,{method:"PATCH",body:JSON.stringify({fields})});}
