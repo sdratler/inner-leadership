@@ -10,6 +10,10 @@ import {IdentityAuthService} from '../../../src/features/identity/auth-service.t
 import {IdentitySessions} from '../../../src/features/identity/session-adapter.ts';
 import {blindEmail,seal,unseal} from '../../../src/features/identity/crypto.ts';
 import {prepareDemoHistory} from '../../../src/features/demo/history-operator.ts';
+import {prepareDemoPractice} from '../../../src/features/demo/practice-operator.ts';
+import {HomePracticeService} from '../../../src/features/home-practice/service.ts';
+import {CheckInService} from '../../../src/features/checkins/service.ts';
+import type {ResponsibilityInput} from '../../../src/features/home-practice/responsibility-input.ts';
 import {civilDate,possibleInstants,shiftDay} from '../../../src/features/calendar/time.ts';
 import {systemClock,type AccountId,type Actor} from '../../../src/features/identity/types.ts';
 import type {IdentityConfig} from '../../../src/features/identity/config.ts';
@@ -331,4 +335,82 @@ test('a calendar appointment marker inconsistent with real immutable case origin
  const query={from:f.at(0),to:f.at(240),caseId:null,cursor:null};
  await expect(f.service.list(f.practitioner.actor,query)).rejects.toMatchObject({code:'UNAVAILABLE'});
  await expect(f.service.list(f.practitioner.actor,{...query,mode:'demo'})).rejects.toMatchObject({code:'UNAVAILABLE'});
+}));
+
+test('contained demo practice uses retained writers, ordinary role reads/reports and exact effect-free replay',()=>using(async f=>{
+ const practice=new HomePracticeService(f.db.store,f.config,systemClock),checkins=new CheckInService(f.db.store,systemClock,f.keyring);
+ const minor=await f.prepare(),adult=await f.cases.prepareDemoCalendarAsOperator(f.practitioner.actor.id,f.adult.caseId,batch,key(),key(),true);
+ const before=await f.counts(),date=f.at(48).slice(0,10);
+ const make=(role:'child'|'parent'|'adult')=>{
+  const responsibility:ResponsibilityInput={participant:role==='parent'?'parent':'client',period:'evening',
+   assigneeAccountIds:[f.actors[role]!.id],assistedByParentAccountIds:role==='child'?[f.actors.parent!.id]:[],reminderRecipients:[],
+   completionMode:'any_assignee',weekdays:[0,1,2,3,4,5,6],localTime:'18:30',timezone:'UTC',timeOrigin:'practitioner',foldChoice:null};
+  return {caseId:role==='adult'?f.adult.caseId:f.minor.caseId,audienceId:role==='adult'?adult.audienceId:minor.audienceId,
+   templateKey:'DEMO',templateVersion:'owner-practice-v1',instructions:`DEMO — ${role} small practice`,startsOn:date,endsOn:date,responsibility,
+   occurrences:[{occursOn:date,period:'evening' as const}]};
+ };
+ for(const role of ['child','parent','adult'] as const){
+  const input=make(role),command=key(),saved=await practice.prepareDemoAsOperator(f.workspaceId,f.practitioner.actor.id,batch,command,input,true);
+  expect(saved.occurrences).toHaveLength(1);
+  const count=async()=> (await f.pool.query(`SELECT (SELECT count(*)::int FROM ls_practice.practice_assignments WHERE workspace_id=$1) AS assignments,
+   (SELECT count(*)::int FROM ls_practice.practice_occurrences WHERE workspace_id=$1) AS occurrences,
+   (SELECT count(*)::int FROM ls_practice.action_history WHERE workspace_id=$1) AS history`,[f.workspaceId])).rows[0];
+  const once=await count();expect(await practice.prepareDemoAsOperator(f.workspaceId,f.practitioner.actor.id,batch,command,input,true)).toEqual(saved);expect(await count()).toEqual(once);
+  await expect(practice.prepareDemoAsOperator(f.workspaceId,f.practitioner.actor.id,batch,command,{...input,instructions:'DEMO — different'},true)).rejects.toMatchObject({code:'CONFLICT'});
+  expect((await practice.list(f.actors[role]!,input.caseId,input.audienceId)).some(row=>row.versionId===saved.versionId&&row.instructions===input.instructions)).toBe(true);
+  await expect(practice.list(f.outsider.actor,input.caseId,input.audienceId)).rejects.toMatchObject({code:'NOT_FOUND'});
+  const occurrence=saved.occurrences[0]!;
+  await checkins.submit(f.actors[role]!,{occurrenceId:occurrence.id,status:'done',idempotencyKey:key()},key());
+  expect((await checkins.list(f.actors[role]!,occurrence.id,true))[0]).toMatchObject({status:'done',authorAccountId:f.actors[role]!.id});
+  // Setup replay never overwrites an ordinary completed occurrence.
+  await practice.prepareDemoAsOperator(f.workspaceId,f.practitioner.actor.id,batch,command,input,true);
+  expect((await f.pool.query('SELECT state FROM ls_practice.practice_occurrences WHERE id=$1',[occurrence.id])).rows[0].state).toBe('closed');
+ }
+ expect(await f.counts()).toEqual(before);
+ expect((await f.pool.query('SELECT count(*)::int AS count FROM ls_notifications.notification_outbox WHERE workspace_id=$1',[f.workspaceId])).rows[0].count).toBe(0);
+ expect((await f.pool.query("SELECT count(*)::int AS count FROM ls_demo.records WHERE workspace_id=$1 AND entity_kind='assignment'",[f.workspaceId])).rows[0].count).toBe(3);
+}));
+
+test('demo practice denies unmarked families, missing capability, real accounts and notices; failed schedules roll back all setup',()=>using(async f=>{
+ const practice=new HomePracticeService(f.db.store,f.config,systemClock),prepared=await f.prepare(),date=f.at(48).slice(0,10);
+ const responsibility:ResponsibilityInput={participant:'parent',period:'evening',assigneeAccountIds:[f.actors.parent!.id],assistedByParentAccountIds:[],reminderRecipients:[],completionMode:'any_assignee',weekdays:[0,1,2,3,4,5,6],localTime:'18:30',timezone:'UTC',timeOrigin:'practitioner',foldChoice:null};
+ const input={caseId:f.minor.caseId,audienceId:prepared.audienceId,templateKey:'DEMO',templateVersion:'owner-practice-v1',instructions:'DEMO — Parent practice',startsOn:date,endsOn:date,responsibility,occurrences:[{occursOn:date,period:'evening' as const}]};
+ const count=async()=> (await f.pool.query(`SELECT (SELECT count(*)::int FROM ls_practice.practice_assignments WHERE workspace_id=$1) AS assignments,
+  (SELECT count(*)::int FROM ls_practice.action_history WHERE workspace_id=$1) AS actions,
+  (SELECT count(*)::int FROM ls_calendar.commands WHERE workspace_id=$1 AND operation='demo:practice') AS receipts,
+  (SELECT count(*)::int FROM ls_demo.records WHERE workspace_id=$1 AND entity_kind='assignment') AS markers`,[f.workspaceId])).rows[0];
+ const before=await count();
+ await expect(practice.prepareDemoAsOperator(f.workspaceId,f.practitioner.actor.id,batch,key(),input,false)).rejects.toMatchObject({code:'FORBIDDEN'});
+ await expect(practice.prepareDemoAsOperator(f.workspaceId,f.practitioner.actor.id,batch,key(),{...input,caseId:f.first.id,audienceId:f.first.audienceId},true)).rejects.toMatchObject({code:'NOT_FOUND'});
+ await expect(practice.prepareDemoAsOperator(f.workspaceId,f.actors.parent!.id,batch,key(),input,true)).rejects.toMatchObject({code:'FORBIDDEN'});
+ await expect(practice.prepareDemoAsOperator(f.workspaceId,f.practitioner.actor.id,batch,key(),{...input,responsibility:{...responsibility,reminderRecipients:[{accountId:f.actors.parent!.id,purpose:'self'}]}},true)).rejects.toMatchObject({code:'INVALID_REQUEST'});
+ await expect(practice.prepareDemoAsOperator(f.workspaceId,f.practitioner.actor.id,batch,key(),{...input,occurrences:[{occursOn:date,period:'morning'}]},true)).rejects.toMatchObject({code:'INVALID_REQUEST'});
+ expect(await count()).toEqual(before);
+ const command=key();await practice.prepareDemoAsOperator(f.workspaceId,f.practitioner.actor.id,batch,command,input,true);
+ await f.pool.query("UPDATE ls_identity.accounts SET state='revoked' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.practitioner.actor.id]);
+ await expect(practice.prepareDemoAsOperator(f.workspaceId,f.practitioner.actor.id,batch,command,input,true)).rejects.toMatchObject({code:'FORBIDDEN'});
+}));
+
+test('private practice recipe resolves only retained demo identities; rerun preserves ordinary edits and receipts',()=>using(async f=>{
+ await f.prepare();await f.cases.prepareDemoCalendarAsOperator(f.practitioner.actor.id,f.adult.caseId,batch,key(),key(),true);
+ const ownerEmail='fixtureowner@example.invalid',date=f.at(48).slice(0,10);
+ await f.pool.query('UPDATE ls_identity.accounts SET email_blind=$3,email_ciphertext=$4 WHERE workspace_id=$1 AND id=$2',
+  [f.workspaceId,f.practitioner.actor.id,blindEmail(ownerEmail,f.config.lookupKey),seal(ownerEmail,`email:${f.workspaceId}:${f.practitioner.actor.id}`,f.keyring)]);
+ const marker={isDemo:true,demoBatchId:batch,source:'owner-acceptance-demo',externalEffects:'deny',realAnalytics:'exclude',timezone:'Asia/Jerusalem',revision:1,startDate:date,endDate:date};
+ const recipe={schemaVersion:1,recipeOnly:true,notExecuted:true,batchId:batch,timezone:'Asia/Jerusalem',assignments:[
+  {...marker,stableKey:'practice-a',caseKey:'case-a',responsibilities:[{key:'child-action',participantKey:'child-a',text:'Choose one small task.',localTime:'18:30'},{key:'parent-support',participantKey:'parent-a',text:'Ask an open question.',localTime:'18:25'}]},
+  {...marker,stableKey:'practice-adult',caseKey:'case-adult',responsibilities:[{key:'adult-action',participantKey:'adult-a',text:'Write one reflection.',localTime:'20:00'}]},
+ ]};
+ const runtime={config:f.config,store:f.db.store,clock:systemClock},selection={batch,ownerEmail,addresses:f.addresses},before=await f.counts();
+ await expect(prepareDemoPractice(runtime,selection,recipe,date,false)).rejects.toMatchObject({code:'FORBIDDEN'});
+ expect(await prepareDemoPractice(runtime,selection,recipe,date,true)).toEqual({batch,createdOrReused:3,accountChanges:0,providerEffects:0,paymentEffects:0,completionReportsWritten:0});
+ const snapshot=async()=> (await f.pool.query(`SELECT (SELECT json_agg(a ORDER BY id) FROM ls_practice.practice_assignments a WHERE workspace_id=$1) AS assignments,
+  (SELECT json_agg(o ORDER BY id) FROM ls_practice.practice_occurrences o WHERE workspace_id=$1) AS occurrences,
+  (SELECT count(*)::int FROM ls_practice.action_history WHERE workspace_id=$1) AS actions,
+  (SELECT count(*)::int FROM ls_calendar.commands WHERE workspace_id=$1 AND operation='demo:practice') AS receipts`,[f.workspaceId])).rows[0];
+ const once=await snapshot();expect(once.assignments).toHaveLength(3);expect(once.occurrences).toHaveLength(3);expect(once.receipts).toBe(3);
+ await prepareDemoPractice(runtime,selection,recipe,date,true);expect(await snapshot()).toEqual(once);expect(await f.counts()).toEqual(before);
+ expect((await f.pool.query('SELECT count(*)::int AS count FROM ls_notifications.notification_outbox WHERE workspace_id=$1',[f.workspaceId])).rows[0].count).toBe(0);
+ await f.pool.query("UPDATE ls_identity.accounts SET state='revoked' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.actors.child!.id]);
+ await expect(prepareDemoPractice(runtime,selection,recipe,date,true)).rejects.toMatchObject({code:'CONFLICT'});expect(await snapshot()).toEqual(once);
 }));
