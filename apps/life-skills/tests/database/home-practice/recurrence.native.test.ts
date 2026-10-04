@@ -51,14 +51,28 @@ test("a genuine native insert failure rolls back the whole batch and its audit",
  finally{await f.pool.query(`ALTER TABLE ls_practice.practice_occurrences DROP CONSTRAINT ${name}`);}
  const recovered=await practice.scheduleRange(f.practitioner.actor,{...input,expectedPlanDigest:plan.planDigest},randomUUID());expect(recovered.items.every(row=>row.existing)).toBe(true);expect(await h.counts()).toEqual({occurrences:4,audits:before.audits+1});
 },30000);
-test("coordination changes require a new preview and never rewrite a frozen reported occurrence",async()=>{
+test("coordination changes require a new preview before writing but preserve exact frozen range readback and replay after commit",async()=>{
  const h=await setup(),{f,practice}=h,{input,saved}=await h.publish({...h.responsibility,participant:"parent",assigneeAccountIds:[f.parent.actor.id,f.parentTwo.actor.id],assistedByParentAccountIds:[],completionMode:"each_assignee"}),plan=await practice.recurrence(f.practitioner.actor,input),before=await h.counts();
  const changed=await practice.coordinate(f.parent.actor,{assignmentId:saved.assignmentId,assigneeAccountIds:[f.parent.actor.id],completionMode:"any_assignee",reminderCandidateAccountIds:[],effectiveFrom:f.at(1)},randomUUID());
  await expect(practice.scheduleRange(f.practitioner.actor,{...input,expectedPlanDigest:plan.planDigest},randomUUID())).rejects.toMatchObject({code:"CONFLICT"});expect((await h.counts()).occurrences).toBe(before.occurrences);
  const fresh=await practice.recurrence(f.practitioner.actor,input);expect(fresh.planDigest).not.toBe(plan.planDigest);expect(fresh.items.every(row=>row.coordinationVersionId===changed.versionId)).toBe(true);await practice.scheduleRange(f.practitioner.actor,{...input,expectedPlanDigest:fresh.planDigest},randomUUID());
  await h.checkins.submit(f.parent.actor,{occurrenceId:fresh.items[0]!.id as Parameters<typeof h.checkins.submit>[1]["occurrenceId"],status:"done",idempotencyKey:randomUUID()},randomUUID());
- await practice.coordinate(f.parent.actor,{assignmentId:saved.assignmentId,assigneeAccountIds:[f.parent.actor.id,f.parentTwo.actor.id],completionMode:"each_assignee",reminderCandidateAccountIds:[],effectiveFrom:f.at(2)},randomUUID());await expect(practice.recurrence(f.practitioner.actor,input)).rejects.toMatchObject({code:"CONFLICT"});expect((await h.checkins.list(f.parent.actor,fresh.items[0]!.id as Parameters<typeof h.checkins.list>[1],true))[0]!.status).toBe("done");expect((await h.counts()).occurrences).toBe(4);
+ const frozen=(await f.pool.query('SELECT * FROM ls_practice.practice_occurrences WHERE workspace_id=$1 ORDER BY id',[f.workspaceId])).rows;
+ await practice.coordinate(f.parent.actor,{assignmentId:saved.assignmentId,assigneeAccountIds:[f.parent.actor.id,f.parentTwo.actor.id],completionMode:"each_assignee",reminderCandidateAccountIds:[],effectiveFrom:f.at(2)},randomUUID());
+ const read=await practice.recurrence(f.practitioner.actor,input);expect(read.planDigest).toBe(fresh.planDigest);expect(read.items.every(row=>row.existing&&row.coordinationVersionId===changed.versionId)).toBe(true);
+ const replay=await practice.scheduleRange(f.practitioner.actor,{...input,expectedPlanDigest:fresh.planDigest},randomUUID());expect(replay).toEqual(read);expect((await f.pool.query('SELECT * FROM ls_practice.practice_occurrences WHERE workspace_id=$1 ORDER BY id',[f.workspaceId])).rows).toEqual(frozen);
+ expect((await h.checkins.list(f.parent.actor,fresh.items[0]!.id as Parameters<typeof h.checkins.list>[1],true))[0]!.status).toBe("done");expect((await h.counts()).occurrences).toBe(4);
 },30000);
+test("extending a range keeps frozen entries and uses current coordination only for missing dates",async()=>{
+ const h=await setup(),{f,practice}=h,{input,saved}=await h.publish({...h.responsibility,participant:"parent",assigneeAccountIds:[f.parent.actor.id,f.parentTwo.actor.id],assistedByParentAccountIds:[],completionMode:"each_assignee"});
+ const firstInput={...input,to:shiftOccurrenceDay(input.from,1)},first=await practice.recurrence(f.practitioner.actor,firstInput);await practice.scheduleRange(f.practitioner.actor,{...firstInput,expectedPlanDigest:first.planDigest},randomUUID());
+ const frozen=(await f.pool.query('SELECT * FROM ls_practice.practice_occurrences WHERE workspace_id=$1 ORDER BY id',[f.workspaceId])).rows;
+ const changed=await practice.coordinate(f.parent.actor,{assignmentId:saved.assignmentId,assigneeAccountIds:[f.parent.actor.id],completionMode:"any_assignee",reminderCandidateAccountIds:[],effectiveFrom:f.at(1)},randomUUID());
+ const extended=await practice.recurrence(f.practitioner.actor,input);expect(extended.items).toHaveLength(4);expect(extended.items.slice(0,2).map(row=>[row.id,row.coordinationVersionId,row.existing])).toEqual(first.items.map(row=>[row.id,row.coordinationVersionId,true]));expect(extended.items.slice(2).every(row=>!row.existing&&row.coordinationVersionId===changed.versionId)).toBe(true);
+ const scheduled=await practice.scheduleRange(f.practitioner.actor,{...input,expectedPlanDigest:extended.planDigest},randomUUID());expect(scheduled.items.every(row=>row.existing)).toBe(true);expect(await practice.recurrence(f.practitioner.actor,input)).toEqual(scheduled);
+ expect((await f.pool.query('SELECT * FROM ls_practice.practice_occurrences WHERE workspace_id=$1 AND id=ANY($2::uuid[]) ORDER BY id',[f.workspaceId,first.items.map(row=>row.id)])).rows).toEqual(frozen);expect((await h.counts()).occurrences).toBe(4);
+},30000);
+
 test.each([{from:"2027-03-13",to:"2027-03-15",localTime:"02:30"},{from:"2027-11-06",to:"2027-11-08",localTime:"01:30"}])("DST gap/fold fails the entire range before native writes: $from",async dates=>{
  const h=await setup(),{f,practice}=h,{input}=await h.publish({...h.responsibility,timezone:"America/New_York",localTime:dates.localTime},dates.from,dates.to),before=await h.counts();await expect(practice.recurrence(f.practitioner.actor,{...input,to:dates.to})).rejects.toMatchObject({code:"CONFLICT"});expect(await h.counts()).toEqual(before);
 },30000);
