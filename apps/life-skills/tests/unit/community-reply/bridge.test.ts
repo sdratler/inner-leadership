@@ -29,6 +29,12 @@ describe("authenticated app to existing Scout bridge", () => {
     const fetcher = vi.fn(); await expect(requestCommunityReply(command, fetcher as typeof fetch, {})).rejects.toMatchObject({ code: "UNAVAILABLE" });
     expect(fetcher).not.toHaveBeenCalled(); expect(sources.guide).not.toHaveBeenCalled();
   });
+  it("rejects unsupported source URLs before canonical reads or provider work",async()=>{
+    sources.guide.mockClear();sources.playbook.mockClear();const fetcher=vi.fn();
+    for(const originalUrl of ['https://example.com/post','https://fb.watch/demo','http://facebook.com/post','https://user:password@facebook.com/post'])
+      await expect(requestCommunityReply({...command,originalUrl},fetcher as typeof fetch,{LS_COMMUNITY_SCOUT_BRIDGE_SECRET:secret})).rejects.toMatchObject({code:'UNAVAILABLE'});
+    expect(fetcher).not.toHaveBeenCalled();expect(sources.guide).not.toHaveBeenCalled();expect(sources.playbook).not.toHaveBeenCalled();
+  });
   it("sends both fresh canonical source snapshots to the one verified Scout service and validates provenance", async () => {
     const fetcher = vi.fn().mockResolvedValue(Response.json({ ok: true, data }));
     const ownerId="9fe575fe-fba2-4a4b-a136-bb28560b13f2";

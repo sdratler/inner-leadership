@@ -24,6 +24,29 @@ async function prepared(){
   return {f,service,sessionId,id,consent,store};
 }
 async function saved(s:Awaited<ReturnType<typeof prepared>>,lease:Lease){await s.store.checkpoint(lease,{state:"transcribing"});return s.store.saveTranscript(lease,transcript,cleanWhitespace(transcript),"DEMO-provider-complete-receipt",completion);}
+test('expired in-flight transcription remains durably unknown and ordinary failure/retry cannot buy it again',async()=>{
+ const s=await prepared();let calls=0,reservations=0,deletions=0;
+ const ports:ProcessingPorts={store:s.store,budget:{reserve:async()=>{reservations++;}},audio:{readVerified:async()=>Uint8Array.from(sourceBytes),deleteAndVerify:async()=>{deletions++;return 'deleted';}},transcriber:{transcribe:async()=>{calls++;await s.f.pool.query("UPDATE ls_sessions.recording_jobs SET lease_until=clock_timestamp()-interval '1 second' WHERE workspace_id=$1 AND id=$2",[s.f.workspaceId,s.id]);return{transcript,requestId:'DEMO late provider receipt',completion};}},analyst:{analyze:async()=>analysis}};
+ expect(await processSession(s.id,ports)).toEqual({status:'failed',code:'PROVIDER_OUTCOME_UNKNOWN'});
+ expect((await s.service.detail(s.f.practitioner.actor,s.sessionId)).processing).toMatchObject({state:'failed',audioState:'temporary'});
+ expect((await s.f.pool.query('SELECT failure_code FROM ls_sessions.recording_jobs WHERE workspace_id=$1 AND id=$2',[s.f.workspaceId,s.id])).rows[0].failure_code).toBe('PROVIDER_OUTCOME_UNKNOWN');
+ const retry=(await s.store.claim(s.id))!;await s.store.fail(retry,'PROCESSING_FAILED');await s.store.release(retry);
+ expect(await processSession(s.id,ports)).toEqual({status:'failed',code:'PROVIDER_OUTCOME_UNKNOWN'});expect(calls).toBe(1);expect(reservations).toBe(1);expect(deletions).toBe(0);
+});
+test.each(['transcribing','analyzing'] as const)('reclaimed stranded %s jobs preserve phase uncertainty and old fences cannot commit',async state=>{
+ const s=await prepared(),old=(await s.store.claim(s.id))!;
+ if(state==='analyzing'){await saved(s,old);await s.store.checkpoint(old,{audioState:'deleted'});}
+ await s.store.checkpoint(old,{state});await s.f.pool.query("UPDATE ls_sessions.recording_jobs SET lease_until=clock_timestamp()-interval '1 second' WHERE workspace_id=$1 AND id=$2",[s.f.workspaceId,s.id]);
+ const next=(await s.store.claim(s.id))!,code=state==='transcribing'?'PROVIDER_OUTCOME_UNKNOWN':'ANALYSIS_OUTCOME_UNKNOWN';expect(next.job).toMatchObject({state:'failed',failureCode:code});
+ await expect(s.store.fail(old,'PROCESSING_FAILED')).rejects.toMatchObject({code:'PROCESSING_LEASE_LOST'});await s.store.fail(next,'PROCESSING_FAILED');await s.store.release(next);
+ const again=(await s.store.claim(s.id))!;expect(again.job.failureCode).toBe(code);await expect(s.store.checkpoint(again,{state,failureCode:null})).rejects.toMatchObject({code});await expect(s.store.checkpoint(again,{failureCode:null})).rejects.toMatchObject({code});
+});
+test('analysis reservation retry resumes verified deleted audio without deleting or transcribing again',async()=>{
+ const s=await prepared();let transcribed=0,deleted=0,analyzed=0,blocked=true;
+ const ports:ProcessingPorts={store:s.store,budget:{reserve:async(_id,phase)=>{if(phase==='analysis'&&blocked)throw Error('DEMO local reservation temporarily unavailable');}},audio:{readVerified:async()=>Uint8Array.from(sourceBytes),deleteAndVerify:async()=>{deleted++;return 'deleted';}},transcriber:{transcribe:async()=>{transcribed++;return{transcript,requestId:'DEMO verified receipt',completion};}},analyst:{analyze:async()=>{analyzed++;return analysis;}}};
+ expect(await processSession(s.id,ports)).toEqual({status:'failed',code:'PROCESSING_FAILED'});expect((await s.service.detail(s.f.practitioner.actor,s.sessionId)).processing.audioState).toBe('deleted');
+ blocked=false;expect(await processSession(s.id,ports)).toEqual({status:'private_analysis_ready'});expect({transcribed,deleted,analyzed}).toEqual({transcribed:1,deleted:1,analyzed:1});expect((await s.service.detail(s.f.practitioner.actor,s.sessionId)).analysis).toEqual(analysis);
+});
 test("native recording lease has one owner, expiry fencing and immutable source scope",async()=>{
   const s=await prepared(),claims=await Promise.all([s.store.claim(s.id),s.store.claim(s.id)]);expect(claims.filter(Boolean)).toHaveLength(1);const lease=claims.find(Boolean)!;
   await s.store.assertCurrentPermission(lease);await expect(s.store.readTranscript({...lease,job:{...lease.job,caseId:s.f.second.id}})).rejects.toMatchObject({code:"PROCESSING_LEASE_LOST"});
