@@ -67,6 +67,8 @@ export interface PracticeCoordinationPage {
   ownAccountId: AccountId;
   role: "parent" | "adult_client";
   eligibleAccountIds: readonly AccountId[];
+  /** Native immutable routing authority, distinct from the selected version. */
+  reminderRoutingAccountIds?: readonly AccountId[];
   /** Server-clock effective selection, independent of the bounded history. */
   asOf: string;
   currentVersion: CoordinationVersion | null;
