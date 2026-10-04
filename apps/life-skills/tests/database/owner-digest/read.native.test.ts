@@ -56,7 +56,7 @@ test('pending forms include other practitioners only within the same workspace a
  try{
   const insert=async(workspace:string,creator:string,expired=false,revoked=false)=>{
    const id=randomUUID();await f.pool.query(`INSERT INTO ls_intake.pre_enrollment_invitations(workspace_id,invitation_id,token_digest,stable_lead_ref,child_slots,expires_at,created_at,created_by_account_id,revoked_at)
-    VALUES($1,$2,$3,$4,'["synthetic-slot"]'::jsonb,$5,clock_timestamp(),$6,$7)`,[workspace,id,createHash('sha256').update(id).digest('hex'),lead,new Date(now.getTime()+(expired?-86400000:86400000)),creator,revoked?now:null]);return id;
+    VALUES($1,$2,$3,$4,'["synthetic-slot"]'::jsonb,$5,$8,$6,$7)`,[workspace,id,createHash('sha256').update(id).digest('hex'),lead,new Date(now.getTime()+(expired?-86400000:86400000)),creator,revoked?now:null,new Date(now.getTime()-2*86400000)]);return id;
   };
   await insert(other.workspaceId,other.practitioner.actor.id);
   await insert(f.workspaceId,f.practitioner.actor.id,true);await insert(f.workspaceId,f.practitioner.actor.id,false,true);
@@ -77,17 +77,17 @@ test('pending forms include other practitioners only within the same workspace a
   await f.pool.query("UPDATE ls_identity.accounts SET role='practitioner' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.practitioner.actor.id]);await other.pool.end();
  }
 });
-test('actual native owner account binding excludes other practitioners and unverified owners',async()=>{
+test('actual native owner account binding excludes other workspaces and an unbound owner',async()=>{
  const other=await fixture(),lookupKey=randomBytes(32),runtime={store:store(),clock:{now:()=>now},config:{workspaceId:f.workspaceId,lookupKey}} as Parameters<typeof loadOwnerDigest>[1];
  const marketing:MarketingSnapshot={source:'synthetic',fetchedAt:null,creatives:[],publications:[],ads:[],scout:{readyDrafts:null,sourceUrl:null,lastChecked:null,status:'unbound'}};
  await f.pool.query('UPDATE ls_identity.accounts SET email_blind=$3 WHERE workspace_id=$1 AND id=$2',[f.workspaceId,f.practitioner.actor.id,blindEmail(OWNER_REPORT_RECIPIENT,lookupKey)]);
  try{
   await expect(loadOwnerDigest(other.practitioner.actor,runtime,marketing,'en')).rejects.toMatchObject({code:'FORBIDDEN'});
   const digest=await loadOwnerDigest(f.practitioner.actor,runtime,marketing,'en');expect(digest.reportDate).toBe(today);
-  await f.pool.query('UPDATE ls_identity.accounts SET email_verified_at=NULL WHERE workspace_id=$1 AND id=$2',[f.workspaceId,f.practitioner.actor.id]);
+  await f.pool.query('UPDATE ls_identity.accounts SET email_blind=$3 WHERE workspace_id=$1 AND id=$2',[f.workspaceId,f.practitioner.actor.id,createHash('sha256').update(f.practitioner.actor.id).digest('hex')]);
   await expect(loadOwnerDigest(f.practitioner.actor,runtime,marketing,'en')).rejects.toMatchObject({code:'FORBIDDEN'});
  }finally{
-  await f.pool.query('UPDATE ls_identity.accounts SET email_verified_at=$3 WHERE workspace_id=$1 AND id=$2',[f.workspaceId,f.practitioner.actor.id,now]);
+  await f.pool.query('UPDATE ls_identity.accounts SET email_blind=$3 WHERE workspace_id=$1 AND id=$2',[f.workspaceId,f.practitioner.actor.id,blindEmail(OWNER_REPORT_RECIPIENT,lookupKey)]);
   await other.pool.end();
  }
 });
