@@ -4,6 +4,11 @@ export function approvedCreative(asset: CreativeVersion): boolean {
     return asset.review === "approved" && /^[a-f0-9]{64}$/.test(asset.contentDigest) && asset.contentDigest === asset.approvedDigest;
 }
 export function publicationLabel(p: Publication, assets: readonly CreativeVersion[]): string {
+    if (p.state === "held") return "Held — not eligible for publication";
+    if (p.state === "unknown") return "Unknown — check provider";
+    if (p.state === "failed") return "Failed";
+    if (p.state === "draft") return "Draft";
+    if (p.state === "skipped") return "Skipped — no backfill";
     const asset = assets.find(a => a.assetId === p.assetId && a.revision === p.creativeRevision);
     if (!asset || asset.contentDigest !== p.creativeDigest)
         return "Creative revision unavailable";
@@ -19,7 +24,7 @@ export function publicationLabel(p: Publication, assets: readonly CreativeVersio
         return p.receiptKind === "schedule" && p.scheduledFor && validIso(p.scheduledFor) && p.provider !== "unbound" && p.providerReceiptId && p.providerReadAt && validIso(p.providerReadAt) ? "Scheduled — provider confirmed" : "Planned — not provider-confirmed";
     if (p.state === "ready")
         return approvedCreative(asset) ? "Approved, not scheduled" : "Not approved for this revision";
-    return { draft: "Draft", sending: "Sending — awaiting result", failed: "Failed", unknown: "Unknown — check provider", skipped: "Skipped — no backfill" }[p.state] ?? "Unknown";
+    return p.state === "sending" ? "Sending — awaiting result" : "Unknown";
 }
 export function safeMarketingUrl(value: string | null, hosts: readonly string[]): string | null {
     if (!value)
@@ -63,11 +68,18 @@ function validatePublication(p: Publication): void {
     // unavailable state instead of inventing a binding or rejecting all slots.
     invariant(typeof p.id === "string" && p.id.length > 0 && typeof p.assetId === "string" && Number.isSafeInteger(p.creativeRevision) && p.creativeRevision > 0 && typeof p.creativeDigest === "string" && typeof p.destinationLabel === "string", "PUBLICATION_FIELDS");
     const assetKey = /^[A-Za-z0-9._-]{1,200}$/.test(p.assetId);
-    const explicitMissing = p.state === "draft" && p.provider === "unbound" && p.errorCode === "ASSET_BINDING_UNAVAILABLE";
-    invariant(assetKey && /^[a-f0-9]{64}$/.test(p.creativeDigest) || p.assetId === "" && p.creativeDigest === "" || assetKey && p.creativeDigest === "" && explicitMissing, "PUBLICATION_BINDING");
-    invariant(["whatsapp_status", "facebook_page", "instagram", "facebook_group_manual", "whatsapp_group_manual"].includes(p.channel) && ["draft", "ready", "scheduled", "sending", "published", "failed", "unknown", "skipped", "manually_reported"].includes(p.state) && ["whapi", "publer", "meta", "manual", "unbound"].includes(p.provider) && ["schedule", "publication", "manual_open", "unknown"].includes(p.receiptKind), "PUBLICATION_FIELDS");
+    // The live registry retains historical/held slots even when their exact
+    // creative is unavailable. These are display-only, never usable queue or
+    // delivery evidence. Preserve the source state and reason without a digest.
+    const unresolvedState = ["unknown", "skipped", "failed", "held"].includes(p.state) || p.state === "draft" && typeof p.errorCode === "string" && p.errorCode.length > 0;
+    const noDeliveryEvidence = p.receiptKind === "unknown" && p.providerReceiptId === null && p.providerReadAt === null && p.postUrl === null && p.manualReportedAt === null && (p.confirmedAt === undefined || p.confirmedAt === null);
+    invariant(p.provider !== "unbound" || noDeliveryEvidence, "PUBLICATION_UNBOUND_EVIDENCE");
+    const explicitMissing = unresolvedState && p.provider === "unbound" && noDeliveryEvidence;
+    invariant(assetKey && /^[a-f0-9]{64}$/.test(p.creativeDigest) || (assetKey || p.assetId === "") && p.creativeDigest === "" && explicitMissing, "PUBLICATION_BINDING");
+    invariant(["whatsapp_status", "facebook_page", "instagram", "facebook_group_manual", "whatsapp_group_manual"].includes(p.channel) && ["draft", "held", "ready", "scheduled", "sending", "published", "failed", "unknown", "skipped", "manually_reported"].includes(p.state) && ["whapi", "publer", "meta", "manual", "unbound"].includes(p.provider) && ["schedule", "publication", "manual_open", "unknown"].includes(p.receiptKind), "PUBLICATION_FIELDS");
     invariant([p.providerReceiptId, p.postUrl, p.errorCode].every(value => value === null || typeof value === "string"), "PUBLICATION_FIELDS");
     invariant(typeof p.timezone === "string" && validTimezone(p.timezone) && [p.scheduledFor, p.providerReadAt, p.manualReportedAt].every(value => value === null || typeof value === "string" && validIso(value)), "PUBLICATION_TIME");
+    invariant(!("confirmedAt" in p) || Object.hasOwn(p, "confirmedAt") && (p.confirmedAt === null || typeof p.confirmedAt === "string" && validIso(p.confirmedAt)), "PUBLICATION_TIME");
 }
 export function validateMarketingSnapshot(snapshot: MarketingSnapshot): void {
     const allowed = new Set(["source", "fetchedAt", "creatives", "publications", "ads", "scout", "inventory", "adSeries", "adReporting", "workbookUrl", "connectionErrors", "inventoryReadback"]);

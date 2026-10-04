@@ -74,3 +74,44 @@ test("explicit producer missing-binding record preserves its source ID without c
  const {loadMarketingSnapshot}=await import("../../../src/features/marketing-overview/provider.ts");expect((await loadMarketingSnapshot()).publications).toEqual([missing]);
  for(const patch of [{state:"ready"},{provider:"whapi"},{creativeDigest:"not-a-digest"}]){mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,publications:[{...missing,...patch}]}});expect((await loadMarketingSnapshot()).inventoryReadback?.status).toBe("error");}
 });
+
+test.each([
+ {state:"unknown",errorCode:"Historical provider evidence cannot be matched"},
+ {state:"skipped",errorCode:null},
+ {state:"draft",errorCode:"CALENDAR_BLOCKED"},
+ {state:"draft",errorCode:"SCHEDULED_ASSET_BINDING_MISSING",scheduledFor:readAt},
+ {state:"held",errorCode:"PUBLISHER_HELD"},
+])("honest unbound historical Status records do not hide the valid creative library: %j",async patch=>{
+ const unresolved={...publication(),creativeDigest:"",...patch};
+ mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,publications:[unresolved]}});
+ const {loadMarketingSnapshot}=await import("../../../src/features/marketing-overview/provider.ts");
+ const snapshot=await loadMarketingSnapshot();expect(snapshot.inventoryReadback?.status).toBe("available");expect(snapshot.creatives).toHaveLength(1);expect(snapshot.publications).toEqual([unresolved]);
+});
+
+test.each([{state:"ready"},{state:"scheduled"},{state:"sending"},{state:"published"},{state:"manually_reported"},{provider:"whapi"},{providerReceiptId:"invented"},{providerReadAt:readAt},{manualReportedAt:readAt},{receiptKind:"publication"},{confirmedAt:readAt},{postUrl:"https://www.facebook.com/demo/posts/123"}])("missing image binding cannot acquire actionable or verified delivery evidence: %j",async patch=>{
+ const unresolved={...publication(),creativeDigest:"",state:"unknown",errorCode:"UNRESOLVED",...patch};
+ mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,publications:[unresolved]}});
+ const {loadMarketingSnapshot}=await import("../../../src/features/marketing-overview/provider.ts");expect((await loadMarketingSnapshot()).inventoryReadback?.status).toBe("error");
+});
+
+test.each([readAt,"invalid",17,null])("inherited confirmation evidence is rejected: %j",async confirmedAt=>{
+ const inherited=Object.assign(Object.create({confirmedAt}),publication(),{state:"published"});
+ mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,publications:[inherited]}});
+ const {loadMarketingSnapshot}=await import("../../../src/features/marketing-overview/provider.ts");
+ expect((await loadMarketingSnapshot()).inventoryReadback?.status).toBe("error");
+});
+
+test.each(["draft","held","ready","scheduled","sending","published","failed","unknown","skipped","manually_reported"])("unbound %s records cannot carry delivery evidence even with an exact digest",async state=>{
+ const {loadMarketingSnapshot}=await import("../../../src/features/marketing-overview/provider.ts");
+ for(const patch of [{postUrl:"https://www.facebook.com/demo/posts/123"},{providerReceiptId:"DEMO-receipt"},{providerReadAt:readAt},{manualReportedAt:readAt},{confirmedAt:readAt},{receiptKind:"publication"},{receiptKind:"schedule"},{receiptKind:"manual_open"}]){
+  mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,publications:[{...publication(),state,...patch}]}});
+  expect((await loadMarketingSnapshot()).inventoryReadback?.status).toBe("error");
+ }
+});
+
+test("current publisher held and confirmed timestamp fields are validated without upgrading their states",async()=>{
+ const {loadMarketingSnapshot}=await import("../../../src/features/marketing-overview/provider.ts");
+ const held={...publication(),state:"held",provider:"whapi",confirmedAt:null,errorCode:"PUBLISHER_HELD"};
+ mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,publications:[held]}});expect((await loadMarketingSnapshot()).publications).toEqual([held]);
+ for(const confirmedAt of ["invalid",17,{}]){mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,publications:[{...held,confirmedAt}]}});expect((await loadMarketingSnapshot()).inventoryReadback?.status).toBe("error");}
+});

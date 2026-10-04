@@ -17,6 +17,7 @@ const hebrewPublicationLabels: Readonly<Record<string, string>> = {
   "Approved, not scheduled": "אושר, אך לא תוזמן",
   "Not approved for this revision": "גרסה זו אינה מאושרת",
   "Draft": "טיוטה",
+  "Held — not eligible for publication": "מושהה — אינו כשיר לפרסום",
   "Sending — awaiting result": "בשליחה — ממתין לתוצאה",
   "Failed": "נכשל",
   "Unknown — check provider": "לא ידוע — יש לבדוק אצל הספק",
@@ -37,11 +38,12 @@ export function contentView(value: string | undefined): ContentView {
 export function contentViewPublications(publications: readonly Publication[], view: ContentView): readonly Publication[] {
   return publications.filter(item => view === "all" ||
     view === "queued" && queuedStates.has(item.state) ||
-    view === "drafts" && item.state === "draft" ||
+    view === "drafts" && ["draft", "held"].includes(item.state) ||
     view === "published" && item.state === "published" ||
     view === "history" && ["published", "manually_reported", "skipped", "failed", "unknown"].includes(item.state));
 }
 export function publicationDisplayTime(item: Publication): string | null {
+  if (item.state === "published" && Object.hasOwn(item, "confirmedAt") && validIso(item.confirmedAt)) return item.confirmedAt!;
   if (item.state === "manually_reported" && item.manualReportedAt !== null && !validIso(item.manualReportedAt)) return null;
   if (item.state === "manually_reported" && validIso(item.manualReportedAt)) return item.manualReportedAt;
   return validIso(item.scheduledFor) ? item.scheduledFor : null;
@@ -97,7 +99,7 @@ export function monthPublications(publications: readonly Publication[], month: s
 
 export type ContentLayout = "month" | "week" | "agenda";
 export const CONTENT_CHANNELS: readonly Channel[] = ["whatsapp_status", "facebook_page", "instagram", "facebook_group_manual", "whatsapp_group_manual"];
-export const CONTENT_STATES: readonly Publication["state"][] = ["draft", "ready", "scheduled", "sending", "published", "failed", "unknown", "skipped", "manually_reported"];
+export const CONTENT_STATES: readonly Publication["state"][] = ["draft", "held", "ready", "scheduled", "sending", "published", "failed", "unknown", "skipped", "manually_reported"];
 export function contentLayout(value: string | undefined): ContentLayout { return value === "week" || value === "agenda" ? value : "month"; }
 export function contentChannel(value: string | undefined): Channel | null { return CONTENT_CHANNELS.find(channel => channel === value) ?? null; }
 export function contentState(value: string | undefined): Publication["state"] | null { return CONTENT_STATES.find(state => state === value) ?? null; }
