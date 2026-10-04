@@ -3,11 +3,19 @@ import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test, vi } from "vitest";
 vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: vi.fn(), push: vi.fn() }) }));
-import { PracticeAuthoringForm, PracticeManagementWorkspace } from "../../../src/features/home-practice/management-workspace.tsx";
+import { PracticeAuthoringForm, PracticeManagementWorkspace, practiceDraftIsDirty } from "../../../src/features/home-practice/management-workspace.tsx";
 import {blankResponsibility} from "../../../src/features/home-practice/responsibility-editor.tsx";
 const draft = { title: "", reference: "", instructions: "Retained unsaved input", startsOn: "2026-10-02", endsOn: "", goalId: "", commitmentId: "", revision: null };
 const data = { practice: { items: [], hasMore: false }, goals: [], commitments: [] };
 const props = { draft, data, locked: false, busy: false, onChange: () => {}, onSave: () => {}, onCancel: () => {} };
+test("responsibility-only drafts require the same discard/navigation protection as legacy input", () => {
+ const empty={...draft,instructions:"",startsOn:""};
+ expect(practiceDraftIsDirty(empty)).toBe(false);
+ expect(practiceDraftIsDirty({...empty,responsibility:blankResponsibility()})).toBe(true);
+ expect(practiceDraftIsDirty({...empty,responsibility:{...blankResponsibility(),localTime:"19:15",weekdays:[1,3]}})).toBe(true);
+ expect(practiceDraftIsDirty({...empty,responsibility:undefined})).toBe(false);
+ for(const field of ["title","reference","instructions","startsOn","endsOn","goalId","commitmentId"] as const)expect(practiceDraftIsDirty({...empty,[field]:"retained"})).toBe(true);
+});
 test.each(["en","he"] as const)("%s timed practice marks end date required while preserving oversized unsaved input",locale=>{
  const retained="Synthetic long input ".repeat(110),html=renderToStaticMarkup(createElement(PracticeAuthoringForm,{...props,locale,kind:"home-practice",draft:{...draft,instructions:retained,responsibility:blankResponsibility()}}));
  expect(html).toContain(retained);expect(html).toContain('maxLength="2000"');expect(html).toContain(locale==="he"?"מסתיים בתאריך (חובה)":"Ends on (required)");expect(html).not.toContain(locale==="he"?"מסתיים בתאריך (רשות)":"Ends on (optional)");

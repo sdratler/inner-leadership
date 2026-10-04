@@ -107,6 +107,53 @@ test("publication waiting for the workspace lock preserves an occurrence that st
  }finally{await blocker.query("ROLLBACK");blocker.release();if(pending)await pending;}
 },30000);
 
+test("within-statement cancellation boundary leaves the newly started row open without rolling back publication",async()=>{
+ const h=await setup(),target=new Date(Date.now()+2500),today=target.toISOString().slice(0,10),draft=await h.practice.createDraft(f.practitioner.actor,{caseId:f.first.id,audienceId:f.first.audienceId,templateKey:"W01",templateVersion:"synthetic-statement-boundary",instructions:"DEMO — Statement boundary original",startsOn:today,endsOn:h.endsOn,responsibility:{...h.input,localTime:target.toISOString().slice(11,16)}},randomUUID());
+ await h.practice.publish(f.practitioner.actor,draft.assignmentId,draft.versionId,randomUUID());
+ const future=await h.practice.schedule(f.practitioner.actor,{assignmentId:draft.assignmentId,occursOn:h.occursOn,period:"morning"},randomUUID()),startedId=asId(randomUUID(),"occurrence"),revised=await h.practice.revise(f.practitioner.actor,{assignmentId:draft.assignmentId,instructions:"DEMO — Statement boundary revised",startsOn:today,endsOn:h.endsOn},randomUUID());
+ await f.pool.query("INSERT INTO ls_practice.practice_occurrences(id,workspace_id,assignment_id,practice_version_id,coordination_version_id,occurs_on,period,state,created_at,occurs_at) VALUES($1,$2,$3,$4,$5,$6,'morning','open',clock_timestamp(),$7)",[startedId,f.workspaceId,draft.assignmentId,draft.versionId,future.coordinationVersionId,today,target]);
+ // Isolated delay runs AFTER the UPDATE selects its row, BEFORE the unchanged
+ // production cancellation trigger. This is not the earlier workspace-lock case.
+ await f.pool.query(`CREATE FUNCTION ls_practice.test_delay_cancellation_boundary() RETURNS trigger LANGUAGE plpgsql AS $fn$ BEGIN IF NEW.id='${startedId}'::uuid AND NEW.state='cancelled' THEN PERFORM pg_sleep(GREATEST(0,extract(epoch FROM (NEW.occurs_at-clock_timestamp()))+0.1)); END IF; RETURN NEW; END $fn$`);
+ await f.pool.query("CREATE TRIGGER aa_test_delay_cancellation_boundary BEFORE UPDATE ON ls_practice.practice_occurrences FOR EACH ROW EXECUTE FUNCTION ls_practice.test_delay_cancellation_boundary()");
+ try{
+  expect(target.getTime()).toBeGreaterThan(Date.now());await h.practice.publish(f.practitioner.actor,draft.assignmentId,revised.versionId,randomUUID());
+  expect((await f.pool.query("SELECT state,cancelled_at,superseded_by_version_id FROM ls_practice.practice_occurrences WHERE id=$1",[startedId])).rows[0]).toEqual({state:"open",cancelled_at:null,superseded_by_version_id:null});
+  expect((await f.pool.query("SELECT state FROM ls_practice.practice_occurrences WHERE id=$1",[future.id])).rows[0].state).toBe("cancelled");
+  expect((await f.pool.query("SELECT active_version_id FROM ls_practice.practice_assignments WHERE id=$1",[draft.assignmentId])).rows[0].active_version_id).toBe(revised.versionId);
+  await expect(f.pool.query("UPDATE ls_practice.practice_occurrences SET state='cancelled',cancelled_at=clock_timestamp(),superseded_by_version_id=$2 WHERE id=$1",[startedId,revised.versionId])).rejects.toMatchObject({code:"23514",message:"LS_PRACTICE_OCCURRENCE_CANCELLATION_INVALID"});
+ }finally{await f.pool.query("DROP TRIGGER aa_test_delay_cancellation_boundary ON ls_practice.practice_occurrences; DROP FUNCTION ls_practice.test_delay_cancellation_boundary()");}
+},30000);
+
+test("a different cancellation constraint failure is not swallowed and publication rolls back",async()=>{
+ const h=await setup(),draft=await h.publish(),occurrence=await h.practice.schedule(f.practitioner.actor,{assignmentId:draft.assignmentId,occursOn:h.occursOn,period:"morning"},randomUUID()),revised=await h.practice.revise(f.practitioner.actor,{assignmentId:draft.assignmentId,instructions:"DEMO — Failed publication stays draft",startsOn:h.startsOn,endsOn:h.endsOn},randomUUID());
+ await f.pool.query("CREATE FUNCTION ls_practice.test_other_cancellation_denial() RETURNS trigger LANGUAGE plpgsql AS $fn$ BEGIN IF NEW.state='cancelled' THEN RAISE EXCEPTION 'DEMO_OTHER_CONSTRAINT_DENIAL' USING ERRCODE='23514'; END IF; RETURN NEW; END $fn$");
+ await f.pool.query("CREATE TRIGGER aa_test_other_cancellation_denial BEFORE UPDATE ON ls_practice.practice_occurrences FOR EACH ROW EXECUTE FUNCTION ls_practice.test_other_cancellation_denial()");
+ try{
+  await expect(h.practice.publish(f.practitioner.actor,draft.assignmentId,revised.versionId,randomUUID())).rejects.toMatchObject({cause:{code:"23514",message:"DEMO_OTHER_CONSTRAINT_DENIAL"}});
+  expect((await f.pool.query("SELECT active_version_id FROM ls_practice.practice_assignments WHERE id=$1",[draft.assignmentId])).rows[0].active_version_id).toBe(draft.versionId);
+  expect((await f.pool.query("SELECT state FROM ls_practice.practice_assignment_versions WHERE id=$1",[revised.versionId])).rows[0].state).toBe("draft");expect((await f.pool.query("SELECT state FROM ls_practice.practice_occurrences WHERE id=$1",[occurrence.id])).rows[0].state).toBe("open");
+ }finally{await f.pool.query("DROP TRIGGER aa_test_other_cancellation_denial ON ls_practice.practice_occurrences; DROP FUNCTION ls_practice.test_other_cancellation_denial()");}
+},30000);
+
+test("coordination preserves an eligible support reminder without granting its parent reporting permission",async()=>{
+ const h=await setup(),draft=await h.publish({...h.input,participant:"parent",assigneeAccountIds:[f.parent.actor.id],assistedByParentAccountIds:[],reminderRecipients:[{accountId:f.parentTwo.actor.id,purpose:"support"}]},"DEMO — Parent support routing");
+ const input={assignmentId:draft.assignmentId,assigneeAccountIds:[f.parent.actor.id],completionMode:"any_assignee" as const,reminderCandidateAccountIds:[f.parentTwo.actor.id],effectiveFrom:f.at(1)};
+ const saved=await h.practice.coordinate(f.parent.actor,input,randomUUID());
+ const page=await h.practice.coordination(f.parent.actor,draft.assignmentId);expect(page.versions.find(row=>row.versionId===saved.versionId)).toMatchObject({assigneeAccountIds:[f.parent.actor.id],reminderCandidateAccountIds:[f.parentTwo.actor.id]});
+ expect(page).toMatchObject({reminderRoutingAccountIds:[f.parentTwo.actor.id]});
+ await h.practice.coordinate(f.parent.actor,{...input,reminderCandidateAccountIds:[],effectiveFrom:f.at(2)},randomUUID());
+ const deselected=await h.practice.coordination(f.parent.actor,draft.assignmentId);expect(deselected).toMatchObject({reminderRoutingAccountIds:[f.parentTwo.actor.id]});
+ await h.practice.coordinate(f.parent.actor,{...input,effectiveFrom:f.at(3)},randomUUID());
+ const occurrence=await h.practice.schedule(f.practitioner.actor,{assignmentId:draft.assignmentId,occursOn:h.occursOn,period:"morning"},randomUUID());
+ await expect(h.checkins.submit(f.parentTwo.actor,{occurrenceId:occurrence.id,status:"done",idempotencyKey:randomUUID()},randomUUID())).rejects.toMatchObject({code:"NOT_FOUND"});
+ expect((await h.practice.management(f.practitioner.actor,f.first.id,f.first.audienceId)).items[0]?.responsibility?.reminderRecipients).toEqual([{accountId:f.parentTwo.actor.id,purpose:"support"}]);
+ await expect(h.practice.coordinate(f.parent.actor,{...input,reminderCandidateAccountIds:[f.outsider.actor.id]},randomUUID())).rejects.toMatchObject({code:"NOT_FOUND"});
+ await f.pool.query("UPDATE ls_cases.case_guardians SET revoked_at=clock_timestamp() WHERE workspace_id=$1 AND case_id=$2 AND account_id=$3",[f.workspaceId,f.first.id,f.parentTwo.actor.id]);
+ expect(await h.practice.coordination(f.parent.actor,draft.assignmentId)).toMatchObject({reminderRoutingAccountIds:[]});
+ await expect(h.practice.coordinate(f.parent.actor,input,randomUUID())).rejects.toMatchObject({code:"NOT_FOUND"});
+},30000);
+
 test("strict ownership, subject/routing fences, date and DST gaps fail closed without native writes",async()=>{
  const {practice,input,startsOn,endsOn,publish}=await setup();
  await expect(practice.participants(f.parent.actor,f.first.id,f.first.audienceId)).rejects.toMatchObject({code:"NOT_FOUND"});
