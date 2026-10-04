@@ -219,10 +219,22 @@ export class CaseService {
    return {caseId,kind:item.kind,childAccountsEnabled:this.config.childAccountsEnabled===true,members};
   });
  }
- async audiences(actor:Actor,caseId:CaseId,view:'shared'|'management'='shared'):Promise<Array<{id:AudienceId;visibility:Visibility;published:boolean}>> {
+ async audiences(actor:Actor,caseId:CaseId,view:'shared'|'management'|'messages'='shared',before?:AudienceId):Promise<Array<{id:AudienceId;visibility:Visibility;published:boolean}>> {
   return this.store.transaction(async tx=>{
    const current=await freshActor(tx,actor,this.clock.now()),item=await loadCase(tx,actor.workspaceId,caseId),guardians=await loadGuardians(tx,actor.workspaceId,caseId);
    caseAccess(current,item,guardians,view==='management'?'write':'read');
+   if(before&&view!=='messages')throw new AppError('INVALID_REQUEST');
+   if(view==='messages'){
+    if(before){const cursor=await loadAudience(tx,actor.workspaceId,caseId,before);if(!cursor||!cursor.published||current.role!=='practitioner'&&cursor.visibility!=='family_full')throw new AppError('NOT_FOUND');audienceAccess(current,item,guardians,cursor);}
+    // Limit AFTER the recipient filter, so another participant's retained
+    // audiences cannot consume this account's bounded Messages window.
+    return tx.query<{id:AudienceId;visibility:Visibility;published:boolean}>(`SELECT a.id,a.visibility,a.published FROM ls_cases.audiences a
+     WHERE a.workspace_id=$1 AND a.case_id=$2 AND a.published
+      AND ($3::boolean OR (a.visibility='family_full' AND EXISTS(SELECT 1 FROM ls_cases.audience_accounts g
+       WHERE g.workspace_id=a.workspace_id AND g.case_id=a.case_id AND g.audience_id=a.id AND g.account_id=$4 AND g.revoked_at IS NULL)))
+      AND ($5::uuid IS NULL OR (a.created_at,a.id)<(SELECT c.created_at,c.id FROM ls_cases.audiences c WHERE c.workspace_id=$1 AND c.case_id=$2 AND c.id=$5))
+     ORDER BY a.created_at DESC,a.id DESC LIMIT 100`,[actor.workspaceId,caseId,current.role==='practitioner',current.id,before??null]);
+   }
    const rows=await tx.query<{id:AudienceId;visibility:Visibility;published:boolean}>(`SELECT id,visibility,published FROM ls_cases.audiences WHERE workspace_id=$1 AND case_id=$2${view==='management'?'':' AND published'} ORDER BY created_at DESC,id`,[actor.workspaceId,caseId]);
    if(current.role==='practitioner')return rows;
    const allowed:typeof rows=[];
