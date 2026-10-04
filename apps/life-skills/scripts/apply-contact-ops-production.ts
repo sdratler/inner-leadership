@@ -27,6 +27,7 @@ import {scopedDisclosureIntegrity,SCOPED_DISCLOSURE_USE_MIGRATION,speakerReceipt
 import {practiceResponsibilityIntegrity,PRACTICE_RESPONSIBILITY_MIGRATION} from '../src/db/practice-responsibility-integrity.ts';
 import {practiceReminderIntegrity,PRACTICE_REMINDER_MIGRATION} from '../src/db/practice-reminder-integrity.ts';
 import {contactAcquisitionIntegrity,ACQUISITION_CANDIDATES_MIGRATION,ACQUISITION_DECISIONS_MIGRATION} from '../src/db/contact-acquisition-integrity.ts';
+import {contactDeltaIntegrity,CONTACT_DELTA_MIGRATION} from '../src/db/contact-delta-integrity.ts';
 import {assertContactOpsDatabaseIdentity,calendarAppendOnlyFunctionBody,contactOpsBaselineRecordsMatches,contactOpsCanonicalConstraint,contactOpsFunctionBody,contactOpsMigrationPrefix,contactOpsMigrationState,contactOpsProductionTarget,contactOpsSchemaCatalogMatches,contactOpsSourceBundle,internalTaskSchemaCatalogMatches,sourceTaskSchemaCatalogMatches,voiceRuleSchemaCatalogMatches,CONTACT_OPS_MIGRATION,CONTACT_OPS_SOURCE_FILES,type ContactOpsIntegrityObjects,type InternalTaskIntegrityObjects,type SourceTaskIntegrityObjects,type VoiceRuleIntegrityObjects} from '../src/db/contact-ops-production-guard.ts';
 import type {AppliedMigration,Migration} from '../src/db/migration-plan.ts';
 
@@ -389,6 +390,8 @@ async function main(){
          (await client.query<R>(statement,[...values])).rows},files,'candidate'):undefined;
        const decisionIntegrity=files.some(file=>file.name===ACQUISITION_DECISIONS_MIGRATION.name)?await contactAcquisitionIntegrity({query:async <R extends object>(statement:string,values:readonly unknown[]=[])=>
          (await client.query<R>(statement,[...values])).rows},files,'decisions'):undefined;
+       const deltaIntegrity=files.some(file=>file.name===CONTACT_DELTA_MIGRATION.name)?await contactDeltaIntegrity({query:async <R extends object>(statement:string,values:readonly unknown[]=[])=>
+         (await client.query<R>(statement,[...values])).rows},files):undefined;
      await client.query('COMMIT');
      const history:AppliedMigration[]=ledger.rows.map(row=>({name:row.name,checksum:row.checksum}));
      const verified=new Map(functions.rows.map(row=>[row.name,
@@ -413,7 +416,7 @@ async function main(){
      const sourceIntegrity:SourceTaskIntegrityObjects={baseCatalog,sourceCatalog,sourceIndex:sourceIndex.rows[0]?.exact===true};
      const voiceIntegrity:VoiceRuleIntegrityObjects={...voiceObjects.rows[0]!,
        schemaCatalog:voiceRuleSchemaCatalogMatches(voiceColumns.rows[0]?.catalog,voiceConstraints.rows[0]?.catalog)};
-       return contactOpsMigrationState(files,history,integrity,taskIntegrity,sourceIntegrity,voiceIntegrity,authorityIntegrity,inboundIntegrity,practiceIntegrity,progressIntegrity,projectionIntegrity,outboundIntegrity,adultIntegrity,disclosureIntegrity,speakersIntegrity,responsibilityIntegrity,reminderIntegrity,acquisitionIntegrity,decisionIntegrity);
+       return contactOpsMigrationState(files,history,integrity,taskIntegrity,sourceIntegrity,voiceIntegrity,authorityIntegrity,inboundIntegrity,practiceIntegrity,progressIntegrity,projectionIntegrity,outboundIntegrity,adultIntegrity,disclosureIntegrity,speakersIntegrity,responsibilityIntegrity,reminderIntegrity,acquisitionIntegrity,decisionIntegrity,deltaIntegrity);
     }catch(error){await client.query('ROLLBACK').catch(()=>undefined);throw error;}
    };
    const before=await inspect();
@@ -428,4 +431,4 @@ async function main(){
   }finally{client.release();}
  }finally{await pool.end();}
 }
-main().catch(error=>{const code=error instanceof Error && /^(CONTACT_OPS|CONTACT_ACQUISITION|PRACTICE_REMINDER|MIGRATION)_[A-Z0-9_]+$/.test(error.message)?error.message:'CONTACT_OPS_OPERATION_FAILED';process.stderr.write(code+'\n');process.exitCode=1;});
+main().catch(error=>{const code=error instanceof Error && /^(CONTACT_OPS|CONTACT_ACQUISITION|CONTACT_DELTA|PRACTICE_REMINDER|MIGRATION)_[A-Z0-9_]+$/.test(error.message)?error.message:'CONTACT_OPS_OPERATION_FAILED';process.stderr.write(code+'\n');process.exitCode=1;});

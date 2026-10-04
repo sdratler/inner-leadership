@@ -9,6 +9,7 @@ import {SCOPED_DISCLOSURE_USE_MIGRATION,SPEAKER_CORRECTION_RECEIPTS_MIGRATION,ty
 import {PRACTICE_RESPONSIBILITY_MIGRATION,type PracticeResponsibilityIntegrity,type PracticeResponsibilityFrame} from './practice-responsibility-integrity.ts';
 import {PRACTICE_REMINDER_MIGRATION,type PracticeReminderIntegrity} from './practice-reminder-integrity.ts';
 import {ACQUISITION_CANDIDATES_MIGRATION,ACQUISITION_DECISIONS_MIGRATION,type ContactAcquisitionIntegrity} from './contact-acquisition-integrity.ts';
+import {CONTACT_DELTA_MIGRATION,type ContactDeltaIntegrity} from './contact-delta-integrity.ts';
 
 export const CONTACT_OPS_MIGRATION = {
  name: '0101_ls_contact_operations.sql',
@@ -99,6 +100,7 @@ export const CONTACT_OPS_SOURCE_FILES = [
  'migrations/0115_ls_practice_notification_outbox.sql',
  'migrations/0116_ls_acquisition_candidates.sql',
  'migrations/0117_ls_acquisition_decisions.sql',
+ 'migrations/0118_ls_contact_delta_history.sql',
  'migrations/0093_ls_session_records.sql',
  'migrations/manifest.json',
  'scripts/apply-contact-ops-production.ts',
@@ -110,6 +112,7 @@ export const CONTACT_OPS_SOURCE_FILES = [
   'src/db/practice-responsibility-integrity.ts',
  'src/db/practice-reminder-integrity.ts',
  'src/db/contact-acquisition-integrity.ts',
+ 'src/db/contact-delta-integrity.ts',
  'src/db/scoped-disclosure-integrity.ts',
  'src/db/progress-review-integrity.ts',
  'src/db/contact-inbound-projection-integrity.ts',
@@ -152,7 +155,7 @@ export type ContactAuthorityIntegrityObjects={objectsAbsent:boolean;tables:boole
  historyImmutable:boolean;appendOnlyFunction:boolean;publicRevoked:boolean;referencesSound:boolean};
 export type ContactInboundIntegrityObjects=ContactAuthorityIntegrityObjects;
 
-const allowedSuffix=[INTERNAL_TASKS_MIGRATION,SOURCE_TASKS_MIGRATION,VOICE_RULE_MIGRATION,CONTACT_AUTHORITY_MIGRATION,CONTACT_INBOUND_MIGRATION,PRACTICE_SUBJECT_GUARDS_MIGRATION,PROGRESS_REVIEW_REVISIONS_MIGRATION,CONTACT_INBOUND_PROJECTION_MIGRATION,CONTACT_OUTBOUND_PROJECTION_MIGRATION,PRACTICE_ADULT_COORDINATION_MIGRATION,SCOPED_DISCLOSURE_USE_MIGRATION,SPEAKER_CORRECTION_RECEIPTS_MIGRATION,PRACTICE_RESPONSIBILITY_MIGRATION,PRACTICE_REMINDER_MIGRATION,ACQUISITION_CANDIDATES_MIGRATION,ACQUISITION_DECISIONS_MIGRATION]as const;
+const allowedSuffix=[INTERNAL_TASKS_MIGRATION,SOURCE_TASKS_MIGRATION,VOICE_RULE_MIGRATION,CONTACT_AUTHORITY_MIGRATION,CONTACT_INBOUND_MIGRATION,PRACTICE_SUBJECT_GUARDS_MIGRATION,PROGRESS_REVIEW_REVISIONS_MIGRATION,CONTACT_INBOUND_PROJECTION_MIGRATION,CONTACT_OUTBOUND_PROJECTION_MIGRATION,PRACTICE_ADULT_COORDINATION_MIGRATION,SCOPED_DISCLOSURE_USE_MIGRATION,SPEAKER_CORRECTION_RECEIPTS_MIGRATION,PRACTICE_RESPONSIBILITY_MIGRATION,PRACTICE_REMINDER_MIGRATION,ACQUISITION_CANDIDATES_MIGRATION,ACQUISITION_DECISIONS_MIGRATION,CONTACT_DELTA_MIGRATION]as const;
 /** An explicit registered prefix, never a bypass of the one-pending state gate.
  * The runner validates the FULL inventory/bundle first. A later ledger cannot
  * be treated as this shorter prefix; planMigrations still rejects that state. */
@@ -294,7 +297,7 @@ export function contactOpsSourceBundle(entries:readonly {path:string;bytes:Uint8
 }
 
 /** No partial/unknown schema and no surprise migration may be promoted. */
-export function contactOpsMigrationState(files:readonly Migration[],history:readonly AppliedMigration[],objects:ContactOpsIntegrityObjects,tasks:InternalTaskIntegrityObjects,source?:SourceTaskIntegrityObjects,voice?:VoiceRuleIntegrityObjects,authority?:ContactAuthorityIntegrityObjects,inbound?:ContactInboundIntegrityObjects,practice?:PracticeSubjectIntegrity,progress?:ProgressReviewIntegrity,projection?:ContactInboundProjectionIntegrity,outbound?:ContactOutboundProjectionIntegrity,adult?:PracticeAdultCoordinationIntegrity,disclosure?:ScopedDisclosureIntegrity,speakers?:SpeakerReceiptIntegrity,responsibility?:PracticeResponsibilityIntegrity,reminder?:PracticeReminderIntegrity,acquisition?:ContactAcquisitionIntegrity,decisions?:ContactAcquisitionIntegrity):'pending'|'applied'{
+export function contactOpsMigrationState(files:readonly Migration[],history:readonly AppliedMigration[],objects:ContactOpsIntegrityObjects,tasks:InternalTaskIntegrityObjects,source?:SourceTaskIntegrityObjects,voice?:VoiceRuleIntegrityObjects,authority?:ContactAuthorityIntegrityObjects,inbound?:ContactInboundIntegrityObjects,practice?:PracticeSubjectIntegrity,progress?:ProgressReviewIntegrity,projection?:ContactInboundProjectionIntegrity,outbound?:ContactOutboundProjectionIntegrity,adult?:PracticeAdultCoordinationIntegrity,disclosure?:ScopedDisclosureIntegrity,speakers?:SpeakerReceiptIntegrity,responsibility?:PracticeResponsibilityIntegrity,reminder?:PracticeReminderIntegrity,acquisition?:ContactAcquisitionIntegrity,decisions?:ContactAcquisitionIntegrity,delta?:ContactDeltaIntegrity):'pending'|'applied'{
  // Only the FULL exact 0114 suffix may admit the separately observed current
  // practice frame. Older callers cannot inject it to bypass historical gates.
  let acceptedResponsibility:PracticeResponsibilityFrame|undefined;
@@ -305,11 +308,11 @@ export function contactOpsMigrationState(files:readonly Migration[],history:read
  if(suffix.length>allowedSuffix.length||suffix.some((file,index)=>file.name!==allowedSuffix[index]?.name||file.checksum!==allowedSuffix[index]?.sha256))throw new Error('CONTACT_OPS_MANIFEST_MISMATCH');
   const pending=planMigrations(files,history);
   if(suffix.length>=14){
-   const frame=suffix.length===14?reminder?.current:suffix.length===15?acquisition:decisions;
+   const frame=suffix.length===14?reminder?.current:suffix.length===15?acquisition:suffix.length===16?decisions:delta;
    const absentKey=suffix.length===14?'metadataAbsent':'objectsAbsent';
    const keys=suffix.length===14?['metadataAbsent','schemaCatalog','foreignKeys','permissions','reviewedFunctions','referencesSound']:['objectsAbsent','tables','schemaCatalog','foreignKeys','historyImmutable','reviewedFunctions','permissions','referencesSound'];
    const migration=allowedSuffix[suffix.length-1]!;
-   const code=suffix.length===14?'PRACTICE_REMINDER_READBACK_INVALID':'CONTACT_ACQUISITION_READBACK_INVALID';
+   const code=suffix.length===14?'PRACTICE_REMINDER_READBACK_INVALID':suffix.length===17?'CONTACT_DELTA_READBACK_INVALID':'CONTACT_ACQUISITION_READBACK_INVALID';
    if(!frame||JSON.stringify(Object.keys(frame).sort())!==JSON.stringify(keys.sort())||Object.values(frame).some(value=>typeof value!=='boolean'))throw Error(code);
    if(suffix.length===14){
     const priorKeys=['metadataAbsent','schemaCatalog','foreignKeys','permissions','reviewedFunctions','immutableHistory','referencesSound'].sort();
