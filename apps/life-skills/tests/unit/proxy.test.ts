@@ -136,6 +136,11 @@ describe("actual practitioner Calendar login return perimeter", () => {
     expect(returned("?date=2026-09-22&view=agenda&mode=demo&untrusted=private"))
       .toBe("/he/app/calendar?date=2026-09-22&view=agenda&mode=demo");
   });
+  it('keeps a task query when the browser fragment cannot reach the server',()=>{
+    const id='123e4567-e89b-42d3-a456-426614174000';
+    expect(returned('?date=2026-10-02&view=agenda&taskId='+id)).toBe('/he/app/calendar?date=2026-10-02&view=agenda&taskId='+id);
+    for(const query of ['taskId=invalid',`taskId=${id}&taskId=${id}`])expect(returned('?'+query)).toBe('/he/app/calendar');
+  });
   it.each(['he','en'])('projects %s practitioner Practice from the real path, never caller headers',locale=>{
     returned('');const id='123e4567-e89b-42d3-a456-426614174000';
     const response=proxy(new NextRequest(`${origin}/${locale}/app/practice?caseId=${id}&audienceId=${id}&section=checkins&secret=private`,{headers:{'x-ls-practitioner-return':'https://untrusted.invalid'}}));

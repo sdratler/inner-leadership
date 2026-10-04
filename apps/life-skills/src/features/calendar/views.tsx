@@ -30,6 +30,10 @@ export function CalendarBoard({dates,items,followups=[],tasks=[],practice=[],onO
  })}</div>;
 }
 /** Only a rendered, visible authorized task in this agenda can be selected. */
+export function calendarTaskFragment(hash:string,search:string):string{
+ const ids=new URLSearchParams(search).getAll('taskId'),candidate=hash||(ids.length===1?'#task-'+ids[0]:'');
+ return /^#task-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(candidate)?candidate:'';
+}
 export function revealCalendarTaskFragment(root:Pick<HTMLElement,'querySelector'>,hash:string):boolean{
  if(!/^#task-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(hash))return false;
  const target=root.querySelector<HTMLElement>(hash);if(!target||!target.getClientRects().length)return false;
@@ -39,7 +43,7 @@ export function CalendarAgenda({items,followups=[],tasks=[],practice=[],onOpenPr
  const t=text(locale);
  const agenda=useRef<HTMLDivElement>(null),appliedFragment=useRef<string|null>(null);
  useEffect(()=>{
-  const apply=()=>{const hash=window.location.hash;if(hash!==appliedFragment.current&&agenda.current&&revealCalendarTaskFragment(agenda.current,hash))appliedFragment.current=hash;};
+  const apply=()=>{const hash=calendarTaskFragment(window.location.hash,window.location.search);if(hash!==appliedFragment.current&&agenda.current&&revealCalendarTaskFragment(agenda.current,hash))appliedFragment.current=hash;};
   // Effects run after asynchronous task rows commit to the DOM. Keep the
   // applied fragment across ordinary task refreshes so focus is not stolen.
   apply();const changed=()=>{appliedFragment.current=null;apply();};
