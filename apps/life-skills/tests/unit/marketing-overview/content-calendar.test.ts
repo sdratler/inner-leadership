@@ -10,6 +10,18 @@ const publication=(id:string,time:string|null,state:Publication["state"]="schedu
 const snapshot=(items:readonly Publication[],creatives:readonly CreativeVersion[]=[asset]):MarketingSnapshot=>({source:"synthetic",fetchedAt:"2026-10-01T08:00:00Z",creatives,publications:items,ads:[],scout:{readyDrafts:null,sourceUrl:null,lastChecked:null,status:"unbound"}});
 const render=(items:readonly Publication[],query:ContentCalendarQuery={},locale:"en"|"he"="en",creatives:readonly CreativeVersion[]=[asset])=>renderToStaticMarkup(React.createElement(MarketingContentCalendar,{locale,snapshot:snapshot(items,creatives),query,renderedAt:"2026-10-01T08:00:00Z",thumbnail:a=>React.createElement("span",{"data-thumbnail":a.assetId+":"+a.revision},"DEMO exact thumbnail")}));
 describe("retained read-only Marketing calendar controls",()=>{
+ it.each([
+  ["unknown","Unknown — check provider","לא ידוע — יש לבדוק אצל הספק"],
+  ["failed","Failed","נכשל"],
+  ["draft","Draft","טיוטה"],
+ ] as const)("preserves unresolved %s source state without an exact image binding",(state,en,he)=>{
+  const item={...publication("unresolved",null,state),provider:"unbound" as const,creativeDigest:"",errorCode:state==="draft"?"CALENDAR_BLOCKED":null};
+  for(const [locale,label] of [["en",en],["he",he]] as const){
+   const html=render([item],{publication:item.id},locale);
+   expect(html).toContain(label);expect(html).toContain(locale==="he"?"גרסת הקריאייטיב אינה זמינה":"Creative revision unavailable");
+   expect(html).not.toContain("Published — provider receipt recorded");expect(orderedPublicationQueue([item])).toEqual([]);
+  }
+ });
  it.each(["en","he"] as const)("preserves publisher holds in %s filters without putting held art in the queue",locale=>{
   const held={...publication("held",null,"held"),errorCode:"PUBLISHER_HELD"};
   expect(orderedPublicationQueue([held])).toEqual([]);expect(contentViewPublications([held],"drafts")).toEqual([held]);

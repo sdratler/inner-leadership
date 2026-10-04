@@ -5,6 +5,10 @@ export function approvedCreative(asset: CreativeVersion): boolean {
 }
 export function publicationLabel(p: Publication, assets: readonly CreativeVersion[]): string {
     if (p.state === "held") return "Held — not eligible for publication";
+    if (p.state === "unknown") return "Unknown — check provider";
+    if (p.state === "failed") return "Failed";
+    if (p.state === "draft") return "Draft";
+    if (p.state === "skipped") return "Skipped — no backfill";
     const asset = assets.find(a => a.assetId === p.assetId && a.revision === p.creativeRevision);
     if (!asset || asset.contentDigest !== p.creativeDigest)
         return "Creative revision unavailable";
@@ -20,7 +24,7 @@ export function publicationLabel(p: Publication, assets: readonly CreativeVersio
         return p.receiptKind === "schedule" && p.scheduledFor && validIso(p.scheduledFor) && p.provider !== "unbound" && p.providerReceiptId && p.providerReadAt && validIso(p.providerReadAt) ? "Scheduled — provider confirmed" : "Planned — not provider-confirmed";
     if (p.state === "ready")
         return approvedCreative(asset) ? "Approved, not scheduled" : "Not approved for this revision";
-    return { draft: "Draft", sending: "Sending — awaiting result", failed: "Failed", unknown: "Unknown — check provider", skipped: "Skipped — no backfill" }[p.state] ?? "Unknown";
+    return p.state === "sending" ? "Sending — awaiting result" : "Unknown";
 }
 export function safeMarketingUrl(value: string | null, hosts: readonly string[]): string | null {
     if (!value)
