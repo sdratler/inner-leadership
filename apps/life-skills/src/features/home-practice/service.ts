@@ -37,6 +37,39 @@ import type {
 } from "./types.ts";
 
 const instructionsAad = (workspaceId: string, versionId: string) => `practice-version:${workspaceId}:${versionId}`;
+function cancellationBoundaryError(error:unknown):boolean{
+ for(let depth=0;depth<4&&error&&typeof error==='object';depth++){
+  const row=error as {code?:unknown;message?:unknown;cause?:unknown};
+  if(row.code==='23514'&&row.message==='LS_PRACTICE_OCCURRENCE_CANCELLATION_INVALID')return true;
+  error=row.cause;
+ }
+ return false;
+}
+/** Keep the immutable trigger's real-clock denial. A row which starts between
+ * selection and trigger execution stays open; that denial must not lose the
+ * independently valid publication or other future cancellations. */
+async function cancelSupersededFuture(tx:SqlSession,workspaceId:string,assignmentId:string,versionId:string):Promise<void>{
+ const eligible=`o.workspace_id=$1 AND o.assignment_id=$2 AND o.practice_version_id<>$3 AND o.state='open'
+  AND o.occurs_at>cutoff.at AND NOT EXISTS(SELECT 1 FROM ls_practice.completion_reports r WHERE r.workspace_id=o.workspace_id AND r.occurrence_id=o.id)`;
+ const update=`WITH cutoff AS MATERIALIZED(SELECT clock_timestamp() AS at)
+  UPDATE ls_practice.practice_occurrences o SET state='cancelled',cancelled_at=cutoff.at,superseded_by_version_id=$3 FROM cutoff WHERE ${eligible}`;
+ const values=[workspaceId,assignmentId,versionId];
+ await tx.query('SAVEPOINT ls_cancel_future');
+ try{await tx.query(update,values);await tx.query('RELEASE SAVEPOINT ls_cancel_future');return;}
+ catch(error){await tx.query('ROLLBACK TO SAVEPOINT ls_cancel_future');await tx.query('RELEASE SAVEPOINT ls_cancel_future');if(!cancellationBoundaryError(error))throw error;}
+ const rows=await tx.query<{id:string}>(`WITH cutoff AS MATERIALIZED(SELECT clock_timestamp() AS at)
+  SELECT o.id FROM ls_practice.practice_occurrences o,cutoff WHERE ${eligible} ORDER BY o.id`,values);
+ for(const row of rows){
+  await tx.query('SAVEPOINT ls_cancel_future');
+  try{await tx.query(update+' AND o.id=$4',[...values,row.id]);await tx.query('RELEASE SAVEPOINT ls_cancel_future');}
+  catch(error){
+   await tx.query('ROLLBACK TO SAVEPOINT ls_cancel_future');await tx.query('RELEASE SAVEPOINT ls_cancel_future');
+   if(!cancellationBoundaryError(error))throw error;
+   const crossed=await one<{crossed:boolean}>(tx,"SELECT state='open' AND occurs_at<=clock_timestamp() AS crossed FROM ls_practice.practice_occurrences WHERE workspace_id=$1 AND id=$2",[workspaceId,row.id]);
+   if(crossed?.crossed!==true)throw error;
+  }
+ }
+}
 /** The guardian editor cannot replace retained exact-subject child assignments.
  * Current and pending versions are inspected without expanding bounded history. */
 async function retainedChildCoordination(tx:SqlSession,workspaceId:string,assignmentId:string,caseId:string,audienceId:string,currentVersionId:string|null,now:Date,preservedAccountIds:readonly AccountId[]=[]):Promise<boolean>{
@@ -297,13 +330,7 @@ export class HomePracticeService implements PracticeVersionReader {
       await tx.query("UPDATE ls_practice.practice_assignments SET state='published',active_version_id=$3 WHERE workspace_id=$1 AND id=$2", [actor.workspaceId, assignmentId, versionId]);
       // Cancel only unreported FUTURE timed occurrences from older versions.
       // Historical, completed and unspecified-clock legacy rows are untouched.
-      // Select and timestamp cancellations with one database clock after the
-      // workspace lock. A queued publish must not cancel an occurrence that
-      // started while it waited; the immutable DB trigger still rejects that.
-      await tx.query(`WITH cutoff AS MATERIALIZED(SELECT clock_timestamp() AS at)
-       UPDATE ls_practice.practice_occurrences o SET state='cancelled',cancelled_at=cutoff.at,superseded_by_version_id=$3 FROM cutoff
-       WHERE o.workspace_id=$1 AND o.assignment_id=$2 AND o.practice_version_id<>$3 AND o.state='open'
-        AND o.occurs_at>cutoff.at AND NOT EXISTS(SELECT 1 FROM ls_practice.completion_reports r WHERE r.workspace_id=o.workspace_id AND r.occurrence_id=o.id)`,[actor.workspaceId,assignmentId,versionId]);
+      await cancelSupersededFuture(tx,actor.workspaceId,assignmentId,versionId);
       if(responsibility){const versionId=asId(randomUUID(),"coordination_version"),next=await one<{version:number}>(tx,"SELECT coalesce(max(version),0)+1 AS version FROM ls_practice.task_coordination_versions WHERE workspace_id=$1 AND assignment_id=$2",[actor.workspaceId,assignmentId]);
         await tx.query(`INSERT INTO ls_practice.task_coordination_versions(id,workspace_id,assignment_id,version,case_id,audience_id,assignee_account_ids,completion_mode,reminder_candidate_account_ids,effective_from,changed_by_account_id,created_at,responsibility_version_id,participant,assisted_parent_account_ids)
          VALUES($1,$2,$3,$4,$5,$6,$7::uuid[],$8,$9::uuid[],$10,$11,$10,$12,$13,$14::uuid[])`,[versionId,actor.workspaceId,assignmentId,Number(next!.version),row.caseId,row.audienceId,responsibility.assigneeAccountIds,responsibility.completionMode,responsibility.reminderRecipients.map(value=>value.accountId),now,actor.id,row.versionId,responsibility.participant,responsibility.assistedByParentAccountIds]);}
@@ -340,7 +367,8 @@ export class HomePracticeService implements PracticeVersionReader {
       if(responsibility){
         if(!item||responsibility.participant==="client"&&current.role!=="adult_client"||responsibility.participant==="parent"&&current.role!=="parent")throw new AppError("NOT_FOUND");
         audienceAccess(current,item,guardians,audience);
-        await authorizeResponsibility(tx,current,item,audience,{...responsibility,assigneeAccountIds:input.assigneeAccountIds,completionMode:input.completionMode,reminderRecipients:input.reminderCandidateAccountIds.map(accountId=>({accountId,purpose:"self"}))},row.startsOn,row.endsOn,unseal(row.instructionsCiphertext,instructionsAad(actor.workspaceId,row.versionId),this.config.keyring));
+        const reminderRecipients=input.reminderCandidateAccountIds.map(accountId=>({accountId,purpose:responsibility.reminderRecipients.find(value=>value.accountId===accountId)?.purpose??"self"}));
+        await authorizeResponsibility(tx,current,item,audience,{...responsibility,assigneeAccountIds:input.assigneeAccountIds,completionMode:input.completionMode,reminderRecipients},row.startsOn,row.endsOn,unseal(row.instructionsCiphertext,instructionsAad(actor.workspaceId,row.versionId),this.config.keyring));
       }
       const clientAccounts=item?await tx.query<{id:AccountId}>(`SELECT a.id FROM ls_identity.accounts a
         JOIN ls_identity.account_subjects s ON s.workspace_id=a.workspace_id AND s.account_id=a.id
@@ -356,7 +384,7 @@ export class HomePracticeService implements PracticeVersionReader {
         if(!responsibility&&current.role==='parent'&&await retainedChildCoordination(tx,actor.workspaceId,input.assignmentId,row.caseId,row.audienceId,effective?.id??null,now,assignees))throw new AppError("CONFLICT");
       }
       if (input.completionMode === "each_assignee" && assignees.length < 2) throw new AppError("INVALID_REQUEST");
-      if (new Set(input.reminderCandidateAccountIds).size !== input.reminderCandidateAccountIds.length || input.reminderCandidateAccountIds.some(id => !assignees.includes(id))) throw new AppError("INVALID_REQUEST");
+      if (new Set(input.reminderCandidateAccountIds).size !== input.reminderCandidateAccountIds.length || !responsibility&&input.reminderCandidateAccountIds.some(id => !assignees.includes(id))) throw new AppError("INVALID_REQUEST");
       const versionId = asId(randomUUID(), "coordination_version");
       await tx.query(`INSERT INTO ls_practice.task_coordination_versions
         (id,workspace_id,assignment_id,version,case_id,audience_id,assignee_account_ids,completion_mode,reminder_candidate_account_ids,effective_from,changed_by_account_id,created_at,responsibility_version_id,participant,assisted_parent_account_ids)
@@ -458,9 +486,10 @@ export class HomePracticeService implements PracticeVersionReader {
       const next = await one<{effectiveFrom:Date}>(tx, `SELECT effective_from AS "effectiveFrom" FROM ls_practice.task_coordination_versions WHERE workspace_id=$1 AND assignment_id=$2 AND case_id=$3 AND audience_id=$4 AND effective_from>$5 AND (($6::uuid IS NULL AND responsibility_version_id IS NULL) OR responsibility_version_id=$6) ORDER BY effective_from ASC,version DESC LIMIT 1`, [...scope, now, responsibilityVersion]);
       const legacyChild=!responsibilityVersion&&current.role==='parent'&&await retainedChildCoordination(tx,actor.workspaceId,assignmentId,row.caseId,row.audienceId,effective?.versionId??null,now);
       const readOnlyReason=readOnly?'client_responsibility' as const:legacyChild?'legacy_child_assignment' as const:undefined;
+      const reminderRoutingAccountIds=responsibilityVersion?eligible.filter(id=>!readOnlyReason&&parseSavedResponsibility(row.responsibility)!.reminderRecipients.some(value=>value.accountId===id)):undefined;
       const project = (value: CoordinationRow): CoordinationVersion => ({ ...value, effectiveFrom: value.effectiveFrom.toISOString() });
       return { ownAccountId: current.id, role: current.role, eligibleAccountIds: readOnlyReason ? [] : eligible, asOf: now.toISOString(), currentVersion: effective ? project(effective) : null, nextEffectiveFrom: next?.effectiveFrom.toISOString() ?? null,
-        hasMore: versions.length > 20, versions: versions.slice(0, 20).map(project), ...(readOnlyReason ? {readOnlyReason} : {}) };
+        hasMore: versions.length > 20, versions: versions.slice(0, 20).map(project), ...(readOnlyReason ? {readOnlyReason} : {}),...(reminderRoutingAccountIds===undefined?{}:{reminderRoutingAccountIds}) };
     });
   }
 
