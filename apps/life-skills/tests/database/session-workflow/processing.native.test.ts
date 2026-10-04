@@ -78,7 +78,7 @@ test.each(['en','he'] as const)('requested %s locale must match stored provenanc
   expect(await processSession(s.id,ports,locale)).toEqual({status:'failed',code:'PROCESSING_LOCALE_MISMATCH'});expect(effects).toBe(0);
   expect((await s.f.pool.query('SELECT failure_code,transcript_version FROM ls_sessions.recording_jobs WHERE workspace_id=$1 AND id=$2',[s.f.workspaceId,s.id])).rows[0]).toMatchObject({failure_code:'PROCESSING_LOCALE_MISMATCH',transcript_version:null});
   ports.store=new PostgresSessionProcessingStore(poolStore(s.f.pool),s.f.keyring,s.f.practitioner.actor,systemClock,{...provenance,locale});
-  expect(await processSession(s.id,ports,locale)).toEqual({status:'private_analysis_ready'});expect((await s.service.detail(s.f.practitioner.actor,s.sessionId)).analysis?.locale).toBe(locale);
+  expect(await processSession(s.id,ports,locale)).toEqual({status:'private_analysis_ready'});expect((await s.service.detail(s.f.practitioner.actor,s.sessionId,locale)).analysis?.locale).toBe(locale);
 });
 test('expired in-flight transcription remains durably unknown and ordinary failure/retry cannot buy it again',async()=>{
  const s=await prepared();let calls=0,reservations=0,deletions=0;
