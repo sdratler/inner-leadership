@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { expect, test } from "@playwright/test";
 import { asId } from "../../../src/lib/ids.ts";
+import { breadcrumbItems, workspaceHref } from "../../../src/ui/workspace/navigation-model.ts";
 import type { PracticeOccurrenceItem } from "../../../src/features/home-practice/types.ts";
 
 const css = ["../../../src/ui/workspace/workspace.css", "../../../src/ui/workspace/professional-ui.css", "../../../src/features/calendar/calendar.css"].map(path => readFileSync(new URL(path, import.meta.url), "utf8")).join("\n");
@@ -52,6 +53,15 @@ for (const locale of ["en", "he"] as const) {
       await expect(back).toHaveAttribute("href", `/${locale}/family/practice?caseId=case-one&audienceId=audience-one`);
       await back.focus(); await expect(back).toBeFocused();
       expect(await back.evaluate(node=>node.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
+      const crumbs = breadcrumbItems(locale,"practitioner",`/${locale}/app/practice`,"checkins",null,false,id);
+      const ownerCrumbs = crumbs.map(crumb=>crumb.path?`<a href="${workspaceHref(locale,crumb.path,id)}">${crumb.label}</a>`:`<span>${crumb.label}</span>`).join(" / ");
+      await page.setContent(`<div class="lsw lsu lsu--practitioner" dir="${locale === "he" ? "rtl" : "ltr"}"><div class="lsu-content"><nav class="lsu-breadcrumbs">${ownerCrumbs}</nav><div class="lsu-page"><main class="lsw-practice-checkins">${breadcrumb}</main></div></div></div>`);
+      await page.addStyleTag({content:css+practiceCss});
+      await expect(page.locator(".lsw-practice-checkins nav")).toBeHidden();
+      await expect(page.locator(".lsu-breadcrumbs")).toBeVisible();
+      const selectedCase = page.locator(".lsu-breadcrumbs").getByRole("link", {name:locale === "he" ? "התיק הנבחר" : "Selected case",exact:true});
+      await expect(selectedCase).toHaveAttribute("href",`/${locale}/app/cases/${id}?caseId=${id}`);
+      await selectedCase.focus();await expect(selectedCase).toBeFocused();
     });
   }
 }

@@ -1,8 +1,8 @@
 /* The existing breadcrumb is the return route. Keep the actual occurrence and
  * its controls first, without another card, repeated heading or large back CTA. */
 .lsw.lsu .lsw-practice-checkins {gap:1rem}
-.lsw.lsu .lsu-page .lsw-practice-checkins>nav:has(>.lsw-breadcrumb) {display:block}
-.lsw.lsu .lsu-content:has(.lsw-practice-checkins)>.lsu-breadcrumbs {display:none}
+.lsw.lsu:not(.lsu--practitioner) .lsu-page .lsw-practice-checkins>nav:has(>.lsw-breadcrumb) {display:block}
+.lsw.lsu:not(.lsu--practitioner) .lsu-content:has(.lsw-practice-checkins)>.lsu-breadcrumbs {display:none}
 .lsw.lsu .lsw-practice-checkins .lsw-breadcrumb {margin:0}
 .lsw.lsu .lsw-practice-checkins>.lsw-page-header {padding:0}
 .lsw.lsu .lsw-practice-checkins>.lsw-page-header :is(h1,p) {margin-block:0 .5rem}
