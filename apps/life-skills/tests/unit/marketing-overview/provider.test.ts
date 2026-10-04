@@ -94,6 +94,13 @@ test.each([{state:"ready"},{state:"scheduled"},{state:"sending"},{state:"publish
  const {loadMarketingSnapshot}=await import("../../../src/features/marketing-overview/provider.ts");expect((await loadMarketingSnapshot()).inventoryReadback?.status).toBe("error");
 });
 
+test.each([readAt,"invalid",17,null])("inherited confirmation evidence is rejected: %j",async confirmedAt=>{
+ const inherited=Object.assign(Object.create({confirmedAt}),publication(),{state:"published"});
+ mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,publications:[inherited]}});
+ const {loadMarketingSnapshot}=await import("../../../src/features/marketing-overview/provider.ts");
+ expect((await loadMarketingSnapshot()).inventoryReadback?.status).toBe("error");
+});
+
 test("current publisher held and confirmed timestamp fields are validated without upgrading their states",async()=>{
  const {loadMarketingSnapshot}=await import("../../../src/features/marketing-overview/provider.ts");
  const held={...publication(),state:"held",provider:"whapi",confirmedAt:null,errorCode:"PUBLISHER_HELD"};

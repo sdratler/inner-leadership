@@ -17,6 +17,10 @@ describe("retained read-only Marketing calendar controls",()=>{
   expect(html).toContain('value="held" selected');expect(html).toContain(locale==="he"?"מושהה — אינו כשיר לפרסום":"Held — not eligible for publication");
   expect(html).not.toContain("Published — provider receipt recorded");
  });
+ it.each(["2026-10-01T17:05:00Z","invalid"])("ignores inherited confirmation timestamps in calendar display: %s",confirmedAt=>{
+  const item=Object.assign(Object.create({confirmedAt}),publication("inherited","2026-09-30T17:00:00Z","published"));
+  expect(publicationDisplayTime(item)).toBe(item.scheduledFor);
+ });
  it("places a published record on its actual confirmation date, not its old intended slot or readback date",()=>{
   const item={...publication("confirmed","2026-09-30T17:00:00Z","published"),confirmedAt:"2026-10-01T17:05:00Z",providerReceiptId:"DEMO-receipt",receiptKind:"publication" as const,providerReadAt:"2026-10-02T08:00:00Z"};
   expect(publicationDisplayTime(item)).toBe(item.confirmedAt);

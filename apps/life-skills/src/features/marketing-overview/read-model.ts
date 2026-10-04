@@ -73,7 +73,7 @@ function validatePublication(p: Publication): void {
     invariant(["whatsapp_status", "facebook_page", "instagram", "facebook_group_manual", "whatsapp_group_manual"].includes(p.channel) && ["draft", "held", "ready", "scheduled", "sending", "published", "failed", "unknown", "skipped", "manually_reported"].includes(p.state) && ["whapi", "publer", "meta", "manual", "unbound"].includes(p.provider) && ["schedule", "publication", "manual_open", "unknown"].includes(p.receiptKind), "PUBLICATION_FIELDS");
     invariant([p.providerReceiptId, p.postUrl, p.errorCode].every(value => value === null || typeof value === "string"), "PUBLICATION_FIELDS");
     invariant(typeof p.timezone === "string" && validTimezone(p.timezone) && [p.scheduledFor, p.providerReadAt, p.manualReportedAt].every(value => value === null || typeof value === "string" && validIso(value)), "PUBLICATION_TIME");
-    invariant(!Object.hasOwn(p, "confirmedAt") || p.confirmedAt === null || typeof p.confirmedAt === "string" && validIso(p.confirmedAt), "PUBLICATION_TIME");
+    invariant(!("confirmedAt" in p) || Object.hasOwn(p, "confirmedAt") && (p.confirmedAt === null || typeof p.confirmedAt === "string" && validIso(p.confirmedAt)), "PUBLICATION_TIME");
 }
 export function validateMarketingSnapshot(snapshot: MarketingSnapshot): void {
     const allowed = new Set(["source", "fetchedAt", "creatives", "publications", "ads", "scout", "inventory", "adSeries", "adReporting", "workbookUrl", "connectionErrors", "inventoryReadback"]);

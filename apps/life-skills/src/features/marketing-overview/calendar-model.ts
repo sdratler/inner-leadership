@@ -43,7 +43,7 @@ export function contentViewPublications(publications: readonly Publication[], vi
     view === "history" && ["published", "manually_reported", "skipped", "failed", "unknown"].includes(item.state));
 }
 export function publicationDisplayTime(item: Publication): string | null {
-  if (item.state === "published" && validIso(item.confirmedAt)) return item.confirmedAt!;
+  if (item.state === "published" && Object.hasOwn(item, "confirmedAt") && validIso(item.confirmedAt)) return item.confirmedAt!;
   if (item.state === "manually_reported" && item.manualReportedAt !== null && !validIso(item.manualReportedAt)) return null;
   if (item.state === "manually_reported" && validIso(item.manualReportedAt)) return item.manualReportedAt;
   return validIso(item.scheduledFor) ? item.scheduledFor : null;
