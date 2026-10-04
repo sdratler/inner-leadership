@@ -5,6 +5,7 @@ import { asId } from "../../../src/lib/ids.ts";
 import type { PracticeOccurrenceItem } from "../../../src/features/home-practice/types.ts";
 
 const css = ["../../../src/ui/workspace/workspace.css", "../../../src/ui/workspace/professional-ui.css", "../../../src/features/calendar/calendar.css"].map(path => readFileSync(new URL(path, import.meta.url), "utf8")).join("\n");
+const practiceCss = readFileSync(new URL("../../../src/features/home-practice/practice.css", import.meta.url), "utf8");
 const id = "00000000-0000-4000-8000-000000000001";
 const item: PracticeOccurrenceItem = {
   occurrence: { id: asId(id,"occurrence"), assignmentId: asId(id,"practice_assignment"), practiceVersionId: asId(id,"practice_version"), coordinationVersionId: asId(id,"coordination_version"), occursOn: "2026-10-05", period: "morning", state: "open", occursAt: "2026-10-05T04:35:00Z" },
@@ -18,6 +19,9 @@ for (const locale of ["en", "he"] as const) {
   // Render the retained TSX with the application's normal tsx loader instead.
   const entry = execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e",
     `import {createElement} from 'react';import {renderToStaticMarkup} from 'react-dom/server';import {PracticeCalendarEntry} from './src/features/home-practice/calendar-entry.tsx';process.stdout.write(renderToStaticMarkup(createElement(PracticeCalendarEntry,{item:${JSON.stringify(item)},locale:${JSON.stringify(locale)},onOpen:()=>{}})));`
+  ], {encoding:"utf8",windowsHide:true,timeout:10000});
+  const breadcrumb = execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e",
+    `import {createElement} from 'react';import {renderToStaticMarkup} from 'react-dom/server';import {Breadcrumb} from './src/ui/workspace/surfaces.tsx';process.stdout.write(renderToStaticMarkup(createElement(Breadcrumb,{label:'Location',items:[{label:${JSON.stringify(locale === "he" ? "תרגול" : "Practice")},href:'/${locale}/family/practice?caseId=case-one&audienceId=audience-one'},{label:'Check-ins'}]})));`
   ], {encoding:"utf8",windowsHide:true,timeout:10000});
   for (const width of [390, 768, 1440]) {
     test(`${locale} ${width}px practice entry preserves legible time and keyboard access`, async ({page}, testInfo) => {
@@ -37,6 +41,17 @@ for (const locale of ["en", "he"] as const) {
       await expect(agenda.locator(".ls-cal-practice-open")).toBeVisible();
       await expect(page.locator("main")).not.toContainText(item.practice.instructions);
       await page.screenshot({path:testInfo.outputPath(`practice-entry-${locale}-${width}.png`)});
+      // Real shared CSS formerly hid this breadcrumb, leaving no contextual
+      // return route once the redundant large back button was removed.
+      await page.setContent(`<div class="lsw lsu" dir="${locale === "he" ? "rtl" : "ltr"}"><div class="lsu-content"><nav class="lsu-breadcrumbs">Generic shell breadcrumb</nav><div class="lsu-page"><main class="lsw-practice-checkins">${breadcrumb}</main></div></div></div>`);
+      await page.addStyleTag({content:css+practiceCss});
+      const contextual = page.locator(".lsw-practice-checkins nav");
+      await expect(contextual).toBeVisible();
+      await expect(page.locator(".lsu-breadcrumbs")).toBeHidden();
+      const back = contextual.getByRole("link");
+      await expect(back).toHaveAttribute("href", `/${locale}/family/practice?caseId=case-one&audienceId=audience-one`);
+      await back.focus(); await expect(back).toBeFocused();
+      expect(await back.evaluate(node=>node.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
     });
   }
 }
