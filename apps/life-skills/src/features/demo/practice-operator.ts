@@ -1,6 +1,6 @@
 import 'server-only';
 import {AppError} from '../../lib/errors.ts';
-import {accountByEmail} from '../identity/data.ts';
+import {accountByEmail,lockWorkspace} from '../identity/data.ts';
 import {blindEmail} from '../identity/crypto.ts';
 import type {identityRuntime} from '../identity/runtime.ts';
 import type {demoOperatorPlan} from './operator-plan.ts';
@@ -18,7 +18,8 @@ type Runtime=Pick<Awaited<ReturnType<typeof identityRuntime>>,'config'|'store'|'
 export async function prepareDemoPractice(runtime:Runtime,selection:ReturnType<typeof demoOperatorPlan>,recipe:unknown,occursOn:string,permission:boolean){
  if(permission!==true)throw new AppError('FORBIDDEN');
  const {batch,ownerEmail,addresses}=selection,plan=demoPracticePlan(recipe,batch,occursOn);
- const selected=await runtime.store.transaction(async tx=>{
+ return runtime.store.transaction(async tx=>{
+  await lockWorkspace(tx,runtime.config.workspaceId);
   const owner=await accountByEmail(tx,runtime.config.workspaceId,blindEmail(ownerEmail,runtime.config.lookupKey));
   if(!owner||owner.role!=='practitioner'||owner.state!=='active'||!owner.emailVerifiedAt||await demoAccountBatch(tx,runtime.config.workspaceId,owner.id))throw new AppError('FORBIDDEN');
   const accounts:Record<string,AccountId>={};
@@ -50,9 +51,10 @@ export async function prepareDemoPractice(runtime:Runtime,selection:ReturnType<t
    const instants=possibleInstants(item.occursOn+'T'+item.localTime);
    if(instants.length!==1||(!saved.length&&Date.parse(instants[0]!)<=now))throw new AppError('INVALID_REQUEST');
   }
-  return {ownerId:owner.id,accounts,cases};
- });
- const service=new HomePracticeService(runtime.store,runtime.config,runtime.clock);
+ const selected={ownerId:owner.id,accounts,cases};
+ // Compose retained writers on this transaction. They retain every capability,
+ // ancestry, audience, digest and timing check, but never commit independently.
+ const service=new HomePracticeService({transaction:work=>work(tx)},runtime.config,runtime.clock);
  for(const item of plan){
   const context=selected.cases[item.caseSource]!;
   const responsibility:ResponsibilityInput={participant:item.role==='parent'?'parent':'client',period:'evening',
@@ -63,4 +65,5 @@ export async function prepareDemoPractice(runtime:Runtime,selection:ReturnType<t
     occurrences:[{occursOn:item.occursOn,period:'evening'}]},permission);
  }
  return {batch,createdOrReused:plan.length,accountChanges:0,providerEffects:0,paymentEffects:0,completionReportsWritten:0};
+ });
 }

@@ -397,7 +397,7 @@ test('demo practice denies unmarked families, missing capability, real accounts 
  await expect(practice.prepareDemoAsOperator(f.workspaceId,f.practitioner.actor.id,batch,command,input,true)).rejects.toMatchObject({code:'FORBIDDEN'});
 }));
 
-test('private practice recipe resolves only retained demo identities; rerun preserves ordinary edits and receipts',()=>using(async f=>{
+test.each(['normal','late_failure','stale_receipt'] as const)('private practice recipe is atomic and preserves retained identities/receipts: %s',mode=>using(async f=>{
  const minor=await f.prepare(),adult=await f.cases.prepareDemoCalendarAsOperator(f.practitioner.actor.id,f.adult.caseId,batch,key(),key(),true);
  const ownerEmail='fixtureowner@example.invalid',date=f.at(48).slice(0,10);
  await f.pool.query('UPDATE ls_identity.accounts SET email_blind=$3,email_ciphertext=$4 WHERE workspace_id=$1 AND id=$2',
@@ -408,6 +408,30 @@ test('private practice recipe resolves only retained demo identities; rerun pres
   {...marker,stableKey:'practice-adult',caseKey:'case-adult',responsibilities:[{key:'adult-action',participantKey:'adult-a',text:'Write one reflection.',localTime:'20:00'}]},
  ]};
  const runtime={config:f.config,store:f.db.store,clock:systemClock},selection={batch,ownerEmail,addresses:f.addresses},before=await f.counts();
+ if(mode==='late_failure'){
+  const name='synthetic_practice_failure_'+randomUUID().replaceAll('-','');
+  try{
+   await f.pool.query(`CREATE FUNCTION ${name}() RETURNS trigger LANGUAGE plpgsql AS $$BEGIN IF NEW.workspace_id='${f.workspaceId}'::uuid AND NEW.entity_kind='assignment' AND NEW.source_key='${batch}_practice_parent_v1' THEN RAISE EXCEPTION 'synthetic late failure'; END IF; RETURN NEW; END$$`);
+   await f.pool.query(`CREATE TRIGGER ${name} BEFORE INSERT ON ls_demo.records FOR EACH ROW EXECUTE FUNCTION ${name}()`);
+   await expect(prepareDemoPractice(runtime,selection,recipe,date,true)).rejects.toMatchObject({code:'UNAVAILABLE'});
+   for(const table of ['ls_practice.practice_assignments','ls_practice.practice_occurrences','ls_practice.action_history'])expect((await f.pool.query(`SELECT count(*)::int AS count FROM ${table} WHERE workspace_id=$1`,[f.workspaceId])).rows[0].count).toBe(0);
+   expect((await f.pool.query("SELECT count(*)::int AS count FROM ls_calendar.commands WHERE workspace_id=$1 AND operation='demo:practice'",[f.workspaceId])).rows[0].count).toBe(0);
+   expect((await f.pool.query("SELECT count(*)::int AS count FROM ls_demo.records WHERE workspace_id=$1 AND entity_kind='assignment'",[f.workspaceId])).rows[0].count).toBe(0);
+   expect(await f.counts()).toEqual(before);
+  }finally{await f.pool.query(`DROP TRIGGER IF EXISTS ${name} ON ls_demo.records`);await f.pool.query(`DROP FUNCTION IF EXISTS ${name}()`);}
+  return;
+ }
+ if(mode==='stale_receipt'){
+  const service=new HomePracticeService(f.db.store,f.config,systemClock);
+  const saved=await service.prepareDemoAsOperator(f.workspaceId,f.practitioner.actor.id,batch,`${batch}_practice_adult_v1`,{
+   caseId:f.adult.caseId,audienceId:adult.audienceId,demoAudienceAccountIds:[f.actors.adult!.id],templateKey:'DEMO',templateVersion:'owner-practice-v1',instructions:'DEMO — Older retained recipe',startsOn:date,endsOn:date,
+   responsibility:{participant:'client',period:'evening',assigneeAccountIds:[f.actors.adult!.id],assistedByParentAccountIds:[],reminderRecipients:[],completionMode:'any_assignee',weekdays:[0,1,2,3,4,5,6],localTime:'20:00',timezone:'Asia/Jerusalem',timeOrigin:'practitioner',foldChoice:null},occurrences:[{occursOn:date,period:'evening'}]},true);
+  await expect(prepareDemoPractice(runtime,selection,recipe,date,true)).rejects.toMatchObject({code:'CONFLICT'});
+  expect((await f.pool.query('SELECT id FROM ls_practice.practice_assignments WHERE workspace_id=$1',[f.workspaceId])).rows).toEqual([{id:saved.assignmentId}]);
+  expect((await f.pool.query("SELECT count(*)::int AS count FROM ls_calendar.commands WHERE workspace_id=$1 AND operation='demo:practice'",[f.workspaceId])).rows[0].count).toBe(1);
+  expect((await f.pool.query("SELECT count(*)::int AS count FROM ls_demo.records WHERE workspace_id=$1 AND entity_kind='assignment'",[f.workspaceId])).rows[0].count).toBe(1);
+  expect(await f.counts()).toEqual(before);return;
+ }
  await expect(prepareDemoPractice(runtime,selection,recipe,date,false)).rejects.toMatchObject({code:'FORBIDDEN'});
  const between={...runtime,clock:{now:()=>new Date(possibleInstants(date+'T18:27')[0]!)}};
  await expect(prepareDemoPractice(between,selection,recipe,date,true)).rejects.toMatchObject({code:'INVALID_REQUEST'});
