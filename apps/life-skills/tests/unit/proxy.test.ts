@@ -148,7 +148,7 @@ describe("actual practitioner Calendar login return perimeter", () => {
 
 describe("actual practice proxy validates transport before header rewriting", () => {
   const origin = "https://life-skills.bneineviimacademy.org";
-  const paths = ["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins", "/api/updates"];
+  const paths = ["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins", "/api/updates", "/api/owner-digest"];
   function configured() {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("LS_APP_MODE", "foundation_locked");
@@ -195,6 +195,16 @@ describe("actual practice proxy validates transport before header rewriting", ()
     for (const request of [new NextRequest(`${origin}/api/home-practice`),
       new NextRequest("http://127.0.0.1:8080/api/home-practice", { headers: { host: new URL(origin).host, "x-forwarded-proto": "https" } })])
       expect(proxy(request).headers.get("x-middleware-next")).toBe("1");
+  });
+  it("rejects a direct wrong host or HTTP owner digest before forwarding can conceal it", () => {
+    configured();
+    for (const url of ["https://untrusted.invalid/api/owner-digest", "http://life-skills.bneineviimacademy.org/api/owner-digest"]) {
+      const response = proxy(new NextRequest(url));
+      expect(response.status).toBe(503);
+      expect(response.headers.get("x-middleware-next")).toBeNull();
+      expect(response.headers.get("x-middleware-override-headers")).toBeNull();
+    }
+    expect(proxy(new NextRequest(origin + "/api/owner-digest")).headers.get("x-middleware-next")).toBe("1");
   });
   it("does not manufacture HTTPS for a foundation HTTP loopback (not private authentication proof)", () => {
     configured(); vi.stubEnv("NODE_ENV", "development"); vi.stubEnv("LS_APP_ORIGIN", "http://127.0.0.1:3001");
