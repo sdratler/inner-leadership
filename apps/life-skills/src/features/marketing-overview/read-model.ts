@@ -43,13 +43,46 @@ export function assertMarketingOwner(actor: {
 }): void {
     invariant(actor.active && actor.role === "practitioner" && actor.workspaceId === owner.workspaceId && actor.accountId === owner.accountId, "NOT_FOUND");
 }
+function validateCreative(asset: CreativeVersion): void {
+    invariant(typeof asset === "object" && asset !== null && !Array.isArray(asset), "CREATIVE_FIELDS");
+    const required = ["assetId", "revision", "locale", "width", "height", "imageUrl", "title", "caption", "contentDigest", "review", "approvedDigest"];
+    invariant(required.every(key => Object.hasOwn(asset, key)), "CREATIVE_FIELDS");
+    invariant(typeof asset.assetId === "string" && /^[A-Za-z0-9._-]{1,200}$/.test(asset.assetId) && Number.isSafeInteger(asset.revision) && asset.revision > 0 && asset.revision <= 999999 && ["en", "he"].includes(asset.locale), "CREATIVE_IDENTITY");
+    // Zero means an unrecorded size: preserve the record, but never use it as a
+    // valid next/image dimension or infer placement eligibility from it.
+    invariant([asset.width, asset.height].every(value => Number.isSafeInteger(value) && value >= 0 && value <= 32768), "CREATIVE_DIMENSIONS");
+    invariant(typeof asset.title === "string" && typeof asset.caption === "string" && typeof asset.contentDigest === "string" && /^[a-f0-9]{64}$/.test(asset.contentDigest) && ["draft", "in_review", "approved", "retired"].includes(asset.review), "CREATIVE_FIELDS");
+    invariant((asset.imageUrl === null || typeof asset.imageUrl === "string") && (asset.approvedDigest === null || typeof asset.approvedDigest === "string" && /^[a-f0-9]{64}$/.test(asset.approvedDigest)), "CREATIVE_FIELDS");
+    invariant(["surface", "libraryState"].every(key => !Object.hasOwn(asset, key) || typeof asset[key as "surface" | "libraryState"] === "string") && ["sourceUrl", "holdReason"].every(key => !Object.hasOwn(asset, key) || asset[key as "sourceUrl" | "holdReason"] === null || typeof asset[key as "sourceUrl" | "holdReason"] === "string"), "CREATIVE_FIELDS");
+}
+function validatePublication(p: Publication): void {
+    invariant(typeof p === "object" && p !== null && !Array.isArray(p), "PUBLICATION_FIELDS");
+    const required = ["id", "assetId", "creativeRevision", "creativeDigest", "channel", "destinationLabel", "scheduledFor", "timezone", "state", "provider", "providerReceiptId", "providerReadAt", "postUrl", "receiptKind", "manualReportedAt", "errorCode"];
+    invariant(required.every(key => Object.hasOwn(p, key)), "PUBLICATION_FIELDS");
+    // An unresolved source slot may have an empty asset/digest. Keep its honest
+    // unavailable state instead of inventing a binding or rejecting all slots.
+    invariant(typeof p.id === "string" && p.id.length > 0 && typeof p.assetId === "string" && Number.isSafeInteger(p.creativeRevision) && p.creativeRevision > 0 && typeof p.creativeDigest === "string" && typeof p.destinationLabel === "string", "PUBLICATION_FIELDS");
+    const assetKey = /^[A-Za-z0-9._-]{1,200}$/.test(p.assetId);
+    const explicitMissing = p.state === "draft" && p.provider === "unbound" && p.errorCode === "ASSET_BINDING_UNAVAILABLE";
+    invariant(assetKey && /^[a-f0-9]{64}$/.test(p.creativeDigest) || p.assetId === "" && p.creativeDigest === "" || assetKey && p.creativeDigest === "" && explicitMissing, "PUBLICATION_BINDING");
+    invariant(["whatsapp_status", "facebook_page", "instagram", "facebook_group_manual", "whatsapp_group_manual"].includes(p.channel) && ["draft", "ready", "scheduled", "sending", "published", "failed", "unknown", "skipped", "manually_reported"].includes(p.state) && ["whapi", "publer", "meta", "manual", "unbound"].includes(p.provider) && ["schedule", "publication", "manual_open", "unknown"].includes(p.receiptKind), "PUBLICATION_FIELDS");
+    invariant([p.providerReceiptId, p.postUrl, p.errorCode].every(value => value === null || typeof value === "string"), "PUBLICATION_FIELDS");
+    invariant(typeof p.timezone === "string" && validTimezone(p.timezone) && [p.scheduledFor, p.providerReadAt, p.manualReportedAt].every(value => value === null || typeof value === "string" && validIso(value)), "PUBLICATION_TIME");
+}
 export function validateMarketingSnapshot(snapshot: MarketingSnapshot): void {
-    const allowed = new Set(["source", "fetchedAt", "creatives", "publications", "ads", "scout", "inventory", "adSeries", "adReporting", "workbookUrl", "connectionErrors"]);
+    const allowed = new Set(["source", "fetchedAt", "creatives", "publications", "ads", "scout", "inventory", "adSeries", "adReporting", "workbookUrl", "connectionErrors", "inventoryReadback"]);
     invariant(Object.keys(snapshot).every(key => allowed.has(key)) && ["source", "fetchedAt", "creatives", "publications", "ads", "scout"].every(key => key in snapshot), "MARKETING_FIELDS");
     invariant(["synthetic", "provider_readback", "registry_only"].includes(snapshot.source) && (snapshot.fetchedAt === null || validIso(snapshot.fetchedAt)), "MARKETING_PROVENANCE");
     invariant(snapshot.creatives.length <= 1000 && snapshot.publications.length <= 2000 && snapshot.ads.length <= 200, "MARKETING_PAGE_BOUND");
-    for (const p of snapshot.publications)
-        invariant(validTimezone(p.timezone) && (p.scheduledFor === null || validIso(p.scheduledFor)), "PUBLICATION_TIME");
+    for (const asset of snapshot.creatives) validateCreative(asset);
+    if(snapshot.inventoryReadback){const read=snapshot.inventoryReadback;invariant(validIso(read.lastAttemptAt)&&(read.lastSuccessfulReadAt===null||validIso(read.lastSuccessfulReadAt))&&(read.status==="available"?read.lastSuccessfulReadAt!==null&&read.errorCode===null:read.status==="error"&&read.errorCode==="creative_inventory_unavailable"),"MARKETING_INVENTORY_PROVENANCE");}
+    if(snapshot.inventory!==undefined){
+        const counts=snapshot.inventory;
+        invariant(typeof counts==="object"&&counts!==null&&!Array.isArray(counts),"MARKETING_INVENTORY_FIELDS");
+        const numericFields=["files","concepts","publishablePosts","heStatusReady","heFeedReady","enFeedReady","adEligible","queued","published","needsApproval","needsResizeOrCaption","heldMissing"] as const;
+        invariant(numericFields.every(key=>Object.hasOwn(counts,key)&&Number.isSafeInteger(counts[key])&&counts[key]>=0)&&Object.hasOwn(counts,"inLiveAds")&&(counts.inLiveAds===null||Number.isSafeInteger(counts.inLiveAds)&&counts.inLiveAds>=0)&&Object.hasOwn(counts,"partial")&&typeof counts.partial==="boolean"&&Object.hasOwn(counts,"asOf")&&typeof counts.asOf==="string"&&validIso(counts.asOf),"MARKETING_INVENTORY_FIELDS");
+    }
+    for (const p of snapshot.publications) validatePublication(p);
     for (const a of snapshot.ads)
         invariant((a.spendMinor === null || Number.isSafeInteger(a.spendMinor) && a.spendMinor >= 0) && (a.inquiries === null || Number.isSafeInteger(a.inquiries) && a.inquiries >= 0), "ADS_UNKNOWN_IS_NOT_ZERO");
     for (const point of snapshot.adSeries ?? [])

@@ -18,6 +18,10 @@ function setup(){
  calls.context.mockResolvedValue({actor:{role:'practitioner'},runtime:{}});calls.digest.mockResolvedValue({syntheticDigest:true});
 }
 for(const locale of ['he','en'] as const){
+ it('preserves the actual graphics page and filters while sharing section normalization',async()=>{
+  setup();const result=await Page({params:Promise.resolve({locale}),searchParams:Promise.resolve({section:'creatives',page:'2',placement:'facebook_feed',language:'he',search:'DEMO'})});
+  expect(result.props.creativeQuery).toMatchObject({section:'creatives',page:'2',placement:'facebook_feed',language:'he',search:'DEMO'});expect(calls.digest).not.toHaveBeenCalled();
+ });
  it('denies the owner overview for another practitioner without exposing either read model',async()=>{
   setup();calls.context.mockRejectedValueOnce(new AppError('FORBIDDEN'));
   await expect(Page({params:Promise.resolve({locale}),searchParams:Promise.resolve({section:'overview'})})).rejects.toThrow('NOT_FOUND');

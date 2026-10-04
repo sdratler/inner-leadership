@@ -3,7 +3,7 @@ import {approvedCreative} from './read-model.ts';
 
 export const creativePlacements = ['all','facebook_feed','whatsapp_status','instagram_feed','other'] as const;
 export const creativeApprovals = ['all','needs_approval','approved','retired','rejected','unknown'] as const;
-export type CreativeQuery = {filter?:string|undefined;language?:string|undefined;placement?:string|undefined;approval?:string|undefined;search?:string|undefined};
+export type CreativeQuery = {filter?:string|undefined;language?:string|undefined;placement?:string|undefined;approval?:string|undefined;search?:string|undefined;page?:string|undefined};
 export type CreativeFilters = {language:'all'|'he'|'en';placement:typeof creativePlacements[number];approval:typeof creativeApprovals[number];search:string};
 
 /** Categories come from the registered surface, never image dimensions or an inferred entitlement. */
@@ -44,4 +44,11 @@ export function filterCreatives(assets:readonly CreativeVersion[],filters:Creati
   if(filters.approval!=='all'&&filters.approval!=='needs_approval'&&creativeReviewState(asset)!==filters.approval)return false;
   return !search||[asset.title,asset.caption,asset.assetId,asset.surface,asset.holdReason,asset.libraryState].filter(Boolean).join(' ').toLocaleLowerCase().includes(search);
  });
+}
+/** Bound original-byte transfers without modifying the owner's artwork. */
+export function creativePage(assets:readonly CreativeVersion[],value:string|undefined){
+ const size=12,pages=Math.max(1,Math.ceil(assets.length/size));
+ const requested=value&&/^[1-9]\d{0,3}$/.test(value)?Number(value):1;
+ const page=Math.min(requested,pages);
+ return {items:assets.slice((page-1)*size,page*size),page,pages,total:assets.length};
 }

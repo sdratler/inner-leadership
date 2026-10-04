@@ -107,6 +107,7 @@ export interface MarketingSnapshot {
     adReporting?: AdReporting;
     workbookUrl?: string | null;
     connectionErrors?: readonly string[];
+    inventoryReadback?: {status:"available"|"error";lastSuccessfulReadAt:string|null;lastAttemptAt:string;errorCode:"creative_inventory_unavailable"|null};
     scout: {
         readyDrafts: number | null;
         sourceUrl: string | null;

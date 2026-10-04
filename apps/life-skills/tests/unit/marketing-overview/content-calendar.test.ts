@@ -9,6 +9,12 @@ const publication=(id:string,time:string|null,state:Publication["state"]="schedu
 const snapshot=(items:readonly Publication[],creatives:readonly CreativeVersion[]=[asset]):MarketingSnapshot=>({source:"synthetic",fetchedAt:"2026-10-01T08:00:00Z",creatives,publications:items,ads:[],scout:{readyDrafts:null,sourceUrl:null,lastChecked:null,status:"unbound"}});
 const render=(items:readonly Publication[],query:ContentCalendarQuery={},locale:"en"|"he"="en",creatives:readonly CreativeVersion[]=[asset])=>renderToStaticMarkup(React.createElement(MarketingContentCalendar,{locale,snapshot:snapshot(items,creatives),query,renderedAt:"2026-10-01T08:00:00Z",thumbnail:a=>React.createElement("span",{"data-thumbnail":a.assetId+":"+a.revision},"DEMO exact thumbnail")}));
 describe("retained read-only Marketing calendar controls",()=>{
+ it.each(['month','week','agenda'])('bounds %s automatic original previews across repeated queue/secondary records without dropping record links',layout=>{
+  const items=Array.from({length:2000},(_,index)=>publication('many-'+index,'2026-10-01T17:00:00Z'));
+  const html=render(items,{layout,month:'2026-10',date:'2026-10-01'});
+  expect((html.match(/data-thumbnail=/g)??[])).toHaveLength(12);expect(html).toContain('publication=many-1999');expect(html).toContain('Ordered planned and ready records: 2000');expect(html).toContain('Open a record for its full preview');
+  const detail=render(items,{layout,publication:'many-1999'});expect((detail.match(/data-thumbnail=/g)??[])).toHaveLength(1);expect(detail).toContain('Back to content calendar');
+ });
  it.each(['en','he'] as const)("uses only exact same-origin CSP-compatible originals for %s calendar and gallery images",locale=>{
   const original={...asset,imageUrl:'https://drive.google.com/file/d/synthetic_original/view'},items=[publication('same-origin','2026-10-01T17:00:00Z')];
   const expected=`/api/marketing/assets/${original.assetId}?revision=2&amp;digest=${digest}`;

@@ -21,7 +21,7 @@ afterEach(() => vi.unstubAllEnvs());
 describe('owned community draft API stays behind the existing private perimeter',()=>{
  it('keeps the explicit app enablement gate instead of relying on a generic success page',()=>{
   const origin='https://life-skills.bneineviimacademy.org';vi.stubEnv('NODE_ENV','production');vi.stubEnv('LS_APP_MODE','foundation_locked');vi.stubEnv('LS_APP_ORIGIN',origin);
-    for(const path of ['/api/community-drafts','/api/community-settings','/api/community-threads','/api/owner-digest']){
+    for(const path of ['/api/community-drafts','/api/community-settings','/api/community-threads','/api/owner-digest','/api/marketing/assets/DEMO-image']){
     vi.stubEnv('LS_PRIVATE_APP_ENABLED','false');expect(proxy(new NextRequest(origin+path)).status).toBe(503);
     vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');expect(proxy(new NextRequest(origin+path)).status).toBe(200);
    }
@@ -39,6 +39,11 @@ describe('exact private Marketing media perimeter',()=>{
  });
 });
 describe('actual bounded Marketing login-return proxy',()=>{
+ it.each(['he','en']as const)('preserves the exact bounded %s gallery page after an expired session without trusting the caller return',locale=>{
+  const origin='https://life-skills.bneineviimacademy.org',path=`/${locale}/app/marketing`;vi.stubEnv('NODE_ENV','production');vi.stubEnv('LS_APP_MODE','foundation_locked');vi.stubEnv('LS_APP_ORIGIN',origin);vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');
+  for(const section of ['creatives','needs_approval'])expect(proxy(new NextRequest(origin+path+'?section='+section+'&page=2&language=en',{headers:{'x-ls-practitioner-return':'https://untrusted.invalid'}})).headers.get('x-middleware-request-x-ls-practitioner-return')).toBe(path+'?section='+section+'&language=en&page=2');
+  for(const query of ['page=2&page=2','page=0','page=01','page=10000','page=constructor'])expect(proxy(new NextRequest(origin+path+'?section=creatives&'+query)).headers.get('x-middleware-request-x-ls-practitioner-return')).toBe(path+'?section=creatives');
+ });
  it.each(['he','en'])('preserves the %s exact Community thread through the actual proxy login return',locale=>{
   const origin='https://life-skills.bneineviimacademy.org',path=`/${locale}/app/marketing`,id='123e4567-e89b-42d3-a456-426614174000';
   vi.stubEnv('NODE_ENV','production');vi.stubEnv('LS_APP_MODE','foundation_locked');vi.stubEnv('LS_APP_ORIGIN',origin);vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');
@@ -160,7 +165,7 @@ describe("actual practitioner Calendar login return perimeter", () => {
 
 describe("actual practice proxy validates transport before header rewriting", () => {
   const origin = "https://life-skills.bneineviimacademy.org";
-  const paths = ["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins", "/api/updates", "/api/owner-digest", "/api/private/contact-acquisition", "/api/community-threads", "/en/app/marketing", "/he/app/marketing", "/en/app/clients", "/he/app/reports", "/he/app/settings/content-voice", "/en/family/calendar", "/he/client/calendar"];
+  const paths = ["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins", "/api/updates", "/api/owner-digest", "/api/community-threads", "/api/private/contact-acquisition", "/en/app/marketing", "/he/app/marketing", "/en/app/clients", "/he/app/reports", "/he/app/settings/content-voice", "/en/family/calendar", "/he/client/calendar"];
   function configured() {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("LS_APP_MODE", "foundation_locked");

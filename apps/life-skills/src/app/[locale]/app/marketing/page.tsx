@@ -17,7 +17,7 @@ export default async function Page({params,searchParams}:{params:Promise<{locale
  try{await requireWorkspaceRole("practitioner");}catch{notFound();}
  const snapshot=await loadMarketingSnapshot();
   const rawQuery=await searchParams;
- const query:ContentCalendarQuery&CreativeQuery&{section?:string|undefined}=Object.fromEntries(["section","filter","month","layout","date","channel","state","from","to","publication","language","placement","approval","search"].map(key=>[key,typeof rawQuery[key]==="string"?rawQuery[key]:undefined]));
+ const query:ContentCalendarQuery&CreativeQuery&{section?:string|undefined}=Object.fromEntries(["section","filter","month","layout","date","channel","state","from","to","publication","language","placement","approval","search","page"].map(key=>[key,typeof rawQuery[key]==="string"?rawQuery[key]:undefined]));
   query.section=normalizeMarketingSection(query.section);
   const digest=query.section==="overview"?await (async()=>{
    try{const context=await ownerDigestContext((await headers()).get("cookie"));return await loadOwnerDigest(context.actor,context.runtime,snapshot,locale);}
