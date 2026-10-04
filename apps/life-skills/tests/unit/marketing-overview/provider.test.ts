@@ -101,6 +101,14 @@ test.each([readAt,"invalid",17,null])("inherited confirmation evidence is reject
  expect((await loadMarketingSnapshot()).inventoryReadback?.status).toBe("error");
 });
 
+test.each(["draft","held","ready","scheduled","sending","published","failed","unknown","skipped","manually_reported"])("unbound %s records cannot carry delivery evidence even with an exact digest",async state=>{
+ const {loadMarketingSnapshot}=await import("../../../src/features/marketing-overview/provider.ts");
+ for(const patch of [{postUrl:"https://www.facebook.com/demo/posts/123"},{providerReceiptId:"DEMO-receipt"},{providerReadAt:readAt},{manualReportedAt:readAt},{confirmedAt:readAt},{receiptKind:"publication"},{receiptKind:"schedule"},{receiptKind:"manual_open"}]){
+  mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,publications:[{...publication(),state,...patch}]}});
+  expect((await loadMarketingSnapshot()).inventoryReadback?.status).toBe("error");
+ }
+});
+
 test("current publisher held and confirmed timestamp fields are validated without upgrading their states",async()=>{
  const {loadMarketingSnapshot}=await import("../../../src/features/marketing-overview/provider.ts");
  const held={...publication(),state:"held",provider:"whapi",confirmedAt:null,errorCode:"PUBLISHER_HELD"};
