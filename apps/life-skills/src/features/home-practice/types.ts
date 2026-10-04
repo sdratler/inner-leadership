@@ -63,10 +63,11 @@ export interface CoordinationVersion {
 }
 
 export interface PracticeCoordinationPage {
-  readOnlyReason?: "client_responsibility" | "legacy_child_assignment";
   ownAccountId: AccountId;
   role: "parent" | "adult_client";
   eligibleAccountIds: readonly AccountId[];
+  /** Parent-only editing must not silently remove retained child responsibility. */
+  readOnlyReason?: "client_responsibility" | "legacy_child_assignment";
   /** Native immutable routing authority, distinct from the selected version. */
   reminderRoutingAccountIds?: readonly AccountId[];
   /** Server-clock effective selection, independent of the bounded history. */
