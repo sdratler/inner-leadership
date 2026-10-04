@@ -17,7 +17,7 @@ it.each(['intake_submitted','awaiting_payment','payment_verified','awaiting_book
   if(sql.includes('SELECT a.id FROM ls_identity.sessions'))return [{id:actor.id}] as T[];
   if(sql.includes('FROM ls_identity.accounts a JOIN'))return [actor] as T[];
   if(sql.includes('FROM ls_onboarding.prospect_journeys'))return [{leadId:'LS-LEAD-submitted',state,paymentVerified:false,bookingConfirmed:false}] as T[];
-  if(sql.includes('COUNT(DISTINCT i.stable_lead_ref)')){formIds=JSON.parse(String(args[2]));return [{total:String((formIds as string[]).length)}] as T[];}
+  if(sql.includes('COUNT(DISTINCT i.stable_lead_ref)')){formIds=JSON.parse(String(args[1]));return [{total:String((formIds as string[]).length)}] as T[];}
   if(sql.startsWith('SET TRANSACTION'))return [] as T[];
   throw Error('UNEXPECTED_QUERY');
  }})};
@@ -39,25 +39,39 @@ it.each(['opt out','opted-out','OPT_OUT','do_not_contact','Do-Not-Contact','Clos
  }})};
  const result=await readIntakeFacts(store,actor,rows,new Date('2026-10-04T12:00:00Z'));
  expect(result.awaitingForm).toBe(1);expect(facts).toHaveLength(2);
- expect(facts[0]![1]).toBe('["LS-LEAD-allowed"]');expect(facts[1]![2]).toBe('["LS-LEAD-allowed"]');
+ expect(facts[0]![1]).toBe('["LS-LEAD-allowed"]');expect(facts[1]![1]).toBe('["LS-LEAD-allowed"]');
  expect(rows[0]!.stage).toBe(value);expect(rows[1]!.outcome).toBe(value);
 });
 const now=new Date('2026-10-04T12:00:00Z');
 const prospect={leadId:'LS-LEAD-allowed',stage:'Prospect',outcome:'',nextAction:'Synthetic follow-up',dueDate:'2026-10-04'} as Prospect;
 const marketing:MarketingSnapshot={source:'registry_only',fetchedAt:null,creatives:[],publications:[],ads:[],scout:{readyDrafts:null,sourceUrl:null,lastChecked:null,status:'unbound'},inventory:{files:0,concepts:0,publishablePosts:0,heStatusReady:0,heFeedReady:0,enFeedReady:0,adEligible:0,inLiveAds:null,queued:0,published:0,needsApproval:0,needsResizeOrCaption:0,heldMissing:0,partial:false,asOf:now.toISOString()}};
-function digestRuntime(finalFailure?:'UNAUTHENTICATED'|'FORBIDDEN',queries:string[]=[]){
+function digestRuntime(finalFailure?:'UNAUTHENTICATED'|'FORBIDDEN',queries:string[]=[],currentActor=actor,ownerVerified=true){
  let accountReads=0;
  const store:IdentityStore={transaction:async work=>work({query:async<T extends object>(sql:string)=>{
   queries.push(sql);
-  if(sql.includes('SELECT a.id FROM ls_identity.sessions'))return [{id:actor.id}] as T[];
-  if(sql.includes('FROM ls_identity.accounts a JOIN')){accountReads++;if(finalFailure&&accountReads===3)throw new AppError(finalFailure);return [actor] as T[];}
+  if(sql.includes('SELECT a.id FROM ls_identity.sessions'))return [{id:currentActor.id}] as T[];
+  if(sql.includes('a.email_blind=$2'))return [{...actor,emailVerifiedAt:ownerVerified?now:null}] as T[];
+  if(sql.includes('FROM ls_identity.accounts a JOIN')){accountReads++;if(finalFailure&&accountReads===3)throw new AppError(finalFailure);return [currentActor] as T[];}
   if(sql.includes('FROM ls_calendar.tasks'))return [{due:'2',overdue:'1',future:'0'}] as T[];
   if(sql.includes('COUNT(DISTINCT i.stable_lead_ref)'))return [{total:'1'}] as T[];
   if(sql.startsWith('SET TRANSACTION')||sql.includes('FROM ls_demo.records')||sql.includes('FROM ls_onboarding.prospect_journeys'))return [] as T[];
   throw Error('UNEXPECTED_QUERY');
  }})};
- return {store,clock:{now:()=>now}} as Parameters<typeof loadOwnerDigest>[1];
+ return {store,clock:{now:()=>now},config:{workspaceId:actor.workspaceId,lookupKey:Buffer.alloc(32,7)}} as Parameters<typeof loadOwnerDigest>[1];
 }
+it.each(['another practitioner','another workspace','unverified owner'])('denies %s before any authoritative or aggregate source read',async boundary=>{
+ const current=(boundary==='another practitioner'?{...actor,id:'DEMO-other'}:boundary==='another workspace'?{...actor,workspaceId:'DEMO-other-workspace'}:actor) as Actor;
+ const queries:string[]=[];prospectsRead.mockClear();prospectsRead.mockResolvedValue([]);
+ await expect(loadOwnerDigest(current,digestRuntime(undefined,queries,current,boundary!=='unverified owner'),marketing,'en')).rejects.toMatchObject({code:'FORBIDDEN'});
+ expect(prospectsRead).not.toHaveBeenCalled();expect(queries.some(sql=>/ls_calendar.tasks|ls_demo.records|ls_onboarding.prospect_journeys|ls_intake.pre_enrollment_invitations/.test(sql))).toBe(false);
+});
+it('queries matching pending invitations workspace-wide without filtering their practitioner creator',async()=>{
+ const queries:string[]=[],runtime=digestRuntime(undefined,queries);
+ expect((await readIntakeFacts(runtime.store,actor,[prospect],now)).awaitingForm).toBe(1);
+ const sql=queries.find(sql=>sql.includes('COUNT(DISTINCT i.stable_lead_ref)'))!;
+ expect(sql).not.toContain('created_by_account_id');expect(sql).toContain('i.workspace_id=$1');
+ expect(sql).toMatch(/revoked_at IS NULL.*consumed_at IS NULL.*expires_at>/s);expect(sql).toContain('pre_enrollment_receipts');
+});
 const invalidProjections=[
  ['duplicate IDs',[prospect,{...prospect}]],
  ['malformed ID',[{...prospect,leadId:'not-a-lead'}]],

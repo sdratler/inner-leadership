@@ -9,6 +9,7 @@ vi.mock('../../../src/features/owner-digest/runtime.ts',()=>({ownerDigestContext
 import Page from '../../../src/app/[locale]/app/marketing/page.tsx';
 import {MarketingDashboard} from '../../../src/ui/revamp/marketing-dashboard.tsx';
 import type {MarketingSnapshot} from '../../../src/features/marketing-overview/contracts.ts';
+import {AppError} from '../../../src/lib/errors.ts';
 const snapshot:MarketingSnapshot={source:'registry_only',fetchedAt:null,creatives:[],publications:[],ads:[],scout:{readyDrafts:null,sourceUrl:null,lastChecked:null,status:'unbound'}};
 function setup(){
  for(const call of Object.values(calls))call.mockReset();
@@ -17,6 +18,15 @@ function setup(){
  calls.context.mockResolvedValue({actor:{role:'practitioner'},runtime:{}});calls.digest.mockResolvedValue({syntheticDigest:true});
 }
 for(const locale of ['he','en'] as const){
+ it('omits the private owner digest for another practitioner without breaking permitted marketing sections',async()=>{
+  setup();calls.context.mockRejectedValueOnce(new AppError('FORBIDDEN'));
+  const result=await Page({params:Promise.resolve({locale}),searchParams:Promise.resolve({section:'overview'})});
+  expect(result.type).toBe(MarketingDashboard);expect(result.props.ownerDigest).toBeUndefined();expect(calls.digest).not.toHaveBeenCalled();
+ });
+ it('does not hide an actual digest failure as another practitioner',async()=>{
+  setup();calls.digest.mockRejectedValueOnce(new AppError('UNAVAILABLE'));
+  await expect(Page({params:Promise.resolve({locale}),searchParams:Promise.resolve({section:'overview'})})).rejects.toMatchObject({code:'UNAVAILABLE'});
+ });
  it.each([undefined,'overview','calendar','bogus',['ads','community']])(`${locale}: loads the owner summary for an overview after normalizing %j`,async section=>{
   setup();const result=await Page({params:Promise.resolve({locale}),searchParams:Promise.resolve({section})});
   expect(result.type).toBe(MarketingDashboard);expect(result.props.ownerDigest).toEqual({syntheticDigest:true});

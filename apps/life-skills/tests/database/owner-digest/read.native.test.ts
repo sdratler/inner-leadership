@@ -3,7 +3,10 @@ import {randomBytes,randomUUID,createHash} from "node:crypto";
 vi.mock("server-only",()=>({}));
 import {fixture,poolStore,type Fixture} from "../calendar/fixture.ts";
 import {InternalTaskService} from "../../../src/features/calendar/tasks.ts";
-import {readTaskCounts,readIntakeFacts} from "../../../src/features/owner-digest/runtime.ts";
+import {readTaskCounts,readIntakeFacts,loadOwnerDigest} from "../../../src/features/owner-digest/runtime.ts";
+import {blindEmail} from "../../../src/features/identity/crypto.ts";
+import {OWNER_REPORT_RECIPIENT} from "../../../src/features/owner-digest/email.ts";
+import type {MarketingSnapshot} from "../../../src/features/marketing-overview/contracts.ts";
 import {contentDayKey} from "../../../src/features/marketing-overview/calendar-model.ts";
 import type {Prospect} from "../../../src/features/prospects/bridge.ts";
 let f:Fixture;const now=new Date(),today=contentDayKey(now.toISOString()),store=()=>poolStore(f.pool);
@@ -47,6 +50,41 @@ test("one canonical submission excludes other valid invitations across every lat
   expect(facts.awaitingForm,state).toBe(0);expect(facts.journeys.get(lead)?.journeyState).toBe(state);
  }
  expect((await f.pool.query('SELECT consumed_at,revoked_at FROM ls_intake.pre_enrollment_invitations WHERE workspace_id=$1 AND invitation_id=$2',[f.workspaceId,invitations[1]])).rows[0]).toEqual({consumed_at:null,revoked_at:null});
+});
+test('pending forms include other practitioners only within the same workspace and valid invitation lifecycle',async()=>{
+ const other=await fixture(),lead='LS-LEAD-handover-'+randomUUID(),row={leadId:lead,stage:'Prospect',outcome:'',nextAction:'',dueDate:''} as Prospect;
+ try{
+  await f.pool.query("UPDATE ls_identity.accounts SET role='practitioner' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.outsider.actor.id]);
+  const insert=async(workspace:string,creator:string,expired=false,revoked=false)=>{
+   const id=randomUUID();await f.pool.query(`INSERT INTO ls_intake.pre_enrollment_invitations(workspace_id,invitation_id,token_digest,stable_lead_ref,child_slots,expires_at,created_at,created_by_account_id,revoked_at)
+    VALUES($1,$2,$3,$4,'["synthetic-slot"]'::jsonb,$5,clock_timestamp(),$6,$7)`,[workspace,id,createHash('sha256').update(id).digest('hex'),lead,new Date(now.getTime()+(expired?-86400000:86400000)),creator,revoked?now:null]);return id;
+  };
+  await insert(other.workspaceId,other.practitioner.actor.id);
+  expect((await readIntakeFacts(store(),f.practitioner.actor,[row],now)).awaitingForm).toBe(0);
+  await insert(f.workspaceId,f.outsider.actor.id,true);await insert(f.workspaceId,f.outsider.actor.id,false,true);
+  expect((await readIntakeFacts(store(),f.practitioner.actor,[row],now)).awaitingForm).toBe(0);
+  const valid=await insert(f.workspaceId,f.outsider.actor.id);
+  expect((await readIntakeFacts(store(),f.practitioner.actor,[row],now)).awaitingForm).toBe(1);
+  await f.pool.query('UPDATE ls_intake.pre_enrollment_invitations SET consumed_at=$3 WHERE workspace_id=$1 AND invitation_id=$2',[f.workspaceId,valid,now]);
+  expect((await readIntakeFacts(store(),f.practitioner.actor,[row],now)).awaitingForm).toBe(0);
+ }finally{
+  await f.pool.query("UPDATE ls_identity.accounts SET role='parent' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.outsider.actor.id]);await other.pool.end();
+ }
+});
+test('actual native owner account binding excludes other practitioners and unverified owners',async()=>{
+ const lookupKey=randomBytes(32),runtime={store:store(),clock:{now:()=>now},config:{workspaceId:f.workspaceId,lookupKey}} as Parameters<typeof loadOwnerDigest>[1];
+ const marketing:MarketingSnapshot={source:'synthetic',fetchedAt:null,creatives:[],publications:[],ads:[],scout:{readyDrafts:null,sourceUrl:null,lastChecked:null,status:'unbound'}};
+ await f.pool.query('UPDATE ls_identity.accounts SET email_blind=$3 WHERE workspace_id=$1 AND id=$2',[f.workspaceId,f.practitioner.actor.id,blindEmail(OWNER_REPORT_RECIPIENT,lookupKey)]);
+ await f.pool.query("UPDATE ls_identity.accounts SET role='practitioner' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.outsider.actor.id]);
+ try{
+  await expect(loadOwnerDigest(f.outsider.actor,runtime,marketing,'en')).rejects.toMatchObject({code:'FORBIDDEN'});
+  const digest=await loadOwnerDigest(f.practitioner.actor,runtime,marketing,'en');expect(digest.reportDate).toBe(today);
+  await f.pool.query('UPDATE ls_identity.accounts SET email_verified_at=NULL WHERE workspace_id=$1 AND id=$2',[f.workspaceId,f.practitioner.actor.id]);
+  await expect(loadOwnerDigest(f.practitioner.actor,runtime,marketing,'en')).rejects.toMatchObject({code:'FORBIDDEN'});
+ }finally{
+  await f.pool.query('UPDATE ls_identity.accounts SET email_verified_at=$3 WHERE workspace_id=$1 AND id=$2',[f.workspaceId,f.practitioner.actor.id,now]);
+  await f.pool.query("UPDATE ls_identity.accounts SET role='parent' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.outsider.actor.id]);
+ }
 });
 test("normal native roles, changed role and revoked session cannot read owner aggregates",async()=>{
  for(const role of ["parent","child","adult_client"] as const){await f.pool.query("UPDATE ls_identity.accounts SET role=$3 WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.parent.actor.id,role]);await expect(readTaskCounts(store(),f.parent.actor,now)).rejects.toMatchObject({code:"FORBIDDEN"});}
