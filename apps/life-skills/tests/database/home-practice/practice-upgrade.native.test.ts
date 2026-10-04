@@ -17,6 +17,8 @@ import {systemClock,type Actor} from '../../../src/features/identity/types.ts';
 import type {IdentityConfig} from '../../../src/features/identity/config.ts';
 import {seal,tokenDigest} from '../../../src/features/identity/crypto.ts';
 import {asId} from '../../../src/lib/ids.ts';
+import {legacyPracticeSeed,legacyCoordination} from './legacy-practice-fixture.ts';
+import {practiceResponsibilityIntegrity} from '../../../src/db/practice-responsibility-integrity.ts';
 
 test('native populated 26-to-27 upgrade preserves every historical row and admits only exact-subject future responsibility',async()=>{
  const cluster=new URL(safeTestUrl());
@@ -51,13 +53,7 @@ test('native populated 26-to-27 upgrade preserves every historical row and admit
   const store=poolStore(f.pool),config:IdentityConfig={enabled:true,origin:'https://synthetic.example.invalid',workspaceId:f.workspaceId,
    csrfKey:randomBytes(32),lookupKey:randomBytes(32),rateLimitKey:randomUUID(),keyring:f.keyring,sessionSeconds:3600};
   const practice=new HomePracticeService(store,config,systemClock),checkins=new CheckInService(store,systemClock);
-  const saved=await practice.createDraft(f.practitioner.actor,{caseId:f.first.id,audienceId:f.first.audienceId,
-   templateKey:'W01',templateVersion:'synthetic-upgrade-v1',instructions:'Synthetic retained practice instruction',startsOn:f.at(-24).slice(0,10),endsOn:null},randomUUID());
-  await practice.publish(f.practitioner.actor,saved.assignmentId,saved.versionId,randomUUID());
-  const oldCoord=await practice.coordinate(f.parent.actor,{assignmentId:saved.assignmentId,assigneeAccountIds:[f.parent.actor.id],completionMode:'any_assignee',
-   reminderCandidateAccountIds:[],effectiveFrom:f.at(1)},randomUUID());
-  const oldOccurrence=await practice.schedule(f.practitioner.actor,{assignmentId:saved.assignmentId,occursOn:f.at(48).slice(0,10),period:'morning'},randomUUID());
-  await checkins.submit(f.parent.actor,{occurrenceId:oldOccurrence.id,status:'done',idempotencyKey:randomUUID()},randomUUID());
+  const {saved,oldCoord,oldOccurrence}=await legacyPracticeSeed(f);
   const tx:SqlSession={query:async <R extends object>(sql:string,values:readonly unknown[]=[]) => (await client!.query<R>(sql,[...values])).rows};
   const oldProof={baselineFunctions:true,reviewedFunctions:false,immutableHistory:true,schemaCatalog:true,foreignKeys:true,permissions:true,referencesSound:true};
   expect(await practiceSubjectIntegrity(tx,files)).toEqual(oldProof);
@@ -83,6 +79,12 @@ test('native populated 26-to-27 upgrade preserves every historical row and admit
   await f.pool.query('INSERT INTO ls_identity.account_subjects(workspace_id,account_id,person_id) VALUES($1,$2,$3)',[f.workspaceId,id,person]);
   await f.pool.query('INSERT INTO ls_identity.sessions(token_digest,workspace_id,account_id,created_at,expires_at) VALUES($1,$2,$3,$4,$5)',[child.sessionDigest,f.workspaceId,id,now,new Date(child.expiresAt)]);
   await f.pool.query('INSERT INTO ls_cases.audience_accounts(workspace_id,case_id,audience_id,account_id,granted_at) VALUES($1,$2,$3,$4,$5)',[f.workspaceId,f.first.id,f.first.audienceId,id,now]);
+  // Prove the historical 0107 native actor gate BEFORE the later schema exists.
+  await legacyCoordination(f,saved.assignmentId,f.parent.actor,[id],f.at(2));
+  expect(await practiceSubjectIntegrity(tx,files)).toEqual({...oldProof,baselineFunctions:false,reviewedFunctions:true});
+  // Now exercise the retained current services on the final schema, including
+  // old unspecified metadata and exact-subject replay/permission behavior.
+  expect(await migrate(migrationClient,inventory,false)).toEqual({applied:7,pending:0});
   const newCoord=await practice.coordinate(f.parent.actor,{assignmentId:saved.assignmentId,assigneeAccountIds:[id],completionMode:'any_assignee',reminderCandidateAccountIds:[],effectiveFrom:f.at(2)},randomUUID());
   const newOccurrence=await practice.schedule(f.practitioner.actor,{assignmentId:saved.assignmentId,occursOn:f.at(72).slice(0,10),period:'evening'},randomUUID());
   expect(newOccurrence.coordinationVersionId).toBe(newCoord.versionId);
@@ -95,7 +97,7 @@ test('native populated 26-to-27 upgrade preserves every historical row and admit
   const previous=(await checkins.list(f.parent.actor,oldOccurrence.id))[0]!;
   await checkins.submit(f.parent.actor,{occurrenceId:oldOccurrence.id,status:'partly_done',idempotencyKey:randomUUID(),correctsReportId:previous.reportId},randomUUID());
   expect(await checkins.list(f.parent.actor,oldOccurrence.id)).toEqual(expect.arrayContaining([previous,expect.objectContaining({revision:2,correctedReportId:previous.reportId,status:'partly_done'})]));
-  expect(await practiceSubjectIntegrity(tx,files)).toEqual({...oldProof,baselineFunctions:false,reviewedFunctions:true});
+  expect((await practiceResponsibilityIntegrity(tx,inventory)).current).toEqual({metadataAbsent:false,schemaCatalog:true,foreignKeys:true,permissions:true,reviewedFunctions:true,immutableHistory:true,referencesSound:true});
  }finally{
   vi.unstubAllEnvs();await f?.pool.end();client?.release();await pool.end();
   if(created)await admin.query(`DROP DATABASE "${db}"`);

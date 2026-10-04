@@ -16,6 +16,9 @@ import { UpdateService } from '../../../src/features/updates/service.ts';
 import { systemClock } from '../../../src/features/identity/types.ts';
 import type { IdentityConfig } from '../../../src/features/identity/config.ts';
 import { progressReviewCatalogDigest, progressReviewIntegrity, PROGRESS_REVIEW_REVISIONS_MIGRATION } from '../../../src/db/progress-review-integrity.ts';
+import { legacyPracticeSeed } from '../home-practice/legacy-practice-fixture.ts';
+import { seal } from '../../../src/features/identity/crypto.ts';
+import { asId } from '../../../src/lib/ids.ts';
 
 test('native populated27→28 backfills exact encrypted narratives/attribution and preserves published heads, references and old ledger', async () => {
  const cluster = new URL(safeTestUrl()); expect(['127.0.0.1', 'localhost', '[::1]']).toContain(cluster.hostname); expect(cluster.search).toBe(''); expect(cluster.hash).toBe('');
@@ -40,14 +43,30 @@ test('native populated27→28 backfills exact encrypted narratives/attribution a
   const store = poolStore(f.pool), config: IdentityConfig = { enabled: true, origin: 'https://synthetic.example.invalid', workspaceId: f.workspaceId, csrfKey: randomBytes(32), lookupKey: randomBytes(32), rateLimitKey: randomUUID(), keyring: f.keyring, sessionSeconds: 3600 };
   const practice = new HomePracticeService(store, config, systemClock), updates = new UpdateService(store, config, systemClock, practice, practice);
   const service = new ProgressService(store, config, systemClock, new DatabaseAttendanceReader(store), new DatabaseParentReportReader(store), practice);
-  const draft = await practice.createDraft(f.practitioner.actor, { caseId: f.first.id, audienceId: f.first.audienceId, templateKey: 'W01', templateVersion: 'synthetic-upgrade-v1', instructions: 'Synthetic retained source', startsOn: f.at(-24).slice(0, 10), endsOn: null }, randomUUID());
-  await practice.publish(f.practitioner.actor, draft.assignmentId, draft.versionId, randomUUID());
-  const report = await updates.submitParentReport(f.parent.actor, { caseId: f.first.id, audienceId: f.first.audienceId, practiceVersionId: draft.versionId, body: 'Synthetic retained attributed report', idempotencyKey: randomUUID() }, randomUUID());
+   // Seed the original native row contract, not today's service against a
+   // pre-0114 schema. Native constraints/triggers remain enabled throughout.
+   const { saved: draft } = await legacyPracticeSeed(f), report = { id: asId(randomUUID(), 'parent_report') }, now = new Date();
+   const published = (await f.pool.query('SELECT published_at,immutable_snapshot_digest FROM ls_practice.practice_assignment_versions WHERE workspace_id=$1 AND id=$2', [f.workspaceId, draft.versionId])).rows[0];
+   const body = 'Synthetic retained attributed report';
+   await f.pool.query(`INSERT INTO ls_updates.parent_reports
+    (id,workspace_id,case_id,audience_id,author_account_id,body_ciphertext,body_digest,submitted_at,review_state,practice_assignment_id,practice_version_id,practice_published_at,practice_snapshot_digest,idempotency_key)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,'new',$9,$10,$11,$12,$13)`,
+   [report.id,f.workspaceId,f.first.id,f.first.audienceId,f.parent.actor.id,seal(body,`update-report:${f.workspaceId}:${report.id}`,f.keyring),createHash('sha256').update(body).digest('hex'),now,draft.assignmentId,draft.versionId,published.published_at,published.immutable_snapshot_digest,randomUUID()]);
   const narrative = { taughtAndPractised: ['Synthetic retained teaching'], parentReportedExamples: ['Synthetic retained attributed example'], practitionerObservations: ['Synthetic approved narrative, not private notes'], usefulChanges: [], continuingDifficulty: [], uncertainty: 'Synthetic uncertainty', nextAdjustment: 'Synthetic next', informationLimits: 'Synthetic selected parent source only' };
   const start = f.at(-72).slice(0, 10), end = new Date(Date.parse(start + 'T00:00:00Z') + 28 * 86400000).toISOString().slice(0, 10);
   const input = { caseId: f.first.id, audienceId: f.first.audienceId, periodStart: start, periodEnd: end, assignmentVersionIds: [draft.versionId], parentReportIds: [report.id], narrative };
-  const first = await service.createReview(f.practitioner.actor, input, randomUUID());
-  const second = await service.createReview(f.practitioner.actor, { ...input, periodStart: end, periodEnd: new Date(Date.parse(end + 'T00:00:00Z') + 28 * 86400000).toISOString().slice(0, 10) }, randomUUID());
+   const seedReview = async (periodStart: string, periodEnd: string) => {
+    const reviewId = asId(randomUUID(), 'qualitative_review');
+    await f!.pool.query(`INSERT INTO ls_progress.qualitative_reviews
+     (id,workspace_id,case_id,audience_id,period_start,period_end,attended_session_count,narrative_ciphertext,state,created_by_account_id,created_at)
+     VALUES($1,$2,$3,$4,$5,$6,0,$7,'draft',$8,$9)`,[reviewId,f!.workspaceId,f!.first.id,f!.first.audienceId,periodStart,periodEnd,seal(JSON.stringify(narrative),`qualitative-review:${f!.workspaceId}:${reviewId}`,f!.keyring),f!.practitioner.actor.id,now]);
+    await f!.pool.query('INSERT INTO ls_progress.review_practice_versions(workspace_id,review_id,version_id,immutable_snapshot_digest) VALUES($1,$2,$3,$4)',[f!.workspaceId,reviewId,draft.versionId,published.immutable_snapshot_digest]);
+    await f!.pool.query("INSERT INTO ls_progress.review_parent_reports(workspace_id,review_id,report_id,author_account_id,submitted_at,source_type) VALUES($1,$2,$3,$4,$5,'parent_report')",[f!.workspaceId,reviewId,report.id,f!.parent.actor.id,now]);
+    await f!.pool.query("INSERT INTO ls_progress.feature_history(id,workspace_id,actor_account_id,request_id,action,occurred_at) VALUES($1,$2,$3,$4,'qualitative_review_drafted',$5)",[randomUUID(),f!.workspaceId,f!.practitioner.actor.id,randomUUID(),now]);
+    return { reviewId };
+   };
+   const secondEnd = new Date(Date.parse(end + 'T00:00:00Z') + 28 * 86400000).toISOString().slice(0, 10);
+   const first = await seedReview(start, end), second = await seedReview(end, secondEnd);
   // Model an existing 0050-published row using its real pre-upgrade SQL contract.
   await f.pool.query("UPDATE ls_progress.qualitative_reviews SET state='published',published_by_account_id=$3,published_at=clock_timestamp() WHERE workspace_id=$1 AND id=$2", [f.workspaceId, second.reviewId, f.practitioner.actor.id]);
   // Backfill must retain attribution even when its historical author is no
@@ -77,14 +96,27 @@ test('native populated27→28 backfills exact encrypted narratives/attribution a
    const head = (await client.query('SELECT narrative_ciphertext,created_by_account_id,created_at FROM ls_progress.qualitative_reviews WHERE workspace_id=$1 AND id=$2', [f.workspaceId, row.review_id])).rows[0];
    expect(row).toMatchObject({ revision: 1, narrative_ciphertext: head.narrative_ciphertext, author_account_id: head.created_by_account_id, saved_at: head.created_at });
    expect(row.narrative_ciphertext).not.toContain('Synthetic');
-  }
-  await f.pool.query("UPDATE ls_identity.accounts SET state='active' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.practitioner.actor.id]);
+   }
+   await expect(f.pool.query("UPDATE ls_progress.qualitative_reviews SET narrative_ciphertext=$3 WHERE workspace_id=$1 AND id=$2",[f.workspaceId,second.reviewId,seal('Synthetic forbidden published rewrite',`qualitative-review:${f.workspaceId}:${second.reviewId}`,f.keyring)])).rejects.toBeDefined();
+   expect(await snapshot()).toEqual(before);
+   expect(await progressReviewIntegrity(tx, files)).toEqual(revised);
+   // Today's retained services run only once their full schema exists. This
+   // does not replace the historical backfill/catalog/ACL/denial proof above.
+   const retained = await snapshot();
+   expect(await migrate(adapter, inventory, false)).toEqual({ applied: inventory.length - files.length, pending: 0 });
+   expect(await snapshot()).toEqual(retained);
+   await f.pool.query("UPDATE ls_identity.accounts SET state='active' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.practitioner.actor.id]);
   const changed = { reviewId: first.reviewId, expectedRevision: 1, operationId: randomUUID(), narrative: { ...narrative, nextAdjustment: 'Synthetic incremental revision' } };
   expect(await service.reviseReview(f.practitioner.actor, changed, randomUUID())).toMatchObject({ revision: 2, replayed: false });
   await expect(service.reviseReview(f.practitioner.actor, { ...changed, reviewId: second.reviewId }, randomUUID())).rejects.toMatchObject({ code: 'CONFLICT' });
   expect((await service.listReviews(f.parent.actor, f.first.id))).toEqual([expect.objectContaining({ id: second.reviewId, state: 'published', narrative })]);
   const referenceSnapshot = await snapshot(); expect(referenceSnapshot.review_practice_versions).toEqual(before.review_practice_versions); expect(referenceSnapshot.review_parent_reports).toEqual(before.review_parent_reports);
-  expect(await progressReviewIntegrity(tx, files)).toEqual(revised);
+   expect(await progressReviewIntegrity(tx, files)).toEqual(revised);
+   // Today's retained services must also consume those exact historical
+   // encrypted sources after all additive migrations, without rewriting them.
+   const thirdEnd = new Date(Date.parse(secondEnd + 'T00:00:00Z') + 28 * 86400000).toISOString().slice(0, 10);
+   expect(await service.createReview(f.practitioner.actor, { ...input, periodStart: secondEnd, periodEnd: thirdEnd }, randomUUID())).toMatchObject({ revision: 1 });
+   expect(await updates.submitParentReport(f.parent.actor, { caseId: f.first.id, audienceId: f.first.audienceId, practiceVersionId: draft.versionId, body: 'Synthetic current report on retained source', idempotencyKey: randomUUID() }, randomUUID())).toMatchObject({ practice: { versionId: draft.versionId, immutableSnapshotDigest: published.immutable_snapshot_digest } });
  } finally {
   vi.unstubAllEnvs(); await f?.pool.end(); client?.release(); await pool.end(); if (created) await admin.query(`DROP DATABASE "${db}"`); await admin.end();
  }

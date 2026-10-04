@@ -6,6 +6,8 @@ import type { IdentityStore } from "../identity/store.ts";
 import type { AccountId, Actor, AudienceId, CaseId, IdentityClock } from "../identity/types.ts";
 import { occurrenceRange } from "./occurrence-range.ts";
 import type { CompletionView, PracticeOccurrencePage, PublishedPracticeVersion, ScheduledOccurrence } from "./types.ts";
+import {unseal,type Keyring} from "../identity/crypto.ts";
+import {practiceReportNoteAad} from "../checkins/service.ts";
 
 interface OccurrenceRow extends ScheduledOccurrence {
   assigneeAccountIds: AccountId[];
@@ -15,13 +17,18 @@ interface OccurrenceRow extends ScheduledOccurrence {
   revision: number | null;
   reportedAt: Date | null;
   correctedReportId: CompletionView["correctedReportId"];
+  assistedParentAccountIds:AccountId[]|null;
+  occursAtValue:Date|null;
+  subjectPersonId:string|null;
+  authorship:NonNullable<CompletionView["attribution"]>["authorship"]|null;
+  noteCiphertext:string|null;
 }
 
 /** No accounts, occurrences or reports are created by this read path. */
 export async function readPracticeOccurrences<Version extends { versionId: PublishedPracticeVersion["versionId"] }>(
   store: IdentityStore, clock: IdentityClock, actor: Actor, caseId: CaseId, audienceId: AudienceId,
   from: string, to: string,
-  versionSelect: string, project: (row: Version) => PublishedPracticeVersion,
+  versionSelect: string, project: (row: Version) => PublishedPracticeVersion,keyring?:Keyring,
 ): Promise<PracticeOccurrencePage> {
   occurrenceRange(from, to);
   return store.transaction(async tx => {
@@ -32,7 +39,9 @@ export async function readPracticeOccurrences<Version extends { versionId: Publi
     const rows = await tx.query<OccurrenceRow>(`SELECT o.id,o.assignment_id AS "assignmentId",o.practice_version_id AS "practiceVersionId",
       o.coordination_version_id AS "coordinationVersionId",o.occurs_on::text AS "occursOn",o.period,o.state,
       c.assignee_account_ids AS "assigneeAccountIds",o.practice_version_id AS "versionId",
-      r.id AS "reportId",r.status AS "reportStatus",r.revision,r.reported_at AS "reportedAt",r.corrects_report_id AS "correctedReportId"
+      c.assisted_parent_account_ids AS "assistedParentAccountIds",o.occurs_at AS "occursAtValue",
+      r.id AS "reportId",r.status AS "reportStatus",r.revision,r.reported_at AS "reportedAt",r.corrects_report_id AS "correctedReportId",
+      r.subject_person_id AS "subjectPersonId",r.authorship,r.note_ciphertext AS "noteCiphertext"
       FROM ls_practice.practice_occurrences o
       JOIN ls_practice.practice_assignments a ON a.workspace_id=o.workspace_id AND a.id=o.assignment_id
       JOIN ls_practice.practice_assignment_versions v ON v.workspace_id=o.workspace_id AND v.assignment_id=a.id AND v.id=o.practice_version_id
@@ -63,13 +72,21 @@ export async function readPracticeOccurrences<Version extends { versionId: Publi
         startsOn: published.startsOn, endsOn: published.endsOn, publishedAt: published.publishedAt,
         immutableSnapshotDigest: published.immutableSnapshotDigest,
       };
+      const ownAttribution=row.authorship&&row.reportId?(()=>{
+        if(!keyring||!row.subjectPersonId||row.noteCiphertext===null)throw new AppError("UNAVAILABLE");
+        return {subjectPersonId:row.subjectPersonId,authorship:row.authorship,note:unseal(row.noteCiphertext,practiceReportNoteAad(actor.workspaceId,caseId,row.practiceVersionId,row.id,row.reportId,current.id,row.subjectPersonId,row.authorship),keyring)};
+      })():undefined;
+      const assisted=current.role==="parent"&&row.assistedParentAccountIds?.includes(current.id)===true;
       return {
         occurrence: { id: row.id, assignmentId: row.assignmentId, practiceVersionId: row.practiceVersionId,
-          coordinationVersionId: row.coordinationVersionId, occursOn: row.occursOn, period: row.period, state: row.state },
-        practice, canReport: current.role !== "practitioner" && row.assigneeAccountIds.includes(current.id) && (row.state === "open" || row.reportId !== null),
+          coordinationVersionId: row.coordinationVersionId, occursOn: row.occursOn, period: row.period, state: row.state,...(row.occursAtValue?{occursAt:row.occursAtValue.toISOString()}:{}) },
+        ...(published.responsibility?{schedule:{participant:published.responsibility.participant,localTime:published.responsibility.localTime,timezone:published.responsibility.timezone,timeOrigin:published.responsibility.timeOrigin}}:{}),
+        ...(assisted?{assistanceModes:["together","parent_report"] as const}:{}),
+        practice, canReport: current.role !== "practitioner" && (row.assigneeAccountIds.includes(current.id)||assisted) && row.state!=="cancelled" && (row.state === "open" || row.reportId !== null),
         ownReport: row.reportId && row.reportStatus && row.revision && row.reportedAt ? {
           reportId: row.reportId, occurrenceId: row.id, authorAccountId: current.id, status: row.reportStatus,
           revision: row.revision, reportedAt: row.reportedAt.toISOString(), correctedReportId: row.correctedReportId,
+          ...(ownAttribution?{attribution:ownAttribution}:{}),
         } : null,
       };
     }) };

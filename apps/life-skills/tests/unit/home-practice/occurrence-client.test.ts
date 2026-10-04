@@ -3,6 +3,17 @@ import { IdentityClientError } from "../../../src/features/identity/client.ts";
 import { checkInAttempt, checkInReadback, ownCheckInHistory, practiceAccessLost, practiceAudiences, practiceOccurrences, practiceRangeOccurrences, practiceSaveUncertain, submitPracticeCheckIn } from "../../../src/features/home-practice/occurrence-client.ts";
 import { asId } from "../../../src/lib/ids.ts";
 import type { OwnCompletionView } from "../../../src/features/home-practice/types.ts";
+test("assisted attempts freeze the real reporting mode and note and require exact protected readback", () => {
+  const assistance={mode:"together" as const,note:"Retained synthetic note"},attempt=checkInAttempt("00000000-0000-4000-8000-000000000001","done",undefined,assistance);
+  assistance.note="Changed later";expect(Object.isFrozen(attempt.assistance)).toBe(true);expect(attempt.assistance?.note).toBe("Retained synthetic note");
+  const row:OwnCompletionView={reportId:asId(attempt.occurrenceId,"completion_report"),occurrenceId:asId(attempt.occurrenceId,"occurrence"),authorAccountId:asId(attempt.occurrenceId,"account"),status:"done",revision:1,reportedAt:"2026-10-02T18:45:00.000Z",correctedReportId:null,idempotencyKey:attempt.idempotencyKey,attribution:{subjectPersonId:attempt.occurrenceId,authorship:"parent_assisted_child",note:"Retained synthetic note"}};
+  expect(checkInReadback(attempt,[row])).toBe("recorded");
+  const missingAttribution={...row};delete missingAttribution.attribution;expect(()=>checkInReadback(attempt,[missingAttribution])).toThrow("UNAVAILABLE");
+  for(const changed of [{attribution:{...row.attribution!,authorship:"parent_reporting_child" as const}},{attribution:{...row.attribution!,note:"Different"}}])expect(()=>checkInReadback(attempt,[{...row,...changed}])).toThrow("UNAVAILABLE");
+  const selfAttempt={...attempt};delete selfAttempt.assistance;expect(()=>checkInReadback(selfAttempt,[row])).toThrow("UNAVAILABLE");
+  const report=checkInAttempt(attempt.occurrenceId,"done",undefined,{mode:"parent_report",note:""});
+  expect(checkInReadback(report,[{...row,idempotencyKey:report.idempotencyKey,attribution:{...row.attribution!,authorship:"parent_reporting_child",note:""}}])).toBe("recorded");
+});
 afterEach(() => vi.unstubAllGlobals());
 const id = "00000000-0000-4000-8000-000000000001";
 const ok = (data: unknown) => new Response(JSON.stringify({ ok: true, data }), { status: 200 });

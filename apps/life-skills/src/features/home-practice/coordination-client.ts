@@ -9,32 +9,45 @@ async function request<T>(path:string,init:RequestInit,signal?:AbortSignal):Prom
   throw new IdentityClientError(codes.includes(payload?.error?.code as IdentityClientErrorCode)?payload.error!.code as IdentityClientErrorCode:'UNAVAILABLE');
  }catch(error){if(signal?.aborted||error instanceof IdentityClientError)throw error;throw new IdentityClientError('UNAVAILABLE');}
 }
-const ids=(value:unknown):value is string[]=>Array.isArray(value)&&value.length<=2&&value.every(id=>typeof id==='string'&&/^[a-f0-9-]{36}$/i.test(id))&&new Set(value).size===value.length;
+const ids=(value:unknown,max=2):value is string[]=>Array.isArray(value)&&value.length<=max&&value.every(id=>typeof id==='string'&&/^[a-f0-9-]{36}$/i.test(id))&&new Set(value).size===value.length;
+function validVersion(row:CoordinationVersion,assignmentId:string,caseId:string,audienceId:string):boolean{
+ if(!row||row.assignmentId!==assignmentId||row.caseId!==caseId||row.audienceId!==audienceId||typeof row.versionId!=='string'||!ids(row.assigneeAccountIds)||!['any_assignee','each_assignee'].includes(row.completionMode)||!Number.isFinite(Date.parse(row.effectiveFrom))||typeof row.changedByAccountId!=='string')return false;
+ if(row.responsibilityVersionId==null)return row.participant==null&&row.assistedParentAccountIds==null&&row.assigneeAccountIds.length>0&&ids(row.reminderCandidateAccountIds)&&row.reminderCandidateAccountIds.every(id=>row.assigneeAccountIds.includes(id));
+ return ids([row.responsibilityVersionId])&&['client','parent'].includes(row.participant??'')&&ids(row.assistedParentAccountIds)&&ids(row.reminderCandidateAccountIds,3)&&
+  !row.assigneeAccountIds.some(id=>row.assistedParentAccountIds!.includes(id))&&
+  (row.participant==='parent'?row.assigneeAccountIds.length>0&&row.assistedParentAccountIds.length===0:row.assigneeAccountIds.length<=1&&row.assigneeAccountIds.length+row.assistedParentAccountIds.length>0)&&
+  (row.completionMode!=='each_assignee'||row.participant==='parent'&&row.assigneeAccountIds.length===2);
+}
 export async function readCoordination(assignmentId:string,caseId:string,audienceId:string,signal?:AbortSignal):Promise<PracticeCoordinationPage>{
  const value=await request<PracticeCoordinationPage>('/api/home-practice?'+new URLSearchParams({view:'coordination',assignmentId}),{method:'GET'},signal);
- const valid=(row:CoordinationVersion)=>row&&row.assignmentId===assignmentId&&row.caseId===caseId&&row.audienceId===audienceId&&typeof row.versionId==='string'&&ids(row.assigneeAccountIds)&&ids(row.reminderCandidateAccountIds)&&row.reminderCandidateAccountIds.every(id=>row.assigneeAccountIds.includes(id))&&['any_assignee','each_assignee'].includes(row.completionMode)&&Number.isFinite(Date.parse(row.effectiveFrom))&&typeof row.changedByAccountId==='string';
- if(!value||!['parent','adult_client'].includes(value.role)||typeof value.ownAccountId!=='string'||!ids(value.eligibleAccountIds)||typeof value.hasMore!=='boolean'||typeof value.asOf!=='string'||!Number.isFinite(Date.parse(value.asOf))||!Array.isArray(value.versions)||value.versions.length>20||value.versions.some(row=>!valid(row))||value.currentVersion!==null&&(!valid(value.currentVersion)||Date.parse(value.currentVersion.effectiveFrom)>Date.parse(value.asOf)))throw new IdentityClientError('UNAVAILABLE');
+ if(!value||!['parent','adult_client'].includes(value.role)||typeof value.ownAccountId!=='string'||!ids(value.eligibleAccountIds)||typeof value.hasMore!=='boolean'||typeof value.asOf!=='string'||!Number.isFinite(Date.parse(value.asOf))||!Array.isArray(value.versions)||value.versions.length>20||value.versions.some(row=>!validVersion(row,assignmentId,caseId,audienceId))||value.currentVersion!==null&&(!validVersion(value.currentVersion,assignmentId,caseId,audienceId)||Date.parse(value.currentVersion.effectiveFrom)>Date.parse(value.asOf)))throw new IdentityClientError('UNAVAILABLE');
+ if(value.readOnlyReason!==undefined&&(!['client_responsibility','legacy_child_assignment'].includes(value.readOnlyReason)||value.role!=='parent'||value.eligibleAccountIds.length!==0))throw new IdentityClientError('UNAVAILABLE');
+ if(value.reminderRoutingAccountIds!==undefined&&(!ids(value.reminderRoutingAccountIds)||value.reminderRoutingAccountIds.some(id=>!value.eligibleAccountIds.includes(id))))throw new IdentityClientError('UNAVAILABLE');
+ if(value.currentVersion?.responsibilityVersionId&&value.reminderRoutingAccountIds===undefined)throw new IdentityClientError('UNAVAILABLE');
  if(value.nextEffectiveFrom!==null&&(typeof value.nextEffectiveFrom!=='string'||!Number.isFinite(Date.parse(value.nextEffectiveFrom))||Date.parse(value.nextEffectiveFrom)<=Date.parse(value.asOf)))throw new IdentityClientError('UNAVAILABLE');
  if(value.role==='adult_client'&&(value.eligibleAccountIds.length!==1||value.eligibleAccountIds[0]!==value.ownAccountId))throw new IdentityClientError('UNAVAILABLE');
- if(value.readOnlyReason!==undefined&&(value.readOnlyReason!=='legacy_child_assignment'||value.role!=='parent'||value.eligibleAccountIds.length!==0))throw new IdentityClientError('UNAVAILABLE');
  return value;
 }
 /** Defaults follow the server's current selection, never insertion order or
  * the browser clock. Future changes remain visible in immutable history. */
 export function coordinationDefaults(page:PracticeCoordinationPage):{assignees:string[];reminders:string[];mode:CompletionMode}{
  const current=page.currentVersion,assignees=page.readOnlyReason?[...(current?.assigneeAccountIds??[])]:page.role==='adult_client'?[page.ownAccountId]:current?.assigneeAccountIds.filter(id=>page.eligibleAccountIds.includes(id))??[page.ownAccountId].filter(id=>page.eligibleAccountIds.includes(id));
- return {assignees,reminders:current?.reminderCandidateAccountIds.filter(id=>assignees.includes(id))??[],mode:assignees.length===2&&current?.completionMode==='each_assignee'?'each_assignee':'any_assignee'};
+ const reminderIds=page.readOnlyReason?current?.reminderCandidateAccountIds??[]:coordinationReminderChoices(page,assignees);
+ return {assignees,reminders:current?.reminderCandidateAccountIds.filter(id=>reminderIds.includes(id))??[],mode:assignees.length===2&&current?.completionMode==='each_assignee'?'each_assignee':'any_assignee'};
 }
+/** Only native responsibility frames separate routing from reporting. Legacy
+ * coordination retains its assignee-only boundary; adults remain self-only. */
+export function coordinationReminderChoices(page:PracticeCoordinationPage,assignees:readonly string[]):readonly string[]{return page.currentVersion?.responsibilityVersionId?[...new Set([...assignees,...(page.reminderRoutingAccountIds??[]).filter(id=>page.eligibleAccountIds.includes(id))])]:assignees;}
 /** A draft is based on effective responsibility and current authorization, not
  * on a timestamp or incidental history pagination. */
-export function coordinationFrameKey(page:PracticeCoordinationPage):string{return JSON.stringify([page.ownAccountId,page.role,page.currentVersion?.versionId??null,page.readOnlyReason??null,[...page.eligibleAccountIds].sort()]);}
+export function coordinationFrameKey(page:PracticeCoordinationPage):string{return JSON.stringify([page.ownAccountId,page.role,page.currentVersion?.versionId??null,page.readOnlyReason??null,[...page.eligibleAccountIds].sort(),[...(page.reminderRoutingAccountIds??[])].sort()]);}
 export function coordinationRefreshDelay(page:PracticeCoordinationPage,elapsed:number):number|null{
  if(page.nextEffectiveFrom===null)return null;
  return Math.min(2_147_483_647,Math.max(100,Date.parse(page.nextEffectiveFrom)-Date.parse(page.asOf)-Math.max(0,elapsed)+100));
 }
 export type CoordinationCommand=Readonly<{action:'coordinate';assignmentId:string;assigneeAccountIds:readonly string[];completionMode:CompletionMode;reminderCandidateAccountIds:readonly string[];effectiveFrom:string;expectedCurrentVersionId?:string|null}>;
-export function coordinationCommand(assignmentId:string,assignees:readonly string[],mode:CompletionMode,reminders:readonly string[],now:number,expectedCurrentVersionId?:string|null):CoordinationCommand{
- if(!ids([...assignees])||!assignees.length||!ids([...reminders])||reminders.some(id=>!assignees.includes(id))||mode==='each_assignee'&&assignees.length!==2||!['any_assignee','each_assignee'].includes(mode)||!Number.isFinite(now))throw new IdentityClientError('INVALID_REQUEST');
+export function coordinationCommand(assignmentId:string,assignees:readonly string[],mode:CompletionMode,reminders:readonly string[],now:number,expectedCurrentVersionId?:string|null,reminderRoutingAccountIds:readonly string[]=assignees):CoordinationCommand{
+ if(!ids([...assignees])||!assignees.length||!ids([...reminders],3)||!ids([...reminderRoutingAccountIds],3)||reminders.some(id=>!reminderRoutingAccountIds.includes(id))||mode==='each_assignee'&&assignees.length!==2||!['any_assignee','each_assignee'].includes(mode)||!Number.isFinite(now))throw new IdentityClientError('INVALID_REQUEST');
  if(expectedCurrentVersionId!==undefined&&expectedCurrentVersionId!==null&&!ids([expectedCurrentVersionId]))throw new IdentityClientError('INVALID_REQUEST');
  return Object.freeze({action:'coordinate',assignmentId,assigneeAccountIds:Object.freeze([...assignees]),completionMode:mode,reminderCandidateAccountIds:Object.freeze([...reminders]),effectiveFrom:new Date(now+60_000).toISOString(),...(expectedCurrentVersionId===undefined?{}:{expectedCurrentVersionId})});
 }

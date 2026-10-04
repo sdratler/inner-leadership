@@ -7,6 +7,11 @@ import {CoordinationForm,PracticeCoordinationWorkspace} from '../../../src/featu
 import {coordinationDefaults} from '../../../src/features/home-practice/coordination-client.ts';
 const own=asId('123e4567-e89b-12d3-a456-426614174000','account'),other=asId('123e4567-e89b-12d3-a456-426614174001','account');
 const handlers={onChange:()=>{},onSave:()=>{},onCancel:()=>{}};
+test.each(['en','he'] as const)('%s child practice gives an honest parent read-only explanation, not a failing parent-assignment form',locale=>{
+ const page={ownAccountId:own,role:'parent' as const,eligibleAccountIds:[],asOf:'2026-10-01T12:00:00Z',currentVersion:null,nextEffectiveFrom:null,versions:[],hasMore:false,readOnlyReason:'client_responsibility' as const};
+ const html=renderToStaticMarkup(createElement(CoordinationForm,{...handlers,locale,page,assignees:[],reminders:[],mode:'any_assignee',locked:false}));
+ expect(html).not.toContain('<form');expect(html).not.toContain('type="submit"');expect(html).toContain(locale==='he'?'זהו התרגול של הילד':'This is the child’s practice');
+});
 test.each(['en','he'] as const)('%s retained legacy child coordination is read-only with no parent-only save control',locale=>{
  const page={ownAccountId:own,role:'parent' as const,eligibleAccountIds:[],readOnlyReason:'legacy_child_assignment' as const,asOf:'2026-10-01T12:00:00Z',currentVersion:null,nextEffectiveFrom:null,versions:[],hasMore:false};
  const html=renderToStaticMarkup(createElement(CoordinationForm,{...handlers,locale,page,assignees:[own,other],reminders:[other],mode:'each_assignee',locked:false}));
@@ -32,6 +37,16 @@ test.each(['en','he'] as const)('%s authorized shared parents can choose explici
  const html=renderToStaticMarkup(createElement(CoordinationForm,{...handlers,locale,page,assignees:[own,other],reminders:[own],mode:'each_assignee',locked:false}));
  expect(html).toContain('value="each_assignee" selected=""');expect(html).toContain('value="any_assignee"');expect(html).toContain('<legend');expect(html).toContain(locale==='he'?'הורה מורשה 2':'Authorized parent 2');
  const empty=renderToStaticMarkup(createElement(CoordinationForm,{...handlers,locale,page,assignees:[],reminders:[],mode:'any_assignee',locked:false}));expect(empty).toContain('type="submit" disabled=""');
+});
+
+test.each(['en','he'] as const)('%s native parent editor keeps the checked support recipient outside assigned participants',locale=>{
+ const current={versionId:asId('123e4567-e89b-12d3-a456-426614174005','coordination_version'),assignmentId:asId('123e4567-e89b-12d3-a456-426614174002','practice_assignment'),caseId:asId('123e4567-e89b-12d3-a456-426614174003','case'),audienceId:asId('123e4567-e89b-12d3-a456-426614174004','audience'),assigneeAccountIds:[own],completionMode:'any_assignee' as const,reminderCandidateAccountIds:[other],effectiveFrom:'2026-10-01T11:00:00Z',changedByAccountId:own,responsibilityVersionId:asId('123e4567-e89b-12d3-a456-426614174006','practice_version'),participant:'parent' as const,assistedParentAccountIds:[]};
+ const page={ownAccountId:own,role:'parent' as const,eligibleAccountIds:[own,other],reminderRoutingAccountIds:[other],asOf:'2026-10-01T12:00:00Z',currentVersion:current,nextEffectiveFrom:null,versions:[current],hasMore:false};
+ const html=renderToStaticMarkup(createElement(CoordinationForm,{...handlers,locale,page,...coordinationDefaults(page),locked:false})),routing=html.split('class="lsw-coordination-routing"')[1]?.split('</fieldset>')[0];
+ expect(routing).toContain(locale==='he'?'הורה מורשה 2':'Authorized parent 2');expect(routing?.match(/checked=""/g)).toHaveLength(1);
+ expect(html.split('class="lsw-coordination-routing"')[0]?.match(/checked=""/g)).toHaveLength(1);expect(html).not.toContain('<select');
+ const deselected={...page,currentVersion:{...current,reminderCandidateAccountIds:[]}},empty=renderToStaticMarkup(createElement(CoordinationForm,{...handlers,locale,page:deselected,...coordinationDefaults(deselected),locked:false})),emptyRouting=empty.split('class="lsw-coordination-routing"')[1]?.split('</fieldset>')[0];
+ expect(emptyRouting).toContain(locale==='he'?'הורה מורשה 2':'Authorized parent 2');expect(emptyRouting).not.toContain('checked=""');
 });
 test('participant labels stay consistent when selection order differs, and phone actions wrap as complete readable buttons',()=>{
  const page={ownAccountId:own,role:'parent' as const,eligibleAccountIds:[other,own],asOf:'2026-10-01T12:00:00Z',currentVersion:null,nextEffectiveFrom:null,versions:[],hasMore:false};
