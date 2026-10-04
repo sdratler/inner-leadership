@@ -15,6 +15,15 @@ describe("retained read-only Marketing calendar controls",()=>{
   expect((html.match(/data-thumbnail=/g)??[])).toHaveLength(12);expect(html).toContain('publication=many-1999');expect(html).toContain('Ordered planned and ready records: 2000');expect(html).toContain('Open a record for its full preview');
   const detail=render(items,{layout,publication:'many-1999'});expect((detail.match(/data-thumbnail=/g)??[])).toHaveLength(1);expect(detail).toContain('Back to content calendar');
  });
+ it.each(['en','he'] as const)("uses only exact same-origin CSP-compatible originals for %s calendar and gallery images",locale=>{
+  const original={...asset,imageUrl:'https://drive.google.com/file/d/synthetic_original/view'},items=[publication('same-origin','2026-10-01T17:00:00Z')];
+  const expected=`/api/marketing/assets/${original.assetId}?revision=2&amp;digest=${digest}`;
+  for(const section of ['content_calendar','calendar_detail','creatives']){
+   const html=renderToStaticMarkup(React.createElement(MarketingDashboard,{locale,snapshot:snapshot(items,[original]),initialSection:section==='calendar_detail'?'content_calendar':section,calendarQuery:section==='calendar_detail'?{publication:'same-origin'}:{},initialMonth:'2026-10',renderedAt:'2026-10-01T08:00:00Z'}));
+   const images=[...html.matchAll(/<img[^>]*src="([^"]+)"/g)].map(match=>match[1]);
+   expect(images.length).toBeGreaterThan(0);expect(images.every(src=>src===expected)).toBe(true);expect(html).not.toContain('thumbnail?id=');if(section!=='content_calendar')expect(html).toContain('href="https://drive.google.com/file/d/demo-exact/view"');
+  }
+ });
   it("replaces month/week/agenda main views while retaining an empty calendar and usable controls",()=>{
     const month=render([],{layout:"month",month:"2026-10"}),week=render([],{layout:"week",date:"2026-10-01"}),agenda=render([],{layout:"agenda"});
     expect(month).toContain('aria-label="Monthly content calendar"');expect(month).not.toContain('aria-label="Content agenda"');
@@ -76,9 +85,13 @@ describe("retained read-only Marketing calendar controls",()=>{
     const html=renderToStaticMarkup(React.createElement(MarketingDashboard,{locale:"en",snapshot:snapshot([],[{...asset,imageUrl:"https://untrusted.example/drive.google.com/file/d/demo-fake/view"}]),initialSection:"creatives",renderedAt:"2026-10-01T08:00:00Z"}));
     expect(html).not.toContain("thumbnail?id=demo-fake");expect(html).not.toContain("<img");expect(html).toContain("Thumbnail unavailable");
   });
-  it("routes the Hebrew Status overview count to the actual content queue rather than the generic gallery",()=>{
-    const inventory={files:1,concepts:1,publishablePosts:1,heStatusReady:1,heFeedReady:0,enFeedReady:0,adEligible:0,inLiveAds:0,queued:1,published:0,needsApproval:0,needsResizeOrCaption:0,heldMissing:0,partial:false,asOf:"2026-10-01T08:00:00Z"};
-    const html=renderToStaticMarkup(React.createElement(MarketingDashboard,{locale:"en",snapshot:{...snapshot([]),inventory},renderedAt:"2026-10-01T08:00:00Z"}));expect(html).toContain("section=content_calendar&amp;filter=queued&amp;channel=whatsapp_status&amp;layout=agenda");expect(html).not.toContain("section=creatives&amp;filter=he_status");
+  it.each(['en','he'] as const)("links the %s Hebrew Status inventory count to creatives even without a publication record",locale=>{
+    const ready={...asset,surface:'WHATSAPP_STATUS'},english={...ready,assetId:'DEMO-en-status',locale:'en' as const,title:'DEMO English queue'},feed={...ready,assetId:'DEMO-he-feed',surface:'FACEBOOK_FEED',height:1350,title:'DEMO Hebrew feed'};
+    const queued={...publication('english-only','2026-10-02T17:00:00Z'),assetId:english.assetId};
+    const inventory={files:3,concepts:3,publishablePosts:3,heStatusReady:1,heFeedReady:1,enFeedReady:0,adEligible:0,inLiveAds:0,queued:1,published:0,needsApproval:0,needsResizeOrCaption:0,heldMissing:0,partial:false,asOf:"2026-10-01T08:00:00Z"},source={...snapshot([queued],[ready,english,feed]),inventory};
+    const html=renderToStaticMarkup(React.createElement(MarketingDashboard,{locale,snapshot:source,renderedAt:"2026-10-01T08:00:00Z"}));
+    expect(html).toContain(`href="/${locale}/app/marketing?section=creatives&amp;filter=he_status"`);expect(html).toContain(`href="/${locale}/app/marketing?section=content_calendar&amp;filter=queued"`);expect(html).not.toContain('filter=queued&amp;channel=whatsapp_status');
+    const gallery=renderToStaticMarkup(React.createElement(MarketingDashboard,{locale,snapshot:source,initialSection:'creatives',initialFilter:'he_status',renderedAt:"2026-10-01T08:00:00Z"}));expect(gallery).toContain(ready.title);expect(gallery).not.toContain(english.title);expect(gallery).not.toContain(feed.title);expect(gallery.match(/class="lsr-creative-card"/g)).toHaveLength(1);
   });
   it.each([['en','1 revisions · 1 language/size variants','Partial inventory'],['he','1 גרסאות · 1 שילובי שפה וגודל','מלאי חלקי']] as const)("keeps %s compact creative counts distinct from partial source totals",(locale,counts,partial)=>{
     const inventory={files:70,concepts:5,publishablePosts:1,heStatusReady:1,heFeedReady:0,enFeedReady:0,adEligible:0,inLiveAds:0,queued:1,published:0,needsApproval:0,needsResizeOrCaption:0,heldMissing:0,partial:true,asOf:"2026-10-01T08:00:00Z"};

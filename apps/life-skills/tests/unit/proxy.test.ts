@@ -27,6 +27,17 @@ describe('owned community draft API stays behind the existing private perimeter'
    }
  });
 });
+describe('exact private Marketing media perimeter',()=>{
+ const origin='https://life-skills.bneineviimacademy.org',path='/api/marketing/assets/DEMO-image';
+ const configured=()=>{vi.stubEnv('NODE_ENV','production');vi.stubEnv('LS_APP_MODE','foundation_locked');vi.stubEnv('LS_APP_ORIGIN',origin);vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');};
+ it('routes the registered media GET only when the private app is enabled, retaining private security headers',()=>{
+  configured();vi.stubEnv('LS_PRIVATE_APP_ENABLED','false');expect(proxy(new NextRequest(origin+path)).status).toBe(503);
+  vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');const response=proxy(new NextRequest(origin+path));expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toBe('private, no-store');expect(response.headers.get('content-security-policy')).toContain("img-src 'self' data:");expect(publicStaticAsset(path,'GET')).toBe(false);
+ });
+ it('rejects noncanonical or ambiguous HTTPS transport before rewriting forwarded headers',()=>{
+  configured();for(const request of [new NextRequest('http://life-skills.bneineviimacademy.org'+path),new NextRequest('https://untrusted.invalid'+path),new NextRequest(origin+path,{headers:{'x-forwarded-proto':'https,http','x-forwarded-host':'life-skills.bneineviimacademy.org'}}),new NextRequest(origin+path,{headers:{'x-forwarded-proto':'https','x-forwarded-host':'untrusted.invalid'}})])expect(proxy(request).status).toBe(503);
+ });
+});
 describe('actual bounded Marketing login-return proxy',()=>{
  it.each(['he','en']as const)('preserves the exact bounded %s gallery page after an expired session without trusting the caller return',locale=>{
   const origin='https://life-skills.bneineviimacademy.org',path=`/${locale}/app/marketing`;vi.stubEnv('NODE_ENV','production');vi.stubEnv('LS_APP_MODE','foundation_locked');vi.stubEnv('LS_APP_ORIGIN',origin);vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');
