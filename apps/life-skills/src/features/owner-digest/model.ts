@@ -41,7 +41,7 @@ export function summarizeProspects(rows:readonly ProspectFacts[],today:string,jo
  const result:AdminCounts={due:0,overdue:0,future:0,missingDate:0,invalidDate:0,prospects:0,otherStages:0,awaitingForm:journeysAvailable?0:null,awaitingPayment:journeysAvailable?0:null,awaitingBooking:journeysAvailable?0:null};
  for(const row of rows){
   if(prospectArchived(row)||prospectContactSuppressed(row))continue;
-  if(row.journeyState!=="active")result.prospects++;
+  if(!["active","hold"].includes(row.journeyState))result.prospects++;
   if(!canonicalStages.has(row.stage))result.otherStages++;
   if(row.nextAction.trim()){
    const date=crmDueCivilDate(row.dueDate);
@@ -53,7 +53,7 @@ export function summarizeProspects(rows:readonly ProspectFacts[],today:string,jo
   if(journeysAvailable){
    // Form-invitation counts are supplied separately from the actual intake ledger.
    if(["intake_submitted","awaiting_payment"].includes(row.journeyState)&&!row.paymentVerified)result.awaitingPayment!++;
-   if(row.paymentVerified===true&&row.bookingConfirmed!==true)result.awaitingBooking!++;
+   if(row.paymentVerified===true&&row.bookingConfirmed!==true&&row.journeyState!=="hold")result.awaitingBooking!++;
   }
  }
  return result;
