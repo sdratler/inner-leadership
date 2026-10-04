@@ -54,6 +54,8 @@ export interface PractitionerReplyView {
 export interface UpdateThreadView {
   report: ParentReportView;
   replies: PractitionerReplyView[];
+  /** Oldest visible reply cursor for a fresh authorized older-history read. */
+  nextRepliesBefore: UpdateReplyId | null;
 }
 
 export interface AdaptationDraftReceipt {
