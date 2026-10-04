@@ -27,7 +27,9 @@ for(const locale of ["en","he"] as const){
    expect(await viewNav.evaluate(node=>node.scrollWidth-node.clientWidth)).toBeLessThanOrEqual(1);
    const agenda=links.last();
    await expect(agenda).toHaveAttribute("aria-current","page");
-   await expect(agenda).toHaveCSS("background-color","rgb(49, 92, 73)");
+   // Current approved --ui-teal (#245159), not the superseded green token.
+   expect(calendarCss).toContain("background:var(--ui-teal,#245159)");
+   await expect(agenda).toHaveCSS("background-color","rgb(36, 81, 89)");
    await expect(agenda).toHaveCSS("color","rgb(255, 255, 255)");
    await links.first().focus();
    for(let index=0;index<3;index++)await page.keyboard.press("Tab");
