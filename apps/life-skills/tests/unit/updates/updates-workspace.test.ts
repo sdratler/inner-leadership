@@ -99,6 +99,34 @@ it.each(['en','he'] as const)('aborts a stalled old-context reply read and fence
  resolveB(Response.json({ok:true,data:[bOlder]}));await tick();output=render(b);expect(find(output,e=>e.type==='textarea')!.props.disabled).toBe(false);expect(text(output)).toContain('DEMO oldest reply');expect(postBodies()).toHaveLength(0);
 });
 
+it.each(['en','he'] as const)('aborts abandoned verification, permits the new context and requires exact reconciliation on return (%s)',async locale=>{
+ const a={locale,role:'parent' as const,initialCaseId:caseA,initialAudienceId:audienceA,initialPracticeVersionId:'version-a'},b={...a,initialCaseId:caseB,initialAudienceId:audienceB,initialPracticeVersionId:'version-b'};
+ accountRead.mockResolvedValue([{id:caseA,displayName:'DEMO A',kind:'minor'},{id:caseB,displayName:'DEMO B',kind:'minor'}]);let verification=false,resolve!:(r:Response)=>void,resolveB!:(r:Response)=>void,signal:AbortSignal|undefined;
+ fetchMock.mockImplementation((url:string,options?:RequestInit)=>{
+  const q=new URL(url,'https://synthetic.invalid').searchParams,inB=q.get('caseId')===caseB;
+  if(url.startsWith('/api/identity/audiences'))return Promise.resolve(Response.json({ok:true,data:[{id:inB?audienceB:audienceA,visibility:'family_full'}]}));
+  if(options?.method==='POST'){if(postBodies().length===1){verification=true;return Promise.resolve(Response.json({ok:true,data:{}}));}if(postBodies().length===2)return new Promise<Response>(r=>{resolveB=r;});return Promise.resolve(Response.json({ok:false},{status:400}));}
+  if(url.startsWith('/api/updates?')&&!inB&&verification)return new Promise<Response>(r=>{resolve=r;signal=options?.signal??undefined;});
+  return Promise.resolve(Response.json({ok:true,data:[]}));
+ });
+ const open=locale==='en'?'Add feedback':'הוספת משוב';let output=await ready(a);(find(output,e=>e.type==='button'&&e.props.children===open)!.props.onClick as Click)();output=render(a);
+ (find(output,e=>e.type==='textarea')!.props.onChange as Change)({target:{value:'DEMO A unverified exact body'}});output=render(a);(find(output,e=>e.type==='form')!.props.onSubmit as Submit)({preventDefault(){}});await tick();const original=postBodies()[0];expect(signal).toBeInstanceOf(AbortSignal);
+ output=await ready(b);expect(signal!.aborted).toBe(true);const openB=find(output,e=>e.type==='button'&&e.props.children===open);if(openB)(openB.props.onClick as Click)();output=render(b);expect(find(output,e=>e.type==='textarea')!.props.disabled).toBe(false);
+ (find(output,e=>e.type==='textarea')!.props.onChange as Change)({target:{value:'DEMO B independent body'}});output=render(b);(find(output,e=>e.type==='form')!.props.onSubmit as Submit)({preventDefault(){}});await tick();expect(postBodies()).toHaveLength(2);
+ verification=false;resolve(Response.json({ok:false},{status:503}));await tick();output=render(b);expect(find(output,e=>e.type==='textarea')!.props.value).toBe('DEMO B independent body');expect(find(output,e=>e.type==='textarea')!.props.disabled).toBe(true);expect(text(output)).not.toContain(locale==='en'?'Saved and verified.':'נשמר ואומת.');
+ (find(output,e=>e.type==='form')!.props.onSubmit as Submit)({preventDefault(){}});await tick();expect(postBodies()).toHaveLength(2);resolveB(Response.json({ok:false},{status:400}));await tick();output=render(b);expect(find(output,e=>e.type==='textarea')!.props.disabled).toBe(false);
+ output=await ready(a);expect(find(output,e=>e.type==='textarea')!.props.value).toBe('DEMO A unverified exact body');expect(find(output,e=>e.type==='textarea')!.props.disabled).toBe(true);
+ (find(output,e=>e.type==='button'&&e.props.children===(locale==='en'?'Retry this exact action':'ניסיון חוזר של אותה פעולה'))!.props.onClick as Click)();await tick();expect(postBodies()[2]).toEqual(original);output=render(a);expect(find(output,e=>e.type==='textarea')!.props.disabled).toBe(true);expect(text(output)).not.toContain(locale==='en'?'Saved and verified.':'נשמר ואומת.');
+});
+
+it.each(['en','he'] as const)('clears every retained unverified context after actual access denial (%s)',async locale=>{
+ accountRead.mockResolvedValue([{id:caseA,displayName:'DEMO A',kind:'minor'},{id:caseB,displayName:'DEMO B',kind:'minor'}]);
+ const a={locale,role:'parent' as const,initialCaseId:caseA,initialAudienceId:audienceA,initialPracticeVersionId:'version-a'},b={...a,initialCaseId:caseB,initialAudienceId:audienceB,initialPracticeVersionId:'version-b'};let denial=false;
+ fetchMock.mockImplementation(async(url:string,options?:RequestInit)=>{if(options?.method==='POST')return new Response('',{status:503});const inB=new URL(url,'https://synthetic.invalid').searchParams.get('caseId')===caseB;if(url.startsWith('/api/identity/audiences'))return Response.json({ok:true,data:[{id:inB?audienceB:audienceA,visibility:'family_full'}]});return denial?new Response('',{status:403}):Response.json({ok:true,data:[]});});
+ let output=await ready(a);(find(output,e=>e.type==='button'&&e.props.children===(locale==='en'?'Add feedback':'הוספת משוב'))!.props.onClick as Click)();output=render(a);(find(output,e=>e.type==='textarea')!.props.onChange as Change)({target:{value:'DEMO A retained private draft'}});output=render(a);(find(output,e=>e.type==='form')!.props.onSubmit as Submit)({preventDefault(){}});await tick();output=render(a);expect(find(output,e=>e.type==='textarea')!.props.disabled).toBe(true);
+ denial=true;output=await ready(b);expect(find(output,e=>e.type==='textarea')).toBeUndefined();denial=false;output=await ready(a);(find(output,e=>e.type==='button'&&e.props.children===(locale==='en'?'Retry contexts':'ניסיון טעינת ההקשרים מחדש'))!.props.onClick as Click)();output=await ready(a);(find(output,e=>e.type==='button'&&e.props.children===(locale==='en'?'Add feedback':'הוספת משוב'))!.props.onClick as Click)();output=render(a);expect(find(output,e=>e.type==='textarea')!.props.value).toBe('');expect(find(output,e=>e.type==='textarea')!.props.disabled).toBe(false);expect(text(output)).not.toContain(locale==='en'?'Retry this exact action':'ניסיון חוזר של אותה פעולה');expect(postBodies()).toHaveLength(1);
+});
+
 it("requires exact case, audience, and practice-version context", () => { expect(feedbackContextReady(caseA, caseA, audienceA, "version-a")).toBe(true); expect(feedbackContextReady(caseA, caseB, audienceA, "version-a")).toBe(false); expect(feedbackContextReady(caseA, caseA, "", "version-a")).toBe(false); });
 
 it("does not render old case/audience data after a delayed switch", async () => {
@@ -140,8 +168,8 @@ it.each([['en','post'],['he','post'],['en','session'],['he','session']] as const
  if(phase==='post')resolve(Response.json({ok:true,data:{}}));else resolveSession({csrfToken:'c'.repeat(43)});await tick();output=render(b);
  expect(text(output)).not.toContain(locale==='en'?'Saving and checking the stored result':'שומר ובודק את התוצאה השמורה');expect(text(output)).not.toContain(locale==='en'?'Saved and verified.':'נשמר ואומת.');
  expect(find(output,e=>e.type==='textarea')!.props.disabled).toBe(false);expect(find(output,e=>e.type==='textarea')!.props.value).toBe('');
- output=await ready(a);expect(find(output,e=>e.type==='textarea')!.props.value).toBe('DEMO A private unsaved body');expect(find(output,e=>e.type==='textarea')!.props.disabled).toBe(false);
- (find(output,e=>e.type==='form')!.props.onSubmit as Submit)({preventDefault(){}});await tick();if(phase==='post')expect(postBodies()[1]).toEqual(original);else expect(postBodies()).toHaveLength(1);
+ output=await ready(a);expect(find(output,e=>e.type==='textarea')!.props.value).toBe('DEMO A private unsaved body');expect(find(output,e=>e.type==='textarea')!.props.disabled).toBe(phase==='post');
+ if(phase==='post')(find(output,e=>e.type==='button'&&e.props.children===(locale==='en'?'Retry this exact action':'ניסיון חוזר של אותה פעולה'))!.props.onClick as Click)();else (find(output,e=>e.type==='form')!.props.onSubmit as Submit)({preventDefault(){}});await tick();if(phase==='post')expect(postBodies()[1]).toEqual(original);else expect(postBodies()).toHaveLength(1);
  resolve(Response.json({ok:false},{status:400}));await tick();
 });
 
