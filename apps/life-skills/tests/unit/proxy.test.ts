@@ -160,7 +160,7 @@ describe("actual practitioner Calendar login return perimeter", () => {
 
 describe("actual practice proxy validates transport before header rewriting", () => {
   const origin = "https://life-skills.bneineviimacademy.org";
-  const paths = ["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins", "/api/updates", "/api/owner-digest", "/api/community-threads", "/en/app/marketing", "/he/app/marketing", "/en/app/clients", "/he/app/reports", "/he/app/settings/content-voice", "/en/family/calendar", "/he/client/calendar"];
+  const paths = ["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins", "/api/updates", "/api/owner-digest", "/api/community-threads", "/api/private/contact-acquisition", "/en/app/marketing", "/he/app/marketing", "/en/app/clients", "/he/app/reports", "/he/app/settings/content-voice", "/en/family/calendar", "/he/client/calendar"];
   function configured() {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("LS_APP_MODE", "foundation_locked");
