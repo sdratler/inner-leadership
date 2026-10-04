@@ -8,6 +8,9 @@ import {PeopleRequestError} from "./native-people-workspace.tsx";
 import "./native-people.css";
 type Fields=Extract<AcquisitionDecision,{action:"promote"}>["fields"];
 type Draft={fields:Fields;person:string;pending:AcquisitionDecision|null;conflict:boolean};
+export function AcquisitionSignIn({locale,page,search}:{locale:Locale;page:string;search:string}){
+ return <a className="lsw-button lsw-button--secondary" href={loginHref(locale,practitionerReturnPath(locale,"clients",{section:"needs_review",search,page}))}>{locale==="he"?"כניסה":"Sign in"}</a>;
+}
 const initialFields=(item:AcquisitionReviewItem):Fields=>({name:item.displayName||item.phone,stage:"New inquiry",language:"",note:"",nextAction:"",dueDate:""});
 async function responseData(response:Response){
  let body;try{body=await response.json();}catch{throw new PeopleRequestError(response.status||503);}
@@ -18,12 +21,12 @@ async function responseData(response:Response){
 export function AcquisitionWorkspace({locale,mode}:{locale:Locale;mode?:string|undefined}){
  const text=(en:string,he:string)=>locale==="he"?he:en;
  const [data,setData]=useState<AcquisitionPage|null>(null),[source,setSource]=useState<"sheet"|"native"|null>(null),
-  [busy,setBusy]=useState(false),[failure,setFailure]=useState<number|null>(null),[query,setQuery]=useState(""),[saved,setSaved]=useState<AcquisitionDecisionResult|null>(null);
+  [busy,setBusy]=useState(false),[failure,setFailure]=useState<number|null>(null),[query,setQuery]=useState(""),[page,setPage]=useState("1"),[saved,setSaved]=useState<AcquisitionDecisionResult|null>(null);
  const lifecycle=useRef({alive:true,serial:0}),[drafts,setDrafts]=useState(()=>new Map<string,Draft>());
  const load=useCallback(async()=>{
   const current=++lifecycle.current.serial;setBusy(true);setFailure(null);setData(null);setSource(null);
   const params=new URLSearchParams(window.location.search),raw=params.get("page")??"1",search=params.get("search")??"";
-  setQuery(search.length<=200?search:"");
+  setQuery(search.length<=200?search:"");setPage(params.getAll("page").length===1&&/^[1-9]\d{0,4}$/.test(raw)?raw:"1");
   try{
    const result=await responseData(await fetch("/api/private/contact-acquisition?"+new URLSearchParams({page:/^[1-9]\d{0,4}$/.test(raw)?raw:"1",search:search.length<=200?search:""}),
     {credentials:"same-origin",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer"}));
@@ -49,7 +52,7 @@ export function AcquisitionWorkspace({locale,mode}:{locale:Locale;mode?:string|u
    <p>{text("Unknown messages are not active leads. Review metadata before promoting or matching a person. No message is sent by these actions.","הודעות לא מסווגות אינן פניות פעילות. יש לבדוק את פרטי הפנייה לפני קידום או שיוך לאיש קשר. הפעולות האלה אינן שולחות הודעה.")}</p></header>
   {mode==="demo"?<p role="status">{text("Live inbound candidates are not shown in DEMO. No live record is changed.","פניות נכנסות חיות אינן מוצגות ב-DEMO. אף רשומה חיה אינה משתנה.")}</p>:<section className="lsu-native-people" aria-busy={busy}>
    {failure!==null&&<div className="lsw-alert" role="alert"><p>{failure===401?text("Your session ended. Sign in to continue.","פג תוקף החיבור. יש להיכנס מחדש."):failure===403?text("This account cannot review practitioner acquisition records.","לחשבון הזה אין גישה לבדיקת פניות של המטפל/ת."):failure===409?text("The contact authority changed or is frozen. No fallback records were used.","מקור אנשי הקשר השתנה או מוקפא. לא הוצגו רשומות חלופיות."):text("The review records could not be loaded. Your authorized draft is preserved; this is not an empty list.","לא ניתן לטעון את הרשומות לבדיקה. הטיוטה המורשית נשמרה; אין להסיק שהרשימה ריקה.")}</p>
-    {failure===401?<a className="lsw-button lsw-button--secondary" href={loginHref(locale,practitionerReturnPath(locale,"clients",{section:"needs_review",search:query}))}>{text("Sign in","כניסה")}</a>:!denied&&<button className="lsw-button lsw-button--secondary" onClick={()=>void load()}>{text("Retry","ניסיון חוזר")}</button>}</div>}
+    {failure===401?<AcquisitionSignIn locale={locale} page={page} search={query}/>:!denied&&<button className="lsw-button lsw-button--secondary" onClick={()=>void load()}>{text("Retry","ניסיון חוזר")}</button>}</div>}
    {source==="sheet"&&<p role="status">{text("Native acquisition review is awaiting the verified CRM cutover. The existing Sheet remains authoritative; no native shadow or duplicate writer is exposed.","בדיקת הפניות המקומית ממתינה למעבר המאומת של מערכת אנשי הקשר. הגיליון הקיים נשאר המקור הקובע; לא מוצגים נתוני צל ולא מופעל כותב נוסף.")}</p>}
    {!denied&&source!=="sheet"&&<><form className="lsw-card lsu-people-toolbar" aria-label={text("Review search","חיפוש פניות לבדיקה")} onSubmit={event=>{event.preventDefault();navigate(1);}}>
     <label className="lsw-field">{text("Search name or number","חיפוש שם או מספר")}<input className="lsw-input" type="search" maxLength={200} value={query} onChange={event=>setQuery(event.target.value)}/></label>
