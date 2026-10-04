@@ -9,6 +9,7 @@ vi.mock('../../../src/features/owner-digest/runtime.ts',()=>({ownerDigestContext
 import Page from '../../../src/app/[locale]/app/marketing/page.tsx';
 import {MarketingDashboard} from '../../../src/ui/revamp/marketing-dashboard.tsx';
 import type {MarketingSnapshot} from '../../../src/features/marketing-overview/contracts.ts';
+import {AppError} from '../../../src/lib/errors.ts';
 const snapshot:MarketingSnapshot={source:'registry_only',fetchedAt:null,creatives:[],publications:[],ads:[],scout:{readyDrafts:null,sourceUrl:null,lastChecked:null,status:'unbound'}};
 function setup(){
  for(const call of Object.values(calls))call.mockReset();
@@ -20,6 +21,19 @@ for(const locale of ['he','en'] as const){
  it('preserves the actual graphics page and filters while sharing section normalization',async()=>{
   setup();const result=await Page({params:Promise.resolve({locale}),searchParams:Promise.resolve({section:'creatives',page:'2',placement:'facebook_feed',language:'he',search:'DEMO'})});
   expect(result.props.creativeQuery).toMatchObject({section:'creatives',page:'2',placement:'facebook_feed',language:'he',search:'DEMO'});expect(calls.digest).not.toHaveBeenCalled();
+ });
+ it('denies the owner overview for another practitioner without exposing either read model',async()=>{
+  setup();calls.context.mockRejectedValueOnce(new AppError('FORBIDDEN'));
+  await expect(Page({params:Promise.resolve({locale}),searchParams:Promise.resolve({section:'overview'})})).rejects.toThrow('NOT_FOUND');
+  expect(calls.digest).not.toHaveBeenCalled();
+ });
+ it('does not turn a fresh role denial during digest reads into a permitted marketing response',async()=>{
+  setup();calls.digest.mockRejectedValueOnce(new AppError('FORBIDDEN'));
+  await expect(Page({params:Promise.resolve({locale}),searchParams:Promise.resolve({section:'overview'})})).rejects.toThrow('NOT_FOUND');
+ });
+ it('does not hide an actual digest failure as another practitioner',async()=>{
+  setup();calls.digest.mockRejectedValueOnce(new AppError('UNAVAILABLE'));
+  await expect(Page({params:Promise.resolve({locale}),searchParams:Promise.resolve({section:'overview'})})).rejects.toMatchObject({code:'UNAVAILABLE'});
  });
  it.each([undefined,'overview','calendar','bogus',['ads','community']])(`${locale}: loads the owner summary for an overview after normalizing %j`,async section=>{
   setup();const result=await Page({params:Promise.resolve({locale}),searchParams:Promise.resolve({section})});
