@@ -34,6 +34,9 @@ export async function prepareDemoPractice(runtime:Runtime,selection:ReturnType<t
     WHERE d.workspace_id=$1 AND d.batch_id=$2 AND d.source_key=$3 AND c.state='active' AND c.practitioner_account_id=$4`,
     [runtime.config.workspaceId,batch,source,owner.id]);
    if(rows.length!==1)throw new AppError('CONFLICT');
+   const expected=(source==='owner-minor-a'?[accounts.parent!,accounts.child!]:[accounts.adult!]).sort();
+   const members=await tx.query<{id:AccountId}>('SELECT account_id AS id FROM ls_cases.audience_accounts WHERE workspace_id=$1 AND audience_id=$2 AND revoked_at IS NULL ORDER BY account_id',[runtime.config.workspaceId,rows[0]!.audienceId]);
+   if(JSON.stringify(members.map(row=>row.id))!==JSON.stringify(expected))throw new AppError('CONFLICT');
    await demoOperatorContext(tx,runtime.config.workspaceId,owner.id,rows[0]!.caseId,batch,permission);
    cases[source]=rows[0]!;
   }
@@ -46,7 +49,7 @@ export async function prepareDemoPractice(runtime:Runtime,selection:ReturnType<t
    assigneeAccountIds:[selected.accounts[item.role]!],assistedByParentAccountIds:item.role==='child'?[selected.accounts.parent!]:[],
    reminderRecipients:[],completionMode:'any_assignee',weekdays:[0,1,2,3,4,5,6],localTime:item.localTime,timezone:'Asia/Jerusalem',timeOrigin:'practitioner',foldChoice:null};
   await service.prepareDemoAsOperator(runtime.config.workspaceId,selected.ownerId,batch,item.commandKey,
-   {...context,templateKey:'DEMO',templateVersion:'owner-practice-v1',instructions:item.instructions,startsOn:item.startsOn,endsOn:item.endsOn,responsibility,
+   {...context,demoAudienceAccountIds:item.role==='adult'?[selected.accounts.adult!]:[selected.accounts.parent!,selected.accounts.child!],templateKey:'DEMO',templateVersion:'owner-practice-v1',instructions:item.instructions,startsOn:item.startsOn,endsOn:item.endsOn,responsibility,
     occurrences:[{occursOn:item.occursOn,period:'evening'}]},permission);
  }
  return {batch,createdOrReused:plan.length,accountChanges:0,providerEffects:0,paymentEffects:0,completionReportsWritten:0};

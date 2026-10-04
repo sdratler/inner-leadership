@@ -362,7 +362,7 @@ export class HomePracticeService implements PracticeVersionReader {
    * synthetic session, invitation, provider transport or financial operation.
    * Existing encrypted operator receipts bind retries to the exact input. */
   async prepareDemoAsOperator(workspace:WorkspaceId,owner:AccountId,batch:string,key:string,
-    input:DraftInput & {occurrences:readonly {occursOn:string;period:OccurrencePeriod}[]},permission:boolean){
+    input:DraftInput & {demoAudienceAccountIds:readonly AccountId[];occurrences:readonly {occursOn:string;period:OccurrencePeriod}[]},permission:boolean){
     if(permission!==true)throw new AppError("FORBIDDEN");
     if(input.templateKey!=="DEMO"||input.templateVersion!=="owner-practice-v1"||
       !input.instructions.startsWith("DEMO — ")||input.instructions.length>2000||input.goalId||input.commitmentId||
@@ -377,6 +377,10 @@ export class HomePracticeService implements PracticeVersionReader {
       const item=await loadCase(c.tx,workspace,input.caseId),audience=await loadAudience(c.tx,workspace,input.caseId,input.audienceId);
       caseAccess(c.actor,item,await loadGuardians(c.tx,workspace,input.caseId),"publish");
       if(!item||!audience?.published||audience.visibility==="private")throw new AppError("NOT_FOUND");
+      const expected=[...new Set(input.demoAudienceAccountIds)].sort();
+      if(expected.length!==input.demoAudienceAccountIds.length||expected.length!==(item.kind==='minor'?2:1)||
+        JSON.stringify([...audience.accountIds].sort())!==JSON.stringify(expected))throw new AppError("CONFLICT");
+      for(const id of expected)if(await demoAccountBatch(c.tx,workspace,id)!==batch)throw new AppError("FORBIDDEN");
       await authorizeResponsibility(c.tx,c.actor,item,audience,input.responsibility,input.startsOn,input.endsOn!,input.instructions);
       const ids=[...input.responsibility!.assigneeAccountIds,...input.responsibility!.assistedByParentAccountIds];
       if(ids.length===0)throw new AppError("INVALID_REQUEST");
