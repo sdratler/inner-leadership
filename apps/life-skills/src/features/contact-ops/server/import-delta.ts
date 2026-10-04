@@ -37,6 +37,9 @@ export function planSourceDelta(previous: SheetSnapshot, next: SheetSnapshot, wo
   const rows = after.rows.map(row => {
     const old = prior.get(row.legacyId) ?? null;
     const reasons = [...row.issues];
+    // Match the native directory identity's z.string().max(120), preserving
+    // empty names and exact source text for review instead of truncating it.
+    if (row.protectedPayload.displayName.length > 120) reasons.push("DISPLAY_NAME_NEEDS_REVIEW");
     if ((row.normalizedPhone && phones.get(row.normalizedPhone)!.length > 1) ||
       (row.normalizedEmail && emails.get(row.normalizedEmail)!.length > 1)) reasons.push("SHARED_ENDPOINT");
     if (old && (old.normalizedEmail !== row.normalizedEmail || old.normalizedPhone !== row.normalizedPhone)) reasons.push("ENDPOINT_CHANGED");

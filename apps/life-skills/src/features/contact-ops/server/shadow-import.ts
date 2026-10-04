@@ -155,7 +155,7 @@ export class NativeShadowImporter {
     const profile=crmProfileSchema.parse(JSON.parse(unseal(link.profileCiphertext,crmProfileAad(actor.workspaceId,link.personId),this.keyring))) as CrmProfile;
     requireThat(profile.personId === link.personId, "DELTA_PRIOR_BINDING_MISMATCH");
     const identity=JSON.parse(unseal(link.identityCiphertext,`person:${actor.workspaceId}:${link.personId}`,this.keyring));
-    requireThat(typeof identity?.displayName === "string", "DELTA_IDENTITY_CONTENT_INVALID");
+    requireThat(typeof identity?.displayName === "string" && identity.displayName.length <= 120, "DELTA_IDENTITY_CONTENT_INVALID");
     const item=incoming.get(before.legacyId);
     if(!item || reviewIds.has(before.legacyId)) continue;
     const merged=reconcileImportedProfile(before,item.after,profile), rowConflicts:string[]=[...merged.conflicts];

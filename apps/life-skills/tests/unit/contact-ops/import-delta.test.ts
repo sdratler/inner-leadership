@@ -56,6 +56,16 @@ describe("exact-source final delta planning",()=>{
  it("fails duplicate legacy IDs rather than treating them as a merge",()=>{
   expect(()=>plan(source(),source("r2",[one,one]))).toThrow("DELTA_SOURCE_NEEDS_REVIEW");
  });
+ it("keeps oversized changed/new display names intact for review, not persistence",()=>{
+  const oversized="א".repeat(121), added=[...two];added[1]=oversized;
+  for(const rows of [[changed({1:oversized})],[one,added]]){
+   const result=plan(source(),source("r2",rows));
+   expect(result.ready).toBe(false);
+   expect(result.review).toEqual([{legacyId:rows.at(-1)![0],reasons:["DISPLAY_NAME_NEEDS_REVIEW"]}]);
+   expect(result.rows.at(-1)!.after.protectedPayload.displayName).toBe(oversized);
+  }
+  for(const name of ["","א".repeat(120)])expect(plan(source(),source("r2",[changed({1:name})])).ready).toBe(true);
+ });
 });
 
 describe("three-way administrative reconciliation",()=>{

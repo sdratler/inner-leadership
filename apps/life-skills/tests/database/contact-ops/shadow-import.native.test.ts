@@ -122,6 +122,27 @@ test("delta preflight detects account endpoint collisions without linking a pers
  } finally {await d.pool.end();}
 });
 
+test("oversized delta names cannot change identities, profiles, source receipts or authority",async()=>{
+ const d=await fixture();
+ try{
+  const service=new NativeShadowImporter(poolStore(d.pool),d.keyring,lookupKey,key,sourceFileId,sheetId),old=snapshot([one]);
+  const decideFor=(s:SheetSnapshot)=>planImport(s,d.workspaceId,key).rows.map(row=>({sourceRow:row.sourceRow,sourceRevision:s.revision,legacyId:row.legacyId,rowDigest:row.rowDigest,kind:"new_person" as const}));
+  await service.importNewPeople(d.practitioner.actor,old,decideFor(old));
+  const state={phase:"frozen",epoch:2,batchId:"synthetic-name-bound",sourceFileId,sourceRevision:old.revision,nativeWritesSinceSwitch:0};
+  await d.pool.query("INSERT INTO ls_contact_ops.cutover(workspace_id,epoch,phase,state_ciphertext) VALUES($1,2,'frozen',$2)",[d.workspaceId,seal(JSON.stringify(state),cutoverStateAad(d.workspaceId,2),d.keyring)]);
+  const preserve=async()=>Promise.all(["ls_identity.people","ls_contact_ops.profiles","ls_contact_ops.legacy_links","ls_contact_ops.cutover","ls_contact_ops.delta_operations","ls_contact_ops.delta_history"].map(async table=>(await d.pool.query(`SELECT to_jsonb(t) AS row FROM ${table} t WHERE workspace_id=$1 ORDER BY to_jsonb(t)::text`,[d.workspaceId])).rows));
+  const before=await preserve(),changed=[...one],added=[...two];changed[1]="א".repeat(121);added[1]="x".repeat(121);
+  for(const rows of [[changed],[one,added]]){
+   const next={...snapshot(rows),revision:"synthetic-revision-2"};
+   const checked=await service.preflightDelta(d.practitioner.actor,old,next);
+   expect(checked.existingRowsReconciled).toBe(false);
+   expect(checked.source.review).toEqual([{legacyId:rows.at(-1)![0],reasons:["DISPLAY_NAME_NEEDS_REVIEW"]}]);
+   await expect(service.applyDelta(d.practitioner.actor,old,next,{operationId:"synthetic-name-bound",expectedEpoch:2,versions:[{legacyId:one[0]!,version:1}],newPeople:decideFor(next).filter(row=>row.legacyId===two[0])})).rejects.toThrow("DELTA_RECONCILIATION_REQUIRED");
+   expect(await preserve()).toEqual(before);
+  }
+ }finally{await d.pool.end();}
+});
+
 test("first import waits for the authority fence and observes the newly committed phase", async()=>{
  const d=await fixture(),holder=await d.pool.connect();
  let open=false,attempt:Promise<{ok:boolean;error:string|null}>|undefined;
