@@ -2,6 +2,7 @@ import {readFileSync} from "node:fs";
 import {expect,test} from "@playwright/test";
 
 const workspaceCss=readFileSync(new URL("../../../src/ui/workspace/workspace.css",import.meta.url),"utf8");
+const professionalCss=readFileSync(new URL("../../../src/ui/workspace/professional-ui.css",import.meta.url),"utf8");
 const calendarCss=readFileSync(new URL("../../../src/features/calendar/calendar.css",import.meta.url),"utf8");
 
 for(const locale of ["en","he"] as const){
@@ -13,6 +14,7 @@ for(const locale of ["en","he"] as const){
    const nav=viewKeys.map((view,index)=>`<a href="/${locale}/app/calendar?view=${view}"${view==="agenda"?' aria-current="page"':''}>${labels[index]}</a>`).join("");
    await page.setContent(`<meta name="viewport" content="width=device-width, initial-scale=1"><div class="lsw lsu" dir="${locale==="he"?"rtl":"ltr"}"><main class="ls-cal"><section class="lsw-calendar lsw-calendar--agenda"><header class="lsw-calendar-toolbar"><h2>${locale==="he"?"ספטמבר 2026":"September 2026"}</h2><nav aria-label="Calendar">${nav}</nav><nav><a href="#previous">Previous</a><a href="#today">Today</a><a href="#next">Next</a></nav><span class="lsw-help" dir="ltr">Asia/Jerusalem</span></header></section></main></div>`);
    await page.addStyleTag({content:workspaceCss});
+   await page.addStyleTag({content:professionalCss});
    await page.addStyleTag({content:calendarCss});
    const viewNav=page.locator(".lsw-calendar-toolbar>nav").first(),links=viewNav.locator("a");
    await expect(links).toHaveCount(4);
@@ -27,10 +29,10 @@ for(const locale of ["en","he"] as const){
    expect(await viewNav.evaluate(node=>node.scrollWidth-node.clientWidth)).toBeLessThanOrEqual(1);
    const agenda=links.last();
    await expect(agenda).toHaveAttribute("aria-current","page");
-   // Current approved --ui-teal (#245159), not the superseded green token.
-   expect(calendarCss).toContain("background:var(--ui-teal,#245159)");
-   await expect(agenda).toHaveCSS("background-color","rgb(36, 81, 89)");
-   await expect(agenda).toHaveCSS("color","rgb(255, 255, 255)");
+   // The real WorkspaceShell cascade: white active tab on the teal toolbar.
+   await expect(page.locator('.lsw-calendar-toolbar')).toHaveCSS('background-color','rgb(36, 81, 89)');
+   await expect(agenda).toHaveCSS("background-color","rgb(255, 255, 255)");
+   await expect(agenda).toHaveCSS("color","rgb(22, 63, 72)");
    await links.first().focus();
    for(let index=0;index<3;index++)await page.keyboard.press("Tab");
    await expect(agenda).toBeFocused();
