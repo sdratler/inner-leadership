@@ -25,5 +25,5 @@ export default async function Page({params,searchParams}:Props){
  const view=calendarView(query.view);
  let mode:CalendarMode;try{mode=calendarMode(query.mode);}catch{notFound();}
  const caseId=typeof query.caseId==='string'&&/^[0-9a-f-]{36}$/i.test(query.caseId)?query.caseId:'';
- return <CalendarWorkspace key={mode} locale={locale} role="practitioner" initialDate={date} initialView={view} initialCaseId={caseId} initialMode={mode} selectedClientContext={query.context==='client'&&Boolean(caseId)}/>;
+ return <CalendarWorkspace key={mode} locale={locale} role="practitioner" initialDate={date} initialView={view} initialCaseId={caseId} initialTaskId={new URL(returnPath,'https://life-skills.invalid').searchParams.get('taskId')??''} initialMode={mode} selectedClientContext={query.context==='client'&&Boolean(caseId)}/>;
 }
