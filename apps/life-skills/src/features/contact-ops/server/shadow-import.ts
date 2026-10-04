@@ -89,6 +89,28 @@ export class NativeShadowImporter {
    requireThat(links.length <= MAX_NATIVE_CONTACTS && links.length === oldPlan.rows.length &&
     new Set(links.map(link=>link.legacyId)).size === links.length, "DELTA_PRIOR_LINK_SET_MISMATCH");
    const current = new Map(links.map(link=>[link.legacyId,link]));
+   const accounts = await tx.query<{id:string;personId:string|null;emailBlind:string;phoneCiphertext:string|null}>(
+    `SELECT a.id,s.person_id AS "personId",a.email_blind AS "emailBlind",a.phone_ciphertext AS "phoneCiphertext"
+     FROM ls_identity.accounts a LEFT JOIN ls_identity.account_subjects s ON s.workspace_id=a.workspace_id AND s.account_id=a.id
+     WHERE a.workspace_id=$1 LIMIT $2`,[actor.workspaceId,MAX_NATIVE_CONTACTS+1]);
+   requireThat(accounts.length <= MAX_NATIVE_CONTACTS,"DELTA_ACCOUNT_BOUND");
+   const accountPhones=new Map<string,Set<string|null>>(),accountEmails=new Map<string,Set<string|null>>();
+   for(const account of accounts){
+    addOwner(accountEmails,account.emailBlind,account.personId);
+    if(account.phoneCiphertext){
+     const phone=normalizePhone(unseal(account.phoneCiphertext,`phone:${actor.workspaceId}:${account.id}`,this.keyring));
+     requireThat(phone !== null,"DELTA_ACCOUNT_PHONE_INVALID");
+     addOwner(accountPhones,phone,account.personId);
+    }
+   }
+   const identityConflicts: {legacyId:string;reason:"ACCOUNT_ENDPOINT_COLLISION"}[]=[];
+   for(const {after} of delta.rows){
+    const personId=current.get(after.legacyId)?.personId;
+    const owners=[after.normalizedPhone ? accountPhones.get(after.normalizedPhone) : undefined,
+     after.normalizedEmail ? accountEmails.get(blindEmail(after.normalizedEmail,this.lookupKey)) : undefined];
+    if(owners.some(set=>set && (!personId || [...set].some(owner=>owner!==personId))))
+     identityConflicts.push({legacyId:after.legacyId,reason:"ACCOUNT_ENDPOINT_COLLISION"});
+   }
    const incoming = new Map(delta.rows.map(row=>[row.after.legacyId,row]));
    const reviewIds = new Set(delta.review.map(row=>row.legacyId));
    const conflicts: {legacyId:string;fields:readonly string[]}[] = [];
@@ -118,8 +140,8 @@ export class NativeShadowImporter {
    // New rows still need the existing explicit identity dispositions and live
    // account/endpoint-collision checks. This read cannot authorize their import.
    const newRows=delta.rows.filter(row=>row.kind === "new").map(row=>row.after.legacyId);
-   return {source:delta,expectedEpoch:state.epoch,phase:state.phase,existing,conflicts,newRows,
-    existingRowsReconciled:delta.ready && conflicts.length===0,
+   return {source:delta,expectedEpoch:state.epoch,phase:state.phase,existing,conflicts,identityConflicts,newRows,
+    existingRowsReconciled:delta.ready && conflicts.length===0 && identityConflicts.length===0,
     newIdentityDecisionsRequired:newRows.length>0,effects:"none" as const};
   });
  }
@@ -184,10 +206,17 @@ export class NativeShadowImporter {
    }
   }
   return this.db.transaction(async tx => {
+   // Serialize with the same authority fence as operational writers. Initial
+   // import must never mutate a prepared snapshot or race native activation.
+   // Lock order matches authority -> identity used by native operations.
+   await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",[`${workspaceId}:contact-authority`]);
    // Identity mutations use this row lock. READ COMMITTED lets the account scan
    // see a mutation that committed while this transaction waited for the lock.
    await lockWorkspace(tx, workspaceId);
    await authorize(tx);
+   const authority=await readCutoverState(tx,workspaceId,this.keyring,true);
+   requireThat(authority.phase === "sheet_active" && authority.nativeWritesSinceSwitch === 0,
+    "IMPORT_AUTHORITY_ALREADY_PREPARED");
    await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [`${workspaceId}:crm-import:${snapshot.fileId}:${snapshot.sheetId}`]);
    const links = await tx.query<{ legacyId: string; personId: string; rowDigest: string; sourceRevision: string; snapshotCiphertext: string }>(
     'SELECT legacy_lead_id AS "legacyId",person_id AS "personId",row_digest AS "rowDigest",source_revision AS "sourceRevision",snapshot_ciphertext AS "snapshotCiphertext" FROM ls_contact_ops.legacy_links WHERE workspace_id=$1 AND source_file_id=$2 AND source_sheet_id=$3',

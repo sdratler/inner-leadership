@@ -7,6 +7,7 @@ import { NativeShadowImporter, nativeShadowOperatorPermit } from "../../../src/f
 import { crmProfileAad, NativeCrmStore } from "../../../src/features/contact-ops/server/native-store.ts";
 import type { SheetSnapshot } from "../../../src/features/contact-ops/server/import-plan.ts";
 import { planImport } from "../../../src/features/contact-ops/server/import-plan.ts";
+import {cutoverStateAad} from "../../../src/features/contact-ops/server/cutover-state.ts";
 
 const f = await fixture();
 afterAll(async () => { await f.pool.end(); });
@@ -22,6 +23,67 @@ function snapshot(rows: string[][] = [one, two], fileId = sourceFileId): SheetSn
  return { fileId, sheetId, tab: "Leads", revision: "synthetic-revision-1", complete: true, headers, rows };
 }
 function decide(source: SheetSnapshot) { return planImport(source, f.workspaceId, key).rows.map(row => ({ sourceRow: row.sourceRow, sourceRevision: source.revision, legacyId: row.legacyId, rowDigest: row.rowDigest, kind: "new_person" as const })); }
+
+test("first-import path cannot write after authority preparation, freeze or native activation", async()=>{
+ const d=await fixture();
+ try {
+  const service=new NativeShadowImporter(poolStore(d.pool),d.keyring,lookupKey,key,sourceFileId,sheetId);
+  const source=snapshot([one]);
+  const decisions=planImport(source,d.workspaceId,key).rows.map(row=>({sourceRow:row.sourceRow,sourceRevision:source.revision,legacyId:row.legacyId,rowDigest:row.rowDigest,kind:"new_person" as const}));
+  for(const phase of ["shadow_ready","frozen","native_active","retired","rollback_prepared"] as const){
+   const state={phase,epoch:1,batchId:"synthetic-cutover",sourceFileId,sourceRevision:source.revision,nativeWritesSinceSwitch:0};
+   await d.pool.query(`INSERT INTO ls_contact_ops.cutover(workspace_id,epoch,phase,state_ciphertext) VALUES($1,1,$2,$3)
+    ON CONFLICT(workspace_id) DO UPDATE SET phase=EXCLUDED.phase,state_ciphertext=EXCLUDED.state_ciphertext`,
+    [d.workspaceId,phase,seal(JSON.stringify(state),cutoverStateAad(d.workspaceId,1),d.keyring)]);
+   await expect(service.importNewPeople(d.practitioner.actor,source,decisions)).rejects.toThrow("IMPORT_AUTHORITY_ALREADY_PREPARED");
+   expect((await d.pool.query("SELECT count(*)::integer AS n FROM ls_contact_ops.legacy_links WHERE workspace_id=$1",[d.workspaceId])).rows[0].n).toBe(0);
+  }
+ } finally {await d.pool.end();}
+});
+
+test("delta preflight detects account endpoint collisions without linking a person or granting access", async()=>{
+ const d=await fixture();
+ try {
+  const service=new NativeShadowImporter(poolStore(d.pool),d.keyring,lookupKey,key,sourceFileId,sheetId);
+  const old=snapshot([one]), next={...snapshot([one,two]),revision:"synthetic-revision-2"};
+  const decisions=planImport(old,d.workspaceId,key).rows.map(row=>({sourceRow:row.sourceRow,sourceRevision:old.revision,legacyId:row.legacyId,rowDigest:row.rowDigest,kind:"new_person" as const}));
+  await service.importNewPeople(d.practitioner.actor,old,decisions);
+  for(const row of [one,two]) {
+   await d.pool.query("UPDATE ls_identity.accounts SET phone_ciphertext=$3 WHERE workspace_id=$1 AND id=$2",
+    [d.workspaceId,d.parent.actor.id,seal(row[2]!,`phone:${d.workspaceId}:${d.parent.actor.id}`,d.keyring)]);
+   const result=await service.preflightDelta(d.practitioner.actor,old,next);
+   expect(result.identityConflicts).toEqual([{legacyId:row[0],reason:"ACCOUNT_ENDPOINT_COLLISION"}]);
+   expect(result.existingRowsReconciled).toBe(false);
+   expect(result.effects).toBe("none");
+  }
+  expect((await d.pool.query("SELECT count(*)::integer AS n FROM ls_contact_ops.legacy_links WHERE workspace_id=$1",[d.workspaceId])).rows[0].n).toBe(1);
+ } finally {await d.pool.end();}
+});
+
+test("first import waits for the authority fence and observes the newly committed phase", async()=>{
+ const d=await fixture(),holder=await d.pool.connect();
+ let open=false,attempt:Promise<{ok:boolean;error:string|null}>|undefined;
+ try {
+  const service=new NativeShadowImporter(poolStore(d.pool),d.keyring,lookupKey,key,sourceFileId,sheetId),source=snapshot([one]);
+  const decisions=planImport(source,d.workspaceId,key).rows.map(row=>({sourceRow:row.sourceRow,sourceRevision:source.revision,legacyId:row.legacyId,rowDigest:row.rowDigest,kind:"new_person" as const}));
+  await holder.query("BEGIN");open=true;
+  await holder.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",[`${d.workspaceId}:contact-authority`]);
+  const state={phase:"shadow_ready",epoch:1,batchId:"synthetic-cutover",sourceFileId,sourceRevision:source.revision,nativeWritesSinceSwitch:0};
+  await holder.query("INSERT INTO ls_contact_ops.cutover(workspace_id,epoch,phase,state_ciphertext) VALUES($1,1,'shadow_ready',$2)",
+   [d.workspaceId,seal(JSON.stringify(state),cutoverStateAad(d.workspaceId,1),d.keyring)]);
+  let settled=false;
+  attempt=service.importNewPeople(d.practitioner.actor,source,decisions)
+   .then(()=>({ok:true,error:null}),error=>({ok:false,error:(error as Error).message})).finally(()=>{settled=true});
+  await new Promise(resolve=>setTimeout(resolve,75));expect(settled).toBe(false);
+  await holder.query("COMMIT");open=false;
+  expect(await attempt).toEqual({ok:false,error:"IMPORT_AUTHORITY_ALREADY_PREPARED"});
+  expect((await d.pool.query("SELECT count(*)::integer AS n FROM ls_contact_ops.legacy_links WHERE workspace_id=$1",[d.workspaceId])).rows[0].n).toBe(0);
+ } finally {
+  if(open)await holder.query("ROLLBACK");holder.release();
+  if(attempt)await attempt;
+  await d.pool.end();
+ }
+});
 
 test("native final-delta preflight preserves existing identities and notes without writing or switching authority", async()=>{
  const d=await fixture();
