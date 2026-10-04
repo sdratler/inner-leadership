@@ -1,6 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import { AppError } from "../../lib/errors.ts";
 import {enqueuePracticeReminder} from "../reminders/queue.ts";
+import {demoOperatorContext} from "../demo/operator-context.ts";
+import {CalendarStore} from "../calendar/store.ts";
+import {demoAccountBatch} from "../demo/provenance.ts";
 import { asId, type Id } from "../../lib/ids.ts";
 import { instant } from "../../lib/time.ts";
 import type { CaseScope } from "../../lib/workspace.ts";
@@ -18,7 +21,7 @@ import type {
   PracticeVersionReference,
 } from "../identity/interfaces.ts";
 import { one, type IdentityStore, type SqlSession } from "../identity/store.ts";
-import type { AccountId, Actor, AudienceId, CaseId, IdentityClock } from "../identity/types.ts";
+import type { AccountFacts, AccountId, Actor, AudienceId, CaseId, IdentityClock, WorkspaceId } from "../identity/types.ts";
 import { assertCalendarDate, assertPeriod, coordinationAssignees } from "./policy.ts";
 import { recordPracticeAction } from "./history.ts";
 import { readPracticeOccurrences } from "./occurrences.ts";
@@ -40,6 +43,10 @@ import type {
 } from "./types.ts";
 
 const instructionsAad = (workspaceId: string, versionId: string) => `practice-version:${workspaceId}:${versionId}`;
+interface DraftInput {
+  caseId: CaseId; audienceId: AudienceId; goalId?: GoalId | undefined; commitmentId?: CommitmentId | undefined;
+  templateKey: string; templateVersion: string; instructions: string; startsOn: string; endsOn?: string | null | undefined; responsibility?:ResponsibilityInput|undefined;
+}
 function cancellationBoundaryError(error:unknown):boolean{
  for(let depth=0;depth<4&&error&&typeof error==='object';depth++){
   const row=error as {code?:unknown;message?:unknown;cause?:unknown};
@@ -251,17 +258,21 @@ export class HomePracticeService implements PracticeVersionReader {
     });
   }
 
-  async createDraft(actor: Actor, input: {
-    caseId: CaseId; audienceId: AudienceId; goalId?: GoalId | undefined; commitmentId?: CommitmentId | undefined;
-    templateKey: string; templateVersion: string; instructions: string; startsOn: string; endsOn?: string | null | undefined; responsibility?:ResponsibilityInput|undefined;
-  }, requestId: string): Promise<{ assignmentId: PracticeAssignmentId; versionId: PracticeVersionId }> {
+  async createDraft(actor: Actor, input: DraftInput, requestId: string): Promise<{ assignmentId: PracticeAssignmentId; versionId: PracticeVersionId }> {
+    return this.store.transaction(async tx => {
+      await lockWorkspace(tx, actor.workspaceId);
+      const current = await freshActor(tx, actor, this.clock.now());
+      return this.createDraftIn(tx,current,input,requestId);
+    });
+  }
+
+  /** Shared retained writer; callers must authorize and hold the workspace lock. */
+  private async createDraftIn(tx:SqlSession,actor:AccountFacts,input:DraftInput,requestId:string){
     const startsOn = assertCalendarDate(input.startsOn);
     const endsOn = input.endsOn ? assertCalendarDate(input.endsOn) : null;
     if (endsOn && endsOn < startsOn) throw new AppError("INVALID_REQUEST");
     const now = this.clock.now();
-    return this.store.transaction(async tx => {
-      await lockWorkspace(tx, actor.workspaceId);
-      const current = await freshActor(tx, actor, now);
+      const current = actor;
       const item = await loadCase(tx, actor.workspaceId, input.caseId);
       const guardians = await loadGuardians(tx, actor.workspaceId, input.caseId);
       caseAccess(current, item, guardians, "write");
@@ -281,7 +292,6 @@ export class HomePracticeService implements PracticeVersionReader {
         VALUES ($1,$2,$3,1,$4,$5,$6,$7,$8,'draft',$9,$10,$11::jsonb)`, [versionId, actor.workspaceId, assignmentId, input.templateKey, input.templateVersion, ciphertext, startsOn, endsOn, actor.id, now,responsibility===null?null:JSON.stringify(responsibility)]);
       await recordPracticeAction(tx, { requestId, now }, actor.workspaceId, actor.id, "practice_assignment_draft_created");
       return { assignmentId, versionId };
-    });
   }
 
   async revise(actor: Actor, input: { assignmentId: PracticeAssignmentId; instructions: string; startsOn: string; endsOn?: string | null | undefined;responsibility?:ResponsibilityInput|undefined }, requestId: string): Promise<{ versionId: PracticeVersionId; version: number }> {
@@ -321,10 +331,16 @@ export class HomePracticeService implements PracticeVersionReader {
   async publish(actor: Actor, assignmentId: PracticeAssignmentId, versionId: PracticeVersionId, requestId: string): Promise<PracticeVersionReference> {
     return this.store.transaction(async tx => {
       await lockWorkspace(tx, actor.workspaceId);
+      const current=await freshActor(tx,actor,this.clock.now());
+      return this.publishIn(tx,current,assignmentId,versionId,requestId);
+    });
+  }
+
+  private async publishIn(tx:SqlSession,actor:AccountFacts,assignmentId:PracticeAssignmentId,versionId:PracticeVersionId,requestId:string):Promise<PracticeVersionReference>{
       const now = this.clock.now();
       const row = await one<VersionRow>(tx, VERSION_SELECT + " WHERE a.workspace_id=$1 AND a.id=$2 AND v.id=$3 AND v.state='draft' FOR UPDATE OF a,v", [actor.workspaceId, assignmentId, versionId]);
       if (!row) throw new AppError("NOT_FOUND");
-      const current = await freshActor(tx, actor, now);
+      const current = actor;
       caseAccess(current, await loadCase(tx, actor.workspaceId, row.caseId), await loadGuardians(tx, actor.workspaceId, row.caseId), "publish");
       const responsibility=parseSavedResponsibility(row.responsibility),item=await loadCase(tx,actor.workspaceId,row.caseId),audience=await loadAudience(tx,actor.workspaceId,row.caseId,row.audienceId);
       if(responsibility){if(!item||!audience?.published||audience.visibility==="private")throw new AppError("NOT_FOUND");await authorizeResponsibility(tx,current,item,audience,responsibility,row.startsOn,row.endsOn,unseal(row.instructionsCiphertext,instructionsAad(actor.workspaceId,row.versionId),this.config.keyring));}
@@ -339,6 +355,53 @@ export class HomePracticeService implements PracticeVersionReader {
          VALUES($1,$2,$3,$4,$5,$6,$7::uuid[],$8,$9::uuid[],$10,$11,$10,$12,$13,$14::uuid[])`,[versionId,actor.workspaceId,assignmentId,Number(next!.version),row.caseId,row.audienceId,responsibility.assigneeAccountIds,responsibility.completionMode,responsibility.reminderRecipients.map(value=>value.accountId),now,actor.id,row.versionId,responsibility.participant,responsibility.assistedByParentAccountIds]);}
       await recordPracticeAction(tx, { requestId, now }, actor.workspaceId, actor.id, "practice_assignment_published");
       return { workspaceId: actor.workspaceId, caseId: row.caseId, assignmentId, versionId, audienceId: row.audienceId, visibility: (await loadAudience(tx, actor.workspaceId, row.caseId, row.audienceId))?.visibility ?? "private", publishedAt: now.toISOString(), immutableSnapshotDigest };
+  }
+
+  /** Explicit contained setup capability, never accepted by an HTTP route.
+   * Shares ordinary draft/publish/schedule writers and their transaction; no
+   * synthetic session, invitation, provider transport or financial operation.
+   * Existing encrypted operator receipts bind retries to the exact input. */
+  async prepareDemoAsOperator(workspace:WorkspaceId,owner:AccountId,batch:string,key:string,
+    input:DraftInput & {demoAudienceAccountIds:readonly AccountId[];occurrences:readonly {occursOn:string;period:OccurrencePeriod}[]},permission:boolean){
+    if(permission!==true)throw new AppError("FORBIDDEN");
+    if(input.templateKey!=="DEMO"||input.templateVersion!=="owner-practice-v1"||
+      !input.instructions.startsWith("DEMO — ")||input.instructions.length>2000||input.goalId||input.commitmentId||
+      !input.responsibility||input.responsibility.reminderRecipients.length!==0||
+      !input.endsOn||Date.parse(input.endsOn)-Date.parse(input.startsOn)>31*86400000||
+      input.occurrences.length<1||input.occurrences.length>16||
+      new Set(input.occurrences.map(row=>row.occursOn+":"+row.period)).size!==input.occurrences.length)throw new AppError("INVALID_REQUEST");
+    const store=new CalendarStore(this.store,this.config.keyring,this.clock);
+    return store.demoOperatorCommand(workspace,owner,input.caseId,batch,"demo:practice",key,input,permission,async c=>{
+      // Exact immutable ancestry and ordinary scope are rechecked before replay.
+      await demoOperatorContext(c.tx,workspace,owner,input.caseId,batch,permission);
+      const item=await loadCase(c.tx,workspace,input.caseId),audience=await loadAudience(c.tx,workspace,input.caseId,input.audienceId);
+      caseAccess(c.actor,item,await loadGuardians(c.tx,workspace,input.caseId),"publish");
+      if(!item||!audience?.published||audience.visibility==="private")throw new AppError("NOT_FOUND");
+      const expected=[...new Set(input.demoAudienceAccountIds)].sort();
+      if(expected.length!==input.demoAudienceAccountIds.length||expected.length!==(item.kind==='minor'?2:1)||
+        JSON.stringify([...audience.accountIds].sort())!==JSON.stringify(expected))throw new AppError("CONFLICT");
+      for(const id of expected)if(await demoAccountBatch(c.tx,workspace,id)!==batch)throw new AppError("FORBIDDEN");
+      await authorizeResponsibility(c.tx,c.actor,item,audience,input.responsibility,input.startsOn,input.endsOn!,input.instructions);
+      const ids=[...input.responsibility!.assigneeAccountIds,...input.responsibility!.assistedByParentAccountIds];
+      if(ids.length===0)throw new AppError("INVALID_REQUEST");
+      for(const id of ids)if(await demoAccountBatch(c.tx,workspace,id)!==batch)throw new AppError("FORBIDDEN");
+    },async c=>{
+      const count=await one<{count:number}>(c.tx,"SELECT count(*)::int AS count FROM ls_demo.records WHERE workspace_id=$1 AND batch_id=$2 AND entity_kind='assignment'",[workspace,batch]);
+      if(!count||count.count>=16)throw new AppError("CONFLICT");
+      // The bounded retry key is not the UUID request ID required by audit rows.
+      const requestId=randomUUID();
+      const draft=await this.createDraftIn(c.tx,c.actor,input,requestId);
+      await c.tx.query(`INSERT INTO ls_demo.records(workspace_id,batch_id,entity_kind,entity_key,source_key,case_id)
+        VALUES($1,$2,'assignment',$3,$4,$5)`,[workspace,batch,draft.assignmentId,key,input.caseId]);
+      await this.publishIn(c.tx,c.actor,draft.assignmentId,draft.versionId,requestId);
+      const occurrences:ScheduledOccurrence[]=[];
+      for(const planned of input.occurrences){
+        const row=await this.scheduleIn(c.tx,c.actor,{...planned,assignmentId:draft.assignmentId},requestId);
+        // Do not backdate completion opportunities or seed synthetic reports.
+        if(!row.occursAt||Date.parse(row.occursAt)<=Date.parse(c.now))throw new AppError("INVALID_REQUEST");
+        occurrences.push(row);
+      }
+      return {...draft,occurrences};
     });
   }
 
@@ -398,16 +461,22 @@ export class HomePracticeService implements PracticeVersionReader {
   }
 
   async schedule(actor: Actor, input: { assignmentId: PracticeAssignmentId; occursOn: string; period: OccurrencePeriod }, requestId: string): Promise<ScheduledOccurrence> {
-    const occursOn = assertCalendarDate(input.occursOn), period = assertPeriod(input.period), now = this.clock.now();
     return this.store.transaction(async tx => {
       await lockWorkspace(tx, actor.workspaceId);
+      const current=await freshActor(tx,actor,this.clock.now());
+      return this.scheduleIn(tx,current,input,requestId);
+    });
+  }
+
+  private async scheduleIn(tx:SqlSession,actor:AccountFacts,input:{assignmentId:PracticeAssignmentId;occursOn:string;period:OccurrencePeriod},requestId:string):Promise<ScheduledOccurrence>{
+    const occursOn = assertCalendarDate(input.occursOn), period = assertPeriod(input.period), now = this.clock.now();
       const assignment = await one<{caseId:CaseId;practiceVersionId:PracticeVersionId;audienceId:AudienceId;responsibility:unknown;version:number;startsOn:string;endsOn:string|null;instructionsCiphertext:string}>(tx,
         `SELECT a.case_id AS "caseId",a.audience_id AS "audienceId",a.active_version_id AS "practiceVersionId",v.responsibility,v.version,v.starts_on::text AS "startsOn",v.ends_on::text AS "endsOn",v.instructions_ciphertext AS "instructionsCiphertext" FROM ls_practice.practice_assignments a
          JOIN ls_practice.practice_assignment_versions v ON v.workspace_id=a.workspace_id AND v.id=a.active_version_id
          WHERE a.workspace_id=$1 AND a.id=$2 AND a.state='published' AND v.state='published'
           AND v.starts_on<=$3::date AND (v.ends_on IS NULL OR v.ends_on>=$3::date) FOR UPDATE OF a`, [actor.workspaceId, input.assignmentId, occursOn]);
       if (!assignment) throw new AppError("NOT_FOUND");
-      const current = await freshActor(tx, actor, now),item=await loadCase(tx,actor.workspaceId,assignment.caseId);
+      const current = actor,item=await loadCase(tx,actor.workspaceId,assignment.caseId);
       caseAccess(current, item, await loadGuardians(tx, actor.workspaceId, assignment.caseId), "write");
       const responsibility=parseSavedResponsibility(assignment.responsibility);let planned:PracticeOccurrence|null=null;
       if(responsibility){
@@ -437,7 +506,6 @@ export class HomePracticeService implements PracticeVersionReader {
       if(responsibility)await enqueuePracticeReminder(tx,actor.workspaceId,id,now);
       await recordPracticeAction(tx, { requestId, now }, actor.workspaceId, actor.id, "practice_occurrence_scheduled");
       return { id, assignmentId: input.assignmentId, practiceVersionId: assignment.practiceVersionId, coordinationVersionId: coordination.versionId, occursOn, period, state: "open",...(responsibility?{occursAt}:{}) };
-    });
   }
 
   async list(actor: Actor, caseId: CaseId, audienceId: AudienceId): Promise<PublishedPracticeVersion[]> {

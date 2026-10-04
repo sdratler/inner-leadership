@@ -12,6 +12,7 @@ import { demoOperatorPlan } from "../demo/operator-plan.ts";
 import { demoInviteDispatchPlan,type DemoInviteMail } from "../demo/invite-dispatch.ts";
 import { demoCalendarPlan } from "../demo/calendar-plan.ts";
 import { prepareDemoHistory } from "../demo/history-operator.ts";
+import { prepareDemoPractice } from "../demo/practice-operator.ts";
 import { CalendarStore } from "../calendar/store.ts";
 import { CalendarService } from "../calendar/service.ts";
 import type {CaseId,AccountId} from './types.ts';
@@ -21,7 +22,7 @@ import { createAuthEmailTransport } from "../../providers/email/gmail.ts";
 async function main():Promise<void>{
  if(process.env.LS_IDENTITY_OPERATOR_APPROVED!=="true" || process.argv.length!==3) throw new AppError("FORBIDDEN");
  const command=process.argv[2];
- if(!["bootstrap","dispatch","prune","provision-demo","dispatch-demo-invites","prepare-demo-calendar","prepare-demo-history"].includes(command ?? "")) throw new AppError("INVALID_REQUEST");
+ if(!["bootstrap","dispatch","prune","provision-demo","dispatch-demo-invites","prepare-demo-calendar","prepare-demo-history","prepare-demo-practice"].includes(command ?? "")) throw new AppError("INVALID_REQUEST");
  const runtime=await identityRuntime();
  const demoTarget=()=>{
   if(process.env.RAILWAY_PROJECT_ID!=="3b756632-1f66-4f75-a016-eabc37aa0d67" ||
@@ -143,6 +144,15 @@ async function main():Promise<void>{
   }
   process.stdout.write(JSON.stringify({command,result:'existing_demo_calendar_prepared',batch,createdOrReused:ids.size,
    accountChanges:0,providerEffects:0,paymentEffects:0})+'\n');
+ }else if(command==="prepare-demo-practice"){
+  if(process.env.LS_DEMO_PRACTICE_PREPARE_APPROVED!=="true")throw new AppError('FORBIDDEN');
+  const selection=demoTarget(),raw=process.env.LS_DEMO_PRACTICE_RECIPE_JSON,date=process.env.LS_DEMO_PRACTICE_DATE;
+  if(!raw||raw.length>65536||!date)throw new AppError('INVALID_REQUEST');
+  let recipe:unknown;try{recipe=JSON.parse(raw);}catch{throw new AppError('INVALID_REQUEST');}
+  const cluster=await runtime.store.transaction(tx=>tx.query<{id:string}>('SELECT system_identifier::text AS id FROM pg_control_system()'));
+  if(cluster[0]?.id!=='7682781321794240577')throw new AppError('FORBIDDEN');
+  const result=await prepareDemoPractice(runtime,selection,recipe,date,true);
+  process.stdout.write(JSON.stringify({command,result:'existing_demo_practice_prepared',...result})+'\n');
  }else if(command==="prepare-demo-history"){
   if(process.env.LS_DEMO_HISTORY_PREPARE_APPROVED!=="true")throw new AppError('FORBIDDEN');
   const selection=demoTarget(),raw=process.env.LS_DEMO_HISTORY_RECIPE_JSON;
