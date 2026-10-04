@@ -24,6 +24,62 @@ async function prepared(){
   return {f,service,sessionId,id,consent,store};
 }
 async function saved(s:Awaited<ReturnType<typeof prepared>>,lease:Lease){await s.store.checkpoint(lease,{state:"transcribing"});return s.store.saveTranscript(lease,transcript,cleanWhitespace(transcript),"DEMO-provider-complete-receipt",completion);}
+
+async function nextRecording(s:Awaited<ReturnType<typeof prepared>>){
+  const id=randomUUID(),bytes=Buffer.from(`DEMO distinct synthetic recording ${id}`),digest=createHash('sha256').update(bytes).digest('hex');await s.f.pool.query(`INSERT INTO ls_sessions.recording_jobs(workspace_id,case_id,session_id,id,consent_id,consent_version,source_digest,source_bytes,duration_milliseconds,object_reference_ciphertext,state,audio_state,attempt_id,raw_expires_at)
+    SELECT workspace_id,case_id,session_id,$3,consent_id,consent_version,$6,$7,duration_milliseconds,$4,'queued','temporary',$5,clock_timestamp()+interval '1 hour'
+    FROM ls_sessions.recording_jobs WHERE workspace_id=$1 AND id=$2`,[s.f.workspaceId,s.id,id,seal("DEMO second isolated object",`DEMO-object:${id}`,s.f.keyring),randomUUID(),digest,bytes.length]);return {id,bytes};
+}
+
+test('failed audio download stays retryable without recording an unknown provider outcome',async()=>{
+  const s=await prepared();let downloads=0,calls=0;
+  const ports:ProcessingPorts={store:s.store,budget:{reserve:async()=>{}},audio:{readVerified:async()=>{if(++downloads===1)throw Error('DEMO isolated download failure');return Uint8Array.from(sourceBytes);},deleteAndVerify:async()=> 'deleted'},transcriber:{transcribe:async()=>{calls++;return {transcript,requestId:'DEMO download retry receipt',completion};}},analyst:{analyze:async()=>analysis}};
+  expect(await processSession(s.id,ports)).toEqual({status:'failed',code:'PROCESSING_FAILED'});expect(calls).toBe(0);
+  expect((await s.f.pool.query('SELECT failure_code,transcript_version FROM ls_sessions.recording_jobs WHERE workspace_id=$1 AND id=$2',[s.f.workspaceId,s.id])).rows[0]).toMatchObject({failure_code:'PROCESSING_FAILED',transcript_version:null});
+  expect(await processSession(s.id,ports)).toEqual({status:'private_analysis_ready'});expect(calls).toBe(1);expect(downloads).toBe(2);
+});
+
+test('lease expiry during audio download permits a fresh retry but never calls a provider with expired authority',async()=>{
+  const s=await prepared();let reads=0,calls=0;const buffers:Uint8Array[]=[];
+  const ports:ProcessingPorts={store:s.store,budget:{reserve:async()=>{}},audio:{readVerified:async()=>{const bytes=Uint8Array.from(sourceBytes);buffers.push(bytes);if(++reads===1)await s.f.pool.query("UPDATE ls_sessions.recording_jobs SET lease_until=clock_timestamp()-interval '1 second' WHERE workspace_id=$1 AND id=$2",[s.f.workspaceId,s.id]);return bytes;},deleteAndVerify:async()=> 'deleted'},transcriber:{transcribe:async()=>{calls++;return {transcript,requestId:'DEMO authorized fresh lease receipt',completion};}},analyst:{analyze:async()=>analysis}};
+  expect(await processSession(s.id,ports)).toEqual({status:'failed',code:'PROCESSING_LEASE_LOST'});expect(calls).toBe(0);expect(buffers[0]!.every(value=>value===0)).toBe(true);
+  expect((await s.f.pool.query('SELECT failure_code FROM ls_sessions.recording_jobs WHERE workspace_id=$1 AND id=$2',[s.f.workspaceId,s.id])).rows[0].failure_code).toBe('PROCESSING_LEASE_LOST');
+  expect(await processSession(s.id,ports)).toEqual({status:'private_analysis_ready'});expect(calls).toBe(1);expect(reads).toBe(2);expect(buffers.every(bytes=>bytes.every(value=>value===0))).toBe(true);
+});
+
+test('a second recording uses the database-allocated transcript version before private analysis',async()=>{
+  const s=await prepared(),second=await nextRecording(s);let calls=0;const analyzed:number[]=[];
+  const ports:ProcessingPorts={store:s.store,budget:{reserve:async()=>{}},audio:{readVerified:async lease=>Uint8Array.from(lease.job.id===second.id?second.bytes:sourceBytes),deleteAndVerify:async()=> 'deleted'},transcriber:{transcribe:async input=>{calls++;return {transcript,requestId:`DEMO distinct recording receipt ${calls}`,completion:{...completion,sourceDigest:input.sourceDigest}};}},analyst:{analyze:async source=>{analyzed.push(source.version);return {...analysis,transcriptVersion:source.version};}}};
+  expect(await processSession(s.id,ports)).toEqual({status:'private_analysis_ready'});
+  expect(await processSession(second.id,ports)).toEqual({status:'private_analysis_ready'});expect(calls).toBe(2);expect(analyzed).toEqual([1,2]);expect(transcript.version).toBe(1);
+  const rows=(await s.f.pool.query('SELECT job_id,version,content_digest FROM ls_sessions.transcripts WHERE workspace_id=$1 AND session_id=$2 ORDER BY version',[s.f.workspaceId,s.sessionId])).rows;
+  expect(rows).toEqual([{job_id:s.id,version:1,content_digest:transcriptDigest(transcript)},{job_id:second.id,version:2,content_digest:transcriptDigest({...transcript,version:2})}]);
+  const detail=await s.service.detail(s.f.practitioner.actor,s.sessionId);expect(detail.transcript).toEqual({...transcript,version:2});expect(detail.analysis).toEqual({...analysis,transcriptVersion:2});
+});
+
+test('concurrent recording saves allocate distinct native versions and duplicate readback preserves exact content',async()=>{
+  const s=await prepared(),second=await nextRecording(s),leases=await Promise.all([s.store.claim(s.id),s.store.claim(second.id)]);
+  for(const lease of leases)await s.store.checkpoint(lease!,{state:'transcribing'});
+  const receipts=await Promise.all(leases.map((lease,index)=>s.store.saveTranscript(lease!,transcript,cleanWhitespace(transcript),`DEMO concurrent receipt ${index}`,{...completion,sourceDigest:lease!.job.sourceDigest})));
+  expect(receipts.map(receipt=>receipt.version).sort()).toEqual([1,2]);
+  for(const [index,lease] of leases.entries()){
+    const canonical={...transcript,version:receipts[index]!.version};expect(await s.store.readTranscript(lease!)).toEqual(canonical);
+    expect(await s.store.saveTranscript(lease!,transcript,cleanWhitespace(transcript),`DEMO concurrent receipt ${index}`,{...completion,sourceDigest:lease!.job.sourceDigest})).toEqual(receipts[index]);
+    const changed={...transcript,segments:[{...transcript.segments[0]!,text:'DEMO altered source'}]};await expect(s.store.saveTranscript(lease!,changed,cleanWhitespace(changed),`DEMO concurrent receipt ${index}`,{...completion,sourceDigest:lease!.job.sourceDigest})).rejects.toMatchObject({code:'CONFLICT'});
+    await s.store.release(lease!);
+  }
+  expect((await s.f.pool.query('SELECT count(*)::integer AS n FROM ls_sessions.transcripts WHERE workspace_id=$1 AND session_id=$2',[s.f.workspaceId,s.sessionId])).rows[0].n).toBe(2);expect(transcript.version).toBe(1);
+});
+
+test.each(['en','he'] as const)('requested %s locale must match stored provenance before any processing effect',async locale=>{
+  const s=await prepared(),configured=locale==='en'?'he':'en';let effects=0;
+  const mismatched=new PostgresSessionProcessingStore(poolStore(s.f.pool),s.f.keyring,s.f.practitioner.actor,systemClock,{...provenance,locale:configured});
+  const ports:ProcessingPorts={store:mismatched,budget:{reserve:async()=>{effects++;}},audio:{readVerified:async()=>{effects++;return Uint8Array.from(sourceBytes);},deleteAndVerify:async()=>{effects++;return 'deleted';}},transcriber:{transcribe:async()=>{effects++;return {transcript,requestId:'DEMO matching locale receipt',completion};}},analyst:{analyze:async(source,requested)=>{effects++;return {...analysis,locale:requested,transcriptVersion:source.version};}}};
+  expect(await processSession(s.id,ports,locale)).toEqual({status:'failed',code:'PROCESSING_LOCALE_MISMATCH'});expect(effects).toBe(0);
+  expect((await s.f.pool.query('SELECT failure_code,transcript_version FROM ls_sessions.recording_jobs WHERE workspace_id=$1 AND id=$2',[s.f.workspaceId,s.id])).rows[0]).toMatchObject({failure_code:'PROCESSING_LOCALE_MISMATCH',transcript_version:null});
+  ports.store=new PostgresSessionProcessingStore(poolStore(s.f.pool),s.f.keyring,s.f.practitioner.actor,systemClock,{...provenance,locale});
+  expect(await processSession(s.id,ports,locale)).toEqual({status:'private_analysis_ready'});expect((await s.service.detail(s.f.practitioner.actor,s.sessionId,locale)).analysis?.locale).toBe(locale);
+});
 test('expired in-flight transcription remains durably unknown and ordinary failure/retry cannot buy it again',async()=>{
  const s=await prepared();let calls=0,reservations=0,deletions=0;
  const ports:ProcessingPorts={store:s.store,budget:{reserve:async()=>{reservations++;}},audio:{readVerified:async()=>Uint8Array.from(sourceBytes),deleteAndVerify:async()=>{deletions++;return 'deleted';}},transcriber:{transcribe:async()=>{calls++;await s.f.pool.query("UPDATE ls_sessions.recording_jobs SET lease_until=clock_timestamp()-interval '1 second' WHERE workspace_id=$1 AND id=$2",[s.f.workspaceId,s.id]);return{transcript,requestId:'DEMO late provider receipt',completion};}},analyst:{analyze:async()=>analysis}};
