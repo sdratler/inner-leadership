@@ -68,10 +68,15 @@ export function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const canonicalOrigin = new URL(env.LS_APP_ORIGIN);
   const requestHost = (request.headers.get("host") ?? request.nextUrl.host).trim().toLowerCase();
-  // These APIs depend on strict canonical HTTPS forwarding. Validate the original
+  // Private rendered data needs the same transport fence as its APIs. Keep
+  // public intake/login and foundation preview outside this data-page selector.
+  // The explicitly synthetic sample retains its separate preview perimeter and
+  // ordinary role gate; it cannot load operational aggregates or real records.
+  const privateDataPage = /^\/(he|en)\/(?:app|family|workspace|parent|client|practitioner|attendance|calendar|checkins|commitments|forms|goals|home-practice|payments|progress|resources|updates)(?:\/|$)/.test(pathname);
+  // These data pages/APIs depend on strict canonical HTTPS forwarding. Validate the original
   // transport before the request-header rewrite below can hide an invalid chain.
   // Forwarding never grants a session, role, case or audience permission.
-  if (["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins", "/api/updates"].includes(pathname)||/^\/api\/(?:notifications|marketing)(?:\/|$)/.test(pathname)) {
+  if (privateDataPage || ["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins", "/api/updates", "/api/owner-digest"].includes(pathname)||/^\/api\/(?:notifications|marketing)(?:\/|$)/.test(pathname)) {
     try {
       if (request.nextUrl.hash || requestHost !== canonicalOrigin.host.toLowerCase()) throw new Error("invalid transport");
       if (request.headers.has("x-forwarded-proto") || request.headers.has("x-forwarded-host")) {

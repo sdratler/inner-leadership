@@ -1,7 +1,7 @@
 import type {AdDailyPoint,MarketingSnapshot} from "../marketing-overview/contracts.ts";
 import type {Prospect} from "../prospects/bridge.ts";
 import {crmDueCivilDate} from "../prospects/due-date.ts";
-import {prospectContactSuppressed} from "../prospects/native-edit.ts";
+import {prospectContactSuppressed,prospectArchived} from "../prospects/native-edit.ts";
 import {nextHebrewStatus,publicationStatusText,contentDayKey,orderedPublicationQueue} from "../marketing-overview/calendar-model.ts";
 import {MAX_OPERATIONAL_PROSPECTS} from "../contact-ops/core/limits.ts";
 
@@ -29,7 +29,7 @@ export function summarizeProspects(rows:readonly ProspectFacts[],today:string,jo
  if(rows.length>MAX_OPERATIONAL_PROSPECTS||new Set(rows.map(row=>row.leadId)).size!==rows.length||rows.some(row=>!/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]+$/.test(row.leadId)))throw Error("INVALID_DIGEST_PROSPECTS");
  const result:AdminCounts={due:0,overdue:0,future:0,missingDate:0,invalidDate:0,prospects:0,otherStages:0,awaitingForm:journeysAvailable?0:null,awaitingPayment:journeysAvailable?0:null,awaitingBooking:journeysAvailable?0:null};
  for(const row of rows){
-  if(/archive/i.test(`${row.stage} ${row.outcome}`)||prospectContactSuppressed(row))continue;
+  if(prospectArchived(row)||prospectContactSuppressed(row))continue;
   if(row.journeyState!=="active")result.prospects++;
   if(!canonicalStages.has(row.stage))result.otherStages++;
   if(row.nextAction.trim()){
@@ -63,9 +63,9 @@ export function buildOwnerDigest({now,marketing,followups,tasks,journeysAvailabl
  if(followups&&(followups.data.missingDate||followups.data.invalidDate))actions.push("dates_need_attention");
  if(!inventory)actions.push("content_unavailable");else if(inventory.partial)actions.push("content_partial");
  if(!report)actions.push("meta_unavailable");
- if(marketing.publications.some(item=>["sending","failed","unknown"].includes(item.state)||item.state==="published"&&!publicationStatusText(item,marketing.creatives,"en").startsWith("Published — provider receipt")))actions.push("publication_unconfirmed");
+ if(marketing.publications.some(item=>["sending","failed","unknown","manually_reported"].includes(item.state)||item.state==="published"&&!publicationStatusText(item,marketing.creatives,"en").startsWith("Published — provider receipt")))actions.push("publication_unconfirmed");
  return {reportDate,timezone:"Asia/Jerusalem",asOf:now.toISOString(),followups,tasks,
   content:{available:Boolean(inventory),asOf:inventory?.asOf??null,partial:inventory?.partial??true,heStatusReady:inventory?.heStatusReady??null,heFeedReady:inventory?.heFeedReady??null,enFeedReady:inventory?.enFeedReady??null,publishablePosts:inventory?.publishablePosts??null,queueCount:inventory?queue.length:null,coverageThrough:inventory&&!inventory.partial?(future.at(-1)?.scheduledFor??null):null,nextStatus:next?{at:next.scheduledFor!,status:publicationStatusText(next,marketing.creatives,locale)}:null,confirmedPublished:inventory?marketing.publications.filter(item=>publicationStatusText(item,marketing.creatives,"en")==="Published — provider receipt recorded").length:null},
   ads:{available:Boolean(report),asOf:report?.fetchedAt??null,currency:report?.currency??null,timezone:report?.timezone??null,attribution:report?.attribution??null,active:report?marketing.ads.filter(ad=>ad.status==="active").length:null,paused:report?marketing.ads.filter(ad=>ad.status==="paused").length:null,unknown:report?marketing.ads.filter(ad=>ad.status==="unknown").length:null,periods,days:report?report.days.filter(point=>point.date>=report.current.since&&point.date<=report.current.until):[]},
-  actions:actions.slice(0,3),delivery:{enabled:false,existingTaskId:"6aa7ad09733081919c066b261f8e015f",localTime:"08:00",state:"handover_not_verified"}};
+  actions,delivery:{enabled:false,existingTaskId:"6aa7ad09733081919c066b261f8e015f",localTime:"08:00",state:"handover_not_verified"}};
 }
