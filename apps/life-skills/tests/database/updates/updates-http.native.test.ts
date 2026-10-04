@@ -15,11 +15,12 @@ import {SqlPublishedPracticeVersionReader} from '../../../src/features/updates/p
 import {UpdateService} from '../../../src/features/updates/service.ts';
 import {Ls080Http} from '../../../src/features/updates/http.ts';
 import {proxy} from '../../../src/proxy.ts';
+import {parseUpdateThreads} from '../../../src/features/updates/context-state.ts';
 const opened:Fixture[]=[];
 afterEach(async()=>{vi.unstubAllEnvs();await Promise.all(opened.splice(0).map(f=>f.pool.end()));});
-async function setup(){
+async function setup(updatesClock=systemClock){
  const f=await fixture();opened.push(f);const config:IdentityConfig={enabled:true,origin:'https://synthetic.example.invalid',workspaceId:f.workspaceId,csrfKey:randomBytes(32),lookupKey:randomBytes(32),rateLimitKey:randomUUID(),keyring:f.keyring,sessionSeconds:3600},store=poolStore(f.pool),sessions=new IdentitySessions(store,config,systemClock),practice=new HomePracticeService(store,config,systemClock);
- const updates=new UpdateService(store,config,systemClock,new SqlPublishedPracticeVersionReader(store),practice),http=new Ls080Http(config,systemClock,{sessions,updates,limits:new PostgresIdentityRateStore(store),audit:durableAuditSink(store)});
+ const updates=new UpdateService(store,config,updatesClock,new SqlPublishedPracticeVersionReader(store),practice),http=new Ls080Http(config,systemClock,{sessions,updates,limits:new PostgresIdentityRateStore(store),audit:durableAuditSink(store)});
  vi.stubEnv('NODE_ENV','production');vi.stubEnv('LS_APP_MODE','foundation_locked');vi.stubEnv('LS_APP_ORIGIN',config.origin);vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');
  async function request(method:'GET'|'POST',path:string,body?:unknown,token:string|null=f.parent.token,extra:Record<string,string>={}){
   const headers=new Headers({host:'synthetic.example.invalid','x-forwarded-host':'synthetic.example.invalid','x-forwarded-proto':'https'});if(token)headers.set('Cookie',`__Host-ls-session=${token}`);
@@ -56,6 +57,31 @@ test('native forwarded Updates preserves unauthenticated, wrong-family, CSRF, pr
  expect((await h.request('POST','/api/updates',input,f.parent.token,{'X-CSRF-Token':'invalid'})).status).toBe(403);expect((await h.request('POST','/api/updates',input,f.parent.token,{Origin:'https://foreign.invalid'})).status).toBe(403);
  await f.pool.query('UPDATE ls_cases.audience_accounts SET revoked_at=clock_timestamp() WHERE workspace_id=$1 AND case_id=$2 AND account_id=$3',[f.workspaceId,f.first.id,f.parent.actor.id]);
  expect((await h.request('GET',h.list())).status).toBe(404);expect((await h.request('POST','/api/updates',input)).status).toBe(404);expect((await f.pool.query('SELECT count(*)::int AS n FROM ls_updates.parent_reports WHERE workspace_id=$1',[f.workspaceId])).rows[0].n).toBe(1);
+});
+test('over 100 replies remain bounded and accessible through freshly authorized history pages',async()=>{
+ const tiedNow=new Date(Date.now()+1000),h=await setup({now:()=>tiedNow}),{f}=h,{record}=await h.report(),ids:string[]=[];
+ for(let n=0;n<101;n++){
+  const response=await h.request('POST','/api/updates',{action:'reply',reportId:record.id,body:`DEMO history reply ${n}`,publish:true,idempotencyKey:randomUUID()},f.practitioner.token);
+  expect(response.status).toBe(201);ids.push((await response.json()).data.id);
+ }
+ const draft=await h.request('POST','/api/updates',{action:'reply',reportId:record.id,body:'DEMO private draft is never a parent cursor',publish:false,idempotencyKey:randomUUID()},f.practitioner.token);
+ expect(draft.status).toBe(201);const draftId=(await draft.json()).data.id;
+ // Exact timestamp ties must still page deterministically by UUID, without offsets.
+ const firstResponse=await h.request('GET',h.list());expect(firstResponse.status).toBe(200);
+ const first=parseUpdateThreads((await firstResponse.json()).data,f.first.id,f.first.audienceId,false);
+ expect(first[0]!.replies).toHaveLength(100);expect(first[0]!.nextRepliesBefore).toBe(first[0]!.replies[0]!.id);
+ const older=h.list()+`&reportId=${record.id}&beforeReplyId=${first[0]!.nextRepliesBefore}`;
+ const olderResponse=await h.request('GET',older);expect(olderResponse.status).toBe(200);
+ const last=parseUpdateThreads((await olderResponse.json()).data,f.first.id,f.first.audienceId,false);
+ expect(last[0]!.replies).toHaveLength(1);expect(last[0]!.nextRepliesBefore).toBeNull();
+ const all=[...last[0]!.replies,...first[0]!.replies];expect(all.map(row=>row.id)).toEqual(ids.sort());expect(new Set(all.map(row=>row.id)).size).toBe(101);
+ expect(JSON.stringify(all)).not.toContain('DEMO private draft');
+ expect((await h.request('GET',h.list()+`&reportId=${record.id}&beforeReplyId=${draftId}`)).status).toBe(404);
+ expect((await h.request('GET',older,undefined,f.outsider.token)).status).toBe(404);
+ expect((await h.request('GET',h.list(f.second)+`&reportId=${record.id}&beforeReplyId=${first[0]!.nextRepliesBefore}`)).status).toBe(404);
+ await f.pool.query('UPDATE ls_cases.audience_accounts SET revoked_at=clock_timestamp() WHERE workspace_id=$1 AND case_id=$2 AND account_id=$3',[f.workspaceId,f.first.id,f.parent.actor.id]);
+ expect((await h.request('GET',older)).status).toBe(404);
+ expect((await f.pool.query('SELECT count(*)::int AS n FROM ls_updates.practitioner_replies WHERE workspace_id=$1',[f.workspaceId])).rows[0].n).toBe(102);
 });
 test.each([
  {'x-forwarded-proto':'http'}, {'x-forwarded-proto':'https,http'},
