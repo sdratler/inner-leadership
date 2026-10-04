@@ -155,9 +155,10 @@ export class IdentityHttp {
     data=await this.services.cases.createEngagement(actor,input.caseId,input,requestId);
    }else if(path==='/api/identity/audiences'){
     if(request.method==='GET'){
-     const keys=[...url.searchParams.keys()];if(!url.searchParams.has('caseId') || new Set(keys).size!==keys.length || keys.some(key=>key!=="caseId"&&key!=="audienceId"&&key!=="view")) throw new AppError("INVALID_REQUEST");
-     const parsed=z.object({caseId,audienceId:audienceId.optional(),view:z.literal('management').optional()}).strict().safeParse(Object.fromEntries(url.searchParams));if(!parsed.success || parsed.data.view&&parsed.data.audienceId) throw new AppError("INVALID_REQUEST");
-     if(parsed.data.view){if(actor.role!=='practitioner')throw new AppError('NOT_FOUND');data=await this.services.cases.audiences(actor,parsed.data.caseId,'management');}
+     const keys=[...url.searchParams.keys()];if(!url.searchParams.has('caseId') || new Set(keys).size!==keys.length || keys.some(key=>key!=="caseId"&&key!=="audienceId"&&key!=="view"&&key!=="beforeAudienceId")) throw new AppError("INVALID_REQUEST");
+     const parsed=z.object({caseId,audienceId:audienceId.optional(),view:z.enum(['management','messages']).optional(),beforeAudienceId:audienceId.optional()}).strict().safeParse(Object.fromEntries(url.searchParams));if(!parsed.success || parsed.data.view&&parsed.data.audienceId || parsed.data.beforeAudienceId&&parsed.data.view!=='messages') throw new AppError("INVALID_REQUEST");
+     if(parsed.data.view==='management'){if(actor.role!=='practitioner')throw new AppError('NOT_FOUND');data=await this.services.cases.audiences(actor,parsed.data.caseId,'management');}
+     else if(parsed.data.view==='messages')data=await this.services.cases.audiences(actor,parsed.data.caseId,'messages',parsed.data.beforeAudienceId);
      else data=parsed.data.audienceId?await this.services.cases.audience(actor,parsed.data.caseId,parsed.data.audienceId):await this.services.cases.audiences(actor,parsed.data.caseId);
     }else{
      const input=await readJson(request,z.object({caseId,visibility:z.enum(visibilityValues),published:z.boolean(),accountIds:z.array(accountId).max(3).optional()}).strict());

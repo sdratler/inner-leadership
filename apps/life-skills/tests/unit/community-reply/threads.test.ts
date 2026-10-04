@@ -9,13 +9,21 @@ const thread={id,postId:10,postUrl:post,commentId:'101',commentUrl:post+'?commen
 const data={threads:[thread],responses:[response],partial:true,captureStatus:null,autonomousCollectionEnabled:false};
 const fetcher=vi.fn<typeof fetch>();beforeEach(()=>{fetcher.mockReset();fetcher.mockResolvedValue(Response.json({ok:true,data}));});
 it('retains only exact supported post/comment links rather than guesses or unsafe targets',()=>{
- expect(commentLink('https://m.facebook.com/groups/DEMO/permalink/10?comment_id=101&reply_comment_id=202&fbclid=track')).toEqual({postUrl:post,commentId:'202',url:response.commentUrl});
+ expect(commentLink('https://m.facebook.com/groups/DEMO/permalink/10?comment_id=101&reply_comment_id=202&fbclid=track')).toEqual({postUrl:post,commentId:'202',rootCommentId:'101',url:response.commentUrl});
  for(const value of [post,post+'?comment_id=101&comment_id=102',post+'?comment_id=101&reply_comment_id=bad',post+'?comment_id=101&next=private','https://secret@facebook.com/groups/demo/posts/10?comment_id=101'])expect(commentLink(value)).toBeNull();
 });
 it('binds trusted owner, exact parent/post relationship and bounded envelopes on the fixed Scout origin',async()=>{
  expect(await readCommunityThreads(owner,undefined,fetcher,env)).toEqual(data);expect(fetcher.mock.calls[0]?.[0]).toContain('https://community-scout-production.up.railway.app/internal/life-skills/threads?ownerId='+owner);
  for(const altered of [{...data,responses:[{...response,parentCommentId:'999'}]},{...data,responses:[{...response,threadId:rid}]},{...data,responses:[response,response]},{...data,autonomousCollectionEnabled:true},{...data,threads:Array(21).fill(thread)}]){fetcher.mockResolvedValueOnce(Response.json({ok:true,data:altered}));await expect(readCommunityThreads(owner,undefined,fetcher,env)).rejects.toMatchObject({code:'UNAVAILABLE'});}
  fetcher.mockResolvedValueOnce(new Response('x'.repeat(1_000_001)));await expect(readCommunityThreads(owner,undefined,fetcher,env)).rejects.toMatchObject({code:'UNAVAILABLE'});
+});
+it('rejects a response URL whose root comment disagrees with its declared parent, including pending task projection',async()=>{
+ const wrong={...response,commentUrl:post+'?comment_id=999&reply_comment_id=202'};
+ fetcher.mockResolvedValueOnce(Response.json({ok:true,data:{...data,responses:[wrong]}}));await expect(readCommunityThreads(owner,undefined,fetcher,env)).rejects.toMatchObject({code:'UNAVAILABLE'});
+ fetcher.mockResolvedValueOnce(Response.json({ok:true,data:{responses:[wrong],more:false}}));
+ const create=vi.fn(),acknowledge=vi.fn(),actor={id:owner,role:'practitioner',state:'active'} as Actor;
+ await expect(projectCommunityTasks(actor,{create} as unknown as InternalTaskService,{pending:()=>pendingCommunityResponses(owner,fetcher,env),acknowledge})).rejects.toMatchObject({code:'UNAVAILABLE'});
+ expect(create).not.toHaveBeenCalled();expect(acknowledge).not.toHaveBeenCalled();
 });
 it('registration validates exact server readback and pending task data never accepts a duplicate or a caller-owned task',async()=>{
  const command={operationId:rid,postId:10,commentUrl:thread.commentUrl,confirmManualReply:true as const};fetcher.mockResolvedValueOnce(Response.json({ok:true,data:thread}));expect(await registerCommunityThread(owner,command,fetcher,env)).toEqual(thread);expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))).toEqual({...command,ownerId:owner});

@@ -11,7 +11,7 @@ const command={action:"not_lead" as const,candidateId:"00000000-0000-4000-8000-0
 function request(query="",body?:unknown,headers:Record<string,string>={}){return new Request("http://127.0.0.1:8080/api/private/contact-acquisition"+query,
  {method:body===undefined?"GET":"POST",headers:{cookie:`${SESSION_COOKIE}=${token}`,"x-forwarded-host":"synthetic.invalid","x-forwarded-proto":"https",
   ...(body===undefined?{}:{Origin:origin,"content-type":"application/json","x-csrf-token":csrf}),...headers},...(body===undefined?{}:{body:JSON.stringify(body)})});}
-function deps(){const read=vi.fn(async()=>state()),list=vi.fn(async()=>({items:[],total:0,page:1,pages:1,authorityEpoch:3})),
+function deps(){const read=vi.fn(async()=>state()),list=vi.fn(async()=>({items:[],total:0,page:1,pages:1,authorityEpoch:3,hasMore:false})),
  decide=vi.fn(async()=>({candidateId:command.candidateId,state:"NOT_A_LEAD" as const,personId:null,version:null,authorityEpoch:3,replayed:false,projections:null}));
  const d:AcquisitionHttpDependencies={origin,actor:async()=>actor,csrf:()=>csrf,authority:{read},store:{list,decide}};return{d,read,list,decide};}
 test("missing, duplicate or malformed ordinary session never initializes acquisition services",async()=>{

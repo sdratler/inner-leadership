@@ -11,6 +11,7 @@ import { readContentVoiceSource, type ContentVoiceSnapshot } from "../../../../f
 import { writeContentVoiceIfUnchanged } from "../../../../features/content-voice/drive-cas.ts";
 import { requestCommunityReply } from "../../../../features/community-reply/bridge.ts";
 import { communityRulesInGuide } from "../../../../features/content-voice/rule-editor.ts";
+import { isCommunitySourceUrl } from "../../../../features/community-reply/input-state.ts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,7 +20,7 @@ const fullRequestSchema = z.object({
   rule: z.string().trim().min(8).max(400), language: z.enum(["he", "en", "both"]),
   targetRuleId: z.string().regex(/^CR-[0-9a-f]{32}$/).nullable().optional(),
   sourceSha256: z.string().regex(/^[0-9a-f]{64}$/), sourceRevision: z.string().regex(/^\d+$/),
-  question: z.string().trim().min(8).max(2000), originalUrl: z.string().url().max(1000).optional(),
+  question: z.string().trim().min(8).max(2000), originalUrl: z.string().url().max(1000).refine(isCommunitySourceUrl).optional(),
   previousReply: z.string().trim().min(10).max(3000),
 }).strict();
 const requestSchema = z.union([fullRequestSchema, z.object({ operationId: z.string().uuid() }).strict()]);

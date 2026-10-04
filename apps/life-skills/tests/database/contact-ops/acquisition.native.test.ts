@@ -196,18 +196,24 @@ test("the bounded review budget never rolls back a new durable receipt or candid
  // Actual capture for the entire boundary; never manually inserted receipts.
  // Only this disposable synthetic workspace is used.
  for(let i=0;i<1000;i++)await store.capture({...inquiry,providerEventId:"budget-event-"+i,
-  providerMessageId:"budget-message-"+i,providerThreadId:"budget-thread-"+i});
+  providerMessageId:"budget-message-"+i,providerThreadId:"budget-thread-"+i,pushName:i===0?"Synthetic oldest pending":"Synthetic pending",
+  occurredAt:new Date(Date.parse(inquiry.occurredAt)+i*1000).toISOString()});
  expect(await count("ls_contact_ops.message_receipts")).toBe(1000);
  expect(await count("ls_contact_ops.inbound_activity_candidates")).toBe(1000);
- const overflow={...inquiry,providerEventId:"after-budget",providerMessageId:"after-budget",providerThreadId:"after-budget"};
+ const overflow={...inquiry,providerEventId:"after-budget",providerMessageId:"after-budget",providerThreadId:"after-budget",
+  occurredAt:new Date(Date.parse(inquiry.occurredAt)+1000*1000).toISOString()};
  const received=await store.capture(overflow);
  expect(received.replayed).toBe(false);
  expect(await store.capture(overflow)).toEqual({...received,replayed:true});
  expect(await count("ls_contact_ops.message_receipts")).toBe(1001);
  expect(await count("ls_contact_ops.inbound_activity_candidates")).toBe(1001);
  expect((await authority.read(actor)).nativeWritesSinceSwitch).toBe(1001);
- // Read envelopes stay fail-closed and bounded; capture is not a lifetime cap.
- await expect(decisions.list(actor,3,{page:1,search:""})).rejects.toThrow("UNAVAILABLE");
+ // A bounded, explicitly partial window remains usable; totals/search apply
+ // to this window, not an invented global count or an unbounded read.
+ const window=await decisions.list(actor,3,{page:1,search:""});
+ expect(window).toMatchObject({total:1000,page:1,pages:84,hasMore:true});expect(window.items).toHaveLength(12);
+ expect((await decisions.list(actor,3,{page:84,search:""})).items).toHaveLength(4);
+ expect(await decisions.list(actor,3,{page:1,search:"Synthetic oldest pending"})).toMatchObject({items:[],total:0,hasMore:true});
  expect(await candidates.recent(actor,1)).toMatchObject({hasMore:true});
  for(const table of ["ls_contact_ops.profiles","ls_contact_ops.lead_promotion_operations",
   "ls_contact_ops.acquisition_projection_status","ls_calendar.tasks"])expect(await count(table)).toBe(0);
@@ -216,8 +222,14 @@ test("the bounded review budget never rolls back a new durable receipt or candid
  // Completed decisions remain immutable lifetime history, not a permanent
  // limit on future capture. Use the retained authorized decision store.
  const history=(await f.pool.query("SELECT id FROM ls_contact_ops.inbound_activity_candidates WHERE workspace_id=$1 ORDER BY occurred_at DESC,id DESC LIMIT 1002",[f.workspaceId])).rows;
- for(const row of history)await decisions.decide(actor,{action:"not_lead",candidateId:row.id,operationId:randomUUID(),expectedEpoch:3});
- expect((await decisions.list(actor,3,{page:1,search:""})).total).toBe(0);
+ const command={action:"not_lead" as const,candidateId:window.items[0]!.id,operationId:randomUUID(),expectedEpoch:3};
+ expect((await decisions.decide(actor,command)).replayed).toBe(false);expect((await decisions.decide(actor,command)).replayed).toBe(true);
+ expect(await decisions.list(actor,3,{page:1,search:"Synthetic oldest pending"})).toMatchObject({total:1,hasMore:false,items:[{displayName:"Synthetic oldest pending"}]});
+ expect((await decisions.list(actor,3,{page:1,search:""}))).toMatchObject({total:1000,hasMore:false});
+ for(const row of history)if(row.id!==command.candidateId)await decisions.decide(actor,{action:"not_lead",candidateId:row.id,operationId:randomUUID(),expectedEpoch:3});
+ expect((await decisions.list(actor,3,{page:1,search:""}))).toMatchObject({total:0,hasMore:false});
+ expect(await count("ls_contact_ops.lead_promotion_operations")).toBe(1001);
+ expect(await count("ls_contact_ops.inbound_activity_candidates")).toBe(1001);
  expect((await store.capture({...overflow,providerEventId:"after-completed-budget",providerMessageId:"after-completed-budget"})).replayed).toBe(false);
  expect(await count("ls_contact_ops.message_receipts")).toBe(1002);
  expect(await count("ls_contact_ops.inbound_activity_candidates")).toBe(1002);

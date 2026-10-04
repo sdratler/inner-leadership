@@ -3,11 +3,12 @@ import { z } from "zod";
 import { AppError } from "../../lib/errors.ts";
 import { CONTENT_VOICE_FILE_ID, COMMUNITY_PLAYBOOK_FILE_ID } from "../content-voice/source.ts";
 import type { CommunityReplyResult } from "./bridge.ts";
+import { isCommunitySourceUrl } from "./input-state.ts";
 
 const SCOUT_ORIGIN = "https://community-scout-production.up.railway.app";
 const date=z.string().max(40).refine(value=>Number.isFinite(Date.parse(value)));
 const integer=z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
-const publicUrl=z.string().url().max(1000).refine(value=>{const url=new URL(value);return url.protocol==='https:'&&!url.username&&!url.password&&['facebook.com','www.facebook.com','m.facebook.com'].includes(url.hostname);}).nullable();
+const publicUrl=z.string().url().max(1000).refine(isCommunitySourceUrl).nullable();
 const source=z.object({id:z.string(),sha256:z.string().regex(/^[a-f0-9]{64}$/),driveRevision:z.string().regex(/^[0-9]+$/),declaredVersion:z.string().max(40).nullable(),modifiedAt:date,checkedAt:date});
 const result=z.object({operationId:z.string().uuid(),reply:z.string().min(10).max(3000),copyAllowed:z.boolean(),reviewFlags:z.array(z.string().max(100)).max(40),suggestedRule:z.string().max(400),ruleScope:z.enum(['','community','general']),originalUrl:publicUrl,
   provenance:z.object({guide:source.extend({id:z.literal(CONTENT_VOICE_FILE_ID),includedCommunityRuleIds:z.array(z.string().regex(/^CR-[a-f0-9]{32}$/)).max(250)}),playbook:source.extend({id:z.literal(COMMUNITY_PLAYBOOK_FILE_ID)}),policyVersion:z.string().min(1).max(100),generatedAt:date,model:z.string().min(1).max(100),usage:z.object({inputTokens:integer,outputTokens:integer})})});
