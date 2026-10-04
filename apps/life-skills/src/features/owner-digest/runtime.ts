@@ -13,7 +13,7 @@ import {prospectContactSuppressed,prospectArchived} from "../prospects/native-ed
 import {loadMarketingSnapshot} from "../marketing-overview/provider.ts";
 import type {MarketingSnapshot} from "../marketing-overview/contracts.ts";
 import {contentDayKey} from "../marketing-overview/calendar-model.ts";
-import {buildOwnerDigest,summarizeProspects,type TaskCounts} from "./model.ts";
+import {buildOwnerDigest,summarizeProspects,validateDigestProspects,type TaskCounts} from "./model.ts";
 
 type Runtime=Awaited<ReturnType<typeof identityRuntime>>;
 async function assertOwner(store:IdentityStore,actor:Actor,now:Date){return store.transaction(async tx=>{const current=await freshActor(tx,actor,now);requirePractitioner(current);return current;});}
@@ -46,6 +46,7 @@ async function realProspects(store:IdentityStore,actor:Actor,rows:readonly Prosp
 export async function readIntakeFacts(store:IdentityStore,actor:Actor,rows:readonly Prospect[],now:Date){
  return store.transaction(async tx=>{
   await tx.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY");const current=await freshActor(tx,actor,now);requirePractitioner(current);
+  validateDigestProspects(rows);
   const ids=rows.filter(row=>!prospectArchived(row)&&!prospectContactSuppressed(row)).map(row=>row.leadId),journeys=await readProspectJourneysFromTx(tx,current.workspaceId,ids);
   const forms=await tx.query<{total:unknown}>(`SELECT COUNT(DISTINCT i.stable_lead_ref) AS total FROM ls_intake.pre_enrollment_invitations i
    WHERE i.workspace_id=$1 AND i.created_by_account_id=$2 AND i.stable_lead_ref IN(SELECT jsonb_array_elements_text($3::jsonb))
@@ -58,7 +59,7 @@ export async function readIntakeFacts(store:IdentityStore,actor:Actor,rows:reado
 export async function loadOwnerDigest(actor:Actor,runtime:Runtime,marketing:MarketingSnapshot,locale:"he"|"en",now=runtime.clock.now()){
  await assertOwner(runtime.store,actor,now);
  const [prospects,tasks]=await Promise.allSettled([
-  readAuthoritativeProspects(actor,runtime).then(rows=>realProspects(runtime.store,actor,rows,now)),
+  readAuthoritativeProspects(actor,runtime).then(rows=>{validateDigestProspects(rows);return realProspects(runtime.store,actor,rows,now);}),
   readTaskCounts(runtime.store,actor,now),
  ]);
  const rows=prospects.status==="fulfilled"?prospects.value:null;

@@ -23,10 +23,20 @@ export type OwnerDigest={
 };
 const canonicalStages=new Set(["New inquiry","Contacted","Offer made","Prospect"]);
 type ProspectFacts=Pick<Prospect,"leadId"|"stage"|"outcome"|"dueDate"|"nextAction"|"journeyState"|"paymentVerified"|"bookingConfirmed">;
+/** Validate before serializing IDs or querying local ledgers. The identifier
+ * bound matches the existing native People API; never truncate a corrupt read. */
+export function validateDigestProspects(rows:readonly Pick<Prospect,"leadId">[]):void {
+ if(!Array.isArray(rows)||rows.length>MAX_OPERATIONAL_PROSPECTS)throw Error("INVALID_DIGEST_PROSPECTS");
+ const seen=new Set<string>();
+ for(const row of rows){
+  if(!row||typeof row.leadId!=="string"||!/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]{1,80}$/.test(row.leadId)||seen.has(row.leadId))throw Error("INVALID_DIGEST_PROSPECTS");
+  seen.add(row.leadId);
+ }
+}
 /** Read-only administrative arithmetic. Never export name, notes, phone, email,
  * clinical content, arbitrary stage text or an inferred payment/booking state. */
 export function summarizeProspects(rows:readonly ProspectFacts[],today:string,journeysAvailable:boolean):AdminCounts {
- if(rows.length>MAX_OPERATIONAL_PROSPECTS||new Set(rows.map(row=>row.leadId)).size!==rows.length||rows.some(row=>!/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]+$/.test(row.leadId)))throw Error("INVALID_DIGEST_PROSPECTS");
+ validateDigestProspects(rows);
  const result:AdminCounts={due:0,overdue:0,future:0,missingDate:0,invalidDate:0,prospects:0,otherStages:0,awaitingForm:journeysAvailable?0:null,awaitingPayment:journeysAvailable?0:null,awaitingBooking:journeysAvailable?0:null};
  for(const row of rows){
   if(prospectArchived(row)||prospectContactSuppressed(row))continue;
