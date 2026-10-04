@@ -4,18 +4,18 @@ import {AppError} from '../../lib/errors.ts';
 const origin='https://community-scout-production.up.railway.app';
 const date=z.string().max(40).refine(v=>Number.isFinite(Date.parse(v)));
 const commentId=z.string().regex(/^[0-9]{1,100}$/);
-export function commentLink(value:string):{postUrl:string;commentId:string;url:string}|null{
+export function commentLink(value:string):{postUrl:string;commentId:string;rootCommentId:string;url:string}|null{
  let u:URL;try{u=new URL(value);}catch{return null;}
  if(value!==value.trim()||value.length>1000||u.protocol!=='https:'||u.username||u.password||u.port||u.hash||!['facebook.com','www.facebook.com','m.facebook.com'].includes(u.hostname))return null;
  const path=u.pathname.match(/^\/groups\/([A-Za-z0-9_.-]{1,100})\/(?:posts|permalink)\/([A-Za-z0-9_-]{1,200})\/?$/),root=u.searchParams.get('comment_id'),reply=u.searchParams.get('reply_comment_id');
  if(!path||!root||!commentId.safeParse(root).success||u.searchParams.getAll('comment_id').length!==1||u.searchParams.getAll('reply_comment_id').length>1||reply!==null&&!commentId.safeParse(reply).success||[...u.searchParams.keys()].some(k=>!['comment_id','reply_comment_id','fbclid','mibextid','ref','__cft__','__tn__'].includes(k)&&!k.startsWith('utm_')))return null;
  const postUrl=`https://www.facebook.com/groups/${path[1]!.toLowerCase()}/posts/${path[2]}`;
- return {postUrl,commentId:reply??root,url:postUrl+'?comment_id='+root+(reply?'&reply_comment_id='+reply:'')};
+ return {postUrl,commentId:reply??root,rootCommentId:root,url:postUrl+'?comment_id='+root+(reply?'&reply_comment_id='+reply:'')};
 }
 const link=z.string().max(1000).refine(value=>commentLink(value)!==null);
 const postLink=z.string().max(1000).refine(value=>/^https:\/\/www\.facebook\.com\/groups\/[A-Za-z0-9_.-]{1,100}\/posts\/[A-Za-z0-9_-]{1,200}$/.test(value));
 const thread=z.object({id:z.string().uuid(),postId:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),postUrl:postLink,commentId,commentUrl:link,registeredAt:date,expiresAt:date}).strict().refine(v=>commentLink(v.commentUrl)?.postUrl===v.postUrl&&commentLink(v.commentUrl)?.commentId===v.commentId);
-const response=z.object({id:z.string().uuid(),threadId:z.string().uuid(),commentId,parentCommentId:commentId,commentUrl:link,text:z.string().min(1).max(4000),postedAt:date,capturedAt:date,expiresAt:date,taskId:z.string().uuid().nullable()}).strict().refine(v=>commentLink(v.commentUrl)?.commentId===v.commentId&&v.commentId!==v.parentCommentId);
+const response=z.object({id:z.string().uuid(),threadId:z.string().uuid(),commentId,parentCommentId:commentId,commentUrl:link,text:z.string().min(1).max(4000),postedAt:date,capturedAt:date,expiresAt:date,taskId:z.string().uuid().nullable()}).strict().refine(v=>commentLink(v.commentUrl)?.commentId===v.commentId&&commentLink(v.commentUrl)?.rootCommentId===v.parentCommentId&&v.commentId!==v.parentCommentId);
 const page=z.object({threads:z.array(thread).max(20),responses:z.array(response).max(100),partial:z.boolean(),captureStatus:z.object({checkedAt:date,reason:z.string().max(100).nullable(),observedRunCostCents:z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).nullable()}).strict().nullable(),autonomousCollectionEnabled:z.literal(false)}).strict().refine(v=>new Set(v.threads.map(t=>t.id)).size===v.threads.length&&new Set(v.responses.map(r=>r.id)).size===v.responses.length&&v.responses.every(r=>{const t=v.threads.find(t=>t.id===r.threadId);return t&&t.commentId===r.parentCommentId&&t.postUrl===commentLink(r.commentUrl)?.postUrl;}));
 export type CommunityThread=z.infer<typeof thread>;
 export type CommunityResponse=z.infer<typeof response>;
