@@ -65,6 +65,7 @@ export function practitionerDetailReturnPath(locale:Locale,pathname:string,query
   if(creativePlacements.some(value=>value===one('placement')))params.set('placement',one('placement'));
   if(creativeApprovals.some(value=>value===one('approval')))params.set('approval',one('approval'));
   if(one('search')&&one('search').length<=200&&!/[\u0000-\u001f\u007f]/.test(one('search')))params.set('search',one('search'));
+  if(['creatives','needs_approval'].includes(one('section'))&&/^[1-9]\d{0,3}$/.test(one('page')))params.set('page',one('page'));
   return pathname+(params.size?'?'+params:'');
  }
  // Account destinations are global, not case-scoped. Preserve only the exact

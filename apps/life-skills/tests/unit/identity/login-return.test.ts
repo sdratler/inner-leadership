@@ -16,10 +16,18 @@ it.each(['he','en']as const)('keeps only a bounded %s Community thread link thro
  expect(practitionerDetailReturnPath(locale,path,{section:'ads',threadId:caseId})).toBe(path+'?section=ads');
 });
 it.each(['he','en'] as const)('retains bounded %s creative filters through login, without inherited, repeated or control values',locale=>{
- const path=`/${locale}/app/marketing`,query={section:'creatives',language:'he',placement:'whatsapp_status',approval:'needs_approval',search:'שלום new topic'};
+ const path=`/${locale}/app/marketing`,query={section:'creatives',language:'he',placement:'whatsapp_status',approval:'needs_approval',search:'שלום new topic',page:'2'};
  expect(Object.fromEntries(new URL(practitionerDetailReturnPath(locale,path,query),'https://private.invalid').searchParams)).toEqual(query);
  for(const value of ['constructor','__proto__',['he','he']])expect(practitionerDetailReturnPath(locale,path,{language:value,placement:value,approval:value,search:['one','two']})).toBe(path);
  expect(practitionerDetailReturnPath(locale,path,{search:'a'.repeat(201)})).toBe(path);expect(practitionerDetailReturnPath(locale,path,{search:'bad\ntext'})).toBe(path);
+});
+it.each(['he','en'] as const)('retains only a bounded %s gallery page selector through both ordinary login stages',locale=>{
+ const path=`/${locale}/app/marketing`;
+ for(const section of ['creatives','needs_approval'])for(const page of ['1','2','9999']){
+  const next=practitionerDetailReturnPath(locale,path,{section,page});expect(next).toBe(path+'?section='+section+'&page='+page);expect(loginReturnDestination(locale,'practitioner',next)).toBe(next);
+ }
+ for(const page of ['0','01','-1','1.5','10000','constructor','2\n',['2','2']])expect(practitionerDetailReturnPath(locale,path,{section:'creatives',page})).toBe(path+'?section=creatives');
+ for(const section of ['overview','content_calendar','community','ads'])expect(practitionerDetailReturnPath(locale,path,{section,page:'2'})).toBe(path+'?section='+section);
 });
 it.each(['he','en'] as const)('preserves exact bounded %s Marketing context through ordinary login, never another role or arbitrary query',locale=>{
  const path=`/${locale}/app/marketing`,query={section:'content_calendar',filter:'queued',month:'2026-10',layout:'week',date:'2026-10-02',channel:'whatsapp_status',state:'scheduled',from:'2026-10-01',to:'2026-10-09',publication:'DEMO-status-123'};

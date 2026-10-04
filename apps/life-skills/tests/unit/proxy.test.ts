@@ -28,6 +28,11 @@ describe('owned community draft API stays behind the existing private perimeter'
  });
 });
 describe('actual bounded Marketing login-return proxy',()=>{
+ it.each(['he','en']as const)('preserves the exact bounded %s gallery page after an expired session without trusting the caller return',locale=>{
+  const origin='https://life-skills.bneineviimacademy.org',path=`/${locale}/app/marketing`;vi.stubEnv('NODE_ENV','production');vi.stubEnv('LS_APP_MODE','foundation_locked');vi.stubEnv('LS_APP_ORIGIN',origin);vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');
+  for(const section of ['creatives','needs_approval'])expect(proxy(new NextRequest(origin+path+'?section='+section+'&page=2&language=en',{headers:{'x-ls-practitioner-return':'https://untrusted.invalid'}})).headers.get('x-middleware-request-x-ls-practitioner-return')).toBe(path+'?section='+section+'&language=en&page=2');
+  for(const query of ['page=2&page=2','page=0','page=01','page=10000','page=constructor'])expect(proxy(new NextRequest(origin+path+'?section=creatives&'+query)).headers.get('x-middleware-request-x-ls-practitioner-return')).toBe(path+'?section=creatives');
+ });
  it.each(['he','en']as const)('projects %s Marketing URL filters and rejects repeats, unsafe paths and caller headers',locale=>{
   const origin='https://life-skills.bneineviimacademy.org',path=`/${locale}/app/marketing`;vi.stubEnv('NODE_ENV','production');vi.stubEnv('LS_APP_MODE','foundation_locked');vi.stubEnv('LS_APP_ORIGIN',origin);vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');
    const query='section=content_calendar&filter=queued&month=2026-10&layout=agenda&date=2026-10-02&from=2026-10-01&to=2026-10-09&channel=whatsapp_status&state=scheduled&publication=DEMO-status&language=he&placement=whatsapp_status&approval=needs_approval&search=DEMO';
