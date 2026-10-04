@@ -2,6 +2,7 @@ import "server-only";
 import { AppError } from "../../lib/errors.ts";
 import { COMMUNITY_PLAYBOOK_FILE_ID, CONTENT_VOICE_FILE_ID, readCommunityPlaybookSource, readContentVoiceSource, type ContentVoiceSnapshot } from "../content-voice/source.ts";
 import { communityRuleIdsInGuide } from "../content-voice/rule-editor.ts";
+import { isCommunitySourceUrl } from "./input-state.ts";
 
 const SCOUT_ORIGIN = "https://community-scout-production.up.railway.app";
 const SECRET = /^[A-Za-z0-9_-]{43,}$/;
@@ -64,6 +65,7 @@ export async function requestCommunityReply(command: CommunityReplyCommand,
   const secret = env.LS_COMMUNITY_SCOUT_BRIDGE_SECRET;
   if (!secret || !SECRET.test(secret)) throw new AppError("UNAVAILABLE");
   if (command.ownerId !== undefined && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(command.ownerId)) throw new AppError("UNAVAILABLE");
+  if (command.originalUrl !== undefined && !isCommunitySourceUrl(command.originalUrl)) throw new AppError("UNAVAILABLE");
   let originalUrl: string | null = null;
   try { originalUrl = command.originalUrl ? new URL(command.originalUrl).toString() : null; }
   catch { throw new AppError("UNAVAILABLE"); }

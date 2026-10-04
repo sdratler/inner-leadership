@@ -43,6 +43,11 @@ beforeEach(() => {
   mock.getForRequest.mockResolvedValue(null); mock.prepare.mockResolvedValue(change);
 });
 
+it("rejects a correction's unsupported source link before canonical mutation or generation",async()=>{
+  for(const originalUrl of ['https://example.com/post','http://facebook.com/post','https://user:password@facebook.com/post'])expect((await POST(post({...command,originalUrl}))).status).toBe(400);
+  expect(mock.prepare).not.toHaveBeenCalled();expect(mock.write).not.toHaveBeenCalled();expect(mock.reply).not.toHaveBeenCalled();
+});
+
 it.each(["changed-bytes", "same-bytes-new-revision"])("stops a saved draft retry on source drift (%s), preserving its save", async mode => {
   const saved = { ...change, status: "draft_pending", desiredText: null, sourceAfterSha256: change.desiredSha256,
     sourceAfterRevision: "14", savedAt: "2026-09-28T00:02:00Z" };

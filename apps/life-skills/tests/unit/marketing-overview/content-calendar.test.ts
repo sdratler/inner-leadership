@@ -43,6 +43,17 @@ describe("retained read-only Marketing calendar controls",()=>{
     const mismatch={...publication("mismatch","2026-10-01T17:00:00Z"),creativeDigest:"b".repeat(64),postUrl:"javascript:alert(1)"},html=render([mismatch],{publication:mismatch.id});expect(html).toContain("Creative revision unavailable");expect(html).not.toContain("demo-exact");expect(html).not.toContain("data-thumbnail");expect(html).not.toContain("javascript:");
     const unsafe=render([{...publication("unsafe",null),postUrl:"https://user:password@facebook.com/post"}],{publication:"unsafe"},"en",[{...asset,sourceUrl:"http://drive.google.com/file/d/demo/view",imageUrl:null}]);expect(unsafe).not.toContain("Open source asset");expect(unsafe).not.toContain("Open recorded post link");
   });
+  it.each(['en','he'] as const)("validates preferred and fallback source links independently in %s",locale=>{
+    const item=publication('fallback',null),imageUrl='https://drive.google.com/file/d/demo-fallback/view';
+    const creatives=[{...asset,sourceUrl:'https://untrusted.example/rejected',imageUrl}];
+    const html=render([item],{publication:item.id},locale,creatives);
+    expect(html).toContain(`href="${imageUrl}"`);expect(html).not.toContain('untrusted.example');
+    expect(html).toContain(locale==='en'?'Open source asset':'פתיחת קובץ המקור');
+    const preferred=render([item],{publication:item.id},locale,[{...asset,imageUrl}]);
+    expect(preferred).toContain(`href="${asset.sourceUrl}"`);expect(preferred).not.toContain(`href="${imageUrl}"`);
+    const rejected=render([item],{publication:item.id},locale,[{...asset,sourceUrl:'http://drive.google.com/rejected',imageUrl:'https://untrusted.example/image'}]);
+    expect(rejected).not.toContain(locale==='en'?'Open source asset':'פתיחת קובץ המקור');
+  });
   it("keeps unknown/deleted detail recovery and inherited-property query values safe",()=>{
     const unknown=render([],{publication:"not-in-inventory"});expect(unknown).toContain("Publication unavailable");expect(unknown).toContain("Back to content calendar");
     const inherited=render([],{channel:"constructor",state:"toString",layout:"__proto__"});expect(inherited).toContain('value="" selected');expect(inherited).not.toContain("function Object");expect(inherited).toContain("Monthly content calendar");
