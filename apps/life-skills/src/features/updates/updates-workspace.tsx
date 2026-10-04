@@ -61,12 +61,16 @@ export function UpdatesWorkspace({locale,role="parent",initialCaseId="",initialA
   },[activeAudienceId,contextKey,selectedCaseId,revision,role]);
   async function readReplyPage(reportId:string,before:string|null){
    if(!mounted.current||inFlight.current||writeRef.current||!activeAudienceId)return;
-   inFlight.current=true;const epoch=generation.current,current=()=>mounted.current&&generation.current===epoch;
-   setReplyPage({key:contextKey,reportId,before,busy:true,error:false});
+   inFlight.current=true;const epoch=generation.current,current=()=>mounted.current&&generation.current===epoch,
+    request={key:contextKey,reportId,before,busy:true,error:false};
+   setReplyPage(request);
    try{const rows=await readThreads(undefined,{reportId,before});if(rows.length!==1||rows[0]!.report.id!==reportId)throw Error('UNAVAILABLE');if(!current())return;
     setThreads(previous=>previous.map(row=>row.report.id===reportId?rows[0]!:row));setOlderReplies(previous=>({...previous,[reportId]:Boolean(before)}));setReplyPage({key:contextKey,reportId,before,busy:false,error:false});
    }catch(error){if(current()){if(error instanceof IdentityClientError&&['UNAUTHENTICATED','FORBIDDEN','NOT_FOUND'].includes(error.code)){clearDeniedAccess();return;}setReplyPage({key:contextKey,reportId,before,busy:false,error:true});}}
-   finally{inFlight.current=false;}
+   finally{
+    if(mounted.current&&!current())setReplyPage(previous=>previous===request?{...previous,busy:false}:previous);
+    inFlight.current=false;
+   }
   }
   function mutation(slot:string,value:string){const prior=mutations.current[slot];if(prior?.body===value)return prior.key;const key=crypto.randomUUID();mutations.current[slot]={body:value,key};return key}
   function clearSavedInput(payload:Record<string,unknown>){if(payload.action==='submit_report'){setDrafts(current=>current[draftKey]===payload.body?{...current,[draftKey]:''}:current);setComposerOpen(false)}else if(payload.action==='reply')setReplyBodies(current=>current[String(payload.reportId)]===payload.body?{...current,[String(payload.reportId)]:''}:current);}
