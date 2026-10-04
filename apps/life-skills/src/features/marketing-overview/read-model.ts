@@ -62,6 +62,9 @@ function validatePublication(p: Publication): void {
     // An unresolved source slot may have an empty asset/digest. Keep its honest
     // unavailable state instead of inventing a binding or rejecting all slots.
     invariant(typeof p.id === "string" && p.id.length > 0 && typeof p.assetId === "string" && Number.isSafeInteger(p.creativeRevision) && p.creativeRevision > 0 && typeof p.creativeDigest === "string" && typeof p.destinationLabel === "string", "PUBLICATION_FIELDS");
+    const assetKey = /^[A-Za-z0-9._-]{1,200}$/.test(p.assetId);
+    const explicitMissing = p.state === "draft" && p.provider === "unbound" && p.errorCode === "ASSET_BINDING_UNAVAILABLE";
+    invariant(assetKey && /^[a-f0-9]{64}$/.test(p.creativeDigest) || p.assetId === "" && p.creativeDigest === "" || assetKey && p.creativeDigest === "" && explicitMissing, "PUBLICATION_BINDING");
     invariant(["whatsapp_status", "facebook_page", "instagram", "facebook_group_manual", "whatsapp_group_manual"].includes(p.channel) && ["draft", "ready", "scheduled", "sending", "published", "failed", "unknown", "skipped", "manually_reported"].includes(p.state) && ["whapi", "publer", "meta", "manual", "unbound"].includes(p.provider) && ["schedule", "publication", "manual_open", "unknown"].includes(p.receiptKind), "PUBLICATION_FIELDS");
     invariant([p.providerReceiptId, p.postUrl, p.errorCode].every(value => value === null || typeof value === "string"), "PUBLICATION_FIELDS");
     invariant(typeof p.timezone === "string" && validTimezone(p.timezone) && [p.scheduledFor, p.providerReadAt, p.manualReportedAt].every(value => value === null || typeof value === "string" && validIso(value)), "PUBLICATION_TIME");

@@ -66,3 +66,11 @@ test("publication required fields must be own properties and honest unbound reco
  const unbound={...publication(),assetId:"",creativeDigest:"",errorCode:"ASSET_BINDING_UNAVAILABLE"};mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,publications:[unbound]}});expect((await loadMarketingSnapshot()).publications).toEqual([unbound]);
  mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,publications:[Object.create(publication())]}});expect((await loadMarketingSnapshot()).inventoryReadback?.status).toBe("error");
 });
+test.each([{creativeDigest:""},{creativeDigest:"not-a-digest"},{creativeDigest:"A".repeat(64)},{assetId:""},{assetId:"bad/id"},{assetId:" ",creativeDigest:""}])("partial or malformed publication binding is not a successful inventory read",async patch=>{
+ mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,publications:[{...publication(),...patch}]}});const {loadMarketingSnapshot}=await import("../../../src/features/marketing-overview/provider.ts");expect((await loadMarketingSnapshot()).inventoryReadback?.status).toBe("error");
+});
+test("explicit producer missing-binding record preserves its source ID without claiming an exact creative",async()=>{
+ const missing={...publication(),creativeDigest:"",errorCode:"ASSET_BINDING_UNAVAILABLE"};mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,publications:[missing]}});
+ const {loadMarketingSnapshot}=await import("../../../src/features/marketing-overview/provider.ts");expect((await loadMarketingSnapshot()).publications).toEqual([missing]);
+ for(const patch of [{state:"ready"},{provider:"whapi"},{creativeDigest:"not-a-digest"}]){mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,publications:[{...missing,...patch}]}});expect((await loadMarketingSnapshot()).inventoryReadback?.status).toBe("error");}
+});
