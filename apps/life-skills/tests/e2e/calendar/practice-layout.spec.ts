@@ -35,6 +35,12 @@ for (const locale of ["en", "he"] as const) {
       await expect(button).toHaveAccessibleName(new RegExp(`07:35.*Asia/Jerusalem.*${locale === "he" ? "פתיחת התרגול" : "Open practice"}`));
       expect(await button.evaluate(node => node.scrollWidth-node.clientWidth)).toBeLessThanOrEqual(1);
       expect(await button.evaluate(node => node.getBoundingClientRect().height)).toBeLessThan(170);
+      // Wider system-font metrics exposed the Linux failure even though Segoe UI
+      // passed on Windows. Retain the same compactness and no-clipping bounds.
+      await button.evaluate(node => { node.style.fontFamily = "Verdana, sans-serif"; });
+      expect(await button.evaluate(node => node.scrollWidth-node.clientWidth)).toBeLessThanOrEqual(1);
+      expect(await button.evaluate(node => node.getBoundingClientRect().height)).toBeLessThan(170);
+      await button.evaluate(node => { node.style.removeProperty("font-family"); });
       await button.focus(); await expect(button).toBeFocused();
       await expect(button).toHaveCSS("outline-style", "solid");
       const agenda = page.locator(".ls-cal-practice-agenda");
