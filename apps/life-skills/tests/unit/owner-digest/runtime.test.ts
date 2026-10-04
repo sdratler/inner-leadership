@@ -5,7 +5,7 @@ import type {Prospect} from '../../../src/features/prospects/bridge.ts';
 vi.mock('server-only',()=>({}));
 const prospectsRead=vi.hoisted(()=>vi.fn());
 vi.mock('../../../src/features/contact-ops/server/authoritative-prospects.ts',()=>({readAuthoritativeProspects:prospectsRead}));
-import {readIntakeFacts,loadOwnerDigest} from '../../../src/features/owner-digest/runtime.ts';
+import {readIntakeFacts,readTaskCounts,loadOwnerDigest} from '../../../src/features/owner-digest/runtime.ts';
 import {AppError} from '../../../src/lib/errors.ts';
 import {MAX_OPERATIONAL_PROSPECTS} from '../../../src/features/contact-ops/core/limits.ts';
 import type {MarketingSnapshot} from '../../../src/features/marketing-overview/contracts.ts';
@@ -71,6 +71,14 @@ it('queries matching pending invitations workspace-wide without filtering their 
  const sql=queries.find(sql=>sql.includes('COUNT(DISTINCT i.stable_lead_ref)'))!;
  expect(sql).not.toContain('created_by_account_id');expect(sql).toContain('i.workspace_id=$1');
  expect(sql).toMatch(/revoked_at IS NULL.*consumed_at IS NULL.*expires_at>/s);expect(sql).toContain('pre_enrollment_receipts');
+});
+it('counts workspace internal tasks after a handover without losing case, DEMO or linked-CRM exclusions',async()=>{
+ const queries:string[]=[],runtime=digestRuntime(undefined,queries);
+ expect(await readTaskCounts(runtime.store,actor,now)).toEqual({due:2,overdue:1,future:0});
+ const sql=queries.find(sql=>sql.includes('FROM ls_calendar.tasks'))!;
+ expect(sql).not.toContain('t.created_by');expect(sql).toContain('t.workspace_id=$1');
+ expect(sql).toContain('c.practitioner_account_id=$2');expect(sql).toContain("t.state='open'");
+ expect(sql).toContain('ls_demo.cases');expect(sql).toContain('ls_demo.records');expect(sql).toContain("'crm_followup'");
 });
 const invalidProjections=[
  ['duplicate IDs',[prospect,{...prospect}]],

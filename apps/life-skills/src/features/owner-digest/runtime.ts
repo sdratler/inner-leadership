@@ -37,7 +37,7 @@ export async function readTaskCounts(store:IdentityStore,actor:Actor,now:Date):P
    COUNT(*) FILTER(WHERE t.due_date<$3::date) AS overdue,
    COUNT(*) FILTER(WHERE t.due_date>$3::date) AS future
    FROM ls_calendar.tasks t LEFT JOIN ls_cases.cases c ON c.workspace_id=t.workspace_id AND c.id=t.case_id
-   WHERE t.workspace_id=$1 AND t.created_by=$2 AND t.state='open'
+   WHERE t.workspace_id=$1 AND t.state='open'
    AND (to_jsonb(t)->>'source_kind') IS DISTINCT FROM 'crm_followup'
    AND (t.case_id IS NULL OR c.practitioner_account_id=$2)
    AND NOT EXISTS(SELECT 1 FROM ls_demo.cases d WHERE d.workspace_id=t.workspace_id AND d.case_id=t.case_id)

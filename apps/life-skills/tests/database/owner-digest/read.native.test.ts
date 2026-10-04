@@ -54,6 +54,8 @@ test("one canonical submission excludes other valid invitations across every lat
 test('pending forms include other practitioners only within the same workspace and valid invitation lifecycle',async()=>{
  const other=await fixture(),lead='LS-LEAD-handover-'+randomUUID(),row={leadId:lead,stage:'Prospect',outcome:'',nextAction:'',dueDate:''} as Prospect;
  try{
+  const beforeTasks=await readTaskCounts(store(),f.practitioner.actor,now);
+  await new InternalTaskService(f.db,randomBytes(32)).create(f.practitioner.actor,randomUUID(),{caseId:null,title:'DEMO isolated retained internal task',note:null,sourcePath:null,dueDate:today,dueTime:null});
   const insert=async(workspace:string,creator:string,expired=false,revoked=false)=>{
    const id=randomUUID();await f.pool.query(`INSERT INTO ls_intake.pre_enrollment_invitations(workspace_id,invitation_id,token_digest,stable_lead_ref,child_slots,expires_at,created_at,created_by_account_id,revoked_at)
     VALUES($1,$2,$3,$4,'["synthetic-slot"]'::jsonb,$5,$8,$6,$7)`,[workspace,id,createHash('sha256').update(id).digest('hex'),lead,new Date(now.getTime()+(expired?-86400000:86400000)),creator,revoked?now:null,new Date(now.getTime()-2*86400000)]);return id;
@@ -63,6 +65,7 @@ test('pending forms include other practitioners only within the same workspace a
   // Model a handover while preserving the actual one-practitioner index.
   await f.pool.query("UPDATE ls_identity.accounts SET role='parent' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.practitioner.actor.id]);
   await f.pool.query("UPDATE ls_identity.accounts SET role='practitioner' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.outsider.actor.id]);
+  expect(await readTaskCounts(store(),f.outsider.actor,now)).toEqual({...beforeTasks,due:beforeTasks.due+1});
   expect((await readIntakeFacts(store(),f.outsider.actor,[row],now)).awaitingForm).toBe(0);
   await f.pool.query("UPDATE ls_identity.accounts SET role='parent' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.outsider.actor.id]);
   await f.pool.query("UPDATE ls_identity.accounts SET role='practitioner' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.practitioner.actor.id]);
