@@ -11,7 +11,7 @@ import {crmProfileAad,crmProfileSchema} from "./native-store.ts";
 import {dateOnly} from "../core/validation.ts";
 import type {PeopleView,Page} from "../core/types.ts";
 import type {Prospect} from "../../prospects/bridge.ts";
-import {contactSuppressed} from "../../prospects/native-edit.ts";
+import {contactSuppressed,contactArchived as archived} from "../../prospects/native-edit.ts";
 import {MAX_NATIVE_CONTACTS,MAX_OPERATIONAL_PROSPECTS} from "../core/limits.ts";
 import {normalizePhone} from "../core/contact-resolution.ts";
 import type {InboundActivity} from "../core/inbound-projection.ts";
@@ -50,7 +50,6 @@ const projectionReasons=new Map<string,string>([["applied","provider_applied"],[
 const emptyJourney=():ProspectJourneyState=>({journeyState:"prospect",paymentVerified:false,bookingConfirmed:false});
 // Historic Sheet statuses are descriptive, not an enum. Preserve the existing
 // conservative archive/opt-out protection even when a reason follows the marker.
-const archived=(stage:string)=>/archive|\b(?:closed|not interested|no fit)\b/i.test(stage);
 const suppressed=contactSuppressed;
 function contactLocale(language:string):"he"|"en"|null{
  const value=language.trim().toLocaleLowerCase();
