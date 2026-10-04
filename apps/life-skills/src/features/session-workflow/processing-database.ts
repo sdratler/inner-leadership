@@ -135,7 +135,10 @@ export class PostgresSessionProcessingStore implements ProcessingStore {
       await checkpoint("deleted");return {status:"audio_deleted" as const};
     }finally{await this.release(lease);}
   }
-  async assertCurrentPermission(lease:Lease):Promise<void>{await this.transaction(async tx=>{await this.fenced(tx,lease);});}
+  async assertCurrentPermission(lease:Lease,summaryLocale?:"en"|"he"):Promise<void>{await this.transaction(async tx=>{
+    await this.fenced(tx,lease);
+    if(summaryLocale!==undefined&&summaryLocale!==this.provenance.locale)throw new WorkflowError("PROCESSING_LOCALE_MISMATCH");
+  });}
   async checkpoint(lease:Lease,input:Parameters<ProcessingStore["checkpoint"]>[1]):Promise<void>{
     const parsed=patchSchema.safeParse(input);if(!parsed.success)throw new AppError("INVALID_REQUEST");const patch=parsed.data;
     await this.transaction(async tx=>{
@@ -181,23 +184,26 @@ export class PostgresSessionProcessingStore implements ProcessingStore {
     if(!z.string().trim().min(1).max(200).safeParse(requestId).success)throw new AppError("INVALID_REQUEST");
     return this.transaction(async tx=>{
       const row=await this.fenced(tx,lease);validateTranscriptionCompletion(transcript,completion,row.durationMs,row.sourceDigest);
-      const digest=transcriptDigest(transcript);
       if(row.transcriptVersion!==null){
-        if(row.transcriptVersion!==transcript.version||row.transcriptDigest!==digest||this.job(row).providerRequestId!==requestId)throw new AppError("CONFLICT");
-        await this.transcript(tx,row);return {version:transcript.version,digest,durable:true,completeVerified:true};
+        const digest=transcriptDigest({...transcript,version:row.transcriptVersion});
+        if(row.transcriptDigest!==digest||this.job(row).providerRequestId!==requestId)throw new AppError("CONFLICT");
+        await this.transcript(tx,row);return {version:row.transcriptVersion,digest,durable:true,completeVerified:true};
       }
       if(row.state!=="transcribing")throw new WorkflowError("TRANSCRIPTION_NOT_STARTED");
       const maximum=await one<{version:number}>(tx,'SELECT coalesce(max(version),0)::integer AS version FROM ls_sessions.transcripts WHERE workspace_id=$1 AND case_id=$2 AND session_id=$3',[row.workspaceId,row.caseId,row.sessionId]);
-      if(!version.safeParse(transcript.version).success||transcript.version!==(maximum?.version??0)+1)throw new AppError("CONFLICT");
-      const source=sealPrivateRecord(transcript,privateRecordAad("transcript",row,transcript.version),this.ring),clean=sealPrivateRecord(cleaned,privateRecordAad("cleaned-transcript",row,transcript.version),this.ring);
+      // The workspace transaction serializes all session writers. Providers cannot
+      // know (or choose) the next retained session version before a paid call.
+      const canonicalVersion=(maximum?.version??0)+1;if(!version.safeParse(canonicalVersion).success)throw new AppError("UNAVAILABLE");
+      const canonical={...transcript,version:canonicalVersion},digest=transcriptDigest(canonical);
+      const source=sealPrivateRecord(canonical,privateRecordAad("transcript",row,canonicalVersion),this.ring),clean=sealPrivateRecord(cleaned,privateRecordAad("cleaned-transcript",row,canonicalVersion),this.ring);
       const receipt=sealPrivateRecord(completion,privateRecordAad("transcript-completion",row,1,row.id),this.ring),provider=seal(requestId,this.providerAad(row),this.ring);
       await tx.query(`INSERT INTO ls_sessions.transcripts(workspace_id,case_id,session_id,job_id,version,source_ciphertext,cleaned_ciphertext,content_digest,source_kind)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,'machine_transcript')`,[row.workspaceId,row.caseId,row.sessionId,row.id,transcript.version,source,clean,digest]);
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,'machine_transcript')`,[row.workspaceId,row.caseId,row.sessionId,row.id,canonicalVersion,source,clean,digest]);
       await tx.query(`UPDATE ls_sessions.recording_jobs SET state='transcript_saved',transcript_version=$3,transcript_digest=$4,
        transcript_complete_verified=true,completion_receipt_ciphertext=$5,provider_request_id_ciphertext=$6,
-       audio_state='delete_pending',failure_code=NULL,revision=revision+1 WHERE workspace_id=$1 AND id=$2`,[row.workspaceId,row.id,transcript.version,digest,receipt,provider]);
+       audio_state='delete_pending',failure_code=NULL,revision=revision+1 WHERE workspace_id=$1 AND id=$2`,[row.workspaceId,row.id,canonicalVersion,digest,receipt,provider]);
       const saved=await this.row(tx,row.id);await this.transcript(tx,saved);lease.job=this.job(saved);
-      return {version:transcript.version,digest,durable:true,completeVerified:true};
+      return {version:canonicalVersion,digest,durable:true,completeVerified:true};
     });
   }
   async readTranscript(lease:Lease):Promise<Transcript>{return this.transaction(async tx=>this.transcript(tx,await this.fenced(tx,lease)));}
