@@ -20,14 +20,14 @@ const generated={operationId:'412302a8-3694-4718-9a3b-e5de1a78de6e',reply:'DEMO 
 beforeEach(()=>{hooks.reset();vi.stubGlobal('fetch',vi.fn());});
 test.each(['en','he'] as const)('%s retains the navigation warning after failed generation readback, then clears only after verification',async locale=>{
  let verified=false;const saved={draftId:generated.operationId,draft:generated.reply,revision:1,editedAt:null,generated,copyAllowed:true};
- vi.mocked(fetch).mockImplementation(async(_url,options)=>options?.method==='POST'?Response.json({ok:true,data:generated}):verified?Response.json({ok:true,data:{drafts:[saved]}}):Response.json({ok:false},{status:503}));
+ vi.mocked(fetch).mockImplementation(async(_url,options)=>{if(options?.method==='POST')return Response.json({ok:true,data:generated});await new Promise(resolve=>setTimeout(resolve,5));return verified?Response.json({ok:true,data:{drafts:[saved]}}):Response.json({ok:false},{status:503});});
  const render=()=>hooks.render(()=>CommunityReplyWorkspace({locale}));let tree=render();
  expect(find(tree,item=>item.type===UnsavedChangesGuard)!.props.dirty).toBe(false);
  (find(tree,item=>item.type==='textarea')!.props.onChange as (e:unknown)=>void)({target:{value:'DEMO public source question'}});tree=render();
  const generate=()=>{const button=find(tree,item=>item.type==='button'&&item.props.className==='lsr-primary')!;(button.props.onClick as ()=>void)();};
- generate();for(let i=0;i<15;i++)await Promise.resolve();tree=render();
+ generate();await vi.waitFor(()=>{tree=render();expect(find(tree,item=>item.type==='button'&&item.props.className==='lsr-primary')!.props.disabled).toBe(false);expect(find(tree,item=>item.type==='textarea'&&item.props.value===generated.reply)).toBeDefined();});
  expect(find(tree,item=>item.type==='textarea'&&item.props.value===generated.reply)).toBeDefined();
  expect(find(tree,item=>item.type===UnsavedChangesGuard)!.props.dirty).toBe(true);
- verified=true;generate();for(let i=0;i<15;i++)await Promise.resolve();tree=render();
- expect(find(tree,item=>item.type===UnsavedChangesGuard)!.props.dirty).toBe(false);
+ verified=true;generate();await vi.waitFor(()=>{tree=render();expect(find(tree,item=>item.type==='button'&&item.props.className==='lsr-primary')!.props.disabled).toBe(false);expect(find(tree,item=>item.type===UnsavedChangesGuard)!.props.dirty).toBe(false);});
+ expect(vi.mocked(fetch).mock.calls.filter(([,options])=>options?.method==='POST')).toHaveLength(2);
 });
