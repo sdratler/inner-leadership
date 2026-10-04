@@ -1,18 +1,19 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { AppError, errorEnvelope } from "@/lib/errors.ts";
-import { readJson } from "@/lib/http/json.ts";
-import { verifyCsrfToken, verifyMutationOrigin } from "@/lib/security/csrf.ts";
-import { SESSION_COOKIE } from "@/lib/security/session.ts";
-import { identityRuntime } from "@/features/identity/runtime.ts";
-import { requestCommunityReply } from "@/features/community-reply/bridge.ts";
+import { AppError, errorEnvelope } from "../../../lib/errors.ts";
+import { readJson } from "../../../lib/http/json.ts";
+import { verifyCsrfToken, verifyMutationOrigin } from "../../../lib/security/csrf.ts";
+import { SESSION_COOKIE } from "../../../lib/security/session.ts";
+import { identityRuntime } from "../../../features/identity/runtime.ts";
+import { requestCommunityReply } from "../../../features/community-reply/bridge.ts";
+import { isCommunitySourceUrl } from "../../../features/community-reply/input-state.ts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const body = z.discriminatedUnion("mode", [
-  z.object({ operationId: z.string().uuid(), mode: z.literal("generate"), question: z.string().trim().min(8).max(2000), originalUrl: z.string().url().max(1000).optional() }).strict(),
-  z.object({ operationId: z.string().uuid(), mode: z.literal("revise_once"), question: z.string().trim().min(8).max(2000), originalUrl: z.string().url().max(1000).optional(), correction: z.string().trim().min(3).max(1000), previousReply: z.string().trim().min(10).max(3000) }).strict(),
+  z.object({ operationId: z.string().uuid(), mode: z.literal("generate"), question: z.string().trim().min(8).max(2000), originalUrl: z.string().url().max(1000).refine(isCommunitySourceUrl).optional() }).strict(),
+  z.object({ operationId: z.string().uuid(), mode: z.literal("revise_once"), question: z.string().trim().min(8).max(2000), originalUrl: z.string().url().max(1000).refine(isCommunitySourceUrl).optional(), correction: z.string().trim().min(3).max(1000), previousReply: z.string().trim().min(10).max(3000) }).strict(),
 ]);
 function fail(error: unknown) { const result = errorEnvelope(error instanceof AppError ? error : new AppError("UNAVAILABLE"), randomUUID()); return NextResponse.json(result.body, { status: result.status, headers: { "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" } }); }
 

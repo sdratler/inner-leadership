@@ -148,7 +148,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
   const savedReadEpoch=useRef(0),draftReadEpoch=useRef(0);
   const stale = !!result && !matchesSubmittedInput({ question, originalUrl }, submittedInput);
   const dirty = !!result && draft !== (persisted?.draft ?? result.reply);
-  const unsaved = dirty || stale || !!correction.trim() || (!result && !!(question.trim() || originalUrl.trim()));
+  const unsaved = dirty || stale || (!!result && !persisted) || !!correction.trim() || (!result && !!(question.trim() || originalUrl.trim()));
   const copyAllowed = !!result?.copyAllowed && !!persisted?.copyAllowed && !dirty && !stale;
 
   const loadSaved = useCallback(async (signal?:AbortSignal)=>{

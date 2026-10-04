@@ -257,7 +257,7 @@ export class UpdateService {
     });
   }
 
-  async list(actor: Actor, caseId: CaseId, audienceId: AudienceId): Promise<UpdateThreadView[]> {
+  async list(actor: Actor, caseId: CaseId, audienceId: AudienceId, history?: {reportId: UpdateReportId; beforeReplyId?: UpdateReplyId}): Promise<UpdateThreadView[]> {
     return this.store.transaction(async tx => {
       const current = await freshActor(tx, actor, this.clock.now());
       const item = await loadCase(tx, actor.workspaceId, caseId);
@@ -266,12 +266,17 @@ export class UpdateService {
       if (!audience) throw new AppError("NOT_FOUND");
       audienceAccess(current, item, guardians, audience);
       if (current.role !== "practitioner" && (current.role !== "parent" || audience.visibility !== "family_full")) throw new AppError("NOT_FOUND");
-      const reports = await tx.query<ReportRow>(REPORT_SELECT + " WHERE workspace_id=$1 AND case_id=$2 AND audience_id=$3 ORDER BY submitted_at DESC,id LIMIT 100", [actor.workspaceId, caseId, audienceId]);
+      const reports = await tx.query<ReportRow>(REPORT_SELECT + " WHERE workspace_id=$1 AND case_id=$2 AND audience_id=$3" + (history ? " AND id=$4" : "") + " ORDER BY submitted_at DESC,id LIMIT 100", [actor.workspaceId, caseId, audienceId, ...(history ? [history.reportId] : [])]);
+      if(history && reports.length !== 1) throw new AppError("NOT_FOUND");
       const results: UpdateThreadView[] = [];
       for (const row of reports) {
+        const visibleState=current.role === "practitioner" ? "" : "AND state='published'";
+        const before=history?.beforeReplyId ? await one<ReplyRow>(tx,REPLY_SELECT+` WHERE workspace_id=$1 AND report_id=$2 AND id=$3 ${visibleState}`,[actor.workspaceId,row.id,history.beforeReplyId]) : null;
+        if(history?.beforeReplyId && !before) throw new AppError("NOT_FOUND");
         const replies = await tx.query<ReplyRow>(REPLY_SELECT + ` WHERE workspace_id=$1 AND report_id=$2
-          ${current.role === "practitioner" ? "" : "AND state='published'"} ORDER BY created_at,id`, [actor.workspaceId, row.id]);
-        results.push({ report: this.report(row), replies: replies.map(reply => this.reply(actor.workspaceId, reply)) });
+          ${visibleState} ${before ? "AND (created_at,id)<($3,$4)" : ""} ORDER BY created_at DESC,id DESC LIMIT 101`, [actor.workspaceId, row.id, ...(before ? [before.createdAt,before.id] : [])]);
+        const page=replies.slice(0,100).reverse();
+        results.push({ report: this.report(row), replies: page.map(reply => this.reply(actor.workspaceId, reply)), nextRepliesBefore: replies.length>100 ? page[0]!.id : null });
       }
       return results;
     });
