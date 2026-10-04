@@ -7,7 +7,7 @@ import {acquisitionDecisionSchema,acquisitionPageSchema,acquisitionDecisionResul
 import {PeopleRequestError} from "./native-people-workspace.tsx";
 import "./native-people.css";
 type Fields=Extract<AcquisitionDecision,{action:"promote"}>["fields"];
-type Draft={fields:Fields;pending:AcquisitionDecision|null;conflict:boolean};
+type Draft={fields:Fields;person:string;pending:AcquisitionDecision|null;conflict:boolean};
 const initialFields=(item:AcquisitionReviewItem):Fields=>({name:item.displayName||item.phone,stage:"New inquiry",language:"",note:"",nextAction:"",dueDate:""});
 async function responseData(response:Response){
  let body;try{body=await response.json();}catch{throw new PeopleRequestError(response.status||503);}
@@ -76,17 +76,17 @@ export function AcquisitionReviewCard({item,epoch,locale,draft,remember,saved,de
  remember:(draft:Draft)=>void;saved:(result:AcquisitionDecisionResult)=>void;denied:(status:number)=>void;refresh:()=>void}){
  const text=(en:string,he:string)=>locale==="he"?he:en;
  const [fields,setFields]=useState(draft?.fields??initialFields(item)),[pending,setPending]=useState<AcquisitionDecision|null>(draft?.pending??null),
-  [busy,setBusy]=useState(false),[message,setMessage]=useState(""),[conflict,setConflict]=useState(draft?.conflict??false),[confirm,setConfirm]=useState(draft?.pending?.action==="not_lead"),[person,setPerson]=useState(draft?.pending?.action==="match"?draft.pending.personId:"");
+  [busy,setBusy]=useState(false),[message,setMessage]=useState(""),[conflict,setConflict]=useState(draft?.conflict??false),[confirm,setConfirm]=useState(draft?.pending?.action==="not_lead"),[person,setPerson]=useState(draft?.person??(draft?.pending?.action==="match"?draft.pending.personId:""));
  const guard=useRef(false),alive=useRef(true);
  useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
- function edit(patch:Partial<Fields>){const next={...fields,...patch};setFields(next);remember({fields:next,pending,conflict});}
+ function edit(patch:Partial<Fields>){const next={...fields,...patch};setFields(next);remember({fields:next,person,pending,conflict});}
  async function decide(action:"promote"|"match"|"not_lead"){
   if(guard.current||conflict)return;let operation:AcquisitionDecision;
   try{const match=item.matching.people.find(value=>value.personId===person&&value.eligible);
    operation=pending??acquisitionDecisionSchema.parse({action,candidateId:item.id,operationId:crypto.randomUUID(),expectedEpoch:epoch,
     ...(action==="promote"?{fields}:action==="match"?{personId:person,expectedVersion:match?.version}:{})});
   }catch{setMessage(text("Check the name, status, date or selected person. Your draft is preserved.","יש לבדוק את השם, המצב, התאריך או איש הקשר שנבחר. הטיוטה נשמרה."));return;}
-  guard.current=true;setBusy(true);setPending(operation);setMessage("");remember({fields,pending:operation,conflict:false});
+  guard.current=true;setBusy(true);setPending(operation);setMessage("");remember({fields,person,pending:operation,conflict:false});
   try{
    const session=await sessionInfo(),parsed=acquisitionDecisionResultSchema.safeParse(await responseData(await fetch("/api/private/contact-acquisition",{method:"POST",credentials:"same-origin",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer",
     headers:{"content-type":"application/json","x-csrf-token":session.csrfToken},body:JSON.stringify(operation)})));
@@ -96,7 +96,7 @@ export function AcquisitionReviewCard({item,epoch,locale,draft,remember,saved,de
    if(alive.current)saved(result);
   }catch(error){if(alive.current){const status=error instanceof PeopleRequestError?error.status:error instanceof IdentityClientError&&error.code==="UNAUTHENTICATED"?401:error instanceof IdentityClientError&&error.code==="FORBIDDEN"?403:503;
    if(status===401||status===403){denied(status);return;}
-   if(status===400||status===409){setPending(null);setConflict(status===409);remember({fields,pending:null,conflict:status===409});}
+   if(status===400||status===409){setPending(null);setConflict(status===409);remember({fields,person,pending:null,conflict:status===409});}
    setMessage(status===409?text("The record, phone match or CRM authority changed. Your draft is preserved. Refresh before deciding again.","הרשומה, שיוך הטלפון או מקור אנשי הקשר השתנו. הטיוטה נשמרה. יש לרענן לפני החלטה נוספת."):status===400?text("The request was not accepted. Check the fields; your draft is preserved.","הבקשה לא התקבלה. יש לבדוק את השדות; הטיוטה נשמרה."):text("The save could not be confirmed. Retry the same decision to reconcile its outcome without duplicating a lead.","לא ניתן לאשר את השמירה. יש לנסות שוב את אותה החלטה כדי לבדוק את התוצאה בלי ליצור כפילות."));
   }}finally{guard.current=false;if(alive.current)setBusy(false);}
  }
@@ -114,9 +114,9 @@ export function AcquisitionReviewCard({item,epoch,locale,draft,remember,saved,de
      <label className="lsw-field">{text("Due date","תאריך יעד")}<input className="lsw-input" type="date" value={fields.dueDate} onChange={event=>edit({dueDate:event.target.value})}/></label>
     </fieldset><button className="lsw-button lsw-button--primary" disabled={busy||conflict||pending!==null&&pending.action!=="promote"}>{text(pending?"Retry this decision":"Promote to lead",pending?"ניסיון חוזר של ההחלטה":"קידום לפנייה")}</button>
    </form>}
-   {item.matching.people.some(match=>match.eligible)&&<div className="lsw-stack"><label className="lsw-field">{text("Existing person","איש קשר קיים")}<select className="lsw-input" disabled={locked} value={person} onChange={event=>setPerson(event.target.value)}><option value="">{text("Select a person","בחירת איש קשר")}</option>{item.matching.people.filter(match=>match.eligible).map(match=><option key={match.personId} value={match.personId}>{match.displayName}</option>)}</select></label>
+   {item.matching.people.some(match=>match.eligible)&&<div className="lsw-stack"><label className="lsw-field">{text("Existing person","איש קשר קיים")}<select className="lsw-input" disabled={locked} value={person} onChange={event=>{setPerson(event.target.value);remember({fields,person:event.target.value,pending,conflict});}}><option value="">{text("Select a person","בחירת איש קשר")}</option>{item.matching.people.filter(match=>match.eligible).map(match=><option key={match.personId} value={match.personId}>{match.displayName}</option>)}</select></label>
     <p>{text("Matching preserves the existing name, notes and status. It creates no account or clinical access.","השיוך שומר על השם, ההערות והמצב הקיימים. הוא אינו יוצר חשבון או גישה למידע טיפולי.")}</p><button className="lsw-button lsw-button--primary" disabled={busy||conflict||!person||pending!==null&&pending.action!=="match"} onClick={()=>void decide("match")}>{text(pending?"Retry this decision":"Match existing person",pending?"ניסיון חוזר של ההחלטה":"שיוך לאיש קשר קיים")}</button></div>}
    {!confirm?<button className="lsw-button lsw-button--secondary" disabled={locked} onClick={()=>setConfirm(true)}>{text("Not a lead","לא פנייה עסקית")}</button>:<div className="lsw-stack"><p>{text("Mark this event not a lead? The original receipt will be retained.","לסמן את האירוע הזה כלא פנייה עסקית? הקבלה המקורית תישמר.")}</p><div className="lsw-actions"><button className="lsw-button lsw-button--secondary" disabled={busy||pending!==null} onClick={()=>setConfirm(false)}>{text("Cancel","ביטול")}</button><button className="lsw-button lsw-button--primary" disabled={busy||conflict||pending!==null&&pending.action!=="not_lead"} onClick={()=>void decide("not_lead")}>{text(pending?"Retry this decision":"Mark not a lead",pending?"ניסיון חוזר של ההחלטה":"סימון כלא פנייה עסקית")}</button></div></div>}
-  </details>{message&&<p role="alert">{message}</p>}{conflict&&<button className="lsw-button lsw-button--secondary" onClick={()=>{remember({fields,pending:null,conflict:false});refresh();}}>{text("Refresh and review again","רענון ובדיקה מחדש")}</button>}
+  </details>{message&&<p role="alert">{message}</p>}{conflict&&<button className="lsw-button lsw-button--secondary" onClick={()=>{remember({fields,person,pending:null,conflict:false});refresh();}}>{text("Refresh and review again","רענון ובדיקה מחדש")}</button>}
  </article>;
 }
