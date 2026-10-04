@@ -2,7 +2,10 @@ import "server-only";
 import {AppError} from "../../lib/errors.ts";
 import type {Actor} from "../identity/types.ts";
 import type {IdentityStore} from "../identity/store.ts";
-import {freshActor} from "../identity/data.ts";
+import {freshActor,accountByEmail} from "../identity/data.ts";
+import {blindEmail} from "../identity/crypto.ts";
+import {assertMarketingOwner} from "../marketing-overview/read-model.ts";
+import {OWNER_REPORT_RECIPIENT} from "./email.ts";
 import {requirePractitioner} from "../cases/policy.ts";
 import {identityRuntime} from "../identity/runtime.ts";
 import {SESSION_COOKIE} from "../../lib/security/session.ts";
@@ -13,10 +16,17 @@ import {prospectContactSuppressed,prospectArchived} from "../prospects/native-ed
 import {loadMarketingSnapshot} from "../marketing-overview/provider.ts";
 import type {MarketingSnapshot} from "../marketing-overview/contracts.ts";
 import {contentDayKey} from "../marketing-overview/calendar-model.ts";
-import {buildOwnerDigest,summarizeProspects,type TaskCounts} from "./model.ts";
+import {buildOwnerDigest,summarizeProspects,validateDigestProspects,type TaskCounts} from "./model.ts";
 
 type Runtime=Awaited<ReturnType<typeof identityRuntime>>;
-async function assertOwner(store:IdentityStore,actor:Actor,now:Date){return store.transaction(async tx=>{const current=await freshActor(tx,actor,now);requirePractitioner(current);return current;});}
+async function assertOwner(runtime:Runtime,actor:Actor,now:Date){return runtime.store.transaction(async tx=>{
+ const current=await freshActor(tx,actor,now);requirePractitioner(current);
+ const owner=await accountByEmail(tx,runtime.config.workspaceId,blindEmail(OWNER_REPORT_RECIPIENT,runtime.config.lookupKey));
+ if(!owner?.emailVerifiedAt||owner.state!=="active"||owner.role!=="practitioner")throw new AppError("FORBIDDEN");
+ try{assertMarketingOwner({role:current.role,active:current.state==="active",workspaceId:current.workspaceId,accountId:current.id},{workspaceId:runtime.config.workspaceId,accountId:owner.id});}
+ catch{throw new AppError("FORBIDDEN");}
+ return current;
+});}
 function count(value:unknown):number{const result=typeof value==="string"&&/^\d+$/.test(value)?Number(value):value;if(typeof result!=="number"||!Number.isSafeInteger(result)||result<0)throw new AppError("UNAVAILABLE");return result;}
 /** Aggregate task facts only. Never decrypt session/clinical/task narratives. */
 export async function readTaskCounts(store:IdentityStore,actor:Actor,now:Date):Promise<TaskCounts>{
@@ -27,7 +37,7 @@ export async function readTaskCounts(store:IdentityStore,actor:Actor,now:Date):P
    COUNT(*) FILTER(WHERE t.due_date<$3::date) AS overdue,
    COUNT(*) FILTER(WHERE t.due_date>$3::date) AS future
    FROM ls_calendar.tasks t LEFT JOIN ls_cases.cases c ON c.workspace_id=t.workspace_id AND c.id=t.case_id
-   WHERE t.workspace_id=$1 AND t.created_by=$2 AND t.state='open'
+   WHERE t.workspace_id=$1 AND t.state='open'
    AND (to_jsonb(t)->>'source_kind') IS DISTINCT FROM 'crm_followup'
    AND (t.case_id IS NULL OR c.practitioner_account_id=$2)
    AND NOT EXISTS(SELECT 1 FROM ls_demo.cases d WHERE d.workspace_id=t.workspace_id AND d.case_id=t.case_id)
@@ -46,19 +56,23 @@ async function realProspects(store:IdentityStore,actor:Actor,rows:readonly Prosp
 export async function readIntakeFacts(store:IdentityStore,actor:Actor,rows:readonly Prospect[],now:Date){
  return store.transaction(async tx=>{
   await tx.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY");const current=await freshActor(tx,actor,now);requirePractitioner(current);
+  validateDigestProspects(rows);
   const ids=rows.filter(row=>!prospectArchived(row)&&!prospectContactSuppressed(row)).map(row=>row.leadId),journeys=await readProspectJourneysFromTx(tx,current.workspaceId,ids);
+  // A canonical journey is created by submission. Another unused invitation
+  // must not reintroduce form work or a second acceptance step afterward.
+  const pendingFormIds=ids.filter(id=>!journeys.has(id));
   const forms=await tx.query<{total:unknown}>(`SELECT COUNT(DISTINCT i.stable_lead_ref) AS total FROM ls_intake.pre_enrollment_invitations i
-   WHERE i.workspace_id=$1 AND i.created_by_account_id=$2 AND i.stable_lead_ref IN(SELECT jsonb_array_elements_text($3::jsonb))
-   AND i.revoked_at IS NULL AND i.consumed_at IS NULL AND i.expires_at>$4
+   WHERE i.workspace_id=$1 AND i.stable_lead_ref IN(SELECT jsonb_array_elements_text($2::jsonb))
+   AND i.revoked_at IS NULL AND i.consumed_at IS NULL AND i.expires_at>$3
    AND NOT EXISTS(SELECT 1 FROM ls_intake.pre_enrollment_receipts r WHERE r.workspace_id=i.workspace_id AND r.invitation_id=i.invitation_id)`,
-   [current.workspaceId,current.id,JSON.stringify(ids),now]);
+   [current.workspaceId,JSON.stringify(pendingFormIds),now]);
   if(forms.length!==1)throw new AppError("UNAVAILABLE");return {journeys,awaitingForm:count(forms[0]!.total)};
  });
 }
 export async function loadOwnerDigest(actor:Actor,runtime:Runtime,marketing:MarketingSnapshot,locale:"he"|"en",now=runtime.clock.now()){
- await assertOwner(runtime.store,actor,now);
+ await assertOwner(runtime,actor,now);
  const [prospects,tasks]=await Promise.allSettled([
-  readAuthoritativeProspects(actor,runtime).then(rows=>realProspects(runtime.store,actor,rows,now)),
+  readAuthoritativeProspects(actor,runtime).then(rows=>{validateDigestProspects(rows);return realProspects(runtime.store,actor,rows,now);}),
   readTaskCounts(runtime.store,actor,now),
  ]);
  const rows=prospects.status==="fulfilled"?prospects.value:null;
@@ -69,14 +83,14 @@ export async function loadOwnerDigest(actor:Actor,runtime:Runtime,marketing:Mark
  catch(error){if(!(error instanceof Error)||error.message!=="INVALID_DIGEST_PROSPECTS")throw error;}
  if(counts)counts.awaitingForm=intake?.awaitingForm??null;
  // Do not return aggregates after revocation or a role change during remote reads.
- await assertOwner(runtime.store,actor,runtime.clock.now());
+ await assertOwner(runtime,actor,runtime.clock.now());
  return buildOwnerDigest({now,locale,marketing,followups:counts?{data:counts,asOf:now.toISOString()}:null,tasks:tasks.status==="fulfilled"?{data:tasks.value,asOf:now.toISOString()}:null,journeysAvailable:Boolean(intake)});
 }
 export async function ownerDigestContext(cookie:string|null){
  const values=(cookie??"").split(";").map(value=>value.trim()).filter(value=>value.startsWith(SESSION_COOKIE+"="));
  if(values.length!==1)throw new AppError("UNAUTHENTICATED");
  const runtime=await identityRuntime(),actor=await runtime.services.sessions.actor(values[0]!.slice(SESSION_COOKIE.length+1));
- if(actor.role!=="practitioner")throw new AppError("FORBIDDEN");return {actor,runtime};
+ if(actor.role!=="practitioner")throw new AppError("FORBIDDEN");await assertOwner(runtime,actor,runtime.clock.now());return {actor,runtime};
 }
 export async function ownerDigestForRequest(request:Request,marketing?:MarketingSnapshot){
  if(new URL(request.url).searchParams.size)throw new AppError("INVALID_REQUEST");

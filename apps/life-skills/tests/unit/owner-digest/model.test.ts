@@ -9,6 +9,17 @@ const now=new Date("2026-10-02T21:30:00Z"),today="2026-10-03";
 const base={leadId:"LS-LEAD-a",stage:"Prospect",outcome:"",nextAction:"Owner action",dueDate:"10/3/2026",journeyState:"prospect",paymentVerified:false,bookingConfirmed:false};
 const marketing:MarketingSnapshot={source:"registry_only",fetchedAt:null,creatives:[],publications:[],ads:[],scout:{readyDrafts:null,sourceUrl:null,lastChecked:null,status:"unbound"}};
 describe("bounded private aggregate projection",()=>{
+ it.each(['prospect','intake_submitted','awaiting_payment','awaiting_booking','active','hold'])('respects actual %s journey state without removing an explicit follow-up',journeyState=>{
+  const row={...base,journeyState,paymentVerified:true,bookingConfirmed:false};
+  const counts=summarizeProspects([row],today,true);
+  expect(counts.awaitingBooking).toBe(journeyState==='hold'?0:1);
+  expect(counts.prospects).toBe(['active','hold'].includes(journeyState)?0:1);
+  expect(counts.due).toBe(1);expect(counts.awaitingPayment).toBe(0);
+  expect(row.journeyState).toBe(journeyState);
+  expect(summarizeProspects([row],today,false)).toMatchObject({awaitingBooking:null,awaitingPayment:null});
+  expect(summarizeProspects([{...row,bookingConfirmed:true}],today,true).awaitingBooking).toBe(0);
+  expect(summarizeProspects([{...row,paymentVerified:false}],today,true).awaitingBooking).toBe(0);
+ });
  it.each(['Closed','Not interested','No fit','CLOSED','Closed — older inquiry'])('excludes closed %s references without dropping an open reference or rewriting history',value=>{
   const closed=[{...base,leadId:'LS-LEAD-closed-stage',stage:value,journeyState:'awaiting_payment'},{...base,leadId:'LS-LEAD-closed-outcome',outcome:value,paymentVerified:true}];
   const open={...base,leadId:'LS-LEAD-open',stage:'Unclosed custom label',outcome:'Pending owner clarification'};
