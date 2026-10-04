@@ -22,6 +22,8 @@ export async function readCoordination(assignmentId:string,caseId:string,audienc
  const value=await request<PracticeCoordinationPage>('/api/home-practice?'+new URLSearchParams({view:'coordination',assignmentId}),{method:'GET'},signal);
  if(!value||!['parent','adult_client'].includes(value.role)||typeof value.ownAccountId!=='string'||!ids(value.eligibleAccountIds)||typeof value.hasMore!=='boolean'||typeof value.asOf!=='string'||!Number.isFinite(Date.parse(value.asOf))||!Array.isArray(value.versions)||value.versions.length>20||value.versions.some(row=>!validVersion(row,assignmentId,caseId,audienceId))||value.currentVersion!==null&&(!validVersion(value.currentVersion,assignmentId,caseId,audienceId)||Date.parse(value.currentVersion.effectiveFrom)>Date.parse(value.asOf)))throw new IdentityClientError('UNAVAILABLE');
  if(value.readOnlyReason!==undefined&&(!['client_responsibility','legacy_child_assignment'].includes(value.readOnlyReason)||value.role!=='parent'||value.eligibleAccountIds.length!==0))throw new IdentityClientError('UNAVAILABLE');
+ if(value.reminderRoutingAccountIds!==undefined&&(!ids(value.reminderRoutingAccountIds)||value.reminderRoutingAccountIds.some(id=>!value.eligibleAccountIds.includes(id))))throw new IdentityClientError('UNAVAILABLE');
+ if(value.currentVersion?.responsibilityVersionId&&value.reminderRoutingAccountIds===undefined)throw new IdentityClientError('UNAVAILABLE');
  if(value.nextEffectiveFrom!==null&&(typeof value.nextEffectiveFrom!=='string'||!Number.isFinite(Date.parse(value.nextEffectiveFrom))||Date.parse(value.nextEffectiveFrom)<=Date.parse(value.asOf)))throw new IdentityClientError('UNAVAILABLE');
  if(value.role==='adult_client'&&(value.eligibleAccountIds.length!==1||value.eligibleAccountIds[0]!==value.ownAccountId))throw new IdentityClientError('UNAVAILABLE');
  return value;
@@ -30,18 +32,22 @@ export async function readCoordination(assignmentId:string,caseId:string,audienc
  * the browser clock. Future changes remain visible in immutable history. */
 export function coordinationDefaults(page:PracticeCoordinationPage):{assignees:string[];reminders:string[];mode:CompletionMode}{
  const current=page.currentVersion,assignees=page.readOnlyReason?[...(current?.assigneeAccountIds??[])]:page.role==='adult_client'?[page.ownAccountId]:current?.assigneeAccountIds.filter(id=>page.eligibleAccountIds.includes(id))??[page.ownAccountId].filter(id=>page.eligibleAccountIds.includes(id));
- return {assignees,reminders:current?.reminderCandidateAccountIds.filter(id=>assignees.includes(id))??[],mode:assignees.length===2&&current?.completionMode==='each_assignee'?'each_assignee':'any_assignee'};
+ const reminderIds=page.readOnlyReason?current?.reminderCandidateAccountIds??[]:coordinationReminderChoices(page,assignees);
+ return {assignees,reminders:current?.reminderCandidateAccountIds.filter(id=>reminderIds.includes(id))??[],mode:assignees.length===2&&current?.completionMode==='each_assignee'?'each_assignee':'any_assignee'};
 }
+/** Only native responsibility frames separate routing from reporting. Legacy
+ * coordination retains its assignee-only boundary; adults remain self-only. */
+export function coordinationReminderChoices(page:PracticeCoordinationPage,assignees:readonly string[]):readonly string[]{return page.currentVersion?.responsibilityVersionId?[...new Set([...assignees,...(page.reminderRoutingAccountIds??[]).filter(id=>page.eligibleAccountIds.includes(id))])]:assignees;}
 /** A draft is based on effective responsibility and current authorization, not
  * on a timestamp or incidental history pagination. */
-export function coordinationFrameKey(page:PracticeCoordinationPage):string{return JSON.stringify([page.ownAccountId,page.role,page.currentVersion?.versionId??null,page.readOnlyReason??null,[...page.eligibleAccountIds].sort()]);}
+export function coordinationFrameKey(page:PracticeCoordinationPage):string{return JSON.stringify([page.ownAccountId,page.role,page.currentVersion?.versionId??null,page.readOnlyReason??null,[...page.eligibleAccountIds].sort(),[...(page.reminderRoutingAccountIds??[])].sort()]);}
 export function coordinationRefreshDelay(page:PracticeCoordinationPage,elapsed:number):number|null{
  if(page.nextEffectiveFrom===null)return null;
  return Math.min(2_147_483_647,Math.max(100,Date.parse(page.nextEffectiveFrom)-Date.parse(page.asOf)-Math.max(0,elapsed)+100));
 }
 export type CoordinationCommand=Readonly<{action:'coordinate';assignmentId:string;assigneeAccountIds:readonly string[];completionMode:CompletionMode;reminderCandidateAccountIds:readonly string[];effectiveFrom:string;expectedCurrentVersionId?:string|null}>;
-export function coordinationCommand(assignmentId:string,assignees:readonly string[],mode:CompletionMode,reminders:readonly string[],now:number,expectedCurrentVersionId?:string|null):CoordinationCommand{
- if(!ids([...assignees])||!assignees.length||!ids([...reminders])||reminders.some(id=>!assignees.includes(id))||mode==='each_assignee'&&assignees.length!==2||!['any_assignee','each_assignee'].includes(mode)||!Number.isFinite(now))throw new IdentityClientError('INVALID_REQUEST');
+export function coordinationCommand(assignmentId:string,assignees:readonly string[],mode:CompletionMode,reminders:readonly string[],now:number,expectedCurrentVersionId?:string|null,reminderRoutingAccountIds:readonly string[]=assignees):CoordinationCommand{
+ if(!ids([...assignees])||!assignees.length||!ids([...reminders],3)||!ids([...reminderRoutingAccountIds],3)||reminders.some(id=>!reminderRoutingAccountIds.includes(id))||mode==='each_assignee'&&assignees.length!==2||!['any_assignee','each_assignee'].includes(mode)||!Number.isFinite(now))throw new IdentityClientError('INVALID_REQUEST');
  if(expectedCurrentVersionId!==undefined&&expectedCurrentVersionId!==null&&!ids([expectedCurrentVersionId]))throw new IdentityClientError('INVALID_REQUEST');
  return Object.freeze({action:'coordinate',assignmentId,assigneeAccountIds:Object.freeze([...assignees]),completionMode:mode,reminderCandidateAccountIds:Object.freeze([...reminders]),effectiveFrom:new Date(now+60_000).toISOString(),...(expectedCurrentVersionId===undefined?{}:{expectedCurrentVersionId})});
 }
