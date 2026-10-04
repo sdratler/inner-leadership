@@ -48,11 +48,14 @@ export async function readIntakeFacts(store:IdentityStore,actor:Actor,rows:reado
   await tx.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY");const current=await freshActor(tx,actor,now);requirePractitioner(current);
   validateDigestProspects(rows);
   const ids=rows.filter(row=>!prospectArchived(row)&&!prospectContactSuppressed(row)).map(row=>row.leadId),journeys=await readProspectJourneysFromTx(tx,current.workspaceId,ids);
+  // A canonical journey is created by submission. Another unused invitation
+  // must not reintroduce form work or a second acceptance step afterward.
+  const pendingFormIds=ids.filter(id=>!journeys.has(id));
   const forms=await tx.query<{total:unknown}>(`SELECT COUNT(DISTINCT i.stable_lead_ref) AS total FROM ls_intake.pre_enrollment_invitations i
    WHERE i.workspace_id=$1 AND i.created_by_account_id=$2 AND i.stable_lead_ref IN(SELECT jsonb_array_elements_text($3::jsonb))
    AND i.revoked_at IS NULL AND i.consumed_at IS NULL AND i.expires_at>$4
    AND NOT EXISTS(SELECT 1 FROM ls_intake.pre_enrollment_receipts r WHERE r.workspace_id=i.workspace_id AND r.invitation_id=i.invitation_id)`,
-   [current.workspaceId,current.id,JSON.stringify(ids),now]);
+   [current.workspaceId,current.id,JSON.stringify(pendingFormIds),now]);
   if(forms.length!==1)throw new AppError("UNAVAILABLE");return {journeys,awaitingForm:count(forms[0]!.total)};
  });
 }

@@ -32,6 +32,22 @@ test("intake counts use the existing invitation/receipt ledger, not imported sen
  }
  await f.pool.query("UPDATE ls_intake.pre_enrollment_invitations SET revoked_at=$3 WHERE workspace_id=$1 AND invitation_id=$2",[f.workspaceId,invite,now]);expect((await readIntakeFacts(store(),f.practitioner.actor,[row],now)).awaitingForm).toBe(0);
 });
+test("one canonical submission excludes other valid invitations across every later journey phase",async()=>{
+ const lead='LS-LEAD-submitted-'+randomUUID(),invitations=[randomUUID(),randomUUID()],receipt=randomUUID();
+ for(const invitation of invitations)await f.pool.query(`INSERT INTO ls_intake.pre_enrollment_invitations(workspace_id,invitation_id,token_digest,stable_lead_ref,child_slots,expires_at,created_at,created_by_account_id)
+  VALUES($1,$2,$3,$4,'["synthetic-slot"]'::jsonb,clock_timestamp()+interval '1 day',clock_timestamp(),$5)`,[f.workspaceId,invitation,createHash('sha256').update(invitation).digest('hex'),lead,f.practitioner.actor.id]);
+ await f.pool.query(`INSERT INTO ls_intake.pre_enrollment_receipts(workspace_id,receipt_id,invitation_id,idempotency_key,payload_ciphertext,payload_digest,consent_version,consent_hash,received_at)
+  VALUES($1,$2,$3,$4,'synthetic-unused-intake-ciphertext',$5,'synthetic-consent',$5,clock_timestamp())`,[f.workspaceId,receipt,invitations[0],randomUUID(),'a'.repeat(64)]);
+ await f.pool.query(`INSERT INTO ls_onboarding.prospect_journeys(workspace_id,stable_lead_ref,intake_receipt_id,state,created_at,updated_at)
+  VALUES($1,$2,$3,'intake_submitted',clock_timestamp(),clock_timestamp())`,[f.workspaceId,lead,receipt]);
+ const row={leadId:lead,stage:'Prospect',outcome:'',nextAction:'',dueDate:''} as Prospect;
+ for(const state of ['intake_submitted','awaiting_payment','payment_verified','awaiting_booking','active','hold']){
+  await f.pool.query('UPDATE ls_onboarding.prospect_journeys SET state=$3 WHERE workspace_id=$1 AND stable_lead_ref=$2',[f.workspaceId,lead,state]);
+  const facts=await readIntakeFacts(store(),f.practitioner.actor,[row],now);
+  expect(facts.awaitingForm,state).toBe(0);expect(facts.journeys.get(lead)?.journeyState).toBe(state);
+ }
+ expect((await f.pool.query('SELECT consumed_at,revoked_at FROM ls_intake.pre_enrollment_invitations WHERE workspace_id=$1 AND invitation_id=$2',[f.workspaceId,invitations[1]])).rows[0]).toEqual({consumed_at:null,revoked_at:null});
+});
 test("normal native roles, changed role and revoked session cannot read owner aggregates",async()=>{
  for(const role of ["parent","child","adult_client"] as const){await f.pool.query("UPDATE ls_identity.accounts SET role=$3 WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.parent.actor.id,role]);await expect(readTaskCounts(store(),f.parent.actor,now)).rejects.toMatchObject({code:"FORBIDDEN"});}
  await f.pool.query("UPDATE ls_identity.accounts SET role='parent' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.practitioner.actor.id]);await expect(readTaskCounts(store(),f.practitioner.actor,now)).rejects.toMatchObject({code:"FORBIDDEN"});

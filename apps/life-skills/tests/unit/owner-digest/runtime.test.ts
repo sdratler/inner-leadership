@@ -10,6 +10,22 @@ import {AppError} from '../../../src/lib/errors.ts';
 import {MAX_OPERATIONAL_PROSPECTS} from '../../../src/features/contact-ops/core/limits.ts';
 import type {MarketingSnapshot} from '../../../src/features/marketing-overview/contracts.ts';
 const actor={id:'DEMO-owner',workspaceId:'DEMO-workspace',role:'practitioner',state:'active',sessionDigest:'DEMO-session'} as Actor;
+it.each(['intake_submitted','awaiting_payment','payment_verified','awaiting_booking','active','hold'])('counts pending forms only for unsubmitted leads, not canonical %s journeys',async state=>{
+ const rows=['pending','submitted'].map(key=>({leadId:'LS-LEAD-'+key,stage:'Prospect',outcome:'',nextAction:'',dueDate:''})) as Prospect[];
+ let formIds:unknown;
+ const store:IdentityStore={transaction:async work=>work({query:async<T extends object>(sql:string,args:readonly unknown[]=[])=>{
+  if(sql.includes('SELECT a.id FROM ls_identity.sessions'))return [{id:actor.id}] as T[];
+  if(sql.includes('FROM ls_identity.accounts a JOIN'))return [actor] as T[];
+  if(sql.includes('FROM ls_onboarding.prospect_journeys'))return [{leadId:'LS-LEAD-submitted',state,paymentVerified:false,bookingConfirmed:false}] as T[];
+  if(sql.includes('COUNT(DISTINCT i.stable_lead_ref)')){formIds=JSON.parse(String(args[2]));return [{total:String((formIds as string[]).length)}] as T[];}
+  if(sql.startsWith('SET TRANSACTION'))return [] as T[];
+  throw Error('UNEXPECTED_QUERY');
+ }})};
+ const facts=await readIntakeFacts(store,actor,rows,new Date('2026-10-04T12:00:00Z'));
+ expect(formIds).toEqual(['LS-LEAD-pending']);expect(facts.awaitingForm).toBe(1);
+ expect(facts.journeys.get('LS-LEAD-submitted')?.journeyState).toBe(state);
+ expect(rows.map(row=>row.leadId)).toEqual(['LS-LEAD-pending','LS-LEAD-submitted']);
+});
 it.each(['opt out','opted-out','OPT_OUT','do_not_contact','Do-Not-Contact','Closed','Not interested','No fit','CLOSED','Closed — older inquiry'])('excludes %s before both actual intake and journey queries',async value=>{
  const rows=[{leadId:'LS-LEAD-stage',stage:value,outcome:''},{leadId:'LS-LEAD-outcome',stage:'Prospect',outcome:value},{leadId:'LS-LEAD-archive',stage:'Archived',outcome:''},{leadId:'LS-LEAD-allowed',stage:'Prospect',outcome:''}].map(row=>({...row,nextAction:'',dueDate:''})) as Prospect[];
  const facts:(readonly unknown[])[]=[];
