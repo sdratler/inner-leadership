@@ -146,5 +146,9 @@
   {
     "name": "0117_ls_acquisition_decisions.sql",
     "sha256": "d8ed5bfced4f29b473a1e052dcfd2eb607d0777992c18b339b23c79e90c0c7b6"
+  },
+  {
+    "name": "0118_ls_contact_delta_history.sql",
+    "sha256": "89124785efc166f1f4aa1390f814798c2b63b71a874e37b4da10e11a7c0a202f"
   }
 ]

@@ -85,6 +85,87 @@ test("first import waits for the authority fence and observes the newly committe
  }
 });
 
+test("frozen delta applies once with encrypted immutable history, native notes preserved and no account or authority changes", async()=>{
+ const d=await fixture();
+ try {
+  const service=new NativeShadowImporter(poolStore(d.pool),d.keyring,lookupKey,key,sourceFileId,sheetId);
+  const old=snapshot([one]),changed=[...one];changed[1]="Synthetic corrected display";changed[5]="Changed source follow-up";
+  const next={...snapshot([changed,two]),revision:"synthetic-revision-2"};
+  const decideFor=(s:SheetSnapshot)=>planImport(s,d.workspaceId,key).rows.map(row=>({sourceRow:row.sourceRow,sourceRevision:s.revision,legacyId:row.legacyId,rowDigest:row.rowDigest,kind:"new_person" as const}));
+  await service.importNewPeople(d.practitioner.actor,old,decideFor(old));
+  const personId=planImport(old,d.workspaceId,key).rows[0]!.suggestedPersonId;
+  const original=(await d.pool.query("SELECT payload_ciphertext FROM ls_contact_ops.profiles WHERE workspace_id=$1 AND person_id=$2",[d.workspaceId,personId])).rows[0].payload_ciphertext;
+  const profile=JSON.parse(unseal(original,crmProfileAad(d.workspaceId,personId),d.keyring));
+  await d.pool.query("UPDATE ls_contact_ops.profiles SET payload_ciphertext=$3,version=2 WHERE workspace_id=$1 AND person_id=$2",
+   [d.workspaceId,personId,seal(JSON.stringify({...profile,notes:"Native authored note retained",doNotContact:true}),crmProfileAad(d.workspaceId,personId),d.keyring)]);
+  const input={operationId:"synthetic-final-delta",expectedEpoch:2,versions:[{legacyId:one[0]!,version:2}],newPeople:decideFor(next).filter(row=>row.legacyId===two[0])};
+  await expect(service.applyDelta(d.practitioner.actor,old,next,input)).rejects.toThrow("DELTA_REQUIRES_EXACT_FREEZE");
+  const state={phase:"frozen",epoch:2,batchId:"synthetic-cutover",sourceFileId,sourceRevision:old.revision,nativeWritesSinceSwitch:0};
+  const authorityCiphertext=seal(JSON.stringify(state),cutoverStateAad(d.workspaceId,2),d.keyring);
+  await d.pool.query("INSERT INTO ls_contact_ops.cutover(workspace_id,epoch,phase,state_ciphertext) VALUES($1,2,'frozen',$2)",[d.workspaceId,authorityCiphertext]);
+  for(const actor of [d.parent.actor,d.parentTwo.actor,d.outsider.actor]) await expect(service.applyDelta(actor,old,next,input)).rejects.toThrow();
+  await expect(service.applyDelta(d.practitioner.actor,old,next,{...input,expectedEpoch:1})).rejects.toThrow("DELTA_REQUIRES_EXACT_FREEZE");
+  await expect(service.applyDelta(d.practitioner.actor,old,next,{...input,versions:[{legacyId:one[0]!,version:1}]})).rejects.toThrow("DELTA_VERSION_CONFLICT");
+  await expect(service.applyDelta(d.practitioner.actor,old,next,{...input,newPeople:[]})).rejects.toThrow("DELTA_DISPOSITION_INCOMPLETE");
+  const accountsBefore=(await d.pool.query("SELECT id FROM ls_identity.accounts WHERE workspace_id=$1 ORDER BY id",[d.workspaceId])).rows;
+  const expected={sourceRevision:next.revision,planned:2,created:1,updated:1,unchanged:0};
+  expect(await service.applyDelta(d.practitioner.actor,old,next,input)).toEqual({...expected,replayed:false});
+  expect(await service.applyDelta(d.practitioner.actor,old,next,input)).toEqual({...expected,replayed:true});
+  await expect(service.applyDelta(d.practitioner.actor,old,next,{...input,expectedEpoch:3})).rejects.toThrow("DELTA_OPERATION_CONFLICT");
+  const saved=(await d.pool.query("SELECT payload_ciphertext,version FROM ls_contact_ops.profiles WHERE workspace_id=$1 AND person_id=$2",[d.workspaceId,personId])).rows[0];
+  expect(saved.version).toBe(3);
+  expect(JSON.parse(unseal(saved.payload_ciphertext,crmProfileAad(d.workspaceId,personId),d.keyring))).toMatchObject({notes:"Native authored note retained",doNotContact:true,nextAction:"Changed source follow-up"});
+  const history=(await d.pool.query("SELECT legacy_lead_id,evidence_ciphertext FROM ls_contact_ops.delta_history WHERE workspace_id=$1 ORDER BY legacy_lead_id",[d.workspaceId])).rows;
+  expect(history).toHaveLength(2);
+  const prior=history.find(row=>row.legacy_lead_id===one[0])!;
+  expect(prior.evidence_ciphertext).not.toContain("Native authored note retained");
+  const evidence=JSON.parse(unseal(prior.evidence_ciphertext,`ls_contact_ops/delta-history/v1/${d.workspaceId}/${input.operationId}/${one[0]}`,d.keyring));
+  expect(evidence.before.sourceRevision).toBe(old.revision);expect(evidence.after.sourceRevision).toBe(next.revision);
+  const originalSnapshot=JSON.parse(unseal(evidence.before.snapshotCiphertext,`ls_contact_ops/legacy/v1/${d.workspaceId}/${sourceFileId}/${sheetId}/${one[0]}`,d.keyring));
+  expect(originalSnapshot.payload.sourceFields[" General sales notes "]).toBe(one[7]);
+  expect((await d.pool.query("SELECT source_revision FROM ls_contact_ops.legacy_links WHERE workspace_id=$1",[d.workspaceId])).rows.every(row=>row.source_revision===next.revision)).toBe(true);
+  expect((await d.pool.query("SELECT state_ciphertext FROM ls_contact_ops.cutover WHERE workspace_id=$1",[d.workspaceId])).rows[0].state_ciphertext).toBe(authorityCiphertext);
+  expect((await d.pool.query("SELECT id FROM ls_identity.accounts WHERE workspace_id=$1 ORDER BY id",[d.workspaceId])).rows).toEqual(accountsBefore);
+  for(const table of ["delta_operations","delta_history"]){
+   await expect(d.pool.query(`UPDATE ls_contact_ops.${table} SET operation_id=operation_id WHERE workspace_id=$1`,[d.workspaceId])).rejects.toThrow("CONTACT_DELTA_HISTORY_IMMUTABLE");
+   await expect(d.pool.query(`DELETE FROM ls_contact_ops.${table} WHERE workspace_id=$1`,[d.workspaceId])).rejects.toThrow("CONTACT_DELTA_HISTORY_IMMUTABLE");
+  }
+  await expect(d.pool.query("TRUNCATE ls_contact_ops.delta_history")).rejects.toThrow("CONTACT_DELTA_HISTORY_IMMUTABLE");
+ } finally {await d.pool.end();}
+});
+
+test("failure after delta history insertion rolls back all profiles, identities and receipts before an exact retry", async()=>{
+ const d=await fixture();
+ try {
+  const store=poolStore(d.pool), service=new NativeShadowImporter(store,d.keyring,lookupKey,key,sourceFileId,sheetId);
+  const old=snapshot([one]),changed=[...one];changed[5]="Synthetic updated action";
+  const next={...snapshot([changed,two]),revision:"synthetic-revision-2"};
+  const decideFor=(s:SheetSnapshot)=>planImport(s,d.workspaceId,key).rows.map(row=>({sourceRow:row.sourceRow,sourceRevision:s.revision,legacyId:row.legacyId,rowDigest:row.rowDigest,kind:"new_person" as const}));
+  await service.importNewPeople(d.practitioner.actor,old,decideFor(old));
+  const beforeProfiles=(await d.pool.query("SELECT * FROM ls_contact_ops.profiles WHERE workspace_id=$1",[d.workspaceId])).rows;
+  const beforeLinks=(await d.pool.query("SELECT * FROM ls_contact_ops.legacy_links WHERE workspace_id=$1",[d.workspaceId])).rows;
+  const beforePeople=(await d.pool.query("SELECT id,profile_ciphertext FROM ls_identity.people WHERE workspace_id=$1 ORDER BY id",[d.workspaceId])).rows;
+  const state={phase:"frozen",epoch:2,batchId:"synthetic-cutover",sourceFileId,sourceRevision:old.revision,nativeWritesSinceSwitch:0};
+  await d.pool.query("INSERT INTO ls_contact_ops.cutover(workspace_id,epoch,phase,state_ciphertext) VALUES($1,2,'frozen',$2)",
+   [d.workspaceId,seal(JSON.stringify(state),cutoverStateAad(d.workspaceId,2),d.keyring)]);
+  const input={operationId:"synthetic-interrupted-delta",expectedEpoch:2,versions:[{legacyId:one[0]!,version:1}],newPeople:decideFor(next).filter(row=>row.legacyId===two[0])};
+  // Inject a process error AFTER the real PostgreSQL write. Retain the actual
+  // production binder/driver transaction; this proves rollback, not mock storage.
+  const interrupted=new NativeShadowImporter({transaction:work=>store.transaction(tx=>work({async query<R extends object>(sql:string,values:readonly unknown[]=[]){
+   const result=await tx.query<R>(sql,values);
+   if(sql.startsWith("INSERT INTO ls_contact_ops.delta_history") && values[2]===two[0])throw new Error("SYNTHETIC_DELTA_INTERRUPTION");
+   return result;
+  }}))},d.keyring,lookupKey,key,sourceFileId,sheetId);
+  await expect(interrupted.applyDelta(d.practitioner.actor,old,next,input)).rejects.toThrow("SYNTHETIC_DELTA_INTERRUPTION");
+  expect((await d.pool.query("SELECT * FROM ls_contact_ops.profiles WHERE workspace_id=$1",[d.workspaceId])).rows).toEqual(beforeProfiles);
+  expect((await d.pool.query("SELECT * FROM ls_contact_ops.legacy_links WHERE workspace_id=$1",[d.workspaceId])).rows).toEqual(beforeLinks);
+  expect((await d.pool.query("SELECT id,profile_ciphertext FROM ls_identity.people WHERE workspace_id=$1 ORDER BY id",[d.workspaceId])).rows).toEqual(beforePeople);
+  for(const table of ["delta_operations","delta_history"])expect((await d.pool.query(`SELECT * FROM ls_contact_ops.${table} WHERE workspace_id=$1`,[d.workspaceId])).rows).toEqual([]);
+  expect(await service.applyDelta(d.practitioner.actor,old,next,input)).toMatchObject({created:1,updated:1,replayed:false});
+  expect(await service.applyDelta(d.practitioner.actor,old,next,input)).toMatchObject({created:1,updated:1,replayed:true});
+ } finally {await d.pool.end();}
+});
+
 test("native final-delta preflight preserves existing identities and notes without writing or switching authority", async()=>{
  const d=await fixture();
  try {
