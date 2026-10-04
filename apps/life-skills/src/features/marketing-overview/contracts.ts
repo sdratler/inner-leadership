@@ -25,8 +25,9 @@ export interface Publication {
     channel: Channel;
     destinationLabel: string;
     scheduledFor: string | null;
+    confirmedAt?: string | null;
     timezone: string;
-    state: "draft" | "ready" | "scheduled" | "sending" | "published" | "failed" | "unknown" | "skipped" | "manually_reported";
+    state: "draft" | "held" | "ready" | "scheduled" | "sending" | "published" | "failed" | "unknown" | "skipped" | "manually_reported";
     provider: "whapi" | "publer" | "meta" | "manual" | "unbound";
     providerReceiptId: string | null;
     providerReadAt: string | null;

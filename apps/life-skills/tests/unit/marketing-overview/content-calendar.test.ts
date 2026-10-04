@@ -4,11 +4,26 @@ import {renderToStaticMarkup} from "react-dom/server";
 import type {CreativeVersion,MarketingSnapshot,Publication} from "../../../src/features/marketing-overview/contracts.ts";
 import {MarketingContentCalendar,type ContentCalendarQuery} from "../../../src/ui/revamp/marketing-content-calendar.tsx";
 import {MarketingDashboard} from "../../../src/ui/revamp/marketing-dashboard.tsx";
+import {contentViewPublications,orderedPublicationQueue,publicationDisplayTime} from "../../../src/features/marketing-overview/calendar-model.ts";
 const digest="a".repeat(64),asset:CreativeVersion={assetId:"DEMO-he",revision:2,locale:"he",width:1080,height:1920,imageUrl:null,title:"DEMO — Exact approved creative",caption:"DEMO registered text בלבד\nSecond line",contentDigest:digest,review:"approved",approvedDigest:digest,sourceUrl:"https://drive.google.com/file/d/demo-exact/view"};
 const publication=(id:string,time:string|null,state:Publication["state"]="scheduled",channel:Publication["channel"]="whatsapp_status"):Publication=>({id,assetId:asset.assetId,creativeRevision:2,creativeDigest:digest,channel,destinationLabel:"DEMO destination "+id,scheduledFor:time,timezone:"Asia/Jerusalem",state,provider:channel.endsWith("_manual")?"manual":"whapi",providerReceiptId:null,providerReadAt:null,postUrl:null,receiptKind:"unknown",manualReportedAt:null,errorCode:null});
 const snapshot=(items:readonly Publication[],creatives:readonly CreativeVersion[]=[asset]):MarketingSnapshot=>({source:"synthetic",fetchedAt:"2026-10-01T08:00:00Z",creatives,publications:items,ads:[],scout:{readyDrafts:null,sourceUrl:null,lastChecked:null,status:"unbound"}});
 const render=(items:readonly Publication[],query:ContentCalendarQuery={},locale:"en"|"he"="en",creatives:readonly CreativeVersion[]=[asset])=>renderToStaticMarkup(React.createElement(MarketingContentCalendar,{locale,snapshot:snapshot(items,creatives),query,renderedAt:"2026-10-01T08:00:00Z",thumbnail:a=>React.createElement("span",{"data-thumbnail":a.assetId+":"+a.revision},"DEMO exact thumbnail")}));
 describe("retained read-only Marketing calendar controls",()=>{
+ it.each(["en","he"] as const)("preserves publisher holds in %s filters without putting held art in the queue",locale=>{
+  const held={...publication("held",null,"held"),errorCode:"PUBLISHER_HELD"};
+  expect(orderedPublicationQueue([held])).toEqual([]);expect(contentViewPublications([held],"drafts")).toEqual([held]);
+  const html=render([held],{layout:"agenda",state:"held"},locale);
+  expect(html).toContain('value="held" selected');expect(html).toContain(locale==="he"?"מושהה — אינו כשיר לפרסום":"Held — not eligible for publication");
+  expect(html).not.toContain("Published — provider receipt recorded");
+ });
+ it("places a published record on its actual confirmation date, not its old intended slot or readback date",()=>{
+  const item={...publication("confirmed","2026-09-30T17:00:00Z","published"),confirmedAt:"2026-10-01T17:05:00Z",providerReceiptId:"DEMO-receipt",receiptKind:"publication" as const,providerReadAt:"2026-10-02T08:00:00Z"};
+  expect(publicationDisplayTime(item)).toBe(item.confirmedAt);
+  expect(render([item],{layout:"agenda",from:"2026-10-01",to:"2026-10-01"})).toContain("DEMO destination confirmed");
+  expect(publicationDisplayTime({...item,state:"scheduled"})).toBe(item.scheduledFor);
+  expect(publicationDisplayTime({...item,confirmedAt:null})).toBe(item.scheduledFor);
+ });
  it.each(['month','week','agenda'])('bounds %s automatic original previews across repeated queue/secondary records without dropping record links',layout=>{
   const items=Array.from({length:2000},(_,index)=>publication('many-'+index,'2026-10-01T17:00:00Z'));
   const html=render(items,{layout,month:'2026-10',date:'2026-10-01'});
