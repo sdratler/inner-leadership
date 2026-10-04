@@ -46,7 +46,8 @@ export function UpdatesWorkspace({locale,role="parent",initialCaseId="",initialA
    if(!pending||previous===pending.next){writeRef.current=null;if(mounted.current)setWrite(value=>value===previous?null:value);}
   }
   function abandonContext(){generation.current++;abandonReplyRead();abandonWrite();}
-  function clearDeniedAccess(){abandonContext();setCases([]);setCasesState('error');setAudiences([]);setThreads([]);setOlderReplies({});setReplyPage({key:'',reportId:'',before:null,busy:false,error:false});setDrafts({});setReplyBodies({});setComposerOpen(false);writeRef.current=null;unverifiedRef.current={};setUnverified({});mutations.current={};setWrite(null);setStatus(null);}
+  function clearPrivateInput(){abandonContext();setDrafts({});setReplyBodies({});setComposerOpen(false);writeRef.current=null;unverifiedRef.current={};setUnverified({});mutations.current={};setWrite(null);setStatus(null);}
+  function clearDeniedAccess(){clearPrivateInput();setCases([]);setCasesState('error');setAudiences([]);setThreads([]);setOlderReplies({});setReplyPage({key:'',reportId:'',before:null,busy:false,error:false});}
   const choices=useMemo(()=>visibleUpdateCases(role,cases),[cases,role]),selectedCaseId=selectedUpdateCase(choices,caseId);
   const routeAudienceId=!initialCaseId||selectedCaseId===initialCaseId?initialAudienceId:'',audienceScopeKey=`${selectedCaseId}:${routeAudienceId}`,
    audienceId=audienceSelection.route===audienceScopeKey?audienceSelection.selected:routeAudienceId,
@@ -63,7 +64,7 @@ export function UpdatesWorkspace({locale,role="parent",initialCaseId="",initialA
      if(pinned.id!==desired||!exact||typeof exact!=='object'||!('published' in exact)||exact.published!==true||role!=='practitioner'&&pinned.visibility!=='family_full')throw new IdentityClientError('NOT_FOUND');allowed.unshift(pinned);
     }
     if(active){setAudiences(allowed);setAudienceSelection({route:audienceScopeKey,selected:desired||allowed[0]?.id||''});setNextAudience(page.length===100?page.at(-1)!.id:null);setAudienceState({key:audienceScopeKey,before:beforeAudience,status:'ready'});}
-   }).catch(error=>{if(active){setAudiences([]);setNextAudience(null);if(error instanceof IdentityClientError&&['UNAUTHENTICATED','FORBIDDEN'].includes(error.code)){clearDeniedAccess();return;}const unavailable=error instanceof IdentityClientError&&error.code==='NOT_FOUND';if(unavailable){setDrafts({});setReplyBodies({});}setAudienceState({key:audienceScopeKey,before:beforeAudience,status:unavailable?'unavailable':'error'});}});
+   }).catch(error=>{if(active){setAudiences([]);setNextAudience(null);if(error instanceof IdentityClientError&&['UNAUTHENTICATED','FORBIDDEN'].includes(error.code)){clearDeniedAccess();return;}const unavailable=error instanceof IdentityClientError&&error.code==='NOT_FOUND';if(unavailable)clearPrivateInput();setAudienceState({key:audienceScopeKey,before:beforeAudience,status:unavailable?'unavailable':'error'});}});
    return()=>{active=false;controller.abort()};
    // Selection changes use already verified options; only route/page/retry changes reread.
    // eslint-disable-next-line react-hooks/exhaustive-deps
