@@ -30,13 +30,15 @@ export function UpdatesWorkspace({locale,role="parent",initialCaseId="",initialA
   const [audiences,setAudiences]=useState<UpdateAudience[]>([]),[audienceSelection,setAudienceSelection]=useState({route:`${initialCaseId}:${initialAudienceId}`,selected:initialAudienceId}),[audienceState,setAudienceState]=useState<{key:string;before:string|null;status:'loading'|'ready'|'error'|'unavailable'}>({key:'',before:null,status:'loading'}),[audienceRevision,setAudienceRevision]=useState(0);
   const [audienceCursor,setAudienceCursor]=useState<{key:string;before:string|null}>({key:'',before:null}),[nextAudience,setNextAudience]=useState<string|null>(null);
   const [threads,setThreads]=useState<UpdateThread[]>([]),[threadsState,setThreadsState]=useState<{key:string;status:'idle'|'loading'|'ready'|'error'}>({key:'',status:'idle'}),[revision,setRevision]=useState(0);
-  const [replyPage,setReplyPage]=useState<{key:string;reportId:string;before:string|null;busy:boolean;error:boolean}>({key:'',reportId:'',before:null,busy:false,error:false}),[olderReplies,setOlderReplies]=useState<Record<string,boolean>>({});
+  type ReplyPage={key:string;reportId:string;before:string|null;busy:boolean;error:boolean};
+  const [replyPage,setReplyPage]=useState<ReplyPage>({key:'',reportId:'',before:null,busy:false,error:false}),[olderReplies,setOlderReplies]=useState<Record<string,boolean>>({});
   const [drafts,setDrafts]=useState<Record<string,string>>({}),[replyBodies,setReplyBodies]=useState<Record<string,string>>({}),[composerOpen,setComposerOpen]=useState(false),[status,setStatus]=useState<{kind:'saved'|'error';text:string}|null>(null);
   type Write={slot:string;payload:Record<string,unknown>;state:'sending'|'unknown'};
-  const [write,setWrite]=useState<Write|null>(null),writeRef=useRef<Write|null>(null),mutations=useRef<Record<string,{body:string;key:string}>>({}),mounted=useRef(false),inFlight=useRef(false),generation=useRef(0);
+  const [write,setWrite]=useState<Write|null>(null),writeRef=useRef<Write|null>(null),mutations=useRef<Record<string,{body:string;key:string}>>({}),mounted=useRef(false),inFlight=useRef<object|null>(null),generation=useRef(0),replyRead=useRef<{controller:AbortController;request:ReplyPage}|null>(null);
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false}},[]);
   useEffect(()=>{let live=true;queueMicrotask(()=>{if(live){setCases([]);setCasesState('loading')}});void accountRead<unknown>('cases').then(value=>{const rows=parseUpdateCases(value);if(live){setCases(rows);setCasesState('ready')}}).catch(()=>{if(live){setCases([]);setCasesState('error')}});return()=>{live=false}},[caseRevision]);
-  function clearDeniedAccess(){generation.current++;setCases([]);setCasesState('error');setAudiences([]);setThreads([]);setOlderReplies({});setReplyPage({key:'',reportId:'',before:null,busy:false,error:false});setDrafts({});setReplyBodies({});setComposerOpen(false);writeRef.current=null;mutations.current={};setWrite(null);setStatus(null);}
+  function abandonReplyRead(){const pending=replyRead.current;if(!pending)return;replyRead.current=null;pending.controller.abort();if(inFlight.current===pending.request)inFlight.current=null;if(mounted.current)setReplyPage(previous=>previous===pending.request?{...previous,busy:false}:previous);}
+  function clearDeniedAccess(){generation.current++;abandonReplyRead();setCases([]);setCasesState('error');setAudiences([]);setThreads([]);setOlderReplies({});setReplyPage({key:'',reportId:'',before:null,busy:false,error:false});setDrafts({});setReplyBodies({});setComposerOpen(false);writeRef.current=null;mutations.current={};setWrite(null);setStatus(null);}
   const choices=useMemo(()=>visibleUpdateCases(role,cases),[cases,role]),selectedCaseId=selectedUpdateCase(choices,caseId);
   const routeAudienceId=!initialCaseId||selectedCaseId===initialCaseId?initialAudienceId:'',audienceScopeKey=`${selectedCaseId}:${routeAudienceId}`,
    audienceId=audienceSelection.route===audienceScopeKey?audienceSelection.selected:routeAudienceId,
@@ -62,7 +64,7 @@ export function UpdatesWorkspace({locale,role="parent",initialCaseId="",initialA
    audienceReady=audienceCurrent&&audienceState.status==='ready',activeAudienceId=audienceReady&&(reporter||role==='practitioner')&&audiences.some(item=>item.id===audienceId)?audienceId:'';
   const parentReady=reporter&&audienceReady&&activeAudienceId===initialAudienceId&&feedbackContextReady(initialCaseId,selectedCaseId,initialAudienceId,initialPracticeVersionId)&&audiences.some(item=>item.id===initialAudienceId&&item.visibility==='family_full');
   const contextKey=`${selectedCaseId}:${activeAudienceId}`,draftKey=`${initialCaseId}:${initialAudienceId}:${initialPracticeVersionId}`,body=parentReady?(drafts[draftKey]??''):'';
-  useEffect(()=>()=>{generation.current++},[contextKey]);
+  useEffect(()=>()=>{generation.current++;abandonReplyRead()},[contextKey]);
   async function readThreads(signal?:AbortSignal,history?:{reportId:string;before:string|null}){
    const query=new URLSearchParams({caseId:selectedCaseId,audienceId:activeAudienceId});if(history){query.set('reportId',history.reportId);if(history.before)query.set('beforeReplyId',history.before);}
    const response=await fetch(`/api/updates?${query}`,{credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',...(signal?{signal}:{})});
@@ -78,22 +80,23 @@ export function UpdatesWorkspace({locale,role="parent",initialCaseId="",initialA
   },[activeAudienceId,contextKey,selectedCaseId,revision,role]);
   async function readReplyPage(reportId:string,before:string|null){
    if(!mounted.current||inFlight.current||writeRef.current||!activeAudienceId)return;
-   inFlight.current=true;const epoch=generation.current,current=()=>mounted.current&&generation.current===epoch,
-    request={key:contextKey,reportId,before,busy:true,error:false};
-   setReplyPage(request);
-   try{const rows=await readThreads(undefined,{reportId,before});if(rows.length!==1||rows[0]!.report.id!==reportId)throw Error('UNAVAILABLE');if(!current())return;
+   const epoch=generation.current,controller=new AbortController(),current=()=>mounted.current&&generation.current===epoch&&!controller.signal.aborted,
+    request={key:contextKey,reportId,before,busy:true,error:false},pending={controller,request};
+   inFlight.current=request;replyRead.current=pending;setReplyPage(request);
+   try{const rows=await readThreads(controller.signal,{reportId,before});if(rows.length!==1||rows[0]!.report.id!==reportId)throw Error('UNAVAILABLE');if(!current())return;
     setThreads(previous=>previous.map(row=>row.report.id===reportId?rows[0]!:row));setOlderReplies(previous=>({...previous,[reportId]:Boolean(before)}));setReplyPage({key:contextKey,reportId,before,busy:false,error:false});
    }catch(error){if(current()){if(error instanceof IdentityClientError&&['UNAUTHENTICATED','FORBIDDEN','NOT_FOUND'].includes(error.code)){clearDeniedAccess();return;}setReplyPage({key:contextKey,reportId,before,busy:false,error:true});}}
    finally{
     if(mounted.current&&!current())setReplyPage(previous=>previous===request?{...previous,busy:false}:previous);
-    inFlight.current=false;
+    if(replyRead.current===pending)replyRead.current=null;
+    if(inFlight.current===request)inFlight.current=null;
    }
   }
   function mutation(slot:string,value:string){const prior=mutations.current[slot];if(prior?.body===value)return prior.key;const key=crypto.randomUUID();mutations.current[slot]={body:value,key};return key}
   function clearSavedInput(payload:Record<string,unknown>){if(payload.action==='submit_report'){setDrafts(current=>current[draftKey]===payload.body?{...current,[draftKey]:''}:current);setComposerOpen(false)}else if(payload.action==='reply')setReplyBodies(current=>current[String(payload.reportId)]===payload.body?{...current,[String(payload.reportId)]:''}:current);}
   async function post(slot:string,payload:Record<string,unknown>,retry=false){
    if(!mounted.current||inFlight.current||writeRef.current&&!retry||!activeAudienceId)return false;
-   inFlight.current=true;const epoch=generation.current,current=()=>mounted.current&&generation.current===epoch,next:Write={slot,payload,state:'sending'};writeRef.current=next;setWrite(next);setStatus(null);let definiteFailure=false,writeSent=false,accessDenied=false;
+   const epoch=generation.current,current=()=>mounted.current&&generation.current===epoch,next:Write={slot,payload,state:'sending'};inFlight.current=next;writeRef.current=next;setWrite(next);setStatus(null);let definiteFailure=false,writeSent=false,accessDenied=false;
    try{const session=await sessionInfo();if(!current())return false;writeSent=true;const response=await fetch('/api/updates',{method:'POST',credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',headers:{'Content-Type':'application/json','X-CSRF-Token':session.csrfToken},body:JSON.stringify(payload)});
     definiteFailure=response.status>=400&&response.status<500;accessDenied=[401,403,404].includes(response.status);
     if(accessDenied)throw Error('UNAVAILABLE');
@@ -112,7 +115,7 @@ export function UpdatesWorkspace({locale,role="parent",initialCaseId="",initialA
      writeRef.current=null;setWrite(null);
      setStatus(writeSent&&!definiteFailure?{kind:'error',text:word('The previous action could not be verified in its original context. Return there and retry the unchanged text; no saved result is assumed.','לא ניתן לאמת את הפעולה הקודמת בהקשר המקורי שלה. חזרו אליו ונסו שוב את הטקסט ללא שינוי; אין להניח שהתוצאה נשמרה.')}:null);
     }
-    inFlight.current=false;
+    if(inFlight.current===next)inFlight.current=null;
    }
   }
   async function submit(e:FormEvent){e.preventDefault();if(!parentReady||!body.trim()||writeRef.current)return;const slot=`report:${draftKey}`;await post(slot,{action:'submit_report',caseId:selectedCaseId,audienceId:initialAudienceId,practiceVersionId:initialPracticeVersionId,body,idempotencyKey:mutation(slot,body)})}

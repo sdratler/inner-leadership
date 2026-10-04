@@ -82,6 +82,23 @@ it('does not update abandoned reply-page state after unmount',async()=>{
  const output=await ready(props);(find(output,e=>e.type==='button'&&e.props.children==='Read older replies')!.props.onClick as Click)();await tick();hook.unmount();resolve(Response.json({ok:true,data:[f.older]}));await tick();expect(hook.afterUnmountUpdates()).toBe(0);expect(postBodies()).toHaveLength(0);
 });
 
+it.each(['en','he'] as const)('aborts a stalled old-context reply read and fences its cleanup from the new read (%s)',async locale=>{
+ const f=historyFixture(),id='90000000-0000-4000-8000-000000000001',bLatest={...f.latest,report:{...f.latest.report,id,caseId:caseB,audienceId:audienceB,practice:{...f.latest.report.practice,caseId:caseB,audienceId:audienceB}},replies:f.latest.replies.map(row=>({...row,reportId:id}))},bOlder={...bLatest,replies:[{...f.older.replies[0]!,reportId:id}],nextRepliesBefore:null};
+ const a={locale,role:'practitioner' as const,initialCaseId:caseA,initialAudienceId:audienceA},b={...a,initialCaseId:caseB,initialAudienceId:audienceB};let resolveA!:(r:Response)=>void,resolveB!:(r:Response)=>void,signalA:AbortSignal|undefined;
+ accountRead.mockResolvedValue([{id:caseA,displayName:'DEMO A',kind:'minor'},{id:caseB,displayName:'DEMO B',kind:'minor'}]);
+ fetchMock.mockImplementation((url:string,options?:RequestInit)=>{
+  const q=new URL(url,'https://synthetic.invalid').searchParams,inB=q.get('caseId')===caseB;
+  if(url.startsWith('/api/identity/audiences'))return Promise.resolve(Response.json({ok:true,data:[{id:inB?audienceB:audienceA,visibility:'family_full'}]}));
+  if(q.has('beforeReplyId'))return new Promise<Response>(resolve=>{if(inB)resolveB=resolve;else{resolveA=resolve;signalA=options?.signal??undefined;}});
+  return Promise.resolve(Response.json({ok:true,data:[inB?bLatest:f.latest]}));
+ });
+ const label=locale==='en'?'Read older replies':'קריאת תגובות קודמות';let output=await ready(a);(find(output,e=>e.type==='button'&&e.props.children===label)!.props.onClick as Click)();await tick();expect(signalA).toBeInstanceOf(AbortSignal);
+ output=await ready(b);expect(signalA!.aborted).toBe(true);(find(output,e=>e.type==='button'&&e.props.children===label)!.props.onClick as Click)();await tick();expect(resolveB).toBeTypeOf('function');
+ // Even a misbehaving transport resolving AFTER abort cannot clear the new lock.
+ resolveA(Response.json({ok:true,data:[f.older]}));await tick();output=render(b);expect(find(output,e=>e.type==='textarea')!.props.disabled).toBe(true);expect(text(output)).not.toContain('DEMO oldest reply');
+ resolveB(Response.json({ok:true,data:[bOlder]}));await tick();output=render(b);expect(find(output,e=>e.type==='textarea')!.props.disabled).toBe(false);expect(text(output)).toContain('DEMO oldest reply');expect(postBodies()).toHaveLength(0);
+});
+
 it("requires exact case, audience, and practice-version context", () => { expect(feedbackContextReady(caseA, caseA, audienceA, "version-a")).toBe(true); expect(feedbackContextReady(caseA, caseB, audienceA, "version-a")).toBe(false); expect(feedbackContextReady(caseA, caseA, "", "version-a")).toBe(false); });
 
 it("does not render old case/audience data after a delayed switch", async () => {
