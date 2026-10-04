@@ -9,7 +9,7 @@ import {SESSION_COOKIE} from "../../lib/security/session.ts";
 import {readAuthoritativeProspects} from "../contact-ops/server/authoritative-prospects.ts";
 import {readProspectJourneysFromTx} from "../prospects/journey-read.ts";
 import type {Prospect} from "../prospects/bridge.ts";
-import {prospectContactSuppressed} from "../prospects/native-edit.ts";
+import {prospectContactSuppressed,prospectArchived} from "../prospects/native-edit.ts";
 import {loadMarketingSnapshot} from "../marketing-overview/provider.ts";
 import type {MarketingSnapshot} from "../marketing-overview/contracts.ts";
 import {contentDayKey} from "../marketing-overview/calendar-model.ts";
@@ -46,7 +46,7 @@ async function realProspects(store:IdentityStore,actor:Actor,rows:readonly Prosp
 export async function readIntakeFacts(store:IdentityStore,actor:Actor,rows:readonly Prospect[],now:Date){
  return store.transaction(async tx=>{
   await tx.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY");const current=await freshActor(tx,actor,now);requirePractitioner(current);
-  const ids=rows.filter(row=>!/archive/i.test(`${row.stage} ${row.outcome}`)&&!prospectContactSuppressed(row)).map(row=>row.leadId),journeys=await readProspectJourneysFromTx(tx,current.workspaceId,ids);
+  const ids=rows.filter(row=>!prospectArchived(row)&&!prospectContactSuppressed(row)).map(row=>row.leadId),journeys=await readProspectJourneysFromTx(tx,current.workspaceId,ids);
   const forms=await tx.query<{total:unknown}>(`SELECT COUNT(DISTINCT i.stable_lead_ref) AS total FROM ls_intake.pre_enrollment_invitations i
    WHERE i.workspace_id=$1 AND i.created_by_account_id=$2 AND i.stable_lead_ref IN(SELECT jsonb_array_elements_text($3::jsonb))
    AND i.revoked_at IS NULL AND i.consumed_at IS NULL AND i.expires_at>$4
@@ -64,7 +64,9 @@ export async function loadOwnerDigest(actor:Actor,runtime:Runtime,marketing:Mark
  const rows=prospects.status==="fulfilled"?prospects.value:null;
  const intake=rows?await readIntakeFacts(runtime.store,actor,rows,now).catch(error=>{if(error instanceof AppError&&["UNAUTHENTICATED","FORBIDDEN"].includes(error.code))throw error;return null;}):null;
  const facts=rows?.map(row=>({...row,...(intake?.journeys.get(row.leadId)??{journeyState:"prospect",paymentVerified:false,bookingConfirmed:false})}));
- const counts=facts?summarizeProspects(facts,contentDayKey(now.toISOString()),Boolean(intake)):null;
+ let counts=null;
+ try{counts=facts?summarizeProspects(facts,contentDayKey(now.toISOString()),Boolean(intake)):null;}
+ catch(error){if(!(error instanceof Error)||error.message!=="INVALID_DIGEST_PROSPECTS")throw error;}
  if(counts)counts.awaitingForm=intake?.awaitingForm??null;
  // Do not return aggregates after revocation or a role change during remote reads.
  await assertOwner(runtime.store,actor,runtime.clock.now());

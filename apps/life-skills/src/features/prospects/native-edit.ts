@@ -4,6 +4,10 @@ import type {Prospect} from "./bridge.ts";
 
 export function contactSuppressed(value:string):boolean{return /do[ _-]?not[ _-]?contact|\bopt(?:ed)?[ _-]?out\b/i.test(value);}
 export function prospectContactSuppressed(row:Pick<Prospect,"stage"|"outcome">):boolean{return contactSuppressed(row.stage)||contactSuppressed(row.outcome);}
+/** Historic statuses remain descriptive text; share the native directory's
+ * conservative closed/archive marker without normalizing stored values. */
+export function contactArchived(value:string):boolean{return /archive|\b(?:closed|not interested|no fit)\b/i.test(value);}
+export function prospectArchived(row:Pick<Prospect,"stage"|"outcome">):boolean{return contactArchived(row.stage)||contactArchived(row.outcome);}
 
 type FollowUpValues=Pick<Prospect,"notes"|"nextAction"|"dueDate"|"owner">;
 const followUpKeys=["notes","nextAction","dueDate","owner"] as const;
