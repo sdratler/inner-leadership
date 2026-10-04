@@ -39,6 +39,13 @@ describe('exact private Marketing media perimeter',()=>{
  });
 });
 describe('actual bounded Marketing login-return proxy',()=>{
+ it.each(['he','en'])('preserves the %s exact Community thread through the actual proxy login return',locale=>{
+  const origin='https://life-skills.bneineviimacademy.org',path=`/${locale}/app/marketing`,id='123e4567-e89b-42d3-a456-426614174000';
+  vi.stubEnv('NODE_ENV','production');vi.stubEnv('LS_APP_MODE','foundation_locked');vi.stubEnv('LS_APP_ORIGIN',origin);vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');
+  const header='x-middleware-request-x-ls-practitioner-return';
+  expect(proxy(new NextRequest(`${origin}${path}?section=community&threadId=${id}`)).headers.get(header)).toBe(`${path}?section=community&threadId=${id}`);
+  for(const query of [`threadId=${id}&threadId=${id}`,'threadId=invalid'])expect(proxy(new NextRequest(`${origin}${path}?section=community&${query}`)).headers.get(header)).toBe(`${path}?section=community`);
+ });
  it.each(['he','en']as const)('projects %s Marketing URL filters and rejects repeats, unsafe paths and caller headers',locale=>{
   const origin='https://life-skills.bneineviimacademy.org',path=`/${locale}/app/marketing`;vi.stubEnv('NODE_ENV','production');vi.stubEnv('LS_APP_MODE','foundation_locked');vi.stubEnv('LS_APP_ORIGIN',origin);vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');
    const query='section=content_calendar&filter=queued&month=2026-10&layout=agenda&date=2026-10-02&from=2026-10-01&to=2026-10-09&channel=whatsapp_status&state=scheduled&publication=DEMO-status&language=he&placement=whatsapp_status&approval=needs_approval&search=DEMO';
@@ -124,6 +131,11 @@ describe("actual practitioner Calendar login return perimeter", () => {
     expect(returned("?date=2026-09-22&view=agenda&mode=demo&untrusted=private"))
       .toBe("/he/app/calendar?date=2026-09-22&view=agenda&mode=demo");
   });
+  it('keeps a task query when the browser fragment cannot reach the server',()=>{
+    const id='123e4567-e89b-42d3-a456-426614174000';
+    expect(returned('?date=2026-10-02&view=agenda&taskId='+id)).toBe('/he/app/calendar?date=2026-10-02&view=agenda&taskId='+id);
+    for(const query of ['taskId=invalid',`taskId=${id}&taskId=${id}`])expect(returned('?'+query)).toBe('/he/app/calendar');
+  });
   it.each(['he','en'])('projects %s practitioner Practice from the real path, never caller headers',locale=>{
     returned('');const id='123e4567-e89b-42d3-a456-426614174000';
     const response=proxy(new NextRequest(`${origin}/${locale}/app/practice?caseId=${id}&audienceId=${id}&section=checkins&secret=private`,{headers:{'x-ls-practitioner-return':'https://untrusted.invalid'}}));
@@ -148,7 +160,7 @@ describe("actual practitioner Calendar login return perimeter", () => {
 
 describe("actual practice proxy validates transport before header rewriting", () => {
   const origin = "https://life-skills.bneineviimacademy.org";
-  const paths = ["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins", "/api/updates", "/api/owner-digest", "/en/app/marketing", "/he/app/marketing", "/en/app/clients", "/he/app/reports", "/he/app/settings/content-voice", "/en/family/calendar", "/he/client/calendar"];
+  const paths = ["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins", "/api/updates", "/api/owner-digest", "/api/private/contact-acquisition", "/api/community-threads", "/en/app/marketing", "/he/app/marketing", "/en/app/clients", "/he/app/reports", "/he/app/settings/content-voice", "/en/family/calendar", "/he/client/calendar"];
   function configured() {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("LS_APP_MODE", "foundation_locked");

@@ -1,8 +1,11 @@
 import 'server-only';
 import {z} from 'zod';
 import {AppError} from '../../lib/errors.ts';
+import {instant} from '../../lib/time.ts';
 const origin='https://community-scout-production.up.railway.app';
-const date=z.string().max(40).refine(v=>Number.isFinite(Date.parse(v)));
+const date=z.string().max(40).transform((value,context):string=>{
+ try{return instant(value);}catch{context.addIssue({code:'custom',message:'Expected an offset-qualified instant'});return z.NEVER;}
+});
 const commentId=z.string().regex(/^[0-9]{1,100}$/);
 export function commentLink(value:string):{postUrl:string;commentId:string;rootCommentId:string;url:string}|null{
  let u:URL;try{u=new URL(value);}catch{return null;}
@@ -14,9 +17,14 @@ export function commentLink(value:string):{postUrl:string;commentId:string;rootC
 }
 const link=z.string().max(1000).refine(value=>commentLink(value)!==null);
 const postLink=z.string().max(1000).refine(value=>/^https:\/\/www\.facebook\.com\/groups\/[A-Za-z0-9_.-]{1,100}\/posts\/[A-Za-z0-9_-]{1,200}$/.test(value));
-const thread=z.object({id:z.string().uuid(),postId:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),postUrl:postLink,commentId,commentUrl:link,registeredAt:date,expiresAt:date}).strict().refine(v=>commentLink(v.commentUrl)?.postUrl===v.postUrl&&commentLink(v.commentUrl)?.commentId===v.commentId);
-const response=z.object({id:z.string().uuid(),threadId:z.string().uuid(),commentId,parentCommentId:commentId,commentUrl:link,text:z.string().min(1).max(4000),postedAt:date,capturedAt:date,expiresAt:date,taskId:z.string().uuid().nullable()}).strict().refine(v=>commentLink(v.commentUrl)?.commentId===v.commentId&&commentLink(v.commentUrl)?.rootCommentId===v.parentCommentId&&v.commentId!==v.parentCommentId);
-const page=z.object({threads:z.array(thread).max(20),responses:z.array(response).max(100),partial:z.boolean(),captureStatus:z.object({checkedAt:date,reason:z.string().max(100).nullable(),observedRunCostCents:z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).nullable()}).strict().nullable(),autonomousCollectionEnabled:z.literal(false)}).strict().refine(v=>new Set(v.threads.map(t=>t.id)).size===v.threads.length&&new Set(v.responses.map(r=>r.id)).size===v.responses.length&&v.responses.every(r=>{const t=v.threads.find(t=>t.id===r.threadId);return t&&t.commentId===r.parentCommentId&&t.postUrl===commentLink(r.commentUrl)?.postUrl;}));
+const thread=z.object({id:z.string().uuid(),postId:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),postUrl:postLink,commentId,commentUrl:link,registeredAt:date,expiresAt:date}).strict().refine(v=>commentLink(v.commentUrl)?.postUrl===v.postUrl&&commentLink(v.commentUrl)?.commentId===v.commentId)
+ .refine(v=>Date.parse(v.registeredAt)<=Date.parse(v.expiresAt));
+const response=z.object({id:z.string().uuid(),threadId:z.string().uuid(),commentId,parentCommentId:commentId,commentUrl:link,text:z.string().min(1).max(4000),postedAt:date,capturedAt:date,expiresAt:date,taskId:z.string().uuid().nullable()}).strict().refine(v=>commentLink(v.commentUrl)?.commentId===v.commentId&&commentLink(v.commentUrl)?.rootCommentId===v.parentCommentId&&v.commentId!==v.parentCommentId)
+ .refine(v=>Date.parse(v.postedAt)<=Date.parse(v.capturedAt)&&Date.parse(v.capturedAt)<=Date.parse(v.expiresAt));
+function uniqueResponseComments(rows:z.infer<typeof response>[]):boolean{
+ return new Set(rows.map(r=>JSON.stringify([commentLink(r.commentUrl)?.postUrl,r.commentId]))).size===rows.length;
+}
+const page=z.object({threads:z.array(thread).max(20),responses:z.array(response).max(100),partial:z.boolean(),captureStatus:z.object({checkedAt:date,reason:z.string().max(100).nullable(),observedRunCostCents:z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).nullable()}).strict().nullable(),autonomousCollectionEnabled:z.literal(false)}).strict().refine(v=>new Set(v.threads.map(t=>t.id)).size===v.threads.length&&new Set(v.responses.map(r=>r.id)).size===v.responses.length&&uniqueResponseComments(v.responses)&&v.responses.every(r=>{const t=v.threads.find(t=>t.id===r.threadId);return t&&t.commentId===r.parentCommentId&&t.postUrl===commentLink(r.commentUrl)?.postUrl;}));
 export type CommunityThread=z.infer<typeof thread>;
 export type CommunityResponse=z.infer<typeof response>;
 export type CommunityThreads=z.infer<typeof page>;
@@ -41,7 +49,18 @@ export async function registerCommunityThread(ownerId:string,command:ThreadComma
 }
 export async function pendingCommunityResponses(ownerId:string,fetcher:typeof fetch=fetch,env:Record<string,string|undefined>=process.env):Promise<{responses:CommunityResponse[];more:boolean}>{
  const value=z.object({responses:z.array(response).max(25),more:z.boolean()}).strict().safeParse(await exchange(ownerId,'/internal/life-skills/threads?'+new URLSearchParams({ownerId,pending:'true'}),'GET',undefined,fetcher,env));
- if(!value.success||new Set(value.data.responses.map(r=>r.id)).size!==value.data.responses.length||value.data.responses.some(r=>r.taskId!==null))throw new AppError('UNAVAILABLE');return value.data;
+ if(!value.success||new Set(value.data.responses.map(r=>r.id)).size!==value.data.responses.length||!uniqueResponseComments(value.data.responses)||value.data.responses.some(r=>r.taskId!==null))throw new AppError('UNAVAILABLE');
+ // Validate the whole bounded pending batch before any task is created. A URL
+ // agreeing with its own parent ID is insufficient: its actual tracked thread
+ // must bind that parent and post. Deduplicate readbacks (at most25) per batch.
+ const threadIds=[...new Set(value.data.responses.map(r=>r.threadId))];
+ const tracked=new Map(await Promise.all(threadIds.map(async id=>{
+  const read=await readCommunityThreads(ownerId,id,fetcher,env),item=read.threads[0];
+  if(read.threads.length!==1||!item||item.id!==id)throw new AppError('UNAVAILABLE');
+  return [id,item] as const;
+ })));
+ if(value.data.responses.some(r=>{const item=tracked.get(r.threadId);return !item||item.commentId!==r.parentCommentId||item.postUrl!==commentLink(r.commentUrl)?.postUrl;}))throw new AppError('UNAVAILABLE');
+ return value.data;
 }
 export async function acknowledgeCommunityTask(ownerId:string,responseId:string,taskId:string,fetcher:typeof fetch=fetch,env:Record<string,string|undefined>=process.env):Promise<void>{
  const value=z.object({responseId:z.literal(responseId),taskId:z.literal(taskId)}).strict().safeParse(await exchange(ownerId,'/internal/life-skills/threads/tasks','PUT',{responseId,taskId},fetcher,env));if(!value.success)throw new AppError('UNAVAILABLE');

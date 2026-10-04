@@ -5,13 +5,29 @@ import type {Prospect} from '../../../src/features/prospects/bridge.ts';
 vi.mock('server-only',()=>({}));
 const prospectsRead=vi.hoisted(()=>vi.fn());
 vi.mock('../../../src/features/contact-ops/server/authoritative-prospects.ts',()=>({readAuthoritativeProspects:prospectsRead}));
-import {readIntakeFacts,loadOwnerDigest} from '../../../src/features/owner-digest/runtime.ts';
+import {readIntakeFacts,readTaskCounts,loadOwnerDigest} from '../../../src/features/owner-digest/runtime.ts';
 import {AppError} from '../../../src/lib/errors.ts';
 import {MAX_OPERATIONAL_PROSPECTS} from '../../../src/features/contact-ops/core/limits.ts';
 import type {MarketingSnapshot} from '../../../src/features/marketing-overview/contracts.ts';
 const actor={id:'DEMO-owner',workspaceId:'DEMO-workspace',role:'practitioner',state:'active',sessionDigest:'DEMO-session'} as Actor;
+it.each(['intake_submitted','awaiting_payment','payment_verified','awaiting_booking','active','hold'])('counts pending forms only for unsubmitted leads, not canonical %s journeys',async state=>{
+ const rows=['pending','submitted'].map(key=>({leadId:'LS-LEAD-'+key,stage:'Prospect',outcome:'',nextAction:'',dueDate:''})) as Prospect[];
+ let formIds:unknown;
+ const store:IdentityStore={transaction:async work=>work({query:async<T extends object>(sql:string,args:readonly unknown[]=[])=>{
+  if(sql.includes('SELECT a.id FROM ls_identity.sessions'))return [{id:actor.id}] as T[];
+  if(sql.includes('FROM ls_identity.accounts a JOIN'))return [actor] as T[];
+  if(sql.includes('FROM ls_onboarding.prospect_journeys'))return [{leadId:'LS-LEAD-submitted',state,paymentVerified:false,bookingConfirmed:false}] as T[];
+  if(sql.includes('COUNT(DISTINCT i.stable_lead_ref)')){formIds=JSON.parse(String(args[1]));return [{total:String((formIds as string[]).length)}] as T[];}
+  if(sql.startsWith('SET TRANSACTION'))return [] as T[];
+  throw Error('UNEXPECTED_QUERY');
+ }})};
+ const facts=await readIntakeFacts(store,actor,rows,new Date('2026-10-04T12:00:00Z'));
+ expect(formIds).toEqual(['LS-LEAD-pending']);expect(facts.awaitingForm).toBe(1);
+ expect(facts.journeys.get('LS-LEAD-submitted')?.journeyState).toBe(state);
+ expect(rows.map(row=>row.leadId)).toEqual(['LS-LEAD-pending','LS-LEAD-submitted']);
+});
 it.each(['opt out','opted-out','OPT_OUT','do_not_contact','Do-Not-Contact','Closed','Not interested','No fit','CLOSED','Closed — older inquiry'])('excludes %s before both actual intake and journey queries',async value=>{
- const rows=[{leadId:'LS-LEAD-stage',stage:value,outcome:''},{leadId:'LS-LEAD-outcome',stage:'Prospect',outcome:value},{leadId:'LS-LEAD-archive',stage:'Archived',outcome:''},{leadId:'LS-LEAD-allowed',stage:'Prospect',outcome:''}] as Prospect[];
+ const rows=[{leadId:'LS-LEAD-stage',stage:value,outcome:''},{leadId:'LS-LEAD-outcome',stage:'Prospect',outcome:value},{leadId:'LS-LEAD-archive',stage:'Archived',outcome:''},{leadId:'LS-LEAD-allowed',stage:'Prospect',outcome:''}].map(row=>({...row,nextAction:'',dueDate:''})) as Prospect[];
  const facts:(readonly unknown[])[]=[];
  const store:IdentityStore={transaction:async work=>work({query:async<T extends object>(sql:string,args:readonly unknown[]=[])=>{
   if(sql.includes('SELECT a.id FROM ls_identity.sessions'))return [{id:actor.id}] as T[];
@@ -23,35 +39,88 @@ it.each(['opt out','opted-out','OPT_OUT','do_not_contact','Do-Not-Contact','Clos
  }})};
  const result=await readIntakeFacts(store,actor,rows,new Date('2026-10-04T12:00:00Z'));
  expect(result.awaitingForm).toBe(1);expect(facts).toHaveLength(2);
- expect(facts[0]![1]).toBe('["LS-LEAD-allowed"]');expect(facts[1]![2]).toBe('["LS-LEAD-allowed"]');
+ expect(facts[0]![1]).toBe('["LS-LEAD-allowed"]');expect(facts[1]![1]).toBe('["LS-LEAD-allowed"]');
  expect(rows[0]!.stage).toBe(value);expect(rows[1]!.outcome).toBe(value);
 });
 const now=new Date('2026-10-04T12:00:00Z');
 const prospect={leadId:'LS-LEAD-allowed',stage:'Prospect',outcome:'',nextAction:'Synthetic follow-up',dueDate:'2026-10-04'} as Prospect;
 const marketing:MarketingSnapshot={source:'registry_only',fetchedAt:null,creatives:[],publications:[],ads:[],scout:{readyDrafts:null,sourceUrl:null,lastChecked:null,status:'unbound'},inventory:{files:0,concepts:0,publishablePosts:0,heStatusReady:0,heFeedReady:0,enFeedReady:0,adEligible:0,inLiveAds:null,queued:0,published:0,needsApproval:0,needsResizeOrCaption:0,heldMissing:0,partial:false,asOf:now.toISOString()}};
-function digestRuntime(finalFailure?:'UNAUTHENTICATED'|'FORBIDDEN'){
+function digestRuntime(finalFailure?:'UNAUTHENTICATED'|'FORBIDDEN',queries:string[]=[],currentActor=actor,ownerVerified=true){
  let accountReads=0;
  const store:IdentityStore={transaction:async work=>work({query:async<T extends object>(sql:string)=>{
-  if(sql.includes('SELECT a.id FROM ls_identity.sessions'))return [{id:actor.id}] as T[];
-  if(sql.includes('FROM ls_identity.accounts a JOIN')){accountReads++;if(finalFailure&&accountReads===5)throw new AppError(finalFailure);return [actor] as T[];}
+  queries.push(sql);
+  if(sql.includes('SELECT a.id FROM ls_identity.sessions'))return [{id:currentActor.id}] as T[];
+  if(sql.includes('a.email_blind=$2'))return [{...actor,emailVerifiedAt:ownerVerified?now:null}] as T[];
+  if(sql.includes('FROM ls_identity.accounts a JOIN')){accountReads++;if(finalFailure&&accountReads===3)throw new AppError(finalFailure);return [currentActor] as T[];}
   if(sql.includes('FROM ls_calendar.tasks'))return [{due:'2',overdue:'1',future:'0'}] as T[];
   if(sql.includes('COUNT(DISTINCT i.stable_lead_ref)'))return [{total:'1'}] as T[];
   if(sql.startsWith('SET TRANSACTION')||sql.includes('FROM ls_demo.records')||sql.includes('FROM ls_onboarding.prospect_journeys'))return [] as T[];
   throw Error('UNEXPECTED_QUERY');
  }})};
- return {store,clock:{now:()=>now}} as Parameters<typeof loadOwnerDigest>[1];
+ return {store,clock:{now:()=>now},config:{workspaceId:actor.workspaceId,lookupKey:Buffer.alloc(32,7)}} as Parameters<typeof loadOwnerDigest>[1];
 }
+it.each(['another practitioner','another workspace','unverified owner'])('denies %s before any authoritative or aggregate source read',async boundary=>{
+ const current=(boundary==='another practitioner'?{...actor,id:'DEMO-other'}:boundary==='another workspace'?{...actor,workspaceId:'DEMO-other-workspace'}:actor) as Actor;
+ const queries:string[]=[];prospectsRead.mockClear();prospectsRead.mockResolvedValue([]);
+ await expect(loadOwnerDigest(current,digestRuntime(undefined,queries,current,boundary!=='unverified owner'),marketing,'en')).rejects.toMatchObject({code:'FORBIDDEN'});
+ expect(prospectsRead).not.toHaveBeenCalled();expect(queries.some(sql=>/ls_calendar.tasks|ls_demo.records|ls_onboarding.prospect_journeys|ls_intake.pre_enrollment_invitations/.test(sql))).toBe(false);
+});
+it('queries matching pending invitations workspace-wide without filtering their practitioner creator',async()=>{
+ const queries:string[]=[],runtime=digestRuntime(undefined,queries);
+ expect((await readIntakeFacts(runtime.store,actor,[prospect],now)).awaitingForm).toBe(1);
+ const sql=queries.find(sql=>sql.includes('COUNT(DISTINCT i.stable_lead_ref)'))!;
+ expect(sql).not.toContain('created_by_account_id');expect(sql).toContain('i.workspace_id=$1');
+ expect(sql).toMatch(/revoked_at IS NULL.*consumed_at IS NULL.*expires_at>/s);expect(sql).toContain('pre_enrollment_receipts');
+});
+it('counts workspace internal tasks after a handover without losing case, DEMO or linked-CRM exclusions',async()=>{
+ const queries:string[]=[],runtime=digestRuntime(undefined,queries);
+ expect(await readTaskCounts(runtime.store,actor,now)).toEqual({due:2,overdue:1,future:0});
+ const sql=queries.find(sql=>sql.includes('FROM ls_calendar.tasks'))!;
+ expect(sql).not.toContain('t.created_by');expect(sql).toContain('t.workspace_id=$1');
+ expect(sql).toContain('c.practitioner_account_id=$2');expect(sql).toContain("t.state='open'");
+ expect(sql).toContain('ls_demo.cases');expect(sql).toContain('ls_demo.records');expect(sql).toContain("'crm_followup'");
+});
 const invalidProjections=[
  ['duplicate IDs',[prospect,{...prospect}]],
  ['malformed ID',[{...prospect,leadId:'not-a-lead'}]],
+ ['excessively long ID',[{...prospect,leadId:'LS-LEAD-'+'a'.repeat(81)}]],
  ['more than the unchanged operational bound',Array.from({length:MAX_OPERATIONAL_PROSPECTS+1},(_,i)=>({...prospect,leadId:`LS-LEAD-${i}`}))],
+ ...(['stage','outcome','nextAction','dueDate'] as const).flatMap(key=>[
+  [`null ${key}`,[{...prospect,[key]:null} as unknown as Prospect]] as const,
+  [`missing ${key}`,[Object.fromEntries(Object.entries(prospect).filter(([field])=>field!==key)) as Prospect]] as const,
+  [`nonstring ${key}`,[{...prospect,[key]:123} as unknown as Prospect]] as const,
+ ]),
 ] as const;
 it.each(invalidProjections)('keeps tasks and content when CRM has %s, without converting it to zero or truncating it',async(_label,rows)=>{
+ const originalLead=rows[0]!.leadId;
  prospectsRead.mockResolvedValueOnce(rows);
  const digest=await loadOwnerDigest(actor,digestRuntime(),marketing,'en');
  expect(digest.followups).toBeNull();expect(digest.actions).toContain('crm_unavailable');
  expect(digest.tasks?.data).toEqual({due:2,overdue:1,future:0});expect(digest.content.available).toBe(true);
- expect(digest.actions).not.toContain('tasks_unavailable');expect(rows[0]!.leadId).toBe(_label==='malformed ID'?'not-a-lead':'LS-LEAD-'+(_label==='duplicate IDs'?'allowed':'0'));
+ expect(digest.actions).not.toContain('tasks_unavailable');expect(rows[0]!.leadId).toBe(originalLead);
+});
+it.each(invalidProjections)('rejects %s before demo, journey and invitation queries while preserving independent facts',async(_label,rows)=>{
+ prospectsRead.mockResolvedValueOnce(rows);const queries:string[]=[];
+ const digest=await loadOwnerDigest(actor,digestRuntime(undefined,queries),marketing,'en');
+ expect(queries.some(sql=>sql.includes('SELECT entity_key AS id FROM ls_demo.records'))).toBe(false);
+ expect(queries.some(sql=>sql.includes('FROM ls_onboarding.prospect_journeys'))).toBe(false);
+ expect(queries.some(sql=>sql.includes('COUNT(DISTINCT i.stable_lead_ref)'))).toBe(false);
+ expect(digest.followups).toBeNull();expect(digest.actions).toContain('crm_unavailable');
+ expect(digest.actions).toContain('journeys_unavailable');expect(digest.tasks?.data.due).toBe(2);
+ expect(digest.content.available).toBe(true);
+});
+it.each(invalidProjections)('rejects direct intake %s before its ledger queries',async(_label,rows)=>{
+ const queries:string[]=[],runtime=digestRuntime(undefined,queries);
+ await expect(readIntakeFacts(runtime.store,actor,rows,now)).rejects.toThrow('INVALID_DIGEST_PROSPECTS');
+ expect(queries.some(sql=>sql.includes('FROM ls_onboarding.prospect_journeys')||sql.includes('COUNT(DISTINCT i.stable_lead_ref)'))).toBe(false);
+});
+it('preserves the accepted ID length boundary, stable keys and unknown text without mutation',async()=>{
+ const row={...prospect,leadId:'LS-WAPI-'+'a'.repeat(80),stage:'constructor',outcome:'owner-defined label'},queries:string[]=[];
+ prospectsRead.mockResolvedValueOnce([row]);
+ const digest=await loadOwnerDigest(actor,digestRuntime(undefined,queries),marketing,'he');
+ expect(digest.followups?.data).toMatchObject({prospects:1,due:1,awaitingForm:1});
+ expect(queries.some(sql=>sql.includes('SELECT entity_key AS id FROM ls_demo.records'))).toBe(true);
+ expect(row).toEqual({...prospect,leadId:'LS-WAPI-'+'a'.repeat(80),stage:'constructor',outcome:'owner-defined label'});
 });
 it('retains the valid actual intake and task projections',async()=>{
  prospectsRead.mockResolvedValueOnce([prospect]);

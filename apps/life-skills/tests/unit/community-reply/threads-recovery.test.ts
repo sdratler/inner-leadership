@@ -22,5 +22,5 @@ test.each(['en','he'] as const)('%s clears a failed deep-link filter while prese
  (all!.props.onClick as ()=>void)();for(let i=0;i<12;i++)await Promise.resolve();tree=render();
  expect(vi.mocked(fetch).mock.calls.at(-1)?.[0]).toBe('/api/community-threads');expect(window.history.replaceState).toHaveBeenCalled();
  expect(find(tree,item=>item.type==='input'&&item.props.type==='url')!.props.value).toContain('posts/20');
- expect(find(tree,item=>item.type==='a'&&item.props.href===`/${locale}/app/calendar?date=2026-09-02&view=agenda#task-${task}`)).toBeDefined();
+ expect(find(tree,item=>item.type==='a'&&item.props.href===`/${locale}/app/calendar?date=2026-09-02&view=agenda&taskId=${task}#task-${task}`)).toBeDefined();
 });

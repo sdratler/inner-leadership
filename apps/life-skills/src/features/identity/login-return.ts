@@ -30,6 +30,7 @@ export function practitionerReturnPath(locale: Locale, page: "calendar" | "clien
     if (/^[0-9a-f-]{36}$/i.test(one("caseId"))) params.set("caseId", one("caseId"));
     if (one("context") === "client") params.set("context", "client");
     if (one("mode") === "demo") params.set("mode", "demo");
+    if (isCaseId(one("taskId"))) params.set("taskId", one("taskId"));
   } else if (page === "practice") {
     for (const key of ["caseId", "audienceId", "assignmentId"]) if (isCaseId(one(key))) params.set(key, one(key));
     if (["goals", "commitments", "checkins"].includes(one("section"))) params.set("section", one("section"));
