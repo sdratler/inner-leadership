@@ -8,12 +8,16 @@ import {ContactInboundStore,inboundBindingDigest} from '../../../src/features/co
 import {ContactCutoverStore,type CutoverEvidence} from '../../../src/features/contact-ops/server/cutover-store.ts';
 import {OperationalNativeCrmStore} from '../../../src/features/contact-ops/server/operational-store.ts';
 import {NativeCrmStore,crmProfileAad} from '../../../src/features/contact-ops/server/native-store.ts';
+import {AcquisitionCandidateStore} from '../../../src/features/contact-ops/server/acquisition-store.ts';
 const fixtures:Fixture[]=[];afterAll(async()=>{for(const f of fixtures)await f.pool.end();});
 const key='synthetic-inbound-projection-integrity-20260929';
 const inquiry={provider:'whapi' as const,channelId:'synthetic-projection-channel',businessNumber:'+972501234567',
  providerEventId:'synthetic-event-1',providerMessageId:'synthetic-message-1',providerThreadId:'synthetic-thread-1',
  eventType:'inbound_message' as const,fromMe:false as const,fromNumber:'+972501234568',pushName:'Synthetic inquiry',
- messageType:'text',messageText:'Synthetic incoming inquiry',occurredAt:'2026-09-28T02:00:00Z',media:[]};
+ messageType:'text',messageText:'Synthetic incoming inquiry',occurredAt:'2026-09-28T02:00:00Z',media:[],
+ // Explicit provider-attributed fixture; organic/unknown denial is separately
+ // exercised against this same retained native implementation below.
+ ctwaAttribution:{clickId:'synthetic-provider-click',adId:'synthetic-provider-ad',attributed:true as const,sourceType:'ad' as const}};
 // These proof booleans are isolated fixtures, NOT evidence of a live switch.
 const proof=(epoch:number,writes=0):CutoverEvidence=>({batchId:'synthetic-projection-batch',sourceFileId:'synthetic-workbook',
  sourceRevision:'synthetic-frozen-revision',expectedEpoch:epoch,observedNativeWritesSinceSwitch:writes,
@@ -56,6 +60,58 @@ test('first inquiry -> one native person/Today follow-up; second/replay preserve
  expect(await count('ls_contact_ops.message_receipts')).toBe(3);expect((await list()).items[0]?.inboundActivity?.messageCount).toBe(2);
  await expect(store.recent(f.parent.actor)).rejects.toThrow('FORBIDDEN');
 });
+
+test('unknown shared-number messages persist metadata candidates, not active leads, identities, tasks or clinical data',async()=>{
+ const {f,db,actor,authority,store,activate,list,count}=await setup();await activate();
+ const {ctwaAttribution:_ad,...organic}=inquiry;void _ad;
+ const before=await Promise.all(['ls_identity.people','ls_identity.accounts','ls_cases.cases','ls_calendar.tasks'].map(count));
+ const candidates=new AcquisitionCandidateStore(db,f.keyring,key);
+ await Promise.all(Array.from({length:6},()=>store.capture({...organic,messageText:'Synthetic private body must not enter acquisition metadata'})));
+ await store.capture({...organic,providerEventId:'organic-redelivery',messageText:'Synthetic private body must not enter acquisition metadata',pushName:'Changed provider display name'});
+ expect(await count('ls_contact_ops.message_receipts')).toBe(2);
+ expect(await count('ls_contact_ops.inbound_activity_candidates')).toBe(1);
+ expect(await count('ls_contact_ops.inbound_projections')).toBe(0);expect((await list()).total).toBe(0);
+ expect(await Promise.all(['ls_identity.people','ls_identity.accounts','ls_cases.cases','ls_calendar.tasks'].map(count))).toEqual(before);
+ const saved=await candidates.recent(actor);expect(saved.hasMore).toBe(false);expect(saved.items).toHaveLength(1);
+ expect(saved.items[0]).toMatchObject({source:'organic_whatsapp',phone:organic.fromNumber,displayName:organic.pushName,state:'NEEDS_REVIEW'});
+ expect(JSON.stringify(saved)).not.toContain('private body');expect(Object.keys(saved.items[0]!).sort()).toEqual(['id','source','phone','displayName','occurredAt','state'].sort());
+ expect((await authority.read(actor)).nativeWritesSinceSwitch).toBe(1);
+ await expect(store.capture({...organic,providerEventId:'organic-changed-replay',messageText:'Changed content'})).rejects.toThrow('CONFLICT');
+ expect(await count('ls_contact_ops.message_receipts')).toBe(2);
+ await expect(candidates.recent(f.parent.actor)).rejects.toThrow('FORBIDDEN');
+ await expect(candidates.recent(f.parentTwo.actor)).rejects.toThrow('FORBIDDEN');
+ await expect(candidates.recent({...actor,workspaceId:randomUUID() as typeof actor.workspaceId})).rejects.toThrow();
+ await f.pool.query('UPDATE ls_identity.sessions SET revoked_at=clock_timestamp() WHERE token_digest=$1',[actor.sessionDigest]);
+ await expect(candidates.recent(actor)).rejects.toThrow('UNAUTHENTICATED');
+});
+
+test('organic frozen receipts drain once to Needs review and never silently create a prospect',async()=>{
+ const {f,db,actor,authority,store,prepare,list,count}=await setup();const {ctwaAttribution:_ad,...organic}=inquiry;void _ad;
+ await store.capture(organic);await prepare();expect(await count('ls_contact_ops.inbound_activity_candidates')).toBe(0);
+ await authority.advance(actor,{action:'switch_native',proof:proof(2),operationId:'activate'});
+ expect(await store.drain(actor,3)).toMatchObject({processed:1,projected:0,needsResolution:0,needsReview:1,replayed:0});
+ expect(await store.drain(actor,3)).toMatchObject({processed:1,projected:0,needsResolution:0,needsReview:0,replayed:1});
+ expect((await list()).total).toBe(0);expect((await new AcquisitionCandidateStore(db,f.keyring,key).recent(actor)).items).toHaveLength(1);
+ expect((await authority.read(actor)).nativeWritesSinceSwitch).toBe(1);
+});
+
+test('candidate transaction failure preserves no half receipt or candidate; original metadata remains append-only and encrypted',async()=>{
+ const {f,db,actor,authority,store,activate,count}=await setup();await activate();const {ctwaAttribution:_ad,...organic}=inquiry;void _ad;
+ const failing:IdentityStore={transaction:work=>db.transaction(async tx=>{await work(tx);throw Error('SYNTHETIC_CANDIDATE_COMMIT_FAILURE');})};
+ await expect(new ContactInboundStore(failing,f.workspaceId,f.keyring,key,inboundBindingDigest(organic)).capture(organic)).rejects.toThrow('SYNTHETIC_CANDIDATE_COMMIT_FAILURE');
+ expect(await count('ls_contact_ops.message_receipts')).toBe(0);expect(await count('ls_contact_ops.inbound_activity_candidates')).toBe(0);
+ expect((await authority.read(actor)).nativeWritesSinceSwitch).toBe(0);await store.capture(organic);
+ const row=(await f.pool.query('SELECT metadata_ciphertext FROM ls_contact_ops.inbound_activity_candidates WHERE workspace_id=$1',[f.workspaceId])).rows[0];
+ expect(row.metadata_ciphertext).not.toContain(organic.fromNumber);expect(row.metadata_ciphertext).not.toContain(organic.pushName);
+ await expect(f.pool.query("UPDATE ls_contact_ops.inbound_activity_candidates SET metadata_ciphertext='changed' WHERE workspace_id=$1",[f.workspaceId])).rejects.toMatchObject({code:'23514'});
+ await expect(f.pool.query('DELETE FROM ls_contact_ops.inbound_activity_candidates WHERE workspace_id=$1',[f.workspaceId])).rejects.toMatchObject({code:'23514'});
+ const role='synthetic_acq_denied_'+randomUUID().replaceAll('-','');
+ await f.pool.query(`CREATE ROLE ${role} NOLOGIN`);
+ try{await f.pool.query(`GRANT USAGE ON SCHEMA ls_contact_ops TO ${role}`);const client=await f.pool.connect();
+  try{await client.query(`SET ROLE ${role}`);await expect(client.query('SELECT metadata_ciphertext FROM ls_contact_ops.inbound_activity_candidates')).rejects.toMatchObject({code:'42501'});}
+  finally{await client.query('RESET ROLE');client.release();}}
+ finally{await f.pool.query(`REVOKE USAGE ON SCHEMA ls_contact_ops FROM ${role}`);await f.pool.query(`DROP ROLE ${role}`);}
+});
 test('sheet/frozen receipts do not change CRM; exact native drain projects each message once',async()=>{
  const {actor,authority,store,prepare,list,count}=await setup();
  await store.capture(inquiry);expect(await count('ls_contact_ops.profiles')).toBe(0);await prepare();
@@ -66,7 +122,7 @@ test('sheet/frozen receipts do not change CRM; exact native drain projects each 
  const first=await store.drain(actor,3,1);expect(first).toMatchObject({processed:1,projected:1,needsResolution:0,replayed:0,hasMore:true});
  expect(first.cursor?.storedAt).toMatch(/\.\d{6}Z$/);
  const second=await store.drain(actor,3,1,first.cursor);expect(second).toMatchObject({processed:1,projected:1,needsResolution:0,replayed:0,hasMore:false});
- expect(await store.drain(actor,3,1,second.cursor)).toEqual({processed:0,projected:0,needsResolution:0,replayed:0,cursor:second.cursor,hasMore:false});
+ expect(await store.drain(actor,3,1,second.cursor)).toEqual({processed:0,projected:0,needsResolution:0,needsReview:0,replayed:0,cursor:second.cursor,hasMore:false});
  expect(await store.drain(actor,3)).toMatchObject({processed:2,projected:0,needsResolution:0,replayed:2});
  expect((await list()).total).toBe(1);expect((await list()).items[0]?.inboundActivity?.messageCount).toBe(2);
  const drained=(await list()).items[0]!;

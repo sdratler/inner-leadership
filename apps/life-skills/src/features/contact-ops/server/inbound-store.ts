@@ -48,7 +48,7 @@ export class ContactInboundStore {
   * One fresh practitioner, fence and transaction; each projection counts once.
   * Ambiguous endpoints remain recorded as needs_resolution, never guessed. */
  async drain(actor:Actor,expectedEpoch:number,limit=50,after:InboundDrainCursor|null=null):Promise<{
-  processed:number;projected:number;needsResolution:number;replayed:number;cursor:InboundDrainCursor|null;hasMore:boolean}>{
+  processed:number;projected:number;needsResolution:number;needsReview:number;replayed:number;cursor:InboundDrainCursor|null;hasMore:boolean}>{
   if(actor.workspaceId!==this.workspaceId)throw new AppError("FORBIDDEN");
   if(this.expectedBindingDigest===null)throw new AppError("UNAVAILABLE");
   if(!Number.isSafeInteger(expectedEpoch)||expectedEpoch<0||!Number.isSafeInteger(limit)||limit<1||limit>100)throw new AppError("INVALID_REQUEST");
@@ -71,12 +71,12 @@ export class ContactInboundStore {
     ORDER BY r.stored_at,r.provider_event_key LIMIT $5`,[this.workspaceId,binding,after?.storedAt??null,after?.eventKey??null,limit+1]);
    const pending=rows.slice(0,limit).map(row=>({row,inquiry:this.decodeStored(row)}));
    const projector=new NativeInboundProjection(this.workspaceId,this.keyring,this.integrityKey,this.clock,pending.map(item=>item.inquiry.fromNumber));
-   const result={processed:0,projected:0,needsResolution:0,replayed:0,cursor:after,hasMore:rows.length>limit};
+   const result={processed:0,projected:0,needsResolution:0,needsReview:0,replayed:0,cursor:after,hasMore:rows.length>limit};
    for(const {row,inquiry} of pending){
     const outcome=await projector.projectInTransaction(tx,inquiry,inboundProjectionKeys(this.workspaceId,row.binding,row.event,row.message,row.digest,inquiry,this.integrityKey));
     if(outcome.state==="receipt_only")throw new AppError("CONFLICT");
     result.processed++;if(outcome.replayed)result.replayed++;
-    else if(outcome.state==="projected")result.projected++;else result.needsResolution++;
+    else if(outcome.state==="projected")result.projected++;else if(outcome.state==="needs_review")result.needsReview++;else result.needsResolution++;
     result.cursor=drainCursorSchema.parse({storedAt:row.cursorAt,eventKey:row.event});
    }
    return result;

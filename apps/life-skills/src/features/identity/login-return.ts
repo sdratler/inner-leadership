@@ -35,7 +35,7 @@ export function practitionerReturnPath(locale: Locale, page: "calendar" | "clien
     for (const key of ["caseId", "audienceId", "assignmentId"]) if (isCaseId(one(key))) params.set(key, one(key));
     if (["goals", "commitments", "checkins"].includes(one("section"))) params.set("section", one("section"));
   } else {
-    if (["all", "prospects", "paid", "active", "archived"].includes(one("section"))) params.set("section", one("section"));
+    if (["all", "prospects", "needs_review", "paid", "active", "archived"].includes(one("section"))) params.set("section", one("section"));
     if (["all", "today", "new", "intake", "payment", "booking", "archived"].includes(one("filter"))) params.set("filter", one("filter"));
     if (/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]{1,80}$/.test(one("leadId"))) params.set("leadId", one("leadId"));
     if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(one("personId"))) params.set("personId",one("personId"));
