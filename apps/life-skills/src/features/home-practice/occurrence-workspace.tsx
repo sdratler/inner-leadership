@@ -22,6 +22,10 @@ const copy = {
 const audienceChanged = { en: "Access to one practice audience changed. Other selections are kept. Retry to refresh your current access.", he: "הגישה לאחת מקבוצות התרגול השתנתה. שאר הבחירות נשמרות כאן. אפשר לנסות שוב כדי לרענן את הגישה הנוכחית." };
 const occurrenceStateLabels = { en: { open: "Open", closed: "Closed", cancelled: "Cancelled" }, he: { open: "פתוח", closed: "סגור", cancelled: "בוטל" } };
 type Role = "parent" | "adult_client" | "child" | "practitioner";
+function PracticeCalendarCanvas({ renderCalendar, items, onOpen }: {
+  renderCalendar: (value: { items: PracticeOccurrenceItem[]; onOpen: OpenCalendarPractice }) => ReactNode;
+  items: PracticeOccurrenceItem[]; onOpen: OpenCalendarPractice;
+}) { return renderCalendar({ items, onOpen }); }
 
 /** Same components on Practice and Calendar; no role switching or synthetic data. */
 export function PracticeOccurrenceWorkspace({ locale, role, caseId, audienceId, from, to, refreshToken = 0, onDirtyChange, readEnabled = true, renderCalendar }: {
@@ -94,11 +98,11 @@ export function PracticeOccurrenceWorkspace({ locale, role, caseId, audienceId, 
     queueMicrotask(() => { if (!canceled) closeCalendarPractice(); });
     return () => { canceled = true; };
   }, [renderCalendar, selectedId, selected, closeCalendarPractice]);
-  const onCalendarOpen: OpenCalendarPractice = (item, event) => {
+  const onCalendarOpen = useCallback<OpenCalendarPractice>((item, event) => {
     if (calendarLocked || (hasDirty && !window.confirm(t.dirty))) return;
-    setHasDirty(false); onDirtyChange?.(false); setSelectedId(item.occurrence.id);
+    dirty.current.clear(); setHasDirty(false); onDirtyChange?.(false); setSelectedId(item.occurrence.id);
     openDialog("ls-calendar-practice-detail", event);
-  };
+  }, [calendarLocked, hasDirty, t.dirty, onDirtyChange]);
   return <section className="lsw-stack" aria-label={t.title} dir={locale === "he" ? "rtl" : "ltr"}>
     <UnsavedChangesGuard dirty={hasDirty} message={t.dirty} />
     {!from && <form className="lsw-toolbar" onSubmit={event => { event.preventDefault(); if (!event.currentTarget.checkValidity()) return; if (hasDirty && !window.confirm(t.dirty)) return; dirty.current.clear(); setHasDirty(false); onDirtyChange?.(false); setSelectedDate(dateInput); }}><Input id="practice-from" label={t.date} type="date" required value={dateInput} onChange={event => setDateInput(event.target.value)} /><Button type="submit">{t.go}</Button></form>}
@@ -107,7 +111,7 @@ export function PracticeOccurrenceWorkspace({ locale, role, caseId, audienceId, 
       {!state.page.items.length ? state.status === "ready" && <p role="status">{t.empty}</p> : !renderCalendar && <div className="lsw-stack">{state.page.items.map(item => <PracticeOccurrenceCard key={key + ":" + item.occurrence.id} locale={locale} role={role} item={item} onReadback={reload} onAccessLost={accessLost} onDirty={dirtyChange} />)}</div>}
       {state.page.hasMore && <p role="status">{t.overflow}</p>}
     </>)}
-    {renderCalendar && <>{renderCalendar({ items: calendarItems, onOpen: onCalendarOpen })}<Dialog id="ls-calendar-practice-detail" title={t.title} locale={locale} busy={calendarLocked}>{selected && <PracticeOccurrenceCard key={key + ":" + selected.occurrence.id} locale={locale} role={role} item={selected} onReadback={reload} onAccessLost={accessLost} onDirty={dirtyChange} onLockChange={setCalendarLocked} />}</Dialog></>}
+    {renderCalendar && <><PracticeCalendarCanvas renderCalendar={renderCalendar} items={calendarItems} onOpen={onCalendarOpen} /><Dialog id="ls-calendar-practice-detail" title={t.title} locale={locale} busy={calendarLocked}>{selected && <PracticeOccurrenceCard key={key + ":" + selected.occurrence.id} locale={locale} role={role} item={selected} onReadback={reload} onAccessLost={accessLost} onDirty={dirtyChange} onLockChange={setCalendarLocked} />}</Dialog></>}
   </section>;
 }
 
