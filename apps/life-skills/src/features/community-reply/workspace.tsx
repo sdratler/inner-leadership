@@ -163,15 +163,16 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
       .finally(()=>{if(!controller.signal.aborted&&epoch===savedReadEpoch.current)setSavedLoading(false);});
     return()=>controller.abort();
   },[]);
-  async function confirmGenerated(value:CommunityReplyResult){
+  async function confirmGenerated(value:CommunityReplyResult):Promise<boolean>{
     const epoch=++draftReadEpoch.current;
     try{const row=(await readSaved(value.operationId))[0];
-      if(epoch!==draftReadEpoch.current)return;
+      if(epoch!==draftReadEpoch.current)return false;
       if(!row||row.generated.reply!==value.reply||row.generated.provenance.guide.sha256!==value.provenance.guide.sha256||row.generated.provenance.playbook.sha256!==value.provenance.playbook.sha256)throw Error('binding');
       savedReadEpoch.current++;setSavedLoading(false);setSavedError(false);
       setPersisted(row);setSavedDrafts(previous=>[row,...previous.filter(item=>item.draftId!==row.draftId)].slice(0,20));setDraftSaveError(false);
       setDraftNotice(row.draft===value.reply?`${t.saveVerified} · ${t.savedVersion} ${row.revision}`:t.saveConflict);
-    }catch{if(epoch===draftReadEpoch.current){setDraftSaveError(true);setDraftNotice(t.saveFailed);}}
+      return true;
+    }catch{if(epoch===draftReadEpoch.current){setDraftSaveError(true);setDraftNotice(t.saveFailed);}return false;}
   }
   async function openSaved(row:CommunitySavedDraft){
     if(inFlight.current||(unsaved&&!window.confirm(t.savedReplace)))return;
@@ -275,10 +276,9 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
       const payload = await response.json() as { ok?: boolean; data?: CommunityReplyResult; error?: { code?: string } };
       if (replyFailureKind(response.status, payload.error?.code) === "limited") { setNotice(t.limited); return; }
       if (!response.ok || payload.ok !== true || !payload.data) throw Error("unconfirmed");
-      attempt.current = null;
       setSubmittedInput({ question: command.question, originalUrl: command.originalUrl ?? "" });
       setResult(payload.data); setDraft(payload.data.reply); setReviewed(false);
-      setPersisted(null);setHistorical(false);draftAttempt.current=null;await confirmGenerated(payload.data);
+      setPersisted(null);setHistorical(false);draftAttempt.current=null;if(await confirmGenerated(payload.data))attempt.current=null;
       const proposal = proposalForResult(mode, payload.data.suggestedRule, payload.data.ruleScope);
       setProposedRule(proposal.rule); setRuleScope(proposal.scope);
       setTargetRuleId(null); setExistingRules([]); setExistingSourceSha(null);

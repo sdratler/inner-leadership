@@ -29,5 +29,8 @@ test.each(['en','he'] as const)('%s retains the navigation warning after failed 
  expect(find(tree,item=>item.type==='textarea'&&item.props.value===generated.reply)).toBeDefined();
  expect(find(tree,item=>item.type===UnsavedChangesGuard)!.props.dirty).toBe(true);
  verified=true;generate();await vi.waitFor(()=>{tree=render();expect(find(tree,item=>item.type==='button'&&item.props.className==='lsr-primary')!.props.disabled).toBe(false);expect(find(tree,item=>item.type===UnsavedChangesGuard)!.props.dirty).toBe(false);});
- expect(vi.mocked(fetch).mock.calls.filter(([,options])=>options?.method==='POST')).toHaveLength(2);
+ const writes=vi.mocked(fetch).mock.calls.filter(([,options])=>options?.method==='POST');expect(writes).toHaveLength(2);
+ const ids=writes.map(([,options])=>JSON.parse(options!.body as string).operationId);expect(ids[1]).toBe(ids[0]);
+ generate();await vi.waitFor(()=>{tree=render();expect(find(tree,item=>item.type==='button'&&item.props.className==='lsr-primary')!.props.disabled).toBe(false);});
+ const subsequent=vi.mocked(fetch).mock.calls.filter(([,options])=>options?.method==='POST');expect(subsequent).toHaveLength(3);expect(JSON.parse(subsequent[2]![1]!.body as string).operationId).not.toBe(ids[0]);
 });
