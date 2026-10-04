@@ -23,14 +23,25 @@ export type OwnerDigest={
 };
 const canonicalStages=new Set(["New inquiry","Contacted","Offer made","Prospect"]);
 type ProspectFacts=Pick<Prospect,"leadId"|"stage"|"outcome"|"dueDate"|"nextAction"|"journeyState"|"paymentVerified"|"bookingConfirmed">;
+/** Validate before serializing IDs or querying local ledgers. The identifier
+ * bound matches the existing native People API; never truncate a corrupt read. */
+export function validateDigestProspects(rows:readonly Pick<Prospect,"leadId"|"stage"|"outcome"|"nextAction"|"dueDate">[]):void {
+ if(!Array.isArray(rows)||rows.length>MAX_OPERATIONAL_PROSPECTS)throw Error("INVALID_DIGEST_PROSPECTS");
+ const seen=new Set<string>();
+ for(const row of rows){
+  if(!row||typeof row.leadId!=="string"||!/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]{1,80}$/.test(row.leadId)||seen.has(row.leadId)||
+   ["stage","outcome","nextAction","dueDate"].some(key=>typeof row[key as "stage"|"outcome"|"nextAction"|"dueDate"]!=="string"))throw Error("INVALID_DIGEST_PROSPECTS");
+  seen.add(row.leadId);
+ }
+}
 /** Read-only administrative arithmetic. Never export name, notes, phone, email,
  * clinical content, arbitrary stage text or an inferred payment/booking state. */
 export function summarizeProspects(rows:readonly ProspectFacts[],today:string,journeysAvailable:boolean):AdminCounts {
- if(rows.length>MAX_OPERATIONAL_PROSPECTS||new Set(rows.map(row=>row.leadId)).size!==rows.length||rows.some(row=>!/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]+$/.test(row.leadId)))throw Error("INVALID_DIGEST_PROSPECTS");
+ validateDigestProspects(rows);
  const result:AdminCounts={due:0,overdue:0,future:0,missingDate:0,invalidDate:0,prospects:0,otherStages:0,awaitingForm:journeysAvailable?0:null,awaitingPayment:journeysAvailable?0:null,awaitingBooking:journeysAvailable?0:null};
  for(const row of rows){
   if(prospectArchived(row)||prospectContactSuppressed(row))continue;
-  if(row.journeyState!=="active")result.prospects++;
+  if(!["active","hold"].includes(row.journeyState))result.prospects++;
   if(!canonicalStages.has(row.stage))result.otherStages++;
   if(row.nextAction.trim()){
    const date=crmDueCivilDate(row.dueDate);
@@ -42,7 +53,7 @@ export function summarizeProspects(rows:readonly ProspectFacts[],today:string,jo
   if(journeysAvailable){
    // Form-invitation counts are supplied separately from the actual intake ledger.
    if(["intake_submitted","awaiting_payment"].includes(row.journeyState)&&!row.paymentVerified)result.awaitingPayment!++;
-   if(row.paymentVerified===true&&row.bookingConfirmed!==true)result.awaitingBooking!++;
+   if(row.paymentVerified===true&&row.bookingConfirmed!==true&&row.journeyState!=="hold")result.awaitingBooking!++;
   }
  }
  return result;
