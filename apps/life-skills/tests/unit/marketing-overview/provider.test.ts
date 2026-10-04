@@ -5,6 +5,7 @@ vi.mock("../../../src/features/prospects/bridge.ts",()=>({crmBridge:mocks.regist
 vi.mock("../../../src/features/marketing-overview/meta-provider.ts",()=>({readDirectMetaAds:mocks.meta}));
 const readAt="2026-10-03T18:05:49.000Z",metaAt="2026-10-03T19:00:00.000Z";
 const inventory=()=>({files:1,concepts:1,publishablePosts:0,heStatusReady:0,heFeedReady:0,enFeedReady:0,adEligible:0,inLiveAds:null,queued:0,published:0,needsApproval:1,needsResizeOrCaption:1,heldMissing:0,partial:true,asOf:readAt});
+const publication=()=>({id:"synthetic-publication",assetId:"DEMO-image",creativeRevision:1,creativeDigest:"a".repeat(64),channel:"whatsapp_status",destinationLabel:"Synthetic Status",scheduledFor:null,timezone:"Asia/Jerusalem",state:"draft",provider:"unbound",providerReceiptId:null,providerReadAt:null,postUrl:null,receiptKind:"unknown",manualReportedAt:null,errorCode:null});
 const registry=()=>({success:true,snapshot:{fetchedAt:readAt,workbookUrl:"https://docs.google.com/spreadsheets/d/synthetic/edit",creatives:[{assetId:"DEMO-image",revision:1,imageUrl:"https://drive.google.com/file/d/synthetic_file/view",sourceUrl:"https://drive.google.com/file/d/synthetic_file/view",contentDigest:"a".repeat(64),locale:"he",width:1080,height:1920,review:"in_review",approvedDigest:null,caption:"",title:"Synthetic original"}],publications:[],inventory:inventory()}});
 beforeEach(()=>{vi.resetModules();vi.clearAllMocks();mocks.registry.mockResolvedValue(registry());mocks.meta.mockResolvedValue({fetchedAt:metaAt,ads:[],adSeries:[],adReporting:{}});});
 test("inventory freshness belongs to inventory, not the newer direct-ad metric read",async()=>{
@@ -53,4 +54,15 @@ test("an unknown size or optional owner text stays visible without inventing val
  const asset={...registry().snapshot.creatives[0],width:0,height:0,surface:"Owner specific placement",holdReason:"Awaiting actual dimensions",libraryState:"Owner specific state"};
  mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,creatives:[asset]}});const {loadMarketingSnapshot}=await import("../../../src/features/marketing-overview/provider.ts");
  expect((await loadMarketingSnapshot()).creatives[0]).toMatchObject({width:0,height:0,surface:asset.surface,holdReason:asset.holdReason,libraryState:asset.libraryState});
+});
+test.each([{id:undefined},{id:17},{id:""},{assetId:null},{creativeRevision:"1"},{creativeRevision:0},{creativeDigest:[]},{channel:"email"},{destinationLabel:{}},{state:"invented"},{provider:"invented"},{providerReceiptId:{}},{providerReadAt:"invalid"},{postUrl:[]},{receiptKind:null},{manualReportedAt:"invalid"},{errorCode:12}])("malformed publication fields cannot crash an available calendar",async patch=>{
+ const {loadMarketingSnapshot}=await import("../../../src/features/marketing-overview/provider.ts");await loadMarketingSnapshot();
+ mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,publications:[{...publication(),...patch}]}});
+ const snapshot=await loadMarketingSnapshot();expect(snapshot.inventoryReadback).toMatchObject({status:"error",lastSuccessfulReadAt:readAt});expect(snapshot.publications).toEqual([]);expect(snapshot.creatives).toEqual([]);expect(snapshot.fetchedAt).toBe(metaAt);
+});
+test("publication required fields must be own properties and honest unbound records remain visible",async()=>{
+ const {loadMarketingSnapshot}=await import("../../../src/features/marketing-overview/provider.ts");
+ mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,publications:[publication()]}});expect((await loadMarketingSnapshot()).publications).toEqual([publication()]);
+ const unbound={...publication(),assetId:"",creativeDigest:"",errorCode:"ASSET_BINDING_UNAVAILABLE"};mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,publications:[unbound]}});expect((await loadMarketingSnapshot()).publications).toEqual([unbound]);
+ mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,publications:[Object.create(publication())]}});expect((await loadMarketingSnapshot()).inventoryReadback?.status).toBe("error");
 });
