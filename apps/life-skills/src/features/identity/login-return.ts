@@ -1,5 +1,5 @@
 import type { Locale } from "../../lib/locale.ts";
-import {isCaseId,workspaceContext} from '../../ui/workspace/navigation-model.ts';
+import {isCaseId,settingsItems,workspaceContext} from '../../ui/workspace/navigation-model.ts';
 import {isReportSection} from '../progress/report-views.ts';
 
 type Role = "practitioner" | "parent" | "adult_client" | "child";
@@ -48,7 +48,9 @@ export function practitionerReturnPath(locale: Locale, page: "calendar" | "clien
 
 /** Named practitioner deep links only; no arbitrary caller/header path is trusted. */
 export function practitionerDetailReturnPath(locale:Locale,pathname:string,query:Record<string,string|string[]|undefined>):string {
- if(pathname===`/${locale}/app/settings/templates`)return pathname;
+ // Account destinations are global, not case-scoped. Preserve only the exact
+ // maintained Settings routes; never forward caller-supplied role or query text.
+ if(pathname===`/${locale}/app/settings`||settingsItems('practitioner').some(item=>pathname===`/${locale}/${item.path}`))return pathname;
  const reports=pathname===`/${locale}/app/reports`,sharedItems=[`/${locale}/app/forms`,`/${locale}/app/resources`].includes(pathname),session=pathname.match(new RegExp(`^/${locale}/app/cases/([^/]+)/sessions(?:/([^/]+))?$`));
  if(!reports&&!sharedItems&&(!session||!isCaseId(session[1])||session[2]!==undefined&&!isCaseId(session[2])))return `/${locale}/app/calendar`;
  const params=new URLSearchParams(workspaceContext(query) as Record<string,string>);

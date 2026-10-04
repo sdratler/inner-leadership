@@ -71,7 +71,7 @@ export function proxy(request: NextRequest) {
   // These APIs depend on strict canonical HTTPS forwarding. Validate the original
   // transport before the request-header rewrite below can hide an invalid chain.
   // Forwarding never grants a session, role, case or audience permission.
-  if (["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins"].includes(pathname)) {
+  if (["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins"].includes(pathname)||/^\/api\/notifications(?:\/|$)/.test(pathname)) {
     try {
       if (request.nextUrl.hash || requestHost !== canonicalOrigin.host.toLowerCase()) throw new Error("invalid transport");
       if (request.headers.has("x-forwarded-proto") || request.headers.has("x-forwarded-host")) {
@@ -114,7 +114,7 @@ export function proxy(request: NextRequest) {
   }
   // The private application has its own explicit server-side gate. Foundation
   // preview never opens authenticated application or domain API routes.
-  const privatePath = pathname === "/api/private-notes" || /^\/api\/(?:private|identity|calendar|attendance|checkins|commitments|community-posts|community-reply|content-voice|forms|goals|home-practice|payments|progress|prospects|resources|sessions|updates)(?:\/|$)/.test(pathname) ||
+  const privatePath = pathname === "/api/private-notes" || /^\/api\/(?:private|identity|calendar|attendance|checkins|commitments|community-posts|community-reply|content-voice|forms|goals|home-practice|notifications|payments|progress|prospects|resources|sessions|updates)(?:\/|$)/.test(pathname) ||
     /^\/(he|en)(?:\/?$|\/(?:login|app|family|workspace|parent|client|practitioner|attendance|calendar|checkins|commitments|forms|goals|home-practice|payments|progress|resources|sample|updates)(?:\/|$))/.test(pathname);
   const privateMode = process.env.LS_PRIVATE_APP_ENABLED === "true";
   // Preserve the accepted standalone identity preview independently of the full
@@ -164,7 +164,7 @@ export function proxy(request: NextRequest) {
     }
     inbound.set("x-ls-practitioner-return", practitionerReturnPath(locale, page, query));
   }
-  const practitionerDetail=/^\/(he|en)\/app\/(?:reports|forms|resources|settings\/templates|cases\/[^/]+\/sessions(?:\/[^/]+)?)$/.exec(pathname);
+  const practitionerDetail=/^\/(he|en)\/app\/(?:reports|forms|resources|settings(?:\/[^/]+)?|cases\/[^/]+\/sessions(?:\/[^/]+)?)$/.exec(pathname);
   if(practitionerDetail){
     const query:Record<string,string|undefined>={};
     for(const key of ['mode','date','view','caseId','audienceId','appointmentId','context','section']){const values=request.nextUrl.searchParams.getAll(key);query[key]=values.length===1?values[0]:undefined;}
