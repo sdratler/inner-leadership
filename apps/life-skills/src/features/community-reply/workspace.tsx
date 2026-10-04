@@ -6,7 +6,7 @@ import type { CommunityInboxPage, CommunityInboxPost } from "../community-inbox/
 import type { CommunityReplyResult } from "./bridge.ts";
 import type { CommunitySavedDraft } from "./drafts-bridge.ts";
 import { UnsavedChangesGuard } from "../../ui/workspace/draft-guard.tsx";
-import { canResumeRuleOperation, matchesGeneratedReadback, matchesSubmittedInput, proposalForResult, replyFailureKind, ruleDraftPromotionNeedsConfirmation, type CommunitySourceInput } from "./input-state.ts";
+import { canResumeRuleOperation, matchesEditedDraftReadback, matchesGeneratedReadback, matchesSavedDraftBinding, matchesSubmittedInput, proposalForResult, replyFailureKind, ruleDraftPromotionNeedsConfirmation, type CommunitySourceInput } from "./input-state.ts";
 
 type Locale = "he" | "en";
 const copy = {
@@ -179,7 +179,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
     if(inFlight.current||(unsaved&&!window.confirm(t.savedReplace)))return;
     draftReadEpoch.current++;
     inFlight.current=true;setBusy(true);
-    try{const latest=(await readSaved(row.draftId))[0];if(!latest)throw Error('saved');
+    try{const latest=(await readSaved(row.draftId))[0];if(!matchesSavedDraftBinding(latest,row))throw Error('saved');
       setQuestion(latest.question);setOriginalUrl(latest.originalUrl??'');setResult(latest.generated);setDraft(latest.draft);setPersisted(latest);setHistorical(true);
       setSubmittedInput({question:latest.question,originalUrl:latest.originalUrl??''});setReviewed(false);setCorrection('');setCorrectionBase(null);setProposedRule('');setTargetRuleId(null);setExistingRules([]);setExistingSourceSha(null);setRuleSave(null);
       attempt.current=null;ruleAttempt.current=null;draftAttempt.current=null;setNotice('');setDraftSaveError(false);setDraftNotice(`${t.saveVerified} · ${t.savedVersion} ${latest.revision}`);
@@ -195,7 +195,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
       const response=await fetch('/api/community-drafts',{method:'PUT',credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',headers:{'Content-Type':'application/json','X-CSRF-Token':session.csrfToken},body:JSON.stringify({operationId:draftAttempt.current.operationId,...value})});
       if(response.status===409)throw Error('conflict');
       const payload=await response.json() as {ok?:boolean;data?:CommunitySavedDraft};if(!response.ok||!payload.ok||!payload.data)throw Error('save');
-      const readback=(await readSaved(value.draftId))[0];if(!readback||readback.revision!==payload.data.revision||readback.draft!==value.draft)throw Error('conflict');
+      const readback=(await readSaved(value.draftId))[0];if(!matchesEditedDraftReadback(readback,persisted,payload.data,value.draft))throw Error('conflict');
       savedReadEpoch.current++;setSavedLoading(false);setSavedError(false);
       setPersisted(readback);setSavedDrafts(previous=>[readback,...previous.filter(item=>item.draftId!==readback.draftId)].slice(0,20));draftAttempt.current=null;setReviewed(false);setDraftNotice(`${t.saveVerified} · ${t.savedVersion} ${readback.revision}`);
     }catch(error){setDraftSaveError(true);setDraftNotice(error instanceof Error&&error.message==='conflict'?t.saveConflict:t.saveFailed);}

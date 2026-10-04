@@ -10,7 +10,7 @@ vi.mock('react',async original=>({...await original<typeof import('react')>(),us
 vi.mock('../../../src/features/identity/client.ts',()=>({sessionInfo:async()=>({role:'practitioner',csrfToken:'synthetic'})}));
 import {CommunityReplyWorkspace} from '../../../src/features/community-reply/workspace.tsx';
 import type {CommunitySavedDraft} from '../../../src/features/community-reply/drafts-bridge.ts';
-import {matchesGeneratedReadback} from '../../../src/features/community-reply/input-state.ts';
+import {matchesEditedDraftReadback,matchesGeneratedReadback,matchesSavedDraftBinding} from '../../../src/features/community-reply/input-state.ts';
 import {UnsavedChangesGuard} from '../../../src/ui/workspace/draft-guard.tsx';
 function find(node:unknown,match:(item:ReactElement<Record<string,unknown>>)=>boolean):ReactElement<Record<string,unknown>>|undefined {
  if(!node||typeof node!=='object')return;if(Array.isArray(node))return node.map(value=>find(value,match)).find(Boolean);
@@ -29,6 +29,17 @@ test('complete readback ignores object property order, normalizes the submitted 
  expect(matchesGeneratedReadback(row,value,input)).toBe(true);
  expect(matchesGeneratedReadback({...row,revision:2,draft:'DEMO later edited public response.',copyAllowed:false,reviewFlags:['REVIEW_EDIT']},value,input)).toBe(true);
  expect(matchesGeneratedReadback(row,value,null)).toBe(false);
+});
+
+test('an exact edited receipt permits new safety decisions but never changes its source identity or lifetime',()=>{
+ const previous=savedDraft(),draft='DEMO edited public response.';
+ const receipt={...structuredClone(previous),draft,revision:2,editedAt:'2026-10-01T08:05:00Z',copyAllowed:false,reviewFlags:['REVIEW_EDIT']};
+ expect(matchesEditedDraftReadback(structuredClone(receipt),previous,receipt,draft)).toBe(true);
+ expect(matchesSavedDraftBinding(receipt,previous)).toBe(true);
+ expect(matchesSavedDraftBinding({...receipt,question:'DEMO different question'},previous)).toBe(false);
+ expect(matchesSavedDraftBinding({...receipt,generated:{...receipt.generated,provenance:{...receipt.generated.provenance,model:'other-synthetic'}}},previous)).toBe(false);
+ expect(matchesEditedDraftReadback(receipt,previous,{...receipt,revision:3},draft)).toBe(false);
+ expect(matchesEditedDraftReadback(receipt,previous,receipt,'DEMO other edited response.')).toBe(false);
 });
 
 test.each(['question','originalUrl','draftId','safety','rule','guide revision','guide checked time','guide rules','playbook version','model','policy','usage','generated time','initial safety'] as const)('rejects a saved draft with altered %s despite matching reply and source hashes',async field=>{
@@ -69,6 +80,39 @@ test.each(['en','he'] as const)('%s reconciles an unconfirmed draft with GET onl
  const retry=find(tree,item=>item.type==='button'&&item.props.children===(locale==='en'?'Retry this draft’s verification':'ניסיון חוזר לאימות הטיוטה הזאת'));expect(retry).toBeDefined();verified=true;(retry!.props.onClick as ()=>void)();
  await vi.waitFor(()=>{tree=render();expect(find(tree,item=>item.type===UnsavedChangesGuard)!.props.dirty).toBe(false);});
  expect(vi.mocked(fetch).mock.calls.filter(([,options])=>options?.method==='POST')).toHaveLength(1);expect(vi.mocked(fetch).mock.calls.filter(([,options])=>!options?.method)).toHaveLength(2);
+});
+
+test.each(['question','originalUrl','generated safety','generated provenance','generated operation','expiry','receipt flags','receipt timestamp'] as const)('rejects edited-save readback with altered %s and preserves the editor',async field=>{
+ const original=savedDraft(),edited='DEMO edited public response with a calmer opening.';
+ const receipt={...structuredClone(original),draft:edited,revision:2,editedAt:'2026-10-01T08:05:00Z'};
+ switch(field){
+  case 'question':receipt.question='DEMO unrelated public question';break;
+  case 'originalUrl':receipt.originalUrl='https://www.facebook.com/groups/demo/posts/99';break;
+  case 'generated safety':receipt.generated.copyAllowed=false;break;
+  case 'generated provenance':receipt.generated.provenance.guide.driveRevision='14';break;
+  case 'generated operation':receipt.generated.operationId='9fe575fe-fba2-4a4b-a136-bb28560b13f2';break;
+  case 'expiry':receipt.expiresAt='2026-11-02T08:02:00Z';break;
+ }
+ const readback=structuredClone(receipt);
+ if(field==='receipt flags')readback.reviewFlags=['REVIEW_EDIT'];
+ if(field==='receipt timestamp')readback.editedAt='2026-10-01T08:06:00Z';
+ let saved=false;
+ vi.mocked(fetch).mockImplementation(async(_url,options)=>{
+  if(options?.method==='POST')return Response.json({ok:true,data:generated});
+  if(options?.method==='PUT'){saved=true;return Response.json({ok:true,data:receipt});}
+  return Response.json({ok:true,data:{drafts:[saved?readback:original]}});
+ });
+ const render=()=>hooks.render(()=>CommunityReplyWorkspace({locale:'en'}));let tree=render();
+ (find(tree,item=>item.type==='textarea')!.props.onChange as (e:unknown)=>void)({target:{value:original.question}});tree=render();
+ (find(tree,item=>item.type==='button'&&item.props.className==='lsr-primary')!.props.onClick as ()=>void)();
+ await vi.waitFor(()=>{tree=render();expect(find(tree,item=>item.type===UnsavedChangesGuard)!.props.dirty).toBe(false);});
+ (find(tree,item=>item.type==='textarea'&&item.props.value===generated.reply)!.props.onChange as (e:unknown)=>void)({target:{value:edited}});tree=render();
+ (find(tree,item=>item.type==='button'&&item.props.children==='Save edited reply')!.props.onClick as ()=>void)();
+ await vi.waitFor(()=>{tree=render();expect(find(tree,item=>item.type==='button'&&item.props.className==='lsr-primary')!.props.disabled).toBe(false);});
+ expect(find(tree,item=>item.type==='textarea'&&item.props.value===edited)).toBeDefined();
+ expect(find(tree,item=>item.type===UnsavedChangesGuard)!.props.dirty).toBe(true);
+ expect(find(tree,item=>item.type==='button'&&item.props.children==='Copy reply')!.props.disabled).toBe(true);
+ expect(find(tree,item=>item.props.role==='alert'&&String(item.props.children).includes('saved version changed'))).toBeDefined();
 });
 test.each(['en','he'] as const)('%s retains the navigation warning after failed generation readback, then clears only after verification',async locale=>{
  let verified=false;const saved=savedDraft();
