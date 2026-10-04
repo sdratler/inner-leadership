@@ -83,6 +83,22 @@ it("suppresses pending callbacks after unmount", async () => {
    accountRead.mockResolvedValue([{ id: caseA, displayName: "Synthetic A", kind: "minor" }]); let resolve!: (response: Response) => void; fetchMock.mockImplementation((url: string, init?: RequestInit) => init?.method === "POST" ? new Promise<Response>((done) => { resolve = done; }) : Promise.resolve(authorizedRead(url))); const props = { locale: "en" as const, role: "parent" as const, initialCaseId: caseA, initialAudienceId: audienceA, initialPracticeVersionId: "version-a" };
    let output = await ready(props); (find(output, (element) => element.type === "button" && element.props.children === "Add feedback")?.props.onClick as Click)(); output = render(props); (find(output, (element) => element.type === "textarea" && element.props.id === "update-body")?.props.onChange as Change)({ target: { value: "Synthetic pending" } }); output = render(props); (find(output, (element) => element.type === "form")?.props.onSubmit as Submit)({ preventDefault() {} }); await tick(); hook.unmount(); resolve(Response.json({ ok: true, data: {} })); await tick(); expect(hook.afterUnmountUpdates()).toBe(0);
 });
+it.each([['en','post'],['he','post'],['en','session'],['he','session']] as const)('%s settles only the old-context %s write without reporting success, leaking input or changing its retry key',async(locale,phase)=>{
+ accountRead.mockResolvedValue([{id:caseA,displayName:'DEMO A',kind:'minor'},{id:caseB,displayName:'DEMO B',kind:'minor'}]);
+ let resolve!: (value:Response)=>void,resolveSession!: (value:{csrfToken:string})=>void;
+ if(phase==='session')sessionInfo.mockImplementationOnce(()=>new Promise(done=>{resolveSession=done;}));
+ fetchMock.mockImplementation((url:string,init?:RequestInit)=>init?.method==='POST'?new Promise<Response>(done=>{resolve=done;}):Promise.resolve(Response.json({ok:true,data:url.startsWith('/api/identity/audiences')?[{id:url.includes(caseB)?audienceB:audienceA,visibility:'family_full'}]:[]})));
+ const a={locale,role:'parent' as const,initialCaseId:caseA,initialAudienceId:audienceA,initialPracticeVersionId:'version-a'},b={...a,initialCaseId:caseB,initialAudienceId:audienceB,initialPracticeVersionId:'version-b'};
+ let output=await ready(a);(find(output,e=>e.type==='button'&&e.props.children===(locale==='en'?'Add feedback':'הוספת משוב'))!.props.onClick as Click)();output=render(a);
+ (find(output,e=>e.type==='textarea')!.props.onChange as Change)({target:{value:'DEMO A private unsaved body'}});output=render(a);(find(output,e=>e.type==='form')!.props.onSubmit as Submit)({preventDefault(){}});await tick();
+ const original=postBodies()[0];output=await ready(b);expect(JSON.stringify(output)).not.toContain('DEMO A private unsaved body');
+ if(phase==='post')resolve(Response.json({ok:true,data:{}}));else resolveSession({csrfToken:'c'.repeat(43)});await tick();output=render(b);
+ expect(text(output)).not.toContain(locale==='en'?'Saving and checking the stored result':'שומר ובודק את התוצאה השמורה');expect(text(output)).not.toContain(locale==='en'?'Saved and verified.':'נשמר ואומת.');
+ expect(find(output,e=>e.type==='textarea')!.props.disabled).toBe(false);expect(find(output,e=>e.type==='textarea')!.props.value).toBe('');
+ output=await ready(a);expect(find(output,e=>e.type==='textarea')!.props.value).toBe('DEMO A private unsaved body');expect(find(output,e=>e.type==='textarea')!.props.disabled).toBe(false);
+ (find(output,e=>e.type==='form')!.props.onSubmit as Submit)({preventDefault(){}});await tick();if(phase==='post')expect(postBodies()[1]).toEqual(original);else expect(postBodies()).toHaveLength(1);
+ resolve(Response.json({ok:false},{status:400}));await tick();
+});
 
 it("reads parent feedback history from Messages without a composer version", async () => {
   accountRead.mockResolvedValue([{ id: caseA, displayName: "Synthetic A", kind: "minor" }]);

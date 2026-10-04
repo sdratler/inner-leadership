@@ -86,7 +86,13 @@ export function UpdatesWorkspace({locale,role="parent",initialCaseId="",initialA
      if(accessDenied){clearDeniedAccess();setStatus({kind:'error',text:word('This context could not be authorized. Private information has been cleared. Reload your authorized contexts before retrying.','לא ניתן לאשר גישה להקשר הזה. המידע הפרטי נוקה. טענו מחדש את ההקשרים המורשים לפני ניסיון נוסף.')});return false;}
     if(definiteFailure){writeRef.current=null;setWrite(null);setStatus({kind:'error',text:t.failure})}
     else{const uncertain:Write={slot,payload,state:'unknown'};writeRef.current=uncertain;setWrite(uncertain);setStatus({kind:'error',text:word('The saved result could not be verified. Your text is retained; retry this exact action before starting another.','לא ניתן לאמת את התוצאה השמורה. הטקסט נשמר כאן; נסו שוב את אותה פעולה לפני התחלת פעולה חדשה.')})}
-   }return false;}finally{inFlight.current=false;}
+   }return false;}finally{
+    if(mounted.current&&!current()&&writeRef.current===next){
+     writeRef.current=null;setWrite(null);
+     setStatus(writeSent&&!definiteFailure?{kind:'error',text:word('The previous action could not be verified in its original context. Return there and retry the unchanged text; no saved result is assumed.','לא ניתן לאמת את הפעולה הקודמת בהקשר המקורי שלה. חזרו אליו ונסו שוב את הטקסט ללא שינוי; אין להניח שהתוצאה נשמרה.')}:null);
+    }
+    inFlight.current=false;
+   }
   }
   async function submit(e:FormEvent){e.preventDefault();if(!parentReady||!body.trim()||writeRef.current)return;const slot=`report:${draftKey}`;await post(slot,{action:'submit_report',caseId:selectedCaseId,audienceId:initialAudienceId,practiceVersionId:initialPracticeVersionId,body,idempotencyKey:mutation(slot,body)})}
   async function reply(reportId:string){const value=replyBodies[reportId]??'',slot=`reply:${reportId}`;if(!value.trim()||writeRef.current)return;await post(slot,{action:'reply',reportId,body:value,publish:true,idempotencyKey:mutation(slot,value)})}
