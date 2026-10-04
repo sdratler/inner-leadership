@@ -1,10 +1,19 @@
 import {describe,expect,it} from "vitest";
 import {buildOwnerDigest,summarizeProspects} from "../../../src/features/owner-digest/model.ts";
-import type {MarketingSnapshot,AdReporting} from "../../../src/features/marketing-overview/contracts.ts";
+import type {MarketingSnapshot,AdReporting,CreativeVersion,Publication} from "../../../src/features/marketing-overview/contracts.ts";
 const now=new Date("2026-10-02T21:30:00Z"),today="2026-10-03";
 const base={leadId:"LS-LEAD-a",stage:"Prospect",outcome:"",nextAction:"Owner action",dueDate:"10/3/2026",journeyState:"prospect",paymentVerified:false,bookingConfirmed:false};
 const marketing:MarketingSnapshot={source:"registry_only",fetchedAt:null,creatives:[],publications:[],ads:[],scout:{readyDrafts:null,sourceUrl:null,lastChecked:null,status:"unbound"}};
 describe("bounded private aggregate projection",()=>{
+ it.each(['he','en'] as const)('flags manual publication in %s without treating it as provider verified',locale=>{
+  const creative={assetId:'DEMO-status',revision:1,review:'approved',contentDigest:'a'.repeat(64),approvedDigest:'a'.repeat(64)} as CreativeVersion;
+  const item:Publication={id:'DEMO-publication',assetId:creative.assetId,creativeRevision:1,creativeDigest:creative.contentDigest,channel:'whatsapp_status',destinationLabel:'DEMO Status',scheduledFor:null,timezone:'Asia/Jerusalem',state:'manually_reported',provider:'whapi',providerReceiptId:null,providerReadAt:null,postUrl:null,receiptKind:'unknown',manualReportedAt:now.toISOString(),errorCode:null};
+  const inventory={files:1,concepts:1,publishablePosts:0,heStatusReady:0,heFeedReady:0,enFeedReady:0,adEligible:0,inLiveAds:null,queued:0,published:0,needsApproval:0,needsResizeOrCaption:0,heldMissing:0,partial:false,asOf:now.toISOString()};
+  const counts=summarizeProspects([],today,true),input={now,locale,marketing:{...marketing,creatives:[creative],publications:[item],inventory},followups:{data:counts,asOf:now.toISOString()},tasks:{data:{due:0,overdue:0,future:0},asOf:now.toISOString()},journeysAvailable:true};
+  const manual=buildOwnerDigest(input);expect(manual.actions).toContain('publication_unconfirmed');expect(manual.content.confirmedPublished).toBe(0);
+  const verified=buildOwnerDigest({...input,marketing:{...input.marketing,publications:[{...item,state:'published',receiptKind:'publication',providerReceiptId:'DEMO-receipt',providerReadAt:now.toISOString()}]}});
+  expect(verified.actions).not.toContain('publication_unconfirmed');expect(verified.content.confirmedPublished).toBe(1);
+ });
  it.each(['opt out','opted-out','OPT_OUT','do_not_contact','Do-Not-Contact'])('excludes suppressed %s from every operational count without altering stored text',value=>{
   const rows=[{...base,leadId:'LS-LEAD-suppressed-stage',stage:value,journeyState:'awaiting_payment'},{...base,leadId:'LS-LEAD-suppressed-outcome',outcome:value,paymentVerified:true}];
   expect(summarizeProspects(rows,today,true)).toEqual({due:0,overdue:0,future:0,missingDate:0,invalidDate:0,prospects:0,otherStages:0,awaitingForm:0,awaitingPayment:0,awaitingBooking:0});
