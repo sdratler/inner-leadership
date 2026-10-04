@@ -47,3 +47,30 @@ test("no publication or messages exist in processing ports", async () => { const
 test("expired lease cannot save a transcript or delete source", async () => { const { state, ports } = fixture(); ports.store.saveTranscript = async (_lease: Lease) => { throw new WorkflowError("LEASE_EXPIRED"); }; await processSession(job.id, ports); assert.equal(state.log.includes("delete_audio"), false); assert.equal(state.analysis, null); });
 test("incomplete chunk receipt never permits raw deletion", async () => { const { state, ports } = fixture(); ports.transcriber.transcribe = async () => ({ transcript: clone(transcript), requestId: "r", completion: { sourceDigest: job.sourceDigest, sourceDurationMs: 60000, coveredDurationMs: 30000, expectedChunks: 2, completedChunks: 1, providerCompleted: true } }); const outcome = await processSession(job.id, ports); assert.equal(outcome.status, "failed"); assert.equal(state.log.includes("delete_audio"), false); assert.equal(state.transcript, null); });
 test("saved pointer without completeness receipt cannot delete raw on resume", async () => { const { state, ports } = fixture(); state.transcript = clone(transcript); state.job.transcriptVersion = 1; state.job.transcriptDigest = transcriptDigest(transcript); state.job.transcriptCompleteVerified = false; assert.deepEqual(await processSession(job.id, ports), { status: "failed", code: "TRANSCRIPT_COMPLETENESS_NOT_VERIFIED" }); assert.equal(state.log.includes("delete_audio"), false); });
+
+test("verified audio and fresh authorization precede the in-flight provider checkpoint", async () => {
+    const { state, ports } = fixture();
+    ports.audio.readVerified = async () => { assert.equal(state.job.state, "queued"); state.log.push("audio_read"); return state.raw; };
+    assert.deepEqual(await processSession(job.id, ports), { status: "private_analysis_ready" });
+    assert(state.log.indexOf("audio_read") < state.log.findIndex(value => value.includes('"state":"transcribing"')));
+});
+
+test("processing adopts only the durable canonical version without changing provider transcript content", async () => {
+    const { state, ports } = fixture();
+    ports.store.saveTranscript = async (_lease, source) => {
+        const canonical = { ...clone(source), version: 2 }; state.transcript = canonical;
+        return { version: 2, digest: transcriptDigest(canonical), durable: true, completeVerified: true };
+    };
+    ports.analyst.analyze = async (source, locale) => { assert.deepEqual(source, { ...transcript, version: 2 }); return { ...clone(analysis), locale, transcriptVersion: 2 }; };
+    assert.deepEqual(await processSession(job.id, ports), { status: "private_analysis_ready" });
+    assert.equal(state.job.transcriptVersion, 2); assert.equal(state.analysis?.transcriptVersion, 2); assert.equal(transcript.version, 1);
+});
+
+test("canonical version allocation cannot legitimize altered durable transcript words", async () => {
+    const { state, ports } = fixture();
+    ports.store.saveTranscript = async (_lease, source) => {
+        const altered = { ...clone(source), version: 2, segments: source.segments.map(segment => ({ ...segment, text: "altered source" })) }; state.transcript = altered;
+        return { version: 2, digest: transcriptDigest(altered), durable: true, completeVerified: true };
+    };
+    assert.equal((await processSession(job.id, ports)).status, "failed"); assert.equal(state.log.includes("delete_audio"), false); assert.equal(state.analysis, null);
+});
