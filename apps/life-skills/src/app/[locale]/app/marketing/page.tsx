@@ -21,7 +21,7 @@ export default async function Page({params,searchParams}:{params:Promise<{locale
   query.section=normalizeMarketingSection(query.section);
   const digest=query.section==="overview"?await (async()=>{
    try{const context=await ownerDigestContext((await headers()).get("cookie"));return await loadOwnerDigest(context.actor,context.runtime,snapshot,locale);}
-   catch(error){if(error instanceof AppError&&error.code==="FORBIDDEN")return undefined;throw error;}
+   catch(error){if(error instanceof AppError&&error.code==="FORBIDDEN")notFound();throw error;}
   })():undefined;
   return <MarketingDashboard locale={locale} snapshot={snapshot} ownerDigest={digest} initialSection={query.section} initialFilter={query.filter} initialMonth={query.month} calendarQuery={query} creativeQuery={query} renderedAt={new Date().toISOString()}/>;
 }

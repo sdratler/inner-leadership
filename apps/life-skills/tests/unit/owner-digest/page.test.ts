@@ -18,10 +18,14 @@ function setup(){
  calls.context.mockResolvedValue({actor:{role:'practitioner'},runtime:{}});calls.digest.mockResolvedValue({syntheticDigest:true});
 }
 for(const locale of ['he','en'] as const){
- it('omits the private owner digest for another practitioner without breaking permitted marketing sections',async()=>{
+ it('denies the owner overview for another practitioner without exposing either read model',async()=>{
   setup();calls.context.mockRejectedValueOnce(new AppError('FORBIDDEN'));
-  const result=await Page({params:Promise.resolve({locale}),searchParams:Promise.resolve({section:'overview'})});
-  expect(result.type).toBe(MarketingDashboard);expect(result.props.ownerDigest).toBeUndefined();expect(calls.digest).not.toHaveBeenCalled();
+  await expect(Page({params:Promise.resolve({locale}),searchParams:Promise.resolve({section:'overview'})})).rejects.toThrow('NOT_FOUND');
+  expect(calls.digest).not.toHaveBeenCalled();
+ });
+ it('does not turn a fresh role denial during digest reads into a permitted marketing response',async()=>{
+  setup();calls.digest.mockRejectedValueOnce(new AppError('FORBIDDEN'));
+  await expect(Page({params:Promise.resolve({locale}),searchParams:Promise.resolve({section:'overview'})})).rejects.toThrow('NOT_FOUND');
  });
  it('does not hide an actual digest failure as another practitioner',async()=>{
   setup();calls.digest.mockRejectedValueOnce(new AppError('UNAVAILABLE'));
