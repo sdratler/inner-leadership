@@ -39,6 +39,15 @@ test.each(['parent','child','adult_client'] as const)('%s cannot discover unpubl
  assert.equal(audiences.mock.calls.length,0);
 });
 
+test.each(['practitioner','parent','child','adult_client'] as const)('%s Messages audience page uses only an exact bounded authorized cursor',async role=>{
+ const f=fixture(role),id=asId(randomUUID(),'case'),before=asId(randomUUID(),'audience'),audiences=vi.fn(async(...args:unknown[])=>{void args;return[];});f.services.cases.audiences=audiences;
+ const url=f.config.origin+'/api/identity/audiences?caseId='+id,headers={Cookie:'__Host-ls-session='+f.token};
+ assert.equal((await f.http.handle(new Request(url+'&view=messages',{headers}))).status,200);assert.deepEqual(audiences.mock.calls,[[f.actor,id,'messages',undefined]]);audiences.mockClear();
+ assert.equal((await f.http.handle(new Request(url+'&view=messages&beforeAudienceId='+before,{headers}))).status,200);assert.deepEqual(audiences.mock.calls,[[f.actor,id,'messages',before]]);audiences.mockClear();
+ for(const query of ['&beforeAudienceId='+before,'&view=management&beforeAudienceId='+before,'&view=messages&audienceId='+before,'&view=messages&beforeAudienceId=bad','&view=messages&beforeAudienceId='+before+'&beforeAudienceId='+before])
+  assert.equal((await f.http.handle(new Request(url+query,{headers}))).status,400);assert.equal(audiences.mock.calls.length,0);
+});
+
 test.each(['live','demo'] as const)('passes only a validated practitioner %s case query to the pre-limit service',async mode=>{
  const f=fixture('practitioner'),response=await f.http.handle(new Request(f.config.origin+'/api/identity/cases?mode='+mode,{headers:{Cookie:'__Host-ls-session='+f.token}}));
  assert.equal(response.status,200);assert.equal(response.headers.get('Cache-Control'),'private, no-store');

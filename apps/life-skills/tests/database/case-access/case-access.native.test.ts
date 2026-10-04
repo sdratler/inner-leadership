@@ -35,6 +35,25 @@ test('audience list includes truthful publication and excludes another parent-on
  const practitioner=await f.cases.audiences(f.practitioner.actor,f.first.id);expect(practitioner.every(a=>a.published===true)).toBe(true);expect(practitioner.some(a=>a.id===parentB.audienceId)).toBe(true);
  const parentA=await f.cases.audiences(f.parent.actor,f.first.id);expect(parentA.some(a=>a.id===f.first.audienceId&&a.published)).toBe(true);expect(parentA.some(a=>a.id===parentB.audienceId||a.id===privateAudience.audienceId)).toBe(false);
 });
+
+test('Messages audiences remain bounded and traversable after501 grants, with authorized exact lookup and cursor denials',async()=>{
+ const f=await open();const wrongParent=await f.cases.createAudience(f.practitioner.actor,f.first.id,{visibility:'family_full',published:true,accountIds:[f.parentTwo.actor.id]},randomUUID());
+ const hidden=await f.cases.createAudience(f.practitioner.actor,f.first.id,{visibility:'family_full',published:false},randomUUID());
+ for(let i=0;i<500;i++)await f.cases.createAudience(f.practitioner.actor,f.first.id,{visibility:'family_full',published:true,accountIds:[f.parent.actor.id]},randomUUID());
+ const seen=new Set<string>();let before:Parameters<typeof f.cases.audiences>[3];
+ for(let page=0;page<6;page++){
+  const rows=await f.cases.audiences(f.parent.actor,f.first.id,'messages',before);expect(rows.length).toBeLessThanOrEqual(100);expect(rows).toHaveLength(page===5?1:100);
+  for(const row of rows){expect(seen.has(row.id)).toBe(false);seen.add(row.id);expect(row.visibility).toBe('family_full');expect(row.published).toBe(true);}
+  before=rows.at(-1)!.id;
+ }
+ expect(seen.size).toBe(501);expect(seen.has(f.first.audienceId)).toBe(true);expect(seen.has(wrongParent.audienceId)).toBe(false);expect(seen.has(hidden.audienceId)).toBe(false);
+ expect(await f.cases.audiences(f.parent.actor,f.first.id,'messages',before)).toEqual([]);
+ expect(await f.cases.audience(f.parent.actor,f.first.id,f.first.audienceId)).toMatchObject({id:f.first.audienceId,published:true});
+ for(const cursor of [wrongParent.audienceId,hidden.audienceId,f.second.audienceId])await expect(f.cases.audiences(f.parent.actor,f.first.id,'messages',cursor)).rejects.toMatchObject({code:'NOT_FOUND'});
+ await f.pool.query('UPDATE ls_cases.audience_accounts SET revoked_at=clock_timestamp() WHERE workspace_id=$1 AND audience_id=$2 AND account_id=$3',[f.workspaceId,before,f.parent.actor.id]);
+ await expect(f.cases.audiences(f.parent.actor,f.first.id,'messages',before)).rejects.toMatchObject({code:'NOT_FOUND'});
+ const stored=(await f.pool.query('SELECT count(*)::int AS n FROM ls_cases.audiences WHERE workspace_id=$1 AND case_id=$2',[f.workspaceId,f.first.id])).rows[0].n;expect(stored).toBe(503);
+},60000);
 test('HTTP exposes only exact case query behind session boundary, with private no-store response',async()=>{
  const f=await open(),token=f.practitioner.token;
  const services={cases:f.cases,sessions:{async actor(){return f.practitioner.actor},csrf(){return 'c'.repeat(43)}},limits:{async consume(){return{count:1,retryAfterMs:0}}},audit:{async write(){}}} as unknown as IdentityHttpServices;
