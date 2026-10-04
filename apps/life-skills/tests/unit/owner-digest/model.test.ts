@@ -9,6 +9,12 @@ const now=new Date("2026-10-02T21:30:00Z"),today="2026-10-03";
 const base={leadId:"LS-LEAD-a",stage:"Prospect",outcome:"",nextAction:"Owner action",dueDate:"10/3/2026",journeyState:"prospect",paymentVerified:false,bookingConfirmed:false};
 const marketing:MarketingSnapshot={source:"registry_only",fetchedAt:null,creatives:[],publications:[],ads:[],scout:{readyDrafts:null,sourceUrl:null,lastChecked:null,status:"unbound"}};
 describe("bounded private aggregate projection",()=>{
+ it.each(['Closed','Not interested','No fit','CLOSED','Closed — older inquiry'])('excludes closed %s references without dropping an open reference or rewriting history',value=>{
+  const closed=[{...base,leadId:'LS-LEAD-closed-stage',stage:value,journeyState:'awaiting_payment'},{...base,leadId:'LS-LEAD-closed-outcome',outcome:value,paymentVerified:true}];
+  const open={...base,leadId:'LS-LEAD-open',stage:'Unclosed custom label',outcome:'Pending owner clarification'};
+  expect(summarizeProspects([...closed,open],today,true)).toEqual({due:1,overdue:0,future:0,missingDate:0,invalidDate:0,prospects:1,otherStages:1,awaitingForm:0,awaitingPayment:0,awaitingBooking:0});
+  expect(closed[0]!.stage).toBe(value);expect(closed[1]!.outcome).toBe(value);expect(open.stage).toBe('Unclosed custom label');
+ });
  it.each(['he','en'] as const)('flags manual publication in %s without treating it as provider verified',locale=>{
   const creative={assetId:'DEMO-status',revision:1,review:'approved',contentDigest:'a'.repeat(64),approvedDigest:'a'.repeat(64)} as CreativeVersion;
   const item:Publication={id:'DEMO-publication',assetId:creative.assetId,creativeRevision:1,creativeDigest:creative.contentDigest,channel:'whatsapp_status',destinationLabel:'DEMO Status',scheduledFor:null,timezone:'Asia/Jerusalem',state:'manually_reported',provider:'whapi',providerReceiptId:null,providerReadAt:null,postUrl:null,receiptKind:'unknown',manualReportedAt:now.toISOString(),errorCode:null};
