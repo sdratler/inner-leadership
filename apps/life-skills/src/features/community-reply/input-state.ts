@@ -11,6 +11,18 @@ function sameRecordedValue(left:unknown,right:unknown):boolean {
   return keys.length===Object.keys(b).length&&keys.every(key=>Object.hasOwn(b,key)&&sameRecordedValue(a[key],b[key]));
 }
 
+/** Reopening or editing cannot reassign a draft to another immutable input/source envelope. */
+export function matchesSavedDraftBinding(row:CommunitySavedDraft|undefined,previous:CommunitySavedDraft):row is CommunitySavedDraft {
+  return !!row&&row.draftId===previous.draftId&&row.question===previous.question&&row.originalUrl===previous.originalUrl&&
+    row.expiresAt===previous.expiresAt&&sameRecordedValue(row.generated,previous.generated);
+}
+
+/** Mutable edit/safety fields must match the exact receipt; immutable source identity cannot change. */
+export function matchesEditedDraftReadback(row:CommunitySavedDraft|undefined,previous:CommunitySavedDraft,receipt:CommunitySavedDraft,draft:string):row is CommunitySavedDraft {
+  return matchesSavedDraftBinding(row,previous)&&matchesSavedDraftBinding(receipt,previous)&&receipt.revision===previous.revision+1&&
+    receipt.draft===draft&&sameRecordedValue(row,receipt);
+}
+
 /** A generation is confirmed only by its complete persisted source, safety and provenance binding. */
 export function matchesGeneratedReadback(row:CommunitySavedDraft|undefined,value:CommunityReplyResult,input:CommunitySourceInput|null):boolean {
   if(!row||!input)return false;
