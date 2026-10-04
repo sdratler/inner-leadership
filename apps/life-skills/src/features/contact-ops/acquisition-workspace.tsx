@@ -57,7 +57,7 @@ export function AcquisitionWorkspace({locale,mode}:{locale:Locale;mode?:string|u
     {saved&&<div className="lsw-card" role="status"><p>{saved.state==="NOT_A_LEAD"?text("Marked not a lead. Original receipt metadata was retained.","סומנה כלא פנייה עסקית. פרטי הקבלה המקוריים נשמרו."):text("Owner decision saved without sending anything or creating a login.","החלטת הבעלים נשמרה בלי לשלוח דבר ובלי ליצור חשבון כניסה.")}</p>
      {saved.personId&&<><a href={`/${locale}/app/clients?personId=${saved.personId}`}>{text("Open person","פתיחת איש הקשר")}</a><p>{text("Google Life Skills Lead: pending · WhatsApp LS • Lead: pending. Provider connection/write is not verified.","Google Life Skills Lead: ממתין · WhatsApp LS • Lead: ממתין. החיבור והשינוי אצל הספק לא אומתו.")}</p></>}</div>}
     {busy&&<p role="status">{text("Loading authorized review records…","טוען רשומות מורשות לבדיקה…")}</p>}
-    {data&&<><p>{data.total} {text("needs review — not active prospects","לבדיקה — לא מתעניינים פעילים")}</p><div className="lsw-stack">{data.items.map(item=><AcquisitionReviewCard key={item.id} item={item} epoch={data.authorityEpoch} locale={locale} draft={drafts.get(item.id)}
+    {data&&<><AcquisitionWindowSummary locale={locale} total={data.total} hasMore={data.hasMore}/><div className="lsw-stack">{data.items.map(item=><AcquisitionReviewCard key={item.id} item={item} epoch={data.authorityEpoch} locale={locale} draft={drafts.get(item.id)}
      remember={draft=>setDrafts(previous=>new Map(previous).set(item.id,draft))} saved={result=>{if(lifecycle.current.alive){setDrafts(previous=>{const next=new Map(previous);next.delete(item.id);return next;});setSaved(result);void load();}}}
      denied={status=>{if(lifecycle.current.alive){lifecycle.current.serial++;setData(null);setSource(null);setBusy(false);setFailure(status);setDrafts(new Map());setSaved(null);setQuery("");}}}
      refresh={()=>void load()}/>)}</div>
@@ -66,6 +66,11 @@ export function AcquisitionWorkspace({locale,mode}:{locale:Locale;mode?:string|u
    </>}
   </section>}
  </main>;
+}
+export function AcquisitionWindowSummary({locale,total,hasMore}:{locale:Locale;total:number;hasMore:boolean}){
+ const text=(en:string,he:string)=>locale==='he'?he:en;
+ return <><p>{total} {text("needs review — not active prospects","לבדיקה — לא מתעניינים פעילים")}</p>
+  {hasMore&&<p className="lsw-help" role="status">{text("Showing the latest 1,000 pending records only. Search and counts apply to this window; older pending records appear as decisions are saved.","מוצגות רק 1,000 הרשומות האחרונות שממתינות לבדיקה. החיפוש והספירה מתייחסים לחלון הזה; רשומות קודמות יופיעו ככל שהחלטות יישמרו.")}</p>}</>;
 }
 export function AcquisitionReviewCard({item,epoch,locale,draft,remember,saved,denied,refresh}:{item:AcquisitionReviewItem;epoch:number;locale:Locale;draft?:Draft|undefined;
  remember:(draft:Draft)=>void;saved:(result:AcquisitionDecisionResult)=>void;denied:(status:number)=>void;refresh:()=>void}){

@@ -110,14 +110,16 @@ export async function processSession(jobId: string, ports: ProcessingPorts, summ
             }
         }
         // Immediate after durable transcription, not after eventual Share update or manual review.
-        await ports.store.checkpoint(lease, { audioState: "delete_pending" });
-        try {
-            await ports.audio.deleteAndVerify(lease);
-            await ports.store.checkpoint(lease, { audioState: "deleted" });
-        }
-        catch {
-            await ports.store.checkpoint(lease, { audioState: "deletion_failed" });
-            throw new WorkflowError("AUDIO_DELETION_FAILED");
+        if (lease.job.audioState !== "deleted") {
+            await ports.store.checkpoint(lease, { audioState: "delete_pending" });
+            try {
+                await ports.audio.deleteAndVerify(lease);
+                await ports.store.checkpoint(lease, { audioState: "deleted" });
+            }
+            catch {
+                await ports.store.checkpoint(lease, { audioState: "deletion_failed" });
+                throw new WorkflowError("AUDIO_DELETION_FAILED");
+            }
         }
         await ports.store.assertCurrentPermission(lease);
         invariant(lease.job.state !== "analyzing" && lease.job.failureCode !== "ANALYSIS_OUTCOME_UNKNOWN", "ANALYSIS_OUTCOME_UNKNOWN");

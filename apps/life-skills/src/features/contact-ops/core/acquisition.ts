@@ -55,12 +55,14 @@ export type AcquisitionDecisionResult={candidateId:string;state:"PROMOTED"|"MATC
  projections:{google:"pending";whatsapp:"pending";reason:"provider_not_verified"}|null};
 export type AcquisitionMatch={personId:string;displayName:string;version:number|null;eligible:boolean};
 export type AcquisitionReviewItem=AcquisitionCandidate&{matching:{state:"unmatched"|"existing"|"ambiguous"|"reserved";people:AcquisitionMatch[]}};
-export type AcquisitionPage={items:AcquisitionReviewItem[];total:number;page:number;pages:number;authorityEpoch:number};
+/** Counts and search cover the latest bounded pending window. hasMore refers
+ * to pending records outside that window, independently of the search. */
+export type AcquisitionPage={items:AcquisitionReviewItem[];total:number;page:number;pages:number;authorityEpoch:number;hasMore:boolean};
 export const acquisitionPageSchema:z.ZodType<AcquisitionPage>=z.object({
  items:z.array(acquisitionCandidateMetadataSchema.extend({state:z.literal("NEEDS_REVIEW"),matching:z.object({
   state:z.enum(["unmatched","existing","ambiguous","reserved"]),people:z.array(z.object({personId:z.string().uuid(),
    displayName:z.string().max(120),version:z.number().int().min(1).nullable(),eligible:z.boolean()}).strict()).max(1000)}).strict()}).strict()).max(12),
- total:z.number().int().min(0).max(1000),page:z.number().int().min(1),pages:z.number().int().min(1),authorityEpoch:epoch
+ total:z.number().int().min(0).max(1000),page:z.number().int().min(1),pages:z.number().int().min(1),authorityEpoch:epoch,hasMore:z.boolean()
 }).strict().refine(value=>value.pages===Math.max(1,Math.ceil(value.total/12))&&value.page<=value.pages&&value.items.length<=value.total);
 export const acquisitionDecisionResultSchema:z.ZodType<AcquisitionDecisionResult>=z.object({candidateId:z.string().uuid(),
  state:z.enum(["PROMOTED","MATCHED","NOT_A_LEAD"]),personId:z.string().uuid().nullable(),version:z.number().int().min(1).max(2147483646).nullable(),
