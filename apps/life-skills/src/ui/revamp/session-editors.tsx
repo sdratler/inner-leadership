@@ -7,15 +7,19 @@ import { useCommand, type CommandPort } from "./use-command.ts";
 import {sameSpeakerLabels} from "../../features/session-workflow/speaker-corrections.ts";
 import type {SpeakerSaveReceipt} from "../../features/session-workflow/client.ts";
 import type {TranscriptReadMetadata} from "../../features/session-workflow/private-records.ts";
+import type {RecapPracticeChoices,RecapPracticeSelection} from "../../features/session-workflow/recap-contract.ts";
+import {RecapPracticePicker} from "./recap-practice-picker.tsx";
+import {UnsavedChangesGuard} from "../workspace/draft-guard.tsx";
 export interface RecapEditInput {
     sessionId: string;
     expectedVersion: number;
     locale: Locale;
     focus: readonly BroadFocus[];
     nextStep: string;
+    practiceSelections?:readonly RecapPracticeSelection[];
 }
 /** The server owns attendance, calendar facts and published responsibility versions. This editor cannot change them. */
-export function RoutineRecapEditor({ sessionId, initial, locale, port, onSaved, onCancel }: {
+export function RoutineRecapEditor({ sessionId, initial, locale, port, onSaved, onCancel,loadPractices }: {
     sessionId: string;
     initial: RoutineRecap | null;
     locale: Locale;
@@ -25,15 +29,22 @@ export function RoutineRecapEditor({ sessionId, initial, locale, port, onSaved, 
     }>;
     onSaved: () => void;
     onCancel: () => void;
+    loadPractices?:((signal:AbortSignal,cursor?:string)=>Promise<RecapPracticeChoices>)|undefined;
 }) {
-    const [focus, setFocus] = useState<readonly BroadFocus[]>(initial?.focus ?? []), [nextStep, setNextStep] = useState(initial?.nextStep ?? ""), [language, setLanguage] = useState<Locale>(initial?.locale ?? locale);
+    const fromSaved=(value:RoutineRecap|null)=>value?.practices.map(row=>({versionId:row.responsibilityId,expectedSourceDigest:"",instructions:row.instructions}))??[];
+    const [base,setBase]=useState(initial),[focus, setFocus] = useState<readonly BroadFocus[]>(initial?.focus ?? []), [nextStep, setNextStep] = useState(initial?.nextStep ?? ""), [language, setLanguage] = useState<Locale>(initial?.locale ?? locale),[practices,setPractices]=useState<RecapPracticeSelection[]>(()=>fromSaved(initial));
+    const dirty=JSON.stringify([language,focus,nextStep,practices.map(row=>[row.versionId,row.instructions])])!==JSON.stringify([base?.locale??locale,base?.focus??[],base?.nextStep??"",fromSaved(base).map(row=>[row.versionId,row.instructions])]),newer=(base?.version??0)!==(initial?.version??0),unconfirmed=practices.some(row=>!row.expectedSourceDigest||!row.instructions.trim());
     const command = useCommand(port, () => onSaved());
-    return <form className="lsr" onSubmit={e => { e.preventDefault(); void command.execute({ sessionId, expectedVersion: initial?.version ?? 0, locale: language, focus, nextStep }); }}>
+    const warning=word(locale,"Your update draft is not saved. Leave and discard these edits?","טיוטת העדכון לא נשמרה. לצאת ולבטל את השינויים האלה?");
+    const error=command.error==="CONFLICT"?word(locale,"A newer version or source exists. Your draft was not replaced. Read the current session and explicitly discard or compare these edits.","יש גרסה או מקור חדשים יותר. הטיוטה שלך לא הוחלפה. יש לקרוא את המפגש הנוכחי ולבחור במפורש בביטול השינויים או בהשוואתם."):command.error?word(locale,"The update was not saved. Your text remains here; check the selected sources and your authorized session.","העדכון לא נשמר. הטקסט נשאר כאן; יש לבדוק את המקורות שנבחרו ואת הרשאת המפגש."):null;
+    return <form className="lsr" onSubmit={e => { e.preventDefault(); if(!newer&&!unconfirmed)void command.execute({ sessionId, expectedVersion: base?.version ?? 0, locale: language, focus, nextStep,practiceSelections:practices }); }}><UnsavedChangesGuard dirty={dirty||command.locked} message={warning}/>
+  {newer&&<p role="alert">{word(locale,"A newer saved update exists. Your draft remains unchanged.","קיים עדכון שמור חדש יותר. הטיוטה שלך נשארה ללא שינוי.")}</p>}
  <fieldset disabled={command.locked}><legend>{word(locale, "Broad focus — at most three", "מוקד כללי — עד שלושה נושאים")}</legend><div className="lsr-choice-grid">{(Object.keys(FOCUS_LABELS) as BroadFocus[]).map(id => <label key={id}><input type="checkbox" checked={focus.includes(id)} disabled={!focus.includes(id) && focus.length >= 3} onChange={e => setFocus(e.target.checked ? [...focus, id] : focus.filter(x => x !== id))}/>{FOCUS_LABELS[id][locale]}</label>)}</div></fieldset>
  <label>{word(locale, "Short next step", "הצעד הבא בקצרה")}<textarea value={nextStep} maxLength={300} rows={3} disabled={command.locked} onChange={e => setNextStep(e.target.value)}/></label>
- <label>{word(locale, "Language of this saved version", "שפת הגרסה השמורה הזאת")}<select value={language} disabled={command.locked} onChange={e => setLanguage(e.target.value as Locale)}><option value="en">English</option><option value="he">עברית</option></select></label>
+  <label>{word(locale, "Language of this saved version", "שפת הגרסה השמורה הזאת")}<select value={language} disabled={command.locked} onChange={e => setLanguage(e.target.value as Locale)}><option value="en">English</option><option value="he">עברית</option></select></label>
+  <RecapPracticePicker locale={locale} selected={practices} onChange={setPractices} load={loadPractices} locked={command.locked}/>
  <p className="lsr-help">{word(locale, "Selecting a language labels the text you write; it does not silently translate it. An AI translation is a new reviewed version. Attendance, assignments and next meeting come from their records.", "בחירת שפה מסמנת את שפת הטקסט שכתבת; היא אינה מתרגמת אותו. תרגום בבינה מלאכותית הוא גרסה חדשה לבדיקה. נוכחות, תרגול והמועד הבא מגיעים מהרשומות שלהם.")}</p>
- <div className="lsr-actions"><button className="lsr-primary" disabled={command.locked} type="submit">{word(locale, "Save update draft", "שמירת טיוטת עדכון")}</button><button disabled={command.locked} type="button" onClick={onCancel}>{word(locale, "Cancel", "ביטול")}</button></div><SaveStatus locale={locale} phase={command.phase} error={command.error} onReconcile={() => void command.reconcile()}/></form>;
+  <div className="lsr-actions"><button className="lsr-primary" disabled={command.locked||newer||unconfirmed} type="submit">{word(locale, "Save update draft", "שמירת טיוטת עדכון")}</button><button disabled={command.locked} type="button" onClick={()=>{if(!dirty||window.confirm(warning))onCancel();}}>{word(locale, "Cancel", "ביטול")}</button>{newer&&<button type="button" disabled={command.locked} onClick={()=>{if(dirty&&!window.confirm(warning))return;setBase(initial);setFocus(initial?.focus??[]);setNextStep(initial?.nextStep??"");setLanguage(initial?.locale??locale);setPractices(fromSaved(initial));}}>{word(locale,"Discard draft / use current saved version","ביטול טיוטה / שימוש בגרסה השמורה הנוכחית")}</button>}</div><SaveStatus locale={locale} phase={command.phase} error={error} onReconcile={() => void command.reconcile()}/></form>;
 }
 export interface SpeakerEditInput {
     sessionId: string;
