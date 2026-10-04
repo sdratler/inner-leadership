@@ -18,6 +18,13 @@ describe("public static perimeter", () => {
 });
 
 afterEach(() => vi.unstubAllEnvs());
+describe('owned community draft API stays behind the existing private perimeter',()=>{
+ it('keeps the explicit app enablement gate instead of relying on a generic success page',()=>{
+  const origin='https://life-skills.bneineviimacademy.org';vi.stubEnv('NODE_ENV','production');vi.stubEnv('LS_APP_MODE','foundation_locked');vi.stubEnv('LS_APP_ORIGIN',origin);
+  vi.stubEnv('LS_PRIVATE_APP_ENABLED','false');expect(proxy(new NextRequest(origin+'/api/community-drafts')).status).toBe(503);
+  vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');expect(proxy(new NextRequest(origin+'/api/community-drafts')).status).toBe(200);
+ });
+});
 describe('exact private Marketing media perimeter',()=>{
  const origin='https://life-skills.bneineviimacademy.org',path='/api/marketing/assets/DEMO-image';
  const configured=()=>{vi.stubEnv('NODE_ENV','production');vi.stubEnv('LS_APP_MODE','foundation_locked');vi.stubEnv('LS_APP_ORIGIN',origin);vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');};
