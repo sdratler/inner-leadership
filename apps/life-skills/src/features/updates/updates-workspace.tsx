@@ -29,6 +29,7 @@ export function UpdatesWorkspace({locale,role="parent",initialCaseId="",initialA
   const caseId=caseSelection.route===initialCaseId?caseSelection.selected:initialCaseId;
   const [audiences,setAudiences]=useState<UpdateAudience[]>([]),[audienceId,setAudienceId]=useState(initialAudienceId),[audienceState,setAudienceState]=useState<{caseId:string;status:'loading'|'ready'|'error'}>({caseId:'',status:'loading'}),[audienceRevision,setAudienceRevision]=useState(0);
   const [threads,setThreads]=useState<UpdateThread[]>([]),[threadsState,setThreadsState]=useState<{key:string;status:'idle'|'loading'|'ready'|'error'}>({key:'',status:'idle'}),[revision,setRevision]=useState(0);
+  const [replyPage,setReplyPage]=useState<{key:string;reportId:string;before:string|null;busy:boolean;error:boolean}>({key:'',reportId:'',before:null,busy:false,error:false}),[olderReplies,setOlderReplies]=useState<Record<string,boolean>>({});
   const [drafts,setDrafts]=useState<Record<string,string>>({}),[replyBodies,setReplyBodies]=useState<Record<string,string>>({}),[composerOpen,setComposerOpen]=useState(false),[status,setStatus]=useState<{kind:'saved'|'error';text:string}|null>(null);
   type Write={slot:string;payload:Record<string,unknown>;state:'sending'|'unknown'};
   const [write,setWrite]=useState<Write|null>(null),writeRef=useRef<Write|null>(null),mutations=useRef<Record<string,{body:string;key:string}>>({}),mounted=useRef(false),inFlight=useRef(false),generation=useRef(0);
@@ -44,19 +45,29 @@ export function UpdatesWorkspace({locale,role="parent",initialCaseId="",initialA
   const parentReady=reporter&&audienceReady&&activeAudienceId===initialAudienceId&&feedbackContextReady(initialCaseId,selectedCaseId,initialAudienceId,initialPracticeVersionId)&&audiences.some(item=>item.id===initialAudienceId&&item.visibility==='family_full');
   const contextKey=`${selectedCaseId}:${activeAudienceId}`,draftKey=`${initialCaseId}:${initialAudienceId}:${initialPracticeVersionId}`,body=parentReady?(drafts[draftKey]??''):'';
   useEffect(()=>()=>{generation.current++},[contextKey]);
-  function clearDeniedAccess(){generation.current++;setCases([]);setCasesState('error');setAudiences([]);setThreads([]);setDrafts({});setReplyBodies({});setComposerOpen(false);writeRef.current=null;mutations.current={};setWrite(null);setStatus(null);}
-  async function readThreads(signal?:AbortSignal){
-   const query=new URLSearchParams({caseId:selectedCaseId,audienceId:activeAudienceId}),response=await fetch(`/api/updates?${query}`,{credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',...(signal?{signal}:{})});
+  function clearDeniedAccess(){generation.current++;setCases([]);setCasesState('error');setAudiences([]);setThreads([]);setOlderReplies({});setReplyPage({key:'',reportId:'',before:null,busy:false,error:false});setDrafts({});setReplyBodies({});setComposerOpen(false);writeRef.current=null;mutations.current={};setWrite(null);setStatus(null);}
+  async function readThreads(signal?:AbortSignal,history?:{reportId:string;before:string|null}){
+   const query=new URLSearchParams({caseId:selectedCaseId,audienceId:activeAudienceId});if(history){query.set('reportId',history.reportId);if(history.before)query.set('beforeReplyId',history.before);}
+   const response=await fetch(`/api/updates?${query}`,{credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer',...(signal?{signal}:{})});
    if([401,403,404].includes(response.status))throw new IdentityClientError(response.status===401?'UNAUTHENTICATED':response.status===403?'FORBIDDEN':'NOT_FOUND');
    const payload=await response.json() as {ok?:unknown;data?:unknown};
    if(!response.ok||payload.ok!==true)throw Error('UNAVAILABLE');return parseUpdateThreads(payload.data,selectedCaseId,activeAudienceId,role==='practitioner');
   }
   useEffect(()=>{const controller=new AbortController();if(!selectedCaseId||!activeAudienceId){queueMicrotask(()=>{if(!controller.signal.aborted)setThreadsState({key:contextKey,status:'idle'})});return()=>controller.abort()}
    queueMicrotask(()=>{if(!controller.signal.aborted){setThreads([]);setThreadsState({key:contextKey,status:'loading'})}});
-   void readThreads(controller.signal).then(rows=>{if(!controller.signal.aborted){setThreads(rows);setThreadsState({key:contextKey,status:'ready'})}}).catch(error=>{if(!controller.signal.aborted){if(error instanceof IdentityClientError&&['UNAUTHENTICATED','FORBIDDEN','NOT_FOUND'].includes(error.code)){clearDeniedAccess();return;}setThreads([]);setThreadsState({key:contextKey,status:'error'})}});return()=>controller.abort();
+   void readThreads(controller.signal).then(rows=>{if(!controller.signal.aborted){setThreads(rows);setOlderReplies({});setThreadsState({key:contextKey,status:'ready'})}}).catch(error=>{if(!controller.signal.aborted){if(error instanceof IdentityClientError&&['UNAUTHENTICATED','FORBIDDEN','NOT_FOUND'].includes(error.code)){clearDeniedAccess();return;}setThreads([]);setThreadsState({key:contextKey,status:'error'})}});return()=>controller.abort();
    // The exact selected case/audience and locale-independent reader own this effect.
    // eslint-disable-next-line react-hooks/exhaustive-deps
   },[activeAudienceId,contextKey,selectedCaseId,revision,role]);
+  async function readReplyPage(reportId:string,before:string|null){
+   if(!mounted.current||inFlight.current||writeRef.current||!activeAudienceId)return;
+   inFlight.current=true;const epoch=generation.current,current=()=>mounted.current&&generation.current===epoch;
+   setReplyPage({key:contextKey,reportId,before,busy:true,error:false});
+   try{const rows=await readThreads(undefined,{reportId,before});if(rows.length!==1||rows[0]!.report.id!==reportId)throw Error('UNAVAILABLE');if(!current())return;
+    setThreads(previous=>previous.map(row=>row.report.id===reportId?rows[0]!:row));setOlderReplies(previous=>({...previous,[reportId]:Boolean(before)}));setReplyPage({key:contextKey,reportId,before,busy:false,error:false});
+   }catch(error){if(current()){if(error instanceof IdentityClientError&&['UNAUTHENTICATED','FORBIDDEN','NOT_FOUND'].includes(error.code)){clearDeniedAccess();return;}setReplyPage({key:contextKey,reportId,before,busy:false,error:true});}}
+   finally{inFlight.current=false;}
+  }
   function mutation(slot:string,value:string){const prior=mutations.current[slot];if(prior?.body===value)return prior.key;const key=crypto.randomUUID();mutations.current[slot]={body:value,key};return key}
   function clearSavedInput(payload:Record<string,unknown>){if(payload.action==='submit_report'){setDrafts(current=>current[draftKey]===payload.body?{...current,[draftKey]:''}:current);setComposerOpen(false)}else if(payload.action==='reply')setReplyBodies(current=>current[String(payload.reportId)]===payload.body?{...current,[String(payload.reportId)]:''}:current);}
   async function post(slot:string,payload:Record<string,unknown>,retry=false){
@@ -68,7 +79,7 @@ export function UpdatesWorkspace({locale,role="parent",initialCaseId="",initialA
     const result=await response.json() as {ok?:unknown;data?:unknown;error?:{code?:unknown}};
     if(!response.ok||result.ok!==true)throw Error('UNAVAILABLE');
     if(!current())return false;const rows=await readThreads();if(!updateSaveVerified(rows,payload,result.data))throw Error('UNVERIFIED');if(!current())return false;
-    setThreads(rows);setThreadsState({key:contextKey,status:'ready'});setStatus({kind:'saved',text:word('Saved and verified.','נשמר ואומת.')});clearSavedInput(payload);writeRef.current=null;setWrite(null);return true;
+    setThreads(rows);setOlderReplies({});setThreadsState({key:contextKey,status:'ready'});setStatus({kind:'saved',text:word('Saved and verified.','נשמר ואומת.')});clearSavedInput(payload);writeRef.current=null;setWrite(null);return true;
    }catch(error){if(current()){
     definiteFailure||=!writeSent&&error instanceof IdentityClientError&&['INVALID_REQUEST','UNAUTHENTICATED','FORBIDDEN','NOT_FOUND','CONFLICT','RATE_LIMITED'].includes(error.code);
     accessDenied||=error instanceof IdentityClientError&&['UNAUTHENTICATED','FORBIDDEN','NOT_FOUND'].includes(error.code);
@@ -80,13 +91,16 @@ export function UpdatesWorkspace({locale,role="parent",initialCaseId="",initialA
   async function submit(e:FormEvent){e.preventDefault();if(!parentReady||!body.trim()||writeRef.current)return;const slot=`report:${draftKey}`;await post(slot,{action:'submit_report',caseId:selectedCaseId,audienceId:initialAudienceId,practiceVersionId:initialPracticeVersionId,body,idempotencyKey:mutation(slot,body)})}
   async function reply(reportId:string){const value=replyBodies[reportId]??'',slot=`reply:${reportId}`;if(!value.trim()||writeRef.current)return;await post(slot,{action:'reply',reportId,body:value,publish:true,idempotencyKey:mutation(slot,value)})}
   async function review(reportId:string){await post(`review:${reportId}`,{action:'review',reportId})}
-  const locked=write!==null,visible=threadsState.key===contextKey,dirty=Object.values(drafts).some(Boolean)||Object.values(replyBodies).some(Boolean)||locked;
+  const locked=write!==null||replyPage.key===contextKey&&replyPage.busy,visible=threadsState.key===contextKey,dirty=Object.values(drafts).some(Boolean)||Object.values(replyBodies).some(Boolean)||write!==null;
   const retryRead=<button className="lsw-button lsw-button--secondary" type="button" disabled={locked} onClick={()=>setRevision(value=>value+1)}>{word('Retry feedback read','ניסיון קריאת משוב נוסף')}</button>;
   const showThreads=!visible||threadsState.status==='loading'?<p role="status">{t.loadingUpdates}</p>:threadsState.status==='error'?<div role="alert"><p>{word('Feedback could not be loaded. Previously loaded information has been cleared.','לא ניתן לטעון את המשוב. המידע שנטען קודם נוקה.')}</p>{retryRead}</div>:threadsState.status==='ready'&&!threads.length?<p>{t.noUpdates}</p>:threads.map(thread=><article className="lsw-card lsw-stack" key={thread.report.id}>
    <div className="lsw-section-header"><div><strong>{t.submitted}</strong><p className="lsw-help">{readableTime(locale,thread.report.submittedAt)}</p></div><span className="lsw-context">{t.status}: {word({new:'New',reviewed:'Reviewed',replied:'Replied',adapted:'Adapted'}[thread.report.reviewState],{new:'חדש',reviewed:'נבדק',replied:'נשלחה תגובה',adapted:'הותאם'}[thread.report.reviewState])}</span></div>
    <details className="lsw-details"><summary>{t.viewDetails}</summary><p style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{thread.report.body}</p></details>
    {role==='practitioner'?<section className="lsw-stack"><button className="lsw-button lsw-button--secondary" type="button" disabled={locked||thread.report.reviewState!=='new'} onClick={()=>void review(thread.report.id)}>{t.review}</button><details className="lsw-details"><summary>{t.replyBody}</summary><div className="lsw-stack"><label className="lsw-field" htmlFor={`reply-${thread.report.id}`}>{t.replyBody}<textarea id={`reply-${thread.report.id}`} className="lsw-input" disabled={locked} maxLength={8000} value={replyBodies[thread.report.id]??''} onChange={e=>setReplyBodies(current=>({...current,[thread.report.id]:e.target.value}))}/></label><button className="lsw-button lsw-button--primary" type="button" disabled={locked||!replyBodies[thread.report.id]?.trim()} onClick={()=>void reply(thread.report.id)}>{t.reply}</button></div></details></section>:null}
    {thread.replies.map(item=><details className="lsw-details" key={item.id}><summary>{t.replyDetails} · {readableTime(locale,item.createdAt)}</summary><p style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{item.body}</p></details>)}
+   {(thread.nextRepliesBefore||olderReplies[thread.report.id])&&<div className="lsw-actions"><p className="lsw-help">{olderReplies[thread.report.id]?word('Older replies · up to 100 per page','תגובות קודמות · עד 100 בעמוד'):word('Latest replies · up to 100 per page','תגובות אחרונות · עד 100 בעמוד')}</p>{thread.nextRepliesBefore&&<button type="button" className="lsw-button lsw-button--secondary" disabled={locked} onClick={()=>void readReplyPage(thread.report.id,thread.nextRepliesBefore!)}>{word('Read older replies','קריאת תגובות קודמות')}</button>}{olderReplies[thread.report.id]&&<button type="button" className="lsw-button lsw-button--secondary" disabled={locked} onClick={()=>void readReplyPage(thread.report.id,null)}>{word('Return to latest replies','חזרה לתגובות האחרונות')}</button>}</div>}
+   {replyPage.key===contextKey&&replyPage.reportId===thread.report.id&&replyPage.busy&&<p role="status">{word('Checking authorized reply history…','בודק היסטוריית תגובות מורשית…')}</p>}
+   {replyPage.key===contextKey&&replyPage.reportId===thread.report.id&&replyPage.error&&<div role="alert"><p>{word('This reply page could not be verified. The last verified page and your unsaved text are retained.','לא ניתן לאמת את עמוד התגובות הזה. העמוד האחרון שאומת והטקסט שלא נשמר נשארו כאן.')}</p><button className="lsw-button" type="button" disabled={locked} onClick={()=>void readReplyPage(thread.report.id,replyPage.before)}>{word('Retry reply history','ניסיון קריאת היסטוריית תגובות נוסף')}</button></div>}
   </article>);
   return <main className="lsw-stack lsw-feedback" lang={locale} dir={he?'rtl':'ltr'}>
    <UnsavedChangesGuard dirty={dirty} message={word('You have unsaved or unverified text. Leave this page?','יש טקסט שלא נשמר או שלא אומת. לצאת מהעמוד?')}/>

@@ -29,6 +29,31 @@ const authorizedRead = (url: string) => Response.json({ ok: true, data: url.star
 
 beforeEach(() => { hook.reset(); accountRead.mockReset(); sessionInfo.mockClear(); fetchMock.mockReset(); vi.stubGlobal("fetch", fetchMock); vi.spyOn(crypto, "randomUUID").mockRestore(); });
 
+function historyFixture(){
+ const id=(n:number)=>`70000000-0000-4000-8000-${String(n).padStart(12,'0')}`,at='2026-10-04T07:00:00.000Z',report={id:id(1),workspaceId:id(2),caseId:caseA,audienceId:audienceA,authorAccountId:id(3),body:'DEMO attributed history',eventAt:null,submittedAt:at,reviewState:'replied',reviewedByAccountId:id(4),reviewedAt:at,practice:{workspaceId:id(2),caseId:caseA,assignmentId:id(5),versionId:id(6),audienceId:audienceA,visibility:'family_full',publishedAt:at,immutableSnapshotDigest:'a'.repeat(64)}};
+ const reply=(n:number,body:string)=>({id:id(n),reportId:report.id,authorAccountId:id(4),body,state:'published',createdAt:at,publishedAt:at,supersedesReplyId:null});
+ const latest={report,replies:Array.from({length:100},(_,n)=>reply(n+100,'DEMO latest reply')),nextRepliesBefore:id(100)},older={report,replies:[reply(99,'DEMO oldest reply')],nextRepliesBefore:null};
+ return{latest,older};
+}
+it.each(['en','he'] as const)('pages actual retained reply controls with retry/latest return and unsaved input preserved (%s)',async locale=>{
+ const f=historyFixture(),props={locale,role:'practitioner' as const,initialCaseId:caseA,initialAudienceId:audienceA};let fail=true;
+ accountRead.mockResolvedValue([{id:caseA,displayName:'DEMO synthetic case',kind:'minor'}]);
+ fetchMock.mockImplementation(async(url:string)=>{if(url.startsWith('/api/identity/audiences'))return authorizedRead(url);const older=new URL(url,'https://synthetic.invalid').searchParams.has('beforeReplyId');return older&&fail?Response.json({ok:false},{status:503}):Response.json({ok:true,data:[older?f.older:f.latest]});});
+ let output=await ready(props);(find(output,e=>e.type==='textarea'&&e.props.id===`reply-${f.latest.report.id}`)?.props.onChange as Change)({target:{value:'DEMO unsaved reply'}});output=render(props);
+ const olderLabel=locale==='en'?'Read older replies':'קריאת תגובות קודמות';(find(output,e=>e.type==='button'&&e.props.children===olderLabel)?.props.onClick as Click)();await tick();output=render(props);
+ expect(text(output)).toContain('DEMO latest reply');expect(find(output,e=>e.type==='textarea')?.props.value).toBe('DEMO unsaved reply');expect(text(output)).not.toContain('DEMO oldest reply');
+ fail=false;(find(output,e=>e.type==='button'&&e.props.children===(locale==='en'?'Retry reply history':'ניסיון קריאת היסטוריית תגובות נוסף'))?.props.onClick as Click)();await tick();output=render(props);
+ expect(text(output)).toContain('DEMO oldest reply');expect(text(output)).not.toContain('DEMO latest reply');expect(find(output,e=>e.type==='textarea')?.props.value).toBe('DEMO unsaved reply');
+ (find(output,e=>e.type==='button'&&e.props.children===(locale==='en'?'Return to latest replies':'חזרה לתגובות האחרונות'))?.props.onClick as Click)();await tick();output=render(props);
+ expect(text(output)).toContain('DEMO latest reply');expect(text(output)).not.toContain('DEMO oldest reply');expect(find(output,e=>e.type==='textarea')?.props.value).toBe('DEMO unsaved reply');expect(postBodies()).toHaveLength(0);
+});
+it('clears private history and the unsaved reply when a fresh older-page read is denied',async()=>{
+ const f=historyFixture(),props={locale:'en' as const,role:'practitioner' as const,initialCaseId:caseA,initialAudienceId:audienceA};
+ accountRead.mockResolvedValue([{id:caseA,displayName:'DEMO synthetic case',kind:'minor'}]);fetchMock.mockImplementation(async(url:string)=>url.startsWith('/api/identity/audiences')?authorizedRead(url):url.includes('beforeReplyId')?new Response('',{status:403}):Response.json({ok:true,data:[f.latest]}));
+ let output=await ready(props);(find(output,e=>e.type==='textarea')?.props.onChange as Change)({target:{value:'DEMO revoked unsaved reply'}});output=render(props);(find(output,e=>e.type==='button'&&e.props.children==='Read older replies')?.props.onClick as Click)();await tick();output=render(props);
+ expect(text(output)).not.toContain('DEMO latest reply');expect(JSON.stringify(output)).not.toContain('DEMO revoked unsaved reply');expect(find(output,e=>e.type==='textarea')).toBeUndefined();expect(postBodies()).toHaveLength(0);
+});
+
 it("requires exact case, audience, and practice-version context", () => { expect(feedbackContextReady(caseA, caseA, audienceA, "version-a")).toBe(true); expect(feedbackContextReady(caseA, caseB, audienceA, "version-a")).toBe(false); expect(feedbackContextReady(caseA, caseA, "", "version-a")).toBe(false); });
 
 it("does not render old case/audience data after a delayed switch", async () => {
