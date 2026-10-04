@@ -1,5 +1,13 @@
 export type CommunitySourceInput = { question: string; originalUrl: string };
 
+/** The same public source boundary applies before generation and when reading saved drafts. */
+export function isCommunitySourceUrl(value: string): boolean {
+  if (value.length > 1000) return false;
+  try { const url = new URL(value); return url.protocol === "https:" && !url.username && !url.password &&
+    ["facebook.com", "www.facebook.com", "m.facebook.com"].includes(url.hostname); }
+  catch { return false; }
+}
+
 /** Only the authenticated API's explicit limit response warrants a limit-specific message. */
 export function replyFailureKind(status: number, code?: string): "limited" | "unconfirmed" {
   return status === 429 && code === "RATE_LIMITED" ? "limited" : "unconfirmed";

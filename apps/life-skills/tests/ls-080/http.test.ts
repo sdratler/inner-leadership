@@ -33,6 +33,15 @@ function makeFixture(count = 1) {
 }
 
 describe("LS-080 HTTP boundary", () => {
+  it('accepts bounded reply cursors only with an exact report/context and rejects duplicate or partial keys',async()=>{
+    const f=makeFixture(),base=`https://app.example.test/api/updates?caseId=${uuid(4)}&audienceId=${uuid(5)}`,headers={cookie:`__Host-ls-session=${token}`};
+    expect((await f.http.handle(new Request(base+`&reportId=${uuid(6)}&beforeReplyId=${uuid(7)}`,{headers}))).status).toBe(200);
+    expect(f.list).toHaveBeenLastCalledWith(actor,uuid(4),uuid(5),{reportId:uuid(6),beforeReplyId:uuid(7)});
+    expect((await f.http.handle(new Request(base+`&reportId=${uuid(6)}`,{headers}))).status).toBe(200);
+    expect(f.list).toHaveBeenLastCalledWith(actor,uuid(4),uuid(5),{reportId:uuid(6)});
+    for(const suffix of [`&beforeReplyId=${uuid(7)}`,`&reportId=${uuid(6)}&beforeReplyId=invalid`,`&caseId=${uuid(4)}`,`&reportId=${uuid(6)}&reportId=${uuid(6)}`,`&offset=100`])expect((await f.http.handle(new Request(base+suffix,{headers}))).status).toBe(400);
+    expect(f.list).toHaveBeenCalledTimes(2);
+  });
   it('accepts only the configured single HTTPS forwarding chain without changing actor or mutation validation',async()=>{
     const f=makeFixture(),headers={host:'app.example.test','x-forwarded-host':'app.example.test','x-forwarded-proto':'https',cookie:`__Host-ls-session=${token}`};
     const read=await f.http.handle(new Request(`http://127.0.0.1:8080/api/updates?caseId=${uuid(4)}&audienceId=${uuid(5)}`,{headers}));

@@ -6,6 +6,11 @@ const reply=()=>({id:uid(8),reportId:uid(1),authorAccountId:uid(9),body:'DEMO au
 const submission=()=>({action:'submit_report',caseId:uid(3),audienceId:uid(4),practiceVersionId:uid(7),body:' DEMO authorized feedback ',idempotencyKey:uid(10)});
 
 describe('retained updates context and protected readback',()=>{
+ it('keeps 100-reply envelopes bounded and requires an exact oldest-visible cursor',()=>{
+  const replies=Array.from({length:100},(_,n)=>({...reply(),id:uid(n+100)}));
+  expect(parseUpdateThreads([{report:report(),replies,nextRepliesBefore:replies[0]!.id}],uid(3),uid(4),false)[0]!.replies).toHaveLength(100);
+  for(const invalid of [{report:report(),replies:[...replies,{...reply(),id:uid(999)}],nextRepliesBefore:null},{report:report(),replies,nextRepliesBefore:uid(999)},{report:report(),replies:[reply()],nextRepliesBefore:reply().id}])expect(()=>parseUpdateThreads([invalid],uid(3),uid(4),false)).toThrow();
+ });
  it('parses only actual unique authorized case/audience DTOs',()=>{
   expect(parseUpdateCases([{id:uid(3),displayName:'DEMO client',kind:'minor',state:'active'}])).toEqual([{id:uid(3),displayName:'DEMO client',kind:'minor'}]);
   expect(parseUpdateAudiences([{id:uid(4),visibility:'family_full',published:true}])).toEqual([{id:uid(4),visibility:'family_full'}]);
