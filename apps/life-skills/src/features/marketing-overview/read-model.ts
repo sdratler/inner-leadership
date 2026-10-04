@@ -72,7 +72,7 @@ function validatePublication(p: Publication): void {
     // creative is unavailable. These are display-only, never usable queue or
     // delivery evidence. Preserve the source state and reason without a digest.
     const unresolvedState = ["unknown", "skipped", "failed", "held"].includes(p.state) || p.state === "draft" && typeof p.errorCode === "string" && p.errorCode.length > 0;
-    const explicitMissing = unresolvedState && p.provider === "unbound" && p.receiptKind === "unknown" && p.providerReceiptId === null && p.providerReadAt === null && p.manualReportedAt === null && (p.confirmedAt === undefined || p.confirmedAt === null);
+    const explicitMissing = unresolvedState && p.provider === "unbound" && p.receiptKind === "unknown" && p.providerReceiptId === null && p.providerReadAt === null && p.postUrl === null && p.manualReportedAt === null && (p.confirmedAt === undefined || p.confirmedAt === null);
     invariant(assetKey && /^[a-f0-9]{64}$/.test(p.creativeDigest) || (assetKey || p.assetId === "") && p.creativeDigest === "" && explicitMissing, "PUBLICATION_BINDING");
     invariant(["whatsapp_status", "facebook_page", "instagram", "facebook_group_manual", "whatsapp_group_manual"].includes(p.channel) && ["draft", "held", "ready", "scheduled", "sending", "published", "failed", "unknown", "skipped", "manually_reported"].includes(p.state) && ["whapi", "publer", "meta", "manual", "unbound"].includes(p.provider) && ["schedule", "publication", "manual_open", "unknown"].includes(p.receiptKind), "PUBLICATION_FIELDS");
     invariant([p.providerReceiptId, p.postUrl, p.errorCode].every(value => value === null || typeof value === "string"), "PUBLICATION_FIELDS");

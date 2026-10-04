@@ -88,7 +88,7 @@ test.each([
  const snapshot=await loadMarketingSnapshot();expect(snapshot.inventoryReadback?.status).toBe("available");expect(snapshot.creatives).toHaveLength(1);expect(snapshot.publications).toEqual([unresolved]);
 });
 
-test.each([{state:"ready"},{state:"scheduled"},{state:"sending"},{state:"published"},{state:"manually_reported"},{provider:"whapi"},{providerReceiptId:"invented"},{providerReadAt:readAt},{manualReportedAt:readAt},{receiptKind:"publication"},{confirmedAt:readAt}])("missing image binding cannot acquire actionable or verified delivery evidence: %j",async patch=>{
+test.each([{state:"ready"},{state:"scheduled"},{state:"sending"},{state:"published"},{state:"manually_reported"},{provider:"whapi"},{providerReceiptId:"invented"},{providerReadAt:readAt},{manualReportedAt:readAt},{receiptKind:"publication"},{confirmedAt:readAt},{postUrl:"https://www.facebook.com/demo/posts/123"}])("missing image binding cannot acquire actionable or verified delivery evidence: %j",async patch=>{
  const unresolved={...publication(),creativeDigest:"",state:"unknown",errorCode:"UNRESOLVED",...patch};
  mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,publications:[unresolved]}});
  const {loadMarketingSnapshot}=await import("../../../src/features/marketing-overview/provider.ts");expect((await loadMarketingSnapshot()).inventoryReadback?.status).toBe("error");
