@@ -54,36 +54,41 @@ test("one canonical submission excludes other valid invitations across every lat
 test('pending forms include other practitioners only within the same workspace and valid invitation lifecycle',async()=>{
  const other=await fixture(),lead='LS-LEAD-handover-'+randomUUID(),row={leadId:lead,stage:'Prospect',outcome:'',nextAction:'',dueDate:''} as Prospect;
  try{
-  await f.pool.query("UPDATE ls_identity.accounts SET role='practitioner' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.outsider.actor.id]);
   const insert=async(workspace:string,creator:string,expired=false,revoked=false)=>{
    const id=randomUUID();await f.pool.query(`INSERT INTO ls_intake.pre_enrollment_invitations(workspace_id,invitation_id,token_digest,stable_lead_ref,child_slots,expires_at,created_at,created_by_account_id,revoked_at)
     VALUES($1,$2,$3,$4,'["synthetic-slot"]'::jsonb,$5,clock_timestamp(),$6,$7)`,[workspace,id,createHash('sha256').update(id).digest('hex'),lead,new Date(now.getTime()+(expired?-86400000:86400000)),creator,revoked?now:null]);return id;
   };
   await insert(other.workspaceId,other.practitioner.actor.id);
-  expect((await readIntakeFacts(store(),f.practitioner.actor,[row],now)).awaitingForm).toBe(0);
-  await insert(f.workspaceId,f.outsider.actor.id,true);await insert(f.workspaceId,f.outsider.actor.id,false,true);
-  expect((await readIntakeFacts(store(),f.practitioner.actor,[row],now)).awaitingForm).toBe(0);
-  const valid=await insert(f.workspaceId,f.outsider.actor.id);
-  expect((await readIntakeFacts(store(),f.practitioner.actor,[row],now)).awaitingForm).toBe(1);
+  await insert(f.workspaceId,f.practitioner.actor.id,true);await insert(f.workspaceId,f.practitioner.actor.id,false,true);
+  // Model a handover while preserving the actual one-practitioner index.
+  await f.pool.query("UPDATE ls_identity.accounts SET role='parent' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.practitioner.actor.id]);
+  await f.pool.query("UPDATE ls_identity.accounts SET role='practitioner' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.outsider.actor.id]);
+  expect((await readIntakeFacts(store(),f.outsider.actor,[row],now)).awaitingForm).toBe(0);
+  await f.pool.query("UPDATE ls_identity.accounts SET role='parent' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.outsider.actor.id]);
+  await f.pool.query("UPDATE ls_identity.accounts SET role='practitioner' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.practitioner.actor.id]);
+  const valid=await insert(f.workspaceId,f.practitioner.actor.id);
+  await f.pool.query("UPDATE ls_identity.accounts SET role='parent' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.practitioner.actor.id]);
+  await f.pool.query("UPDATE ls_identity.accounts SET role='practitioner' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.outsider.actor.id]);
+  expect((await readIntakeFacts(store(),f.outsider.actor,[row],now)).awaitingForm).toBe(1);
   await f.pool.query('UPDATE ls_intake.pre_enrollment_invitations SET consumed_at=$3 WHERE workspace_id=$1 AND invitation_id=$2',[f.workspaceId,valid,now]);
-  expect((await readIntakeFacts(store(),f.practitioner.actor,[row],now)).awaitingForm).toBe(0);
+  expect((await readIntakeFacts(store(),f.outsider.actor,[row],now)).awaitingForm).toBe(0);
  }finally{
-  await f.pool.query("UPDATE ls_identity.accounts SET role='parent' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.outsider.actor.id]);await other.pool.end();
+  await f.pool.query("UPDATE ls_identity.accounts SET role='parent' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.outsider.actor.id]);
+  await f.pool.query("UPDATE ls_identity.accounts SET role='practitioner' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.practitioner.actor.id]);await other.pool.end();
  }
 });
 test('actual native owner account binding excludes other practitioners and unverified owners',async()=>{
- const lookupKey=randomBytes(32),runtime={store:store(),clock:{now:()=>now},config:{workspaceId:f.workspaceId,lookupKey}} as Parameters<typeof loadOwnerDigest>[1];
+ const other=await fixture(),lookupKey=randomBytes(32),runtime={store:store(),clock:{now:()=>now},config:{workspaceId:f.workspaceId,lookupKey}} as Parameters<typeof loadOwnerDigest>[1];
  const marketing:MarketingSnapshot={source:'synthetic',fetchedAt:null,creatives:[],publications:[],ads:[],scout:{readyDrafts:null,sourceUrl:null,lastChecked:null,status:'unbound'}};
  await f.pool.query('UPDATE ls_identity.accounts SET email_blind=$3 WHERE workspace_id=$1 AND id=$2',[f.workspaceId,f.practitioner.actor.id,blindEmail(OWNER_REPORT_RECIPIENT,lookupKey)]);
- await f.pool.query("UPDATE ls_identity.accounts SET role='practitioner' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.outsider.actor.id]);
  try{
-  await expect(loadOwnerDigest(f.outsider.actor,runtime,marketing,'en')).rejects.toMatchObject({code:'FORBIDDEN'});
+  await expect(loadOwnerDigest(other.practitioner.actor,runtime,marketing,'en')).rejects.toMatchObject({code:'FORBIDDEN'});
   const digest=await loadOwnerDigest(f.practitioner.actor,runtime,marketing,'en');expect(digest.reportDate).toBe(today);
   await f.pool.query('UPDATE ls_identity.accounts SET email_verified_at=NULL WHERE workspace_id=$1 AND id=$2',[f.workspaceId,f.practitioner.actor.id]);
   await expect(loadOwnerDigest(f.practitioner.actor,runtime,marketing,'en')).rejects.toMatchObject({code:'FORBIDDEN'});
  }finally{
   await f.pool.query('UPDATE ls_identity.accounts SET email_verified_at=$3 WHERE workspace_id=$1 AND id=$2',[f.workspaceId,f.practitioner.actor.id,now]);
-  await f.pool.query("UPDATE ls_identity.accounts SET role='parent' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.outsider.actor.id]);
+  await other.pool.end();
  }
 });
 test("normal native roles, changed role and revoked session cannot read owner aggregates",async()=>{
