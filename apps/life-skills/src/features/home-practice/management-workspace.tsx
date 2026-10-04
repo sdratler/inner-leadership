@@ -19,6 +19,9 @@ const words = {
 type Kind = "home-practice" | "goals" | "commitments";
 type Draft = { title: string; reference: string; instructions: string; startsOn: string; endsOn: string; goalId: string; commitmentId: string; revision: ManagedPracticeVersion | null;responsibility?:ResponsibilityInput|undefined };
 const blank = (): Draft => ({ title: "", reference: "", instructions: "", startsOn: "", endsOn: "", goalId: "", commitmentId: "", revision: null });
+export function practiceDraftIsDirty(draft: Draft): boolean {
+  return Boolean(draft.title || draft.reference || draft.instructions || draft.startsOn || draft.endsOn || draft.goalId || draft.commitmentId || draft.revision || draft.responsibility);
+}
 
 export function PracticeManagementWorkspace({ locale, kind, caseId, audienceId }: { locale: "en" | "he"; kind: Kind; caseId?: string | undefined; audienceId?: string | undefined }) {
   // The keyed editor below prevents stale case/audience data being reused after
@@ -39,7 +42,7 @@ function ManagementEditor({ locale, kind, caseId, initialAudienceId }: { locale:
     return {...current,[id]:value};
   }),[]);
   const inFlight = useRef(false), generation = useRef(0), mounted = useRef(false);
-  const draftDirty = Boolean(draft.title || draft.reference || draft.instructions || draft.startsOn || draft.endsOn || draft.goalId || draft.commitmentId || draft.revision),rangeDirty=Object.values(ranges).some(value=>value.dirty),dirty=draftDirty||rangeDirty;
+  const draftDirty = practiceDraftIsDirty(draft),rangeDirty=Object.values(ranges).some(value=>value.dirty),dirty=draftDirty||rangeDirty;
   const load = useCallback(async (id: string, signal: AbortSignal,command?:PracticeAuthoringCommand) => {
     const audiences = await managementAudiences(caseId, signal), target = id || audiences[0]?.id;
     if (!target) return { id: "", audiences, data: { practice: { items: [], hasMore: false }, goals: [], commitments: [] } };
