@@ -6,6 +6,12 @@ import {actionableCreative,creativeFilters,creativePlacement,creativeReviewState
 import type {CreativeVersion,MarketingSnapshot} from '../../../src/features/marketing-overview/contracts.ts';
 const asset=(patch:Partial<CreativeVersion>={}):CreativeVersion=>({assetId:'DEMO-one',revision:1,locale:'he',width:1080,height:1350,imageUrl:null,title:'DEMO — שלום',caption:'First public caption',contentDigest:'a'.repeat(64),approvedDigest:null,review:'draft',surface:'FACEBOOK_FEED',...patch});
 describe('registered creative filters',()=>{
+ it('preserves legacy records and stored approval while refusing false exact-version or actionable evidence',()=>{
+  const row=Object.freeze(asset({registeredRevision:false,review:'approved',approvedDigest:'a'.repeat(64)}));
+  expect(creativeReviewState(row)).toBe('unknown');expect(actionableCreative(row,[row])).toBe(false);
+  expect(filterCreatives([row],creativeFilters({approval:'all'}))).toEqual([row]);expect(filterCreatives([row],creativeFilters({approval:'approved'}))).toEqual([]);
+  expect(row.review).toBe('approved');expect(row.revision).toBe(1);expect(row.approvedDigest).toBe('a'.repeat(64));
+ });
  it('converts existing channel links into visible editable filters without leaving a hidden preset',()=>{
   expect(creativeFilters({filter:'he_status'})).toEqual({language:'he',placement:'whatsapp_status',approval:'all',search:''});
   expect(creativeFilters({filter:'en_feed',language:'all',placement:'all'})).toMatchObject({language:'all',placement:'all'});

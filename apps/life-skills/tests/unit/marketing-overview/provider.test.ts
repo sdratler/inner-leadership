@@ -8,6 +8,19 @@ const inventory=()=>({files:1,concepts:1,publishablePosts:0,heStatusReady:0,heFe
 const publication=()=>({id:"synthetic-publication",assetId:"DEMO-image",creativeRevision:1,creativeDigest:"a".repeat(64),channel:"whatsapp_status",destinationLabel:"Synthetic Status",scheduledFor:null,timezone:"Asia/Jerusalem",state:"draft",provider:"unbound",providerReceiptId:null,providerReadAt:null,postUrl:null,receiptKind:"unknown",manualReportedAt:null,errorCode:null});
 const registry=()=>({success:true,snapshot:{fetchedAt:readAt,workbookUrl:"https://docs.google.com/spreadsheets/d/synthetic/edit",creatives:[{assetId:"DEMO-image",revision:1,imageUrl:"https://drive.google.com/file/d/synthetic_file/view",sourceUrl:"https://drive.google.com/file/d/synthetic_file/view",contentDigest:"a".repeat(64),locale:"he",width:1080,height:1920,review:"in_review",approvedDigest:null,caption:"",title:"Synthetic original"}],publications:[],inventory:inventory()}});
 beforeEach(()=>{vi.resetModules();vi.clearAllMocks();mocks.registry.mockResolvedValue(registry());mocks.meta.mockResolvedValue({fetchedAt:metaAt,ads:[],adSeries:[],adReporting:{}});});
+test("an explicitly unregistered revision stays visible but never produces an original-image request",async()=>{
+ const asset={...registry().snapshot.creatives[0],registeredRevision:false};mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,creatives:[asset]}});
+ const {loadMarketingSnapshot}=await import("../../../src/features/marketing-overview/provider.ts");const snapshot=await loadMarketingSnapshot();
+ expect(snapshot.inventoryReadback?.status).toBe("available");expect(snapshot.creatives[0]).toMatchObject({registeredRevision:false,imageUrl:null,assetId:asset.assetId,revision:asset.revision,sourceUrl:asset.sourceUrl});
+});
+test.each([undefined,null,"true",1,{}])("an invalid explicit registered-revision marker cannot become exact media evidence: %j",async registeredRevision=>{
+ mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,creatives:[{...registry().snapshot.creatives[0],registeredRevision}]}});
+ const {loadMarketingSnapshot}=await import("../../../src/features/marketing-overview/provider.ts");expect((await loadMarketingSnapshot()).inventoryReadback?.status).toBe("error");
+});
+test("an inherited registered-revision marker is not own source evidence",async()=>{
+ const asset=Object.assign(Object.create({registeredRevision:true}),registry().snapshot.creatives[0]);mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,creatives:[asset]}});
+ const {loadMarketingSnapshot}=await import("../../../src/features/marketing-overview/provider.ts");expect((await loadMarketingSnapshot()).inventoryReadback?.status).toBe("error");
+});
 test("inventory freshness belongs to inventory, not the newer direct-ad metric read",async()=>{
  const {loadMarketingSnapshot}=await import("../../../src/features/marketing-overview/provider.ts"),snapshot=await loadMarketingSnapshot();
  expect(snapshot.inventoryReadback).toMatchObject({status:"available",lastSuccessfulReadAt:readAt,errorCode:null});expect(snapshot.fetchedAt).toBe(metaAt);expect(snapshot.creatives[0]?.imageUrl).toBe(`/api/marketing/assets/DEMO-image?revision=1&digest=${"a".repeat(64)}`);expect(snapshot.creatives[0]?.sourceUrl).toBe(registry().snapshot.creatives[0]?.sourceUrl);

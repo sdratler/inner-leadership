@@ -1,7 +1,10 @@
 import type { CreativeVersion, MarketingSnapshot, Publication } from "./contracts.ts";
 import { invariant, validIso, validTimezone } from "../session-workflow/policy.ts";
+export function registeredCreativeRevision(asset: CreativeVersion): boolean {
+    return !("registeredRevision" in asset) || Object.hasOwn(asset, "registeredRevision") && asset.registeredRevision === true;
+}
 export function approvedCreative(asset: CreativeVersion): boolean {
-    return asset.review === "approved" && /^[a-f0-9]{64}$/.test(asset.contentDigest) && asset.contentDigest === asset.approvedDigest;
+    return registeredCreativeRevision(asset) && asset.review === "approved" && /^[a-f0-9]{64}$/.test(asset.contentDigest) && asset.contentDigest === asset.approvedDigest;
 }
 export function publicationLabel(p: Publication, assets: readonly CreativeVersion[]): string {
     if (p.state === "held") return "Held — not eligible for publication";
@@ -52,6 +55,7 @@ function validateCreative(asset: CreativeVersion): void {
     invariant(typeof asset === "object" && asset !== null && !Array.isArray(asset), "CREATIVE_FIELDS");
     const required = ["assetId", "revision", "locale", "width", "height", "imageUrl", "title", "caption", "contentDigest", "review", "approvedDigest"];
     invariant(required.every(key => Object.hasOwn(asset, key)), "CREATIVE_FIELDS");
+    invariant(!("registeredRevision" in asset) || Object.hasOwn(asset, "registeredRevision") && typeof asset.registeredRevision === "boolean", "CREATIVE_FIELDS");
     invariant(typeof asset.assetId === "string" && /^[A-Za-z0-9._-]{1,200}$/.test(asset.assetId) && Number.isSafeInteger(asset.revision) && asset.revision > 0 && asset.revision <= 999999 && ["en", "he"].includes(asset.locale), "CREATIVE_IDENTITY");
     // Zero means an unrecorded size: preserve the record, but never use it as a
     // valid next/image dimension or infer placement eligibility from it.

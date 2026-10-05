@@ -1,7 +1,8 @@
 import type {CreativeVersion} from "./contracts.ts";
+import {registeredCreativeRevision} from "./read-model.ts";
 /** Session-gated original bytes; no OAuth/bridge secret or remote file ID in URLs. */
 export function creativeMediaPath(asset:CreativeVersion,download=false):string|null {
- if(!/^[A-Za-z0-9._-]{1,200}$/.test(asset.assetId)||!Number.isSafeInteger(asset.revision)||asset.revision<1||asset.revision>999999||! /^[a-f0-9]{64}$/.test(asset.contentDigest)||!asset.imageUrl)return null;
+ if(!registeredCreativeRevision(asset)||!/^[A-Za-z0-9._-]{1,200}$/.test(asset.assetId)||!Number.isSafeInteger(asset.revision)||asset.revision<1||asset.revision>999999||! /^[a-f0-9]{64}$/.test(asset.contentDigest)||!asset.imageUrl)return null;
  const query=new URLSearchParams({revision:String(asset.revision),digest:asset.contentDigest,...(download?{download:"1"}:{})});
  const ordinaryPath=`/api/marketing/assets/${encodeURIComponent(asset.assetId)}?${new URLSearchParams({revision:String(asset.revision),digest:asset.contentDigest})}`;
  if(asset.imageUrl!==ordinaryPath){

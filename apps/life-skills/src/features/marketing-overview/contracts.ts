@@ -3,6 +3,8 @@ export type Channel = "whatsapp_status" | "facebook_page" | "instagram" | "faceb
 export interface CreativeVersion {
     assetId: string;
     revision: number;
+    /** Explicit producer evidence; false means the display revision is a legacy fallback. */
+    registeredRevision?: boolean;
     locale: "en" | "he";
     width: number;
     height: number;

@@ -1,5 +1,5 @@
 import type {CreativeVersion} from './contracts.ts';
-import {approvedCreative} from './read-model.ts';
+import {approvedCreative,registeredCreativeRevision} from './read-model.ts';
 
 export const creativePlacements = ['all','facebook_feed','whatsapp_status','instagram_feed','other'] as const;
 export const creativeApprovals = ['all','needs_approval','approved','retired','rejected','unknown'] as const;
@@ -26,6 +26,7 @@ export function creativeReviewState(asset:CreativeVersion):'approved'|'retired'|
  const library=asset.libraryState?.trim().toUpperCase();
  if(asset.review==='retired'||library==='RETIRED'||library==='ARCHIVED')return 'retired';
  if(library==='REJECTED'||library==='DISCARDED')return 'rejected';
+ if(!registeredCreativeRevision(asset))return 'unknown';
  if(approvedCreative(asset))return 'approved';
  return ['draft','in_review','approved'].includes(asset.review)?'unapproved':'unknown';
 }

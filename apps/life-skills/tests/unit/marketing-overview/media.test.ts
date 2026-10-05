@@ -38,5 +38,6 @@ test("non-image, partial and altered upstream bytes fail closed; errors reveal n
 test("image links name only the registered version and digest; invalid/missing originals have no link",()=>{
  const asset={assetId:"DEMO-image",revision:1,contentDigest:digest,imageUrl:"https://drive.google.com/file/d/synthetic_file/view"} as Parameters<typeof creativeMediaPath>[0];
  expect(creativeMediaPath(asset)).toBe(url.replace("https://life-skills.bneineviimacademy.org",""));expect(creativeMediaPath(asset,true)).toContain("download=1");expect(creativeMediaPath({...asset,imageUrl:null})).toBeNull();expect(creativeMediaPath({...asset,assetId:"../bad"})).toBeNull();
+ expect(creativeMediaPath({...asset,registeredRevision:false})).toBeNull();expect(creativeMediaPath({...asset,registeredRevision:true})).toBe(url.replace("https://life-skills.bneineviimacademy.org",""));
  for(const imageUrl of ["https://attacker.invalid/file/d/synthetic_file/view","https://drive.google.com.evil.invalid/file/d/synthetic_file/view","/api/marketing/assets/other?revision=1","https://drive.google.com/drive/folders/synthetic_file"])expect(creativeMediaPath({...asset,imageUrl})).toBeNull();
 });
