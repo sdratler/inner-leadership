@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import type { Locale } from "../../lib/locale.ts";
+import { revealWorkspaceTab } from "./tab-visibility.ts";
 import { activeItem, breadcrumbItems, isCaseId, isClientWorkspacePath, practitionerContext, primaryNavigation, workspaceContext, workspaceGroups, workspaceHref, type ContextItem, type NavItem, type WorkspaceRole } from "./navigation-model.ts";
 import "./professional-ui.css";
 const copy = {
@@ -14,6 +15,7 @@ export function WorkspaceShell({ locale, role, clientRole, pathname, caseId, aud
   const t = copy[locale], active = role === "practitioner" && effectiveSelectedClient && caseId ? primaryNavigation.practitioner.find(item=>item.key==="clients") : activeItem(pathname, locale, role);
   const drawer = useRef<HTMLDialogElement>(null), trigger = useRef<HTMLButtonElement>(null), account = useRef<HTMLDetailsElement>(null);
   const drawerId = useId(), titleId = useId();
+  const tabStrip = useRef<HTMLElement>(null);
   const navigationContext=role==='practitioner'?workspaceContext({mode,date,view,context:effectiveSelectedClient&&caseId?'client':undefined}):{};
   const href = (path: string) => toHref ? toHref(path) : workspaceHref(locale, path, caseId,navigationContext,role === 'practitioner' ? audienceId : undefined);
   const close = () => { drawer.current?.close(); trigger.current?.focus(); };
@@ -39,7 +41,20 @@ export function WorkspaceShell({ locale, role, clientRole, pathname, caseId, aud
     if(entry.key==="whatsapp"&&!clientContext){url.searchParams.delete("caseId");url.searchParams.delete("context");}
     return url.pathname + url.search;
   };
-  const topTabs = <nav className="lsu-top-tabs" aria-label={role === "practitioner" ? (locale === "he" ? "תצוגות הדף הנוכחי" : "Current page views") : (locale === "he" ? "חלקי המרחב" : "Workspace sections")}>{contextItems.map(entry => <a key={entry.key} href={role === "practitioner" ? contextHref(entry) : href(entry.path)} aria-current={role === "practitioner" ? (currentContext === entry.key ? "page" : undefined) : (active?.key === entry.key ? "page" : undefined)}>{entry[locale]}</a>)}</nav>;
+  const tabKeys = contextItems.map(entry => entry.key).join('|');
+  useEffect(() => {
+    const strip = tabStrip.current;
+    if (!strip) return;
+    const reveal = () => revealWorkspaceTab(strip, strip.querySelector<HTMLElement>('[aria-current="page"]'));
+    reveal();
+    const observer = new ResizeObserver(reveal);
+    observer.observe(strip);
+    for (const child of strip.children) observer.observe(child);
+    return () => observer.disconnect();
+  }, [pathname, currentContext, active?.key, locale, tabKeys]);
+  const topTabs = <nav ref={tabStrip} className="lsu-top-tabs" onFocus={event => {
+    if (event.target instanceof HTMLElement) revealWorkspaceTab(event.currentTarget, event.target.closest('a'));
+  }} aria-label={role === "practitioner" ? (locale === "he" ? "תצוגות הדף הנוכחי" : "Current page views") : (locale === "he" ? "חלקי המרחב" : "Workspace sections")}>{contextItems.map(entry => <a key={entry.key} href={role === "practitioner" ? contextHref(entry) : href(entry.path)} aria-current={role === "practitioner" ? (currentContext === entry.key ? "page" : undefined) : (active?.key === entry.key ? "page" : undefined)}>{entry[locale]}</a>)}</nav>;
   const settings = `${role === "parent" ? "family" : role === "client" ? "client" : "app"}/settings`;
   const groups = roleGroups.map(group => <details key={`${group.key}:${active?.key ?? "none"}`} className="lsu-nav-group" open={group.items.some(x => x.key === active?.key)}><summary>{group[locale]}<span aria-hidden="true">⌄</span></summary><div>{group.items.map(link)}</div></details>);
   const crumbs = breadcrumbItems(locale, role, pathname, section, view, effectiveSelectedClient, caseId);
