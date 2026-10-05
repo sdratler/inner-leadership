@@ -5,6 +5,13 @@ export interface CreativeVersion {
     revision: number;
     /** Explicit producer evidence; false means the display revision is a legacy fallback. */
     registeredRevision?: boolean;
+    registeredRevisionLabel?: string;
+    /** Source metadata only. Unknown cycle is never guessed from an ingest date. */
+    concept?: number | null;
+    cycle?: string | null;
+    catalogKind?: string;
+    /** Secondary records cannot become delivery/review items. */
+    collection?: "templates" | "history";
     locale: "en" | "he";
     width: number;
     height: number;
@@ -106,6 +113,7 @@ export interface MarketingSnapshot {
     source: "synthetic" | "provider_readback" | "registry_only";
     fetchedAt: string | null;
     creatives: readonly CreativeVersion[];
+    library?: readonly CreativeVersion[];
     publications: readonly Publication[];
     ads: readonly AdSnapshot[];
     inventory?: MarketingInventory;

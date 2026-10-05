@@ -8,6 +8,22 @@ const inventory=()=>({files:1,concepts:1,publishablePosts:0,heStatusReady:0,heFe
 const publication=()=>({id:"synthetic-publication",assetId:"DEMO-image",creativeRevision:1,creativeDigest:"a".repeat(64),channel:"whatsapp_status",destinationLabel:"Synthetic Status",scheduledFor:null,timezone:"Asia/Jerusalem",state:"draft",provider:"unbound",providerReceiptId:null,providerReadAt:null,postUrl:null,receiptKind:"unknown",manualReportedAt:null,errorCode:null});
 const registry=()=>({success:true,snapshot:{fetchedAt:readAt,workbookUrl:"https://docs.google.com/spreadsheets/d/synthetic/edit",creatives:[{assetId:"DEMO-image",revision:1,imageUrl:"https://drive.google.com/file/d/synthetic_file/view",sourceUrl:"https://drive.google.com/file/d/synthetic_file/view",contentDigest:"a".repeat(64),locale:"he",width:1080,height:1920,review:"in_review",approvedDigest:null,caption:"",title:"Synthetic original"}],publications:[],inventory:inventory()}});
 beforeEach(()=>{vi.resetModules();vi.clearAllMocks();mocks.registry.mockResolvedValue(registry());mocks.meta.mockResolvedValue({fetchedAt:metaAt,ads:[],adSeries:[],adReporting:{}});});
+
+test("secondary originals/history retain a separate private exact collection and honest unregistered metadata",async()=>{
+ const original={...registry().snapshot.creatives[0],collection:'templates',catalogKind:'NATIVE_ORIGINAL',concept:3,cycle:null,registeredRevisionLabel:'r1'},history={...original,assetId:'DEMO-history',collection:'history',review:'retired',approvedDigest:null};
+ const legacy={...original,assetId:'DEMO-legacy',registeredRevision:false,registeredRevisionLabel:'20260911'};
+ mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,library:[original,history,legacy]}});const {loadMarketingSnapshot}=await import("../../../src/features/marketing-overview/provider.ts");const result=await loadMarketingSnapshot();
+ expect(result.inventoryReadback?.status).toBe('available');expect(result.creatives).toHaveLength(1);expect(result.library).toHaveLength(3);expect(result.library?.[0]?.imageUrl).toContain('collection=templates');expect(result.library?.[1]?.imageUrl).toContain('collection=history');expect(result.library?.[2]).toMatchObject({imageUrl:null,registeredRevisionLabel:'20260911',cycle:null});
+});
+
+test.each([{collection:'current'},{collection:'history',review:'in_review'},{collection:'history',review:'retired',approvedDigest:'a'.repeat(64)},{collection:'templates',reviewToken:'a'.repeat(64)},{collection:'templates',catalogKind:'RAW_PHOTO'},{collection:'templates',concept:-1},{collection:'templates',cycle:'bad\ntext'}])("malformed secondary metadata cannot be a fresh catalog or acquire review/delivery eligibility: %j",async patch=>{
+ mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,library:[{...registry().snapshot.creatives[0],...patch}]}});const {loadMarketingSnapshot}=await import("../../../src/features/marketing-overview/provider.ts");expect((await loadMarketingSnapshot()).inventoryReadback?.status).toBe('error');
+});
+
+test("an inherited optional catalog is not accepted and the existing combined thousand-record bound remains enforced",async()=>{
+ const {loadMarketingSnapshot}=await import("../../../src/features/marketing-overview/provider.ts");const original=registry();original.snapshot=Object.assign(Object.create({library:[]}),original.snapshot);mocks.registry.mockResolvedValue(original);expect((await loadMarketingSnapshot()).inventoryReadback?.status).toBe('error');
+ mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,library:Array.from({length:1000},()=>({...registry().snapshot.creatives[0],collection:'templates'}))}});expect((await loadMarketingSnapshot()).inventoryReadback?.status).toBe('error');
+});
 test("an explicitly unregistered revision stays visible but never produces an original-image request",async()=>{
  const asset={...registry().snapshot.creatives[0],registeredRevision:false};mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,creatives:[asset]}});
  const {loadMarketingSnapshot}=await import("../../../src/features/marketing-overview/provider.ts");const snapshot=await loadMarketingSnapshot();

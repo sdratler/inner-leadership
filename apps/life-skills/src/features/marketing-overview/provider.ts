@@ -11,6 +11,7 @@ type RegistryReadback = {
     fetchedAt: string;
     workbookUrl: string;
     creatives: MarketingSnapshot["creatives"];
+    library?: MarketingSnapshot["library"];
     publications: MarketingSnapshot["publications"];
     inventory: MarketingInventory;
   };
@@ -36,10 +37,12 @@ function registrySnapshot(result:PromiseSettledResult<RegistryReadback>):Registr
   try{
     const snapshot=result.value.snapshot;
     if(!snapshot||typeof snapshot.fetchedAt!=="string"||!Array.isArray(snapshot.creatives)||!Array.isArray(snapshot.publications)||snapshot.inventory===undefined)return null;
-    validateMarketingSnapshot({...empty,source:"provider_readback",fetchedAt:snapshot.fetchedAt,creatives:snapshot.creatives,publications:snapshot.publications,inventory:snapshot.inventory});
+    if("library" in snapshot&&!Object.hasOwn(snapshot,"library"))return null;
+    validateMarketingSnapshot({...empty,source:"provider_readback",fetchedAt:snapshot.fetchedAt,creatives:snapshot.creatives,publications:snapshot.publications,inventory:snapshot.inventory,...(snapshot.library!==undefined?{library:snapshot.library}:{})});
     // Validate the actual media mapping before advertising this read as fresh.
     const creatives=snapshot.creatives.map(asset=>({...asset,imageUrl:creativeMediaPath(asset)}));
-    return {...snapshot,creatives};
+    const library=snapshot.library?.map(asset=>({...asset,imageUrl:creativeMediaPath(asset)}));
+    return {...snapshot,creatives,...(library?{library}:{})};
   }catch{return null;}
 }
 
@@ -63,6 +66,7 @@ export async function loadMarketingSnapshot(): Promise<MarketingSnapshot> {
     source: "provider_readback",
     fetchedAt: [registry?.fetchedAt, meta?.fetchedAt].filter(Boolean).sort().at(-1) ?? null,
     creatives: registry?.creatives ?? [],
+    ...(registry?.library?{library:registry.library}:{}),
     publications: registry?.publications ?? [],
     ...(registry?.inventory ? { inventory: registry.inventory } : {}),
     workbookUrl: registry?.workbookUrl ?? null,

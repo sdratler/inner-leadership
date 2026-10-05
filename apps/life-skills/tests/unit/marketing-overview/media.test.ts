@@ -17,6 +17,12 @@ test("ordinary practitioner receives exact private bytes and original download, 
  expect(mocks.actor).toHaveBeenCalledWith("ordinary-test-token");expect(mocks.read).toHaveBeenCalledWith("DEMO-image",1,digest,true);
  expect(response.headers.get("cache-control")).toBe("private, no-store");expect(response.headers.get("content-disposition")).toBe('attachment; filename="DEMO-image-r1.png"');expect(response.headers.get("cross-origin-resource-policy")).toBe("same-origin");
 });
+test("read-only secondary media keeps the exact collection binding and ordinary authorization",async()=>{
+ const response=await marketingMedia(request(url+'&collection=history&download=1'),'DEMO-image');expect(response.status).toBe(200);expect(mocks.read).toHaveBeenCalledWith('DEMO-image',1,digest,true,'history');
+ mocks.read.mockClear();for(const suffix of ['&collection=all','&collection=history&collection=templates','&collection=constructor'])expect((await marketingMedia(request(url+suffix),'DEMO-image')).status).toBe(400);expect(mocks.read).not.toHaveBeenCalled();
+ mocks.actor.mockResolvedValue({role:'parent'});expect((await marketingMedia(request(url+'&collection=templates'),'DEMO-image')).status).toBe(403);expect(mocks.read).not.toHaveBeenCalled();
+ const row={assetId:'DEMO-image',revision:1,contentDigest:digest,imageUrl:'https://drive.google.com/file/d/synthetic_file/view',collection:'history'} as Parameters<typeof creativeMediaPath>[0];const link=creativeMediaPath(row)!;expect(link).toContain('collection=history');expect(creativeMediaPath({...row,imageUrl:link},true)).toContain('collection=history&download=1');
+});
 test.each(["parent","child","adult_client"])("%s cannot read the private gallery media or reach a provider",async role=>{
  mocks.actor.mockResolvedValue({role});const response=await marketingMedia(request(),"DEMO-image");expect(response.status).toBe(403);expect(mocks.read).not.toHaveBeenCalled();
 });
