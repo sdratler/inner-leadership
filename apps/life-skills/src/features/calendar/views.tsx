@@ -35,7 +35,7 @@ export function CalendarBoard({dates,items,followups=[],tasks=[],practice=[],con
    {due.map(item=><a className="ls-cal-followup" href={followupHref(locale,item.leadId)} key={item.leadId} aria-label={`${locale==='he'?'המשך טיפול':'Follow-up'} · ${item.name||item.leadId} · ${administrativeActionLabel(item.nextAction||'—',locale)}`}><span>{locale==='he'?'המשך טיפול':'Follow-up'}</span><strong>{item.name||item.leadId}</strong>{item.nextAction&&<small>{administrativeActionLabel(item.nextAction,locale)}</small>}</a>)}
    {dayTasks.map(task=><article className="ls-cal-task" key={task.id}><span>{locale==='he'?'משימה':'Task'} · {task.dueTime||(locale==='he'?'כל היום':'All day')}</span><strong>{taskHeading(task,locale,names)}</strong><span>{task.state==='done'?(locale==='he'?'הושלמה':'Done'):(locale==='he'?'פתוחה':'Open')}</span><TaskDetails note={task.note} locale={locale}/>{task.sourcePath&&<a href={taskSourceHref(locale,task.sourcePath)}>{locale==='he'?'פתיחת מקור':'Open source'}</a>}{task.state==='open'&&onCompleteTask&&<button type="button" onClick={()=>onCompleteTask(task)}>{locale==='he'?'סימון כהושלמה':'Mark done'}</button>}</article>)}
     {dayPractice.map(item=><PracticeCalendarEntry key={item.occurrence.id} item={item} locale={locale} onOpen={onOpenPractice!}/>)}
-    {dayContent.map(item=><CalendarContentEntry key={item.id} item={item} locale={locale}/>)}
+    {dayContent.map(item=><CalendarContentEntry key={item.id} item={item} locale={locale} compact/>)}
     {!appointments.length&&!due.length&&!dayTasks.length&&!dayPractice.length&&!dayContent.length&&<p className="ls-cal-day-empty" aria-label={t.empty}>—</p>}
   </section>;
  })}</div>;
