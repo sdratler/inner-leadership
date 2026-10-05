@@ -42,6 +42,7 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  const [history,setHistory]=useState<HistoryPage|null>(null),[historyError,setHistoryError]=useState(false),[dateInput,setDateInput]=useState(initialDate);
  const [followupRows,setFollowupRows]=useState<FollowupSource[]|null>(null),[followupFailed,setFollowupFailed]=useState(false),[followupRetry,setFollowupRetry]=useState(0),[showFollowups,setShowFollowups]=useState(true),[taskSyncFailed,setTaskSyncFailed]=useState(false),[taskSyncReady,setTaskSyncReady]=useState(false);
  const [taskRows,setTaskRows]=useState<InternalTask[]|null>(null),[taskLoadedFor,setTaskLoadedFor]=useState(''),[taskFailed,setTaskFailed]=useState(false),[taskRefresh,setTaskRefresh]=useState(0),[showTasks,setShowTasks]=useState(true);
+ const [workSyncFailed,setWorkSyncFailed]=useState(false),[workSyncRetry,setWorkSyncRetry]=useState(0);
  const [taskDraft,setTaskDraft]=useState({title:'',dueDate:initialDate,dueTime:'',note:'',sourcePath:'',caseId:initialCaseId}),[taskDirty,setTaskDirty]=useState(false);
  const [showPractice,setShowPractice]=useState(!practitioner),[practiceDirty,setPracticeDirty]=useState(false);
  const [practiceRefresh,setPracticeRefresh]=useState(0);
@@ -99,6 +100,14 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
   return()=>controller.abort();
  },[livePractitioner,followupRetry]);
  useEffect(()=>{
+  if(!practitioner||!mode)return;
+  let active=true;
+  void calendarWrite('tasks/sync-work',{mode},crypto.randomUUID()).then(()=>{
+   if(active){setWorkSyncFailed(false);setTaskRefresh(value=>value+1);}
+  }).catch(()=>{if(active)setWorkSyncFailed(true);});
+  return()=>{active=false;};
+ },[practitioner,mode,workSyncRetry]);
+ useEffect(()=>{
   if(!practitioner)return;
   const controller=new AbortController();
   const params=new URLSearchParams({from:range.from,to:range.to,...(caseId?{caseId}:{}),mode:mode!});
@@ -117,7 +126,7 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
    if(result.original)await refreshSelected(result.original.id);
    else if(result.id&&result.caseId)await refreshSelected(asId(result.id,'appointment'));
   }
-  await load();setTimeout(()=>{if(selected)document.getElementById('receipt-'+selected.id)?.focus();},0);
+  await load();setWorkSyncRetry(value=>value+1);setTimeout(()=>{if(selected)document.getElementById('receipt-'+selected.id)?.focus();},0);
  },method);
  function selectCase(nextCaseId:string){if(practiceDirty&&!window.confirm(t.dirty))return;setPracticeDirty(false);setCaseId(nextCaseId);const query=new URLSearchParams({date,view,...(nextCaseId?{caseId:nextCaseId}:{}),...(selectedClientContext&&nextCaseId?{context:'client'}:{}),...(mode==='demo'?{mode}:{})});router.replace(basePath+'?'+query.toString(),{scroll:false});}
  function selectMode(next:CalendarMode){if(next===mode||mutation.locked)return;if((dirty||taskDirty||practiceDirty||mutation.uncertain)&&!window.confirm(t.dirty))return;setPracticeDirty(false);router.push(basePath+'?'+new URLSearchParams({date,view,...(next==='demo'?{mode:next}:{})}),{scroll:false});}
@@ -136,6 +145,7 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
   {practitioner&&<div className="ls-cal-actions"><Button variant="secondary" disabled={mutation.locked||mode==='demo'&&!cases.length} onClick={openTask}>{locale==='he'?'+ משימה':'+ Task'}</Button>{livePractitioner&&<a className="lsw-button lsw-button--secondary" href={`/${locale}/app/settings/availability?date=${date}`}>{t.availability}</a>}</div>}{!practitioner&&<div className="ls-cal-layers">{practiceLayer}</div>}</div>
   {practitioner&&mode==='demo'&&<p className="ls-cal-demo-notice" role="status"><span>{locale==='he'?'DEMO — נתונים סינתטיים בלבד.':'DEMO — synthetic only.'}</span><a className="lsw-button lsw-button--secondary" href={basePath+'?'+new URLSearchParams({date,view})}>{locale==='he'?'חזרה ליומן האמיתי':'Return to live calendar'}</a></p>}
  {practitioner&&<div className="ls-cal-layers"><label><input type="checkbox" checked={showTasks} onChange={event=>setShowTasks(event.target.checked)}/> {locale==='he'?'משימות':'Tasks'}</label>{taskFailed&&<p role="status">{locale==='he'?'המשימות לא נטענו. הפגישות עדיין מוצגות.':'Tasks could not load. Appointments are still shown.'} <Button variant="quiet" onClick={()=>{setTaskFailed(false);setTaskRefresh(value=>value+1)}}>{locale==='he'?'ניסיון חוזר':'Retry tasks'}</Button></p>}{livePractitioner&&<><label><input type="checkbox" checked={showFollowups} onChange={event=>setShowFollowups(event.target.checked)}/> {locale==='he'?'המשך טיפול בפניות':'Prospect follow-ups'}</label>{followupFailed&&<p role="status">{locale==='he'?'המשך הטיפול בפניות לא נטען. הפגישות עדיין מוצגות.':'Prospect follow-ups could not load. Appointments are still shown.'} <Button variant="quiet" onClick={()=>{setFollowupFailed(false);setFollowupRetry(value=>value+1)}}>{locale==='he'?'ניסיון חוזר':'Retry follow-ups'}</Button></p>}{taskSyncFailed&&<p role="status">{locale==='he'?'המשך הטיפול מוצג, אך לא ניתן לעדכן את המשימות המקושרות.':'Follow-ups are visible, but linked tasks could not be synchronized.'} <Button variant="quiet" onClick={()=>setFollowupRetry(value=>value+1)}>{locale==='he'?'ניסיון חוזר':'Retry sync'}</Button></p>}</>}</div>}
+  {practitioner&&workSyncFailed&&<p role="status">{locale==='he'?'לא ניתן לעדכן את המשימות מתוך הרשומות המאומתות כרגע. המשימות השמורות והפגישות נשמרות.':'Verified-source tasks could not be refreshed right now. Saved tasks and appointments are retained.'} <Button variant="quiet" onClick={()=>setWorkSyncRetry(value=>value+1)}>{locale==='he'?'ניסיון סנכרון חוזר':'Retry work sync'}</Button></p>}
   {practitioner&&<div className="ls-cal-layers">{practiceLayer}</div>}
   <PracticeOccurrenceWorkspace key={`${caseId}|${range.from}|${range.to}|${mode??''}`} locale={locale} role={role} caseId={caseId||undefined} from={range.dates[0]} to={shiftDay(range.dates[range.dates.length-1]!,1)} refreshToken={practiceRefresh} onDirtyChange={setPracticeDirty} readEnabled={showPractice&&error!=='auth'&&error!=='forbidden'} renderCalendar={({items:practice,onOpen})=><div className="ls-cal-schedule" data-has-entries={items.length+followups.length+tasks.length+practice.length>0}>
   {loading?<LoadingState locale={locale}/>:error==='auth'?<div className="lsw-alert" role="alert"><p>{locale==='he'?'פג תוקף החיבור שלך. יש להיכנס מחדש כדי לפתוח את היומן הפרטי.':'Your session has ended. Sign in to reopen the private calendar.'}</p><a className="lsw-button lsw-button--secondary" href={loginHref(locale,href(date,view,true))}>{locale==='he'?'כניסה':'Sign in'}</a></div>:error==='forbidden'?<div className="lsw-alert" role="alert"><p>{locale==='he'?'לחשבון הזה אין הרשאה לצפות ביומן הזה.':'This account is not authorized to view this calendar.'}</p></div>:<>

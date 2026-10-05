@@ -62,6 +62,10 @@ export async function handleCalendar(request:Request,path:readonly string[]):Pro
    taskSyncPhase='task-sync';
    data=await tasks.syncCrmFollowups(actor,rows);
    taskSyncPhase='response';
+  }else if(request.method==='POST'&&path.length===2&&path[0]==='tasks'&&path[1]==='sync-work'){
+   if(actor.role!=='practitioner')throw new AppError('FORBIDDEN');
+   query(request,[]);const body=await readJson(request,z.strictObject({mode:z.enum(['live','demo'])}));
+   data=await tasks.syncCaseWork(actor,body.mode);
   }else if(request.method==='POST'&&path.length===1&&path[0]==='tasks'){
    query(request,[]);data=await tasks.create(actor,key,await readJson(request,taskCreateSchema));
   }else if(request.method==='POST'&&path.length===3&&path[0]==='tasks'&&path[2]==='complete'){

@@ -14,15 +14,16 @@ import type { FollowupSource } from './followups.ts';
 import { MAX_CALENDAR_TASKS, MAX_OPERATIONAL_PROSPECTS } from '../contact-ops/core/limits.ts';
 import {demoCaseBatch} from '../demo/provenance.ts';
 import type {CalendarMode} from './mode.ts';
+import {reconcileCaseWork,type CaseTaskKind} from './case-work-tasks.ts';
 
 export type TaskId=Id<'task'>;
 export type TaskInput=z.infer<typeof taskCreateSchema>;
 export type InternalTask={
- id:TaskId;caseId:CaseId|null;title:string;note:string|null;sourcePath:string|null;sourceKind:'crm_followup'|null;
+ id:TaskId;caseId:CaseId|null;title:string;note:string|null;sourcePath:string|null;sourceKind:'crm_followup'|CaseTaskKind|null;
  dueDate:string;dueTime:string|null;state:'open'|'done';version:number;
  createdAt:string;updatedAt:string;
 };
-type TaskRow={id:string;caseId:CaseId|null;titleCiphertext:string;noteCiphertext:string|null;sourcePathCiphertext:string|null;sourceKind:'crm_followup'|null;
+type TaskRow={id:string;caseId:CaseId|null;titleCiphertext:string;noteCiphertext:string|null;sourcePathCiphertext:string|null;sourceKind:'crm_followup'|CaseTaskKind|null;
  dueDate:string;dueTime:string|null;state:'open'|'done';version:number;createdAt:Date;updatedAt:Date};
 type SourceTaskRow={id:string;sourceDigest:string;sourceRevision:string;version:number};
 function candidateCaseId(value:unknown):CaseId|null{if(typeof value!=='string')return null;try{return asId(value,'case');}catch{return null;}}
@@ -41,6 +42,16 @@ export class InternalTaskService {
  }
  private sourceDigest(value:unknown):string {
   return createHmac('sha256',this.digestKey).update(JSON.stringify(['life-skills-task-source-v1',value])).digest('hex');
+ }
+ /** The server reads actual case-work lifecycle metadata under the same fresh
+  * practitioner/workspace lock as reconciliation. Missing reads never resolve
+  * work; marking a task Done never mutates its authoritative source. */
+ async syncCaseWork(actor:Actor,mode:CalendarMode='live'){
+  if(mode!=='live'&&mode!=='demo')throw new AppError('INVALID_REQUEST');
+  return this.db.read(actor,async c=>{
+   requirePractitioner(c.actor);
+   return reconcileCaseWork(this.db,c,mode,value=>this.sourceDigest(value));
+  });
  }
  private view(c:TransactionContext,row:TaskRow):InternalTask {
   const id=asId(row.id,'task');

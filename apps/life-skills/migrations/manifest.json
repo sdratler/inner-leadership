@@ -150,5 +150,9 @@
   {
     "name": "0118_ls_contact_delta_history.sql",
     "sha256": "89124785efc166f1f4aa1390f814798c2b63b71a874e37b4da10e11a7c0a202f"
+  },
+  {
+    "name": "0119_ls_case_work_tasks.sql",
+    "sha256": "5e97f59f4b9caa07db49a6ce0549a49e25ee6a48f893ace72873038ffe034d8b"
   }
 ]

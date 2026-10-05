@@ -36,7 +36,8 @@ it.each(['he','en'] as const)('renders a real keyboard-focusable %s task fragmen
  const props={items:[],tasks:[task],locale,names:{},onOpen:()=>{}};
  const html=renderToStaticMarkup(createElement(CalendarAgenda,props));
  expect(html).toContain(`id="task-${id}"`);expect(html).toContain('tabindex="-1"');
- expect(html).toContain(`aria-labelledby="task-${id}-title"`);
+ expect(html).toContain(`aria-labelledby="task-body-${id}-title"`);
+ expect(html.match(new RegExp(`id="task-${id}"`,'g'))).toHaveLength(1);
  expect(renderToStaticMarkup(createElement(CalendarAgenda,{...props,tasks:[]}))).not.toContain(`id="task-${id}"`);
 });
 it('can resolve a cold-load fragment after its task arrives without selecting a missing or hidden row',()=>{
