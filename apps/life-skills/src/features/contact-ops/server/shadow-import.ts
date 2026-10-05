@@ -1,4 +1,5 @@
 import "server-only";
+import {asId} from '../../../lib/ids.ts';
 import type { IdentityStore, SqlSession } from "../../identity/store.ts";
 import { blindEmail, seal, unseal, type Keyring } from "../../identity/crypto.ts";
 import { freshActor, lockWorkspace } from "../../identity/data.ts";
@@ -14,6 +15,7 @@ import {readCutoverState,cutoverStateAad,cutoverStateSchema} from "./cutover-sta
 import {MAX_NATIVE_CONTACTS} from "../core/limits.ts";
 import {privateDigest} from "./digests.ts";
 import {z} from "zod";
+import {authorizeCutoverOperator,assertCutoverOperatorPayload,type CutoverOperatorPermit,type CutoverPrincipal} from './cutover-operator.ts';
 
 export type NewPersonDisposition = { sourceRow: number; sourceRevision: string; legacyId: string; rowDigest: string; kind: "new_person" };
 export type ShadowImportResult = { sourceRevision: string; planned: number; created: number; replayed: number };
@@ -77,8 +79,17 @@ export class NativeShadowImporter {
   * the eventual writer must recheck them under its authority/write locks.
   * No browser endpoint exposes this owner-private source material. */
  async preflightDelta(actor: Actor, previous: SheetSnapshot, next: SheetSnapshot) {
+  return this.preflightDeltaAuthorized(actor,previous,next,async tx=>{requirePractitioner(await freshActor(tx,actor,this.clock.now()));});
+ }
+ async preflightDeltaAsOperator(previous:SheetSnapshot,next:SheetSnapshot,permit:CutoverOperatorPermit){
+  assertCutoverOperatorPayload(permit,{previous,next},this.integrityKey);
+  const actor={workspaceId:asId(permit.envelope.workspaceId,'workspace'),id:asId(permit.envelope.ownerAccountId,'account')};
+  return this.preflightDeltaAuthorized(actor,previous,next,async tx=>{await authorizeCutoverOperator(tx,this.keyring,this.lookupKey,permit,['preflight'],this.clock.now());});
+ }
+ private async preflightDeltaAuthorized(actor:CutoverPrincipal,previous:SheetSnapshot,next:SheetSnapshot,authorize:(tx:SqlSession)=>Promise<void>){
   return this.db.transaction(async tx=>{
    await tx.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+   await authorize(tx);
    const {updates,source,state,...result}=await this.inspectDelta(tx,actor,previous,next,false);
    // Keep decrypted merge material inside the service, not even its private
    // preflight output; stable IDs, versions, digests and conflict labels suffice.
@@ -90,12 +101,11 @@ export class NativeShadowImporter {
   });
  }
 
- private async inspectDelta(tx:SqlSession,actor:Actor,previous:SheetSnapshot,next:SheetSnapshot,forUpdate:boolean){
+ private async inspectDelta(tx:SqlSession,actor:CutoverPrincipal,previous:SheetSnapshot,next:SheetSnapshot,forUpdate:boolean){
   requireThat(previous.fileId === this.sourceFileId && previous.sheetId === this.sourceSheetId, "DELTA_SOURCE_MISMATCH");
   const delta = planSourceDelta(previous, next, actor.workspaceId, this.integrityKey);
   requireThat(delta.rows.length <= MAX_NATIVE_CONTACTS, "DELTA_DIRECTORY_BOUND");
   const oldPlan = planImport(previous, actor.workspaceId, this.integrityKey);
-   requirePractitioner(await freshActor(tx, actor, this.clock.now()));
    const state = await readCutoverState(tx, actor.workspaceId, this.keyring, forUpdate);
    requireThat(["sheet_active", "shadow_ready", "frozen"].includes(state.phase) && state.nativeWritesSinceSwitch === 0,
     "DELTA_AUTHORITY_NOT_PRE_NATIVE");
@@ -184,6 +194,14 @@ export class NativeShadowImporter {
   * an immutable delta receipt; it does not activate native authority or send.
   * Replays return the immutable operation result, not a new reconciliation. */
  async applyDelta(actor:Actor,previous:SheetSnapshot,next:SheetSnapshot,input:DeltaApplication){
+  return this.applyDeltaAuthorized(actor,previous,next,input,async tx=>{requirePractitioner(await freshActor(tx,actor,this.clock.now()));});
+ }
+ async applyDeltaAsOperator(previous:SheetSnapshot,next:SheetSnapshot,input:DeltaApplication,permit:CutoverOperatorPermit){
+  assertCutoverOperatorPayload(permit,{previous,next,input},this.integrityKey);
+  const actor={workspaceId:asId(permit.envelope.workspaceId,'workspace'),id:asId(permit.envelope.ownerAccountId,'account')};
+  return this.applyDeltaAuthorized(actor,previous,next,input,async tx=>{await authorizeCutoverOperator(tx,this.keyring,this.lookupKey,permit,['delta'],this.clock.now());});
+ }
+ private async applyDeltaAuthorized(actor:CutoverPrincipal,previous:SheetSnapshot,next:SheetSnapshot,input:DeltaApplication,authorize:(tx:SqlSession)=>Promise<void>){
   requireThat(/^[A-Za-z0-9_-]{1,128}$/.test(input.operationId) && Number.isSafeInteger(input.expectedEpoch) &&
    input.expectedEpoch>=0 && input.expectedEpoch<Number.MAX_SAFE_INTEGER-1,"DELTA_APPLICATION_INVALID");
   requireThat(input.versions.length<=MAX_NATIVE_CONTACTS && input.newPeople.length<=MAX_NATIVE_CONTACTS,"DELTA_DIRECTORY_BOUND");
@@ -191,7 +209,7 @@ export class NativeShadowImporter {
   return this.db.transaction(async tx=>{
    await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",[`${actor.workspaceId}:contact-authority`]);
    await lockWorkspace(tx,actor.workspaceId);
-   requirePractitioner(await freshActor(tx,actor,this.clock.now()));
+   await authorize(tx);
    const prior=await tx.query<{digest:string;ciphertext:string}>(
     `SELECT payload_digest AS digest,result_ciphertext AS ciphertext FROM ls_contact_ops.delta_operations
      WHERE workspace_id=$1 AND operation_id=$2`,[actor.workspaceId,input.operationId]);
@@ -267,7 +285,7 @@ export class NativeShadowImporter {
   });
  }
 
- private async recordDeltaRow(tx:SqlSession,actor:Actor,input:DeltaApplication,row:ImportRow,evidence:unknown){
+ private async recordDeltaRow(tx:SqlSession,actor:CutoverPrincipal,input:DeltaApplication,row:ImportRow,evidence:unknown){
   await tx.query(`INSERT INTO ls_contact_ops.delta_history(workspace_id,operation_id,legacy_lead_id,person_id,evidence_ciphertext)
    VALUES($1,$2,$3,$4,$5)`,[actor.workspaceId,input.operationId,row.legacyId,row.suggestedPersonId,
    seal(JSON.stringify(evidence),deltaHistoryAad(actor.workspaceId,input.operationId,row.legacyId),this.keyring)]);

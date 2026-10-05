@@ -9,6 +9,8 @@ import {requirePractitioner} from "../../cases/policy.ts";
 import {advanceCutover,writeDestination,type CutoverState,type CutoverProof,type CutoverAction} from "../core/cutover.ts";
 import {privateDigest} from "./digests.ts";
 import {cutoverEpochSchema as safeEpoch,cutoverStateSchema as stateSchema,cutoverStateAad as stateAad,readCutoverState} from "./cutover-state.ts";
+import {asId} from '../../../lib/ids.ts';
+import {assertCutoverOperatorPayload,authorizeCutoverOperator,type CutoverOperatorPermit,type CutoverPrincipal} from './cutover-operator.ts';
 
 const source=z.string().min(1).max(200);
 export type CutoverEvidence=CutoverProof & {observedNativeWritesSinceSwitch:number};
@@ -22,6 +24,7 @@ const actionSchema=z.enum(["prepare","freeze","switch_native","retire_sheet","pr
 const operationSchema=z.string().min(1).max(128);
 const historyAad=(workspace:string,operation:string)=>`ls_contact_ops/cutover-history/v1/${workspace}/${operation}`;
 type Prior={digest:string;actorId:string;ciphertext:string;resultEpoch:string};
+export type CutoverAdvanceInput={action:CutoverAction;proof:CutoverEvidence;operationId:string};
 
 /** Durable adapter for the existing pure gate. Internal server/operator use only:
  * no public transition endpoint and no activation from browser-supplied booleans.
@@ -40,10 +43,10 @@ export class ContactCutoverStore {
  private decode<T>(schema:z.ZodType<T>,ciphertext:string,aad:string):T{
   try{return schema.parse(JSON.parse(unseal(ciphertext,aad,this.keyring)));}catch{throw new AppError("UNAVAILABLE");}
  }
- private async current(tx:SqlSession,a:Actor,forUpdate=true):Promise<CutoverState>{
+ private async current(tx:SqlSession,a:CutoverPrincipal,forUpdate=true):Promise<CutoverState>{
   return readCutoverState(tx,a.workspaceId,this.keyring,forUpdate);
  }
- private async save(tx:SqlSession,a:Actor,s:CutoverState){
+ private async save(tx:SqlSession,a:CutoverPrincipal,s:CutoverState){
   stateSchema.parse(s);
   await tx.query(`INSERT INTO ls_contact_ops.cutover(workspace_id,epoch,phase,state_ciphertext) VALUES($1,$2,$3,$4)
    ON CONFLICT(workspace_id) DO UPDATE SET epoch=EXCLUDED.epoch,phase=EXCLUDED.phase,state_ciphertext=EXCLUDED.state_ciphertext,updated_at=clock_timestamp()`,
@@ -52,11 +55,22 @@ export class ContactCutoverStore {
  async read(a:Actor):Promise<CutoverState>{return this.db.transaction(async tx=>{
   await tx.query("SET TRANSACTION READ ONLY");await this.lock(tx,a);return this.current(tx,a,false);
  });}
- async advance(a:Actor,input:{action:CutoverAction;proof:CutoverEvidence;operationId:string}):Promise<{state:CutoverState;replayed:boolean}>{
+ async advance(a:Actor,input:CutoverAdvanceInput):Promise<{state:CutoverState;replayed:boolean}>{
+  return this.advanceAuthorized(a,input,tx=>this.authorize(tx,a));
+ }
+ async advanceAsOperator(input:CutoverAdvanceInput,permit:CutoverOperatorPermit,lookupKey:Buffer){
+  assertCutoverOperatorPayload(permit,input,this.integrityKey);
+  const a={workspaceId:asId(permit.envelope.workspaceId,'workspace'),id:asId(permit.envelope.ownerAccountId,'account')};
+  if(input.action==='retire_sheet')throw new AppError('FORBIDDEN');
+  const action=input.action;
+  return this.advanceAuthorized(a,input,async tx=>{await authorizeCutoverOperator(tx,this.keyring,lookupKey,permit,[action],this.clock.now());});
+ }
+ private async advanceAuthorized(a:CutoverPrincipal,input:CutoverAdvanceInput,authorize:(tx:SqlSession)=>Promise<void>):Promise<{state:CutoverState;replayed:boolean}>{
   const proof=proofSchema.parse(input.proof),action=actionSchema.parse(input.action),operation=operationSchema.parse(input.operationId);
   const digest=privateDigest({actorId:a.id,workspaceId:a.workspaceId,action,proof},this.integrityKey);
   return this.db.transaction(async tx=>{
-   await this.lock(tx,a);
+   await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",[`${a.workspaceId}:contact-authority`]);
+   await authorize(tx);
    const previous=await tx.query<Prior>(`SELECT payload_digest AS digest,actor_account_id AS "actorId",
     evidence_ciphertext AS ciphertext,result_epoch::text AS "resultEpoch" FROM ls_contact_ops.cutover_history
     WHERE workspace_id=$1 AND operation_id=$2`,[a.workspaceId,operation]);
