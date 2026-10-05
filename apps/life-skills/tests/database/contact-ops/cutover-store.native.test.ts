@@ -9,6 +9,7 @@ import {admitCutoverOperator,cutoverOperatorMessage,type CutoverOperatorEnvelope
 import {blindEmail} from '../../../src/features/identity/crypto.ts';
 import {canonical} from '../../../src/features/contact-ops/core/validation.ts';
 import {NativeShadowImporter} from '../../../src/features/contact-ops/server/shadow-import.ts';
+import {ContactInboundStore,inboundBindingDigest} from '../../../src/features/contact-ops/server/inbound-store.ts';
 import {planImport,type SheetSnapshot} from '../../../src/features/contact-ops/server/import-plan.ts';
 import {fixture,poolStore,type Fixture} from "../calendar/fixture.ts";
 import {ContactCutoverStore,type CutoverEvidence} from "../../../src/features/contact-ops/server/cutover-store.ts";
@@ -36,9 +37,14 @@ test('signed operator runs a frozen final delta without a browser session, and r
  const environment={LS_NATIVE_SHADOW_IMPORT_APPROVED:'true',RAILWAY_PROJECT_ID:'3b756632-1f66-4f75-a016-eabc37aa0d67',RAILWAY_ENVIRONMENT_ID:'dd91bd71-57cc-45e6-a75b-8c858491d7c7',RAILWAY_SERVICE_ID:'0267d061-f3ce-4a0a-82d4-ce133e4501e9',LS_IDENTITY_WORKSPACE_ID:f.workspaceId,RAILWAY_DEPLOYMENT_ID:deployment};
  for(const[key,value]of Object.entries(environment))vi.stubEnv(key,value);
  process.argv[1]='/app/scripts/contact-cutover-operator.ts';
- const grant=(action:CutoverOperatorEnvelope['action'],payload:unknown)=>{const now=new Date(),e:CutoverOperatorEnvelope={version:'ls-contact-cutover-operator-v1',action,workspaceId:f.workspaceId,ownerAccountId:a.id,deploymentId:deployment,reviewedMainSha:'a'.repeat(40),sourceTreeSha256:'b'.repeat(64),operatorSha256:'c'.repeat(64),payloadSha256:createHash('sha256').update(canonical(payload)).digest('hex'),databaseBindingSha256:'d'.repeat(64),integrityKeySha256:createHash('sha256').update(integrity).digest('hex'),issuedAt:now.toISOString(),expiresAt:new Date(now.getTime()+600000).toISOString()};return admitCutoverOperator(e,sign(null,cutoverOperatorMessage(e),signing.privateKey).toString('base64'));};
+ const grant=(action:CutoverOperatorEnvelope['action'],payload:unknown,key=integrity)=>{const now=new Date(),e:CutoverOperatorEnvelope={version:'ls-contact-cutover-operator-v1',action,workspaceId:f.workspaceId,ownerAccountId:a.id,deploymentId:deployment,reviewedMainSha:'a'.repeat(40),sourceTreeSha256:'b'.repeat(64),operatorSha256:'c'.repeat(64),payloadSha256:createHash('sha256').update(canonical(payload)).digest('hex'),databaseBindingSha256:'d'.repeat(64),integrityKeySha256:createHash('sha256').update(key).digest('hex'),issuedAt:now.toISOString(),expiresAt:new Date(now.getTime()+600000).toISOString()};return admitCutoverOperator(e,sign(null,cutoverOperatorMessage(e),signing.privateKey).toString('base64'));};
  try{
   await f.pool.query('UPDATE ls_identity.sessions SET revoked_at=clock_timestamp() WHERE workspace_id=$1',[f.workspaceId]);
+  const inquiry={provider:'whapi' as const,channelId:'synthetic-operator-channel',businessNumber:'+15555550199',providerEventId:'synthetic-operator-event',providerMessageId:'synthetic-operator-message',providerThreadId:'synthetic-operator-thread',eventType:'inbound_message' as const,fromMe:false as const,fromNumber:'+15555550101',pushName:'Synthetic operator contact',messageType:'text',messageText:'Synthetic durable inquiry',occurredAt:new Date().toISOString(),media:[]};
+  const binding=inboundBindingDigest(inquiry),inbox=new ContactInboundStore(poolStore(f.pool),f.workspaceId,f.keyring,lookup.toString('hex'),binding);
+  await inbox.capture(inquiry);await inbox.capture({...inquiry,providerEventId:'synthetic-operator-event-two',providerMessageId:'synthetic-operator-message-two',messageText:'Synthetic second inquiry'});
+  const held={expectedEpoch:0,limit:1,after:null,bindingDigest:binding};
+  await expect(inbox.drainAsOperator(held,grant('drain_inbound',held,lookup.toString('hex')),lookup)).rejects.toThrow('CONFLICT');
   const p=grant('preflight',{previous,next});
   const preview=await importer.preflightDeltaAsOperator(previous,next,p);expect(preview.existingRowsReconciled).toBe(true);expect(preview.newRows).toEqual(['LS-LEAD-operator-two']);
   expect(preview.expectedEpoch).toBe(0);expect(JSON.stringify(preview)).not.toContain('Retain this note');
@@ -68,6 +74,22 @@ test('signed operator runs a frozen final delta without a browser session, and r
   process.argv[1]='/app/server.js';await expect(store.advanceAsOperator(activate,activateGrant,lookup)).rejects.toThrow('CUTOVER_OPERATOR_NOT_ADMITTED');
   process.argv[1]='/app/scripts/contact-cutover-operator.ts';
   expect(await store.advanceAsOperator(activate,activateGrant,lookup)).toMatchObject({state:{phase:'native_active',epoch:4}});
+  const page={expectedEpoch:4,limit:1,after:null,bindingDigest:binding},pageGrant=grant('drain_inbound',page,lookup.toString('hex'));
+  await expect(inbox.drainAsOperator({...page,limit:2},pageGrant,lookup)).rejects.toThrow('CUTOVER_OPERATOR_PAYLOAD_MISMATCH');
+  await expect(inbox.drainAsOperator(page,grant('preflight',page,lookup.toString('hex')),lookup)).rejects.toThrow('CUTOVER_OPERATOR_ACTION_MISMATCH');
+  await expect(inbox.drainAsOperator(page,pageGrant,Buffer.alloc(32,18))).rejects.toThrow('CUTOVER_OPERATOR_KEYS_INVALID');
+  const wrongBinding={...page,bindingDigest:'0'.repeat(64)};
+  await expect(inbox.drainAsOperator(wrongBinding,grant('drain_inbound',wrongBinding,lookup.toString('hex')),lookup)).rejects.toThrow('FORBIDDEN');
+  const wrongEpoch={...page,expectedEpoch:3};
+  await expect(inbox.drainAsOperator(wrongEpoch,grant('drain_inbound',wrongEpoch,lookup.toString('hex')),lookup)).rejects.toThrow('CONFLICT');
+  const firstPage=await inbox.drainAsOperator(page,pageGrant,lookup);expect(firstPage).toMatchObject({processed:1,hasMore:true,replayed:0});expect(firstPage.cursor).not.toBeNull();
+  expect(await inbox.drainAsOperator(page,pageGrant,lookup)).toMatchObject({processed:1,hasMore:true,replayed:1});
+  const secondPage={...page,after:firstPage.cursor};
+  expect(await inbox.drainAsOperator(secondPage,grant('drain_inbound',secondPage,lookup.toString('hex')),lookup)).toMatchObject({processed:1,hasMore:false,replayed:0});
+  await f.pool.query("UPDATE ls_identity.accounts SET state='revoked' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,a.id]);
+  await expect(inbox.drainAsOperator(page,pageGrant,lookup)).rejects.toThrow('CUTOVER_OPERATOR_OWNER_INVALID');
+  await f.pool.query("UPDATE ls_identity.accounts SET state='active' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,a.id]);
+  await expect(inbox.drain(a,4)).rejects.toThrow('UNAUTHENTICATED'); // Revoked browser sessions stay revoked.
   expect((await f.pool.query('SELECT count(*)::int AS n FROM ls_contact_ops.legacy_links WHERE workspace_id=$1',[f.workspaceId])).rows[0].n).toBe(2);
   const demo=await fixture({demoFirst:true});fixtures.push(demo);
   await demo.pool.query("UPDATE ls_identity.accounts SET role='parent' WHERE workspace_id=$1 AND id=$2",[demo.workspaceId,demo.practitioner.actor.id]);
