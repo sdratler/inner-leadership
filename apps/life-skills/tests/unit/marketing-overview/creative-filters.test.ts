@@ -6,6 +6,15 @@ import {actionableCreative,creativeFilters,creativeMetadataOptions,creativePlace
 import type {CreativeVersion,MarketingSnapshot} from '../../../src/features/marketing-overview/contracts.ts';
 const asset=(patch:Partial<CreativeVersion>={}):CreativeVersion=>({assetId:'DEMO-one',revision:1,locale:'he',width:1080,height:1350,imageUrl:null,title:'DEMO — שלום',caption:'First public caption',contentDigest:'a'.repeat(64),approvedDigest:null,review:'draft',surface:'FACEBOOK_FEED',...patch});
 describe('registered creative filters',()=>{
+ it.each(['en','he'] as const)('keeps the %s gallery compact without losing selected controls or hiding inventory failures',locale=>{
+  const snapshot:MarketingSnapshot={source:'registry_only',fetchedAt:null,creatives:[asset()],publications:[],ads:[],scout:{readyDrafts:null,sourceUrl:null,lastChecked:null,status:'unbound'},inventoryReadback:{status:'error',lastSuccessfulReadAt:null,lastAttemptAt:'2026-10-05T14:00:00Z',errorCode:'creative_inventory_unavailable'},connectionErrors:['direct_meta_readback_unavailable','creative_inventory_unavailable']};
+  const html=renderToStaticMarkup(createElement(MarketingDashboard,{locale,snapshot,initialSection:'creatives',creativeQuery:{language:'he',concept:'3',search:'DEMO'},renderedAt:'2026-10-05T14:00:00Z'}));
+  expect(html).toContain('<details class="lsr-creative-primary-filters"><summary>');expect(html).not.toContain('<details class="lsr-creative-primary-filters" open');
+  expect(html.indexOf('name="search"')).toBeLessThan(html.indexOf('class="lsr-creative-primary-filters"'));expect(html).toContain('value="DEMO"');expect(html).toContain('value="he" selected');expect(html).toContain('value="3" selected');
+  const sourceStart=html.indexOf('<details class="lsr-source-detail"'),sourceEnd=html.indexOf('</details>',sourceStart),failure=locale==='he'?'מלאי הקריאייטיב אינו זמין כרגע.':'Creative inventory is temporarily unavailable.';
+  expect(sourceStart).toBeGreaterThan(-1);expect(html.slice(sourceStart,sourceEnd)).toContain(locale==='he'?'נתוני Meta הישירים אינם זמינים כרגע':'Direct Meta metrics are temporarily unavailable');expect(html.indexOf(failure)).toBeGreaterThan(sourceEnd);
+  expect(html).not.toContain('class="lsr-inventory-readback"');expect(html).not.toContain('<h2>');expect(html.match(/type="submit"/g)).toHaveLength(1);
+ });
  it.each(['en','he'] as const)('does not pretend an older bridge supplied an empty %s secondary catalog',locale=>{
   const snapshot:MarketingSnapshot={source:'synthetic',fetchedAt:null,creatives:[asset()],publications:[],ads:[],scout:{readyDrafts:null,sourceUrl:null,lastChecked:null,status:'unbound'}};
   const html=renderToStaticMarkup(createElement(MarketingDashboard,{locale,snapshot,initialSection:'creatives',creativeQuery:{collection:'history'},renderedAt:'2026-10-05T14:00:00Z'}));expect(html).toContain(locale==='he'?'לא סיפק את המלאי המשני':'has not supplied the secondary catalog');expect(html).not.toContain(locale==='he'?'אין גרסאות רשומות המתאימות לסינון':'No registered revisions match these filters');
