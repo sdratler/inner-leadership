@@ -13,7 +13,7 @@ let f:Fixture;const now=new Date(),today=contentDayKey(now.toISOString()),store=
 beforeAll(async()=>{f=await fixture({demoFirst:true});});afterAll(async()=>{await f?.pool.end();});
 test("native production binder counts encrypted internal tasks without double counting CRM or DEMO records",async()=>{
  const tasks=new InternalTaskService(f.db,randomBytes(32));
- const create=async(caseId:typeof f.first.id|null=null)=>tasks.create(f.practitioner.actor,randomUUID(),{caseId,title:"DEMO isolated private task title",note:"DEMO confidential narrative must not enter digest",sourcePath:null,dueDate:today,dueTime:null});
+ const create=async(caseId:typeof f.first.id|null=null)=>tasks.create(f.practitioner.actor,randomUUID(),{caseId,...(caseId?{mode:'demo' as const}:{}),title:"DEMO isolated private task title",note:"DEMO confidential narrative must not enter digest",sourcePath:null,dueDate:today,dueTime:null});
  const first=await create(),done=await create();await tasks.complete(f.practitioner.actor,done.id,randomUUID(),1);await create(f.first.id);
  const linked=await create();await f.pool.query("UPDATE ls_calendar.tasks SET source_kind='crm_followup',source_digest=$3,source_revision=$3 WHERE workspace_id=$1 AND id=$2",[f.workspaceId,linked.id,"a".repeat(64)]);
  const marked=await create();await f.pool.query("INSERT INTO ls_demo.records(workspace_id,batch_id,entity_kind,entity_key,source_key,case_id) VALUES($1,'ls-owner-20260925','task',$2,$3,$4)",[f.workspaceId,marked.id,"isolated-digest-task",f.first.id]);

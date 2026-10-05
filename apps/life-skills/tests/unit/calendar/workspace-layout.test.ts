@@ -25,8 +25,9 @@ describe('operational Calendar composition',()=>{
   }
   expect(workspace).toContain('<UnsavedChangesGuard dirty={dirty||taskDirty||mutation.uncertain}');
   expect(workspace).toContain('livePractitioner&&<div className="ls-cal-operational">');
-  expect(workspace.match(/if\(!livePractitioner\)return;/g)).toHaveLength(2);
-  expect(workspace).toContain("const tasks=livePractitioner&&showTasks");
+  expect(workspace.match(/if\(!livePractitioner\)return;/g)).toHaveLength(1);
+  expect(workspace).toContain('if(!practitioner)return;');
+  expect(workspace).toContain("const tasks=practitioner&&showTasks");
   expect(workspace).toContain("const followups=livePractitioner&&showFollowups");
   expect(workspace).toContain('Return to live calendar');
   expect(workspace).toContain('calendarCasesForMode(value,mode!)');
@@ -61,7 +62,7 @@ describe('operational Calendar composition',()=>{
   });
  it('offers one practitioner booking action beside the title and reduces unused agenda spacing',()=>{
   expect(workspace).toContain("action={practitioner?<Button disabled={mutation.locked||!cases.length} onClick={e=>openBook(e)}>");
-  expect(workspace).toContain("{livePractitioner&&<div className=\"ls-cal-actions\">");
+  expect(workspace).toContain("{practitioner&&<div className=\"ls-cal-actions\">");
   expect(workspace.match(/onClick=\{e=>openBook\(e\)\}/g)).toHaveLength(1);
   expect(css).toContain('.lsw.lsu.lsu--practitioner .ls-cal>.lsw-page-header{display:grid;grid-template-columns:minmax(0,1fr) auto');
   expect(css).toContain('.lsw.lsu .ls-cal>.lsw-page-header>.lsw-button{font-size:inherit}');

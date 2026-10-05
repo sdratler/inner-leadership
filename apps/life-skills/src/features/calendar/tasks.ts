@@ -12,6 +12,8 @@ import { internalTaskPath } from './validation.ts';
 import { crmDueCivilDate } from '../prospects/due-date.ts';
 import type { FollowupSource } from './followups.ts';
 import { MAX_CALENDAR_TASKS, MAX_OPERATIONAL_PROSPECTS } from '../contact-ops/core/limits.ts';
+import {demoCaseBatch} from '../demo/provenance.ts';
+import type {CalendarMode} from './mode.ts';
 
 export type TaskId=Id<'task'>;
 export type TaskInput=z.infer<typeof taskCreateSchema>;
@@ -27,6 +29,10 @@ function candidateCaseId(value:unknown):CaseId|null{if(typeof value!=='string')r
 const columns=`id,case_id AS "caseId",title_ciphertext AS "titleCiphertext",note_ciphertext AS "noteCiphertext",
  source_path_ciphertext AS "sourcePathCiphertext",to_jsonb(tasks)->>'source_kind' AS "sourceKind",due_date::text AS "dueDate",
  to_char(due_time,'HH24:MI') AS "dueTime",state,version,created_at AS "createdAt",updated_at AS "updatedAt"`;
+// Include the case root as well as descendant markers, so old synthetic tasks
+// cannot leak into live lists if they predate automatic task marking.
+const syntheticTask=`(EXISTS(SELECT 1 FROM ls_demo.cases d WHERE d.workspace_id=tasks.workspace_id AND d.case_id=tasks.case_id)
+ OR EXISTS(SELECT 1 FROM ls_demo.records d WHERE d.workspace_id=tasks.workspace_id AND d.entity_kind='task' AND d.entity_key=tasks.id::text))`;
 
 /** Practitioner-only, internal work. No outbox, invoice, booking or provider call. */
 export class InternalTaskService {
@@ -45,7 +51,8 @@ export class InternalTaskService {
    dueDate:row.dueDate,dueTime:row.dueTime,state:row.state,version:row.version,
    createdAt:row.createdAt.toISOString(),updatedAt:row.updatedAt.toISOString()};
  }
- async list(actor:Actor,from:string,to:string,caseId:CaseId|null):Promise<InternalTask[]> {
+ async list(actor:Actor,from:string,to:string,caseId:CaseId|null,mode:CalendarMode='live'):Promise<InternalTask[]> {
+  if(mode!=='live'&&mode!=='demo')throw new AppError('INVALID_REQUEST');
   if(ms(to)<=ms(from)||ms(to)-ms(from)>63*86_400_000)throw new AppError('INVALID_REQUEST');
   const first=civilDate(from),last=civilDate(to);
   return this.db.read(actor,async c=>{
@@ -53,13 +60,20 @@ export class InternalTaskService {
    const rows=await c.tx.query<TaskRow>(`SELECT ${columns} FROM ls_calendar.tasks
     WHERE workspace_id=$1 AND due_date>=$2::date AND due_date<$3::date
       AND ($4::uuid IS NULL OR case_id=$4::uuid)
-    ORDER BY due_date,due_time NULLS FIRST,id LIMIT $5`,[c.workspace,first,last,caseId,MAX_CALENDAR_TASKS+1]);
+      AND ${syntheticTask}=$6::boolean
+    ORDER BY due_date,due_time NULLS FIRST,id LIMIT $5`,[c.workspace,first,last,caseId,MAX_CALENDAR_TASKS+1,mode==='demo']);
    if(rows.length>MAX_CALENDAR_TASKS)throw new AppError('UNAVAILABLE');
    return rows.map(row=>this.view(c,row));
   });
  }
  async create(actor:Actor,key:string,input:TaskInput):Promise<InternalTask> {
-  return this.db.command(actor,'create_task',key,input,async c=>requirePractitioner(c.actor),async c=>{
+  const mode=input.mode??'live';if(mode!=='live'&&mode!=='demo')throw new AppError('INVALID_REQUEST');
+  return this.db.command(actor,'create_task',key,input,async c=>{
+   requirePractitioner(c.actor);
+   if(input.caseId)await this.db.scope(c,input.caseId);
+   const batch=input.caseId?await demoCaseBatch(c.tx,c.workspace,input.caseId):null;
+   if((mode==='demo')!==Boolean(batch))throw new AppError('INVALID_REQUEST');
+  },async c=>{
    const id=asId(randomUUID(),'task');
    if(input.caseId)await this.db.scope(c,input.caseId);
    const rows=await c.tx.query<TaskRow>(`INSERT INTO ls_calendar.tasks
@@ -68,13 +82,24 @@ export class InternalTaskService {
     this.db.encrypt(c,'task-title',id,input.title),input.note?this.db.encrypt(c,'task-note',id,input.note):null,
     input.sourcePath?this.db.encrypt(c,'task-source',id,input.sourcePath):null,input.dueDate,input.dueTime,c.now]);
    const row=rows[0];if(!row)throw new AppError('UNAVAILABLE');
+   if(mode==='demo'){
+    const batch=await demoCaseBatch(c.tx,c.workspace,input.caseId!);
+    if(!batch)throw new AppError('CONFLICT');
+    await c.tx.query(`INSERT INTO ls_demo.records(workspace_id,batch_id,entity_kind,entity_key,source_key,case_id)
+     VALUES($1,$2,'task',$3,$4,$5)`,[c.workspace,batch,id,`calendar-task:${id}`,input.caseId]);
+   }
    await c.tx.query(`INSERT INTO ls_calendar.task_history(workspace_id,id,task_id,version,action,actor_account_id,occurred_at)
     VALUES($1,$2,$3,1,'created',$4,$5)`,[c.workspace,randomUUID(),id,c.actor.id,c.now]);
    return this.view(c,row);
   });
  }
- async complete(actor:Actor,id:TaskId,key:string,expectedVersion:number):Promise<InternalTask> {
-  return this.db.command(actor,'complete_task',key,{id,expectedVersion},async c=>requirePractitioner(c.actor),async c=>{
+ async complete(actor:Actor,id:TaskId,key:string,expectedVersion:number,mode:CalendarMode='live'):Promise<InternalTask> {
+  if(mode!=='live'&&mode!=='demo')throw new AppError('INVALID_REQUEST');
+  return this.db.command(actor,'complete_task',key,{id,expectedVersion,...(mode==='demo'?{mode}:{})},async c=>{
+   requirePractitioner(c.actor);
+   const row=await one<{id:string}>(c.tx,`SELECT id FROM ls_calendar.tasks WHERE workspace_id=$1 AND id=$2 AND ${syntheticTask}=$3::boolean`,[c.workspace,id,mode==='demo']);
+   if(!row)throw new AppError('NOT_FOUND');
+  },async c=>{
    const row=await one<TaskRow>(c.tx,`UPDATE ls_calendar.tasks SET state='done',version=version+1,updated_at=$4
     WHERE workspace_id=$1 AND id=$2 AND version=$3 AND state='open' RETURNING ${columns}`,
     [c.workspace,id,expectedVersion,c.now]);
