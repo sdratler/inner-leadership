@@ -39,8 +39,7 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  const t=text(locale),practitioner=role==='practitioner';
  const mode=practitioner?initialMode:null,livePractitioner=practitioner&&mode==='live';
  const layerSearch=useSearchParams().toString();
- const selectedLayers=initialCalendarLayers(calendarLayerQuery(new URLSearchParams(layerSearch)),practitioner,livePractitioner);
- const showTasks=selectedLayers.tasks===true,showFollowups=selectedLayers.followups===true,showPractice=selectedLayers.practice===true,showContent=selectedLayers.content===true;
+ const queryLayers=initialCalendarLayers(calendarLayerQuery(new URLSearchParams(layerSearch)),practitioner,livePractitioner);
  const [cases,setCases]=useState<CaseChoice[]>([]),[caseId,setCaseId]=useState(initialCaseId),[items,setItems]=useState<AppointmentView[]>([]),[cursor,setCursor]=useState<string|null>(null);
  const [loading,setLoading]=useState(true),[error,setError]=useState<CalendarLoadFailure|null>(null),[caseError,setCaseError]=useState(false),[countError,setCountError]=useState(false),[count,setCount]=useState<number|null>(null);
  const [selected,setSelected]=useState<AppointmentView|null>(null),[dirty,setDirty]=useState(false),[bookingOpen,setBookingOpen]=useState(false),[checkinFor,setCheckinFor]=useState<AppointmentView|null>(null),[bookingNonce,setBookingNonce]=useState(0);
@@ -50,6 +49,12 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  const [workSyncFailed,setWorkSyncFailed]=useState(false),[workSyncRetry,setWorkSyncRetry]=useState(0);
  const [taskDraft,setTaskDraft]=useState({title:'',dueDate:initialDate,dueTime:'',note:'',sourcePath:'',caseId:initialCaseId}),[taskDirty,setTaskDirty]=useState(false);
  const [practiceDirty,setPracticeDirty]=useState(false);
+ // Give checkboxes an immediate controlled response, then adopt the exact URL
+ // when navigation completes (including Back). Never replay an old override.
+ const [layerChoice,setLayerChoice]=useState(()=>({query:layerSearch,values:queryLayers}));
+ if(layerChoice.query!==layerSearch)setLayerChoice({query:layerSearch,values:queryLayers});
+ const selectedLayers=layerChoice.query===layerSearch?layerChoice.values:queryLayers;
+ const showTasks=selectedLayers.tasks===true,showFollowups=selectedLayers.followups===true,showPractice=selectedLayers.practice===true,showContent=selectedLayers.content===true;
  const [practiceRefresh,setPracticeRefresh]=useState(0);
  const mutation=useCalendarMutation(locale),generation=useRef(0),date=initialDate,view=initialView;
  const range=dateRange(date,view),basePath=`/${locale}/${practitioner?'app/calendar':role==='adult_client'||role==='child'?'client/calendar':'family/schedule'}`,caseKind=role==='adult_client'?'adult':'minor';
@@ -143,6 +148,7 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  function toggleLayer(key:CalendarLayer,enabled:boolean){
   if(key==='practice'&&practiceDirty&&!window.confirm(t.dirty))return;
   if(key==='practice')setPracticeDirty(false);
+  setLayerChoice({query:layerSearch,values:{...selectedLayers,[key]:enabled}});
   const query=new URLSearchParams({date,view,...layerQuery,[key]:enabled?'1':'0',...(caseId?{caseId}:{}),...(selectedClientContext&&caseId?{context:'client'}:{}),...(mode==='demo'?{mode}:{})});router.replace(basePath+'?'+query,{scroll:false});
  }
  async function refreshSelected(id=selected?.id){if(!id)return;try{setSelected(await calendarRead<AppointmentView>('appointments/'+id));}catch(cause){setSelected(null);setError(calendarLoadFailure(cause));}}
