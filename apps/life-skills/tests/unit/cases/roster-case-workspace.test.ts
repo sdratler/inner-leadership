@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import { expect, it, vi, beforeEach } from 'vitest';
+import { expect, it, vi, beforeEach, afterEach } from 'vitest';
 
 type Slot =
  | { kind: 'state'; value: unknown }
@@ -60,7 +60,40 @@ function find(node: unknown, predicate: (element: ReactElement<Record<string, un
  return find(element.props?.children, predicate);
 }
 
-beforeEach(() => hook.reset());
+beforeEach(() => {
+ hook.reset();let location=new URL('https://synthetic.invalid/en/app/clients');
+ vi.stubGlobal('window',{get location(){return location;},history:{state:null,pushState(_state:unknown,_unused:string,url:URL){location=new URL(url);},replaceState(_state:unknown,_unused:string,url:URL){location=new URL(url);}},addEventListener(){},removeEventListener(){}});
+});
+afterEach(()=>vi.unstubAllGlobals());
+
+it.each(['he','en'] as const)('%s Sheet directory forwards bounded filter/page context and exposes one create disclosure',locale=>{
+ const props=find(hook.render(()=>LegacyClientsRoster({locale,section:'all',search:'Synthetic',stage:'constructor',language:'he',due:'overdue',page:'2'})),e=>e.type===ProspectsClient)!.props;
+ expect(props.initialFilters).toEqual({query:'Synthetic',stage:'constructor',language:'he',due:'overdue'});expect(props.initialPage).toBe(2);
+ hook.reset();const view=()=>hook.render(()=>ProspectsClient({locale,embedded:true,initialFilters:props.initialFilters as NonNullable<Parameters<typeof ProspectsClient>[0]['initialFilters']>,initialPage:2}));
+ const label=locale==='he'?'הוספת מתעניין':'Add prospect';
+ const trigger=find(view(),e=>e.type==='button'&&e.props.children===label)!;
+ expect(trigger.props['aria-expanded']).toBe(false);expect(trigger.props['aria-controls']).toBe('add-prospect');
+ const panel=()=>find(view(),e=>e.type==='section'&&e.props.id==='add-prospect')!;
+ expect(panel().props.hidden).toBe(true);
+ (trigger.props.onClick as()=>void)();expect(panel().props.hidden).toBe(false);
+ let prevented=false;(panel().props.onKeyDown as(e:unknown)=>void)({key:'Escape',preventDefault(){prevented=true;}});
+ expect(prevented).toBe(true);expect(panel().props.hidden).toBe(true);
+ expect(find(view(),e=>e.type==='details'&&e.props.id==='add-prospect')).toBeUndefined();
+});
+
+it('Sheet filters update bounded URL context, preserve exact stage text and restore page/search on Back',()=>{
+ let location=new URL('https://synthetic.invalid/en/app/clients?section=prospects&filter=today'),restore:(()=>void)|undefined;
+ vi.stubGlobal('window',{get location(){return location;},history:{state:null,pushState(_s:unknown,_u:string,url:URL){location=new URL(url);},replaceState(_s:unknown,_u:string,url:URL){location=new URL(url);}},addEventListener(event:string,listener:()=>void){if(event==='popstate')restore=listener;},removeEventListener(){}});
+ const view=()=>hook.render(()=>ProspectsClient({locale:'en',embedded:true}));view();hook.flushEffects();
+ const input=find(view(),e=>e.type==='input'&&e.props.type==='search')!;
+ (input.props.onChange as(e:unknown)=>void)({target:{value:'Synthetic long name'}});
+ expect(location.searchParams.get('search')).toBe('Synthetic long name');expect(location.searchParams.get('filter')).toBe('today');
+ location=new URL('https://synthetic.invalid/en/app/clients?section=prospects&filter=today&search=Reloaded&stage=constructor&language=he&due=overdue&page=2');restore!();
+ expect(find(view(),e=>e.type==='input'&&e.props.type==='search')!.props.value).toBe('Reloaded');
+ expect(find(view(),e=>e.type==='select'&&e.props.value==='constructor')).toBeDefined();
+ expect(find(view(),e=>e.type==='select'&&e.props.value==='he')).toBeDefined();
+ expect(find(view(),e=>e.type==='select'&&e.props.value==='overdue')).toBeDefined();
+});
 
 it.each(['all', 'active', 'archived'])('keeps %s live cases separate from DEMO using provenance, not a name prefix', async section => {
  const state = section === 'archived' ? 'archived' : 'active';

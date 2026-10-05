@@ -13,6 +13,8 @@ import "./native-people.css";
 import type {PeopleResponse} from "./server/people-http.ts";
 import type {NativeContactRow} from "./server/native-directory.ts";
 import {peopleCreate,type PeopleCreate,type ProspectCreateFields} from "./core/people-create.ts";
+import {peopleFiltersFromQuery,peoplePageFromQuery,oneDirectoryQuery as oneQuery,type DirectoryFilters} from "../prospects/directory-query.ts";
+export {peopleFiltersFromQuery,peoplePageFromQuery} from "../prospects/directory-query.ts";
 type NativeData=Extract<PeopleResponse,{source:"native"}>;
 type Draft={fields:AdministrativeFields;base:AdministrativeFields;version:number;pending?:PeopleEdit|null;conflict?:boolean};
 export type SheetRequestContext={mode:"live";filter:Preset;personId?:string|undefined;leadId?:string|undefined};
@@ -26,19 +28,6 @@ const pick=(row:NativeContactRow):AdministrativeFields=>({stage:row.stage,nextAc
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const leadPattern=/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]{1,80}$/;
 const validPresets=new Set<Preset>(["all","today","new","intake","payment","booking","archived"]);
-// Match the route/proxy's one-value rule on every later browser navigation.
-// Even identical repeated values are ambiguous, not a retained applied filter.
-function oneQuery(params:URLSearchParams,key:string):string|undefined{
- const values=params.getAll(key);return values.length===1?values[0]:undefined;
-}
-export function peoplePageFromQuery(params:URLSearchParams):number{
- const raw=oneQuery(params,"page");return raw&&/^[1-9]\d{0,4}$/.test(raw)?Number(raw):1;
-}
-type DirectoryFilters={query:string;stage:string;language:string;due:"any"|"today"|"overdue"};
-export function peopleFiltersFromQuery(params:URLSearchParams):DirectoryFilters{
- const search=oneQuery(params,"search")??"",stage=oneQuery(params,"stage")??"",language=oneQuery(params,"language")??"",due=oneQuery(params,"due")??"any";
- return {query:search.length<=200?search:"",stage:stage.length<=120?stage:"",language:language==="he"||language==="en"?language:"",due:due==="today"||due==="overdue"?due:"any"};
-}
 const emptyCreation:ProspectCreateFields={name:"",phone:"",language:"",source:"",notes:"",nextAction:"",dueDate:""};
 export function NativePeopleWorkspace({locale,view,initial,onSheet,initialMode="live",initialFilter="all",initialFilters,initialLoadedContext=false,initialPersonId,initialLeadId}:{locale:Locale;view:PeopleView;initial:NativeData;initialMode?:"live"|"demo";initialFilter?:Preset;initialFilters?:DirectoryFilters;initialLoadedContext?:boolean;initialPersonId?:string|undefined;initialLeadId?:string|undefined;onSheet:(source:Extract<PeopleResponse,{source:"sheet"}>,context:SheetRequestContext)=>void}){
  const he=locale==="he",text=(en:string,heText:string)=>he?heText:en;

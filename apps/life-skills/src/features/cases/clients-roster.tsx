@@ -48,7 +48,7 @@ export function ClientsRoster(props:RosterProps){
    failure===null?<p role="status">{text("Loading authorized people…","טוען אנשים מורשים…")}</p>:<div className="lsw-alert" role="alert"><p>{failure===401?text("Your session ended. Sign in to continue.","פג תוקף החיבור. יש להיכנס מחדש."):failure===403?text("This account cannot access the practitioner directory.","לחשבון הזה אין גישה לרשימת המטפל/ת."):failure===409?text("Contact records are being reconciled. No fallback or changes were used.","רשומות אנשי הקשר נמצאות בהתאמה. לא הוצגו נתונים חלופיים ולא בוצעו שינויים."):text("People could not be loaded. This is not an empty directory.","לא ניתן לטעון את האנשים. אין להסיק שהרשימה ריקה.")}</p>{failure===401?<a className="lsw-button lsw-button--secondary" href={loginHref(locale,practitionerReturnPath(locale,"clients",returnQuery))}>{text("Sign in","כניסה")}</a>:failure!==403&&<button className="lsw-button lsw-button--secondary" onClick={load}>{text("Retry","ניסיון חוזר")}</button>}</div>}
  </main>;
 }
-export function LegacyClientsRoster({locale,section:rawSection,prospectFilter,focusLeadId}:RosterProps){
+export function LegacyClientsRoster({locale,section:rawSection,prospectFilter,focusLeadId,...query}:RosterProps){
  const section:Section=rawSection&&sections.has(rawSection as Section)?rawSection as Section:"all";
  const t=copy[locale],showCases=section==="all"||section==="active"||section==="archived",showProspects=section==="all"||section==="prospects"||section==="paid"||section==="archived";
  const [rows,setRows]=useState<Case[]>([]),[state,setState]=useState<"loading"|"ready"|"error"|"auth"|"forbidden">("loading"),active=useRef(true),request=useRef(0);
@@ -56,10 +56,11 @@ export function LegacyClientsRoster({locale,section:rawSection,prospectFilter,fo
  useEffect(()=>{active.current=true;if(showCases)queueMicrotask(load);return()=>{active.current=false}},[showCases]);
  const filtered=rows.filter(row=>section==="all"||(section==="archived"?closed(row.state):!closed(row.state)));
  const preset:Preset=section==="paid"?"booking":section==="archived"?"archived":prospectFilter&&filters.has(prospectFilter as Preset)?prospectFilter as Preset:"all";
+ const parameters=new URLSearchParams();for(const key of ["page","search","stage","language","due"] as const)if(query[key])parameters.set(key,query[key]);
  return <main className="lsw-main lsu-clients-directory" lang={locale} dir={locale==="he"?"rtl":"ltr"}>
   <header className="lsw-page-header"><h1>{t.title}</h1></header>
-  <ProspectsClient key={`${section}:${preset}:${focusLeadId??''}`} locale={locale} initialFilter={preset} focusLeadId={focusLeadId} embedded
+  <ProspectsClient key={`${section}:${preset}:${focusLeadId??''}`} locale={locale} initialFilter={preset} initialFilters={peopleFiltersFromQuery(parameters)} initialPage={peoplePageFromQuery(parameters)} focusLeadId={focusLeadId} embedded
    clientCases={showCases&&state==="ready"?filtered:[]} caseState={showCases?state:null} onRetryCases={load} showProspects={showProspects}
-   returnPath={practitionerReturnPath(locale,"clients",{section,filter:prospectFilter,leadId:focusLeadId})}/>
+   returnPath={practitionerReturnPath(locale,"clients",{section,filter:prospectFilter,leadId:focusLeadId,...query})}/>
  </main>;
 }
