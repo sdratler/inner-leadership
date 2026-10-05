@@ -72,6 +72,11 @@ export async function handleCalendar(request:Request,path:readonly string[]):Pro
    if(actor.role!=='practitioner')throw new AppError('FORBIDDEN');
    query(request,[]);const body=await readJson(request,z.strictObject({mode:z.enum(['live','demo'])}));
    data=await tasks.syncCaseWork(actor,body.mode);
+  }else if(request.method==='POST'&&path.length===2&&path[0]==='tasks'&&path[1]==='sync-content'){
+   if(actor.role!=='practitioner')throw new AppError('FORBIDDEN');
+   query(request,[]);await readJson(request,z.strictObject({}));
+   const {syncContentWork}=await import('./content-work-read.ts');
+   data=await syncContentWork(actor,async()=>{const current=await identity.services.sessions.actor(token);if(current.role!=='practitioner'||current.workspaceId!==actor.workspaceId||current.id!==actor.id)throw new AppError('FORBIDDEN');},sources=>tasks.syncContentWork(actor,sources));
   }else if(request.method==='POST'&&path.length===1&&path[0]==='tasks'){
    query(request,[]);data=await tasks.create(actor,key,await readJson(request,taskCreateSchema));
   }else if(request.method==='POST'&&path.length===3&&path[0]==='tasks'&&path[2]==='complete'){

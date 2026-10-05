@@ -18,15 +18,18 @@ import {reconcileCaseWork,type CaseTaskKind} from './case-work-tasks.ts';
 import {taskManageSchema} from './validation.ts';
 import type {TaskState} from './task-state.ts';
 import {prospectArchived,prospectContactSuppressed} from '../prospects/native-edit.ts';
+import {reconcileIntakeWork} from './administrative-work-tasks.ts';
+import type {AdministrativeTaskKind} from './administrative-work-copy.ts';
+import {reconcileAdministrativeSources,type AdministrativeWorkSource} from './source-work-tasks.ts';
 
 export type TaskId=Id<'task'>;
 export type TaskInput=z.infer<typeof taskCreateSchema>;
 export type InternalTask={
- id:TaskId;caseId:CaseId|null;title:string;note:string|null;sourcePath:string|null;sourceKind:'crm_followup'|CaseTaskKind|null;
+ id:TaskId;caseId:CaseId|null;title:string;note:string|null;sourcePath:string|null;sourceKind:'crm_followup'|CaseTaskKind|AdministrativeTaskKind|null;
  dueDate:string;dueTime:string|null;state:TaskState;version:number;snoozedUntil?:string|null;
  createdAt:string;updatedAt:string;
 };
-type TaskRow={id:string;caseId:CaseId|null;titleCiphertext:string;noteCiphertext:string|null;sourcePathCiphertext:string|null;sourceKind:'crm_followup'|CaseTaskKind|null;
+type TaskRow={id:string;caseId:CaseId|null;titleCiphertext:string;noteCiphertext:string|null;sourcePathCiphertext:string|null;sourceKind:'crm_followup'|CaseTaskKind|AdministrativeTaskKind|null;
  dueDate:string;dueTime:string|null;state:TaskState;version:number;snoozedUntil:string|null;createdAt:Date;updatedAt:Date};
 type SourceTaskRow={id:string;sourceDigest:string;sourceRevision:string;version:number};
 function candidateCaseId(value:unknown):CaseId|null{if(typeof value!=='string')return null;try{return asId(value,'case');}catch{return null;}}
@@ -55,6 +58,10 @@ export class InternalTaskService {
    requirePractitioner(c.actor);
    return reconcileCaseWork(this.db,c,mode,value=>this.sourceDigest(value));
   });
+ }
+ async syncContentWork(actor:Actor,sources:readonly AdministrativeWorkSource[]){
+  if(sources.some(row=>!['creative_approval','publishing_failure'].includes(row.kind)||row.caseId!==null))throw new AppError('INVALID_REQUEST');
+  return this.db.read(actor,async c=>{requirePractitioner(c.actor);return reconcileAdministrativeSources(this.db,c,sources,value=>this.sourceDigest(value));});
  }
  private view(c:TransactionContext,row:TaskRow):InternalTask {
   const id=asId(row.id,'task');
@@ -270,7 +277,8 @@ export class InternalTaskService {
     SELECT $1,v.id,v."taskId",v.version,v.action,$2,$3 FROM jsonb_to_recordset($4::jsonb)
      AS v(id uuid,"taskId" uuid,version integer,action text)`,
     [c.workspace,c.actor.id,c.now,JSON.stringify(history)]);
-   return result;
+   const intake=await reconcileIntakeWork(this.db,c,rows,value=>this.sourceDigest(value));
+   return {created:result.created+intake.created,updated:result.updated+intake.updated,resolved:result.resolved+intake.resolved,unchanged:result.unchanged+intake.unchanged};
   });
  }
 }

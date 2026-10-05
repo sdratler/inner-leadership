@@ -31,6 +31,7 @@ import { PracticeOccurrenceWorkspace } from '../home-practice/occurrence-workspa
 import {calendarLayerQuery,initialCalendarLayers,calendarLayersQuery,type CalendarLayer} from './layers.ts';
 import type {CalendarContentRead} from './content.ts';
 import {taskStates,taskStateLabel,type TaskState} from './task-state.ts';
+import {localizedTaskTitle} from './administrative-work-copy.ts';
 import './calendar.css';
 type HistoryPage={items:Array<{version:number;state:'present'|'late'|'no_show'|'canceled';recordedAt:string;reason:string|null}>;nextVersion:number|null};
 import { verifiedGoogleMeetUrl } from './meeting-url.ts';
@@ -48,6 +49,7 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  const [followupRows,setFollowupRows]=useState<FollowupSource[]|null>(null),[followupFailed,setFollowupFailed]=useState(false),[followupRetry,setFollowupRetry]=useState(0),[taskSyncFailed,setTaskSyncFailed]=useState(false),[taskSyncReady,setTaskSyncReady]=useState(false);
  const [taskRows,setTaskRows]=useState<InternalTask[]|null>(null),[taskLoadedFor,setTaskLoadedFor]=useState(''),[taskFailed,setTaskFailed]=useState(false),[taskRefresh,setTaskRefresh]=useState(0);
  const [workSyncFailed,setWorkSyncFailed]=useState(false),[workSyncRetry,setWorkSyncRetry]=useState(0);
+ const [contentSyncFailed,setContentSyncFailed]=useState(false),[contentSyncRetry,setContentSyncRetry]=useState(0);
  const [taskDraft,setTaskDraft]=useState({title:'',dueDate:initialDate,dueTime:'',note:'',sourcePath:'',caseId:initialCaseId}),[taskDirty,setTaskDirty]=useState(false);
  const [taskManaging,setTaskManaging]=useState<InternalTask|null>(null),[taskEdit,setTaskEdit]=useState<{state:TaskState;snoozedUntil:string}>({state:'open',snoozedUntil:''}),[taskEditDirty,setTaskEditDirty]=useState(false),[taskManageLoading,setTaskManageLoading]=useState(false),[taskManageReadFailed,setTaskManageReadFailed]=useState(false);
  const [practiceDirty,setPracticeDirty]=useState(false);
@@ -132,6 +134,12 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
   return()=>{active=false;};
  },[practitioner,mode,workSyncRetry]);
  useEffect(()=>{
+  if(!livePractitioner)return;
+  let active=true;
+  void calendarWrite('tasks/sync-content',{},crypto.randomUUID()).then(()=>{if(active){setContentSyncFailed(false);setTaskRefresh(value=>value+1);}}).catch(()=>{if(active)setContentSyncFailed(true);});
+  return()=>{active=false;};
+ },[livePractitioner,contentSyncRetry]);
+ useEffect(()=>{
   if(!practitioner)return;
   const controller=new AbortController();
   const params=new URLSearchParams({from:range.from,to:range.to,...(caseId?{caseId}:{}),mode:mode!});
@@ -202,6 +210,7 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  {layerControls}
  {practitioner&&<div className="ls-cal-layers">{taskFailed&&<p role="status">{locale==='he'?'המשימות לא נטענו. הפגישות עדיין מוצגות.':'Tasks could not load. Appointments are still shown.'} <Button variant="quiet" onClick={()=>{setTaskFailed(false);setTaskRefresh(value=>value+1)}}>{locale==='he'?'ניסיון חוזר':'Retry tasks'}</Button></p>}{livePractitioner&&<>{followupFailed&&<p role="status">{locale==='he'?'המשך הטיפול בפניות לא נטען. הפגישות עדיין מוצגות.':'Prospect follow-ups could not load. Appointments are still shown.'} <Button variant="quiet" onClick={()=>{setFollowupFailed(false);setFollowupRetry(value=>value+1)}}>{locale==='he'?'ניסיון חוזר':'Retry follow-ups'}</Button></p>}{taskSyncFailed&&<p role="status">{locale==='he'?'המשך הטיפול מוצג, אך לא ניתן לעדכן את המשימות המקושרות.':'Follow-ups are visible, but linked tasks could not be synchronized.'} <Button variant="quiet" onClick={()=>setFollowupRetry(value=>value+1)}>{locale==='he'?'ניסיון חוזר':'Retry sync'}</Button></p>}</>}</div>}
   {practitioner&&workSyncFailed&&<p role="status">{locale==='he'?'לא ניתן לעדכן את המשימות מתוך הרשומות המאומתות כרגע. המשימות השמורות והפגישות נשמרות.':'Verified-source tasks could not be refreshed right now. Saved tasks and appointments are retained.'} <Button variant="quiet" onClick={()=>setWorkSyncRetry(value=>value+1)}>{locale==='he'?'ניסיון סנכרון חוזר':'Retry work sync'}</Button></p>}
+  {livePractitioner&&contentSyncFailed&&<p role="status">{locale==='he'?'לא ניתן לרענן משימות אישור גרפיקה וכשלי פרסום. המשימות השמורות ושאר היומן זמינים בנפרד.':'Artwork approval and publishing-failure tasks could not refresh. Saved tasks and the rest of the calendar remain available.'} <Button variant="quiet" onClick={()=>setContentSyncRetry(value=>value+1)}>{locale==='he'?'ניסיון סנכרון משימות תוכן חוזר':'Retry content tasks'}</Button></p>}
   {livePractitioner&&showContent&&<div className="ls-cal-content-readback">
    {contentLoading&&<p role="status">{locale==='he'?'טוען רשומות תוכן מורשות…':'Loading authorized content records…'}</p>}
    {contentFailed&&<p role="alert">{locale==='he'?'לא ניתן לטעון את התוכן. הפגישות והמשימות זמינות בנפרד.':'Content could not load. Appointments and tasks are available separately.'} <Button variant="quiet" onClick={()=>setContentRetry(value=>value+1)}>{locale==='he'?'ניסיון טעינת תוכן חוזר':'Retry content'}</Button></p>}
@@ -226,10 +235,10 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  <UnsavedChangesGuard dirty={taskEditDirty} message={t.dirty}/>
  <Dialog id="ls-cal-task-manage" title={locale==='he'?'ניהול משימה':'Manage task'} locale={locale} busy={mutation.locked||taskManageLoading}>
  {taskManaging&&<form className="lsw-stack" onSubmit={event=>{event.preventDefault();if(event.currentTarget.checkValidity())saveTaskManager();}}>
- <h3>{taskManaging.title}</h3><p>{locale==='he'?'מועד המקור':'Source due'}: {taskManaging.dueDate} · {taskManaging.dueTime||(locale==='he'?'כל היום':'All day')}</p>
+ <h3>{localizedTaskTitle(taskManaging.title,taskManaging.sourceKind,locale)}</h3><p>{locale==='he'?'מועד המשימה המקורי':'Original task date'}: {taskManaging.dueDate} · {taskManaging.dueTime||(locale==='he'?'כל היום':'All day')}</p>
  <p>{locale==='he'?'עדכון עבודה פנימית בלבד. אינו שולח, מחייב, קובע פגישה או משלים את פעולת המקור.':'Internal work only. Does not send, charge, book or complete the source action.'}</p>
  <Select id="calendar-task-state" label={locale==='he'?'מצב':'State'} value={taskEdit.state} disabled={mutation.locked||taskManageLoading} onChange={event=>{const state=event.target.value as TaskState;setTaskEdit(previous=>({...previous,state,snoozedUntil:state==='done'?'':previous.snoozedUntil}));setTaskEditDirty(true);}}>{taskStates.map(state=><option key={state} value={state}>{taskStateLabel(state,locale)}</option>)}</Select>
- <Input id="calendar-task-snooze" label={locale==='he'?'דחייה עד (לא חובה)':'Snooze until (optional)'} help={locale==='he'?'השארת שדה ריק מבטלת דחייה; מועד המקור נשמר.':'Leave empty to remove snooze; the source date is retained.'} type="date" min={civilDate(new Date().toISOString())} value={taskEdit.snoozedUntil} disabled={mutation.locked||taskManageLoading||taskEdit.state==='done'} onChange={event=>{setTaskEdit(previous=>({...previous,snoozedUntil:event.target.value}));setTaskEditDirty(true);}}/>
+ <Input id="calendar-task-snooze" label={locale==='he'?'דחייה עד (לא חובה)':'Snooze until (optional)'} help={locale==='he'?'השארת שדה ריק מבטלת דחייה; מועד המשימה המקורי נשמר.':'Leave empty to remove snooze; the original task date is retained.'} type="date" min={civilDate(new Date().toISOString())} value={taskEdit.snoozedUntil} disabled={mutation.locked||taskManageLoading||taskEdit.state==='done'} onChange={event=>{setTaskEdit(previous=>({...previous,snoozedUntil:event.target.value}));setTaskEditDirty(true);}}/>
  {taskManageReadFailed&&<p role="alert">{locale==='he'?'המשימה השמורה לא נטענה. העריכה שלך נשמרת כאן; אפשר לנסות שוב.':'The saved task could not load. Your edits are kept here; try again.'}</p>}
  <div className="lsw-actions"><Button type="submit" disabled={mutation.locked||taskManageLoading||!taskEditDirty}>{locale==='he'?'שמירת מצב משימה':'Save task state'}</Button><Button variant="secondary" disabled={mutation.locked||taskManageLoading} onClick={()=>void reloadTaskManager()}>{locale==='he'?'טעינת המשימה השמורה':'Reload saved task'}</Button></div>{mutation.feedback}
  </form>}

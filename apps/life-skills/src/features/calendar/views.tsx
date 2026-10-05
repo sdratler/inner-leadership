@@ -8,8 +8,8 @@ import type { CalendarFollowup } from './followups.ts';
 import type { InternalTask } from './tasks.ts';
 import type { PracticeOccurrenceItem } from '../home-practice/types.ts';
 import { PracticeCalendarEntry, type OpenCalendarPractice } from '../home-practice/calendar-entry.tsx';
-import { administrativeActionLabel, linkedInquiryTaskTitle } from '../prospects/admin-display.ts';
-import {localizedCaseTaskTitle} from './case-work-copy.ts';
+import { administrativeActionLabel } from '../prospects/admin-display.ts';
+import {localizedTaskTitle} from './administrative-work-copy.ts';
 import type {CalendarContent} from './content.ts';
 import {CalendarContentEntry} from './content-entry.tsx';
 import { text } from './copy.ts';
@@ -19,7 +19,7 @@ export function formatTime(value:string,locale:Locale,full=true){return new Intl
 export type OpenAppointment=(a:AppointmentView,e:MouseEvent<HTMLButtonElement>)=>void;
 export type OpenTaskManager=(task:InternalTask,e:MouseEvent<HTMLButtonElement>)=>void;
 function TaskWorkflow({task,locale,onManage}:{task:InternalTask;locale:Locale;onManage?:OpenTaskManager|undefined}){
- return <><span>{taskStateLabel(task.state,locale)}</span>{task.snoozedUntil&&<p>{locale==='he'?'נדחתה עד':'Snoozed until'} <time dateTime={task.snoozedUntil}>{task.snoozedUntil}</time> · {locale==='he'?'מועד המקור':'Source due'} <time dateTime={task.dueDate}>{task.dueDate}</time></p>}{onManage&&<Button variant="quiet" onClick={event=>onManage(task,event)} aria-haspopup="dialog" aria-controls="ls-cal-task-manage">{locale==='he'?'ניהול משימה':'Manage task'}</Button>}</>;
+ return <><span>{taskStateLabel(task.state,locale)}</span>{task.snoozedUntil&&<p>{locale==='he'?'נדחתה עד':'Snoozed until'} <time dateTime={task.snoozedUntil}>{task.snoozedUntil}</time> · {locale==='he'?'מועד המשימה המקורי':'Original task date'} <time dateTime={task.dueDate}>{task.dueDate}</time></p>}{onManage&&<Button variant="quiet" onClick={event=>onManage(task,event)} aria-haspopup="dialog" aria-controls="ls-cal-task-manage">{locale==='he'?'ניהול משימה':'Manage task'}</Button>}</>;
 }
 function followupHref(locale:Locale,leadId:string){return `/${locale}/app/clients?section=prospects&leadId=${encodeURIComponent(leadId)}`;}
 function taskSourceHref(locale:Locale,path:string){return path.replace(/^\/(?:he|en)\/app\//,`/${locale}/app/`);}
@@ -27,7 +27,7 @@ function TaskDetails({note,locale}:{note:string|null;locale:Locale}){
  return note?<details><summary>{locale==='he'?'פרטים':'Details'}</summary><p>{note}</p></details>:null;
 }
 function taskHeading(task:InternalTask,locale:Locale,names:Record<string,string>):string{
- const title=localizedCaseTaskTitle(linkedInquiryTaskTitle(task.title,task.sourceKind==='crm_followup'?'crm_followup':null,locale),task.sourceKind,locale);
+ const title=localizedTaskTitle(task.title,task.sourceKind,locale);
  return task.sourceKind&&task.sourceKind!=='crm_followup'&&task.caseId&&names[task.caseId]?`${names[task.caseId]} · ${title}`:title;
 }
 export function CalendarBoard({dates,items,followups=[],tasks=[],practice=[],content=[],onOpenPractice,locale,view,names,onOpen,onCompleteTask,onManageTask}:{dates:string[];items:AppointmentView[];followups?:CalendarFollowup[];tasks?:InternalTask[];practice?:PracticeOccurrenceItem[];content?:CalendarContent[];onOpenPractice?:OpenCalendarPractice;locale:Locale;view:'day'|'week'|'month';names:Record<string,string>;onOpen:OpenAppointment;onCompleteTask?:((task:InternalTask)=>void)|undefined;onManageTask?:OpenTaskManager|undefined}){
