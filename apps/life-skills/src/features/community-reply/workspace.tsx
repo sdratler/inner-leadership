@@ -22,7 +22,7 @@ const copy = {
     proposed: "Reusable preference understood (not saved)", scope: "Apply instructions to", once: "This reply only", community: "Future Community replies", general: "Global writing voice / Content Voice",
     language: "Replies this rule applies to", hebrew: "Hebrew", english: "English", both: "Both languages",
     pending: "The canonical writing-rule update is not yet connected. This correction changes only this reply; no source rule has been saved.",
-    interpret: "First use ‘Revise this reply only’ to review the reusable preference. Only an approved community-reply preference can be saved here.",
+    interpret: "First use ‘Revise this reply only’ to review the reusable preference. Applying it saves only the explicitly selected scope.",
     savingRule: "Checking and saving the canonical Content Voice file…",
     ruleDenied: "The app's Google account cannot edit the canonical Content Voice file. No writing rule was saved; your correction is preserved.",
     ruleConflict: "The Content Voice source changed since this draft. No rule was overwritten. Generate a fresh reply, then review the correction again.",
@@ -36,7 +36,7 @@ const copy = {
     rulePlaybook: "This changes a community-channel rule governed by the separate Playbook. No Content Voice rule was written.",
     generalGate: "Global scope updates the same Content Voice guide for future writing, not just Community replies. Review the proposed rule and source version before applying it.",
     ruleListFailed: "Current writing rules could not load. Your correction is preserved; retry before applying it.", ruleListRetry: "Reload current writing rules",
-    existingRule: "Replace a reviewed existing community rule (optional)", addRule: "Add a new rule",
+    existingRule: "Replace a reviewed rule in this scope (optional)", addRule: "Add a new rule",
     ruleReview: "A similar rule already exists. Review it and select that rule explicitly if this correction should replace it; no source change was made.",
     ruleBefore: "Previous rule", ruleAfter: "Current rule", ruleVersion: "Current source version / last updated / last synchronized",
     retryRule: "Recheck / resume this correction", priorDraft: "Revised reply from this correction",
@@ -63,7 +63,7 @@ const copy = {
     proposed: "העדפת כתיבה חוזרת שזוהתה (לא נשמרה)", scope: "החלת ההנחיות על", once: "התגובה הזאת בלבד", community: "תגובות קהילה עתידיות", general: "סגנון הכתיבה הכללי / Content Voice",
     language: "שפת התגובות שעליהן הכלל חל", hebrew: "עברית", english: "אנגלית", both: "שתי השפות",
     pending: "עדכון כללי הכתיבה במקור עדיין אינו מחובר. התיקון חל רק על תגובה זו; לא נשמר כלל במקור.",
-    interpret: "תחילה יש להשתמש ב׳תיקון התגובה הזאת בלבד׳ כדי לבדוק את העדפת הכתיבה החוזרת. כאן ניתן לשמור רק העדפה לתגובות בקהילה שאושרה.",
+    interpret: "תחילה יש להשתמש ב׳תיקון התגובה הזאת בלבד׳ כדי לבדוק את העדפת הכתיבה החוזרת. החלתה שומרת רק בהיקף שנבחר במפורש.",
     savingRule: "בודק ושומר את קובץ המקור של מדריך סגנון הכתיבה…",
     ruleDenied: "לחשבון Google של האפליקציה אין הרשאת עריכה לקובץ המקור. לא נשמר כלל כתיבה; התיקון שהזנת נשמר במסך.",
     ruleConflict: "מקור סגנון הכתיבה השתנה מאז יצירת הטיוטה. לא נדרס כלל. יש ליצור תגובה חדשה ולבדוק שוב את התיקון.",
@@ -77,7 +77,7 @@ const copy = {
     rulePlaybook: "השינוי נוגע לכלל ערוץ קהילתי שבאחריות מדריך התגובות הנפרד. לא נכתב כלל למדריך הכתיבה.",
     generalGate: "היקף כללי מעדכן את אותו מדריך Content Voice לכתיבה עתידית, ולא רק לתגובות בקהילה. יש לבדוק את הכלל המוצע ואת גרסת המקור לפני החלתו.",
     ruleListFailed: "לא ניתן לטעון את כללי הכתיבה העדכניים. התיקון נשמר בעורך; יש לנסות שוב לפני החלתו.", ruleListRetry: "טעינה חוזרת של כללי הכתיבה",
-    existingRule: "החלפת כלל קהילה קיים לאחר בדיקה (לא חובה)", addRule: "הוספת כלל חדש",
+    existingRule: "החלפת כלל שנבדק בהיקף הזה (לא חובה)", addRule: "הוספת כלל חדש",
     ruleReview: "כבר קיים כלל דומה. יש לבדוק אותו ולבחור בו במפורש אם התיקון אמור להחליף אותו; המקור לא השתנה.",
     ruleBefore: "כלל קודם", ruleAfter: "כלל נוכחי", ruleVersion: "גרסת המקור הנוכחית / עודכן לאחרונה / סונכרן לאחרונה",
     retryRule: "בדיקה חוזרת / המשך התיקון", priorDraft: "תגובה מתוקנת מהפעולה הזאת",
@@ -480,7 +480,8 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
       {ruleSave.source && <p className="lsr-help">{t.ruleVersion}: v{ruleSave.source.declaredVersion ?? "—"} · Drive #{ruleSave.source.driveRevision} · {ruleSave.source.modifiedAt} · {ruleSave.source.checkedAt}</p>}
       {ruleSave.savedAt && <p className="lsr-help">{t.ruleSaved} {ruleSave.savedAt}</p>}
       {ruleSave.draft && <details><summary>{t.priorDraft}</summary><p>{ruleSave.draft.reply}</p>
-        <p className="lsr-help">{t.sources}: {t.guide} v{ruleSave.draft.provenance.guide.declaredVersion ?? "—"} · Drive #{ruleSave.draft.provenance.guide.driveRevision} · SHA-256 {ruleSave.draft.provenance.guide.sha256.slice(0, 12)} · {ruleSave.draft.provenance.guide.includedCommunityRuleIds.join(", ") || "—"}; {t.playbook} v{ruleSave.draft.provenance.playbook.declaredVersion ?? "—"} · Drive #{ruleSave.draft.provenance.playbook.driveRevision}</p></details>}
+        <p className="lsr-help">{t.sources}: {t.guide} v{ruleSave.draft.provenance.guide.declaredVersion ?? "—"} · Drive #{ruleSave.draft.provenance.guide.driveRevision} · SHA-256 {ruleSave.draft.provenance.guide.sha256.slice(0, 12)} · {ruleSave.draft.provenance.guide.includedCommunityRuleIds.join(", ") || "—"}; {t.playbook} v{ruleSave.draft.provenance.playbook.declaredVersion ?? "—"} · Drive #{ruleSave.draft.provenance.playbook.driveRevision}</p>
+        <p className="lsr-help">{t.includedGlobalRules}: {ruleSave.draft.provenance.guide.includedGlobalRuleIds?.join(", ") || "—"}</p></details>}
       {ruleSave.draft && ruleSave.draftInput && <button type="button" disabled={busy} onClick={() => promoteRuleDraft(ruleSave)}>{t.loadRuleDraft}</button>}
       {canResumeRuleOperation(ruleSave.status) && <button type="button" disabled={busy} onClick={() => void resumeRule()}>{t.retryRule}</button>}
     </section>}
