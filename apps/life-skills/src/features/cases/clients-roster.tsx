@@ -19,7 +19,9 @@ const copy={
  en:{title:"People",lead:"Client cases and intake follow-ups in one directory."},
  he:{title:"אנשים",lead:"תיקי לקוחות והמשך טיפול בפניות ברשימה אחת."}
 } as const;
-const closed=(state:string)=>/closed|archived|revoked/i.test(state);
+// Match actual clinical lifecycle states, not fragments of administrative text.
+// Unknown/future state text remains visible in All without being called active.
+const closed=(state:string)=>state==="completed"||state==="archived";
 
 /** The CRM is read from its existing authenticated endpoint; this view never imports or duplicates leads. */
 type RosterProps={locale:Locale;section?:string|undefined;prospectFilter?:string|undefined;focusLeadId?:string|undefined;personId?:string|undefined;mode?:string|undefined;page?:string|undefined;search?:string|undefined;stage?:string|undefined;language?:string|undefined;due?:string|undefined};
@@ -54,7 +56,7 @@ export function LegacyClientsRoster({locale,section:rawSection,prospectFilter,fo
  const [rows,setRows]=useState<Case[]>([]),[state,setState]=useState<"loading"|"ready"|"error"|"auth"|"forbidden">("loading"),active=useRef(true),request=useRef(0);
  const load=()=>{const current=++request.current;setState("loading");void accountRead<unknown>("cases","live").then(value=>{if(active.current&&current===request.current){setRows(caseRows.parse(value).filter(row=>row.mode==="live"));setState("ready")}}).catch(error=>{if(active.current&&current===request.current){setRows([]);setState(error instanceof IdentityClientError&&error.code==="UNAUTHENTICATED"?"auth":error instanceof IdentityClientError&&error.code==="FORBIDDEN"?"forbidden":"error")}})};
  useEffect(()=>{active.current=true;if(showCases)queueMicrotask(load);return()=>{active.current=false}},[showCases]);
- const filtered=rows.filter(row=>section==="all"||(section==="archived"?closed(row.state):!closed(row.state)));
+ const filtered=rows.filter(row=>section==="all"||(section==="archived"?closed(row.state):row.state==="active"));
  const preset:Preset=section==="paid"?"booking":section==="archived"?"archived":prospectFilter&&filters.has(prospectFilter as Preset)?prospectFilter as Preset:"all";
  const parameters=new URLSearchParams();for(const key of ["page","search","stage","language","due"] as const)if(query[key])parameters.set(key,query[key]);
  return <main className="lsw-main lsu-clients-directory" lang={locale} dir={locale==="he"?"rtl":"ltr"}>

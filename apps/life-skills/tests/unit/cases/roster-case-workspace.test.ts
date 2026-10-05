@@ -108,6 +108,16 @@ it.each(['all', 'active', 'archived'])('keeps %s live cases separate from DEMO u
  expect(hook.accountRead).toHaveBeenCalledExactlyOnceWith('cases','live');
 });
 
+it.each(['all','active','archived'] as const)('uses exact case lifecycle in %s and preserves unknown text in All',async section=>{
+ const states=['invited','intake','active','paused','completed','archived','inactive','unarchived','reactivated','revoked','ARCHIVED'];
+ const records=states.map((state,index)=>({...caseA,id:`123e4567-e89b-12d3-a456-${String(index+1).padStart(12,'0')}`,state,displayName:`Synthetic ${state}`}));
+ hook.accountRead.mockResolvedValue(records);
+ const view=()=>hook.render(()=>LegacyClientsRoster({locale:'en',section}));view();hook.flushEffects();await tick();
+ const directory=find(view(),e=>e.type===ProspectsClient)!;
+ const expected=section==='all'?records:records.filter(r=>section==='active'?r.state==='active':r.state==='completed'||r.state==='archived');
+ expect(directory.props.caseState).toBe('ready');expect(directory.props.clientCases).toEqual(expected);
+});
+
 it.each([undefined, 'unknown', null])('treats an unavailable case provenance %s as an error, not an empty/live directory', async mode => {
  hook.accountRead.mockResolvedValue([{...caseA, mode}]);
  const view = () => hook.render(() => LegacyClientsRoster({locale: 'he'}));
