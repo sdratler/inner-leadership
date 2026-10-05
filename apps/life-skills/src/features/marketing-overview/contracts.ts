@@ -18,6 +18,9 @@ export interface CreativeVersion {
     sourceUrl?: string | null;
     holdReason?: string | null;
     libraryState?: string;
+    /** Opaque guard for the existing register's exact source and approval history. */
+    reviewToken?: string;
+    artworkReview?: {decision:"approve_artwork"|"needs_revision";note:string;savedAt:string;operationId:string};
 }
 export interface Publication {
     id: string;

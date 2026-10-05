@@ -56,6 +56,8 @@ function validateCreative(asset: CreativeVersion): void {
     const required = ["assetId", "revision", "locale", "width", "height", "imageUrl", "title", "caption", "contentDigest", "review", "approvedDigest"];
     invariant(required.every(key => Object.hasOwn(asset, key)), "CREATIVE_FIELDS");
     invariant(!("registeredRevision" in asset) || Object.hasOwn(asset, "registeredRevision") && typeof asset.registeredRevision === "boolean", "CREATIVE_FIELDS");
+    invariant(!("reviewToken" in asset) || Object.hasOwn(asset,"reviewToken") && typeof asset.reviewToken==="string" && /^[a-f0-9]{64}$/.test(asset.reviewToken),"CREATIVE_FIELDS");
+    if("artworkReview" in asset){const review=asset.artworkReview;invariant(Object.hasOwn(asset,"artworkReview")&&review!==null&&typeof review==="object"&&["approve_artwork","needs_revision"].includes(review.decision)&&typeof review.note==="string"&&review.note.length<=1200&&validIso(review.savedAt)&&/^[a-f0-9-]{36}$/i.test(review.operationId),"CREATIVE_FIELDS");}
     invariant(typeof asset.assetId === "string" && /^[A-Za-z0-9._-]{1,200}$/.test(asset.assetId) && Number.isSafeInteger(asset.revision) && asset.revision > 0 && asset.revision <= 999999 && ["en", "he"].includes(asset.locale), "CREATIVE_IDENTITY");
     // Zero means an unrecorded size: preserve the record, but never use it as a
     // valid next/image dimension or infer placement eligibility from it.
