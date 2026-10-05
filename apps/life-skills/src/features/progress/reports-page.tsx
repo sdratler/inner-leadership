@@ -2,13 +2,14 @@
 import { useEffect, useRef, useState } from "react";
 import {useRouter} from 'next/navigation';
 import { accountRead, sessionInfo } from "../identity/client.ts";
+import {clientReturnPath} from '../identity/login-return.ts';
 import { PrivateObservationEvidencePanel } from "../session-workflow/private-observation-evidence.tsx";
 import {calendarCasesForMode,type CalendarMode} from '../calendar/mode.ts';
 import {workspaceHref,type WorkspaceContext} from '../../ui/workspace/navigation-model.ts';
 import {UnsavedChangesGuard} from '../../ui/workspace/draft-guard.tsx';
 import {reconcileRevisionAttempt,sameNarrative,validNarrativeForSave,type RevisionAttempt,type RevisionReadback} from './draft-revision-client.ts';
 import {reportSection,reportToday,reportVisibleReviews,reportViewWords,reportSections,type ReportSection} from './report-views.ts';
-type Locale = "en" | "he"; type Role = "practitioner" | "parent";
+type Locale = "en" | "he"; type Role = "practitioner" | "parent" | "adult_client";
 type Case = { id: string; displayName: string; kind: string };
 type Audience = { id: string; visibility: string; published: boolean };
 export type Narrative = { taughtAndPractised: string[]; parentReportedExamples: string[]; practitionerObservations: string[]; usefulChanges: string[]; continuingDifficulty: string[]; uncertainty: string; nextAdjustment: string; informationLimits: string };
@@ -20,6 +21,13 @@ const words = {
  he: { title: "דוחות התקדמות חודשיים", intro: "דוח של ארבעה שבועות המבוסס על נוכחות מתועדת ותצפיות שלכם.", child: "ילד/ה", audience: "קהל המשפחה", loading: "טוען דוחות מורשים…", error: "לא ניתן לטעון את הדוחות. נסו לרענן.", empty: "אין דוחות להצגה.", family: "כאן מופיעים רק דוחות שפורסמו ושותפו עם המשפחה שלכם.", draft: "טיוטה", published: "פורסם", saved: "נשמרה טיוטה חדשה ופרטית.", publishedNow: "הדוח השמור פורסם לקהל המשפחה הזה.", save: "שמירת גרסת טיוטה חדשה", publish: "פרסום הטיוטה השמורה", select: "טיוטה שמורה", start: "תחילת התקופה", end: "סיום התקופה (לא כולל; כעבור 28 ימים)", taught: "מה נלמד ותורגל", observations: "תצפיות איש המקצוע", useful: "שינויים מועילים", difficulty: "קושי מתמשך", uncertainty: "אי־ודאות", next: "ההתאמה הבאה", limits: "מגבלות המידע", sources: "לעורך זה לא מצורפים דיווחי הורים או גרסאות תרגול. אין להציג תצפיות שלכם כדיווח מיוחס של הורה.", dirty: "יש לשמור את השינויים כטיוטה חדשה לפני הפרסום.", failed: "לא ניתן לאשר את התוצאה. טענו מחדש את הדוחות ובדקו אם הטיוטה נשמרה לפני ניסיון נוסף. הטקסט שלכם עדיין כאן.", reload: "טעינת דוחות מחדש (השינויים שלא נשמרו יאבדו)", attended: "מפגשים שנרשמה בהם נוכחות", required: "מלאו את שדות החובה ובחרו תקופה תקינה.", noAudience: "אין קהל משפחתי מלא ופורסם. יש להגדיר בתיק קהל מורשה תחילה.", newDraft: "טיוטה חדשה", back: "חזרה לתיקים", busy: "מעבד…" },
 } as const;
 const lines = (text: string) => text.split("\n").map(value => value.trim()).filter(Boolean);
+function reportWords(locale:Locale,role:Role){
+ const t=words[locale];
+ if(role!=='adult_client')return t;
+ return {...t,...(locale==='he'?{
+  title:'דוחות משותפים',intro:'כאן מופיעים רק דוחות שפורסמו ושותפו איתכם.',child:'התיק שלי',audience:'קהל מורשה',family:'כאן מופיעים רק דוחות שפורסמו ושותפו איתכם.',noAudience:'עדיין אין דוחות משותפים זמינים עבורכם.',back:'חזרה לבית',
+ }:{title:'Shared reports',intro:'Only published reports shared with you appear here.',child:'My case',audience:'Authorized audience',family:'Only published reports shared with you appear here.',noAudience:'No shared reports are available to you yet.',back:'Back to home'})};
+}
 const periodConflictCopy={en:'A report for this period already exists. Your changes were not saved; your text is still here. Review the saved report or choose another period.',he:'כבר קיים דוח לתקופה הזו. השינויים לא נשמרו; הטקסט שלכם עדיין כאן. בדקו את הדוח השמור או בחרו תקופה אחרת.'} as const;
 class DuplicateReportPeriod extends Error {}
 class RevisionConflict extends Error {}
@@ -37,18 +45,18 @@ async function read<T>(url: string, signal: AbortSignal): Promise<T> { const res
 async function post<T>(url: string, body: unknown): Promise<T> { const session = await sessionInfo(); const response = await fetch(url, { method: "POST", credentials: "same-origin", cache: "no-store", headers: { "Content-Type": "application/json", "X-CSRF-Token": session.csrfToken }, body: JSON.stringify(body) }); const payload = await response.json(); if(response.status===409&&payload.ok===false&&payload.error?.code==='CONFLICT'){if(url==='/api/progress/reviews')throw new DuplicateReportPeriod();throw new RevisionConflict();} if(response.status===400&&payload.ok===false&&payload.error?.code==='INVALID_REQUEST')throw new ReportValidationFailure(); if (!response.ok || payload.ok !== true) throw Error("MUTATION_UNCONFIRMED"); return payload.data as T; }
 export function ReportsPage({ locale, role, caseId, audienceId,mode='live',navigationContext={},section }: { locale: Locale; role: Role; caseId?: string | undefined; audienceId?: string | undefined;mode?:CalendarMode;navigationContext?:WorkspaceContext;section?:ReportSection|undefined }) {
  const router=useRouter(),context={...navigationContext,mode};
- const t=words[locale],contextKey=`${role}:${role==='practitioner'?mode:'authorized'}:${caseId??''}`;
+ const t=reportWords(locale,role),contextKey=`${role}:${role==='practitioner'?mode:'authorized'}:${caseId??''}`;
  const [loaded,setLoaded]=useState<{key:string;items:Case[]}|null>(null),[selection,setSelection]=useState({key:contextKey,id:caseId??''}),[failedFor,setFailedFor]=useState(''),[retry,setRetry]=useState(0),[editorState,setEditorState]=useState<EditorState>(idleEditor);
  useEffect(()=>{let active=true;const promise=role==='practitioner'?accountRead<unknown>('cases',mode).then(items=>calendarCasesForMode(items,mode)):accountRead<Case[]>('cases');
   void promise.then(items=>{if(active){setLoaded({key:contextKey,items});setFailedFor('');}}).catch(()=>{if(active){setLoaded(null);setFailedFor(contextKey);}});return()=>{active=false;};
  },[role,mode,contextKey,retry]);
  const cases=loaded?.key===contextKey?loaded.items:null,selected=selection.key===contextKey?selection.id:caseId??'';
  const activeCase=selected?cases?.find(item=>item.id===selected)?.id??'':cases?.[0]?.id??'',missing=Boolean(cases&&selected&&!activeCase);
- function choose(id:string){if(editorState.busy||editorState.uncertain||id===activeCase||!cases?.some(item=>item.id===id))return;if(editorState.dirty&&!window.confirm(discardMessage(locale)))return;setEditorState(idleEditor);setSelection({key:contextKey,id});if(role==='practitioner'){const url=new URL(workspaceHref(locale,'app/reports',id,context),'https://private.invalid');if(section)url.searchParams.set('section',section);router.replace(url.pathname+url.search);}}
+ function choose(id:string){if(editorState.busy||editorState.uncertain||id===activeCase||!cases?.some(item=>item.id===id))return;if(editorState.dirty&&!window.confirm(discardMessage(locale)))return;setEditorState(idleEditor);setSelection({key:contextKey,id});if(role==='practitioner'){const url=new URL(workspaceHref(locale,'app/reports',id,context),'https://private.invalid');if(section)url.searchParams.set('section',section);router.replace(url.pathname+url.search);}else if(role==='adult_client')router.replace(clientReturnPath(locale,`/${locale}/client/reports`,{caseId:id}));}
  return <section className="lsw-stack lsw-feature-page" dir={locale==='he'?'rtl':'ltr'}>
   <UnsavedChangesGuard dirty={editorState.dirty||editorState.busy||editorState.uncertain} message={discardMessage(locale)}/>
   <header className="lsw-page-header"><div><h1>{t.title}</h1><p>{t.intro}</p></div></header>
-  <a href={workspaceHref(locale,role==='practitioner'?'app/clients':'family',undefined,role==='practitioner'?context:{})}>{t.back}</a>
+  <a href={workspaceHref(locale,role==='practitioner'?'app/clients':role==='adult_client'?'client':'family',undefined,role==='practitioner'?context:{})}>{t.back}</a>
   {role==='practitioner'&&mode==='demo'&&<p role="status">{locale==='he'?'DEMO — דוחות לתיקים סינתטיים בלבד.':'DEMO — reports for synthetic cases only.'} <a href={`/${locale}/app/reports`}>{locale==='he'?'חזרה לדוחות האמיתיים':'Return to live reports'}</a></p>}
   {failedFor===contextKey?<p role="alert">{t.error} <button type="button" onClick={()=>setRetry(value=>value+1)}>{locale==='he'?'ניסיון חוזר':'Retry case list'}</button></p>:cases===null?<p role="status">{t.loading}</p>:<>
    {cases.length>0&&<label>{role==='practitioner'?(locale==='he'?'לקוח/ה':'Client'):t.child}<select aria-label={role==='practitioner'?(locale==='he'?'לקוח/ה':'Client'):t.child} value={activeCase} disabled={editorState.busy||editorState.uncertain} onChange={event=>choose(event.target.value)}>{missing&&<option value="" disabled>{locale==='he'?'התיק שנבחר אינו זמין':'Selected case unavailable'}</option>}{cases.map(item=><option key={item.id} value={item.id}>{item.displayName}</option>)}</select></label>}
@@ -57,7 +65,7 @@ export function ReportsPage({ locale, role, caseId, audienceId,mode='live',navig
  </section>;
 }
 export function ReportCaseWorkspace({ locale, role, caseId, initialAudienceId,onEditorStateChange,section,navigationContext={} }: { locale: Locale; role: Role; caseId: string; initialAudienceId?: string | undefined;onEditorStateChange?:(state:EditorState)=>void;section?:ReportSection|undefined;navigationContext?:WorkspaceContext }) {
- const router=useRouter(),t = words[locale],selectedSection=reportSection(section),nav=useRef<HTMLElement>(null); const [data, setData] = useState<{ audiences: Audience[]; reviews: Review[] } | null>(null), [error, setError] = useState(false), [selected, setSelected] = useState(initialAudienceId ?? "");
+ const router=useRouter(),t = reportWords(locale,role),selectedSection=reportSection(section),nav=useRef<HTMLElement>(null); const [data, setData] = useState<{ audiences: Audience[]; reviews: Review[] } | null>(null), [error, setError] = useState(false), [selected, setSelected] = useState(initialAudienceId ?? "");
  const [editorState,setEditorState]=useState<EditorState>(idleEditor);
  useEffect(()=>{onEditorStateChange?.(editorState);},[editorState,onEditorStateChange]);
  useEffect(()=>{
@@ -68,7 +76,7 @@ export function ReportCaseWorkspace({ locale, role, caseId, initialAudienceId,on
  useEffect(() => { const controller = new AbortController(); let active = true; void Promise.all([read<Audience[]>(`/api/identity/audiences?caseId=${encodeURIComponent(caseId)}`, controller.signal), read<Review[]>(`/api/progress/reviews?caseId=${encodeURIComponent(caseId)}`, controller.signal)]).then(([audiences,reviews]) => { if (!active) return; const allowed = audiences.filter(item => item.published && item.visibility === "family_full"); setData({ audiences: allowed, reviews: reviews.filter(item => item.caseId === caseId && allowed.some(audience => audience.id === item.audienceId) && (role === "practitioner" || item.state === "published")) }); }).catch(() => { if (active && !controller.signal.aborted) setError(true); }); return () => { active = false; controller.abort(); }; }, [caseId,role]);
  if (error) return <p role="alert">{t.error}</p>; if (!data) return <p role="status">{t.loading}</p>;
  const activeAudience = selected?data.audiences.find(item => item.id === selected)?.id??'':data.audiences[0]?.id??'';
- if(!activeAudience)return selected?<p role="alert">{locale==='he'?'קהל המשפחה שנבחר אינו זמין. לא נבחר קהל אחר. חזרו לרשימה ובחרו קהל מורשה.':'The selected family audience is unavailable. No other audience was selected. Return to the list and choose an authorized audience.'}</p>:<p>{t.noAudience}</p>;
+ if(!activeAudience)return selected?<p role="alert">{locale==='he'?'הקהל שנבחר אינו זמין. לא נבחר קהל אחר. חזרו לרשימה ובחרו קהל מורשה.':'The selected audience is unavailable. No other audience was selected. Return to the list and choose an authorized audience.'}</p>:<p>{t.noAudience}</p>;
  const reviews = data.reviews.filter(item => item.audienceId === activeAudience);
  const v=reportViewWords[locale],visible=role==='practitioner'?reportVisibleReviews(reviews,selectedSection,reportToday()):reviews;
  const sectionHref=(next:ReportSection,audience=activeAudience)=>{const url=new URL(workspaceHref(locale,'app/reports',caseId,navigationContext),'https://private.invalid');url.searchParams.set('audienceId',audience);url.searchParams.set('section',next);return url.pathname+url.search;};
@@ -79,7 +87,7 @@ export function ReportCaseWorkspace({ locale, role, caseId, initialAudienceId,on
   {role==='practitioner'?<><h2>{v[selectedSection]}</h2>{selectedSection==='due'&&<p>{v.dueHelp}</p>}{!visible.length&&<p role="status">{v[`${selectedSection}Empty`]}</p>}
    {visible.map(review=><details className="lsw-card" key={review.id}><summary>{review.periodStart}–{review.periodEnd} · {review.state==='published'?t.published:t.draft} · {revisionWords[locale].version} {review.revision}</summary><ReportReadout locale={locale} review={review}/>{selectedSection==='history'&&<PrivateRevisionHistory locale={locale} review={review}/>}</details>)}
    {selectedSection==='drafts'&&<ReportEditor key={`${caseId}:${activeAudience}`} locale={locale} caseId={caseId} audienceId={activeAudience} reviews={reviews} onSaved={saved} onStateChange={setEditorState}/>}
-  </>:<><p>{t.family}</p>{!reviews.length&&<p>{t.empty}</p>}{reviews.map(review=><ReportReadout key={review.id} locale={locale} review={review}/>)}</>}
+  </>:<><p>{t.family}</p>{!reviews.length&&<p>{t.empty}</p>}{reviews.map(review=>role==='adult_client'?<details key={review.id} className="lsw-card"><summary>{review.periodStart}–{review.periodEnd} · {t.published}</summary><ReportReadout locale={locale} review={review}/></details>:<ReportReadout key={review.id} locale={locale} review={review}/>)}</>}
  </div>;
 }
 export function ReportEditor({ locale, caseId, audienceId, reviews, onSaved,onStateChange }: { locale: Locale; caseId: string; audienceId: string; reviews: Review[]; onSaved: (review: Review) => void;onStateChange?:(state:EditorState)=>void }) {
