@@ -7,7 +7,7 @@ import type { CommunityReplyResult } from "./bridge.ts";
 import type { CommunitySavedDraft } from "./drafts-bridge.ts";
 import {CommunityThreadPanel} from './thread-panel.tsx';
 import { UnsavedChangesGuard } from "../../ui/workspace/draft-guard.tsx";
-import { canResumeRuleOperation, matchesEditedDraftReadback, matchesGeneratedReadback, matchesSavedDraftBinding, matchesSubmittedInput, proposalForResult, replyFailureKind, ruleDraftPromotionNeedsConfirmation, type CommunitySourceInput } from "./input-state.ts";
+import { canResumeRuleOperation, matchesEditedDraftReadback, matchesGeneratedReadback, matchesSavedDraftBinding, matchesSubmittedInput, proposalForResult, replyFailureKind, ruleDraftPromotionNeedsConfirmation, writingRuleDisplayText, type CommunitySourceInput } from "./input-state.ts";
 
 type Locale = "he" | "en";
 const copy = {
@@ -476,8 +476,8 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
         ruleSave.status === "already_applied" ? t.ruleAlready : ruleSave.status === "needs_playbook" ? t.rulePlaybook :
         ruleSave.status === "unsafe" ? t.ruleUnsafe : ruleSave.status === "permission_denied" ? t.ruleDenied :
         ruleSave.status === "needs_review" ? t.ruleReview : ruleSave.status === "draft_conflict" ? t.ruleDraftConflict : ruleSave.status === "conflict" ? t.ruleConflict : t.ruleUnknown}</p>
-      {ruleSave.before && <details><summary>{t.ruleBefore}</summary><p>{ruleSave.before}</p></details>}
-      {ruleSave.after && <p>{t.ruleAfter}: {ruleSave.after}</p>}
+      {ruleSave.before && <details><summary>{t.ruleBefore}</summary><p>{writingRuleDisplayText(ruleSave.before)}</p></details>}
+      {ruleSave.after && <p>{t.ruleAfter}: {writingRuleDisplayText(ruleSave.after)}</p>}
       {ruleSave.source && <p className="lsr-help">{t.ruleVersion}: v{ruleSave.source.declaredVersion ?? "—"} · Drive #{ruleSave.source.driveRevision} · {ruleSave.source.modifiedAt} · {ruleSave.source.checkedAt}</p>}
       {ruleSave.savedAt && <p className="lsr-help">{t.ruleSaved} {ruleSave.savedAt}</p>}
       {ruleSave.draft && <details><summary>{t.priorDraft}</summary><p>{ruleSave.draft.reply}</p>
