@@ -24,7 +24,9 @@ beforeEach(()=>{hooks.reset();vi.stubGlobal('fetch',vi.fn());});
 
 test.each(['en','he'] as const)('%s corrections default to one-off; explicit reusable scope never silently saves the source',async locale=>{
  let latest=structuredClone(generated);
+ vi.stubGlobal('window',{localStorage:{setItem:vi.fn(),removeItem:vi.fn()}});
  vi.mocked(fetch).mockImplementation(async(_url,options)=>{
+  if(String(_url)==='/api/content-voice/corrections')return Response.json({ok:true,data:{operationId:'11111111-1111-4111-8111-111111111111',scope:'general',status:'permission_denied'}});
   if(options?.method==='POST'){
    const command=JSON.parse(String(options.body));
    if(command.mode==='revise_once')latest={...generated,suggestedRule:'Use concise, plain language in community replies.',ruleScope:'community'};
@@ -49,8 +51,12 @@ test.each(['en','he'] as const)('%s corrections default to one-off; explicit reu
  expect(find(tree,item=>item.type==='button'&&item.props.children===persistent)!.props.disabled).toBe(false);
  expect(labelControl(instructionLabel,'textarea').props.value).toBe('Keep the response concise.');
  (labelControl(scopeLabel,'select').props.onChange as (e:unknown)=>void)({target:{value:'general'}});tree=render();
- expect(find(tree,item=>item.type==='button'&&item.props.children===persistent)).toBeUndefined();
+ expect(find(tree,item=>item.type==='button'&&item.props.children===persistent)!.props.disabled).toBe(false);
  expect(vi.mocked(fetch).mock.calls.filter(([url])=>String(url).includes('/content-voice/'))).toHaveLength(0);
+ (find(tree,item=>item.type==='button'&&item.props.children===persistent)!.props.onClick as ()=>void)();
+ await vi.waitFor(()=>expect(vi.mocked(fetch).mock.calls.filter(([url])=>String(url)==='/api/content-voice/corrections')).toHaveLength(1));
+ const call=vi.mocked(fetch).mock.calls.find(([url])=>String(url)==='/api/content-voice/corrections')!;
+ expect(JSON.parse(String(call[1]?.body))).toMatchObject({scope:'general',correction:'Keep the response concise.',sourceSha256:source.sha256,sourceRevision:source.driveRevision});
 });
 
 test('complete readback ignores object property order, normalizes the submitted URL and preserves edited-draft conflict evidence',()=>{
@@ -73,7 +79,7 @@ test('an exact edited receipt permits new safety decisions but never changes its
  expect(matchesEditedDraftReadback(receipt,previous,receipt,'DEMO other edited response.')).toBe(false);
 });
 
-test.each(['question','originalUrl','draftId','safety','rule','guide revision','guide checked time','guide rules','playbook version','model','policy','usage','generated time','initial safety'] as const)('rejects a saved draft with altered %s despite matching reply and source hashes',async field=>{
+test.each(['question','originalUrl','draftId','safety','rule','guide revision','guide checked time','guide rules','global rules','playbook version','model','policy','usage','generated time','initial safety'] as const)('rejects a saved draft with altered %s despite matching reply and source hashes',async field=>{
  const saved=savedDraft();
  switch(field){
   case 'question':saved.question='DEMO unrelated public question';break;
@@ -84,6 +90,7 @@ test.each(['question','originalUrl','draftId','safety','rule','guide revision','
   case 'guide revision':saved.generated.provenance.guide.driveRevision='14';break;
   case 'guide checked time':saved.generated.provenance.guide.checkedAt='2026-10-01T08:03:00Z';break;
   case 'guide rules':saved.generated.provenance.guide.includedCommunityRuleIds=['CR-12345678123441238123123456789abc'];break;
+  case 'global rules':saved.generated.provenance.guide.includedGlobalRuleIds=['CR-12345678123441238123123456789abc'];break;
   case 'playbook version':saved.generated.provenance.playbook.declaredVersion='2.1';break;
   case 'model':saved.generated.provenance.model='other-synthetic';break;
   case 'policy':saved.generated.provenance.policyVersion='other-policy';break;

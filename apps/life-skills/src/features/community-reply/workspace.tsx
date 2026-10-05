@@ -34,7 +34,8 @@ const copy = {
     ruleAlready: "This preference already appears in the canonical guide. No duplicate rule was added.",
     ruleUnsafe: "This proposal contains details unsuitable for a reusable writing guide. Remove identifying, clinical or factual claims and review it again.",
     rulePlaybook: "This changes a community-channel rule governed by the separate Playbook. No Content Voice rule was written.",
-    generalGate: "A rule for all writing needs separate source review; this action saves community-reply rules only.",
+    generalGate: "Global scope updates the same Content Voice guide for future writing, not just Community replies. Review the proposed rule and source version before applying it.",
+    ruleListFailed: "Current writing rules could not load. Your correction is preserved; retry before applying it.", ruleListRetry: "Reload current writing rules",
     existingRule: "Replace a reviewed existing community rule (optional)", addRule: "Add a new rule",
     ruleReview: "A similar rule already exists. Review it and select that rule explicitly if this correction should replace it; no source change was made.",
     ruleBefore: "Previous rule", ruleAfter: "Current rule", ruleVersion: "Current source version / last updated / last synchronized",
@@ -45,7 +46,7 @@ const copy = {
     limited: "Manual drafting has reached its approved limit. Your input is preserved; no new reply was confirmed. An ongoing limit needs owner approval before more drafts can be generated.",
     blocked: "The draft needs manual safety review before it can be copied.",
     sources: "Source versions used", guide: "Content Voice", playbook: "Community Response Playbook", synced: "Latest source check",
-    includedRules: "Community rule IDs included in the model input (not a compliance guarantee)",
+    includedRules: "Community rule IDs included in the model input (not a compliance guarantee)", includedGlobalRules: "Global writing rule IDs included in the model input",
     generation: "Generation", usage: "Model tokens (input/output)",
     warning: "Editing changes the checked draft. Review your final wording before copying; nothing is posted by the app.",
     stale: "This draft belongs to the previous question or link. Generate a new draft before copying or revising it.",
@@ -74,7 +75,8 @@ const copy = {
     ruleAlready: "ההעדפה כבר מופיעה במדריך המקור. לא נוסף כלל כפול.",
     ruleUnsafe: "ההצעה מכילה פרטים שאינם מתאימים למדריך כתיבה חוזר. יש להסיר פרטים מזהים, קליניים או טענות עובדתיות ולבדוק שוב.",
     rulePlaybook: "השינוי נוגע לכלל ערוץ קהילתי שבאחריות מדריך התגובות הנפרד. לא נכתב כלל למדריך הכתיבה.",
-    generalGate: "כלל לכל הכתיבה דורש בדיקת מקור נפרדת; הפעולה הזאת שומרת רק כללים לתגובות בקהילה.",
+    generalGate: "היקף כללי מעדכן את אותו מדריך Content Voice לכתיבה עתידית, ולא רק לתגובות בקהילה. יש לבדוק את הכלל המוצע ואת גרסת המקור לפני החלתו.",
+    ruleListFailed: "לא ניתן לטעון את כללי הכתיבה העדכניים. התיקון נשמר בעורך; יש לנסות שוב לפני החלתו.", ruleListRetry: "טעינה חוזרת של כללי הכתיבה",
     existingRule: "החלפת כלל קהילה קיים לאחר בדיקה (לא חובה)", addRule: "הוספת כלל חדש",
     ruleReview: "כבר קיים כלל דומה. יש לבדוק אותו ולבחור בו במפורש אם התיקון אמור להחליף אותו; המקור לא השתנה.",
     ruleBefore: "כלל קודם", ruleAfter: "כלל נוכחי", ruleVersion: "גרסת המקור הנוכחית / עודכן לאחרונה / סונכרן לאחרונה",
@@ -85,7 +87,7 @@ const copy = {
     limited: "יצירת הטיוטות הידנית הגיעה למגבלה שאושרה. הטקסט שהזנת נשמר במסך, ולא אומתה תגובה חדשה. כדי ליצור טיוטות נוספות נדרש אישור בעל החשבון למגבלה מתמשכת.",
     blocked: "הטיוטה דורשת בדיקת בטיחות ידנית לפני העתקה.",
     sources: "גרסאות המקורות ששימשו", guide: "מדריך סגנון הכתיבה", playbook: "מדריך תגובות בקהילה", synced: "בדיקת המקורות האחרונה",
-    includedRules: "מזהי כללי הקהילה שנכללו בקלט למודל (לא הבטחה שהמודל פעל לפיהם)",
+    includedRules: "מזהי כללי הקהילה שנכללו בקלט למודל (לא הבטחה שהמודל פעל לפיהם)", includedGlobalRules: "מזהי כללי הכתיבה הכלליים שנכללו בקלט למודל",
     generation: "יצירת הטיוטה", usage: "טוקנים של המודל (קלט/פלט)",
     warning: "עריכה משנה את הטיוטה שנבדקה. יש לבדוק את הנוסח הסופי לפני העתקה; האפליקציה אינה מפרסמת אותו.",
     stale: "הטיוטה שייכת לשאלה או לקישור הקודמים. יש ליצור טיוטה חדשה לפני העתקה או תיקון.",
@@ -94,6 +96,7 @@ const copy = {
 };
 
 type RuleSaveResult = {
+  scope?: 'community'|'general';
   operationId: string; status: string; ruleId?: string; before?: string | null; after?: string;
   savedAt?: string | null; sourceAfterSha256?: string | null;
   draftSourceConflict?: boolean;
@@ -123,6 +126,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
   const [ruleSave, setRuleSave] = useState<RuleSaveResult | null>(null);
   const [correctionBase, setCorrectionBase] = useState<{ question: string; originalUrl: string; reply: string; correction: string } | null>(null);
   const [existingRules, setExistingRules] = useState<Array<{ id: string; language: "he" | "en" | "both"; rule: string }>>([]);
+  const [ruleListFailed,setRuleListFailed]=useState(false),[ruleListRetry,setRuleListRetry]=useState(0);
   const [existingSourceSha, setExistingSourceSha] = useState<string | null>(null);
   const [targetRuleId, setTargetRuleId] = useState<string | null>(null);
   const [result, setResult] = useState<CommunityReplyResult | null>(null);
@@ -228,18 +232,18 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
     return () => controller.abort();
   }, []);
   useEffect(() => {
-    if (!correctionBase) return;
+    if (!correctionBase || correctionScope==='once') return;
     const controller = new AbortController();
-    void fetch("/api/content-voice/corrections?list=1", { credentials: "same-origin", cache: "no-store",
+    void fetch("/api/content-voice/corrections?list=1&scope="+correctionScope, { credentials: "same-origin", cache: "no-store",
       redirect: "error", signal: controller.signal })
       .then(async response => { const payload = await response.json() as { ok?: boolean;
         data?: { source?: { sha256: string }; rules?: Array<{ id: string; language: "he" | "en" | "both"; rule: string }> } };
-        if (!response.ok || !payload.ok) throw Error("source"); return payload.data; })
+        if (!response.ok || !payload.ok || !payload.data?.source?.sha256 || !Array.isArray(payload.data.rules)) throw Error("source"); return payload.data; })
       .then(data => { if (!controller.signal.aborted && data) { setExistingRules(data.rules ?? []);
-        setExistingSourceSha(data.source?.sha256 ?? null); } })
-      .catch(() => { /* The server still checks source version and semantic conflicts. */ });
+        setExistingSourceSha(data.source?.sha256 ?? null);setRuleListFailed(false); } })
+      .catch(() => { if(!controller.signal.aborted)setRuleListFailed(true); });
     return () => controller.abort();
-  }, [correctionBase]);
+  }, [correctionBase,correctionScope,ruleListRetry]);
   useEffect(() => {
     const operationId = window.localStorage.getItem(ruleOperationKey);
     if (!operationId || !/^[0-9a-f-]{36}$/i.test(operationId)) return;
@@ -299,7 +303,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
   }
 
   async function saveRule() {
-    if (inFlight.current || !result || !correctionBase || stale || correctionScope !== 'community' || ruleScope !== "community" ||
+    if (inFlight.current || !result || !correctionBase || stale || ruleListFailed || correctionScope === 'once' ||
         proposedRule.trim().length < 8 || correctionBase.correction !== correction.trim() ||
         correctionBase.question !== question.trim() || correctionBase.originalUrl !== originalUrl.trim() ||
         (existingSourceSha !== null && existingSourceSha !== result.provenance.guide.sha256)) return;
@@ -307,7 +311,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
     try {
       const session = await sessionInfo();
       if (session.role !== "practitioner") throw Error("role");
-      const command = { correction: correctionBase.correction, rule: proposedRule.trim(),
+      const command = { correction: correctionBase.correction, rule: proposedRule.trim(), scope: correctionScope,
         language: ruleLanguage, sourceSha256: result.provenance.guide.sha256,
         sourceRevision: result.provenance.guide.driveRevision, question: correctionBase.question,
         ...(correctionBase.originalUrl ? { originalUrl: correctionBase.originalUrl } : {}),
@@ -433,6 +437,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
       <details><summary>{t.sources}</summary><dl className="lsr-community-sources">
         <dt><a href="https://drive.google.com/file/d/174-EqMG0QIH5rCuRgn2xYYPMX-XWJZNn/view" target="_blank" rel="noopener noreferrer">{t.guide}</a></dt><dd>v{result.provenance.guide.declaredVersion ?? "—"} · Drive #{result.provenance.guide.driveRevision} · {result.provenance.guide.modifiedAt} · SHA-256 {result.provenance.guide.sha256.slice(0, 12)}</dd>
         <dt>{t.includedRules}</dt><dd>{result.provenance.guide.includedCommunityRuleIds.join(", ") || "—"}</dd>
+        <dt>{t.includedGlobalRules}</dt><dd>{result.provenance.guide.includedGlobalRuleIds?.join(", ") || "—"}</dd>
         <dt><a href="https://docs.google.com/document/d/12C3QM4F6RZdpeWRvReN2x2BB7GzBnSqvfhjMg1PKwC0/edit" target="_blank" rel="noopener noreferrer">{t.playbook}</a></dt><dd>v{result.provenance.playbook.declaredVersion ?? "—"} · Drive #{result.provenance.playbook.driveRevision} · {result.provenance.playbook.modifiedAt} · SHA-256 {result.provenance.playbook.sha256.slice(0, 12)}</dd>
         <dt>{t.synced}</dt><dd>{result.provenance.guide.checkedAt} · {result.provenance.playbook.checkedAt}</dd>
         <dt>{t.generation}</dt><dd>{result.provenance.generatedAt} · {result.provenance.model} · {result.provenance.policyVersion}</dd>
@@ -440,15 +445,15 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
         <dt>{t.unmeteredCost}</dt><dd>—</dd>
       </dl></details>
       <div className="lsr-correction-controls"><label>{t.correction}<textarea value={correction} disabled={busy} maxLength={1000} onChange={event => { setCorrection(event.target.value); setProposedRule(""); setCorrectionBase(null); }} /></label>
-        <label>{t.scope}<select value={correctionScope} disabled={busy} onChange={event=>setCorrectionScope(event.target.value==='community'?'community':event.target.value==='general'?'general':'once')}>
+        <label>{t.scope}<select value={correctionScope} disabled={busy} onChange={event=>{setCorrectionScope(event.target.value==='community'?'community':event.target.value==='general'?'general':'once');setTargetRuleId(null);setExistingRules([]);setExistingSourceSha(null);setRuleListFailed(false);}}>
           <option value="once">{t.once}</option><option value="community">{t.community}</option><option value="general">{t.general}</option>
         </select></label></div>
       <div className="lsr-actions"><button type="button" disabled={busy || stale || draft.trim().length < 10 || correction.trim().length < 3} onClick={() => void request("revise_once")}>{t.revise}</button>
-        {correctionScope==='community'&&<button type="button" className="lsr-primary" disabled={busy || stale || !correctionBase || proposedRule.trim().length < 8 || ruleScope !== "community" ||
+        {correctionScope!=='once'&&<button type="button" className="lsr-primary" disabled={busy || stale || ruleListFailed || !correctionBase || proposedRule.trim().length < 8 ||
           (existingSourceSha !== null && existingSourceSha !== result.provenance.guide.sha256)} onClick={() => void saveRule()}>{t.persistent}</button>}</div>
       {correctionScope!=='once'&&proposedRule && <div className="lsr-form-grid"><label>{t.proposed}<textarea value={proposedRule} maxLength={400} onChange={event => setProposedRule(event.target.value)} /></label>
         <label>{t.language}<select value={ruleLanguage} onChange={event => { setRuleLanguage(event.target.value === "both" ? "both" : event.target.value === "he" ? "he" : "en"); setTargetRuleId(null); }}><option value="he">{t.hebrew}</option><option value="en">{t.english}</option><option value="both">{t.both}</option></select></label></div>}
-      {correctionScope==='community'&&proposedRule && existingRules.some(rule => rule.language === ruleLanguage || rule.language === "both" || ruleLanguage === "both") && <label>{t.existingRule}<select value={targetRuleId ?? ""} onChange={event => {
+      {correctionScope!=='once'&&proposedRule && existingRules.some(rule => rule.language === ruleLanguage || rule.language === "both" || ruleLanguage === "both") && <label>{t.existingRule}<select value={targetRuleId ?? ""} onChange={event => {
         const selected = existingRules.find(rule => rule.id === event.target.value);
         setTargetRuleId(selected?.id ?? null);
         if (selected?.language === "both") setRuleLanguage("both");
@@ -457,13 +462,15 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
           <option key={rule.id} value={rule.id}>{rule.id}: {rule.rule.slice(0, 120)}</option>)}</select></label>}
       {targetRuleId && <p className="lsr-help">{t.ruleBefore}: {existingRules.find(rule => rule.id === targetRuleId)?.rule}</p>}
       {existingSourceSha !== null && existingSourceSha !== result.provenance.guide.sha256 && <p role="alert" className="lsr-inline-error">{t.ruleConflict}</p>}
-      {(correctionScope === "general" || (correctionScope==='community'&&ruleScope==='general'&&proposedRule)) && <p className="lsr-help">{t.generalGate}</p>}
+      {correctionScope === "general" && <p className="lsr-help">{t.generalGate}</p>}
+      {correctionScope==='community'&&ruleScope==='general'&&proposedRule&&<p className="lsr-help">{locale==='he'?'הכלל הוצע כסגנון כללי; ההיקף שבחרתם נשאר תגובות קהילה בלבד.':'The proposal suggests global wording; your selected scope remains Community replies only.'}</p>}
+      {correctionScope!=='once'&&ruleListFailed&&<p role="alert" className="lsr-inline-error">{t.ruleListFailed} <button type="button" disabled={busy} onClick={()=>setRuleListRetry(value=>value+1)}>{t.ruleListRetry}</button></p>}
       {correctionScope!=='once'&&!proposedRule && <p className="lsr-help">{t.interpret}</p>}
     </>}
     {draftNotice&&<p role={draftSaveError?'alert':'status'} className={draftSaveError?'lsr-inline-error':'lsr-status'}>{draftNotice}</p>}
     {draftSaveError&&result&&!persisted&&<button type="button" disabled={busy||stale} onClick={()=>void retryGenerated()}>{locale==='en'?'Retry this draft’s verification':'ניסיון חוזר לאימות הטיוטה הזאת'}</button>}
     {ruleSave && <section className="lsr-panel" aria-live="polite">
-      <h3>{t.persistent}</h3><p>{ruleSave.status === "complete" ? t.ruleComplete :
+      <h3>{t.persistent}</h3><p>{ruleSave.scope==='general'?t.general:t.community}</p><p>{ruleSave.status === "complete" ? t.ruleComplete :
         ruleSave.status === "saved" || ruleSave.status === "draft_pending" ? t.draftPending :
         ruleSave.status === "already_applied" ? t.ruleAlready : ruleSave.status === "needs_playbook" ? t.rulePlaybook :
         ruleSave.status === "unsafe" ? t.ruleUnsafe : ruleSave.status === "permission_denied" ? t.ruleDenied :

@@ -30,6 +30,15 @@ describe("authenticated app to existing Scout bridge", () => {
     const fetcher = vi.fn(); await expect(requestCommunityReply(command, fetcher as typeof fetch, {})).rejects.toMatchObject({ code: "UNAVAILABLE" });
     expect(fetcher).not.toHaveBeenCalled(); expect(sources.guide).not.toHaveBeenCalled();
   });
+  it('binds global rule IDs to the exact canonical guide and preserves them through saved readback',async()=>{
+    const id='CR-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';sources.guide.mockResolvedValue({...snapshot(data.provenance.guide.id),text:`### Global writing preferences\n\n**${id} — scope: general; language: en; created: now; updated: now** Prefer direct words.\n\n## 2. Article structure\n`});
+    const fetcher=vi.fn().mockResolvedValue(Response.json({ok:true,data:{...data,provenance:{...data.provenance,guide:{...data.provenance.guide,includedGlobalRuleIds:[id]}}}}));
+    const result=await requestCommunityReply(command,fetcher as typeof fetch,{LS_COMMUNITY_SCOUT_BRIDGE_SECRET:secret});expect(result.provenance.guide.includedGlobalRuleIds).toEqual([id]);expect(result.provenance.guide.includedCommunityRuleIds).toEqual([]);
+    expect(JSON.parse(String(fetcher.mock.calls[0]![1].body)).guide.includedGlobalRuleIds).toEqual([id]);
+    const row={draftId:result.operationId,question:command.question,originalUrl:null,generated:result,draft:result.reply,revision:1,editedAt:null,expiresAt:'2026-11-01T08:02:00Z',copyAllowed:true,reviewFlags:[]};
+    await expect(readCommunityDrafts('9fe575fe-fba2-4a4b-a136-bb28560b13f2',result.operationId,vi.fn().mockResolvedValue(Response.json({ok:true,data:{drafts:[row],limit:20}})),{LS_COMMUNITY_SCOUT_BRIDGE_SECRET:secret})).resolves.toMatchObject({drafts:[{generated:{provenance:{guide:{includedGlobalRuleIds:[id]}}}}]});
+    await expect(requestCommunityReply(command,vi.fn().mockResolvedValue(Response.json({ok:true,data:{...data,provenance:{...data.provenance,guide:{...data.provenance.guide,includedGlobalRuleIds:['CR-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb']}}}})),{LS_COMMUNITY_SCOUT_BRIDGE_SECRET:secret})).rejects.toMatchObject({code:'UNAVAILABLE'});
+  });
   it.each(['short reply','many flags','long flag','empty model','long model','empty policy','long policy','negative input','negative output'] as const)('rejects %s with the same bounds as saved-draft parsing',async field=>{
     const result=structuredClone(data);
     switch(field){
