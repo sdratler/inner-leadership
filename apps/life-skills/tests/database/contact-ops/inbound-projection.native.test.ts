@@ -130,11 +130,11 @@ test('sheet/frozen receipts do not change CRM; exact native drain projects each 
  expect(drained.inboundActivity?.firstInboundAt).toBe('2026-09-28T02:00:00.000Z');
  expect((await authority.read(actor)).nativeWritesSinceSwitch).toBe(2);
 });
-test('drain validates every frozen replay envelope instead of silently skipping a conflicting known message',async()=>{
+test.each([1,50])('drain preflights conflicting frozen envelopes before committing even with page size %i',async(limit)=>{
  const {store,prepare,authority,actor,count}=await setup();await store.capture(inquiry);await prepare();
  await store.capture({...inquiry,providerEventId:'frozen-conflicting-envelope',messageText:'Conflicting content under the same provider message ID'});
  await authority.advance(actor,{action:'switch_native',proof:proof(2),operationId:'activate'});
- await expect(store.drain(actor,3)).rejects.toThrow('CONFLICT');
+ await expect(store.drain(actor,3,limit)).rejects.toThrow('CONFLICT');
  expect(await count('ls_contact_ops.message_receipts')).toBe(2);expect(await count('ls_contact_ops.inbound_projections')).toBe(0);
  expect(await count('ls_contact_ops.profiles')).toBe(0);expect((await authority.read(actor)).nativeWritesSinceSwitch).toBe(0);
 });

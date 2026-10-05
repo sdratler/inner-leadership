@@ -80,6 +80,25 @@ export class ContactInboundStore {
      AND ($3::timestamptz IS NULL OR (r.stored_at,r.provider_event_key)>($3::timestamptz,$4::text))
     ORDER BY r.stored_at,r.provider_event_key LIMIT $5`,[this.workspaceId,binding,after?.storedAt??null,after?.eventKey??null,limit+1]);
    const pending=rows.slice(0,limit).map(row=>({row,inquiry:this.decodeStored(row)}));
+   // A later page may hold a contradictory delivery for this same message.
+   // Validate every already-durable envelope before the first projection can
+   // commit, independent of the requested page/cursor. Keep the inbox budget.
+   if(pending.length){
+    const envelopes=await tx.query<Stored>(`SELECT provider_binding_id AS binding,provider_event_key AS event,
+     provider_message_key AS message,payload_digest AS digest,payload_ciphertext AS cipher,
+     occurred_at AS "occurredAt",stored_at AS "storedAt" FROM ls_contact_ops.message_receipts
+     WHERE workspace_id=$1 AND channel='whatsapp' AND provider_binding_id=$2
+      AND provider_message_key IN (SELECT jsonb_array_elements_text($3::jsonb)) ORDER BY provider_event_key LIMIT $4`,
+     [this.workspaceId,binding,JSON.stringify([...new Set(pending.map(({row})=>row.message))]),MAX_INBOX_ENVELOPES+1]);
+    if(envelopes.length>MAX_INBOX_ENVELOPES)throw new AppError('UNAVAILABLE');
+    const messages=new Map<string,string>();
+    for(const row of envelopes){
+     const inquiry=this.decodeStored(row),keys=inboundProjectionKeys(this.workspaceId,row.binding,row.event,row.message,row.digest,inquiry,this.integrityKey);
+     const prior=messages.get(row.message);
+     if(prior!==undefined&&prior!==keys.messageDigest)throw new AppError('CONFLICT');
+     messages.set(row.message,keys.messageDigest);
+    }
+   }
    const projector=new NativeInboundProjection(this.workspaceId,this.keyring,this.integrityKey,this.clock,pending.map(item=>item.inquiry.fromNumber));
    const result={processed:0,projected:0,needsResolution:0,needsReview:0,replayed:0,cursor:after,hasMore:rows.length>limit};
    for(const {row,inquiry} of pending){
