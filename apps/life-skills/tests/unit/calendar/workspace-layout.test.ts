@@ -51,7 +51,7 @@ describe('operational Calendar composition',()=>{
   });
   it('puts the optional practice layer before the dated Calendar and counts actual practice in the mobile empty-grid decision',()=>{
    expect(workspace.indexOf('checked={showPractice}')).toBeLessThan(workspace.indexOf('<CalendarShell '));
-   expect(workspace).toContain('data-has-entries={items.length+followups.length+tasks.length+practice.length>0}');
+   expect(workspace).toContain('data-has-entries={items.length+followups.length+tasks.length+practice.length+content.length>0}');
    expect(workspace.match(/practice=\{practice\}/g)).toHaveLength(2);
    expect(workspace).not.toContain('calendar-practice-title');
     expect(css).toContain('.ls-cal-schedule[data-has-entries="false"]');
@@ -91,6 +91,16 @@ describe('operational Calendar composition',()=>{
     expect(workspace.match(/id="calendar-mode"/g)).toHaveLength(1);
     expect(workspace.match(/id="calendar-case"/g)).toHaveLength(1);
   });
+ it('uses one compact layer group and invalidates retained content synchronously on range or enabled-state changes',()=>{
+  expect(workspace.match(/className="ls-cal-layer-switches"/g)).toHaveLength(1);
+  expect(workspace.indexOf('{layerControls}')).toBeLessThan(workspace.indexOf('<CalendarShell '));
+  expect(workspace).toContain('contentReadBinding===contentBinding');
+  expect(workspace).toContain('enabled:livePractitioner&&showContent');
+  expect(workspace).toContain('contentFailed&&<p role="alert">');
+  expect(workspace).toContain('content={content}');
+  expect(css).toContain('.lsw.lsu .ls-cal .ls-cal-layer-switches>label');
+  expect(css).toContain('min-block-size:44px');
+ });
   it('gives mobile selected-case text the full field width instead of sharing it with the label',()=>{
     const narrow=css.slice(css.lastIndexOf('@media(max-width:600px)'));
     expect(narrow).toContain('.lsw.lsu .ls-cal .ls-cal-case-context>.lsw-field {grid-template-columns:minmax(0,1fr);align-items:start;gap:.25rem}');

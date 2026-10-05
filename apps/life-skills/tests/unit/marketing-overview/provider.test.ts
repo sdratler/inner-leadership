@@ -8,6 +8,19 @@ const inventory=()=>({files:1,concepts:1,publishablePosts:0,heStatusReady:0,heFe
 const publication=()=>({id:"synthetic-publication",assetId:"DEMO-image",creativeRevision:1,creativeDigest:"a".repeat(64),channel:"whatsapp_status",destinationLabel:"Synthetic Status",scheduledFor:null,timezone:"Asia/Jerusalem",state:"draft",provider:"unbound",providerReceiptId:null,providerReadAt:null,postUrl:null,receiptKind:"unknown",manualReportedAt:null,errorCode:null});
 const registry=()=>({success:true,snapshot:{fetchedAt:readAt,workbookUrl:"https://docs.google.com/spreadsheets/d/synthetic/edit",creatives:[{assetId:"DEMO-image",revision:1,imageUrl:"https://drive.google.com/file/d/synthetic_file/view",sourceUrl:"https://drive.google.com/file/d/synthetic_file/view",contentDigest:"a".repeat(64),locale:"he",width:1080,height:1920,review:"in_review",approvedDigest:null,caption:"",title:"Synthetic original"}],publications:[],inventory:inventory()}});
 beforeEach(()=>{vi.resetModules();vi.clearAllMocks();mocks.registry.mockResolvedValue(registry());mocks.meta.mockResolvedValue({fetchedAt:metaAt,ads:[],adSeries:[],adReporting:{}});});
+test('Calendar consumes the same bounded registry and freshness without calling the ads provider',async()=>{
+ mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,publications:[publication()]}});
+ const {loadContentRegistry}=await import('../../../src/features/marketing-overview/provider.ts');const result=await loadContentRegistry();
+ expect(result).toMatchObject({source:'registry_only',fetchedAt:readAt,publications:[publication()],inventory:inventory(),ads:[]});
+ expect(mocks.registry).toHaveBeenCalledExactlyOnceWith('/api/bna/life-skills-app/marketing');expect(mocks.meta).not.toHaveBeenCalled();
+});
+test('a failing Calendar inventory read does not fall back to old records or unrelated ad metrics',async()=>{
+ const {loadContentRegistry}=await import('../../../src/features/marketing-overview/provider.ts');await loadContentRegistry();mocks.registry.mockRejectedValue(Error('Synthetic unavailable'));
+ await expect(loadContentRegistry()).rejects.toMatchObject({code:'UNAVAILABLE'});expect(mocks.meta).not.toHaveBeenCalled();
+});
+test.each([{success:false},{success:true,snapshot:{}},{success:true,snapshot:{...registry().snapshot,fetchedAt:null}},{success:true,snapshot:{...registry().snapshot,publications:[{...publication(),providerReadAt:'bad-date'}]}}])('malformed Calendar registry is unavailable, never empty-success: %j',async payload=>{
+ mocks.registry.mockResolvedValue(payload);const {loadContentRegistry}=await import('../../../src/features/marketing-overview/provider.ts');await expect(loadContentRegistry()).rejects.toMatchObject({code:'UNAVAILABLE'});expect(mocks.meta).not.toHaveBeenCalled();
+});
 
 test("secondary originals/history retain a separate private exact collection and honest unregistered metadata",async()=>{
  const original={...registry().snapshot.creatives[0],collection:'templates',catalogKind:'NATIVE_ORIGINAL',concept:3,cycle:null,registeredRevisionLabel:'r1'},history={...original,assetId:'DEMO-history',collection:'history',review:'retired',approvedDigest:null};

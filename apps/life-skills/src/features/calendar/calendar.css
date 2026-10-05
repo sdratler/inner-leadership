@@ -148,6 +148,14 @@
 .lsw.lsu .ls-cal .ls-cal-case-context select {min-inline-size:0;max-inline-size:100%}
 .lsw.lsu .ls-cal>.ls-cal-demo-notice {display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-block:0}
 .ls-cal-demo-notice>.lsw-button {flex-shrink:0}
+.lsw.lsu .ls-cal .ls-cal-layer-switches {display:flex;flex-wrap:wrap;align-items:center;gap:.25rem 1rem;margin-block:0}
+.lsw.lsu .ls-cal .ls-cal-layer-switches>label {display:flex;align-items:center;gap:.5rem;min-block-size:44px;margin:0;cursor:pointer}
+.lsw.lsu .ls-cal .ls-cal-layer-switches input {inline-size:20px;block-size:20px;flex-shrink:0}
+.ls-cal-content {display:grid;gap:.3rem;margin-block:.4rem;padding:.6rem;background:#fff;border:1px solid var(--ui-line,#cddcdf);border-inline-start:4px solid var(--ui-gold,#e6d0a4);border-radius:.5rem;overflow-wrap:anywhere}
+.ls-cal-content>time {font-variant-numeric:tabular-nums}
+.ls-cal-content>a {display:flex;align-items:center;min-block-size:44px;font-weight:700}
+.ls-cal-content-readback {margin-block:0}
+.ls-cal-content-readback p {margin-block:.25rem}
 /* A practice-only Calendar is populated too. Override the older appointment-only
  * empty-grid rule so mobile shows one agenda, not the grid and agenda twice. */
 @media(max-width:800px){.lsw.lsu .ls-cal .ls-cal-schedule[data-has-entries="true"] .lsw-calendar-grid{display:none!important}}
@@ -166,6 +174,7 @@
   /* Labels above the two controls leave the full field width for the selected
    * authorized case; inline labels reduced it to a few visible characters. */
   .lsw.lsu .ls-cal .ls-cal-case-context>.lsw-field {grid-template-columns:minmax(0,1fr);align-items:start;gap:.25rem}
+  .lsw.lsu .ls-cal .ls-cal-layer-switches {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 .75rem}
  .ls-cal-case-context>.lsw-field>label {min-inline-size:0;min-block-size:24px;display:flex;align-items:center}
 }
 @media print{.ls-cal .ls-cal-actions,.ls-cal button,.ls-cal .lsw-dialog{display:none}.ls-cal .lsw-calendar-grid{display:block}.ls-cal .lsw-calendar-agenda{display:none}.ls-cal{max-inline-size:none;padding:0}}

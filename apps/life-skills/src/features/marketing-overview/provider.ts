@@ -4,6 +4,7 @@ import { crmBridge } from "../prospects/bridge.ts";
 import { readDirectMetaAds } from "./meta-provider.ts";
 import {creativeMediaPath} from "./media-link.ts";
 import {validateMarketingSnapshot} from "./read-model.ts";
+import {AppError} from '../../lib/errors.ts';
 
 type RegistryReadback = {
   success: true;
@@ -76,4 +77,13 @@ export async function loadMarketingSnapshot(): Promise<MarketingSnapshot> {
     connectionErrors: errors,
     inventoryReadback,
   };
+}
+
+/** Same registered public-content inventory, without an unrelated Meta metrics
+ * request. Missing inventory is unavailable, never an empty-success Calendar. */
+export async function loadContentRegistry():Promise<MarketingSnapshot>{
+  const result=await Promise.allSettled([crmBridge<RegistryReadback>("/api/bna/life-skills-app/marketing")]);
+  const registry=registrySnapshot(result[0]!);
+  if(!registry)throw new AppError('UNAVAILABLE');
+  return {...empty,source:'registry_only',fetchedAt:registry.fetchedAt,creatives:registry.creatives,publications:registry.publications,inventory:registry.inventory,workbookUrl:registry.workbookUrl};
 }

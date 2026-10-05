@@ -48,7 +48,11 @@ export async function handleCalendar(request:Request,path:readonly string[]):Pro
   await enforceRateLimit(identity.services.limits,opaqueRateLimitKey(`calendar:${actor.workspaceId}:${actor.id}:${request.method==='GET'?'read':'write'}`,identity.config.rateLimitKey),request.method==='GET'?240:60,60_000);
   const key=request.headers.get('idempotency-key')??'';
   let data:unknown;
-  if(request.method==='GET'&&path.length===1&&path[0]==='tasks'){
+  if(request.method==='GET'&&path.length===1&&path[0]==='content'){
+   const q=readQuery(z.strictObject({from:z.iso.datetime({offset:true}),to:z.iso.datetime({offset:true})}),query(request,['from','to']));
+   const {readCalendarContent}=await import('./content-read.ts');
+   data=await readCalendarContent(actor,q.from,q.to,async()=>{const current=await identity.services.sessions.actor(token);if(current.role!=='practitioner'||current.workspaceId!==actor.workspaceId)throw new AppError('FORBIDDEN');});
+  }else if(request.method==='GET'&&path.length===1&&path[0]==='tasks'){
    const q=readQuery(taskListSchema,query(request,['from','to','caseId','mode']));data=await tasks.list(actor,q.from,q.to,q.caseId,q.mode??'live');
   }else if(request.method==='POST'&&path.length===2&&path[0]==='tasks'&&path[1]==='sync-followups'){
    if(actor.role!=='practitioner')throw new AppError('FORBIDDEN');

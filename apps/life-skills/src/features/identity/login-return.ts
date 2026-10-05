@@ -26,6 +26,7 @@ export function practitionerReturnPath(locale: Locale, page: "calendar" | "clien
   const params = new URLSearchParams();
   const one = (key: string) => typeof query[key] === "string" ? query[key] as string : "";
   if (page === "calendar") {
+    for(const key of ['tasks','followups','practice','content'])if(one(key)==='0'||one(key)==='1')params.set(key,one(key));
     if (/^\d{4}-\d{2}-\d{2}$/.test(one("date"))) params.set("date", one("date"));
     if (["day", "week", "month", "agenda"].includes(one("view"))) params.set("view", one("view"));
     if (/^[0-9a-f-]{36}$/i.test(one("caseId"))) params.set("caseId", one("caseId"));
@@ -99,6 +100,7 @@ export function parentReturnPath(locale: Locale, pathname: string, query: Record
   const uuid = (key: string) => { if (/^[0-9a-f-]{36}$/i.test(query[key] ?? "")) params.set(key, query[key]!); };
   if (["", "/schedule", "/practice", "/feedback", "/forms", "/resources", "/reports"].includes(suffix)) uuid("caseId");
   if (suffix === "/schedule") {
+    if(query.practice==='0'||query.practice==='1')params.set('practice',query.practice);
     if (/^\d{4}-\d{2}-\d{2}$/.test(query.date ?? "")) params.set("date", query.date!);
     if (["day", "week", "month", "agenda"].includes(query.view ?? "")) params.set("view", query.view!);
   }
@@ -124,6 +126,7 @@ export function clientReturnPath(locale: Locale, pathname: string, query: Record
   if (["", "/calendar", "/practice", "/messages", "/forms", "/resources", "/reports"].includes(suffix) && isCaseId(query.caseId)) params.set("caseId", query.caseId!);
   if (suffix === "/reports" && isCaseId(query.audienceId)) params.set("audienceId", query.audienceId!);
   if (suffix === "/calendar") {
+    if(query.practice==='0'||query.practice==='1')params.set('practice',query.practice);
     if (/^\d{4}-\d{2}-\d{2}$/.test(query.date ?? "")) params.set("date", query.date!);
     if (["day", "week", "month", "agenda"].includes(query.view ?? "")) params.set("view", query.view!);
   }

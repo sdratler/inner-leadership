@@ -3,14 +3,15 @@ import { useEffect, useId, useRef, type ReactNode } from "react";
 import type { Locale } from "../../lib/locale.ts";
 import { revealWorkspaceTab } from "./tab-visibility.ts";
 import {communityView as selectedCommunityView} from '../../features/community-reply/views.ts';
+import type {CalendarLayerQuery} from '../../features/calendar/layers.ts';
 import { activeItem, breadcrumbItems, isCaseId, isClientWorkspacePath, practitionerContext, primaryNavigation, workspaceContext, workspaceGroups, workspaceHref, type ContextItem, type NavItem, type WorkspaceRole } from "./navigation-model.ts";
 import "./professional-ui.css";
 const copy = {
   en: { skip: "Skip to content", nav: "Workspace navigation", more: "More", close: "Close navigation", menu: "Open navigation", account: "Account menu", settings: "Settings", practitioner: "Practitioner workspace", parent: "Family workspace", client: "Client workspace", location: "You are here", language: "עברית", privacy: "Access is limited to your authorized workspace." },
   he: { skip: "דילוג לתוכן", nav: "ניווט במרחב", more: "עוד", close: "סגירת התפריט", menu: "פתיחת התפריט", account: "תפריט החשבון", settings: "הגדרות", practitioner: "מרחב המטפל", parent: "מרחב המשפחה", client: "מרחב לקוח/ה", location: "המיקום שלכם", language: "English", privacy: "הגישה מוגבלת למרחב המורשה שלכם." },
 } as const;
-export type WorkspaceShellProps = { locale: Locale; role: WorkspaceRole; clientRole?:'adult_client'|'child';pathname: string; caseId?: string | null; audienceId?:string|null; selectedClient?: boolean; section?: string | null | undefined; communityView?: string|null|undefined;view?: string | null | undefined; date?: string | null | undefined; mode?: string | null | undefined; languageHref: string; children: ReactNode; toHref?: (path: string) => string; notice?: ReactNode };
-export function WorkspaceShell({ locale, role, clientRole, pathname, caseId, audienceId, selectedClient=false, section, communityView,view, date, mode, languageHref, children, toHref, notice }: WorkspaceShellProps) {
+export type WorkspaceShellProps = { locale: Locale; role: WorkspaceRole; clientRole?:'adult_client'|'child';pathname: string; caseId?: string | null; audienceId?:string|null; selectedClient?: boolean; section?: string | null | undefined; communityView?: string|null|undefined;view?: string | null | undefined; date?: string | null | undefined; mode?: string | null | undefined; calendarLayers?:CalendarLayerQuery;languageHref: string; children: ReactNode; toHref?: (path: string) => string; notice?: ReactNode };
+export function WorkspaceShell({ locale, role, clientRole, pathname, caseId, audienceId, selectedClient=false, section, communityView,view, date, mode, calendarLayers={},languageHref, children, toHref, notice }: WorkspaceShellProps) {
   const sharedClientContext=role==='practitioner'&&isCaseId(caseId)&&['/app/forms','/app/resources'].some(path=>pathname.endsWith(path));
   const effectiveSelectedClient=(selectedClient||sharedClientContext)&&isClientWorkspacePath(pathname.slice(locale.length+2));
   const t = copy[locale], active = role === "practitioner" && effectiveSelectedClient && caseId ? primaryNavigation.practitioner.find(item=>item.key==="clients") : activeItem(pathname, locale, role);
@@ -35,6 +36,7 @@ export function WorkspaceShell({ locale, role, clientRole, pathname, caseId, aud
   const contextHref = (entry: ContextItem) => {
     const url = new URL(href(entry.path), "https://private.invalid");
     for (const [key, value] of Object.entries(entry.query ?? {})) url.searchParams.set(key, value);
+    if(entry.path==='app/calendar'&&pathname.endsWith('/app/calendar'))for(const [key,value]of Object.entries(calendarLayers))url.searchParams.set(key,value);
     if(['app/reports','app/practice'].includes(entry.path)&&isCaseId(caseId)&&isCaseId(audienceId)){
       url.searchParams.delete('audienceId');url.searchParams.set('audienceId',audienceId);
     }
