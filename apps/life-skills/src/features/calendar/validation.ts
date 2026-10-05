@@ -30,7 +30,8 @@ export function internalTaskPath(value:string):boolean {
 }
 export const taskCreateSchema=z.strictObject({
  title:clean(140).trim().min(1),dueDate:taskDate,dueTime:taskTime.nullable(),
- note:clean(1000).nullable(),sourcePath:z.string().refine(internalTaskPath).nullable(),caseId:caseId.nullable()
+ note:clean(1000).nullable(),sourcePath:z.string().refine(internalTaskPath).nullable(),caseId:caseId.nullable(),mode:z.enum(['live','demo']).optional()
 });
-export const taskListSchema=z.strictObject({from:timestamp,to:timestamp,caseId:caseId.nullable()});
+export const taskListSchema=z.strictObject({from:timestamp,to:timestamp,caseId:caseId.nullable(),mode:z.enum(['live','demo']).nullable().optional()});
+export const taskCompleteSchema=versionSchema.extend({mode:z.enum(['live','demo']).optional()});
 export function parseQuery<T>(schema:z.ZodType<T>,input:unknown):T{const r=schema.safeParse(input);if(!r.success)throw new Error('INVALID_QUERY');return r.data;}

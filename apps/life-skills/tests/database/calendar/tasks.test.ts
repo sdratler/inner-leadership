@@ -14,6 +14,33 @@ let f:Fixture;
 beforeAll(async()=>{f=await fixture();},30000);
 afterAll(async()=>{await f?.pool.end();});
 describe('internal task PostgreSQL contract',()=>{
+ test('DEMO task writes require immutable case provenance; lists, completion and replay stay partitioned',async()=>{
+  const isolated=await fixture({demoFirst:true});
+  try{
+   const tasks=new InternalTaskService(isolated.db,Buffer.alloc(32,9)),dueDate=civilDate(isolated.at(48)),from=dayStart(dueDate),to=dayStart(shiftDay(dueDate,1));
+   const input={title:'DEMO — Synthetic isolated task',note:'DEMO — retained internal note',dueDate,dueTime:null,sourcePath:null,caseId:isolated.first.id,mode:'demo' as const};
+   const key=randomUUID(),created=await tasks.create(isolated.practitioner.actor,key,input);
+   expect(await tasks.create(isolated.practitioner.actor,key,input)).toEqual(created);
+   expect(await tasks.list(isolated.practitioner.actor,from,to,null)).toEqual([]);
+   expect((await tasks.list(isolated.practitioner.actor,from,to,null,'demo')).map(t=>t.id)).toEqual([created.id]);
+   const live=await tasks.create(isolated.practitioner.actor,randomUUID(),{...input,mode:'live',caseId:isolated.second.id});
+   expect((await tasks.list(isolated.practitioner.actor,from,to,null)).map(t=>t.id)).toEqual([live.id]);
+   expect((await tasks.list(isolated.practitioner.actor,from,to,null,'demo')).map(t=>t.id)).toEqual([created.id]);
+   for(const bad of [{...input,mode:'live' as const},{...input,caseId:null},{...input,caseId:isolated.second.id}])
+    await expect(tasks.create(isolated.practitioner.actor,randomUUID(),bad)).rejects.toMatchObject({code:'INVALID_REQUEST'});
+   await expect(tasks.create(isolated.parent.actor,randomUUID(),input)).rejects.toMatchObject({code:'FORBIDDEN'});
+   await expect(tasks.list(isolated.parent.actor,from,to,null,'demo')).rejects.toMatchObject({code:'FORBIDDEN'});
+   await expect(tasks.complete(isolated.practitioner.actor,created.id,randomUUID(),1)).rejects.toMatchObject({code:'NOT_FOUND'});
+   await expect(tasks.complete(isolated.practitioner.actor,live.id,randomUUID(),1,'demo')).rejects.toMatchObject({code:'NOT_FOUND'});
+   const completeKey=randomUUID(),done=await tasks.complete(isolated.practitioner.actor,created.id,completeKey,1,'demo');
+   expect(done).toMatchObject({state:'done',version:2,note:input.note});
+   expect(await tasks.complete(isolated.practitioner.actor,created.id,completeKey,1,'demo')).toEqual(done);
+   await expect(tasks.complete(isolated.practitioner.actor,created.id,completeKey,1,'live')).rejects.toMatchObject({code:'NOT_FOUND'});
+   const markers=(await isolated.pool.query("SELECT entity_key,case_id FROM ls_demo.records WHERE workspace_id=$1 AND entity_kind='task'",[isolated.workspaceId])).rows;
+   expect(markers).toEqual([{entity_key:created.id,case_id:isolated.first.id}]);
+   expect((await isolated.pool.query('SELECT count(*)::int AS n FROM ls_calendar.events WHERE workspace_id=$1',[isolated.workspaceId])).rows[0].n).toBe(0);
+  }finally{await isolated.pool.end();}
+ });
  test('identity schema allows only one practitioner per workspace',async()=>{
   const index=(await f.pool.query(`SELECT pg_get_indexdef('ls_identity.one_practitioner_per_workspace'::regclass) AS definition`)).rows[0]?.definition as string;
   expect(index).toContain('UNIQUE INDEX one_practitioner_per_workspace');
