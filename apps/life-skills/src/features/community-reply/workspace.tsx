@@ -35,7 +35,7 @@ const copy = {
     ruleUnsafe: "This proposal contains details unsuitable for a reusable writing guide. Remove identifying, clinical or factual claims and review it again.",
     rulePlaybook: "This changes a community-channel rule governed by the separate Playbook. No Content Voice rule was written.",
     generalGate: "Global scope updates the same Content Voice guide for future writing, not just Community replies. Review the proposed rule and source version before applying it.",
-    ruleListFailed: "Current writing rules could not load. Your correction is preserved; retry before applying it.", ruleListRetry: "Reload current writing rules",
+    ruleListFailed: "Current writing rules could not load. Your correction is preserved; retry before applying it.", ruleListRetry: "Reload current writing rules", ruleListLoading: "Checking the current writing rules before applying this preference…",
     existingRule: "Replace a reviewed rule in this scope (optional)", addRule: "Add a new rule",
     ruleReview: "A similar rule already exists. Review it and select that rule explicitly if this correction should replace it; no source change was made.",
     ruleBefore: "Previous rule", ruleAfter: "Current rule", ruleVersion: "Current source version / last updated / last synchronized",
@@ -76,7 +76,7 @@ const copy = {
     ruleUnsafe: "ההצעה מכילה פרטים שאינם מתאימים למדריך כתיבה חוזר. יש להסיר פרטים מזהים, קליניים או טענות עובדתיות ולבדוק שוב.",
     rulePlaybook: "השינוי נוגע לכלל ערוץ קהילתי שבאחריות מדריך התגובות הנפרד. לא נכתב כלל למדריך הכתיבה.",
     generalGate: "היקף כללי מעדכן את אותו מדריך Content Voice לכתיבה עתידית, ולא רק לתגובות בקהילה. יש לבדוק את הכלל המוצע ואת גרסת המקור לפני החלתו.",
-    ruleListFailed: "לא ניתן לטעון את כללי הכתיבה העדכניים. התיקון נשמר בעורך; יש לנסות שוב לפני החלתו.", ruleListRetry: "טעינה חוזרת של כללי הכתיבה",
+    ruleListFailed: "לא ניתן לטעון את כללי הכתיבה העדכניים. התיקון נשמר בעורך; יש לנסות שוב לפני החלתו.", ruleListRetry: "טעינה חוזרת של כללי הכתיבה", ruleListLoading: "בודק את כללי הכתיבה העדכניים לפני החלת ההעדפה…",
     existingRule: "החלפת כלל שנבדק בהיקף הזה (לא חובה)", addRule: "הוספת כלל חדש",
     ruleReview: "כבר קיים כלל דומה. יש לבדוק אותו ולבחור בו במפורש אם התיקון אמור להחליף אותו; המקור לא השתנה.",
     ruleBefore: "כלל קודם", ruleAfter: "כלל נוכחי", ruleVersion: "גרסת המקור הנוכחית / עודכן לאחרונה / סונכרן לאחרונה",
@@ -303,7 +303,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
   }
 
   async function saveRule() {
-    if (inFlight.current || !result || !correctionBase || stale || ruleListFailed || correctionScope === 'once' ||
+    if (inFlight.current || !result || !correctionBase || stale || ruleListFailed || existingSourceSha === null || correctionScope === 'once' ||
         proposedRule.trim().length < 8 || correctionBase.correction !== correction.trim() ||
         correctionBase.question !== question.trim() || correctionBase.originalUrl !== originalUrl.trim() ||
         (existingSourceSha !== null && existingSourceSha !== result.provenance.guide.sha256)) return;
@@ -449,7 +449,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
           <option value="once">{t.once}</option><option value="community">{t.community}</option><option value="general">{t.general}</option>
         </select></label></div>
       <div className="lsr-actions"><button type="button" disabled={busy || stale || draft.trim().length < 10 || correction.trim().length < 3} onClick={() => void request("revise_once")}>{t.revise}</button>
-        {correctionScope!=='once'&&<button type="button" className="lsr-primary" disabled={busy || stale || ruleListFailed || !correctionBase || proposedRule.trim().length < 8 ||
+        {correctionScope!=='once'&&<button type="button" className="lsr-primary" disabled={busy || stale || ruleListFailed || existingSourceSha === null || !correctionBase || proposedRule.trim().length < 8 ||
           (existingSourceSha !== null && existingSourceSha !== result.provenance.guide.sha256)} onClick={() => void saveRule()}>{t.persistent}</button>}</div>
       {correctionScope!=='once'&&proposedRule && <div className="lsr-form-grid"><label>{t.proposed}<textarea value={proposedRule} maxLength={400} onChange={event => setProposedRule(event.target.value)} /></label>
         <label>{t.language}<select value={ruleLanguage} onChange={event => { setRuleLanguage(event.target.value === "both" ? "both" : event.target.value === "he" ? "he" : "en"); setTargetRuleId(null); }}><option value="he">{t.hebrew}</option><option value="en">{t.english}</option><option value="both">{t.both}</option></select></label></div>}
@@ -465,6 +465,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
       {correctionScope === "general" && <p className="lsr-help">{t.generalGate}</p>}
       {correctionScope==='community'&&ruleScope==='general'&&proposedRule&&<p className="lsr-help">{locale==='he'?'הכלל הוצע כסגנון כללי; ההיקף שבחרתם נשאר תגובות קהילה בלבד.':'The proposal suggests global wording; your selected scope remains Community replies only.'}</p>}
       {correctionScope!=='once'&&ruleListFailed&&<p role="alert" className="lsr-inline-error">{t.ruleListFailed} <button type="button" disabled={busy} onClick={()=>setRuleListRetry(value=>value+1)}>{t.ruleListRetry}</button></p>}
+      {correctionScope!=='once'&&correctionBase&&!ruleListFailed&&existingSourceSha===null&&<p role="status" className="lsr-help">{t.ruleListLoading}</p>}
       {correctionScope!=='once'&&!proposedRule && <p className="lsr-help">{t.interpret}</p>}
     </>}
     {draftNotice&&<p role={draftSaveError?'alert':'status'} className={draftSaveError?'lsr-inline-error':'lsr-status'}>{draftNotice}</p>}

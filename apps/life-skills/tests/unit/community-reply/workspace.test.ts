@@ -1,10 +1,10 @@
 import type {ReactElement} from 'react';
 import {beforeEach,expect,test,vi} from 'vitest';
-const hooks=vi.hoisted(()=>{const slots:unknown[]=[];let cursor=0;return {
- reset(){slots.length=0;cursor=0;},render<T>(fn:()=>T){cursor=0;return fn();},
+const hooks=vi.hoisted(()=>{const slots:unknown[]=[];let cursor=0;let ruleEffect:(()=>unknown)|undefined;return {
+ reset(){slots.length=0;cursor=0;ruleEffect=undefined;},render<T>(fn:()=>T){cursor=0;return fn();},
  useState<T>(initial:T){const i=cursor++;if(!(i in slots))slots[i]=initial;return [slots[i] as T,(value:T|((old:T)=>T))=>{slots[i]=typeof value==='function'?(value as (old:T)=>T)(slots[i] as T):value;}] as const;},
  useRef<T>(initial:T){const i=cursor++;if(!(i in slots))slots[i]={current:initial};return slots[i] as {current:T};},
- useCallback<T>(fn:T){return fn;},useEffect(){},
+ useCallback<T>(fn:T){return fn;},useEffect(fn:()=>unknown,deps?:unknown[]){if(deps?.length===3&&typeof deps[1]==='string')ruleEffect=fn;},runRuleEffect(){ruleEffect?.();},
 };});
 vi.mock('react',async original=>({...await original<typeof import('react')>(),useState:hooks.useState,useRef:hooks.useRef,useCallback:hooks.useCallback,useEffect:hooks.useEffect}));
 vi.mock('../../../src/features/identity/client.ts',()=>({sessionInfo:async()=>({role:'practitioner',csrfToken:'synthetic'})}));
@@ -23,9 +23,10 @@ function savedDraft():CommunitySavedDraft{return {draftId:generated.operationId,
 beforeEach(()=>{hooks.reset();vi.stubGlobal('fetch',vi.fn());});
 
 test.each(['en','he'] as const)('%s corrections default to one-off; explicit reusable scope never silently saves the source',async locale=>{
- let latest=structuredClone(generated);
+ let latest=structuredClone(generated),denyRules=false;
  vi.stubGlobal('window',{localStorage:{setItem:vi.fn(),removeItem:vi.fn()}});
  vi.mocked(fetch).mockImplementation(async(_url,options)=>{
+  if(String(_url).startsWith('/api/content-voice/corrections?list=1'))return denyRules?Response.json({ok:false},{status:503}):Response.json({ok:true,data:{source,rules:[]}});
   if(String(_url)==='/api/content-voice/corrections')return Response.json({ok:true,data:{operationId:'11111111-1111-4111-8111-111111111111',scope:'general',status:'permission_denied'}});
   if(options?.method==='POST'){
    const command=JSON.parse(String(options.body));
@@ -48,11 +49,19 @@ test.each(['en','he'] as const)('%s corrections default to one-off; explicit reu
  await vi.waitFor(()=>{tree=render();expect(find(tree,item=>item.type==='button'&&item.props.className==='lsr-primary')!.props.disabled).toBe(false);expect(latest.ruleScope).toBe('community');});
  expect(labelControl(scopeLabel,'select').props.value).toBe('once');expect(find(tree,item=>item.type==='button'&&item.props.children===persistent)).toBeUndefined();
  (labelControl(scopeLabel,'select').props.onChange as (e:unknown)=>void)({target:{value:'community'}});tree=render();
- expect(find(tree,item=>item.type==='button'&&item.props.children===persistent)!.props.disabled).toBe(false);
+ expect(find(tree,item=>item.type==='button'&&item.props.children===persistent)!.props.disabled).toBe(true);hooks.runRuleEffect();
+ await vi.waitFor(()=>{tree=render();expect(find(tree,item=>item.type==='button'&&item.props.children===persistent)!.props.disabled).toBe(false);});
  expect(labelControl(instructionLabel,'textarea').props.value).toBe('Keep the response concise.');
+ denyRules=true;
  (labelControl(scopeLabel,'select').props.onChange as (e:unknown)=>void)({target:{value:'general'}});tree=render();
- expect(find(tree,item=>item.type==='button'&&item.props.children===persistent)!.props.disabled).toBe(false);
- expect(vi.mocked(fetch).mock.calls.filter(([url])=>String(url).includes('/content-voice/'))).toHaveLength(0);
+ expect(find(tree,item=>item.type==='button'&&item.props.children===persistent)!.props.disabled).toBe(true);hooks.runRuleEffect();
+ const reload=locale==='en'?'Reload current writing rules':'טעינה חוזרת של כללי הכתיבה';
+ await vi.waitFor(()=>{tree=render();expect(find(tree,item=>item.type==='button'&&item.props.children===reload)).toBeDefined();});
+ expect(labelControl(instructionLabel,'textarea').props.value).toBe('Keep the response concise.');
+ expect(find(tree,item=>item.type==='button'&&item.props.children===persistent)!.props.disabled).toBe(true);
+ denyRules=false;(find(tree,item=>item.type==='button'&&item.props.children===reload)!.props.onClick as ()=>void)();tree=render();hooks.runRuleEffect();
+ await vi.waitFor(()=>{tree=render();expect(find(tree,item=>item.type==='button'&&item.props.children===persistent)!.props.disabled).toBe(false);});
+ expect(vi.mocked(fetch).mock.calls.filter(([url])=>String(url)==='/api/content-voice/corrections')).toHaveLength(0);
  (find(tree,item=>item.type==='button'&&item.props.children===persistent)!.props.onClick as ()=>void)();
  await vi.waitFor(()=>expect(vi.mocked(fetch).mock.calls.filter(([url])=>String(url)==='/api/content-voice/corrections')).toHaveLength(1));
  const call=vi.mocked(fetch).mock.calls.find(([url])=>String(url)==='/api/content-voice/corrections')!;
