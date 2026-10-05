@@ -22,12 +22,16 @@ const generated:CommunitySavedDraft['generated']={operationId:'412302a8-3694-471
 function savedDraft():CommunitySavedDraft{return {draftId:generated.operationId,question:'DEMO public source question',originalUrl:null,draft:generated.reply,revision:1,editedAt:null,expiresAt:'2026-11-01T08:02:00Z',generated:structuredClone(generated),copyAllowed:true,reviewFlags:[]};}
 beforeEach(()=>{hooks.reset();vi.stubGlobal('fetch',vi.fn());});
 
-test.each(['en','he'] as const)('%s corrections default to one-off; explicit reusable scope never silently saves the source',async locale=>{
+test.each((['en','he'] as const).flatMap(locale=>['permission_denied','complete'].map(status=>({locale,status}))))('$locale/$status corrections default to one-off; explicit reusable scope never silently saves the source',async({locale,status})=>{
  let latest=structuredClone(generated),denyRules=false;
- vi.stubGlobal('window',{localStorage:{setItem:vi.fn(),removeItem:vi.fn()}});
+ vi.stubGlobal('window',{confirm:vi.fn(()=>true),localStorage:{setItem:vi.fn(),removeItem:vi.fn()}});
  vi.mocked(fetch).mockImplementation(async(_url,options)=>{
   if(String(_url).startsWith('/api/content-voice/corrections?list=1'))return denyRules?Response.json({ok:false},{status:503}):Response.json({ok:true,data:{source,rules:[]}});
-  if(String(_url)==='/api/content-voice/corrections')return Response.json({ok:true,data:{operationId:'11111111-1111-4111-8111-111111111111',scope:'general',status:'permission_denied'}});
+  if(String(_url)==='/api/content-voice/corrections'){
+   if(status==='complete')latest={...latest,operationId:'11111111-1111-4111-8111-111111111111',provenance:{...latest.provenance,guide:{...latest.provenance.guide,sha256:'b'.repeat(64),driveRevision:'14'}}};
+   return Response.json({ok:true,data:{operationId:'11111111-1111-4111-8111-111111111111',scope:'general',status,
+    ...(status==='complete'?{draft:latest,draftInput:{question:'DEMO public source question',originalUrl:''},after:'**CR-11111111111141118111111111111111 — scope: general; language: en; created: 2026-10-05T11:00:00Z; updated: 2026-10-05T11:01:00Z** Use concise plain words.'}:{})}});
+  }
   if(options?.method==='POST'){
    const command=JSON.parse(String(options.body));
    if(command.mode==='revise_once')latest={...generated,suggestedRule:'Use concise, plain language in community replies.',ruleScope:'community'};
@@ -66,6 +70,12 @@ test.each(['en','he'] as const)('%s corrections default to one-off; explicit reu
  await vi.waitFor(()=>expect(vi.mocked(fetch).mock.calls.filter(([url])=>String(url)==='/api/content-voice/corrections')).toHaveLength(1));
  const call=vi.mocked(fetch).mock.calls.find(([url])=>String(url)==='/api/content-voice/corrections')!;
  expect(JSON.parse(String(call[1]?.body))).toMatchObject({scope:'general',correction:'Keep the response concise.',sourceSha256:source.sha256,sourceRevision:source.driveRevision});
+ if(status==='complete'){
+  await vi.waitFor(()=>{tree=render();expect(labelControl(scopeLabel,'select').props.value).toBe('once');});
+  expect(find(tree,item=>item.props.role==='alert'&&String(item.props.children).includes(locale==='en'?'Content Voice source changed':'מקור סגנון הכתיבה השתנה'))).toBeUndefined();
+  const display=find(tree,item=>item.type==='p'&&Array.isArray(item.props.children)&&item.props.children[0]===(locale==='en'?'Current rule':'כלל נוכחי'))!;
+  expect(display.props.children).toEqual([locale==='en'?'Current rule':'כלל נוכחי',': ','Use concise plain words.']);
+ }
 });
 
 test('complete readback ignores object property order, normalizes the submitted URL and preserves edited-draft conflict evidence',()=>{

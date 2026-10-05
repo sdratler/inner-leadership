@@ -381,6 +381,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
     setResult(saved.draft); setDraft(saved.draft.reply); setReviewed(false); setSubmittedInput(saved.draftInput);
     setPersisted(null);setHistorical(false);draftAttempt.current=null;void confirmGenerated(saved.draft,saved.draftInput);
     setCorrection(""); setProposedRule(""); setCorrectionBase(null); setTargetRuleId(null);
+    setExistingRules([]); setExistingSourceSha(null); setRuleListFailed(false);
     setCorrectionScope('once');
     attempt.current = null; ruleAttempt.current = null;
   }
