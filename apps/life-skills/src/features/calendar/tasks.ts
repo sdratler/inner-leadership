@@ -17,6 +17,7 @@ import type {CalendarMode} from './mode.ts';
 import {reconcileCaseWork,type CaseTaskKind} from './case-work-tasks.ts';
 import {taskManageSchema} from './validation.ts';
 import type {TaskState} from './task-state.ts';
+import {prospectArchived,prospectContactSuppressed} from '../prospects/native-edit.ts';
 
 export type TaskId=Id<'task'>;
 export type TaskInput=z.infer<typeof taskCreateSchema>;
@@ -70,11 +71,14 @@ export class InternalTaskService {
   const first=civilDate(from),last=civilDate(to);
   return this.db.read(actor,async c=>{
    requirePractitioner(c.actor);
+   if(caseId)await this.db.scope(c,caseId);
    const rows=await c.tx.query<TaskRow>(`SELECT ${columns} FROM ls_calendar.tasks
     WHERE workspace_id=$1 AND greatest(due_date,snoozed_until)>=$2::date AND greatest(due_date,snoozed_until)<$3::date
       AND ($4::uuid IS NULL OR case_id=$4::uuid)
+      AND (case_id IS NULL OR EXISTS(SELECT 1 FROM ls_cases.cases authorized_case
+       WHERE authorized_case.workspace_id=tasks.workspace_id AND authorized_case.id=tasks.case_id AND authorized_case.practitioner_account_id=$7))
       AND ${syntheticTask}=$6::boolean
-    ORDER BY greatest(due_date,snoozed_until),due_time NULLS FIRST,id LIMIT $5`,[c.workspace,first,last,caseId,MAX_CALENDAR_TASKS+1,mode==='demo']);
+    ORDER BY greatest(due_date,snoozed_until),due_time NULLS FIRST,id LIMIT $5`,[c.workspace,first,last,caseId,MAX_CALENDAR_TASKS+1,mode==='demo',c.actor.id]);
    if(rows.length>MAX_CALENDAR_TASKS)throw new AppError('UNAVAILABLE');
    return rows.map(row=>this.view(c,row));
   });
@@ -110,8 +114,8 @@ export class InternalTaskService {
   if(mode!=='live'&&mode!=='demo')throw new AppError('INVALID_REQUEST');
   return this.db.command(actor,'complete_task',key,{id,expectedVersion,...(mode==='demo'?{mode}:{})},async c=>{
    requirePractitioner(c.actor);
-   const row=await one<{id:string}>(c.tx,`SELECT id FROM ls_calendar.tasks WHERE workspace_id=$1 AND id=$2 AND ${syntheticTask}=$3::boolean`,[c.workspace,id,mode==='demo']);
-   if(!row)throw new AppError('NOT_FOUND');
+   const row=await one<{id:string;caseId:CaseId|null}>(c.tx,`SELECT id,case_id AS "caseId" FROM ls_calendar.tasks WHERE workspace_id=$1 AND id=$2 AND ${syntheticTask}=$3::boolean`,[c.workspace,id,mode==='demo']);
+   if(!row)throw new AppError('NOT_FOUND');if(row.caseId)await this.db.scope(c,row.caseId);
   },async c=>{
    const row=await one<TaskRow>(c.tx,`UPDATE ls_calendar.tasks SET state='done',snoozed_until=NULL,version=version+1,updated_at=$4
     WHERE workspace_id=$1 AND id=$2 AND version=$3 AND state IN ('open','in_progress') RETURNING ${columns}`,
@@ -195,7 +199,7 @@ export class InternalTaskService {
     if(demoLeads.has(row.leadId)){result.unchanged++;continue;}
     const existing=existingByDigest.get(digest);
     const dueDate=crmDueCivilDate(row.dueDate),title=row.nextAction?.trim()??'';
-    const archived=/archive|do not contact/i.test(`${row.stage} ${row.outcome}`);
+    const archived=prospectArchived(row)||prospectContactSuppressed(row);
     // Invalid dates are not source resolution. Preserve the task and surface the
     // CRM row separately until its actual source data is repaired.
     if(!archived&&row.dueDate?.trim()&&!dueDate){result.unchanged++;continue;}

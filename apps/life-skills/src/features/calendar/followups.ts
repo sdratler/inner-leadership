@@ -1,4 +1,5 @@
 import { crmDueCivilDate } from '../prospects/due-date.ts';
+import {prospectArchived,prospectContactSuppressed} from '../prospects/native-edit.ts';
 
 export type FollowupSource = {
   leadId: string;
@@ -20,7 +21,7 @@ export function projectCalendarFollowups(rows: readonly FollowupSource[], dates:
     return dueDate && visibleDates.has(dueDate) &&
       /^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]+$/.test(row.leadId) &&
       (!caseId || row.caseId === caseId) &&
-      !/archive|do not contact/i.test(`${row.stage} ${row.outcome}`)
+      !prospectArchived(row)&&!prospectContactSuppressed(row)
       ? [{ leadId: row.leadId, name: row.name, nextAction: row.nextAction, dueDate }] : [];
   })
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.name.localeCompare(b.name) || a.leadId.localeCompare(b.leadId));
