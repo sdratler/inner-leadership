@@ -19,10 +19,20 @@ describe('internal task PostgreSQL contract',()=>{
   try{
    const tasks=new InternalTaskService(isolated.db,Buffer.alloc(32,9)),dueDate=civilDate(isolated.at(48)),input={title:'Synthetic private case work',dueDate,dueTime:null,note:'Do not disclose outside the case',sourcePath:null,caseId:isolated.first.id};
    const restricted=await tasks.create(isolated.practitioner.actor,randomUUID(),input),allowed=await tasks.create(isolated.practitioner.actor,randomUUID(),{...input,caseId:isolated.second.id}),internal=await tasks.create(isolated.practitioner.actor,randomUUID(),{...input,caseId:null}),from=dayStart(dueDate),to=dayStart(shiftDay(dueDate,1));
+   const crm={leadId:'LS-LEAD-HANDOVER',name:'Synthetic case-linked work',nextAction:'Review source',dueDate,caseId:isolated.first.id,stage:'New',outcome:''};
+   await tasks.syncCrmFollowups(isolated.practitioner.actor,[crm]);
+   const previous=(await tasks.list(isolated.practitioner.actor,from,to,null)).find(row=>row.sourceKind==='crm_followup')!;
    await isolated.pool.query("UPDATE ls_identity.accounts SET role='parent' WHERE workspace_id=$1 AND id=$2",[isolated.workspaceId,isolated.practitioner.actor.id]);
    await isolated.pool.query("UPDATE ls_identity.accounts SET role='practitioner' WHERE workspace_id=$1 AND id=$2",[isolated.workspaceId,isolated.outsider.actor.id]);
    await isolated.pool.query('UPDATE ls_cases.cases SET practitioner_account_id=$3 WHERE workspace_id=$1 AND id=$2',[isolated.workspaceId,isolated.second.id,isolated.outsider.actor.id]);
    const incoming={...isolated.outsider.actor,role:'practitioner' as const};
+   // Clearing, replacing or closing the current CRM link must not clear/take
+   // over an existing task's now-inaccessible case or its revision history.
+   for(const update of [{caseId:'',nextAction:'Updated source'},{caseId:isolated.second.id,nextAction:'Reassigned source'},{caseId:'',stage:'Archived'}]){
+    expect(await tasks.syncCrmFollowups(incoming,[{...crm,...update}])).toEqual({created:0,updated:0,resolved:0,unchanged:1});
+    expect((await isolated.pool.query('SELECT case_id,version,state FROM ls_calendar.tasks WHERE workspace_id=$1 AND id=$2',[isolated.workspaceId,previous.id])).rows[0]).toEqual({case_id:isolated.first.id,version:1,state:'open'});
+    await expect(tasks.get(incoming,previous.id)).rejects.toMatchObject({code:'NOT_FOUND'});
+   }
    expect((await tasks.list(incoming,from,to,null)).map(row=>row.id).sort()).toEqual([allowed.id,internal.id].sort());
    await expect(tasks.list(incoming,from,to,isolated.first.id)).rejects.toMatchObject({code:'NOT_FOUND'});
    await expect(tasks.get(incoming,restricted.id)).rejects.toMatchObject({code:'NOT_FOUND'});

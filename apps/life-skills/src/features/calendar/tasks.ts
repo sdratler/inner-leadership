@@ -31,7 +31,7 @@ export type InternalTask={
 };
 type TaskRow={id:string;caseId:CaseId|null;titleCiphertext:string;noteCiphertext:string|null;sourcePathCiphertext:string|null;sourceKind:'crm_followup'|CaseTaskKind|AdministrativeTaskKind|null;
  dueDate:string;dueTime:string|null;state:TaskState;version:number;snoozedUntil:string|null;createdAt:Date;updatedAt:Date};
-type SourceTaskRow={id:string;sourceDigest:string;sourceRevision:string;version:number};
+type SourceTaskRow={id:string;sourceDigest:string;sourceRevision:string;version:number;owned:boolean};
 function candidateCaseId(value:unknown):CaseId|null{if(typeof value!=='string')return null;try{return asId(value,'case');}catch{return null;}}
 const columns=`id,case_id AS "caseId",title_ciphertext AS "titleCiphertext",note_ciphertext AS "noteCiphertext",
  source_path_ciphertext AS "sourcePathCiphertext",to_jsonb(tasks)->>'source_kind' AS "sourceKind",due_date::text AS "dueDate",
@@ -193,9 +193,11 @@ export class InternalTaskService {
    const validCases=new Map(caseRows.map(row=>[row.id,row]));
    const digests=rows.map(row=>this.sourceDigest({workspace:c.workspace,kind:'crm_followup',leadId:row.leadId}));
    const sourceRows=await c.tx.query<SourceTaskRow>(`SELECT id,source_digest AS "sourceDigest",
-    source_revision AS "sourceRevision",version FROM ls_calendar.tasks
+    source_revision AS "sourceRevision",version,
+    (case_id IS NULL OR EXISTS(SELECT 1 FROM ls_cases.cases previous_case WHERE previous_case.workspace_id=tasks.workspace_id
+     AND previous_case.id=tasks.case_id AND previous_case.practitioner_account_id=$3)) AS owned FROM ls_calendar.tasks
     WHERE workspace_id=$1 AND source_kind='crm_followup' AND source_digest IN (SELECT jsonb_array_elements_text($2::jsonb))`,
-    [c.workspace,JSON.stringify(digests)]);
+    [c.workspace,JSON.stringify(digests),c.actor.id]);
    const existingByDigest=new Map(sourceRows.map(row=>[row.sourceDigest,row]));
    const creates:{id:string;caseId:CaseId|null;titleCiphertext:string;sourcePathCiphertext:string;dueDate:string;digest:string;revision:string}[]=[];
    const updates:{id:string;version:number;caseId:CaseId|null;titleCiphertext:string;sourcePathCiphertext:string;dueDate:string;revision:string}[]=[];
@@ -205,6 +207,9 @@ export class InternalTaskService {
     const row=rows[index]!,digest=digests[index]!;
     if(demoLeads.has(row.leadId)){result.unchanged++;continue;}
     const existing=existingByDigest.get(digest);
+    // A changed/cleared CRM link does not authorize unlinking or taking over a
+    // previous case's task after practitioner handover. Preserve it untouched.
+    if(existing&&!existing.owned){result.unchanged++;continue;}
     const dueDate=crmDueCivilDate(row.dueDate),title=row.nextAction?.trim()??'';
     const archived=prospectArchived(row)||prospectContactSuppressed(row);
     // Invalid dates are not source resolution. Preserve the task and surface the
