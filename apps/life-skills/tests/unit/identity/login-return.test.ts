@@ -9,6 +9,13 @@ it('preserves only a bounded legacy lead ID on a practitioner People return link
     .toBe('/en/app/clients');
 });
 const caseId='123e4567-e89b-42d3-a456-426614174000',sessionId='223e4567-e89b-42d3-a456-426614174000';
+it.each(['he','en'] as const)('preserves the named %s Community view and secondary library metadata through ordinary login',locale=>{
+ const path=`/${locale}/app/marketing`;
+ for(const communityView of ['opportunities','sources','budget','writing_rules'])expect(new URL(practitionerDetailReturnPath(locale,path,{section:'community',communityView}),'https://private.invalid').searchParams.get('communityView')).toBe(communityView);
+ const query={section:'creatives',collection:'history',concept:'999',cycle:'cycle:DEMO cycle',page:'2'};expect(Object.fromEntries(new URL(practitionerDetailReturnPath(locale,path,query),'https://private.invalid').searchParams)).toEqual(query);
+ for(const value of ['constructor','__proto__','toString',['history','history']])expect(practitionerDetailReturnPath(locale,path,{section:'creatives',collection:value,concept:value,cycle:value})).toBe(path+'?section=creatives');
+ expect(practitionerDetailReturnPath(locale,path,{section:'ads',communityView:'budget',collection:'history',concept:'999',cycle:'cycle:DEMO'})).toBe(path+'?section=ads');
+});
 it.each(['he','en'] as const)('preserves bounded %s adult report context but drops private editor and role hints',locale=>{
  const path=`/${locale}/client/reports`;
  const result=clientReturnPath(locale,path,{caseId,audienceId:sessionId,section:'history',role:'practitioner',mode:'demo'});

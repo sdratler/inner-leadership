@@ -172,7 +172,7 @@ export function proxy(request: NextRequest) {
   const practitionerDetail=/^\/(he|en)\/app\/(?:marketing|feedback|reports|forms|resources|settings(?:\/[^/]+)?|cases\/[^/]+\/sessions(?:\/[^/]+)?)$/.exec(pathname);
   if(practitionerDetail){
     const query:Record<string,string|undefined>={};
-    for(const key of ['mode','date','view','caseId','audienceId','appointmentId','context','section','filter','month','layout','channel','state','from','to','publication','language','placement','approval','search','page','threadId']){const values=request.nextUrl.searchParams.getAll(key);query[key]=values.length===1?values[0]:undefined;}
+    for(const key of ['mode','date','view','caseId','audienceId','appointmentId','context','section','filter','month','layout','channel','state','from','to','publication','language','placement','approval','search','page','threadId','communityView','collection','concept','cycle']){const values=request.nextUrl.searchParams.getAll(key);query[key]=values.length===1?values[0]:undefined;}
     inbound.set('x-ls-practitioner-return',practitionerDetailReturnPath(practitionerDetail[1] as 'en'|'he',pathname,query));
   }
   const parentPage = /^\/(he|en)\/family(?:\/|$)/.exec(pathname);
