@@ -14,6 +14,49 @@ let f:Fixture;
 beforeAll(async()=>{f=await fixture();},30000);
 afterAll(async()=>{await f?.pool.end();});
 describe('internal task PostgreSQL contract',()=>{
+ test('task workflow is reversible, versioned, partitioned and effect-free with source dates and immutable history retained',async()=>{
+  const isolated=await fixture({demoFirst:true});
+  try{
+   const tasks=new InternalTaskService(isolated.db,Buffer.alloc(32,9)),dueDate=civilDate(isolated.at(48)),later=shiftDay(dueDate,2),input={title:'Synthetic workflow task',dueDate,dueTime:null,note:'Synthetic retained private note',sourcePath:'/en/app/clients?mode=demo',caseId:isolated.first.id,mode:'demo' as const};
+   const original=await tasks.create(isolated.practitioner.actor,randomUUID(),input),key=randomUUID(),edit={expectedVersion:1,state:'in_progress' as const,snoozedUntil:later,mode:'demo' as const};
+   const changed=await tasks.manage(isolated.practitioner.actor,original.id,key,edit);
+   expect(changed).toMatchObject({...input,state:'in_progress',snoozedUntil:later,version:2});
+   expect(await tasks.manage(isolated.practitioner.actor,original.id,key,edit)).toEqual(changed);
+   expect(await tasks.get(isolated.practitioner.actor,original.id,'demo')).toEqual(changed);
+   expect(await tasks.list(isolated.practitioner.actor,dayStart(dueDate),dayStart(shiftDay(dueDate,1)),null,'demo')).toEqual([]);
+   expect(await tasks.list(isolated.practitioner.actor,dayStart(later),dayStart(shiftDay(later,1)),null,'demo')).toEqual([changed]);
+   await expect(tasks.manage(isolated.parent.actor,original.id,randomUUID(),edit)).rejects.toMatchObject({code:'FORBIDDEN'});
+   await expect(tasks.get(isolated.parent.actor,original.id,'demo')).rejects.toMatchObject({code:'FORBIDDEN'});
+   await expect(tasks.manage(isolated.practitioner.actor,original.id,key,{...edit,mode:'live'})).rejects.toMatchObject({code:'NOT_FOUND'});
+   await expect(tasks.get(isolated.practitioner.actor,original.id)).rejects.toMatchObject({code:'NOT_FOUND'});
+   await expect(tasks.manage(isolated.practitioner.actor,original.id,randomUUID(),edit)).rejects.toMatchObject({code:'CONFLICT'});
+   await expect(tasks.manage(isolated.practitioner.actor,original.id,key,{...edit,snoozedUntil:null})).rejects.toMatchObject({code:'CONFLICT'});
+   await expect(tasks.manage(isolated.practitioner.actor,original.id,randomUUID(),{...edit,expectedVersion:2,snoozedUntil:'2000-01-01'})).rejects.toMatchObject({code:'INVALID_REQUEST'});
+   const done=await tasks.complete(isolated.practitioner.actor,original.id,randomUUID(),2,'demo');expect(done).toMatchObject({state:'done',snoozedUntil:null,version:3,note:input.note,dueDate});
+   const reopened=await tasks.manage(isolated.practitioner.actor,original.id,randomUUID(),{expectedVersion:3,state:'open',snoozedUntil:null,mode:'demo'});expect(reopened).toMatchObject({state:'open',version:4,dueDate,note:input.note});
+   const history=(await isolated.pool.query('SELECT version,action,state_value,snoozed_until::text FROM ls_calendar.task_history WHERE workspace_id=$1 AND task_id=$2 ORDER BY version',[isolated.workspaceId,original.id])).rows;
+   expect(history).toEqual([{version:1,action:'created',state_value:null,snoozed_until:null},{version:2,action:'managed',state_value:'in_progress',snoozed_until:later},{version:3,action:'completed',state_value:null,snoozed_until:null},{version:4,action:'managed',state_value:'open',snoozed_until:null}]);
+   await expect(isolated.pool.query('UPDATE ls_calendar.task_history SET action=$3 WHERE workspace_id=$1 AND task_id=$2',[isolated.workspaceId,original.id,'created'])).rejects.toMatchObject({code:'23514'});
+   expect((await isolated.pool.query('SELECT count(*)::int AS n FROM ls_calendar.events WHERE workspace_id=$1',[isolated.workspaceId])).rows[0].n).toBe(0);
+   expect((await isolated.pool.query('SELECT count(*)::int AS n FROM ls_payments.credit_events WHERE workspace_id=$1',[isolated.workspaceId])).rows[0].n).toBe(0);
+   await isolated.pool.query("UPDATE ls_identity.accounts SET state='revoked' WHERE workspace_id=$1 AND id=$2",[isolated.workspaceId,isolated.practitioner.actor.id]);
+   await expect(tasks.manage(isolated.practitioner.actor,original.id,key,edit)).rejects.toMatchObject({code:'UNAUTHENTICATED'});
+  }finally{await isolated.pool.end();}
+ });
+ test('source refresh preserves in-progress/snoozed work; actual source resolution clears snooze without provider effects',async()=>{
+  const isolated=await fixture();
+  try{
+   const tasks=new InternalTaskService(isolated.db,Buffer.alloc(32,9)),dueDate=civilDate(isolated.at(72)),until=shiftDay(dueDate,2),row={leadId:'LS-LEAD-SYNTHETIC-WORKFLOW',name:'Synthetic source',nextAction:'Review',dueDate,caseId:isolated.first.id,stage:'New',outcome:''};
+   await tasks.syncCrmFollowups(isolated.practitioner.actor,[row]);const first=(await tasks.list(isolated.practitioner.actor,dayStart(dueDate),dayStart(shiftDay(dueDate,1)),null))[0]!;
+   await tasks.manage(isolated.practitioner.actor,first.id,randomUUID(),{expectedVersion:1,state:'in_progress',snoozedUntil:until});
+   await tasks.syncCrmFollowups(isolated.practitioner.actor,[{...row,nextAction:'Updated synthetic action'}]);
+   expect(await tasks.get(isolated.practitioner.actor,first.id)).toMatchObject({state:'in_progress',snoozedUntil:until,dueDate,version:3});
+   expect(await tasks.syncCrmFollowups(isolated.practitioner.actor,[])).toEqual({created:0,updated:0,resolved:0,unchanged:0});
+   await tasks.syncCrmFollowups(isolated.practitioner.actor,[{...row,nextAction:'Updated synthetic action',stage:'Archived'}]);
+   expect(await tasks.get(isolated.practitioner.actor,first.id)).toMatchObject({state:'done',snoozedUntil:null,dueDate,version:4});
+   expect((await isolated.pool.query('SELECT count(*)::int AS n FROM ls_calendar.events WHERE workspace_id=$1',[isolated.workspaceId])).rows[0].n).toBe(0);
+  }finally{await isolated.pool.end();}
+ });
  test('DEMO task writes require immutable case provenance; lists, completion and replay stay partitioned',async()=>{
   const isolated=await fixture({demoFirst:true});
   try{

@@ -31,7 +31,7 @@ export function visibleCalendarFollowups(rows:readonly FollowupSource[],dates:re
  tasks:readonly {sourceKind:string|null;state:string;sourcePath:string|null}[],syncReady:boolean):CalendarFollowup[]{
  const projected=projectCalendarFollowups(rows,dates,caseId);
  if(!syncReady)return projected;
- const linked=new Set(tasks.filter(task=>task.sourceKind==='crm_followup'&&task.state==='open'&&task.sourcePath).map(task=>{
+ const linked=new Set(tasks.filter(task=>task.sourceKind==='crm_followup'&&task.state!=='done'&&task.sourcePath).map(task=>{
   try{return new URL(task.sourcePath!,'https://app.invalid').searchParams.get('leadId')??'';}catch{return '';}
  }));
  return projected.filter(item=>!linked.has(item.leadId));

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { asId } from '../../lib/ids.ts';
 import { iso, shiftDay } from './time.ts';
+import {taskStates} from './task-state.ts';
 const uuid=z.string().uuid();
 const timestamp=z.string().max(40).refine(v=>{try{iso(v);return true;}catch{return false;}},'Offset-qualified valid timestamp required').transform(iso);
 const caseId=uuid.transform(v=>asId(v,'case'));
@@ -35,4 +36,5 @@ export const taskCreateSchema=z.strictObject({
 });
 export const taskListSchema=z.strictObject({from:timestamp,to:timestamp,caseId:caseId.nullable(),mode:z.enum(['live','demo']).nullable().optional()});
 export const taskCompleteSchema=versionSchema.extend({mode:z.enum(['live','demo']).optional()});
+export const taskManageSchema=taskCompleteSchema.extend({state:z.enum(taskStates),snoozedUntil:taskDate.nullable()}).refine(value=>value.state!=='done'||value.snoozedUntil===null);
 export function parseQuery<T>(schema:z.ZodType<T>,input:unknown):T{const r=schema.safeParse(input);if(!r.success)throw new Error('INVALID_QUERY');return r.data;}

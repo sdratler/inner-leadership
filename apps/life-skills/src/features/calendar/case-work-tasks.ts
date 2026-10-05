@@ -96,7 +96,8 @@ export async function reconcileCaseWork(db:CalendarStore,c:TransactionContext,mo
  }
  if(changes.length){
   const changed=await c.tx.query<{id:string}>(`UPDATE ls_calendar.tasks t SET title_ciphertext=v."titleCiphertext",source_path_ciphertext=v."sourcePathCiphertext",due_date=v."dueDate",
-   state=CASE WHEN v.active THEN 'open' ELSE 'done' END,source_revision=v.revision,version=t.version+1,updated_at=$2
+   state=CASE WHEN v.active THEN CASE WHEN t.state='in_progress' THEN 'in_progress' ELSE 'open' END ELSE 'done' END,
+   snoozed_until=CASE WHEN v.active THEN t.snoozed_until ELSE NULL END,source_revision=v.revision,version=t.version+1,updated_at=$2
    FROM jsonb_to_recordset($3::jsonb) AS v(id uuid,version integer,"titleCiphertext" text,"sourcePathCiphertext" text,"dueDate" date,revision text,active boolean)
    WHERE t.workspace_id=$1 AND t.id=v.id AND t.version=v.version RETURNING t.id`,[c.workspace,c.now,JSON.stringify(changes)]);
   if(changed.length!==changes.length)throw new AppError('CONFLICT');

@@ -15,21 +15,23 @@ import { MAX_CALENDAR_TASKS, MAX_OPERATIONAL_PROSPECTS } from '../contact-ops/co
 import {demoCaseBatch} from '../demo/provenance.ts';
 import type {CalendarMode} from './mode.ts';
 import {reconcileCaseWork,type CaseTaskKind} from './case-work-tasks.ts';
+import {taskManageSchema} from './validation.ts';
+import type {TaskState} from './task-state.ts';
 
 export type TaskId=Id<'task'>;
 export type TaskInput=z.infer<typeof taskCreateSchema>;
 export type InternalTask={
  id:TaskId;caseId:CaseId|null;title:string;note:string|null;sourcePath:string|null;sourceKind:'crm_followup'|CaseTaskKind|null;
- dueDate:string;dueTime:string|null;state:'open'|'done';version:number;
+ dueDate:string;dueTime:string|null;state:TaskState;version:number;snoozedUntil?:string|null;
  createdAt:string;updatedAt:string;
 };
 type TaskRow={id:string;caseId:CaseId|null;titleCiphertext:string;noteCiphertext:string|null;sourcePathCiphertext:string|null;sourceKind:'crm_followup'|CaseTaskKind|null;
- dueDate:string;dueTime:string|null;state:'open'|'done';version:number;createdAt:Date;updatedAt:Date};
+ dueDate:string;dueTime:string|null;state:TaskState;version:number;snoozedUntil:string|null;createdAt:Date;updatedAt:Date};
 type SourceTaskRow={id:string;sourceDigest:string;sourceRevision:string;version:number};
 function candidateCaseId(value:unknown):CaseId|null{if(typeof value!=='string')return null;try{return asId(value,'case');}catch{return null;}}
 const columns=`id,case_id AS "caseId",title_ciphertext AS "titleCiphertext",note_ciphertext AS "noteCiphertext",
  source_path_ciphertext AS "sourcePathCiphertext",to_jsonb(tasks)->>'source_kind' AS "sourceKind",due_date::text AS "dueDate",
- to_char(due_time,'HH24:MI') AS "dueTime",state,version,created_at AS "createdAt",updated_at AS "updatedAt"`;
+ to_char(due_time,'HH24:MI') AS "dueTime",state,version,to_jsonb(tasks)->>'snoozed_until' AS "snoozedUntil",created_at AS "createdAt",updated_at AS "updatedAt"`;
 // Include the case root as well as descendant markers, so old synthetic tasks
 // cannot leak into live lists if they predate automatic task marking.
 const syntheticTask=`(EXISTS(SELECT 1 FROM ls_demo.cases d WHERE d.workspace_id=tasks.workspace_id AND d.case_id=tasks.case_id)
@@ -59,7 +61,7 @@ export class InternalTaskService {
    note:row.noteCiphertext?this.db.decrypt(c,'task-note',id,row.noteCiphertext):null,
    sourcePath:row.sourcePathCiphertext?this.db.decrypt(c,'task-source',id,row.sourcePathCiphertext):null,
    sourceKind:row.sourceKind,
-   dueDate:row.dueDate,dueTime:row.dueTime,state:row.state,version:row.version,
+   dueDate:row.dueDate,dueTime:row.dueTime,state:row.state,version:row.version,snoozedUntil:row.snoozedUntil,
    createdAt:row.createdAt.toISOString(),updatedAt:row.updatedAt.toISOString()};
  }
  async list(actor:Actor,from:string,to:string,caseId:CaseId|null,mode:CalendarMode='live'):Promise<InternalTask[]> {
@@ -69,10 +71,10 @@ export class InternalTaskService {
   return this.db.read(actor,async c=>{
    requirePractitioner(c.actor);
    const rows=await c.tx.query<TaskRow>(`SELECT ${columns} FROM ls_calendar.tasks
-    WHERE workspace_id=$1 AND due_date>=$2::date AND due_date<$3::date
+    WHERE workspace_id=$1 AND greatest(due_date,snoozed_until)>=$2::date AND greatest(due_date,snoozed_until)<$3::date
       AND ($4::uuid IS NULL OR case_id=$4::uuid)
       AND ${syntheticTask}=$6::boolean
-    ORDER BY due_date,due_time NULLS FIRST,id LIMIT $5`,[c.workspace,first,last,caseId,MAX_CALENDAR_TASKS+1,mode==='demo']);
+    ORDER BY greatest(due_date,snoozed_until),due_time NULLS FIRST,id LIMIT $5`,[c.workspace,first,last,caseId,MAX_CALENDAR_TASKS+1,mode==='demo']);
    if(rows.length>MAX_CALENDAR_TASKS)throw new AppError('UNAVAILABLE');
    return rows.map(row=>this.view(c,row));
   });
@@ -111,8 +113,8 @@ export class InternalTaskService {
    const row=await one<{id:string}>(c.tx,`SELECT id FROM ls_calendar.tasks WHERE workspace_id=$1 AND id=$2 AND ${syntheticTask}=$3::boolean`,[c.workspace,id,mode==='demo']);
    if(!row)throw new AppError('NOT_FOUND');
   },async c=>{
-   const row=await one<TaskRow>(c.tx,`UPDATE ls_calendar.tasks SET state='done',version=version+1,updated_at=$4
-    WHERE workspace_id=$1 AND id=$2 AND version=$3 AND state='open' RETURNING ${columns}`,
+   const row=await one<TaskRow>(c.tx,`UPDATE ls_calendar.tasks SET state='done',snoozed_until=NULL,version=version+1,updated_at=$4
+    WHERE workspace_id=$1 AND id=$2 AND version=$3 AND state IN ('open','in_progress') RETURNING ${columns}`,
     [c.workspace,id,expectedVersion,c.now]);
    if(!row){
     const exists=await one<{id:string}>(c.tx,'SELECT id FROM ls_calendar.tasks WHERE workspace_id=$1 AND id=$2',[c.workspace,id]);
@@ -120,6 +122,32 @@ export class InternalTaskService {
    }
    await c.tx.query(`INSERT INTO ls_calendar.task_history(workspace_id,id,task_id,version,action,actor_account_id,occurred_at)
     VALUES($1,$2,$3,$4,'completed',$5,$6)`,[c.workspace,randomUUID(),id,row.version,c.actor.id,c.now]);
+   return this.view(c,row);
+ });
+ }
+ async get(actor:Actor,id:TaskId,mode:CalendarMode='live'):Promise<InternalTask>{
+  if(mode!=='live'&&mode!=='demo')throw new AppError('INVALID_REQUEST');
+  return this.db.read(actor,async c=>{
+   requirePractitioner(c.actor);const row=await one<TaskRow>(c.tx,`SELECT ${columns} FROM ls_calendar.tasks WHERE workspace_id=$1 AND id=$2 AND ${syntheticTask}=$3::boolean`,[c.workspace,id,mode==='demo']);
+   if(!row)throw new AppError('NOT_FOUND');if(row.caseId)await this.db.scope(c,row.caseId);return this.view(c,row);
+  });
+ }
+ /** One optimistic, idempotent internal edit. Reauthorization precedes replay;
+  * source keys, notes, source dates and external records are never modified. */
+ async manage(actor:Actor,id:TaskId,key:string,input:z.infer<typeof taskManageSchema>):Promise<InternalTask>{
+  const parsed=taskManageSchema.safeParse(input);if(!parsed.success)throw new AppError('INVALID_REQUEST');
+  const body=parsed.data,mode=body.mode??'live';
+  return this.db.command(actor,'manage_task',key,{id,...body},async c=>{
+   requirePractitioner(c.actor);
+   const row=await one<{id:string;caseId:CaseId|null}>(c.tx,`SELECT id,case_id AS "caseId" FROM ls_calendar.tasks WHERE workspace_id=$1 AND id=$2 AND ${syntheticTask}=$3::boolean`,[c.workspace,id,mode==='demo']);
+   if(!row)throw new AppError('NOT_FOUND');if(row.caseId)await this.db.scope(c,row.caseId);
+  },async c=>{
+   if(body.snoozedUntil!==null&&body.snoozedUntil<civilDate(c.now))throw new AppError('INVALID_REQUEST');
+   const row=await one<TaskRow>(c.tx,`UPDATE ls_calendar.tasks SET state=$4,snoozed_until=$5::date,version=version+1,updated_at=$6
+    WHERE workspace_id=$1 AND id=$2 AND version=$3 RETURNING ${columns}`,[c.workspace,id,body.expectedVersion,body.state,body.snoozedUntil,c.now]);
+   if(!row){const exists=await one<{id:string}>(c.tx,'SELECT id FROM ls_calendar.tasks WHERE workspace_id=$1 AND id=$2',[c.workspace,id]);throw new AppError(exists?'CONFLICT':'NOT_FOUND');}
+   await c.tx.query(`INSERT INTO ls_calendar.task_history(workspace_id,id,task_id,version,action,actor_account_id,occurred_at,state_value,snoozed_until)
+    VALUES($1,$2,$3,$4,'managed',$5,$6,$7,$8::date)`,[c.workspace,randomUUID(),id,row.version,c.actor.id,c.now,row.state,row.snoozedUntil]);
    return this.view(c,row);
   });
  }
@@ -218,7 +246,7 @@ export class InternalTaskService {
    if(updates.length){
     const changed=await c.tx.query<{id:string}>(`UPDATE ls_calendar.tasks t SET
      title_ciphertext=v."titleCiphertext",source_path_ciphertext=v."sourcePathCiphertext",due_date=v."dueDate",
-     case_id=v."caseId",state='open',source_revision=v.revision,version=t.version+1,updated_at=$2
+     case_id=v."caseId",state=CASE WHEN t.state='in_progress' THEN 'in_progress' ELSE 'open' END,source_revision=v.revision,version=t.version+1,updated_at=$2
      FROM jsonb_to_recordset($3::jsonb) AS v(id uuid,version integer,"caseId" uuid,
       "titleCiphertext" text,"sourcePathCiphertext" text,"dueDate" date,revision text)
      WHERE t.workspace_id=$1 AND t.id=v.id AND t.version=v.version RETURNING t.id`,
@@ -227,7 +255,7 @@ export class InternalTaskService {
    }
    if(resolves.length){
     const changed=await c.tx.query<{id:string}>(`UPDATE ls_calendar.tasks t SET
-     state='done',source_revision=v.revision,version=t.version+1,updated_at=$2
+     state='done',snoozed_until=NULL,source_revision=v.revision,version=t.version+1,updated_at=$2
      FROM jsonb_to_recordset($3::jsonb) AS v(id uuid,version integer,revision text)
      WHERE t.workspace_id=$1 AND t.id=v.id AND t.version=v.version RETURNING t.id`,
      [c.workspace,c.now,JSON.stringify(resolves)]);

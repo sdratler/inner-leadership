@@ -154,5 +154,9 @@
   {
     "name": "0119_ls_case_work_tasks.sql",
     "sha256": "5e97f59f4b9caa07db49a6ce0549a49e25ee6a48f893ace72873038ffe034d8b"
+  },
+  {
+    "name": "0120_ls_task_workflow.sql",
+    "sha256": "f099a103f215b066417a03031d6df8ede3907238ddad3bbb2f7f154d8f6b6025"
   }
 ]

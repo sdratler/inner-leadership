@@ -11,7 +11,7 @@ import { LoadingState, PageHeader, StatusChip } from '../../ui/workspace/surface
 import { CalendarShell } from '../../ui/workspace/appointments.tsx';
 import { UnsavedChangesGuard } from '../../ui/workspace/draft-guard.tsx';
 import {isCaseId,workspaceHref} from '../../ui/workspace/navigation-model.ts';
-import { calendarRead, calendarWrite } from './client.ts';
+import { calendarRead, calendarWrite, CalendarClientError } from './client.ts';
 import { calendarLoadFailure, type CalendarLoadFailure } from './error-state.ts';
 import { text } from './copy.ts';
 import { civilDate, dateRange, shiftDay, shiftMonth } from './time.ts';
@@ -30,6 +30,7 @@ import {calendarCasesForMode,type CalendarMode} from './mode.ts';
 import { PracticeOccurrenceWorkspace } from '../home-practice/occurrence-workspace.tsx';
 import {calendarLayerQuery,initialCalendarLayers,calendarLayersQuery,type CalendarLayer} from './layers.ts';
 import type {CalendarContentRead} from './content.ts';
+import {taskStates,taskStateLabel,type TaskState} from './task-state.ts';
 import './calendar.css';
 type HistoryPage={items:Array<{version:number;state:'present'|'late'|'no_show'|'canceled';recordedAt:string;reason:string|null}>;nextVersion:number|null};
 import { verifiedGoogleMeetUrl } from './meeting-url.ts';
@@ -48,6 +49,7 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  const [taskRows,setTaskRows]=useState<InternalTask[]|null>(null),[taskLoadedFor,setTaskLoadedFor]=useState(''),[taskFailed,setTaskFailed]=useState(false),[taskRefresh,setTaskRefresh]=useState(0);
  const [workSyncFailed,setWorkSyncFailed]=useState(false),[workSyncRetry,setWorkSyncRetry]=useState(0);
  const [taskDraft,setTaskDraft]=useState({title:'',dueDate:initialDate,dueTime:'',note:'',sourcePath:'',caseId:initialCaseId}),[taskDirty,setTaskDirty]=useState(false);
+ const [taskManaging,setTaskManaging]=useState<InternalTask|null>(null),[taskEdit,setTaskEdit]=useState<{state:TaskState;snoozedUntil:string}>({state:'open',snoozedUntil:''}),[taskEditDirty,setTaskEditDirty]=useState(false),[taskManageLoading,setTaskManageLoading]=useState(false),[taskManageReadFailed,setTaskManageReadFailed]=useState(false);
  const [practiceDirty,setPracticeDirty]=useState(false);
  // Give checkboxes an immediate controlled response, then adopt the exact URL
  // when navigation completes (including Back). Never replay an old override.
@@ -72,9 +74,15 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  const clearDirty=useCallback(()=>setDirty(false),[]);
  const closeBooking=useCallback(()=>{setBookingOpen(false);setDirty(false);},[]);
  const closeTask=useCallback(()=>{setTaskDirty(false);setTaskDraft({title:'',dueDate:date,dueTime:'',note:'',sourcePath:'',caseId});},[date,caseId]);
+ const closeTaskManager=useCallback(()=>{setTaskManaging(null);setTaskEditDirty(false);setTaskManageReadFailed(false);},[]);
  useDialogGuard('ls-cal-detail',dirty,mutation.locked,locale,clearDirty);
  useDialogGuard('ls-cal-book',dirty,mutation.locked,locale,closeBooking);
  useDialogGuard('ls-cal-task',taskDirty,mutation.locked,locale,closeTask);
+ useDialogGuard('ls-cal-task-manage',taskEditDirty,mutation.locked||taskManageLoading,locale,closeTaskManager);
+ useEffect(()=>{
+  if(!taskManaging||!['UNAUTHENTICATED','FORBIDDEN','NOT_FOUND'].includes(mutation.error))return;
+  queueMicrotask(()=>{closeDialog('ls-cal-task-manage');closeTaskManager();setTaskRows(null);setTaskLoadedFor('');});
+ },[mutation.error,taskManaging,closeTaskManager]);
 
  const load=useCallback(async (reset=true,after:string|null=null)=>{
   const current=reset?++generation.current:generation.current;setLoading(reset);setError(null);
@@ -168,6 +176,15 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  function openTask(e:MouseEvent<HTMLButtonElement>){if(mutation.locked)return;setTaskDraft(current=>({...current,caseId:taskDirty?current.caseId:caseId,dueDate:taskDirty?current.dueDate:date}));openDialog('ls-cal-task',e);}
  function saveTask(){const body={title:taskDraft.title,dueDate:taskDraft.dueDate,dueTime:taskDraft.dueTime||null,note:taskDraft.note||null,sourcePath:taskDraft.sourcePath||null,caseId:taskDraft.caseId||null,...(mode==='demo'?{mode}:{})};mutation.run('tasks',body,async()=>{setTaskDirty(false);setTaskDraft({title:'',dueDate:date,dueTime:'',note:'',sourcePath:'',caseId});closeDialog('ls-cal-task');setTaskRefresh(value=>value+1);});}
  function completeTask(task:InternalTask){mutation.run(`tasks/${task.id}/complete`,{expectedVersion:task.version,...(mode==='demo'?{mode}:{})},async()=>{setTaskRefresh(value=>value+1);});}
+ function openTaskManager(task:InternalTask,event:MouseEvent<HTMLButtonElement>){if(mutation.locked)return;mutation.clearFeedback();setTaskManaging(task);setTaskEdit({state:task.state,snoozedUntil:task.snoozedUntil??''});setTaskEditDirty(false);setTaskManageReadFailed(false);openDialog('ls-cal-task-manage',event);}
+ function saveTaskManager(){if(!taskManaging||taskManageLoading)return;mutation.run(`tasks/${taskManaging.id}`,{expectedVersion:taskManaging.version,state:taskEdit.state,snoozedUntil:taskEdit.state==='done'?null:taskEdit.snoozedUntil||null,...(mode==='demo'?{mode}:{})},async()=>{setTaskEditDirty(false);closeDialog('ls-cal-task-manage');setTaskManaging(null);setTaskRefresh(value=>value+1);},'PATCH');}
+ async function reloadTaskManager(){
+  if(!taskManaging||mutation.locked||taskManageLoading||taskEditDirty&&!window.confirm(t.dirty))return;
+  setTaskManageLoading(true);setTaskManageReadFailed(false);
+  try{const current=await calendarRead<InternalTask>(`tasks/${taskManaging.id}${mode==='demo'?'?mode=demo':''}`);setTaskManaging(current);setTaskEdit({state:current.state,snoozedUntil:current.snoozedUntil??''});setTaskEditDirty(false);mutation.clearFeedback();}
+  catch(cause){if(cause instanceof CalendarClientError&&['UNAUTHENTICATED','FORBIDDEN','NOT_FOUND'].includes(cause.code)){closeDialog('ls-cal-task-manage');closeTaskManager();setTaskRows(null);setError(calendarLoadFailure(cause));}else setTaskManageReadFailed(true);}
+  finally{setTaskManageLoading(false);}
+ }
  async function loadHistory(next=false){if(!selected)return;setHistoryError(false);try{const p=await calendarRead<HistoryPage>(`appointments/${selected.id}/attendance-history`+(next&&history?.nextVersion?'?beforeVersion='+history.nextVersion:''));setHistory(old=>next&&old?{items:[...old.items,...p.items],nextVersion:p.nextVersion}:p);}catch{setHistoryError(true);}}
   const practiceLayer=<label><input type="checkbox" checked={showPractice} onChange={event=>toggleLayer('practice',event.target.checked)}/> {locale==='he'?'תרגול בבית':'Home practice'}</label>;
   const layerControls=<div className="ls-cal-layer-switches" role="group" aria-label={locale==='he'?'שכבות היומן':'Calendar layers'}>
@@ -194,8 +211,8 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
   {error&&<div className="ls-cal-partial lsw-alert" role="alert"><p>{locale==='he'?'לא ניתן לטעון את הפגישות. שכבות יומן אחרות שנטענו בהרשאה עדיין מוצגות.':'Appointments could not load. Other available calendar layers are still shown.'}</p><Button variant="secondary" onClick={()=>void load()}>{locale==='he'?'ניסיון טעינת פגישות חוזר':'Retry appointments'}</Button></div>}
   {caseError&&<p className="ls-cal-partial" role="status">{locale==='he'?'רשימת הלקוחות אינה זמינה כרגע. המפגשים המורשים עדיין מוצגים; שמות ותיאום חדש עשויים להיות חסרים.':'The client list is unavailable right now. Authorized appointments still appear; names and new booking may be unavailable.'} <Button variant="quiet" onClick={()=>void load()}>{locale==='he'?'ניסיון חוזר':'Retry client list'}</Button></p>}{countError&&<p className="ls-cal-partial" role="status">{locale==='he'?'ספירת המפגשים אינה זמינה כרגע. היומן עדיין מוצג.':'Attendance count is unavailable right now. The calendar is still shown.'}</p>}<CalendarShell locale={locale} period={new Intl.DateTimeFormat(locale==='he'?'he-IL':'en-GB',{timeZone:'Asia/Jerusalem',month:'long',year:'numeric'}).format(new Date(date+'T12:00Z'))} view={view}
  viewHrefs={{day:href(date,'day'),week:href(date,'week'),month:href(date,'month'),agenda:href(date,'agenda')}} showViewTabs={showCalendarViewTabsInContent(role,selectedClientContext)} todayHref={href(civilDate(new Date().toISOString()))} previousHref={href(view==='month'?shiftMonth(date,-1):shiftDay(date,view==='day'?-1:view==='agenda'?-14:-7))} nextHref={href(view==='month'?shiftMonth(date,1):shiftDay(date,view==='day'?1:view==='agenda'?14:7))}
-  desktop={<CalendarBoard dates={range.dates} items={error?[]:items} followups={followups} tasks={tasks} practice={practice} content={content} onOpenPractice={onOpen} locale={locale} view={view==='agenda'?'week':view} names={names} onOpen={showAppointment} onCompleteTask={practitioner?completeTask:undefined}/>}
-  agenda={<CalendarAgenda items={error?[]:items} followups={followups} tasks={tasks} practice={practice} content={content} onOpenPractice={onOpen} locale={locale} names={names} onOpen={showAppointment} onCompleteTask={practitioner?completeTask:undefined}/>}/></>}
+  desktop={<CalendarBoard dates={range.dates} items={error?[]:items} followups={followups} tasks={tasks} practice={practice} content={content} onOpenPractice={onOpen} locale={locale} view={view==='agenda'?'week':view} names={names} onOpen={showAppointment} onCompleteTask={practitioner?completeTask:undefined} onManageTask={practitioner?openTaskManager:undefined}/>}
+  agenda={<CalendarAgenda items={error?[]:items} followups={followups} tasks={tasks} practice={practice} content={content} onOpenPractice={onOpen} locale={locale} names={names} onOpen={showAppointment} onCompleteTask={practitioner?completeTask:undefined} onManageTask={practitioner?openTaskManager:undefined}/>}/></>}
   </div>}/>
  {!loading&&!error&&!caseError&&!cases.length&&<p role="status">{t.noCases}</p>}
  {livePractitioner&&showContent&&contentLoadedFor===contentKey&&contentRead&&<div className="ls-cal-content-readback"><details><summary>{locale==='he'?'מקור התוכן':'Content source'}{contentRead.partial&&(locale==='he'?' · מלאי חלקי':' · Partial inventory')}</summary><p className="ls-cal-muted">{locale==='he'?'רשומות שיווק קיימות בלבד; לא יוצרות פגישות ולא מפרסמות.':'Existing Marketing records only; do not create appointments or publish.'} {contentRead.fetchedAt&&<time dateTime={contentRead.fetchedAt}>{formatTime(contentRead.fetchedAt,locale)}</time>} {!content.length&&(locale==='he'?'אין רשומות מתוארכות בטווח הזה.':'No dated records in this range.')} {contentRead.undated>0&&<a href={`/${locale}/app/marketing?section=content_calendar`}>{locale==='he'?'רשומות ללא מועד':'Undated records'}: {contentRead.undated}</a>}</p></details></div>}
@@ -206,6 +223,17 @@ export function CalendarWorkspace({locale,role,initialDate,initialView,initialCa
  <p className="ls-cal-muted">{t.remaining}</p>
 
  <div className="ls-cal-page-feedback">{mutation.feedback}</div>
+ <UnsavedChangesGuard dirty={taskEditDirty} message={t.dirty}/>
+ <Dialog id="ls-cal-task-manage" title={locale==='he'?'ניהול משימה':'Manage task'} locale={locale} busy={mutation.locked||taskManageLoading}>
+ {taskManaging&&<form className="lsw-stack" onSubmit={event=>{event.preventDefault();if(event.currentTarget.checkValidity())saveTaskManager();}}>
+ <h3>{taskManaging.title}</h3><p>{locale==='he'?'מועד המקור':'Source due'}: {taskManaging.dueDate} · {taskManaging.dueTime||(locale==='he'?'כל היום':'All day')}</p>
+ <p>{locale==='he'?'עדכון עבודה פנימית בלבד. אינו שולח, מחייב, קובע פגישה או משלים את פעולת המקור.':'Internal work only. Does not send, charge, book or complete the source action.'}</p>
+ <Select id="calendar-task-state" label={locale==='he'?'מצב':'State'} value={taskEdit.state} disabled={mutation.locked||taskManageLoading} onChange={event=>{const state=event.target.value as TaskState;setTaskEdit(previous=>({...previous,state,snoozedUntil:state==='done'?'':previous.snoozedUntil}));setTaskEditDirty(true);}}>{taskStates.map(state=><option key={state} value={state}>{taskStateLabel(state,locale)}</option>)}</Select>
+ <Input id="calendar-task-snooze" label={locale==='he'?'דחייה עד (לא חובה)':'Snooze until (optional)'} help={locale==='he'?'השארת שדה ריק מבטלת דחייה; מועד המקור נשמר.':'Leave empty to remove snooze; the source date is retained.'} type="date" min={civilDate(new Date().toISOString())} value={taskEdit.snoozedUntil} disabled={mutation.locked||taskManageLoading||taskEdit.state==='done'} onChange={event=>{setTaskEdit(previous=>({...previous,snoozedUntil:event.target.value}));setTaskEditDirty(true);}}/>
+ {taskManageReadFailed&&<p role="alert">{locale==='he'?'המשימה השמורה לא נטענה. העריכה שלך נשמרת כאן; אפשר לנסות שוב.':'The saved task could not load. Your edits are kept here; try again.'}</p>}
+ <div className="lsw-actions"><Button type="submit" disabled={mutation.locked||taskManageLoading||!taskEditDirty}>{locale==='he'?'שמירת מצב משימה':'Save task state'}</Button><Button variant="secondary" disabled={mutation.locked||taskManageLoading} onClick={()=>void reloadTaskManager()}>{locale==='he'?'טעינת המשימה השמורה':'Reload saved task'}</Button></div>{mutation.feedback}
+ </form>}
+ </Dialog>
  <Dialog id="ls-cal-detail" title={t.details} locale={locale} busy={mutation.locked}>
  {selected&&<div className="ls-cal-detail" key={selected.id}><h3>{names[selected.caseId]??t.case}</h3><p>{t[selected.kind]}</p><p className="ls-cal-time">{formatTime(selected.startsAt,locale)} — {formatTime(selected.endsAt,locale,false)}</p>{selected.location&&<p>{selected.location}</p>}{selected.kind==='parent_guidance'&&(verifiedGoogleMeetUrl(selected.conferenceUri)?<p><a className="lsw-button lsw-button--secondary" href={verifiedGoogleMeetUrl(selected.conferenceUri) as string} target="_blank" rel="noreferrer">{t.meet}</a></p>:<p className="ls-cal-muted">{t.meetUnavailable}</p>)}
  <StatusChip>{t[selected.status]}</StatusChip><p>{t.attendance}: {selected.attendance?t[selected.attendance.state]:t.unrecorded}</p>

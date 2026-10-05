@@ -37,7 +37,8 @@ export function useCalendarMutation(locale:Locale){
  }
  const feedback=<div className="ls-cal-feedback" role="status" aria-live="polite">{busy?text(locale).loading:error?errorText(error,locale):saved?text(locale).saved:null}
  {uncertain&&<><p>{text(locale).uncertain}</p><Button busy={busy} onClick={()=>{if(action.current)void execute(action.current);}}>{text(locale).retry}</Button></>}</div>;
- return {run,busy,error,uncertain,locked:busy||uncertain,feedback};
+ function clearFeedback(){if(inFlight.current||uncertain)return;action.current=null;setError('');setSaved(false);}
+ return {run,busy,error,uncertain,locked:busy||uncertain,feedback,clearFeedback};
 }
 /** Extend shared native-dialog behavior without editing its owner: confirm unsaved close, block close while outcome is uncertain. */
 export function useDialogGuard(id:string,dirty:boolean,locked:boolean,locale:Locale,onClosed?:()=>void){
