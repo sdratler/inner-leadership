@@ -163,7 +163,9 @@
 @media(max-width:600px){
   .ls-cal-toolbar .ls-cal-case-context {display:grid;grid-template-columns:minmax(0,1fr);gap:.5rem}
   .ls-cal-toolbar[data-practitioner="true"] .ls-cal-case-context {grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem}
-  .lsw.lsu .ls-cal .ls-cal-case-context>.lsw-field {grid-template-columns:auto minmax(0,1fr);align-items:center;gap:.5rem}
- .ls-cal-case-context>.lsw-field>label {min-inline-size:0;min-block-size:44px;display:flex;align-items:center}
+  /* Labels above the two controls leave the full field width for the selected
+   * authorized case; inline labels reduced it to a few visible characters. */
+  .lsw.lsu .ls-cal .ls-cal-case-context>.lsw-field {grid-template-columns:minmax(0,1fr);align-items:start;gap:.25rem}
+ .ls-cal-case-context>.lsw-field>label {min-inline-size:0;min-block-size:24px;display:flex;align-items:center}
 }
 @media print{.ls-cal .ls-cal-actions,.ls-cal button,.ls-cal .lsw-dialog{display:none}.ls-cal .lsw-calendar-grid{display:block}.ls-cal .lsw-calendar-agenda{display:none}.ls-cal{max-inline-size:none;padding:0}}

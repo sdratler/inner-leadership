@@ -91,6 +91,13 @@ describe('operational Calendar composition',()=>{
     expect(workspace.match(/id="calendar-mode"/g)).toHaveLength(1);
     expect(workspace.match(/id="calendar-case"/g)).toHaveLength(1);
   });
+  it('gives mobile selected-case text the full field width instead of sharing it with the label',()=>{
+    const narrow=css.slice(css.lastIndexOf('@media(max-width:600px)'));
+    expect(narrow).toContain('.lsw.lsu .ls-cal .ls-cal-case-context>.lsw-field {grid-template-columns:minmax(0,1fr);align-items:start;gap:.25rem}');
+    expect(narrow).not.toContain('grid-template-columns:auto minmax(0,1fr)');
+    expect(narrow).toContain('min-block-size:24px');
+    expect(narrow).not.toContain('font-size:');
+  });
  it('uses the available narrow-screen width without clipping or reducing typography',()=>{
   expect(css).toContain('.lsw.lsu .lsu-page:has(>main.ls-cal){padding-block-start:0;padding-inline:0}');
   expect(css).toContain('.lsw.lsu .ls-cal .lsw-calendar-toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.5rem;align-items:center;padding:.5rem}');
