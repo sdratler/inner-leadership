@@ -18,8 +18,8 @@ const copy = {
     inboxUnavailable: "The captured-post inbox could not load. Your draft input is preserved. Retry when the Scout connection is available.", inboxLoading: "Loading captured posts…", inboxRetry: "Retry inbox", inboxMore: "More posts", inboxUse: "Use this post for a draft", inboxReplace: "Replace the current unsaved question and link with this post?", inboxOriginal: "Open original Facebook post", inboxDraft: "Saved suggestion", inboxNoDraft: "No saved suggestion yet", inboxCaptured: "Captured", inboxNoComments: "Comments not captured", inboxStatus: "Workflow status",
     intro: "Draft a reply to a public community question. Paste only the minimum public question text; remove names, phone numbers and private child details. Nothing is posted or sent automatically.",
     question: "Public question or post excerpt", url: "Original Facebook post link (optional)", generate: "Generate draft",
-    reply: "Editable reply", correction: "What should change?", revise: "Revise this reply only", persistent: "Apply correction + update my writing rules",
-    proposed: "Reusable preference understood (not saved)", scope: "Future scope", community: "Community replies", general: "All writing",
+    reply: "Editable reply", correction: "Specific instructions", revise: "Revise this reply only", persistent: "Apply correction + update my writing rules",
+    proposed: "Reusable preference understood (not saved)", scope: "Apply instructions to", once: "This reply only", community: "Future Community replies", general: "Global writing voice / Content Voice",
     language: "Replies this rule applies to", hebrew: "Hebrew", english: "English", both: "Both languages",
     pending: "The canonical writing-rule update is not yet connected. This correction changes only this reply; no source rule has been saved.",
     interpret: "First use ‘Revise this reply only’ to review the reusable preference. Only an approved community-reply preference can be saved here.",
@@ -58,8 +58,8 @@ const copy = {
     inboxUnavailable: "לא ניתן לטעון את תיבת הפוסטים. הטיוטה שלך נשמרה במסך. אפשר לנסות שוב כשהחיבור זמין.", inboxLoading: "טוען פוסטים שנקלטו…", inboxRetry: "ניסיון חוזר", inboxMore: "עוד פוסטים", inboxUse: "שימוש בפוסט הזה ליצירת טיוטה", inboxReplace: "להחליף את השאלה והקישור שהוזנו ועדיין לא נשמרו בפוסט הזה?", inboxOriginal: "פתיחת הפוסט המקורי", inboxDraft: "הצעה שמורה", inboxNoDraft: "אין עדיין הצעה שמורה", inboxCaptured: "נקלט", inboxNoComments: "תגובות לא נקלטו", inboxStatus: "סטטוס טיפול",
     intro: "טיוטת תגובה לשאלה ציבורית בקהילה. יש להדביק רק את הקטע הציבורי הנחוץ, ללא שמות, טלפונים או פרטים אישיים על ילדים. דבר אינו מתפרסם או נשלח אוטומטית.",
     question: "השאלה הציבורית או קטע מהפוסט", url: "קישור לפוסט המקורי בפייסבוק (לא חובה)", generate: "יצירת טיוטה",
-    reply: "תגובה ניתנת לעריכה", correction: "מה צריך לשנות?", revise: "תיקון התגובה הזאת בלבד", persistent: "החלת התיקון ועדכון כללי הכתיבה שלי",
-    proposed: "העדפת כתיבה חוזרת שזוהתה (לא נשמרה)", scope: "תחולה לעתיד", community: "תגובות בקהילה", general: "כל הכתיבה",
+    reply: "תגובה ניתנת לעריכה", correction: "הנחיות ספציפיות", revise: "תיקון התגובה הזאת בלבד", persistent: "החלת התיקון ועדכון כללי הכתיבה שלי",
+    proposed: "העדפת כתיבה חוזרת שזוהתה (לא נשמרה)", scope: "החלת ההנחיות על", once: "התגובה הזאת בלבד", community: "תגובות קהילה עתידיות", general: "סגנון הכתיבה הכללי / Content Voice",
     language: "שפת התגובות שעליהן הכלל חל", hebrew: "עברית", english: "אנגלית", both: "שתי השפות",
     pending: "עדכון כללי הכתיבה במקור עדיין אינו מחובר. התיקון חל רק על תגובה זו; לא נשמר כלל במקור.",
     interpret: "תחילה יש להשתמש ב׳תיקון התגובה הזאת בלבד׳ כדי לבדוק את העדפת הכתיבה החוזרת. כאן ניתן לשמור רק העדפה לתגובות בקהילה שאושרה.",
@@ -118,6 +118,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
   const [reviewed, setReviewed] = useState(false);
   const [proposedRule, setProposedRule] = useState("");
   const [ruleScope, setRuleScope] = useState<"community" | "general">("community");
+  const [correctionScope, setCorrectionScope] = useState<'once'|'community'|'general'>('once');
   const [ruleLanguage, setRuleLanguage] = useState<"he" | "en" | "both">(locale);
   const [ruleSave, setRuleSave] = useState<RuleSaveResult | null>(null);
   const [correctionBase, setCorrectionBase] = useState<{ question: string; originalUrl: string; reply: string; correction: string } | null>(null);
@@ -181,7 +182,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
     draftReadEpoch.current++;
     inFlight.current=true;setBusy(true);
     try{const latest=(await readSaved(row.draftId))[0];if(!matchesSavedDraftBinding(latest,row))throw Error('saved');
-      setQuestion(latest.question);setOriginalUrl(latest.originalUrl??'');setResult(latest.generated);setDraft(latest.draft);setPersisted(latest);setHistorical(true);
+      setQuestion(latest.question);setOriginalUrl(latest.originalUrl??'');setResult(latest.generated);setDraft(latest.draft);setPersisted(latest);setHistorical(true);setCorrectionScope('once');
       setSubmittedInput({question:latest.question,originalUrl:latest.originalUrl??''});setReviewed(false);setCorrection('');setCorrectionBase(null);setProposedRule('');setTargetRuleId(null);setExistingRules([]);setExistingSourceSha(null);setRuleSave(null);
       attempt.current=null;ruleAttempt.current=null;draftAttempt.current=null;setNotice('');setDraftSaveError(false);setDraftNotice(`${t.saveVerified} · ${t.savedVersion} ${latest.revision}`);
     }catch{setDraftSaveError(true);setDraftNotice(t.savedUnavailable);}
@@ -254,6 +255,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
   function choosePost(post: CommunityInboxPost) {
     if ((question.trim() || originalUrl.trim()) && !window.confirm(t.inboxReplace)) return;
     setQuestion(post.excerpt); setOriginalUrl(post.postUrl); setResult(null); setDraft(""); setCorrection(""); setReviewed(false);
+    setCorrectionScope('once');
     setSubmittedInput(null); setNotice(""); setCorrectionBase(null); setProposedRule(""); setTargetRuleId(null); attempt.current = null;
     setPersisted(null);setHistorical(false);setDraftNotice('');setDraftSaveError(false);draftAttempt.current=null;
     draftReadEpoch.current++;
@@ -284,6 +286,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
       if (replyFailureKind(response.status, payload.error?.code) === "limited") { setNotice(t.limited); return; }
       if (!response.ok || payload.ok !== true || !payload.data) throw Error("unconfirmed");
       setSubmittedInput({ question: command.question, originalUrl: command.originalUrl ?? "" });
+      if(mode==='generate')setCorrectionScope('once');
       setResult(payload.data); setDraft(payload.data.reply); setReviewed(false);
       setPersisted(null);setHistorical(false);draftAttempt.current=null;if(await confirmGenerated(payload.data,{question:command.question,originalUrl:command.originalUrl??''}))attempt.current=null;
       const proposal = proposalForResult(mode, payload.data.suggestedRule, payload.data.ruleScope);
@@ -296,7 +299,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
   }
 
   async function saveRule() {
-    if (inFlight.current || !result || !correctionBase || stale || ruleScope !== "community" ||
+    if (inFlight.current || !result || !correctionBase || stale || correctionScope !== 'community' || ruleScope !== "community" ||
         proposedRule.trim().length < 8 || correctionBase.correction !== correction.trim() ||
         correctionBase.question !== question.trim() || correctionBase.originalUrl !== originalUrl.trim() ||
         (existingSourceSha !== null && existingSourceSha !== result.provenance.guide.sha256)) return;
@@ -374,6 +377,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
     setResult(saved.draft); setDraft(saved.draft.reply); setReviewed(false); setSubmittedInput(saved.draftInput);
     setPersisted(null);setHistorical(false);draftAttempt.current=null;void confirmGenerated(saved.draft,saved.draftInput);
     setCorrection(""); setProposedRule(""); setCorrectionBase(null); setTargetRuleId(null);
+    setCorrectionScope('once');
     attempt.current = null; ruleAttempt.current = null;
   }
 
@@ -395,7 +399,11 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
       {inboxError && <p role="alert" className="lsr-inline-error">{t.inboxUnavailable} <button type="button" onClick={() => { setInboxLoading(true); setInboxError(false); void loadInbox(inboxStatus); }}>{t.inboxRetry}</button></p>}
       {!inboxLoading && !inboxError && inbox.length === 0 && <p>{t.inboxEmpty}</p>}
       {inbox.map(post => <article key={post.id} className="lsr-publication-row">
-        <h3>{post.groupName}</h3><p>{post.excerpt}{post.excerptTruncated ? '…' : ''}</p>
+        <h3>{post.groupName}</h3><p className="lsr-community-original" dir="auto">{post.excerpt}{post.excerptTruncated ? '…' : ''}</p>
+        <section className="lsr-reading-aid" lang="en" dir="ltr" aria-label="English reading aid">
+          <h4>English reading aid</h4>
+          {post.englishReadingAid?.length?<><ul>{post.englishReadingAid.map((line,index)=><li key={index}>{line}</li>)}</ul><p className="lsr-help">Convenience summary, not the source. The original excerpt remains authoritative.</p></>:<p className="lsr-help">No English reading aid is available for this post. Reading it does not run a paid analysis.</p>}
+        </section>
         <p className="lsr-help">{t.inboxStatus}: {post.status} · {t.inboxCaptured}: {post.postedAt ?? post.capturedAt ?? '—'} · {t.inboxNoComments}</p>
         {post.draft && <details><summary>{t.inboxDraft}</summary><p>{post.draft}</p></details>}
         {!post.draft && <p className="lsr-help">{t.inboxNoDraft}</p>}
@@ -431,14 +439,16 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
         <dt>{t.usage}</dt><dd>{result.provenance.usage.inputTokens} / {result.provenance.usage.outputTokens}</dd>
         <dt>{t.unmeteredCost}</dt><dd>—</dd>
       </dl></details>
-      <label>{t.correction}<textarea value={correction} disabled={busy} maxLength={1000} onChange={event => { setCorrection(event.target.value); setProposedRule(""); setCorrectionBase(null); }} /></label>
+      <div className="lsr-correction-controls"><label>{t.correction}<textarea value={correction} disabled={busy} maxLength={1000} onChange={event => { setCorrection(event.target.value); setProposedRule(""); setCorrectionBase(null); }} /></label>
+        <label>{t.scope}<select value={correctionScope} disabled={busy} onChange={event=>setCorrectionScope(event.target.value==='community'?'community':event.target.value==='general'?'general':'once')}>
+          <option value="once">{t.once}</option><option value="community">{t.community}</option><option value="general">{t.general}</option>
+        </select></label></div>
       <div className="lsr-actions"><button type="button" disabled={busy || stale || draft.trim().length < 10 || correction.trim().length < 3} onClick={() => void request("revise_once")}>{t.revise}</button>
-        <button type="button" className="lsr-primary" disabled={busy || stale || !correctionBase || proposedRule.trim().length < 8 || ruleScope !== "community" ||
-          (existingSourceSha !== null && existingSourceSha !== result.provenance.guide.sha256)} onClick={() => void saveRule()}>{t.persistent}</button></div>
-      {proposedRule && <div className="lsr-form-grid"><label>{t.proposed}<textarea value={proposedRule} maxLength={400} onChange={event => setProposedRule(event.target.value)} /></label>
-        <label>{t.scope}<select value={ruleScope} onChange={event => setRuleScope(event.target.value === "general" ? "general" : "community")}><option value="community">{t.community}</option><option value="general">{t.general}</option></select></label>
+        {correctionScope==='community'&&<button type="button" className="lsr-primary" disabled={busy || stale || !correctionBase || proposedRule.trim().length < 8 || ruleScope !== "community" ||
+          (existingSourceSha !== null && existingSourceSha !== result.provenance.guide.sha256)} onClick={() => void saveRule()}>{t.persistent}</button>}</div>
+      {correctionScope!=='once'&&proposedRule && <div className="lsr-form-grid"><label>{t.proposed}<textarea value={proposedRule} maxLength={400} onChange={event => setProposedRule(event.target.value)} /></label>
         <label>{t.language}<select value={ruleLanguage} onChange={event => { setRuleLanguage(event.target.value === "both" ? "both" : event.target.value === "he" ? "he" : "en"); setTargetRuleId(null); }}><option value="he">{t.hebrew}</option><option value="en">{t.english}</option><option value="both">{t.both}</option></select></label></div>}
-      {proposedRule && existingRules.some(rule => rule.language === ruleLanguage || rule.language === "both" || ruleLanguage === "both") && <label>{t.existingRule}<select value={targetRuleId ?? ""} onChange={event => {
+      {correctionScope==='community'&&proposedRule && existingRules.some(rule => rule.language === ruleLanguage || rule.language === "both" || ruleLanguage === "both") && <label>{t.existingRule}<select value={targetRuleId ?? ""} onChange={event => {
         const selected = existingRules.find(rule => rule.id === event.target.value);
         setTargetRuleId(selected?.id ?? null);
         if (selected?.language === "both") setRuleLanguage("both");
@@ -447,8 +457,8 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
           <option key={rule.id} value={rule.id}>{rule.id}: {rule.rule.slice(0, 120)}</option>)}</select></label>}
       {targetRuleId && <p className="lsr-help">{t.ruleBefore}: {existingRules.find(rule => rule.id === targetRuleId)?.rule}</p>}
       {existingSourceSha !== null && existingSourceSha !== result.provenance.guide.sha256 && <p role="alert" className="lsr-inline-error">{t.ruleConflict}</p>}
-      {ruleScope === "general" && <p className="lsr-help">{t.generalGate}</p>}
-      {!proposedRule && <p className="lsr-help">{t.interpret}</p>}
+      {(correctionScope === "general" || (correctionScope==='community'&&ruleScope==='general'&&proposedRule)) && <p className="lsr-help">{t.generalGate}</p>}
+      {correctionScope!=='once'&&!proposedRule && <p className="lsr-help">{t.interpret}</p>}
     </>}
     {draftNotice&&<p role={draftSaveError?'alert':'status'} className={draftSaveError?'lsr-inline-error':'lsr-status'}>{draftNotice}</p>}
     {draftSaveError&&result&&!persisted&&<button type="button" disabled={busy||stale} onClick={()=>void retryGenerated()}>{locale==='en'?'Retry this draft’s verification':'ניסיון חוזר לאימות הטיוטה הזאת'}</button>}

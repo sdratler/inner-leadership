@@ -22,6 +22,37 @@ const generated:CommunitySavedDraft['generated']={operationId:'412302a8-3694-471
 function savedDraft():CommunitySavedDraft{return {draftId:generated.operationId,question:'DEMO public source question',originalUrl:null,draft:generated.reply,revision:1,editedAt:null,expiresAt:'2026-11-01T08:02:00Z',generated:structuredClone(generated),copyAllowed:true,reviewFlags:[]};}
 beforeEach(()=>{hooks.reset();vi.stubGlobal('fetch',vi.fn());});
 
+test.each(['en','he'] as const)('%s corrections default to one-off; explicit reusable scope never silently saves the source',async locale=>{
+ let latest=structuredClone(generated);
+ vi.mocked(fetch).mockImplementation(async(_url,options)=>{
+  if(options?.method==='POST'){
+   const command=JSON.parse(String(options.body));
+   if(command.mode==='revise_once')latest={...generated,suggestedRule:'Use concise, plain language in community replies.',ruleScope:'community'};
+   return Response.json({ok:true,data:latest});
+  }
+  return Response.json({ok:true,data:{drafts:[{...savedDraft(),generated:latest}]}});
+ });
+ const render=()=>hooks.render(()=>CommunityReplyWorkspace({locale}));let tree=render();
+ const persistent=locale==='en'?'Apply correction + update my writing rules':'החלת התיקון ועדכון כללי הכתיבה שלי';
+ const labelControl=(label:string,type:string)=>find(find(tree,item=>item.type==='label'&&Array.isArray(item.props.children)&&item.props.children[0]===label),item=>item.type===type)!;
+ (find(tree,item=>item.type==='textarea')!.props.onChange as (e:unknown)=>void)({target:{value:'DEMO public source question'}});tree=render();
+ (find(tree,item=>item.type==='button'&&item.props.className==='lsr-primary')!.props.onClick as ()=>void)();
+ await vi.waitFor(()=>{tree=render();expect(find(tree,item=>item.type==='button'&&item.props.children==='Copy reply')??find(tree,item=>item.type==='button'&&item.props.children==='העתקת התגובה')).toBeDefined();});
+ const scopeLabel=locale==='en'?'Apply instructions to':'החלת ההנחיות על';
+ expect(labelControl(scopeLabel,'select').props.value).toBe('once');
+ const instructionLabel=locale==='en'?'Specific instructions':'הנחיות ספציפיות';
+ (labelControl(instructionLabel,'textarea').props.onChange as (e:unknown)=>void)({target:{value:'Keep the response concise.'}});tree=render();
+ (find(tree,item=>item.type==='button'&&item.props.children===(locale==='en'?'Revise this reply only':'תיקון התגובה הזאת בלבד'))!.props.onClick as ()=>void)();
+ await vi.waitFor(()=>{tree=render();expect(find(tree,item=>item.type==='button'&&item.props.className==='lsr-primary')!.props.disabled).toBe(false);expect(latest.ruleScope).toBe('community');});
+ expect(labelControl(scopeLabel,'select').props.value).toBe('once');expect(find(tree,item=>item.type==='button'&&item.props.children===persistent)).toBeUndefined();
+ (labelControl(scopeLabel,'select').props.onChange as (e:unknown)=>void)({target:{value:'community'}});tree=render();
+ expect(find(tree,item=>item.type==='button'&&item.props.children===persistent)!.props.disabled).toBe(false);
+ expect(labelControl(instructionLabel,'textarea').props.value).toBe('Keep the response concise.');
+ (labelControl(scopeLabel,'select').props.onChange as (e:unknown)=>void)({target:{value:'general'}});tree=render();
+ expect(find(tree,item=>item.type==='button'&&item.props.children===persistent)).toBeUndefined();
+ expect(vi.mocked(fetch).mock.calls.filter(([url])=>String(url).includes('/content-voice/'))).toHaveLength(0);
+});
+
 test('complete readback ignores object property order, normalizes the submitted URL and preserves edited-draft conflict evidence',()=>{
  const value={...generated,originalUrl:'https://www.facebook.com/'};
  const row={...savedDraft(),originalUrl:value.originalUrl,generated:{provenance:{...value.provenance,usage:{outputTokens:1,inputTokens:1}},...Object.fromEntries(Object.entries(value).filter(([key])=>key!=='provenance').reverse())} as CommunitySavedDraft['generated']};

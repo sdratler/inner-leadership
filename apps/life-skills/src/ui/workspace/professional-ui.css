@@ -38,6 +38,10 @@
 .lsw.lsu .lsw-tabs button[aria-selected=true]{background:var(--ui-teal);color:#fff}
 .lsw.lsu .lsw-button--secondary:hover,.lsw.lsu .lsw-button--quiet:hover{background:#e7f0f1}
 .lsu-account-panel>a:hover{background:#e7f0f1}
+/* The shared nav min-inline-size reset must not shrink this absolute panel
+   to the avatar's width. Keep the whole menu inside narrow RTL/LTR viewports. */
+.lsw.lsu .lsu-account-panel{inline-size:248px;min-inline-size:0;max-inline-size:calc(100vw - 24px)}
+.lsw.lsu .lsu-account-panel>a{overflow-wrap:normal;word-break:normal;min-block-size:44px}
 .lsu-drawer .lsu-nav-link[aria-current=page]{background:var(--ui-teal);color:#fff}
 @media(max-width:1250px){.lsu-header{padding-inline:18px}.lsu-brand img{width:94px}.lsu-brand strong{font-size:20px}.lsu-top-tabs>a{padding-inline:10px;font-size:14px}}
 @media(max-width:1023px){.lsu-header>.lsu-top-tabs{display:none}.lsu-mobile-tabs{display:block;background:#fff;border-bottom:1px solid var(--ui-line);padding:6px 16px}.lsu-mobile-tabs .lsu-top-tabs{width:100%;justify-content:flex-start;scroll-snap-type:x proximity}.lsu-mobile-tabs .lsu-top-tabs>a{scroll-snap-align:start}.lsu-content{padding-block-start:20px}}
