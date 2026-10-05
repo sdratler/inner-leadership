@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Locale } from '../../lib/locale.ts';
 import { Input, Select, Button } from '../../ui/workspace/controls.tsx';
 import { calendarWrite, CalendarClientError } from './client.ts';
@@ -41,12 +41,21 @@ export function useCalendarMutation(locale:Locale){
  return {run,busy,error,uncertain,locked:busy||uncertain,feedback,clearFeedback};
 }
 /** Extend shared native-dialog behavior without editing its owner: confirm unsaved close, block close while outcome is uncertain. */
+export function guardCalendarDialogEscape(event:Pick<KeyboardEvent,'key'|'preventDefault'|'stopPropagation'>,requestClose:()=>void):boolean{
+ if(event.key!=='Escape')return false;
+ // Prevent the browser's close request BEFORE opening a blocking confirmation.
+ // A later close-watcher cancel event can be noncancelable, losing the draft.
+ event.preventDefault();event.stopPropagation();requestClose();return true;
+}
 export function useDialogGuard(id:string,dirty:boolean,locked:boolean,locale:Locale,onClosed?:()=>void){
+ const current=useRef({dirty,locked,locale,onClosed});
+ useLayoutEffect(()=>{current.current={dirty,locked,locale,onClosed};},[dirty,locked,locale,onClosed]);
  useEffect(()=>{const dialog=document.getElementById(id);if(!(dialog instanceof HTMLDialogElement))return;
-  const shouldClose=()=>!locked&&(!dirty||window.confirm(text(locale).dirty));
-  const cancel=(e:Event)=>{if(!shouldClose())e.preventDefault();};
-  const click=(e:MouseEvent)=>{const target=e.target instanceof Element?e.target.closest('button'):null;if(target===dialog.querySelector(':scope > header button')&&!shouldClose()){e.preventDefault();e.stopPropagation();}};
-  const closed=()=>finalizeDialogClose(dialog,()=>onClosed?.());dialog.addEventListener('cancel',cancel);dialog.addEventListener('click',click,true);dialog.addEventListener('close',closed);
-  return()=>{dialog.removeEventListener('cancel',cancel);dialog.removeEventListener('click',click,true);dialog.removeEventListener('close',closed);};
- },[id,dirty,locked,locale,onClosed]);
+  const requestClose=()=>{const value=current.current;if(!value.locked&&(!value.dirty||window.confirm(text(value.locale).dirty)))dialog.close();};
+  const key=(e:KeyboardEvent)=>{if(dialog.open)guardCalendarDialogEscape(e,requestClose);};
+  const cancel=(e:Event)=>{e.preventDefault();requestClose();};
+  const click=(e:MouseEvent)=>{const target=e.target instanceof Element?e.target.closest('button'):null;if(target===dialog.querySelector(':scope > header button')){e.preventDefault();e.stopPropagation();requestClose();}};
+  const closed=()=>finalizeDialogClose(dialog,()=>current.current.onClosed?.());dialog.addEventListener('keydown',key,true);dialog.addEventListener('cancel',cancel);dialog.addEventListener('click',click,true);dialog.addEventListener('close',closed);
+  return()=>{dialog.removeEventListener('keydown',key,true);dialog.removeEventListener('cancel',cancel);dialog.removeEventListener('click',click,true);dialog.removeEventListener('close',closed);};
+ },[id]);
 }

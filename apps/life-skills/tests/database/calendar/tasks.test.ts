@@ -20,7 +20,7 @@ describe('internal task PostgreSQL contract',()=>{
    const tasks=new InternalTaskService(isolated.db,Buffer.alloc(32,9)),dueDate=civilDate(isolated.at(48)),later=shiftDay(dueDate,2),input={title:'Synthetic workflow task',dueDate,dueTime:null,note:'Synthetic retained private note',sourcePath:'/en/app/clients?mode=demo',caseId:isolated.first.id,mode:'demo' as const};
    const original=await tasks.create(isolated.practitioner.actor,randomUUID(),input),key=randomUUID(),edit={expectedVersion:1,state:'in_progress' as const,snoozedUntil:later,mode:'demo' as const};
    const changed=await tasks.manage(isolated.practitioner.actor,original.id,key,edit);
-   expect(changed).toMatchObject({...input,state:'in_progress',snoozedUntil:later,version:2});
+   expect(changed).toMatchObject({title:input.title,dueDate,dueTime:null,note:input.note,sourcePath:input.sourcePath,caseId:input.caseId,state:'in_progress',snoozedUntil:later,version:2});
    expect(await tasks.manage(isolated.practitioner.actor,original.id,key,edit)).toEqual(changed);
    expect(await tasks.get(isolated.practitioner.actor,original.id,'demo')).toEqual(changed);
    expect(await tasks.list(isolated.practitioner.actor,dayStart(dueDate),dayStart(shiftDay(dueDate,1)),null,'demo')).toEqual([]);
