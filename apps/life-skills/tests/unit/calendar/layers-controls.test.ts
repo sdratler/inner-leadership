@@ -12,7 +12,7 @@ function checkboxes(node:unknown):ReactElement<Record<string,unknown>>[]{
  if(!node||typeof node!=='object')return[];if(Array.isArray(node))return node.flatMap(checkboxes);
  const item=node as ReactElement<Record<string,unknown>>;return item.type==='input'&&item.props.type==='checkbox'?[item]:checkboxes(item.props?.children);
 }
-const render=()=>{state.index=0;return checkboxes(CalendarWorkspace({locale:'en',role:'practitioner',initialDate:'2026-10-05',initialView:'week'}));};
+const render=()=>{state.index=0;return checkboxes(CalendarWorkspace({locale:'en',role:'practitioner',initialDate:'2026-10-05',initialView:'week',initialCaseId:''}));};
 beforeEach(()=>{state.index=0;state.values=[];state.query='date=2026-10-05&view=week';state.replace.mockReset();});
 it.each([['tasks',0,true],['followups',1,true],['practice',2,false],['content',3,false]] as const)('%s checkbox responds before async URL navigation and adopts the final URL', (key,index,initial)=>{
  expect(render()[index]?.props.checked).toBe(initial);
