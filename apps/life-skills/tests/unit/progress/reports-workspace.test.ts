@@ -119,6 +119,19 @@ it("renders only authorized published parent reports after case/audience/review 
   expect(readouts).toHaveLength(1); expect(readouts[0]?.props.review).toMatchObject({ id: "423e4567-e89b-12d3-a456-426614174000", state: "published" }); expect(rendered).toContain("Only published reports shared with your family appear here."); expect(fetchMock).toHaveBeenCalledTimes(2);
 });
 
+for(const locale of ['en','he'] as const)it(`${locale}: adult reports use independent wording, authorized cases and published-only readouts`,async()=>{
+ accountRead.mockResolvedValue([{id:ids.caseId,displayName:'Synthetic adult',kind:'adult'}]);
+ const props={locale,role:'adult_client' as const,caseId:ids.caseId};
+ hook.render(()=>ReportsPage(props));hook.flushEffects();await tick();let output=hook.render(()=>ReportsPage(props));
+ expect(accountRead).toHaveBeenCalledWith('cases');expect(text(output)).not.toMatch(/Child|Family|ילד\/ה|משפחה/);
+ expect(find(output,e=>e.type==='a')?.props.href).toBe(`/${locale}/client`);
+ hook.reset();
+ fetchMock.mockImplementation(async(url:string)=>Response.json({ok:true,data:url.startsWith('/api/identity/audiences')?[{id:ids.audienceId,visibility:'family_full',published:true}]:[review('published','published'),review('draft','draft'),review('wrong-audience','published',ids.otherAudienceId),{...review('wrong-case','published'),caseId:ids.otherAudienceId}]}));
+ hook.render(()=>ReportCaseWorkspace(props));hook.flushEffects();await tick();output=hook.render(()=>ReportCaseWorkspace(props));
+ expect(all(output,e=>e.type===ReportReadout).map(e=>(e.props.review as Review).id)).toEqual(['published']);
+ expect(all(output,e=>e.type===ReportEditor)).toHaveLength(0);expect(text(output)).not.toMatch(/Family|family|משפחה|Private draft/);
+ expect(fetchMock.mock.calls.every(call=>!(call[1] as RequestInit)?.method)).toBe(true);
+});
 it("renders the actual parent-published report readout without implied parent attribution", () => {
   const output = hook.render(() => ReportReadout({ locale: "en", review: review("423e4567-e89b-12d3-a456-426614174000", "published") }));
   expect(text(output)).toContain("Synthetic observation"); expect(text(output)).toContain("2026-09-29"); expect(text(output)).not.toContain("Attributed parent reports");

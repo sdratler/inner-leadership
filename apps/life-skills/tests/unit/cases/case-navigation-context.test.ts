@@ -57,14 +57,15 @@ for(const locale of ['en','he'] as const)it(`${locale}: session header, sidebar 
  }
  expect(html).toContain(locale==='he'?'רשומת מפגש':'Session record');
 });
-for(const locale of ['en','he'] as const)for(const page of ['forms','resources'])it(`${locale}: adult ${page} has one scoped shared-items strip and no child form shortcuts`,()=>{
+for(const locale of ['en','he'] as const)for(const page of ['forms','resources','reports'])it(`${locale}: adult ${page} has one scoped shared-items strip and no child form shortcuts`,()=>{
  navigation.pathname=`/${locale}/client/${page}`;navigation.query=new URLSearchParams({caseId:id});
  const html=renderToStaticMarkup(CoreNavigation({locale,role:'client',clientRole:'adult_client',children:'Synthetic shared items'}));
  const toolbar=html.match(/<nav class="lsu-top-tabs"[^>]*>(.*?)<\/nav>/)?.[1]??'';
- const links=[...toolbar.matchAll(/<a[^>]+href="([^"]+)"([^>]*)>(.*?)<\/a>/g)];expect(links).toHaveLength(2);
+ const links=[...toolbar.matchAll(/<a[^>]+href="([^"]+)"([^>]*)>(.*?)<\/a>/g)];expect(links).toHaveLength(3);
  expect(links.filter(link=>link[2]!.includes('aria-current="page"'))).toHaveLength(1);
  expect(toolbar).not.toContain('/client/calendar');expect(toolbar).toContain(`/${locale}/client/forms?caseId=${id}`);expect(toolbar).toContain(`/${locale}/client/resources?caseId=${id}`);
  const child=renderToStaticMarkup(CoreNavigation({locale,role:'client',clientRole:'child',children:'Synthetic child'}));expect(child).not.toContain(`href="/${locale}/client/forms`);expect(child).not.toContain(`href="/${locale}/client/resources`);
+ expect(toolbar).toContain(`/${locale}/client/reports?caseId=${id}`);expect(child).not.toContain(`href="/${locale}/client/reports`);
 });
 for(const locale of ['en','he'] as const)it(`${locale}: leaving a client keeps global destinations' own toolbar and bounded payment filter`,()=>{
  navigation.pathname=`/${locale}/app/cases/${id}/sessions/223e4567-e89b-42d3-a456-426614174000`;navigation.query=new URLSearchParams({caseId:id,context:'client',mode:'demo',date:'2026-09-22',view:'day'});

@@ -112,10 +112,11 @@ export function loginHref(locale: Locale, returnPath: string): string {
 export function clientReturnPath(locale: Locale, pathname: string, query: Record<string, string | undefined>): string {
   const root = `/${locale}/client`;
   const suffix = pathname.startsWith(`${root}/`) ? pathname.slice(root.length) : pathname === root ? "" : null;
-  const allowed = new Set(["", "/calendar", "/practice", "/messages", "/forms", "/resources", "/settings", "/settings/account", "/settings/notifications"]);
+  const allowed = new Set(["", "/calendar", "/practice", "/messages", "/forms", "/resources", "/reports", "/settings", "/settings/account", "/settings/notifications"]);
   if (suffix === null || !allowed.has(suffix)) return root;
   const params = new URLSearchParams();
-  if (["", "/calendar", "/practice", "/messages", "/forms", "/resources"].includes(suffix) && isCaseId(query.caseId)) params.set("caseId", query.caseId!);
+  if (["", "/calendar", "/practice", "/messages", "/forms", "/resources", "/reports"].includes(suffix) && isCaseId(query.caseId)) params.set("caseId", query.caseId!);
+  if (suffix === "/reports" && isCaseId(query.audienceId)) params.set("audienceId", query.audienceId!);
   if (suffix === "/calendar") {
     if (/^\d{4}-\d{2}-\d{2}$/.test(query.date ?? "")) params.set("date", query.date!);
     if (["day", "week", "month", "agenda"].includes(query.view ?? "")) params.set("view", query.view!);

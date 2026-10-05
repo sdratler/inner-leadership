@@ -9,6 +9,13 @@ it('preserves only a bounded legacy lead ID on a practitioner People return link
     .toBe('/en/app/clients');
 });
 const caseId='123e4567-e89b-42d3-a456-426614174000',sessionId='223e4567-e89b-42d3-a456-426614174000';
+it.each(['he','en'] as const)('preserves bounded %s adult report context but drops private editor and role hints',locale=>{
+ const path=`/${locale}/client/reports`;
+ const result=clientReturnPath(locale,path,{caseId,audienceId:sessionId,section:'history',role:'practitioner',mode:'demo'});
+ expect(result).toBe(path+`?caseId=${caseId}&audienceId=${sessionId}`);expect(loginReturnDestination(locale,'adult_client',result)).toBe(result);
+ expect(clientReturnPath(locale,path,{caseId:'constructor',audienceId:'../private'})).toBe(path);
+ expect(clientReturnPath(locale,path+'/private',{})).toBe(`/${locale}/client`);
+});
 it.each(['he','en'] as const)('preserves a validated %s Calendar task query through ordinary login without granting another role access',locale=>{
  const path=practitionerReturnPath(locale,'calendar',{date:'2026-10-02',view:'agenda',taskId:caseId});
  expect(path).toBe(`/${locale}/app/calendar?date=2026-10-02&view=agenda&taskId=${caseId}`);

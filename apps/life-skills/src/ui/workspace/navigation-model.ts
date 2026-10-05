@@ -11,7 +11,7 @@ export const primaryNavigation: Record<WorkspaceRole, readonly NavItem[]> = {
 };
 export const navigationGroups: Record<WorkspaceRole, readonly NavGroup[]> = {
   parent: [{ key: "materials", en: "Shared with you", he: "שותף איתכם", items: [item("forms", "family/forms", "Forms to complete", "טפסים למילוי"), item("resources", "family/resources", "Materials & exercises", "חומרים ותרגילים"), item("reports", "family/reports", "Shared reports", "דוחות משותפים")] }],
-  client: [{key:'materials',en:'Shared with you',he:'שותף איתכם',items:[item('forms','client/forms','Forms to complete','טפסים למילוי'),item('resources','client/resources','Materials & exercises','חומרים ותרגילים')]}],
+  client: [{key:'materials',en:'Shared with you',he:'שותף איתכם',items:[item('forms','client/forms','Forms to complete','טפסים למילוי'),item('resources','client/resources','Materials & exercises','חומרים ותרגילים'),item('reports','client/reports','Shared reports','דוחות משותפים')]}],
   practitioner: [],
 };
 /** The server supplies the actual subject role. Unknown/child clients get no adult-form shortcuts. */
