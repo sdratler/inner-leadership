@@ -27,6 +27,8 @@ export interface CrmProfile {
     inboundActivity?: InboundActivity;
     /** Administrative changes are separate from immutable imported evidence. */
     leadUpdates?: Record<string, {outcome?:string;owner?:string}>;
+    /** Receipt-derived administrative send facts; never payment/booking verification. */
+    outreach?: Record<string,{lastContact:string;messageReceipt:string;formSent?:string|undefined;bookingStatus?:string|undefined;updateProvenance:string}>;
     /** Sticky communication suppression, never reset by an outcome/status edit. */
     doNotContact?: boolean;
 }
@@ -38,8 +40,11 @@ export const crmProfileSchema=z.object({personId:z.string().uuid(),stage:z.strin
     whatsappInquiry:nativeWhatsappInquirySchema.optional(),inboundActivity:inboundActivitySchema.optional(),legacyIds:z.array(legacyId).max(100)
         .refine(ids=>new Set(ids).size===ids.length),
     leadUpdates:z.record(legacyId,z.object({outcome:z.string().max(500).optional(),owner:z.string().max(120).optional()}).strict()).optional(),
+    outreach:z.record(legacyId,z.object({lastContact:z.iso.datetime({offset:true}),messageReceipt:z.string().min(1).max(200),
+      formSent:z.iso.datetime({offset:true}).optional(),bookingStatus:z.literal("Link sent; awaiting confirmed appointment").optional(),
+      updateProvenance:z.enum(["private-app:practitioner-click","private-app:intake-sent","private-app:booking-link-sent"])}).strict()).optional(),
     doNotContact:z.boolean().optional()
-    }).strict().refine(p=>Object.keys(p.leadUpdates??{}).length<=100&&
+    }).strict().refine(p=>Object.keys(p.outreach??{}).length<=100&&Object.keys(p.outreach??{}).every(id=>p.legacyIds.includes(id)||id===p.nativeInquiry?.leadId||id===p.whatsappInquiry?.leadId)&&Object.keys(p.leadUpdates??{}).length<=100&&
         Object.keys(p.leadUpdates??{}).every(id=>p.legacyIds.includes(id)||id===p.nativeInquiry?.leadId||id===p.whatsappInquiry?.leadId)&&
         (!p.nativeInquiry||(p.nativeInquiry.leadId==="LS-LEAD-native-"+p.personId&&!p.legacyIds.includes(p.nativeInquiry.leadId)))&&
         (!p.whatsappInquiry||(p.whatsappInquiry.leadId==="LS-WAPI-native-"+p.personId&&!p.legacyIds.includes(p.whatsappInquiry.leadId)))&&
@@ -57,7 +62,7 @@ export class NativeCrmStore {
     /** The caller must have created the canonical identity person first. No Sheet write occurs. */
     async create(a:Actor,profile:CrmProfile,operationId:string):Promise<{version:number;replayed:boolean}> {
         validateProfile(profile);
-        requireThat(profile.whatsappInquiry===undefined&&profile.inboundActivity===undefined,"PROVIDER_FIELDS_REQUIRE_INBOUND_RECEIPT");
+        requireThat(profile.whatsappInquiry===undefined&&profile.inboundActivity===undefined&&profile.outreach===undefined,"PROVIDER_FIELDS_REQUIRE_INBOUND_RECEIPT");
         requireThat(Boolean(operationId)&&operationId.length<=128,"BAD_OPERATION");
         const payloadDigest=privateDigest({action:"create",profile,actor:a.id,workspace:a.workspaceId},this.integrityKey);
         const encrypted=seal(JSON.stringify(profile),crmProfileAad(a.workspaceId,profile.personId),this.keyring);
@@ -134,6 +139,7 @@ export class NativeCrmStore {
             requireThat(canonical(saved.nativeInquiry??null)===canonical(profile.nativeInquiry??null),"INQUIRY_ORIGIN_IMMUTABLE");
             requireThat(canonical(saved.whatsappInquiry??null)===canonical(profile.whatsappInquiry??null),"INQUIRY_ORIGIN_IMMUTABLE");
             requireThat(canonical(saved.inboundActivity??null)===canonical(profile.inboundActivity??null),"INBOUND_ACTIVITY_IMMUTABLE");
+            requireThat(canonical(saved.outreach??null)===canonical(profile.outreach??null),"OUTREACH_REQUIRES_DELIVERY_RECEIPT");
             const updated = await tx.query<{
                 version: number;
             }>("UPDATE ls_contact_ops.profiles SET payload_ciphertext=$3,version=version+1,updated_at=clock_timestamp() WHERE workspace_id=$1 AND person_id=$2 AND version=$4 RETURNING version", [a.workspaceId, profile.personId, encrypted, expectedVersion]);

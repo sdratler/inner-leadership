@@ -7,7 +7,7 @@ import {verifyCsrfToken,verifyMutationOrigin} from "@/lib/security/csrf.ts";
 import {SESSION_COOKIE} from "@/lib/security/session.ts";
 import {identityRuntime} from "@/features/identity/runtime.ts";
 import type {Actor} from "@/features/identity/types.ts";
-import {assertLegacyProspectSenderAvailable,outboundLedgerAvailable,projectLegacyProspectAfterSend,reconcileLegacyProspectProjection,resolvePreparedProspectSend,sendAuthoritativeProspectMessage} from "@/features/contact-ops/server/authoritative-prospect-send.ts";
+import {assertProspectSenderAvailable,outboundLedgerAvailable,projectLegacyProspectAfterSend,reconcileLegacyProspectProjection,resolvePreparedProspectSend,sendAuthoritativeProspectMessage} from "@/features/contact-ops/server/authoritative-prospect-send.ts";
 import {prospectCreateSchema} from "@/features/contact-ops/core/people-create.ts";
 import {createAuthoritativeProspect} from "@/features/contact-ops/server/authoritative-prospect-create.ts";
 import {readAuthoritativeProspects} from "@/features/contact-ops/server/authoritative-prospects.ts";
@@ -84,7 +84,7 @@ export async function POST(request:Request){try{const s=await session(request);v
  }
  if(input.action==="send_intake"){
   await requireContactableProspect(s.runtime,s.actor,input.leadId);
-  const epoch=await assertLegacyProspectSenderAvailable(s.actor,s.runtime);
+  const epoch=await assertProspectSenderAvailable(s.actor,s.runtime);
   const issued=await new PreEnrollmentStaffService(s.runtime.store,s.runtime.config.keyring,()=>s.runtime.clock.now())
    .issue(s.actor,input.leadId,input.childCount);
   const href=respondentLink(s.runtime.config.origin,issued.token,input.locale);if(!href)throw new AppError("UNAVAILABLE");

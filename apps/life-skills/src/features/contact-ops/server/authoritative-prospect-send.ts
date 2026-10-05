@@ -2,11 +2,12 @@ import "server-only";
 import {AppError} from "../../../lib/errors.ts";
 import type {Actor} from "../../identity/types.ts";
 import type {identityRuntime} from "../../identity/runtime.ts";
-import {listProspects,sendProspectMessage,updateProspect,type Prospect} from "../../prospects/bridge.ts";
+import {listProspects,sendProspectMessage,sendNativeProspectMessage,updateProspect,type Prospect} from "../../prospects/bridge.ts";
 import {writeDestination,type CutoverState} from "../core/cutover.ts";
 import {readCutoverState} from "./cutover-state.ts";
 import {ContactCutoverStore} from "./cutover-store.ts";
 import {OutboundProjectionStore,type NoDeliveryEvidence,type OutboundReceipt} from "./outbound-projection-store.ts";
+import {NativeOutboundStore} from "./native-outbound.ts";
 
 type Runtime=Pick<Awaited<ReturnType<typeof identityRuntime>>,"store"|"config"|"clock">;
 type Authority={read:(actor:Actor)=>Promise<CutoverState>};
@@ -16,6 +17,21 @@ type LegacyList=()=>Promise<Prospect[]>;
 type Ledger=Pick<OutboundProjectionStore,"prepare"|"confirm"|"projected"|"read">;
 const ledger=(runtime:Runtime)=>new OutboundProjectionStore(runtime.store,runtime.config.keyring,
  runtime.config.lookupKey.toString("hex"),runtime.clock);
+const native=(runtime:Runtime)=>new NativeOutboundStore(runtime.store,runtime.config.keyring,runtime.config.lookupKey.toString("hex"),runtime.clock);
+function nativeBinding(){
+ const binding=process.env.LS_CONTACT_INBOUND_BINDING_SHA256??"";
+ if(process.env.LS_CONTACT_INBOUND_ENABLED!=="true"||!/^[a-f0-9]{64}$/.test(binding))throw new AppError("UNAVAILABLE");
+ return binding;
+}
+export async function assertProspectSenderAvailable(actor:Actor,runtime:Runtime):Promise<number>{
+ if(actor.role!=="practitioner")throw new AppError("FORBIDDEN");
+ const state=await new ContactCutoverStore(runtime.store,runtime.config.keyring,runtime.config.lookupKey.toString("hex"),runtime.clock).read(actor);
+ const destination=writeDestination(state.phase);
+ if(destination==="durable_queue_only")throw new AppError("CONFLICT");
+ if(destination==="native")nativeBinding();
+ if(!await outboundLedgerAvailable(runtime))throw new AppError("UNAVAILABLE");
+ return state.epoch;
+}
 export async function outboundLedgerAvailable(runtime:Runtime):Promise<boolean>{
  const rows=await runtime.store.transaction(tx=>tx.query<{available:boolean}>(
   "SELECT to_regclass('ls_contact_ops.outbound_projections') IS NOT NULL AS available"));
@@ -41,6 +57,18 @@ export async function assertLegacyProspectSenderAvailable(actor:Actor,runtime:Ru
 }
 export async function sendAuthoritativeProspectMessage(actor:Actor,runtime:Runtime,leadId:string,message:string,
  plannedFields:Record<string,string>,dependencies?:{authority:Authority;sender:Sender;ledger:Ledger},expectedEpoch?:number){
+ if(!dependencies){
+  const epoch=await assertProspectSenderAvailable(actor,runtime);
+  if(expectedEpoch!==undefined&&epoch!==expectedEpoch)throw new AppError("CONFLICT");
+  const state=await new ContactCutoverStore(runtime.store,runtime.config.keyring,runtime.config.lookupKey.toString("hex"),runtime.clock).read(actor);
+  if(writeDestination(state.phase)==="native"){
+   if(state.epoch!==epoch)throw new AppError("CONFLICT");
+   const store=native(runtime),binding=nativeBinding(),operationId=await store.prepare(actor,leadId,epoch,message,plannedFields,binding);
+   const request=await store.request(actor,operationId,epoch,binding);
+   const sent=await sendNativeProspectMessage(request);
+   return {...sent,authorityEpoch:epoch,operationId};
+  }
+ }
  const authorityEpoch=await assertLegacyProspectSenderAvailable(actor,runtime,dependencies?.authority);
  if(expectedEpoch!==undefined&&authorityEpoch!==expectedEpoch)throw new AppError("CONFLICT");
  const operationId=await (dependencies?.ledger??ledger(runtime)).prepare(actor,leadId,authorityEpoch,message,plannedFields);
@@ -79,7 +107,11 @@ export async function projectLegacyProspectAfterSend(actor:Actor,runtime:Runtime
  // response into an apparent send failure that could prompt a duplicate send.
  let state:CutoverState;
  try{state=await authority.read(actor);}catch{return pending;}
- if(state.epoch!==expectedEpoch||writeDestination(state.phase)!=="sheet")return pending;
+ if(state.epoch!==expectedEpoch)return pending;
+ if(writeDestination(state.phase)==="native"){
+  try{await native(runtime).project(actor,operationId,expectedEpoch);return {projectionPending:false};}catch{return pending;}
+ }
+ if(writeDestination(state.phase)!=="sheet")return pending;
  try{
   await (dependencies?.update??updateProspect)(leadId,fields);
   await verifyLegacyProjection(leadId,fields,dependencies?.list??listProspects);
@@ -106,7 +138,12 @@ export async function reconcileLegacyProspectProjection(actor:Actor,runtime:Runt
  const authority=dependencies?.authority??new ContactCutoverStore(runtime.store,runtime.config.keyring,
   runtime.config.lookupKey.toString("hex"),runtime.clock);
  const state=await authority.read(actor);
- if(state.epoch!==record.authorityEpoch||writeDestination(state.phase)!=="sheet")throw new AppError("CONFLICT");
+ if(state.epoch!==record.authorityEpoch)throw new AppError("CONFLICT");
+ if(writeDestination(state.phase)==="native"){
+  if(!record.native)throw new AppError("CONFLICT");
+  return native(runtime).project(actor,operationId,state.epoch);
+ }
+ if(writeDestination(state.phase)!=="sheet")throw new AppError("CONFLICT");
  await (dependencies?.update??updateProspect)(record.leadId,record.fields);
  await verifyLegacyProjection(record.leadId,record.fields,dependencies?.list??listProspects);
  try{await selectedLedger.projected(actor,operationId);}
@@ -136,7 +173,8 @@ export async function resolvePreparedProspectSend(actor:Actor,runtime:Runtime,op
  const authority=dependencies?.authority??new ContactCutoverStore(runtime.store,runtime.config.keyring,
   runtime.config.lookupKey.toString("hex"),runtime.clock);
  const state=await authority.read(actor);
- if(state.epoch!==record.authorityEpoch||writeDestination(state.phase)!=="sheet")throw new AppError("CONFLICT");
+ if(state.epoch!==record.authorityEpoch||writeDestination(state.phase)==="durable_queue_only"||
+  (writeDestination(state.phase)==="native")!==Boolean(record.native))throw new AppError("CONFLICT");
  if(verification.outcome==="not_delivered"){
   if(verification.providerMessageId||verification.sentAt)throw new AppError("INVALID_REQUEST");
   await selectedLedger.notDelivered(actor,operationId,{provider:"whapi",source:verification.source,
