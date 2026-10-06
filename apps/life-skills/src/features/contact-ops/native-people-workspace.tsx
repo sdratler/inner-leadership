@@ -14,6 +14,7 @@ import type {PeopleResponse} from "./server/people-http.ts";
 import type {NativeContactRow} from "./server/native-directory.ts";
 import {peopleCreate,type PeopleCreate,type ProspectCreateFields} from "./core/people-create.ts";
 import {peopleFiltersFromQuery,peoplePageFromQuery,oneDirectoryQuery as oneQuery,type DirectoryFilters} from "../prospects/directory-query.ts";
+import {LeadCommandWorkspace} from "./lead-command-workspace.tsx";
 export {peopleFiltersFromQuery,peoplePageFromQuery} from "../prospects/directory-query.ts";
 type NativeData=Extract<PeopleResponse,{source:"native"}>;
 type Draft={fields:AdministrativeFields;base:AdministrativeFields;version:number;pending?:PeopleEdit|null;conflict?:boolean};
@@ -106,6 +107,8 @@ export function NativePeopleWorkspace({locale,view,initial,onSheet,initialMode="
  const presetLabels:Record<Preset,string>={all:text("All","הכול"),today:text("Due today","לטיפול היום"),new:text("New inquiries","פניות חדשות"),intake:text("Intake","טופס היכרות"),payment:text("Awaiting verified payment","ממתינים לתשלום מאומת"),booking:text("Paid — awaiting booking","שולם — ממתינים לקביעת מועד"),archived:text("Archived","בארכיון")};
  const denied=failure===401||failure===403;
  return <section className="lsu-native-people" aria-busy={busy}>
+  {!denied&&<div hidden={mode!=="live"}><LeadCommandWorkspace locale={locale} epoch={data.authorityEpoch} personId={selectedRow?.personId} readBlocked={busy||failure!==null||mode!=="live"}
+   denied={status=>{lifecycle.current.authorized=false;lifecycle.current.serial++;setBusy(false);setFailure(status);setSelectedRow(null);setDrafts(new Map());setCreation(emptyCreation);setCreatePending(null);setCreateMessage("");}}/></div>}
   {failure!==null&&<div className="lsw-alert" role="alert"><p>{failure===401?text("Your session ended. Sign in to continue.","פג תוקף החיבור. יש להיכנס מחדש."):failure===403?text("This account cannot access the practitioner directory.","לחשבון הזה אין גישה לרשימת המטפל/ת."):failure===409?text("Contact records are being reconciled. No fallback data or changes were used.","רשומות אנשי הקשר נמצאות בהתאמה. לא הוצגו נתונים חלופיים ולא בוצעו שינויים."):text("The current records could not be loaded. No unrefreshed records are shown. Your authorized draft remains in this session.","לא ניתן לטעון את הרשומות העדכניות. רשומות שלא רועננו אינן מוצגות. הטיוטה המורשית שלך נשמרת בחיבור הנוכחי.")}</p>{failure===401?<a className="lsw-button lsw-button--secondary" href={loginHref(locale,window.location.pathname+window.location.search)}>{text("Sign in","כניסה")}</a>:!denied&&<button className="lsw-button lsw-button--secondary" onClick={()=>void load(focusedLead||selected?1:peoplePageFromQuery(new URLSearchParams(window.location.search)),focusedLead?undefined:selected??undefined,mode,focusedLead??undefined)}>{text("Retry","ניסיון חוזר")}</button>}</div>}
   {!denied&&(selected||focusedLead?<><nav aria-label={text("Person context","הקשר איש קשר")} className="lsw-breadcrumbs"><button className="lsw-button lsw-button--quiet" onClick={()=>select(null)}>{text("People","אנשים")}</button><span aria-current="page">{selectedRow?.displayName??text("Person","איש קשר")}</span></nav>
     {selectedRow?<NativePerson key={selectedRow.personId} row={selectedRow} epoch={data.authorityEpoch} locale={locale} draft={drafts.get(selectedRow.personId)}

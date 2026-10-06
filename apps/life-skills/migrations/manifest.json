@@ -166,5 +166,9 @@
   {
     "name": "0122_ls_call_activity_links.sql",
     "sha256": "5472787029d825b464fdb0712888d60e310a666691f2c59e1a648e2223d088ff"
+  },
+  {
+    "name": "0123_ls_lead_commands.sql",
+    "sha256": "8af72dc80feda1487885907efdc1e632b4521758cc62cff092fc374986e66c30"
   }
 ]
