@@ -42,7 +42,7 @@ export function LeadCommandWorkspace({locale,epoch,personId,candidateId,denied,r
   <UnsavedChangesGuard dirty={Boolean(input)||uncertain} message={text("Leave without saving this administrative command?","לצאת בלי לשמור את העדכון המנהלי?")}/>
   {activated&&<>
   <form className="lsw-stack" onSubmit={e=>{e.preventDefault();void prepare();}} aria-label={text("Quick lead update","עדכון פנייה מהיר")}>
-   <p className="lsw-help">{text("Describe an administrative lead update in Hebrew or English. You will review the exact person and changes before saving. No message, call, case, payment or booking is made.","אפשר לתאר עדכון מנהלי לפנייה בעברית או באנגלית. לפני השמירה יוצגו האדם והשינויים המדויקים. לא נשלחת הודעה, לא מתבצעת שיחה ולא נוצרים תיק, תשלום או תור.")}</p>
+   <p className="lsw-help">{text("Preview an administrative lead update in Hebrew or English before confirming. No message, call, case, payment or booking is made.","אפשר לבדוק עדכון מנהלי לפנייה בעברית או באנגלית לפני אישור. לא נשלחת הודעה, לא מתבצעת שיחה ולא נוצרים תיק, תשלום או תור.")}</p>
    <p className="lsw-help">{text("No AI charge. Supported phrases include name, add as a lead, stage, call Sunday, and a final Note: … . Recent caller means one unclassified call within 10 minutes. Other wording asks for clarification.","בלי חיוב AI. נתמכים שם, הוספה כפנייה, שלב, להתקשר ביום ראשון, והערה: … בסוף. מי שהתקשר עכשיו פירושו שיחה לא מסווגת אחת בעשר הדקות האחרונות. ניסוח אחר דורש הבהרה.")}</p>
    <label className="lsw-field">{text("Describe the lead update — no clinical information","תיאור העדכון לפנייה — בלי מידע טיפולי")}<textarea className="lsw-input" required maxLength={2000} value={input} disabled={busy||uncertain}
     onChange={e=>{setInput(e.target.value);setPreview(null);setResult(null);setStale(false);setMessage("");operation.current=null;}}/></label>
@@ -61,7 +61,7 @@ export function LeadCommandWorkspace({locale,epoch,personId,candidateId,denied,r
    {preview.existingName&&preview.intent.name&&preview.intent.name!==preview.existingName&&<p>{text("Existing name is preserved:","השם הקיים נשמר:")} {preview.existingName}</p>}
    {preview.intent.stage&&<p>{text("Status:","מצב:")} {administrativeStageLabel(preview.intent.stage,locale)}</p>}
    {preview.intent.note&&<p className="lsw-preserve-lines">{text("Append note:","הוספת הערה:")} {preview.intent.note}</p>}
-   {preview.intent.nextAction&&<p>{text("Next action:","הפעולה הבאה:")} {preview.intent.nextAction} · {preview.intent.dueDate}</p>}
+   {preview.intent.nextAction&&<p>{text("Next action:","הפעולה הבאה:")} {preview.intent.nextAction} · <bdi className="lsu-command-date">{preview.intent.dueDate}</bdi></p>}
    {(preview.intent.google||preview.intent.whatsapp)&&<p className="lsw-help">{text("Requested labels are unavailable until their runtime connection/write is verified. Saving CRM does not apply Google or WhatsApp labels.","התוויות המבוקשות אינן זמינות עד לאימות החיבור והשינוי אצל הספק. שמירה במערכת אנשי הקשר אינה מחילה תוויות Google או WhatsApp.")}</p>}
    <div className="lsw-actions"><button type="button" className="lsw-button lsw-button--primary" disabled={busy||stale||readBlocked} onClick={()=>void apply()}>{text(uncertain?"Retry this exact save":"Confirm CRM update",uncertain?"ניסיון חוזר של אותה שמירה":"אישור העדכון")}</button>
     <button type="button" className="lsw-button lsw-button--secondary" disabled={busy||uncertain} onClick={()=>{setPreview(null);setStale(false);operation.current=null;}}>{text("Cancel — keep my text","ביטול — שמירת הטקסט שלי")}</button></div>

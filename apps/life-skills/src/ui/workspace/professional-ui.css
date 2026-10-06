@@ -136,3 +136,10 @@
 .lsw.lsu .lsw-home>.lsw-page-header{margin-block-end:0}
 .lsw.lsu .lsw-home-context{display:grid;gap:12px;min-inline-size:0}
 .lsw.lsu .lsw-home-context>:is(p,label,nav){margin-block:0}
+/* Optional CRM command: compact readable review, without crowding live lists. */
+.lsw.lsu .lsu-lead-command .lsw-stack{gap:14px}
+.lsw.lsu .lsu-lead-command :is(p,h3){margin-block:0}
+.lsw.lsu .lsu-lead-command .lsw-help{max-inline-size:60ch}
+.lsw.lsu .lsu-lead-command .lsu-command-date{white-space:nowrap}
+.lsw.lsu .lsu-lead-command .lsw-actions{margin-block-start:4px}
+@media(max-width:600px){.lsw.lsu .lsu-lead-command .lsw-card{padding:16px}.lsw.lsu .lsu-lead-command .lsw-actions{display:grid;grid-template-columns:minmax(0,1fr)}.lsw.lsu .lsu-lead-command .lsw-actions .lsw-button{inline-size:100%;margin-block:0}}
