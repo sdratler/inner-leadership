@@ -16,6 +16,8 @@ import {MAX_NATIVE_CONTACTS,MAX_OPERATIONAL_PROSPECTS} from "../core/limits.ts";
 import {normalizePhone} from "../core/contact-resolution.ts";
 import type {InboundActivity} from "../core/inbound-projection.ts";
 import type {AcquisitionReviewItem} from "../core/acquisition.ts";
+import type {CallActivity} from "../core/call-events.ts";
+import {readCallActivities} from "./call-events-store.ts";
 
 const sourceSchema=z.object({sourceRow:z.number().int().min(2),payload:z.object({
  displayName:z.string(),language:z.string(),stageText:z.string(),sourceFields:z.record(z.string(),z.string())})});
@@ -39,6 +41,7 @@ export type NativeContactRow={personId:string;displayName:string;identityKind:"a
   mode:"live"|"demo";archived:boolean;doNotContact:boolean;references:NativeContactReference[];inboundActivity?:InboundActivity;outreach?:CrmProfile["outreach"];
  /** Real assigned cases, joined by canonical person UUID. Never phone/name matching. */
  caseLinks?:{caseId:string;state:string}[];
+ callActivity?:{items:CallActivity[];hasMore:boolean};
  acquisitionProjections?:{channel:"google_contacts"|"whatsapp";state:"applied"|"no_chat"|"pending"|"failed";
   reason:"provider_not_verified"|"provider_applied"|"no_chat"|"provider_failed";updatedAt:string}[]};
 type StoredProfile={personId:string;kind:"adult"|"minor";personCiphertext:string;profileCiphertext:string;
@@ -95,7 +98,10 @@ export class NativeContactDirectory {
   if(!parsed.success)throw new AppError("INVALID_REQUEST");
   const q=parsed.data;
   const {rows}=await this.readAllInTransaction(tx,actor);
-  return selectNativeContacts(rows,q);
+  const page=selectNativeContacts(rows,q);
+  const calls=await readCallActivities(tx,actor.workspaceId,page.items.filter(row=>row.mode==="live").map(row=>row.personId),this.keyring);
+  for(const row of page.items){const activity=calls.get(row.personId);if(activity)row.callActivity=activity;}
+  return page;
  }
  /** Matching an unverified/shared endpoint never grants identity or case access.
   * Creation refuses every existing endpoint claim for explicit owner resolution;

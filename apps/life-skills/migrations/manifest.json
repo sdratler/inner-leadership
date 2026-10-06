@@ -162,5 +162,9 @@
   {
     "name": "0121_ls_administrative_tasks.sql",
     "sha256": "303f8bcd33faf0c45b6a2b8c849c30eb3005fa03f5c0b84af615f8b7d7300c16"
+  },
+  {
+    "name": "0122_ls_call_activity_links.sql",
+    "sha256": "5472787029d825b464fdb0712888d60e310a666691f2c59e1a648e2223d088ff"
   }
 ]

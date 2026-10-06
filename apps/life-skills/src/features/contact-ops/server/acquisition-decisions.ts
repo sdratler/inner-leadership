@@ -15,6 +15,7 @@ import {crmProfileSchema,crmProfileAad} from "./native-store.ts";
 import {readCutoverState,cutoverStateAad,cutoverStateSchema} from "./cutover-state.ts";
 import {writeDestination} from "../core/cutover.ts";
 import {privateDigest} from "./digests.ts";
+import {linkCallActivity} from "./call-events-store.ts";
 
 const resultSchema=z.object({candidateId:z.string().uuid(),state:z.enum(["PROMOTED","MATCHED","NOT_A_LEAD"]),
  personId:z.string().uuid().nullable(),version:z.number().int().min(1).nullable(),authorityEpoch:z.number().int().min(0),
@@ -80,6 +81,7 @@ export class AcquisitionDecisionStore{
    }
    const done=await tx.query("SELECT operation_id FROM ls_contact_ops.lead_promotion_operations WHERE workspace_id=$1 AND candidate_id=$2",[actor.workspaceId,command.candidateId]);
    if(done.length)throw new AppError("CONFLICT");
+   if((await tx.query("SELECT candidate_id FROM ls_contact_ops.call_activity_links WHERE workspace_id=$1 AND candidate_id=$2",[actor.workspaceId,command.candidateId])).length)throw new AppError("CONFLICT");
    const candidate=await this.candidates.getInTransaction(tx,actor.workspaceId,command.candidateId),metadata=candidate.metadata;
    let personId:string|null=null,version:number|null=null;
    if(command.action!=="not_lead"){
@@ -91,16 +93,20 @@ export class AcquisitionDecisionStore{
     }else{
      if(match.state!=="unmatched"||await this.directory.hasPhoneClaimInTransaction(tx,actor,metadata.phone))throw new AppError("CONFLICT");
      personId=randomUUID();version=1;const fields=command.fields;
-     const profile=crmProfileSchema.parse({personId,stage:fields.stage,notes:fields.note,nextAction:fields.nextAction||null,
-      followUpDate:fields.dueDate||null,legacyIds:[],whatsappInquiry:{origin:"native_whatsapp",leadId:"LS-WAPI-native-"+personId,
+     const origin=metadata.source==="android_nomad"?{nativeInquiry:{origin:"native_manual",leadId:"LS-LEAD-native-"+personId,
+      phone:metadata.phone,language:fields.language,source:"Phone · Nomad",createdAt:metadata.occurredAt}}:
+      {whatsappInquiry:{origin:"native_whatsapp",leadId:"LS-WAPI-native-"+personId,
        phone:metadata.phone,language:fields.language,source:"WhatsApp",createdAt:metadata.occurredAt,
-       providerBindingKey:candidate.binding,providerThreadKey:candidate.thread}});
+       providerBindingKey:candidate.binding,providerThreadKey:candidate.thread}};
+     const profile=crmProfileSchema.parse({personId,stage:fields.stage,notes:fields.note,nextAction:fields.nextAction||null,
+      followUpDate:fields.dueDate||null,legacyIds:[],...origin});
      await tx.query("INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,'adult',$3,$4)",
       [personId,actor.workspaceId,seal(JSON.stringify({displayName:fields.name}),`person:${actor.workspaceId}:${personId}`,this.keyring),this.clock.now()]);
      await tx.query("INSERT INTO ls_contact_ops.profiles(workspace_id,person_id,payload_ciphertext,record_mode,demo_batch_id) VALUES($1,$2,$3,'live',NULL)",
       [actor.workspaceId,personId,seal(JSON.stringify(profile),crmProfileAad(actor.workspaceId,personId),this.keyring)]);
     }
-    await this.bindThread(tx,actor.workspaceId,candidate,personId!);
+    if(metadata.source==="android_nomad")await linkCallActivity(tx,actor.workspaceId,metadata.id,personId!);
+    else await this.bindThread(tx,actor.workspaceId,candidate,personId!);
    }
    const result=resultSchema.parse({candidateId:metadata.id,state:command.action==="promote"?"PROMOTED":command.action==="match"?"MATCHED":"NOT_A_LEAD",
     personId,version,authorityEpoch:command.expectedEpoch,replayed:false,
