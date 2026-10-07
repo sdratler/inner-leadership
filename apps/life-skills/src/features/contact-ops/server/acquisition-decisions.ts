@@ -81,8 +81,13 @@ export class AcquisitionDecisionStore{
    }
    const done=await tx.query("SELECT operation_id FROM ls_contact_ops.lead_promotion_operations WHERE workspace_id=$1 AND candidate_id=$2",[actor.workspaceId,command.candidateId]);
    if(done.length)throw new AppError("CONFLICT");
-   if((await tx.query("SELECT candidate_id FROM ls_contact_ops.call_activity_links WHERE workspace_id=$1 AND candidate_id=$2",[actor.workspaceId,command.candidateId])).length)throw new AppError("CONFLICT");
    const candidate=await this.candidates.getInTransaction(tx,actor.workspaceId,command.candidateId),metadata=candidate.metadata;
+   // Call-link storage was added after the original WhatsApp acquisition
+   // decision frame. Only Nomad candidates can have this competing decision;
+   // keeping the lookup source-specific preserves verified historical-migration
+   // tests without masking a missing call table in a current Nomad deployment.
+   if(metadata.source==="android_nomad"&&
+    (await tx.query("SELECT candidate_id FROM ls_contact_ops.call_activity_links WHERE workspace_id=$1 AND candidate_id=$2",[actor.workspaceId,command.candidateId])).length)throw new AppError("CONFLICT");
    let personId:string|null=null,version:number|null=null;
    if(command.action!=="not_lead"){
     const match=(await this.directory.acquisitionMatchesInTransaction(tx,actor,[metadata.phone])).get(metadata.phone)!;

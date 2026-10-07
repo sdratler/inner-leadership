@@ -36,6 +36,16 @@ test("native intent resolves actual recipient, encrypts it, survives reload and 
   lastContact:receipt.sentAt,paymentVerified:false,bookingConfirmed:false,notes:"Preserve newer concurrent note"});
  expect(await s.ledger.pendingLeads(s.a,[p.leadId])).toEqual(new Set());
 });
+test("intake delivery records its journey without erasing an agreed callback",async()=>{
+ const s=await setup(),p=await s.crm.createContact(s.a,{name:"Synthetic callback recipient",phone:"+15555550125",language:"en",
+  source:"Synthetic isolated fixture",notes:"Preserve callback history",nextAction:"Call after 19:00",dueDate:"2026-10-08"},randomUUID(),3);
+ const intakeFields={stage:"Intake sent",updateProvenance:"private-app:intake-sent"};
+ const id=await s.outbound.prepare(s.a,p.leadId,3,"Synthetic intake link",intakeFields,binding);
+ await s.ledger.confirm(s.a,id,receipt,{...intakeFields,formSent:receipt.sentAt,messageReceipt:receipt.providerMessageId});
+ await s.outbound.project(s.a,id,3);
+ expect(await s.crm.read(s.a,p.personId,3)).toMatchObject({profile:{stage:"Intake sent",nextAction:"Call after 19:00",
+  followUpDate:"2026-10-08",notes:"Preserve callback history",outreach:{[p.leadId]:{formSent:receipt.sentAt}}}});
+});
 test("unknown delivery holds a second send and rollback; request rechecks opt-out after preparing",async()=>{
  const s=await setup(),p=await person(s),id=await s.outbound.prepare(s.a,p.leadId,3,"Synthetic test message",fields,binding);
  await expect(s.outbound.prepare(s.a,p.leadId,3,"Second message",fields,binding)).rejects.toMatchObject({code:"CONFLICT"});
