@@ -15,7 +15,15 @@ function callbackPrefix(value:string):boolean{
  // Arbitrary prose about another event's time is not a scheduling contract.
  return !rest||/^(?:(?:today|tomorrow|sunday|monday|tuesday|wednesday|thursday|friday|saturday)(?:\s+\d{1,2})?(?:\s+(?:january|february|march|april|may|june|july|august|september|october|november|december))?(?:\s+\d{4})?)(?:\s+in the (?:morning|evening))?\s*,?$/iu.test(rest)||/^(?:היום|מחר)$/u.test(rest);
 }
-function callbackSuffix(value:string):boolean{return /^\s*(?:\(Asia\/Jerusalem\))?\s*(?:[.!][\s\S]*)?$/u.test(value);}
+function callbackSuffix(value:string):boolean{
+ const suffix=value.trim().replace(/^\(Asia\/Jerusalem\)\s*/u,'').trim();
+ if(!suffix)return true;
+ if(!/^[.!]/u.test(suffix))return false;
+ const note=suffix.replace(/^[.!]\s*/u,'');
+ // A trailing note is allowed, but another callback instruction makes the
+ // source ambiguous even when it contains no second numeric clock.
+ return !/(?:\bcall\b|\bfollow up\b|להתקשר(?:\s|$)|המשך טיפול(?:\s|$)|\b(?:morning|evening)\b|בבוקר|בערב|(?:^|\s)(?:בוקר|ערב)(?:\s|[.!?,;:]|$))/iu.test(note);
+}
 export function sourceCallbackTiming(action:string):CalendarTiming{
  if(!/^(?:call\b|follow up\b|להתקשר(?:\s|$)|המשך טיפול(?:\s|$))/iu.test(action)||/\b(?:not|don't|do not|instead|or)\b|לא להתקשר|במקום|\sאו\s/iu.test(action))return {kind:'unset'};
  const zones=action.match(/\b[A-Za-z_]+\/[A-Za-z_]+\b/g)??[];
