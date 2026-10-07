@@ -38,7 +38,7 @@ export type NativeContactReference={leadId:string;phone:string;email:string;lang
   nativeOrigin?:"native_manual"|"native_whatsapp";nativeCreatedAt?:string};
 export type NativeContactRow={personId:string;displayName:string;identityKind:"adult"|"minor";
  stage:string;nextAction:string|null;followUpDate:string|null;notes:string;version:number|null;
-  mode:"live"|"demo";archived:boolean;doNotContact:boolean;references:NativeContactReference[];inboundActivity?:InboundActivity;outreach?:CrmProfile["outreach"];
+  mode:"live"|"demo";archived:boolean;administrativelyArchived?:boolean;doNotContact:boolean;references:NativeContactReference[];inboundActivity?:InboundActivity;outreach?:CrmProfile["outreach"];
  /** Real assigned cases, joined by canonical person UUID. Never phone/name matching. */
  caseLinks?:{caseId:string;state:string}[];
  callActivity?:{items:CallActivity[];hasMore:boolean};
@@ -150,7 +150,7 @@ export class NativeContactDirectory {
   return new Map([...wanted].map(phone=>{const found=[...matches.get(phone)!.values()],blocked=reserved.has(phone);
    return [phone,{state:blocked?"reserved":found.length>1?"ambiguous":found.length?"existing":"unmatched",
     people:found.map(row=>({personId:row.personId,displayName:row.displayName,version:row.version,
-     eligible:!blocked&&row.identityKind==="adult"&&row.version!==null&&!row.archived&&!row.doNotContact}))}];
+     eligible:!blocked&&row.identityKind==="adult"&&row.version!==null&&!row.administrativelyArchived&&!row.archived&&!row.doNotContact}))}];
   }));
  }
  async nativeInquiryPersonInTransaction(tx:SqlSession,actor:Actor,leadId:string):Promise<string|null>{
@@ -187,7 +187,7 @@ export class NativeContactDirectory {
     const lastContact=sent&&(!Number.isFinite(Date.parse(priorContact))||Date.parse(sent.lastContact)>Date.parse(priorContact))?sent.lastContact:priorContact;
     result.push({leadId:ref.leadId,name:row.displayName,phone:ref.phone,email:ref.email,language:ref.language,
      receivedAt:ref.nativeCreatedAt??get("Date received"),source:ref.source,campaign:ref.campaign,
-     stage:row.doNotContact?"Do not contact":row.archived?"Archived":row.stage,
+     stage:row.doNotContact?"Do not contact":row.administrativelyArchived||row.archived?"Archived":row.stage,
       lastContact,nextAction:row.nextAction??"",dueDate:row.followUpDate??"",
      outcome:ref.outcome,notes:row.notes,
      // Missing/stale Sheet claims must not unlink a genuine canonical client.
@@ -272,7 +272,7 @@ export class NativeContactDirectory {
       identityKind:p.kind,stage:profile.stage,nextAction:profile.nextAction,followUpDate:profile.followUpDate,
       // A closed historical inquiry cannot archive another open inquiry for the
       // same canonical person. Explicit profile archival remains authoritative.
-      notes:profile.notes,version:p.version,mode:p.recordMode,archived:p.persistedArchived||archived(profile.stage)||(references.length>0&&references.every(r=>archived(r.outcome))),
+      notes:profile.notes,version:p.version,mode:p.recordMode,administrativelyArchived:Boolean(profile.administrativeArchive),archived:Boolean(profile.administrativeArchive)||p.persistedArchived||archived(profile.stage)||(references.length>0&&references.every(r=>archived(r.outcome))),
       doNotContact:profile.doNotContact===true||suppressed(profile.stage)||references.some(r=>r.sourceDoNotContact||suppressed(r.outcome)),references,
       ...(profile.inboundActivity?{inboundActivity:profile.inboundActivity}:{}),...(profile.outreach?{outreach:profile.outreach}:{})});
     }
@@ -350,7 +350,7 @@ export function selectNativeContacts(rows:readonly NativeContactRow[],input:Nati
  const filtered=rows.filter(r=>{
   const activeCase=r.caseLinks?.some(c=>c.state==="active")??false;
   const assignedClient=Boolean(r.caseLinks?.length);
-  const closed=(r.archived&&!activeCase)||r.doNotContact;
+  const closed=Boolean(r.administrativelyArchived)||(r.archived&&!activeCase)||r.doNotContact;
   // Synthetic records need an explicit administrative demo view. They do not
   // silently mix into the default live contact directory.
   if(r.mode!==(q.mode??"live"))return false;

@@ -165,7 +165,7 @@ export class NativeInboundProjection {
   if(modes.length!==1||modes[0]!.kind!=="adult"||modes[0]!.mode!=="live"||modes[0]!.archived||modes[0]!.demo)return null;
   const existing=await this.profile(tx,personId);if(!existing)return null;
   const p=existing.profile;
-  if(p.doNotContact||contactSuppressed(p.stage)||contactArchived(p.stage)||
+  if(p.administrativeArchive||p.doNotContact||contactSuppressed(p.stage)||contactArchived(p.stage)||
    Object.values(p.leadUpdates??{}).some(v=>contactSuppressed(v.outcome??""))||await this.sourceSuppressed(tx,p))return null;
   return personId;
  }
@@ -259,7 +259,7 @@ export class NativeInboundProjection {
      AND c.provider_thread_key=$4 AND c.sender_endpoint_key=$5 LIMIT 1`,[this.workspace,outcome.personId,keys.binding,keys.thread,keys.sender]);
    const keepOwnerMatchedLead=ownerMatch.length===1&&Boolean(saved.nativeInquiry||saved.legacyIds.length);
    const sourceSuppressed=await this.sourceSuppressed(tx,saved);
-   const suppressed=sourceSuppressed||saved.doNotContact===true||contactSuppressed(saved.stage)||Object.values(saved.leadUpdates??{}).some(v=>contactSuppressed(v.outcome??""));
+   const suppressed=Boolean(saved.administrativeArchive)||sourceSuppressed||saved.doNotContact===true||contactSuppressed(saved.stage)||Object.values(saved.leadUpdates??{}).some(v=>contactSuppressed(v.outcome??""));
    const merged=crmProfileSchema.parse({...saved,...inboundFollowUp(saved,today,suppressed),
     // Each person has its own explicit provider inquiry. Historical/manual
     // references remain separate; never smear a new message across all leads.

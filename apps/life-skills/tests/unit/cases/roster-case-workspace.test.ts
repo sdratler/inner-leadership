@@ -41,6 +41,7 @@ import { ClientsRoster,LegacyClientsRoster } from '../../../src/features/cases/c
 import {NativePeopleWorkspace,PeopleRequestError} from '../../../src/features/contact-ops/native-people-workspace.tsx';
 import { ProspectsClient } from '../../../src/features/prospects/client.tsx';
 import { IdentityClientError } from '../../../src/features/identity/client.ts';
+import {ContactLifecycleControls} from '../../../src/features/contact-ops/contact-lifecycle-controls.tsx';
 
 const caseA = { id: '123e4567-e89b-12d3-a456-426614174000', kind: 'minor' as const, state: 'active', displayName: 'Synthetic case A', mode: 'live' as const };
 const caseB = { id: '223e4567-e89b-12d3-a456-426614174000', kind: 'minor' as const, state: 'active', displayName: 'Synthetic case B', mode: 'live' as const };
@@ -65,6 +66,26 @@ beforeEach(() => {
  vi.stubGlobal('window',{get location(){return location;},history:{state:null,pushState(_state:unknown,_unused:string,url:URL){location=new URL(url);},replaceState(_state:unknown,_unused:string,url:URL){location=new URL(url);}},addEventListener(){},removeEventListener(){}});
 });
 afterEach(()=>vi.unstubAllGlobals());
+
+it.each(['en','he'] as const)('%s archive requires confirmation, cancellation has no effect, and an uncertain retry keeps the exact command',async locale=>{
+ const reload=vi.fn(),denied=vi.fn(),lockEdits=vi.fn(),commands:string[]=[];
+ vi.stubGlobal('window',{location:{reload}});
+ vi.stubGlobal('fetch',vi.fn(async(url:string,init?:RequestInit)=>{
+  if(url==='/api/identity/session')return Response.json({ok:true,data:{csrfToken:'synthetic-csrf'}});
+  commands.push(String(init?.body));
+  if(commands.length===1)throw Error('SYNTHETIC_LOST_ACK');
+  return Response.json({ok:true,data:{personId:caseA.id,authorityEpoch:3,version:2,replayed:true}});
+ }));
+ const view=()=>hook.render(()=>ContactLifecycleControls({locale,personId:caseA.id,version:1,epoch:3,archived:false,blocked:false,denied,lockEdits}));
+ const click=(label:string)=>(find(view(),e=>e.type==='button'&&e.props.children===label)!.props.onClick as()=>void)();
+ click(locale==='he'?'העברה לארכיון':'Archive contact');expect(commands).toHaveLength(0);
+ click(locale==='he'?'ביטול':'Cancel');expect(commands).toHaveLength(0);
+ click(locale==='he'?'העברה לארכיון':'Archive contact');click(locale==='he'?'אישור':'Confirm');
+ await vi.waitFor(()=>expect(text(view())).toContain(locale==='he'?'לא ניתן לאשר':'could not be confirmed'));
+ expect(lockEdits).toHaveBeenCalledWith(true);expect(reload).not.toHaveBeenCalled();
+ click(locale==='he'?'ניסיון חוזר של הבקשה':'Retry this request');await vi.waitFor(()=>expect(reload).toHaveBeenCalledOnce());
+ expect(commands).toHaveLength(2);expect(commands[0]).toBe(commands[1]);expect(JSON.parse(commands[0]!)).toMatchObject({action:'archive',personId:caseA.id,expectedVersion:1,expectedEpoch:3});expect(denied).not.toHaveBeenCalled();
+});
 
 it.each(['he','en'] as const)('%s Sheet directory forwards bounded filter/page context and exposes one create disclosure',locale=>{
  const props=find(hook.render(()=>LegacyClientsRoster({locale,section:'all',search:'Synthetic',stage:'constructor',language:'he',due:'overdue',page:'2'})),e=>e.type===ProspectsClient)!.props;

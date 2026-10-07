@@ -71,7 +71,7 @@ export class LeadCommandStore{
    if(selected){
     const page=await this.directory.listInTransaction(tx,actor,{view:"all",search:"",mode:"live",personId:selected,
      today,page:1,pageSize:1}),row=page.items[0];
-    if(!row||row.mode!=="live"||row.identityKind!=="adult"||row.version===null||row.archived||row.doNotContact)return clarify("reserved");
+    if(!row||row.mode!=="live"||row.identityKind!=="adult"||row.version===null||row.administrativelyArchived||row.archived||row.doNotContact)return clarify("reserved");
     const phones=[...new Set(row.references.map(r=>normalizePhone(r.phone)).filter((p):p is string=>Boolean(p)))];
     if(phone?!phones.includes(phone):phones.length!==1)return clarify("identity");phone=phone??phones[0]!;
    }
