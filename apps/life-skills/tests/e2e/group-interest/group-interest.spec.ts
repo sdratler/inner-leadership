@@ -53,9 +53,9 @@ if(!runtimePath){
   await expect(page.locator('[name="permission"]')).not.toBeChecked();await expect(page.locator('[name="parentName"]')).toHaveValue(unsaved);
   await page.screenshot({path:info.outputPath(`group-interest-${locale}-${info.project.name}.png`),fullPage:true});
  });
- test("parent is denied the owner-only page and API without disclosure",async({page,context})=>{
+ test("parent is denied the owner-only page and API without disclosure",async({page,context},info)=>{
   await context.addCookies([{name:"__Host-ls-session",value:data.parent,url:data.origin,httpOnly:true,secure:true,sameSite:"Lax"}]);
-  for(const locale of ["en","he"]){await page.goto(`/${locale}/app/group-interest`);await page.waitForTimeout(500);await expect(page.getByRole("heading",{name:/Group and tutoring interest|התעניינות בקבוצה ובתגבור/})).toHaveCount(0);await expect(page.locator('form')).toHaveCount(0);expect(await page.locator("body").innerText()).not.toContain("Synthetic desktop");}
+  for(const locale of ["en","he"]){const denied=await page.goto(`/${locale}/app/group-interest`);expect([200,404]).toContain(denied?.status());await expect(page.getByRole("heading",{name:locale==="he"?"העמוד אינו זמין":"Page unavailable",exact:true})).toBeVisible();await expect(page.getByRole("heading",{name:/Group and tutoring interest|התעניינות בקבוצה ובתגבור/})).toHaveCount(0);await expect(page.locator('form')).toHaveCount(0);expect(await page.locator("body").innerText()).not.toContain(`Synthetic ${info.project.name}-${locale} Parent`);}
   const api=await page.request.get(`${data.origin}/api/private/group-interest`);expect(api.status()).toBe(403);expect(await api.text()).not.toContain("Synthetic");
  });
 }

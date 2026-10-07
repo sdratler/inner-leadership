@@ -25,18 +25,23 @@ function cleanup(){cleanupPromise??=(async()=>{await terminate(tests);await term
 process.once("SIGTERM",()=>{void cleanup().finally(()=>process.exit(143));});
 process.once("SIGINT",()=>{void cleanup().finally(()=>process.exit(130));});
 
-type BoundaryCounts={accounts:number;people:number;cases:number;profiles:number;sessions:number;charges:number;inquiries:number;operations:number};
+type BoundaryCounts={inquiries:number;operations:number;otherWorkspaceRows:Record<string,number>};
+const quoteIdentifier=(value:string)=>`"${value.replaceAll('"','""')}"`;
 async function counts():Promise<BoundaryCounts>{
- const result=await f!.pool.query<BoundaryCounts>(`SELECT
-  (SELECT count(*)::integer FROM ls_identity.accounts WHERE workspace_id=$1) AS accounts,
-  (SELECT count(*)::integer FROM ls_identity.people WHERE workspace_id=$1) AS people,
-  (SELECT count(*)::integer FROM ls_cases.cases WHERE workspace_id=$1) AS cases,
-  (SELECT count(*)::integer FROM ls_contact_ops.profiles WHERE workspace_id=$1) AS profiles,
-  (SELECT count(*)::integer FROM ls_sessions.sessions WHERE workspace_id=$1) AS sessions,
-  (SELECT count(*)::integer FROM ls_payments.charges WHERE workspace_id=$1) AS charges,
+ const allowed=new Set(["ls_service_interest.inquiries","ls_service_interest.operations"]);
+ const inventory=await f!.pool.query<{schema:string;table:string}>(`SELECT c.table_schema AS schema,c.table_name AS table
+  FROM information_schema.columns c JOIN information_schema.tables t ON t.table_schema=c.table_schema AND t.table_name=c.table_name
+  WHERE c.column_name='workspace_id' AND c.table_schema LIKE 'ls\\_%' ESCAPE '\\' AND t.table_type='BASE TABLE'
+  ORDER BY c.table_schema,c.table_name`);
+ const otherWorkspaceRows:Record<string,number>={};
+ for(const row of inventory.rows){const name=`${row.schema}.${row.table}`;if(allowed.has(name))continue;
+  const result=await f!.pool.query<{count:number}>(`SELECT count(*)::integer AS count FROM ${quoteIdentifier(row.schema)}.${quoteIdentifier(row.table)} WHERE workspace_id=$1`,[f!.workspaceId]);
+  otherWorkspaceRows[name]=result.rows[0]?.count??0;
+ }
+ const result=await f!.pool.query<{inquiries:number;operations:number}>(`SELECT
   (SELECT count(*)::integer FROM ls_service_interest.inquiries WHERE workspace_id=$1) AS inquiries,
   (SELECT count(*)::integer FROM ls_service_interest.operations WHERE workspace_id=$1) AS operations`,[f!.workspaceId]);
- return result.rows[0]!;
+ return {...result.rows[0]!,otherWorkspaceRows};
 }
 
 try{
@@ -65,8 +70,8 @@ try{
  tests=spawn(process.execPath,[resolve("node_modules/@playwright/test/cli.js"),"test","--config","tests/e2e/group-interest/playwright.config.ts",...selection],{env,stdio:["ignore","inherit","inherit"]});
  const [code]=await once(tests,"exit");if(code!==0)throw new Error("GROUP_INTEREST_BROWSER_ACCEPTANCE_FAILED");
  phase="boundary-readback";
- const after=await counts(),unchanged=(key:keyof BoundaryCounts)=>after[key]===baseline[key];
- for(const keyName of ["accounts","people","cases","profiles","sessions","charges"] as const)if(!unchanged(keyName))throw new Error(`GROUP_INTEREST_SIDE_EFFECT_${keyName.toUpperCase()}`);
+ const after=await counts();
+ if(JSON.stringify(after.otherWorkspaceRows)!==JSON.stringify(baseline.otherWorkspaceRows))throw new Error("GROUP_INTEREST_WORKSPACE_SIDE_EFFECT");
  if(after.inquiries!==baseline.inquiries+2||after.operations!==baseline.operations+2)throw new Error("GROUP_INTEREST_RECEIPT_COUNT_MISMATCH");
  console.log(`GROUP_INTEREST_ACCEPTANCE_PASS project=${project??"all"} inquiries=2 replays=2 rejected=2 sideEffects=0`);
 }catch(error){console.error(`Group Intake browser verification failed at ${phase} (${error instanceof Error?error.message:"unknown error"}). No production or provider state was used.`);process.exitCode=1;}
