@@ -76,4 +76,3 @@ export function ReferralPanel({ locale, provider, caseId, onStateChange }: { loc
     </form>}
   </section>;
 }
-

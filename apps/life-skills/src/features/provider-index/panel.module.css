@@ -17,4 +17,3 @@
 .selected { border-width:2px; }
 @media(max-width:850px) { .grid { grid-template-columns:minmax(0,1fr); } }
 @media(max-width:480px) { .fields { grid-template-columns:minmax(0,1fr); } .buttons>* { flex:1 1 100%; } .toolbar { align-items:stretch; } .toolbar>* { flex:1 1 100%; } }
-

@@ -33,4 +33,3 @@ export async function handleProviderRequest(request: Request, surface: "director
     return NextResponse.json({ ...result.body, ...(reason ? { reason } : {}) }, { status: result.status, headers: privateHeaders });
   }
 }
-

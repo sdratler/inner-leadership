@@ -27,4 +27,3 @@ export function parseReferralCommand(value: unknown): ReferralCommand {
     return a === "create" ? { action: a, ...common } : { action: a, ...common, expectedVersion: version(v.expectedVersion) }; }
   throw new ProviderProblem("INVALID_REQUEST", "UNKNOWN_ACTION");
 }
-

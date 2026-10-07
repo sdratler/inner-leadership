@@ -77,5 +77,3 @@ CREATE TRIGGER provider_access_no_truncate BEFORE TRUNCATE ON ls_provider_index.
   FOR EACH STATEMENT EXECUTE FUNCTION ls_provider_index.deny_history_mutation();
 REVOKE ALL ON ALL TABLES IN SCHEMA ls_provider_index, ls_provider_referrals FROM PUBLIC;
 REVOKE ALL ON FUNCTION ls_provider_index.deny_history_mutation() FROM PUBLIC;
-
-

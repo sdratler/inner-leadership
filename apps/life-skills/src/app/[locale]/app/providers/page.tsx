@@ -17,4 +17,3 @@ export default async function Page({ params }: { params: Promise<{ locale: strin
   }
   return <ProviderIndexPanel locale={locale} />;
 }
-

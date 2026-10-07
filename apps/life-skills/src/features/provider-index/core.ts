@@ -183,4 +183,3 @@ export function parseProviderCommand(value: unknown): ProviderCommand {
   }
   throw new ProviderProblem("INVALID_REQUEST", "UNKNOWN_ACTION");
 }
-

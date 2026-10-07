@@ -144,4 +144,3 @@ export function ProviderIndexPanel({ locale, caseId }: { locale: "he" | "en"; ca
     </div>
   </main>;
 }
-

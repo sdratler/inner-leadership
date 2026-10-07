@@ -20,4 +20,3 @@ export async function ProviderIndexEntryLink({ locale, caseId }: { locale: "he" 
     </a>
   </nav>;
 }
-

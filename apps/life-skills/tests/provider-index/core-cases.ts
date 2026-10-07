@@ -103,4 +103,3 @@ export const coreCases:ReadonlyArray<readonly [string,()=>void]> = [
  ["verification date remains same before local midnight",()=>assert.equal(practiceDate(new Date("2026-10-07T12:00:00Z")),"2026-10-07")],
  ["normalization does not remove Hebrew letters",()=>assert.equal(normalize("הדרכת הורים"),"הדרכת הורים")],
 ];
-

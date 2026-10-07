@@ -15,4 +15,3 @@ export async function providerRequest<T>(surface: "provider-index" | "provider-r
     body.error?.code === "FORBIDDEN" || body.error?.code === "NOT_FOUND" ? "FORBIDDEN" : "UNAVAILABLE";
   throw new ProviderProblem(code, body.reason ?? code);
 }
-

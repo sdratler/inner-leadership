@@ -14,4 +14,3 @@ export async function providerOwnerContext(headers: Headers) {
   await identity.store.transaction(tx => authorize(tx, actor, gate, identity.clock));
   return { token, identity, actor, gate };
 }
-

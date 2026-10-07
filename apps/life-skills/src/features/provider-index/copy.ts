@@ -63,4 +63,3 @@ export function problemText(t: typeof providerCopy.en | typeof providerCopy.he, 
   if (e.code === "INVALID_REQUEST") return t.invalid;
   return t.failed;
 }
-
