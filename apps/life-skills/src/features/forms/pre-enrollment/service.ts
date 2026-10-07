@@ -6,7 +6,7 @@ import { parseNewPreEnrollment, parsePreEnrollment, digestPreEnrollment } from "
 import { runtimePublicConsent, type PublicConsent } from "./consent.ts";
 import { runtimeIntakeBankTransfer, type IntakeBankTransfer } from "./payment.ts";
 
-export type IntakeToken = Readonly<{ tokenDigest: string; stableLeadId: string; childSlotIds: readonly string[]; expiresAt: Date; usedAt: Date | null }>;
+export type IntakeToken = Readonly<{ tokenDigest: string; stableLeadId: string; childSlotIds: readonly string[]; expiresAt: Date; usedAt: Date | null; synthetic?:boolean }>;
 export type IntakeReceipt = Readonly<{ receiptId: string; stableLeadId: string; receivedAt: string; duplicate: boolean }>;
 export interface PreEnrollmentRepository {
   transaction<T>(work: (tx: PreEnrollmentRepository) => Promise<T>): Promise<T>;
@@ -29,12 +29,12 @@ export class PreEnrollmentService {
   }
 
   /** Exchange the fragment-held token in a POST body; callers must not put it in a URL. */
-  async exchange(token: string): Promise<{ childSlotIds: readonly string[]; expiresAt: string; consent: PublicConsent; bankTransfer: IntakeBankTransfer | null }> {
+  async exchange(token: string): Promise<{ childSlotIds: readonly string[]; expiresAt: string; consent: PublicConsent; bankTransfer: IntakeBankTransfer | null; synthetic?:boolean }> {
     if (!this.enabled || !/^[A-Za-z0-9_-]{43}$/.test(token)) throw new AppError("NOT_FOUND");
     const row = await this.repository.findToken(createHash("sha256").update(token).digest("hex"));
     const at = this.now();
     if (!row || row.usedAt || row.expiresAt.getTime() <= at.getTime()) throw new AppError("NOT_FOUND");
-    return { childSlotIds: row.childSlotIds, expiresAt: row.expiresAt.toISOString(), consent: runtimePublicConsent(), bankTransfer: runtimeIntakeBankTransfer() };
+    return { childSlotIds: row.childSlotIds, expiresAt: row.expiresAt.toISOString(), consent: runtimePublicConsent(), bankTransfer: row.synthetic?null:runtimeIntakeBankTransfer(),...(row.synthetic?{synthetic:true}:{}) };
   }
 
   async submit(token: string, idempotencyKey: string, raw: unknown): Promise<IntakeReceipt> {

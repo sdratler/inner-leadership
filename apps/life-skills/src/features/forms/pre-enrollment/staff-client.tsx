@@ -13,6 +13,7 @@ import { staffCopy, newAmendmentDays, type StaffLocale } from "./staff-locales.t
 import styles from "./staff-client.module.css";
 type Session = Awaited<ReturnType<typeof sessionInfo>>;
 type Receipt = {
+  synthetic?: boolean;
   receiptId: string;
   receivedAt: string;
   amendmentCount: number;
@@ -27,6 +28,7 @@ type Consent = {
   acknowledgements: string[];
 };
 type Entry = {
+  synthetic?: boolean;
   kind: "original" | "amendment";
   entryId: string;
   createdAt: string;
@@ -37,6 +39,10 @@ type Entry = {
 type Selection = { receiptId: string; entries: Entry[] };
 type IssuedLink = { href: string; expiresAt: string };
 const windowKeys = ["morning", "afternoon", "evening"] as const;
+const choiceLabels = {
+  he: { cp01: { joint: "פנייה משותפת", separate: "בנפרד", not_now: "לא כרגע", discuss_privately: "לדבר בפרטיות" }, contact: { yes: "כן", no: "לא" } },
+  en: { cp01: { joint: "Joint contact", separate: "Separately", not_now: "Not now", discuss_privately: "Discuss privately" }, contact: { yes: "Yes", no: "No" } },
+} as const;
 async function staff<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(path, {
     ...init,
@@ -418,7 +424,7 @@ export function IntakeStaffClient({ locale = "he", respondentOrigin }: { locale?
     <main className={styles.shell} dir={t.direction}>
       <header>
         <h1>{t.privateIntake}</h1>
-        <button disabled={pending} type="button" onClick={() => void logout()}>
+        <button className={styles.secondaryAction} disabled={pending} type="button" onClick={() => void logout()}>
           {t.signOut}
         </button>
         <p>{t.manualOnly}</p>
@@ -476,7 +482,7 @@ export function IntakeStaffClient({ locale = "he", respondentOrigin }: { locale?
       </section>
       <section className={styles.card}>
         <h2>{t.received}</h2>
-        <button type="button" disabled={pending} onClick={() => void refresh()}>
+        <button className={styles.secondaryAction} type="button" disabled={pending} onClick={() => void refresh()}>
           {t.refresh}
         </button>
         {items.length ? (
@@ -484,11 +490,13 @@ export function IntakeStaffClient({ locale = "he", respondentOrigin }: { locale?
             {items.map((item) => (
               <li key={item.receiptId}>
                 <button
+                  className={styles.secondaryAction}
                   disabled={pending}
                   onClick={() => void open(item.receiptId)}
                   type="button"
                 >
                   {t.open} · {formatDate(item.receivedAt)} · {item.amendmentCount} {t.updates}
+                  {item.synthetic && (locale === "he" ? " · נתוני בדיקה" : " · Synthetic test data")}
                 </button>
               </li>
             ))}
@@ -583,16 +591,18 @@ export function IntakeStaffClient({ locale = "he", respondentOrigin }: { locale?
 function HistoryEntry({ entry, locale }: { entry: Entry; locale: StaffLocale }) {
   const t = staffCopy(locale);
   const input = entry.input;
+  const choices = choiceLabels[locale];
   return (
     <section className={styles.card}>
       <h2>
         {entry.kind === "original" ? t.original : t.amendment}
       </h2>
+      {entry.synthetic && <p role="note">{locale === "he" ? "נתוני בדיקה בלבד. אין כאן הסכמה קלינית של הורה אמיתי, תשלום או פגישה." : "Synthetic test data only. This is not real parental consent, a payment or an appointment."}</p>}
       <p>
         {new Intl.DateTimeFormat(locale === "en" ? "en-GB" : "he-IL", { timeZone: t.timezone, dateStyle: "medium", timeStyle: "short" }).format(new Date(entry.createdAt))} · {t.timezone}
       </p>
       <p>
-        {t.parent}: {input.parentName} · {input.contactNumber} · {input.email || t.noEmail} · {input.preferredLanguage === "en" ? t.english : t.hebrew}
+        {t.parent}: {input.parentName} · <bdi dir="ltr" className={styles.contactToken}>{input.contactNumber}</bdi> · <bdi dir="ltr" className={styles.contactToken}>{input.email || t.noEmail}</bdi> · {input.preferredLanguage === "en" ? t.english : t.hebrew}
       </p>
       <p>
         {t.children}: {" "}
@@ -615,7 +625,7 @@ function HistoryEntry({ entry, locale }: { entry: Entry; locale: StaffLocale }) 
       <p>{input.availabilityNote}</p>
       <p>{t.privateContext}: {input.privateContext || t.notSpecified}</p>
       <p>
-        {t.additionalParent}: {input.cp01} · {t.contactOption}: {input.willingToBeContacted} · {t.accessNeed}: {input.accessSupportNeeded}
+        {t.additionalParent}: {choices.cp01[input.cp01]} · {t.contactOption}: {choices.contact[input.willingToBeContacted]} · {t.accessNeed}: {choices.contact[input.accessSupportNeeded]}
       </p>
       {entry.consent && (
         <details>
@@ -631,11 +641,11 @@ function HistoryEntry({ entry, locale }: { entry: Entry; locale: StaffLocale }) 
               {text}
             </p>
           ))}
-          <p>{entry.consent.hash}</p>
+          <p className={styles.technicalToken}>{entry.consent.hash}</p>
         </details>
       )}
       <p>
-        {t.nextStep}
+        {entry.synthetic ? t.syntheticNextStep : t.nextStep}
       </p>
     </section>
   );

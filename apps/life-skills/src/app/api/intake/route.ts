@@ -8,6 +8,7 @@ import { verifyIntakeMutationOrigin } from "@/features/forms/pre-enrollment/publ
 import { PreEnrollmentService } from "@/features/forms/pre-enrollment/service.ts";
 import { SqlPreEnrollmentRepository } from "@/features/forms/pre-enrollment/repository.ts";
 import { projectIntakeToLegacyIfCurrent } from "@/features/contact-ops/server/authoritative-prospect-send.ts";
+import { projectSubmittedIntake } from "@/features/forms/pre-enrollment/submission-projection.ts";
 
 /** Public intake is intentionally gated until W0's explicit real-data release.
  * The fragment token is never accepted in a GET/query string. */
@@ -34,9 +35,8 @@ export async function POST(request:Request):Promise<Response>{
   if(body.action==='submit'&&'stableLeadId' in data){
    // Submission has already committed to the private onboarding store. An
    // authority/read or Sheet failure must not claim that receipt was lost.
-   projectionPending=await projectIntakeToLegacyIfCurrent(runtime,data.stableLeadId,{formSubmitted:data.receivedAt,
-    stage:"Intake submitted / awaiting payment",
-    updateProvenance:"private-app:intake-submitted"}).catch(()=>true);
+   projectionPending=await projectSubmittedIntake(runtime.store,runtime.config.workspaceId,data,
+    (lead,fields)=>projectIntakeToLegacyIfCurrent(runtime,lead,fields)).catch(()=>true);
   }
   return NextResponse.json({ok:true,data:{...data,projectionPending},requestId:randomUUID()},
    {headers:{"Cache-Control":"private, no-store","Referrer-Policy":"no-referrer","X-Content-Type-Options":"nosniff"}});

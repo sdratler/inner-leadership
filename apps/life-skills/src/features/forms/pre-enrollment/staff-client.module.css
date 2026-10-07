@@ -2,6 +2,9 @@
 .card {
   display: grid;
   gap: 1rem;
+  box-sizing: border-box;
+  width: min(100%, 680px);
+  min-width: 0;
   max-width: 680px;
   margin: 2rem auto;
   padding: 1rem;
@@ -15,13 +18,48 @@
   display: grid;
   gap: 0.35rem;
 }
+.card fieldset {
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+.shell > *,
+.card > *,
+.card form,
+.card fieldset,
+.card label,
+.card details,
+.issued,
+.issued > * {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+}
+.shell p,
+.card p,
+.card summary,
+.card li,
+.technicalToken {
+  overflow-wrap: anywhere;
+}
 .card input,
+.card textarea,
+.card select,
 .card button,
 .shell button {
+  box-sizing: border-box;
+  max-width: 100%;
   min-height: 44px;
   font: inherit;
 }
-.card input {
+.card input,
+.card textarea,
+.card select {
+  width: 100%;
+  min-width: 0;
+}
+.card input,
+.card textarea {
   border: 1px solid #8da9a2;
   border-radius: 8px;
   padding: 0.6rem;
@@ -41,6 +79,14 @@
   padding: 0.6rem;
   background: #176b63;
   color: #fff;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.card button.secondaryAction,
+.shell button.secondaryAction {
+  border: 1px solid #176b63;
+  background: #fff;
+  color: #155c55;
 }
 .shell ul {
   display: grid;
@@ -72,10 +118,19 @@
   font-weight: 700;
   text-decoration: none;
 }
+.contactToken {
+  display: inline-block;
+  unicode-bidi: isolate;
+}
+.technicalToken {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
 @media (max-width: 480px) {
   .shell,
   .card {
     margin: 0;
     padding: 0.8rem;
+    width: 100%;
   }
 }
