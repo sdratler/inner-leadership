@@ -155,7 +155,7 @@ export function ProviderIndexPanel({ locale, caseId }: { locale: "he" | "en"; ca
             </form>
           </div>}
           {selected && <ReferralPanel key={`${selected.id}:${caseId ?? "general"}`} locale={locale} provider={selected} caseId={caseId ?? null} onStateChange={setReferralState} />}
-          {!form && <p>{t.choose}</p>}
+          {!form && !selected && <p>{t.choose}</p>}
         </section>
       </div>
     </div>

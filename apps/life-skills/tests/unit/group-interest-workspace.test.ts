@@ -33,5 +33,6 @@ describe("group interest owner form",()=>{
   expect(classifyGroupInterestSaveFailure(true,401)).toBe("reauth");
   for(const status of [400,403,404,409,429])expect(classifyGroupInterestSaveFailure(true,status)).toBe("correctable");
   for(const status of [500,503,undefined])expect(classifyGroupInterestSaveFailure(true,status)).toBe("unconfirmed");
+  for(const status of [400,401,403,404,409,429,500,503,undefined])expect(classifyGroupInterestSaveFailure(status!==undefined,status,true)).toBe("unconfirmed");
  });
 });

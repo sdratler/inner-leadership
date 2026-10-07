@@ -4,7 +4,8 @@ import type {Locale} from "../../lib/locale.ts";
 import {sessionInfo} from "../identity/client.ts";
 import {interestCommandSchema,interestNotice,type InterestCommand,type InterestList} from "./contract.ts";
 import styles from "./workspace.module.css";
-export function classifyGroupInterestSaveFailure(requestStarted:boolean,status?:number){
+export function classifyGroupInterestSaveFailure(requestStarted:boolean,status?:number,previouslyUncertain=false){
+ if(previouslyUncertain)return "unconfirmed" as const;
  if(!requestStarted||status===401)return "reauth" as const;
  if(status!==undefined&&status>=400&&status<500)return "correctable" as const;
  return "unconfirmed" as const;
@@ -32,6 +33,7 @@ export function GroupInterestWorkspace({locale}:{locale:Locale}){
  },[]);
  async function save(){
   if(busy)return;setSaved(false);setError("");
+   const previouslyUncertain=uncertain;
   if(!pending.current){
    const values=new FormData(form.current!);
    const age=values.get("childAge"),parsedAge=typeof age==="string"&&age.trim()!==""?Number(age):Number.NaN;
@@ -51,7 +53,7 @@ export function GroupInterestWorkspace({locale}:{locale:Locale}){
    requestStarted=true;
    const response=await fetch("/api/private/group-interest",{method:"POST",headers:{"content-type":"application/json","x-csrf-token":session.csrfToken},
     body:JSON.stringify(pending.current)});
-   if(!response.ok&&classifyGroupInterestSaveFailure(true,response.status)!=="unconfirmed"){
+    if(!response.ok&&classifyGroupInterestSaveFailure(true,response.status,previouslyUncertain)!=="unconfirmed"){
     pending.current=null;setUncertain(false);
     setError(response.status===401?t("Sign in again, then review and save this inquiry.","יש להתחבר מחדש, לבדוק ולשמור את הפנייה."):
      response.status===403?t("Your current account cannot save this inquiry.","החשבון הנוכחי אינו מורשה לשמור את הפנייה."):
@@ -62,7 +64,7 @@ export function GroupInterestWorkspace({locale}:{locale:Locale}){
    const body=await response.json();if(!response.ok||!body.ok||body.data?.saved!==true)throw new Error();
    pending.current=null;setUncertain(false);form.current?.reset();setPermission(permissionLanguageChanged(null));setSaved(true);await load();
   }catch{
-   if(classifyGroupInterestSaveFailure(requestStarted)==="reauth"){pending.current=null;setUncertain(false);setError(t("Sign in again, then review and save this inquiry.","יש להתחבר מחדש, לבדוק ולשמור את הפנייה."));}
+    if(classifyGroupInterestSaveFailure(requestStarted,undefined,previouslyUncertain)==="reauth"){pending.current=null;setUncertain(false);setError(t("Sign in again, then review and save this inquiry.","יש להתחבר מחדש, לבדוק ולשמור את הפנייה."));}
    else{setUncertain(true);setError(t("Save is unconfirmed. Keep this page open and retry the same inquiry; no message or payment is triggered.",
     "השמירה לא אומתה. השאירו את הדף פתוח ונסו שוב את אותה פנייה; לא נשלחת הודעה ולא מופעל תשלום."));}
   }
