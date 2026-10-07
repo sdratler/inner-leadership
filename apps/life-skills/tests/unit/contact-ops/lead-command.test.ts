@@ -18,6 +18,23 @@ test("selected WhatsApp example and not-lead intent require later identity resol
   .toMatchObject({name:"Yossi",promote:true,note:"spoke today",nextAction:"Follow up",dueDate:"2026-10-12"});
  expect(parseLeadText("This number isn't a lead.",today)).toMatchObject({notLead:true,promote:false});
 });
+test("callback windows retain named parts of day without invented hours and normalize explicit ranges",()=>{
+ expect(parseLeadText("Call her tomorrow morning",today)).toMatchObject({
+  nextAction:"Call — morning",dueDate:"2026-10-07",callbackWindow:{kind:"part_of_day",value:"morning"}
+ });
+ expect(parseLeadText("Call him tomorrow between 9:00 and 10:00",today)).toMatchObject({
+  nextAction:"Call — 09:00–10:00",dueDate:"2026-10-07",callbackWindow:{kind:"time_range",start:"09:00",end:"10:00"}
+ });
+ expect(parseLeadText("להתקשר אליו מחר בערב",today)).toMatchObject({
+  nextAction:"להתקשר — ערב",dueDate:"2026-10-07",callbackWindow:{kind:"part_of_day",value:"evening"}
+ });
+ expect(parseLeadText("להתקשר אליה מחר בין 09:00 ל-10:00",today)).toMatchObject({
+  nextAction:"להתקשר — 09:00–10:00",dueDate:"2026-10-07",callbackWindow:{kind:"time_range",start:"09:00",end:"10:00"}
+ });
+});
+test.each(["Call tomorrow between 10:00 and 09:00","Call tomorrow between 24:00 and 25:00","Call tomorrow at 09:00","Call tomorrow dawn"])("ambiguous or invalid callback window is rejected without a partial intent: %s",text=>{
+ expect(parseLeadText(text,today)).toBeNull();
+});
 test("terminal sentence-separated note preserves its contents without accepting unknown preceding clauses",()=>{
  expect(parseLeadText("The guy who just called. Note: saved, exactly.\nהמשך",today))
   .toMatchObject({recentCaller:true,note:"saved, exactly.\nהמשך"});

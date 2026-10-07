@@ -49,6 +49,16 @@ test("existing exact person appends notes, preserves normal name/history and new
  expect(await s.store.apply(s.actor,p.token)).toEqual({...saved,replayed:true});
  const after=(await s.rows()).items.find(r=>r.personId===created.personId)!;expect(after.notes).toBe(row.notes+"\nLater saved note");expect(after.nextAction).toBe("Later action");
 });
+test("callback window is stored exactly and an unrelated note update preserves it",async()=>{
+ const s=await setup(),created=await s.create(),before=(await s.rows()).items.find(r=>r.personId===created.personId)!;
+ const callback=await s.ready("Call her tomorrow between 09:00 and 10:00",{personId:created.personId});
+ expect(callback.intent).toMatchObject({nextAction:"Call — 09:00–10:00",callbackWindow:{kind:"time_range",start:"09:00",end:"10:00"}});
+ await s.store.apply(s.actor,callback.token);const saved=(await s.rows()).items.find(r=>r.personId===created.personId)!;
+ expect(saved.nextAction).toBe("Call — 09:00–10:00");expect(saved.followUpDate).toBe(callback.intent.dueDate);expect(saved.notes).toBe(before.notes);
+ const note=await s.ready("Note: unrelated administrative note",{personId:created.personId});await s.store.apply(s.actor,note.token);
+ const after=(await s.rows()).items.find(r=>r.personId===created.personId)!;
+ expect(after.nextAction).toBe(saved.nextAction);expect(after.followUpDate).toBe(saved.followUpDate);expect(after.notes).toBe(before.notes+"\nunrelated administrative note");
+});
 test("unique recent unclassified caller resolves; two recent callers require choice and zero writes",async()=>{
  const s=await setup();await s.call(phone);const text="The guy who just called is Moshe Cohen. He's interested. Add him as a Life Skills lead.";
  const one=await s.ready(text);expect(one.phone).toBe(phone);expect(one.candidateId).not.toBeNull();
