@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { UnsavedChangesGuard } from "../../ui/workspace/draft-guard.tsx";
-import { emptyProvider, parseProvider, parseQuery, verificationStates, type ProviderInput, type ProviderRecord, type ProviderPage, type ProviderCommand, type WriteReceipt } from "./core.ts";
+import { emptyProvider, parseProvider, parseQuery, verificationStates, writeFailureIsUncertain, type ProviderInput, type ProviderRecord, type ProviderPage, type ProviderCommand, type WriteReceipt } from "./core.ts";
 import { providerRequest } from "./client.ts";
 import { providerCopy, problemText } from "./copy.ts";
 import { ReferralPanel } from "../provider-referrals/panel.tsx";
@@ -35,6 +35,7 @@ export function ProviderIndexPanel({ locale, caseId }: { locale: "he" | "en"; ca
   };
   const run = async (command?: ProviderCommand) => {
     if (inFlight.current) return; const c = command ?? pending.current; if (!c) return;
+    const retryingUncertain = uncertain;
     pending.current = c; inFlight.current = true; setBusy(true); setMessage(""); setConflict(false);
     let receivedReceipt = false;
     try {
@@ -45,7 +46,7 @@ export function ProviderIndexPanel({ locale, caseId }: { locale: "he" | "en"; ca
       pending.current = null; setUncertain(false); setAllowDuplicate(false); setMessage(t.saved); void load();
     } catch (error) {
       const code = (error as { code?: string }).code;
-      const unknown = receivedReceipt || !["INVALID_REQUEST", "CONFLICT", "FORBIDDEN", "NOT_FOUND"].includes(code ?? "");
+      const unknown = writeFailureIsUncertain(retryingUncertain, receivedReceipt, code);
       setUncertain(unknown); setConflict(code === "CONFLICT"); setMessage(unknown ? t.uncertain : problemText(t, error));
       if (!unknown) pending.current = null;
     } finally { inFlight.current = false; setBusy(false); }

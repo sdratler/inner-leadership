@@ -9,6 +9,7 @@ import { providerOwnerContext } from "./context.ts";
 import { ProviderIndexStore } from "./store.ts";
 import { ProviderReferralStore } from "../../provider-referrals/server/store.ts";
 import { ProviderProblem } from "../core.ts";
+import { canonicalForwardedRequest } from "../../integration/canonical-forwarded-request.ts";
 const privateHeaders = { "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer", "X-Robots-Tag": "noindex, nofollow", "Vary": "Cookie" };
 const reasons = new Set(["POSSIBLE_DUPLICATE", "STALE_VERSION", "OPERATION_REUSED", "DIRECTORY_LIMIT", "REFERRAL_VIEW_LIMIT", "PROVIDER_ARCHIVED", "REFERRAL_SCOPE_IMMUTABLE", "FUTURE_VERIFICATION", "DECLARED_FIT_SOURCE_REQUIRED", "VERIFICATION_EVIDENCE_REQUIRED", "INVALID_URL", "SOURCE_REQUIRED"]);
 /** POST also carries search terms, keeping provider/contact text out of URL logs.
@@ -17,11 +18,12 @@ const reasons = new Set(["POSSIBLE_DUPLICATE", "STALE_VERSION", "OPERATION_REUSE
 export async function handleProviderRequest(request: Request, surface: "directory" | "referrals"): Promise<Response> {
   const requestId = randomUUID();
   try {
-    if (request.method !== "POST" || new URL(request.url).searchParams.size) throw new AppError("INVALID_REQUEST");
-    const { token, identity, actor, gate } = await providerOwnerContext(request.headers);
-    verifyMutationOrigin(request, identity.config.origin);
-    verifyCsrfToken(request.headers.get("x-csrf-token"), identity.services.sessions.csrf(token));
-    const body = await readJson(request, z.unknown(), 24000);
+    const canonical = canonicalForwardedRequest(request);
+    if (canonical.method !== "POST" || new URL(canonical.url).searchParams.size) throw new AppError("INVALID_REQUEST");
+    const { token, identity, actor, gate } = await providerOwnerContext(canonical.headers);
+    verifyMutationOrigin(canonical, identity.config.origin);
+    verifyCsrfToken(canonical.headers.get("x-csrf-token"), identity.services.sessions.csrf(token));
+    const body = await readJson(canonical, z.unknown(), 24000);
     const store = surface === "directory" ? new ProviderIndexStore(identity.store, identity.config, gate, identity.clock)
       : new ProviderReferralStore(identity.store, identity.config, gate, identity.clock);
     const data = await store.execute(actor, body, requestId);

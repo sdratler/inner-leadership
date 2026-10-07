@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ProviderRecord, WriteReceipt } from "../provider-index/core.ts";
+import { writeFailureIsUncertain, type ProviderRecord, type WriteReceipt } from "../provider-index/core.ts";
 import { providerRequest } from "../provider-index/client.ts";
 import { providerCopy, problemText } from "../provider-index/copy.ts";
 import { parseReferral, referralStates, type ReferralInput, type ReferralRecord, type ReferralCommand } from "./core.ts";
@@ -28,6 +28,7 @@ export function ReferralPanel({ locale, provider, caseId, onStateChange }: { loc
   const change = <K extends keyof ReferralInput>(key: K, value: ReferralInput[K]) => { if (!busy && !uncertain) { setForm(p => p ? { ...p, [key]: value } : p); setMessage(""); } };
   const save = async () => {
     if (!form || inFlight.current || conflict) return;
+    const retryingUncertain = uncertain;
     let c = pending.current;
     if (!c) { try { const detail = parseReferral(form), common = { operationId: crypto.randomUUID(), id: selected?.id ?? crypto.randomUUID(), detail };
       c = selected ? { action: "update", ...common, expectedVersion: selected.version } : { action: "create", ...common };
@@ -40,7 +41,7 @@ export function ReferralPanel({ locale, provider, caseId, onStateChange }: { loc
       const readback = saved.find(r => r.id === receipt.id); if (!readback || readback.version < receipt.version) throw new Error("READBACK_FAILED");
       setRecords(saved); setSelected(readback); setForm(structuredClone(readback.detail)); pending.current = null; setUncertain(false); setMessage(t.saved);
     } catch (error) {
-      const code = (error as { code?: string }).code, unknown = receivedReceipt || !["INVALID_REQUEST", "CONFLICT", "FORBIDDEN", "NOT_FOUND"].includes(code ?? "");
+      const code = (error as { code?: string }).code, unknown = writeFailureIsUncertain(retryingUncertain, receivedReceipt, code);
       setUncertain(unknown); setConflict(code === "CONFLICT"); setMessage(unknown ? t.uncertain : problemText(t, error)); if (!unknown) pending.current = null;
     } finally { inFlight.current = false; setBusy(false); }
   };

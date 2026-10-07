@@ -136,6 +136,18 @@ describe("R35 private referral boundary",()=>{
    const p=await provider(),c={action:"create",id:randomUUID(),operationId:randomUUID(),detail:ref(p)};await referralWrite(c);
    await expect(referralWrite({...c,action:"update",operationId:randomUUID(),expectedVersion:1,detail:ref(p,f.second.id)})).rejects.toMatchObject({reason:"REFERRAL_SCOPE_IMMUTABLE"});
  });
+ it("database binds case referrals to the case practitioner",async()=>{
+   const providerId=randomUUID(),referralId=randomUUID();
+   await f.pool.query("INSERT INTO ls_provider_index.entries(workspace_id,id,owner_account_id,payload_ciphertext) VALUES($1,$2,$3,'synthetic-ciphertext')",[f.workspaceId,providerId,f.parent.actor.id]);
+   await expect(f.pool.query("INSERT INTO ls_provider_referrals.contexts(workspace_id,id,owner_account_id,provider_id,case_id,payload_ciphertext) VALUES($1,$2,$3,$4,$5,'synthetic-ciphertext')",[f.workspaceId,referralId,f.parent.actor.id,providerId,f.first.id])).rejects.toMatchObject({code:"23514"});
+ });
+ it("database prevents provider and referral scope reassignment",async()=>{
+   const p=await provider(),q=await provider(),id=randomUUID();
+   await referralWrite({action:"create",id,operationId:randomUUID(),detail:ref(p)});
+   await expect(f.pool.query("UPDATE ls_provider_index.entries SET owner_account_id=$3 WHERE workspace_id=$1 AND id=$2",[f.workspaceId,p.id,f.parent.actor.id])).rejects.toMatchObject({code:"23514"});
+   await expect(f.pool.query("UPDATE ls_provider_referrals.contexts SET provider_id=$3 WHERE workspace_id=$1 AND id=$2",[f.workspaceId,id,q.id])).rejects.toMatchObject({code:"23514"});
+   await expect(f.pool.query("UPDATE ls_provider_referrals.contexts SET case_id=$3 WHERE workspace_id=$1 AND id=$2",[f.workspaceId,id,f.second.id])).rejects.toMatchObject({code:"23514"});
+ });
  it("referral concurrent retry creates once",async()=>{
    const p=await provider(),c={action:"create",id:randomUUID(),operationId:randomUUID(),detail:ref(p)};const r=await Promise.all([referralWrite(c),referralWrite(c)]);expect(r.filter(x=>x.replayed)).toHaveLength(1);expect(await listRefs(p.id,f.first.id)).toHaveLength(1);
  });

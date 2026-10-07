@@ -76,7 +76,7 @@ export function proxy(request: NextRequest) {
   // These data pages/APIs depend on strict canonical HTTPS forwarding. Validate the original
   // transport before the request-header rewrite below can hide an invalid chain.
   // Forwarding never grants a session, role, case or audience permission.
-  if (privateDataPage || ["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins", "/api/updates", "/api/owner-digest", "/api/community-threads", "/api/private/contact-acquisition", "/api/private/acquisition/call-events", "/api/private/group-interest"].includes(pathname)||/^\/api\/(?:notifications|marketing)(?:\/|$)/.test(pathname)) {
+  if (privateDataPage || ["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins", "/api/updates", "/api/owner-digest", "/api/community-threads", "/api/provider-index", "/api/provider-referrals", "/api/private/contact-acquisition", "/api/private/acquisition/call-events", "/api/private/group-interest"].includes(pathname)||/^\/api\/(?:notifications|marketing)(?:\/|$)/.test(pathname)) {
     try {
       if (request.nextUrl.hash || requestHost !== canonicalOrigin.host.toLowerCase()) throw new Error("invalid transport");
       if (request.headers.has("x-forwarded-proto") || request.headers.has("x-forwarded-host")) {
@@ -119,7 +119,7 @@ export function proxy(request: NextRequest) {
   }
   // The private application has its own explicit server-side gate. Foundation
   // preview never opens authenticated application or domain API routes.
-  const privatePath = pathname === "/api/private-notes" || /^\/api\/(?:private|identity|calendar|attendance|checkins|commitments|community-posts|community-reply|community-drafts|community-settings|community-threads|content-voice|forms|goals|home-practice|marketing|notifications|owner-digest|payments|progress|prospects|resources|sessions|updates)(?:\/|$)/.test(pathname) ||
+  const privatePath = pathname === "/api/private-notes" || /^\/api\/(?:private|identity|calendar|attendance|checkins|commitments|community-posts|community-reply|community-drafts|community-settings|community-threads|content-voice|forms|goals|home-practice|marketing|notifications|owner-digest|payments|progress|prospects|provider-index|provider-referrals|resources|sessions|updates)(?:\/|$)/.test(pathname) ||
     /^\/(he|en)(?:\/?$|\/(?:login|app|family|workspace|parent|client|practitioner|attendance|calendar|checkins|commitments|forms|goals|home-practice|payments|progress|resources|sample|updates)(?:\/|$))/.test(pathname);
   const privateMode = process.env.LS_PRIVATE_APP_ENABLED === "true";
   // Preserve the accepted standalone identity preview independently of the full

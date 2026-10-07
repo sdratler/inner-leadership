@@ -158,6 +158,13 @@ export function selectProviders(rows: readonly ProviderRecord[], rawQuery: unkno
       genders: unique(rows.map(r => r.entry.declaredFit.gender)), religiousFits: unique(rows.map(r => r.entry.declaredFit.religiousFit)) } };
 }
 export interface WriteReceipt { id: string; version: number; replayed: boolean; }
+const knownPreReceiptFailure = new Set<ProblemCode>(["INVALID_REQUEST", "CONFLICT", "FORBIDDEN", "NOT_FOUND"]);
+/** Once a write has an unknown outcome, no later denial may discard its stable
+ * operation ID. Only receipt plus current readback, or an explicit no-commit
+ * proof, can clear that state. */
+export function writeFailureIsUncertain(previouslyUncertain: boolean, receivedReceipt: boolean, code?: string): boolean {
+  return previouslyUncertain || receivedReceipt || !knownPreReceiptFailure.has(code as ProblemCode);
+}
 export type ProviderCommand =
   | { action: "search"; query: ProviderQuery }
   | { action: "read"; id: string }

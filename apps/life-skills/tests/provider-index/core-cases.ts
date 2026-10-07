@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { emptyProvider, parseProvider, parseProviderCommand, parseQuery, selectProviders, possibleDuplicates,
-  uuid, dateOnly, practiceDate, webUrl, phoneKey, normalize, ProviderProblem, type ProviderInput, type ProviderRecord } from "../../src/features/provider-index/core.ts";
+  uuid, dateOnly, practiceDate, webUrl, phoneKey, normalize, writeFailureIsUncertain, ProviderProblem, type ProviderInput, type ProviderRecord } from "../../src/features/provider-index/core.ts";
 import { parseReferral, parseReferralCommand } from "../../src/features/provider-referrals/core.ts";
 const one="10000000-0000-4000-8000-000000000001", two="10000000-0000-4000-8000-000000000002", three="10000000-0000-4000-8000-000000000003";
 const op="20000000-0000-4000-8000-000000000001", caseId="30000000-0000-4000-8000-000000000001";
@@ -87,6 +87,10 @@ export const coreCases:ReadonlyArray<readonly [string,()=>void]> = [
  ["explicit duplicate acknowledgment stays explicit",()=>{const c=parseProviderCommand(create({allowDuplicate:true}));if(c.action==="create")assert.equal(c.allowDuplicate,true);else assert.fail();}],
  ["archive command is boolean, never destructive deletion",()=>{const c=parseProviderCommand({action:"archive",operationId:op,id:one,expectedVersion:1,archived:true});assert.equal(c.action,"archive");invalid(()=>parseProviderCommand({action:"delete",id:one}));}],
  ["operation ID is required",()=>invalid(()=>parseProviderCommand(create({operationId:""})))],
+ ["known denial before any receipt has a proven no-commit outcome",()=>assert.equal(writeFailureIsUncertain(false,false,"FORBIDDEN"),false)],
+ ["transport failure before a receipt remains uncertain",()=>assert.equal(writeFailureIsUncertain(false,false,"UNAVAILABLE"),true)],
+ ["readback failure after a receipt remains uncertain",()=>assert.equal(writeFailureIsUncertain(false,true,"NOT_FOUND"),true)],
+ ["authorization loss on an already-uncertain retry preserves the operation",()=>assert.equal(writeFailureIsUncertain(true,false,"FORBIDDEN"),true)],
  ["referral keeps general scope explicit",()=>assert.equal(parseReferral(referral()).caseId,null)],
  ["referral never invents a callback date",()=>assert.equal(parseReferral(referral()).nextOn,"")],
  ["case scope is an opaque reference",()=>assert.equal(parseReferral({...referral(),caseId}).caseId,caseId)],

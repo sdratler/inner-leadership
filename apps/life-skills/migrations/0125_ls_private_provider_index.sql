@@ -34,6 +34,50 @@ CREATE TABLE ls_provider_referrals.contexts (
 );
 CREATE INDEX provider_referrals_case ON ls_provider_referrals.contexts(workspace_id,owner_account_id,case_id,created_at);
 CREATE INDEX provider_referrals_provider ON ls_provider_referrals.contexts(workspace_id,owner_account_id,provider_id,created_at);
+-- Database-level ownership and immutable-scope defenses backstop the service
+-- authorization checks. A case-scoped referral must belong to that case's
+-- practitioner; general coordination has no case to bind.
+CREATE FUNCTION ls_provider_referrals.assert_case_owner() RETURNS trigger
+LANGUAGE plpgsql AS $fn$
+BEGIN
+  IF NEW.case_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM ls_cases.cases c
+    WHERE c.workspace_id=NEW.workspace_id AND c.id=NEW.case_id
+      AND c.practitioner_account_id=NEW.owner_account_id
+  ) THEN
+    RAISE EXCEPTION 'PROVIDER_REFERRAL_CASE_OWNER' USING ERRCODE='23514';
+  END IF;
+  RETURN NEW;
+END;
+$fn$;
+CREATE FUNCTION ls_provider_index.deny_entry_scope_mutation() RETURNS trigger
+LANGUAGE plpgsql AS $fn$
+BEGIN
+  IF OLD.workspace_id IS DISTINCT FROM NEW.workspace_id OR OLD.id IS DISTINCT FROM NEW.id
+     OR OLD.owner_account_id IS DISTINCT FROM NEW.owner_account_id THEN
+    RAISE EXCEPTION 'PROVIDER_ENTRY_SCOPE_IMMUTABLE' USING ERRCODE='23514';
+  END IF;
+  RETURN NEW;
+END;
+$fn$;
+CREATE FUNCTION ls_provider_referrals.deny_scope_mutation() RETURNS trigger
+LANGUAGE plpgsql AS $fn$
+BEGIN
+  IF OLD.workspace_id IS DISTINCT FROM NEW.workspace_id OR OLD.id IS DISTINCT FROM NEW.id
+     OR OLD.owner_account_id IS DISTINCT FROM NEW.owner_account_id
+     OR OLD.provider_id IS DISTINCT FROM NEW.provider_id
+     OR OLD.case_id IS DISTINCT FROM NEW.case_id THEN
+    RAISE EXCEPTION 'PROVIDER_REFERRAL_SCOPE_IMMUTABLE' USING ERRCODE='23514';
+  END IF;
+  RETURN NEW;
+END;
+$fn$;
+CREATE TRIGGER provider_entry_scope_no_edit BEFORE UPDATE ON ls_provider_index.entries
+  FOR EACH ROW EXECUTE FUNCTION ls_provider_index.deny_entry_scope_mutation();
+CREATE TRIGGER provider_referral_scope_no_edit BEFORE UPDATE ON ls_provider_referrals.contexts
+  FOR EACH ROW EXECUTE FUNCTION ls_provider_referrals.deny_scope_mutation();
+CREATE TRIGGER provider_referral_case_owner BEFORE INSERT OR UPDATE ON ls_provider_referrals.contexts
+  FOR EACH ROW EXECUTE FUNCTION ls_provider_referrals.assert_case_owner();
 CREATE TABLE ls_provider_index.command_receipts (
   workspace_id uuid NOT NULL,
   owner_account_id uuid NOT NULL,
@@ -77,3 +121,6 @@ CREATE TRIGGER provider_access_no_truncate BEFORE TRUNCATE ON ls_provider_index.
   FOR EACH STATEMENT EXECUTE FUNCTION ls_provider_index.deny_history_mutation();
 REVOKE ALL ON ALL TABLES IN SCHEMA ls_provider_index, ls_provider_referrals FROM PUBLIC;
 REVOKE ALL ON FUNCTION ls_provider_index.deny_history_mutation() FROM PUBLIC;
+REVOKE ALL ON FUNCTION ls_provider_index.deny_entry_scope_mutation() FROM PUBLIC;
+REVOKE ALL ON FUNCTION ls_provider_referrals.deny_scope_mutation() FROM PUBLIC;
+REVOKE ALL ON FUNCTION ls_provider_referrals.assert_case_owner() FROM PUBLIC;
