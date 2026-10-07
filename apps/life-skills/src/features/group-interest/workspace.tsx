@@ -71,7 +71,8 @@ export function GroupInterestWorkspace({locale}:{locale:Locale}){
   <h1>{t("Group and tutoring interest","התעניינות בקבוצה ובתגבור")}</h1>
   <p>{t("Private owner entry — interest for review, without enrollment or payment. Record only practical information; no clinical history.",
    "רישום פרטי של הבעלים — פנייה לבדיקה, ללא הרשמה או תשלום. יש לתעד מידע מעשי בלבד, ללא היסטוריה טיפולית.")}</p>
-  <p>{t("Candidate preview. The permission wording is awaiting source admission.","תצוגת מועמדת. נוסח ההסכמה ממתין לאישור במקור המוסמך.")}</p>
+  <p>{t("Private owner entry. This records administrative interest only and does not enroll, charge, invite, book or send a message.",
+   "רישום פרטי של הבעלים. הפעולה מתעדת התעניינות מנהלית בלבד ואינה רושמת, מחייבת, מזמינה, קובעת פגישה או שולחת הודעה.")}</p>
   {error&&<p role="alert">{error}</p>}
   {saved&&<p role="status">{t("Inquiry saved and read back from the app database.","הפנייה נשמרה ונקראה בחזרה ממסד הנתונים של האפליקציה.")}</p>}
   <form ref={form} onSubmit={event=>{event.preventDefault();void save();}}>

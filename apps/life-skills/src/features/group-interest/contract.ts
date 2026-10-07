@@ -1,9 +1,9 @@
 import {z} from "zod";
 /** Candidate administrative inquiry only. Never acceptance of a place, treatment or payment. */
 export const interestNotice = {
- version:"group-interest-candidate-v1",
- en:"The parent agreed that Life Skills may store these contact and group-interest details privately and contact them about this inquiry. This records interest only; it does not reserve a place, accept service terms, authorize clinical processing, marketing messages or payment.",
- he:"ההורה הסכים שכישורי חיים ישמור באופן פרטי את פרטי הקשר וההתעניינות ויצור קשר בקשר לפנייה זו. זהו תיעוד התעניינות בלבד: אין שמירת מקום, הסכמה לתנאי שירות, עיבוד מידע טיפולי, מסרים שיווקיים או תשלום.",
+ version:"ls-group-interest-20261007-01-v1",
+ en:"The parent agreed that Life Skills may store these contact and group-interest details privately and contact them about this inquiry. This is administrative interest only: it is not clinical consent, marketing permission, service registration, enrollment, placement, payment authority or a guarantee of follow-up.",
+ he:"ההורה הסכים שכישורי חיים ישמור באופן פרטי את פרטי הקשר וההתעניינות ויצור קשר בנוגע לפנייה זו. זוהי התעניינות מנהלית בלבד: אין זו הסכמה טיפולית, הרשאה לשיווק, רישום לשירות, הרשמה, שיבוץ, הרשאה לתשלום או הבטחה למעקב.",
 } as const;
 const short=z.string().trim().min(1).max(100);
 export const interestFieldsSchema=z.object({

@@ -1,9 +1,16 @@
 import {createElement} from "react";
 import {renderToStaticMarkup} from "react-dom/server";
 import {describe,expect,it} from "vitest";
+import {interestNotice} from "../../src/features/group-interest/contract.ts";
 import {classifyGroupInterestSaveFailure,GroupInterestWorkspace,permissionLanguageChanged} from "../../src/features/group-interest/workspace.tsx";
 
 describe("group interest owner form",()=>{
+ it("binds the displayed permission to the admitted canonical notice version",()=>{
+  expect(interestNotice.version).toBe("ls-group-interest-20261007-01-v1");
+  expect(interestNotice.en).toContain("administrative interest only");
+  expect(interestNotice.he).toContain("התעניינות מנהלית בלבד");
+  expect(interestNotice.en).not.toContain("Candidate");
+ });
  it.each(["en","he"] as const)("requires an explicit permission language before the exact notice can be confirmed in %s",locale=>{
   const html=renderToStaticMarkup(createElement(GroupInterestWorkspace,{locale}));
   expect(html).toContain('name="permissionLanguage"');
