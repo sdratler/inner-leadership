@@ -4,6 +4,7 @@ import { crmBridge } from "../prospects/bridge.ts";
 import { readDirectMetaAds } from "./meta-provider.ts";
 import {creativeMediaPath} from "./media-link.ts";
 import {validateMarketingSnapshot} from "./read-model.ts";
+import {AppError} from '../../lib/errors.ts';
 
 type RegistryReadback = {
   success: true;
@@ -11,7 +12,9 @@ type RegistryReadback = {
     fetchedAt: string;
     workbookUrl: string;
     creatives: MarketingSnapshot["creatives"];
+    library?: MarketingSnapshot["library"];
     publications: MarketingSnapshot["publications"];
+    nextStatusHold?: MarketingSnapshot["nextStatusHold"];
     inventory: MarketingInventory;
   };
 };
@@ -36,10 +39,12 @@ function registrySnapshot(result:PromiseSettledResult<RegistryReadback>):Registr
   try{
     const snapshot=result.value.snapshot;
     if(!snapshot||typeof snapshot.fetchedAt!=="string"||!Array.isArray(snapshot.creatives)||!Array.isArray(snapshot.publications)||snapshot.inventory===undefined)return null;
-    validateMarketingSnapshot({...empty,source:"provider_readback",fetchedAt:snapshot.fetchedAt,creatives:snapshot.creatives,publications:snapshot.publications,inventory:snapshot.inventory});
+    if("library" in snapshot&&!Object.hasOwn(snapshot,"library"))return null;
+    validateMarketingSnapshot({...empty,source:"provider_readback",fetchedAt:snapshot.fetchedAt,creatives:snapshot.creatives,publications:snapshot.publications,inventory:snapshot.inventory,...(snapshot.nextStatusHold!==undefined?{nextStatusHold:snapshot.nextStatusHold}:{}),...(snapshot.library!==undefined?{library:snapshot.library}:{})});
     // Validate the actual media mapping before advertising this read as fresh.
     const creatives=snapshot.creatives.map(asset=>({...asset,imageUrl:creativeMediaPath(asset)}));
-    return {...snapshot,creatives};
+    const library=snapshot.library?.map(asset=>({...asset,imageUrl:creativeMediaPath(asset)}));
+    return {...snapshot,creatives,...(library?{library}:{})};
   }catch{return null;}
 }
 
@@ -63,7 +68,9 @@ export async function loadMarketingSnapshot(): Promise<MarketingSnapshot> {
     source: "provider_readback",
     fetchedAt: [registry?.fetchedAt, meta?.fetchedAt].filter(Boolean).sort().at(-1) ?? null,
     creatives: registry?.creatives ?? [],
+    ...(registry?.library?{library:registry.library}:{}),
     publications: registry?.publications ?? [],
+    ...(registry?.nextStatusHold!==undefined?{nextStatusHold:registry.nextStatusHold}:{}),
     ...(registry?.inventory ? { inventory: registry.inventory } : {}),
     workbookUrl: registry?.workbookUrl ?? null,
     ads: meta?.ads ?? [],
@@ -72,4 +79,13 @@ export async function loadMarketingSnapshot(): Promise<MarketingSnapshot> {
     connectionErrors: errors,
     inventoryReadback,
   };
+}
+
+/** Same registered public-content inventory, without an unrelated Meta metrics
+ * request. Missing inventory is unavailable, never an empty-success Calendar. */
+export async function loadContentRegistry():Promise<MarketingSnapshot>{
+  const result=await Promise.allSettled([crmBridge<RegistryReadback>("/api/bna/life-skills-app/marketing")]);
+  const registry=registrySnapshot(result[0]!);
+  if(!registry)throw new AppError('UNAVAILABLE');
+  return {...empty,source:'registry_only',fetchedAt:registry.fetchedAt,creatives:registry.creatives,publications:registry.publications,...(registry.nextStatusHold!==undefined?{nextStatusHold:registry.nextStatusHold}:{}),inventory:registry.inventory,workbookUrl:registry.workbookUrl};
 }

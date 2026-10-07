@@ -8,6 +8,8 @@ export type CommunityRuleChange = {
   targetRuleId?: string | null;
   at: string;
 };
+export type WritingRuleScope = "community" | "general";
+export type WritingRuleChange = CommunityRuleChange & { scope?: WritingRuleScope };
 export type RuleEdit = {
   state: "ready" | "already_applied" | "needs_review" | "needs_playbook" | "unsafe";
   text: string;
@@ -17,9 +19,12 @@ export type RuleEdit = {
   sha256: string;
 };
 
-const heading = "### Community-reply writing preferences";
+const headings: Record<WritingRuleScope, string> = {
+  community: "### Community-reply writing preferences",
+  general: "### Global writing preferences",
+};
 const idPattern = /^CR-[0-9a-f]{32}$/;
-const entryPattern = /^\*\*(CR-[0-9a-f]{32}) — scope: community; language: (en|he|both); created: ([^;]+); updated: ([^*]+)\*\* (.+)$/gm;
+const entryPattern = /^\*\*(CR-[0-9a-f]{32}) — scope: (community|general); language: (en|he|both); created: ([^;]+); updated: ([^*]+)\*\* (.+)$/gm;
 const digest = (text: string) => createHash("sha256").update(text, "utf8").digest("hex");
 const normalized = (text: string) => text.normalize("NFKC").toLocaleLowerCase().replace(/[\p{P}\p{S}]/gu, " ").replace(/\s+/g, " ").trim();
 const words = (text: string) => new Set(normalized(text).split(" ").filter(word => word.length >= 3));
@@ -43,22 +48,30 @@ function playbookRule(rule: string): boolean {
   return /(?:\bcta\b|call to action|whatsapp|\bdm\b|booking link|publish|posting|group rules|sales invitation|קריאה לפעולה|וואטסאפ|הודעה פרטית|פרסומ|קישור להזמנה)/i.test(rule);
 }
 type Entry = { id: string; language: "en" | "he" | "both"; created: string; updated: string; rule: string; full: string };
-function entries(source: string): Entry[] {
+function entries(source: string, scope: WritingRuleScope): Entry[] {
+  const heading = headings[scope];
   const start = source.indexOf(heading);
   if (start < 0) return [];
-  const end = source.indexOf("\n## ", start + heading.length);
-  const section = source.slice(start, end < 0 ? undefined : end);
-  return [...section.matchAll(entryPattern)].map(match => ({
-    id: match[1]!, language: match[2] as Entry["language"], created: match[3]!,
-    updated: match[4]!, rule: match[5]!, full: match[0],
+  const tail = source.slice(start + heading.length);
+  const end = tail.search(/\n#{1,3} /);
+  const section = tail.slice(0, end < 0 ? undefined : end);
+  return [...section.matchAll(entryPattern)].filter(match => match[2] === scope).map(match => ({
+    id: match[1]!, language: match[3] as Entry["language"], created: match[4]!,
+    updated: match[5]!, rule: match[6]!, full: match[0],
   }));
 }
 /** IDs of scoped rules present in the exact guide bytes sent with a draft. */
 export function communityRuleIdsInGuide(source: string): string[] {
-  return [...new Set(entries(source).map(entry => entry.id))];
+  return [...new Set(entries(source, "community").map(entry => entry.id))];
 }
 export function communityRulesInGuide(source: string): Array<{ id: string; language: "en" | "he" | "both"; rule: string }> {
-  return entries(source).map(({ id, language, rule }) => ({ id, language, rule }));
+  return writingRulesInGuide(source, "community");
+}
+export function globalRuleIdsInGuide(source: string): string[] {
+  return [...new Set(entries(source, "general").map(entry => entry.id))];
+}
+export function writingRulesInGuide(source: string, scope: WritingRuleScope): Array<{ id: string; language: "en" | "he" | "both"; rule: string }> {
+  return entries(source, scope).map(({ id, language, rule }) => ({ id, language, rule }));
 }
 function bumpVersion(text: string): string {
   const match = text.match(/^\*\*Version:\*\*\s*(\d+)\.(\d+)(\s*)$/m);
@@ -70,7 +83,12 @@ const result = (state: RuleEdit["state"], text: string, ruleId: string | null,
 
 /** Pure scoped edit against the just-read canonical source. Caller performs CAS. */
 export function composeCommunityRule(source: string, change: CommunityRuleChange): RuleEdit {
+  return composeWritingRule(source, { ...change, scope: "community" });
+}
+export function composeWritingRule(source: string, change: WritingRuleChange): RuleEdit {
+  const scope = change.scope ?? "community";
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(change.operationId) ||
+      !["community", "general"].includes(scope) ||
       !["en", "he", "both"].includes(change.language) || !Number.isFinite(Date.parse(change.at)) ||
       typeof source !== "string" || !source.includes("**Profile ID:** LS-CONTENT-VOICE") || !source.includes("## 2. Article structure"))
     return result("unsafe", source, null, null, null);
@@ -78,7 +96,12 @@ export function composeCommunityRule(source: string, change: CommunityRuleChange
   const rule = change.rule.trim().replace(/\s+/g, " ");
   if (playbookRule(rule)) return result("needs_playbook", source, null, null, null);
   const ruleId = `CR-${change.operationId.replace(/-/g, "").toLowerCase()}`;
-  const found = entries(source);
+  const heading = headings[scope];
+  if (source.split(heading).length > 2) return result("needs_review", source, null, null, null);
+  const found = entries(source, scope);
+  // One operation/rule identity cannot silently move across source scopes.
+  if (entries(source, scope === "community" ? "general" : "community").some(entry => entry.id === ruleId || entry.id === change.targetRuleId))
+    return result("needs_review", source, null, null, null);
   const replay = found.find(entry => entry.id === ruleId);
   if (replay) return result(replay.rule === rule ? "already_applied" : "needs_review", source, replay.id, replay.full, replay.full);
   const exactMatches = found.filter(entry => languagesOverlap(entry.language, change.language) && normalized(entry.rule) === normalized(rule));
@@ -104,7 +127,7 @@ export function composeCommunityRule(source: string, change: CommunityRuleChange
       matches[0]!.entry.full, null);
   }
   const activeId = target?.id ?? ruleId;
-  const line = `**${activeId} — scope: community; language: ${change.language}; created: ${target?.created ?? change.at}; updated: ${change.at}** ${rule}`;
+  const line = `**${activeId} — scope: ${scope}; language: ${change.language}; created: ${target?.created ?? change.at}; updated: ${change.at}** ${rule}`;
   let desired: string;
   if (target) desired = source.replace(target.full, line);
   else if (source.includes(heading)) desired = source.replace(heading, `${heading}\n\n${line}`);

@@ -33,8 +33,11 @@ export function qualifiedNewInbound(inquiry:{ctwaAttribution?:CtwaAttribution|un
  * transcript, family/case/account inference, provider token or address book.
  */
 export const acquisitionCandidateMetadataSchema=z.object({id:z.string().uuid(),
- source:z.literal("organic_whatsapp"),phone:z.string().refine(v=>normalizePhone(v)===v),
- displayName:z.string().max(120),occurredAt:z.iso.datetime({offset:true}).refine(v=>new Date(v).toISOString()===v)}).strict();
+ source:z.enum(["organic_whatsapp","android_nomad"]),phone:z.string().refine(v=>normalizePhone(v)===v),
+ displayName:z.string().max(120),occurredAt:z.iso.datetime({offset:true}).refine(v=>new Date(v).toISOString()===v),
+ callState:z.literal("incoming").optional(),durationSeconds:z.number().int().min(0).max(86400).optional()}).strict()
+ .refine(v=>v.source==="android_nomad"?v.callState==="incoming"&&v.durationSeconds!==undefined:
+  v.callState===undefined&&v.durationSeconds===undefined);
 export type AcquisitionCandidateMetadata=z.infer<typeof acquisitionCandidateMetadataSchema>;
 export type AcquisitionCandidate=AcquisitionCandidateMetadata&{state:"NEEDS_REVIEW"};
 
@@ -59,7 +62,7 @@ export type AcquisitionReviewItem=AcquisitionCandidate&{matching:{state:"unmatch
  * to pending records outside that window, independently of the search. */
 export type AcquisitionPage={items:AcquisitionReviewItem[];total:number;page:number;pages:number;authorityEpoch:number;hasMore:boolean};
 export const acquisitionPageSchema:z.ZodType<AcquisitionPage>=z.object({
- items:z.array(acquisitionCandidateMetadataSchema.extend({state:z.literal("NEEDS_REVIEW"),matching:z.object({
+ items:z.array(acquisitionCandidateMetadataSchema.safeExtend({state:z.literal("NEEDS_REVIEW"),matching:z.object({
   state:z.enum(["unmatched","existing","ambiguous","reserved"]),people:z.array(z.object({personId:z.string().uuid(),
    displayName:z.string().max(120),version:z.number().int().min(1).nullable(),eligible:z.boolean()}).strict()).max(1000)}).strict()}).strict()).max(12),
  total:z.number().int().min(0).max(1000),page:z.number().int().min(1),pages:z.number().int().min(1),authorityEpoch:epoch,hasMore:z.boolean()

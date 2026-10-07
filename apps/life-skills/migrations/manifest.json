@@ -150,5 +150,25 @@
   {
     "name": "0118_ls_contact_delta_history.sql",
     "sha256": "89124785efc166f1f4aa1390f814798c2b63b71a874e37b4da10e11a7c0a202f"
+  },
+  {
+    "name": "0119_ls_case_work_tasks.sql",
+    "sha256": "5e97f59f4b9caa07db49a6ce0549a49e25ee6a48f893ace72873038ffe034d8b"
+  },
+  {
+    "name": "0120_ls_task_workflow.sql",
+    "sha256": "f099a103f215b066417a03031d6df8ede3907238ddad3bbb2f7f154d8f6b6025"
+  },
+  {
+    "name": "0121_ls_administrative_tasks.sql",
+    "sha256": "303f8bcd33faf0c45b6a2b8c849c30eb3005fa03f5c0b84af615f8b7d7300c16"
+  },
+  {
+    "name": "0122_ls_call_activity_links.sql",
+    "sha256": "5472787029d825b464fdb0712888d60e310a666691f2c59e1a648e2223d088ff"
+  },
+  {
+    "name": "0123_ls_lead_commands.sql",
+    "sha256": "8af72dc80feda1487885907efdc1e632b4521758cc62cff092fc374986e66c30"
   }
 ]

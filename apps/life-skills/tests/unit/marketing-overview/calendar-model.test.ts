@@ -72,7 +72,8 @@ describe("read-only Marketing content calendar", () => {
   it("renders a real empty grid, Hebrew/English views and planned-versus-provider copy", () => {
     const empty = renderToStaticMarkup(React.createElement(MarketingDashboard, { locale: "en", snapshot: snapshot([]), initialSection: "content_calendar", initialMonth: "2026-09", renderedAt: "2026-09-25T08:00:00Z" }));
     expect(empty).toContain("Monthly content calendar");
-    expect(empty).toContain("No upcoming planned Hebrew Status");
+    expect(empty).toContain("No scheduled time recorded");
+    expect(empty).toContain("No upcoming Hebrew Status is recorded as ready, scheduled or sending");
     expect((empty.match(/class="lsr-content-day"/g) ?? [])).toHaveLength(calendarDates("2026-09").length);
     const he = renderToStaticMarkup(React.createElement(MarketingDashboard, { locale: "he", snapshot: snapshot([post("planned", "2026-09-30T17:00:00Z", "ready")]), initialSection: "content_calendar", initialMonth: "2026-09", renderedAt: "2026-09-25T08:00:00Z" }));
     expect(he).toContain("הסטטוס המתוכנן הבא בעברית במאגר");

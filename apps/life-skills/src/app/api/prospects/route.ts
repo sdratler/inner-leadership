@@ -44,6 +44,7 @@ async function requireContactableProspect(runtime:Awaited<ReturnType<typeof iden
  // operational record before issuing a form or attempting any provider send.
  const row=(await readAuthoritativeProspects(actor,runtime)).find(row=>row.leadId===leadId);
  if(!row)throw new AppError('NOT_FOUND');if(prospectContactSuppressed(row))throw new AppError('FORBIDDEN');
+ return row;
 }
 export async function GET(request:Request){try{
  const s=await session(request),rows=await readAuthoritativeProspects(s.actor,s.runtime);
@@ -92,7 +93,9 @@ export async function POST(request:Request){try{const s=await session(request);v
    (input.firstName?`Hi ${input.firstName},`:`Hi,`);
   const message=input.locale==="he"?`${hello} בהמשך לשיחה שלנו, זה הקישור לטופס ההיכרות: ${href}. לאחר מילוי הטופס אפשר להמשיך לתשלום עבור הפגישה הראשונה.`:
    `${hello} following our conversation, here is the intake form: ${href}. After submitting it, you can continue to payment for the first session.`;
-  const planned={stage:"Intake sent",nextAction:"Review submitted intake",dueDate:"",updateProvenance:"private-app:intake-sent"};
+  // Issuing the form must not erase an already agreed callback or its due
+  // date. Intake and payment progress are stored as separate journey facts.
+  const planned={stage:"Intake sent",updateProvenance:"private-app:intake-sent"};
   const sent=await sendAuthoritativeProspectMessage(s.actor,s.runtime,input.leadId,message,planned,undefined,epoch);
   const sentAt=sent.receipt.sentAt??new Date().toISOString();
   const fields={...planned,formSent:sentAt,messageReceipt:sent.receipt.providerMessageId??`Whapi delivery confirmed at ${sentAt}`};

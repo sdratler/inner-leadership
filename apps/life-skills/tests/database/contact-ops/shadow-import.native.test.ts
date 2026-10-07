@@ -63,6 +63,7 @@ test("populated37 to38 delta-history migration preserves original contacts and l
  let d:Awaited<ReturnType<typeof fixture>>|undefined;
  try {
   const prior=contactOpsMigrationPrefix(historical.inventory,"0117_ls_acquisition_decisions.sql");
+  const throughDelta=contactOpsMigrationPrefix(historical.inventory,CONTACT_DELTA_MIGRATION.name);
   const client=await historical.pool.connect();
   try{await migrate({query:(sql,values)=>client.query(sql,values?[...values]:undefined)},prior,false);}finally{client.release();}
   vi.stubEnv("TEST_DATABASE_URL",historical.url);vi.stubEnv("LS_CALENDAR_TEST_ALLOW","true");d=await fixture();
@@ -72,17 +73,18 @@ test("populated37 to38 delta-history migration preserves original contacts and l
   const preserve=async()=>Promise.all(["ls_identity.people","ls_contact_ops.profiles","ls_contact_ops.legacy_links"].map(async table=>(await d!.pool.query(`SELECT to_jsonb(t) AS row FROM ${table} t WHERE workspace_id=$1 ORDER BY to_jsonb(t)::text`,[d!.workspaceId])).rows));
   const before=await preserve(),ledger=(await d.pool.query("SELECT * FROM ls_control.migrations ORDER BY name")).rows;
   expect(ledger).toHaveLength(37);
-  expect(await store.transaction(tx=>contactDeltaIntegrity(tx,historical.inventory))).toEqual({objectsAbsent:true,tables:false,schemaCatalog:false,foreignKeys:false,historyImmutable:false,reviewedFunctions:false,permissions:false,referencesSound:false});
+  expect(throughDelta).toHaveLength(38);
+  expect(await store.transaction(tx=>contactDeltaIntegrity(tx,throughDelta))).toEqual({objectsAbsent:true,tables:false,schemaCatalog:false,foreignKeys:false,historyImmutable:false,reviewedFunctions:false,permissions:false,referencesSound:false});
   const migrationClient=await historical.pool.connect();
   try{
    const runner={query:(sql:string,values?:readonly unknown[])=>migrationClient.query(sql,values?[...values]:undefined)};
-   expect(await migrate(runner,historical.inventory,false)).toEqual({applied:1,pending:0});
-   expect(await migrate(runner,historical.inventory,false)).toEqual({applied:0,pending:0});
-   expect(await migrate(runner,historical.inventory,true)).toEqual({applied:0,pending:0});
+   expect(await migrate(runner,throughDelta,false)).toEqual({applied:1,pending:0});
+   expect(await migrate(runner,throughDelta,false)).toEqual({applied:0,pending:0});
+   expect(await migrate(runner,throughDelta,true)).toEqual({applied:0,pending:0});
   }finally{migrationClient.release();}
   expect(await preserve()).toEqual(before);
   expect((await d.pool.query("SELECT * FROM ls_control.migrations WHERE name<>$1 ORDER BY name",[CONTACT_DELTA_MIGRATION.name])).rows).toEqual(ledger);
-  expect(await store.transaction(tx=>contactDeltaIntegrity(tx,historical.inventory))).toEqual({objectsAbsent:false,tables:true,schemaCatalog:true,foreignKeys:true,historyImmutable:true,reviewedFunctions:true,permissions:true,referencesSound:true});
+  expect(await store.transaction(tx=>contactDeltaIntegrity(tx,throughDelta))).toEqual({objectsAbsent:false,tables:true,schemaCatalog:true,foreignKeys:true,historyImmutable:true,reviewedFunctions:true,permissions:true,referencesSound:true});
  }finally{await d?.pool.end();vi.unstubAllEnvs();await historical.close();}
 });
 

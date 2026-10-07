@@ -1,7 +1,10 @@
 import type { CreativeVersion, MarketingSnapshot, Publication } from "./contracts.ts";
 import { invariant, validIso, validTimezone } from "../session-workflow/policy.ts";
+export function registeredCreativeRevision(asset: CreativeVersion): boolean {
+    return !("registeredRevision" in asset) || Object.hasOwn(asset, "registeredRevision") && asset.registeredRevision === true;
+}
 export function approvedCreative(asset: CreativeVersion): boolean {
-    return asset.review === "approved" && /^[a-f0-9]{64}$/.test(asset.contentDigest) && asset.contentDigest === asset.approvedDigest;
+    return registeredCreativeRevision(asset) && asset.review === "approved" && /^[a-f0-9]{64}$/.test(asset.contentDigest) && asset.contentDigest === asset.approvedDigest;
 }
 export function publicationLabel(p: Publication, assets: readonly CreativeVersion[]): string {
     if (p.state === "held") return "Held — not eligible for publication";
@@ -52,6 +55,13 @@ function validateCreative(asset: CreativeVersion): void {
     invariant(typeof asset === "object" && asset !== null && !Array.isArray(asset), "CREATIVE_FIELDS");
     const required = ["assetId", "revision", "locale", "width", "height", "imageUrl", "title", "caption", "contentDigest", "review", "approvedDigest"];
     invariant(required.every(key => Object.hasOwn(asset, key)), "CREATIVE_FIELDS");
+    invariant(!("registeredRevision" in asset) || Object.hasOwn(asset, "registeredRevision") && typeof asset.registeredRevision === "boolean", "CREATIVE_FIELDS");
+    invariant(!("concept" in asset) || Object.hasOwn(asset,"concept") && (asset.concept===null || Number.isSafeInteger(asset.concept) && asset.concept!>0 && asset.concept!<=999999),"CREATIVE_FIELDS");
+    invariant(!("cycle" in asset) || Object.hasOwn(asset,"cycle") && (asset.cycle===null || typeof asset.cycle==="string" && asset.cycle.length>0 && asset.cycle.length<=120 && !/[\u0000-\u001f\u007f]/.test(asset.cycle)),"CREATIVE_FIELDS");
+    invariant(["registeredRevisionLabel","catalogKind"].every(key=>!(key in asset)||Object.hasOwn(asset,key)&&typeof asset[key as "registeredRevisionLabel"|"catalogKind"]==="string"),"CREATIVE_FIELDS");
+    invariant(!("collection" in asset) || Object.hasOwn(asset,"collection") && ["templates","history"].includes(asset.collection!) && !Object.hasOwn(asset,"reviewToken"),"CREATIVE_FIELDS");
+    invariant(!("reviewToken" in asset) || Object.hasOwn(asset,"reviewToken") && typeof asset.reviewToken==="string" && /^[a-f0-9]{64}$/.test(asset.reviewToken),"CREATIVE_FIELDS");
+    if("artworkReview" in asset){const review=asset.artworkReview;invariant(Object.hasOwn(asset,"artworkReview")&&review!==null&&typeof review==="object"&&["approve_artwork","needs_revision"].includes(review.decision)&&typeof review.note==="string"&&review.note.length<=1200&&validIso(review.savedAt)&&/^[a-f0-9-]{36}$/i.test(review.operationId),"CREATIVE_FIELDS");}
     invariant(typeof asset.assetId === "string" && /^[A-Za-z0-9._-]{1,200}$/.test(asset.assetId) && Number.isSafeInteger(asset.revision) && asset.revision > 0 && asset.revision <= 999999 && ["en", "he"].includes(asset.locale), "CREATIVE_IDENTITY");
     // Zero means an unrecorded size: preserve the record, but never use it as a
     // valid next/image dimension or infer placement eligibility from it.
@@ -82,17 +92,25 @@ function validatePublication(p: Publication): void {
     invariant(!("confirmedAt" in p) || Object.hasOwn(p, "confirmedAt") && (p.confirmedAt === null || typeof p.confirmedAt === "string" && validIso(p.confirmedAt)), "PUBLICATION_TIME");
 }
 export function validateMarketingSnapshot(snapshot: MarketingSnapshot): void {
-    const allowed = new Set(["source", "fetchedAt", "creatives", "publications", "ads", "scout", "inventory", "adSeries", "adReporting", "workbookUrl", "connectionErrors", "inventoryReadback"]);
+    const allowed = new Set(["source", "fetchedAt", "creatives", "library", "publications", "ads", "scout", "inventory", "nextStatusHold", "adSeries", "adReporting", "workbookUrl", "connectionErrors", "inventoryReadback"]);
     invariant(Object.keys(snapshot).every(key => allowed.has(key)) && ["source", "fetchedAt", "creatives", "publications", "ads", "scout"].every(key => key in snapshot), "MARKETING_FIELDS");
     invariant(["synthetic", "provider_readback", "registry_only"].includes(snapshot.source) && (snapshot.fetchedAt === null || validIso(snapshot.fetchedAt)), "MARKETING_PROVENANCE");
-    invariant(snapshot.creatives.length <= 1000 && snapshot.publications.length <= 2000 && snapshot.ads.length <= 200, "MARKETING_PAGE_BOUND");
-    for (const asset of snapshot.creatives) validateCreative(asset);
+    invariant(snapshot.library===undefined || Object.hasOwn(snapshot,"library") && Array.isArray(snapshot.library),"MARKETING_FIELDS");
+    invariant(snapshot.creatives.length + (snapshot.library?.length??0) <= 1000 && snapshot.publications.length <= 2000 && snapshot.ads.length <= 200, "MARKETING_PAGE_BOUND");
+    for (const asset of snapshot.creatives) {validateCreative(asset);invariant(!("collection" in asset),"CREATIVE_FIELDS");}
+    for (const asset of snapshot.library??[]) {validateCreative(asset);invariant(Object.hasOwn(asset,"collection") && !["RAW_PHOTO","MASK","PROVIDER_REFERENCE"].includes(asset.catalogKind??"") && (asset.collection!=="history" || asset.review==="retired" && asset.approvedDigest===null),"CREATIVE_FIELDS");}
     if(snapshot.inventoryReadback){const read=snapshot.inventoryReadback;invariant(validIso(read.lastAttemptAt)&&(read.lastSuccessfulReadAt===null||validIso(read.lastSuccessfulReadAt))&&(read.status==="available"?read.lastSuccessfulReadAt!==null&&read.errorCode===null:read.status==="error"&&read.errorCode==="creative_inventory_unavailable"),"MARKETING_INVENTORY_PROVENANCE");}
     if(snapshot.inventory!==undefined){
         const counts=snapshot.inventory;
         invariant(typeof counts==="object"&&counts!==null&&!Array.isArray(counts),"MARKETING_INVENTORY_FIELDS");
         const numericFields=["files","concepts","publishablePosts","heStatusReady","heFeedReady","enFeedReady","adEligible","queued","published","needsApproval","needsResizeOrCaption","heldMissing"] as const;
         invariant(numericFields.every(key=>Object.hasOwn(counts,key)&&Number.isSafeInteger(counts[key])&&counts[key]>=0)&&Object.hasOwn(counts,"inLiveAds")&&(counts.inLiveAds===null||Number.isSafeInteger(counts.inLiveAds)&&counts.inLiveAds>=0)&&Object.hasOwn(counts,"partial")&&typeof counts.partial==="boolean"&&Object.hasOwn(counts,"asOf")&&typeof counts.asOf==="string"&&validIso(counts.asOf),"MARKETING_INVENTORY_FIELDS");
+    }
+    if(snapshot.nextStatusHold!==undefined&&snapshot.nextStatusHold!==null){
+        const hold=snapshot.nextStatusHold;
+        invariant(typeof hold==="object"&&!Array.isArray(hold)&&Object.keys(hold).every(key=>["state","language","reason","conceptId","candidateAssetIds"].includes(key))&&["state","language","reason","conceptId","candidateAssetIds"].every(key=>Object.hasOwn(hold,key)),"MARKETING_STATUS_HOLD");
+        invariant(hold.state==="held"&&["en","he"].includes(hold.language)&&/^[A-Z0-9_:-]{1,120}$/.test(hold.reason)&&Number.isSafeInteger(hold.conceptId)&&hold.conceptId>0&&hold.conceptId<=999999&&Array.isArray(hold.candidateAssetIds)&&hold.candidateAssetIds.length>0&&hold.candidateAssetIds.length<=20&&new Set(hold.candidateAssetIds).size===hold.candidateAssetIds.length,"MARKETING_STATUS_HOLD");
+        invariant(hold.candidateAssetIds.every(assetId=>typeof assetId==="string"&&/^[A-Za-z0-9._-]{1,200}$/.test(assetId)&&snapshot.creatives.some(asset=>asset.assetId===assetId&&asset.locale===hold.language&&asset.concept===hold.conceptId&&["VERTICAL","STATUS"].includes(asset.surface??"")&&registeredCreativeRevision(asset))),"MARKETING_STATUS_HOLD");
     }
     for (const p of snapshot.publications) validatePublication(p);
     for (const a of snapshot.ads)

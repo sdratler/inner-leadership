@@ -10,7 +10,7 @@ import { TOKEN_PATTERN } from '../identity/crypto.ts';
 import { calendarRuntime } from './runtime.ts';
 import { drainCalendarEventsIsolated } from './relay.ts';
 import { applyCalendarCreditEffect } from '../payments/calendar-consumer.ts';
-import { availabilitySchema, attendanceSchema, bookingSchema, exceptionSchema, listSchema, logisticsSchema, manualNoticeSchema, noticeSchema, replacementSchema, taskCreateSchema, taskListSchema, taskCompleteSchema, versionSchema } from './validation.ts';
+import { availabilitySchema, attendanceSchema, bookingSchema, exceptionSchema, listSchema, logisticsSchema, manualNoticeSchema, noticeSchema, replacementSchema, taskCreateSchema, taskListSchema, taskCompleteSchema, taskManageSchema, versionSchema } from './validation.ts';
 import { InternalTaskService } from './tasks.ts';
 import { z } from 'zod';
 export function routeId<K extends string>(value:string,kind:K){try{return asId(value,kind);}catch{throw new AppError('INVALID_REQUEST');}}
@@ -48,8 +48,14 @@ export async function handleCalendar(request:Request,path:readonly string[]):Pro
   await enforceRateLimit(identity.services.limits,opaqueRateLimitKey(`calendar:${actor.workspaceId}:${actor.id}:${request.method==='GET'?'read':'write'}`,identity.config.rateLimitKey),request.method==='GET'?240:60,60_000);
   const key=request.headers.get('idempotency-key')??'';
   let data:unknown;
-  if(request.method==='GET'&&path.length===1&&path[0]==='tasks'){
+  if(request.method==='GET'&&path.length===1&&path[0]==='content'){
+   const q=readQuery(z.strictObject({from:z.iso.datetime({offset:true}),to:z.iso.datetime({offset:true})}),query(request,['from','to']));
+   const {readCalendarContent}=await import('./content-read.ts');
+   data=await readCalendarContent(actor,q.from,q.to,async()=>{const current=await identity.services.sessions.actor(token);if(current.role!=='practitioner'||current.workspaceId!==actor.workspaceId)throw new AppError('FORBIDDEN');});
+  }else if(request.method==='GET'&&path.length===1&&path[0]==='tasks'){
    const q=readQuery(taskListSchema,query(request,['from','to','caseId','mode']));data=await tasks.list(actor,q.from,q.to,q.caseId,q.mode??'live');
+  }else if(request.method==='GET'&&path.length===2&&path[0]==='tasks'){
+   const q=readQuery(z.strictObject({mode:z.enum(['live','demo']).nullable()}),query(request,['mode']));data=await tasks.get(actor,routeId(path[1]!,'task'),q.mode??'live');
   }else if(request.method==='POST'&&path.length===2&&path[0]==='tasks'&&path[1]==='sync-followups'){
    if(actor.role!=='practitioner')throw new AppError('FORBIDDEN');
    taskSyncPhase='body';
@@ -62,10 +68,21 @@ export async function handleCalendar(request:Request,path:readonly string[]):Pro
    taskSyncPhase='task-sync';
    data=await tasks.syncCrmFollowups(actor,rows);
    taskSyncPhase='response';
+  }else if(request.method==='POST'&&path.length===2&&path[0]==='tasks'&&path[1]==='sync-work'){
+   if(actor.role!=='practitioner')throw new AppError('FORBIDDEN');
+   query(request,[]);const body=await readJson(request,z.strictObject({mode:z.enum(['live','demo'])}));
+   data=await tasks.syncCaseWork(actor,body.mode);
+  }else if(request.method==='POST'&&path.length===2&&path[0]==='tasks'&&path[1]==='sync-content'){
+   if(actor.role!=='practitioner')throw new AppError('FORBIDDEN');
+   query(request,[]);await readJson(request,z.strictObject({}));
+   const {syncContentWork}=await import('./content-work-read.ts');
+   data=await syncContentWork(actor,async()=>{const current=await identity.services.sessions.actor(token);if(current.role!=='practitioner'||current.workspaceId!==actor.workspaceId||current.id!==actor.id)throw new AppError('FORBIDDEN');},sources=>tasks.syncContentWork(actor,sources));
   }else if(request.method==='POST'&&path.length===1&&path[0]==='tasks'){
    query(request,[]);data=await tasks.create(actor,key,await readJson(request,taskCreateSchema));
   }else if(request.method==='POST'&&path.length===3&&path[0]==='tasks'&&path[2]==='complete'){
    query(request,[]);const body=await readJson(request,taskCompleteSchema);data=await tasks.complete(actor,routeId(path[1]!,'task'),key,body.expectedVersion,body.mode??'live');
+  }else if(request.method==='PATCH'&&path.length===2&&path[0]==='tasks'){
+   query(request,[]);data=await tasks.manage(actor,routeId(path[1]!,'task'),key,await readJson(request,taskManageSchema));
   }else if(request.method==='GET'&&path.length===1&&path[0]==='appointments'){
    data=await service.list(actor,readQuery(listSchema,query(request,['from','to','caseId','cursor','mode'])));
   }else if(request.method==='GET'&&path.length===2&&path[0]==='appointments'){
