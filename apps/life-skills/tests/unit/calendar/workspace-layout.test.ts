@@ -115,6 +115,9 @@ describe('operational Calendar composition',()=>{
  it('uses the available narrow-screen width without clipping or reducing typography',()=>{
   expect(css).toContain('.lsw.lsu .lsu-page:has(>main.ls-cal){padding-block-start:0;padding-inline:0}');
   expect(css).toContain('.lsw.lsu .ls-cal .lsw-calendar-toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.5rem;align-items:center;padding:.5rem}');
-  expect(css).not.toMatch(/\.ls-cal[^{}]*\{[^}]*overflow\s*:\s*hidden/);
+  // R51 permits two-line summaries only inside the native expandable task.
+  // Forms, dialogs, the board and actions must still never be clipped.
+  expect(css.replace(/\.ls-cal-task-summary>strong\s*\{[^}]*\}/g,'')).not.toMatch(/\.ls-cal[^{}]*\{[^}]*overflow\s*:\s*hidden/);
+  expect(css).toContain('.ls-cal-task[open] .ls-cal-task-summary>strong {display:block;overflow:visible}');
  });
 });

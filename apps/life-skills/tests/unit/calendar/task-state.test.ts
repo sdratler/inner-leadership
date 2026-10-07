@@ -26,6 +26,6 @@ it.each(['en','he'] as const)('places the same %s snoozed task in board and agen
  const manage=vi.fn(),complete=vi.fn(),common={items:[],tasks:[task],locale,names:{},onOpen:vi.fn(),onManageTask:manage,onCompleteTask:complete};
  const board=renderToStaticMarkup(createElement(CalendarBoard,{...common,dates:['2026-10-05','2026-10-07'],view:'week'})),agenda=renderToStaticMarkup(createElement(CalendarAgenda,common));
  expect(board.split('id="day-2026-10-07"')[0]).not.toContain(task.title);
- for(const html of [board,agenda]){expect(html.match(/Synthetic retained task/g)).toHaveLength(1);expect(html).toContain(taskStateLabel('in_progress',locale));expect(html).toContain(locale==='he'?'נדחתה עד':'Snoozed until');expect(html).toContain('2026-10-05');expect(html).toContain('2026-10-07');expect(html).toContain(locale==='he'?'כל היום':'All day');expect(html).toContain('aria-controls="ls-cal-task-manage"');expect(html).not.toContain('19:00');}
+ for(const html of [board,agenda]){expect(html.match(/Synthetic retained task/g)).toHaveLength(1);expect(html).toContain(taskStateLabel('in_progress',locale));expect(html).toContain(locale==='he'?'נדחתה עד':'Snoozed until');expect(html).toContain('2026-10-05');expect(html).toContain('2026-10-07');expect(html).toContain(locale==='he'?'ללא שעה מוגדרת':'No time set');expect(html).toContain('aria-controls="ls-cal-task-manage"');expect(html).not.toContain('19:00');}
  expect(manage).not.toHaveBeenCalled();expect(complete).not.toHaveBeenCalled();
 });
