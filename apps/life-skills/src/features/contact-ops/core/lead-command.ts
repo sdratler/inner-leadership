@@ -103,7 +103,7 @@ export function parseLeadText(input:string,today:string):LeadIntent|null{
   if(/^(?:he's interested|she's interested|interested|הוא מתעניין|היא מתעניינת|מתעניין)$/i.test(clause)){if(draft.stage&&draft.stage!=="Prospect")return null;draft.stage="Prospect";continue;}
   if((match=/^(?:stage|status|שלב|מצב)\s*:\s*(.+)$/i.exec(clause))){const aliases=new Map([["פנייה חדשה","New inquiry"],["נוצר קשר","Contacted"],["ניתנה הצעה","Offer made"],["מתעניין","Prospect"],["מתעניין/ת","Prospect"]]);const stage=aliases.get(match[1]!)??match[1]!;if(!approvedAdministrativeStage(stage)||draft.stage&&draft.stage!==stage)return null;draft.stage=stage;continue;}
   if(/^(?:spoke today|דיברנו היום)$/i.test(clause)){if(draft.note)return null;draft.note=clause;continue;}
-  if((match=/^(?:call(?: him| her)?|next action|follow up|להתקשר(?: אליו| אליה)?|הפעולה הבאה|המשך טיפול)\s*:?\s+(.+)$/i.exec(clause))){const when=followUpWhen(match[1]!.toLocaleLowerCase(),today);if(!when||draft.dueDate&&draft.dueDate!==when.date||draft.callbackWindow)return null;
+  if((match=/^(?:call(?: him| her)?|next action|follow up|להתקשר(?: אליו| אליה)?|הפעולה הבאה|המשך טיפול)\s*:?\s+(.+)$/i.exec(clause))){const when=followUpWhen(match[1]!.toLocaleLowerCase(),today);if(!when||draft.nextAction||draft.dueDate)return null;
    const hebrew=/[א-ת]/.test(clause),base=/^(?:call|להתקשר)/i.test(clause)?(hebrew?"להתקשר":"Call"):(hebrew?"המשך טיפול":"Follow up");
    if(when.window)draft.callbackWindow=when.window;draft.nextAction=when.window?`${base} — ${callbackWindowLabel(when.window,hebrew?"he":"en")}`:base;draft.dueDate=when.date;continue;}
   if(/^(?:add to google contacts|google life skills lead|תייג בgoogle contacts|הוסף לאנשי הקשר של google)$/i.test(clause)){draft.google=true;continue;}
