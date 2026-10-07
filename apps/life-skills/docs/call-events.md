@@ -32,15 +32,20 @@ concurrent retry stores once. Nomad's timestamp survives its worker retry. A new
 ring notification with a different timestamp is distinct; this is not a claimed
 carrier call ID. `duration=0` does not prove a missed/completed call.
 
-Encrypted immutable receipts reuse the existing acquisition store. Unknown,
-shared, reserved, DEMO, suppressed, archived or non-adult endpoints remain
-unclassified Needs Review. Only native authority can append a minimal activity
-link to one existing live administrative contact, without changing their name,
-stage, notes, account, case, tasks or consent. Before native cutover/freeze there
+Encrypted immutable receipts reuse the existing acquisition store. ALL new
+notifications remain unclassified Needs Review, including a uniquely matched
+existing contact. Reported caller attribution is unqualified: Nomad may report a
+previous caller. Native authority, a replay or passing phone spot checks cannot
+grant trust or attach the receipt automatically. There is no source-trust toggle.
+Captured/reported time is the queued notification time, not verified call start;
+these notifications contain no recorded audio. Before native cutover/freeze there
 is receipt capture only, never a parallel Sheet/native writer. Explicit ordinary
 practitioner promotion creates a `native_manual` lead with Phone/Nomad provenance,
-not a fabricated WhatsApp thread. Normal matching preserves all existing fields.
-The private directory shows the latest five linked calls, separately from
+not a fabricated WhatsApp thread. An explicit reviewed match may link to an
+existing contact and preserves all its fields. Verify the caller independently
+before deciding; a displayed phone match is only a hint. Existing decisions and
+immutable links survive replay; this change does not repair historical wrong
+links. The private directory shows the latest five linked notifications, separately from
 clinical records, with an explicit bounded-history label.
 
 Activation gates: reviewed/protected code integration; approved same-target

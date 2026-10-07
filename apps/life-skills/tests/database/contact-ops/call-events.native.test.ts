@@ -28,7 +28,8 @@ async function setup(activate=true,demoFirst=false){
  const review=()=>decisions.list(actor,3,{page:1,search:""});
  const create=(phone=event.phone)=>crm.createContact(actor,{name:"Existing synthetic person",phone,language:"he",source:"Owner entered",
   notes:"Original note\nהערה שמורה",nextAction:"Keep next action",dueDate:"2026-10-07"},randomUUID(),3);
- return {f,db,actor,authority,crm,decisions,calls,count,contacts,review,create,prepare,switchNative};
+ const match=async(candidateId:string,personId:string)=>{const row=(await contacts()).items.find(r=>r.personId===personId)!;return decisions.decide(actor,{action:"match",candidateId,personId,expectedVersion:row.version!,expectedEpoch:3,operationId:randomUUID()});};
+ return {f,db,actor,authority,crm,decisions,calls,count,contacts,review,create,prepare,switchNative,match};
 }
 test("unknown call is one encrypted unclassified candidate across concurrent retries, with no lead/account/case/task/send",async()=>{
  const s=await setup();const tables=["ls_identity.people","ls_identity.accounts","ls_cases.cases","ls_calendar.tasks","ls_contact_ops.profiles","ls_contact_ops.inbound_threads","ls_contact_ops.acquisition_projection_status"];
@@ -41,16 +42,22 @@ test("unknown call is one encrypted unclassified candidate across concurrent ret
  await expect(s.calls.capture({...event,displayName:"Changed under same identity"})).rejects.toThrow("CONFLICT");
  expect((await s.review()).items[0]?.displayName).toBe(event.displayName);
 });
-test("known native administrative contact gets minimal activity, never overwritten notes/stage/identity or WhatsApp thread",async()=>{
+test("false reported known caller stays in Needs Review without CRM attachment or field changes",async()=>{
  const s=await setup(),created=await s.create(),before=(await s.contacts()).items.find(r=>r.personId===created.personId)!;
- await s.calls.capture(event);await s.calls.capture(event);
+ // The actual ringing caller is B, but the unqualified upstream reports A.
+ // Backend cannot recover B from an A-only payload; a phone match is not trust.
+ await s.create("+15550001002");
+ const concurrent=await Promise.all(Array.from({length:8},()=>s.calls.capture(event)));
+ expect(concurrent.filter(result=>!result.replayed)).toHaveLength(1);
  const after=(await s.contacts()).items.find(r=>r.personId===created.personId)!;
- const {callActivity,...unchanged}=after;expect(unchanged).toEqual(before);expect(callActivity).toMatchObject({items:[{occurredAt:event.occurredAt,callState:"incoming",durationSeconds:0}],hasMore:false});
- expect((await s.review()).total).toBe(0);expect(await s.count("ls_contact_ops.call_activity_links")).toBe(1);
+ expect(after).toEqual(before);expect(after.callActivity).toBeUndefined();
+ expect((await s.review()).items[0]).toMatchObject({state:"NEEDS_REVIEW",matching:{state:"existing",people:[{personId:created.personId}]}});expect(await s.count("ls_contact_ops.call_activity_links")).toBe(0);
  expect(await s.count("ls_contact_ops.inbound_threads")).toBe(0);expect(await s.count("ls_contact_ops.lead_promotion_operations")).toBe(0);
- expect((await s.authority.read(s.actor)).nativeWritesSinceSwitch).toBe(2);expect(after.version).toBe(before.version);
+ expect((await s.authority.read(s.actor)).nativeWritesSinceSwitch).toBe(3);expect(after.version).toBe(before.version);
  const second={...event,occurredAt:"2026-10-06T09:05:00.000Z"};await s.calls.capture(second);
- expect((await s.contacts()).items.find(r=>r.personId===created.personId)?.callActivity?.items).toHaveLength(2);
+ expect((await s.review()).total).toBe(2);expect(await s.count("ls_contact_ops.call_activity_links")).toBe(0);
+ // Distinct queued timestamps are two notifications, not proof of two physical calls.
+ expect(await s.count("ls_contact_ops.inbound_activity_candidates")).toBe(2);
 });
 test("explicit promotion uses genuine manual Phone/Nomad provenance; match preserves existing fields and replays once",async()=>{
  const s=await setup();await s.calls.capture(event);const candidate=(await s.review()).items[0]!;
@@ -68,18 +75,19 @@ test("not-lead disposition and immutable known-person link survive later phone c
  await s.decisions.decide(s.actor,{action:"not_lead",candidateId:candidate.id,operationId:randomUUID(),expectedEpoch:3});await s.create();await s.calls.capture(event);
  expect(await s.count("ls_contact_ops.call_activity_links")).toBe(0);expect((await s.review()).total).toBe(0);
  const next={...event,occurredAt:"2026-10-06T09:06:00.000Z"};await s.calls.capture(next);const row=(await s.contacts()).items.find(r=>r.references.some(ref=>ref.phone===event.phone))!;
- await expect(s.decisions.decide(s.actor,{action:"match",candidateId:row.callActivity!.items[0]!.id,operationId:randomUUID(),expectedEpoch:3,personId:row.personId,expectedVersion:row.version!})).rejects.toThrow("CONFLICT");
+ const candidateId=(await s.review()).items[0]!.id;await s.match(candidateId,row.personId);
+ await expect(s.decisions.decide(s.actor,{action:"match",candidateId,operationId:randomUUID(),expectedEpoch:3,personId:row.personId,expectedVersion:row.version!})).rejects.toThrow("CONFLICT");
  const raw=(await s.f.pool.query("SELECT payload_ciphertext FROM ls_contact_ops.profiles WHERE workspace_id=$1 AND person_id=$2",[s.f.workspaceId,row.personId])).rows[0].payload_ciphertext;
  const profile=crmProfileSchema.parse(JSON.parse(unseal(raw,crmProfileAad(s.f.workspaceId,row.personId),s.f.keyring)));
  await s.f.pool.query("UPDATE ls_contact_ops.profiles SET payload_ciphertext=$3 WHERE workspace_id=$1 AND person_id=$2",[s.f.workspaceId,row.personId,
   seal(JSON.stringify({...profile,nativeInquiry:{...profile.nativeInquiry!,phone:"+15550001009"}}),crmProfileAad(s.f.workspaceId,row.personId),s.f.keyring)]);
  await s.calls.capture(next);expect(await s.count("ls_contact_ops.call_activity_links")).toBe(1);expect((await s.review()).total).toBe(0);
 });
-test("Sheet and frozen phases capture only receipts; exact replay can reconcile after native authority",async()=>{
+test("Sheet/frozen receipts remain quarantined when replayed after native cutover",async()=>{
  const s=await setup(false);await s.calls.capture(event);expect(await s.count("ls_contact_ops.profiles")).toBe(0);
  expect((await s.authority.read(s.actor)).phase).toBe("sheet_active");await s.prepare();await s.calls.capture({...event,occurredAt:"2026-10-06T09:01:00.000Z"});
  expect(await s.count("ls_contact_ops.call_activity_links")).toBe(0);await s.switchNative();await s.create();await s.calls.capture(event);
- expect(await s.count("ls_contact_ops.call_activity_links")).toBe(1);expect((await s.review()).total).toBe(1);expect((await s.authority.read(s.actor)).nativeWritesSinceSwitch).toBe(2);
+ expect(await s.count("ls_contact_ops.call_activity_links")).toBe(0);expect((await s.review()).total).toBe(2);expect((await s.authority.read(s.actor)).nativeWritesSinceSwitch).toBe(1);
 });
 test.each(["suppressed","archived","minor","reserved","shared","demo"] as const)("%s endpoint cannot be silently linked or promoted",async kind=>{
  const s=await setup(true,kind==="demo"),created=kind==="demo"?{personId:s.f.parent.actor.personId!}:await s.create();
@@ -106,7 +114,7 @@ test.each(["suppressed","archived","minor","reserved","shared","demo"] as const)
 });
 test("latest-five activity stays bounded and ordinary denied/revoked roles cannot read calls",async()=>{
  const s=await setup(),created=await s.create();
- for(let minute=0;minute<7;minute++)await s.calls.capture({...event,occurredAt:new Date(Date.parse(event.occurredAt)+minute*60000).toISOString()});
+ for(let minute=0;minute<7;minute++){await s.calls.capture({...event,occurredAt:new Date(Date.parse(event.occurredAt)+minute*60000).toISOString()});await s.match((await s.review()).items[0]!.id,created.personId);}
  const row=(await s.contacts()).items.find(r=>r.personId===created.personId)!;expect(row.callActivity).toMatchObject({items:Array.from({length:5},()=>expect.anything()),hasMore:true});
  expect(row.callActivity!.items[0]!.occurredAt).toBe("2026-10-06T09:06:00.000Z");
  for(const denied of [s.f.parent.actor,s.f.parentTwo.actor,s.f.outsider.actor]){
@@ -118,6 +126,7 @@ test("latest-five activity stays bounded and ordinary denied/revoked roles canno
 });
 test("new call links enforce same-workspace foreign keys, immutability and real SQL permission denial",async()=>{
  const s=await setup(),created=await s.create();await s.calls.capture(event);
+ await s.match((await s.review()).items[0]!.id,created.personId);
  for(const sql of ["UPDATE ls_contact_ops.call_activity_links SET linked_at=clock_timestamp() WHERE workspace_id=$1","DELETE FROM ls_contact_ops.call_activity_links WHERE workspace_id=$1"])
   await expect(s.f.pool.query(sql,[s.f.workspaceId])).rejects.toMatchObject({code:"23514"});
  await expect(s.f.pool.query("INSERT INTO ls_contact_ops.call_activity_links(workspace_id,candidate_id,person_id) VALUES($1,$2,$3)",[randomUUID(),randomUUID(),created.personId])).rejects.toMatchObject({code:"23503"});

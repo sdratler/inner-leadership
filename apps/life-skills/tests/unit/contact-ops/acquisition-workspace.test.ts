@@ -10,8 +10,11 @@ const item:AcquisitionReviewItem={id:"00000000-0000-4000-8000-000000000001",sour
  occurredAt:"2026-10-02T10:00:00.000Z",state:"NEEDS_REVIEW",matching:{state:"unmatched",people:[]}};
 test.each(["en","he"] as const)("%s call review shows genuine source, ringing caveat and collapsed owner actions",locale=>{
  const html=renderToStaticMarkup(createElement(AcquisitionReviewCard,{item:{...item,source:"android_nomad",callState:"incoming",durationSeconds:0},locale,epoch:3,remember:()=>{},saved:()=>{},denied:()=>{},refresh:()=>{}}));
- expect(html).toContain(locale==="en"?"Incoming phone call · Nomad":"שיחה נכנסת · Nomad");expect(html).not.toContain("Organic WhatsApp");
- expect(html).toContain(locale==="en"?"does not confirm a completed or missed call":"אינה מאשרת שיחה שהושלמה או הוחמצה");
+ expect(html).toContain(locale==="en"?"Incoming call notification · Nomad":"הודעה על שיחה נכנסת · Nomad");expect(html).not.toContain("Organic WhatsApp");
+ expect(html).toContain(locale==="en"?"Captured/reported time":"זמן קליטה מדווח");
+ expect(html).toContain(locale==="en"?"may be a previous caller":"עלולה להיות של מתקשר קודם");
+ expect(html).toContain(locale==="en"?"Confirm independently before matching or promoting":"יש לאמת בנפרד לפני שיוך או קידום");
+ expect(html).toContain(locale==="en"?"no audio, verified call start":"ללא שמע, זמן תחילת שיחה מאומת");
  expect(html).toContain("<details>");expect(html).not.toContain("<details open");expect(html).not.toContain("href=\"https://wa.me");
 });
 test.each(["en","he"] as const)("%s expired acquisition sign-in retains its validated page",locale=>{

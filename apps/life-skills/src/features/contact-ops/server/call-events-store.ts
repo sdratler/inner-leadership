@@ -9,7 +9,6 @@ import {systemClock,type IdentityClock} from "../../identity/types.ts";
 import {normalizedCallEventSchema,type CallEvent,type CallActivity} from "../core/call-events.ts";
 import {acquisitionCandidateMetadataSchema} from "../core/acquisition.ts";
 import {AcquisitionCandidateStore} from "./acquisition-store.ts";
-import {NativeInboundProjection} from "./inbound-projection.ts";
 import {privateDigest} from "./digests.ts";
 import {readCutoverState,cutoverStateSchema,cutoverStateAad} from "./cutover-state.ts";
 import {writeDestination} from "../core/cutover.ts";
@@ -45,11 +44,11 @@ export async function readCallActivities(tx:SqlSession,workspace:string,people:r
  }
  return result;
 }
-/** Dedicated authenticated Nomad binding only. Receipt is durable even before
- * cutover; no Sheet/native double writer or silent fallback. Native authority
- * links only an unambiguous existing live CRM adult. Unknowns remain candidates.
- * A replay may reconcile a previously receipt-only call AFTER native activation;
- * owner dispositions and old links are never replaced after phone reassignment.
+/** Dedicated authenticated Nomad binding only. Reported caller attribution is
+ * unqualified: even a known number remains an immutable Needs Review receipt.
+ * Native authority or replay cannot establish source quality or link a person.
+ * Only the existing explicit review action may link/promote; previous decisions
+ * and links are preserved. No source-trust toggle or payload override exists.
  */
 export class CallEventsStore{
  constructor(private readonly db:IdentityStore,private readonly workspace:string,private readonly deviceBinding:string,
@@ -68,15 +67,8 @@ export class CallEventsStore{
    await lockWorkspace(tx,asId(this.workspace,"workspace"));
    const authority=await readCutoverState(tx,this.workspace,this.keyring,true);
    const receipt=await candidates.captureMetadataInTransaction(tx,this.workspace,event,{binding,message,thread:sender,sender,messageDigest});
-   let linked=false;
    if(writeDestination(authority.phase)==="native"){
-    const done=await tx.query(`SELECT candidate_id FROM ls_contact_ops.call_activity_links WHERE workspace_id=$1 AND candidate_id=$2
-     UNION ALL SELECT candidate_id FROM ls_contact_ops.lead_promotion_operations WHERE workspace_id=$1 AND candidate_id=$2`,[this.workspace,receipt.id]);
-    if(!done.length){
-     const person=await new NativeInboundProjection(this.workspace,this.keyring,this.integrityKey,this.clock).knownCallPersonInTransaction(tx,event.phone,sender);
-     if(person)linked=await linkCallActivity(tx,this.workspace,receipt.id,person);
-    }
-    if(!receipt.replayed||linked){
+    if(!receipt.replayed){
      if(authority.nativeWritesSinceSwitch>=Number.MAX_SAFE_INTEGER-1)throw new AppError("UNAVAILABLE");
      const next=cutoverStateSchema.parse({...authority,nativeWritesSinceSwitch:authority.nativeWritesSinceSwitch+1});
      const rows=await tx.query(`UPDATE ls_contact_ops.cutover SET state_ciphertext=$3,updated_at=clock_timestamp()

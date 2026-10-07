@@ -13,7 +13,8 @@ test.each(["he","en"] as const)("%s displays bounded call metadata separately an
  const row:NativeContactRow={personId,displayName:"Synthetic caller",identityKind:"adult",...fields,version:1,mode:"live",archived:false,doNotContact:false,references:[],
   callActivity:{items:[{id:personId,occurredAt:"2026-10-06T09:00:00.000Z",callState:"incoming",durationSeconds:0}],hasMore:true}};
  const html=renderToStaticMarkup(createElement(NativePeopleWorkspace,{locale,view:"all",initialPersonId:personId,initial:{source:"native",authorityEpoch:3,page:{page:1,pages:1,pageSize:12,total:1,items:[row]}},onSheet:()=>{}}));
- expect(html).toContain(locale==="he"?"שיחות טלפון מתועדות":"Recorded phone calls");expect(html).toContain(locale==="he"?"מוצגות חמש השיחות המתועדות האחרונות":"Showing the latest five recorded calls");
+ expect(html).toContain(locale==="he"?"הודעות על שיחות נכנסות":"Incoming call notifications");expect(html).toContain(locale==="he"?"מוצגות חמש ההודעות המשויכות האחרונות":"Showing the latest five linked notifications");
+ expect(html).toContain(locale==="he"?"זמן קליטה מדווח":"Captured/reported time");expect(html).toContain(locale==="he"?"ללא שמע או זמן תחילת שיחה מאומת":"no audio or verified call start");
  expect(html).toContain('<details class="lsw-details"><summary>');expect(html).not.toContain('<details open');expect(html).not.toContain("Synthetic conversation");
  expect(row.notes).toBe(fields.notes);expect(row.version).toBe(1);
 });

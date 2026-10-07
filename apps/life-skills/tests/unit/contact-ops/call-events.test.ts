@@ -20,7 +20,7 @@ test("documented milliseconds/string duration normalize without guessing call ou
  const {contact:_contact,...minimum}=payload;void _contact;expect(callEventSchema.parse(minimum).displayName).toBe("");
 });
 test("no enhanced device, text, history, identity or business-intent input is admitted",()=>{
- for(const extra of [{text:"private"},{message:"private"},{device_info:{}},{role:"practitioner"},{workspaceId:binding},{isLead:true},{history:[]},{caseId:binding}])
+ for(const extra of [{text:"private"},{message:"private"},{device_info:{}},{role:"practitioner"},{workspaceId:binding},{isLead:true},{history:[]},{caseId:binding},{sourceQualified:true},{autoLink:true},{eventId:"physical-call"},{deviceId:binding},{state:"answered"}])
   expect(callEventSchema.safeParse({...payload,...extra}).success).toBe(false);
  for(const patch of [{source:"whatsapp"},{from:"Anonymous"},{from:"+972501234567 #"},{timestamp:"1791277200000x"},{timestamp:"1"},{duration:-1},{duration:"000"},{duration:86401},{contact:"x".repeat(121)}])
   expect(callEventSchema.safeParse({...payload,...patch}).success).toBe(false);
