@@ -139,7 +139,7 @@ describe("R35 private referral boundary",()=>{
  it("database binds case referrals to the case practitioner",async()=>{
    const providerId=randomUUID(),referralId=randomUUID();
    await f.pool.query("INSERT INTO ls_provider_index.entries(workspace_id,id,owner_account_id,payload_ciphertext) VALUES($1,$2,$3,'synthetic-ciphertext')",[f.workspaceId,providerId,f.parent.actor.id]);
-   await expect(f.pool.query("INSERT INTO ls_provider_referrals.contexts(workspace_id,id,owner_account_id,provider_id,case_id,payload_ciphertext) VALUES($1,$2,$3,$4,$5,'synthetic-ciphertext')",[f.workspaceId,referralId,f.parent.actor.id,providerId,f.first.id])).rejects.toMatchObject({code:"23514"});
+   await expect(f.pool.query("INSERT INTO ls_provider_referrals.contexts(workspace_id,id,owner_account_id,provider_id,case_id,payload_ciphertext) VALUES($1,$2,$3,$4,$5,'synthetic-ciphertext')",[f.workspaceId,referralId,f.parent.actor.id,providerId,f.first.id])).rejects.toMatchObject({code:"23503"});
  });
  it("database prevents provider and referral scope reassignment",async()=>{
    const p=await provider(),q=await provider(),id=randomUUID();
@@ -147,6 +147,26 @@ describe("R35 private referral boundary",()=>{
    await expect(f.pool.query("UPDATE ls_provider_index.entries SET owner_account_id=$3 WHERE workspace_id=$1 AND id=$2",[f.workspaceId,p.id,f.parent.actor.id])).rejects.toMatchObject({code:"23514"});
    await expect(f.pool.query("UPDATE ls_provider_referrals.contexts SET provider_id=$3 WHERE workspace_id=$1 AND id=$2",[f.workspaceId,id,q.id])).rejects.toMatchObject({code:"23514"});
    await expect(f.pool.query("UPDATE ls_provider_referrals.contexts SET case_id=$3 WHERE workspace_id=$1 AND id=$2",[f.workspaceId,id,f.second.id])).rejects.toMatchObject({code:"23514"});
+ });
+ it("database blocks later and concurrent case practitioner reassignment",async()=>{
+   const p=await provider(),id=randomUUID();
+   await referralWrite({action:"create",id,operationId:randomUUID(),detail:ref(p,f.first.id)});
+   await expect(f.pool.query("UPDATE ls_cases.cases SET practitioner_account_id=$3 WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.first.id,f.parent.actor.id])).rejects.toMatchObject({code:"23503"});
+
+   const concurrentId=randomUUID(),a=await f.pool.connect(),b=await f.pool.connect();
+   try {
+     const [reassign,insert]=await Promise.allSettled([
+       a.query("UPDATE ls_cases.cases SET practitioner_account_id=$3 WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.second.id,f.parent.actor.id]),
+       b.query("INSERT INTO ls_provider_referrals.contexts(workspace_id,id,owner_account_id,provider_id,case_id,payload_ciphertext) VALUES($1,$2,$3,$4,$5,'synthetic-ciphertext')",[f.workspaceId,concurrentId,f.practitioner.actor.id,p.id,f.second.id]),
+     ]);
+     expect([reassign.status,insert.status].sort()).toEqual(["fulfilled","rejected"]);
+     const mismatch=await f.pool.query(`SELECT count(*)::int AS n FROM ls_provider_referrals.contexts r JOIN ls_cases.cases c ON c.workspace_id=r.workspace_id AND c.id=r.case_id WHERE r.workspace_id=$1 AND r.id=$2 AND r.owner_account_id<>c.practitioner_account_id`,[f.workspaceId,concurrentId]);
+     expect(mismatch.rows[0].n).toBe(0);
+   } finally {
+     a.release();b.release();
+     await f.pool.query("DELETE FROM ls_provider_referrals.contexts WHERE workspace_id=$1 AND id=$2",[f.workspaceId,concurrentId]);
+     await f.pool.query("UPDATE ls_cases.cases SET practitioner_account_id=$3 WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.second.id,f.practitioner.actor.id]);
+   }
  });
  it("referral concurrent retry creates once",async()=>{
    const p=await provider(),c={action:"create",id:randomUUID(),operationId:randomUUID(),detail:ref(p)};const r=await Promise.all([referralWrite(c),referralWrite(c)]);expect(r.filter(x=>x.replayed)).toHaveLength(1);expect(await listRefs(p.id,f.first.id)).toHaveLength(1);

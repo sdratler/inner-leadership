@@ -18,6 +18,10 @@ CREATE TABLE ls_provider_index.entries (
   FOREIGN KEY(workspace_id,owner_account_id) REFERENCES ls_identity.accounts(workspace_id,id)
 );
 CREATE INDEX provider_entries_owner ON ls_provider_index.entries(workspace_id,owner_account_id,id);
+-- This owner-bound key lets PostgreSQL preserve the referral/case practitioner
+-- invariant across referral writes and later or concurrent case reassignment.
+ALTER TABLE ls_cases.cases ADD CONSTRAINT ls_cases_provider_referral_owner
+  UNIQUE(workspace_id,id,practitioner_account_id);
 CREATE TABLE ls_provider_referrals.contexts (
   workspace_id uuid NOT NULL,
   id uuid NOT NULL,
@@ -30,26 +34,10 @@ CREATE TABLE ls_provider_referrals.contexts (
   updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
   PRIMARY KEY(workspace_id,id),
   FOREIGN KEY(workspace_id,owner_account_id,provider_id) REFERENCES ls_provider_index.entries(workspace_id,owner_account_id,id),
-  FOREIGN KEY(workspace_id,case_id) REFERENCES ls_cases.cases(workspace_id,id)
+  FOREIGN KEY(workspace_id,case_id,owner_account_id) REFERENCES ls_cases.cases(workspace_id,id,practitioner_account_id)
 );
 CREATE INDEX provider_referrals_case ON ls_provider_referrals.contexts(workspace_id,owner_account_id,case_id,created_at);
 CREATE INDEX provider_referrals_provider ON ls_provider_referrals.contexts(workspace_id,owner_account_id,provider_id,created_at);
--- Database-level ownership and immutable-scope defenses backstop the service
--- authorization checks. A case-scoped referral must belong to that case's
--- practitioner; general coordination has no case to bind.
-CREATE FUNCTION ls_provider_referrals.assert_case_owner() RETURNS trigger
-LANGUAGE plpgsql AS $fn$
-BEGIN
-  IF NEW.case_id IS NOT NULL AND NOT EXISTS (
-    SELECT 1 FROM ls_cases.cases c
-    WHERE c.workspace_id=NEW.workspace_id AND c.id=NEW.case_id
-      AND c.practitioner_account_id=NEW.owner_account_id
-  ) THEN
-    RAISE EXCEPTION 'PROVIDER_REFERRAL_CASE_OWNER' USING ERRCODE='23514';
-  END IF;
-  RETURN NEW;
-END;
-$fn$;
 CREATE FUNCTION ls_provider_index.deny_entry_scope_mutation() RETURNS trigger
 LANGUAGE plpgsql AS $fn$
 BEGIN
@@ -76,8 +64,6 @@ CREATE TRIGGER provider_entry_scope_no_edit BEFORE UPDATE ON ls_provider_index.e
   FOR EACH ROW EXECUTE FUNCTION ls_provider_index.deny_entry_scope_mutation();
 CREATE TRIGGER provider_referral_scope_no_edit BEFORE UPDATE ON ls_provider_referrals.contexts
   FOR EACH ROW EXECUTE FUNCTION ls_provider_referrals.deny_scope_mutation();
-CREATE TRIGGER provider_referral_case_owner BEFORE INSERT OR UPDATE ON ls_provider_referrals.contexts
-  FOR EACH ROW EXECUTE FUNCTION ls_provider_referrals.assert_case_owner();
 CREATE TABLE ls_provider_index.command_receipts (
   workspace_id uuid NOT NULL,
   owner_account_id uuid NOT NULL,
@@ -123,4 +109,3 @@ REVOKE ALL ON ALL TABLES IN SCHEMA ls_provider_index, ls_provider_referrals FROM
 REVOKE ALL ON FUNCTION ls_provider_index.deny_history_mutation() FROM PUBLIC;
 REVOKE ALL ON FUNCTION ls_provider_index.deny_entry_scope_mutation() FROM PUBLIC;
 REVOKE ALL ON FUNCTION ls_provider_referrals.deny_scope_mutation() FROM PUBLIC;
-REVOKE ALL ON FUNCTION ls_provider_referrals.assert_case_owner() FROM PUBLIC;
