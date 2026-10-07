@@ -13,6 +13,7 @@ import { staffCopy, newAmendmentDays, type StaffLocale } from "./staff-locales.t
 import styles from "./staff-client.module.css";
 type Session = Awaited<ReturnType<typeof sessionInfo>>;
 type Receipt = {
+  synthetic?: boolean;
   receiptId: string;
   receivedAt: string;
   amendmentCount: number;
@@ -27,6 +28,7 @@ type Consent = {
   acknowledgements: string[];
 };
 type Entry = {
+  synthetic?: boolean;
   kind: "original" | "amendment";
   entryId: string;
   createdAt: string;
@@ -489,6 +491,7 @@ export function IntakeStaffClient({ locale = "he", respondentOrigin }: { locale?
                   type="button"
                 >
                   {t.open} · {formatDate(item.receivedAt)} · {item.amendmentCount} {t.updates}
+                  {item.synthetic && (locale === "he" ? " · נתוני בדיקה" : " · Synthetic test data")}
                 </button>
               </li>
             ))}
@@ -588,6 +591,7 @@ function HistoryEntry({ entry, locale }: { entry: Entry; locale: StaffLocale }) 
       <h2>
         {entry.kind === "original" ? t.original : t.amendment}
       </h2>
+      {entry.synthetic && <p role="note">{locale === "he" ? "נתוני בדיקה בלבד. אין כאן הסכמה קלינית של הורה אמיתי, תשלום או פגישה." : "Synthetic test data only. This is not real parental consent, a payment or an appointment."}</p>}
       <p>
         {new Intl.DateTimeFormat(locale === "en" ? "en-GB" : "he-IL", { timeZone: t.timezone, dateStyle: "medium", timeStyle: "short" }).format(new Date(entry.createdAt))} · {t.timezone}
       </p>

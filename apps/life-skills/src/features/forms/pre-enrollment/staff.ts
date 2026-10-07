@@ -6,9 +6,10 @@ import { unseal, seal, type Keyring } from "../../identity/crypto.ts";
 import type { IdentityStore } from "../../identity/store.ts";
 import type { Actor } from "../../identity/types.ts";
 import { digestPreEnrollment, parseNewPreEnrollment, parsePreEnrollment, type PreEnrollmentInput } from "./schema.ts";
+import {isSyntheticIntakeReceipt} from "./synthetic-fixture.ts";
 
-export type IntakeListItem = Readonly<{ receiptId: string; receivedAt: string; amendmentCount: number; consentVersion: string; consentHash: string }>;
-export type IntakeHistoryEntry = Readonly<{ kind: "original" | "amendment"; entryId: string; createdAt: string; actorAccountId: string | null; input: PreEnrollmentInput; consent: { version: string; hash: string; sourceHashes: readonly string[]; displayText: readonly string[]; acknowledgements: readonly string[] } | null }>;
+export type IntakeListItem = Readonly<{ receiptId: string; receivedAt: string; amendmentCount: number; consentVersion: string; consentHash: string; synthetic?:boolean }>;
+export type IntakeHistoryEntry = Readonly<{ kind: "original" | "amendment"; entryId: string; createdAt: string; actorAccountId: string | null; input: PreEnrollmentInput; synthetic?:boolean; consent: { version: string; hash: string; sourceHashes: readonly string[]; displayText: readonly string[]; acknowledgements: readonly string[] } | null }>;
 type OriginalEnvelope = { input: PreEnrollmentInput; consent: NonNullable<IntakeHistoryEntry["consent"]> };
 type HistoryRow = { payload: string; entryId: string; lead: string; createdAt: Date; actorAccountId: string | null; kind: "original" | "amendment" };
 
@@ -22,7 +23,10 @@ export class PreEnrollmentStaffService {
       const current = await freshActor(tx, actor, this.now()); requirePractitioner(current);
       const rows = await tx.query<{ receiptId: string; receivedAt: Date; amendmentCount: number; consentVersion: string; consentHash: string }>(
         `SELECT r.receipt_id AS "receiptId",r.received_at AS "receivedAt",count(a.amendment_id)::int AS "amendmentCount",r.consent_version AS "consentVersion",r.consent_hash AS "consentHash" FROM ls_intake.pre_enrollment_receipts r LEFT JOIN ls_intake.pre_enrollment_amendments a ON a.workspace_id=r.workspace_id AND a.receipt_id=r.receipt_id WHERE r.workspace_id=$1 GROUP BY r.receipt_id,r.received_at,r.consent_version,r.consent_hash ORDER BY r.received_at DESC,r.receipt_id DESC`, [current.workspaceId]);
-      return rows.map(row => ({ ...row, receivedAt: new Date(row.receivedAt).toISOString() }));
+      // Listing labels are conservative; opening a fixture verifies the full tuple below.
+      const markers=await tx.query<{id:string}>("SELECT entity_key AS id FROM ls_demo.records WHERE workspace_id=$1 AND entity_kind='submission'",[current.workspaceId]);
+      const marked=new Set(markers.map(row=>row.id));
+      return rows.map(row => ({ ...row, receivedAt: new Date(row.receivedAt).toISOString(),...(marked.has(row.receiptId)?{synthetic:true}:{}) }));
     });
   }
 
@@ -32,11 +36,12 @@ export class PreEnrollmentStaffService {
       const rows = await tx.query<HistoryRow>(
         `SELECT r.payload_ciphertext AS payload,r.receipt_id AS "entryId",i.stable_lead_ref AS lead,r.received_at AS "createdAt",NULL::uuid AS "actorAccountId",'original' AS kind FROM ls_intake.pre_enrollment_receipts r JOIN ls_intake.pre_enrollment_invitations i ON i.workspace_id=r.workspace_id AND i.invitation_id=r.invitation_id WHERE r.workspace_id=$1 AND r.receipt_id=$2 UNION ALL SELECT a.payload_ciphertext AS payload,a.amendment_id AS "entryId",i.stable_lead_ref AS lead,a.created_at AS "createdAt",a.actor_account_id AS "actorAccountId",'amendment' AS kind FROM ls_intake.pre_enrollment_amendments a JOIN ls_intake.pre_enrollment_receipts r ON r.workspace_id=a.workspace_id AND r.receipt_id=a.receipt_id JOIN ls_intake.pre_enrollment_invitations i ON i.workspace_id=r.workspace_id AND i.invitation_id=r.invitation_id WHERE a.workspace_id=$1 AND a.receipt_id=$2 ORDER BY "createdAt",kind DESC,"entryId"`, [current.workspaceId, receiptId]);
       if (!rows.length) throw new AppError("NOT_FOUND");
+      const synthetic=await isSyntheticIntakeReceipt(tx,current.workspaceId,receiptId,rows[0]!.lead);
       return rows.map(row => {
         const aad = row.kind === "original" ? `pre-enrollment:${current.workspaceId}:${row.lead}:${receiptId}:original` : `pre-enrollment:${current.workspaceId}:${row.lead}:${receiptId}:amendment:${row.entryId}`;
         const value = JSON.parse(unseal(row.payload, aad, this.ring)) as OriginalEnvelope | { input: PreEnrollmentInput };
         const input = parsePreEnrollment(value.input);
-        return { kind: row.kind, entryId: row.entryId, createdAt: new Date(row.createdAt).toISOString(), actorAccountId: row.actorAccountId, input, consent: row.kind === "original" ? (value as OriginalEnvelope).consent : null };
+        return { kind: row.kind, entryId: row.entryId, createdAt: new Date(row.createdAt).toISOString(), actorAccountId: row.actorAccountId, input,...(synthetic?{synthetic:true}:{}), consent: row.kind === "original" ? (value as OriginalEnvelope).consent : null };
       });
     });
   }
