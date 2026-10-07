@@ -6,9 +6,10 @@ import {PreEnrollmentService} from "../../src/features/forms/pre-enrollment/serv
 import {PreEnrollmentStaffService} from "../../src/features/forms/pre-enrollment/staff.ts";
 import {SqlPreEnrollmentRepository} from "../../src/features/forms/pre-enrollment/repository.ts";
 import {publicConsentHash} from "../../src/features/forms/pre-enrollment/consent.ts";
-import {issueSyntheticIntake} from "../../src/features/forms/pre-enrollment/synthetic-fixture.ts";
+import {issueSyntheticIntake,revokeSyntheticIntake} from "../../src/features/forms/pre-enrollment/synthetic-fixture.ts";
 import {projectSubmittedIntake} from "../../src/features/forms/pre-enrollment/submission-projection.ts";
 import type {IdentityStore} from "../../src/features/identity/store.ts";
+import type {Actor} from "../../src/features/identity/types.ts";
 
 const fixtures:Fixture[]=[];
 afterAll(async()=>{for(const f of fixtures)await f.pool.end();vi.unstubAllEnvs();});
@@ -34,6 +35,24 @@ async function effects(f:Fixture){
  const result:Record<string,unknown>={};
  for(const table of effectTables)result[table]=(await f.pool.query<{rows:unknown}>(`SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb) AS rows FROM ${table} t WHERE workspace_id=$1`,[f.workspaceId])).rows[0]!.rows;
  return result;
+}
+async function fixtureTuple(f:Fixture,operationId:string){
+ const sourceKey="intake-fixture:v1:"+operationId;
+ return (await f.pool.query(`SELECT
+  to_jsonb(i)-'revoked_at' AS invitation,
+  (SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.receipt_id),'[]'::jsonb) FROM ls_intake.pre_enrollment_receipts r WHERE r.workspace_id=i.workspace_id AND r.invitation_id=i.invitation_id) AS receipts,
+  (SELECT COALESCE(jsonb_agg(to_jsonb(m2) ORDER BY m2.entity_kind,m2.entity_key),'[]'::jsonb) FROM ls_demo.records m2 WHERE m2.workspace_id=i.workspace_id AND (m2.entity_key=i.invitation_id::text OR m2.source_key='intake-receipt:v1:'||i.invitation_id::text)) AS markers,
+  (SELECT COALESCE(jsonb_agg(to_jsonb(j) ORDER BY j.stable_lead_ref),'[]'::jsonb) FROM ls_onboarding.prospect_journeys j WHERE j.workspace_id=i.workspace_id AND j.stable_lead_ref=i.stable_lead_ref) AS journeys
+  FROM ls_demo.records m JOIN ls_intake.pre_enrollment_invitations i ON i.workspace_id=m.workspace_id AND i.invitation_id::text=m.entity_key
+  WHERE m.workspace_id=$1 AND m.entity_kind='form' AND m.source_key=$2`,[f.workspaceId,sourceKey])).rows[0];
+}
+/** Frozen PR163 route boundary: its service/repository revoked-token predicate is
+ * byte-equivalent for this path; the older route projected every successful
+ * submit. The projector must therefore remain unreachable after containment. */
+async function pr163SubmitBoundary(service:PreEnrollmentService,token:string,key:string,input:ReturnType<typeof payload>,project:(lead:string,fields:unknown)=>Promise<unknown>){
+ const receipt=await service.submit(token,key,input);
+ await project(receipt.stableLeadId,{formSubmitted:receipt.receivedAt,stage:"Intake submitted / awaiting payment",updateProvenance:"private-app:intake-submitted"});
+ return receipt;
 }
 
 test("native PG synthetic fixture is replay-safe, encrypted, authorized and effect-free",async()=>{
@@ -63,6 +82,61 @@ test("native PG synthetic fixture is replay-safe, encrypted, authorized and effe
  expect(persisted.consumedAt).toBeInstanceOf(Date);expect(persisted.state).toBe("awaiting_payment");
  const project=vi.fn(async()=>false);expect(await projectSubmittedIntake(store,f.workspaceId,receipt,project)).toBe(false);expect(project).not.toHaveBeenCalled();
  expect(await effects(f)).toEqual(baseline);
+});
+
+test("native PG containment preserves a consumed fixture and blocks current and PR163 duplicate replay",async()=>{
+ vi.stubEnv("LS_INTAKE_PUBLIC_CONSENT_JSON",JSON.stringify(consent));
+ const f=await fixture({demoFirst:true});fixtures.push(f);const store=poolStore(f.pool),binding={batch:"ls-owner-20260925",accountId:f.parent.actor.id};
+ const operation=randomUUID(),keyMaterial=Buffer.alloc(32,11),issued=await issueSyntheticIntake(store,f.practitioner.actor,operation,binding,keyMaterial,new Date());
+ const service=new PreEnrollmentService(new SqlPreEnrollmentRepository(store,f.workspaceId),f.keyring,()=>new Date(),true,f.workspaceId);
+ const input=payload((await service.exchange(issued.token)).childSlotIds),idempotencyKey=randomUUID(),receipt=await service.submit(issued.token,idempotencyKey,input);
+ const before=await fixtureTuple(f,operation),first=await revokeSyntheticIntake(store,f.practitioner.actor,operation,new Date());
+ expect(first).toMatchObject({synthetic:true,replayed:false});
+ const replay=await revokeSyntheticIntake(store,f.practitioner.actor,operation,new Date(Date.parse(first.revokedAt)+60_000));
+ expect(replay).toEqual({...first,replayed:true});
+ expect(await fixtureTuple(f,operation)).toEqual(before);
+ await expect(service.exchange(issued.token)).rejects.toMatchObject({code:"NOT_FOUND"});
+ await expect(service.submit(issued.token,idempotencyKey,input)).rejects.toMatchObject({code:"NOT_FOUND"});
+ const legacyProject=vi.fn(async()=>false);
+ await expect(pr163SubmitBoundary(service,issued.token,idempotencyKey,input,legacyProject)).rejects.toMatchObject({code:"NOT_FOUND"});
+ expect(legacyProject).not.toHaveBeenCalled();
+ await expect(issueSyntheticIntake(store,f.practitioner.actor,operation,binding,keyMaterial,new Date())).rejects.toMatchObject({code:"NOT_FOUND"});
+ expect((await new PreEnrollmentStaffService(store,f.keyring).history(f.practitioner.actor,receipt.receiptId))[0]).toMatchObject({synthetic:true,input:{parentName:"Synthetic Parent"}});
+});
+
+test("native PG containment is operation-scoped, role-bound and leaves ordinary invitations untouched",async()=>{
+ vi.stubEnv("LS_INTAKE_PUBLIC_CONSENT_JSON",JSON.stringify(consent));
+ const f=await fixture({demoFirst:true});fixtures.push(f);const store=poolStore(f.pool),binding={batch:"ls-owner-20260925",accountId:f.parent.actor.id};
+ const operation=randomUUID(),issued=await issueSyntheticIntake(store,f.practitioner.actor,operation,binding,Buffer.alloc(32,13),new Date());
+ await expect(revokeSyntheticIntake(store,f.parent.actor,operation,new Date())).rejects.toMatchObject({code:"FORBIDDEN"});
+ await expect(revokeSyntheticIntake(store,{...f.practitioner.actor,workspaceId:randomUUID() as Actor["workspaceId"]},operation,new Date())).rejects.toMatchObject({code:"UNAUTHENTICATED"});
+ await expect(revokeSyntheticIntake(store,f.practitioner.actor,randomUUID(),new Date())).rejects.toMatchObject({code:"NOT_FOUND"});
+ const staff=new PreEnrollmentStaffService(store,f.keyring),ordinary=await staff.issue(f.practitioner.actor,"LS-LEAD-ordinary-containment",1);
+ const ordinaryDigest=createHash("sha256").update(ordinary.token).digest("hex");
+ await expect(revokeSyntheticIntake(store,f.practitioner.actor,randomUUID(),new Date())).rejects.toMatchObject({code:"NOT_FOUND"});
+ const forgedOperation=randomUUID(),ordinaryId=(await f.pool.query<{id:string}>("SELECT invitation_id AS id FROM ls_intake.pre_enrollment_invitations WHERE workspace_id=$1 AND token_digest=$2",[f.workspaceId,ordinaryDigest])).rows[0]!.id;
+ await f.pool.query(`INSERT INTO ls_demo.records(workspace_id,batch_id,entity_kind,entity_key,source_key,account_id) VALUES($1,'ls-owner-20260925','form',$2,$3,$4)`,[f.workspaceId,ordinaryId,"intake-fixture:v1:"+forgedOperation,f.parent.actor.id]);
+ await expect(revokeSyntheticIntake(store,f.practitioner.actor,forgedOperation,new Date())).rejects.toMatchObject({code:"UNAVAILABLE"});
+ expect((await f.pool.query("SELECT revoked_at FROM ls_intake.pre_enrollment_invitations WHERE workspace_id=$1 AND token_digest=$2",[f.workspaceId,ordinaryDigest])).rows).toEqual([{revoked_at:null}]);
+ await f.pool.query("UPDATE ls_identity.accounts SET state='revoked' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.parent.actor.id]);
+ await expect(revokeSyntheticIntake(store,f.practitioner.actor,operation,new Date())).rejects.toMatchObject({code:"FORBIDDEN"});
+ const syntheticDigest=createHash("sha256").update(issued.token).digest("hex");
+ expect((await f.pool.query("SELECT revoked_at FROM ls_intake.pre_enrollment_invitations WHERE workspace_id=$1 AND token_digest=$2",[f.workspaceId,syntheticDigest])).rows).toEqual([{revoked_at:null}]);
+});
+
+test("native PG concurrent submit and containment cannot leave a usable token after acknowledged revocation",async()=>{
+ vi.stubEnv("LS_INTAKE_PUBLIC_CONSENT_JSON",JSON.stringify(consent));
+ const f=await fixture({demoFirst:true});fixtures.push(f);const store=poolStore(f.pool),binding={batch:"ls-owner-20260925",accountId:f.parent.actor.id};
+ const operation=randomUUID(),issued=await issueSyntheticIntake(store,f.practitioner.actor,operation,binding,Buffer.alloc(32,17),new Date());
+ const service=new PreEnrollmentService(new SqlPreEnrollmentRepository(store,f.workspaceId),f.keyring,()=>new Date(),true,f.workspaceId),input=payload((await service.exchange(issued.token)).childSlotIds),idempotencyKey=randomUUID();
+ const [contained,submitted]=await Promise.allSettled([revokeSyntheticIntake(store,f.practitioner.actor,operation,new Date()),service.submit(issued.token,idempotencyKey,input)]);
+ expect(contained.status).toBe("fulfilled");
+ expect(["fulfilled","rejected"]).toContain(submitted.status);
+ await expect(service.exchange(issued.token)).rejects.toMatchObject({code:"NOT_FOUND"});
+ await expect(service.submit(issued.token,idempotencyKey,input)).rejects.toMatchObject({code:"NOT_FOUND"});
+ const row=(await f.pool.query<{revokedAt:Date|null;receipts:number}>(`SELECT i.revoked_at AS "revokedAt",count(r.receipt_id)::int AS receipts FROM ls_intake.pre_enrollment_invitations i LEFT JOIN ls_intake.pre_enrollment_receipts r USING(workspace_id,invitation_id)
+  WHERE i.workspace_id=$1 AND i.token_digest=$2 GROUP BY i.revoked_at`,[f.workspaceId,createHash("sha256").update(issued.token).digest("hex")])).rows[0]!;
+ expect(row.revokedAt).toBeInstanceOf(Date);expect(row.receipts).toBe(submitted.status==="fulfilled"?1:0);
 });
 
 test("native PG rolls back an unmarked receipt and permits a clean retry",async()=>{
