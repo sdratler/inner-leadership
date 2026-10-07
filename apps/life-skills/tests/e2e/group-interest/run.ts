@@ -25,7 +25,8 @@ function cleanup(){cleanupPromise??=(async()=>{await terminate(tests);await term
 process.once("SIGTERM",()=>{void cleanup().finally(()=>process.exit(143));});
 process.once("SIGINT",()=>{void cleanup().finally(()=>process.exit(130));});
 
-type BoundaryCounts={inquiries:number;operations:number;otherWorkspaceRows:Record<string,number>};
+type WorkspaceSnapshot={count:number;snapshot:string};
+type BoundaryCounts={inquiries:number;operations:number;otherWorkspaceState:Record<string,WorkspaceSnapshot>};
 const quoteIdentifier=(value:string)=>`"${value.replaceAll('"','""')}"`;
 async function counts():Promise<BoundaryCounts>{
  const allowed=new Set(["ls_service_interest.inquiries","ls_service_interest.operations"]);
@@ -33,15 +34,17 @@ async function counts():Promise<BoundaryCounts>{
   FROM information_schema.columns c JOIN information_schema.tables t ON t.table_schema=c.table_schema AND t.table_name=c.table_name
   WHERE c.column_name='workspace_id' AND c.table_schema LIKE 'ls\\_%' ESCAPE '\\' AND t.table_type='BASE TABLE'
   ORDER BY c.table_schema,c.table_name`);
- const otherWorkspaceRows:Record<string,number>={};
+ const otherWorkspaceState:Record<string,WorkspaceSnapshot>={};
  for(const row of inventory.rows){const name=`${row.schema}.${row.table}`;if(allowed.has(name))continue;
-  const result=await f!.pool.query<{count:number}>(`SELECT count(*)::integer AS count FROM ${quoteIdentifier(row.schema)}.${quoteIdentifier(row.table)} WHERE workspace_id=$1`,[f!.workspaceId]);
-  otherWorkspaceRows[name]=result.rows[0]?.count??0;
+  const result=await f!.pool.query<WorkspaceSnapshot>(`SELECT count(*)::integer AS count,
+   COALESCE(jsonb_agg(to_jsonb(source) ORDER BY to_jsonb(source)::text),'[]'::jsonb)::text AS snapshot
+   FROM ${quoteIdentifier(row.schema)}.${quoteIdentifier(row.table)} AS source WHERE workspace_id=$1`,[f!.workspaceId]);
+  otherWorkspaceState[name]=result.rows[0]??{count:0,snapshot:"[]"};
  }
  const result=await f!.pool.query<{inquiries:number;operations:number}>(`SELECT
   (SELECT count(*)::integer FROM ls_service_interest.inquiries WHERE workspace_id=$1) AS inquiries,
   (SELECT count(*)::integer FROM ls_service_interest.operations WHERE workspace_id=$1) AS operations`,[f!.workspaceId]);
- return {...result.rows[0]!,otherWorkspaceRows};
+ return {...result.rows[0]!,otherWorkspaceState};
 }
 
 try{
@@ -71,7 +74,7 @@ try{
  const [code]=await once(tests,"exit");if(code!==0)throw new Error("GROUP_INTEREST_BROWSER_ACCEPTANCE_FAILED");
  phase="boundary-readback";
  const after=await counts();
- if(JSON.stringify(after.otherWorkspaceRows)!==JSON.stringify(baseline.otherWorkspaceRows))throw new Error("GROUP_INTEREST_WORKSPACE_SIDE_EFFECT");
+ if(JSON.stringify(after.otherWorkspaceState)!==JSON.stringify(baseline.otherWorkspaceState))throw new Error("GROUP_INTEREST_WORKSPACE_SIDE_EFFECT");
  if(after.inquiries!==baseline.inquiries+2||after.operations!==baseline.operations+2)throw new Error("GROUP_INTEREST_RECEIPT_COUNT_MISMATCH");
  console.log(`GROUP_INTEREST_ACCEPTANCE_PASS project=${project??"all"} inquiries=2 replays=2 rejected=2 sideEffects=0`);
 }catch(error){console.error(`Group Intake browser verification failed at ${phase} (${error instanceof Error?error.message:"unknown error"}). No production or provider state was used.`);process.exitCode=1;}
