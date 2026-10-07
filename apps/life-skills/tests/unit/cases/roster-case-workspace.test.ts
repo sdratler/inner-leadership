@@ -39,7 +39,7 @@ vi.mock('../../../src/features/contact-ops/native-people-workspace.tsx',async im
 import { CaseWorkspace } from '../../../src/features/cases/case-workspace.tsx';
 import { ClientsRoster,LegacyClientsRoster } from '../../../src/features/cases/clients-roster.tsx';
 import {NativePeopleWorkspace,PeopleRequestError} from '../../../src/features/contact-ops/native-people-workspace.tsx';
-import { ProspectsClient } from '../../../src/features/prospects/client.tsx';
+import { AddProspect,ProspectsClient } from '../../../src/features/prospects/client.tsx';
 import { IdentityClientError } from '../../../src/features/identity/client.ts';
 import {ContactLifecycleControls} from '../../../src/features/contact-ops/contact-lifecycle-controls.tsx';
 
@@ -100,6 +100,31 @@ it.each(['he','en'] as const)('%s Sheet directory forwards bounded filter/page c
  let prevented=false;(panel().props.onKeyDown as(e:unknown)=>void)({key:'Escape',preventDefault(){prevented=true;}});
  expect(prevented).toBe(true);expect(panel().props.hidden).toBe(true);
  expect(find(view(),e=>e.type==='details'&&e.props.id==='add-prospect')).toBeUndefined();
+});
+
+it.each(['en','he'] as const)('%s add prospect clears its successful submission before collapsing and preserves a failed draft',async locale=>{
+ const onCreated=vi.fn(),success=vi.fn().mockResolvedValue(true),failure=vi.fn().mockResolvedValue(false);
+ const view=()=>hook.render(()=>AddProspect({locale,action:success,onCreated}));
+ const phone=()=>find(view(),e=>e.type==='input'&&e.props.inputMode==='tel')!;
+ (phone().props.onChange as(e:{target:{value:string}})=>void)({target:{value:'+972535550188'}});
+ const save=()=>find(view(),e=>e.type==='button'&&(e.props.children==='Save prospect'||e.props.children==='שמירת מתעניין'))!;
+ await (save().props.onClick as()=>Promise<void>)();
+ expect(success).toHaveBeenCalledOnce();expect(onCreated).toHaveBeenCalledOnce();expect(phone().props.value).toBe('');expect(save().props.disabled).toBe(true);
+ hook.reset();onCreated.mockReset();
+ const failedView=()=>hook.render(()=>AddProspect({locale,action:failure,onCreated}));
+ const failedPhone=()=>find(failedView(),e=>e.type==='input'&&e.props.inputMode==='tel')!;
+ (failedPhone().props.onChange as(e:{target:{value:string}})=>void)({target:{value:'+972535550199'}});
+ await (find(failedView(),e=>e.type==='button'&&(e.props.children==='Save prospect'||e.props.children==='שמירת מתעניין'))!.props.onClick as()=>Promise<void>)();
+ expect(onCreated).not.toHaveBeenCalled();expect(failedPhone().props.value).toBe('+972535550199');
+});
+
+it('locks an Add prospect submission synchronously so a rapid second click cannot create a duplicate',async()=>{
+ let finish!:(saved:boolean)=>void;const action=vi.fn(()=>new Promise<boolean>(resolve=>{finish=resolve;})),onCreated=vi.fn();
+ const view=()=>hook.render(()=>AddProspect({locale:'en',action,onCreated}));
+ const phone=find(view(),e=>e.type==='input'&&e.props.inputMode==='tel')!;
+ (phone.props.onChange as(e:{target:{value:string}})=>void)({target:{value:'+972535550177'}});
+ const click=find(view(),e=>e.type==='button'&&e.props.children==='Save prospect')!.props.onClick as()=>Promise<void>;
+ const first=click(),second=click();expect(action).toHaveBeenCalledOnce();finish(true);await Promise.all([first,second]);expect(onCreated).toHaveBeenCalledOnce();
 });
 
 it('Sheet filters update bounded URL context, preserve exact stage text and restore page/search on Back',()=>{

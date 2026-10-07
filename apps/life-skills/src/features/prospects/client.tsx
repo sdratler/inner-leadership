@@ -136,7 +136,7 @@ export function ProspectsClient({locale,initialFilter="all",initialFilters,initi
  const orphanPending=state==="ready"?pendingOperations.filter(item=>!rows.some(row=>row.leadId===item.leadId)):[];
  // A slow second source must not trap ready rows beyond the first page.
  const paginationReady=(showProspects&&state==="ready")||caseState==="ready";
- async function action(payload:unknown){
+ async function action(payload:unknown):Promise<boolean>{
   setStatus("");const input=payload as {action:string;leadId?:string;operationId?:string;fields?:ProspectUpdateFields;editContext?:ProspectEditContext},kind=input.action;
   let lock:string|undefined;
   try{
@@ -144,7 +144,7 @@ export function ProspectsClient({locale,initialFilter="all",initialFilters,initi
    if(kind==="update"){
     if(!row||!input.fields||!input.editContext)throw Error("INVALID_UPDATE");
     const fields=prospectUpdateFieldsSchema.parse(input.fields);
-    const target=row.nativeEdit?.personId??row.leadId;if(saving.current.has(target))return;lock=target;saving.current.add(lock);
+    const target=row.nativeEdit?.personId??row.leadId;if(saving.current.has(target))return false;lock=target;saving.current.add(lock);
     const prepared=prepareProspectUpdate(row,fields,crypto.randomUUID(),input.editContext);
     if("expectedEpoch" in prepared){
      const observed={...row,nativeEdit:input.editContext.source==="native"?input.editContext.nativeEdit:row.nativeEdit!};
@@ -162,37 +162,37 @@ export function ProspectsClient({locale,initialFilter="all",initialFilters,initi
      const changes=Object.fromEntries(Object.entries(fields).filter((entry):entry is [string,string]=>typeof entry[1]==="string"));
      if(mounted.current){setRows(current=>current.map(r=>r.leadId===row.leadId?{...r,...changes}:r));setStatus(t.saved);}
     }
-    return;
+    return true;
    }
    if(kind==="reconcile_projection"||kind==="resolve_prepared"){
-    if(!input.operationId||saving.current.has(input.operationId))return;
+    if(!input.operationId||saving.current.has(input.operationId))return false;
     lock=input.operationId;saving.current.add(lock);
    }
    const pendingRow=kind.startsWith("send_")?rows.find(row=>row.leadId===input.leadId&&row.projectionPending):undefined;
-   if(kind.startsWith("send_")&&!ledgerReady){setStatus(locale==="he"?"שליחת WhatsApp מושהית עד לאימות יומן השליחות הפרטי.":"WhatsApp sending is paused until the private outbound ledger is verified.");return;}
+   if(kind.startsWith("send_")&&!ledgerReady){setStatus(locale==="he"?"שליחת WhatsApp מושהית עד לאימות יומן השליחות הפרטי.":"WhatsApp sending is paused until the private outbound ledger is verified.");return false;}
    if(pendingRow){
     setStatus(pendingRow.projectionState==="prepared"?(locale==="he"?
      "תוצאת המסירה אינה ודאית. יש לבדוק מול הספק לפני ניסיון שליחה נוסף.":
-     "Delivery outcome is uncertain. Verify with the provider before another send."):t.sentPending);return;
+     "Delivery outcome is uncertain. Verify with the provider before another send."):t.sentPending);return false;
    }
    const result=await api<{projectionPending?:boolean}>({method:"POST",body:JSON.stringify(payload)});
    if(mounted.current){setStatus(kind==="resolve_prepared"?(locale==="he"?
     "תוצאת הספק נרשמה; לא נשלחה הודעה נוספת. יש לבדוק את מצב ה-CRM המעודכן.":
     "Provider outcome recorded; no message was resent. Check the updated CRM state."):kind==="reconcile_projection"?(locale==="he"?
     "עדכון ה-CRM אומת ונרשם; לא נשלחה הודעה נוספת.":"CRM readback verified and recorded; no message was resent."):
-    prospectActionStatus(kind,result,locale));load();}
+    prospectActionStatus(kind,result,locale));load();}return true;
   }catch{if(mounted.current){setStatus(kind==="resolve_prepared"?(locale==="he"?
    "לא ניתן לאמת ולרשום את תוצאת הספק. הרשומה נשארה ממתינה; אין לשלוח שוב.":
    "Provider outcome could not be recorded. The hold remains; do not resend."):kind==="reconcile_projection"?(locale==="he"?
    "עדכון ה-CRM לא אומת. הרשומה עדיין ממתינה; אין לשלוח שוב.":
    "CRM readback was not verified. This record remains pending; do not resend."):
    kind==="update"||kind==="add"?t.saveFailed:t.sendFailed);
-   if(kind.startsWith("send_")||kind==="resolve_prepared"||kind==="reconcile_projection")load();}}
+   if(kind.startsWith("send_")||kind==="resolve_prepared"||kind==="reconcile_projection")load();}return false;}
   finally{if(lock)saving.current.delete(lock);}
  }
  const content=<>
   {showProspects&&<header className={embedded?"lsw-section-header":"lsw-page-header"}><div>{!embedded&&<><p className="lsw-eyebrow">{locale==="he"?"CRM פרטי":"Private CRM"}</p><h1>{t.title}</h1><p>{t.lead}</p></>}</div>{!accessBlocked&&<button ref={addButton} type="button" className="lsw-button lsw-button--secondary" aria-expanded={addOpen} aria-controls="add-prospect" onClick={()=>setAddOpen(!addOpen)}>{t.add}</button>}</header>}
-  {showProspects&&!accessBlocked&&<section ref={addRef} id="add-prospect" className="lsw-card lsu-inline-create" hidden={!addOpen} aria-label={t.add} onKeyDown={event=>{if(event.key==="Escape"){event.preventDefault();closeAdd();}}}><div className="lsw-section-header"><h2>{t.add}</h2><button type="button" className="lsw-button lsw-button--quiet" onClick={closeAdd}>{locale==="he"?"סגירה":"Close"}</button></div><AddProspect locale={locale} action={action}/></section>}
+  {showProspects&&!accessBlocked&&<section ref={addRef} id="add-prospect" className="lsw-card lsu-inline-create" hidden={!addOpen} aria-label={t.add} onKeyDown={event=>{if(event.key==="Escape"){event.preventDefault();closeAdd();}}}><div className="lsw-section-header"><h2>{t.add}</h2><button type="button" className="lsw-button lsw-button--quiet" onClick={closeAdd}>{locale==="he"?"סגירה":"Close"}</button></div><AddProspect locale={locale} action={action} onCreated={closeAdd}/></section>}
   {!embedded&&<nav className="lsw-tabs" aria-label={t.title}><a className="lsw-button lsw-button--quiet" href={`/${locale}/app/clients`}>{t.clients}</a><a className="lsw-button lsw-button--primary" aria-current="page" href={`/${locale}/app/clients?section=prospects`}>{t.prospects}</a></nav>}
   <section className="lsw-card lsu-people-toolbar" aria-label={locale==="he"?"חיפוש ומסננים":"Search and filters"}><label className="lsw-field">{showProspects?t.search:locale==="he"?"חיפוש לקוחות":"Search clients"}<input className="lsw-input" type="search" maxLength={200} value={query} onChange={event=>changeFilter("query",event.target.value)}/></label>{showProspects&&<><label className="lsw-field">{locale==="he"?"תהליך קליטה":"Intake workflow"}<select className="lsw-input" value={preset} onChange={event=>window.location.assign(workflowDestination(locale,event.target.value as Preset,new URLSearchParams(window.location.search)))}><option value="all">{t.all}</option><option value="today">{t.today}</option><option value="new">{t.newLead}</option><option value="intake">{t.intake}</option><option value="payment">{t.payment}</option><option value="booking">{t.booking}</option><option value="archived">{t.archived}</option></select></label><label className="lsw-field">{t.stage}<select className="lsw-input" value={stage} onChange={event=>changeFilter("stage",event.target.value)}><option value="">{t.any}</option>{stages.map(value=><option key={value} value={value}>{administrativeStageLabel(value,locale)}</option>)}</select></label><label className="lsw-field">{t.language}<select className="lsw-input" value={language} onChange={event=>changeFilter("language",event.target.value)}><option value="">{t.any}</option><option value="he">עברית</option><option value="en">English</option></select></label><label className="lsw-field">{t.dueFilter}<select className="lsw-input" value={due} onChange={event=>changeFilter("due",event.target.value)}><option value="">{t.any}</option><option value="today">{t.today}</option><option value="overdue">{t.overdue}</option></select></label></>}</section>
   {caseState==="loading"&&<p role="status">{locale==="he"?"טוען תיקים מורשים…":"Loading authorized cases…"}</p>}
@@ -231,12 +231,13 @@ export function ProspectsClient({locale,initialFilter="all",initialFilters,initi
  return embedded?<section className="lsu-crm-embedded" lang={locale} dir={locale==="he"?"rtl":"ltr"}>{content}</section>:<main className="lsw-main" lang={locale} dir={locale==="he"?"rtl":"ltr"}>{content}</main>;
 }
 
-function AddProspect({locale,action}:{locale:Locale;action:(payload:unknown)=>Promise<void>}){
- const t=copy[locale],[name,setName]=useState(""),[phone,setPhone]=useState(""),[language,setLanguage]=useState<""|"he"|"en">(""),[source,setSource]=useState(""),[notes,setNotes]=useState(""),[next,setNext]=useState(""),[due,setDue]=useState("");
- return <div className="lsw-stack"><div className="lsw-two-fields"><label className="lsw-field">{t.name}<input className="lsw-input" value={name} onChange={event=>setName(event.target.value)}/></label><label className="lsw-field">{t.phone}<input className="lsw-input" inputMode="tel" required value={phone} onChange={event=>setPhone(event.target.value)}/></label><label className="lsw-field">{t.language}<select className="lsw-input" value={language} onChange={event=>setLanguage(event.target.value as ""|"he"|"en")}><option value="">{t.any}</option><option value="he">עברית</option><option value="en">English</option></select></label><label className="lsw-field">{t.source}<input className="lsw-input" value={source} onChange={event=>setSource(event.target.value)}/></label><label className="lsw-field">{t.next}<input className="lsw-input" value={next} onChange={event=>setNext(event.target.value)}/></label><label className="lsw-field">{t.due}<input className="lsw-input" type="date" value={due} onChange={event=>setDue(event.target.value)}/></label></div><label className="lsw-field">{t.notes}<textarea className="lsw-input" value={notes} onChange={event=>setNotes(event.target.value)}/></label><button className="lsw-button lsw-button--primary" disabled={phone.trim().length<8} onClick={()=>action({action:"add",name,phone,language,source,notes,nextAction:next,dueDate:due})}>{locale==="he"?"שמירת מתעניין":"Save prospect"}</button></div>;
+export function AddProspect({locale,action,onCreated}:{locale:Locale;action:(payload:unknown)=>Promise<boolean>;onCreated:()=>void}){
+ const t=copy[locale],[name,setName]=useState(""),[phone,setPhone]=useState(""),[language,setLanguage]=useState<""|"he"|"en">(""),[source,setSource]=useState(""),[notes,setNotes]=useState(""),[next,setNext]=useState(""),[due,setDue]=useState(""),[submitting,setSubmitting]=useState(false),submittingRef=useRef(false);
+ async function save(){if(submittingRef.current)return;submittingRef.current=true;setSubmitting(true);try{if(!await action({action:"add",name,phone,language,source,notes,nextAction:next,dueDate:due}))return;setName("");setPhone("");setLanguage("");setSource("");setNotes("");setNext("");setDue("");onCreated();}finally{submittingRef.current=false;setSubmitting(false);}}
+ return <div className="lsw-stack" aria-busy={submitting}><div className="lsw-two-fields"><label className="lsw-field">{t.name}<input className="lsw-input" value={name} onChange={event=>setName(event.target.value)}/></label><label className="lsw-field">{t.phone}<input className="lsw-input" inputMode="tel" required value={phone} onChange={event=>setPhone(event.target.value)}/></label><label className="lsw-field">{t.language}<select className="lsw-input" value={language} onChange={event=>setLanguage(event.target.value as ""|"he"|"en")}><option value="">{t.any}</option><option value="he">עברית</option><option value="en">English</option></select></label><label className="lsw-field">{t.source}<input className="lsw-input" value={source} onChange={event=>setSource(event.target.value)}/></label><label className="lsw-field">{t.next}<input className="lsw-input" value={next} onChange={event=>setNext(event.target.value)}/></label><label className="lsw-field">{t.due}<input className="lsw-input" type="date" value={due} onChange={event=>setDue(event.target.value)}/></label></div><label className="lsw-field">{t.notes}<textarea className="lsw-input" value={notes} onChange={event=>setNotes(event.target.value)}/></label><button type="button" className="lsw-button lsw-button--primary" disabled={submitting||phone.trim().length<8} onClick={save}>{submitting?(locale==="he"?"שומר…":"Saving…"):(locale==="he"?"שמירת מתעניין":"Save prospect")}</button></div>;
 }
 
-function PreparedResolution({row,locale,action}:{row:Pick<Prospect,"projectionOperationId"|"projectionMessage"|"projectionCreatedAt">;locale:Locale;action:(payload:unknown)=>Promise<void>}){
+function PreparedResolution({row,locale,action}:{row:Pick<Prospect,"projectionOperationId"|"projectionMessage"|"projectionCreatedAt">;locale:Locale;action:(payload:unknown)=>Promise<boolean>}){
  const [outcome,setOutcome]=useState<"delivered"|"not_delivered">("delivered"),[source,setSource]=useState<"provider_delivery_log"|"provider_support_case">("provider_delivery_log"),
   [reference,setReference]=useState(""),[providerMessageId,setProviderMessageId]=useState(""),[sentAt,setSentAt]=useState(""),[verified,setVerified]=useState(false),[now,setNow]=useState(0);
  useEffect(()=>{setNow(Date.now());const timer=window.setInterval(()=>setNow(Date.now()),60000);return()=>window.clearInterval(timer)},[]);
@@ -272,7 +273,7 @@ function PreparedResolution({row,locale,action}:{row:Pick<Prospect,"projectionOp
   </div></details>;
 }
 
-function ProspectCard({row,locale,action,sendsReady}:{row:Prospect;locale:Locale;action:(payload:unknown)=>Promise<void>;sendsReady:boolean}){
+function ProspectCard({row,locale,action,sendsReady}:{row:Prospect;locale:Locale;action:(payload:unknown)=>Promise<boolean>;sendsReady:boolean}){
  const initialLanguage=knownLanguage(row),t=copy[locale],[messageLanguage,setMessageLanguage]=useState<""|"he"|"en">(initialLanguage),[message,setMessage]=useState(template(row,"return",initialLanguage)),[draft,setDraft]=useState(()=>prospectFollowUpDraft(row)),[children,setChildren]=useState(1),[booking,setBooking]=useState("");
  useEffect(()=>setDraft(current=>reconcileProspectFollowUp(current,row)),[row]);
  const {notes,nextAction:next,dueDate:due,owner}=draft.values;
