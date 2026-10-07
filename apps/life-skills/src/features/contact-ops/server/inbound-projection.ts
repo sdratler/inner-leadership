@@ -14,7 +14,7 @@ import {MAX_NATIVE_CONTACTS} from "../core/limits.ts";
 import {crmProfileAad,crmProfileSchema,type CrmProfile} from "./native-store.ts";
 import {digest,privateDigest} from "./digests.ts";
 import {readCutoverState,cutoverStateSchema,cutoverStateAad} from "./cutover-state.ts";
-import {contactSuppressed,contactArchived} from "../../prospects/native-edit.ts";
+import {contactSuppressed} from "../../prospects/native-edit.ts";
 import {qualifiedNewInbound} from "../core/acquisition.ts";
 import {AcquisitionCandidateStore} from "./acquisition-store.ts";
 
@@ -148,27 +148,6 @@ export class NativeInboundProjection {
   }
   this.claimSnapshot={tx,byPhone};return byPhone.get(phone)!;
  }
- /** A call may append administrative activity to ONE existing live adult CRM
-  * profile. Reuse the same bounded endpoint claims/reservations as WhatsApp;
-  * no account/case is matched or granted, and no name is an identity key. The
-  * caller holds the native authority and workspace locks. Unverified CRM phones
-  * are only a call routing hint, never permission to send or log in. */
- async knownCallPersonInTransaction(tx:SqlSession,phone:string,senderKey:string):Promise<string|null>{
-  const claims=await this.claims(tx,phone,senderKey),ids=[...new Set(claims.map(c=>c.personId))];
-  if(ids.length!==1||claims.some(c=>c.shared||c.revoked))return null;
-  const personId=ids[0]!;
-  const modes=await tx.query<{kind:string;mode:string;archived:boolean;demo:boolean}>(`SELECT i.kind,p.record_mode AS mode,
-   (p.archived_at IS NOT NULL) AS archived,(d.entity_key IS NOT NULL) AS demo
-   FROM ls_contact_ops.profiles p JOIN ls_identity.people i ON i.workspace_id=p.workspace_id AND i.id=p.person_id
-   LEFT JOIN ls_demo.records d ON d.workspace_id=p.workspace_id AND d.entity_kind='person' AND d.entity_key=p.person_id::text
-   WHERE p.workspace_id=$1 AND p.person_id=$2`,[this.workspace,personId]);
-  if(modes.length!==1||modes[0]!.kind!=="adult"||modes[0]!.mode!=="live"||modes[0]!.archived||modes[0]!.demo)return null;
-  const existing=await this.profile(tx,personId);if(!existing)return null;
-  const p=existing.profile;
-  if(p.administrativeArchive||p.doNotContact||contactSuppressed(p.stage)||contactArchived(p.stage)||
-   Object.values(p.leadUpdates??{}).some(v=>contactSuppressed(v.outcome??""))||await this.sourceSuppressed(tx,p))return null;
-  return personId;
- }
  async projectInTransaction(tx:SqlSession,inquiry:InboundInquiry,input:InboundProjectionKeys):Promise<{state:"receipt_only"|"projected"|"needs_resolution"|"needs_review";replayed:boolean}>{
   const keys=receiptKeys.parse(input);
   const expectedBinding=privateDigest({domain:"contact-binding-v1",binding:digest({provider:inquiry.provider,
@@ -259,7 +238,7 @@ export class NativeInboundProjection {
      AND c.provider_thread_key=$4 AND c.sender_endpoint_key=$5 LIMIT 1`,[this.workspace,outcome.personId,keys.binding,keys.thread,keys.sender]);
    const keepOwnerMatchedLead=ownerMatch.length===1&&Boolean(saved.nativeInquiry||saved.legacyIds.length);
    const sourceSuppressed=await this.sourceSuppressed(tx,saved);
-   const suppressed=Boolean(saved.administrativeArchive)||sourceSuppressed||saved.doNotContact===true||contactSuppressed(saved.stage)||Object.values(saved.leadUpdates??{}).some(v=>contactSuppressed(v.outcome??""));
+   const suppressed=sourceSuppressed||saved.doNotContact===true||contactSuppressed(saved.stage)||Object.values(saved.leadUpdates??{}).some(v=>contactSuppressed(v.outcome??""));
    const merged=crmProfileSchema.parse({...saved,...inboundFollowUp(saved,today,suppressed),
     // Each person has its own explicit provider inquiry. Historical/manual
     // references remain separate; never smear a new message across all leads.

@@ -1,20 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canResumeRuleOperation, matchesSubmittedInput, proposalForResult, replyFailureKind, ruleDraftPromotionNeedsConfirmation, writingRuleDisplayText } from "../../../src/features/community-reply/input-state.ts";
-
-describe("saved writing-rule display", () => {
-  it.each(["community", "general"])("shows the concise %s preference without ledger metadata", scope => {
-    for (const [language, rule] of [["en", "Use everyday words and keep each paragraph easy to read."], ["he", "לכתוב במילים יומיומיות ובפסקאות קצרות."], ["both", "Keep wording direct."]]) {
-      const recorded = `**CR-12345678123441238123123456789abc — scope: ${scope}; language: ${language}; created: 2026-10-05T11:00:00.000Z; updated: 2026-10-05T11:01:00.000Z** ${rule}`;
-      expect(writingRuleDisplayText(recorded)).toBe(rule);
-      expect(recorded).toContain("created: 2026-10-05T11:00:00.000Z");
-    }
-  });
-  it("preserves plain rules and unrecognized or multiline evidence rather than guessing", () => {
-    for (const recorded of ["Use direct words.", "**Unknown** Keep this text.",
-      "**CR-12345678123441238123123456789abc — scope: general; language: en; created: unknown; updated: unknown** Keep this text.",
-      "**CR-12345678123441238123123456789abc — scope: general; language: en; created: 2026-10-05T11:00:00Z; updated: 2026-10-05T11:01:00Z** First line.\nSecond line."]) expect(writingRuleDisplayText(recorded)).toBe(recorded);
-  });
-});
+import { canResumeRuleOperation, matchesSubmittedInput, proposalForResult, replyFailureKind, ruleDraftPromotionNeedsConfirmation } from "../../../src/features/community-reply/input-state.ts";
 
 describe("manual drafting limit feedback", () => {
   it("identifies only the API's confirmed manual limit", () => {

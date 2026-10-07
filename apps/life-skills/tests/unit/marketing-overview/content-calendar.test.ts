@@ -112,32 +112,6 @@ describe("retained read-only Marketing calendar controls",()=>{
     expect(html).toMatch(/aria-label="Source record errors"[\s\S]*role="alert"[\s\S]*DEMO_PROVIDER_FAILED/);
     expect(html).toContain("publication=older-failure");
   });
-  it.each(['en','he'] as const)("keeps the latest unresolved WhatsApp receipt visible in the %s planned view without a resend control",locale=>{
-    const item={...publication("unknown-receipt","2026-10-05T17:00:00Z","unknown"),providerReceiptId:"DEMO-unknown-receipt",providerReadAt:"2026-10-05T17:02:00Z",errorCode:"PUBLICATION_READBACK_UNKNOWN"};
-    const html=render([item],{filter:"queued",channel:"whatsapp_status",layout:"agenda"},locale);
-    expect(html).toContain(locale==='en'?'Latest unresolved WhatsApp Status attempt':'ניסיון הסטטוס האחרון שטרם הוכרע');
-    expect(html).toContain('DEMO-unknown-receipt');expect(html).toContain('PUBLICATION_READBACK_UNKNOWN');
-    expect(html).toContain(locale==='en'?'Do not retry while the result is unknown':'אין לנסות שוב כל עוד התוצאה אינה ידועה');
-    expect(html).not.toContain('Published — provider receipt recorded');expect(html).not.toMatch(/<button[^>]*>[^<]*Retry/i);
-    expect(render([{...item,id:'known-failure',state:'failed'}],{filter:'queued'},locale)).not.toContain(locale==='en'?'Do not retry while the result is unknown':'אין לנסות שוב כל עוד התוצאה אינה ידועה');
-  });
-  it.each(['en','he'] as const)("distinguishes %s unbound Status drafts and exact creative holds from a live queue",locale=>{
-    const draft={...publication("unbound-draft","2026-10-08T17:00:00Z","draft"),provider:"unbound" as const,errorCode:"SCHEDULED_ASSET_BINDING_MISSING"};
-    const heldAsset={...asset,assetId:"DEMO-held-he",title:"DEMO held Hebrew Status",surface:"WHATSAPP_STATUS",holdReason:"D21 OFF — owner release required"};
-    const html=render([draft],{filter:"queued",channel:"whatsapp_status"},locale,[asset,heldAsset]);
-    expect(html).toContain(locale==='en'?'No scheduled time recorded':'לא רשום מועד מתוזמן');
-    expect(html).toContain(locale==='en'?'1 unbound Status draft is a planning record, not a live provider-queue item.':'טיוטת סטטוס לא מקושרת אחת היא רשומת תכנון, ולא פריט חי בתור הספק.');
-    expect(html).toContain('DEMO held Hebrew Status');expect(html).toContain('D21 OFF — owner release required');
-    expect(html).not.toContain(locale==='en'?'>Not recorded</summary>':'>לא רשום</summary>');
-  });
-  it.each(['en','he'] as const)("shows the exact %s canonical Hebrew publisher hold instead of claiming no schedule evidence",locale=>{
-    const heldAsset={...asset,assetId:"C21-HE-STATUS-TEAL-v04-FROZEN",concept:21,surface:"STATUS",registeredRevision:true,title:"Concept 21 — STATUS",holdReason:"D21 OFF"};
-    const source={...snapshot([],[heldAsset]),nextStatusHold:{state:'held' as const,language:'he' as const,reason:'HEBREW_CALENDAR_OFF',conceptId:21,candidateAssetIds:[heldAsset.assetId]}};
-    const html=renderToStaticMarkup(React.createElement(MarketingContentCalendar,{locale,snapshot:source,query:{filter:'queued',channel:'whatsapp_status'},renderedAt:"2026-10-07T15:00:00Z",thumbnail:a=>React.createElement("span",{"data-thumbnail":a.assetId},a.title)}));
-    expect(html).toContain(locale==='en'?'Held — HEBREW_CALENDAR_OFF':'מושהה — HEBREW_CALENDAR_OFF');
-    expect(html).toContain(locale==='en'?'The existing publisher records this Hebrew turn as held.':'המתזמן הקיים רושם את התור העברי כמושהה.');
-    expect(html).toContain(heldAsset.assetId);expect(html).not.toContain(locale==='en'?'No scheduled time recorded':'לא רשום מועד מתוזמן');expect(html).not.toMatch(/<button[^>]*>[^<]*(Retry|ניסיון)/i);
-  });
   it("does not turn a foreign URL containing a Drive-looking path into a trusted thumbnail",()=>{
     const html=renderToStaticMarkup(React.createElement(MarketingDashboard,{locale:"en",snapshot:snapshot([],[{...asset,imageUrl:"https://untrusted.example/drive.google.com/file/d/demo-fake/view"}]),initialSection:"creatives",renderedAt:"2026-10-01T08:00:00Z"}));
     expect(html).not.toContain("thumbnail?id=demo-fake");expect(html).not.toContain("<img");expect(html).toContain("Thumbnail unavailable");

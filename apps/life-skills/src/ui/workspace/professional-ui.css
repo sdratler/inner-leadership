@@ -38,10 +38,6 @@
 .lsw.lsu .lsw-tabs button[aria-selected=true]{background:var(--ui-teal);color:#fff}
 .lsw.lsu .lsw-button--secondary:hover,.lsw.lsu .lsw-button--quiet:hover{background:#e7f0f1}
 .lsu-account-panel>a:hover{background:#e7f0f1}
-/* The shared nav min-inline-size reset must not shrink this absolute panel
-   to the avatar's width. Keep the whole menu inside narrow RTL/LTR viewports. */
-.lsw.lsu .lsu-account-panel{inline-size:248px;min-inline-size:0;max-inline-size:calc(100vw - 24px)}
-.lsw.lsu .lsu-account-panel>a{overflow-wrap:normal;word-break:normal;min-block-size:44px}
 .lsu-drawer .lsu-nav-link[aria-current=page]{background:var(--ui-teal);color:#fff}
 @media(max-width:1250px){.lsu-header{padding-inline:18px}.lsu-brand img{width:94px}.lsu-brand strong{font-size:20px}.lsu-top-tabs>a{padding-inline:10px;font-size:14px}}
 @media(max-width:1023px){.lsu-header>.lsu-top-tabs{display:none}.lsu-mobile-tabs{display:block;background:#fff;border-bottom:1px solid var(--ui-line);padding:6px 16px}.lsu-mobile-tabs .lsu-top-tabs{width:100%;justify-content:flex-start;scroll-snap-type:x proximity}.lsu-mobile-tabs .lsu-top-tabs>a{scroll-snap-align:start}.lsu-content{padding-block-start:20px}}
@@ -131,15 +127,3 @@
 .lsw.lsu .lsw-shared-items fieldset>label{display:grid;gap:6px;margin-block:0}
 .lsw.lsu .lsw-shared-items fieldset>label:has(input[type=checkbox]){display:flex;align-items:center;gap:10px;min-height:44px}
 @media(max-width:600px){.lsw.lsu .lsw-shared-items .lsu-task-content{padding-inline:12px}.lsw.lsu .lsw-shared-items fieldset{padding:12px}.lsw.lsu .lsw-shared-items .lsw-card{padding:16px}}
-/* Keep customer context together without stretching sparse Home rows. */
-.lsw.lsu .lsw-home{align-content:start}
-.lsw.lsu .lsw-home>.lsw-page-header{margin-block-end:0}
-.lsw.lsu .lsw-home-context{display:grid;gap:12px;min-inline-size:0}
-.lsw.lsu .lsw-home-context>:is(p,label,nav){margin-block:0}
-/* Optional CRM command: compact readable review, without crowding live lists. */
-.lsw.lsu .lsu-lead-command .lsw-stack{gap:14px}
-.lsw.lsu .lsu-lead-command :is(p,h3){margin-block:0}
-.lsw.lsu .lsu-lead-command .lsw-help{max-inline-size:60ch}
-.lsw.lsu .lsu-lead-command .lsu-command-date{white-space:nowrap}
-.lsw.lsu .lsu-lead-command .lsw-actions{margin-block-start:4px}
-@media(max-width:600px){.lsw.lsu .lsu-lead-command .lsw-card{padding:16px}.lsw.lsu .lsu-lead-command .lsw-actions{display:grid;grid-template-columns:minmax(0,1fr)}.lsw.lsu .lsu-lead-command .lsw-actions .lsw-button{inline-size:100%;margin-block:0}}

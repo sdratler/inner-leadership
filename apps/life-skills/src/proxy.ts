@@ -76,7 +76,7 @@ export function proxy(request: NextRequest) {
   // These data pages/APIs depend on strict canonical HTTPS forwarding. Validate the original
   // transport before the request-header rewrite below can hide an invalid chain.
   // Forwarding never grants a session, role, case or audience permission.
-  if (privateDataPage || ["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins", "/api/updates", "/api/owner-digest", "/api/community-threads", "/api/private/contact-acquisition", "/api/private/acquisition/call-events"].includes(pathname)||/^\/api\/(?:notifications|marketing)(?:\/|$)/.test(pathname)) {
+  if (privateDataPage || ["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins", "/api/updates", "/api/owner-digest", "/api/community-threads", "/api/private/contact-acquisition"].includes(pathname)||/^\/api\/(?:notifications|marketing)(?:\/|$)/.test(pathname)) {
     try {
       if (request.nextUrl.hash || requestHost !== canonicalOrigin.host.toLowerCase()) throw new Error("invalid transport");
       if (request.headers.has("x-forwarded-proto") || request.headers.has("x-forwarded-host")) {
@@ -172,7 +172,7 @@ export function proxy(request: NextRequest) {
   const practitionerDetail=/^\/(he|en)\/app\/(?:marketing|feedback|reports|forms|resources|settings(?:\/[^/]+)?|cases\/[^/]+\/sessions(?:\/[^/]+)?)$/.exec(pathname);
   if(practitionerDetail){
     const query:Record<string,string|undefined>={};
-    for(const key of ['mode','date','view','caseId','audienceId','appointmentId','context','section','filter','month','layout','channel','state','from','to','publication','language','placement','approval','search','page','threadId','communityView','collection','concept','cycle']){const values=request.nextUrl.searchParams.getAll(key);query[key]=values.length===1?values[0]:undefined;}
+    for(const key of ['mode','date','view','caseId','audienceId','appointmentId','context','section','filter','month','layout','channel','state','from','to','publication','language','placement','approval','search','page','threadId']){const values=request.nextUrl.searchParams.getAll(key);query[key]=values.length===1?values[0]:undefined;}
     inbound.set('x-ls-practitioner-return',practitionerDetailReturnPath(practitionerDetail[1] as 'en'|'he',pathname,query));
   }
   const parentPage = /^\/(he|en)\/family(?:\/|$)/.exec(pathname);

@@ -14,7 +14,6 @@ import {privateDigest} from "./digests.ts";
 import {contactSuppressed,prospectUpdateFieldsSchema,type ProspectUpdateFields} from "../../prospects/native-edit.ts";
 import {prospectCreateFieldsSchema,type ProspectCreateFields} from "../core/people-create.ts";
 import {normalizePhone} from "../core/contact-resolution.ts";
-import {changeAdministrativeArchive,contactLifecycleSchema,type ContactLifecycle} from "../core/contact-lifecycle.ts";
 export type NativeAdminFields=Pick<CrmProfile,"stage"|"nextAction"|"followUpDate"|"notes">;
 
 /** Operational native CRM boundary, not an authority switch. It has no Sheet,
@@ -92,33 +91,6 @@ export class OperationalNativeCrmStore {
  update(actor:Actor,profile:CrmProfile,expectedVersion:number,operationId:string,expectedEpoch:number){
   return this.authority.withDestination(actor,{destination:"native",intent:"write",expectedEpoch},
    tx=>this.profileStore(tx).update(actor,profile,expectedVersion,operationId));
- }
- /** Same authority/identity, no removal of links or external effects. The outer
-  * immutable receipt is checked before merging the latest encrypted profile,
-  * so an old archive retry cannot undo a later restore or overwrite new notes. */
- lifecycle(actor:Actor,input:ContactLifecycle){
-  const command=contactLifecycleSchema.parse(input),operation="contact-lifecycle:"+command.operationId;
-  const digest=privateDigest({command,actor:actor.id,workspace:actor.workspaceId},this.integrityKey);
-  return this.authority.withDestination(actor,{destination:"native",intent:"write",expectedEpoch:command.expectedEpoch},async tx=>{
-   await lockWorkspace(tx,actor.workspaceId);
-   const profiles=this.profileStore(tx),current=await profiles.read(actor,command.personId);
-   if(!current)throw new AppError("NOT_FOUND");
-   const modes=await tx.query<{mode:string}>(`SELECT record_mode AS mode FROM ls_contact_ops.profiles WHERE workspace_id=$1 AND person_id=$2`,[actor.workspaceId,command.personId]);
-   if(modes.length!==1||modes[0]!.mode!=="live")throw new AppError("FORBIDDEN");
-   const prior=await tx.query<{digest:string;actorId:string;personId:string;version:number}>(`SELECT payload_digest AS digest,
-    actor_account_id AS "actorId",person_id AS "personId",result_version AS version
-    FROM ls_contact_ops.command_receipts WHERE workspace_id=$1 AND operation_id=$2`,[actor.workspaceId,operation]);
-   if(prior[0]){
-    if(prior[0].digest!==digest||prior[0].actorId!==actor.id||prior[0].personId!==command.personId)throw new AppError("CONFLICT");
-    return {version:prior[0].version,replayed:true};
-   }
-   if(current.version!==command.expectedVersion)throw new AppError("CONFLICT");
-   const profile=changeAdministrativeArchive(current.profile,command.action,this.clock.now());
-   const result=await profiles.update(actor,profile,command.expectedVersion,"contact-profile-lifecycle:"+command.operationId);
-   await tx.query(`INSERT INTO ls_contact_ops.command_receipts(workspace_id,operation_id,person_id,actor_account_id,payload_digest,result_version)
-    VALUES($1,$2,$3,$4,$5,$6)`,[actor.workspaceId,operation,command.personId,actor.id,digest,result.version]);
-   return result;
-  });
  }
  /** One authority-locked transaction owns read/merge/write. The browser cannot
   * change canonical person or legacy mappings through an administrative edit.

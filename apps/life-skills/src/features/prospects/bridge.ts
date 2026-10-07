@@ -30,10 +30,9 @@ export async function crmBridge<T>(path:string,init:RequestInit={}):Promise<T>{
   return body as T;
 }
 /** Fixed, read-only graphics endpoint; never a caller-controlled remote proxy. */
-export async function crmBridgeImage(assetId:string,revision:number,digest:string,download=false,collection?:"templates"|"history"):Promise<Response>{
+export async function crmBridgeImage(assetId:string,revision:number,digest:string,download=false):Promise<Response>{
   if(!/^[A-Za-z0-9._-]{1,200}$/.test(assetId)||!Number.isSafeInteger(revision)||revision<1||revision>999999||! /^[a-f0-9]{64}$/.test(digest))throw new AppError("INVALID_REQUEST");
-  if(collection!==undefined&&!["templates","history"].includes(collection))throw new AppError("INVALID_REQUEST");
-  const {origin,secret}=config(),query=new URLSearchParams({revision:String(revision),digest,...(collection?{collection}:{}),...(download?{download:"1"}:{})});
+  const {origin,secret}=config(),query=new URLSearchParams({revision:String(revision),digest,...(download?{download:"1"}:{})});
   return fetch(`${origin}/api/bna/life-skills-app/marketing/assets/${encodeURIComponent(assetId)}?${query}`,{method:"GET",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer",signal:AbortSignal.timeout(30000),headers:{"X-Life-Skills-Bridge-Secret":secret}});
 }
 export async function listProspects(){return (await crmBridge<{success:true;prospects:Prospect[]}>("/api/bna/life-skills-app/prospects")).prospects;}

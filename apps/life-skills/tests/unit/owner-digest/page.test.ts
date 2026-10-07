@@ -8,7 +8,6 @@ vi.mock('../../../src/features/marketing-overview/provider.ts',()=>({loadMarketi
 vi.mock('../../../src/features/owner-digest/runtime.ts',()=>({ownerDigestContext:calls.context,loadOwnerDigest:calls.digest}));
 import Page from '../../../src/app/[locale]/app/marketing/page.tsx';
 import {MarketingDashboard} from '../../../src/ui/revamp/marketing-dashboard.tsx';
-import {CommunitySection} from '../../../src/features/community-reply/section.tsx';
 import type {MarketingSnapshot} from '../../../src/features/marketing-overview/contracts.ts';
 import {AppError} from '../../../src/lib/errors.ts';
 const snapshot:MarketingSnapshot={source:'registry_only',fetchedAt:null,creatives:[],publications:[],ads:[],scout:{readyDrafts:null,sourceUrl:null,lastChecked:null,status:'unbound'}};
@@ -43,10 +42,7 @@ for(const locale of ['he','en'] as const){
  });
  it.each(['content_calendar','creatives','needs_approval','community','ads'])(`${locale}: does not read the private owner digest on %s`,async section=>{
   setup();const result=await Page({params:Promise.resolve({locale}),searchParams:Promise.resolve({section})});
-  if(section==='community'){
-   expect(result.type).toBe(CommunitySection);expect(result.props.view).toBe('opportunities');expect(calls.snapshot).not.toHaveBeenCalled();
-  }else expect(result.props.initialSection).toBe(section);
-  expect(result.props.ownerDigest).toBeUndefined();
+  expect(result.props.initialSection).toBe(section);expect(result.props.ownerDigest).toBeUndefined();
   expect(calls.context).not.toHaveBeenCalled();expect(calls.digest).not.toHaveBeenCalled();
  });
  it('checks practitioner access before reading either source',async()=>{

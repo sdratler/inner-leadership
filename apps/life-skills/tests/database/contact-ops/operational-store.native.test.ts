@@ -20,25 +20,6 @@ async function activate(s:Awaited<ReturnType<typeof setup>>){for(const [i,action
 const profile=(personId:string,notes="Synthetic preserved administrative note"):CrmProfile=>({personId,stage:"New inquiry",nextAction:"Respond to inquiry",followUpDate:"2026-09-28",notes,legacyIds:[]});
 const query={view:"all" as const,search:"",today:"2026-09-28",page:1,pageSize:20};
 
-test("recoverable administrative archive keeps links and notes, preserves opt-out, and old retries cannot undo a later restore",async()=>{
- const s=await setup();await activate(s);const a=s.f.practitioner.actor,p={...profile(a.personId),doNotContact:true};
- await s.store.create(a,p,"lifecycle-create",3);
- const before=(await s.f.pool.query("SELECT * FROM ls_identity.people WHERE id=$1",[p.personId])).rows;
- const archive={action:"archive" as const,personId:p.personId,expectedEpoch:3,expectedVersion:1,operationId:randomUUID()};
- expect(await s.store.lifecycle(a,archive)).toEqual({version:2,replayed:false});
- expect((await s.store.read(a,p.personId,3))?.profile).toMatchObject({...p,administrativeArchive:{archivedAt:expect.any(String)}});
- await s.store.updateFields(a,p.personId,{...p,notes:"Newer synthetic note"},2,randomUUID(),3);
- const restore={...archive,action:"restore" as const,expectedVersion:3,operationId:randomUUID()};
- expect(await s.store.lifecycle(a,restore)).toEqual({version:4,replayed:false});
- expect(await s.store.lifecycle(a,archive)).toEqual({version:2,replayed:true});
- expect(await s.store.lifecycle(a,restore)).toEqual({version:4,replayed:true});
- expect((await s.store.read(a,p.personId,3))?.profile).toEqual({...p,notes:"Newer synthetic note"});
- expect((await s.f.pool.query("SELECT * FROM ls_identity.people WHERE id=$1",[p.personId])).rows).toEqual(before);
- await expect(s.store.lifecycle(a,{...archive,operationId:randomUUID()})).rejects.toThrow("CONFLICT");
- await expect(s.store.lifecycle(s.f.parent.actor,archive)).rejects.toThrow("FORBIDDEN");
- await expect(s.store.lifecycle(a,{...archive,expectedEpoch:2})).rejects.toThrow("CONFLICT");
-});
-
 test("operational native APIs reject legacy, frozen and stale authority without touching CRM rows",async()=>{
  const s=await setup(),a=s.f.practitioner.actor,p=profile(a.personId);
  for(const [epoch,phase] of [[0,"sheet_active"],[1,"shadow_ready"],[2,"frozen"]] as const){

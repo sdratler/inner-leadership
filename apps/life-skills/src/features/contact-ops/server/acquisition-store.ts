@@ -50,7 +50,6 @@ export class AcquisitionCandidateStore{
    c.metadata_ciphertext AS ciphertext,c.occurred_at AS "occurredAt" FROM ls_contact_ops.inbound_activity_candidates c
    WHERE c.workspace_id=$1 AND NOT EXISTS(SELECT 1 FROM ls_contact_ops.lead_promotion_operations d
     WHERE d.workspace_id=c.workspace_id AND d.candidate_id=c.id)
-   AND NOT EXISTS(SELECT 1 FROM ls_contact_ops.call_activity_links l WHERE l.workspace_id=c.workspace_id AND l.candidate_id=c.id)
    ORDER BY c.occurred_at DESC,c.id DESC LIMIT $2`,[actor.workspaceId,MAX_CANDIDATES+1]);
   return {items:rows.slice(0,MAX_CANDIDATES).map(row=>({...keysSchema.parse(row),metadata:this.decode(actor.workspaceId,row)})),
    hasMore:rows.length>MAX_CANDIDATES};
@@ -66,27 +65,18 @@ export class AcquisitionCandidateStore{
   this.decode(workspace,row);return true;
  }
  async captureInTransaction(tx:SqlSession,workspace:string,inquiry:InboundInquiry,input:Keys):Promise<{replayed:boolean}>{
-  const result=await this.captureMetadataInTransaction(tx,workspace,{source:"organic_whatsapp",
-   phone:inquiry.fromNumber,displayName:inquiry.pushName,occurredAt:inquiry.occurredAt},input);
-  return {replayed:result.replayed};
- }
- /** Trusted authenticated metadata capture; no person/profile/clinical mutation. */
- async captureMetadataInTransaction(tx:SqlSession,workspace:string,inputMetadata:Omit<AcquisitionCandidateMetadata,"id">,input:Keys):Promise<{replayed:boolean;id:string}>{
   const keys=keysSchema.parse(input);
-  if(await this.priorInTransaction(tx,workspace,keys)){
-   const rows=await tx.query<{id:string}>(`SELECT id FROM ls_contact_ops.inbound_activity_candidates
-    WHERE workspace_id=$1 AND provider_binding_id=$2 AND provider_message_key=$3`,[workspace,keys.binding,keys.message]);
-   if(rows.length!==1)throw new AppError("UNAVAILABLE");return {replayed:true,id:rows[0]!.id};
-  }
+  if(await this.priorInTransaction(tx,workspace,keys))return {replayed:true};
   // MAX_CANDIDATES bounds the pending review read, not append-only lifetime
   // storage. A full review window must never roll back the durable incoming
   // receipt. Replay/conflict, encryption and every read-envelope gate remain.
-  const metadata=acquisitionCandidateMetadataSchema.parse({...inputMetadata,id:randomUUID()});
+  const metadata=acquisitionCandidateMetadataSchema.parse({id:randomUUID(),source:"organic_whatsapp",
+   phone:inquiry.fromNumber,displayName:inquiry.pushName,occurredAt:inquiry.occurredAt});
   await tx.query(`INSERT INTO ls_contact_ops.inbound_activity_candidates(workspace_id,id,provider_binding_id,
    provider_message_key,provider_thread_key,sender_endpoint_key,message_digest,metadata_ciphertext,occurred_at)
    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,[workspace,metadata.id,keys.binding,keys.message,keys.thread,keys.sender,
    keys.messageDigest,seal(JSON.stringify(metadata),aad(workspace,keys.binding,keys.message),this.keyring),metadata.occurredAt]);
-  return {replayed:false,id:metadata.id};
+  return {replayed:false};
  }
  /** Ordinary current practitioner only. Bounded persisted metadata, no provider
   * history fetch, partial-success overflow, clinical join or customer access.

@@ -10,13 +10,12 @@ import { VoiceRuleLedger, type RuleChange, type RuleRequest } from "../../../../
 import { readContentVoiceSource, type ContentVoiceSnapshot } from "../../../../features/content-voice/source.ts";
 import { writeContentVoiceIfUnchanged } from "../../../../features/content-voice/drive-cas.ts";
 import { requestCommunityReply } from "../../../../features/community-reply/bridge.ts";
-import { writingRulesInGuide } from "../../../../features/content-voice/rule-editor.ts";
+import { communityRulesInGuide } from "../../../../features/content-voice/rule-editor.ts";
 import { isCommunitySourceUrl } from "../../../../features/community-reply/input-state.ts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const fullRequestSchema = z.object({
-  scope: z.enum(["community", "general"]).optional(),
   operationId: z.string().uuid(), correction: z.string().trim().min(3).max(1000),
   rule: z.string().trim().min(8).max(400), language: z.enum(["he", "en", "both"]),
   targetRuleId: z.string().regex(/^CR-[0-9a-f]{32}$/).nullable().optional(),
@@ -47,7 +46,7 @@ const metadata = (snapshot: ContentVoiceSnapshot | null) => snapshot ? ({
   modifiedAt: snapshot.modifiedAt, checkedAt: snapshot.checkedAt, sha256: snapshot.sha256,
 }) : null;
 function safe(change: RuleChange, source: ContentVoiceSnapshot | null) {
-  return { operationId: change.operationId, status: change.status, ruleId: change.affectedRuleId, scope: change.request.scope ?? "community",
+  return { operationId: change.operationId, status: change.status, ruleId: change.affectedRuleId,
     draftSourceConflict: change.status === "draft_conflict",
     before: change.before, after: change.after, savedAt: change.savedAt, revisedAt: change.revisedAt,
     source: metadata(source), sourceAfterSha256: change.sourceAfterSha256,
@@ -60,13 +59,8 @@ export async function GET(request: Request) {
     const { actor, ledger } = await context(request);
     const query = new URL(request.url).searchParams;
     if (query.get("list") === "1") {
-      if ([...query.keys()].some(key => !["list", "scope"].includes(key)) || query.getAll("scope").length > 1 || query.getAll("list").length !== 1)
-        throw new AppError("INVALID_REQUEST");
-      const selectedScope = z.enum(["community", "general"]).safeParse(query.get("scope") ?? "community");
-      if (!selectedScope.success) throw new AppError("INVALID_REQUEST");
-      const scope = selectedScope.data;
       const source = await readContentVoiceSource();
-      return NextResponse.json({ ok: true, data: { source: metadata(source), scope, rules: writingRulesInGuide(source.text, scope) } }, { headers });
+      return NextResponse.json({ ok: true, data: { source: metadata(source), rules: communityRulesInGuide(source.text) } }, { headers });
     }
     const operationId = query.get("operationId");
     if (!operationId || !z.string().uuid().safeParse(operationId).success) throw new AppError("NOT_FOUND");
@@ -93,7 +87,7 @@ export async function POST(request: Request) {
       const prepared = await ledger.prepare(actor, command, source);
       if ("state" in prepared) {
         return NextResponse.json({ ok: true, data: { operationId: command.operationId, status: prepared.state,
-          ruleId: prepared.ruleId, scope: command.scope ?? "community", before: prepared.before, after: prepared.after,
+          ruleId: prepared.ruleId, before: prepared.before, after: prepared.after,
           source: metadata(source), draft: null } }, { headers });
       }
       change = prepared;

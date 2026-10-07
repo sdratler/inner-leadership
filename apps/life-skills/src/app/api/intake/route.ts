@@ -35,7 +35,7 @@ export async function POST(request:Request):Promise<Response>{
    // Submission has already committed to the private onboarding store. An
    // authority/read or Sheet failure must not claim that receipt was lost.
    projectionPending=await projectIntakeToLegacyIfCurrent(runtime,data.stableLeadId,{formSubmitted:data.receivedAt,
-    stage:"Intake submitted / awaiting payment",
+    stage:"Intake submitted / awaiting payment",nextAction:"Verify first-session payment",dueDate:"",
     updateProvenance:"private-app:intake-submitted"}).catch(()=>true);
   }
   return NextResponse.json({ok:true,data:{...data,projectionPending},requestId:randomUUID()},
