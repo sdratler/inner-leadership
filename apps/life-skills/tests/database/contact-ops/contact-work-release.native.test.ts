@@ -22,6 +22,14 @@ describe('contact work migration-before-code release',()=>{
    }
    expect(await migrate(query,historical.inventory,false)).toEqual({applied:0,pending:0});expect(await migrate(query,historical.inventory,true)).toEqual({applied:0,pending:0});
    await expect(client.query('UPDATE ls_calendar.task_history SET action=action WHERE workspace_id=$1 AND task_id=$2',[f.workspaceId,id])).rejects.toMatchObject({code:'23514'});
+   await client.query('BEGIN');try{
+    await client.query("ALTER TABLE ls_calendar.tasks DROP CONSTRAINT tasks_source_tuple_check, ADD CONSTRAINT tasks_source_tuple_check CHECK(source_kind IS NULL OR source_kind IN ('booking_followup','calendar_notice','creative_approval','crm_followup','form_review','intake_followup','publishing_failure','report_review','session_observations','update_review','unauthorized_source'))");
+    const drift=await readContactWorkSnapshot(query);expect(drift.sourceKinds).toContain('unauthorized_source');expect(()=>classifyContactWork(drift)).toThrow('CONTACT_WORK_SCHEMA_STATE_CONFLICT');
+   }finally{await client.query('ROLLBACK');}
+   await client.query('BEGIN');try{
+    await client.query('ALTER TABLE ls_contact_ops.call_activity_links DROP CONSTRAINT call_activity_links_workspace_id_candidate_id_fkey, ADD CONSTRAINT synthetic_wrong_call_reference FOREIGN KEY(workspace_id,person_id) REFERENCES ls_contact_ops.profiles(workspace_id,person_id)');
+    const drift=await readContactWorkSnapshot(query);expect(drift.callLinksForeignKeys).toBe(true);expect(drift.callLinksReferencesSound).toBe(false);expect(()=>classifyContactWork(drift)).toThrow('CONTACT_WORK_SCHEMA_STATE_CONFLICT');
+   }finally{await client.query('ROLLBACK');}
   }finally{client.release();}
  },60000);
 });

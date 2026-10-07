@@ -12,7 +12,7 @@ export const CONTACT_WORK_BASELINE={name:'0118_ls_contact_delta_history.sql',sha
 
 export type ContactWorkStage=0|1|2|3|4|5;
 export type ContactWorkSnapshot={
- taskColumns:number;taskConstraints:number;sourceKinds:string[];stateKinds:string[];historyActions:string[];
+ taskColumns:number;taskConstraints:number;sourceKinds:string[];stateKinds:string[];historyActions:string[];sourceConstraintStrict:boolean;stateConstraintStrict:boolean;historyConstraintStrict:boolean;
  workflowColumns:boolean;workflowConstraints:boolean;effectiveDueIndex:boolean;taskHistoryImmutable:boolean;taskPermissions:boolean;
  callLinksAbsent:boolean;callLinksSchema:boolean;callLinksForeignKeys:boolean;callLinksImmutable:boolean;callLinksPermissions:boolean;callLinksReferencesSound:boolean;
  leadCommandsAbsent:boolean;leadCommandsSchema:boolean;leadCommandsForeignKeys:boolean;leadCommandsImmutable:boolean;leadCommandsPermissions:boolean;leadCommandsReferencesSound:boolean;
@@ -25,15 +25,17 @@ const sourceStages=[
  ['booking_followup','calendar_notice','creative_approval','crm_followup','form_review','intake_followup','publishing_failure','report_review','session_observations','update_review'],
 ] as const;
 const same=(a:readonly string[],b:readonly string[])=>JSON.stringify([...a].sort())===JSON.stringify([...b].sort());
-const literals=(value:unknown,allowed:ReadonlySet<string>)=>typeof value==='string'?[...value.matchAll(/'([^']+)'(?:::\w+)?/g)].map(match=>match[1]!).filter(item=>allowed.has(item)).sort():[];
-const sourceValues=new Set(sourceStages.flat()),stateValues=new Set(['open','in_progress','done']),actionValues=new Set(['created','completed','source_updated','source_resolved','managed']);
+const literals=(value:unknown,ignored:ReadonlySet<string>=new Set())=>typeof value==='string'?[...value.matchAll(/'([^']+)'(?:::\w+)?/g)].map(match=>match[1]!).filter(item=>!ignored.has(item)).sort():[];
+const sourceIgnored=new Set(['^[0-9a-f]{64}$']);
+const strictConstraint=(value:unknown,expectedOrs:number)=>typeof value==='string'&&((value.match(/\bOR\b/gi)??[]).length===expectedOrs)&&!/(?:\bTRUE\b|\bFALSE\b|\bNOT\s+IN\b)/i.test(value);
 
 export function classifyContactWork(snapshot:ContactWorkSnapshot):ContactWorkStage{
  const workflow=snapshot.workflowColumns&&snapshot.workflowConstraints&&snapshot.effectiveDueIndex&&snapshot.taskHistoryImmutable&&snapshot.taskPermissions&&snapshot.taskColumns===26&&snapshot.taskConstraints===16;
  const baseline=!snapshot.workflowColumns&&!snapshot.workflowConstraints&&!snapshot.effectiveDueIndex&&snapshot.taskHistoryImmutable&&snapshot.taskPermissions&&snapshot.taskColumns===23&&snapshot.taskConstraints===14;
  const source=same(snapshot.sourceKinds,sourceStages[0])?0:same(snapshot.sourceKinds,sourceStages[1])?1:same(snapshot.sourceKinds,sourceStages[2])?2:-1;
- const baseState=same(snapshot.stateKinds,['open','done'])&&same(snapshot.historyActions,['created','completed','source_updated','source_resolved']);
- const managedState=same(snapshot.stateKinds,['open','in_progress','done'])&&same(snapshot.historyActions,['created','completed','source_updated','source_resolved','managed']);
+ const constraints=snapshot.sourceConstraintStrict&&snapshot.stateConstraintStrict&&snapshot.historyConstraintStrict;
+ const baseState=constraints&&same(snapshot.stateKinds,['open','done'])&&same(snapshot.historyActions,['created','completed','source_updated','source_resolved']);
+ const managedState=constraints&&same(snapshot.stateKinds,['open','in_progress','done'])&&same(snapshot.historyActions,['created','completed','source_updated','source_resolved','managed']);
  const call=snapshot.callLinksSchema&&snapshot.callLinksForeignKeys&&snapshot.callLinksImmutable&&snapshot.callLinksPermissions&&snapshot.callLinksReferencesSound;
  const lead=snapshot.leadCommandsSchema&&snapshot.leadCommandsForeignKeys&&snapshot.leadCommandsImmutable&&snapshot.leadCommandsPermissions&&snapshot.leadCommandsReferencesSound;
  if(baseline&&source===0&&baseState&&snapshot.callLinksAbsent&&snapshot.leadCommandsAbsent)return 0;
@@ -75,16 +77,34 @@ export async function readContactWorkSnapshot(db:ContactWorkQuery):Promise<Conta
   (SELECT count(*)=2 AND bool_and(convalidated) FROM pg_constraint WHERE conrelid=to_regclass('ls_contact_ops.call_activity_links') AND contype='f') AS call_fks,
   (SELECT count(*)=2 AND bool_and(tgfoid=to_regprocedure('ls_contact_ops.deny_acquisition_receipt_mutation()') AND tgenabled IN ('O','A')) FROM pg_trigger WHERE tgrelid=to_regclass('ls_contact_ops.call_activity_links') AND NOT tgisinternal) AS call_immutable,
   NOT EXISTS(SELECT 1 FROM pg_class c,LATERAL aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) acl WHERE c.oid=to_regclass('ls_contact_ops.call_activity_links') AND acl.grantee<>c.relowner) AS call_permissions,
-  true AS call_refs,
+  (SELECT count(*)=2
+    AND bool_or(ref_schema='ls_contact_ops' AND ref_table='inbound_activity_candidates' AND local_cols=ARRAY['workspace_id','candidate_id']::text[] AND ref_cols=ARRAY['workspace_id','id']::text[])
+    AND bool_or(ref_schema='ls_identity' AND ref_table='people' AND local_cols=ARRAY['workspace_id','person_id']::text[] AND ref_cols=ARRAY['workspace_id','id']::text[])
+   FROM (SELECT rn.nspname AS ref_schema,rc.relname AS ref_table,
+    ARRAY(SELECT a.attname::text FROM unnest(k.conkey) WITH ORDINALITY x(attnum,ord) JOIN pg_attribute a ON a.attrelid=k.conrelid AND a.attnum=x.attnum ORDER BY x.ord) AS local_cols,
+    ARRAY(SELECT a.attname::text FROM unnest(k.confkey) WITH ORDINALITY x(attnum,ord) JOIN pg_attribute a ON a.attrelid=k.confrelid AND a.attnum=x.attnum ORDER BY x.ord) AS ref_cols
+    FROM pg_constraint k JOIN pg_class rc ON rc.oid=k.confrelid JOIN pg_namespace rn ON rn.oid=rc.relnamespace
+    WHERE k.conrelid=to_regclass('ls_contact_ops.call_activity_links') AND k.contype='f' AND k.convalidated) refs) AS call_refs,
   to_regclass('ls_contact_ops.lead_commands') IS NULL AS lead_absent,
   (SELECT count(*)=8 FROM pg_attribute WHERE attrelid=to_regclass('ls_contact_ops.lead_commands') AND attnum>0 AND NOT attisdropped) AND (SELECT count(*)=6 FROM pg_constraint WHERE conrelid=to_regclass('ls_contact_ops.lead_commands') AND contype<>'n') AS lead_schema,
   (SELECT count(*)=2 AND bool_and(convalidated) FROM pg_constraint WHERE conrelid=to_regclass('ls_contact_ops.lead_commands') AND contype='f') AS lead_fks,
   (SELECT count(*)=2 AND bool_and(tgfoid=to_regprocedure('ls_contact_ops.deny_acquisition_receipt_mutation()') AND tgenabled IN ('O','A')) FROM pg_trigger WHERE tgrelid=to_regclass('ls_contact_ops.lead_commands') AND NOT tgisinternal) AS lead_immutable,
   NOT EXISTS(SELECT 1 FROM pg_class c,LATERAL aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) acl WHERE c.oid=to_regclass('ls_contact_ops.lead_commands') AND acl.grantee<>c.relowner) AS lead_permissions,
-  true AS lead_refs`);
+  (SELECT count(*)=2
+    AND bool_or(ref_schema='ls_identity' AND ref_table='accounts' AND local_cols=ARRAY['workspace_id','actor_account_id']::text[] AND ref_cols=ARRAY['workspace_id','id']::text[])
+    AND bool_or(ref_schema='ls_contact_ops' AND ref_table='profiles' AND local_cols=ARRAY['workspace_id','person_id']::text[] AND ref_cols=ARRAY['workspace_id','person_id']::text[])
+   FROM (SELECT rn.nspname AS ref_schema,rc.relname AS ref_table,
+    ARRAY(SELECT a.attname::text FROM unnest(k.conkey) WITH ORDINALITY x(attnum,ord) JOIN pg_attribute a ON a.attrelid=k.conrelid AND a.attnum=x.attnum ORDER BY x.ord) AS local_cols,
+    ARRAY(SELECT a.attname::text FROM unnest(k.confkey) WITH ORDINALITY x(attnum,ord) JOIN pg_attribute a ON a.attrelid=k.confrelid AND a.attnum=x.attnum ORDER BY x.ord) AS ref_cols
+    FROM pg_constraint k JOIN pg_class rc ON rc.oid=k.confrelid JOIN pg_namespace rn ON rn.oid=rc.relnamespace
+    WHERE k.conrelid=to_regclass('ls_contact_ops.lead_commands') AND k.contype='f' AND k.convalidated) refs) AS lead_refs`);
  const row=task.rows[0]!,objects=tables.rows[0]!;
  const workflowConstraints=row.workflow&&await (async()=>{const value=await db.query<{ok:boolean}>(`SELECT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid=to_regclass('ls_calendar.tasks') AND conname='tasks_snooze_check' AND convalidated) AND EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid=to_regclass('ls_calendar.task_history') AND conname='task_history_state_check' AND convalidated) AS ok`);return value.rows[0]?.ok===true;})();
- return {taskColumns:row.columns?.length??0,taskConstraints:Number(row.constraints),sourceKinds:literals(row.source,sourceValues),stateKinds:literals(row.state,stateValues),historyActions:literals(row.actions,actionValues),workflowColumns:row.workflow===true,workflowConstraints:workflowConstraints===true,effectiveDueIndex:row.effective===true,taskHistoryImmutable:row.immutable===true,taskPermissions:row.permissions===true,callLinksAbsent:objects.call_absent===true,callLinksSchema:objects.call_schema===true,callLinksForeignKeys:objects.call_fks===true,callLinksImmutable:objects.call_immutable===true,callLinksPermissions:objects.call_permissions===true,callLinksReferencesSound:objects.call_refs===true,leadCommandsAbsent:objects.lead_absent===true,leadCommandsSchema:objects.lead_schema===true,leadCommandsForeignKeys:objects.lead_fks===true,leadCommandsImmutable:objects.lead_immutable===true,leadCommandsPermissions:objects.lead_permissions===true,leadCommandsReferencesSound:objects.lead_refs===true};
+ return {taskColumns:row.columns?.length??0,taskConstraints:Number(row.constraints),sourceKinds:literals(row.source,sourceIgnored),stateKinds:literals(row.state),historyActions:literals(row.actions),sourceConstraintStrict:strictConstraint(row.source,1),stateConstraintStrict:strictConstraint(row.state,0),historyConstraintStrict:strictConstraint(row.actions,0),workflowColumns:row.workflow===true,workflowConstraints:workflowConstraints===true,effectiveDueIndex:row.effective===true,taskHistoryImmutable:row.immutable===true,taskPermissions:row.permissions===true,callLinksAbsent:objects.call_absent===true,callLinksSchema:objects.call_schema===true,callLinksForeignKeys:objects.call_fks===true,callLinksImmutable:objects.call_immutable===true,callLinksPermissions:objects.call_permissions===true,callLinksReferencesSound:objects.call_refs===true,leadCommandsAbsent:objects.lead_absent===true,leadCommandsSchema:objects.lead_schema===true,leadCommandsForeignKeys:objects.lead_fks===true,leadCommandsImmutable:objects.lead_immutable===true,leadCommandsPermissions:objects.lead_permissions===true,leadCommandsReferencesSound:objects.lead_refs===true};
+}
+
+export function contactWorkStateDigest(history:readonly AppliedMigration[],snapshot:ContactWorkSnapshot):string{
+ return createHash('sha256').update(JSON.stringify({history:history.map(row=>({name:row.name,checksum:row.checksum})),snapshot})).digest('hex');
 }
 
 export function contactWorkSourceBundle(entries:readonly {path:string;bytes:Uint8Array}[]):string{
