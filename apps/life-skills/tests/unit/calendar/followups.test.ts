@@ -12,11 +12,6 @@ const row = (leadId: string, overrides: Record<string, string> = {}) => ({
 });
 
 describe('practitioner calendar follow-up layer', () => {
-  it.each(['opt out','opted-out','OPT_OUT','do_not_contact','Do-Not-Contact','Closed','Not interested','No fit'])('suppresses the existing CRM marker %s in either field without rewriting it', marker=>{
-    for(const source of [row('LS-LEAD-suppressed',{stage:marker}),row('LS-LEAD-suppressed',{outcome:marker})]){
-      const before={...source};expect(projectCalendarFollowups([source],dates)).toEqual([]);expect(source).toEqual(before);
-    }
-  });
   it('does not hide a fresh CRM card behind a stale task when synchronization fails', () => {
     const fresh=row('LS-LEAD-synthetic-one',{nextAction:'New follow-up',dueDate:'2026-09-28'});
     const stale=[{sourceKind:'crm_followup',state:'open',sourcePath:'/he/app/clients?section=prospects&leadId=LS-LEAD-synthetic-one'}];

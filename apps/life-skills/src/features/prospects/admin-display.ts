@@ -23,10 +23,6 @@ export function administrativeStageChoices(locale: Locale): {value: string; labe
   return [...hebrewStages.keys()].map(value => ({value, label: administrativeStageLabel(value, locale)}));
 }
 
-/** Structured commands can select only these existing app-owned options.
- * Historical/custom stored statuses remain untouched and visible verbatim. */
-export function approvedAdministrativeStage(value: string): boolean { return hebrewStages.has(value); }
-
 export function administrativeActionLabel(value: string, locale: Locale): string {
   return locale === "he" ? hebrewActions.get(value) ?? value : value;
 }

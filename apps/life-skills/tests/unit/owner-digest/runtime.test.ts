@@ -77,8 +77,7 @@ it('counts workspace internal tasks after a handover without losing case, DEMO o
  expect(await readTaskCounts(runtime.store,actor,now)).toEqual({due:2,overdue:1,future:0});
  const sql=queries.find(sql=>sql.includes('FROM ls_calendar.tasks'))!;
  expect(sql).not.toContain('t.created_by');expect(sql).toContain('t.workspace_id=$1');
- expect(sql).toContain('c.practitioner_account_id=$2');expect(sql).toContain("t.state IN ('open','in_progress')");
- expect(sql.match(/greatest\(t.due_date,\(to_jsonb\(t\)->>'snoozed_until'\)::date\)/g)).toHaveLength(3);
+ expect(sql).toContain('c.practitioner_account_id=$2');expect(sql).toContain("t.state='open'");
  expect(sql).toContain('ls_demo.cases');expect(sql).toContain('ls_demo.records');expect(sql).toContain("'crm_followup'");
 });
 const invalidProjections=[

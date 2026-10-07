@@ -8,12 +8,10 @@ import { one } from "../identity/store.ts";
 import { seal, unseal, type Keyring } from "../identity/crypto.ts";
 import type { ContentVoiceSnapshot } from "./source.ts";
 import { CONTENT_VOICE_FILE_ID } from "./source.ts";
-import { composeWritingRule, type RuleEdit, type WritingRuleScope } from "./rule-editor.ts";
+import { composeCommunityRule, type RuleEdit } from "./rule-editor.ts";
 import type { CommunityReplyResult } from "../community-reply/bridge.ts";
 
 export type RuleRequest = {
-  /** Omitted on existing operations; those remain Community-scoped. */
-  scope?: WritingRuleScope;
   operationId: string;
   correction: string;
   rule: string;
@@ -73,15 +71,11 @@ export class VoiceRuleLedger {
   }
   private aad(operationId: string, kind: string) { return `${this.workspace}:content-voice:${operationId}:${kind}`; }
   private digest(request: RuleRequest) {
-    const intent = [
+    return createHmac("sha256", this.lookupKey).update(JSON.stringify([
       "content-voice-rule-v1", request.operationId, request.correction, request.rule, request.language,
       request.targetRuleId ?? null, request.sourceSha256, request.sourceRevision, request.question,
       request.originalUrl ?? null, request.previousReply,
-    ];
-    // Preserve existing Community retry digests. General intent is explicitly
-    // bound so reusing an operation cannot widen the owner's selected scope.
-    if (request.scope === "general") intent.push("scope:general");
-    return createHmac("sha256", this.lookupKey).update(JSON.stringify(intent)).digest("hex");
+    ])).digest("hex");
   }
   private view(row: Row): RuleChange {
     const request = JSON.parse(unseal(row.requestCiphertext, this.aad(row.operationId, "request"), this.ring)) as RuleRequest;
@@ -126,9 +120,8 @@ export class VoiceRuleLedger {
     if (!sha.test(request.sourceSha256) || !revision.test(request.sourceRevision) ||
         request.sourceSha256 !== snapshot.sha256 || request.sourceRevision !== snapshot.driveRevision)
       return { state: "needs_review", text: snapshot.text, ruleId: null, before: null, after: null, sha256: snapshot.sha256 };
-    const plan = composeWritingRule(snapshot.text, {
+    const plan = composeCommunityRule(snapshot.text, {
       operationId: request.operationId, rule: request.rule, language: request.language,
-      scope: request.scope ?? "community",
       targetRuleId: request.targetRuleId ?? null, at: new Date().toISOString(),
     });
     if (plan.state !== "ready" || !plan.ruleId || !plan.after) return plan;

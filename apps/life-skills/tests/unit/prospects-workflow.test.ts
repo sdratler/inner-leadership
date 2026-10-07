@@ -32,7 +32,8 @@ describe("live intake follow-up contract",()=>{
  it("keeps intake language visible in its own panel and never clears an agreed follow-up",()=>{
   const ui=read("features/prospects/client.tsx"),prospects=read("app/api/prospects/route.ts"),intake=read("app/api/intake/route.ts");
   const panel=ui.slice(ui.indexOf('<summary>{t.sendIntake}</summary>'),ui.indexOf('<summary>{t.sendBooking}</summary>'));
-  expect(panel).toContain('value={messageLanguage}');expect(panel).toContain('setContactLanguage');
+  expect(panel).toContain('value={intakeLanguage}');expect(panel).toContain('setIntakeLanguage');
+  expect(panel).not.toContain('value={messageLanguage}');expect(panel).not.toContain('setContactLanguage');expect(panel).not.toContain('setMessage(');
   const start=prospects.indexOf('if(input.action==="send_intake")'),firstGuard=prospects.indexOf('await requireContactableProspect(s.runtime,s.actor,input.leadId);',start);
   const send=prospects.slice(start,prospects.indexOf('await requireContactableProspect(s.runtime,s.actor,input.leadId);',firstGuard+1));
   expect(send).toContain('stage:"Intake sent"');expect(send).not.toContain('nextAction:');expect(send).not.toContain('dueDate:');

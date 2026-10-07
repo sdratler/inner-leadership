@@ -124,24 +124,3 @@ it("lists only current scoped guide rules for an authenticated practitioner", as
   const denied = await GET(new Request(url, { headers: { cookie: "__Host-ls-session=synthetic" } }));
   expect(denied.status).toBe(403);
 });
-
-it('keeps the explicit global scope through a permission denial without claiming a canonical save',async()=>{
- const request={...command,scope:'general'},pending={...change,request,status:'pending'};
- mock.prepare.mockResolvedValue(pending);mock.write.mockResolvedValue({state:'permission_denied',snapshot});
- mock.markSourceResult.mockResolvedValue({...pending,status:'permission_denied',savedAt:null});
- const response=await POST(post(request));expect(response.status).toBe(200);
- expect(mock.prepare).toHaveBeenCalledWith(actor,request,snapshot);
- expect((await response.json()).data).toMatchObject({scope:'general',status:'permission_denied',savedAt:null});expect(mock.reply).not.toHaveBeenCalled();
-});
-it.each(['once','playbook','other'])('rejects unsupported persistent scope %s before canonical write',async scope=>{
- expect((await POST(post({...command,scope}))).status).toBe(400);
- expect(mock.prepare).not.toHaveBeenCalled();expect(mock.write).not.toHaveBeenCalled();expect(mock.reply).not.toHaveBeenCalled();
-});
-it('reads the explicitly selected global rules without mixing Community rules, and rejects malformed scope queries',async()=>{
- const id='CR-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
- mock.readSource.mockResolvedValue({...snapshot,text:`### Community-reply writing preferences\n\n**${change.affectedRuleId} — scope: community; language: en; created: now; updated: now** Community wording.\n\n### Global writing preferences\n\n**${id} — scope: general; language: both; created: now; updated: now** Global wording.\n\n## 2. Article structure\n`});
- const url='https://life-skills.example.invalid/api/content-voice/corrections?list=1&scope=general',headers={cookie:'__Host-ls-session=synthetic'};
- const response=await GET(new Request(url,{headers}));expect(response.status).toBe(200);
- expect((await response.json()).data).toMatchObject({scope:'general',rules:[{id,language:'both',rule:'Global wording.'}]});
- for(const query of ['list=1&scope=once','list=1&scope=general&scope=community','list=1&list=1'])expect((await GET(new Request(url.split('?')[0]+'?'+query,{headers}))).status).toBe(400);
-});

@@ -10,7 +10,6 @@ import type {Actor} from "../../identity/types.ts";
 import {canonicalForwardedRequest} from "../../integration/canonical-forwarded-request.ts";
 import {ContractError,dateOnly} from "../core/validation.ts";
 import type {OperationalNativeCrmStore} from "./operational-store.ts";
-import {contactLifecycleSchema} from "../core/contact-lifecycle.ts";
 
 const endpoint="/api/private/contact-profiles";
 const epoch=z.number().int().min(0).max(Number.MAX_SAFE_INTEGER-1);
@@ -19,7 +18,7 @@ const fields=z.object({stage:z.string().trim().min(1).max(120),nextAction:z.stri
 const update=z.object({action:z.literal("update"),personId:z.string().uuid(),expectedEpoch:epoch,
  expectedVersion:z.number().int().min(1).max(Number.MAX_SAFE_INTEGER-1),operationId:z.string().uuid(),fields}).strict();
 export type NativeProfileHttpDependencies={origin:string;actor:(token:string)=>Promise<Actor>;csrf:(token:string)=>string;
- store:Pick<OperationalNativeCrmStore,"read"|"updateFields">&Partial<Pick<OperationalNativeCrmStore,"lifecycle">>};
+ store:Pick<OperationalNativeCrmStore,"read"|"updateFields">};
 
 /** Ordinary session API for administrative profile edits, not a cutover API.
  * Both native methods verify the fresh actor and durable epoch inside their DB
@@ -50,9 +49,8 @@ export async function nativeProfileHttp(request:Request,load:()=>Promise<NativeP
   }else{
    if(url.search)throw new AppError("INVALID_REQUEST");
    verifyMutationOrigin(canonical,d.origin);verifyCsrfToken(request.headers.get("x-csrf-token"),d.csrf(token));
-   const input=await readJson(request,z.union([update,contactLifecycleSchema]));
-   if(input.action!=="update"&&!d.store.lifecycle)throw new AppError("UNAVAILABLE");
-   const result=input.action==="update"?await d.store.updateFields(actor,input.personId,input.fields,input.expectedVersion,input.operationId,input.expectedEpoch):await d.store.lifecycle!(actor,input);
+   const input=await readJson(request,update);
+   const result=await d.store.updateFields(actor,input.personId,input.fields,input.expectedVersion,input.operationId,input.expectedEpoch);
    response=successResponse({...result,authorityEpoch:input.expectedEpoch,personId:input.personId},id);
   }
  }catch(error){

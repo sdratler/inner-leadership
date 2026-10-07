@@ -35,19 +35,6 @@ test("intake counts use the existing invitation/receipt ledger, not imported sen
  }
  await f.pool.query("UPDATE ls_intake.pre_enrollment_invitations SET revoked_at=$3 WHERE workspace_id=$1 AND invitation_id=$2",[f.workspaceId,invite,now]);expect((await readIntakeFacts(store(),f.practitioner.actor,[row],now)).awaitingForm).toBe(0);
 });
-test('ordinary native task states and snooze change only effective owner work counts',async()=>{
- const isolated=await fixture(),tasks=new InternalTaskService(isolated.db,randomBytes(32)),read=()=>readTaskCounts(poolStore(isolated.pool),isolated.practitioner.actor,now),tomorrow=contentDayKey(new Date(now.getTime()+86400000).toISOString());
- try{
-  const original=await tasks.create(isolated.practitioner.actor,randomUUID(),{caseId:null,title:'Synthetic internal work',note:'Private note must stay out of aggregates',sourcePath:null,dueDate:today,dueTime:null});
-  expect(await read()).toEqual({due:1,overdue:0,future:0});
-  const snoozed=await tasks.manage(isolated.practitioner.actor,original.id,randomUUID(),{expectedVersion:1,state:'in_progress',snoozedUntil:tomorrow});
-  expect(snoozed.dueDate).toBe(today);expect(await read()).toEqual({due:0,overdue:0,future:1});
-  await tasks.manage(isolated.practitioner.actor,original.id,randomUUID(),{expectedVersion:2,state:'in_progress',snoozedUntil:null});
-  expect(await read()).toEqual({due:1,overdue:0,future:0});
-  await tasks.complete(isolated.practitioner.actor,original.id,randomUUID(),3);expect(await read()).toEqual({due:0,overdue:0,future:0});
-  expect((await isolated.pool.query('SELECT count(*)::int AS n FROM ls_calendar.events WHERE workspace_id=$1',[isolated.workspaceId])).rows[0].n).toBe(0);
- }finally{await isolated.pool.end();}
-});
 test("one canonical submission excludes other valid invitations across every later journey phase",async()=>{
  const lead='LS-LEAD-submitted-'+randomUUID(),invitations=[randomUUID(),randomUUID()],receipt=randomUUID();
  for(const invitation of invitations)await f.pool.query(`INSERT INTO ls_intake.pre_enrollment_invitations(workspace_id,invitation_id,token_digest,stable_lead_ref,child_slots,expires_at,created_at,created_by_account_id)

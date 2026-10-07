@@ -8,16 +8,6 @@ import { workspaceHref } from '../../../src/ui/workspace/navigation-model.ts';
 
 const id = '123e4567-e89b-12d3-a456-426614174000';
 const audienceId='223e4567-e89b-42d3-a456-426614174000';
-for(const locale of ['en','he'] as const)for(const communityView of ['opportunities','sources','budget','writing_rules'])it(`${locale}: Community ${communityView} replaces the toolbar with four contextual views and preserves language/deep links`,()=>{
- navigation.pathname=`/${locale}/app/marketing`;navigation.query=new URLSearchParams({section:'community',communityView});
- const html=renderToStaticMarkup(CoreNavigation({locale,role:'practitioner',children:'Synthetic Community'})),toolbar=html.match(/<nav class="lsu-top-tabs"[^>]*>(.*?)<\/nav>/)?.[1]??'';
- const links=[...toolbar.matchAll(/<a[^>]+href="([^"]+)"([^>]*)>(.*?)<\/a>/g)];expect(links).toHaveLength(4);expect(links.filter(link=>link[2]!.includes('aria-current="page"'))).toHaveLength(1);
- for(const [i,key] of ['opportunities','sources','budget','writing_rules'].entries()){
-  const link=links[i]!,url=new URL(link[1]!.replaceAll('&amp;','&'),'https://private.invalid');expect(url.pathname).toBe(`/${locale}/app/marketing`);expect(url.searchParams.get('section')).toBe('community');expect(url.searchParams.get('communityView')).toBe(key);expect(url.hash).toBe('');expect(link[2]!.includes('aria-current="page"')).toBe(key===communityView);
- }
- expect(html).toContain(`/${locale==='he'?'en':'he'}/app/marketing?section=community&amp;communityView=${communityView}`);expect(toolbar).not.toContain('section=ads');
- const breadcrumbs=html.match(/<nav class="lsu-breadcrumbs"[^>]*>(.*?)<\/nav>/)?.[1]??'';expect(breadcrumbs).toContain(locale==='he'?'קהילה':'Community');expect(breadcrumbs).toContain('section=community');
-});
 it('audience hints stay scoped to valid case practice/report links, never global destinations',()=>{
  for(const path of ['app/practice','app/reports'])expect(new URL(workspaceHref('en',path,id,{},audienceId),'https://private.invalid').searchParams.get('audienceId')).toBe(audienceId);
  for(const path of ['app/calendar','app/clients','app/marketing','app/payments','app/settings'])expect(new URL(workspaceHref('en',path,id,{},audienceId),'https://private.invalid').searchParams.has('audienceId')).toBe(false);

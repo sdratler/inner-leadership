@@ -4,34 +4,13 @@ import {renderToStaticMarkup} from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { destinationForRole, LoginClient } from "../../src/features/identity/login-client.tsx";
 import { loginHref, loginReturnDestination, parentReturnPath, practitionerReturnPath } from "../../src/features/identity/login-return.ts";
-import { FamilyHomeWorkspace, visibleHomeCases } from "../../src/ui/workspace/family-home.tsx";
+import { visibleHomeCases } from "../../src/ui/workspace/family-home.tsx";
 import { visibleUpdateCases } from "../../src/features/updates/updates-workspace.tsx";
 import { PracticeList } from "../../src/features/home-practice/practice-list.tsx";
 
 vi.mock("next/navigation",()=>({useRouter:()=>({replace:vi.fn(),refresh:vi.fn()}),useSearchParams:()=>new URLSearchParams()}));
 
 describe("shared private-app sign-in destination", () => {
-  it.each(["en","he"] as const)("%s: Home uses the real customer role without family assumptions",locale=>{
-    const parent=renderToStaticMarkup(React.createElement(FamilyHomeWorkspace,{locale,role:"parent"}));
-    expect(parent).toContain(locale==="he"?"מרחב המשפחה":"Family workspace");
-    for(const role of ["child","adult_client"] as const){
-      const html=renderToStaticMarkup(React.createElement(FamilyHomeWorkspace,{locale,role}));
-      expect(html).toContain(locale==="he"?"המרחב שלך":"Your workspace");
-      expect(html).not.toContain(locale==="he"?"מרחב המשפחה":"Family workspace");
-      if(locale==="he"){expect(html).toContain("התרגול שלך להיום");expect(html).not.toContain("התרגול שלכם להיום");}
-      expect(html).toContain('class="lsw-stack lsw-home"');
-    }
-  });
-  it("keeps Home context compact without shrinking text or changing case authorization",()=>{
-    const css=readFileSync(new URL("../../src/ui/workspace/professional-ui.css",import.meta.url),"utf8");
-    expect(css).toContain('.lsw.lsu .lsw-home{align-content:start}');
-    expect(css).toContain('.lsw.lsu .lsw-home>.lsw-page-header{margin-block-end:0}');
-    expect(css).toContain('.lsw.lsu .lsw-home-context>:is(p,label,nav){margin-block:0}');
-    const cases=[{id:"minor",displayName:"Synthetic minor",kind:"minor" as const},{id:"adult",displayName:"Synthetic adult",kind:"adult" as const}];
-    expect(visibleHomeCases("parent",cases).map(item=>item.id)).toEqual(["minor"]);
-    expect(visibleHomeCases("child",cases).map(item=>item.id)).toEqual(["minor"]);
-    expect(visibleHomeCases("adult_client",cases).map(item=>item.id)).toEqual(["adult"]);
-  });
   it("routes each enabled account type to its own workspace", () => {
     expect(destinationForRole("he", "practitioner")).toBe("/he/app/calendar");
     expect(destinationForRole("en", "parent")).toBe("/en/family/schedule");

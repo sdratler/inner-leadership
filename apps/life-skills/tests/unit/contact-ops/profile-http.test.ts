@@ -22,18 +22,6 @@ function dependencies(){
  const d:NativeProfileHttpDependencies={origin,actor:async()=>actor,csrf:()=>csrf,store:{read,updateFields}};
  return {d,read,updateFields};
 }
-test.each(["archive","restore"])("%s requires the ordinary protected endpoint and never accepts an alternate identity or provider effect",async action=>{
- const {d,updateFields}=dependencies(),lifecycle=vi.fn(async()=>({version:2,replayed:false}));d.store.lifecycle=lifecycle;
- const {fields:ignored,...base}=body;void ignored;const command={...base,action};
- const response=await nativeProfileHttp(request({method:"POST",body:command}),async()=>d);
- expect(response.status).toBe(200);expect(lifecycle).toHaveBeenCalledWith(actor,command);expect(updateFields).not.toHaveBeenCalled();
- lifecycle.mockClear();
- for(const headers of [{origin:"https://evil.invalid"},{"x-csrf-token":"bad"}])expect((await nativeProfileHttp(request({method:"POST",body:command,headers}),async()=>d)).status).toBe(403);
- for(const extra of [{fields},{caseIds:[]},{action:"delete"},{expectedVersion:0}])expect((await nativeProfileHttp(request({method:"POST",body:{...command,...extra}}),async()=>d)).status).toBe(400);
- expect(lifecycle).not.toHaveBeenCalled();
- for(const role of ["parent","child","adult_client"] as const){d.actor=async()=>({...actor,role});expect((await nativeProfileHttp(request({method:"POST",body:command}),async()=>d)).status).toBe(403);}
- expect(lifecycle).not.toHaveBeenCalled();
-});
 test("missing, malformed and duplicate cookies cannot even initialize private services",async()=>{
  const load=vi.fn();for(const cookie of ["",`${SESSION_COOKIE}=bad`,`${SESSION_COOKIE}=${token}; ${SESSION_COOKIE}=${token}`])
   expect((await nativeProfileHttp(request({cookie}),load)).status).toBe(401);

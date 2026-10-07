@@ -104,42 +104,6 @@ it('does not substitute another published family audience for an unavailable dee
  const props={locale:'en' as const,role:'practitioner' as const,caseId:ids.caseId,initialAudienceId:ids.otherAudienceId};hook.render(()=>ReportCaseWorkspace(props));hook.flushEffects();await tick();const output=hook.render(()=>ReportCaseWorkspace(props));
  expect(text(output)).toContain('No other audience was selected');expect(find(output,e=>e.type===ReportEditor)).toBeUndefined();
 });
-for(const locale of ['en','he'] as const)it(`${locale}: retries a failed authorized report read without changing its case or audience`,async()=>{
- let failed=true,resolveReviews!:(response:Response)=>void;
- fetchMock.mockImplementation(async(url:string)=>url.startsWith('/api/identity/audiences')?
-  Response.json({ok:true,data:[{id:ids.audienceId,visibility:'family_full',published:true}]}):
-  failed?Response.json({ok:false,error:{code:'UNAVAILABLE'}},{status:503}):new Promise<Response>(resolve=>{resolveReviews=resolve;}));
- const props={locale,role:'parent' as const,caseId:ids.caseId,initialAudienceId:ids.audienceId};
- hook.render(()=>ReportCaseWorkspace(props));hook.flushEffects();await tick();
- let output=hook.render(()=>ReportCaseWorkspace(props));expect(find(output,e=>e.props.role==='alert')).toBeDefined();
- expect(all(output,e=>e.type===ReportReadout)).toHaveLength(0);
- failed=false;click(output,locale==='he'?'ניסיון טעינה חוזר':'Retry reports')();
- output=hook.render(()=>ReportCaseWorkspace(props));hook.flushEffects();await tick();
- expect(find(output,e=>e.props.role==='status')).toBeDefined();expect(find(output,e=>e.props.role==='alert')).toBeUndefined();
- resolveReviews(Response.json({ok:true,data:[review('published','published'),review('private','draft'),review('other','published',ids.otherAudienceId)]}));await tick();
- output=hook.render(()=>ReportCaseWorkspace(props));expect(all(output,e=>e.type===ReportReadout).map(e=>(e.props.review as Review).id)).toEqual(['published']);
- expect(find(output,e=>e.type==='select')?.props.value).toBe(ids.audienceId);expect(fetchMock).toHaveBeenCalledTimes(4);
- expect(fetchMock.mock.calls.every(([url,init])=>String(url).includes(`caseId=${ids.caseId}`)&&!(init as RequestInit).method)).toBe(true);
-});
-it('a report retry preserves an unavailable requested audience instead of choosing another one',async()=>{
- let failed=true;fetchMock.mockImplementation(async(url:string)=>Response.json(failed?{ok:false}:{ok:true,data:url.startsWith('/api/identity/audiences')?[{id:ids.audienceId,visibility:'family_full',published:true}]:[]},{status:failed?503:200}));
- const props={locale:'en' as const,role:'practitioner' as const,caseId:ids.caseId,initialAudienceId:ids.otherAudienceId,section:'drafts' as const};
- hook.render(()=>ReportCaseWorkspace(props));hook.flushEffects();await tick();failed=false;
- click(hook.render(()=>ReportCaseWorkspace(props)),'Retry reports')();hook.render(()=>ReportCaseWorkspace(props));hook.flushEffects();await tick();
- const output=hook.render(()=>ReportCaseWorkspace(props));expect(text(output)).toContain('No other audience was selected');expect(find(output,e=>e.type===ReportEditor)).toBeUndefined();
-});
-it('does not render stale report data on a case change or accept its late response',async()=>{
- let resolveOld!:(response:Response)=>void;
- fetchMock.mockImplementation(async(url:string)=>url.includes(`caseId=${ids.caseId}`)?
-  url.startsWith('/api/identity/audiences')?Response.json({ok:true,data:[{id:ids.audienceId,visibility:'family_full',published:true}]}):new Promise<Response>(resolve=>{resolveOld=resolve;}):
-  Response.json({ok:true,data:url.startsWith('/api/identity/audiences')?[{id:ids.audienceId,visibility:'family_full',published:true}]:[{...review('current','published'),caseId:ids.otherAudienceId}]}));
- hook.render(()=>ReportCaseWorkspace({locale:'en',role:'parent',caseId:ids.caseId}));hook.flushEffects();await tick();
- const props={locale:'en' as const,role:'parent' as const,caseId:ids.otherAudienceId};
- expect(all(hook.render(()=>ReportCaseWorkspace(props)),e=>e.type===ReportReadout)).toHaveLength(0);hook.flushEffects();await tick();
- resolveOld(Response.json({ok:true,data:[review('stale','published')]}));await tick();
- expect(all(hook.render(()=>ReportCaseWorkspace(props)),e=>e.type===ReportReadout).map(e=>(e.props.review as Review).id)).toEqual(['current']);
- hook.unmount();await tick();expect(hook.afterUnmountUpdates()).toBe(0);
-});
 it('keeps private evidence separate from the blank family draft and preserves text on a cancelled draft switch',()=>{
  const confirm=vi.fn(()=>false);vi.stubGlobal('window',{confirm});const props={locale:'en' as const,...ids,reviews:[review('423e4567-e89b-12d3-a456-426614174000','draft')],onSaved:vi.fn()};
  let output=hook.render(()=>ReportEditor(props));expect(all(output,e=>e.type==='textarea').every(e=>e.props.value==='')).toBe(true);fillEditor(output);

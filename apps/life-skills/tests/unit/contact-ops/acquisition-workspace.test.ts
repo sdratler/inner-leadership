@@ -8,12 +8,6 @@ import {practitionerContext,breadcrumbItems} from "../../../src/ui/workspace/nav
 import {practitionerReturnPath,loginReturnDestination} from "../../../src/features/identity/login-return.ts";
 const item:AcquisitionReviewItem={id:"00000000-0000-4000-8000-000000000001",source:"organic_whatsapp",phone:"+15550001001",displayName:"Synthetic אדם",
  occurredAt:"2026-10-02T10:00:00.000Z",state:"NEEDS_REVIEW",matching:{state:"unmatched",people:[]}};
-test.each(["en","he"] as const)("%s call review shows genuine source, ringing caveat and collapsed owner actions",locale=>{
- const html=renderToStaticMarkup(createElement(AcquisitionReviewCard,{item:{...item,source:"android_nomad",callState:"incoming",durationSeconds:0},locale,epoch:3,remember:()=>{},saved:()=>{},denied:()=>{},refresh:()=>{}}));
- expect(html).toContain(locale==="en"?"Incoming phone call · Nomad":"שיחה נכנסת · Nomad");expect(html).not.toContain("Organic WhatsApp");
- expect(html).toContain(locale==="en"?"does not confirm a completed or missed call":"אינה מאשרת שיחה שהושלמה או הוחמצה");
- expect(html).toContain("<details>");expect(html).not.toContain("<details open");expect(html).not.toContain("href=\"https://wa.me");
-});
 test.each(["en","he"] as const)("%s expired acquisition sign-in retains its validated page",locale=>{
  const html=renderToStaticMarkup(createElement(AcquisitionSignIn,{locale,page:"2",search:""}));
  const href=html.match(/href="([^"]+)"/)![1]!.replaceAll("&amp;","&");

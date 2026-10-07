@@ -21,27 +21,6 @@ const request = (operationId = randomUUID()): RuleRequest => ({ operationId, cor
   sourceRevision: snapshot.driveRevision, question: "Synthetic public question about daily routines?",
   previousReply: "A deliberately verbose synthetic community reply." });
 
-test('native global correction keeps explicit scope encrypted and rejects scope changes on replay',async()=>{
- const command={...request(),scope:'general' as const,rule:'Prefer direct everyday wording and short sentences.'};
- const prepared=await ledger.prepare(f.practitioner.actor,command,snapshot);
- if(!('status' in prepared))throw Error('not prepared');
- expect(prepared.request.scope).toBe('general');expect(prepared.desiredText).toContain('### Global writing preferences');
- expect(prepared.desiredText).not.toContain('scope: community');
- const replay=await ledger.prepare(f.practitioner.actor,command,snapshot);expect(replay).toEqual(prepared);
- await expect(ledger.getForRequest(f.practitioner.actor,{...command,scope:'community'})).rejects.toThrow('CONFLICT');
- const community=request();await ledger.prepare(f.practitioner.actor,community,snapshot);
- expect(await ledger.getForRequest(f.practitioner.actor,{...community,scope:'community'})).toHaveProperty('operationId',community.operationId);
- await expect(ledger.getForRequest(f.practitioner.actor,{...community,scope:'general'})).rejects.toThrow('CONFLICT');
- const denied=await ledger.markSourceResult(f.practitioner.actor,command.operationId,'permission_denied',snapshot);
- expect(denied).toMatchObject({status:'permission_denied',savedAt:null,sourceAfterSha256:null});
- const savedSource={...snapshot,text:prepared.desiredText!,sha256:prepared.desiredSha256,driveRevision:'14',declaredVersion:'2.1'};
- await ledger.markSourceResult(f.practitioner.actor,command.operationId,'saved',savedSource);
- const sourceMetadata={id:'synthetic',sha256:savedSource.sha256,driveRevision:'14',declaredVersion:'2.1',modifiedAt:savedSource.modifiedAt,checkedAt:savedSource.checkedAt};
- const revised:CommunityReplyResult={operationId:prepared.draftOperationId,reply:'A concise synthetic revised response.',copyAllowed:true,reviewFlags:[],suggestedRule:'',ruleScope:'',originalUrl:null,provenance:{guide:{...sourceMetadata,includedCommunityRuleIds:[],includedGlobalRuleIds:[prepared.affectedRuleId]},playbook:sourceMetadata,generatedAt:new Date().toISOString(),model:'synthetic',policyVersion:'synthetic',usage:{inputTokens:1,outputTokens:1}}};
- expect(await ledger.markDraft(f.practitioner.actor,command.operationId,revised)).toMatchObject({status:'complete',request:{scope:'general'},draftResult:{provenance:{guide:{includedGlobalRuleIds:[prepared.affectedRuleId]}}}});
- await expect(ledger.prepare(f.parent.actor,{...request(),scope:'general'},snapshot)).rejects.toThrow('FORBIDDEN');
-});
-
 test("native PostgreSQL encrypts a retryable correction and records exact source/draft provenance", async () => {
   const command = request();
   const prepared = await ledger.prepare(f.practitioner.actor, command, snapshot);

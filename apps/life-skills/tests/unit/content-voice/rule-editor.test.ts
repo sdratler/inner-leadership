@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { communityRuleIdsInGuide, communityRulesInGuide, composeCommunityRule, composeWritingRule, globalRuleIdsInGuide, writingRulesInGuide } from "../../../src/features/content-voice/rule-editor.ts";
+import { communityRuleIdsInGuide, communityRulesInGuide, composeCommunityRule } from "../../../src/features/content-voice/rule-editor.ts";
 
 const source = `# Synthetic Content Voice
 **Profile ID:** LS-CONTENT-VOICE
@@ -16,33 +16,6 @@ Keep the article order.
 const operationId = "12345678-1234-4123-8123-123456789abc";
 const at = "2026-09-28T01:00:00.000Z";
 const change = { operationId, at, language: "en" as const, rule: "Keep community replies concise and conversational." };
-
-describe('explicit global writing scope',()=>{
- it('updates the same guide without overwriting Community rules or existing prose, and retains scoped input provenance',()=>{
-  const community=composeCommunityRule(source,change);
-  const globalChange={...change,operationId:'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',scope:'general' as const,rule:'Prefer concise sentences and direct everyday words.'};
-  const global=composeWritingRule(community.text,globalChange);
-  expect(global.state).toBe('ready');expect(global.text).toContain('scope: general; language: en');
-  expect(global.text).toContain(community.after);expect(global.text).toContain('**V02 — Practitioner, not institution.** Use direct prose.');
-  expect(global.text).toContain('## 2. Article structure\n\nKeep the article order.');
-  expect(communityRuleIdsInGuide(global.text)).toEqual([community.ruleId]);expect(globalRuleIdsInGuide(global.text)).toEqual([global.ruleId]);
-  expect(writingRulesInGuide(global.text,'general')).toEqual([{id:global.ruleId,language:'en',rule:globalChange.rule}]);
-  expect(composeWritingRule(global.text,globalChange).state).toBe('already_applied');
-  expect(composeWritingRule(global.text,{...globalChange,scope:'community'}).state).toBe('needs_review');
-  expect(composeWritingRule(global.text,{...globalChange,operationId:'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff',targetRuleId:community.ruleId}).state).toBe('needs_review');
- });
- it.each(['general','community'] as const)('%s preserves policy and private-data denials',scope=>{
-  expect(composeWritingRule(source,{...change,scope,rule:'Add a WhatsApp booking link to each reply.'}).state).toBe('needs_playbook');
-  expect(composeWritingRule(source,{...change,scope,rule:'Mention the personal number +972501234567 in the guide.'}).state).toBe('unsafe');
- });
- it('requires explicit same-scope consolidation for similar global rules, with no silent replacement',()=>{
-  const first=composeWritingRule(source,{...change,scope:'general',rule:'Use direct everyday words and concise sentences.'});
-  const next={...change,operationId:'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',scope:'general' as const,rule:'Use direct everyday words and brief concise sentences.'};
-  expect(composeWritingRule(first.text,next).state).toBe('needs_review');
-  const consolidated=composeWritingRule(first.text,{...next,targetRuleId:first.ruleId});expect(consolidated.state).toBe('ready');
-  expect(globalRuleIdsInGuide(consolidated.text)).toEqual([first.ruleId]);expect(communityRuleIdsInGuide(consolidated.text)).toEqual([]);
- });
-});
 
 describe("owner-reviewed Community writing-rule edit", () => {
   it("adds one scoped rule without touching article or existing voice rules", () => {
