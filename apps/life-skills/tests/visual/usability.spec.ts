@@ -23,6 +23,23 @@ for(const locale of ["he","en"] as const){
   await page.screenshot({path:testInfo.outputPath(`${locale}-login.png`),fullPage:true});
  });
  for(const role of ["parent","practitioner"] as const){
+  test(`${locale} ${role} account panel retains readable sizing and keyboard focus`,async({page},testInfo)=>{
+   // Retained WorkspaceShell component/cascade regression, not authenticated journey proof.
+   for(const width of [340,390,768,1440]){
+    await page.setViewportSize({width,height:width===768?1024:900});
+    await page.goto(`/${locale}/dev/ui/workspace?role=${role}&page=${role==='parent'?'family/schedule':'app/calendar'}`,{waitUntil:'networkidle'});
+    const trigger=page.locator('.lsu-account summary'),panel=page.locator('.lsu-account-panel');
+    await trigger.press('Enter');
+    await expect(panel).toBeVisible();
+    const box=await panel.boundingBox();expect(box).not.toBeNull();
+    expect(box!.width).toBeGreaterThanOrEqual(248);expect(box!.x).toBeGreaterThanOrEqual(0);expect(box!.x+box!.width).toBeLessThanOrEqual(width);
+    const settings=panel.getByRole('link',{name:locale==='he'?'הגדרות':'Settings',exact:true});
+    const linkBox=await settings.boundingBox();expect(linkBox!.height).toBeGreaterThanOrEqual(44);expect(linkBox!.height).toBeLessThan(65);
+    await page.keyboard.press('Tab');await expect(settings).toBeFocused();
+    await page.screenshot({path:testInfo.outputPath(`${locale}-${role}-${width}-account-menu.png`)});
+    await page.keyboard.press('Escape');await expect(panel).not.toBeVisible();await expect(trigger).toBeFocused();
+   }
+  });
   test(`${locale} ${role} organized routes, contrast and return`,async({page},testInfo)=>{
    const errors:string[]=[];page.on("pageerror",error=>errors.push(error.message));
    const base=`/${locale}/dev/ui/workspace?role=${role}&page=`;

@@ -2,14 +2,16 @@
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import type { Locale } from "../../lib/locale.ts";
 import { revealWorkspaceTab } from "./tab-visibility.ts";
+import {communityView as selectedCommunityView} from '../../features/community-reply/views.ts';
+import type {CalendarLayerQuery} from '../../features/calendar/layers.ts';
 import { activeItem, breadcrumbItems, isCaseId, isClientWorkspacePath, practitionerContext, primaryNavigation, workspaceContext, workspaceGroups, workspaceHref, type ContextItem, type NavItem, type WorkspaceRole } from "./navigation-model.ts";
 import "./professional-ui.css";
 const copy = {
   en: { skip: "Skip to content", nav: "Workspace navigation", more: "More", close: "Close navigation", menu: "Open navigation", account: "Account menu", settings: "Settings", practitioner: "Practitioner workspace", parent: "Family workspace", client: "Client workspace", location: "You are here", language: "עברית", privacy: "Access is limited to your authorized workspace." },
   he: { skip: "דילוג לתוכן", nav: "ניווט במרחב", more: "עוד", close: "סגירת התפריט", menu: "פתיחת התפריט", account: "תפריט החשבון", settings: "הגדרות", practitioner: "מרחב המטפל", parent: "מרחב המשפחה", client: "מרחב לקוח/ה", location: "המיקום שלכם", language: "English", privacy: "הגישה מוגבלת למרחב המורשה שלכם." },
 } as const;
-export type WorkspaceShellProps = { locale: Locale; role: WorkspaceRole; clientRole?:'adult_client'|'child';pathname: string; caseId?: string | null; audienceId?:string|null; selectedClient?: boolean; section?: string | null | undefined; view?: string | null | undefined; date?: string | null | undefined; mode?: string | null | undefined; languageHref: string; children: ReactNode; toHref?: (path: string) => string; notice?: ReactNode };
-export function WorkspaceShell({ locale, role, clientRole, pathname, caseId, audienceId, selectedClient=false, section, view, date, mode, languageHref, children, toHref, notice }: WorkspaceShellProps) {
+export type WorkspaceShellProps = { locale: Locale; role: WorkspaceRole; clientRole?:'adult_client'|'child';pathname: string; caseId?: string | null; audienceId?:string|null; selectedClient?: boolean; section?: string | null | undefined; communityView?: string|null|undefined;view?: string | null | undefined; date?: string | null | undefined; mode?: string | null | undefined; calendarLayers?:CalendarLayerQuery;languageHref: string; children: ReactNode; toHref?: (path: string) => string; notice?: ReactNode };
+export function WorkspaceShell({ locale, role, clientRole, pathname, caseId, audienceId, selectedClient=false, section, communityView,view, date, mode, calendarLayers={},languageHref, children, toHref, notice }: WorkspaceShellProps) {
   const sharedClientContext=role==='practitioner'&&isCaseId(caseId)&&['/app/forms','/app/resources'].some(path=>pathname.endsWith(path));
   const effectiveSelectedClient=(selectedClient||sharedClientContext)&&isClientWorkspacePath(pathname.slice(locale.length+2));
   const t = copy[locale], active = role === "practitioner" && effectiveSelectedClient && caseId ? primaryNavigation.practitioner.find(item=>item.key==="clients") : activeItem(pathname, locale, role);
@@ -28,11 +30,13 @@ export function WorkspaceShell({ locale, role, clientRole, pathname, caseId, aud
   const link = (entry: NavItem) => <a className="lsu-nav-link" key={entry.key} href={href(entry.path)} aria-current={active?.key === entry.key ? "page" : undefined}>{entry[locale]}</a>;
   const clientContext = Boolean(caseId && (effectiveSelectedClient || pathname.includes("/app/cases/")));
   const roleGroups=workspaceGroups(role,clientRole),sharedItems=roleGroups.flatMap(group=>group.items),sharedContext=role!=='practitioner'&&sharedItems.some(item=>pathname===`/${locale}/${item.path}`);
-  const contextItems = role === "practitioner" ? practitionerContext(pathname, caseId ?? null, clientContext) : sharedContext?sharedItems:primaryNavigation[role];
-  const currentContext = pathname.endsWith("/app/practice") ? (section ?? "practice") : clientContext ? pathname.endsWith("/settings") ? "access" : pathname.includes("/sessions") ? "sessions" : pathname.includes("/app/calendar") ? "calendar" : pathname.includes("/app/feedback") ? "communications" : pathname.includes("/app/reports") ? "reports" : pathname.includes("/app/forms") ? "forms" : pathname.includes('/app/resources')?'resources':"overview" : pathname.includes("/app/calendar") ? (view ?? "week") : pathname.includes("/app/clients") || pathname.includes("/app/prospects") ? (section ?? "all") : pathname.endsWith('/app/marketing')&&section==='needs_approval'?'creatives':section ?? (pathname.includes("/app/reports") ? "drafts" : pathname.includes("/app/feedback") ? "app_updates" : "overview");
+  const inCommunity=pathname.endsWith('/app/marketing')&&section==='community';
+  const contextItems = role === "practitioner" ? practitionerContext(pathname, caseId ?? null, clientContext,inCommunity) : sharedContext?sharedItems:primaryNavigation[role];
+  const currentContext = inCommunity?selectedCommunityView(communityView):pathname.endsWith("/app/practice") ? (section ?? "practice") : clientContext ? pathname.endsWith("/settings") ? "access" : pathname.includes("/sessions") ? "sessions" : pathname.includes("/app/calendar") ? "calendar" : pathname.includes("/app/feedback") ? "communications" : pathname.includes("/app/reports") ? "reports" : pathname.includes("/app/forms") ? "forms" : pathname.includes('/app/resources')?'resources':"overview" : pathname.includes("/app/calendar") ? (view ?? "week") : pathname.includes("/app/clients") || pathname.includes("/app/prospects") ? (section ?? "all") : pathname.endsWith('/app/marketing')&&section==='needs_approval'?'creatives':section ?? (pathname.includes("/app/reports") ? "drafts" : pathname.includes("/app/feedback") ? "app_updates" : "overview");
   const contextHref = (entry: ContextItem) => {
     const url = new URL(href(entry.path), "https://private.invalid");
     for (const [key, value] of Object.entries(entry.query ?? {})) url.searchParams.set(key, value);
+    if(entry.path==='app/calendar'&&pathname.endsWith('/app/calendar'))for(const [key,value]of Object.entries(calendarLayers))url.searchParams.set(key,value);
     if(['app/reports','app/practice'].includes(entry.path)&&isCaseId(caseId)&&isCaseId(audienceId)){
       url.searchParams.delete('audienceId');url.searchParams.set('audienceId',audienceId);
     }
@@ -57,7 +61,8 @@ export function WorkspaceShell({ locale, role, clientRole, pathname, caseId, aud
   }} aria-label={role === "practitioner" ? (locale === "he" ? "תצוגות הדף הנוכחי" : "Current page views") : (locale === "he" ? "חלקי המרחב" : "Workspace sections")}>{contextItems.map(entry => <a key={entry.key} href={role === "practitioner" ? contextHref(entry) : href(entry.path)} aria-current={role === "practitioner" ? (currentContext === entry.key ? "page" : undefined) : (active?.key === entry.key ? "page" : undefined)}>{entry[locale]}</a>)}</nav>;
   const settings = `${role === "parent" ? "family" : role === "client" ? "client" : "app"}/settings`;
   const groups = roleGroups.map(group => <details key={`${group.key}:${active?.key ?? "none"}`} className="lsu-nav-group" open={group.items.some(x => x.key === active?.key)}><summary>{group[locale]}<span aria-hidden="true">⌄</span></summary><div>{group.items.map(link)}</div></details>);
-  const crumbs = breadcrumbItems(locale, role, pathname, section, view, effectiveSelectedClient, caseId);
+  const crumbs = breadcrumbItems(locale, role, pathname, section, view, effectiveSelectedClient, caseId,communityView);
+  const crumbHref=(path:string,query?:Readonly<Record<string,string>>)=>{const url=new URL(href(path),'https://private.invalid');for(const [key,value] of Object.entries(query??{}))url.searchParams.set(key,value);return url.pathname+url.search;};
   return <div className={`lsw lsu lsu--${role}`} lang={locale} dir={locale === "he" ? "rtl" : "ltr"}>
     <a className="lsu-skip" href="#lsw-main">{t.skip}</a>
     <header className="lsu-header">
@@ -78,7 +83,7 @@ export function WorkspaceShell({ locale, role, clientRole, pathname, caseId, aud
     <div className="lsu-layout">
       <aside className="lsu-sidebar"><nav aria-label={t.nav}><p className="lsu-nav-heading">{t[role]}</p>{primaryNavigation[role].map(link)}{groups}</nav><p className="lsu-sidebar-note">{t.privacy}</p></aside>
       <div className="lsu-content">
-        <nav className="lsu-breadcrumbs" aria-label={t.location}><ol>{crumbs.map((crumb, i) => <li key={`${i}-${crumb.label}`}>{crumb.path ? <a href={href(crumb.path)}>{crumb.label}</a> : <span aria-current="page">{crumb.label}</span>}</li>)}</ol></nav>
+        <nav className="lsu-breadcrumbs" aria-label={t.location}><ol>{crumbs.map((crumb, i) => <li key={`${i}-${crumb.label}`}>{crumb.path ? <a href={crumbHref(crumb.path,crumb.query)}>{crumb.label}</a> : <span aria-current="page">{crumb.label}</span>}</li>)}</ol></nav>
         <div id="lsw-main" className="lsu-page" tabIndex={-1}>{children}</div>
       </div>
     </div>

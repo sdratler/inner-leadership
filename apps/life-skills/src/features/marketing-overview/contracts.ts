@@ -3,6 +3,15 @@ export type Channel = "whatsapp_status" | "facebook_page" | "instagram" | "faceb
 export interface CreativeVersion {
     assetId: string;
     revision: number;
+    /** Explicit producer evidence; false means the display revision is a legacy fallback. */
+    registeredRevision?: boolean;
+    registeredRevisionLabel?: string;
+    /** Source metadata only. Unknown cycle is never guessed from an ingest date. */
+    concept?: number | null;
+    cycle?: string | null;
+    catalogKind?: string;
+    /** Secondary records cannot become delivery/review items. */
+    collection?: "templates" | "history";
     locale: "en" | "he";
     width: number;
     height: number;
@@ -16,6 +25,9 @@ export interface CreativeVersion {
     sourceUrl?: string | null;
     holdReason?: string | null;
     libraryState?: string;
+    /** Opaque guard for the existing register's exact source and approval history. */
+    reviewToken?: string;
+    artworkReview?: {decision:"approve_artwork"|"needs_revision";note:string;savedAt:string;operationId:string};
 }
 export interface Publication {
     id: string;
@@ -93,6 +105,13 @@ export interface MarketingInventory {
     partial: boolean;
     asOf: string;
 }
+export interface NextStatusHold {
+    state: "held";
+    language: "en" | "he";
+    reason: string;
+    conceptId: number;
+    candidateAssetIds: readonly string[];
+}
 /** Shared by the server read decision and the actual dashboard view. */
 export function normalizeMarketingSection(value:unknown){
     return (["overview", "content_calendar", "creatives", "needs_approval", "community", "ads"] as const).find(section=>section===value)??"overview";
@@ -101,9 +120,12 @@ export interface MarketingSnapshot {
     source: "synthetic" | "provider_readback" | "registry_only";
     fetchedAt: string | null;
     creatives: readonly CreativeVersion[];
+    library?: readonly CreativeVersion[];
     publications: readonly Publication[];
     ads: readonly AdSnapshot[];
     inventory?: MarketingInventory;
+    /** Canonical read-only publisher hold. It is not a schedule or send control. */
+    nextStatusHold?: NextStatusHold | null;
     adSeries?: readonly AdDailyPoint[];
     adReporting?: AdReporting;
     workbookUrl?: string | null;
