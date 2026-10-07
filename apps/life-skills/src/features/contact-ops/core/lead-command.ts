@@ -3,13 +3,19 @@ import {normalizePhone} from "./contact-resolution.ts";
 import {dateOnly} from "./validation.ts";
 import {approvedAdministrativeStage} from "../../prospects/admin-display.ts";
 
-const uuid=z.string().uuid(),epoch=z.number().int().min(0).max(Number.MAX_SAFE_INTEGER-1);
+const uuid=z.string().uuid(),epoch=z.number().int().min(0).max(Number.MAX_SAFE_INTEGER-1),clock=z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/);
+export const callbackWindowSchema=z.union([
+ z.object({kind:z.literal("part_of_day"),value:z.enum(["morning","evening"])}).strict(),
+ z.object({kind:z.literal("time_range"),start:clock,end:clock}).strict().refine(v=>v.start<v.end)
+]);
+export type CallbackWindow=z.infer<typeof callbackWindowSchema>;
 export const leadIntentSchema=z.object({phone:z.string().refine(v=>normalizePhone(v)===v).optional(),
  recentCaller:z.boolean(),name:z.string().trim().min(1).max(120).optional(),promote:z.boolean(),notLead:z.boolean(),
  stage:z.string().refine(approvedAdministrativeStage).optional(),note:z.string().min(1).max(1000).optional(),
- nextAction:z.string().min(1).max(500).optional(),dueDate:z.string().refine(dateOnly).optional(),
+ nextAction:z.string().min(1).max(500).optional(),dueDate:z.string().refine(dateOnly).optional(),callbackWindow:callbackWindowSchema.optional(),
  google:z.boolean(),whatsapp:z.boolean()}).strict().refine(v=>!(v.promote&&v.notLead)&&
- (!v.notLead||!v.stage&&!v.note&&!v.nextAction&&!v.dueDate&&!v.google&&!v.whatsapp));
+ (!v.notLead||!v.stage&&!v.note&&!v.nextAction&&!v.dueDate&&!v.callbackWindow&&!v.google&&!v.whatsapp)&&
+ (!v.callbackWindow||Boolean(v.nextAction&&v.dueDate)));
 export type LeadIntent=z.infer<typeof leadIntentSchema>;
 export const leadPreviewRequestSchema=z.object({action:z.literal("preview"),operationId:uuid,expectedEpoch:epoch,
  text:z.string().trim().min(1).max(2000),candidateId:uuid.optional(),personId:uuid.optional()}).strict()
@@ -52,6 +58,24 @@ function followUpDay(value:string,today:string):string|null{
   date.setUTCDate(date.getUTCDate()+(wanted-date.getUTCDay()+7)%7);}
  return date.toISOString().slice(0,10);
 }
+function normalizedClock(value:string):string|null{
+ const match=/^(\d{1,2}):([0-5]\d)$/.exec(value);if(!match)return null;
+ const hour=Number(match[1]);return hour<=23?`${String(hour).padStart(2,"0")}:${match[2]}`:null;
+}
+function followUpWhen(value:string,today:string):{date:string;window?:CallbackWindow}|null{
+ let dateText=value.trim(),window:CallbackWindow|undefined,match:RegExpExecArray|null;
+ if((match=/^(.+?)\s+(?:between|בין)\s+(\d{1,2}:[0-5]\d)\s+(?:and|to|עד|ל-?)\s*(\d{1,2}:[0-5]\d)$/iu.exec(dateText))){
+  const start=normalizedClock(match[2]!),end=normalizedClock(match[3]!);if(!start||!end||start>=end)return null;
+  dateText=match[1]!.trim();window={kind:"time_range",start,end};
+ }else if((match=/^(.+?)\s+(morning|evening|בבוקר|בוקר|בערב|ערב)$/iu.exec(dateText))){
+  dateText=match[1]!.trim();window={kind:"part_of_day",value:/morning|בוקר/iu.test(match[2]!)?"morning":"evening"};
+ }
+ dateText=dateText.replace(/^ב(?=יום )/,"");const date=followUpDay(dateText,today);return date?{date,...(window?{window}:{})}:null;
+}
+export function callbackWindowLabel(window:CallbackWindow,locale:"en"|"he"):string{
+ if(window.kind==="time_range")return `${window.start}–${window.end}`;
+ return locale==="he"?(window.value==="morning"?"בוקר":"ערב"):(window.value==="morning"?"morning":"evening");
+}
 /** Bounded bilingual deterministic parser: no model, network, token or spending.
  * Unsupported clauses never produce a partial mutation. Identity is resolved
  * separately under normal practitioner/native-authority policy, not by a model.
@@ -79,8 +103,9 @@ export function parseLeadText(input:string,today:string):LeadIntent|null{
   if(/^(?:he's interested|she's interested|interested|הוא מתעניין|היא מתעניינת|מתעניין)$/i.test(clause)){if(draft.stage&&draft.stage!=="Prospect")return null;draft.stage="Prospect";continue;}
   if((match=/^(?:stage|status|שלב|מצב)\s*:\s*(.+)$/i.exec(clause))){const aliases=new Map([["פנייה חדשה","New inquiry"],["נוצר קשר","Contacted"],["ניתנה הצעה","Offer made"],["מתעניין","Prospect"],["מתעניין/ת","Prospect"]]);const stage=aliases.get(match[1]!)??match[1]!;if(!approvedAdministrativeStage(stage)||draft.stage&&draft.stage!==stage)return null;draft.stage=stage;continue;}
   if(/^(?:spoke today|דיברנו היום)$/i.test(clause)){if(draft.note)return null;draft.note=clause;continue;}
-  if((match=/^(?:call(?: him| her)?|next action|follow up|להתקשר(?: אליו| אליה)?|הפעולה הבאה|המשך טיפול)\s*:?\s+(.+)$/i.exec(clause))){const when=match[1]!.toLocaleLowerCase().replace(/^ב(?=יום )/,""),date=followUpDay(when,today);if(!date||draft.dueDate&&draft.dueDate!==date)return null;
-   draft.nextAction=/^(?:call|להתקשר)/i.test(clause)?(/[א-ת]/.test(clause)?"להתקשר":"Call"):(/[א-ת]/.test(clause)?"המשך טיפול":"Follow up");draft.dueDate=date;continue;}
+  if((match=/^(?:call(?: him| her)?|next action|follow up|להתקשר(?: אליו| אליה)?|הפעולה הבאה|המשך טיפול)\s*:?\s+(.+)$/i.exec(clause))){const when=followUpWhen(match[1]!.toLocaleLowerCase(),today);if(!when||draft.dueDate&&draft.dueDate!==when.date||draft.callbackWindow)return null;
+   const hebrew=/[א-ת]/.test(clause),base=/^(?:call|להתקשר)/i.test(clause)?(hebrew?"להתקשר":"Call"):(hebrew?"המשך טיפול":"Follow up");
+   if(when.window)draft.callbackWindow=when.window;draft.nextAction=when.window?`${base} — ${callbackWindowLabel(when.window,hebrew?"he":"en")}`:base;draft.dueDate=when.date;continue;}
   if(/^(?:add to google contacts|google life skills lead|תייג בgoogle contacts|הוסף לאנשי הקשר של google)$/i.test(clause)){draft.google=true;continue;}
   if(/^(?:add whatsapp label|whatsapp ls • lead|תייג בwhatsapp|תווית whatsapp ls • lead)$/i.test(clause)){draft.whatsapp=true;continue;}
   if(!clause&&draft.phone)continue;return null;
