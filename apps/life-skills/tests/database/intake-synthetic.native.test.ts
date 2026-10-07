@@ -46,10 +46,9 @@ async function fixtureTuple(f:Fixture,operationId:string){
   FROM ls_demo.records m JOIN ls_intake.pre_enrollment_invitations i ON i.workspace_id=m.workspace_id AND i.invitation_id::text=m.entity_key
   WHERE m.workspace_id=$1 AND m.entity_kind='form' AND m.source_key=$2`,[f.workspaceId,sourceKey])).rows[0];
 }
-/** Frozen PR163 route boundary: its service/repository revoked-token predicate is
- * byte-equivalent for this path; the older route projected every successful
- * submit. The projector must therefore remain unreachable after containment. */
-async function pr163SubmitBoundary(service:PreEnrollmentService,token:string,key:string,input:ReturnType<typeof payload>,project:(lead:string,fields:unknown)=>Promise<unknown>){
+/** Model the route's post-submit projection boundary. Revocation must reject in
+ * the current service before any downstream projector can become reachable. */
+async function submitThenProject(service:PreEnrollmentService,token:string,key:string,input:ReturnType<typeof payload>,project:(lead:string,fields:unknown)=>Promise<unknown>){
  const receipt=await service.submit(token,key,input);
  await project(receipt.stableLeadId,{formSubmitted:receipt.receivedAt,stage:"Intake submitted / awaiting payment",updateProvenance:"private-app:intake-submitted"});
  return receipt;
@@ -84,7 +83,7 @@ test("native PG synthetic fixture is replay-safe, encrypted, authorized and effe
  expect(await effects(f)).toEqual(baseline);
 });
 
-test("native PG containment preserves a consumed fixture and blocks current and PR163 duplicate replay",async()=>{
+test("native PG containment preserves a consumed fixture and blocks duplicate replay before projection",async()=>{
  vi.stubEnv("LS_INTAKE_PUBLIC_CONSENT_JSON",JSON.stringify(consent));
  const f=await fixture({demoFirst:true});fixtures.push(f);const store=poolStore(f.pool),binding={batch:"ls-owner-20260925",accountId:f.parent.actor.id};
  const operation=randomUUID(),keyMaterial=Buffer.alloc(32,11),issued=await issueSyntheticIntake(store,f.practitioner.actor,operation,binding,keyMaterial,new Date());
@@ -98,7 +97,7 @@ test("native PG containment preserves a consumed fixture and blocks current and 
  await expect(service.exchange(issued.token)).rejects.toMatchObject({code:"NOT_FOUND"});
  await expect(service.submit(issued.token,idempotencyKey,input)).rejects.toMatchObject({code:"NOT_FOUND"});
  const legacyProject=vi.fn(async()=>false);
- await expect(pr163SubmitBoundary(service,issued.token,idempotencyKey,input,legacyProject)).rejects.toMatchObject({code:"NOT_FOUND"});
+ await expect(submitThenProject(service,issued.token,idempotencyKey,input,legacyProject)).rejects.toMatchObject({code:"NOT_FOUND"});
  expect(legacyProject).not.toHaveBeenCalled();
  await expect(issueSyntheticIntake(store,f.practitioner.actor,operation,binding,keyMaterial,new Date())).rejects.toMatchObject({code:"NOT_FOUND"});
  expect((await new PreEnrollmentStaffService(store,f.keyring).history(f.practitioner.actor,receipt.receiptId))[0]).toMatchObject({synthetic:true,input:{parentName:"Synthetic Parent"}});
