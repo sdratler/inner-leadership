@@ -35,6 +35,10 @@ test("callback windows retain named parts of day without invented hours and norm
 test.each(["Call tomorrow between 10:00 and 09:00","Call tomorrow between 24:00 and 25:00","Call tomorrow at 09:00","Call tomorrow dawn"])("ambiguous or invalid callback window is rejected without a partial intent: %s",text=>{
  expect(parseLeadText(text,today)).toBeNull();
 });
+test("two callback clauses are rejected even when they resolve to the same date",()=>{
+ expect(parseLeadText("Call tomorrow. Call tomorrow morning",today)).toBeNull();
+ expect(parseLeadText("Call tomorrow morning. Call tomorrow between 09:00 and 10:00",today)).toBeNull();
+});
 test("terminal sentence-separated note preserves its contents without accepting unknown preceding clauses",()=>{
  expect(parseLeadText("The guy who just called. Note: saved, exactly.\nהמשך",today))
   .toMatchObject({recentCaller:true,note:"saved, exactly.\nהמשך"});
