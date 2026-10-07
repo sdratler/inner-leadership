@@ -12,7 +12,7 @@ export const CONTACT_WORK_BASELINE={name:'0118_ls_contact_delta_history.sql',sha
 
 export type ContactWorkStage=0|1|2|3|4|5;
 export type ContactWorkSnapshot={
- taskColumns:number;taskConstraints:number;sourceKinds:string[];stateKinds:string[];historyActions:string[];sourceConstraintStrict:boolean;stateConstraintStrict:boolean;historyConstraintStrict:boolean;
+ taskColumns:number;taskConstraints:number;sourceKinds:string[];stateKinds:string[];historyActions:string[];sourceConstraintStrict:boolean;stateConstraintStrict:boolean;historyConstraintStrict:boolean;constraintDigest:string;
  workflowColumns:boolean;workflowConstraints:boolean;effectiveDueIndex:boolean;taskHistoryImmutable:boolean;taskPermissions:boolean;
  callLinksAbsent:boolean;callLinksSchema:boolean;callLinksForeignKeys:boolean;callLinksImmutable:boolean;callLinksPermissions:boolean;callLinksReferencesSound:boolean;
  leadCommandsAbsent:boolean;leadCommandsSchema:boolean;leadCommandsForeignKeys:boolean;leadCommandsImmutable:boolean;leadCommandsPermissions:boolean;leadCommandsReferencesSound:boolean;
@@ -27,7 +27,13 @@ const sourceStages=[
 const same=(a:readonly string[],b:readonly string[])=>JSON.stringify([...a].sort())===JSON.stringify([...b].sort());
 const literals=(value:unknown,ignored:ReadonlySet<string>=new Set())=>typeof value==='string'?[...value.matchAll(/'([^']+)'(?:::\w+)?/g)].map(match=>match[1]!).filter(item=>!ignored.has(item)).sort():[];
 const sourceIgnored=new Set(['^[0-9a-f]{64}$']);
-const strictConstraint=(value:unknown,expectedOrs:number)=>typeof value==='string'&&((value.match(/\bOR\b/gi)??[]).length===expectedOrs)&&!/(?:\bTRUE\b|\bFALSE\b|\bNOT\s+IN\b)/i.test(value);
+const normalizedConstraint=(value:unknown)=>typeof value==='string'?value.replace(/\s+/g,' ').trim().toLocaleLowerCase():'';
+const strictConstraint=(value:unknown,expectedOrs:number,required:readonly RegExp[])=>typeof value==='string'&&((value.match(/\bOR\b/gi)??[]).length===expectedOrs)&&!/(?:\bTRUE\b|\bFALSE\b|\bNOT\s+IN\b)/i.test(value)&&required.every(pattern=>pattern.test(value));
+const sourceStrict=(value:unknown)=>{const current=literals(value,sourceIgnored),expanded=current.length>1;return strictConstraint(value,1,[/source_kind\s+is\s+null/i,/source_digest\s+is\s+null/i,/source_revision\s+is\s+null/i,/source_kind\s*(?:=\s*'|=\s*any|in\s*\()/i,/source_digest\s*~/i,/source_revision\s*~/i,...(expanded?[/source_kind\s+is\s+not\s+null/i,/source_digest\s+is\s+not\s+null/i,/source_revision\s+is\s+not\s+null/i]:[])]);};
+const stateStrict=(value:unknown)=>strictConstraint(value,0,[/state\s*(?:=\s*any|in\s*\()/i]);
+const historyStrict=(value:unknown)=>strictConstraint(value,0,[/action\s*(?:=\s*any|in\s*\()/i]);
+const snoozeStrict=(value:unknown)=>strictConstraint(value,1,[/snoozed_until\s+is\s+null/i,/state\s*<>\s*'done'/i]);
+const historyStateStrict=(value:unknown)=>strictConstraint(value,2,[/action\s*<>\s*'managed'/i,/action\s*=\s*'managed'/i,/state_value\s+is\s+null/i,/state_value\s+is\s+not\s+null/i,/snoozed_until\s+is\s+null/i,/state_value\s*(?:=\s*any|in\s*\()/i,/state_value\s*<>\s*'done'/i]);
 
 export function classifyContactWork(snapshot:ContactWorkSnapshot):ContactWorkStage{
  const workflow=snapshot.workflowColumns&&snapshot.workflowConstraints&&snapshot.effectiveDueIndex&&snapshot.taskHistoryImmutable&&snapshot.taskPermissions&&snapshot.taskColumns===26&&snapshot.taskConstraints===16;
@@ -99,8 +105,11 @@ export async function readContactWorkSnapshot(db:ContactWorkQuery):Promise<Conta
     FROM pg_constraint k JOIN pg_class rc ON rc.oid=k.confrelid JOIN pg_namespace rn ON rn.oid=rc.relnamespace
     WHERE k.conrelid=to_regclass('ls_contact_ops.lead_commands') AND k.contype='f' AND k.convalidated) refs) AS lead_refs`);
  const row=task.rows[0]!,objects=tables.rows[0]!;
- const workflowConstraints=row.workflow&&await (async()=>{const value=await db.query<{ok:boolean}>(`SELECT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid=to_regclass('ls_calendar.tasks') AND conname='tasks_snooze_check' AND convalidated) AND EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid=to_regclass('ls_calendar.task_history') AND conname='task_history_state_check' AND convalidated) AS ok`);return value.rows[0]?.ok===true;})();
- return {taskColumns:row.columns?.length??0,taskConstraints:Number(row.constraints),sourceKinds:literals(row.source,sourceIgnored),stateKinds:literals(row.state),historyActions:literals(row.actions),sourceConstraintStrict:strictConstraint(row.source,1),stateConstraintStrict:strictConstraint(row.state,0),historyConstraintStrict:strictConstraint(row.actions,0),workflowColumns:row.workflow===true,workflowConstraints:workflowConstraints===true,effectiveDueIndex:row.effective===true,taskHistoryImmutable:row.immutable===true,taskPermissions:row.permissions===true,callLinksAbsent:objects.call_absent===true,callLinksSchema:objects.call_schema===true,callLinksForeignKeys:objects.call_fks===true,callLinksImmutable:objects.call_immutable===true,callLinksPermissions:objects.call_permissions===true,callLinksReferencesSound:objects.call_refs===true,leadCommandsAbsent:objects.lead_absent===true,leadCommandsSchema:objects.lead_schema===true,leadCommandsForeignKeys:objects.lead_fks===true,leadCommandsImmutable:objects.lead_immutable===true,leadCommandsPermissions:objects.lead_permissions===true,leadCommandsReferencesSound:objects.lead_refs===true};
+ const workflow=row.workflow?await db.query<{snooze:string|null;history:string|null}>(`SELECT
+  (SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid=to_regclass('ls_calendar.tasks') AND conname='tasks_snooze_check' AND convalidated) AS snooze,
+  (SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid=to_regclass('ls_calendar.task_history') AND conname='task_history_state_check' AND convalidated) AS history`):{rows:[{snooze:null,history:null}]};
+ const definitions=[row.source,row.state,row.actions,workflow.rows[0]?.snooze??null,workflow.rows[0]?.history??null].map(normalizedConstraint),constraintDigest=createHash('sha256').update(JSON.stringify(definitions)).digest('hex');
+ return {taskColumns:row.columns?.length??0,taskConstraints:Number(row.constraints),sourceKinds:literals(row.source,sourceIgnored),stateKinds:literals(row.state),historyActions:literals(row.actions),sourceConstraintStrict:sourceStrict(row.source),stateConstraintStrict:stateStrict(row.state),historyConstraintStrict:historyStrict(row.actions),constraintDigest,workflowColumns:row.workflow===true,workflowConstraints:row.workflow===true&&snoozeStrict(workflow.rows[0]?.snooze)&&historyStateStrict(workflow.rows[0]?.history),effectiveDueIndex:row.effective===true,taskHistoryImmutable:row.immutable===true,taskPermissions:row.permissions===true,callLinksAbsent:objects.call_absent===true,callLinksSchema:objects.call_schema===true,callLinksForeignKeys:objects.call_fks===true,callLinksImmutable:objects.call_immutable===true,callLinksPermissions:objects.call_permissions===true,callLinksReferencesSound:objects.call_refs===true,leadCommandsAbsent:objects.lead_absent===true,leadCommandsSchema:objects.lead_schema===true,leadCommandsForeignKeys:objects.lead_fks===true,leadCommandsImmutable:objects.lead_immutable===true,leadCommandsPermissions:objects.lead_permissions===true,leadCommandsReferencesSound:objects.lead_refs===true};
 }
 
 export function contactWorkStateDigest(history:readonly AppliedMigration[],snapshot:ContactWorkSnapshot):string{
