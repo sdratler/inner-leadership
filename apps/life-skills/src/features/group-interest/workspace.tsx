@@ -80,7 +80,7 @@ export function GroupInterestWorkspace({locale}:{locale:Locale}){
     <label>{t("Service","שירות")}<select name="serviceType" required><option value="group">{t("Group","קבוצה")}</option><option value="tutoring">{t("Tutoring","תגבור")}</option><option value="group_and_tutoring">{t("Both","שניהם")}</option></select></label>
     <label>{t("Parent name","שם ההורה")}<input name="parentName" required maxLength={100}/></label>
     <label>{t("Parent phone, including country code","טלפון ההורה כולל קידומת מדינה")}<input name="parentPhone" type="tel" required maxLength={16} placeholder="+972…" dir="ltr"/></label>
-    <label>{t("Contact language","שפת קשר")}<select name="language"><option value="he">עברית</option><option value="en">English</option></select></label>
+    <label>{t("Contact language","שפת קשר")}<select name="language" defaultValue={locale}><option value="he">עברית</option><option value="en">English</option></select></label>
     <label>{t("Child first name or short identifier","שם פרטי או מזהה קצר של הילד/ה")}<input name="childLabel" required maxLength={60}/></label>
     <label>{t("Child age","גיל הילד/ה")}<input name="childAge" type="number" required min={0} max={17}/></label>
     <label>{t("Area (optional)","אזור (לא חובה)")}<input name="area" maxLength={120}/></label>

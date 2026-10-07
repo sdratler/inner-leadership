@@ -13,6 +13,7 @@ describe("group interest owner form",()=>{
  });
  it.each(["en","he"] as const)("requires an explicit permission language before the exact notice can be confirmed in %s",locale=>{
   const html=renderToStaticMarkup(createElement(GroupInterestWorkspace,{locale}));
+  expect(html).toContain(`<option value="${locale}" selected="">`);
   expect(html).toContain('name="permissionLanguage"');
   expect(html).toContain('<option value="he">');
   expect(html).toContain('<option value="en">');
