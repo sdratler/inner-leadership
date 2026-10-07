@@ -349,7 +349,6 @@ export function selectNativeContacts(rows:readonly NativeContactRow[],input:Nati
  if(q.leadId&&rows.filter(r=>r.mode===(q.mode??"live")&&r.references.some(ref=>ref.leadId===q.leadId)).length>1)throw new AppError("CONFLICT");
  const filtered=rows.filter(r=>{
   const activeCase=r.caseLinks?.some(c=>c.state==="active")??false;
-  const assignedClient=Boolean(r.caseLinks?.length);
   const closed=Boolean(r.administrativelyArchived)||(r.archived&&!activeCase)||r.doNotContact;
   // Synthetic records need an explicit administrative demo view. They do not
   // silently mix into the default live contact directory.
@@ -361,11 +360,13 @@ export function selectNativeContacts(rows:readonly NativeContactRow[],input:Nati
   const openReferences=r.references.filter(ref=>!archived(ref.outcome)&&!suppressed(ref.outcome));
   if(view==="active"&&!activeCase&&!openReferences.some(ref=>ref.journey.journeyState==="active"))return false;
   if(view==="paid"&&!openReferences.some(ref=>ref.journey.paymentVerified&&!ref.journey.bookingConfirmed&&ref.journey.journeyState!=="hold"))return false;
-  if(view==="prospects"&&(r.references.length?!openReferences.some(ref=>!["active","hold"].includes(ref.journey.journeyState)):assignedClient))return false;
+  // Identity-only/audience-only people never become prospects by absence of a
+  // case. The sales queue requires a real lead reference.
+  if(view==="prospects"&&!openReferences.some(ref=>!["active","hold"].includes(ref.journey.journeyState)))return false;
   // Preserve existing workflow links without promoting historic payment/booking
   // claims to verified facts. Real journey state supersedes an older form claim.
   if(q.filter==="today"&&(!r.followUpDate||r.followUpDate>q.today))return false;
-  if(q.filter==="new"&&(r.version===null||(r.references.length?!openReferences.some(ref=>!ref.formSentClaim&&!ref.formSubmittedClaim&&!ref.journey.paymentVerified&&!ref.journey.bookingConfirmed&&ref.journey.journeyState==="prospect"):assignedClient)))return false;
+  if(q.filter==="new"&&(r.version===null||!openReferences.some(ref=>!ref.formSentClaim&&!ref.formSubmittedClaim&&!ref.journey.paymentVerified&&!ref.journey.bookingConfirmed&&ref.journey.journeyState==="prospect")))return false;
   if(q.filter==="intake"&&!openReferences.some(ref=>ref.formSentClaim&&!ref.formSubmittedClaim&&ref.journey.journeyState==="prospect"&&!ref.journey.paymentVerified))return false;
   if(q.filter==="payment"&&!openReferences.some(ref=>(ref.formSubmittedClaim||ref.journey.journeyState==="awaiting_payment")&&!ref.journey.paymentVerified&&!["active","hold"].includes(ref.journey.journeyState)))return false;
   if(q.stage&&q.stage!==r.stage)return false;

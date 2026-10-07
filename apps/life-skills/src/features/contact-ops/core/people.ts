@@ -25,6 +25,7 @@ export function projectPeople(workspaceId: string, people: readonly Administrati
         seen.add(p.personId);
         requireThat(p.mode !== "demo" || Boolean(p.demoBatchId), "UNMARKED_DEMO");
         const fs = facts.filter(f => f.personId === p.personId), a = attention.find(x => x.personId === p.personId);
+        const salesEvidence = p.legacyLeadIds.length > 0 || fs.length > 0;
         const stages: IntakeStage[] = fs.length ? fs.map(journeyStage) : ["new"];
         const stage = [...stages].sort((a, b) => order.indexOf(b) - order.indexOf(a))[0] ?? "new";
         if (a?.followUpDate)
@@ -35,7 +36,9 @@ export function projectPeople(workspaceId: string, people: readonly Administrati
         return { id: p.personId, displayName: p.mode === "demo" && !p.displayName.startsWith("DEMO — ") ? "DEMO — " + p.displayName : p.displayName,
             kind: p.kind, phone: p.endpoints.find(x => x.channel === "whatsapp")?.value ?? null, email: p.endpoints.find(x => x.channel === "email")?.value ?? null,
             locale: p.locale, stage, stages: [...new Set(stages)], archived: p.archivedAt !== null, active: fs.some(f => f.activeCase && !f.suspended),
-            openProspect: fs.length === 0 || fs.some(f => !f.activeCase && !f.confirmedAppointmentId && !f.suspended),
+            // An identity-only or audience-only person is not a sales lead. A
+            // prospect requires an explicit lead reference or journey fact.
+            openProspect: salesEvidence && (fs.length === 0 || fs.some(f => !f.activeCase && !f.confirmedAppointmentId && !f.suspended)),
             paidAwaitingBooking: fs.some(f => Boolean(f.paymentAllocationId) && !f.paymentReversedAt && !f.confirmedAppointmentId && !f.activeCase && !f.suspended),
             doNotContact: p.doNotContact, demo: p.mode === "demo", caseCount: new Set(p.caseIds).size,
             nextAction: a?.nextAction ?? null, followUpDate: a?.followUpDate ?? null, nextAppointmentAt: a?.nextAppointmentAt ?? null, unreadCount: a?.unreadCount ?? 0, version: p.version };

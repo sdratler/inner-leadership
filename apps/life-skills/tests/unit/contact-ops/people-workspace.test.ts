@@ -129,7 +129,7 @@ test("one new inquiry remains visible beside an older completed reference and an
  expect(selectNativeContacts([{...row,references:[fresh,old]}],q).total).toBe(1);
  expect(selectNativeContacts([{...row,references:[old]}],q).total).toBe(0);
  expect(selectNativeContacts([{...row,references:[]}],q).total).toBe(0);
- expect(selectNativeContacts([{...row,references:[],caseLinks:[]}],q).total).toBe(1);
+ expect(selectNativeContacts([{...row,references:[],caseLinks:[]}],q).total).toBe(0);
  expect(selectNativeContacts([{...row,version:null}],q).total).toBe(0);
 });
 
