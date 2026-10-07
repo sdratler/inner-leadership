@@ -174,5 +174,9 @@
   {
     "name": "0124_ls_group_interest.sql",
     "sha256": "51b85279639daf493f9b3312a9bafd5e82f7bbf45930903236ed23c15fbf9da5"
+  },
+  {
+    "name": "0125_ls_private_provider_index.sql",
+    "sha256": "62a83ed9c016446dc11692f447dcd4e7c77c67eacbe7f5caf745fa7b4f14c5be"
   }
 ]

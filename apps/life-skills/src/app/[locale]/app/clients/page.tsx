@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { isLocale } from "../../../../lib/locale.ts";
 import { AppError } from "../../../../lib/errors.ts";
+import { ProviderIndexEntryLink } from "../../../../features/provider-index/entry-link.tsx";
 import { ClientsRoster } from "../../../../features/cases/clients-roster.tsx";
 import { requireWorkspaceRole } from "../../../../features/integration/page-session.ts";
 import { loginHref, practitionerReturnPath } from "../../../../features/identity/login-return.ts";
@@ -27,5 +28,5 @@ export default async function Page({ params, searchParams }: {
       <a href={returnPath}>{locale === "he" ? "ניסיון חוזר" : "Retry"}</a>
     </main>;
   }
-  return <ClientsRoster locale={locale} section={one("section")} prospectFilter={one("filter")} focusLeadId={one("leadId")} personId={one("personId")} mode={one("mode")} page={one("page")} search={one("search")} stage={one("stage")} language={one("language")} due={one("due")} />;
+  return <><ProviderIndexEntryLink locale={locale} /><ClientsRoster locale={locale} section={one("section")} prospectFilter={one("filter")} focusLeadId={one("leadId")} personId={one("personId")} mode={one("mode")} page={one("page")} search={one("search")} stage={one("stage")} language={one("language")} due={one("due")} /></>;
 }

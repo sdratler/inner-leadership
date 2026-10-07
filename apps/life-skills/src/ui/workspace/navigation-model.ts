@@ -82,7 +82,7 @@ export function settingsItems(role: WorkspaceRole): readonly NavItem[] {
 export function activeItem(pathname: string, locale: Locale, role: WorkspaceRole): NavItem | undefined {
   const path = pathname.replace(new RegExp(`^/${locale}/`), "").replace(/\/$/, "");
   if (/^app\/cases\//.test(path) || role === "practitioner" && ['app/practice','app/forms','app/resources'].includes(path)) return primaryNavigation.practitioner.find(x => x.key === "clients");
-  if (path === "app/prospects") return primaryNavigation.practitioner.find(x => x.key === "clients");
+  if (path === "app/prospects" || path === "app/providers") return primaryNavigation.practitioner.find(x => x.key === "clients");
   return [...primaryNavigation[role], ...navigationGroups[role].flatMap(g => g.items), ...settingsItems(role), ...(role === "practitioner" ? [item("private-notes","app/private-notes","Private case notes","רשימות פרטיות בתיק")] : [])].find(x => x.path === path);
 }
 export type Crumb = { label: string; path?: string; query?: Readonly<Record<string,string>> };
