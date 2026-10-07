@@ -14,6 +14,24 @@ test('Calendar consumes the same bounded registry and freshness without calling 
  expect(result).toMatchObject({source:'registry_only',fetchedAt:readAt,publications:[publication()],inventory:inventory(),ads:[]});
  expect(mocks.registry).toHaveBeenCalledExactlyOnceWith('/api/bna/life-skills-app/marketing');expect(mocks.meta).not.toHaveBeenCalled();
 });
+test('Calendar preserves the exact read-only publisher hold and its current candidate binding',async()=>{
+ const creative={...registry().snapshot.creatives[0],assetId:'C21-HE-STATUS-TEAL-v04-FROZEN',concept:21,surface:'STATUS',registeredRevision:true};
+ const nextStatusHold={state:'held' as const,language:'he' as const,reason:'HEBREW_CALENDAR_OFF',conceptId:21,candidateAssetIds:[creative.assetId]};
+ mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,creatives:[creative],nextStatusHold}});
+ const {loadContentRegistry}=await import('../../../src/features/marketing-overview/provider.ts');
+ expect((await loadContentRegistry()).nextStatusHold).toEqual(nextStatusHold);expect(mocks.meta).not.toHaveBeenCalled();
+});
+test.each([
+ {state:'resolved'},
+ {reason:'HEBREW CALENDAR OFF'},
+ {candidateAssetIds:['NOT-IN-REGISTRY']},
+ {conceptId:22},
+])('rejects malformed or unbound publisher hold evidence: %j',async patch=>{
+ const creative={...registry().snapshot.creatives[0],assetId:'C21-HE-STATUS-TEAL-v04-FROZEN',concept:21,surface:'STATUS',registeredRevision:true};
+ const nextStatusHold={state:'held',language:'he',reason:'HEBREW_CALENDAR_OFF',conceptId:21,candidateAssetIds:[creative.assetId],...patch};
+ mocks.registry.mockResolvedValue({success:true,snapshot:{...registry().snapshot,creatives:[creative],nextStatusHold}});
+ const {loadContentRegistry}=await import('../../../src/features/marketing-overview/provider.ts');await expect(loadContentRegistry()).rejects.toMatchObject({code:'UNAVAILABLE'});
+});
 test('a failing Calendar inventory read does not fall back to old records or unrelated ad metrics',async()=>{
  const {loadContentRegistry}=await import('../../../src/features/marketing-overview/provider.ts');await loadContentRegistry();mocks.registry.mockRejectedValue(Error('Synthetic unavailable'));
  await expect(loadContentRegistry()).rejects.toMatchObject({code:'UNAVAILABLE'});expect(mocks.meta).not.toHaveBeenCalled();

@@ -130,6 +130,14 @@ describe("retained read-only Marketing calendar controls",()=>{
     expect(html).toContain('DEMO held Hebrew Status');expect(html).toContain('D21 OFF — owner release required');
     expect(html).not.toContain(locale==='en'?'>Not recorded</summary>':'>לא רשום</summary>');
   });
+  it.each(['en','he'] as const)("shows the exact %s canonical Hebrew publisher hold instead of claiming no schedule evidence",locale=>{
+    const heldAsset={...asset,assetId:"C21-HE-STATUS-TEAL-v04-FROZEN",concept:21,surface:"STATUS",registeredRevision:true,title:"Concept 21 — STATUS",holdReason:"D21 OFF"};
+    const source={...snapshot([],[heldAsset]),nextStatusHold:{state:'held' as const,language:'he' as const,reason:'HEBREW_CALENDAR_OFF',conceptId:21,candidateAssetIds:[heldAsset.assetId]}};
+    const html=renderToStaticMarkup(React.createElement(MarketingContentCalendar,{locale,snapshot:source,query:{filter:'queued',channel:'whatsapp_status'},renderedAt:"2026-10-07T15:00:00Z",thumbnail:a=>React.createElement("span",{"data-thumbnail":a.assetId},a.title)}));
+    expect(html).toContain(locale==='en'?'Held — HEBREW_CALENDAR_OFF':'מושהה — HEBREW_CALENDAR_OFF');
+    expect(html).toContain(locale==='en'?'The existing publisher records this Hebrew turn as held.':'המתזמן הקיים רושם את התור העברי כמושהה.');
+    expect(html).toContain(heldAsset.assetId);expect(html).not.toContain(locale==='en'?'No scheduled time recorded':'לא רשום מועד מתוזמן');expect(html).not.toMatch(/<button[^>]*>[^<]*(Retry|ניסיון)/i);
+  });
   it("does not turn a foreign URL containing a Drive-looking path into a trusted thumbnail",()=>{
     const html=renderToStaticMarkup(React.createElement(MarketingDashboard,{locale:"en",snapshot:snapshot([],[{...asset,imageUrl:"https://untrusted.example/drive.google.com/file/d/demo-fake/view"}]),initialSection:"creatives",renderedAt:"2026-10-01T08:00:00Z"}));
     expect(html).not.toContain("thumbnail?id=demo-fake");expect(html).not.toContain("<img");expect(html).toContain("Thumbnail unavailable");

@@ -92,7 +92,7 @@ function validatePublication(p: Publication): void {
     invariant(!("confirmedAt" in p) || Object.hasOwn(p, "confirmedAt") && (p.confirmedAt === null || typeof p.confirmedAt === "string" && validIso(p.confirmedAt)), "PUBLICATION_TIME");
 }
 export function validateMarketingSnapshot(snapshot: MarketingSnapshot): void {
-    const allowed = new Set(["source", "fetchedAt", "creatives", "library", "publications", "ads", "scout", "inventory", "adSeries", "adReporting", "workbookUrl", "connectionErrors", "inventoryReadback"]);
+    const allowed = new Set(["source", "fetchedAt", "creatives", "library", "publications", "ads", "scout", "inventory", "nextStatusHold", "adSeries", "adReporting", "workbookUrl", "connectionErrors", "inventoryReadback"]);
     invariant(Object.keys(snapshot).every(key => allowed.has(key)) && ["source", "fetchedAt", "creatives", "publications", "ads", "scout"].every(key => key in snapshot), "MARKETING_FIELDS");
     invariant(["synthetic", "provider_readback", "registry_only"].includes(snapshot.source) && (snapshot.fetchedAt === null || validIso(snapshot.fetchedAt)), "MARKETING_PROVENANCE");
     invariant(snapshot.library===undefined || Object.hasOwn(snapshot,"library") && Array.isArray(snapshot.library),"MARKETING_FIELDS");
@@ -105,6 +105,12 @@ export function validateMarketingSnapshot(snapshot: MarketingSnapshot): void {
         invariant(typeof counts==="object"&&counts!==null&&!Array.isArray(counts),"MARKETING_INVENTORY_FIELDS");
         const numericFields=["files","concepts","publishablePosts","heStatusReady","heFeedReady","enFeedReady","adEligible","queued","published","needsApproval","needsResizeOrCaption","heldMissing"] as const;
         invariant(numericFields.every(key=>Object.hasOwn(counts,key)&&Number.isSafeInteger(counts[key])&&counts[key]>=0)&&Object.hasOwn(counts,"inLiveAds")&&(counts.inLiveAds===null||Number.isSafeInteger(counts.inLiveAds)&&counts.inLiveAds>=0)&&Object.hasOwn(counts,"partial")&&typeof counts.partial==="boolean"&&Object.hasOwn(counts,"asOf")&&typeof counts.asOf==="string"&&validIso(counts.asOf),"MARKETING_INVENTORY_FIELDS");
+    }
+    if(snapshot.nextStatusHold!==undefined&&snapshot.nextStatusHold!==null){
+        const hold=snapshot.nextStatusHold;
+        invariant(typeof hold==="object"&&!Array.isArray(hold)&&Object.keys(hold).every(key=>["state","language","reason","conceptId","candidateAssetIds"].includes(key))&&["state","language","reason","conceptId","candidateAssetIds"].every(key=>Object.hasOwn(hold,key)),"MARKETING_STATUS_HOLD");
+        invariant(hold.state==="held"&&["en","he"].includes(hold.language)&&/^[A-Z0-9_:-]{1,120}$/.test(hold.reason)&&Number.isSafeInteger(hold.conceptId)&&hold.conceptId>0&&hold.conceptId<=999999&&Array.isArray(hold.candidateAssetIds)&&hold.candidateAssetIds.length>0&&hold.candidateAssetIds.length<=20&&new Set(hold.candidateAssetIds).size===hold.candidateAssetIds.length,"MARKETING_STATUS_HOLD");
+        invariant(hold.candidateAssetIds.every(assetId=>typeof assetId==="string"&&/^[A-Za-z0-9._-]{1,200}$/.test(assetId)&&snapshot.creatives.some(asset=>asset.assetId===assetId&&asset.locale===hold.language&&asset.concept===hold.conceptId&&["VERTICAL","STATUS"].includes(asset.surface??"")&&registeredCreativeRevision(asset))),"MARKETING_STATUS_HOLD");
     }
     for (const p of snapshot.publications) validatePublication(p);
     for (const a of snapshot.ads)

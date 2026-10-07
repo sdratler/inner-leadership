@@ -105,6 +105,13 @@ export interface MarketingInventory {
     partial: boolean;
     asOf: string;
 }
+export interface NextStatusHold {
+    state: "held";
+    language: "en" | "he";
+    reason: string;
+    conceptId: number;
+    candidateAssetIds: readonly string[];
+}
 /** Shared by the server read decision and the actual dashboard view. */
 export function normalizeMarketingSection(value:unknown){
     return (["overview", "content_calendar", "creatives", "needs_approval", "community", "ads"] as const).find(section=>section===value)??"overview";
@@ -117,6 +124,8 @@ export interface MarketingSnapshot {
     publications: readonly Publication[];
     ads: readonly AdSnapshot[];
     inventory?: MarketingInventory;
+    /** Canonical read-only publisher hold. It is not a schedule or send control. */
+    nextStatusHold?: NextStatusHold | null;
     adSeries?: readonly AdDailyPoint[];
     adReporting?: AdReporting;
     workbookUrl?: string | null;
