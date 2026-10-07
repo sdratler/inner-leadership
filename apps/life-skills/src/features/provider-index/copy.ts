@@ -1,7 +1,7 @@
 export const providerCopy = {
   en: {
     title: "Private provider index", private: "Only you can access this index. Nothing is published or sent.", people: "People", backCase: "Back to case",
-    new: "Add provider", search: "Find a provider", find: "Search", service: "Service", location: "Location / service area", verification: "Information status",
+    new: "Add provider", search: "Find a provider", find: "Search", filters: "Filters", edit: "Edit provider", summary: "Selected provider", service: "Service", location: "Location / service area", verification: "Information status",
     all: "All", active: "Active", archived: "Archived", archiveFilter: "Show", gender: "Gender, as declared", religiousFit: "Religious / community fit, as declared",
     loading: "Loading saved providers…", empty: "No matching providers. Add one or change the filters.", retry: "Retry", previous: "Previous", next: "Next", results: "Matching providers",
     open: "Open", save: "Save provider", saving: "Saving and checking…", saved: "Saved. The latest record is shown.", cancel: "Cancel editing", name: "Provider / practice name",
@@ -28,7 +28,7 @@ export const providerCopy = {
   },
   he: {
     title: "מאגר נותני שירות פרטי", private: "רק לך יש גישה למאגר. שום דבר אינו מתפרסם או נשלח.", people: "אנשים", backCase: "חזרה לתיק",
-    new: "הוספת נותן שירות", search: "חיפוש נותן שירות", find: "חיפוש", service: "שירות", location: "מיקום / אזור שירות", verification: "מצב בדיקת המידע",
+    new: "הוספת נותן שירות", search: "חיפוש נותן שירות", find: "חיפוש", filters: "מסננים", edit: "עריכת נותן השירות", summary: "נותן השירות שנבחר", service: "שירות", location: "מיקום / אזור שירות", verification: "מצב בדיקת המידע",
     all: "הכול", active: "פעילים", archived: "בארכיון", archiveFilter: "הצגה", gender: "מגדר כפי שנמסר", religiousFit: "התאמה דתית / קהילתית כפי שנמסרה",
     loading: "טוען רשומות שמורות…", empty: "לא נמצאו נותני שירות מתאימים. אפשר להוסיף רשומה או לשנות סינון.", retry: "ניסיון חוזר", previous: "הקודם", next: "הבא", results: "נותני שירות מתאימים",
     open: "פתיחה", save: "שמירת נותן השירות", saving: "שומר ובודק…", saved: "נשמר. מוצגת הגרסה השמורה העדכנית.", cancel: "ביטול עריכה", name: "שם נותן השירות / העסק",

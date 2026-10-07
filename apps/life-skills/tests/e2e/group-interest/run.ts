@@ -11,10 +11,11 @@ import {once} from "node:events";
 import {request as playwrightRequest} from "@playwright/test";
 import {fixture,safeTestUrl} from "../../database/calendar/fixture.ts";
 
-const project=process.env.LS_GROUP_INTEREST_TEST_PROJECT;
-if(project!==undefined&&!['desktop','mobile'].includes(project))throw new Error("GROUP_INTEREST_BROWSER_PROJECT_NOT_SUPPORTED");
+const projects={desktop:3105,mobile390:3106,mobile340:3107} as const;
+const project=process.env.LS_GROUP_INTEREST_TEST_PROJECT as keyof typeof projects|undefined;
+if(project!==undefined&&!(project in projects))throw new Error("GROUP_INTEREST_BROWSER_PROJECT_NOT_SUPPORTED");
 if(process.env.LS_GROUP_INTEREST_TEST_ALLOW!=="true")throw new Error("GROUP_INTEREST_BROWSER_OPT_IN_REQUIRED");
-const appPort=project==="mobile"?3106:3105,origin=`https://localhost:${appPort}`;
+const appPort=projects[project??"desktop"],origin=`https://localhost:${appPort}`;
 safeTestUrl();
 const folder=mkdtempSync(join(tmpdir(),"ls-group-interest-browser-"));
 let app:ChildProcess|null=null,tests:ChildProcess|null=null;

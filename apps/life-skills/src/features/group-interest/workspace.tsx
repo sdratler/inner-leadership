@@ -3,6 +3,7 @@ import {useCallback,useEffect,useRef,useState} from "react";
 import type {Locale} from "../../lib/locale.ts";
 import {sessionInfo} from "../identity/client.ts";
 import {interestCommandSchema,interestNotice,type InterestCommand,type InterestList} from "./contract.ts";
+import styles from "./workspace.module.css";
 export function classifyGroupInterestSaveFailure(requestStarted:boolean,status?:number){
  if(!requestStarted||status===401)return "reauth" as const;
  if(status!==undefined&&status>=400&&status<500)return "correctable" as const;
@@ -67,36 +68,34 @@ export function GroupInterestWorkspace({locale}:{locale:Locale}){
   }
   finally{setBusy(false);}
  }
- return <section className="lsw-main">
+ return <section className={`lsw-main ${styles.workspace}`}>
   <h1>{t("Group and tutoring interest","התעניינות בקבוצה ובתגבור")}</h1>
-  <p>{t("Private owner entry — interest for review, without enrollment or payment. Record only practical information; no clinical history.",
-   "רישום פרטי של הבעלים — פנייה לבדיקה, ללא הרשמה או תשלום. יש לתעד מידע מעשי בלבד, ללא היסטוריה טיפולית.")}</p>
-  <p>{t("Private owner entry. This records administrative interest only and does not enroll, charge, invite, book or send a message.",
-   "רישום פרטי של הבעלים. הפעולה מתעדת התעניינות מנהלית בלבד ואינה רושמת, מחייבת, מזמינה, קובעת פגישה או שולחת הודעה.")}</p>
+  <p className={styles.intro}>{t("Private owner entry for administrative interest and review only. Record practical information, not clinical history; this does not enroll, charge, invite, book or send a message.",
+   "רישום פרטי של הבעלים להתעניינות מנהלית ולבדיקה בלבד. יש לתעד מידע מעשי ולא היסטוריה טיפולית; הפעולה אינה רושמת, מחייבת, מזמינה, קובעת פגישה או שולחת הודעה.")}</p>
   {error&&<p role="alert">{error}</p>}
   {saved&&<p role="status">{t("Inquiry saved and read back from the app database.","הפנייה נשמרה ונקראה בחזרה ממסד הנתונים של האפליקציה.")}</p>}
-  <form ref={form} onSubmit={event=>{event.preventDefault();void save();}}>
-   <fieldset disabled={busy||uncertain}><legend>{t("Record an inquiry","רישום פנייה")}</legend>
-    <label>{t("Service","שירות")}<select name="serviceType" required><option value="group">{t("Group","קבוצה")}</option><option value="tutoring">{t("Tutoring","תגבור")}</option><option value="group_and_tutoring">{t("Both","שניהם")}</option></select></label>
-    <label>{t("Parent name","שם ההורה")}<input name="parentName" required maxLength={100}/></label>
-    <label>{t("Parent phone, including country code","טלפון ההורה כולל קידומת מדינה")}<input name="parentPhone" type="tel" required maxLength={16} placeholder="+972…" dir="ltr"/></label>
-    <label>{t("Contact language","שפת קשר")}<select name="language" defaultValue={locale}><option value="he">עברית</option><option value="en">English</option></select></label>
-    <label>{t("Child first name or short identifier","שם פרטי או מזהה קצר של הילד/ה")}<input name="childLabel" required maxLength={60}/></label>
-    <label>{t("Child age","גיל הילד/ה")}<input name="childAge" type="number" required min={0} max={17}/></label>
-    <label>{t("Area (optional)","אזור (לא חובה)")}<input name="area" maxLength={120}/></label>
-    <label>{t("Availability (optional)","זמינות (לא חובה)")}<input name="availability" maxLength={240}/></label>
-    <label>{t("Group preferences (optional)","העדפות לקבוצה (לא חובה)")}<input name="groupPreference" maxLength={240}/></label>
-    <label>{t("How parent permission was received","איך התקבלה הסכמת ההורה")}<select name="permissionSource" required defaultValue=""><option value="" disabled>{t("Select","בחירה")}</option><option value="spoken">{t("Spoken","בעל פה")}</option><option value="written">{t("Written","בכתב")}</option><option value="whatsapp">WhatsApp</option></select></label>
-    <label>{t("Language used for parent permission","שפת הסכמת ההורה")}<select name="permissionLanguage" required value={permission.language??""} onChange={event=>setPermission(permissionLanguageChanged(event.target.value==="he"?"he":event.target.value==="en"?"en":null))}><option value="" disabled>{t("Select","בחירה")}</option><option value="he">עברית</option><option value="en">English</option></select></label>
-    <label><input name="permission" type="checkbox" required disabled={!permission.language} checked={permission.confirmed} onChange={event=>setPermission(current=>({...current,confirmed:event.target.checked}))}/>{permission.language?interestNotice[permission.language]:t("Select the permission language to review the exact notice.","בחרו את שפת ההסכמה כדי לקרוא את הנוסח המדויק.")}</label>
+  <form ref={form} className={styles.form} onSubmit={event=>{event.preventDefault();void save();}}>
+   <fieldset className={styles.fields} disabled={busy||uncertain}><legend>{t("Record an inquiry","רישום פנייה")}</legend>
+    <label className={styles.field}>{t("Service","שירות")}<select name="serviceType" required><option value="group">{t("Group","קבוצה")}</option><option value="tutoring">{t("Tutoring","תגבור")}</option><option value="group_and_tutoring">{t("Both","שניהם")}</option></select></label>
+    <label className={styles.field}>{t("Parent name","שם ההורה")}<input name="parentName" required maxLength={100}/></label>
+    <label className={styles.field}>{t("Parent phone, including country code","טלפון ההורה כולל קידומת מדינה")}<input name="parentPhone" type="tel" required maxLength={16} placeholder="+972…" dir="ltr"/></label>
+    <label className={styles.field}>{t("Contact language","שפת קשר")}<select name="language" defaultValue={locale}><option value="he">עברית</option><option value="en">English</option></select></label>
+    <label className={styles.field}>{t("Child first name or short identifier","שם פרטי או מזהה קצר של הילד/ה")}<input name="childLabel" required maxLength={60}/></label>
+    <label className={styles.field}>{t("Child age","גיל הילד/ה")}<input name="childAge" type="number" required min={0} max={17}/></label>
+    <label className={styles.field}>{t("Area (optional)","אזור (לא חובה)")}<input name="area" maxLength={120}/></label>
+    <label className={styles.field}>{t("Availability (optional)","זמינות (לא חובה)")}<input name="availability" maxLength={240}/></label>
+    <label className={styles.field}>{t("Group preferences (optional)","העדפות לקבוצה (לא חובה)")}<input name="groupPreference" maxLength={240}/></label>
+    <label className={styles.field}>{t("How parent permission was received","איך התקבלה הסכמת ההורה")}<select name="permissionSource" required defaultValue=""><option value="" disabled>{t("Select","בחירה")}</option><option value="spoken">{t("Spoken","בעל פה")}</option><option value="written">{t("Written","בכתב")}</option><option value="whatsapp">WhatsApp</option></select></label>
+    <label className={styles.field}>{t("Language used for parent permission","שפת הסכמת ההורה")}<select name="permissionLanguage" required value={permission.language??""} onChange={event=>setPermission(permissionLanguageChanged(event.target.value==="he"?"he":event.target.value==="en"?"en":null))}><option value="" disabled>{t("Select","בחירה")}</option><option value="he">עברית</option><option value="en">English</option></select></label>
+    <label className={styles.permission}><input name="permission" type="checkbox" required disabled={!permission.language} checked={permission.confirmed} onChange={event=>setPermission(current=>({...current,confirmed:event.target.checked}))}/><span>{permission.language?interestNotice[permission.language]:t("Select the permission language to review the exact notice.","בחרו את שפת ההסכמה כדי לקרוא את הנוסח המדויק.")}</span></label>
    </fieldset>
-   <button type="submit" disabled={busy}>{busy?t("Saving…","שומר…"):uncertain?t("Retry same inquiry","ניסיון חוזר לאותה פנייה"):t("Save interest","שמירת התעניינות")}</button>
+   <button type="submit" className={`lsw-button lsw-button--primary ${styles.save}`} disabled={busy}>{busy?t("Saving…","שומר…"):uncertain?t("Retry same inquiry","ניסיון חוזר לאותה פנייה"):t("Save interest","שמירת התעניינות")}</button>
   </form>
-  <h2>{t("Recent inquiries","פניות אחרונות")}</h2>
-  <button type="button" disabled={busy} onClick={()=>void load()}>{t("Refresh","רענון")}</button>
+  <header className={styles.recentHeader}><h2>{t("Recent inquiries","פניות אחרונות")}</h2>
+   <button type="button" className={`lsw-button lsw-button--secondary ${styles.refresh}`} disabled={busy} onClick={()=>void load()}>{t("Refresh","רענון")}</button></header>
   {data&&data.items.length===0&&<p>{t("No inquiries recorded.","לא נרשמו פניות.")}</p>}
-  {data?.items.map(item=><article key={item.id}><h3>{item.fields.parentName} — {item.fields.childLabel}</h3>
-   <p>{item.fields.parentPhone} · {item.fields.serviceType==="group"?t("Group","קבוצה"):item.fields.serviceType==="tutoring"?t("Tutoring","תגבור"):t("Both","שניהם")} · {t("Age","גיל")} {item.fields.childAge}</p>
+  {data?.items.map(item=><article className={styles.record} key={item.id}><h3>{item.fields.parentName} — {item.fields.childLabel}</h3>
+   <p><bdi dir="ltr" className={styles.phone}>{item.fields.parentPhone}</bdi> · {item.fields.serviceType==="group"?t("Group","קבוצה"):item.fields.serviceType==="tutoring"?t("Tutoring","תגבור"):t("Both","שניהם")} · {t("Age","גיל")} {item.fields.childAge}</p>
    <p>{[item.fields.area,item.fields.availability,item.fields.groupPreference].filter(Boolean).join(" · ")}</p>
    <p>{t("Interest only — owner review pending","התעניינות בלבד — ממתין לבדיקת הבעלים")} · <time dateTime={item.createdAt}>{new Intl.DateTimeFormat(locale==="he"?"he-IL":"en-GB",{dateStyle:"short",timeStyle:"short",timeZone:"Asia/Jerusalem"}).format(new Date(item.createdAt))}</time></p>
   </article>)}

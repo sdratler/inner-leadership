@@ -13,12 +13,14 @@ describe("group interest owner form",()=>{
  });
  it.each(["en","he"] as const)("requires an explicit permission language before the exact notice can be confirmed in %s",locale=>{
   const html=renderToStaticMarkup(createElement(GroupInterestWorkspace,{locale}));
+  expect(html.match(new RegExp(locale==="he"?"רישום פרטי של הבעלים":"Private owner entry","g"))).toHaveLength(1);
   expect(html).toContain(`<option value="${locale}" selected="">`);
   expect(html).toContain('name="permissionLanguage"');
   expect(html).toContain('<option value="he">');
   expect(html).toContain('<option value="en">');
   expect(html).toMatch(/<input[^>]*disabled=""[^>]*name="permission"/);
   expect(html).toContain(locale==="he"?"בחרו את שפת ההסכמה":"Select the permission language");
+  expect(html).toContain(locale==="he"?"אינה רושמת, מחייבת":"does not enroll, charge");
  });
  it("requires the exact notice to be reconfirmed after every permission-language change",()=>{
   const confirmed={language:"en" as const,confirmed:true};
