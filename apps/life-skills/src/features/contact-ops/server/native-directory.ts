@@ -7,7 +7,7 @@ import {unseal,type Keyring} from "../../identity/crypto.ts";
 import {systemClock,type Actor,type IdentityClock} from "../../identity/types.ts";
 import {requirePractitioner} from "../../cases/policy.ts";
 import {readProspectJourneysFromTx,type ProspectJourneyState} from "../../prospects/journey-read.ts";
-import {crmProfileAad,crmProfileSchema} from "./native-store.ts";
+import {crmProfileAad,crmProfileSchema,type CrmProfile} from "./native-store.ts";
 import {dateOnly} from "../core/validation.ts";
 import type {PeopleView,Page} from "../core/types.ts";
 import type {Prospect} from "../../prospects/bridge.ts";
@@ -36,7 +36,7 @@ export type NativeContactReference={leadId:string;phone:string;email:string;lang
   nativeOrigin?:"native_manual"|"native_whatsapp";nativeCreatedAt?:string};
 export type NativeContactRow={personId:string;displayName:string;identityKind:"adult"|"minor";
  stage:string;nextAction:string|null;followUpDate:string|null;notes:string;version:number|null;
-  mode:"live"|"demo";archived:boolean;doNotContact:boolean;references:NativeContactReference[];inboundActivity?:InboundActivity;
+  mode:"live"|"demo";archived:boolean;doNotContact:boolean;references:NativeContactReference[];inboundActivity?:InboundActivity;outreach?:CrmProfile["outreach"];
  /** Real assigned cases, joined by canonical person UUID. Never phone/name matching. */
  caseLinks?:{caseId:string;state:string}[];
  acquisitionProjections?:{channel:"google_contacts"|"whatsapp";state:"applied"|"no_chat"|"pending"|"failed";
@@ -177,17 +177,19 @@ export class NativeContactDirectory {
     if(seen.has(ref.leadId))throw new AppError("CONFLICT");seen.add(ref.leadId);
     const fields=sourceFields.get(ref.leadId);if(!fields&&!ref.nativeOrigin)throw new AppError("UNAVAILABLE");
     const get=(name:string)=>field(fields??{},name);
+    const sent=row.outreach?.[ref.leadId],priorContact=(ref.nativeOrigin==="native_whatsapp"?row.inboundActivity?.lastInboundAt:undefined)??get("Last contact");
+    const lastContact=sent&&(!Number.isFinite(Date.parse(priorContact))||Date.parse(sent.lastContact)>Date.parse(priorContact))?sent.lastContact:priorContact;
     result.push({leadId:ref.leadId,name:row.displayName,phone:ref.phone,email:ref.email,language:ref.language,
      receivedAt:ref.nativeCreatedAt??get("Date received"),source:ref.source,campaign:ref.campaign,
      stage:row.doNotContact?"Do not contact":row.archived?"Archived":row.stage,
-      lastContact:(ref.nativeOrigin==="native_whatsapp"?row.inboundActivity?.lastInboundAt:undefined)??get("Last contact"),nextAction:row.nextAction??"",dueDate:row.followUpDate??"",
+      lastContact,nextAction:row.nextAction??"",dueDate:row.followUpDate??"",
      outcome:ref.outcome,notes:row.notes,
      // Missing/stale Sheet claims must not unlink a genuine canonical client.
      // Multiple cases need the exact real journey/order relation, not a guess.
      caseId:canonicalProspectCase(row.caseLinks,orderCases.get(ref.leadId)??null),
      formSent:ref.formSentClaim,formSubmitted:ref.formSubmittedClaim,paymentLinkSent:get("Payment link sent"),
      paymentMethod:get("Payment method"),paymentStatus:ref.paymentClaim,paymentAllocation:get("Payment allocation"),
-      bookingStatus:ref.bookingClaim,messageReceipt:(ref.nativeOrigin==="native_whatsapp"?row.inboundActivity?.lastMessageKey:undefined)??ref.messageReceipt,updateProvenance:get("Update provenance"),
+      bookingStatus:sent?.bookingStatus??ref.bookingClaim,messageReceipt:sent?.messageReceipt??(ref.nativeOrigin==="native_whatsapp"?row.inboundActivity?.lastMessageKey:undefined)??ref.messageReceipt,updateProvenance:sent?.updateProvenance??get("Update provenance"),
       firstInboundAt:(ref.nativeOrigin==="native_whatsapp"?row.inboundActivity?.firstInboundAt:undefined)??get("First inbound at"),
       lastInboundAt:(ref.nativeOrigin==="native_whatsapp"?row.inboundActivity?.lastInboundAt:undefined)??get("Last inbound at"),owner:ref.owner??get("Response owner"),...ref.journey,
      ...(row.version===null?{}:{nativeEdit:{personId:row.personId,profileVersion:row.version,authorityEpoch:expectedEpoch}})});
@@ -257,13 +259,16 @@ export class NativeContactDirectory {
        formSentClaim:"",formSubmittedClaim:"",sourceFileId:null,sourceSheetId:null,sourceRevision:null,
        nativeOrigin:inquiry.origin,nativeCreatedAt:inquiry.createdAt,journey:journeys.get(inquiry.leadId)??emptyJourney()});
      }
+     // Actual confirmed send receipts may supersede historical form-send claims;
+     // they never set paymentVerified, bookingConfirmed or account/case access.
+     for(const ref of references)if(profile.outreach?.[ref.leadId]?.formSent)ref.formSentClaim=profile.outreach[ref.leadId]!.formSent!;
      rows.push({personId:p.personId,displayName:p.recordMode==="demo"&&!person.displayName.startsWith("DEMO — ")?`DEMO — ${person.displayName}`:person.displayName,
       identityKind:p.kind,stage:profile.stage,nextAction:profile.nextAction,followUpDate:profile.followUpDate,
       // A closed historical inquiry cannot archive another open inquiry for the
       // same canonical person. Explicit profile archival remains authoritative.
       notes:profile.notes,version:p.version,mode:p.recordMode,archived:p.persistedArchived||archived(profile.stage)||(references.length>0&&references.every(r=>archived(r.outcome))),
       doNotContact:profile.doNotContact===true||suppressed(profile.stage)||references.some(r=>r.sourceDoNotContact||suppressed(r.outcome)),references,
-      ...(profile.inboundActivity?{inboundActivity:profile.inboundActivity}:{})});
+      ...(profile.inboundActivity?{inboundActivity:profile.inboundActivity}:{}),...(profile.outreach?{outreach:profile.outreach}:{})});
     }
     after=profiles.at(-1)!.personId;
    }

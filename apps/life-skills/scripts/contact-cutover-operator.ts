@@ -83,6 +83,11 @@ async function main(){
   const p=z.object({previous:snapshotSchema,next:snapshotSchema,...(e.action==='delta'?{input:z.object({operationId:z.string(),expectedEpoch:z.number().int().nonnegative(),versions:z.array(z.object({legacyId:z.string(),version:z.number().int().positive()}).strict()),newPeople:z.array(z.object({sourceRow:z.number().int().positive(),sourceRevision:z.string(),legacyId:z.string(),rowDigest:z.string().regex(/^[a-f0-9]{64}$/),kind:z.literal('new_person')}).strict())}).strict()}: {})}).strict().parse(input.payload);
   result=e.action==='preflight'?await importer.preflightDeltaAsOperator(p.previous as SheetSnapshot,p.next as SheetSnapshot,permit):
    await importer.applyDeltaAsOperator(p.previous as SheetSnapshot,p.next as SheetSnapshot,(p as typeof p&{input:DeltaApplication}).input,permit);
+ }else if(e.action==='drain_inbound'){
+  const p=z.object({expectedEpoch:z.number().int().nonnegative(),limit:z.number().int().min(1).max(100),after:z.object({storedAt:z.string(),eventKey:z.string().regex(/^[a-f0-9]{64}$/)}).strict().nullable(),bindingDigest:z.string().regex(/^[a-f0-9]{64}$/)}).strict().parse(input.payload);
+  must(process.env.LS_CONTACT_INBOUND_ENABLED==='true'&&p.bindingDigest===process.env.LS_CONTACT_INBOUND_BINDING_SHA256&&input.integrityKey===runtime.config.lookupKey.toString('hex'),'CUTOVER_INBOUND_BINDING_MISMATCH');
+  const {ContactInboundStore}=await import('../src/features/contact-ops/server/inbound-store.ts');
+  result=await new ContactInboundStore(runtime.store,workspace,runtime.config.keyring,input.integrityKey,p.bindingDigest,runtime.clock).drainAsOperator(p,permit,runtime.config.lookupKey);
  }else{
   const p=input.payload as CutoverAdvanceInput;
   must(p&&p.action===e.action&&p.proof?.sourceFileId===sourceFile,'CUTOVER_ACTION_MISMATCH');

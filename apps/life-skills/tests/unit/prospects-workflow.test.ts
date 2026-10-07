@@ -50,7 +50,7 @@ describe("live intake follow-up contract",()=>{
  it("routes every provider send and public-intake projection through the cutover fence",()=>{
   const prospects=read("app/api/prospects/route.ts"),intake=read("app/api/intake/route.ts");
   expect((prospects.match(/sendAuthoritativeProspectMessage\(s\.actor/g)??[]).length).toBe(3);
-  expect(prospects).toContain("assertLegacyProspectSenderAvailable(s.actor,s.runtime)");
+  expect(prospects).toContain("assertProspectSenderAvailable(s.actor,s.runtime)");
   expect(prospects).toContain("sent.authorityEpoch");
   expect(prospects).not.toContain("sendProspectMessage(");
   expect(prospects).not.toContain("updateProspect(");

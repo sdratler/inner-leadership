@@ -44,3 +44,9 @@ export async function sendProspectMessage(leadId:string,body:string,context:{sto
   if(batch)throw new AppError("FORBIDDEN");
   return crmBridge<{success:true;receipt:{provider:string;providerMessageId:string|null;sentAt:string|null;replaySuppressed?:boolean;sheetUpdated?:boolean}}>(`/api/bna/life-skills-app/prospects/${encodeURIComponent(leadId)}/send`,{method:"POST",body:JSON.stringify({body})});
 }
+/** Only the native store constructs this from its committed, authorized intent. */
+export async function sendNativeProspectMessage(input:{operationId:string;authorityEpoch:number;bindingSha256:string;
+ leadId:string;phone:string;body:string;recordMode:"live"}){
+ return crmBridge<{success:true;receipt:{provider:string;providerMessageId:string|null;sentAt:string|null;replaySuppressed?:boolean;sheetUpdated?:boolean}}>(
+  "/api/bna/life-skills-app/native-prospects/send",{method:"POST",body:JSON.stringify(input)});
+}

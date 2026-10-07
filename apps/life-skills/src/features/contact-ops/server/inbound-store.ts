@@ -2,7 +2,7 @@ import "server-only";
 import {z} from "zod";
 import {AppError} from "../../../lib/errors.ts";
 import {asId} from "../../../lib/ids.ts";
-import type {IdentityStore} from "../../identity/store.ts";
+import type {IdentityStore,SqlSession} from "../../identity/store.ts";
 import {seal,unseal,type Keyring} from "../../identity/crypto.ts";
 import {freshActor} from "../../identity/data.ts";
 import {requirePractitioner} from "../../cases/policy.ts";
@@ -12,6 +12,7 @@ import {digest,privateDigest} from "./digests.ts";
 import {NativeInboundProjection,inboundProjectionKeys} from "./inbound-projection.ts";
 import {readCutoverState} from "./cutover-state.ts";
 import {inboundProjectionEnabled} from "../core/inbound-projection.ts";
+import {assertCutoverOperatorPayload,authorizeCutoverOperator,type CutoverOperatorPermit} from './cutover-operator.ts';
 export const inboundBindingDigest=(input:Pick<InboundInquiry,"provider"|"channelId"|"businessNumber">)=>
  digest({provider:input.provider,channelId:input.channelId,businessNumber:input.businessNumber});
 const aad=(w:string,b:string,e:string)=>`ls_contact_ops/message-receipt/v1/${w}/whatsapp/${b}/${e}`;
@@ -50,11 +51,20 @@ export class ContactInboundStore {
  async drain(actor:Actor,expectedEpoch:number,limit=50,after:InboundDrainCursor|null=null):Promise<{
   processed:number;projected:number;needsResolution:number;needsReview:number;replayed:number;cursor:InboundDrainCursor|null;hasMore:boolean}>{
   if(actor.workspaceId!==this.workspaceId)throw new AppError("FORBIDDEN");
+  return this.drainAuthorized(expectedEpoch,limit,after,async tx=>{requirePractitioner(await freshActor(tx,actor,this.clock.now()));});
+ }
+ /** Existing durable inbox only; a signed exact binding/epoch/cursor page, never provider history. */
+ async drainAsOperator(input:{expectedEpoch:number;limit:number;after:InboundDrainCursor|null;bindingDigest:string},permit:CutoverOperatorPermit,lookupKey:Buffer){
+  assertCutoverOperatorPayload(permit,input,this.integrityKey);
+  if(permit.envelope.workspaceId!==this.workspaceId||input.bindingDigest!==this.expectedBindingDigest)throw new AppError('FORBIDDEN');
+  return this.drainAuthorized(input.expectedEpoch,input.limit,input.after,async tx=>{await authorizeCutoverOperator(tx,this.keyring,lookupKey,permit,['drain_inbound'],this.clock.now());});
+ }
+ private async drainAuthorized(expectedEpoch:number,limit:number,after:InboundDrainCursor|null,authorize:(tx:SqlSession)=>Promise<void>){
   if(this.expectedBindingDigest===null)throw new AppError("UNAVAILABLE");
   if(!Number.isSafeInteger(expectedEpoch)||expectedEpoch<0||!Number.isSafeInteger(limit)||limit<1||limit>100)throw new AppError("INVALID_REQUEST");
   if(after!==null&&!drainCursorSchema.safeParse(after).success)throw new AppError("INVALID_REQUEST");
   return this.db.transaction(async tx=>{
-   requirePractitioner(await freshActor(tx,actor,this.clock.now()));
+   await authorize(tx);
    await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",[`${this.workspaceId}:contact-authority`]);
    const state=await readCutoverState(tx,this.workspaceId,this.keyring,true);
    if(state.epoch!==expectedEpoch||!inboundProjectionEnabled(state.phase))throw new AppError("CONFLICT");
@@ -70,6 +80,25 @@ export class ContactInboundStore {
      AND ($3::timestamptz IS NULL OR (r.stored_at,r.provider_event_key)>($3::timestamptz,$4::text))
     ORDER BY r.stored_at,r.provider_event_key LIMIT $5`,[this.workspaceId,binding,after?.storedAt??null,after?.eventKey??null,limit+1]);
    const pending=rows.slice(0,limit).map(row=>({row,inquiry:this.decodeStored(row)}));
+   // A later page may hold a contradictory delivery for this same message.
+   // Validate every already-durable envelope before the first projection can
+   // commit, independent of the requested page/cursor. Keep the inbox budget.
+   if(pending.length){
+    const envelopes=await tx.query<Stored>(`SELECT provider_binding_id AS binding,provider_event_key AS event,
+     provider_message_key AS message,payload_digest AS digest,payload_ciphertext AS cipher,
+     occurred_at AS "occurredAt",stored_at AS "storedAt" FROM ls_contact_ops.message_receipts
+     WHERE workspace_id=$1 AND channel='whatsapp' AND provider_binding_id=$2
+      AND provider_message_key IN (SELECT jsonb_array_elements_text($3::jsonb)) ORDER BY provider_event_key LIMIT $4`,
+     [this.workspaceId,binding,JSON.stringify([...new Set(pending.map(({row})=>row.message))]),MAX_INBOX_ENVELOPES+1]);
+    if(envelopes.length>MAX_INBOX_ENVELOPES)throw new AppError('UNAVAILABLE');
+    const messages=new Map<string,string>();
+    for(const row of envelopes){
+     const inquiry=this.decodeStored(row),keys=inboundProjectionKeys(this.workspaceId,row.binding,row.event,row.message,row.digest,inquiry,this.integrityKey);
+     const prior=messages.get(row.message);
+     if(prior!==undefined&&prior!==keys.messageDigest)throw new AppError('CONFLICT');
+     messages.set(row.message,keys.messageDigest);
+    }
+   }
    const projector=new NativeInboundProjection(this.workspaceId,this.keyring,this.integrityKey,this.clock,pending.map(item=>item.inquiry.fromNumber));
    const result={processed:0,projected:0,needsResolution:0,needsReview:0,replayed:0,cursor:after,hasMore:rows.length>limit};
    for(const {row,inquiry} of pending){

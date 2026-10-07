@@ -13,7 +13,7 @@ export type CutoverPrincipal=Pick<Actor,'id'|'workspaceId'>;
 const sha=z.string().regex(/^[a-f0-9]{64}$/),uuid=z.string().uuid();
 export const cutoverOperatorEnvelopeSchema=z.object({
  version:z.literal('ls-contact-cutover-operator-v1'),
- action:z.enum(['preflight','prepare','freeze','delta','switch_native','prepare_rollback','finish_rollback']),
+ action:z.enum(['preflight','prepare','freeze','delta','switch_native','prepare_rollback','finish_rollback','drain_inbound']),
  workspaceId:uuid,ownerAccountId:uuid,deploymentId:uuid,reviewedMainSha:z.string().regex(/^[a-f0-9]{40}$/),
  sourceTreeSha256:sha,operatorSha256:sha,payloadSha256:sha,databaseBindingSha256:sha,integrityKeySha256:sha,
  issuedAt:z.string().datetime(),expiresAt:z.string().datetime(),

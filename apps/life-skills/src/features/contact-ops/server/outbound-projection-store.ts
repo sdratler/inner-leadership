@@ -10,25 +10,31 @@ import {demoRecordBatch} from "../../demo/provenance.ts";
 import {writeDestination} from "../core/cutover.ts";
 import {privateDigest} from "./digests.ts";
 import {readCutoverState} from "./cutover-state.ts";
+import {z} from "zod";
+
+const nativeContextSchema=z.object({personId:z.string().uuid(),phone:z.string().regex(/^\+[1-9][0-9]{7,14}$/),
+ bindingSha256:z.string().regex(/^[a-f0-9]{64}$/),baseline:z.object({stage:z.string(),nextAction:z.string(),dueDate:z.string()}).strict()}).strict();
+export type NativeOutboundContext=z.infer<typeof nativeContextSchema>;
 
 export type OutboundReceipt={provider:string;providerMessageId:string|null;sentAt:string|null;replaySuppressed?:boolean;sheetUpdated?:boolean;
  manualVerification?:{source:"provider_delivery_log"|"provider_support_case";reference:string;checkedAt:string}};
 export type NoDeliveryEvidence={provider:"whapi";source:"provider_delivery_log"|"provider_support_case";
  reference:string;checkedAt:string;acknowledgement:"I verified this exact message was not delivered"};
 export type OutboundProjection={operationId:string;leadId:string;authorityEpoch:number;createdAt:string;state:"prepared"|"sent_pending"|"projected"|"not_delivered";
- message:string;fields:Record<string,string>;receipt:OutboundReceipt|null;resolution:NoDeliveryEvidence|null};
+ message:string;fields:Record<string,string>;receipt:OutboundReceipt|null;resolution:NoDeliveryEvidence|null;native?:NativeOutboundContext};
 export type PendingOutboundProjection={operationId:string;state:"prepared"|"sent_pending";message:string;createdAt:string};
 export type PendingWorkspaceProjection=PendingOutboundProjection&{leadId:string};
-const aad=(workspace:string,operation:string,kind:"fields"|"receipt"|"resolution")=>`ls_contact_ops/outbound-projection/v1/${workspace}/${operation}/${kind}`;
+export const outboundAad=(workspace:string,operation:string,kind:"fields"|"receipt"|"resolution")=>`ls_contact_ops/outbound-projection/v1/${workspace}/${operation}/${kind}`;
+const aad=outboundAad;
 const leadPattern=/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]+$/;
 const fieldsValid=(fields:Record<string,string>)=>Object.keys(fields).length<=20&&Object.entries(fields).every(([key,value])=>
  /^[A-Za-z][A-Za-z0-9]{0,63}$/.test(key)&&typeof value==="string"&&value.length<=4000);
-const payload=(message:string,fields:Record<string,string>)=>JSON.stringify({message,fields});
-function decoded(raw:string):{message:string;fields:Record<string,string>}{
- const value=JSON.parse(raw) as {message:unknown;fields:Record<string,string>};
+const payload=(message:string,fields:Record<string,string>,native?:NativeOutboundContext)=>JSON.stringify({message,fields,...(native?{native}:{})});
+function decoded(raw:string):{message:string;fields:Record<string,string>;native?:NativeOutboundContext}{
+ const value=JSON.parse(raw) as {message:unknown;fields:Record<string,string>;native?:unknown};
  if(typeof value.message!=="string"||!value.message.trim()||value.message.length>4000||
   !value.fields||typeof value.fields!=="object"||Array.isArray(value.fields)||!fieldsValid(value.fields))throw Error("invalid outbound payload");
- return {message:value.message,fields:value.fields};
+ return {message:value.message,fields:value.fields,...(value.native===undefined?{}:{native:nativeContextSchema.parse(value.native)})};
 }
 function validNoDeliveryEvidence(value:unknown):value is NoDeliveryEvidence{
  if(!value||typeof value!=="object")return false;
@@ -78,13 +84,13 @@ export class OutboundProjectionStore {
     FROM ls_contact_ops.outbound_projections WHERE workspace_id=$1 AND operation_id=$2
     AND actor_account_id=$3 AND state='prepared' FOR UPDATE`,[a.workspaceId,operationId,a.id]);
    if(prepared.length!==1)throw new AppError("CONFLICT");
-   let message:string;
-   try{message=decoded(unseal(prepared[0]!.projectionCiphertext,aad(a.workspaceId,operationId,"fields"),this.keyring)).message;}
+   let saved:ReturnType<typeof decoded>;
+   try{saved=decoded(unseal(prepared[0]!.projectionCiphertext,aad(a.workspaceId,operationId,"fields"),this.keyring));}
    catch{throw new AppError("UNAVAILABLE");}
    const rows=await tx.query<{state:string}>(`UPDATE ls_contact_ops.outbound_projections SET
     projection_ciphertext=$4,receipt_ciphertext=$5,state='sent_pending',updated_at=clock_timestamp()
     WHERE workspace_id=$1 AND operation_id=$2 AND actor_account_id=$3 AND state='prepared' RETURNING state`,
-    [a.workspaceId,operationId,a.id,seal(payload(message,fields),aad(a.workspaceId,operationId,"fields"),this.keyring),
+    [a.workspaceId,operationId,a.id,seal(payload(saved.message,fields,saved.native),aad(a.workspaceId,operationId,"fields"),this.keyring),
      seal(JSON.stringify(receipt),aad(a.workspaceId,operationId,"receipt"),this.keyring)]);
    if(rows.length!==1)throw new AppError("CONFLICT");
   });
@@ -131,14 +137,14 @@ export class OutboundProjectionStore {
    if(rows.length>1)throw new AppError("UNAVAILABLE");
    const row=rows[0];if(!row)return null;
    try{
-    const {message,fields}=decoded(unseal(row.projectionCiphertext,aad(a.workspaceId,operationId,"fields"),this.keyring));
+    const {message,fields,native}=decoded(unseal(row.projectionCiphertext,aad(a.workspaceId,operationId,"fields"),this.keyring));
     const receipt=row.receiptCiphertext?JSON.parse(unseal(row.receiptCiphertext,aad(a.workspaceId,operationId,"receipt"),this.keyring)) as OutboundReceipt:null;
     const resolution=row.resolutionCiphertext?JSON.parse(unseal(row.resolutionCiphertext,aad(a.workspaceId,operationId,"resolution"),this.keyring)) as NoDeliveryEvidence:null;
     if(!leadPattern.test(row.legacyLeadId)||Boolean(receipt)!==["sent_pending","projected"].includes(row.state)||
      Boolean(resolution)!==(row.state==="not_delivered")||resolution&&!validNoDeliveryEvidence(resolution))throw Error("invalid ledger");
     return {operationId,leadId:row.legacyLeadId,authorityEpoch:row.authorityEpoch,
      createdAt:row.createdAt instanceof Date?row.createdAt.toISOString():row.createdAt,
-     state:row.state,message,fields,receipt,resolution};
+     state:row.state,message,fields,receipt,resolution,...(native?{native}:{})};
    }catch{throw new AppError("UNAVAILABLE");}
   });
  }
