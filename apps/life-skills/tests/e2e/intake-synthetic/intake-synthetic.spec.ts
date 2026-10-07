@@ -3,9 +3,11 @@ import {readFileSync} from "node:fs";
 
 type Runtime={origin:string;practitioner:string;parent:string};
 const path=process.env.LS_INTAKE_SYNTHETIC_BROWSER_FIXTURE_PATH;
-if(!path)throw new Error("R43_BROWSER_FIXTURE_REQUIRED");
-const runtime=JSON.parse(readFileSync(path,"utf8")) as Runtime;
-if(runtime.origin!=="https://127.0.0.1:3471")throw new Error("R43_BROWSER_ORIGIN_NOT_ISOLATED");
+const dedicated=process.env.LS_INTAKE_SYNTHETIC_BROWSER_ALLOW==="true";
+if(Boolean(path)!==dedicated)throw new Error("R43_BROWSER_FIXTURE_GATE_MISMATCH");
+const runtime=path?JSON.parse(readFileSync(path,"utf8")) as Runtime:{origin:"https://127.0.0.1:3471",practitioner:"",parent:""};
+if(dedicated&&runtime.origin!=="https://127.0.0.1:3471")throw new Error("R43_BROWSER_ORIGIN_NOT_ISOLATED");
+test.skip(!dedicated,"R43 requires its explicit isolated PostgreSQL/HTTPS runner");
 test.use({baseURL:runtime.origin});
 
 const copy={
