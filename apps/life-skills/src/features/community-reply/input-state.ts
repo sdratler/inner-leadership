@@ -2,6 +2,12 @@ import type { CommunityReplyResult } from "./bridge.ts";
 import type { CommunitySavedDraft } from "./drafts-bridge.ts";
 export type CommunitySourceInput = { question: string; originalUrl: string };
 
+/** Display only the preference from a recognized ledger line; never alter its stored evidence. */
+export function writingRuleDisplayText(recorded: string): string {
+  const match = recorded.match(/^\*\*CR-[0-9a-f]{32} — scope: (?:community|general); language: (?:en|he|both); created: ([^;\r\n]+); updated: ([^*\r\n]+)\*\* ([^\r\n]+)$/);
+  return match && Number.isFinite(Date.parse(match[1]!)) && Number.isFinite(Date.parse(match[2]!)) ? match[3]! : recorded;
+}
+
 /** JSON property order is not identity; array order and every recorded value are. */
 function sameRecordedValue(left:unknown,right:unknown):boolean {
   if(left===right)return true;

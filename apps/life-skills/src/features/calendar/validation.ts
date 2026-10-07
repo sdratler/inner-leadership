@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { asId } from '../../lib/ids.ts';
 import { iso, shiftDay } from './time.ts';
+import {taskStates} from './task-state.ts';
 const uuid=z.string().uuid();
 const timestamp=z.string().max(40).refine(v=>{try{iso(v);return true;}catch{return false;}},'Offset-qualified valid timestamp required').transform(iso);
 const caseId=uuid.transform(v=>asId(v,'case'));
@@ -26,7 +27,8 @@ const taskTime=z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 /** Task links remain within the private practitioner app. No arbitrary external URL. */
 export function internalTaskPath(value:string):boolean {
  if(value.length>280||value.includes('..')||value.includes('//')||/[\u0000-\u001f\\#]/.test(value))return false;
- return /^\/(?:he|en)\/app\/(?:calendar|clients|communications|reports|marketing|payments)(?:\/[A-Za-z0-9_-]+)*(?:\?[A-Za-z0-9_=&%-]+)?$/.test(value);
+ return /^\/(?:he|en)\/app\/(?:calendar|clients|communications|reports|marketing|payments|forms)(?:\/[A-Za-z0-9_-]+)*(?:\?[A-Za-z0-9_=&%-]+)?$/.test(value)||
+  /^\/(?:he|en)\/app\/cases\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/sessions\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\?mode=demo)?$/i.test(value);
 }
 export const taskCreateSchema=z.strictObject({
  title:clean(140).trim().min(1),dueDate:taskDate,dueTime:taskTime.nullable(),
@@ -34,4 +36,5 @@ export const taskCreateSchema=z.strictObject({
 });
 export const taskListSchema=z.strictObject({from:timestamp,to:timestamp,caseId:caseId.nullable(),mode:z.enum(['live','demo']).nullable().optional()});
 export const taskCompleteSchema=versionSchema.extend({mode:z.enum(['live','demo']).optional()});
+export const taskManageSchema=taskCompleteSchema.extend({state:z.enum(taskStates),snoozedUntil:taskDate.nullable()}).refine(value=>value.state!=='done'||value.snoozedUntil===null);
 export function parseQuery<T>(schema:z.ZodType<T>,input:unknown):T{const r=schema.safeParse(input);if(!r.success)throw new Error('INVALID_QUERY');return r.data;}

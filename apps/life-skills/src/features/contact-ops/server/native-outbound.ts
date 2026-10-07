@@ -39,7 +39,7 @@ export class NativeOutboundStore {
   if(result.items.length!==1)throw new AppError("NOT_FOUND");
   const row=result.items[0]!,refs=row.references.filter(ref=>ref.leadId===leadId);
   if(refs.length!==1||row.version===null)throw new AppError("CONFLICT");
-  if(row.mode!=="live"||row.identityKind!=="adult"||row.archived||row.doNotContact||
+  if(row.mode!=="live"||row.identityKind!=="adult"||row.administrativelyArchived||row.archived||row.doNotContact||
    await demoRecordBatch(tx,a.workspaceId,"prospect",leadId)||await demoRecordBatch(tx,a.workspaceId,"person",row.personId))throw new AppError("FORBIDDEN");
   const phone=normalizePhone(refs[0]!.phone);if(!phone)throw new AppError("INVALID_REQUEST");
   return {row,phone};

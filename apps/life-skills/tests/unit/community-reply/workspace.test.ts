@@ -1,10 +1,10 @@
 import type {ReactElement} from 'react';
 import {beforeEach,expect,test,vi} from 'vitest';
-const hooks=vi.hoisted(()=>{const slots:unknown[]=[];let cursor=0;return {
- reset(){slots.length=0;cursor=0;},render<T>(fn:()=>T){cursor=0;return fn();},
+const hooks=vi.hoisted(()=>{const slots:unknown[]=[];let cursor=0;let ruleEffect:(()=>unknown)|undefined;return {
+ reset(){slots.length=0;cursor=0;ruleEffect=undefined;},render<T>(fn:()=>T){cursor=0;return fn();},
  useState<T>(initial:T){const i=cursor++;if(!(i in slots))slots[i]=initial;return [slots[i] as T,(value:T|((old:T)=>T))=>{slots[i]=typeof value==='function'?(value as (old:T)=>T)(slots[i] as T):value;}] as const;},
  useRef<T>(initial:T){const i=cursor++;if(!(i in slots))slots[i]={current:initial};return slots[i] as {current:T};},
- useCallback<T>(fn:T){return fn;},useEffect(){},
+ useCallback<T>(fn:T){return fn;},useEffect(fn:()=>unknown,deps?:unknown[]){if(deps?.length===3&&typeof deps[1]==='string')ruleEffect=fn;},runRuleEffect(){ruleEffect?.();},
 };});
 vi.mock('react',async original=>({...await original<typeof import('react')>(),useState:hooks.useState,useRef:hooks.useRef,useCallback:hooks.useCallback,useEffect:hooks.useEffect}));
 vi.mock('../../../src/features/identity/client.ts',()=>({sessionInfo:async()=>({role:'practitioner',csrfToken:'synthetic'})}));
@@ -21,6 +21,62 @@ const generated:CommunitySavedDraft['generated']={operationId:'412302a8-3694-471
  provenance:{guide:{...source,id:'174-EqMG0QIH5rCuRgn2xYYPMX-XWJZNn',includedCommunityRuleIds:[]},playbook:{...source,id:'12C3QM4F6RZdpeWRvReN2x2BB7GzBnSqvfhjMg1PKwC0'},generatedAt:'2026-10-01T08:02:00Z',model:'synthetic',policyVersion:'synthetic',usage:{inputTokens:1,outputTokens:1}}};
 function savedDraft():CommunitySavedDraft{return {draftId:generated.operationId,question:'DEMO public source question',originalUrl:null,draft:generated.reply,revision:1,editedAt:null,expiresAt:'2026-11-01T08:02:00Z',generated:structuredClone(generated),copyAllowed:true,reviewFlags:[]};}
 beforeEach(()=>{hooks.reset();vi.stubGlobal('fetch',vi.fn());});
+
+test.each((['en','he'] as const).flatMap(locale=>['permission_denied','complete'].map(status=>({locale,status}))))('$locale/$status corrections default to one-off; explicit reusable scope never silently saves the source',async({locale,status})=>{
+ let latest=structuredClone(generated),denyRules=false;
+ vi.stubGlobal('window',{confirm:vi.fn(()=>true),localStorage:{setItem:vi.fn(),removeItem:vi.fn()}});
+ vi.mocked(fetch).mockImplementation(async(_url,options)=>{
+  if(String(_url).startsWith('/api/content-voice/corrections?list=1'))return denyRules?Response.json({ok:false},{status:503}):Response.json({ok:true,data:{source,rules:[]}});
+  if(String(_url)==='/api/content-voice/corrections'){
+   if(status==='complete')latest={...latest,operationId:'11111111-1111-4111-8111-111111111111',provenance:{...latest.provenance,guide:{...latest.provenance.guide,sha256:'b'.repeat(64),driveRevision:'14'}}};
+   return Response.json({ok:true,data:{operationId:'11111111-1111-4111-8111-111111111111',scope:'general',status,
+    ...(status==='complete'?{draft:latest,draftInput:{question:'DEMO public source question',originalUrl:''},after:'**CR-11111111111141118111111111111111 — scope: general; language: en; created: 2026-10-05T11:00:00Z; updated: 2026-10-05T11:01:00Z** Use concise plain words.'}:{})}});
+  }
+  if(options?.method==='POST'){
+   const command=JSON.parse(String(options.body));
+   if(command.mode==='revise_once')latest={...generated,suggestedRule:'Use concise, plain language in community replies.',ruleScope:'community'};
+   return Response.json({ok:true,data:latest});
+  }
+  return Response.json({ok:true,data:{drafts:[{...savedDraft(),generated:latest}]}});
+ });
+ const render=()=>hooks.render(()=>CommunityReplyWorkspace({locale}));let tree=render();
+ const persistent=locale==='en'?'Apply correction + update my writing rules':'החלת התיקון ועדכון כללי הכתיבה שלי';
+ const labelControl=(label:string,type:string)=>find(find(tree,item=>item.type==='label'&&Array.isArray(item.props.children)&&item.props.children[0]===label),item=>item.type===type)!;
+ (find(tree,item=>item.type==='textarea')!.props.onChange as (e:unknown)=>void)({target:{value:'DEMO public source question'}});tree=render();
+ (find(tree,item=>item.type==='button'&&item.props.className==='lsr-primary')!.props.onClick as ()=>void)();
+ await vi.waitFor(()=>{tree=render();expect(find(tree,item=>item.type==='button'&&item.props.children==='Copy reply')??find(tree,item=>item.type==='button'&&item.props.children==='העתקת התגובה')).toBeDefined();});
+ const scopeLabel=locale==='en'?'Apply instructions to':'החלת ההנחיות על';
+ expect(labelControl(scopeLabel,'select').props.value).toBe('once');
+ const instructionLabel=locale==='en'?'Specific instructions':'הנחיות ספציפיות';
+ (labelControl(instructionLabel,'textarea').props.onChange as (e:unknown)=>void)({target:{value:'Keep the response concise.'}});tree=render();
+ (find(tree,item=>item.type==='button'&&item.props.children===(locale==='en'?'Revise this reply only':'תיקון התגובה הזאת בלבד'))!.props.onClick as ()=>void)();
+ await vi.waitFor(()=>{tree=render();expect(find(tree,item=>item.type==='button'&&item.props.className==='lsr-primary')!.props.disabled).toBe(false);expect(latest.ruleScope).toBe('community');});
+ expect(labelControl(scopeLabel,'select').props.value).toBe('once');expect(find(tree,item=>item.type==='button'&&item.props.children===persistent)).toBeUndefined();
+ (labelControl(scopeLabel,'select').props.onChange as (e:unknown)=>void)({target:{value:'community'}});tree=render();
+ expect(find(tree,item=>item.type==='button'&&item.props.children===persistent)!.props.disabled).toBe(true);hooks.runRuleEffect();
+ await vi.waitFor(()=>{tree=render();expect(find(tree,item=>item.type==='button'&&item.props.children===persistent)!.props.disabled).toBe(false);});
+ expect(labelControl(instructionLabel,'textarea').props.value).toBe('Keep the response concise.');
+ denyRules=true;
+ (labelControl(scopeLabel,'select').props.onChange as (e:unknown)=>void)({target:{value:'general'}});tree=render();
+ expect(find(tree,item=>item.type==='button'&&item.props.children===persistent)!.props.disabled).toBe(true);hooks.runRuleEffect();
+ const reload=locale==='en'?'Reload current writing rules':'טעינה חוזרת של כללי הכתיבה';
+ await vi.waitFor(()=>{tree=render();expect(find(tree,item=>item.type==='button'&&item.props.children===reload)).toBeDefined();});
+ expect(labelControl(instructionLabel,'textarea').props.value).toBe('Keep the response concise.');
+ expect(find(tree,item=>item.type==='button'&&item.props.children===persistent)!.props.disabled).toBe(true);
+ denyRules=false;(find(tree,item=>item.type==='button'&&item.props.children===reload)!.props.onClick as ()=>void)();tree=render();hooks.runRuleEffect();
+ await vi.waitFor(()=>{tree=render();expect(find(tree,item=>item.type==='button'&&item.props.children===persistent)!.props.disabled).toBe(false);});
+ expect(vi.mocked(fetch).mock.calls.filter(([url])=>String(url)==='/api/content-voice/corrections')).toHaveLength(0);
+ (find(tree,item=>item.type==='button'&&item.props.children===persistent)!.props.onClick as ()=>void)();
+ await vi.waitFor(()=>expect(vi.mocked(fetch).mock.calls.filter(([url])=>String(url)==='/api/content-voice/corrections')).toHaveLength(1));
+ const call=vi.mocked(fetch).mock.calls.find(([url])=>String(url)==='/api/content-voice/corrections')!;
+ expect(JSON.parse(String(call[1]?.body))).toMatchObject({scope:'general',correction:'Keep the response concise.',sourceSha256:source.sha256,sourceRevision:source.driveRevision});
+ if(status==='complete'){
+  await vi.waitFor(()=>{tree=render();expect(labelControl(scopeLabel,'select').props.value).toBe('once');});
+  expect(find(tree,item=>item.props.role==='alert'&&String(item.props.children).includes(locale==='en'?'Content Voice source changed':'מקור סגנון הכתיבה השתנה'))).toBeUndefined();
+  const display=find(tree,item=>item.type==='p'&&Array.isArray(item.props.children)&&item.props.children[0]===(locale==='en'?'Current rule':'כלל נוכחי'))!;
+  expect(display.props.children).toEqual([locale==='en'?'Current rule':'כלל נוכחי',': ','Use concise plain words.']);
+ }
+});
 
 test('complete readback ignores object property order, normalizes the submitted URL and preserves edited-draft conflict evidence',()=>{
  const value={...generated,originalUrl:'https://www.facebook.com/'};
@@ -42,7 +98,7 @@ test('an exact edited receipt permits new safety decisions but never changes its
  expect(matchesEditedDraftReadback(receipt,previous,receipt,'DEMO other edited response.')).toBe(false);
 });
 
-test.each(['question','originalUrl','draftId','safety','rule','guide revision','guide checked time','guide rules','playbook version','model','policy','usage','generated time','initial safety'] as const)('rejects a saved draft with altered %s despite matching reply and source hashes',async field=>{
+test.each(['question','originalUrl','draftId','safety','rule','guide revision','guide checked time','guide rules','global rules','playbook version','model','policy','usage','generated time','initial safety'] as const)('rejects a saved draft with altered %s despite matching reply and source hashes',async field=>{
  const saved=savedDraft();
  switch(field){
   case 'question':saved.question='DEMO unrelated public question';break;
@@ -53,6 +109,7 @@ test.each(['question','originalUrl','draftId','safety','rule','guide revision','
   case 'guide revision':saved.generated.provenance.guide.driveRevision='14';break;
   case 'guide checked time':saved.generated.provenance.guide.checkedAt='2026-10-01T08:03:00Z';break;
   case 'guide rules':saved.generated.provenance.guide.includedCommunityRuleIds=['CR-12345678123441238123123456789abc'];break;
+  case 'global rules':saved.generated.provenance.guide.includedGlobalRuleIds=['CR-12345678123441238123123456789abc'];break;
   case 'playbook version':saved.generated.provenance.playbook.declaredVersion='2.1';break;
   case 'model':saved.generated.provenance.model='other-synthetic';break;
   case 'policy':saved.generated.provenance.policyVersion='other-policy';break;

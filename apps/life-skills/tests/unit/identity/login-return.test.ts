@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { clientReturnPath, loginReturnDestination, practitionerDetailReturnPath, practitionerReturnPath } from '../../../src/features/identity/login-return.ts';
+import { clientReturnPath, parentReturnPath, loginReturnDestination, practitionerDetailReturnPath, practitionerReturnPath } from '../../../src/features/identity/login-return.ts';
 import {settingsItems} from '../../../src/ui/workspace/navigation-model.ts';
 
 it('preserves only a bounded legacy lead ID on a practitioner People return link', () => {
@@ -9,6 +9,23 @@ it('preserves only a bounded legacy lead ID on a practitioner People return link
     .toBe('/en/app/clients');
 });
 const caseId='123e4567-e89b-42d3-a456-426614174000',sessionId='223e4567-e89b-42d3-a456-426614174000';
+it.each(['he','en'] as const)('keeps exact %s Calendar layers through login while rejecting repeated or malformed flags',locale=>{
+ const flags={tasks:'0',followups:'1',practice:'1',content:'1'},path=practitionerReturnPath(locale,'calendar',{...flags,date:'2026-10-05',view:'month',caseId,role:'parent'});
+ expect(Object.fromEntries(new URL(path,'https://private.invalid').searchParams)).toEqual({...flags,date:'2026-10-05',view:'month',caseId});expect(loginReturnDestination(locale,'practitioner',path)).toBe(path);
+ for(const value of ['constructor','__proto__','true','01',['1','1']])expect(practitionerReturnPath(locale,'calendar',{tasks:value,followups:value,practice:value,content:value})).toBe(`/${locale}/app/calendar`);
+ for(const role of ['parent','child','adult_client'] as const)expect(loginReturnDestination(locale,role,path)).not.toBe(path);
+ const query={caseId,date:'2026-10-05',view:'week',practice:'0',content:'1',tasks:'0',followups:'0',role:'practitioner'};
+ for(const result of [parentReturnPath(locale,`/${locale}/family/schedule`,query),clientReturnPath(locale,`/${locale}/client/calendar`,query)]){
+  expect(Object.fromEntries(new URL(result,'https://private.invalid').searchParams)).toEqual({caseId,practice:'0',date:'2026-10-05',view:'week'});
+ }
+});
+it.each(['he','en'] as const)('preserves the named %s Community view and secondary library metadata through ordinary login',locale=>{
+ const path=`/${locale}/app/marketing`;
+ for(const communityView of ['opportunities','sources','budget','writing_rules'])expect(new URL(practitionerDetailReturnPath(locale,path,{section:'community',communityView}),'https://private.invalid').searchParams.get('communityView')).toBe(communityView);
+ const query={section:'creatives',collection:'history',concept:'999',cycle:'cycle:DEMO cycle',page:'2'};expect(Object.fromEntries(new URL(practitionerDetailReturnPath(locale,path,query),'https://private.invalid').searchParams)).toEqual(query);
+ for(const value of ['constructor','__proto__','toString',['history','history']])expect(practitionerDetailReturnPath(locale,path,{section:'creatives',collection:value,concept:value,cycle:value})).toBe(path+'?section=creatives');
+ expect(practitionerDetailReturnPath(locale,path,{section:'ads',communityView:'budget',collection:'history',concept:'999',cycle:'cycle:DEMO'})).toBe(path+'?section=ads');
+});
 it.each(['he','en'] as const)('preserves bounded %s adult report context but drops private editor and role hints',locale=>{
  const path=`/${locale}/client/reports`;
  const result=clientReturnPath(locale,path,{caseId,audienceId:sessionId,section:'history',role:'practitioner',mode:'demo'});

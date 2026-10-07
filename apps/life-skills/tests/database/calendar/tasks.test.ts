@@ -14,6 +14,95 @@ let f:Fixture;
 beforeAll(async()=>{f=await fixture();},30000);
 afterAll(async()=>{await f?.pool.end();});
 describe('internal task PostgreSQL contract',()=>{
+ test('a practitioner handover never grants access to another case through task list, completion or replay',async()=>{
+  const isolated=await fixture();
+  try{
+   const tasks=new InternalTaskService(isolated.db,Buffer.alloc(32,9)),dueDate=civilDate(isolated.at(48)),input={title:'Synthetic private case work',dueDate,dueTime:null,note:'Do not disclose outside the case',sourcePath:null,caseId:isolated.first.id};
+   const restricted=await tasks.create(isolated.practitioner.actor,randomUUID(),input),allowed=await tasks.create(isolated.practitioner.actor,randomUUID(),{...input,caseId:isolated.second.id}),internal=await tasks.create(isolated.practitioner.actor,randomUUID(),{...input,caseId:null}),from=dayStart(dueDate),to=dayStart(shiftDay(dueDate,1));
+   const crm={leadId:'LS-LEAD-HANDOVER',name:'Synthetic case-linked work',nextAction:'Review source',dueDate,caseId:isolated.first.id,stage:'New',outcome:''};
+   await tasks.syncCrmFollowups(isolated.practitioner.actor,[crm]);
+   const previous=(await tasks.list(isolated.practitioner.actor,from,to,null)).find(row=>row.sourceKind==='crm_followup')!;
+   await isolated.pool.query("UPDATE ls_identity.accounts SET role='parent' WHERE workspace_id=$1 AND id=$2",[isolated.workspaceId,isolated.practitioner.actor.id]);
+   await isolated.pool.query("UPDATE ls_identity.accounts SET role='practitioner' WHERE workspace_id=$1 AND id=$2",[isolated.workspaceId,isolated.outsider.actor.id]);
+   await isolated.pool.query('UPDATE ls_cases.cases SET practitioner_account_id=$3 WHERE workspace_id=$1 AND id=$2',[isolated.workspaceId,isolated.second.id,isolated.outsider.actor.id]);
+   const incoming={...isolated.outsider.actor,role:'practitioner' as const};
+   // Clearing, replacing or closing the current CRM link must not clear/take
+   // over an existing task's now-inaccessible case or its revision history.
+   for(const update of [{caseId:'',nextAction:'Updated source'},{caseId:isolated.second.id,nextAction:'Reassigned source'},{caseId:'',stage:'Archived'}]){
+    expect(await tasks.syncCrmFollowups(incoming,[{...crm,...update}])).toEqual({created:0,updated:0,resolved:0,unchanged:1});
+    expect((await isolated.pool.query('SELECT case_id,version,state FROM ls_calendar.tasks WHERE workspace_id=$1 AND id=$2',[isolated.workspaceId,previous.id])).rows[0]).toEqual({case_id:isolated.first.id,version:1,state:'open'});
+    await expect(tasks.get(incoming,previous.id)).rejects.toMatchObject({code:'NOT_FOUND'});
+   }
+   expect((await tasks.list(incoming,from,to,null)).map(row=>row.id).sort()).toEqual([allowed.id,internal.id].sort());
+   await expect(tasks.list(incoming,from,to,isolated.first.id)).rejects.toMatchObject({code:'NOT_FOUND'});
+   await expect(tasks.get(incoming,restricted.id)).rejects.toMatchObject({code:'NOT_FOUND'});
+   await expect(tasks.manage(incoming,restricted.id,randomUUID(),{expectedVersion:1,state:'done',snoozedUntil:null})).rejects.toMatchObject({code:'NOT_FOUND'});
+   await expect(tasks.complete(incoming,restricted.id,randomUUID(),1)).rejects.toMatchObject({code:'NOT_FOUND'});
+   const key=randomUUID();await tasks.complete(incoming,allowed.id,key,1);
+   await isolated.pool.query('UPDATE ls_cases.cases SET practitioner_account_id=$3 WHERE workspace_id=$1 AND id=$2',[isolated.workspaceId,isolated.second.id,isolated.practitioner.actor.id]);
+   await expect(tasks.complete(incoming,allowed.id,key,1)).rejects.toMatchObject({code:'NOT_FOUND'});
+   expect((await isolated.pool.query('SELECT state,version FROM ls_calendar.tasks WHERE workspace_id=$1 AND id=$2',[isolated.workspaceId,restricted.id])).rows[0]).toEqual({state:'open',version:1});
+   expect((await isolated.pool.query('SELECT action FROM ls_calendar.task_history WHERE workspace_id=$1 AND task_id=$2',[isolated.workspaceId,restricted.id])).rows).toEqual([{action:'created'}]);
+  }finally{await isolated.pool.end();}
+ });
+ test('every existing opt-out/closed spelling suppresses or resolves work without rewriting source text',async()=>{
+  const isolated=await fixture();
+  try{
+   const tasks=new InternalTaskService(isolated.db,Buffer.alloc(32,9)),dueDate=civilDate(isolated.at(48)),base={leadId:'LS-LEAD-SUPPRESSION',name:'Synthetic administrative contact',nextAction:'Call',dueDate,caseId:isolated.first.id,stage:'New',outcome:''};
+   for(const [index,text] of ['opt out','opted-out','OPT_OUT','do_not_contact','Do-Not-Contact','Closed','Not interested','No fit'].entries()){
+    const row={...base,leadId:base.leadId+'-'+index};await tasks.syncCrmFollowups(isolated.practitioner.actor,[row]);
+    expect(await tasks.syncCrmFollowups(isolated.practitioner.actor,[{...row,outcome:text}])).toEqual({created:0,updated:0,resolved:1,unchanged:0});
+    expect(await tasks.syncCrmFollowups(isolated.practitioner.actor,[{...row,outcome:text}])).toEqual({created:0,updated:0,resolved:0,unchanged:1});
+    expect(await tasks.syncCrmFollowups(isolated.practitioner.actor,[{...row,leadId:row.leadId+'-new',stage:text}])).toEqual({created:0,updated:0,resolved:0,unchanged:1});
+   }
+   expect((await tasks.list(isolated.practitioner.actor,dayStart(dueDate),dayStart(shiftDay(dueDate,1)),null)).every(row=>row.state==='done')).toBe(true);
+   expect(base.stage).toBe('New');expect(base.outcome).toBe('');
+   expect((await isolated.pool.query('SELECT count(*)::int AS n FROM ls_calendar.events WHERE workspace_id=$1',[isolated.workspaceId])).rows[0].n).toBe(0);
+  }finally{await isolated.pool.end();}
+ });
+ test('task workflow is reversible, versioned, partitioned and effect-free with source dates and immutable history retained',async()=>{
+  const isolated=await fixture({demoFirst:true});
+  try{
+   const tasks=new InternalTaskService(isolated.db,Buffer.alloc(32,9)),dueDate=civilDate(isolated.at(48)),later=shiftDay(dueDate,2),input={title:'Synthetic workflow task',dueDate,dueTime:null,note:'Synthetic retained private note',sourcePath:'/en/app/clients?mode=demo',caseId:isolated.first.id,mode:'demo' as const};
+   const original=await tasks.create(isolated.practitioner.actor,randomUUID(),input),key=randomUUID(),edit={expectedVersion:1,state:'in_progress' as const,snoozedUntil:later,mode:'demo' as const};
+   const changed=await tasks.manage(isolated.practitioner.actor,original.id,key,edit);
+   expect(changed).toMatchObject({title:input.title,dueDate,dueTime:null,note:input.note,sourcePath:input.sourcePath,caseId:input.caseId,state:'in_progress',snoozedUntil:later,version:2});
+   expect(await tasks.manage(isolated.practitioner.actor,original.id,key,edit)).toEqual(changed);
+   expect(await tasks.get(isolated.practitioner.actor,original.id,'demo')).toEqual(changed);
+   expect(await tasks.list(isolated.practitioner.actor,dayStart(dueDate),dayStart(shiftDay(dueDate,1)),null,'demo')).toEqual([]);
+   expect(await tasks.list(isolated.practitioner.actor,dayStart(later),dayStart(shiftDay(later,1)),null,'demo')).toEqual([changed]);
+   await expect(tasks.manage(isolated.parent.actor,original.id,randomUUID(),edit)).rejects.toMatchObject({code:'FORBIDDEN'});
+   await expect(tasks.get(isolated.parent.actor,original.id,'demo')).rejects.toMatchObject({code:'FORBIDDEN'});
+   await expect(tasks.manage(isolated.practitioner.actor,original.id,key,{...edit,mode:'live'})).rejects.toMatchObject({code:'NOT_FOUND'});
+   await expect(tasks.get(isolated.practitioner.actor,original.id)).rejects.toMatchObject({code:'NOT_FOUND'});
+   await expect(tasks.manage(isolated.practitioner.actor,original.id,randomUUID(),edit)).rejects.toMatchObject({code:'CONFLICT'});
+   await expect(tasks.manage(isolated.practitioner.actor,original.id,key,{...edit,snoozedUntil:null})).rejects.toMatchObject({code:'CONFLICT'});
+   await expect(tasks.manage(isolated.practitioner.actor,original.id,randomUUID(),{...edit,expectedVersion:2,snoozedUntil:'2000-01-01'})).rejects.toMatchObject({code:'INVALID_REQUEST'});
+   const done=await tasks.complete(isolated.practitioner.actor,original.id,randomUUID(),2,'demo');expect(done).toMatchObject({state:'done',snoozedUntil:null,version:3,note:input.note,dueDate});
+   const reopened=await tasks.manage(isolated.practitioner.actor,original.id,randomUUID(),{expectedVersion:3,state:'open',snoozedUntil:null,mode:'demo'});expect(reopened).toMatchObject({state:'open',version:4,dueDate,note:input.note});
+   const history=(await isolated.pool.query('SELECT version,action,state_value,snoozed_until::text FROM ls_calendar.task_history WHERE workspace_id=$1 AND task_id=$2 ORDER BY version',[isolated.workspaceId,original.id])).rows;
+   expect(history).toEqual([{version:1,action:'created',state_value:null,snoozed_until:null},{version:2,action:'managed',state_value:'in_progress',snoozed_until:later},{version:3,action:'completed',state_value:null,snoozed_until:null},{version:4,action:'managed',state_value:'open',snoozed_until:null}]);
+   await expect(isolated.pool.query('UPDATE ls_calendar.task_history SET action=$3 WHERE workspace_id=$1 AND task_id=$2',[isolated.workspaceId,original.id,'created'])).rejects.toMatchObject({code:'23514'});
+   expect((await isolated.pool.query('SELECT count(*)::int AS n FROM ls_calendar.events WHERE workspace_id=$1',[isolated.workspaceId])).rows[0].n).toBe(0);
+   expect((await isolated.pool.query('SELECT count(*)::int AS n FROM ls_payments.credit_events WHERE workspace_id=$1',[isolated.workspaceId])).rows[0].n).toBe(0);
+   await isolated.pool.query("UPDATE ls_identity.accounts SET state='revoked' WHERE workspace_id=$1 AND id=$2",[isolated.workspaceId,isolated.practitioner.actor.id]);
+   await expect(tasks.manage(isolated.practitioner.actor,original.id,key,edit)).rejects.toMatchObject({code:'UNAUTHENTICATED'});
+  }finally{await isolated.pool.end();}
+ });
+ test('source refresh preserves in-progress/snoozed work; actual source resolution clears snooze without provider effects',async()=>{
+  const isolated=await fixture();
+  try{
+   const tasks=new InternalTaskService(isolated.db,Buffer.alloc(32,9)),dueDate=civilDate(isolated.at(72)),until=shiftDay(dueDate,2),row={leadId:'LS-LEAD-SYNTHETIC-WORKFLOW',name:'Synthetic source',nextAction:'Review',dueDate,caseId:isolated.first.id,stage:'New',outcome:''};
+   await tasks.syncCrmFollowups(isolated.practitioner.actor,[row]);const first=(await tasks.list(isolated.practitioner.actor,dayStart(dueDate),dayStart(shiftDay(dueDate,1)),null))[0]!;
+   await tasks.manage(isolated.practitioner.actor,first.id,randomUUID(),{expectedVersion:1,state:'in_progress',snoozedUntil:until});
+   await tasks.syncCrmFollowups(isolated.practitioner.actor,[{...row,nextAction:'Updated synthetic action'}]);
+   expect(await tasks.get(isolated.practitioner.actor,first.id)).toMatchObject({state:'in_progress',snoozedUntil:until,dueDate,version:3});
+   expect(await tasks.syncCrmFollowups(isolated.practitioner.actor,[])).toEqual({created:0,updated:0,resolved:0,unchanged:0});
+   await tasks.syncCrmFollowups(isolated.practitioner.actor,[{...row,nextAction:'Updated synthetic action',stage:'Archived'}]);
+   expect(await tasks.get(isolated.practitioner.actor,first.id)).toMatchObject({state:'done',snoozedUntil:null,dueDate,version:4});
+   expect((await isolated.pool.query('SELECT count(*)::int AS n FROM ls_calendar.events WHERE workspace_id=$1',[isolated.workspaceId])).rows[0].n).toBe(0);
+  }finally{await isolated.pool.end();}
+ });
  test('DEMO task writes require immutable case provenance; lists, completion and replay stay partitioned',async()=>{
   const isolated=await fixture({demoFirst:true});
   try{

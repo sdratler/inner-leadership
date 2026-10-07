@@ -1,7 +1,7 @@
 import "server-only";
 import { AppError } from "../../lib/errors.ts";
 import { COMMUNITY_PLAYBOOK_FILE_ID, CONTENT_VOICE_FILE_ID, readCommunityPlaybookSource, readContentVoiceSource, type ContentVoiceSnapshot } from "../content-voice/source.ts";
-import { communityRuleIdsInGuide } from "../content-voice/rule-editor.ts";
+import { communityRuleIdsInGuide, globalRuleIdsInGuide } from "../content-voice/rule-editor.ts";
 import { isCommunitySourceUrl } from "./input-state.ts";
 import { communityReplyResultSchema } from "./drafts-bridge.ts";
 
@@ -27,7 +27,7 @@ export type CommunityReplyResult = {
   originalUrl: string | null;
   provenance: {
     guide: { id: string; sha256: string; driveRevision: string; declaredVersion: string | null; modifiedAt: string; checkedAt: string;
-      includedCommunityRuleIds: string[] };
+      includedCommunityRuleIds: string[]; includedGlobalRuleIds?: string[] | undefined };
     playbook: { id: string; sha256: string; driveRevision: string; declaredVersion: string | null; modifiedAt: string; checkedAt: string };
     policyVersion: string;
     generatedAt: string;
@@ -49,8 +49,12 @@ function verified(value: unknown, guide: ContentVoiceSnapshot, playbook: Content
       !sourceMatches(result.provenance.playbook, playbook, COMMUNITY_PLAYBOOK_FILE_ID)) throw new AppError("UNAVAILABLE");
   // These IDs were included in the exact canonical snapshot sent to Scout.
   // They are input provenance, not a claim that the model obeyed every rule.
+  const globalIds=globalRuleIdsInGuide(guide.text);
+  const {includedGlobalRuleIds:providerGlobalIds,...guideProvenance}=result.provenance.guide;
+  if(providerGlobalIds?.length&&JSON.stringify(providerGlobalIds)!==JSON.stringify(globalIds))throw new AppError('UNAVAILABLE');
   const parsed=communityReplyResultSchema.safeParse({ ...result, provenance: { ...result.provenance,
-    guide: { ...result.provenance.guide, includedCommunityRuleIds: communityRuleIdsInGuide(guide.text) } } });
+    guide: { ...guideProvenance, includedCommunityRuleIds: communityRuleIdsInGuide(guide.text),
+      ...(globalIds.length||providerGlobalIds!==undefined?{includedGlobalRuleIds:globalIds}:{}) } } });
   if(!parsed.success)throw new AppError("UNAVAILABLE");
   return parsed.data;
 }
@@ -74,7 +78,8 @@ export async function requestCommunityReply(command: CommunityReplyCommand,
       method: "POST", redirect: "error", cache: "no-store", signal: AbortSignal.timeout(70_000),
       headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
       body: JSON.stringify({ ...command, ...(originalUrl ? { originalUrl } : {}),
-        guide: { id: CONTENT_VOICE_FILE_ID, ...guide, includedCommunityRuleIds: communityRuleIdsInGuide(guide.text) },
+        guide: { id: CONTENT_VOICE_FILE_ID, ...guide, includedCommunityRuleIds: communityRuleIdsInGuide(guide.text),
+          ...(globalRuleIdsInGuide(guide.text).length?{includedGlobalRuleIds:globalRuleIdsInGuide(guide.text)}:{}) },
         playbook: { id: COMMUNITY_PLAYBOOK_FILE_ID, ...playbook },
       }),
     });
