@@ -57,6 +57,7 @@ export function GroupPlacementWorkspace({locale}:{locale:Locale}){
   try{const session=await sessionInfo();if(session.role!=="practitioner")throw new Error();requestStarted=true;
    const response=await fetch("/api/private/group-placement",{method:"POST",headers:{"content-type":"application/json","x-csrf-token":session.csrfToken},body:JSON.stringify(draftPending.current)});
    if(!response.ok&&classifyGroupPlacementSaveFailure(true,response.status,previouslyUncertain)!=="unconfirmed"){
+    if(previouslyUncertain&&response.status===401){setDraftUncertain(true);setDraftError(t("Sign in again in another tab. Keep this page open, then retry the exact same draft-group save.","יש להתחבר מחדש בכרטיסייה אחרת. השאירו דף זה פתוח ואז נסו שוב את אותה שמירת קבוצת טיוטה בדיוק."));return;}
     draftPending.current=null;setDraftUncertain(false);setDraftError(response.status===401?t("Sign in again, then review and save this draft group.","יש להתחבר מחדש, לבדוק ולשמור את קבוצת הטיוטה."):
      response.status===403?t("Your current account cannot create draft groups.","החשבון הנוכחי אינו מורשה ליצור קבוצות טיוטה."):
      response.status===409?t("This save conflicts with an earlier request. Review the label and save again.","השמירה מתנגשת בבקשה קודמת. בדקו את התווית ושמרו שוב."):
@@ -80,6 +81,7 @@ export function GroupPlacementWorkspace({locale}:{locale:Locale}){
   try{const session=await sessionInfo();if(session.role!=="practitioner")throw new Error();requestStarted=true;
    const response=await fetch("/api/private/group-placement",{method:"POST",headers:{"content-type":"application/json","x-csrf-token":session.csrfToken},body:JSON.stringify(placementPending.current)});
    if(!response.ok&&classifyGroupPlacementSaveFailure(true,response.status,previouslyUncertain)!=="unconfirmed"){
+    if(previouslyUncertain&&response.status===401){setPlacementUncertain(draftGroupId);setPlacementError({groupId:draftGroupId,message:t("Sign in again in another tab. Keep this page open, then retry the exact same proposal save.","יש להתחבר מחדש בכרטיסייה אחרת. השאירו דף זה פתוח ואז נסו שוב את אותה שמירת הצעה בדיוק.")});return;}
     placementPending.current=null;setPlacementUncertain("");setPlacementError({groupId:draftGroupId,message:response.status===401?t("Sign in again, then review and save this proposal.","יש להתחבר מחדש, לבדוק ולשמור את ההצעה."):
      response.status===403?t("Your current account cannot propose placements.","החשבון הנוכחי אינו מורשה להציע שיבוצים."):
      response.status===404?t("The draft group or saved group interest is no longer available. Refresh and choose again.","קבוצת הטיוטה או ההתעניינות השמורה אינן זמינות עוד. רעננו ובחרו שוב."):
@@ -106,6 +108,7 @@ export function GroupPlacementWorkspace({locale}:{locale:Locale}){
   try{const session=await sessionInfo();if(session.role!=="practitioner")throw new Error();requestStarted=true;
    const response=await fetch("/api/private/group-placement",{method:"POST",headers:{"content-type":"application/json","x-csrf-token":session.csrfToken},body:JSON.stringify(movePending.current)});
    if(!response.ok&&classifyGroupPlacementSaveFailure(true,response.status,previouslyUncertain)!=="unconfirmed"){
+    if(previouslyUncertain&&response.status===401){setMoveUncertain(source.id);setMoveError({proposalId:source.id,message:t("Sign in again in another tab. Keep this page open, then retry the exact same move.","יש להתחבר מחדש בכרטיסייה אחרת. השאירו דף זה פתוח ואז נסו שוב את אותה העברה בדיוק.")});return;}
     movePending.current=null;setMoveUncertain("");setMoveError({proposalId:source.id,message:response.status===401?t("Sign in again, then review and move this proposal.","יש להתחבר מחדש, לבדוק ולהעביר את ההצעה."):
      response.status===403?t("Your current account cannot move proposals.","החשבון הנוכחי אינו מורשה להעביר הצעות."):
      response.status===404?t("The proposal or destination group is no longer available. Reload and choose again.","ההצעה או קבוצת היעד אינן זמינות עוד. טענו מחדש ובחרו שוב."):
