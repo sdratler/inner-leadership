@@ -9,7 +9,7 @@ import {z} from 'zod';
 import {migrate} from '../src/db/migration-runner.ts';
 import type {AppliedMigration,Migration} from '../src/db/migration-plan.ts';
 import {assertContactOpsDatabaseIdentity} from '../src/db/contact-ops-production-guard.ts';
-import {PROPOSED_PLACEMENT_MOVES_SOURCE_PATHS,PROPOSED_PLACEMENT_MOVES_SOURCE_ROOTS,proposedPlacementMovesMigrationInventory,proposedPlacementMovesPlan,proposedPlacementMovesSourceBundle,proposedPlacementMovesStateDigest,readProposedPlacementMovesReleaseSnapshot} from '../src/db/proposed-placement-moves-release.ts';
+import {collectProposedPlacementMovesSourceEntries,proposedPlacementMovesMigrationInventory,proposedPlacementMovesPlan,proposedPlacementMovesSourceBundle,proposedPlacementMovesStateDigest,readProposedPlacementMovesReleaseSnapshot} from '../src/db/proposed-placement-moves-release.ts';
 import {validateProposedPlacementMovesEvidence,validateProposedPlacementMovesProof,type ProposedPlacementMovesEvidence} from '../src/db/proposed-placement-moves-evidence.ts';
 
 const target=Object.freeze({projectId:'3b756632-1f66-4f75-a016-eabc37aa0d67',environmentId:'dd91bd71-57cc-45e6-a75b-8c858491d7c7',appServiceId:'0267d061-f3ce-4a0a-82d4-ce133e4501e9',databaseServiceId:'354b5343-9e83-45a7-b764-09396f14ae29',databaseHost:'postgres.railway.internal',appOrigin:'https://life-skills.bneineviimacademy.org'});
@@ -18,11 +18,6 @@ async function migrationInventory():Promise<{files:Migration[];manifestBytes:Buf
  const root=new URL('../migrations/',import.meta.url),manifestBytes=await readFile(new URL('manifest.json',root)),manifest=z.array(z.strictObject({name:z.string().regex(/^\d{4}_[a-z][a-z0-9_]*\.sql$/),sha256:sha})).parse(JSON.parse(manifestBytes.toString('utf8')));
  const actual=(await readdir(fileURLToPath(root))).filter(name=>name.endsWith('.sql')).sort();if(JSON.stringify(actual)!==JSON.stringify(manifest.map(item=>item.name).sort()))throw Error('PROPOSED_PLACEMENT_MOVES_MIGRATION_INVENTORY_MISMATCH');
  const files:Migration[]=[];for(const entry of manifest){const bytes=await readFile(new URL(entry.name,root));if(hash(bytes)!==entry.sha256)throw Error('PROPOSED_PLACEMENT_MOVES_MIGRATION_CHECKSUM_MISMATCH');files.push({name:entry.name,checksum:entry.sha256,sql:bytes.toString('utf8')});}return {files,manifestBytes};
-}
-async function sourceEntries(appRoot:URL):Promise<{path:string;bytes:Buffer}[]>{
- const entries:{path:string;bytes:Buffer}[]=await Promise.all(PROPOSED_PLACEMENT_MOVES_SOURCE_PATHS.map(async path=>({path,bytes:await readFile(new URL(path,appRoot))})));
- const walk=async(relativeDirectory:string):Promise<void>=>{const directory=new URL(relativeDirectory+'/',appRoot),children=(await readdir(fileURLToPath(directory),{withFileTypes:true})).sort((a,b)=>a.name.localeCompare(b.name));for(const child of children){const relative=relativeDirectory+'/'+child.name;if(child.isSymbolicLink())throw Error('PROPOSED_PLACEMENT_MOVES_SOURCE_SYMLINK_REJECTED');if(child.isDirectory())await walk(relative);else if(child.isFile())entries.push({path:relative,bytes:await readFile(new URL(relative,appRoot))});}};
- for(const root of PROPOSED_PLACEMENT_MOVES_SOURCE_ROOTS)await walk(root);return entries;
 }
 async function main(){
  const args=process.argv.slice(2);if(args.length!==4||!['--preflight','--apply','--verify-only'].includes(args[0]!))throw Error('PROPOSED_PLACEMENT_MOVES_ARGUMENTS_INVALID');
@@ -33,7 +28,7 @@ async function main(){
  if(process.env.LS_DATABASE_TLS!=='verify-full'||!process.env.LS_DATABASE_CA?.trim())throw Error('PROPOSED_PLACEMENT_MOVES_TLS_REQUIRED');
  const url=new URL(process.env.LS_DATABASE_URL??'');if(!['postgres:','postgresql:'].includes(url.protocol)||url.hostname!==target.databaseHost||url.port!=='5432'||url.pathname!=='/railway'||url.search||url.hash||!url.username||!url.password)throw Error('PROPOSED_PLACEMENT_MOVES_DATABASE_TARGET_MISMATCH');
  if(hash(process.env.LS_DATABASE_URL!)!==binding[2])throw Error('PROPOSED_PLACEMENT_MOVES_DATABASE_BINDING_MISMATCH');
- const appRoot=new URL('../',import.meta.url),entries=await sourceEntries(appRoot),actualBundle=proposedPlacementMovesSourceBundle(entries);if(actualBundle!==sourceDigest)throw Error('PROPOSED_PLACEMENT_MOVES_SOURCE_PROVENANCE_MISMATCH');
+ const appRoot=new URL('../',import.meta.url),entries=await collectProposedPlacementMovesSourceEntries(appRoot),actualBundle=proposedPlacementMovesSourceBundle(entries);if(actualBundle!==sourceDigest)throw Error('PROPOSED_PLACEMENT_MOVES_SOURCE_PROVENANCE_MISMATCH');
  const proofFile=process.env.LS_PROPOSED_PLACEMENT_MOVES_RELEASE_PROOF_FILE;if(!proofFile||!isAbsolute(proofFile))throw Error('PROPOSED_PLACEMENT_MOVES_PROOF_REQUIRED');const proofBytes=await readFile(proofFile);if(hash(proofBytes)!==process.env.LS_PROPOSED_PLACEMENT_MOVES_RELEASE_PROOF_SHA256)throw Error('PROPOSED_PLACEMENT_MOVES_PROOF_HASH_MISMATCH');
  const reviewedCommit=process.env.RAILWAY_GIT_COMMIT_SHA;if(!reviewedCommit)throw Error('PROPOSED_PLACEMENT_MOVES_REVIEWED_COMMIT_MISMATCH');const now=Date.now(),mode=args[0]!.slice(2) as 'preflight'|'apply'|'verify-only',proof=validateProposedPlacementMovesProof(JSON.parse(proofBytes.toString('utf8')),{...target,deploymentId,mode,reviewedCommit,sourceBundleSha256:actualBundle,databaseBindingSha256:binding[2]!},now);
  const evidenceFiles=[['independent_review',proof.evidence.independentReview],['baseline_preflight',proof.evidence.baselinePreflight],['backup_readback',proof.evidence.backupReadback],['isolated_restore',proof.evidence.isolatedRestore],['rollback_plan',proof.evidence.rollbackPlan]] as const;

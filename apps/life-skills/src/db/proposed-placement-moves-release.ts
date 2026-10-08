@@ -1,4 +1,6 @@
 import {createHash} from 'node:crypto';
+import {lstat,readFile,readdir} from 'node:fs/promises';
+import {fileURLToPath} from 'node:url';
 import {planMigrations,type AppliedMigration,type Migration} from './migration-plan.ts';
 import {readDraftGroupPlacementReleaseSnapshot} from './draft-group-placement-release.ts';
 
@@ -11,6 +13,14 @@ export const PROPOSED_PLACEMENT_MOVES_SOURCE_PATHS=[
 /** Bind the entire application source tree so no transitive authorization,
  * production-off, predecessor-classifier or runtime dependency is omitted. */
 export const PROPOSED_PLACEMENT_MOVES_SOURCE_ROOTS=['src'] as const;
+type SourceNode={isSymbolicLink():boolean;isFile():boolean;isDirectory():boolean};
+export function assertProposedPlacementMovesSourceNode(path:string,expected:'file'|'directory',node:SourceNode):void{if(node.isSymbolicLink())throw Error('PROPOSED_PLACEMENT_MOVES_SOURCE_SYMLINK_REJECTED');if((expected==='file'&&!node.isFile())||(expected==='directory'&&!node.isDirectory()))throw Error('PROPOSED_PLACEMENT_MOVES_SOURCE_TYPE_REJECTED:'+path);}
+export async function collectProposedPlacementMovesSourceEntries(appRoot:URL,fixedPaths:readonly string[]=PROPOSED_PLACEMENT_MOVES_SOURCE_PATHS,sourceRoots:readonly string[]=PROPOSED_PLACEMENT_MOVES_SOURCE_ROOTS):Promise<{path:string;bytes:Buffer}[]>{
+ const entries:{path:string;bytes:Buffer}[]=[];
+ for(const path of fixedPaths){const url=new URL(path,appRoot);assertProposedPlacementMovesSourceNode(path,'file',await lstat(fileURLToPath(url)));entries.push({path,bytes:await readFile(url)});}
+ const walk=async(relativeDirectory:string):Promise<void>=>{const directory=new URL(relativeDirectory+'/',appRoot),children=(await readdir(fileURLToPath(directory),{withFileTypes:true})).sort((a,b)=>a.name.localeCompare(b.name));for(const child of children){const relative=relativeDirectory+'/'+child.name;if(child.isSymbolicLink())throw Error('PROPOSED_PLACEMENT_MOVES_SOURCE_SYMLINK_REJECTED');if(child.isDirectory())await walk(relative);else{assertProposedPlacementMovesSourceNode(relative,'file',child);entries.push({path:relative,bytes:await readFile(new URL(relative,appRoot))});}}};
+ for(const root of sourceRoots){assertProposedPlacementMovesSourceNode(root,'directory',await lstat(fileURLToPath(new URL(root+'/',appRoot))));await walk(root);}return entries;
+}
 export interface ProposedPlacementMovesReleaseQuery{query<R extends object=Record<string,unknown>>(sql:string,values?:readonly unknown[]):Promise<{rows:R[]}>}
 type ColumnRow={table_name:string;column_name:string;data_type:string;not_null:boolean;default_expression:string|null};
 type ConstraintRow={schema_name:string;table_name:string;name:string;type:string;definition:string;local_columns:string[];reference_schema:string|null;reference_table:string|null;reference_columns:string[]};
