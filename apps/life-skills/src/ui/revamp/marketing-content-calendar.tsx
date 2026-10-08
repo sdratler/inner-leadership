@@ -1,10 +1,11 @@
 "use client";
 import type { ReactNode } from "react";
-import type { CreativeVersion, MarketingSnapshot, Publication } from "../../features/marketing-overview/contracts.ts";
+import type { CreativeVersion, FacebookPagePublicationReadModel, MarketingSnapshot, Publication } from "../../features/marketing-overview/contracts.ts";
 import { creativePlacement } from "../../features/marketing-overview/creative-filters.ts";
 import { safeMarketingUrl } from "../../features/marketing-overview/read-model.ts";
 import { adjacentMonth, calendarDates, contentChannel, contentDate, contentDayKey, contentLayout, contentMonth, contentState, contentView, contentViewPublications, contentWeekDates, dateFilteredContent, nextHebrewStatus, orderedContentRecords, orderedPublicationQueue, publicationDisplayTime, publicationStatusText, publicationTimeIssue, shiftContentDate, CONTENT_CHANNELS, CONTENT_STATES, CONTENT_TIMEZONE } from "../../features/marketing-overview/calendar-model.ts";
 import { Section, word } from "./primitives.tsx";
+import { FacebookPagePublicationStatus } from "./facebook-page-publication-status.tsx";
 
 export interface ContentCalendarQuery { filter?:string|undefined;month?:string|undefined;layout?:string|undefined;date?:string|undefined;channel?:string|undefined;state?:string|undefined;from?:string|undefined;to?:string|undefined;publication?:string|undefined; }
 const channelLabels:Readonly<Record<string,readonly[string,string]>>={whatsapp_status:["WhatsApp Status","סטטוס WhatsApp"],facebook_page:["Facebook feed","פיד Facebook"],instagram:["Instagram","Instagram"],facebook_group_manual:["Facebook group (manual)","קבוצת Facebook (ידני)"],whatsapp_group_manual:["WhatsApp group (manual)","קבוצת WhatsApp (ידני)"]};
@@ -17,7 +18,7 @@ function recordedStatusActivity(item:Publication){for(const value of [item.provi
 function Evidence({item,locale,showError=true}:{item:Publication;locale:"en"|"he";showError?:boolean}){return <>{showError&&item.errorCode&&<p className="lsr-inline-error" role="alert">{word(locale,"Attention needed","דורש טיפול")}: {item.errorCode}</p>}{item.providerReceiptId&&<p>{word(locale,"Provider receipt","אסמכתת ספק")}: {item.providerReceiptId}</p>}{item.providerReadAt&&<p>{word(locale,"Last provider readback","קריאה אחרונה מהספק")}: {item.providerReadAt}</p>}</>;}
 
 /** The registered snapshot is read-only. Navigation never changes approvals or schedules. */
-export function MarketingContentCalendar({locale,snapshot,query,renderedAt,thumbnail}:{locale:"en"|"he";snapshot:MarketingSnapshot;query:ContentCalendarQuery;renderedAt:string;thumbnail:(asset:CreativeVersion)=>ReactNode}){
+export function MarketingContentCalendar({locale,snapshot,query,renderedAt,thumbnail,facebookPage}:{locale:"en"|"he";snapshot:MarketingSnapshot;query:ContentCalendarQuery;renderedAt:string;thumbnail:(asset:CreativeVersion)=>ReactNode;facebookPage?:FacebookPagePublicationReadModel|undefined}){
   const now=new Date(renderedAt),month=contentMonth(query.month,now),layout=contentLayout(query.layout),view=contentView(query.filter),channel=contentChannel(query.channel),state=contentState(query.state);
   const date=contentDate(query.date)??(month===contentDayKey(renderedAt).slice(0,7)?contentDayKey(renderedAt):`${month}-01`),from=contentDate(query.from),to=contentDate(query.to);
   const invalidRange=Boolean(query.from&&!from||query.to&&!to||from&&to&&from>to);
@@ -55,6 +56,7 @@ export function MarketingContentCalendar({locale,snapshot,query,renderedAt,thumb
       <Evidence item={selected} locale={locale}/><div className="lsr-actions">{source&&<a className="lsr-button" href={source} target="_blank" rel="noopener noreferrer">{word(locale,"Open source asset","פתיחת קובץ המקור")}</a>}{post&&<a className="lsr-button" href={post} target="_blank" rel="noopener noreferrer">{word(locale,"Open recorded post link","פתיחת קישור הפוסט הרשום")}</a>}<a className="lsr-button" href={href()}>{word(locale,"Back to content calendar","חזרה ליומן התוכן")}</a></div><p className="lsr-help">{word(locale,"This record does not publish, reschedule or approve content. Provider acceptance is not proof of publication.","רשומה זו אינה מפרסמת, משנה מועד או מאשרת תוכן. קבלת הספק אינה הוכחה לפרסום.")}</p></Section>;
   }
   return <Section title={word(locale,"Content calendar","יומן תוכן")}>
+    {facebookPage&&<FacebookPagePublicationStatus locale={locale} publication={facebookPage}/>}
     <nav className="lsr-tabs lsr-content-views" tabIndex={0} aria-label={word(locale,"Publication views","תצוגות פרסום")}>{([["all",word(locale,"All","הכול")],["queued",word(locale,"Due & planned","ממתינים ומתוכננים")],["drafts",word(locale,"Drafts","טיוטות")],["published",word(locale,"Published","פורסמו")],["history",word(locale,"History","היסטוריה")]]as const).map(([value,label])=><a className="lsr-button" aria-current={view===value?"page":undefined} href={href({filter:value,state:undefined})} key={value}>{label}</a>)}</nav>
     <details className="lsr-content-filters" open={invalidRange||undefined}><summary>{word(locale,"Filters","סינון")}: {channel?named(channel,channelLabels,locale):word(locale,"All channels","כל הערוצים")} · {state?named(state,stateLabels,locale):word(locale,"All states","כל המצבים")}{from||to?` · ${from??"—"} — ${to??"—"}`:""}</summary>
     <form method="get" action={`/${locale}/app/marketing`} className="lsr-content-filter-form" aria-label={word(locale,"Content filters","סינון תוכן")}><input type="hidden" name="section" value="content_calendar"/><input type="hidden" name="filter" value={view}/><input type="hidden" name="month" value={month}/><input type="hidden" name="layout" value={layout}/><input type="hidden" name="date" value={date}/>
