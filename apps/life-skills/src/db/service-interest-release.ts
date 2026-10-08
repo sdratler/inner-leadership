@@ -1,5 +1,6 @@
 import {createHash} from 'node:crypto';
 import {planMigrations,type AppliedMigration,type Migration} from './migration-plan.ts';
+import {classifyContactWork,readContactWorkSnapshot} from './contact-work-release.ts';
 
 export const SERVICE_INTEREST_BASELINE={name:'0126_ls_audience_interest.sql',sha256:'f2d2c2d84d34e7224e8c53fb19e4fa7e68c89d5c2d13e197f4f86b2155703845'} as const;
 export const SERVICE_INTEREST_MIGRATION={name:'0127_ls_service_interests.sql',sha256:'af9b7f061682453d4595bfef9f1a9226b1daa955ec518d7bd9d959cd352caf6a'} as const;
@@ -45,9 +46,16 @@ export function serviceInterestMigrationInventory(files:readonly Migration[]):re
 export async function readServiceInterestReleaseSnapshot(db:ServiceInterestReleaseQuery):Promise<ServiceInterestReleaseSnapshot>{
  const existence=await db.query<{group_ready:boolean;service_absent:boolean}>(`SELECT
   to_regclass('ls_service_interest.inquiries') IS NOT NULL AND to_regclass('ls_service_interest.operations') IS NOT NULL AS group_ready,
-  to_regclass('ls_service_interest.service_interests') IS NULL AND to_regclass('ls_service_interest.service_interest_operations') IS NULL AS service_absent`);
+  to_regclass('ls_service_interest.service_interests') IS NULL
+   AND to_regclass('ls_service_interest.service_interest_operations') IS NULL
+   AND to_regclass('ls_service_interest.service_interests_recent') IS NULL
+   AND to_regprocedure('ls_service_interest.check_service_interest_child()') IS NULL
+   AND to_regprocedure('ls_service_interest.reject_service_interest_mutation()') IS NULL
+   AND NOT EXISTS(SELECT 1 FROM pg_constraint WHERE
+    (conrelid=to_regclass('ls_cases.family_members') AND conname='family_members_service_interest_identity_key')
+    OR (conrelid=to_regclass('ls_identity.people') AND conname='people_service_interest_kind_key')) AS service_absent`);
  const base=existence.rows[0];if(!base?.group_ready)throw Error('SERVICE_INTEREST_BASELINE_SCHEMA_CONFLICT');
- if(base.service_absent)return {stage:0,catalogDigest:createHash('sha256').update('service-interest-absent/v1').digest('hex'),serviceRows:0,operationRows:0};
+ if(base.service_absent){try{const predecessor=await readContactWorkSnapshot(db);if(classifyContactWork(predecessor)!==8)throw Error('CONTACT_WORK_NOT_READY');return {stage:0,catalogDigest:createHash('sha256').update(canonical({predecessor,successorAbsent:true})).digest('hex'),serviceRows:0,operationRows:0};}catch{throw Error('SERVICE_INTEREST_BASELINE_SCHEMA_CONFLICT');}}
  const columns=await db.query<ColumnRow>(`SELECT c.relname AS table_name,a.attname AS column_name,format_type(a.atttypid,a.atttypmod) AS data_type,a.attnotnull AS not_null,pg_get_expr(d.adbin,d.adrelid) AS default_expression
   FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
   WHERE n.nspname='ls_service_interest' AND c.relname IN ('service_interests','service_interest_operations') AND a.attnum>0 AND NOT a.attisdropped ORDER BY c.relname,a.attnum`);
@@ -56,7 +64,7 @@ export async function readServiceInterestReleaseSnapshot(db:ServiceInterestRelea
   rn.nspname AS reference_schema,rc.relname AS reference_table,
   COALESCE(ARRAY(SELECT a.attname::text FROM unnest(k.confkey) WITH ORDINALITY x(attnum,ord) JOIN pg_attribute a ON a.attrelid=k.confrelid AND a.attnum=x.attnum ORDER BY x.ord),'{}') AS reference_columns
   FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_class rc ON rc.oid=k.confrelid LEFT JOIN pg_namespace rn ON rn.oid=rc.relnamespace
-  WHERE (n.nspname='ls_service_interest' AND c.relname IN ('service_interests','service_interest_operations')) OR k.conname IN ('family_members_service_interest_identity_key','people_service_interest_kind_key') ORDER BY n.nspname,c.relname,k.conname`);
+  WHERE k.contype<>'n' AND ((n.nspname='ls_service_interest' AND c.relname IN ('service_interests','service_interest_operations')) OR k.conname IN ('family_members_service_interest_identity_key','people_service_interest_kind_key')) ORDER BY n.nspname,c.relname,k.conname`);
  const triggers=await db.query<TriggerRow>(`SELECT c.relname AS table_name,t.tgname AS name,p.proname AS function_name,pg_get_triggerdef(t.oid,true) AS definition,t.tgenabled::text AS enabled
   FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace JOIN pg_proc p ON p.oid=t.tgfoid
   WHERE n.nspname='ls_service_interest' AND c.relname IN ('service_interests','service_interest_operations') AND NOT t.tgisinternal ORDER BY c.relname,t.tgname`);

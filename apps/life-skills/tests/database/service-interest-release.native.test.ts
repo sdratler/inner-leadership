@@ -13,6 +13,14 @@ describe('service-interest migration 0127 native release proof',()=>{
  test('failed apply rolls back, exact apply/readback/repeat/verify succeeds and old group intake remains compatible',async()=>{
   const files=serviceInterestMigrationInventory(historical.inventory),baseline=files.slice(0,-1),migration=files.at(-1)!;
   expect(await migrate(tx(),baseline,false)).toEqual({applied:8,pending:0});
+  await historical.pool.query('BEGIN');try{
+   await historical.pool.query('ALTER TABLE ls_service_interest.inquiries DROP CONSTRAINT inquiries_payload_ciphertext_check');
+   await expect(readServiceInterestReleaseSnapshot(tx())).rejects.toThrow('SERVICE_INTEREST_BASELINE_SCHEMA_CONFLICT');
+  }finally{await historical.pool.query('ROLLBACK');}
+  await historical.pool.query('BEGIN');try{
+   await historical.pool.query(`CREATE FUNCTION ls_service_interest.check_service_interest_child() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$`);
+   await expect(readServiceInterestReleaseSnapshot(tx())).rejects.toThrow('SERVICE_INTEREST_SCHEMA_STATE_CONFLICT');
+  }finally{await historical.pool.query('ROLLBACK');}
   const workspaceId=randomUUID(),adultId=randomUUID(),practitionerId=randomUUID(),minorId=randomUUID(),familyId=randomUUID(),inquiryId=randomUUID(),digest='a'.repeat(64);
   await historical.pool.query("INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,now())",[workspaceId]);
   await historical.pool.query("INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,'adult','synthetic-adult',now()),($3,$2,'minor','synthetic-minor',now())",[adultId,workspaceId,minorId]);
