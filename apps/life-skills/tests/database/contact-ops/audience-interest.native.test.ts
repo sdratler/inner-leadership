@@ -6,13 +6,12 @@ import {ContactCutoverStore,type CutoverEvidence} from "../../../src/features/co
 import {OperationalNativeCrmStore} from "../../../src/features/contact-ops/server/operational-store.ts";
 import {NativeCrmStore,type CrmProfile} from "../../../src/features/contact-ops/server/native-store.ts";
 import {AudienceInterestStore} from "../../../src/features/contact-ops/server/audience-interest-store.ts";
-import {audienceInterestCandidateSql} from "../../../src/features/contact-ops/server/audience-interest-candidate-schema.ts";
 import {seal} from "../../../src/features/identity/crypto.ts";
 
 const fixtures:Fixture[]=[],key="synthetic-audience-integrity-only";
 afterAll(async()=>{for(const f of fixtures)await f.pool.end();});
 const proof=(epoch:number,writes=0):CutoverEvidence=>({batchId:"synthetic-audience",sourceFileId:"synthetic-sheet",sourceRevision:"synthetic-revision",expectedEpoch:epoch,observedNativeWritesSinceSwitch:writes,backupRestored:true,snapshotMatched:true,imported:true,rowContentMatched:true,allRowsAccounted:true,identityConflicts:0,paymentsReconciled:true,writersFenced:true,inboundDurable:true,deltaDrained:true,consumersRepointed:true,sheetConsumersRepointed:true,nativeBrowserVerified:true,oldSchedulesDisabled:true,sourceFrozen:true,restorePlanReady:true});
-async function setup(options:{demoFirst?:boolean}={}){const f=await fixture(options);fixtures.push(f);await f.pool.query(audienceInterestCandidateSql);const db=poolStore(f.pool),authority=new ContactCutoverStore(db,f.keyring,key),crm=new OperationalNativeCrmStore(db,f.keyring,key),audience=new AudienceInterestStore(db,f.keyring,key);for(const [epoch,action] of (["prepare","freeze","switch_native"] as const).entries())await authority.advance(f.practitioner.actor,{action,proof:proof(epoch),operationId:"audience-"+action});return {f,db,authority,crm,audience};}
+async function setup(options:{demoFirst?:boolean}={}){const f=await fixture(options);fixtures.push(f);const db=poolStore(f.pool),authority=new ContactCutoverStore(db,f.keyring,key),crm=new OperationalNativeCrmStore(db,f.keyring,key),audience=new AudienceInterestStore(db,f.keyring,key);for(const [epoch,action] of (["prepare","freeze","switch_native"] as const).entries())await authority.advance(f.practitioner.actor,{action,proof:proof(epoch),operationId:"audience-"+action});return {f,db,authority,crm,audience};}
 const command=(patch:Record<string,unknown>={})=>({action:"record_interest" as const,topic:"bna_content" as const,state:"expressed" as const,operationId:randomUUID(),expectedEpoch:3,expectedVersion:null,displayName:"Synthetic content reader",phone:"+972520001111",observedAt:"2026-10-08T10:00:00.000Z",sourceRef:"Synthetic owner observation",observation:{kind:"article_request" as const,evidence:"Synthetic article request"},...patch});
 
 test("existing sales lead gains BNA interest without changing sales, callback, notes or suppression fields",async()=>{

@@ -1,9 +1,6 @@
-/**
- * Additive candidate awaiting final migration-number allocation after the
- * retained 0124/0125 integration chain. Tests apply this only to a disposable
- * loopback database; release migration registration is intentionally absent.
- */
-export const audienceInterestCandidateSql=`
+-- Private administrative content-interest records. Interest, observation,
+-- messaging permission, CRM qualification and outbound eligibility stay
+-- independent. This migration creates no contacts and sends nothing.
 CREATE TABLE IF NOT EXISTS ls_contact_ops.audience_profiles (
  workspace_id uuid NOT NULL,
  person_id uuid NOT NULL,
@@ -14,6 +11,7 @@ CREATE TABLE IF NOT EXISTS ls_contact_ops.audience_profiles (
  PRIMARY KEY(workspace_id,person_id),
  FOREIGN KEY(workspace_id,person_id) REFERENCES ls_identity.people(workspace_id,id)
 );
+
 CREATE TABLE IF NOT EXISTS ls_contact_ops.audience_interests (
  workspace_id uuid NOT NULL,
  person_id uuid NOT NULL,
@@ -27,6 +25,7 @@ CREATE TABLE IF NOT EXISTS ls_contact_ops.audience_interests (
  FOREIGN KEY(workspace_id,person_id) REFERENCES ls_contact_ops.audience_profiles(workspace_id,person_id),
  FOREIGN KEY(workspace_id,actor_account_id) REFERENCES ls_identity.accounts(workspace_id,id)
 );
+
 CREATE TABLE IF NOT EXISTS ls_contact_ops.audience_observations (
  workspace_id uuid NOT NULL,
  observation_id uuid NOT NULL,
@@ -42,6 +41,7 @@ CREATE TABLE IF NOT EXISTS ls_contact_ops.audience_observations (
  FOREIGN KEY(workspace_id,person_id) REFERENCES ls_contact_ops.audience_profiles(workspace_id,person_id),
  FOREIGN KEY(workspace_id,actor_account_id) REFERENCES ls_identity.accounts(workspace_id,id)
 );
+
 CREATE TABLE IF NOT EXISTS ls_contact_ops.audience_operation_receipts (
  workspace_id uuid NOT NULL,
  operation_id uuid NOT NULL,
@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS ls_contact_ops.audience_operation_receipts (
  FOREIGN KEY(workspace_id,person_id) REFERENCES ls_contact_ops.audience_profiles(workspace_id,person_id),
  FOREIGN KEY(workspace_id,actor_account_id) REFERENCES ls_identity.accounts(workspace_id,id)
 );
+
 CREATE OR REPLACE FUNCTION ls_contact_ops.reject_audience_ledger_mutation()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -68,6 +69,6 @@ DROP TRIGGER IF EXISTS audience_operation_receipts_append_only ON ls_contact_ops
 CREATE TRIGGER audience_operation_receipts_append_only
  BEFORE UPDATE OR DELETE ON ls_contact_ops.audience_operation_receipts
  FOR EACH ROW EXECUTE FUNCTION ls_contact_ops.reject_audience_ledger_mutation();
+
 REVOKE ALL ON ls_contact_ops.audience_profiles,ls_contact_ops.audience_interests,
  ls_contact_ops.audience_observations,ls_contact_ops.audience_operation_receipts FROM PUBLIC;
-`;

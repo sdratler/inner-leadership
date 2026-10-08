@@ -1,7 +1,7 @@
 import {z} from 'zod';
 
 const sha=z.string().regex(/^[a-f0-9]{64}$/),uuid=z.string().uuid(),instant=z.iso.datetime();
-const changeId=z.literal('LS-CONTACT-WORK-MIGRATIONS-20261007-01'),scope=z.literal('private-app-contact-work-migrations-0119-0123');
+const changeId=z.literal('LS-CONTACT-WORK-MIGRATIONS-20261008-02'),scope=z.literal('private-app-contact-work-migrations-0119-0126');
 export const contactWorkEvidenceKinds=['independent_review','baseline_preflight','backup_readback','isolated_restore','rollback_plan'] as const;
 const file=z.strictObject({path:z.string().min(3).max(500),sha256:sha});
 export const contactWorkProofSchema=z.strictObject({changeId,scope,projectId:uuid,environmentId:uuid,appServiceId:uuid,databaseServiceId:uuid,

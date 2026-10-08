@@ -178,5 +178,9 @@
   {
     "name": "0125_ls_private_provider_index.sql",
     "sha256": "74ada50011ab74dd150724497b206c08fef22fdf458c1d5c4aacf225eef3bbf8"
+  },
+  {
+    "name": "0126_ls_audience_interest.sql",
+    "sha256": "f2d2c2d84d34e7224e8c53fb19e4fa7e68c89d5c2d13e197f4f86b2155703845"
   }
 ]

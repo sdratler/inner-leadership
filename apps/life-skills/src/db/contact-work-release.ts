@@ -7,15 +7,21 @@ export const CONTACT_WORK_MIGRATIONS=Object.freeze([
  {name:'0121_ls_administrative_tasks.sql',sha256:'303f8bcd33faf0c45b6a2b8c849c30eb3005fa03f5c0b84af615f8b7d7300c16'},
  {name:'0122_ls_call_activity_links.sql',sha256:'5472787029d825b464fdb0712888d60e310a666691f2c59e1a648e2223d088ff'},
  {name:'0123_ls_lead_commands.sql',sha256:'8af72dc80feda1487885907efdc1e632b4521758cc62cff092fc374986e66c30'},
+ {name:'0124_ls_group_interest.sql',sha256:'51b85279639daf493f9b3312a9bafd5e82f7bbf45930903236ed23c15fbf9da5'},
+ {name:'0125_ls_private_provider_index.sql',sha256:'74ada50011ab74dd150724497b206c08fef22fdf458c1d5c4aacf225eef3bbf8'},
+ {name:'0126_ls_audience_interest.sql',sha256:'f2d2c2d84d34e7224e8c53fb19e4fa7e68c89d5c2d13e197f4f86b2155703845'},
 ]);
 export const CONTACT_WORK_BASELINE={name:'0118_ls_contact_delta_history.sql',sha256:'89124785efc166f1f4aa1390f814798c2b63b71a874e37b4da10e11a7c0a202f'} as const;
 
-export type ContactWorkStage=0|1|2|3|4|5;
+export type ContactWorkStage=0|1|2|3|4|5|6|7|8;
 export type ContactWorkSnapshot={
  taskColumns:number;taskConstraints:number;sourceKinds:string[];stateKinds:string[];historyActions:string[];sourceConstraintStrict:boolean;stateConstraintStrict:boolean;historyConstraintStrict:boolean;constraintDigest:string;
  workflowColumns:boolean;workflowConstraints:boolean;effectiveDueIndex:boolean;taskHistoryImmutable:boolean;taskPermissions:boolean;
  callLinksAbsent:boolean;callLinksSchema:boolean;callLinksForeignKeys:boolean;callLinksImmutable:boolean;callLinksPermissions:boolean;callLinksReferencesSound:boolean;
  leadCommandsAbsent:boolean;leadCommandsSchema:boolean;leadCommandsForeignKeys:boolean;leadCommandsImmutable:boolean;leadCommandsPermissions:boolean;leadCommandsReferencesSound:boolean;
+ groupInterestAbsent:boolean;groupInterestReady:boolean;
+ providerIndexAbsent:boolean;providerIndexReady:boolean;
+ audienceInterestAbsent:boolean;audienceInterestReady:boolean;
 };
 export interface ContactWorkQuery{query<R extends object=Record<string,unknown>>(sql:string,values?:readonly unknown[]):Promise<{rows:R[]}>}
 
@@ -44,12 +50,17 @@ export function classifyContactWork(snapshot:ContactWorkSnapshot):ContactWorkSta
  const managedState=constraints&&same(snapshot.stateKinds,['open','in_progress','done'])&&same(snapshot.historyActions,['created','completed','source_updated','source_resolved','managed']);
  const call=snapshot.callLinksSchema&&snapshot.callLinksForeignKeys&&snapshot.callLinksImmutable&&snapshot.callLinksPermissions&&snapshot.callLinksReferencesSound;
  const lead=snapshot.leadCommandsSchema&&snapshot.leadCommandsForeignKeys&&snapshot.leadCommandsImmutable&&snapshot.leadCommandsPermissions&&snapshot.leadCommandsReferencesSound;
- if(baseline&&source===0&&baseState&&snapshot.callLinksAbsent&&snapshot.leadCommandsAbsent)return 0;
- if(baseline&&source===1&&baseState&&snapshot.callLinksAbsent&&snapshot.leadCommandsAbsent)return 1;
- if(workflow&&source===1&&managedState&&snapshot.callLinksAbsent&&snapshot.leadCommandsAbsent)return 2;
- if(workflow&&source===2&&managedState&&snapshot.callLinksAbsent&&snapshot.leadCommandsAbsent)return 3;
- if(workflow&&source===2&&managedState&&call&&!snapshot.callLinksAbsent&&snapshot.leadCommandsAbsent)return 4;
- if(workflow&&source===2&&managedState&&call&&!snapshot.callLinksAbsent&&lead&&!snapshot.leadCommandsAbsent)return 5;
+ const extensionsAbsent=snapshot.groupInterestAbsent&&snapshot.providerIndexAbsent&&snapshot.audienceInterestAbsent;
+ if(baseline&&source===0&&baseState&&snapshot.callLinksAbsent&&snapshot.leadCommandsAbsent&&extensionsAbsent)return 0;
+ if(baseline&&source===1&&baseState&&snapshot.callLinksAbsent&&snapshot.leadCommandsAbsent&&extensionsAbsent)return 1;
+ if(workflow&&source===1&&managedState&&snapshot.callLinksAbsent&&snapshot.leadCommandsAbsent&&extensionsAbsent)return 2;
+ if(workflow&&source===2&&managedState&&snapshot.callLinksAbsent&&snapshot.leadCommandsAbsent&&extensionsAbsent)return 3;
+ if(workflow&&source===2&&managedState&&call&&!snapshot.callLinksAbsent&&snapshot.leadCommandsAbsent&&extensionsAbsent)return 4;
+ const stage5=workflow&&source===2&&managedState&&call&&!snapshot.callLinksAbsent&&lead&&!snapshot.leadCommandsAbsent;
+ if(stage5&&snapshot.groupInterestAbsent&&snapshot.providerIndexAbsent&&snapshot.audienceInterestAbsent)return 5;
+ if(stage5&&snapshot.groupInterestReady&&!snapshot.groupInterestAbsent&&snapshot.providerIndexAbsent&&snapshot.audienceInterestAbsent)return 6;
+ if(stage5&&snapshot.groupInterestReady&&!snapshot.groupInterestAbsent&&snapshot.providerIndexReady&&!snapshot.providerIndexAbsent&&snapshot.audienceInterestAbsent)return 7;
+ if(stage5&&snapshot.groupInterestReady&&!snapshot.groupInterestAbsent&&snapshot.providerIndexReady&&!snapshot.providerIndexAbsent&&snapshot.audienceInterestReady&&!snapshot.audienceInterestAbsent)return 8;
  throw new Error('CONTACT_WORK_SCHEMA_STATE_CONFLICT');
 }
 
@@ -104,12 +115,55 @@ export async function readContactWorkSnapshot(db:ContactWorkQuery):Promise<Conta
     ARRAY(SELECT a.attname::text FROM unnest(k.confkey) WITH ORDINALITY x(attnum,ord) JOIN pg_attribute a ON a.attrelid=k.confrelid AND a.attnum=x.attnum ORDER BY x.ord) AS ref_cols
     FROM pg_constraint k JOIN pg_class rc ON rc.oid=k.confrelid JOIN pg_namespace rn ON rn.oid=rc.relnamespace
     WHERE k.conrelid=to_regclass('ls_contact_ops.lead_commands') AND k.contype='f' AND k.convalidated) refs) AS lead_refs`);
- const row=task.rows[0]!,objects=tables.rows[0]!;
+ const extensions=await db.query<{group_absent:boolean;group_ready:boolean;provider_absent:boolean;provider_ready:boolean;audience_absent:boolean;audience_ready:boolean}>(`SELECT
+  to_regnamespace('ls_service_interest') IS NULL
+   AND to_regclass('ls_service_interest.inquiries') IS NULL
+   AND to_regclass('ls_service_interest.operations') IS NULL AS group_absent,
+  to_regclass('ls_service_interest.inquiries') IS NOT NULL
+   AND to_regclass('ls_service_interest.operations') IS NOT NULL
+   AND (SELECT count(*)=12 FROM pg_attribute WHERE attrelid IN (to_regclass('ls_service_interest.inquiries'),to_regclass('ls_service_interest.operations')) AND attnum>0 AND NOT attisdropped)
+   AND (SELECT count(*)=4 AND bool_and(convalidated) FROM pg_constraint WHERE conrelid IN (to_regclass('ls_service_interest.inquiries'),to_regclass('ls_service_interest.operations')) AND contype='f')
+   AND EXISTS(SELECT 1 FROM pg_index WHERE indexrelid=to_regclass('ls_service_interest.group_interest_recent') AND indisvalid AND indisready AND indislive)
+   AND NOT EXISTS(SELECT 1 FROM pg_class c,LATERAL aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) acl WHERE c.oid IN (to_regclass('ls_service_interest.inquiries'),to_regclass('ls_service_interest.operations')) AND acl.grantee<>c.relowner)
+   AND NOT EXISTS(SELECT 1 FROM pg_namespace n,LATERAL aclexplode(coalesce(n.nspacl,acldefault('n',n.nspowner))) acl WHERE n.nspname='ls_service_interest' AND acl.grantee=0) AS group_ready,
+  to_regnamespace('ls_provider_index') IS NULL
+   AND to_regnamespace('ls_provider_referrals') IS NULL
+   AND to_regclass('ls_provider_index.entries') IS NULL
+   AND to_regclass('ls_provider_referrals.contexts') IS NULL
+   AND to_regclass('ls_provider_index.command_receipts') IS NULL
+   AND to_regclass('ls_provider_index.access_events') IS NULL AS provider_absent,
+  to_regclass('ls_provider_index.entries') IS NOT NULL
+   AND to_regclass('ls_provider_referrals.contexts') IS NOT NULL
+   AND to_regclass('ls_provider_index.command_receipts') IS NOT NULL
+   AND to_regclass('ls_provider_index.access_events') IS NOT NULL
+   AND (SELECT count(*)=32 FROM pg_attribute WHERE attrelid IN (to_regclass('ls_provider_index.entries'),to_regclass('ls_provider_referrals.contexts'),to_regclass('ls_provider_index.command_receipts'),to_regclass('ls_provider_index.access_events')) AND attnum>0 AND NOT attisdropped)
+   AND (SELECT count(*)=5 AND bool_and(convalidated) FROM pg_constraint WHERE conrelid IN (to_regclass('ls_provider_index.entries'),to_regclass('ls_provider_referrals.contexts'),to_regclass('ls_provider_index.command_receipts'),to_regclass('ls_provider_index.access_events')) AND contype='f')
+   AND to_regprocedure('ls_provider_index.deny_entry_scope_mutation()') IS NOT NULL
+   AND to_regprocedure('ls_provider_referrals.deny_scope_mutation()') IS NOT NULL
+   AND to_regprocedure('ls_provider_index.deny_history_mutation()') IS NOT NULL
+   AND (SELECT count(*)=6 AND bool_and(tgenabled IN ('O','A')) FROM pg_trigger WHERE tgrelid IN (to_regclass('ls_provider_index.entries'),to_regclass('ls_provider_referrals.contexts'),to_regclass('ls_provider_index.command_receipts'),to_regclass('ls_provider_index.access_events')) AND NOT tgisinternal)
+   AND NOT EXISTS(SELECT 1 FROM pg_class c,LATERAL aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) acl WHERE c.oid IN (to_regclass('ls_provider_index.entries'),to_regclass('ls_provider_referrals.contexts'),to_regclass('ls_provider_index.command_receipts'),to_regclass('ls_provider_index.access_events')) AND acl.grantee<>c.relowner)
+   AND NOT EXISTS(SELECT 1 FROM pg_namespace n,LATERAL aclexplode(coalesce(n.nspacl,acldefault('n',n.nspowner))) acl WHERE n.nspname IN ('ls_provider_index','ls_provider_referrals') AND acl.grantee=0) AS provider_ready,
+  to_regclass('ls_contact_ops.audience_profiles') IS NULL
+   AND to_regclass('ls_contact_ops.audience_interests') IS NULL
+   AND to_regclass('ls_contact_ops.audience_observations') IS NULL
+   AND to_regclass('ls_contact_ops.audience_operation_receipts') IS NULL
+   AND to_regprocedure('ls_contact_ops.reject_audience_ledger_mutation()') IS NULL AS audience_absent,
+  to_regclass('ls_contact_ops.audience_profiles') IS NOT NULL
+   AND to_regclass('ls_contact_ops.audience_interests') IS NOT NULL
+   AND to_regclass('ls_contact_ops.audience_observations') IS NOT NULL
+   AND to_regclass('ls_contact_ops.audience_operation_receipts') IS NOT NULL
+   AND (SELECT count(*)=30 FROM pg_attribute WHERE attrelid IN (to_regclass('ls_contact_ops.audience_profiles'),to_regclass('ls_contact_ops.audience_interests'),to_regclass('ls_contact_ops.audience_observations'),to_regclass('ls_contact_ops.audience_operation_receipts')) AND attnum>0 AND NOT attisdropped)
+   AND (SELECT count(*)=7 AND bool_and(convalidated) FROM pg_constraint WHERE conrelid IN (to_regclass('ls_contact_ops.audience_profiles'),to_regclass('ls_contact_ops.audience_interests'),to_regclass('ls_contact_ops.audience_observations'),to_regclass('ls_contact_ops.audience_operation_receipts')) AND contype='f')
+   AND to_regprocedure('ls_contact_ops.reject_audience_ledger_mutation()') IS NOT NULL
+   AND (SELECT count(*)=2 AND bool_and(tgfoid=to_regprocedure('ls_contact_ops.reject_audience_ledger_mutation()') AND tgenabled IN ('O','A')) FROM pg_trigger WHERE tgrelid IN (to_regclass('ls_contact_ops.audience_observations'),to_regclass('ls_contact_ops.audience_operation_receipts')) AND NOT tgisinternal)
+   AND NOT EXISTS(SELECT 1 FROM pg_class c,LATERAL aclexplode(coalesce(c.relacl,acldefault('r',c.relowner))) acl WHERE c.oid IN (to_regclass('ls_contact_ops.audience_profiles'),to_regclass('ls_contact_ops.audience_interests'),to_regclass('ls_contact_ops.audience_observations'),to_regclass('ls_contact_ops.audience_operation_receipts')) AND acl.grantee<>c.relowner) AS audience_ready`);
+ const row=task.rows[0]!,objects=tables.rows[0]!,extension=extensions.rows[0]!;
  const workflow=row.workflow?await db.query<{snooze:string|null;history:string|null}>(`SELECT
   (SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid=to_regclass('ls_calendar.tasks') AND conname='tasks_snooze_check' AND convalidated) AS snooze,
   (SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid=to_regclass('ls_calendar.task_history') AND conname='task_history_state_check' AND convalidated) AS history`):{rows:[{snooze:null,history:null}]};
  const definitions=[row.source,row.state,row.actions,workflow.rows[0]?.snooze??null,workflow.rows[0]?.history??null].map(normalizedConstraint),constraintDigest=createHash('sha256').update(JSON.stringify(definitions)).digest('hex');
- return {taskColumns:row.columns?.length??0,taskConstraints:Number(row.constraints),sourceKinds:literals(row.source,sourceIgnored),stateKinds:literals(row.state),historyActions:literals(row.actions),sourceConstraintStrict:sourceStrict(row.source),stateConstraintStrict:stateStrict(row.state),historyConstraintStrict:historyStrict(row.actions),constraintDigest,workflowColumns:row.workflow===true,workflowConstraints:row.workflow===true&&snoozeStrict(workflow.rows[0]?.snooze)&&historyStateStrict(workflow.rows[0]?.history),effectiveDueIndex:row.effective===true,taskHistoryImmutable:row.immutable===true,taskPermissions:row.permissions===true,callLinksAbsent:objects.call_absent===true,callLinksSchema:objects.call_schema===true,callLinksForeignKeys:objects.call_fks===true,callLinksImmutable:objects.call_immutable===true,callLinksPermissions:objects.call_permissions===true,callLinksReferencesSound:objects.call_refs===true,leadCommandsAbsent:objects.lead_absent===true,leadCommandsSchema:objects.lead_schema===true,leadCommandsForeignKeys:objects.lead_fks===true,leadCommandsImmutable:objects.lead_immutable===true,leadCommandsPermissions:objects.lead_permissions===true,leadCommandsReferencesSound:objects.lead_refs===true};
+ return {taskColumns:row.columns?.length??0,taskConstraints:Number(row.constraints),sourceKinds:literals(row.source,sourceIgnored),stateKinds:literals(row.state),historyActions:literals(row.actions),sourceConstraintStrict:sourceStrict(row.source),stateConstraintStrict:stateStrict(row.state),historyConstraintStrict:historyStrict(row.actions),constraintDigest,workflowColumns:row.workflow===true,workflowConstraints:row.workflow===true&&snoozeStrict(workflow.rows[0]?.snooze)&&historyStateStrict(workflow.rows[0]?.history),effectiveDueIndex:row.effective===true,taskHistoryImmutable:row.immutable===true,taskPermissions:row.permissions===true,callLinksAbsent:objects.call_absent===true,callLinksSchema:objects.call_schema===true,callLinksForeignKeys:objects.call_fks===true,callLinksImmutable:objects.call_immutable===true,callLinksPermissions:objects.call_permissions===true,callLinksReferencesSound:objects.call_refs===true,leadCommandsAbsent:objects.lead_absent===true,leadCommandsSchema:objects.lead_schema===true,leadCommandsForeignKeys:objects.lead_fks===true,leadCommandsImmutable:objects.lead_immutable===true,leadCommandsPermissions:objects.lead_permissions===true,leadCommandsReferencesSound:objects.lead_refs===true,groupInterestAbsent:extension.group_absent===true,groupInterestReady:extension.group_ready===true,providerIndexAbsent:extension.provider_absent===true,providerIndexReady:extension.provider_ready===true,audienceInterestAbsent:extension.audience_absent===true,audienceInterestReady:extension.audience_ready===true};
 }
 
 export function contactWorkStateDigest(history:readonly AppliedMigration[],snapshot:ContactWorkSnapshot):string{
