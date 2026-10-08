@@ -1,6 +1,6 @@
 /** Mounted authenticated synthetic browser acceptance. One response-loss fault follows a real upstream commit; no data API is mocked. */
 import {expect,test} from "@playwright/test";
-import type {Request as PlaywrightRequest} from "@playwright/test";
+import type {Locator,Request as PlaywrightRequest} from "@playwright/test";
 import {execFile} from "node:child_process";
 import {randomUUID} from "node:crypto";
 import {readFileSync} from "node:fs";
@@ -29,6 +29,16 @@ if(!runtimePath){
   const main=page.locator("main");await expect(main).toHaveAttribute("dir",locale==="he"?"rtl":"ltr");
   await expect(page.getByRole("heading",{name:locale==="he"?"התעניינות בקבוצה ובתגבור":"Group and tutoring interest",exact:true})).toBeVisible();
   const mobile=(page.viewportSize()?.width??1440)<=600;
+  const captureProject=info.project.name==="desktop"||info.project.name==="mobile340";
+  const captureViewport=async(state:string,target:Locator,mobileOnly=false)=>{
+   if(!captureProject||(mobileOnly&&info.project.name!=="mobile340"))return;
+   await target.scrollIntoViewIfNeeded();
+   await page.screenshot({path:info.outputPath(`a03b-movement-${state}-${locale}-${info.project.name}.png`)});
+  };
+  const captureRegion=async(state:string,target:Locator)=>{
+   if(!captureProject)return;
+   await target.screenshot({path:info.outputPath(`a03b-movement-${state}-${locale}-${info.project.name}.png`)});
+  };
   if(!mobile)await expect(page.locator(".lsu-sidebar").getByRole("link",{name:locale==="he"?"אנשים":"People",exact:true})).toHaveAttribute("aria-current","page");
   const groupsTab=page.getByRole("navigation",{name:locale==="he"?"תצוגות הדף הנוכחי":"Current page views"}).getByRole("link",{name:locale==="he"?"קבוצות":"Groups",exact:true});
   await expect(groupsTab).toHaveAttribute("aria-current","page");
@@ -89,7 +99,7 @@ if(!runtimePath){
    const tutoringResponse=page.waitForResponse(response=>response.request().method()==="POST"&&response.request().postData()?.includes('"serviceType":"tutoring"')===true);
    await record.getByRole("button",{name:"Record service interest",exact:true}).click();expect((await tutoringResponse).status()).toBe(200);
   }
-  const planning=page.locator("section").filter({has:page.getByRole("heading",{name:locale==="he"?"קבוצות טיוטה והצעות שיבוץ":"Draft groups and proposed placements",exact:true})});
+  const planning=page.locator('section[aria-labelledby="draft-groups-heading"]');
   const addDraft=planning.locator("details").filter({has:page.getByText(locale==="he"?"הוספת קבוצת טיוטה":"Add draft group",{exact:true})});await addDraft.locator("summary").click();
   const groupLabel=locale==="he"?`קבוצת טיוטה ${info.project.name}`:`Synthetic draft ${info.project.name}`;await addDraft.locator('[name="label"]').fill(groupLabel);
   let draftSent:PlaywrightRequest,draftSavedBody:{ok:boolean;data:{saved:boolean;replayed:boolean;item:{id:string;state:string;label:string}}};
@@ -125,6 +135,12 @@ if(!runtimePath){
   const sourceCard=planning.locator("article").filter({has:page.getByRole("heading",{name:groupLabel,exact:true})}),moveSummary=locale==="he"?"העברת הצעה":"Move proposal";
   const firstMove=sourceCard.locator("details").filter({has:page.getByText(moveSummary,{exact:true})});await firstMove.locator("summary").click();
   const firstMoveSelect=firstMove.locator('[name="destinationDraftGroupId"]');await expect(firstMoveSelect.locator(`option[value="${groupB.id}"]`)).toHaveCount(1);await expect(firstMoveSelect.locator(`option[value="${groupC.id}"]`)).toHaveCount(1);await firstMoveSelect.selectOption(groupB.id);
+  await captureViewport("expanded",firstMove);
+  if(info.project.name==="mobile340"){
+   await firstMoveSelect.focus();await page.keyboard.press("Tab");
+   await expect(firstMove.getByRole("button",{name:moveSummary,exact:true})).toBeFocused();
+   await captureViewport("keyboard-focus",firstMove,true);
+  }
   let firstMoveRequest:PlaywrightRequest,firstMoveSavedBody:{ok:boolean;data:{saved:boolean;replayed:boolean;item:{id:string;draftGroupId:string};movement:{id:string}}};
   if(locale==="en"){
    let interrupted:Record<string,unknown>|null=null;await page.route("**/api/private/group-placement",async route=>{if(route.request().method()==="POST"&&route.request().postData()?.includes('"action":"move_group_placement"')){interrupted=route.request().postDataJSON();const upstream=await route.fetch();expect(upstream.status()).toBe(200);await route.abort("failed");}else await route.continue();},{times:1});
@@ -136,20 +152,37 @@ if(!runtimePath){
    await firstMove.getByRole("button",{name:"העברת הצעה",exact:true}).click();firstMoveRequest=await request;const saved=await response;expect(saved.status()).toBe(200);firstMoveSavedBody=await saved.json();expect(firstMoveSavedBody).toMatchObject({ok:true,data:{saved:true,replayed:false,item:{draftGroupId:groupB.id}}});
   }
   await expect(sourceCard.getByText(locale==="he"?"הצעה שהועברה — אינה נוכחית, ניסיון או הרשמה":"Moved proposal — not current, trial, or enrollment",{exact:true})).toBeVisible();
+  await captureViewport("first-save-readback",sourceCard);
   const groupBCard=planning.locator("article").filter({has:page.getByRole("heading",{name:groupB.label,exact:true})}),secondMove=groupBCard.locator("details").filter({has:page.getByText(moveSummary,{exact:true})});await secondMove.locator("summary").click();
   await expect(secondMove.locator(`option[value="${draftSavedBody.data.item.id}"]`)).toHaveCount(0);await secondMove.locator('[name="destinationDraftGroupId"]').selectOption(groupC.id);
   const secondMoveRequest=page.waitForRequest(request=>request.method()==="POST"&&request.postData()?.includes('"action":"move_group_placement"')===true),secondMoveResponse=page.waitForResponse(response=>response.request().method()==="POST"&&response.request().postData()?.includes('"action":"move_group_placement"')===true);
   await secondMove.getByRole("button",{name:moveSummary,exact:true}).click();await secondMoveRequest;const secondSaved=await secondMoveResponse;expect(secondSaved.status()).toBe(200);const secondSavedBody=await secondSaved.json();expect(secondSavedBody).toMatchObject({ok:true,data:{saved:true,replayed:false,item:{draftGroupId:groupC.id}}});
+  await expect(groupBCard.getByRole("status")).toContainText(locale==="he"?"העברת ההצעה נשמרה ונקראה בחזרה":"Proposal movement saved and read back");
+  await captureViewport("second-save-readback",groupBCard);
   const replayAfterSuccessor=await page.request.post(`${data.origin}/api/private/group-placement`,{headers:{Origin:data.origin,"X-CSRF-Token":csrf!},data:firstMoveRequest.postDataJSON()});expect(replayAfterSuccessor.status()).toBe(200);expect(await replayAfterSuccessor.json()).toMatchObject({ok:true,data:{saved:true,replayed:true,item:{id:firstMoveSavedBody.data.item.id},movement:{id:firstMoveSavedBody.data.movement.id}}});
   const ordinaryAfterMove=await page.request.post(`${data.origin}/api/private/group-placement`,{headers:{Origin:data.origin,"X-CSRF-Token":csrf!},data:{action:"propose_group_placement",operationId:randomUUID(),draftGroupId:groupC.id,serviceInterestId:serviceSavedBody.data.item.id}});expect(ordinaryAfterMove.status()).toBe(200);expect(await ordinaryAfterMove.json()).toMatchObject({ok:true,data:{saved:true,replayed:false,duplicate:true,item:{id:secondSavedBody.data.item.id}}});
   const returnToA=await page.request.post(`${data.origin}/api/private/group-placement`,{headers:{Origin:data.origin,"X-CSRF-Token":csrf!},data:{action:"move_group_placement",operationId:randomUUID(),sourceProposedPlacementId:secondSavedBody.data.item.id,destinationDraftGroupId:draftSavedBody.data.item.id}});expect(returnToA.status()).toBe(409);
   const supersededSource=await page.request.post(`${data.origin}/api/private/group-placement`,{headers:{Origin:data.origin,"X-CSRF-Token":csrf!},data:{action:"move_group_placement",operationId:randomUUID(),sourceProposedPlacementId:placementSavedBody.data.item.id,destinationDraftGroupId:groupC.id}});expect(supersededSource.status()).toBe(409);
+  await page.reload();
+  const persistedA=planning.locator("article").filter({has:page.getByRole("heading",{name:groupLabel,exact:true})}),persistedB=planning.locator("article").filter({has:page.getByRole("heading",{name:groupB.label,exact:true})}),persistedC=planning.locator("article").filter({has:page.getByRole("heading",{name:groupC.label,exact:true})});
+  await expect(persistedA.getByText(locale==="he"?"הצעה שהועברה — אינה נוכחית, ניסיון או הרשמה":"Moved proposal — not current, trial, or enrollment",{exact:true})).toBeVisible();
+  await expect(persistedA.getByText(locale==="he"?"הועברה אל":"Moved to",{exact:false})).toContainText(groupB.label);
+  await expect(persistedB.getByText(locale==="he"?"הצעה שהועברה — אינה נוכחית, ניסיון או הרשמה":"Moved proposal — not current, trial, or enrollment",{exact:true})).toBeVisible();
+  await expect(persistedB.getByText(locale==="he"?"הועברה מתוך":"Moved from",{exact:false})).toContainText(groupLabel);
+  await expect(persistedB.getByText(locale==="he"?"הועברה אל":"Moved to",{exact:false})).toContainText(groupC.label);
+  await expect(persistedC.getByText(locale==="he"?"הצעת שיבוץ נוכחית — לא ניסיון ולא הרשמה":"Current proposed placement — not a trial or enrollment",{exact:true})).toBeVisible();
+  await expect(persistedC.getByText(locale==="he"?"הועברה מתוך":"Moved from",{exact:false})).toContainText(groupB.label);
+  await captureRegion("persisted-history-a-moved",persistedA);
+  await captureRegion("persisted-history-b-moved",persistedB);
+  await captureRegion("persisted-history-c-current",persistedC);
   const groupD=await apiDraft(locale==="he"?`יעד תפוס ${info.project.name}`:`Occupied destination ${info.project.name}`);await page.reload();
   const groupCCard=planning.locator("article").filter({has:page.getByRole("heading",{name:groupC.label,exact:true})}),staleMove=groupCCard.locator("details").filter({has:page.getByText(moveSummary,{exact:true})});await staleMove.locator("summary").click();await staleMove.locator('[name="destinationDraftGroupId"]').selectOption(groupD.id);
   await page.route("**/api/private/group-placement",route=>route.request().method()==="POST"&&route.request().postData()?.includes('"action":"move_group_placement"')?route.abort("failed"):route.continue(),{times:1});
   const lostMoveRequest=page.waitForRequest(request=>request.method()==="POST"&&request.postData()?.includes('"action":"move_group_placement"')===true);await staleMove.getByRole("button",{name:moveSummary,exact:true}).click();const lostMoveBody=(await lostMoveRequest).postDataJSON();
   const retryMoveLabel=locale==="he"?"ניסיון חוזר לאותה העברה בדיוק":"Retry exact same move";await expect(staleMove.getByRole("button",{name:retryMoveLabel,exact:true})).toBeVisible();
+  await captureViewport("recovery-unconfirmed",staleMove,true);
   await page.route("**/api/private/group-placement",route=>route.request().method()==="POST"&&route.request().postData()?.includes('"action":"move_group_placement"')?route.fulfill({status:401,contentType:"application/json",body:JSON.stringify({ok:false,error:{code:"UNAUTHENTICATED"}})}):route.continue(),{times:1});const expiredPostRequest=page.waitForRequest(request=>request.method()==="POST"&&request.postData()?.includes('"action":"move_group_placement"')===true);await staleMove.getByRole("button",{name:retryMoveLabel,exact:true}).click();expect((await expiredPostRequest).postDataJSON()).toEqual(lostMoveBody);await expect(groupCCard.getByRole("alert")).toContainText(locale==="he"?"יש להתחבר מחדש בכרטיסייה אחרת":"Sign in again in another tab");await expect(staleMove.getByRole("button",{name:retryMoveLabel,exact:true})).toBeEnabled();
+  await captureViewport("recovery-401",staleMove,true);
   await page.route("**/api/identity/session",route=>route.fulfill({status:401,contentType:"application/json",body:JSON.stringify({ok:false,error:{code:"UNAUTHENTICATED"}})}),{times:1});const expiredSessionRequest=page.waitForRequest("**/api/identity/session");await staleMove.getByRole("button",{name:retryMoveLabel,exact:true}).click();await expiredSessionRequest;await expect(groupCCard.getByRole("alert")).toContainText(locale==="he"?"יש להתחבר מחדש בכרטיסייה אחרת":"Sign in again in another tab");await expect(staleMove.getByRole("button",{name:retryMoveLabel,exact:true})).toBeEnabled();
   await page.route("**/api/identity/session",route=>route.abort("failed"),{times:1});const lostSessionRequest=page.waitForRequest("**/api/identity/session");await staleMove.getByRole("button",{name:retryMoveLabel,exact:true}).click();await lostSessionRequest;await expect(staleMove.getByRole("button",{name:retryMoveLabel,exact:true})).toBeEnabled();
   const ordinaryFirst=await page.request.post(`${data.origin}/api/private/group-placement`,{headers:{Origin:data.origin,"X-CSRF-Token":csrf!},data:{action:"propose_group_placement",operationId:randomUUID(),draftGroupId:groupD.id,serviceInterestId:serviceSavedBody.data.item.id}});expect(ordinaryFirst.status()).toBe(200);expect(await ordinaryFirst.json()).toMatchObject({ok:true,data:{saved:true,replayed:false,duplicate:false}});
