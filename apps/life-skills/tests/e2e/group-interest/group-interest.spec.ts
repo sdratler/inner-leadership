@@ -52,7 +52,7 @@ if(!runtimePath){
   await page.goto(`/${locale}/app/clients`);await page.getByRole("navigation",{name:locale==="he"?"תצוגות הדף הנוכחי":"Current page views"}).getByRole("link",{name:locale==="he"?"קבוצות":"Groups",exact:true}).click();
   await expect(page).toHaveURL(new RegExp(`/${locale}/app/group-interest$`));await page.goBack();await expect(page).toHaveURL(new RegExp(`/${locale}/app/clients`));await page.goForward();await expect(page).toHaveURL(new RegExp(`/${locale}/app/group-interest$`));
   const planningHeading=page.getByRole("heading",{name:locale==="he"?"קבוצות טיוטה והצעות שיבוץ":"Draft groups and proposed placements",exact:true});await expect(planningHeading).toBeVisible();
-  const addInquiry=page.locator("details").filter({has:page.getByText(locale==="he"?"רישום פנייה":"Record an inquiry",{exact:true})});await expect(addInquiry).not.toHaveAttribute("open","");
+  const addInquiry=main.locator("details").filter({has:page.getByText(locale==="he"?"רישום פנייה":"Record an inquiry",{exact:true})});await expect(addInquiry).not.toHaveAttribute("open","");
   expect((await planningHeading.boundingBox())!.y).toBeLessThan((await addInquiry.boundingBox())!.y);await addInquiry.locator("summary").click();
   const inquiryForm=addInquiry.locator("form"),suffix=`${info.project.name}-${locale}`,parentName=`Synthetic ${suffix} Parent`,childLabel=`Synthetic ${suffix} Child`;
   await inquiryForm.locator('[name="serviceType"]').selectOption(locale==="he"?"group":"group_and_tutoring");
@@ -116,9 +116,24 @@ if(!runtimePath){
   const draftReplay=await page.request.post(`${data.origin}/api/private/group-placement`,{headers:{Origin:data.origin,"X-CSRF-Token":csrf!},data:draftSent.postDataJSON()});expect(draftReplay.status()).toBe(200);expect(await draftReplay.json()).toMatchObject({ok:true,data:{saved:true,replayed:true,item:{id:draftSavedBody.data.item.id}}});
   const draftConflict=await page.request.post(`${data.origin}/api/private/group-placement`,{headers:{Origin:data.origin,"X-CSRF-Token":csrf!},data:{...draftSent.postDataJSON(),label:`Changed ${groupLabel}`}});expect(draftConflict.status()).toBe(409);
   const groupCard=planning.locator("article").filter({has:page.getByRole("heading",{name:groupLabel,exact:true})});await expect(groupCard.getByText(locale==="he"?"קבוצת טיוטה":"Draft group",{exact:true})).toBeVisible();
-  await expect(groupCard.getByText(locale==="he"?"לוח זמנים, מקום, קיבולת, תשלום והשתתפות: לא מוגדרים.":"Schedule, venue, capacity, fees and participation: Unset.",{exact:true})).toBeVisible();
+  await expect(groupCard.getByText(locale==="he"?"קיבולת, תשלום והשתתפות עדיין אינם מוגדרים. המועדים המוצעים להלן אינם פגישות מאושרות.":"Capacity, fees and participation remain unset. Proposed occurrences below are not confirmed meetings.",{exact:true})).toBeVisible();
+  const addMeeting=groupCard.locator("details").filter({has:page.getByText(locale==="he"?"הוספת מועד מוצע":"Add proposed occurrence",{exact:true})});await addMeeting.locator("summary").click();
+  const meetingForm=addMeeting.locator("form"),meetingStart=locale==="he"?"2031-01-03T10:00":"2031-01-02T10:00",meetingVenue=locale==="he"?"חדר סינתטי":"Synthetic room";
+  await meetingForm.locator('[name="localStart"]').fill(meetingStart);await meetingForm.locator('[name="durationMinutes"]').fill("60");await meetingForm.locator('[name="venue"]').fill(meetingVenue);
+  if(info.project.name==="mobile340"){await meetingForm.locator('[name="venue"]').focus();await page.keyboard.press("Tab");await expect(meetingForm.getByRole("button",{name:locale==="he"?"שמירת מועד מוצע":"Save proposed occurrence",exact:true})).toBeFocused();}
+  const meetingRequest=page.waitForRequest(request=>request.method()==="POST"&&request.postData()?.includes('"action":"propose_draft_group_meeting"')===true),meetingResponse=page.waitForResponse(response=>response.request().method()==="POST"&&response.request().postData()?.includes('"action":"propose_draft_group_meeting"')===true);
+  await meetingForm.getByRole("button",{name:locale==="he"?"שמירת מועד מוצע":"Save proposed occurrence",exact:true}).click();await meetingRequest;expect((await meetingResponse).status()).toBe(200);
+  await expect(groupCard.getByText(meetingVenue,{exact:true})).toBeVisible();await expect(groupCard.getByText(locale==="he"?"לא נמצאה התנגשות בקריאה האחרונה. זו אינה שמירת זמן.":"No conflict found at the last read. This is not a reservation.",{exact:true})).toBeVisible();
+  await page.reload();await expect(groupCard.getByText(meetingVenue,{exact:true})).toBeVisible();
+  const correctMeeting=groupCard.locator("details").filter({has:page.getByText(locale==="he"?"תיקון המועד המוצע":"Correct proposed occurrence",{exact:true})});await correctMeeting.locator("summary").click();
+  const correctionForm=correctMeeting.locator("form"),correctedVenue=locale==="he"?"חדר סינתטי מתוקן":"Corrected synthetic room";
+  await correctionForm.locator('[name="localStart"]').fill(locale==="he"?"2031-01-03T12:00":"2031-01-02T12:00");await correctionForm.locator('[name="durationMinutes"]').fill("75");await correctionForm.locator('[name="venue"]').fill(correctedVenue);
+  const correctionResponse=page.waitForResponse(response=>response.request().method()==="POST"&&response.request().postData()?.includes('"action":"revise_draft_group_meeting"')===true);
+  await correctionForm.getByRole("button",{name:locale==="he"?"שמירת תיקון":"Save correction",exact:true}).click();expect((await correctionResponse).status()).toBe(200);
+  await expect(groupCard.getByText(correctedVenue,{exact:true})).toBeVisible();const history=groupCard.locator("details").filter({has:page.getByText(locale==="he"?"היסטוריית מועדים":"Occurrence history",{exact:true})});await history.locator("summary").click();await expect(history.getByText(meetingVenue,{exact:false})).toBeVisible();
+  await captureViewport("draft-meeting-corrected",groupCard);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   const missingPlacement=await page.request.post(`${data.origin}/api/private/group-placement`,{headers:{Origin:data.origin,"X-CSRF-Token":csrf!},data:{action:"propose_group_placement",operationId:randomUUID(),draftGroupId:randomUUID(),serviceInterestId:serviceSavedBody.data.item.id}});expect(missingPlacement.status()).toBe(404);
-  const propose=groupCard.locator("details");await propose.locator("summary").click();const proposalSelect=propose.locator('[name="serviceInterestId"]');
+  const propose=groupCard.locator("details").filter({has:page.getByText(locale==="he"?"הצעת שיבוץ":"Propose placement",{exact:true})});await propose.locator("summary").click();const proposalSelect=propose.locator('[name="serviceInterestId"]');
   await expect(proposalSelect.locator(`option[value="${serviceSavedBody.data.item.id}"]`)).toContainText(serviceSavedBody.data.item.sourceInquiryId.slice(0,8));
   if(secondGroupInterest)await expect(proposalSelect.locator(`option[value="${secondGroupInterest.id}"]`)).toContainText(secondGroupInterest.sourceInquiryId.slice(0,8));
   await proposalSelect.selectOption(serviceSavedBody.data.item.id);

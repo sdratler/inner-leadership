@@ -11,7 +11,7 @@ import {groupPlacementCommandSchema} from "./contract.ts";
 import type {GroupPlacementStore} from "./store.ts";
 
 export type GroupPlacementHttpDependencies={enabled:boolean;origin:string;actor:(token:string)=>Promise<Actor>;csrf:(token:string)=>string;
- store:Pick<GroupPlacementStore,"createDraftGroup"|"proposePlacement"|"movePlacement"|"list">};
+ store:Pick<GroupPlacementStore,"createDraftGroup"|"proposePlacement"|"movePlacement"|"proposeMeeting"|"reviseMeeting"|"list">};
 export async function groupPlacementHttp(request:Request,load:()=>Promise<GroupPlacementHttpDependencies>){
  const id=randomUUID();let response:Response;
  try{
@@ -25,7 +25,9 @@ export async function groupPlacementHttp(request:Request,load:()=>Promise<GroupP
   else{verifyMutationOrigin(canonical,d.origin);verifyCsrfToken(request.headers.get("x-csrf-token"),d.csrf(token));
    const command=await readJson(request,groupPlacementCommandSchema);
    response=successResponse(command.action==="create_draft_group"?await d.store.createDraftGroup(actor,command):
-    command.action==="propose_group_placement"?await d.store.proposePlacement(actor,command):await d.store.movePlacement(actor,command),id);}
+    command.action==="propose_group_placement"?await d.store.proposePlacement(actor,command):
+    command.action==="move_group_placement"?await d.store.movePlacement(actor,command):
+    command.action==="propose_draft_group_meeting"?await d.store.proposeMeeting(actor,command):await d.store.reviseMeeting(actor,command),id);}
  }catch(error){response=failureResponse(error instanceof AppError?error:new AppError("UNAVAILABLE"),id);}
  response.headers.set("Referrer-Policy","no-referrer");response.headers.set("X-Content-Type-Options","nosniff");return response;
 }

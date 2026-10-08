@@ -23,7 +23,7 @@ function inquiry(serviceType:InterestCommand["fields"]["serviceType"]="group"):I
  permission:{confirmed:true,version:interestNotice.version,language:"en",source:"written"}}};}
 
 beforeAll(async()=>{
- await db.exec("CREATE SCHEMA ls_control");for(const name of ["0001_ls_foundation.sql","0010_ls_identity_cases_20260906.sql","0124_ls_group_interest.sql","0127_ls_service_interests.sql","0128_ls_draft_group_placements.sql","0129_ls_proposed_placement_moves.sql"]){
+ await db.exec("CREATE SCHEMA ls_control");for(const name of ["0001_ls_foundation.sql","0010_ls_identity_cases_20260906.sql","0030_ls_calendar_attendance_20260907.sql","0124_ls_group_interest.sql","0127_ls_service_interests.sql","0128_ls_draft_group_placements.sql","0129_ls_proposed_placement_moves.sql","0130_ls_draft_group_meetings.sql"]){
   const sql=await readFile("migrations/"+name,"utf8"),manifest=JSON.parse(await readFile("migrations/manifest.json","utf8")) as {name:string;sha256:string}[];
   expect(createHash("sha256").update(sql).digest("hex")).toBe(manifest.find(row=>row.name===name)?.sha256);await db.exec(sql);
  }
@@ -48,6 +48,19 @@ async function serviceInterest(actor=actors[0]!,serviceType:"group"|"tutoring"="
   familyId:members[actor===actors[0]?0:1]!.familyId,personId:members[actor===actors[0]?0:1]!.personId,serviceType});
 }
 
+async function privateAppointment(actor=actors[0]!,startsAt=new Date("2029-02-03T08:00:00Z")){
+ const member=members[actor===actors[0]?0:1]!,clientId=randomUUID(),caseId=randomUUID(),engagementId=randomUUID(),audienceId=randomUUID(),availabilityId=randomUUID(),appointmentId=randomUUID();
+ await db.query("INSERT INTO ls_cases.clients(id,workspace_id,person_id,created_at) VALUES($1,$2,$3,$4)",[clientId,actor.workspaceId,member.personId,now]);
+ await db.query("INSERT INTO ls_cases.cases(id,workspace_id,client_id,family_id,practitioner_account_id,state,created_at,updated_at) VALUES($1,$2,$3,$4,$5,'active',$6,$6)",[caseId,actor.workspaceId,clientId,member.familyId,actor.id,now]);
+ await db.query("INSERT INTO ls_cases.engagements(id,workspace_id,case_id,terms_version,currency,appointment_rate_minor,attended_review_target,state,created_at) VALUES($1,$2,$3,'Synthetic','ILS',0,12,'active',$4)",[engagementId,actor.workspaceId,caseId,now]);
+ await db.query("INSERT INTO ls_cases.audiences(id,workspace_id,case_id,visibility,published,created_at) VALUES($1,$2,$3,'private',false,$4)",[audienceId,actor.workspaceId,caseId,now]);
+ await db.query("INSERT INTO ls_calendar.availability(id,workspace_id,practitioner_id,starts_at,ends_at,kind,active) VALUES($1,$2,$3,$4,$5,'open',true)",[availabilityId,actor.workspaceId,actor.id,new Date(startsAt.valueOf()-60*60_000),new Date(startsAt.valueOf()+2*60*60_000)]);
+ await db.query(`INSERT INTO ls_calendar.appointments(id,workspace_id,case_id,audience_id,engagement_id,practitioner_id,terms_version,kind,starts_at,ends_at,status,
+  parent_ids,buffer_before,buffer_after,location_ciphertext,created_by,created_at) VALUES($1,$2,$3,$4,$5,$6,'Synthetic','individual',$7,$8,'scheduled','{}',15,15,'private',$6,$9)`,
+  [appointmentId,actor.workspaceId,caseId,audienceId,engagementId,actor.id,startsAt,new Date(startsAt.valueOf()+60*60_000),now]);
+ return appointmentId;
+}
+
 it("creates an encrypted draft group, saves and reopens only unset administrative planning",async()=>{
  const before=(await db.query("SELECT (SELECT count(*) FROM ls_cases.cases) AS cases,(SELECT count(*) FROM ls_cases.engagements) AS engagements,(SELECT count(*) FROM ls_identity.accounts) AS accounts")).rows;
  const input={action:"create_draft_group" as const,operationId:randomUUID(),label:"Synthetic north group"},saved=await placementStore.createDraftGroup(actors[0]!,input);
@@ -67,8 +80,8 @@ it("proposes one exact GROUP interest, reads it back, and keeps all states separ
  const reopened=await placementStore.list(actor);expect(reopened.proposedPlacements).toContainEqual(saved.item);expect(reopened.eligibleGroupInterests).toContainEqual(expect.objectContaining({id:interest.item.id,state:"service_interest",serviceType:"group"}));
  expect((await db.query("SELECT state FROM ls_cases.engagements WHERE workspace_id=$1",[actor.workspaceId])).rows).toEqual([]);
  const names=(await db.query<{table_name:string}>("SELECT table_name FROM information_schema.tables WHERE table_schema='ls_group_admin' ORDER BY table_name")).rows.map(row=>row.table_name);
- expect(names).toEqual(["draft_group_operations","draft_groups","proposed_placement_move_operations","proposed_placement_moves","proposed_placement_operations","proposed_placements"]);
- expect(names.some(name=>/trial|enrollment|schedule|attendance|payment|message/.test(name))).toBe(false);
+ expect(names).toEqual(["draft_group_operations","draft_groups","draft_meeting_operations","draft_meeting_revisions","proposed_placement_move_operations","proposed_placement_moves","proposed_placement_operations","proposed_placements"]);
+ expect(names.some(name=>/trial|enrollment|attendance|payment|message/.test(name))).toBe(false);
 });
 
 it("replays exact operations, conflicts on changed payloads, and deduplicates the same group/interest proposal",async()=>{
@@ -123,6 +136,53 @@ it("preserves ordinary proposal reuse in both proposal/move serialization orders
  expect((await db.query<{count:number}>("SELECT count(*)::int AS count FROM ls_group_admin.proposed_placements WHERE workspace_id=$1 AND draft_group_id=$2 AND service_interest_id=$3",[actor.workspaceId,secondB.item.id,secondInterest.item.id])).rows).toEqual([{count:1}]);
 });
 
+it("saves one proposed occurrence, reports redacted advisory conflicts, and never mutates appointments",async()=>{
+ const actor=actors[0]!,group=await placementStore.createDraftGroup(actor,{action:"create_draft_group",operationId:randomUUID(),label:"Meeting conflict group"});
+ const appointmentId=await privateAppointment(actor),before=(await db.query("SELECT id,starts_at,ends_at,status,version FROM ls_calendar.appointments WHERE id=$1",[appointmentId])).rows;
+ const command={action:"propose_draft_group_meeting" as const,operationId:randomUUID(),draftGroupId:group.item.id,timeZone:"Asia/Jerusalem" as const,
+  localStart:"2029-02-03T10:30",durationMinutes:60,venue:"Synthetic private room"},saved=await placementStore.proposeMeeting(actor,command);
+ expect(saved).toMatchObject({saved:true,replayed:false,item:{state:"proposed",revisionStatus:"current",draftGroupId:group.item.id,timeZone:"Asia/Jerusalem",localStart:command.localStart,
+  durationMinutes:60,venue:command.venue,previousRevisionId:null,nextRevisionId:null,conflicts:[{kind:"private_appointment",reference:appointmentId.slice(0,8)}]}});
+ expect(JSON.stringify(saved.item.conflicts)).not.toMatch(/Synthetic family|Synthetic child|private room/i);
+ expect((await db.query("SELECT id,starts_at,ends_at,status,version FROM ls_calendar.appointments WHERE id=$1",[appointmentId])).rows).toEqual(before);
+ const stored=await db.query<{venue_ciphertext:string}>("SELECT venue_ciphertext FROM ls_group_admin.draft_meeting_revisions WHERE id=$1",[saved.item.id]);expect(stored.rows[0]!.venue_ciphertext).not.toContain(command.venue);
+ const second=await placementStore.proposeMeeting(actor,{...command,operationId:randomUUID(),localStart:"2029-02-03T10:45",venue:"Second synthetic room"});
+ expect(second.item.conflicts.map(item=>item.kind).sort()).toEqual(["draft_occurrence","private_appointment"]);
+});
+
+it("rolls back instead of claiming no conflict when conflict lookup is unavailable",async()=>{
+ const actor=actors[0]!,group=await placementStore.createDraftGroup(actor,{action:"create_draft_group",operationId:randomUUID(),label:"Conflict unavailable group"});
+ const failingStore:IdentityStore={transaction:work=>db.transaction(tx=>work({query:async<T extends object>(sql:string,values:readonly unknown[]=[])=>{
+  if(sql.includes("FROM ls_calendar.appointments"))throw new Error("synthetic conflict lookup failure");return (await tx.query<T>(sql,[...values])).rows;
+ }}))},isolated=new GroupPlacementStore(failingStore,ring,key,{now:()=>now}),before=(await db.query<{count:number}>("SELECT count(*)::int AS count FROM ls_group_admin.draft_meeting_revisions WHERE draft_group_id=$1",[group.item.id])).rows[0]!.count;
+ await expect(isolated.proposeMeeting(actor,{action:"propose_draft_group_meeting",operationId:randomUUID(),draftGroupId:group.item.id,timeZone:"Asia/Jerusalem",localStart:"2029-02-06T10:00",durationMinutes:60,venue:"Unavailable check room"})).rejects.toThrow("synthetic conflict lookup failure");
+ expect((await db.query<{count:number}>("SELECT count(*)::int AS count FROM ls_group_admin.draft_meeting_revisions WHERE draft_group_id=$1",[group.item.id])).rows[0]!.count).toBe(before);
+});
+
+it("appends exactly one correction, rejects stale competitors, and replays the original operation",async()=>{
+ const actor=actors[0]!,group=await placementStore.createDraftGroup(actor,{action:"create_draft_group",operationId:randomUUID(),label:"Meeting revision group"});
+ const create={action:"propose_draft_group_meeting" as const,operationId:randomUUID(),draftGroupId:group.item.id,timeZone:"Asia/Jerusalem" as const,localStart:"2029-02-05T09:00",durationMinutes:60,venue:"First room"};
+ const first=await placementStore.proposeMeeting(actor,create),move={action:"revise_draft_group_meeting" as const,operationId:randomUUID(),sourceRevisionId:first.item.id,timeZone:"Asia/Jerusalem" as const,localStart:"2029-02-05T11:00",durationMinutes:90,venue:"Second room"};
+ const revised=await placementStore.reviseMeeting(actor,move);expect(revised).toMatchObject({saved:true,replayed:false,item:{occurrenceId:first.item.occurrenceId,previousRevisionId:first.item.id,revisionStatus:"current",localStart:move.localStart}});
+ const replay=await placementStore.reviseMeeting(actor,move);expect(replay).toMatchObject({saved:true,replayed:true,item:{id:revised.item.id}});
+ await expect(placementStore.reviseMeeting(actor,{...move,operationId:randomUUID(),localStart:"2029-02-05T12:00"})).rejects.toMatchObject({code:"CONFLICT"});
+ await expect(placementStore.reviseMeeting(actor,{...move,venue:"Changed replay"})).rejects.toMatchObject({code:"CONFLICT"});
+ const createReplay=await placementStore.proposeMeeting(actor,create);expect(createReplay).toMatchObject({replayed:true,item:{id:first.item.id,revisionStatus:"superseded",nextRevisionId:revised.item.id}});
+ const list=await placementStore.list(actor),chain=list.meetingRevisions.filter(item=>item.occurrenceId===first.item.occurrenceId);
+ expect(chain).toHaveLength(2);expect(chain.map(item=>item.revisionStatus).sort()).toEqual(["current","superseded"]);
+ await expect(db.query("UPDATE ls_group_admin.draft_meeting_revisions SET duration_minutes=120 WHERE id=$1",[first.item.id])).rejects.toThrow();
+ await expect(db.query("DELETE FROM ls_group_admin.draft_meeting_operations WHERE meeting_revision_id=$1",[revised.item.id])).rejects.toThrow();
+});
+
+it("rejects DST gaps and folds, bounds duration, and treats a transition-crossing duration as elapsed minutes",async()=>{
+ const actor=actors[0]!,group=await placementStore.createDraftGroup(actor,{action:"create_draft_group",operationId:randomUUID(),label:"DST group"}),base={action:"propose_draft_group_meeting" as const,operationId:randomUUID(),draftGroupId:group.item.id,timeZone:"Asia/Jerusalem" as const,durationMinutes:60,venue:"DST room"};
+ await expect(placementStore.proposeMeeting(actor,{...base,localStart:"2026-03-27T02:30"})).rejects.toMatchObject({code:"INVALID_REQUEST"});
+ await expect(placementStore.proposeMeeting(actor,{...base,operationId:randomUUID(),localStart:"2026-10-25T01:30"})).rejects.toMatchObject({code:"INVALID_REQUEST"});
+ await expect(placementStore.proposeMeeting(actor,{...base,operationId:randomUUID(),localStart:"2029-02-05T10:00",durationMinutes:481})).rejects.toMatchObject({code:"INVALID_REQUEST"});
+ const crossing=await placementStore.proposeMeeting(actor,{...base,operationId:randomUUID(),localStart:"2026-10-25T00:30",durationMinutes:120});
+ expect(Date.parse(crossing.item.endsAt)-Date.parse(crossing.item.startsAt)).toBe(120*60_000);
+});
+
 it("rejects tutoring and cross-workspace identities at store and database boundaries",async()=>{
  const actor=actors[0]!,group=await placementStore.createDraftGroup(actor,{action:"create_draft_group",operationId:randomUUID(),label:"Boundary group"}),tutoring=await serviceInterest(actor,"tutoring"),other=await serviceInterest(actors[2]!,"group");
  await expect(placementStore.proposePlacement(actor,{action:"propose_group_placement",operationId:randomUUID(),draftGroupId:group.item.id,serviceInterestId:tutoring.item.id})).rejects.toMatchObject({code:"NOT_FOUND"});
@@ -137,6 +197,8 @@ it("keeps provenance immutable and denies parent, revoked and cross-workspace ac
  await expect(db.query("UPDATE ls_group_admin.draft_groups SET recorded_by=$1 WHERE workspace_id=$2 AND id=$3",[actors[1]!.id,actor.workspaceId,group.item.id])).rejects.toThrow();
  await expect(db.query("DELETE FROM ls_group_admin.proposed_placements WHERE workspace_id=$1 AND id=$2",[actor.workspaceId,placement.item.id])).rejects.toThrow();
  await expect(placementStore.list(actors[1]!)).rejects.toMatchObject({code:"FORBIDDEN"});await expect(placementStore.movePlacement(actors[1]!,{action:"move_group_placement",operationId:randomUUID(),sourceProposedPlacementId:placement.item.id,destinationDraftGroupId:randomUUID()})).rejects.toMatchObject({code:"FORBIDDEN"});expect((await placementStore.list(actors[2]!)).draftGroups).toEqual([]);
+ await expect(placementStore.proposeMeeting(actors[1]!,{action:"propose_draft_group_meeting",operationId:randomUUID(),draftGroupId:group.item.id,timeZone:"Asia/Jerusalem",localStart:"2029-02-07T10:00",durationMinutes:60,venue:"Denied"})).rejects.toMatchObject({code:"FORBIDDEN"});
+ await expect(placementStore.proposeMeeting(actors[2]!,{action:"propose_draft_group_meeting",operationId:randomUUID(),draftGroupId:group.item.id,timeZone:"Asia/Jerusalem",localStart:"2029-02-07T10:00",durationMinutes:60,venue:"Wrong workspace"})).rejects.toMatchObject({code:"NOT_FOUND"});
  await expect(placementStore.movePlacement(actors[2]!,{action:"move_group_placement",operationId:randomUUID(),sourceProposedPlacementId:placement.item.id,destinationDraftGroupId:randomUUID()})).rejects.toMatchObject({code:"UNAVAILABLE"});
  await db.query("UPDATE ls_identity.sessions SET revoked_at=$2 WHERE token_digest=$1",[actors[2]!.sessionDigest,now]);await expect(placementStore.createDraftGroup(actors[2]!,{action:"create_draft_group",operationId:randomUUID(),label:"Denied"})).rejects.toMatchObject({code:"UNAUTHENTICATED"});
 });

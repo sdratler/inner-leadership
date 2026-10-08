@@ -3,17 +3,12 @@ import {useCallback,useEffect,useRef,useState} from "react";
 import type {FormEvent} from "react";
 import type {Locale} from "../../lib/locale.ts";
 import {IdentityClientError,sessionInfo} from "../identity/client.ts";
-import {draftGroupCommandSchema,moveProposedPlacementCommandSchema,proposedPlacementCommandSchema,type DraftGroupCommand,type GroupPlacementList,
+import {classifyGroupPlacementSaveFailure,draftGroupCommandSchema,moveProposedPlacementCommandSchema,proposedPlacementCommandSchema,type DraftGroupCommand,type GroupPlacementList,
  type MoveProposedPlacementCommand,type ProposedPlacementCommand,type ProposedPlacementRecord} from "./contract.ts";
+import {DraftMeetingPlanner} from "./meeting-workspace.tsx";
 import styles from "./workspace.module.css";
 
-export function classifyGroupPlacementSaveFailure(requestStarted:boolean,status?:number,previouslyUncertain=false){
- if(status===401)return "reauth" as const;
- if(status!==undefined&&status>=400&&status<500)return "correctable" as const;
- if(previouslyUncertain)return "unconfirmed" as const;
- if(!requestStarted)return "reauth" as const;
- return "unconfirmed" as const;
-}
+export {classifyGroupPlacementSaveFailure};
 export function availableGroupInterests(data:GroupPlacementList,groupId:string){
  const placed=new Set(data.proposedPlacements.filter(item=>item.draftGroupId===groupId).map(item=>item.serviceInterestId));
  return data.eligibleGroupInterests.filter(item=>!placed.has(item.id));
@@ -135,9 +130,11 @@ export function GroupPlacementWorkspace({locale}:{locale:Locale}){
   {!data&&!loadError&&<p role="status">{t("Loading draft groups and proposals…","טוען קבוצות טיוטה והצעות…")}</p>}
   {data&&data.draftGroups.length===0&&<p className={styles.empty}>{t("No draft groups yet. Capacity, schedule, venue, fees and participation remain unset.",
    "עדיין אין קבוצות טיוטה. הקיבולת, לוח הזמנים, המקום, התשלום וההשתתפות אינם מוגדרים.")}</p>}
-  {data?.draftGroups.map(group=>{const placements=data.proposedPlacements.filter(item=>item.draftGroupId===group.id),available=availableGroupInterests(data,group.id);
+  {data?.draftGroups.map(group=>{const placements=data.proposedPlacements.filter(item=>item.draftGroupId===group.id),available=availableGroupInterests(data,group.id),
+    meetings=data.meetingRevisions.filter(item=>item.draftGroupId===group.id);
    return <article className={styles.group} key={group.id}><header><p className={styles.state}>{t("Draft group","קבוצת טיוטה")}</p><h3>{group.label}</h3></header>
-    <p>{t("Schedule, venue, capacity, fees and participation: Unset.","לוח זמנים, מקום, קיבולת, תשלום והשתתפות: לא מוגדרים.")}</p>
+    <p>{t("Capacity, fees and participation remain unset. Proposed occurrences below are not confirmed meetings.","קיבולת, תשלום והשתתפות עדיין אינם מוגדרים. המועדים המוצעים להלן אינם פגישות מאושרות.")}</p>
+    <DraftMeetingPlanner locale={locale} group={group} revisions={meetings} reload={load}/>
     <h4>{t("Proposed placements","הצעות שיבוץ")}</h4>
     {placements.length===0?<p>{t("No proposed placements.","אין הצעות שיבוץ.")}</p>:<ul className={styles.placements}>{placements.map(item=>{
      const destinations=availableMoveDestinations(data,item),incoming=data.proposalMovements.find(move=>move.destinationProposedPlacementId===item.id),
