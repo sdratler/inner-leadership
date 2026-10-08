@@ -19,7 +19,6 @@ describe("draft group and proposed placement workspace",()=>{
   expect(classifyGroupPlacementSaveFailure(false)).toBe("reauth");expect(classifyGroupPlacementSaveFailure(true,401)).toBe("reauth");
   for(const status of [400,403,404,409,429])expect(classifyGroupPlacementSaveFailure(true,status)).toBe("correctable");
   for(const status of [500,503,undefined])expect(classifyGroupPlacementSaveFailure(true,status)).toBe("unconfirmed");
-  expect(classifyGroupPlacementSaveFailure(true,409,true)).toBe("unconfirmed");
  });
  it("keeps the same interest available for other draft groups but not duplicated within one",()=>{
   const data:GroupPlacementList={draftGroups:[],eligibleGroupInterests:[{id:"interest",state:"service_interest",serviceType:"group",familyId:"family",familyLabel:"Family",personId:"person",personLabel:"Child",sourceInquiryId:"11111111-1111-4111-8111-111111111111",sourceInquiryCreatedAt:"2029-01-01T00:00:00.000Z",recordedBy:"actor",createdAt:"2029-01-01T00:00:00.000Z"}],

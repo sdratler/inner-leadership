@@ -7,9 +7,10 @@ import {draftGroupCommandSchema,moveProposedPlacementCommandSchema,proposedPlace
  type MoveProposedPlacementCommand,type ProposedPlacementCommand,type ProposedPlacementRecord} from "./contract.ts";
 import styles from "./workspace.module.css";
 
-export function classifyGroupPlacementSaveFailure(requestStarted:boolean,status?:number,previouslyUncertain=false){
- if(previouslyUncertain)return "unconfirmed" as const;if(!requestStarted||status===401)return "reauth" as const;
- if(status!==undefined&&status>=400&&status<500)return "correctable" as const;return "unconfirmed" as const;
+export function classifyGroupPlacementSaveFailure(requestStarted:boolean,status?:number){
+ if(!requestStarted||status===401)return "reauth" as const;
+ if(status!==undefined&&status>=400&&status<500)return "correctable" as const;
+ return "unconfirmed" as const;
 }
 export function availableGroupInterests(data:GroupPlacementList,groupId:string){
  const placed=new Set(data.proposedPlacements.filter(item=>item.draftGroupId===groupId).map(item=>item.serviceInterestId));
@@ -47,34 +48,34 @@ export function GroupPlacementWorkspace({locale}:{locale:Locale}){
  useEffect(()=>{const guard=(event:BeforeUnloadEvent)=>{if(draftPending.current||placementPending.current||movePending.current){event.preventDefault();event.returnValue="";}};
   window.addEventListener("beforeunload",guard);return()=>window.removeEventListener("beforeunload",guard);},[]);
  async function saveDraft(event:FormEvent<HTMLFormElement>){
-  event.preventDefault();if(draftBusy)return;setDraftSaved(false);setDraftError("");const previouslyUncertain=draftUncertain;
+  event.preventDefault();if(draftBusy)return;setDraftSaved(false);setDraftError("");
   if(!draftPending.current){const values=new FormData(event.currentTarget),parsed=draftGroupCommandSchema.safeParse({action:"create_draft_group",operationId:crypto.randomUUID(),label:values.get("label")});
    if(!parsed.success){setDraftError(t("Enter a short administrative label.","יש להזין תווית מנהלית קצרה."));return;}draftPending.current=parsed.data;}
   setDraftBusy(true);let requestStarted=false;
   try{const session=await sessionInfo();if(session.role!=="practitioner")throw new Error();requestStarted=true;
    const response=await fetch("/api/private/group-placement",{method:"POST",headers:{"content-type":"application/json","x-csrf-token":session.csrfToken},body:JSON.stringify(draftPending.current)});
-   if(!response.ok&&classifyGroupPlacementSaveFailure(true,response.status,previouslyUncertain)!=="unconfirmed"){
+   if(!response.ok&&classifyGroupPlacementSaveFailure(true,response.status)!=="unconfirmed"){
     draftPending.current=null;setDraftUncertain(false);setDraftError(response.status===401?t("Sign in again, then review and save this draft group.","יש להתחבר מחדש, לבדוק ולשמור את קבוצת הטיוטה."):
      response.status===403?t("Your current account cannot create draft groups.","החשבון הנוכחי אינו מורשה ליצור קבוצות טיוטה."):
      response.status===409?t("This save conflicts with an earlier request. Review the label and save again.","השמירה מתנגשת בבקשה קודמת. בדקו את התווית ושמרו שוב."):
      t("The draft group was not saved. Check the label and try again.","קבוצת הטיוטה לא נשמרה. בדקו את התווית ונסו שוב."));return;}
    const body=await response.json();if(!response.ok||!body.ok||body.data?.saved!==true)throw new Error();
    draftPending.current=null;setDraftUncertain(false);draftForm.current?.reset();setDraftSaved(true);await load();
-  }catch{if(classifyGroupPlacementSaveFailure(requestStarted,undefined,previouslyUncertain)==="reauth"){
+  }catch{if(classifyGroupPlacementSaveFailure(requestStarted)==="reauth"){
     draftPending.current=null;setDraftUncertain(false);setDraftError(t("Sign in again, then review and save this draft group.","יש להתחבר מחדש, לבדוק ולשמור את קבוצת הטיוטה."));
    }else{setDraftUncertain(true);setDraftError(t("Save is unconfirmed. Keep this page open and retry the same draft group; no placement, message or payment is triggered.",
     "השמירה לא אומתה. השאירו את הדף פתוח ונסו שוב את אותה קבוצת טיוטה; לא נוצרים שיבוץ, הודעה או תשלום."));}}
   finally{setDraftBusy(false);}
  }
  async function savePlacement(event:FormEvent<HTMLFormElement>,draftGroupId:string){
-  event.preventDefault();if(placementBusy)return;const placementForm=event.currentTarget;setPlacementSaved("");setPlacementError(null);const previouslyUncertain=placementUncertain===draftGroupId;
+  event.preventDefault();if(placementBusy)return;const placementForm=event.currentTarget;setPlacementSaved("");setPlacementError(null);
   if(!placementPending.current){const values=new FormData(event.currentTarget),parsed=proposedPlacementCommandSchema.safeParse({action:"propose_group_placement",operationId:crypto.randomUUID(),draftGroupId,serviceInterestId:values.get("serviceInterestId")});
    if(!parsed.success){setPlacementError({groupId:draftGroupId,message:t("Select one saved group service interest.","בחרו התעניינות שמורה אחת בשירות קבוצה.")});return;}placementPending.current=parsed.data;
   }else if(placementPending.current.draftGroupId!==draftGroupId)return;
   setPlacementBusy(draftGroupId);let requestStarted=false;
   try{const session=await sessionInfo();if(session.role!=="practitioner")throw new Error();requestStarted=true;
    const response=await fetch("/api/private/group-placement",{method:"POST",headers:{"content-type":"application/json","x-csrf-token":session.csrfToken},body:JSON.stringify(placementPending.current)});
-   if(!response.ok&&classifyGroupPlacementSaveFailure(true,response.status,previouslyUncertain)!=="unconfirmed"){
+   if(!response.ok&&classifyGroupPlacementSaveFailure(true,response.status)!=="unconfirmed"){
     placementPending.current=null;setPlacementUncertain("");setPlacementError({groupId:draftGroupId,message:response.status===401?t("Sign in again, then review and save this proposal.","יש להתחבר מחדש, לבדוק ולשמור את ההצעה."):
      response.status===403?t("Your current account cannot propose placements.","החשבון הנוכחי אינו מורשה להציע שיבוצים."):
      response.status===404?t("The draft group or saved group interest is no longer available. Refresh and choose again.","קבוצת הטיוטה או ההתעניינות השמורה אינן זמינות עוד. רעננו ובחרו שוב."):
@@ -82,14 +83,14 @@ export function GroupPlacementWorkspace({locale}:{locale:Locale}){
      t("The proposal was not saved. Check the selection and try again.","ההצעה לא נשמרה. בדקו את הבחירה ונסו שוב.")});return;}
    const body=await response.json();if(!response.ok||!body.ok||body.data?.saved!==true)throw new Error();
    placementPending.current=null;setPlacementUncertain("");placementForm.reset();setPlacementSaved(draftGroupId);await load();
-  }catch{if(classifyGroupPlacementSaveFailure(requestStarted,undefined,previouslyUncertain)==="reauth"){
+  }catch{if(classifyGroupPlacementSaveFailure(requestStarted)==="reauth"){
     placementPending.current=null;setPlacementUncertain("");setPlacementError({groupId:draftGroupId,message:t("Sign in again, then review and save this proposal.","יש להתחבר מחדש, לבדוק ולשמור את ההצעה.")});
    }else{setPlacementUncertain(draftGroupId);setPlacementError({groupId:draftGroupId,message:t("Save is unconfirmed. Keep this page open and retry the same proposal; no trial, enrollment, message or payment is triggered.",
     "השמירה לא אומתה. השאירו את הדף פתוח ונסו שוב את אותה הצעה; לא נוצרים ניסיון, הרשמה, הודעה או תשלום.")});}}
   finally{setPlacementBusy("");}
  }
  async function saveMove(event:FormEvent<HTMLFormElement>,source:ProposedPlacementRecord){
-  event.preventDefault();if(moveBusy)return;const moveForm=event.currentTarget;setMoveSaved("");setMoveError(null);const previouslyUncertain=moveUncertain===source.id;
+  event.preventDefault();if(moveBusy)return;const moveForm=event.currentTarget;setMoveSaved("");setMoveError(null);
   if(!movePending.current){const values=new FormData(event.currentTarget),parsed=moveProposedPlacementCommandSchema.safeParse({action:"move_group_placement",
     operationId:crypto.randomUUID(),sourceProposedPlacementId:source.id,destinationDraftGroupId:values.get("destinationDraftGroupId")});
    if(!parsed.success){setMoveError({proposalId:source.id,message:t("Select one unused destination draft group.","בחרו קבוצת טיוטה פנויה אחת כיעד.")});return;}
@@ -98,7 +99,7 @@ export function GroupPlacementWorkspace({locale}:{locale:Locale}){
   setMoveBusy(source.id);let requestStarted=false;
   try{const session=await sessionInfo();if(session.role!=="practitioner")throw new Error();requestStarted=true;
    const response=await fetch("/api/private/group-placement",{method:"POST",headers:{"content-type":"application/json","x-csrf-token":session.csrfToken},body:JSON.stringify(movePending.current)});
-   if(!response.ok&&classifyGroupPlacementSaveFailure(true,response.status,previouslyUncertain)!=="unconfirmed"){
+   if(!response.ok&&classifyGroupPlacementSaveFailure(true,response.status)!=="unconfirmed"){
     movePending.current=null;setMoveUncertain("");setMoveError({proposalId:source.id,message:response.status===401?t("Sign in again, then review and move this proposal.","יש להתחבר מחדש, לבדוק ולהעביר את ההצעה."):
      response.status===403?t("Your current account cannot move proposals.","החשבון הנוכחי אינו מורשה להעביר הצעות."):
      response.status===404?t("The proposal or destination group is no longer available. Reload and choose again.","ההצעה או קבוצת היעד אינן זמינות עוד. טענו מחדש ובחרו שוב."):
@@ -108,7 +109,7 @@ export function GroupPlacementWorkspace({locale}:{locale:Locale}){
    }
    const body=await response.json();if(!response.ok||!body.ok||body.data?.saved!==true)throw new Error();
    movePending.current=null;setMoveUncertain("");moveForm.reset();setMoveSaved(source.id);await load();
-  }catch{if(classifyGroupPlacementSaveFailure(requestStarted,undefined,previouslyUncertain)==="reauth"){
+  }catch{if(classifyGroupPlacementSaveFailure(requestStarted)==="reauth"){
     movePending.current=null;setMoveUncertain("");setMoveError({proposalId:source.id,message:t("Sign in again, then review and move this proposal.","יש להתחבר מחדש, לבדוק ולהעביר את ההצעה.")});
    }else{setMoveUncertain(source.id);setMoveError({proposalId:source.id,message:t("Save is unconfirmed. Keep this page open and retry the exact same move; no trial, enrollment, message or payment is triggered.",
     "השמירה לא אומתה. השאירו את הדף פתוח ונסו שוב את אותה העברה בדיוק; לא נוצרים ניסיון, הרשמה, הודעה או תשלום.")});}}
