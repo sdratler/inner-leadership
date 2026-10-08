@@ -78,7 +78,7 @@ export function ProviderIndexPanel({ locale, caseId }: { locale: "he" | "en"; ca
   };
   const field = (key: "name" | "location" | "phone" | "email" | "website", label: string, type = "text") => <label className={styles.label}>{label}<input name={key} type={type} required={key === "name"} maxLength={key === "name" ? 160 : key === "phone" ? 40 : key === "website" ? 1024 : key === "email" ? 254 : 240} value={form?.[key] ?? ""} onChange={e => change(key, e.target.value)} dir={["phone", "email", "website"].includes(key) ? "ltr" : undefined} /></label>;
   const filters = (label: string, key: "service" | "location" | "gender" | "religiousFit", values: string[]) => <label className={styles.label}>{label}<select value={query[key]} onChange={e => setQuery({ ...query, [key]: e.target.value, page: 1 })}><option value="">{t.all}</option>{values.map(v => <option key={v} value={v}>{v}</option>)}</select></label>;
-  return <main className="lsw-main" lang={locale} dir={locale === "he" ? "rtl" : "ltr"}>
+  return <main className={`lsw-main ${styles.surface}`} lang={locale} dir={locale === "he" ? "rtl" : "ltr"}>
     <UnsavedChangesGuard dirty={dirty || uncertain || busy || referralState.dirty || referralState.uncertain || referralState.busy} message={t.leave} />
     <div className={styles.stack}>
       <nav><a href={caseId ? `/${locale}/app/cases/${caseId}` : `/${locale}/app/clients`}>{caseId ? t.backCase : t.people}</a></nav>
