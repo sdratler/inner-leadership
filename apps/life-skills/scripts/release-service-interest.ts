@@ -9,12 +9,11 @@ import {z} from 'zod';
 import {migrate} from '../src/db/migration-runner.ts';
 import type {AppliedMigration,Migration} from '../src/db/migration-plan.ts';
 import {assertContactOpsDatabaseIdentity} from '../src/db/contact-ops-production-guard.ts';
-import {readServiceInterestReleaseSnapshot,serviceInterestMigrationInventory,serviceInterestPlan,serviceInterestSourceBundle,serviceInterestStateDigest} from '../src/db/service-interest-release.ts';
+import {SERVICE_INTEREST_SOURCE_PATHS,readServiceInterestReleaseSnapshot,serviceInterestMigrationInventory,serviceInterestPlan,serviceInterestSourceBundle,serviceInterestStateDigest} from '../src/db/service-interest-release.ts';
 import {validateServiceInterestEvidence,validateServiceInterestProof,type ServiceInterestEvidence} from '../src/db/service-interest-evidence.ts';
 
 const target=Object.freeze({projectId:'3b756632-1f66-4f75-a016-eabc37aa0d67',environmentId:'dd91bd71-57cc-45e6-a75b-8c858491d7c7',appServiceId:'0267d061-f3ce-4a0a-82d4-ce133e4501e9',databaseServiceId:'354b5343-9e83-45a7-b764-09396f14ae29',databaseHost:'postgres.railway.internal',appOrigin:'https://life-skills.bneineviimacademy.org'});
 const sha=z.string().regex(/^[a-f0-9]{64}$/),hash=(bytes:string|Buffer|Uint8Array)=>createHash('sha256').update(bytes).digest('hex');
-const sourcePaths=['package.json','migrations/manifest.json','migrations/0127_ls_service_interests.sql','scripts/release-service-interest.ts','src/db/service-interest-release.ts','src/db/service-interest-evidence.ts','src/db/contact-ops-production-guard.ts','src/db/migration-plan.ts','src/db/migration-runner.ts'] as const;
 async function migrationInventory():Promise<{files:Migration[];manifestBytes:Buffer}>{
  const root=new URL('../migrations/',import.meta.url),manifestBytes=await readFile(new URL('manifest.json',root)),manifest=z.array(z.strictObject({name:z.string().regex(/^\d{4}_[a-z][a-z0-9_]*\.sql$/),sha256:sha})).parse(JSON.parse(manifestBytes.toString('utf8')));
  const actual=(await readdir(fileURLToPath(root))).filter(name=>name.endsWith('.sql')).sort();if(JSON.stringify(actual)!==JSON.stringify(manifest.map(item=>item.name).sort()))throw Error('SERVICE_INTEREST_MIGRATION_INVENTORY_MISMATCH');
@@ -29,7 +28,7 @@ async function main(){
  if(process.env.LS_DATABASE_TLS!=='verify-full'||!process.env.LS_DATABASE_CA?.trim())throw Error('SERVICE_INTEREST_TLS_REQUIRED');
  const url=new URL(process.env.LS_DATABASE_URL??'');if(!['postgres:','postgresql:'].includes(url.protocol)||url.hostname!==target.databaseHost||url.port!=='5432'||url.pathname!=='/railway'||url.search||url.hash||!url.username||!url.password)throw Error('SERVICE_INTEREST_DATABASE_TARGET_MISMATCH');
  if(hash(process.env.LS_DATABASE_URL!)!==binding[2])throw Error('SERVICE_INTEREST_DATABASE_BINDING_MISMATCH');
- const appRoot=new URL('../',import.meta.url),entries=await Promise.all(sourcePaths.map(async path=>({path,bytes:await readFile(new URL(path,appRoot))}))),actualBundle=serviceInterestSourceBundle(entries);if(actualBundle!==sourceDigest)throw Error('SERVICE_INTEREST_SOURCE_PROVENANCE_MISMATCH');
+ const appRoot=new URL('../',import.meta.url),entries=await Promise.all(SERVICE_INTEREST_SOURCE_PATHS.map(async path=>({path,bytes:await readFile(new URL(path,appRoot))}))),actualBundle=serviceInterestSourceBundle(entries);if(actualBundle!==sourceDigest)throw Error('SERVICE_INTEREST_SOURCE_PROVENANCE_MISMATCH');
  const proofFile=process.env.LS_SERVICE_INTEREST_RELEASE_PROOF_FILE;if(!proofFile||!isAbsolute(proofFile))throw Error('SERVICE_INTEREST_PROOF_REQUIRED');const proofBytes=await readFile(proofFile);if(hash(proofBytes)!==process.env.LS_SERVICE_INTEREST_RELEASE_PROOF_SHA256)throw Error('SERVICE_INTEREST_PROOF_HASH_MISMATCH');
  const reviewedCommit=process.env.RAILWAY_GIT_COMMIT_SHA;if(!reviewedCommit)throw Error('SERVICE_INTEREST_REVIEWED_COMMIT_MISMATCH');const now=Date.now(),mode=args[0]!.slice(2) as 'preflight'|'apply'|'verify-only',proof=validateServiceInterestProof(JSON.parse(proofBytes.toString('utf8')),{...target,deploymentId,mode,reviewedCommit,sourceBundleSha256:actualBundle,databaseBindingSha256:binding[2]!},now);
  const evidenceFiles=[['independent_review',proof.evidence.independentReview],['baseline_preflight',proof.evidence.baselinePreflight],['backup_readback',proof.evidence.backupReadback],['isolated_restore',proof.evidence.isolatedRestore],['rollback_plan',proof.evidence.rollbackPlan]] as const;

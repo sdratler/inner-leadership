@@ -4,6 +4,7 @@ import {classifyContactWork,readContactWorkSnapshot} from './contact-work-releas
 
 export const SERVICE_INTEREST_BASELINE={name:'0126_ls_audience_interest.sql',sha256:'f2d2c2d84d34e7224e8c53fb19e4fa7e68c89d5c2d13e197f4f86b2155703845'} as const;
 export const SERVICE_INTEREST_MIGRATION={name:'0127_ls_service_interests.sql',sha256:'af9b7f061682453d4595bfef9f1a9226b1daa955ec518d7bd9d959cd352caf6a'} as const;
+export const SERVICE_INTEREST_SOURCE_PATHS=['package.json','migrations/manifest.json','migrations/0127_ls_service_interests.sql','scripts/release-service-interest.ts','src/db/service-interest-release.ts','src/db/service-interest-evidence.ts','src/db/contact-work-release.ts','src/db/contact-ops-production-guard.ts','src/db/migration-plan.ts','src/db/migration-runner.ts'] as const;
 export interface ServiceInterestReleaseQuery{query<R extends object=Record<string,unknown>>(sql:string,values?:readonly unknown[]):Promise<{rows:R[]}>}
 type ColumnRow={table_name:string;column_name:string;data_type:string;not_null:boolean;default_expression:string|null};
 type ConstraintRow={schema_name:string;table_name:string;name:string;type:string;definition:string;local_columns:string[];reference_schema:string|null;reference_table:string|null;reference_columns:string[]};

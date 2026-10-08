@@ -1,7 +1,7 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {describe,expect,it} from 'vitest';
-import {SERVICE_INTEREST_MIGRATION,serviceInterestMigrationInventory,serviceInterestPlan,serviceInterestSourceBundle,type ServiceInterestReleaseSnapshot} from '../../src/db/service-interest-release.ts';
+import {SERVICE_INTEREST_MIGRATION,SERVICE_INTEREST_SOURCE_PATHS,serviceInterestMigrationInventory,serviceInterestPlan,serviceInterestSourceBundle,type ServiceInterestReleaseSnapshot} from '../../src/db/service-interest-release.ts';
 import {validateServiceInterestEvidence,validateServiceInterestProof} from '../../src/db/service-interest-evidence.ts';
 import type {Migration} from '../../src/db/migration-plan.ts';
 
@@ -35,5 +35,8 @@ describe('service-interest migration 0127 release boundary',()=>{
   expect(text).not.toContain('createServiceInterest(');expect(text).not.toContain('send_message');expect(text).not.toContain('switchAuthority');
   const migration=await readFile(new URL('../../migrations/0127_ls_service_interests.sql',import.meta.url));expect(createHash('sha256').update(migration).digest('hex')).toBe(SERVICE_INTEREST_MIGRATION.sha256);
   expect(serviceInterestSourceBundle([{path:'b',bytes:'2'},{path:'a',bytes:'1'}])).toBe(serviceInterestSourceBundle([{path:'a',bytes:'1'},{path:'b',bytes:'2'}]));
+  expect(SERVICE_INTEREST_SOURCE_PATHS).toContain('src/db/contact-work-release.ts');
+  const entries=await Promise.all(SERVICE_INTEREST_SOURCE_PATHS.map(async path=>({path,bytes:await readFile(new URL('../../'+path,import.meta.url))}))),actual=serviceInterestSourceBundle(entries),changed=entries.map(entry=>entry.path==='src/db/contact-work-release.ts'?{...entry,bytes:Buffer.concat([entry.bytes,Buffer.from('\n// changed baseline classifier')])}:entry);
+  expect(serviceInterestSourceBundle(changed)).not.toBe(actual);
  });
 });
