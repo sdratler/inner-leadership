@@ -23,4 +23,3 @@ export type AudienceRow={personId:string;displayName:string;phone:string;topic:"
  state:AudienceInterestState|null;version:number;observedAt:string|null;sourceRef:string|null;
  observations:{kind:AudienceObservationKind;evidence:string;observedAt:string;sourceRef:string}[];
  messagingPermission:"unknown";outboundEligible:false;doNotContact:boolean;mode:"live"};
-
