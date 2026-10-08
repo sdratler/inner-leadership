@@ -104,6 +104,11 @@ test("unknown delivery keeps the no-blind-retry warning visible", async () => {
   const html = renderToStaticMarkup(React.createElement(FacebookPagePublicationStatus, { locale: "en", publication }));
   expect(html).toContain('role="alert"');
   expect(html).toContain("Do not retry while delivery is unresolved");
+  expect(html).toContain('<bdi><time dateTime="2026-10-08T17:00:00.000Z" dir="ltr">Oct 8, 2026, 08:00 PM GMT+3</time></bdi>');
+  expect(html).not.toContain("activity 2026-10-08T17:00:00.000Z");
+  const hebrew = renderToStaticMarkup(React.createElement(FacebookPagePublicationStatus, { locale: "he", publication }));
+  expect(hebrew).toContain('<bdi><time dateTime="2026-10-08T17:00:00.000Z" dir="ltr">');
+  expect(hebrew).toContain("GMT");expect(hebrew).not.toContain("שנרשמה 2026-10-08T17:00:00.000Z");
 });
 
 test("composed workspace styling flattens the Page status and uses the gold keyboard focus token", () => {

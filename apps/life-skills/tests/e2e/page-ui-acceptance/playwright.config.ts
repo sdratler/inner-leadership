@@ -5,7 +5,7 @@ if (!baseURL) throw new Error("PAGE_UI_BASE_URL is required");
 
 export default defineConfig({
   testDir: ".",
-  testMatch: "page-ui.spec.ts",
+  testMatch: "*.spec.ts",
   timeout: 120_000,
   workers: 1,
   fullyParallel: false,
