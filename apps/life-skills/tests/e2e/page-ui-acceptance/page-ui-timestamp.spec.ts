@@ -6,9 +6,10 @@ import { expect, test } from "@playwright/test";
 const configuredEvidenceDir=process.env.PAGE_UI_EVIDENCE_DIR;
 const sourceHead=process.env.PAGE_UI_SOURCE_HEAD;
 const sourceTree=process.env.PAGE_UI_SOURCE_TREE;
-if(!configuredEvidenceDir||!sourceHead||!sourceTree)throw new Error("PAGE_UI_EVIDENCE_DIR, PAGE_UI_SOURCE_HEAD and PAGE_UI_SOURCE_TREE are required");
-const evidenceDir:string=configuredEvidenceDir;
-mkdirSync(evidenceDir,{recursive:true});
+const configured=Boolean(configuredEvidenceDir&&sourceHead&&sourceTree);
+test.skip(!configured,"development-only Page timestamp evidence run requires evidence directory and exact source identity");
+const evidenceDir:string=configuredEvidenceDir??process.cwd();
+if(configuredEvidenceDir)mkdirSync(evidenceDir,{recursive:true});
 
 test("unknown Page activity uses localized Jerusalem time with bidi isolation",async({page})=>{
  const captures=[];

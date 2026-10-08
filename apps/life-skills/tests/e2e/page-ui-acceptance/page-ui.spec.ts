@@ -4,9 +4,9 @@ import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
 const configuredEvidenceDir = process.env.PAGE_UI_EVIDENCE_DIR;
-if (!configuredEvidenceDir) throw new Error("PAGE_UI_EVIDENCE_DIR is required");
-const evidenceDir: string = configuredEvidenceDir;
-mkdirSync(evidenceDir, { recursive: true });
+test.skip(!configuredEvidenceDir, "development-only Page UI evidence run requires PAGE_UI_EVIDENCE_DIR");
+const evidenceDir: string = configuredEvidenceDir ?? process.cwd();
+if (configuredEvidenceDir) mkdirSync(evidenceDir, { recursive: true });
 
 type Capture = {
   file: string;
