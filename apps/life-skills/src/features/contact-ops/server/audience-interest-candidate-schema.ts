@@ -54,6 +54,20 @@ CREATE TABLE IF NOT EXISTS ls_contact_ops.audience_operation_receipts (
  FOREIGN KEY(workspace_id,person_id) REFERENCES ls_contact_ops.audience_profiles(workspace_id,person_id),
  FOREIGN KEY(workspace_id,actor_account_id) REFERENCES ls_identity.accounts(workspace_id,id)
 );
+CREATE OR REPLACE FUNCTION ls_contact_ops.reject_audience_ledger_mutation()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ RAISE EXCEPTION 'AUDIENCE_LEDGER_APPEND_ONLY' USING ERRCODE='23514';
+END;
+$$;
+DROP TRIGGER IF EXISTS audience_observations_append_only ON ls_contact_ops.audience_observations;
+CREATE TRIGGER audience_observations_append_only
+ BEFORE UPDATE OR DELETE ON ls_contact_ops.audience_observations
+ FOR EACH ROW EXECUTE FUNCTION ls_contact_ops.reject_audience_ledger_mutation();
+DROP TRIGGER IF EXISTS audience_operation_receipts_append_only ON ls_contact_ops.audience_operation_receipts;
+CREATE TRIGGER audience_operation_receipts_append_only
+ BEFORE UPDATE OR DELETE ON ls_contact_ops.audience_operation_receipts
+ FOR EACH ROW EXECUTE FUNCTION ls_contact_ops.reject_audience_ledger_mutation();
 REVOKE ALL ON ls_contact_ops.audience_profiles,ls_contact_ops.audience_interests,
  ls_contact_ops.audience_observations,ls_contact_ops.audience_operation_receipts FROM PUBLIC;
 `;

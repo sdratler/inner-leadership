@@ -34,9 +34,9 @@ test("new content-only reader creates no lead, CRM profile, enrollment, account,
 test("group observation and do-not-contact remain distinct from interest and unknown messaging permission",async()=>{
  const s=await setup(),actor=s.f.practitioner.actor,created=await s.crm.createContact(actor,{name:"Suppressed content reader",phone:"+972520001113",language:"en",source:"Synthetic",notes:"Keep note",nextAction:"",dueDate:""},randomUUID(),3);
  const current=(await s.crm.read(actor,created.personId,3))!;await s.crm.update(actor,{...current.profile,stage:"Do not contact",doNotContact:true},current.version,randomUUID(),3);
- await s.audience.record(actor,command({phone:"+972520001113",displayName:"Suppressed content reader",observation:{kind:"group_membership",evidence:"Observed in allowed synthetic group"}}));
+ const observation=command({action:"record_observation",phone:"+972520001113",displayName:"Suppressed content reader",observation:{kind:"group_membership",evidence:"Observed in allowed synthetic group"}});delete (observation as {state?:unknown}).state;await s.audience.record(actor,observation);
  const row=(await s.audience.list(actor,{expectedEpoch:3,search:"Suppressed",state:"all",page:1,pageSize:25})).items[0]!;
- expect(row).toMatchObject({state:"expressed",doNotContact:true,messagingPermission:"unknown",outboundEligible:false,observations:[{kind:"group_membership"}]});
+ expect(row).toMatchObject({state:null,version:0,doNotContact:true,messagingPermission:"unknown",outboundEligible:false,observations:[{kind:"group_membership"}]});
 });
 
 test("exact replay is stable while stale version, stale authority and changed reuse fail closed",async()=>{
@@ -66,4 +66,15 @@ test("provider label or list echo is observation only and cannot grant interest,
  expect(saved.version).toBe(0);expect(row).toMatchObject({state:null,version:0,messagingPermission:"unknown",outboundEligible:false,observations:[{kind:"provider_label"}]});
  expect((await s.f.pool.query("SELECT count(*)::int AS n FROM ls_contact_ops.profiles WHERE workspace_id=$1",[s.f.workspaceId])).rows[0].n).toBe(0);
  expect((await s.f.pool.query("SELECT count(*)::int AS n FROM ls_contact_ops.audience_interests WHERE workspace_id=$1",[s.f.workspaceId])).rows[0].n).toBe(0);
+ await expect(s.f.pool.query("UPDATE ls_contact_ops.audience_observations SET observed_at=clock_timestamp() WHERE workspace_id=$1 AND person_id=$2",[s.f.workspaceId,saved.personId])).rejects.toMatchObject({code:"23514"});
+ await expect(s.f.pool.query("DELETE FROM ls_contact_ops.audience_operation_receipts WHERE workspace_id=$1 AND operation_id=$2",[s.f.workspaceId,observation.operationId])).rejects.toMatchObject({code:"23514"});
+ expect(await s.audience.record(actor,observation)).toMatchObject({personId:saved.personId,version:0,replayed:true});
+});
+
+test("exact person selector confirms records beyond page one independently of current filters",async()=>{
+ const s=await setup(),actor=s.f.practitioner.actor;let target="";
+ for(let index=0;index<26;index++){const saved=await s.audience.record(actor,command({displayName:`Synthetic reader ${String(index).padStart(2,"0")}`,phone:`+97253000${String(index).padStart(4,"0")}`}));if(index===25)target=saved.personId;}
+ const first=await s.audience.list(actor,{expectedEpoch:3,search:"",state:"all",page:1,pageSize:25});expect(first.items.map(row=>row.personId)).not.toContain(target);
+ const exact=await s.audience.list(actor,{expectedEpoch:3,search:"stale filter that cannot match",state:"withdrawn",page:9,pageSize:25,personId:target});
+ expect(exact).toMatchObject({total:1,page:1,pages:1});expect(exact.items).toHaveLength(1);expect(exact.items[0]).toMatchObject({personId:target,state:"expressed"});
 });

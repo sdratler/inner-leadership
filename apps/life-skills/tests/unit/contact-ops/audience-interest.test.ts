@@ -12,6 +12,9 @@ describe("native content audience contract",()=>{
  it("accepts only bounded interest and observation commands without permission or send fields",()=>{
   expect(audienceCommandSchema.parse(command)).toEqual(command);
   for(const patch of [{permission:"granted"},{send:true},{topic:"sales"},{state:"qualified"},{displayName:"",phone:""}])expect(audienceCommandSchema.safeParse({...command,...patch}).success).toBe(false);
+  for(const kind of ["group_membership","provider_label","provider_list"] as const)expect(audienceCommandSchema.safeParse({...command,observation:{kind,evidence:"Synthetic observation"}}).success).toBe(false);
+  const observation={...command,action:"record_observation",observation:{kind:"provider_label",evidence:"Synthetic observation"}} as Record<string,unknown>;delete observation.state;
+  expect(audienceCommandSchema.safeParse(observation).success).toBe(true);
  });
  it.each(["en","he"] as const)("renders one %s audience toolbar with neutral copy and responsive app classes",locale=>{
   const html=renderToStaticMarkup(createElement(AudienceInterestWorkspace,{locale,epoch:3}));
@@ -19,6 +22,8 @@ describe("native content audience contract",()=>{
   expect(html).toContain('role="search"');expect(html.match(/lsw-toolbar/g)).toHaveLength(1);
   expect(html).toContain('aria-expanded="false"');expect(html).not.toContain("Open WhatsApp");expect(html).not.toContain("Delete Demo");
   expect(html).toContain(locale==="he"?"אינה יוצרת מתעניין":"does not create a prospect");
+  expect(html).toContain(locale==="he"?"מצב העניין":"Interest state");
+  if(locale==="he")expect(html).not.toContain("Do not contact");
  });
  it("keeps the audience deep link in practitioner navigation and normal login return only",()=>{
   const context=practitionerContext("/en/app/clients",null),item=context.find(value=>value.key==="audience");

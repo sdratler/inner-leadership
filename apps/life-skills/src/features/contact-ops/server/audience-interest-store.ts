@@ -38,12 +38,13 @@ export class AudienceInterestStore{
  constructor(private readonly db:IdentityStore,private readonly keyring:Keyring,private readonly integrityKey:string,
   private readonly clock:IdentityClock=systemClock){this.authority=new ContactCutoverStore(db,keyring,integrityKey,clock);this.directory=new NativeContactDirectory(db,keyring,clock);}
 
- async list(actor:Actor,input:{expectedEpoch:number;search:string;state:"all"|"expressed"|"withdrawn";page:number;pageSize:number}){
+ async list(actor:Actor,input:{expectedEpoch:number;search:string;state:"all"|"expressed"|"withdrawn";page:number;pageSize:number;personId?:string}){
   if(!Number.isSafeInteger(input.expectedEpoch)||input.expectedEpoch<0||input.search.length>200||!(["all","expressed","withdrawn"] as const).includes(input.state)||
-   !Number.isSafeInteger(input.page)||input.page<1||!Number.isSafeInteger(input.pageSize)||input.pageSize<1||input.pageSize>100)throw new AppError("INVALID_REQUEST");
+   !Number.isSafeInteger(input.page)||input.page<1||!Number.isSafeInteger(input.pageSize)||input.pageSize<1||input.pageSize>100||
+   (input.personId!==undefined&&!z.string().uuid().safeParse(input.personId).success))throw new AppError("INVALID_REQUEST");
   return this.authority.withDestination(actor,{destination:"native",intent:"read",expectedEpoch:input.expectedEpoch},async tx=>{
    const rows=await this.readRows(tx,actor);const text=input.search.trim().toLocaleLowerCase();
-   const filtered=rows.filter(row=>(input.state==="all"||row.state===input.state)&&(!text||[row.displayName,row.phone,row.sourceRef??""].some(value=>value.toLocaleLowerCase().includes(text))));
+   const filtered=input.personId?rows.filter(row=>row.personId===input.personId):rows.filter(row=>(input.state==="all"||row.state===input.state)&&(!text||[row.displayName,row.phone,row.sourceRef??""].some(value=>value.toLocaleLowerCase().includes(text))));
    const pages=Math.max(1,Math.ceil(filtered.length/input.pageSize)),page=Math.min(input.page,pages);
    return {items:filtered.slice((page-1)*input.pageSize,page*input.pageSize),total:filtered.length,page,pageSize:input.pageSize,pages,authorityEpoch:input.expectedEpoch};
   });

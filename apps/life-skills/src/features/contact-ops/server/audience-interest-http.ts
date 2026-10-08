@@ -12,7 +12,7 @@ import {audienceCommandSchema} from "../core/audience-interest.ts";
 import type {AudienceInterestStore} from "./audience-interest-store.ts";
 
 const endpoint="/api/private/audience-interest",epoch=z.string().regex(/^(0|[1-9]\d{0,15})$/),page=z.string().regex(/^[1-9]\d{0,4}$/);
-const query=z.object({expectedEpoch:epoch,search:z.string().max(200).default(""),state:z.enum(["all","expressed","withdrawn"]).default("all"),page:page.default("1")}).strict();
+const query=z.object({expectedEpoch:epoch,search:z.string().max(200).default(""),state:z.enum(["all","expressed","withdrawn"]).default("all"),page:page.default("1"),personId:z.string().uuid().optional()}).strict();
 export type AudienceInterestHttpDependencies={origin:string;actor:(token:string)=>Promise<Actor>;csrf:(token:string)=>string;store:Pick<AudienceInterestStore,"list"|"record">};
 
 export async function audienceInterestHttp(request:Request,load:()=>Promise<AudienceInterestHttpDependencies>):Promise<Response>{
@@ -26,7 +26,7 @@ export async function audienceInterestHttp(request:Request,load:()=>Promise<Audi
   if(request.method==="GET"){
    const keys=[...url.searchParams.keys()];if(new Set(keys).size!==keys.length)throw new AppError("INVALID_REQUEST");
    const parsed=query.safeParse(Object.fromEntries(url.searchParams));if(!parsed.success)throw new AppError("INVALID_REQUEST");
-   response=successResponse(await d.store.list(actor,{expectedEpoch:Number(parsed.data.expectedEpoch),search:parsed.data.search,state:parsed.data.state,page:Number(parsed.data.page),pageSize:25}),id);
+   response=successResponse(await d.store.list(actor,{expectedEpoch:Number(parsed.data.expectedEpoch),search:parsed.data.search,state:parsed.data.state,page:Number(parsed.data.page),pageSize:25,...(parsed.data.personId?{personId:parsed.data.personId}:{})}),id);
   }else{
    if(url.search)throw new AppError("INVALID_REQUEST");verifyMutationOrigin(canonical,d.origin);verifyCsrfToken(request.headers.get("x-csrf-token"),d.csrf(token));
    response=successResponse(await d.store.record(actor,await readJson(request,audienceCommandSchema)),id);
