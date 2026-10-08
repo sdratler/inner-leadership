@@ -19,6 +19,13 @@ for(const locale of ["en","he"] as const)test(locale+": real owner route hydrate
  const get=page.waitForResponse(r=>r.request().method()==="GET"&&new URL(r.url()).pathname==="/api/private/contact-acquisition");
  const response=await page.goto("/"+locale+"/app/clients?section=needs_review&search="+encodeURIComponent(c.phone));
  expect(response?.status()).toBe(200);const body=await (await get).json();expect(body).toMatchObject({ok:true,data:{source:"native",total:1,items:[{id:c.candidateId,state:"NEEDS_REVIEW",matching:{state:"existing",people:[{personId:c.personId,eligible:true}]}}]}});
+ const search=page.getByRole("searchbox",{name:locale==="he"?"חיפוש שם או מספר":"Search name or number",exact:true});
+ await expect(search).toHaveAttribute("dir","auto");await expect(search).toHaveValue(c.phone);
+ expect(await search.evaluate(element=>getComputedStyle(element).direction)).toBe("ltr");
+ await search.fill(locale==="he"?"שם בעברית":"English name");
+ expect(await search.evaluate(element=>getComputedStyle(element).direction)).toBe(locale==="he"?"rtl":"ltr");
+ await search.fill(c.phone);await expect(search).toHaveValue(c.phone);
+ expect(await search.evaluate(element=>getComputedStyle(element).direction)).toBe("ltr");
  const card=page.locator("article").filter({has:page.getByRole("heading",{name:c.name,exact:true})});await expect(card).toBeVisible();
  await expect(card.getByText(/previous caller|מתקשר קודם/)).toBeVisible();
  await expect(card.locator("details")).not.toHaveAttribute("open","");

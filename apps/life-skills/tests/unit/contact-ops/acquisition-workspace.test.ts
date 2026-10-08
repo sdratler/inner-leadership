@@ -27,6 +27,7 @@ test.each(["en","he"] as const)("%s expired acquisition sign-in retains its vali
 });
 test.each(["en","he"] as const)("%s review is one contextual view with collapsed administrative actions",locale=>{
  const html=renderToStaticMarkup(createElement(AcquisitionWorkspace,{locale}));expect(html).toContain(locale==="he"?'dir="rtl"':'dir="ltr"');
+ expect(html).toContain('type="search" dir="auto"');
  expect((html.match(/<form/g)??[])).toHaveLength(1);expect(html).not.toContain("Synthetic אדם");expect(html).not.toContain("role-switch");
  const card=renderToStaticMarkup(createElement(AcquisitionReviewCard,{item,locale,epoch:3,remember:()=>{},saved:()=>{},denied:()=>{},refresh:()=>{}}));
  expect(card).toContain("<details>");expect(card).not.toContain("<details open");expect(card).toContain("+15550001001");expect(card).toContain('type="date"');
