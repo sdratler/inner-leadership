@@ -63,7 +63,15 @@ describe("draft group and proposed placement workspace",()=>{
     previousRevisionId:null,nextRevisionId:null,revisionStatus:"current" as const,conflicts:[{kind:"private_appointment" as const,reference:"abcd1234",startsAt:"2029-02-03T08:00:00.000Z",endsAt:"2029-02-03T09:15:00.000Z"}]};
   const html=renderToStaticMarkup(createElement(DraftMeetingPlanner,{locale,group,revisions:[revision],reload:async()=>{}}));
   expect(html).toContain(locale==="he"?"מועדי פגישה מוצעים":"Proposed meeting occurrences");expect(html).toContain(locale==="he"?"התנגשות בלוח הזמנים":"Scheduling conflict");
-  expect(html).toContain("abcd1234");expect(html).toContain("datetime-local");expect(html).toContain(locale==="he"?"אינם פגישות מאושרות":"are not confirmed meetings");
+  expect(html).toContain("abcd1234");expect(html).toContain("10:00");expect(html).toContain("11:15");
+  expect(html).toContain("datetime-local");expect(html).toContain(locale==="he"?"אינם פגישות מאושרות":"are not confirmed meetings");
+  expect(html).toContain('min="15" max="480" step="1" required="" name="durationMinutes" value="60"');
+ });
+ it("leaves a new occurrence duration empty while retaining a correction duration",()=>{
+  const group={id:"22222222-2222-4222-8222-222222222222",state:"draft_group" as const,label:"Synthetic group",recordedBy:"actor",createdAt:"2029-01-01T00:00:00.000Z"};
+  const html=renderToStaticMarkup(createElement(DraftMeetingPlanner,{locale:"en",group,revisions:[],reload:async()=>{}}));
+  expect(html).toContain('min="15" max="480" step="1" required="" name="durationMinutes"/>');
+  expect(html).not.toContain('name="durationMinutes" value=');
  });
  it.each(["en","he"] as const)("integrates the %s route as People > Groups",locale=>{
   const path=`/${locale}/app/group-interest`;

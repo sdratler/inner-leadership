@@ -60,7 +60,7 @@ export function DraftMeetingPlanner({locale,group,revisions,reload}:{locale:Loca
    <strong>{displayTime(item.startsAt,locale)} · {item.durationMinutes} {t("minutes","דקות")}</strong><span>{item.venue}</span>
    {item.conflicts.length===0?<small className={styles.current}>{t("No conflict found at the last read. This is not a reservation.","לא נמצאה התנגשות בקריאה האחרונה. זו אינה שמירת זמן.")}</small>:
     <div className={styles.conflict} role="status"><b>{t("Scheduling conflict","התנגשות בלוח הזמנים")}</b><ul>{item.conflicts.map((conflict,index)=><li key={`${conflict.kind}-${conflict.reference}-${index}`}>
-     {conflict.kind==="private_appointment"?t("Private appointment","פגישה פרטית"):t("Other draft occurrence","מועד טיוטה אחר")} · <bdi dir="ltr">{conflict.reference}</bdi> · {displayTime(conflict.startsAt,locale)}</li>)}</ul></div>}
+     {conflict.kind==="private_appointment"?t("Private appointment","פגישה פרטית"):t("Other draft occurrence","מועד טיוטה אחר")} · <bdi dir="ltr">{conflict.reference}</bdi> · {displayTime(conflict.startsAt,locale)}–{displayTime(conflict.endsAt,locale)}</li>)}</ul></div>}
    <details className={styles.moveAction}><summary>{t("Correct proposed occurrence","תיקון המועד המוצע")}</summary>
     <p>{t("The current proposal remains in history. This does not change any private appointment.","ההצעה הנוכחית נשמרת בהיסטוריה. פעולה זו אינה משנה פגישה פרטית כלשהי.")}</p>
     <MeetingForm locale={locale} item={item} busy={busy} disabled={uncertain!==""&&uncertain!==item.id} retry={uncertain===item.id} onSave={event=>void save(event,item.id)}/></details>
@@ -78,7 +78,7 @@ function MeetingForm({locale,item,busy,disabled,retry,onSave}:{locale:Locale;ite
  const t=(en:string,he:string)=>locale==="he"?he:en;
  return <form className={styles.meetingForm} onSubmit={onSave}>
   <label>{t("Jerusalem date and time","תאריך ושעה לפי ירושלים")}<input type="datetime-local" name="localStart" required defaultValue={item?.localStart} disabled={disabled||retry}/></label>
-  <label>{t("Duration (minutes)","משך (דקות)")}<input type="number" name="durationMinutes" min="15" max="480" step="1" required defaultValue={item?.durationMinutes??60} disabled={disabled||retry}/></label>
+  <label>{t("Duration (minutes)","משך (דקות)")}<input type="number" name="durationMinutes" min="15" max="480" step="1" required defaultValue={item?.durationMinutes} disabled={disabled||retry}/></label>
   <label>{t("Proposed venue","מקום מוצע")}<input name="venue" required maxLength={200} defaultValue={item?.venue} disabled={disabled||retry}/></label>
   <button type="submit" className="lsw-button lsw-button--primary" disabled={busy||disabled}>{busy?t("Saving…","שומר…"):retry?t("Retry exact same save","ניסיון חוזר לאותה שמירה בדיוק"):item?t("Save correction","שמירת תיקון"):t("Save proposed occurrence","שמירת מועד מוצע")}</button>
  </form>;
