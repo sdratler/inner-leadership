@@ -2,7 +2,7 @@
 import {useCallback,useEffect,useRef,useState} from "react";
 import type {FormEvent} from "react";
 import type {Locale} from "../../lib/locale.ts";
-import {sessionInfo} from "../identity/client.ts";
+import {IdentityClientError,sessionInfo} from "../identity/client.ts";
 import {draftGroupCommandSchema,moveProposedPlacementCommandSchema,proposedPlacementCommandSchema,type DraftGroupCommand,type GroupPlacementList,
  type MoveProposedPlacementCommand,type ProposedPlacementCommand,type ProposedPlacementRecord} from "./contract.ts";
 import styles from "./workspace.module.css";
@@ -63,7 +63,9 @@ export function GroupPlacementWorkspace({locale}:{locale:Locale}){
      t("The draft group was not saved. Check the label and try again.","קבוצת הטיוטה לא נשמרה. בדקו את התווית ונסו שוב."));return;}
    const body=await response.json();if(!response.ok||!body.ok||body.data?.saved!==true)throw new Error();
    draftPending.current=null;setDraftUncertain(false);draftForm.current?.reset();setDraftSaved(true);await load();
-  }catch{if(classifyGroupPlacementSaveFailure(requestStarted,undefined,previouslyUncertain)==="reauth"){
+  }catch(error){if(previouslyUncertain&&error instanceof IdentityClientError&&error.code==="UNAUTHENTICATED"){
+    setDraftUncertain(true);setDraftError(t("Sign in again in another tab. Keep this page open, then retry the exact same draft-group save.","יש להתחבר מחדש בכרטיסייה אחרת. השאירו דף זה פתוח ואז נסו שוב את אותה שמירת קבוצת טיוטה בדיוק."));
+   }else if(classifyGroupPlacementSaveFailure(requestStarted,undefined,previouslyUncertain)==="reauth"){
     draftPending.current=null;setDraftUncertain(false);setDraftError(t("Sign in again, then review and save this draft group.","יש להתחבר מחדש, לבדוק ולשמור את קבוצת הטיוטה."));
    }else{setDraftUncertain(true);setDraftError(t("Save is unconfirmed. Keep this page open and retry the same draft group; no placement, message or payment is triggered.",
     "השמירה לא אומתה. השאירו את הדף פתוח ונסו שוב את אותה קבוצת טיוטה; לא נוצרים שיבוץ, הודעה או תשלום."));}}
@@ -85,7 +87,9 @@ export function GroupPlacementWorkspace({locale}:{locale:Locale}){
      t("The proposal was not saved. Check the selection and try again.","ההצעה לא נשמרה. בדקו את הבחירה ונסו שוב.")});return;}
    const body=await response.json();if(!response.ok||!body.ok||body.data?.saved!==true)throw new Error();
    placementPending.current=null;setPlacementUncertain("");placementForm.reset();setPlacementSaved(draftGroupId);await load();
-  }catch{if(classifyGroupPlacementSaveFailure(requestStarted,undefined,previouslyUncertain)==="reauth"){
+  }catch(error){if(previouslyUncertain&&error instanceof IdentityClientError&&error.code==="UNAUTHENTICATED"){
+    setPlacementUncertain(draftGroupId);setPlacementError({groupId:draftGroupId,message:t("Sign in again in another tab. Keep this page open, then retry the exact same proposal save.","יש להתחבר מחדש בכרטיסייה אחרת. השאירו דף זה פתוח ואז נסו שוב את אותה שמירת הצעה בדיוק.")});
+   }else if(classifyGroupPlacementSaveFailure(requestStarted,undefined,previouslyUncertain)==="reauth"){
     placementPending.current=null;setPlacementUncertain("");setPlacementError({groupId:draftGroupId,message:t("Sign in again, then review and save this proposal.","יש להתחבר מחדש, לבדוק ולשמור את ההצעה.")});
    }else{setPlacementUncertain(draftGroupId);setPlacementError({groupId:draftGroupId,message:t("Save is unconfirmed. Keep this page open and retry the same proposal; no trial, enrollment, message or payment is triggered.",
     "השמירה לא אומתה. השאירו את הדף פתוח ונסו שוב את אותה הצעה; לא נוצרים ניסיון, הרשמה, הודעה או תשלום.")});}}
@@ -111,7 +115,9 @@ export function GroupPlacementWorkspace({locale}:{locale:Locale}){
    }
    const body=await response.json();if(!response.ok||!body.ok||body.data?.saved!==true)throw new Error();
    movePending.current=null;setMoveUncertain("");moveForm.reset();setMoveSaved(source.id);await load();
-  }catch{if(classifyGroupPlacementSaveFailure(requestStarted,undefined,previouslyUncertain)==="reauth"){
+  }catch(error){if(previouslyUncertain&&error instanceof IdentityClientError&&error.code==="UNAUTHENTICATED"){
+    setMoveUncertain(source.id);setMoveError({proposalId:source.id,message:t("Sign in again in another tab. Keep this page open, then retry the exact same move.","יש להתחבר מחדש בכרטיסייה אחרת. השאירו דף זה פתוח ואז נסו שוב את אותה העברה בדיוק.")});
+   }else if(classifyGroupPlacementSaveFailure(requestStarted,undefined,previouslyUncertain)==="reauth"){
     movePending.current=null;setMoveUncertain("");setMoveError({proposalId:source.id,message:t("Sign in again, then review and move this proposal.","יש להתחבר מחדש, לבדוק ולהעביר את ההצעה.")});
    }else{setMoveUncertain(source.id);setMoveError({proposalId:source.id,message:t("Save is unconfirmed. Keep this page open and retry the exact same move; no trial, enrollment, message or payment is triggered.",
     "השמירה לא אומתה. השאירו את הדף פתוח ונסו שוב את אותה העברה בדיוק; לא נוצרים ניסיון, הרשמה, הודעה או תשלום.")});}}
