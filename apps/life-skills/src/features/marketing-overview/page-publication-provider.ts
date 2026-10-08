@@ -35,7 +35,10 @@ function exactOwnKeys(value: Record<string, unknown>, keys: readonly string[]) {
   return actual.length === keys.length && keys.every(key => Object.hasOwn(value, key));
 }
 function nullableIso(value: unknown): value is string | null {
-  return value === null || typeof value === "string" && value.length <= 40 && Number.isFinite(Date.parse(value));
+  if (value === null) return true;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) return false;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.valueOf()) && parsed.toISOString() === value;
 }
 function nullableDate(value: unknown): value is string | null {
   if (value === null) return true;
@@ -69,7 +72,10 @@ export function parseFacebookPagePublicationState(value: unknown): FacebookPageP
   if (!Array.isArray(value.recentRecords) || value.recentRecords.length > 50) throw new Error("facebook_page_readback_invalid");
   const recentRecords = value.recentRecords.map((entry): FacebookPagePublicationRecord => {
     if (!object(entry) || !exactOwnKeys(entry, RECORD_KEYS)) throw new Error("facebook_page_record_invalid");
-    if (entry.id !== null && (typeof entry.id !== "string" && typeof entry.id !== "number")) throw new Error("facebook_page_record_invalid");
+    const validId = entry.id === null
+      || typeof entry.id === "string" && entry.id.length >= 1 && entry.id.length <= 128
+      || typeof entry.id === "number" && Number.isSafeInteger(entry.id) && entry.id >= 0;
+    if (!validId) throw new Error("facebook_page_record_invalid");
     if (!LIFECYCLE.has(entry.state as FacebookPagePublicationRecord["state"])) throw new Error("facebook_page_record_invalid");
     if (!nullableDate(entry.localBusinessDate) || !nullableIso(entry.scheduledAt) || !nullableIso(entry.providerReadAt) || !nullableIso(entry.publishedAt) || typeof entry.noBlindRetry !== "boolean") throw new Error("facebook_page_record_invalid");
     if (entry.state === "UNKNOWN" && entry.noBlindRetry !== true) throw new Error("facebook_page_record_retry_safety_invalid");
