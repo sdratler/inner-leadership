@@ -20,6 +20,7 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "db:verify": "tsx scripts/migrate.ts --verify-only",
     "db:release-contact-work": "tsx scripts/release-contact-work.ts",
+    "db:release-service-interest": "tsx scripts/release-service-interest.ts",
     "operator:provision-demo": "node --conditions=react-server --import tsx src/features/identity/operator-cli.ts provision-demo",
     "operator:shadow-import": "node --conditions=react-server --import tsx scripts/shadow-import-operator.ts",
     "verify": "npm run lint && npm run typecheck && npm test && npm run build",
