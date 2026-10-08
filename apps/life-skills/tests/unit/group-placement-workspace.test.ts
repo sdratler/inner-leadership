@@ -4,6 +4,7 @@ import {describe,expect,it} from "vitest";
 import {availableGroupInterests,classifyGroupPlacementSaveFailure,groupInterestProvenance,GroupPlacementWorkspace} from "../../src/features/group-placement/workspace.tsx";
 import type {GroupPlacementList} from "../../src/features/group-placement/contract.ts";
 import {activeItem,breadcrumbItems,practitionerContext} from "../../src/ui/workspace/navigation-model.ts";
+import {groupInterestCandidateEnabled} from "../../src/features/group-interest/candidate.ts";
 
 describe("draft group and proposed placement workspace",()=>{
  it.each(["en","he"] as const)("labels the owner-only state boundary in %s",locale=>{
@@ -35,7 +36,16 @@ describe("draft group and proposed placement workspace",()=>{
  it.each(["en","he"] as const)("integrates the %s route as People > Groups",locale=>{
   const path=`/${locale}/app/group-interest`;
   expect(activeItem(path,locale,"practitioner")?.key).toBe("clients");
-  expect(practitionerContext(path,null).find(item=>item.key==="groups")?.path).toBe("app/group-interest");
+  expect(practitionerContext(path,null,false,false,true).find(item=>item.key==="groups")?.path).toBe("app/group-interest");
   expect(breadcrumbItems(locale,"practitioner",path).map(item=>item.label)).toEqual(locale==="he"?["בית","אנשים","קבוצות"]:["Home","People","Groups"]);
+ });
+ it("keeps every Groups navigation entry default-off and production-disabled",()=>{
+  for(const path of ["/en/app/clients","/he/app/prospects","/en/app/group-interest"]){
+   expect(practitionerContext(path,null).some(item=>item.key==="groups")).toBe(false);
+   expect(practitionerContext(path,null,false,false,true).some(item=>item.key==="groups")).toBe(true);
+  }
+  expect(groupInterestCandidateEnabled({})).toBe(false);
+  expect(groupInterestCandidateEnabled({LS_GROUP_INTEREST_CANDIDATE:"true",NODE_ENV:"production"})).toBe(false);
+  expect(groupInterestCandidateEnabled({LS_GROUP_INTEREST_CANDIDATE:"true",NODE_ENV:"development"})).toBe(true);
  });
 });

@@ -7,6 +7,7 @@ import { requireWorkspaceRole } from "@/features/integration/page-session.ts";
 import { loginHref, loginReturnDestination } from "@/features/identity/login-return.ts";
 import { CoreNavigation } from "@/ui/workspace/core-navigation.tsx";
 import { PwaRegistration } from "@/features/pwa/registration.tsx";
+import { groupInterestCandidateEnabled } from "@/features/group-interest/candidate.ts";
 import "@/ui/workspace/workspace.css";
 import "@/ui/workspace/w4-v2.css";
 
@@ -25,5 +26,5 @@ export default async function PractitionerLayout({ children, params }: { childre
     // A database/identity outage is not a sign-out and must not appear as one.
     throw error;
   }
-  return <><link rel="manifest" href={`/${locale}/pwa/practitioner/manifest.webmanifest`}/><meta name="theme-color" content="#245159"/><PwaRegistration/><CoreNavigation locale={locale} role="practitioner">{children}</CoreNavigation></>;
+  return <><link rel="manifest" href={`/${locale}/pwa/practitioner/manifest.webmanifest`}/><meta name="theme-color" content="#245159"/><PwaRegistration/><CoreNavigation locale={locale} role="practitioner" groupInterestEnabled={groupInterestCandidateEnabled()}>{children}</CoreNavigation></>;
 }

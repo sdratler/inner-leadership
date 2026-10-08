@@ -6,11 +6,11 @@ import { selectedCaseId, type WorkspaceRole } from "./navigation-model.ts";
 import { WorkspaceShell } from "./workspace-shell.tsx";
 import {calendarLayerQuery} from '../../features/calendar/layers.ts';
 export { selectedCaseId, workspaceHref } from "./navigation-model.ts";
-export function CoreNavigation({ locale, role, clientRole, children }: { locale: Locale; role: WorkspaceRole; clientRole?:'adult_client'|'child';children: ReactNode }) {
+export function CoreNavigation({ locale, role, clientRole, groupInterestEnabled=false, children }: { locale: Locale; role: WorkspaceRole; clientRole?:'adult_client'|'child';groupInterestEnabled?:boolean;children: ReactNode }) {
   const pathname = usePathname(), query = useSearchParams(), caseId = selectedCaseId(pathname, query.get("caseId"));
   const other = locale === "he" ? "en" : "he";
   const languageHref = pathname.replace(/^\/(he|en)(?=\/|$)/, `/${other}`) + (query.size ? `?${query.toString()}` : "");
-  return <WorkspaceShell locale={locale} role={role} {...(clientRole?{clientRole}:{})} pathname={pathname} caseId={caseId} audienceId={query.get('audienceId')} selectedClient={query.get("context")==="client"} section={query.get("section")} communityView={query.get('communityView')} view={query.get("view")} date={query.get("date")} mode={query.get("mode")} calendarLayers={calendarLayerQuery(query)} languageHref={languageHref}>{children}</WorkspaceShell>;
+  return <WorkspaceShell locale={locale} role={role} {...(clientRole?{clientRole}:{})} pathname={pathname} caseId={caseId} audienceId={query.get('audienceId')} selectedClient={query.get("context")==="client"} section={query.get("section")} communityView={query.get('communityView')} view={query.get("view")} date={query.get("date")} mode={query.get("mode")} calendarLayers={calendarLayerQuery(query)} groupInterestEnabled={groupInterestEnabled} languageHref={languageHref}>{children}</WorkspaceShell>;
 }
 export function PrivateWorkspaceUnavailable({ locale }: { locale: Locale; role: WorkspaceRole }) {
   const he = locale === "he";

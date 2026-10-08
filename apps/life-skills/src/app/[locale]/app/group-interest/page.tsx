@@ -4,9 +4,10 @@ import {AppError} from "../../../../lib/errors.ts";
 import {requireWorkspaceRole} from "../../../../features/integration/page-session.ts";
 import {loginHref} from "../../../../features/identity/login-return.ts";
 import {GroupInterestWorkspace} from "../../../../features/group-interest/workspace.tsx";
+import {groupInterestCandidateEnabled} from "../../../../features/group-interest/candidate.ts";
 export const dynamic="force-dynamic";
 export default async function Page({params}:{params:Promise<{locale:string}>}){
- const {locale}=await params;if(!isLocale(locale)||process.env.LS_GROUP_INTEREST_CANDIDATE!=="true"||process.env.NODE_ENV==="production")notFound();
+ const {locale}=await params;if(!isLocale(locale)||!groupInterestCandidateEnabled())notFound();
  try{await requireWorkspaceRole("practitioner");}
  catch(error){
   if(error instanceof AppError&&error.code==="UNAUTHENTICATED")redirect(loginHref(locale,`/${locale}/app/group-interest`));

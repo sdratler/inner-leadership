@@ -180,6 +180,9 @@ describe("actual practitioner Calendar login return perimeter", () => {
     }
     const response=proxy(new NextRequest(`${origin}/he/app/marketing`,{headers:{'x-ls-practitioner-return':'/he/app/reports?mode=demo'}}));
     expect(response.headers.get('x-middleware-request-x-ls-practitioner-return')).toBe('/he/app/marketing');
+    const off=proxy(new NextRequest(`${origin}/he/app/group-interest?secret=private`,{headers:{'x-ls-practitioner-return':'https://untrusted.invalid'}}));
+    expect(off.headers.get('x-middleware-request-x-ls-practitioner-return')).toBeNull();
+    vi.stubEnv('NODE_ENV','development');vi.stubEnv('LS_GROUP_INTEREST_CANDIDATE','true');
     const groups=proxy(new NextRequest(`${origin}/he/app/group-interest?secret=private`,{headers:{'x-ls-practitioner-return':'https://untrusted.invalid'}}));
     expect(groups.headers.get('x-middleware-request-x-ls-practitioner-return')).toBe('/he/app/group-interest');
   });

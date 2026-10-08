@@ -6,6 +6,7 @@ import { runtimePublicConsent } from "./features/forms/pre-enrollment/consent.ts
 import { ownerPreviewConfig } from "./features/forms/pre-enrollment/owner-preview.ts";
 import { intakeStaffEntry } from "./features/forms/pre-enrollment/public-origin.ts";
 import { clientReturnPath, parentReturnPath, practitionerDetailReturnPath, practitionerReturnPath } from "./features/identity/login-return.ts";
+import { groupInterestCandidateEnabled } from "./features/group-interest/candidate.ts";
 import { canonicalForwardedRequest } from "./features/integration/canonical-forwarded-request.ts";
 
 const intakeIdentityRoutes = new Set([
@@ -169,7 +170,8 @@ export function proxy(request: NextRequest) {
     }
     inbound.set("x-ls-practitioner-return", practitionerReturnPath(locale, page, query));
   }
-  const practitionerDetail=/^\/(he|en)\/app\/(?:marketing|feedback|reports|forms|resources|group-interest|settings(?:\/[^/]+)?|cases\/[^/]+\/sessions(?:\/[^/]+)?)$/.exec(pathname);
+  const practitionerDetail=/^\/(he|en)\/app\/(?:marketing|feedback|reports|forms|resources|settings(?:\/[^/]+)?|cases\/[^/]+\/sessions(?:\/[^/]+)?)$/.exec(pathname)
+    ??(groupInterestCandidateEnabled()?/^\/(he|en)\/app\/group-interest$/.exec(pathname):null);
   if(practitionerDetail){
     const query:Record<string,string|undefined>={};
     for(const key of ['mode','date','view','caseId','audienceId','appointmentId','context','section','filter','month','layout','channel','state','from','to','publication','language','placement','approval','search','page','threadId','communityView','collection','concept','cycle']){const values=request.nextUrl.searchParams.getAll(key);query[key]=values.length===1?values[0]:undefined;}
