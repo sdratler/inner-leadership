@@ -5,7 +5,7 @@ import type { Locale } from "../../features/session-workflow/types.ts";
 import { normalizeMarketingSection, type AdDailyPoint, type FacebookPagePublicationReadModel, type MarketingSnapshot } from "../../features/marketing-overview/contracts.ts";
 import { safeMarketingUrl } from "../../features/marketing-overview/read-model.ts";
 import {creativeApprovals,creativeCollections,creativeFilters,creativeMetadataOptions,creativePlacements,creativeReviewState,filterCreatives,creativePage,type CreativeQuery} from "../../features/marketing-overview/creative-filters.ts";
-import { MarketingContentCalendar, type ContentCalendarQuery } from "./marketing-content-calendar.tsx";
+import { MarketingContentCalendar, type ContentCalendarNavigation, type ContentCalendarQuery } from "./marketing-content-calendar.tsx";
 import { CommunityReplyWorkspace } from "../../features/community-reply/workspace.tsx";
 import { Section, word } from "./primitives.tsx";
 import "./styles.css";
@@ -36,7 +36,7 @@ function MetricBars({ locale, points, metric, currencyCode }: { locale: Locale; 
   return <figure className="lsr-chart"><figcaption><strong>{label}</strong></figcaption><div className="lsr-chart-bars">{points.map(point => <div key={point.date} className="lsr-chart-point"><div className="lsr-chart-track">{point[metric]===null?<span className="sr-only">{word(locale,"Unavailable","לא זמין")}</span>:<span style={{ height: `${(point[metric]! / maximum) * 100}%` }} />}</div><small>{point.date.slice(5)}</small><span className="sr-only">{point.date}: {metric === "spendMinor" ? currency(locale, currencyCode, point.spendMinor) : point.linkClicks ?? word(locale, "Unavailable", "לא זמין")}</span></div>)}</div></figure>;
 }
 
-export function MarketingDashboard({ locale, snapshot, ownerDigest, facebookPage, initialSection, initialFilter, initialMonth, calendarQuery, creativeQuery, renderedAt }: { locale: Locale; snapshot: MarketingSnapshot; ownerDigest?:OwnerDigest|undefined; facebookPage?:FacebookPagePublicationReadModel|undefined; initialSection?: string | undefined; initialFilter?: string | undefined; initialMonth?: string | undefined; calendarQuery?:ContentCalendarQuery|undefined;creativeQuery?:CreativeQuery|undefined; renderedAt: string }) {
+export function MarketingDashboard({ locale, snapshot, ownerDigest, facebookPage, initialSection, initialFilter, initialMonth, calendarQuery, calendarNavigation, creativeQuery, renderedAt }: { locale: Locale; snapshot: MarketingSnapshot; ownerDigest?:OwnerDigest|undefined; facebookPage?:FacebookPagePublicationReadModel|undefined; initialSection?: string | undefined; initialFilter?: string | undefined; initialMonth?: string | undefined; calendarQuery?:ContentCalendarQuery|undefined;calendarNavigation?:ContentCalendarNavigation|undefined;creativeQuery?:CreativeQuery|undefined; renderedAt: string }) {
   const section = normalizeMarketingSection(initialSection);
   const gallery=section==='creatives'||section==='needs_approval';
   const h = headings[locale];
@@ -119,6 +119,7 @@ export function MarketingDashboard({ locale, snapshot, ownerDigest, facebookPage
     {section === "content_calendar" && <MarketingContentCalendar locale={locale} snapshot={snapshot}
       query={{filter:initialFilter,month:initialMonth,...calendarQuery}} renderedAt={renderedAt}
       facebookPage={facebookPage}
+      navigation={calendarNavigation}
       thumbnail={asset=><CreativeThumbnail key={`${asset.assetId}:${asset.revision}:${asset.imageUrl}`}
         image={creativeMediaPath(asset)}
         sourceAvailable={Boolean(safeMarketingUrl(asset.sourceUrl??null,["drive.google.com","docs.google.com","github.com"])??safeMarketingUrl(asset.imageUrl,["drive.google.com","docs.google.com","github.com"]))}

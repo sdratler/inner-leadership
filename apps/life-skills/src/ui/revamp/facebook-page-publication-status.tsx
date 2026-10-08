@@ -38,8 +38,8 @@ export function FacebookPagePublicationStatus({ locale, publication }: { locale:
     {!publication.providerEvidenceAvailable && publication.state !== "BRIDGE_UNAVAILABLE" && <p>{word(locale, "No current provider evidence is available. Local lifecycle records do not prove provider acceptance or publication.", "אין אסמכתת ספק עדכנית. רשומות מחזור חיים מקומיות אינן מוכיחות קבלת ספק או פרסום.")}</p>}
     {publication.providerEvidenceAvailable && <p>{word(locale, "Provider evidence is recorded for this state; publication is only shown as verified when the provider readback confirms it.", "נרשמה אסמכתת ספק למצב זה; פרסום מוצג כמאומת רק כאשר הקריאה מהספק מאשרת אותו.")}</p>}
     <p className="lsr-help">{publication.recentRecords.length
-      ? word(locale, `${publication.recentRecords.length} bounded local lifecycle records returned${latest ? "; latest recorded activity " + latest : ""}.`, `הוחזרו ${publication.recentRecords.length} רשומות מחזור חיים מקומיות מוגבלות${latest ? "; פעילות אחרונה שנרשמה " + latest : ""}.`)
-      : word(locale, "No bounded local lifecycle records were returned. This is not a provider-history readback.", "לא הוחזרו רשומות מחזור חיים מקומיות מוגבלות. זו אינה קריאה מהיסטוריית הספק.")}</p>
+      ? word(locale, `${publication.recentRecords.length} local Page tracking records available${latest ? "; latest recorded activity " + latest : ""}.`, `זמינות ${publication.recentRecords.length} רשומות מעקב מקומיות של הדף${latest ? "; פעילות אחרונה שנרשמה " + latest : ""}.`)
+      : word(locale, "No local Page tracking records are available. This is not a provider-history readback.", "אין רשומות מעקב מקומיות של הדף. זו אינה קריאה מהיסטוריית הספק.")}</p>
     {publication.noBlindRetry && <p className="lsr-inline-error" role="alert">{word(locale, "Do not retry while delivery is unresolved. Reconcile provider evidence first.", "אין לנסות שוב כל עוד מצב הפרסום לא הוכרע. יש ליישב תחילה את אסמכתת הספק.")}</p>}
     <p className="lsr-help">{word(locale, "This panel cannot schedule, publish, retry or approve content.", "לוח זה אינו יכול לתזמן, לפרסם, לנסות שוב או לאשר תוכן.")}</p>
   </section>;

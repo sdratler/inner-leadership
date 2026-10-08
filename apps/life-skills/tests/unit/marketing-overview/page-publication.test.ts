@@ -1,6 +1,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, test, vi } from "vitest";
+import { readFileSync } from "node:fs";
 
 vi.mock("server-only", () => ({}));
 const mocks = vi.hoisted(() => ({ bridge: vi.fn() }));
@@ -103,4 +104,15 @@ test("unknown delivery keeps the no-blind-retry warning visible", async () => {
   const html = renderToStaticMarkup(React.createElement(FacebookPagePublicationStatus, { locale: "en", publication }));
   expect(html).toContain('role="alert"');
   expect(html).toContain("Do not retry while delivery is unresolved");
+});
+
+test("composed workspace styling flattens the Page status and uses the gold keyboard focus token", () => {
+  const css = readFileSync(new URL("../../../src/ui/revamp/styles.css", import.meta.url), "utf8");
+  expect(css).toMatch(/\.lsr-page-publication-state\{[^}]*border-inline-start:4px solid var\(--r-teal\)[^}]*border-block-end:1px solid var\(--r-line\)/);
+  const stateRule = css.match(/\.lsr-page-publication-state\{([^}]*)\}/)?.[1] ?? "";
+  expect(stateRule).not.toContain("border-radius");expect(stateRule).not.toContain("background:");
+  expect(css).toContain(".lsw.lsu .lsr-page-publication-state h3{font-weight:700}");
+  expect(css).toContain(".lsr-page-publication-state .lsr-help{font-size:16px}");
+  expect(css).toContain('.lsw.lsu[lang=en] .lsr :is(h1,h2,h3){font-family:Georgia,"Times New Roman",serif}');
+  expect(css).toContain(".lsw.lsu .lsr :focus-visible{outline:3px solid var(--ui-gold);outline-offset:4px}");
 });
