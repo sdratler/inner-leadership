@@ -9,10 +9,11 @@ const runtimePath=process.env.LS_GROUP_INTEREST_FIXTURE_PATH;
 if(!runtimePath){
  if(process.env.LS_GROUP_INTEREST_TEST_RUNNER_ACTIVE==="true")throw new Error("ISOLATED_GROUP_INTEREST_FIXTURE_REQUIRED");
  test("isolated Group Intake authenticated journeys for the current browser project",async({},info)=>{
-  test.setTimeout(240_000);if(!["desktop","mobile390","mobile340"].includes(info.project.name))throw new Error("GROUP_INTEREST_BROWSER_PROJECT_NOT_SUPPORTED");
+  const project=info.project.name==="mobile"?"mobile390":info.project.name;
+  test.setTimeout(240_000);if(!["desktop","mobile390","mobile340"].includes(project))throw new Error("GROUP_INTEREST_BROWSER_PROJECT_NOT_SUPPORTED");
   const result=await promisify(execFile)(process.execPath,["--import","tsx","tests/e2e/group-interest/run.ts"],{timeout:210_000,maxBuffer:2*1024*1024,
-   env:{...process.env,LS_GROUP_INTEREST_TEST_PROJECT:info.project.name,LS_GROUP_INTEREST_TEST_ALLOW:"true",LS_CALENDAR_TEST_ALLOW:"true"}});
-  expect(result.stdout).toContain(`GROUP_INTEREST_ACCEPTANCE_PASS project=${info.project.name}`);console.log(result.stdout);
+   env:{...process.env,LS_GROUP_INTEREST_TEST_PROJECT:project,LS_GROUP_INTEREST_TEST_ALLOW:"true",LS_CALENDAR_TEST_ALLOW:"true"}});
+  expect(result.stdout).toContain(`GROUP_INTEREST_ACCEPTANCE_PASS project=${project}`);console.log(result.stdout);
  });
 }else{
  const data=JSON.parse(readFileSync(runtimePath,"utf8")) as Runtime;
