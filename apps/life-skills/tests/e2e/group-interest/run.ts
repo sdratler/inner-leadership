@@ -28,11 +28,12 @@ process.once("SIGTERM",()=>{void cleanup().finally(()=>process.exit(143));});
 process.once("SIGINT",()=>{void cleanup().finally(()=>process.exit(130));});
 
 type WorkspaceSnapshot={count:number;snapshot:string};
-type BoundaryCounts={inquiries:number;operations:number;serviceInterests:number;serviceOperations:number;draftGroups:number;draftOperations:number;proposedPlacements:number;placementOperations:number;otherWorkspaceState:Record<string,WorkspaceSnapshot>};
+type BoundaryCounts={inquiries:number;operations:number;serviceInterests:number;serviceOperations:number;draftGroups:number;draftOperations:number;proposedPlacements:number;placementOperations:number;placementMoves:number;movementOperations:number;otherWorkspaceState:Record<string,WorkspaceSnapshot>};
 const quoteIdentifier=(value:string)=>`"${value.replaceAll('"','""')}"`;
 async function counts():Promise<BoundaryCounts>{
  const allowed=new Set(["ls_service_interest.inquiries","ls_service_interest.operations","ls_service_interest.service_interests","ls_service_interest.service_interest_operations",
-  "ls_group_admin.draft_groups","ls_group_admin.draft_group_operations","ls_group_admin.proposed_placements","ls_group_admin.proposed_placement_operations"]);
+  "ls_group_admin.draft_groups","ls_group_admin.draft_group_operations","ls_group_admin.proposed_placements","ls_group_admin.proposed_placement_operations",
+  "ls_group_admin.proposed_placement_moves","ls_group_admin.proposed_placement_move_operations"]);
  const inventory=await f!.pool.query<{schema:string;table:string}>(`SELECT c.table_schema AS schema,c.table_name AS table
   FROM information_schema.columns c JOIN information_schema.tables t ON t.table_schema=c.table_schema AND t.table_name=c.table_name
   WHERE c.column_name='workspace_id' AND c.table_schema LIKE 'ls\\_%' ESCAPE '\\' AND t.table_type='BASE TABLE'
@@ -52,7 +53,9 @@ async function counts():Promise<BoundaryCounts>{
   (SELECT count(*)::integer FROM ls_group_admin.draft_groups WHERE workspace_id=$1) AS "draftGroups",
   (SELECT count(*)::integer FROM ls_group_admin.draft_group_operations WHERE workspace_id=$1) AS "draftOperations",
   (SELECT count(*)::integer FROM ls_group_admin.proposed_placements WHERE workspace_id=$1) AS "proposedPlacements",
-  (SELECT count(*)::integer FROM ls_group_admin.proposed_placement_operations WHERE workspace_id=$1) AS "placementOperations"`,[f!.workspaceId]);
+  (SELECT count(*)::integer FROM ls_group_admin.proposed_placement_operations WHERE workspace_id=$1) AS "placementOperations",
+  (SELECT count(*)::integer FROM ls_group_admin.proposed_placement_moves WHERE workspace_id=$1) AS "placementMoves",
+  (SELECT count(*)::integer FROM ls_group_admin.proposed_placement_move_operations WHERE workspace_id=$1) AS "movementOperations"`,[f!.workspaceId]);
  return {...result.rows[0]!,otherWorkspaceState};
 }
 
@@ -106,6 +109,10 @@ async function verifyGroupPlacementDatabaseBoundary(){
    (workspace_id,operation_id,recorded_by,request_digest,proposed_placement_id) VALUES($1,$2,$3,$4,$5)`,[f!.workspaceId,operationId,placement.recordedBy,placement.requestDigest,placement.id]).then(()=>{settled=true;return null;},error=>{settled=true;return error;});
   await new Promise(resolve=>setTimeout(resolve,100));if(settled)throw new Error("GROUP_PLACEMENT_RACE_DID_NOT_BLOCK");await first.query("COMMIT");const error=await duplicate;if(error?.code!=="23505")throw new Error("GROUP_PLACEMENT_DUPLICATE_RACE_ACCEPTED");
  }catch(error){await first.query("ROLLBACK").catch(()=>undefined);throw error;}finally{first.release();second.release();}
+ const movement=(await f!.pool.query<{id:string}>("SELECT id FROM ls_group_admin.proposed_placement_moves WHERE workspace_id=$1 ORDER BY created_at,id LIMIT 1",[f!.workspaceId])).rows[0];
+ if(!movement)throw new Error("GROUP_PLACEMENT_MOVEMENT_FIXTURE_MISSING");
+ await f!.pool.query("UPDATE ls_group_admin.proposed_placement_moves SET recorded_by=$1 WHERE workspace_id=$2 AND id=$3",[randomUUID(),f!.workspaceId,movement.id]).then(()=>{throw new Error("GROUP_PLACEMENT_MOVEMENT_MUTATION_ACCEPTED");},error=>{if(error?.code!=="23514")throw error;});
+ await f!.pool.query("DELETE FROM ls_group_admin.proposed_placement_move_operations WHERE workspace_id=$1 AND proposed_placement_move_id=$2",[f!.workspaceId,movement.id]).then(()=>{throw new Error("GROUP_PLACEMENT_MOVEMENT_RECEIPT_DELETE_ACCEPTED");},error=>{if(error?.code!=="23514")throw error;});
 }
 
 try{
@@ -127,7 +134,7 @@ try{
  }
  const adult=await deniedAccount("adult_client"),child=await deniedAccount("child"),revoked=await deniedAccount("adult_client",workspaceId,true),otherWorkspace=await deniedAccount("practitioner",randomUUID());
  const baseline=await counts();
- if(baseline.inquiries!==0||baseline.operations!==0||baseline.serviceInterests!==0||baseline.serviceOperations!==0||baseline.draftGroups!==0||baseline.draftOperations!==0||baseline.proposedPlacements!==0||baseline.placementOperations!==0)throw new Error("GROUP_INTEREST_FIXTURE_NOT_EMPTY");
+ if(baseline.inquiries!==0||baseline.operations!==0||baseline.serviceInterests!==0||baseline.serviceOperations!==0||baseline.draftGroups!==0||baseline.draftOperations!==0||baseline.proposedPlacements!==0||baseline.placementOperations!==0||baseline.placementMoves!==0||baseline.movementOperations!==0)throw new Error("GROUP_INTEREST_FIXTURE_NOT_EMPTY");
  const runtimePath=join(folder,"synthetic-runtime.json");
  writeFileSync(runtimePath,JSON.stringify({origin,workspaceId,practitioner:f.practitioner.token,parent:f.parent.token,adult,child,revoked,otherWorkspace}),{mode:0o600});
  const key=join(folder,"tls.key"),cert=join(folder,"tls.crt");
@@ -153,7 +160,7 @@ try{
  phase="boundary-readback";
  const after=await counts();
  if(JSON.stringify(after.otherWorkspaceState)!==JSON.stringify(baseline.otherWorkspaceState))throw new Error("GROUP_INTEREST_WORKSPACE_SIDE_EFFECT");
- if(after.inquiries!==baseline.inquiries+3||after.operations!==baseline.operations+3||after.serviceInterests!==baseline.serviceInterests+4||after.serviceOperations!==baseline.serviceOperations+5||after.draftGroups!==baseline.draftGroups+2||after.draftOperations!==baseline.draftOperations+2||after.proposedPlacements!==baseline.proposedPlacements+2||after.placementOperations!==baseline.placementOperations+4)throw new Error("GROUP_INTEREST_RECEIPT_COUNT_MISMATCH");
- console.log(`GROUP_INTEREST_ACCEPTANCE_PASS project=${project??"all"} inquiries=3 serviceInterests=4 draftGroups=2 proposedPlacements=2 placementOperations=4 sideEffects=0`);
+ if(after.inquiries!==baseline.inquiries+3||after.operations!==baseline.operations+3||after.serviceInterests!==baseline.serviceInterests+4||after.serviceOperations!==baseline.serviceOperations+5||after.draftGroups!==baseline.draftGroups+8||after.draftOperations!==baseline.draftOperations+8||after.proposedPlacements!==baseline.proposedPlacements+8||after.placementOperations!==baseline.placementOperations+8||after.placementMoves!==baseline.placementMoves+4||after.movementOperations!==baseline.movementOperations+4)throw new Error("GROUP_INTEREST_RECEIPT_COUNT_MISMATCH");
+ console.log(`GROUP_INTEREST_ACCEPTANCE_PASS project=${project??"all"} inquiries=3 serviceInterests=4 draftGroups=8 proposedPlacements=8 placementOperations=8 placementMoves=4 movementOperations=4 sideEffects=0`);
 }catch(error){console.error(`Group Intake browser verification failed at ${phase} (${error instanceof Error?error.message:"unknown error"}). No production or provider state was used.`);process.exitCode=1;}
 finally{await cleanup();}

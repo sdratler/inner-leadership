@@ -7,11 +7,18 @@
 .group { display:grid; gap:12px; padding:18px; border:1px solid var(--ui-line,rgba(36,81,89,.18)); border-inline-start:5px solid var(--ui-teal,#245159); border-radius:10px; background:#fff; }
 .group header { display:grid; gap:4px; }
 .placements { display:grid; gap:8px; margin:0; padding-inline-start:22px; }
-.placements li { padding-inline-start:4px; }
+.placements li { padding:10px 4px; scroll-margin-block-start:24px; }
 .placements span,.placements small { display:block; }
 .placements small { margin-block-start:2px; color:var(--ui-muted,#49676d); }
+.placements a { color:var(--ui-teal,#245159); font-weight:700; text-underline-offset:3px; }
+.current,.moved { font-weight:750; }
+.current { color:var(--ui-teal,#245159) !important; }
+.moved { color:var(--ui-muted,#49676d) !important; }
 .action { border-block-start:1px solid var(--ui-line,rgba(36,81,89,.18)); padding-block-start:10px; }
 .action summary { cursor:pointer; color:var(--ui-teal,#245159); font-weight:750; min-block-size:44px; display:flex; align-items:center; }
+.moveAction { margin-block-start:10px; border-block-start:1px solid var(--ui-line,rgba(36,81,89,.18)); padding-block-start:6px; }
+.moveAction summary { cursor:pointer; color:var(--ui-teal,#245159); font-weight:750; min-block-size:44px; display:flex; align-items:center; }
+.moveAction p,.noMove { margin-block:6px 0; color:var(--ui-muted,#49676d); }
 .compactForm { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:end; gap:12px; padding-block-start:10px; }
 .compactForm label { display:grid; gap:7px; min-inline-size:0; }
 .compactForm button { min-block-size:48px; }

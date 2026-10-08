@@ -190,5 +190,9 @@
   {
     "name": "0128_ls_draft_group_placements.sql",
     "sha256": "08eafdc0f7f5d6ca164b2f483a2e1edf947aa80c076ff370a1cf60504e006bb2"
+  },
+  {
+    "name": "0129_ls_proposed_placement_moves.sql",
+    "sha256": "ea126f3154913a63479de212e969e018ec543e66a7cfd336d29d2941865a3e60"
   }
 ]

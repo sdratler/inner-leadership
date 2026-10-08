@@ -3,8 +3,8 @@ import {useCallback,useEffect,useRef,useState} from "react";
 import type {FormEvent} from "react";
 import type {Locale} from "../../lib/locale.ts";
 import {sessionInfo} from "../identity/client.ts";
-import {draftGroupCommandSchema,proposedPlacementCommandSchema,type DraftGroupCommand,type GroupPlacementList,
- type ProposedPlacementCommand} from "./contract.ts";
+import {draftGroupCommandSchema,moveProposedPlacementCommandSchema,proposedPlacementCommandSchema,type DraftGroupCommand,type GroupPlacementList,
+ type MoveProposedPlacementCommand,type ProposedPlacementCommand,type ProposedPlacementRecord} from "./contract.ts";
 import styles from "./workspace.module.css";
 
 export function classifyGroupPlacementSaveFailure(requestStarted:boolean,status?:number,previouslyUncertain=false){
@@ -15,17 +15,26 @@ export function availableGroupInterests(data:GroupPlacementList,groupId:string){
  const placed=new Set(data.proposedPlacements.filter(item=>item.draftGroupId===groupId).map(item=>item.serviceInterestId));
  return data.eligibleGroupInterests.filter(item=>!placed.has(item.id));
 }
+export function availableMoveDestinations(data:GroupPlacementList,source:ProposedPlacementRecord){
+ const occupied=new Set(data.proposedPlacements.filter(item=>item.serviceInterestId===source.serviceInterestId).map(item=>item.draftGroupId));
+ return source.proposalStatus==="current"?data.draftGroups.filter(group=>group.id!==source.draftGroupId&&!occupied.has(group.id)):[];
+}
 export function groupInterestProvenance(item:Pick<GroupPlacementList["eligibleGroupInterests"][number],"sourceInquiryId"|"sourceInquiryCreatedAt">,locale:Locale){
  const date=new Intl.DateTimeFormat(locale==="he"?"he-IL":"en-GB",{dateStyle:"short",timeStyle:"short",timeZone:"Asia/Jerusalem"}).format(new Date(item.sourceInquiryCreatedAt));
  return `${locale==="he"?"פנייה":"Inquiry"} ${date} · ${locale==="he"?"מזהה":"ref"} ${item.sourceInquiryId.slice(0,8)}`;
 }
+export function proposalMovementDate(value:string,locale:Locale){return new Intl.DateTimeFormat(locale==="he"?"he-IL":"en-GB",
+ {dateStyle:"short",timeStyle:"short",timeZone:"Asia/Jerusalem"}).format(new Date(value));}
 export function GroupPlacementWorkspace({locale}:{locale:Locale}){
  const t=(en:string,he:string)=>locale==="he"?he:en;
- const draftForm=useRef<HTMLFormElement>(null),draftPending=useRef<DraftGroupCommand|null>(null),placementPending=useRef<ProposedPlacementCommand|null>(null);
+ const draftForm=useRef<HTMLFormElement>(null),draftPending=useRef<DraftGroupCommand|null>(null),placementPending=useRef<ProposedPlacementCommand|null>(null),
+  movePending=useRef<MoveProposedPlacementCommand|null>(null);
  const [data,setData]=useState<GroupPlacementList|null>(null),[loadError,setLoadError]=useState(""),[draftBusy,setDraftBusy]=useState(false),
   [draftUncertain,setDraftUncertain]=useState(false),[draftError,setDraftError]=useState(""),[draftSaved,setDraftSaved]=useState(false),
   [placementBusy,setPlacementBusy]=useState(""),[placementUncertain,setPlacementUncertain]=useState(""),
-  [placementError,setPlacementError]=useState<{groupId:string;message:string}|null>(null),[placementSaved,setPlacementSaved]=useState("");
+  [placementError,setPlacementError]=useState<{groupId:string;message:string}|null>(null),[placementSaved,setPlacementSaved]=useState(""),
+  [moveBusy,setMoveBusy]=useState(""),[moveUncertain,setMoveUncertain]=useState(""),
+  [moveError,setMoveError]=useState<{proposalId:string;message:string}|null>(null),[moveSaved,setMoveSaved]=useState("");
  const load=useCallback(async()=>{
   try{const response=await fetch("/api/private/group-placement",{cache:"no-store"}),body=await response.json();if(!response.ok||!body.ok)throw new Error();
    setData(body.data);setLoadError("");
@@ -35,7 +44,7 @@ export function GroupPlacementWorkspace({locale}:{locale:Locale}){
    const body=await response.json();if(!response.ok||!body.ok)throw new Error();return body.data as GroupPlacementList;
   }).then(result=>{if(active){setData(result);setLoadError("");}}).catch(()=>{if(active)setLoadError(locale==="he"?"לא ניתן לטעון קבוצות טיוטה. זו אינה רשימה ריקה.":"Draft groups could not be loaded. This is not an empty list.");});
   return()=>{active=false;};},[locale]);
- useEffect(()=>{const guard=(event:BeforeUnloadEvent)=>{if(draftPending.current||placementPending.current){event.preventDefault();event.returnValue="";}};
+ useEffect(()=>{const guard=(event:BeforeUnloadEvent)=>{if(draftPending.current||placementPending.current||movePending.current){event.preventDefault();event.returnValue="";}};
   window.addEventListener("beforeunload",guard);return()=>window.removeEventListener("beforeunload",guard);},[]);
  async function saveDraft(event:FormEvent<HTMLFormElement>){
   event.preventDefault();if(draftBusy)return;setDraftSaved(false);setDraftError("");const previouslyUncertain=draftUncertain;
@@ -79,6 +88,32 @@ export function GroupPlacementWorkspace({locale}:{locale:Locale}){
     "השמירה לא אומתה. השאירו את הדף פתוח ונסו שוב את אותה הצעה; לא נוצרים ניסיון, הרשמה, הודעה או תשלום.")});}}
   finally{setPlacementBusy("");}
  }
+ async function saveMove(event:FormEvent<HTMLFormElement>,source:ProposedPlacementRecord){
+  event.preventDefault();if(moveBusy)return;const moveForm=event.currentTarget;setMoveSaved("");setMoveError(null);const previouslyUncertain=moveUncertain===source.id;
+  if(!movePending.current){const values=new FormData(event.currentTarget),parsed=moveProposedPlacementCommandSchema.safeParse({action:"move_group_placement",
+    operationId:crypto.randomUUID(),sourceProposedPlacementId:source.id,destinationDraftGroupId:values.get("destinationDraftGroupId")});
+   if(!parsed.success){setMoveError({proposalId:source.id,message:t("Select one unused destination draft group.","בחרו קבוצת טיוטה פנויה אחת כיעד.")});return;}
+   movePending.current=parsed.data;
+  }else if(movePending.current.sourceProposedPlacementId!==source.id)return;
+  setMoveBusy(source.id);let requestStarted=false;
+  try{const session=await sessionInfo();if(session.role!=="practitioner")throw new Error();requestStarted=true;
+   const response=await fetch("/api/private/group-placement",{method:"POST",headers:{"content-type":"application/json","x-csrf-token":session.csrfToken},body:JSON.stringify(movePending.current)});
+   if(!response.ok&&classifyGroupPlacementSaveFailure(true,response.status,previouslyUncertain)!=="unconfirmed"){
+    movePending.current=null;setMoveUncertain("");setMoveError({proposalId:source.id,message:response.status===401?t("Sign in again, then review and move this proposal.","יש להתחבר מחדש, לבדוק ולהעביר את ההצעה."):
+     response.status===403?t("Your current account cannot move proposals.","החשבון הנוכחי אינו מורשה להעביר הצעות."):
+     response.status===404?t("The proposal or destination group is no longer available. Reload and choose again.","ההצעה או קבוצת היעד אינן זמינות עוד. טענו מחדש ובחרו שוב."):
+     response.status===409?t("This proposal changed or the destination is no longer available. Reload before choosing another unused group.","ההצעה השתנתה או שקבוצת היעד אינה זמינה עוד. טענו מחדש לפני בחירת קבוצה פנויה אחרת."):
+     t("The proposal was not moved. Review the destination and try again.","ההצעה לא הועברה. בדקו את קבוצת היעד ונסו שוב.")});
+    if(response.status===404||response.status===409)await load();return;
+   }
+   const body=await response.json();if(!response.ok||!body.ok||body.data?.saved!==true)throw new Error();
+   movePending.current=null;setMoveUncertain("");moveForm.reset();setMoveSaved(source.id);await load();
+  }catch{if(classifyGroupPlacementSaveFailure(requestStarted,undefined,previouslyUncertain)==="reauth"){
+    movePending.current=null;setMoveUncertain("");setMoveError({proposalId:source.id,message:t("Sign in again, then review and move this proposal.","יש להתחבר מחדש, לבדוק ולהעביר את ההצעה.")});
+   }else{setMoveUncertain(source.id);setMoveError({proposalId:source.id,message:t("Save is unconfirmed. Keep this page open and retry the exact same move; no trial, enrollment, message or payment is triggered.",
+    "השמירה לא אומתה. השאירו את הדף פתוח ונסו שוב את אותה העברה בדיוק; לא נוצרים ניסיון, הרשמה, הודעה או תשלום.")});}}
+  finally{setMoveBusy("");}
+ }
  return <section className={styles.planning} aria-labelledby="draft-groups-heading">
   <header className={styles.header}><div><p className={styles.eyebrow}>{t("Owner planning","תכנון הבעלים")}</p><h2 id="draft-groups-heading">{t("Draft groups and proposed placements","קבוצות טיוטה והצעות שיבוץ")}</h2></div>
    <button type="button" className="lsw-button lsw-button--secondary" disabled={draftBusy||Boolean(placementBusy)} onClick={()=>void load()}>{t("Refresh","רענון")}</button></header>
@@ -92,7 +127,27 @@ export function GroupPlacementWorkspace({locale}:{locale:Locale}){
    return <article className={styles.group} key={group.id}><header><p className={styles.state}>{t("Draft group","קבוצת טיוטה")}</p><h3>{group.label}</h3></header>
     <p>{t("Schedule, venue, capacity, fees and participation: Unset.","לוח זמנים, מקום, קיבולת, תשלום והשתתפות: לא מוגדרים.")}</p>
     <h4>{t("Proposed placements","הצעות שיבוץ")}</h4>
-    {placements.length===0?<p>{t("No proposed placements.","אין הצעות שיבוץ.")}</p>:<ul className={styles.placements}>{placements.map(item=><li key={item.id}><span>{item.personLabel} — {item.familyLabel}</span><small>{groupInterestProvenance(item,locale)}</small><small>{t("Proposed placement — not a trial or enrollment","הצעת שיבוץ — לא ניסיון ולא הרשמה")}</small></li>)}</ul>}
+    {placements.length===0?<p>{t("No proposed placements.","אין הצעות שיבוץ.")}</p>:<ul className={styles.placements}>{placements.map(item=>{
+     const destinations=availableMoveDestinations(data,item),incoming=data.proposalMovements.find(move=>move.destinationProposedPlacementId===item.id),
+      outgoing=data.proposalMovements.find(move=>move.sourceProposedPlacementId===item.id),
+      previous=incoming?data.draftGroups.find(candidate=>candidate.id===incoming.sourceDraftGroupId):null,
+      next=outgoing?data.draftGroups.find(candidate=>candidate.id===outgoing.destinationDraftGroupId):null;
+     return <li id={`proposal-${item.id}`} key={item.id}><span>{item.personLabel} — {item.familyLabel}</span><small>{groupInterestProvenance(item,locale)}</small>
+      <small className={item.proposalStatus==="moved"?styles.moved:styles.current}>{item.proposalStatus==="moved"?
+       t("Moved proposal — not current, trial, or enrollment","הצעה שהועברה — אינה נוכחית, ניסיון או הרשמה"):
+       t("Current proposed placement — not a trial or enrollment","הצעת שיבוץ נוכחית — לא ניסיון ולא הרשמה")}</small>
+      {incoming&&<small>{t("Moved from","הועברה מתוך")} {previous?.label??t("an earlier draft group","קבוצת טיוטה קודמת")} · {proposalMovementDate(incoming.createdAt,locale)} · {t("practitioner ref","מזהה מטפל")} <bdi dir="ltr">{incoming.recordedBy.slice(0,8)}</bdi></small>}
+      {outgoing&&<small>{t("Moved to","הועברה אל")} <a href={`#proposal-${outgoing.destinationProposedPlacementId}`}>{next?.label??t("the next draft group","קבוצת הטיוטה הבאה")}</a> · {proposalMovementDate(outgoing.createdAt,locale)} · {t("practitioner ref","מזהה מטפל")} <bdi dir="ltr">{outgoing.recordedBy.slice(0,8)}</bdi></small>}
+      {moveError?.proposalId===item.id&&<p role="alert">{moveError.message}</p>}
+      {moveSaved===item.id&&<p role="status">{t("Proposal movement saved and read back. The original remains in history; no trial, enrollment, message or payment was created.",
+       "העברת ההצעה נשמרה ונקראה בחזרה. המקור נשמר בהיסטוריה; לא נוצרו ניסיון, הרשמה, הודעה או תשלום.")}</p>}
+      {item.proposalStatus==="current"&&(destinations.length===0?<p className={styles.noMove}>{t("No unused draft group is available for this interest. Historical proposals cannot be reused as destinations.",
+       "אין קבוצת טיוטה פנויה להתעניינות זו. לא ניתן להשתמש מחדש בהצעות היסטוריות כיעד.")}</p>:<details className={styles.moveAction}><summary>{t("Move proposal","העברת הצעה")}</summary>
+       <p>{t("The original proposal stays in history. This does not create a trial or enrollment.","ההצעה המקורית נשמרת בהיסטוריה. פעולה זו אינה יוצרת ניסיון או הרשמה.")}</p>
+       <form className={styles.compactForm} onSubmit={event=>void saveMove(event,item)}><label>{t("Unused destination draft group","קבוצת טיוטה פנויה כיעד")}<select name="destinationDraftGroupId" required disabled={moveUncertain===item.id}><option value="">{t("Select one","בחירה")}</option>{destinations.map(destination=><option key={destination.id} value={destination.id}>{destination.label}</option>)}</select></label>
+        <button type="submit" className="lsw-button lsw-button--primary" disabled={Boolean(moveBusy)||moveUncertain!==""&&moveUncertain!==item.id}>{moveBusy===item.id?t("Saving…","שומר…"):moveUncertain===item.id?t("Retry exact same move","ניסיון חוזר לאותה העברה בדיוק"):t("Move proposal","העברת הצעה")}</button></form></details>)}
+     </li>;
+    })}</ul>}
     {placementError?.groupId===group.id&&<p role="alert">{placementError.message}</p>}
     {placementSaved===group.id&&<p role="status">{t("Proposed placement saved and read back. No trial, enrollment, message or payment was created.",
      "הצעת השיבוץ נשמרה ונקראה בחזרה. לא נוצרו ניסיון, הרשמה, הודעה או תשלום.")}</p>}
