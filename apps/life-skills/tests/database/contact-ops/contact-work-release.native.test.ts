@@ -42,6 +42,14 @@ describe('contact work migration-before-code release',()=>{
     await client.query("ALTER TABLE ls_contact_ops.audience_interests DROP CONSTRAINT audience_interests_topic_check, ADD CONSTRAINT audience_interests_topic_check CHECK(topic IS NOT NULL)");
     const drift=await readContactWorkSnapshot(query);expect(drift.audienceInterestReady).toBe(false);expect(drift.extensionDigest).not.toBe(clean.extensionDigest);expect(()=>classifyContactWork(drift)).toThrow('CONTACT_WORK_SCHEMA_STATE_CONFLICT');
    }finally{await client.query('ROLLBACK');}
+   await client.query('BEGIN');try{
+    await client.query("ALTER TABLE ls_contact_ops.audience_interests DROP CONSTRAINT audience_interests_topic_check, ADD CONSTRAINT audience_interests_topic_check CHECK(topic='BNA_CONTENT')");
+    const drift=await readContactWorkSnapshot(query);expect(drift.audienceInterestReady).toBe(false);expect(drift.extensionDigest).not.toBe(clean.extensionDigest);expect(()=>classifyContactWork(drift)).toThrow('CONTACT_WORK_SCHEMA_STATE_CONFLICT');
+   }finally{await client.query('ROLLBACK');}
+   await client.query('BEGIN');try{
+    await client.query('ALTER TABLE ls_contact_ops.audience_interests ALTER COLUMN payload_ciphertext DROP NOT NULL');
+    const drift=await readContactWorkSnapshot(query);expect(drift.audienceInterestReady).toBe(false);expect(drift.extensionDigest).not.toBe(clean.extensionDigest);expect(()=>classifyContactWork(drift)).toThrow('CONTACT_WORK_SCHEMA_STATE_CONFLICT');
+   }finally{await client.query('ROLLBACK');}
   }finally{client.release();}
  },60000);
 });
