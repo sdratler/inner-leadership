@@ -37,6 +37,8 @@ describe('draft group meetings migration 0130 native release proof',()=>{
 
  test('successor and frozen predecessor catalog drift are rejected',async()=>{
   expect((await readDraftGroupMeetingsReleaseSnapshot(tx())).stage).toBe(1);
+  await historical.pool.query('BEGIN');try{await historical.pool.query('CREATE ROLE ls_unexpected_meeting_owner');await historical.pool.query('ALTER TABLE ls_group_admin.draft_meeting_revisions OWNER TO ls_unexpected_meeting_owner');await expect(readDraftGroupMeetingsReleaseSnapshot(tx())).rejects.toThrow('DRAFT_GROUP_MEETINGS_SCHEMA_STATE_CONFLICT');}finally{await historical.pool.query('ROLLBACK');}
+  await historical.pool.query('BEGIN');try{await historical.pool.query('CREATE ROLE ls_unexpected_predecessor_owner');await historical.pool.query('ALTER TABLE ls_group_admin.proposed_placement_moves OWNER TO ls_unexpected_predecessor_owner');await expect(readDraftGroupMeetingsReleaseSnapshot(tx())).rejects.toThrow('DRAFT_GROUP_MEETINGS_BASELINE_SCHEMA_CONFLICT');}finally{await historical.pool.query('ROLLBACK');}
   for(const item of [
    {sql:'ALTER TABLE ls_group_admin.draft_meeting_revisions DROP CONSTRAINT draft_meeting_revisions_previous_fkey',error:'DRAFT_GROUP_MEETINGS_SCHEMA_STATE_CONFLICT'},
    {sql:'ALTER TABLE ls_group_admin.draft_meeting_revisions DISABLE TRIGGER draft_meeting_revisions_immutable',error:'DRAFT_GROUP_MEETINGS_SCHEMA_STATE_CONFLICT'},

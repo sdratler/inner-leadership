@@ -27,6 +27,7 @@ type ColumnRow={table_name:string;column_name:string;data_type:string;not_null:b
 type ConstraintRow={schema_name:string;table_name:string;name:string;type:string;definition:string;local_columns:string[];reference_schema:string|null;reference_table:string|null;reference_columns:string[]};
 type TriggerRow={table_name:string;name:string;function_name:string;definition:string;enabled:string};
 type IndexRow={name:string;definition:string;valid:boolean;ready:boolean;live:boolean};
+type OwnerRow={table_name:string;owner_name:string;expected_owner:string};
 export type DraftGroupMeetingsReleaseSnapshot={stage:0|1;catalogDigest:string;revisionRows:number;operationRows:number};
 
 const expectedColumns=[
@@ -76,12 +77,21 @@ async function readFrozenProposedPlacementMovesPredecessor(db:DraftGroupMeetings
  }});
 }
 
+const predecessorTables=['draft_group_operations','draft_groups','proposed_placement_move_operations','proposed_placement_moves','proposed_placement_operations','proposed_placements'] as const;
+async function readFrozenOwnership(db:DraftGroupMeetingsReleaseQuery){
+ const tables=await db.query<OwnerRow>(`SELECT c.relname AS table_name,pg_get_userbyid(c.relowner) AS owner_name,current_user::text AS expected_owner FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='ls_group_admin' AND c.relname IN ('draft_groups','draft_group_operations','proposed_placements','proposed_placement_operations','proposed_placement_moves','proposed_placement_move_operations') ORDER BY c.relname`);
+ const names=tables.rows.map(row=>row.table_name),expected=tables.rows[0]?.expected_owner;
+ const namesReady=same(names,predecessorTables),tablesReady=!!expected&&tables.rows.every(row=>row.owner_name===expected);
+ if(!namesReady||!tablesReady)throw Error(`DRAFT_GROUP_MEETINGS_BASELINE_OWNER_CONFLICT:names=${namesReady}:${names.join(',')}:tables=${tablesReady}`);
+ return {tables:tables.rows};
+}
+
 export async function readDraftGroupMeetingsReleaseSnapshot(db:DraftGroupMeetingsReleaseQuery):Promise<DraftGroupMeetingsReleaseSnapshot>{
  const existence=await db.query<{successor_absent:boolean}>(`SELECT to_regclass('ls_group_admin.draft_meeting_revisions') IS NULL
   AND to_regclass('ls_group_admin.draft_meeting_operations') IS NULL
   AND to_regclass('ls_group_admin.draft_meeting_revisions_group_history') IS NULL AS successor_absent`);
- if(existence.rows[0]?.successor_absent){try{const predecessor=await readFrozenProposedPlacementMovesPredecessor(db);if(predecessor.stage!==1)throw Error('PROPOSED_PLACEMENT_MOVES_NOT_READY');return {stage:0,catalogDigest:createHash('sha256').update(canonical({predecessor,successorAbsent:true})).digest('hex'),revisionRows:0,operationRows:0};}catch{throw Error('DRAFT_GROUP_MEETINGS_BASELINE_SCHEMA_CONFLICT');}}
- let predecessor;try{predecessor=await readFrozenProposedPlacementMovesPredecessor(db);if(predecessor.stage!==1)throw Error('PROPOSED_PLACEMENT_MOVES_NOT_READY');}catch{throw Error('DRAFT_GROUP_MEETINGS_BASELINE_SCHEMA_CONFLICT');}
+ if(existence.rows[0]?.successor_absent){try{const predecessor=await readFrozenProposedPlacementMovesPredecessor(db),predecessorOwnership=await readFrozenOwnership(db);if(predecessor.stage!==1)throw Error('PROPOSED_PLACEMENT_MOVES_NOT_READY');return {stage:0,catalogDigest:createHash('sha256').update(canonical({predecessor,predecessorOwnership,successorAbsent:true})).digest('hex'),revisionRows:0,operationRows:0};}catch(error){throw Error(`DRAFT_GROUP_MEETINGS_BASELINE_SCHEMA_CONFLICT:${error instanceof Error?error.message:'UNKNOWN'}`);}}
+ let predecessor,predecessorOwnership;try{predecessor=await readFrozenProposedPlacementMovesPredecessor(db);predecessorOwnership=await readFrozenOwnership(db);if(predecessor.stage!==1)throw Error('PROPOSED_PLACEMENT_MOVES_NOT_READY');}catch(error){throw Error(`DRAFT_GROUP_MEETINGS_BASELINE_SCHEMA_CONFLICT:${error instanceof Error?error.message:'UNKNOWN'}`);}
  const columns=await db.query<ColumnRow>(`SELECT c.relname AS table_name,a.attname AS column_name,format_type(a.atttypid,a.atttypmod) AS data_type,a.attnotnull AS not_null,pg_get_expr(d.adbin,d.adrelid) AS default_expression
   FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
   WHERE n.nspname='ls_group_admin' AND c.relname IN ('draft_meeting_revisions','draft_meeting_operations') AND a.attnum>0 AND NOT a.attisdropped ORDER BY c.relname,a.attnum`);
@@ -93,16 +103,17 @@ export async function readDraftGroupMeetingsReleaseSnapshot(db:DraftGroupMeeting
  const triggers=await db.query<TriggerRow>(`SELECT c.relname AS table_name,t.tgname AS name,p.proname AS function_name,pg_get_triggerdef(t.oid,true) AS definition,t.tgenabled::text AS enabled FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace JOIN pg_proc p ON p.oid=t.tgfoid WHERE n.nspname='ls_group_admin' AND c.relname IN ('draft_meeting_revisions','draft_meeting_operations') AND NOT t.tgisinternal ORDER BY c.relname,t.tgname`);
  const indexes=await db.query<IndexRow>(`SELECT c.relname AS name,pg_get_indexdef(i.indexrelid) AS definition,i.indisvalid AS valid,i.indisready AS ready,i.indislive AS live FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid WHERE i.indexrelid=to_regclass('ls_group_admin.draft_meeting_revisions_group_history')`);
  const permissions=await db.query<{tables_allowed:boolean}>(`SELECT NOT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace,LATERAL aclexplode(COALESCE(c.relacl,acldefault('r',c.relowner))) acl WHERE n.nspname='ls_group_admin' AND c.relname IN ('draft_meeting_revisions','draft_meeting_operations') AND acl.grantee<>c.relowner) AS tables_allowed`);
+ const owners=await db.query<OwnerRow>(`SELECT c.relname AS table_name,pg_get_userbyid(c.relowner) AS owner_name,current_user::text AS expected_owner FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='ls_group_admin' AND c.relname IN ('draft_meeting_revisions','draft_meeting_operations') ORDER BY c.relname`);
  const actualColumns=columns.rows.map(row=>[row.table_name,row.column_name,row.data_type,row.not_null,row.default_expression] as const);
  const missingStructural=constraints.filter(spec=>!constraintRows.rows.some(row=>row.schema_name===spec[0]&&row.table_name===spec[1]&&row.name===spec[2]&&row.type===spec[3]&&same(row.local_columns,spec[4])&&row.reference_schema===spec[5]&&row.reference_table===spec[6]&&same(row.reference_columns,spec[7]))).map(spec=>spec[2]);
  const missingChecks=Object.entries(checks).filter(([name,pattern])=>!constraintRows.rows.some(row=>row.name===name&&row.type==='c'&&pattern.test(row.definition))).map(([name])=>name);
  const structural=missingStructural.length===0&&missingChecks.length===0&&constraintRows.rows.length===19;
  const triggerReady=triggers.rows.length===2&&triggers.rows.every(row=>['O','A'].includes(row.enabled)&&row.function_name==='reject_mutation')&&['draft_meeting_revisions_immutable','draft_meeting_operations_immutable'].every(name=>triggers.rows.some(row=>row.name===name));
  const indexReady=indexes.rows.length===1&&indexes.rows[0]!.valid&&indexes.rows[0]!.ready&&indexes.rows[0]!.live&&/\(workspace_id, draft_group_id, occurrence_id, created_at, id\)/i.test(indexes.rows[0]!.definition);
- const columnsReady=same(actualColumns,expectedColumns),permissionsReady=permissions.rows[0]?.tables_allowed===true;
- if(!columnsReady||!structural||!triggerReady||!indexReady||!permissionsReady)throw Error(`DRAFT_GROUP_MEETINGS_SCHEMA_STATE_CONFLICT:columns=${columnsReady}:constraints=${structural}:${constraintRows.rows.length}:missing=${[...missingStructural,...missingChecks].join(',')||'none'}:triggers=${triggerReady}:index=${indexReady}:permissions=${permissionsReady}`);
+ const columnsReady=same(actualColumns,expectedColumns),permissionsReady=permissions.rows[0]?.tables_allowed===true,ownerNames=owners.rows.map(row=>row.table_name),owner=owners.rows[0]?.expected_owner,ownersReady=same(ownerNames,['draft_meeting_operations','draft_meeting_revisions'])&&!!owner&&owners.rows.every(row=>row.owner_name===owner);
+ if(!columnsReady||!structural||!triggerReady||!indexReady||!permissionsReady||!ownersReady)throw Error(`DRAFT_GROUP_MEETINGS_SCHEMA_STATE_CONFLICT:columns=${columnsReady}:constraints=${structural}:${constraintRows.rows.length}:missing=${[...missingStructural,...missingChecks].join(',')||'none'}:triggers=${triggerReady}:index=${indexReady}:permissions=${permissionsReady}:owners=${ownersReady}`);
  const counts=await db.query<{revision_rows:number;operation_rows:number}>(`SELECT (SELECT count(*)::int FROM ls_group_admin.draft_meeting_revisions) AS revision_rows,(SELECT count(*)::int FROM ls_group_admin.draft_meeting_operations) AS operation_rows`),row=counts.rows[0];
- const catalogDigest=createHash('sha256').update(canonical({predecessor,columns:columns.rows,constraints:constraintRows.rows,triggers:triggers.rows,indexes:indexes.rows,permissions:permissions.rows})).digest('hex');
+ const catalogDigest=createHash('sha256').update(canonical({predecessor,predecessorOwnership,columns:columns.rows,constraints:constraintRows.rows,triggers:triggers.rows,indexes:indexes.rows,permissions:permissions.rows,owners:owners.rows})).digest('hex');
  return {stage:1,catalogDigest,revisionRows:row?.revision_rows??0,operationRows:row?.operation_rows??0};
 }
 
