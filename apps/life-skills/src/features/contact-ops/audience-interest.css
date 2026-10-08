@@ -1,0 +1,16 @@
+.lsw.lsu .lsu-audience-total { margin: 0; font-weight: 650; }
+.lsw.lsu .lsu-audience-record { display: grid; gap: 12px; min-width: 0; }
+.lsw.lsu .lsu-audience-record p { margin-block: 4px; }
+.lsw.lsu .lsu-audience-state { font-weight: 650; color: var(--ui-deep, #163f48); }
+.lsw.lsu .lsu-audience-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 20px; margin: 0; }
+.lsw.lsu .lsu-audience-facts dt { font-size: 14px; color: var(--ui-muted, #49676d); }
+.lsw.lsu .lsu-audience-facts dd { margin: 0; overflow-wrap: anywhere; }
+.lsw.lsu .lsu-audience-history { padding-inline-start: 22px; margin-block: 8px 0; overflow-wrap: anywhere; }
+.lsw.lsu .lsu-audience-history li + li { margin-block-start: 16px; }
+.lsw.lsu .lsu-audience-actions > .lsw-button { flex: 0 1 auto; min-inline-size: min(100%, 12rem); min-block-size: 48px; white-space: normal; word-break: normal; overflow-wrap: normal; }
+.lsw.lsu .lsu-audience-record :is(button, summary):focus-visible { outline: 3px solid #245159; outline-offset: 3px; }
+@media (max-width: 600px) {
+ .lsw.lsu .lsu-audience-facts { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+ .lsw.lsu .lsu-audience-actions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+ .lsw.lsu .lsu-audience-actions > .lsw-button { inline-size: 100%; min-inline-size: 0; }
+}
