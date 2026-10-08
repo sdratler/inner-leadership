@@ -55,7 +55,7 @@ const labels = {
 
 export function MarketingAcceptanceFixture({ locale, scenario: rawScenario, query }: { locale: "en" | "he"; scenario?: string | undefined; query: ContentCalendarQuery }) {
   const scenario = marketingAcceptanceScenario(rawScenario);
-  const retained = { role: "practitioner", page: "app/marketing", section: "content_calendar", scenario };
+  const retained = { role: "practitioner", page: "app/marketing", scenario };
   return <>
     <aside className="lsu-state" role="note" data-synthetic-scenario={scenario}>
       <strong>{locale === "he" ? "תרחיש קבלה סינתטי בלבד" : "Synthetic acceptance scenario only"}: {labels[locale][scenario]}</strong>

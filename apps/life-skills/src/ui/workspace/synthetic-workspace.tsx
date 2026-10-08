@@ -6,7 +6,7 @@ import { WorkspaceShell } from "./workspace-shell.tsx";
 import { activeItem, primaryNavigation, navigationGroups, settingsItems, type WorkspaceRole } from "./navigation-model.ts";
 import { UnsavedChangesGuard } from "./draft-guard.tsx";
 import type { ContentCalendarQuery } from "../revamp/marketing-content-calendar.tsx";
-import { MarketingAcceptanceFixture } from "./marketing-acceptance-fixture.tsx";
+import { MarketingAcceptanceFixture, marketingAcceptanceScenario } from "./marketing-acceptance-fixture.tsx";
 export type ReviewRole = WorkspaceRole | "adult" | "student";
 export function SyntheticWorkspacePreview({ locale, role, page, section, mode="developer", marketingScenario, marketingQuery={} }: { locale: Locale; role: ReviewRole; page: string; section?: string|undefined; mode?: "developer"|"sample"; marketingScenario?:string|undefined; marketingQuery?:ContentCalendarQuery|undefined }) {
  const he=locale==="he", shellRole:WorkspaceRole=role==="practitioner"?"practitioner":"parent", planned=role==="adult"||role==="student";
@@ -15,7 +15,8 @@ export function SyntheticWorkspacePreview({ locale, role, page, section, mode="d
  const allowed=[...primaryNavigation[shellRole],...navigationGroups[shellRole].flatMap(g=>g.items),...settingsItems(shellRole),{key:"settings",path:`${base}/settings`,en:"Settings",he:"הגדרות"}];
  const current=allowed.find(p=>p.path===page)?.path??(shellRole==="parent"?"family":"app/calendar");
  const toHref=(path:string)=>sample?`/${locale}/sample?`+new URLSearchParams({page:path}):`/${locale}/dev/ui/workspace?`+new URLSearchParams({role,page:path});
- const languageHref=sample?`/${he?"en":"he"}/sample?`+new URLSearchParams({page:current,...(section==="ads"?{section:"ads"}:{})}):`/${he?"en":"he"}/dev/ui/workspace?`+new URLSearchParams({role,page:current,...(section==="ads"?{section:"ads"}:{})});
+ const marketingLanguageContext:Record<string,string>=current==="app/marketing"&&section==="content_calendar"?Object.fromEntries([["section","content_calendar"],["scenario",marketingAcceptanceScenario(marketingScenario)],...Object.entries(marketingQuery)].filter((entry):entry is [string,string]=>typeof entry[1]==="string")):section==="ads"?{section:"ads"}:{};
+ const languageHref=sample?`/${he?"en":"he"}/sample?`+new URLSearchParams({page:current,...marketingLanguageContext}):`/${he?"en":"he"}/dev/ui/workspace?`+new URLSearchParams({role,page:current,...marketingLanguageContext});
  const selected=activeItem(`/${locale}/${current}`,locale,shellRole);
  const [notice,setNotice]=useState(""),[draft,setDraft]=useState(""),[done,setDone]=useState(false),[week,setWeek]=useState(0),[view,setView]=useState("week");
  const details=useRef<HTMLDialogElement>(null),opener=useRef<HTMLButtonElement|null>(null);

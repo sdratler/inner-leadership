@@ -73,8 +73,9 @@ describe("retained read-only Marketing calendar controls",()=>{
   it("preserves the development acceptance route and scenario across calendar controls and filters",()=>{
     const html=renderToStaticMarkup(React.createElement(MarketingContentCalendar,{locale:"en",snapshot:snapshot([publication("page-one","2026-10-01T17:00:00Z","scheduled","facebook_page")]),query:{layout:"month",month:"2026-10",date:"2026-10-01"},renderedAt:"2026-10-01T08:00:00Z",thumbnail:a=>React.createElement("span",{"data-thumbnail":a.assetId},a.title),navigation:{path:"/en/dev/ui/workspace",retained:{role:"practitioner",page:"app/marketing",section:"content_calendar",scenario:"unknown"}}}));
     expect(html).toContain('action="/en/dev/ui/workspace"');
-    for(const field of [['role','practitioner'],['page','app/marketing'],['section','content_calendar'],['scenario','unknown']])expect(html).toContain(`type="hidden" name="${field[0]}" value="${field[1]}"`);
-    expect(html).toContain('/en/dev/ui/workspace?role=practitioner&amp;page=app%2Fmarketing&amp;section=content_calendar&amp;scenario=unknown&amp;month=2026-10&amp;layout=week');
+    for(const field of [['role','practitioner'],['page','app/marketing'],['scenario','unknown']])expect(html).toContain(`type="hidden" name="${field[0]}" value="${field[1]}"`);
+    expect(html.match(/name="section"/g)).toHaveLength(1);expect(html).toContain('type="hidden" name="section" value="content_calendar"');
+    expect(html).toContain('/en/dev/ui/workspace?role=practitioner&amp;page=app%2Fmarketing&amp;scenario=unknown&amp;section=content_calendar&amp;month=2026-10&amp;layout=week');
   });
   it("normalizes acceptance scenarios and renders the real Marketing dashboard without provider controls",()=>{
     expect(marketingAcceptanceScenario(undefined)).toBe("unconfigured");expect(marketingAcceptanceScenario("constructor")).toBe("unconfigured");expect(marketingAcceptanceScenario("unavailable")).toBe("unavailable");expect(marketingAcceptanceScenario("unknown")).toBe("unknown");
