@@ -6,10 +6,11 @@ export const PROPOSED_PLACEMENT_MOVES_BASELINE={name:'0128_ls_draft_group_placem
 export const PROPOSED_PLACEMENT_MOVES_MIGRATION={name:'0129_ls_proposed_placement_moves.sql',sha256:'ea126f3154913a63479de212e969e018ec543e66a7cfd336d29d2941865a3e60'} as const;
 export const PROPOSED_PLACEMENT_MOVES_SOURCE_PATHS=[
  'package.json','migrations/manifest.json','migrations/0128_ls_draft_group_placements.sql','migrations/0129_ls_proposed_placement_moves.sql',
- 'scripts/release-draft-group-placement.ts','scripts/release-proposed-placement-moves.ts','src/db/draft-group-placement-release.ts','src/db/draft-group-placement-evidence.ts','src/db/proposed-placement-moves-release.ts','src/db/proposed-placement-moves-evidence.ts','src/db/contact-ops-production-guard.ts','src/db/migration-plan.ts','src/db/migration-runner.ts',
- 'src/features/group-placement/contract.ts','src/features/group-placement/http.ts','src/features/group-placement/store.ts','src/features/group-placement/workspace.tsx','src/features/group-placement/workspace.module.css',
- 'src/app/api/private/group-placement/route.ts','src/app/[locale]/app/group-interest/page.tsx','src/app/[locale]/app/layout.tsx','src/features/identity/login-return.ts','src/proxy.ts','src/ui/workspace/core-navigation.tsx','src/ui/workspace/navigation-model.ts','src/ui/workspace/workspace-shell.tsx',
+ 'scripts/release-draft-group-placement.ts','scripts/release-proposed-placement-moves.ts',
 ] as const;
+/** Bind the entire application source tree so no transitive authorization,
+ * production-off, predecessor-classifier or runtime dependency is omitted. */
+export const PROPOSED_PLACEMENT_MOVES_SOURCE_ROOTS=['src'] as const;
 export interface ProposedPlacementMovesReleaseQuery{query<R extends object=Record<string,unknown>>(sql:string,values?:readonly unknown[]):Promise<{rows:R[]}>}
 type ColumnRow={table_name:string;column_name:string;data_type:string;not_null:boolean;default_expression:string|null};
 type ConstraintRow={schema_name:string;table_name:string;name:string;type:string;definition:string;local_columns:string[];reference_schema:string|null;reference_table:string|null;reference_columns:string[]};
