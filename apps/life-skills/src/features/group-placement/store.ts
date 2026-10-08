@@ -11,7 +11,8 @@ import {draftGroupCommandSchema,proposedPlacementCommandSchema,type DraftGroupCo
  type EligibleGroupInterest,type ProposedPlacementCommand,type ProposedPlacementRecord} from "./contract.ts";
 
 type DraftRow={id:string;labelCiphertext:string;recordedBy:string;createdAt:Date;requestDigest:string};
-type InterestRow={id:string;familyId:string;familyCiphertext:string;personId:string;personCiphertext:string;recordedBy:string;createdAt:Date};
+type InterestRow={id:string;familyId:string;familyCiphertext:string;personId:string;personCiphertext:string;
+ sourceInquiryId:string;sourceInquiryCreatedAt:Date;recordedBy:string;createdAt:Date};
 type PlacementRow=InterestRow&{draftGroupId:string;serviceInterestId:string};
 const draftAad=(workspace:string,id:string)=>`ls_group_admin/draft_group/v1/${workspace}/${id}`;
 
@@ -35,9 +36,11 @@ export class GroupPlacementStore{
   }catch{throw new AppError("UNAVAILABLE");}
  }
  private interest(workspace:string,row:InterestRow):EligibleGroupInterest{return {id:row.id,state:"service_interest",serviceType:"group",
-  ...this.identity(workspace,row),recordedBy:row.recordedBy,createdAt:row.createdAt.toISOString()};}
+  ...this.identity(workspace,row),sourceInquiryId:row.sourceInquiryId,sourceInquiryCreatedAt:row.sourceInquiryCreatedAt.toISOString(),
+  recordedBy:row.recordedBy,createdAt:row.createdAt.toISOString()};}
  private placement(workspace:string,row:PlacementRow):ProposedPlacementRecord{return {id:row.id,state:"proposed_placement",
-  draftGroupId:row.draftGroupId,serviceInterestId:row.serviceInterestId,...this.identity(workspace,row),recordedBy:row.recordedBy,createdAt:row.createdAt.toISOString()};}
+  draftGroupId:row.draftGroupId,serviceInterestId:row.serviceInterestId,...this.identity(workspace,row),sourceInquiryId:row.sourceInquiryId,
+  sourceInquiryCreatedAt:row.sourceInquiryCreatedAt.toISOString(),recordedBy:row.recordedBy,createdAt:row.createdAt.toISOString()};}
  private async readDraft(tx:SqlSession,actor:Actor,id:string){
   const rows=await tx.query<DraftRow>(`SELECT id,label_ciphertext AS "labelCiphertext",recorded_by AS "recordedBy",
    created_at AS "createdAt",request_digest AS "requestDigest" FROM ls_group_admin.draft_groups WHERE workspace_id=$1 AND id=$2`,[actor.workspaceId,id]);
@@ -46,7 +49,10 @@ export class GroupPlacementStore{
  private async readPlacement(tx:SqlSession,actor:Actor,id:string){
   const rows=await tx.query<PlacementRow>(`SELECT pp.id,pp.draft_group_id AS "draftGroupId",pp.service_interest_id AS "serviceInterestId",
    pp.family_id AS "familyId",f.label_ciphertext AS "familyCiphertext",pp.person_id AS "personId",p.profile_ciphertext AS "personCiphertext",
+   s.source_inquiry_id AS "sourceInquiryId",i.created_at AS "sourceInquiryCreatedAt",
    pp.recorded_by AS "recordedBy",pp.created_at AS "createdAt" FROM ls_group_admin.proposed_placements pp
+   JOIN ls_service_interest.service_interests s ON s.workspace_id=pp.workspace_id AND s.id=pp.service_interest_id
+   JOIN ls_service_interest.inquiries i ON i.workspace_id=s.workspace_id AND i.id=s.source_inquiry_id
    JOIN ls_cases.families f ON f.workspace_id=pp.workspace_id AND f.id=pp.family_id
    JOIN ls_identity.people p ON p.workspace_id=pp.workspace_id AND p.id=pp.person_id
    WHERE pp.workspace_id=$1 AND pp.id=$2`,[actor.workspaceId,id]);
@@ -107,12 +113,17 @@ export class GroupPlacementStore{
     WHERE workspace_id=$1 ORDER BY created_at DESC,id DESC LIMIT 101`,[actor.workspaceId]);
    const interests=await tx.query<InterestRow>(`SELECT s.id,s.family_id AS "familyId",f.label_ciphertext AS "familyCiphertext",
     s.person_id AS "personId",p.profile_ciphertext AS "personCiphertext",s.recorded_by AS "recordedBy",s.created_at AS "createdAt"
+    ,s.source_inquiry_id AS "sourceInquiryId",i.created_at AS "sourceInquiryCreatedAt"
     FROM ls_service_interest.service_interests s JOIN ls_cases.families f ON f.workspace_id=s.workspace_id AND f.id=s.family_id
     JOIN ls_identity.people p ON p.workspace_id=s.workspace_id AND p.id=s.person_id
+    JOIN ls_service_interest.inquiries i ON i.workspace_id=s.workspace_id AND i.id=s.source_inquiry_id
     WHERE s.workspace_id=$1 AND s.service_type='group' ORDER BY s.created_at DESC,s.id DESC LIMIT 101`,[actor.workspaceId]);
    const placements=await tx.query<PlacementRow>(`SELECT pp.id,pp.draft_group_id AS "draftGroupId",pp.service_interest_id AS "serviceInterestId",
     pp.family_id AS "familyId",f.label_ciphertext AS "familyCiphertext",pp.person_id AS "personId",p.profile_ciphertext AS "personCiphertext",
+    s.source_inquiry_id AS "sourceInquiryId",i.created_at AS "sourceInquiryCreatedAt",
     pp.recorded_by AS "recordedBy",pp.created_at AS "createdAt" FROM ls_group_admin.proposed_placements pp
+    JOIN ls_service_interest.service_interests s ON s.workspace_id=pp.workspace_id AND s.id=pp.service_interest_id
+    JOIN ls_service_interest.inquiries i ON i.workspace_id=s.workspace_id AND i.id=s.source_inquiry_id
     JOIN ls_cases.families f ON f.workspace_id=pp.workspace_id AND f.id=pp.family_id
     JOIN ls_identity.people p ON p.workspace_id=pp.workspace_id AND p.id=pp.person_id
     WHERE pp.workspace_id=$1 ORDER BY pp.created_at DESC,pp.id DESC LIMIT 201`,[actor.workspaceId]);

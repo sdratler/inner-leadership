@@ -3,13 +3,14 @@
  * production, creates CRM/case records for an inquiry, or calls a provider.
  */
 import {spawn,execFileSync,type ChildProcess} from "node:child_process";
-import {randomBytes,randomUUID} from "node:crypto";
+import {createHash,randomBytes,randomUUID} from "node:crypto";
 import {existsSync,mkdtempSync,rmSync,writeFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join,resolve} from "node:path";
 import {once} from "node:events";
 import {request as playwrightRequest} from "@playwright/test";
 import {fixture,safeTestUrl} from "../../database/calendar/fixture.ts";
+import {seal,tokenDigest} from "../../../src/features/identity/crypto.ts";
 
 const projects={desktop:3105,mobile390:3106,mobile340:3107} as const;
 const project=process.env.LS_GROUP_INTEREST_TEST_PROJECT as keyof typeof projects|undefined;
@@ -114,10 +115,21 @@ try{
   SELECT c.workspace_id,c.family_id,cl.person_id,'child' FROM ls_cases.cases c
   JOIN ls_cases.clients cl ON cl.workspace_id=c.workspace_id AND cl.id=c.client_id
   WHERE c.workspace_id=$1 AND c.id=ANY($2::uuid[])`,[workspaceId,[f.first.id,f.second.id]]);
+ async function deniedAccount(role:"adult_client"|"child"|"practitioner",targetWorkspace=workspaceId,revoked=false){
+  if(targetWorkspace!==workspaceId)await f!.pool.query("INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,clock_timestamp())",[targetWorkspace]);
+  const id=randomUUID(),personId=randomUUID(),token=randomBytes(32).toString("base64url"),now=new Date(),kind=role==="child"?"minor":"adult";
+  await f!.pool.query("INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,$3,$4,$5)",[personId,targetWorkspace,kind,seal(JSON.stringify({displayName:`Synthetic denied ${role}`}),`person:${targetWorkspace}:${personId}`,keyring),now]);
+  await f!.pool.query(`INSERT INTO ls_identity.accounts(id,workspace_id,role,state,locale,email_blind,email_ciphertext,email_verified_at,password_hash,created_at,updated_at)
+   VALUES($1,$2,$3,'active','en',$4,$5,$6,'synthetic-non-login-hash',$6,$6)`,[id,targetWorkspace,role,createHash("sha256").update(id).digest("hex"),seal(`synthetic-${id}@example.invalid`,`email:${targetWorkspace}:${id}`,keyring),now]);
+  await f!.pool.query("INSERT INTO ls_identity.account_subjects(workspace_id,account_id,person_id) VALUES($1,$2,$3)",[targetWorkspace,id,personId]);
+  await f!.pool.query("INSERT INTO ls_identity.sessions(token_digest,workspace_id,account_id,created_at,expires_at,revoked_at) VALUES($1,$2,$3,$4,$5,$6)",[tokenDigest(token),targetWorkspace,id,now,new Date(now.getTime()+3600000),revoked?now:null]);
+  return token;
+ }
+ const adult=await deniedAccount("adult_client"),child=await deniedAccount("child"),revoked=await deniedAccount("adult_client",workspaceId,true),otherWorkspace=await deniedAccount("practitioner",randomUUID());
  const baseline=await counts();
  if(baseline.inquiries!==0||baseline.operations!==0||baseline.serviceInterests!==0||baseline.serviceOperations!==0||baseline.draftGroups!==0||baseline.draftOperations!==0||baseline.proposedPlacements!==0||baseline.placementOperations!==0)throw new Error("GROUP_INTEREST_FIXTURE_NOT_EMPTY");
  const runtimePath=join(folder,"synthetic-runtime.json");
- writeFileSync(runtimePath,JSON.stringify({origin,workspaceId,practitioner:f.practitioner.token,parent:f.parent.token}),{mode:0o600});
+ writeFileSync(runtimePath,JSON.stringify({origin,workspaceId,practitioner:f.practitioner.token,parent:f.parent.token,adult,child,revoked,otherWorkspace}),{mode:0o600});
  const key=join(folder,"tls.key"),cert=join(folder,"tls.crt");
  phase="tls-certificate";
  const gitOpenSsl="C:/Program Files/Git/mingw64/bin/openssl.exe",openssl=process.platform==="win32"&&existsSync(gitOpenSsl)?gitOpenSsl:"openssl";
@@ -141,7 +153,7 @@ try{
  phase="boundary-readback";
  const after=await counts();
  if(JSON.stringify(after.otherWorkspaceState)!==JSON.stringify(baseline.otherWorkspaceState))throw new Error("GROUP_INTEREST_WORKSPACE_SIDE_EFFECT");
- if(after.inquiries!==baseline.inquiries+2||after.operations!==baseline.operations+2||after.serviceInterests!==baseline.serviceInterests+3||after.serviceOperations!==baseline.serviceOperations+4||after.draftGroups!==baseline.draftGroups+2||after.draftOperations!==baseline.draftOperations+2||after.proposedPlacements!==baseline.proposedPlacements+2||after.placementOperations!==baseline.placementOperations+4)throw new Error("GROUP_INTEREST_RECEIPT_COUNT_MISMATCH");
- console.log(`GROUP_INTEREST_ACCEPTANCE_PASS project=${project??"all"} inquiries=2 serviceInterests=3 draftGroups=2 proposedPlacements=2 placementOperations=4 sideEffects=0`);
+ if(after.inquiries!==baseline.inquiries+3||after.operations!==baseline.operations+3||after.serviceInterests!==baseline.serviceInterests+4||after.serviceOperations!==baseline.serviceOperations+5||after.draftGroups!==baseline.draftGroups+2||after.draftOperations!==baseline.draftOperations+2||after.proposedPlacements!==baseline.proposedPlacements+2||after.placementOperations!==baseline.placementOperations+4)throw new Error("GROUP_INTEREST_RECEIPT_COUNT_MISMATCH");
+ console.log(`GROUP_INTEREST_ACCEPTANCE_PASS project=${project??"all"} inquiries=3 serviceInterests=4 draftGroups=2 proposedPlacements=2 placementOperations=4 sideEffects=0`);
 }catch(error){console.error(`Group Intake browser verification failed at ${phase} (${error instanceof Error?error.message:"unknown error"}). No production or provider state was used.`);process.exitCode=1;}
 finally{await cleanup();}

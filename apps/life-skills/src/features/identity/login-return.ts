@@ -53,6 +53,7 @@ export function practitionerReturnPath(locale: Locale, page: "calendar" | "clien
 
 /** Named practitioner deep links only; no arbitrary caller/header path is trusted. */
 export function practitionerDetailReturnPath(locale:Locale,pathname:string,query:Record<string,string|string[]|undefined>):string {
+ if(pathname===`/${locale}/app/group-interest`)return pathname;
  if(pathname===`/${locale}/app/marketing`){
   const params=new URLSearchParams(),one=(key:string)=>typeof query[key]==='string'?query[key] as string:'';
   if(['overview','content_calendar','creatives','needs_approval','community','ads'].includes(one('section')))params.set('section',one('section'));

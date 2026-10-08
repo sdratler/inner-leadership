@@ -15,6 +15,10 @@ export function availableGroupInterests(data:GroupPlacementList,groupId:string){
  const placed=new Set(data.proposedPlacements.filter(item=>item.draftGroupId===groupId).map(item=>item.serviceInterestId));
  return data.eligibleGroupInterests.filter(item=>!placed.has(item.id));
 }
+export function groupInterestProvenance(item:Pick<GroupPlacementList["eligibleGroupInterests"][number],"sourceInquiryId"|"sourceInquiryCreatedAt">,locale:Locale){
+ const date=new Intl.DateTimeFormat(locale==="he"?"he-IL":"en-GB",{dateStyle:"short",timeStyle:"short",timeZone:"Asia/Jerusalem"}).format(new Date(item.sourceInquiryCreatedAt));
+ return `${locale==="he"?"פנייה":"Inquiry"} ${date} · ${locale==="he"?"מזהה":"ref"} ${item.sourceInquiryId.slice(0,8)}`;
+}
 export function GroupPlacementWorkspace({locale}:{locale:Locale}){
  const t=(en:string,he:string)=>locale==="he"?he:en;
  const draftForm=useRef<HTMLFormElement>(null),draftPending=useRef<DraftGroupCommand|null>(null),placementPending=useRef<ProposedPlacementCommand|null>(null);
@@ -88,12 +92,12 @@ export function GroupPlacementWorkspace({locale}:{locale:Locale}){
    return <article className={styles.group} key={group.id}><header><p className={styles.state}>{t("Draft group","קבוצת טיוטה")}</p><h3>{group.label}</h3></header>
     <p>{t("Schedule, venue, capacity, fees and participation: Unset.","לוח זמנים, מקום, קיבולת, תשלום והשתתפות: לא מוגדרים.")}</p>
     <h4>{t("Proposed placements","הצעות שיבוץ")}</h4>
-    {placements.length===0?<p>{t("No proposed placements.","אין הצעות שיבוץ.")}</p>:<ul className={styles.placements}>{placements.map(item=><li key={item.id}><span>{item.personLabel} — {item.familyLabel}</span><small>{t("Proposed placement — not a trial or enrollment","הצעת שיבוץ — לא ניסיון ולא הרשמה")}</small></li>)}</ul>}
+    {placements.length===0?<p>{t("No proposed placements.","אין הצעות שיבוץ.")}</p>:<ul className={styles.placements}>{placements.map(item=><li key={item.id}><span>{item.personLabel} — {item.familyLabel}</span><small>{groupInterestProvenance(item,locale)}</small><small>{t("Proposed placement — not a trial or enrollment","הצעת שיבוץ — לא ניסיון ולא הרשמה")}</small></li>)}</ul>}
     {placementError?.groupId===group.id&&<p role="alert">{placementError.message}</p>}
     {placementSaved===group.id&&<p role="status">{t("Proposed placement saved and read back. No trial, enrollment, message or payment was created.",
      "הצעת השיבוץ נשמרה ונקראה בחזרה. לא נוצרו ניסיון, הרשמה, הודעה או תשלום.")}</p>}
     {data.eligibleGroupInterests.length===0?<p>{t("Record a verified group service interest before proposing placement.","יש לרשום התעניינות מאומתת בשירות קבוצה לפני הצעת שיבוץ.")}</p>:available.length===0?<p>{t("Every saved group interest is already proposed for this draft group.","לכל ההתעניינויות השמורות בקבוצה כבר הוצע שיבוץ בקבוצת טיוטה זו.")}</p>:<details className={styles.action}><summary>{t("Propose placement","הצעת שיבוץ")}</summary>
-     <form className={styles.compactForm} onSubmit={event=>void savePlacement(event,group.id)}><label>{t("Saved group service interest","התעניינות שמורה בשירות קבוצה")}<select name="serviceInterestId" required disabled={placementUncertain===group.id}><option value="">{t("Select one","בחירה")}</option>{available.map(item=><option key={item.id} value={item.id}>{item.personLabel} — {item.familyLabel}</option>)}</select></label>
+     <form className={styles.compactForm} onSubmit={event=>void savePlacement(event,group.id)}><label>{t("Saved group service interest","התעניינות שמורה בשירות קבוצה")}<select name="serviceInterestId" required disabled={placementUncertain===group.id}><option value="">{t("Select one","בחירה")}</option>{available.map(item=><option key={item.id} value={item.id}>{item.personLabel} — {item.familyLabel} · {groupInterestProvenance(item,locale)}</option>)}</select></label>
       <button type="submit" className="lsw-button lsw-button--primary" disabled={Boolean(placementBusy)||placementUncertain!==""&&placementUncertain!==group.id}>{placementBusy===group.id?t("Saving…","שומר…"):placementUncertain===group.id?t("Retry same proposal","ניסיון חוזר לאותה הצעה"):t("Save proposed placement","שמירת הצעת שיבוץ")}</button></form></details>}
    </article>;})}
   {draftError&&<p role="alert">{draftError}</p>}{draftSaved&&<p role="status">{t("Draft group saved and read back. No placement, trial or enrollment was created.","קבוצת הטיוטה נשמרה ונקראה בחזרה. לא נוצרו שיבוץ, ניסיון או הרשמה.")}</p>}

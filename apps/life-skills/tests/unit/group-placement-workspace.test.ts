@@ -1,8 +1,9 @@
 import {createElement} from "react";
 import {renderToStaticMarkup} from "react-dom/server";
 import {describe,expect,it} from "vitest";
-import {availableGroupInterests,classifyGroupPlacementSaveFailure,GroupPlacementWorkspace} from "../../src/features/group-placement/workspace.tsx";
+import {availableGroupInterests,classifyGroupPlacementSaveFailure,groupInterestProvenance,GroupPlacementWorkspace} from "../../src/features/group-placement/workspace.tsx";
 import type {GroupPlacementList} from "../../src/features/group-placement/contract.ts";
+import {activeItem,breadcrumbItems,practitionerContext} from "../../src/ui/workspace/navigation-model.ts";
 
 describe("draft group and proposed placement workspace",()=>{
  it.each(["en","he"] as const)("labels the owner-only state boundary in %s",locale=>{
@@ -19,8 +20,22 @@ describe("draft group and proposed placement workspace",()=>{
   expect(classifyGroupPlacementSaveFailure(true,409,true)).toBe("unconfirmed");
  });
  it("keeps the same interest available for other draft groups but not duplicated within one",()=>{
-  const data:GroupPlacementList={draftGroups:[],eligibleGroupInterests:[{id:"interest",state:"service_interest",serviceType:"group",familyId:"family",familyLabel:"Family",personId:"person",personLabel:"Child",recordedBy:"actor",createdAt:"2029-01-01T00:00:00.000Z"}],
-   proposedPlacements:[{id:"proposal",state:"proposed_placement",draftGroupId:"group-a",serviceInterestId:"interest",familyId:"family",familyLabel:"Family",personId:"person",personLabel:"Child",recordedBy:"actor",createdAt:"2029-01-01T00:00:00.000Z"}]};
+  const data:GroupPlacementList={draftGroups:[],eligibleGroupInterests:[{id:"interest",state:"service_interest",serviceType:"group",familyId:"family",familyLabel:"Family",personId:"person",personLabel:"Child",sourceInquiryId:"11111111-1111-4111-8111-111111111111",sourceInquiryCreatedAt:"2029-01-01T00:00:00.000Z",recordedBy:"actor",createdAt:"2029-01-01T00:00:00.000Z"}],
+   proposedPlacements:[{id:"proposal",state:"proposed_placement",draftGroupId:"group-a",serviceInterestId:"interest",familyId:"family",familyLabel:"Family",personId:"person",personLabel:"Child",sourceInquiryId:"11111111-1111-4111-8111-111111111111",sourceInquiryCreatedAt:"2029-01-01T00:00:00.000Z",recordedBy:"actor",createdAt:"2029-01-01T00:00:00.000Z"}]};
   expect(availableGroupInterests(data,"group-a")).toEqual([]);expect(availableGroupInterests(data,"group-b")).toHaveLength(1);
+ });
+ it("gives same-child interests distinct nonclinical inquiry provenance",()=>{
+  const first={sourceInquiryId:"11111111-1111-4111-8111-111111111111",sourceInquiryCreatedAt:"2029-01-01T00:00:00.000Z"};
+  const second={sourceInquiryId:"22222222-2222-4222-8222-222222222222",sourceInquiryCreatedAt:"2029-01-01T00:00:00.000Z"};
+  expect(groupInterestProvenance(first,"en")).toContain("ref 11111111");
+  expect(groupInterestProvenance(second,"en")).toContain("ref 22222222");
+  expect(groupInterestProvenance(first,"en")).not.toBe(groupInterestProvenance(second,"en"));
+  expect(groupInterestProvenance(first,"he")).toContain("מזהה 11111111");
+ });
+ it.each(["en","he"] as const)("integrates the %s route as People > Groups",locale=>{
+  const path=`/${locale}/app/group-interest`;
+  expect(activeItem(path,locale,"practitioner")?.key).toBe("clients");
+  expect(practitionerContext(path,null).find(item=>item.key==="groups")?.path).toBe("app/group-interest");
+  expect(breadcrumbItems(locale,"practitioner",path).map(item=>item.label)).toEqual(locale==="he"?["בית","אנשים","קבוצות"]:["Home","People","Groups"]);
  });
 });

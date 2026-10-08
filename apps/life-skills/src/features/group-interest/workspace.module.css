@@ -1,6 +1,9 @@
 .workspace { gap:20px; align-content:start; }
 .intro { max-inline-size:72ch; margin:0; }
 .form { display:grid; gap:14px; max-inline-size:920px; }
+.newInquiry { max-inline-size:920px; border-block-start:1px solid var(--ui-line,#d5e0e2); padding-block-start:10px; }
+.newInquiry summary { display:flex; align-items:center; min-block-size:48px; cursor:pointer; color:var(--ui-teal,#245159); font-weight:750; }
+.newInquiry[open] summary { margin-block-end:12px; }
 .fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px 20px; margin:0; }
 .field { display:grid; align-content:start; gap:7px; min-inline-size:0; }
 .permission { grid-column:1/-1; display:flex; align-items:flex-start; gap:12px; min-block-size:48px; }

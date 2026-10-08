@@ -180,12 +180,14 @@ describe("actual practitioner Calendar login return perimeter", () => {
     }
     const response=proxy(new NextRequest(`${origin}/he/app/marketing`,{headers:{'x-ls-practitioner-return':'/he/app/reports?mode=demo'}}));
     expect(response.headers.get('x-middleware-request-x-ls-practitioner-return')).toBe('/he/app/marketing');
+    const groups=proxy(new NextRequest(`${origin}/he/app/group-interest?secret=private`,{headers:{'x-ls-practitioner-return':'https://untrusted.invalid'}}));
+    expect(groups.headers.get('x-middleware-request-x-ls-practitioner-return')).toBe('/he/app/group-interest');
   });
 });
 
 describe("actual practice proxy validates transport before header rewriting", () => {
   const origin = "https://life-skills.bneineviimacademy.org";
-  const paths = ["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins", "/api/updates", "/api/owner-digest", "/api/community-threads", "/api/provider-index", "/api/provider-referrals", "/api/private/contact-acquisition", "/api/private/group-interest", "/en/app/marketing", "/he/app/marketing", "/en/app/clients", "/he/app/reports", "/he/app/settings/content-voice", "/en/family/calendar", "/he/client/calendar"];
+  const paths = ["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins", "/api/updates", "/api/owner-digest", "/api/community-threads", "/api/provider-index", "/api/provider-referrals", "/api/private/contact-acquisition", "/api/private/group-interest", "/api/private/group-placement", "/en/app/marketing", "/he/app/marketing", "/en/app/clients", "/he/app/reports", "/he/app/settings/content-voice", "/en/family/calendar", "/he/client/calendar"];
   function configured() {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("LS_APP_MODE", "foundation_locked");

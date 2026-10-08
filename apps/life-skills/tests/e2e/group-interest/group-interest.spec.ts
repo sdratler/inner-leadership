@@ -1,10 +1,11 @@
-/** Mounted authenticated synthetic browser acceptance. No request interception or API mocking. */
+/** Mounted authenticated synthetic browser acceptance. One response-loss fault follows a real upstream commit; no data API is mocked. */
 import {expect,test} from "@playwright/test";
+import type {Request as PlaywrightRequest} from "@playwright/test";
 import {execFile} from "node:child_process";
 import {randomUUID} from "node:crypto";
 import {readFileSync} from "node:fs";
 import {promisify} from "node:util";
-type Runtime={origin:string;workspaceId:string;practitioner:string;parent:string};
+type Runtime={origin:string;workspaceId:string;practitioner:string;parent:string;adult:string;child:string;revoked:string;otherWorkspace:string};
 const runtimePath=process.env.LS_GROUP_INTEREST_FIXTURE_PATH;
 if(!runtimePath){
  if(process.env.LS_GROUP_INTEREST_TEST_RUNNER_ACTIVE==="true")throw new Error("ISOLATED_GROUP_INTEREST_FIXTURE_REQUIRED");
@@ -27,12 +28,23 @@ if(!runtimePath){
   const response=await page.goto(`/${locale}/app/group-interest`);expect(response?.status()).toBe(200);expect((await initialRead).status()).toBe(200);
   const main=page.locator("main");await expect(main).toHaveAttribute("dir",locale==="he"?"rtl":"ltr");
   await expect(page.getByRole("heading",{name:locale==="he"?"התעניינות בקבוצה ובתגבור":"Group and tutoring interest",exact:true})).toBeVisible();
+  const mobile=(page.viewportSize()?.width??1440)<=600;
+  if(!mobile)await expect(page.locator(".lsu-sidebar").getByRole("link",{name:locale==="he"?"אנשים":"People",exact:true})).toHaveAttribute("aria-current","page");
+  const groupsTab=page.getByRole("navigation",{name:locale==="he"?"תצוגות הדף הנוכחי":"Current page views"}).getByRole("link",{name:locale==="he"?"קבוצות":"Groups",exact:true});
+  await expect(groupsTab).toHaveAttribute("aria-current","page");
+  await expect(page.getByRole("navigation",{name:locale==="he"?"המיקום שלכם":"You are here"}).getByText(locale==="he"?"קבוצות":"Groups",{exact:true})).toHaveAttribute("aria-current","page");
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   const skip=page.locator(".lsu-skip"),skipState=async()=>skip.evaluate(element=>{const rect=element.getBoundingClientRect();return {active:document.activeElement===element,top:rect.top,bottom:rect.bottom,scrollY,intersects:rect.bottom>0&&rect.top<innerHeight};});
   const resting=await skipState();expect(resting.active).toBe(false);expect(resting.intersects).toBe(false);expect(resting.bottom).toBeLessThanOrEqual(0);
   await page.keyboard.press("Tab");await expect(skip).toBeFocused();const focused=await skipState();expect(focused.intersects).toBe(true);expect(focused.top).toBeGreaterThanOrEqual(0);await page.screenshot({path:info.outputPath(`group-interest-skip-focused-${locale}-${info.project.name}.png`)});
   await page.keyboard.press("Enter");await expect(page.locator("#lsw-main")).toBeFocused();
-  const inquiryForm=page.locator("form").first(),suffix=`${info.project.name}-${locale}`,parentName=`Synthetic ${suffix} Parent`,childLabel=`Synthetic ${suffix} Child`;
+  if(mobile){await page.getByRole("button",{name:locale==="he"?"פתיחת התפריט":"Open navigation",exact:true}).click();const drawer=page.getByRole("dialog");await expect(drawer.getByRole("link",{name:locale==="he"?"אנשים":"People",exact:true})).toHaveAttribute("aria-current","page");await drawer.getByRole("button",{name:locale==="he"?"סגירת התפריט":"Close navigation",exact:true}).click();}
+  await page.goto(`/${locale}/app/clients`);await page.getByRole("navigation",{name:locale==="he"?"תצוגות הדף הנוכחי":"Current page views"}).getByRole("link",{name:locale==="he"?"קבוצות":"Groups",exact:true}).click();
+  await expect(page).toHaveURL(new RegExp(`/${locale}/app/group-interest$`));await page.goBack();await expect(page).toHaveURL(new RegExp(`/${locale}/app/clients`));await page.goForward();await expect(page).toHaveURL(new RegExp(`/${locale}/app/group-interest$`));
+  const planningHeading=page.getByRole("heading",{name:locale==="he"?"קבוצות טיוטה והצעות שיבוץ":"Draft groups and proposed placements",exact:true});await expect(planningHeading).toBeVisible();
+  const addInquiry=page.locator("details").filter({has:page.getByText(locale==="he"?"רישום פנייה":"Record an inquiry",{exact:true})});await expect(addInquiry).not.toHaveAttribute("open","");
+  expect((await planningHeading.boundingBox())!.y).toBeLessThan((await addInquiry.boundingBox())!.y);await addInquiry.locator("summary").click();
+  const inquiryForm=addInquiry.locator("form"),suffix=`${info.project.name}-${locale}`,parentName=`Synthetic ${suffix} Parent`,childLabel=`Synthetic ${suffix} Child`;
   await inquiryForm.locator('[name="serviceType"]').selectOption(locale==="he"?"group":"group_and_tutoring");
   await inquiryForm.locator('[name="parentName"]').fill(parentName);await inquiryForm.locator('[name="parentPhone"]').fill(locale==="he"?"+972500001111":"+15550001111");
   await inquiryForm.locator('[name="language"]').selectOption(locale);await inquiryForm.locator('[name="childLabel"]').fill(childLabel);await inquiryForm.locator('[name="childAge"]').fill(locale==="he"?"9":"11");
@@ -61,9 +73,18 @@ if(!runtimePath){
   await expect(record.getByRole("status")).toContainText(locale==="he"?"ההתעניינות בשירות נשמרה":"Service interest saved");
   const serviceReplay=await page.request.post(`${data.origin}/api/private/group-interest`,{headers:{Origin:data.origin,"X-CSRF-Token":csrf!},data:serviceBody});
   expect(serviceReplay.status()).toBe(200);expect(await serviceReplay.json()).toMatchObject({ok:true,data:{saved:true,replayed:true,duplicate:true,item:{id:serviceSavedBody.data.item.id}}});
+  let secondGroupInterest:{id:string;sourceInquiryId:string}|null=null;
   if(locale==="en"){
    const duplicate={...serviceBody,operationId:randomUUID()},serviceDuplicate=await page.request.post(`${data.origin}/api/private/group-interest`,{headers:{Origin:data.origin,"X-CSRF-Token":csrf!},data:duplicate});
    expect(serviceDuplicate.status()).toBe(200);expect(await serviceDuplicate.json()).toMatchObject({ok:true,data:{saved:true,replayed:false,duplicate:true,item:{id:serviceSavedBody.data.item.id}}});
+   const secondInquiry={...structuredClone(body),operationId:randomUUID(),fields:{...body.fields,parentName:`Follow-up ${parentName}`,area:"Distinct synthetic follow-up"}};
+   const secondInquiryResponse=await page.request.post(`${data.origin}/api/private/group-interest`,{headers:{Origin:data.origin,"X-CSRF-Token":csrf!},data:secondInquiry});expect(secondInquiryResponse.status()).toBe(200);
+   const secondInquiryBody=await secondInquiryResponse.json();expect(secondInquiryBody).toMatchObject({ok:true,data:{item:{fields:{childLabel}}}});
+   const secondService={...serviceBody,operationId:randomUUID(),inquiryId:secondInquiryBody.data.item.id,serviceType:"group"};
+   const secondServiceResponse=await page.request.post(`${data.origin}/api/private/group-interest`,{headers:{Origin:data.origin,"X-CSRF-Token":csrf!},data:secondService});expect(secondServiceResponse.status()).toBe(200);
+   const secondServiceBody=await secondServiceResponse.json();secondGroupInterest=secondServiceBody.data.item;
+   expect(secondGroupInterest).toMatchObject({sourceInquiryId:secondInquiryBody.data.item.id,personId:serviceSavedBody.data.item.personId,familyId:serviceSavedBody.data.item.familyId,serviceType:"group"});
+   expect(secondGroupInterest!.id).not.toBe(serviceSavedBody.data.item.id);
    await member.selectOption({index:1});await record.locator('[name="serviceType"]').selectOption("tutoring");
    const tutoringResponse=page.waitForResponse(response=>response.request().method()==="POST"&&response.request().postData()?.includes('"serviceType":"tutoring"')===true);
    await record.getByRole("button",{name:"Record service interest",exact:true}).click();expect((await tutoringResponse).status()).toBe(200);
@@ -71,34 +92,62 @@ if(!runtimePath){
   const planning=page.locator("section").filter({has:page.getByRole("heading",{name:locale==="he"?"קבוצות טיוטה והצעות שיבוץ":"Draft groups and proposed placements",exact:true})});
   const addDraft=planning.locator("details").filter({has:page.getByText(locale==="he"?"הוספת קבוצת טיוטה":"Add draft group",{exact:true})});await addDraft.locator("summary").click();
   const groupLabel=locale==="he"?`קבוצת טיוטה ${info.project.name}`:`Synthetic draft ${info.project.name}`;await addDraft.locator('[name="label"]').fill(groupLabel);
-  const draftRequest=page.waitForRequest(request=>request.method()==="POST"&&request.postData()?.includes('"action":"create_draft_group"')===true),draftResponse=page.waitForResponse(response=>response.request().method()==="POST"&&response.request().postData()?.includes('"action":"create_draft_group"')===true);
-  await addDraft.getByRole("button",{name:locale==="he"?"שמירת קבוצת טיוטה":"Save draft group",exact:true}).click();const draftSent=await draftRequest,draftSaved=await draftResponse;expect(draftSaved.status()).toBe(200);
-  const draftSavedBody=await draftSaved.json();expect(draftSavedBody).toMatchObject({ok:true,data:{saved:true,replayed:false,item:{state:"draft_group",label:groupLabel}}});
+  let draftSent:PlaywrightRequest,draftSavedBody:{ok:boolean;data:{saved:boolean;replayed:boolean;item:{id:string;state:string;label:string}}};
+  if(locale==="en"){
+   let interrupted:Record<string,unknown>|null=null;await page.route("**/api/private/group-placement",async route=>{if(route.request().method()==="POST"&&route.request().postData()?.includes('"action":"create_draft_group"')){interrupted=route.request().postDataJSON();const upstream=await route.fetch();expect(upstream.status()).toBe(200);await route.abort("failed");}else await route.continue();},{times:1});
+   await addDraft.getByRole("button",{name:"Save draft group",exact:true}).click();await expect(addDraft.locator('[name="label"]')).toHaveValue(groupLabel);await expect(planning.getByRole("alert")).toContainText("Save is unconfirmed");
+   const retryRequest=page.waitForRequest(request=>request.method()==="POST"&&request.postData()?.includes('"action":"create_draft_group"')===true),retryResponse=page.waitForResponse(response=>response.request().method()==="POST"&&response.request().postData()?.includes('"action":"create_draft_group"')===true);
+   await addDraft.getByRole("button",{name:"Retry same draft group",exact:true}).click();draftSent=await retryRequest;const saved=await retryResponse;expect(saved.status()).toBe(200);draftSavedBody=await saved.json();
+   expect(draftSent.postDataJSON()).toEqual(interrupted);expect(draftSavedBody).toMatchObject({ok:true,data:{saved:true,replayed:true,item:{state:"draft_group",label:groupLabel}}});
+  }else{
+   const draftRequest=page.waitForRequest(request=>request.method()==="POST"&&request.postData()?.includes('"action":"create_draft_group"')===true),draftResponse=page.waitForResponse(response=>response.request().method()==="POST"&&response.request().postData()?.includes('"action":"create_draft_group"')===true);
+   await addDraft.getByRole("button",{name:"שמירת קבוצת טיוטה",exact:true}).click();draftSent=await draftRequest;const saved=await draftResponse;expect(saved.status()).toBe(200);draftSavedBody=await saved.json();expect(draftSavedBody).toMatchObject({ok:true,data:{saved:true,replayed:false,item:{state:"draft_group",label:groupLabel}}});
+  }
   const draftReplay=await page.request.post(`${data.origin}/api/private/group-placement`,{headers:{Origin:data.origin,"X-CSRF-Token":csrf!},data:draftSent.postDataJSON()});expect(draftReplay.status()).toBe(200);expect(await draftReplay.json()).toMatchObject({ok:true,data:{saved:true,replayed:true,item:{id:draftSavedBody.data.item.id}}});
+  const draftConflict=await page.request.post(`${data.origin}/api/private/group-placement`,{headers:{Origin:data.origin,"X-CSRF-Token":csrf!},data:{...draftSent.postDataJSON(),label:`Changed ${groupLabel}`}});expect(draftConflict.status()).toBe(409);
   const groupCard=planning.locator("article").filter({has:page.getByRole("heading",{name:groupLabel,exact:true})});await expect(groupCard.getByText(locale==="he"?"קבוצת טיוטה":"Draft group",{exact:true})).toBeVisible();
   await expect(groupCard.getByText(locale==="he"?"לוח זמנים, מקום, קיבולת, תשלום והשתתפות: לא מוגדרים.":"Schedule, venue, capacity, fees and participation: Unset.",{exact:true})).toBeVisible();
-  const propose=groupCard.locator("details");await propose.locator("summary").click();await propose.locator('[name="serviceInterestId"]').selectOption(serviceSavedBody.data.item.id);
+  const missingPlacement=await page.request.post(`${data.origin}/api/private/group-placement`,{headers:{Origin:data.origin,"X-CSRF-Token":csrf!},data:{action:"propose_group_placement",operationId:randomUUID(),draftGroupId:randomUUID(),serviceInterestId:serviceSavedBody.data.item.id}});expect(missingPlacement.status()).toBe(404);
+  const propose=groupCard.locator("details");await propose.locator("summary").click();const proposalSelect=propose.locator('[name="serviceInterestId"]');
+  await expect(proposalSelect.locator(`option[value="${serviceSavedBody.data.item.id}"]`)).toContainText(serviceSavedBody.data.item.sourceInquiryId.slice(0,8));
+  if(secondGroupInterest)await expect(proposalSelect.locator(`option[value="${secondGroupInterest.id}"]`)).toContainText(secondGroupInterest.sourceInquiryId.slice(0,8));
+  await proposalSelect.selectOption(serviceSavedBody.data.item.id);
   const placementRequest=page.waitForRequest(request=>request.method()==="POST"&&request.postData()?.includes('"action":"propose_group_placement"')===true),placementResponse=page.waitForResponse(response=>response.request().method()==="POST"&&response.request().postData()?.includes('"action":"propose_group_placement"')===true);
   await propose.getByRole("button",{name:locale==="he"?"שמירת הצעת שיבוץ":"Save proposed placement",exact:true}).click();const placementSent=await placementRequest,placementSaved=await placementResponse;expect(placementSaved.status()).toBe(200);
   const placementSavedBody=await placementSaved.json();expect(placementSavedBody).toMatchObject({ok:true,data:{saved:true,replayed:false,duplicate:false,item:{state:"proposed_placement",draftGroupId:draftSavedBody.data.item.id,serviceInterestId:serviceSavedBody.data.item.id}}});
   await expect(groupCard.getByText(locale==="he"?"הצעת שיבוץ — לא ניסיון ולא הרשמה":"Proposed placement — not a trial or enrollment",{exact:true})).toBeVisible();
   const placementReplay=await page.request.post(`${data.origin}/api/private/group-placement`,{headers:{Origin:data.origin,"X-CSRF-Token":csrf!},data:placementSent.postDataJSON()});expect(placementReplay.status()).toBe(200);expect(await placementReplay.json()).toMatchObject({ok:true,data:{saved:true,replayed:true,duplicate:true,item:{id:placementSavedBody.data.item.id}}});
+  const placementConflict=await page.request.post(`${data.origin}/api/private/group-placement`,{headers:{Origin:data.origin,"X-CSRF-Token":csrf!},data:{...placementSent.postDataJSON(),serviceInterestId:randomUUID()}});expect(placementConflict.status()).toBe(409);
   if(locale==="en"){const duplicate={...placementSent.postDataJSON(),operationId:randomUUID()},placementDuplicate=await page.request.post(`${data.origin}/api/private/group-placement`,{headers:{Origin:data.origin,"X-CSRF-Token":csrf!},data:duplicate});expect(placementDuplicate.status()).toBe(200);expect(await placementDuplicate.json()).toMatchObject({ok:true,data:{saved:true,replayed:false,duplicate:true,item:{id:placementSavedBody.data.item.id}}});}
   await page.reload();await expect(page.getByRole("heading",{name:`${parentName} — ${childLabel}`,exact:true})).toHaveCount(1);await expect(page.getByText(`Stale ${parentName}`,{exact:false})).toHaveCount(0);
   const reopened=page.locator("article").filter({has:page.getByRole("heading",{name:`${parentName} — ${childLabel}`,exact:true})});
   await expect(reopened.getByText(locale==="he"?"התעניינויות בשירות שנרשמו":"Recorded service interests",{exact:true})).toBeVisible();
   await expect(reopened.getByRole("listitem")).toHaveCount(locale==="en"?2:1);
-  const unsaved=`Unsaved ${parentName}`;await inquiryForm.locator('[name="parentName"]').fill(unsaved);await inquiryForm.locator('[name="childLabel"]').fill(`Unsaved ${childLabel}`);await inquiryForm.locator('[name="childAge"]').fill("8");
+  await addInquiry.locator("summary").click();const unsaved=`Unsaved ${parentName}`;await inquiryForm.locator('[name="parentName"]').fill(unsaved);await inquiryForm.locator('[name="childLabel"]').fill(`Unsaved ${childLabel}`);await inquiryForm.locator('[name="childAge"]').fill("8");
   await inquiryForm.locator('[name="parentPhone"]').fill("+15550002222");await inquiryForm.locator('[name="permissionSource"]').selectOption("written");await inquiryForm.locator('[name="permissionLanguage"]').selectOption(locale);
   await inquiryForm.getByRole("button",{name:locale==="he"?"שמירת התעניינות":"Save interest",exact:true}).click();
   await expect(inquiryForm.locator('[name="permission"]')).not.toBeChecked();await expect(inquiryForm.locator('[name="parentName"]')).toHaveValue(unsaved);
   const afterInvalid=await skipState();expect(afterInvalid.active).toBe(false);expect(afterInvalid.intersects).toBe(false);expect(afterInvalid.bottom).toBeLessThanOrEqual(0);expect(await page.evaluate(()=>document.activeElement?.getAttribute("name"))).toBe("permission");
-  await page.screenshot({path:info.outputPath(`group-interest-and-placement-${locale}-${info.project.name}.png`),fullPage:true});
+  await addInquiry.locator("summary").click();await expect(addInquiry).not.toHaveAttribute("open","");await addInquiry.locator("summary").click();await expect(inquiryForm.locator('[name="parentName"]')).toHaveValue(unsaved);await addInquiry.locator("summary").click();
+  await page.locator("#lsw-main").focus();await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:info.outputPath(`group-interest-and-placement-${locale}-${info.project.name}.png`)});
  });
  test("parent is denied the owner-only page and API without disclosure",async({page,context},info)=>{
   await context.addCookies([{name:"__Host-ls-session",value:data.parent,url:data.origin,httpOnly:true,secure:true,sameSite:"Lax"}]);
   for(const locale of ["en","he"]){const denied=await page.goto(`/${locale}/app/group-interest`);expect([200,404]).toContain(denied?.status());await expect(page.getByRole("heading",{name:locale==="he"?"העמוד אינו זמין":"Page unavailable",exact:true})).toBeVisible();await expect(page.getByRole("heading",{name:/Group and tutoring interest|התעניינות בקבוצה ובתגבור/})).toHaveCount(0);await expect(page.locator('form')).toHaveCount(0);expect(await page.locator("body").innerText()).not.toContain(`Synthetic ${info.project.name}-${locale} Parent`);}
   const api=await page.request.get(`${data.origin}/api/private/group-interest`);expect(api.status()).toBe(403);expect(await api.text()).not.toContain("Synthetic");
   const placementApi=await page.request.get(`${data.origin}/api/private/group-placement`);expect(placementApi.status()).toBe(403);expect(await placementApi.text()).not.toContain("Synthetic");
+ });
+ test("adult, child, revoked and other-workspace sessions cannot open or read owner planning",async({page,context})=>{
+  for(const [kind,token] of Object.entries({adult:data.adult,child:data.child,revoked:data.revoked,otherWorkspace:data.otherWorkspace})){
+   await context.clearCookies();await context.addCookies([{name:"__Host-ls-session",value:token,url:data.origin,httpOnly:true,secure:true,sameSite:"Lax"}]);
+   const response=await page.goto("/en/app/group-interest");expect([200,404]).toContain(response?.status());await expect(page.getByRole("heading",{name:"Group and tutoring interest",exact:true})).toHaveCount(0);
+   expect(page.url().includes("/en/login")||await page.getByRole("heading",{name:"Page unavailable",exact:true}).count()===1,kind).toBe(true);expect(await page.locator("body").innerText()).not.toContain("Synthetic draft");
+   const interest=await page.request.get(`${data.origin}/api/private/group-interest`),placement=await page.request.get(`${data.origin}/api/private/group-placement`);
+   expect([401,403],kind).toContain(interest.status());expect([401,403],kind).toContain(placement.status());expect(await interest.text()).not.toContain("Synthetic draft");expect(await placement.text()).not.toContain("Synthetic draft");
+  }
+ });
+ test("an unauthenticated Groups deep link keeps its exact ordinary-login return",async({page,context})=>{
+  await context.clearCookies();await page.goto("/en/app/group-interest");await expect(page.getByRole("region",{name:"Sign in to Life Skills",exact:true})).toBeVisible();const login=new URL(page.url());expect(login.pathname).toBe("/en/login");expect(login.searchParams.get("next")).toBe("/en/app/group-interest");
+  await context.addCookies([{name:"__Host-ls-session",value:data.practitioner,url:data.origin,httpOnly:true,secure:true,sameSite:"Lax"}]);await page.reload();await expect(page.getByRole("heading",{name:"Group and tutoring interest",exact:true})).toBeVisible();
  });
 }
