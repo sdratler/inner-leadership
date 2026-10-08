@@ -3,6 +3,7 @@ import {useCallback,useEffect,useRef,useState} from "react";
 import type {FormEvent} from "react";
 import type {Locale} from "../../lib/locale.ts";
 import {sessionInfo} from "../identity/client.ts";
+import {GroupPlacementWorkspace} from "../group-placement/workspace.tsx";
 import {interestCommandSchema,interestNotice,serviceInterestCommandSchema,type InterestCommand,type InterestList,
  type InterestRecord,type ServiceInterestCommand} from "./contract.ts";
 import styles from "./workspace.module.css";
@@ -150,5 +151,6 @@ export function GroupInterestWorkspace({locale}:{locale:Locale}){
     </form>}
   </article>})}
   {data?.hasMore&&<p>{t("Showing the latest 50; older inquiries remain saved.","מוצגות 50 הפניות האחרונות; פניות קודמות נשארות שמורות.")}</p>}
+  <GroupPlacementWorkspace locale={locale}/>
  </section>;
 }

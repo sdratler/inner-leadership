@@ -27,10 +27,11 @@ process.once("SIGTERM",()=>{void cleanup().finally(()=>process.exit(143));});
 process.once("SIGINT",()=>{void cleanup().finally(()=>process.exit(130));});
 
 type WorkspaceSnapshot={count:number;snapshot:string};
-type BoundaryCounts={inquiries:number;operations:number;serviceInterests:number;serviceOperations:number;otherWorkspaceState:Record<string,WorkspaceSnapshot>};
+type BoundaryCounts={inquiries:number;operations:number;serviceInterests:number;serviceOperations:number;draftGroups:number;draftOperations:number;proposedPlacements:number;placementOperations:number;otherWorkspaceState:Record<string,WorkspaceSnapshot>};
 const quoteIdentifier=(value:string)=>`"${value.replaceAll('"','""')}"`;
 async function counts():Promise<BoundaryCounts>{
- const allowed=new Set(["ls_service_interest.inquiries","ls_service_interest.operations","ls_service_interest.service_interests","ls_service_interest.service_interest_operations"]);
+ const allowed=new Set(["ls_service_interest.inquiries","ls_service_interest.operations","ls_service_interest.service_interests","ls_service_interest.service_interest_operations",
+  "ls_group_admin.draft_groups","ls_group_admin.draft_group_operations","ls_group_admin.proposed_placements","ls_group_admin.proposed_placement_operations"]);
  const inventory=await f!.pool.query<{schema:string;table:string}>(`SELECT c.table_schema AS schema,c.table_name AS table
   FROM information_schema.columns c JOIN information_schema.tables t ON t.table_schema=c.table_schema AND t.table_name=c.table_name
   WHERE c.column_name='workspace_id' AND c.table_schema LIKE 'ls\\_%' ESCAPE '\\' AND t.table_type='BASE TABLE'
@@ -42,11 +43,15 @@ async function counts():Promise<BoundaryCounts>{
    FROM ${quoteIdentifier(row.schema)}.${quoteIdentifier(row.table)} AS source WHERE workspace_id=$1`,[f!.workspaceId]);
   otherWorkspaceState[name]=result.rows[0]??{count:0,snapshot:"[]"};
  }
- const result=await f!.pool.query<{inquiries:number;operations:number;serviceInterests:number;serviceOperations:number}>(`SELECT
+ const result=await f!.pool.query<Omit<BoundaryCounts,"otherWorkspaceState">>(`SELECT
   (SELECT count(*)::integer FROM ls_service_interest.inquiries WHERE workspace_id=$1) AS inquiries,
   (SELECT count(*)::integer FROM ls_service_interest.operations WHERE workspace_id=$1) AS operations,
   (SELECT count(*)::integer FROM ls_service_interest.service_interests WHERE workspace_id=$1) AS "serviceInterests",
-  (SELECT count(*)::integer FROM ls_service_interest.service_interest_operations WHERE workspace_id=$1) AS "serviceOperations"`,[f!.workspaceId]);
+  (SELECT count(*)::integer FROM ls_service_interest.service_interest_operations WHERE workspace_id=$1) AS "serviceOperations",
+  (SELECT count(*)::integer FROM ls_group_admin.draft_groups WHERE workspace_id=$1) AS "draftGroups",
+  (SELECT count(*)::integer FROM ls_group_admin.draft_group_operations WHERE workspace_id=$1) AS "draftOperations",
+  (SELECT count(*)::integer FROM ls_group_admin.proposed_placements WHERE workspace_id=$1) AS "proposedPlacements",
+  (SELECT count(*)::integer FROM ls_group_admin.proposed_placement_operations WHERE workspace_id=$1) AS "placementOperations"`,[f!.workspaceId]);
  return {...result.rows[0]!,otherWorkspaceState};
 }
 
@@ -81,6 +86,27 @@ async function verifyDurableChildIdentity(){
   [f!.workspaceId,member.familyId,member.personId]);
 }
 
+async function verifyGroupPlacementDatabaseBoundary(){
+ const placement=(await f!.pool.query<{id:string;draftGroupId:string;serviceInterestId:string;familyId:string;personId:string;recordedBy:string;requestDigest:string}>(`SELECT id,draft_group_id AS "draftGroupId",service_interest_id AS "serviceInterestId",family_id AS "familyId",person_id AS "personId",recorded_by AS "recordedBy",request_digest AS "requestDigest"
+  FROM ls_group_admin.proposed_placements WHERE workspace_id=$1 ORDER BY created_at,id LIMIT 1`,[f!.workspaceId])).rows[0];
+ if(!placement)throw new Error("GROUP_PLACEMENT_FIXTURE_MISSING");
+ await f!.pool.query("UPDATE ls_group_admin.proposed_placements SET person_id=$1 WHERE workspace_id=$2 AND id=$3",[randomUUID(),f!.workspaceId,placement.id]).then(()=>{throw new Error("GROUP_PLACEMENT_MUTATION_ACCEPTED");},error=>{if(error?.code!=="23514")throw error;});
+ const tutoring=(await f!.pool.query<{id:string;familyId:string;personId:string}>(`SELECT id,family_id AS "familyId",person_id AS "personId" FROM ls_service_interest.service_interests
+  WHERE workspace_id=$1 AND service_type='tutoring' ORDER BY created_at,id LIMIT 1`,[f!.workspaceId])).rows[0];
+ if(!tutoring)throw new Error("GROUP_PLACEMENT_TUTORING_FIXTURE_MISSING");
+ await f!.pool.query(`INSERT INTO ls_group_admin.proposed_placements(workspace_id,id,draft_group_id,service_interest_id,service_type,family_id,person_id,recorded_by,request_digest,created_at)
+  VALUES($1,$2,$3,$4,'group',$5,$6,$7,$8,clock_timestamp())`,[f!.workspaceId,randomUUID(),placement.draftGroupId,tutoring.id,tutoring.familyId,tutoring.personId,placement.recordedBy,"9".repeat(64)]).then(()=>{throw new Error("GROUP_PLACEMENT_TUTORING_ACCEPTED");},error=>{if(error?.code!=="23503")throw error;});
+ await f!.pool.query(`INSERT INTO ls_group_admin.proposed_placements(workspace_id,id,draft_group_id,service_interest_id,service_type,family_id,person_id,recorded_by,request_digest,created_at)
+  VALUES($1,$2,$3,$4,'group',$5,$6,$7,$8,clock_timestamp())`,[f!.workspaceId,randomUUID(),placement.draftGroupId,placement.serviceInterestId,placement.familyId,placement.personId,placement.recordedBy,"8".repeat(64)]).then(()=>{throw new Error("GROUP_PLACEMENT_DUPLICATE_ACCEPTED");},error=>{if(error?.code!=="23505")throw error;});
+ const operationId=randomUUID(),first=await f!.pool.connect(),second=await f!.pool.connect();try{
+  await first.query("BEGIN");await first.query(`INSERT INTO ls_group_admin.proposed_placement_operations
+   (workspace_id,operation_id,recorded_by,request_digest,proposed_placement_id) VALUES($1,$2,$3,$4,$5)`,[f!.workspaceId,operationId,placement.recordedBy,placement.requestDigest,placement.id]);
+  let settled=false;const duplicate=second.query(`INSERT INTO ls_group_admin.proposed_placement_operations
+   (workspace_id,operation_id,recorded_by,request_digest,proposed_placement_id) VALUES($1,$2,$3,$4,$5)`,[f!.workspaceId,operationId,placement.recordedBy,placement.requestDigest,placement.id]).then(()=>{settled=true;return null;},error=>{settled=true;return error;});
+  await new Promise(resolve=>setTimeout(resolve,100));if(settled)throw new Error("GROUP_PLACEMENT_RACE_DID_NOT_BLOCK");await first.query("COMMIT");const error=await duplicate;if(error?.code!=="23505")throw new Error("GROUP_PLACEMENT_DUPLICATE_RACE_ACCEPTED");
+ }catch(error){await first.query("ROLLBACK").catch(()=>undefined);throw error;}finally{first.release();second.release();}
+}
+
 try{
  const workspaceId=randomUUID(),dataKey=randomBytes(32),lookupKey=randomBytes(32),keyring={activeKeyId:"synthetic",keys:{synthetic:dataKey}};
  f=await fixture({workspaceId,keyring,termsVersion:"Synthetic Group Interest"});
@@ -89,7 +115,7 @@ try{
   JOIN ls_cases.clients cl ON cl.workspace_id=c.workspace_id AND cl.id=c.client_id
   WHERE c.workspace_id=$1 AND c.id=ANY($2::uuid[])`,[workspaceId,[f.first.id,f.second.id]]);
  const baseline=await counts();
- if(baseline.inquiries!==0||baseline.operations!==0||baseline.serviceInterests!==0||baseline.serviceOperations!==0)throw new Error("GROUP_INTEREST_FIXTURE_NOT_EMPTY");
+ if(baseline.inquiries!==0||baseline.operations!==0||baseline.serviceInterests!==0||baseline.serviceOperations!==0||baseline.draftGroups!==0||baseline.draftOperations!==0||baseline.proposedPlacements!==0||baseline.placementOperations!==0)throw new Error("GROUP_INTEREST_FIXTURE_NOT_EMPTY");
  const runtimePath=join(folder,"synthetic-runtime.json");
  writeFileSync(runtimePath,JSON.stringify({origin,workspaceId,practitioner:f.practitioner.token,parent:f.parent.token}),{mode:0o600});
  const key=join(folder,"tls.key"),cert=join(folder,"tls.crt");
@@ -111,10 +137,11 @@ try{
  tests=spawn(process.execPath,[resolve("node_modules/@playwright/test/cli.js"),"test","--config","tests/e2e/group-interest/playwright.config.ts",...selection],{env,stdio:["ignore","inherit","inherit"]});
  const [code]=await once(tests,"exit");if(code!==0)throw new Error("GROUP_INTEREST_BROWSER_ACCEPTANCE_FAILED");
  phase="durable-child-identity";await verifyDurableChildIdentity();
+ phase="group-placement-database-boundary";await verifyGroupPlacementDatabaseBoundary();
  phase="boundary-readback";
  const after=await counts();
  if(JSON.stringify(after.otherWorkspaceState)!==JSON.stringify(baseline.otherWorkspaceState))throw new Error("GROUP_INTEREST_WORKSPACE_SIDE_EFFECT");
- if(after.inquiries!==baseline.inquiries+2||after.operations!==baseline.operations+2||after.serviceInterests!==baseline.serviceInterests+3||after.serviceOperations!==baseline.serviceOperations+4)throw new Error("GROUP_INTEREST_RECEIPT_COUNT_MISMATCH");
- console.log(`GROUP_INTEREST_ACCEPTANCE_PASS project=${project??"all"} inquiries=2 inquiryReplays=2 serviceInterests=3 serviceOperations=4 sideEffects=0`);
+ if(after.inquiries!==baseline.inquiries+2||after.operations!==baseline.operations+2||after.serviceInterests!==baseline.serviceInterests+3||after.serviceOperations!==baseline.serviceOperations+4||after.draftGroups!==baseline.draftGroups+2||after.draftOperations!==baseline.draftOperations+2||after.proposedPlacements!==baseline.proposedPlacements+2||after.placementOperations!==baseline.placementOperations+4)throw new Error("GROUP_INTEREST_RECEIPT_COUNT_MISMATCH");
+ console.log(`GROUP_INTEREST_ACCEPTANCE_PASS project=${project??"all"} inquiries=2 serviceInterests=3 draftGroups=2 proposedPlacements=2 placementOperations=4 sideEffects=0`);
 }catch(error){console.error(`Group Intake browser verification failed at ${phase} (${error instanceof Error?error.message:"unknown error"}). No production or provider state was used.`);process.exitCode=1;}
 finally{await cleanup();}

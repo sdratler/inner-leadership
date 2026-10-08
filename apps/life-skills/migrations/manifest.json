@@ -186,5 +186,9 @@
   {
     "name": "0127_ls_service_interests.sql",
     "sha256": "af9b7f061682453d4595bfef9f1a9226b1daa955ec518d7bd9d959cd352caf6a"
+  },
+  {
+    "name": "0128_ls_draft_group_placements.sql",
+    "sha256": "08eafdc0f7f5d6ca164b2f483a2e1edf947aa80c076ff370a1cf60504e006bb2"
   }
 ]

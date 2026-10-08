@@ -68,6 +68,22 @@ if(!runtimePath){
    const tutoringResponse=page.waitForResponse(response=>response.request().method()==="POST"&&response.request().postData()?.includes('"serviceType":"tutoring"')===true);
    await record.getByRole("button",{name:"Record service interest",exact:true}).click();expect((await tutoringResponse).status()).toBe(200);
   }
+  const planning=page.locator("section").filter({has:page.getByRole("heading",{name:locale==="he"?"קבוצות טיוטה והצעות שיבוץ":"Draft groups and proposed placements",exact:true})});
+  const addDraft=planning.locator("details").filter({has:page.getByText(locale==="he"?"הוספת קבוצת טיוטה":"Add draft group",{exact:true})});await addDraft.locator("summary").click();
+  const groupLabel=locale==="he"?`קבוצת טיוטה ${info.project.name}`:`Synthetic draft ${info.project.name}`;await addDraft.locator('[name="label"]').fill(groupLabel);
+  const draftRequest=page.waitForRequest(request=>request.method()==="POST"&&request.postData()?.includes('"action":"create_draft_group"')===true),draftResponse=page.waitForResponse(response=>response.request().method()==="POST"&&response.request().postData()?.includes('"action":"create_draft_group"')===true);
+  await addDraft.getByRole("button",{name:locale==="he"?"שמירת קבוצת טיוטה":"Save draft group",exact:true}).click();const draftSent=await draftRequest,draftSaved=await draftResponse;expect(draftSaved.status()).toBe(200);
+  const draftSavedBody=await draftSaved.json();expect(draftSavedBody).toMatchObject({ok:true,data:{saved:true,replayed:false,item:{state:"draft_group",label:groupLabel}}});
+  const draftReplay=await page.request.post(`${data.origin}/api/private/group-placement`,{headers:{Origin:data.origin,"X-CSRF-Token":csrf!},data:draftSent.postDataJSON()});expect(draftReplay.status()).toBe(200);expect(await draftReplay.json()).toMatchObject({ok:true,data:{saved:true,replayed:true,item:{id:draftSavedBody.data.item.id}}});
+  const groupCard=planning.locator("article").filter({has:page.getByRole("heading",{name:groupLabel,exact:true})});await expect(groupCard.getByText(locale==="he"?"קבוצת טיוטה":"Draft group",{exact:true})).toBeVisible();
+  await expect(groupCard.getByText(locale==="he"?"לוח זמנים, מקום, קיבולת, תשלום והשתתפות: לא מוגדרים.":"Schedule, venue, capacity, fees and participation: Unset.",{exact:true})).toBeVisible();
+  const propose=groupCard.locator("details");await propose.locator("summary").click();await propose.locator('[name="serviceInterestId"]').selectOption(serviceSavedBody.data.item.id);
+  const placementRequest=page.waitForRequest(request=>request.method()==="POST"&&request.postData()?.includes('"action":"propose_group_placement"')===true),placementResponse=page.waitForResponse(response=>response.request().method()==="POST"&&response.request().postData()?.includes('"action":"propose_group_placement"')===true);
+  await propose.getByRole("button",{name:locale==="he"?"שמירת הצעת שיבוץ":"Save proposed placement",exact:true}).click();const placementSent=await placementRequest,placementSaved=await placementResponse;expect(placementSaved.status()).toBe(200);
+  const placementSavedBody=await placementSaved.json();expect(placementSavedBody).toMatchObject({ok:true,data:{saved:true,replayed:false,duplicate:false,item:{state:"proposed_placement",draftGroupId:draftSavedBody.data.item.id,serviceInterestId:serviceSavedBody.data.item.id}}});
+  await expect(groupCard.getByText(locale==="he"?"הצעת שיבוץ — לא ניסיון ולא הרשמה":"Proposed placement — not a trial or enrollment",{exact:true})).toBeVisible();
+  const placementReplay=await page.request.post(`${data.origin}/api/private/group-placement`,{headers:{Origin:data.origin,"X-CSRF-Token":csrf!},data:placementSent.postDataJSON()});expect(placementReplay.status()).toBe(200);expect(await placementReplay.json()).toMatchObject({ok:true,data:{saved:true,replayed:true,duplicate:true,item:{id:placementSavedBody.data.item.id}}});
+  if(locale==="en"){const duplicate={...placementSent.postDataJSON(),operationId:randomUUID()},placementDuplicate=await page.request.post(`${data.origin}/api/private/group-placement`,{headers:{Origin:data.origin,"X-CSRF-Token":csrf!},data:duplicate});expect(placementDuplicate.status()).toBe(200);expect(await placementDuplicate.json()).toMatchObject({ok:true,data:{saved:true,replayed:false,duplicate:true,item:{id:placementSavedBody.data.item.id}}});}
   await page.reload();await expect(page.getByRole("heading",{name:`${parentName} — ${childLabel}`,exact:true})).toHaveCount(1);await expect(page.getByText(`Stale ${parentName}`,{exact:false})).toHaveCount(0);
   const reopened=page.locator("article").filter({has:page.getByRole("heading",{name:`${parentName} — ${childLabel}`,exact:true})});
   await expect(reopened.getByText(locale==="he"?"התעניינויות בשירות שנרשמו":"Recorded service interests",{exact:true})).toBeVisible();
@@ -77,11 +93,12 @@ if(!runtimePath){
   await inquiryForm.getByRole("button",{name:locale==="he"?"שמירת התעניינות":"Save interest",exact:true}).click();
   await expect(inquiryForm.locator('[name="permission"]')).not.toBeChecked();await expect(inquiryForm.locator('[name="parentName"]')).toHaveValue(unsaved);
   const afterInvalid=await skipState();expect(afterInvalid.active).toBe(false);expect(afterInvalid.intersects).toBe(false);expect(afterInvalid.bottom).toBeLessThanOrEqual(0);expect(await page.evaluate(()=>document.activeElement?.getAttribute("name"))).toBe("permission");
-  await page.screenshot({path:info.outputPath(`group-interest-${locale}-${info.project.name}.png`),fullPage:true});
+  await page.screenshot({path:info.outputPath(`group-interest-and-placement-${locale}-${info.project.name}.png`),fullPage:true});
  });
  test("parent is denied the owner-only page and API without disclosure",async({page,context},info)=>{
   await context.addCookies([{name:"__Host-ls-session",value:data.parent,url:data.origin,httpOnly:true,secure:true,sameSite:"Lax"}]);
   for(const locale of ["en","he"]){const denied=await page.goto(`/${locale}/app/group-interest`);expect([200,404]).toContain(denied?.status());await expect(page.getByRole("heading",{name:locale==="he"?"העמוד אינו זמין":"Page unavailable",exact:true})).toBeVisible();await expect(page.getByRole("heading",{name:/Group and tutoring interest|התעניינות בקבוצה ובתגבור/})).toHaveCount(0);await expect(page.locator('form')).toHaveCount(0);expect(await page.locator("body").innerText()).not.toContain(`Synthetic ${info.project.name}-${locale} Parent`);}
   const api=await page.request.get(`${data.origin}/api/private/group-interest`);expect(api.status()).toBe(403);expect(await api.text()).not.toContain("Synthetic");
+  const placementApi=await page.request.get(`${data.origin}/api/private/group-placement`);expect(placementApi.status()).toBe(403);expect(await placementApi.text()).not.toContain("Synthetic");
  });
 }
