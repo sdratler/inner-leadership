@@ -23,6 +23,7 @@ describe('draft group placement migration 0128 native release proof',()=>{
   {sql:'ALTER TABLE ls_service_interest.service_interests DROP CONSTRAINT service_interests_person_kind_fkey',error:'DRAFT_GROUP_PLACEMENT_BASELINE_SCHEMA_CONFLICT'},
   {sql:'GRANT SELECT ON ls_service_interest.service_interests TO PUBLIC',error:'DRAFT_GROUP_PLACEMENT_BASELINE_SCHEMA_CONFLICT'},
   {sql:'DROP INDEX ls_service_interest.service_interests_recent',error:'DRAFT_GROUP_PLACEMENT_BASELINE_SCHEMA_CONFLICT'},
+  {sql:'ALTER TABLE ls_service_interest.service_interest_operations ADD CONSTRAINT service_interests_placement_identity_key CHECK(operation_id IS NOT NULL)',error:'DRAFT_GROUP_PLACEMENT_BASELINE_SCHEMA_CONFLICT'},
   {sql:'GRANT CREATE ON SCHEMA ls_group_admin TO PUBLIC',error:'DRAFT_GROUP_PLACEMENT_SCHEMA_STATE_CONFLICT'},
   {sql:`GRANT USAGE ON SCHEMA ls_group_admin TO "${role}"`,error:'DRAFT_GROUP_PLACEMENT_SCHEMA_STATE_CONFLICT'},
   {sql:`GRANT CREATE ON SCHEMA ls_group_admin TO "${role}"`,error:'DRAFT_GROUP_PLACEMENT_SCHEMA_STATE_CONFLICT'},

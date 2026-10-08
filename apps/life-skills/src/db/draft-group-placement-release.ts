@@ -61,7 +61,7 @@ async function readFrozenServiceInterestPredecessor(db:DraftGroupPlacementReleas
  return readServiceInterestReleaseSnapshot({query:async<R extends object>(sql:string,values:readonly unknown[]=[])=>{
   const result=await db.query<Record<string,unknown>>(sql,values);
   const rows=sql.includes('FROM pg_constraint k')&&sql.includes("n.nspname='ls_service_interest'")
-   ?result.rows.filter(row=>row.name!=='service_interests_placement_identity_key'):result.rows;
+   ?result.rows.filter(row=>!(row.schema_name==='ls_service_interest'&&row.table_name==='service_interests'&&row.name==='service_interests_placement_identity_key'&&row.type==='u'&&same(row.local_columns as unknown[],['workspace_id','id','service_type','family_id','person_id']))):result.rows;
   return {rows:rows as R[]};
  }});
 }
