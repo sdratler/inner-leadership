@@ -13,6 +13,17 @@ export const CONTACT_WORK_MIGRATIONS=Object.freeze([
 ]);
 export const CONTACT_WORK_BASELINE={name:'0118_ls_contact_delta_history.sql',sha256:'89124785efc166f1f4aa1390f814798c2b63b71a874e37b4da10e11a7c0a202f'} as const;
 
+export function contactWorkMigrationInventory(files:readonly Migration[]):readonly Migration[]{
+ const sorted=[...files].sort((a,b)=>a.name.localeCompare(b.name)),last=CONTACT_WORK_MIGRATIONS.at(-1)!;
+ const end=sorted.findIndex(file=>file.name===last.name&&file.checksum===last.sha256);
+ if(end<0)throw new Error('CONTACT_WORK_MIGRATION_SET_MISMATCH');
+ const scoped=sorted.slice(0,end+1),baseline=scoped.findIndex(file=>file.name===CONTACT_WORK_BASELINE.name&&file.checksum===CONTACT_WORK_BASELINE.sha256);
+ if(baseline<0||scoped.length!==baseline+1+CONTACT_WORK_MIGRATIONS.length||CONTACT_WORK_MIGRATIONS.some((expected,index)=>{
+  const actual=scoped[baseline+1+index];return actual?.name!==expected.name||actual.checksum!==expected.sha256;
+ }))throw new Error('CONTACT_WORK_MIGRATION_SET_MISMATCH');
+ return scoped;
+}
+
 export type ContactWorkStage=0|1|2|3|4|5|6|7|8;
 export type ContactWorkSnapshot={
  taskColumns:number;taskConstraints:number;sourceKinds:string[];stateKinds:string[];historyActions:string[];sourceConstraintStrict:boolean;stateConstraintStrict:boolean;historyConstraintStrict:boolean;constraintDigest:string;

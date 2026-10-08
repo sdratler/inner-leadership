@@ -97,8 +97,8 @@ export class GroupInterestStore{
    if(existing.length>1)throw new AppError("UNAVAILABLE");
    const id=existing[0]?.id??randomUUID();
    if(!existing.length)await tx.query(`INSERT INTO ls_service_interest.service_interests
-    (workspace_id,id,family_id,person_id,service_type,source_inquiry_id,recorded_by,request_digest,created_at)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,[actor.workspaceId,id,command.familyId,command.personId,command.serviceType,
+    (workspace_id,id,family_id,person_id,member_role,person_kind,service_type,source_inquiry_id,recorded_by,request_digest,created_at)
+    VALUES($1,$2,$3,$4,'child','minor',$5,$6,$7,$8,$9)`,[actor.workspaceId,id,command.familyId,command.personId,command.serviceType,
      command.inquiryId,actor.id,hash,this.clock.now()]);
    await tx.query(`INSERT INTO ls_service_interest.service_interest_operations
     (workspace_id,operation_id,recorded_by,request_digest,service_interest_id) VALUES($1,$2,$3,$4,$5)`,

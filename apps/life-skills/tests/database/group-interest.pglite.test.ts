@@ -144,6 +144,9 @@ it("keeps service-interest provenance immutable and creates none of the dependen
  const actor=actors[0]!,inquiry=await service.create(actor,command({serviceType:"group",childLabel:"Immutable provenance"})),saved=await service.createServiceInterest(actor,promote(inquiry.item.id,verified[0]!,"group"));
  await expect(db.query("UPDATE ls_service_interest.service_interests SET service_type='tutoring' WHERE workspace_id=$1 AND id=$2",[actor.workspaceId,saved.item.id])).rejects.toThrow();
  await expect(db.query("DELETE FROM ls_service_interest.service_interest_operations WHERE workspace_id=$1 AND service_interest_id=$2",[actor.workspaceId,saved.item.id])).rejects.toThrow();
+ await expect(db.query("UPDATE ls_cases.family_members SET role='guardian' WHERE workspace_id=$1 AND family_id=$2 AND person_id=$3",[actor.workspaceId,saved.item.familyId,saved.item.personId])).rejects.toThrow();
+ await expect(db.query("UPDATE ls_identity.people SET kind='adult' WHERE workspace_id=$1 AND id=$2",[actor.workspaceId,saved.item.personId])).rejects.toThrow();
+ expect(await db.query("SELECT member_role,person_kind FROM ls_service_interest.service_interests WHERE workspace_id=$1 AND id=$2",[actor.workspaceId,saved.item.id])).toMatchObject({rows:[{member_role:"child",person_kind:"minor"}]});
  const names=(await db.query<{table_name:string}>("SELECT table_name FROM information_schema.tables WHERE table_schema='ls_service_interest' ORDER BY table_name")).rows.map(row=>row.table_name);
  expect(names).toEqual(["inquiries","operations","service_interest_operations","service_interests"]);
  expect(names.some(name=>/placement|enrollment|billing|schedule|attendance|message/.test(name))).toBe(false);

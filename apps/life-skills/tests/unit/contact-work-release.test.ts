@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {CONTACT_WORK_BASELINE,CONTACT_WORK_MIGRATIONS,classifyContactWork,contactWorkPlan,type ContactWorkSnapshot} from '../../src/db/contact-work-release.ts';
+import {CONTACT_WORK_BASELINE,CONTACT_WORK_MIGRATIONS,classifyContactWork,contactWorkMigrationInventory,contactWorkPlan,type ContactWorkSnapshot} from '../../src/db/contact-work-release.ts';
 import {validateContactWorkEvidence,validateContactWorkProof} from '../../src/db/contact-work-evidence.ts';
 import type {Migration} from '../../src/db/migration-plan.ts';
 
@@ -10,6 +10,11 @@ const files:Migration[]=[{name:'0001_ls_foundation.sql',checksum:'a'.repeat(64),
 describe('migration-before-code contact work gate',()=>{
  it('recognizes every resumable exact stage and only the remaining reviewed suffix',()=>{
   for(let stage=0;stage<=8;stage++){const history=files.slice(0,2+stage).map(({name,checksum})=>({name,checksum}));const plan=contactWorkPlan(files,history,snapshot(stage));expect(plan.stage).toBe(stage);expect(plan.pending.map(item=>item.name)).toEqual(CONTACT_WORK_MIGRATIONS.slice(stage).map(item=>item.name));}
+ });
+ it('freezes the runnable operator at 0119-0126 when later registered migrations exist',()=>{
+  const future={name:'0127_future_scope.sql',checksum:'c'.repeat(64),sql:'select 99'};
+  expect(contactWorkMigrationInventory([...files,future])).toEqual(files);
+  expect(()=>contactWorkMigrationInventory(files.filter(file=>file.name!==CONTACT_WORK_MIGRATIONS[4]!.name))).toThrow('CONTACT_WORK_MIGRATION_SET_MISMATCH');
  });
  it('refuses ledger/schema disagreement, unknown migration bytes and partial objects',()=>{
   expect(()=>contactWorkPlan(files,files.slice(0,3).map(({name,checksum})=>({name,checksum})),snapshot(0))).toThrow('CONTACT_WORK_LEDGER_STATE_CONFLICT');

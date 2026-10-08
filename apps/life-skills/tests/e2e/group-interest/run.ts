@@ -50,6 +50,37 @@ async function counts():Promise<BoundaryCounts>{
  return {...result.rows[0]!,otherWorkspaceState};
 }
 
+async function verifyDurableChildIdentity(){
+ const linked=await f!.pool.query<{familyId:string;personId:string}>(`SELECT family_id AS "familyId",person_id AS "personId"
+  FROM ls_service_interest.service_interests WHERE workspace_id=$1 ORDER BY created_at,id LIMIT 1`,[f!.workspaceId]);
+ const protectedMember=linked.rows[0];if(!protectedMember)throw new Error("GROUP_INTEREST_IDENTITY_FIXTURE_MISSING");
+ await f!.pool.query("UPDATE ls_cases.family_members SET role='guardian' WHERE workspace_id=$1 AND family_id=$2 AND person_id=$3",
+  [f!.workspaceId,protectedMember.familyId,protectedMember.personId]).then(()=>{throw new Error("GROUP_INTEREST_ROLE_MUTATION_ACCEPTED");},error=>{if(error?.code!=="23503")throw error;});
+ await f!.pool.query("UPDATE ls_identity.people SET kind='adult' WHERE workspace_id=$1 AND id=$2",
+  [f!.workspaceId,protectedMember.personId]).then(()=>{throw new Error("GROUP_INTEREST_KIND_MUTATION_ACCEPTED");},error=>{if(error?.code!=="23503")throw error;});
+ const candidate=await f!.pool.query<{familyId:string;personId:string}>(`SELECT fm.family_id AS "familyId",fm.person_id AS "personId"
+  FROM ls_cases.family_members fm WHERE fm.workspace_id=$1 AND fm.role='child' AND NOT EXISTS(
+   SELECT 1 FROM ls_service_interest.service_interests s
+   WHERE s.workspace_id=fm.workspace_id AND s.family_id=fm.family_id AND s.person_id=fm.person_id)
+  ORDER BY fm.family_id,fm.person_id LIMIT 1`,[f!.workspaceId]),source=await f!.pool.query<{id:string}>(`SELECT source_inquiry_id AS id
+  FROM ls_service_interest.service_interests WHERE workspace_id=$1 AND service_type='tutoring' LIMIT 1`,[f!.workspaceId]);
+ const member=candidate.rows[0],inquiry=source.rows[0];if(!member||!inquiry)throw new Error("GROUP_INTEREST_RACE_FIXTURE_MISSING");
+ const updater=await f!.pool.connect(),inserter=await f!.pool.connect();
+ try{
+  await updater.query("BEGIN");await updater.query("UPDATE ls_cases.family_members SET role='guardian' WHERE workspace_id=$1 AND family_id=$2 AND person_id=$3",
+   [f!.workspaceId,member.familyId,member.personId]);
+  let settled=false;const insert=inserter.query(`INSERT INTO ls_service_interest.service_interests
+   (workspace_id,id,family_id,person_id,member_role,person_kind,service_type,source_inquiry_id,recorded_by,request_digest,created_at)
+   VALUES($1,$2,$3,$4,'child','minor','group',$5,$6,$7,clock_timestamp())`,
+   [f!.workspaceId,randomUUID(),member.familyId,member.personId,inquiry.id,f!.practitioner.actor.id,"e".repeat(64)]).then(()=>{settled=true;return null;},error=>{settled=true;return error;});
+  await new Promise(resolve=>setTimeout(resolve,100));if(settled)throw new Error("GROUP_INTEREST_IDENTITY_RACE_DID_NOT_BLOCK");
+  await updater.query("COMMIT");const error=await insert;if(error?.code!=="23503")throw new Error("GROUP_INTEREST_IDENTITY_RACE_ACCEPTED");
+ }catch(error){await updater.query("ROLLBACK").catch(()=>undefined);throw error;}
+ finally{updater.release();inserter.release();}
+ await f!.pool.query("UPDATE ls_cases.family_members SET role='child' WHERE workspace_id=$1 AND family_id=$2 AND person_id=$3",
+  [f!.workspaceId,member.familyId,member.personId]);
+}
+
 try{
  const workspaceId=randomUUID(),dataKey=randomBytes(32),lookupKey=randomBytes(32),keyring={activeKeyId:"synthetic",keys:{synthetic:dataKey}};
  f=await fixture({workspaceId,keyring,termsVersion:"Synthetic Group Interest"});
@@ -79,6 +110,7 @@ try{
  const selection=project?["--project",project,"--output",`tests/e2e/group-interest/test-results/isolated-${project}`]:[];
  tests=spawn(process.execPath,[resolve("node_modules/@playwright/test/cli.js"),"test","--config","tests/e2e/group-interest/playwright.config.ts",...selection],{env,stdio:["ignore","inherit","inherit"]});
  const [code]=await once(tests,"exit");if(code!==0)throw new Error("GROUP_INTEREST_BROWSER_ACCEPTANCE_FAILED");
+ phase="durable-child-identity";await verifyDurableChildIdentity();
  phase="boundary-readback";
  const after=await counts();
  if(JSON.stringify(after.otherWorkspaceState)!==JSON.stringify(baseline.otherWorkspaceState))throw new Error("GROUP_INTEREST_WORKSPACE_SIDE_EFFECT");

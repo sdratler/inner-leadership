@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,describe,expect,test,vi} from 'vitest';
 import {migrate} from '../../../src/db/migration-runner.ts';
-import {classifyContactWork,contactWorkPlan,readContactWorkSnapshot,CONTACT_WORK_MIGRATIONS} from '../../../src/db/contact-work-release.ts';
+import {classifyContactWork,contactWorkMigrationInventory,contactWorkPlan,readContactWorkSnapshot,CONTACT_WORK_MIGRATIONS} from '../../../src/db/contact-work-release.ts';
 import {historicalPracticeDatabase} from '../home-practice/legacy-practice-fixture.ts';
 import {fixture,type Fixture} from '../calendar/fixture.ts';
 
@@ -13,7 +13,7 @@ describe('contact work migration-before-code release',()=>{
  test('upgrades a populated 0118 database through every resumable stage with exact readback',async()=>{
   const id=randomUUID();await historical.pool.query(`INSERT INTO ls_calendar.tasks(workspace_id,id,created_by,case_id,title_ciphertext,due_date,state) VALUES($1,$2,$3,$4,'synthetic-ciphertext','2026-10-08','open')`,[f.workspaceId,id,f.practitioner.actor.id,f.first.id]);
   await historical.pool.query(`INSERT INTO ls_calendar.task_history(workspace_id,id,task_id,version,action,actor_account_id,occurred_at) VALUES($1,$2,$3,1,'created',$4,now())`,[f.workspaceId,randomUUID(),id,f.practitioner.actor.id]);
-  const throughContactWork=historical.inventory.slice(0,historical.inventory.findIndex(file=>file.name==='0126_ls_audience_interest.sql')+1);
+  const throughContactWork=contactWorkMigrationInventory(historical.inventory);
   expect(throughContactWork.at(-1)?.name).toBe('0126_ls_audience_interest.sql');
   const client=await historical.pool.connect(),query={query:async<R extends object>(sql:string,values:readonly unknown[]=[])=>{const result=await client.query<R>(sql,[...values]);return {rows:result.rows};}};try{
    let history=(await client.query('SELECT name,checksum FROM ls_control.migrations ORDER BY name')).rows;const initial=await readContactWorkSnapshot(query);expect(classifyContactWork(initial)).toBe(0);expect(contactWorkPlan(throughContactWork,history,initial).pending).toHaveLength(8);

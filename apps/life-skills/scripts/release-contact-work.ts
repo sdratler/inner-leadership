@@ -9,7 +9,7 @@ import {z} from 'zod';
 import {migrate} from '../src/db/migration-runner.ts';
 import type {AppliedMigration,Migration} from '../src/db/migration-plan.ts';
 import {assertContactOpsDatabaseIdentity} from '../src/db/contact-ops-production-guard.ts';
-import {CONTACT_WORK_BASELINE,CONTACT_WORK_MIGRATIONS,contactWorkPlan,contactWorkSourceBundle,contactWorkStateDigest,readContactWorkSnapshot} from '../src/db/contact-work-release.ts';
+import {CONTACT_WORK_MIGRATIONS,contactWorkMigrationInventory,contactWorkPlan,contactWorkSourceBundle,contactWorkStateDigest,readContactWorkSnapshot} from '../src/db/contact-work-release.ts';
 import {validateContactWorkEvidence,validateContactWorkProof,type ContactWorkEvidence} from '../src/db/contact-work-evidence.ts';
 import {isAbsolute} from 'node:path';
 
@@ -37,7 +37,8 @@ async function main(){
  const reviewedCommit=process.env.RAILWAY_GIT_COMMIT_SHA;if(!reviewedCommit)throw Error('CONTACT_WORK_REVIEWED_COMMIT_MISMATCH');const now=Date.now(),mode=args[0]!.slice(2) as 'preflight'|'apply'|'verify-only',proof=validateContactWorkProof(JSON.parse(proofBytes.toString('utf8')),{...target,deploymentId,mode,reviewedCommit,sourceBundleSha256:actualBundle,databaseBindingSha256:binding[2]!},now);
  const evidenceFiles=[['independent_review',proof.evidence.independentReview],['baseline_preflight',proof.evidence.baselinePreflight],['backup_readback',proof.evidence.backupReadback],['isolated_restore',proof.evidence.isolatedRestore],['rollback_plan',proof.evidence.rollbackPlan]] as const;
  for(const [kind,entry] of evidenceFiles){if(!isAbsolute(entry.path))throw Error('CONTACT_WORK_EVIDENCE_PATH_INVALID');const bytes=await readFile(entry.path);if(hash(bytes)!==entry.sha256)throw Error('CONTACT_WORK_EVIDENCE_HASH_MISMATCH');validateContactWorkEvidence(JSON.parse(bytes.toString('utf8')),proof,kind as ContactWorkEvidence['kind'],now);}
- const {files,manifestBytes}=await migrationInventory();if(hash(manifestBytes)!==proof.manifestSha256)throw Error('CONTACT_WORK_MANIFEST_CHANGED');const baseline=files.findIndex(file=>file.name===CONTACT_WORK_BASELINE.name&&file.checksum===CONTACT_WORK_BASELINE.sha256);if(baseline<0||files.length!==baseline+1+CONTACT_WORK_MIGRATIONS.length)throw Error('CONTACT_WORK_MIGRATION_SCOPE_MISMATCH');
+ const {files:inventory,manifestBytes}=await migrationInventory();if(hash(manifestBytes)!==proof.manifestSha256)throw Error('CONTACT_WORK_MANIFEST_CHANGED');
+ const files=contactWorkMigrationInventory(inventory);
  const pool=new Pool({connectionString:url.toString(),ssl:{rejectUnauthorized:true,ca:process.env.LS_DATABASE_CA},max:1,connectionTimeoutMillis:8000,statement_timeout:30000});try{const client=await pool.connect();try{
   const locked=await client.query<{locked:boolean}>('SELECT pg_try_advisory_lock(541931,0) AS locked');if(locked.rows[0]?.locked!==true)throw Error('CONTACT_WORK_MIGRATION_LOCKED');try{
    const identity=await client.query<{system_identifier:string;ssl:boolean}>(`SELECT (SELECT system_identifier FROM pg_control_system()) AS system_identifier,(SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()) AS ssl`);assertContactOpsDatabaseIdentity(identity.rows[0]?.system_identifier,identity.rows[0]?.ssl);

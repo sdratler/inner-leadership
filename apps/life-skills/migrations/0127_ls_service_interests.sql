@@ -1,10 +1,20 @@
 -- Owner-only administrative service interests. An interest is not placement,
 -- enrollment, terms acceptance, booking, billing, access or a provider action.
+ALTER TABLE ls_cases.family_members
+ ADD CONSTRAINT family_members_service_interest_identity_key
+ UNIQUE(workspace_id,family_id,person_id,role);
+
+ALTER TABLE ls_identity.people
+ ADD CONSTRAINT people_service_interest_kind_key
+ UNIQUE(workspace_id,id,kind);
+
 CREATE TABLE ls_service_interest.service_interests (
  workspace_id uuid NOT NULL,
  id uuid NOT NULL,
  family_id uuid NOT NULL,
  person_id uuid NOT NULL,
+ member_role text NOT NULL CHECK(member_role='child'),
+ person_kind text NOT NULL CHECK(person_kind='minor'),
  service_type text NOT NULL CHECK(service_type IN ('group','tutoring')),
  source_inquiry_id uuid NOT NULL,
  recorded_by uuid NOT NULL,
@@ -13,8 +23,10 @@ CREATE TABLE ls_service_interest.service_interests (
  CONSTRAINT service_interests_pkey PRIMARY KEY(workspace_id,id),
  CONSTRAINT service_interests_identity_key UNIQUE(workspace_id,source_inquiry_id,family_id,person_id,service_type),
  CONSTRAINT service_interests_receipt_key UNIQUE(workspace_id,id,request_digest),
- CONSTRAINT service_interests_family_member_fkey FOREIGN KEY(workspace_id,family_id,person_id)
-  REFERENCES ls_cases.family_members(workspace_id,family_id,person_id),
+ CONSTRAINT service_interests_family_member_fkey FOREIGN KEY(workspace_id,family_id,person_id,member_role)
+  REFERENCES ls_cases.family_members(workspace_id,family_id,person_id,role),
+ CONSTRAINT service_interests_person_kind_fkey FOREIGN KEY(workspace_id,person_id,person_kind)
+  REFERENCES ls_identity.people(workspace_id,id,kind),
  CONSTRAINT service_interests_source_inquiry_fkey FOREIGN KEY(workspace_id,source_inquiry_id)
   REFERENCES ls_service_interest.inquiries(workspace_id,id),
  CONSTRAINT service_interests_recorded_by_fkey FOREIGN KEY(workspace_id,recorded_by)
