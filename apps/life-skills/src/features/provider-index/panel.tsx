@@ -145,7 +145,7 @@ export function ProviderIndexPanel({ locale, caseId }: { locale: "he" | "en"; ca
                 <label className={styles.full}><input type="checkbox" checked={allowDuplicate} onChange={e => { setAllowDuplicate(e.target.checked); setConflict(false); }} /> {t.allowDuplicate}</label>
               </fieldset>
               {message && <p role="status" className={styles.notice}>{message}</p>}
-              <div className={styles.buttons}>
+              <div className={`${styles.buttons} ${styles.relatedActions}`}>
                 {!uncertain && <button type="submit" className="lsw-button lsw-button--primary" disabled={busy || conflict}>{busy ? t.saving : t.save}</button>}
                 {uncertain && <button type="button" disabled={busy} onClick={() => void run()}>{t.retrySave}</button>}
                 {conflict && selected && <button type="button" disabled={busy} onClick={() => void compare()}>{t.compare}</button>}

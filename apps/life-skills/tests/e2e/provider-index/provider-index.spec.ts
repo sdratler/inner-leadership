@@ -1,7 +1,8 @@
 /** Mounted authenticated R35 owner journeys. No API mocking, request interception, real contacts or provider effects. */
 import {expect,test} from "@playwright/test";
 import {execFile} from "node:child_process";
-import {readFileSync} from "node:fs";
+import {mkdirSync,readFileSync} from "node:fs";
+import {join} from "node:path";
 import {promisify} from "node:util";
 type Runtime={origin:string;workspaceId:string;owner:string;parent:string;caseId:string};
 const runtimePath=process.env.LS_PROVIDER_INDEX_FIXTURE_PATH;
@@ -31,7 +32,11 @@ if(!runtimePath){
   const summary=page.getByRole("region",{name:locale==="he"?"נותן השירות שנבחר":"Selected provider",exact:true});await expect(summary).toBeVisible();await expect(summary.getByText(phone,{exact:true})).toBeVisible();
   await expect(page.getByText(locale==="he"?"יש לבחור נותן שירות במאגר כדי לתעד הפניה.":"Choose a provider from the index to record a referral.",{exact:true})).toHaveCount(0);
   const referralAction=page.getByRole("button",{name:locale==="he"?"תיעוד הקשר להפניה":"Record referral context",exact:true});await expect(referralAction).toBeInViewport({ratio:.1});await expect(page.getByRole("button",{name:locale==="he"?"שמירת נותן השירות":"Save provider",exact:true})).toHaveCount(0);
-  await summary.getByRole("button",{name:locale==="he"?"עריכת נותן השירות":"Edit provider",exact:true}).click();await expect(page.getByRole("button",{name:locale==="he"?"שמירת נותן השירות":"Save provider",exact:true})).toBeVisible();await page.getByRole("button",{name:locale==="he"?"ביטול עריכה":"Cancel editing",exact:true}).click();await expect(referralAction).toBeInViewport({ratio:.1});
+  await summary.getByRole("button",{name:locale==="he"?"עריכת נותן השירות":"Edit provider",exact:true}).click();const save=page.getByRole("button",{name:locale==="he"?"שמירת נותן השירות":"Save provider",exact:true}),cancel=page.getByRole("button",{name:locale==="he"?"ביטול עריכה":"Cancel editing",exact:true}),archive=page.getByRole("button",{name:locale==="he"?"העברה לארכיון":"Archive",exact:true});await expect(save).toBeVisible();
+  const phase=process.env.LS_SHARED_UI_POLISH_EXPECT,evidenceRoot=process.env.LS_SHARED_UI_POLISH_EVIDENCE_ROOT;
+  await cancel.focus();await page.keyboard.press("Shift+Tab");await expect(save).toBeFocused();const metrics=await Promise.all([save,cancel,archive].map(async locator=>locator.evaluate(element=>{const style=getComputedStyle(element),rect=element.getBoundingClientRect();return {height:rect.height,width:rect.width,fontWeight:style.fontWeight,outlineColor:style.outlineColor,outlineWidth:style.outlineWidth,outlineOffset:style.outlineOffset};}))),saveMetrics=metrics[0]!,cancelMetrics=metrics[1]!,archiveMetrics=metrics[2]!;
+  if(phase&&evidenceRoot){mkdirSync(evidenceRoot,{recursive:true});await page.screenshot({path:join(evidenceRoot,`${phase}-provider-${locale}-${info.project.name}-edit-actions.png`),fullPage:false});console.log(`SHARED_UI_PROVIDER_ACTIONS ${JSON.stringify({phase,locale,project:info.project.name,save:saveMetrics,cancel:cancelMetrics,archive:archiveMetrics})}`);}for(const value of metrics){expect(value.height).toBe(48);expect(value.fontWeight).toBe("700");}expect(saveMetrics.outlineWidth).toBe("3px");expect(saveMetrics.outlineOffset).toBe("4px");expect(saveMetrics.outlineColor).toBe("rgb(230, 208, 164)");
+  await cancel.click();await referralAction.scrollIntoViewIfNeeded();await expect(referralAction).toBeInViewport({ratio:.1});
   await referralAction.click();const referral=locale==="he"?"תיאום סינתטי ללא מידע קליני":"Synthetic coordination without clinical information";
   await page.getByLabel(locale==="he"?"הקשר תיאומי כללי":"Neutral coordination context").fill(referral);await page.getByLabel(locale==="he"?"הפעולה הבאה":"Next action").fill(locale==="he"?"מעקב סינתטי":"Synthetic follow-up");
   const referralRegion=page.getByRole("region",{name:locale==="he"?"תיאום הפניה פרטי":"Private referral coordination",exact:true});await page.getByRole("button",{name:locale==="he"?"שמירת הפניה פרטית":"Save private referral",exact:true}).click();await expect(referralRegion.getByRole("status")).toContainText(locale==="he"?"נשמר":"Saved");await page.reload();

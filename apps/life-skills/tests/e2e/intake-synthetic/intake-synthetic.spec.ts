@@ -1,5 +1,6 @@
 import {expect,test} from "@playwright/test";
-import {readFileSync} from "node:fs";
+import {mkdirSync,readFileSync} from "node:fs";
+import {join} from "node:path";
 
 type Runtime={origin:string;practitioner:string;parent:string};
 const path=process.env.LS_INTAKE_SYNTHETIC_BROWSER_FIXTURE_PATH;
@@ -27,6 +28,27 @@ async function screenshotAtConfiguredWidth(page:import("@playwright/test").Page,
  await page.screenshot({path,fullPage});
  expect(readFileSync(path).readUInt32BE(16)).toBe(width);
 }
+async function recordSavedHeader(page:import("@playwright/test").Page,locale:"en"|"he",project:string){
+ const phase=process.env.LS_SHARED_UI_POLISH_EXPECT??"verify",evidenceRoot=process.env.LS_SHARED_UI_POLISH_EVIDENCE_ROOT;
+ if(evidenceRoot)mkdirSync(evidenceRoot,{recursive:true});
+ await page.evaluate(()=>scrollTo(0,0));
+ const brand=page.getByRole("link",{name:locale==="he"?"כישורי חיים — חזרה לאתר":"Life Skills — return to website"});
+ const menu=page.getByRole("button",{name:locale==="he"?"פתיחת תפריט":"Open menu"});
+ const language=page.getByRole("button",{name:locale==="he"?"View this form in English":"עברית"});
+ const metrics=await page.evaluate(({brandLabel,menuLabel,languageLabel})=>{
+  const byLabel=(label:string)=>document.querySelector<HTMLElement>(`[aria-label="${CSS.escape(label)}"]`),rect=(element:HTMLElement|null)=>element?element.getBoundingClientRect().toJSON():null;
+  return {direction:getComputedStyle(document.documentElement).direction,brand:rect(byLabel(brandLabel)),menu:rect(byLabel(menuLabel)),language:rect(byLabel(languageLabel))};
+ },{brandLabel:locale==="he"?"כישורי חיים — חזרה לאתר":"Life Skills — return to website",menuLabel:locale==="he"?"פתיחת תפריט":"Open menu",languageLabel:locale==="he"?"View this form in English":"עברית"});
+ if(evidenceRoot)await page.screenshot({path:join(evidenceRoot,`${phase}-intake-${locale}-${project}-saved-header.png`),fullPage:false});
+ console.log(`SHARED_UI_INTAKE_HEADER ${JSON.stringify({phase,locale,project,...metrics})}`);
+ if(project!=="desktop"){
+  await expect(brand).toBeVisible();await expect(menu).toBeVisible();await expect(language).toBeVisible();
+  if(phase==="before"&&locale==="en")expect(metrics.brand!.x).toBeGreaterThan(metrics.menu!.x);
+  else expect(locale==="en"?metrics.brand!.x<metrics.menu!.x:metrics.brand!.x>metrics.menu!.x).toBe(true);
+ }else if(phase!=="before"){
+  await expect(brand).toBeVisible();
+ }
+}
 
 for(const locale of ["en","he"] as const)test(`${locale}: authenticated synthetic intake persists and reads back without payment`,async({page,context},info)=>{
  const t=copy[locale];
@@ -52,6 +74,7 @@ for(const locale of ["en","he"] as const)test(`${locale}: authenticated syntheti
  await expectConfiguredLayout(page,width);
  const submitted=page.waitForResponse(response=>response.url()===runtime.origin+"/api/intake"&&response.request().method()==="POST");
  await page.getByRole("button",{name:t.submit,exact:true}).click();const submitResponse=await submitted;expect(submitResponse.status()).toBe(200);expect((await submitResponse.json()).data).toMatchObject({projectionPending:false});await expect(page.getByRole("heading",{name:t.saved,exact:true})).toBeVisible();
+ await recordSavedHeader(page,locale,info.project.name);
  await expectConfiguredLayout(page,width);await screenshotAtConfiguredWidth(page,info.outputPath(`intake-${locale}-saved.png`),width,true);
 
  const staff=await page.goto(`/${locale}/intake/staff`);expect(staff?.status()).toBe(200);
