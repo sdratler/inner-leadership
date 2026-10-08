@@ -120,6 +120,8 @@ async function verifyGroupPlacementDatabaseBoundary(){
 try{
  const workspaceId=randomUUID(),dataKey=randomBytes(32),lookupKey=randomBytes(32),keyring={activeKeyId:"synthetic",keys:{synthetic:dataKey}};
  f=await fixture({workspaceId,keyring,termsVersion:"Synthetic Group Interest"});
+ await f.seed("2026-10-10T08:00:00.000Z");
+ await f.seed("2026-10-11T08:00:00.000Z");
  await f.pool.query(`INSERT INTO ls_cases.family_members(workspace_id,family_id,person_id,role)
   SELECT c.workspace_id,c.family_id,cl.person_id,'child' FROM ls_cases.cases c
   JOIN ls_cases.clients cl ON cl.workspace_id=c.workspace_id AND cl.id=c.client_id

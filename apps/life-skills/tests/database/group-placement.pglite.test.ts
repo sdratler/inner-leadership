@@ -224,3 +224,17 @@ it("HTTP dispatches an idempotent proposal move without broadening effects",asyn
  const replay=await groupPlacementHttp(new Request(url,{method:"POST",headers,body:JSON.stringify(command)}),load);expect(replay.status).toBe(200);expect(await replay.json()).toMatchObject({ok:true,data:{saved:true,replayed:true,item:{id:body.data.item.id},movement:{id:body.data.movement.id}}});
  const changed=await groupPlacementHttp(new Request(url,{method:"POST",headers,body:JSON.stringify({...command,destinationDraftGroupId:randomUUID()})}),load);expect(changed.status).toBe(409);
 });
+
+it("rejects a corrupt stored meeting digest without appending a successor or unrelated write",async()=>{
+ const actor=actors[0]!,group=await placementStore.createDraftGroup(actor,{action:"create_draft_group",operationId:randomUUID(),label:"Corrupt meeting source"}),
+  id=randomUUID(),venue="Synthetic corrupt-source room",localStart="2029-02-08T10:00",startsAt=new Date("2029-02-08T08:00:00.000Z"),endsAt=new Date("2029-02-08T09:00:00.000Z");
+ await db.query(`INSERT INTO ls_group_admin.draft_meeting_revisions
+  (workspace_id,id,occurrence_id,draft_group_id,previous_revision_id,state,time_zone,local_start,starts_at,ends_at,duration_minutes,
+   venue_ciphertext,recorded_by,request_digest,created_at) VALUES($1,$2,$2,$3,NULL,'proposed','Asia/Jerusalem',$4,$5,$6,60,$7,$8,$9,$10)`,
+  [actor.workspaceId,id,group.item.id,localStart,startsAt,endsAt,seal(venue,`ls_group_admin/draft_meeting/v1/${actor.workspaceId}/${id}`,ring),actor.id,"0".repeat(64),now]);
+ const before=(await db.query("SELECT (SELECT count(*) FROM ls_group_admin.draft_meeting_revisions WHERE workspace_id=$1) AS revisions,(SELECT count(*) FROM ls_group_admin.draft_meeting_operations WHERE workspace_id=$1) AS operations,(SELECT count(*) FROM ls_calendar.appointments WHERE workspace_id=$1) AS appointments",[actor.workspaceId])).rows;
+ await expect(placementStore.list(actor)).rejects.toMatchObject({code:"UNAVAILABLE"});
+ await expect(placementStore.reviseMeeting(actor,{action:"revise_draft_group_meeting",operationId:randomUUID(),sourceRevisionId:id,timeZone:"Asia/Jerusalem",localStart:"2029-02-08T12:00",durationMinutes:75,venue:"Attempted successor"})).rejects.toMatchObject({code:"UNAVAILABLE"});
+ expect((await db.query("SELECT (SELECT count(*) FROM ls_group_admin.draft_meeting_revisions WHERE workspace_id=$1) AS revisions,(SELECT count(*) FROM ls_group_admin.draft_meeting_operations WHERE workspace_id=$1) AS operations,(SELECT count(*) FROM ls_calendar.appointments WHERE workspace_id=$1) AS appointments",[actor.workspaceId])).rows).toEqual(before);
+ expect((await db.query<{count:number}>("SELECT count(*)::int AS count FROM ls_group_admin.draft_meeting_revisions WHERE workspace_id=$1 AND previous_revision_id=$2",[actor.workspaceId,id])).rows).toEqual([{count:0}]);
+});

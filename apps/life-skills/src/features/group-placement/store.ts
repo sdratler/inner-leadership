@@ -264,7 +264,9 @@ export class GroupPlacementStore{
     FROM ls_group_admin.draft_meeting_revisions r LEFT JOIN ls_group_admin.draft_meeting_revisions successor
      ON successor.workspace_id=r.workspace_id AND successor.previous_revision_id=r.id
     WHERE r.workspace_id=$1 AND r.id=$2 AND r.recorded_by=$3`,[actor.workspaceId,command.sourceRevisionId,actor.id]);
-   if(source.length!==1)throw new AppError("NOT_FOUND");if(source[0]!.nextRevisionId)throw new AppError("CONFLICT");
+   if(source.length!==1)throw new AppError("NOT_FOUND");
+   this.meeting(actor.workspaceId,source[0]!,[]);
+   if(source[0]!.nextRevisionId)throw new AppError("CONFLICT");
    const id=randomUUID(),createdAt=this.clock.now(),item=source[0]!;await tx.query(`INSERT INTO ls_group_admin.draft_meeting_revisions
     (workspace_id,id,occurrence_id,draft_group_id,previous_revision_id,state,time_zone,local_start,starts_at,ends_at,duration_minutes,
      venue_ciphertext,recorded_by,request_digest,created_at) VALUES($1,$2,$3,$4,$5,'proposed',$6,$7,$8,$9,$10,$11,$12,$13,$14)`,

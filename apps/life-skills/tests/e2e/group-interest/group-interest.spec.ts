@@ -117,28 +117,37 @@ if(!runtimePath){
   const draftConflict=await page.request.post(`${data.origin}/api/private/group-placement`,{headers:{Origin:data.origin,"X-CSRF-Token":csrf!},data:{...draftSent.postDataJSON(),label:`Changed ${groupLabel}`}});expect(draftConflict.status()).toBe(409);
   const groupCard=planning.locator("article").filter({has:page.getByRole("heading",{name:groupLabel,exact:true})});await expect(groupCard.getByText(locale==="he"?"קבוצת טיוטה":"Draft group",{exact:true})).toBeVisible();
   await expect(groupCard.getByText(locale==="he"?"קיבולת, תשלום והשתתפות עדיין אינם מוגדרים. המועדים המוצעים להלן אינם פגישות מאושרות.":"Capacity, fees and participation remain unset. Proposed occurrences below are not confirmed meetings.",{exact:true})).toBeVisible();
-  const addMeeting=groupCard.locator("details").filter({has:page.getByText(locale==="he"?"הוספת מועד מוצע":"Add proposed occurrence",{exact:true})});await addMeeting.locator("summary").click();
-  const meetingForm=addMeeting.locator("form"),meetingStart=locale==="he"?"2031-01-03T10:00":"2031-01-02T10:00",meetingVenue=locale==="he"?"חדר סינתטי":"Synthetic room";
+  const meetingPanel=groupCard.locator('section[aria-labelledby^="meeting-heading-"]'),addMeeting=groupCard.locator("details").filter({has:page.getByText(locale==="he"?"הוספת מועד מוצע":"Add proposed occurrence",{exact:true})});
+  const captureMeetingPanel=async(path:string)=>{const skipLink=page.locator(".lsu-skip");await page.locator("#lsw-main").focus();await skipLink.evaluate(element=>element.setAttribute("hidden",""));
+   try{await meetingPanel.screenshot({path});}finally{await skipLink.evaluate(element=>element.removeAttribute("hidden"));}};
+  await addMeeting.locator("summary").click();
+  const meetingForm=addMeeting.locator("form"),meetingStart=locale==="he"?"2026-10-11T11:00":"2026-10-10T11:00",meetingVenue=locale==="he"?"חדר סינתטי":"Synthetic room";
   await expect(meetingForm.locator('[name="durationMinutes"]')).toHaveValue("");
+  if(info.project.name==="mobile340"){
+   await meetingForm.locator('[name="venue"]').focus();await page.keyboard.press("Tab");await expect(meetingForm.getByRole("button",{name:locale==="he"?"שמירת מועד מוצע":"Save proposed occurrence",exact:true})).toBeFocused();
+   await addMeeting.screenshot({path:info.outputPath(`a04a-draft-meeting-new-form-focus-${locale}-mobile340.png`)});
+  }
   await meetingForm.locator('[name="localStart"]').fill(meetingStart);await meetingForm.locator('[name="durationMinutes"]').fill("60");await meetingForm.locator('[name="venue"]').fill(meetingVenue);
-  if(info.project.name==="mobile340"){await meetingForm.locator('[name="venue"]').focus();await page.keyboard.press("Tab");await expect(meetingForm.getByRole("button",{name:locale==="he"?"שמירת מועד מוצע":"Save proposed occurrence",exact:true})).toBeFocused();}
   if(locale==="en"){
    let interrupted:Record<string,unknown>|null=null;await page.route("**/api/private/group-placement",async route=>{if(route.request().method()==="POST"&&route.request().postData()?.includes('"action":"propose_draft_group_meeting"')){interrupted=route.request().postDataJSON();const upstream=await route.fetch();expect(upstream.status()).toBe(200);await route.abort("failed");}else await route.continue();},{times:1});
    await meetingForm.getByRole("button",{name:"Save proposed occurrence",exact:true}).click();await expect(meetingForm.locator('[name="localStart"]')).toHaveValue(meetingStart);await expect(meetingForm.locator('[name="durationMinutes"]')).toHaveValue("60");await expect(meetingForm.locator('[name="venue"]')).toHaveValue(meetingVenue);await expect(groupCard.getByRole("alert")).toContainText("Save is unconfirmed");
+   if(info.project.name==="mobile340"){await meetingForm.getByRole("button",{name:"Retry exact same save",exact:true}).focus();await meetingPanel.screenshot({path:info.outputPath("a04a-draft-meeting-unconfirmed-retry-en-mobile340.png")});}
    const retryRequest=page.waitForRequest(request=>request.method()==="POST"&&request.postData()?.includes('"action":"propose_draft_group_meeting"')===true),retryResponse=page.waitForResponse(response=>response.request().method()==="POST"&&response.request().postData()?.includes('"action":"propose_draft_group_meeting"')===true);
    await meetingForm.getByRole("button",{name:"Retry exact same save",exact:true}).click();const retried=await retryRequest,saved=await retryResponse;expect(retried.postDataJSON()).toEqual(interrupted);expect(saved.status()).toBe(200);expect(await saved.json()).toMatchObject({ok:true,data:{saved:true,replayed:true}});
   }else{
    const meetingRequest=page.waitForRequest(request=>request.method()==="POST"&&request.postData()?.includes('"action":"propose_draft_group_meeting"')===true),meetingResponse=page.waitForResponse(response=>response.request().method()==="POST"&&response.request().postData()?.includes('"action":"propose_draft_group_meeting"')===true);
    await meetingForm.getByRole("button",{name:"שמירת מועד מוצע",exact:true}).click();await meetingRequest;expect((await meetingResponse).status()).toBe(200);
   }
-  await expect(groupCard.getByText(meetingVenue,{exact:true})).toBeVisible();await expect(groupCard.getByText(locale==="he"?"לא נמצאה התנגשות בקריאה האחרונה. זו אינה שמירת זמן.":"No conflict found at the last read. This is not a reservation.",{exact:true})).toBeVisible();
+  await expect(groupCard.getByText(meetingVenue,{exact:true})).toBeVisible();const meetingConflict=meetingPanel.locator('[role="status"]').filter({has:page.getByText(locale==="he"?"התנגשות בלוח הזמנים":"Scheduling conflict",{exact:true})});await expect(meetingConflict).toContainText("11:00");await expect(meetingConflict).toContainText("12:00");
+  if(info.project.name==="mobile390")await captureMeetingPanel(info.outputPath(`a04a-draft-meeting-conflict-${locale}-mobile390.png`));
   await page.reload();await expect(groupCard.getByText(meetingVenue,{exact:true})).toBeVisible();
   const correctMeeting=groupCard.locator("details").filter({has:page.getByText(locale==="he"?"תיקון המועד המוצע":"Correct proposed occurrence",{exact:true})});await correctMeeting.locator("summary").click();
   const correctionForm=correctMeeting.locator("form"),correctedVenue=locale==="he"?"חדר סינתטי מתוקן":"Corrected synthetic room";
-  await correctionForm.locator('[name="localStart"]').fill(locale==="he"?"2031-01-03T12:00":"2031-01-02T12:00");await correctionForm.locator('[name="durationMinutes"]').fill("75");await correctionForm.locator('[name="venue"]').fill(correctedVenue);
+  await correctionForm.locator('[name="localStart"]').fill(locale==="he"?"2026-10-11T13:00":"2026-10-10T13:00");await correctionForm.locator('[name="durationMinutes"]').fill("75");await correctionForm.locator('[name="venue"]').fill(correctedVenue);
   const correctionResponse=page.waitForResponse(response=>response.request().method()==="POST"&&response.request().postData()?.includes('"action":"revise_draft_group_meeting"')===true);
   await correctionForm.getByRole("button",{name:locale==="he"?"שמירת תיקון":"Save correction",exact:true}).click();expect((await correctionResponse).status()).toBe(200);
   await expect(groupCard.getByText(correctedVenue,{exact:true})).toBeVisible();await expect(groupCard.getByRole("button",{name:locale==="he"?"ניסיון חוזר לאותה שמירה בדיוק":"Retry exact same save",exact:true})).toHaveCount(0);const history=groupCard.locator("details").filter({has:page.getByText(locale==="he"?"היסטוריית מועדים":"Occurrence history",{exact:true})});await history.locator("summary").click();await expect(history.getByText(meetingVenue,{exact:false})).toHaveCount(1);
+  if(info.project.name==="mobile390")await captureMeetingPanel(info.outputPath(`a04a-draft-meeting-corrected-history-${locale}-mobile390.png`));
   await captureViewport("draft-meeting-corrected",groupCard);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   const missingPlacement=await page.request.post(`${data.origin}/api/private/group-placement`,{headers:{Origin:data.origin,"X-CSRF-Token":csrf!},data:{action:"propose_group_placement",operationId:randomUUID(),draftGroupId:randomUUID(),serviceInterestId:serviceSavedBody.data.item.id}});expect(missingPlacement.status()).toBe(404);
   const propose=groupCard.locator("details").filter({has:page.getByText(locale==="he"?"הצעת שיבוץ":"Propose placement",{exact:true})});await propose.locator("summary").click();const proposalSelect=propose.locator('[name="serviceInterestId"]');
