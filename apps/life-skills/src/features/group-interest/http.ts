@@ -7,10 +7,10 @@ import {verifyCsrfToken,verifyMutationOrigin} from "../../lib/security/csrf.ts";
 import {TOKEN_PATTERN} from "../identity/crypto.ts";
 import type {Actor} from "../identity/types.ts";
 import {canonicalForwardedRequest} from "../integration/canonical-forwarded-request.ts";
-import {interestCommandSchema,interestNotice} from "./contract.ts";
+import {interestMutationSchema,interestNotice} from "./contract.ts";
 import type {GroupInterestStore} from "./store.ts";
 export type InterestHttpDependencies={enabled:boolean;origin:string;actor:(token:string)=>Promise<Actor>;csrf:(token:string)=>string;
- store:Pick<GroupInterestStore,"create"|"list">};
+ store:Pick<GroupInterestStore,"create"|"createServiceInterest"|"list">};
 export async function groupInterestHttp(request:Request,load:()=>Promise<InterestHttpDependencies>){
  const id=randomUUID();let response:Response;
  try{
@@ -24,7 +24,8 @@ export async function groupInterestHttp(request:Request,load:()=>Promise<Interes
   if(request.method==="GET")response=successResponse({...await d.store.list(actor),notice:interestNotice},id);
   else{
    verifyMutationOrigin(canonical,d.origin);verifyCsrfToken(request.headers.get("x-csrf-token"),d.csrf(token));
-   response=successResponse(await d.store.create(actor,await readJson(request,interestCommandSchema)),id);
+   const command=await readJson(request,interestMutationSchema);
+   response=successResponse("action" in command?await d.store.createServiceInterest(actor,command):await d.store.create(actor,command),id);
   }
  }catch(error){response=failureResponse(error instanceof AppError?error:new AppError("UNAVAILABLE"),id);}
  response.headers.set("Referrer-Policy","no-referrer");response.headers.set("X-Content-Type-Options","nosniff");

@@ -11,6 +11,11 @@
 .refresh { flex:none; }
 .record { max-inline-size:920px; padding-block:16px; border-block-start:1px solid var(--ui-line,#d5e0e2); }
 .record h3,.record p { margin-block:0 8px; }
+.savedInterests { margin-block:14px; padding:14px 16px; background:#f3f8f8; border:1px solid var(--ui-line,#d5e0e2); border-radius:10px; }
+.savedInterests h4 { margin:0 0 8px; }
+.savedInterests ul { margin:0; padding-inline-start:22px; }
+.promotion { display:grid; grid-template-columns:minmax(0,1fr) minmax(150px,0.45fr) auto; align-items:end; gap:12px; margin-block-start:14px; padding-block-start:14px; border-block-start:1px solid var(--ui-line,#d5e0e2); }
+.promotion button { min-block-size:48px; }
 .phone { direction:ltr; unicode-bidi:isolate; display:inline-block; white-space:nowrap; }
 @media(max-width:600px) {
   .workspace { gap:16px; }
@@ -18,4 +23,6 @@
   .permission { grid-column:1; }
   .save,.refresh { inline-size:100%; }
   .recentHeader { align-items:stretch; flex-direction:column; gap:8px; }
+  .promotion { grid-template-columns:minmax(0,1fr); }
+  .promotion button { inline-size:100%; }
 }

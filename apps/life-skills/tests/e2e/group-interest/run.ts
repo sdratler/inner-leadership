@@ -27,10 +27,10 @@ process.once("SIGTERM",()=>{void cleanup().finally(()=>process.exit(143));});
 process.once("SIGINT",()=>{void cleanup().finally(()=>process.exit(130));});
 
 type WorkspaceSnapshot={count:number;snapshot:string};
-type BoundaryCounts={inquiries:number;operations:number;otherWorkspaceState:Record<string,WorkspaceSnapshot>};
+type BoundaryCounts={inquiries:number;operations:number;serviceInterests:number;serviceOperations:number;otherWorkspaceState:Record<string,WorkspaceSnapshot>};
 const quoteIdentifier=(value:string)=>`"${value.replaceAll('"','""')}"`;
 async function counts():Promise<BoundaryCounts>{
- const allowed=new Set(["ls_service_interest.inquiries","ls_service_interest.operations"]);
+ const allowed=new Set(["ls_service_interest.inquiries","ls_service_interest.operations","ls_service_interest.service_interests","ls_service_interest.service_interest_operations"]);
  const inventory=await f!.pool.query<{schema:string;table:string}>(`SELECT c.table_schema AS schema,c.table_name AS table
   FROM information_schema.columns c JOIN information_schema.tables t ON t.table_schema=c.table_schema AND t.table_name=c.table_name
   WHERE c.column_name='workspace_id' AND c.table_schema LIKE 'ls\\_%' ESCAPE '\\' AND t.table_type='BASE TABLE'
@@ -42,17 +42,23 @@ async function counts():Promise<BoundaryCounts>{
    FROM ${quoteIdentifier(row.schema)}.${quoteIdentifier(row.table)} AS source WHERE workspace_id=$1`,[f!.workspaceId]);
   otherWorkspaceState[name]=result.rows[0]??{count:0,snapshot:"[]"};
  }
- const result=await f!.pool.query<{inquiries:number;operations:number}>(`SELECT
+ const result=await f!.pool.query<{inquiries:number;operations:number;serviceInterests:number;serviceOperations:number}>(`SELECT
   (SELECT count(*)::integer FROM ls_service_interest.inquiries WHERE workspace_id=$1) AS inquiries,
-  (SELECT count(*)::integer FROM ls_service_interest.operations WHERE workspace_id=$1) AS operations`,[f!.workspaceId]);
+  (SELECT count(*)::integer FROM ls_service_interest.operations WHERE workspace_id=$1) AS operations,
+  (SELECT count(*)::integer FROM ls_service_interest.service_interests WHERE workspace_id=$1) AS "serviceInterests",
+  (SELECT count(*)::integer FROM ls_service_interest.service_interest_operations WHERE workspace_id=$1) AS "serviceOperations"`,[f!.workspaceId]);
  return {...result.rows[0]!,otherWorkspaceState};
 }
 
 try{
  const workspaceId=randomUUID(),dataKey=randomBytes(32),lookupKey=randomBytes(32),keyring={activeKeyId:"synthetic",keys:{synthetic:dataKey}};
  f=await fixture({workspaceId,keyring,termsVersion:"Synthetic Group Interest"});
+ await f.pool.query(`INSERT INTO ls_cases.family_members(workspace_id,family_id,person_id,role)
+  SELECT c.workspace_id,c.family_id,cl.person_id,'child' FROM ls_cases.cases c
+  JOIN ls_cases.clients cl ON cl.workspace_id=c.workspace_id AND cl.id=c.client_id
+  WHERE c.workspace_id=$1 AND c.id=ANY($2::uuid[])`,[workspaceId,[f.first.id,f.second.id]]);
  const baseline=await counts();
- if(baseline.inquiries!==0||baseline.operations!==0)throw new Error("GROUP_INTEREST_FIXTURE_NOT_EMPTY");
+ if(baseline.inquiries!==0||baseline.operations!==0||baseline.serviceInterests!==0||baseline.serviceOperations!==0)throw new Error("GROUP_INTEREST_FIXTURE_NOT_EMPTY");
  const runtimePath=join(folder,"synthetic-runtime.json");
  writeFileSync(runtimePath,JSON.stringify({origin,workspaceId,practitioner:f.practitioner.token,parent:f.parent.token}),{mode:0o600});
  const key=join(folder,"tls.key"),cert=join(folder,"tls.crt");
@@ -76,7 +82,7 @@ try{
  phase="boundary-readback";
  const after=await counts();
  if(JSON.stringify(after.otherWorkspaceState)!==JSON.stringify(baseline.otherWorkspaceState))throw new Error("GROUP_INTEREST_WORKSPACE_SIDE_EFFECT");
- if(after.inquiries!==baseline.inquiries+2||after.operations!==baseline.operations+2)throw new Error("GROUP_INTEREST_RECEIPT_COUNT_MISMATCH");
- console.log(`GROUP_INTEREST_ACCEPTANCE_PASS project=${project??"all"} inquiries=2 replays=2 rejected=2 sideEffects=0`);
+ if(after.inquiries!==baseline.inquiries+2||after.operations!==baseline.operations+2||after.serviceInterests!==baseline.serviceInterests+3||after.serviceOperations!==baseline.serviceOperations+4)throw new Error("GROUP_INTEREST_RECEIPT_COUNT_MISMATCH");
+ console.log(`GROUP_INTEREST_ACCEPTANCE_PASS project=${project??"all"} inquiries=2 inquiryReplays=2 serviceInterests=3 serviceOperations=4 sideEffects=0`);
 }catch(error){console.error(`Group Intake browser verification failed at ${phase} (${error instanceof Error?error.message:"unknown error"}). No production or provider state was used.`);process.exitCode=1;}
 finally{await cleanup();}

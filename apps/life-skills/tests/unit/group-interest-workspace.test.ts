@@ -2,7 +2,7 @@ import {createElement} from "react";
 import {renderToStaticMarkup} from "react-dom/server";
 import {describe,expect,it} from "vitest";
 import {interestNotice} from "../../src/features/group-interest/contract.ts";
-import {classifyGroupInterestSaveFailure,GroupInterestWorkspace,permissionLanguageChanged} from "../../src/features/group-interest/workspace.tsx";
+import {classifyGroupInterestSaveFailure,GroupInterestWorkspace,permissionLanguageChanged,serviceOptions} from "../../src/features/group-interest/workspace.tsx";
 
 describe("group interest owner form",()=>{
  it("binds the displayed permission to the admitted canonical notice version",()=>{
@@ -34,5 +34,10 @@ describe("group interest owner form",()=>{
   for(const status of [400,403,404,409,429])expect(classifyGroupInterestSaveFailure(true,status)).toBe("correctable");
   for(const status of [500,503,undefined])expect(classifyGroupInterestSaveFailure(true,status)).toBe("unconfirmed");
   for(const status of [400,401,403,404,409,429,500,503,undefined])expect(classifyGroupInterestSaveFailure(status!==undefined,status,true)).toBe("unconfirmed");
+ });
+ it("requires separate explicit group and tutoring actions for a both inquiry",()=>{
+  expect(serviceOptions({fields:{serviceType:"group_and_tutoring"}} as never)).toEqual(["group","tutoring"]);
+  expect(serviceOptions({fields:{serviceType:"group"}} as never)).toEqual(["group"]);
+  expect(serviceOptions({fields:{serviceType:"tutoring"}} as never)).toEqual(["tutoring"]);
  });
 });

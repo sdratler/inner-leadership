@@ -182,5 +182,9 @@
   {
     "name": "0126_ls_audience_interest.sql",
     "sha256": "f2d2c2d84d34e7224e8c53fb19e4fa7e68c89d5c2d13e197f4f86b2155703845"
+  },
+  {
+    "name": "0127_ls_service_interests.sql",
+    "sha256": "20c19e70fccfc35b62b35faf5600f75622147b9d72e958aee549c6fed7a3430f"
   }
 ]

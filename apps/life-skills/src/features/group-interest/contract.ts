@@ -17,7 +17,17 @@ export const interestFieldsSchema=z.object({
  language:z.enum(["he","en"]),source:z.enum(["spoken","written","whatsapp"])}).strict(),
 }).strict();
 export const interestCommandSchema=z.object({operationId:z.string().uuid(),fields:interestFieldsSchema}).strict();
+export const serviceInterestCommandSchema=z.object({
+ action:z.literal("record_service_interest"),operationId:z.string().uuid(),inquiryId:z.string().uuid(),
+ familyId:z.string().uuid(),personId:z.string().uuid(),serviceType:z.enum(["group","tutoring"]),
+}).strict();
+export const interestMutationSchema=z.union([interestCommandSchema,serviceInterestCommandSchema]);
 export type InterestFields=z.infer<typeof interestFieldsSchema>;
 export type InterestCommand=z.infer<typeof interestCommandSchema>;
+export type ServiceInterestCommand=z.infer<typeof serviceInterestCommandSchema>;
 export type InterestRecord={id:string;state:"interest";source:"owner_entered";createdAt:string;recordedBy:string;fields:InterestFields};
-export type InterestList={items:InterestRecord[];hasMore:boolean};
+export type VerifiedFamilyMember={familyId:string;familyLabel:string;personId:string;personLabel:string};
+export type ServiceInterestRecord={id:string;state:"service_interest";serviceType:"group"|"tutoring";sourceInquiryId:string;
+ familyId:string;familyLabel:string;personId:string;personLabel:string;recordedBy:string;createdAt:string};
+export type InterestList={items:InterestRecord[];hasMore:boolean;members:VerifiedFamilyMember[];
+ serviceInterests:ServiceInterestRecord[]};
