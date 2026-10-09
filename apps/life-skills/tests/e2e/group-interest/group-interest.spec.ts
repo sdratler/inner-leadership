@@ -25,7 +25,7 @@ if(!runtimePath){
  for(const locale of ["en","he"] as const)test(`public group application ${locale}: approved composition, responsive flow and photo focus return`,async({page},info)=>{
   const response=await page.goto(`/${locale}/groups/apply`);expect(response?.status()).toBe(200);
   const direction=locale==="he"?"rtl":"ltr";await expect(page.locator(`div[lang="${locale}"][dir="${direction}"]`).first()).toBeVisible();
-  await expect(page.getByRole("heading",{name:locale==="he"?/Life Skills בית שמש/:/Life Skills Beit Shemesh/})).toBeVisible();
+  await expect(page.getByRole("heading",{name:locale==="he"?/כישורי חיים בית שמש/:/Life Skills Beit Shemesh/})).toBeVisible();
   await expect(page.getByText(locale==="he"?"קשר לפני תיקון.":"Connection before correction.",{exact:true})).toBeVisible();
   await expect(page.getByText(locale==="he"?"ניהול עצמי":"Self-governance",{exact:true})).toBeVisible();
   await expect(page.getByRole("heading",{name:locale==="he"?"איך אנחנו עובדים":"How We Work",exact:true})).toBeVisible();
@@ -33,7 +33,7 @@ if(!runtimePath){
   await expect(page.getByRole("heading",{name:locale==="he"?"הכירו את שלמה דרטלר":"Meet Shlomo Dratler",exact:true})).toBeVisible();
   await expect(page.getByText("“Medication is no longer relevant…”",{exact:true})).toBeVisible();
   await expect(page.getByRole("heading",{name:locale==="he"?"כמה תשובות לשאלות נפוצות":"A few questions, answered",exact:true})).toBeVisible();
-  await expect(page.getByRole("heading",{name:locale==="he"?"מימון ילד לחודש אחד — ₪1,000":"Sponsor a Child for One Month — ₪1,000",exact:true})).toBeVisible();
+  await expect(page.getByRole("heading",{name:locale==="he"?"חסות לילד לחודש אחד — 1,000 ₪":"Sponsor a Child for One Month — ₪1,000",exact:true})).toBeVisible();
   await expect(page.getByRole("link",{name:/Bnei Neviim Academy/})).toHaveAttribute("href","https://bneineviimacademy.org/");
   await expect(page.locator('a[href="https://wa.me/972534932631"]')).not.toHaveCount(0);
   await expect(page.getByText(/does not replace|not an assessment|diagnosis|אינו מחליף|אבחון|הערכה טיפולית|פסיכיאטר|psychiatr/i)).toHaveCount(0);
@@ -42,7 +42,7 @@ if(!runtimePath){
   const town=page.locator('[name="townChoice"]');await expect(town).toHaveAttribute("required","");await town.selectOption("other");const otherTown=page.locator('[name="otherTown"]');await expect(otherTown).toBeVisible();await expect(otherTown).toHaveAttribute("required","");await expect(page.locator('[name="neighborhood"]')).toHaveAttribute("required","");await town.selectOption("beit_shemesh");await expect(otherTown).toHaveCount(0);
   await page.locator('[name="parentName"]').fill("Synthetic public browser check");await page.locator('[name="parentPhone"]').fill("+15550003001");await page.locator('[name="childAge"]').fill("10");await page.locator('[name="neighborhood"]').fill("Synthetic neighborhood");await page.locator('[name="schedulePreference"]').selectOption("flexible");
   if((page.viewportSize()?.width??1440)>760){const switched=locale==="he"?"en":"he";await page.getByRole("button",{name:locale==="he"?"EN":"עברית",exact:true}).click();await expect(page).toHaveURL(new RegExp(`/${switched}/groups/apply$`));await expect(page.locator(`div[lang="${switched}"][dir="${switched==="he"?"rtl":"ltr"}"]`).first()).toBeVisible();for(const [name,value] of Object.entries({parentName:"Synthetic public browser check",parentPhone:"+15550003001",childAge:"10",townChoice:"beit_shemesh",neighborhood:"Synthetic neighborhood",schedulePreference:"flexible"}))await expect(page.locator(`[name="${name}"]`)).toHaveValue(value);await page.getByRole("button",{name:locale==="he"?"עברית":"EN",exact:true}).click();await expect(page).toHaveURL(new RegExp(`/${locale}/groups/apply$`));}
-  if(locale==="he"&&(page.viewportSize()?.width??1440)>760)expect(await page.locator("main > section").first().evaluate(node=>getComputedStyle(node,"::after").backgroundImage)).toContain("270deg");
+  if(locale==="he"&&(page.viewportSize()?.width??1440)>760)expect(await page.locator("main > section").first().evaluate(node=>getComputedStyle(node).backgroundImage)).toContain("groups-flyer-backdrop-p4.png");
   await page.getByRole("button",{name:locale==="he"?"המשך":"Continue",exact:true}).click();
   const practical=page.locator("details").filter({has:page.getByText(locale==="he"?"מידע מעשי לבחירה":"Optional practical information",{exact:true})});await practical.locator("summary").click();await expect(page.locator('[name="screenAccess"] option[value="no_screens_at_home"]')).toHaveText(locale==="he"?"לא, אין לנו מסכים":"No, we don't have screens");await expect(page.locator('[name="screenTime"] option[value="no_fixed_limit"]')).toHaveText(locale==="he"?"ללא מגבלה קבועה":"No fixed limit");await page.locator('[name="screenAccess"]').selectOption("no_screens_at_home");await expect(page.locator('[name="screenTime"]')).toHaveCount(0);await expect(page.locator('[name="interestedInEveningGroup"]')).toHaveCount(0);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
