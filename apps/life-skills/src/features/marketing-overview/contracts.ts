@@ -138,3 +138,41 @@ export interface MarketingSnapshot {
         status: "unbound" | "available" | "error";
     };
 }
+
+export type FacebookPagePublicationState =
+    | "UNCONFIGURED_DESTINATION"
+    | "ASSET_HELD"
+    | "MEDIA_EVIDENCE_UNAVAILABLE"
+    | "CAPTION_UNAVAILABLE"
+    | "SCHEDULE_UNAVAILABLE"
+    | "BLOCKED"
+    | "UNKNOWN_DELIVERY_NO_RETRY"
+    | "READBACK_UNAVAILABLE"
+    | "PUBLISHED_READBACK_VERIFIED"
+    | "READY_PREVIEW_DISABLED"
+    | "RESERVED_PROVIDER_EVIDENCE_ABSENT"
+    | "PROVIDER_EVIDENCE_ABSENT"
+    | "BRIDGE_UNAVAILABLE";
+
+export interface FacebookPagePublicationRecord {
+    state: "BLOCKED" | "READY" | "RESERVED" | "ACCEPTED" | "SCHEDULED" | "SENDING" | "PUBLISHED" | "FAILED" | "UNKNOWN";
+    localBusinessDate: string | null;
+    scheduledAt: string | null;
+    providerReadAt: string | null;
+    publishedAt: string | null;
+    noBlindRetry: boolean;
+}
+
+/** Bounded, marketing-only state. It deliberately excludes provider IDs, Page IDs,
+ * request keys, captions and media URLs. */
+export interface FacebookPagePublicationReadModel {
+    state: FacebookPagePublicationState;
+    lifecycleState: FacebookPagePublicationRecord["state"];
+    reason: string | null;
+    destinationConfigured: boolean;
+    providerEvidenceAvailable: boolean;
+    externalWriteEnabled: false;
+    externalWritePerformed: false;
+    noBlindRetry: boolean;
+    recentRecords: readonly FacebookPagePublicationRecord[];
+}
