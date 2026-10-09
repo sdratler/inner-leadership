@@ -20,6 +20,15 @@
 .promotion { display:grid; grid-template-columns:minmax(0,1fr) minmax(150px,0.45fr) auto; align-items:end; gap:12px; margin-block-start:14px; padding-block-start:14px; border-block-start:1px solid var(--ui-line,#d5e0e2); }
 .promotion button { min-block-size:48px; }
 .phone { direction:ltr; unicode-bidi:isolate; display:inline-block; white-space:nowrap; }
+.publicApplications { display:grid; gap:10px; max-inline-size:920px; padding:16px; border:1px solid var(--ui-line,#d5e0e2); border-radius:12px; background:#f7fbfb; }
+.publicApplications h2,.publicApplications p { margin:0; }
+.applicationDetails { margin-block-start:8px; padding-block-start:8px; border-block-start:1px solid var(--ui-line,#d5e0e2); }
+.applicationDetails summary { cursor:pointer; font-weight:700; }
+.applicationDetails dl { display:grid; gap:6px; margin:10px 0; }
+.applicationDetails dl div { display:grid; grid-template-columns:minmax(180px,1fr) minmax(160px,1fr); gap:10px; }
+.applicationDetails dt { font-weight:600; }
+.applicationDetails dd { margin:0; }
+@media (max-width:640px) { .applicationDetails dl div { grid-template-columns:1fr; gap:2px; } }
 @media(max-width:600px) {
   .workspace { gap:16px; }
   .fields { grid-template-columns:minmax(0,1fr); gap:14px; padding:14px!important; }

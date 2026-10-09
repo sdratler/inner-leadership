@@ -1,4 +1,5 @@
 import {z} from "zod";
+import type {GroupApplicationRecord} from "../group-application/contract.ts";
 /** Candidate administrative inquiry only. Never acceptance of a place, treatment or payment. */
 export const interestNotice = {
  version:"ls-group-interest-20261007-01-v1",
@@ -30,4 +31,4 @@ export type VerifiedFamilyMember={familyId:string;familyLabel:string;personId:st
 export type ServiceInterestRecord={id:string;state:"service_interest";serviceType:"group"|"tutoring";sourceInquiryId:string;
  familyId:string;familyLabel:string;personId:string;personLabel:string;recordedBy:string;createdAt:string};
 export type InterestList={items:InterestRecord[];hasMore:boolean;members:VerifiedFamilyMember[];
- serviceInterests:ServiceInterestRecord[]};
+ serviceInterests:ServiceInterestRecord[];publicApplications:GroupApplicationRecord[]};

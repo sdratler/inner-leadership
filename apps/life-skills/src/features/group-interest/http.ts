@@ -9,8 +9,9 @@ import type {Actor} from "../identity/types.ts";
 import {canonicalForwardedRequest} from "../integration/canonical-forwarded-request.ts";
 import {interestMutationSchema,interestNotice} from "./contract.ts";
 import type {GroupInterestStore} from "./store.ts";
+import type {PublicGroupApplicationStore} from "../group-application/store.ts";
 export type InterestHttpDependencies={enabled:boolean;origin:string;actor:(token:string)=>Promise<Actor>;csrf:(token:string)=>string;
- store:Pick<GroupInterestStore,"create"|"createServiceInterest"|"list">};
+ store:Pick<GroupInterestStore,"create"|"createServiceInterest"|"list">;publicApplications:Pick<PublicGroupApplicationStore,"list">};
 export async function groupInterestHttp(request:Request,load:()=>Promise<InterestHttpDependencies>){
  const id=randomUUID();let response:Response;
  try{
@@ -21,7 +22,10 @@ export async function groupInterestHttp(request:Request,load:()=>Promise<Interes
   if(cookies.length!==1)throw new AppError("UNAUTHENTICATED");
   const token=cookies[0]!.slice(SESSION_COOKIE.length+1);if(!TOKEN_PATTERN.test(token))throw new AppError("UNAUTHENTICATED");
   const actor=await d.actor(token);if(actor.role!=="practitioner")throw new AppError("FORBIDDEN");
-  if(request.method==="GET")response=successResponse({...await d.store.list(actor),notice:interestNotice},id);
+  if(request.method==="GET"){
+   const [interest,publicApplications]=await Promise.all([d.store.list(actor),d.publicApplications.list(actor)]);
+   response=successResponse({...interest,publicApplications,notice:interestNotice},id);
+  }
   else{
    verifyMutationOrigin(canonical,d.origin);verifyCsrfToken(request.headers.get("x-csrf-token"),d.csrf(token));
    const command=await readJson(request,interestMutationSchema);

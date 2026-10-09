@@ -7,6 +7,7 @@ import { ownerPreviewConfig } from "./features/forms/pre-enrollment/owner-previe
 import { intakeStaffEntry } from "./features/forms/pre-enrollment/public-origin.ts";
 import { clientReturnPath, parentReturnPath, practitionerDetailReturnPath, practitionerReturnPath } from "./features/identity/login-return.ts";
 import { groupInterestCandidateEnabled } from "./features/group-interest/candidate.ts";
+import { publicGroupApplicationEnvironmentEnabled } from "./features/group-application/candidate.ts";
 import { canonicalForwardedRequest } from "./features/integration/canonical-forwarded-request.ts";
 
 const intakeIdentityRoutes = new Set([
@@ -40,6 +41,18 @@ export function intakeReleasePath(pathname: string, input: Record<string,string|
     runtimePublicConsent(input.LS_INTAKE_PUBLIC_CONSENT_JSON);
     return true;
   } catch { return false; }
+}
+export function groupApplicationReleasePath(pathname:string,input:Record<string,string|undefined>):boolean{
+ const allowed=pathname==="/api/public/group-applications"||/^\/(he|en)\/groups\/apply\/?$/.test(pathname);
+ if(!allowed||!publicGroupApplicationEnvironmentEnabled(input))return false;
+ try{parseIdentityConfig(input);return true;}catch{return false;}
+}
+export function groupApplicationPublicAsset(pathname:string,method:string,input:Record<string,string|undefined>):boolean{
+ if(method!=="GET"&&method!=="HEAD")return false;
+ const allowed=pathname==="/groups/brand/life-skills-logo.png"||/^\/groups\/private\/skill-(?:0[1-9]|1[0-2])\.webp$/.test(pathname)||
+  /^\/groups\/projects\/LS-PROJECT-(?:01-group\.jpg|02-making\.png|03-3d-printer\.png|04-working-together\.png|05-woodwork\.png|06-guided-conversation\.png|07-music\.png|08-electronics\.png|09-wood-art\.png)$/.test(pathname);
+ if(!allowed||!publicGroupApplicationEnvironmentEnabled(input))return false;
+ try{parseIdentityConfig(input);return true;}catch{return false;}
 }
 function decorate(response: NextResponse, headers: Record<string,string>): NextResponse {
   for (const [key,value] of Object.entries(headers)) response.headers.set(key,value);
@@ -95,10 +108,11 @@ export function proxy(request: NextRequest) {
   }
   // Only named public assets bypass app gates. No wildcard, directory listing,
   // private record, image proxy or remote image fetch is opened.
-  if (publicStaticAsset(pathname, request.method)) {
+  if (publicStaticAsset(pathname, request.method) || groupApplicationPublicAsset(pathname,request.method,process.env)) {
     return decorate(NextResponse.next(), headers);
   }
   const intakePath = intakeReleasePath(pathname, process.env);
+  const groupApplicationPath=groupApplicationReleasePath(pathname,process.env);
   const ownerPreviewPath = /^\/(he|en)\/preview\/intake\/?$/.test(pathname) || pathname === "/api/intake-preview";
   if (ownerPreviewPath && !ownerPreviewConfig(process.env)) return decorate(new NextResponse(null,{status:404}),headers);
   if (intakePath && ["/auth/invite", "/auth/reset"].includes(pathname)) {
@@ -139,18 +153,18 @@ export function proxy(request: NextRequest) {
   // Preserve the owner-review perimeter on the Railway/service hostname while
   // allowing the registered custom origin to use the real identity + role gate.
   const isolatedPreviewPerimeter = isolatedPreview && !canonicalPrivateOrigin;
-  if (isolatedPreviewPerimeter && !intakePath && !ownerPreviewPath && !health && !robots && !isolatedPreviewAuthorized(request,env.LS_PREVIEW_ACCESS_KEY)) {
+  if (isolatedPreviewPerimeter && !intakePath && !groupApplicationPath && !ownerPreviewPath && !health && !robots && !isolatedPreviewAuthorized(request,env.LS_PREVIEW_ACCESS_KEY)) {
     const response=NextResponse.json({ok:false,error:{code:"UNAUTHENTICATED"},requestId:crypto.randomUUID()},{status:401});
     response.headers.set("WWW-Authenticate",'Basic realm="Life Skills private preview", charset="UTF-8"');
     return decorate(response,headers);
   }
-  if (isolatedPreviewPerimeter && !intakePath && !ownerPreviewPath && !health && !robots && !privatePath && !isolatedPreviewPage) {
+  if (isolatedPreviewPerimeter && !intakePath && !groupApplicationPath && !ownerPreviewPath && !health && !robots && !privatePath && !isolatedPreviewPage) {
     return decorate(new NextResponse(null,{status:404}),headers);
   }
   if (isolatedPreview && canonicalPrivateOrigin && !ownerPreviewPath && /^\/(he|en)\/preview(?:\/|$)/.test(pathname)) {
     return decorate(new NextResponse(null,{status:404}),headers);
   }
-  if (!intakePath && !ownerPreviewPath && ((privatePath && !privateMode && !identityPreview) || (!privatePath && pathname !== "/" && !health && !robots && env.LS_APP_MODE !== "foundation_preview" && !isolatedPreviewPerimeter))) {
+  if (!intakePath && !groupApplicationPath && !ownerPreviewPath && ((privatePath && !privateMode && !identityPreview) || (!privatePath && pathname !== "/" && !health && !robots && env.LS_APP_MODE !== "foundation_preview" && !isolatedPreviewPerimeter))) {
     return decorate(NextResponse.json({ ok:false, error:{code:"UNAVAILABLE"}, requestId:crypto.randomUUID() }, {status:503}),headers);
   }
   if (pathname === "/") return decorate(NextResponse.redirect(new URL(isolatedPreviewPerimeter ? "/he/preview" : privateMode ? "/he/login" : "/he/foundation", request.url)),headers);

@@ -153,7 +153,7 @@ it("keeps service-interest provenance immutable and creates none of the dependen
 });
 it("HTTP is disabled by default, protects role/origin/CSRF, and returns persisted native readback",async()=>{
  const token="a".repeat(43),csrf="b".repeat(43),origin="https://synthetic.example.invalid";
- const load=async()=>({enabled:true,origin,actor:async()=>actors[0]!,csrf:()=>csrf,store:service});
+ const load=async()=>({enabled:true,origin,actor:async()=>actors[0]!,csrf:()=>csrf,store:service,publicApplications:{list:async()=>[]}});
  const url=origin+"/api/private/group-interest",headers={cookie:"__Host-ls-session="+token,origin,"content-type":"application/json","x-forwarded-proto":"https","x-forwarded-host":"synthetic.example.invalid"};
  const payload=JSON.stringify(command({serviceType:"group_and_tutoring",childLabel:"HTTP synthetic"}));
  expect((await groupInterestHttp(new Request(url),async()=>({...await load(),enabled:false}))).status).toBe(404);
