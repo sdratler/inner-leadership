@@ -24,3 +24,6 @@
 .languageSwitch button[aria-pressed=true]{color:var(--deep-teal);text-decoration:underline;text-decoration-color:var(--gold);text-decoration-thickness:2px;text-underline-offset:5px}
 .mobileLanguages button{display:grid;place-items:center;min-width:72px;min-height:44px;border:1px solid rgba(230,208,164,.45);border-radius:10px;background:transparent;color:inherit;font:inherit}
 .mobileLanguages button[aria-pressed=true]{background:var(--cream);color:var(--deep-teal)}
+
+/* Intake only: keep the mobile contact control clear of form content. */
+@media(max-width:760px){.page .floatingWhatsapp{position:static;margin:0 16px 16px}}
