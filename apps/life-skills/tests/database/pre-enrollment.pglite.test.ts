@@ -73,7 +73,11 @@ describe("pre-enrollment PGlite", () => {
       const exchanged=await publicPost(request("/api/intake",{action:"exchange",token:issued.token}));expect(exchanged.status).toBe(200);const exchange=(await exchanged.json()).data;expect(exchange.synthetic).toBe(true);
       const body={action:"submit",token:issued.token,idempotencyKey:randomUUID(),payload:payload(exchange.childSlotIds)};
       expect((await publicPost(request("/api/intake",{...body,synthetic:true}))).status).toBe(400);
-      const submitted=await publicPost(request("/api/intake",body));expect(submitted.status).toBe(200);const receipt=(await submitted.json()).data;expect(receipt.projectionPending).toBe(false);expect(http.project).not.toHaveBeenCalled();
+      const submitted=await publicPost(request("/api/intake",body));expect(submitted.status).toBe(200);const submittedBody=await submitted.json(),receipt=submittedBody.data;expect(receipt.projectionPending).toBe(false);expect(http.project).not.toHaveBeenCalled();
+      const suppression=(await db.query<{actorAccountId:string|null;requestId:string;action:string}>(`SELECT actor_account_id AS "actorAccountId",request_id AS "requestId",action
+       FROM ls_identity.action_history WHERE workspace_id=$1 AND request_id=$2`,[workspace,submittedBody.requestId])).rows;
+      expect(suppression).toHaveLength(1);expect(suppression[0]).toMatchObject({actorAccountId:null,requestId:submittedBody.requestId});
+      expect(JSON.parse(suppression[0]!.action)).toEqual({kind:"intake_projection_suppressed_before_bridge/v1",operationId:command.operationId,receiptId:receipt.receiptId});
       const readback=await staffGet(new Request(origin+"/api/intake/staff?receiptId="+receipt.receiptId,{headers:{cookie:`${SESSION_COOKIE}=synthetic-session`}}));expect(readback.status).toBe(200);expect((await readback.json()).data[0].input.parentName).toBe("Synthetic Parent");
       const normal=await new PreEnrollmentStaffService(identity,ring,()=>now).issue(owner,"LS-LEAD-http-normal",1);
       const normalExchange=(await(await publicPost(request("/api/intake",{action:"exchange",token:normal.token}))).json()).data;
@@ -127,7 +131,20 @@ describe("pre-enrollment PGlite", () => {
       const key=randomUUID(),input=payload(exchange.childSlotIds),receipt=await service.submit(issued.token,key,input);
       expect(await service.submit(issued.token,key,input)).toMatchObject({receiptId:receipt.receiptId,duplicate:true});
       expect(await identity.transaction(tx=>isSyntheticIntakeReceipt(tx,workspace,receipt.receiptId,receipt.stableLeadId))).toBe(true);
-      const project=vi.fn(async()=>false);expect(await projectSubmittedIntake(identity,workspace,receipt,project)).toBe(false);expect(project).not.toHaveBeenCalled();
+      const project=vi.fn(async()=>false),suppressionContext={requestId:randomUUID(),now};
+      expect(await projectSubmittedIntake(identity,workspace,receipt,project,suppressionContext)).toBe(false);expect(project).not.toHaveBeenCalled();
+      const suppression=(await db.query<{actor:string|null;request:string;action:string}>(`SELECT actor_account_id AS actor,request_id AS request,action
+       FROM ls_identity.action_history WHERE workspace_id=$1 AND request_id=$2`,[workspace,suppressionContext.requestId])).rows;
+      expect(suppression).toHaveLength(1);expect(suppression[0]).toMatchObject({actor:null,request:suppressionContext.requestId});
+      expect(JSON.parse(suppression[0]!.action)).toEqual({kind:"intake_projection_suppressed_before_bridge/v1",operationId:operation,receiptId:receipt.receiptId});
+      expect(await projectSubmittedIntake(identity,workspace,receipt,project,suppressionContext)).toBe(false);
+      expect((await db.query("SELECT id FROM ls_identity.action_history WHERE workspace_id=$1 AND request_id=$2",[workspace,suppressionContext.requestId])).rows).toHaveLength(1);
+      await db.query("UPDATE ls_identity.action_history SET action='collision' WHERE workspace_id=$1 AND request_id=$2",[workspace,suppressionContext.requestId]);
+      await expect(projectSubmittedIntake(identity,workspace,receipt,project,suppressionContext)).rejects.toMatchObject({code:"UNAVAILABLE"});
+      expect(project).not.toHaveBeenCalled();
+      const failedEventStore:IdentityStore={transaction:work=>identity.transaction(tx=>work({query:async(sql,values)=>{if(sql.includes("INSERT INTO ls_identity.action_history"))throw Error("synthetic event write failure");return tx.query(sql,values);}}))};
+      await expect(projectSubmittedIntake(failedEventStore,workspace,receipt,project,{requestId:randomUUID(),now})).rejects.toThrow("synthetic event write failure");
+      expect(project).not.toHaveBeenCalled();
       expect((await db.query("SELECT entity_kind FROM ls_demo.records ORDER BY entity_kind")).rows).toEqual([{entity_kind:"form"},{entity_kind:"submission"}]);
       const staff=new PreEnrollmentStaffService(identity,ring,()=>now);expect((await staff.history(owner,receipt.receiptId))[0]).toMatchObject({synthetic:true,input:{parentName:"Synthetic Parent"}});
       expect((await staff.list(owner))[0]).toMatchObject({receiptId:receipt.receiptId,synthetic:true});

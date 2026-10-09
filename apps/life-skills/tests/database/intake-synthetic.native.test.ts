@@ -79,7 +79,12 @@ test("native PG synthetic fixture is replay-safe, encrypted, authorized and effe
   WHERE r.workspace_id=$1 AND r.receipt_id=$2`,[f.workspaceId,receipt.receiptId])).rows[0]!;
  expect(persisted.payload).not.toContain("Synthetic Parent");expect(persisted.payload).not.toContain("Synthetic Child");
  expect(persisted.consumedAt).toBeInstanceOf(Date);expect(persisted.state).toBe("awaiting_payment");
- const project=vi.fn(async()=>false);expect(await projectSubmittedIntake(store,f.workspaceId,receipt,project)).toBe(false);expect(project).not.toHaveBeenCalled();
+ const project=vi.fn(async()=>false),requestId=randomUUID(),suppressedAt=new Date();
+ expect(await projectSubmittedIntake(store,f.workspaceId,receipt,project,{requestId,now:suppressedAt})).toBe(false);expect(project).not.toHaveBeenCalled();
+ const suppression=(await f.pool.query<{actor:string|null;request:string;action:string;occurredAt:Date}>(`SELECT actor_account_id AS actor,request_id AS request,action,occurred_at AS "occurredAt"
+  FROM ls_identity.action_history WHERE workspace_id=$1 AND request_id=$2`,[f.workspaceId,requestId])).rows;
+ expect(suppression).toHaveLength(1);expect(suppression[0]).toMatchObject({actor:null,request:requestId,occurredAt:suppressedAt});
+ expect(JSON.parse(suppression[0]!.action)).toEqual({kind:"intake_projection_suppressed_before_bridge/v1",operationId:operation,receiptId:receipt.receiptId});
  expect(await effects(f)).toEqual(baseline);
 });
 
