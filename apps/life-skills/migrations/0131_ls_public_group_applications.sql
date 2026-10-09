@@ -35,3 +35,4 @@ CREATE TRIGGER public_group_application_immutable BEFORE UPDATE OR DELETE ON ls_
 CREATE TRIGGER public_group_application_operation_immutable BEFORE UPDATE OR DELETE ON ls_service_interest.public_application_operations
  FOR EACH ROW EXECUTE FUNCTION ls_service_interest.reject_public_application_mutation();
 REVOKE ALL ON ls_service_interest.public_applications,ls_service_interest.public_application_operations FROM PUBLIC;
+REVOKE ALL ON FUNCTION ls_service_interest.reject_public_application_mutation() FROM PUBLIC;

@@ -24,6 +24,7 @@
     "db:release-draft-group-placement": "tsx scripts/release-draft-group-placement.ts",
     "db:release-proposed-placement-moves": "tsx scripts/release-proposed-placement-moves.ts",
     "db:release-draft-group-meetings": "tsx scripts/release-draft-group-meetings.ts",
+    "db:release-public-group-applications": "tsx scripts/release-public-group-applications.ts",
     "operator:provision-demo": "node --conditions=react-server --import tsx src/features/identity/operator-cli.ts provision-demo",
     "operator:shadow-import": "node --conditions=react-server --import tsx scripts/shadow-import-operator.ts",
     "verify": "npm run lint && npm run typecheck && npm test && npm run build",
