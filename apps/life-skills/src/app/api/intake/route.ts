@@ -14,7 +14,7 @@ import { projectSubmittedIntake } from "@/features/forms/pre-enrollment/submissi
  * The fragment token is never accepted in a GET/query string. */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-function reply(error:unknown){const result=errorEnvelope(error,randomUUID());return NextResponse.json(result.body,{status:result.status,headers:{"Cache-Control":"private, no-store","Referrer-Policy":"no-referrer","X-Content-Type-Options":"nosniff"}});}
+function reply(error:unknown,requestId=randomUUID()){const result=errorEnvelope(error,requestId);return NextResponse.json(result.body,{status:result.status,headers:{"Cache-Control":"private, no-store","Referrer-Policy":"no-referrer","X-Content-Type-Options":"nosniff"}});}
 /** The production environment remains closed unless the dedicated release flag is enabled.
  * Local synthetic loopback uses the same sealed database path, never a browser store. */
 function enabled(request:Request){
@@ -24,10 +24,12 @@ function enabled(request:Request){
 }
 export async function GET(): Promise<Response> { return reply(new AppError("NOT_FOUND")); }
 export async function POST(request:Request):Promise<Response>{
+ const requestId=randomUUID();
  try{
   if(!enabled(request))throw new AppError("NOT_FOUND");
   verifyIntakeMutationOrigin(request,process.env);
   const runtime=await identityRuntime();
+  const requestedAt=runtime.clock.now();
   const body=await readJson(request,z.object({action:z.enum(["exchange","submit"]),token:z.string().max(128),idempotencyKey:z.string().uuid().optional(),payload:z.unknown().optional()}).strict());
   const service=new PreEnrollmentService(new SqlPreEnrollmentRepository(runtime.store,runtime.config.workspaceId),runtime.config.keyring,()=>runtime.clock.now(),true,runtime.config.workspaceId);
   const data=body.action==='exchange'?await service.exchange(body.token):body.idempotencyKey?await service.submit(body.token,body.idempotencyKey,body.payload):(()=>{throw new AppError("INVALID_REQUEST");})();
@@ -36,9 +38,9 @@ export async function POST(request:Request):Promise<Response>{
    // Submission has already committed to the private onboarding store. An
    // authority/read or Sheet failure must not claim that receipt was lost.
    projectionPending=await projectSubmittedIntake(runtime.store,runtime.config.workspaceId,data,
-    (lead,fields)=>projectIntakeToLegacyIfCurrent(runtime,lead,fields)).catch(()=>true);
+    (lead,fields)=>projectIntakeToLegacyIfCurrent(runtime,lead,fields),{requestId,now:requestedAt}).catch(()=>true);
   }
-  return NextResponse.json({ok:true,data:{...data,projectionPending},requestId:randomUUID()},
+  return NextResponse.json({ok:true,data:{...data,projectionPending},requestId},
    {headers:{"Cache-Control":"private, no-store","Referrer-Policy":"no-referrer","X-Content-Type-Options":"nosniff"}});
- }catch(error){return reply(error);}
+ }catch(error){return reply(error,requestId);}
 }
