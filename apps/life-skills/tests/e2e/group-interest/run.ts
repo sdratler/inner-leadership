@@ -11,6 +11,8 @@ import {once} from "node:events";
 import {request as playwrightRequest} from "@playwright/test";
 import {fixture,safeTestUrl} from "../../database/calendar/fixture.ts";
 import {seal,tokenDigest} from "../../../src/features/identity/crypto.ts";
+import {privateDigest} from "../../../src/features/contact-ops/server/digests.ts";
+import {groupApplicationNotice} from "../../../src/features/group-application/contract.ts";
 
 const projects={desktop:3105,mobile390:3106,mobile340:3107} as const;
 const project=process.env.LS_GROUP_INTEREST_TEST_PROJECT as keyof typeof projects|undefined;
@@ -137,17 +139,21 @@ try{
   return token;
  }
  const adult=await deniedAccount("adult_client"),child=await deniedAccount("child"),revoked=await deniedAccount("adult_client",workspaceId,true),otherWorkspace=await deniedAccount("practitioner",randomUUID());
+ const publicApplicationId=randomUUID(),publicApplicationOperationId=randomUUID(),publicApplicationFields={parentName:"Synthetic public applicant",parentPhone:"+15550003000",language:"en" as const,childAge:10,town:"Synthetic town",schedulePreference:"evening" as const,interestedInEveningGroup:true,screenAccess:"shared_device" as const,screenTime:"1_to_2_hours" as const,observations:{intrinsicMotivation:"sometimes_difficult" as const},parentPriorities:"Synthetic review details only.",permission:{confirmed:true as const,version:groupApplicationNotice.version,language:"en" as const}};
+ const digestKey=lookupKey.toString("hex"),publicRequestDigest=privateDigest({domain:"public-group-application/v1",workspace:workspaceId,fields:publicApplicationFields},digestKey),publicContactDigest=privateDigest({domain:"public-group-application-contact/v1",workspace:workspaceId,phone:publicApplicationFields.parentPhone},digestKey);
+ await f.pool.query(`INSERT INTO ls_service_interest.public_applications(workspace_id,id,contact_digest,request_digest,payload_ciphertext,notice_version,notice_language,received_at) VALUES($1,$2,$3,$4,$5,$6,$7,clock_timestamp())`,[workspaceId,publicApplicationId,publicContactDigest,publicRequestDigest,seal(JSON.stringify(publicApplicationFields),`ls_service_interest/public_application/v1/${workspaceId}/${publicApplicationId}`,keyring),groupApplicationNotice.version,"en"]);
+ await f.pool.query(`INSERT INTO ls_service_interest.public_application_operations(workspace_id,operation_id,request_digest,application_id) VALUES($1,$2,$3,$4)`,[workspaceId,publicApplicationOperationId,publicRequestDigest,publicApplicationId]);
  const baseline=await counts();
  if(baseline.inquiries!==0||baseline.operations!==0||baseline.serviceInterests!==0||baseline.serviceOperations!==0||baseline.draftGroups!==0||baseline.draftOperations!==0||baseline.proposedPlacements!==0||baseline.placementOperations!==0||baseline.placementMoves!==0||baseline.movementOperations!==0||baseline.meetingRevisions!==0||baseline.meetingOperations!==0)throw new Error("GROUP_INTEREST_FIXTURE_NOT_EMPTY");
  const runtimePath=join(folder,"synthetic-runtime.json");
- writeFileSync(runtimePath,JSON.stringify({origin,workspaceId,practitioner:f.practitioner.token,parent:f.parent.token,adult,child,revoked,otherWorkspace}),{mode:0o600});
+ writeFileSync(runtimePath,JSON.stringify({origin,workspaceId,practitioner:f.practitioner.token,parent:f.parent.token,adult,child,revoked,otherWorkspace,publicApplicationId,publicApplicantName:publicApplicationFields.parentName}),{mode:0o600});
  const key=join(folder,"tls.key"),cert=join(folder,"tls.crt");
  phase="tls-certificate";
  const gitOpenSsl="C:/Program Files/Git/mingw64/bin/openssl.exe",openssl=process.platform==="win32"&&existsSync(gitOpenSsl)?gitOpenSsl:"openssl";
  execFileSync(openssl,["req","-x509","-newkey","rsa:2048","-nodes","-keyout",key,"-out",cert,"-days","1","-subj","/CN=localhost","-addext","subjectAltName=DNS:localhost,IP:127.0.0.1"],{stdio:"ignore"});
  phase="next-app-start";
  const env:NodeJS.ProcessEnv={...process.env,NODE_ENV:"development",NEXT_TELEMETRY_DISABLED:"1",LS_APP_MODE:"foundation_preview",LS_APP_ORIGIN:origin,
-  LS_DATABASE_URL:safeTestUrl(),LS_DATABASE_TLS:"disable",LS_PRIVATE_APP_ENABLED:"true",LS_IDENTITY_ENABLED:"true",LS_GROUP_INTEREST_CANDIDATE:"true",
+  LS_DATABASE_URL:safeTestUrl(),LS_DATABASE_TLS:"disable",LS_PRIVATE_APP_ENABLED:"true",LS_IDENTITY_ENABLED:"true",LS_GROUP_INTEREST_CANDIDATE:"true",LS_GROUP_APPLICATION_SYNTHETIC_LOOPBACK:"true",
   LS_IDENTITY_WORKSPACE_ID:workspaceId,LS_IDENTITY_ACTIVE_KEY_ID:"synthetic",LS_IDENTITY_DATA_KEYS:JSON.stringify({synthetic:dataKey.toString("base64url")}),
   LS_IDENTITY_CSRF_KEY:randomBytes(32).toString("base64url"),LS_IDENTITY_LOOKUP_KEY:lookupKey.toString("base64url"),LS_IDENTITY_RATE_KEY:randomBytes(32).toString("base64url"),
   LS_GROUP_INTEREST_FIXTURE_PATH:runtimePath,LS_GROUP_INTEREST_TEST_RUNNER_ACTIVE:"true"};

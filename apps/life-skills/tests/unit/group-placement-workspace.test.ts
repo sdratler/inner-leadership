@@ -79,6 +79,13 @@ describe("draft group and proposed placement workspace",()=>{
   expect(practitionerContext(path,null,false,false,true).find(item=>item.key==="groups")?.path).toBe("app/group-interest");
   expect(breadcrumbItems(locale,"practitioner",path).map(item=>item.label)).toEqual(locale==="he"?["בית","אנשים","קבוצות"]:["Home","People","Groups"]);
  });
+ it.each(["en","he"] as const)("integrates public application review into the real %s People navigation",locale=>{
+  const path=`/${locale}/app/group-applications`,tabs=practitionerContext(path,null);
+  expect(activeItem(path,locale,"practitioner")?.key).toBe("clients");
+  expect(tabs.find(item=>item.key==="group_applications")?.path).toBe("app/group-applications");
+  expect(tabs.some(item=>item.key==="groups")).toBe(false);
+  expect(breadcrumbItems(locale,"practitioner",path).map(item=>item.label)).toEqual(locale==="he"?["בית","אנשים","בקשות לקבוצה"]:["Home","People","Group applications"]);
+ });
  it("keeps every Groups navigation entry default-off and production-disabled",()=>{
   for(const path of ["/en/app/clients","/he/app/prospects","/en/app/group-interest"]){
    expect(practitionerContext(path,null).some(item=>item.key==="groups")).toBe(false);

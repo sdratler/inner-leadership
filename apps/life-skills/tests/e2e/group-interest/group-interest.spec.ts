@@ -5,7 +5,7 @@ import {execFile} from "node:child_process";
 import {randomUUID} from "node:crypto";
 import {readFileSync} from "node:fs";
 import {promisify} from "node:util";
-type Runtime={origin:string;workspaceId:string;practitioner:string;parent:string;adult:string;child:string;revoked:string;otherWorkspace:string};
+type Runtime={origin:string;workspaceId:string;practitioner:string;parent:string;adult:string;child:string;revoked:string;otherWorkspace:string;publicApplicationId:string;publicApplicantName:string};
 const runtimePath=process.env.LS_GROUP_INTEREST_FIXTURE_PATH;
 if(!runtimePath){
  if(process.env.LS_GROUP_INTEREST_TEST_RUNNER_ACTIVE==="true")throw new Error("ISOLATED_GROUP_INTEREST_FIXTURE_REQUIRED");
@@ -22,6 +22,35 @@ if(!runtimePath){
  const selected=process.env.LS_GROUP_INTEREST_TEST_PROJECT;
  const ports:Record<string,number>={desktop:3105,mobile390:3106,mobile340:3107};if(selected!==undefined&&data.origin!==`https://localhost:${ports[selected]}`)throw new Error("GROUP_INTEREST_BROWSER_PROJECT_ORIGIN_MISMATCH");
  test.use({baseURL:data.origin});
+ for(const locale of ["en","he"] as const)test(`public group application ${locale}: approved composition, responsive flow and photo focus return`,async({page},info)=>{
+  const response=await page.goto(`/${locale}/groups/apply`);expect(response?.status()).toBe(200);
+  const direction=locale==="he"?"rtl":"ltr";await expect(page.locator(`div[lang="${locale}"][dir="${direction}"]`).first()).toBeVisible();
+  await expect(page.getByRole("heading",{name:locale==="he"?/Life Skills בית שמש/:/Life Skills Beit Shemesh/})).toBeVisible();
+  await expect(page.getByText(locale==="he"?"קשר לפני תיקון.":"Connection before correction.",{exact:true})).toBeVisible();
+  await expect(page.getByText(locale==="he"?"ניהול עצמי":"Self-governance",{exact:true})).toBeVisible();
+  await expect(page.getByRole("heading",{name:locale==="he"?"איך אנחנו עובדים":"How We Work",exact:true})).toBeVisible();
+  await expect(page.getByRole("heading",{name:locale==="he"?"תמיכה אישית":"One-on-one Support",exact:true})).toBeVisible();
+  await expect(page.getByRole("heading",{name:locale==="he"?"הכירו את שלמה דרטלר":"Meet Shlomo Dratler",exact:true})).toBeVisible();
+  await expect(page.getByText("“Medication is no longer relevant…”",{exact:true})).toBeVisible();
+  await expect(page.getByRole("heading",{name:locale==="he"?"כמה תשובות לשאלות נפוצות":"A few questions, answered",exact:true})).toBeVisible();
+  await expect(page.getByRole("heading",{name:locale==="he"?"מימון ילד לחודש אחד — ₪1,000":"Sponsor a Child for One Month — ₪1,000",exact:true})).toBeVisible();
+  await expect(page.getByRole("link",{name:/Bnei Neviim Academy/})).toHaveAttribute("href","https://bneineviimacademy.org/");
+  await expect(page.locator('a[href="https://wa.me/972534932631"]')).not.toHaveCount(0);
+  await expect(page.getByText(/does not replace|not an assessment|diagnosis|אינו מחליף|אבחון|הערכה טיפולית|פסיכיאטר|psychiatr/i)).toHaveCount(0);
+  for(const image of [page.getByAltText(locale==="he"?"מידע מאושר על תמיכה אישית בכישורי חיים":"Approved Life Skills one-on-one support information"),page.getByAltText(locale==="he"?"שלמה דרטלר יושב על הדשא עם קבוצת ילדים":"Shlomo Dratler sitting on the grass with a group of boys")]){await image.scrollIntoViewIfNeeded();await expect(image).toBeVisible();expect(await image.evaluate(element=>(element as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);}
+  await expect(page.getByText(locale==="he"?"אינה שומרת מקום":"does not reserve a place",{exact:false})).toHaveCount(1);
+  const town=page.locator('[name="townChoice"]');await expect(town).toHaveAttribute("required","");await town.selectOption("other");const otherTown=page.locator('[name="otherTown"]');await expect(otherTown).toBeVisible();await expect(otherTown).toHaveAttribute("required","");await expect(page.locator('[name="neighborhood"]')).toHaveAttribute("required","");await town.selectOption("beit_shemesh");await expect(otherTown).toHaveCount(0);
+  await page.locator('[name="parentName"]').fill("Synthetic public browser check");await page.locator('[name="parentPhone"]').fill("+15550003001");await page.locator('[name="childAge"]').fill("10");await page.locator('[name="neighborhood"]').fill("Synthetic neighborhood");await page.locator('[name="schedulePreference"]').selectOption("flexible");
+  if((page.viewportSize()?.width??1440)>760){const switched=locale==="he"?"en":"he";await page.getByRole("button",{name:locale==="he"?"EN":"עברית",exact:true}).click();await expect(page).toHaveURL(new RegExp(`/${switched}/groups/apply$`));await expect(page.locator(`div[lang="${switched}"][dir="${switched==="he"?"rtl":"ltr"}"]`).first()).toBeVisible();for(const [name,value] of Object.entries({parentName:"Synthetic public browser check",parentPhone:"+15550003001",childAge:"10",townChoice:"beit_shemesh",neighborhood:"Synthetic neighborhood",schedulePreference:"flexible"}))await expect(page.locator(`[name="${name}"]`)).toHaveValue(value);await page.getByRole("button",{name:locale==="he"?"עברית":"EN",exact:true}).click();await expect(page).toHaveURL(new RegExp(`/${locale}/groups/apply$`));}
+  if(locale==="he"&&(page.viewportSize()?.width??1440)>760)expect(await page.locator("main > section").first().evaluate(node=>getComputedStyle(node,"::after").backgroundImage)).toContain("270deg");
+  await page.getByRole("button",{name:locale==="he"?"המשך":"Continue",exact:true}).click();
+  const practical=page.locator("details").filter({has:page.getByText(locale==="he"?"מידע מעשי לבחירה":"Optional practical information",{exact:true})});await practical.locator("summary").click();await expect(page.locator('[name="screenAccess"] option[value="no_screens_at_home"]')).toHaveText(locale==="he"?"לא, אין לנו מסכים":"No, we don't have screens");await expect(page.locator('[name="screenTime"] option[value="no_fixed_limit"]')).toHaveText(locale==="he"?"ללא מגבלה קבועה":"No fixed limit");await page.locator('[name="screenAccess"]').selectOption("no_screens_at_home");await expect(page.locator('[name="screenTime"]')).toHaveCount(0);await expect(page.locator('[name="interestedInEveningGroup"]')).toHaveCount(0);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  const opener=page.getByRole("button",{name:new RegExp(locale==="he"?"הגדלת תמונה":"Enlarge photograph")}).first();await opener.scrollIntoViewIfNeeded();await opener.focus();await page.keyboard.press("Enter");
+  const photoDialog=page.getByRole("dialog");await expect(photoDialog).toBeVisible();expect(await photoDialog.evaluate(node=>({open:(node as HTMLDialogElement).open,modal:node.matches(":modal")}))).toEqual({open:true,modal:true});await expect(photoDialog.getByRole("button",{name:locale==="he"?"סגירת תמונה":"Close photograph",exact:true})).toBeFocused();await page.keyboard.press("Escape");await expect(photoDialog).toHaveCount(0);await expect(opener).toBeFocused();
+  if((page.viewportSize()?.width??1440)<=760){const menu=page.getByRole("button",{name:locale==="he"?"פתיחת ניווט":"Open navigation",exact:true});await menu.click();await expect(page.getByRole("button",{name:locale==="he"?"סגירת ניווט":"Close navigation",exact:true})).toHaveAttribute("aria-expanded","true");await expect(page.getByRole("navigation",{name:locale==="he"?"ניווט בדף":"Page navigation"})).toBeVisible();}
+  await page.screenshot({path:info.outputPath(`group-application-p2-${locale}-${info.project.name}.png`),fullPage:true});
+ });
  for(const locale of ["en","he"] as const)test(`practitioner ${locale}: save, exact replay, rejection, reload and responsive readback`,async({page,context},info)=>{
   await context.addCookies([{name:"__Host-ls-session",value:data.practitioner,url:data.origin,httpOnly:true,secure:true,sameSite:"Lax"}]);
   const initialRead=page.waitForResponse(response=>response.request().method()==="GET"&&new URL(response.url()).pathname==="/api/private/group-interest");
@@ -239,11 +268,26 @@ if(!runtimePath){
   await addInquiry.locator("summary").click();await expect(addInquiry).not.toHaveAttribute("open","");await addInquiry.locator("summary").click();await expect(inquiryForm.locator('[name="parentName"]')).toHaveValue(unsaved);await addInquiry.locator("summary").click();
   await page.locator("#lsw-main").focus();await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:info.outputPath(`group-interest-and-placement-${locale}-${info.project.name}.png`)});
  });
+ for(const locale of ["en","he"] as const)test(`practitioner ${locale}: review a public application without converting it`,async({page,context})=>{
+  await context.addCookies([{name:"__Host-ls-session",value:data.practitioner,url:data.origin,httpOnly:true,secure:true,sameSite:"Lax"}]);
+  const initialRead=page.waitForResponse(response=>response.request().method()==="GET"&&new URL(response.url()).pathname==="/api/private/group-applications");
+  const response=await page.goto(`/${locale}/app/group-applications`);expect(response?.status()).toBe(200);expect((await initialRead).status()).toBe(200);
+  await expect(page.getByRole("heading",{name:locale==="he"?"בקשות הצטרפות לקבוצה":"Group applications",exact:true})).toBeVisible();
+  await expect(page.getByText(locale==="he"?"הבקשות נשארות נפרדות מאנשים, מרשומות טיפוליות ומהרשמה עד לפעולה מפורשת ונפרדת.":"Applications remain separate from People, clinical records and enrollment until you take a separate explicit action.",{exact:false})).toBeVisible();
+  const record=page.locator("article").filter({hasText:data.publicApplicantName});await expect(record).toHaveCount(1);await expect(record.getByRole("heading",{name:new RegExp(data.publicApplicantName)})).toBeVisible();
+  const phone=record.locator("bdi");await expect(phone).toHaveText("+15550003000");await expect(phone).toHaveAttribute("dir","ltr");
+  const details=record.locator("details");await expect(details).not.toHaveAttribute("open","");await details.locator("summary").click();await expect(details).toHaveAttribute("open","");await expect(details).toContainText("Synthetic review details only.");
+  const views=page.getByRole("navigation",{name:locale==="he"?"תצוגות הדף הנוכחי":"Current page views"});await expect(views.getByRole("link",{name:locale==="he"?"בקשות לקבוצה":"Group applications",exact:true})).toHaveAttribute("aria-current","page");
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  await page.goto(`/${locale}/app/clients`);await views.getByRole("link",{name:locale==="he"?"בקשות לקבוצה":"Group applications",exact:true}).click();await expect(page).toHaveURL(new RegExp(`/${locale}/app/group-applications$`));await page.goBack();await expect(page).toHaveURL(new RegExp(`/${locale}/app/clients$`));
+ });
  test("parent is denied the owner-only page and API without disclosure",async({page,context},info)=>{
   await context.addCookies([{name:"__Host-ls-session",value:data.parent,url:data.origin,httpOnly:true,secure:true,sameSite:"Lax"}]);
   for(const locale of ["en","he"]){const denied=await page.goto(`/${locale}/app/group-interest`);expect([200,404]).toContain(denied?.status());await expect(page.getByRole("heading",{name:locale==="he"?"העמוד אינו זמין":"Page unavailable",exact:true})).toBeVisible();await expect(page.getByRole("heading",{name:/Group and tutoring interest|התעניינות בקבוצה ובתגבור/})).toHaveCount(0);await expect(page.locator('form')).toHaveCount(0);expect(await page.locator("body").innerText()).not.toContain(`Synthetic ${info.project.name}-${locale} Parent`);}
   const api=await page.request.get(`${data.origin}/api/private/group-interest`);expect(api.status()).toBe(403);expect(await api.text()).not.toContain("Synthetic");
   const placementApi=await page.request.get(`${data.origin}/api/private/group-placement`);expect(placementApi.status()).toBe(403);expect(await placementApi.text()).not.toContain("Synthetic");
+  const applicationsPage=await page.goto("/en/app/group-applications");expect([200,404]).toContain(applicationsPage?.status());await expect(page.getByRole("heading",{name:"Group applications",exact:true})).toHaveCount(0);expect(await page.locator("body").innerText()).not.toContain(data.publicApplicantName);
+  const applicationsApi=await page.request.get(`${data.origin}/api/private/group-applications`);expect(applicationsApi.status()).toBe(403);expect(await applicationsApi.text()).not.toContain(data.publicApplicantName);
  });
  test("adult, child, revoked and other-workspace sessions cannot open or read owner planning",async({page,context})=>{
   for(const [kind,token] of Object.entries({adult:data.adult,child:data.child,revoked:data.revoked,otherWorkspace:data.otherWorkspace})){

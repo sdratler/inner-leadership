@@ -198,5 +198,9 @@
   {
     "name": "0130_ls_draft_group_meetings.sql",
     "sha256": "106320890c774544cee83648d15243decfdef7061c7e14aea532d89ac5be23e7"
+  },
+  {
+    "name": "0131_ls_public_group_applications.sql",
+    "sha256": "76af0c01649a67e1ddffeda5e8f93e3fb39ef03436465f456f59f3d9a7a9050c"
   }
 ]
