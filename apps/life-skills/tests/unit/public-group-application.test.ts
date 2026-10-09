@@ -8,6 +8,9 @@ import {classifyPublicApplicationFailure,GroupApplicationForm} from "../../src/f
 import {GroupApplicationLanding} from "../../src/features/group-application/landing.tsx";
 import {publicGroupApplicationHttp} from "../../src/features/group-application/http.ts";
 import {publicGroupApplicationEnvironmentEnabled} from "../../src/features/group-application/candidate.ts";
+import {groupApplicationReviewHttp} from "../../src/features/group-application/review-http.ts";
+import {GroupApplicationReviewWorkspace} from "../../src/features/group-application/review-workspace.tsx";
+import type {Actor} from "../../src/features/identity/types.ts";
 
 const key="synthetic-public-group-application-rate-key-material",now=Date.parse("2029-01-01T12:00:03Z"),issued=now-3000;
 const fields={parentName:"Synthetic Parent",parentPhone:"+15550002000",language:"en" as const,childAge:10,town:"Synthetic town",
@@ -48,6 +51,29 @@ describe("public group application boundary",()=>{
   expect(new Set(en.match(/\/groups\/projects\/LS-PROJECT-[^\"?]+/g))).toHaveLength(9);
   expect(en.match(/\/groups\/private\/skill-/g)).toHaveLength(12);
   expect(en).toContain("one planned first group");expect(en).toContain("does not reserve a place");
+  expect(en).toContain("meeting times to be confirmed");expect(en).not.toContain("90 minutes");expect(he).not.toContain("90 דקות");
+ });
+ it("renders a bilingual practitioner review destination with explicit separation",()=>{
+  for(const locale of ["en","he"] as const){const html=renderToStaticMarkup(createElement(GroupApplicationReviewWorkspace,{locale}));
+   expect(html).toContain(locale==="he"?"בקשות הצטרפות לקבוצה":"Group applications");
+   expect(html).toContain(locale==="he"?"נשארות נפרדות":"remain separate");
+  }
+ });
+ it("keeps application review practitioner-only, read-only and query-free",async()=>{
+  const origin="https://synthetic.example.invalid",token="s".repeat(43),item={id:"00000000-0000-4000-8000-000000000004",source:"public_group_application" as const,state:"owner_review" as const,receivedAt:new Date(now).toISOString(),fields};
+  const practitioner={id:"00000000-0000-4000-8000-000000000010",workspaceId:"00000000-0000-4000-8000-000000000011",personId:"00000000-0000-4000-8000-000000000012",role:"practitioner",state:"active",locale:"en",sessionDigest:"digest",expiresAt:now+60_000} as unknown as Actor;
+  const list=vi.fn(async()=>[item]),actor=vi.fn(async()=>practitioner);
+  const dependencies=async()=>({origin,actor,store:{list}}),headers={host:"synthetic.example.invalid","x-forwarded-host":"synthetic.example.invalid","x-forwarded-proto":"https",cookie:`__Host-ls-session=${token}`};
+  const response=await groupApplicationReviewHttp(new Request(origin+"/api/private/group-applications",{headers}),dependencies);
+  expect(response.status).toBe(200);expect(await response.json()).toMatchObject({ok:true,data:{items:[item]}});expect(list).toHaveBeenCalledTimes(1);
+  expect((await groupApplicationReviewHttp(new Request(origin+"/api/private/group-applications?state=owner_review",{headers}),dependencies)).status).toBe(400);
+  expect((await groupApplicationReviewHttp(new Request(origin+"/api/private/group-applications",{method:"POST",headers}),dependencies)).status).toBe(400);
+  const {cookie:unusedCookie,...anonymousHeaders}=headers;void unusedCookie;
+  expect((await groupApplicationReviewHttp(new Request(origin+"/api/private/group-applications",{headers:anonymousHeaders}),dependencies)).status).toBe(401);
+  const parentActor=async()=>({...await actor(),role:"parent" as const}) as Actor;
+  const parentDependencies=async()=>({...await dependencies(),actor:parentActor});
+  const parentDenied=await groupApplicationReviewHttp(new Request(origin+"/api/private/group-applications",{headers}),parentDependencies);
+  expect(parentDenied.status).toBe(403);
  });
  it("distinguishes definite validation failures from unknown write outcomes",()=>{
   expect(classifyPublicApplicationFailure(false)).toBe("unavailable");
@@ -58,7 +84,7 @@ describe("public group application boundary",()=>{
  });
  it("requires exact origin, same-origin fetch, empty honeypot and replays the same operation",async()=>{
   const origin="https://synthetic.example.invalid",challenge=issueGroupApplicationChallenge(key,issued,"00000000-0000-4000-8000-000000000002"),operationId="00000000-0000-4000-8000-000000000003";
-  const submit=vi.fn(async()=>({saved:true as const,replayed:false,duplicate:false,item:{id:"00000000-0000-4000-8000-000000000004",source:"public_group_application" as const,state:"owner_review" as const,receivedAt:new Date(now).toISOString(),fields}})),consume=vi.fn(async()=>({count:1,retryAfterMs:1000}));
+  const submit=vi.fn(async()=>({saved:true as const,replayed:false,duplicate:false,item:{id:"00000000-0000-4000-8000-000000000004",source:"public_group_application" as const,state:"owner_review" as const,receivedAt:new Date(now).toISOString(),fields}})),consume=vi.fn(async(...args:[string,number])=>{void args;return {count:1,retryAfterMs:1000};});
   const dependencies=async()=>({enabled:true,environment:{NODE_ENV:"production",LS_APP_ORIGIN:origin,LS_IDENTITY_ENABLED:"true"},challengeKey:key,now:()=>now,limits:{consume},store:{submit}});
   const headers={host:"synthetic.example.invalid",origin,"sec-fetch-site":"same-origin","content-type":"application/json"};
   const body=JSON.stringify({challenge,website:"",operationId,fields});
