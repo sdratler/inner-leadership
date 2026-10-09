@@ -62,8 +62,8 @@ describe("public group application boundary",()=>{
   expect(en).toContain('aria-pressed="true">EN</button>');expect(he).toContain('aria-pressed="true">עברית</button>');
   expect(new Set(en.match(/\/groups\/projects\/LS-PROJECT-[^\"?]+/g))).toHaveLength(9);
   expect(en.match(/\/groups\/private\/skill-/g)).toHaveLength(12);
-  expect(en).toContain("one planned first group");expect(en).toContain("does not reserve a place");
-  expect(en).toContain("meeting times to be confirmed");expect(en).not.toContain("90 minutes");expect(he).not.toContain("90 דקות");
+  expect(en).toContain("First planned group: 25 boys");expect(en).toContain("does not reserve a place");
+  expect(en).toContain("Two 90-minute sessions each week");expect(he).toContain("שני מפגשים של 90 דקות בכל שבוע");
  });
  it("renders a bilingual practitioner review destination with explicit separation",()=>{
   for(const locale of ["en","he"] as const){const html=renderToStaticMarkup(createElement(GroupApplicationReviewWorkspace,{locale}));
