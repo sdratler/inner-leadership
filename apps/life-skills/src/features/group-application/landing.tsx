@@ -38,7 +38,7 @@ export function GroupApplicationLanding({locale:initialLocale}:{locale:Locale}){
  const dialog=useRef<HTMLDialogElement>(null);
  const photoOpener=useRef<HTMLButtonElement|null>(null);
  const slide=(direction:number)=>slider.current?.scrollBy({left:direction*(slider.current.clientWidth*.78),behavior:window.matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth"});
- const closePhoto=()=>{setPhoto(null);window.requestAnimationFrame(()=>photoOpener.current?.focus());};
+ const closePhoto=()=>{const opener=photoOpener.current,node=dialog.current;if(node?.open)node.close();setPhoto(null);window.requestAnimationFrame(()=>opener?.focus({preventScroll:true}));};
  useEffect(()=>{document.documentElement.lang=locale;document.documentElement.dir=locale==="he"?"rtl":"ltr";},[locale]);
  useEffect(()=>{if(!photo)return;const node=dialog.current;if(!node)return;if(!node.open)node.showModal();node.querySelector<HTMLButtonElement>("button")?.focus();return()=>{if(node.open)node.close();};},[photo]);
  const switchLanguage=(next:Locale)=>{if(next===locale)return;setMenuOpen(false);setLocale(next);const path=window.location.pathname.replace(/^\/(en|he)(?=\/)/,`/${next}`);window.history.replaceState(window.history.state,"",path+window.location.search+window.location.hash);};
