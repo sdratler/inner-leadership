@@ -49,6 +49,9 @@ function currentFieldsIssue(value:z.infer<typeof fieldsBase>,context:z.Refinemen
   else if(value.town!==value.otherTown)context.addIssue({code:"custom",path:["town"],message:"mismatch"});
  }else if(value.townChoice&&value.town!==townNames[value.townChoice])context.addIssue({code:"custom",path:["town"],message:"mismatch"});
  if(value.townChoice!=="other"&&value.otherTown!==undefined)context.addIssue({code:"custom",path:["otherTown"],message:"unexpected"});
+ if(value.screenAccess!==undefined&&!(["screens_at_home","no_screens_at_home"] as const).includes(value.screenAccess as "screens_at_home"|"no_screens_at_home"))context.addIssue({code:"custom",path:["screenAccess"],message:"legacy value"});
+ if(value.screenTime!==undefined&&!currentScreenTimeSchema.safeParse(value.screenTime).success)context.addIssue({code:"custom",path:["screenTime"],message:"legacy value"});
+ if(value.screenAccess==="no_screens_at_home"&&value.screenTime!==undefined)context.addIssue({code:"custom",path:["screenTime"],message:"unexpected"});
 }
 export const currentGroupApplicationFieldsSchema=fieldsBase.superRefine(currentFieldsIssue);
 /** Read compatibility for encrypted records accepted before the P3 form correction. */

@@ -41,21 +41,25 @@ describe("public group application boundary",()=>{
   for(const locale of ["en","he"] as const){const html=renderToStaticMarkup(createElement(GroupApplicationForm,{locale}));
    for(const name of ["parentName","parentPhone","childAge","townChoice","neighborhood","schedulePreference","screenAccess","screenTime","intrinsicMotivation","stressfulSituations","parentPriorities","permission","website"])expect(html).toContain(`name="${name}"`);
    expect(html).not.toContain('name="interestedInEveningGroup"');
-   expect(html).toContain(locale==="he"?"אינן אבחון":"not an assessment");expect(html).toContain(locale==="he"?"אינה רושמת":"does not enroll");
+   expect(html).not.toMatch(/not an assessment|diagnosis|אבחון|הערכה טיפולית/);expect(html).toContain(locale==="he"?"אינה רושמת":"does not enroll");
   }
  });
  it("requires a neighborhood and a matching selected or other town while retaining legacy record read compatibility",()=>{
   expect(groupApplicationFieldsSchema.safeParse({...fields,neighborhood:""}).success).toBe(false);
   expect(groupApplicationFieldsSchema.safeParse({...fields,townChoice:"other",town:"Other place",otherTown:undefined}).success).toBe(false);
   expect(groupApplicationFieldsSchema.safeParse({...fields,townChoice:"other",town:"Other place",otherTown:"Other place"}).success).toBe(true);
+  expect(groupApplicationFieldsSchema.safeParse({...fields,screenAccess:"no_screens_at_home",screenTime:"over_20_hours_weekly"}).success).toBe(false);
+  expect(groupApplicationFieldsSchema.safeParse({...fields,screenAccess:"screens_at_home",screenTime:"over_20_hours_weekly"}).success).toBe(true);
+  expect(groupApplicationFieldsSchema.safeParse({...fields,screenAccess:"shared_device",screenTime:"1_to_2_hours"}).success).toBe(false);
   const legacy={...fields,town:"Synthetic town",townChoice:undefined,neighborhood:undefined,interestedInEveningGroup:true};
-  expect(groupApplicationFieldsSchema.safeParse(legacy).success).toBe(true);
+  expect(groupApplicationFieldsSchema.safeParse({...legacy,screenAccess:"shared_device",screenTime:"1_to_2_hours"}).success).toBe(true);
  });
  it("renders the approved bilingual landing structure with unchanged project and skill asset paths",()=>{
   const en=renderToStaticMarkup(createElement(GroupApplicationLanding,{locale:"en"}));
   const he=renderToStaticMarkup(createElement(GroupApplicationLanding,{locale:"he"}));
   expect(en).toContain("Apply to join a regular group");expect(en).toContain('lang="en"');expect(en).toContain('dir="ltr"');
   expect(he).toContain("הגשת בקשה להצטרפות לקבוצה קבועה");expect(he).toContain('lang="he"');expect(he).toContain('dir="rtl"');
+  expect(en).toContain('aria-pressed="true">EN</button>');expect(he).toContain('aria-pressed="true">עברית</button>');
   expect(new Set(en.match(/\/groups\/projects\/LS-PROJECT-[^\"?]+/g))).toHaveLength(9);
   expect(en.match(/\/groups\/private\/skill-/g)).toHaveLength(12);
   expect(en).toContain("one planned first group");expect(en).toContain("does not reserve a place");
