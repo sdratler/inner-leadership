@@ -1,0 +1,79 @@
+"use client";
+import "./audience-interest.css";
+import {useCallback,useEffect,useRef,useState} from "react";
+import type {Locale} from "../../lib/locale.ts";
+import {sessionInfo} from "../identity/client.ts";
+import type {AudienceCommand,AudienceObservationKind,AudienceRow} from "./core/audience-interest.ts";
+
+type Result={items:AudienceRow[];total:number;page:number;pageSize:number;pages:number;authorityEpoch:number};
+type EntryType="interest"|"observation";
+const copy={
+ en:{total:"Matching records",topic:"Topic",contentTopic:"BNA content",noInterest:"No interest recorded",interestSource:"Interest source",interestTime:"Interest recorded",version:"Interest version",notRecorded:"Not recorded",zone:"Jerusalem time",title:"Content audience",lead:"Private administrative interest records. Interest, observations and messaging permission stay separate.",search:"Search content contacts",filter:"Interest state",all:"All states",expressed:"Interested",withdrawn:"Interest withdrawn",add:"Add content contact",name:"Name",phone:"Phone",source:"Source reference",evidence:"Evidence",kind:"Observation type",entryType:"Record type",interestEntry:"Explicit interest",observationEntry:"Observation only",interestEvidence:"Article request",save:"Record interest",saveObservation:"Record observation",remove:"Record withdrawal",loading:"Loading content audience…",empty:"No content-interest records match this view.",retry:"Retry",readError:"The content audience could not be read. This is not an empty list.",saved:"Saved and read back from the native record.",unknown:"The result is unconfirmed. Your input is retained; retry this same operation.",conflict:"The record changed or the identity is ambiguous. Reload before deciding what to save.",permission:"Messaging permission",unknownPermission:"Unknown — no outbound use",observations:"Recorded observations",doNotContact:"Do not contact",neutral:"This action does not create a prospect, send a message, add a provider label, or grant messaging permission."},
+ he:{total:"רשומות תואמות",topic:"נושא",contentTopic:"תוכן BNA",noInterest:"לא תועד עניין",interestSource:"מקור העניין",interestTime:"מועד תיעוד העניין",version:"גרסת העניין",notRecorded:"לא תועד",zone:"שעון ירושלים",title:"קהל תוכן",lead:"רשומות עניין מנהליות ופרטיות. עניין, תצפיות והרשאת הודעות נשמרים בנפרד.",search:"חיפוש אנשי קשר לתוכן",filter:"מצב העניין",all:"כל המצבים",expressed:"הביע/ה עניין",withdrawn:"העניין בוטל",add:"הוספת איש קשר לתוכן",name:"שם",phone:"טלפון",source:"הפניה למקור",evidence:"ראיה",kind:"סוג תצפית",entryType:"סוג רישום",interestEntry:"עניין מפורש",observationEntry:"תצפית בלבד",interestEvidence:"בקשת מאמר",save:"תיעוד עניין",saveObservation:"תיעוד תצפית",remove:"תיעוד ביטול עניין",loading:"טוען קהל תוכן…",empty:"אין רשומות עניין בתוכן שמתאימות לתצוגה.",retry:"ניסיון חוזר",readError:"לא ניתן לקרוא את קהל התוכן. אין להסיק שהרשימה ריקה.",saved:"נשמר ונקרא מחדש מהרשומה המקומית.",unknown:"התוצאה אינה מאושרת. הקלט נשמר; יש לנסות שוב את אותה פעולה.",conflict:"הרשומה השתנתה או שהזהות אינה חד-משמעית. יש לטעון מחדש לפני החלטה על שמירה.",permission:"הרשאת הודעות",unknownPermission:"לא ידועה — אין שימוש יוצא",observations:"תצפיות מתועדות",doNotContact:"אין ליצור קשר",neutral:"הפעולה אינה יוצרת מתעניין, שולחת הודעה, מוסיפה תווית אצל ספק או מעניקה הרשאת הודעות."}
+} as const;
+const kinds:AudienceObservationKind[]=["article_request","article_delivery","group_membership","inbound_message","provider_label","provider_list"];
+const kindLabels:Record<Locale,Record<AudienceObservationKind,string>>={
+ en:{article_request:"Article request",article_delivery:"Article delivery",group_membership:"Observed group membership",inbound_message:"Inbound message",provider_label:"Provider label observation",provider_list:"Provider list observation"},
+ he:{article_request:"בקשת מאמר",article_delivery:"מסירת מאמר",group_membership:"חברות שנצפתה בקבוצה",inbound_message:"הודעה נכנסת",provider_label:"תצפית על תווית ספק",provider_list:"תצפית על רשימת ספק"}
+};
+
+export function AudienceInterestRecord({row,locale,disabled,onChange}:{row:AudienceRow;locale:Locale;disabled:boolean;onChange:(row:AudienceRow,state:"expressed"|"withdrawn")=>void}){
+ const t=copy[locale],formatTime=(value:string)=>new Intl.DateTimeFormat(locale,{dateStyle:"medium",timeStyle:"short",timeZone:"Asia/Jerusalem"}).format(new Date(value));
+ return <article className="lsw-card lsu-audience-record">
+  <header><h3>{row.displayName}</h3><p><bdi dir="ltr">{row.phone}</bdi></p><p className="lsu-audience-state">{row.state===null?t.noInterest:row.state==="expressed"?t.expressed:t.withdrawn}</p></header>
+  <dl className="lsu-audience-facts">
+   <div><dt>{t.topic}</dt><dd>{t.contentTopic}</dd></div>
+   <div><dt>{t.version}</dt><dd>{new Intl.NumberFormat(locale).format(row.version)}</dd></div>
+   <div><dt>{t.interestSource}</dt><dd>{row.sourceRef?<bdi>{row.sourceRef}</bdi>:t.notRecorded}</dd></div>
+   <div><dt>{t.interestTime}</dt><dd>{row.observedAt?<><time dateTime={row.observedAt}>{formatTime(row.observedAt)}</time> · {t.zone}</>:t.notRecorded}</dd></div>
+  </dl>
+  <p className="lsu-audience-permission"><strong>{t.permission}:</strong> {t.unknownPermission}</p>
+  {row.doNotContact&&<p className="lsw-help">{t.doNotContact}</p>}
+  <div className="lsw-actions lsu-audience-actions"><button type="button" className="lsw-button lsw-button--secondary" disabled={disabled||row.state==="expressed"} onClick={()=>onChange(row,"expressed")}>{t.save}</button><button type="button" className="lsw-button lsw-button--secondary" disabled={disabled||row.state==="withdrawn"} onClick={()=>onChange(row,"withdrawn")}>{t.remove}</button></div>
+  <details className="lsw-details"><summary>{t.observations} ({new Intl.NumberFormat(locale).format(row.observations.length)})</summary><ol className="lsu-audience-history">{row.observations.map((item,index)=><li key={`${item.sourceRef}:${index}`}><strong>{kindLabels[locale][item.kind]}</strong><p><time dateTime={item.observedAt}>{formatTime(item.observedAt)}</time> · {t.zone}</p><p><bdi>{item.evidence}</bdi></p><p>{t.source}: <bdi>{item.sourceRef}</bdi></p></li>)}</ol></details>
+ </article>;
+}
+
+async function read(epoch:number,search:string,state:"all"|"expressed"|"withdrawn",page=1,personId?:string):Promise<Result>{
+ const query=new URLSearchParams({expectedEpoch:String(epoch),search,state,page:String(page),...(personId?{personId}:{})});
+ const response=await fetch("/api/private/audience-interest?"+query,{credentials:"same-origin",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer"}),body=await response.json();
+ if(!response.ok||!body?.ok)throw Object.assign(Error("READ_FAILED"),{status:response.status});return body.data as Result;
+}
+
+export function AudienceInterestWorkspace({locale,epoch}:{locale:Locale;epoch:number}){
+ const t=copy[locale],[data,setData]=useState<Result|null>(null),[search,setSearch]=useState(""),[state,setState]=useState<"all"|"expressed"|"withdrawn">("all"),[open,setOpen]=useState(false),[entryType,setEntryType]=useState<EntryType>("interest"),[name,setName]=useState(""),[phone,setPhone]=useState(""),[source,setSource]=useState(""),[evidence,setEvidence]=useState(""),[kind,setKind]=useState<AudienceObservationKind>("group_membership"),[busy,setBusy]=useState(false),[notice,setNotice]=useState(""),[error,setError]=useState(false),[conflict,setConflict]=useState(false),[revision,setRevision]=useState(0);
+ const mounted=useRef(true),pending=useRef<AudienceCommand|null>(null),pendingFingerprint=useRef(""),rowPending=useRef(new Map<string,AudienceCommand>());
+ const clearPending=()=>{pending.current=null;pendingFingerprint.current="";};
+ const load=useCallback(()=>{void revision;setError(false);void read(epoch,search,state).then(result=>{if(mounted.current){setData(result);setError(false);}}).catch(()=>{if(mounted.current){setData(null);setError(true);}});},[epoch,search,state,revision]);
+ useEffect(()=>{mounted.current=true;const timer=window.setTimeout(load,0);return()=>{mounted.current=false;window.clearTimeout(timer);};},[load]);
+ async function submit(entry:EntryType,stateValue:"expressed"|"withdrawn"="expressed"){
+  if(busy||conflict)return;setBusy(true);setNotice("");
+  const fingerprint=JSON.stringify({entry,name,phone,source,evidence,kind,stateValue});
+  if(!pending.current||pendingFingerprint.current!==fingerprint){
+   pending.current=entry==="interest"?{action:"record_interest",topic:"bna_content",state:stateValue,operationId:crypto.randomUUID(),expectedEpoch:epoch,expectedVersion:null,displayName:name,phone,observedAt:new Date().toISOString(),sourceRef:source,observation:{kind:"article_request",evidence}}:{action:"record_observation",topic:"bna_content",operationId:crypto.randomUUID(),expectedEpoch:epoch,expectedVersion:null,displayName:name,phone,observedAt:new Date().toISOString(),sourceRef:source,observation:{kind,evidence}};
+   pendingFingerprint.current=fingerprint;
+  }
+  try{const session=await sessionInfo(),response=await fetch("/api/private/audience-interest",{method:"POST",credentials:"same-origin",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer",headers:{"content-type":"application/json","x-csrf-token":session.csrfToken},body:JSON.stringify(pending.current)}),body=await response.json();
+   if(response.status===409){setConflict(true);setNotice(t.conflict);return;}if(!response.ok||!body?.ok)throw Error("UNCONFIRMED");
+   const confirmed=await read(epoch,"","all",1,body.data?.personId),saved=confirmed.items.find(row=>row.personId===body.data?.personId);
+   const observationSaved=saved?.observations.some(item=>item.kind===(entry==="interest"?"article_request":kind)&&item.evidence===evidence.trim()&&item.sourceRef===source.trim());
+   if(!saved||saved.version!==body.data?.version||(entry==="interest"&&saved.state!==stateValue)||!observationSaved)throw Error("READBACK_MISSING");
+   clearPending();if(mounted.current){setName("");setPhone("");setSource("");setEvidence("");setOpen(false);setNotice(t.saved);setRevision(value=>value+1);}
+  }catch{if(mounted.current)setNotice(t.unknown);}finally{if(mounted.current)setBusy(false);}
+ }
+ async function change(row:AudienceRow,stateValue:"expressed"|"withdrawn"){
+  if(busy||conflict)return;setBusy(true);setNotice("");const key=`${row.personId}:${stateValue}:${row.version}`;
+  let operation=rowPending.current.get(key);if(!operation){operation={action:"record_interest",topic:"bna_content",state:stateValue,operationId:crypto.randomUUID(),expectedEpoch:epoch,expectedVersion:row.version||null,personId:row.personId,observedAt:new Date().toISOString(),sourceRef:"People / Content audience"};rowPending.current.set(key,operation);}
+  try{const session=await sessionInfo(),response=await fetch("/api/private/audience-interest",{method:"POST",credentials:"same-origin",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer",headers:{"content-type":"application/json","x-csrf-token":session.csrfToken},body:JSON.stringify(operation)}),body=await response.json();
+   if(response.status===409){setConflict(true);setNotice(t.conflict);return;}if(!response.ok||!body?.ok)throw Error("UNCONFIRMED");const confirmed=await read(epoch,"","all",1,row.personId),saved=confirmed.items.find(item=>item.personId===row.personId);if(!saved||saved.version!==body.data?.version||saved.state!==stateValue)throw Error("READBACK_MISSING");rowPending.current.delete(key);if(mounted.current){setNotice(t.saved);setRevision(value=>value+1);}
+  }catch{if(mounted.current)setNotice(t.unknown);}finally{if(mounted.current)setBusy(false);}
+ }
+ return <section className="lsw-stack lsu-audience" aria-labelledby="audience-title">
+  <header className="lsw-page-header"><h2 id="audience-title">{t.title}</h2><p>{t.lead}</p><p className="lsw-help">{t.neutral}</p></header>
+  <div className="lsw-toolbar" role="search"><label className="lsw-field">{t.search}<input className="lsw-input" value={search} onChange={event=>setSearch(event.target.value)} maxLength={200}/></label><label className="lsw-field">{t.filter}<select className="lsw-input" value={state} onChange={event=>setState(event.target.value as typeof state)}><option value="all">{t.all}</option><option value="expressed">{t.expressed}</option><option value="withdrawn">{t.withdrawn}</option></select></label><button type="button" className="lsw-button lsw-button--secondary" aria-expanded={open} onClick={()=>setOpen(value=>!value)}>{t.add}</button></div>
+  {data&&!error&&<p className="lsu-audience-total">{t.total}: {new Intl.NumberFormat(locale).format(data.total)}</p>}
+  {open&&<form className="lsw-card lsw-stack" onSubmit={event=>{event.preventDefault();void submit(entryType);}}><label className="lsw-field">{t.entryType}<select className="lsw-input" value={entryType} onChange={event=>{setEntryType(event.target.value as EntryType);clearPending();}}><option value="interest">{t.interestEntry}</option><option value="observation">{t.observationEntry}</option></select></label><label className="lsw-field">{t.name}<input className="lsw-input" required maxLength={120} value={name} onChange={event=>{setName(event.target.value);clearPending();}}/></label><label className="lsw-field">{t.phone}<input className="lsw-input" required dir="ltr" inputMode="tel" maxLength={40} value={phone} onChange={event=>{setPhone(event.target.value);clearPending();}}/></label><label className="lsw-field">{t.source}<input className="lsw-input" required maxLength={500} value={source} onChange={event=>{setSource(event.target.value);clearPending();}}/></label>{entryType==="observation"?<label className="lsw-field">{t.kind}<select className="lsw-input" value={kind} onChange={event=>{setKind(event.target.value as AudienceObservationKind);clearPending();}}>{kinds.map(value=><option key={value} value={value}>{kindLabels[locale][value]}</option>)}</select></label>:<p className="lsw-help">{t.kind}: {t.interestEvidence}</p>}<label className="lsw-field">{t.evidence}<textarea className="lsw-input" required maxLength={1000} value={evidence} onChange={event=>{setEvidence(event.target.value);clearPending();}}/></label><div className="lsw-actions"><button className="lsw-button lsw-button--primary" disabled={busy||conflict}>{entryType==="interest"?t.save:t.saveObservation}</button>{entryType==="interest"&&<button type="button" className="lsw-button lsw-button--secondary" disabled={busy||conflict||!name||!phone||!source||!evidence} onClick={()=>void submit("interest","withdrawn")}>{t.remove}</button>}</div><p className="lsw-help">{t.neutral}</p></form>}
+  <p className="lsw-save-result" role="status">{notice}</p>{conflict&&<button className="lsw-button lsw-button--secondary" onClick={()=>{clearPending();rowPending.current.clear();setConflict(false);setNotice("");setRevision(value=>value+1);}}>{t.retry}</button>}
+  {error?<div className="lsw-alert" role="alert"><p>{t.readError}</p><button className="lsw-button lsw-button--secondary" onClick={load}>{t.retry}</button></div>:!data?<p role="status">{t.loading}</p>:data.items.length===0?<p>{t.empty}</p>:<div className="lsw-list">{data.items.map(row=><AudienceInterestRecord key={row.personId} row={row} locale={locale} disabled={busy||conflict} onChange={(item,value)=>void change(item,value)}/>)}</div>}
+ </section>;
+}

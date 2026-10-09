@@ -1,5 +1,22 @@
 import { describe,expect,it,vi } from 'vitest';
 import { finalizeDialogClose,restoreDialogOpenerFocus } from '../../../src/ui/workspace/dialogs.tsx';
+import {guardCalendarDialogEscape} from '../../../src/features/calendar/form-support.tsx';
+
+describe('Calendar Escape guard',()=>{
+ it('blocks native close before opening a confirmation, even when the user declines',()=>{
+  const order:string[]=[],event={key:'Escape',preventDefault:()=>order.push('prevent'),stopPropagation:()=>order.push('stop')};
+  expect(guardCalendarDialogEscape(event,()=>order.push('confirm-declined'))).toBe(true);
+  expect(order).toEqual(['prevent','stop','confirm-declined']);
+ });
+ it('allows one explicit approved close instead of a second native close request',()=>{
+  const event={key:'Escape',preventDefault:vi.fn(),stopPropagation:vi.fn()},close=vi.fn();
+  expect(guardCalendarDialogEscape(event,close)).toBe(true);expect(close).toHaveBeenCalledOnce();expect(event.preventDefault).toHaveBeenCalledBefore(close);
+ });
+ it('leaves ordinary keys alone',()=>{
+  const event={key:'Enter',preventDefault:vi.fn(),stopPropagation:vi.fn()},close=vi.fn();
+  expect(guardCalendarDialogEscape(event,close)).toBe(false);expect(close).not.toHaveBeenCalled();expect(event.preventDefault).not.toHaveBeenCalled();expect(event.stopPropagation).not.toHaveBeenCalled();
+ });
+});
 
 describe('native dialog close finalization',()=>{
  it('finalizes a genuinely closed dialog',()=>{

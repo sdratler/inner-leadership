@@ -1,4 +1,5 @@
 import type { Locale } from "../../lib/locale.ts";
+import {communityViews,communityView} from '../../features/community-reply/views.ts';
 export type WorkspaceRole = "parent" | "client" | "practitioner";
 export type NavItem = { key: string; path: string; en: string; he: string };
 export type ContextItem = NavItem & { query?: Readonly<Record<string, string>> };
@@ -18,7 +19,7 @@ export const navigationGroups: Record<WorkspaceRole, readonly NavGroup[]> = {
 export function workspaceGroups(role:WorkspaceRole,clientRole?:'adult_client'|'child'):readonly NavGroup[]{return role==='client'&&clientRole!=='adult_client'?[]:navigationGroups[role]}
 const context = (key: string, path: string, en: string, he: string, query?: Record<string,string>): ContextItem => ({ key, path, en, he, ...(query ? { query } : {}) });
 /** Context links are views within the selected workspace section, never a second global menu. */
-export function practitionerContext(pathname: string, caseId: string | null, selectedClient=false): readonly ContextItem[] {
+export function practitionerContext(pathname: string, caseId: string | null, selectedClient=false, community=false, groupInterestEnabled=false): readonly ContextItem[] {
   if (pathname.endsWith("/app/practice")) return [context("practice","app/practice","Instructions","הנחיות"),context("goals","app/practice","Goals","מטרות",{section:"goals"}),context("commitments","app/practice","Commitments","מחויבויות",{section:"commitments"}),context("checkins","app/practice","Check-ins","דיווחים",{section:"checkins"})];
   if (caseId && (selectedClient || /\/app\/cases\/[0-9a-f-]{36}(?:\/|$)/i.test(pathname))) {
     const base = `app/cases/${caseId}`;
@@ -28,8 +29,11 @@ export function practitionerContext(pathname: string, caseId: string | null, sel
   if (pathname.includes("/app/feedback")) return [context("app_updates","app/feedback","App feedback","משוב באפליקציה",{section:"app_updates"}),context("whatsapp","app/feedback","Business WhatsApp","WhatsApp עסקי",{section:"whatsapp"})];
   if (pathname.includes("/app/reports")) return [context("due","app/reports","Due","להשלמה",{section:"due"}),context("drafts","app/reports","Drafts","טיוטות",{section:"drafts"}),context("published","app/reports","Published","פורסמו",{section:"published"}),context("history","app/reports","History","היסטוריה",{section:"history"})];
   if (pathname.includes("/app/calendar")) return [context("day","app/calendar","Day","יום",{view:"day"}),context("week","app/calendar","Week","שבוע",{view:"week"}),context("month","app/calendar","Month","חודש",{view:"month"}),context("agenda","app/calendar","Agenda","סדר יום",{view:"agenda"})];
-  if (pathname.includes("/app/clients") || pathname.includes("/app/prospects")) return [context("all","app/clients","All","הכול",{section:"all"}),context("prospects","app/clients","Prospects","מתעניינים",{section:"prospects"}),context("needs_review","app/clients","Needs review","לבדיקה",{section:"needs_review"}),context("paid","app/clients","Paid awaiting booking","שולם, ממתינים למועד",{section:"paid"}),context("active","app/clients","Active","פעילים",{section:"active"}),context("archived","app/clients","Archived","בארכיון",{section:"archived"})];
-  if (pathname.includes("/app/marketing")) return [context("overview","app/marketing","Overview","סקירה",{section:"overview"}),context("content_calendar","app/marketing","Content Calendar","יומן תוכן",{section:"content_calendar"}),context("creatives","app/marketing","Creatives","קריאייטיב",{section:"creatives"}),context("community","app/marketing","Community","קהילה",{section:"community"}),context("ads","app/marketing","Ads","מודעות",{section:"ads"})];
+  if (pathname.includes("/app/clients") || pathname.includes("/app/prospects") || pathname.includes("/app/group-interest")) {
+    const people=[context("all","app/clients","All","הכול",{section:"all"}),context("prospects","app/clients","Prospects","מתעניינים",{section:"prospects"}),context("audience","app/clients","Content audience","קהל תוכן",{section:"audience"}),context("needs_review","app/clients","Needs review","לבדיקה",{section:"needs_review"}),context("paid","app/clients","Paid awaiting booking","שולם, ממתינים למועד",{section:"paid"}),context("active","app/clients","Active","פעילים",{section:"active"}),context("archived","app/clients","Archived","בארכיון",{section:"archived"})];
+    return groupInterestEnabled?[...people,context("groups","app/group-interest","Groups","קבוצות")]:people;
+  }
+  if (pathname.includes("/app/marketing")) return community?communityViews.map(view=>context(view.key,'app/marketing',view.en,view.he,{section:'community',communityView:view.key})):[context("overview","app/marketing","Overview","סקירה",{section:"overview"}),context("content_calendar","app/marketing","Content Calendar","יומן תוכן",{section:"content_calendar"}),context("creatives","app/marketing","Creatives","קריאייטיב",{section:"creatives"}),context("community","app/marketing","Community","קהילה",{section:"community"}),context("ads","app/marketing","Ads","מודעות",{section:"ads"})];
   if (pathname.includes("/app/payments")) return [context("overview","app/payments","Overview","סקירה",{section:"overview"}),context("awaiting","app/payments","Awaiting","ממתינים",{section:"awaiting"}),context("paid","app/payments","Paid","שולמו",{section:"paid"}),context("credits","app/payments","Credits","יתרות",{section:"credits"}),context("refunds","app/payments","Refunds","החזרים",{section:"refunds"})];
   return [];
 }
@@ -81,11 +85,11 @@ export function settingsItems(role: WorkspaceRole): readonly NavItem[] {
 export function activeItem(pathname: string, locale: Locale, role: WorkspaceRole): NavItem | undefined {
   const path = pathname.replace(new RegExp(`^/${locale}/`), "").replace(/\/$/, "");
   if (/^app\/cases\//.test(path) || role === "practitioner" && ['app/practice','app/forms','app/resources'].includes(path)) return primaryNavigation.practitioner.find(x => x.key === "clients");
-  if (path === "app/prospects") return primaryNavigation.practitioner.find(x => x.key === "clients");
+  if (["app/prospects","app/providers","app/group-interest"].includes(path)) return primaryNavigation.practitioner.find(x => x.key === "clients");
   return [...primaryNavigation[role], ...navigationGroups[role].flatMap(g => g.items), ...settingsItems(role), ...(role === "practitioner" ? [item("private-notes","app/private-notes","Private case notes","רשימות פרטיות בתיק")] : [])].find(x => x.path === path);
 }
-export type Crumb = { label: string; path?: string };
-export function breadcrumbItems(locale: Locale, role: WorkspaceRole, pathname: string, section?: string | null, view?: string | null, selectedClient=false, caseId?: string | null): Crumb[] {
+export type Crumb = { label: string; path?: string; query?: Readonly<Record<string,string>> };
+export function breadcrumbItems(locale: Locale, role: WorkspaceRole, pathname: string, section?: string | null, view?: string | null, selectedClient=false, caseId?: string | null, community?: string | null): Crumb[] {
   const base = role === "parent" ? "family" : role === "client" ? "client" : "app";
   const messagesPath=role==='parent'?'family/feedback':role==='client'?'client/messages':'app/feedback',inMessages=pathname===`/${locale}/${messagesPath}`;
   const home = inMessages?{label:locale==='he'?'יומן':'Calendar',path:role==='parent'?'family/schedule':role==='client'?'client/calendar':'app/calendar'}:{ label: locale === "he" ? "בית" : "Home", path: role === "parent" ? "family" : role === "client" ? "client" : "app/calendar" };
@@ -113,7 +117,12 @@ export function breadcrumbItems(locale: Locale, role: WorkspaceRole, pathname: s
     const child=practitionerContext(pathname,caseId,true).find(item=>item.key===key);
     return [home,{label:locale==="he"?"אנשים":"People",path:"app/clients"},{label:locale==="he"?"התיק הנבחר":"Selected case",path:`app/cases/${caseId}`},{label:child?.[locale]??(locale==="he"?"סקירה":"Overview")}];
   }
+  if(role==="practitioner"&&pathname.endsWith("/app/group-interest"))return [home,{label:locale==="he"?"אנשים":"People",path:"app/clients"},{label:locale==="he"?"קבוצות":"Groups"}];
   const found = activeItem(pathname, locale, role);
+  if(role==='practitioner'&&found?.key==='marketing'&&section==='community'){
+    const selected=communityViews.find(item=>item.key===communityView(community))!;
+    return [home,{label:found[locale],path:found.path},{label:locale==='he'?'קהילה':'Community',path:found.path,query:{section:'community',communityView:'opportunities'}},{label:selected[locale]}];
+  }
   if (role === "practitioner" && found) {
     const child = practitionerContext(pathname, null).find(x => x.key === (found.key === "calendar" ? view : found.key==='marketing'&&section==='needs_approval'?'creatives':section));
     if (child) return [home, { label: found[locale], path: found.path }, { label: child[locale] }];

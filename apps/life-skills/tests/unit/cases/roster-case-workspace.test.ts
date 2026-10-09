@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import { expect, it, vi, beforeEach } from 'vitest';
+import { expect, it, vi, beforeEach, afterEach } from 'vitest';
 
 type Slot =
  | { kind: 'state'; value: unknown }
@@ -39,8 +39,9 @@ vi.mock('../../../src/features/contact-ops/native-people-workspace.tsx',async im
 import { CaseWorkspace } from '../../../src/features/cases/case-workspace.tsx';
 import { ClientsRoster,LegacyClientsRoster } from '../../../src/features/cases/clients-roster.tsx';
 import {NativePeopleWorkspace,PeopleRequestError} from '../../../src/features/contact-ops/native-people-workspace.tsx';
-import { ProspectsClient } from '../../../src/features/prospects/client.tsx';
+import { AddProspect,ProspectsClient } from '../../../src/features/prospects/client.tsx';
 import { IdentityClientError } from '../../../src/features/identity/client.ts';
+import {ContactLifecycleControls} from '../../../src/features/contact-ops/contact-lifecycle-controls.tsx';
 
 const caseA = { id: '123e4567-e89b-12d3-a456-426614174000', kind: 'minor' as const, state: 'active', displayName: 'Synthetic case A', mode: 'live' as const };
 const caseB = { id: '223e4567-e89b-12d3-a456-426614174000', kind: 'minor' as const, state: 'active', displayName: 'Synthetic case B', mode: 'live' as const };
@@ -60,7 +61,85 @@ function find(node: unknown, predicate: (element: ReactElement<Record<string, un
  return find(element.props?.children, predicate);
 }
 
-beforeEach(() => hook.reset());
+beforeEach(() => {
+ hook.reset();let location=new URL('https://synthetic.invalid/en/app/clients');
+ vi.stubGlobal('window',{get location(){return location;},history:{state:null,pushState(_state:unknown,_unused:string,url:URL){location=new URL(url);},replaceState(_state:unknown,_unused:string,url:URL){location=new URL(url);}},addEventListener(){},removeEventListener(){}});
+});
+afterEach(()=>vi.unstubAllGlobals());
+
+it.each(['en','he'] as const)('%s archive requires confirmation, cancellation has no effect, and an uncertain retry keeps the exact command',async locale=>{
+ const reload=vi.fn(),denied=vi.fn(),lockEdits=vi.fn(),commands:string[]=[];
+ vi.stubGlobal('window',{location:{reload}});
+ vi.stubGlobal('fetch',vi.fn(async(url:string,init?:RequestInit)=>{
+  if(url==='/api/identity/session')return Response.json({ok:true,data:{csrfToken:'synthetic-csrf'}});
+  commands.push(String(init?.body));
+  if(commands.length===1)throw Error('SYNTHETIC_LOST_ACK');
+  return Response.json({ok:true,data:{personId:caseA.id,authorityEpoch:3,version:2,replayed:true}});
+ }));
+ const view=()=>hook.render(()=>ContactLifecycleControls({locale,personId:caseA.id,version:1,epoch:3,archived:false,blocked:false,denied,lockEdits}));
+ const click=(label:string)=>(find(view(),e=>e.type==='button'&&e.props.children===label)!.props.onClick as()=>void)();
+ click(locale==='he'?'העברה לארכיון':'Archive contact');expect(commands).toHaveLength(0);
+ click(locale==='he'?'ביטול':'Cancel');expect(commands).toHaveLength(0);
+ click(locale==='he'?'העברה לארכיון':'Archive contact');click(locale==='he'?'אישור':'Confirm');
+ await vi.waitFor(()=>expect(text(view())).toContain(locale==='he'?'לא ניתן לאשר':'could not be confirmed'));
+ expect(lockEdits).toHaveBeenCalledWith(true);expect(reload).not.toHaveBeenCalled();
+ click(locale==='he'?'ניסיון חוזר של הבקשה':'Retry this request');await vi.waitFor(()=>expect(reload).toHaveBeenCalledOnce());
+ expect(commands).toHaveLength(2);expect(commands[0]).toBe(commands[1]);expect(JSON.parse(commands[0]!)).toMatchObject({action:'archive',personId:caseA.id,expectedVersion:1,expectedEpoch:3});expect(denied).not.toHaveBeenCalled();
+});
+
+it.each(['he','en'] as const)('%s Sheet directory forwards bounded filter/page context and exposes one create disclosure',locale=>{
+ const props=find(hook.render(()=>LegacyClientsRoster({locale,section:'all',search:'Synthetic',stage:'constructor',language:'he',due:'overdue',page:'2'})),e=>e.type===ProspectsClient)!.props;
+ expect(props.initialFilters).toEqual({query:'Synthetic',stage:'constructor',language:'he',due:'overdue'});expect(props.initialPage).toBe(2);
+ hook.reset();const view=()=>hook.render(()=>ProspectsClient({locale,embedded:true,initialFilters:props.initialFilters as NonNullable<Parameters<typeof ProspectsClient>[0]['initialFilters']>,initialPage:2}));
+ const label=locale==='he'?'הוספת מתעניין':'Add prospect';
+ const trigger=find(view(),e=>e.type==='button'&&e.props.children===label)!;
+ expect(trigger.props['aria-expanded']).toBe(false);expect(trigger.props['aria-controls']).toBe('add-prospect');
+ const panel=()=>find(view(),e=>e.type==='section'&&e.props.id==='add-prospect')!;
+ expect(panel().props.hidden).toBe(true);
+ (trigger.props.onClick as()=>void)();expect(panel().props.hidden).toBe(false);
+ let prevented=false;(panel().props.onKeyDown as(e:unknown)=>void)({key:'Escape',preventDefault(){prevented=true;}});
+ expect(prevented).toBe(true);expect(panel().props.hidden).toBe(true);
+ expect(find(view(),e=>e.type==='details'&&e.props.id==='add-prospect')).toBeUndefined();
+});
+
+it.each(['en','he'] as const)('%s add prospect clears its successful submission before collapsing and preserves a failed draft',async locale=>{
+ const onCreated=vi.fn(),success=vi.fn().mockResolvedValue(true),failure=vi.fn().mockResolvedValue(false);
+ const view=()=>hook.render(()=>AddProspect({locale,action:success,onCreated}));
+ const phone=()=>find(view(),e=>e.type==='input'&&e.props.inputMode==='tel')!;
+ (phone().props.onChange as(e:{target:{value:string}})=>void)({target:{value:'+972535550188'}});
+ const save=()=>find(view(),e=>e.type==='button'&&(e.props.children==='Save prospect'||e.props.children==='שמירת מתעניין'))!;
+ await (save().props.onClick as()=>Promise<void>)();
+ expect(success).toHaveBeenCalledOnce();expect(onCreated).toHaveBeenCalledOnce();expect(phone().props.value).toBe('');expect(save().props.disabled).toBe(true);
+ hook.reset();onCreated.mockReset();
+ const failedView=()=>hook.render(()=>AddProspect({locale,action:failure,onCreated}));
+ const failedPhone=()=>find(failedView(),e=>e.type==='input'&&e.props.inputMode==='tel')!;
+ (failedPhone().props.onChange as(e:{target:{value:string}})=>void)({target:{value:'+972535550199'}});
+ await (find(failedView(),e=>e.type==='button'&&(e.props.children==='Save prospect'||e.props.children==='שמירת מתעניין'))!.props.onClick as()=>Promise<void>)();
+ expect(onCreated).not.toHaveBeenCalled();expect(failedPhone().props.value).toBe('+972535550199');
+});
+
+it('locks an Add prospect submission synchronously so a rapid second click cannot create a duplicate',async()=>{
+ let finish!:(saved:boolean)=>void;const action=vi.fn(()=>new Promise<boolean>(resolve=>{finish=resolve;})),onCreated=vi.fn();
+ const view=()=>hook.render(()=>AddProspect({locale:'en',action,onCreated}));
+ const phone=find(view(),e=>e.type==='input'&&e.props.inputMode==='tel')!;
+ (phone.props.onChange as(e:{target:{value:string}})=>void)({target:{value:'+972535550177'}});
+ const click=find(view(),e=>e.type==='button'&&e.props.children==='Save prospect')!.props.onClick as()=>Promise<void>;
+ const first=click(),second=click();expect(action).toHaveBeenCalledOnce();finish(true);await Promise.all([first,second]);expect(onCreated).toHaveBeenCalledOnce();
+});
+
+it('Sheet filters update bounded URL context, preserve exact stage text and restore page/search on Back',()=>{
+ let location=new URL('https://synthetic.invalid/en/app/clients?section=prospects&filter=today'),restore:(()=>void)|undefined;
+ vi.stubGlobal('window',{get location(){return location;},history:{state:null,pushState(_s:unknown,_u:string,url:URL){location=new URL(url);},replaceState(_s:unknown,_u:string,url:URL){location=new URL(url);}},addEventListener(event:string,listener:()=>void){if(event==='popstate')restore=listener;},removeEventListener(){}});
+ const view=()=>hook.render(()=>ProspectsClient({locale:'en',embedded:true}));view();hook.flushEffects();
+ const input=find(view(),e=>e.type==='input'&&e.props.type==='search')!;
+ (input.props.onChange as(e:unknown)=>void)({target:{value:'Synthetic long name'}});
+ expect(location.searchParams.get('search')).toBe('Synthetic long name');expect(location.searchParams.get('filter')).toBe('today');
+ location=new URL('https://synthetic.invalid/en/app/clients?section=prospects&filter=today&search=Reloaded&stage=constructor&language=he&due=overdue&page=2');restore!();
+ expect(find(view(),e=>e.type==='input'&&e.props.type==='search')!.props.value).toBe('Reloaded');
+ expect(find(view(),e=>e.type==='select'&&e.props.value==='constructor')).toBeDefined();
+ expect(find(view(),e=>e.type==='select'&&e.props.value==='he')).toBeDefined();
+ expect(find(view(),e=>e.type==='select'&&e.props.value==='overdue')).toBeDefined();
+});
 
 it.each(['all', 'active', 'archived'])('keeps %s live cases separate from DEMO using provenance, not a name prefix', async section => {
  const state = section === 'archived' ? 'archived' : 'active';
@@ -73,6 +152,16 @@ it.each(['all', 'active', 'archived'])('keeps %s live cases separate from DEMO u
  expect(directory?.props.caseState).toBe('ready');
  expect(directory?.props.clientCases).toEqual([live]);
  expect(hook.accountRead).toHaveBeenCalledExactlyOnceWith('cases','live');
+});
+
+it.each(['all','active','archived'] as const)('uses exact case lifecycle in %s and preserves unknown text in All',async section=>{
+ const states=['invited','intake','active','paused','completed','archived','inactive','unarchived','reactivated','revoked','ARCHIVED'];
+ const records=states.map((state,index)=>({...caseA,id:`123e4567-e89b-12d3-a456-${String(index+1).padStart(12,'0')}`,state,displayName:`Synthetic ${state}`}));
+ hook.accountRead.mockResolvedValue(records);
+ const view=()=>hook.render(()=>LegacyClientsRoster({locale:'en',section}));view();hook.flushEffects();await tick();
+ const directory=find(view(),e=>e.type===ProspectsClient)!;
+ const expected=section==='all'?records:records.filter(r=>section==='active'?r.state==='active':r.state==='completed'||r.state==='archived');
+ expect(directory.props.caseState).toBe('ready');expect(directory.props.clientCases).toEqual(expected);
 });
 
 it.each([undefined, 'unknown', null])('treats an unavailable case provenance %s as an error, not an empty/live directory', async mode => {

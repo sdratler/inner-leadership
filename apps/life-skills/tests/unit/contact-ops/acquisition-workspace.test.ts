@@ -8,6 +8,15 @@ import {practitionerContext,breadcrumbItems} from "../../../src/ui/workspace/nav
 import {practitionerReturnPath,loginReturnDestination} from "../../../src/features/identity/login-return.ts";
 const item:AcquisitionReviewItem={id:"00000000-0000-4000-8000-000000000001",source:"organic_whatsapp",phone:"+15550001001",displayName:"Synthetic אדם",
  occurredAt:"2026-10-02T10:00:00.000Z",state:"NEEDS_REVIEW",matching:{state:"unmatched",people:[]}};
+test.each(["en","he"] as const)("%s call review shows genuine source, ringing caveat and collapsed owner actions",locale=>{
+ const html=renderToStaticMarkup(createElement(AcquisitionReviewCard,{item:{...item,source:"android_nomad",callState:"incoming",durationSeconds:0},locale,epoch:3,remember:()=>{},saved:()=>{},denied:()=>{},refresh:()=>{}}));
+ expect(html).toContain(locale==="en"?"Incoming call notification · Nomad":"הודעה על שיחה נכנסת · Nomad");expect(html).not.toContain("Organic WhatsApp");
+ expect(html).toContain(locale==="en"?"Captured/reported time":"זמן קליטה מדווח");
+ expect(html).toContain(locale==="en"?"may be a previous caller":"עלולה להיות של מתקשר קודם");
+ expect(html).toContain(locale==="en"?"Confirm independently before matching or promoting":"יש לאמת בנפרד לפני שיוך או קידום");
+ expect(html).toContain(locale==="en"?"no audio, verified call start":"ללא שמע, זמן תחילת שיחה מאומת");
+ expect(html).toContain("<details>");expect(html).not.toContain("<details open");expect(html).not.toContain("href=\"https://wa.me");
+});
 test.each(["en","he"] as const)("%s expired acquisition sign-in retains its validated page",locale=>{
  const html=renderToStaticMarkup(createElement(AcquisitionSignIn,{locale,page:"2",search:""}));
  const href=html.match(/href="([^"]+)"/)![1]!.replaceAll("&amp;","&");
@@ -18,6 +27,7 @@ test.each(["en","he"] as const)("%s expired acquisition sign-in retains its vali
 });
 test.each(["en","he"] as const)("%s review is one contextual view with collapsed administrative actions",locale=>{
  const html=renderToStaticMarkup(createElement(AcquisitionWorkspace,{locale}));expect(html).toContain(locale==="he"?'dir="rtl"':'dir="ltr"');
+ expect(html).toContain('type="search" dir="auto"');
  expect((html.match(/<form/g)??[])).toHaveLength(1);expect(html).not.toContain("Synthetic אדם");expect(html).not.toContain("role-switch");
  const card=renderToStaticMarkup(createElement(AcquisitionReviewCard,{item,locale,epoch:3,remember:()=>{},saved:()=>{},denied:()=>{},refresh:()=>{}}));
  expect(card).toContain("<details>");expect(card).not.toContain("<details open");expect(card).toContain("+15550001001");expect(card).toContain('type="date"');

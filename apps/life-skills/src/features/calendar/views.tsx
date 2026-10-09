@@ -8,25 +8,39 @@ import type { CalendarFollowup } from './followups.ts';
 import type { InternalTask } from './tasks.ts';
 import type { PracticeOccurrenceItem } from '../home-practice/types.ts';
 import { PracticeCalendarEntry, type OpenCalendarPractice } from '../home-practice/calendar-entry.tsx';
-import { administrativeActionLabel, linkedInquiryTaskTitle } from '../prospects/admin-display.ts';
+import { administrativeActionLabel } from '../prospects/admin-display.ts';
+import {CalendarTaskCard,type OpenTaskManager} from './task-card.tsx';
+export type {OpenTaskManager} from './task-card.tsx';
+import {orderedCalendarEntries,type CalendarEntry} from './entry-order.ts';
+import {timingGroup,timingGroupLabel,timingLabel} from './task-presentation.ts';
+import type {CalendarContent} from './content.ts';
+import {CalendarContentEntry} from './content-entry.tsx';
 import { text } from './copy.ts';
-import { civilDate, localMinute } from './time.ts';
 export function formatTime(value:string,locale:Locale,full=true){return new Intl.DateTimeFormat(locale==='he'?'he-IL':'en-GB',{timeZone:'Asia/Jerusalem',...(full?{dateStyle:'medium' as const}:{}),timeStyle:'short',hourCycle:'h23'}).format(new Date(value));}
 export type OpenAppointment=(a:AppointmentView,e:MouseEvent<HTMLButtonElement>)=>void;
-function followupHref(locale:Locale,leadId:string){return `/${locale}/app/clients?section=prospects&leadId=${encodeURIComponent(leadId)}`;}
-function taskSourceHref(locale:Locale,path:string){return path.replace(/^\/(?:he|en)\/app\//,`/${locale}/app/`);}
-export function CalendarBoard({dates,items,followups=[],tasks=[],practice=[],onOpenPractice,locale,view,names,onOpen,onCompleteTask}:{dates:string[];items:AppointmentView[];followups?:CalendarFollowup[];tasks?:InternalTask[];practice?:PracticeOccurrenceItem[];onOpenPractice?:OpenCalendarPractice;locale:Locale;view:'day'|'week'|'month';names:Record<string,string>;onOpen:OpenAppointment;onCompleteTask?:((task:InternalTask)=>void)|undefined}){
- const t=text(locale);
+function followupHref(locale:Locale,leadId:string){return '/'+locale+'/app/clients?section=prospects&leadId='+encodeURIComponent(leadId);}
+type CalendarEntryProps={locale:Locale;names:Record<string,string>;onOpen:OpenAppointment;onCompleteTask?:((task:InternalTask)=>void)|undefined;onManageTask?:OpenTaskManager|undefined;onOpenPractice?:OpenCalendarPractice|undefined};
+function CalendarEntryView({entry,compact,...props}:CalendarEntryProps&{entry:CalendarEntry;compact:boolean}){
+ const {locale,names,onOpen,onOpenPractice,onCompleteTask,onManageTask}=props,t=text(locale);
+ if(entry.kind==='task')return <CalendarTaskCard task={entry.item} locale={locale} names={names} agenda={!compact} onCompleteTask={onCompleteTask} onManageTask={onManageTask}/>;
+ if(entry.kind==='content')return <CalendarContentEntry item={entry.item} locale={locale} compact={compact}/>;
+ if(entry.kind==='practice')return <article className="ls-cal-practice-agenda"><PracticeCalendarEntry item={entry.item} locale={locale} onOpen={onOpenPractice!}/></article>;
+ if(entry.kind==='followup'){
+  const item=entry.item,person=item.name&&!/^LS-(?:LEAD|WAPI)-/.test(item.name)?item.name:(locale==='he'?'פנייה ללא שם':'Unnamed inquiry');
+  return <a className="ls-cal-followup" href={followupHref(locale,item.leadId)}><span>{locale==='he'?'המשך טיפול':'Follow-up'} · <bdi>{timingLabel(entry.timing,locale)}</bdi></span><strong>{person}</strong>{item.nextAction&&<small>{administrativeActionLabel(item.nextAction,locale)}</small>}</a>;
+ }
+ const a=entry.item;
+ if(compact)return <button data-appointment-id={a.id} type="button" className={'ls-cal-slot ls-cal-slot--'+a.status} onClick={e=>onOpen(a,e)} aria-haspopup="dialog" aria-controls="ls-cal-detail" aria-label={`${names[a.caseId]??t.case} · ${t[a.kind]} · ${formatTime(a.startsAt,locale)} · ${t[a.status]}`}><time dateTime={a.startsAt}>{formatTime(a.startsAt,locale,false)}</time><strong>{names[a.caseId]??t.case}</strong><span>{t[a.kind]}</span><span className="ls-cal-slot-state">{t[a.status]}</span>{a.notice&&<span>{t.received}</span>}</button>;
+ return <Card id={'agenda-'+a.id} title={names[a.caseId]??t.case}><p>{t[a.kind]}</p><p className="ls-cal-time"><time dateTime={a.startsAt}>{formatTime(a.startsAt,locale)}</time> – <time dateTime={a.endsAt}>{formatTime(a.endsAt,locale,false)}</time></p><StatusChip tone={a.status==='scheduled'?'neutral':'warning'}>{t[a.status]}</StatusChip><p>{t.attendance}: {a.attendance?t[a.attendance.state]:t.unrecorded}</p><Button data-appointment-id={a.id} variant="secondary" onClick={e=>onOpen(a,e)} aria-haspopup="dialog" aria-controls="ls-cal-detail">{t.details}</Button></Card>;
+}
+function CalendarEntryGroups({entries,compact,...props}:CalendarEntryProps&{entries:CalendarEntry[];compact:boolean}){
+ return <>{(['timed','part_of_day','unset'] as const).map(group=>{const visible=entries.filter(entry=>timingGroup(entry.timing)===group);return visible.length?<section className="ls-cal-entry-group" key={group} aria-label={timingGroupLabel(group,props.locale)}><h4 className="ls-cal-group-label">{timingGroupLabel(group,props.locale)}</h4>{visible.map(entry=><CalendarEntryView {...props} entry={entry} compact={compact} key={entry.key}/>)}</section>:null;})}</>;
+}
+export function CalendarBoard({dates,items,followups=[],tasks=[],practice=[],content=[],onOpenPractice,locale,view,names,onOpen,onCompleteTask,onManageTask}:{dates:string[];items:AppointmentView[];followups?:CalendarFollowup[];tasks?:InternalTask[];practice?:PracticeOccurrenceItem[];content?:CalendarContent[];onOpenPractice?:OpenCalendarPractice;locale:Locale;view:'day'|'week'|'month';names:Record<string,string>;onOpen:OpenAppointment;onCompleteTask?:((task:InternalTask)=>void)|undefined;onManageTask?:OpenTaskManager|undefined}){
+ const t=text(locale),entries=orderedCalendarEntries({items,followups,tasks,content,practice:onOpenPractice?practice:[]});
  return <div className={'ls-cal-board ls-cal-board--'+view} data-ls-calendar-grid>{dates.map(date=>{
-   const appointments=items.filter(a=>civilDate(a.startsAt)===date),due=followups.filter(item=>item.dueDate===date),dayTasks=tasks.filter(item=>item.dueDate===date),dayPractice=onOpenPractice?practice.filter(item=>item.occurrence.occursOn===date):[];
-  const heading=new Intl.DateTimeFormat(locale==='he'?'he-IL':'en-GB',{weekday:'short',day:'numeric',month:'short',timeZone:'Asia/Jerusalem'}).format(new Date(date+'T12:00:00Z'));
-  return <section key={date} className="ls-cal-day" aria-labelledby={'day-'+date}><h3 id={'day-'+date}><time dateTime={date}>{heading}</time></h3>
-   {appointments.map(a=><button data-appointment-id={a.id} type="button" className={'ls-cal-slot ls-cal-slot--'+a.status} key={a.id} onClick={e=>onOpen(a,e)} aria-haspopup="dialog" aria-controls="ls-cal-detail" aria-label={`${names[a.caseId]??t.case} · ${t[a.kind]} · ${formatTime(a.startsAt,locale)} · ${t[a.status]}`}><time dateTime={a.startsAt}>{formatTime(a.startsAt,locale,false)}</time><strong>{names[a.caseId]??t.case}</strong><span>{t[a.kind]}</span><span className="ls-cal-slot-state">{t[a.status]}</span>{a.notice&&<span>{t.received}</span>}</button>)}
-   {due.map(item=><a className="ls-cal-followup" href={followupHref(locale,item.leadId)} key={item.leadId} aria-label={`${locale==='he'?'המשך טיפול':'Follow-up'} · ${item.name||item.leadId} · ${administrativeActionLabel(item.nextAction||'—',locale)}`}><span>{locale==='he'?'המשך טיפול':'Follow-up'}</span><strong>{item.name||item.leadId}</strong>{item.nextAction&&<small>{administrativeActionLabel(item.nextAction,locale)}</small>}</a>)}
-   {dayTasks.map(task=><article className="ls-cal-task" key={task.id}><span>{locale==='he'?'משימה':'Task'} · {task.dueTime||(locale==='he'?'כל היום':'All day')}</span><strong>{linkedInquiryTaskTitle(task.title,task.sourceKind,locale)}</strong><span>{task.state==='done'?(locale==='he'?'הושלמה':'Done'):(locale==='he'?'פתוחה':'Open')}</span>{task.sourcePath&&<a href={taskSourceHref(locale,task.sourcePath)}>{locale==='he'?'פתיחת מקור':'Open source'}</a>}{task.state==='open'&&onCompleteTask&&<button type="button" onClick={()=>onCompleteTask(task)}>{locale==='he'?'סימון כהושלמה':'Mark done'}</button>}</article>)}
-    {dayPractice.map(item=><PracticeCalendarEntry key={item.occurrence.id} item={item} locale={locale} onOpen={onOpenPractice!}/>)}
-    {!appointments.length&&!due.length&&!dayTasks.length&&!dayPractice.length&&<p className="ls-cal-day-empty" aria-label={t.empty}>—</p>}
-  </section>;
+  const dayEntries=entries.filter(entry=>entry.date===date),heading=new Intl.DateTimeFormat(locale==='he'?'he-IL':'en-GB',{weekday:'short',day:'numeric',month:'short',timeZone:'Asia/Jerusalem'}).format(new Date(date+'T12:00:00Z'));
+  return <section key={date} className="ls-cal-day" aria-labelledby={'day-'+date}><h3 id={'day-'+date}><time dateTime={date}>{heading}</time></h3><CalendarEntryGroups entries={dayEntries} compact locale={locale} names={names} onOpen={onOpen} onOpenPractice={onOpenPractice} onCompleteTask={onCompleteTask} onManageTask={onManageTask}/>{!dayEntries.length&&<p className="ls-cal-day-empty" aria-label={t.empty}>—</p>}</section>;
  })}</div>;
 }
 /** Only a rendered, visible authorized task in this agenda can be selected. */
@@ -37,9 +51,12 @@ export function calendarTaskFragment(hash:string,search:string):string{
 export function revealCalendarTaskFragment(root:Pick<HTMLElement,'querySelector'>,hash:string):boolean{
  if(!/^#task-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(hash))return false;
  const target=root.querySelector<HTMLElement>(hash);if(!target||!target.getClientRects().length)return false;
- target.scrollIntoView({block:'center',behavior:'auto'});target.focus({preventScroll:true});return true;
+ const disclosure=target.querySelector<HTMLDetailsElement>(':scope > details.ls-cal-task');
+ if(disclosure)disclosure.open=true;
+ target.scrollIntoView({block:'center',behavior:'auto'});
+ (disclosure?.querySelector<HTMLElement>(':scope > summary')??target).focus({preventScroll:true});return true;
 }
-export function CalendarAgenda({items,followups=[],tasks=[],practice=[],onOpenPractice,locale,names,onOpen,onCompleteTask}:{items:AppointmentView[];followups?:CalendarFollowup[];tasks?:InternalTask[];practice?:PracticeOccurrenceItem[];onOpenPractice?:OpenCalendarPractice;locale:Locale;names:Record<string,string>;onOpen:OpenAppointment;onCompleteTask?:((task:InternalTask)=>void)|undefined}){
+export function CalendarAgenda({items,followups=[],tasks=[],practice=[],content=[],onOpenPractice,locale,names,onOpen,onCompleteTask,onManageTask}:{items:AppointmentView[];followups?:CalendarFollowup[];tasks?:InternalTask[];practice?:PracticeOccurrenceItem[];content?:CalendarContent[];onOpenPractice?:OpenCalendarPractice;locale:Locale;names:Record<string,string>;onOpen:OpenAppointment;onCompleteTask?:((task:InternalTask)=>void)|undefined;onManageTask?:OpenTaskManager|undefined}){
  const t=text(locale);
  const agenda=useRef<HTMLDivElement>(null),appliedFragment=useRef<string|null>(null);
  useEffect(()=>{
@@ -49,15 +66,8 @@ export function CalendarAgenda({items,followups=[],tasks=[],practice=[],onOpenPr
   apply();const changed=()=>{appliedFragment.current=null;apply();};
   window.addEventListener('hashchange',changed);return()=>window.removeEventListener('hashchange',changed);
  },[tasks]);
- const entries=[...items.map(item=>({kind:'appointment' as const,sortTime:localMinute(item.startsAt).slice(11),date:civilDate(item.startsAt),item})),
-  ...followups.map(item=>({kind:'followup' as const,sortTime:'',date:item.dueDate,item})),
-   ...tasks.map(item=>({kind:'task' as const,sortTime:item.dueTime??'',date:item.dueDate,item})),
-   ...(onOpenPractice?practice.map(item=>({kind:'practice' as const,sortTime:item.schedule?.localTime??'',date:item.occurrence.occursOn,item})):[])]
-  .sort((a,b)=>a.date.localeCompare(b.date)||a.sortTime.localeCompare(b.sortTime));
-  return <div ref={agenda} className="ls-cal-agenda-list">{entries.map(entry=>entry.kind==='practice'?<article className="ls-cal-practice-agenda" key={'practice-'+entry.item.occurrence.id}><time dateTime={entry.date}>{new Intl.DateTimeFormat(locale==='he'?'he-IL':'en-GB',{dateStyle:'medium',timeZone:'Asia/Jerusalem'}).format(new Date(entry.date+'T12:00:00Z'))}</time><PracticeCalendarEntry item={entry.item} locale={locale} onOpen={onOpenPractice!}/></article>:entry.kind==='appointment'?<Card id={'agenda-'+entry.item.id} key={'appointment-'+entry.item.id} title={names[entry.item.caseId]??t.case}>
-  <p>{t[entry.item.kind]}</p><p className="ls-cal-time"><time dateTime={entry.item.startsAt}>{formatTime(entry.item.startsAt,locale)}</time> – <time dateTime={entry.item.endsAt}>{formatTime(entry.item.endsAt,locale,false)}</time></p><StatusChip tone={entry.item.status==='scheduled'?'neutral':'warning'}>{t[entry.item.status]}</StatusChip>
-  <p>{t.attendance}: {entry.item.attendance?t[entry.item.attendance.state]:t.unrecorded}</p><Button data-appointment-id={entry.item.id} variant="secondary" onClick={e=>onOpen(entry.item,e)} aria-haspopup="dialog" aria-controls="ls-cal-detail">{t.details}</Button></Card>:entry.kind==='followup'?<Card id={'followup-'+entry.item.leadId} key={'followup-'+entry.item.leadId} title={entry.item.name||entry.item.leadId}><p><span className="ls-cal-layer-label">{locale==='he'?'המשך טיפול':'Follow-up'}</span> <time dateTime={entry.item.dueDate}>{entry.item.dueDate}</time></p>{entry.item.nextAction&&<p>{administrativeActionLabel(entry.item.nextAction,locale)}</p>}<a className="lsw-button lsw-button--secondary" href={followupHref(locale,entry.item.leadId)}>{locale==='he'?'פתיחת האדם':'Open person'}</a></Card>:<div id={'task-'+entry.item.id} key={'task-'+entry.item.id} tabIndex={-1} role="group" aria-labelledby={'task-'+entry.item.id+'-title'}><Card id={'task-'+entry.item.id} title={linkedInquiryTaskTitle(entry.item.title,entry.item.sourceKind,locale)}><p><span className="ls-cal-layer-label">{locale==='he'?'משימה':'Task'}</span> <time dateTime={entry.item.dueDate}>{entry.item.dueDate}</time> · {entry.item.dueTime||(locale==='he'?'כל היום':'All day')}</p>{entry.item.note&&<details><summary>{locale==='he'?'פרטים':'Details'}</summary><p>{entry.item.note}</p></details>}{entry.item.sourcePath&&<p><a href={taskSourceHref(locale,entry.item.sourcePath)}>{locale==='he'?'פתיחת מקור':'Open source'}</a></p>}{entry.item.state==='done'?<p>{locale==='he'?'הושלמה':'Done'}</p>:onCompleteTask&&<Button variant="secondary" onClick={()=>onCompleteTask(entry.item)}>{locale==='he'?'סימון כהושלמה':'Mark done'}</Button>}</Card></div>)}
-  {!entries.length&&<p>{t.empty}</p>}</div>;
+ const entries=orderedCalendarEntries({items,followups,tasks,content,practice:onOpenPractice?practice:[]}),dates=[...new Set(entries.map(entry=>entry.date))];
+ return <div ref={agenda} className="ls-cal-agenda-list">{dates.map(date=><section className="ls-cal-agenda-day" key={date} aria-labelledby={'agenda-day-'+date}><h3 id={'agenda-day-'+date}><time dateTime={date}>{new Intl.DateTimeFormat(locale==='he'?'he-IL':'en-GB',{dateStyle:'full',timeZone:'Asia/Jerusalem'}).format(new Date(date+'T12:00:00Z'))}</time></h3><CalendarEntryGroups entries={entries.filter(entry=>entry.date===date)} compact={false} locale={locale} names={names} onOpen={onOpen} onOpenPractice={onOpenPractice} onCompleteTask={onCompleteTask} onManageTask={onManageTask}/></section>)}{!entries.length&&<p>{t.empty}</p>}</div>;
 }
 export function NoticeReceipt({appointment:a,locale,onReplacement}:{appointment:AppointmentView;locale:Locale;onReplacement?:()=>void}){
  const t=text(locale),n=a.notice;if(!n)return null;

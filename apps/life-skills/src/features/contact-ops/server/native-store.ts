@@ -11,6 +11,7 @@ import {asId} from "../../../lib/ids.ts";
 import {demoRecordBatch} from "../../demo/provenance.ts";
 import {nativeManualInquirySchema,type NativeManualInquiry} from "../core/people-create.ts";
 import {canonical} from "../core/validation.ts";
+import {administrativeArchiveSchema,type AdministrativeArchive} from "../core/contact-lifecycle.ts";
 import {nativeWhatsappInquirySchema,inboundActivitySchema,type NativeWhatsappInquiry,type InboundActivity} from "../core/inbound-projection.ts";
 export interface CrmProfile {
     personId: string;
@@ -31,6 +32,7 @@ export interface CrmProfile {
     outreach?: Record<string,{lastContact:string;messageReceipt:string;formSent?:string|undefined;bookingStatus?:string|undefined;updateProvenance:string}>;
     /** Sticky communication suppression, never reset by an outcome/status edit. */
     doNotContact?: boolean;
+    administrativeArchive?: AdministrativeArchive;
 }
 export function crmProfileAad(w: string, p: string) { return `ls_contact_ops/profile/v1/${w}/${p}`; }
 const legacyId=z.string().regex(/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]+$/);
@@ -43,7 +45,7 @@ export const crmProfileSchema=z.object({personId:z.string().uuid(),stage:z.strin
     outreach:z.record(legacyId,z.object({lastContact:z.iso.datetime({offset:true}),messageReceipt:z.string().min(1).max(200),
       formSent:z.iso.datetime({offset:true}).optional(),bookingStatus:z.literal("Link sent; awaiting confirmed appointment").optional(),
       updateProvenance:z.enum(["private-app:practitioner-click","private-app:intake-sent","private-app:booking-link-sent"])}).strict()).optional(),
-    doNotContact:z.boolean().optional()
+    doNotContact:z.boolean().optional(),administrativeArchive:administrativeArchiveSchema.optional()
     }).strict().refine(p=>Object.keys(p.outreach??{}).length<=100&&Object.keys(p.outreach??{}).every(id=>p.legacyIds.includes(id)||id===p.nativeInquiry?.leadId||id===p.whatsappInquiry?.leadId)&&Object.keys(p.leadUpdates??{}).length<=100&&
         Object.keys(p.leadUpdates??{}).every(id=>p.legacyIds.includes(id)||id===p.nativeInquiry?.leadId||id===p.whatsappInquiry?.leadId)&&
         (!p.nativeInquiry||(p.nativeInquiry.leadId==="LS-LEAD-native-"+p.personId&&!p.legacyIds.includes(p.nativeInquiry.leadId)))&&

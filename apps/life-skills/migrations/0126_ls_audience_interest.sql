@@ -1,0 +1,74 @@
+-- Private administrative content-interest records. Interest, observation,
+-- messaging permission, CRM qualification and outbound eligibility stay
+-- independent. This migration creates no contacts and sends nothing.
+CREATE TABLE IF NOT EXISTS ls_contact_ops.audience_profiles (
+ workspace_id uuid NOT NULL,
+ person_id uuid NOT NULL,
+ payload_ciphertext text NOT NULL CHECK(length(payload_ciphertext)>0),
+ record_mode text NOT NULL CHECK(record_mode='live'),
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ PRIMARY KEY(workspace_id,person_id),
+ FOREIGN KEY(workspace_id,person_id) REFERENCES ls_identity.people(workspace_id,id)
+);
+
+CREATE TABLE IF NOT EXISTS ls_contact_ops.audience_interests (
+ workspace_id uuid NOT NULL,
+ person_id uuid NOT NULL,
+ topic text NOT NULL CHECK(topic='bna_content'),
+ payload_ciphertext text NOT NULL CHECK(length(payload_ciphertext)>0),
+ version integer NOT NULL DEFAULT 1 CHECK(version>0),
+ actor_account_id uuid NOT NULL,
+ observed_at timestamptz NOT NULL,
+ updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ PRIMARY KEY(workspace_id,person_id,topic),
+ FOREIGN KEY(workspace_id,person_id) REFERENCES ls_contact_ops.audience_profiles(workspace_id,person_id),
+ FOREIGN KEY(workspace_id,actor_account_id) REFERENCES ls_identity.accounts(workspace_id,id)
+);
+
+CREATE TABLE IF NOT EXISTS ls_contact_ops.audience_observations (
+ workspace_id uuid NOT NULL,
+ observation_id uuid NOT NULL,
+ person_id uuid NOT NULL,
+ topic text NOT NULL CHECK(topic='bna_content'),
+ source_digest text NOT NULL CHECK(source_digest ~ '^[a-f0-9]{64}$'),
+ payload_ciphertext text NOT NULL CHECK(length(payload_ciphertext)>0),
+ actor_account_id uuid NOT NULL,
+ observed_at timestamptz NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ PRIMARY KEY(workspace_id,observation_id),
+ UNIQUE(workspace_id,person_id,topic,source_digest),
+ FOREIGN KEY(workspace_id,person_id) REFERENCES ls_contact_ops.audience_profiles(workspace_id,person_id),
+ FOREIGN KEY(workspace_id,actor_account_id) REFERENCES ls_identity.accounts(workspace_id,id)
+);
+
+CREATE TABLE IF NOT EXISTS ls_contact_ops.audience_operation_receipts (
+ workspace_id uuid NOT NULL,
+ operation_id uuid NOT NULL,
+ person_id uuid NOT NULL,
+ actor_account_id uuid NOT NULL,
+ payload_digest text NOT NULL CHECK(payload_digest ~ '^[a-f0-9]{64}$'),
+ result_version integer NOT NULL CHECK(result_version>=0),
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ PRIMARY KEY(workspace_id,operation_id),
+ FOREIGN KEY(workspace_id,person_id) REFERENCES ls_contact_ops.audience_profiles(workspace_id,person_id),
+ FOREIGN KEY(workspace_id,actor_account_id) REFERENCES ls_identity.accounts(workspace_id,id)
+);
+
+CREATE OR REPLACE FUNCTION ls_contact_ops.reject_audience_ledger_mutation()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ RAISE EXCEPTION 'AUDIENCE_LEDGER_APPEND_ONLY' USING ERRCODE='23514';
+END;
+$$;
+DROP TRIGGER IF EXISTS audience_observations_append_only ON ls_contact_ops.audience_observations;
+CREATE TRIGGER audience_observations_append_only
+ BEFORE UPDATE OR DELETE ON ls_contact_ops.audience_observations
+ FOR EACH ROW EXECUTE FUNCTION ls_contact_ops.reject_audience_ledger_mutation();
+DROP TRIGGER IF EXISTS audience_operation_receipts_append_only ON ls_contact_ops.audience_operation_receipts;
+CREATE TRIGGER audience_operation_receipts_append_only
+ BEFORE UPDATE OR DELETE ON ls_contact_ops.audience_operation_receipts
+ FOR EACH ROW EXECUTE FUNCTION ls_contact_ops.reject_audience_ledger_mutation();
+
+REVOKE ALL ON ls_contact_ops.audience_profiles,ls_contact_ops.audience_interests,
+ ls_contact_ops.audience_observations,ls_contact_ops.audience_operation_receipts FROM PUBLIC;

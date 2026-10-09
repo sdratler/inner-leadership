@@ -34,6 +34,12 @@ Use expected versions/hashes before writes. Preserve another worker's active cla
 
 Coordination is the existing lane-appropriate protocol. The old embedded Work Graph read/write/read claim instructions are stale where the current Operating Protocol requires append-only Control Events and a winning fence. Do not invent a new lock table or assume a cooperative lease grants protected Git/provider access.
 
+## Daily coordination invariant
+
+Keep one record and two coordinated loops; do not create Beads, another board or a competing source of truth. The private task record captures an owner ramble or packet, the native database owns business records, Git/tests/release receipts own engineering evidence, and the registered canonical documents own scope. Every open item advances through `source -> stable task -> owner -> next action -> evidence`. A correction updates that same item and preserves its history.
+
+The existing 08:30 audit reconciles changed and still-open items. The existing ten-minute supervisor may advance only eligible claimed work without duplicating the owner or re-running a broad audit. Neither loop may silently close unfinished rambles or packets, nor collapse `implemented`, `tested`, `merged`, `deployed` and `verified live` into one state. Drive mirrors and projections remain derived views, not new masters.
+
 ## Keep recurring work inexpensive
 
 - Parse an already structured request and compare file/source hashes with ordinary code. Healthy checks, index updates, source resolution and known-asset reuse do not need a language-model call.

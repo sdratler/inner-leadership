@@ -2,7 +2,8 @@ import type { Locale } from "../../lib/locale.ts";
 import {isCaseId,settingsItems,workspaceContext} from '../../ui/workspace/navigation-model.ts';
 import {isReportSection} from '../progress/report-views.ts';
 import {contentChannel,contentDate,contentState} from '../marketing-overview/calendar-model.ts';
-import {creativeApprovals,creativePlacements} from '../marketing-overview/creative-filters.ts';
+import {creativeApprovals,creativePlacements,creativeFilters} from '../marketing-overview/creative-filters.ts';
+import {isCommunityView} from '../community-reply/views.ts';
 
 type Role = "practitioner" | "parent" | "adult_client" | "child";
 
@@ -25,6 +26,7 @@ export function practitionerReturnPath(locale: Locale, page: "calendar" | "clien
   const params = new URLSearchParams();
   const one = (key: string) => typeof query[key] === "string" ? query[key] as string : "";
   if (page === "calendar") {
+    for(const key of ['tasks','followups','practice','content'])if(one(key)==='0'||one(key)==='1')params.set(key,one(key));
     if (/^\d{4}-\d{2}-\d{2}$/.test(one("date"))) params.set("date", one("date"));
     if (["day", "week", "month", "agenda"].includes(one("view"))) params.set("view", one("view"));
     if (/^[0-9a-f-]{36}$/i.test(one("caseId"))) params.set("caseId", one("caseId"));
@@ -35,7 +37,7 @@ export function practitionerReturnPath(locale: Locale, page: "calendar" | "clien
     for (const key of ["caseId", "audienceId", "assignmentId"]) if (isCaseId(one(key))) params.set(key, one(key));
     if (["goals", "commitments", "checkins"].includes(one("section"))) params.set("section", one("section"));
   } else {
-    if (["all", "prospects", "needs_review", "paid", "active", "archived"].includes(one("section"))) params.set("section", one("section"));
+    if (["all", "prospects", "audience", "needs_review", "paid", "active", "archived"].includes(one("section"))) params.set("section", one("section"));
     if (["all", "today", "new", "intake", "payment", "booking", "archived"].includes(one("filter"))) params.set("filter", one("filter"));
     if (/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]{1,80}$/.test(one("leadId"))) params.set("leadId", one("leadId"));
     if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(one("personId"))) params.set("personId",one("personId"));
@@ -51,10 +53,12 @@ export function practitionerReturnPath(locale: Locale, page: "calendar" | "clien
 
 /** Named practitioner deep links only; no arbitrary caller/header path is trusted. */
 export function practitionerDetailReturnPath(locale:Locale,pathname:string,query:Record<string,string|string[]|undefined>):string {
+ if(pathname===`/${locale}/app/group-interest`)return pathname;
  if(pathname===`/${locale}/app/marketing`){
   const params=new URLSearchParams(),one=(key:string)=>typeof query[key]==='string'?query[key] as string:'';
   if(['overview','content_calendar','creatives','needs_approval','community','ads'].includes(one('section')))params.set('section',one('section'));
   if(one('section')==='community'&&isCaseId(one('threadId')))params.set('threadId',one('threadId'));
+  if(one('section')==='community'&&isCommunityView(one('communityView')))params.set('communityView',one('communityView'));
   if(['all','queued','drafts','published','history','he_status','he_feed','en_feed','ad_eligible','in_live_ads'].includes(one('filter')))params.set('filter',one('filter'));
   if(/^20\d{2}-(?:0[1-9]|1[0-2])$/.test(one('month')))params.set('month',one('month'));
   if(['month','week','agenda'].includes(one('layout')))params.set('layout',one('layout'));
@@ -67,6 +71,10 @@ export function practitionerDetailReturnPath(locale:Locale,pathname:string,query
   if(creativeApprovals.some(value=>value===one('approval')))params.set('approval',one('approval'));
   if(one('search')&&one('search').length<=200&&!/[\u0000-\u001f\u007f]/.test(one('search')))params.set('search',one('search'));
   if(['creatives','needs_approval'].includes(one('section'))&&/^[1-9]\d{0,3}$/.test(one('page')))params.set('page',one('page'));
+  if(['creatives','needs_approval'].includes(one('section'))){
+   const selected=creativeFilters({collection:one('collection'),concept:one('concept'),cycle:one('cycle')},one('section')==='needs_approval');
+   for(const key of ['collection','concept','cycle'] as const)if(one(key)&&selected[key]===one(key))params.set(key,one(key));
+  }
   return pathname+(params.size?'?'+params:'');
  }
  // Account destinations are global, not case-scoped. Preserve only the exact
@@ -93,6 +101,7 @@ export function parentReturnPath(locale: Locale, pathname: string, query: Record
   const uuid = (key: string) => { if (/^[0-9a-f-]{36}$/i.test(query[key] ?? "")) params.set(key, query[key]!); };
   if (["", "/schedule", "/practice", "/feedback", "/forms", "/resources", "/reports"].includes(suffix)) uuid("caseId");
   if (suffix === "/schedule") {
+    if(query.practice==='0'||query.practice==='1')params.set('practice',query.practice);
     if (/^\d{4}-\d{2}-\d{2}$/.test(query.date ?? "")) params.set("date", query.date!);
     if (["day", "week", "month", "agenda"].includes(query.view ?? "")) params.set("view", query.view!);
   }
@@ -118,6 +127,7 @@ export function clientReturnPath(locale: Locale, pathname: string, query: Record
   if (["", "/calendar", "/practice", "/messages", "/forms", "/resources", "/reports"].includes(suffix) && isCaseId(query.caseId)) params.set("caseId", query.caseId!);
   if (suffix === "/reports" && isCaseId(query.audienceId)) params.set("audienceId", query.audienceId!);
   if (suffix === "/calendar") {
+    if(query.practice==='0'||query.practice==='1')params.set('practice',query.practice);
     if (/^\d{4}-\d{2}-\d{2}$/.test(query.date ?? "")) params.set("date", query.date!);
     if (["day", "week", "month", "agenda"].includes(query.view ?? "")) params.set("view", query.view!);
   }

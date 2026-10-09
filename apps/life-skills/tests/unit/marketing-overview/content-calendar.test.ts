@@ -5,6 +5,7 @@ import type {CreativeVersion,MarketingSnapshot,Publication} from "../../../src/f
 import {MarketingContentCalendar,type ContentCalendarQuery} from "../../../src/ui/revamp/marketing-content-calendar.tsx";
 import {MarketingDashboard} from "../../../src/ui/revamp/marketing-dashboard.tsx";
 import {contentViewPublications,orderedPublicationQueue,publicationDisplayTime} from "../../../src/features/marketing-overview/calendar-model.ts";
+import {MarketingAcceptanceFixture,marketingAcceptanceScenario} from "../../../src/ui/workspace/marketing-acceptance-fixture.tsx";
 const digest="a".repeat(64),asset:CreativeVersion={assetId:"DEMO-he",revision:2,locale:"he",width:1080,height:1920,imageUrl:null,title:"DEMO — Exact approved creative",caption:"DEMO registered text בלבד\nSecond line",contentDigest:digest,review:"approved",approvedDigest:digest,sourceUrl:"https://drive.google.com/file/d/demo-exact/view"};
 const publication=(id:string,time:string|null,state:Publication["state"]="scheduled",channel:Publication["channel"]="whatsapp_status"):Publication=>({id,assetId:asset.assetId,creativeRevision:2,creativeDigest:digest,channel,destinationLabel:"DEMO destination "+id,scheduledFor:time,timezone:"Asia/Jerusalem",state,provider:channel.endsWith("_manual")?"manual":"whapi",providerReceiptId:null,providerReadAt:null,postUrl:null,receiptKind:"unknown",manualReportedAt:null,errorCode:null});
 const snapshot=(items:readonly Publication[],creatives:readonly CreativeVersion[]=[asset]):MarketingSnapshot=>({source:"synthetic",fetchedAt:"2026-10-01T08:00:00Z",creatives,publications:items,ads:[],scout:{readyDrafts:null,sourceUrl:null,lastChecked:null,status:"unbound"}});
@@ -69,6 +70,17 @@ describe("retained read-only Marketing calendar controls",()=>{
     expect(html).toContain("channel=facebook_page&amp;state=failed&amp;from=2026-09-27&amp;to=2026-10-03&amp;publication=failed-one");
     const detail=render([item],{...query,publication:item.id});expect(detail).toContain('aria-label="Publication breadcrumbs"');expect(detail).toContain("layout=week");expect(detail).toContain("state=failed");expect(detail).toContain("Back to content calendar");expect(detail).not.toContain('aria-label="Weekly content calendar"');
   });
+  it("preserves the development acceptance route and scenario across calendar controls and filters",()=>{
+    const html=renderToStaticMarkup(React.createElement(MarketingContentCalendar,{locale:"en",snapshot:snapshot([publication("page-one","2026-10-01T17:00:00Z","scheduled","facebook_page")]),query:{layout:"month",month:"2026-10",date:"2026-10-01"},renderedAt:"2026-10-01T08:00:00Z",thumbnail:a=>React.createElement("span",{"data-thumbnail":a.assetId},a.title),navigation:{path:"/en/dev/ui/workspace",retained:{role:"practitioner",page:"app/marketing",section:"content_calendar",scenario:"unknown"}}}));
+    expect(html).toContain('action="/en/dev/ui/workspace"');
+    for(const field of [['role','practitioner'],['page','app/marketing'],['scenario','unknown']])expect(html).toContain(`type="hidden" name="${field[0]}" value="${field[1]}"`);
+    expect(html.match(/name="section"/g)).toHaveLength(1);expect(html).toContain('type="hidden" name="section" value="content_calendar"');
+    expect(html).toContain('/en/dev/ui/workspace?role=practitioner&amp;page=app%2Fmarketing&amp;scenario=unknown&amp;section=content_calendar&amp;month=2026-10&amp;layout=week');
+  });
+  it("normalizes acceptance scenarios and renders the real Marketing dashboard without provider controls",()=>{
+    expect(marketingAcceptanceScenario(undefined)).toBe("unconfigured");expect(marketingAcceptanceScenario("constructor")).toBe("unconfigured");expect(marketingAcceptanceScenario("unavailable")).toBe("unavailable");expect(marketingAcceptanceScenario("unknown")).toBe("unknown");
+    for(const scenario of ["unconfigured","unavailable","unknown"] as const){const html=renderToStaticMarkup(React.createElement(MarketingAcceptanceFixture,{locale:"en",scenario,query:{layout:"month",month:"2026-10",date:"2026-10-08"}}));expect(html).toContain(`data-synthetic-scenario="${scenario}"`);expect(html).toContain('Synthetic acceptance scenario only');expect(html).toContain('aria-label="Monthly content calendar"');expect(html).not.toMatch(/<(button|form)[^>]*>[^<]*(Publish|Retry|Approve)/i);expect(html).not.toContain("private-row-id");}
+  });
   it("applies Jerusalem-day, channel and state filters without replacing undated errors with invented dates",()=>{
     const first=publication("first","2026-09-30T21:15:00Z","failed","facebook_page"),outside=publication("outside","2026-09-30T20:00:00Z","failed","facebook_page"),wrongState=publication("wrong-state","2026-10-01T17:00:00Z","scheduled","facebook_page"),wrongChannel=publication("wrong-channel","2026-10-01T17:00:00Z","failed","instagram");
     const html=render([first,outside,wrongState,wrongChannel],{layout:"agenda",month:"2026-10",channel:"facebook_page",state:"failed",from:"2026-10-01",to:"2026-10-01"});
@@ -111,6 +123,32 @@ describe("retained read-only Marketing calendar controls",()=>{
     const item={...publication("older-failure","2026-09-01T17:00:00Z","failed"),errorCode:"DEMO_PROVIDER_FAILED"},html=render([item],{layout:"month",month:"2026-10"});
     expect(html).toMatch(/aria-label="Source record errors"[\s\S]*role="alert"[\s\S]*DEMO_PROVIDER_FAILED/);
     expect(html).toContain("publication=older-failure");
+  });
+  it.each(['en','he'] as const)("keeps the latest unresolved WhatsApp receipt visible in the %s planned view without a resend control",locale=>{
+    const item={...publication("unknown-receipt","2026-10-05T17:00:00Z","unknown"),providerReceiptId:"DEMO-unknown-receipt",providerReadAt:"2026-10-05T17:02:00Z",errorCode:"PUBLICATION_READBACK_UNKNOWN"};
+    const html=render([item],{filter:"queued",channel:"whatsapp_status",layout:"agenda"},locale);
+    expect(html).toContain(locale==='en'?'Latest unresolved WhatsApp Status attempt':'ניסיון הסטטוס האחרון שטרם הוכרע');
+    expect(html).toContain('DEMO-unknown-receipt');expect(html).toContain('PUBLICATION_READBACK_UNKNOWN');
+    expect(html).toContain(locale==='en'?'Do not retry while the result is unknown':'אין לנסות שוב כל עוד התוצאה אינה ידועה');
+    expect(html).not.toContain('Published — provider receipt recorded');expect(html).not.toMatch(/<button[^>]*>[^<]*Retry/i);
+    expect(render([{...item,id:'known-failure',state:'failed'}],{filter:'queued'},locale)).not.toContain(locale==='en'?'Do not retry while the result is unknown':'אין לנסות שוב כל עוד התוצאה אינה ידועה');
+  });
+  it.each(['en','he'] as const)("distinguishes %s unbound Status drafts and exact creative holds from a live queue",locale=>{
+    const draft={...publication("unbound-draft","2026-10-08T17:00:00Z","draft"),provider:"unbound" as const,errorCode:"SCHEDULED_ASSET_BINDING_MISSING"};
+    const heldAsset={...asset,assetId:"DEMO-held-he",title:"DEMO held Hebrew Status",surface:"WHATSAPP_STATUS",holdReason:"D21 OFF — owner release required"};
+    const html=render([draft],{filter:"queued",channel:"whatsapp_status"},locale,[asset,heldAsset]);
+    expect(html).toContain(locale==='en'?'No scheduled time recorded':'לא רשום מועד מתוזמן');
+    expect(html).toContain(locale==='en'?'1 unbound Status draft is a planning record, not a live provider-queue item.':'טיוטת סטטוס לא מקושרת אחת היא רשומת תכנון, ולא פריט חי בתור הספק.');
+    expect(html).toContain('DEMO held Hebrew Status');expect(html).toContain('D21 OFF — owner release required');
+    expect(html).not.toContain(locale==='en'?'>Not recorded</summary>':'>לא רשום</summary>');
+  });
+  it.each(['en','he'] as const)("shows the exact %s canonical Hebrew publisher hold instead of claiming no schedule evidence",locale=>{
+    const heldAsset={...asset,assetId:"C21-HE-STATUS-TEAL-v04-FROZEN",concept:21,surface:"STATUS",registeredRevision:true,title:"Concept 21 — STATUS",holdReason:"D21 OFF"};
+    const source={...snapshot([],[heldAsset]),nextStatusHold:{state:'held' as const,language:'he' as const,reason:'HEBREW_CALENDAR_OFF',conceptId:21,candidateAssetIds:[heldAsset.assetId]}};
+    const html=renderToStaticMarkup(React.createElement(MarketingContentCalendar,{locale,snapshot:source,query:{filter:'queued',channel:'whatsapp_status'},renderedAt:"2026-10-07T15:00:00Z",thumbnail:a=>React.createElement("span",{"data-thumbnail":a.assetId},a.title)}));
+    expect(html).toContain(locale==='en'?'Held — HEBREW_CALENDAR_OFF':'מושהה — HEBREW_CALENDAR_OFF');
+    expect(html).toContain(locale==='en'?'The existing publisher records this Hebrew turn as held.':'המתזמן הקיים רושם את התור העברי כמושהה.');
+    expect(html).toContain(heldAsset.assetId);expect(html).not.toContain(locale==='en'?'No scheduled time recorded':'לא רשום מועד מתוזמן');expect(html).not.toMatch(/<button[^>]*>[^<]*(Retry|ניסיון)/i);
   });
   it("does not turn a foreign URL containing a Drive-looking path into a trusted thumbnail",()=>{
     const html=renderToStaticMarkup(React.createElement(MarketingDashboard,{locale:"en",snapshot:snapshot([],[{...asset,imageUrl:"https://untrusted.example/drive.google.com/file/d/demo-fake/view"}]),initialSection:"creatives",renderedAt:"2026-10-01T08:00:00Z"}));

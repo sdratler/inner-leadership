@@ -18,8 +18,9 @@ export async function marketingMedia(request:Request,assetId:string,deps={author
   await deps.authorize(request);
   if(!/^[A-Za-z0-9._-]{1,200}$/.test(assetId))throw new AppError("INVALID_REQUEST");
   const query=new URL(request.url).searchParams;
-  if([...query.keys()].some(key=>!["revision","digest","download"].includes(key)||query.getAll(key).length!==1)||! /^[1-9]\d{0,5}$/.test(query.get("revision")??"")||! /^[a-f0-9]{64}$/.test(query.get("digest")??"")||query.has("download")&&query.get("download")!=="1")throw new AppError("INVALID_REQUEST");
-  const revision=Number(query.get("revision")),digest=query.get("digest")!,response=await deps.read(assetId,revision,digest,query.get("download")==="1");
+  if([...query.keys()].some(key=>!["revision","digest","download","collection"].includes(key)||query.getAll(key).length!==1)||! /^[1-9]\d{0,5}$/.test(query.get("revision")??"")||! /^[a-f0-9]{64}$/.test(query.get("digest")??"")||query.has("download")&&query.get("download")!=="1"||query.has("collection")&&!["templates","history"].includes(query.get("collection")!))throw new AppError("INVALID_REQUEST");
+  const revision=Number(query.get("revision")),digest=query.get("digest")!,collection=query.get("collection") as "templates"|"history"|null;
+  const response=collection?await deps.read(assetId,revision,digest,query.get("download")==="1",collection):await deps.read(assetId,revision,digest,query.get("download")==="1");
   if(!response.ok){await response.body?.cancel();throw new AppError(response.status===409?"CONFLICT":response.status===404?"NOT_FOUND":"UNAVAILABLE");}
   const size=Number(response.headers.get("content-length"));
   if(response.headers.get("content-type")?.split(";")[0]!=="image/png"||!Number.isSafeInteger(size)||size<33||size>MAX_BYTES||!response.body){await response.body?.cancel();throw new AppError("UNAVAILABLE");}

@@ -9,6 +9,15 @@ import type {NativeContactRow} from "../../../src/features/contact-ops/server/na
 import {selectNativeContacts,type NativeContactReference} from "../../../src/features/contact-ops/server/native-directory.ts";
 import nextConfig from "../../../next.config.ts";
 const personId="00000000-0000-4000-8000-000000000001",fields={stage:"New inquiry",nextAction:"Synthetic next action",followUpDate:"2026-09-28",notes:"  Synthetic saved note\nהערה סינתטית שמורה  "};
+test.each(["he","en"] as const)("%s displays bounded call metadata separately and collapsed, without pretending conversation history",locale=>{
+ const row:NativeContactRow={personId,displayName:"Synthetic caller",identityKind:"adult",...fields,version:1,mode:"live",archived:false,doNotContact:false,references:[],
+  callActivity:{items:[{id:personId,occurredAt:"2026-10-06T09:00:00.000Z",callState:"incoming",durationSeconds:0}],hasMore:true}};
+ const html=renderToStaticMarkup(createElement(NativePeopleWorkspace,{locale,view:"all",initialPersonId:personId,initial:{source:"native",authorityEpoch:3,page:{page:1,pages:1,pageSize:12,total:1,items:[row]}},onSheet:()=>{}}));
+ expect(html).toContain(locale==="he"?"הודעות על שיחות נכנסות":"Incoming call notifications");expect(html).toContain(locale==="he"?"מוצגות חמש ההודעות המשויכות האחרונות":"Showing the latest five linked notifications");
+ expect(html).toContain(locale==="he"?"זמן קליטה מדווח":"Captured/reported time");expect(html).toContain(locale==="he"?"ללא שמע או זמן תחילת שיחה מאומת":"no audio or verified call start");
+ expect(html).toContain('<details class="lsw-details"><summary>');expect(html).not.toContain('<details open');expect(html).not.toContain("Synthetic conversation");
+ expect(row.notes).toBe(fields.notes);expect(row.version).toBe(1);
+});
 test.each(["he","en"] as const)("%s exact-stage choice is localized without changing its filter key",locale=>{
  const row:NativeContactRow={personId,displayName:"Synthetic stage filter",identityKind:"adult",...fields,version:1,mode:"live",archived:false,doNotContact:false,references:[],caseLinks:[]};
  const html=renderToStaticMarkup(createElement(NativePeopleWorkspace,{locale,view:"all",initial:{source:"native",authorityEpoch:3,page:{page:1,pages:1,pageSize:12,total:1,items:[row]}},initialFilters:{query:"",stage:"New inquiry",language:"",due:"any"},onSheet:()=>{}}));
@@ -120,7 +129,7 @@ test("one new inquiry remains visible beside an older completed reference and an
  expect(selectNativeContacts([{...row,references:[fresh,old]}],q).total).toBe(1);
  expect(selectNativeContacts([{...row,references:[old]}],q).total).toBe(0);
  expect(selectNativeContacts([{...row,references:[]}],q).total).toBe(0);
- expect(selectNativeContacts([{...row,references:[],caseLinks:[]}],q).total).toBe(1);
+ expect(selectNativeContacts([{...row,references:[],caseLinks:[]}],q).total).toBe(0);
  expect(selectNativeContacts([{...row,version:null}],q).total).toBe(0);
 });
 

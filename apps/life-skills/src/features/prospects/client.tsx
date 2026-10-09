@@ -12,6 +12,7 @@ import {administrativeActionLabel,administrativeStageLabel} from "./admin-displa
 import {applyNativeProspectUpdate,nativeProspectUpdateKey,prepareProspectUpdate,prospectEditContext,
  prospectUpdateFieldsSchema,type NativeProspectUpdate,type NativeProspectUpdateResult,type ProspectUpdateFields,type ProspectEditContext} from "./native-edit.ts";
 import {changedProspectFollowUp,prospectFollowUpDraft,prospectContactSuppressed,reconcileProspectFollowUp} from "./native-edit.ts";
+import {directoryQuery,peopleFiltersFromQuery,peoplePageFromQuery,type DirectoryFilters} from "./directory-query.ts";
 
 /* Remote state is loaded once per refresh and filter changes reset pagination. */
 /* eslint-disable react-hooks/set-state-in-effect */
@@ -19,10 +20,12 @@ type State="loading"|"ready"|"error"|"auth"|"forbidden";
 type PendingOperation={leadId:string;operationId:string;state:"prepared"|"sent_pending";message:string;createdAt:string};
 type DirectoryPage={rows:Prospect[];pendingOperations:PendingOperation[];pendingNext:string|null;ledgerReady:boolean};
 export type Preset="all"|"today"|"new"|"intake"|"payment"|"booking"|"archived";
-export function workflowDestination(locale:Locale,preset:Preset):string{
+export function workflowDestination(locale:Locale,preset:Preset,context?:URLSearchParams):string{
  const section=preset==="booking"?"paid":preset==="archived"?"archived":preset==="all"?"all":"prospects";
  const filter=preset==="all"||preset==="booking"||preset==="archived"?"":`&filter=${preset}`;
- return `/${locale}/app/clients?section=${section}${filter}`;
+ const params=new URLSearchParams(`section=${section}${filter}`);
+ if(context){const retained=directoryQuery(params,peopleFiltersFromQuery(context));return `/${locale}/app/clients?${retained}`;}
+ return `/${locale}/app/clients?${params}`;
 }
 export type ClientCase={id:string;kind:"minor"|"adult";state:string;displayName:string};
 /** A linked minor case is a different person from its parent lead; a linked adult case is the same adult. */
@@ -82,12 +85,12 @@ function whatsappNumber(phone:string):string|null{
  return null;
 }
 
-export function ProspectsClient({locale,initialFilter="all",focusLeadId="",embedded=false,clientCases=[],caseState=null,onRetryCases,showProspects=true,returnPath}:{locale:Locale;initialFilter?:Preset;focusLeadId?:string|undefined;embedded?:boolean;clientCases?:readonly ClientCase[];caseState?:State|null;onRetryCases?:()=>void;showProspects?:boolean;returnPath?:string}){
+export function ProspectsClient({locale,initialFilter="all",initialFilters,initialPage=1,focusLeadId="",embedded=false,clientCases=[],caseState=null,onRetryCases,showProspects=true,returnPath}:{locale:Locale;initialFilter?:Preset;initialFilters?:DirectoryFilters;initialPage?:number;focusLeadId?:string|undefined;embedded?:boolean;clientCases?:readonly ClientCase[];caseState?:State|null;onRetryCases?:()=>void;showProspects?:boolean;returnPath?:string}){
  const focused=/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]{1,80}$/.test(focusLeadId)?focusLeadId:"";
- const t=copy[locale],[rows,setRows]=useState<Prospect[]>([]),[state,setState]=useState<State>("loading"),preset=initialFilter,[query,setQuery]=useState(""),[stage,setStage]=useState(""),[language,setLanguage]=useState(""),[due,setDue]=useState(""),[page,setPage]=useState(1),[status,setStatus]=useState(""),[openLeads,setOpenLeads]=useState<string[]>(focused?[focused]:[]);
+ const t=copy[locale],[rows,setRows]=useState<Prospect[]>([]),[state,setState]=useState<State>("loading"),preset=initialFilter,[query,setQuery]=useState(initialFilters?.query??""),[stage,setStage]=useState(initialFilters?.stage??""),[language,setLanguage]=useState(initialFilters?.language??""),[due,setDue]=useState(initialFilters?.due==="any"?"":initialFilters?.due??""),[page,setPage]=useState(initialPage),[status,setStatus]=useState(""),[openLeads,setOpenLeads]=useState<string[]>(focused?[focused]:[]);
  const [pendingOperations,setPendingOperations]=useState<PendingOperation[]>([]),[pendingNext,setPendingNext]=useState<string|null>(null),
   [pendingMoreState,setPendingMoreState]=useState<"idle"|"loading"|"error">("idle"),[ledgerReady,setLedgerReady]=useState(false);
- const mounted=useRef(true),addRef=useRef<HTMLDetailsElement>(null);
+ const mounted=useRef(true),addRef=useRef<HTMLElement>(null),addButton=useRef<HTMLButtonElement>(null),[addOpen,setAddOpen]=useState(false);
  const pendingUpdates=useRef(new Map<string,{key:string;request:NativeProspectUpdate}>()),saving=useRef(new Set<string>());
  const load=()=>{setState("loading");setLedgerReady(false);void readDirectory().then(value=>{if(mounted.current){setRows(value.rows);setPendingOperations(value.pendingOperations);setPendingNext(value.pendingNext);setLedgerReady(value.ledgerReady);setPendingMoreState("idle");setState("ready")}}).catch(error=>{if(mounted.current){setRows([]);setPendingOperations([]);setPendingNext(null);setLedgerReady(false);setState(error instanceof ProspectApiError?error.kind:"error")}})};
  async function loadMorePending(){if(!pendingNext||pendingMoreState==="loading")return;
@@ -97,7 +100,13 @@ export function ProspectsClient({locale,initialFilter="all",focusLeadId="",embed
   catch{if(mounted.current)setPendingMoreState("error");}
  }
  useEffect(()=>{mounted.current=true;if(showProspects)queueMicrotask(load);return()=>{mounted.current=false}},[showProspects]);
- useEffect(()=>setPage(1),[preset,query,stage,language,due]);
+ useEffect(()=>{const restore=()=>{const p=new URLSearchParams(window.location.search),f=peopleFiltersFromQuery(p);setQuery(f.query);setStage(f.stage);setLanguage(f.language);setDue(f.due==="any"?"":f.due);setPage(peoplePageFromQuery(p));};window.addEventListener("popstate",restore);return()=>window.removeEventListener("popstate",restore);},[]);
+ useEffect(()=>{if(addOpen)addRef.current?.querySelector<HTMLInputElement>("input")?.focus();},[addOpen]);
+ const appliedFilters=():DirectoryFilters=>({query,stage,language,due:due==="today"||due==="overdue"?due:"any"});
+ function writeLocation(fields:DirectoryFilters,nextPage:number,push=false){const url=new URL(window.location.href);url.search=directoryQuery(url.searchParams,fields,nextPage).toString();if(url.href!==window.location.href){if(push)window.history.pushState(window.history.state,"",url);else window.history.replaceState(window.history.state,"",url);}}
+ function changeFilter(key:keyof DirectoryFilters,value:string){const next={...appliedFilters(),[key]:value} as DirectoryFilters;setQuery(next.query);setStage(next.stage);setLanguage(next.language);setDue(next.due==="any"?"":next.due);setPage(1);writeLocation(next,1);}
+ function changePage(next:number){setPage(next);writeLocation(appliedFilters(),next,true);}
+ function closeAdd(){setAddOpen(false);addButton.current?.focus();}
  const today=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Jerusalem"}).format(new Date());
  const stages=useMemo(()=>[...new Set(rows.map(row=>row.stage).filter(Boolean))].sort((a,b)=>a.localeCompare(b)),[rows]);
  const shown=useMemo(()=>rows.filter(row=>{
@@ -127,7 +136,7 @@ export function ProspectsClient({locale,initialFilter="all",focusLeadId="",embed
  const orphanPending=state==="ready"?pendingOperations.filter(item=>!rows.some(row=>row.leadId===item.leadId)):[];
  // A slow second source must not trap ready rows beyond the first page.
  const paginationReady=(showProspects&&state==="ready")||caseState==="ready";
- async function action(payload:unknown){
+ async function action(payload:unknown):Promise<boolean>{
   setStatus("");const input=payload as {action:string;leadId?:string;operationId?:string;fields?:ProspectUpdateFields;editContext?:ProspectEditContext},kind=input.action;
   let lock:string|undefined;
   try{
@@ -135,7 +144,7 @@ export function ProspectsClient({locale,initialFilter="all",focusLeadId="",embed
    if(kind==="update"){
     if(!row||!input.fields||!input.editContext)throw Error("INVALID_UPDATE");
     const fields=prospectUpdateFieldsSchema.parse(input.fields);
-    const target=row.nativeEdit?.personId??row.leadId;if(saving.current.has(target))return;lock=target;saving.current.add(lock);
+    const target=row.nativeEdit?.personId??row.leadId;if(saving.current.has(target))return false;lock=target;saving.current.add(lock);
     const prepared=prepareProspectUpdate(row,fields,crypto.randomUUID(),input.editContext);
     if("expectedEpoch" in prepared){
      const observed={...row,nativeEdit:input.editContext.source==="native"?input.editContext.nativeEdit:row.nativeEdit!};
@@ -153,38 +162,39 @@ export function ProspectsClient({locale,initialFilter="all",focusLeadId="",embed
      const changes=Object.fromEntries(Object.entries(fields).filter((entry):entry is [string,string]=>typeof entry[1]==="string"));
      if(mounted.current){setRows(current=>current.map(r=>r.leadId===row.leadId?{...r,...changes}:r));setStatus(t.saved);}
     }
-    return;
+    return true;
    }
    if(kind==="reconcile_projection"||kind==="resolve_prepared"){
-    if(!input.operationId||saving.current.has(input.operationId))return;
+    if(!input.operationId||saving.current.has(input.operationId))return false;
     lock=input.operationId;saving.current.add(lock);
    }
    const pendingRow=kind.startsWith("send_")?rows.find(row=>row.leadId===input.leadId&&row.projectionPending):undefined;
-   if(kind.startsWith("send_")&&!ledgerReady){setStatus(locale==="he"?"שליחת WhatsApp מושהית עד לאימות יומן השליחות הפרטי.":"WhatsApp sending is paused until the private outbound ledger is verified.");return;}
+   if(kind.startsWith("send_")&&!ledgerReady){setStatus(locale==="he"?"שליחת WhatsApp מושהית עד לאימות יומן השליחות הפרטי.":"WhatsApp sending is paused until the private outbound ledger is verified.");return false;}
    if(pendingRow){
     setStatus(pendingRow.projectionState==="prepared"?(locale==="he"?
      "תוצאת המסירה אינה ודאית. יש לבדוק מול הספק לפני ניסיון שליחה נוסף.":
-     "Delivery outcome is uncertain. Verify with the provider before another send."):t.sentPending);return;
+     "Delivery outcome is uncertain. Verify with the provider before another send."):t.sentPending);return false;
    }
    const result=await api<{projectionPending?:boolean}>({method:"POST",body:JSON.stringify(payload)});
    if(mounted.current){setStatus(kind==="resolve_prepared"?(locale==="he"?
     "תוצאת הספק נרשמה; לא נשלחה הודעה נוספת. יש לבדוק את מצב ה-CRM המעודכן.":
     "Provider outcome recorded; no message was resent. Check the updated CRM state."):kind==="reconcile_projection"?(locale==="he"?
     "עדכון ה-CRM אומת ונרשם; לא נשלחה הודעה נוספת.":"CRM readback verified and recorded; no message was resent."):
-    prospectActionStatus(kind,result,locale));load();}
+    prospectActionStatus(kind,result,locale));load();}return true;
   }catch{if(mounted.current){setStatus(kind==="resolve_prepared"?(locale==="he"?
    "לא ניתן לאמת ולרשום את תוצאת הספק. הרשומה נשארה ממתינה; אין לשלוח שוב.":
    "Provider outcome could not be recorded. The hold remains; do not resend."):kind==="reconcile_projection"?(locale==="he"?
    "עדכון ה-CRM לא אומת. הרשומה עדיין ממתינה; אין לשלוח שוב.":
    "CRM readback was not verified. This record remains pending; do not resend."):
    kind==="update"||kind==="add"?t.saveFailed:t.sendFailed);
-   if(kind.startsWith("send_")||kind==="resolve_prepared"||kind==="reconcile_projection")load();}}
+   if(kind.startsWith("send_")||kind==="resolve_prepared"||kind==="reconcile_projection")load();}return false;}
   finally{if(lock)saving.current.delete(lock);}
  }
  const content=<>
-  {showProspects&&<header className={embedded?"lsw-section-header":"lsw-page-header"}><div>{!embedded&&<><p className="lsw-eyebrow">{locale==="he"?"CRM פרטי":"Private CRM"}</p><h1>{t.title}</h1><p>{t.lead}</p></>}</div>{!accessBlocked&&<button type="button" className="lsw-button lsw-button--secondary" onClick={()=>{if(addRef.current){addRef.current.open=true;addRef.current.scrollIntoView({behavior:"smooth",block:"start"});addRef.current.querySelector<HTMLInputElement>("input")?.focus()}}}>{t.add}</button>}</header>}
+  {showProspects&&<header className={embedded?"lsw-section-header":"lsw-page-header"}><div>{!embedded&&<><p className="lsw-eyebrow">{locale==="he"?"CRM פרטי":"Private CRM"}</p><h1>{t.title}</h1><p>{t.lead}</p></>}</div>{!accessBlocked&&<button ref={addButton} type="button" className="lsw-button lsw-button--secondary" aria-expanded={addOpen} aria-controls="add-prospect" onClick={()=>setAddOpen(!addOpen)}>{t.add}</button>}</header>}
+  {showProspects&&!accessBlocked&&<section ref={addRef} id="add-prospect" className="lsw-card lsu-inline-create" hidden={!addOpen} aria-label={t.add} onKeyDown={event=>{if(event.key==="Escape"){event.preventDefault();closeAdd();}}}><div className="lsw-section-header"><h2>{t.add}</h2><button type="button" className="lsw-button lsw-button--quiet" onClick={closeAdd}>{locale==="he"?"סגירה":"Close"}</button></div><AddProspect locale={locale} action={action} onCreated={closeAdd}/></section>}
   {!embedded&&<nav className="lsw-tabs" aria-label={t.title}><a className="lsw-button lsw-button--quiet" href={`/${locale}/app/clients`}>{t.clients}</a><a className="lsw-button lsw-button--primary" aria-current="page" href={`/${locale}/app/clients?section=prospects`}>{t.prospects}</a></nav>}
-  <section className="lsw-card lsu-people-toolbar" aria-label={locale==="he"?"חיפוש ומסננים":"Search and filters"}><label className="lsw-field">{showProspects?t.search:locale==="he"?"חיפוש לקוחות":"Search clients"}<input className="lsw-input" type="search" value={query} onChange={event=>setQuery(event.target.value)}/></label>{showProspects&&<><label className="lsw-field">{locale==="he"?"תהליך קליטה":"Intake workflow"}<select className="lsw-input" value={preset} onChange={event=>window.location.assign(workflowDestination(locale,event.target.value as Preset))}><option value="all">{t.all}</option><option value="today">{t.today}</option><option value="new">{t.newLead}</option><option value="intake">{t.intake}</option><option value="payment">{t.payment}</option><option value="booking">{t.booking}</option><option value="archived">{t.archived}</option></select></label><label className="lsw-field">{t.stage}<select className="lsw-input" value={stage} onChange={event=>setStage(event.target.value)}><option value="">{t.any}</option>{stages.map(value=><option key={value} value={value}>{administrativeStageLabel(value,locale)}</option>)}</select></label><label className="lsw-field">{t.language}<select className="lsw-input" value={language} onChange={event=>setLanguage(event.target.value)}><option value="">{t.any}</option><option value="he">עברית</option><option value="en">English</option></select></label><label className="lsw-field">{t.dueFilter}<select className="lsw-input" value={due} onChange={event=>setDue(event.target.value)}><option value="">{t.any}</option><option value="today">{t.today}</option><option value="overdue">{t.overdue}</option></select></label></>}</section>
+  <section className="lsw-card lsu-people-toolbar" aria-label={locale==="he"?"חיפוש ומסננים":"Search and filters"}><label className="lsw-field">{showProspects?t.search:locale==="he"?"חיפוש לקוחות":"Search clients"}<input className="lsw-input" type="search" maxLength={200} value={query} onChange={event=>changeFilter("query",event.target.value)}/></label>{showProspects&&<><label className="lsw-field">{locale==="he"?"תהליך קליטה":"Intake workflow"}<select className="lsw-input" value={preset} onChange={event=>window.location.assign(workflowDestination(locale,event.target.value as Preset,new URLSearchParams(window.location.search)))}><option value="all">{t.all}</option><option value="today">{t.today}</option><option value="new">{t.newLead}</option><option value="intake">{t.intake}</option><option value="payment">{t.payment}</option><option value="booking">{t.booking}</option><option value="archived">{t.archived}</option></select></label><label className="lsw-field">{t.stage}<select className="lsw-input" value={stage} onChange={event=>changeFilter("stage",event.target.value)}><option value="">{t.any}</option>{stages.map(value=><option key={value} value={value}>{administrativeStageLabel(value,locale)}</option>)}</select></label><label className="lsw-field">{t.language}<select className="lsw-input" value={language} onChange={event=>changeFilter("language",event.target.value)}><option value="">{t.any}</option><option value="he">עברית</option><option value="en">English</option></select></label><label className="lsw-field">{t.dueFilter}<select className="lsw-input" value={due} onChange={event=>changeFilter("due",event.target.value)}><option value="">{t.any}</option><option value="today">{t.today}</option><option value="overdue">{t.overdue}</option></select></label></>}</section>
   {caseState==="loading"&&<p role="status">{locale==="he"?"טוען תיקים מורשים…":"Loading authorized cases…"}</p>}
   {caseState==="error"&&<div className="lsw-alert" role="alert"><p>{locale==="he"?"תיקי הלקוחות לא נטענו. רשימת הפניות עדיין זמינה.":"Client cases could not be loaded. The CRM may still be available."}</p><button className="lsw-button lsw-button--secondary" onClick={onRetryCases}>{t.retry}</button></div>}
   {(caseState==="auth"||caseState==="forbidden")&&<div className="lsw-alert" role="alert"><p>{t[caseState]}</p>{caseState==="auth"&&<a className="lsw-button lsw-button--secondary" href={loginHref(locale,returnPath??`/${locale}/app/clients`)}>{t.signIn}</a>}</div>}
@@ -215,18 +225,19 @@ export function ProspectsClient({locale,initialFilter="all",focusLeadId="",embed
    {locale==="he"?"טעינת ניסיונות שליחה ממתינים נוספים":"Load more pending send attempts"}</button>}
   {showProspects&&pendingMoreState==="error"&&<p role="alert">{locale==="he"?"טעינת ניסיונות נוספים נכשלה. אפשר לנסות שוב.":"More pending attempts could not be loaded. Try again."}</p>}
   <section className="lsu-people-results" aria-live="polite">{entries.map(entry=>entry.kind==="case"?<a className="lsw-card lsu-person-row" key={`case:${entry.id}`} href={`/${locale}/app/cases/${encodeURIComponent(entry.id)}`}><strong>{entry.row.displayName}</strong><span>{entry.row.kind==="minor"?(locale==="he"?"תיק ילד/ה":"Child case"):(locale==="he"?"תיק מבוגר/ת":"Adult case")} · {entry.row.state}</span></a>:<details className="lsw-card lsu-person-details" key={`prospect:${entry.id}`} open={openLeads.includes(entry.id)} onToggle={event=>{const isOpen=event.currentTarget.open;setOpenLeads(current=>isOpen?current.includes(entry.id)?current:[...current,entry.id]:current.filter(id=>id!==entry.id))}} data-focused={entry.id===focused}><summary><strong>{entry.name}</strong><span>{locale==="he"?"פנייה":"Inquiry"} · {administrativeStageLabel(entry.row.stage||"New inquiry",locale)}</span><span>{administrativeActionLabel(entry.row.nextAction||"—",locale)}</span><span>{entry.row.dueDate||"—"}</span></summary><ProspectCard row={entry.row} locale={locale} action={action} sendsReady={ledgerReady}/></details>)}{!entries.length&&sourcesReady&&!accessBlocked&&<p className="lsw-empty">{showProspects?t.empty:locale==="he"?"אין תיקי לקוחות שמתאימים לחיפוש.":"No client cases match this search."}</p>}</section>
-  {paginationReady&&!accessBlocked&&pages>1&&<nav className="lsw-actions" aria-label={t.page}><button className="lsw-button lsw-button--secondary" disabled={currentPage<=1} onClick={()=>setPage(currentPage-1)}>{t.previous}</button><span>{t.page} {currentPage} / {pages}</span><button className="lsw-button lsw-button--secondary" disabled={currentPage>=pages} onClick={()=>setPage(currentPage+1)}>{t.nextPage}</button></nav>}
-  {showProspects&&!accessBlocked&&<><details ref={addRef} id="add-prospect" className="lsw-card lsu-inline-create"><summary>{t.add}</summary><AddProspect locale={locale} action={action}/></details><p className="lsw-save-result" role="status">{status}</p></>}
+  {paginationReady&&!accessBlocked&&pages>1&&<nav className="lsw-actions" aria-label={t.page}><button className="lsw-button lsw-button--secondary" disabled={currentPage<=1} onClick={()=>changePage(currentPage-1)}>{t.previous}</button><span>{t.page} {currentPage} / {pages}</span><button className="lsw-button lsw-button--secondary" disabled={currentPage>=pages} onClick={()=>changePage(currentPage+1)}>{t.nextPage}</button></nav>}
+  {showProspects&&!accessBlocked&&<p className="lsw-save-result" role="status">{status}</p>}
  </>;
  return embedded?<section className="lsu-crm-embedded" lang={locale} dir={locale==="he"?"rtl":"ltr"}>{content}</section>:<main className="lsw-main" lang={locale} dir={locale==="he"?"rtl":"ltr"}>{content}</main>;
 }
 
-function AddProspect({locale,action}:{locale:Locale;action:(payload:unknown)=>Promise<void>}){
- const t=copy[locale],[name,setName]=useState(""),[phone,setPhone]=useState(""),[language,setLanguage]=useState<""|"he"|"en">(""),[source,setSource]=useState(""),[notes,setNotes]=useState(""),[next,setNext]=useState(""),[due,setDue]=useState("");
- return <div className="lsw-stack"><div className="lsw-two-fields"><label className="lsw-field">{t.name}<input className="lsw-input" value={name} onChange={event=>setName(event.target.value)}/></label><label className="lsw-field">{t.phone}<input className="lsw-input" inputMode="tel" required value={phone} onChange={event=>setPhone(event.target.value)}/></label><label className="lsw-field">{t.language}<select className="lsw-input" value={language} onChange={event=>setLanguage(event.target.value as ""|"he"|"en")}><option value="">{t.any}</option><option value="he">עברית</option><option value="en">English</option></select></label><label className="lsw-field">{t.source}<input className="lsw-input" value={source} onChange={event=>setSource(event.target.value)}/></label><label className="lsw-field">{t.next}<input className="lsw-input" value={next} onChange={event=>setNext(event.target.value)}/></label><label className="lsw-field">{t.due}<input className="lsw-input" type="date" value={due} onChange={event=>setDue(event.target.value)}/></label></div><label className="lsw-field">{t.notes}<textarea className="lsw-input" value={notes} onChange={event=>setNotes(event.target.value)}/></label><button className="lsw-button lsw-button--primary" disabled={phone.trim().length<8} onClick={()=>action({action:"add",name,phone,language,source,notes,nextAction:next,dueDate:due})}>{t.add}</button></div>;
+export function AddProspect({locale,action,onCreated}:{locale:Locale;action:(payload:unknown)=>Promise<boolean>;onCreated:()=>void}){
+ const t=copy[locale],[name,setName]=useState(""),[phone,setPhone]=useState(""),[language,setLanguage]=useState<""|"he"|"en">(""),[source,setSource]=useState(""),[notes,setNotes]=useState(""),[next,setNext]=useState(""),[due,setDue]=useState(""),[submitting,setSubmitting]=useState(false),submittingRef=useRef(false);
+ async function save(){if(submittingRef.current)return;submittingRef.current=true;setSubmitting(true);try{if(!await action({action:"add",name,phone,language,source,notes,nextAction:next,dueDate:due}))return;setName("");setPhone("");setLanguage("");setSource("");setNotes("");setNext("");setDue("");onCreated();}finally{submittingRef.current=false;setSubmitting(false);}}
+ return <div className="lsw-stack" aria-busy={submitting}><div className="lsw-two-fields"><label className="lsw-field">{t.name}<input className="lsw-input" value={name} onChange={event=>setName(event.target.value)}/></label><label className="lsw-field">{t.phone}<input className="lsw-input" inputMode="tel" required value={phone} onChange={event=>setPhone(event.target.value)}/></label><label className="lsw-field">{t.language}<select className="lsw-input" value={language} onChange={event=>setLanguage(event.target.value as ""|"he"|"en")}><option value="">{t.any}</option><option value="he">עברית</option><option value="en">English</option></select></label><label className="lsw-field">{t.source}<input className="lsw-input" value={source} onChange={event=>setSource(event.target.value)}/></label><label className="lsw-field">{t.next}<input className="lsw-input" value={next} onChange={event=>setNext(event.target.value)}/></label><label className="lsw-field">{t.due}<input className="lsw-input" type="date" value={due} onChange={event=>setDue(event.target.value)}/></label></div><label className="lsw-field">{t.notes}<textarea className="lsw-input" value={notes} onChange={event=>setNotes(event.target.value)}/></label><button type="button" className="lsw-button lsw-button--primary" disabled={submitting||phone.trim().length<8} onClick={save}>{submitting?(locale==="he"?"שומר…":"Saving…"):(locale==="he"?"שמירת מתעניין":"Save prospect")}</button></div>;
 }
 
-function PreparedResolution({row,locale,action}:{row:Pick<Prospect,"projectionOperationId"|"projectionMessage"|"projectionCreatedAt">;locale:Locale;action:(payload:unknown)=>Promise<void>}){
+function PreparedResolution({row,locale,action}:{row:Pick<Prospect,"projectionOperationId"|"projectionMessage"|"projectionCreatedAt">;locale:Locale;action:(payload:unknown)=>Promise<boolean>}){
  const [outcome,setOutcome]=useState<"delivered"|"not_delivered">("delivered"),[source,setSource]=useState<"provider_delivery_log"|"provider_support_case">("provider_delivery_log"),
   [reference,setReference]=useState(""),[providerMessageId,setProviderMessageId]=useState(""),[sentAt,setSentAt]=useState(""),[verified,setVerified]=useState(false),[now,setNow]=useState(0);
  useEffect(()=>{setNow(Date.now());const timer=window.setInterval(()=>setNow(Date.now()),60000);return()=>window.clearInterval(timer)},[]);
@@ -262,7 +273,7 @@ function PreparedResolution({row,locale,action}:{row:Pick<Prospect,"projectionOp
   </div></details>;
 }
 
-function ProspectCard({row,locale,action,sendsReady}:{row:Prospect;locale:Locale;action:(payload:unknown)=>Promise<void>;sendsReady:boolean}){
+function ProspectCard({row,locale,action,sendsReady}:{row:Prospect;locale:Locale;action:(payload:unknown)=>Promise<boolean>;sendsReady:boolean}){
  const initialLanguage=knownLanguage(row),t=copy[locale],[messageLanguage,setMessageLanguage]=useState<""|"he"|"en">(initialLanguage),[intakeLanguage,setIntakeLanguage]=useState<""|"he"|"en">(initialLanguage),[message,setMessage]=useState(template(row,"return",initialLanguage)),[draft,setDraft]=useState(()=>prospectFollowUpDraft(row)),[children,setChildren]=useState(1),[booking,setBooking]=useState("");
  useEffect(()=>setDraft(current=>reconcileProspectFollowUp(current,row)),[row]);
  const {notes,nextAction:next,dueDate:due,owner}=draft.values;

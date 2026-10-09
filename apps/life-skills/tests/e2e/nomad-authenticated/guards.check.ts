@@ -1,0 +1,38 @@
+import assert from "node:assert/strict";
+import {randomUUID} from "node:crypto";
+import {mkdirSync,writeFileSync} from "node:fs";
+import {join,resolve,dirname} from "node:path";
+import {tmpdir} from "node:os";
+import {fileURLToPath} from "node:url";
+import {spawnSync} from "node:child_process";
+import {loadRuntime,ownedDatabase,origin} from "./guards.ts";
+const app=resolve(dirname(fileURLToPath(import.meta.url)),"../../..");
+const root=join(tmpdir(),"ls-r18-authenticated-"+randomUUID().replaceAll("-","")),browser=join(root,"browser");
+mkdirSync(browser,{recursive:true});
+const marker={kind:"r18-authenticated-local",database:"ls_calendar_test_r18_00000000_test",port:55555};
+writeFileSync(join(root,"ownership.json"),JSON.stringify(marker));
+const path=join(browser,"runtime.private.json"),env={...process.env,R18_AUTH_ALLOW:"true",R18_ARTIFACT_ROOT:root,R18_FIXTURE:path};
+const cases=Object.fromEntries(["desktop-en","desktop-he","mobile390-en","mobile390-he"].map((name,i)=>[name,{candidateId:randomUUID(),personId:randomUUID(),phone:"+97255555010"+(i+1),name:"Synthetic "+name}]));
+const fixture={kind:"r18-authenticated-local",origin,practitioner:"a".repeat(43),parent:"b".repeat(43),cases};
+writeFileSync(path,JSON.stringify(fixture));
+let checks=0;const pass=(work:()=>void)=>{work();checks++;};
+pass(()=>assert.equal(loadRuntime(env).runtime.origin,origin));
+pass(()=>assert.throws(()=>loadRuntime({...env,R18_AUTH_ALLOW:undefined}),/OPT_IN/));
+pass(()=>assert.throws(()=>loadRuntime({...env,R18_FIXTURE:undefined}),/FIXTURE_PATH/));
+pass(()=>assert.throws(()=>loadRuntime({...env,R18_ARTIFACT_ROOT:app}),/NOT_OWNED/));
+pass(()=>assert.throws(()=>loadRuntime({...env,R18_FIXTURE:join(root,"elsewhere.json")}),/FIXTURE_PATH/));
+writeFileSync(path,JSON.stringify({...fixture,origin:"https://example.invalid"}));
+pass(()=>assert.throws(()=>loadRuntime(env)));writeFileSync(path,JSON.stringify(fixture));
+writeFileSync(path,JSON.stringify({...fixture,practitioner:"not-a-session"}));
+pass(()=>assert.throws(()=>loadRuntime(env)));writeFileSync(path,JSON.stringify(fixture));
+const url="postgresql://synthetic:fake@127.0.0.1:55555/"+marker.database;
+pass(()=>assert.equal(ownedDatabase(env,url),root));
+for(const invalid of [url.replace("127.0.0.1","example.invalid"),url.replace(":55555",":55556"),url.replace(marker.database,"production"),url+"?sslmode=require"])
+ pass(()=>assert.throws(()=>ownedDatabase(env,invalid),/MISMATCH/));
+const clean={...process.env};for(const key of ["R18_AUTH_ALLOW","R18_ARTIFACT_ROOT","R18_FIXTURE"])delete clean[key];
+function cli(environment:NodeJS.ProcessEnv,args:string[],pattern:RegExp,code:number){const r=spawnSync(process.execPath,[resolve(app,"node_modules/@playwright/test/cli.js"),"test",...args],{cwd:app,env:environment,encoding:"utf8",timeout:45000});assert.equal(r.status,code,r.stdout+r.stderr);assert.match(r.stdout+r.stderr,pattern);checks++;}
+cli(clean,["--list","--pass-with-no-tests","nomad-authenticated"],/Total: 0 tests/,0);
+cli(clean,["--list","--config","tests/e2e/nomad-authenticated/playwright.config.ts"],/OPT_IN/,1);
+cli({...clean,R18_AUTH_ALLOW:"true"},["--list","--config","tests/e2e/nomad-authenticated/playwright.config.ts"],/OWNED_ROOT/,1);
+cli(env,["--list","--config","tests/e2e/nomad-authenticated/playwright.config.ts"],/Total: 6 tests/,0);
+console.log("R18_PACKAGING_GUARDS_PASS checks="+checks+"; ordinary discovery=0, dedicated discovery=6; no server/database started");

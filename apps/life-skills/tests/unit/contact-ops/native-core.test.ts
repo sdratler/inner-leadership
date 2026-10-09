@@ -50,8 +50,17 @@ describe("native CRM candidate integrated into the existing app",()=>{
   expect(selectPeople(rows,query({view:"archived"})).items.map(row=>row.id)).toEqual(["b"]);
   expect(selectPeople(rows,query({page:99})).page).toBe(1);
  });
+ it("keeps an identity-only content contact out of both sales predicates",()=>{
+  const row=projectPeople("synthetic-workspace",[person("audience-only",{mode:"live",demoBatchId:null,displayName:"Content reader"})],[],[])[0]!;
+  expect(row).toMatchObject({openProspect:false,stage:"new"});
+  expect(selectPeople([row],query({view:"all"})).total).toBe(1);
+  expect(selectPeople([row],query({view:"prospects"})).total).toBe(0);
+  const explicit=projectPeople("synthetic-workspace",[person("lead",{mode:"live",demoBatchId:null,legacyLeadIds:["LS-LEAD-synthetic"]})],[],[])[0]!;
+  expect(explicit.openProspect).toBe(true);
+ });
  it("keeps missed follow-ups in Today and archived records in All without reopening a prospect queue",()=>{
-  const rows=projectPeople("synthetic-workspace",[person("overdue"),person("today"),person("future"),person("archived",{archivedAt:"2026-09-24T10:00:00Z"})],[],[
+  const lead=(id:string,extra:Partial<AdministrativePerson>={})=>person(id,{legacyLeadIds:[`LS-LEAD-${id}`],...extra});
+  const rows=projectPeople("synthetic-workspace",[lead("overdue"),lead("today"),lead("future"),lead("archived",{archivedAt:"2026-09-24T10:00:00Z"})],[],[
    {personId:"overdue",nextAction:"Follow up",followUpDate:"2026-09-24",nextAppointmentAt:null,unreadCount:0},
    {personId:"today",nextAction:"Follow up",followUpDate:"2026-09-25",nextAppointmentAt:null,unreadCount:0},
    {personId:"future",nextAction:"Follow up",followUpDate:"2026-09-26",nextAppointmentAt:null,unreadCount:0},

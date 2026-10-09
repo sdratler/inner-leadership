@@ -9,6 +9,10 @@ export type CommunityInboxPost = {
   postedAt: string | null; capturedAt: string | null; excerpt: string; excerptTruncated: boolean;
   status: string; draft: string; reviewStatus: string; revision: number;
   copiedAt: string | null; manuallyPostedAt: string | null; commentsCaptured: false;
+  englishReadingAid?: string[];
+  englishReadingAidSourceHash?: string|null;
+  englishReadingAidGeneratedAt?: string|null;
+  englishReadingAidMethod?: 'existing_analysis'|null;
 };
 export type CommunityInboxPage = { items: CommunityInboxPost[]; nextCursor: string | null; commentsCaptureAvailable: false };
 function facebookUrl(value: unknown): value is string {
@@ -26,8 +30,18 @@ function validPost(value: unknown): value is CommunityInboxPost {
     typeof post.excerptTruncated === "boolean" && typeof post.status === "string" &&
     typeof post.draft === "string" && post.draft.length <= 12000 &&
     typeof post.reviewStatus === "string" && Number.isSafeInteger(post.revision) &&
-    post.commentsCaptured === false &&
+    post.commentsCaptured === false && validReadingAid(post) &&
     [post.postedAt, post.capturedAt, post.copiedAt, post.manuallyPostedAt].every(date => date === null || typeof date === "string");
+}
+function validReadingAid(post:Partial<CommunityInboxPost>):boolean{
+  const fields=['englishReadingAid','englishReadingAidSourceHash','englishReadingAidGeneratedAt','englishReadingAidMethod'] as const;
+  if(fields.every(key=>!Object.hasOwn(post,key)))return true; // Older deployed Scout: no fabricated aid.
+  if(!fields.every(key=>Object.hasOwn(post,key))||!Array.isArray(post.englishReadingAid)||post.englishReadingAid.length>3||
+    !post.englishReadingAid.every(line=>typeof line==='string'&&line.trim().length>0&&line.length<=220))return false;
+  if(post.englishReadingAid.length===0)return post.englishReadingAidSourceHash===null&&post.englishReadingAidGeneratedAt===null&&post.englishReadingAidMethod===null;
+  return typeof post.englishReadingAidSourceHash==='string'&&/^[a-f0-9]{64}$/.test(post.englishReadingAidSourceHash)&&
+    typeof post.englishReadingAidGeneratedAt==='string'&&/^\d{4}-\d{2}-\d{2}T/.test(post.englishReadingAidGeneratedAt)&&post.englishReadingAidGeneratedAt.length<=40&&Number.isFinite(Date.parse(post.englishReadingAidGeneratedAt))&&
+    post.englishReadingAidMethod==='existing_analysis';
 }
 function verified(value: unknown): CommunityInboxPage {
   if (!value || typeof value !== "object") throw new AppError("UNAVAILABLE");

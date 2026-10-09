@@ -7,7 +7,7 @@ import type { CommunityReplyResult } from "./bridge.ts";
 import type { CommunitySavedDraft } from "./drafts-bridge.ts";
 import {CommunityThreadPanel} from './thread-panel.tsx';
 import { UnsavedChangesGuard } from "../../ui/workspace/draft-guard.tsx";
-import { canResumeRuleOperation, matchesEditedDraftReadback, matchesGeneratedReadback, matchesSavedDraftBinding, matchesSubmittedInput, proposalForResult, replyFailureKind, ruleDraftPromotionNeedsConfirmation, type CommunitySourceInput } from "./input-state.ts";
+import { canResumeRuleOperation, matchesEditedDraftReadback, matchesGeneratedReadback, matchesSavedDraftBinding, matchesSubmittedInput, proposalForResult, replyFailureKind, ruleDraftPromotionNeedsConfirmation, writingRuleDisplayText, type CommunitySourceInput } from "./input-state.ts";
 
 type Locale = "he" | "en";
 const copy = {
@@ -18,11 +18,11 @@ const copy = {
     inboxUnavailable: "The captured-post inbox could not load. Your draft input is preserved. Retry when the Scout connection is available.", inboxLoading: "Loading captured posts…", inboxRetry: "Retry inbox", inboxMore: "More posts", inboxUse: "Use this post for a draft", inboxReplace: "Replace the current unsaved question and link with this post?", inboxOriginal: "Open original Facebook post", inboxDraft: "Saved suggestion", inboxNoDraft: "No saved suggestion yet", inboxCaptured: "Captured", inboxNoComments: "Comments not captured", inboxStatus: "Workflow status",
     intro: "Draft a reply to a public community question. Paste only the minimum public question text; remove names, phone numbers and private child details. Nothing is posted or sent automatically.",
     question: "Public question or post excerpt", url: "Original Facebook post link (optional)", generate: "Generate draft",
-    reply: "Editable reply", correction: "What should change?", revise: "Revise this reply only", persistent: "Apply correction + update my writing rules",
-    proposed: "Reusable preference understood (not saved)", scope: "Future scope", community: "Community replies", general: "All writing",
+    reply: "Editable reply", correction: "Specific instructions", revise: "Revise this reply only", persistent: "Apply correction + update my writing rules",
+    proposed: "Reusable preference understood (not saved)", scope: "Apply instructions to", once: "This reply only", community: "Future Community replies", general: "Global writing voice / Content Voice",
     language: "Replies this rule applies to", hebrew: "Hebrew", english: "English", both: "Both languages",
     pending: "The canonical writing-rule update is not yet connected. This correction changes only this reply; no source rule has been saved.",
-    interpret: "First use ‘Revise this reply only’ to review the reusable preference. Only an approved community-reply preference can be saved here.",
+    interpret: "First use ‘Revise this reply only’ to review the reusable preference. Applying it saves only the explicitly selected scope.",
     savingRule: "Checking and saving the canonical Content Voice file…",
     ruleDenied: "The app's Google account cannot edit the canonical Content Voice file. No writing rule was saved; your correction is preserved.",
     ruleConflict: "The Content Voice source changed since this draft. No rule was overwritten. Generate a fresh reply, then review the correction again.",
@@ -34,8 +34,9 @@ const copy = {
     ruleAlready: "This preference already appears in the canonical guide. No duplicate rule was added.",
     ruleUnsafe: "This proposal contains details unsuitable for a reusable writing guide. Remove identifying, clinical or factual claims and review it again.",
     rulePlaybook: "This changes a community-channel rule governed by the separate Playbook. No Content Voice rule was written.",
-    generalGate: "A rule for all writing needs separate source review; this action saves community-reply rules only.",
-    existingRule: "Replace a reviewed existing community rule (optional)", addRule: "Add a new rule",
+    generalGate: "Global scope updates the same Content Voice guide for future writing, not just Community replies. Review the proposed rule and source version before applying it.",
+    ruleListFailed: "Current writing rules could not load. Your correction is preserved; retry before applying it.", ruleListRetry: "Reload current writing rules", ruleListLoading: "Checking the current writing rules before applying this preference…",
+    existingRule: "Replace a reviewed rule in this scope (optional)", addRule: "Add a new rule",
     ruleReview: "A similar rule already exists. Review it and select that rule explicitly if this correction should replace it; no source change was made.",
     ruleBefore: "Previous rule", ruleAfter: "Current rule", ruleVersion: "Current source version / last updated / last synchronized",
     retryRule: "Recheck / resume this correction", priorDraft: "Revised reply from this correction",
@@ -45,7 +46,7 @@ const copy = {
     limited: "Manual drafting has reached its approved limit. Your input is preserved; no new reply was confirmed. An ongoing limit needs owner approval before more drafts can be generated.",
     blocked: "The draft needs manual safety review before it can be copied.",
     sources: "Source versions used", guide: "Content Voice", playbook: "Community Response Playbook", synced: "Latest source check",
-    includedRules: "Community rule IDs included in the model input (not a compliance guarantee)",
+    includedRules: "Community rule IDs included in the model input (not a compliance guarantee)", includedGlobalRules: "Global writing rule IDs included in the model input",
     generation: "Generation", usage: "Model tokens (input/output)",
     warning: "Editing changes the checked draft. Review your final wording before copying; nothing is posted by the app.",
     stale: "This draft belongs to the previous question or link. Generate a new draft before copying or revising it.",
@@ -58,11 +59,11 @@ const copy = {
     inboxUnavailable: "לא ניתן לטעון את תיבת הפוסטים. הטיוטה שלך נשמרה במסך. אפשר לנסות שוב כשהחיבור זמין.", inboxLoading: "טוען פוסטים שנקלטו…", inboxRetry: "ניסיון חוזר", inboxMore: "עוד פוסטים", inboxUse: "שימוש בפוסט הזה ליצירת טיוטה", inboxReplace: "להחליף את השאלה והקישור שהוזנו ועדיין לא נשמרו בפוסט הזה?", inboxOriginal: "פתיחת הפוסט המקורי", inboxDraft: "הצעה שמורה", inboxNoDraft: "אין עדיין הצעה שמורה", inboxCaptured: "נקלט", inboxNoComments: "תגובות לא נקלטו", inboxStatus: "סטטוס טיפול",
     intro: "טיוטת תגובה לשאלה ציבורית בקהילה. יש להדביק רק את הקטע הציבורי הנחוץ, ללא שמות, טלפונים או פרטים אישיים על ילדים. דבר אינו מתפרסם או נשלח אוטומטית.",
     question: "השאלה הציבורית או קטע מהפוסט", url: "קישור לפוסט המקורי בפייסבוק (לא חובה)", generate: "יצירת טיוטה",
-    reply: "תגובה ניתנת לעריכה", correction: "מה צריך לשנות?", revise: "תיקון התגובה הזאת בלבד", persistent: "החלת התיקון ועדכון כללי הכתיבה שלי",
-    proposed: "העדפת כתיבה חוזרת שזוהתה (לא נשמרה)", scope: "תחולה לעתיד", community: "תגובות בקהילה", general: "כל הכתיבה",
+    reply: "תגובה ניתנת לעריכה", correction: "הנחיות ספציפיות", revise: "תיקון התגובה הזאת בלבד", persistent: "החלת התיקון ועדכון כללי הכתיבה שלי",
+    proposed: "העדפת כתיבה חוזרת שזוהתה (לא נשמרה)", scope: "החלת ההנחיות על", once: "התגובה הזאת בלבד", community: "תגובות קהילה עתידיות", general: "סגנון הכתיבה הכללי / Content Voice",
     language: "שפת התגובות שעליהן הכלל חל", hebrew: "עברית", english: "אנגלית", both: "שתי השפות",
     pending: "עדכון כללי הכתיבה במקור עדיין אינו מחובר. התיקון חל רק על תגובה זו; לא נשמר כלל במקור.",
-    interpret: "תחילה יש להשתמש ב׳תיקון התגובה הזאת בלבד׳ כדי לבדוק את העדפת הכתיבה החוזרת. כאן ניתן לשמור רק העדפה לתגובות בקהילה שאושרה.",
+    interpret: "תחילה יש להשתמש ב׳תיקון התגובה הזאת בלבד׳ כדי לבדוק את העדפת הכתיבה החוזרת. החלתה שומרת רק בהיקף שנבחר במפורש.",
     savingRule: "בודק ושומר את קובץ המקור של מדריך סגנון הכתיבה…",
     ruleDenied: "לחשבון Google של האפליקציה אין הרשאת עריכה לקובץ המקור. לא נשמר כלל כתיבה; התיקון שהזנת נשמר במסך.",
     ruleConflict: "מקור סגנון הכתיבה השתנה מאז יצירת הטיוטה. לא נדרס כלל. יש ליצור תגובה חדשה ולבדוק שוב את התיקון.",
@@ -74,8 +75,9 @@ const copy = {
     ruleAlready: "ההעדפה כבר מופיעה במדריך המקור. לא נוסף כלל כפול.",
     ruleUnsafe: "ההצעה מכילה פרטים שאינם מתאימים למדריך כתיבה חוזר. יש להסיר פרטים מזהים, קליניים או טענות עובדתיות ולבדוק שוב.",
     rulePlaybook: "השינוי נוגע לכלל ערוץ קהילתי שבאחריות מדריך התגובות הנפרד. לא נכתב כלל למדריך הכתיבה.",
-    generalGate: "כלל לכל הכתיבה דורש בדיקת מקור נפרדת; הפעולה הזאת שומרת רק כללים לתגובות בקהילה.",
-    existingRule: "החלפת כלל קהילה קיים לאחר בדיקה (לא חובה)", addRule: "הוספת כלל חדש",
+    generalGate: "היקף כללי מעדכן את אותו מדריך Content Voice לכתיבה עתידית, ולא רק לתגובות בקהילה. יש לבדוק את הכלל המוצע ואת גרסת המקור לפני החלתו.",
+    ruleListFailed: "לא ניתן לטעון את כללי הכתיבה העדכניים. התיקון נשמר בעורך; יש לנסות שוב לפני החלתו.", ruleListRetry: "טעינה חוזרת של כללי הכתיבה", ruleListLoading: "בודק את כללי הכתיבה העדכניים לפני החלת ההעדפה…",
+    existingRule: "החלפת כלל שנבדק בהיקף הזה (לא חובה)", addRule: "הוספת כלל חדש",
     ruleReview: "כבר קיים כלל דומה. יש לבדוק אותו ולבחור בו במפורש אם התיקון אמור להחליף אותו; המקור לא השתנה.",
     ruleBefore: "כלל קודם", ruleAfter: "כלל נוכחי", ruleVersion: "גרסת המקור הנוכחית / עודכן לאחרונה / סונכרן לאחרונה",
     retryRule: "בדיקה חוזרת / המשך התיקון", priorDraft: "תגובה מתוקנת מהפעולה הזאת",
@@ -85,7 +87,7 @@ const copy = {
     limited: "יצירת הטיוטות הידנית הגיעה למגבלה שאושרה. הטקסט שהזנת נשמר במסך, ולא אומתה תגובה חדשה. כדי ליצור טיוטות נוספות נדרש אישור בעל החשבון למגבלה מתמשכת.",
     blocked: "הטיוטה דורשת בדיקת בטיחות ידנית לפני העתקה.",
     sources: "גרסאות המקורות ששימשו", guide: "מדריך סגנון הכתיבה", playbook: "מדריך תגובות בקהילה", synced: "בדיקת המקורות האחרונה",
-    includedRules: "מזהי כללי הקהילה שנכללו בקלט למודל (לא הבטחה שהמודל פעל לפיהם)",
+    includedRules: "מזהי כללי הקהילה שנכללו בקלט למודל (לא הבטחה שהמודל פעל לפיהם)", includedGlobalRules: "מזהי כללי הכתיבה הכלליים שנכללו בקלט למודל",
     generation: "יצירת הטיוטה", usage: "טוקנים של המודל (קלט/פלט)",
     warning: "עריכה משנה את הטיוטה שנבדקה. יש לבדוק את הנוסח הסופי לפני העתקה; האפליקציה אינה מפרסמת אותו.",
     stale: "הטיוטה שייכת לשאלה או לקישור הקודמים. יש ליצור טיוטה חדשה לפני העתקה או תיקון.",
@@ -94,6 +96,7 @@ const copy = {
 };
 
 type RuleSaveResult = {
+  scope?: 'community'|'general';
   operationId: string; status: string; ruleId?: string; before?: string | null; after?: string;
   savedAt?: string | null; sourceAfterSha256?: string | null;
   draftSourceConflict?: boolean;
@@ -118,10 +121,12 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
   const [reviewed, setReviewed] = useState(false);
   const [proposedRule, setProposedRule] = useState("");
   const [ruleScope, setRuleScope] = useState<"community" | "general">("community");
+  const [correctionScope, setCorrectionScope] = useState<'once'|'community'|'general'>('once');
   const [ruleLanguage, setRuleLanguage] = useState<"he" | "en" | "both">(locale);
   const [ruleSave, setRuleSave] = useState<RuleSaveResult | null>(null);
   const [correctionBase, setCorrectionBase] = useState<{ question: string; originalUrl: string; reply: string; correction: string } | null>(null);
   const [existingRules, setExistingRules] = useState<Array<{ id: string; language: "he" | "en" | "both"; rule: string }>>([]);
+  const [ruleListFailed,setRuleListFailed]=useState(false),[ruleListRetry,setRuleListRetry]=useState(0);
   const [existingSourceSha, setExistingSourceSha] = useState<string | null>(null);
   const [targetRuleId, setTargetRuleId] = useState<string | null>(null);
   const [result, setResult] = useState<CommunityReplyResult | null>(null);
@@ -181,7 +186,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
     draftReadEpoch.current++;
     inFlight.current=true;setBusy(true);
     try{const latest=(await readSaved(row.draftId))[0];if(!matchesSavedDraftBinding(latest,row))throw Error('saved');
-      setQuestion(latest.question);setOriginalUrl(latest.originalUrl??'');setResult(latest.generated);setDraft(latest.draft);setPersisted(latest);setHistorical(true);
+      setQuestion(latest.question);setOriginalUrl(latest.originalUrl??'');setResult(latest.generated);setDraft(latest.draft);setPersisted(latest);setHistorical(true);setCorrectionScope('once');
       setSubmittedInput({question:latest.question,originalUrl:latest.originalUrl??''});setReviewed(false);setCorrection('');setCorrectionBase(null);setProposedRule('');setTargetRuleId(null);setExistingRules([]);setExistingSourceSha(null);setRuleSave(null);
       attempt.current=null;ruleAttempt.current=null;draftAttempt.current=null;setNotice('');setDraftSaveError(false);setDraftNotice(`${t.saveVerified} · ${t.savedVersion} ${latest.revision}`);
     }catch{setDraftSaveError(true);setDraftNotice(t.savedUnavailable);}
@@ -227,18 +232,18 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
     return () => controller.abort();
   }, []);
   useEffect(() => {
-    if (!correctionBase) return;
+    if (!correctionBase || correctionScope==='once') return;
     const controller = new AbortController();
-    void fetch("/api/content-voice/corrections?list=1", { credentials: "same-origin", cache: "no-store",
+    void fetch("/api/content-voice/corrections?list=1&scope="+correctionScope, { credentials: "same-origin", cache: "no-store",
       redirect: "error", signal: controller.signal })
       .then(async response => { const payload = await response.json() as { ok?: boolean;
         data?: { source?: { sha256: string }; rules?: Array<{ id: string; language: "he" | "en" | "both"; rule: string }> } };
-        if (!response.ok || !payload.ok) throw Error("source"); return payload.data; })
+        if (!response.ok || !payload.ok || !payload.data?.source?.sha256 || !Array.isArray(payload.data.rules)) throw Error("source"); return payload.data; })
       .then(data => { if (!controller.signal.aborted && data) { setExistingRules(data.rules ?? []);
-        setExistingSourceSha(data.source?.sha256 ?? null); } })
-      .catch(() => { /* The server still checks source version and semantic conflicts. */ });
+        setExistingSourceSha(data.source?.sha256 ?? null);setRuleListFailed(false); } })
+      .catch(() => { if(!controller.signal.aborted)setRuleListFailed(true); });
     return () => controller.abort();
-  }, [correctionBase]);
+  }, [correctionBase,correctionScope,ruleListRetry]);
   useEffect(() => {
     const operationId = window.localStorage.getItem(ruleOperationKey);
     if (!operationId || !/^[0-9a-f-]{36}$/i.test(operationId)) return;
@@ -254,6 +259,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
   function choosePost(post: CommunityInboxPost) {
     if ((question.trim() || originalUrl.trim()) && !window.confirm(t.inboxReplace)) return;
     setQuestion(post.excerpt); setOriginalUrl(post.postUrl); setResult(null); setDraft(""); setCorrection(""); setReviewed(false);
+    setCorrectionScope('once');
     setSubmittedInput(null); setNotice(""); setCorrectionBase(null); setProposedRule(""); setTargetRuleId(null); attempt.current = null;
     setPersisted(null);setHistorical(false);setDraftNotice('');setDraftSaveError(false);draftAttempt.current=null;
     draftReadEpoch.current++;
@@ -284,6 +290,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
       if (replyFailureKind(response.status, payload.error?.code) === "limited") { setNotice(t.limited); return; }
       if (!response.ok || payload.ok !== true || !payload.data) throw Error("unconfirmed");
       setSubmittedInput({ question: command.question, originalUrl: command.originalUrl ?? "" });
+      if(mode==='generate')setCorrectionScope('once');
       setResult(payload.data); setDraft(payload.data.reply); setReviewed(false);
       setPersisted(null);setHistorical(false);draftAttempt.current=null;if(await confirmGenerated(payload.data,{question:command.question,originalUrl:command.originalUrl??''}))attempt.current=null;
       const proposal = proposalForResult(mode, payload.data.suggestedRule, payload.data.ruleScope);
@@ -296,7 +303,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
   }
 
   async function saveRule() {
-    if (inFlight.current || !result || !correctionBase || stale || ruleScope !== "community" ||
+    if (inFlight.current || !result || !correctionBase || stale || ruleListFailed || existingSourceSha === null || correctionScope === 'once' ||
         proposedRule.trim().length < 8 || correctionBase.correction !== correction.trim() ||
         correctionBase.question !== question.trim() || correctionBase.originalUrl !== originalUrl.trim() ||
         (existingSourceSha !== null && existingSourceSha !== result.provenance.guide.sha256)) return;
@@ -304,7 +311,7 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
     try {
       const session = await sessionInfo();
       if (session.role !== "practitioner") throw Error("role");
-      const command = { correction: correctionBase.correction, rule: proposedRule.trim(),
+      const command = { correction: correctionBase.correction, rule: proposedRule.trim(), scope: correctionScope,
         language: ruleLanguage, sourceSha256: result.provenance.guide.sha256,
         sourceRevision: result.provenance.guide.driveRevision, question: correctionBase.question,
         ...(correctionBase.originalUrl ? { originalUrl: correctionBase.originalUrl } : {}),
@@ -374,6 +381,8 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
     setResult(saved.draft); setDraft(saved.draft.reply); setReviewed(false); setSubmittedInput(saved.draftInput);
     setPersisted(null);setHistorical(false);draftAttempt.current=null;void confirmGenerated(saved.draft,saved.draftInput);
     setCorrection(""); setProposedRule(""); setCorrectionBase(null); setTargetRuleId(null);
+    setExistingRules([]); setExistingSourceSha(null); setRuleListFailed(false);
+    setCorrectionScope('once');
     attempt.current = null; ruleAttempt.current = null;
   }
 
@@ -395,7 +404,11 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
       {inboxError && <p role="alert" className="lsr-inline-error">{t.inboxUnavailable} <button type="button" onClick={() => { setInboxLoading(true); setInboxError(false); void loadInbox(inboxStatus); }}>{t.inboxRetry}</button></p>}
       {!inboxLoading && !inboxError && inbox.length === 0 && <p>{t.inboxEmpty}</p>}
       {inbox.map(post => <article key={post.id} className="lsr-publication-row">
-        <h3>{post.groupName}</h3><p>{post.excerpt}{post.excerptTruncated ? '…' : ''}</p>
+        <h3>{post.groupName}</h3><p className="lsr-community-original" dir="auto">{post.excerpt}{post.excerptTruncated ? '…' : ''}</p>
+        <section className="lsr-reading-aid" lang="en" dir="ltr" aria-label="English reading aid">
+          <h4>English reading aid</h4>
+          {post.englishReadingAid?.length?<><ul>{post.englishReadingAid.map((line,index)=><li key={index}>{line}</li>)}</ul><p className="lsr-help">Convenience summary, not the source. The original excerpt remains authoritative.</p></>:<p className="lsr-help">No English reading aid is available for this post. Reading it does not run a paid analysis.</p>}
+        </section>
         <p className="lsr-help">{t.inboxStatus}: {post.status} · {t.inboxCaptured}: {post.postedAt ?? post.capturedAt ?? '—'} · {t.inboxNoComments}</p>
         {post.draft && <details><summary>{t.inboxDraft}</summary><p>{post.draft}</p></details>}
         {!post.draft && <p className="lsr-help">{t.inboxNoDraft}</p>}
@@ -425,20 +438,23 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
       <details><summary>{t.sources}</summary><dl className="lsr-community-sources">
         <dt><a href="https://drive.google.com/file/d/174-EqMG0QIH5rCuRgn2xYYPMX-XWJZNn/view" target="_blank" rel="noopener noreferrer">{t.guide}</a></dt><dd>v{result.provenance.guide.declaredVersion ?? "—"} · Drive #{result.provenance.guide.driveRevision} · {result.provenance.guide.modifiedAt} · SHA-256 {result.provenance.guide.sha256.slice(0, 12)}</dd>
         <dt>{t.includedRules}</dt><dd>{result.provenance.guide.includedCommunityRuleIds.join(", ") || "—"}</dd>
+        <dt>{t.includedGlobalRules}</dt><dd>{result.provenance.guide.includedGlobalRuleIds?.join(", ") || "—"}</dd>
         <dt><a href="https://docs.google.com/document/d/12C3QM4F6RZdpeWRvReN2x2BB7GzBnSqvfhjMg1PKwC0/edit" target="_blank" rel="noopener noreferrer">{t.playbook}</a></dt><dd>v{result.provenance.playbook.declaredVersion ?? "—"} · Drive #{result.provenance.playbook.driveRevision} · {result.provenance.playbook.modifiedAt} · SHA-256 {result.provenance.playbook.sha256.slice(0, 12)}</dd>
         <dt>{t.synced}</dt><dd>{result.provenance.guide.checkedAt} · {result.provenance.playbook.checkedAt}</dd>
         <dt>{t.generation}</dt><dd>{result.provenance.generatedAt} · {result.provenance.model} · {result.provenance.policyVersion}</dd>
         <dt>{t.usage}</dt><dd>{result.provenance.usage.inputTokens} / {result.provenance.usage.outputTokens}</dd>
         <dt>{t.unmeteredCost}</dt><dd>—</dd>
       </dl></details>
-      <label>{t.correction}<textarea value={correction} disabled={busy} maxLength={1000} onChange={event => { setCorrection(event.target.value); setProposedRule(""); setCorrectionBase(null); }} /></label>
+      <div className="lsr-correction-controls"><label>{t.correction}<textarea value={correction} disabled={busy} maxLength={1000} onChange={event => { setCorrection(event.target.value); setProposedRule(""); setCorrectionBase(null); }} /></label>
+        <label>{t.scope}<select value={correctionScope} disabled={busy} onChange={event=>{setCorrectionScope(event.target.value==='community'?'community':event.target.value==='general'?'general':'once');setTargetRuleId(null);setExistingRules([]);setExistingSourceSha(null);setRuleListFailed(false);}}>
+          <option value="once">{t.once}</option><option value="community">{t.community}</option><option value="general">{t.general}</option>
+        </select></label></div>
       <div className="lsr-actions"><button type="button" disabled={busy || stale || draft.trim().length < 10 || correction.trim().length < 3} onClick={() => void request("revise_once")}>{t.revise}</button>
-        <button type="button" className="lsr-primary" disabled={busy || stale || !correctionBase || proposedRule.trim().length < 8 || ruleScope !== "community" ||
-          (existingSourceSha !== null && existingSourceSha !== result.provenance.guide.sha256)} onClick={() => void saveRule()}>{t.persistent}</button></div>
-      {proposedRule && <div className="lsr-form-grid"><label>{t.proposed}<textarea value={proposedRule} maxLength={400} onChange={event => setProposedRule(event.target.value)} /></label>
-        <label>{t.scope}<select value={ruleScope} onChange={event => setRuleScope(event.target.value === "general" ? "general" : "community")}><option value="community">{t.community}</option><option value="general">{t.general}</option></select></label>
+        {correctionScope!=='once'&&<button type="button" className="lsr-primary" disabled={busy || stale || ruleListFailed || existingSourceSha === null || !correctionBase || proposedRule.trim().length < 8 ||
+          (existingSourceSha !== null && existingSourceSha !== result.provenance.guide.sha256)} onClick={() => void saveRule()}>{t.persistent}</button>}</div>
+      {correctionScope!=='once'&&proposedRule && <div className="lsr-form-grid"><label>{t.proposed}<textarea value={proposedRule} maxLength={400} onChange={event => setProposedRule(event.target.value)} /></label>
         <label>{t.language}<select value={ruleLanguage} onChange={event => { setRuleLanguage(event.target.value === "both" ? "both" : event.target.value === "he" ? "he" : "en"); setTargetRuleId(null); }}><option value="he">{t.hebrew}</option><option value="en">{t.english}</option><option value="both">{t.both}</option></select></label></div>}
-      {proposedRule && existingRules.some(rule => rule.language === ruleLanguage || rule.language === "both" || ruleLanguage === "both") && <label>{t.existingRule}<select value={targetRuleId ?? ""} onChange={event => {
+      {correctionScope!=='once'&&proposedRule && existingRules.some(rule => rule.language === ruleLanguage || rule.language === "both" || ruleLanguage === "both") && <label>{t.existingRule}<select value={targetRuleId ?? ""} onChange={event => {
         const selected = existingRules.find(rule => rule.id === event.target.value);
         setTargetRuleId(selected?.id ?? null);
         if (selected?.language === "both") setRuleLanguage("both");
@@ -447,23 +463,27 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
           <option key={rule.id} value={rule.id}>{rule.id}: {rule.rule.slice(0, 120)}</option>)}</select></label>}
       {targetRuleId && <p className="lsr-help">{t.ruleBefore}: {existingRules.find(rule => rule.id === targetRuleId)?.rule}</p>}
       {existingSourceSha !== null && existingSourceSha !== result.provenance.guide.sha256 && <p role="alert" className="lsr-inline-error">{t.ruleConflict}</p>}
-      {ruleScope === "general" && <p className="lsr-help">{t.generalGate}</p>}
-      {!proposedRule && <p className="lsr-help">{t.interpret}</p>}
+      {correctionScope === "general" && <p className="lsr-help">{t.generalGate}</p>}
+      {correctionScope==='community'&&ruleScope==='general'&&proposedRule&&<p className="lsr-help">{locale==='he'?'הכלל הוצע כסגנון כללי; ההיקף שבחרתם נשאר תגובות קהילה בלבד.':'The proposal suggests global wording; your selected scope remains Community replies only.'}</p>}
+      {correctionScope!=='once'&&ruleListFailed&&<p role="alert" className="lsr-inline-error">{t.ruleListFailed} <button type="button" disabled={busy} onClick={()=>setRuleListRetry(value=>value+1)}>{t.ruleListRetry}</button></p>}
+      {correctionScope!=='once'&&correctionBase&&!ruleListFailed&&existingSourceSha===null&&<p role="status" className="lsr-help">{t.ruleListLoading}</p>}
+      {correctionScope!=='once'&&!proposedRule && <p className="lsr-help">{t.interpret}</p>}
     </>}
     {draftNotice&&<p role={draftSaveError?'alert':'status'} className={draftSaveError?'lsr-inline-error':'lsr-status'}>{draftNotice}</p>}
     {draftSaveError&&result&&!persisted&&<button type="button" disabled={busy||stale} onClick={()=>void retryGenerated()}>{locale==='en'?'Retry this draft’s verification':'ניסיון חוזר לאימות הטיוטה הזאת'}</button>}
     {ruleSave && <section className="lsr-panel" aria-live="polite">
-      <h3>{t.persistent}</h3><p>{ruleSave.status === "complete" ? t.ruleComplete :
+      <h3>{t.persistent}</h3><p>{ruleSave.scope==='general'?t.general:t.community}</p><p>{ruleSave.status === "complete" ? t.ruleComplete :
         ruleSave.status === "saved" || ruleSave.status === "draft_pending" ? t.draftPending :
         ruleSave.status === "already_applied" ? t.ruleAlready : ruleSave.status === "needs_playbook" ? t.rulePlaybook :
         ruleSave.status === "unsafe" ? t.ruleUnsafe : ruleSave.status === "permission_denied" ? t.ruleDenied :
         ruleSave.status === "needs_review" ? t.ruleReview : ruleSave.status === "draft_conflict" ? t.ruleDraftConflict : ruleSave.status === "conflict" ? t.ruleConflict : t.ruleUnknown}</p>
-      {ruleSave.before && <details><summary>{t.ruleBefore}</summary><p>{ruleSave.before}</p></details>}
-      {ruleSave.after && <p>{t.ruleAfter}: {ruleSave.after}</p>}
+      {ruleSave.before && <details><summary>{t.ruleBefore}</summary><p>{writingRuleDisplayText(ruleSave.before)}</p></details>}
+      {ruleSave.after && <p>{t.ruleAfter}: {writingRuleDisplayText(ruleSave.after)}</p>}
       {ruleSave.source && <p className="lsr-help">{t.ruleVersion}: v{ruleSave.source.declaredVersion ?? "—"} · Drive #{ruleSave.source.driveRevision} · {ruleSave.source.modifiedAt} · {ruleSave.source.checkedAt}</p>}
       {ruleSave.savedAt && <p className="lsr-help">{t.ruleSaved} {ruleSave.savedAt}</p>}
       {ruleSave.draft && <details><summary>{t.priorDraft}</summary><p>{ruleSave.draft.reply}</p>
-        <p className="lsr-help">{t.sources}: {t.guide} v{ruleSave.draft.provenance.guide.declaredVersion ?? "—"} · Drive #{ruleSave.draft.provenance.guide.driveRevision} · SHA-256 {ruleSave.draft.provenance.guide.sha256.slice(0, 12)} · {ruleSave.draft.provenance.guide.includedCommunityRuleIds.join(", ") || "—"}; {t.playbook} v{ruleSave.draft.provenance.playbook.declaredVersion ?? "—"} · Drive #{ruleSave.draft.provenance.playbook.driveRevision}</p></details>}
+        <p className="lsr-help">{t.sources}: {t.guide} v{ruleSave.draft.provenance.guide.declaredVersion ?? "—"} · Drive #{ruleSave.draft.provenance.guide.driveRevision} · SHA-256 {ruleSave.draft.provenance.guide.sha256.slice(0, 12)} · {ruleSave.draft.provenance.guide.includedCommunityRuleIds.join(", ") || "—"}; {t.playbook} v{ruleSave.draft.provenance.playbook.declaredVersion ?? "—"} · Drive #{ruleSave.draft.provenance.playbook.driveRevision}</p>
+        <p className="lsr-help">{t.includedGlobalRules}: {ruleSave.draft.provenance.guide.includedGlobalRuleIds?.join(", ") || "—"}</p></details>}
       {ruleSave.draft && ruleSave.draftInput && <button type="button" disabled={busy} onClick={() => promoteRuleDraft(ruleSave)}>{t.loadRuleDraft}</button>}
       {canResumeRuleOperation(ruleSave.status) && <button type="button" disabled={busy} onClick={() => void resumeRule()}>{t.retryRule}</button>}
     </section>}

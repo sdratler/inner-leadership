@@ -1,0 +1,43 @@
+import {createElement} from "react";
+import {renderToStaticMarkup} from "react-dom/server";
+import {describe,expect,it} from "vitest";
+import {interestNotice} from "../../src/features/group-interest/contract.ts";
+import {classifyGroupInterestSaveFailure,GroupInterestWorkspace,permissionLanguageChanged,serviceOptions} from "../../src/features/group-interest/workspace.tsx";
+
+describe("group interest owner form",()=>{
+ it("binds the displayed permission to the admitted canonical notice version",()=>{
+  expect(interestNotice.version).toBe("ls-group-interest-20261007-01-v1");
+  expect(interestNotice.en).toContain("administrative interest only");
+  expect(interestNotice.he).toContain("התעניינות מנהלית בלבד");
+  expect(interestNotice.en).not.toContain("Candidate");
+ });
+ it.each(["en","he"] as const)("requires an explicit permission language before the exact notice can be confirmed in %s",locale=>{
+  const html=renderToStaticMarkup(createElement(GroupInterestWorkspace,{locale}));
+  expect(html.match(new RegExp(locale==="he"?"רישום פרטי של הבעלים":"Private owner entry","g"))).toHaveLength(1);
+  expect(html).toContain(`<option value="${locale}" selected="">`);
+  expect(html).toContain('name="permissionLanguage"');
+  expect(html).toContain('<option value="he">');
+  expect(html).toContain('<option value="en">');
+  expect(html).toMatch(/<input[^>]*disabled=""[^>]*name="permission"/);
+  expect(html).toContain(locale==="he"?"בחרו את שפת ההסכמה":"Select the permission language");
+  expect(html).toContain(locale==="he"?"אינה רושמת, מחייבת":"does not enroll, charge");
+ });
+ it("requires the exact notice to be reconfirmed after every permission-language change",()=>{
+  const confirmed={language:"en" as const,confirmed:true};
+  expect(confirmed.confirmed).toBe(true);
+  expect(permissionLanguageChanged("he")).toEqual({language:"he",confirmed:false});
+  expect(permissionLanguageChanged("en")).toEqual({language:"en",confirmed:false});
+ });
+ it("distinguishes confirmed client failures from unknown write outcomes",()=>{
+  expect(classifyGroupInterestSaveFailure(false)).toBe("reauth");
+  expect(classifyGroupInterestSaveFailure(true,401)).toBe("reauth");
+  for(const status of [400,403,404,409,429])expect(classifyGroupInterestSaveFailure(true,status)).toBe("correctable");
+  for(const status of [500,503,undefined])expect(classifyGroupInterestSaveFailure(true,status)).toBe("unconfirmed");
+  for(const status of [400,401,403,404,409,429,500,503,undefined])expect(classifyGroupInterestSaveFailure(status!==undefined,status,true)).toBe("unconfirmed");
+ });
+ it("requires separate explicit group and tutoring actions for a both inquiry",()=>{
+  expect(serviceOptions({fields:{serviceType:"group_and_tutoring"}} as never)).toEqual(["group","tutoring"]);
+  expect(serviceOptions({fields:{serviceType:"group"}} as never)).toEqual(["group"]);
+  expect(serviceOptions({fields:{serviceType:"tutoring"}} as never)).toEqual(["tutoring"]);
+ });
+});
