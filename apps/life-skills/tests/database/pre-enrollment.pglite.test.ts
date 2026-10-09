@@ -82,6 +82,37 @@ describe("pre-enrollment PGlite", () => {
       const normalResponse=await publicPost(request("/api/intake",{action:"submit",token:normal.token,idempotencyKey:randomUUID(),payload:payload(normalExchange.childSlotIds)}));expect(normalResponse.status).toBe(200);expect((await normalResponse.json()).data.projectionPending).toBe(true);expect(http.project).toHaveBeenCalledTimes(1);
     }finally{vi.unstubAllEnvs();http.project.mockReset();await db.close();}
   },30_000);
+  it("contains only the exact synthetic operation through the authenticated HTTP boundary after issuance is off",async()=>{
+    const {PGlite}=await import("@electric-sql/pglite"),db=new PGlite() as unknown as Db;
+    const origin="https://synthetic.invalid",csrf="b".repeat(43),batch="ls-owner-20261007";
+    const request=(body:unknown,headers:Record<string,string>={})=>new Request(origin+"/api/intake/staff",{method:"POST",headers:{host:"synthetic.invalid",origin,"sec-fetch-site":"same-origin","content-type":"application/json",cookie:`${SESSION_COOKIE}=synthetic-session`,"x-csrf-token":csrf,...headers},body:JSON.stringify(body)});
+    try{
+      await migrate(db);const identity=store(db),owner=actor(practitioner,"practitioner");
+      await db.query("INSERT INTO ls_demo.batches(workspace_id,batch_id,created_by) VALUES($1,$2,$3)",[workspace,batch,practitioner]);
+      await db.query("INSERT INTO ls_demo.accounts(workspace_id,account_id,batch_id,source_key) VALUES($1,$2,$3,'fixture-parent')",[workspace,parent,batch]);
+      const sessionActor=vi.fn(async()=>owner);
+      http.runtime.mockResolvedValue({store:identity,config:{origin,workspaceId:workspace,keyring:ring,lookupKey:Buffer.alloc(32,7)},clock:{now:()=>now},services:{sessions:{actor:sessionActor,csrf:()=>csrf}}});
+      vi.stubEnv("LS_APP_ORIGIN",origin);vi.stubEnv("LS_INTAKE_REAL_DATA_RELEASE","true");vi.stubEnv("LS_INTAKE_SYNTHETIC_FIXTURE_ENABLED","true");vi.stubEnv("LS_INTAKE_SYNTHETIC_FIXTURE_BINDING_JSON",JSON.stringify({batch,accountId:parent}));
+      const operationId=randomUUID(),issue={action:"issue_synthetic_fixture",operationId},issued=(await(await staffPost(request(issue))).json()).data;
+      vi.stubEnv("LS_INTAKE_SYNTHETIC_FIXTURE_ENABLED","false");
+      const revoke={action:"revoke_synthetic_fixture",operationId};
+      for(const extra of [{invitationId:randomUUID()},{token:issued.token},{stableLeadRef:"LS-LEAD-real"}])expect((await staffPost(request({...revoke,...extra}))).status).toBe(400);
+      sessionActor.mockResolvedValueOnce(actor(parent,"parent"));expect((await staffPost(request(revoke))).status).toBe(403);
+      const first=await staffPost(request(revoke));expect(first.status).toBe(200);const contained=(await first.json()).data;
+      expect(contained).toEqual({synthetic:true,revokedAt:now.toISOString(),replayed:false});
+      const replay=await staffPost(request(revoke));expect(replay.status).toBe(200);expect((await replay.json()).data).toEqual({...contained,replayed:true});
+      const service=new PreEnrollmentService(new SqlPreEnrollmentRepository(identity,workspace),ring,()=>now,true,workspace);
+      await expect(service.exchange(issued.token)).rejects.toMatchObject({code:"NOT_FOUND"});
+      await expect(service.submit(issued.token,randomUUID(),payload([randomUUID()]))).rejects.toMatchObject({code:"NOT_FOUND"});
+      vi.stubEnv("LS_INTAKE_SYNTHETIC_FIXTURE_ENABLED","true");
+      expect((await staffPost(request(issue))).status).toBe(404);
+      expect((await staffPost(request({action:"revoke_synthetic_fixture",operationId:randomUUID()}))).status).toBe(404);
+      const ordinary=await new PreEnrollmentStaffService(identity,ring,()=>now).issue(owner,"LS-LEAD-ordinary-unrelated",1);
+      expect((await staffPost(request({action:"revoke_synthetic_fixture",operationId:randomUUID()}))).status).toBe(404);
+      const ordinaryDigest=createHash("sha256").update(ordinary.token).digest("hex");
+      expect((await db.query("SELECT revoked_at FROM ls_intake.pre_enrollment_invitations WHERE token_digest=$1",[ordinaryDigest])).rows).toEqual([{revoked_at:null}]);
+    }finally{vi.unstubAllEnvs();http.runtime.mockReset();await db.close();}
+  },30_000);
   it("atomically registers an owner demo fixture, persists provenance and suppresses only its projection",async()=>{
     const {PGlite}=await import("@electric-sql/pglite"),db=new PGlite() as unknown as Db;
     try{
