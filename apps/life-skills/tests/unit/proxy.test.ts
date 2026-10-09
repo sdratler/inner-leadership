@@ -17,8 +17,8 @@ describe("public static perimeter", () => {
   });
   it("keeps the exact approved group images behind the group release and identity configuration",()=>{
     const key=(seed:string)=>Buffer.alloc(32,seed).toString("base64url"),base={NODE_ENV:"production",LS_APP_ORIGIN:"https://life-skills.example.invalid",LS_GROUP_APPLICATION_REAL_DATA_RELEASE:"true",LS_IDENTITY_ENABLED:"true",LS_IDENTITY_WORKSPACE_ID:"00000000-0000-4000-8000-000000000001",LS_IDENTITY_ACTIVE_KEY_ID:"v1",LS_IDENTITY_DATA_KEYS:JSON.stringify({v1:key("a")}),LS_IDENTITY_CSRF_KEY:key("b"),LS_IDENTITY_LOOKUP_KEY:key("c"),LS_IDENTITY_RATE_KEY:key("d")};
-    for(const path of ["/groups/brand/life-skills-logo.png","/groups/private/skill-01.webp","/groups/private/skill-12.webp","/groups/projects/LS-PROJECT-01-group.jpg","/groups/projects/LS-PROJECT-09-wood-art.png"])expect(groupApplicationPublicAsset(path,"GET",base)).toBe(true);
-    for(const path of ["/groups/private/skill-13.webp","/groups/projects/manifest.json","/groups/projects/LS-PROJECT-09-wood-art.jpg","/groups/../api/private/people"])expect(groupApplicationPublicAsset(path,"GET",base)).toBe(false);
+    for(const path of ["/groups/brand/life-skills-logo.png","/groups/private/skill-01.webp","/groups/private/skill-12.webp","/groups/private/founder-boy-hero-en-desktop.png","/groups/private/founder-boy-hero-he-mobile.png","/groups/people/founder-grass-group.webp","/groups/projects/LS-PROJECT-01-group.jpg","/groups/projects/LS-PROJECT-09-wood-art.png"])expect(groupApplicationPublicAsset(path,"GET",base)).toBe(true);
+    for(const path of ["/groups/private/skill-13.webp","/groups/private/founder-boy-hero-fr-desktop.png","/groups/people/unknown.webp","/groups/projects/manifest.json","/groups/projects/LS-PROJECT-09-wood-art.jpg","/groups/../api/private/people"])expect(groupApplicationPublicAsset(path,"GET",base)).toBe(false);
     expect(groupApplicationPublicAsset("/groups/private/skill-01.webp","POST",base)).toBe(false);
     expect(groupApplicationPublicAsset("/groups/private/skill-01.webp","GET",{...base,LS_GROUP_APPLICATION_REAL_DATA_RELEASE:"false"})).toBe(false);
   });

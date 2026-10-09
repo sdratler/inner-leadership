@@ -22,6 +22,32 @@ if(!runtimePath){
  const selected=process.env.LS_GROUP_INTEREST_TEST_PROJECT;
  const ports:Record<string,number>={desktop:3105,mobile390:3106,mobile340:3107};if(selected!==undefined&&data.origin!==`https://localhost:${ports[selected]}`)throw new Error("GROUP_INTEREST_BROWSER_PROJECT_ORIGIN_MISMATCH");
  test.use({baseURL:data.origin});
+ for(const locale of ["en","he"] as const)test(`public group application ${locale}: approved composition, responsive flow and photo focus return`,async({page},info)=>{
+  const response=await page.goto(`/${locale}/groups/apply`);expect(response?.status()).toBe(200);
+  const direction=locale==="he"?"rtl":"ltr";await expect(page.locator(`div[lang="${locale}"][dir="${direction}"]`).first()).toBeVisible();
+  await expect(page.getByRole("heading",{name:locale==="he"?/Life Skills בית שמש/:/Life Skills Beit Shemesh/})).toBeVisible();
+  await expect(page.getByText(locale==="he"?"קשר לפני תיקון.":"Connection before correction.",{exact:true})).toBeVisible();
+  await expect(page.getByText(locale==="he"?"ניהול עצמי":"Self-governance",{exact:true})).toBeVisible();
+  await expect(page.getByRole("heading",{name:locale==="he"?"איך אנחנו עובדים":"How We Work",exact:true})).toBeVisible();
+  await expect(page.getByRole("heading",{name:locale==="he"?"תמיכה אישית":"One-on-one Support",exact:true})).toBeVisible();
+  await expect(page.getByRole("heading",{name:locale==="he"?"הכירו את שלמה דרטלר":"Meet Shlomo Dratler",exact:true})).toBeVisible();
+  await expect(page.getByText("“Medication is no longer relevant…”",{exact:true})).toBeVisible();
+  await expect(page.getByRole("heading",{name:locale==="he"?"כמה תשובות לשאלות נפוצות":"A few questions, answered",exact:true})).toBeVisible();
+  await expect(page.getByRole("heading",{name:locale==="he"?"מימון ילד לחודש אחד — ₪1,000":"Sponsor a Child for One Month — ₪1,000",exact:true})).toBeVisible();
+  await expect(page.getByRole("link",{name:/Bnei Neviim Academy/})).toHaveAttribute("href","https://bneineviimacademy.org/");
+  await expect(page.locator('a[href="https://wa.me/972534932631"]')).not.toHaveCount(0);
+  await expect(page.getByText(/does not replace|אינו מחליף|פסיכיאטר|psychiatr/i)).toHaveCount(0);
+  for(const image of [page.getByAltText(locale==="he"?"מידע מאושר על תמיכה אישית בכישורי חיים":"Approved Life Skills one-on-one support information"),page.getByAltText(locale==="he"?"שלמה דרטלר יושב על הדשא עם קבוצת ילדים":"Shlomo Dratler sitting on the grass with a group of boys")]){await image.scrollIntoViewIfNeeded();await expect(image).toBeVisible();expect(await image.evaluate(element=>(element as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);}
+  await expect(page.getByText(locale==="he"?"אינה שומרת מקום":"does not reserve a place",{exact:false})).toHaveCount(1);
+  const town=page.locator('[name="townChoice"]');await expect(town).toHaveAttribute("required","");await town.selectOption("other");const otherTown=page.locator('[name="otherTown"]');await expect(otherTown).toBeVisible();await expect(otherTown).toHaveAttribute("required","");await expect(page.locator('[name="neighborhood"]')).toHaveAttribute("required","");await town.selectOption("beit_shemesh");await expect(otherTown).toHaveCount(0);
+  await page.locator('[name="parentName"]').fill("Synthetic public browser check");await page.locator('[name="parentPhone"]').fill("+15550003001");await page.locator('[name="childAge"]').fill("10");await page.locator('[name="neighborhood"]').fill("Synthetic neighborhood");await page.locator('[name="schedulePreference"]').selectOption("flexible");await page.getByRole("button",{name:locale==="he"?"המשך":"Continue",exact:true}).click();
+  const practical=page.locator("details").filter({has:page.getByText(locale==="he"?"מידע מעשי לבחירה":"Optional practical information",{exact:true})});await practical.locator("summary").click();await expect(page.locator('[name="screenAccess"] option[value="no_screens_at_home"]')).toHaveText(locale==="he"?"לא, אין לנו מסכים":"No, we don't have screens");await expect(page.locator('[name="screenTime"] option[value="no_fixed_limit"]')).toHaveText(locale==="he"?"ללא מגבלה קבועה":"No fixed limit");await page.locator('[name="screenAccess"]').selectOption("no_screens_at_home");await expect(page.locator('[name="screenTime"]')).toHaveCount(0);await expect(page.locator('[name="interestedInEveningGroup"]')).toHaveCount(0);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  const opener=page.getByRole("button",{name:new RegExp(locale==="he"?"הגדלת תמונה":"Enlarge photograph")}).first();await opener.scrollIntoViewIfNeeded();await opener.focus();await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog")).toBeVisible();await page.keyboard.press("Escape");await expect(page.getByRole("dialog")).toHaveCount(0);await expect(opener).toBeFocused();
+  if((page.viewportSize()?.width??1440)<=760){const menu=page.getByRole("button",{name:locale==="he"?"פתיחת ניווט":"Open navigation",exact:true});await menu.click();await expect(page.getByRole("button",{name:locale==="he"?"סגירת ניווט":"Close navigation",exact:true})).toHaveAttribute("aria-expanded","true");await expect(page.getByRole("navigation",{name:locale==="he"?"ניווט בדף":"Page navigation"})).toBeVisible();}
+  await page.screenshot({path:info.outputPath(`group-application-p2-${locale}-${info.project.name}.png`),fullPage:true});
+ });
  for(const locale of ["en","he"] as const)test(`practitioner ${locale}: save, exact replay, rejection, reload and responsive readback`,async({page,context},info)=>{
   await context.addCookies([{name:"__Host-ls-session",value:data.practitioner,url:data.origin,httpOnly:true,secure:true,sameSite:"Lax"}]);
   const initialRead=page.waitForResponse(response=>response.request().method()==="GET"&&new URL(response.url()).pathname==="/api/private/group-interest");

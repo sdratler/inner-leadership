@@ -8,6 +8,7 @@
 .fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px 20px; }
 .fields label { display:grid; gap:7px; font-weight:700; }
 .fields input,.fields select { min-block-size:48px; inline-size:100%; border:1px solid #9fb6ba; border-radius:9px; padding:10px 12px; background:#fff; color:#173f46; font:inherit; }
+.fieldNote { color:#49676d; font-size:.78rem; font-weight:500; line-height:1.45; }
 .check { display:flex!important; align-items:flex-start; gap:12px; min-block-size:48px; font-weight:600!important; }
 .check input { flex:none; inline-size:20px!important; block-size:20px!important; min-block-size:0!important; margin-block-start:3px; }
 .optional { border-block:1px solid #d8e3e5; padding-block:14px; }

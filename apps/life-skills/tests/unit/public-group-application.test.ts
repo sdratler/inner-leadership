@@ -13,8 +13,8 @@ import {GroupApplicationReviewWorkspace} from "../../src/features/group-applicat
 import type {Actor} from "../../src/features/identity/types.ts";
 
 const key="synthetic-public-group-application-rate-key-material",now=Date.parse("2029-01-01T12:00:03Z"),issued=now-3000;
-const fields={parentName:"Synthetic Parent",parentPhone:"+15550002000",language:"en" as const,childAge:10,town:"Synthetic town",
- schedulePreference:"evening" as const,interestedInEveningGroup:true,observations:{intrinsicMotivation:"sometimes_difficult" as const},parentPriorities:"Synthetic practical priorities only.",
+const fields={parentName:"Synthetic Parent",parentPhone:"+15550002000",language:"en" as const,childAge:10,town:"Modiin",townChoice:"modiin" as const,neighborhood:"Synthetic neighborhood",
+ schedulePreference:"evening" as const,observations:{intrinsicMotivation:"sometimes_difficult" as const},parentPriorities:"Synthetic practical priorities only.",
  permission:{confirmed:true as const,version:groupApplicationNotice.version,language:"en" as const}};
 beforeAll(()=>expect(groupApplicationFieldsSchema.parse(fields)).toEqual(fields));
 describe("public group application boundary",()=>{
@@ -39,9 +39,17 @@ describe("public group application boundary",()=>{
  });
  it("shows bilingual minimal fields, optional observations and non-enrollment consequences",()=>{
   for(const locale of ["en","he"] as const){const html=renderToStaticMarkup(createElement(GroupApplicationForm,{locale}));
-   for(const name of ["parentName","parentPhone","childAge","town","schedulePreference","screenAccess","screenTime","intrinsicMotivation","stressfulSituations","parentPriorities","permission","website"])expect(html).toContain(`name="${name}"`);
+   for(const name of ["parentName","parentPhone","childAge","townChoice","neighborhood","schedulePreference","screenAccess","screenTime","intrinsicMotivation","stressfulSituations","parentPriorities","permission","website"])expect(html).toContain(`name="${name}"`);
+   expect(html).not.toContain('name="interestedInEveningGroup"');
    expect(html).toContain(locale==="he"?"אינן אבחון":"not an assessment");expect(html).toContain(locale==="he"?"אינה רושמת":"does not enroll");
   }
+ });
+ it("requires a neighborhood and a matching selected or other town while retaining legacy record read compatibility",()=>{
+  expect(groupApplicationFieldsSchema.safeParse({...fields,neighborhood:""}).success).toBe(false);
+  expect(groupApplicationFieldsSchema.safeParse({...fields,townChoice:"other",town:"Other place",otherTown:undefined}).success).toBe(false);
+  expect(groupApplicationFieldsSchema.safeParse({...fields,townChoice:"other",town:"Other place",otherTown:"Other place"}).success).toBe(true);
+  const legacy={...fields,town:"Synthetic town",townChoice:undefined,neighborhood:undefined,interestedInEveningGroup:true};
+  expect(groupApplicationFieldsSchema.safeParse(legacy).success).toBe(true);
  });
  it("renders the approved bilingual landing structure with unchanged project and skill asset paths",()=>{
   const en=renderToStaticMarkup(createElement(GroupApplicationLanding,{locale:"en"}));

@@ -10,7 +10,7 @@ export const PUBLIC_GROUP_APPLICATIONS_SOURCE_PATHS=[
  'package.json','migrations/manifest.json','migrations/0130_ls_draft_group_meetings.sql','migrations/0131_ls_public_group_applications.sql',
  'scripts/release-draft-group-meetings.ts','scripts/release-public-group-applications.ts',
 ] as const;
-export const PUBLIC_GROUP_APPLICATIONS_SOURCE_ROOTS=['src'] as const;
+export const PUBLIC_GROUP_APPLICATIONS_SOURCE_ROOTS=['src','public/groups'] as const;
 type SourceNode={isSymbolicLink():boolean;isFile():boolean;isDirectory():boolean};
 export function assertPublicGroupApplicationsSourceNode(path:string,expected:'file'|'directory',node:SourceNode):void{if(node.isSymbolicLink())throw Error('PUBLIC_GROUP_APPLICATIONS_SOURCE_SYMLINK_REJECTED');if((expected==='file'&&!node.isFile())||(expected==='directory'&&!node.isDirectory()))throw Error('PUBLIC_GROUP_APPLICATIONS_SOURCE_TYPE_REJECTED:'+path);}
 export async function collectPublicGroupApplicationsSourceEntries(appRoot:URL,fixedPaths:readonly string[]=PUBLIC_GROUP_APPLICATIONS_SOURCE_PATHS,sourceRoots:readonly string[]=PUBLIC_GROUP_APPLICATIONS_SOURCE_ROOTS):Promise<{path:string;bytes:Buffer}[]>{

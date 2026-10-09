@@ -49,7 +49,7 @@ export function groupApplicationReleasePath(pathname:string,input:Record<string,
 }
 export function groupApplicationPublicAsset(pathname:string,method:string,input:Record<string,string|undefined>):boolean{
  if(method!=="GET"&&method!=="HEAD")return false;
- const allowed=pathname==="/groups/brand/life-skills-logo.png"||/^\/groups\/private\/skill-(?:0[1-9]|1[0-2])\.webp$/.test(pathname)||
+ const allowed=pathname==="/groups/brand/life-skills-logo.png"||/^\/groups\/private\/(?:skill-(?:0[1-9]|1[0-2])\.webp|founder-boy-hero-(?:en|he)-(?:desktop|mobile)\.png)$/.test(pathname)||pathname==="/groups/people/founder-grass-group.webp"||
   /^\/groups\/projects\/LS-PROJECT-(?:01-group\.jpg|02-making\.png|03-3d-printer\.png|04-working-together\.png|05-woodwork\.png|06-guided-conversation\.png|07-music\.png|08-electronics\.png|09-wood-art\.png)$/.test(pathname);
  if(!allowed||!publicGroupApplicationEnvironmentEnabled(input))return false;
  try{parseIdentityConfig(input);return true;}catch{return false;}
