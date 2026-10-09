@@ -7,7 +7,7 @@ import { verifyCsrfToken, verifyMutationOrigin } from "@/lib/security/csrf.ts";
 import { SESSION_COOKIE } from "@/lib/security/session.ts";
 import { identityRuntime } from "@/features/identity/runtime.ts";
 import { PreEnrollmentStaffService } from "@/features/forms/pre-enrollment/staff.ts";
-import {intakeFixtureBinding,issueSyntheticIntake} from "@/features/forms/pre-enrollment/synthetic-fixture.ts";
+import {intakeFixtureBinding,issueSyntheticIntake,revokeSyntheticIntake} from "@/features/forms/pre-enrollment/synthetic-fixture.ts";
 function token(request:Request){const values=(request.headers.get("cookie")??"").split(";").map(x=>x.trim()).filter(x=>x.startsWith(SESSION_COOKIE+"="));if(values.length!==1)throw new AppError("UNAUTHENTICATED");return values[0]!.slice(SESSION_COOKIE.length+1);}
 function fail(error:unknown){const x=errorEnvelope(error,randomUUID());return NextResponse.json(x.body,{status:x.status,headers:{"Cache-Control":"private, no-store","Referrer-Policy":"no-referrer"}})}
 async function actor(request:Request){const runtime=await identityRuntime(),session=token(request),actor=await runtime.services.sessions.actor(session);return {runtime,session,actor,service:new PreEnrollmentStaffService(runtime.store,runtime.config.keyring,()=>runtime.clock.now())};}
@@ -15,6 +15,9 @@ export async function GET(request:Request){try{const receiptId=new URL(request.u
 export async function PATCH(request:Request){try{const x=await actor(request);verifyMutationOrigin(request,x.runtime.config.origin);verifyCsrfToken(request.headers.get("x-csrf-token"),x.runtime.services.sessions.csrf(x.session));const body=await readJson(request,z.object({receiptId:z.string().uuid(),payload:z.unknown()}).strict());await x.service.amend(x.actor,body.receiptId,body.payload);return NextResponse.json({ok:true,data:{accepted:true},requestId:randomUUID()},{headers:{"Cache-Control":"private, no-store"}});}catch(e){return fail(e)}}
 export async function POST(request:Request){try{const x=await actor(request);verifyMutationOrigin(request,x.runtime.config.origin);verifyCsrfToken(request.headers.get("x-csrf-token"),x.runtime.services.sessions.csrf(x.session));const body=await readJson(request,z.union([
  z.object({stableLeadRef:z.string().regex(/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]+$/),childCount:z.number().int().min(1).max(8)}).strict(),
- z.object({action:z.literal("issue_synthetic_fixture"),operationId:z.string().uuid()}).strict()]));
- const issued="action" in body?await issueSyntheticIntake(x.runtime.store,x.actor,body.operationId,intakeFixtureBinding(process.env),x.runtime.config.lookupKey,x.runtime.clock.now()):
-  await x.service.issue(x.actor,body.stableLeadRef,body.childCount);return NextResponse.json({ok:true,data:issued,requestId:randomUUID()},{status:201,headers:{"Cache-Control":"private, no-store","Referrer-Policy":"no-referrer"}});}catch(e){return fail(e)}}
+ z.object({action:z.literal("issue_synthetic_fixture"),operationId:z.string().uuid()}).strict(),
+ z.object({action:z.literal("revoke_synthetic_fixture"),operationId:z.string().uuid()}).strict()]));
+ const result="action" in body?body.action==="issue_synthetic_fixture"?
+  await issueSyntheticIntake(x.runtime.store,x.actor,body.operationId,intakeFixtureBinding(process.env),x.runtime.config.lookupKey,x.runtime.clock.now()):
+  await revokeSyntheticIntake(x.runtime.store,x.actor,body.operationId,x.runtime.clock.now()):
+  await x.service.issue(x.actor,body.stableLeadRef,body.childCount);return NextResponse.json({ok:true,data:result,requestId:randomUUID()},{status:"action" in body&&body.action==="revoke_synthetic_fixture"?200:201,headers:{"Cache-Control":"private, no-store","Referrer-Policy":"no-referrer"}});}catch(e){return fail(e)}}

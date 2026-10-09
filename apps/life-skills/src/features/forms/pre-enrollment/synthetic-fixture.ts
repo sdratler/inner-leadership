@@ -46,12 +46,13 @@ export async function issueSyntheticIntake(store:IdentityStore,actor:Actor,opera
    [current.workspaceId,config.batch,current.id,config.accountId]);
   if(roots.length!==1)throw new AppError("FORBIDDEN");
   await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",[current.workspaceId+":"+sourceKey]);
-  const prior=await tx.query<{id:string;digest:string;expires:Date;account:string}>(`SELECT i.invitation_id AS id,i.token_digest AS digest,i.expires_at AS expires,m.account_id AS account
+  const prior=await tx.query<{id:string;digest:string;expires:Date;account:string;revokedAt:Date|null}>(`SELECT i.invitation_id AS id,i.token_digest AS digest,i.expires_at AS expires,m.account_id AS account,i.revoked_at AS "revokedAt"
    FROM ls_demo.records m JOIN ls_intake.pre_enrollment_invitations i ON i.workspace_id=m.workspace_id AND i.invitation_id::text=m.entity_key
    WHERE m.workspace_id=$1 AND m.batch_id=$2 AND m.entity_kind='form' AND m.source_key=$3`,[current.workspaceId,config.batch,sourceKey]);
   if(prior.length){
    if(prior.length!==1||prior[0]!.digest!==digest||prior[0]!.account!==config.accountId)throw new AppError("CONFLICT");
    await intakeFixtureRoot(tx,current.workspaceId,prior[0]!.id);
+   if(prior[0]!.revokedAt)throw new AppError("NOT_FOUND");
    return {token,expiresAt:prior[0]!.expires.toISOString(),synthetic:true,replayed:true};
   }
   const id=randomUUID(),expires=new Date(now.getTime()+86400000),lead="LS-LEAD-fixture-"+id;
@@ -60,6 +61,37 @@ export async function issueSyntheticIntake(store:IdentityStore,actor:Actor,opera
   await tx.query(`INSERT INTO ls_demo.records(workspace_id,batch_id,entity_kind,entity_key,source_key,account_id)
    VALUES($1,$2,'form',$3,$4,$5)`,[current.workspaceId,config.batch,id,sourceKey,config.accountId]);
   return {token,expiresAt:expires.toISOString(),synthetic:true,replayed:false};
+ });
+}
+/** Monotonic containment for one producer operation. It deliberately does not
+ * depend on the issuance switch so an already issued fixture can be contained
+ * after issuance is disabled. Tokens, leads and arbitrary invitation IDs are
+ * never accepted as selectors. */
+export async function revokeSyntheticIntake(store:IdentityStore,actor:Actor,operationId:string,now:Date):Promise<{synthetic:true;revokedAt:string;replayed:boolean}>{
+ if(!z.string().uuid().safeParse(operationId).success)throw new AppError("INVALID_REQUEST");
+ const sourceKey=rootPrefix+operationId;
+ return store.transaction(async tx=>{
+  const current=await freshActor(tx,actor,now);requirePractitioner(current);
+  await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",[current.workspaceId+":"+sourceKey]);
+  const rows=await tx.query<{id:string;batch:string;accountId:string;creator:string;invitationCreator:string;role:string;state:string;revokedAt:Date|null}>(`SELECT
+   i.invitation_id AS id,m.batch_id AS batch,m.account_id AS "accountId",b.created_by AS creator,
+   i.created_by_account_id AS "invitationCreator",a.role,a.state,i.revoked_at AS "revokedAt"
+   FROM ls_demo.records m
+   JOIN ls_intake.pre_enrollment_invitations i ON i.workspace_id=m.workspace_id AND i.invitation_id::text=m.entity_key
+   JOIN ls_demo.batches b ON b.workspace_id=m.workspace_id AND b.batch_id=m.batch_id
+   JOIN ls_demo.accounts da ON da.workspace_id=m.workspace_id AND da.batch_id=m.batch_id AND da.account_id=m.account_id
+   JOIN ls_identity.accounts a ON a.workspace_id=da.workspace_id AND a.id=da.account_id
+   WHERE m.workspace_id=$1 AND m.entity_kind='form' AND m.source_key=$2
+   FOR UPDATE OF i`,[current.workspaceId,sourceKey]);
+  if(!rows.length)throw new AppError("NOT_FOUND");
+  if(rows.length!==1)throw new AppError("UNAVAILABLE");
+  const row=rows[0]!,root=await intakeFixtureRoot(tx,current.workspaceId,row.id);
+  if(!root||root.sourceKey!==sourceKey||root.batch!==row.batch||root.accountId!==row.accountId||row.creator!==current.id||
+   row.invitationCreator!==current.id||row.role!=="parent"||row.state!=="active")throw new AppError("FORBIDDEN");
+  const result=await tx.query<{revokedAt:Date}>(`UPDATE ls_intake.pre_enrollment_invitations SET revoked_at=COALESCE(revoked_at,$3)
+   WHERE workspace_id=$1 AND invitation_id=$2 RETURNING revoked_at AS "revokedAt"`,[current.workspaceId,row.id,now]);
+  if(result.length!==1)throw new AppError("UNAVAILABLE");
+  return {synthetic:true,revokedAt:result[0]!.revokedAt.toISOString(),replayed:row.revokedAt!==null};
  });
 }
 /** Runs inside the receipt transaction. A fixture submission cannot commit unmarked. */
