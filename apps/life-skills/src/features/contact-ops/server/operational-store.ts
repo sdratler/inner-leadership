@@ -52,6 +52,10 @@ export class OperationalNativeCrmStore {
   return this.authority.withDestination(actor,{destination:"native",intent:"read",expectedEpoch},
    tx=>this.directory.prospectsInTransaction(tx,actor,expectedEpoch));
  }
+ acquisitionMatches(actor:Actor,phones:readonly string[],expectedEpoch:number){
+  return this.authority.withDestination(actor,{destination:"native",intent:"read",expectedEpoch},
+   tx=>this.directory.acquisitionMatchesInTransaction(tx,actor,phones));
+ }
  create(actor:Actor,profile:CrmProfile,operationId:string,expectedEpoch:number){
   return this.authority.withDestination(actor,{destination:"native",intent:"write",expectedEpoch},
    tx=>this.profileStore(tx).create(actor,profile,operationId));

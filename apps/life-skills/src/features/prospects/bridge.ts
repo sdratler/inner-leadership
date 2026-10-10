@@ -36,6 +36,16 @@ export async function crmBridgeImage(assetId:string,revision:number,digest:strin
   const {origin,secret}=config(),query=new URLSearchParams({revision:String(revision),digest,...(collection?{collection}:{}),...(download?{download:"1"}:{})});
   return fetch(`${origin}/api/bna/life-skills-app/marketing/assets/${encodeURIComponent(assetId)}?${query}`,{method:"GET",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer",signal:AbortSignal.timeout(30000),headers:{"X-Life-Skills-Bridge-Secret":secret}});
 }
+/** Fixed, read-only normalized roster endpoint. The app never accepts a remote
+ * URL/path from the browser and rejects oversized bodies while streaming. */
+export async function crmBridgeWhatsAppRoster():Promise<string>{
+ const {origin,secret}=config(),response=await fetch(origin+"/api/bna/life-skills-app/whatsapp-group-roster",{method:"GET",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer",signal:AbortSignal.timeout(30000),headers:{"X-Life-Skills-Bridge-Secret":secret}});
+ const declared=Number(response.headers.get("content-length")??0);if(Number.isFinite(declared)&&declared>65536)throw new Error("crm_bridge_unavailable");
+ if(!response.body)throw new Error("crm_bridge_unavailable");const reader=response.body.getReader(),decoder=new TextDecoder("utf-8",{fatal:true});let total=0,raw="";
+ try{for(;;){const chunk=await reader.read();if(chunk.done)break;total+=chunk.value.byteLength;if(total>65536){await reader.cancel();throw new Error("crm_bridge_unavailable");}raw+=decoder.decode(chunk.value,{stream:true})}raw+=decoder.decode();}
+ catch{throw new Error(response.status===401?"crm_bridge_unauthorized":"crm_bridge_unavailable")}finally{reader.releaseLock()}
+ if(!response.ok)throw new Error(response.status===401?"crm_bridge_unauthorized":"crm_bridge_unavailable");return raw;
+}
 export async function listProspects(){return (await crmBridge<{success:true;prospects:Prospect[]}>("/api/bna/life-skills-app/prospects")).prospects;}
 export async function createProspect(input:{name:string;phone:string;language:""|"he"|"en";source:string;notes:string;nextAction:string;dueDate:string}){return crmBridge<{success:true;result:{action:"created"|"existing";leadId:string;row:number}}>("/api/bna/life-skills-app/prospects",{method:"POST",body:JSON.stringify(input)});}
 export async function updateProspect(leadId:string,fields:Record<string,string>){return crmBridge(`/api/bna/life-skills-app/prospects/${encodeURIComponent(leadId)}`,{method:"PATCH",body:JSON.stringify({fields})});}
