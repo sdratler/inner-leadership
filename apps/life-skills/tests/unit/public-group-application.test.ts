@@ -62,8 +62,12 @@ describe("public group application boundary",()=>{
   expect(en).toContain('aria-pressed="true">EN</button>');expect(he).toContain('aria-pressed="true">עברית</button>');
   expect(new Set(en.match(/\/groups\/projects\/LS-PROJECT-[^\"?]+/g))).toHaveLength(9);
   expect(en.match(/\/groups\/private\/skill-/g)).toHaveLength(12);
-  expect(en).toContain("First planned group: 25 boys");expect(en).toContain("does not reserve a place");
-  expect(en).toContain("Two 90-minute sessions each week");expect(he).toContain("שני מפגשים של 90 דקות בכל שבוע");
+  for(const copy of ["Self-governance through hands-on collaborative learning","The practical details","A question. An idea. A next step.","What boys make and explore","How we notice progress","one introductory session","single-session price","handled as credit rather than a cash refund"])expect(en).toContain(copy);
+  for(const copy of ["הנהגה עצמית דרך למידה משותפת והתנסות מעשית","הפרטים המעשיים","שאלה. רעיון. צעד הבא.","מה הבנים יוצרים וחוקרים","איך אנחנו מבחינים בהתקדמות","מפגש היכרות אחד","מחיר המפגש הבודד","מטופל כזיכוי במקום החזר כספי"])expect(he).toContain(copy);
+  expect(en).toContain("does not reserve a place");expect(en).toContain("Two 90-minute sessions each week");expect(he).toContain("שני מפגשים בשבוע, 90 דקות כל מפגש");
+  expect(en).toContain('/groups/private/private-hero-text-free-desktop.webp');expect(en).toContain('/groups/private/private-hero-text-free-mobile.webp');
+  expect(en).toContain('/groups/testimonials/l-bars-2024.png');expect(en).toContain('/groups/sponsor/meir-bunny.png');
+  expect(en).not.toContain("There’s a hero");expect(en).not.toContain("First planned group: 25 boys");
  });
  it("renders a bilingual practitioner review destination with explicit separation",()=>{
   for(const locale of ["en","he"] as const){const html=renderToStaticMarkup(createElement(GroupApplicationReviewWorkspace,{locale}));
