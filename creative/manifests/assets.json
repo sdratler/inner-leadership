@@ -106,6 +106,68 @@
         "localBytes": "SHA256_AND_DIMENSIONS_VERIFIED_2026-09-11"
       },
       "changeId": "OWNER-HERO-TYPE-20260911-01"
+    },
+    {
+      "id": "LS-GROUPS-PRIVATE-HERO-P5-DESKTOP-20261009",
+      "kind": "approved_route_asset",
+      "path": "apps/life-skills/public/groups/private/private-hero-text-free-desktop.webp",
+      "width": 2400,
+      "height": 1350,
+      "sha256": "737afeb9072940fe0560ffd87a06d168252205069f3954d06cf146ec8dc1f595",
+      "approval": {
+        "status": "OWNER_APPROVED_ROUTE_ASSET",
+        "scope": "public_groups_apply_only",
+        "evidence": "Current Website and Product contracts plus direct owner P5 correction on 2026-10-09; exact supplied bytes"
+      },
+      "deployableGroupsRoute": true,
+      "deployableHero": false,
+      "relationship": "Route-specific text-free asset; does not replace the OWNER_APPROVED_MASTER entries in website-hero-masters.json."
+    },
+    {
+      "id": "LS-GROUPS-PRIVATE-HERO-P5-MOBILE-20261009",
+      "kind": "approved_route_asset",
+      "path": "apps/life-skills/public/groups/private/private-hero-text-free-mobile.webp",
+      "width": 1080,
+      "height": 1350,
+      "sha256": "7b1daf8883e80c8fe2de1bd20ec4ef235ba9c8c3802a4e5d6bde4e650b9985ba",
+      "approval": {
+        "status": "OWNER_APPROVED_ROUTE_ASSET",
+        "scope": "public_groups_apply_only",
+        "evidence": "Current Website and Product contracts plus direct owner P5 correction on 2026-10-09; exact supplied bytes"
+      },
+      "deployableGroupsRoute": true,
+      "deployableHero": false,
+      "relationship": "Route-specific text-free asset; does not replace the OWNER_APPROVED_MASTER entries in website-hero-masters.json."
+    },
+    {
+      "id": "LS-GROUPS-TESTIMONIAL-LB-2024-P5",
+      "kind": "approved_route_asset",
+      "path": "apps/life-skills/public/groups/testimonials/l-bars-2024.png",
+      "width": 2000,
+      "height": 2000,
+      "sha256": "ce0a5fe8abb8c4638cdd966cae9721bdd2ace179c6216dea9cac87a35da9278c",
+      "approval": {
+        "status": "OWNER_APPROVED_ROUTE_ASSET",
+        "scope": "public_groups_apply_only",
+        "evidence": "Current Website and Product contracts plus direct owner P5 correction on 2026-10-09; exact supplied bytes"
+      },
+      "deployableGroupsRoute": true,
+      "deployableHero": false
+    },
+    {
+      "id": "LS-GROUPS-SPONSOR-MEIR-BUNNY-P5",
+      "kind": "approved_route_asset",
+      "path": "apps/life-skills/public/groups/sponsor/meir-bunny.png",
+      "width": 1920,
+      "height": 1080,
+      "sha256": "0db4d49e26187b96a13e1755bdf3a5831d50827edf8e390228785d391d807214",
+      "approval": {
+        "status": "OWNER_APPROVED_ROUTE_ASSET",
+        "scope": "public_groups_apply_only",
+        "evidence": "Current Website and Product contracts plus direct owner P5 correction on 2026-10-09; exact supplied bytes"
+      },
+      "deployableGroupsRoute": true,
+      "deployableHero": false
     }
   ],
   "privateBindingPolicy": "Original-photo provider IDs and checksums stay in existing private Drive handoff. This public registry owns logical assets, state and rules. Resolved bindings are runtime-only and never create another brand authority.",

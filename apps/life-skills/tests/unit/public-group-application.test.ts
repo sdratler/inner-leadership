@@ -1,5 +1,7 @@
 import {createElement} from "react";
 import {renderToStaticMarkup} from "react-dom/server";
+import {createHash} from "node:crypto";
+import {readFile} from "node:fs/promises";
 import {beforeAll,describe,expect,it,vi} from "vitest";
 vi.mock("server-only",()=>({}));
 import {groupApplicationNotice,groupApplicationFieldsSchema,normalizeGroupApplicationPhone} from "../../src/features/group-application/contract.ts";
@@ -62,8 +64,28 @@ describe("public group application boundary",()=>{
   expect(en).toContain('aria-pressed="true">EN</button>');expect(he).toContain('aria-pressed="true">עברית</button>');
   expect(new Set(en.match(/\/groups\/projects\/LS-PROJECT-[^\"?]+/g))).toHaveLength(9);
   expect(en.match(/\/groups\/private\/skill-/g)).toHaveLength(12);
-  expect(en).toContain("First planned group: 25 boys");expect(en).toContain("does not reserve a place");
-  expect(en).toContain("Two 90-minute sessions each week");expect(he).toContain("שני מפגשים של 90 דקות בכל שבוע");
+  for(const copy of ["Self-governance through hands-on collaborative learning","The practical details","A question. An idea. A next step.","Clear up, notice and refine","What boys make and explore","How we notice progress","one introductory session","single-session price","may qualify for a credit rather than a cash refund"])expect(en).toContain(copy);
+  for(const copy of ["הנהגה עצמית דרך למידה משותפת והתנסות מעשית","הפרטים המעשיים","שאלה. רעיון. צעד הבא.","מה הבנים יוצרים וחוקרים","איך אנחנו מבחינים בהתקדמות","מפגש היכרות אחד","מחיר המפגש הבודד","עשוי לזכות בזיכוי במקום החזר כספי"])expect(he).toContain(copy);
+  expect(en).toContain("does not reserve a place");expect(en).toContain("Two 90-minute sessions each week");expect(he).toContain("שני מפגשים בשבוע, 90 דקות כל מפגש");
+  expect(en).toContain('/groups/private/private-hero-text-free-desktop.webp');expect(en).toContain('/groups/private/private-hero-text-free-mobile.webp');
+  expect(en).toContain('/groups/testimonials/l-bars-2024.png');expect(en).toContain('/groups/sponsor/meir-bunny.png');
+  expect(en).not.toContain("There’s a hero");expect(en).not.toContain("First planned group: 25 boys");
+ });
+ it("registers the exact route-scoped P5 assets without replacing global hero masters",async()=>{
+  const repoRoot=new URL("../../../../",import.meta.url),manifest=JSON.parse(await readFile(new URL("creative/manifests/assets.json",repoRoot),"utf8")) as {assets:Array<Record<string,unknown>>};
+  const expected=new Map([
+   ["apps/life-skills/public/groups/private/private-hero-text-free-desktop.webp","737afeb9072940fe0560ffd87a06d168252205069f3954d06cf146ec8dc1f595"],
+   ["apps/life-skills/public/groups/private/private-hero-text-free-mobile.webp","7b1daf8883e80c8fe2de1bd20ec4ef235ba9c8c3802a4e5d6bde4e650b9985ba"],
+   ["apps/life-skills/public/groups/testimonials/l-bars-2024.png","ce0a5fe8abb8c4638cdd966cae9721bdd2ace179c6216dea9cac87a35da9278c"],
+   ["apps/life-skills/public/groups/sponsor/meir-bunny.png","0db4d49e26187b96a13e1755bdf3a5831d50827edf8e390228785d391d807214"],
+  ]);
+  for(const [path,sha256] of expected){
+   const entry=manifest.assets.find(asset=>asset.path===path) as {approval?:{status?:string;scope?:string};deployableGroupsRoute?:boolean;deployableHero?:boolean;sha256?:string}|undefined;
+   expect(entry).toMatchObject({approval:{status:"OWNER_APPROVED_ROUTE_ASSET",scope:"public_groups_apply_only"},deployableGroupsRoute:true,deployableHero:false,sha256});
+   expect(createHash("sha256").update(await readFile(new URL(path,repoRoot))).digest("hex")).toBe(sha256);
+  }
+  const masters=JSON.parse(await readFile(new URL("creative/manifests/website-hero-masters.json",repoRoot),"utf8")) as {masters:Array<{asset:{path:string}}>};
+  expect(masters.masters.map(master=>master.asset.path)).toEqual(expect.arrayContaining(["assets/images/founder-boy-hero-en-mobile.png","assets/images/founder-boy-hero-he-mobile.png","assets/images/founder-boy-hero-en-desktop.png","assets/images/founder-boy-hero-he-desktop.png"]));
  });
  it("renders a bilingual practitioner review destination with explicit separation",()=>{
   for(const locale of ["en","he"] as const){const html=renderToStaticMarkup(createElement(GroupApplicationReviewWorkspace,{locale}));
