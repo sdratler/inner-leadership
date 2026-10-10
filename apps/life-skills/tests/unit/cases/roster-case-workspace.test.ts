@@ -42,6 +42,7 @@ import {NativePeopleWorkspace,PeopleRequestError} from '../../../src/features/co
 import { AddProspect,ProspectsClient } from '../../../src/features/prospects/client.tsx';
 import { IdentityClientError } from '../../../src/features/identity/client.ts';
 import {ContactLifecycleControls} from '../../../src/features/contact-ops/contact-lifecycle-controls.tsx';
+import {WhatsAppRosterWorkspace} from '../../../src/features/contact-ops/whatsapp-roster-workspace.tsx';
 
 const caseA = { id: '123e4567-e89b-12d3-a456-426614174000', kind: 'minor' as const, state: 'active', displayName: 'Synthetic case A', mode: 'live' as const };
 const caseB = { id: '223e4567-e89b-12d3-a456-426614174000', kind: 'minor' as const, state: 'active', displayName: 'Synthetic case B', mode: 'live' as const };
@@ -472,6 +473,16 @@ it('renders one native directory only after the server selects the actual native
  expect(native?.props.initial).toBe(data);expect(native?.props.view).toBe('active');
  expect(find(output,e=>e.type===LegacyClientsRoster||e.type===ProspectsClient)).toBeUndefined();
  expect(hook.accountRead).not.toHaveBeenCalled();
+});
+it('renders the read-only WhatsApp roster without requesting a People authority source',async()=>{
+ const view=()=>hook.render(()=>ClientsRoster({locale:'en',section:'whatsapp_group'}));view();hook.flushEffects();await tick();
+ expect(find(view(),element=>element.type===WhatsAppRosterWorkspace)).toBeDefined();
+ expect(hook.peopleRead).not.toHaveBeenCalled();expect(find(view(),element=>element.type===NativePeopleWorkspace||element.type===LegacyClientsRoster)).toBeUndefined();
+});
+it.each([['en','The live WhatsApp roster is not available in DEMO'],['he','רשימת קבוצת WhatsApp החיה אינה זמינה ב-DEMO']] as const)('keeps the %s DEMO roster isolated from live group data',async(locale,message)=>{
+ const view=()=>hook.render(()=>ClientsRoster({locale,section:'whatsapp_group',mode:'demo'}));view();hook.flushEffects();await tick();
+ expect(text(view())).toContain(message);expect(find(view(),element=>element.type===WhatsAppRosterWorkspace)).toBeUndefined();
+ expect(hook.peopleRead).not.toHaveBeenCalled();expect(hook.accountRead).not.toHaveBeenCalled();
 });
 it('requests the validated People deep-link page and filters before showing native rows',async()=>{
  const data={source:'native',authorityEpoch:3,page:{items:[],total:0,page:2,pageSize:12,pages:2}};

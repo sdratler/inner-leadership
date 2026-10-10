@@ -2,7 +2,7 @@ import {afterEach,expect,test,vi} from "vitest";
 import {renderToStaticMarkup} from "react-dom/server";
 import {createElement} from "react";
 vi.mock("server-only",()=>({}));
-import {normalizeWhatsAppRosterJson,projectWhatsAppRoster,WHATSAPP_ROSTER_LIMITS,type WhatsAppRoster} from "../../../src/features/contact-ops/core/whatsapp-roster.ts";
+import {normalizeWhatsAppRosterJson,projectProviderOnlyWhatsAppRoster,projectWhatsAppRoster,WHATSAPP_ROSTER_LIMITS,type WhatsAppRoster} from "../../../src/features/contact-ops/core/whatsapp-roster.ts";
 import {whatsappRosterHttp,WHATSAPP_ROSTER_GROUP_ID} from "../../../src/features/contact-ops/server/whatsapp-roster-http.ts";
 import {WhatsAppRosterWorkspace} from "../../../src/features/contact-ops/whatsapp-roster-workspace.tsx";
 import type {Actor} from "../../../src/features/identity/types.ts";
@@ -37,6 +37,14 @@ test("normalized roster strips provider-only fields and projects only one exact 
  expect(result).toMatchObject({matchingScope:"native_crm_only",messagingPermission:"unknown",outboundEligible:false});
 });
 
+test("pre-cutover projection exposes no false People result or link identity",()=>{
+ const roster=normalizeWhatsAppRosterJson(JSON.stringify(source([{memberId:"one",phone,displayName:"Synthetic Member",role:"member"},{memberId:"opaque@lid",phone:null,displayName:null,role:"unknown"}])),binding,now);
+ const result=projectProviderOnlyWhatsAppRoster(roster);
+ expect(result).toMatchObject({matchingScope:"provider_only_before_cutover",messagingPermission:"unknown",outboundEligible:false});
+ expect(result.members.map(member=>member.match)).toEqual([{state:"unavailable",reason:"before_cutover"},{state:"unavailable",reason:"before_cutover"}]);
+ expect(JSON.stringify(result)).not.toContain("personId");expect(JSON.stringify(result)).not.toContain("no_native_match");
+});
+
 test("contract rejects bindings, overflow, duplicate identities and unsafe render text",()=>{
  const alternate={...source(),group:{id:"another@g.us",title:"Synthetic"}};expect(()=>normalizeWhatsAppRosterJson(JSON.stringify(alternate),binding,now)).toThrow(/BINDING_MISMATCH/);
  const members=Array.from({length:WHATSAPP_ROSTER_LIMITS.members+1},(_,index)=>({memberId:`synthetic-${index}`,phone:null,displayName:null,role:"unknown"}));
@@ -57,14 +65,28 @@ test("HTTP authorization and native authority precede the bridge; matching happe
  expect(response.status).toBe(200);expect(order).toEqual(["actor","authority","bridge","native:3"]);expect((await response.json()).data.members[0].match).toEqual({state:"unmatched",reason:"no_native_match"});
 });
 
-test("HTTP fails closed for customer roles, Sheet/frozen authority, drift and hostile requests",async()=>{
+test.each(["sheet_active","shadow_ready"] as const)("HTTP permits stable %s provider-only roster without a directory read",async phase=>{
+ const order:string[]=[],directory={acquisitionMatches:vi.fn()},authority={read:vi.fn(async()=>{order.push("authority");return state(phase)})};
+ const response=await whatsappRosterHttp(request(),async()=>({origin:"https://synthetic.invalid",now:()=>new Date(now),actor:async()=>{order.push("actor");return actor},binding,authority,bridge:async()=>{order.push("bridge");return JSON.stringify(source())},directory}));
+ expect(response.status).toBe(200);expect(order).toEqual(["actor","authority","bridge","authority"]);expect(directory.acquisitionMatches).not.toHaveBeenCalled();
+ expect((await response.json()).data).toMatchObject({matchingScope:"provider_only_before_cutover",members:[{match:{state:"unavailable",reason:"before_cutover"}}]});
+});
+
+test("HTTP fails closed for customer roles, held authority, native drift and hostile requests",async()=>{
  const bridge=vi.fn(async()=>JSON.stringify(source())),directory={acquisitionMatches:vi.fn(async()=>new Map([[phone,{state:"unmatched" as const,people:[]}]]))};
  const deps=(role:Actor["role"],phase:CutoverState["phase"],drift=false)=>async()=>({origin:"https://synthetic.invalid",now:()=>new Date(now),actor:async()=>({...actor,role}),binding,authority:{read:async()=>state(phase)},bridge,directory:drift?{acquisitionMatches:async()=>{throw new AppError("CONFLICT")}}:directory});
  expect((await whatsappRosterHttp(request(),deps("parent","native_active"))).status).toBe(403);expect(bridge).not.toHaveBeenCalled();
- expect((await whatsappRosterHttp(request(),deps("practitioner","sheet_active"))).status).toBe(409);expect(bridge).not.toHaveBeenCalled();
- expect((await whatsappRosterHttp(request(),deps("practitioner","frozen"))).status).toBe(409);expect(bridge).not.toHaveBeenCalled();
+ for(const phase of ["frozen","rollback_prepared"] as const){expect((await whatsappRosterHttp(request(),deps("practitioner",phase))).status).toBe(409);expect(bridge).not.toHaveBeenCalled()}
  expect((await whatsappRosterHttp(request(),deps("practitioner","native_active",true))).status).toBe(409);expect(bridge).toHaveBeenCalledOnce();
  expect((await whatsappRosterHttp(request("/api/private/whatsapp-group-roster?group=other"),deps("practitioner","native_active"))).status).toBe(400);
+});
+
+test.each([{name:"epoch drift",error:null,status:409},{name:"expired session",error:new AppError("UNAUTHENTICATED"),status:401},{name:"revoked or demoted actor",error:new AppError("FORBIDDEN"),status:403}])("post-provider $name returns no roster",async({error,status})=>{
+ const bridge=vi.fn(async()=>JSON.stringify(source())),directory={acquisitionMatches:vi.fn()},read=vi.fn();
+ read.mockResolvedValueOnce(state("sheet_active"));
+ if(error)read.mockRejectedValueOnce(error);else read.mockResolvedValueOnce({...state("shadow_ready"),epoch:4});
+ const response=await whatsappRosterHttp(request(),async()=>({origin:"https://synthetic.invalid",now:()=>new Date(now),actor:async()=>actor,binding,authority:{read},bridge,directory}));
+ expect(response.status).toBe(status);expect(bridge).toHaveBeenCalledOnce();expect(directory.acquisitionMatches).not.toHaveBeenCalled();expect((await response.json()).data).toBeUndefined();
 });
 
 test.each(["en","he"] as const)("%s roster UI is manual, read-only, responsive and links only exact matches",locale=>{
@@ -80,4 +102,11 @@ test.each(["en","he"] as const)("%s partial empty snapshot never claims the grou
  const html=renderToStaticMarkup(createElement(WhatsAppRosterWorkspace,{locale,initialData:data}));
  expect(html).toContain(locale==="he"?"תמונת המצב החלקית":"partial provider snapshot");
  expect(html).not.toContain(locale==="he"?"רשימה מלאה וריקה":"complete empty roster");
+});
+
+test.each(["en","he"] as const)("%s pre-cutover UI states matching is unavailable and renders no People link",locale=>{
+ const data=projectProviderOnlyWhatsAppRoster(normalizeWhatsAppRosterJson(JSON.stringify(source([{memberId:"one",phone,displayName:"Synthetic Member",role:"member"}])),binding,now));
+ const html=renderToStaticMarkup(createElement(WhatsAppRosterWorkspace,{locale,initialData:data}));
+ expect(html).toContain(locale==="he"?"ההתאמה לרשימת אנשים עדיין אינה זמינה":"People matching is not available yet");
+ expect(html).not.toContain("personId=");expect(html).not.toContain(locale==="he"?"לא נמצא באנשים":"Not in People");
 });
