@@ -2,11 +2,11 @@ export const WHATSAPP_ROSTER_LIMITS=Object.freeze({bytes:65536,members:100,decla
 const roles=new Set(["owner","admin","member","unknown"] as const),reasons=new Set(["provider_page","bounded_snapshot","unknown"] as const);
 const phonePattern=/^\+[1-9]\d{7,14}$/,identifierPattern=/^[A-Za-z0-9._:@-]+$/;
 export type WhatsAppRosterRole="owner"|"admin"|"member"|"unknown";
-export type WhatsAppRosterMatch={state:"matched";personId:string;displayName:string|null}|{state:"unmatched"|"ambiguous";reason:string};
+export type WhatsAppRosterMatch={state:"matched";personId:string;displayName:string|null}|{state:"unmatched"|"ambiguous";reason:string}|{state:"unavailable";reason:"before_cutover"};
 export type NativePhoneMatch={state:"existing"|"unmatched"|"ambiguous"|"reserved";people:{personId:string;displayName:string;version:number|null;eligible:boolean}[]};
 export type WhatsAppRoster={schemaVersion:1;channelId:string;group:{id:string;title:string};observedAt:string;receivedAt:string;actorRole:WhatsAppRosterRole;
  completeness:{state:"complete"|"partial";declaredCount:number|null;returnedCount:number;reason:null|"provider_page"|"bounded_snapshot"|"unknown"};
- matchingScope:"native_crm_only";messagingPermission:"unknown";outboundEligible:false;
+ matchingScope:"native_crm_only"|"provider_only_before_cutover";messagingPermission:"unknown";outboundEligible:false;
  members:{memberId:string;phone:string|null;displayName:string|null;role:WhatsAppRosterRole;match:WhatsAppRosterMatch}[]};
 export class WhatsAppRosterContractError extends Error{constructor(readonly code:string){super(code);this.name="WhatsAppRosterContractError";}}
 const fail=(code:string):never=>{throw new WhatsAppRosterContractError(code)};
@@ -54,4 +54,11 @@ export function projectWhatsAppRoster(roster:NormalizedWhatsAppRoster,matches:Ma
  return deepFreeze({...roster,matchingScope:"native_crm_only",messagingPermission:"unknown",outboundEligible:false,
   members:roster.members.map(member=>({...member,match:member.phone===null?{state:"unmatched",reason:"phone_unavailable"}:
    (counts.get(member.phone)??0)>1?{state:"ambiguous",reason:"duplicate_roster_phone"}:projected.get(member.phone)!}))});
+}
+/** Before the separately gated native cutover, the fixed provider roster may
+ * be shown read-only, but no unqueried directory can be represented as a
+ * negative People match. */
+export function projectProviderOnlyWhatsAppRoster(roster:NormalizedWhatsAppRoster):WhatsAppRoster{
+ return deepFreeze({...roster,matchingScope:"provider_only_before_cutover",messagingPermission:"unknown",outboundEligible:false,
+  members:roster.members.map(member=>({...member,match:{state:"unavailable",reason:"before_cutover"} as const}))});
 }
