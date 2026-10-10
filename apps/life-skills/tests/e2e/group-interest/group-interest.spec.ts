@@ -42,7 +42,9 @@ if(!runtimePath){
   await expect(page.locator('a[href="https://wa.me/972534932631"]')).not.toHaveCount(0);
   await expect(page.getByText(/does not replace|not an assessment|diagnosis|אינו מחליף|אבחון|הערכה טיפולית|פסיכיאטר|psychiatr/i)).toHaveCount(0);
   for(const image of [page.getByAltText(locale==="he"?"מבוגר וילד יושבים יחד בחוץ":"An adult and boy seated together outdoors"),page.getByAltText(locale==="he"?"שלמה דרטלר יושב על הדשא עם קבוצת ילדים":"Shlomo Dratler sitting on the grass with a group of boys")]){await image.scrollIntoViewIfNeeded();await expect(image).toBeVisible();expect(await image.evaluate(element=>(element as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);}
-  await expect(page.getByText(locale==="he"?/מפגש היכרות אחד/:/one introductory session/).first()).toBeVisible();
+  await expect(
+    page.locator("#apply").getByText(locale === "he" ? /מפגש היכרות אחד/ : /one paid introductory session/).first(),
+  ).toBeVisible();
   await expect(page.locator("#apply").getByText(locale==="he"?"אינה שומרת מקום":"does not reserve a place",{exact:false})).toHaveCount(1);
   const town=page.locator('[name="townChoice"]');await expect(town).toHaveAttribute("required","");await town.selectOption("other");const otherTown=page.locator('[name="otherTown"]');await expect(otherTown).toBeVisible();await expect(otherTown).toHaveAttribute("required","");await expect(page.locator('[name="neighborhood"]')).toHaveAttribute("required","");await town.selectOption("beit_shemesh");await expect(otherTown).toHaveCount(0);
   await page.locator('[name="parentName"]').fill("Synthetic public browser check");await page.locator('[name="parentPhone"]').fill("+15550003001");await page.locator('[name="childAge"]').fill("10");await page.locator('[name="neighborhood"]').fill("Synthetic neighborhood");await page.locator('[name="schedulePreference"]').selectOption("flexible");
