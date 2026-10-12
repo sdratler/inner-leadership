@@ -6,6 +6,7 @@ import {IdentityClientError,sessionInfo} from "../identity/client.ts";
 import {classifyGroupPlacementSaveFailure,draftGroupCommandSchema,moveProposedPlacementCommandSchema,proposedPlacementCommandSchema,type DraftGroupCommand,type GroupPlacementList,
  type MoveProposedPlacementCommand,type ProposedPlacementCommand,type ProposedPlacementRecord} from "./contract.ts";
 import {DraftMeetingPlanner} from "./meeting-workspace.tsx";
+import {FishingProgramStarter,fishingDraftContext} from "./fishing-program.tsx";
 import styles from "./workspace.module.css";
 
 export {classifyGroupPlacementSaveFailure};
@@ -25,10 +26,10 @@ export function proposalMovementDate(value:string,locale:Locale){return new Intl
  {dateStyle:"short",timeStyle:"short",timeZone:"Asia/Jerusalem"}).format(new Date(value));}
 export function GroupPlacementWorkspace({locale}:{locale:Locale}){
  const t=(en:string,he:string)=>locale==="he"?he:en;
- const draftForm=useRef<HTMLFormElement>(null),draftPending=useRef<DraftGroupCommand|null>(null),placementPending=useRef<ProposedPlacementCommand|null>(null),
+ const draftForm=useRef<HTMLFormElement>(null),draftDetails=useRef<HTMLDetailsElement>(null),draftLabelInput=useRef<HTMLInputElement>(null),draftPending=useRef<DraftGroupCommand|null>(null),placementPending=useRef<ProposedPlacementCommand|null>(null),
   movePending=useRef<MoveProposedPlacementCommand|null>(null);
  const [data,setData]=useState<GroupPlacementList|null>(null),[loadError,setLoadError]=useState(""),[draftBusy,setDraftBusy]=useState(false),
-  [draftUncertain,setDraftUncertain]=useState(false),[draftError,setDraftError]=useState(""),[draftSaved,setDraftSaved]=useState(false),
+  [draftUncertain,setDraftUncertain]=useState(false),[draftError,setDraftError]=useState(""),[draftSaved,setDraftSaved]=useState(false),[draftLabel,setDraftLabel]=useState(""),
   [placementBusy,setPlacementBusy]=useState(""),[placementUncertain,setPlacementUncertain]=useState(""),
   [placementError,setPlacementError]=useState<{groupId:string;message:string}|null>(null),[placementSaved,setPlacementSaved]=useState(""),
   [moveBusy,setMoveBusy]=useState(""),[moveUncertain,setMoveUncertain]=useState(""),
@@ -58,7 +59,7 @@ export function GroupPlacementWorkspace({locale}:{locale:Locale}){
      response.status===409?t("This save conflicts with an earlier request. Review the label and save again.","השמירה מתנגשת בבקשה קודמת. בדקו את התווית ושמרו שוב."):
      t("The draft group was not saved. Check the label and try again.","קבוצת הטיוטה לא נשמרה. בדקו את התווית ונסו שוב."));return;}
    const body=await response.json();if(!response.ok||!body.ok||body.data?.saved!==true)throw new Error();
-   draftPending.current=null;setDraftUncertain(false);draftForm.current?.reset();setDraftSaved(true);await load();
+   draftPending.current=null;setDraftUncertain(false);draftForm.current?.reset();setDraftLabel("");setDraftSaved(true);await load();
   }catch(error){if(previouslyUncertain&&error instanceof IdentityClientError&&error.code==="UNAUTHENTICATED"){
     setDraftUncertain(true);setDraftError(t("Sign in again in another tab. Keep this page open, then retry the exact same draft-group save.","יש להתחבר מחדש בכרטיסייה אחרת. השאירו דף זה פתוח ואז נסו שוב את אותה שמירת קבוצת טיוטה בדיוק."));
    }else if(classifyGroupPlacementSaveFailure(requestStarted,undefined,previouslyUncertain)==="reauth"){
@@ -126,6 +127,9 @@ export function GroupPlacementWorkspace({locale}:{locale:Locale}){
    <button type="button" className="lsw-button lsw-button--secondary" disabled={draftBusy||Boolean(placementBusy)} onClick={()=>void load()}>{t("Refresh","רענון")}</button></header>
   <p className={styles.intro}>{t("Private planning only. A proposed placement is not a trial, enrollment, booking or financial obligation.",
    "תכנון פרטי בלבד. הצעת שיבוץ אינה ניסיון, הרשמה, הזמנה או התחייבות כספית.")}</p>
+  <FishingProgramStarter locale={locale} disabled={draftBusy||draftUncertain} hasUnsavedLabel={Boolean(draftLabel)} onPrepare={()=>{
+   setDraftLabel(fishingDraftContext(locale).label);draftDetails.current?.setAttribute("open","");requestAnimationFrame(()=>draftLabelInput.current?.focus());
+  }}/>
   {loadError&&<p role="alert">{loadError}</p>}
   {!data&&!loadError&&<p role="status">{t("Loading draft groups and proposals…","טוען קבוצות טיוטה והצעות…")}</p>}
   {data&&data.draftGroups.length===0&&<p className={styles.empty}>{t("No draft groups yet. Capacity, schedule, venue, fees and participation remain unset.",
@@ -165,8 +169,8 @@ export function GroupPlacementWorkspace({locale}:{locale:Locale}){
       <button type="submit" className="lsw-button lsw-button--primary" disabled={Boolean(placementBusy)||placementUncertain!==""&&placementUncertain!==group.id}>{placementBusy===group.id?t("Saving…","שומר…"):placementUncertain===group.id?t("Retry same proposal","ניסיון חוזר לאותה הצעה"):t("Save proposed placement","שמירת הצעת שיבוץ")}</button></form></details>}
    </article>;})}
   {draftError&&<p role="alert">{draftError}</p>}{draftSaved&&<p role="status">{t("Draft group saved and read back. No placement, trial or enrollment was created.","קבוצת הטיוטה נשמרה ונקראה בחזרה. לא נוצרו שיבוץ, ניסיון או הרשמה.")}</p>}
-  <details className={styles.action}><summary>{t("Add draft group","הוספת קבוצת טיוטה")}</summary><form ref={draftForm} className={styles.compactForm} onSubmit={saveDraft}>
-   <label>{t("Administrative label","תווית מנהלית")}<input name="label" required maxLength={100} disabled={draftUncertain}/></label>
+  <details ref={draftDetails} className={styles.action}><summary>{t("Add draft group","הוספת קבוצת טיוטה")}</summary><form ref={draftForm} className={styles.compactForm} onSubmit={saveDraft}>
+   <label>{t("Administrative label","תווית מנהלית")}<input ref={draftLabelInput} id="draft-group-label" name="label" required maxLength={100} disabled={draftUncertain} value={draftLabel} onChange={event=>setDraftLabel(event.target.value)}/></label>
    <button type="submit" className="lsw-button lsw-button--primary" disabled={draftBusy}>{draftBusy?t("Saving…","שומר…"):draftUncertain?t("Retry same draft group","ניסיון חוזר לאותה קבוצת טיוטה"):t("Save draft group","שמירת קבוצת טיוטה")}</button></form></details>
  </section>;
 }

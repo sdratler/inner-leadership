@@ -4,6 +4,14 @@
 .eyebrow,.state { color:var(--ui-teal,#245159); font-size:.82rem; font-weight:750; letter-spacing:.04em; text-transform:uppercase; }
 .intro { max-inline-size:72ch; color:var(--ui-muted,#49676d); }
 .empty { padding:16px; border:1px solid var(--ui-line,rgba(36,81,89,.18)); background:#fff; }
+.programStarter { display:grid; gap:12px; padding:18px; border:1px solid color-mix(in srgb,var(--ui-teal,#245159) 30%,white); border-radius:12px; background:color-mix(in srgb,var(--ui-teal,#245159) 6%,white); }
+.programStarter h3,.programStarter p,.programStarter dl { margin:0; }
+.programStarter dl { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+.programStarter dl div { min-inline-size:0; padding:10px; border:1px solid var(--ui-line,rgba(36,81,89,.18)); border-radius:8px; background:#fff; }
+.programStarter dt { color:var(--ui-muted,#49676d); font-size:.8rem; font-weight:750; }
+.programStarter dd { margin:3px 0 0; font-weight:700; overflow-wrap:anywhere; }
+.starterActions { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.starterActions small { color:var(--ui-muted,#49676d); max-inline-size:55ch; }
 .group { display:grid; gap:12px; padding:18px; border:1px solid var(--ui-line,rgba(36,81,89,.18)); border-inline-start:5px solid var(--ui-teal,#245159); border-radius:10px; background:#fff; }
 .group header { display:grid; gap:4px; }
 .placements { display:grid; gap:8px; margin:0; padding-inline-start:22px; }
@@ -44,4 +52,6 @@
  .meetingForm { grid-template-columns:minmax(0,1fr); }
  .meetingForm button { inline-size:100%; }
  .group { padding:15px; }
+ .programStarter dl { grid-template-columns:minmax(0,1fr); }
+ .starterActions button { inline-size:100%; }
 }

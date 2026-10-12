@@ -7,6 +7,7 @@ import {moveProposedPlacementCommandSchema,proposedDraftMeetingCommandSchema,rev
 import {activeItem,breadcrumbItems,practitionerContext} from "../../src/ui/workspace/navigation-model.ts";
 import {groupInterestCandidateEnabled} from "../../src/features/group-interest/candidate.ts";
 import {DraftMeetingPlanner} from "../../src/features/group-placement/meeting-workspace.tsx";
+import {FishingProgramStarter,fishingDraftContext} from "../../src/features/group-placement/fishing-program.tsx";
 
 describe("draft group and proposed placement workspace",()=>{
  it.each(["en","he"] as const)("labels the owner-only state boundary in %s",locale=>{
@@ -15,6 +16,21 @@ describe("draft group and proposed placement workspace",()=>{
   expect(html).toContain(locale==="he"?"הצעת שיבוץ אינה ניסיון":"A proposed placement is not a trial");
   expect(html).toContain(locale==="he"?"הוספת קבוצת טיוטה":"Add draft group");
   expect(html).not.toMatch(/price/i);
+ });
+ it.each(["en","he"] as const)("offers a bounded fishing starter without inventing operational values in %s",locale=>{
+  const context=fishingDraftContext(locale),html=renderToStaticMarkup(createElement(FishingProgramStarter,{locale,onPrepare:()=>undefined,disabled:false,hasUnsavedLabel:false}));
+  expect(context.label).toBe(locale==="he"?"תוכנית דיג — טיוטה":"Fishing program — draft");
+  expect(context.fields.filter(item=>item.value===(locale==="he"?"לא הוגדר":"Unset"))).toHaveLength(5);
+  expect(context.fields.find(item=>item.key==="participants")?.value).toContain(locale==="he"?"לא נוספו":"None added");
+  expect(context.fields.find(item=>item.key==="attendance")?.value).toContain(locale==="he"?"חסומה":"Blocked");
+  expect(html).toContain(locale==="he"?"תוכנית דיג — טיוטת תכנון":"Fishing program — planning draft");
+  expect(html).toContain(locale==="he"?"הכנת טיוטת דיג":"Prepare fishing draft");
+  expect(html).toContain(locale==="he"?"אינה רושמת":"does not enroll");
+  expect(html).not.toMatch(/\b(?:30|350|1000|1200)\b/);
+ });
+ it("preserves a current unsaved draft label instead of overwriting it",()=>{
+  const html=renderToStaticMarkup(createElement(FishingProgramStarter,{locale:"en",onPrepare:()=>undefined,disabled:false,hasUnsavedLabel:true}));
+  expect(html).toContain("The current unsaved label is preserved");expect(html).toContain("disabled");
  });
  it("distinguishes confirmed client failures from unknown write outcomes",()=>{
   expect(classifyGroupPlacementSaveFailure(false)).toBe("reauth");expect(classifyGroupPlacementSaveFailure(true,401)).toBe("reauth");

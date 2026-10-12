@@ -137,7 +137,13 @@ if(!runtimePath){
   }
   const planning=page.locator('section[aria-labelledby="draft-groups-heading"]');
   const addDraft=planning.locator("details").filter({has:page.getByText(locale==="he"?"הוספת קבוצת טיוטה":"Add draft group",{exact:true})});await addDraft.locator("summary").click();
-  const groupLabel=locale==="he"?`קבוצת טיוטה ${info.project.name}`:`Synthetic draft ${info.project.name}`;await addDraft.locator('[name="label"]').fill(groupLabel);
+  await addDraft.locator("summary").click();
+  const fishingStarter=planning.locator('section[aria-labelledby="fishing-program-draft-heading"]'),groupLabel=locale==="he"?"תוכנית דיג — טיוטה":"Fishing program — draft";
+  await expect(fishingStarter.getByText(locale==="he"?"תשלום":"Fee",{exact:true})).toBeVisible();await expect(fishingStarter.getByText(locale==="he"?"לא הוגדר":"Unset",{exact:true})).toHaveCount(5);
+  await expect(fishingStarter.getByText(locale==="he"?"חסומה עד לאישור מועד ומשתתפים מורשים":"Blocked until an occurrence and authorized participants are confirmed",{exact:true})).toBeVisible();
+  await fishingStarter.getByRole("button",{name:locale==="he"?"הכנת טיוטת דיג":"Prepare fishing draft",exact:true}).click();
+  await expect(addDraft).toHaveAttribute("open","");await expect(addDraft.locator('[name="label"]')).toHaveValue(groupLabel);await expect(addDraft.locator('[name="label"]')).toBeFocused();
+  await expect(fishingStarter.getByText(locale==="he"?"התווית שלא נשמרה נשמרת. יש למחוק אותה לפני החלת התבנית.":"The current unsaved label is preserved. Clear it before applying this starter.",{exact:true})).toBeVisible();
   let draftSent:PlaywrightRequest,draftSavedBody:{ok:boolean;data:{saved:boolean;replayed:boolean;item:{id:string;state:string;label:string}}};
   if(locale==="en"){
    let interrupted:Record<string,unknown>|null=null;await page.route("**/api/private/group-placement",async route=>{if(route.request().method()==="POST"&&route.request().postData()?.includes('"action":"create_draft_group"')){interrupted=route.request().postDataJSON();const upstream=await route.fetch();expect(upstream.status()).toBe(200);await route.abort("failed");}else await route.continue();},{times:1});
