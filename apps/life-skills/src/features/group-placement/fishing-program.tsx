@@ -53,18 +53,21 @@ type HistoryState={items:FishingPracticeRevisionRecord[];nextCursor:string|null;
 
 export function FishingPracticeChecklist({locale,group,placements,revisions,reload}:{locale:Locale;group:DraftGroupRecord;
  placements:ProposedPlacementRecord[];revisions:FishingPracticeRevisionRecord[];reload:()=>Promise<void>}){
- const t=(en:string,he:string)=>locale==="he"?he:en,pending=useRef(new Map<string,RecordFishingPracticeCommand>());
+ const t=(en:string,he:string)=>locale==="he"?he:en,pending=useRef(new Map<string,RecordFishingPracticeCommand>()),
+  historyGeneration=useRef(new Map<string,number>()),historyActive=useRef(new Set<string>());
  const [drafts,setDrafts]=useState<Record<string,Draft>>({}),[notices,setNotices]=useState<Record<string,Notice>>({}),[busy,setBusy]=useState(""),
   [histories,setHistories]=useState<Record<string,HistoryState>>({});
  const key=(placementId:string,moduleKey:FishingPracticeModuleKey)=>`${placementId}:${moduleKey}`;
  const current=(placementId:string,moduleKey:FishingPracticeModuleKey)=>revisions.find(item=>item.proposedPlacementId===placementId&&item.moduleKey===moduleKey&&item.revisionStatus==="current")??null;
  const change=(recordKey:string,patch:Partial<Draft>,fallback:Draft)=>setDrafts(value=>({...value,[recordKey]:{...(value[recordKey]??fallback),...patch}}));
- async function loadHistory(recordKey:string,placementId:string,moduleKey:FishingPracticeModuleKey,append=false){const prior=histories[recordKey];if(prior?.loading)return;
+ async function loadHistory(recordKey:string,placementId:string,moduleKey:FishingPracticeModuleKey,append=false,force=false){const prior=histories[recordKey];if(historyActive.current.has(recordKey)&&!force)return;
+  const generation=(historyGeneration.current.get(recordKey)??0)+1;historyGeneration.current.set(recordKey,generation);historyActive.current.add(recordKey);
   const cursor=append?prior?.nextCursor??null:null;setHistories(value=>({...value,[recordKey]:{items:append?value[recordKey]?.items??[]:[],nextCursor:cursor,loading:true,error:false}}));
   try{const search=new URLSearchParams({placementId,moduleKey});if(cursor)search.set("cursor",cursor);const response=await fetch(`/api/private/group-placement?${search}`,{headers:{accept:"application/json"}});
    if(!response.ok)throw new Error();const body=await response.json(),page=body?.data;if(!body?.ok||!Array.isArray(page?.items)||!(typeof page.nextCursor==="string"||page.nextCursor===null))throw new Error();
-   setHistories(value=>({...value,[recordKey]:{items:append?[...(value[recordKey]?.items??[]),...page.items]:page.items,nextCursor:page.nextCursor,loading:false,error:false}}));
-  }catch{setHistories(value=>({...value,[recordKey]:{items:value[recordKey]?.items??[],nextCursor:value[recordKey]?.nextCursor??null,loading:false,error:true}}));}
+   if(historyGeneration.current.get(recordKey)!==generation)return;setHistories(value=>({...value,[recordKey]:{items:append?[...(value[recordKey]?.items??[]),...page.items]:page.items,nextCursor:page.nextCursor,loading:false,error:false}}));
+  }catch{if(historyGeneration.current.get(recordKey)===generation)setHistories(value=>({...value,[recordKey]:{items:value[recordKey]?.items??[],nextCursor:value[recordKey]?.nextCursor??null,loading:false,error:true}}));}
+  finally{if(historyGeneration.current.get(recordKey)===generation)historyActive.current.delete(recordKey);}
  }
  async function save(event:FormEvent<HTMLFormElement>,placement:ProposedPlacementRecord,moduleKey:FishingPracticeModuleKey){
   event.preventDefault();const recordKey=key(placement.id,moduleKey);if(busy)return;const existing=current(placement.id,moduleKey),values=new FormData(event.currentTarget),prior=pending.current.get(recordKey),
@@ -83,7 +86,7 @@ export function FishingPracticeChecklist({locale,group,placements,revisions,relo
      response.status===409?t("A newer correction was saved. Your edits remain here; review the current evidence and save again.","נשמר תיקון חדש יותר. העריכות נשארו כאן; יש לבדוק את הראיה העדכנית ולשמור שוב."):
      t("The observation was not saved. Review it and try again.","התצפית לא נשמרה. יש לבדוק ולנסות שוב.")}}));return;}
    const body=await response.json();if(!body.ok||body.data?.saved!==true)throw new Error();pending.current.delete(recordKey);setDrafts(value=>{const copy={...value};delete copy[recordKey];return copy;});
-   setNotices(value=>({...value,[recordKey]:{kind:"saved",message:t("Practice evidence saved and read back. Placement, attendance, trip review and billing did not change.","ראיית התרגול נשמרה ונקראה בחזרה. השיבוץ, הנוכחות, בדיקת היציאה והתשלום לא השתנו.")}}));await reload();await loadHistory(recordKey,placement.id,moduleKey);
+   setNotices(value=>({...value,[recordKey]:{kind:"saved",message:t("Practice evidence saved and read back. Placement, attendance, trip review and billing did not change.","ראיית התרגול נשמרה ונקראה בחזרה. השיבוץ, הנוכחות, בדיקת היציאה והתשלום לא השתנו.")}}));await reload();await loadHistory(recordKey,placement.id,moduleKey,false,true);
   }catch(error){if(!requestStarted||error instanceof IdentityClientError&&error.code==="UNAUTHENTICATED")pending.current.delete(recordKey);
    const uncertain=requestStarted;setNotices(value=>({...value,[recordKey]:{kind:uncertain?"uncertain":"error",message:uncertain?
     t("Save is unconfirmed. Keep this page open and retry the exact same observation.","השמירה לא אומתה. יש להשאיר דף זה פתוח ולנסות שוב את אותה תצפית בדיוק."):

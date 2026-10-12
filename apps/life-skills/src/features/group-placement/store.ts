@@ -30,6 +30,7 @@ const draftAad=(workspace:string,id:string)=>`ls_group_admin/draft_group/v1/${wo
 const meetingAad=(workspace:string,id:string)=>`ls_group_admin/draft_meeting/v1/${workspace}/${id}`;
 const fishingPracticeAad=(workspace:string,id:string)=>`ls_group_admin/fishing_practice/v1/${workspace}/${id}`;
 const uuidPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export const FISHING_PRACTICE_HISTORY_PAGE_SIZE=20;
 
 export class GroupPlacementStore{
  constructor(private readonly db:IdentityStore,private readonly ring:Keyring,private readonly key:string,
@@ -303,15 +304,15 @@ export class GroupPlacementStore{
       AND ($4::uuid IS NOT NULL OR successor.id IS NULL)
      UNION ALL
      SELECT previous.*,chain.depth+1 FROM ls_group_admin.fishing_practice_revisions previous
-     JOIN chain ON previous.workspace_id=chain.workspace_id AND previous.id=chain.previous_revision_id
+     JOIN chain ON previous.workspace_id=chain.workspace_id AND previous.id=chain.previous_revision_id AND chain.depth<$5
     )
     SELECT r.id,r.draft_group_id AS "draftGroupId",r.proposed_placement_id AS "proposedPlacementId",
      r.program_key AS "programKey",r.module_key AS "moduleKey",r.evidence_state AS "evidenceState",r.note_ciphertext AS "noteCiphertext",
      r.previous_revision_id AS "previousRevisionId",successor.id AS "nextRevisionId",r.recorded_by AS "recordedBy",
      r.created_at AS "createdAt",r.request_digest AS "requestDigest" FROM chain r
     LEFT JOIN ls_group_admin.fishing_practice_revisions successor ON successor.workspace_id=r.workspace_id AND successor.previous_revision_id=r.id
-    ORDER BY r.depth LIMIT 21`,[actor.workspaceId,input.placementId,input.moduleKey,cursorId]);
-   if(cursorId&&rows.length===0)throw new AppError("INVALID_REQUEST");const page=rows.slice(0,20),last=page.at(-1),nextCursor=rows.length>20&&last?
+    ORDER BY r.depth LIMIT 21`,[actor.workspaceId,input.placementId,input.moduleKey,cursorId,FISHING_PRACTICE_HISTORY_PAGE_SIZE+1]);
+   if(cursorId&&rows.length===0)throw new AppError("INVALID_REQUEST");const page=rows.slice(0,FISHING_PRACTICE_HISTORY_PAGE_SIZE),last=page.at(-1),nextCursor=rows.length>FISHING_PRACTICE_HISTORY_PAGE_SIZE&&last?
     Buffer.from(last.id,"utf8").toString("base64url"):null;
    return {items:page.map(row=>this.fishingPractice(actor.workspaceId,row)),nextCursor};
   });
