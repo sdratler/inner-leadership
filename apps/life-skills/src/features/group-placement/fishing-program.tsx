@@ -3,7 +3,7 @@ import {useRef,useState} from "react";
 import type {FormEvent} from "react";
 import type {Locale} from "../../lib/locale.ts";
 import {IdentityClientError,sessionInfo} from "../identity/client.ts";
-import {classifyGroupPlacementSaveFailure,fishingDraftLabels,fishingPracticeModuleKeys,isFishingDraftLabel,recordFishingPracticeCommandSchema,
+import {classifyGroupPlacementSaveFailure,fishingDraftLabels,isFishingDraftLabel,recordFishingPracticeCommandSchema,
  type DraftGroupRecord,type FishingPracticeModuleKey,type FishingPracticeRevisionRecord,type ProposedPlacementRecord,
  type RecordFishingPracticeCommand} from "./contract.ts";
 import styles from "./workspace.module.css";
@@ -104,10 +104,10 @@ export function FishingPracticeChecklist({locale,group,placements,revisions,relo
      {saved?.note&&<p dir="auto" className={styles.practiceNote}>{saved.note}</p>}
      {notice&&<p role={notice.kind==="error"?"alert":"status"} className={notice.kind==="uncertain"?styles.uncertain:undefined}>{notice.message}</p>}
      <details className={styles.practiceAction}><summary>{saved?t("Record a correction","תיעוד תיקון"):t("Record observation","תיעוד תצפית")}</summary>
-      <form onSubmit={event=>void save(event,placement,module.key)}><label>{t("Evidence state","מצב הראיה")}<select name="evidenceState" value={draft.evidenceState} onChange={event=>change(recordKey,{evidenceState:event.target.value as Draft["evidenceState"]},draft)} disabled={busy===recordKey||Boolean(pending.current.get(recordKey))}>
+      <form onSubmit={event=>void save(event,placement,module.key)}><label>{t("Evidence state","מצב הראיה")}<select name="evidenceState" value={draft.evidenceState} onChange={event=>change(recordKey,{evidenceState:event.target.value as Draft["evidenceState"]},draft)} disabled={busy===recordKey||notice?.kind==="uncertain"}>
        <option value="practice_observed">{t("Practice observed","התרגול נצפה")}</option><option value="no_evidence_yet">{t("Correct to no evidence yet","תיקון לעדיין אין ראיה")}</option></select></label>
-       <label>{t("Optional factual note","הערה עובדתית אופציונלית")}<textarea name="note" maxLength={500} value={draft.note} onChange={event=>change(recordKey,{note:event.target.value},draft)} disabled={busy===recordKey||Boolean(pending.current.get(recordKey))}/></label>
-       <button type="submit" className="lsw-button lsw-button--primary" disabled={Boolean(busy)&&busy!==recordKey}>{busy===recordKey?t("Saving…","שומר…"):pending.current.has(recordKey)?t("Retry exact same save","ניסיון חוזר לאותה שמירה בדיוק"):saved?t("Save correction","שמירת תיקון"):t("Save observation","שמירת תצפית")}</button></form></details>
+       <label>{t("Optional factual note","הערה עובדתית אופציונלית")}<textarea name="note" maxLength={500} value={draft.note} onChange={event=>change(recordKey,{note:event.target.value},draft)} disabled={busy===recordKey||notice?.kind==="uncertain"}/></label>
+       <button type="submit" className="lsw-button lsw-button--primary" disabled={Boolean(busy)&&busy!==recordKey}>{busy===recordKey?t("Saving…","שומר…"):notice?.kind==="uncertain"?t("Retry exact same save","ניסיון חוזר לאותה שמירה בדיוק"):saved?t("Save correction","שמירת תיקון"):t("Save observation","שמירת תצפית")}</button></form></details>
      {saved&&<details className={styles.practiceHistory} onToggle={event=>{if(event.currentTarget.open&&!histories[recordKey])void loadHistory(recordKey,placement.id,module.key);}}><summary>{t("Observation history","היסטוריית תצפיות")}</summary>
       {history?.error&&<p role="alert">{t("History could not be loaded. Retry without changing the saved evidence.","לא ניתן היה לטעון את ההיסטוריה. יש לנסות שוב בלי לשנות את הראיה השמורה.")}</p>}
       {history?.loading&&history.items.length===0&&<p role="status">{t("Loading history…","טוען היסטוריה…")}</p>}
