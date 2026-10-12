@@ -88,7 +88,7 @@ if(!runtimePath){
   await page.goto(`/${locale}/app/clients`);await page.getByRole("navigation",{name:locale==="he"?"תצוגות הדף הנוכחי":"Current page views"}).getByRole("link",{name:locale==="he"?"קבוצות":"Groups",exact:true}).click();
   await expect(page).toHaveURL(new RegExp(`/${locale}/app/group-interest$`));await page.goBack();await expect(page).toHaveURL(new RegExp(`/${locale}/app/clients`));await page.goForward();await expect(page).toHaveURL(new RegExp(`/${locale}/app/group-interest$`));
   const planningHeading=page.getByRole("heading",{name:locale==="he"?"קבוצות טיוטה והצעות שיבוץ":"Draft groups and proposed placements",exact:true});await expect(planningHeading).toBeVisible();
-  const addInquiry=main.locator("details").filter({has:page.getByText(locale==="he"?"רישום פנייה":"Record an inquiry",{exact:true})});await expect(addInquiry).not.toHaveAttribute("open","");
+  const addInquiry=page.locator("main:visible details").filter({has:page.getByText(locale==="he"?"רישום פנייה":"Record an inquiry",{exact:true})});await expect(addInquiry).not.toHaveAttribute("open","");
   expect((await planningHeading.boundingBox())!.y).toBeLessThan((await addInquiry.boundingBox())!.y);await addInquiry.locator("summary").click();
   const inquiryForm=addInquiry.locator("form"),suffix=`${info.project.name}-${locale}`,parentName=`Synthetic ${suffix} Parent`,childLabel=`Synthetic ${suffix} Child`;
   await inquiryForm.locator('[name="serviceType"]').selectOption(locale==="he"?"group":"group_and_tutoring");
