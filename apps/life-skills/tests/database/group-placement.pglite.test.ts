@@ -23,7 +23,7 @@ function inquiry(serviceType:InterestCommand["fields"]["serviceType"]="group"):I
  permission:{confirmed:true,version:interestNotice.version,language:"en",source:"written"}}};}
 
 beforeAll(async()=>{
- await db.exec("CREATE SCHEMA ls_control");for(const name of ["0001_ls_foundation.sql","0010_ls_identity_cases_20260906.sql","0030_ls_calendar_attendance_20260907.sql","0124_ls_group_interest.sql","0127_ls_service_interests.sql","0128_ls_draft_group_placements.sql","0129_ls_proposed_placement_moves.sql","0130_ls_draft_group_meetings.sql"]){
+ await db.exec("CREATE SCHEMA ls_control");for(const name of ["0001_ls_foundation.sql","0010_ls_identity_cases_20260906.sql","0030_ls_calendar_attendance_20260907.sql","0124_ls_group_interest.sql","0127_ls_service_interests.sql","0128_ls_draft_group_placements.sql","0129_ls_proposed_placement_moves.sql","0130_ls_draft_group_meetings.sql","0132_ls_fishing_practice_revisions.sql"]){
   const sql=await readFile("migrations/"+name,"utf8"),manifest=JSON.parse(await readFile("migrations/manifest.json","utf8")) as {name:string;sha256:string}[];
   expect(createHash("sha256").update(sql).digest("hex")).toBe(manifest.find(row=>row.name===name)?.sha256);await db.exec(sql);
  }
@@ -80,7 +80,7 @@ it("proposes one exact GROUP interest, reads it back, and keeps all states separ
  const reopened=await placementStore.list(actor);expect(reopened.proposedPlacements).toContainEqual(saved.item);expect(reopened.eligibleGroupInterests).toContainEqual(expect.objectContaining({id:interest.item.id,state:"service_interest",serviceType:"group"}));
  expect((await db.query("SELECT state FROM ls_cases.engagements WHERE workspace_id=$1",[actor.workspaceId])).rows).toEqual([]);
  const names=(await db.query<{table_name:string}>("SELECT table_name FROM information_schema.tables WHERE table_schema='ls_group_admin' ORDER BY table_name")).rows.map(row=>row.table_name);
- expect(names).toEqual(["draft_group_operations","draft_groups","draft_meeting_operations","draft_meeting_revisions","proposed_placement_move_operations","proposed_placement_moves","proposed_placement_operations","proposed_placements"]);
+ expect(names).toEqual(["draft_group_operations","draft_groups","draft_meeting_operations","draft_meeting_revisions","fishing_practice_operations","fishing_practice_revisions","proposed_placement_move_operations","proposed_placement_moves","proposed_placement_operations","proposed_placements"]);
  expect(names.some(name=>/trial|enrollment|attendance|payment|message/.test(name))).toBe(false);
 });
 
