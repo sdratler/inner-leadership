@@ -144,7 +144,9 @@ if(!runtimePath){
   await fishingStarter.getByRole("button",{name:locale==="he"?"הכנת טיוטת דיג":"Prepare fishing draft",exact:true}).click();
   await expect(addDraft).toHaveAttribute("open","");await expect(addDraft.locator('[name="label"]')).toHaveValue(groupLabel);await expect(addDraft.locator('[name="label"]')).toBeFocused();
   await expect(fishingStarter.getByText(locale==="he"?"התווית שלא נשמרה נשמרת. יש למחוק אותה לפני החלת התבנית.":"The current unsaved label is preserved. Clear it before applying this starter.",{exact:true})).toBeVisible();
-  await planning.screenshot({path:info.outputPath(`fishing-program-draft-${locale}-${info.project.name}.png`)});
+  const changedSkip=await skipState();expect(changedSkip.active).toBe(false);expect(changedSkip.intersects).toBe(false);expect(changedSkip.bottom).toBeLessThanOrEqual(0);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  await fishingStarter.scrollIntoViewIfNeeded();await page.screenshot({path:info.outputPath(`fishing-program-draft-viewport-${locale}-${info.project.name}.png`)});
+  await addDraft.scrollIntoViewIfNeeded();await expect(addDraft.locator('[name="label"]')).toBeFocused();await page.screenshot({path:info.outputPath(`fishing-program-form-focus-${locale}-${info.project.name}.png`)});
   let draftSent:PlaywrightRequest,draftSavedBody:{ok:boolean;data:{saved:boolean;replayed:boolean;item:{id:string;state:string;label:string}}};
   if(locale==="en"){
    let interrupted:Record<string,unknown>|null=null;await page.route("**/api/private/group-placement",async route=>{if(route.request().method()==="POST"&&route.request().postData()?.includes('"action":"create_draft_group"')){interrupted=route.request().postDataJSON();const upstream=await route.fetch();expect(upstream.status()).toBe(200);await route.abort("failed");}else await route.continue();},{times:1});
