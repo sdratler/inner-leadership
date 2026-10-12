@@ -174,6 +174,34 @@ it("appends exactly one correction, rejects stale competitors, and replays the o
  await expect(db.query("DELETE FROM ls_group_admin.draft_meeting_operations WHERE meeting_revision_id=$1",[revised.item.id])).rejects.toThrow();
 });
 
+it("records and corrects fishing practice evidence without enrollment, trip, attendance or billing effects",async()=>{
+ const actor=actors[0]!,before=(await db.query(`SELECT
+  (SELECT count(*)::int FROM ls_cases.cases WHERE workspace_id=$1) AS cases,
+  (SELECT count(*)::int FROM ls_cases.engagements WHERE workspace_id=$1) AS engagements,
+  (SELECT count(*)::int FROM ls_calendar.appointments WHERE workspace_id=$1) AS appointments,
+  (SELECT count(*)::int FROM ls_attendance.records WHERE workspace_id=$1) AS attendance`,[actor.workspaceId])).rows;
+ const group=await placementStore.createDraftGroup(actor,{action:"create_draft_group",operationId:randomUUID(),label:"Fishing program — draft"}),interest=await serviceInterest(),placement=await placementStore.proposePlacement(actor,{action:"propose_group_placement",operationId:randomUUID(),draftGroupId:group.item.id,serviceInterestId:interest.item.id});
+ const create={action:"record_fishing_practice" as const,operationId:randomUUID(),draftGroupId:group.item.id,proposedPlacementId:placement.item.id,moduleKey:"knots" as const,evidenceState:"practice_observed" as const,note:"Synthetic learner tied the knot independently.",expectedRevisionId:null};
+ const first=await placementStore.recordFishingPractice(actor,create);expect(first).toMatchObject({saved:true,replayed:false,item:{programKey:"fishing_lessons",moduleKey:"knots",evidenceState:"practice_observed",note:create.note,revisionStatus:"current",previousRevisionId:null,nextRevisionId:null}});
+ const replay=await placementStore.recordFishingPractice(actor,create);expect(replay).toMatchObject({saved:true,replayed:true,item:{id:first.item.id}});
+ await expect(placementStore.recordFishingPractice(actor,{...create,note:"Changed replay"})).rejects.toMatchObject({code:"CONFLICT"});
+ const correction={...create,operationId:randomUUID(),evidenceState:"no_evidence_yet" as const,note:"Correction: observation was not conclusive.",expectedRevisionId:first.item.id};
+ const second=await placementStore.recordFishingPractice(actor,correction);expect(second).toMatchObject({saved:true,replayed:false,item:{previousRevisionId:first.item.id,evidenceState:"no_evidence_yet",revisionStatus:"current",note:correction.note}});
+ await expect(placementStore.recordFishingPractice(actor,{...correction,operationId:randomUUID(),note:"Stale competitor"})).rejects.toMatchObject({code:"CONFLICT"});
+ const listed=await placementStore.list(actor),history=listed.fishingPracticeRevisions.filter(row=>row.proposedPlacementId===placement.item.id&&row.moduleKey==="knots");
+ expect(history).toHaveLength(2);expect(history.find(row=>row.id===first.item.id)).toMatchObject({revisionStatus:"corrected",nextRevisionId:second.item.id});expect(history.find(row=>row.id===second.item.id)).toMatchObject({revisionStatus:"current"});
+ const stored=await db.query<{note_ciphertext:string}>("SELECT note_ciphertext FROM ls_group_admin.fishing_practice_revisions WHERE id=$1",[first.item.id]);expect(stored.rows[0]!.note_ciphertext).not.toContain(create.note);
+ await expect(db.query("UPDATE ls_group_admin.fishing_practice_revisions SET evidence_state='practice_observed' WHERE workspace_id=$1 AND id=$2",[actor.workspaceId,second.item.id])).rejects.toThrow();
+ await expect(db.query("DELETE FROM ls_group_admin.fishing_practice_operations WHERE workspace_id=$1 AND practice_revision_id=$2",[actor.workspaceId,second.item.id])).rejects.toThrow();
+ await expect(placementStore.recordFishingPractice(actors[1]!,{...create,operationId:randomUUID()})).rejects.toMatchObject({code:"FORBIDDEN"});
+ await expect(placementStore.recordFishingPractice(actors[2]!,{...create,operationId:randomUUID()})).rejects.toMatchObject({code:"UNAVAILABLE"});
+ expect((await db.query(`SELECT
+  (SELECT count(*)::int FROM ls_cases.cases WHERE workspace_id=$1) AS cases,
+  (SELECT count(*)::int FROM ls_cases.engagements WHERE workspace_id=$1) AS engagements,
+  (SELECT count(*)::int FROM ls_calendar.appointments WHERE workspace_id=$1) AS appointments,
+  (SELECT count(*)::int FROM ls_attendance.records WHERE workspace_id=$1) AS attendance`,[actor.workspaceId])).rows).toEqual(before);
+});
+
 it("rejects DST gaps and folds, bounds duration, and treats a transition-crossing duration as elapsed minutes",async()=>{
  const actor=actors[0]!,group=await placementStore.createDraftGroup(actor,{action:"create_draft_group",operationId:randomUUID(),label:"DST group"}),base={action:"propose_draft_group_meeting" as const,operationId:randomUUID(),draftGroupId:group.item.id,timeZone:"Asia/Jerusalem" as const,durationMinutes:60,venue:"DST room"};
  await expect(placementStore.proposeMeeting(actor,{...base,localStart:"2026-03-27T02:30"})).rejects.toMatchObject({code:"INVALID_REQUEST"});

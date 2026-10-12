@@ -6,7 +6,7 @@ import {IdentityClientError,sessionInfo} from "../identity/client.ts";
 import {classifyGroupPlacementSaveFailure,draftGroupCommandSchema,moveProposedPlacementCommandSchema,proposedPlacementCommandSchema,type DraftGroupCommand,type GroupPlacementList,
  type MoveProposedPlacementCommand,type ProposedPlacementCommand,type ProposedPlacementRecord} from "./contract.ts";
 import {DraftMeetingPlanner} from "./meeting-workspace.tsx";
-import {FishingProgramStarter,fishingDraftContext} from "./fishing-program.tsx";
+import {FishingPracticeChecklist,FishingProgramStarter,fishingDraftContext,isFishingProgramGroup} from "./fishing-program.tsx";
 import styles from "./workspace.module.css";
 
 export {classifyGroupPlacementSaveFailure};
@@ -139,6 +139,8 @@ export function GroupPlacementWorkspace({locale}:{locale:Locale}){
    return <article className={styles.group} key={group.id}><header><p className={styles.state}>{t("Draft group","קבוצת טיוטה")}</p><h3>{group.label}</h3></header>
     <p>{t("Capacity, fees and participation remain unset. Proposed occurrences below are not confirmed meetings.","קיבולת, תשלום והשתתפות עדיין אינם מוגדרים. המועדים המוצעים להלן אינם פגישות מאושרות.")}</p>
     <DraftMeetingPlanner locale={locale} group={group} revisions={meetings} reload={load}/>
+    {isFishingProgramGroup(group)&&<FishingPracticeChecklist locale={locale} group={group} placements={placements.filter(item=>item.proposalStatus==="current")}
+     revisions={data.fishingPracticeRevisions.filter(item=>item.draftGroupId===group.id)} reload={load}/>}
     <h4>{t("Proposed placements","הצעות שיבוץ")}</h4>
     {placements.length===0?<p>{t("No proposed placements.","אין הצעות שיבוץ.")}</p>:<ul className={styles.placements}>{placements.map(item=>{
      const destinations=availableMoveDestinations(data,item),incoming=data.proposalMovements.find(move=>move.destinationProposedPlacementId===item.id),

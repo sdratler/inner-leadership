@@ -3,11 +3,11 @@ import {renderToStaticMarkup} from "react-dom/server";
 import {describe,expect,it} from "vitest";
 import {availableGroupInterests,availableMoveDestinations,classifyGroupPlacementSaveFailure,groupInterestProvenance,GroupPlacementWorkspace} from "../../src/features/group-placement/workspace.tsx";
 import type {GroupPlacementList} from "../../src/features/group-placement/contract.ts";
-import {moveProposedPlacementCommandSchema,proposedDraftMeetingCommandSchema,reviseDraftMeetingCommandSchema} from "../../src/features/group-placement/contract.ts";
+import {moveProposedPlacementCommandSchema,proposedDraftMeetingCommandSchema,recordFishingPracticeCommandSchema,reviseDraftMeetingCommandSchema} from "../../src/features/group-placement/contract.ts";
 import {activeItem,breadcrumbItems,practitionerContext} from "../../src/ui/workspace/navigation-model.ts";
 import {groupInterestCandidateEnabled} from "../../src/features/group-interest/candidate.ts";
 import {DraftMeetingPlanner} from "../../src/features/group-placement/meeting-workspace.tsx";
-import {FishingProgramStarter,fishingDraftContext} from "../../src/features/group-placement/fishing-program.tsx";
+import {FishingPracticeChecklist,FishingProgramStarter,fishingDraftContext} from "../../src/features/group-placement/fishing-program.tsx";
 
 describe("draft group and proposed placement workspace",()=>{
  it.each(["en","he"] as const)("labels the owner-only state boundary in %s",locale=>{
@@ -41,7 +41,7 @@ describe("draft group and proposed placement workspace",()=>{
  });
  it("keeps the same interest available for other draft groups but not duplicated within one",()=>{
   const data:GroupPlacementList={draftGroups:[],eligibleGroupInterests:[{id:"interest",state:"service_interest",serviceType:"group",familyId:"family",familyLabel:"Family",personId:"person",personLabel:"Child",sourceInquiryId:"11111111-1111-4111-8111-111111111111",sourceInquiryCreatedAt:"2029-01-01T00:00:00.000Z",recordedBy:"actor",createdAt:"2029-01-01T00:00:00.000Z"}],
-  proposedPlacements:[{id:"proposal",state:"proposed_placement",draftGroupId:"group-a",serviceInterestId:"interest",familyId:"family",familyLabel:"Family",personId:"person",personLabel:"Child",sourceInquiryId:"11111111-1111-4111-8111-111111111111",sourceInquiryCreatedAt:"2029-01-01T00:00:00.000Z",recordedBy:"actor",createdAt:"2029-01-01T00:00:00.000Z",proposalStatus:"current",movedFromProposalId:null,movedToProposalId:null}],proposalMovements:[],meetingRevisions:[]};
+  proposedPlacements:[{id:"proposal",state:"proposed_placement",draftGroupId:"group-a",serviceInterestId:"interest",familyId:"family",familyLabel:"Family",personId:"person",personLabel:"Child",sourceInquiryId:"11111111-1111-4111-8111-111111111111",sourceInquiryCreatedAt:"2029-01-01T00:00:00.000Z",recordedBy:"actor",createdAt:"2029-01-01T00:00:00.000Z",proposalStatus:"current",movedFromProposalId:null,movedToProposalId:null}],proposalMovements:[],meetingRevisions:[],fishingPracticeRevisions:[]};
   expect(availableGroupInterests(data,"group-a")).toEqual([]);expect(availableGroupInterests(data,"group-b")).toHaveLength(1);
  });
  it("keeps syntax validation separate from trusted movement state",()=>{
@@ -53,7 +53,7 @@ describe("draft group and proposed placement workspace",()=>{
  it("offers only unused destinations for a current exact-interest proposal",()=>{
   const source={id:"source",state:"proposed_placement" as const,draftGroupId:"group-a",serviceInterestId:"interest",familyId:"family",familyLabel:"Family",personId:"person",personLabel:"Child",sourceInquiryId:"11111111-1111-4111-8111-111111111111",sourceInquiryCreatedAt:"2029-01-01T00:00:00.000Z",recordedBy:"actor",createdAt:"2029-01-01T00:00:00.000Z",proposalStatus:"current" as const,movedFromProposalId:null,movedToProposalId:null};
   const occupied={...source,id:"historical",draftGroupId:"group-b",proposalStatus:"moved" as const,movedToProposalId:"next"};
-  const data:GroupPlacementList={draftGroups:[{id:"group-a",state:"draft_group",label:"A",recordedBy:"actor",createdAt:source.createdAt},{id:"group-b",state:"draft_group",label:"B",recordedBy:"actor",createdAt:source.createdAt},{id:"group-c",state:"draft_group",label:"C",recordedBy:"actor",createdAt:source.createdAt}],eligibleGroupInterests:[],proposedPlacements:[source,occupied],proposalMovements:[],meetingRevisions:[]};
+  const data:GroupPlacementList={draftGroups:[{id:"group-a",state:"draft_group",label:"A",recordedBy:"actor",createdAt:source.createdAt},{id:"group-b",state:"draft_group",label:"B",recordedBy:"actor",createdAt:source.createdAt},{id:"group-c",state:"draft_group",label:"C",recordedBy:"actor",createdAt:source.createdAt}],eligibleGroupInterests:[],proposedPlacements:[source,occupied],proposalMovements:[],meetingRevisions:[],fishingPracticeRevisions:[]};
   expect(availableMoveDestinations(data,source).map(item=>item.id)).toEqual(["group-c"]);
   expect(availableMoveDestinations(data,{...source,proposalStatus:"moved",movedToProposalId:"next"})).toEqual([]);
  });
@@ -71,6 +71,26 @@ describe("draft group and proposed placement workspace",()=>{
   expect(proposedDraftMeetingCommandSchema.safeParse({action:"propose_draft_group_meeting",draftGroupId:"22222222-2222-4222-8222-222222222222",...base,timeZone:"UTC"}).success).toBe(false);
   expect(proposedDraftMeetingCommandSchema.safeParse({action:"propose_draft_group_meeting",draftGroupId:"22222222-2222-4222-8222-222222222222",...base,durationMinutes:0}).success).toBe(false);
   expect(reviseDraftMeetingCommandSchema.safeParse({action:"revise_draft_group_meeting",sourceRevisionId:"33333333-3333-4333-8333-333333333333",...base,draftGroupId:"untrusted"}).success).toBe(false);
+ });
+ it("accepts only the bounded fishing-practice evidence contract",()=>{
+  const valid={action:"record_fishing_practice",operationId:"11111111-1111-4111-8111-111111111111",draftGroupId:"22222222-2222-4222-8222-222222222222",
+   proposedPlacementId:"33333333-3333-4333-8333-333333333333",moduleKey:"knots",evidenceState:"practice_observed",note:"Tied independently.",expectedRevisionId:null};
+  expect(recordFishingPracticeCommandSchema.parse(valid)).toEqual(valid);
+  expect(recordFishingPracticeCommandSchema.safeParse({...valid,moduleKey:"trip_authorization"}).success).toBe(false);
+  expect(recordFishingPracticeCommandSchema.safeParse({...valid,pass:true}).success).toBe(false);
+  expect(recordFishingPracticeCommandSchema.safeParse({...valid,note:"x".repeat(501)}).success).toBe(false);
+ });
+ it.each(["en","he"] as const)("renders a named, unset, non-ranking fishing checklist in %s",locale=>{
+  const group={id:"22222222-2222-4222-8222-222222222222",state:"draft_group" as const,label:locale==="he"?"תוכנית דיג — טיוטה":"Fishing program — draft",recordedBy:"actor",createdAt:"2029-01-01T00:00:00.000Z"};
+  const placement={id:"33333333-3333-4333-8333-333333333333",state:"proposed_placement" as const,draftGroupId:group.id,serviceInterestId:"interest",familyId:"family",familyLabel:"Family",personId:"person",personLabel:"Synthetic learner",sourceInquiryId:"11111111-1111-4111-8111-111111111111",sourceInquiryCreatedAt:group.createdAt,recordedBy:"actor",createdAt:group.createdAt,proposalStatus:"current" as const,movedFromProposalId:null,movedToProposalId:null};
+  const html=renderToStaticMarkup(createElement(FishingPracticeChecklist,{locale,group,placements:[placement],revisions:[],reload:async()=>{}}));
+  for(const text of locale==="he"?["קשירת קשרים","הרכבת חכה","משקולות, עופרות, לידרים וקרסים","הטלה בשטח","תרגול מאבק בדג","בחירת ציוד"]:["Knot tying","Rigging a rod","Sinkers, weights, leaders and hooks","Field casting","Practising fighting a fish","Equipment selection"])expect(html).toContain(text);
+  expect(html).toContain(locale==="he"?"קריטריון מתוכנן: לא הוגדר":"Planned criterion: Unset");
+  expect(html).toContain(locale==="he"?"עדיין אין ראיה":"No evidence yet");
+  expect(html).toContain(locale==="he"?"טרם הוחלט":"Not decided");
+  expect(html).toContain(locale==="he"?"ללא הרשמה":"not enrolled");
+  expect(html).toContain(locale==="he"?"לא הוגדרו ציון או כלל מעבר":"No score or pass rule is set");
+  expect(html).not.toMatch(/(?:ranking|ranked|דירוג)/i);
  });
  it.each(["en","he"] as const)("renders the owner-only proposed occurrence boundary and redacted conflict in %s",locale=>{
   const group={id:"22222222-2222-4222-8222-222222222222",state:"draft_group" as const,label:"Synthetic group",recordedBy:"actor",createdAt:"2029-01-01T00:00:00.000Z"},
