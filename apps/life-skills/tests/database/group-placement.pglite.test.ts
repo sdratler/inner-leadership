@@ -188,19 +188,31 @@ it("records and corrects fishing practice evidence without enrollment, trip, att
  const correction={...create,operationId:randomUUID(),evidenceState:"no_evidence_yet" as const,note:"Correction: observation was not conclusive.",expectedRevisionId:first.item.id};
  const second=await placementStore.recordFishingPractice(actor,correction);expect(second).toMatchObject({saved:true,replayed:false,item:{previousRevisionId:first.item.id,evidenceState:"no_evidence_yet",revisionStatus:"current",note:correction.note}});
  await expect(placementStore.recordFishingPractice(actor,{...correction,operationId:randomUUID(),note:"Stale competitor"})).rejects.toMatchObject({code:"CONFLICT"});
- const listed=await placementStore.list(actor),history=listed.fishingPracticeRevisions.filter(row=>row.proposedPlacementId===placement.item.id&&row.moduleKey==="knots");
- expect(history).toHaveLength(2);expect(history.find(row=>row.id===first.item.id)).toMatchObject({revisionStatus:"corrected",nextRevisionId:second.item.id});expect(history.find(row=>row.id===second.item.id)).toMatchObject({revisionStatus:"current"});
+ const listed=await placementStore.list(actor),current=listed.fishingPracticeRevisions.filter(row=>row.proposedPlacementId===placement.item.id&&row.moduleKey==="knots");expect(current).toEqual([expect.objectContaining({id:second.item.id,revisionStatus:"current"})]);
+ const page=await placementStore.listFishingPracticeHistory(actor,{placementId:placement.item.id,moduleKey:"knots",cursor:null}),history=page.items;
+ expect(page.nextCursor).toBeNull();expect(history).toHaveLength(2);expect(history.find(row=>row.id===first.item.id)).toMatchObject({revisionStatus:"corrected",nextRevisionId:second.item.id});expect(history.find(row=>row.id===second.item.id)).toMatchObject({revisionStatus:"current"});
  const stored=await db.query<{note_ciphertext:string}>("SELECT note_ciphertext FROM ls_group_admin.fishing_practice_revisions WHERE id=$1",[first.item.id]);expect(stored.rows[0]!.note_ciphertext).not.toContain(create.note);
  await expect(db.query("UPDATE ls_group_admin.fishing_practice_revisions SET evidence_state='practice_observed' WHERE workspace_id=$1 AND id=$2",[actor.workspaceId,second.item.id])).rejects.toThrow();
  await expect(db.query("DELETE FROM ls_group_admin.fishing_practice_operations WHERE workspace_id=$1 AND practice_revision_id=$2",[actor.workspaceId,second.item.id])).rejects.toThrow();
  await expect(placementStore.recordFishingPractice(actors[1]!,{...create,operationId:randomUUID()})).rejects.toMatchObject({code:"FORBIDDEN"});
  await expect(placementStore.recordFishingPractice(actors[2]!,{...create,operationId:randomUUID()})).rejects.toMatchObject({code:"UNAVAILABLE"});
+ await expect(placementStore.listFishingPracticeHistory(actors[1]!,{placementId:placement.item.id,moduleKey:"knots",cursor:null})).rejects.toMatchObject({code:"FORBIDDEN"});
+ await expect(placementStore.listFishingPracticeHistory(actors[2]!,{placementId:placement.item.id,moduleKey:"knots",cursor:null})).rejects.toMatchObject({code:"NOT_FOUND"});
  expect((await db.query(`SELECT
   (SELECT count(*)::int FROM ls_cases.cases WHERE workspace_id=$1) AS cases,
   (SELECT count(*)::int FROM ls_cases.engagements WHERE workspace_id=$1) AS engagements,
   (SELECT count(*)::int FROM ls_calendar.appointments WHERE workspace_id=$1) AS appointments,
   (SELECT count(*)::int FROM ls_attendance.records WHERE workspace_id=$1) AS attendance`,[actor.workspaceId])).rows).toEqual(before);
 });
+
+it("keeps the latest evidence readable and pages all history beyond revision 600",async()=>{
+ const actor=actors[0]!,group=await placementStore.createDraftGroup(actor,{action:"create_draft_group",operationId:randomUUID(),label:"Fishing program — draft"}),interest=await serviceInterest(),placement=await placementStore.proposePlacement(actor,{action:"propose_group_placement",operationId:randomUUID(),draftGroupId:group.item.id,serviceInterestId:interest.item.id});
+ let expectedRevisionId:string|null=null,lastId="";for(let revision=1;revision<=601;revision++){const saved=await placementStore.recordFishingPractice(actor,{action:"record_fishing_practice",operationId:randomUUID(),draftGroupId:group.item.id,proposedPlacementId:placement.item.id,moduleKey:"field_casting",evidenceState:revision%2?"practice_observed":"no_evidence_yet",note:`Synthetic bounded history ${revision}`,expectedRevisionId});expectedRevisionId=saved.item.id;lastId=saved.item.id;}
+ const listed=await placementStore.list(actor),visible=listed.fishingPracticeRevisions.filter(item=>item.proposedPlacementId===placement.item.id&&item.moduleKey==="field_casting");expect(visible).toEqual([expect.objectContaining({id:lastId,note:"Synthetic bounded history 601",revisionStatus:"current"})]);
+ const ids:string[]=[],notes:string[]=[];let cursor:string|null=null,pages=0;do{const page=await placementStore.listFishingPracticeHistory(actor,{placementId:placement.item.id,moduleKey:"field_casting",cursor});pages++;expect(page.items.length).toBeLessThanOrEqual(20);ids.push(...page.items.map(item=>item.id));notes.push(...page.items.map(item=>item.note));cursor=page.nextCursor;}while(cursor);
+ expect(pages).toBe(31);expect(ids).toHaveLength(601);expect(new Set(ids).size).toBe(601);expect(notes[0]).toBe("Synthetic bounded history 601");expect(notes.at(-1)).toBe("Synthetic bounded history 1");
+ await expect(placementStore.listFishingPracticeHistory(actor,{placementId:placement.item.id,moduleKey:"field_casting",cursor:"not-a-valid-cursor"})).rejects.toMatchObject({code:"INVALID_REQUEST"});
+},30000);
 
 it("rejects DST gaps and folds, bounds duration, and treats a transition-crossing duration as elapsed minutes",async()=>{
  const actor=actors[0]!,group=await placementStore.createDraftGroup(actor,{action:"create_draft_group",operationId:randomUUID(),label:"DST group"}),base={action:"propose_draft_group_meeting" as const,operationId:randomUUID(),draftGroupId:group.item.id,timeZone:"Asia/Jerusalem" as const,durationMinutes:60,venue:"DST room"};

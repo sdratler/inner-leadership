@@ -34,6 +34,8 @@ export const recordFishingPracticeCommandSchema=z.object({action:z.literal("reco
  draftGroupId:z.string().uuid(),proposedPlacementId:z.string().uuid(),moduleKey:fishingPracticeModuleKeySchema,
  evidenceState:z.enum(["practice_observed","no_evidence_yet"]),note:z.string().trim().max(500),expectedRevisionId:z.string().uuid().nullable(),
 }).strict();
+export const fishingPracticeHistoryQuerySchema=z.object({placementId:z.string().uuid(),moduleKey:fishingPracticeModuleKeySchema,
+ cursor:z.string().min(1).max(200).nullable()}).strict();
 export const groupPlacementCommandSchema=z.union([draftGroupCommandSchema,proposedPlacementCommandSchema,moveProposedPlacementCommandSchema,
  proposedDraftMeetingCommandSchema,reviseDraftMeetingCommandSchema,recordFishingPracticeCommandSchema]);
 export type DraftGroupCommand=z.infer<typeof draftGroupCommandSchema>;
@@ -42,6 +44,7 @@ export type MoveProposedPlacementCommand=z.infer<typeof moveProposedPlacementCom
 export type ProposedDraftMeetingCommand=z.infer<typeof proposedDraftMeetingCommandSchema>;
 export type ReviseDraftMeetingCommand=z.infer<typeof reviseDraftMeetingCommandSchema>;
 export type RecordFishingPracticeCommand=z.infer<typeof recordFishingPracticeCommandSchema>;
+export type FishingPracticeHistoryQuery=z.infer<typeof fishingPracticeHistoryQuerySchema>;
 export type FishingPracticeModuleKey=z.infer<typeof fishingPracticeModuleKeySchema>;
 export type DraftGroupRecord={id:string;state:"draft_group";label:string;recordedBy:string;createdAt:string};
 export type EligibleGroupInterest={id:string;state:"service_interest";serviceType:"group";familyId:string;familyLabel:string;
@@ -59,6 +62,7 @@ export type DraftMeetingRevisionRecord={id:string;occurrenceId:string;state:"pro
 export type FishingPracticeRevisionRecord={id:string;state:"practice_observation";programKey:"fishing_lessons";draftGroupId:string;
  proposedPlacementId:string;moduleKey:FishingPracticeModuleKey;evidenceState:"practice_observed"|"no_evidence_yet";note:string;
  previousRevisionId:string|null;nextRevisionId:string|null;revisionStatus:"current"|"corrected";recordedBy:string;createdAt:string};
+export type FishingPracticeHistoryPage={items:FishingPracticeRevisionRecord[];nextCursor:string|null};
 export type GroupPlacementList={draftGroups:DraftGroupRecord[];eligibleGroupInterests:EligibleGroupInterest[];
  proposedPlacements:ProposedPlacementRecord[];proposalMovements:ProposedPlacementMoveRecord[];meetingRevisions:DraftMeetingRevisionRecord[];
  fishingPracticeRevisions:FishingPracticeRevisionRecord[]};

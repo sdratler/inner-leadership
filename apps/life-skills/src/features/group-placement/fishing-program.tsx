@@ -49,16 +49,23 @@ export const fishingPracticeModules:readonly {key:FishingPracticeModuleKey;en:st
 export function isFishingProgramGroup(group:Pick<DraftGroupRecord,"label">){return isFishingDraftLabel(group.label);}
 type Draft={evidenceState:"practice_observed"|"no_evidence_yet";note:string};
 type Notice={kind:"saved"|"error"|"uncertain";message:string};
+type HistoryState={items:FishingPracticeRevisionRecord[];nextCursor:string|null;loading:boolean;error:boolean};
 
 export function FishingPracticeChecklist({locale,group,placements,revisions,reload}:{locale:Locale;group:DraftGroupRecord;
  placements:ProposedPlacementRecord[];revisions:FishingPracticeRevisionRecord[];reload:()=>Promise<void>}){
  const t=(en:string,he:string)=>locale==="he"?he:en,pending=useRef(new Map<string,RecordFishingPracticeCommand>());
- const [drafts,setDrafts]=useState<Record<string,Draft>>({}),[notices,setNotices]=useState<Record<string,Notice>>({}),[busy,setBusy]=useState("");
+ const [drafts,setDrafts]=useState<Record<string,Draft>>({}),[notices,setNotices]=useState<Record<string,Notice>>({}),[busy,setBusy]=useState(""),
+  [histories,setHistories]=useState<Record<string,HistoryState>>({});
  const key=(placementId:string,moduleKey:FishingPracticeModuleKey)=>`${placementId}:${moduleKey}`;
  const current=(placementId:string,moduleKey:FishingPracticeModuleKey)=>revisions.find(item=>item.proposedPlacementId===placementId&&item.moduleKey===moduleKey&&item.revisionStatus==="current")??null;
- const history=(placementId:string,moduleKey:FishingPracticeModuleKey)=>revisions.filter(item=>item.proposedPlacementId===placementId&&item.moduleKey===moduleKey)
-  .sort((a,b)=>a.createdAt.localeCompare(b.createdAt)||a.id.localeCompare(b.id));
  const change=(recordKey:string,patch:Partial<Draft>,fallback:Draft)=>setDrafts(value=>({...value,[recordKey]:{...(value[recordKey]??fallback),...patch}}));
+ async function loadHistory(recordKey:string,placementId:string,moduleKey:FishingPracticeModuleKey,append=false){const prior=histories[recordKey];if(prior?.loading)return;
+  const cursor=append?prior?.nextCursor??null:null;setHistories(value=>({...value,[recordKey]:{items:append?value[recordKey]?.items??[]:[],nextCursor:cursor,loading:true,error:false}}));
+  try{const search=new URLSearchParams({placementId,moduleKey});if(cursor)search.set("cursor",cursor);const response=await fetch(`/api/private/group-placement?${search}`,{headers:{accept:"application/json"}});
+   if(!response.ok)throw new Error();const body=await response.json(),page=body?.data;if(!body?.ok||!Array.isArray(page?.items)||!(typeof page.nextCursor==="string"||page.nextCursor===null))throw new Error();
+   setHistories(value=>({...value,[recordKey]:{items:append?[...(value[recordKey]?.items??[]),...page.items]:page.items,nextCursor:page.nextCursor,loading:false,error:false}}));
+  }catch{setHistories(value=>({...value,[recordKey]:{items:value[recordKey]?.items??[],nextCursor:value[recordKey]?.nextCursor??null,loading:false,error:true}}));}
+ }
  async function save(event:FormEvent<HTMLFormElement>,placement:ProposedPlacementRecord,moduleKey:FishingPracticeModuleKey){
   event.preventDefault();const recordKey=key(placement.id,moduleKey);if(busy)return;const existing=current(placement.id,moduleKey),values=new FormData(event.currentTarget),prior=pending.current.get(recordKey),
    parsed=prior?{success:true as const,data:prior}:recordFishingPracticeCommandSchema.safeParse({action:"record_fishing_practice",operationId:crypto.randomUUID(),
@@ -76,7 +83,7 @@ export function FishingPracticeChecklist({locale,group,placements,revisions,relo
      response.status===409?t("A newer correction was saved. Your edits remain here; review the current evidence and save again.","נשמר תיקון חדש יותר. העריכות נשארו כאן; יש לבדוק את הראיה העדכנית ולשמור שוב."):
      t("The observation was not saved. Review it and try again.","התצפית לא נשמרה. יש לבדוק ולנסות שוב.")}}));return;}
    const body=await response.json();if(!body.ok||body.data?.saved!==true)throw new Error();pending.current.delete(recordKey);setDrafts(value=>{const copy={...value};delete copy[recordKey];return copy;});
-   setNotices(value=>({...value,[recordKey]:{kind:"saved",message:t("Practice evidence saved and read back. Placement, attendance, trip review and billing did not change.","ראיית התרגול נשמרה ונקראה בחזרה. השיבוץ, הנוכחות, בדיקת היציאה והתשלום לא השתנו.")}}));await reload();
+   setNotices(value=>({...value,[recordKey]:{kind:"saved",message:t("Practice evidence saved and read back. Placement, attendance, trip review and billing did not change.","ראיית התרגול נשמרה ונקראה בחזרה. השיבוץ, הנוכחות, בדיקת היציאה והתשלום לא השתנו.")}}));await reload();await loadHistory(recordKey,placement.id,moduleKey);
   }catch(error){if(!requestStarted||error instanceof IdentityClientError&&error.code==="UNAUTHENTICATED")pending.current.delete(recordKey);
    const uncertain=requestStarted;setNotices(value=>({...value,[recordKey]:{kind:uncertain?"uncertain":"error",message:uncertain?
     t("Save is unconfirmed. Keep this page open and retry the exact same observation.","השמירה לא אומתה. יש להשאיר דף זה פתוח ולנסות שוב את אותה תצפית בדיוק."):
@@ -89,7 +96,7 @@ export function FishingPracticeChecklist({locale,group,placements,revisions,relo
   {placements.length===0?<p className={styles.empty}>{t("No current proposed learner. Add a proposed placement before recording practice evidence.","אין לומד עם הצעת שיבוץ נוכחית. יש להוסיף הצעת שיבוץ לפני תיעוד ראיות תרגול.")}</p>:placements.map(placement=><article className={styles.learner} key={placement.id}>
    <header><h5>{placement.personLabel}</h5><p>{t("Proposed placement only — not enrolled","הצעת שיבוץ בלבד — ללא הרשמה")}</p></header>
    <div className={styles.tripReview}><strong>{t("Trip review","בדיקת יציאה")}</strong><span>{t("Not decided","טרם הוחלט")}</span><small>{t("Practice evidence does not authorize attendance or a trip.","ראיית תרגול אינה מאשרת נוכחות או יציאה.")}</small></div>
-   <ol className={styles.modules}>{fishingPracticeModules.map(module=>{const recordKey=key(placement.id,module.key),saved=current(placement.id,module.key),draft=drafts[recordKey]??{evidenceState:saved?.evidenceState??"practice_observed",note:saved?.note??""},notice=notices[recordKey],items=history(placement.id,module.key);
+   <ol className={styles.modules}>{fishingPracticeModules.map(module=>{const recordKey=key(placement.id,module.key),saved=current(placement.id,module.key),draft=drafts[recordKey]??{evidenceState:saved?.evidenceState??"practice_observed",note:saved?.note??""},notice=notices[recordKey],history=histories[recordKey];
     return <li key={module.key} data-module={module.key}><div className={styles.moduleHeading}><div><h6>{locale==="he"?module.he:module.en}</h6><small>{t("Planned criterion: Unset","קריטריון מתוכנן: לא הוגדר")}</small></div><strong className={saved?.evidenceState==="practice_observed"?styles.observed:styles.unrecorded}>{!saved?t("No evidence yet","עדיין אין ראיה"):saved.evidenceState==="practice_observed"?t("Practice observed","התרגול נצפה"):t("No evidence yet — correction recorded","עדיין אין ראיה — נשמר תיקון")}</strong></div>
      {saved?.note&&<p dir="auto" className={styles.practiceNote}>{saved.note}</p>}
      {notice&&<p role={notice.kind==="error"?"alert":"status"} className={notice.kind==="uncertain"?styles.uncertain:undefined}>{notice.message}</p>}
@@ -98,7 +105,13 @@ export function FishingPracticeChecklist({locale,group,placements,revisions,relo
        <option value="practice_observed">{t("Practice observed","התרגול נצפה")}</option><option value="no_evidence_yet">{t("Correct to no evidence yet","תיקון לעדיין אין ראיה")}</option></select></label>
        <label>{t("Optional factual note","הערה עובדתית אופציונלית")}<textarea name="note" maxLength={500} value={draft.note} onChange={event=>change(recordKey,{note:event.target.value},draft)} disabled={busy===recordKey||Boolean(pending.current.get(recordKey))}/></label>
        <button type="submit" className="lsw-button lsw-button--primary" disabled={Boolean(busy)&&busy!==recordKey}>{busy===recordKey?t("Saving…","שומר…"):pending.current.has(recordKey)?t("Retry exact same save","ניסיון חוזר לאותה שמירה בדיוק"):saved?t("Save correction","שמירת תיקון"):t("Save observation","שמירת תצפית")}</button></form></details>
-     {items.length>0&&<details className={styles.practiceHistory}><summary>{t("Observation history","היסטוריית תצפיות")}</summary><ol>{items.map(item=><li key={item.id}><strong>{item.evidenceState==="practice_observed"?t("Practice observed","התרגול נצפה"):t("No evidence yet","עדיין אין ראיה")}</strong><time dateTime={item.createdAt}>{new Intl.DateTimeFormat(locale==="he"?"he-IL":"en-GB",{dateStyle:"short",timeStyle:"short",timeZone:"Asia/Jerusalem"}).format(new Date(item.createdAt))}</time><small>{t("Practitioner ref","מזהה מטפל")} <bdi dir="ltr">{item.recordedBy.slice(0,8)}</bdi></small>{item.note&&<span dir="auto">{item.note}</span>}</li>)}</ol></details>}
+     {saved&&<details className={styles.practiceHistory} onToggle={event=>{if(event.currentTarget.open&&!histories[recordKey])void loadHistory(recordKey,placement.id,module.key);}}><summary>{t("Observation history","היסטוריית תצפיות")}</summary>
+      {history?.error&&<p role="alert">{t("History could not be loaded. Retry without changing the saved evidence.","לא ניתן היה לטעון את ההיסטוריה. יש לנסות שוב בלי לשנות את הראיה השמורה.")}</p>}
+      {history?.loading&&history.items.length===0&&<p role="status">{t("Loading history…","טוען היסטוריה…")}</p>}
+      {history&&history.items.length>0&&<ol>{history.items.map(item=><li key={item.id}><strong>{item.evidenceState==="practice_observed"?t("Practice observed","התרגול נצפה"):t("No evidence yet","עדיין אין ראיה")}</strong><time dateTime={item.createdAt}>{new Intl.DateTimeFormat(locale==="he"?"he-IL":"en-GB",{dateStyle:"short",timeStyle:"short",timeZone:"Asia/Jerusalem"}).format(new Date(item.createdAt))}</time><small>{t("Practitioner ref","מזהה מטפל")} <bdi dir="ltr">{item.recordedBy.slice(0,8)}</bdi></small>{item.note&&<span dir="auto">{item.note}</span>}</li>)}</ol>}
+      {history?.nextCursor&&<button type="button" className="lsw-button lsw-button--secondary" disabled={history.loading} onClick={()=>void loadHistory(recordKey,placement.id,module.key,true)}>{history.loading?t("Loading…","טוען…"):t("Load older observations","טעינת תצפיות ישנות יותר")}</button>}
+      {history?.error&&<button type="button" className="lsw-button lsw-button--secondary" disabled={history.loading} onClick={()=>void loadHistory(recordKey,placement.id,module.key,history.items.length>0)}>{t("Retry history","ניסיון חוזר לטעינת ההיסטוריה")}</button>}
+     </details>}
     </li>;})}</ol>
   </article>)}
  </section>;
