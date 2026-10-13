@@ -22,6 +22,7 @@ export function journeyLandingPath(program:FloridaProgramId,locale:Locale){retur
 /** Provenance for the curated, stage-appropriate sample text. The private drafts remain in Drive. */
 export const journeySourceManifest={
  instruction:"LS-FISH-SUNDAY12-20261013-05",
+ privateProposal:{instruction:"LS-FISH-MODULE-ROLLING-20261013-06",websiteSection:36,productSection:35,scope:"authenticated owner sample only",status:"proposed; not implemented",sourceRevision:"AHj4eMTozDPLkJuBRve67Rg0AjaZ8g3GuUv6sGMa-EX8VM9BdRCspcbh4_K8OOXGkxNED7ganMm8dU_vqJpxl95OWkqghY7yVqOPCYRbR7A",forms:"rolling amendment pending; v3.2 retained as history",moduleStart:"unresolved",maximumWait:"unresolved"},
  academy:{start:"1fyrcMEBOsf1T50m3JN-iexE96fbxvpDQfTFHLYhctT0",websiteSection:35,productSection:34,status:"proposed",commercialAgreement:"reviewed draft; actual offer and family-use approval pending",draftVersion:"3.2",english:{id:"16xfmqnq1_U3gQua9m30ZQyiwDcvWsrzM",sha256:"034ce55d694e693e40167dc6536964115681d179fc57b7fff20784bb72febd16"},hebrew:{id:"1dSo0DNaxSF1tN3q7wTKaAr86QRrIv99E",sha256:"c728587361e9c348e477507b1302ec90b62ebb563d3b3e35548f20515dda3f81"}},
  english:{id:"1eS55mzzs6FOdzL0N90fNjtMyIhExq-wH",version:"2.0",sections:["F02","F03","F03-S","F03-T","F03-P","F09"]},
  hebrew:{id:"1Dbkco3GzZ0WmyJGIxA7RTprkF0xo5e-_",version:"2.1",sha256:"bf156b6c5dffa80c850c011893479711b971bf84815d0a79995b090912da636e"},

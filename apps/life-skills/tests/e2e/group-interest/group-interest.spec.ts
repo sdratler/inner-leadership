@@ -33,12 +33,16 @@ if(!runtimePath){
   await expect(page.locator("form").getByRole("button",{name:locale==="he"?"בדיקת פנייה לדוגמה — ללא שליחה":"Preview inquiry — not sent",exact:true})).toBeEnabled();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   if(program==="sunday_fishing_academy"){
-   for(const marker of locale==="he"?["שלב 1","שלב 2","שלב 3"]:["Stage 1","Stage 2","Stage 3"])await expect(page.locator("main")).toContainText(marker);
-   for(const marker of locale==="he"?["3–3.5 שעות","מחליפה את מפגש יום ראשון","W02 קשרים","W03 מערכי דיג","לא על הגשר","יציאה מקומית אחת","מזון כשר ארוז ומים","ללא מנגל נוסף"]:["3–3.5 hours","replaces Sunday teaching","W02 knots","W03 rigging","not on the bridge","One specifically scheduled weekday local","packed kosher food and water","no second barbecue"])await expect(page.locator("main")).toContainText(marker);
+   for(const marker of locale==="he"?["דרגה A","דרגה B","דרגה C"]:["Rank A","Rank B","Rank C"])await expect(page.locator("main")).toContainText(marker);
+   for(const marker of locale==="he"?["הצעה פרטית לעיון","אינן ארבעה ימי ראשון רצופים","שלוש יחידות שיעור מקדימות","ארבע יחידות פעילות שטח","שלוש יחידות הכנה","ההמתנה המרבית","ללא מנגל נוסף","ספריית נושאים לשימוש חוזר"]:["PRIVATE PROPOSAL","do not mean four consecutive Sundays","Three prerequisite class credits","Four defined supervised field-session credits","Three preparation/offshore-seamanship credits","maximum wait","no second barbecue","reusable topic library"])await expect(page.locator("main")).toContainText(marker);
    expect(await page.locator("main").innerText()).not.toContain(locale==="he"?"תשלום חבילה אחד":"One package payment");
   }
   await page.screenshot({path:info.outputPath(`academy-sample-landing-${program}-${locale}-${info.project.name}.png`),fullPage:true});
   await page.getByRole("link",{name:locale==="he"?"פתיחת המסלול המלא":"Open the complete journey",exact:true}).click();await expect(page).toHaveURL(route);
+  const programs=page.getByRole("navigation",{name:locale==="he"?"בחירת מסלול":"Choose a program"}),activeProgram=programs.locator('a[aria-current="page"]');
+  expect(await activeProgram.evaluate(node=>({background:getComputedStyle(node).backgroundColor,color:getComputedStyle(node).color}))).toEqual({background:"rgb(36, 81, 89)",color:"rgb(255, 255, 255)"});
+  expect(await programs.locator('a:not([aria-current])').first().evaluate(node=>getComputedStyle(node).color)).toBe("rgb(22, 63, 72)");
+  await activeProgram.focus();expect(await activeProgram.evaluate(node=>getComputedStyle(node).outlineStyle)).toBe("solid");
   const form=page.locator("form"),preview=form.getByRole("button",{name:locale==="he"?"בדיקת פנייה לדוגמה — ללא שליחה":"Preview inquiry — not sent",exact:true});
   await preview.click();await expect(form.getByRole("alert")).toBeFocused();
   const name=`Synthetic sample ${program} ${locale}`;
@@ -48,10 +52,10 @@ if(!runtimePath){
   for(const stage of ["fit-call","offer","payment","receipt","enrollment","next"]){
    await next.click();await expect(page.locator("#journey-heading")).toBeFocused();await expect(page.locator("main")).toContainText(locale==="he"?"דוגמה בלבד":"SAMPLE ONLY");expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
    if(stage==="payment"){await page.locator("select").selectOption("simulated");await expect(page.getByRole("button",{name:locale==="he"?"התשלום אינו זמין":"Checkout unavailable",exact:true})).toBeDisabled();}
-   if(program==="sunday_fishing_academy"&&stage==="offer"){await expect(page.locator("main")).toContainText("3–3.5");await expect(page.locator("main")).toContainText(locale==="he"?"ללא מנגל נוסף":"no second barbecue");}
-   if(program==="sunday_fishing_academy"&&stage==="enrollment")await expect(page.locator("main")).toContainText(locale==="he"?"מחליפה את מפגש יום ראשון":"replaces Sunday teaching");
+   if(program==="sunday_fishing_academy"&&stage==="offer"){await expect(page.locator("main")).toContainText(locale==="he"?"טפסי המסלול המתגלגל עדיין ממתינים":"Rolling-module forms are pending");await expect(page.locator("main")).toContainText(locale==="he"?"טרם הוסדרו":"remain unresolved");await expect(page.getByRole("button",{name:locale==="he"?"ההסכם עדיין אינו זמין לחתימה":"Agreement unavailable for signature",exact:true})).toBeDisabled();}
+   if(program==="sunday_fishing_academy"&&stage==="enrollment"){await expect(page.locator("main")).toContainText(locale==="he"?"לא נרכשה או הוקצתה":"No actual rank is purchased or allocated");await page.getByText(locale==="he"?"יחידות ומוכנות נפרדת להמחשה — לא פנקס פעיל":"Illustrative credits and separate readiness — not a ledger",{exact:true}).click();await expect(page.locator("main")).toContainText(locale==="he"?"0 יחידות שסופקו / 4 שנותרו":"0 supplied / 4 remaining");await expect(page.locator("main")).toContainText(locale==="he"?"בטיחות: ללא אישור":"Safety: not cleared");}
    if(stage==="offer"||stage==="next")await page.screenshot({path:info.outputPath(`academy-sample-${stage}-${program}-${locale}-${info.project.name}.png`),fullPage:false});
-   if(stage==="next"&&program==="sunday_fishing_academy")await expect(page.locator("main")).toContainText(locale==="he"?"המסלול עדיין לא מומש":"This path is not implemented");
+   if(stage==="next"&&program==="sunday_fishing_academy")await expect(page.locator("main")).toContainText(locale==="he"?"עדיין לא מומשו":"not implemented");
   }
   await expect(page.getByRole("link",{name:locale==="he"?"פתיחת הפנייה שנשמרה לצוות":"Open staff inquiry readback",exact:true})).toHaveCount(0);
   await page.getByRole("navigation",{name:locale==="he"?"שלבי מסלול ההורה":"Parent journey stages"}).getByRole("button",{name:locale==="he"?"פנייה":"Inquiry",exact:true}).click();await expect(form.locator('[name="parentName"]')).toHaveValue(name);

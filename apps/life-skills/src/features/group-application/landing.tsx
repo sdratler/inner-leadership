@@ -3,7 +3,7 @@
 import {useEffect,useState} from "react";
 import type {Locale} from "../../lib/locale.ts";
 import type {FloridaProgramId} from "./contract.ts";
-import {academyLandingDraft} from "./academy-draft.ts";
+import {academyLandingDraft,academyLandingForMode} from "./academy-draft.ts";
 import {GroupApplicationForm} from "./application-form.tsx";
 import baseStyles from "./landing.module.css";
 import additions from "./landing-additions.module.css";
@@ -37,7 +37,7 @@ const programs:Record<FloridaProgramId,Program>={
 
 const pathFor=(locale:Locale,program:Program,mode:"native"|"sample"="native")=>mode==="sample"?`/${locale}/sample?page=florida-landing&program=${program.id}`:`/${locale}/florida${program.slug?`/${program.slug}`:""}`;
 export function GroupApplicationLanding({locale:initialLocale,programId="sunday_fishing_academy",mode="native"}:{locale:Locale;programId?:FloridaProgramId;mode?:"native"|"sample"}){
- const [locale,setLocale]=useState<Locale>(initialLocale),[menuOpen,setMenuOpen]=useState(false),program=programs[programId];
+ const [locale,setLocale]=useState<Locale>(initialLocale),[menuOpen,setMenuOpen]=useState(false),program=programId==="sunday_fishing_academy"?academyLandingForMode(mode):programs[programId];
  const t=(en:string,he:string)=>locale==="he"?he:en,p=(value:Pair)=>value[locale];
  useEffect(()=>{document.documentElement.lang=locale;document.documentElement.dir=locale==="he"?"rtl":"ltr";},[locale]);
  const switchLanguage=(next:Locale)=>{if(next===locale)return;setMenuOpen(false);setLocale(next);window.history.replaceState(window.history.state,"",pathFor(next,program,mode)+(mode==="sample"?"":window.location.search)+window.location.hash);};
