@@ -14,7 +14,7 @@ export function classifyPublicApplicationFailure(requestStarted:boolean,status?:
  return "unconfirmed" as const;
 }
 
-export function GroupApplicationForm({locale,programId}:{locale:Locale;programId:FloridaProgramId}){
+export function GroupApplicationForm({locale,programId,onSaved}:{locale:Locale;programId:FloridaProgramId;onSaved?:(reference:string)=>void}){
  const t=(en:string,he:string)=>locale==="he"?he:en,form=useRef<HTMLFormElement>(null),pending=useRef<{command:FloridaGroupApplicationCommand;website:""}|null>(null),errorRef=useRef<HTMLDivElement>(null),permissionRef=useRef<HTMLInputElement>(null);
  const [challenge,setChallenge]=useState(""),[busy,setBusy]=useState(false),[uncertain,setUncertain]=useState(false),[uncertainReference,setUncertainReference]=useState(""),[error,setError]=useState(""),[saved,setSaved]=useState(false),[savedReference,setSavedReference]=useState("");
  const endpoint=`/api/public/group-applications?program=${encodeURIComponent(programId)}`;
@@ -48,7 +48,7 @@ export function GroupApplicationForm({locale,programId}:{locale:Locale;programId
     pending.current=null;setUncertain(false);setUncertainReference("");setError(response.status===429?t("Too many attempts were received. Please wait and try again later.","התקבלו ניסיונות רבים מדי. המתינו ונסו שוב מאוחר יותר."):response.status===403?t("This form expired or could not be verified. Reload the page and try again.","לא ניתן לאמת את הטופס או שפג תוקפו. רעננו את הדף ונסו שוב."):t("Your inquiry was not saved. Review the fields and try again.","הפנייה לא נשמרה. בדקו את השדות ונסו שוב."));return;
    }
    const body=await response.json();if(!response.ok||body?.ok!==true||body.data?.saved!==true||typeof body.data?.item?.id!=="string")throw new Error();
-   pending.current=null;setUncertain(false);setUncertainReference("");form.current?.reset();setSavedReference(body.data.item.id);setSaved(true);
+   pending.current=null;setUncertain(false);setUncertainReference("");form.current?.reset();setSavedReference(body.data.item.id);setSaved(true);onSaved?.(body.data.item.id);
   }catch{
    const kind=classifyPublicApplicationFailure(requestStarted,undefined,previouslyUncertain);
    if(kind==="unavailable"){pending.current=null;setUncertain(false);setUncertainReference("");setError(t("Online inquiries are unavailable. No information was saved.","לא ניתן לשלוח פניות כעת. לא נשמר מידע."));}
