@@ -1,4 +1,4 @@
-import copy from "./presentation-copy.json";
+import copy from "./presentation-copy.json" with {type:"json"};
 
 /** Customer-only projection of reviewed LS-FISH-COPY-20261013-01.
  * Source copy SHA256 6f2d2839824c4658d6cd88fd2c86b338f32f91c844557e8e213f3b85e75e2256.

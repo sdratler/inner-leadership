@@ -5,7 +5,7 @@ import {execFile} from "node:child_process";
 import {randomUUID} from "node:crypto";
 import {readFileSync} from "node:fs";
 import {promisify} from "node:util";
-import approvedCopy from "../../../src/features/group-application/presentation-copy.json";
+import approvedCopy from "../../../src/features/group-application/presentation-copy.json" with {type:"json"};
 import {academyLandingDraft,academyJourneyForMode} from "../../../src/features/group-application/academy-draft.ts";
 type Runtime={origin:string;workspaceId:string;practitioner:string;parent:string;adult:string;child:string;revoked:string;otherWorkspace:string;publicApplicationId:string;publicApplicantName:string};
 const runtimePath=process.env.LS_GROUP_INTEREST_FIXTURE_PATH;
