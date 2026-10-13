@@ -18,9 +18,24 @@ describe("private Florida journey containment",()=>{
    expect(academyJourneyDraft.access[locale]).toContain(locale==="he"?"רשומות קליניות נשארות מבודדות":"clinical records remain isolated");
    expect(academyLandingDraft.boundary[locale]).toContain(locale==="he"?"אינם מעניקים אישור":"never grant clearance");
   }
-  expect(journeySourceManifest.academy).toMatchObject({websiteSection:34,productSection:33,status:"proposed",commercialAgreement:"pending source-owner amendment"});
+  expect(journeySourceManifest.academy).toMatchObject({websiteSection:35,productSection:34,status:"proposed",commercialAgreement:"draft pending source-owner readback and family-use approval"});
   expect(journeyProgramName("morning_torah_learning","en")).toBe("Morning Torah Learning");
   expect(journeyProgramName("private_fishing_life_skills","en")).toBe("Private Fishing & Life Skills");
+ });
+ it("keeps Sunday12 timing and the distinct conditional food/outings in both languages",()=>{
+  for(const locale of ["en","he"] as const){
+   expect(academyLandingDraft.body[locale]).toContain("3–3.5");expect(academyJourneyDraft.offer[locale]).toContain("3–3.5");
+   expect(academyLandingDraft.body[locale]).toContain(locale==="he"?"במועד נוסף":"adds another date");
+   expect(academyJourneyDraft.enrollment[locale]).toContain(locale==="he"?"מחליפה את מפגש יום ראשון":"replaces Sunday teaching");
+   const first=academyLandingDraft.cards[0]!.body[locale],second=academyLandingDraft.cards[1]!.body[locale];
+   expect(first).toContain(locale==="he"?"W02 קשרים":"W02 knots");expect(first).toContain(locale==="he"?"W03 מערכי דיג":"W03 rigging");
+   expect(first).toContain(locale==="he"?"לא על הגשר":"not on the bridge");
+   expect(second).toContain(locale==="he"?"יציאה מקומית אחת":"One specifically scheduled weekday local");
+   expect(second).toContain(locale==="he"?"מזון כשר ארוז ומים":"packed kosher food and water");
+   expect(second).toContain(locale==="he"?"ללא מנגל נוסף":"no second barbecue");
+   expect(academyLandingDraft.sectionBody[locale]).toContain(locale==="he"?"האנגלית והמתמטיקה היישומית קשורות לדיג":"English and applied maths relate to fishing");
+   expect(academyLandingDraft.body[locale]).not.toContain(locale==="he"?"קבוצות נפרדות לימי ראשון או":"Separate Sunday or selected weekday-after-school cohorts");
+  }
  });
  it("preserves only known owner sample returns, without customer entitlement or open redirects",()=>{
   for(const locale of ["en","he"] as const)for(const page of ["florida-journeys","florida-landing"])for(const program of ["sunday_fishing_academy","morning_torah_learning","private_fishing_life_skills"]){

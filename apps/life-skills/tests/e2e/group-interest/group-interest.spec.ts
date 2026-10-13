@@ -34,6 +34,7 @@ if(!runtimePath){
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   if(program==="sunday_fishing_academy"){
    for(const marker of locale==="he"?["שלב 1","שלב 2","שלב 3"]:["Stage 1","Stage 2","Stage 3"])await expect(page.locator("main")).toContainText(marker);
+   for(const marker of locale==="he"?["3–3.5 שעות","מחליפה את מפגש יום ראשון","W02 קשרים","W03 מערכי דיג","לא על הגשר","יציאה מקומית אחת","מזון כשר ארוז ומים","ללא מנגל נוסף"]:["3–3.5 hours","replaces Sunday teaching","W02 knots","W03 rigging","not on the bridge","One specifically scheduled weekday local","packed kosher food and water","no second barbecue"])await expect(page.locator("main")).toContainText(marker);
    expect(await page.locator("main").innerText()).not.toContain(locale==="he"?"תשלום חבילה אחד":"One package payment");
   }
   await page.screenshot({path:info.outputPath(`academy-sample-landing-${program}-${locale}-${info.project.name}.png`),fullPage:true});
@@ -47,6 +48,8 @@ if(!runtimePath){
   for(const stage of ["fit-call","offer","payment","receipt","enrollment","next"]){
    await next.click();await expect(page.locator("#journey-heading")).toBeFocused();await expect(page.locator("main")).toContainText(locale==="he"?"דוגמה בלבד":"SAMPLE ONLY");expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
    if(stage==="payment"){await page.locator("select").selectOption("simulated");await expect(page.getByRole("button",{name:locale==="he"?"התשלום אינו זמין":"Checkout unavailable",exact:true})).toBeDisabled();}
+   if(program==="sunday_fishing_academy"&&stage==="offer"){await expect(page.locator("main")).toContainText("3–3.5");await expect(page.locator("main")).toContainText(locale==="he"?"ללא מנגל נוסף":"no second barbecue");}
+   if(program==="sunday_fishing_academy"&&stage==="enrollment")await expect(page.locator("main")).toContainText(locale==="he"?"מחליפה את מפגש יום ראשון":"replaces Sunday teaching");
    if(stage==="offer"||stage==="next")await page.screenshot({path:info.outputPath(`academy-sample-${stage}-${program}-${locale}-${info.project.name}.png`),fullPage:false});
    if(stage==="next"&&program==="sunday_fishing_academy")await expect(page.locator("main")).toContainText(locale==="he"?"המסלול עדיין לא מומש":"This path is not implemented");
   }
