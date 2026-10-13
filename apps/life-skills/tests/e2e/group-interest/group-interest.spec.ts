@@ -43,7 +43,9 @@ if(!runtimePath){
   const programs=page.getByRole("navigation",{name:locale==="he"?"בחירת מסלול":"Choose a program"}),activeProgram=programs.locator('a[aria-current="page"]');
   expect(await activeProgram.evaluate(node=>({background:getComputedStyle(node).backgroundColor,color:getComputedStyle(node).color}))).toEqual({background:"rgb(36, 81, 89)",color:"rgb(255, 255, 255)"});
   expect(await programs.locator('a:not([aria-current])').first().evaluate(node=>getComputedStyle(node).color)).toBe("rgb(22, 63, 72)");
-  await activeProgram.focus();expect(await activeProgram.evaluate(node=>getComputedStyle(node).outlineStyle)).toBe("solid");
+  // Exercise actual keyboard traversal: mouse/programmatic focus alone need not match :focus-visible.
+  for(let tab=0;tab<40&&!await activeProgram.evaluate(node=>document.activeElement===node);tab++)await page.keyboard.press("Tab");
+  await expect(activeProgram).toBeFocused();expect(await activeProgram.evaluate(node=>getComputedStyle(node).outlineStyle)).toBe("solid");
   const form=page.locator("form"),preview=form.getByRole("button",{name:locale==="he"?"בדיקת פנייה לדוגמה — ללא שליחה":"Preview inquiry — not sent",exact:true});
   await preview.click();await expect(form.getByRole("alert")).toBeFocused();
   const name=`Synthetic sample ${program} ${locale}`;
