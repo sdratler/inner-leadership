@@ -31,6 +31,9 @@ describe("private Florida journey containment",()=>{
   expect(academyRollingLandingDraft.id).toBe("sunday_fishing_academy");expect(academyRollingLandingDraft.label).toEqual(academyLandingDraft.label);
   expect(journeySourceManifest.privateProposal).toMatchObject({instruction:"LS-FISH-MODULE-ROLLING-20261013-06",websiteSection:36,productSection:35,scope:"authenticated owner sample only",moduleStart:"unresolved",maximumWait:"unresolved"});
   expect(journeySourceManifest.privateProposal.forms).toContain("pending");
+  expect(journeySourceManifest.privateProposal.deliveryInstruction).toBe("LS-FISH-DAYTIME-ENROLL-20261013-08");
+  expect(journeySourceManifest.rollingForms.english.sha256).toBe("337ec8c43345e48806612d4580c2505017b76f1b20bd93856bcf57a885663b51");
+  expect(journeySourceManifest.rollingForms.hebrew.sha256).toBe("4e1fc9c3d6aeb88cf1fb898992ad511ef613f071c71fafa1496b9bdd7c79c6df");
  });
  it("rehearses four-credit ranks without a sale, fixed calendar, safety grant or implemented ledger",()=>{
   expect(academyRollingLandingDraft.cards).toHaveLength(3);
