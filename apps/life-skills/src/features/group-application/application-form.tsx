@@ -104,7 +104,7 @@ export function GroupApplicationForm({locale,programId,onSaved,mode="native",onP
    <div className={styles.emptyGroup}><strong>{t("Published group preference","קבוצה מועדפת מתוך הקבוצות שפורסמו")}</strong><p>{t("No confirmed group times or meeting points are currently listed.","כרגע אין ברשימה מועדי קבוצות או נקודות מפגש מאושרים.")}</p></div></>}
     <label className={styles.permission}><input ref={permissionRef} name="permission" type="checkbox" required/><span>{notice[locale]}</span></label>
    {school&&<p>{t("Do not submit child names, rosters, diagnoses, clinical or family histories, emergency/medical details, photographs, recordings or media permissions.","אין למסור שמות ילדים, רשימות תלמידים, אבחנות, היסטוריה קלינית או משפחתית, פרטי חירום/רפואה, תמונות, הקלטות או רשות לפרסום.")}</p>}
-   <p className={styles.privacy}>{t("Do not include medical histories, diagnoses, reports, payment details or child photographs.","אין לצרף היסטוריה רפואית, אבחנות, דוחות, פרטי תשלום או תמונות ילדים.")}</p>
+   {!school&&<p className={styles.privacy}>{t("Do not include medical histories, diagnoses, reports, payment details or child photographs.","אין לצרף היסטוריה רפואית, אבחנות, דוחות, פרטי תשלום או תמונות ילדים.")}</p>}
    <label className={styles.honeypot} aria-hidden="true">Website<input name="website" tabIndex={-1} autoComplete="off"/></label>
   </fieldset>
   {uncertain&&<p className={styles.locked}>{t("We have not confirmed receipt of this inquiry. Keep this page open and use the same reference when checking it; do not pay based on this screen.","עדיין לא אושרה קבלת הפנייה. השאירו את הדף פתוח והשתמשו באותו מספר פנייה בעת הבדיקה; אין לשלם על סמך מסך זה.")} <strong>{t("Reference","מספר הפנייה")}:</strong> <bdi dir="ltr">{uncertainReference}</bdi></p>}
@@ -114,5 +114,5 @@ export function GroupApplicationForm({locale,programId,onSaved,mode="native",onP
 }
 
 export function SchoolInquirySection({locale,mode="native"}:{locale:Locale;mode?:"native"|"sample"}){
- return <details><summary>{locale==="he"?"פניית בית ספר או מוסד — מסלול נפרד":"School or institution inquiry — separate path"}</summary><GroupApplicationForm locale={locale} programId="sunday_fishing_academy" inquiryKind="institution" mode={mode}/></details>;
+ return <details className={styles.schoolSection}><summary>{locale==="he"?"פניית בית ספר או מוסד — מסלול נפרד":"School or institution inquiry — separate path"}</summary><GroupApplicationForm locale={locale} programId="sunday_fishing_academy" inquiryKind="institution" mode={mode}/></details>;
 }
