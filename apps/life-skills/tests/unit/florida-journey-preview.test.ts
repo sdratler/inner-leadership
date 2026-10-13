@@ -18,7 +18,9 @@ describe("private Florida journey containment",()=>{
    expect(academyJourneyDraft.access[locale]).toContain(locale==="he"?"רשומות קליניות נשארות מבודדות":"clinical records remain isolated");
    expect(academyLandingDraft.boundary[locale]).toContain(locale==="he"?"אינם מעניקים אישור":"never grant clearance");
   }
-  expect(journeySourceManifest.academy).toMatchObject({websiteSection:35,productSection:34,status:"proposed",commercialAgreement:"draft pending source-owner readback and family-use approval"});
+  expect(journeySourceManifest.academy).toMatchObject({websiteSection:35,productSection:34,status:"proposed",draftVersion:"3.2",commercialAgreement:"reviewed draft; actual offer and family-use approval pending"});
+  expect(journeySourceManifest.academy.english.sha256).toBe("034ce55d694e693e40167dc6536964115681d179fc57b7fff20784bb72febd16");
+  expect(journeySourceManifest.academy.hebrew.sha256).toBe("c728587361e9c348e477507b1302ec90b62ebb563d3b3e35548f20515dda3f81");
   expect(journeyProgramName("morning_torah_learning","en")).toBe("Morning Torah Learning");
   expect(journeyProgramName("private_fishing_life_skills","en")).toBe("Private Fishing & Life Skills");
  });
@@ -27,6 +29,8 @@ describe("private Florida journey containment",()=>{
    expect(academyLandingDraft.body[locale]).toContain("3–3.5");expect(academyJourneyDraft.offer[locale]).toContain("3–3.5");
    expect(academyLandingDraft.body[locale]).toContain(locale==="he"?"במועד נוסף":"adds another date");
    expect(academyJourneyDraft.enrollment[locale]).toContain(locale==="he"?"מחליפה את מפגש יום ראשון":"replaces Sunday teaching");
+   expect(academyJourneyDraft.calendarInclusions[locale]).toContain(locale==="he"?"אינה רכישה שנייה":"not a second purchase");
+   expect(academyJourneyDraft.calendarInclusions[locale]).toContain(locale==="he"?"כלולים או הצעות רשות נפרדות":"included/separate-optional");
    const first=academyLandingDraft.cards[0]!.body[locale],second=academyLandingDraft.cards[1]!.body[locale];
    expect(first).toContain(locale==="he"?"W02 קשרים":"W02 knots");expect(first).toContain(locale==="he"?"W03 מערכי דיג":"W03 rigging");
    expect(first).toContain(locale==="he"?"לא על הגשר":"not on the bridge");
