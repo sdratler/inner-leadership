@@ -6,6 +6,7 @@ import {randomUUID} from "node:crypto";
 import {readFileSync} from "node:fs";
 import {promisify} from "node:util";
 import approvedCopy from "../../../src/features/group-application/presentation-copy.json";
+import {academyLandingDraft,academyJourneyForMode} from "../../../src/features/group-application/academy-draft.ts";
 type Runtime={origin:string;workspaceId:string;practitioner:string;parent:string;adult:string;child:string;revoked:string;otherWorkspace:string;publicApplicationId:string;publicApplicantName:string};
 const runtimePath=process.env.LS_GROUP_INTEREST_FIXTURE_PATH;
 if(!runtimePath){
@@ -35,7 +36,9 @@ if(!runtimePath){
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   if(program==="sunday_fishing_academy"){
    for(const marker of locale==="he"?["דרגה A","דרגה B","דרגה C"]:["Rank A","Rank B","Rank C"])await expect(page.locator("main")).toContainText(marker);
-   for(const marker of locale==="he"?["הצעה פרטית לעיון","אינן ארבעה ימי ראשון רצופים","שלוש יחידות שיעור מקדימות","ארבע יחידות פעילות שטח","שלוש יחידות הכנה","ההמתנה המרבית","ללא מנגל נוסף","ספריית נושאים לשימוש חוזר"]:["PRIVATE PROPOSAL","do not mean four consecutive Sundays","Three prerequisite class credits","Four defined supervised field-session credits","Three preparation/offshore-seamanship credits","maximum wait","no second barbecue","reusable topic library"])await expect(page.locator("main")).toContainText(marker);
+   await expect(page.locator("main")).toContainText(academyLandingDraft.sectionBody[locale]);
+   await expect(page.locator("main")).toContainText(approvedCopy.inquiry.sampleBanner[locale]);
+   for(const rank of approvedCopy.academy.cards)await expect(page.getByRole("heading",{name:rank.title[locale],exact:true})).toBeVisible();
    expect(await page.locator("main").innerText()).not.toContain(locale==="he"?"תשלום חבילה אחד":"One package payment");
    for(const stale of locale==="he"?["אקדמיית דיג מוצעת בת שנים־עשר שבועות","שנים־עשר שבועות מוצעים","פעילויות המתוכננות בכל שלב","חכות וציוד אישי באחריות המשפחה","יציאה מקומית אחת"]:["A proposed twelve-week fishing academy","Twelve proposed weeks","Intended stage events","Personal rods and gear are family-supplied","One specifically scheduled weekday local"])await expect(page.locator("main")).not.toContainText(stale);
   }
@@ -56,10 +59,10 @@ if(!runtimePath){
   for(const stage of ["fit-call","offer","payment","receipt","enrollment","next"]){
    await next.click();await expect(page.locator("#journey-heading")).toBeFocused();await expect(page.locator("main")).toContainText(locale==="he"?"דוגמה בלבד":"SAMPLE ONLY");expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
    if(stage==="payment"){await page.getByRole("combobox",{name:locale==="he"?/^תוצאה לדוגמה/:/^Sample outcome/}).selectOption("simulated");await expect(page.getByRole("button",{name:locale==="he"?"התשלום אינו זמין":"Checkout unavailable",exact:true})).toBeDisabled();}
-   if(program==="sunday_fishing_academy"&&stage==="offer"){await expect(page.locator("main")).toContainText(locale==="he"?"טפסי המסלול המתגלגל עדיין ממתינים":"Rolling-module forms are pending");await expect(page.locator("main")).toContainText(locale==="he"?"טרם הוסדרו":"remain unresolved");await expect(page.getByRole("button",{name:locale==="he"?"ההסכם עדיין אינו זמין לחתימה":"Agreement unavailable for signature",exact:true})).toBeDisabled();}
+   if(program==="sunday_fishing_academy"&&stage==="offer"){const draft=academyJourneyForMode("sample");await expect(page.locator("main")).toContainText(draft.offer[locale]);await expect(page.locator("main")).toContainText(draft.calendarInclusions[locale]);await expect(page.locator("main")).toContainText(locale==="he"?"טרם הוסדרו":"remain unresolved");await expect(page.getByRole("button",{name:locale==="he"?"ההסכם עדיין אינו זמין לחתימה":"Agreement unavailable for signature",exact:true})).toBeDisabled();}
    if(program==="sunday_fishing_academy"&&stage==="enrollment"){await expect(page.locator("main")).toContainText(locale==="he"?"לא נרכשה או הוקצתה":"No actual rank is purchased or allocated");await page.getByText(locale==="he"?"יחידות ומוכנות נפרדת להמחשה — לא פנקס פעיל":"Illustrative credits and separate readiness — not a ledger",{exact:true}).click();await expect(page.locator("main")).toContainText(locale==="he"?"0 יחידות שסופקו / 4 שנותרו":"0 supplied / 4 remaining");await expect(page.locator("main")).toContainText(locale==="he"?"בטיחות: ללא אישור":"Safety: not cleared");}
    if(stage==="offer"||stage==="next")await page.screenshot({path:info.outputPath(`academy-sample-${stage}-${program}-${locale}-${info.project.name}.png`),fullPage:false});
-   if(stage==="next"&&program==="sunday_fishing_academy")await expect(page.locator("main")).toContainText(locale==="he"?"עדיין לא מומשו":"not implemented");
+   if(stage==="next"&&program==="sunday_fishing_academy")await expect(page.locator("main")).toContainText(academyJourneyForMode("sample").access[locale]);
   }
   await expect(page.getByRole("link",{name:locale==="he"?"פתיחת הפנייה שנשמרה לצוות":"Open staff inquiry readback",exact:true})).toHaveCount(0);
   await page.getByRole("navigation",{name:locale==="he"?"שלבי מסלול ההורה":"Parent journey stages"}).getByRole("button",{name:locale==="he"?"פנייה":"Inquiry",exact:true}).click();await expect(form.locator('[name="parentName"]')).toHaveValue(name);
@@ -75,7 +78,7 @@ if(!runtimePath){
  });
  test("Florida owner journey hosted sample permissions: no anonymous/customer/revoked/cross-workspace access",async({page,context})=>{
   for(const token of [data.parent,data.child,data.adult,data.revoked,data.otherWorkspace])for(const target of ["florida-journeys","florida-landing"]){
-   await context.clearCookies();await context.addCookies([{name:"__Host-ls-session",value:token,url:data.origin,httpOnly:true,secure:true,sameSite:"Lax"}]);await page.goto(`/en/sample?page=${target}&program=sunday_fishing_academy`);await expect(page.getByRole("heading",{name:"Florida parent journeys",exact:true})).toHaveCount(0);await expect(page.getByRole("heading",{name:"Prepare on land. Learn with purpose. Progress responsibly.",exact:true})).toHaveCount(0);
+   await context.clearCookies();await context.addCookies([{name:"__Host-ls-session",value:token,url:data.origin,httpOnly:true,secure:true,sameSite:"Lax"}]);await page.goto(`/en/sample?page=${target}&program=sunday_fishing_academy`);await expect(page.getByRole("heading",{name:target==="florida-landing"?approvedCopy.academy.title.en:"Florida parent journeys",exact:true})).toHaveCount(0);await expect(page.locator('form[data-inquiry-kind="parent"]')).toHaveCount(0);
   }
   await context.clearCookies();await page.goto("/en/sample?page=florida-journeys&program=morning_torah_learning");await expect(page).toHaveURL(/\/en\/login\?next=/);expect(new URL(page.url()).searchParams.get("next")).toBe("/en/sample?page=florida-journeys&program=morning_torah_learning");
   await context.addCookies([{name:"__Host-ls-session",value:data.practitioner,url:data.origin,httpOnly:true,secure:true,sameSite:"Lax"}]);await page.goto("/en/sample?page=florida-journeys&program=unknown");await expect(page.getByRole("heading",{name:"Page unavailable",exact:true})).toBeVisible();await expect(page.locator('form[data-inquiry-kind="parent"]')).toHaveCount(0);
@@ -147,9 +150,9 @@ if(!runtimePath){
   const response=await page.goto(`/${locale}/florida`);expect(response?.status()).toBe(200);
   const direction=locale==="he"?"rtl":"ltr";await expect(page.locator(`div[lang="${locale}"][dir="${direction}"]`).first()).toBeVisible();
   await expect(page.getByRole("heading",{name:approvedCopy.academy.title[locale],exact:true,level:1})).toBeVisible();
-  await expect(page.getByRole("img",{name:locale==="he"?"מקום שמור לתמונה מאושרת של פלורידה":"Reserved space for owner-approved Florida artwork",exact:true})).toBeVisible();
+  await expect(page.getByRole("img",{name:approvedCopy.shared.placeholderLabel[locale],exact:true})).toBeVisible();
   await expect(page.getByRole("heading",{name:approvedCopy.academy.sectionTitle[locale],exact:true})).toBeVisible();
-  await expect(page.getByRole("heading",{name:locale==="he"?"אקדמיית הדיג בפלורידה":"Florida Fishing Academy",exact:true}).first()).toBeVisible();
+  await expect(page.locator("main")).toContainText(approvedCopy.academy.label[locale]);
   const sundayInterest=page.locator('form[data-inquiry-kind="parent"]').getByRole("checkbox",{name:approvedCopy.inquiry.formatOptions.sunday[locale],exact:true});
   await expect(sundayInterest).toBeVisible();await expect(sundayInterest).toHaveAttribute("value","sunday");
   await expect(page.getByText(approvedCopy.shared.teacherBody[locale],{exact:true})).toBeVisible();
