@@ -8,24 +8,25 @@ import {fitCallDraft} from "../../src/features/group-application/fit-call-draft.
 import {floridaGroupApplicationNotice} from "../../src/features/group-application/contract.ts";
 const local={LS_APP_ORIGIN:"https://localhost:3105",LS_DATABASE_URL:"postgresql://synthetic:temporary@127.0.0.1:55441/ls_calendar_test_journeys",LS_APP_MODE:"foundation_preview",LS_GROUP_APPLICATION_SYNTHETIC_LOOPBACK:"true"};
 describe("private Florida journey containment",()=>{
- it("preserves the historical native twelve-week draft without settled commercial or access claims",()=>{
+ it("uses current Academy ranks while preserving historical source attestations and unavailable access",()=>{
   expect(academyLandingDraft.cards).toHaveLength(3);
   for(const locale of ["en","he"] as const){
    expect(journeyProgramName("sunday_fishing_academy",locale)).toBe(academyLandingDraft.label[locale]);
-   expect(academyLandingDraft.cards.map(card=>card.title[locale]).join(" ")).toMatch(/9–12/);
-   const copy=JSON.stringify({landing:academyLandingDraft,journey:academyJourneyDraft});
-   expect(copy).not.toMatch(/one package payment|included trip is not a second purchase|Keys culmination stays included|\$\d/);
+   expect(academyLandingDraft.cards.map(card=>card.title[locale]).join(" ")).toMatch(/A.*B.*C/);
+   expect(academyLandingDraft.sectionBody[locale]).toContain(locale==="he"?"רצף הלימוד המתוכנן":"planned teaching sequence");
+   expect(academyLandingDraft.sectionBody[locale]).toContain(locale==="he"?"השלמת היציאות יסוכמו בנפרד":"outing completion are agreed separately");
    expect(academyJourneyDraft.access[locale]).toContain(locale==="he"?"עדיין לא מומש":"not implemented");
    expect(academyJourneyDraft.access[locale]).toContain(locale==="he"?"רשומות קליניות נשארות מבודדות":"clinical records remain isolated");
-   expect(academyLandingDraft.boundary[locale]).toContain(locale==="he"?"אינם מעניקים אישור":"never grant clearance");
+   expect(academyJourneyDraft.enrollment[locale]).toContain(locale==="he"?"לא נרכשה או הוקצתה":"No actual rank is purchased or allocated");
   }
+  expect(JSON.stringify({landing:academyLandingDraft,journey:academyJourneyDraft})).not.toMatch(/\$\d|tuition.*not.*selected|3–3.5|one scheduled weekday local outing/i);
   expect(journeySourceManifest.academy).toMatchObject({websiteSection:35,productSection:34,status:"proposed",draftVersion:"3.2",commercialAgreement:"reviewed draft; actual offer and family-use approval pending"});
   expect(journeySourceManifest.academy.english.sha256).toBe("034ce55d694e693e40167dc6536964115681d179fc57b7fff20784bb72febd16");
   expect(journeySourceManifest.academy.hebrew.sha256).toBe("c728587361e9c348e477507b1302ec90b62ebb563d3b3e35548f20515dda3f81");
   expect(journeyProgramName("morning_torah_learning","en")).toBe("Morning Torah Learning");
   expect(journeyProgramName("private_fishing_life_skills","en")).toBe("Private Fishing & Life Skills");
  });
- it("confines the rolling successor to owner samples and preserves native copy and program identity",()=>{
+ it("shares current presentation without changing separate native/sample behavior or historical forms",()=>{
   expect(academyLandingForMode("native")).toBe(academyLandingDraft);expect(academyJourneyForMode("native")).toBe(academyJourneyDraft);
   expect(academyLandingForMode("sample")).toBe(academyRollingLandingDraft);expect(academyJourneyForMode("sample")).toBe(academyRollingJourneyDraft);
   expect(academyRollingLandingDraft.id).toBe("sunday_fishing_academy");expect(academyRollingLandingDraft.label).toEqual(academyLandingDraft.label);
@@ -35,24 +36,18 @@ describe("private Florida journey containment",()=>{
   expect(journeySourceManifest.rollingForms.english.sha256).toBe("337ec8c43345e48806612d4580c2505017b76f1b20bd93856bcf57a885663b51");
   expect(journeySourceManifest.rollingForms.hebrew.sha256).toBe("4e1fc9c3d6aeb88cf1fb898992ad511ef613f071c71fafa1496b9bdd7c79c6df");
  });
- it("rehearses four-credit ranks without a sale, fixed calendar, safety grant or implemented ledger",()=>{
-  expect(academyRollingLandingDraft.cards).toHaveLength(3);
+ it("rehearses corrected four-credit ranks without a sale, fixed calendar or readiness grant",()=>{
   for(const locale of ["en","he"] as const){
    const [a,b,c]=academyRollingLandingDraft.cards;
-   expect(a!.body[locale]).toContain(locale==="he"?"שלוש יחידות שיעור מקדימות":"Three prerequisite class credits");
-   expect(a!.body[locale]).toContain(locale==="he"?"היחידה הרביעית":"fourth credit");
-   expect(b!.body[locale]).toContain(locale==="he"?"ארבע יחידות פעילות שטח":"Four defined supervised field-session credits");
-   expect(c!.body[locale]).toContain(locale==="he"?"שלוש יחידות הכנה":"Three preparation/offshore-seamanship credits");
-   expect(c!.body[locale]).toContain(locale==="he"?"ההמתנה המרבית":"maximum wait");
-   expect(academyRollingLandingDraft.body[locale]).toContain(locale==="he"?"אינן ארבעה ימי ראשון רצופים":"do not mean four consecutive Sundays");
-   expect(academyRollingLandingDraft.sectionBody[locale]).toContain(locale==="he"?"ספריית נושאים לשימוש חוזר":"reusable topic library");
-   expect(academyRollingJourneyDraft.enrollment[locale]).toContain(locale==="he"?"לא נרכשה או הוקצתה":"No actual rank is purchased or allocated");
-   expect(academyRollingJourneyDraft.creditState[locale]).toContain(locale==="he"?"אין מסלול בבעלות או פנקס יחידות":"No owned module or credit ledger exists");
+   expect(a!.body[locale]).toContain(locale==="he"?"שלוש יחידות הכנה":"Three preparation credits");
+   expect(a!.body[locale]).toContain(locale==="he"?"כיחידה הרביעית":"fourth credit");
+   expect(b!.body[locale]).toContain(locale==="he"?"ארבע יחידות שטח":"Four defined supervised field credits");
+   expect(c!.body[locale]).toContain(locale==="he"?"שלוש יחידות הכנה":"Three advanced preparation credits");
+   expect(c!.body[locale]).toContain(locale==="he"?"קברניט וצוות מקצועיים":"professionally captained and crewed");
+   expect(academyJourneyDraft.calendarInclusions[locale]).toContain(locale==="he"?"אינן ארבעה ימי ראשון רצופים":"do not mean four consecutive Sundays");
+   expect(academyRollingJourneyDraft.creditState[locale]).toContain(locale==="he"?"אין דרגה בבעלות או פנקס יחידות":"No owned rank or credit ledger exists");
    expect(academyRollingJourneyDraft.creditState[locale]).toContain(locale==="he"?"בטיחות: ללא אישור":"Safety: not cleared");
    expect(academyRollingJourneyDraft.access[locale]).toContain(locale==="he"?"רשומות קליניות נשארות מבודדות":"clinical records remain isolated");
-   const copy=JSON.stringify(academyRollingLandingDraft);
-   for(const stale of ["Intended stage events","Personal rods and gear are family-supplied","A proposed twelve-week fishing academy","חכות וציוד אישי באחריות המשפחה","פעילויות המתוכננות בכל שלב","אקדמיית דיג מוצעת בת שנים־עשר שבועות"])expect(copy).not.toContain(stale);
-   expect(academyRollingLandingDraft.faqs[1]![1][locale]).toContain(locale==="he"?"דורשים הסכמה מפורשת":"need express agreement");
   }
   expect(JSON.stringify({landing:academyRollingLandingDraft,journey:academyRollingJourneyDraft})).not.toMatch(/\$\d|₪\d|staff role is granted|free voyage is earned/);
  });
@@ -61,21 +56,13 @@ describe("private Florida journey containment",()=>{
   expect(css).toContain("color:var(--ls-deep,#163F48)");expect(css).toContain("background:var(--ls-teal,#245159)");
   expect(css).not.toMatch(/#08756d|#173f46/);expect(css).toContain(".warning{background:#fff2d4");expect(css).toContain("outline:3px solid #ce972c");
  });
- it("keeps Sunday12 timing and the distinct conditional food/outings in both languages",()=>{
+ it("keeps actual scheduling, credit terms and trip clearance separate from the teaching plan",()=>{
   for(const locale of ["en","he"] as const){
-   expect(academyLandingDraft.body[locale]).toContain("3–3.5");expect(academyJourneyDraft.offer[locale]).toContain("3–3.5");
-   expect(academyLandingDraft.body[locale]).toContain(locale==="he"?"במועד נוסף":"adds another date");
-   expect(academyJourneyDraft.enrollment[locale]).toContain(locale==="he"?"מחליפה את מפגש יום ראשון":"replaces Sunday teaching");
    expect(academyJourneyDraft.calendarInclusions[locale]).toContain(locale==="he"?"אינה רכישה שנייה":"not a second purchase");
-   expect(academyJourneyDraft.calendarInclusions[locale]).toContain(locale==="he"?"כלולים או הצעות רשות נפרדות":"included/separate-optional");
-   const first=academyLandingDraft.cards[0]!.body[locale],second=academyLandingDraft.cards[1]!.body[locale];
-   expect(first).toContain(locale==="he"?"W02 קשרים":"W02 knots");expect(first).toContain(locale==="he"?"W03 מערכי דיג":"W03 rigging");
-   expect(first).toContain(locale==="he"?"לא על הגשר":"not on the bridge");
-   expect(second).toContain(locale==="he"?"יציאה מקומית אחת":"One specifically scheduled weekday local");
-   expect(second).toContain(locale==="he"?"מזון כשר ארוז ומים":"packed kosher food and water");
-   expect(second).toContain(locale==="he"?"ללא מנגל נוסף":"no second barbecue");
-   expect(academyLandingDraft.sectionBody[locale]).toContain(locale==="he"?"האנגלית והמתמטיקה היישומית קשורות לדיג":"English and applied maths relate to fishing");
-   expect(academyLandingDraft.body[locale]).not.toContain(locale==="he"?"קבוצות נפרדות לימי ראשון או":"Separate Sunday or selected weekday-after-school cohorts");
+   expect(academyJourneyDraft.calendarInclusions[locale]).toContain(locale==="he"?"ההמתנה המרבית":"Maximum offshore wait");
+   expect(academyJourneyDraft.enrollment[locale]).toContain(locale==="he"?"שנים־עשר שבועות שחלפו אינם מאשרים":"Twelve elapsed weeks do not confirm");
+   expect(academyJourneyDraft.access[locale]).toContain(locale==="he"?"לעולם אינם מאשרים יציאה":"never clear a trip");
+   expect(academyLandingDraft.price[locale]).toContain(locale==="he"?"אינה מחייבת בתשלום":"No payment is required");
   }
  });
  it("preserves only known owner sample returns, without customer entitlement or open redirects",()=>{
@@ -101,7 +88,7 @@ describe("private Florida journey containment",()=>{
  it("prepares a localized inquiry-specific draft without a meeting or payment promise",()=>{
   for(const programId of ["sunday_fishing_academy","morning_torah_learning","private_fishing_life_skills"] as const)for(const locale of ["en","he"] as const){
    const draft=fitCallDraft({id:"synthetic-reference",source:"public_group_application",state:"owner_review",receivedAt:"2026-10-13T00:00:00Z",fields:{parentName:"Synthetic guardian",contact:"synthetic@example.invalid",language:locale,cityArea:"Synthetic Florida",programId,schedulePreference:["flexible"],permission:{confirmed:true,version:floridaGroupApplicationNotice.version,language:locale}}},locale);
-   expect(draft).toContain("synthetic-reference");expect(draft).toContain("Synthetic guardian");expect(draft).toContain("15–20");expect(draft).not.toContain("http");expect(draft).not.toMatch(/\$\d|paid|enrolled/);
+   expect(draft).toContain("synthetic-reference");expect(draft).toContain("Synthetic guardian");expect(draft).not.toContain("15–20");expect(draft).toContain(locale==="he"?"כאן שלמה":"this is Shlomo");expect(draft).not.toContain("http");expect(draft).not.toMatch(/\$\d|paid|enrolled/);
   }
  });
 });

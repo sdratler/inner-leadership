@@ -3,11 +3,12 @@ import {useState} from "react";
 import type {Locale} from "../../lib/locale.ts";
 import type {GroupApplicationRecord,FloridaParentApplicationFields} from "./contract.ts";
 import {journeyProgramName} from "./journey-preview-model.ts";
+import copy from "./presentation-copy.json";
 
 /** Manual preparation from a native saved inquiry. No stage transition or delivery is claimed. */
 export function fitCallDraft(item:GroupApplicationRecord&{fields:FloridaParentApplicationFields},locale:Locale){
- return locale==="he"?`שלום ${item.fields.parentName}, תודה על הפנייה לגבי ${journeyProgramName(item.fields.programId,locale)}. נשמח לתאם שיחת התאמה של 15–20 דקות. מהו זמן נוח עבורכם ובאיזה אזור זמן? אין עדיין מועד או קישור מאושרים לשיחה. הפנייה אינה שומרת מקום ואינה מחייבת בתשלום.\nמספר פנייה: ${item.id}`:
- `Hello ${item.fields.parentName}, thank you for your inquiry about ${journeyProgramName(item.fields.programId,locale)}. We would like to arrange a 15–20 minute fit conversation. What time and time zone work for you? No call time or meeting link is confirmed yet. Your inquiry does not reserve a place or require payment.\nInquiry reference: ${item.id}`;
+ const fields={parentName:item.fields.parentName,programName:journeyProgramName(item.fields.programId,locale),inquiryReference:item.id};
+ return copy.manualFollowup.template[locale].replace(/\{(parentName|programName|inquiryReference)\}/g,(_match,key:keyof typeof fields)=>fields[key]);
 }
 export function FitCallDraft({item,locale}:{item:GroupApplicationRecord&{fields:FloridaParentApplicationFields};locale:Locale}){
  const t=(en:string,he:string)=>locale==="he"?he:en;

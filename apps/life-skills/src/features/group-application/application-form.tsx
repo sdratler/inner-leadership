@@ -6,6 +6,7 @@ import {floridaGroupApplicationFieldsSchema,floridaGroupApplicationNotice,florid
 import {schoolAgeLabels,schoolWeekdayLabels,schoolTransportLabels} from "./school-inquiry-details.tsx";
 import {journeyProgramName} from "./journey-preview-model.ts";
 import styles from "./application-form.module.css";
+import copy from "./presentation-copy.json";
 
 type Challenge={challenge:string};
 const optional=(value:FormDataEntryValue|null)=>typeof value==="string"&&value.trim()!==""?value:undefined;
@@ -66,13 +67,13 @@ export function GroupApplicationForm({locale,programId,onSaved,mode="native",onP
   }finally{setBusy(false);}
  }
 
- const programName=journeyProgramName(programId,locale);
+ const programName=journeyProgramName(programId,locale),p=(value:{en:string;he:string})=>value[locale];
  return <form ref={form} data-inquiry-kind={inquiryKind} className={styles.form} onSubmit={submit} noValidate>
-  <div className={styles.heading}><p className={styles.kicker}>{t("Private inquiry","פנייה פרטית")}</p><h3>{school?t("Ask about a school fishing activity","בירור על פעילות דיג לבית ספר"):t("Ask about a program","מתעניינים בתוכנית?")}</h3><p>{school?t("Tell us about the activity your school or institution would like to discuss. This is a request for a conversation, not an accepted quotation, enrollment or booking.","ספרו על הפעילות שבית הספר או המוסד שלכם מעוניין לברר. זו בקשה לשיחה, לא אישור להצעת מחיר, הרשמה או הזמנה."):t("Tell us which program interests you and when you can speak. We will contact you about the next step. Sending this form does not reserve a place or require payment.","בחרו את התוכנית שמעניינת אתכם וציינו מתי נוח לדבר. ניצור קשר לגבי השלב הבא. שליחת הטופס אינה שומרת מקום ואינה מחייבת בתשלום.")}</p></div>
+  <div className={styles.heading}><p className={styles.kicker}>{t("Private inquiry","פנייה פרטית")}</p><h3>{school?t("Ask about a school fishing activity","בירור על פעילות דיג לבית ספר"):programId==="sunday_fishing_academy"?p(copy.inquiry.titleAcademy):programId==="private_fishing_life_skills"?p(copy.inquiry.titleVip):t("Ask about Torah mornings","לפרטים על לימוד תורה בבוקר")}</h3><p>{school?t("Tell us about the activity your school or institution would like to discuss. This is a request for a conversation, not an accepted quotation, enrollment or booking.","ספרו על הפעילות שבית הספר או המוסד שלכם מעוניין לברר. זו בקשה לשיחה, לא אישור להצעת מחיר, הרשמה או הזמנה."):p(copy.inquiry.intro)}</p></div>
   {error&&<div ref={errorRef} tabIndex={-1} role="alert" className={styles.error}><strong>{t("Please check this inquiry","בדקו את הפנייה")}</strong><p>{error}</p></div>}
-  {saved&&<div role="status" className={styles.success}><strong>{school?t("School inquiry received","פניית בית הספר התקבלה"):t("Inquiry received","הפנייה התקבלה")}</strong><p>{school?t("The next step is a separate discussion with the school's decisionmaker about the activity and a possible quotation. No activity is booked.","השלב הבא הוא שיחה נפרדת עם הגורם המחליט בבית הספר על הפעילות ועל הצעת מחיר אפשרית. לא הוזמנה פעילות."):t("Your place is not booked. We will contact you about a fit conversation and actual availability.","המקום עדיין אינו מוזמן. ניצור קשר לשיחת התאמה ולבירור האפשרויות בפועל.")} <strong>{t("Reference","מספר הפנייה")}:</strong> <bdi dir="ltr">{savedReference}</bdi></p></div>}
-  {mode==="sample"&&<p className={styles.boundary}>{t("SYNTHETIC SAMPLE — enter invented details only. Nothing is sent or saved.","דוגמה סינתטית — הזינו פרטים מומצאים בלבד. דבר אינו נשלח או נשמר.")}</p>}
-  {previewed&&<p role="status">{t("Sample fields checked locally. No inquiry or saved reference was created.","שדות הדוגמה נבדקו מקומית. לא נוצרו פנייה או מספר שמירה.")}</p>}
+  {saved&&<div role="status" className={styles.success}><strong>{school?t("School inquiry received","פניית בית הספר התקבלה"):p(copy.inquiry.savedTitle)}</strong><p>{school?t("The next step is a separate discussion with the school's decisionmaker about the activity and a possible quotation. No activity is booked.","השלב הבא הוא שיחה נפרדת עם הגורם המחליט בבית הספר על הפעילות ועל הצעת מחיר אפשרית. לא הוזמנה פעילות."):p(copy.inquiry.savedBody)} <strong>{t("Reference","מספר הפנייה")}:</strong> <bdi dir="ltr">{savedReference}</bdi></p></div>}
+  {mode==="sample"&&<p className={styles.boundary}>{p(copy.inquiry.sampleBanner)}</p>}
+  {previewed&&<p role="status">{p(copy.inquiry.sampleResult)}</p>}
   <fieldset className={styles.fieldset} disabled={busy||uncertain}>
    <legend className={styles.srOnly}>{t("Group inquiry details","פרטי הפנייה לקבוצה")}</legend>
    {school?<div className={styles.fields}>
@@ -86,30 +87,30 @@ export function GroupApplicationForm({locale,programId,onSaved,mode="native",onP
     <label>{t("Preferred weekday — not confirmed availability","יום מועדף — לא זמינות מאושרת")}<select name="preferredWeekday" required defaultValue=""><option value="">{t("Choose a preference","בחרו העדפה")}</option>{Object.entries(schoolWeekdayLabels).map(([value,label])=><option key={value} value={value}>{label[locale==="he"?1:0]}</option>)}</select></label>
     <label>{t("Would the school arrange transport?","האם בית הספר יסדיר הסעה?")}<select name="schoolTransport" required defaultValue=""><option value="">{t("Choose an answer","בחרו תשובה")}</option>{Object.entries(schoolTransportLabels).map(([value,label])=><option key={value} value={value}>{label[locale==="he"?1:0]}</option>)}</select><span>{t("This answer does not confirm provider transport.","התשובה אינה מאשרת הסעה מטעם המפעיל.")}</span></label>
    </div>:<><div className={styles.fields}>
-    <label>{t("Parent or guardian name","שם ההורה או האפוטרופוס")}<input name="parentName" required maxLength={100} autoComplete="name"/></label>
-    <label>{t("Email address or telephone number","כתובת דוא״ל או מספר טלפון")}<input name="contact" required maxLength={254} dir="ltr" inputMode="text" aria-describedby="contact-hint"/><span id="contact-hint" className={styles.fieldNote}>{t("Provide one contact. Include the country code for a telephone or WhatsApp number; no country code is assumed.","ציינו אמצעי קשר אחד. במספר טלפון או WhatsApp יש לכלול קידומת מדינה; לא נניח קידומת.")}</span></label>
-    <label>{t("Boy’s age (optional)","גיל הבן (לא חובה)")}<input name="childAge" maxLength={20} inputMode="text"/></label>
-    <label>{t("City or area in Florida","עיר או אזור בפלורידה")}<input name="cityArea" required maxLength={100} autoComplete="address-level2"/></label>
-    <label>{t("Neighborhood (optional)","שכונה (לא חובה)")}<input name="neighborhood" maxLength={100} autoComplete="address-level3"/></label>
+    <label>{p(copy.inquiry.parentName)}<input name="parentName" required maxLength={100} autoComplete="name"/></label>
+    <label>{p(copy.inquiry.contact)}<input name="contact" required maxLength={254} dir="ltr" inputMode="text" aria-describedby="contact-hint"/><span id="contact-hint" className={styles.fieldNote}>{p(copy.inquiry.contactHint)}</span></label>
+    <label>{p(copy.inquiry.childAge)}<input name="childAge" maxLength={20} inputMode="text"/></label>
+    <label>{p(copy.inquiry.cityArea)}<input name="cityArea" required maxLength={100} autoComplete="address-level2"/></label>
+    <label>{p(copy.inquiry.neighborhood)}<input name="neighborhood" maxLength={100} autoComplete="address-level3"/></label>
     <div className={styles.emptyGroup}><strong>{t("Program","מסלול")}</strong><p>{programName}</p></div>
    </div>
-    <fieldset className={styles.schedule}><legend>{programId==="sunday_fishing_academy"?t("Preferred academy format — interest only","מתכונת אקדמיה מועדפת — הבעת עניין בלבד"):t("When could a fit call work?","מתי יכולה להתאים שיחת התאמה?")}</legend><p className={styles.fieldNote}>{programId==="sunday_fishing_academy"?t("These are format preferences for the same academy, not confirmed teaching times, enrollment or a booking. Put fit-call availability and time zone in the note below. Schools need a separate institutional inquiry; this guardian form is not that path.","אלה העדפות מתכונת לאותה אקדמיה, ולא מועדי הוראה מאושרים, הרשמה או הזמנה. ציינו זמינות לשיחת התאמה ואזור זמן בהערה למטה. בתי ספר דורשים פנייה מוסדית נפרדת; טופס הורה זה אינו המסלול לכך."):t("Choose at least one time when we may contact you for a fit conversation. These are not lesson or meeting times, and they do not create a seat or booking.","בחרו לפחות זמן אחד שבו נוכל ליצור קשר לשיחת התאמה. אלה אינם מועדי שיעורים או מפגשים, והם אינם יוצרים מקום או הזמנה.")}</p><div className={styles.checkGrid}>
-     <label><input name="schedulePreference" type="checkbox" value="weekday_after_school"/><span>{programId==="sunday_fishing_academy"?t("Weekday after-school interest","עניין בימי חול אחרי הלימודים"):t("Weekday after school fit call","שיחת התאמה ביום חול אחרי הלימודים")}</span></label>
-     <label><input name="schedulePreference" type="checkbox" value="sunday"/><span>{programId==="sunday_fishing_academy"?t("Sunday interest","עניין ביום ראשון"):t("Sunday fit call","שיחת התאמה ביום ראשון")}</span></label>
-     {programId==="sunday_fishing_academy"&&<label><input name="schedulePreference" type="checkbox" value="weekday_morning_homeschool"/><span>{t("Weekday homeschool morning interest","עניין בבוקר לימוד ביתי בימי חול")}</span></label>}
-     <label><input name="schedulePreference" type="checkbox" value="flexible"/><span>{programId==="sunday_fishing_academy"?t("Flexible format","מתכונת גמישה"):t("Flexible fit-call time","זמן גמיש לשיחת התאמה")}</span></label>
-     <label><input name="schedulePreference" type="checkbox" value="other"/><span>{programId==="sunday_fishing_academy"?t("Another format preference","העדפת מתכונת אחרת"):t("Another fit-call time","זמן אחר לשיחת התאמה")}</span></label>
+    <fieldset className={styles.schedule}><legend>{programId==="sunday_fishing_academy"?p(copy.inquiry.formatLegend):p(copy.inquiry.vipCallLegend)}</legend><p className={styles.fieldNote}>{programId==="sunday_fishing_academy"?p(copy.inquiry.formatHint):p(copy.inquiry.vipCallHint)}</p><div className={styles.checkGrid}>
+     <label><input name="schedulePreference" type="checkbox" value="weekday_after_school"/><span>{programId==="sunday_fishing_academy"?p(copy.inquiry.formatOptions.weekday_after_school):t("Weekday after school fit call","שיחת התאמה ביום חול אחרי הלימודים")}</span></label>
+     <label><input name="schedulePreference" type="checkbox" value="sunday"/><span>{programId==="sunday_fishing_academy"?p(copy.inquiry.formatOptions.sunday):t("Sunday fit call","שיחת התאמה ביום ראשון")}</span></label>
+     {programId==="sunday_fishing_academy"&&<label><input name="schedulePreference" type="checkbox" value="weekday_morning_homeschool"/><span>{p(copy.inquiry.formatOptions.weekday_morning_homeschool)}</span></label>}
+     <label><input name="schedulePreference" type="checkbox" value="flexible"/><span>{programId==="sunday_fishing_academy"?p(copy.inquiry.formatOptions.flexible):t("Flexible fit-call time","זמן גמיש לשיחת התאמה")}</span></label>
+     <label><input name="schedulePreference" type="checkbox" value="other"/><span>{programId==="sunday_fishing_academy"?p(copy.inquiry.formatOptions.other):t("Another fit-call time","זמן אחר לשיחת התאמה")}</span></label>
    </div></fieldset>
-    <label className={styles.full}>{t("Other fit-call times, time zone or a brief scheduling note (optional)","זמנים אחרים לשיחת התאמה, אזור זמן או הערת תיאום קצרה (לא חובה)")}<textarea name="scheduleNotes" maxLength={300} rows={3}/></label>
-   <div className={styles.emptyGroup}><strong>{t("Published group preference","קבוצה מועדפת מתוך הקבוצות שפורסמו")}</strong><p>{t("No confirmed group times or meeting points are currently listed.","כרגע אין ברשימה מועדי קבוצות או נקודות מפגש מאושרים.")}</p></div></>}
+    <label className={styles.full}>{p(copy.inquiry.scheduleNotes)}<textarea name="scheduleNotes" maxLength={300} rows={3}/></label>
+</>}
     <label className={styles.permission}><input ref={permissionRef} name="permission" type="checkbox" required/><span>{notice[locale]}</span></label>
    {school&&<p>{t("Do not submit child names, rosters, diagnoses, clinical or family histories, emergency/medical details, photographs, recordings or media permissions.","אין למסור שמות ילדים, רשימות תלמידים, אבחנות, היסטוריה קלינית או משפחתית, פרטי חירום/רפואה, תמונות, הקלטות או רשות לפרסום.")}</p>}
-   {!school&&<p className={styles.privacy}>{t("Do not include medical histories, diagnoses, reports, payment details or child photographs.","אין לצרף היסטוריה רפואית, אבחנות, דוחות, פרטי תשלום או תמונות ילדים.")}</p>}
+   {!school&&<p className={styles.privacy}>{p(copy.inquiry.privacyHint)}</p>}
    <label className={styles.honeypot} aria-hidden="true">Website<input name="website" tabIndex={-1} autoComplete="off"/></label>
   </fieldset>
   {uncertain&&<p className={styles.locked}>{t("We have not confirmed receipt of this inquiry. Keep this page open and use the same reference when checking it; do not pay based on this screen.","עדיין לא אושרה קבלת הפנייה. השאירו את הדף פתוח והשתמשו באותו מספר פנייה בעת הבדיקה; אין לשלם על סמך מסך זה.")} <strong>{t("Reference","מספר הפנייה")}:</strong> <bdi dir="ltr">{uncertainReference}</bdi></p>}
-  <button type="submit" disabled={busy||(mode==="sample"?!sampleReady:!challenge)}>{mode==="sample"?t("Preview inquiry — not sent","בדיקת פנייה לדוגמה — ללא שליחה"):busy?t("Saving your inquiry…","שומרים את הפנייה…"):uncertain?t("Check save status","בדיקת מצב השמירה"):school?t("Send school inquiry","שליחת פנייה מטעם בית ספר"):t("Send my inquiry","שליחת הפנייה")}</button>
-  <p className={styles.boundary}>{school?t("Business inquiry only — no guardian assertion, child account, case, rank credit, enrollment, booking or payment request.","פנייה מקצועית בלבד — ללא הצהרת הורה, חשבון ילד, תיק, יחידה מדרגה, הרשמה, הזמנה או בקשת תשלום."):t("This inquiry is only a request to talk. It does not enroll your child, reserve a place or require payment.","זו בקשה לשיחה בלבד. היא אינה רושמת את ילדכם, שומרת מקום או מחייבת בתשלום.")}</p>
+  <button type="submit" disabled={busy||(mode==="sample"?!sampleReady:!challenge)}>{mode==="sample"?p(copy.inquiry.sampleSubmit):busy?p(copy.inquiry.saving):uncertain?p(copy.inquiry.retrySameSave):school?t("Send school inquiry","שליחת פנייה מטעם בית ספר"):p(copy.inquiry.submit)}</button>
+  <p className={styles.boundary}>{school?t("Business inquiry only — no guardian assertion, child account, case, rank credit, enrollment, booking or payment request.","פנייה מקצועית בלבד — ללא הצהרת הורה, חשבון ילד, תיק, יחידה מדרגה, הרשמה, הזמנה או בקשת תשלום."):p(copy.inquiry.boundary)}</p>
  </form>;
 }
 
