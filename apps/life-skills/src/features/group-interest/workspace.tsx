@@ -3,6 +3,7 @@ import {useCallback,useEffect,useRef,useState} from "react";
 import type {FormEvent} from "react";
 import type {Locale} from "../../lib/locale.ts";
 import {sessionInfo} from "../identity/client.ts";
+import {isFloridaGroupApplication} from "../group-application/contract.ts";
 import {GroupPlacementWorkspace} from "../group-placement/workspace.tsx";
 import {interestCommandSchema,interestNotice,serviceInterestCommandSchema,type InterestCommand,type InterestList,
  type InterestRecord,type ServiceInterestCommand} from "./contract.ts";
@@ -17,13 +18,6 @@ export function permissionLanguageChanged(language:Locale|null){return {language
 export function serviceOptions(item:Pick<InterestRecord,"fields">){return item.fields.serviceType==="group_and_tutoring"?["group","tutoring"] as const:[item.fields.serviceType] as const;}
 export function GroupInterestWorkspace({locale}:{locale:Locale}){
  const t=(en:string,he:string)=>locale==="he"?he:en;
- const observationLabels={intrinsicMotivation:t("Intrinsic motivation","מוטיבציה פנימית"),expression:t("Expressing thoughts and needs","הבעת מחשבות וצרכים"),
-  selfGovernance:t("Self-direction and decisions","הכוונה עצמית וקבלת החלטות"),valuesAndGoals:t("Values and goals","ערכים ומטרות"),
-  cooperation:t("Cooperation","שיתוף פעולה"),socialConfidence:t("Appropriate disagreement and social confidence","חוסר הסכמה מתאים וביטחון חברתי"),
-  stressfulSituations:t("Coping with stressful situations","התמודדות במצבים מלחיצים")};
- const observationValue=(value:string)=>value==="going_well"?t("Generally going well","בדרך כלל הולך טוב"):value==="sometimes_difficult"?t("Sometimes difficult","לפעמים קשה"):value==="would_like_support"?t("Would like support","נשמח לתמיכה"):t("Not shared","לא נמסר");
- const screenAccessValue=(value:string)=>value==="no_regular_access"?t("No regular access","ללא גישה קבועה"):value==="shared_device"?t("Shared device","מכשיר משותף"):value==="own_device"?t("Own device","מכשיר אישי"):t("Not shared","לא נמסר");
- const screenTimeValue=(value:string)=>value==="under_1_hour"?t("Under 1 hour","פחות משעה"):value==="1_to_2_hours"?t("1–2 hours","1–2 שעות"):value==="2_to_4_hours"?t("2–4 hours","2–4 שעות"):value==="over_4_hours"?t("More than 4 hours","יותר מ־4 שעות"):t("Not shared","לא נמסר");
  const form=useRef<HTMLFormElement>(null),pending=useRef<InterestCommand|null>(null),servicePending=useRef<ServiceInterestCommand|null>(null);
  const [data,setData]=useState<InterestList|null>(null),[busy,setBusy]=useState(false),[uncertain,setUncertain]=useState(false),
   [error,setError]=useState(""),[saved,setSaved]=useState(false),[permission,setPermission]=useState(permissionLanguageChanged(null)),
@@ -127,21 +121,11 @@ export function GroupInterestWorkspace({locale}:{locale:Locale}){
    <button type="button" className={`lsw-button lsw-button--secondary ${styles.refresh}`} disabled={busy} onClick={()=>void load()}>{t("Refresh","רענון")}</button></header>
   {!data&&!error&&<p role="status">{t("Loading inquiries and verified family members…","טוען פניות ובני משפחה מאומתים…")}</p>}
   {data&&data.publicApplications.length===0&&data.items.length===0&&<p>{t("No inquiries recorded.","לא נרשמו פניות.")}</p>}
-  {data&&data.publicApplications.length>0&&<section className={styles.publicApplications} aria-labelledby="public-group-applications-heading">
-   <h2 id="public-group-applications-heading">{t("Public group applications","בקשות ציבוריות לקבוצה")}</h2>
-   <p>{t("Private owner review only. These applications are not People records, leads, enrollments, bookings, payments or messages.","לבדיקת הבעלים בלבד. בקשות אלה אינן רשומות אנשים, לידים, הרשמות, קביעות, תשלומים או הודעות.")}</p>
-   {data.publicApplications.map(item=>{const observations=Object.entries(item.fields.observations);const hasDetails=Boolean(item.fields.screenAccess||item.fields.screenTime||item.fields.parentPriorities||observations.length);return <article className={styles.record} key={item.id}>
-    <h3>{item.fields.parentName} · {t("Age","גיל")} {item.fields.childAge}</h3>
-    <p><bdi dir="ltr" className={styles.phone}>{item.fields.parentPhone}</bdi> · {item.fields.town} · {item.fields.schedulePreference==="morning"?t("Morning","בוקר"):item.fields.schedulePreference==="evening"?t("Evening","ערב"):t("Flexible","גמיש")}</p>
-    <p>{item.fields.interestedInEveningGroup?t("Interested in helping form an evening group","מעוניינים לסייע בהקמת קבוצת ערב"):t("No evening-group preference recorded","לא נרשמה העדפה לקבוצת ערב")}</p>
-    <p>{t("Application received — owner review pending","הבקשה התקבלה — ממתינה לבדיקת הבעלים")} · <time dateTime={item.receivedAt}>{new Intl.DateTimeFormat(locale==="he"?"he-IL":"en-GB",{dateStyle:"short",timeStyle:"short",timeZone:"Asia/Jerusalem"}).format(new Date(item.receivedAt))}</time></p>
-    {hasDetails&&<details className={styles.applicationDetails}><summary>{t("Optional parent details","פרטים אופציונליים מההורה")}</summary>
-     {item.fields.screenAccess&&<p><strong>{t("Screen access","גישה למסך")}:</strong> {screenAccessValue(item.fields.screenAccess)}</p>}
-     {item.fields.screenTime&&<p><strong>{t("Daily screen time","זמן מסך יומי")}:</strong> {screenTimeValue(item.fields.screenTime)}</p>}
-     {observations.length>0&&<dl>{observations.map(([key,value])=><div key={key}><dt>{observationLabels[key as keyof typeof observationLabels]}</dt><dd>{observationValue(value??"not_shared")}</dd></div>)}</dl>}
-     {item.fields.parentPriorities&&<p><strong>{t("Parent priorities","עדיפויות ההורה")}:</strong> {item.fields.parentPriorities}</p>}
-    </details>}
-   </article>})}
+   {data&&data.publicApplications.length>0&&<section className={styles.publicApplications} aria-labelledby="public-group-applications-heading">
+    <h2 id="public-group-applications-heading">{t("Public group inquiries","פניות ציבוריות לקבוצה")}</h2>
+    <p>{t("Private owner review only. These inquiries are not People records, leads, enrollments, bookings, payments or messages.","לבדיקת הבעלים בלבד. פניות אלה אינן רשומות אנשים, לידים, הרשמות, קביעות, תשלומים או הודעות.")}</p>
+    {data.publicApplications.map(item=>{const fields=item.fields;if(isFloridaGroupApplication(fields))return <article className={styles.record} key={item.id}><h3>{fields.parentName}{fields.childAge?` · ${t("Age","גיל")} ${fields.childAge}`:""}</h3><p><bdi dir="ltr" className={styles.phone}>{fields.contact}</bdi> · {fields.cityArea}{fields.neighborhood?` · ${fields.neighborhood}`:""}</p><p>{fields.programId} · {fields.schedulePreference.join(", ")}</p><p>{t("Florida inquiry received — owner review pending","הפנייה מפלורידה התקבלה — ממתינה לבדיקת הבעלים")} · <time dateTime={item.receivedAt}>{new Intl.DateTimeFormat(locale==="he"?"he-IL":"en-US",{dateStyle:"short",timeStyle:"short",timeZone:"America/New_York"}).format(new Date(item.receivedAt))}</time></p>{fields.scheduleNotes&&<details className={styles.applicationDetails}><summary>{t("Scheduling note","הערה על זמנים")}</summary><p>{fields.scheduleNotes}</p></details>}</article>;
+     return <article className={styles.record} key={item.id}><h3>{fields.parentName} · {t("Israel group application","בקשה לקבוצה בישראל")}</h3><p><bdi dir="ltr" className={styles.phone}>{fields.parentPhone}</bdi> · {fields.town}</p><p>{t("Reviewed under the existing Israel application terms; not converted into a Florida inquiry.","נבדקת לפי תנאי הבקשה הקיימים בישראל; אינה מומרת לפנייה בפלורידה.")}</p></article>;})}
   </section>}
   {data?.items.map(item=>{const recorded=data.serviceInterests.filter(value=>value.sourceInquiryId===item.id);return <article className={styles.record} key={item.id}><h3>{item.fields.parentName} — {item.fields.childLabel}</h3>
    <p><bdi dir="ltr" className={styles.phone}>{item.fields.parentPhone}</bdi> · {item.fields.serviceType==="group"?t("Group","קבוצה"):item.fields.serviceType==="tutoring"?t("Tutoring","תגבור"):t("Both","שניהם")} · {t("Age","גיל")} {item.fields.childAge}</p>

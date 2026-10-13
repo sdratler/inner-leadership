@@ -9,7 +9,7 @@ import {freshActor,lockWorkspace} from "../identity/data.ts";
 import type {IdentityClock,Actor} from "../identity/types.ts";
 import {systemClock} from "../identity/types.ts";
 import type {IdentityStore,SqlSession} from "../identity/store.ts";
-import {groupApplicationCommandSchema,groupApplicationFieldsSchema,type GroupApplicationCommand,type GroupApplicationRecord} from "./contract.ts";
+import {groupApplicationCommandSchema,groupApplicationFieldsSchema,isFloridaGroupApplication,type GroupApplicationCommand,type GroupApplicationFields,type GroupApplicationRecord} from "./contract.ts";
 
 type Row={id:string;requestDigest:string;payloadCiphertext:string;receivedAt:Date};
 const aad=(workspace:string,id:string)=>`ls_service_interest/public_application/v1/${workspace}/${id}`;
@@ -20,8 +20,10 @@ const select=`SELECT id,request_digest AS "requestDigest",payload_ciphertext AS 
 export class PublicGroupApplicationStore{
  constructor(private readonly db:IdentityStore,private readonly workspaceId:WorkspaceId,private readonly ring:Keyring,
   private readonly digestKey:string,private readonly clock:IdentityClock=systemClock){}
- private requestDigest(fields:GroupApplicationCommand["fields"]){return privateDigest({domain:"public-group-application/v1",workspace:this.workspaceId,fields},this.digestKey);}
- private contactDigest(phone:string){return privateDigest({domain:"public-group-application-contact/v1",workspace:this.workspaceId,phone},this.digestKey);}
+ private requestDigest(fields:GroupApplicationFields){return privateDigest({domain:"public-group-application/v1",workspace:this.workspaceId,fields},this.digestKey);}
+ private contactDigest(fields:GroupApplicationFields){return isFloridaGroupApplication(fields)?
+  privateDigest({domain:"public-group-application-contact/v1",workspace:this.workspaceId,contact:fields.contact},this.digestKey):
+  privateDigest({domain:"public-group-application-contact/v1",workspace:this.workspaceId,phone:fields.parentPhone},this.digestKey);}
  private decode(row:Row):GroupApplicationRecord{
   try{
    const fields=groupApplicationFieldsSchema.parse(JSON.parse(unseal(row.payloadCiphertext,aad(this.workspaceId,row.id),this.ring)));
@@ -32,7 +34,7 @@ export class PublicGroupApplicationStore{
  private async read(tx:SqlSession,id:string){const rows=await tx.query<Row>(select+" WHERE workspace_id=$1 AND id=$2",[this.workspaceId,id]);if(rows.length!==1)throw new AppError("UNAVAILABLE");return this.decode(rows[0]!);}
  async submit(input:GroupApplicationCommand){
   const parsed=groupApplicationCommandSchema.safeParse(input);if(!parsed.success)throw new AppError("INVALID_REQUEST");
-  const command=parsed.data,requestDigest=this.requestDigest(command.fields),contactDigest=this.contactDigest(command.fields.parentPhone);
+  const command=parsed.data,requestDigest=this.requestDigest(command.fields),contactDigest=this.contactDigest(command.fields);
   return this.db.transaction(async tx=>{
    await lockWorkspace(tx,this.workspaceId);
    const prior=await tx.query<{applicationId:string;requestDigest:string}>(`SELECT application_id AS "applicationId",request_digest AS "requestDigest"
