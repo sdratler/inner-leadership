@@ -4,7 +4,7 @@ import {afterAll,beforeAll,expect,it,vi} from "vitest";
 import {PGlite} from "@electric-sql/pglite";
 vi.mock("server-only",()=>({}));
 import {PublicGroupApplicationStore} from "../../src/features/group-application/store.ts";
-import {floridaGroupApplicationNotice,groupApplicationNotice,type FloridaGroupApplicationCommand,type IsraelGroupApplicationCommand} from "../../src/features/group-application/contract.ts";
+import {floridaGroupApplicationNotice,groupApplicationNotice,type FloridaParentApplicationFields,type IsraelGroupApplicationCommand} from "../../src/features/group-application/contract.ts";
 import type {IdentityStore,SqlSession} from "../../src/features/identity/store.ts";
 import type {Actor} from "../../src/features/identity/types.ts";
 import {asId} from "../../src/lib/ids.ts";
@@ -13,7 +13,7 @@ const db=new PGlite(),workspaceId=asId(randomUUID(),"workspace"),now=new Date("2
 const identity:IdentityStore={transaction:work=>db.transaction(tx=>work({query:async<T extends object>(sql:string,values:readonly unknown[]=[])=>(await tx.query<T>(sql,[...values])).rows} as SqlSession))};
 const service=new PublicGroupApplicationStore(identity,workspaceId,ring,key,{now:()=>now});
 const actors:Actor[]=[];
-function command(overrides:Partial<FloridaGroupApplicationCommand["fields"]>={}):FloridaGroupApplicationCommand{return {operationId:randomUUID(),fields:{parentName:"Synthetic Parent",contact:"parent@example.invalid",language:"en",childAge:"10",cityArea:"Hollywood, Florida",neighborhood:"Synthetic neighborhood",programId:"sunday_fishing_academy",schedulePreference:["sunday","flexible"],scheduleNotes:"Synthetic practical scheduling only.",permission:{confirmed:true,version:floridaGroupApplicationNotice.version,language:"en"},...overrides}};}
+function command(overrides:Partial<FloridaParentApplicationFields>={}):{operationId:string;fields:FloridaParentApplicationFields}{return {operationId:randomUUID(),fields:{parentName:"Synthetic Parent",contact:"parent@example.invalid",language:"en",childAge:"10",cityArea:"Hollywood, Florida",neighborhood:"Synthetic neighborhood",programId:"sunday_fishing_academy",schedulePreference:["sunday","flexible"],scheduleNotes:"Synthetic practical scheduling only.",permission:{confirmed:true,version:floridaGroupApplicationNotice.version,language:"en"},...overrides}};}
 function israelCommand():IsraelGroupApplicationCommand{return {operationId:randomUUID(),fields:{parentName:"Synthetic Israel Parent",parentPhone:"+972520009999",language:"he",childAge:10,town:"Modiin",townChoice:"modiin",neighborhood:"Synthetic neighborhood",schedulePreference:"evening",observations:{},permission:{confirmed:true,version:groupApplicationNotice.version,language:"he"}}};}
 beforeAll(async()=>{
  await db.exec("CREATE SCHEMA ls_control");for(const name of ["0001_ls_foundation.sql","0010_ls_identity_cases_20260906.sql","0124_ls_group_interest.sql","0131_ls_public_group_applications.sql"]){const sql=await readFile("migrations/"+name,"utf8"),manifest=JSON.parse(await readFile("migrations/manifest.json","utf8")) as {name:string;sha256:string}[];expect(createHash("sha256").update(sql).digest("hex")).toBe(manifest.find(row=>row.name===name)?.sha256);await db.exec(sql);}

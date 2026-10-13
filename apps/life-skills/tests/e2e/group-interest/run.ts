@@ -174,7 +174,7 @@ try{
  if(process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==="true")selection.push("--grep","Florida group inquiry|Israel group application compatibility");
  if(process.env.LS_GROUP_INTEREST_CAPTURE_ONLY==="true")selection.push("--grep","practitioner");
  if(sampleOnly)selection.push("--grep","Florida owner journey hosted sample");
- else if(process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==="true")selection.push("--grep","Florida owner journey");
+ else if(process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==="true")selection.push("--grep",process.env.LS_FLORIDA_INSTITUTION_TEST_ONLY==="true"?"Florida owner journey school inquiry|Florida owner journey.*native inquiry replay|Florida owner journey authorization":"Florida owner journey");
  else selection.push("--grep-invert","Florida owner journey");
  tests=spawn(process.execPath,[resolve("node_modules/@playwright/test/cli.js"),"test","--config","tests/e2e/group-interest/playwright.config.ts",...selection],{env,stdio:["ignore","inherit","inherit"]});
  const [code]=await once(tests,"exit");if(code!==0)throw new Error("GROUP_INTEREST_BROWSER_ACCEPTANCE_FAILED");
@@ -182,7 +182,7 @@ try{
  else if(sampleOnly||process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==="true"){
   phase="journey-boundary-readback";
   const after=await counts();
-  const writes=sampleOnly?0:6,expected={...baseline,publicApplications:baseline.publicApplications+writes,publicApplicationOperations:baseline.publicApplicationOperations+writes};
+  const writes=sampleOnly?0:8,expected={...baseline,publicApplications:baseline.publicApplications+writes,publicApplicationOperations:baseline.publicApplicationOperations+writes};
   if(JSON.stringify(after)!==JSON.stringify(expected))throw new Error("FLORIDA_JOURNEY_UNEXPECTED_DATABASE_EFFECT");
   const retainedPublic=await f.pool.query("SELECT to_jsonb(a)::text AS snapshot FROM ls_service_interest.public_applications a WHERE workspace_id=$1 AND id=$2",[workspaceId,publicApplicationId]);
   if(JSON.stringify(retainedPublic.rows)!==JSON.stringify(originalPublic.rows))throw new Error("FLORIDA_JOURNEY_EXISTING_RECEIPT_MUTATED");
