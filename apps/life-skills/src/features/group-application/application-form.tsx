@@ -85,6 +85,6 @@ export function GroupApplicationForm({locale,programId}:{locale:Locale;programId
   </fieldset>
   {uncertain&&<p className={styles.locked}>{t("We have not confirmed receipt of this inquiry. Keep this page open and use the same reference when checking it; do not pay based on this screen.","עדיין לא אושרה קבלת הפנייה. השאירו את הדף פתוח והשתמשו באותו מספר פנייה בעת הבדיקה; אין לשלם על סמך מסך זה.")} <strong>{t("Reference","מספר הפנייה")}:</strong> <bdi dir="ltr">{uncertainReference}</bdi></p>}
   <button type="submit" disabled={busy||!challenge}>{busy?t("Saving your inquiry…","שומרים את הפנייה…"):uncertain?t("Check save status","בדיקת מצב השמירה"):t("Send my inquiry","שליחת הפנייה")}</button>
-  <p className={styles.boundary}>{t("Saving creates one private administrative inquiry only. It does not create an account, clinical case, enrollment, trip clearance, booking, charge or provider message.","השמירה יוצרת פנייה מנהלית פרטית אחת בלבד. היא אינה יוצרת חשבון, תיק טיפולי, הרשמה, אישור לטיול, הזמנה, חיוב או הודעת ספק.")}</p>
+  <p className={styles.boundary}>{t("This inquiry is only a request to talk. It does not enroll your child, reserve a place or require payment.","זו בקשה לשיחה בלבד. היא אינה רושמת את ילדכם, שומרת מקום או מחייבת בתשלום.")}</p>
  </form>;
 }
