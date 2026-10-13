@@ -65,17 +65,21 @@ const israelReadableFieldsSchema=israelFieldsBase.superRefine((value,context)=>{
 });
 
 const contactSchema=z.string().max(254).transform(normalizeGroupApplicationContact).pipe(z.string().refine(value=>z.string().email().safeParse(value).success||/^\+?\d{7,15}$/.test(value),"contact"));
-const scheduleValueSchema=z.enum(["weekday_after_school","sunday","flexible","other"]);
+const scheduleValueSchema=z.enum(["weekday_after_school","sunday","flexible","other","weekday_morning_homeschool"]);
 export const floridaProgramIdSchema=z.enum(["sunday_fishing_academy","morning_torah_learning","private_fishing_life_skills"]);
 export type FloridaProgramId=z.infer<typeof floridaProgramIdSchema>;
 export const floridaGroupApplicationFieldsSchema=z.object({
  parentName:z.string().trim().min(1).max(100),contact:contactSchema,language:z.enum(["he","en"]),
  childAge:z.string().trim().min(1).max(20).optional(),cityArea:z.string().trim().min(1).max(100),neighborhood:z.string().trim().min(1).max(100).optional(),
  programId:floridaProgramIdSchema,
- schedulePreference:z.array(scheduleValueSchema).min(1).max(4).refine(values=>new Set(values).size===values.length,"duplicate schedule preference"),
+ schedulePreference:z.array(scheduleValueSchema).min(1).max(5).refine(values=>new Set(values).size===values.length,"duplicate schedule preference"),
+ scheduleContext:z.literal("program_format_interest").optional(),
  scheduleNotes:z.string().trim().min(1).max(300).optional(),
  permission:z.object({confirmed:z.literal(true),version:z.literal(floridaGroupApplicationNotice.version),language:z.enum(["he","en"])}).strict(),
-}).strict();
+}).strict().superRefine((value,context)=>{
+ if(value.scheduleContext!==undefined&&value.programId!=="sunday_fishing_academy")context.addIssue({code:"custom",path:["scheduleContext"],message:"academy-only format interest"});
+ if(value.schedulePreference.includes("weekday_morning_homeschool")&&(value.programId!=="sunday_fishing_academy"||value.scheduleContext!=="program_format_interest"))context.addIssue({code:"custom",path:["schedulePreference"],message:"academy format context required"});
+});
 
 export const groupApplicationFieldsSchema=z.union([floridaGroupApplicationFieldsSchema,israelReadableFieldsSchema]);
 export const israelGroupApplicationCommandSchema=z.object({operationId:z.string().uuid(),fields:currentGroupApplicationFieldsSchema}).strict();
