@@ -60,7 +60,7 @@ export function GroupApplicationLanding({locale:initialLocale,programId="sunday_
    </div></section>
    <section className={styles.how} id="about">
     <div className={`${styles.wrap} ${styles.twoColumn}`}><div><p className={styles.eyebrow}>{p(copy.shared.teacherKicker)}</p><h2>{p(copy.shared.teacherTitle)}</h2></div><p className={styles.sectionLead}>{p(copy.shared.teacherBody)}</p></div>
-    <div id="learning" className={`${styles.wrap} ${styles.twoColumn}`}><div><p className={styles.eyebrow}>{p(copy.shared.programSectionKicker)}</p><h2>{p(program.sectionTitle)}</h2></div><p className={styles.sectionLead}>{p(program.sectionBody)}</p></div>
+    <div id="learning" className={`${styles.wrap} ${styles.twoColumn} ${styles.learningRow}`}><div><p className={styles.eyebrow}>{p(copy.shared.programSectionKicker)}</p><h2>{p(program.sectionTitle)}</h2></div><p className={styles.sectionLead}>{p(program.sectionBody)}</p></div>
     <div className={`${styles.wrap} ${styles.skillGrid} ${academy?styles.rankGrid:""}`}>{program.cards.map((card,index)=><article key={card.title.en}><span>{String(index+1).padStart(2,"0")}</span><h3>{p(card.title)}</h3><p>{p(card.body)}</p></article>)}</div>
    </section>
    <section className={styles.readiness}><div className={`${styles.wrap} ${styles.readinessGrid}`}><div><p className={styles.eyebrow}>{t("Your next step","הצעד הבא שלכם")}</p><h2>{p(copy.shared.nextStepTitle)}</h2><p>{p(program.boundary)}</p></div><aside><ol>{copy.shared.nextStepSteps.map(step=><li key={step.en}>{p(step)}</li>)}</ol></aside></div></section>

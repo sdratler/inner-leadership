@@ -10,6 +10,18 @@ import copy from "../../src/features/group-application/presentation-copy.json";
 const markup=(locale:"en"|"he",programId:"sunday_fishing_academy"|"private_fishing_life_skills",mode:"native"|"sample")=>renderToStaticMarkup(createElement(GroupApplicationLanding,{locale,programId,mode}));
 const escaped=(text:string)=>renderToStaticMarkup(createElement("span",null,text)).slice(6,-7);
 describe("reviewed Florida presentation, not new runtime authority",()=>{
+ it("retains every base CSS-module layout key when merging additions",async()=>{
+  const [baseCss,additionCss,landing]=await Promise.all(["landing.module.css","landing-additions.module.css","landing.tsx"].map(file=>readFile(new URL("../../src/features/group-application/"+file,import.meta.url),"utf8")));
+  const exported=(css:string)=>[...new Set([...css.matchAll(/\.([a-zA-Z_][a-zA-Z0-9_-]*)/g)].map(match=>match[1]!))];
+  const baseKeys=exported(baseCss!),additionKeys=exported(additionCss!),collisions=additionKeys.filter(key=>baseKeys.includes(key));
+  expect(collisions).toEqual([]);
+  const base=Object.fromEntries(baseKeys.map(key=>[key,"base_"+key])),additions=Object.fromEntries(additionKeys.map(key=>[key,"addition_"+key])),merged={...base,...additions};
+  for(const key of baseKeys)expect(merged[key]).toBe(base[key]);
+  expect(baseKeys).toContain("how");expect(baseKeys).toContain("twoColumn");
+  expect(baseCss).toMatch(/\.twoColumn\{display:grid;grid-template-columns:/);
+  expect(landing).toContain('className={`${styles.wrap} ${styles.twoColumn} ${styles.learningRow}`}');
+  expect(additionKeys).toContain("learningRow");
+ });
  for(const locale of ["en","he"] as const)for(const mode of ["native","sample"] as const){
   it(`renders one Academy headline/benefit row and the same contact action in ${locale}/${mode}`,()=>{
    const html=markup(locale,"sunday_fishing_academy",mode);

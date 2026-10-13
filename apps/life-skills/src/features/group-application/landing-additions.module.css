@@ -5,5 +5,5 @@
 .benefitRow svg{inline-size:28px;block-size:28px;color:var(--teal)}
 .rankGrid{grid-template-columns:repeat(3,minmax(0,1fr))}
 .teaser{max-inline-size:850px}
-.how .twoColumn+.twoColumn{margin-block-start:56px;scroll-margin-block-start:110px}
+.learningRow{margin-block-start:56px;scroll-margin-block-start:110px}
 @media(max-width:640px){.rankGrid{grid-template-columns:1fr}.benefitRow{gap:8px}.benefitRow li{font-size:.85rem}}
