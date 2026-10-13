@@ -16,8 +16,9 @@ import {floridaGroupApplicationNotice} from "../../../src/features/group-applica
 
 const projects={desktop:3105,tablet768:3108,mobile390:3106,mobile340:3107} as const;
 const project=process.env.LS_GROUP_INTEREST_TEST_PROJECT as keyof typeof projects|undefined;
+const sampleOnly=process.env.LS_FLORIDA_SAMPLE_TEST_ONLY==="true";
 if(project!==undefined&&!(project in projects))throw new Error("GROUP_INTEREST_BROWSER_PROJECT_NOT_SUPPORTED");
-if(process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==="true"&&project===undefined)throw new Error("FLORIDA_JOURNEY_EXPLICIT_PROJECT_REQUIRED");
+if((sampleOnly||process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==="true")&&project===undefined)throw new Error("FLORIDA_JOURNEY_EXPLICIT_PROJECT_REQUIRED");
 if(process.env.LS_GROUP_INTEREST_TEST_ALLOW!=="true")throw new Error("GROUP_INTEREST_BROWSER_OPT_IN_REQUIRED");
 const appPort=projects[project??"desktop"],origin=`https://localhost:${appPort}`;
 safeTestUrl();
@@ -172,19 +173,20 @@ try{
  const selection=project?["--project",project,"--output",`tests/e2e/group-interest/test-results/isolated-${project}`]:[];
  if(process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==="true")selection.push("--grep","Florida group inquiry|Israel group application compatibility");
  if(process.env.LS_GROUP_INTEREST_CAPTURE_ONLY==="true")selection.push("--grep","practitioner");
- if(process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==="true")selection.push("--grep","Florida owner journey");
+ if(sampleOnly)selection.push("--grep","Florida owner journey hosted sample");
+ else if(process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==="true")selection.push("--grep","Florida owner journey");
  else selection.push("--grep-invert","Florida owner journey");
  tests=spawn(process.execPath,[resolve("node_modules/@playwright/test/cli.js"),"test","--config","tests/e2e/group-interest/playwright.config.ts",...selection],{env,stdio:["ignore","inherit","inherit"]});
  const [code]=await once(tests,"exit");if(code!==0)throw new Error("GROUP_INTEREST_BROWSER_ACCEPTANCE_FAILED");
  if(process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==="true")console.log(`FLORIDA_PUBLIC_BROWSER_ACCEPTANCE_PASS project=${project??"all"} sideEffects=0`);
- else if(process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==="true"){
+ else if(sampleOnly||process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==="true"){
   phase="journey-boundary-readback";
   const after=await counts();
-  const expected={...baseline,publicApplications:baseline.publicApplications+6,publicApplicationOperations:baseline.publicApplicationOperations+6};
+  const writes=sampleOnly?0:6,expected={...baseline,publicApplications:baseline.publicApplications+writes,publicApplicationOperations:baseline.publicApplicationOperations+writes};
   if(JSON.stringify(after)!==JSON.stringify(expected))throw new Error("FLORIDA_JOURNEY_UNEXPECTED_DATABASE_EFFECT");
   const retainedPublic=await f.pool.query("SELECT to_jsonb(a)::text AS snapshot FROM ls_service_interest.public_applications a WHERE workspace_id=$1 AND id=$2",[workspaceId,publicApplicationId]);
   if(JSON.stringify(retainedPublic.rows)!==JSON.stringify(originalPublic.rows))throw new Error("FLORIDA_JOURNEY_EXISTING_RECEIPT_MUTATED");
-  console.log(`FLORIDA_JOURNEY_ACCEPTANCE_PASS project=${project??"all"} inquiries=6 operations=6 otherDatabaseEffects=0 providerEffects=0 downstream=sample`);
+  console.log(`FLORIDA_JOURNEY_ACCEPTANCE_PASS project=${project??"all"} inquiries=${writes} operations=${writes} otherDatabaseEffects=0 providerEffects=0 downstream=sample`);
  }
  else{
  phase="durable-child-identity";await verifyDurableChildIdentity();

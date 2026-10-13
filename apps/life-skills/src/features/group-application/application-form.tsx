@@ -1,12 +1,15 @@
 "use client";
-import {useEffect,useRef,useState} from "react";
+import {useEffect,useRef,useState,useSyncExternalStore} from "react";
 import type {FormEvent} from "react";
 import type {Locale} from "../../lib/locale.ts";
 import {floridaGroupApplicationFieldsSchema,floridaGroupApplicationNotice,type FloridaGroupApplicationCommand,type FloridaProgramId} from "./contract.ts";
+import {journeyProgramName} from "./journey-preview-model.ts";
 import styles from "./application-form.module.css";
 
 type Challenge={challenge:string};
 const optional=(value:FormDataEntryValue|null)=>typeof value==="string"&&value.trim()!==""?value:undefined;
+const subscribeHydration=()=>()=>{};
+const clientReady=()=>true,serverReady=()=>false;
 export function classifyPublicApplicationFailure(requestStarted:boolean,status?:number,previouslyUncertain=false){
  if(!requestStarted||status===404)return "unavailable" as const;
  if(status!==undefined&&status>=400&&status<500)return "correctable" as const;
@@ -14,22 +17,25 @@ export function classifyPublicApplicationFailure(requestStarted:boolean,status?:
  return "unconfirmed" as const;
 }
 
-export function GroupApplicationForm({locale,programId,onSaved}:{locale:Locale;programId:FloridaProgramId;onSaved?:(reference:string)=>void}){
+export function GroupApplicationForm({locale,programId,onSaved,mode="native",onPreviewed}:{locale:Locale;programId:FloridaProgramId;onSaved?:(reference:string)=>void;mode?:"native"|"sample";onPreviewed?:()=>void}){
  const t=(en:string,he:string)=>locale==="he"?he:en,form=useRef<HTMLFormElement>(null),pending=useRef<{command:FloridaGroupApplicationCommand;website:""}|null>(null),errorRef=useRef<HTMLDivElement>(null),permissionRef=useRef<HTMLInputElement>(null);
  const [challenge,setChallenge]=useState(""),[busy,setBusy]=useState(false),[uncertain,setUncertain]=useState(false),[uncertainReference,setUncertainReference]=useState(""),[error,setError]=useState(""),[saved,setSaved]=useState(false),[savedReference,setSavedReference]=useState("");
+ const [previewed,setPreviewed]=useState(false);
+ const sampleReady=useSyncExternalStore(subscribeHydration,clientReady,serverReady);
  const endpoint=`/api/public/group-applications?program=${encodeURIComponent(programId)}`;
- useEffect(()=>{let active=true,timer:ReturnType<typeof setTimeout>|undefined;fetch(endpoint,{cache:"no-store",credentials:"same-origin"}).then(async response=>{const body=await response.json();if(!response.ok||body?.ok!==true||typeof body.data?.challenge!=="string")throw new Error();return body.data as Challenge;}).then(data=>{if(active)timer=setTimeout(()=>{if(active)setChallenge(data.challenge);},1600);}).catch(()=>{if(active)setError(locale==="he"?"שליחת פניות מקוונות עדיין אינה זמינה. לא נשלחו פרטים.":"Online inquiries are not available yet. No details have been sent.");});return()=>{active=false;if(timer)clearTimeout(timer);};},[endpoint,locale]);
+ useEffect(()=>{if(mode==="sample")return;let active=true,timer:ReturnType<typeof setTimeout>|undefined;fetch(endpoint,{cache:"no-store",credentials:"same-origin"}).then(async response=>{const body=await response.json();if(!response.ok||body?.ok!==true||typeof body.data?.challenge!=="string")throw new Error();return body.data as Challenge;}).then(data=>{if(active)timer=setTimeout(()=>{if(active)setChallenge(data.challenge);},1600);}).catch(()=>{if(active)setError(locale==="he"?"שליחת פניות מקוונות עדיין אינה זמינה. לא נשלחו פרטים.":"Online inquiries are not available yet. No details have been sent.");});return()=>{active=false;if(timer)clearTimeout(timer);};},[endpoint,locale,mode]);
  useEffect(()=>{if(error)errorRef.current?.focus();},[error]);
  useEffect(()=>{if(!pending.current&&permissionRef.current)permissionRef.current.checked=false;},[locale]);
  useEffect(()=>{const guard=(event:BeforeUnloadEvent)=>{if(pending.current){event.preventDefault();event.returnValue="";}};window.addEventListener("beforeunload",guard);return()=>window.removeEventListener("beforeunload",guard);},[]);
 
  async function submit(event:FormEvent<HTMLFormElement>){
-  event.preventDefault();if(busy||!challenge)return;setSaved(false);setSavedReference("");setError("");const previouslyUncertain=uncertain;
+  event.preventDefault();if(busy||(mode==="native"&&!challenge))return;setSaved(false);setSavedReference("");setError("");const previouslyUncertain=uncertain;
   if(!pending.current){
    const values=new FormData(event.currentTarget),schedulePreference=values.getAll("schedulePreference").filter((value):value is string=>typeof value==="string");
    const fields=floridaGroupApplicationFieldsSchema.safeParse({parentName:values.get("parentName"),contact:values.get("contact"),language:locale,childAge:optional(values.get("childAge")),cityArea:values.get("cityArea"),neighborhood:optional(values.get("neighborhood")),programId,schedulePreference,scheduleNotes:optional(values.get("scheduleNotes")),permission:{confirmed:values.get("permission")==="on",version:floridaGroupApplicationNotice.version,language:locale}});
    if(!fields.success){setError(t("Please complete the required contact, location, program, schedule and permission fields.","יש למלא את פרטי הקשר, המיקום, המסלול והעדפות הזמנים הנדרשים ולאשר את ההסכמה."));return;}
    if(values.get("website")!==""){setError(t("Your inquiry could not be verified. Reload the page and try again.","לא ניתן לאמת את הפנייה. רעננו את הדף ונסו שוב."));return;}
+   if(mode==="sample"){setPreviewed(true);onPreviewed?.();return;}
    pending.current={command:{operationId:crypto.randomUUID(),fields:fields.data},website:""};setUncertainReference(pending.current.command.operationId);
   }
   setBusy(true);let requestStarted=false;
@@ -56,11 +62,13 @@ export function GroupApplicationForm({locale,programId,onSaved}:{locale:Locale;p
   }finally{setBusy(false);}
  }
 
- const programName=programId==="sunday_fishing_academy"?t("Florida Fishing & Keys Course","מסלול הדיג והקיז בפלורידה"):programId==="morning_torah_learning"?t("Morning Torah Learning","לימוד תורה בבוקר"):t("Private Fishing & Life Skills","דיג וכישורי חיים באופן פרטי");
+ const programName=journeyProgramName(programId,locale);
  return <form ref={form} className={styles.form} onSubmit={submit} noValidate>
   <div className={styles.heading}><p className={styles.kicker}>{t("Private inquiry","פנייה פרטית")}</p><h3>{t("Ask about a program","מתעניינים בתוכנית?")}</h3><p>{t("Tell us which program interests you and when you can speak. We will contact you about the next step. Sending this form does not reserve a place or require payment.","בחרו את התוכנית שמעניינת אתכם וציינו מתי נוח לדבר. ניצור קשר לגבי השלב הבא. שליחת הטופס אינה שומרת מקום ואינה מחייבת בתשלום.")}</p></div>
   {error&&<div ref={errorRef} tabIndex={-1} role="alert" className={styles.error}><strong>{t("Please check this inquiry","בדקו את הפנייה")}</strong><p>{error}</p></div>}
   {saved&&<div role="status" className={styles.success}><strong>{t("Inquiry received","הפנייה התקבלה")}</strong><p>{t("Your place is not booked. We will contact you about a fit conversation and actual availability.","המקום עדיין אינו מוזמן. ניצור קשר לשיחת התאמה ולבירור האפשרויות בפועל.")} <strong>{t("Reference","מספר הפנייה")}:</strong> <bdi dir="ltr">{savedReference}</bdi></p></div>}
+  {mode==="sample"&&<p className={styles.boundary}>{t("SYNTHETIC SAMPLE — enter invented details only. Nothing is sent or saved.","דוגמה סינתטית — הזינו פרטים מומצאים בלבד. דבר אינו נשלח או נשמר.")}</p>}
+  {previewed&&<p role="status">{t("Sample fields checked locally. No inquiry or saved reference was created.","שדות הדוגמה נבדקו מקומית. לא נוצרו פנייה או מספר שמירה.")}</p>}
   <fieldset className={styles.fieldset} disabled={busy||uncertain}>
    <legend className={styles.srOnly}>{t("Group inquiry details","פרטי הפנייה לקבוצה")}</legend>
    <div className={styles.fields}>
@@ -84,7 +92,7 @@ export function GroupApplicationForm({locale,programId,onSaved}:{locale:Locale;p
    <label className={styles.honeypot} aria-hidden="true">Website<input name="website" tabIndex={-1} autoComplete="off"/></label>
   </fieldset>
   {uncertain&&<p className={styles.locked}>{t("We have not confirmed receipt of this inquiry. Keep this page open and use the same reference when checking it; do not pay based on this screen.","עדיין לא אושרה קבלת הפנייה. השאירו את הדף פתוח והשתמשו באותו מספר פנייה בעת הבדיקה; אין לשלם על סמך מסך זה.")} <strong>{t("Reference","מספר הפנייה")}:</strong> <bdi dir="ltr">{uncertainReference}</bdi></p>}
-  <button type="submit" disabled={busy||!challenge}>{busy?t("Saving your inquiry…","שומרים את הפנייה…"):uncertain?t("Check save status","בדיקת מצב השמירה"):t("Send my inquiry","שליחת הפנייה")}</button>
+  <button type="submit" disabled={busy||(mode==="sample"?!sampleReady:!challenge)}>{mode==="sample"?t("Preview inquiry — not sent","בדיקת פנייה לדוגמה — ללא שליחה"):busy?t("Saving your inquiry…","שומרים את הפנייה…"):uncertain?t("Check save status","בדיקת מצב השמירה"):t("Send my inquiry","שליחת הפנייה")}</button>
   <p className={styles.boundary}>{t("This inquiry is only a request to talk. It does not enroll your child, reserve a place or require payment.","זו בקשה לשיחה בלבד. היא אינה רושמת את ילדכם, שומרת מקום או מחייבת בתשלום.")}</p>
  </form>;
 }
