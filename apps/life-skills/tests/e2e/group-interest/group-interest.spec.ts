@@ -149,7 +149,8 @@ if(!runtimePath){
   await expect(page.getByRole("img",{name:locale==="he"?"מקום שמור לתמונה מאושרת של פלורידה":"Reserved space for owner-approved Florida artwork",exact:true})).toBeVisible();
   await expect(page.getByRole("heading",{name:locale==="he"?"שלושה שלבים, עם למידה בין המפגשים המעשיים":"Three stages, with learning between practical meetings",exact:true})).toBeVisible();
   await expect(page.getByRole("heading",{name:locale==="he"?"אקדמיית הדיג בפלורידה":"Florida Fishing Academy",exact:true}).first()).toBeVisible();
-  await expect(page.getByText(locale==="he"?"שיחת התאמה ביום ראשון":"Sunday fit call",{exact:true})).toBeVisible();
+  const sundayInterest=page.locator('form[data-inquiry-kind="parent"]').getByRole("checkbox",{name:locale==="he"?"עניין ביום ראשון":"Sunday interest",exact:true});
+  await expect(sundayInterest).toBeVisible();await expect(sundayInterest).toHaveAttribute("value","sunday");
   await expect(page.getByText(locale==="he"?"שלמה משלב תורה, הנהגה עצמית ולמידה מעשית. ההדרכה שלו מתמקדת בבחירות שקולות, בתקשורת, בתרגול עם תמיכה ובאחריות הולכת וגדלה.":"Shlomo Dratler brings Torah, self-governance and practical learning together. His teaching focuses on thoughtful choices, communication, supported practice and increasing responsibility.",{exact:true})).toBeVisible();
   await expect(page.getByText(locale==="he"?"כרגע אין ברשימה מועדי קבוצות או נקודות מפגש מאושרים.":"No confirmed group times or meeting points are currently listed.",{exact:true})).toBeVisible();
   await expect(page.getByRole("link",{name:/Bnei Neviim Academy/})).toHaveAttribute("href","https://bneineviimacademy.org/");
