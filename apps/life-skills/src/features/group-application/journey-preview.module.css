@@ -6,6 +6,7 @@
 .programs,.steps{display:flex;gap:10px;overflow-x:auto;padding:8px 4px 14px}
 .programs a,.steps button,.actions button,.panel>button{min-block-size:48px;border:1px solid #8aa9a8;border-radius:10px;padding:10px 16px;background:#fff;color:#173f46;font:inherit;font-weight:700;line-height:1.4;flex-shrink:0;cursor:pointer}
 .programs a[aria-current],.steps button[aria-current],.actions button{background:#08756d;color:#fff}
+.preview.preview .steps button[aria-current],.preview.preview .actions button:not(:disabled){background:var(--ui-teal,#08756d);border-color:var(--ui-teal,#08756d);color:#fff}
 .preview :is(a,button,select,summary,h2):focus-visible{outline:3px solid #ce972c;outline-offset:3px}
 .panel{border:1px solid #bfd4d1;border-radius:14px;background:#fff;padding:clamp(16px,3vw,28px);min-inline-size:0}
 .warning{background:#fff2d4;color:#634408;border-inline-start:4px solid #c38c20;padding:14px;font-weight:800}

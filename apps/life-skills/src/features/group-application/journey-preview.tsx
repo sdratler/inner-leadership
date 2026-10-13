@@ -9,8 +9,8 @@ import styles from "./journey-preview.module.css";
 export function FloridaJourneyPreview({locale,programId}:{locale:Locale;programId:FloridaProgramId}){
  const t=(en:string,he:string)=>locale==="he"?he:en;
  const [stage,setStage]=useState<JourneyStage>("inquiry"),[reference,setReference]=useState(""),[payment,setPayment]=useState("pending");
- const heading=useRef<HTMLHeadingElement>(null),first=useRef(true);
- useEffect(()=>{if(first.current){first.current=false;return;}heading.current?.focus();},[stage]);
+ const heading=useRef<HTMLHeadingElement>(null),steps=useRef<HTMLElement>(null),first=useRef(true);
+ useEffect(()=>{if(first.current){first.current=false;return;}steps.current?.querySelector<HTMLElement>('[aria-current="step"]')?.scrollIntoView({block:"nearest",inline:"nearest"});heading.current?.focus();},[stage]);
  const labels={inquiry:t("Inquiry","פנייה"),status:t("Pending review","ממתינה לבדיקה"),"fit-call":t("Fit conversation","שיחת התאמה"),offer:t("Draft offer & agreement","טיוטת הצעה והסכם"),payment:t("Simulated payment","תשלום מדומה"),receipt:t("Sample receipt","קבלה לדוגמה"),enrollment:t("Sample enrollment","הרשמה לדוגמה"),next:t("Next steps","הצעדים הבאים")};
  const sample=stage!=="inquiry"&&stage!=="status";
  return <main className={`lsw-main ${styles.preview}`} lang={locale} dir={locale==="he"?"rtl":"ltr"}>
@@ -18,7 +18,7 @@ export function FloridaJourneyPreview({locale,programId}:{locale:Locale;programI
   <nav aria-label={t("Choose a program","בחירת מסלול")} className={styles.programs}>{journeyPrograms.map(id=><a key={id} aria-current={id===programId?"page":undefined} href={`/${locale}/app/group-applications/journey-preview?program=${id}`}>{journeyProgramName(id,locale)}</a>)}</nav>
   <p><a href={`/${locale==="he"?"en":"he"}/app/group-applications/journey-preview?program=${programId}`}>{locale==="he"?"English":"עברית"}</a> · <a href={journeyLandingPath(programId,locale)} target="_blank" rel="noopener noreferrer">{t("Open the actual landing page","פתיחת דף המסלול בפועל")}</a></p>
   <h2>{journeyProgramName(programId,locale)}</h2>
-  <nav className={styles.steps} aria-label={t("Parent journey stages","שלבי מסלול ההורה")}>{journeyStages.map(id=><button key={id} type="button" aria-current={id===stage?"step":undefined} onClick={()=>setStage(id)}>{labels[id]}</button>)}</nav>
+  <nav ref={steps} className={styles.steps} aria-label={t("Parent journey stages","שלבי מסלול ההורה")}>{journeyStages.map(id=><button key={id} type="button" aria-current={id===stage?"step":undefined} onClick={()=>setStage(id)}>{labels[id]}</button>)}</nav>
   <section className={styles.panel} aria-labelledby="journey-heading">
    <h2 id="journey-heading" tabIndex={-1} ref={heading}>{labels[stage]}</h2>
    {sample&&<p className={styles.warning} role="status">{t("SAMPLE ONLY — NOT SENT · NOT PAID · NOT ENROLLED","דוגמה בלבד — לא נשלחה · לא שולם · אין הרשמה")}</p>}
