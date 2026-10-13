@@ -47,6 +47,9 @@ describe("private Florida journey containment",()=>{
    expect(academyRollingJourneyDraft.creditState[locale]).toContain(locale==="he"?"אין מסלול בבעלות או פנקס יחידות":"No owned module or credit ledger exists");
    expect(academyRollingJourneyDraft.creditState[locale]).toContain(locale==="he"?"בטיחות: ללא אישור":"Safety: not cleared");
    expect(academyRollingJourneyDraft.access[locale]).toContain(locale==="he"?"רשומות קליניות נשארות מבודדות":"clinical records remain isolated");
+   const copy=JSON.stringify(academyRollingLandingDraft);
+   for(const stale of ["Intended stage events","Personal rods and gear are family-supplied","A proposed twelve-week fishing academy","חכות וציוד אישי באחריות המשפחה","פעילויות המתוכננות בכל שלב","אקדמיית דיג מוצעת בת שנים־עשר שבועות"])expect(copy).not.toContain(stale);
+   expect(academyRollingLandingDraft.faqs[1]![1][locale]).toContain(locale==="he"?"דורשים הסכמה מפורשת":"need express agreement");
   }
   expect(JSON.stringify({landing:academyRollingLandingDraft,journey:academyRollingJourneyDraft})).not.toMatch(/\$\d|₪\d|staff role is granted|free voyage is earned/);
  });

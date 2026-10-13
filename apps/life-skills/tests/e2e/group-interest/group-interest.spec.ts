@@ -36,6 +36,7 @@ if(!runtimePath){
    for(const marker of locale==="he"?["דרגה A","דרגה B","דרגה C"]:["Rank A","Rank B","Rank C"])await expect(page.locator("main")).toContainText(marker);
    for(const marker of locale==="he"?["הצעה פרטית לעיון","אינן ארבעה ימי ראשון רצופים","שלוש יחידות שיעור מקדימות","ארבע יחידות פעילות שטח","שלוש יחידות הכנה","ההמתנה המרבית","ללא מנגל נוסף","ספריית נושאים לשימוש חוזר"]:["PRIVATE PROPOSAL","do not mean four consecutive Sundays","Three prerequisite class credits","Four defined supervised field-session credits","Three preparation/offshore-seamanship credits","maximum wait","no second barbecue","reusable topic library"])await expect(page.locator("main")).toContainText(marker);
    expect(await page.locator("main").innerText()).not.toContain(locale==="he"?"תשלום חבילה אחד":"One package payment");
+   for(const stale of locale==="he"?["אקדמיית דיג מוצעת בת שנים־עשר שבועות","שנים־עשר שבועות מוצעים","פעילויות המתוכננות בכל שלב","חכות וציוד אישי באחריות המשפחה","יציאה מקומית אחת"]:["A proposed twelve-week fishing academy","Twelve proposed weeks","Intended stage events","Personal rods and gear are family-supplied","One specifically scheduled weekday local"])await expect(page.locator("main")).not.toContainText(stale);
   }
   await page.screenshot({path:info.outputPath(`academy-sample-landing-${program}-${locale}-${info.project.name}.png`),fullPage:true});
   await page.getByRole("link",{name:locale==="he"?"פתיחת המסלול המלא":"Open the complete journey",exact:true}).click();await expect(page).toHaveURL(route);
