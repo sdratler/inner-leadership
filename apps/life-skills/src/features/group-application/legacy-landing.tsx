@@ -3,7 +3,7 @@
 import {useEffect,useRef,useState} from "react";
 import type {Locale} from "../../lib/locale.ts";
 import {IsraelGroupApplicationForm} from "./legacy-application-form.tsx";
-import styles from "./landing.module.css";
+import styles from "./legacy-landing.module.css";
 
 type Copy={en:string;he:string};
 const pick=(locale:Locale,value:Copy)=>value[locale];

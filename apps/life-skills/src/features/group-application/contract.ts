@@ -85,6 +85,7 @@ const submissionBase={challenge:z.string().min(80).max(1024),website:z.literal("
 export const groupApplicationSubmissionSchema=z.object({...submissionBase,fields:currentGroupApplicationFieldsSchema}).strict();
 export const floridaGroupApplicationSubmissionSchema=z.object({...submissionBase,fields:floridaGroupApplicationFieldsSchema}).strict();
 export type IsraelGroupApplicationFields=z.infer<typeof currentGroupApplicationFieldsSchema>;
+export type IsraelReadableGroupApplicationFields=z.infer<typeof israelReadableFieldsSchema>;
 export type FloridaGroupApplicationFields=z.infer<typeof floridaGroupApplicationFieldsSchema>;
 export type GroupApplicationFields=z.infer<typeof groupApplicationFieldsSchema>;
 export type IsraelGroupApplicationCommand=z.infer<typeof israelGroupApplicationCommandSchema>;

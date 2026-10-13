@@ -3,7 +3,7 @@ import {useEffect,useRef,useState} from "react";
 import type {FormEvent} from "react";
 import type {Locale} from "../../lib/locale.ts";
 import {currentGroupApplicationFieldsSchema,groupApplicationNotice,type IsraelGroupApplicationCommand} from "./contract.ts";
-import styles from "./application-form.module.css";
+import styles from "./legacy-application-form.module.css";
 
 type Challenge={challenge:string};
 const optional=(value:FormDataEntryValue|null)=>typeof value==="string"&&value!==""?value:undefined;
