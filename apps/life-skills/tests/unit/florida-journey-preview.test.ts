@@ -1,5 +1,8 @@
 import {describe,it,expect} from "vitest";
 import {readFile} from "node:fs/promises";
+import {createElement} from "react";
+import {renderToStaticMarkup} from "react-dom/server";
+import {FloridaJourneyPreview} from "../../src/features/group-application/journey-preview.tsx";
 import {journeyPreviewEnabled} from "../../src/features/group-application/journey-preview-model.ts";
 import {practitionerDetailReturnPath,loginReturnDestination} from "../../src/features/identity/login-return.ts";
 import {academyLandingDraft,academyJourneyDraft,academyRollingLandingDraft,academyRollingJourneyDraft,academyLandingForMode,academyJourneyForMode} from "../../src/features/group-application/academy-draft.ts";
@@ -8,13 +11,27 @@ import {fitCallDraft} from "../../src/features/group-application/fit-call-draft.
 import {floridaGroupApplicationNotice} from "../../src/features/group-application/contract.ts";
 const local={LS_APP_ORIGIN:"https://localhost:3105",LS_DATABASE_URL:"postgresql://synthetic:temporary@127.0.0.1:55441/ls_calendar_test_journeys",LS_APP_MODE:"foundation_preview",LS_GROUP_APPLICATION_SYNTHETIC_LOOPBACK:"true"};
 describe("private Florida journey containment",()=>{
+ it("visibly dates superseded Academy illustrations without changing other programs or historical attestations",()=>{
+  for(const locale of ["en","he"] as const)for(const mode of ["native","sample"] as const){
+   const html=renderToStaticMarkup(createElement(FloridaJourneyPreview,{locale,programId:"sunday_fishing_academy",mode}));
+   expect(html).toContain('data-historical-academy="true"');
+   expect(html).toContain(locale==="he"?"13 באוקטובר 2026":"13 October 2026");
+   expect(html).toContain(locale==="he"?"ארבעה שלבים של שנים־עשר מפגשים":"four twelve-session stages");
+   expect(html).toContain(locale==="he"?"יציאות רשות בתשלום נפרד":"optional, separately priced outings");
+   expect(html).toContain(locale==="he"?"מחייב בתשלום או מאשר יציאה":"charge or clear a trip");
+   for(const programId of ["morning_torah_learning","private_fishing_life_skills"] as const)
+    expect(renderToStaticMarkup(createElement(FloridaJourneyPreview,{locale,programId,mode}))).not.toContain("data-historical-academy");
+  }
+ });
  it("uses current Academy ranks while preserving historical source attestations and unavailable access",()=>{
-  expect(academyLandingDraft.cards).toHaveLength(3);
+  expect(academyLandingDraft.cards).toHaveLength(4);
+  expect(academyRollingLandingDraft.cards).toHaveLength(3);
   for(const locale of ["en","he"] as const){
    expect(journeyProgramName("sunday_fishing_academy",locale)).toBe(academyLandingDraft.label[locale]);
-   expect(academyLandingDraft.cards.map(card=>card.title[locale]).join(" ")).toMatch(/A.*B.*C/);
-   expect(academyLandingDraft.sectionBody[locale]).toContain(locale==="he"?"רצף הלימוד המתוכנן":"planned teaching sequence");
-   expect(academyLandingDraft.sectionBody[locale]).toContain(locale==="he"?"השלמת היציאות יסוכמו בנפרד":"outing completion are agreed separately");
+   expect(academyRollingLandingDraft.cards.map(card=>card.title[locale]).join(" ")).toMatch(/A.*B.*C/);
+   expect(academyRollingLandingDraft.sectionBody[locale]).toContain(locale==="he"?"רצף הלימוד המתוכנן":"planned teaching sequence");
+   expect(academyRollingLandingDraft.sectionBody[locale]).toContain(locale==="he"?"השלמת היציאות יסוכמו בנפרד":"outing completion are agreed separately");
+   expect(academyLandingDraft.sectionBody[locale]).toContain(locale==="he"?"ארבעה שלבים":"four stages");
    expect(academyJourneyDraft.access[locale]).toContain(locale==="he"?"עדיין לא מומש":"not implemented");
    expect(academyJourneyDraft.access[locale]).toContain(locale==="he"?"רשומות קליניות נשארות מבודדות":"clinical records remain isolated");
    expect(academyJourneyDraft.enrollment[locale]).toContain(locale==="he"?"לא נרכשה או הוקצתה":"No actual rank is purchased or allocated");
@@ -28,8 +45,8 @@ describe("private Florida journey containment",()=>{
  });
  it("shares current presentation without changing separate native/sample behavior or historical forms",()=>{
   expect(academyLandingForMode("native")).toBe(academyLandingDraft);expect(academyJourneyForMode("native")).toBe(academyJourneyDraft);
-  expect(academyLandingForMode("sample")).toBe(academyRollingLandingDraft);expect(academyJourneyForMode("sample")).toBe(academyRollingJourneyDraft);
-  expect(academyRollingLandingDraft.id).toBe("sunday_fishing_academy");expect(academyRollingLandingDraft.label).toEqual(academyLandingDraft.label);
+  expect(academyLandingForMode("sample")).toBe(academyLandingDraft);expect(academyJourneyForMode("sample")).toBe(academyRollingJourneyDraft);
+  expect(academyRollingLandingDraft.id).toBe("sunday_fishing_academy");expect(academyRollingLandingDraft.label).not.toEqual(academyLandingDraft.label);
   expect(journeySourceManifest.privateProposal).toMatchObject({instruction:"LS-FISH-MODULE-ROLLING-20261013-06",websiteSection:36,productSection:35,scope:"authenticated owner sample only",moduleStart:"unresolved",maximumWait:"unresolved"});
   expect(journeySourceManifest.privateProposal.forms).toContain("inquiry-only");
   expect(journeySourceManifest.privateProposal.deliveryInstruction).toBe("LS-FISH-DAYTIME-ENROLL-20261013-08");
@@ -62,7 +79,8 @@ describe("private Florida journey containment",()=>{
    expect(academyJourneyDraft.calendarInclusions[locale]).toContain(locale==="he"?"ההמתנה המרבית":"Maximum offshore wait");
    expect(academyJourneyDraft.enrollment[locale]).toContain(locale==="he"?"שנים־עשר שבועות שחלפו אינם מאשרים":"Twelve elapsed weeks do not confirm");
    expect(academyJourneyDraft.access[locale]).toContain(locale==="he"?"לעולם אינם מאשרים יציאה":"never clear a trip");
-   expect(academyLandingDraft.price[locale]).toContain(locale==="he"?"אינה מחייבת בתשלום":"No payment is required");
+   expect(academyRollingLandingDraft.price[locale]).toContain(locale==="he"?"אינה מחייבת בתשלום":"No payment is required");
+   expect(academyLandingDraft.boundary[locale]).toContain(locale==="he"?"אינה מחייבת בתשלום":"does not reserve a place or require payment");
   }
  });
  it("preserves only known owner sample returns, without customer entitlement or open redirects",()=>{

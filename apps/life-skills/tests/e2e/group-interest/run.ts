@@ -178,7 +178,14 @@ try{
  else selection.push("--grep-invert","Florida owner journey");
  tests=spawn(process.execPath,[resolve("node_modules/@playwright/test/cli.js"),"test","--config","tests/e2e/group-interest/playwright.config.ts",...selection],{env,stdio:["ignore","inherit","inherit"]});
  const [code]=await once(tests,"exit");if(code!==0)throw new Error("GROUP_INTEREST_BROWSER_ACCEPTANCE_FAILED");
- if(process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==="true")console.log(`FLORIDA_PUBLIC_BROWSER_ACCEPTANCE_PASS project=${project??"all"} sideEffects=0`);
+ if(process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==="true"){
+  phase="public-boundary-readback";const after=await counts(),writes=project===undefined||project==="desktop"?2:1;
+  const expected={...baseline,publicApplications:baseline.publicApplications+writes,publicApplicationOperations:baseline.publicApplicationOperations+writes};
+  if(JSON.stringify(after)!==JSON.stringify(expected))throw new Error("FLORIDA_PUBLIC_UNEXPECTED_DATABASE_EFFECT");
+  const retainedPublic=await f.pool.query("SELECT to_jsonb(a)::text AS snapshot FROM ls_service_interest.public_applications a WHERE workspace_id=$1 AND id=$2",[workspaceId,publicApplicationId]);
+  if(JSON.stringify(retainedPublic.rows)!==JSON.stringify(originalPublic.rows))throw new Error("FLORIDA_PUBLIC_EXISTING_RECEIPT_MUTATED");
+  console.log(`FLORIDA_PUBLIC_BROWSER_ACCEPTANCE_PASS project=${project??"all"} inquiries=${writes} operations=${writes} otherDatabaseEffects=0 providerEffects=0`);
+ }
  else if(sampleOnly||process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==="true"){
   phase="journey-boundary-readback";
   const after=await counts();
@@ -194,7 +201,7 @@ try{
  phase="boundary-readback";
  const after=await counts();
  if(JSON.stringify(after.otherWorkspaceState)!==JSON.stringify(baseline.otherWorkspaceState))throw new Error("GROUP_INTEREST_WORKSPACE_SIDE_EFFECT");
- const publicWrites=project===undefined||project==="desktop"?2:0;
+ const publicWrites=project===undefined||project==="desktop"?2:1;
  if(after.publicApplications!==baseline.publicApplications+publicWrites||after.publicApplicationOperations!==baseline.publicApplicationOperations+publicWrites)throw new Error("GROUP_INTEREST_PUBLIC_RECEIPT_COUNT_MISMATCH");
  const retainedPublic=await f.pool.query("SELECT to_jsonb(a)::text AS snapshot FROM ls_service_interest.public_applications a WHERE workspace_id=$1 AND id=$2",[workspaceId,publicApplicationId]);
  if(JSON.stringify(retainedPublic.rows)!==JSON.stringify(originalPublic.rows))throw new Error("GROUP_INTEREST_EXISTING_PUBLIC_RECEIPT_MUTATED");

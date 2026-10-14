@@ -34,7 +34,7 @@ it("replays exact operations, deduplicates exact new operations and preserves ch
  const input=command({contact:"+15550003001"}),first=await service.submit(input),replay=await service.submit(input);expect(replay).toMatchObject({replayed:true,duplicate:true,item:{id:first.item.id}});
  await expect(service.submit({...input,fields:{...input.fields,childAge:"11"}})).rejects.toMatchObject({code:"CONFLICT"});
  const duplicate=await service.submit({...input,operationId:randomUUID()});expect(duplicate).toMatchObject({replayed:false,duplicate:true,item:{id:first.item.id}});
- expect((await db.query<{n:number}>("SELECT count(*)::int AS n FROM ls_service_interest.public_application_operations WHERE application_id=$1",[first.item.id])).rows[0]!.n).toBe(1);
+ expect((await db.query<{n:number}>("SELECT count(*)::int AS n FROM ls_service_interest.public_application_operations WHERE application_id=$1",[first.item.id])).rows[0]!.n).toBe(2);
  const changed=await service.submit(command({contact:input.fields.contact,childAge:"11"}));expect(changed.item.id).not.toBe(first.item.id);
  expect((await db.query<{n:number}>("SELECT count(*)::int AS n FROM ls_service_interest.public_applications WHERE workspace_id=$1",[workspaceId])).rows[0]!.n).toBeGreaterThanOrEqual(3);
 });

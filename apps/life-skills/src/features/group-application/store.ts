@@ -1,5 +1,6 @@
 import "server-only";
 import {randomUUID} from "node:crypto";
+import {z} from "zod";
 import {AppError} from "../../lib/errors.ts";
 import type {WorkspaceId} from "../../lib/ids.ts";
 import {privateDigest} from "../contact-ops/server/digests.ts";
@@ -42,7 +43,16 @@ export class PublicGroupApplicationStore{
    if(prior.length){if(prior.length!==1||prior[0]!.requestDigest!==requestDigest)throw new AppError("CONFLICT");return {saved:true as const,replayed:true,duplicate:true,item:await this.read(tx,prior[0]!.applicationId)};}
    const existing=await tx.query<{id:string}>(`SELECT id FROM ls_service_interest.public_applications WHERE workspace_id=$1 AND request_digest=$2`,[this.workspaceId,requestDigest]);
    if(existing.length>1)throw new AppError("UNAVAILABLE");
-   if(existing.length===1)return {saved:true as const,replayed:false,duplicate:true,item:await this.read(tx,existing[0]!.id)};
+   if(existing.length===1){
+    const applicationId=existing[0]!.id;
+    const aliases=await tx.query<{count:number}>("SELECT count(*)::int AS count FROM ls_service_interest.public_application_operations WHERE workspace_id=$1 AND application_id=$2",[this.workspaceId,applicationId]);
+    if(!aliases[0]||aliases[0].count>=100)throw new AppError("RATE_LIMITED");
+    // A new-key duplicate also needs an immutable operation receipt. Otherwise
+    // that key could later submit different content and escape replay conflict.
+    await tx.query("INSERT INTO ls_service_interest.public_application_operations(workspace_id,operation_id,request_digest,application_id) VALUES($1,$2,$3,$4)",
+     [this.workspaceId,command.operationId,requestDigest,applicationId]);
+    return {saved:true as const,replayed:false,duplicate:true,item:await this.read(tx,applicationId)};
+   }
    const now=this.clock.now(),id=randomUUID();
    {
     const recent=await tx.query<{contactCount:number;workspaceCount:number}>(`SELECT
@@ -60,7 +70,15 @@ export class PublicGroupApplicationStore{
   });
  }
  async list(actor:Actor):Promise<GroupApplicationRecord[]>{
+  if(actor.workspaceId!==this.workspaceId)throw new AppError("FORBIDDEN");
   return this.db.transaction(async tx=>{await tx.query("SET TRANSACTION READ ONLY");requirePractitioner(await freshActor(tx,actor,this.clock.now()));
    const rows=await tx.query<Row>(select+" WHERE workspace_id=$1 ORDER BY received_at DESC,id DESC LIMIT 50",[actor.workspaceId]);return rows.map(row=>this.decode(row));});
+ }
+ async readForOwnerInTransaction(tx:SqlSession,actor:Actor,id:string):Promise<GroupApplicationRecord>{
+  if(actor.workspaceId!==this.workspaceId)throw new AppError("FORBIDDEN");
+  if(!z.string().uuid().safeParse(id).success)throw new AppError("INVALID_REQUEST");
+  requirePractitioner(await freshActor(tx,actor,this.clock.now()));
+  const rows=await tx.query<Row>(select+" WHERE workspace_id=$1 AND id=$2",[this.workspaceId,id]);
+  if(rows.length===0)throw new AppError("NOT_FOUND");if(rows.length!==1)throw new AppError("UNAVAILABLE");return this.decode(rows[0]!);
  }
 }

@@ -5,6 +5,7 @@ import type {Locale} from "../../lib/locale.ts";
 import {floridaGroupApplicationFieldsSchema,floridaGroupApplicationNotice,floridaSchoolInquiryNotice,type FloridaGroupApplicationCommand,type FloridaProgramId} from "./contract.ts";
 import {schoolAgeLabels,schoolWeekdayLabels,schoolTransportLabels} from "./school-inquiry-details.tsx";
 import {journeyProgramName} from "./journey-preview-model.ts";
+import {AcademyFitFields,academyFitFromForm} from "./fit-fields.tsx";
 import styles from "./application-form.module.css";
 import copy from "./presentation-copy.json";
 
@@ -21,6 +22,8 @@ export function classifyPublicApplicationFailure(requestStarted:boolean,status?:
 
 export function GroupApplicationForm({locale,programId,onSaved,mode="native",onPreviewed,inquiryKind="parent"}:{locale:Locale;programId:FloridaProgramId;onSaved?:(reference:string)=>void;mode?:"native"|"sample";onPreviewed?:()=>void;inquiryKind?:"parent"|"institution"}){
  const school=inquiryKind==="institution",notice=school?floridaSchoolInquiryNotice:floridaGroupApplicationNotice;
+ const viewCopy=programId==="sunday_fishing_academy"&&!school?{...copy,inquiry:{...copy.inquiry,...copy.realMensch.inquiry}}:copy;
+ const [learnerCount,setLearnerCount]=useState(1);
  if(school&&programId!=="sunday_fishing_academy")throw new Error("SCHOOL_INQUIRY_ACADEMY_ONLY");
  const t=(en:string,he:string)=>locale==="he"?he:en,form=useRef<HTMLFormElement>(null),pending=useRef<{command:FloridaGroupApplicationCommand;website:""}|null>(null),errorRef=useRef<HTMLDivElement>(null),permissionRef=useRef<HTMLInputElement>(null);
  const [challenge,setChallenge]=useState(""),[busy,setBusy]=useState(false),[uncertain,setUncertain]=useState(false),[uncertainReference,setUncertainReference]=useState(""),[error,setError]=useState(""),[saved,setSaved]=useState(false),[savedReference,setSavedReference]=useState("");
@@ -37,7 +40,7 @@ export function GroupApplicationForm({locale,programId,onSaved,mode="native",onP
   if(!pending.current){
    const values=new FormData(event.currentTarget),schedulePreference=values.getAll("schedulePreference").filter((value):value is string=>typeof value==="string");
    const permission={confirmed:values.get("permission")==="on",version:notice.version,language:locale};
-   const fields=floridaGroupApplicationFieldsSchema.safeParse(school?{inquiryKind:"institution",programId,language:locale,schoolName:values.get("schoolName"),contactName:values.get("contactName"),staffRole:values.get("staffRole"),cityArea:values.get("cityArea"),contact:values.get("contact"),ageBand:values.get("ageBand"),groupSize:Number(values.get("groupSize")),preferredWeekday:values.get("preferredWeekday"),schoolTransport:values.get("schoolTransport"),permission}:{parentName:values.get("parentName"),contact:values.get("contact"),language:locale,childAge:optional(values.get("childAge")),cityArea:values.get("cityArea"),neighborhood:optional(values.get("neighborhood")),programId,schedulePreference,...(programId==="sunday_fishing_academy"?{scheduleContext:"program_format_interest"}:{}),scheduleNotes:optional(values.get("scheduleNotes")),permission});
+   const fields=floridaGroupApplicationFieldsSchema.safeParse(school?{inquiryKind:"institution",programId,language:locale,schoolName:values.get("schoolName"),contactName:values.get("contactName"),staffRole:values.get("staffRole"),cityArea:values.get("cityArea"),contact:values.get("contact"),ageBand:values.get("ageBand"),groupSize:Number(values.get("groupSize")),preferredWeekday:values.get("preferredWeekday"),schoolTransport:values.get("schoolTransport"),permission}:{parentName:values.get("parentName"),contact:values.get("contact"),language:locale,childAge:optional(values.get("childAge")),cityArea:values.get("cityArea"),neighborhood:optional(values.get("neighborhood")),programId,schedulePreference,...(programId==="sunday_fishing_academy"?{scheduleContext:"program_format_interest",academyFit:academyFitFromForm(values)}:{}),scheduleNotes:optional(values.get("scheduleNotes")),permission});
    if(!fields.success){setError(school?t("Please complete the school, staff contact, city, country-coded business contact, age band, estimated size, weekday, transport answer and contact permission.","יש למלא שם מוסד, איש קשר ותפקיד, עיר, פרטי קשר מקצועיים עם קידומת מדינה, טווח גיל, מספר משוער, יום מועדף, תשובת הסעה והסכמה ליצירת קשר."):t("Please complete the required contact, location, program, schedule and permission fields.","יש למלא את פרטי הקשר, המיקום, המסלול והעדפות הזמנים הנדרשים ולאשר את ההסכמה."));return;}
    if(values.get("website")!==""){setError(t("Your inquiry could not be verified. Reload the page and try again.","לא ניתן לאמת את הפנייה. רעננו את הדף ונסו שוב."));return;}
    if(mode==="sample"){setPreviewed(true);onPreviewed?.();return;}
@@ -59,7 +62,7 @@ export function GroupApplicationForm({locale,programId,onSaved,mode="native",onP
     pending.current=null;setUncertain(false);setUncertainReference("");setError(response.status===429?t("Too many attempts were received. Please wait and try again later.","התקבלו ניסיונות רבים מדי. המתינו ונסו שוב מאוחר יותר."):response.status===403?t("This form expired or could not be verified. Reload the page and try again.","לא ניתן לאמת את הטופס או שפג תוקפו. רעננו את הדף ונסו שוב."):t("Your inquiry was not saved. Review the fields and try again.","הפנייה לא נשמרה. בדקו את השדות ונסו שוב."));return;
    }
    const body=await response.json();if(!response.ok||body?.ok!==true||body.data?.saved!==true||typeof body.data?.item?.id!=="string")throw new Error();
-   pending.current=null;setUncertain(false);setUncertainReference("");form.current?.reset();setSavedReference(body.data.item.id);setSaved(true);onSaved?.(body.data.item.id);
+   pending.current=null;setUncertain(false);setUncertainReference("");form.current?.reset();setLearnerCount(1);setSavedReference(body.data.item.id);setSaved(true);onSaved?.(body.data.item.id);
   }catch{
    const kind=classifyPublicApplicationFailure(requestStarted,undefined,previouslyUncertain);
    if(kind==="unavailable"){pending.current=null;setUncertain(false);setUncertainReference("");setError(t("Online inquiries are unavailable. No information was saved.","לא ניתן לשלוח פניות כעת. לא נשמר מידע."));}
@@ -69,11 +72,11 @@ export function GroupApplicationForm({locale,programId,onSaved,mode="native",onP
 
  const programName=journeyProgramName(programId,locale),p=(value:{en:string;he:string})=>value[locale];
  return <form ref={form} data-inquiry-kind={inquiryKind} className={styles.form} onSubmit={submit} noValidate>
-  <div className={styles.heading}><p className={styles.kicker}>{t("Private inquiry","פנייה פרטית")}</p><h3>{school?t("Ask about a school fishing activity","בירור על פעילות דיג לבית ספר"):programId==="sunday_fishing_academy"?p(copy.inquiry.titleAcademy):programId==="private_fishing_life_skills"?p(copy.inquiry.titleVip):t("Ask about Torah mornings","לפרטים על לימוד תורה בבוקר")}</h3><p>{school?t("Tell us about the activity your school or institution would like to discuss. This is a request for a conversation, not an accepted quotation, enrollment or booking.","ספרו על הפעילות שבית הספר או המוסד שלכם מעוניין לברר. זו בקשה לשיחה, לא אישור להצעת מחיר, הרשמה או הזמנה."):p(copy.inquiry.intro)}</p></div>
+  <div className={styles.heading}><p className={styles.kicker}>{t("Private inquiry","פנייה פרטית")}</p><h3>{school?t("Ask about a school fishing activity","בירור על פעילות דיג לבית ספר"):programId==="sunday_fishing_academy"?p(viewCopy.inquiry.titleAcademy):programId==="private_fishing_life_skills"?p(viewCopy.inquiry.titleVip):t("Ask about Torah mornings","לפרטים על לימוד תורה בבוקר")}</h3><p>{school?t("Tell us about the activity your school or institution would like to discuss. This is a request for a conversation, not an accepted quotation, enrollment or booking.","ספרו על הפעילות שבית הספר או המוסד שלכם מעוניין לברר. זו בקשה לשיחה, לא אישור להצעת מחיר, הרשמה או הזמנה."):p(viewCopy.inquiry.intro)}</p></div>
   {error&&<div ref={errorRef} tabIndex={-1} role="alert" className={styles.error}><strong>{t("Please check this inquiry","בדקו את הפנייה")}</strong><p>{error}</p></div>}
-  {saved&&<div role="status" className={styles.success}><strong>{school?t("School inquiry received","פניית בית הספר התקבלה"):p(copy.inquiry.savedTitle)}</strong><p>{school?t("The next step is a separate discussion with the school's decisionmaker about the activity and a possible quotation. No activity is booked.","השלב הבא הוא שיחה נפרדת עם הגורם המחליט בבית הספר על הפעילות ועל הצעת מחיר אפשרית. לא הוזמנה פעילות."):p(copy.inquiry.savedBody)} <strong>{t("Reference","מספר הפנייה")}:</strong> <bdi dir="ltr">{savedReference}</bdi></p></div>}
-  {mode==="sample"&&<p className={styles.boundary}>{p(copy.inquiry.sampleBanner)}</p>}
-  {previewed&&<p role="status">{p(copy.inquiry.sampleResult)}</p>}
+  {saved&&<div role="status" className={styles.success}><strong>{school?t("School inquiry received","פניית בית הספר התקבלה"):p(viewCopy.inquiry.savedTitle)}</strong><p>{school?t("The next step is a separate discussion with the school's decisionmaker about the activity and a possible quotation. No activity is booked.","השלב הבא הוא שיחה נפרדת עם הגורם המחליט בבית הספר על הפעילות ועל הצעת מחיר אפשרית. לא הוזמנה פעילות."):p(viewCopy.inquiry.savedBody)} <strong>{t("Reference","מספר הפנייה")}:</strong> <bdi dir="ltr">{savedReference}</bdi></p></div>}
+  {mode==="sample"&&<p className={styles.boundary}>{p(viewCopy.inquiry.sampleBanner)}</p>}
+  {previewed&&<p role="status">{p(viewCopy.inquiry.sampleResult)}</p>}
   <fieldset className={styles.fieldset} disabled={busy||uncertain}>
    <legend className={styles.srOnly}>{t("Group inquiry details","פרטי הפנייה לקבוצה")}</legend>
    {school?<div className={styles.fields}>
@@ -87,30 +90,32 @@ export function GroupApplicationForm({locale,programId,onSaved,mode="native",onP
     <label>{t("Preferred weekday — not confirmed availability","יום מועדף — לא זמינות מאושרת")}<select name="preferredWeekday" required defaultValue=""><option value="">{t("Choose a preference","בחרו העדפה")}</option>{Object.entries(schoolWeekdayLabels).map(([value,label])=><option key={value} value={value}>{label[locale==="he"?1:0]}</option>)}</select></label>
     <label>{t("Would the school arrange transport?","האם בית הספר יסדיר הסעה?")}<select name="schoolTransport" required defaultValue=""><option value="">{t("Choose an answer","בחרו תשובה")}</option>{Object.entries(schoolTransportLabels).map(([value,label])=><option key={value} value={value}>{label[locale==="he"?1:0]}</option>)}</select><span>{t("This answer does not confirm provider transport.","התשובה אינה מאשרת הסעה מטעם המפעיל.")}</span></label>
    </div>:<><div className={styles.fields}>
-    <label>{p(copy.inquiry.parentName)}<input name="parentName" required maxLength={100} autoComplete="name"/></label>
-    <label>{p(copy.inquiry.contact)}<input name="contact" required maxLength={254} dir="ltr" inputMode="text" aria-describedby="contact-hint"/><span id="contact-hint" className={styles.fieldNote}>{p(copy.inquiry.contactHint)}</span></label>
-    <label>{p(copy.inquiry.childAge)}<input name="childAge" maxLength={20} inputMode="text"/></label>
-    <label>{p(copy.inquiry.cityArea)}<input name="cityArea" required maxLength={100} autoComplete="address-level2"/></label>
-    <label>{p(copy.inquiry.neighborhood)}<input name="neighborhood" maxLength={100} autoComplete="address-level3"/></label>
+    <label>{p(viewCopy.inquiry.parentName)}<input name="parentName" required maxLength={100} autoComplete="name"/></label>
+    <label>{p(viewCopy.inquiry.contact)}<input name="contact" required maxLength={254} dir="ltr" inputMode="text" aria-describedby="contact-hint"/><span id="contact-hint" className={styles.fieldNote}>{p(viewCopy.inquiry.contactHint)}</span></label>
+    {programId!=="sunday_fishing_academy"&&<label>{p(viewCopy.inquiry.childAge)}<input name="childAge" maxLength={20} inputMode="text"/></label>}
+    <label>{p(viewCopy.inquiry.cityArea)}<input name="cityArea" required maxLength={100} autoComplete="address-level2"/></label>
+    <label>{p(viewCopy.inquiry.neighborhood)}<input name="neighborhood" maxLength={100} autoComplete="address-level3"/></label>
     <div className={styles.emptyGroup}><strong>{t("Program","מסלול")}</strong><p>{programName}</p></div>
    </div>
-    <fieldset className={styles.schedule}><legend>{programId==="sunday_fishing_academy"?p(copy.inquiry.formatLegend):p(copy.inquiry.vipCallLegend)}</legend><p className={styles.fieldNote}>{programId==="sunday_fishing_academy"?p(copy.inquiry.formatHint):p(copy.inquiry.vipCallHint)}</p><div className={styles.checkGrid}>
-     <label><input name="schedulePreference" type="checkbox" value="weekday_after_school"/><span>{programId==="sunday_fishing_academy"?p(copy.inquiry.formatOptions.weekday_after_school):t("Weekday after school fit call","שיחת התאמה ביום חול אחרי הלימודים")}</span></label>
-     <label><input name="schedulePreference" type="checkbox" value="sunday"/><span>{programId==="sunday_fishing_academy"?p(copy.inquiry.formatOptions.sunday):t("Sunday fit call","שיחת התאמה ביום ראשון")}</span></label>
-     {programId==="sunday_fishing_academy"&&<label><input name="schedulePreference" type="checkbox" value="weekday_morning_homeschool"/><span>{p(copy.inquiry.formatOptions.weekday_morning_homeschool)}</span></label>}
-     <label><input name="schedulePreference" type="checkbox" value="flexible"/><span>{programId==="sunday_fishing_academy"?p(copy.inquiry.formatOptions.flexible):t("Flexible fit-call time","זמן גמיש לשיחת התאמה")}</span></label>
-     <label><input name="schedulePreference" type="checkbox" value="other"/><span>{programId==="sunday_fishing_academy"?p(copy.inquiry.formatOptions.other):t("Another fit-call time","זמן אחר לשיחת התאמה")}</span></label>
+    {programId==="sunday_fishing_academy"&&<AcademyFitFields locale={locale} count={learnerCount} onCount={setLearnerCount}/>}
+    <fieldset className={styles.schedule}><legend>{programId==="sunday_fishing_academy"?p(viewCopy.inquiry.formatLegend):p(viewCopy.inquiry.vipCallLegend)}</legend><p className={styles.fieldNote}>{programId==="sunday_fishing_academy"?p(viewCopy.inquiry.formatHint):p(viewCopy.inquiry.vipCallHint)}</p><div className={styles.checkGrid}>
+     <label><input name="schedulePreference" type="checkbox" value="weekday_after_school"/><span>{programId==="sunday_fishing_academy"?p(viewCopy.inquiry.formatOptions.weekday_after_school):t("Weekday after school fit call","שיחת התאמה ביום חול אחרי הלימודים")}</span></label>
+     {programId==="sunday_fishing_academy"&&<label><input name="schedulePreference" type="checkbox" value="weekday_before_school"/><span>{t("Weekday before school","ביום חול לפני הלימודים")}</span></label>}
+     <label><input name="schedulePreference" type="checkbox" value="sunday"/><span>{programId==="sunday_fishing_academy"?p(viewCopy.inquiry.formatOptions.sunday):t("Sunday fit call","שיחת התאמה ביום ראשון")}</span></label>
+     {programId==="sunday_fishing_academy"&&<label><input name="schedulePreference" type="checkbox" value="weekday_morning_homeschool"/><span>{p(viewCopy.inquiry.formatOptions.weekday_morning_homeschool)}</span></label>}
+     <label><input name="schedulePreference" type="checkbox" value="flexible"/><span>{programId==="sunday_fishing_academy"?p(viewCopy.inquiry.formatOptions.flexible):t("Flexible fit-call time","זמן גמיש לשיחת התאמה")}</span></label>
+     <label><input name="schedulePreference" type="checkbox" value="other"/><span>{programId==="sunday_fishing_academy"?p(viewCopy.inquiry.formatOptions.other):t("Another fit-call time","זמן אחר לשיחת התאמה")}</span></label>
    </div></fieldset>
-    <label className={styles.full}>{p(copy.inquiry.scheduleNotes)}<textarea name="scheduleNotes" maxLength={300} rows={3}/></label>
+    <label className={styles.full}>{p(viewCopy.inquiry.scheduleNotes)}<textarea name="scheduleNotes" maxLength={300} rows={3}/></label>
 </>}
     <label className={styles.permission}><input ref={permissionRef} name="permission" type="checkbox" required/><span>{notice[locale]}</span></label>
    {school&&<p>{t("Do not submit child names, rosters, diagnoses, clinical or family histories, emergency/medical details, photographs, recordings or media permissions.","אין למסור שמות ילדים, רשימות תלמידים, אבחנות, היסטוריה קלינית או משפחתית, פרטי חירום/רפואה, תמונות, הקלטות או רשות לפרסום.")}</p>}
-   {!school&&<p className={styles.privacy}>{p(copy.inquiry.privacyHint)}</p>}
+   {!school&&<p className={styles.privacy}>{p(viewCopy.inquiry.privacyHint)}</p>}
    <label className={styles.honeypot} aria-hidden="true">Website<input name="website" tabIndex={-1} autoComplete="off"/></label>
   </fieldset>
   {uncertain&&<p className={styles.locked}>{t("We have not confirmed receipt of this inquiry. Keep this page open and use the same reference when checking it; do not pay based on this screen.","עדיין לא אושרה קבלת הפנייה. השאירו את הדף פתוח והשתמשו באותו מספר פנייה בעת הבדיקה; אין לשלם על סמך מסך זה.")} <strong>{t("Reference","מספר הפנייה")}:</strong> <bdi dir="ltr">{uncertainReference}</bdi></p>}
-  <button type="submit" disabled={busy||(mode==="sample"?!sampleReady:!challenge)}>{mode==="sample"?p(copy.inquiry.sampleSubmit):busy?p(copy.inquiry.saving):uncertain?p(copy.inquiry.retrySameSave):school?t("Send school inquiry","שליחת פנייה מטעם בית ספר"):p(copy.inquiry.submit)}</button>
-  <p className={styles.boundary}>{school?t("Business inquiry only — no guardian assertion, child account, case, rank credit, enrollment, booking or payment request.","פנייה מקצועית בלבד — ללא הצהרת הורה, חשבון ילד, תיק, יחידה מדרגה, הרשמה, הזמנה או בקשת תשלום."):p(copy.inquiry.boundary)}</p>
+  <button type="submit" disabled={busy||(mode==="sample"?!sampleReady:!challenge)}>{mode==="sample"?p(viewCopy.inquiry.sampleSubmit):busy?p(viewCopy.inquiry.saving):uncertain?p(viewCopy.inquiry.retrySameSave):school?t("Send school inquiry","שליחת פנייה מטעם בית ספר"):p(viewCopy.inquiry.submit)}</button>
+  <p className={styles.boundary}>{school?t("Business inquiry only — no guardian assertion, child account, case, rank credit, enrollment, booking or payment request.","פנייה מקצועית בלבד — ללא הצהרת הורה, חשבון ילד, תיק, יחידה מדרגה, הרשמה, הזמנה או בקשת תשלום."):p(viewCopy.inquiry.boundary)}</p>
  </form>;
 }
 

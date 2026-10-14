@@ -4,6 +4,8 @@
 .benefitRow li{display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 6px;border:1px solid #bcd5d1;border-radius:12px;background:#fff;font-weight:850;text-align:center;overflow-wrap:anywhere}
 .benefitRow svg{inline-size:28px;block-size:28px;color:var(--teal)}
 .rankGrid{grid-template-columns:repeat(3,minmax(0,1fr))}
+.academyRanks{grid-template-columns:repeat(2,minmax(0,1fr))}
+.academyHero{grid-template-columns:1fr}.academyHero>div:first-child{max-inline-size:880px}
 .teaser{max-inline-size:850px}
 .learningRow{margin-block-start:56px;scroll-margin-block-start:110px}
-@media(max-width:640px){.rankGrid{grid-template-columns:1fr}.benefitRow{gap:8px}.benefitRow li{font-size:.85rem}}
+@media(max-width:640px){.rankGrid,.academyRanks{grid-template-columns:1fr}.benefitRow{gap:8px}.benefitRow li{font-size:.85rem}}

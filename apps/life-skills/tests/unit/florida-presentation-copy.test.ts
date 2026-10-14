@@ -10,6 +10,19 @@ import copy from "../../src/features/group-application/presentation-copy.json";
 const markup=(locale:"en"|"he",programId:"sunday_fishing_academy"|"private_fishing_life_skills",mode:"native"|"sample")=>renderToStaticMarkup(createElement(GroupApplicationLanding,{locale,programId,mode}));
 const escaped=(text:string)=>renderToStaticMarkup(createElement("span",null,text)).slice(6,-7);
 describe("reviewed Florida presentation, not new runtime authority",()=>{
+ it("renders the single approved alumni correction in both languages without changing historical funnels",()=>{
+  expect(copy.realMensch.academy.faqs).toHaveLength(9);
+  const faq=copy.realMensch.academy.faqs[6]!;
+  for(const locale of ["en","he"] as const){
+   const html=markup(locale,"sunday_fishing_academy","native");
+   expect(html).toContain(escaped(faq[0]![locale]));expect(html).toContain(escaped(faq[1]![locale]));
+   expect(markup(locale,"private_fishing_life_skills","native")).not.toContain(escaped(faq[0]![locale]));
+  }
+  expect(faq[1]!.en).toContain("without having to help or enroll in Advanced");
+  expect(faq[1]!.en).toContain("already scheduled beginner class free of tuition");
+  expect(faq[1]!.en).toContain("distinct from the Advanced skills stage");
+  expect(JSON.stringify(faq)).not.toMatch(/\$|2,350|2,399|100|guaranteed|reimburse/i);
+ });
  it("retains every base CSS-module layout key when merging additions",async()=>{
   const [baseCss,additionCss,landing]=await Promise.all(["landing.module.css","landing-additions.module.css","landing.tsx"].map(file=>readFile(new URL("../../src/features/group-application/"+file,import.meta.url),"utf8")));
   const exported=(css:string)=>[...new Set([...css.matchAll(/\.([a-zA-Z_][a-zA-Z0-9_-]*)/g)].map(match=>match[1]!))];
@@ -25,14 +38,14 @@ describe("reviewed Florida presentation, not new runtime authority",()=>{
  for(const locale of ["en","he"] as const)for(const mode of ["native","sample"] as const){
   it(`renders one Academy headline/benefit row and the same contact action in ${locale}/${mode}`,()=>{
    const html=markup(locale,"sunday_fishing_academy",mode);
-   expect(html).toContain(`<h1>${copy.academy.title[locale]}</h1>`);
+   expect(html).toContain(`<h1>${copy.realMensch.academy.title[locale]}</h1>`);
    expect(html.match(/viewBox="0 0 24 24"/g)).toHaveLength(3);
-   expect(html.match(new RegExp(`href="#apply"[^>]*>${copy.shared.ctaAcademy[locale]}`,"g"))).toHaveLength(3);
-   expect(html).toContain(copy.academy.cards[1]!.body[locale]);
-   expect(html).toContain(copy.shared.previewBanner[locale]);
+   expect(html.match(new RegExp(`href="#apply"[^>]*>${copy.realMensch.shared.ctaAcademy[locale]}`,"g"))).toHaveLength(3);
+   for(const card of copy.realMensch.academy.cards)expect(html).toContain(card.body[locale]);
+   expect(html).not.toContain(copy.shared.previewBanner[locale]);
    expect(html).toContain(`dir="${locale==="he"?"rtl":"ltr"}"`);
-   expect(html).toContain(mode==="sample"?"program=morning_torah_learning":"torah-mornings");
-   expect(html).toContain(mode==="sample"?"program=private_fishing_life_skills":"private-fishing");
+   expect(html).not.toContain(mode==="sample"?"program=morning_torah_learning":"torah-mornings");
+   expect(html).not.toContain(mode==="sample"?"program=private_fishing_life_skills":"private-fishing");
    expect(html).not.toMatch(/Pre-register|This page does not create|No invented launch details|\$1,100|\$2,399|\$3,000/);
    expect(html.match(/name="contact"/g)).toHaveLength(2); // one guardian and one separate collapsed school inquiry
    expect(html).toContain(escaped(floridaGroupApplicationNotice[locale]));expect(html).toContain(escaped(floridaSchoolInquiryNotice[locale]));

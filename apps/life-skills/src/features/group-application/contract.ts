@@ -65,20 +65,38 @@ const israelReadableFieldsSchema=israelFieldsBase.superRefine((value,context)=>{
 });
 
 const contactSchema=z.string().max(254).transform(normalizeGroupApplicationContact).pipe(z.string().refine(value=>z.string().email().safeParse(value).success||/^\+?\d{7,15}$/.test(value),"contact"));
-const scheduleValueSchema=z.enum(["weekday_after_school","sunday","flexible","other","weekday_morning_homeschool"]);
+const scheduleValueSchema=z.enum(["weekday_before_school","weekday_after_school","sunday","flexible","other","weekday_morning_homeschool"]);
+export const academyFitSchema=z.object({
+ version:z.literal("RM-FIT-20261014-04-v1"),
+ learners:z.array(z.object({approximateAge:z.number().int().min(0).max(17),
+  gear:z.enum(["has_gear","needs_advice","not_sure"]),experience:z.enum(["new","some","experienced","not_sure"])}).strict()).min(1).max(10),
+ maximumDriveMinutes:z.number().int().min(0).max(240).optional(),parentDropoff:z.enum(["yes","no","discuss"]),
+}).strict();
+/** Florida-aware bridge only; never rewrites an old saved contact or guesses an email/chat. */
+export function normalizeFloridaLeadContact(input:string):string|null{
+ const value=normalizeGroupApplicationContact(input);if(value.includes("@"))return null;
+ if(/^\+[1-9]\d{7,14}$/.test(value))return value;
+ if(/^[2-9]\d{9}$/.test(value))return "+1"+value;
+ if(/^1\d{10}$/.test(value))return "+"+value;
+ return null;
+}
 export const floridaProgramIdSchema=z.enum(["sunday_fishing_academy","morning_torah_learning","private_fishing_life_skills"]);
 export type FloridaProgramId=z.infer<typeof floridaProgramIdSchema>;
 export const floridaParentApplicationFieldsSchema=z.object({
  parentName:z.string().trim().min(1).max(100),contact:contactSchema,language:z.enum(["he","en"]),
  childAge:z.string().trim().min(1).max(20).optional(),cityArea:z.string().trim().min(1).max(100),neighborhood:z.string().trim().min(1).max(100).optional(),
  programId:floridaProgramIdSchema,
- schedulePreference:z.array(scheduleValueSchema).min(1).max(5).refine(values=>new Set(values).size===values.length,"duplicate schedule preference"),
+ schedulePreference:z.array(scheduleValueSchema).min(1).max(6).refine(values=>new Set(values).size===values.length,"duplicate schedule preference"),
+ academyFit:academyFitSchema.optional(),
  scheduleContext:z.literal("program_format_interest").optional(),
  scheduleNotes:z.string().trim().min(1).max(300).optional(),
  permission:z.object({confirmed:z.literal(true),version:z.literal(floridaGroupApplicationNotice.version),language:z.enum(["he","en"])}).strict(),
 }).strict().superRefine((value,context)=>{
+ if(value.permission.language!==value.language)context.addIssue({code:"custom",path:["permission","language"],message:"permission language must match inquiry"});
+ if(value.academyFit!==undefined&&value.programId!=="sunday_fishing_academy")context.addIssue({code:"custom",path:["academyFit"],message:"academy-only group fit"});
+ if(value.academyFit!==undefined&&!value.contact.includes("@")&&!normalizeFloridaLeadContact(value.contact))context.addIssue({code:"custom",path:["contact"],message:"include country code or a US ten-digit number"});
  if(value.scheduleContext!==undefined&&value.programId!=="sunday_fishing_academy")context.addIssue({code:"custom",path:["scheduleContext"],message:"academy-only format interest"});
- if(value.schedulePreference.includes("weekday_morning_homeschool")&&(value.programId!=="sunday_fishing_academy"||value.scheduleContext!=="program_format_interest"))context.addIssue({code:"custom",path:["schedulePreference"],message:"academy format context required"});
+ if(value.schedulePreference.some(preference=>preference==="weekday_morning_homeschool"||preference==="weekday_before_school")&&(value.programId!=="sunday_fishing_academy"||value.scheduleContext!=="program_format_interest"))context.addIssue({code:"custom",path:["schedulePreference"],message:"academy format context required"});
 });
 
 /** Business contact permission only; never a guardian attestation or school contract. */
