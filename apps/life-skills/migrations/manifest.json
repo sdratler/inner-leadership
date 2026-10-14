@@ -210,5 +210,9 @@
   {
     "name": "0133_ls_fishing_lead_memberships.sql",
     "sha256": "00036ca9a452709d3f7de0a86222e09ac6e7f3f23968dc15a10d448ed919a1b7"
+  },
+  {
+    "name": "0134_ls_education_lessons.sql",
+    "sha256": "626e5e86e36ad8e10ea9a468a96977f03a3d3e0476dbf358ca292006b13500d6"
   }
 ]

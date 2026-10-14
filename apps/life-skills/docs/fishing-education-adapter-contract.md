@@ -1,4 +1,16 @@
-# Real Mensch storage/access adapter — proposed admission, not installed
+# Real Mensch storage/access adapter — isolated admission, not mounted
+
+Architecture21 saved/current on14October2026 admits the same writer's prospective
+UNMOUNTED adapter in a new disposable synthetic database. Build Control748 and
+I-RM-EDUCATION-STORAGE-01 register the exact store/HTTP/test paths and candidate
+0134, after fetched main through0132 and local owned0133 reconciliation. This is
+not a production schema, importer, curriculum approval, account/guardian grant,
+route registration, native activation or hosted delivery. Real catalog stays Draft.
+The retained journey and encrypted event/source codecs are reused, not rebuilt.
+
+The following proposal records the pre-admission boundary and design history.
+Its pending Architecture amendment is superseded only for the isolated scope
+above; actual provider/release/family-access and production recovery gates remain.
 
 RM-LESSON-STORAGE-20261014-02 follows reviewed core `3e431ec1`. Saved Product/
 Website RM-SOURCE-ADOPTION-20261014-01 are consumed, not awaiting source writes.
