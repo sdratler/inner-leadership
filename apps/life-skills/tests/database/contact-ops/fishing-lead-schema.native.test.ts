@@ -65,9 +65,11 @@ test("projection must reference exact native generation/state and agree with des
   (workspace_id,program_key,person_id,generation,membership_state,desired_present,status,payload_ciphertext)
   VALUES($1,$2,$3,$4,$5,$6,'unconfigured',$7)`,[s.f.workspaceId,s.program,s.personId,generation,state,desired,s.payload]);
  await expect(insert("removed",true)).rejects.toMatchObject({code:"23514"});
- await expect(insert("active",true)).rejects.toMatchObject({code:"23503"});
- await expect(insert("removed",false,3)).rejects.toMatchObject({code:"23503"});
+  await expect(insert("active",true)).rejects.toMatchObject({code:"23514"});
+  await expect(insert("removed",false,3)).rejects.toMatchObject({code:"23514"});
  await insert("removed",false);
+  await expect(s.f.pool.query(`UPDATE ls_contact_ops.fishing_label_projection SET generation=1,membership_state='active',desired_present=true
+   WHERE workspace_id=$1`,[s.f.workspaceId])).rejects.toMatchObject({code:"23514"});
 });
 test("immutable operation receipt remains attached to its historical revision",async()=>{
  const s=await setup();await s.revision(1);const operationId=randomUUID();

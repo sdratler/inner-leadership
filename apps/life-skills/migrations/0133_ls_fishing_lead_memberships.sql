@@ -60,6 +60,35 @@ CREATE TABLE ls_contact_ops.fishing_label_projection (
  CHECK(desired_present=(membership_state='active'))
 );
 
+-- An FK to a historical revision alone is not latest-desired ordering proof.
+CREATE FUNCTION ls_contact_ops.guard_fishing_label_projection() RETURNS trigger
+ LANGUAGE plpgsql SET search_path=pg_catalog AS $fn$
+DECLARE head_version integer; head_state text;
+BEGIN
+ IF TG_OP='UPDATE' AND (OLD.workspace_id<>NEW.workspace_id OR OLD.program_key<>NEW.program_key OR
+  OLD.person_id<>NEW.person_id OR OLD.generation>NEW.generation) THEN
+  RAISE EXCEPTION 'FISHING_LABEL_PROJECTION_STALE' USING ERRCODE='23514';
+ END IF;
+ SELECT version,state INTO head_version,head_state FROM ls_contact_ops.fishing_lead_revisions
+  WHERE workspace_id=NEW.workspace_id AND program_key=NEW.program_key AND person_id=NEW.person_id
+  ORDER BY version DESC LIMIT 1;
+ IF head_version IS NULL OR NEW.generation<>head_version OR NEW.membership_state<>head_state OR
+  NEW.desired_present<>(head_state='active') THEN
+  RAISE EXCEPTION 'FISHING_LABEL_PROJECTION_STALE' USING ERRCODE='23514';
+ END IF;
+ RETURN NEW;
+END;
+$fn$;
+CREATE TRIGGER fishing_label_projection_current BEFORE INSERT OR UPDATE
+ ON ls_contact_ops.fishing_label_projection FOR EACH ROW
+ EXECUTE FUNCTION ls_contact_ops.guard_fishing_label_projection();
+CREATE TRIGGER fishing_label_projection_no_delete BEFORE DELETE
+ ON ls_contact_ops.fishing_label_projection FOR EACH ROW
+ EXECUTE FUNCTION ls_contact_ops.deny_acquisition_receipt_mutation();
+CREATE TRIGGER fishing_label_projection_no_truncate BEFORE TRUNCATE
+ ON ls_contact_ops.fishing_label_projection FOR EACH STATEMENT
+ EXECUTE FUNCTION ls_contact_ops.deny_acquisition_receipt_mutation();
+
 CREATE TRIGGER fishing_lead_revisions_no_edit BEFORE UPDATE OR DELETE
  ON ls_contact_ops.fishing_lead_revisions FOR EACH ROW
  EXECUTE FUNCTION ls_contact_ops.deny_acquisition_receipt_mutation();
@@ -74,3 +103,4 @@ CREATE TRIGGER fishing_lead_operations_no_truncate BEFORE TRUNCATE
  EXECUTE FUNCTION ls_contact_ops.deny_acquisition_receipt_mutation();
 REVOKE ALL ON ls_contact_ops.fishing_lead_revisions,
  ls_contact_ops.fishing_lead_operations,ls_contact_ops.fishing_label_projection FROM PUBLIC;
+REVOKE ALL ON FUNCTION ls_contact_ops.guard_fishing_label_projection() FROM PUBLIC;
