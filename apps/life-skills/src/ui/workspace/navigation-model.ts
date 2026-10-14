@@ -86,7 +86,7 @@ export function settingsItems(role: WorkspaceRole): readonly NavItem[] {
 export function activeItem(pathname: string, locale: Locale, role: WorkspaceRole): NavItem | undefined {
   const path = pathname.replace(new RegExp(`^/${locale}/`), "").replace(/\/$/, "");
   if (/^app\/cases\//.test(path) || role === "practitioner" && ['app/practice','app/forms','app/resources'].includes(path)) return primaryNavigation.practitioner.find(x => x.key === "clients");
-  if (["app/prospects","app/providers","app/group-interest","app/group-applications"].includes(path)) return primaryNavigation.practitioner.find(x => x.key === "clients");
+  if (["app/prospects","app/providers","app/group-interest","app/group-applications","app/group-applications/journey-preview"].includes(path)) return primaryNavigation.practitioner.find(x => x.key === "clients");
   return [...primaryNavigation[role], ...navigationGroups[role].flatMap(g => g.items), ...settingsItems(role), ...(role === "practitioner" ? [item("private-notes","app/private-notes","Private case notes","רשימות פרטיות בתיק")] : [])].find(x => x.path === path);
 }
 export type Crumb = { label: string; path?: string; query?: Readonly<Record<string,string>> };
@@ -120,6 +120,7 @@ export function breadcrumbItems(locale: Locale, role: WorkspaceRole, pathname: s
   }
   if(role==="practitioner"&&pathname.endsWith("/app/group-interest"))return [home,{label:locale==="he"?"אנשים":"People",path:"app/clients"},{label:locale==="he"?"קבוצות":"Groups"}];
   if(role==="practitioner"&&pathname.endsWith("/app/group-applications"))return [home,{label:locale==="he"?"אנשים":"People",path:"app/clients"},{label:locale==="he"?"בקשות לקבוצה":"Group applications"}];
+  if(role==="practitioner"&&pathname.endsWith("/app/group-applications/journey-preview"))return [home,{label:locale==="he"?"אנשים":"People",path:"app/clients"},{label:locale==="he"?"בקשות לקבוצה":"Group applications",path:"app/group-applications"},{label:locale==="he"?"מסלולי ההורים בפלורידה":"Florida parent journeys"}];
   const found = activeItem(pathname, locale, role);
   if(role==='practitioner'&&found?.key==='marketing'&&section==='community'){
     const selected=communityViews.find(item=>item.key===communityView(community))!;

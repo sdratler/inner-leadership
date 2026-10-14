@@ -1,0 +1,26 @@
+.preview{max-inline-size:1080px;margin-inline:auto;padding:clamp(16px,3vw,32px);font-size:1.0625rem;line-height:1.65;color:var(--ls-deep,#163F48)}
+.preview h1{font-size:clamp(1.9rem,4vw,2.7rem);line-height:1.2}
+.preview h2{font-size:1.55rem;line-height:1.3}
+.preview p{max-inline-size:76ch}
+.badge{font-weight:800;color:#075f59}
+.programs,.steps{display:flex;gap:10px;overflow-x:auto;padding:8px 4px 14px}
+.programs a,.steps button,.actions button,.panel>button{min-block-size:48px;border:1px solid #8aa9a8;border-radius:10px;padding:10px 16px;background:#fff;color:var(--ls-deep,#163F48);font:inherit;font-weight:700;line-height:1.4;flex-shrink:0;cursor:pointer}
+.programs a[aria-current],.steps button[aria-current],.actions button{background:var(--ls-teal,#245159);color:#fff}
+.preview.preview .steps button[aria-current],.preview.preview .actions button:not(:disabled){background:var(--ls-teal,#245159);border-color:var(--ls-teal,#245159);color:#fff}
+.preview :is(a,button,select,summary,h2):focus-visible{outline:3px solid #ce972c;outline-offset:3px}
+.panel{border:1px solid #bfd4d1;border-radius:14px;background:#fff;padding:clamp(16px,3vw,28px);min-inline-size:0}
+.warning{background:#fff2d4;color:#634408;border-inline-start:4px solid #c38c20;padding:14px;font-weight:800}
+.panel dt{font-weight:800}
+.panel dd{margin-inline-start:0;margin-block-end:16px}
+.panel label{display:grid;gap:8px}
+.panel select{min-block-size:48px;max-inline-size:100%;font:inherit;padding:10px;border:1px solid #8aa9a8;border-radius:8px}
+.panel details,.staff{border:1px solid #bfd4d1;padding:14px;border-radius:10px;margin-block:16px}
+.preview summary{min-block-size:44px;cursor:pointer;font-weight:700}
+.actions{display:flex;gap:12px;justify-content:space-between;margin-block-start:24px}
+.preview button:disabled{opacity:.65;cursor:not-allowed}
+.staff{background:#edf5f4}@media(max-width:600px){.preview{font-size:1rem}
+.programs a{max-inline-size:270px;white-space:normal}
+.steps button{min-inline-size:120px}
+.actions button{flex:1}
+.panel{padding:16px}
+.preview h2{overflow-wrap:anywhere}}

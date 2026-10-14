@@ -11,7 +11,8 @@ import {MINUTE_MS,possibleInstants} from "../calendar/time.ts";
 import {draftGroupCommandSchema,moveProposedPlacementCommandSchema,proposedPlacementCommandSchema,type DraftGroupCommand,type DraftGroupRecord,
  proposedDraftMeetingCommandSchema,reviseDraftMeetingCommandSchema,type DraftMeetingConflict,type DraftMeetingRevisionRecord,type EligibleGroupInterest,
  type MoveProposedPlacementCommand,type ProposedDraftMeetingCommand,type ProposedPlacementCommand,type ProposedPlacementMoveRecord,
- type ProposedPlacementRecord,type ReviseDraftMeetingCommand} from "./contract.ts";
+ type ProposedPlacementRecord,recordFishingPracticeCommandSchema,type RecordFishingPracticeCommand,type ReviseDraftMeetingCommand,
+ type FishingPracticeHistoryPage,type FishingPracticeHistoryQuery,type FishingPracticeRevisionRecord,type FishingPracticeModuleKey,isFishingDraftLabel} from "./contract.ts";
 
 type DraftRow={id:string;labelCiphertext:string;recordedBy:string;createdAt:Date;requestDigest:string};
 type InterestRow={id:string;familyId:string;familyCiphertext:string;personId:string;personCiphertext:string;
@@ -22,8 +23,14 @@ type MoveRow={id:string;sourceProposedPlacementId:string;destinationProposedPlac
 type MeetingRow={id:string;occurrenceId:string;draftGroupId:string;previousRevisionId:string|null;nextRevisionId:string|null;
  timeZone:"Asia/Jerusalem";localStart:string;startsAt:Date;endsAt:Date;durationMinutes:number;venueCiphertext:string;
  recordedBy:string;createdAt:Date;requestDigest:string};
+type FishingPracticeRow={id:string;draftGroupId:string;proposedPlacementId:string;programKey:"fishing_lessons";
+ moduleKey:FishingPracticeModuleKey;evidenceState:"practice_observed"|"no_evidence_yet";noteCiphertext:string;
+ previousRevisionId:string|null;nextRevisionId:string|null;recordedBy:string;createdAt:Date;requestDigest:string};
 const draftAad=(workspace:string,id:string)=>`ls_group_admin/draft_group/v1/${workspace}/${id}`;
 const meetingAad=(workspace:string,id:string)=>`ls_group_admin/draft_meeting/v1/${workspace}/${id}`;
+const fishingPracticeAad=(workspace:string,id:string)=>`ls_group_admin/fishing_practice/v1/${workspace}/${id}`;
+const uuidPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export const FISHING_PRACTICE_HISTORY_PAGE_SIZE=20;
 
 export class GroupPlacementStore{
  constructor(private readonly db:IdentityStore,private readonly ring:Keyring,private readonly key:string,
@@ -36,6 +43,9 @@ export class GroupPlacementStore{
  private meetingDigest(workspace:string,command:ProposedDraftMeetingCommand|ReviseDraftMeetingCommand){return privateDigest({domain:"draft-meeting/v1",workspace,
   fields:{action:command.action,...("draftGroupId" in command?{draftGroupId:command.draftGroupId}:{sourceRevisionId:command.sourceRevisionId}),
    timeZone:command.timeZone,localStart:command.localStart,durationMinutes:command.durationMinutes,venue:command.venue}},this.key);}
+ private fishingPracticeDigest(workspace:string,command:RecordFishingPracticeCommand){return privateDigest({domain:"fishing-practice/v1",workspace,
+  fields:{draftGroupId:command.draftGroupId,proposedPlacementId:command.proposedPlacementId,moduleKey:command.moduleKey,
+   evidenceState:command.evidenceState,note:command.note,expectedRevisionId:command.expectedRevisionId}},this.key);}
  private draft(workspace:string,row:DraftRow):DraftGroupRecord{
   try{const label=unseal(row.labelCiphertext,draftAad(workspace,row.id),this.ring);if(!label.trim())throw new Error();
    if(this.draftDigest(workspace,label)!==row.requestDigest)throw new Error();
@@ -70,6 +80,16 @@ export class GroupPlacementStore{
     localStart:row.localStart,startsAt:row.startsAt.toISOString(),endsAt:row.endsAt.toISOString(),durationMinutes:row.durationMinutes,venue,
     recordedBy:row.recordedBy,createdAt:row.createdAt.toISOString(),previousRevisionId:row.previousRevisionId,nextRevisionId:row.nextRevisionId,
     revisionStatus:row.nextRevisionId?"superseded":"current",conflicts};
+  }catch{throw new AppError("UNAVAILABLE");}
+ }
+ private fishingPractice(workspace:string,row:FishingPracticeRow):FishingPracticeRevisionRecord{
+  try{const note=unseal(row.noteCiphertext,fishingPracticeAad(workspace,row.id),this.ring),operationId="00000000-0000-4000-8000-000000000001",
+    expected=this.fishingPracticeDigest(workspace,{action:"record_fishing_practice",operationId,draftGroupId:row.draftGroupId,
+     proposedPlacementId:row.proposedPlacementId,moduleKey:row.moduleKey,evidenceState:row.evidenceState,note,expectedRevisionId:row.previousRevisionId});
+   if(expected!==row.requestDigest)throw new Error();return {id:row.id,state:"practice_observation",programKey:row.programKey,
+    draftGroupId:row.draftGroupId,proposedPlacementId:row.proposedPlacementId,moduleKey:row.moduleKey,evidenceState:row.evidenceState,note,
+    previousRevisionId:row.previousRevisionId,nextRevisionId:row.nextRevisionId,revisionStatus:row.nextRevisionId?"corrected":"current",
+    recordedBy:row.recordedBy,createdAt:row.createdAt.toISOString()};
   }catch{throw new AppError("UNAVAILABLE");}
  }
  private resolveMeeting(command:ProposedDraftMeetingCommand|ReviseDraftMeetingCommand){
@@ -136,6 +156,15 @@ export class GroupPlacementStore{
     ON successor.workspace_id=r.workspace_id AND successor.previous_revision_id=r.id
    WHERE r.workspace_id=$1 AND r.id=$2`,[actor.workspaceId,id]);
   if(rows.length!==1)throw new AppError("UNAVAILABLE");const row=rows[0]!;return this.meeting(actor.workspaceId,row,row.nextRevisionId?[]:await this.meetingConflicts(tx,actor,row));
+ }
+ private async readFishingPractice(tx:SqlSession,actor:Actor,id:string){
+  const rows=await tx.query<FishingPracticeRow>(`SELECT r.id,r.draft_group_id AS "draftGroupId",r.proposed_placement_id AS "proposedPlacementId",
+   r.program_key AS "programKey",r.module_key AS "moduleKey",r.evidence_state AS "evidenceState",r.note_ciphertext AS "noteCiphertext",
+   r.previous_revision_id AS "previousRevisionId",successor.id AS "nextRevisionId",r.recorded_by AS "recordedBy",
+   r.created_at AS "createdAt",r.request_digest AS "requestDigest" FROM ls_group_admin.fishing_practice_revisions r
+   LEFT JOIN ls_group_admin.fishing_practice_revisions successor ON successor.workspace_id=r.workspace_id AND successor.previous_revision_id=r.id
+   WHERE r.workspace_id=$1 AND r.id=$2`,[actor.workspaceId,id]);
+  if(rows.length!==1)throw new AppError("UNAVAILABLE");return this.fishingPractice(actor.workspaceId,rows[0]!);
  }
  async createDraftGroup(actor:Actor,input:DraftGroupCommand){
   const parsed=draftGroupCommandSchema.safeParse(input);if(!parsed.success)throw new AppError("INVALID_REQUEST");
@@ -222,6 +251,70 @@ export class GroupPlacementStore{
     (workspace_id,operation_id,recorded_by,request_digest,proposed_placement_move_id) VALUES($1,$2,$3,$4,$5)`,
     [actor.workspaceId,command.operationId,actor.id,hash,moveId]);
    return {saved:true as const,replayed:false,item:await this.readPlacement(tx,actor,destinationId),movement:await this.readMove(tx,actor,moveId)};
+  });
+ }
+ async recordFishingPractice(actor:Actor,input:RecordFishingPracticeCommand){
+  const parsed=recordFishingPracticeCommandSchema.safeParse(input);if(!parsed.success)throw new AppError("INVALID_REQUEST");
+  const command=parsed.data,hash=this.fishingPracticeDigest(actor.workspaceId,command);
+  return this.db.transaction(async tx=>{
+   await lockWorkspace(tx,actor.workspaceId);requirePractitioner(await freshActor(tx,actor,this.clock.now()));
+   const prior=await tx.query<{practiceRevisionId:string;requestDigest:string;recordedBy:string}>(`SELECT practice_revision_id AS "practiceRevisionId",
+    request_digest AS "requestDigest",recorded_by AS "recordedBy" FROM ls_group_admin.fishing_practice_operations
+    WHERE workspace_id=$1 AND operation_id=$2`,[actor.workspaceId,command.operationId]);
+   if(prior.length){if(prior.length!==1||prior[0]!.requestDigest!==hash||prior[0]!.recordedBy!==actor.id)throw new AppError("CONFLICT");
+    return {saved:true as const,replayed:true,item:await this.readFishingPractice(tx,actor,prior[0]!.practiceRevisionId)};}
+   const group=await this.readDraft(tx,actor,command.draftGroupId);if(!isFishingDraftLabel(group.label))throw new AppError("NOT_FOUND");
+   const placement=await tx.query<{id:string}>(`SELECT pp.id FROM ls_group_admin.proposed_placements pp
+    LEFT JOIN ls_group_admin.proposed_placement_moves outgoing
+     ON outgoing.workspace_id=pp.workspace_id AND outgoing.source_proposed_placement_id=pp.id
+    WHERE pp.workspace_id=$1 AND pp.id=$2 AND pp.draft_group_id=$3 AND outgoing.id IS NULL`,
+    [actor.workspaceId,command.proposedPlacementId,command.draftGroupId]);
+   if(placement.length!==1)throw new AppError("NOT_FOUND");
+   const current=await tx.query<{id:string}>(`SELECT r.id FROM ls_group_admin.fishing_practice_revisions r
+    LEFT JOIN ls_group_admin.fishing_practice_revisions successor
+     ON successor.workspace_id=r.workspace_id AND successor.previous_revision_id=r.id
+    WHERE r.workspace_id=$1 AND r.proposed_placement_id=$2 AND r.module_key=$3 AND successor.id IS NULL
+    ORDER BY r.created_at DESC,r.id DESC LIMIT 2`,[actor.workspaceId,command.proposedPlacementId,command.moduleKey]);
+   if(current.length>1)throw new AppError("UNAVAILABLE");const expected=current[0]?.id??null;
+   if(expected!==command.expectedRevisionId)throw new AppError("CONFLICT");
+   const id=randomUUID(),createdAt=this.clock.now();await tx.query(`INSERT INTO ls_group_admin.fishing_practice_revisions
+    (workspace_id,id,draft_group_id,proposed_placement_id,program_key,module_key,evidence_state,note_ciphertext,previous_revision_id,
+     recorded_by,request_digest,created_at) VALUES($1,$2,$3,$4,'fishing_lessons',$5,$6,$7,$8,$9,$10,$11)`,
+    [actor.workspaceId,id,command.draftGroupId,command.proposedPlacementId,command.moduleKey,command.evidenceState,
+     seal(command.note,fishingPracticeAad(actor.workspaceId,id),this.ring),command.expectedRevisionId,actor.id,hash,createdAt]);
+   await tx.query(`INSERT INTO ls_group_admin.fishing_practice_operations
+    (workspace_id,operation_id,recorded_by,request_digest,practice_revision_id) VALUES($1,$2,$3,$4,$5)`,
+    [actor.workspaceId,command.operationId,actor.id,hash,id]);
+   return {saved:true as const,replayed:false,item:await this.readFishingPractice(tx,actor,id)};
+  });
+ }
+ async listFishingPracticeHistory(actor:Actor,input:FishingPracticeHistoryQuery):Promise<FishingPracticeHistoryPage>{
+  return this.db.transaction(async tx=>{
+   await tx.query("SET TRANSACTION READ ONLY");requirePractitioner(await freshActor(tx,actor,this.clock.now()));
+   const found=await tx.query<{id:string}>("SELECT id FROM ls_group_admin.proposed_placements WHERE workspace_id=$1 AND id=$2",[actor.workspaceId,input.placementId]);
+   if(found.length!==1)throw new AppError("NOT_FOUND");const placement=await this.readPlacement(tx,actor,input.placementId),group=await this.readDraft(tx,actor,placement.draftGroupId);
+   if(!isFishingDraftLabel(group.label))throw new AppError("NOT_FOUND");
+   let cursorId:string|null=null;if(input.cursor){try{cursorId=Buffer.from(input.cursor,"base64url").toString("utf8");if(!uuidPattern.test(cursorId))throw new Error();}
+    catch{throw new AppError("INVALID_REQUEST");}}
+   const rows=await tx.query<FishingPracticeRow>(`WITH RECURSIVE chain AS (
+     SELECT r.*,1 AS depth FROM ls_group_admin.fishing_practice_revisions r
+     LEFT JOIN ls_group_admin.fishing_practice_revisions successor ON successor.workspace_id=r.workspace_id AND successor.previous_revision_id=r.id
+     WHERE r.workspace_id=$1 AND r.proposed_placement_id=$2 AND r.module_key=$3 AND r.id=CASE WHEN $4::uuid IS NULL THEN r.id ELSE
+      (SELECT previous_revision_id FROM ls_group_admin.fishing_practice_revisions WHERE workspace_id=$1 AND proposed_placement_id=$2 AND module_key=$3 AND id=$4::uuid) END
+      AND ($4::uuid IS NOT NULL OR successor.id IS NULL)
+     UNION ALL
+     SELECT previous.*,chain.depth+1 FROM ls_group_admin.fishing_practice_revisions previous
+     JOIN chain ON previous.workspace_id=chain.workspace_id AND previous.id=chain.previous_revision_id AND chain.depth<$5
+    )
+    SELECT r.id,r.draft_group_id AS "draftGroupId",r.proposed_placement_id AS "proposedPlacementId",
+     r.program_key AS "programKey",r.module_key AS "moduleKey",r.evidence_state AS "evidenceState",r.note_ciphertext AS "noteCiphertext",
+     r.previous_revision_id AS "previousRevisionId",successor.id AS "nextRevisionId",r.recorded_by AS "recordedBy",
+     r.created_at AS "createdAt",r.request_digest AS "requestDigest" FROM chain r
+    LEFT JOIN ls_group_admin.fishing_practice_revisions successor ON successor.workspace_id=r.workspace_id AND successor.previous_revision_id=r.id
+    ORDER BY r.depth LIMIT 21`,[actor.workspaceId,input.placementId,input.moduleKey,cursorId,FISHING_PRACTICE_HISTORY_PAGE_SIZE+1]);
+   if(cursorId&&rows.length===0)throw new AppError("INVALID_REQUEST");const page=rows.slice(0,FISHING_PRACTICE_HISTORY_PAGE_SIZE),last=page.at(-1),nextCursor=rows.length>FISHING_PRACTICE_HISTORY_PAGE_SIZE&&last?
+    Buffer.from(last.id,"utf8").toString("base64url"):null;
+   return {items:page.map(row=>this.fishingPractice(actor.workspaceId,row)),nextCursor};
   });
  }
  async proposeMeeting(actor:Actor,input:ProposedDraftMeetingCommand){
@@ -315,11 +408,18 @@ export class GroupPlacementStore{
     FROM ls_group_admin.draft_meeting_revisions r LEFT JOIN ls_group_admin.draft_meeting_revisions successor
      ON successor.workspace_id=r.workspace_id AND successor.previous_revision_id=r.id
     WHERE r.workspace_id=$1 ORDER BY r.created_at,r.id LIMIT 201`,[actor.workspaceId]);
-   if(drafts.length>100||interests.length>100||placements.length>200||movements.length>200||meetings.length>200)throw new AppError("UNAVAILABLE");
+   const practice=await tx.query<FishingPracticeRow>(`SELECT r.id,r.draft_group_id AS "draftGroupId",r.proposed_placement_id AS "proposedPlacementId",
+    r.program_key AS "programKey",r.module_key AS "moduleKey",r.evidence_state AS "evidenceState",r.note_ciphertext AS "noteCiphertext",
+    r.previous_revision_id AS "previousRevisionId",successor.id AS "nextRevisionId",r.recorded_by AS "recordedBy",
+    r.created_at AS "createdAt",r.request_digest AS "requestDigest" FROM ls_group_admin.fishing_practice_revisions r
+    LEFT JOIN ls_group_admin.fishing_practice_revisions successor ON successor.workspace_id=r.workspace_id AND successor.previous_revision_id=r.id
+    WHERE r.workspace_id=$1 AND successor.id IS NULL ORDER BY r.created_at,r.id LIMIT 1201`,[actor.workspaceId]);
+   if(drafts.length>100||interests.length>100||placements.length>200||movements.length>200||meetings.length>200||practice.length>1200)throw new AppError("UNAVAILABLE");
    const meetingRevisions=[];for(const row of meetings)meetingRevisions.push(this.meeting(actor.workspaceId,row,
     row.nextRevisionId?[]:await this.meetingConflicts(tx,actor,row)));
    return {draftGroups:drafts.map(row=>this.draft(actor.workspaceId,row)),eligibleGroupInterests:interests.map(row=>this.interest(actor.workspaceId,row)),
-    proposedPlacements:placements.map(row=>this.placement(actor.workspaceId,row)),proposalMovements:this.orderedMovements(movements),meetingRevisions};
+    proposedPlacements:placements.map(row=>this.placement(actor.workspaceId,row)),proposalMovements:this.orderedMovements(movements),meetingRevisions,
+    fishingPracticeRevisions:practice.map(row=>this.fishingPractice(actor.workspaceId,row))};
   });
  }
 }

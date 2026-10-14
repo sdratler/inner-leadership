@@ -1,6 +1,7 @@
 import {parseEnvironment} from "../../lib/env/schema.ts";
 import {AppError} from "../../lib/errors.ts";
 import {verifyMutationOrigin} from "../../lib/security/csrf.ts";
+import {floridaProgramIdSchema,type FloridaProgramId} from "./contract.ts";
 
 export function groupApplicationPublicOrigin(input:Record<string,string|undefined>):string{
  const canonical=parseEnvironment(input).LS_APP_ORIGIN,raw=input.LS_GROUP_APPLICATION_PUBLIC_ORIGIN;
@@ -17,7 +18,16 @@ export function configuredGroupApplicationOrigin(request:Request,input:Record<st
 }
 export function verifyGroupApplicationRequest(request:Request,input:Record<string,string|undefined>,mutation:boolean):string{
  const origin=configuredGroupApplicationOrigin(request,input),url=new URL(request.url);
- if(!origin||url.pathname!=="/api/public/group-applications"||url.search||url.hash)throw new AppError(mutation?"FORBIDDEN":"NOT_FOUND");
+ if(!origin||url.pathname!=="/api/public/group-applications"||url.hash)throw new AppError(mutation?"FORBIDDEN":"NOT_FOUND");
  if(mutation){if(request.headers.get("sec-fetch-site")!=="same-origin")throw new AppError("FORBIDDEN");verifyMutationOrigin(request,origin);}
  return origin;
+}
+
+export function groupApplicationProgramFromRequest(request:Request):FloridaProgramId|null{
+ try{
+  const url=new URL(request.url);
+  if(url.searchParams.size===0)return null;
+  if(url.searchParams.size!==1)throw new Error();
+  return floridaProgramIdSchema.parse(url.searchParams.get("program"));
+ }catch{throw new AppError("FORBIDDEN");}
 }

@@ -12,11 +12,13 @@ import {request as playwrightRequest} from "@playwright/test";
 import {fixture,safeTestUrl} from "../../database/calendar/fixture.ts";
 import {seal,tokenDigest} from "../../../src/features/identity/crypto.ts";
 import {privateDigest} from "../../../src/features/contact-ops/server/digests.ts";
-import {groupApplicationNotice} from "../../../src/features/group-application/contract.ts";
+import {floridaGroupApplicationNotice} from "../../../src/features/group-application/contract.ts";
 
-const projects={desktop:3105,mobile390:3106,mobile340:3107} as const;
+const projects={desktop:3105,tablet768:3108,mobile390:3106,mobile340:3107} as const;
 const project=process.env.LS_GROUP_INTEREST_TEST_PROJECT as keyof typeof projects|undefined;
+const sampleOnly=process.env.LS_FLORIDA_SAMPLE_TEST_ONLY==="true";
 if(project!==undefined&&!(project in projects))throw new Error("GROUP_INTEREST_BROWSER_PROJECT_NOT_SUPPORTED");
+if((sampleOnly||process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==="true")&&project===undefined)throw new Error("FLORIDA_JOURNEY_EXPLICIT_PROJECT_REQUIRED");
 if(process.env.LS_GROUP_INTEREST_TEST_ALLOW!=="true")throw new Error("GROUP_INTEREST_BROWSER_OPT_IN_REQUIRED");
 const appPort=projects[project??"desktop"],origin=`https://localhost:${appPort}`;
 safeTestUrl();
@@ -30,12 +32,13 @@ process.once("SIGTERM",()=>{void cleanup().finally(()=>process.exit(143));});
 process.once("SIGINT",()=>{void cleanup().finally(()=>process.exit(130));});
 
 type WorkspaceSnapshot={count:number;snapshot:string};
-type BoundaryCounts={inquiries:number;operations:number;serviceInterests:number;serviceOperations:number;draftGroups:number;draftOperations:number;proposedPlacements:number;placementOperations:number;placementMoves:number;movementOperations:number;meetingRevisions:number;meetingOperations:number;otherWorkspaceState:Record<string,WorkspaceSnapshot>};
+type BoundaryCounts={inquiries:number;operations:number;publicApplications:number;publicApplicationOperations:number;serviceInterests:number;serviceOperations:number;draftGroups:number;draftOperations:number;proposedPlacements:number;placementOperations:number;placementMoves:number;movementOperations:number;meetingRevisions:number;meetingOperations:number;practiceRevisions:number;practiceOperations:number;otherWorkspaceState:Record<string,WorkspaceSnapshot>};
 const quoteIdentifier=(value:string)=>`"${value.replaceAll('"','""')}"`;
 async function counts():Promise<BoundaryCounts>{
- const allowed=new Set(["ls_service_interest.inquiries","ls_service_interest.operations","ls_service_interest.service_interests","ls_service_interest.service_interest_operations",
+ const allowed=new Set(["ls_service_interest.public_applications","ls_service_interest.public_application_operations","ls_service_interest.inquiries","ls_service_interest.operations","ls_service_interest.service_interests","ls_service_interest.service_interest_operations",
   "ls_group_admin.draft_groups","ls_group_admin.draft_group_operations","ls_group_admin.proposed_placements","ls_group_admin.proposed_placement_operations",
-  "ls_group_admin.proposed_placement_moves","ls_group_admin.proposed_placement_move_operations","ls_group_admin.draft_meeting_revisions","ls_group_admin.draft_meeting_operations"]);
+  "ls_group_admin.proposed_placement_moves","ls_group_admin.proposed_placement_move_operations","ls_group_admin.draft_meeting_revisions","ls_group_admin.draft_meeting_operations",
+  "ls_group_admin.fishing_practice_revisions","ls_group_admin.fishing_practice_operations"]);
  const inventory=await f!.pool.query<{schema:string;table:string}>(`SELECT c.table_schema AS schema,c.table_name AS table
   FROM information_schema.columns c JOIN information_schema.tables t ON t.table_schema=c.table_schema AND t.table_name=c.table_name
   WHERE c.column_name='workspace_id' AND c.table_schema LIKE 'ls\\_%' ESCAPE '\\' AND t.table_type='BASE TABLE'
@@ -48,6 +51,8 @@ async function counts():Promise<BoundaryCounts>{
   otherWorkspaceState[name]=result.rows[0]??{count:0,snapshot:"[]"};
  }
  const result=await f!.pool.query<Omit<BoundaryCounts,"otherWorkspaceState">>(`SELECT
+  (SELECT count(*)::integer FROM ls_service_interest.public_applications WHERE workspace_id=$1) AS "publicApplications",
+  (SELECT count(*)::integer FROM ls_service_interest.public_application_operations WHERE workspace_id=$1) AS "publicApplicationOperations",
   (SELECT count(*)::integer FROM ls_service_interest.inquiries WHERE workspace_id=$1) AS inquiries,
   (SELECT count(*)::integer FROM ls_service_interest.operations WHERE workspace_id=$1) AS operations,
   (SELECT count(*)::integer FROM ls_service_interest.service_interests WHERE workspace_id=$1) AS "serviceInterests",
@@ -59,7 +64,9 @@ async function counts():Promise<BoundaryCounts>{
   (SELECT count(*)::integer FROM ls_group_admin.proposed_placement_moves WHERE workspace_id=$1) AS "placementMoves",
   (SELECT count(*)::integer FROM ls_group_admin.proposed_placement_move_operations WHERE workspace_id=$1) AS "movementOperations",
   (SELECT count(*)::integer FROM ls_group_admin.draft_meeting_revisions WHERE workspace_id=$1) AS "meetingRevisions",
-  (SELECT count(*)::integer FROM ls_group_admin.draft_meeting_operations WHERE workspace_id=$1) AS "meetingOperations"`,[f!.workspaceId]);
+  (SELECT count(*)::integer FROM ls_group_admin.draft_meeting_operations WHERE workspace_id=$1) AS "meetingOperations",
+  (SELECT count(*)::integer FROM ls_group_admin.fishing_practice_revisions WHERE workspace_id=$1) AS "practiceRevisions",
+  (SELECT count(*)::integer FROM ls_group_admin.fishing_practice_operations WHERE workspace_id=$1) AS "practiceOperations"`,[f!.workspaceId]);
  return {...result.rows[0]!,otherWorkspaceState};
 }
 
@@ -139,12 +146,13 @@ try{
   return token;
  }
  const adult=await deniedAccount("adult_client"),child=await deniedAccount("child"),revoked=await deniedAccount("adult_client",workspaceId,true),otherWorkspace=await deniedAccount("practitioner",randomUUID());
- const publicApplicationId=randomUUID(),publicApplicationOperationId=randomUUID(),publicApplicationFields={parentName:"Synthetic public applicant",parentPhone:"+15550003000",language:"en" as const,childAge:10,town:"Synthetic town",schedulePreference:"evening" as const,interestedInEveningGroup:true,screenAccess:"shared_device" as const,screenTime:"1_to_2_hours" as const,observations:{intrinsicMotivation:"sometimes_difficult" as const},parentPriorities:"Synthetic review details only.",permission:{confirmed:true as const,version:groupApplicationNotice.version,language:"en" as const}};
- const digestKey=lookupKey.toString("hex"),publicRequestDigest=privateDigest({domain:"public-group-application/v1",workspace:workspaceId,fields:publicApplicationFields},digestKey),publicContactDigest=privateDigest({domain:"public-group-application-contact/v1",workspace:workspaceId,phone:publicApplicationFields.parentPhone},digestKey);
- await f.pool.query(`INSERT INTO ls_service_interest.public_applications(workspace_id,id,contact_digest,request_digest,payload_ciphertext,notice_version,notice_language,received_at) VALUES($1,$2,$3,$4,$5,$6,$7,clock_timestamp())`,[workspaceId,publicApplicationId,publicContactDigest,publicRequestDigest,seal(JSON.stringify(publicApplicationFields),`ls_service_interest/public_application/v1/${workspaceId}/${publicApplicationId}`,keyring),groupApplicationNotice.version,"en"]);
+ const publicApplicationId=randomUUID(),publicApplicationOperationId=randomUUID(),publicApplicationFields={parentName:"Synthetic public applicant",contact:"synthetic@example.invalid",language:"en" as const,childAge:"10",cityArea:"Hollywood, Florida",neighborhood:"Synthetic neighborhood",programId:"sunday_fishing_academy" as const,schedulePreference:["sunday","flexible"] as const,scheduleNotes:"Synthetic scheduling details only.",permission:{confirmed:true as const,version:floridaGroupApplicationNotice.version,language:"en" as const}};
+ const digestKey=lookupKey.toString("hex"),publicRequestDigest=privateDigest({domain:"public-group-application/v1",workspace:workspaceId,fields:publicApplicationFields},digestKey),publicContactDigest=privateDigest({domain:"public-group-application-contact/v1",workspace:workspaceId,contact:publicApplicationFields.contact},digestKey);
+ await f.pool.query(`INSERT INTO ls_service_interest.public_applications(workspace_id,id,contact_digest,request_digest,payload_ciphertext,notice_version,notice_language,received_at) VALUES($1,$2,$3,$4,$5,$6,$7,clock_timestamp())`,[workspaceId,publicApplicationId,publicContactDigest,publicRequestDigest,seal(JSON.stringify(publicApplicationFields),`ls_service_interest/public_application/v1/${workspaceId}/${publicApplicationId}`,keyring),floridaGroupApplicationNotice.version,"en"]);
  await f.pool.query(`INSERT INTO ls_service_interest.public_application_operations(workspace_id,operation_id,request_digest,application_id) VALUES($1,$2,$3,$4)`,[workspaceId,publicApplicationOperationId,publicRequestDigest,publicApplicationId]);
  const baseline=await counts();
- if(baseline.inquiries!==0||baseline.operations!==0||baseline.serviceInterests!==0||baseline.serviceOperations!==0||baseline.draftGroups!==0||baseline.draftOperations!==0||baseline.proposedPlacements!==0||baseline.placementOperations!==0||baseline.placementMoves!==0||baseline.movementOperations!==0||baseline.meetingRevisions!==0||baseline.meetingOperations!==0)throw new Error("GROUP_INTEREST_FIXTURE_NOT_EMPTY");
+ const originalPublic=await f.pool.query("SELECT to_jsonb(a)::text AS snapshot FROM ls_service_interest.public_applications a WHERE workspace_id=$1 AND id=$2",[workspaceId,publicApplicationId]);
+ if(baseline.inquiries!==0||baseline.operations!==0||baseline.serviceInterests!==0||baseline.serviceOperations!==0||baseline.draftGroups!==0||baseline.draftOperations!==0||baseline.proposedPlacements!==0||baseline.placementOperations!==0||baseline.placementMoves!==0||baseline.movementOperations!==0||baseline.meetingRevisions!==0||baseline.meetingOperations!==0||baseline.practiceRevisions!==0||baseline.practiceOperations!==0)throw new Error("GROUP_INTEREST_FIXTURE_NOT_EMPTY");
  const runtimePath=join(folder,"synthetic-runtime.json");
  writeFileSync(runtimePath,JSON.stringify({origin,workspaceId,practitioner:f.practitioner.token,parent:f.parent.token,adult,child,revoked,otherWorkspace,publicApplicationId,publicApplicantName:publicApplicationFields.parentName}),{mode:0o600});
  const key=join(folder,"tls.key"),cert=join(folder,"tls.crt");
@@ -163,15 +171,42 @@ try{
  if(!healthy)throw new Error("ISOLATED_APP_HEALTH_TIMEOUT");
  phase="browser-tests";
  const selection=project?["--project",project,"--output",`tests/e2e/group-interest/test-results/isolated-${project}`]:[];
+ if(process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==="true")selection.push("--grep","Florida group inquiry|Israel group application compatibility");
  if(process.env.LS_GROUP_INTEREST_CAPTURE_ONLY==="true")selection.push("--grep","practitioner");
+ if(sampleOnly)selection.push("--grep","Florida owner journey hosted sample");
+ else if(process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==="true")selection.push("--grep",process.env.LS_FLORIDA_INSTITUTION_TEST_ONLY==="true"?"Florida owner journey school inquiry|Florida owner journey.*native inquiry replay|Florida owner journey authorization":"Florida owner journey");
+ else selection.push("--grep-invert","Florida owner journey");
  tests=spawn(process.execPath,[resolve("node_modules/@playwright/test/cli.js"),"test","--config","tests/e2e/group-interest/playwright.config.ts",...selection],{env,stdio:["ignore","inherit","inherit"]});
  const [code]=await once(tests,"exit");if(code!==0)throw new Error("GROUP_INTEREST_BROWSER_ACCEPTANCE_FAILED");
+ if(process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==="true"){
+  phase="public-boundary-readback";const after=await counts(),writes=project===undefined||project==="desktop"?2:1;
+  const expected={...baseline,publicApplications:baseline.publicApplications+writes,publicApplicationOperations:baseline.publicApplicationOperations+writes};
+  if(JSON.stringify(after)!==JSON.stringify(expected))throw new Error("FLORIDA_PUBLIC_UNEXPECTED_DATABASE_EFFECT");
+  const retainedPublic=await f.pool.query("SELECT to_jsonb(a)::text AS snapshot FROM ls_service_interest.public_applications a WHERE workspace_id=$1 AND id=$2",[workspaceId,publicApplicationId]);
+  if(JSON.stringify(retainedPublic.rows)!==JSON.stringify(originalPublic.rows))throw new Error("FLORIDA_PUBLIC_EXISTING_RECEIPT_MUTATED");
+  console.log(`FLORIDA_PUBLIC_BROWSER_ACCEPTANCE_PASS project=${project??"all"} inquiries=${writes} operations=${writes} otherDatabaseEffects=0 providerEffects=0`);
+ }
+ else if(sampleOnly||process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==="true"){
+  phase="journey-boundary-readback";
+  const after=await counts();
+  const writes=sampleOnly?0:8,expected={...baseline,publicApplications:baseline.publicApplications+writes,publicApplicationOperations:baseline.publicApplicationOperations+writes};
+  if(JSON.stringify(after)!==JSON.stringify(expected))throw new Error("FLORIDA_JOURNEY_UNEXPECTED_DATABASE_EFFECT");
+  const retainedPublic=await f.pool.query("SELECT to_jsonb(a)::text AS snapshot FROM ls_service_interest.public_applications a WHERE workspace_id=$1 AND id=$2",[workspaceId,publicApplicationId]);
+  if(JSON.stringify(retainedPublic.rows)!==JSON.stringify(originalPublic.rows))throw new Error("FLORIDA_JOURNEY_EXISTING_RECEIPT_MUTATED");
+  console.log(`FLORIDA_JOURNEY_ACCEPTANCE_PASS project=${project??"all"} inquiries=${writes} operations=${writes} otherDatabaseEffects=0 providerEffects=0 downstream=sample`);
+ }
+ else{
  phase="durable-child-identity";await verifyDurableChildIdentity();
  phase="group-placement-database-boundary";await verifyGroupPlacementDatabaseBoundary();
  phase="boundary-readback";
  const after=await counts();
  if(JSON.stringify(after.otherWorkspaceState)!==JSON.stringify(baseline.otherWorkspaceState))throw new Error("GROUP_INTEREST_WORKSPACE_SIDE_EFFECT");
- if(after.inquiries!==baseline.inquiries+3||after.operations!==baseline.operations+3||after.serviceInterests!==baseline.serviceInterests+4||after.serviceOperations!==baseline.serviceOperations+5||after.draftGroups!==baseline.draftGroups+8||after.draftOperations!==baseline.draftOperations+8||after.proposedPlacements!==baseline.proposedPlacements+8||after.placementOperations!==baseline.placementOperations+8||after.placementMoves!==baseline.placementMoves+4||after.movementOperations!==baseline.movementOperations+4||after.meetingRevisions!==baseline.meetingRevisions+4||after.meetingOperations!==baseline.meetingOperations+4)throw new Error("GROUP_INTEREST_RECEIPT_COUNT_MISMATCH");
- console.log(`GROUP_INTEREST_ACCEPTANCE_PASS project=${project??"all"} inquiries=3 serviceInterests=4 draftGroups=8 proposedPlacements=8 placementOperations=8 placementMoves=4 movementOperations=4 meetingRevisions=4 meetingOperations=4 sideEffects=0`);
+ const publicWrites=project===undefined||project==="desktop"?2:1;
+ if(after.publicApplications!==baseline.publicApplications+publicWrites||after.publicApplicationOperations!==baseline.publicApplicationOperations+publicWrites)throw new Error("GROUP_INTEREST_PUBLIC_RECEIPT_COUNT_MISMATCH");
+ const retainedPublic=await f.pool.query("SELECT to_jsonb(a)::text AS snapshot FROM ls_service_interest.public_applications a WHERE workspace_id=$1 AND id=$2",[workspaceId,publicApplicationId]);
+ if(JSON.stringify(retainedPublic.rows)!==JSON.stringify(originalPublic.rows))throw new Error("GROUP_INTEREST_EXISTING_PUBLIC_RECEIPT_MUTATED");
+ if(after.inquiries!==baseline.inquiries+3||after.operations!==baseline.operations+3||after.serviceInterests!==baseline.serviceInterests+4||after.serviceOperations!==baseline.serviceOperations+5||after.draftGroups!==baseline.draftGroups+8||after.draftOperations!==baseline.draftOperations+8||after.proposedPlacements!==baseline.proposedPlacements+8||after.placementOperations!==baseline.placementOperations+8||after.placementMoves!==baseline.placementMoves+4||after.movementOperations!==baseline.movementOperations+4||after.meetingRevisions!==baseline.meetingRevisions+4||after.meetingOperations!==baseline.meetingOperations+4||after.practiceRevisions!==baseline.practiceRevisions+42||after.practiceOperations!==baseline.practiceOperations+42)throw new Error("GROUP_INTEREST_RECEIPT_COUNT_MISMATCH");
+ console.log(`GROUP_INTEREST_ACCEPTANCE_PASS project=${project??"all"} inquiries=3 serviceInterests=4 draftGroups=8 proposedPlacements=8 placementOperations=8 placementMoves=4 movementOperations=4 meetingRevisions=4 meetingOperations=4 practiceRevisions=42 practiceOperations=42 pagedHistory=42 sideEffects=0`);
+ }
 }catch(error){console.error(`Group Intake browser verification failed at ${phase} (${error instanceof Error?error.message:"unknown error"}). No production or provider state was used.`);process.exitCode=1;}
 finally{await cleanup();}

@@ -17,6 +17,11 @@ export function loginReturnDestination(locale: Locale, role: Role, requested: st
   if (!requested || requested.length > 2048 || !requested.startsWith("/") || /[\\\u0000-\u001f\u007f]/.test(requested)) return defaultPath;
   try {
     const url = new URL(requested, "https://life-skills.invalid");
+    if(role==="practitioner"&&url.origin==="https://life-skills.invalid"&&!url.hash&&url.pathname===`/${locale}/sample`){
+      const page=url.searchParams.get("page"),program=url.searchParams.get("program");
+      if((page==="florida-journeys"||page==="florida-landing")&&["sunday_fishing_academy","morning_torah_learning","private_fishing_life_skills"].includes(program??""))return `${url.pathname}?page=${page}&program=${program}`;
+      return defaultPath;
+    }
     if (url.origin !== "https://life-skills.invalid" || url.hash || (url.pathname !== root && !url.pathname.startsWith(`${root}/`))) return defaultPath;
     return url.pathname + url.search;
   } catch { return defaultPath; }
@@ -54,6 +59,10 @@ export function practitionerReturnPath(locale: Locale, page: "calendar" | "clien
 /** Named practitioner deep links only; no arbitrary caller/header path is trusted. */
 export function practitionerDetailReturnPath(locale:Locale,pathname:string,query:Record<string,string|string[]|undefined>):string {
  if(pathname===`/${locale}/app/group-interest`||pathname===`/${locale}/app/group-applications`)return pathname;
+ if(pathname===`/${locale}/app/group-applications/journey-preview`){
+  const program=typeof query.program==="string"?query.program:"";
+  return pathname+(["sunday_fishing_academy","morning_torah_learning","private_fishing_life_skills"].includes(program)?`?program=${program}`:"");
+ }
  if(pathname===`/${locale}/app/marketing`){
   const params=new URLSearchParams(),one=(key:string)=>typeof query[key]==='string'?query[key] as string:'';
   if(['overview','content_calendar','creatives','needs_approval','community','ads'].includes(one('section')))params.set('section',one('section'));
