@@ -5,12 +5,14 @@ import {readFileSync} from "node:fs";
 import {createHash} from "node:crypto";
 import {promisify} from "node:util";
 import {expect,test} from "@playwright/test";
+import {syntheticChildFailure} from "../group-interest/synthetic-child-output.ts";
 const runtimePath=process.env.LS_GROUP_INTEREST_FIXTURE_PATH;
 if(!runtimePath){
  test("mounted fishing lead controls through existing isolated native harness",async({},info)=>{
   test.setTimeout(240000);const project=info.project.name==="mobile"?"mobile390":info.project.name;
   const result=await promisify(execFile)(process.execPath,["--conditions=react-server","--import","tsx","tests/e2e/group-interest/run.ts"],{timeout:210000,maxBuffer:2*1024*1024,
-   env:{...process.env,LS_GROUP_INTEREST_TEST_PROJECT:project,LS_GROUP_INTEREST_TEST_ALLOW:"true",LS_CALENDAR_TEST_ALLOW:"true",LS_FISHING_LEAD_UI_ONLY:"true"}});
+   env:{...process.env,LS_GROUP_INTEREST_TEST_PROJECT:project,LS_GROUP_INTEREST_TEST_ALLOW:"true",LS_CALENDAR_TEST_ALLOW:"true",LS_FISHING_LEAD_UI_ONLY:"true"}})
+   .catch(error=>{throw new Error(syntheticChildFailure(error));});
   expect(result.stdout).toContain("FISHING_LEAD_UI_ACCEPTANCE_PASS project="+project);
  });
 }else{
