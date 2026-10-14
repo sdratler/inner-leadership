@@ -206,5 +206,9 @@
   {
     "name": "0132_ls_fishing_practice_revisions.sql",
     "sha256": "5d01872a0304d0dc9af14afdd660b470000c6cb99752239bf2fab3c00579eebf"
+  },
+  {
+    "name": "0133_ls_fishing_lead_memberships.sql",
+    "sha256": "00036ca9a452709d3f7de0a86222e09ac6e7f3f23968dc15a10d448ed919a1b7"
   }
 ]
