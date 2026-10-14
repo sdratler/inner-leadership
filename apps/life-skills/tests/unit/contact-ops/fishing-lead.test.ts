@@ -81,10 +81,10 @@ describe("RM04 scoped fishing lead boundary",()=>{
  });
  it("cannot verify stale Add after newer Remove or restore",()=>{
   const added=nextFishingMembership(null,base),removed=nextFishingMembership(added,{...base,action:"remove",expectedVersion:1}),
-   pending=fishingLabelDesired(removed,binding);
+   pending=fishingLabelDesired(removed,binding,fishingLabelDesired(added,binding));
   expect(()=>fishingLabelVerified(pending,{generation:1,binding,present:true,checkedAt:base.recordedAt})).toThrow();
   expect(fishingLabelVerified(pending,{generation:2,binding,present:false,checkedAt:base.recordedAt}).status).toBe("verified");
   const restored=nextFishingMembership(removed,{...base,expectedVersion:2});
-  expect(()=>fishingLabelVerified(fishingLabelDesired(restored,binding),{generation:2,binding,present:false,checkedAt:base.recordedAt})).toThrow();
+  expect(()=>fishingLabelVerified(fishingLabelDesired(restored,binding,pending),{generation:2,binding,present:false,checkedAt:base.recordedAt})).toThrow();
  });
 });

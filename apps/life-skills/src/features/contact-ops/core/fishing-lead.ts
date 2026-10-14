@@ -68,16 +68,30 @@ export const fishingLabelBindingSchema=z.object({accountId:providerId,managedLab
  chatId:providerId}).strict();
 export type FishingLabelBinding=z.infer<typeof fishingLabelBindingSchema>;
 export const fishingLabelProjectionSchema=z.object({workspaceId:uuid,personId:uuid,program:fishingProgramSchema,
- generation:version,desiredPresent:z.boolean(),status:z.enum(["unconfigured","pending","failed","verified"]),
- binding:fishingLabelBindingSchema.nullable(),verifiedAt:instant.nullable()}).strict()
- .refine(v=>v.status==="unconfigured"?v.binding===null&&v.verifiedAt===null:
-  v.binding!==null&&(v.status==="verified"?v.verifiedAt!==null:v.verifiedAt===null));
+ generation:version,desiredPresent:z.boolean(),status:z.enum(["unconfigured","pending","failed","outcome_unknown","unsupported","verified"]),
+ binding:fishingLabelBindingSchema.nullable(),verifiedAt:instant.nullable(),
+ capability:z.object({accountId:providerId,labelsSupported:z.literal(false),checkedAt:instant}).strict().optional(),
+ unresolvedEffect:z.object({generation:version,binding:fishingLabelBindingSchema}).strict().optional()}).strict()
+ .refine(v=>!v.unresolvedEffect||(v.binding!==null&&v.unresolvedEffect.generation<=v.generation&&
+  JSON.stringify(v.unresolvedEffect.binding)===JSON.stringify(v.binding)&&["pending","failed","outcome_unknown"].includes(v.status)))
+ .refine(v=>v.status==="unsupported"?v.verifiedAt===null&&v.capability!==undefined&&(!v.binding||v.binding.accountId===v.capability.accountId):
+  v.capability===undefined&&(v.status==="unconfigured"?v.binding===null&&v.verifiedAt===null:
+   v.binding!==null&&(v.status==="verified"?v.verifiedAt!==null:v.verifiedAt===null)));
 export type FishingLabelProjection=z.infer<typeof fishingLabelProjectionSchema>;
-export function fishingLabelDesired(current:FishingMembership,binding:FishingLabelBinding|null):FishingLabelProjection{
+export function fishingLabelDesired(current:FishingMembership,binding:FishingLabelBinding|null,previous?:FishingLabelProjection|null):FishingLabelProjection{
  current=fishingMembershipSchema.parse(current);
+ if(current.version>1&&!previous)throw Error("FISHING_LABEL_PREVIOUS_REQUIRED");
+ if(previous){previous=fishingLabelProjectionSchema.parse(previous);
+  if(previous.workspaceId!==current.workspaceId||previous.personId!==current.personId||previous.program!==current.program||previous.generation!==current.version-1)
+   throw Error("FISHING_LABEL_PREVIOUS_CONFLICT");}
+ // A new desired generation is not evidence that an earlier external effect
+ // was resolved. Retain its exact binding even if configuration disappears.
+ const unresolvedEffect=previous?.unresolvedEffect??(previous?.status==="outcome_unknown"&&previous.binding?
+  {generation:previous.generation,binding:previous.binding}:undefined);
+ if(unresolvedEffect)binding=unresolvedEffect.binding;
  return fishingLabelProjectionSchema.parse({workspaceId:current.workspaceId,personId:current.personId,
   program:current.program,generation:current.version,desiredPresent:current.state==="active",
-  binding,status:binding?"pending":"unconfigured",verifiedAt:null});
+  binding,status:unresolvedEffect?"outcome_unknown":binding?"pending":"unconfigured",verifiedAt:null,unresolvedEffect});
 }
 /** Readback is scoped to the real managed label/account/chat and latest desired
  * generation. A stale job, accepted request or unrelated label is never proof. */
@@ -88,5 +102,5 @@ export function fishingLabelVerified(current:FishingLabelProjection,readback:{ge
  if(!current.binding||current.generation!==readback.generation||current.desiredPresent!==readback.present||
   current.binding.accountId!==binding.accountId||current.binding.managedLabelId!==binding.managedLabelId||
   current.binding.chatId!==binding.chatId)throw Error("FISHING_LABEL_READBACK_CONFLICT");
- return fishingLabelProjectionSchema.parse({...current,status:"verified",verifiedAt:readback.checkedAt});
+ return fishingLabelProjectionSchema.parse({...current,status:"verified",verifiedAt:readback.checkedAt,unresolvedEffect:undefined,capability:undefined});
 }

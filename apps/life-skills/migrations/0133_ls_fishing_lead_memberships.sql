@@ -51,13 +51,15 @@ CREATE TABLE ls_contact_ops.fishing_label_projection (
  generation integer NOT NULL,
  membership_state text NOT NULL CHECK(membership_state IN ('active','removed')),
  desired_present boolean NOT NULL,
- status text NOT NULL CHECK(status IN ('unconfigured','pending','failed','verified')),
+ status text NOT NULL CHECK(status IN ('unconfigured','pending','failed','outcome_unknown','unsupported','verified')),
+ unresolved_effect boolean NOT NULL DEFAULT false,
  payload_ciphertext text NOT NULL CHECK(length(payload_ciphertext) BETWEEN 1 AND 20000),
  updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
  PRIMARY KEY(workspace_id,program_key,person_id),
  FOREIGN KEY(workspace_id,program_key,person_id,generation,membership_state)
   REFERENCES ls_contact_ops.fishing_lead_revisions(workspace_id,program_key,person_id,version,state),
- CHECK(desired_present=(membership_state='active'))
+ CHECK(desired_present=(membership_state='active')),
+ CHECK(NOT unresolved_effect OR status IN ('pending','failed','outcome_unknown'))
 );
 
 -- An FK to a historical revision alone is not latest-desired ordering proof.

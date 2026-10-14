@@ -63,4 +63,30 @@ if(!runtimePath){
   const session=await (await page.request.get("/api/identity/session")).json();const logout=await page.request.post("/api/identity/logout-all",{headers:{origin:runtime.origin,"sec-fetch-site":"same-origin","x-csrf-token":session.data.csrfToken},data:{}});expect(logout.status()).toBe(200);
   await record.getByText("Fishing lead list · Fishing Academy",{exact:true}).click();await expect(page.locator("main").getByRole("alert")).toContainText("Your session ended");await expect(page.locator("article")).toHaveCount(0);await expect(page.getByRole("link",{name:"Sign in",exact:true})).toBeVisible();await expect(page.locator("main")).not.toContainText(name);
  });
+ for(const locale of ["en","he"] as const)test(`${locale}: native membership stays visible separately from durable unsupported/unknown provider states`,async({page},info)=>{
+  const c=runtime.fishing.credentials.find(c=>c.role==="practitioner")!,target=`/${locale}/app/clients?personId=${runtime.fishing.protectedPersonId}`;
+  await page.goto(`/${locale}/login?next=${encodeURIComponent(target)}`);await page.locator('input[name="email"]').fill(c.email);await page.locator('input[name="password"]').fill(c.password);await page.getByRole("button",{name:locale==="he"?"כניסה":"Sign in",exact:true}).click();await expect(page).toHaveURL(target);
+  const region=page.getByRole("region",{name:locale==="he"?"התעניינות בדיג":"Fishing interests"}),summaries=region.locator("summary");await summaries.first().click();await summaries.nth(1).click();
+  await expect(region).toContainText(locale==="he"?"אינו נתמך בחשבון המחובר":"Not supported by this connected account");await expect(region).toContainText(locale==="he"?"התוצאה אינה ידועה — נדרשת בדיקה חוזרת":"Outcome unknown — reconciliation needed");
+  await expect(region.getByRole("button",{name:locale==="he"?"הסרה מרשימת המתעניינים":"Remove from Lead List",exact:true})).toHaveCount(2);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  await region.screenshot({path:info.outputPath(`fishing-provider-states-${locale}-${info.project.name}.png`)});
+  await page.reload();await region.locator("summary").first().click();await region.locator("summary").nth(1).click();await expect(region).toContainText(locale==="he"?"אינו נתמך בחשבון המחובר":"Not supported by this connected account");await expect(region).toContainText(locale==="he"?"התוצאה אינה ידועה":"Outcome unknown");
+  const uncertain=region.locator("details").nth(1);
+  await uncertain.getByRole("button",{name:locale==="he"?"הסרה מרשימת המתעניינים":"Remove from Lead List",exact:true}).click();
+  await uncertain.getByRole("button",{name:locale==="he"?"אישור הסרה":"Confirm Remove",exact:true}).click();
+  await expect(uncertain.getByRole("status")).toContainText(locale==="he"?"הוסר":"Removed");
+  await page.reload();await region.locator("summary").first().click();await region.locator("summary").nth(1).click();
+  await expect(uncertain).toContainText(locale==="he"?"התוצאה אינה ידועה":"Outcome unknown");
+  const removed=await (await page.request.get(`/api/private/fishing-leads/private_fishing_life_skills?source=person&sourceId=${runtime.fishing.protectedPersonId}`)).json();
+  expect(removed.data.membership.state).toBe("removed");expect(removed.data.projection.unresolvedEffect.generation).toBe(1);
+  await region.screenshot({path:info.outputPath(`fishing-removed-unknown-${locale}-${info.project.name}.png`)});
+  // Restore through the ordinary UI, not a fixture reset; the next language
+  // must see the same original unknown ancestry on the retained contact.
+  await uncertain.getByRole("button",{name:locale==="he"?"הוספה לרשימת המתעניינים":"Add to Lead List",exact:true}).click();
+  await uncertain.getByRole("button",{name:locale==="he"?"אישור הוספה":"Confirm Add",exact:true}).click();
+  await expect(uncertain.getByRole("status")).toContainText(locale==="he"?"נוסף":"Added");
+  const restored=await (await page.request.get(`/api/private/fishing-leads/private_fishing_life_skills?source=person&sourceId=${runtime.fishing.protectedPersonId}`)).json();
+  expect(restored.data.membership.state).toBe("active");expect(restored.data.projection.unresolvedEffect.generation).toBe(1);
+  await expect(uncertain).toContainText(locale==="he"?"התוצאה אינה ידועה":"Outcome unknown");
+ });
 }

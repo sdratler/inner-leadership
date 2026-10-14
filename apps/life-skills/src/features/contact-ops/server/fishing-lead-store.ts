@@ -81,15 +81,15 @@ export class FishingLeadStore{
   return value;
  }
  private async projection(tx:SqlSession,actor:Actor,personId:string,membership:FishingMembership|null):Promise<FishingLabelProjection|null>{
-  const rows=await tx.query<{generation:number;state:string;desiredPresent:boolean;status:string;ciphertext:string}>(`SELECT generation,
-   membership_state AS state,desired_present AS "desiredPresent",status,payload_ciphertext AS ciphertext
+  const rows=await tx.query<{generation:number;state:string;desiredPresent:boolean;status:string;unresolved:boolean;ciphertext:string}>(`SELECT generation,
+   membership_state AS state,desired_present AS "desiredPresent",status,unresolved_effect AS unresolved,payload_ciphertext AS ciphertext
    FROM ls_contact_ops.fishing_label_projection WHERE workspace_id=$1 AND program_key=$2 AND person_id=$3`,[actor.workspaceId,this.program,personId]);
   if((membership===null)!==(rows.length===0)||rows.length>1)throw new AppError("UNAVAILABLE");
   if(!rows[0])return null;const row=rows[0];
   const projection=this.decode(fishingLabelProjectionSchema,row.ciphertext,projectionAad(actor.workspaceId,this.program,personId,row.generation));
   if(projection.workspaceId!==actor.workspaceId||projection.program!==this.program||projection.personId!==personId||projection.generation!==membership!.version||
    projection.generation!==row.generation||projection.status!==row.status||projection.desiredPresent!==row.desiredPresent||
-   row.state!==membership!.state||projection.desiredPresent!==(membership!.state==="active"))throw new AppError("UNAVAILABLE");
+   row.state!==membership!.state||projection.desiredPresent!==(membership!.state==="active")||row.unresolved!==Boolean(projection.unresolvedEffect))throw new AppError("UNAVAILABLE");
   return projection;
  }
  private async ordinaryPerson(tx:SqlSession,actor:Actor,personId:string,forAdd:boolean):Promise<NativeContactRow>{
@@ -207,14 +207,14 @@ export class FishingLeadStore{
      seal(JSON.stringify(membership),membershipAad(actor.workspaceId,this.program,personId,membership.version),this.ring),now]);
    // Preserve a genuinely persisted managed binding for later Remove/Restore.
    // No configured binding is invented, and no provider runs in this transaction.
-   const desired=fishingLabelDesired(membership,priorProjection?.binding??null);
+   const desired=fishingLabelDesired(membership,priorProjection?.binding??null,priorProjection);
    const projected=await tx.query(`INSERT INTO ls_contact_ops.fishing_label_projection(workspace_id,program_key,person_id,generation,membership_state,
-    desired_present,status,payload_ciphertext) VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+    desired_present,status,payload_ciphertext,unresolved_effect) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
     ON CONFLICT(workspace_id,program_key,person_id) DO UPDATE SET generation=EXCLUDED.generation,membership_state=EXCLUDED.membership_state,
-     desired_present=EXCLUDED.desired_present,status=EXCLUDED.status,payload_ciphertext=EXCLUDED.payload_ciphertext,updated_at=clock_timestamp()
+     desired_present=EXCLUDED.desired_present,status=EXCLUDED.status,payload_ciphertext=EXCLUDED.payload_ciphertext,unresolved_effect=EXCLUDED.unresolved_effect,updated_at=clock_timestamp()
      WHERE ls_contact_ops.fishing_label_projection.generation<EXCLUDED.generation RETURNING generation`,
     [actor.workspaceId,this.program,personId,membership.version,membership.state,desired.desiredPresent,desired.status,
-     seal(JSON.stringify(desired),projectionAad(actor.workspaceId,this.program,personId,membership.version),this.ring)]);
+     seal(JSON.stringify(desired),projectionAad(actor.workspaceId,this.program,personId,membership.version),this.ring),Boolean(desired.unresolvedEffect)]);
    if(projected.length!==1)throw new AppError("CONFLICT");
    const result=fishingLeadResultSchema.parse({operationId:snapshot.operationId,workspaceId:actor.workspaceId,program:this.program,
     personId,version:membership.version,state:membership.state,authorityEpoch:snapshot.expectedEpoch,newPerson:snapshot.personId===null,
@@ -242,6 +242,68 @@ export class FishingLeadStore{
   return this.authority.withDestination(actor,{destination:"native",intent:"read",expectedEpoch},async tx=>{
    await this.ordinaryPerson(tx,actor,personId,false);const membership=await this.current(tx,actor,personId);
    return {membership,projection:await this.projection(tx,actor,personId,membership)};
+  });
+ }
+ /** Trusted server connector only, not a public/native membership command.
+  * The expected encrypted projection is a CAS boundary. A stale provider job
+  * cannot bind, verify or change status for a newer Remove/Restore. */
+ async recordLabelProjection(actor:Actor,expectedEpoch:number,expected:FishingLabelProjection,next:FishingLabelProjection,
+  readback?:{generation:number;binding:NonNullable<FishingLabelProjection["binding"]>;present:boolean;checkedAt:string}):Promise<boolean>{
+  expected=fishingLabelProjectionSchema.parse(expected);next=fishingLabelProjectionSchema.parse(next);
+  if(expected.workspaceId!==actor.workspaceId||expected.program!==this.program||next.workspaceId!==expected.workspaceId||
+   next.personId!==expected.personId||next.program!==expected.program||next.generation!==expected.generation||next.desiredPresent!==expected.desiredPresent||
+   expected.binding!==null&&JSON.stringify(next.binding)!==JSON.stringify(expected.binding))throw new AppError("INVALID_REQUEST");
+  return this.db.transaction(async tx=>{
+   const authority=await this.lockWrite(tx,actor,expectedEpoch);await this.ordinaryPerson(tx,actor,expected.personId,false);
+   const member=await this.current(tx,actor,expected.personId),current=await this.projection(tx,actor,expected.personId,member);
+   if(!current||JSON.stringify(current)!==JSON.stringify(expected))return false;
+   if(JSON.stringify(current)===JSON.stringify(next))return true;
+   if(next.status==="verified"&&(!readback||readback.generation!==current.generation||readback.present!==current.desiredPresent||
+    readback.checkedAt!==next.verifiedAt||JSON.stringify(readback.binding)!==JSON.stringify(current.binding)))throw new AppError("INVALID_REQUEST");
+   if(current.unresolvedEffect||current.status==="outcome_unknown"){
+    if(!next.unresolvedEffect){
+     if(next.status!=="verified"||!readback||readback.generation!==current.generation||readback.present!==current.desiredPresent||
+      readback.checkedAt!==next.verifiedAt||JSON.stringify(readback.binding)!==JSON.stringify(current.binding))throw new AppError("INVALID_REQUEST");
+    }else if(current.unresolvedEffect&&JSON.stringify(current.unresolvedEffect)!==JSON.stringify(next.unresolvedEffect))throw new AppError("INVALID_REQUEST");
+   }
+   if(next.binding){
+    const peers=await tx.query<{program:string;generation:number;ciphertext:string}>(`SELECT program_key AS program,generation,payload_ciphertext AS ciphertext
+     FROM ls_contact_ops.fishing_label_projection WHERE workspace_id=$1 AND person_id=$2 AND program_key<>$3 ORDER BY program_key LIMIT 2`,
+     [actor.workspaceId,expected.personId,this.program]);
+    for(const row of peers){const peer=this.decode(fishingLabelProjectionSchema,row.ciphertext,projectionAad(actor.workspaceId,row.program,expected.personId,row.generation));
+     if(peer.binding&&peer.binding.accountId===next.binding.accountId&&peer.binding.managedLabelId===next.binding.managedLabelId&&peer.binding.chatId===next.binding.chatId)
+      throw new AppError("CONFLICT");} // A program must not remove another program's shared label association.
+   }
+   if(next.verifiedAt!==null&&(Date.parse(next.verifiedAt)<Date.parse(member!.recordedAt)||
+    Date.parse(next.verifiedAt)>this.clock.now().getTime()||this.clock.now().getTime()-Date.parse(next.verifiedAt)>60_000))throw new AppError("INVALID_REQUEST");
+   if(next.capability&&(Date.parse(next.capability.checkedAt)>this.clock.now().getTime()||
+    this.clock.now().getTime()-Date.parse(next.capability.checkedAt)>60_000))throw new AppError("INVALID_REQUEST");
+   const rows=await tx.query(`UPDATE ls_contact_ops.fishing_label_projection SET status=$5,payload_ciphertext=$6,unresolved_effect=$7,updated_at=clock_timestamp()
+    WHERE workspace_id=$1 AND program_key=$2 AND person_id=$3 AND generation=$4 RETURNING generation`,
+    [actor.workspaceId,this.program,expected.personId,expected.generation,next.status,
+     seal(JSON.stringify(next),projectionAad(actor.workspaceId,this.program,expected.personId,expected.generation),this.ring),Boolean(next.unresolvedEffect)]);
+   if(rows.length!==1)throw new AppError("CONFLICT");
+   const advanced=cutoverStateSchema.parse({...authority,nativeWritesSinceSwitch:authority.nativeWritesSinceSwitch+1});
+   await tx.query(`UPDATE ls_contact_ops.cutover SET state_ciphertext=$3,updated_at=clock_timestamp() WHERE workspace_id=$1 AND epoch=$2`,
+    [actor.workspaceId,authority.epoch,seal(JSON.stringify(advanced),cutoverStateAad(actor.workspaceId,authority.epoch),this.ring)]);
+   return true;
+  });
+ }
+ /** Workspace provider serialization only. It holds no native
+  * authority/workspace lock across I/O, so membership can commit independently.
+  * Provider and CAS paths must still use fresh actor/epoch checks inside work. */
+ async withLabelLease<T>(actor:Actor,personId:string,expectedEpoch:number,work:()=>Promise<T>):Promise<T>{
+  if(!uuid.safeParse(personId).success)throw new AppError("INVALID_REQUEST");
+  return this.db.transaction(async tx=>{
+   await tx.query("SET TRANSACTION READ ONLY");
+   // Don't occupy every connection in the deployed five-connection pool with
+   // waiting label jobs; leave room for normal native membership operations.
+   const held=await tx.query<{held:boolean}>("SELECT pg_try_advisory_xact_lock(hashtextextended($1,0)) AS held",[`${actor.workspaceId}:fishing-label-provider`]);
+   if(!held[0]?.held)throw new AppError("RATE_LIMITED");
+   requirePractitioner(await freshActor(tx,actor,this.clock.now()));
+   const state=await readCutoverState(tx,actor.workspaceId,this.ring,false);
+   if(state.epoch!==expectedEpoch||writeDestination(state.phase)!=="native")throw new AppError("CONFLICT");
+   await this.ordinaryPerson(tx,actor,personId,false);return work();
   });
  }
  async context(actor:Actor,source:Snapshot["source"]):Promise<FishingLeadContext>{

@@ -163,6 +163,7 @@ try{
  if(fishingOnly){
   const {ContactCutoverStore}=await import("../../../src/features/contact-ops/server/cutover-store.ts"),
    {OperationalNativeCrmStore}=await import("../../../src/features/contact-ops/server/operational-store.ts"),
+   {FishingLeadStore}=await import("../../../src/features/contact-ops/server/fishing-lead-store.ts"),
    {PublicGroupApplicationStore}=await import("../../../src/features/group-application/store.ts");
   const db=poolStore(f.pool),key=lookupKey.toString("hex"),authority=new ContactCutoverStore(db,keyring,key),crm=new OperationalNativeCrmStore(db,keyring,key);
   const proof=(expectedEpoch:number):CutoverEvidence=>({batchId:"synthetic-fishing-browser",sourceFileId:"synthetic-sheet",sourceRevision:"synthetic-revision",expectedEpoch,observedNativeWritesSinceSwitch:0,
@@ -183,6 +184,17 @@ try{
   fishingProtectedPerson=existing.personId;
   await f.pool.query("INSERT INTO ls_calendar.tasks(workspace_id,id,created_by,title_ciphertext,due_date) VALUES($1,$2,$3,'synthetic-retained-task','2026-10-30')",[workspaceId,randomUUID(),f.practitioner.actor.id]);
   protectedProfile=(await f.pool.query("SELECT to_jsonb(p) AS row FROM ls_contact_ops.profiles p WHERE workspace_id=$1 AND person_id=$2",[workspaceId,existing.personId])).rows;
+  // Synthetic provider-fault states in actual native storage, not mocked data
+  // API replies or a claim about a live provider. Original profile remains exact.
+  for(const program of ["sunday_fishing_academy","private_fishing_life_skills"] as const){
+   const membership=new FishingLeadStore(db,keyring,key,program),preview=await membership.preview(f.practitioner.actor,
+    {action:"preview_add",operationId:randomUUID(),expectedEpoch:3,source:{kind:"person",id:existing.personId},expectedAssociationVersion:0,relationship:"adult_partner"});
+   if(preview.state!=="ready")throw new Error("FISHING_LABEL_UI_SEED_PREVIEW");await membership.confirm(f.practitioner.actor,{action:"confirm",token:preview.token,confirmNewPerson:false});
+   const projection=(await membership.read(f.practitioner.actor,existing.personId,3)).projection!;
+   await membership.recordLabelProjection(f.practitioner.actor,3,projection,program==="sunday_fishing_academy"?
+    {...projection,status:"unsupported",capability:{accountId:"synthetic-browser-channel",labelsSupported:false,checkedAt:new Date().toISOString()}}:
+    {...projection,status:"outcome_unknown",binding:{accountId:"synthetic-browser-channel",managedLabelId:"16",chatId:"13055550108@s.whatsapp.net"}});
+  }
   const inquiries=[];
   for(const [locale,contact] of [["en","+13055550109"],["he","+13055550110"]] as const){
    const saved=await new PublicGroupApplicationStore(db,f.workspaceId,keyring,key).submit({operationId:randomUUID(),fields:{parentName:`Synthetic fishing ${locale}`,contact,language:locale,
@@ -229,8 +241,8 @@ try{
    (SELECT count(*)::int FROM ls_contact_ops.fishing_lead_operations WHERE workspace_id=$1) AS operations,
    (SELECT count(*)::int FROM ls_contact_ops.profiles WHERE workspace_id=$1) AS profiles,
    (SELECT count(*)::int FROM ls_contact_ops.fishing_label_projection WHERE workspace_id=$1) AS projections`,[workspaceId]);
-  if(JSON.stringify(rows.rows[0])!==JSON.stringify({revisions:4,operations:4,profiles:3,projections:2}))throw new Error("FISHING_UI_NATIVE_COUNTS_MISMATCH");
-  console.log(`FISHING_LEAD_UI_ACCEPTANCE_PASS project=${project} ordinaryLogin=true revisions=4 operations=4 profiles=3 projections=2 tasksUnchanged=true unrelatedProfileUnchanged=true providerEffects=0`);
+  if(JSON.stringify(rows.rows[0])!==JSON.stringify({revisions:10,operations:10,profiles:3,projections:4}))throw new Error("FISHING_UI_NATIVE_COUNTS_MISMATCH");
+  console.log(`FISHING_LEAD_UI_ACCEPTANCE_PASS project=${project} ordinaryLogin=true revisions=10 operations=10 profiles=3 projections=4 tasksUnchanged=true unrelatedProfileUnchanged=true providerEffects=0`);
  }
  else if(process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==="true"){
   phase="public-boundary-readback";const after=await counts(),writes=project===undefined||project==="desktop"?2:1;
