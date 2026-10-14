@@ -44,7 +44,7 @@ describe("isolated child failure diagnostics",()=>{
  });
  it("captures an actual failed synthetic child without converting failure to success",async()=>{
   const output=await promisify(execFile)(process.execPath,["-e","process.stdout.write('ACTUAL_SYNTHETIC_STDOUT');process.stderr.write('ACTUAL_SYNTHETIC_STDERR');process.exit(1)"],
-   {env:{SystemRoot:process.env.SystemRoot},windowsHide:true,timeout:5000,maxBuffer:1024}).then(()=>{throw Error("SYNTHETIC_CHILD_UNEXPECTEDLY_PASSED");},error=>syntheticChildFailure(error));
+   {env:{NODE_ENV:"test",SystemRoot:process.env.SystemRoot},windowsHide:true,timeout:5000,maxBuffer:1024}).then(()=>{throw Error("SYNTHETIC_CHILD_UNEXPECTEDLY_PASSED");},error=>syntheticChildFailure(error));
   expect(output).toContain("ACTUAL_SYNTHETIC_STDOUT");expect(output).toContain("ACTUAL_SYNTHETIC_STDERR");expect(output).toContain("code=1");
  });
 });
