@@ -10,13 +10,17 @@ import {join,resolve} from "node:path";
 import {once} from "node:events";
 import {request as playwrightRequest} from "@playwright/test";
 import {fixture,safeTestUrl} from "../../database/calendar/fixture.ts";
-import {seal,tokenDigest} from "../../../src/features/identity/crypto.ts";
+import {seal,tokenDigest,hashPassword,blindEmail} from "../../../src/features/identity/crypto.ts";
+import type {CutoverEvidence} from "../../../src/features/contact-ops/server/cutover-store.ts";
+import {poolStore} from "../../database/calendar/fixture.ts";
 import {privateDigest} from "../../../src/features/contact-ops/server/digests.ts";
 import {floridaGroupApplicationNotice} from "../../../src/features/group-application/contract.ts";
 
 const projects={desktop:3105,tablet768:3108,mobile390:3106,mobile340:3107} as const;
 const project=process.env.LS_GROUP_INTEREST_TEST_PROJECT as keyof typeof projects|undefined;
 const sampleOnly=process.env.LS_FLORIDA_SAMPLE_TEST_ONLY==="true";
+const fishingOnly=process.env.LS_FISHING_LEAD_UI_ONLY==="true";
+if(fishingOnly&&project===undefined)throw new Error("FISHING_UI_EXPLICIT_PROJECT_REQUIRED");
 if(project!==undefined&&!(project in projects))throw new Error("GROUP_INTEREST_BROWSER_PROJECT_NOT_SUPPORTED");
 if((sampleOnly||process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==="true")&&project===undefined)throw new Error("FLORIDA_JOURNEY_EXPLICIT_PROJECT_REQUIRED");
 if(process.env.LS_GROUP_INTEREST_TEST_ALLOW!=="true")throw new Error("GROUP_INTEREST_BROWSER_OPT_IN_REQUIRED");
@@ -25,7 +29,7 @@ safeTestUrl();
 const folder=mkdtempSync(join(tmpdir(),"ls-group-interest-browser-"));
 let app:ChildProcess|null=null,tests:ChildProcess|null=null;
 let f:Awaited<ReturnType<typeof fixture>>|null=null,phase="fixture";
-async function terminate(child:ChildProcess|null){if(!child||child.exitCode!==null)return;child.kill("SIGTERM");await Promise.race([once(child,"exit"),new Promise(r=>setTimeout(r,5000))]);if(child.exitCode===null)child.kill("SIGKILL");}
+async function terminate(child:ChildProcess|null){if(!child||child.exitCode!==null||child.signalCode!==null)return;child.kill("SIGTERM");await Promise.race([once(child,"exit"),new Promise(r=>setTimeout(r,5000))]);if(child.exitCode===null&&child.signalCode===null)child.kill("SIGKILL");}
 let cleanupPromise:Promise<void>|null=null;
 function cleanup(){cleanupPromise??=(async()=>{await terminate(tests);await terminate(app);await f?.pool.end();rmSync(folder,{recursive:true,force:true});})();return cleanupPromise;}
 process.once("SIGTERM",()=>{void cleanup().finally(()=>process.exit(143));});
@@ -151,10 +155,47 @@ try{
  await f.pool.query(`INSERT INTO ls_service_interest.public_applications(workspace_id,id,contact_digest,request_digest,payload_ciphertext,notice_version,notice_language,received_at) VALUES($1,$2,$3,$4,$5,$6,$7,clock_timestamp())`,[workspaceId,publicApplicationId,publicContactDigest,publicRequestDigest,seal(JSON.stringify(publicApplicationFields),`ls_service_interest/public_application/v1/${workspaceId}/${publicApplicationId}`,keyring),floridaGroupApplicationNotice.version,"en"]);
  await f.pool.query(`INSERT INTO ls_service_interest.public_application_operations(workspace_id,operation_id,request_digest,application_id) VALUES($1,$2,$3,$4)`,[workspaceId,publicApplicationOperationId,publicRequestDigest,publicApplicationId]);
  const baseline=await counts();
+ let fishingRuntime:object|null=null,fishingBefore:unknown=null,fishingProtectedPerson:string|null=null;
+ const protectedFishingTables=["ls_calendar.tasks","ls_calendar.task_history","ls_calendar.appointments","ls_identity.accounts","ls_identity.account_subjects",
+  "ls_cases.cases","ls_cases.case_guardians","ls_contact_ops.outbound_projections","ls_identity.auth_mail_outbox","ls_onboarding.first_session_orders"];
+ const fishingSnapshot=async()=>Promise.all(protectedFishingTables.map(async table=>({table,rows:(await f!.pool.query(`SELECT to_jsonb(t) AS row FROM ${table} t WHERE workspace_id=$1 ORDER BY to_jsonb(t)::text`,[workspaceId])).rows})));
+ let protectedProfile:unknown=null;
+ if(fishingOnly){
+  const {ContactCutoverStore}=await import("../../../src/features/contact-ops/server/cutover-store.ts"),
+   {OperationalNativeCrmStore}=await import("../../../src/features/contact-ops/server/operational-store.ts"),
+   {PublicGroupApplicationStore}=await import("../../../src/features/group-application/store.ts");
+  const db=poolStore(f.pool),key=lookupKey.toString("hex"),authority=new ContactCutoverStore(db,keyring,key),crm=new OperationalNativeCrmStore(db,keyring,key);
+  const proof=(expectedEpoch:number):CutoverEvidence=>({batchId:"synthetic-fishing-browser",sourceFileId:"synthetic-sheet",sourceRevision:"synthetic-revision",expectedEpoch,observedNativeWritesSinceSwitch:0,
+   backupRestored:true,snapshotMatched:true,imported:true,rowContentMatched:true,allRowsAccounted:true,identityConflicts:0,paymentsReconciled:true,writersFenced:true,inboundDurable:true,deltaDrained:true,
+   consumersRepointed:true,sheetConsumersRepointed:true,nativeBrowserVerified:true,oldSchedulesDisabled:true,sourceFrozen:true,restorePlanReady:true}); // Disposable fixture only; not real cutover evidence.
+  await authority.advance(f.practitioner.actor,{action:"prepare",operationId:"fixture-prepare",proof:proof(0)});
+  await authority.advance(f.practitioner.actor,{action:"freeze",operationId:"fixture-freeze",proof:proof(1)});
+  await authority.advance(f.practitioner.actor,{action:"switch_native",operationId:"fixture-switch",proof:proof(2)});
+  const credentials:{role:"practitioner"|"parent";email:string;password:string}[]=[];
+  for(const [role,account] of [["practitioner",f.practitioner],["parent",f.parent]] as const){
+   const email=`synthetic-fishing-${role}@example.invalid`,password=randomBytes(18).toString("base64url");
+   await f.pool.query("UPDATE ls_identity.accounts SET password_hash=$3,email_blind=$4,email_ciphertext=$5 WHERE workspace_id=$1 AND id=$2",
+    [workspaceId,account.actor.id,await hashPassword(password),blindEmail(email,lookupKey),seal(email,`email:${workspaceId}:${account.actor.id}`,keyring)]);
+   credentials.push({role,email,password});
+  }
+  const existing=await crm.createContact(f.practitioner.actor,{name:"Synthetic preserved contact",phone:"+13055550108",language:"he",source:"synthetic-browser",
+   notes:"Original synthetic note\nהערה מקורית",nextAction:"Retain existing action",dueDate:"2026-10-30"},randomUUID(),3);
+  fishingProtectedPerson=existing.personId;
+  await f.pool.query("INSERT INTO ls_calendar.tasks(workspace_id,id,created_by,title_ciphertext,due_date) VALUES($1,$2,$3,'synthetic-retained-task','2026-10-30')",[workspaceId,randomUUID(),f.practitioner.actor.id]);
+  protectedProfile=(await f.pool.query("SELECT to_jsonb(p) AS row FROM ls_contact_ops.profiles p WHERE workspace_id=$1 AND person_id=$2",[workspaceId,existing.personId])).rows;
+  const inquiries=[];
+  for(const [locale,contact] of [["en","+13055550109"],["he","+13055550110"]] as const){
+   const saved=await new PublicGroupApplicationStore(db,f.workspaceId,keyring,key).submit({operationId:randomUUID(),fields:{parentName:`Synthetic fishing ${locale}`,contact,language:locale,
+    cityArea:"Synthetic Florida",programId:"sunday_fishing_academy",schedulePreference:["sunday"],permission:{confirmed:true,version:floridaGroupApplicationNotice.version,language:locale}}});
+   inquiries.push({locale,id:saved.item.id,name:`Synthetic fishing ${locale}`});
+  }
+  await f.pool.query("UPDATE ls_identity.sessions SET revoked_at=clock_timestamp() WHERE workspace_id=$1",[workspaceId]);
+  fishingRuntime={credentials,inquiries,protectedPersonId:existing.personId};fishingBefore=await fishingSnapshot();
+ }
  const originalPublic=await f.pool.query("SELECT to_jsonb(a)::text AS snapshot FROM ls_service_interest.public_applications a WHERE workspace_id=$1 AND id=$2",[workspaceId,publicApplicationId]);
  if(baseline.inquiries!==0||baseline.operations!==0||baseline.serviceInterests!==0||baseline.serviceOperations!==0||baseline.draftGroups!==0||baseline.draftOperations!==0||baseline.proposedPlacements!==0||baseline.placementOperations!==0||baseline.placementMoves!==0||baseline.movementOperations!==0||baseline.meetingRevisions!==0||baseline.meetingOperations!==0||baseline.practiceRevisions!==0||baseline.practiceOperations!==0)throw new Error("GROUP_INTEREST_FIXTURE_NOT_EMPTY");
  const runtimePath=join(folder,"synthetic-runtime.json");
- writeFileSync(runtimePath,JSON.stringify({origin,workspaceId,practitioner:f.practitioner.token,parent:f.parent.token,adult,child,revoked,otherWorkspace,publicApplicationId,publicApplicantName:publicApplicationFields.parentName}),{mode:0o600});
+ writeFileSync(runtimePath,JSON.stringify({origin,workspaceId,practitioner:f.practitioner.token,parent:f.parent.token,adult,child,revoked,otherWorkspace,publicApplicationId,publicApplicantName:publicApplicationFields.parentName,...(fishingRuntime?{fishing:fishingRuntime}:{})}),{mode:0o600});
  const key=join(folder,"tls.key"),cert=join(folder,"tls.crt");
  phase="tls-certificate";
  const gitOpenSsl="C:/Program Files/Git/mingw64/bin/openssl.exe",openssl=process.platform==="win32"&&existsSync(gitOpenSsl)?gitOpenSsl:"openssl";
@@ -171,14 +212,27 @@ try{
  if(!healthy)throw new Error("ISOLATED_APP_HEALTH_TIMEOUT");
  phase="browser-tests";
  const selection=project?["--project",project,"--output",`tests/e2e/group-interest/test-results/isolated-${project}`]:[];
- if(process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==="true")selection.push("--grep","Florida group inquiry|Israel group application compatibility");
+ if(!fishingOnly&&process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==="true")selection.push("--grep","Florida group inquiry|Israel group application compatibility");
  if(process.env.LS_GROUP_INTEREST_CAPTURE_ONLY==="true")selection.push("--grep","practitioner");
- if(sampleOnly)selection.push("--grep","Florida owner journey hosted sample");
+ if(fishingOnly){/* Selection is the retained mounted fishing spec in the same isolated harness. */}
+ else if(sampleOnly)selection.push("--grep","Florida owner journey hosted sample");
  else if(process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==="true")selection.push("--grep",process.env.LS_FLORIDA_INSTITUTION_TEST_ONLY==="true"?"Florida owner journey school inquiry|Florida owner journey.*native inquiry replay|Florida owner journey authorization":"Florida owner journey");
  else selection.push("--grep-invert","Florida owner journey");
  tests=spawn(process.execPath,[resolve("node_modules/@playwright/test/cli.js"),"test","--config","tests/e2e/group-interest/playwright.config.ts",...selection],{env,stdio:["ignore","inherit","inherit"]});
  const [code]=await once(tests,"exit");if(code!==0)throw new Error("GROUP_INTEREST_BROWSER_ACCEPTANCE_FAILED");
- if(process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==="true"){
+ if(fishingOnly){
+  phase="fishing-ui-native-readback";
+  if(JSON.stringify(await fishingSnapshot())!==JSON.stringify(fishingBefore))throw new Error("FISHING_UI_FORBIDDEN_DATABASE_EFFECT");
+  const profile=(await f.pool.query("SELECT to_jsonb(p) AS row FROM ls_contact_ops.profiles p WHERE workspace_id=$1 AND person_id=$2",[workspaceId,fishingProtectedPerson])).rows;
+  if(JSON.stringify(profile)!==JSON.stringify(protectedProfile))throw new Error("FISHING_UI_EXISTING_PROFILE_CHANGED");
+  const rows=await f.pool.query(`SELECT (SELECT count(*)::int FROM ls_contact_ops.fishing_lead_revisions WHERE workspace_id=$1) AS revisions,
+   (SELECT count(*)::int FROM ls_contact_ops.fishing_lead_operations WHERE workspace_id=$1) AS operations,
+   (SELECT count(*)::int FROM ls_contact_ops.profiles WHERE workspace_id=$1) AS profiles,
+   (SELECT count(*)::int FROM ls_contact_ops.fishing_label_projection WHERE workspace_id=$1) AS projections`,[workspaceId]);
+  if(JSON.stringify(rows.rows[0])!==JSON.stringify({revisions:4,operations:4,profiles:3,projections:2}))throw new Error("FISHING_UI_NATIVE_COUNTS_MISMATCH");
+  console.log(`FISHING_LEAD_UI_ACCEPTANCE_PASS project=${project} ordinaryLogin=true revisions=4 operations=4 profiles=3 projections=2 tasksUnchanged=true unrelatedProfileUnchanged=true providerEffects=0`);
+ }
+ else if(process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==="true"){
   phase="public-boundary-readback";const after=await counts(),writes=project===undefined||project==="desktop"?2:1;
   const expected={...baseline,publicApplications:baseline.publicApplications+writes,publicApplicationOperations:baseline.publicApplicationOperations+writes};
   if(JSON.stringify(after)!==JSON.stringify(expected))throw new Error("FLORIDA_PUBLIC_UNEXPECTED_DATABASE_EFFECT");
