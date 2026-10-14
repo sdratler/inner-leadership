@@ -10,7 +10,7 @@ import {freshActor,lockWorkspace} from "../identity/data.ts";
 import type {IdentityClock,Actor} from "../identity/types.ts";
 import {systemClock} from "../identity/types.ts";
 import type {IdentityStore,SqlSession} from "../identity/store.ts";
-import {groupApplicationCommandSchema,groupApplicationFieldsSchema,isFloridaGroupApplication,type GroupApplicationCommand,type GroupApplicationFields,type GroupApplicationRecord} from "./contract.ts";
+import {groupApplicationCommandSchema,groupApplicationReplaySchema,groupApplicationFieldsSchema,isFloridaGroupApplication,type GroupApplicationCommand,type GroupApplicationFields,type GroupApplicationRecord} from "./contract.ts";
 
 type Row={id:string;requestDigest:string;payloadCiphertext:string;receivedAt:Date};
 const aad=(workspace:string,id:string)=>`ls_service_interest/public_application/v1/${workspace}/${id}`;
@@ -33,8 +33,21 @@ export class PublicGroupApplicationStore{
   }catch{throw new AppError("UNAVAILABLE");}
  }
  private async read(tx:SqlSession,id:string){const rows=await tx.query<Row>(select+" WHERE workspace_id=$1 AND id=$2",[this.workspaceId,id]);if(rows.length!==1)throw new AppError("UNAVAILABLE");return this.decode(rows[0]!);}
+ async replaySaved(input:{operationId:string;fields:GroupApplicationFields}){
+  const parsed=groupApplicationReplaySchema.safeParse(input);if(!parsed.success)throw new AppError("INVALID_REQUEST");
+  const command=parsed.data,digest=this.requestDigest(command.fields);
+  return this.db.transaction(async tx=>{
+   await tx.query("SET TRANSACTION READ ONLY");
+   const rows=await tx.query<{applicationId:string;requestDigest:string}>(`SELECT application_id AS "applicationId",request_digest AS "requestDigest"
+    FROM ls_service_interest.public_application_operations WHERE workspace_id=$1 AND operation_id=$2`,[this.workspaceId,command.operationId]);
+   if(rows.length===0)return null;if(rows.length!==1)throw new AppError("UNAVAILABLE");
+   if(rows[0]!.requestDigest!==digest)throw new AppError("CONFLICT");
+   return {saved:true as const,replayed:true,duplicate:true,item:await this.read(tx,rows[0]!.applicationId)};
+  });
+ }
  async submit(input:GroupApplicationCommand){
-  const parsed=groupApplicationCommandSchema.safeParse(input);if(!parsed.success)throw new AppError("INVALID_REQUEST");
+  const parsed=groupApplicationCommandSchema.safeParse(input);
+  if(!parsed.success){const prior=await this.replaySaved(input);if(prior)return prior;throw new AppError("INVALID_REQUEST");}
   const command=parsed.data,requestDigest=this.requestDigest(command.fields),contactDigest=this.contactDigest(command.fields);
   return this.db.transaction(async tx=>{
    await lockWorkspace(tx,this.workspaceId);

@@ -82,7 +82,7 @@ export function normalizeFloridaLeadContact(input:string):string|null{
 }
 export const floridaProgramIdSchema=z.enum(["sunday_fishing_academy","morning_torah_learning","private_fishing_life_skills"]);
 export type FloridaProgramId=z.infer<typeof floridaProgramIdSchema>;
-export const floridaParentApplicationFieldsSchema=z.object({
+const floridaParentApplicationFieldsBase=z.object({
  parentName:z.string().trim().min(1).max(100),contact:contactSchema,language:z.enum(["he","en"]),
  childAge:z.string().trim().min(1).max(20).optional(),cityArea:z.string().trim().min(1).max(100),neighborhood:z.string().trim().min(1).max(100).optional(),
  programId:floridaProgramIdSchema,
@@ -91,13 +91,25 @@ export const floridaParentApplicationFieldsSchema=z.object({
  scheduleContext:z.literal("program_format_interest").optional(),
  scheduleNotes:z.string().trim().min(1).max(300).optional(),
  permission:z.object({confirmed:z.literal(true),version:z.literal(floridaGroupApplicationNotice.version),language:z.enum(["he","en"])}).strict(),
-}).strict().superRefine((value,context)=>{
- if(value.permission.language!==value.language)context.addIssue({code:"custom",path:["permission","language"],message:"permission language must match inquiry"});
+}).strict();
+const floridaParentIssue=(value:z.infer<typeof floridaParentApplicationFieldsBase>,context:z.RefinementCtx)=>{
  if(value.academyFit!==undefined&&value.programId!=="sunday_fishing_academy")context.addIssue({code:"custom",path:["academyFit"],message:"academy-only group fit"});
  if(value.academyFit!==undefined&&!value.contact.includes("@")&&!normalizeFloridaLeadContact(value.contact))context.addIssue({code:"custom",path:["contact"],message:"include country code or a US ten-digit number"});
  if(value.scheduleContext!==undefined&&value.programId!=="sunday_fishing_academy")context.addIssue({code:"custom",path:["scheduleContext"],message:"academy-only format interest"});
  if(value.schedulePreference.some(preference=>preference==="weekday_morning_homeschool"||preference==="weekday_before_school")&&(value.programId!=="sunday_fishing_academy"||value.scheduleContext!=="program_format_interest"))context.addIssue({code:"custom",path:["schedulePreference"],message:"academy format context required"});
+};
+export const floridaParentApplicationFieldsSchema=floridaParentApplicationFieldsBase.superRefine((value,context)=>{
+ floridaParentIssue(value,context);
+ if(value.permission.language!==value.language)context.addIssue({code:"custom",path:["permission","language"],message:"permission language must match inquiry"});
 });
+// Read only the exact pre-RM04 generation. Its contact language and actual
+// acknowledged notice language were independently accepted; never rewrite either.
+// New fit/version/before-school fields cannot fall back to this legacy branch.
+const floridaParentLegacyReadableFieldsSchema=floridaParentApplicationFieldsBase.extend({
+ academyFit:z.undefined().optional(),
+ schedulePreference:z.array(scheduleValueSchema.exclude(["weekday_before_school"])).min(1).max(5)
+  .refine(values=>new Set(values).size===values.length,"duplicate schedule preference"),
+}).superRefine(floridaParentIssue);
 
 /** Business contact permission only; never a guardian attestation or school contract. */
 export const floridaSchoolInquiryNotice={
@@ -114,14 +126,19 @@ export const floridaSchoolInquiryFieldsSchema=z.object({
  permission:z.object({confirmed:z.literal(true),version:z.literal(floridaSchoolInquiryNotice.version),language:z.enum(["he","en"])}).strict(),
 }).strict().superRefine((value,context)=>{if(value.permission.language!==value.language)context.addIssue({code:"custom",path:["permission","language"],message:"permission language must match inquiry"});});
 export const floridaGroupApplicationFieldsSchema=z.union([floridaParentApplicationFieldsSchema,floridaSchoolInquiryFieldsSchema]);
+export const floridaGroupApplicationReadableFieldsSchema=z.union([floridaParentApplicationFieldsSchema,floridaParentLegacyReadableFieldsSchema,floridaSchoolInquiryFieldsSchema]);
 
-export const groupApplicationFieldsSchema=z.union([floridaGroupApplicationFieldsSchema,israelReadableFieldsSchema]);
+export const groupApplicationFieldsSchema=z.union([floridaGroupApplicationReadableFieldsSchema,israelReadableFieldsSchema]);
+export const groupApplicationReplaySchema=z.object({operationId:z.string().uuid(),fields:groupApplicationFieldsSchema}).strict();
 export const israelGroupApplicationCommandSchema=z.object({operationId:z.string().uuid(),fields:currentGroupApplicationFieldsSchema}).strict();
 export const floridaGroupApplicationCommandSchema=z.object({operationId:z.string().uuid(),fields:floridaGroupApplicationFieldsSchema}).strict();
 export const groupApplicationCommandSchema=z.union([floridaGroupApplicationCommandSchema,israelGroupApplicationCommandSchema]);
 const submissionBase={challenge:z.string().min(80).max(1024),website:z.literal(""),operationId:z.string().uuid()} as const;
 export const groupApplicationSubmissionSchema=z.object({...submissionBase,fields:currentGroupApplicationFieldsSchema}).strict();
 export const floridaGroupApplicationSubmissionSchema=z.object({...submissionBase,fields:floridaGroupApplicationFieldsSchema}).strict();
+// Transport reading does not admit a new write. Only an exact existing receipt
+// may answer a legacy-only tuple; current submission validation remains separate.
+export const floridaGroupApplicationReadSubmissionSchema=z.object({...submissionBase,fields:floridaGroupApplicationReadableFieldsSchema}).strict();
 export type IsraelGroupApplicationFields=z.infer<typeof currentGroupApplicationFieldsSchema>;
 export type IsraelReadableGroupApplicationFields=z.infer<typeof israelReadableFieldsSchema>;
 export type FloridaGroupApplicationFields=z.infer<typeof floridaGroupApplicationFieldsSchema>;

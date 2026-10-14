@@ -1,7 +1,7 @@
 import {createElement} from "react";
 import {renderToStaticMarkup} from "react-dom/server";
 import {describe,expect,it} from "vitest";
-import {academyFitSchema,floridaParentApplicationFieldsSchema,floridaGroupApplicationNotice,normalizeFloridaLeadContact,
+import {academyFitSchema,floridaParentApplicationFieldsSchema,floridaGroupApplicationReadableFieldsSchema,floridaGroupApplicationNotice,normalizeFloridaLeadContact,
  normalizeGroupApplicationPhone} from "../../src/features/group-application/contract.ts";
 import {AcademyFitFields,AcademyFitReadback,academyFitFromForm} from "../../src/features/group-application/fit-fields.tsx";
 
@@ -11,6 +11,17 @@ const fields={parentName:"Synthetic parent",contact:"3055550100",language:"en" a
  programId:"sunday_fishing_academy" as const,scheduleContext:"program_format_interest" as const,schedulePreference:["weekday_before_school" as const],
  academyFit:fit,permission:{confirmed:true as const,version:floridaGroupApplicationNotice.version,language:"en" as const}};
 describe("RM04 narrow group-fit inquiry and compatibility",()=>{
+ it("reads the historically accepted language tuple unchanged but denies it for all new writes",()=>{
+  const old={parentName:"Synthetic retained compatibility inquiry",contact:"synthetic-compatibility@example.invalid",language:"en" as const,
+   childAge:"10",cityArea:"Synthetic Florida",programId:"sunday_fishing_academy" as const,schedulePreference:["sunday" as const],
+   permission:{confirmed:true as const,version:floridaGroupApplicationNotice.version,language:"he" as const}};
+  expect(floridaGroupApplicationReadableFieldsSchema.parse(old)).toEqual(old);
+  expect(floridaParentApplicationFieldsSchema.safeParse(old).success).toBe(false);
+  for(const changed of [{...old,academyFit:fit},{...old,paid:true},{...old,permission:{...old.permission,confirmed:false}},
+   {...old,permission:{...old.permission,version:"unknown"}},{...old,contact:"invalid"},
+   {...old,scheduleContext:"program_format_interest",schedulePreference:["weekday_before_school"]}])
+   expect(floridaGroupApplicationReadableFieldsSchema.safeParse(changed).success).toBe(false);
+ });
  it("captures siblings once in an adult inquiry, without child identities or new permissions",()=>{
   expect(floridaParentApplicationFieldsSchema.parse(fields)).toEqual(fields);expect(fit.learners).toHaveLength(2);
   for(const extra of [{childName:"forbidden"},{diagnosis:"forbidden"},{mediaPermission:true},{paymentToken:"forbidden"},{guardianVerified:true}])

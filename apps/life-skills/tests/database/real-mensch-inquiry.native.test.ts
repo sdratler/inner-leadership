@@ -3,6 +3,9 @@ import {afterAll,beforeAll,expect,test,vi} from "vitest";
 vi.mock("server-only",()=>({}));
 import {fixture,poolStore,type Fixture} from "./calendar/fixture.ts";
 import {PublicGroupApplicationStore} from "../../src/features/group-application/store.ts";
+import {privateDigest} from "../../src/features/contact-ops/server/digests.ts";
+import {publicGroupApplicationHttp} from "../../src/features/group-application/http.ts";
+import {issueFloridaGroupApplicationChallenge} from "../../src/features/group-application/challenge.ts";
 import {floridaGroupApplicationNotice,groupApplicationNotice,type FloridaParentApplicationFields} from "../../src/features/group-application/contract.ts";
 import {seal,tokenDigest} from "../../src/features/identity/crypto.ts";
 import {asId} from "../../src/lib/ids.ts";
@@ -85,4 +88,36 @@ test("old Florida and Israel saved fields remain exact and do not become new aca
   permission:{confirmed:true as const,version:groupApplicationNotice.version,language:"he" as const}}};
  const previous=await store.submit(israel);expect(previous.item.fields).toEqual(israel.fields);
  expect(await store.list(f.practitioner.actor)).toContainEqual(previous.item);
+});
+test("historically accepted mixed contact/notice language remains immutable and cannot break the owner list",async()=>{
+ const fields={parentName:"Synthetic retained language tuple",contact:"synthetic-compatibility@example.invalid",language:"en" as const,
+  childAge:"10",cityArea:"Synthetic Florida",programId:"sunday_fishing_academy" as const,schedulePreference:["sunday" as const],
+  permission:{confirmed:true as const,version:floridaGroupApplicationNotice.version,language:"he" as const}},id=randomUUID(),operationId=randomUUID();
+ const requestDigest=privateDigest({domain:"public-group-application/v1",workspace:f.workspaceId,fields},key),
+  contactDigest=privateDigest({domain:"public-group-application-contact/v1",workspace:f.workspaceId,contact:fields.contact},key);
+ // A pre-RM04 generation accepted this synthetic tuple. Seed only its actual
+ // persisted shape to test retained reading, not current submit/receiver success.
+ await f.pool.query(`INSERT INTO ls_service_interest.public_applications(workspace_id,id,contact_digest,request_digest,payload_ciphertext,notice_version,notice_language,received_at)
+  VALUES($1,$2,$3,$4,$5,$6,$7,clock_timestamp())`,[f.workspaceId,id,contactDigest,requestDigest,
+   seal(JSON.stringify(fields),`ls_service_interest/public_application/v1/${f.workspaceId}/${id}`,f.keyring),fields.permission.version,fields.permission.language]);
+ await f.pool.query(`INSERT INTO ls_service_interest.public_application_operations(workspace_id,operation_id,request_digest,application_id)
+  VALUES($1,$2,$3,$4)`,[f.workspaceId,operationId,requestDigest,id]);
+ const snapshot=()=>f.pool.query("SELECT to_jsonb(a)::text AS snapshot FROM ls_service_interest.public_applications a WHERE workspace_id=$1 AND id=$2",[f.workspaceId,id]);
+ const prior=(await snapshot()).rows,baseline=await before(),reader=new PublicGroupApplicationStore(poolStore(f.pool),f.workspaceId,f.keyring,key);
+ const item=await poolStore(f.pool).transaction(tx=>reader.readForOwnerInTransaction(tx,f.practitioner.actor,id));
+ expect(item.fields).toEqual(fields);expect(await reader.list(f.practitioner.actor)).toContainEqual(item);
+ expect(await reader.submit({operationId,fields})).toMatchObject({replayed:true,duplicate:true,item:{id,fields}});
+ await expect(store.submit({operationId:randomUUID(),fields})).rejects.toMatchObject({code:"INVALID_REQUEST"});
+ await expect(reader.submit({operationId,fields:{...fields,parentName:"Changed synthetic body"}})).rejects.toMatchObject({code:"CONFLICT"});
+ const origin="https://synthetic.example.invalid",now=Date.now(),challenge=issueFloridaGroupApplicationChallenge(key,"sunday_fishing_academy",now-3000,randomUUID()),
+  headers={host:"synthetic.example.invalid",origin,"sec-fetch-site":"same-origin","content-type":"application/json"},
+  dependencies=async()=>({enabled:true,environment:{NODE_ENV:"production",LS_APP_ORIGIN:origin,LS_IDENTITY_ENABLED:"true"},challengeKey:key,now:()=>now,
+   limits:{consume:async()=>({count:1,retryAfterMs:1000})},store:reader});
+ const send=(op:string,value:typeof fields)=>publicGroupApplicationHttp(new Request(origin+"/api/public/group-applications?program=sunday_fishing_academy",
+  {method:"POST",headers,body:JSON.stringify({challenge,website:"",operationId:op,fields:value})}),dependencies);
+ const replayed=await send(operationId,fields);expect(replayed.status).toBe(200);
+ expect(await replayed.json()).toMatchObject({ok:true,data:{replayed:true,item:{id,fields}}});
+ expect((await send(randomUUID(),fields)).status).toBe(400);
+ expect((await send(operationId,{...fields,parentName:"Changed synthetic body"})).status).toBe(409);
+ expect((await snapshot()).rows).toEqual(prior);expect(await before()).toEqual(baseline);
 });
