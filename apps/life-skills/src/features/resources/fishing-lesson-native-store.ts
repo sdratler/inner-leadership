@@ -48,6 +48,13 @@ export class FishingLessonNativeStore implements LessonJourneyStore {
      // changed/cross-lesson reuse cannot append under a second aggregate.
      const old=await one(sql,`SELECT id FROM ls_education.lesson_events WHERE workspace_id=$1 AND actor_account_id=$2 AND operation_id=$3`,[actor.workspaceId,actor.id,event.operationId]);
      if(old)throw new AppError("CONFLICT");
+     // Inside the same workspace-locked transaction, stop BEFORE creating an
+     // unreadable501st event. Existing500 reads/replays remain valid. Count is
+     // itself bounded; no paging/capacity expansion is silently introduced.
+     const capacity=await one<{total:number}>(sql,`SELECT count(*)::integer AS total FROM
+      (SELECT id FROM ls_education.lesson_events WHERE workspace_id=$1 AND learner_id=$2 AND module_id=$3 AND version=$4 LIMIT 500) bounded`,
+      [actor.workspaceId,ref.learnerId,ref.moduleId,ref.version]);
+     if(!capacity||capacity.total>=MAX_EVENTS)throw new AppError("UNAVAILABLE");
      await sql.query(`INSERT INTO ls_education.lesson_heads(workspace_id,learner_id,module_id,version,revision_id) VALUES($1,$2,$3,$4,NULL)
       ON CONFLICT(workspace_id,learner_id,module_id,version) DO NOTHING`,[actor.workspaceId,ref.learnerId,ref.moduleId,ref.version]);
      const head=await one<{id:string|null}>(sql,`SELECT revision_id AS id FROM ls_education.lesson_heads WHERE workspace_id=$1 AND learner_id=$2 AND module_id=$3 AND version=$4 FOR UPDATE`,[actor.workspaceId,ref.learnerId,ref.moduleId,ref.version]);

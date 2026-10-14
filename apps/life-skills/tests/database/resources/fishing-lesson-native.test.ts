@@ -108,15 +108,31 @@ test("actual immutable bytes/catalog/event guards reject mutation; event header 
   await expect(s.f.pool.query(sql,[s.f.workspaceId])).rejects.toMatchObject({code:"23514"});
  expect(await s.count()).toEqual({events:1,heads:1});
 });
-test("history overflow is rejected, not a truncated partial learner projection",async()=>{
- const s=await setup();let previous:string|null=null;
- for(let i=0;i<501;i++){
+async function seedHistory(s:Awaited<ReturnType<typeof setup>>,count:number){
+ let previous:string|null=null,last:ReturnType<typeof lessonJourneyCommandSchema.parse>|null=null;
+ for(let i=0;i<count;i++){
   const command=lessonJourneyCommandSchema.parse({...s.command(),expectedRevisionId:previous}),event:LessonJourneyEvent={id:randomUUID(),operationId:command.operationId,digest:"",previousRevisionId:previous,workspaceId:s.f.workspaceId,...s.reference,sourceSha256:"a".repeat(64),actorId:s.f.parent.actor.id,actorRole:"parent",at:new Date().toISOString(),command};
   event.digest=hash(JSON.stringify({ref:s.reference,command,actorId:event.actorId,workspaceId:event.workspaceId,sourceSha256:event.sourceSha256}));const encrypted=encodeLessonEvent(event,s.f.keyring);
-  await s.f.pool.query(`INSERT INTO ls_education.lesson_events(workspace_id,id,learner_id,module_id,version,actor_account_id,operation_id,previous_revision_id,digest,header,payload_ciphertext) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11)`,[event.workspaceId,event.id,event.learnerId,event.moduleId,event.version,event.actorId,event.operationId,previous,event.digest,JSON.stringify(encrypted.header),encrypted.ciphertext]);previous=event.id;
+  await s.f.pool.query(`INSERT INTO ls_education.lesson_events(workspace_id,id,learner_id,module_id,version,actor_account_id,operation_id,previous_revision_id,digest,header,payload_ciphertext) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11)`,[event.workspaceId,event.id,event.learnerId,event.moduleId,event.version,event.actorId,event.operationId,previous,event.digest,JSON.stringify(encrypted.header),encrypted.ciphertext]);previous=event.id;last=command;
  }
  await s.f.pool.query("INSERT INTO ls_education.lesson_heads(workspace_id,learner_id,module_id,version,revision_id) VALUES($1,$2,$3,$4,$5)",[s.f.workspaceId,s.reference.learnerId,s.reference.moduleId,s.reference.version,previous]);
+ if(!last||!previous)throw Error("EMPTY_SYNTHETIC_HISTORY");return {command:last,revisionId:previous};
+}
+test("history overflow is rejected, not a truncated partial learner projection",async()=>{
+ const s=await setup();await seedHistory(s,501);
  await expect(s.journey().read(s.reference,"learner")).rejects.toMatchObject({code:"UNAVAILABLE"});expect(await s.count()).toEqual({events:501,heads:1});
+});
+test("RM-EDU-HISTORY-CAPACITY-01:500 remains readable/replayable; concurrent new append is atomically denied without poisoning history",async()=>{
+ const s=await setup(),last=await seedHistory(s,500);
+ expect((await s.journey().read(s.reference,"learner"))).toMatchObject({revisionId:last.revisionId});
+ expect(await s.journey().save(s.reference,last.command)).toEqual({revisionId:last.revisionId,duplicate:true});
+ const results=await Promise.allSettled(Array.from({length:2},()=>s.journey().save(s.reference,{...s.command(),expectedRevisionId:last.revisionId})));
+ expect(results.every(r=>r.status==="rejected"&&r.reason.code==="UNAVAILABLE")).toBe(true);
+ expect(await s.count()).toEqual({events:500,heads:1});expect((await s.journey().read(s.reference,"learner"))).toMatchObject({revisionId:last.revisionId});
+ // Capacity belongs to this aggregate, not the entire family/workspace.
+ const other={...s.reference,moduleId:"RM-102"};await s.seed(other);
+ await s.journey().save(other,{...s.command(),answers:[{questionId:"Q02-1",value:"Separate synthetic lesson"}]});
+ expect(await s.count()).toEqual({events:501,heads:2});expect((await s.journey().read(s.reference,"learner"))).toMatchObject({revisionId:last.revisionId});
 });
 test("fresh optional child identity can submit only for its own explicitly assigned person",async()=>{
  const s=await setup(),id=asId(randomUUID(),"account"),token=randomBytes(32).toString("base64url"),person=asId(s.reference.learnerId,"person"),actor:Actor={...s.f.parent.actor,id,personId:person,role:"child",sessionDigest:tokenDigest(token)};
