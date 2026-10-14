@@ -69,6 +69,15 @@ if(!runtimePath){
   const region=page.getByRole("region",{name:locale==="he"?"התעניינות בדיג":"Fishing interests"}),summaries=region.locator("summary");await summaries.first().click();await summaries.nth(1).click();
   await expect(region).toContainText(locale==="he"?"אינו נתמך בחשבון המחובר":"Not supported by this connected account");await expect(region).toContainText(locale==="he"?"התוצאה אינה ידועה — נדרשת בדיקה חוזרת":"Outcome unknown — reconciliation needed");
   await expect(region.getByRole("button",{name:locale==="he"?"הסרה מרשימת המתעניינים":"Remove from Lead List",exact:true})).toHaveCount(2);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  expect(await region.evaluate(element=>{
+   const bounds=element.getBoundingClientRect(),outside:string[]=[];
+   for(const item of element.querySelectorAll("p,summary,label")){
+    if(!item.getClientRects().length)continue;
+    const range=document.createRange();range.selectNodeContents(item);
+    if([...range.getClientRects()].some(rect=>rect.width>0&&(rect.left<bounds.left-1||rect.right>bounds.right+1)))outside.push(item.textContent?.slice(0,80)??"");
+   }
+   return outside;
+  })).toEqual([]); // Check actual text bounds, not only the document scroll width.
   await region.screenshot({path:info.outputPath(`fishing-provider-states-${locale}-${info.project.name}.png`)});
   await page.reload();await region.locator("summary").first().click();await region.locator("summary").nth(1).click();await expect(region).toContainText(locale==="he"?"אינו נתמך בחשבון המחובר":"Not supported by this connected account");await expect(region).toContainText(locale==="he"?"התוצאה אינה ידועה":"Outcome unknown");
   const uncertain=region.locator("details").nth(1);
