@@ -39,3 +39,30 @@ test('native last founder slot is atomic and family count is independent of sibl
  const siblingBase=founder(),sibling=approvedOffer({...siblingBase,householdId:first!.householdId,lines:siblingBase.lines.map(l=>({...l,totalCents:155000,discountBasis:'founder_initial_sibling_prepay',dues:l.dues.map(d=>({...d,amountCents:155000}))}))});n.offers.set(sibling.id,sibling);await n.issue(sibling,campaignId);expect(await n.count('founder_households')).toBe(20);expect(await n.count('purchases')).toBe(21);const ordinary=await n.issue();expect(ordinary.purchaseId).toBeTruthy();});
 test('no invented founder policy; expired offer cannot start a cheap checkout',async()=>{const n=await f(),o=n.offer('prepay',o=>({...o,expiresAt:new Date(Date.now()-1).toISOString(),terms:{...o.terms,acceptedAt:new Date(Date.now()-3600000).toISOString()}}));await expect(n.issue(o)).rejects.toThrow('OFFER_EXPIRED');const founder=n.offer('prepay',o=>({...o,lines:o.lines.map(l=>({...l,totalCents:165000,discountBasis:'founder_initial_primary_prepay',eligibility:{...l.eligibility,kind:'verified_founder'},dues:l.dues.map(d=>({...d,amountCents:165000}))}))}));await expect(n.issue(founder)).rejects.toThrow('FOUNDER_POLICY_REQUIRED');});
 test('actuals are measured cash and original dues; unknown fees/earned service are not projected zeros',async()=>{const n=await f(),p=await paid(n),view=await paymentActuals(n.store,n.owner);expect(view).toMatchObject({cashReceivedCents:175000,refundsCents:0,actualFeesCents:null,earnedServiceCents:null,remainingServiceSessions:null,projections:null,households:1,childPurchases:1});expect((await n.store.readPayment(n.owner,p.purchaseId))!.dues).toHaveLength(1);await expect(paymentActuals(n.store,n.parent)).rejects.toThrow('NOT_FOUND');});
+
+test('retained reminder reads current partial balance, then suppresses fully paid or missing due',async()=>{
+ const n=await f(),p=await n.issue(),due=p.offer.lines[0]!.dues[0]!;
+ const draft=await n.service.reminderDraft(n.owner,randomUUID(),p.purchaseId,due.id);
+ expect(draft).toMatchObject({amountCents:175000,state:'draft',neverSent:true});
+ const op=await hosted(n,p.purchaseId,due.id);
+ await receipt(n,[fact(op,p.offer.lines[0]!.id,{cents:50000})]);
+ expect(await n.service.readReminderDraft(n.owner,draft.id)).toMatchObject({amountCents:125000,state:'draft',neverSent:true});
+ const original=await n.pool.query('SELECT draft_json AS draft FROM ls_fishing_payments.reminders WHERE workspace_id=$1 AND id=$2',[n.workspaceId,draft.id]);
+ expect(original.rows[0].draft.amountCents).toBe(175000);
+ await receipt(n,[fact(op,p.offer.lines[0]!.id,{canonicalTransactionId:`pi_${op.id}_balance`,cents:125000})]);
+ expect(await n.service.readReminderDraft(n.owner,draft.id)).toMatchObject({amountCents:0,state:'suppressed',neverSent:true});
+ await n.pool.query("UPDATE ls_fishing_payments.reminders SET draft_json=jsonb_set(draft_json,'{dueId}',$3::jsonb) WHERE workspace_id=$1 AND id=$2",[n.workspaceId,draft.id,JSON.stringify('missing_due')]);
+ expect(await n.service.readReminderDraft(n.owner,draft.id)).toMatchObject({amountCents:null,state:'suppressed',neverSent:true});
+});
+
+test('retained reminder is suppressed when current approved channel changes',async()=>{
+ const n=await f(),p=await n.issue(),due=p.offer.lines[0]!.dues[0]!;
+ const draft=await n.service.reminderDraft(n.owner,randomUUID(),p.purchaseId,due.id);
+ expect(draft).toMatchObject({channel:'in_app',state:'draft',amountCents:175000});
+ expect(await n.service.readReminderDraft(n.owner,draft.id)).toMatchObject({state:'draft',amountCents:175000,neverSent:true});
+ const approvedPolicy=n.authority.reminderPolicy.bind(n.authority);
+ n.authority.reminderPolicy=async(...args)=>({...await approvedPolicy(...args),channel:'email'});
+ expect(await n.service.readReminderDraft(n.owner,draft.id)).toMatchObject({channel:'in_app',state:'suppressed',amountCents:175000,neverSent:true});
+ n.authority.reminderPolicy=approvedPolicy;
+ expect(await n.service.readReminderDraft(n.owner,draft.id)).toMatchObject({channel:'in_app',state:'draft',amountCents:175000,neverSent:true});
+});

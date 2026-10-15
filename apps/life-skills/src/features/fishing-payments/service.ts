@@ -112,5 +112,11 @@ export class FishingPaymentService {
  }
  /** Rechecks current payment/consent/quiet time even for a retained queued draft.
   * Returns no send capability; MAIN owns an independently admitted delivery port. */
- async readReminderDraft(actor:Actor,reminderId:string){return this.store.read(actor,async c=>{const row=await one<{draft:{purchaseId:string;dueId:string;policyId:string;copyVersion:string}}>(c.tx,'SELECT draft_json AS draft FROM ls_fishing_payments.reminders WHERE workspace_id=$1 AND id=$2',[c.actor.workspaceId,reminderId]);invariant(row,'NOT_FOUND');const p=await this.store.purchase(c,row.draft.purchaseId);await this.store.access(c,p.offer,'reminder',true);const due=p.state.dues.find(d=>d.id===row.draft.dueId),policy=await this.store.deps.authority.reminderPolicy(c.tx,p.offer,c.now);return { ...row.draft,state:due&&due.paidCents<due.amountCents&&policy.approvedPolicyId===row.draft.policyId&&policy.copyVersion===row.draft.copyVersion&&policy.parentAccountId===p.offer.payerAccountId&&policy.consented&&policy.eligibleNow&&!policy.quietNow&&!policy.stripeAlreadyNotifies&&!await this.store.hasUnknown(c,row.draft.purchaseId)?'draft':'suppressed',neverSent:true};});}
+ async readReminderDraft(actor:Actor,reminderId:string){return this.store.read(actor,async c=>{
+  const row=await one<{draft:{purchaseId:string;dueId:string;policyId:string;copyVersion:string;channel:'in_app'|'email'|'whatsapp';amountCents:number}}>(c.tx,'SELECT draft_json AS draft FROM ls_fishing_payments.reminders WHERE workspace_id=$1 AND id=$2',[c.actor.workspaceId,reminderId]);invariant(row,'NOT_FOUND');
+  const p=await this.store.purchase(c,row.draft.purchaseId);await this.store.access(c,p.offer,'reminder',true);
+  const due=p.state.dues.find(d=>d.id===row.draft.dueId),policy=await this.store.deps.authority.reminderPolicy(c.tx,p.offer,c.now);
+  const amountCents=due?Math.max(0,due.amountCents-due.paidCents):null;
+  return {...row.draft,amountCents,state:due&&amountCents!==null&&amountCents>0&&policy.approvedPolicyId===row.draft.policyId&&policy.copyVersion===row.draft.copyVersion&&policy.channel===row.draft.channel&&policy.parentAccountId===p.offer.payerAccountId&&policy.consented&&policy.eligibleNow&&!policy.quietNow&&!policy.stripeAlreadyNotifies&&!await this.store.hasUnknown(c,row.draft.purchaseId)?'draft':'suppressed',neverSent:true};
+ });}
 }
