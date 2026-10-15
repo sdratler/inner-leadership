@@ -4,6 +4,7 @@ import {isReportSection} from '../progress/report-views.ts';
 import {contentChannel,contentDate,contentState} from '../marketing-overview/calendar-model.ts';
 import {creativeApprovals,creativePlacements,creativeFilters} from '../marketing-overview/creative-filters.ts';
 import {isCommunityView} from '../community-reply/views.ts';
+import {educationQuery,educationSearch} from '../resources/education-query.ts';
 
 type Role = "practitioner" | "parent" | "adult_client" | "child";
 
@@ -95,7 +96,13 @@ export function practitionerDetailReturnPath(locale:Locale,pathname:string,query
  const one=(key:string)=>typeof query[key]==='string'?query[key] as string:'';
   if(reports){for(const key of ['caseId','audienceId'])if(isCaseId(one(key)))params.set(key,one(key).toLowerCase());if(one('context')==='client')params.set('context','client');if(isReportSection(one('section')))params.set('section',one('section'));}
   else if(communications){if(isCaseId(one('caseId')))params.set('caseId',one('caseId').toLowerCase());if(['app_updates','whatsapp'].includes(one('section')))params.set('section',one('section'));}
- else if(sharedItems){if(isCaseId(one('caseId')))params.set('caseId',one('caseId').toLowerCase());}
+ else if(sharedItems){
+  if(pathname===`/${locale}/app/resources`){
+   const education=educationQuery({...query,section:query.section??'review'});
+   if(education&&(education.section==='review'||education.section==='publication'))return pathname+'?'+educationSearch(education.reference,education.section);
+  }
+  if(isCaseId(one('caseId')))params.set('caseId',one('caseId').toLowerCase());
+ }
  else if(!session?.[2]&&isCaseId(one('appointmentId')))params.set('appointmentId',one('appointmentId').toLowerCase());
  return pathname+(params.size?'?'+params.toString():'');
 }
@@ -106,6 +113,10 @@ export function parentReturnPath(locale: Locale, pathname: string, query: Record
   const suffix = pathname.startsWith(`${root}/`) ? pathname.slice(root.length) : pathname === root ? "" : null;
   const allowed = new Set(["", "/schedule", "/practice", "/feedback", "/forms", "/resources", "/reports", "/settings", "/settings/account", "/settings/coordination", "/settings/credits", "/settings/notifications"]);
   if (suffix === null || !allowed.has(suffix)) return `${root}/schedule`;
+  if(suffix==='/resources'){
+   const education=educationQuery(query);
+   if(education&&(education.section==='lesson'||education.section==='portfolio'))return root+suffix+'?'+educationSearch(education.reference,education.section);
+  }
   const params = new URLSearchParams();
   const uuid = (key: string) => { if (/^[0-9a-f-]{36}$/i.test(query[key] ?? "")) params.set(key, query[key]!); };
   if (["", "/schedule", "/practice", "/feedback", "/forms", "/resources", "/reports"].includes(suffix)) uuid("caseId");

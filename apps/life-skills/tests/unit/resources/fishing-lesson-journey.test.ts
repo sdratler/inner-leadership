@@ -174,6 +174,11 @@ describe("prepared Real Mensch transactional journey — synthetic port only",()
   const html=renderToStaticMarkup(createElement(FishingLessonCard,{lesson,answers:{"Q01-1":"retained synthetic answer"},onAnswer:()=>{},onSubmit:()=>{},
    error:"Synthetic explicit error for isolated component test"}));
   expect(html).toContain("retained synthetic answer");expect(html).toContain('role="alert"');expect(html).toContain("Submit my work");
-  expect(html).toContain("<details>");expect(html).not.toContain("<details open");expect(html).not.toMatch(/teacherGuide|PRIVATE NOTE|role-switch|price/);
+  expect(html).toMatch(/<details\b[^>]*>/);expect(html).not.toMatch(/<details\b[^>]*\sopen(?:=|\s|>)/);expect(html).not.toMatch(/teacherGuide|PRIVATE NOTE|role-switch|price/);
+ });
+ it("retains the same readable component with Hebrew controls and disabled unchanged submission",()=>{
+  const html=renderToStaticMarkup(createElement(FishingLessonCard,{lesson,locale:"he",answers:{"Q01-1":"טיוטה"},onAnswer:()=>{},onSubmit:()=>{},canSubmit:false}));
+  expect(html).toContain("שליחת העבודה שלי");expect(html).toContain('class="lsw-input"');expect(html).toContain("טיוטה");
+  expect(html).toMatch(/<button[^>]*disabled/);expect(html).not.toMatch(/<textarea[^>]*disabled/);expect(html).not.toMatch(/<details\b[^>]*\sopen(?:=|\s|>)/);
  });
 });

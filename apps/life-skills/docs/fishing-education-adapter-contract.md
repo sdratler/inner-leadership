@@ -1,4 +1,28 @@
-# Real Mensch storage/access adapter — isolated admission, not mounted
+# Real Mensch storage/access adapter — disposable-only classroom admission
+
+## Current narrow composition boundary — Architecture 21.1, 15 October 2026
+
+The saved 21.1 amendment permits the existing Resources catch-all and retained
+parent/practitioner Resources pages to compose the native journey only in an
+explicitly opted-in development, HTTPS-loopback, validated disposable PostgreSQL
+test environment. The cached database pool's original target and TLS binding,
+ordinary identity sessions, audit/rate stores and education store must share one
+fixed server-owned target; missing provenance or configuration drift denies the
+composition before education SQL. Production retains its ordinary Resources
+handler and no education activation or live migration is authorized.
+
+The local parent lesson/portfolio and private teacher review/publication views
+use ordinary authentication, not a role switch. Teacher-only eligible recipient
+IDs and safe labels require current exact-lesson read_parent grants and verified
+guardian/account authority, rechecked inside the locked publication transaction.
+That eligibility is separate from legitimate parent-assisted submit/read_learner
+access. Successful actor-bound operation replay is retained; a stale recipient
+choice cannot authorize a new publication. Only deliberately authored parent-safe
+summaries reach the eligible parent; private observations and answer keys do not.
+
+This paragraph records source admission, not completed browser acceptance,
+production delivery, approved real curriculum, accounts, grants or provider sends.
+The historical preparation and isolated-storage boundaries below are preserved.
 
 Architecture21 saved/current on14October2026 admits the same writer's prospective
 UNMOUNTED adapter in a new disposable synthetic database. Build Control748 and

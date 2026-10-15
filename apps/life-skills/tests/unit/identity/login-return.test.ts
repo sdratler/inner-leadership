@@ -9,6 +9,26 @@ it('preserves only a bounded legacy lead ID on a practitioner People return link
     .toBe('/en/app/clients');
 });
 const caseId='123e4567-e89b-42d3-a456-426614174000',sessionId='223e4567-e89b-42d3-a456-426614174000';
+it.each(['he','en']as const)('preserves exact %s educational context through ordinary role login without clinical or caller authority',locale=>{
+ const query={education:'lesson',learnerId:caseId,moduleId:'RM-101',version:'synthetic-v1'};
+ for(const section of ['review','publication']){
+  const path=`/${locale}/app/resources`,next=practitionerDetailReturnPath(locale,path,{...query,section});
+  expect(Object.fromEntries(new URL(next,'https://private.invalid').searchParams)).toEqual({...query,section});
+  expect(loginReturnDestination(locale,'practitioner',next)).toBe(next);
+  for(const role of ['parent','child','adult_client']as const)expect(loginReturnDestination(locale,role,next)).not.toBe(next);
+ }
+ for(const section of ['lesson','portfolio']){
+  const path=`/${locale}/family/resources`,next=parentReturnPath(locale,path,{...query,section});
+  expect(Object.fromEntries(new URL(next,'https://private.invalid').searchParams)).toEqual({...query,section});
+  expect(loginReturnDestination(locale,'parent',next)).toBe(next);
+  for(const role of ['practitioner','child','adult_client']as const)expect(loginReturnDestination(locale,role,next)).not.toBe(next);
+ }
+ for(const extra of [{role:'practitioner'},{caseId},{learnerId:['one','two']},{version:'bad\nversion'},{section:'constructor'}]){
+  expect(practitionerDetailReturnPath(locale,`/${locale}/app/resources`,{...query,section:'review',...extra})).not.toContain('education=');
+ }
+ expect(parentReturnPath(locale,`/${locale}/family/resources`,{...query,section:'review'})).toBe(`/${locale}/family/resources`);
+ expect(practitionerDetailReturnPath(locale,`/${locale}/app/resources`,{...query,section:'portfolio'})).toBe(`/${locale}/app/resources`);
+});
 it.each(['he','en'] as const)('preserves the named %s People Groups destination through ordinary login only for practitioners',locale=>{
  const path=`/${locale}/app/group-interest`,next=practitionerDetailReturnPath(locale,path,{secret:'not-forwarded',role:'parent'});
  expect(next).toBe(path);expect(loginReturnDestination(locale,'practitioner',next)).toBe(path);
