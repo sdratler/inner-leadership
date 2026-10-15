@@ -31,7 +31,7 @@ export async function nativeFixture(){
  const url=requireNativeTarget(process.env,{schemaSha256,fixtureSha256});
  const pool=new pg.Pool({connectionString:url,max:8});
  try{
-  const guard=(await pool.query(`SELECT current_database() AS database,inet_server_addr()::text AS address,current_setting('password_encryption') AS mode,
+  const guard=(await pool.query(`SELECT current_database() AS database,host(inet_server_addr()) AS address,current_setting('password_encryption') AS mode,
    to_regclass('ls_fishing_stage.plans')::text AS plans,to_regclass('ls_fishing_stage.fixture_contexts')::text AS fixture`)).rows[0];
   if(!guard||guard.database!==process.env.LS_RM_STAGE_TEST_DATABASE||guard.address!=="127.0.0.1"||guard.mode!=="scram-sha-256"||!guard.plans||!guard.fixture)throw Error("RM_STAGE_NATIVE_TARGET_OR_SCHEMA_MISMATCH");
   const workspaceId=asId(randomUUID(),"workspace"),keyring={activeKeyId:"synthetic",keys:{synthetic:randomBytes(32)}},db=poolStore(pool);
