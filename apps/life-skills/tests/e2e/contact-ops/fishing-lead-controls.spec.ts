@@ -6,6 +6,7 @@ import {createHash} from "node:crypto";
 import {promisify} from "node:util";
 import {expect,test} from "@playwright/test";
 import {syntheticChildFailure} from "../group-interest/synthetic-child-output.ts";
+import inquiryCopy from "../../../src/features/group-application/presentation-copy.json" with {type:"json"};
 const runtimePath=process.env.LS_GROUP_INTEREST_FIXTURE_PATH;
 if(!runtimePath){
  test("mounted fishing lead controls through existing isolated native harness",async({},info)=>{
@@ -19,6 +20,75 @@ if(!runtimePath){
  const runtime=JSON.parse(readFileSync(runtimePath,"utf8")) as {origin:string;fishing:{credentials:{role:string;email:string;password:string}[];inquiries:{locale:string;id:string;name:string}[];protectedPersonId:string}};
  if(process.env.LS_FISHING_LEAD_UI_ONLY!=="true"||!/^https:\/\/localhost:310[5678]$/.test(runtime.origin)||!runtime.fishing)throw Error("FISHING_UI_ISOLATED_FIXTURE_REQUIRED");
  test.use({baseURL:runtime.origin});
+ for(const locale of ["en","he"] as const)test(`${locale}: anonymous saved inquiry, exact retry, ordinary owner re-login and deliberate lead addition`,async({page},info)=>{
+  const t=(en:string,he:string)=>locale==="he"?he:en,copy=inquiryCopy.realMensch.inquiry;
+  const name=`Synthetic composed ${locale}`,contact=locale==="en"?"+13055550111":"+13055550112";
+  const target=`/${locale}/app/group-applications`,credentials=runtime.fishing.credentials.find(c=>c.role==="practitioner")!;
+  expect((await page.request.get("/api/private/group-applications")).status()).toBe(401);
+  expect((await page.goto(`/${locale}/florida`))?.status()).toBe(200);
+  const form=page.locator('form[data-inquiry-kind="parent"]');
+  await form.locator('[name="parentName"]').fill(name);await form.locator('[name="contact"]').fill(contact);
+  await form.locator('[name="learnerAge-0"]').fill("12");await form.locator('[name="cityArea"]').fill("Synthetic Florida");
+  await form.locator('[name="schedulePreference"][value="sunday"]').check();await form.locator('[name="permission"]').check();
+  const endpoint="**/api/public/group-applications?program=sunday_fishing_academy";
+  let savedId="",requestHash="",commits=0;
+  // Lose only the response AFTER the real native save. Never fabricate a
+  // successful receipt or inject a session to bridge public and private UI.
+  await page.route(endpoint,async route=>{
+   if(route.request().method()!=="POST")return route.continue();
+   requestHash=createHash("sha256").update(route.request().postData()!).digest("hex");
+   const upstream=await route.fetch({headers:{...route.request().headers(),origin:runtime.origin,"sec-fetch-site":"same-origin"}});
+   expect(upstream.status()).toBe(201);const body=await upstream.json();savedId=body.data.item.id;commits++;
+   await route.fulfill({status:503,contentType:"application/json",body:JSON.stringify({ok:false,error:{code:"UNAVAILABLE"}})});
+  });
+  await form.getByRole("button",{name:copy.submit[locale],exact:true}).click();
+  await expect(form.getByRole("alert")).toContainText(copy.unknownResult[locale]);expect(commits).toBe(1);expect(savedId).not.toBe("");
+  await page.unroute(endpoint);
+  const retriedRequest=page.waitForRequest(r=>r.method()==="POST"&&new URL(r.url()).pathname==="/api/public/group-applications");
+  const retriedResponse=page.waitForResponse(r=>r.request().method()==="POST"&&new URL(r.url()).pathname==="/api/public/group-applications");
+  await form.getByRole("button",{name:copy.retrySameSave[locale],exact:true}).click();
+  expect(createHash("sha256").update((await retriedRequest).postData()!).digest("hex")).toBe(requestHash);
+  const retried=await retriedResponse;expect(retried.status()).toBe(200);
+  expect(await retried.json()).toMatchObject({ok:true,data:{saved:true,replayed:true,duplicate:true,item:{id:savedId,fields:{parentName:name,contact,programId:"sunday_fishing_academy"}}}});
+  await expect(page.getByRole("status")).toContainText(copy.savedTitle[locale]);
+  const ownerLogin=async()=>{
+   await page.goto(`/${locale}/login?next=${encodeURIComponent(target)}`);
+   await page.getByLabel(t("Email","דוא״ל"),{exact:true}).fill(credentials.email);
+   await page.getByLabel(t("Password","סיסמה"),{exact:true}).fill(credentials.password);
+   const login=page.waitForResponse(r=>new URL(r.url()).pathname==="/api/identity/login"&&r.request().method()==="POST",{timeout:30000});
+   await page.getByRole("button",{name:t("Sign in","כניסה"),exact:true}).click();expect((await login).status()).toBe(200);
+   await expect(page).toHaveURL(target);
+  };
+  const verifyInquiry=async()=>{
+   const read=await page.request.get("/api/private/group-applications");expect(read.status()).toBe(200);
+   const body=await read.json();expect(body.data.items.filter((item:{id:string})=>item.id===savedId)).toEqual([
+    expect.objectContaining({id:savedId,fields:expect.objectContaining({parentName:name,contact,programId:"sunday_fishing_academy"})})]);
+   await expect(page.locator("article").filter({has:page.getByRole("heading",{name,exact:true})})).toHaveCount(1);
+  };
+  await ownerLogin();await verifyInquiry();await page.reload();await verifyInquiry();
+  // Ordinary device sign-out and password sign-in, not clearing/injecting cookies.
+  await page.goto(`/${locale}/app/settings/account`);
+  const logout=page.waitForResponse(r=>new URL(r.url()).pathname==="/api/identity/logout"&&r.request().method()==="POST");
+  await page.getByRole("button",{name:t("Sign out this device","יציאה מהמכשיר הזה"),exact:true}).click();expect((await logout).status()).toBe(200);
+  await expect(page).not.toHaveURL(`/${locale}/app/settings/account`);
+  expect((await page.request.get("/api/private/group-applications")).status()).toBe(401);
+  await ownerLogin();await verifyInquiry();
+  const record=page.locator("article").filter({has:page.getByRole("heading",{name,exact:true})});
+  const details=record.locator("details").filter({has:page.getByRole("region",{name:t("Fishing lead membership controls","בקרות שיוך לרשימת המתעניינים בדיג"),includeHidden:true})});
+  await details.locator("summary").click();await details.getByRole("button",{name:t("Add to Lead List","הוספה לרשימת המתעניינים"),exact:true}).click();
+  await expect(details.getByRole("button",{name:t("Confirm Add","אישור הוספה"),exact:true})).toBeDisabled();
+  await details.getByRole("checkbox",{name:t("I confirm creation of this new adult contact.","אני מאשר/ת יצירת איש קשר מבוגר חדש זה."),exact:true}).check();
+  await details.getByRole("button",{name:t("Confirm Add","אישור הוספה"),exact:true}).click();
+  await expect(details.getByRole("status")).toContainText(t("Added to Leads. No follow-up task was created.","נוסף לרשימת המתעניינים. לא נוצרה משימת המשך."));
+  const membership=async()=>{
+   const read=await page.request.get(`/api/private/fishing-leads/sunday_fishing_academy?source=inquiry&sourceId=${savedId}`);expect(read.status()).toBe(200);
+   const body=await read.json();expect(body.data.membership.state).toBe("active");expect(body.data.personId).toBeTruthy();return body.data.personId as string;
+  };
+  const personId=await membership();await page.reload();await verifyInquiry();expect(await membership()).toBe(personId);
+  await details.locator("summary").click();await expect(details.getByRole("button",{name:t("Remove from Lead List","הסרה מרשימת המתעניינים"),exact:true})).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  await record.screenshot({path:info.outputPath(`composed-inquiry-owner-lead-${locale}-${info.project.name}.png`)});
+ });
  for(const locale of ["en","he"] as const)test(`${locale}: normal login, preview/cancel, collapsed draft, lost-response retry, Remove and reload`,async({page},info)=>{
   const t=(en:string,he:string)=>locale==="he"?he:en,credentials=runtime.fishing.credentials.find(c=>c.role==="practitioner")!,inquiry=runtime.fishing.inquiries.find(i=>i.locale===locale)!;
   await page.goto(`/${locale}/login?next=${encodeURIComponent(`/${locale}/app/group-applications`)}`);
