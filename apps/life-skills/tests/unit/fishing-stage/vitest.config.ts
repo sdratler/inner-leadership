@@ -11,7 +11,7 @@ const config={
   {find:"zod",replacement:requireTool.resolve("zod")},{find:"react/jsx-runtime",replacement:requireTool.resolve("react/jsx-runtime")},
   {find:"react/jsx-dev-runtime",replacement:requireTool.resolve("react/jsx-dev-runtime")},
   {find:"react-dom/server",replacement:requireTool.resolve("react-dom/server")},{find:"react",replacement:requireTool.resolve("react")},
-  {find:"server-only",replacement:resolve(here,"server-only-stub.ts")}]},
+  {find:"server-only",replacement:requireTool.resolve("server-only")}]},
  test:{environment:"node",include:["tests/unit/fishing-stage/**/*.test.ts"],restoreMocks:true,clearMocks:true,fileParallelism:false}
 };
 export default config;

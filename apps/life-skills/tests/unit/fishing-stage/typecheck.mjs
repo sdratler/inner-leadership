@@ -10,7 +10,7 @@ const ts=requireTool("typescript");const here=dirname(fileURLToPath(import.meta.
 function files(dir){return readdirSync(dir,{withFileTypes:true}).flatMap(e=>e.name.startsWith(".")?[]:e.isDirectory()?files(resolve(dir,e.name)):/\.(ts|tsx)$/.test(e.name)?[resolve(dir,e.name)]:[]);}
 const read=ts.readConfigFile(resolve(app,"tsconfig.json"),ts.sys.readFile);if(read.error)throw Error("Cannot read app TypeScript options");
 const parsed=ts.parseJsonConfigFileContent(read.config,ts.sys,app);
-const paths={...parsed.options.paths,react:[resolve(dependencies,"@types/react/index.d.ts")],"react/jsx-runtime":[resolve(dependencies,"@types/react/jsx-runtime.d.ts")],"react-dom/server":[resolve(dependencies,"@types/react-dom/server.d.ts")],vitest:[resolve(dependencies,"vitest/dist/index.d.ts")]};
+const paths={...parsed.options.paths,pg:[resolve(dependencies,"@types/pg/index.d.ts")],react:[resolve(dependencies,"@types/react/index.d.ts")],"react/jsx-runtime":[resolve(dependencies,"@types/react/jsx-runtime.d.ts")],"react-dom/server":[resolve(dependencies,"@types/react-dom/server.d.ts")],vitest:[resolve(dependencies,"vitest/dist/index.d.ts")]};
 const options={...parsed.options,incremental:false,baseUrl:dependencies,paths,typeRoots:[resolve(dependencies,"@types")],types:["node","react","chai"],plugins:[]};
 const sources=[...files(resolve(app,"src/features/fishing-stage")),...files(here),...files(resolve(app,"tests/database/fishing-stage"))];
 const diagnostics=ts.getPreEmitDiagnostics(ts.createProgram(sources,options));

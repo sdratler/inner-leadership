@@ -1,0 +1,31 @@
+{
+  "clientDate": "2026-10-16",
+  "clientTimezone": "Asia/Jerusalem",
+  "checkedAtUtc": "2026-10-15T21:42:37Z",
+  "transferBase": "acdad4e73942aa99b0aa6456cdea32ace429406c",
+  "compatibilityCommit": "d4fdeabeb51fe3b7470640349fce92b24d25354d",
+  "originalUnitBodies": "37 preserved; compatibility commit changed imports/mocks only",
+  "cwd": "D:/life-skills-rm-stage-20261015/apps/life-skills",
+  "node": "C:/Users/User/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node.exe",
+  "dependencies": "D:/life-skills-fishing-lessons-20261012/apps/life-skills/node_modules",
+  "packageLockSha256": "1a58012cd96a17dc37bbce4e1641985991acf7039871121b35bf87b08ac6bec7",
+  "checks": [
+    {"command":"<node> <dependencies>/vitest/vitest.mjs run --config tests/unit/fishing-stage/vitest.config.ts","exitCode":0,"files":5,"passed":45,"failed":0},
+    {"command":"<node> tests/unit/fishing-stage/typecheck.mjs <dependencies>","exitCode":0,"ownedTypeScriptFiles":17,"importsAlsoChecked":true,"strict":true},
+    {"command":"<node> tests/unit/fishing-stage/lint.mjs <dependencies>","exitCode":0,"files":19,"errors":0,"warnings":0}
+  ],
+  "dependencyEvidence": "Read-only installed toolchain; lock/config matched. No immutable execution-time dependency seal claimed.",
+  "rootVitest": "Retained root config unchanged; per-file vi.mock now used with real server-only package. Converged root run pending MAIN; this checkout has no node_modules.",
+  "candidateSqlCheckoutSha256": "b026e9c5352593b8c760a0693a4dca2a0a176e5300e83a572ed1d183db8d11f8",
+  "fixtureSqlCheckoutSha256": "bb02d7f61c4428a01cb723bdcebfc04e379dbb634ca416a5b974537a2fe73ee6",
+  "native": {
+    "authoredCases":17,
+    "executedCases":0,
+    "schemaExecution":false,
+    "fixtureExecution":false,
+    "separateProcessRecoveryImplemented":false,
+    "sharedPorts":"Synthetic SQL fixture implementations only; actual MAIN authority/capacity acceptance remains open"
+  },
+  "notRun": ["PostgreSQL connection", "DDL", "native fixtures/tests", "root/full app suite/build", "browser/ordinary login", "provider", "push", "PR", "merge", "deploy"],
+  "status": "NATIVE_CODE_AND_CASES_AUTHORED_AWAITING_MAIN_PINNED_EXECUTION_AND_SAME_REVIEWER"
+}
