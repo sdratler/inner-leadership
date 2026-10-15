@@ -1,15 +1,15 @@
 import "server-only";
 import type {identityRuntime} from "../identity/runtime.ts";
-import type {Ls050HttpRuntime} from "../forms/http-boundary.ts";
 import {FishingLessonHttp} from "./fishing-lesson-http.ts";
 import {FishingLessonJourney} from "./fishing-lesson-journey.ts";
 import {FishingLessonNativeStore} from "./fishing-lesson-native-store.ts";
+import {IdentitySessions} from "../identity/session-adapter.ts";
+import {PostgresIdentityRateStore} from "../identity/rate-store.ts";
+import {durableAuditSink} from "../identity/history.ts";
 
 type Environment=Record<string,string|undefined>;
 type Handler={handle(request:Request):Promise<Response>};
-type EducationRuntime=Pick<Awaited<ReturnType<typeof identityRuntime>>,"config"|"store"|"clock">&{
- services:Pick<Ls050HttpRuntime,"sessions"|"limits"|"audit">;
-};
+type EducationRuntime=Pick<Awaited<ReturnType<typeof identityRuntime>>,"config"|"store"|"clock">;
 export const educationLessonPath="/api/resources/education/lesson";
 const availabilityKeys=["NODE_ENV","CI","LS_APP_MODE","LS_APP_ORIGIN","LS_PRIVATE_APP_ENABLED","LS_IDENTITY_ENABLED",
  "LS_EDUCATION_SYNTHETIC_LOOPBACK","LS_DATABASE_URL","LS_DATABASE_TLS","TEST_DATABASE_URL","LS_MIGRATION_DATABASE_URL"] as const;
@@ -37,10 +37,12 @@ export function educationRehearsalEnabled(env:Environment=process.env):boolean{
 /** Uses the retained native store/identity and exact catch-all, not a test API. */
 export function composeEducationResources(regular:Handler,identity:EducationRuntime,env:Environment=process.env):Handler{
  if(!educationRehearsalEnabled(env)||identity.config.origin!==new URL(env.LS_APP_ORIGIN!).origin)return regular;
+ const boundStore=identity.store.bindDatabaseTarget?.(env.LS_DATABASE_URL!);
+ if(!boundStore)return regular;
  const admittedSignature=signature(env);
- const education=new FishingLessonHttp({config:identity.config,sessions:identity.services.sessions,limits:identity.services.limits,
-  audit:identity.services.audit,clock:identity.clock},actor=>new FishingLessonJourney(
-   new FishingLessonNativeStore(identity.store,identity.config.keyring,actor,identity.clock,{childAccountsEnabled:identity.config.childAccountsEnabled===true}),
+ const education=new FishingLessonHttp({config:identity.config,sessions:new IdentitySessions(boundStore,identity.config,identity.clock),limits:new PostgresIdentityRateStore(boundStore),
+  audit:durableAuditSink(boundStore),clock:identity.clock},actor=>new FishingLessonJourney(
+   new FishingLessonNativeStore(boundStore,identity.config.keyring,actor,identity.clock,{childAccountsEnabled:identity.config.childAccountsEnabled===true}),
    ()=>identity.clock.now()));
  return {handle(request){
   // Do not continue on cached native/config identity after availability drift.

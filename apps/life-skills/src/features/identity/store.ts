@@ -4,6 +4,9 @@ export interface SqlSession {
 }
 export interface IdentityStore {
   transaction<T>(work: (tx: SqlSession) => Promise<T>): Promise<T>;
+  /** Server-owned capability bound to original initialized driver provenance.
+   * Absence means no target-binding claim; callers must not infer it from env. */
+  bindDatabaseTarget?(expectedUrl:string):IdentityStore|null;
 }
 export async function one<T extends object>(tx: SqlSession, statement: string, values: readonly unknown[] = []): Promise<T | null> {
   const rows = await tx.query<T>(statement, values);

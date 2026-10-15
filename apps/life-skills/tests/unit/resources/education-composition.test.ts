@@ -4,6 +4,7 @@ vi.mock("server-only",()=>({}));
 import {composeEducationResources,educationRehearsalEnabled} from "../../../src/features/resources/education-runtime.ts";
 import {parseIdentityConfig} from "../../../src/features/identity/config.ts";
 import {systemClock} from "../../../src/features/identity/types.ts";
+import type {IdentityStore} from "../../../src/features/identity/store.ts";
 const db="postgresql://ls_synthetic:synthetic-only@127.0.0.1:54329/ls_calendar_test_education_fixture_test";
 const environment=()=>({NODE_ENV:"development",LS_APP_MODE:"foundation_preview",LS_PRIVATE_APP_ENABLED:"true",LS_IDENTITY_ENABLED:"true",
  LS_APP_ORIGIN:"https://localhost:3105",LS_EDUCATION_SYNTHETIC_LOOPBACK:"true",LS_DATABASE_TLS:"disable",LS_DATABASE_URL:db,
@@ -28,7 +29,10 @@ function runtime(env:ReturnType<typeof environment>){
  const key=()=>randomBytes(32).toString("base64url");
  const config=parseIdentityConfig({...env,LS_IDENTITY_WORKSPACE_ID:randomUUID(),LS_IDENTITY_ACTIVE_KEY_ID:"synthetic",
   LS_IDENTITY_DATA_KEYS:JSON.stringify({synthetic:key()}),LS_IDENTITY_CSRF_KEY:key(),LS_IDENTITY_LOOKUP_KEY:key(),LS_IDENTITY_RATE_KEY:key()});
- return {config,clock:systemClock,store:{transaction:vi.fn(async()=>{throw Error("UNEXPECTED_SYNTHETIC_SQL");})},
+ const originalTarget=env.LS_DATABASE_URL;
+ const transaction=vi.fn(async()=>{throw Error("UNEXPECTED_SYNTHETIC_SQL");});
+ const store:IdentityStore&{transaction:typeof transaction}={transaction,bindDatabaseTarget:url=>url===originalTarget?store:null};
+ return {config,clock:systemClock,store,
   services:{sessions:{actor:vi.fn(async()=>{throw Error("UNEXPECTED_SYNTHETIC_SESSION");}),csrf:()=>"synthetic"},
    limits:{consume:vi.fn(async()=>({count:1,retryAfterMs:1000}))},audit:{write:vi.fn(async()=>{})}}};
 }
@@ -49,4 +53,14 @@ test("a changed but otherwise valid disposable target cannot reuse a cached comp
  env.LS_DATABASE_URL=db.replace("fixture","other");env.TEST_DATABASE_URL=env.LS_DATABASE_URL;env.LS_MIGRATION_DATABASE_URL=env.LS_DATABASE_URL;
  expect(educationRehearsalEnabled(env)).toBe(true);expect((await composed.handle(new Request(env.LS_APP_ORIGIN+"/api/resources/education/lesson"))).status).toBe(404);
  expect(regular.handle).toHaveBeenCalledOnce();expect(identity.store.transaction).not.toHaveBeenCalled();
+});
+test("RM-EDU-COMPOSITION-CACHED-TARGET-01: cached A before admission of valid B is denied without SQL",async()=>{
+ const env=environment(),identity=runtime(env),regular={handle:vi.fn(async()=>new Response(null,{status:404}))};
+ env.LS_DATABASE_URL=db.replace("fixture","target_b");env.TEST_DATABASE_URL=env.LS_DATABASE_URL;env.LS_MIGRATION_DATABASE_URL=env.LS_DATABASE_URL;
+ expect(educationRehearsalEnabled(env)).toBe(true);expect(composeEducationResources(regular,identity,env)).toBe(regular);
+ expect(identity.store.transaction).not.toHaveBeenCalled();
+});
+test("absent driver provenance is not replaced with current environment assertions",()=>{
+ const env=environment(),identity=runtime(env),regular={handle:vi.fn(async()=>new Response(null,{status:404}))};
+ delete identity.store.bindDatabaseTarget;expect(composeEducationResources(regular,identity,env)).toBe(regular);expect(identity.store.transaction).not.toHaveBeenCalled();
 });
