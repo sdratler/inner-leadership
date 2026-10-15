@@ -31,12 +31,13 @@ if(!runtimePath){
   const response=page.waitForResponse(r=>new URL(r.url()).pathname==="/api/identity/login"&&r.request().method()==="POST",{timeout:30000});
   await page.getByRole("button",{name:t(locale,"Sign in","כניסה"),exact:true}).click();expect((await response).status()).toBe(200);await expect(page).toHaveURL(target,{timeout:30000});
  }
- async function separate(contexts:BrowserContext[],browser:Browser,mobile:boolean){
-  const context=await browser.newContext({baseURL:runtime.origin,ignoreHTTPSErrors:true,viewport:mobile?{width:390,height:844}:{width:1440,height:900},isMobile:mobile,hasTouch:mobile});contexts.push(context);return context.newPage();
+ async function separate(contexts:BrowserContext[],browser:Browser,parent:Page){
+  const viewport=parent.viewportSize();if(!viewport)throw Error("EXACT_ROLE_VIEWPORT_REQUIRED");
+  const context=await browser.newContext({baseURL:runtime.origin,ignoreHTTPSErrors:true,viewport,isMobile:viewport.width<=390,hasTouch:viewport.width<=768});contexts.push(context);const page=await context.newPage();expect(page.viewportSize()).toEqual(viewport);return page;
  }
  const openDetails=async(page:Page,name:string)=>{const summary=page.getByText(name,{exact:true});if(!await summary.locator("..").getAttribute("open").then(value=>value!==null))await summary.click();};
  for(const locale of["en","he"]as const)test(`${locale}: real parent submission/replay, private teacher review, deliberate own-parent publication/reload`,async({page,browser},info)=>{
-  const ref=edu.references[locale]!,contexts:BrowserContext[]=[],mobile=info.project.name!=="desktop";
+  const ref=edu.references[locale]!,contexts:BrowserContext[]=[];
   const draft=`Synthetic retained ${locale} answer. `+"תרגול סינתטי בלבד. ".repeat(35),note="SYNTHETIC PRIVATE OBSERVATION MUST NOT REACH FAMILY",summary=`Safe synthetic parent summary ${locale}.`;
   try{
    await login(page,"parent",href(locale,ref,"lesson"),locale);
@@ -65,7 +66,7 @@ if(!runtimePath){
    expect(bodies).toHaveLength(2);expect(createHash("sha256").update(bodies[0]!).digest("hex")).toBe(createHash("sha256").update(bodies[1]!).digest("hex"));await page.unrouteAll({behavior:"wait"});
    await page.reload();await expect(answer).toHaveValue(draft.trim());await expect(page.getByRole("button",{name:t(locale,"Submit my work","שליחת העבודה שלי"),exact:true})).toBeDisabled();
    await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:info.outputPath(`education-parent-${locale}-${info.project.name}.png`)});
-   const teacher=await separate(contexts,browser,mobile);await login(teacher,"practitioner",href(locale,ref,"review"),locale);
+   const teacher=await separate(contexts,browser,page);await login(teacher,"practitioner",href(locale,ref,"review"),locale);
    await teacher.getByLabel(t(locale,"Observed task","המשימה שנצפתה"),{exact:true}).fill("Synthetic hookless task");await teacher.getByLabel(t(locale,"Assistance","סיוע"),{exact:true}).selectOption("with_guidance");
    await openDetails(teacher,t(locale,"Optional private note","הערה פרטית אופציונלית"));await teacher.getByLabel(t(locale,"Private teacher note","הערת מדריך פרטית"),{exact:true}).fill(note);
    await teacher.getByRole("tab",{name:t(locale,"Publish summary","פרסום סיכום"),exact:true}).click();await teacher.getByRole("tab",{name:t(locale,"Teacher review","עיון המדריך"),exact:true}).click();await openDetails(teacher,t(locale,"Optional private note","הערה פרטית אופציונלית"));await expect(teacher.getByLabel(t(locale,"Private teacher note","הערת מדריך פרטית"),{exact:true})).toHaveValue(note);
@@ -79,23 +80,23 @@ if(!runtimePath){
    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:info.outputPath(`education-portfolio-${locale}-${info.project.name}.png`)});
   }finally{for(const c of contexts)await c.close();}
  });
- test("ordinary roles/anonymous access deny unauthorized lesson and private teacher content",async({page,browser},info)=>{
+ test("ordinary roles/anonymous access deny unauthorized lesson and private teacher content",async({page,browser})=>{
   const ref=edu.references.en!,contexts:BrowserContext[]=[];
   try{expect((await page.request.get(query(ref,"learner"))).status()).toBe(401);
    await login(page,"unauthorized_parent",href("en",ref,"lesson"));await expect(page.locator(".lsw-feature-page").getByRole("alert")).toContainText("cannot be authorized");expect((await page.request.get(query(ref,"learner"))).status()).toBe(403);expect((await page.request.get(query(ref,"teacher"))).status()).toBe(403);
-   const adult=await separate(contexts,browser,info.project.name!=="desktop");await login(adult,"adult_client","/en/client");expect((await adult.request.get(query(ref,"parent"))).status()).toBe(403);
+   const adult=await separate(contexts,browser,page);await login(adult,"adult_client","/en/client");expect((await adult.request.get(query(ref,"parent"))).status()).toBe(403);
    expect(JSON.stringify(await(await page.request.get(query(ref,"parent"))).json())).not.toMatch(/PRIVATE OBSERVATION|TEACHER KEY|Safe synthetic/);
   }finally{for(const c of contexts)await c.close();}
  });
- test("recipient withdrawn after teacher read is denied; draft survives authorized reload and deliberate reselection",async({page,browser},info)=>{
+ test("recipient withdrawn after teacher read is denied; draft survives authorized reload and deliberate reselection",async({page,browser})=>{
   const ref=edu.references.control!,contexts:BrowserContext[]=[],pool=new pg.Pool({connectionString:safeTestUrl(),ssl:false,max:1});
   try{await login(page,"parent",href("en",ref,"lesson"));await page.getByLabel("Describe your synthetic hookless practice.",{exact:true}).fill("Synthetic control submission");await page.getByRole("button",{name:"Submit my work",exact:true}).click();await expect(page.getByRole("status").filter({hasText:"Saved in the app"})).toBeVisible();
-   const teacher=await separate(contexts,browser,info.project.name!=="desktop");await login(teacher,"practitioner",href("en",ref,"review"));await teacher.getByLabel("Observed task",{exact:true}).fill("Synthetic reviewed control task");await teacher.getByLabel("Assistance",{exact:true}).selectOption("independent");await teacher.getByRole("button",{name:"Save private observation",exact:true}).click();await expect(teacher.getByRole("status").filter({hasText:"Saved in the app"})).toBeVisible();
+   const teacher=await separate(contexts,browser,page);await login(teacher,"practitioner",href("en",ref,"review"));await teacher.getByLabel("Observed task",{exact:true}).fill("Synthetic reviewed control task");await teacher.getByLabel("Assistance",{exact:true}).selectOption("independent");await teacher.getByRole("button",{name:"Save private observation",exact:true}).click();await expect(teacher.getByRole("status").filter({hasText:"Saved in the app"})).toBeVisible();
    await teacher.getByRole("tab",{name:"Publish summary",exact:true}).click();await teacher.getByLabel("Parent-safe summary",{exact:true}).fill("Retained safe publication draft");await teacher.getByLabel(edu.credentials.find(c=>c.role==="parent")!.email,{exact:true}).check();
    await pool.query("UPDATE ls_education.account_grants SET permissions=ARRAY['submit','read_learner'] WHERE workspace_id=$1 AND account_id=$2 AND module_id=$3 AND version=$4",[edu.workspaceId,edu.credentials.find(c=>c.role==="parent")!.accountId,ref.moduleId,ref.version]);
    await teacher.getByRole("button",{name:"Publish selected summary",exact:true}).click();await expect(teacher.locator(".lsw-feature-page").getByRole("alert")).toContainText("cannot be authorized");await teacher.getByRole("button",{name:"Reload lesson",exact:true}).click();await expect(teacher.getByLabel("Parent-safe summary",{exact:true})).toHaveValue("Retained safe publication draft");await expect(teacher.getByLabel(edu.credentials.find(c=>c.role==="parent")!.email,{exact:true})).toHaveCount(0);
    await teacher.getByLabel(edu.credentials.find(c=>c.role==="other_parent")!.email,{exact:true}).check();await teacher.getByRole("button",{name:"Publish selected summary",exact:true}).click();await expect(teacher.getByRole("status").filter({hasText:"Saved in the app"})).toBeVisible();
-   const recipient=await separate(contexts,browser,info.project.name!=="desktop");await login(recipient,"other_parent",href("en",ref,"portfolio"));await expect(recipient.getByText("Retained safe publication draft",{exact:true})).toBeVisible();expect((await page.request.get(query(ref,"parent"))).status()).toBe(403);expect((await page.request.get(query(ref,"learner"))).status()).toBe(200);
+   const recipient=await separate(contexts,browser,page);await login(recipient,"other_parent",href("en",ref,"portfolio"));await expect(recipient.getByText("Retained safe publication draft",{exact:true})).toBeVisible();expect((await page.request.get(query(ref,"parent"))).status()).toBe(403);expect((await page.request.get(query(ref,"learner"))).status()).toBe(200);
   }finally{await pool.end();for(const c of contexts)await c.close();}
  });
  test("saved source withdrawal and expired ordinary session clear rather than disclose retained work",async({page})=>{
