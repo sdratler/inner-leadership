@@ -1,0 +1,19 @@
+{
+  "date": "2026-10-15",
+  "base": "cbc1dd9c581cae6773e6eb46326462bab2fbfbae",
+  "cwd": "D:/life-skills-rm-stage-20261015/apps/life-skills",
+  "node": "C:/Users/User/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node.exe",
+  "dependencies": "D:/life-skills-fishing-lessons-20261012/apps/life-skills/node_modules",
+  "packageLockSha256": "1a58012cd96a17dc37bbce4e1641985991acf7039871121b35bf87b08ac6bec7",
+  "eslintConfigSha256": "26220573aa9ad3115c10ee1588453cf7c8c7b286a3e12d7cdaf7f54676c4585a",
+  "checks": [
+    {"command":"<node> <dependencies>/vitest/vitest.mjs run --config tests/unit/fishing-stage/vitest.config.ts","exitCode":0,"testFiles":3,"passed":37,"failed":0},
+    {"command":"<node> tests/unit/fishing-stage/typecheck.mjs <dependencies>","exitCode":0,"ownedTypeScriptFiles":12,"importsAlsoChecked":true,"strict":true},
+    {"command":"<node> tests/unit/fishing-stage/lint.mjs <dependencies>","exitCode":0,"files":14,"errors":0,"warnings":0}
+  ],
+  "sourceRevisionsRevalidated": true,
+  "sharedContractCheckoutSha256": "a4da8022de59ddd67e134be1dfc8fd9ed045cab4660aefb21bd9a50b514df7d6",
+  "sharedContractGitBlob": "a3b957f87d941305b3a43214bc2c26a0de618998",
+  "notRun": ["native database or fixture", "candidate SQL", "full app build or full suite", "browser or ordinary login", "provider", "push", "PR", "merge", "deployment"],
+  "runtimeStatus": "UNMOUNTED_DOMAIN_AND_SYNTHETIC_ADAPTER_ONLY"
+}

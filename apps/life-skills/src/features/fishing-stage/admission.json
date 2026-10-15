@@ -1,0 +1,33 @@
+{
+  "worker": "01a135ff-5783-72d2-a558-a88bbdcb24fa",
+  "role": "CALENDAR-CLASSROOM",
+  "admission": "RM11-SOURCE-CONTROL-HANDOFF-20261015-01:ADMIT-CALENDAR-CLASSROOM",
+  "controlReadback": {"controlEventsRow":799,"changeLogRow":818,"interfaceRow":19},
+  "worktree": "D:/life-skills-rm-stage-20261015",
+  "branch": "codex/life-skills-rm-stage-20261015",
+  "base": "cbc1dd9c581cae6773e6eb46326462bab2fbfbae",
+  "paths": ["apps/life-skills/src/features/fishing-stage/**","apps/life-skills/tests/unit/fishing-stage/**","apps/life-skills/tests/database/fishing-stage/**"],
+  "sharedContract": {
+    "path": "apps/life-skills/src/features/fishing/contract.ts",
+    "version": "rm-fishing-contract-v1",
+    "gitBlob": "a3b957f87d941305b3a43214bc2c26a0de618998",
+    "gitRawLfSha256": "dad0ffd23ca5625cc3e7b1e77ed2f2043b7fe0a8314faefd13fbfdee92d7114a",
+    "checkoutCrlfSha256": "a4da8022de59ddd67e134be1dfc8fd9ed045cab4660aefb21bd9a50b514df7d6",
+    "rawGitEqualsCheckoutAfterExplicitCrlfToLf": true,
+    "readOnly": true
+  },
+  "source": {
+    "package": "RM-FULL-IMPLEMENTATION-20261015-11",
+    "archiveSha256": "0b8a805d428344c1a07428bf46c49352717e05b4da6cc97a377c55cdf3c0fc10",
+    "consumed": ["00_START_HERE.md","01_SOURCE_DECISIONS_FINANCE.md","03_FISHING_CALENDAR_CLASSROOM.md","04_SHARED_CONTRACTS_AND_OWNERSHIP.md","prompts/CALENDAR.txt"],
+    "roleDocumentId": "1Sk3-kBNeFUCzrX2Eo0l7xgCt8NcI_aBfEjBL6yhHJjI",
+    "roleRevision": "AHj4eMTjsF3iyzGIT1KD7OvvwZSqaXYjAVaXzvjKr7VbTP0uC0BKvnwW9m8gnmyvAFJDMyiTP5HO-mETtch8IxUuVfWhjDYl7HO14p_kj8c",
+    "floridaStartId": "1fyrcMEBOsf1T50m3JN-iexE96fbxvpDQfTFHLYhctT0",
+    "floridaStartRevision": "AHj4eMSNFYBu8IFFZaRcu1IwfDaNvFw-IW6-AUF_LH9cI73cqWECnLtSpgL2nNDQwkbdbkcgR3F0Za4hNChdgo6rs4LmhBgMRojmZsY0m44",
+    "rules": ["RM-STRIPE-STAGE-LIFECYCLE-20261015-10","RM-FAMILIES-ABSENCE-PRESTART-20261015-09"]
+  },
+  "optionalPorts": [3113,3114],
+  "futureNativeDatabasePattern": "ls_calendar_test_rm_stage_<unique>_test",
+  "nativeFixtureOrMigrationExecution": "MAIN_AUTHORIZATION_REQUIRED_NOT_RUN",
+  "scopeAcknowledgedBeforeWrites": true
+}
