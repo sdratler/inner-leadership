@@ -44,7 +44,7 @@ if(!runtimePath){
    const lessonTab=page.getByRole("tab",{name:t(locale,"Lesson","שיעור"),exact:true}),portfolioTab=page.getByRole("tab",{name:t(locale,"Published summary","סיכום שפורסם"),exact:true});
    await lessonTab.focus();await lessonTab.press(locale==="he"?"ArrowLeft":"ArrowRight");await expect(portfolioTab).toHaveAttribute("aria-selected","true");await expect(portfolioTab).toBeFocused();
    await page.goBack();await expect(lessonTab).toHaveAttribute("aria-selected","true");await expect(answer).toHaveValue(draft);
-   let failedRead=false;await page.route("**/api/resources/education/lesson?*",async route=>{if(!failedRead){failedRead=true;return route.abort("failed");}return route.continue();});
+   let failedRead=false;await page.route("**/api/resources/education/lesson?*",async route=>{if(!failedRead&&new URL(route.request().url()).searchParams.get("view")==="parent"){failedRead=true;return route.abort("failed");}return route.continue();});
    await portfolioTab.click();await expect(page.locator(".lsw-feature-page").getByRole("alert")).toContainText(t(locale,"could not be loaded","לא ניתן לטעון"));
    await page.getByRole("button",{name:t(locale,"Reload lesson","טעינת השיעור מחדש"),exact:true}).click();await expect(page.getByText(t(locale,"No summary has been published for you for this lesson.","טרם פורסם עבורכם סיכום לשיעור זה."),{exact:true})).toBeVisible();await page.unrouteAll({behavior:"wait"});
    await lessonTab.click();await expect(answer).toHaveValue(draft);
