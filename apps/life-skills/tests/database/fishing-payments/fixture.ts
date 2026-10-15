@@ -14,7 +14,7 @@ import { FishingPaymentStore } from '../../../src/features/fishing-payments/stor
 import { FishingPaymentService } from '../../../src/features/fishing-payments/service.ts';
 import { FishingReceiptInbox } from '../../../src/features/fishing-payments/receipts.ts';
 import { offerFixture,merchant } from '../../unit/fishing-payments/fixture.ts';
-export function nativeUrl(){const raw=process.env.TEST_DATABASE_URL;if(!raw)throw Error('MAIN_MUST_PROVIDE_DISPOSABLE_DATABASE');const u=new URL(raw);if(u.hostname!=='127.0.0.1'||!/^\/ls_calendar_test_rm_payments_[a-f0-9]{32}_test$/.test(u.pathname))throw Error('WRONG_PAYMENT_TEST_TARGET');return raw;}
+export function nativeUrl(){const raw=process.env.TEST_DATABASE_URL;if(!raw)throw Error('MAIN_MUST_PROVIDE_DISPOSABLE_DATABASE');const u=new URL(raw);if(u.hostname!=='127.0.0.1'||!/^\/ls_calendar_test_rm_pay_[a-f0-9]{32}_test$/.test(u.pathname))throw Error('WRONG_PAYMENT_TEST_TARGET');return raw;}
 export class FakeMerchant implements SyntheticHostedProvider {
  readonly execution='synthetic' as const;readonly binding=merchant;
  readonly results=new Map<string,HostedResult|RefundResult>();calls=0;loseResponse=false;

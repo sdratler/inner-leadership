@@ -10,7 +10,7 @@ Intent: RM11 assigned01/02/04/08, Florida -10/-09/-08. USD only. No old ILS writ
    not apply DDL. All native queries use the existing IdentityStore, SqlSession,
    freshActor, parameter binder and driver normalization. The native test file
    requires an already-migrated fresh loopback database named exactly
-   ls_calendar_test_rm_payments_<32hex>_test and refuses any other target.
+   ls_calendar_test_rm_pay_<32hex>_test and refuses any other target.
 2. Supply FishingAuthority from ports.ts: loadApprovedOffer returns the actual
    immutable server-owned offer, not request JSON; authorize reloads current
    guardian/payer/household relationships, capacity, operator/terms/policy proof
