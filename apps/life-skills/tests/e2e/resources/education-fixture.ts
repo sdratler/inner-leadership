@@ -6,6 +6,15 @@ import {learnerLessonSchema,type LessonReference} from "../../../src/features/re
 import {educationCatalogAad} from "../../../src/features/resources/fishing-lesson-native-store.ts";
 import {educationArtifactAad,type EducationStorageBinding} from "../../../src/features/resources/fishing-lesson-storage-contract.ts";
 const hash=(value:string)=>createHash("sha256").update(value).digest("hex");
+/** App and test processes share one admitted target, not one execution mode.
+ * Keep the original strict fixture input (including an absent CI raw URL). */
+export function educationBrowserTestEnvironment(app:Record<string,string|undefined>,fixture:Record<string,string|undefined>):NodeJS.ProcessEnv{
+ const environment:NodeJS.ProcessEnv={...app,NODE_ENV:"test"};
+ for(const key of["LS_APP_MODE","TEST_DATABASE_URL"]as const){
+  if(fixture[key]===undefined)delete environment[key];else environment[key]=fixture[key];
+ }
+ return environment;
+}
 const protectedTables=["ls_calendar.tasks","ls_calendar.task_history","ls_calendar.appointments","ls_cases.cases","ls_cases.case_guardians",
  "ls_contact_ops.profiles","ls_contact_ops.outbound_projections","ls_onboarding.first_session_orders","ls_identity.auth_mail_outbox"];
 export async function educationProtectedSnapshot(f:Fixture){return Promise.all(protectedTables.map(async table=>{

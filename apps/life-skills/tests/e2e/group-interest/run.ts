@@ -16,7 +16,6 @@ import type {CutoverEvidence} from "../../../src/features/contact-ops/server/cut
 import {poolStore} from "../../database/calendar/fixture.ts";
 import {privateDigest} from "../../../src/features/contact-ops/server/digests.ts";
 import {floridaGroupApplicationNotice} from "../../../src/features/group-application/contract.ts";
-import {educationBrowserFixture,educationProtectedSnapshot} from "../resources/education-fixture.ts";
 
 const projects={desktop:3105,tablet768:3108,mobile390:3106,mobile340:3107} as const;
 const project=process.env.LS_GROUP_INTEREST_TEST_PROJECT as keyof typeof projects|undefined;
@@ -212,8 +211,11 @@ try{
   await f.pool.query("UPDATE ls_identity.sessions SET revoked_at=clock_timestamp() WHERE workspace_id=$1",[workspaceId]);
   fishingRuntime={credentials,inquiries,protectedPersonId:existing.personId};fishingBefore=await fishingSnapshot();
  }
- const educationRuntime=educationOnly?await educationBrowserFixture(f,lookupKey):null;
- const educationBefore=educationOnly?await educationProtectedSnapshot(f):null;
+ // Ordinary Group Intake callers have no react-server loader condition. Do not
+ // load the education-only native module into those unchanged test paths.
+ const educationModule=educationOnly?await import("../resources/education-fixture.ts"):null;
+ const educationRuntime=educationModule?await educationModule.educationBrowserFixture(f,lookupKey):null;
+ const educationBefore=educationModule?await educationModule.educationProtectedSnapshot(f):null;
  const originalPublic=await f.pool.query("SELECT to_jsonb(a)::text AS snapshot FROM ls_service_interest.public_applications a WHERE workspace_id=$1 AND id=$2",[workspaceId,publicApplicationId]);
  if(baseline.inquiries!==0||baseline.operations!==0||baseline.serviceInterests!==0||baseline.serviceOperations!==0||baseline.draftGroups!==0||baseline.draftOperations!==0||baseline.proposedPlacements!==0||baseline.placementOperations!==0||baseline.placementMoves!==0||baseline.movementOperations!==0||baseline.meetingRevisions!==0||baseline.meetingOperations!==0||baseline.practiceRevisions!==0||baseline.practiceOperations!==0)throw new Error("GROUP_INTEREST_FIXTURE_NOT_EMPTY");
  const runtimePath=join(folder,"synthetic-runtime.json");
@@ -242,11 +244,13 @@ try{
  else if(sampleOnly)selection.push("--grep","Florida owner journey hosted sample");
  else if(process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==="true")selection.push("--grep",process.env.LS_FLORIDA_INSTITUTION_TEST_ONLY==="true"?"Florida owner journey school inquiry|Florida owner journey.*native inquiry replay|Florida owner journey authorization":"Florida owner journey");
  else selection.push("--grep-invert","Florida owner journey");
- tests=spawn(process.execPath,[resolve("node_modules/@playwright/test/cli.js"),"test","--config","tests/e2e/group-interest/playwright.config.ts",...selection],{env,stdio:["ignore","inherit","inherit"]});
+ const testEnv=educationModule?educationModule.educationBrowserTestEnvironment(env,process.env):env;
+ tests=spawn(process.execPath,[resolve("node_modules/@playwright/test/cli.js"),"test","--config","tests/e2e/group-interest/playwright.config.ts",...selection],{env:testEnv,stdio:["ignore","inherit","inherit"]});
  const [code]=await once(tests,"exit");if(code!==0)throw new Error("GROUP_INTEREST_BROWSER_ACCEPTANCE_FAILED");
  if(educationOnly){
+  if(!educationModule)throw new Error("EDUCATION_FIXTURE_NOT_READY");
   phase="education-native-readback";
-  if(JSON.stringify(await educationProtectedSnapshot(f))!==JSON.stringify(educationBefore))throw new Error("EDUCATION_UI_FORBIDDEN_DATABASE_EFFECT");
+  if(JSON.stringify(await educationModule.educationProtectedSnapshot(f))!==JSON.stringify(educationBefore))throw new Error("EDUCATION_UI_FORBIDDEN_DATABASE_EFFECT");
   const count=(await f.pool.query("SELECT count(*)::int AS total FROM ls_education.lesson_events WHERE workspace_id=$1",[workspaceId])).rows[0].total;
   if(count!==9)throw new Error("EDUCATION_UI_EVENT_REPLAY_OR_FLOW_INCOMPLETE");
   console.log(`EDUCATION_BROWSER_ACCEPTANCE_PASS project=${project} ordinaryLogin=true events=${count} unrelatedEffects=0 providerEffects=0`);
