@@ -40,13 +40,12 @@ export async function readEducationalChildContexts(tx:SqlSession,actor:Actor,rin
   const rows=await tx.query<{id:string;ciphertext:string}>(`SELECT p.id,p.profile_ciphertext AS ciphertext
    FROM ls_education.guardian_authorities g
    JOIN ls_identity.people p ON p.workspace_id=g.workspace_id AND p.id=g.learner_id
-   JOIN ls_identity.accounts verifier ON verifier.workspace_id=g.workspace_id AND verifier.id=g.verified_by
    WHERE g.workspace_id=$1 AND g.account_id=$2 AND g.active AND g.verified_at<=clock_timestamp()
-    AND length(btrim(g.source_reference))>0 AND p.kind='minor' AND verifier.role='practitioner'
+    AND p.kind='minor'
     AND NOT EXISTS(SELECT 1 FROM ls_education.access_revocations r WHERE r.workspace_id=g.workspace_id
      AND (r.account_id IS NULL OR r.account_id=g.account_id) AND (r.learner_id IS NULL OR r.learner_id=g.learner_id)
      AND r.module_id IS NULL AND r.version IS NULL)
-   ORDER BY p.id LIMIT 101 FOR SHARE OF g,p,verifier`,[current.workspaceId,current.id]);
+   ORDER BY p.id LIMIT 101 FOR SHARE OF g,p`,[current.workspaceId,current.id]);
   if(rows.length>educationalChildContextLimit)throw new AppError("UNAVAILABLE");
   const children=rows.map(row=>{
    const learnerId=asId(person.parse(row.id),"person");

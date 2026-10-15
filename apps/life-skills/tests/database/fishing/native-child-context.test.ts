@@ -71,10 +71,13 @@ test("current guardian removal and global revocation hide context; lesson-only r
  await f.pool.query("UPDATE ls_education.guardian_authorities SET active=false WHERE workspace_id=$1 AND learner_id=$2",[f.workspaceId,learner]);expect((await f.reader.read(f.parent)).children).toEqual([]);await expect(f.reader.read(f.parent,learner)).rejects.toMatchObject({code:"NOT_FOUND"});
  await f.pool.query("UPDATE ls_education.guardian_authorities SET active=true WHERE workspace_id=$1 AND learner_id=$2",[f.workspaceId,learner]);await f.revoke(learner,f.parent.id);expect((await f.reader.read(f.parent)).children).toEqual([]);
 });
-test("future/unverified source, adult subject and missing guardian are not children; broad workspace revocation wins",async()=>{
- const f=await fixture(),valid=await f.person("minor","Valid child"),future=await f.person("minor","Not yet verified"),adult=await f.person("adult","Not a child"),wrongVerifier=await f.person("minor","Unverified source");
- await f.guardian(valid);await f.guardian(future,f.parent,new Date(Date.now()+3600000));await f.guardian(adult);await f.guardian(wrongVerifier,f.parent,new Date(Date.now()-1000),f.other);await f.person("minor","No binding");
- expect((await f.reader.read(f.parent)).children.map(x=>x.learnerId)).toEqual([valid]);await f.revoke(null,null);expect((await f.reader.read(f.parent)).children).toEqual([]);
+test("historical verifier role changes do not revoke a persisted guardian; future/adult/missing relationships and global revocation still deny",async()=>{
+ const f=await fixture(),valid=await f.person("minor","Valid child"),future=await f.person("minor","Not yet verified"),adult=await f.person("adult","Not a child");
+ await f.guardian(valid);await f.guardian(future,f.parent,new Date(Date.now()+3600000));await f.guardian(adult);await f.person("minor","No binding");
+ const before=await f.reader.read(f.parent,valid);expect(before.children.map(x=>x.learnerId)).toEqual([valid]);
+ await f.pool.query("UPDATE ls_identity.accounts SET role='parent' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.operator.id]);
+ expect(await f.reader.read(f.parent,valid)).toEqual(before);
+ await f.revoke(null,null);expect((await f.reader.read(f.parent)).children).toEqual([]);await expect(f.reader.read(f.parent,valid)).rejects.toMatchObject({code:"NOT_FOUND"});
 });
 test("malformed ciphertext fails safely and the SQL-bound reader works inside the caller's native transaction",async()=>{
  const f=await fixture(),learner=await f.person("minor","Synthetic child");await f.guardian(learner);
