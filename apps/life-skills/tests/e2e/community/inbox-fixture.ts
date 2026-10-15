@@ -4,11 +4,14 @@ import type {Server} from "node:net";
 import type {Fixture} from "../../database/calendar/fixture.ts";
 import {randomBytes,createHash} from "node:crypto";
 import {hashPassword,blindEmail,seal} from "../../../src/features/identity/crypto.ts";
+import {OWNER_REPORT_RECIPIENT} from "../../../src/features/owner-digest/email.ts";
 
 export async function communityCredentials(f:Fixture,lookup:Buffer){
  const credentials=[];
  for(const[role,account]of[["practitioner",f.practitioner],["parent",f.parent]]as const){
-  const email=`synthetic-community-${role}@example.invalid`,password=randomBytes(18).toString("base64url");
+  // Existing owner policy, not an authorization bypass. This account/password
+  // exists only in the new disposable workspace; auth mail remains disabled.
+  const email=role==="practitioner"?OWNER_REPORT_RECIPIENT:`synthetic-community-${role}@example.invalid`,password=randomBytes(18).toString("base64url");
   await f.pool.query("UPDATE ls_identity.accounts SET password_hash=$3,email_blind=$4,email_ciphertext=$5 WHERE workspace_id=$1 AND id=$2",
    [f.workspaceId,account.actor.id,await hashPassword(password),blindEmail(email,lookup),seal(email,`email:${f.workspaceId}:${account.actor.id}`,f.keyring)]);
   credentials.push({role,email,password});
