@@ -5,12 +5,14 @@ import {readFileSync} from "node:fs";
 import {createHash} from "node:crypto";
 import {promisify} from "node:util";
 import {expect,test} from "@playwright/test";
+import {syntheticChildFailure} from "../group-interest/synthetic-child-output.ts";
 const runtimePath=process.env.LS_GROUP_INTEREST_FIXTURE_PATH;
 if(!runtimePath){
  test("mounted fishing lead controls through existing isolated native harness",async({},info)=>{
   test.setTimeout(240000);const project=info.project.name==="mobile"?"mobile390":info.project.name;
   const result=await promisify(execFile)(process.execPath,["--conditions=react-server","--import","tsx","tests/e2e/group-interest/run.ts"],{timeout:210000,maxBuffer:2*1024*1024,
-   env:{...process.env,LS_GROUP_INTEREST_TEST_PROJECT:project,LS_GROUP_INTEREST_TEST_ALLOW:"true",LS_CALENDAR_TEST_ALLOW:"true",LS_FISHING_LEAD_UI_ONLY:"true"}});
+   env:{...process.env,LS_GROUP_INTEREST_TEST_PROJECT:project,LS_GROUP_INTEREST_TEST_ALLOW:"true",LS_CALENDAR_TEST_ALLOW:"true",LS_FISHING_LEAD_UI_ONLY:"true"}})
+   .catch(error=>{throw new Error(syntheticChildFailure(error));});
   expect(result.stdout).toContain("FISHING_LEAD_UI_ACCEPTANCE_PASS project="+project);
  });
 }else{
@@ -21,7 +23,13 @@ if(!runtimePath){
   const t=(en:string,he:string)=>locale==="he"?he:en,credentials=runtime.fishing.credentials.find(c=>c.role==="practitioner")!,inquiry=runtime.fishing.inquiries.find(i=>i.locale===locale)!;
   await page.goto(`/${locale}/login?next=${encodeURIComponent(`/${locale}/app/group-applications`)}`);
   await page.getByLabel(t("Email","דוא״ל"),{exact:true}).fill(credentials.email);await page.getByLabel(t("Password","סיסמה"),{exact:true}).fill(credentials.password);
-  await page.getByRole("button",{name:t("Sign in","כניסה"),exact:true}).click();await expect(page).toHaveURL(`/${locale}/app/group-applications`);
+  // Observe the real authentication boundary before asserting navigation. The
+  // isolated dev server compiles identity routes on its first ordinary login;
+  // a failed HTTP login must remain a failure, not a retried/forced session.
+  const loginResponse=page.waitForResponse(response=>new URL(response.url()).pathname==="/api/identity/login"&&response.request().method()==="POST",{timeout:30000});
+  await page.getByRole("button",{name:t("Sign in","כניסה"),exact:true}).click();
+  expect((await loginResponse).status()).toBe(200);
+  await expect(page).toHaveURL(`/${locale}/app/group-applications`);
   const record=page.locator("article").filter({has:page.getByRole("heading",{name:inquiry.name,exact:true})}),details=record.locator("details").filter({has:page.getByRole("region",{name:t("Fishing lead membership controls","בקרות שיוך לרשימת המתעניינים בדיג"),includeHidden:true})});
   await details.locator("summary").focus();await page.keyboard.press("Enter");await expect(details.getByRole("button",{name:t("Add to Lead List","הוספה לרשימת המתעניינים"),exact:true})).toBeVisible();
   await details.getByRole("button",{name:t("Add to Lead List","הוספה לרשימת המתעניינים"),exact:true}).click();await expect(details.getByRole("heading",{name:t("Review lead-list addition","בדיקת הוספה לרשימת המתעניינים"),exact:true})).toBeFocused();
