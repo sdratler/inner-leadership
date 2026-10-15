@@ -76,6 +76,7 @@ export class FishingLessonNativeStore implements LessonJourneyStore {
   const assignment=await one<{active:boolean}>(tx,`SELECT active FROM ls_education.educational_assignments WHERE workspace_id=$1 AND learner_id=$2 AND module_id=$3 AND version=$4 FOR SHARE`,args);
   const grant=await one<{active:boolean;permissions:unknown}>(tx,`SELECT active,permissions FROM ls_education.account_grants WHERE workspace_id=$1 AND learner_id=$2 AND module_id=$3 AND version=$4 AND account_id=$5 FOR SHARE`,[...args,actor.id]);
   if(!assignment?.active||!grant?.active)return null;
+  const grantPermissions=permissions.parse(grant.permissions);
   const guardians=await tx.query<{id:string}>(`SELECT g.account_id AS id FROM ls_education.guardian_authorities g JOIN ls_identity.accounts a ON a.workspace_id=g.workspace_id AND a.id=g.account_id
    WHERE g.workspace_id=$1 AND g.learner_id=$2 AND g.active AND g.verified_at<=clock_timestamp() AND a.role='parent' AND a.state='active'
    AND NOT EXISTS(SELECT 1 FROM ls_education.access_revocations r WHERE r.workspace_id=g.workspace_id AND (r.account_id IS NULL OR r.account_id=g.account_id)
@@ -85,6 +86,25 @@ export class FishingLessonNativeStore implements LessonJourneyStore {
   // An education grant is not independent current guardian authority. Retained
   // access after withdrawal is unselected; no role silently bypasses this gate.
   if(guardians.length===0)return null;
+  // This narrower exact-reference set must not replace guardian authority for
+  // parent-assisted work. It is reloaded inside every locked save transaction,
+  // including new publication, rather than trusting a previously rendered list.
+  let eligibleSummaryRecipients:LessonJourneyContext["eligibleSummaryRecipients"]=[];
+  if(actor.role==="practitioner"&&(grantPermissions.includes("read_teacher")||grantPermissions.includes("publish_parent_summary"))){
+   const recipients=await tx.query<{id:string;emailCiphertext:string}>(`SELECT a.id,a.email_ciphertext AS "emailCiphertext"
+    FROM ls_identity.accounts a JOIN ls_identity.account_subjects s ON s.workspace_id=a.workspace_id AND s.account_id=a.id
+    JOIN ls_education.account_grants g ON g.workspace_id=a.workspace_id AND g.account_id=a.id
+    WHERE a.workspace_id=$1 AND a.id=ANY($2::uuid[]) AND a.role='parent' AND a.state='active'
+     AND a.email_verified_at IS NOT NULL AND a.email_verified_at<=clock_timestamp() AND a.password_hash IS NOT NULL
+     AND g.learner_id=$3 AND g.module_id=$4 AND g.version=$5 AND g.active AND 'read_parent'=ANY(g.permissions)
+    ORDER BY a.id LIMIT 11 FOR SHARE OF a,s,g`,[actor.workspaceId,guardians.map(g=>g.id),ref.learnerId,ref.moduleId,ref.version]);
+   if(recipients.length>10)throw new AppError("UNAVAILABLE");
+   eligibleSummaryRecipients=recipients.map(parent=>{
+    const label=unseal(parent.emailCiphertext,`email:${actor.workspaceId}:${parent.id}`,this.ring);
+    if(label.length>254||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(label))throw new AppError("UNAVAILABLE");
+    return {accountId:parent.id,label};
+   });
+  }
   const row=await one<{sourceId:string;revision:string;sha:string;learnerId:string;teacherId:string;state:string;ciphertext:string}>(tx,`SELECT c.source_id AS "sourceId",c.source_revision AS revision,c.source_sha256 AS sha,
    c.learner_artifact_id AS "learnerId",c.teacher_artifact_id AS "teacherId",c.approval_state AS state,c.payload_ciphertext AS ciphertext FROM ls_education.catalog_versions c
    JOIN ls_identity.accounts a ON a.workspace_id=c.workspace_id AND a.id=c.approved_by
@@ -103,6 +123,6 @@ export class FishingLessonNativeStore implements LessonJourneyStore {
   }
   const lesson=learnerLessonSchema.parse(JSON.parse(learnerBytes));
   if(lesson.moduleId!==ref.moduleId||lesson.version!==ref.version||lesson.locale!==catalog.learner.locale||lesson.status!=="approved"||lesson.sourceSha256!==catalog.source.sha256)throw new AppError("UNAVAILABLE");
-  return {actor,sessionRevoked:false,lesson,assignment:{...ref,workspaceId:actor.workspaceId,active:true},grant:{...ref,workspaceId:actor.workspaceId,accountId:actor.id,active:true,permissions:permissions.parse(grant.permissions)},authorizedParentAccountIds:guardians.map(g=>g.id)};
+  return {actor,sessionRevoked:false,lesson,assignment:{...ref,workspaceId:actor.workspaceId,active:true},grant:{...ref,workspaceId:actor.workspaceId,accountId:actor.id,active:true,permissions:grantPermissions},authorizedParentAccountIds:guardians.map(g=>g.id),eligibleSummaryRecipients};
  }
 }

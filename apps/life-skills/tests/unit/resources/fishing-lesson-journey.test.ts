@@ -17,7 +17,8 @@ function context(role:LessonJourneyContext["actor"]["role"]="parent"):LessonJour
   state:"active",locale:"en",sessionDigest:"synthetic",expiresAt:instant.getTime()+60000},sessionRevoked:false,lesson,
   assignment:{workspaceId:id(9),learnerId:id(3),moduleId:ref.moduleId,version:ref.version,active:true},
   grant:{workspaceId:id(9),accountId:actorId,learnerId:id(3),moduleId:ref.moduleId,version:ref.version,active:true,
-   permissions:["submit","observe","publish_parent_summary","read_learner","read_parent","read_teacher"]},authorizedParentAccountIds:[id(2)]};
+   permissions:["submit","observe","publish_parent_summary","read_learner","read_parent","read_teacher"]},authorizedParentAccountIds:[id(2)],
+   eligibleSummaryRecipients:[{accountId:id(2),label:"synthetic-parent@example.invalid"}]};
 }
 // Isolated synthetic repository, explicitly NOT native-storage or ordinary-login evidence.
 class Fixture implements LessonJourneyStore{
@@ -133,6 +134,27 @@ describe("prepared Real Mensch transactional journey — synthetic port only",()
    await expect(app.save(ref,{action:"publish_parent_summary",operationId:id(12),expectedRevisionId:observed.revisionId,
     observationId:observed.revisionId,summary:"safe",parentAccountIds})).rejects.toThrow("FORBIDDEN");
   expect(db.events).toHaveLength(2);
+ });
+ it("keeps publication recipients teacher-only and rechecks eligibility after the teacher read",async()=>{
+  const {db,app,observed}=await preparedJourney();
+  expect(await app.read(ref,"teacher")).toMatchObject({summaryRecipients:[{accountId:id(2),label:"synthetic-parent@example.invalid"}]});
+  db.current.eligibleSummaryRecipients=[];
+  await expect(app.save(ref,{action:"publish_parent_summary",operationId:id(12),expectedRevisionId:observed.revisionId,
+   observationId:observed.revisionId,summary:"safe",parentAccountIds:[id(2)]})).rejects.toThrow("FORBIDDEN");
+  expect(db.events).toHaveLength(2);
+  db.current=context("parent");db.current.eligibleSummaryRecipients=[];
+  expect(JSON.stringify(await app.read(ref,"parent"))).not.toMatch(/summaryRecipients|synthetic-parent/);
+  expect(JSON.stringify(await app.read(ref,"learner"))).not.toMatch(/summaryRecipients|synthetic-parent/);
+  await app.save(ref,submit(13,observed.revisionId)); // submit authority is independent.
+  expect(db.events).toHaveLength(3);
+ });
+ it("preserves committed actor-bound publication replay without authorizing a new ineligible share",async()=>{
+  const {db,app,observed}=await preparedJourney(),command={action:"publish_parent_summary",operationId:id(12),expectedRevisionId:observed.revisionId,
+   observationId:observed.revisionId,summary:"safe",parentAccountIds:[id(2)]};
+  const saved=await app.save(ref,command);db.current.eligibleSummaryRecipients=[];
+  expect(await app.save(ref,command)).toEqual({...saved,duplicate:true});
+  await expect(app.save(ref,{...command,operationId:id(14),expectedRevisionId:saved.revisionId})).rejects.toThrow("FORBIDDEN");
+  expect(db.events).toHaveLength(3);
  });
  it("rejects source-byte drift and broken history rather than returning a successful empty portfolio",async()=>{
   const {db,app}=await preparedJourney();db.current.lesson={...lesson,sourceSha256:"b".repeat(64)};

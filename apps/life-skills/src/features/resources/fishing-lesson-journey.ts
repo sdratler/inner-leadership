@@ -38,12 +38,24 @@ export type LessonJourneyContext={
  // Loaded from verified current relationships, never from command/body labels.
  grant:{workspaceId:string;accountId:string;learnerId:string;moduleId:string;version:string;active:boolean;permissions:readonly Permission[]};
  authorizedParentAccountIds:readonly string[];
+ // Independent publication eligibility, not assisted-submission authority.
+ eligibleSummaryRecipients:readonly {accountId:string;label:string}[];
 };
 export type LessonJourneyEvent={
  id:string;operationId:string;digest:string;previousRevisionId:string|null;
  workspaceId:string;learnerId:string;moduleId:string;version:string;sourceSha256:string;
  actorId:string;actorRole:Actor["role"];at:string;command:Command;
 };
+export type LessonLearnerRead={
+ lesson:Pick<LearnerLesson,"moduleId"|"version"|"stage"|"locale"|"title"|"instruction"|"questions"|"sourceSha256">;
+ revisionId:string|null;
+ submission:{revisionId:string;answers:Extract<Command,{action:"submit"}>["answers"];submittedAt:string;submittedBy:string;assistedBy:string|null}|null;
+};
+export type LessonTeacherRead=LessonLearnerRead&{
+ observations:LessonJourneyEvent[];summaryRecipients:{accountId:string;label:string}[];
+};
+export type LessonParentRead={moduleId:string;version:string;
+ portfolio:{revisionId:string;summary:string;publishedAt:string;sourceSha256:string}|null;};
 /** Adapter admission is still required. Atomic transaction/CAS and encrypted native
  * storage are mandatory; this port is not a permissive production fallback. */
 export interface LessonJourneyTransaction {
@@ -116,7 +128,7 @@ export class FishingLessonJourney {
        latest(events,e=>e.command.action==="submit")?.id!==observed.command.submissionId)
      throw Error("LESSON_JOURNEY_OBSERVATION_MISMATCH");
     if(new Set(command.parentAccountIds).size!==command.parentAccountIds.length||
-       command.parentAccountIds.some(id=>!context.authorizedParentAccountIds.includes(id)))deny();
+       command.parentAccountIds.some(id=>!context.eligibleSummaryRecipients.some(parent=>parent.accountId===id)))deny();
    }
    const event:LessonJourneyEvent={id:randomUUID(),operationId:command.operationId,digest,previousRevisionId:current,
     workspaceId:context.actor.workspaceId,learnerId:ref.learnerId,moduleId:ref.moduleId,version:ref.version,
@@ -125,7 +137,11 @@ export class FishingLessonJourney {
    return {revisionId:event.id,duplicate:false};
   });
  }
- async read(reference:unknown,view:"learner"|"teacher"|"parent"){
+ read(reference:unknown,view:"learner"):Promise<LessonLearnerRead>;
+ read(reference:unknown,view:"teacher"):Promise<LessonTeacherRead>;
+ read(reference:unknown,view:"parent"):Promise<LessonParentRead>;
+ read(reference:unknown,view:"learner"|"teacher"|"parent"):Promise<LessonLearnerRead|LessonTeacherRead|LessonParentRead>;
+ async read(reference:unknown,view:"learner"|"teacher"|"parent"):Promise<LessonLearnerRead|LessonTeacherRead|LessonParentRead>{
   const ref=lessonReferenceSchema.parse(reference);
   return this.store.transaction(async tx=>{
    const context=requireContext(await tx.resolveFreshContext(ref),ref,this.now(),`read_${view}`);
@@ -140,7 +156,8 @@ export class FishingLessonJourney {
    return {lesson:learnerProjection(context.lesson),revisionId,
     submission:submission&&submission.command.action==="submit"?{revisionId:submission.id,answers:submission.command.answers,
      submittedAt:submission.at,submittedBy:submission.actorId,assistedBy:submission.actorRole==="parent"?submission.actorId:null}:null,
-    ...(view==="teacher"?{observations:events.filter(e=>e.command.action==="observe")}:{}),
+    ...(view==="teacher"?{observations:events.filter(e=>e.command.action==="observe"),
+     summaryRecipients:context.eligibleSummaryRecipients.map(parent=>({accountId:parent.accountId,label:parent.label}))}:{}),
    };
   });
  }

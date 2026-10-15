@@ -76,6 +76,48 @@ test("only explicitly published parent summary is returned; teacher observation/
  expect(JSON.stringify(await s.journey().read(s.reference,"learner"))).not.toMatch(/PRIVATE OBSERVATION|TEACHER KEY/);
  await expect(s.journey().read(s.reference,"teacher")).rejects.toThrow("FORBIDDEN");expect(JSON.stringify(await s.journey(s.f.practitioner.actor).read(s.reference,"teacher"))).toContain("PRIVATE OBSERVATION");
 });
+test("teacher recipient choices are exact and minimized; missing read_parent does not revoke assisted submission",async()=>{
+ const s=await setup(),teacher=()=>s.journey(s.f.practitioner.actor);
+ expect((await teacher().read(s.reference,"teacher")).summaryRecipients).toEqual([{accountId:s.f.parent.actor.id,label:`synthetic-${s.f.parent.actor.id}@example.invalid`}]);
+ await s.f.pool.query("UPDATE ls_education.account_grants SET permissions=ARRAY['submit','read_learner'] WHERE workspace_id=$1 AND account_id=$2",[s.f.workspaceId,s.f.parent.actor.id]);
+ expect((await teacher().read(s.reference,"teacher")).summaryRecipients).toEqual([]);
+ const saved=await s.journey().save(s.reference,s.command());
+ const learner=await s.journey().read(s.reference,"learner");expect(learner.revisionId).toBe(saved.revisionId);
+ expect(JSON.stringify(learner)).not.toMatch(/summaryRecipients|example.invalid|emailCiphertext/);
+ await expect(s.journey().read(s.reference,"parent")).rejects.toThrow("FORBIDDEN");
+ expect(await s.count()).toEqual({events:1,heads:1});
+});
+test.each(["grant_missing","grant_inactive","wrong_reference","unverified","revoked_account","guardian","recipient_revocation","no_password"])("recipient %s between teacher read and publication denies atomically",async failure=>{
+ const s=await setup(),submission=await s.journey().save(s.reference,s.command()),teacher=s.journey(s.f.practitioner.actor);
+ const observed=await teacher.save(s.reference,{action:"observe",operationId:randomUUID(),expectedRevisionId:submission.revisionId,submissionId:submission.revisionId,task:"Synthetic practice",assistance:"with_guidance",privateNote:"PRIVATE SYNTHETIC NOTE"});
+ expect((await teacher.read(s.reference,"teacher")).summaryRecipients?.map(p=>p.accountId)).toEqual([s.f.parent.actor.id]);
+ if(failure==="wrong_reference")await s.seed({...s.reference,moduleId:"RM-102"});
+ if(failure==="grant_missing"||failure==="wrong_reference")await s.f.pool.query("DELETE FROM ls_education.account_grants WHERE workspace_id=$1 AND account_id=$2 AND module_id=$3",[s.f.workspaceId,s.f.parent.actor.id,s.reference.moduleId]);
+ if(failure==="grant_inactive")await s.f.pool.query("UPDATE ls_education.account_grants SET active=false WHERE workspace_id=$1 AND account_id=$2",[s.f.workspaceId,s.f.parent.actor.id]);
+ if(failure==="unverified"){
+  await expect(s.f.pool.query("UPDATE ls_identity.accounts SET email_verified_at=NULL WHERE workspace_id=$1 AND id=$2",[s.f.workspaceId,s.f.parent.actor.id])).rejects.toMatchObject({code:"23514"});
+  await s.f.pool.query("UPDATE ls_identity.accounts SET state='invited',email_verified_at=NULL WHERE workspace_id=$1 AND id=$2",[s.f.workspaceId,s.f.parent.actor.id]);
+ }
+ if(failure==="revoked_account")await s.f.pool.query("UPDATE ls_identity.accounts SET state='revoked' WHERE workspace_id=$1 AND id=$2",[s.f.workspaceId,s.f.parent.actor.id]);
+ if(failure==="guardian")await s.f.pool.query("UPDATE ls_education.guardian_authorities SET active=false WHERE workspace_id=$1 AND account_id=$2",[s.f.workspaceId,s.f.parent.actor.id]);
+ if(failure==="recipient_revocation")await s.f.pool.query("INSERT INTO ls_education.access_revocations(workspace_id,id,account_id,learner_id,recorded_by) VALUES($1,$2,$3,$4,$5)",[s.f.workspaceId,randomUUID(),s.f.parent.actor.id,s.reference.learnerId,s.f.practitioner.actor.id]);
+ if(failure==="no_password"){
+  await expect(s.f.pool.query("UPDATE ls_identity.accounts SET password_hash=NULL WHERE workspace_id=$1 AND id=$2",[s.f.workspaceId,s.f.parent.actor.id])).rejects.toMatchObject({code:"23514"});
+  await s.f.pool.query("UPDATE ls_identity.accounts SET state='invited',password_hash=NULL WHERE workspace_id=$1 AND id=$2",[s.f.workspaceId,s.f.parent.actor.id]);
+ }
+ await expect(teacher.save(s.reference,{action:"publish_parent_summary",operationId:randomUUID(),expectedRevisionId:observed.revisionId,observationId:observed.revisionId,summary:"Synthetic summary",parentAccountIds:[s.f.parent.actor.id]})).rejects.toThrow("FORBIDDEN");
+ expect(await s.count()).toEqual({events:2,heads:1});
+ expect((await s.f.pool.query("SELECT revision_id FROM ls_education.lesson_heads WHERE workspace_id=$1 AND learner_id=$2 AND module_id=$3",[s.f.workspaceId,s.reference.learnerId,s.reference.moduleId])).rows[0].revision_id).toBe(observed.revisionId);
+});
+test("committed publication replay stays exact after recipient grant withdrawal but a new publication is forbidden",async()=>{
+ const s=await setup(),submission=await s.journey().save(s.reference,s.command()),teacher=s.journey(s.f.practitioner.actor);
+ const observed=await teacher.save(s.reference,{action:"observe",operationId:randomUUID(),expectedRevisionId:submission.revisionId,submissionId:submission.revisionId,task:"Synthetic practice",assistance:"independent"});
+ const command={action:"publish_parent_summary",operationId:randomUUID(),expectedRevisionId:observed.revisionId,observationId:observed.revisionId,summary:"Synthetic summary",parentAccountIds:[s.f.parent.actor.id]},saved=await teacher.save(s.reference,command);
+ await s.f.pool.query("UPDATE ls_education.account_grants SET active=false WHERE workspace_id=$1 AND account_id=$2",[s.f.workspaceId,s.f.parent.actor.id]);
+ expect(await teacher.save(s.reference,command)).toEqual({...saved,duplicate:true});
+ await expect(teacher.save(s.reference,{...command,operationId:randomUUID(),expectedRevisionId:saved.revisionId})).rejects.toThrow("FORBIDDEN");
+ await expect(s.journey().read(s.reference,"parent")).rejects.toThrow("FORBIDDEN");expect(await s.count()).toEqual({events:3,heads:1});
+});
 test.each(["assignment","grant","guardian","session","revocation"])("fresh %s revocation denies retained read and replay, without erasing saved history",async kind=>{
  const s=await setup(),command=s.command();await s.journey().save(s.reference,command);
  if(kind==="assignment")await s.f.pool.query("UPDATE ls_education.educational_assignments SET active=false WHERE workspace_id=$1",[s.f.workspaceId]);
