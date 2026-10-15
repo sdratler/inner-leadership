@@ -243,7 +243,7 @@ try{
   LS_GROUP_INTEREST_FIXTURE_PATH:runtimePath,LS_GROUP_INTEREST_TEST_RUNNER_ACTIVE:"true",
   ...(educationOnly?{LS_EDUCATION_SYNTHETIC_LOOPBACK:"true",TEST_DATABASE_URL:safeTestUrl(),LS_CHILD_ACCOUNTS_ENABLED:"false",LS_AUTH_EMAIL_ENABLED:"false"}:{})};
  if(communityTransport)Object.assign(env,{LS_COMMUNITY_SCOUT_BRIDGE_SECRET:communityTransport.secret,LS_COMMUNITY_FIXTURE_ORIGIN:communityTransport.controlOrigin,
-  LS_COMMUNITY_FIXTURE_CA_FILE:cert,NODE_OPTIONS:`--require=${resolve("tests/e2e/community/scout-read-preload.cjs")}`,NODE_EXTRA_CA_CERTS:cert,LS_AUTH_EMAIL_ENABLED:"false"});
+  LS_COMMUNITY_FIXTURE_CA_FILE:cert,NODE_OPTIONS:`--require=${resolve("tests/e2e/community/scout-read-preload.cjs")}`,NODE_EXTRA_CA_CERTS:cert,LS_AUTH_EMAIL_ENABLED:"false",LS_CALENDAR_ENABLED:"true"});
  app=spawn(process.execPath,[resolve("node_modules/next/dist/bin/next"),"dev","--webpack","--experimental-https","--experimental-https-key",key,"--experimental-https-cert",cert,"--hostname","127.0.0.1","--port",String(appPort)],{env,stdio:"ignore"});
  phase="next-health";let healthy=false;const probe=await playwrightRequest.newContext({baseURL:origin,ignoreHTTPSErrors:true});
  try{for(let i=0;i<240;i++){if(app.exitCode!==null)throw new Error("ISOLATED_APP_START_FAILED");try{if((await probe.get("/api/health")).status()===200){healthy=true;break;}}catch{}await new Promise(r=>setTimeout(r,250));}}finally{await probe.dispose();}

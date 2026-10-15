@@ -39,7 +39,7 @@ for(const locale of["en","he"]as const){
  });
  test(`${locale}: real transport failure/retry preserves unsaved input; empty is distinct`,async({page,request})=>{
   await control(request,"normal");await login(page,"practitioner",locale);await page.goto(`/${locale}/app/marketing?section=community`);
-  await expect(page.getByText("constructor",{exact:true})).toBeVisible();const question=page.getByLabel(locale==="he"?"השאלה הציבורית או קטע מהפוסט":"Public question or post excerpt",{exact:true});
+  await expect(page.getByText("constructor",{exact:true})).toBeVisible();const question=page.getByRole("textbox",{name:locale==="he"?"השאלה הציבורית או קטע מהפוסט":"Public question or post excerpt",exact:true});
   await question.fill("Synthetic unsaved public question only.");await control(request,"fail");
   await page.getByRole("button",{name:locale==="he"?"מוכן":"Ready",exact:true}).click();await expect(page.getByRole("alert").filter({hasText:locale==="he"?"לא ניתן לטעון את תיבת הפוסטים":"captured-post inbox could not load"})).toBeVisible();
   await expect(question).toHaveValue("Synthetic unsaved public question only.");await control(request,"normal");await page.getByRole("button",{name:locale==="he"?"ניסיון חוזר":"Retry inbox",exact:true}).click();
