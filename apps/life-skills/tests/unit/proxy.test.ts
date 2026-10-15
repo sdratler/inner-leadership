@@ -25,6 +25,21 @@ describe("public static perimeter", () => {
 });
 
 afterEach(() => vi.unstubAllEnvs());
+describe('native fishing child-context original transport fence',()=>{
+ it('rejects spoofed forwarding before canonical rewriting and preserves the private enablement gate',()=>{
+  const origin='https://life-skills.bneineviimacademy.org',path='/api/private/fishing/children';
+  vi.stubEnv('NODE_ENV','production');vi.stubEnv('LS_APP_MODE','foundation_locked');vi.stubEnv('LS_APP_ORIGIN',origin);vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');
+  for(const request of [new NextRequest('http://life-skills.bneineviimacademy.org'+path),new NextRequest('https://untrusted.invalid'+path),
+   new NextRequest(origin+path,{headers:{'x-forwarded-proto':'http','x-forwarded-host':'life-skills.bneineviimacademy.org'}}),
+   new NextRequest(origin+path,{headers:{'x-forwarded-proto':'https,http','x-forwarded-host':'life-skills.bneineviimacademy.org'}}),
+   new NextRequest(origin+path,{headers:{'x-forwarded-proto':'https','x-forwarded-host':'untrusted.invalid'}})]){
+   const result=proxy(request);expect(result.status).toBe(503);expect(result.headers.get('x-middleware-next')).toBeNull();
+  }
+  expect(proxy(new NextRequest(origin+path)).status).toBe(200);
+  expect(proxy(new NextRequest('http://internal.invalid'+path,{headers:{host:'life-skills.bneineviimacademy.org','x-forwarded-proto':'https','x-forwarded-host':'life-skills.bneineviimacademy.org'}})).status).toBe(200);
+  vi.stubEnv('LS_PRIVATE_APP_ENABLED','false');expect(proxy(new NextRequest(origin+path)).status).toBe(503);
+ });
+});
 describe('dedicated Nomad call original transport fence',()=>{
  it('rejects invalid/ambiguous forwarding before the proxy can rewrite it to canonical HTTPS',()=>{
   const origin='https://life-skills.bneineviimacademy.org',path='/api/private/acquisition/call-events';
