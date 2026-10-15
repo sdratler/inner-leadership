@@ -77,6 +77,8 @@ test("historical verifier role changes do not revoke a persisted guardian; futur
  const before=await f.reader.read(f.parent,valid);expect(before.children.map(x=>x.learnerId)).toEqual([valid]);
  await f.pool.query("UPDATE ls_identity.accounts SET role='parent' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.operator.id]);
  expect(await f.reader.read(f.parent,valid)).toEqual(before);
+ expect((await f.reader.read(f.operator)).children).toEqual([]);
+ await expect(f.reader.read(f.operator,valid)).rejects.toMatchObject({code:"NOT_FOUND"});
  await f.revoke(null,null);expect((await f.reader.read(f.parent)).children).toEqual([]);await expect(f.reader.read(f.parent,valid)).rejects.toMatchObject({code:"NOT_FOUND"});
 });
 test("malformed ciphertext fails safely and the SQL-bound reader works inside the caller's native transaction",async()=>{
