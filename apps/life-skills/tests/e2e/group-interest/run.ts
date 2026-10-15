@@ -22,6 +22,8 @@ const project=process.env.LS_GROUP_INTEREST_TEST_PROJECT as keyof typeof project
 const sampleOnly=process.env.LS_FLORIDA_SAMPLE_TEST_ONLY==="true";
 const fishingOnly=process.env.LS_FISHING_LEAD_UI_ONLY==="true";
 const educationOnly=process.env.LS_EDUCATION_UI_ONLY==="true";
+const communityOnly=process.env.LS_COMMUNITY_UI_ONLY==="true";
+if(communityOnly&&(project===undefined||educationOnly||fishingOnly||sampleOnly))throw new Error("COMMUNITY_EXCLUSIVE_EXPLICIT_PROJECT_REQUIRED");
 if(educationOnly&&project===undefined)throw new Error("EDUCATION_UI_EXPLICIT_PROJECT_REQUIRED");
 if(fishingOnly&&project===undefined)throw new Error("FISHING_UI_EXPLICIT_PROJECT_REQUIRED");
 if(project!==undefined&&!(project in projects))throw new Error("GROUP_INTEREST_BROWSER_PROJECT_NOT_SUPPORTED");
@@ -36,9 +38,10 @@ if(educationOnly){
 const folder=mkdtempSync(join(tmpdir(),"ls-group-interest-browser-"));
 let app:ChildProcess|null=null,tests:ChildProcess|null=null;
 let f:Awaited<ReturnType<typeof fixture>>|null=null,phase="fixture";
+let communityTransport:Awaited<ReturnType<typeof import("../community/inbox-fixture.ts").communityReadTransport>>|null=null;
 async function terminate(child:ChildProcess|null){if(!child||child.exitCode!==null||child.signalCode!==null)return;child.kill("SIGTERM");await Promise.race([once(child,"exit"),new Promise(r=>setTimeout(r,5000))]);if(child.exitCode===null&&child.signalCode===null)child.kill("SIGKILL");}
 let cleanupPromise:Promise<void>|null=null;
-function cleanup(){cleanupPromise??=(async()=>{await terminate(tests);await terminate(app);await f?.pool.end();rmSync(folder,{recursive:true,force:true});})();return cleanupPromise;}
+function cleanup(){cleanupPromise??=(async()=>{await terminate(tests);await terminate(app);await communityTransport?.close();await f?.pool.end();rmSync(folder,{recursive:true,force:true});})();return cleanupPromise;}
 process.once("SIGTERM",()=>{void cleanup().finally(()=>process.exit(143));});
 process.once("SIGINT",()=>{void cleanup().finally(()=>process.exit(130));});
 
@@ -216,14 +219,22 @@ try{
  const educationModule=educationOnly?await import("../resources/education-fixture.ts"):null;
  const educationRuntime=educationModule?await educationModule.educationBrowserFixture(f,lookupKey):null;
  const educationBefore=educationModule?await educationModule.educationProtectedSnapshot(f):null;
+ const communityModule=communityOnly?await import("../community/inbox-fixture.ts"):null;
+ const communityLogin=communityModule?await communityModule.communityCredentials(f,lookupKey):null;
+ const communityBefore=communityModule?await communityModule.communityProtectedSnapshot(f):null;
  const originalPublic=await f.pool.query("SELECT to_jsonb(a)::text AS snapshot FROM ls_service_interest.public_applications a WHERE workspace_id=$1 AND id=$2",[workspaceId,publicApplicationId]);
  if(baseline.inquiries!==0||baseline.operations!==0||baseline.serviceInterests!==0||baseline.serviceOperations!==0||baseline.draftGroups!==0||baseline.draftOperations!==0||baseline.proposedPlacements!==0||baseline.placementOperations!==0||baseline.placementMoves!==0||baseline.movementOperations!==0||baseline.meetingRevisions!==0||baseline.meetingOperations!==0||baseline.practiceRevisions!==0||baseline.practiceOperations!==0)throw new Error("GROUP_INTEREST_FIXTURE_NOT_EMPTY");
  const runtimePath=join(folder,"synthetic-runtime.json");
- writeFileSync(runtimePath,JSON.stringify({origin,workspaceId,practitioner:f.practitioner.token,parent:f.parent.token,adult,child,revoked,otherWorkspace,publicApplicationId,publicApplicantName:publicApplicationFields.parentName,...(fishingRuntime?{fishing:fishingRuntime}:{}),...(educationRuntime?{education:educationRuntime}:{})}),{mode:0o600});
+ const runtime={origin,workspaceId,practitioner:f.practitioner.token,parent:f.parent.token,adult,child,revoked,otherWorkspace,publicApplicationId,publicApplicantName:publicApplicationFields.parentName,...(fishingRuntime?{fishing:fishingRuntime}:{}),...(educationRuntime?{education:educationRuntime}:{})};
+ writeFileSync(runtimePath,JSON.stringify(runtime),{mode:0o600});
  const key=join(folder,"tls.key"),cert=join(folder,"tls.crt");
  phase="tls-certificate";
  const gitOpenSsl="C:/Program Files/Git/mingw64/bin/openssl.exe",openssl=process.platform==="win32"&&existsSync(gitOpenSsl)?gitOpenSsl:"openssl";
- execFileSync(openssl,["req","-x509","-newkey","rsa:2048","-nodes","-keyout",key,"-out",cert,"-days","1","-subj","/CN=localhost","-addext","subjectAltName=DNS:localhost,IP:127.0.0.1"],{stdio:"ignore"});
+ execFileSync(openssl,["req","-x509","-newkey","rsa:2048","-nodes","-keyout",key,"-out",cert,"-days","1","-subj","/CN=localhost","-addext","subjectAltName=DNS:localhost,IP:127.0.0.1"+(communityOnly?",DNS:community-scout-production.up.railway.app":"")],{stdio:"ignore"});
+ if(communityModule){
+  const {readFileSync}=await import("node:fs");communityTransport=await communityModule.communityReadTransport(readFileSync(key),readFileSync(cert));
+  writeFileSync(runtimePath,JSON.stringify({...runtime,community:{credentials:communityLogin,controlOrigin:communityTransport.controlOrigin,secret:communityTransport.secret}}),{mode:0o600});
+ }
  phase="next-app-start";
  const env:NodeJS.ProcessEnv={...process.env,NODE_ENV:"development",NEXT_TELEMETRY_DISABLED:"1",LS_APP_MODE:"foundation_preview",LS_APP_ORIGIN:origin,
   LS_DATABASE_URL:safeTestUrl(),LS_DATABASE_TLS:"disable",LS_PRIVATE_APP_ENABLED:"true",LS_IDENTITY_ENABLED:"true",LS_GROUP_INTEREST_CANDIDATE:"true",LS_GROUP_APPLICATION_SYNTHETIC_LOOPBACK:"true",
@@ -231,6 +242,8 @@ try{
   LS_IDENTITY_CSRF_KEY:randomBytes(32).toString("base64url"),LS_IDENTITY_LOOKUP_KEY:lookupKey.toString("base64url"),LS_IDENTITY_RATE_KEY:randomBytes(32).toString("base64url"),
   LS_GROUP_INTEREST_FIXTURE_PATH:runtimePath,LS_GROUP_INTEREST_TEST_RUNNER_ACTIVE:"true",
   ...(educationOnly?{LS_EDUCATION_SYNTHETIC_LOOPBACK:"true",TEST_DATABASE_URL:safeTestUrl(),LS_CHILD_ACCOUNTS_ENABLED:"false",LS_AUTH_EMAIL_ENABLED:"false"}:{})};
+ if(communityTransport)Object.assign(env,{LS_COMMUNITY_SCOUT_BRIDGE_SECRET:communityTransport.secret,HTTP_PROXY:communityTransport.proxy,HTTPS_PROXY:communityTransport.proxy,
+  NO_PROXY:"localhost,127.0.0.1",NODE_USE_ENV_PROXY:"1",NODE_EXTRA_CA_CERTS:cert,LS_AUTH_EMAIL_ENABLED:"false"});
  app=spawn(process.execPath,[resolve("node_modules/next/dist/bin/next"),"dev","--webpack","--experimental-https","--experimental-https-key",key,"--experimental-https-cert",cert,"--hostname","127.0.0.1","--port",String(appPort)],{env,stdio:"ignore"});
  phase="next-health";let healthy=false;const probe=await playwrightRequest.newContext({baseURL:origin,ignoreHTTPSErrors:true});
  try{for(let i=0;i<240;i++){if(app.exitCode!==null)throw new Error("ISOLATED_APP_START_FAILED");try{if((await probe.get("/api/health")).status()===200){healthy=true;break;}}catch{}await new Promise(r=>setTimeout(r,250));}}finally{await probe.dispose();}
@@ -239,7 +252,8 @@ try{
  const selection=project?["--project",project,"--output",`tests/e2e/group-interest/test-results/isolated-${project}`]:[];
  if(!fishingOnly&&process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==="true")selection.push("--grep","Florida group inquiry|Israel group application compatibility");
  if(process.env.LS_GROUP_INTEREST_CAPTURE_ONLY==="true")selection.push("--grep","practitioner");
- if(educationOnly){/* Existing Playwright config selects the retained Resources journey. */}
+ if(communityOnly){/* Explicit focused read-only Community journey, not a default-suite skip. */}
+ else if(educationOnly){/* Existing Playwright config selects the retained Resources journey. */}
  else if(fishingOnly){/* Selection is the retained mounted fishing spec in the same isolated harness. */}
  else if(sampleOnly)selection.push("--grep","Florida owner journey hosted sample");
  else if(process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==="true")selection.push("--grep",process.env.LS_FLORIDA_INSTITUTION_TEST_ONLY==="true"?"Florida owner journey school inquiry|Florida owner journey.*native inquiry replay|Florida owner journey authorization":"Florida owner journey");
@@ -247,7 +261,13 @@ try{
  const testEnv=educationModule?educationModule.educationBrowserTestEnvironment(env,process.env):env;
  tests=spawn(process.execPath,[resolve("node_modules/@playwright/test/cli.js"),"test","--config","tests/e2e/group-interest/playwright.config.ts",...selection],{env:testEnv,stdio:["ignore","inherit","inherit"]});
  const [code]=await once(tests,"exit");if(code!==0)throw new Error("GROUP_INTEREST_BROWSER_ACCEPTANCE_FAILED");
- if(educationOnly){
+ if(communityOnly){
+  if(!communityModule||!communityTransport)throw new Error("COMMUNITY_FIXTURE_MISSING");
+  if(JSON.stringify(await communityModule.communityProtectedSnapshot(f))!==JSON.stringify(communityBefore))throw new Error("COMMUNITY_FORBIDDEN_DATABASE_EFFECT");
+  if(communityTransport.blocked.length||!communityTransport.reads.includes("/internal/life-skills/posts"))throw new Error("COMMUNITY_UPSTREAM_BOUNDARY_NOT_PROVED");
+  console.log(`COMMUNITY_UI_ACCEPTANCE_PASS project=${project} ordinaryLogin=true upstream=synthetic-loopback readonly=true unrelatedEffects=0`);
+ }
+ else if(educationOnly){
   if(!educationModule)throw new Error("EDUCATION_FIXTURE_NOT_READY");
   phase="education-native-readback";
   if(JSON.stringify(await educationModule.educationProtectedSnapshot(f))!==JSON.stringify(educationBefore))throw new Error("EDUCATION_UI_FORBIDDEN_DATABASE_EFFECT");
