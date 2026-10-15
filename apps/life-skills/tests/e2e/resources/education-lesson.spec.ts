@@ -40,6 +40,9 @@ if(!runtimePath){
   const draft=`Synthetic retained ${locale} answer. `+"תרגול סינתטי בלבד. ".repeat(35),note="SYNTHETIC PRIVATE OBSERVATION MUST NOT REACH FAMILY",summary=`Safe synthetic parent summary ${locale}.`;
   try{
    await login(page,"parent",href(locale,ref,"lesson"),locale);
+   await expect(page.getByRole("navigation",{name:t(locale,"Lesson location","מיקום השיעור"),exact:true}).locator("ol")).toHaveCSS("display","flex");
+   await expect(page.getByRole("navigation",{name:t(locale,"Lesson location","מיקום השיעור"),exact:true}).locator("ol")).toHaveCSS("list-style-type","none");
+   await expect(page.getByRole("tablist",{name:t(locale,"Lesson views","תצוגות השיעור"),exact:true})).toHaveCSS("display","flex");await expect(page.locator(".lsw-feature-page [style]")).toHaveCount(0);
    const answer=page.getByLabel("Describe your synthetic hookless practice.",{exact:true});await answer.fill(draft);
    const lessonTab=page.getByRole("tab",{name:t(locale,"Lesson","שיעור"),exact:true}),portfolioTab=page.getByRole("tab",{name:t(locale,"Published summary","סיכום שפורסם"),exact:true});
    await lessonTab.focus();await lessonTab.press(locale==="he"?"ArrowLeft":"ArrowRight");await expect(portfolioTab).toHaveAttribute("aria-selected","true");await expect(portfolioTab).toBeFocused();
@@ -61,19 +64,19 @@ if(!runtimePath){
    await page.getByRole("button",{name:t(locale,"Retry the same operation","ניסיון נוסף לאותה פעולה"),exact:true}).click();await expect(page.getByRole("status").filter({hasText:t(locale,"previously saved operation is confirmed","הפעולה שנשמרה אומתה")})).toBeVisible();
    expect(bodies).toHaveLength(2);expect(createHash("sha256").update(bodies[0]!).digest("hex")).toBe(createHash("sha256").update(bodies[1]!).digest("hex"));await page.unrouteAll({behavior:"wait"});
    await page.reload();await expect(answer).toHaveValue(draft.trim());await expect(page.getByRole("button",{name:t(locale,"Submit my work","שליחת העבודה שלי"),exact:true})).toBeDisabled();
-   await page.screenshot({path:info.outputPath(`education-parent-${locale}-${info.project.name}.png`)});
+   await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:info.outputPath(`education-parent-${locale}-${info.project.name}.png`)});
    const teacher=await separate(contexts,browser,mobile);await login(teacher,"practitioner",href(locale,ref,"review"),locale);
    await teacher.getByLabel(t(locale,"Observed task","המשימה שנצפתה"),{exact:true}).fill("Synthetic hookless task");await teacher.getByLabel(t(locale,"Assistance","סיוע"),{exact:true}).selectOption("with_guidance");
    await openDetails(teacher,t(locale,"Optional private note","הערה פרטית אופציונלית"));await teacher.getByLabel(t(locale,"Private teacher note","הערת מדריך פרטית"),{exact:true}).fill(note);
    await teacher.getByRole("tab",{name:t(locale,"Publish summary","פרסום סיכום"),exact:true}).click();await teacher.getByRole("tab",{name:t(locale,"Teacher review","עיון המדריך"),exact:true}).click();await openDetails(teacher,t(locale,"Optional private note","הערה פרטית אופציונלית"));await expect(teacher.getByLabel(t(locale,"Private teacher note","הערת מדריך פרטית"),{exact:true})).toHaveValue(note);
    await teacher.getByRole("button",{name:t(locale,"Save private observation","שמירת תצפית פרטית"),exact:true}).click();await expect(teacher.getByRole("status").filter({hasText:t(locale,"Saved in the app","נשמר במערכת")})).toBeVisible();await teacher.reload();await openDetails(teacher,t(locale,"Previous private observations","תצפיות פרטיות קודמות"));await expect(teacher.getByText(note,{exact:true})).toBeVisible();
-   await teacher.screenshot({path:info.outputPath(`education-teacher-${locale}-${info.project.name}.png`)});
+   await teacher.evaluate(()=>scrollTo(0,0));await teacher.screenshot({path:info.outputPath(`education-teacher-${locale}-${info.project.name}.png`)});
    await teacher.getByRole("tab",{name:t(locale,"Publish summary","פרסום סיכום"),exact:true}).click();await teacher.getByLabel(t(locale,"Parent-safe summary","סיכום המתאים להורה"),{exact:true}).fill(summary);
    await expect(teacher.getByRole("button",{name:t(locale,"Publish selected summary","פרסום הסיכום שנבחר"),exact:true})).toBeDisabled();
    await teacher.getByLabel(edu.credentials.find(c=>c.role==="parent")!.email,{exact:true}).check();await teacher.getByRole("button",{name:t(locale,"Publish selected summary","פרסום הסיכום שנבחר"),exact:true}).click();await expect(teacher.getByRole("status").filter({hasText:t(locale,"Saved in the app","נשמר במערכת")})).toBeVisible();
    await page.getByRole("tab",{name:t(locale,"Published summary","סיכום שפורסם"),exact:true}).click();await expect(page.getByText(summary,{exact:true})).toBeVisible();await page.reload();await expect(page.getByText(summary,{exact:true})).toBeVisible();
    const body=await(await page.request.get(query(ref,"parent"))).json();expect(JSON.stringify(body)).not.toMatch(/PRIVATE OBSERVATION|TEACHER KEY|retained .* answer|summaryRecipients|privateNote|emailCiphertext/);
-   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await page.screenshot({path:info.outputPath(`education-portfolio-${locale}-${info.project.name}.png`)});
+   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:info.outputPath(`education-portfolio-${locale}-${info.project.name}.png`)});
   }finally{for(const c of contexts)await c.close();}
  });
  test("ordinary roles/anonymous access deny unauthorized lesson and private teacher content",async({page,browser},info)=>{

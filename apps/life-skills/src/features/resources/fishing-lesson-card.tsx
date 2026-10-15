@@ -1,5 +1,6 @@
 import type {LearnerLesson} from "./fishing-lesson-journey.ts";
 import type {Locale} from "../../lib/locale.ts";
+import styles from "./education-workspace.module.css";
 
 type Lesson=Pick<LearnerLesson,"moduleId"|"version"|"stage"|"title"|"instruction"|"questions">;
 /** Reusable view, not a new route or role switch. Caller supplies an authorized DTO. */
@@ -9,9 +10,9 @@ export function FishingLessonCard({lesson,answers,onAnswer,onSubmit,busy=false,e
  return <section aria-labelledby={`lesson-${lesson.moduleId}`}>
   <p>{locale==="he"?"שלב":"Stage"} {lesson.stage} · <bdi>{lesson.moduleId}</bdi> · <bdi>{lesson.version}</bdi></p>
   <h2 id={`lesson-${lesson.moduleId}`}>{lesson.title}</h2>
-  <details className="lsw-details"><summary>{locale==="he"?"הנחיות השיעור":"Lesson instructions"}</summary><p style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{lesson.instruction}</p></details>
+  <details className="lsw-details"><summary>{locale==="he"?"הנחיות השיעור":"Lesson instructions"}</summary><p className={styles.text}>{lesson.instruction}</p></details>
   <form onSubmit={event=>{event.preventDefault();onSubmit();}}>
-   {lesson.questions.map(question=><div className="lsw-field" key={question.id} style={{marginBlock:"1rem"}}>
+   {lesson.questions.map(question=><div className={`lsw-field ${styles.answer}`} key={question.id}>
     <label htmlFor={`lesson-${lesson.moduleId}-${question.id}`}>{question.prompt}</label><textarea id={`lesson-${lesson.moduleId}-${question.id}`} className="lsw-input" name={question.id} value={answers[question.id]??""} maxLength={2000}
      disabled={busy} required onChange={event=>onAnswer(question.id,event.target.value)}/>
    </div>)}

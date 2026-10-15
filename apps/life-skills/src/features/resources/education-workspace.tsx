@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import styles from "./education-workspace.module.css";
 import {usePathname,useRouter} from "next/navigation";
 import {useEffect,useRef,useState,type MouseEvent} from "react";
 import type {Locale} from "../../lib/locale.ts";
@@ -78,18 +79,17 @@ export function EducationWorkspace({locale,role,reference,section}:{locale:Local
  const sectionLabel=(value:EducationSection)=>w[value];
  function changeSection(next:EducationSection){if(!locked&&sections.includes(next)){setError(null);router.push(pathname+"?"+educationSearch(reference,next),{scroll:false});}}
  function leaving(event:MouseEvent<HTMLAnchorElement>,href:string){if(dirty||pending){event.preventDefault();leaveOrigin.current=event.currentTarget;setLeaveTarget(href);}}
- const fieldStyle={display:"grid",gap:16,minWidth:0}as const;
- return <section className="lsw-stack lsw-feature-page" lang={locale} dir={locale==="he"?"rtl":"ltr"} style={{minWidth:0,overflowWrap:"anywhere"}}>
+ return <section className={`lsw-stack lsw-feature-page ${styles.frame}`} lang={locale} dir={locale==="he"?"rtl":"ltr"}>
   <nav aria-label={locale==="he"?"מיקום השיעור":"Lesson location"}>
-   <ol style={{display:"flex",gap:12,flexWrap:"wrap",listStyle:"none",padding:0,margin:0,alignItems:"center"}}>
-    <li><Link style={{display:"inline-flex",minHeight:44,alignItems:"center"}} href={`/${locale}/${root}/resources`} onClick={event=>leaving(event,`/${locale}/${root}/resources`)}>{w.materials}</Link></li>
+   <ol className={styles.breadcrumb}>
+    <li><Link href={`/${locale}/${root}/resources`} onClick={event=>leaving(event,`/${locale}/${root}/resources`)}>{w.materials}</Link></li>
     <li aria-hidden>›</li><li aria-current="page"><bdi>{reference.moduleId}</bdi></li>
    </ol>
   </nav>
   <header><h1>{w.title}</h1><p><bdi>{reference.moduleId} · {reference.version}</bdi></p><p>{role==="parent"?w.parentHelp:w.teacherHelp}</p></header>
-  <div role="tablist" aria-label={w.tabs} style={{display:"flex",gap:8,overflowX:"auto",paddingBlock:6,maxWidth:"100%"}}>
+  <div role="tablist" aria-label={w.tabs} className={styles.tabs}>
    {sections.map((tab,i)=><button key={tab} id={`education-tab-${tab}`} role="tab" aria-selected={section===tab} aria-controls="education-panel" tabIndex={section===tab?0:-1}
-    className={`lsw-button${section===tab?" lsw-button--primary":""}`} disabled={locked} style={{whiteSpace:"nowrap",flexShrink:0}}
+    className={`lsw-button ${styles.tab}${section===tab?" lsw-button--primary":""}`} disabled={locked}
     ref={node=>{tabs.current[i]=node;}} onClick={()=>changeSection(tab)} onKeyDown={event=>{
      if(!["ArrowLeft","ArrowRight","Home","End"].includes(event.key))return;event.preventDefault();
      const delta=(event.key==="ArrowRight"?1:-1)*(locale==="he"?-1:1),next=event.key==="Home"?0:event.key==="End"?sections.length-1:(i+delta+sections.length)%sections.length;
@@ -111,22 +111,22 @@ export function EducationWorkspace({locale,role,reference,section}:{locale:Local
     onAnswer={(id,value)=>{setAnswers(old=>({...old,[id]:value}));markDirty("lesson");}}
     onSubmit={()=>{if(!draftDirty.lesson)return;save({action:"submit",operationId:crypto.randomUUID(),expectedRevisionId:editRevision,answers:learnerData.lesson.questions.map(q=>({questionId:q.id,value:answers[q.id]??""}))});}}/>}
    {role==="parent"&&section==="portfolio"&&"portfolio"in data&&<><h2>{w.portfolio}</h2>{data.portfolio?<>
-    <p style={{whiteSpace:"pre-wrap"}}>{data.portfolio.summary}</p><p>{w.published}: <bdi>{time(data.portfolio.publishedAt)}</bdi></p><details><summary>{w.source}</summary><bdi>{data.version} · {data.portfolio.sourceSha256}</bdi></details>
+    <p className={styles.text}>{data.portfolio.summary}</p><p>{w.published}: <bdi>{time(data.portfolio.publishedAt)}</bdi></p><details><summary>{w.source}</summary><bdi>{data.version} · {data.portfolio.sourceSha256}</bdi></details>
    </>:<p>{w.emptyPortfolio}</p>}</>}
    {role==="practitioner"&&section==="review"&&teacherData&&<><h2>{w.review}</h2>
-    {teacherData.submission?<><details><summary>{w.submitted}</summary><dl>{teacherData.submission.answers.map(a=><div key={a.questionId}><dt><bdi>{a.questionId}</bdi></dt><dd style={{whiteSpace:"pre-wrap"}}>{a.value}</dd></div>)}</dl><bdi>{time(teacherData.submission.submittedAt)}</bdi></details>
-     <form style={fieldStyle} onSubmit={event=>{event.preventDefault();if(!teacherData.submission||!assistance)return;save({action:"observe",operationId:crypto.randomUUID(),expectedRevisionId:editRevision,submissionId:teacherData.submission.revisionId,task,assistance,...(privateNote.trim()?{privateNote}:{})});}}>
-      <fieldset disabled={locked} style={fieldStyle}><div className="lsw-field"><label htmlFor="education-task">{w.task}</label><textarea id="education-task" className="lsw-input" required maxLength={2000} value={task} onChange={e=>{setTask(e.target.value);markDirty("review");}}/></div>
+    {teacherData.submission?<><details><summary>{w.submitted}</summary><dl>{teacherData.submission.answers.map(a=><div key={a.questionId}><dt><bdi>{a.questionId}</bdi></dt><dd className={styles.text}>{a.value}</dd></div>)}</dl><bdi>{time(teacherData.submission.submittedAt)}</bdi></details>
+     <form className={styles.fields} onSubmit={event=>{event.preventDefault();if(!teacherData.submission||!assistance)return;save({action:"observe",operationId:crypto.randomUUID(),expectedRevisionId:editRevision,submissionId:teacherData.submission.revisionId,task,assistance,...(privateNote.trim()?{privateNote}:{})});}}>
+      <fieldset disabled={locked} className={styles.fields}><div className="lsw-field"><label htmlFor="education-task">{w.task}</label><textarea id="education-task" className="lsw-input" required maxLength={2000} value={task} onChange={e=>{setTask(e.target.value);markDirty("review");}}/></div>
        <div className="lsw-field"><label htmlFor="education-assistance">{w.assistance}</label><select id="education-assistance" className="lsw-input" required value={assistance} onChange={e=>{setAssistance(e.target.value as Assistance|"");markDirty("review");}}><option value="">{w.choose}</option><option value="not_observed">{w.notObserved}</option><option value="with_guidance">{w.guidance}</option><option value="independent">{w.independent}</option></select></div>
        <details><summary>{w.noteDetails}</summary><div className="lsw-field"><label htmlFor="education-private-note">{w.privateNote}</label><textarea id="education-private-note" className="lsw-input" maxLength={2000} value={privateNote} onChange={e=>{setPrivateNote(e.target.value);markDirty("review");}}/></div></details>
        <button className="lsw-button lsw-button--primary" type="submit" disabled={!draftDirty.review}>{busy?w.working:w.saveObservation}</button></fieldset>
      </form></>:<p>{w.noSubmission}</p>}
-    <details><summary>{w.observations}</summary>{teacherData.observations.map(event=><article key={event.id}><bdi>{time(event.at)}</bdi>{event.command.action==="observe"&&<><p>{event.command.task}</p><p>{event.command.assistance==="with_guidance"?w.guidance:event.command.assistance==="independent"?w.independent:w.notObserved}</p>{event.command.privateNote&&<p style={{whiteSpace:"pre-wrap"}}>{event.command.privateNote}</p>}</>}</article>)}</details>
+    <details><summary>{w.observations}</summary>{teacherData.observations.map(event=><article key={event.id}><bdi>{time(event.at)}</bdi>{event.command.action==="observe"&&<><p>{event.command.task}</p><p>{event.command.assistance==="with_guidance"?w.guidance:event.command.assistance==="independent"?w.independent:w.notObserved}</p>{event.command.privateNote&&<p className={styles.text}>{event.command.privateNote}</p>}</>}</article>)}</details>
    </>}
    {role==="practitioner"&&section==="publication"&&teacherData&&<><h2>{w.publication}</h2><p>{w.privacy}</p>{!canPublish&&<p>{w.needObservation}</p>}
-    <form style={fieldStyle} onSubmit={event=>{event.preventDefault();if(!currentObservation||!canPublish)return;save({action:"publish_parent_summary",operationId:crypto.randomUUID(),expectedRevisionId:editRevision,observationId:currentObservation.id,summary,parentAccountIds:recipients});}}>
-     <fieldset disabled={locked||!canPublish} style={fieldStyle}><div className="lsw-field"><label htmlFor="education-summary">{w.summary}</label><textarea id="education-summary" className="lsw-input" required maxLength={2000} value={summary} onChange={e=>{setSummary(e.target.value);markDirty("publication");}}/></div>
-      <fieldset><legend>{w.recipients}</legend>{teacherData.summaryRecipients.length?teacherData.summaryRecipients.map(parent=><label className="lsw-choice" key={parent.accountId} style={{display:"flex",gap:10,paddingBlock:10,alignItems:"center"}}><input type="checkbox" checked={recipients.includes(parent.accountId)} onChange={e=>{setRecipients(old=>e.target.checked?[...old,parent.accountId]:old.filter(id=>id!==parent.accountId));markDirty("publication");}}/><bdi>{parent.label}</bdi></label>):<p>{w.noRecipients}</p>}</fieldset>
+    <form className={styles.fields} onSubmit={event=>{event.preventDefault();if(!currentObservation||!canPublish)return;save({action:"publish_parent_summary",operationId:crypto.randomUUID(),expectedRevisionId:editRevision,observationId:currentObservation.id,summary,parentAccountIds:recipients});}}>
+     <fieldset disabled={locked||!canPublish} className={styles.fields}><div className="lsw-field"><label htmlFor="education-summary">{w.summary}</label><textarea id="education-summary" className="lsw-input" required maxLength={2000} value={summary} onChange={e=>{setSummary(e.target.value);markDirty("publication");}}/></div>
+      <fieldset><legend>{w.recipients}</legend>{teacherData.summaryRecipients.length?teacherData.summaryRecipients.map(parent=><label className={`lsw-choice ${styles.choice}`} key={parent.accountId}><input type="checkbox" checked={recipients.includes(parent.accountId)} onChange={e=>{setRecipients(old=>e.target.checked?[...old,parent.accountId]:old.filter(id=>id!==parent.accountId));markDirty("publication");}}/><bdi>{parent.label}</bdi></label>):<p>{w.noRecipients}</p>}</fieldset>
       <button className="lsw-button lsw-button--primary" type="submit" disabled={!recipients.length||!draftDirty.publication}>{busy?w.working:w.publish}</button></fieldset>
     </form></>}
   </div>}
