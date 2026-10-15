@@ -3,9 +3,9 @@ import type {CommunityInboxPost} from "../community-inbox/bridge.ts";
 type Locale="en"|"he";
 const copy={
  en:{aid:"English reading aid",summary:"Convenience summary, not the source. The original excerpt remains authoritative.",
-  missing:"No English reading aid is available for this post. Reading it does not run a paid analysis.",status:"Workflow status",captured:"Captured",comments:"Comments not captured"},
+  missing:"No English reading aid is available for this post. Reading it does not run a paid analysis.",status:"Workflow status",captured:"Captured",comments:"Post excerpt only; tracked responses are separate"},
  he:{aid:"עזר קריאה באנגלית",summary:"תקציר עזר בלבד, לא המקור. הקטע המקורי נשאר המקור הקובע.",
-  missing:"אין עזר קריאה באנגלית לפוסט הזה. קריאת הפוסט אינה מפעילה ניתוח בתשלום.",status:"מצב טיפול",captured:"נקלט",comments:"תגובות לא נקלטו"},
+  missing:"אין עזר קריאה באנגלית לפוסט הזה. קריאת הפוסט אינה מפעילה ניתוח בתשלום.",status:"מצב טיפול",captured:"נקלט",comments:"קטע הפוסט בלבד; תגובות במעקב מוצגות בנפרד"},
 };
 const statusLabels=new Map<string,readonly[string,string]>([
  ["new",["New","חדש"]],["ready",["Ready","מוכן"]],["replied",["Marked replied","סומן כנענה"]],

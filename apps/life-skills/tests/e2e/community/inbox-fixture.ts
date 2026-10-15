@@ -1,7 +1,5 @@
 /** Explicit disposable runner only; synthetic Scout GETs, no real provider writer. */
 import {createServer as httpsServer} from "node:https";
-import {createServer as httpServer} from "node:http";
-import {connect,type Socket} from "node:net";
 import type {Server} from "node:net";
 import type {Fixture} from "../../database/calendar/fixture.ts";
 import {randomBytes,createHash} from "node:crypto";
@@ -24,7 +22,8 @@ export async function communityProtectedSnapshot(f:Fixture){
 }
 const listen=async(server:Server)=>{await new Promise<void>((ok,fail)=>{server.once("error",fail);server.listen(0,"127.0.0.1",ok);});return (server.address()as{port:number}).port;};
 export async function communityReadTransport(key:Buffer,cert:Buffer){
- const secret=randomBytes(32).toString("base64url"),sockets=new Set<Socket>(),reads:string[]=[],blocked:string[]=[];
+ const secret=randomBytes(32).toString("base64url"),reads:string[]=[],blocked:string[]=[];
+ const reject=(reason:string)=>{if(blocked.length<8)blocked.push(reason);};
  let mode="normal";
  const fixture=httpsServer({key,cert},(req,res)=>{
   const url=new URL(req.url??"/","https://localhost"),send=(status:number,data:unknown)=>{res.writeHead(status,{"content-type":"application/json"});res.end(JSON.stringify(data));};
@@ -34,7 +33,8 @@ export async function communityReadTransport(key:Buffer,cert:Buffer){
    mode=next!;send(200,{ok:true});return;
   }
   if(url.pathname==="/control"&&req.method==="GET"){send(200,{ok:true,reads,blocked});return;}
-  if(req.method!=="GET"){blocked.push("NON_READ_METHOD");send(405,{ok:false});return;}
+  if(req.method!=="GET"){reject("NON_READ_METHOD");send(405,{ok:false});return;}
+  if(reads.length>=128){reject("READ_LIMIT");send(503,{ok:false});return;}
   reads.push(url.pathname);
   if(url.pathname==="/internal/life-skills/posts"){
    if(mode==="fail"){send(503,{ok:false});return;}
@@ -48,15 +48,9 @@ export async function communityReadTransport(key:Buffer,cert:Buffer){
   if(url.pathname==="/internal/life-skills/threads"){
    send(200,{ok:true,data:url.searchParams.get("pending")==="true"?{responses:[],more:false}:{threads:[],responses:[],partial:false,captureStatus:null,autonomousCollectionEnabled:false}});return;
   }
-  blocked.push("UNEXPECTED_PATH");send(404,{ok:false});
+  reject("UNEXPECTED_PATH");send(404,{ok:false});
  });
- const fixturePort=await listen(fixture),tunnel=httpServer((_req,res)=>{res.writeHead(403);res.end();});
- tunnel.on("connect",(req,client,head)=>{
-  if(req.url!=="community-scout-production.up.railway.app:443"){blocked.push("UNEXPECTED_CONNECT");client.destroy();return;}
-  const upstream=connect(fixturePort,"127.0.0.1",()=>{client.write("HTTP/1.1 200 Connection Established\r\n\r\n");if(head.length)upstream.write(head);client.pipe(upstream);upstream.pipe(client);});
-  sockets.add(upstream);upstream.on("close",()=>sockets.delete(upstream));upstream.on("error",()=>client.destroy());client.on("error",()=>upstream.destroy());client.on("close",()=>upstream.destroy());
- });
- const tunnelPort=await listen(tunnel);
- return {secret,controlOrigin:`https://localhost:${fixturePort}`,proxy:`http://127.0.0.1:${tunnelPort}`,reads,blocked,
-  close:async()=>{for(const socket of sockets)socket.destroy();for(const s of[tunnel,fixture]){s.closeAllConnections();await new Promise<void>(ok=>s.close(()=>ok()));}}};
+ const fixturePort=await listen(fixture);
+ return {secret,controlOrigin:`https://localhost:${fixturePort}`,reads,blocked,
+  close:async()=>{fixture.closeAllConnections();await new Promise<void>(ok=>fixture.close(()=>ok()));}};
 }

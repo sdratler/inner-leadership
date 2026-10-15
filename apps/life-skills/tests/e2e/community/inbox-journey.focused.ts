@@ -5,6 +5,9 @@ if(process.env.LS_COMMUNITY_UI_ONLY!=="true"||!file)throw Error("COMMUNITY_EXPLI
 const {origin,community}=JSON.parse(readFileSync(file,"utf8"))as{origin:string;community:{credentials:{role:string;email:string;password:string}[];controlOrigin:string;secret:string}};
 if(!/^https:\/\/localhost:310[5678]$/.test(origin)||!/^https:\/\/localhost:\d+$/.test(community.controlOrigin))throw Error("COMMUNITY_LOOPBACK_REQUIRED");
 test.use({baseURL:origin});
+let errors:string[]=[];
+test.beforeEach(({page})=>{errors=[];page.on("pageerror",error=>errors.push(error.message));});
+test.afterEach(()=>{expect(errors).toEqual([]);});
 async function control(request:import("@playwright/test").APIRequestContext,mode:string){expect((await request.post(community.controlOrigin+"/control?mode="+mode,{headers:{Authorization:"Bearer "+community.secret}})).status()).toBe(200);}
 async function login(page:import("@playwright/test").Page,role:string,locale:string){
  const c=community.credentials.find(c=>c.role===role)!;await page.goto(`/${locale}/login`);
@@ -21,10 +24,14 @@ for(const locale of["en","he"]as const){
   await expect(aid).toHaveAttribute("lang",locale);await expect(aid).toHaveAttribute("dir",locale==="he"?"rtl":"ltr");
   await expect(aid.locator("ul")).toHaveAttribute("lang","en");await expect(aid.locator("ul")).toHaveAttribute("dir","ltr");
   await expect(aid).toContainText("Synthetic English reading aid only.");await expect(page.getByText("Synthetic original without an English aid.",{exact:true})).toBeVisible();
+  await expect(page.locator(".lsr-community-original").first()).toHaveText("שאלה ציבורית סינתטית בלבד. ".repeat(18).trim());
+  await expect(page.locator(".lsr-community-original").first()).toHaveAttribute("dir","auto");
   await page.screenshot({path:`test-results/community-inbox-${locale}-${info.project.name}.png`,fullPage:false});
   await expect(page.getByText("constructor",{exact:true})).toBeVisible();
   await expect(page.getByText(locale==="he"?"אין עזר קריאה באנגלית לפוסט הזה.":"No English reading aid is available for this post.",{exact:false})).toBeVisible();
-  const filter=page.getByRole("button",{name:locale==="he"?"מוכן":"Ready",exact:true});await filter.focus();await filter.press("Enter");await expect(filter).toHaveAttribute("aria-pressed","true");
+  const filter=page.getByRole("button",{name:locale==="he"?"מוכן":"Ready",exact:true});await filter.focus();await expect(filter).toBeFocused();
+  await page.keyboard.press("Tab");await expect(page.getByRole("button",{name:locale==="he"?"חדש":"New",exact:true})).toBeFocused();
+  await page.keyboard.press("Shift+Tab");await expect(filter).toBeFocused();await filter.press("Enter");await expect(filter).toHaveAttribute("aria-pressed","true");
   await expect(page.getByText("Synthetic original without an English aid.",{exact:true})).toHaveCount(0);
   await page.getByRole("button",{name:locale==="he"?"הכול":"All",exact:true}).click();await expect(page.getByText("constructor",{exact:true})).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1)).toBe(true);
