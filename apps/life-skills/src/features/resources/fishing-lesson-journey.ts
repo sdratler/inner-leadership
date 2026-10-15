@@ -115,7 +115,7 @@ export class FishingLessonJourney {
    if(current!==command.expectedRevisionId)throw Error("LESSON_JOURNEY_CONFLICT");
    if(command.action==="submit"){
     const questions=new Set(context.lesson.questions.map(q=>q.id));
-    if(new Set(command.answers.map(a=>a.questionId)).size!==command.answers.length||command.answers.some(a=>!questions.has(a.questionId)))
+    if(command.answers.length!==questions.size||new Set(command.answers.map(a=>a.questionId)).size!==command.answers.length||command.answers.some(a=>!questions.has(a.questionId)))
      throw Error("LESSON_JOURNEY_QUESTION_MISMATCH");
    }else if(command.action==="observe"){
     const submission=events.find(e=>e.id===command.submissionId&&e.command.action==="submit");

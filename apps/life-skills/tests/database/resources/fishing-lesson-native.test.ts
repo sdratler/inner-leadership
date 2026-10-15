@@ -18,12 +18,12 @@ import {FishingLessonJourney,learnerLessonSchema,lessonJourneyCommandSchema,type
 import {educationArtifactAad,encodeLessonEvent,type EducationStorageBinding} from "../../../src/features/resources/fishing-lesson-storage-contract.ts";
 const fixtures:Fixture[]=[];afterAll(async()=>{for(const f of fixtures)await f.pool.end();});
 const hash=(s:string)=>createHash("sha256").update(s).digest("hex");
-async function setup(options:{state?:"prepared"|"approved";tamper?:"bytes"|"class"|"source"}={}){
+async function setup(options:{state?:"prepared"|"approved";tamper?:"bytes"|"class"|"source";questionCount?:1|2|3}={}){
  const f=await fixture();fixtures.push(f);const learnerId=(await f.pool.query(`SELECT c.person_id AS id FROM ls_cases.cases x JOIN ls_cases.clients c ON c.workspace_id=x.workspace_id AND c.id=x.client_id WHERE x.workspace_id=$1 AND x.id=$2`,[f.workspaceId,f.first.id])).rows[0].id as string;
  const reference={learnerId,moduleId:"RM-101",version:"synthetic-v1"};
  async function seed(ref:LessonReference=reference){
   const state=options.state??"approved",session=(Number(ref.moduleId[3])-1)*12+Number(ref.moduleId.slice(4));
-  const lesson=learnerLessonSchema.parse({moduleId:ref.moduleId,version:ref.version,stage:Number(ref.moduleId[3]),locale:"en",title:"Synthetic lesson",instruction:"Synthetic hookless instructions",questions:[{id:`Q${String(session).padStart(2,"0")}-1`,prompt:"Synthetic question"}],sourceSha256:"a".repeat(64),status:state});
+  const lesson=learnerLessonSchema.parse({moduleId:ref.moduleId,version:ref.version,stage:Number(ref.moduleId[3]),locale:"en",title:"Synthetic lesson",instruction:"Synthetic hookless instructions",questions:Array.from({length:options.questionCount??1},(_,index)=>({id:`Q${String(session).padStart(2,"0")}-${index+1}`,prompt:`Synthetic question ${index+1}`})),sourceSha256:"a".repeat(64),status:state});
   const learnerBytes=JSON.stringify(lesson),teacherBytes="SYNTHETIC PRIVATE TEACHER KEY",learnerArtifact=randomUUID(),teacherArtifact=randomUUID();
   const binding:EducationStorageBinding={workspaceId:f.workspaceId,moduleId:ref.moduleId,version:ref.version,state,source:{sourceId:"synthetic-source",revision:"synthetic-revision",sha256:"a".repeat(64)},
    learner:{sourceId:"synthetic-learner-"+learnerArtifact,version:"1",locale:"en",sha256:hash(learnerBytes),storageClass:"resource_learner",state},
@@ -44,6 +44,16 @@ async function setup(options:{state?:"prepared"|"approved";tamper?:"bytes"|"clas
  const count=async()=>((await f.pool.query(`SELECT (SELECT count(*)::int FROM ls_education.lesson_events WHERE workspace_id=$1) AS events,(SELECT count(*)::int FROM ls_education.lesson_heads WHERE workspace_id=$1) AS heads`,[f.workspaceId])).rows[0]);
  return {f,reference,journey,command,count,seed};
 }
+
+test.each([1,2,3] as const)("native final submission requires all %i approved questions; rejection leaves no revision",async questionCount=>{
+ const s=await setup({questionCount}),complete={...s.command(),answers:Array.from({length:questionCount},(_,index)=>({questionId:`Q01-${index+1}`,value:"Synthetic complete answer"})).reverse()};
+ await expect(s.journey().save(s.reference,{...complete,answers:complete.answers.slice(1)})).rejects.toThrow();
+ expect(await s.count()).toEqual({events:0,heads:0});
+ const saved=await s.journey().save(s.reference,complete);
+ expect(await s.journey().read(s.reference,"learner")).toMatchObject({submission:{revisionId:saved.revisionId,answers:complete.answers}});
+ expect(await s.journey().save(s.reference,complete)).toEqual({revisionId:saved.revisionId,duplicate:true});
+ expect(await s.count()).toEqual({events:1,heads:1});
+});
 test("encrypted save/fresh reload/lost-response replay preserves parent attribution and no clinical/CRM/task/payment effects",async()=>{
  const s=await setup(),protectedTables=["ls_contact_ops.profiles","ls_calendar.tasks","ls_calendar.task_history","ls_cases.case_guardians","ls_identity.accounts","ls_identity.people","ls_onboarding.first_session_orders","ls_identity.auth_mail_outbox"];
  const snapshot=()=>Promise.all(protectedTables.map(async table=>(await s.f.pool.query(`SELECT to_jsonb(t) AS row FROM ${table} t WHERE workspace_id=$1 ORDER BY to_jsonb(t)::text`,[s.f.workspaceId])).rows)),before=await snapshot();

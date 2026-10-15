@@ -284,8 +284,19 @@ try{
    (SELECT count(*)::int FROM ls_contact_ops.fishing_lead_operations WHERE workspace_id=$1) AS operations,
    (SELECT count(*)::int FROM ls_contact_ops.profiles WHERE workspace_id=$1) AS profiles,
    (SELECT count(*)::int FROM ls_contact_ops.fishing_label_projection WHERE workspace_id=$1) AS projections`,[workspaceId]);
-  if(JSON.stringify(rows.rows[0])!==JSON.stringify({revisions:10,operations:10,profiles:3,projections:4}))throw new Error("FISHING_UI_NATIVE_COUNTS_MISMATCH");
-  console.log(`FISHING_LEAD_UI_ACCEPTANCE_PASS project=${project} ordinaryLogin=true revisions=10 operations=10 profiles=3 projections=4 tasksUnchanged=true unrelatedProfileUnchanged=true providerEffects=0`);
+  if(JSON.stringify(rows.rows[0])!==JSON.stringify({revisions:12,operations:12,profiles:5,projections:6}))throw new Error("FISHING_UI_NATIVE_COUNTS_MISMATCH");
+  // Two seeded inquiries plus two anonymous UI submissions. Both lost-response
+  // retries must retain the same saved inquiry and operation, never a duplicate.
+  const after=await counts(),expected={...baseline,publicApplications:baseline.publicApplications+4,publicApplicationOperations:baseline.publicApplicationOperations+4};
+  // The all-table snapshot also includes intentionally new contacts and normal
+  // login sessions. Compare every intake/planning scalar here; the independent
+  // exact-row protected-table/profile checks above remain mandatory unchanged.
+  for(const key of Object.keys(expected) as (keyof BoundaryCounts)[]){
+   if(key!=="otherWorkspaceState"&&after[key]!==expected[key])throw new Error(`FISHING_UI_UNEXPECTED_DATABASE_EFFECT:${key}`);
+  }
+  const retainedPublic=await f.pool.query("SELECT to_jsonb(a)::text AS snapshot FROM ls_service_interest.public_applications a WHERE workspace_id=$1 AND id=$2",[workspaceId,publicApplicationId]);
+  if(JSON.stringify(retainedPublic.rows)!==JSON.stringify(originalPublic.rows))throw new Error("FISHING_UI_EXISTING_RECEIPT_MUTATED");
+  console.log(`FISHING_LEAD_UI_ACCEPTANCE_PASS project=${project} composedPublicOwnerLogin=true ordinaryRelogin=true revisions=12 operations=12 profiles=5 projections=6 publicInquiries=4 publicOperations=4 tasksUnchanged=true unrelatedProfileUnchanged=true providerEffects=0`);
  }
  else if(process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==="true"){
   phase="public-boundary-readback";const after=await counts(),writes=project===undefined||project==="desktop"?2:1;
