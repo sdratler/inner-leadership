@@ -45,6 +45,8 @@ if(!runtimePath){
    await expect(page.getByRole("navigation",{name:t(locale,"Lesson location","מיקום השיעור"),exact:true}).locator("ol")).toHaveCSS("list-style-type","none");
    await expect(page.getByRole("tablist",{name:t(locale,"Lesson views","תצוגות השיעור"),exact:true})).toHaveCSS("display","flex");await expect(page.locator(".lsw-feature-page [style]")).toHaveCount(0);
    const answer=page.getByLabel("Describe your synthetic hookless practice.",{exact:true});await answer.fill(draft);
+   const navigationWarning=page.waitForEvent("dialog",{timeout:3000}).then(async dialog=>{await dialog.dismiss();return dialog.type();},()=>null);
+   await page.getByRole("banner").getByRole("link",{name:"Life Skills",exact:true}).click();expect(await navigationWarning).toBe("beforeunload");await expect(page).toHaveURL(href(locale,ref,"lesson"));await expect(answer).toHaveValue(draft);
    const lessonTab=page.getByRole("tab",{name:t(locale,"Lesson","שיעור"),exact:true}),portfolioTab=page.getByRole("tab",{name:t(locale,"Published summary","סיכום שפורסם"),exact:true});
    await lessonTab.focus();await lessonTab.press(locale==="he"?"ArrowLeft":"ArrowRight");await expect(portfolioTab).toHaveAttribute("aria-selected","true");await expect(portfolioTab).toBeFocused();
    await page.goBack();await expect(lessonTab).toHaveAttribute("aria-selected","true");await expect(answer).toHaveValue(draft);
