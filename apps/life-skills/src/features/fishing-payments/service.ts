@@ -105,7 +105,8 @@ export class FishingPaymentService {
    const p=await this.store.purchase(c,purchaseId),due=p.state.dues.find(d=>d.id===dueId);invariant(due,'WRONG_DUE');const policy=await this.store.deps.authority.reminderPolicy(c.tx,p.offer,c.now);
    invariant(policy.approvedPolicyId&&policy.copyVersion,'REMINDER_POLICY_REQUIRED');
    const eligible=due.paidCents<due.amountCents&&policy.parentAccountId===p.offer.payerAccountId&&policy.consented&&!policy.quietNow&&policy.eligibleNow&&!policy.stripeAlreadyNotifies&&!await this.store.hasUnknown(c,purchaseId);
-   const draft={id:randomUUID(),purchaseId,dueId,recipientAccountId:p.offer.payerAccountId,channel:policy.channel,policyId:policy.approvedPolicyId,copyVersion:policy.copyVersion,state:eligible?'draft':'suppressed',amountCents:Math.max(0,due.amountCents-due.paidCents),neverSent:true};
+   const existing=await one<{id:string}>(c.tx,'SELECT id FROM ls_fishing_payments.reminders WHERE workspace_id=$1 AND purchase_id=$2 AND due_id=$3 AND policy_id=$4',[c.actor.workspaceId,purchaseId,dueId,policy.approvedPolicyId]);
+   const draft={id:existing?.id??randomUUID(),purchaseId,dueId,recipientAccountId:p.offer.payerAccountId,channel:policy.channel,policyId:policy.approvedPolicyId,copyVersion:policy.copyVersion,state:eligible?'draft':'suppressed',amountCents:Math.max(0,due.amountCents-due.paidCents),neverSent:true};
    const rows=await c.tx.query<{draft:typeof draft}>('INSERT INTO ls_fishing_payments.reminders(workspace_id,id,purchase_id,due_id,policy_id,draft_json,state) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7) ON CONFLICT(workspace_id,purchase_id,due_id,policy_id) DO UPDATE SET state=EXCLUDED.state,draft_json=EXCLUDED.draft_json RETURNING draft_json AS draft',[c.actor.workspaceId,draft.id,purchaseId,dueId,policy.approvedPolicyId,JSON.stringify(draft),draft.state]);return rows[0]!.draft;
   });
  }

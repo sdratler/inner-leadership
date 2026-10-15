@@ -8,6 +8,7 @@ test('server snapshot rejects forged price, currency, stage discount and fourth 
  const o=offerFixture(),l=o.lines[0]!;
  for(const bad of [{...o,currency:'ILS'},{...o,lines:[{...l,totalCents:165000}]},{...o,lines:[{...l,stage:2,discountBasis:'founder_initial_primary_prepay',eligibility:{...l.eligibility,kind:'verified_founder'},totalCents:165000}]},{...o,lines:[{...l,dues:[...l.dues,...l.dues,...l.dues,...l.dues]}]}])expect(()=>approvedOffer(bad)).toThrow();
 });
+test('Academy catalog is not silently applied to separately priced private fishing',()=>{expect(()=>approvedOffer({...offerFixture(),program:'private_fishing_life_skills'})).toThrow('PROGRAM_PRICE_POLICY_REQUIRED');});
 test.each([['ordinary_primary_prepay',175000,'ordinary'],['ordinary_sibling_prepay',165000,'verified_sibling'],['founder_initial_primary_prepay',165000,'verified_founder'],['founder_initial_sibling_prepay',155000,'verified_founder']] as const)('approved price %s is exact', (discountBasis,totalCents,kind)=>{
  const o=offerFixture(),l=o.lines[0]!;expect(approvedOffer({...o,lines:[{...l,totalCents,discountBasis,eligibility:{...l.eligibility,kind},dues:[{...l.dues[0],amountCents:totalCents}]}]}).lines[0]!.totalCents).toBe(totalCents);
 });

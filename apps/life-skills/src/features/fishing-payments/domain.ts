@@ -21,6 +21,7 @@ export function digest(value:unknown):string {
 /** Called on reloaded server records, never a structural Quote supplied by a browser. */
 export function approvedOffer(value:unknown):ApprovedOffer {
  const o=schema.parse(value); invariant(o.policyVersion===POLICY_VERSION,'POLICY_VERSION');
+ invariant(o.program==='sunday_fishing_academy','PROGRAM_PRICE_POLICY_REQUIRED');
  invariant(o.terms.acceptedBy===o.payerAccountId,'PAYER_TERMS');
  invariant(new Date(o.terms.acceptedAt).getTime()<new Date(o.expiresAt).getTime(),'TERMS_TIME');
  invariant(new Set(o.lines.map(x=>x.id)).size===o.lines.length&&new Set(o.lines.map(x=>x.learnerId)).size===o.lines.length,'DUPLICATE_LINE');
