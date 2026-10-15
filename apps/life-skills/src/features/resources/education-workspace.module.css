@@ -1,0 +1,9 @@
+.frame { min-inline-size: 0; overflow-wrap: anywhere; }
+.breadcrumb { display: flex; gap: 12px; flex-wrap: wrap; list-style: none; padding: 0; margin: 0; align-items: center; }
+.breadcrumb a { display: inline-flex; min-block-size: 44px; align-items: center; }
+.tabs { display: flex; gap: 8px; overflow-x: auto; padding-block: 6px; max-inline-size: 100%; }
+.tab { white-space: nowrap; flex-shrink: 0; }
+.fields { display: grid; gap: 16px; min-inline-size: 0; }
+.text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.choice { display: flex; gap: 10px; padding-block: 10px; align-items: center; }
+.answer { margin-block: 1rem; }

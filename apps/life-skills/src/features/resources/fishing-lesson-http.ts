@@ -7,11 +7,16 @@ import type {Actor} from "../identity/types.ts";
 import {FishingLessonJourney,lessonJourneyCommandSchema,lessonReferenceSchema} from "./fishing-lesson-journey.ts";
 const path="/api/resources/education/lesson",view=z.enum(["learner","teacher","parent"]);
 const requestBody=z.strictObject({reference:lessonReferenceSchema,command:lessonJourneyCommandSchema});
+// HTTP dispatch has a parsed union view; the journey retains its narrower
+// per-view overloads for typed consumers. This port does not supply authority.
+type JourneyPort=Pick<FishingLessonJourney,"save">&{
+ read(...args:Parameters<FishingLessonJourney["read"]>):ReturnType<FishingLessonJourney["read"]>;
+};
 /** UNMOUNTED: supplies no Next route, grant writer, importer or activation. */
 export class FishingLessonHttp {
  private readonly boundary:Ls050HttpBoundary;
  private readonly childAccountsEnabled:boolean;
- constructor(runtime:Ls050HttpRuntime,private readonly journey:(actor:Actor)=>Pick<FishingLessonJourney,"read"|"save">){this.boundary=new Ls050HttpBoundary(runtime);this.childAccountsEnabled=runtime.config.childAccountsEnabled===true;}
+ constructor(runtime:Ls050HttpRuntime,private readonly journey:(actor:Actor)=>JourneyPort){this.boundary=new Ls050HttpBoundary(runtime);this.childAccountsEnabled=runtime.config.childAccountsEnabled===true;}
  handle(request:Request){return this.boundary.handle(request,new URL(request.url).pathname===path?["GET","POST"]:[],async actor=>{
   try{
    if(actor.role==="child"&&!this.childAccountsEnabled)throw new AppError("FORBIDDEN");

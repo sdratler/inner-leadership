@@ -8,6 +8,7 @@ import {existsSync,mkdtempSync,rmSync,writeFileSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join,resolve} from "node:path";
 import {once} from "node:events";
+import net from "node:net";
 import {request as playwrightRequest} from "@playwright/test";
 import {fixture,safeTestUrl} from "../../database/calendar/fixture.ts";
 import {seal,tokenDigest,hashPassword,blindEmail} from "../../../src/features/identity/crypto.ts";
@@ -20,12 +21,18 @@ const projects={desktop:3105,tablet768:3108,mobile390:3106,mobile340:3107} as co
 const project=process.env.LS_GROUP_INTEREST_TEST_PROJECT as keyof typeof projects|undefined;
 const sampleOnly=process.env.LS_FLORIDA_SAMPLE_TEST_ONLY==="true";
 const fishingOnly=process.env.LS_FISHING_LEAD_UI_ONLY==="true";
+const educationOnly=process.env.LS_EDUCATION_UI_ONLY==="true";
+if(educationOnly&&project===undefined)throw new Error("EDUCATION_UI_EXPLICIT_PROJECT_REQUIRED");
 if(fishingOnly&&project===undefined)throw new Error("FISHING_UI_EXPLICIT_PROJECT_REQUIRED");
 if(project!==undefined&&!(project in projects))throw new Error("GROUP_INTEREST_BROWSER_PROJECT_NOT_SUPPORTED");
 if((sampleOnly||process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==="true")&&project===undefined)throw new Error("FLORIDA_JOURNEY_EXPLICIT_PROJECT_REQUIRED");
 if(process.env.LS_GROUP_INTEREST_TEST_ALLOW!=="true")throw new Error("GROUP_INTEREST_BROWSER_OPT_IN_REQUIRED");
 const appPort=projects[project??"desktop"],origin=`https://localhost:${appPort}`;
 safeTestUrl();
+if(educationOnly){
+ const probe=net.createServer();await new Promise<void>((resolve,reject)=>{probe.once("error",reject);probe.listen(appPort,"127.0.0.1",resolve);});
+ await new Promise<void>((resolve,reject)=>probe.close(error=>error?reject(error):resolve()));
+}
 const folder=mkdtempSync(join(tmpdir(),"ls-group-interest-browser-"));
 let app:ChildProcess|null=null,tests:ChildProcess|null=null;
 let f:Awaited<ReturnType<typeof fixture>>|null=null,phase="fixture";
@@ -204,10 +211,15 @@ try{
   await f.pool.query("UPDATE ls_identity.sessions SET revoked_at=clock_timestamp() WHERE workspace_id=$1",[workspaceId]);
   fishingRuntime={credentials,inquiries,protectedPersonId:existing.personId};fishingBefore=await fishingSnapshot();
  }
+ // Ordinary Group Intake callers have no react-server loader condition. Do not
+ // load the education-only native module into those unchanged test paths.
+ const educationModule=educationOnly?await import("../resources/education-fixture.ts"):null;
+ const educationRuntime=educationModule?await educationModule.educationBrowserFixture(f,lookupKey):null;
+ const educationBefore=educationModule?await educationModule.educationProtectedSnapshot(f):null;
  const originalPublic=await f.pool.query("SELECT to_jsonb(a)::text AS snapshot FROM ls_service_interest.public_applications a WHERE workspace_id=$1 AND id=$2",[workspaceId,publicApplicationId]);
  if(baseline.inquiries!==0||baseline.operations!==0||baseline.serviceInterests!==0||baseline.serviceOperations!==0||baseline.draftGroups!==0||baseline.draftOperations!==0||baseline.proposedPlacements!==0||baseline.placementOperations!==0||baseline.placementMoves!==0||baseline.movementOperations!==0||baseline.meetingRevisions!==0||baseline.meetingOperations!==0||baseline.practiceRevisions!==0||baseline.practiceOperations!==0)throw new Error("GROUP_INTEREST_FIXTURE_NOT_EMPTY");
  const runtimePath=join(folder,"synthetic-runtime.json");
- writeFileSync(runtimePath,JSON.stringify({origin,workspaceId,practitioner:f.practitioner.token,parent:f.parent.token,adult,child,revoked,otherWorkspace,publicApplicationId,publicApplicantName:publicApplicationFields.parentName,...(fishingRuntime?{fishing:fishingRuntime}:{})}),{mode:0o600});
+ writeFileSync(runtimePath,JSON.stringify({origin,workspaceId,practitioner:f.practitioner.token,parent:f.parent.token,adult,child,revoked,otherWorkspace,publicApplicationId,publicApplicantName:publicApplicationFields.parentName,...(fishingRuntime?{fishing:fishingRuntime}:{}),...(educationRuntime?{education:educationRuntime}:{})}),{mode:0o600});
  const key=join(folder,"tls.key"),cert=join(folder,"tls.crt");
  phase="tls-certificate";
  const gitOpenSsl="C:/Program Files/Git/mingw64/bin/openssl.exe",openssl=process.platform==="win32"&&existsSync(gitOpenSsl)?gitOpenSsl:"openssl";
@@ -217,7 +229,8 @@ try{
   LS_DATABASE_URL:safeTestUrl(),LS_DATABASE_TLS:"disable",LS_PRIVATE_APP_ENABLED:"true",LS_IDENTITY_ENABLED:"true",LS_GROUP_INTEREST_CANDIDATE:"true",LS_GROUP_APPLICATION_SYNTHETIC_LOOPBACK:"true",
   LS_IDENTITY_WORKSPACE_ID:workspaceId,LS_IDENTITY_ACTIVE_KEY_ID:"synthetic",LS_IDENTITY_DATA_KEYS:JSON.stringify({synthetic:dataKey.toString("base64url")}),
   LS_IDENTITY_CSRF_KEY:randomBytes(32).toString("base64url"),LS_IDENTITY_LOOKUP_KEY:lookupKey.toString("base64url"),LS_IDENTITY_RATE_KEY:randomBytes(32).toString("base64url"),
-  LS_GROUP_INTEREST_FIXTURE_PATH:runtimePath,LS_GROUP_INTEREST_TEST_RUNNER_ACTIVE:"true"};
+  LS_GROUP_INTEREST_FIXTURE_PATH:runtimePath,LS_GROUP_INTEREST_TEST_RUNNER_ACTIVE:"true",
+  ...(educationOnly?{LS_EDUCATION_SYNTHETIC_LOOPBACK:"true",TEST_DATABASE_URL:safeTestUrl(),LS_CHILD_ACCOUNTS_ENABLED:"false",LS_AUTH_EMAIL_ENABLED:"false"}:{})};
  app=spawn(process.execPath,[resolve("node_modules/next/dist/bin/next"),"dev","--webpack","--experimental-https","--experimental-https-key",key,"--experimental-https-cert",cert,"--hostname","127.0.0.1","--port",String(appPort)],{env,stdio:"ignore"});
  phase="next-health";let healthy=false;const probe=await playwrightRequest.newContext({baseURL:origin,ignoreHTTPSErrors:true});
  try{for(let i=0;i<240;i++){if(app.exitCode!==null)throw new Error("ISOLATED_APP_START_FAILED");try{if((await probe.get("/api/health")).status()===200){healthy=true;break;}}catch{}await new Promise(r=>setTimeout(r,250));}}finally{await probe.dispose();}
@@ -226,13 +239,23 @@ try{
  const selection=project?["--project",project,"--output",`tests/e2e/group-interest/test-results/isolated-${project}`]:[];
  if(!fishingOnly&&process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==="true")selection.push("--grep","Florida group inquiry|Israel group application compatibility");
  if(process.env.LS_GROUP_INTEREST_CAPTURE_ONLY==="true")selection.push("--grep","practitioner");
- if(fishingOnly){/* Selection is the retained mounted fishing spec in the same isolated harness. */}
+ if(educationOnly){/* Existing Playwright config selects the retained Resources journey. */}
+ else if(fishingOnly){/* Selection is the retained mounted fishing spec in the same isolated harness. */}
  else if(sampleOnly)selection.push("--grep","Florida owner journey hosted sample");
  else if(process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==="true")selection.push("--grep",process.env.LS_FLORIDA_INSTITUTION_TEST_ONLY==="true"?"Florida owner journey school inquiry|Florida owner journey.*native inquiry replay|Florida owner journey authorization":"Florida owner journey");
  else selection.push("--grep-invert","Florida owner journey");
- tests=spawn(process.execPath,[resolve("node_modules/@playwright/test/cli.js"),"test","--config","tests/e2e/group-interest/playwright.config.ts",...selection],{env,stdio:["ignore","inherit","inherit"]});
+ const testEnv=educationModule?educationModule.educationBrowserTestEnvironment(env,process.env):env;
+ tests=spawn(process.execPath,[resolve("node_modules/@playwright/test/cli.js"),"test","--config","tests/e2e/group-interest/playwright.config.ts",...selection],{env:testEnv,stdio:["ignore","inherit","inherit"]});
  const [code]=await once(tests,"exit");if(code!==0)throw new Error("GROUP_INTEREST_BROWSER_ACCEPTANCE_FAILED");
- if(fishingOnly){
+ if(educationOnly){
+  if(!educationModule)throw new Error("EDUCATION_FIXTURE_NOT_READY");
+  phase="education-native-readback";
+  if(JSON.stringify(await educationModule.educationProtectedSnapshot(f))!==JSON.stringify(educationBefore))throw new Error("EDUCATION_UI_FORBIDDEN_DATABASE_EFFECT");
+  const count=(await f.pool.query("SELECT count(*)::int AS total FROM ls_education.lesson_events WHERE workspace_id=$1",[workspaceId])).rows[0].total;
+  if(count!==9)throw new Error("EDUCATION_UI_EVENT_REPLAY_OR_FLOW_INCOMPLETE");
+  console.log(`EDUCATION_BROWSER_ACCEPTANCE_PASS project=${project} ordinaryLogin=true events=${count} unrelatedEffects=0 providerEffects=0`);
+ }
+ else if(fishingOnly){
   phase="fishing-ui-native-readback";
   if(JSON.stringify(await fishingSnapshot())!==JSON.stringify(fishingBefore))throw new Error("FISHING_UI_FORBIDDEN_DATABASE_EFFECT");
   const profile=(await f.pool.query("SELECT to_jsonb(p) AS row FROM ls_contact_ops.profiles p WHERE workspace_id=$1 AND person_id=$2",[workspaceId,fishingProtectedPerson])).rows;

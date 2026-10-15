@@ -7,12 +7,13 @@ import {SESSION_COOKIE} from "../../../src/lib/security/session.ts";
 import {systemClock,type Actor} from "../../../src/features/identity/types.ts";
 import type {IdentityConfig} from "../../../src/features/identity/config.ts";
 import {FishingLessonHttp} from "../../../src/features/resources/fishing-lesson-http.ts";
+import type {FishingLessonJourney} from "../../../src/features/resources/fishing-lesson-journey.ts";
 const origin="https://synthetic.invalid",path="/api/resources/education/lesson",token="s".repeat(43),csrf="c".repeat(43),ref={learnerId:randomUUID(),moduleId:"RM-101",version:"synthetic-v1"};
 function setup(childAccountsEnabled=false){
  const actor:Actor={id:asId(randomUUID(),"account"),workspaceId:asId(randomUUID(),"workspace"),personId:asId(randomUUID(),"person"),role:"parent",state:"active",locale:"en",sessionDigest:"d".repeat(64),expiresAt:Date.now()+3600000};
  const config:IdentityConfig={enabled:true,origin,workspaceId:actor.workspaceId,csrfKey:randomBytes(32),lookupKey:randomBytes(32),rateLimitKey:randomBytes(32).toString("hex"),keyring:{activeKeyId:"test",keys:{test:randomBytes(32)}},sessionSeconds:28800,childAccountsEnabled};
  const sessions={actor:vi.fn(async()=>actor),csrf:()=>csrf},limits={consume:vi.fn(async()=>({count:1,retryAfterMs:1000}))},audit={write:vi.fn(async()=>{})};
- const journey={read:vi.fn(async()=>({moduleId:ref.moduleId,version:ref.version,portfolio:null})),save:vi.fn(async()=>({revisionId:randomUUID(),duplicate:false}))},factory=vi.fn(()=>journey);
+ const journey={read:vi.fn<FishingLessonJourney["read"]>().mockResolvedValue({moduleId:ref.moduleId,version:ref.version,portfolio:null}),save:vi.fn(async()=>({revisionId:randomUUID(),duplicate:false}))},factory=vi.fn(()=>journey);
  const http=new FishingLessonHttp({config,sessions,limits,audit,clock:systemClock},factory),command={action:"submit",operationId:randomUUID(),expectedRevisionId:null,answers:[{questionId:"Q01-1",value:"Synthetic answer"}]};
  const request=(method="GET",headers:Record<string,string>={},suffix="?"+new URLSearchParams({...ref,view:"parent"}),body:unknown={reference:ref,command})=>new Request(origin+path+suffix,{method,headers:{cookie:`${SESSION_COOKIE}=${token}`,...method==="GET"?{}:{origin,"content-type":"application/json","x-csrf-token":csrf,"sec-fetch-site":"same-origin"},...headers},...method==="GET"?{}:{body:JSON.stringify(body)}});
  return {http,actor,journey,factory,sessions,audit,request,command};
