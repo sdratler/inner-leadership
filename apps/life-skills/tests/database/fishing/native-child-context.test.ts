@@ -59,7 +59,10 @@ test("checks actual native role rather than the captured role; separately enable
 test("revoked sessions, unverified parent and disabled native account deny before child context",async()=>{
  const f=await fixture(),learner=await f.person("minor","Synthetic child");await f.guardian(learner);
  await f.pool.query("UPDATE ls_identity.sessions SET revoked_at=clock_timestamp() WHERE token_digest=$1",[f.parent.sessionDigest]);await expect(f.reader.read(f.parent)).rejects.toMatchObject({code:"UNAUTHENTICATED"});
- await f.pool.query("UPDATE ls_identity.accounts SET email_verified_at=NULL WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.other.id]);await expect(f.reader.read(f.other)).rejects.toMatchObject({code:"UNAUTHENTICATED"});
+ // The real schema itself forbids active/unverified accounts. Preserve that
+ // constraint, then exercise the legitimate unverified invitation state.
+ await expect(f.pool.query("UPDATE ls_identity.accounts SET email_verified_at=NULL WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.other.id])).rejects.toMatchObject({code:"23514",constraint:"accounts_check"});
+ await f.pool.query("UPDATE ls_identity.accounts SET state='invited',email_verified_at=NULL WHERE workspace_id=$1 AND id=$2",[f.workspaceId,f.other.id]);await expect(f.reader.read(f.other)).rejects.toMatchObject({code:"UNAUTHENTICATED"});
  const disabled=await f.account("parent");await f.pool.query("UPDATE ls_identity.accounts SET state='revoked' WHERE workspace_id=$1 AND id=$2",[f.workspaceId,disabled.id]);await expect(f.reader.read(disabled)).rejects.toMatchObject({code:"UNAUTHENTICATED"});
 });
 test("current guardian removal and global revocation hide context; lesson-only revocation does not redefine guardianship",async()=>{
