@@ -1,4 +1,5 @@
-import {describe,it,expect} from "vitest";
+import {describe,it,expect,vi} from "vitest";
+vi.mock("server-only",()=>({}));
 import {canonicalTime,floridaWallTimeCandidates,resolveFloridaWallTime,noticeState} from "../../../src/features/fishing-stage/time.ts";
 import {assertCompleteLessonAnswers,stageLessonReference} from "../../../src/features/fishing-stage/classroom.ts";
 import {FishingStageService} from "../../../src/features/fishing-stage/service.ts";

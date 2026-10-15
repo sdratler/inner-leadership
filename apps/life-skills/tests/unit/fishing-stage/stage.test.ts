@@ -1,4 +1,5 @@
-import {describe,it,expect} from "vitest";
+import {describe,it,expect,vi} from "vitest";
+vi.mock("server-only",()=>({}));
 import {FishingStageService} from "../../../src/features/fishing-stage/service.ts";
 import {actor,Fixture,id,ref,template} from "./fixture.ts";
 import {asId} from "../../../src/lib/ids.ts";

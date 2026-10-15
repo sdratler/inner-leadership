@@ -1,4 +1,5 @@
-import {it,expect} from "vitest";
+import {it,expect,vi} from "vitest";
+vi.mock("server-only",()=>({}));
 import {createElement} from "react";
 import {renderToStaticMarkup} from "react-dom/server";
 import {FishingStagePlan} from "../../../src/features/fishing-stage/plan.tsx";
