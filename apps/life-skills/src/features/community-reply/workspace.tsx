@@ -6,6 +6,7 @@ import type { CommunityInboxPage, CommunityInboxPost } from "../community-inbox/
 import type { CommunityReplyResult } from "./bridge.ts";
 import type { CommunitySavedDraft } from "./drafts-bridge.ts";
 import {CommunityThreadPanel} from './thread-panel.tsx';
+import {CommunityReadingAid,CommunityPostMetadata} from './inbox-presentation.tsx';
 import { UnsavedChangesGuard } from "../../ui/workspace/draft-guard.tsx";
 import { canResumeRuleOperation, matchesEditedDraftReadback, matchesGeneratedReadback, matchesSavedDraftBinding, matchesSubmittedInput, proposalForResult, replyFailureKind, ruleDraftPromotionNeedsConfirmation, writingRuleDisplayText, type CommunitySourceInput } from "./input-state.ts";
 
@@ -405,11 +406,8 @@ export function CommunityReplyWorkspace({ locale }: { locale: Locale }) {
       {!inboxLoading && !inboxError && inbox.length === 0 && <p>{t.inboxEmpty}</p>}
       {inbox.map(post => <article key={post.id} className="lsr-publication-row">
         <h3>{post.groupName}</h3><p className="lsr-community-original" dir="auto">{post.excerpt}{post.excerptTruncated ? '…' : ''}</p>
-        <section className="lsr-reading-aid" lang="en" dir="ltr" aria-label="English reading aid">
-          <h4>English reading aid</h4>
-          {post.englishReadingAid?.length?<><ul>{post.englishReadingAid.map((line,index)=><li key={index}>{line}</li>)}</ul><p className="lsr-help">Convenience summary, not the source. The original excerpt remains authoritative.</p></>:<p className="lsr-help">No English reading aid is available for this post. Reading it does not run a paid analysis.</p>}
-        </section>
-        <p className="lsr-help">{t.inboxStatus}: {post.status} · {t.inboxCaptured}: {post.postedAt ?? post.capturedAt ?? '—'} · {t.inboxNoComments}</p>
+        <CommunityReadingAid locale={locale} lines={post.englishReadingAid}/>
+        <CommunityPostMetadata locale={locale} post={post}/>
         {post.draft && <details><summary>{t.inboxDraft}</summary><p>{post.draft}</p></details>}
         {!post.draft && <p className="lsr-help">{t.inboxNoDraft}</p>}
         <div className="lsr-actions"><a className="lsr-button" href={post.postUrl} target="_blank" rel="noopener noreferrer">{t.inboxOriginal}</a>
