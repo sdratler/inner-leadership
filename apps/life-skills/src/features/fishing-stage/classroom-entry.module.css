@@ -1,0 +1,16 @@
+.workspace{min-inline-size:0;margin-block:1rem;padding:clamp(1rem,2vw,1.5rem);border:1px solid var(--ls-line);border-radius:1rem;background:var(--ls-paper);color:var(--ls-ink);font-size:1rem;line-height:1.65;overflow-wrap:anywhere}
+.workspace h2{margin-block:0 .75rem;color:var(--ls-deep);font-size:clamp(1.35rem,2.2vw,1.75rem);line-height:1.35}
+.workspace h3{margin-block:0 .5rem;font-size:1.125rem;line-height:1.4}
+.workspace p{margin-block:.5rem 1rem}
+.workspace :is(select,button,a,summary):focus-visible{outline:3px solid var(--ls-gold);outline-offset:4px}
+.workspace :is(button,a){min-block-size:3rem;max-inline-size:100%;white-space:normal;word-break:normal;overflow-wrap:normal}
+.workspace select{inline-size:100%;max-inline-size:100%;min-block-size:3rem;box-sizing:border-box;font-size:1rem}
+.choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;margin-block:1rem}
+.choices>div{min-inline-size:0}
+.lessons{display:grid;gap:1rem;padding:0;margin-block:1rem;list-style:none}
+.lesson{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding-block:1rem;border-block-start:1px solid var(--ls-line);min-inline-size:0}
+.lesson>div{min-inline-size:0}
+.lesson>a{flex-shrink:0;text-align:center;text-decoration:none}
+.lesson details{color:var(--ls-muted)}
+.lesson summary{cursor:pointer;min-block-size:2.75rem;padding-block:.5rem}
+@media(max-width:600px){.choices{grid-template-columns:minmax(0,1fr)}.lesson{flex-direction:column;align-items:stretch}.workspace :is(button,a){inline-size:100%;box-sizing:border-box}.workspace{padding:1rem}}
