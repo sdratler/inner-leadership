@@ -32,13 +32,28 @@ if(!file){
   // Fixed categories only: never retain raw URLs, console text, errors, input
   // values, request bodies, headers, credentials or response payloads.
   const identityPaths=["/api/identity/csrf","/api/identity/login","/api/identity/session"],events:{kind:string;method:string;pathname:string;status?:number;failure?:string}[]=[],categories=new Set<string>();
-  const state:{phase:string;documentComplete?:boolean;documentInteractive?:boolean;formPresent?:boolean;formValid?:boolean}={phase:"private-route"};let passed=false;
+  const state:{phase:string;documentComplete?:boolean;documentInteractive?:boolean;formPresent?:boolean;formValid?:boolean;responseHasScriptNonce?:boolean;scriptCount?:number;scriptsWithNonce?:number;scriptsMatchingResponseNonce?:number;scriptsMissingNonce?:number}={phase:"private-route"};let passed=false,responseNonce:string|null=null;
   const identity=(request:Request)=>{const url=new URL(request.url()),method=request.method();return url.origin===data.origin&&identityPaths.includes(url.pathname)&&["GET","POST","HEAD","OPTIONS"].includes(method)?{method,pathname:url.pathname}:null;};
   const record=(event:typeof events[number])=>{if(events.length<48)events.push(event);};
   const requestedIdentity=(request:Request)=>{const item=identity(request);if(item)record({kind:"request",...item});};
-  const respondedIdentity=(response:Response)=>{const item=identity(response.request());if(item)record({kind:"response",...item,status:response.status()});};
+  const respondedIdentity=(response:Response)=>{
+   const item=identity(response.request());if(item)record({kind:"response",...item,status:response.status()});
+   const url=new URL(response.url());
+   if(url.origin===data.origin&&url.pathname===`/${locale}/login`&&response.request().resourceType()==="document"&&response.request().frame()===page.mainFrame()){
+    // The policy and nonce live only in this closure, never in evidence output.
+    const directive=(response.headers()["content-security-policy"]??"").split(";").map(value=>value.trim()).find(value=>value.startsWith("script-src "));
+    responseNonce=directive?.split(/\s+/).map(value=>/^'nonce-([A-Za-z0-9+/_-]+={0,2})'$/.exec(value)?.[1]).find(value=>value!==undefined)??null;
+   }
+  };
   const failedIdentity=(request:Request)=>{const item=identity(request);if(item){const code=request.failure()?.errorText??"";record({kind:"failure",...item,failure:["net::ERR_ABORTED","net::ERR_CONNECTION_REFUSED","net::ERR_CONNECTION_RESET","net::ERR_FAILED","net::ERR_CERT_AUTHORITY_INVALID"].includes(code)?code:"OTHER_NETWORK_FAILURE"});}};
-  const classify=(text:string)=>/content.security.policy|\bCSP\b|refused to (?:load|execute|connect)/i.test(text)?"CSP":/ChunkLoadError|loading chunk|failed to fetch dynamically imported module/i.test(text)?"CHUNK":/hydrat/i.test(text)?"HYDRATION":"JS_RUNTIME";
+  const classify=(text:string)=>{
+   if(/content.security.policy|\bCSP\b|refused to (?:load|execute|connect)/i.test(text)){
+    if(/script-src|(?:inline|external) script|javascript|unsafe-eval/i.test(text))return /unsafe-eval|evaluat/i.test(text)?"CSP_SCRIPT_EVAL":/inline/i.test(text)?"CSP_SCRIPT_INLINE":/external|load(?:ing)? (?:the )?script/i.test(text)?"CSP_SCRIPT_EXTERNAL":"CSP_SCRIPT_OTHER";
+    if(/style-src|stylesheet|inline style/i.test(text))return /inline/i.test(text)?"CSP_STYLE_INLINE":"CSP_STYLE_EXTERNAL";
+    return /connect-src|connect to/i.test(text)?"CSP_CONNECT":"CSP_OTHER";
+   }
+   return /ChunkLoadError|loading chunk|failed to fetch dynamically imported module/i.test(text)?"CHUNK":/hydrat/i.test(text)?"HYDRATION":"JS_RUNTIME";
+  };
   const pageError=(error:Error)=>{categories.add(classify(error.message));};
   const consoleError=(message:ConsoleMessage)=>{if(message.type()==="error")categories.add(classify(message.text()));};
   page.on("request",requestedIdentity);page.on("response",respondedIdentity);page.on("requestfailed",failedIdentity);page.on("pageerror",pageError);page.on("console",consoleError);
@@ -49,7 +64,7 @@ if(!file){
   const requested=new URL(page.url()).searchParams.getAll('next');expect(requested).toHaveLength(1);expect(sameTarget(new URL(requested[0]!,data.origin))).toBe(true);
   state.phase="fill-ordinary-login";
   await page.getByLabel(t(locale,"Email","דוא״ל"),{exact:true}).fill(credentials.email);await page.getByLabel(t(locale,"Password","סיסמה"),{exact:true}).fill(credentials.password);
-  Object.assign(state,await page.evaluate(()=>{const form=document.querySelector("form");return {documentComplete:document.readyState==="complete",documentInteractive:document.readyState==="interactive",formPresent:form!==null,formValid:form?.checkValidity()??false};}));
+  Object.assign(state,await page.evaluate(nonce=>{const form=document.querySelector("form"),scripts=[...document.scripts],withNonce=scripts.filter(script=>script.nonce!=="");return {documentComplete:document.readyState==="complete",documentInteractive:document.readyState==="interactive",formPresent:form!==null,formValid:form?.checkValidity()??false,responseHasScriptNonce:nonce!==null,scriptCount:scripts.length,scriptsWithNonce:withNonce.length,scriptsMatchingResponseNonce:nonce===null?0:withNonce.filter(script=>script.nonce===nonce).length,scriptsMissingNonce:scripts.length-withNonce.length};},responseNonce));
   state.phase="click-ordinary-login";
   const response=page.waitForResponse(r=>new URL(r.url()).pathname==="/api/identity/login"&&r.request().method()==="POST");await page.getByRole("button",{name:t(locale,"Sign in","כניסה"),exact:true}).click();state.phase="await-login-response";expect((await response).status()).toBe(200);state.phase="await-private-return";await expect(page).toHaveURL(sameTarget,{timeout:45000});passed=true;
   }finally{
