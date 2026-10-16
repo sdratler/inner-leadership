@@ -1,6 +1,6 @@
 /** Actual retained routes, ordinary separate logins, disposable synthetic native
  * data only. These tests may NOT run before the exact native/browser recipe ACK. */
-import {test,expect,type Page,type Browser,type BrowserContext} from "@playwright/test";
+import {test,expect,type Page,type Browser,type BrowserContext,type Request,type Response,type ConsoleMessage} from "@playwright/test";
 import {execFile} from "node:child_process";
 import {promisify} from "node:util";
 import {readFileSync} from "node:fs";
@@ -29,12 +29,33 @@ if(!file){
  async function login(page:Page,role:string,target:string,locale:string){
   const credentials=data.credentials.find(c=>c.role===role);if(!credentials)throw Error("EXACT_SYNTHETIC_ROLE_REQUIRED");
   const expected=new URL(target,data.origin),sameTarget=(url:URL)=>url.origin===expected.origin&&url.pathname===expected.pathname&&url.hash===''&&JSON.stringify([...url.searchParams].sort())===JSON.stringify([...expected.searchParams].sort());
+  // Fixed categories only: never retain raw URLs, console text, errors, input
+  // values, request bodies, headers, credentials or response payloads.
+  const identityPaths=["/api/identity/csrf","/api/identity/login","/api/identity/session"],events:{kind:string;method:string;pathname:string;status?:number;failure?:string}[]=[],categories=new Set<string>();
+  const state:{phase:string;documentComplete?:boolean;documentInteractive?:boolean;formPresent?:boolean;formValid?:boolean}={phase:"private-route"};let passed=false;
+  const identity=(request:Request)=>{const url=new URL(request.url()),method=request.method();return url.origin===data.origin&&identityPaths.includes(url.pathname)&&["GET","POST","HEAD","OPTIONS"].includes(method)?{method,pathname:url.pathname}:null;};
+  const record=(event:typeof events[number])=>{if(events.length<48)events.push(event);};
+  const requestedIdentity=(request:Request)=>{const item=identity(request);if(item)record({kind:"request",...item});};
+  const respondedIdentity=(response:Response)=>{const item=identity(response.request());if(item)record({kind:"response",...item,status:response.status()});};
+  const failedIdentity=(request:Request)=>{const item=identity(request);if(item){const code=request.failure()?.errorText??"";record({kind:"failure",...item,failure:["net::ERR_ABORTED","net::ERR_CONNECTION_REFUSED","net::ERR_CONNECTION_RESET","net::ERR_FAILED","net::ERR_CERT_AUTHORITY_INVALID"].includes(code)?code:"OTHER_NETWORK_FAILURE"});}};
+  const classify=(text:string)=>/content.security.policy|\bCSP\b|refused to (?:load|execute|connect)/i.test(text)?"CSP":/ChunkLoadError|loading chunk|failed to fetch dynamically imported module/i.test(text)?"CHUNK":/hydrat/i.test(text)?"HYDRATION":"JS_RUNTIME";
+  const pageError=(error:Error)=>{categories.add(classify(error.message));};
+  const consoleError=(message:ConsoleMessage)=>{if(message.type()==="error")categories.add(classify(message.text()));};
+  page.on("request",requestedIdentity);page.on("response",respondedIdentity);page.on("requestfailed",failedIdentity);page.on("pageerror",pageError);page.on("console",consoleError);
+  try{
   expect((await page.context().cookies(data.origin)).filter(cookie=>cookie.name==='__Host-ls-session')).toHaveLength(0);
   // Start at the original PRIVATE route: its proxy/layout must retain context.
   await page.goto(target);await expect(page).toHaveURL(url=>url.pathname===`/${locale}/login`,{timeout:45000});
   const requested=new URL(page.url()).searchParams.getAll('next');expect(requested).toHaveLength(1);expect(sameTarget(new URL(requested[0]!,data.origin))).toBe(true);
+  state.phase="fill-ordinary-login";
   await page.getByLabel(t(locale,"Email","דוא״ל"),{exact:true}).fill(credentials.email);await page.getByLabel(t(locale,"Password","סיסמה"),{exact:true}).fill(credentials.password);
-  const response=page.waitForResponse(r=>new URL(r.url()).pathname==="/api/identity/login"&&r.request().method()==="POST");await page.getByRole("button",{name:t(locale,"Sign in","כניסה"),exact:true}).click();expect((await response).status()).toBe(200);await expect(page).toHaveURL(sameTarget,{timeout:45000});
+  Object.assign(state,await page.evaluate(()=>{const form=document.querySelector("form");return {documentComplete:document.readyState==="complete",documentInteractive:document.readyState==="interactive",formPresent:form!==null,formValid:form?.checkValidity()??false};}));
+  state.phase="click-ordinary-login";
+  const response=page.waitForResponse(r=>new URL(r.url()).pathname==="/api/identity/login"&&r.request().method()==="POST");await page.getByRole("button",{name:t(locale,"Sign in","כניסה"),exact:true}).click();state.phase="await-login-response";expect((await response).status()).toBe(200);state.phase="await-private-return";await expect(page).toHaveURL(sameTarget,{timeout:45000});passed=true;
+  }finally{
+   page.off("request",requestedIdentity);page.off("response",respondedIdentity);page.off("requestfailed",failedIdentity);page.off("pageerror",pageError);page.off("console",consoleError);
+   if(!passed)await test.info().attach("synthetic-login-diagnostic",{body:JSON.stringify({state,events,categories:[...categories].sort()}),contentType:"application/json"});
+  }
  }
  async function separate(browser:Browser,page:Page,contexts:BrowserContext[]){const viewport=page.viewportSize();if(!viewport)throw Error("VIEWPORT_REQUIRED");const c=await browser.newContext({baseURL:data.origin,ignoreHTTPSErrors:true,viewport,isMobile:viewport.width<=390,hasTouch:viewport.width<=768});contexts.push(c);return c.newPage();}
  async function openPlan(page:Page,locale:string){const summary=page.getByText(t(locale,"Full twelve-session plan and received notices","התוכנית המלאה ל־12 מפגשים והדיווחים שהתקבלו"),{exact:true});const detail=summary.locator("..");if(!await detail.getAttribute("open").then(v=>v!==null))await summary.click();return detail;}
