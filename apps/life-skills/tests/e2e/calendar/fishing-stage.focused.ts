@@ -54,7 +54,7 @@ if(!file){
   const response=page.waitForResponse(r=>new URL(r.url()).pathname==="/api/identity/login"&&r.request().method()==="POST");await page.getByRole("button",{name:t(locale,"Sign in","כניסה"),exact:true}).click();state.phase="await-login-response";expect((await response).status()).toBe(200);state.phase="await-private-return";await expect(page).toHaveURL(sameTarget,{timeout:45000});passed=true;
   }finally{
    page.off("request",requestedIdentity);page.off("response",respondedIdentity);page.off("requestfailed",failedIdentity);page.off("pageerror",pageError);page.off("console",consoleError);
-   if(!passed)await test.info().attach("synthetic-login-diagnostic",{body:JSON.stringify({state,events,categories:[...categories].sort()}),contentType:"application/json"});
+   if(!passed){const body=JSON.stringify({state,events,categories:[...categories].sort()});console.log("SYNTHETIC_LOGIN_DIAGNOSTIC "+body);await test.info().attach("synthetic-login-diagnostic",{body,contentType:"application/json"});}
   }
  }
  async function separate(browser:Browser,page:Page,contexts:BrowserContext[]){const viewport=page.viewportSize();if(!viewport)throw Error("VIEWPORT_REQUIRED");const c=await browser.newContext({baseURL:data.origin,ignoreHTTPSErrors:true,viewport,isMobile:viewport.width<=390,hasTouch:viewport.width<=768});contexts.push(c);return c.newPage();}
