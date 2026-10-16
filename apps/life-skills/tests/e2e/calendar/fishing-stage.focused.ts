@@ -26,6 +26,14 @@ if(!file){
  const t=(locale:string,en:string,he:string)=>locale==="he"?he:en;
  const family=(locale:string)=>data.families[locale]!;
  const route=(locale:string,role:string,selected=false,view="day")=>`/${locale}/${role==="practitioner"?"app/calendar":role==="child"||role==="adult_client"?"client/calendar":"family/schedule"}?`+new URLSearchParams({date:data.date,view,...(selected?Object.fromEntries(new URLSearchParams(fishingCalendarSearch(family(locale).selection))):{})});
+ function isExpectedLessonResponse(response:Response,page:Page,expected:URL){
+  try{
+   const request=response.request(),url=new URL(response.url()),keys=["learnerId","moduleId","version","view"];
+   return request.method()==="GET"&&request.frame()===page.mainFrame()&&url.origin===data.origin&&url.origin===expected.origin&&url.pathname==="/api/resources/education/lesson"&&url.searchParams.size===keys.length&&keys.every(key=>{
+    const value=key==="view"?"learner":expected.searchParams.get(key);return value!==null&&url.searchParams.getAll(key).length===1&&url.searchParams.get(key)===value;
+   });
+  }catch{return false;}
+ }
  /** Observe only responses already requested by the UI. Never retain a DTO,
   * context identifier, query, header, token, lesson, raw error or user input. */
  function observeCalendar(page:Page){
@@ -158,7 +166,10 @@ if(!file){
    await page.reload();const reopened=await openPlan(page,locale);await expect(reopened.getByRole("heading",{name:t(locale,"Notice received","הדיווח התקבל"),exact:true})).toHaveCount(1);
    const canonical=await page.request.get("/api/calendar/fishing/plan?"+fishingCalendarSearch(family(locale).selection));expect(canonical.status()).toBe(200);expect((await canonical.json()).data.view.notices).toHaveLength(1);
    const wrong=await page.request.get("/api/calendar/fishing/context?learnerId="+family(locale).otherLearnerId);expect(wrong.status()).toBe(404);
-   const link=reopened.getByRole("link",{name:t(locale,"Open lesson","פתיחת שיעור"),exact:true}).first();await expect(link).toBeVisible();await link.click();await expect(page.getByLabel("Describe your synthetic hookless practice.",{exact:true})).toBeVisible();expect(await page.locator("body").innerText()).not.toContain("PRIVATE_SYNTHETIC_TEACHER_CANARY");
+   const link=reopened.getByRole("link",{name:t(locale,"Open lesson","פתיחת שיעור"),exact:true}).first();await expect(link).toBeVisible();const href=await link.getAttribute("href");if(!href)throw Error("EXPECTED_LESSON_LINK_REQUIRED");const expectedLesson=new URL(href,data.origin);
+   // Await the page's own authorized read, not a test-issued API or a delay.
+   const lessonResponse=page.waitForResponse(response=>isExpectedLessonResponse(response,page,expectedLesson));void lessonResponse.catch(()=>undefined);await link.click();const lesson=await lessonResponse;expect(lesson.status()).toBe(200);expect(await lesson.finished()).toBeNull();
+   await expect(page.getByLabel("Describe your synthetic hookless practice.",{exact:true})).toBeVisible();expect(await page.locator("body").innerText()).not.toContain("PRIVATE_SYNTHETIC_TEACHER_CANARY");
    await page.goBack();await expect(page.getByLabel(t(locale,"Stage enrollment","רישום לשלב"),{exact:true})).toHaveValue(family(locale).selection.enrollmentId!);await screen(page,locale,info.outputPath(`parent-${locale}-saved-and-return.png`));
   });
 
