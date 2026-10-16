@@ -41,9 +41,33 @@ const folder=mkdtempSync(join(tmpdir(),"ls-group-interest-browser-"));
 let app:ChildProcess|null=null,tests:ChildProcess|null=null;
 let f:Awaited<ReturnType<typeof fixture>>|null=null,phase="fixture";
 let communityTransport:Awaited<ReturnType<typeof import("../community/inbox-fixture.ts").communityReadTransport>>|null=null;
-async function terminate(child:ChildProcess|null){if(!child||child.exitCode!==null||child.signalCode!==null)return;if(launchOpsOnly&&process.platform==="win32"&&child.pid){try{execFileSync("taskkill",["/PID",String(child.pid),"/T","/F"],{windowsHide:true,stdio:"ignore"});}catch{if(child.exitCode===null&&child.signalCode===null)throw Error("OPS09_OWNED_CHILD_STOP_FAILED");}return;}child.kill("SIGTERM");await Promise.race([once(child,"exit"),new Promise(r=>setTimeout(r,5000))]);if(child.exitCode===null&&child.signalCode===null)child.kill("SIGKILL");}
+async function terminate(child:ChildProcess|null){
+ if(!child||child.exitCode!==null||child.signalCode!==null)return;
+ if(launchOpsOnly&&process.platform==="win32"&&child.pid){
+  // taskkill may report a nonzero status after the owned child has exited.
+  // Keep its exit event flowing and require both processes to finish.
+  let onExit=()=>{},onClose=()=>{},onError:(error:Error)=>void=()=>{},timer:ReturnType<typeof setTimeout>|undefined,killer:ChildProcess|null=null;
+  const exited=new Promise<void>(ok=>{onExit=ok;child.once("exit",onExit);});
+  try{
+   killer=spawn("taskkill",["/PID",String(child.pid),"/T","/F"],{windowsHide:true,stdio:"ignore"});
+   const closed=new Promise<void>((ok,no)=>{onClose=ok;onError=no;killer!.once("close",onClose);killer!.once("error",onError);});
+   await Promise.race([Promise.all([closed,exited]),new Promise<never>((_,no)=>{timer=setTimeout(()=>no(Error("FISHING_OWNED_CHILD_EXIT_UNCONFIRMED")),5000);})]);
+  }finally{if(timer)clearTimeout(timer);child.removeListener("exit",onExit);if(killer){killer.removeListener("close",onClose);killer.removeListener("error",onError);if(killer.exitCode===null&&killer.signalCode===null)killer.kill();}}
+  return;
+ }
+ child.kill("SIGTERM");await Promise.race([once(child,"exit"),new Promise(r=>setTimeout(r,5000))]);if(child.exitCode===null&&child.signalCode===null)child.kill("SIGKILL");
+}
 let cleanupPromise:Promise<void>|null=null;
-function cleanup(){cleanupPromise??=(async()=>{await terminate(tests);await terminate(app);await communityTransport?.close();await f?.pool.end();if(launchOpsOnly&&(lstatSync(folder).isSymbolicLink()||dirname(realpathSync(folder))!==realpathSync(tmpdir())||basename(folder)!==basename(realpathSync(folder))||!basename(folder).startsWith("ls-group-interest-browser-")))throw Error("OPS09_TEMP_CLEANUP_TARGET_MISMATCH");rmSync(folder,{recursive:true,force:true});})();return cleanupPromise;}
+function cleanup(){
+ cleanupPromise??=(async()=>{
+  if(launchOpsOnly){
+   try{await terminate(tests);}finally{try{await terminate(app);}finally{try{await communityTransport?.close();}finally{try{await f?.pool.end();}finally{
+    if(lstatSync(folder).isSymbolicLink()||dirname(realpathSync(folder))!==realpathSync(tmpdir())||basename(folder)!==basename(realpathSync(folder))||!basename(folder).startsWith("ls-group-interest-browser-"))throw Error("OPS09_TEMP_CLEANUP_TARGET_MISMATCH");
+    rmSync(folder,{recursive:true,force:true});
+   }}}}
+  }else{await terminate(tests);await terminate(app);await communityTransport?.close();await f?.pool.end();if(launchOpsOnly&&(lstatSync(folder).isSymbolicLink()||dirname(realpathSync(folder))!==realpathSync(tmpdir())||basename(folder)!==basename(realpathSync(folder))||!basename(folder).startsWith("ls-group-interest-browser-")))throw Error("OPS09_TEMP_CLEANUP_TARGET_MISMATCH");rmSync(folder,{recursive:true,force:true});}
+ })();return cleanupPromise;
+}
 process.once("SIGTERM",()=>{void cleanup().finally(()=>process.exit(143));});
 process.once("SIGINT",()=>{void cleanup().finally(()=>process.exit(130));});
 
@@ -145,8 +169,8 @@ async function verifyGroupPlacementDatabaseBoundary(){
 try{
  const workspaceId=randomUUID(),dataKey=randomBytes(32),lookupKey=randomBytes(32),keyring={activeKeyId:"synthetic",keys:{synthetic:dataKey}};
  f=await fixture({workspaceId,keyring,termsVersion:"Synthetic Group Interest"});
- await f.seed("2026-10-10T08:00:00.000Z");
- await f.seed("2026-10-11T08:00:00.000Z");
+ await f.seed(launchOpsOnly?f.at(-48):"2026-10-10T08:00:00.000Z");
+ await f.seed(launchOpsOnly?f.at(-24):"2026-10-11T08:00:00.000Z");
  await f.pool.query(`INSERT INTO ls_cases.family_members(workspace_id,family_id,person_id,role)
   SELECT c.workspace_id,c.family_id,cl.person_id,'child' FROM ls_cases.cases c
   JOIN ls_cases.clients cl ON cl.workspace_id=c.workspace_id AND cl.id=c.client_id
