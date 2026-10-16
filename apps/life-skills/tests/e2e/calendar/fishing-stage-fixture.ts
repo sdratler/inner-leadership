@@ -67,6 +67,10 @@ export async function runFishingStageBrowser(){
   const outsiders=await f.family();
   for(const locale of["en","he"]){
    const family=await f.family(),purchase=await f.prepare(family);await f.settle(purchase);const enrollment=await f.enroll(purchase),child=await f.account("child",family.learnerId);
+   // The native server derives lesson hrefs from the current account locale.
+   // Credential labels alone do not make this a Hebrew family.
+   const accounts=await f.pool.query<{id:string;role:string;locale:string}>("UPDATE ls_identity.accounts SET locale=$3 WHERE workspace_id=$1 AND id=ANY($2::uuid[]) RETURNING id,role,locale",[f.workspaceId,[family.parent.id,child.id],locale]);
+   if(accounts.rows.length!==2||![[family.parent.id,"parent"],[child.id,"child"]].every(([id,role])=>accounts.rows.some(row=>row.id===id&&row.role===role&&row.locale===locale)))throw Error("FISHING_STAGE_FIXTURE_ACCOUNT_LOCALE_MISMATCH");
    for(const[role,actor]of[["parent-"+locale,family.parent],["child-"+locale,child]]as const)credentials.push({role,accountId:actor.id,email:`${actor.id}@example.invalid`,password:"Ab12cd"});
    families[locale]={selection:{learnerId:family.learnerId,enrollmentId:enrollment.result.id,reference:f.ref},otherLearnerId:outsiders.learnerId};learners.push({parentId:family.parent.id,learnerId:family.learnerId});
   }
