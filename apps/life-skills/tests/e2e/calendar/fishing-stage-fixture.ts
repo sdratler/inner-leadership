@@ -19,7 +19,18 @@ async function snapshot(f:ProgramFixture){return Promise.all(protectedTables.map
 async function freePort(port:number){const s=netServer();await new Promise<void>((ok,no)=>{s.once("error",no);s.listen(port,"127.0.0.1",ok);});await new Promise<void>((ok,no)=>s.close(error=>error?no(error):ok()));}
 async function terminate(child:ChildProcess|null){
  if(!child||child.exitCode!==null||child.signalCode!==null)return;
- if(process.platform==="win32"&&child.pid){execFileSync("taskkill",["/PID",String(child.pid),"/T","/F"],{windowsHide:true,stdio:"ignore"});return;}
+ if(process.platform==="win32"&&child.pid){
+  // taskkill may report a nonzero status after the owned child has exited.
+  // Keep its exit event flowing and require both processes to finish.
+  let onExit=()=>{},onClose=()=>{},onError:(error:Error)=>void=()=>{},timer:ReturnType<typeof setTimeout>|undefined,killer:ChildProcess|null=null;
+  const exited=new Promise<void>(ok=>{onExit=ok;child.once("exit",onExit);});
+  try{
+   killer=spawn("taskkill",["/PID",String(child.pid),"/T","/F"],{windowsHide:true,stdio:"ignore"});
+   const closed=new Promise<void>((ok,no)=>{onClose=ok;onError=no;killer!.once("close",onClose);killer!.once("error",onError);});
+   await Promise.race([Promise.all([closed,exited]),new Promise<never>((_,no)=>{timer=setTimeout(()=>no(Error("FISHING_OWNED_CHILD_EXIT_UNCONFIRMED")),5000);})]);
+  }finally{if(timer)clearTimeout(timer);child.removeListener("exit",onExit);if(killer){killer.removeListener("close",onClose);killer.removeListener("error",onError);if(killer.exitCode===null&&killer.signalCode===null)killer.kill();}}
+  return;
+ }
  child.kill("SIGTERM");await Promise.race([once(child,"exit"),new Promise(r=>setTimeout(r,5000))]);if(child.exitCode===null&&child.signalCode===null)child.kill("SIGKILL");
 }
 /** Only this invocation's validated fresh temp tree, never its parent or DB. */
