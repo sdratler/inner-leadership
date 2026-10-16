@@ -21,7 +21,7 @@ async function visibleFocus(control:Locator){
   const rect=element.getBoundingClientRect(),style=getComputedStyle(element),front=document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2);
   return {inside:rect.left>=0&&rect.top>=0&&rect.right<=innerWidth+1&&rect.bottom<=innerHeight+1,
    uncovered:!!front&&(element.contains(front)||front.contains(element)),
-   ring:style.outlineStyle!=="none"&&parseFloat(style.outlineWidth)>=1&&style.outlineColor!=="transparent"||style.boxShadow!=="none"};
+   ring:style.outlineStyle!=="none"&&parseFloat(style.outlineWidth)>=1&&style.outlineColor!=="transparent"&&!/rgba\([^)]*,\s*0(?:\.0+)?\)$/.test(style.outlineColor)&&Number(style.opacity)>0};
  })).toEqual({inside:true,uncovered:true,ring:true});
 }
 async function tabTo(page:Page,control:Locator){
