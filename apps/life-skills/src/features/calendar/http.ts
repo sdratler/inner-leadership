@@ -13,6 +13,7 @@ import { applyCalendarCreditEffect } from '../payments/calendar-consumer.ts';
 import { availabilitySchema, attendanceSchema, bookingSchema, exceptionSchema, listSchema, logisticsSchema, manualNoticeSchema, noticeSchema, replacementSchema, taskCreateSchema, taskListSchema, taskCompleteSchema, taskManageSchema, versionSchema } from './validation.ts';
 import { InternalTaskService } from './tasks.ts';
 import { z } from 'zod';
+import {handleFishingCalendar} from '../fishing/program-calendar-http.ts';
 export function routeId<K extends string>(value:string,kind:K){try{return asId(value,kind);}catch{throw new AppError('INVALID_REQUEST');}}
 export function sessionToken(headers:Headers):string {
  const cookies=(headers.get('cookie')??'').split(';').map(v=>v.trim()).filter(v=>v.startsWith(SESSION_COOKIE+'='));
@@ -34,6 +35,8 @@ export async function handleCalendar(request:Request,path:readonly string[]):Pro
  try {
   if(path.length>3||path.some(s=>s.length>60))throw new AppError('NOT_FOUND');
   if(request.method!=='GET' && request.method!=='POST' && request.method!=='PATCH')throw new AppError('NOT_FOUND');
+  // This separately authorized native workflow has no clinical credit effects.
+  if(path[0]==='fishing')return handleFishingCalendar(request,path.slice(1));
   // Capture the complete valid notice body now, before session/rate-limit/transaction latency.
   // Header arrival is NOT a received notice; neither client clocks nor forwarded timestamp headers are trusted.
   let earlyNotice:z.infer<typeof noticeSchema>|null=null,receivedAt:Date|null=null;

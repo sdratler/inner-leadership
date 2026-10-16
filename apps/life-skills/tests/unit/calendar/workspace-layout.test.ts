@@ -23,7 +23,7 @@ describe('operational Calendar composition',()=>{
   for(const failure of ['taskFailed&&','followupFailed&&','taskSyncFailed&&','error===\'auth\'','error===\'forbidden\'','caseError&&','countError&&']){
    expect(workspace.indexOf(failure)).toBeLessThan(workspace.indexOf('<CalendarShell '));
   }
-  expect(workspace).toContain('<UnsavedChangesGuard dirty={dirty||taskDirty||mutation.uncertain}');
+  expect(workspace).toContain('<UnsavedChangesGuard dirty={dirty||taskDirty||mutation.uncertain||fishingDirty}');
   expect(workspace).toContain('livePractitioner&&<div className="ls-cal-operational">');
   // Both follow-up and content-task synchronization are live-practitioner-only;
   // the optional visual content layer has its separate enabled-state gate.

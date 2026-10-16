@@ -5,6 +5,7 @@ import {contentChannel,contentDate,contentState} from '../marketing-overview/cal
 import {creativeApprovals,creativePlacements,creativeFilters} from '../marketing-overview/creative-filters.ts';
 import {isCommunityView} from '../community-reply/views.ts';
 import {educationQuery,educationSearch} from '../resources/education-query.ts';
+import {fishingCalendarContext} from '../fishing/program-calendar-contract.ts';
 
 type Role = "practitioner" | "parent" | "adult_client" | "child";
 
@@ -32,6 +33,8 @@ export function practitionerReturnPath(locale: Locale, page: "calendar" | "clien
   const params = new URLSearchParams();
   const one = (key: string) => typeof query[key] === "string" ? query[key] as string : "";
   if (page === "calendar") {
+    const fishing=new URLSearchParams();for(const key of ['fishing','learnerId','enrollmentId','cohortId','stageId','stage'])if(typeof query[key]==='string')fishing.set(key,one(key));
+    for(const [key,value]of Object.entries(fishingCalendarContext(fishing)))params.set(key,value);
     for(const key of ['tasks','followups','practice','content'])if(one(key)==='0'||one(key)==='1')params.set(key,one(key));
     if (/^\d{4}-\d{2}-\d{2}$/.test(one("date"))) params.set("date", one("date"));
     if (["day", "week", "month", "agenda"].includes(one("view"))) params.set("view", one("view"));

@@ -2,6 +2,13 @@ import { expect, it } from 'vitest';
 import { clientReturnPath, parentReturnPath, loginReturnDestination, practitionerDetailReturnPath, practitionerReturnPath } from '../../../src/features/identity/login-return.ts';
 import {settingsItems} from '../../../src/ui/workspace/navigation-model.ts';
 
+it('retains only strict native fishing hints on the existing Calendar return path',()=>{
+ const learnerId='11111111-1111-4111-8111-111111111111',enrollmentId='22222222-2222-4222-8222-222222222222',cohortId='33333333-3333-4333-8333-333333333333',stageId='44444444-4444-4444-8444-444444444444';
+ const result=new URL(practitionerReturnPath('he','calendar',{fishing:'1',learnerId,enrollmentId,cohortId,stageId,stage:'1',view:'agenda',date:'2026-10-16',teacherKey:'PRIVATE',role:'parent'}),'https://life-skills.invalid');
+ expect(result.pathname).toBe('/he/app/calendar');for(const [key,value]of Object.entries({fishing:'1',learnerId,enrollmentId,cohortId,stageId,stage:'1',view:'agenda',date:'2026-10-16'}))expect(result.searchParams.get(key)).toBe(value);expect(result.searchParams.has('teacherKey')).toBe(false);expect(result.searchParams.has('role')).toBe(false);
+ const invalid=new URL(practitionerReturnPath('en','calendar',{learnerId:['two','values'],stageId:'constructor',stage:'1e0'}),'https://life-skills.invalid');expect(invalid.search).toBe('');
+});
+
 it('preserves only a bounded legacy lead ID on a practitioner People return link', () => {
   expect(practitionerReturnPath('he', 'clients', { section: 'prospects', leadId: 'LS-LEAD-synthetic-one' }))
     .toBe('/he/app/clients?section=prospects&leadId=LS-LEAD-synthetic-one');

@@ -1,4 +1,5 @@
 import { defineConfig,devices } from '@playwright/test';
-export default defineConfig({testDir:'.',testMatch:'calendar.spec.ts',fullyParallel:false,workers:1,retries:0,timeout:30000,
+const fishing=process.env.LS_RM_FISHING_STAGE_UI_ONLY==='true';
+export default defineConfig({testDir:'.',testMatch:fishing?'fishing-stage.spec.ts':'calendar.spec.ts',fullyParallel:false,workers:1,retries:0,timeout:fishing?90000:30000,
  reporter:[['list']],outputDir:'test-results/ls030-calendar',use:{baseURL:'https://127.0.0.1:3445',ignoreHTTPSErrors:true,trace:'off',video:'off',screenshot:'off'},
- projects:[{name:'desktop',use:{...devices['Desktop Chrome'],viewport:{width:1440,height:1000}}},{name:'mobile',use:{...devices['Desktop Chrome'],viewport:{width:390,height:844},isMobile:true,hasTouch:true}}]});
+ projects:fishing?[{name:'desktop',use:{...devices['Desktop Chrome'],viewport:{width:1440,height:1000}}},{name:'mobile390',use:{...devices['Desktop Chrome'],viewport:{width:390,height:844},isMobile:true,hasTouch:true}},{name:'mobile340',use:{...devices['Desktop Chrome'],viewport:{width:340,height:844},isMobile:true,hasTouch:true}},{name:'tablet768',use:{...devices['Desktop Chrome'],viewport:{width:768,height:1024},hasTouch:true}}]:[{name:'desktop',use:{...devices['Desktop Chrome'],viewport:{width:1440,height:1000}}},{name:'mobile',use:{...devices['Desktop Chrome'],viewport:{width:390,height:844},isMobile:true,hasTouch:true}}]});

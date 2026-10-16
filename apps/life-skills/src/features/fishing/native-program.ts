@@ -17,6 +17,8 @@ import {assertPlanBinding,decodeNative,digest as stageDigest,parseSnapshot,parse
 import {assertAvailable} from "../calendar/policy.ts";
 import {demoAccountBatch,demoRecordBatch} from "../demo/provenance.ts";
 import {FishingProgramError,cohortCommandSchema,venueCommandSchema,fitCommandSchema,termsCommandSchema,holdCommandSchema,offerCommandSchema,enrollmentCommandSchema,enrollmentStateCommandSchema,nativeProgramIntentSchema,programPolicySchema,programTermsSchema,programLimits,type NativeProgramCommandIntent} from "./native-program-contract.ts";
+import {readEducationalChildContexts} from "./native-child-context.ts";
+import {fishingCalendarChoicesSchema,fishingCalendarOperatorSchema,fishingCalendarLimit,type FishingCalendarChoices,type FishingCalendarOperator} from "./program-calendar-contract.ts";
 
 const uuid=z.uuid(),label=z.string().min(1).max(160).refine(value=>value.trim().length>0);
 const receiptSchema=z.strictObject({id:uuid,revision:z.number().int().positive(),state:z.enum(["cohort","venue","fit","terms","hold","offer","confirmed","suspended","revoked"])});
@@ -212,6 +214,81 @@ export class NativeFishingProgram {
   const c=await this.actor(tx,actor),e=await this.enrollment(tx,c.actor.workspaceId,id,c.now),cohort=await this.cohort(tx,c.actor.workspaceId,e.stageId);if(c.actor.role==="practitioner"&&cohort.operatorId===c.actor.id){await this.actor(tx,actor);return e;}
   if(e.state!=="confirmed"||!e.authorizedAccountIds.includes(c.actor.id)||c.actor.role==="child"&&(!this.options.childAccountsEnabled||c.actor.personId!==e.learnerId)||!["parent","child"].includes(c.actor.role))return null;await this.actor(tx,actor);return e;
  });}catch(error){if(error instanceof FishingProgramError&&["NOT_FOUND","FORBIDDEN"].includes(error.code))return null;clean(error);}}
+ /** Metadata only. Never supplies an enrollment, grant, merchant or first-child
+  * default. Catalog absence is distinct from a broken/partially installed schema. */
+ async calendarChoices(actor:Actor,selectedLearnerId:string|null=null):Promise<FishingCalendarChoices>{
+  try{return await this.db.transaction(async tx=>{
+   const c=await this.actor(tx,actor);requireFact(["practitioner","parent","child"].includes(c.actor.role),"FORBIDDEN");
+   requireFact(await demoAccountBatch(tx,c.actor.workspaceId,c.actor.id)===null,"FORBIDDEN");
+   if(selectedLearnerId!==null)uuid.parse(selectedLearnerId);
+   if(c.actor.role==="practitioner")requireFact(selectedLearnerId===null,"INVALID_REQUEST");
+   if(c.actor.role==="child")requireFact(this.options.childAccountsEnabled&&(selectedLearnerId===null||selectedLearnerId===c.actor.personId),"FORBIDDEN");
+   const ready=await this.calendarCatalog(tx);
+   if(!ready){await this.actor(tx,actor);return fishingCalendarChoicesSchema.parse({availability:"not_configured",role:c.actor.role,children:[],selectedLearnerId:null,stages:[]});}
+   let children:FishingCalendarChoices["children"]=[],selected:string|null=c.actor.role==="child"?c.actor.personId:selectedLearnerId;
+   if(c.actor.role==="parent"){
+    const context=await readEducationalChildContexts(tx,actor,this.ring,c.now,selectedLearnerId);children=[...context.children];selected=context.selectedLearnerId;
+   }else if(c.actor.role==="child"){
+    const row=await one<{ciphertext:string}>(tx,"SELECT profile_ciphertext AS ciphertext FROM ls_identity.people WHERE workspace_id=$1 AND id=$2 AND kind='minor' FOR SHARE",[c.actor.workspaceId,c.actor.personId]);requireFact(row,"FORBIDDEN");
+    const displayName=z.object({displayName:label}).parse(JSON.parse(unseal(row.ciphertext,`person:${c.actor.workspaceId}:${c.actor.personId}`,this.ring))).displayName;children=[{learnerId:c.actor.personId,displayName}];
+   }
+   const stages:FishingCalendarChoices["stages"]=[];
+   const add=async(stageId:string,enrollmentId:string|null,learnerId:string|null)=>{
+    const cohort=await this.cohort(tx,c.actor.workspaceId,stageId),source=await this.source(tx,c.actor.workspaceId,cohort.templateApprovalId,"template",c.now);
+    await this.template(tx,c.actor.workspaceId,cohort,source.version,c.now);
+    const name=z.object({label}).parse(this.decode("cohort",c.actor.workspaceId,stageId,cohort.labelCiphertext)).label;
+    stages.push({stageId,cohortId:cohort.cohortId,stage:cohort.stage,label:name,enrollmentId,learnerId,templateVersion:source.version,childCapacity:cohort.capacity});
+   };
+   if(c.actor.role==="practitioner"){
+    const rows=await tx.query<{stageId:string}>("SELECT stage_id AS \"stageId\" FROM ls_fishing_stage.cohorts WHERE workspace_id=$1 AND operator_id=$2 AND active ORDER BY stage_id LIMIT 1001 FOR SHARE",[c.actor.workspaceId,c.actor.id]);requireFact(rows.length<=fishingCalendarLimit,"UNAVAILABLE");
+    for(const row of rows)await add(row.stageId,null,null);
+   }else if(selected!==null){
+    const rows=await tx.query<{id:string}>("SELECT id FROM ls_fishing_stage.enrollments WHERE workspace_id=$1 AND learner_id=$2 AND state='confirmed' ORDER BY id LIMIT 1001 FOR SHARE",[c.actor.workspaceId,selected]);requireFact(rows.length<=fishingCalendarLimit,"UNAVAILABLE");
+    for(const row of rows){const e=await this.enrollment(tx,c.actor.workspaceId,row.id,c.now);if(e.state==="confirmed"&&e.learnerId===selected&&e.authorizedAccountIds.includes(c.actor.id))await add(e.stageId,e.id,e.learnerId);}
+   }
+   await this.actor(tx,actor);
+   return fishingCalendarChoicesSchema.parse({availability:"ready",role:c.actor.role,children,selectedLearnerId:selected,stages});
+  });}catch(error){clean(error);}
+ }
+ private async calendarCatalog(tx:SqlSession):Promise<boolean>{
+  const payment=["campaigns","commands","founder_households","inbox","offers","operations","outbox","purchases","reminders","settlements"],stage=["cohorts","command_receipts","enrollments","fit_decisions","makeup_links","occurrences","offer_approvals","operations","plans","resource_reservations","revisions","seat_reservations","source_approvals","terms_acceptances","venues"];
+  const names=[...payment.map(name=>`ls_fishing_payments.${name}`),...stage.map(name=>`ls_fishing_stage.${name}`)];
+  const rows=await tx.query<{name:string;relation:string|null;kind:string|null}>("SELECT e.name,c.oid::regclass::text AS relation,c.relkind AS kind FROM unnest($1::text[]) AS e(name) LEFT JOIN pg_class c ON c.oid=to_regclass(e.name) ORDER BY e.name",[names]);requireFact(rows.length===25,"UNAVAILABLE");
+  const namespaces=await tx.query<{name:string;present:boolean}>("SELECT name,to_regnamespace(name) IS NOT NULL AS present FROM unnest($1::text[]) AS e(name) ORDER BY name",[["ls_fishing_payments","ls_fishing_stage"]]);requireFact(namespaces.length===2,"UNAVAILABLE");
+  if(rows.every(row=>row.relation===null)&&namespaces.every(row=>row.present===false))return false;
+  requireFact(namespaces.every(row=>row.present===true)&&rows.every(row=>row.relation===row.name&&row.kind==="r"),"UNAVAILABLE");
+  const functions=await tx.query<{name:string}>("SELECT n.nspname||'.'||p.proname AS name FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname=ANY($1::text[]) ORDER BY name",[["ls_fishing_payments","ls_fishing_stage"]]);
+  requireFact(JSON.stringify(functions.map(row=>row.name))===JSON.stringify(["ls_fishing_stage.reject_program_history_rewrite","ls_fishing_stage.verify_program_stage_receipt"]),"UNAVAILABLE");
+  const triggers=await tx.query<{name:string}>("SELECT c.relname||':'||t.tgname AS name FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=ANY($1::text[]) AND NOT t.tgisinternal ORDER BY name",[["ls_fishing_payments","ls_fishing_stage"]]);
+  requireFact(JSON.stringify(triggers.map(row=>row.name))===JSON.stringify(["command_receipts:exact_program_stage_receipt","command_receipts:immutable_program_commands","fit_decisions:immutable_program_fit","offer_approvals:immutable_program_offers","source_approvals:immutable_program_sources","terms_acceptances:immutable_program_terms"]),"UNAVAILABLE");return true;
+ }
+ async calendarOperatorChoices(actor:Actor,reference:FishingStageRef){
+  try{return await this.db.transaction(async tx=>{
+   const c=await this.actor(tx,actor);this.operator(c);const cohort=await this.cohort(tx,c.actor.workspaceId,reference.stageId);this.operator(c,cohort);requireFact(cohort.cohortId===reference.cohortId&&cohort.stage===reference.stage,"NOT_FOUND");
+   requireFact(await demoAccountBatch(tx,c.actor.workspaceId,c.actor.id)===null,"FORBIDDEN");
+   const venues=await tx.query<{id:string;capacity:number;ciphertext:string}>("SELECT id,capacity,details_ciphertext AS ciphertext FROM ls_fishing_stage.venues WHERE workspace_id=$1 AND operator_id=$2 AND active ORDER BY id LIMIT 1001 FOR SHARE",[c.actor.workspaceId,c.actor.id]);requireFact(venues.length<=fishingCalendarLimit,"UNAVAILABLE");
+   const entries=await tx.query<{id:string}>("SELECT id FROM ls_fishing_stage.enrollments WHERE workspace_id=$1 AND stage_id=$2 AND state='confirmed' ORDER BY id LIMIT 1001 FOR SHARE",[c.actor.workspaceId,cohort.stageId]);requireFact(entries.length<=fishingCalendarLimit,"UNAVAILABLE");
+   const roster:FishingCalendarOperator["roster"]=[];
+   for(const entry of entries){const e=await this.enrollment(tx,c.actor.workspaceId,entry.id,c.now),person=await one<{ciphertext:string}>(tx,"SELECT profile_ciphertext AS ciphertext FROM ls_identity.people WHERE workspace_id=$1 AND id=$2 AND kind='minor' FOR SHARE",[c.actor.workspaceId,e.learnerId]);requireFact(person,"UNAVAILABLE");
+    const displayName=z.object({displayName:label}).parse(JSON.parse(unseal(person.ciphertext,`person:${c.actor.workspaceId}:${e.learnerId}`,this.ring))).displayName;roster.push({enrollmentId:e.id,learnerId:e.learnerId,displayName});}
+   const present=await one(tx,"SELECT stage_id FROM ls_fishing_stage.plans WHERE workspace_id=$1 AND stage_id=$2",[c.actor.workspaceId,cohort.stageId]);
+   const state=present?await this.plan(tx,c.actor.workspaceId,cohort.stageId):null;
+   const makeupNotices=(state?.makeups??[]).filter(m=>!m.notice.replacementOccurrenceId&&roster.some(e=>e.enrollmentId===m.notice.enrollmentId)).map(m=>({id:m.notice.id,enrollmentId:m.notice.enrollmentId,learnerId:roster.find(e=>e.enrollmentId===m.notice.enrollmentId)!.learnerId}));
+   const fits=await tx.query<{id:string;learnerId:string;targetId:string;targetRevision:number;targetStageId:string}>(`SELECT f.id,f.learner_id AS "learnerId",f.target_occurrence_id AS "targetId",f.target_revision AS "targetRevision",o.stage_id AS "targetStageId" FROM ls_fishing_stage.fit_decisions f JOIN ls_fishing_stage.occurrences o ON o.workspace_id=f.workspace_id AND o.id=f.target_occurrence_id
+    WHERE f.workspace_id=$1 AND f.stage_id=$2 AND f.purpose='makeup' AND f.decision='approved' ORDER BY f.id LIMIT 1001 FOR SHARE OF f,o`,[c.actor.workspaceId,cohort.stageId]);requireFact(fits.length<=fishingCalendarLimit,"UNAVAILABLE");
+   const makeupFits:FishingCalendarOperator["makeupFits"]=[];
+   for(const fit of fits){
+    if(!roster.some(e=>e.learnerId===fit.learnerId))continue;
+    const targetCohort=await this.cohort(tx,c.actor.workspaceId,fit.targetStageId);this.operator(c,targetCohort);
+    const target=(await this.plan(tx,c.actor.workspaceId,fit.targetStageId)).occurrences.find(o=>o.id===fit.targetId);requireFact(target,"UNAVAILABLE");
+    if(target.stage!==cohort.stage||target.state!=="published"||target.time.kind!=="scheduled"||target.revision!==fit.targetRevision||Date.parse(target.time.startsAt)<=c.now.valueOf())continue;
+    await this.targetResources(tx,{actor:c.actor,scope:{stageId:targetCohort.stageId,cohortId:targetCohort.cohortId,stage:targetCohort.stage,workspaceId:c.actor.workspaceId,program:"sunday_fishing_academy"},selectedEnrollmentId:null,now:c.now},target);
+    makeupFits.push({id:fit.id,learnerId:fit.learnerId,occurrenceId:target.id,revision:target.revision,startsAt:target.time.startsAt,label:target.location});
+   }
+   await this.actor(tx,actor);
+   return fishingCalendarOperatorSchema.parse({venues:venues.map(row=>({id:row.id,capacity:row.capacity,...z.object({label,address:z.string().max(1200)}).parse(this.decode("venue",c.actor.workspaceId,row.id,row.ciphertext))})),roster,makeupNotices,makeupFits});
+  });}catch(error){clean(error);}
+ }
  /** Partial existing payment port only; withdrawal/reminder/native provider
   * activation are NOT supplied or silently defaulted by this integration. */
  paymentApprovalAuthority():Pick<FishingAuthority,"loadApprovedOffer"|"authorize">{return {

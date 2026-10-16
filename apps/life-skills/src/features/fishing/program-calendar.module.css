@@ -1,0 +1,17 @@
+.workspace{margin-block:1rem;padding:clamp(1rem,2vw,1.5rem);border:1px solid var(--ls-line);border-radius:1rem;background:var(--ls-paper);color:var(--ls-ink);font-size:1.125rem;line-height:1.65;min-inline-size:0;overflow-wrap:anywhere}
+.workspace h2{font-size:clamp(1.35rem,2.2vw,1.75rem);line-height:1.35;margin-block:0 1rem;color:var(--ls-deep)}
+.workspace h3{font-size:1.25rem;line-height:1.4;margin-block:0 .5rem}
+.workspace :is(input,select,textarea,button,a){max-inline-size:100%;font:inherit}
+.workspace button{min-block-size:2.875rem;font-weight:750;padding:.65rem 1rem}
+.workspace button:not([class]){background:var(--ls-teal);color:var(--ls-paper);border:1px solid var(--ls-teal);border-radius:.6rem}
+.workspace fieldset{border:0;padding:0;margin:0;min-inline-size:0}
+.workspace :is(button,a,input,select,textarea,summary):focus-visible,.receipt:focus{outline:3px solid var(--ls-gold);outline-offset:4px}
+.workspace summary{cursor:pointer;font-weight:750;min-block-size:2.75rem;padding-block:.5rem}
+.context{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;margin-block:1rem}
+.next{margin-block:1rem;padding:1rem;border-inline-start:4px solid var(--ls-teal);background:var(--ls-sand-100);border-radius:.5rem}
+.plan{margin-block:1rem}.plan>section{margin-block-start:1rem}.plan ol{padding-inline-start:1.25rem}
+.editor{margin-block-start:1rem;padding:1rem;border:1px solid var(--ls-line);border-radius:.75rem;min-inline-size:0}
+.editor form{max-inline-size:56rem}.editor :is(input,select,textarea){inline-size:100%;box-sizing:border-box}.editor input[type=checkbox]{inline-size:auto;min-inline-size:1.25rem;min-block-size:1.25rem}
+.receipt{padding:1rem;border-inline-start:4px solid var(--ls-success)}.note{color:var(--ls-muted)}
+.event{display:flex;flex-direction:column;gap:.35rem;min-inline-size:0;overflow-wrap:anywhere;border:1px solid var(--ls-teal);border-inline-start:4px solid var(--ls-teal);border-radius:.6rem;background:var(--ls-paper);color:var(--ls-ink);padding:.75rem;margin-block:.5rem;font-size:1rem;line-height:1.5}.event button{min-block-size:2.875rem;font-weight:750;white-space:normal}.event :focus-visible{outline:3px solid var(--ls-gold);outline-offset:3px}
+@media(max-width:600px){.context{grid-template-columns:minmax(0,1fr)}.workspace{padding:1rem}.editor{padding:.75rem}.workspace button{inline-size:100%}}
