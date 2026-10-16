@@ -8,7 +8,7 @@ import {fishingCalendarSearch} from "../../../src/features/fishing/program-calen
 import {educationSearch} from "../../../src/features/resources/education-query.ts";
 import {FishingStageService} from "../../../src/features/fishing-stage/service.ts";
 import type {OccurrenceProjection} from "../../../src/features/fishing-stage/contract.ts";
-import {classroomEntryReducer,initialClassroomEntry,readClassroomEntry,type ClassroomEntryData,type ClassroomEntryRequest,type ClassroomEntryState} from "../../../src/features/fishing-stage/classroom-entry-contract.ts";
+import {classroomEntryReducer,classroomEntryRequestFromQuery,classroomEntrySearch,initialClassroomEntry,readClassroomEntry,type ClassroomEntryData,type ClassroomEntryRequest,type ClassroomEntryState} from "../../../src/features/fishing-stage/classroom-entry-contract.ts";
 import {ClassroomEntryPanel,FishingClassroomEntry} from "../../../src/features/fishing-stage/classroom-entry-workspace.tsx";
 import {Fixture,actor,id,ref} from "./fixture.ts";
 
@@ -43,6 +43,23 @@ async function readyState():Promise<ClassroomEntryState>{const data=await fixtur
 function render(state:ClassroomEntryState,locale:"en"|"he"="en"){return renderToStaticMarkup(createElement(ClassroomEntryPanel,{locale,state,dispatch:()=>{}}));}
 
 describe("explicit classroom entry",()=>{
+ it("restores explicit Back context as loading metadata only and rechecks both native session reads",async()=>{
+  const restored=classroomEntryRequestFromQuery({learnerId:request.learnerId!,enrollmentId:request.enrollmentId!});expect(restored).toEqual(request);
+  const state=initialClassroomEntry(restored!);expect(state.status).toBe("loading");expect(state.children).toEqual([]);expect(state.stages).toEqual([]);expect(state.lessons).toEqual([]);
+  const f=fixture(state.request);expect((await f.load())?.lessons).toHaveLength(1);expect(f.port.session).toHaveBeenCalledTimes(2);
+  f.context.stages=[];await expect(f.load()).rejects.toMatchObject({code:"NOT_FOUND"});
+ });
+ it.each([{enrollmentId:id(30)},{learnerId:"invalid"},{learnerId:[id(3)]},{learnerId:id(3),enrollmentId:[id(30)]},{learnerId:id(3),enrollmentId:""}])("rejects malformed or partial chooser URL context %j",query=>{
+  expect(classroomEntryRequestFromQuery(query)).toBeNull();
+ });
+ it("leaves initial and learner-only selection explicit and preserves unrelated query context",()=>{
+  expect(classroomEntryRequestFromQuery({caseId:id(20)})).toEqual(initialClassroomEntry().request);
+  const learner=classroomEntryRequestFromQuery({learnerId:id(3)})!;expect(learner.enrollmentId).toBeNull();
+  const selected=new URLSearchParams(classroomEntrySearch(request,"caseId=retained&learnerId=old&learnerId=duplicate&enrollmentId=old"));
+  expect(selected.getAll("learnerId")).toEqual([id(3)]);expect(selected.getAll("enrollmentId")).toEqual([id(30)]);expect(selected.get("caseId")).toBe("retained");
+  const cleared=new URLSearchParams(classroomEntrySearch(learner,selected.toString()));expect(cleared.has("enrollmentId")).toBe(false);
+  expect(classroomEntrySearch(initialClassroomEntry().request,cleared.toString())).toBe("caseId=retained");
+ });
  it("keeps two available children unselected and never reads a first stage by default",async()=>{
   const f=fixture(initialClassroomEntry().request),data=await f.load();expect(data?.children).toHaveLength(2);expect(data?.lessons).toEqual([]);
   expect(f.port.read.mock.calls).toEqual([["fishing/context"]]);expect(f.port.session).toHaveBeenCalledTimes(2);

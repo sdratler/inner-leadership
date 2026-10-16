@@ -7,6 +7,7 @@ import {readFileSync} from "node:fs";
 import type {FishingStageBrowserData} from "./fishing-stage-fixture.ts";
 import {fishingCalendarSearch,fishingCalendarChoicesSchema,fishingCalendarSelectionSchema,fishingCalendarSelectionQuery} from "../../../src/features/fishing/program-calendar-contract.ts";
 import {syntheticChildFailure} from "../group-interest/synthetic-child-output.ts";
+import {runFishingClassroomJourney} from "../resources/fishing-classroom.journey.ts";
 const file=process.env.LS_FISHING_STAGE_FIXTURE_PATH;
 if(!file){
  // Explicit focused execution runs the isolated ordinary-role gate, never the
@@ -201,7 +202,7 @@ if(!file){
  }
 
  for(const locale of["en","he"]as const){
-  test(`${locale}: ordinary case-free parent, one shared grid/agenda, child context, durable absence/replay and existing Materials`,async({page},info)=>{
+  test(`${locale}: ordinary case-free parent, one shared grid/agenda, child context, durable absence/replay and existing Materials`,async({page,browser},info)=>{
    await login(page,"parent-"+locale,route(locale,"parent",true),locale);
    await expect(page.getByLabel(t(locale,"Authorized child","ילד מורשה"),{exact:true})).toHaveValue(family(locale).selection.learnerId!);await expect(page.getByLabel(t(locale,"Stage enrollment","רישום לשלב"),{exact:true})).toHaveValue(family(locale).selection.enrollmentId!);
    await page.goto(route(locale,"parent"));
@@ -224,6 +225,20 @@ if(!file){
    const lessonResponse=page.waitForResponse(response=>isExpectedLessonResponse(response,page,expectedLesson));void lessonResponse.catch(()=>undefined);await link.click();const lesson=await lessonResponse;expect(lesson.status()).toBe(200);expect(await lesson.finished()).toBeNull();
    await expect(page.getByLabel("Describe your synthetic hookless practice.",{exact:true})).toBeVisible();expect(await page.locator("body").innerText()).not.toContain("PRIVATE_SYNTHETIC_TEACHER_CANARY");
    await page.goBack();await expect(page.getByLabel(t(locale,"Stage enrollment","רישום לשלב"),{exact:true})).toHaveValue(family(locale).selection.enrollmentId!);await screen(page,locale,info.outputPath(`parent-${locale}-saved-and-return.png`));
+   const contexts:BrowserContext[]=[];let primaryFailed=false;
+   try{
+    const classroom=await separate(browser,page,contexts);
+    const receipt=await runFishingClassroomJourney({page:classroom,ordinaryParentLogin:(targetPage,target,language)=>login(targetPage,"parent-"+language,target,language),
+     withFreshParentContext:async work=>{
+      const fresh=await separate(browser,page,contexts);await work(fresh);
+      await expect(fresh.locator(".lsw-feature-page")).toHaveAttribute("dir",locale==="he"?"rtl":"ltr");
+      expect(await fresh.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+      await fresh.screenshot({path:info.outputPath(`classroom-${locale}-saved-fresh-login.png`),fullPage:true});
+     }}, {origin:data.origin,locale,learnerId:family(locale).selection.learnerId!,enrollmentId:family(locale).selection.enrollmentId!,moduleId:"RM-101",version:"synthetic-lesson-v1",
+      questions:[{id:"Q01-1",prompt:"Describe your synthetic hookless practice.",answer:`Synthetic ${locale} hookless answer`},{id:"Q01-2",prompt:"Describe your synthetic equipment check.",answer:`Synthetic ${locale} equipment answer`},{id:"Q01-3",prompt:"Describe your final synthetic reflection.",answer:`Synthetic ${locale} final answer retained`}],
+      forbiddenContent:["PRIVATE_SYNTHETIC_TEACHER_CANARY","PRIVATE_SYNTHETIC_FIT_CANARY",family(locale).otherLearnerId,family(locale==="en"?"he":"en").selection.learnerId!]});
+    expect(receipt).toMatchObject({questionCount:3,postCount:2,freshContextRead:true,backContextRead:true});
+   }catch(error){primaryFailed=true;throw error;}finally{await closePractitionerContexts(contexts,primaryFailed);}
   });
 
   test(`${locale}: practitioner real native edit, long draft/reload conflict and retained shared agenda`,async({page,browser},info)=>{
@@ -264,6 +279,8 @@ if(!file){
   async function save(form:ReturnType<Page["getByRole"]>){const response=page.waitForResponse(r=>new URL(r.url()).pathname==="/api/calendar/fishing/command"&&r.request().method()==="POST");await form.getByRole("button",{name:"Save deliberate action",exact:true}).click();expect((await response).status()).toBe(200);await expect(form).toHaveCount(0);}
   await save(await action("complete",data.pastOccurrenceId));const attendance=await action("attendance",data.pastOccurrenceId);await expect(attendance.getByRole("button",{name:"Save deliberate action",exact:true})).toBeDisabled();await attendance.getByRole("combobox",{name:"Confirmed participant",exact:true}).selectOption(family(locale).selection.enrollmentId!);await attendance.getByRole("combobox",{name:"Actual attendance",exact:true}).selectOption("present");await save(attendance);
   const cancellation=await action("cancel",data.occurrenceId);await expect(cancellation.getByRole("alert")).toContainText("undelivered service");await save(cancellation);await page.reload();
-  const canonical=await page.request.get("/api/calendar/fishing/plan?"+fishingCalendarSearch(selection));expect(canonical.status()).toBe(200);const view=(await canonical.json()).data.view;expect(view.occurrences.find((o:{id:string})=>o.id===data.pastOccurrenceId).state).toBe("completed");expect(view.occurrences.find((o:{id:string})=>o.id===data.occurrenceId).state).toBe("cancelled");expect(view.attendance).toHaveLength(1);expect(view.attendance[0]).toMatchObject({enrollmentId:family(locale).selection.enrollmentId,occurrenceId:data.pastOccurrenceId,state:"present"});await screen(page,locale,info.outputPath("operator-completion-attendance-cancellation.png"));
+  const canonical=await page.request.get("/api/calendar/fishing/plan?"+fishingCalendarSearch(selection));expect(canonical.status()).toBe(200);const view=(await canonical.json()).data.view;expect(view.occurrences.find((o:{id:string})=>o.id===data.pastOccurrenceId).state).toBe("completed");expect(view.occurrences.find((o:{id:string})=>o.id===data.occurrenceId).state).toBe("cancelled");expect(view.attendance).toHaveLength(1);expect(view.attendance[0]).toMatchObject({enrollmentId:family(locale).selection.enrollmentId,occurrenceId:data.pastOccurrenceId,state:"present"});
+  const rendered=await openPlan(page,locale);await expect(rendered.getByText("Session delivered",{exact:true})).toBeVisible();await expect(rendered.getByText("Cancelled — service remains undelivered",{exact:true})).toBeVisible();
+  await screen(page,locale,info.outputPath("operator-completion-attendance-cancellation.png"));
  });
 }

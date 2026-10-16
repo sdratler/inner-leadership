@@ -19,6 +19,18 @@ const planSchema=z.object({selection:fishingCalendarSelectionSchema,choice:fishi
 const requestSchema=z.strictObject({generation:z.number().int().nonnegative(),learnerId:uuid.nullable(),enrollmentId:uuid.nullable()})
  .refine(value=>value.learnerId!==null||value.enrollmentId===null);
 export type ClassroomEntryRequest=z.infer<typeof requestSchema>;
+/** URL context is a selection hint. Every load still checks current native access. */
+export function classroomEntryRequestFromQuery(query:Record<string,string|string[]|undefined>):ClassroomEntryRequest|null{
+ const request=requestSchema.safeParse({generation:0,learnerId:query.learnerId??null,enrollmentId:query.enrollmentId??null});
+ return request.success?request.data:null;
+}
+export function classroomEntrySearch(request:ClassroomEntryRequest,priorSearch:string):string{
+ const selected=requestSchema.parse(request),query=new URLSearchParams(priorSearch);
+ for(const key of["learnerId","enrollmentId"])query.delete(key);
+ if(selected.learnerId)query.set("learnerId",selected.learnerId);
+ if(selected.enrollmentId)query.set("enrollmentId",selected.enrollmentId);
+ return query.toString();
+}
 export type ClassroomEntryFailure="UNAUTHENTICATED"|"FORBIDDEN"|"NOT_FOUND"|"UNAVAILABLE";
 export class ClassroomEntryError extends Error{
  constructor(readonly code:ClassroomEntryFailure){super(code);this.name="ClassroomEntryError";}
@@ -90,8 +102,8 @@ export async function readClassroomEntry(rawRequest:ClassroomEntryRequest,port:C
  return {availability:choices.availability,children:choices.children,stages:choices.stages,lessons};
 }
 export type ClassroomEntryState=ClassroomEntryData&{request:ClassroomEntryRequest;status:"loading"|"ready"|"failed";failure:ClassroomEntryFailure|null};
-export function initialClassroomEntry():ClassroomEntryState{
- return {request:{generation:0,learnerId:null,enrollmentId:null},status:"loading",failure:null,availability:"ready",children:[],stages:[],lessons:[]};
+export function initialClassroomEntry(request:ClassroomEntryRequest={generation:0,learnerId:null,enrollmentId:null}):ClassroomEntryState{
+ return {request:requestSchema.parse(request),status:"loading",failure:null,availability:"ready",children:[],stages:[],lessons:[]};
 }
 export type ClassroomEntryAction=
  |{type:"learner";learnerId:string|null}|{type:"stage";enrollmentId:string|null}|{type:"refresh"}|{type:"restart"}

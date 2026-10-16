@@ -4,7 +4,7 @@ import type {Locale} from "../../lib/locale.ts";
 import {Button,Select} from "../../ui/workspace/controls.tsx";
 import {calendarRead,CalendarClientError} from "../calendar/client.ts";
 import {sessionInfo,IdentityClientError} from "../identity/client.ts";
-import {ClassroomEntryError,classroomEntryReducer,initialClassroomEntry,readClassroomEntry,type ClassroomEntryAction,type ClassroomEntryFailure,type ClassroomEntryState} from "./classroom-entry-contract.ts";
+import {ClassroomEntryError,classroomEntryReducer,classroomEntrySearch,initialClassroomEntry,readClassroomEntry,type ClassroomEntryAction,type ClassroomEntryFailure,type ClassroomEntryRequest,type ClassroomEntryState} from "./classroom-entry-contract.ts";
 import styles from "./classroom-entry.module.css";
 
 const copy={
@@ -22,9 +22,18 @@ function failureCode(error:unknown):ClassroomEntryFailure{
 }
 /** MAIN mounts this parent-only entry in the existing Materials route behind
  * educationRehearsalEnabled. It owns no route, feature switch or save boundary. */
-export function FishingClassroomEntry({locale}:{locale:Locale}){return <ClassroomEntryLoader key={locale} locale={locale}/>;}
-function ClassroomEntryLoader({locale}:{locale:Locale}){
- const [state,dispatch]=useReducer(classroomEntryReducer,undefined,initialClassroomEntry);
+export function FishingClassroomEntry({locale,initialRequest}:{locale:Locale;initialRequest?:ClassroomEntryRequest}){return <ClassroomEntryLoader key={locale} locale={locale} initialRequest={initialRequest}/>;}
+function ClassroomEntryLoader({locale,initialRequest}:{locale:Locale;initialRequest:ClassroomEntryRequest|undefined}){
+ const [state,dispatch]=useReducer(classroomEntryReducer,initialRequest,initialClassroomEntry);
+ const select=(action:ClassroomEntryAction)=>{
+  if(action.type==="learner"||action.type==="stage"){
+   const next=classroomEntryReducer(state,action);if(next===state)return;
+   const url=new URL(window.location.href);url.search=classroomEntrySearch(next.request,url.search);
+   // Replace this chooser entry; Back from the server's lesson href retains it.
+   window.history.replaceState(null,"",url);
+  }
+  dispatch(action);
+ };
  useEffect(()=>{
   let live=true;const request=state.request;
   void readClassroomEntry(request,{session:sessionInfo,read:calendarRead},()=>live).then(data=>{
@@ -37,7 +46,7 @@ function ClassroomEntryLoader({locale}:{locale:Locale}){
   window.addEventListener("pageshow",refresh);document.addEventListener("visibilitychange",visible);
   return()=>{window.removeEventListener("pageshow",refresh);document.removeEventListener("visibilitychange",visible);};
  },[]);
- return <ClassroomEntryPanel locale={locale} state={state} dispatch={dispatch}/>;
+ return <ClassroomEntryPanel locale={locale} state={state} dispatch={select}/>;
 }
 /** Closed metadata view, also rendered by the focused static acceptance tests. */
 export function ClassroomEntryPanel({locale,state,dispatch}:{locale:Locale;state:ClassroomEntryState;dispatch:Dispatch<ClassroomEntryAction>}){
