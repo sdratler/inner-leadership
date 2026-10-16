@@ -290,7 +290,9 @@ export async function verifyFishingCalendarFinalParentReadback(ports:FishingFoll
  return followupContext(ports,seen,"parent","calendar-final",async page=>{
   let context:Record<string,unknown>|undefined;
   const plan=await followupRead(page,input.origin,planPath,entries,async()=>{context=await followupRead(page,input.origin,contextPath,[["learnerId",input.learnerId]],()=>ports.ordinaryParentLogin(page,input.scheduleHref,input.locale));});
-  await expect(page).toHaveURL(input.origin+input.scheduleHref,{timeout});
+  const expectedUrl=new URL(input.origin+input.scheduleHref);
+  const queryEntries=(url:URL)=>[...url.searchParams.entries()].sort(([keyA,valueA],[keyB,valueB])=>keyA.localeCompare(keyB)||valueA.localeCompare(valueB));
+  await expect(page).toHaveURL(actual=>actual.origin===expectedUrl.origin&&actual.pathname===expectedUrl.pathname&&actual.hash===expectedUrl.hash&&JSON.stringify(queryEntries(actual))===JSON.stringify(queryEntries(expectedUrl)),{timeout});
   followupObject(context,["availability","role","children","selectedLearnerId","stages"],"CALENDAR_CONTEXT");contextData(context!,input.learnerId,{...input,moduleId:input.completed.moduleId,version:input.completed.version,questions:[]});
   followupRequire(followupArray(context!.stages,"CONTEXT_STAGES").some(value=>{const stage=object(value,"CONTEXT_STAGE");return stage.enrollmentId===input.enrollmentId&&stage.learnerId===input.learnerId&&Object.entries(input.reference).every(([key,item])=>stage[key]===item);}),"CONTEXT_STAGE_BINDING");
   followupObject(plan,["selection","choice","view","operator","lessonLearnerId","lessonLinks"],"CALENDAR_PLAN");
