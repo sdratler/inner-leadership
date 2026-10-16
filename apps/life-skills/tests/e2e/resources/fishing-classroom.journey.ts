@@ -1,4 +1,4 @@
-import {expect,type Page,type Response,type Route} from "@playwright/test";
+import {expect,type Page,type Response,type Request,type Route} from "@playwright/test";
 
 /** Invoked only by MAIN's admitted synthetic fixture/test. No test registration,
  * login implementation, context creation, setup, runner, environment or DB work. */
@@ -235,19 +235,19 @@ async function followupVisibleSafe(page:Page,canaries:readonly string[]){const t
 async function followupResponse(page:Page,origin:string,path:string,method:"GET"|"POST",entries:readonly (readonly [string,string])[],action:()=>Promise<unknown>){
  let resolve!:(response:Response)=>void,reject!:(error:Error)=>void,settled=false,primary=false;
  const pending=new Promise<Response>((yes,no)=>{resolve=yes;reject=no;});void pending.catch(()=>undefined);
- const listener=(response:Response)=>{
-  try{const request=response.request(),url=new URL(response.url());
+ const listener=(request:Request)=>{
+  try{const url=new URL(request.url());
    if(!settled&&request.method()===method&&request.frame()===page.mainFrame()&&url.origin===origin&&url.pathname===path&&exactQuery(url,entries)){
-    settled=true;resolve(response);
+    void request.response().then(response=>{if(!settled&&response){settled=true;resolve(response);}},()=>{if(!settled){settled=true;reject(Error("FISHING_FOLLOWUP_COMPLETED_RESPONSE_UNAVAILABLE"));}});
    }
-  }catch{/* Other frames and unrelated responses do not satisfy readiness. */}
+  }catch{/* Other frames and unrelated completed requests do not satisfy readiness. */}
  };
  let timer:ReturnType<typeof setTimeout>|undefined;
- try{page.on("response",listener);timer=setTimeout(()=>{if(!settled){settled=true;reject(Error("FISHING_FOLLOWUP_RESPONSE_TIMEOUT"));}},timeout);
+ try{page.on("requestfinished",listener);timer=setTimeout(()=>{if(!settled){settled=true;reject(Error("FISHING_FOLLOWUP_RESPONSE_TIMEOUT"));}},timeout);
   await action();return await pending;
  }catch(error){primary=true;throw error;}finally{
   clearTimeout(timer);if(!settled){settled=true;reject(Error("FISHING_FOLLOWUP_RESPONSE_CANCELLED"));}
-  try{page.off("response",listener);}catch{
+  try{page.off("requestfinished",listener);}catch{
    try{console.error({code:"FISHING_FOLLOWUP_LISTENER_CLEANUP_FAILED",count:1,primaryFailure:primary});}catch{/* Preserve the primary value. */}
    if(!primary)throw Error("FISHING_FOLLOWUP_LISTENER_CLEANUP_FAILED");
   }
