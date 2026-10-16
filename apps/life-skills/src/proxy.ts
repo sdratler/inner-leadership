@@ -194,11 +194,15 @@ export function proxy(request: NextRequest) {
   }
   const parentPage = /^\/(he|en)\/family(?:\/|$)/.exec(pathname);
   if (parentPage) {
-    const query: Record<string, string | string[] | undefined> = {};
+    const query: Record<string, string | string[] | undefined> = Object.create(null);
     const calendar=pathname===`/${parentPage[1]}/family/schedule`;
-    for (const key of ["caseId", "date", "view", "audienceId", "assignmentId", "practiceVersionId", "section",...(calendar?['practice',...fishingCalendarReturnKeys]:[])]) {
+    // Keep the complete education tuple for the strict parent return parser.
+    // Duplicates and unknown keys must reach validation rather than disappear.
+    const education=pathname===`/${parentPage[1]}/family/resources`&&request.nextUrl.searchParams.has('education');
+    const keys=education?[...new Set(request.nextUrl.searchParams.keys())]:["caseId", "date", "view", "audienceId", "assignmentId", "practiceVersionId", "section",...(calendar?['practice',...fishingCalendarReturnKeys]:[])];
+    for (const key of keys) {
       const values = request.nextUrl.searchParams.getAll(key);
-      query[key] = values.length === 1 ? values[0] : calendar&&values.length>1&&fishingCalendarReturnKeys.some(field=>field===key)?values:undefined;
+      query[key] = values.length === 1 ? values[0] : values.length>1&&(education||calendar&&fishingCalendarReturnKeys.some(field=>field===key))?values:undefined;
     }
     inbound.set("x-ls-parent-return", parentReturnPath(parentPage[1] as "he" | "en", pathname, query));
   }

@@ -43,6 +43,15 @@ it('preserves only a bounded legacy lead ID on a practitioner People return link
     .toBe('/en/app/clients');
 });
 const caseId='123e4567-e89b-42d3-a456-426614174000',sessionId='223e4567-e89b-42d3-a456-426614174000';
+it.each(['en','he']as const)('rejects every duplicate %s parent education return key including section instead of defaulting it',locale=>{
+ const path=`/${locale}/family/resources`,query={education:'lesson',learnerId:caseId,moduleId:'RM-101',version:'synthetic-v1',section:'portfolio'};
+ expect(Object.fromEntries(new URL(parentReturnPath(locale,path,query),'https://private.invalid').searchParams)).toEqual(query);
+ for(const[key,value]of Object.entries(query))expect(parentReturnPath(locale,path,{...query,[key]:[value,value]})).toBe(path);
+ for(const extra of [{role:'practitioner'},{teacherKey:'PRIVATE'},{section:'review'},{version:'bad\nversion'}])expect(parentReturnPath(locale,path,{...query,...extra})).toBe(path);
+ expect(parentReturnPath(locale,path,{...query,section:undefined})).toContain('section=lesson');
+ for(const other of ['practitioner','child','adult_client']as const)expect(loginReturnDestination(locale,other,parentReturnPath(locale,path,query))).not.toBe(parentReturnPath(locale,path,query));
+ expect(parentReturnPath(locale==='en'?'he':'en',path,query)).not.toBe(parentReturnPath(locale,path,query));
+});
 it.each(['he','en']as const)('preserves exact %s educational context through ordinary role login without clinical or caller authority',locale=>{
  const query={education:'lesson',learnerId:caseId,moduleId:'RM-101',version:'synthetic-v1'};
  for(const section of ['review','publication']){

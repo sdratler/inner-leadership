@@ -131,7 +131,7 @@ export function parentReturnPath(locale: Locale, pathname: string, input: Return
   const allowed = new Set(["", "/schedule", "/practice", "/feedback", "/forms", "/resources", "/reports", "/settings", "/settings/account", "/settings/coordination", "/settings/credits", "/settings/notifications"]);
   if (suffix === null || !allowed.has(suffix)) return `${root}/schedule`;
   if(suffix==='/resources'){
-   const education=educationQuery(query);
+   const education=educationQuery(input);
    if(education&&(education.section==='lesson'||education.section==='portfolio'))return root+suffix+'?'+educationSearch(education.reference,education.section);
   }
   const params = new URLSearchParams();
