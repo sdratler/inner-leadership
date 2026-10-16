@@ -257,10 +257,19 @@ export class NativeFishingProgram {
   const namespaces=await tx.query<{name:string;present:boolean}>("SELECT name,to_regnamespace(name) IS NOT NULL AS present FROM unnest(ARRAY[$1,$2]::text[]) AS e(name) ORDER BY name",["ls_fishing_payments","ls_fishing_stage"]);requireFact(namespaces.length===2,"UNAVAILABLE");
   if(rows.every(row=>row.relation===null)&&namespaces.every(row=>row.present===false))return false;
   requireFact(namespaces.every(row=>row.present===true)&&rows.every(row=>row.relation===row.name&&row.kind==="r"),"UNAVAILABLE");
+  // The reviewed Stripe bindings are an optional, indivisible catalog slice.
+  // Their presence never activates a merchant or permits an incomplete slice.
+  const stripeNames=["ls_fishing_payments.customer_bindings","ls_fishing_payments.object_bindings"];
+  const stripe=await tx.query<{name:string;relation:string|null;kind:string|null}>("SELECT e.name,c.oid::regclass::text AS relation,c.relkind AS kind FROM unnest(ARRAY[$1,$2]::text[]) AS e(name) LEFT JOIN pg_class c ON c.oid=to_regclass(e.name) ORDER BY e.name",stripeNames);
+  requireFact(stripe.length===2&&stripe.every((row,index)=>row.name===stripeNames[index]),"UNAVAILABLE");
+  const stripeAbsent=stripe.every(row=>row.relation===null&&row.kind===null),stripeReady=stripe.every(row=>row.relation===row.name&&row.kind==="r");
+  requireFact(stripeAbsent||stripeReady,"UNAVAILABLE");
   const functions=await tx.query<{name:string}>("SELECT n.nspname||'.'||p.proname AS name FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname=ANY(ARRAY[$1,$2]::text[]) ORDER BY name",["ls_fishing_payments","ls_fishing_stage"]);
-  requireFact(JSON.stringify(functions.map(row=>row.name))===JSON.stringify(["ls_fishing_stage.reject_program_history_rewrite","ls_fishing_stage.verify_program_stage_receipt"]),"UNAVAILABLE");
+  const expectedFunctions=["ls_fishing_stage.reject_program_history_rewrite","ls_fishing_stage.verify_program_stage_receipt",...(stripeReady?["ls_fishing_payments.preserve_stripe_binding"]:[])].sort();
+  requireFact(JSON.stringify(functions.map(row=>row.name))===JSON.stringify(expectedFunctions),"UNAVAILABLE");
   const triggers=await tx.query<{name:string}>("SELECT c.relname||':'||t.tgname AS name FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=ANY(ARRAY[$1,$2]::text[]) AND NOT t.tgisinternal ORDER BY name",["ls_fishing_payments","ls_fishing_stage"]);
-  requireFact(JSON.stringify(triggers.map(row=>row.name))===JSON.stringify(["command_receipts:exact_program_stage_receipt","command_receipts:immutable_program_commands","fit_decisions:immutable_program_fit","offer_approvals:immutable_program_offers","source_approvals:immutable_program_sources","terms_acceptances:immutable_program_terms"]),"UNAVAILABLE");return true;
+  const expectedTriggers=["command_receipts:exact_program_stage_receipt","command_receipts:immutable_program_commands","fit_decisions:immutable_program_fit","offer_approvals:immutable_program_offers","source_approvals:immutable_program_sources","terms_acceptances:immutable_program_terms",...(stripeReady?["customer_bindings:preserve_customer_binding","object_bindings:preserve_object_binding"]:[])].sort();
+  requireFact(JSON.stringify(triggers.map(row=>row.name))===JSON.stringify(expectedTriggers),"UNAVAILABLE");return true;
  }
  async calendarOperatorChoices(actor:Actor,reference:FishingStageRef){
   try{return await this.db.transaction(async tx=>{

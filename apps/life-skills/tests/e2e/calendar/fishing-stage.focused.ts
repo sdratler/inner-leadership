@@ -132,6 +132,25 @@ if(!file){
   const results=await Promise.allSettled(contexts.map(async context=>context.close())),failed=results.filter(result=>result.status==="rejected").length;
   if(failed){console.log("SYNTHETIC_PRACTITIONER_CLEANUP "+JSON.stringify({failedContexts:failed,primaryFailed}));if(!primaryFailed)throw Error("SYNTHETIC_PRACTITIONER_CONTEXT_CLEANUP_FAILED");}
  }
+ function observePractitionerDraft(page:Page,locale:string){
+  const state={mainNavigations:0,mainDocuments:0,loads:0,domLoads:0},paths:string[]=[],categories=new Set<string>();let ended=false;
+  const increment=(key:keyof typeof state)=>{state[key]=Math.min(48,state[key]+1);};
+  const navigated=(frame:ReturnType<Page["mainFrame"]>)=>{
+   if(frame!==page.mainFrame())return;increment("mainNavigations");if(paths.length>=8)return;
+   try{const url=new URL(frame.url());paths.push(url.origin!==data.origin?"OTHER_ORIGIN":url.pathname===`/${locale}/app/calendar`?"CALENDAR":url.pathname===`/${locale}/login`?"LOGIN":"OTHER_SAME_ORIGIN");}catch{paths.push("UNKNOWN_NAVIGATION");}
+  };
+  const requested=(request:Request)=>{if(request.isNavigationRequest()&&request.frame()===page.mainFrame())increment("mainDocuments");};
+  const loaded=()=>increment("loads"),domLoaded=()=>increment("domLoads"),runtime=()=>{categories.add("JS_RUNTIME");};
+  const consoleMessage=(message:ConsoleMessage)=>{
+   const text=message.text();if(/fast refresh/i.test(text))categories.add(/full reload/i.test(text)?"FAST_REFRESH_FULL_RELOAD":/rebuild/i.test(text)?"FAST_REFRESH_REBUILD":"FAST_REFRESH_OTHER");
+   else if(message.type()==="error")categories.add(/content.security.policy|\bCSP\b|refused to (?:load|execute|connect)/i.test(text)?"CSP":/hydrat/i.test(text)?"HYDRATION":"JS_RUNTIME");
+  };
+  page.on("framenavigated",navigated);page.on("request",requested);page.on("load",loaded);page.on("domcontentloaded",domLoaded);page.on("pageerror",runtime);page.on("console",consoleMessage);
+  return(failed:boolean)=>{
+   if(ended)return;ended=true;page.off("framenavigated",navigated);page.off("request",requested);page.off("load",loaded);page.off("domcontentloaded",domLoaded);page.off("pageerror",runtime);page.off("console",consoleMessage);
+   if(failed)console.log("SYNTHETIC_PRACTITIONER_DRAFT "+JSON.stringify({...state,paths,categories:[...categories].sort()}));
+  };
+ }
  async function chooseSession(page:Page,form:ReturnType<Page["getByRole"]>,locale:string,id:string){
   const control=form.getByRole("combobox",{name:t(locale,"Session","מפגש"),exact:true}),message=t(locale,"Replace the unsaved session draft?","להחליף את טיוטת המפגש שלא נשמרה?");let decision:Promise<void>|null=null,confirmed=false,unexpected=false;
   const handle=(dialog:Dialog)=>{
@@ -174,22 +193,25 @@ if(!file){
   });
 
   test(`${locale}: practitioner real native edit, long draft/reload conflict and retained shared agenda`,async({page,browser},info)=>{
-   const contexts:BrowserContext[]=[];let primaryFailed=false,phase="open-current-plan";try{
+   const contexts:BrowserContext[]=[];let primaryFailed=false,phase="open-current-plan",finishDraft:((failed:boolean)=>void)|null=null;try{
    const operator={...family(locale).selection,learnerId:null,enrollmentId:null};await login(page,"practitioner",route(locale,"practitioner")+'&'+fishingCalendarSearch(operator),locale);const event=page.locator(`[data-fishing-occurrence-id="${data.occurrenceId}"]:visible`);await expect(event).toHaveCount(1);await event.getByRole("button").click();
    phase="open-editor";await page.getByRole("button",{name:t(locale,"Manage this stage","ניהול השלב"),exact:true}).click();const form=page.getByRole("form",{name:t(locale,"Manage fishing stage","ניהול שלב הדיג"),exact:true});
    phase="select-session";await form.getByLabel(t(locale,"Action","פעולה"),{exact:true}).selectOption("revise");await chooseSession(page,form,locale,data.occurrenceId);
    phase="fill-main-draft";const note=form.getByLabel(t(locale,"Family-visible logistical note","הערה לוגיסטית המוצגת למשפחות"),{exact:true}),draft="Synthetic retained draft / טיוטה סינתטית ".repeat(20);await note.fill(draft);await form.getByRole("textbox",{name:t(locale,"Reason visible to the enrolled family","סיבה המוצגת למשפחה הרשומה"),exact:true}).fill("Synthetic deliberate UI revision");
+   finishDraft=observePractitionerDraft(page,locale);
    // A second ordinary session saves a real competing native revision. No
    // fabricated 409 or permissive replacement adapter supplies this conflict.
    phase="second-login";const other=await separate(browser,page,contexts);await login(other,"practitioner",page.url().replace(data.origin,""),locale);await other.getByRole("button",{name:t(locale,"Manage this stage","ניהול השלב"),exact:true}).click();
+   phase="draft-after-second-login";await expect(form).toHaveCount(1);await expect(note).toHaveValue(draft);
    phase="second-edit";const otherForm=other.getByRole("form",{name:t(locale,"Manage fishing stage","ניהול שלב הדיג"),exact:true});await otherForm.getByLabel(t(locale,"Action","פעולה"),{exact:true}).selectOption("revise");await chooseSession(other,otherForm,locale,data.occurrenceId);await otherForm.getByLabel(t(locale,"Family-visible logistical note","הערה לוגיסטית המוצגת למשפחות"),{exact:true}).fill("Synthetic competing native revision");await otherForm.getByRole("textbox",{name:t(locale,"Reason visible to the enrolled family","סיבה המוצגת למשפחה הרשומה"),exact:true}).fill("Synthetic second-session revision");
    phase="competing-save";const competing=other.waitForResponse(r=>new URL(r.url()).pathname==="/api/calendar/fishing/command"&&r.request().method()==="POST");await otherForm.getByRole("button",{name:t(locale,"Save deliberate action","שמירת הפעולה שנבחרה"),exact:true}).click();expect((await competing).status()).toBe(200);
+   phase="draft-after-competing-save";await expect(form).toHaveCount(1);await expect(note).toHaveValue(draft);
    phase="stale-save";const stale=page.waitForResponse(r=>new URL(r.url()).pathname==="/api/calendar/fishing/command"&&r.request().method()==="POST");await form.getByRole("button",{name:t(locale,"Save deliberate action","שמירת הפעולה שנבחרה"),exact:true}).click();expect((await stale).status()).toBe(409);await expect(page.getByRole("alert").filter({hasText:t(locale,"saved version, capacity or approval changed","הגרסה, הקיבולת או האישור השתנו")})).toBeVisible();await expect(note).toHaveValue(draft);
    phase="reload-ack";await page.getByRole("button",{name:t(locale,"Reload current access and plan","טעינת הרשאות ותוכנית עדכניות"),exact:true}).click();await expect(note).toHaveValue(draft);await form.getByRole("button",{name:t(locale,"Use current revision, keep my draft","שימוש בגרסה הנוכחית ושמירת הטיוטה"),exact:true}).click();
    phase="accepted-save-reload";const pending=page.waitForResponse(r=>new URL(r.url()).pathname==="/api/calendar/fishing/command"&&r.request().method()==="POST");await form.getByRole("button",{name:t(locale,"Save deliberate action","שמירת הפעולה שנבחרה"),exact:true}).click();expect((await pending).status()).toBe(200);await page.reload();const full=await openPlan(page,locale);await expect(full.getByText(draft,{exact:true})).toBeVisible();
    phase="saved-plan-screen";await screen(page,locale,info.outputPath(`practitioner-${locale}-saved-plan.png`));
    phase="agenda-screen";await page.goto(route(locale,"practitioner",false,"agenda"));await expect(page.locator(`[data-fishing-occurrence-id="${data.occurrenceId}"]:visible`)).toHaveCount(1);await expect(page.locator('[data-ls-calendar-grid]:visible')).toHaveCount(0);await screen(page,locale,info.outputPath(`practitioner-${locale}-agenda.png`));
-   }catch(error){primaryFailed=true;console.log("SYNTHETIC_PRACTITIONER_PHASE "+JSON.stringify({phase}));throw error;}finally{await closePractitionerContexts(contexts,primaryFailed);}
+   }catch(error){primaryFailed=true;console.log("SYNTHETIC_PRACTITIONER_PHASE "+JSON.stringify({phase}));throw error;}finally{finishDraft?.(primaryFailed);await closePractitionerContexts(contexts,primaryFailed);}
   });
 
   test(`${locale}: separately authenticated optional child and adult cannot gain parent/operator capabilities`,async({page,browser},info)=>{

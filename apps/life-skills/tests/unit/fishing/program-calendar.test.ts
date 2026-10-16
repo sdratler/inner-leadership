@@ -78,15 +78,39 @@ describe("existing scheduled instant precision — pure editor resolution, not n
 });
 
 describe("actual catalog SQL through the retained production binder — pure encoding, NOT native authorization proof",()=>{
- function fixture(state:'ready'|'absent'|'partial'|'function'|'trigger'|'driver'='ready'){
+ type CatalogState='ready'|'absent'|'partial'|'function'|'trigger'|'driver'|'base-view'|'namespace'|'base-stripe-function'|'base-stripe-trigger'|'stripe'|'stripe-partial'|'stripe-view'|'stripe-wrong-namespace'|'stripe-missing-base'|'stripe-function'|'stripe-trigger'|'stripe-unknown-function'|'stripe-unknown-trigger'|'stripe-wrong-function'|'stripe-wrong-trigger'|'stripe-base-function'|'stripe-base-trigger'|'stripe-duplicate'|'stripe-omitted-row'|'stripe-absent-kind';
+ function fixture(state:CatalogState='ready'){
   const calls:{text:string;values:readonly unknown[];params:unknown[]}[]=[],dialect=new PgDialect();
+  const stripePresent=state==='stripe'||state.startsWith('stripe-'),stripeNames=['ls_fishing_payments.customer_bindings','ls_fishing_payments.object_bindings'];
   const tx:SqlSession={async query<Row extends object>(text:string,values:readonly unknown[]=[]):Promise<Row[]>{
    const compiled=dialect.sqlToQuery(bindStatement(text,values));calls.push({text,values,params:compiled.params});
    if(state==='driver')throw Error('SYNTHETIC_DRIVER_FAILURE');let rows:object[];
-   if(text.includes('to_regclass'))rows=values.map((name,index)=>({name,relation:state==='absent'||state==='partial'&&index===0?null:name,kind:state==='absent'?null:'r'}));
-   else if(text.includes('to_regnamespace'))rows=values.map(name=>({name,present:state!=='absent'}));
-   else if(text.includes('pg_proc'))rows=(state==='function'?[]:['ls_fishing_stage.reject_program_history_rewrite','ls_fishing_stage.verify_program_stage_receipt']).map(name=>({name}));
-   else if(text.includes('pg_trigger'))rows=(state==='trigger'?[]:['command_receipts:exact_program_stage_receipt','command_receipts:immutable_program_commands','fit_decisions:immutable_program_fit','offer_approvals:immutable_program_offers','source_approvals:immutable_program_sources','terms_acceptances:immutable_program_terms']).map(name=>({name}));
+   if(text.includes('to_regclass')){
+    const optional=values[0]===stripeNames[0];rows=values.map((name,index)=>{
+     const absent=state==='absent'||!optional&&(state==='partial'||state==='stripe-missing-base')&&index===0||optional&&(!stripePresent||state==='stripe-partial'&&index===1||state==='stripe-absent-kind');
+     return {name:optional&&state==='stripe-duplicate'?stripeNames[0]:name,relation:absent?null:optional&&state==='stripe-wrong-namespace'?`wrong_namespace.${index}`:name,
+      kind:absent?(optional&&state==='stripe-absent-kind'?'r':null):(!optional&&state==='base-view'||optional&&state==='stripe-view')&&index===0?'v':'r'};
+    });if(optional&&state==='stripe-omitted-row')rows.pop();
+   }
+   else if(text.includes('to_regnamespace'))rows=values.map((name,index)=>({name,present:state!=='absent'&&!(state==='namespace'&&index===0)}));
+   else if(text.includes('pg_proc')){
+    let names=state==='function'?[]:['ls_fishing_stage.reject_program_history_rewrite','ls_fishing_stage.verify_program_stage_receipt'];
+    if(stripePresent||state==='base-stripe-function')names.push('ls_fishing_payments.preserve_stripe_binding');
+    if(state==='stripe-function')names=names.filter(name=>!name.endsWith('.preserve_stripe_binding'));
+    if(state==='stripe-base-function')names=names.filter(name=>!name.endsWith('.verify_program_stage_receipt'));
+    if(state==='stripe-unknown-function')names.push('ls_fishing_payments.unexpected_function');
+    if(state==='stripe-wrong-function')names=names.map(name=>name==='ls_fishing_payments.preserve_stripe_binding'?'ls_fishing_stage.preserve_stripe_binding':name);
+    rows=names.sort().map(name=>({name}));
+   }
+   else if(text.includes('pg_trigger')){
+    let names=state==='trigger'?[]:['command_receipts:exact_program_stage_receipt','command_receipts:immutable_program_commands','fit_decisions:immutable_program_fit','offer_approvals:immutable_program_offers','source_approvals:immutable_program_sources','terms_acceptances:immutable_program_terms'];
+    if(stripePresent||state==='base-stripe-trigger')names.push('customer_bindings:preserve_customer_binding','object_bindings:preserve_object_binding');
+    if(state==='stripe-trigger')names=names.filter(name=>name!=='object_bindings:preserve_object_binding');
+    if(state==='stripe-base-trigger')names=names.filter(name=>name!=='fit_decisions:immutable_program_fit');
+    if(state==='stripe-unknown-trigger')names.push('object_bindings:unexpected_trigger');
+    if(state==='stripe-wrong-trigger')names=names.map(name=>name==='object_bindings:preserve_object_binding'?'object_bindings:preserve_customer_binding':name);
+    rows=names.sort().map(name=>({name}));
+   }
    else throw Error('UNEXPECTED_CATALOG_QUERY');return rows as Row[];
   }};
   const program=new NativeFishingProgram({transaction:work=>work(tx)},{activeKeyId:'synthetic',keys:{synthetic:Buffer.alloc(32)}},{childAccountsEnabled:false,merchant:null});
@@ -95,13 +119,16 @@ describe("actual catalog SQL through the retained production binder — pure enc
   const read=Reflect.get(program,'calendarCatalog') as (tx:SqlSession)=>Promise<boolean>;
   return {calls,read:()=>read.call(program,tx)};
  }
- it('binds every actual catalog statement as primitive scalars, retaining exactly25 relations and2 schemas',async()=>{
-  const f=fixture();await expect(f.read()).resolves.toBe(true);expect(f.calls).toHaveLength(4);expect(f.calls.map(call=>call.values.length)).toEqual([25,2,2,2]);
+ it('binds every actual catalog statement as primitive scalars, retaining25 required relations,2 optional bindings and2 schemas',async()=>{
+  const f=fixture();await expect(f.read()).resolves.toBe(true);expect(f.calls).toHaveLength(5);expect(f.calls.map(call=>call.values.length)).toEqual([25,2,2,2,2]);
   for(const call of f.calls){expect(call.values.every(value=>typeof value==='string')).toBe(true);expect(call.params).toEqual(call.values);expect(call.text).toContain('ARRAY[');}
-  expect(new Set(f.calls[0]!.values).size).toBe(25);for(const call of f.calls.slice(1))expect(call.values).toEqual(['ls_fishing_payments','ls_fishing_stage']);
+  expect(new Set(f.calls[0]!.values).size).toBe(25);expect(f.calls[2]!.values).toEqual(['ls_fishing_payments.customer_bindings','ls_fishing_payments.object_bindings']);
+  expect(new Set([...f.calls[0]!.values,...f.calls[2]!.values]).size).toBe(27);for(const index of[1,3,4])expect(f.calls[index]!.values).toEqual(['ls_fishing_payments','ls_fishing_stage']);
  });
+ it('accepts only the complete reviewed Stripe slice alongside the unchanged required base',async()=>{const f=fixture('stripe');await expect(f.read()).resolves.toBe(true);expect(f.calls).toHaveLength(5);for(const call of f.calls)expect(call.params).toEqual(call.values);});
  it('returns not-configured only for complete relation AND namespace absence',async()=>{const f=fixture('absent');await expect(f.read()).resolves.toBe(false);expect(f.calls).toHaveLength(2);});
  it.each(['partial','function','trigger']as const)('still rejects a damaged %s catalog instead of treating it as absent',async state=>{await expect(fixture(state).read()).rejects.toMatchObject({code:'UNAVAILABLE'});});
+ it.each(['base-view','namespace','base-stripe-function','base-stripe-trigger','stripe-partial','stripe-view','stripe-wrong-namespace','stripe-missing-base','stripe-function','stripe-trigger','stripe-unknown-function','stripe-unknown-trigger','stripe-wrong-function','stripe-wrong-trigger','stripe-base-function','stripe-base-trigger','stripe-duplicate','stripe-omitted-row','stripe-absent-kind']as const)('rejects incomplete or unexpected catalog composition: %s',async state=>{await expect(fixture(state).read()).rejects.toMatchObject({code:'UNAVAILABLE'});});
  it('preserves actual driver failure rather than substituting a catalog or successful empty result',async()=>{await expect(fixture('driver').read()).rejects.toThrow('SYNTHETIC_DRIVER_FAILURE');});
  it('keeps unsupported JavaScript text arrays rejected by the unchanged shared binder',()=>{expect(()=>bindStatement('SELECT unnest($1::text[])',[['ls_fishing_stage']])).toThrow('INTERNAL');});
 });
