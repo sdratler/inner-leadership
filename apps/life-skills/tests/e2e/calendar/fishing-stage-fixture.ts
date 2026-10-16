@@ -11,7 +11,7 @@ import {programFixture,type ProgramFixture} from "../../database/fishing/native-
 import {safeTestUrl} from "../../database/calendar/fixture.ts";
 import {fishingCivilTime,type FishingCalendarSelection} from "../../../src/features/fishing/program-calendar-contract.ts";
 
-export type FishingStageBrowserData={origin:string;workspaceId:string;occurrenceId:string;pastOccurrenceId:string;date:string;
+export type FishingStageBrowserData={origin:string;workspaceId:string;occurrenceId:string;pastOccurrenceId:string;date:string;lessonSourceSha256:string;
  credentials:{role:string;email:string;password:string;accountId:string}[];families:Record<string,{selection:FishingCalendarSelection;otherLearnerId:string}>};
 const hash=(value:string)=>createHash("sha256").update(value).digest("hex");
 const protectedTables=["ls_cases.cases","ls_cases.case_guardians","ls_calendar.appointments","ls_payments.charges","ls_payments.credit_events","ls_fishing_payments.outbox","ls_education.account_grants","ls_contact_ops.profiles","ls_contact_ops.outbound_projections","ls_onboarding.first_session_orders","ls_identity.auth_mail_outbox"];
@@ -41,13 +41,14 @@ function removeOwnedTemp(folder:string,parent:string){
 }
 async function learnerAccess(f:ProgramFixture,learners:readonly {parentId:string;learnerId:string}[]){
  const moduleId="RM-101",version="synthetic-lesson-v1";
- const row=(await f.pool.query("SELECT module_id FROM ls_education.catalog_versions WHERE workspace_id=$1 AND module_id=$2 AND version=$3 AND approval_provenance='SYNTHETIC_READABLE_NOT_REAL_APPROVAL'",[f.workspaceId,moduleId,version])).rows;
- if(row.length!==1)throw Error("INSERT_FIRST_SYNTHETIC_CATALOG_REQUIRED");
+ const row=(await f.pool.query<{module_id:string;sourceSha256:string}>("SELECT module_id,source_sha256 AS \"sourceSha256\" FROM ls_education.catalog_versions WHERE workspace_id=$1 AND module_id=$2 AND version=$3 AND approval_provenance='SYNTHETIC_READABLE_NOT_REAL_APPROVAL'",[f.workspaceId,moduleId,version])).rows;
+ if(row.length!==1||!/^[a-f0-9]{64}$/.test(row[0]!.sourceSha256))throw Error("INSERT_FIRST_SYNTHETIC_CATALOG_REQUIRED");
  for(const learner of learners){
   await f.pool.query("INSERT INTO ls_education.educational_assignments(workspace_id,learner_id,module_id,version,active,assigned_by) VALUES($1,$2,$3,$4,true,$5)",[f.workspaceId,learner.learnerId,moduleId,version,f.owner.id]);
   for(const[accountId,permissions]of[[learner.parentId,["submit","read_learner","read_parent"]],[f.owner.id,["observe","publish_parent_summary","read_teacher"]]]as const)
    await f.pool.query("INSERT INTO ls_education.account_grants(workspace_id,account_id,learner_id,module_id,version,active,permissions,granted_by) VALUES($1,$2,$3,$4,$5,true,$6::text[],$7)",[f.workspaceId,accountId,learner.learnerId,moduleId,version,[...permissions],f.owner.id]);
  }
+ return row[0]!.sourceSha256;
 }
 export async function runFishingStageBrowser(){
  if(process.env.LS_RM_FISHING_STAGE_UI_ONLY!=="true"||process.env.LS_CALENDAR_TEST_SHARED_ROUTES_ACCEPTED!=="true"||process.env.LS_RM_PROGRAM_NATIVE_ALLOW!=="MAIN_REGISTERED_ONLY")throw Error("REGISTERED_FISHING_UI_RECIPE_REQUIRED");
@@ -75,8 +76,8 @@ export async function runFishingStageBrowser(){
    families[locale]={selection:{learnerId:family.learnerId,enrollmentId:enrollment.result.id,reference:f.ref},otherLearnerId:outsiders.learnerId};learners.push({parentId:family.parent.id,learnerId:family.learnerId});
   }
   const adult=await f.account("adult_client");credentials.push({role:"adult_client",accountId:adult.id,email:`${adult.id}@example.invalid`,password:"Ab12cd"});
-  phase="fixture-materials-access";await learnerAccess(f,learners);phase="fixture-schedule";const startsAt=f.at(48);await f.revise(plan.occurrences[0]!.id,startsAt,f.at(49));await f.revise(plan.occurrences[1]!.id,f.at(-.5),f.at(-.1));await f.publish();
-  const data:FishingStageBrowserData={origin,workspaceId:f.workspaceId,credentials,families,occurrenceId:plan.occurrences[0]!.id,pastOccurrenceId:plan.occurrences[1]!.id,date:fishingCivilTime(startsAt).date};baseline=await snapshot(f);
+  phase="fixture-materials-access";const lessonSourceSha256=await learnerAccess(f,learners);phase="fixture-schedule";const startsAt=f.at(48);await f.revise(plan.occurrences[0]!.id,startsAt,f.at(49));await f.revise(plan.occurrences[1]!.id,f.at(-.5),f.at(-.1));await f.publish();
+  const data:FishingStageBrowserData={origin,lessonSourceSha256,workspaceId:f.workspaceId,credentials,families,occurrenceId:plan.occurrences[0]!.id,pastOccurrenceId:plan.occurrences[1]!.id,date:fishingCivilTime(startsAt).date};baseline=await snapshot(f);
   // Revoke setup-service sessions: each browser role must log in ordinarily.
   await f.pool.query("UPDATE ls_identity.sessions SET revoked_at=clock_timestamp() WHERE workspace_id=$1",[f.workspaceId]);
   const runtimeFile=join(folder,"private-runtime.json");writeFileSync(runtimeFile,JSON.stringify(data),{mode:0o600,flag:"wx"});
