@@ -207,7 +207,7 @@ if(!file){
    await page.goto(route(locale,"parent"));
    const child=page.getByLabel(t(locale,"Authorized child","ילד מורשה"),{exact:true});await expect(child).toHaveValue("");await expect(page.locator('[data-fishing-occurrence-id]:visible')).toHaveCount(0);
    await child.selectOption(family(locale).selection.learnerId!);await expect(page.getByLabel(t(locale,"Stage enrollment","רישום לשלב"),{exact:true})).toHaveValue("");
-   const event=page.locator(`[data-fishing-occurrence-id="${data.occurrenceId}"]:visible`);await expect(event).toHaveCount(1);await expect(page.locator('[data-ls-calendar-grid]:visible')).toHaveCount(info.project.name.startsWith("mobile")?0:1);
+   const event=page.locator(`[data-fishing-occurrence-id="${data.occurrenceId}"]:visible`);await expect(event).toHaveCount(1);await expect(page.locator('[data-ls-calendar-grid]:visible')).toHaveCount(info.project.use.viewport!.width<=800?0:1);
    await screen(page,locale,info.outputPath(`parent-${locale}-one-calendar.png`));await event.getByRole("button",{name:t(locale,"Open session details","פתיחת פרטי מפגש"),exact:true}).click();
    await expect(page.getByLabel(t(locale,"Stage enrollment","רישום לשלב"),{exact:true})).toHaveValue(family(locale).selection.enrollmentId!);
    const plan=await openPlan(page,locale);await expect(plan.getByRole("heading",{name:/Session 1 ·|מפגש 1 ·/})).toBeVisible();
