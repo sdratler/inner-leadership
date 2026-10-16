@@ -6,6 +6,7 @@ import {systemClock} from "../../../src/features/identity/types.ts";
 import {NativeFishingProgram} from "../../../src/features/fishing/native-program.ts";
 import {NativeFishingStageStore} from "../../../src/features/fishing-stage/native-store.ts";
 import {FishingStageService} from "../../../src/features/fishing-stage/service.ts";
+import {decodeNative,encodeNative,parseSnapshot,revisionHeaderSchema} from "../../../src/features/fishing-stage/native-storage.ts";
 import {programFixture,type ProgramFixture} from "./native-program-fixture.ts";
 const fixtures:ProgramFixture[]=[];
 afterEach(async()=>{await Promise.all(fixtures.splice(0).map(f=>f.close()));});
@@ -19,6 +20,23 @@ test("real password actor populates native cohort/venue; exact replay and confli
  const rows=(await f.pool.query("SELECT (SELECT count(*)::integer FROM ls_fishing_stage.source_approvals WHERE workspace_id=$1) AS sources,(SELECT count(*)::integer FROM ls_fishing_stage.occurrences WHERE workspace_id=$1) AS occurrences,(SELECT count(*)::integer FROM ls_fishing_stage.resource_reservations WHERE workspace_id=$1 AND active) AS bookings",[f.workspaceId])).rows[0];expect(rows).toEqual({sources:3,occurrences:12,bookings:0});
  await expect(f.pool.query("UPDATE ls_fishing_stage.source_approvals SET version='rewritten' WHERE workspace_id=$1",[f.workspaceId])).rejects.toThrow("IMMUTABLE_PROGRAM_HISTORY");
 });
+test("native Stage snapshot hashing accepts an intact plan and rejects an authenticated changed revision without reserving seats",async()=>{
+ const f=await fixture(),plan=await f.createPlan(),a=await f.family(),b=await f.family();
+ const hold=(family:typeof a)=>({commandId:randomUUID(),holdId:randomUUID(),stageId:f.ref.stageId,learnerId:family.learnerId,householdId:family.householdId,payerAccountId:family.parent.id,expectedCohortRevision:1,reason:"Synthetic snapshot integrity control"});
+ const first=hold(a);expect(await f.program.reserveOfferHold(f.owner,first)).toMatchObject({id:first.holdId,state:"hold"});
+ const read=async()=>({seats:(await f.pool.query("SELECT to_jsonb(s) AS row FROM ls_fishing_stage.seat_reservations s WHERE workspace_id=$1 ORDER BY id",[f.workspaceId])).rows,commands:(await f.pool.query("SELECT to_jsonb(c) AS row FROM ls_fishing_stage.command_receipts c WHERE workspace_id=$1 ORDER BY actor_id,command_id",[f.workspaceId])).rows});
+ const before=await read();expect(before.seats).toHaveLength(12);
+ const row=(await f.pool.query("SELECT workspace_id AS \"workspaceId\",stage_id AS \"stageId\",revision,actor_account_id AS \"actorId\",operation_id AS \"operationId\",recorded_at AS \"recordedAt\",previous_state_sha256 AS \"previousHash\",state_sha256 AS \"stateHash\",payload_ciphertext AS ciphertext FROM ls_fishing_stage.revisions WHERE workspace_id=$1 AND stage_id=$2 AND revision=$3",[f.workspaceId,f.ref.stageId,plan.revision])).rows[0];
+ const {ciphertext,...physical}=row,header=revisionHeaderSchema.parse({...physical,recordedAt:physical.recordedAt.toISOString()}),changed=parseSnapshot(decodeNative("revision",header,ciphertext,f.ring));
+ const alteredSnapshot=parseSnapshot({...changed,state:{...changed.state,occurrences:changed.state.occurrences.map((occurrence,index)=>index===0?{...occurrence,location:"Synthetic authenticated revision mismatch"}:occurrence)}});
+ const altered=await f.pool.query("UPDATE ls_fishing_stage.revisions SET payload_ciphertext=$4 WHERE workspace_id=$1 AND stage_id=$2 AND revision=$3 RETURNING revision",[f.workspaceId,f.ref.stageId,header.revision,encodeNative("revision",header,alteredSnapshot,f.ring)]);expect(altered.rowCount).toBe(1);
+ const second=hold(b);await expect(f.program.reserveOfferHold(f.owner,second)).rejects.toMatchObject({code:"UNAVAILABLE"});expect(await read()).toEqual(before);
+ // Restore only the isolated fixture bytes. The same failed command must now
+ // succeed: guardian, capacity and lifecycle were not an earlier denial gate.
+ expect((await f.pool.query("UPDATE ls_fishing_stage.revisions SET payload_ciphertext=$4 WHERE workspace_id=$1 AND stage_id=$2 AND revision=$3 RETURNING revision",[f.workspaceId,f.ref.stageId,header.revision,ciphertext])).rowCount).toBe(1);
+ expect(await f.program.reserveOfferHold(f.owner,second)).toMatchObject({id:second.holdId,state:"hold"});expect((await read()).seats).toHaveLength(24);
+});
+
 test("current role and genuine parent/hash/household authority cannot be supplied by another account or request field",async()=>{
  const f=await fixture(),a=await f.family(),b=await f.family();
  await expect(f.program.createCohort({...a.parent,role:"practitioner"},{...f.cohortCommand,commandId:randomUUID(),stageId:randomUUID(),cohortId:randomUUID()})).rejects.toMatchObject({code:"FORBIDDEN"});

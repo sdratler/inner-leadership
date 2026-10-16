@@ -92,6 +92,7 @@ export async function programFixture(options:{capacity?:number;childAccountsEnab
   async function publish(){const current=(await stage().read(owner,ref))!,operationId=randomUUID();return stage(owner,null,{operationId,resources:[],makeupFitDecisionId:null}).execute(owner,ref,{action:"publish",operationId,expectedRevision:current.revision});}
   const calendar=new CalendarService(new CalendarStore(db,ring,systemClock));
   async function clinical(){const cases=new CaseService(db,config,systemClock),parent=await account("parent"),created=await cases.create(owner,{kind:"minor",displayName:"UNRELATED synthetic clinical child",familyLabel:"Unrelated clinical fixture"},randomUUID());
+   await cases.changeState(owner,created.caseId,"intake",randomUUID());
    await pool.query("INSERT INTO ls_cases.case_guardians(workspace_id,case_id,account_id,granted_at) VALUES($1,$2,$3,$4)",[workspaceId,created.caseId,parent.id,ago]);
    const audience=await cases.createAudience(owner,created.caseId,{visibility:"family_full",published:true,accountIds:[parent.id]},randomUUID());await cases.createEngagement(owner,created.caseId,{rateMinor:55000,attendedReviewTarget:12},randomUUID());
    return (startsAt:string):CreateBooking=>({caseId:created.caseId,audienceId:audience.audienceId,kind:"individual",startsAt,parentForId:null,parentIds:[],bufferBefore:0,bufferAfter:0,location:"Synthetic clinical location",checkinExceptionReason:null});
