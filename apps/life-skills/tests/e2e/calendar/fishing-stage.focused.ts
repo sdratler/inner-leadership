@@ -1,6 +1,6 @@
 /** Actual retained routes, ordinary separate logins, disposable synthetic native
  * data only. These tests may NOT run before the exact native/browser recipe ACK. */
-import {test,expect,type Page,type Browser,type BrowserContext,type Request,type Response,type ConsoleMessage} from "@playwright/test";
+import {test,expect,type Page,type Browser,type BrowserContext,type Request,type Response,type ConsoleMessage,type Dialog} from "@playwright/test";
 import {execFile} from "node:child_process";
 import {promisify} from "node:util";
 import {readFileSync} from "node:fs";
@@ -120,6 +120,18 @@ if(!file){
   }
  }
  async function separate(browser:Browser,page:Page,contexts:BrowserContext[]){const viewport=page.viewportSize();if(!viewport)throw Error("VIEWPORT_REQUIRED");const c=await browser.newContext({baseURL:data.origin,ignoreHTTPSErrors:true,viewport,isMobile:viewport.width<=390,hasTouch:viewport.width<=768});contexts.push(c);return c.newPage();}
+ async function chooseSession(page:Page,form:ReturnType<Page["getByRole"]>,locale:string,id:string){
+  const control=form.getByRole("combobox",{name:t(locale,"Session","מפגש"),exact:true}),message=t(locale,"Replace the unsaved session draft?","להחליף את טיוטת המפגש שלא נשמרה?");let decision:Promise<void>|null=null,confirmed=false,unexpected=false;
+  const handle=(dialog:Dialog)=>{
+   if(decision!==null||dialog.type()!=="confirm"||dialog.message()!==message){unexpected=true;decision=dialog.dismiss();}
+   else{confirmed=true;decision=dialog.accept();}
+   void decision.catch(()=>undefined);
+  };
+  page.on("dialog",handle);
+  try{
+   await control.selectOption(id);if(decision)await decision;if(unexpected)throw Error("UNEXPECTED_SYNTHETIC_SESSION_DIALOG");expect(confirmed).toBe(true);await expect(control).toHaveValue(id);
+  }finally{page.off("dialog",handle);}
+ }
  async function openPlan(page:Page,locale:string){const summary=page.getByText(t(locale,"Full twelve-session plan and received notices","התוכנית המלאה ל־12 מפגשים והדיווחים שהתקבלו"),{exact:true});const detail=summary.locator("..");if(!await detail.getAttribute("open").then(v=>v!==null))await summary.click();return detail;}
  async function screen(page:Page,locale:string,path:string){await expect(page.locator("main.ls-cal")).toHaveAttribute("dir",locale==="he"?"rtl":"ltr");expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await page.keyboard.press("Tab");expect(await page.evaluate(()=>document.activeElement?.tagName)).not.toBe("BODY");await page.screenshot({path,fullPage:true});}
 
@@ -150,12 +162,12 @@ if(!file){
    const contexts:BrowserContext[]=[];try{
    const operator={...family(locale).selection,learnerId:null,enrollmentId:null};await login(page,"practitioner",route(locale,"practitioner")+'&'+fishingCalendarSearch(operator),locale);const event=page.locator(`[data-fishing-occurrence-id="${data.occurrenceId}"]:visible`);await expect(event).toHaveCount(1);await event.getByRole("button").click();
    await page.getByRole("button",{name:t(locale,"Manage this stage","ניהול השלב"),exact:true}).click();const form=page.getByRole("form",{name:t(locale,"Manage fishing stage","ניהול שלב הדיג"),exact:true});
-   await form.getByLabel(t(locale,"Action","פעולה"),{exact:true}).selectOption("revise");await form.getByLabel(t(locale,"Session","מפגש"),{exact:true}).selectOption(data.occurrenceId);
-   const note=form.getByLabel(t(locale,"Family-visible logistical note","הערה לוגיסטית המוצגת למשפחות"),{exact:true}),draft="Synthetic retained draft / טיוטה סינתטית ".repeat(20);await note.fill(draft);await form.getByLabel(t(locale,"Reason visible to the enrolled family","סיבה המוצגת למשפחה הרשומה"),{exact:true}).fill("Synthetic deliberate UI revision");
+   await form.getByLabel(t(locale,"Action","פעולה"),{exact:true}).selectOption("revise");await chooseSession(page,form,locale,data.occurrenceId);
+   const note=form.getByLabel(t(locale,"Family-visible logistical note","הערה לוגיסטית המוצגת למשפחות"),{exact:true}),draft="Synthetic retained draft / טיוטה סינתטית ".repeat(20);await note.fill(draft);await form.getByRole("textbox",{name:t(locale,"Reason visible to the enrolled family","סיבה המוצגת למשפחה הרשומה"),exact:true}).fill("Synthetic deliberate UI revision");
    // A second ordinary session saves a real competing native revision. No
    // fabricated 409 or permissive replacement adapter supplies this conflict.
    const other=await separate(browser,page,contexts);await login(other,"practitioner",page.url().replace(data.origin,""),locale);await other.getByRole("button",{name:t(locale,"Manage this stage","ניהול השלב"),exact:true}).click();
-   const otherForm=other.getByRole("form",{name:t(locale,"Manage fishing stage","ניהול שלב הדיג"),exact:true});await otherForm.getByLabel(t(locale,"Action","פעולה"),{exact:true}).selectOption("revise");await otherForm.getByLabel(t(locale,"Session","מפגש"),{exact:true}).selectOption(data.occurrenceId);await otherForm.getByLabel(t(locale,"Family-visible logistical note","הערה לוגיסטית המוצגת למשפחות"),{exact:true}).fill("Synthetic competing native revision");await otherForm.getByLabel(t(locale,"Reason visible to the enrolled family","סיבה המוצגת למשפחה הרשומה"),{exact:true}).fill("Synthetic second-session revision");
+   const otherForm=other.getByRole("form",{name:t(locale,"Manage fishing stage","ניהול שלב הדיג"),exact:true});await otherForm.getByLabel(t(locale,"Action","פעולה"),{exact:true}).selectOption("revise");await chooseSession(other,otherForm,locale,data.occurrenceId);await otherForm.getByLabel(t(locale,"Family-visible logistical note","הערה לוגיסטית המוצגת למשפחות"),{exact:true}).fill("Synthetic competing native revision");await otherForm.getByRole("textbox",{name:t(locale,"Reason visible to the enrolled family","סיבה המוצגת למשפחה הרשומה"),exact:true}).fill("Synthetic second-session revision");
    const competing=other.waitForResponse(r=>new URL(r.url()).pathname==="/api/calendar/fishing/command"&&r.request().method()==="POST");await otherForm.getByRole("button",{name:t(locale,"Save deliberate action","שמירת הפעולה שנבחרה"),exact:true}).click();expect((await competing).status()).toBe(200);
    const stale=page.waitForResponse(r=>new URL(r.url()).pathname==="/api/calendar/fishing/command"&&r.request().method()==="POST");await form.getByRole("button",{name:t(locale,"Save deliberate action","שמירת הפעולה שנבחרה"),exact:true}).click();expect((await stale).status()).toBe(409);await expect(page.getByRole("alert").filter({hasText:t(locale,"saved version, capacity or approval changed","הגרסה, הקיבולת או האישור השתנו")})).toBeVisible();await expect(note).toHaveValue(draft);
    await page.getByRole("button",{name:t(locale,"Reload current access and plan","טעינת הרשאות ותוכנית עדכניות"),exact:true}).click();await expect(note).toHaveValue(draft);await form.getByRole("button",{name:t(locale,"Use current revision, keep my draft","שימוש בגרסה הנוכחית ושמירת הטיוטה"),exact:true}).click();
@@ -176,9 +188,9 @@ if(!file){
  }
  test("ordinary operator completion, explicit attendance and cancellation remain separate native actions with private family readback",async({page},info)=>{
   const locale="en",selection={...family(locale).selection,learnerId:null,enrollmentId:null};await login(page,"practitioner",route(locale,"practitioner")+"&"+fishingCalendarSearch(selection),locale);
-  async function action(kind:string,occurrenceId:string){await page.getByRole("button",{name:"Manage this stage",exact:true}).click();const form=page.getByRole("form",{name:"Manage fishing stage",exact:true});await form.getByLabel("Action",{exact:true}).selectOption(kind);await form.getByLabel("Session",{exact:true}).selectOption(occurrenceId);await form.getByLabel("Reason visible to the enrolled family",{exact:true}).fill("Synthetic explicit "+kind);return form;}
+  async function action(kind:string,occurrenceId:string){await page.getByRole("button",{name:"Manage this stage",exact:true}).click();const form=page.getByRole("form",{name:"Manage fishing stage",exact:true});await form.getByLabel("Action",{exact:true}).selectOption(kind);await chooseSession(page,form,locale,occurrenceId);await form.getByRole("textbox",{name:"Reason visible to the enrolled family",exact:true}).fill("Synthetic explicit "+kind);return form;}
   async function save(form:ReturnType<Page["getByRole"]>){const response=page.waitForResponse(r=>new URL(r.url()).pathname==="/api/calendar/fishing/command"&&r.request().method()==="POST");await form.getByRole("button",{name:"Save deliberate action",exact:true}).click();expect((await response).status()).toBe(200);await expect(form).toHaveCount(0);}
-  await save(await action("complete",data.pastOccurrenceId));const attendance=await action("attendance",data.pastOccurrenceId);await expect(attendance.getByRole("button",{name:"Save deliberate action",exact:true})).toBeDisabled();await attendance.getByLabel("Confirmed participant",{exact:true}).selectOption(family(locale).selection.enrollmentId!);await attendance.getByLabel("Actual attendance",{exact:true}).selectOption("present");await save(attendance);
+  await save(await action("complete",data.pastOccurrenceId));const attendance=await action("attendance",data.pastOccurrenceId);await expect(attendance.getByRole("button",{name:"Save deliberate action",exact:true})).toBeDisabled();await attendance.getByRole("combobox",{name:"Confirmed participant",exact:true}).selectOption(family(locale).selection.enrollmentId!);await attendance.getByRole("combobox",{name:"Actual attendance",exact:true}).selectOption("present");await save(attendance);
   const cancellation=await action("cancel",data.occurrenceId);await expect(cancellation.getByRole("alert")).toContainText("undelivered service");await save(cancellation);await page.reload();
   const canonical=await page.request.get("/api/calendar/fishing/plan?"+fishingCalendarSearch(selection));expect(canonical.status()).toBe(200);const view=(await canonical.json()).data.view;expect(view.occurrences.find((o:{id:string})=>o.id===data.pastOccurrenceId).state).toBe("completed");expect(view.occurrences.find((o:{id:string})=>o.id===data.occurrenceId).state).toBe("cancelled");expect(view.attendance).toHaveLength(1);expect(view.attendance[0]).toMatchObject({enrollmentId:family(locale).selection.enrollmentId,occurrenceId:data.pastOccurrenceId,state:"present"});await screen(page,locale,info.outputPath("operator-completion-attendance-cancellation.png"));
  });
