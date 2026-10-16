@@ -1,8 +1,7 @@
 /** Authoring-only until the exact source/SQL/runner/target recipe is admitted.
  * No schema/cluster/provider setup. Ordinary synthetic credentials, not sessions. */
 import {spawn,execFileSync,type ChildProcess} from "node:child_process";
-import {createServer as httpsServer} from "node:https";
-import {request as httpRequest} from "node:http";
+import {request as httpsRequest} from "node:https";
 import {createServer as netServer} from "node:net";
 import {randomUUID,createHash} from "node:crypto";
 import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,existsSync,realpathSync,lstatSync,rmSync} from "node:fs";
@@ -47,8 +46,8 @@ export async function runFishingStageBrowser(){
  for(const root of[resolve("."),resolve("../..")])for(const name of[".env",".env.local",".env.development",".env.development.local"])if(existsSync(join(root,name)))throw Error("DOTENV_MUST_BE_ABSENT_BEFORE_SYNTHETIC_APP");
  const port=3143+index,tlsPort=3445+index,origin=`https://127.0.0.1:${tlsPort}`;await freePort(port);await freePort(tlsPort);
  const parent="D:/life-skills-fishing-fixtures-20261012";mkdirSync(parent,{recursive:true});const folder=mkdtempSync(join(parent,"stage-browser-"));
- let app:ChildProcess|null=null,tests:ChildProcess|null=null,tls:ReturnType<typeof httpsServer>|null=null,f:ProgramFixture|null=null,cleanupPromise:Promise<void>|null=null,baseline:Awaited<ReturnType<typeof snapshot>>|null=null;
- const cleanup=()=>cleanupPromise??=(async()=>{try{await terminate(tests);}finally{try{tls?.closeAllConnections();if(tls)await new Promise<void>(r=>tls!.close(()=>r()));}finally{try{await terminate(app);}finally{try{await f?.close();}finally{removeOwnedTemp(folder,parent);}}}}})();
+ let app:ChildProcess|null=null,tests:ChildProcess|null=null,f:ProgramFixture|null=null,cleanupPromise:Promise<void>|null=null,baseline:Awaited<ReturnType<typeof snapshot>>|null=null;
+ const cleanup=()=>cleanupPromise??=(async()=>{try{await terminate(tests);}finally{try{await terminate(app);}finally{try{await f?.close();}finally{removeOwnedTemp(folder,parent);}}}})();
  const signal=()=>{void cleanup().finally(()=>process.exit(143));};process.once("SIGTERM",signal);process.once("SIGINT",signal);
  let phase="fixture-program-catalog";
  try{
@@ -70,9 +69,11 @@ export async function runFishingStageBrowser(){
   execFileSync(process.platform==="win32"&&existsSync(gitOpenSsl)?gitOpenSsl:"openssl",["req","-x509","-newkey","rsa:2048","-nodes","-keyout",key,"-out",cert,"-days","1","-subj","/CN=localhost","-addext","subjectAltName=DNS:localhost,IP:127.0.0.1"],{stdio:"ignore",windowsHide:true});
   const env:NodeJS.ProcessEnv={NODE_ENV:"development"};for(const name of["SystemRoot","WINDIR","TEMP","TMP","PATH","ComSpec","PATHEXT","USERPROFILE","LOCALAPPDATA","APPDATA","ProgramFiles","ProgramFiles(x86)"])if(process.env[name])env[name]=process.env[name];
   Object.assign(env,{NODE_ENV:"development",NEXT_TELEMETRY_DISABLED:"1",LS_APP_MODE:"foundation_preview",LS_APP_ORIGIN:origin,LS_DATABASE_URL:database,TEST_DATABASE_URL:database,LS_MIGRATION_DATABASE_URL:database,LS_DATABASE_TLS:"disable",LS_PRIVATE_APP_ENABLED:"true",LS_CALENDAR_ENABLED:"true",LS_IDENTITY_ENABLED:"true",LS_CHILD_ACCOUNTS_ENABLED:"true",LS_EDUCATION_SYNTHETIC_LOOPBACK:"true",LS_IDENTITY_WORKSPACE_ID:f.workspaceId,LS_IDENTITY_ACTIVE_KEY_ID:f.ring.activeKeyId,LS_IDENTITY_DATA_KEYS:JSON.stringify(Object.fromEntries(Object.entries(f.ring.keys).map(([id,value])=>[id,value.toString("base64url")]))),LS_IDENTITY_CSRF_KEY:f.config.csrfKey.toString("base64url"),LS_IDENTITY_LOOKUP_KEY:f.config.lookupKey.toString("base64url"),LS_IDENTITY_RATE_KEY:Buffer.from(f.config.rateLimitKey,"hex").toString("base64url")});
-  phase="retained-next-source";app=spawn(process.execPath,[resolve("node_modules/next/dist/bin/next"),"dev","--webpack","--hostname","127.0.0.1","--port",String(port)],{env,stdio:"ignore",windowsHide:true});
-  let healthy=false;for(let i=0;i<200;i++){if(app.exitCode!==null)throw Error("SYNTHETIC_NEXT_EXITED");try{const r=await fetch(`http://127.0.0.1:${port}/api/health`);if(r.ok){healthy=true;break;}}catch{}await new Promise(r=>setTimeout(r,250));}if(!healthy)throw Error("SYNTHETIC_NEXT_HEALTH_TIMEOUT");
-  tls=httpsServer({key:readFileSync(key),cert:readFileSync(cert)},(req,res)=>{const upstream=httpRequest({hostname:"127.0.0.1",port,path:req.url,method:req.method,headers:{...req.headers,"x-forwarded-proto":"https"}},response=>{res.writeHead(response.statusCode??502,response.headers);response.pipe(res);});upstream.on("error",()=>{if(res.headersSent)res.destroy();else{res.writeHead(502);res.end("Synthetic upstream unavailable");}});req.pipe(upstream);});tls.listen(tlsPort,"127.0.0.1");await once(tls,"listening");
+  // Next owns TLS AND development WebSocket upgrades, as in the retained
+  // group-interest harness. No HTTP-only proxy or custom upgrade implementation.
+  phase="retained-next-source";app=spawn(process.execPath,[resolve("node_modules/next/dist/bin/next"),"dev","--webpack","--experimental-https","--experimental-https-key",key,"--experimental-https-cert",cert,"--hostname","127.0.0.1","--port",String(tlsPort)],{env,stdio:"ignore",windowsHide:true});
+  const healthCa=readFileSync(cert),probeHealth=()=>new Promise<boolean>((ok,no)=>{const probe=httpsRequest(new URL("/api/health",origin),{ca:healthCa},response=>{response.resume();ok(response.statusCode===200);});probe.once("error",no);probe.end();});
+  let healthy=false;for(let i=0;i<200;i++){if(app.exitCode!==null)throw Error("SYNTHETIC_NEXT_EXITED");try{if(await probeHealth()){healthy=true;break;}}catch{}await new Promise(r=>setTimeout(r,250));}if(!healthy)throw Error("SYNTHETIC_NEXT_HEALTH_TIMEOUT");
   phase="ordinary-role-browser";const outputParent=resolve("tests/e2e/calendar/test-results");mkdirSync(outputParent,{recursive:true});const output=join(outputParent,`fishing-stage-${project}-${randomUUID()}`);mkdirSync(output,{recursive:false});
   const testEnv:NodeJS.ProcessEnv={...env,NODE_ENV:"test",LS_RM_FISHING_STAGE_UI_ONLY:"true",LS_FISHING_STAGE_FIXTURE_PATH:runtimeFile,LS_CALENDAR_TEST_PROJECT:project!,LS_CALENDAR_TEST_ALLOW:"true",LS_RM_PROGRAM_NATIVE_ALLOW:"MAIN_REGISTERED_ONLY"};
   if(process.env.LS_APP_MODE===undefined)delete testEnv.LS_APP_MODE;else testEnv.LS_APP_MODE=process.env.LS_APP_MODE;
