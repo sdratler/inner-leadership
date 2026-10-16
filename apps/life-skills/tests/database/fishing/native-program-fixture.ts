@@ -27,10 +27,15 @@ import {FishingReceiptInbox} from "../../../src/features/fishing-payments/receip
 import {FakeMerchant} from "../fishing-payments/fixture.ts";
 import {merchant} from "../../unit/fishing-payments/fixture.ts";
 import {poolStore,safeTestUrl} from "../calendar/fixture.ts";
+import {createHash} from "node:crypto";
+import {learnerLessonSchema} from "../../../src/features/resources/fishing-lesson-journey.ts";
+import {educationCatalogAad} from "../../../src/features/resources/fishing-lesson-native-store.ts";
+import {educationArtifactAad,type EducationStorageBinding} from "../../../src/features/resources/fishing-lesson-storage-contract.ts";
 
-export async function programFixture(options:{capacity?:number;childAccountsEnabled?:boolean;confirmation?:ProgramPolicy["confirmation"]}={}){
+export async function programFixture(options:{capacity?:number;childAccountsEnabled?:boolean;confirmation?:ProgramPolicy["confirmation"];readableRm101?:"SYNTHETIC_ONLY"}={}){
  const raw=safeTestUrl(),url=new URL(raw);
  if(process.env.LS_RM_PROGRAM_NATIVE_ALLOW!=="MAIN_REGISTERED_ONLY"||url.hostname!=="127.0.0.1"||!/^\/ls_calendar_test_rm_guard_[a-f0-9]{32}_test$/.test(url.pathname)||!url.port||!url.username||!url.password||url.search||url.hash)throw Error("MAIN_REGISTERED_PROGRAM_TARGET_REQUIRED");
+ if(options.readableRm101!==undefined&&(options.readableRm101!=="SYNTHETIC_ONLY"||process.env.LS_RM_FISHING_STAGE_UI_ONLY!=="true"))throw Error("READABLE_RM101_SYNTHETIC_BROWSER_OPT_IN_REQUIRED");
  const pool=new pg.Pool({connectionString:raw,ssl:false,max:8});
  try{
   const target=(await pool.query("SELECT current_database() AS database,host(inet_server_addr()) AS host,inet_server_port() AS port,to_regclass('ls_fishing_stage.cohorts') AS cohorts,to_regclass('ls_fishing_stage.seat_reservations') AS seats")).rows[0];
@@ -56,6 +61,19 @@ export async function programFixture(options:{capacity?:number;childAccountsEnab
   await source(termsId,"terms","synthetic-terms-v1",termsHash,{program:"sunday_fishing_academy",termsVersion:"synthetic-terms-v1",policyVersion:POLICY_VERSION,sourceVersion:"synthetic-program-source-v1",contentSha256:termsHash});
   await source(policyId,"payment_condition","synthetic-condition-v1",digest("SYNTHETIC_CONDITION"),{policyVersion:POLICY_VERSION,sourceVersion:"synthetic-program-source-v1",confirmation:options.confirmation??{kind:"unselected"}});
   for(const lesson of template.modules){const learnerId=randomUUID(),teacherId=randomUUID();
+   // READABLE_RM101_INSERT_FIRST_BEGIN: default and other11 metadata stay unchanged.
+   if(options.readableRm101==="SYNTHETIC_ONLY"&&lesson.moduleId==="RM-101"){
+    const hash=(value:string)=>createHash("sha256").update(value).digest("hex"),sourceSha=hash("SYNTHETIC_BROWSER_SOURCE_NOT_REAL_APPROVAL");
+    const readable=learnerLessonSchema.parse({moduleId:lesson.moduleId,version:lesson.moduleVersion,stage:1,locale:"en",title:"Synthetic fishing lesson",instruction:"Synthetic hookless instruction only. Not real curriculum or activity clearance.",questions:[{id:"Q01-1",prompt:"Describe your synthetic hookless practice."}],sourceSha256:sourceSha,status:"approved"}),learnerBytes=JSON.stringify(readable),teacherBytes="PRIVATE_SYNTHETIC_TEACHER_CANARY";
+    const binding:EducationStorageBinding={workspaceId,moduleId:lesson.moduleId,version:lesson.moduleVersion,state:"approved",source:{sourceId:"synthetic-browser-source",revision:"synthetic-only",sha256:sourceSha},
+     learner:{sourceId:"synthetic-learner-"+learnerId,version:"1",locale:"en",sha256:hash(learnerBytes),storageClass:"resource_learner",state:"approved"},
+     teacher:{sourceId:"synthetic-teacher-"+teacherId,version:"1",locale:"en",sha256:hash(teacherBytes),storageClass:"protected_teacher",state:"approved"}};
+    for(const[id,reference,bytes]of[[learnerId,binding.learner,learnerBytes],[teacherId,binding.teacher,teacherBytes]]as const)
+     await pool.query("INSERT INTO ls_education.artifact_versions(workspace_id,id,source_id,version,locale,storage_class,sha256,reference,payload_ciphertext) VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9)",[workspaceId,id,reference.sourceId,reference.version,reference.locale,reference.storageClass,reference.sha256,JSON.stringify(reference),seal(bytes,educationArtifactAad(workspaceId,reference),ring)]);
+    await pool.query("INSERT INTO ls_education.catalog_versions(workspace_id,module_id,version,source_id,source_revision,source_sha256,learner_artifact_id,teacher_artifact_id,payload_ciphertext,approval_state,approval_provenance,approved_by,approved_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'approved','SYNTHETIC_READABLE_NOT_REAL_APPROVAL',$10,$11)",[workspaceId,lesson.moduleId,lesson.moduleVersion,binding.source.sourceId,binding.source.revision,sourceSha,learnerId,teacherId,seal(JSON.stringify(binding),educationCatalogAad(workspaceId,lesson.moduleId,lesson.moduleVersion),ring),owner.id,ago]);
+    continue;
+   }
+   // READABLE_RM101_INSERT_FIRST_END
    for(const [id,storage]of [[learnerId,"resource_learner"],[teacherId,"protected_teacher"]])await pool.query("INSERT INTO ls_education.artifact_versions(workspace_id,id,source_id,version,locale,storage_class,sha256,reference,payload_ciphertext) VALUES($1,$2,$3,$4,'en',$5,$6,$7::jsonb,$8)",[workspaceId,id,"synthetic-"+lesson.moduleId,lesson.moduleVersion,storage,digest({id}),JSON.stringify({synthetic:true}),seal(storage==="protected_teacher"?"PRIVATE_SYNTHETIC_TEACHER_CANARY":"SYNTHETIC_LEARNER_METADATA_ONLY",`synthetic-artifact:${id}`,ring)]);
    await pool.query("INSERT INTO ls_education.catalog_versions(workspace_id,module_id,version,source_id,source_revision,source_sha256,learner_artifact_id,teacher_artifact_id,payload_ciphertext,approval_state,approval_provenance,approved_by,approved_at) VALUES($1,$2,$3,'synthetic-source','synthetic-revision',$4,$5,$6,$7,'approved','SYNTHETIC_METADATA_NOT_CONTENT_PROOF',$8,$9)",[workspaceId,lesson.moduleId,lesson.moduleVersion,digest(lesson),learnerId,teacherId,seal("{}",`synthetic-catalog:${lesson.moduleId}`,ring),owner.id,ago]);
   }
