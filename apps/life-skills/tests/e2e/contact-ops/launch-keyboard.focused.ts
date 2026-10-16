@@ -88,7 +88,7 @@ for(const locale of ["en","he"] as const)test(`OPS09 ${locale}: public keyboard 
  expect(response.status()).toBe(200);expect(createHash("sha256").update(response.request().postData()!).digest("hex")).toBe(createHash("sha256").update(requestBytes).digest("hex"));
  expect(await response.json()).toMatchObject({ok:true,data:{saved:true,replayed:true,duplicate:true,item:{id:savedId,fields:{parentName:name,contact,programId:"sunday_fishing_academy"}}}});
  const status=form.getByRole("status");await expect(status).toContainText(inquiry.savedTitle[locale]);await expect(status).toContainText(savedId);
- await expect(error).toHaveCount(0);expect(posts).toBe(2);await visibleFocus(form.getByRole("button",{name:inquiry.submit[locale],exact:true}));await noClipping(page);
+ await expect(error).toHaveCount(0);expect(posts).toBe(2);await visibleFocus(status);await noClipping(page);
  await page.screenshot({path:info.outputPath(`ops09-saved-focus-${locale}-${info.project.name}.png`)});
  const target=`/${locale}/app/group-applications`,credentials=runtime.fishing.credentials.find(value=>value.role==="practitioner")!;
  await page.goto(`/${locale}/login?next=${encodeURIComponent(target)}`);
