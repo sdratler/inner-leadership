@@ -7,10 +7,43 @@ import {fishingCalendarCommandSchema} from "../../../src/features/fishing/progra
 import {fishingCalendarChoicesSchema,fishingCalendarSelectionQuery,fishingCalendarSearch,fishingCalendarContext,selectedFishingStage,fishingCivilTime,fishingCalendarWindowSchema,fishingCalendarEvents,type FishingCalendarPlan} from "../../../src/features/fishing/program-calendar-contract.ts";
 import {orderedCalendarEntries} from "../../../src/features/calendar/entry-order.ts";
 import {CalendarBoard,CalendarAgenda} from "../../../src/features/calendar/views.tsx";
+import {PgDialect} from "drizzle-orm/pg-core";
+import {bindStatement} from "../../../src/features/identity/sql-binding.ts";
+import {NativeFishingProgram} from "../../../src/features/fishing/native-program.ts";
+import type {SqlSession} from "../../../src/features/identity/store.ts";
 
 const learner="11111111-1111-4111-8111-111111111111",enrollment="22222222-2222-4222-8222-222222222222",stageId="33333333-3333-4333-8333-333333333333",cohortId="44444444-4444-4444-8444-444444444444",operationId="55555555-5555-4555-8555-555555555555";
 const selection={learnerId:learner,enrollmentId:enrollment,reference:{cohortId,stageId,stage:1 as const}};
 const choices=fishingCalendarChoicesSchema.parse({availability:"ready",role:"parent",children:[{learnerId:learner,displayName:"Synthetic child"}],selectedLearnerId:learner,stages:[{...selection.reference,label:"Synthetic cohort",enrollmentId:enrollment,learnerId:learner,templateVersion:"synthetic-v1",childCapacity:2}]});
+
+describe("actual catalog SQL through the retained production binder — pure encoding, NOT native authorization proof",()=>{
+ function fixture(state:'ready'|'absent'|'partial'|'function'|'trigger'|'driver'='ready'){
+  const calls:{text:string;values:readonly unknown[];params:unknown[]}[]=[],dialect=new PgDialect();
+  const tx:SqlSession={async query<Row extends object>(text:string,values:readonly unknown[]=[]):Promise<Row[]>{
+   const compiled=dialect.sqlToQuery(bindStatement(text,values));calls.push({text,values,params:compiled.params});
+   if(state==='driver')throw Error('SYNTHETIC_DRIVER_FAILURE');let rows:object[];
+   if(text.includes('to_regclass'))rows=values.map((name,index)=>({name,relation:state==='absent'||state==='partial'&&index===0?null:name,kind:state==='absent'?null:'r'}));
+   else if(text.includes('to_regnamespace'))rows=values.map(name=>({name,present:state!=='absent'}));
+   else if(text.includes('pg_proc'))rows=(state==='function'?[]:['ls_fishing_stage.reject_program_history_rewrite','ls_fishing_stage.verify_program_stage_receipt']).map(name=>({name}));
+   else if(text.includes('pg_trigger'))rows=(state==='trigger'?[]:['command_receipts:exact_program_stage_receipt','command_receipts:immutable_program_commands','fit_decisions:immutable_program_fit','offer_approvals:immutable_program_offers','source_approvals:immutable_program_sources','terms_acceptances:immutable_program_terms']).map(name=>({name}));
+   else throw Error('UNEXPECTED_CATALOG_QUERY');return rows as Row[];
+  }};
+  const program=new NativeFishingProgram({transaction:work=>work(tx)},{activeKeyId:'synthetic',keys:{synthetic:Buffer.alloc(32)}},{childAccountsEnabled:false,merchant:null});
+  // Inspect the actual private catalog encoder without mocking session/guardian
+  // authority. Its public native HTTP authorization gate is separately required.
+  const read=Reflect.get(program,'calendarCatalog') as (tx:SqlSession)=>Promise<boolean>;
+  return {calls,read:()=>read.call(program,tx)};
+ }
+ it('binds every actual catalog statement as primitive scalars, retaining exactly25 relations and2 schemas',async()=>{
+  const f=fixture();await expect(f.read()).resolves.toBe(true);expect(f.calls).toHaveLength(4);expect(f.calls.map(call=>call.values.length)).toEqual([25,2,2,2]);
+  for(const call of f.calls){expect(call.values.every(value=>typeof value==='string')).toBe(true);expect(call.params).toEqual(call.values);expect(call.text).toContain('ARRAY[');}
+  expect(new Set(f.calls[0]!.values).size).toBe(25);for(const call of f.calls.slice(1))expect(call.values).toEqual(['ls_fishing_payments','ls_fishing_stage']);
+ });
+ it('returns not-configured only for complete relation AND namespace absence',async()=>{const f=fixture('absent');await expect(f.read()).resolves.toBe(false);expect(f.calls).toHaveLength(2);});
+ it.each(['partial','function','trigger']as const)('still rejects a damaged %s catalog instead of treating it as absent',async state=>{await expect(fixture(state).read()).rejects.toMatchObject({code:'UNAVAILABLE'});});
+ it('preserves actual driver failure rather than substituting a catalog or successful empty result',async()=>{await expect(fixture('driver').read()).rejects.toThrow('SYNTHETIC_DRIVER_FAILURE');});
+ it('keeps unsupported JavaScript text arrays rejected by the unchanged shared binder',()=>{expect(()=>bindStatement('SELECT unnest($1::text[])',[['ls_fishing_stage']])).toThrow('INTERNAL');});
+});
 describe("fishing Calendar transport/context only — not native authorization proof",()=>{
  it("round-trips exact explicit native references without a role, case or authority field",()=>{
   const query=fishingCalendarSearch(selection);expect(fishingCalendarSelectionQuery(new URLSearchParams(query))).toEqual(selection);expect(query).not.toMatch(/role|caseId|workspaceId|grant/);
