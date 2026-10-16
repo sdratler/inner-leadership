@@ -36,7 +36,7 @@ function templateValid(t:ApprovedStageTemplate|null,ref:FishingStageRef,version:
 }
 /** An adapter must decode and authenticate encrypted snapshots before this
  * structural check. This function is not an encryption or authorization layer. */
-export function validateStageState(s:StageState,c:FreshStageContext):void{
+export function validateStageState(s:StageState,c:Pick<FreshStageContext,"scope">):void{
  if(s.workspaceId!==c.scope.workspaceId||s.program!==c.scope.program||!sameStage(s,c.scope)||!Number.isSafeInteger(s.revision)||s.revision<1||
   !templateValid(s.template,s,s.template.version)||s.occurrences.length!==12||new Set(s.occurrences.map(o=>o.id)).size!==12||
   s.policyVersion!==s.template.policyVersion||s.sourceVersion!==s.template.sourceVersion)fail("INVALID_STATE");
