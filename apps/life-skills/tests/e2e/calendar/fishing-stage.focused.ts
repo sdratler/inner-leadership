@@ -32,14 +32,14 @@ if(!file){
   // Fixed categories only: never retain raw URLs, console text, errors, input
   // values, request bodies, headers, credentials or response payloads.
   const identityPaths=["/api/identity/csrf","/api/identity/login","/api/identity/session"],events:{kind:string;method:string;pathname:string;status?:number;failure?:string}[]=[],categories=new Set<string>();
-  const state:{phase:string;documentComplete?:boolean;documentInteractive?:boolean;formPresent?:boolean;formValid?:boolean;responseHasScriptNonce?:boolean;scriptCount?:number;scriptsWithNonce?:number;scriptsMatchingResponseNonce?:number;scriptsMissingNonce?:number;initialSessionObserved:boolean;passwordToggleResponded:boolean;scriptRequests:number;scriptResponses:number;scriptFailures:number;script4xx:number;script5xx:number}={phase:"private-route",initialSessionObserved:false,passwordToggleResponded:false,scriptRequests:0,scriptResponses:0,scriptFailures:0,script4xx:0,script5xx:0};let passed=false,responseNonce:string|null=null;
+  const state:{phase:string;documentComplete?:boolean;documentInteractive?:boolean;formPresent?:boolean;formValid?:boolean;responseHasScriptNonce?:boolean;scriptCount?:number;scriptsWithNonce?:number;scriptsMatchingResponseNonce?:number;scriptsMissingNonce?:number;hasNextRuntime?:boolean;flightQueuePresent?:boolean;flightQueueLength?:number;flightQueueConsumed?:boolean;reactRootPresent?:boolean;initialSessionObserved:boolean;passwordToggleResponded:boolean;scriptRequests:number;scriptResponses:number;scriptFailures:number;script4xx:number;script5xx:number;scriptMimeJavaScript:number;scriptMimeHtml:number;scriptMimeOther:number}={phase:"private-route",initialSessionObserved:false,passwordToggleResponded:false,scriptRequests:0,scriptResponses:0,scriptFailures:0,script4xx:0,script5xx:0,scriptMimeJavaScript:0,scriptMimeHtml:0,scriptMimeOther:0};let passed=false,responseNonce:string|null=null;
   const identity=(request:Request)=>{const url=new URL(request.url()),method=request.method();return url.origin===data.origin&&identityPaths.includes(url.pathname)&&["GET","POST","HEAD","OPTIONS"].includes(method)?{method,pathname:url.pathname}:null;};
   const record=(event:typeof events[number])=>{if(events.length<48)events.push(event);};
   const requestedIdentity=(request:Request)=>{const item=identity(request);if(item)record({kind:"request",...item});if(request.resourceType()==="script"&&new URL(request.url()).origin===data.origin)state.scriptRequests++;};
   const respondedIdentity=(response:Response)=>{
    const item=identity(response.request());if(item)record({kind:"response",...item,status:response.status()});
    const url=new URL(response.url());
-   if(url.origin===data.origin&&response.request().resourceType()==="script"){state.scriptResponses++;if(response.status()>=400&&response.status()<500)state.script4xx++;if(response.status()>=500)state.script5xx++;}
+   if(url.origin===data.origin&&response.request().resourceType()==="script"){state.scriptResponses++;if(response.status()>=400&&response.status()<500)state.script4xx++;if(response.status()>=500)state.script5xx++;const mime=(response.headers()["content-type"]??"").split(";",1)[0]!.trim().toLowerCase();if(["application/javascript","text/javascript","application/ecmascript","text/ecmascript","application/x-javascript"].includes(mime))state.scriptMimeJavaScript++;else if(mime==="text/html")state.scriptMimeHtml++;else state.scriptMimeOther++;}
    if(url.origin===data.origin&&url.pathname===`/${locale}/login`&&response.request().resourceType()==="document"&&response.request().frame()===page.mainFrame()){
     // The policy and nonce live only in this closure, never in evidence output.
     const directive=(response.headers()["content-security-policy"]??"").split(";").map(value=>value.trim()).find(value=>value.startsWith("script-src "));
@@ -57,6 +57,10 @@ if(!file){
   };
   const pageError=(error:Error)=>{categories.add(classify(error.message));};
   const consoleError=(message:ConsoleMessage)=>{if(message.type()==="error")categories.add(classify(message.text()));};
+  const startupSnapshot=()=>page.evaluate(nonce=>{
+   const form=document.querySelector("form"),scripts=[...document.scripts],withNonce=scripts.filter(script=>script.nonce!==""),runtime=window as Window&{next?:{appDir?:unknown};__next_f?:unknown},queue=runtime.__next_f;
+   return {documentComplete:document.readyState==="complete",documentInteractive:document.readyState==="interactive",formPresent:form!==null,formValid:form?.checkValidity()??false,responseHasScriptNonce:nonce!==null,scriptCount:scripts.length,scriptsWithNonce:withNonce.length,scriptsMatchingResponseNonce:nonce===null?0:withNonce.filter(script=>script.nonce===nonce).length,scriptsMissingNonce:scripts.length-withNonce.length,hasNextRuntime:runtime.next?.appDir===true,flightQueuePresent:Array.isArray(queue),flightQueueLength:Array.isArray(queue)?queue.length:0,flightQueueConsumed:Array.isArray(queue)&&queue.push!==Array.prototype.push,reactRootPresent:Object.getOwnPropertyNames(document).some(key=>key.startsWith("__reactContainer$"))};
+  },responseNonce);
   page.on("request",requestedIdentity);page.on("response",respondedIdentity);page.on("requestfailed",failedIdentity);page.on("pageerror",pageError);page.on("console",consoleError);
   try{
   expect((await page.context().cookies(data.origin)).filter(cookie=>cookie.name==='__Host-ls-session')).toHaveLength(0);
@@ -65,15 +69,16 @@ if(!file){
   // Start at the original PRIVATE route: its proxy/layout must retain context.
   await page.goto(target);await expect(page).toHaveURL(url=>url.pathname===`/${locale}/login`,{timeout:45000});
   const requested=new URL(page.url()).searchParams.getAll('next');expect(requested).toHaveLength(1);expect(sameTarget(new URL(requested[0]!,data.origin))).toBe(true);
-  Object.assign(state,await page.evaluate(nonce=>{const form=document.querySelector("form"),scripts=[...document.scripts],withNonce=scripts.filter(script=>script.nonce!=="");return {documentComplete:document.readyState==="complete",documentInteractive:document.readyState==="interactive",formPresent:form!==null,formValid:form?.checkValidity()??false,responseHasScriptNonce:nonce!==null,scriptCount:scripts.length,scriptsWithNonce:withNonce.length,scriptsMatchingResponseNonce:nonce===null?0:withNonce.filter(script=>script.nonce===nonce).length,scriptsMissingNonce:scripts.length-withNonce.length};},responseNonce));
-  state.phase="await-initial-session";expect((await initialSession).status()).toBe(401);state.initialSessionObserved=true;
+  Object.assign(state,await startupSnapshot());
   state.phase="empty-password-toggle";const password=page.getByLabel(t(locale,"Password","סיסמה"),{exact:true}),show=page.getByRole("button",{name:t(locale,"Show password","הצגת סיסמה"),exact:true});await expect(password).toHaveValue("");await expect(show).toHaveAttribute("aria-pressed","false");await show.click();const hide=page.getByRole("button",{name:t(locale,"Hide password","הסתרת סיסמה"),exact:true});await expect(hide).toHaveAttribute("aria-pressed","true");await expect(password).toHaveAttribute("type","text");state.passwordToggleResponded=true;await hide.click();await expect(show).toHaveAttribute("aria-pressed","false");await expect(password).toHaveAttribute("type","password");await expect(password).toHaveValue("");
+  state.phase="await-initial-session";expect((await initialSession).status()).toBe(401);state.initialSessionObserved=true;
   state.phase="fill-ordinary-login";
   await page.getByLabel(t(locale,"Email","דוא״ל"),{exact:true}).fill(credentials.email);await password.fill(credentials.password);
   state.formValid=await page.evaluate(()=>document.querySelector("form")?.checkValidity()??false);
   state.phase="click-ordinary-login";
   const response=page.waitForResponse(r=>new URL(r.url()).pathname==="/api/identity/login"&&r.request().method()==="POST");await page.getByRole("button",{name:t(locale,"Sign in","כניסה"),exact:true}).click();state.phase="await-login-response";expect((await response).status()).toBe(200);state.phase="await-private-return";await expect(page).toHaveURL(sameTarget,{timeout:45000});passed=true;
   }finally{
+   if(!passed&&!page.isClosed())try{Object.assign(state,await startupSnapshot());}catch{/* Keep the original failure; never serialize the page error. */}
    page.off("request",requestedIdentity);page.off("response",respondedIdentity);page.off("requestfailed",failedIdentity);page.off("pageerror",pageError);page.off("console",consoleError);
    if(!passed){const body=JSON.stringify({state,events,categories:[...categories].sort()});console.log("SYNTHETIC_LOGIN_DIAGNOSTIC "+body);await test.info().attach("synthetic-login-diagnostic",{body,contentType:"application/json"});}
   }
