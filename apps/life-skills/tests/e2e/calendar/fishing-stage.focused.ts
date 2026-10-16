@@ -193,7 +193,12 @@ if(!file){
   }finally{page.off("dialog",handle);}
  }
  async function openPlan(page:Page,locale:string){const summary=page.getByText(t(locale,"Full twelve-session plan and received notices","התוכנית המלאה ל־12 מפגשים והדיווחים שהתקבלו"),{exact:true});const detail=summary.locator("..");if(!await detail.getAttribute("open").then(v=>v!==null))await summary.click();return detail;}
- async function screen(page:Page,locale:string,path:string){await expect(page.locator("main.ls-cal")).toHaveAttribute("dir",locale==="he"?"rtl":"ltr");expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await page.keyboard.press("Tab");expect(await page.evaluate(()=>document.activeElement?.tagName)).not.toBe("BODY");await page.screenshot({path,fullPage:true});}
+ async function screen(page:Page,locale:string,path:string){
+  await expect(page.locator("main.ls-cal")).toHaveAttribute("dir",locale==="he"?"rtl":"ltr");expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  const banner=page.getByRole("banner"),brand=banner.getByRole("link",{name:"Life Skills",exact:true});await expect(brand).toBeVisible();await brand.focus();await expect(brand).toBeFocused();
+  await page.keyboard.press("Tab");expect(await page.evaluate(()=>document.activeElement?.tagName)).not.toBe("BODY");await expect(banner.locator(":focus")).toHaveCount(1);
+  await page.screenshot({path,fullPage:true});
+ }
 
  for(const locale of["en","he"]as const){
   test(`${locale}: ordinary case-free parent, one shared grid/agenda, child context, durable absence/replay and existing Materials`,async({page},info)=>{
