@@ -23,6 +23,12 @@ export type FishingCalendarDependencies={runtime:Ls050HttpRuntime;store:Identity
 const contextQuery=z.strictObject({learnerId:z.uuid().optional()});
 export const fishingCalendarCommandSchema=z.strictObject({selection:fishingCalendarSelectionSchema,command:stageCommandSchema,intent:nativeProgramIntentSchema});
 const prefix="/api/calendar/fishing/";
+/** A denied optional lesson is not a failed Calendar plan. All other errors,
+ * including expired sessions, corrupt artifacts and unknown failures, propagate. */
+export function isDeniedFishingLessonLink(error:unknown):boolean{
+ if(error instanceof AppError)return error.code==="FORBIDDEN"||error.code==="NOT_FOUND";
+ return error instanceof Error&&error.message==="LESSON_JOURNEY_FORBIDDEN";
+}
 function safeFailure(error:unknown):AppError{
  if(error instanceof AppError)return error;
  if(error instanceof FishingStageError){return new AppError(error.code==="CAPACITY"||error.code==="APPROVAL_REQUIRED"?"CONFLICT":error.code==="INVALID_STATE"?"INVALID_REQUEST":error.code);}
@@ -53,7 +59,7 @@ export async function handleFishingCalendar(request:Request,path:readonly string
     if(occurrence.state==="draft")continue;
     const ref=stageLessonReference(view,occurrence.id,learnerId);if(!ref)continue;
     try{await journey.read(ref,actor.role==="practitioner"?"teacher":"learner");}
-    catch(error){if(error instanceof AppError&&["FORBIDDEN","NOT_FOUND"].includes(error.code))continue;throw error;}
+    catch(error){if(isDeniedFishingLessonLink(error))continue;throw error;}
     result.push({occurrenceId:occurrence.id,href:`/${actor.locale}/${actor.role==="practitioner"?"app":"family"}/resources?${educationSearch(ref,actor.role==="practitioner"?"review":"lesson")}`});
    }return result;
   };

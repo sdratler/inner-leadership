@@ -3,7 +3,9 @@ import {createElement} from "react";
 import {renderToStaticMarkup} from "react-dom/server";
 import {describe,expect,it,vi} from "vitest";
 vi.mock("server-only",()=>({}));
-import {fishingCalendarCommandSchema} from "../../../src/features/fishing/program-calendar-http.ts";
+import {fishingCalendarCommandSchema,isDeniedFishingLessonLink} from "../../../src/features/fishing/program-calendar-http.ts";
+import {AppError} from "../../../src/lib/errors.ts";
+import {FishingLessonJourney,type LessonJourneyStore} from "../../../src/features/resources/fishing-lesson-journey.ts";
 import {fishingCalendarChoicesSchema,fishingCalendarSelectionQuery,fishingCalendarSearch,fishingCalendarContext,selectedFishingStage,fishingCivilTime,fishingCalendarWindowSchema,fishingCalendarEvents,type FishingCalendarPlan} from "../../../src/features/fishing/program-calendar-contract.ts";
 import {orderedCalendarEntries} from "../../../src/features/calendar/entry-order.ts";
 import {CalendarBoard,CalendarAgenda} from "../../../src/features/calendar/views.tsx";
@@ -15,6 +17,26 @@ import type {SqlSession} from "../../../src/features/identity/store.ts";
 const learner="11111111-1111-4111-8111-111111111111",enrollment="22222222-2222-4222-8222-222222222222",stageId="33333333-3333-4333-8333-333333333333",cohortId="44444444-4444-4444-8444-444444444444",operationId="55555555-5555-4555-8555-555555555555";
 const selection={learnerId:learner,enrollmentId:enrollment,reference:{cohortId,stageId,stage:1 as const}};
 const choices=fishingCalendarChoicesSchema.parse({availability:"ready",role:"parent",children:[{learnerId:learner,displayName:"Synthetic child"}],selectedLearnerId:learner,stages:[{...selection.reference,label:"Synthetic cohort",enrollmentId:enrollment,learnerId:learner,templateVersion:"synthetic-v1",childCapacity:2}]});
+
+describe("optional lesson link denial classification — pure journey composition, not native access proof",()=>{
+ it("recognizes the actual ungranted-lesson journey denial without reading or appending events",async()=>{
+  const readEvents=vi.fn(async()=>[]),append=vi.fn(async()=>undefined);
+  const store:LessonJourneyStore={transaction:async work=>work({resolveFreshContext:async()=>null,readEvents,append})};
+  const journey=new FishingLessonJourney(store,()=>new Date("2026-10-16T00:00:00Z"));
+  const error:unknown=await journey.read({learnerId:learner,moduleId:"RM-102",version:"synthetic-lesson-v1"},"learner").then(()=>null,error=>error);
+  expect(error).toBeInstanceOf(Error);expect(error).not.toBeInstanceOf(AppError);expect((error as Error).message).toBe("LESSON_JOURNEY_FORBIDDEN");
+  expect(isDeniedFishingLessonLink(error)).toBe(true);expect(readEvents).not.toHaveBeenCalled();expect(append).not.toHaveBeenCalled();
+ });
+ it.each(["FORBIDDEN","NOT_FOUND"] as const)("keeps the existing %s link omission",code=>{
+  expect(isDeniedFishingLessonLink(new AppError(code))).toBe(true);
+ });
+ it.each(["UNAUTHENTICATED","UNAVAILABLE","INTERNAL","CONFLICT","INVALID_REQUEST","RATE_LIMITED","PAYLOAD_TOO_LARGE","UNSUPPORTED_MEDIA_TYPE"] as const)("does not hide %s failures, even with a spoofed message",code=>{
+  const error=new AppError(code);error.message="LESSON_JOURNEY_FORBIDDEN";expect(isDeniedFishingLessonLink(error)).toBe(false);
+ });
+ it.each([Error("LESSON_JOURNEY_FORBIDDEN_EXTRA"),Error("LESSON_JOURNEY_LEDGER_MISMATCH"),Error("SYNTHETIC_CORRUPT_ARTIFACT"),Error("LESSON_JOURNEY_CONFLICT"),new TypeError("SYNTHETIC_UNKNOWN"),{message:"LESSON_JOURNEY_FORBIDDEN"},"LESSON_JOURNEY_FORBIDDEN",null,undefined])("rejects unknown, corrupt and lookalike values (%#)",error=>{
+  expect(isDeniedFishingLessonLink(error)).toBe(false);
+ });
+});
 
 describe("actual catalog SQL through the retained production binder — pure encoding, NOT native authorization proof",()=>{
  function fixture(state:'ready'|'absent'|'partial'|'function'|'trigger'|'driver'='ready'){
