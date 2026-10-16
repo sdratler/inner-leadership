@@ -32,20 +32,21 @@ if(!file){
   // Fixed categories only: never retain raw URLs, console text, errors, input
   // values, request bodies, headers, credentials or response payloads.
   const identityPaths=["/api/identity/csrf","/api/identity/login","/api/identity/session"],events:{kind:string;method:string;pathname:string;status?:number;failure?:string}[]=[],categories=new Set<string>();
-  const state:{phase:string;documentComplete?:boolean;documentInteractive?:boolean;formPresent?:boolean;formValid?:boolean;responseHasScriptNonce?:boolean;scriptCount?:number;scriptsWithNonce?:number;scriptsMatchingResponseNonce?:number;scriptsMissingNonce?:number}={phase:"private-route"};let passed=false,responseNonce:string|null=null;
+  const state:{phase:string;documentComplete?:boolean;documentInteractive?:boolean;formPresent?:boolean;formValid?:boolean;responseHasScriptNonce?:boolean;scriptCount?:number;scriptsWithNonce?:number;scriptsMatchingResponseNonce?:number;scriptsMissingNonce?:number;initialSessionObserved:boolean;passwordToggleResponded:boolean;scriptRequests:number;scriptResponses:number;scriptFailures:number;script4xx:number;script5xx:number}={phase:"private-route",initialSessionObserved:false,passwordToggleResponded:false,scriptRequests:0,scriptResponses:0,scriptFailures:0,script4xx:0,script5xx:0};let passed=false,responseNonce:string|null=null;
   const identity=(request:Request)=>{const url=new URL(request.url()),method=request.method();return url.origin===data.origin&&identityPaths.includes(url.pathname)&&["GET","POST","HEAD","OPTIONS"].includes(method)?{method,pathname:url.pathname}:null;};
   const record=(event:typeof events[number])=>{if(events.length<48)events.push(event);};
-  const requestedIdentity=(request:Request)=>{const item=identity(request);if(item)record({kind:"request",...item});};
+  const requestedIdentity=(request:Request)=>{const item=identity(request);if(item)record({kind:"request",...item});if(request.resourceType()==="script"&&new URL(request.url()).origin===data.origin)state.scriptRequests++;};
   const respondedIdentity=(response:Response)=>{
    const item=identity(response.request());if(item)record({kind:"response",...item,status:response.status()});
    const url=new URL(response.url());
+   if(url.origin===data.origin&&response.request().resourceType()==="script"){state.scriptResponses++;if(response.status()>=400&&response.status()<500)state.script4xx++;if(response.status()>=500)state.script5xx++;}
    if(url.origin===data.origin&&url.pathname===`/${locale}/login`&&response.request().resourceType()==="document"&&response.request().frame()===page.mainFrame()){
     // The policy and nonce live only in this closure, never in evidence output.
     const directive=(response.headers()["content-security-policy"]??"").split(";").map(value=>value.trim()).find(value=>value.startsWith("script-src "));
     responseNonce=directive?.split(/\s+/).map(value=>/^'nonce-([A-Za-z0-9+/_-]+={0,2})'$/.exec(value)?.[1]).find(value=>value!==undefined)??null;
    }
   };
-  const failedIdentity=(request:Request)=>{const item=identity(request);if(item){const code=request.failure()?.errorText??"";record({kind:"failure",...item,failure:["net::ERR_ABORTED","net::ERR_CONNECTION_REFUSED","net::ERR_CONNECTION_RESET","net::ERR_FAILED","net::ERR_CERT_AUTHORITY_INVALID"].includes(code)?code:"OTHER_NETWORK_FAILURE"});}};
+  const failedIdentity=(request:Request)=>{const item=identity(request);if(item){const code=request.failure()?.errorText??"";record({kind:"failure",...item,failure:["net::ERR_ABORTED","net::ERR_CONNECTION_REFUSED","net::ERR_CONNECTION_RESET","net::ERR_FAILED","net::ERR_CERT_AUTHORITY_INVALID"].includes(code)?code:"OTHER_NETWORK_FAILURE"});}if(request.resourceType()==="script"&&new URL(request.url()).origin===data.origin)state.scriptFailures++;};
   const classify=(text:string)=>{
    if(/content.security.policy|\bCSP\b|refused to (?:load|execute|connect)/i.test(text)){
     if(/script-src|(?:inline|external) script|javascript|unsafe-eval/i.test(text))return /unsafe-eval|evaluat/i.test(text)?"CSP_SCRIPT_EVAL":/inline/i.test(text)?"CSP_SCRIPT_INLINE":/external|load(?:ing)? (?:the )?script/i.test(text)?"CSP_SCRIPT_EXTERNAL":"CSP_SCRIPT_OTHER";
@@ -59,12 +60,17 @@ if(!file){
   page.on("request",requestedIdentity);page.on("response",respondedIdentity);page.on("requestfailed",failedIdentity);page.on("pageerror",pageError);page.on("console",consoleError);
   try{
   expect((await page.context().cookies(data.origin)).filter(cookie=>cookie.name==='__Host-ls-session')).toHaveLength(0);
+  // Observe the page's OWN mount effect. No test-issued auth API or session.
+  const initialSession=page.waitForResponse(response=>{const url=new URL(response.url());return url.origin===data.origin&&url.pathname==="/api/identity/session"&&response.request().method()==="GET";});void initialSession.catch(()=>undefined);
   // Start at the original PRIVATE route: its proxy/layout must retain context.
   await page.goto(target);await expect(page).toHaveURL(url=>url.pathname===`/${locale}/login`,{timeout:45000});
   const requested=new URL(page.url()).searchParams.getAll('next');expect(requested).toHaveLength(1);expect(sameTarget(new URL(requested[0]!,data.origin))).toBe(true);
-  state.phase="fill-ordinary-login";
-  await page.getByLabel(t(locale,"Email","דוא״ל"),{exact:true}).fill(credentials.email);await page.getByLabel(t(locale,"Password","סיסמה"),{exact:true}).fill(credentials.password);
   Object.assign(state,await page.evaluate(nonce=>{const form=document.querySelector("form"),scripts=[...document.scripts],withNonce=scripts.filter(script=>script.nonce!=="");return {documentComplete:document.readyState==="complete",documentInteractive:document.readyState==="interactive",formPresent:form!==null,formValid:form?.checkValidity()??false,responseHasScriptNonce:nonce!==null,scriptCount:scripts.length,scriptsWithNonce:withNonce.length,scriptsMatchingResponseNonce:nonce===null?0:withNonce.filter(script=>script.nonce===nonce).length,scriptsMissingNonce:scripts.length-withNonce.length};},responseNonce));
+  state.phase="await-initial-session";expect((await initialSession).status()).toBe(401);state.initialSessionObserved=true;
+  state.phase="empty-password-toggle";const password=page.getByLabel(t(locale,"Password","סיסמה"),{exact:true}),show=page.getByRole("button",{name:t(locale,"Show password","הצגת סיסמה"),exact:true});await expect(password).toHaveValue("");await expect(show).toHaveAttribute("aria-pressed","false");await show.click();const hide=page.getByRole("button",{name:t(locale,"Hide password","הסתרת סיסמה"),exact:true});await expect(hide).toHaveAttribute("aria-pressed","true");await expect(password).toHaveAttribute("type","text");state.passwordToggleResponded=true;await hide.click();await expect(show).toHaveAttribute("aria-pressed","false");await expect(password).toHaveAttribute("type","password");await expect(password).toHaveValue("");
+  state.phase="fill-ordinary-login";
+  await page.getByLabel(t(locale,"Email","דוא״ל"),{exact:true}).fill(credentials.email);await password.fill(credentials.password);
+  state.formValid=await page.evaluate(()=>document.querySelector("form")?.checkValidity()??false);
   state.phase="click-ordinary-login";
   const response=page.waitForResponse(r=>new URL(r.url()).pathname==="/api/identity/login"&&r.request().method()==="POST");await page.getByRole("button",{name:t(locale,"Sign in","כניסה"),exact:true}).click();state.phase="await-login-response";expect((await response).status()).toBe(200);state.phase="await-private-return";await expect(page).toHaveURL(sameTarget,{timeout:45000});passed=true;
   }finally{
