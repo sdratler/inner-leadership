@@ -205,8 +205,8 @@ if(!file){
  function followupPorts(browser:Browser,page:Page,info:TestInfo,locale:"en"|"he",group:"classroom"|"calendar"):FishingFollowupPorts{
   return {page,ordinaryParentLogin:(fresh,target,language)=>login(fresh,"parent-"+language,target,language),ordinaryInstructorLogin:(fresh,target,language)=>login(fresh,"practitioner",target,language),
    withFreshContext:async(role,checkpoint,work)=>{
-    const fresh=await separate(browser,page,[]);let failed=false;
-    try{await work(fresh);
+    const owned:BrowserContext[]=[];let failed=false;
+    try{const fresh=await separate(browser,page,owned);await work(fresh);
      // Intermediate unpublished portfolios have API/DOM assertions; retain only
      // the instructor, final published summary and final Calendar screenshots.
      if(checkpoint==="instructor-review"||checkpoint==="portfolio-published"||checkpoint==="calendar-final"){
@@ -214,7 +214,7 @@ if(!file){
       if(group==="calendar")await screen(fresh,locale,path);
       else{await expect(fresh.locator(".lsw-feature-page")).toHaveAttribute("dir",locale==="he"?"rtl":"ltr");expect(await fresh.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await fresh.screenshot({path,fullPage:true});}
      }
-    }catch(error){failed=true;throw error;}finally{await closePractitionerContexts([fresh.context()],failed);}
+    }catch(error){failed=true;throw error;}finally{await closePractitionerContexts(owned,failed);}
    }};
  }
 
