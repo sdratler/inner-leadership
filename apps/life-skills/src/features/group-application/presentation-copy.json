@@ -539,20 +539,20 @@
     "academy": {
       "programId": "sunday_fishing_academy",
       "label": {
-        "en": "Real Mensch · Jewish Leadership Fishing Academy",
-        "he": "Real Mensch · האקדמיה היהודית לדיג ולמנהיגות"
+        "en": "South Florida Jewish Leadership Fishing Academy",
+        "he": "South Florida Jewish Leadership Fishing Academy"
       },
       "eyebrow": {
-        "en": "Real Mensch",
-        "he": "Real Mensch"
+        "en": "South Florida Jewish Leadership Fishing Academy",
+        "he": "South Florida Jewish Leadership Fishing Academy"
       },
       "title": {
-        "en": "Learn to fish. Learn to take responsibility.",
-        "he": "לומדים לדוג. לומדים לקחת אחריות."
+        "en": "South Florida Jewish Leadership Fishing Academy",
+        "he": "South Florida Jewish Leadership Fishing Academy"
       },
       "lead": {
-        "en": "Get outside, learn real fishing skills and become someone others can count on.",
-        "he": "יוצאים לטבע, רוכשים מיומנויות דיג והופכים לאנשים שאפשר לסמוך עליהם."
+        "en": "TORAH • FISHING • SELF-GOVERNANCE",
+        "he": "TORAH • FISHING • SELF-GOVERNANCE"
       },
       "body": {
         "en": "A continuing local fishing academy for boys, led by Rabbi Shlomo Dratler. Practical fishing, Torah and thoughtful choices come together as boys learn to prepare, solve problems and care for others.",
@@ -855,8 +855,8 @@
     },
     "inquiry": {
       "titleAcademy": {
-        "en": "Ask about Real Mensch",
-        "he": "פנייה לגבי Real Mensch"
+        "en": "Ask about South Florida Jewish Leadership Fishing Academy",
+        "he": "פנייה לגבי South Florida Jewish Leadership Fishing Academy"
       },
       "intro": {
         "en": "A few details are enough to start. Shlomo will review your inquiry and contact you about the next step.",
@@ -1071,8 +1071,8 @@
     },
     "metadata": {
       "academyTitle": {
-        "en": "Real Mensch | Jewish Leadership Fishing Academy",
-        "he": "Real Mensch | האקדמיה היהודית לדיג ולמנהיגות"
+        "en": "South Florida Jewish Leadership Fishing Academy",
+        "he": "South Florida Jewish Leadership Fishing Academy"
       },
       "academyDescription": {
         "en": "A continuing local fishing academy for boys, led by Rabbi Shlomo Dratler. Explore four stages of fishing, Torah and practical responsibility, then inquire about a suitable group.",

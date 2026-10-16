@@ -1,0 +1,39 @@
+/* Academy-only surrounding design; the PNG and unrelated Life Skills stay intact. */
+.scope.scope{--ink:#052D50;--teal:#052D50;--sea:#047AA8;--mint:#EAF6FA;--sand:#FCF8EF;--gold:#F4B12D;color:var(--ink);background:#FFF}
+.scope[lang="en"]{font-family:Arial,Helvetica,sans-serif;font-size:17px;line-height:1.6}
+.scope[lang="en"] h1,.scope[lang="en"] h2,.scope[lang="en"] h3,.scope[lang="he"] h1{font-family:Georgia,"Times New Roman",serif}
+.scope.scope h1{font-size:clamp(2rem,4.1vw,3.5rem);line-height:1.13;max-inline-size:24ch;letter-spacing:-.025em;overflow-wrap:normal}
+.scope .heroGrid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:clamp(28px,5vw,64px);align-items:center}
+.scope .hero{background:#FFF}.scope .heroLead{color:#052D50}
+.scope .toolbar{position:static;inset:auto;background:#FFF;backdrop-filter:none;border-block-end:1px solid #F4B12D}
+.scope .toolbar>div{position:relative;direction:ltr;padding-block:8px}
+.logoLink{display:block;flex-shrink:0;line-height:0;text-decoration:none;background:#FFF;border-radius:4px;max-inline-size:100%}
+.logoLink img{display:block;inline-size:100%;block-size:auto;aspect-ratio:1;object-fit:contain;filter:none}
+.headerLogo{inline-size:138px}
+/* Exact owner exception: native x0–1254 / y100–1100. No raster is cropped. */
+.headerWindow{position:relative;display:block;inline-size:100%;aspect-ratio:1254/1000;overflow:hidden}
+.headerWindow img{position:absolute;inset-inline-start:0;top:-10%;inline-size:100%;block-size:auto}
+.footerLogo{inline-size:245px;padding:14px}
+.scope .footer{background:#052D50;color:#FFF}.scope .footer a[href="#apply"]{background:#FFF;color:#052D50;border:1px solid #FFF}
+.scope .locations,.scope .apply{background:#EAF6FA}.scope .faq{background:#FCF8EF}
+.scope .benefits li{border-color:#C5DCE5;color:#052D50}
+.heroPlaceholder{display:flex;flex-direction:column;justify-content:center;align-items:center;min-block-size:330px;text-align:center;border:1px dashed #B3A88D;border-radius:6px;padding:28px;color:#052D50;background:#FCF8EF}
+.heroPlaceholder>span{font:700 11px/1.6 Arial,Helvetica,sans-serif;letter-spacing:.12em}
+.heroPlaceholder>strong{font:400 54px/1.4 Georgia,serif;color:#9A9077}
+.heroPlaceholder>p{max-inline-size:26ch;margin:12px 0 0;font-size:18px;line-height:1.5}
+.scope .faqGroup{padding:16px;border:1px solid #C5DCE5;border-radius:6px;background:#FFF;color:#052D50}
+.scope .faqQuestion{padding:14px 0;border:0;border-block-start:1px solid #E0EAF0;border-radius:0;background:#FFF}
+.faqGroup>div{padding-block-start:12px}.scope .faqQuestion p{color:#052D50}
+.curriculumButton,.closeButton{min-block-size:44px;border:1px solid #052D50;border-radius:5px;padding:11px 17px;background:#FFF;color:#052D50;font:inherit;font-weight:700;cursor:pointer}
+.curriculumDialog{inline-size:min(860px,calc(100% - 32px));max-inline-size:calc(100% - 32px);max-block-size:calc(100dvh - 32px);margin:auto;padding:24px;border:1px solid #C5DCE5;border-radius:8px;background:#FFF;color:#052D50;overflow:auto;font:inherit}
+.curriculumDialog::backdrop{background:rgb(5 45 80 / 55%)}
+.dialogHeader{display:flex;justify-content:space-between;align-items:start;gap:18px;margin-block-end:22px}
+.scope .dialogHeading{margin:0;font-size:clamp(1.2rem,3vw,1.7rem);line-height:1.3;letter-spacing:normal}
+.dialogHeading:focus-visible{outline:3px solid #F4B12D;outline-offset:4px}.closeButton{flex-shrink:0}
+.curriculumContent{min-inline-size:0}.curriculumContent section{margin-block-start:28px}
+.curriculumCards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-block:24px}
+.curriculumCards article{min-inline-size:0;padding:18px;border:1px solid #C5DCE5;border-radius:6px;background:#FCF8EF}
+.curriculumCards h4{margin:0 0 12px;font:700 1.15rem/1.35 Georgia,"Times New Roman",serif}.curriculumCards p{margin:0}
+.reviewNote{padding-block-start:18px;border-block-start:1px solid #F4B12D;font-size:.95rem}
+@media(max-width:980px){.scope .heroGrid{grid-template-columns:1fr}.heroPlaceholder{min-block-size:270px}}
+@media(max-width:640px){.headerLogo{inline-size:96px}.footerLogo{inline-size:235px}.curriculumDialog{padding:18px}.curriculumCards{grid-template-columns:1fr}.dialogHeader{gap:12px}.scope.scope h1{font-size:clamp(2rem,9vw,2.7rem)}}

@@ -46,12 +46,44 @@ for(const locale of ["en","he"] as const)test(`OPS09 ${locale}: public keyboard 
  expect((await page.goto(`/${locale}/florida`))?.status()).toBe(200);
  await expect(page.locator(`div[lang="${locale}"][dir="${locale==="he"?"rtl":"ltr"}"]`).first()).toBeVisible();
  await expect(page.getByRole("heading",{level:1,name:copy.realMensch.academy.title[locale],exact:true})).toBeVisible();
- await noClipping(page);await page.screenshot({path:info.outputPath(`ops09-landing-${locale}-${info.project.name}.png`),fullPage:true});
- if(project.width<=760){
+ await expect(page).toHaveTitle("South Florida Jewish Leadership Fishing Academy");
+ const logo="/groups/brand/jlfa-logo-locked-v1.png",logos=page.locator(`img[src="${logo}"]`),image=await page.request.get(logo);
+ expect(image.status()).toBe(200);const logoBytes=await image.body();expect(logoBytes.length).toBe(1701549);
+ expect(createHash("sha256").update(logoBytes).digest("hex")).toBe("e78ff6d3ef16c37613725507ce14da05883734a77f48b78ab9d6df3f92480356");
+ await expect(logos).toHaveCount(2);await expect.poll(()=>logos.evaluateAll(images=>images.every(image=>(image as HTMLImageElement).complete&&(image as HTMLImageElement).naturalWidth===1254&&(image as HTMLImageElement).naturalHeight===1254))).toBe(true);
+ const framed=await page.locator("[data-jlfa-logo-window]").evaluate(frame=>{const img=frame.querySelector("img")!,a=frame.getBoundingClientRect(),b=img.getBoundingClientRect(),scale=b.width/1254;return{left:a.left,top:(a.top-b.top)/scale,height:a.height/scale,x:a.left-b.left,objectFit:getComputedStyle(img).objectFit};});
+ expect(framed.left).toBeLessThan(project.width/2);expect(Math.abs(framed.top-100)).toBeLessThan(1.5);expect(Math.abs(framed.height-1000)).toBeLessThan(1.5);expect(Math.abs(framed.x)).toBeLessThan(.5);expect(framed.objectFit).toBe("contain");
+ const full=await page.locator("[data-jlfa-footer-logo] img").evaluate(img=>{const r=img.getBoundingClientRect(),p=img.parentElement!.getBoundingClientRect();return{ratio:r.width/r.height,whole:p.left<=r.left&&p.right>=r.right&&p.top<=r.top&&p.bottom>=r.bottom,fit:getComputedStyle(img).objectFit};});
+ expect(full).toEqual({ratio:1,whole:true,fit:"contain"});expect(await page.locator("header").evaluate(header=>getComputedStyle(header).position)).toBe("static");
+ expect(await page.locator("h1").evaluate(h=>{const range=document.createRange();range.selectNodeContents(h);return[...range.getClientRects()].every(r=>r.left>=0&&r.right<=innerWidth+1);})).toBe(true);
+ const curriculum=page.getByRole("button",{name:t("View curriculum","צפייה בתוכנית הלימודים"),exact:true}),dialog=page.locator("[data-jlfa-curriculum-dialog]");
+ await expect(dialog).not.toBeVisible();await expect(page.locator("[data-jlfa-curriculum-content]")).toHaveCount(0);
+ await tabTo(page,curriculum);await page.keyboard.press("Enter");await expect(dialog).toBeVisible();
+ await expect(dialog.getByRole("heading",{name:t("Curriculum overview","סקירת תוכנית הלימודים"),exact:true})).toBeFocused();
+ await expect(dialog.locator("[data-jlfa-stage]")).toHaveCount(4);for(const card of copy.realMensch.academy.cards)await expect(dialog).toContainText(card.body[locale]);
+ for(const skill of copy.realMensch.extraSections.skills.items)await expect(dialog).toContainText(skill[locale]);
+ expect(await dialog.evaluate(d=>[...d.querySelectorAll("h2,h3,h4,p,li,button")].every(e=>{const range=document.createRange();range.selectNodeContents(e);return[...range.getClientRects()].every(r=>r.left>=0&&r.right<=innerWidth+1);}))).toBe(true);
+ await page.screenshot({path:info.outputPath(`ops09-curriculum-focus-${locale}-${info.project.name}.png`)});
+ await page.keyboard.press("Escape");await expect(dialog).not.toBeVisible();await expect(curriculum).toBeFocused();await visibleFocus(curriculum);
+ await page.keyboard.press("Enter");await expect(dialog).toBeVisible();await tabTo(page,dialog.getByRole("button",{name:t("Close","סגירה"),exact:true}));await page.keyboard.press("Enter");await expect(dialog).not.toBeVisible();await expect(curriculum).toBeFocused();
+ const groups=page.locator("[data-jlfa-faq-group]");await expect(groups).toHaveCount(3);await expect(page.locator("[data-jlfa-faq-question]")).toHaveCount(9);
+ expect(await groups.evaluateAll(items=>items.every(item=>!item.hasAttribute("open")))).toBe(true);
+ let faqIndex=0;for(const group of await groups.all()){
+  const summary=group.locator(":scope > summary");await tabTo(page,summary);await page.keyboard.press("Space");
+  for(const question of await group.locator("[data-jlfa-faq-question]").all()){
+   const summary=question.locator("summary"),answer=question.locator("p"),source=copy.realMensch.academy.faqs[faqIndex++]!;
+   await expect(summary).toHaveText(source[0]![locale]);await expect(answer).not.toBeVisible();await tabTo(page,summary);await page.keyboard.press("Space");await expect(answer).toBeVisible();await expect(answer).toHaveText(source[1]![locale]);await page.keyboard.press("Space");await expect(answer).not.toBeVisible();
+  }
+  await tabTo(page,summary);await page.keyboard.press("Space");
+ }
+ expect(faqIndex).toBe(9);expect(await groups.evaluateAll(items=>items.every(item=>!item.hasAttribute("open")))).toBe(true);
+ await page.evaluate(()=>window.scrollTo(0,0));await noClipping(page);await page.screenshot({path:info.outputPath(`ops09-landing-${locale}-${info.project.name}.png`),fullPage:true});
+ if(project.width<=980){
   const menu=page.locator('header button[aria-controls="florida-page-nav"]');await expect(menu).toHaveAccessibleName(t("Open navigation","פתיחת ניווט"));
   await tabTo(page,menu);await page.keyboard.press("Space");await expect(menu).toHaveAttribute("aria-expanded","true");await expect(menu).toHaveAccessibleName(t("Close navigation","סגירת ניווט"));
   await expect(page.getByRole("navigation",{name:t("Page navigation","ניווט בדף"),exact:true})).toBeVisible();
   await page.keyboard.press("Space");await expect(menu).toHaveAttribute("aria-expanded","false");
+  await page.keyboard.press("Space");await expect(menu).toHaveAttribute("aria-expanded","true");await tabTo(page,page.locator('#florida-page-nav a[href="#about"]'));await page.keyboard.press("Enter");await expect(menu).toHaveAttribute("aria-expanded","false");
  }
  const cta=page.locator('main a[href="#apply"]').first();await tabTo(page,cta);await page.keyboard.press("Enter");
  await expect(form).toBeVisible();

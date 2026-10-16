@@ -41,7 +41,10 @@ describe("reviewed Florida presentation, not new runtime authority",()=>{
    expect(html).toContain(`<h1>${copy.realMensch.academy.title[locale]}</h1>`);
    expect(html.match(/viewBox="0 0 24 24"/g)).toHaveLength(3);
    expect(html.match(new RegExp(`href="#apply"[^>]*>${copy.realMensch.shared.ctaAcademy[locale]}`,"g"))).toHaveLength(3);
-   for(const card of copy.realMensch.academy.cards)expect(html).toContain(card.body[locale]);
+   // The existing accepted overview is now on demand (JLFA-WEB-SIMPLE-02),
+   // not rendered as the entire curriculum on the initial page.
+   for(const card of copy.realMensch.academy.cards)expect(html).not.toContain(escaped(card.body[locale]));
+   expect(html).toContain('aria-controls="jlfa-curriculum"');
    expect(html).not.toContain(copy.shared.previewBanner[locale]);
    expect(html).toContain(`dir="${locale==="he"?"rtl":"ltr"}"`);
    expect(html).not.toContain(mode==="sample"?"program=morning_torah_learning":"torah-mornings");
