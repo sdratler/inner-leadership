@@ -40,11 +40,16 @@ export class NativeStripeReceiptBindings {
   try{this.#merchant=Object.freeze(merchantSchema.parse(merchant));}catch{throw new AppError("UNAVAILABLE");}
  }
  async resolve(actor:Actor,receipt:Receipt,signal:AbortSignal):Promise<NativeStripeReceiptBinding|null>{
+  try{return await this.db.transaction(tx=>this.resolveInTransaction(tx,actor,receipt,signal,this.clock.now()));}
+  catch(error){if(error instanceof AppError)throw error;throw new AppError("UNAVAILABLE");}
+ }
+ /** Caller retains the workspace/session/mapping/operation locks until commit.
+  * Server composition only; never deserialize a transaction or Actor from JSON. */
+ async resolveInTransaction(tx:SqlSession,actor:Actor,receipt:Receipt,signal:AbortSignal,now:Date):Promise<NativeStripeReceiptBinding|null>{
   try{
-   const r=receiptSchema.parse(receipt),b=this.#merchant,now=this.clock.now();
+   const r=receiptSchema.parse(receipt),b=this.#merchant;
    requireBinding(!signal.aborted&&Number.isFinite(now.valueOf()));
    requireBinding(r.providerAccountId===b.accountId&&r.livemode===false&&r.apiVersion===b.apiVersion);
-   return await this.db.transaction(async tx=>{
     await lockWorkspace(tx,actor.workspaceId);
     const locked=await one(tx,`SELECT s.account_id FROM ls_identity.sessions s JOIN ls_identity.accounts a ON a.workspace_id=s.workspace_id AND a.id=s.account_id
      JOIN ls_identity.account_subjects p ON p.workspace_id=a.workspace_id AND p.account_id=a.id
@@ -91,7 +96,6 @@ export class NativeStripeReceiptBindings {
     requireBinding(fact.canonicalTransactionId===refund.refundPaymentId&&fact.purchaseId===m.purchaseId&&fact.purchaseLineId===line.id&&fact.dueId===due.id&&fact.operationId===hosted.id&&fact.relatedProviderObjectId===m.invoiceId&&fact.providerAccountId===b.accountId&&(!invoice.paymentIntentId||invoice.paymentIntentId===fact.canonicalTransactionId));
     requireBinding(paid.digest===digest({transaction:fact.canonicalTransactionId,purchase:fact.purchaseId,line:fact.purchaseLineId,due:fact.dueId,merchant:fact.providerAccountId,mode:false,kind:"payment",currency:"USD",cents:fact.cents,originalPayment:null})&&state.settlements.some(item=>item.kind==="payment"&&item.canonicalTransactionId===fact.canonicalTransactionId&&item.purchaseLineId===line.id));
     requireBinding(!signal.aborted);return {kind:"refund",invoice,refundOperation:refund,originalPaymentIntentId:fact.canonicalTransactionId};
-   });
   }catch(error){if(error instanceof AppError)throw error;throw new AppError("UNAVAILABLE");}
  }
  private validMapping(value:Mapping,now:Date){requireBinding(!value.revokedAt&&value.verifiedAt<=now);}

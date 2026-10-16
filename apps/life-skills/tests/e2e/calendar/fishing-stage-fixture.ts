@@ -10,6 +10,8 @@ import {once} from "node:events";
 import {programFixture,type ProgramFixture} from "../../database/fishing/native-program-fixture.ts";
 import {safeTestUrl} from "../../database/calendar/fixture.ts";
 import {fishingCivilTime,type FishingCalendarSelection} from "../../../src/features/fishing/program-calendar-contract.ts";
+import {opaqueRateLimitKey} from "../../../src/lib/security/rate-limit.ts";
+import {FISHING_STAGE_PROJECTS,parseFishingStageReport,runFishingStageIsolation,type FishingStageGroupResult,type FishingStageScope,type FishingStageSelectedReport} from "./fishing-stage-isolation.ts";
 
 export type FishingStageBrowserData={origin:string;workspaceId:string;occurrenceId:string;pastOccurrenceId:string;date:string;lessonSourceSha256:string;
  credentials:{role:string;email:string;password:string;accountId:string}[];families:Record<string,{selection:FishingCalendarSelection;otherLearnerId:string}>};
@@ -31,7 +33,12 @@ async function terminate(child:ChildProcess|null){
   }finally{if(timer)clearTimeout(timer);child.removeListener("exit",onExit);if(killer){killer.removeListener("close",onClose);killer.removeListener("error",onError);if(killer.exitCode===null&&killer.signalCode===null)killer.kill();}}
   return;
  }
- child.kill("SIGTERM");await Promise.race([once(child,"exit"),new Promise(r=>setTimeout(r,5000))]);if(child.exitCode===null&&child.signalCode===null)child.kill("SIGKILL");
+ const waitForExit=async()=>{
+  if(child.exitCode!==null||child.signalCode!==null)return;
+  let timer:ReturnType<typeof setTimeout>|undefined;const exited=once(child,"exit");
+  try{await Promise.race([exited,new Promise<never>((_,no)=>{timer=setTimeout(()=>no(Error("FISHING_OWNED_CHILD_EXIT_UNCONFIRMED")),5000);})]);}finally{if(timer)clearTimeout(timer);}
+ };
+ child.kill("SIGTERM");try{await waitForExit();}catch{if(child.exitCode===null&&child.signalCode===null)child.kill("SIGKILL");await waitForExit();}
 }
 /** Only this invocation's validated fresh temp tree, never its parent or DB. */
 function removeOwnedTemp(folder:string,parent:string){
@@ -52,21 +59,49 @@ async function learnerAccess(f:ProgramFixture,learners:readonly {parentId:string
 }
 export async function runFishingStageBrowser(){
  if(process.env.LS_RM_FISHING_STAGE_UI_ONLY!=="true"||process.env.LS_CALENDAR_TEST_SHARED_ROUTES_ACCEPTED!=="true"||process.env.LS_RM_PROGRAM_NATIVE_ALLOW!=="MAIN_REGISTERED_ONLY")throw Error("REGISTERED_FISHING_UI_RECIPE_REQUIRED");
- const projects=["desktop","mobile390","mobile340","tablet768"],project=process.env.LS_CALENDAR_TEST_PROJECT,index=projects.indexOf(project??"");if(index<0)throw Error("EXACT_FISHING_BROWSER_PROJECT_REQUIRED");
+ const requestedProject=process.env.LS_CALENDAR_TEST_PROJECT,index=(FISHING_STAGE_PROJECTS as readonly string[]).indexOf(requestedProject??"");if(index<0)throw Error("EXACT_FISHING_BROWSER_PROJECT_REQUIRED");const project=FISHING_STAGE_PROJECTS[index]!;
  const database=safeTestUrl(),target=new URL(database);if(target.username!=="ls_synthetic")throw Error("EXACT_SYNTHETIC_DATABASE_ROLE_REQUIRED");
  // Next loads dotenv independently of child environment. Refuse, do not edit it.
  for(const root of[resolve("."),resolve("../..")])for(const name of[".env",".env.local",".env.development",".env.development.local"])if(existsSync(join(root,name)))throw Error("DOTENV_MUST_BE_ABSENT_BEFORE_SYNTHETIC_APP");
- const port=3143+index,tlsPort=3445+index,origin=`https://127.0.0.1:${tlsPort}`;await freePort(port);await freePort(tlsPort);
+ const port=3143+index,tlsPort=3445+index,origin=`https://127.0.0.1:${tlsPort}`;
+ const outputParent=resolve("tests/e2e/calendar/test-results");mkdirSync(outputParent,{recursive:true});const output=join(outputParent,`fishing-stage-${project}-${randomUUID()}`);mkdirSync(output,{recursive:false});
+ return runFishingStageIsolation(project,async(group,admitScope)=>{
+ await freePort(port);await freePort(tlsPort);
+ const groupOutput=join(output,group.id);mkdirSync(groupOutput,{recursive:false});
  const parent="D:/life-skills-fishing-fixtures-20261012";mkdirSync(parent,{recursive:true});const folder=mkdtempSync(join(parent,"stage-browser-"));
- let app:ChildProcess|null=null,tests:ChildProcess|null=null,f:ProgramFixture|null=null,cleanupPromise:Promise<void>|null=null,baseline:Awaited<ReturnType<typeof snapshot>>|null=null;
- const cleanup=()=>cleanupPromise??=(async()=>{try{await terminate(tests);}finally{try{await terminate(app);}finally{try{await f?.close();}finally{removeOwnedTemp(folder,parent);}}}})();
- const signal=()=>{void cleanup().finally(()=>process.exit(143));};process.once("SIGTERM",signal);process.once("SIGINT",signal);
+ let app:ChildProcess|null=null,tests:ChildProcess|null=null,f:ProgramFixture|null=null,baseline:Awaited<ReturnType<typeof snapshot>>|null=null;
+ let stopTestsPromise:Promise<void>|null=null,stopAppPromise:Promise<void>|null=null,cleanupPromise:Promise<void>|null=null;
+ let interrupted=false,primaryFailed=false,primary:unknown,cleanupFailed=0,cleanupFirst:unknown;
+ let scope:FishingStageScope|undefined,report:FishingStageSelectedReport|undefined,networkBucket:FishingStageGroupResult["networkBucket"]|undefined;
+ const protectedEffects={tableCount:protectedTables.length,success:false,closeout:false},cleaned={tests:false,app:false,fixture:false,privateTemp:false};
+ const stopTests=()=>stopTestsPromise??=terminate(tests),stopApp=()=>stopAppPromise??=terminate(app);
+ const ensureActive=()=>{if(interrupted)throw Error("FISHING_STAGE_BROWSER_INTERRUPTED");};
+ // An interrupt requests termination of the current owned children. The normal
+ // finally still awaits setup/work settlement, both readback/cleanup boundaries,
+ // and every cleanup step. It never races pool/temp teardown against setup.
+ const signal=()=>{interrupted=true;if(tests)void stopTests().catch(()=>undefined);if(app)void stopApp().catch(()=>undefined);};
+ process.once("SIGTERM",signal);process.once("SIGINT",signal);
+ const cleanup=()=>cleanupPromise??=(async()=>{
+  const attempt=async(work:()=>Promise<void>|void)=>{try{await work();}catch(error){if(cleanupFailed===0)cleanupFirst=error;cleanupFailed++;}};
+  await attempt(async()=>{await stopTests();cleaned.tests=true;});
+  await attempt(async()=>{await stopApp();cleaned.app=true;});
+  // Keep the second eleven-table comparison, now after owned child shutdown.
+  await attempt(async()=>{if(f&&baseline){if(JSON.stringify(await snapshot(f))!==JSON.stringify(baseline))throw Error("FISHING_STAGE_PROTECTED_EFFECT_CHANGED_ON_CLOSEOUT");protectedEffects.closeout=true;}});
+  await attempt(async()=>{await f?.close();cleaned.fixture=true;});
+  await attempt(()=>{removeOwnedTemp(folder,parent);cleaned.privateTemp=true;});
+ })();
  let phase="fixture-program-catalog";
  try{
-  f=await programFixture({capacity:2,childAccountsEnabled:true,confirmation:{kind:"all_native_dues_paid"},readableRm101:"SYNTHETIC_ONLY"});const fixture=f,plan=await f.createPlan(),credentials:FishingStageBrowserData["credentials"]=[{role:"practitioner",accountId:f.owner.id,email:`${f.owner.id}@example.invalid`,password:"Ab12cd"}],families:FishingStageBrowserData["families"]={},learners:{parentId:string;learnerId:string}[]=[];
+  f=await programFixture({capacity:2,childAccountsEnabled:true,confirmation:{kind:"all_native_dues_paid"},readableRm101:"SYNTHETIC_ONLY"});ensureActive();
+  // programFixture creates both values randomly for this complete group. Only a
+  // one-way fingerprint leaves this closure; no midjourney key rotation or
+  // rate-counter mutation. The retained setup-session revocation stays below.
+  scope={workspaceId:f.workspaceId,rateScopeFingerprint:hash(f.config.rateLimitKey)};admitScope(scope);
+  const fixture=f,plan=await f.createPlan(),credentials:FishingStageBrowserData["credentials"]=[{role:"practitioner",accountId:f.owner.id,email:`${f.owner.id}@example.invalid`,password:"Ab12cd"}],families:FishingStageBrowserData["families"]={},learners:{parentId:string;learnerId:string}[]=[];
   phase="fixture-families";
   const outsiders=await f.family();
   for(const locale of["en","he"]){
+   ensureActive();
    const family=await f.family(),purchase=await f.prepare(family);await f.settle(purchase);const enrollment=await f.enroll(purchase),child=await f.account("child",family.learnerId);
    // The native server derives lesson hrefs from the current account locale.
    // Credential labels alone do not make this a Hebrew family.
@@ -77,7 +112,10 @@ export async function runFishingStageBrowser(){
   }
   const adult=await f.account("adult_client");credentials.push({role:"adult_client",accountId:adult.id,email:`${adult.id}@example.invalid`,password:"Ab12cd"});
   phase="fixture-materials-access";const lessonSourceSha256=await learnerAccess(f,learners);phase="fixture-schedule";const startsAt=f.at(48);await f.revise(plan.occurrences[0]!.id,startsAt,f.at(49));await f.revise(plan.occurrences[1]!.id,f.at(-.5),f.at(-.1));await f.publish();
-  const data:FishingStageBrowserData={origin,lessonSourceSha256,workspaceId:f.workspaceId,credentials,families,occurrenceId:plan.occurrences[0]!.id,pastOccurrenceId:plan.occurrences[1]!.id,date:fishingCivilTime(startsAt).date};baseline=await snapshot(f);
+  // Both locale families belong to THIS group's one shared cohort. In the
+  // operator group their final readbacks therefore compare the same revision.
+  if(!["en","he"].every(locale=>families[locale]?.selection.reference.cohortId===f!.ref.cohortId&&families[locale]?.selection.reference.stageId===f!.ref.stageId))throw Error("FISHING_STAGE_SHARED_COHORT_REQUIRED");
+  const data:FishingStageBrowserData={origin,lessonSourceSha256,workspaceId:f.workspaceId,credentials,families,occurrenceId:plan.occurrences[0]!.id,pastOccurrenceId:plan.occurrences[1]!.id,date:fishingCivilTime(startsAt).date};baseline=await snapshot(f);ensureActive();
   // Revoke setup-service sessions: each browser role must log in ordinarily.
   await f.pool.query("UPDATE ls_identity.sessions SET revoked_at=clock_timestamp() WHERE workspace_id=$1",[f.workspaceId]);
   const runtimeFile=join(folder,"private-runtime.json");writeFileSync(runtimeFile,JSON.stringify(data),{mode:0o600,flag:"wx"});
@@ -87,15 +125,31 @@ export async function runFishingStageBrowser(){
   Object.assign(env,{NODE_ENV:"development",NEXT_TELEMETRY_DISABLED:"1",LS_APP_MODE:"foundation_preview",LS_APP_ORIGIN:origin,LS_DATABASE_URL:database,TEST_DATABASE_URL:database,LS_MIGRATION_DATABASE_URL:database,LS_DATABASE_TLS:"disable",LS_PRIVATE_APP_ENABLED:"true",LS_CALENDAR_ENABLED:"true",LS_IDENTITY_ENABLED:"true",LS_CHILD_ACCOUNTS_ENABLED:"true",LS_EDUCATION_SYNTHETIC_LOOPBACK:"true",LS_IDENTITY_WORKSPACE_ID:f.workspaceId,LS_IDENTITY_ACTIVE_KEY_ID:f.ring.activeKeyId,LS_IDENTITY_DATA_KEYS:JSON.stringify(Object.fromEntries(Object.entries(f.ring.keys).map(([id,value])=>[id,value.toString("base64url")]))),LS_IDENTITY_CSRF_KEY:f.config.csrfKey.toString("base64url"),LS_IDENTITY_LOOKUP_KEY:f.config.lookupKey.toString("base64url"),LS_IDENTITY_RATE_KEY:Buffer.from(f.config.rateLimitKey,"hex").toString("base64url")});
   // Next owns TLS AND development WebSocket upgrades, as in the retained
   // group-interest harness. No HTTP-only proxy or custom upgrade implementation.
-  phase="retained-next-source";app=spawn(process.execPath,[resolve("node_modules/next/dist/bin/next"),"dev","--experimental-https","--experimental-https-key",key,"--experimental-https-cert",cert,"--hostname","127.0.0.1","--port",String(tlsPort)],{env,stdio:"ignore",windowsHide:true});
-  const healthCa=readFileSync(cert),probeHealth=()=>new Promise<boolean>((ok,no)=>{const probe=httpsRequest(new URL("/api/health",origin),{ca:healthCa},response=>{response.resume();ok(response.statusCode===200);});probe.once("error",no);probe.end();});
-  let healthy=false;for(let i=0;i<200;i++){if(app.exitCode!==null)throw Error("SYNTHETIC_NEXT_EXITED");try{if(await probeHealth()){healthy=true;break;}}catch{}await new Promise(r=>setTimeout(r,250));}if(!healthy)throw Error("SYNTHETIC_NEXT_HEALTH_TIMEOUT");
-  phase="ordinary-role-browser";const outputParent=resolve("tests/e2e/calendar/test-results");mkdirSync(outputParent,{recursive:true});const output=join(outputParent,`fishing-stage-${project}-${randomUUID()}`);mkdirSync(output,{recursive:false});
-  const testEnv:NodeJS.ProcessEnv={...env,NODE_ENV:"test",LS_RM_FISHING_STAGE_UI_ONLY:"true",LS_FISHING_STAGE_FIXTURE_PATH:runtimeFile,LS_CALENDAR_TEST_PROJECT:project!,LS_CALENDAR_TEST_ALLOW:"true",LS_RM_PROGRAM_NATIVE_ALLOW:"MAIN_REGISTERED_ONLY"};
+  phase="retained-next-source";ensureActive();app=spawn(process.execPath,[resolve("node_modules/next/dist/bin/next"),"dev","--experimental-https","--experimental-https-key",key,"--experimental-https-cert",cert,"--hostname","127.0.0.1","--port",String(tlsPort)],{env,stdio:"ignore",windowsHide:true});
+  let appSpawnFailed=false;app.once("error",()=>{appSpawnFailed=true;});
+  const healthCa=readFileSync(cert),probeHealth=()=>new Promise<boolean>((ok,no)=>{const probe=httpsRequest(new URL("/api/health",origin),{ca:healthCa},response=>{response.resume();ok(response.statusCode===200);});probe.once("error",no);probe.setTimeout(2000,()=>probe.destroy(Error("SYNTHETIC_HEALTH_PROBE_TIMEOUT")));probe.end();});
+  let healthy=false;for(let i=0;i<200;i++){ensureActive();if(appSpawnFailed||app.exitCode!==null||app.signalCode!==null)throw Error("SYNTHETIC_NEXT_EXITED");try{if(await probeHealth()){healthy=true;break;}}catch{}await new Promise(r=>setTimeout(r,250));}if(!healthy)throw Error("SYNTHETIC_NEXT_HEALTH_TIMEOUT");ensureActive();
+  phase="ordinary-role-browser";const reportFile=join(groupOutput,"report.json");
+  const testEnv:NodeJS.ProcessEnv={...env,NODE_ENV:"test",LS_RM_FISHING_STAGE_UI_ONLY:"true",LS_FISHING_STAGE_FIXTURE_PATH:runtimeFile,LS_CALENDAR_TEST_PROJECT:project,LS_CALENDAR_TEST_ALLOW:"true",LS_RM_PROGRAM_NATIVE_ALLOW:"MAIN_REGISTERED_ONLY",PLAYWRIGHT_JSON_OUTPUT_FILE:reportFile};
   if(process.env.LS_APP_MODE===undefined)delete testEnv.LS_APP_MODE;else testEnv.LS_APP_MODE=process.env.LS_APP_MODE;
-  const startedTests=spawn(process.execPath,[resolve("node_modules/@playwright/test/cli.js"),"test","--config","tests/e2e/calendar/playwright.config.ts","--project",project!,"--max-failures=1","--output",output],{env:testEnv,stdio:["ignore","inherit","inherit"],windowsHide:true});tests=startedTests;const[code]=await once(startedTests,"exit");if(code!==0)throw Error("FISHING_STAGE_BROWSER_FAILED");
-  phase="protected-effects-readback";if(JSON.stringify(await snapshot(fixture))!==JSON.stringify(baseline))throw Error("FISHING_STAGE_PROTECTED_EFFECT_CHANGED");
-  console.log("FISHING_STAGE_BROWSER_ACCEPTANCE_PASS project="+project);
- }catch(error){const code=error!==null&&typeof error==='object'&&'code'in error&&typeof error.code==='string'&&/^[0-9A-Z]{5}$/.test(error.code)?error.code:'UNCLASSIFIED';throw new Error(`FISHING_STAGE_BROWSER_FAILED phase=${phase} sqlstate=${code}; inspect synthetic assertions; no credentials printed`,{cause:error instanceof Error?new Error(error.name):undefined});}
- finally{process.removeListener("SIGTERM",signal);process.removeListener("SIGINT",signal);try{if(f&&baseline&&JSON.stringify(await snapshot(f))!==JSON.stringify(baseline))throw Error("FISHING_STAGE_PROTECTED_EFFECT_CHANGED_ON_CLOSEOUT");}finally{await cleanup();}}
+  ensureActive();const startedTests=spawn(process.execPath,[resolve("node_modules/@playwright/test/cli.js"),"test","--config","tests/e2e/calendar/playwright.config.ts","--project",project,"--grep",group.grep,"--max-failures=1","--reporter=list,json","--output",join(groupOutput,"results")],{env:testEnv,stdio:["ignore","inherit","inherit"],windowsHide:true});tests=startedTests;const[code]=await once(startedTests,"close");ensureActive();if(code!==0)throw Error("FISHING_STAGE_BROWSER_FAILED");
+  phase="selected-report-readback";report=parseFishingStageReport(JSON.parse(readFileSync(reportFile,"utf8")),group,project);
+  phase="network-bucket-readback";
+  // Exact default network subject and production HMAC helper. Parameterized
+  // read only; never print the key, reset/expire a row or change a rate limit.
+  const networkRows=(await fixture.pool.query<{count:number;windowMs:number}>("SELECT count,window_ms AS \"windowMs\" FROM ls_identity.rate_counters WHERE key_digest=$1",[opaqueRateLimitKey("network:unattributed-shared-network",fixture.config.rateLimitKey)])).rows;
+  if(networkRows.length!==1||!Number.isSafeInteger(networkRows[0]!.count)||networkRows[0]!.count<1||networkRows[0]!.count>200||networkRows[0]!.windowMs!==900000)throw Error("FISHING_STAGE_NETWORK_BUCKET_INVALID");
+  networkBucket={count:networkRows[0]!.count,windowMs:networkRows[0]!.windowMs};
+  phase="protected-effects-readback";if(JSON.stringify(await snapshot(fixture))!==JSON.stringify(baseline))throw Error("FISHING_STAGE_PROTECTED_EFFECT_CHANGED");protectedEffects.success=true;
+ }catch(error){primaryFailed=true;primary=error;}
+ finally{try{await cleanup();}finally{process.removeListener("SIGTERM",signal);process.removeListener("SIGINT",signal);}}
+ if(cleanupFailed)console.log("SYNTHETIC_FISHING_GROUP_CLEANUP "+JSON.stringify({group:group.id,failedSteps:cleanupFailed,primaryFailed}));
+ if(primaryFailed||cleanupFailed||interrupted){
+  const error=primaryFailed?primary:cleanupFailed?cleanupFirst:Error("FISHING_STAGE_BROWSER_INTERRUPTED");
+  const code=error!==null&&typeof error==='object'&&'code'in error&&typeof error.code==='string'&&/^[0-9A-Z]{5}$/.test(error.code)?error.code:'UNCLASSIFIED';
+  throw new Error(`FISHING_STAGE_BROWSER_FAILED group=${group.id} phase=${primaryFailed?phase:interrupted?"interrupted":"owned-cleanup"} sqlstate=${code}; inspect synthetic assertions; no credentials printed`,{cause:error instanceof Error?new Error(error.name):undefined});
+ }
+ if(!scope||!report||!networkBucket)throw Error("FISHING_STAGE_GROUP_RECEIPT_MISSING");
+ return {project,group:group.id,scope,report,protectedEffects,cleanup:cleaned,networkBucket};
+ },marker=>console.log(marker));
 }
