@@ -188,8 +188,12 @@ export function proxy(request: NextRequest) {
   const practitionerDetail=/^\/(he|en)\/app\/(?:marketing|feedback|reports|forms|resources|group-applications(?:\/journey-preview)?|settings(?:\/[^/]+)?|cases\/[^/]+\/sessions(?:\/[^/]+)?)$/.exec(pathname)
     ??(groupInterestCandidateEnabled()?/^\/(he|en)\/app\/group-interest$/.exec(pathname):null);
   if(practitionerDetail){
-    const query:Record<string,string|undefined>={};
-      for(const key of ['mode','date','view','caseId','audienceId','appointmentId','context','section','filter','month','layout','channel','state','from','to','publication','language','placement','approval','search','page','threadId','communityView','collection','concept','cycle','program']){const values=request.nextUrl.searchParams.getAll(key);query[key]=values.length===1?values[0]:undefined;}
+    const query:Record<string,string|string[]|undefined>=Object.create(null);
+    // Preserve the whole lesson tuple for the existing strict return parser.
+    // Unknown and repeated fields must be rejected, rather than disappear here.
+    const education=pathname===`/${practitionerDetail[1]}/app/resources`&&request.nextUrl.searchParams.has('education');
+    const keys=education?[...new Set(request.nextUrl.searchParams.keys())]:['mode','date','view','caseId','audienceId','appointmentId','context','section','filter','month','layout','channel','state','from','to','publication','language','placement','approval','search','page','threadId','communityView','collection','concept','cycle','program'];
+    for(const key of keys){const values=request.nextUrl.searchParams.getAll(key);query[key]=values.length===1?values[0]:education&&values.length>1?values:undefined;}
     inbound.set('x-ls-practitioner-return',practitionerDetailReturnPath(practitionerDetail[1] as 'en'|'he',pathname,query));
   }
   const parentPage = /^\/(he|en)\/family(?:\/|$)/.exec(pathname);

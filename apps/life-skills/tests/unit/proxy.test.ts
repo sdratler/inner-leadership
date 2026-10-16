@@ -25,6 +25,19 @@ describe("public static perimeter", () => {
 });
 
 afterEach(() => vi.unstubAllEnvs());
+describe('practitioner education login return through the actual proxy',()=>{
+ for(const locale of ['en','he']as const)for(const section of ['review','publication'])it(`${locale}/${section}: retains the strict lesson tuple and rejects ambiguous or untrusted context`,()=>{
+  const origin='https://life-skills.bneineviimacademy.org',path=`/${locale}/app/resources`,header='x-middleware-request-x-ls-practitioner-return';
+  vi.stubEnv('NODE_ENV','production');vi.stubEnv('LS_APP_MODE','foundation_locked');vi.stubEnv('LS_APP_ORIGIN',origin);vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');
+  const tuple={education:'lesson',learnerId:'11111111-1111-4111-8111-111111111111',moduleId:'RM-101',version:'synthetic-v1',section},query=new URLSearchParams(tuple);
+  const returned=(params:URLSearchParams)=>{const response=proxy(new NextRequest(origin+path+'?'+params,{headers:{'x-ls-practitioner-return':'https://untrusted.invalid/private','x-ls-parent-return':'/en/family/resources','x-ls-client-return':'/he/client'}}));expect(response.status).toBe(200);expect(response.headers.get('x-middleware-request-x-ls-parent-return')).toBeNull();expect(response.headers.get('x-middleware-request-x-ls-client-return')).toBeNull();return new URL(response.headers.get(header)!,origin);};
+  expect(returned(query).pathname).toBe(path);expect(Object.fromEntries(returned(query).searchParams)).toEqual(tuple);
+  for(const[key,value]of Object.entries(tuple)){const duplicate=new URLSearchParams(query);duplicate.append(key,value);expect(returned(duplicate).search).toBe('');}
+  for(const[key,value]of [['education','constructor'],['learnerId','bad'],['moduleId','RM-999'],['version','bad\nversion'],['section','lesson'],['section','portfolio'],['role','practitioner'],['teacherKey','PRIVATE'],['next','https://untrusted.invalid'],['__proto__','PRIVATE'],['constructor','PRIVATE']]){const invalid=new URLSearchParams(query);invalid.set(key!,value!);expect(returned(invalid).search).toBe('');}
+  for(const key of ['learnerId','moduleId','version']){const missing=new URLSearchParams(query);missing.delete(key);expect(returned(missing).search).toBe('');}
+  vi.stubEnv('LS_PRIVATE_APP_ENABLED','false');expect(proxy(new NextRequest(origin+path+'?'+query)).status).toBe(503);
+ });
+});
 describe('parent education login return through the actual proxy',()=>{
  for(const locale of ['en','he']as const)for(const section of ['lesson','portfolio'])it(`${locale}/${section}: retains the complete strict lesson reference without trusting return headers`,()=>{
   const origin='https://life-skills.bneineviimacademy.org',path=`/${locale}/family/resources`,header='x-middleware-request-x-ls-parent-return';
