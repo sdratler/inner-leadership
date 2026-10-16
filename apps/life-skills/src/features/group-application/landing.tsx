@@ -8,7 +8,7 @@ import copy from "./presentation-copy.json";
 import {GroupApplicationForm,SchoolInquirySection} from "./application-form.tsx";
 import baseStyles from "./landing.module.css";
 import additions from "./landing-additions.module.css";
-import {JlfaLogo,JlfaHeroPlaceholder,JlfaFaq,JlfaCurriculumContent,JLFA_TAGLINE} from "./jlfa-brand.tsx";
+import {JlfaLogo,JlfaCoreMain,JlfaHeroPlaceholder,JlfaFaq,JlfaCurriculumContent,JLFA_TAGLINE} from "./jlfa-brand.tsx";
 import {JlfaCurriculum} from "./jlfa-curriculum.tsx";
 import jlfa from "./jlfa-brand.module.css";
 
@@ -52,7 +52,7 @@ export function GroupApplicationLanding({locale:initialLocale,programId="sunday_
    </nav>
    <div className={styles.language} aria-label={t("Language","שפה")}><button type="button" lang="en" aria-pressed={locale==="en"} onClick={()=>switchLanguage("en")}>EN</button><button type="button" lang="he" aria-pressed={locale==="he"} onClick={()=>switchLanguage("he")}>עברית</button></div>
   </div></header>
-  <main id="main">
+  <main id="main">{academy?<JlfaCoreMain locale={locale} form={<GroupApplicationForm locale={locale} programId={programId} mode={mode}/>} school={<SchoolInquirySection locale={locale} mode={mode}/>}/>:<>
    {!academy&&<p className={`${styles.wrap} ${styles.previewBanner}`}>{p(viewCopy.shared.previewBanner)}</p>}
    {mode==="sample"&&!academy&&<p className={styles.wrap}>{p(viewCopy.inquiry.sampleBanner)} <a href={`/${locale}/sample?page=florida-journeys&program=${programId}`}>{t("Open the complete journey","פתיחת המסלול המלא")}</a></p>}
    <section className={academy?`${styles.hero} ${jlfa.hero}`:styles.hero}><div className={academy?`${styles.wrap} ${styles.heroGrid} ${jlfa.heroGrid}`:`${styles.wrap} ${styles.heroGrid} `}>
@@ -77,7 +77,7 @@ export function GroupApplicationLanding({locale:initialLocale,programId="sunday_
    <section className={academy?`${styles.faq} ${jlfa.faq}`:styles.faq} id="questions"><div className={`${styles.wrap} ${styles.twoColumn}`}><div><p className={styles.eyebrow}>{t("Before you inquire","לפני שפונים")}</p><h2>{p(viewCopy.shared.faqTitle)}</h2></div><div className={styles.faqList}>{academy?<JlfaFaq locale={locale} faqs={program.faqs}/>:program.faqs.map(([question,answer])=><details key={question.en}><summary>{p(question)}</summary><p>{p(answer)}</p></details>)}</div></div></section>
    <section className={academy?`${styles.apply} ${jlfa.apply}`:styles.apply} id="apply"><div className={`${styles.wrap} ${styles.applyGrid}`}><div className={styles.applyCopy}><p className={styles.eyebrow}>{t("One clear next step","צעד הבא ברור אחד")}</p><h2>{p(viewCopy.shared.applyTitle)}</h2><p>{p(viewCopy.shared.applyBody)}</p></div><GroupApplicationForm locale={locale} programId={programId} mode={mode}/></div></section>
    {academy&&<section className={styles.wrap}><SchoolInquirySection locale={locale} mode={mode}/></section>}
-  </main>
+  </>}</main>
   <footer className={academy?`${styles.footer} ${jlfa.footer}`:styles.footer}><div className={`${styles.wrap} ${styles.footerTop}`}>{academy?<JlfaLogo locale={locale} footer/>:<a className={styles.brand} href="#main"><img src="/groups/brand/life-skills-logo.png" alt="כישורי חיים — לחיים שלמים"/><span>Life Skills<small>{t("FLORIDA","פלורידה")}</small></span></a>}<p>{p(program.label)}</p><a className={styles.primaryButton} href="#apply">{primary}</a></div>
    <div className={`${styles.wrap} ${styles.footerBottom}`}>{!academy&&<><p>{p(viewCopy.shared.footerAffiliation)} <a href="https://bneineviimacademy.org/" target="_blank" rel="noopener noreferrer">Bnei Neviim Academy ↗</a></p><p>{p(viewCopy.shared.previewBanner)}</p><a href={pathFor(locale,visiblePrograms.morning_torah_learning,mode)}>{p(visiblePrograms.morning_torah_learning.label)}</a></>} {academy&&<p>{JLFA_TAGLINE}</p>}</div>
   </footer>

@@ -6,6 +6,7 @@ import {readFileSync} from "node:fs";
 import {createHash} from "node:crypto";
 import {expect,test,type Locator,type Page} from "@playwright/test";
 import copy from "../../../src/features/group-application/presentation-copy.json" with {type:"json"};
+import coreCopy from "../../../src/features/group-application/jlfa-core-copy.json" with {type:"json"};
 
 const fixturePath=process.env.LS_GROUP_INTEREST_FIXTURE_PATH;
 if(process.env.LS_RM_LAUNCH_OPS09_ONLY!=="true"||process.env.LS_FISHING_LEAD_UI_ONLY!=="true"||!fixturePath)throw Error("OPS09_EXCLUSIVE_FIXTURE_REQUIRED");
@@ -47,6 +48,7 @@ for(const locale of ["en","he"] as const)test(`OPS09 ${locale}: public keyboard 
  await expect(page.locator(`div[lang="${locale}"][dir="${locale==="he"?"rtl":"ltr"}"]`).first()).toBeVisible();
  await expect(page.getByRole("heading",{level:1,name:copy.realMensch.academy.title[locale],exact:true})).toBeVisible();
  await expect(page).toHaveTitle("South Florida Jewish Leadership Fishing Academy");
+ expect(await page.locator("[data-jlfa-primary]").evaluate(a=>getComputedStyle(a).backgroundColor)).toBe("rgb(5, 45, 80)");
  const logo="/groups/brand/jlfa-logo-locked-v1.png",logos=page.locator(`img[src="${logo}"]`),image=await page.request.get(logo);
  expect(image.status()).toBe(200);const logoBytes=await image.body();expect(logoBytes.length).toBe(1701549);
  expect(createHash("sha256").update(logoBytes).digest("hex")).toBe("e78ff6d3ef16c37613725507ce14da05883734a77f48b78ab9d6df3f92480356");
@@ -56,27 +58,27 @@ for(const locale of ["en","he"] as const)test(`OPS09 ${locale}: public keyboard 
  const full=await page.locator("[data-jlfa-footer-logo] img").evaluate(img=>{const r=img.getBoundingClientRect(),p=img.parentElement!.getBoundingClientRect();return{ratio:r.width/r.height,whole:p.left<=r.left&&p.right>=r.right&&p.top<=r.top&&p.bottom>=r.bottom,fit:getComputedStyle(img).objectFit};});
  expect(full).toEqual({ratio:1,whole:true,fit:"contain"});expect(await page.locator("header").evaluate(header=>getComputedStyle(header).position)).toBe("static");
  expect(await page.locator("h1").evaluate(h=>{const range=document.createRange();range.selectNodeContents(h);return[...range.getClientRects()].every(r=>r.left>=0&&r.right<=innerWidth+1);})).toBe(true);
- const curriculum=page.getByRole("button",{name:t("View curriculum","צפייה בתוכנית הלימודים"),exact:true}),dialog=page.locator("[data-jlfa-curriculum-dialog]");
+ const curriculum=page.getByRole("button",{name:t("Explore the program","הכירו את התוכנית"),exact:true}),dialog=page.locator("[data-jlfa-curriculum-dialog]");
  await expect(dialog).not.toBeVisible();await expect(page.locator("[data-jlfa-curriculum-content]")).toHaveCount(0);
  await tabTo(page,curriculum);await page.keyboard.press("Enter");await expect(dialog).toBeVisible();
- await expect(dialog.getByRole("heading",{name:t("Curriculum overview","סקירת תוכנית הלימודים"),exact:true})).toBeFocused();
- await expect(dialog.locator("[data-jlfa-stage]")).toHaveCount(4);for(const card of copy.realMensch.academy.cards)await expect(dialog).toContainText(card.body[locale]);
+ await expect(dialog.getByRole("heading",{name:t("Program overview","סקירת התוכנית"),exact:true})).toBeFocused();
+ await expect(dialog.locator("[data-jlfa-stage]")).toHaveCount(4);for(const index of [27,28,29,30,32,33,34,35,37,38,39,40,42,43,44,45])await expect(dialog).toContainText(coreCopy.nodes[index]![locale]);
  for(const skill of copy.realMensch.extraSections.skills.items)await expect(dialog).toContainText(skill[locale]);
  expect(await dialog.evaluate(d=>[...d.querySelectorAll("h2,h3,h4,p,li,button")].every(e=>{const range=document.createRange();range.selectNodeContents(e);return[...range.getClientRects()].every(r=>r.left>=0&&r.right<=innerWidth+1);}))).toBe(true);
  await page.screenshot({path:info.outputPath(`ops09-curriculum-focus-${locale}-${info.project.name}.png`)});
  await page.keyboard.press("Escape");await expect(dialog).not.toBeVisible();await expect(curriculum).toBeFocused();await visibleFocus(curriculum);
  await page.keyboard.press("Enter");await expect(dialog).toBeVisible();await tabTo(page,dialog.getByRole("button",{name:t("Close","סגירה"),exact:true}));await page.keyboard.press("Enter");await expect(dialog).not.toBeVisible();await expect(curriculum).toBeFocused();
- const groups=page.locator("[data-jlfa-faq-group]");await expect(groups).toHaveCount(3);await expect(page.locator("[data-jlfa-faq-question]")).toHaveCount(9);
+ const groups=page.locator("[data-jlfa-faq-group]");await expect(groups).toHaveCount(3);await expect(page.locator("[data-jlfa-faq-question]")).toHaveCount(11);
  expect(await groups.evaluateAll(items=>items.every(item=>!item.hasAttribute("open")))).toBe(true);
- let faqIndex=0;for(const group of await groups.all()){
+ const seenFaqIndexes:number[]=[];for(const group of await groups.all()){
   const summary=group.locator(":scope > summary");await tabTo(page,summary);await page.keyboard.press("Space");
   for(const question of await group.locator("[data-jlfa-faq-question]").all()){
-   const summary=question.locator("summary"),answer=question.locator("p"),source=copy.realMensch.academy.faqs[faqIndex++]!;
+   const summary=question.locator("summary"),answer=question.locator("p"),sourceIndex=Number(await question.getAttribute("data-jlfa-faq-question")),source=copy.realMensch.academy.faqs[sourceIndex]!;seenFaqIndexes.push(sourceIndex);
    await expect(summary).toHaveText(source[0]![locale]);await expect(answer).not.toBeVisible();await tabTo(page,summary);await page.keyboard.press("Space");await expect(answer).toBeVisible();await expect(answer).toHaveText(source[1]![locale]);await page.keyboard.press("Space");await expect(answer).not.toBeVisible();
   }
   await tabTo(page,summary);await page.keyboard.press("Space");
  }
- expect(faqIndex).toBe(9);expect(await groups.evaluateAll(items=>items.every(item=>!item.hasAttribute("open")))).toBe(true);
+ expect(seenFaqIndexes.sort((a,b)=>a-b)).toEqual(Array.from({length:11},(_,i)=>i));expect(await groups.evaluateAll(items=>items.every(item=>!item.hasAttribute("open")))).toBe(true);
  await page.evaluate(()=>window.scrollTo(0,0));await noClipping(page);await page.screenshot({path:info.outputPath(`ops09-landing-${locale}-${info.project.name}.png`),fullPage:true});
  if(project.width<=980){
   const menu=page.locator('header button[aria-controls="florida-page-nav"]');await expect(menu).toHaveAccessibleName(t("Open navigation","פתיחת ניווט"));

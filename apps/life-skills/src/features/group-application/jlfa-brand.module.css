@@ -37,3 +37,21 @@
 .reviewNote{padding-block-start:18px;border-block-start:1px solid #F4B12D;font-size:.95rem}
 @media(max-width:980px){.scope .heroGrid{grid-template-columns:1fr}.heroPlaceholder{min-block-size:270px}}
 @media(max-width:640px){.headerLogo{inline-size:96px}.footerLogo{inline-size:235px}.curriculumDialog{padding:18px}.curriculumCards{grid-template-columns:1fr}.dialogHeader{gap:12px}.scope.scope h1{font-size:clamp(2rem,9vw,2.7rem)}}
+
+/* Current V4 core fishing/life-skills copy; no global/unrelated rebrand. */
+.coreWrap{inline-size:min(1160px,calc(100% - 40px));margin-inline:auto;min-inline-size:0}
+.coreHero{padding-block:clamp(32px,5vw,72px)}
+.coreHero p{max-inline-size:68ch}.corePlace{font-weight:700;color:#047AA8;margin-block:12px}
+.corePillars{font-size:.85rem;font-weight:700;letter-spacing:.03em;color:#052D50}
+.coreActions{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-block:24px}
+.corePrimary{display:inline-flex;align-items:center;justify-content:center;min-block-size:44px;padding:12px 18px;border:1px solid #052D50;border-radius:5px;background:#052D50;color:#FFF;text-decoration:none;font-weight:700;line-height:1.4}
+.corePrimary:hover{background:#073C68;color:#FFF}.corePrimary:focus-visible{outline:3px solid #F4B12D;outline-offset:4px}
+.coreSection{padding-block:clamp(32px,5vw,64px)}.coreSection>p{max-inline-size:80ch}
+.coreDisclosure{margin-block-start:18px;padding:18px;border:1px solid #C5DCE5;border-radius:6px;background:#FFF}
+.coreDisclosure>summary{cursor:pointer;font-weight:700}.coreDisclosure section{margin-block-start:22px}
+.coreTint{background:#EAF6FA}.coreFaq{padding-block:0}.coreFaqList{display:grid;gap:16px;max-inline-size:86ch}
+.coreApply{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:32px;align-items:start}
+.coreProgram h4{white-space:pre-line}.coreProgram p+p{margin-block-start:14px}.coreProgram li+li{margin-block-start:12px}
+.scope[lang="he"] .coreProgram h4,.scope[lang="he"] .coreHero h1{font-family:inherit}
+@media(max-width:980px){.coreApply{grid-template-columns:1fr}}
+@media(max-width:640px){.coreWrap{inline-size:calc(100% - 32px)}.coreActions{align-items:stretch;flex-direction:column}.coreActions>a,.coreActions>button{inline-size:100%}}
