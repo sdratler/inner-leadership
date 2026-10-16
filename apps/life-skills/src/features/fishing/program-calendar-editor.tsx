@@ -1,5 +1,6 @@
 "use client";
 import {useState,type FormEvent} from "react";
+import {z} from "zod";
 import type {Locale} from "../../lib/locale.ts";
 import {Button,Input,Select,Textarea} from "../../ui/workspace/controls.tsx";
 import {stageCommandSchema,type StageCommand} from "../fishing-stage/contract.ts";
@@ -8,6 +9,15 @@ import type {NativeProgramCommandIntent} from "./native-program-contract.ts";
 import type {FishingCalendarPlan} from "./program-calendar-contract.ts";
 
 function wall(instant:string){const p=Object.fromEntries(new Intl.DateTimeFormat("en-CA",{timeZone:"America/New_York",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(new Date(instant)).map(part=>[part.type,part.value]));return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;}
+/** An unchanged native instant may contain seconds not shown by minute inputs.
+ * Preserve it only with its exact original choice; edits use the strict resolver. */
+export function resolveFishingEditorInstant(value:string,choice:string,original?:string):string{
+ if(original!==undefined&&choice===original){
+  const checked=z.iso.datetime({offset:true}).parse(original);
+  if(wall(checked)===value)return new Date(checked).toISOString();
+ }
+ return resolveFloridaWallTime(value,choice||undefined);
+}
 function FloridaTime({id,label,value,choice,onChange,locale,locked}:{id:string;label:string;value:string;choice:string;onChange:(value:string,choice:string)=>void;locale:Locale;locked:boolean}){
  let values:string[]=[];try{if(value)values=floridaWallTimeCandidates(value);}catch{}
  return <div><Input id={id} label={label} type="datetime-local" required disabled={locked} value={value} onChange={e=>onChange(e.target.value,"")} help="America/New_York" error={value&&!values.length?(locale==="he"?"השעה אינה קיימת. בחרו שעה תקינה.":"This local time does not exist. Choose a valid time."):undefined}/>
@@ -45,7 +55,7 @@ export function FishingCalendarEditor({data,locale,initialOccurrenceId="",locked
    if(action==="create")command={...common,action,templateVersion:data.choice.templateVersion,childCapacity:data.choice.childCapacity};
    else if(action==="publish")command={...common,action};
    else if(action==="revise"){
-    if(timed&&!venue)throw Error("VENUE_REQUIRED");const time=timed?{kind:"scheduled" as const,timeZone:"America/New_York" as const,startsAt:resolveFloridaWallTime(start,startChoice||undefined),endsAt:resolveFloridaWallTime(end,endChoice||undefined)}:{kind:"undated" as const,timeZone:"America/New_York" as const};
+    if(timed&&!venue)throw Error("VENUE_REQUIRED");const original=selected?.time.kind==="scheduled"?selected.time:null,time=timed?{kind:"scheduled" as const,timeZone:"America/New_York" as const,startsAt:resolveFishingEditorInstant(start,startChoice,original?.startsAt),endsAt:resolveFishingEditorInstant(end,endChoice,original?.endsAt)}:{kind:"undated" as const,timeZone:"America/New_York" as const};
     command={...common,...specific,action,reason,details:{time,location:venue?.label??"",directions,equipment,logisticalNote:note,childCapacity:Number(capacity)}};
     if(timed)intent.resources=[{occurrenceId,expectedRevision:base.occurrence,venueId}];
    }else if(action==="cancel"||action==="complete")command={...common,...specific,action,reason};

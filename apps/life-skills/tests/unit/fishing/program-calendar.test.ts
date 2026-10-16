@@ -6,6 +6,7 @@ vi.mock("server-only",()=>({}));
 import {fishingCalendarCommandSchema,isDeniedFishingLessonLink} from "../../../src/features/fishing/program-calendar-http.ts";
 import {AppError} from "../../../src/lib/errors.ts";
 import {FishingLessonJourney,type LessonJourneyStore} from "../../../src/features/resources/fishing-lesson-journey.ts";
+import {resolveFishingEditorInstant} from "../../../src/features/fishing/program-calendar-editor.tsx";
 import {fishingCalendarChoicesSchema,fishingCalendarSelectionQuery,fishingCalendarSearch,fishingCalendarContext,selectedFishingStage,fishingCivilTime,fishingCalendarWindowSchema,fishingCalendarEvents,type FishingCalendarPlan} from "../../../src/features/fishing/program-calendar-contract.ts";
 import {orderedCalendarEntries} from "../../../src/features/calendar/entry-order.ts";
 import {CalendarBoard,CalendarAgenda} from "../../../src/features/calendar/views.tsx";
@@ -35,6 +36,44 @@ describe("optional lesson link denial classification — pure journey compositio
  });
  it.each([Error("LESSON_JOURNEY_FORBIDDEN_EXTRA"),Error("LESSON_JOURNEY_LEDGER_MISMATCH"),Error("SYNTHETIC_CORRUPT_ARTIFACT"),Error("LESSON_JOURNEY_CONFLICT"),new TypeError("SYNTHETIC_UNKNOWN"),{message:"LESSON_JOURNEY_FORBIDDEN"},"LESSON_JOURNEY_FORBIDDEN",null,undefined])("rejects unknown, corrupt and lookalike values (%#)",error=>{
   expect(isDeniedFishingLessonLink(error)).toBe(false);
+ });
+});
+
+describe("existing scheduled instant precision — pure editor resolution, not native schedule acceptance",()=>{
+ it.each([
+  ["2026-10-18T04:10","2026-10-18T08:10:39.123Z","2026-10-18T08:10:39.123Z"],
+  ["2026-10-18T04:10","2026-10-18T08:10:00.000Z","2026-10-18T08:10:00.000Z"],
+  ["2026-10-18T04:10","2026-10-18T11:10:39.123+03:00","2026-10-18T08:10:39.123Z"],
+  ["2026-10-18T04:10","2026-10-18T08:10:39Z","2026-10-18T08:10:39.000Z"],
+  ["2026-11-01T01:30","2026-11-01T05:30:39.123Z","2026-11-01T05:30:39.123Z"],
+  ["2026-11-01T01:30","2026-11-01T06:30:39.123Z","2026-11-01T06:30:39.123Z"],
+  ["2026-11-01T01:30","2026-11-01T01:30:39.123-04:00","2026-11-01T05:30:39.123Z"],
+  ["2026-11-01T01:30","2026-11-01T01:30:39.123-05:00","2026-11-01T06:30:39.123Z"],
+ ])("preserves the exact original instant for unchanged minute inputs (%#)",(value,original,expected)=>{
+  const result=resolveFishingEditorInstant(value,original,original);expect(result).toBe(expected);expect(Date.parse(result)).toBe(Date.parse(original));
+ });
+ it("uses the original strict resolver for a new unambiguous time",()=>{
+  expect(resolveFishingEditorInstant("2026-10-18T04:11","")).toBe("2026-10-18T08:11:00.000Z");
+ });
+ it("permits a deliberate changed wall time rather than preserving the old instant",()=>{
+  expect(resolveFishingEditorInstant("2026-10-18T04:11","","2026-10-18T08:10:39.123Z")).toBe("2026-10-18T08:11:00.000Z");
+ });
+ it("permits an explicit different valid fold instead of silently keeping the original",()=>{
+  expect(resolveFishingEditorInstant("2026-11-01T01:30","2026-11-01T06:30:00.000Z","2026-11-01T05:30:39.123Z")).toBe("2026-11-01T06:30:00.000Z");
+ });
+ it.each([
+  ["2026-10-18T04:11","2026-10-18T08:10:39.123Z","2026-10-18T08:10:39.123Z"],
+  ["2026-10-18T04:10","2026-10-18T08:10:39.123Z","2026-10-18T08:12:39.123Z"],
+  ["2026-10-18T04:10","2026-10-18T11:10:39.123+03:00","2026-10-18T08:10:39.123Z"],
+  ["2026-11-01T01:30","2026-11-01T07:30:00.000Z","2026-11-01T05:30:39.123Z"],
+  ["2026-10-18T04:10","not-iso","not-iso"],
+  ["2026-10-18T04:10","2026-10-18T08:10:39","2026-10-18T08:10:39"],
+  ["2026-02-30T04:10","2026-02-30T08:10:39Z","2026-02-30T08:10:39Z"],
+  ["2026-11-01T01:30","","2026-11-01T05:30:39.123Z"],
+  ["2026-03-08T02:30","","2026-03-08T06:30:39.123Z"],
+  ["2026-10-18T04:10:39","2026-10-18T08:10:39.123Z","2026-10-18T08:10:39.123Z"],
+ ])("does not borrow stale choices or bypass malformed/gap/fold checks (%#)",(value,choice,original)=>{
+  expect(()=>resolveFishingEditorInstant(value,choice,original)).toThrow();
  });
 });
 
