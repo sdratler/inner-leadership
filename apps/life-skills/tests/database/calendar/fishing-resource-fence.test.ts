@@ -16,6 +16,14 @@ test("published fishing blocks ordinary clinical bookings and blocked-time write
  const f=await fixture(),plan=await f.createPlan();await f.revise(plan.occurrences[0]!.id);await f.publish();const booking=await f.clinical();await expect(f.calendar.create(f.owner,randomUUID(),booking(f.at(48)))).rejects.toMatchObject({code:"CONFLICT"});await expect(f.calendar.addAvailability(f.owner,randomUUID(),{startsAt:f.at(48),endsAt:f.at(49),kind:"blocked"})).rejects.toMatchObject({code:"CONFLICT"});
  expect((await f.pool.query("SELECT count(*)::integer AS n FROM ls_calendar.appointments WHERE workspace_id=$1",[f.workspaceId])).rows[0].n).toBe(0);expect((await f.pool.query("SELECT count(*)::integer AS n FROM ls_cases.cases WHERE workspace_id=$1",[f.workspaceId])).rows[0].n).toBe(1);
 });
+test.each(["instructor","venue"] as const)("selected %s resource cannot bypass its typed foreign key with NULL; both published rows remain exact",async kind=>{
+ const f=await fixture(),plan=await f.createPlan();await f.revise(plan.occurrences[0]!.id);await f.publish();
+ const read=async()=>(await f.pool.query<{row:{kind:string;resource_id:string;instructor_id:string|null;venue_id:string|null}}>("SELECT to_jsonb(r) AS row FROM ls_fishing_stage.resource_reservations r WHERE workspace_id=$1 ORDER BY occurrence_id,kind",[f.workspaceId])).rows;
+ const before=await read();expect(before).toHaveLength(2);const selected=before.find(value=>value.row.kind===kind)!.row;
+ expect(selected[kind==="instructor"?"instructor_id":"venue_id"]).toBe(selected.resource_id);expect(selected[kind==="instructor"?"venue_id":"instructor_id"]).toBeNull();
+ const update=kind==="instructor"?"UPDATE ls_fishing_stage.resource_reservations SET instructor_id=NULL WHERE workspace_id=$1 AND kind='instructor'":"UPDATE ls_fishing_stage.resource_reservations SET venue_id=NULL WHERE workspace_id=$1 AND kind='venue'";
+ await expect(f.pool.query(update,[f.workspaceId])).rejects.toMatchObject({code:"23514"});expect(await read()).toEqual(before);
+});
 test("a clinical booking can occupy an unreserved draft but publication then fails atomically",async()=>{
  const f=await fixture(),plan=await f.createPlan();await f.revise(plan.occurrences[0]!.id);const booking=await f.clinical();await f.calendar.create(f.owner,randomUUID(),booking(f.at(48)));const before=(await f.stage().read(f.owner,f.ref))!;await expect(f.publish()).rejects.toMatchObject({code:"CONFLICT"});
  expect((await f.stage().read(f.owner,f.ref))!.revision).toBe(before.revision);expect((await f.pool.query("SELECT count(*)::integer AS n FROM ls_fishing_stage.resource_reservations WHERE workspace_id=$1 AND active",[f.workspaceId])).rows[0].n).toBe(0);

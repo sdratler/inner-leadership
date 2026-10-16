@@ -118,7 +118,7 @@ CREATE TABLE ls_fishing_stage.resource_reservations (
  occurrence_revision integer NOT NULL CHECK(occurrence_revision>0),active boolean NOT NULL,
  actor_id uuid NOT NULL,command_id uuid NOT NULL,
  PRIMARY KEY(workspace_id,occurrence_id,kind),CHECK(ends_at>starts_at),
- CHECK((kind='instructor' AND instructor_id=resource_id AND venue_id IS NULL) OR (kind='venue' AND venue_id=resource_id AND instructor_id IS NULL)),
+ CHECK((kind='instructor' AND instructor_id IS NOT NULL AND instructor_id=resource_id AND venue_id IS NULL) OR (kind='venue' AND venue_id IS NOT NULL AND venue_id=resource_id AND instructor_id IS NULL)),
  FOREIGN KEY(workspace_id,occurrence_id) REFERENCES ls_fishing_stage.occurrences(workspace_id,id) DEFERRABLE INITIALLY DEFERRED,
  FOREIGN KEY(workspace_id,instructor_id) REFERENCES ls_identity.accounts(workspace_id,id),
  FOREIGN KEY(workspace_id,venue_id) REFERENCES ls_fishing_stage.venues(workspace_id,id),
