@@ -1,6 +1,6 @@
 /** Actual retained routes, ordinary separate logins, disposable synthetic native
  * data only. These tests may NOT run before the exact native/browser recipe ACK. */
-import {test,expect,type Page,type Browser,type BrowserContext,type Request,type Response,type ConsoleMessage,type Dialog} from "@playwright/test";
+import {test,expect,type Page,type Browser,type BrowserContext,type Request,type Response,type ConsoleMessage,type Dialog,type WebSocket} from "@playwright/test";
 import {execFile} from "node:child_process";
 import {promisify} from "node:util";
 import {readFileSync} from "node:fs";
@@ -133,23 +133,52 @@ if(!file){
   if(failed){console.log("SYNTHETIC_PRACTITIONER_CLEANUP "+JSON.stringify({failedContexts:failed,primaryFailed}));if(!primaryFailed)throw Error("SYNTHETIC_PRACTITIONER_CONTEXT_CLEANUP_FAILED");}
  }
  function observePractitionerDraft(page:Page,locale:string){
-  const state={mainNavigations:0,mainDocuments:0,loads:0,domLoads:0},paths:string[]=[],categories=new Set<string>();let ended=false;
-  const increment=(key:keyof typeof state)=>{state[key]=Math.min(48,state[key]+1);};
+  const state={mainNavigations:0,mainDocuments:0,loads:0,domLoads:0,socketErrors:0,socketCloses:0,hmrFrames:0},paths:string[]=[],hmr:string[]=[],categories=new Set<string>(),errorNames=new Set<string>();let armed=false,ended=false;
+  const sockets=new Map<WebSocket,{received:(frame:{payload:string|Buffer})=>void;closed:()=>void;failed:(error:string)=>void}>();
+  const increment=(key:keyof typeof state)=>{if(armed&&!ended)state[key]=Math.min(48,state[key]+1);};
+  const classify=(text:string)=>{
+   if(/content.security.policy|\bCSP\b|refused to (?:load|execute|connect)/i.test(text)){
+    if(/script-src|(?:inline|external) script|javascript|unsafe-eval/i.test(text))return /unsafe-eval|evaluat/i.test(text)?"CSP_SCRIPT_EVAL":/inline/i.test(text)?"CSP_SCRIPT_INLINE":/external|load(?:ing)? (?:the )?script/i.test(text)?"CSP_SCRIPT_EXTERNAL":"CSP_SCRIPT_OTHER";
+    if(/style-src|stylesheet|inline style/i.test(text))return /inline/i.test(text)?"CSP_STYLE_INLINE":"CSP_STYLE_EXTERNAL";
+    return /connect-src|connect to/i.test(text)?"CSP_CONNECT":"CSP_OTHER";
+   }
+   return /ERR_CERT_AUTHORITY_INVALID/.test(text)?"JS_WS_CERT":/WebSocket/i.test(text)?"JS_WEBSOCKET":/ChunkLoadError|loading chunk|failed to fetch dynamically imported module/i.test(text)?"CHUNK":/hydrat/i.test(text)?"HYDRATION":"JS_RUNTIME";
+  };
   const navigated=(frame:ReturnType<Page["mainFrame"]>)=>{
-   if(frame!==page.mainFrame())return;increment("mainNavigations");if(paths.length>=8)return;
+   if(!armed||ended||frame!==page.mainFrame())return;increment("mainNavigations");if(paths.length>=8)return;
    try{const url=new URL(frame.url());paths.push(url.origin!==data.origin?"OTHER_ORIGIN":url.pathname===`/${locale}/app/calendar`?"CALENDAR":url.pathname===`/${locale}/login`?"LOGIN":"OTHER_SAME_ORIGIN");}catch{paths.push("UNKNOWN_NAVIGATION");}
   };
-  const requested=(request:Request)=>{if(request.isNavigationRequest()&&request.frame()===page.mainFrame())increment("mainDocuments");};
-  const loaded=()=>increment("loads"),domLoaded=()=>increment("domLoads"),runtime=()=>{categories.add("JS_RUNTIME");};
+  const requested=(request:Request)=>{if(armed&&!ended&&request.isNavigationRequest()&&request.frame()===page.mainFrame())increment("mainDocuments");};
+  const loaded=()=>increment("loads"),domLoaded=()=>increment("domLoads"),runtime=(error:Error)=>{
+   if(!armed||ended)return;categories.add(classify(error.message));errorNames.add(["Error","TypeError","ReferenceError","SyntaxError","RangeError","EvalError","SecurityError","AbortError"].includes(error.name)?error.name:"OTHER_ERROR");
+  };
   const consoleMessage=(message:ConsoleMessage)=>{
+   if(!armed||ended)return;
    const text=message.text();if(/fast refresh/i.test(text))categories.add(/full reload/i.test(text)?"FAST_REFRESH_FULL_RELOAD":/rebuild/i.test(text)?"FAST_REFRESH_REBUILD":"FAST_REFRESH_OTHER");
-   else if(message.type()==="error")categories.add(/content.security.policy|\bCSP\b|refused to (?:load|execute|connect)/i.test(text)?"CSP":/hydrat/i.test(text)?"HYDRATION":"JS_RUNTIME");
+   else if(message.type()==="error")categories.add(classify(text));
   };
-  page.on("framenavigated",navigated);page.on("request",requested);page.on("load",loaded);page.on("domcontentloaded",domLoaded);page.on("pageerror",runtime);page.on("console",consoleMessage);
-  return(failed:boolean)=>{
+  const recordHmr=(tag:string)=>{increment("hmrFrames");if(hmr.length===16)hmr.shift();hmr.push(tag);};
+  const socket=(connection:WebSocket)=>{
+   if(ended||sockets.size>=8||sockets.has(connection))return;
+   try{const url=new URL(connection.url());if(url.protocol!=="wss:"||url.host!==new URL(data.origin).host||url.pathname!=="/_next/hmr")return;}catch{return;}
+   const received=(frame:{payload:string|Buffer})=>{
+    if(!armed||ended)return;
+    const payload=frame.payload;
+    if(typeof payload!=="string"){recordHmr(Buffer.isBuffer(payload)?payload.length>16384?"OVERSIZED":"BINARY":"MALFORMED");return;}
+    if(Buffer.byteLength(payload,"utf8")>16384){recordHmr("OVERSIZED");return;}
+    try{const message:unknown=JSON.parse(payload),type=message&&typeof message==="object"&&!Array.isArray(message)&&"type"in message?message.type:null;
+     recordHmr(typeof type==="string"&&["serverComponentChanges","reloadPage","staticParamsChanged","building","built","sync"].includes(type)?type:"OTHER");
+    }catch{recordHmr("MALFORMED");}
+   };
+   const closed=()=>increment("socketCloses"),failed=(error:string)=>{if(armed&&!ended){increment("socketErrors");categories.add(classify(error));}};
+   sockets.set(connection,{received,closed,failed});connection.on("framereceived",received);connection.on("close",closed);connection.on("socketerror",failed);
+  };
+  page.on("websocket",socket);page.on("framenavigated",navigated);page.on("request",requested);page.on("load",loaded);page.on("domcontentloaded",domLoaded);page.on("pageerror",runtime);page.on("console",consoleMessage);
+  return{begin(){if(ended||armed)return;armed=true;},finish(failed:boolean){
    if(ended)return;ended=true;page.off("framenavigated",navigated);page.off("request",requested);page.off("load",loaded);page.off("domcontentloaded",domLoaded);page.off("pageerror",runtime);page.off("console",consoleMessage);
-   if(failed)console.log("SYNTHETIC_PRACTITIONER_DRAFT "+JSON.stringify({...state,paths,categories:[...categories].sort()}));
-  };
+   page.off("websocket",socket);for(const[connection,handlers]of sockets){connection.off("framereceived",handlers.received);connection.off("close",handlers.closed);connection.off("socketerror",handlers.failed);}
+   if(failed)console.log("SYNTHETIC_PRACTITIONER_DRAFT "+JSON.stringify({...state,armed,paths,hmr,categories:[...categories].sort(),errorNames:[...errorNames].sort()}));
+  }};
  }
  async function chooseSession(page:Page,form:ReturnType<Page["getByRole"]>,locale:string,id:string){
   const control=form.getByRole("combobox",{name:t(locale,"Session","מפגש"),exact:true}),message=t(locale,"Replace the unsaved session draft?","להחליף את טיוטת המפגש שלא נשמרה?");let decision:Promise<void>|null=null,confirmed=false,unexpected=false;
@@ -193,12 +222,13 @@ if(!file){
   });
 
   test(`${locale}: practitioner real native edit, long draft/reload conflict and retained shared agenda`,async({page,browser},info)=>{
-   const contexts:BrowserContext[]=[];let primaryFailed=false,phase="open-current-plan",finishDraft:((failed:boolean)=>void)|null=null;try{
+   const contexts:BrowserContext[]=[];let primaryFailed=false,phase="open-current-plan",draftObserver:ReturnType<typeof observePractitionerDraft>|null=null;try{
+   draftObserver=observePractitionerDraft(page,locale);
    const operator={...family(locale).selection,learnerId:null,enrollmentId:null};await login(page,"practitioner",route(locale,"practitioner")+'&'+fishingCalendarSearch(operator),locale);const event=page.locator(`[data-fishing-occurrence-id="${data.occurrenceId}"]:visible`);await expect(event).toHaveCount(1);await event.getByRole("button").click();
    phase="open-editor";await page.getByRole("button",{name:t(locale,"Manage this stage","ניהול השלב"),exact:true}).click();const form=page.getByRole("form",{name:t(locale,"Manage fishing stage","ניהול שלב הדיג"),exact:true});
    phase="select-session";await form.getByLabel(t(locale,"Action","פעולה"),{exact:true}).selectOption("revise");await chooseSession(page,form,locale,data.occurrenceId);
    phase="fill-main-draft";const note=form.getByLabel(t(locale,"Family-visible logistical note","הערה לוגיסטית המוצגת למשפחות"),{exact:true}),draft="Synthetic retained draft / טיוטה סינתטית ".repeat(20);await note.fill(draft);await form.getByRole("textbox",{name:t(locale,"Reason visible to the enrolled family","סיבה המוצגת למשפחה הרשומה"),exact:true}).fill("Synthetic deliberate UI revision");
-   finishDraft=observePractitionerDraft(page,locale);
+   draftObserver.begin();
    // A second ordinary session saves a real competing native revision. No
    // fabricated 409 or permissive replacement adapter supplies this conflict.
    phase="second-login";const other=await separate(browser,page,contexts);await login(other,"practitioner",page.url().replace(data.origin,""),locale);await other.getByRole("button",{name:t(locale,"Manage this stage","ניהול השלב"),exact:true}).click();
@@ -211,7 +241,7 @@ if(!file){
    phase="accepted-save-reload";const pending=page.waitForResponse(r=>new URL(r.url()).pathname==="/api/calendar/fishing/command"&&r.request().method()==="POST");await form.getByRole("button",{name:t(locale,"Save deliberate action","שמירת הפעולה שנבחרה"),exact:true}).click();expect((await pending).status()).toBe(200);await page.reload();const full=await openPlan(page,locale);await expect(full.getByText(draft,{exact:true})).toBeVisible();
    phase="saved-plan-screen";await screen(page,locale,info.outputPath(`practitioner-${locale}-saved-plan.png`));
    phase="agenda-screen";await page.goto(route(locale,"practitioner",false,"agenda"));await expect(page.locator(`[data-fishing-occurrence-id="${data.occurrenceId}"]:visible`)).toHaveCount(1);await expect(page.locator('[data-ls-calendar-grid]:visible')).toHaveCount(0);await screen(page,locale,info.outputPath(`practitioner-${locale}-agenda.png`));
-   }catch(error){primaryFailed=true;console.log("SYNTHETIC_PRACTITIONER_PHASE "+JSON.stringify({phase}));throw error;}finally{finishDraft?.(primaryFailed);await closePractitionerContexts(contexts,primaryFailed);}
+   }catch(error){primaryFailed=true;console.log("SYNTHETIC_PRACTITIONER_PHASE "+JSON.stringify({phase}));throw error;}finally{draftObserver?.finish(primaryFailed);await closePractitionerContexts(contexts,primaryFailed);}
   });
 
   test(`${locale}: separately authenticated optional child and adult cannot gain parent/operator capabilities`,async({page,browser},info)=>{
