@@ -1,6 +1,8 @@
 import {defineConfig,devices} from "@playwright/test";
 const education=process.env.LS_EDUCATION_UI_ONLY==="true";
 const community=process.env.LS_COMMUNITY_UI_ONLY==="true";
-export default defineConfig({testDir:community?"../community":education?"../resources":process.env.LS_FISHING_LEAD_UI_ONLY==="true"?"../contact-ops":".",testMatch:community?"inbox-journey.focused.ts":education?"education-lesson.spec.ts":process.env.LS_FISHING_LEAD_UI_ONLY==="true"?"fishing-lead-controls.spec.ts":"group-interest.spec.ts",fullyParallel:false,workers:1,retries:0,timeout:education?120000:60000,
+const launchOps=process.env.LS_RM_LAUNCH_OPS09_ONLY==="true";
+if(launchOps&&(process.env.LS_FISHING_LEAD_UI_ONLY!=="true"||community||education))throw Error("OPS09_EXCLUSIVE_CONFIG_REQUIRED");
+export default defineConfig({testDir:community?"../community":education?"../resources":process.env.LS_FISHING_LEAD_UI_ONLY==="true"?"../contact-ops":".",testMatch:launchOps?"launch-keyboard.focused.ts":community?"inbox-journey.focused.ts":education?"education-lesson.spec.ts":process.env.LS_FISHING_LEAD_UI_ONLY==="true"?"fishing-lead-controls.spec.ts":"group-interest.spec.ts",fullyParallel:false,workers:1,retries:0,timeout:education?120000:60000,
  reporter:[["list"]],outputDir:"test-results/group-interest",use:{baseURL:"https://localhost:3105",ignoreHTTPSErrors:true,trace:"retain-on-failure",video:"off",screenshot:"only-on-failure"},
  projects:[{name:"desktop",use:{...devices["Desktop Chrome"],viewport:{width:1440,height:education||community?900:1000}}},...(process.env.LS_GROUP_INTEREST_INCLUDE_TABLET==="true"?[{name:"tablet768",use:{...devices["Desktop Chrome"],viewport:{width:768,height:1024},hasTouch:true}}]:[]),{name:"mobile390",use:{...devices["Desktop Chrome"],viewport:{width:390,height:844},isMobile:true,hasTouch:true}},{name:"mobile340",use:{...devices["Desktop Chrome"],viewport:{width:340,height:844},isMobile:true,hasTouch:true}}]});
