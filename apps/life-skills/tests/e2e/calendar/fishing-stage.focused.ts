@@ -9,8 +9,8 @@ import {fishingCalendarSearch} from "../../../src/features/fishing/program-calen
 import {syntheticChildFailure} from "../group-interest/synthetic-child-output.ts";
 const file=process.env.LS_FISHING_STAGE_FIXTURE_PATH;
 if(!file){
- // Foundation discovery must execute the isolated ordinary-role gate, not skip
- // or reuse its unrelated server. Missing exact target/SQL opt-in is a failure.
+ // Explicit focused execution runs the isolated ordinary-role gate, never the
+ // foundation server. Missing exact target/SQL opt-in remains a failure.
  test("ordinary-role fishing Calendar through the registered isolated native harness",async({},info)=>{
   test.setTimeout(480000);const project=info.project.name==="mobile"?"mobile390":info.project.name;
   const result=await promisify(execFile)(process.execPath,["--conditions=react-server","--import","tsx","tests/e2e/calendar/run.ts"],{timeout:450000,maxBuffer:2*1024*1024,windowsHide:true,
