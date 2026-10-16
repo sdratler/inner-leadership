@@ -5,7 +5,7 @@ import {execFile} from "node:child_process";
 import {promisify} from "node:util";
 import {readFileSync} from "node:fs";
 import type {FishingStageBrowserData} from "./fishing-stage-fixture.ts";
-import {fishingCalendarSearch} from "../../../src/features/fishing/program-calendar-contract.ts";
+import {fishingCalendarSearch,fishingCalendarChoicesSchema,fishingCalendarSelectionSchema,fishingCalendarSelectionQuery} from "../../../src/features/fishing/program-calendar-contract.ts";
 import {syntheticChildFailure} from "../group-interest/synthetic-child-output.ts";
 const file=process.env.LS_FISHING_STAGE_FIXTURE_PATH;
 if(!file){
@@ -26,6 +26,42 @@ if(!file){
  const t=(locale:string,en:string,he:string)=>locale==="he"?he:en;
  const family=(locale:string)=>data.families[locale]!;
  const route=(locale:string,role:string,selected=false,view="day")=>`/${locale}/${role==="practitioner"?"app/calendar":role==="child"||role==="adult_client"?"client/calendar":"family/schedule"}?`+new URLSearchParams({date:data.date,view,...(selected?Object.fromEntries(new URLSearchParams(fishingCalendarSearch(family(locale).selection))):{})});
+ /** Observe only responses already requested by the UI. Never retain a DTO,
+  * context identifier, query, header, token, lesson, raw error or user input. */
+ function observeCalendar(page:Page){
+  type Entry={method:"GET";pathname:string;status:number;bodyObserved:boolean;envelopeValid?:boolean;ok?:boolean;code?:string;choicesValid?:boolean;planSelectionValid?:boolean;planSelectionCanonicalMatch?:boolean;planSelectionJsonMatch?:boolean;planRoleMatch?:boolean};
+  const events:Entry[]=[],pending=new Set<Promise<void>>();let sealed=false;
+  const paths=["/api/calendar/fishing/context","/api/calendar/fishing/plan","/api/calendar/fishing/timeline"],codes=["INVALID_REQUEST","UNAUTHENTICATED","FORBIDDEN","NOT_FOUND","CONFLICT","PAYLOAD_TOO_LARGE","UNSUPPORTED_MEDIA_TYPE","RATE_LIMITED","UNAVAILABLE","INTERNAL"];
+  const observed=(response:Response)=>{
+   const url=new URL(response.url());if(events.length>=48||url.origin!==data.origin||!paths.includes(url.pathname)||response.request().method()!=="GET")return;
+   const event:Entry={method:"GET",pathname:url.pathname,status:response.status(),bodyObserved:false};events.push(event);if(pending.size>=4)return;
+   const location=new URL(page.url()),query=new URLSearchParams();for(const key of["learnerId","enrollmentId","cohortId","stageId","stage"])for(const value of location.searchParams.getAll(key))query.append(key,value);
+   let expected:ReturnType<typeof fishingCalendarSelectionQuery>|null=null;try{expected=fishingCalendarSelectionQuery(query);}catch{/* No selected context; no inferred child. */}
+   const role=/^\/(?:en|he)\/family(?:\/|$)/.test(location.pathname)?"parent":/^\/(?:en|he)\/app(?:\/|$)/.test(location.pathname)?"practitioner":null;
+   const reading=response.json().then((raw:unknown)=>{
+    if(sealed)return;event.bodyObserved=true;
+    if(!raw||typeof raw!=="object"||!("ok"in raw)||typeof raw.ok!=="boolean"){event.envelopeValid=false;return;}event.envelopeValid=true;event.ok=raw.ok;
+    if(!raw.ok){if("error"in raw&&raw.error&&typeof raw.error==="object"&&"code"in raw.error&&typeof raw.error.code==="string"&&codes.includes(raw.error.code))event.code=raw.error.code;return;}
+    if(!("data"in raw)){event.envelopeValid=false;return;}
+    if(url.pathname==="/api/calendar/fishing/context")event.choicesValid=fishingCalendarChoicesSchema.safeParse(raw.data).success;
+    if(url.pathname==="/api/calendar/fishing/plan"){
+     const value=raw.data;if(!value||typeof value!=="object")return;
+     const parsed=fishingCalendarSelectionSchema.safeParse("selection"in value?value.selection:null);event.planSelectionValid=parsed.success;
+     if(parsed.success&&expected){event.planSelectionCanonicalMatch=fishingCalendarSearch(parsed.data)===fishingCalendarSearch(expected);event.planSelectionJsonMatch=JSON.stringify("selection"in value?value.selection:null)===JSON.stringify(expected);}
+     if(role&&"view"in value)event.planRoleMatch=value.view===null||!!value.view&&typeof value.view==="object"&&"role"in value.view&&value.view.role===role;
+    }
+   }).catch(()=>{if(!sealed)event.bodyObserved=false;}).finally(()=>{pending.delete(reading);});pending.add(reading);
+  };
+  page.on("response",observed);
+  return async(failed:boolean)=>{
+   page.off("response",observed);let timer:ReturnType<typeof setTimeout>|undefined;
+   try{await Promise.race([Promise.allSettled([...pending]),new Promise<void>(resolve=>{timer=setTimeout(resolve,1000);})]);}finally{if(timer)clearTimeout(timer);sealed=true;}
+   if(failed)console.log("SYNTHETIC_CALENDAR_DIAGNOSTIC "+JSON.stringify({events,pendingReads:pending.size}));
+  };
+ }
+ const calendarObservers=new WeakMap<Page,ReturnType<typeof observeCalendar>>();
+ test.beforeEach(({page})=>{calendarObservers.set(page,observeCalendar(page));});
+ test.afterEach(async({page},info)=>{try{await calendarObservers.get(page)?.(info.status!==info.expectedStatus);}finally{calendarObservers.delete(page);}});
  async function login(page:Page,role:string,target:string,locale:string){
   const credentials=data.credentials.find(c=>c.role===role);if(!credentials)throw Error("EXACT_SYNTHETIC_ROLE_REQUIRED");
   const expected=new URL(target,data.origin),sameTarget=(url:URL)=>url.origin===expected.origin&&url.pathname===expected.pathname&&url.hash===''&&JSON.stringify([...url.searchParams].sort())===JSON.stringify([...expected.searchParams].sort());
