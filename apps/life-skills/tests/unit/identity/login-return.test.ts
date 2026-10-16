@@ -9,6 +9,33 @@ it('retains only strict native fishing hints on the existing Calendar return pat
  const invalid=new URL(practitionerReturnPath('en','calendar',{learnerId:['two','values'],stageId:'constructor',stage:'1e0'}),'https://life-skills.invalid');expect(invalid.search).toBe('');
 });
 
+const fishingReturnTuple={fishing:'1',learnerId:'11111111-1111-4111-8111-111111111111',enrollmentId:'22222222-2222-4222-8222-222222222222',cohortId:'33333333-3333-4333-8333-333333333333',stageId:'44444444-4444-4444-8444-444444444444',stage:'1'};
+for(const locale of ['en','he'] as const)for(const role of ['practitioner','parent','child'] as const){
+ const path=`/${locale}/${role==='practitioner'?'app/calendar':role==='parent'?'family/schedule':'client/calendar'}`;
+ const returned=(query:Record<string,string|string[]|undefined>)=>role==='practitioner'?practitionerReturnPath(locale,'calendar',query):role==='parent'?parentReturnPath(locale,path,query):clientReturnPath(locale,path,query);
+ it(`${locale}/${role}: preserves the complete single-valued fishing selection and old clinical/layer context`,()=>{
+  const legacy={caseId:'123e4567-e89b-42d3-a456-426614174000',date:'2026-10-16',view:'day',practice:'0'},value=returned({...legacy,...fishingReturnTuple,role:'practitioner',teacherKey:'PRIVATE',next:'https://untrusted.invalid'}),url=new URL(value,'https://private.invalid');
+  expect(url.pathname).toBe(path);expect(Object.fromEntries(url.searchParams)).toEqual({...legacy,...fishingReturnTuple});expect(loginReturnDestination(locale,role,value)).toBe(value);
+  for(const other of ['practitioner','parent','child']as const)if(other!==role)expect(loginReturnDestination(locale,other,value)).not.toBe(value);
+  expect(loginReturnDestination(locale==='en'?'he':'en',role,value)).not.toBe(value);
+ });
+ it(`${locale}/${role}: rejects the entire ambiguous or malformed tuple, not just one key`,()=>{
+  const changes:Record<string,string|string[]|undefined>[]=[...Object.entries(fishingReturnTuple).map(([key,value])=>({[key]:[value,value]})),...['learnerId','enrollmentId','cohortId','stageId'].map(key=>({[key]:'constructor'})),{stage:'01'},{stage:'1e0'},{stage:'5'},{fishing:'0'},{stageId:undefined}];
+  for(const change of changes){const value=new URL(returned({date:'2026-10-16',view:'agenda',...fishingReturnTuple,...change}),'https://private.invalid');expect(Object.fromEntries(value.searchParams)).toEqual({date:'2026-10-16',view:'agenda'});}
+ });
+ it(`${locale}/${role}: supports unselected child/operator context without selecting a first enrollment`,()=>{
+  expect(Object.fromEntries(new URL(returned({fishing:'1',learnerId:fishingReturnTuple.learnerId}),'https://private.invalid').searchParams)).toEqual({fishing:'1',learnerId:fishingReturnTuple.learnerId});
+  const {cohortId,stageId,stage}=fishingReturnTuple,operator={fishing:'1',cohortId,stageId,stage};expect(Object.fromEntries(new URL(returned(operator),'https://private.invalid').searchParams)).toEqual(operator);
+ });
+}
+it('does not attach fishing Calendar context to unrelated parent/client or practitioner destinations',()=>{
+ for(const locale of ['en','he']as const){
+  for(const suffix of ['practice','feedback','settings'])expect(parentReturnPath(locale,`/${locale}/family/${suffix}`,fishingReturnTuple)).toBe(`/${locale}/family/${suffix}`);
+  for(const suffix of ['practice','messages','settings'])expect(clientReturnPath(locale,`/${locale}/client/${suffix}`,fishingReturnTuple)).toBe(`/${locale}/client/${suffix}`);
+  expect(practitionerReturnPath(locale,'practice',fishingReturnTuple)).toBe(`/${locale}/app/practice`);
+ }
+});
+
 it('preserves only a bounded legacy lead ID on a practitioner People return link', () => {
   expect(practitionerReturnPath('he', 'clients', { section: 'prospects', leadId: 'LS-LEAD-synthetic-one' }))
     .toBe('/he/app/clients?section=prospects&leadId=LS-LEAD-synthetic-one');

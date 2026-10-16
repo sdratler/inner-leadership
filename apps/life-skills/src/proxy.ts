@@ -5,7 +5,7 @@ import { parseIdentityConfig } from "./features/identity/config.ts";
 import { runtimePublicConsent } from "./features/forms/pre-enrollment/consent.ts";
 import { ownerPreviewConfig } from "./features/forms/pre-enrollment/owner-preview.ts";
 import { intakeStaffEntry } from "./features/forms/pre-enrollment/public-origin.ts";
-import { clientReturnPath, parentReturnPath, practitionerDetailReturnPath, practitionerReturnPath } from "./features/identity/login-return.ts";
+import { clientReturnPath, parentReturnPath, practitionerDetailReturnPath, practitionerReturnPath,fishingCalendarReturnKeys } from "./features/identity/login-return.ts";
 import { groupInterestCandidateEnabled } from "./features/group-interest/candidate.ts";
 import { publicGroupApplicationEnvironmentEnabled } from "./features/group-application/candidate.ts";
 import { canonicalForwardedRequest } from "./features/integration/canonical-forwarded-request.ts";
@@ -178,10 +178,10 @@ export function proxy(request: NextRequest) {
   if (practitionerPage) {
     const locale = practitionerPage[1] as "he" | "en";
     const page = practitionerPage[2] as "calendar" | "clients" | "practice";
-    const query: Record<string, string | undefined> = {};
-    for (const key of page === "calendar" ? ["date", "view", "caseId", "context", "mode", "taskId"] : page === "practice" ? ["caseId", "audienceId", "assignmentId", "section"] : ["section", "filter", "leadId", "personId", "mode", "page", "search", "stage", "language", "due"]) {
+    const query: Record<string, string | string[] | undefined> = {};
+    for (const key of page === "calendar" ? ["date", "view", "caseId", "context", "mode", "taskId","tasks","followups","practice","content",...fishingCalendarReturnKeys] : page === "practice" ? ["caseId", "audienceId", "assignmentId", "section"] : ["section", "filter", "leadId", "personId", "mode", "page", "search", "stage", "language", "due"]) {
       const values = request.nextUrl.searchParams.getAll(key);
-      query[key] = values.length === 1 ? values[0] : undefined;
+      query[key] = values.length === 1 ? values[0] : page==='calendar'&&values.length>1&&fishingCalendarReturnKeys.some(field=>field===key)?values:undefined;
     }
     inbound.set("x-ls-practitioner-return", practitionerReturnPath(locale, page, query));
   }
@@ -194,19 +194,21 @@ export function proxy(request: NextRequest) {
   }
   const parentPage = /^\/(he|en)\/family(?:\/|$)/.exec(pathname);
   if (parentPage) {
-    const query: Record<string, string | undefined> = {};
-    for (const key of ["caseId", "date", "view", "audienceId", "assignmentId", "practiceVersionId", "section"]) {
+    const query: Record<string, string | string[] | undefined> = {};
+    const calendar=pathname===`/${parentPage[1]}/family/schedule`;
+    for (const key of ["caseId", "date", "view", "audienceId", "assignmentId", "practiceVersionId", "section",...(calendar?['practice',...fishingCalendarReturnKeys]:[])]) {
       const values = request.nextUrl.searchParams.getAll(key);
-      query[key] = values.length === 1 ? values[0] : undefined;
+      query[key] = values.length === 1 ? values[0] : calendar&&values.length>1&&fishingCalendarReturnKeys.some(field=>field===key)?values:undefined;
     }
     inbound.set("x-ls-parent-return", parentReturnPath(parentPage[1] as "he" | "en", pathname, query));
   }
   const clientPage = /^\/(he|en)\/client(?:\/|$)/.exec(pathname);
   if (clientPage) {
-    const query: Record<string, string | undefined> = {};
-    for (const key of ["caseId", "date", "view", "audienceId", "assignmentId", "section"]) {
+    const query: Record<string, string | string[] | undefined> = {};
+    const calendar=pathname===`/${clientPage[1]}/client/calendar`;
+    for (const key of ["caseId", "date", "view", "audienceId", "assignmentId", "section",...(calendar?['practice',...fishingCalendarReturnKeys]:[])]) {
       const values = request.nextUrl.searchParams.getAll(key);
-      query[key] = values.length === 1 ? values[0] : undefined;
+      query[key] = values.length === 1 ? values[0] : calendar&&values.length>1&&fishingCalendarReturnKeys.some(field=>field===key)?values:undefined;
     }
     inbound.set("x-ls-client-return", clientReturnPath(clientPage[1] as "he" | "en", pathname, query));
   }

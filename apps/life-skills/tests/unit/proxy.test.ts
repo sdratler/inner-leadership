@@ -25,6 +25,22 @@ describe("public static perimeter", () => {
 });
 
 afterEach(() => vi.unstubAllEnvs());
+describe('ordinary fishing Calendar proxy return context, not an authorization grant',()=>{
+ const tuple={fishing:'1',learnerId:'11111111-1111-4111-8111-111111111111',enrollmentId:'22222222-2222-4222-8222-222222222222',cohortId:'33333333-3333-4333-8333-333333333333',stageId:'44444444-4444-4444-8444-444444444444',stage:'1'},origin='https://life-skills.bneineviimacademy.org';
+ const configured=()=>{vi.stubEnv('NODE_ENV','production');vi.stubEnv('LS_APP_MODE','foundation_locked');vi.stubEnv('LS_APP_ORIGIN',origin);vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');};
+ for(const locale of ['en','he'])for(const role of ['practitioner','parent','client']){
+  const path=`/${locale}/${role==='practitioner'?'app/calendar':role==='parent'?'family/schedule':'client/calendar'}`,header='x-middleware-request-x-ls-'+role+'-return';
+  const returned=(query:URLSearchParams)=>{const r=proxy(new NextRequest(origin+path+'?'+query,{headers:{'x-ls-practitioner-return':'https://untrusted.invalid/private','x-ls-parent-return':'/he/family/settings','x-ls-client-return':'/en/client/messages'}}));expect(r.status).toBe(200);for(const other of ['practitioner','parent','client'])if(other!==role)expect(r.headers.get('x-middleware-request-x-ls-'+other+'-return')).toBeNull();return new URL(r.headers.get(header)!,origin);};
+  it(`${locale}/${role}: derives the full bounded selection from the original route, never a caller return header`,()=>{
+   configured();const legacy={caseId:'123e4567-e89b-42d3-a456-426614174000',date:'2026-10-16',view:'day',practice:'0'},query=new URLSearchParams({...legacy,...tuple,role:'practitioner',teacherKey:'PRIVATE',next:'https://untrusted.invalid'}),url=returned(query);expect(url.pathname).toBe(path);expect(Object.fromEntries(url.searchParams)).toEqual({...legacy,...tuple});
+  });
+  it(`${locale}/${role}: preserves duplicates until the shared helper rejects the whole fishing selection`,()=>{
+   configured();for(const[key,value]of Object.entries(tuple)){const query=new URLSearchParams({...tuple,date:'2026-10-16',view:'agenda'});query.append(key,value);expect(Object.fromEntries(returned(query).searchParams)).toEqual({date:'2026-10-16',view:'agenda'});}
+   for(const[key,value]of [['learnerId','constructor'],['enrollmentId','bad'],['cohortId','bad'],['stageId','bad'],['stage','1e0'],['fishing','0']]){const query=new URLSearchParams({...tuple,date:'2026-10-16'});query.set(key!,value!);expect(Object.fromEntries(returned(query).searchParams)).toEqual({date:'2026-10-16'});}
+  });
+ }
+ it('keeps existing practitioner Calendar layer values bounded through the proxy',()=>{configured();const r=proxy(new NextRequest(origin+'/en/app/calendar?tasks=0&followups=1&practice=0&content=1'));expect(Object.fromEntries(new URL(r.headers.get('x-middleware-request-x-ls-practitioner-return')!,origin).searchParams)).toEqual({tasks:'0',followups:'1',practice:'0',content:'1'});});
+});
 describe('native fishing child-context original transport fence',()=>{
  it('rejects spoofed forwarding before canonical rewriting and preserves the private enablement gate',()=>{
   const origin='https://life-skills.bneineviimacademy.org',path='/api/private/fishing/children';

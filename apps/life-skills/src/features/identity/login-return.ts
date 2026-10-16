@@ -5,9 +5,23 @@ import {contentChannel,contentDate,contentState} from '../marketing-overview/cal
 import {creativeApprovals,creativePlacements,creativeFilters} from '../marketing-overview/creative-filters.ts';
 import {isCommunityView} from '../community-reply/views.ts';
 import {educationQuery,educationSearch} from '../resources/education-query.ts';
-import {fishingCalendarContext} from '../fishing/program-calendar-contract.ts';
+import {fishingCalendarContext,fishingCalendarSelectionQuery,fishingCalendarSearch} from '../fishing/program-calendar-contract.ts';
 
 type Role = "practitioner" | "parent" | "adult_client" | "child";
+type ReturnQuery=Record<string,string|string[]|undefined>;
+export const fishingCalendarReturnKeys=['fishing','learnerId','enrollmentId','cohortId','stageId','stage'] as const;
+/** Return hints are not authority. Reject an ambiguous/malformed fishing tuple
+ * together; never turn a duplicate into a different partial selection. */
+function calendarFishingReturn(query:ReturnQuery):Record<string,string>{
+ const params=new URLSearchParams();for(const key of fishingCalendarReturnKeys){const value=query[key];if(value===undefined)continue;if(typeof value!=='string')return {};params.set(key,value);}
+ const hints=fishingCalendarContext(params);if(Object.keys(hints).length!==params.size)return {};
+ if(['enrollmentId','cohortId','stageId','stage'].some(key=>params.has(key))){
+  const selected=new URLSearchParams(params);selected.delete('fishing');
+  try{const selection=fishingCalendarSelectionQuery(selected),canonical=new URLSearchParams(fishingCalendarSearch(selection));if(hints.fishing)canonical.set('fishing','1');return fishingCalendarContext(canonical);}catch{return {};}
+ }
+ return hints;
+}
+const singleReturnQuery=(query:ReturnQuery):Record<string,string|undefined>=>Object.fromEntries(Object.entries(query).map(([key,value])=>[key,typeof value==='string'?value:undefined]));
 
 /** A login return is a same-locale, same-role app path, never an arbitrary URL. */
 export function loginReturnDestination(locale: Locale, role: Role, requested: string | null): string | null {
@@ -33,8 +47,7 @@ export function practitionerReturnPath(locale: Locale, page: "calendar" | "clien
   const params = new URLSearchParams();
   const one = (key: string) => typeof query[key] === "string" ? query[key] as string : "";
   if (page === "calendar") {
-    const fishing=new URLSearchParams();for(const key of ['fishing','learnerId','enrollmentId','cohortId','stageId','stage'])if(typeof query[key]==='string')fishing.set(key,one(key));
-    for(const [key,value]of Object.entries(fishingCalendarContext(fishing)))params.set(key,value);
+    for(const [key,value]of Object.entries(calendarFishingReturn(query)))params.set(key,value);
     for(const key of ['tasks','followups','practice','content'])if(one(key)==='0'||one(key)==='1')params.set(key,one(key));
     if (/^\d{4}-\d{2}-\d{2}$/.test(one("date"))) params.set("date", one("date"));
     if (["day", "week", "month", "agenda"].includes(one("view"))) params.set("view", one("view"));
@@ -111,7 +124,8 @@ export function practitionerDetailReturnPath(locale:Locale,pathname:string,query
 }
 
 /** Preserve known parent destinations without forwarding arbitrary query text into login. */
-export function parentReturnPath(locale: Locale, pathname: string, query: Record<string, string | undefined>): string {
+export function parentReturnPath(locale: Locale, pathname: string, input: ReturnQuery): string {
+  const query=singleReturnQuery(input);
   const root = `/${locale}/family`;
   const suffix = pathname.startsWith(`${root}/`) ? pathname.slice(root.length) : pathname === root ? "" : null;
   const allowed = new Set(["", "/schedule", "/practice", "/feedback", "/forms", "/resources", "/reports", "/settings", "/settings/account", "/settings/coordination", "/settings/credits", "/settings/notifications"]);
@@ -124,6 +138,7 @@ export function parentReturnPath(locale: Locale, pathname: string, query: Record
   const uuid = (key: string) => { if (/^[0-9a-f-]{36}$/i.test(query[key] ?? "")) params.set(key, query[key]!); };
   if (["", "/schedule", "/practice", "/feedback", "/forms", "/resources", "/reports"].includes(suffix)) uuid("caseId");
   if (suffix === "/schedule") {
+    for(const [key,value]of Object.entries(calendarFishingReturn(input)))params.set(key,value);
     if(query.practice==='0'||query.practice==='1')params.set('practice',query.practice);
     if (/^\d{4}-\d{2}-\d{2}$/.test(query.date ?? "")) params.set("date", query.date!);
     if (["day", "week", "month", "agenda"].includes(query.view ?? "")) params.set("view", query.view!);
@@ -141,7 +156,8 @@ export function loginHref(locale: Locale, returnPath: string): string {
 }
 
 /** Named child/adult destinations; request headers never supply an arbitrary URL. */
-export function clientReturnPath(locale: Locale, pathname: string, query: Record<string, string | undefined>): string {
+export function clientReturnPath(locale: Locale, pathname: string, input: ReturnQuery): string {
+  const query=singleReturnQuery(input);
   const root = `/${locale}/client`;
   const suffix = pathname.startsWith(`${root}/`) ? pathname.slice(root.length) : pathname === root ? "" : null;
   const allowed = new Set(["", "/calendar", "/practice", "/messages", "/forms", "/resources", "/reports", "/settings", "/settings/account", "/settings/notifications"]);
@@ -150,6 +166,7 @@ export function clientReturnPath(locale: Locale, pathname: string, query: Record
   if (["", "/calendar", "/practice", "/messages", "/forms", "/resources", "/reports"].includes(suffix) && isCaseId(query.caseId)) params.set("caseId", query.caseId!);
   if (suffix === "/reports" && isCaseId(query.audienceId)) params.set("audienceId", query.audienceId!);
   if (suffix === "/calendar") {
+    for(const [key,value]of Object.entries(calendarFishingReturn(input)))params.set(key,value);
     if(query.practice==='0'||query.practice==='1')params.set('practice',query.practice);
     if (/^\d{4}-\d{2}-\d{2}$/.test(query.date ?? "")) params.set("date", query.date!);
     if (["day", "week", "month", "agenda"].includes(query.view ?? "")) params.set("view", query.view!);
