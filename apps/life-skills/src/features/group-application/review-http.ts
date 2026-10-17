@@ -7,8 +7,9 @@ import {TOKEN_PATTERN} from "../identity/crypto.ts";
 import type {Actor} from "../identity/types.ts";
 import {canonicalForwardedRequest} from "../integration/canonical-forwarded-request.ts";
 import type {PublicGroupApplicationStore} from "./store.ts";
+import type {InquiryEmailSetupReport} from "./inquiry-email-setup.ts";
 
-export type GroupApplicationReviewDependencies={origin:string;actor:(token:string)=>Promise<Actor>;store:Pick<PublicGroupApplicationStore,"list">};
+export type GroupApplicationReviewDependencies={origin:string;actor:(token:string)=>Promise<Actor>;store:Pick<PublicGroupApplicationStore,"list">;emailSetup?:()=>InquiryEmailSetupReport};
 
 /** Practitioner-only, read-only review. It does not promote, contact or enroll an applicant. */
 export async function groupApplicationReviewHttp(request:Request,load:()=>Promise<GroupApplicationReviewDependencies>):Promise<Response>{
@@ -20,7 +21,10 @@ export async function groupApplicationReviewHttp(request:Request,load:()=>Promis
   if(cookies.length!==1)throw new AppError("UNAUTHENTICATED");
   const token=cookies[0]!.slice(SESSION_COOKIE.length+1);if(!TOKEN_PATTERN.test(token))throw new AppError("UNAUTHENTICATED");
   const actor=await d.actor(token);if(actor.role!=="practitioner")throw new AppError("FORBIDDEN");
-  response=successResponse({items:await d.store.list(actor)},requestId);
+  // list rechecks the current actor and the configured inquiry workspace. Do
+  // not inspect server email settings until that authorization has succeeded.
+  const items=await d.store.list(actor),emailSetup=d.emailSetup?.()??null;
+  response=successResponse({items,emailSetup},requestId);
  }catch(error){response=failureResponse(error instanceof AppError?error:new AppError("UNAVAILABLE"),requestId);}
  response.headers.set("Referrer-Policy","no-referrer");response.headers.set("X-Content-Type-Options","nosniff");response.headers.set("Content-Security-Policy","default-src 'none'; frame-ancestors 'none'");
  return response;
