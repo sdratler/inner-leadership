@@ -10,18 +10,10 @@ import copy from "../../src/features/group-application/presentation-copy.json";
 const markup=(locale:"en"|"he",programId:"sunday_fishing_academy"|"private_fishing_life_skills",mode:"native"|"sample")=>renderToStaticMarkup(createElement(GroupApplicationLanding,{locale,programId,mode}));
 const escaped=(text:string)=>renderToStaticMarkup(createElement("span",null,text)).slice(6,-7);
 describe("reviewed Florida presentation, not new runtime authority",()=>{
- it("renders the single approved alumni correction in both languages without changing historical funnels",()=>{
-  expect(copy.realMensch.academy.faqs).toHaveLength(9);
-  const faq=copy.realMensch.academy.faqs[6]!;
-  for(const locale of ["en","he"] as const){
-   const html=markup(locale,"sunday_fishing_academy","native");
-   expect(html).toContain(escaped(faq[0]![locale]));expect(html).toContain(escaped(faq[1]![locale]));
-   expect(markup(locale,"private_fishing_life_skills","native")).not.toContain(escaped(faq[0]![locale]));
-  }
-  expect(faq[1]!.en).toContain("without having to help or enroll in Advanced");
-  expect(faq[1]!.en).toContain("already scheduled beginner class free of tuition");
-  expect(faq[1]!.en).toContain("distinct from the Advanced skills stage");
-  expect(JSON.stringify(faq)).not.toMatch(/\$|2,350|2,399|100|guaranteed|reimburse/i);
+ it("adopts the current V4 core FAQ and removes superseded mixed academic inclusions without changing other funnels",()=>{
+  expect(copy.realMensch.academy.faqs).toHaveLength(11);const faq=copy.realMensch.academy.faqs[6]!;
+  for(const locale of ["en","he"] as const){const html=markup(locale,"sunday_fishing_academy","native");expect(html).toContain(escaped(faq[0]![locale]));expect(html).toContain(escaped(faq[1]![locale]));expect(markup(locale,"private_fishing_life_skills","native")).not.toContain(escaped(faq[0]![locale]));}
+  expect(faq[1]!.en).toContain("It does not include a full math, science, English or Jewish-studies curriculum");expect(faq[1]!.en).toContain("compulsory academic homework or a digital classroom");expect(JSON.stringify(faq)).not.toMatch(/\$|guaranteed|reimburse/i);
  });
  it("retains every base CSS-module layout key when merging additions",async()=>{
   const [baseCss,additionCss,landing]=await Promise.all(["landing.module.css","landing-additions.module.css","landing.tsx"].map(file=>readFile(new URL("../../src/features/group-application/"+file,import.meta.url),"utf8")));
@@ -39,9 +31,12 @@ describe("reviewed Florida presentation, not new runtime authority",()=>{
   it(`renders one Academy headline/benefit row and the same contact action in ${locale}/${mode}`,()=>{
    const html=markup(locale,"sunday_fishing_academy",mode);
    expect(html).toContain(`<h1>${copy.realMensch.academy.title[locale]}</h1>`);
-   expect(html.match(/viewBox="0 0 24 24"/g)).toHaveLength(3);
+   expect(html).toContain("TORAH • FISHING • SELF-GOVERNANCE");
    expect(html.match(new RegExp(`href="#apply"[^>]*>${copy.realMensch.shared.ctaAcademy[locale]}`,"g"))).toHaveLength(3);
-   for(const card of copy.realMensch.academy.cards)expect(html).toContain(card.body[locale]);
+   // The existing accepted overview is now on demand (JLFA-WEB-SIMPLE-02),
+   // not rendered as the entire curriculum on the initial page.
+   for(const card of copy.realMensch.academy.cards)expect(html).not.toContain(escaped(card.body[locale]));
+   expect(html).toContain('aria-controls="jlfa-curriculum"');
    expect(html).not.toContain(copy.shared.previewBanner[locale]);
    expect(html).toContain(`dir="${locale==="he"?"rtl":"ltr"}"`);
    expect(html).not.toContain(mode==="sample"?"program=morning_torah_learning":"torah-mornings");

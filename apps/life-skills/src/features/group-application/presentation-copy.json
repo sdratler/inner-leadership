@@ -539,28 +539,28 @@
     "academy": {
       "programId": "sunday_fishing_academy",
       "label": {
-        "en": "Real Mensch · Jewish Leadership Fishing Academy",
-        "he": "Real Mensch · האקדמיה היהודית לדיג ולמנהיגות"
+        "en": "South Florida Jewish Leadership Fishing Academy",
+        "he": "South Florida Jewish Leadership Fishing Academy"
       },
       "eyebrow": {
-        "en": "Real Mensch",
-        "he": "Real Mensch"
+        "en": "South Florida Jewish Leadership Fishing Academy",
+        "he": "South Florida Jewish Leadership Fishing Academy"
       },
       "title": {
-        "en": "Learn to fish. Learn to take responsibility.",
-        "he": "לומדים לדוג. לומדים לקחת אחריות."
+        "en": "Jewish Leadership Fishing Academy",
+        "he": "האקדמיה היהודית למנהיגות ודיג"
       },
       "lead": {
-        "en": "Get outside, learn real fishing skills and become someone others can count on.",
-        "he": "יוצאים לטבע, רוכשים מיומנויות דיג והופכים לאנשים שאפשר לסמוך עליהם."
+        "en": "Developing Jewish self-governance through fishing",
+        "he": "פיתוח הנהגה עצמית יהודית באמצעות דיג"
       },
       "body": {
-        "en": "A continuing local fishing academy for boys, led by Rabbi Shlomo Dratler. Practical fishing, Torah and thoughtful choices come together as boys learn to prepare, solve problems and care for others.",
-        "he": "אקדמיה מקומית ומתמשכת לדיג לבנים, בהובלת הרב שלמה דרטלר. דיג מעשי, תורה ובחירה מתוך שיקול דעת מתחברים בלמידה של הכנה, פתרון בעיות ודאגה לאחרים."
+        "en": "Jewish Leadership Fishing Academy is a year-long fishing and life-skills program for boys, divided into four 12-week stages. We work on emotional regulation, self-awareness, responsibility and independent thinking through fishing and a consistent mentoring relationship.",
+        "he": "האקדמיה היהודית למנהיגות ודיג היא תוכנית שנתית לדיג ולכישורי חיים לבנים, המחולקת לארבעה שלבים בני 12 שבועות. אנחנו עובדים על ויסות רגשי, מודעות עצמית, אחריות וחשיבה עצמאית באמצעות דיג וקשר חונכות מתמשך."
       },
       "price": {
-        "en": "Start with an inquiry. We will discuss the group, tuition and actual arrangements before enrollment.",
-        "he": "מתחילים בפנייה. נשוחח על הקבוצה, על שכר הלימוד ועל ההסדרים בפועל לפני ההרשמה."
+        "en": "Your place is confirmed once the enrollment arrangements are completed.",
+        "he": "המקום שלכם מאושר לאחר השלמת סידורי ההרשמה."
       },
       "facts": [
         {
@@ -577,52 +577,52 @@
         }
       ],
       "sectionTitle": {
-        "en": "Four stages. Twelve sessions in each.",
-        "he": "ארבעה שלבים. שנים־עשר מפגשים בכל שלב."
+        "en": "Four 12-week stages",
+        "he": "ארבעה שלבים בני 12 שבועות"
       },
       "sectionBody": {
-        "en": "One continuing academy, with more depth and responsibility as skills grow. The annual learning pathway has four stages of twelve sessions. Your group offer will confirm the actual dates and meeting places.",
-        "he": "אקדמיה אחת מתמשכת, עם העמקה ויותר אחריות ככל שהמיומנויות מתפתחות. מסלול הלמידה השנתי כולל ארבעה שלבים של שנים־עשר מפגשים. בהצעה לקבוצה שלכם יפורטו המועדים ומקומות המפגש בפועל."
+        "en": "The year follows a connected fishing and life-skills progression. Each stage develops the earlier skills rather than sending returning boys through the same beginner material again.",
+        "he": "השנה בנויה כרצף מחובר של דיג וכישורי חיים. כל שלב מפתח את המיומנויות מהשלבים הקודמים, במקום להחזיר בנים ממשיכים לאותו חומר של מתחילים."
       },
       "cards": [
         {
           "title": {
-            "en": "Foundation · 12 sessions",
-            "he": "יסודות · 12 מפגשים"
+            "en": "Stage 1 — Foundation Angler\nMaking Connections, Tying Knots",
+            "he": "שלב 1 — דייג מתחיל\nיוצרים חיבורים, קושרים קשרים"
           },
           "body": {
-            "en": "Understand your gear, tie reliable knots, practise safe casting and prepare for guided fishing.",
-            "he": "מכירים את הציוד, לומדים קשרים אמינים, מתרגלים הטלה בטוחה ומתכוננים לדיג מודרך."
+            "en": "We begin with the equipment and the decisions behind it: rods and reels, conventional and spinning systems, rod guides, line materials, terminal knots, hooks, swivels, weights and a sliding rig. Boys learn to organise their own tackle, inspect a connection and practise a controlled cast before applying the skills in supervised fishing.\n\nBoys work out how their equipment behaves: how line leaves the reel, what can damage it, how to manage a pull and what changes when they choose a different rig. They begin reading the water and choosing bait or a lure for a reason.\n\nThe interpersonal work starts at the same time: asking before borrowing, explaining a problem, accepting a correction, sharing a supply and finishing a job. The stage review includes a practical demonstration and an honest discussion of what the learner can do independently and where he still needs help.\n\nQuestions we work through: Why can a conventional spool overrun? When does a swivel help? Which knot was harder for you to tie, and why? What did your partner notice that you missed?",
+            "he": "אנחנו מתחילים בציוד ובהחלטות שמאחוריו: חכות ורולרים, מערכות קונבנציונליות וספינינג, טבעות החכה, חומרי חוט, קשרי קצה, קרסים, סביבל, משקולות וריג עם משקולת מחליקה. הבנים לומדים לארגן את הציוד שלהם, לבדוק חיבור ולתרגל הטלה מבוקרת לפני יישום המיומנויות בדיג בהשגחה.\n\nהבנים מבררים כיצד הציוד מתנהג: איך החוט יוצא מהרולר, מה עלול לפגוע בו, איך לנהל משיכה ומה משתנה כשבוחרים ריג אחר. הם מתחילים לקרוא את המים ולבחור פיתיון או דמוי מתוך שיקול.\n\nהעבודה הבין־אישית מתחילה באותו זמן: לבקש לפני ששואלים ציוד, להסביר בעיה, לקבל תיקון, לחלוק אספקה ולסיים משימה. סקירת השלב כוללת הדגמה מעשית ושיחה כנה על מה שהלומד יכול לעשות בעצמו ובמה הוא עדיין זקוק לעזרה.\n\nשאלות שאנחנו בוחנים: למה סליל קונבנציונלי עלול להמשיך להסתובב וליצור סיבוך? מתי סביבל עוזר? איזה קשר היה לך קשה יותר לקשור, ולמה? במה השותף שלך הבחין ואתה לא?"
           }
         },
         {
           "title": {
-            "en": "Independence · 12 sessions",
-            "he": "עצמאות · 12 מפגשים"
+            "en": "Stage 2 — Independent Angler\nFree-lining, bottom fishing and changing conditions",
+            "he": "שלב 2 — דייג עצמאי\nדיג בחוט חופשי, דיג קרקעית ותנאים משתנים"
           },
           "body": {
-            "en": "Choose a rig for the conditions, solve ordinary tackle problems and explain the choices you make.",
-            "he": "בוחרים מערך דיג שמתאים לתנאים, פותרים תקלות בציוד ומסבירים את הבחירות שעושים."
+            "en": "Boys take more responsibility for setting up, inspecting their equipment and explaining their choices. We develop braid-to-leader connections, including the Double Uni and Albright, improve casting placement and compare bait, sinker and retrieve choices in different conditions.\n\nWe look more closely at controlled casting, water movement, lure depth, line twist and the causes of tackle problems. Boys compare their choices, look at what happened and decide what they would change.\n\nCommunication becomes more deliberate. Boys practise comparing different explanations, making a specific request for help and acknowledging their part in a problem. They learn to work through disagreements while keeping the shared task moving.\n\nQuestions we work through: When does free-lining suit the presentation better than a bottom rig? What happens with too much slack? How would you compare bait fairly? How would you explain your choice to a partner who disagrees?",
+            "he": "הבנים מקבלים אחריות רבה יותר על הכנת הציוד, בדיקתו והסברת הבחירות שלהם. אנחנו מפתחים חיבורי חוט קלוע לחוט מוביל, ובהם Double Uni ו־Albright, משפרים את דיוק ההטלה ומשווים בחירות של פיתיון, משקולת ואופן החזרת הפיתיון בתנאים שונים.\n\nאנחנו בוחנים לעומק הטלה מבוקרת, תנועת מים, עומק הדמוי, פיתול החוט והגורמים לתקלות בציוד. הבנים משווים את הבחירות שלהם, בודקים מה קרה ומחליטים מה היו משנים.\n\nהתקשורת נעשית מכוונת יותר. הבנים מתרגלים להשוות הסברים שונים, לבקש עזרה באופן ממוקד ולהכיר בחלקם בבעיה. הם לומדים לעבוד דרך חילוקי דעות תוך קידום המשימה המשותפת.\n\nשאלות שאנחנו בוחנים: מתי חוט חופשי מתאים להצגת הפיתיון יותר מריג קרקעית? מה קורה כשיש יותר מדי חוט רפוי? איך תשוו פיתיונות בצורה הוגנת? איך תסבירו את הבחירה שלכם לשותף שחולק עליה?"
           }
         },
         {
           "title": {
-            "en": "Advanced skills · 12 sessions",
-            "he": "מיומנויות מתקדמות · 12 מפגשים"
+            "en": "Stage 3 — Advanced Angler\nUnderstanding the system",
+            "he": "שלב 3 — דייג מתקדם\nמבינים את המערכת"
           },
           "body": {
-            "en": "Explore bait and lure presentation, line systems and tide patterns through deeper observation and supervised practice.",
-            "he": "מעמיקים באופן הצגת הפיתיון, בהתאמת חוטים ובהבנת הגאות והשפל, דרך התבוננות ותרגול בהשגחה."
+            "en": "Boys work through more demanding fishing decisions: how the rod and line respond, why a connection failed, how to adjust a presentation and when conditions call for a different plan. They learn to distinguish what they actually observed from what they are assuming.\n\nCast-net learning begins with anatomy, line management and controlled dry practice. Moving to actual water use requires a separate instructor check of the learner, equipment and location. Later fish-to-table work covers identification, lawful source, cold storage and an adult-led preparation demonstration in an appropriate setting.\n\nThe group also works through changing plans, competing explanations and more demanding shared decisions. Boys practise explaining their reasoning, listening to another approach and changing their minds when a better explanation fits.\n\nQuestions we work through: “How would you distinguish abrasion from a slipping knot?” “What does a doubled-line connection change—and what does it not change?” “What would make you change your plan?”",
+            "he": "הבנים מתמודדים עם החלטות דיג מורכבות יותר: כיצד החכה והחוט מגיבים, למה חיבור נכשל, איך להתאים את הצגת הפיתיון ומתי התנאים דורשים תוכנית אחרת. הם לומדים להבחין בין מה שבאמת ראו לבין מה שהם מניחים.\n\nלימוד רשת הטלה מתחיל בהכרת המבנה, בניהול החבלים ובתרגול יבש ומבוקר. מעבר לשימוש ממשי במים דורש בדיקה נפרדת של הלומד, הציוד והמקום בידי המדריך. בהמשך, עבודה מדג לשולחן כוללת זיהוי, מקור חוקי, שמירה בקירור והדגמת הכנה בהובלת מבוגר בסביבה מתאימה.\n\nהקבוצה עובדת גם על שינוי תוכניות, הסברים מתחרים והחלטות משותפות מורכבות יותר. הבנים מתרגלים להסביר את ההיגיון שלהם, להקשיב לגישה אחרת ולשנות את דעתם כשהסבר טוב יותר מתאים למה שקרה.\n\nשאלות שאנחנו בוחנים: ״איך תבחינו בין שחיקה לבין קשר שמחליק?״ ״מה חיבור בחוט כפול משנה — ומה הוא אינו משנה?״ ״מה יגרום לכם לשנות את התוכנית?״"
           }
         },
         {
           "title": {
-            "en": "Leadership · 12 sessions",
-            "he": "מנהיגות · 12 מפגשים"
+            "en": "Stage 4 — Leadership Angler\nContributing without taking over",
+            "he": "שלב 4 — דייג מנהיג\nתורמים בלי להשתלט"
           },
           "body": {
-            "en": "Plan shared tasks, explain what you know, help others learn and take responsibility for following through.",
-            "he": "מתכננים משימות משותפות, מסבירים את מה שיודעים, עוזרים לאחרים ללמוד ולוקחים אחריות על השלמת המשימה."
+            "en": "Boys practise explaining what they know in a way another person can use. They give a short setup explanation, help organise equipment, teach a knot, support an accuracy practice and present a reasoned conditions plan.\n\nWe work on the difference between helping and controlling. A useful mentor listens, offers a manageable next step, gives the learner room to try and knows when to involve the adult. Taking a learning role does not make a student responsible for supervising other children.\n\nThe final review brings together fishing skills, critical thinking, communication, collaboration and responsibility. Each boy reviews what he has demonstrated with the instructor and chooses a next practical goal. Progress is based on what he can demonstrate, not the size of a fish he caught.\n\nQuestions we work through: “What could you say that helps him notice the next step himself?” “What evidence would you need before blaming someone for a tackle failure?” “What responsibility are you ready to take on next?”",
+            "he": "הבנים מתרגלים להסביר את מה שהם יודעים באופן שאדם אחר יכול להשתמש בו. הם נותנים הסבר קצר על הכנת המערך, עוזרים לארגן ציוד, מלמדים קשר, מסייעים בתרגול דיוק ומציגים תוכנית מנומקת בהתאם לתנאים.\n\nאנחנו עובדים על ההבדל בין עזרה לשליטה. חונך מועיל מקשיב, מציע צעד הבא שאפשר להתמודד איתו, נותן ללומד מקום לנסות ויודע מתי לערב את המבוגר. קבלת תפקיד לימודי אינה הופכת תלמיד לאחראי להשגחה על ילדים אחרים.\n\nהסקירה המסכמת מחברת בין מיומנויות דיג, חשיבה ביקורתית, תקשורת, שיתוף פעולה ואחריות. כל בן סוקר עם המדריך את מה שהדגים ובוחר יעד מעשי הבא. ההתקדמות מבוססת על מה שהוא יכול להדגים, ולא על גודל הדג שתפס.\n\nשאלות שאנחנו בוחנים: ״מה תוכלו לומר שיעזור לו להבחין בעצמו בצעד הבא?״ ״אילו ראיות תצטרכו לפני שתאשימו מישהו בתקלה בציוד?״ ״איזו אחריות אתם מוכנים לקחת עכשיו?״"
           }
         }
       ],
@@ -633,100 +633,120 @@
       "faqs": [
         [
           {
-            "en": "Does my son need fishing experience?",
-            "he": "האם הבן שלי צריך ניסיון בדיג?"
+            "en": "Is this a regular Jewish fishing charter?",
+            "he": "האם זה צ'רטר דיג יהודי רגיל?"
           },
           {
-            "en": "Beginners are welcome to inquire. Tell us what he has tried. Equipment and safety preparation come before ordinary hooked fishing, and group placement takes age and readiness into account.",
-            "he": "גם מתחילים מוזמנים לפנות. ספרו לנו מה הוא כבר ניסה. לפני דיג עם קרסים לומדים על הציוד ועל שימוש בטוח בו, והשיבוץ לקבוצה מתחשב בגיל ובמוכנות."
+            "en": "No. This is an ongoing fishing and life-skills program built around self-governance and relationships. The boys prepare their equipment, make choices, practise techniques and work through the results. We are not handing them a rigged rod and doing the fishing preparation for them.",
+            "he": "לא. זו תוכנית מתמשכת לדיג ולכישורי חיים, הבנויה סביב הנהגה עצמית וקשרים. הבנים מכינים את הציוד שלהם, מקבלים החלטות, מתרגלים טכניקות ועובדים עם התוצאות. אנחנו לא מגישים להם חכה מוכנה ועושים עבורם את הכנות הדיג."
           }
         ],
         [
           {
-            "en": "What does self-governance look like here?",
-            "he": "איך נראית הנהגה עצמית בתוכנית?"
+            "en": "Why don’t you provide the tackle?",
+            "he": "למה אינכם מספקים את ציוד הדיג?"
           },
           {
-            "en": "Preparing equipment, pausing before a decision, listening, explaining a choice, adjusting after a setback and finishing a responsibility. Boys practise connecting their choices to values and likely outcomes.",
-            "he": "מכינים ציוד, עוצרים לפני החלטה, מקשיבים, מסבירים בחירה, משנים דרך אחרי קושי ומשלימים אחריות שלקחנו. הבנים מתרגלים חיבור בין בחירות, ערכים ותוצאות אפשריות."
+            "en": "Because choosing, organising and caring for equipment is part of the course. Each boy brings suitable personal equipment and learns to manage his own tackle box. We help families work out what is necessary before buying; the aim is a useful kit, not the most expensive one.",
+            "he": "כי בחירת ציוד, ארגונו והשמירה עליו הם חלק מהקורס. כל בן מביא ציוד אישי מתאים ולומד לנהל את ארגז הציוד שלו. אנחנו עוזרים למשפחות לברר מה דרוש לפני הקנייה; המטרה היא ערכה שימושית, ולא היקרה ביותר."
           }
         ],
         [
           {
-            "en": "Can siblings join?",
-            "he": "האם אחים יכולים להצטרף?"
+            "en": "Will you tie his knots and rig his rod?",
+            "he": "האם תקשור לו קשרים ותכין לו את החכה?"
           },
           {
-            "en": "Tell us how many boys are interested and their approximate ages. We consider each boy’s experience and readiness when discussing groups; siblings are not automatically placed together.",
-            "he": "ציינו כמה בנים מעוניינים ומה גילם בקירוב. בבירור הקבוצות נתחשב בניסיון ובמוכנות של כל בן; אחים אינם משובצים אוטומטית יחד."
+            "en": "I teach him how and coach him while he practises. I do not routinely tie and rig his equipment for him on each trip. The goal is that he understands the setup and can increasingly manage it himself. Demonstrations, appropriate learning support and adult intervention for safety remain part of the instruction.",
+            "he": "אני מלמד אותו איך ומלווה אותו בזמן התרגול. אינני קושר ומכין עבורו את הציוד באופן קבוע בכל יציאה. המטרה היא שיבין את המערך ויוכל לנהל אותו יותר ויותר בעצמו. הדגמות, תמיכה מתאימה בלמידה והתערבות של מבוגר לצורכי בטיחות נשארות חלק מההוראה."
           }
         ],
         [
           {
-            "en": "Where and when will we meet?",
-            "he": "היכן ומתי ניפגש?"
+            "en": "Can he join without fishing experience?",
+            "he": "האם אפשר להצטרף בלי ניסיון בדיג?"
           },
           {
-            "en": "The core program is local, with parents dropping off and collecting their sons. Tell us your neighborhood, acceptable driving time and before-school, after-school or homeschool availability. Meeting places and dates will be confirmed before enrollment.",
-            "he": "תוכנית הליבה מקומית, וההורים מביאים את הבנים ואוספים אותם. ספרו לנו על השכונה, על זמן הנסיעה שמתאים לכם ועל זמינות לפני הלימודים, אחריהם או במסגרת חינוך ביתי. מקומות המפגש והמועדים יאושרו לפני ההרשמה."
+            "en": "Yes. Beginners start with the introductory preparation: equipment, knots, rigging and controlled casting. Everyone completes the three introductory preparation units and demonstrates the relevant readiness before fishing with the group. Every outing still has its own equipment and activity checks.",
+            "he": "כן. מי שאין לו ניסיון מתחיל בהכנת המבוא: ציוד, קשרים, ריגים והטלה מבוקרת. כולם משלימים את שלוש יחידות ההכנה הראשוניות ומדגימים את המוכנות הרלוונטית לפני דיג עם הקבוצה. לכל יציאה יש גם בדיקות ציוד ופעילות משלה."
           }
         ],
         [
           {
-            "en": "What equipment does he need?",
-            "he": "איזה ציוד צריך להביא?"
+            "en": "Do you assess the tackle box and lure choices?",
+            "he": "האם אתם מעריכים את ארגון ארגז הציוד ואת בחירת הדמויים?"
           },
           {
-            "en": "Bring your own rod, reel and tackle. We help beginners understand what to choose. Bait is included in the agreed local lesson offer; personal equipment, meals and transport are separate. Equipment rental is not offered at launch.",
-            "he": "מביאים חכה, רולר ואביזרי דיג אישיים. נעזור למתחילים להבין מה לבחור. פיתיון כלול בהצעת השיעורים המקומיים שתוסכם; ציוד אישי, ארוחות והסעות נפרדים. אין השכרת ציוד בשלב ההשקה."
+            "en": "Yes. We look at how the box is organised, how he looks after the contents, whether it fits the fishing he wants to do and how he explains a choice. The discussion is about preparation and judgment, not how much his equipment costs.",
+            "he": "כן. אנחנו בודקים איך הארגז מאורגן, איך הבן שומר על התכולה, אם היא מתאימה לדיג שבו הוא מעוניין ואיך הוא מסביר בחירה. הדיון הוא על הכנה ושיקול דעת, ולא על מחיר הציוד שלו."
           }
         ],
         [
           {
-            "en": "Are Keys or boat trips part of graduation?",
-            "he": "האם יציאות לקיז או בסירה נדרשות לסיום המסלול?"
+            "en": "How do you work on communication?",
+            "he": "איך עובדים על תקשורת?"
           },
           {
-            "en": "No. These are optional, separately priced outings with their own arrangements. Completing the academy pathway does not require buying an extra trip.",
-            "he": "לא. אלה יציאות רשות, בתשלום נפרד ובהסדרים נפרדים. השלמת מסלול האקדמיה אינה מחייבת רכישה של יציאה נוספת."
+            "en": "During the actual tasks. We coach boys to make clear requests, listen, explain their reasoning, disagree respectfully, share roles and repair misunderstandings. We also talk briefly with each learner about what happened and what he wants to try differently.",
+            "he": "במהלך המשימות עצמן. אנחנו מלווים את הבנים בבקשות ברורות, בהקשבה, בהסברת החשיבה, בהבעת אי־הסכמה בכבוד, בחלוקת תפקידים ובתיקון אי־הבנות. אנחנו גם משוחחים בקצרה עם כל לומד על מה שקרה ועל מה שהוא רוצה לנסות אחרת."
           }
         ],
         [
           {
-            "en": "Can graduates keep taking part?",
-            "he": "איך בוגרים יכולים להמשיך להשתתף?"
+            "en": "Is this an academic course?",
+            "he": "האם זו תוכנית לימודים עיונית?"
           },
           {
-            "en": "Eligible graduates may request a place on separately priced ordinary alumni outings, without having to help or enroll in Advanced. They may also repeat an already scheduled beginner class free of tuition, subject to booking, suitability, safe capacity and supervision. This does not create extra classes or include free trips. A later Advanced pathway is optional and purchased separately; it is distinct from the Advanced skills stage within the academy’s four-stage pathway.",
-            "he": "בוגרים שעומדים בתנאי ההשתתפות יכולים לבקש מקום ביציאות דיג רגילות לבוגרים בתשלום נפרד, ללא חובה לעזור או להירשם למסלול המתקדם הנוסף. הם יכולים גם לחזור ללא שכר לימוד על שיעור למתחילים שכבר נקבע, בתיאום מראש ובהתאם להתאמה, למקום הפנוי ולדרישות הבטיחות וההשגחה. החזרה אינה יוצרת שיעורים נוספים ואינה כוללת יציאות חינם. בהמשך ניתן לבחור במסלול מתקדם נפרד בתשלום; זהו מסלול נוסף, הנפרד משלב המיומנויות המתקדמות בתוך ארבעת שלבי האקדמיה."
+            "en": "No. The core program teaches fishing and practises self-governance, critical thinking, communication, leadership and collaboration. It does not include a full math, science, English or Jewish-studies curriculum, compulsory academic homework or a digital classroom.",
+            "he": "לא. תוכנית הליבה מלמדת דיג ומתרגלת הנהגה עצמית, חשיבה ביקורתית, תקשורת, מנהיגות ושיתוף פעולה. היא אינה כוללת תוכנית לימודים מלאה במתמטיקה, במדעים, באנגלית או בלימודי יהדות, שיעורי בית עיוניים כחובה או כיתה דיגיטלית."
           }
         ],
         [
           {
-            "en": "What happens with weather or a missed session?",
-            "he": "מה קורה במזג אוויר לא מתאים או אם מפסידים מפגש?"
+            "en": "Does he need to catch a fish to progress?",
+            "he": "האם צריך לתפוס דג כדי להתקדם?"
           },
           {
-            "en": "Unsafe conditions can change a fishing session. We will provide the actual weather, absence and makeup terms with the group offer before enrollment.",
-            "he": "תנאים לא בטוחים עשויים לשנות מפגש דיג. תנאי מזג האוויר, ההיעדרות וההשלמה בפועל יימסרו עם ההצעה לקבוצה לפני ההרשמה."
+            "en": "No. We can observe preparation, casting, reasoning, collaboration and responsibility on a day with no catch. We do not grade a child by the size or number of fish he catches.",
+            "he": "לא. אפשר להתבונן בהכנה, בהטלה, בחשיבה, בשיתוף פעולה ובאחריות גם ביום ללא תפיסה. איננו נותנים לילד ציון לפי גודל הדגים או מספרם."
           }
         ],
         [
           {
-            "en": "What happens after I send an inquiry?",
-            "he": "מה קורה אחרי שליחת הפנייה?"
+            "en": "Will the sessions be recorded?",
+            "he": "האם המפגשים יוקלטו?"
           },
           {
-            "en": "A confirmed save gives you an inquiry reference. Shlomo reviews the details and follows up personally. The inquiry does not enroll your child, book a meeting or require payment.",
-            "he": "לאחר שמירה מאושרת תקבלו מספר פנייה. שלמה יעבור על הפרטים ויחזור אליכם אישית. הפנייה אינה רושמת את ילדכם, קובעת פגישה או מחייבת בתשלום."
+            "en": "Continuous recording is not part of the confirmed offer. Any proposed photos, audio or video for learning records would be explained separately, with specific choices about the purpose and audience. Permission for private learning documentation is not permission for publicity.",
+            "he": "הקלטה רציפה אינה חלק מההצעה המאושרת. כל הצעה לצילומים, לשמע או לווידאו לצורך תיעוד למידה תוסבר בנפרד, עם אפשרויות בחירה מפורשות לגבי המטרה והקהל. אישור לתיעוד למידה פרטי אינו אישור לפרסום."
+          }
+        ],
+        [
+          {
+            "en": "Is this therapy?",
+            "he": "האם זה טיפול?"
+          },
+          {
+            "en": "The Academy is fishing education and mentorship, with deliberate practice of emotional regulation, communication and self-governance. It is not being offered as clinical treatment or as a replacement for a child’s existing care.",
+            "he": "האקדמיה עוסקת בהוראת דיג ובחונכות, עם תרגול מכוון של ויסות רגשי, תקשורת והנהגה עצמית. היא אינה מוצעת כטיפול קליני או כתחליף לטיפול הקיים של הילד."
+          }
+        ],
+        [
+          {
+            "en": "How will I know whether the group is suitable?",
+            "he": "איך אדע אם הקבוצה מתאימה?"
+          },
+          {
+            "en": "We begin with a conversation about your son’s interests, experience, learning goals and the practical support he may need. You can review the program before deciding. We discuss actual group arrangements rather than assume the same format suits every child.",
+            "he": "אנחנו מתחילים בשיחה על תחומי העניין של הבן, ניסיונו, מטרות הלמידה שלו והתמיכה המעשית שהוא עשוי להזדקק לה. תוכלו לעיין בתוכנית לפני ההחלטה. אנחנו משוחחים על הסידורים בפועל של הקבוצה, במקום להניח שאותה מסגרת מתאימה לכל ילד."
           }
         ]
       ]
     },
     "shared": {
       "ctaAcademy": {
-        "en": "Find a group for your son",
-        "he": "למציאת קבוצה לבנכם"
+        "en": "Sign up now — Founding 20 Families",
+        "he": "הירשמו עכשיו — 20 המשפחות המייסדות"
       },
       "secondaryHeroLink": {
         "en": "Explore what we learn",
@@ -790,33 +810,37 @@
     "extraSections": {
       "skills": {
         "title": {
-          "en": "From your first knot to handling your own setup",
-          "he": "מהקשר הראשון ועד להכנת מערך דיג בעצמכם"
+          "en": "How we recognise progress",
+          "he": "איך אנחנו מזהים התקדמות"
         },
         "body": {
-          "en": "Build a tackle box you understand. Tie a knot you can check. Read the water, choose your bait and learn what to do when something goes wrong. Preparing well, caring for equipment and making room for someone else are part of every skill.",
-          "he": "בונים קופסת ציוד שמבינים מה יש בה. קושרים קשר שיודעים לבדוק. לומדים לקרוא את המים, לבחור פיתיון ולהתמודד כשמשהו משתבש. הכנה טובה, שמירה על הציוד והתחשבות באחרים הן חלק מכל מיומנות."
+          "en": "We track both hard skills and soft skills throughout the year. The record shows what a boy can do with his equipment, how he thinks through a problem and how he works with other people.",
+          "he": "אנחנו עוקבים אחר מיומנויות מעשיות ובין־אישיות לאורך השנה. התיעוד מראה מה הבן יכול לעשות עם הציוד שלו, כיצד הוא חושב על בעיה ואיך הוא עובד עם אנשים אחרים."
         },
         "items": [
           {
-            "en": "Knots and rigs",
-            "he": "קשרים ומערכי דיג"
+            "en": "Hard skills: Tying and checking knots, building rigs, casting with control, managing a tackle box, selecting a lure for the type of fishing he wants to do, reading conditions and working through tackle problems.",
+            "he": "מיומנויות מעשיות: קשירת קשרים ובדיקתם, בניית ריגים, הטלה בשליטה, ניהול ארגז ציוד, בחירת דמוי לסוג הדיג שבו הוא מעוניין, קריאת התנאים והתמודדות עם תקלות בציוד."
           },
           {
-            "en": "Casting and safe practice",
-            "he": "הטלה ותרגול בטוח"
+            "en": "Collaboration: Sharing equipment and supplies, agreeing on roles, contributing to a shared task and helping someone without taking over.",
+            "he": "שיתוף פעולה: חלוקת ציוד ואספקה, הסכמה על תפקידים, תרומה למשימה משותפת ועזרה למישהו בלי להשתלט."
           },
           {
-            "en": "Tides, currents, bait and lures",
-            "he": "גאות, זרמים, פיתיונות ודמויים"
+            "en": "Curiosity: Asking genuine questions, noticing what happens, comparing different approaches and being willing to investigate rather than simply copy an answer.",
+            "he": "סקרנות: שאילת שאלות אמיתיות, תשומת לב למה שקורה, השוואת גישות שונות ונכונות לחקור במקום רק להעתיק תשובה."
           },
           {
-            "en": "Landing and handling fish responsibly",
-            "he": "העלאת דגים וטיפול אחראי בהם"
+            "en": "Leadership: Taking initiative, following through, helping another boy understand a task and knowing when to involve the instructor.",
+            "he": "מנהיגות: יוזמה, עמידה במשימה עד סופה, עזרה לבן אחר בהבנת משימה וידיעה מתי לערב את המדריך."
           },
           {
-            "en": "Teamwork and responsibility",
-            "he": "עבודת צוות ואחריות"
+            "en": "Social communication: Body language, tone of voice, listening, making clear requests, noticing another person’s response and working through disagreements respectfully.",
+            "he": "תקשורת חברתית: שפת גוף, טון דיבור, הקשבה, בקשות ברורות, תשומת לב לתגובתו של אדם אחר ועבודה דרך חילוקי דעות בכבוד."
+          },
+          {
+            "en": "Self-governance and responsibility: Recognising frustration, choosing how to respond, taking ownership of a mistake and returning to the task with a plan.",
+            "he": "הנהגה עצמית ואחריות: זיהוי תסכול, בחירת תגובה, לקיחת אחריות על טעות וחזרה למשימה עם תוכנית."
           }
         ]
       },
@@ -855,8 +879,8 @@
     },
     "inquiry": {
       "titleAcademy": {
-        "en": "Ask about Real Mensch",
-        "he": "פנייה לגבי Real Mensch"
+        "en": "Ask about South Florida Jewish Leadership Fishing Academy",
+        "he": "פנייה לגבי South Florida Jewish Leadership Fishing Academy"
       },
       "intro": {
         "en": "A few details are enough to start. Shlomo will review your inquiry and contact you about the next step.",
@@ -1071,8 +1095,8 @@
     },
     "metadata": {
       "academyTitle": {
-        "en": "Real Mensch | Jewish Leadership Fishing Academy",
-        "he": "Real Mensch | האקדמיה היהודית לדיג ולמנהיגות"
+        "en": "South Florida Jewish Leadership Fishing Academy",
+        "he": "South Florida Jewish Leadership Fishing Academy"
       },
       "academyDescription": {
         "en": "A continuing local fishing academy for boys, led by Rabbi Shlomo Dratler. Explore four stages of fishing, Torah and practical responsibility, then inquire about a suitable group.",
