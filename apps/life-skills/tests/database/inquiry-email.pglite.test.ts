@@ -21,7 +21,7 @@ function command(overrides:Partial<FloridaParentApplicationFields>={}){return {o
 async function row(reference:string){return (await db.query<{id:string;state:string;payload_ciphertext:string;provider_id:string|null}>("SELECT * FROM ls_service_interest.inquiry_email_outbox WHERE workspace_id=$1 AND application_id=$2",[workspace,reference])).rows[0]!;}
 beforeAll(async()=>{
  await db.exec("CREATE SCHEMA ls_control");
- for(const name of ["0001_ls_foundation.sql","0010_ls_identity_cases_20260906.sql","0124_ls_group_interest.sql","0131_ls_public_group_applications.sql","0135_ls_inquiry_email_outbox.sql"])await db.exec(await readFile("migrations/"+name,"utf8"));
+ for(const name of ["0001_ls_foundation.sql","0010_ls_identity_cases_20260906.sql","0124_ls_group_interest.sql","0131_ls_public_group_applications.sql","0131_ls_public_inquiry_email_outbox.sql"])await db.exec(await readFile("migrations/"+name,"utf8"));
  await db.query("INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,$2)",[workspace,now]);
  for(const role of ["practitioner","parent"] as const){const id=randomUUID(),digest=id.replaceAll("-","").padEnd(64,"0");
   await db.query("INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,'adult','synthetic',$3)",[id,workspace,now]);
