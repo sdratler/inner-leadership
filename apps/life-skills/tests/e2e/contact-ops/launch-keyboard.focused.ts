@@ -134,7 +134,7 @@ for(const locale of ["en","he"] as const)test(`OPS09 ${locale}: public keyboard 
  const readback=async()=>{
   const result=await page.request.get("/api/private/group-applications");expect(result.status()).toBe(200);const body=await result.json();
   expect(body.data.items.filter((item:{id:string})=>item.id===savedId)).toEqual([expect.objectContaining({id:savedId,fields:expect.objectContaining({parentName:name,contact,programId:"sunday_fishing_academy"})})]);
-  await expect(record).toHaveCount(1);await expect(record).toContainText(savedId);
+  await expect(record).toHaveCount(1);await expect(record).toContainText(savedId);await expect(record).toContainText("South Florida Jewish Leadership Fishing Academy");await expect(record).not.toContainText("Real Mensch");
  };
  await readback();await page.reload();await readback();
  // Narrow inquiry release: separate Contacts lead conversion requires its own native cutover fixture.
