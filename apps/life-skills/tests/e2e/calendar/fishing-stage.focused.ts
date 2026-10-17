@@ -8,6 +8,8 @@ import type {FishingStageBrowserData} from "./fishing-stage-fixture.ts";
 import {fishingCalendarSearch,fishingCalendarChoicesSchema,fishingCalendarSelectionSchema,fishingCalendarSelectionQuery} from "../../../src/features/fishing/program-calendar-contract.ts";
 import {syntheticChildFailure} from "../group-interest/synthetic-child-output.ts";
 import {runFishingClassroomJourney,runFishingClassroomPublishedProgressJourney,verifyFishingCalendarFinalParentReadback,type FishingClassroomJourneyInput,type FishingFollowupPorts} from "../resources/fishing-classroom.journey.ts";
+import type {StageView} from "../../../src/features/fishing-stage/contract.ts";
+import {verifyFishingParentPlanSummaries,expectFishingParentPlanSummariesAbsent} from "../resources/fishing-parent-plan-readback.journey.ts";
 const file=process.env.LS_FISHING_STAGE_FIXTURE_PATH;
 if(!file){
  // Explicit focused execution runs the isolated ordinary-role gate, never the
@@ -225,7 +227,9 @@ if(!file){
    await expect(page.getByLabel(t(locale,"Authorized child","ילד מורשה"),{exact:true})).toHaveValue(family(locale).selection.learnerId!);await expect(page.getByLabel(t(locale,"Stage enrollment","רישום לשלב"),{exact:true})).toHaveValue(family(locale).selection.enrollmentId!);
    await page.goto(route(locale,"parent"));
    const child=page.getByLabel(t(locale,"Authorized child","ילד מורשה"),{exact:true});await expect(child).toHaveValue("");await expect(page.locator('[data-fishing-occurrence-id]:visible')).toHaveCount(0);
+   await expectFishingParentPlanSummariesAbsent(page,{fixture:"SYNTHETIC_ONLY",origin:data.origin});
    await child.selectOption(family(locale).selection.learnerId!);await expect(page.getByLabel(t(locale,"Stage enrollment","רישום לשלב"),{exact:true})).toHaveValue("");
+   await expectFishingParentPlanSummariesAbsent(page,{fixture:"SYNTHETIC_ONLY",origin:data.origin});
    const event=page.locator(`[data-fishing-occurrence-id="${data.occurrenceId}"]:visible`);await expect(event).toHaveCount(1);await expect(page.locator('[data-ls-calendar-grid]:visible')).toHaveCount(info.project.use.viewport!.width<=800?0:1);
    await screen(page,locale,info.outputPath(`parent-${locale}-one-calendar.png`));await event.getByRole("button",{name:t(locale,"Open session details","פתיחת פרטי מפגש"),exact:true}).click();
    await expect(page.getByLabel(t(locale,"Stage enrollment","רישום לשלב"),{exact:true})).toHaveValue(family(locale).selection.enrollmentId!);
@@ -236,7 +240,10 @@ if(!file){
    await expect(page.getByRole("button",{name:t(locale,"Retry the same operation","ניסיון חוזר לאותה פעולה"),exact:true})).toBeVisible();await expect(item.getByRole("combobox")).toHaveValue("unavoidable");
    await page.getByRole("button",{name:t(locale,"Retry the same operation","ניסיון חוזר לאותה פעולה"),exact:true}).click();await expect(page.getByText(t(locale,"Saved in the app. No message, charge or enrollment was created.","נשמר במערכת. לא נוצרו הודעה, חיוב או רישום לקורס."),{exact:true})).toBeVisible();expect(bodies).toHaveLength(2);expect(bodies[0]).toBe(bodies[1]);expect(keys[0]).toBe(keys[1]);await page.unrouteAll({behavior:"wait"});
    await page.reload();const reopened=await openPlan(page,locale);await expect(reopened.getByRole("heading",{name:t(locale,"Notice received","הדיווח התקבל"),exact:true})).toHaveCount(1);
-   const canonical=await page.request.get("/api/calendar/fishing/plan?"+fishingCalendarSearch(family(locale).selection));expect(canonical.status()).toBe(200);expect((await canonical.json()).data.view.notices).toHaveLength(1);
+   const canonical=await page.request.get("/api/calendar/fishing/plan?"+fishingCalendarSearch(family(locale).selection));expect(canonical.status()).toBe(200);const canonicalPlan=(await canonical.json()).data,canonicalView=canonicalPlan.view as StageView;expect(canonicalView.notices).toHaveLength(1);
+   expect(canonicalPlan.selection).toEqual(family(locale).selection);expect(canonicalView).toMatchObject({...family(locale).selection.reference,role:"parent",enrollmentId:family(locale).selection.enrollmentId});
+   const attendanceDetails=page.locator("details[data-fishing-parent-attendance]");await expect(attendanceDetails).toHaveCount(1);if(await attendanceDetails.getAttribute("open")===null)await attendanceDetails.locator("summary").click();
+   expect(await verifyFishingParentPlanSummaries(page,{fixture:"SYNTHETIC_ONLY",origin:data.origin,locale,view:canonicalView})).toEqual({stageRevision:canonicalView.revision,nextKnown:true,noticeCount:1});
    const wrong=await page.request.get("/api/calendar/fishing/context?learnerId="+family(locale).otherLearnerId);expect(wrong.status()).toBe(404);
    const link=reopened.getByRole("link",{name:t(locale,"Open lesson","פתיחת שיעור"),exact:true}).first();await expect(link).toBeVisible();const href=await link.getAttribute("href");if(!href)throw Error("EXPECTED_LESSON_LINK_REQUIRED");const expectedLesson=new URL(href,data.origin);
    // Await the page's own authorized read, not a test-issued API or a delay.
@@ -294,8 +301,10 @@ if(!file){
    const contexts:BrowserContext[]=[];
    try{
     await login(page,"child-"+locale,route(locale,"child",true),locale);const full=await openPlan(page,locale);await expect(full.getByRole("button",{name:t(locale,"Report absence","דיווח על היעדרות"),exact:true})).toHaveCount(0);await expect(page.getByRole("button",{name:t(locale,"Manage this stage","ניהול השלב"),exact:true})).toHaveCount(0);await expect(full.getByRole("link",{name:t(locale,"Open lesson","פתיחת שיעור"),exact:true})).toHaveCount(0);
+    await expectFishingParentPlanSummariesAbsent(page,{fixture:"SYNTHETIC_ONLY",origin:data.origin});
     const wrong=await page.request.get("/api/calendar/fishing/context?learnerId="+family(locale).otherLearnerId);expect(wrong.status()).toBe(403);expect(await page.locator("body").innerText()).not.toMatch(/PRIVATE_SYNTHETIC|paidCents|termsAcceptanceId/);await screen(page,locale,info.outputPath(`child-${locale}-own-readonly.png`));
     const adult=await separate(browser,page,contexts);await login(adult,"adult_client",route(locale,"adult_client"),locale);await expect(adult.locator("#fishing-calendar-heading")).toHaveCount(0);expect((await adult.request.get("/api/calendar/fishing/context")).status()).toBe(403);
+    await expectFishingParentPlanSummariesAbsent(adult,{fixture:"SYNTHETIC_ONLY",origin:data.origin});
    }finally{await Promise.all(contexts.map(c=>c.close()));}
   });
  }

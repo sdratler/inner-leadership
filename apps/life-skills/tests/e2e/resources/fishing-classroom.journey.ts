@@ -1,4 +1,6 @@
 import {expect,type Page,type Response,type Request,type Route} from "@playwright/test";
+import type {StageView} from "../../../src/features/fishing-stage/contract.ts";
+import {verifyFishingParentPlanSummaries} from "./fishing-parent-plan-readback.journey.ts";
 
 /** Invoked only by MAIN's admitted synthetic fixture/test. No test registration,
  * login implementation, context creation, setup, runner, environment or DB work. */
@@ -334,6 +336,10 @@ export async function verifyFishingCalendarFinalParentReadback(ports:FishingFoll
   await expect(completedAttendance.locator("time").last()).toHaveAttribute("datetime",new Date(String(fact.recordedAt)).toISOString());
   const cancelledAttendance=visibleAttendance.locator("li").filter({has:page.getByRole("heading",{name:`${t("Session","מפגש")} ${input.cancelled.ordinal}`,exact:true})});
   await expect(cancelledAttendance).toHaveCount(1);await expect(cancelledAttendance.getByText(t("Cancelled","בוטל"),{exact:true})).toBeVisible();await expect(cancelledAttendance.getByText(t("Not recorded","טרם נרשמה"),{exact:true})).toBeVisible();
+  // This is the page's fresh ordinary-authorized selected-parent GET, already
+  // bound above to this learner, enrollment, stage and final native revision.
+  const parentPlan=await verifyFishingParentPlanSummaries(page,{fixture:"SYNTHETIC_ONLY",origin:input.origin,locale:input.locale,view:view as unknown as StageView});
+  followupRequire(parentPlan.stageRevision===input.expectedStageRevision&&parentPlan.noticeCount===followupArray(view.notices,"NOTICES").length&&!parentPlan.nextKnown,"FINAL_PARENT_PLAN_SUMMARIES");
   await followupVisibleSafe(page,input.forbiddenContent);
   return {stageRevision:input.expectedStageRevision,completedOccurrenceId:input.completed.occurrenceId,cancelledOccurrenceId:input.cancelled.occurrenceId,freshParentRead:true,attendanceEvidence:"PAGE_GET_PLUS_VISIBLE_PARENT_ATTENDANCE_UI"};
  });
