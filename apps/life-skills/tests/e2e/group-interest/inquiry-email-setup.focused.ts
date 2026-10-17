@@ -40,9 +40,10 @@ for(const locale of ["en","he"] as const)test(`${locale}: ordinary authorized in
  for(const status of [503,403,401]){
   let release:()=>void=()=>{};let began=false;
   await page.route("**/api/private/group-applications",async route=>{began=true;await new Promise<void>(resolve=>{release=resolve;});await route.fulfill({status,contentType:"application/json",body:JSON.stringify({ok:false,error:{code:status===503?"UNAVAILABLE":status===403?"FORBIDDEN":"UNAUTHENTICATED"}})});});
+  const injected=reviewResponse(page);
   try{await page.getByRole("button",{name:t("Refresh","רענון"),exact:true}).click();await expect.poll(()=>began).toBe(true);await expectInquiryEmailSetupAbsent(page,{fixture:"SYNTHETIC_ONLY",origin:data.origin});}
   finally{release();}
-  await expect(page.getByRole("alert")).toHaveCount(1);await expectInquiryEmailSetupAbsent(page,{fixture:"SYNTHETIC_ONLY",origin:data.origin});await page.unrouteAll({behavior:"wait"});
+  const fault=await injected;expect(fault.status()).toBe(status);expect(await fault.finished()).toBeNull();await expect(page.getByRole("alert")).toHaveCount(1);await expectInquiryEmailSetupAbsent(page,{fixture:"SYNTHETIC_ONLY",origin:data.origin});await page.unrouteAll({behavior:"wait"});
   const restored=reviewResponse(page);await page.getByRole("button",{name:t("Refresh","רענון"),exact:true}).click();await visibleSetup(await checkedReport(await restored));
  }
  const parent=await browser.newContext({baseURL:data.origin,ignoreHTTPSErrors:true});try{
