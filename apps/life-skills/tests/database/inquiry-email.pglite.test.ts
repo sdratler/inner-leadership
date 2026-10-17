@@ -85,6 +85,12 @@ it("concurrent worker reservations cannot deliver twice",async()=>{
  const saved=await application.submit(command()),mail=await row(saved.item.id),send=vi.fn(async()=>({providerId:"synthetic_mail_4"}));
  expect((await Promise.all([outbox.dispatchOne(mail.id,{send},INQUIRY_EMAIL_FROM),outbox.dispatchOne(mail.id,{send},INQUIRY_EMAIL_FROM)])).sort()).toEqual(["idle","sent"]);expect(send).toHaveBeenCalledTimes(1);
 });
+it("post-commit HTTP dispatch by native reference shares the same durable no-resend state across retries",async()=>{
+ const input=command(),saved=await application.submit(input),send=vi.fn(async()=>({providerId:"synthetic_post_commit"}));
+ expect(await outbox.dispatchForApplication(saved.item.id,{send},INQUIRY_EMAIL_FROM)).toBe("sent");
+ await application.submit(input);expect(await outbox.dispatchForApplication(saved.item.id,{send},INQUIRY_EMAIL_FROM)).toBe("sent");
+ expect(send).toHaveBeenCalledTimes(1);expect(await outbox.dispatchForApplication(randomUUID(),{send},INQUIRY_EMAIL_FROM)).toBe("not_requested");
+});
 it("rejects mismatched recipient/purpose before network, even with valid ciphertext",async()=>{
  const saved=await application.submit(command()),mail=await row(saved.item.id),send=vi.fn();
  const payload={purpose:"academy_inquiry_acknowledgment_v1",reference:saved.item.id,recipient:"other@example.invalid",locale:"en"};

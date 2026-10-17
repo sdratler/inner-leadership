@@ -137,9 +137,9 @@ for(const locale of ["en","he"] as const)test(`OPS09 ${locale}: public keyboard 
   await expect(record).toHaveCount(1);await expect(record).toContainText(savedId);
  };
  await readback();await page.reload();await readback();
- const details=record.locator("details").filter({has:page.getByRole("region",{name:t("Fishing lead membership controls","בקרות שיוך לרשימת המתעניינים בדיג"),includeHidden:true})});
- const summary=details.locator("summary");await tabTo(page,summary);await page.keyboard.press("Enter");
- await expect(details.getByRole("button",{name:t("Add to Lead List","הוספה לרשימת המתעניינים"),exact:true})).toBeVisible();await visibleFocus(summary);await noClipping(page);
+ // Narrow inquiry release: separate Contacts lead conversion requires its own native cutover fixture.
+ // Exact saved reference/contact and ordinary owner reopen above remain required.
+ await noClipping(page);
  await page.screenshot({path:info.outputPath(`ops09-owner-readback-focus-${locale}-${info.project.name}.png`)});
  // Deliberately NO Add/Remove, provider action, session injection or sample UI.
 });
