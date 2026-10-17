@@ -11,16 +11,17 @@ import type {IdentityClock,Actor} from "../identity/types.ts";
 import {systemClock} from "../identity/types.ts";
 import type {IdentityStore,SqlSession} from "../identity/store.ts";
 import {groupApplicationCommandSchema,groupApplicationReplaySchema,groupApplicationFieldsSchema,isFloridaGroupApplication,type GroupApplicationCommand,type GroupApplicationFields,type GroupApplicationRecord} from "./contract.ts";
+import {queueInquiryEmail} from "./inquiry-email.ts";
 
 type Row={id:string;requestDigest:string;payloadCiphertext:string;receivedAt:Date};
 const aad=(workspace:string,id:string)=>`ls_service_interest/public_application/v1/${workspace}/${id}`;
 const select=`SELECT id,request_digest AS "requestDigest",payload_ciphertext AS "payloadCiphertext",received_at AS "receivedAt"
  FROM ls_service_interest.public_applications`;
 
-/** Public application receipt only. Never creates a Person, lead, case, enrollment, payment, booking or message. */
+/** Private inquiry only; optional administrative outbox is atomic and never sends here. */
 export class PublicGroupApplicationStore{
  constructor(private readonly db:IdentityStore,private readonly workspaceId:WorkspaceId,private readonly ring:Keyring,
-  private readonly digestKey:string,private readonly clock:IdentityClock=systemClock){}
+  private readonly digestKey:string,private readonly clock:IdentityClock=systemClock,private readonly emailQueueEnabled=false){}
  private requestDigest(fields:GroupApplicationFields){return privateDigest({domain:"public-group-application/v1",workspace:this.workspaceId,fields},this.digestKey);}
  private contactDigest(fields:GroupApplicationFields){return isFloridaGroupApplication(fields)?
   privateDigest({domain:"public-group-application-contact/v1",workspace:this.workspaceId,contact:fields.contact},this.digestKey):
@@ -79,7 +80,8 @@ export class PublicGroupApplicationStore{
    }
    await tx.query(`INSERT INTO ls_service_interest.public_application_operations(workspace_id,operation_id,request_digest,application_id)
     VALUES($1,$2,$3,$4)`,[this.workspaceId,command.operationId,requestDigest,id]);
-   return {saved:true as const,replayed:false,duplicate:false,item:await this.read(tx,id)};
+   const acknowledgment=this.emailQueueEnabled?await queueInquiryEmail(tx,this.workspaceId,id,command.fields,this.ring,now):undefined;
+   return {saved:true as const,replayed:false,duplicate:false,item:await this.read(tx,id),...(acknowledgment?{acknowledgment}:{})};
   });
  }
  async list(actor:Actor):Promise<GroupApplicationRecord[]>{

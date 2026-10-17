@@ -1,3 +1,4 @@
+import {planAfterEarlyInquiryOutbox} from './inquiry-outbox-history.ts';
 export type Migration = Readonly<{ name: string; checksum: string; sql: string }>;
 export type AppliedMigration = Readonly<{ name: string; checksum: string }>;
 export function planMigrations(files: readonly Migration[], applied: readonly AppliedMigration[]): readonly Migration[] {
@@ -10,7 +11,11 @@ export function planMigrations(files: readonly Migration[], applied: readonly Ap
   if (applied.length > sorted.length) throw new Error("MIGRATION_HISTORY_DIVERGED");
   for (const [index, item] of applied.entries()) {
     const expected = sorted[index];
-    if (!expected || expected.name !== item.name || expected.checksum !== item.checksum) throw new Error("MIGRATION_HISTORY_DIVERGED");
+    if (!expected || expected.name !== item.name || expected.checksum !== item.checksum) {
+      const pending=planAfterEarlyInquiryOutbox(sorted,applied);
+      if(pending)return pending;
+      throw new Error("MIGRATION_HISTORY_DIVERGED");
+    }
   }
   return sorted.slice(applied.length);
 }
