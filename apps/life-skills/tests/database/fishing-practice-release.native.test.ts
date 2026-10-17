@@ -11,7 +11,7 @@ afterAll(async()=>{vi.unstubAllEnvs();await historical?.close();});
 
 describe('fishing practice migration 0132 native release proof',()=>{
  test('failed apply rolls back; exact apply/readback/repeat preserves append-only synthetic evidence',async()=>{
-  const files=fishingPracticeMigrationInventory(historical.inventory),baseline=files.slice(0,-1),migration=files.at(-1)!;
+  const files=fishingPracticeMigrationInventory(historical.inventory),baseline=files.filter(f=>f.name!=='0132_ls_fishing_practice_revisions.sql'),migration=files.find(f=>f.name==='0132_ls_fishing_practice_revisions.sql')!;
   expect(await migrate(tx(),baseline,false)).toEqual({applied:14,pending:0});
   const workspaceId=randomUUID(),practitionerId=randomUUID(),minorId=randomUUID(),familyId=randomUUID(),inquiryId=randomUUID(),interestId=randomUUID(),groupId=randomUUID(),placementId=randomUUID();
   await historical.pool.query('INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,now())',[workspaceId]);
@@ -26,7 +26,8 @@ describe('fishing practice migration 0132 native release proof',()=>{
   const history0=(await historical.pool.query<{name:string;checksum:string}>('SELECT name,checksum FROM ls_control.migrations ORDER BY name')).rows,snapshot0=await readFishingPracticeReleaseSnapshot(tx());
   expect(fishingPracticePlan(files,history0,snapshot0)).toMatchObject({stage:0,pending:[expect.objectContaining({name:'0132_ls_fishing_practice_revisions.sql'})]});
   await historical.pool.query('BEGIN');try{await historical.pool.query('CREATE TABLE ls_group_admin.fishing_practice_revisions(id uuid)');await expect(readFishingPracticeReleaseSnapshot(tx())).rejects.toThrow('FISHING_PRACTICE_SCHEMA_STATE_CONFLICT');}finally{await historical.pool.query('ROLLBACK');}
-  const broken=[...baseline,{...migration,sql:migration.sql+'\nSELECT * FROM ls_missing_fishing_table;'}];await expect(migrate(tx(),broken,false)).rejects.toThrow('MIGRATION_FAILED');
+  const fault={query:async(sql:string,values?:readonly unknown[])=>tx().query(sql===migration.sql?sql+'\nSELECT * FROM ls_missing_fishing_table;':sql,values)};
+  await expect(migrate(fault,files,false)).rejects.toThrow('MIGRATION_FAILED');
   expect(await readFishingPracticeReleaseSnapshot(tx())).toMatchObject({stage:0,revisionRows:0,operationRows:0});
   expect(await migrate(tx(),files,false)).toEqual({applied:1,pending:0});
   const history1=(await historical.pool.query<{name:string;checksum:string}>('SELECT name,checksum FROM ls_control.migrations ORDER BY name')).rows,snapshot1=await readFishingPracticeReleaseSnapshot(tx());
