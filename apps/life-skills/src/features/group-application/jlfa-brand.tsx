@@ -12,6 +12,9 @@ export const JLFA_TAGLINE="TORAH • FISHING • SELF-GOVERNANCE";
 export const JLFA_LOGO_SRC="/groups/brand/jlfa-logo-locked-v1.png";
 export const JLFA_LOGO_SHA256="e78ff6d3ef16c37613725507ce14da05883734a77f48b78ab9d6df3f92480356";
 type Pair={en:string;he:string};
+// JLFA-SESSION-3H-20261018-01: the complete regular meeting block.
+const sessionCadence:Pair={en:"One three-hour group session each week. Twelve sessions per stage.",he:"מפגש קבוצתי אחד של שלוש שעות בכל שבוע. שנים־עשר מפגשים בכל שלב."};
+function JlfaSessionCadence({locale}:{locale:Locale}){return <p data-jlfa-session-cadence><strong>{sessionCadence[locale]}</strong></p>;}
 export function JlfaLogo({locale,footer=false}:{locale:Locale;footer?:boolean}){
  const image=<img src={JLFA_LOGO_SRC} width={1254} height={1254} alt={footer?`${JLFA_NAME} — ${JLFA_TAGLINE}`:JLFA_NAME}/>;
  return <a href="#main" className={`${styles.logoLink} ${footer?styles.footerLogo:styles.headerLogo}`} aria-label={`${JLFA_NAME} — ${locale==="he"?"דף הבית":"home"}`}
@@ -57,7 +60,7 @@ const coreFaqGroups=[{en:"Getting started",he:"מתחילים",indexes:[0,3,6,9,
 export function JlfaCoreProgram({locale}:{locale:Locale}){
  const p=(index:number)=>coreText(index,locale);
  return <div className={`${styles.curriculumContent} ${styles.coreProgram}`} data-jlfa-curriculum-content>
-  <h3>{p(24)}</h3><p>{p(25)}</p><div className={styles.curriculumCards}>{coreStageIndexes.map(indexes=><article key={indexes[0]} data-jlfa-stage>
+  <h3>{p(24)}</h3><p>{p(25)}</p><JlfaSessionCadence locale={locale}/><div className={styles.curriculumCards}>{coreStageIndexes.map(indexes=><article key={indexes[0]} data-jlfa-stage>
    <h4>{p(indexes[0])}</h4>{indexes.slice(1).map(index=><p key={index} data-jlfa-copy-node={index}>{p(index)}</p>)}</article>)}</div>
   <section><h3>{p(46)}</h3>{[[47,48,49],[50,51],[52,53]].map(indexes=><div key={indexes[0]}><h4>{p(indexes[0]!)}</h4>{indexes.slice(1).map(index=><p key={index}>{p(index)}</p>)}</div>)}<p>{p(54)}</p></section>
   <section><h3>{p(55)}</h3><p>{p(56)}</p><p>{p(57)}</p></section>
@@ -70,7 +73,7 @@ export function JlfaCoreMain({locale,form,school}:{locale:Locale;form:ReactNode;
  const p=(index:number)=>coreText(index,locale),[name,place,tagline]=p(0).split("\n"),explore=p(3).split("  |  ")[1]!;
  return <>
   <section className={`${styles.hero} ${styles.coreHero}`}><div className={`${styles.coreWrap} ${styles.heroGrid}`}>
-   <div><h1>{name}</h1><p className={styles.corePlace}>{place}</p><p className={styles.heroLead}>{tagline}</p><p className={styles.corePillars}>{JLFA_TAGLINE}</p><p>{p(1)}</p><p>{p(2)}</p>
+   <div><h1>{name}</h1><p className={styles.corePlace}>{place}</p><p className={styles.heroLead}>{tagline}</p><p className={styles.corePillars}>{JLFA_TAGLINE}</p><p>{p(1)}</p><JlfaSessionCadence locale={locale}/><p>{p(2)}</p>
     <div className={styles.coreActions}><a className={styles.corePrimary} data-jlfa-primary href="#apply">{p(103)}</a><JlfaCurriculum locale={locale} label={explore} title={locale==="he"?"סקירת התוכנית":"Program overview"}><JlfaCoreProgram locale={locale}/></JlfaCurriculum></div>
    </div>
   </div></section>

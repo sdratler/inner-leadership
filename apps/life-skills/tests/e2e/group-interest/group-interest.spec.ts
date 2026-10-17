@@ -158,7 +158,10 @@ if(!runtimePath){
   await expect(page.getByRole("img",{name:approvedCopy.shared.placeholderLabel[locale],exact:true})).toHaveCount(0);
   const curriculum=page.getByRole("button",{name:locale==="he"?"הכירו את התוכנית":"Explore the program",exact:true}),dialog=page.locator("[data-jlfa-curriculum-dialog]");
   await expect(dialog).not.toBeVisible();await expect(page.locator("[data-jlfa-curriculum-content]")).toHaveCount(0);
+  const cadence=locale==="he"?"מפגש קבוצתי אחד של שלוש שעות בכל שבוע. שנים־עשר מפגשים בכל שלב.":"One three-hour group session each week. Twelve sessions per stage.";
+  await expect(page.locator("[data-jlfa-session-cadence]")).toHaveText(cadence);await expect(page.locator("[data-jlfa-session-cadence]")).toBeVisible();
   await curriculum.click();await expect(dialog.getByRole("heading",{name:locale==="he"?"סקירת התוכנית":"Program overview",exact:true})).toBeVisible();
+  await expect(dialog.locator("[data-jlfa-session-cadence]")).toHaveText(cadence);await expect(dialog.locator("[data-jlfa-session-cadence]")).toBeVisible();
   await expect(dialog.locator("[data-jlfa-stage]")).toHaveCount(4);
   for(const index of [24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45])await expect(dialog).toContainText(coreCopy.nodes[index]![locale]);
   await dialog.getByRole("button",{name:locale==="he"?"סגירה":"Close",exact:true}).click();await expect(dialog).not.toBeVisible();await expect(curriculum).toBeFocused();
