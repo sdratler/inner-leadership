@@ -325,7 +325,7 @@ if(!file){
     completed:{occurrenceId:data.pastOccurrenceId,moduleId:"RM-102",version:"synthetic-lesson-v1",ordinal:2},
     cancelled:{occurrenceId:data.occurrenceId,moduleId:"RM-101",version:"synthetic-lesson-v1",ordinal:1},attendance:{occurrenceId:data.pastOccurrenceId,state:"present"},
     forbiddenContent:["PRIVATE_SYNTHETIC_TEACHER_CANARY","PRIVATE_SYNTHETIC_FIT_CANARY",family(language).otherLearnerId,family(language==="en"?"he":"en").selection.learnerId!]});
-   expect(final).toMatchObject({stageRevision:finalView.revision,freshParentRead:true,attendanceEvidence:"PAGE_GET_ONLY_NO_VISIBLE_ATTENDANCE_UI"});
+   expect(final).toMatchObject({stageRevision:finalView.revision,freshParentRead:true,attendanceEvidence:"PAGE_GET_PLUS_VISIBLE_PARENT_ATTENDANCE_UI"});
   }
  });
 }

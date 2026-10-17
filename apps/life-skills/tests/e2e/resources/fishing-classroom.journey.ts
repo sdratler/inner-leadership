@@ -194,7 +194,7 @@ export type FishingCalendarFinalParentReadbackInput=FishingFollowupCommon&{
  attendance:{occurrenceId:string;state:"present"|"late"|"absent"|"no_show"};
 };
 export type FishingCalendarFinalParentReadbackReceipt={stageRevision:number;completedOccurrenceId:string;cancelledOccurrenceId:string;
- freshParentRead:true;attendanceEvidence:"PAGE_GET_ONLY_NO_VISIBLE_ATTENDANCE_UI"};
+ freshParentRead:true;attendanceEvidence:"PAGE_GET_PLUS_VISIBLE_PARENT_ATTENDANCE_UI"};
 export type FishingClassroomPublishedProgressInput={
  fixture:"SYNTHETIC_DEFERRED_MECHANICS_ONLY";lesson:FishingClassroomJourneyInput;submission:FishingClassroomJourneyReceipt;
  instructorAccountId:string;parentAccountId:string;sourceSha256:string;
@@ -321,8 +321,21 @@ export async function verifyFishingCalendarFinalParentReadback(ports:FishingFoll
   for(const [expected,label]of[[input.completed,t("Session delivered","המפגש התקיים")],[input.cancelled,t("Cancelled — service remains undelivered","בוטל — השירות טרם סופק")]]as const){
    const row=region.locator("li").filter({has:page.getByRole("heading",{name:`${t("Session","מפגש")} ${expected.ordinal} · ${expected.moduleId}`,exact:true})});await expect(row).toHaveCount(1);await expect(row.getByText(label,{exact:true})).toBeVisible();
   }
+  const attendanceDetails=page.locator("details[data-fishing-parent-attendance]");await expect(attendanceDetails).toHaveCount(1);
+  if(await attendanceDetails.getAttribute("open")===null)await attendanceDetails.locator("summary").click();
+  const visibleAttendance=page.getByRole("region",{name:t("Session status and attendance","מצב המפגשים ונוכחות"),exact:true});await expect(visibleAttendance).toBeVisible();
+  await expect(visibleAttendance.getByText(`${t("Stage revision:","גרסת השלב:")} ${input.expectedStageRevision}`,{exact:true})).toBeVisible();
+  const completedAttendance=visibleAttendance.locator("li").filter({has:page.getByRole("heading",{name:`${t("Session","מפגש")} ${input.completed.ordinal}`,exact:true})});
+  await expect(completedAttendance).toHaveCount(1);await expect(completedAttendance.getByText(t("Completed","התקיים"),{exact:true})).toBeVisible();
+  const attendanceLabels={present:t("Present","נכח"),late:t("Late","איחר"),absent:t("Absent","נעדר"),no_show:t("No-show","לא הגיע")};
+  await expect(completedAttendance.getByText(attendanceLabels[input.attendance.state],{exact:true})).toBeVisible();
+  const actualCompleted=occurrences.find(value=>value.id===input.completed.occurrenceId)!;
+  await expect(completedAttendance).toContainText(new RegExp(`${t("Session revision","גרסת המפגש")}\\s*${String(actualCompleted.revision)}`));
+  await expect(completedAttendance.locator("time").last()).toHaveAttribute("datetime",new Date(String(fact.recordedAt)).toISOString());
+  const cancelledAttendance=visibleAttendance.locator("li").filter({has:page.getByRole("heading",{name:`${t("Session","מפגש")} ${input.cancelled.ordinal}`,exact:true})});
+  await expect(cancelledAttendance).toHaveCount(1);await expect(cancelledAttendance.getByText(t("Cancelled","בוטל"),{exact:true})).toBeVisible();await expect(cancelledAttendance.getByText(t("Not recorded","טרם נרשמה"),{exact:true})).toBeVisible();
   await followupVisibleSafe(page,input.forbiddenContent);
-  return {stageRevision:input.expectedStageRevision,completedOccurrenceId:input.completed.occurrenceId,cancelledOccurrenceId:input.cancelled.occurrenceId,freshParentRead:true,attendanceEvidence:"PAGE_GET_ONLY_NO_VISIBLE_ATTENDANCE_UI"};
+  return {stageRevision:input.expectedStageRevision,completedOccurrenceId:input.completed.occurrenceId,cancelledOccurrenceId:input.cancelled.occurrenceId,freshParentRead:true,attendanceEvidence:"PAGE_GET_PLUS_VISIBLE_PARENT_ATTENDANCE_UI"};
  });
 }
 function followupProgressInput(input:FishingClassroomPublishedProgressInput){

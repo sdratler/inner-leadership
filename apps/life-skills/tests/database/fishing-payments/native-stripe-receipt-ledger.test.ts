@@ -9,6 +9,7 @@ import {approvedOffer,digest} from "../../../src/features/fishing-payments/domai
 import type {ProviderOperation,Receipt} from "../../../src/features/fishing-payments/ports.ts";
 import {FishingPaymentStore} from "../../../src/features/fishing-payments/store.ts";
 import {FishingReceiptInbox} from "../../../src/features/fishing-payments/receipts.ts";
+import {stripeTestWebhookHttp} from "../../../src/features/fishing-payments/stripe-test-webhook-http.ts";
 import {StripeReadbackNormalizer} from "../../../src/features/fishing-payments/stripe-readback.ts";
 import {NativeStripeReceiptBindings} from "../../../src/features/fishing/native-stripe-bindings.ts";
 import {StripeSdkTestReadClient} from "../../../src/features/fishing/stripe-sdk-test-read-client.ts";
@@ -91,6 +92,31 @@ async function login(c:Fixture,actor:Actor){const auth=new IdentityAuthService(c
 async function money(c:Fixture){const result:Record<string,string>={};for(const table of["purchases","settlements","commands","outbox"]){result[table]=digest((await c.f.pool.query("SELECT to_jsonb(t) AS row FROM ls_fishing_payments."+table+" t WHERE workspace_id=$1 ORDER BY to_jsonb(t)::text",[c.f.workspaceId])).rows);}result.inbox=digest((await c.f.pool.query("SELECT event_id,processed_at FROM ls_fishing_payments.inbox WHERE provider_account_id=$1 AND event_id=ANY($2::text[]) ORDER BY event_id",[c.merchant.accountId,c.receipts.map(x=>x.eventId)])).rows);return result;}
 async function protectedEffects(c:Fixture){const result:Record<string,string>={};for(const table of["ls_fishing_stage.enrollments","ls_fishing_stage.seat_reservations","ls_education.account_grants","ls_calendar.appointments","ls_cases.cases","ls_payments.charges","ls_payments.credit_events","ls_fishing_payments.reminders","ls_identity.auth_mail_outbox"]){result[table]=digest((await c.f.pool.query("SELECT to_jsonb(t) AS row FROM "+table+" t WHERE workspace_id=$1 ORDER BY to_jsonb(t)::text",[c.f.workspaceId])).rows);}return result;}
 async function count(c:Fixture){return Number((await c.f.pool.query("SELECT count(*) AS n FROM ls_fishing_payments.settlements WHERE workspace_id=$1",[c.f.workspaceId])).rows[0].n);}
+
+function signedHttp(c:Fixture,eventId=`evt_${randomUUID().replaceAll("-","")}`){
+ const created=Math.floor(Date.now()/1000),event={id:eventId,object:"event",type:"invoice.paid",account:c.merchant.accountId,livemode:false,api_version:c.merchant.apiVersion,created,data:{object:{id:c.ids.invoice,object:"invoice",private:CANARY}}};
+ const body=JSON.stringify(event),signature=Stripe.webhooks.generateTestHeaderString({payload:body,secret:c.endpointSecret,timestamp:created});
+ return {eventId,body,signature,request:()=>new Request("https://synthetic.example.invalid/unmounted-test-intake",{method:"POST",headers:{"content-type":"application/json","stripe-signature":signature},body})};
+}
+test("HTTP intake composition: SDK signature commits one minimal native receipt before 200; replay never allocates",async()=>{
+ const c=await fixture(),before=await protectedEffects(c),wire=signedHttp(c),accept=async(raw:Uint8Array,signature:string)=>{await c.inbox.acceptStripeTest(raw,signature);};
+ expect((await stripeTestWebhookHttp(wire.request(),accept)).status).toBe(200);
+ const read=()=>c.f.pool.query("SELECT receipt_json FROM ls_fishing_payments.inbox WHERE provider_account_id=$1 AND event_id=$2",[c.merchant.accountId,wire.eventId]);
+ const first=(await read()).rows;expect(first).toHaveLength(1);expect(JSON.stringify(first)).not.toContain(CANARY);expect(first[0].receipt_json).toMatchObject({eventId:wire.eventId,eventType:"invoice.paid",objectId:c.ids.invoice});
+ expect((await stripeTestWebhookHttp(wire.request(),accept)).status).toBe(200);expect((await read()).rows).toEqual(first);
+ expect(await count(c)).toBe(0);expect(c.client.calls).toHaveLength(0);expect(c.f.provider.calls).toBe(0);expect(await protectedEffects(c)).toEqual(before);
+});
+test("HTTP intake composition: a bad SDK signature commits nothing and returns fixed 400",async()=>{
+ const c=await fixture(),wire=signedHttp(c),before=await protectedEffects(c),request=new Request("https://synthetic.example.invalid/unmounted-test-intake",{method:"POST",headers:{"content-type":"application/json","stripe-signature":"t=1,v1="+"0".repeat(64)},body:wire.body});
+ const response=await stripeTestWebhookHttp(request,async(raw,signature)=>{await c.inbox.acceptStripeTest(raw,signature);});expect(response.status).toBe(400);expect(await response.text()).not.toContain(CANARY);
+ expect((await c.f.pool.query("SELECT event_id FROM ls_fishing_payments.inbox WHERE provider_account_id=$1 AND event_id=$2",[c.merchant.accountId,wire.eventId])).rows).toHaveLength(0);expect(await count(c)).toBe(0);expect(await protectedEffects(c)).toEqual(before);
+});
+test("HTTP intake composition: unknown reply after real native commit reconciles through same-event retry",async()=>{
+ const c=await fixture(),wire=signedHttp(c);let committed=false;
+ const response=await stripeTestWebhookHttp(wire.request(),async(raw,signature)=>{await c.inbox.acceptStripeTest(raw,signature);committed=true;throw Error("synthetic reply lost after commit");});expect(committed).toBe(true);expect(response.status).toBe(503);
+ expect((await stripeTestWebhookHttp(wire.request(),async(raw,signature)=>{await c.inbox.acceptStripeTest(raw,signature);})).status).toBe(200);
+ expect((await c.f.pool.query("SELECT event_id FROM ls_fishing_payments.inbox WHERE provider_account_id=$1 AND event_id=$2",[c.merchant.accountId,wire.eventId])).rows).toHaveLength(1);expect(await count(c)).toBe(0);expect(c.client.calls).toHaveLength(0);expect(c.f.provider.calls).toBe(0);
+});
 test("SDK signature commits minimal intake, ordinary fresh operator settles once and fresh parent reads family-safe cash",async()=>{
  const c=await fixture(),before=await protectedEffects(c),r=await c.receipt(),pending=await money(c);
  const durable=(await c.f.pool.query("SELECT receipt_json FROM ls_fishing_payments.inbox WHERE provider_account_id=$1 AND event_id=$2",[c.merchant.accountId,r.eventId])).rows[0].receipt_json;

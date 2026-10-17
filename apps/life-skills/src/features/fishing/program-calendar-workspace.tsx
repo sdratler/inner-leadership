@@ -6,6 +6,7 @@ import {Button,Select} from "../../ui/workspace/controls.tsx";
 import {calendarRead,calendarWrite,CalendarClientError} from "../calendar/client.ts";
 import {loginHref} from "../identity/login-return.ts";
 import {FishingStagePlan} from "../fishing-stage/plan.tsx";
+import {FishingParentAttendanceSummary} from "../fishing-stage/parent-attendance-summary.tsx";
 import type {StageCommand,OccurrenceProjection} from "../fishing-stage/contract.ts";
 import type {NativeProgramCommandIntent} from "./native-program-contract.ts";
 import {FishingCalendarEditor} from "./program-calendar-editor.tsx";
@@ -132,6 +133,7 @@ export function FishingCalendarWorkspace({locale,role,enabled,onDirtyChange,onSa
   {plan&&<>
    <div className={styles.next}><h3>{t("Next fishing session","מפגש הדיג הבא")}</h3>{next?.time.kind==="scheduled"?<><p><time dateTime={next.time.startsAt}>{format(next.time.startsAt)}</time> · America/New_York</p><p>{next.location}</p>{next.equipment&&<details><summary>{t("Equipment and preparation","ציוד והכנה")}</summary><p>{next.equipment}</p></details>}</>:<p>{t("No upcoming date is published. Undated syllabus entries remain in the full plan.","טרם פורסם מועד קרוב. פריטי תוכנית ללא מועד נשמרים בתוכנית המלאה.")}</p>}</div>
    {role==="parent"&&<p>{t("Parent-assisted use does not require a child device or child account.","שימוש בסיוע הורה אינו דורש מכשיר או חשבון ילד.")}</p>}
+   {role==="parent"&&plan.view?.role==="parent"&&plan.view.enrollmentId&&plan.view.enrollmentId===plan.selection.enrollmentId&&<details className={styles.plan} data-fishing-parent-attendance><summary>{t("Attendance and session status","נוכחות ומצב המפגשים")}</summary><FishingParentAttendanceSummary view={plan.view} locale={locale}/></details>}
    {role==="practitioner"&&<Button variant="secondary" disabled={locked||loading} onClick={()=>{if(dirty&&!window.confirm(leaveMessage))return;setDirty(false);setEditor("");}}>{plan.view?t("Manage this stage","ניהול השלב"):t("Prepare a twelve-session draft","הכנת טיוטה ל־12 מפגשים")}</Button>}
    {plan.view&&<details className={styles.plan}><summary>{t("Full twelve-session plan and received notices","התוכנית המלאה ל־12 מפגשים והדיווחים שהתקבלו")}</summary><fieldset disabled={locked} onChange={()=>{if(role==="parent")setDirty(true);}}><FishingStagePlan view={plan.view} locale={locale}
     {...(role==="practitioner"?{onEdit:(o:OccurrenceProjection)=>{if(locked||dirty&&!window.confirm(leaveMessage))return;setDirty(false);setEditor(o.id);}}:{})}
