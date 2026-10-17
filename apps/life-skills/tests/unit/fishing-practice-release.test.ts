@@ -11,11 +11,11 @@ const snapshot=(stage:0|1):FishingPracticeReleaseSnapshot=>({stage,catalogDigest
 describe('fishing practice migration 0132 release boundary',()=>{
  it('keeps append-only 0135 declared while bounding practice to exact 0132',async()=>{
   const files=await inventory(),scoped=fishingPracticeMigrationInventory(files);
-  expect(scoped.slice(-3).map(f=>f.name)).toEqual(['0131_ls_public_group_applications.sql',FISHING_PRACTICE_MIGRATION.name,'0135_ls_public_inquiry_email_outbox.sql']);
+  expect(scoped.slice(-3).map(f=>f.name)).toEqual(['0131_ls_public_group_applications.sql',FISHING_PRACTICE_MIGRATION.name,'0135_ls_inquiry_email_outbox.sql']);
   expect(scoped.some(f=>f.name.startsWith('0133_')||f.name.startsWith('0134_'))).toBe(false);
   const future:Migration={name:'0136_future_scope.sql',checksum:'c'.repeat(64),sql:'select 1'};
   expect(fishingPracticeMigrationInventory([...files,future])).toEqual(scoped);
-  expect(FISHING_PRACTICE_SOURCE_PATHS).toContain('migrations/0135_ls_public_inquiry_email_outbox.sql');
+  expect(FISHING_PRACTICE_SOURCE_PATHS).toContain('migrations/0135_ls_inquiry_email_outbox.sql');
  });
  it('retains historical no-outbox practice inventories',async()=>{
   const files=(await inventory()).filter(f=>!f.name.startsWith('0135_')),scoped=fishingPracticeMigrationInventory(files),baseline=scoped.filter(f=>f.name!==FISHING_PRACTICE_MIGRATION.name);

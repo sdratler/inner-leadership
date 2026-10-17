@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import type {AppliedMigration,Migration} from './migration-plan.ts';
 
-export const INQUIRY_OUTBOX_MIGRATION={name:'0135_ls_public_inquiry_email_outbox.sql',sha256:'45a887627c21666d147537bf0a37148f83cc3ced29ccfd27c2f35be7dd9ca424'} as const;
+export const INQUIRY_OUTBOX_MIGRATION={name:'0135_ls_inquiry_email_outbox.sql',sha256:'45a887627c21666d147537bf0a37148f83cc3ced29ccfd27c2f35be7dd9ca424'} as const;
 const baseline={name:'0131_ls_public_group_applications.sql',sha256:'76af0c01649a67e1ddffeda5e8f93e3fb39ef03436465f456f59f3d9a7a9050c'};
 const deferred=new Map([
  ['0132_ls_fishing_practice_revisions.sql','5d01872a0304d0dc9af14afdd660b470000c6cb99752239bf2fab3c00579eebf'],

@@ -8,7 +8,7 @@ import {readPublicGroupApplicationsReleaseSnapshot} from './public-group-applica
 export const FISHING_PRACTICE_BASELINE={name:'0131_ls_public_group_applications.sql',sha256:'76af0c01649a67e1ddffeda5e8f93e3fb39ef03436465f456f59f3d9a7a9050c'} as const;
 export const FISHING_PRACTICE_MIGRATION={name:'0132_ls_fishing_practice_revisions.sql',sha256:'5d01872a0304d0dc9af14afdd660b470000c6cb99752239bf2fab3c00579eebf'} as const;
 export const FISHING_PRACTICE_SOURCE_PATHS=[
- 'package.json','migrations/manifest.json','migrations/0131_ls_public_group_applications.sql','migrations/0135_ls_public_inquiry_email_outbox.sql','migrations/0132_ls_fishing_practice_revisions.sql',
+ 'package.json','migrations/manifest.json','migrations/0131_ls_public_group_applications.sql','migrations/0135_ls_inquiry_email_outbox.sql','migrations/0132_ls_fishing_practice_revisions.sql',
  'scripts/release-public-group-applications.ts','scripts/release-fishing-practice.ts',
 ] as const;
 export const FISHING_PRACTICE_SOURCE_ROOTS=['src','public/groups'] as const;

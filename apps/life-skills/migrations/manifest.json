@@ -216,7 +216,7 @@
     "sha256": "626e5e86e36ad8e10ea9a468a96977f03a3d3e0476dbf358ca292006b13500d6"
   },
   {
-    "name": "0135_ls_public_inquiry_email_outbox.sql",
+    "name": "0135_ls_inquiry_email_outbox.sql",
     "sha256": "45a887627c21666d147537bf0a37148f83cc3ced29ccfd27c2f35be7dd9ca424"
   }
 ]
