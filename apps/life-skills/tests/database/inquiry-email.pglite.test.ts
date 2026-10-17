@@ -51,10 +51,10 @@ it("OFF remains compatible with pre-outbox databases and never queries the email
  expect(saved).not.toHaveProperty("acknowledgment");expect(await row(saved.item.id)).toBeUndefined();
 });
 it("rolls back both inquiry and operation if atomic queue persistence fails",async()=>{
- const input=command();const broken:IdentityStore={transaction:fn=>store.transaction(tx=>fn({query:(sql,values)=>{if(sql.startsWith("INSERT INTO ls_service_interest.inquiry_email_outbox"))throw Error("queue unavailable");return tx.query(sql,values);}}))};
+ const input=command(),before=(await db.query("SELECT count(*)::int AS n FROM ls_service_interest.public_applications WHERE workspace_id=$1",[workspace])).rows;const broken:IdentityStore={transaction:fn=>store.transaction(tx=>fn({query:(sql,values)=>{if(sql.startsWith("INSERT INTO ls_service_interest.inquiry_email_outbox"))throw Error("queue unavailable");return tx.query(sql,values);}}))};
  await expect(new PublicGroupApplicationStore(broken,workspace,ring,key,clock,true).submit(input)).rejects.toThrow("queue unavailable");
  expect((await db.query("SELECT operation_id FROM ls_service_interest.public_application_operations WHERE operation_id=$1",[input.operationId])).rows).toEqual([]);
- expect((await db.query("SELECT id FROM ls_service_interest.public_applications WHERE payload_ciphertext LIKE $1",[`%${input.fields.contact}%`])).rows).toEqual([]);
+ expect((await db.query("SELECT count(*)::int AS n FROM ls_service_interest.public_applications WHERE workspace_id=$1",[workspace])).rows).toEqual(before);
  expect(await new PublicGroupApplicationStore(store,workspace,ring,key,clock).replaySaved(input)).toBeNull();
 });
 it("a fresh worker sends only after the native commit and committed unknown reservation, outside the DB transaction",async()=>{
