@@ -12,7 +12,7 @@ afterAll(async()=>{vi.unstubAllEnvs();await historical?.close();});
 describe('fishing practice migration 0132 native release proof',()=>{
  test('failed apply rolls back; exact apply/readback/repeat preserves append-only synthetic evidence',async()=>{
   const files=fishingPracticeMigrationInventory(historical.inventory),baseline=files.slice(0,-1),migration=files.at(-1)!;
-  expect(await migrate(tx(),baseline,false)).toEqual({applied:13,pending:0});
+  expect(await migrate(tx(),baseline,false)).toEqual({applied:14,pending:0});
   const workspaceId=randomUUID(),practitionerId=randomUUID(),minorId=randomUUID(),familyId=randomUUID(),inquiryId=randomUUID(),interestId=randomUUID(),groupId=randomUUID(),placementId=randomUUID();
   await historical.pool.query('INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,now())',[workspaceId]);
   await historical.pool.query("INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,'minor','synthetic-minor',now())",[minorId,workspaceId]);

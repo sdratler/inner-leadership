@@ -9,7 +9,8 @@ import {groupApplicationProgramFromRequest,verifyGroupApplicationRequest} from "
 import type {PublicGroupApplicationStore} from "./store.ts";
 
 export type PublicGroupApplicationHttpDependencies={enabled:boolean;environment:Record<string,string|undefined>;challengeKey:string;
- now:()=>number;limits:RateLimitStore;store:Pick<PublicGroupApplicationStore,"submit">&Partial<Pick<PublicGroupApplicationStore,"replaySaved">>};
+ now:()=>number;limits:RateLimitStore;store:Pick<PublicGroupApplicationStore,"submit">&Partial<Pick<PublicGroupApplicationStore,"replaySaved">>;
+ afterCommit?:(reference:string)=>Promise<"queued"|"unknown"|"sent"|"canceled"|"not_requested"|undefined>};
 
 export async function publicGroupApplicationHttp(request:Request,load:()=>Promise<PublicGroupApplicationHttpDependencies>):Promise<Response>{
  const requestId=randomUUID();let response:Response;
@@ -35,7 +36,10 @@ export async function publicGroupApplicationHttp(request:Request,load:()=>Promis
     await enforceRateLimit(dependencies.limits,opaqueRateLimitKey("public-group-application:global",dependencies.challengeKey),30,60_000);
     result=await dependencies.store.submit({operationId:body.operationId,fields:body.fields});
    }
-   response=successResponse(result,requestId,result.replayed||result.duplicate?200:201);
+   // submit/replay has completed its durable transaction. A mail error cannot undo or hide the saved inquiry.
+   let acknowledgment:Awaited<ReturnType<NonNullable<PublicGroupApplicationHttpDependencies["afterCommit"]>>>;
+   if(dependencies.afterCommit){try{acknowledgment=await dependencies.afterCommit(result.item.id);}catch{acknowledgment="unknown";}}
+   response=successResponse({...result,...(acknowledgment?{acknowledgment}:{})},requestId,result.replayed||result.duplicate?200:201);
   }
  }catch(error){response=failureResponse(error instanceof AppError?error:new AppError("UNAVAILABLE"),requestId);}
  response.headers.set("Referrer-Policy","no-referrer");response.headers.set("X-Content-Type-Options","nosniff");

@@ -1,4 +1,5 @@
 import {describe,it,expect} from "vitest";
+import coreCopy from "../../src/features/group-application/jlfa-core-copy.json";
 import {readFile} from "node:fs/promises";
 import {createElement} from "react";
 import {renderToStaticMarkup} from "react-dom/server";
@@ -31,7 +32,7 @@ describe("private Florida journey containment",()=>{
    expect(academyRollingLandingDraft.cards.map(card=>card.title[locale]).join(" ")).toMatch(/A.*B.*C/);
    expect(academyRollingLandingDraft.sectionBody[locale]).toContain(locale==="he"?"רצף הלימוד המתוכנן":"planned teaching sequence");
    expect(academyRollingLandingDraft.sectionBody[locale]).toContain(locale==="he"?"השלמת היציאות יסוכמו בנפרד":"outing completion are agreed separately");
-   expect(academyLandingDraft.sectionBody[locale]).toContain(locale==="he"?"ארבעה שלבים":"four stages");
+   expect(academyLandingDraft.sectionTitle[locale]).toBe(coreCopy.nodes[24]![locale]);expect(academyLandingDraft.sectionBody[locale]).toBe(coreCopy.nodes[25]![locale]);
    expect(academyJourneyDraft.access[locale]).toContain(locale==="he"?"עדיין לא מומש":"not implemented");
    expect(academyJourneyDraft.access[locale]).toContain(locale==="he"?"רשומות קליניות נשארות מבודדות":"clinical records remain isolated");
    expect(academyJourneyDraft.enrollment[locale]).toContain(locale==="he"?"לא נרכשה או הוקצתה":"No actual rank is purchased or allocated");

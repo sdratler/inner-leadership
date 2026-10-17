@@ -143,6 +143,10 @@ async function verifyGroupPlacementDatabaseBoundary(){
 try{
  const workspaceId=randomUUID(),dataKey=randomBytes(32),lookupKey=randomBytes(32),keyring={activeKeyId:"synthetic",keys:{synthetic:dataKey}};
  f=await fixture({workspaceId,keyring,termsVersion:"Synthetic Group Interest"});
+ // These retained conflict scenarios use fixed historical dates. Bind their
+ // synthetic availability explicitly instead of relying on now-minus-six-days.
+ await f.pool.query(`INSERT INTO ls_calendar.availability(id,workspace_id,practitioner_id,starts_at,ends_at,kind)
+  VALUES($1,$2,$3,'2026-10-10T00:00:00.000Z','2026-10-12T00:00:00.000Z','open')`,[randomUUID(),workspaceId,f.practitioner.actor.id]);
  await f.seed("2026-10-10T08:00:00.000Z");
  await f.seed("2026-10-11T08:00:00.000Z");
  await f.pool.query(`INSERT INTO ls_cases.family_members(workspace_id,family_id,person_id,role)

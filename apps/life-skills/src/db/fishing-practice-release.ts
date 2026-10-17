@@ -5,9 +5,10 @@ import {planMigrations,type AppliedMigration,type Migration} from './migration-p
 import {readPublicGroupApplicationsReleaseSnapshot} from './public-group-applications-release.ts';
 
 export const FISHING_PRACTICE_BASELINE={name:'0131_ls_public_group_applications.sql',sha256:'76af0c01649a67e1ddffeda5e8f93e3fb39ef03436465f456f59f3d9a7a9050c'} as const;
+const INQUIRY_OUTBOX_ADDITION={name:'0131_ls_public_inquiry_email_outbox.sql',sha256:'45a887627c21666d147537bf0a37148f83cc3ced29ccfd27c2f35be7dd9ca424'} as const;
 export const FISHING_PRACTICE_MIGRATION={name:'0132_ls_fishing_practice_revisions.sql',sha256:'5d01872a0304d0dc9af14afdd660b470000c6cb99752239bf2fab3c00579eebf'} as const;
 export const FISHING_PRACTICE_SOURCE_PATHS=[
- 'package.json','migrations/manifest.json','migrations/0131_ls_public_group_applications.sql','migrations/0132_ls_fishing_practice_revisions.sql',
+ 'package.json','migrations/manifest.json','migrations/0131_ls_public_group_applications.sql','migrations/0131_ls_public_inquiry_email_outbox.sql','migrations/0132_ls_fishing_practice_revisions.sql',
  'scripts/release-public-group-applications.ts','scripts/release-fishing-practice.ts',
 ] as const;
 export const FISHING_PRACTICE_SOURCE_ROOTS=['src','public/groups'] as const;
@@ -60,7 +61,11 @@ export const fishingPracticeSourceBundle=(entries:readonly {path:string;bytes:Bu
 export function fishingPracticeMigrationInventory(files:readonly Migration[]):readonly Migration[]{
  const sorted=[...files].sort((a,b)=>a.name.localeCompare(b.name)),end=sorted.findIndex(file=>file.name===FISHING_PRACTICE_MIGRATION.name&&file.checksum===FISHING_PRACTICE_MIGRATION.sha256);
  if(end<0)throw Error('FISHING_PRACTICE_MIGRATION_SET_MISMATCH');const scoped=sorted.slice(0,end+1),baseline=scoped.at(-2),migration=scoped.at(-1);
- if(baseline?.name!==FISHING_PRACTICE_BASELINE.name||baseline.checksum!==FISHING_PRACTICE_BASELINE.sha256||migration?.name!==FISHING_PRACTICE_MIGRATION.name||migration.checksum!==FISHING_PRACTICE_MIGRATION.sha256)throw Error('FISHING_PRACTICE_MIGRATION_SET_MISMATCH');return scoped;
+ // Preserve the frozen public-inquiry predecessor. The independently released
+ // inquiry outbox may intervene, but only with its exact name AND SQL bytes.
+ // The normal prefix planner still requires its ledger row before 0132.
+ const hasOutbox=baseline?.name===INQUIRY_OUTBOX_ADDITION.name,predecessor=hasOutbox?scoped.at(-3):baseline;
+ if(hasOutbox&&(baseline.checksum!==INQUIRY_OUTBOX_ADDITION.sha256||createHash('sha256').update(baseline.sql).digest('hex')!==INQUIRY_OUTBOX_ADDITION.sha256)||predecessor?.name!==FISHING_PRACTICE_BASELINE.name||predecessor.checksum!==FISHING_PRACTICE_BASELINE.sha256||migration?.name!==FISHING_PRACTICE_MIGRATION.name||migration.checksum!==FISHING_PRACTICE_MIGRATION.sha256)throw Error('FISHING_PRACTICE_MIGRATION_SET_MISMATCH');return scoped;
 }
 
 /** Recheck the frozen 0131 predecessor while hiding only 0132-owned catalog
