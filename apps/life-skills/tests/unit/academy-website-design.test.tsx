@@ -23,7 +23,7 @@ describe("the actual owner-selected Academy visual and inquiry design",()=>{
   expect(page).toMatch(/<a[^>]*href="#pricing"[^>]*data-jlfa-primary="true"/);expect(page).toContain('id="pricing"');expect(page).toContain(`href="/${locale}/florida/apply"`);
   for(const stage of academyStages)expect(page).toContain(`href="/${locale}/florida/stages/${stage.slug}"`);
   expect(page.match(/data-academy-stage-card=/g)).toHaveLength(4);expect(page.match(/data-price-kind=/g)).toHaveLength(5);
-  for(const id of["locations","fishing-skills","self-governance","outings","questions","founder"])expect(page).toContain(`id="${id}"`);
+  for(const id of["locations","fishing-skills","self-governance","questions","founder"])expect(page).toContain(`id="${id}"`);
   expect(page).toContain('data-jlfa-header-logo="true"');expect(page).toContain('data-jlfa-footer-logo="true"');expect(page).toContain('/groups/people/founder-grass-group.webp');
   for(const value of['name="parentName"','name="postalCode"','role="timer"','data-counter','Save $800','HERO ARTWORK IN PROGRESS','text-layout-reference.png'])expect(page).not.toContain(value);
   expect(page).toContain('data-academy-whatsapp="true" data-visible="false"');expect(page).toContain('aria-hidden="true"');expect(page).toContain(ACADEMY_WHATSAPP.replaceAll("&","&amp;"));
@@ -63,14 +63,14 @@ describe("the actual owner-selected Academy visual and inquiry design",()=>{
 
 import {AcademyWebsite} from "../../src/features/group-application/academy-website.tsx";
 import scenes from "../../src/features/group-application/academy-scenes.json";
-import {groupApplicationPublicAsset} from "../../src/proxy.ts";
+import {groupApplicationPublicAsset,groupApplicationReleasePath} from "../../src/proxy.ts";
 const visualGateEnv={NODE_ENV:"production",LS_APP_ORIGIN:"https://academy.invalid",LS_GROUP_APPLICATION_REAL_DATA_RELEASE:"true",LS_IDENTITY_ENABLED:"true",LS_IDENTITY_WORKSPACE_ID:"11111111-1111-4111-8111-111111111111",LS_IDENTITY_ACTIVE_KEY_ID:"v1",LS_IDENTITY_DATA_KEYS:JSON.stringify({v1:Buffer.alloc(32,1).toString("base64url")}),LS_IDENTITY_CSRF_KEY:Buffer.alloc(32,2).toString("base64url"),LS_IDENTITY_LOOKUP_KEY:Buffer.alloc(32,3).toString("base64url"),LS_IDENTITY_RATE_KEY:Buffer.alloc(32,4).toString("base64url")};
 describe("latest owner14/15 visual successor, static contracts",()=>{
- it.each(["en","he"] as const)("%s hero precedes ordinary header with one real pricing CTA and no bottom bar",locale=>{
+ it.each(["en","he"] as const)("%s top header precedes full-width hero with one real pricing CTA and no bottom bar",locale=>{
   const html=renderToStaticMarkup(createElement(AcademyWebsite,{locale,onLocaleChange:()=>{}}));
-  expect(html.indexOf("data-academy-hero=")).toBeLessThan(html.indexOf("data-academy-header="));expect(html.match(/data-jlfa-primary/g)).toHaveLength(1);expect(html).toContain(locale==="en"?"See Founding Pricing":"למחיר המשפחות המייסדות");expect(html).not.toContain("data-academy-bottom-bar");
+  expect(html.indexOf("data-academy-header=")).toBeLessThan(html.indexOf("data-academy-hero="));expect(html.match(/data-jlfa-primary/g)).toHaveLength(1);expect(html).toContain(locale==="en"?"See Founding Pricing":"למחיר המשפחות המייסדות");expect(html).not.toContain("data-academy-bottom-bar");
   expect(html.indexOf('id="questions"')).toBeLessThan(html.indexOf('id="parent-reflections"'));expect(html.indexOf('id="parent-reflections"')).toBeLessThan(html.indexOf('id="founder"'));expect(html.indexOf('id="founder"')).toBeLessThan(html.indexOf("data-academy-footer="));
-  expect(html).toContain('data-academy-testimonial-state="historical-reflection"');expect(html.match(/<blockquote\b/g)).toHaveLength(1);expect(html).toContain('<blockquote lang="en" dir="ltr"><p>“Medication is no longer relevant.”</p></blockquote>');expect(html).toContain("L. Bars");const testimonial=html.slice(html.indexOf('id="parent-reflections"'),html.indexOf('id="founder"'));expect(testimonial).toContain(locale==="en"?"Mother of a student · 2024 · Beit Shemesh":"אם לתלמיד · 2024 · בית שמש");expect(testimonial).not.toMatch(/earlier educational work|עבודה חינוכית קודמת|עבודתו החינוכית הקודמת/);expect(html).not.toMatch(/Lieberman|l-bars-2024|More locations in the pool|A Florida Keys milestone/);expect(html).toContain(locale==="en"?"Meet Rabbi Shlomo Dratler":"הכירו את הרב שלמה דרטלר");
+  expect(html).toContain('data-academy-testimonial-state="historical-reflection"');expect(html.match(/<blockquote\b/g)).toHaveLength(1);expect(html).toContain('<blockquote lang="en" dir="ltr"><p>“Medication is no longer relevant.”</p></blockquote>');expect(html).toContain("L. Bars");const testimonial=html.slice(html.indexOf('id="parent-reflections"'),html.indexOf('id="founder"'));expect(testimonial).toContain(locale==="en"?"Mother of a student · 2024 · Beit Shemesh":"אם לתלמיד · 2024 · בית שמש");expect(testimonial).toContain('/groups/testimonials/l-bars-2024.png');expect(testimonial).not.toMatch(/earlier educational work|עבודה חינוכית קודמת|עבודתו החינוכית הקודמת/);expect(html).not.toMatch(/Lieberman|More locations in the pool|A Florida Keys milestone/);expect(html).toContain(locale==="en"?"Meet Rabbi Shlomo Dratler":"הכירו את הרב שלמה דרטלר");
   expect(html.match(/data-academy-whatsapp/g)).toHaveLength(1);expect(html).toContain('aria-controls="academy-mobile-menu"');expect(html).toContain('aria-expanded="false"');
  });
  it.each(["foundation","independent","advanced","leadership"])("%s retains its one stage route and real scene without changing age-depth navigation",slug=>{
@@ -82,5 +82,21 @@ describe("latest owner14/15 visual successor, static contracts",()=>{
  it("serves exactly the installed named scene derivatives under the unchanged GET/HEAD/environment/identity fence",()=>{
   expect(scenes.assets).toHaveLength(11);for(const image of scenes.assets){const bytes=readFileSync(new URL("../../public"+image.publicPath,import.meta.url));expect(bytes.length).toBe(image.bytes);expect(createHash("sha256").update(bytes).digest("hex")).toBe(image.sha256);for(const method of["GET","HEAD"])expect(groupApplicationPublicAsset(image.publicPath,method,visualGateEnv)).toBe(true);expect(groupApplicationPublicAsset(image.publicPath,"POST",visualGateEnv)).toBe(false);expect(groupApplicationPublicAsset(image.publicPath,"GET",{...visualGateEnv,LS_IDENTITY_ENABLED:"false"})).toBe(false);expect(groupApplicationPublicAsset(image.publicPath,"GET",{...visualGateEnv,LS_GROUP_APPLICATION_REAL_DATA_RELEASE:"false"})).toBe(false);}
   for(const path of["/groups/academy/scenes/private.webp","/groups/academy/scenes/../secret.webp","/groups/academy/scenes/foundation.png","/groups/academy/scenes/source.csv"])expect(groupApplicationPublicAsset(path,"GET",visualGateEnv)).toBe(false);
+ });
+});
+
+import {AcademyOutingPrices} from "../../src/features/group-application/academy-outing-prices.tsx";
+describe("owner1181 visual and outing corrections",()=>{
+ it.each(["en","he"] as const)("%s keeps core inquiry links and separates the outing presentation",locale=>{
+  const html=renderToStaticMarkup(createElement(AcademyWebsite,{locale,onLocaleChange:()=>{}}));
+  expect(html).not.toContain('id="outings"');expect(html).not.toMatch(/A progression, one stage at a time|The person behind the program|Shared Keys days|Illustrative scene\./);
+  expect(html).toContain(`href="/${locale}/florida/pricing#outings"`);expect(html).toContain(locale==="en"?"An after-school program with purpose.":"תוכנית העשרה משמעותית אחרי הלימודים.");
+  expect(html.match(/data-academy-scene="foundation"/g)?.length).toBeGreaterThan(1);expect(html).toContain('data-hidden="false"');expect(html).not.toContain('data-academy-bottom-bar');
+  const outings=renderToStaticMarkup(createElement(AcademyOutingPrices,{locale}));expect(outings.match(/data-academy-outing=/g)).toHaveLength(2);
+  expect(outings).toContain(locale==="en"?"not an additional purchase":"אינה רכישה נוספת");expect(outings).toContain(locale==="en"?"Transportation and food are billed separately":"נסיעה ואוכל מחויבים בנפרד");
+  expect(outings).toContain(locale==="en"?"entire first 12-week program":"מלוא התוכנית הראשונה בת 12 השבועות");expect(outings).toContain(locale==="en"?"Completion establishes eligibility only":"השלמת התוכנית מקנה זכאות בלבד");expect(outings).not.toMatch(/\$[0-9]/);
+ });
+ it("adds only the exact pricing page to the existing public environment gate",()=>{
+  for(const locale of ["en","he"]){expect(groupApplicationReleasePath(`/${locale}/florida/pricing`,visualGateEnv)).toBe(true);expect(groupApplicationReleasePath(`/${locale}/florida/pricing/private`,visualGateEnv)).toBe(false);expect(groupApplicationReleasePath(`/${locale}/florida/pricing`,{...visualGateEnv,LS_IDENTITY_ENABLED:"false"})).toBe(false);}
  });
 });

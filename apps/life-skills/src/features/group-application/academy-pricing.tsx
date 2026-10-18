@@ -42,11 +42,8 @@ export function AcademyPricing({locale,applicationHref}:{locale:Locale;applicati
    </article>)}</div>
    <p className={styles.stageTerms}>{t("Founding prepay applies to the first stage only. Discounts do not stack. No full-year prepay or automatic next-stage charge. Installments cover the full 12-session stage.","מחירי התשלום מראש למשפחות מייסדות חלים על השלב הראשון בלבד. אין כפל הנחות, תשלום מראש לשנה שלמה או חיוב אוטומטי לשלב הבא. שלושת התשלומים מכסים את השלב המלא בן 12 המפגשים.")}</p>
    <div className={styles.disclosure}>
-    <h3>{t("Form first, payment second","קודם הטופס, אחר כך התשלום")}</h3>
-    <p>{t("Complete the registration form, including schedule and travel details, before payment; only verified qualifying payment secures a founding-family reservation.","לפני התשלום יש למלא ולשמור את טופס ההרשמה המלא, כולל פרטי לוח הזמנים והנסיעה. רק תשלום מזכה שאומת מבטיח מקום במסגרת ההטבה למשפחה מייסדת.")}</p>
-    <p>{t("Form submission, a callback request and pending/failed payment do not reserve it or create a temporary promotional hold.","שליחת טופס, בקשה לשיחת חזרה ותשלום ממתין או שנכשל אינם שומרים מקום במסגרת ההטבה ואינם יוצרים שמירה זמנית שלה.")}</p>
-    <p>{t("Where an actual eligible group, disclosed schedule/locations, capacity, accepted terms and authorized payment offer are available, the enrollment path may proceed to that payment step; otherwise save the request for follow-up without charging.","אפשר להתקדם לתשלום רק כשיש קבוצה מתאימה בפועל, לוח זמנים ומיקומים שנמסרו, מקום פנוי, תנאים שהתקבלו והצעת תשלום מורשית. אחרת הבקשה נשמרת להמשך טיפול ללא חיוב.")}</p>
-    <p>{t("Pending, failed or unknown payment remains unreserved; only verified qualifying payment confirms the founding-family reservation.","כל עוד התשלום ממתין, נכשל או שמצבו אינו ידוע, אין מקום שמור במסגרת ההטבה. רק תשלום מזכה שאומת מאשר את שמירת המקום למשפחה המייסדת.")}</p>
+    <p>{t("Only verified qualifying payment confirms a founding-family reservation. An inquiry or callback request does not reserve a place.","רק תשלום מזכה שאומת מאשר מקום במסגרת ההטבה למשפחה מייסדת. פנייה או בקשה לשיחת חזרה אינן שומרות מקום.")}</p>
+    <p>{t("We confirm the eligible group, schedule, locations, capacity and accepted terms before issuing an authorized payment offer. Pending, failed or unknown payment remains unreserved.","לפני הצעת תשלום מורשית מאשרים קבוצה מתאימה, לוח זמנים, מיקומים, מקום פנוי ותנאים שהתקבלו. תשלום ממתין, שנכשל או שמצבו אינו ידוע אינו שומר מקום.")}</p>
    </div>
    <nav className={styles.actions} aria-label={t("Pricing next steps","הצעדים הבאים לאחר בחירת המחיר")}>
     <a className={styles.primary} href={applicationHref??formHref}>{t("Apply / Continue to Enrollment","הגשת בקשה / המשך להרשמה")}</a>
