@@ -31,3 +31,5 @@
 .stageCard:last-child .stageBadge{color:#f4d17f}.site a:focus-visible,.site button:focus-visible,.site summary:focus-visible{outline-color:#086886}.hero a:focus-visible,.stageCard:last-child a:focus-visible{outline-color:#ffdc83}
 
 .mobileMenu{max-block-size:calc(100svh - 115px);overflow-y:auto;overscroll-behavior:contain}.mobileMenu>a{font-size:16px;line-height:1.4}.mobileMenu .languages{justify-content:flex-start}
+
+.testimonial{inline-size:min(820px,100%);margin-inline:auto;padding:64px 24px;text-align:center;color:#052d50;background:#fff}.testimonial .eyebrow{color:#805e15}.testimonial figure{margin:22px 0}.testimonial blockquote{margin:0;font:italic clamp(29px,4vw,43px)/1.35 Georgia,serif;text-wrap:balance}.testimonial blockquote p{margin:0}.testimonial figcaption{display:grid;gap:5px;margin-block-start:24px;font-size:15px;line-height:1.6}.testimonial figcaption span{font-size:14px;color:#183e56}.testimonial .testimonialContext{max-inline-size:60ch;margin:22px auto 0;font-size:14px;line-height:1.7;color:#183e56}@media(max-width:480px){.testimonial{padding:44px 20px}}
