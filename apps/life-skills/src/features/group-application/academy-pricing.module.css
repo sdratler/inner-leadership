@@ -19,7 +19,7 @@
 .disclosure p{max-inline-size:100ch;font-size:.95rem}
 .actions{display:flex;flex-direction:column;gap:12px;margin-block-start:24px}
 .primary,.secondary{display:inline-flex;align-items:center;justify-content:center;min-block-size:48px;max-inline-size:100%;padding:12px 18px;border:1px solid #052D50;border-radius:5px;font:inherit;font-weight:700;line-height:1.4;text-align:center;text-decoration:none;overflow-wrap:anywhere}
-.primary{color:#FFF;background:#052D50}.primary:hover{color:#FFF;background:#073C68}
+.primary.primary{color:#FFF;background:#052D50}.primary:hover{color:#FFF;background:#073C68}
 .secondary{color:#052D50;background:#FFF}.secondary:hover{color:#052D50;background:#EAF6FA}
 .primary:focus-visible,.secondary:focus-visible{outline:3px solid #F4B12D;outline-offset:4px}
 @media(min-width:48rem){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.featured{grid-template-columns:minmax(0,1.2fr) minmax(0,1fr)}.priceGroup{padding-block-start:0;padding-inline-start:24px;border-block-start:0;border-inline-start:1px solid #F4B12D}.actions{flex-direction:row;flex-wrap:wrap}}

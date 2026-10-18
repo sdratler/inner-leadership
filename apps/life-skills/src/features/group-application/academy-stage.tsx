@@ -1,12 +1,16 @@
 "use client";
-import {useRef,useState,type KeyboardEvent} from "react";
+import {useRef,useState,useSyncExternalStore,type KeyboardEvent} from "react";
 import type {Locale} from "../../lib/locale.ts";
 import {AcademySiteFrame} from "./academy-site-frame.tsx";
 import {academyStages,academyAgeDepth,academyFoundationProgression,academyVenues} from "./academy-public-program.ts";
 import styles from "./academy-site.module.css";
 
+// Keep client-only tabs unavailable until hydration attaches their handlers.
+const subscribeToHydration=()=>()=>undefined;
+
 export function AcademyStage({locale,slug}:{locale:Locale;slug:string}){
  const stage=academyStages.find(item=>item.slug===slug),[active,setActive]=useState(0),tabs=useRef<(HTMLButtonElement|null)[]>([]),t=(en:string,he:string)=>locale==="he"?he:en;
+ const hydrated=useSyncExternalStore(subscribeToHydration,()=>true,()=>false);
  if(!stage)return null;
  function move(event:KeyboardEvent<HTMLButtonElement>,index:number){let next=index;const direction=locale==="he"?-1:1;if(event.key==="ArrowRight")next=(index+direction+3)%3;else if(event.key==="ArrowLeft")next=(index-direction+3)%3;else if(event.key==="Home")next=0;else if(event.key==="End")next=2;else return;event.preventDefault();setActive(next);tabs.current[next]?.focus();}
  const labels=[t("Fishing development","התפתחות בדיג"),t("Choices and practical understanding","בחירות והבנה מעשית"),t("Self-governance and relationships","הנהגה עצמית וקשרים"),t("Thinking it through","חושבים על הדברים")];
@@ -18,7 +22,7 @@ export function AcademyStage({locale,slug}:{locale:Locale;slug:string}){
   {stage.number===1?<section className={styles.tint}><div className={`${styles.wrap} ${styles.section}`}><h2>{t("The twelve-session progression","רצף שנים־עשר המפגשים")}</h2><p>{t("The opening sequence is defined below. Later fishing sessions are coordinated around the group and current conditions rather than an invented fixed itinerary.","רצף הפתיחה מוגדר להלן. מפגשי הדיג בהמשך מתואמים לפי הקבוצה והתנאים בפועל, ולא לפי מסלול קבוע שהומצא מראש.")}</p><ol className={styles.weekList}>{academyFoundationProgression.map(item=><li key={item.label.en}><strong>{item.label[locale]}</strong><div><h3>{item.title[locale]}</h3><p>{item.body[locale]}</p></div></li>)}</ol></div></section>:
    <section className={styles.tint}><div className={`${styles.wrap} ${styles.section}`}><h2>{t("Across twelve sessions","לאורך שנים־עשר מפגשים")}</h2><p>{t("The stage's practical and interpersonal themes develop through fishing and repeated practice. Weekly topics, specific locations and the order of activities are coordinated for the actual cohort; the focus areas above are not a fixed twelve-date itinerary.","הנושאים המעשיים והבין־אישיים של השלב מתפתחים דרך דיג ותרגול חוזר. הנושאים השבועיים, המיקומים וסדר הפעילויות מתואמים לקבוצה בפועל; תחומי המיקוד שלעיל אינם מסלול קבוע של שנים־עשר תאריכים.")}</p></div></section>}
   <section className={`${styles.wrap} ${styles.section}`}><h2>{t("Depth that grows with the boys","עומק שמתפתח עם הבנים")}</h2><p>{t("The age group changes the language, questions and learning roles. It does not replace individual readiness checks or adult supervision.","קבוצת הגיל משנה את השפה, השאלות ותפקידי הלמידה. היא אינה מחליפה בדיקת מוכנות אישית או השגחת מבוגר.")}</p>
-   <div className={styles.ageTabs} role="tablist" aria-label={t("Age-depth examples","דוגמאות לעומק לפי גיל")}>{academyAgeDepth.map((age,index)=><button key={age.label.en} ref={node=>{tabs.current[index]=node;}} id={`academy-age-${index}`} type="button" role="tab" aria-selected={active===index} aria-controls={`academy-age-panel-${index}`} tabIndex={active===index?0:-1} onClick={()=>setActive(index)} onKeyDown={event=>move(event,index)}>{age.label[locale]}</button>)}</div>
+   <div className={styles.ageTabs} role="tablist" aria-label={t("Age-depth examples","דוגמאות לעומק לפי גיל")}>{academyAgeDepth.map((age,index)=><button key={age.label.en} ref={node=>{tabs.current[index]=node;}} id={`academy-age-${index}`} type="button" role="tab" disabled={!hydrated} aria-selected={active===index} aria-controls={`academy-age-panel-${index}`} tabIndex={active===index?0:-1} onClick={()=>setActive(index)} onKeyDown={event=>move(event,index)}>{age.label[locale]}</button>)}</div>
    {academyAgeDepth.map((age,index)=><div className={styles.agePanel} key={age.label.en} role="tabpanel" id={`academy-age-panel-${index}`} aria-labelledby={`academy-age-${index}`} hidden={active!==index} tabIndex={active===index?0:-1}>{age.paragraphs.map((paragraph,n)=><p key={n}>{paragraph[locale]}</p>)}</div>)}
    <div className={styles.stageActions}><a className={styles.button} href={`/${locale}/florida/apply`}>{t("Tell us about your son","ספרו לנו על הבן שלכם")}</a><a className={styles.textLink} href={`/${locale}/florida#pricing`}>{t("See stage prices","למחירי השלבים")} ↗</a></div>
   </section>

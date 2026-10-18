@@ -15,6 +15,7 @@ test.use({baseURL:data.origin});
 async function login(page:Page,locale:"en"|"he",role:"practitioner"|"parent",target:string){
  const account=data.accounts.find(x=>x.role===role);if(!account)throw Error("SYNTHETIC_ACTOR_REQUIRED");
  await page.goto(`/${locale}/login?next=${encodeURIComponent(target)}`);
+ await expect(page.getByRole("button",{name:locale==="he"?"כניסה":"Sign in",exact:true})).toBeEnabled();
  await page.getByLabel(locale==="he"?"דוא״ל":"Email",{exact:true}).fill(account.email);await page.getByLabel(locale==="he"?"סיסמה":"Password",{exact:true}).fill(account.password);
  const response=page.waitForResponse(r=>new URL(r.url()).pathname==="/api/identity/login"&&r.request().method()==="POST");await page.getByRole("button",{name:locale==="he"?"כניסה":"Sign in",exact:true}).click();expect((await response).status()).toBe(200);
 }
