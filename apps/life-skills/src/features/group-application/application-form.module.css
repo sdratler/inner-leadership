@@ -4,3 +4,5 @@
 .success:focus-visible{outline:3px solid #e2a640;outline-offset:3px}
 
 .nextSteps{min-inline-size:0;grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;padding:20px;border:1px solid #d7c48d;border-radius:12px}.nextSteps legend{font-weight:700;padding-inline:8px}.nextSteps label{min-inline-size:0;display:flex;align-items:flex-start;gap:12px;padding:18px;border:1px solid #bcd5e0;border-radius:10px;background:#fff}.nextSteps label>span{min-inline-size:0}.nextSteps label:has(input:checked){background:#fff7df;border-color:#b87612;box-shadow:0 0 0 2px #f4b12d50}.nextSteps input[type=radio]{flex:0 0 18px;inline-size:18px;block-size:18px;min-block-size:18px;margin-block-start:5px;accent-color:#b87612;padding:0}.nextSteps small{display:block;line-height:1.5;margin-block-start:8px;font-size:.87rem}@media(max-width:700px){.nextSteps{grid-template-columns:minmax(0,1fr);padding:16px}.nextSteps label{padding:16px}}
+
+.groupHeading{grid-column:1/-1;font:700 22px/1.35 Georgia,serif;color:#052d50;margin-block:26px 18px}

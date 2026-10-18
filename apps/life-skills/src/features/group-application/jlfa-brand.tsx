@@ -1,4 +1,4 @@
-/* eslint-disable @next/next/no-img-element -- exact owner-approved PNG; only the explicitly approved header CSS window differs */
+/* eslint-disable @next/next/no-img-element -- exact transparent master, unchanged foreground */
 import type {ReactNode} from "react";
 import coreCopy from "./jlfa-core-copy.json";
 import {JlfaCurriculum} from "./jlfa-curriculum.tsx";
@@ -12,11 +12,11 @@ export const JLFA_TAGLINE="TORAH • FISHING • SELF-GOVERNANCE";
 export const JLFA_LOGO_SRC="/groups/brand/jlfa-logo-locked-v1.png";
 export const JLFA_LOGO_SHA256="e78ff6d3ef16c37613725507ce14da05883734a77f48b78ab9d6df3f92480356";
 type Pair={en:string;he:string};
-export function JlfaLogo({locale,footer=false,homeHref="#main"}:{locale:Locale;footer?:boolean;homeHref?:string}){
- const image=<img src={JLFA_LOGO_SRC} width={1254} height={1254} alt={footer?`${JLFA_NAME} — ${JLFA_TAGLINE}`:JLFA_NAME}/>;
+export function JlfaLogo({locale,footer=false,homeHref="#main",eager=true}:{locale:Locale;footer?:boolean;homeHref?:string;eager?:boolean}){
+ const image=<img src={JLFA_LOGO_SRC} width={1254} height={1254} loading={footer||!eager?"lazy":"eager"} decoding="async" fetchPriority={footer||!eager?"low":"auto"} alt={footer?`${JLFA_NAME} — ${JLFA_TAGLINE}`:JLFA_NAME}/>;
  return <a href={homeHref} className={`${styles.logoLink} ${footer?styles.footerLogo:styles.headerLogo}`} aria-label={`${JLFA_NAME} — ${locale==="he"?"דף הבית":"home"}`}
   data-jlfa-header-logo={footer?undefined:"true"} data-jlfa-footer-logo={footer?"true":undefined}>
-  {footer?image:<span className={styles.headerWindow} data-jlfa-logo-window="0,100,1254,1000">{image}</span>}
+  {footer?image:<span className={styles.headerWindow} data-jlfa-logo-window="full-native">{image}</span>}
  </a>;
 }
 export function JlfaHeroPlaceholder({locale}:{locale:Locale}){

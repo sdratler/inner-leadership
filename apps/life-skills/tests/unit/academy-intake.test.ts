@@ -5,6 +5,12 @@ import{floridaParentApplicationFieldsSchema,floridaGroupApplicationReadableField
 const intake=()=>({version:ACADEMY_INTAKE_VERSION,postalCode:"33431",driveLimit:"up_to_30" as const,preferredGroupLanguage:"either" as const,stagePreference:"discuss" as const,keysTravel:"parent_drive" as const,offshoreInterest:"discuss" as const,nextStep:"callback" as const,learners:[{gradeBand:"grade_3_5" as const,schooling:"school" as const,tackleBox:"not_sure" as const}]});
 const legacy=()=>({parentName:"Synthetic parent",contact:"+12025550101",language:"en" as const,cityArea:"Synthetic area",programId:"sunday_fishing_academy" as const,schedulePreference:["sunday" as const],academyFit:{version:"RM-FIT-20261014-04-v1" as const,learners:[{approximateAge:10,gear:"not_sure" as const,experience:"new" as const}],maximumDriveMinutes:30,parentDropoff:"discuss" as const},scheduleContext:"program_format_interest" as const,permission:{confirmed:true as const,version:floridaGroupApplicationNotice.version,language:"en" as const}});
 describe("Source03 saved inquiry preferences",()=>{
+ it("preserves historic missing school-hours fields while requiring an explicit acknowledgment for school-time discovery",()=>{
+  expect(academyIntakeSchema.parse(intake())).toEqual(intake());
+  for(const schoolHoursAvailability of["flexible","permission_needed"]){expect(academyIntakeSchema.safeParse({...intake(),schoolHoursAvailability}).success).toBe(false);expect(academyIntakeSchema.parse({...intake(),schoolHoursAvailability,schoolHoursAcknowledged:true})).toMatchObject({schoolHoursAvailability,schoolHoursAcknowledged:true});}
+  for(const schoolHoursAvailability of["outside_school_only","discuss"]){expect(academyIntakeSchema.safeParse({...intake(),schoolHoursAvailability}).success).toBe(true);expect(academyIntakeSchema.safeParse({...intake(),schoolHoursAvailability,schoolHoursAcknowledged:true}).success).toBe(false);}
+  expect(academyIntakeSchema.safeParse({...intake(),schoolHoursAvailability:"excused_by_academy",schoolHoursAcknowledged:true}).success).toBe(false);
+ });
  it("retains exact five-minute drive choices through two hours without reinterpreting old over60 records",()=>{
   for(let minutes=5;minutes<=120;minutes+=5){const value=academyIntakeSchema.parse({...intake(),driveLimit:minutes});expect(value.driveLimit).toBe(minutes);expect(academyDriveMinutes(value.driveLimit)).toBe(minutes);}
   for(const driveLimit of[0,4,13,121,125,Infinity,"120","unlimited"])expect(academyIntakeSchema.safeParse({...intake(),driveLimit}).success).toBe(false);

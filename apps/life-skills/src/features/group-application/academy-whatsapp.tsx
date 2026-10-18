@@ -1,10 +1,10 @@
 "use client";
 import {useEffect,useRef,useState} from "react";
 import type {Locale} from "../../lib/locale.ts";
-import {ACADEMY_WHATSAPP} from "./academy-site-frame.tsx";
 import styles from "./academy-site.module.css";
 
 type Rect={left:number;right:number;top:number;bottom:number};
+export const ACADEMY_WHATSAPP="https://wa.me/972534932631?text=Hi%2C%20I%20came%20from%20your%20website.%20I%27d%20like%20to%20know%20more.";
 export function academyContactOverlaps(a:Rect,b:Rect){return a.left<b.right&&a.right>b.left&&a.top<b.bottom&&a.bottom>b.top;}
 /** A floating shortcut is optional; pricing/footer contact links always exist.
  * Hide this shortcut whenever the reserved corner would cover actual content.
@@ -13,7 +13,7 @@ export function AcademyWhatsApp({locale}:{locale:Locale}){
  const link=useRef<HTMLAnchorElement>(null),[visible,setVisible]=useState(false);
  useEffect(()=>{
   let frame=0;
-  const check=()=>{frame=0;const node=link.current,hero=document.querySelector("[data-academy-hero]"),footer=document.querySelector("[data-academy-footer]");if(!node||!hero||hero.getBoundingClientRect().bottom>0||footer&&footer.getBoundingClientRect().top<innerHeight){setVisible(false);return;}
+  const check=()=>{frame=0;const node=link.current,hero=document.querySelector("[data-academy-hero]"),footer=document.querySelector("[data-academy-footer]");if(!node||(hero?hero.getBoundingClientRect().bottom>0:scrollY<160)||footer&&footer.getBoundingClientRect().top<innerHeight){setVisible(false);return;}
    const box=node.getBoundingClientRect(),items=document.querySelectorAll("main h1,main h2,main h3,main h4,main p,main li,main a,main button,main summary,main input,main select,main textarea,main img");
    const blocked=Array.from(items).some(item=>item!==node&&Array.from(item.getClientRects()).some(rect=>rect.width>0&&rect.height>0&&academyContactOverlaps(box,rect)));
    setVisible(!blocked);

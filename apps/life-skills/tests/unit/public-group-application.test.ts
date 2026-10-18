@@ -59,8 +59,8 @@ describe("public group inquiry compatibility boundary",()=>{
    const en=renderToStaticMarkup(createElement(GroupApplicationLanding,{locale:"en",programId})),he=renderToStaticMarkup(createElement(GroupApplicationLanding,{locale:"he",programId}));
    expect(en).toContain('lang="en"');expect(en).toContain('dir="ltr"');expect(he).toContain('lang="he"');expect(he).toContain('dir="rtl"');
    expect(en.match(programId==="sunday_fishing_academy"?/<img[^>]+jlfa-logo-locked-v1\.png/g:/<img[^>]+life-skills-logo\.png/g)).toHaveLength(2);
-   expect(en).toContain(programId==="sunday_fishing_academy"?"Meet Shlomo":presentation.shared.teacherBody.en);
-   expect(he).toContain(programId==="sunday_fishing_academy"?"הכירו את שלמה":"שלמה משלב תורה, הנהגה עצמית ולמידה מעשית");
+   expect(en).toContain(programId==="sunday_fishing_academy"?"Meet Rabbi Shlomo Dratler":presentation.shared.teacherBody.en);
+   expect(he).toContain(programId==="sunday_fishing_academy"?"הכירו את הרב שלמה דרטלר":"שלמה משלב תורה, הנהגה עצמית ולמידה מעשית");
    for(const forbidden of["Central Israel","signed inquiry","app-facing"])expect(en).not.toContain(forbidden);
   }
   const fishing=renderToStaticMarkup(createElement(GroupApplicationLanding,{locale:"en",programId:"sunday_fishing_academy"})),torah=renderToStaticMarkup(createElement(GroupApplicationLanding,{locale:"en",programId:"morning_torah_learning"})),privatePage=renderToStaticMarkup(createElement(GroupApplicationLanding,{locale:"en",programId:"private_fishing_life_skills"})),israel=renderToStaticMarkup(createElement(IsraelGroupApplicationLanding,{locale:"en"}));

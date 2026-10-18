@@ -21,6 +21,7 @@ export function AcademyIntakeReadback({intake,locale}:{intake:AcademyIntake;loca
   <dl>
    <dt>{t("Next step","הצעד הבא")}</dt><dd>{intake.nextStep==="callback"?t("Request a callback","בקשה לשיחה חוזרת"):t("Continue toward enrollment — request only","המשך לקראת הרשמה — בקשה בלבד")}</dd>
    <dt>{t("ZIP code","מיקוד")}</dt><dd><bdi dir="ltr">{intake.postalCode}</bdi></dd>
+   {intake.schoolHoursAvailability&&<><dt>{t("Occasional school-time preference","העדפה למפגש מזדמן בשעות הלימודים")}</dt><dd>{{flexible:t("Flexible / homeschool schedule","לוח זמנים גמיש / חינוך ביתי"),permission_needed:t("Parent will arrange school permission before booking","ההורה יסדיר אישור מבית הספר לפני קביעת המפגש"),outside_school_only:t("Outside school hours only","רק מחוץ לשעות הלימודים"),discuss:t("Please contact the parent","יש ליצור קשר עם ההורה")}[intake.schoolHoursAvailability]}</dd>{intake.schoolHoursAcknowledged&&<><dt>{t("School responsibility acknowledgment","אישור אחריות לנוכחות בבית הספר")}</dt><dd>{t("Acknowledged — not an excused absence or confirmed weekday place","אושר — אין בכך אישור להיעדרות או למקום במפגש באמצע השבוע")}</dd></>}</>}
    <dt>{t("Maximum normal one-way drive","נסיעה רגילה מרבית לכיוון אחד")}</dt><dd>{academyDriveLabel(intake.driveLimit,locale)}</dd>
    <dt>{t("Preferred areas","אזורים מועדפים")}</dt><dd>{intake.preferredAreas??t("Not specified","לא נמסר")}</dd>
    <dt>{t("Preferred group language","שפה מועדפת לקבוצה")}</dt><dd>{languages[intake.preferredGroupLanguage]}</dd>

@@ -14,7 +14,7 @@ export function AcademyHero({locale}:{locale:Locale}){
   <div className={styles.heroSelectedAction} data-academy-hero-invitation>
    <p className={styles.heroSemantics} lang="en" dir="ltr">A part-time enrichment<br/>program for boys</p>
    <p className={styles.heroSemantics} lang="en" dir="ltr">Torah <span>•</span> Fishing <span>•</span> Self-governance</p>
-   <a href="#pricing" className={styles.heroCta} data-jlfa-primary>{locale==="he"?"לשמירת מקום":"Reserve a Spot Now"}<span aria-hidden="true">↓</span></a>
+   <a href="#pricing" className={styles.heroCta} data-jlfa-primary>{locale==="he"?"למחיר המשפחות המייסדות":"See Founding Pricing"}</a>
   </div></div>
  </section>;
 }

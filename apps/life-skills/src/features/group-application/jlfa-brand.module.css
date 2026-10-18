@@ -55,3 +55,6 @@
 .scope[lang="he"] .coreProgram h4,.scope[lang="he"] .coreHero h1{font-family:inherit}
 @media(max-width:980px){.coreApply{grid-template-columns:1fr}}
 @media(max-width:640px){.coreWrap{inline-size:calc(100% - 32px)}.coreActions{align-items:stretch;flex-direction:column}.coreActions>a,.coreActions>button{inline-size:100%}}
+
+/* Latest14: actual master alpha is already transparent; remove CSS matte. */
+.logoLink{background:transparent;border-radius:0;box-shadow:none}.headerWindow{position:static;display:block;aspect-ratio:1;overflow:visible}.headerWindow img{position:static;inset:auto;inline-size:100%;block-size:auto}.footerLogo{padding:0;inline-size:220px}
