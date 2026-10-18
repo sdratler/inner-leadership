@@ -199,6 +199,17 @@ export class NativeFishingProgram {
   const e=await this.enrollmentRow(c.tx,c.actor.workspaceId,input.id);this.operator(c,await this.cohort(c.tx,c.actor.workspaceId,e.stageId));
  },async c=>{const rows=await c.tx.query("UPDATE ls_fishing_stage.enrollments SET state=$4,revision=revision+1 WHERE workspace_id=$1 AND id=$2 AND revision=$3 RETURNING revision",[c.actor.workspaceId,input.id,input.expectedRevision,input.state]);requireFact(rows.length===1,"CONFLICT");return {id:input.id,revision:input.expectedRevision+1,state:input.state};});}
  private async enrollmentRow(tx:SqlSession,workspace:string,id:string){const row=await one<EnrollmentRow>(tx,`SELECT ${enrollmentColumns} FROM ls_fishing_stage.enrollments WHERE workspace_id=$1 AND id=$2 FOR SHARE`,[workspace,uuid.parse(id)]);requireFact(row,"NOT_FOUND");return row;}
+ /** Root-only native read for an explicit inquiry correlation command. No new
+  * transaction, grant, enrollment or payment. The supplied ordinary session is
+  * reloaded even on replay; payer guardianship is CURRENT, not a stored flag. */
+ async readEnrollmentForInquiryLinkInTransaction(tx:SqlSession,actor:Actor,id:string){
+  const c=await this.actor(tx,actor);requireFact(await demoAccountBatch(tx,c.actor.workspaceId,c.actor.id)===null,"FORBIDDEN");
+  const row=await this.enrollmentRow(tx,c.actor.workspaceId,uuid.parse(id)),cohort=await this.cohort(tx,c.actor.workspaceId,row.stageId);this.operator(c,cohort);
+  const enrollment=await this.enrollment(tx,c.actor.workspaceId,row.id,c.now),p=await this.purchase(tx,c.actor.workspaceId,row.purchaseId);
+  requireFact(enrollment.state==="confirmed"&&p.offer.operatorAccountId===c.actor.id,"FORBIDDEN");
+  const guardianDigest=await this.guardian(tx,c.actor.workspaceId,p.offer.payerAccountId,enrollment.learnerId,enrollment.householdId);
+  return {enrollment,payerAccountId:p.offer.payerAccountId,offerId:p.offer.id,operatorAccountId:c.actor.id,guardianDigest};
+ }
  private async enrollment(tx:SqlSession,workspace:string,id:string,now:Date):Promise<EnrollmentProjection>{
   const e=await this.enrollmentRow(tx,workspace,id),cohort=await this.cohort(tx,workspace,e.stageId),p=await this.purchase(tx,workspace,e.purchaseId);
   requireFact(p.line.id===e.purchaseLineId&&p.line.learnerId===e.learnerId&&p.offer.householdId===e.householdId&&p.line.stageId===e.stageId,"UNAVAILABLE");await this.fit(tx,workspace,e.fitDecisionId,e.stageId,e.learnerId,"enrollment");const a=await this.acceptance(tx,workspace,e.termsAcceptanceId,cohort,e.learnerId,p.offer.payerAccountId,e.householdId,now);
