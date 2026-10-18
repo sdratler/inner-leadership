@@ -83,6 +83,30 @@ export type AcademySessionDurationResult = Readonly<{
   mayBook: false;
 }>;
 
+/** Website09/Florida START: only Foundation's first two original meetings are
+ * two-hour preparation. This separate advisory seam does not reinterpret the
+ * Source03 ordinary/Keys/offshore classifiers or confer native credit rights.
+ * A future native caller must reload the stage/ordinal from the actual original
+ * obligation, never infer them from a browser or a replacement's position. */
+export const academyFoundationPreparationPolicyVersion="JLFA-FOUNDATION-PREPARATION-20261018-09-v1" as const;
+export const academyFoundationPreparationMinutes=120 as const;
+export type AcademyFoundationPreparationDurationInput=Readonly<{
+ version:typeof academyFoundationPreparationPolicyVersion;
+ sessionKind:"foundation_preparation";
+ stage:1;
+ originalOrdinal:1|2;
+ time:AcademySessionDurationInput["time"];
+}>;
+export type AcademyFoundationPreparationDurationResult=Readonly<{
+ version:typeof academyFoundationPreparationPolicyVersion;
+ status:"foundation_preparation_duration_matches"|"duration_review_required"|"undated";
+ reason:"foundation_preparation_120_minutes"|"foundation_preparation_duration_mismatch"|"invalid_input"|"undated";
+ elapsedMinutes:number|null;
+ mayBook:false;
+ mayIssueCredit:false;
+ mayMarkDelivered:false;
+}>;
+
 /** Immutable original obligation. A replacement occurrence/reservation never
  * replaces this identity. Per-child and per-original-session, not a stage cap.
  * ordinal is the original week within the purchased 12-session stage.

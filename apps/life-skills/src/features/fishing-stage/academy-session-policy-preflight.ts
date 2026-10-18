@@ -2,6 +2,8 @@ import {
  academyPolicyPreflightVersion,academyOrdinarySessionMinutes,
  type AcademySessionDurationInput,type AcademySessionDurationResult,
  type AcademyTravelChangeInput,type AcademyTravelChangeResult,type AcademyOriginalSessionAnchor,
+ academyFoundationPreparationPolicyVersion,academyFoundationPreparationMinutes,
+ type AcademyFoundationPreparationDurationInput,type AcademyFoundationPreparationDurationResult,
 } from "../fishing/academy-policy-preflight-contract.ts";
 
 /** Unmounted Source03 classifiers, not native authorization or a credit ledger.
@@ -130,4 +132,29 @@ export function assessAcademyTravelChange(input:AcademyTravelChangeInput):Academ
   if(!change.familyCannotAttend)return travelResult("no_new_credit","family_can_attend");
   return travelResult("replacement_review_required","academy_change_exceeds_limit");
  }catch{return facts("invalid_input");}
+}
+
+/** Duration only, intentionally not called by the native credit classifier.
+ * Keys core replacement, venue/day suitability, staffing, purchase/delivery and
+ * guardian authority require their own current native evidence and review. */
+export function assessAcademyFoundationPreparationDuration(input:AcademyFoundationPreparationDurationInput):AcademyFoundationPreparationDurationResult{
+ const result=(status:AcademyFoundationPreparationDurationResult["status"],reason:AcademyFoundationPreparationDurationResult["reason"],elapsedMinutes:number|null):AcademyFoundationPreparationDurationResult=>
+  Object.freeze({version:academyFoundationPreparationPolicyVersion,status,reason,elapsedMinutes,mayBook:false,mayIssueCredit:false,mayMarkDelivered:false});
+ const invalid=()=>result("duration_review_required","invalid_input",null);
+ try{
+  const value=data(input,["version","sessionKind","stage","originalOrdinal","time"]);
+  if(!value||value.version!==academyFoundationPreparationPolicyVersion||value.sessionKind!=="foundation_preparation"||
+   value.stage!==1||(value.originalOrdinal!==1&&value.originalOrdinal!==2))return invalid();
+  const time=data(value.time,["kind","timeZone"]);
+  if(!time||time.timeZone!=="America/New_York"||!member(time.kind,["scheduled","undated"]))return invalid();
+  if(time.kind==="undated")return result("undated","undated",null);
+  const scheduled=data(value.time,["startsAt","endsAt"]);
+  if(!scheduled)return invalid();
+  const start=instant(scheduled.startsAt),end=instant(scheduled.endsAt);
+  if(start===null||end===null||end<=start)return invalid();
+  const elapsedMinutes=(end-start)/60000;
+  return elapsedMinutes===academyFoundationPreparationMinutes?
+   result("foundation_preparation_duration_matches","foundation_preparation_120_minutes",elapsedMinutes):
+   result("duration_review_required","foundation_preparation_duration_mismatch",elapsedMinutes);
+ }catch{return invalid();}
 }
