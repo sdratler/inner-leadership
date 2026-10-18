@@ -44,7 +44,7 @@ export function intakeReleasePath(pathname: string, input: Record<string,string|
 }
 export function groupApplicationReleasePath(pathname:string,input:Record<string,string|undefined>):boolean{
  const allowed=pathname==="/api/public/group-applications"||/^\/(he|en)\/groups\/apply\/?$/.test(pathname)||
-  /^\/(he|en)\/florida(?:\/(?:torah-mornings|private-fishing|apply))?\/?$/.test(pathname)||
+  /^\/(he|en)\/florida(?:\/(?:torah-mornings|private-fishing|apply|pricing))?\/?$/.test(pathname)||
   /^\/(he|en)\/florida\/stages\/(?:foundation|independent|advanced|leadership)\/?$/.test(pathname);
  if(!allowed||!publicGroupApplicationEnvironmentEnabled(input))return false;
  try{parseIdentityConfig(input);return true;}catch{return false;}
