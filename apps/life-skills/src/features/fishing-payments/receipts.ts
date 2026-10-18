@@ -98,7 +98,8 @@ export class FishingReceiptInbox {
     if(p.state.paidCents===0&&Date.parse(f.occurredAt)>Date.parse(p.offer.expiresAt))next={...next,state:'reconciliation_required'};
     await c.tx.query('INSERT INTO ls_fishing_payments.settlements(provider_account_id,livemode,kind,transaction_id,workspace_id,purchase_id,digest,fact_json) VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb)',[merchant.accountId,merchant.livemode,f.kind,f.canonicalTransactionId,c.actor.workspaceId,f.purchaseId,hash,JSON.stringify(f)]);
     await this.store.save(c,p.state,next);
-    if(next.state==='paid')await c.tx.query("UPDATE ls_fishing_payments.founder_households h SET state='claimed' FROM ls_fishing_payments.campaigns c,ls_fishing_payments.offers o WHERE h.workspace_id=$1 AND h.household_id=$2 AND o.id=$3 AND o.workspace_id=h.workspace_id AND o.campaign_id=h.campaign_id AND c.workspace_id=h.workspace_id AND c.id=h.campaign_id AND c.policy_json->>'qualifyingEvent'='verified_full_payment' AND h.state='reserved'",[c.actor.workspaceId,p.offer.householdId,p.offer.id]);
+    // Cash reconciliation does not select founder qualification or mutate
+    // historical promotional inventory while those operational terms are open.
    }
    for(const signal of current.dues){const p=await this.store.purchase(c,signal.purchaseId),op=await this.store.operation(c,signal.operationId),due=p.state.dues.find(d=>d.id===signal.dueId);
     invariant(due&&op.purchaseId===p.state.purchaseId&&op.dueId===due.id&&op.kind==='hosted_invoice'&&op.state==='confirmed','DUE_MAPPING');

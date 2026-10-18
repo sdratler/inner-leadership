@@ -23,6 +23,17 @@ export class FishingPaymentStore implements FishingPaymentReadPort {
   invariant(operator||!operatorOnly&&parent,'NOT_FOUND');
   invariant(await this.deps.authority.authorize(c.tx,c.actor,o,action),'NOT_FOUND');
  }
+ /** Temporary denial only; call after fresh actor/workspace/offer access.
+  * Neither legacy campaign policy nor a caller flag grants founder activation. */
+ async assertHostedActivationAllowed(c:NativeContext,offer:ApprovedOffer,campaignId?:string|null):Promise<void>{
+  invariant(c.actor.workspaceId===offer.workspaceId,'NOT_FOUND');
+  const existing=await one<{campaignId:string|null}>(c.tx,'SELECT campaign_id AS "campaignId" FROM ls_fishing_payments.offers WHERE workspace_id=$1 AND id=$2',[c.actor.workspaceId,offer.id]);
+  invariant(!offer.lines.some(line=>line.discountBasis.startsWith('founder_'))&&(existing?.campaignId??null)===null,'FOUNDER_ACTIVATION_BLOCKED');
+  if(campaignId!==undefined&&campaignId!==null){
+   id.parse(campaignId);const campaign=await one(c.tx,'SELECT id FROM ls_fishing_payments.campaigns WHERE workspace_id=$1 AND id=$2',[c.actor.workspaceId,campaignId]);invariant(campaign,'NOT_FOUND');
+   invariant(false,'FOUNDER_ACTIVATION_BLOCKED');
+  }
+ }
  async loadOffer(c:NativeContext,offerId:string):Promise<{offer:ApprovedOffer;state:string}>{
   id.parse(offerId);const row=await one<{offer:unknown;digest:string;state:string}>(c.tx,'SELECT offer_json AS offer,digest,state FROM ls_fishing_payments.offers WHERE workspace_id=$1 AND id=$2',[c.actor.workspaceId,offerId]);
   invariant(row,'NOT_FOUND');const offer=approvedOffer(row.offer);invariant(digest(offer)===row.digest,'OFFER_CORRUPT');return {offer,state:row.state};
@@ -42,24 +53,14 @@ export class FishingPaymentStore implements FishingPaymentReadPort {
  async event(c:NativeContext,topic:string,aggregateId:string,revision:number){await c.tx.query('INSERT INTO ls_fishing_payments.outbox(id,workspace_id,topic,aggregate_id,revision,recorded_at) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING',[randomUUID(),c.actor.workspaceId,topic,aggregateId,revision,c.now]);}
  async registerApprovedOffer(actor:Actor,commandId:string,offerId:string,revision:number,campaignId:string|null=null):Promise<{purchaseIds:string[]}>{
   let o:ApprovedOffer;
-  const authorize=async(c:NativeContext)=>{const canonical=await this.deps.authority.loadApprovedOffer(c.tx,c.actor,offerId);invariant(canonical,'NOT_FOUND');o=approvedOffer(canonical);invariant(o.revision===revision,'CONFLICT');await this.access(c,o,'issue',true);};
+  const authorize=async(c:NativeContext)=>{const canonical=await this.deps.authority.loadApprovedOffer(c.tx,c.actor,offerId);invariant(canonical,'NOT_FOUND');o=approvedOffer(canonical);invariant(o.revision===revision,'CONFLICT');await this.access(c,o,'issue',true);await this.assertHostedActivationAllowed(c,o,campaignId);};
   return this.command(actor,commandId,'offer.issue',{offerId,revision,campaignId},authorize,async c=>{
    const merchant=this.deps.merchant;invariant(merchant?.verifiedBindingId,'MERCHANT_BINDING_REQUIRED');invariant(Date.parse(o.expiresAt)>c.now.getTime(),'OFFER_EXPIRED');
    const old=await one<{digest:string}>(c.tx,'SELECT digest FROM ls_fishing_payments.offers WHERE workspace_id=$1 AND id=$2',[c.actor.workspaceId,o.id]);
    if(old){invariant(old.digest===digest(o),'IMMUTABLE_OFFER');const rows=await c.tx.query<{id:string}>('SELECT id FROM ls_fishing_payments.purchases WHERE workspace_id=$1 AND offer_id=$2 ORDER BY id',[c.actor.workspaceId,o.id]);return {purchaseIds:rows.map(x=>x.id)};}
-   if(o.lines.some(l=>l.discountBasis.startsWith('founder_')))await this.reserveFounder(c,o,campaignId);
    await c.tx.query('INSERT INTO ls_fishing_payments.offers(workspace_id,id,revision,digest,offer_json,campaign_id,state) VALUES($1,$2,$3,$4,$5::jsonb,$6,\'approved\')',[c.actor.workspaceId,o.id,o.revision,digest(o),JSON.stringify(o),campaignId]);
    const purchaseIds=[];for(const l of o.lines){const purchaseId=randomUUID(),state=initialPayment(o,l,purchaseId,merchant);purchaseIds.push(purchaseId);await c.tx.query('INSERT INTO ls_fishing_payments.purchases(workspace_id,id,offer_id,line_id,revision,state_json) VALUES($1,$2,$3,$4,1,$5::jsonb)',[o.workspaceId,purchaseId,o.id,l.id,JSON.stringify(state)]);await this.event(c,'offer.issued',purchaseId,1);}return {purchaseIds};
   });
- }
- private async reserveFounder(c:NativeContext,o:ApprovedOffer,campaignId:string|null){
-  invariant(campaignId,'FOUNDER_POLICY_REQUIRED');
-  const campaign=await one<{policy:{version:string;qualifyingEvent:string;approvedDecisionId:string}}>(c.tx,'SELECT policy_json AS policy FROM ls_fishing_payments.campaigns WHERE workspace_id=$1 AND id=$2 FOR UPDATE',[o.workspaceId,campaignId]);
-  invariant(campaign?.policy.approvedDecisionId&&campaign.policy.version===o.policyVersion&&['approved_offer','verified_full_payment'].includes(campaign.policy.qualifyingEvent),'FOUNDER_POLICY_REQUIRED');
-  const prior=await one<{state:string}>(c.tx,'SELECT state FROM ls_fishing_payments.founder_households WHERE workspace_id=$1 AND campaign_id=$2 AND household_id=$3',[o.workspaceId,campaignId,o.householdId]);
-  if(prior){invariant(prior.state!=='reconciliation_required','FOUNDER_RECONCILIATION_REQUIRED');return;} // MAIN still verifies current line eligibility.
-  const counts=await one<{count:number}>(c.tx,'SELECT count(*)::integer AS count FROM ls_fishing_payments.founder_households WHERE workspace_id=$1 AND campaign_id=$2',[o.workspaceId,campaignId]);invariant(counts&&counts.count<20,'FOUNDER_FULL');
-  await c.tx.query('INSERT INTO ls_fishing_payments.founder_households(workspace_id,campaign_id,household_id,state,offer_id) VALUES($1,$2,$3,$4,$5)',[o.workspaceId,campaignId,o.householdId,campaign.policy.qualifyingEvent==='approved_offer'?'claimed':'reserved',o.id]);
  }
  async operation(c:NativeContext,operationId:string):Promise<ProviderOperation>{const row=await one<{operation:ProviderOperation}>(c.tx,'SELECT operation_json AS operation FROM ls_fishing_payments.operations WHERE workspace_id=$1 AND id=$2',[c.actor.workspaceId,operationId]);invariant(row,'NOT_FOUND');return row.operation;}
  async hasUnknown(c:NativeContext,purchaseId:string):Promise<boolean>{const rows=await c.tx.query<{operation:ProviderOperation}>('SELECT operation_json AS operation FROM ls_fishing_payments.operations WHERE workspace_id=$1 AND purchase_id=$2',[c.actor.workspaceId,purchaseId]);return rows.some(r=>r.operation.state==='unknown');}

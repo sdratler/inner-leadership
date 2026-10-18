@@ -9,6 +9,7 @@ export class FishingPaymentService {
  constructor(readonly store:FishingPaymentStore){}
  private async executionAuthority(c:NativeContext,op:ProviderOperation){
   const p=await this.store.purchase(c,op.purchaseId);await this.store.access(c,p.offer,op.kind==='refund'?'refund':'hosted',op.kind==='refund');
+  if(op.kind==='hosted_invoice')await this.store.assertHostedActivationAllowed(c,p.offer);
   invariant(op.providerAccountId===p.state.providerAccountId&&op.providerAccountId===this.store.deps.merchant?.accountId&&op.livemode===p.state.livemode&&!op.livemode,'MERCHANT_BINDING');
   if(op.state!=='reserved')return;
   if(op.kind==='refund'){const preview=await this.preview(c,op.purchaseId);invariant(preview.token===op.requestDigest&&preview.reviewedTermsId&&preview.amountCents===op.amountCents,'REFUND_APPROVAL_STALE');}
@@ -20,16 +21,12 @@ export class FishingPaymentService {
  }
  async beginHosted(actor:Actor,commandId:string,purchaseId:string,dueId:string):Promise<ProviderOperation>{
   this.provider();
-  const authorize=async(c:NativeContext)=>{const p=await this.store.purchase(c,purchaseId);await this.store.access(c,p.offer,'hosted');invariant(p.state.providerAccountId===this.store.deps.merchant?.accountId&&!p.state.livemode,'MERCHANT_BINDING');
+  const authorize=async(c:NativeContext)=>{const p=await this.store.purchase(c,purchaseId);await this.store.access(c,p.offer,'hosted');await this.store.assertHostedActivationAllowed(c,p.offer);invariant(p.state.providerAccountId===this.store.deps.merchant?.accountId&&!p.state.livemode,'MERCHANT_BINDING');
    const {state}=await this.store.loadOffer(c,p.offer.id),d=p.state.dues.find(x=>x.id===dueId);invariant(d,'WRONG_DUE');invariant(d.paidCents<d.amountCents,'DUE_ALREADY_PAID');
    invariant(state==='approved','OFFER_CANCELLED');
    // Later obligations remain collectible after the original offer expires.
    if(d.index===1||p.state.dues[0]?.state!=='paid')invariant(Date.parse(p.offer.expiresAt)>c.now.getTime(),'OFFER_EXPIRED');
    const current=await this.store.deps.authority.loadApprovedOffer(c.tx,c.actor,p.offer.id);invariant(current&&digest(approvedOffer(current))===digest(p.offer),'APPROVAL_CHANGED');
-   if(p.line.discountBasis.startsWith('founder_')){
-    const inventory=await c.tx.query('SELECT h.state FROM ls_fishing_payments.founder_households h JOIN ls_fishing_payments.offers o ON o.workspace_id=h.workspace_id AND o.campaign_id=h.campaign_id WHERE h.workspace_id=$1 AND h.household_id=$2 AND o.id=$3',[p.offer.workspaceId,p.offer.householdId,p.offer.id]);
-    invariant(inventory.length===1,'FOUNDER_RECONCILIATION_REQUIRED');
-   }
   };
   return this.store.command(actor,commandId,'hosted.prepare',{purchaseId,dueId},authorize,async c=>{
    const existing=await one<{operation:ProviderOperation}>(c.tx,"SELECT operation_json AS operation FROM ls_fishing_payments.operations WHERE workspace_id=$1 AND purchase_id=$2 AND due_id=$3 AND kind='hosted_invoice'",[c.actor.workspaceId,purchaseId,dueId]);if(existing)return existing.operation;
@@ -50,7 +47,7 @@ export class FishingPaymentService {
   });
   // A replayed start command must not call create twice; reload current state.
   if(!reserved.call)return reserved.op;
-  const lease=await this.store.read(actor,async c=>{const op=await this.store.operation(c,operationId);const p=await this.store.purchase(c,op.purchaseId);await this.store.access(c,p.offer,op.kind==='refund'?'refund':'hosted',op.kind==='refund');return op;});
+  const lease=await this.store.read(actor,async c=>{const op=await this.store.operation(c,operationId);await this.executionAuthority(c,op);return op;});
   if(lease.state==='confirmed')return lease;
   // Only the first caller owns create. A repeated command observes the same
   // UNKNOWN result and must reconcile; a durable dispatch token is consumed below.
