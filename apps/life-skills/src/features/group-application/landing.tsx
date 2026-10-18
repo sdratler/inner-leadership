@@ -11,6 +11,9 @@ import additions from "./landing-additions.module.css";
 import {JlfaLogo,JlfaCoreMain,JlfaHeroPlaceholder,JlfaFaq,JlfaCurriculumContent,JLFA_TAGLINE} from "./jlfa-brand.tsx";
 import {JlfaCurriculum} from "./jlfa-curriculum.tsx";
 import jlfa from "./jlfa-brand.module.css";
+import {AcademyPricing} from "./academy-pricing.tsx";
+import {AcademyTravelFaq} from "./academy-travel-faq.tsx";
+import {AcademyWebsite} from "./academy-website.tsx";
 
 const styles={...baseStyles,...additions};
 
@@ -41,6 +44,7 @@ export function GroupApplicationLanding({locale:initialLocale,programId="sunday_
  const primary=p(academy?viewCopy.shared.ctaAcademy:vip?viewCopy.shared.ctaVip:pair("Ask about Torah mornings","לפרטים על לימוד תורה בבוקר"));
  useEffect(()=>{document.documentElement.lang=locale;document.documentElement.dir=locale==="he"?"rtl":"ltr";},[locale]);
  const switchLanguage=(next:Locale)=>{if(next===locale)return;setMenuOpen(false);setLocale(next);window.history.replaceState(window.history.state,"",pathFor(next,program,mode)+(mode==="sample"?"":window.location.search)+window.location.hash);};
+ if(academy&&mode==="native")return <AcademyWebsite locale={locale} onLocaleChange={switchLanguage}/>;
  return <div className={academy?`${styles.page} ${jlfa.scope}`:styles.page} lang={locale} dir={locale==="he"?"rtl":"ltr"}>
   <a className={styles.skip} href="#main">{t("Skip to content","דלגו לתוכן")}</a>
   <header className={academy?`${styles.header} ${jlfa.toolbar}`:styles.header}><div className={styles.wrap}>
@@ -52,7 +56,11 @@ export function GroupApplicationLanding({locale:initialLocale,programId="sunday_
    </nav>
    <div className={styles.language} aria-label={t("Language","שפה")}><button type="button" lang="en" aria-pressed={locale==="en"} onClick={()=>switchLanguage("en")}>EN</button><button type="button" lang="he" aria-pressed={locale==="he"} onClick={()=>switchLanguage("he")}>עברית</button></div>
   </div></header>
-  <main id="main">{academy?<JlfaCoreMain locale={locale} form={<GroupApplicationForm locale={locale} programId={programId} mode={mode}/>} school={<SchoolInquirySection locale={locale} mode={mode}/>}/>:<>
+  <main id="main">{academy?<JlfaCoreMain locale={locale}
+   pricing={<AcademyPricing locale={locale} {...(mode==="sample"?{applicationHref:"#apply"}:{})}/>}
+   travelFaq={<AcademyTravelFaq locale={locale}/>}
+   form={mode==="sample"?<GroupApplicationForm locale={locale} programId={programId} mode={mode}/>:<div><p>{t("Complete the family, learner, schedule and travel form on the next page. Choose enrollment follow-up or a callback; submitting saves an inquiry and does not reserve a place or take payment.","בעמוד הבא ממלאים פרטי משפחה, לומדים, זמינות ונסיעה. בוחרים המשך תהליך הרשמה או שיחת חזרה; השליחה שומרת פנייה, ללא שמירת מקום וללא תשלום.")}</p><a className={styles.primaryButton} data-academy-full-form href={`/${locale}/florida/apply`}>{t("Apply / Continue to Enrollment","הגשת בקשה / המשך להרשמה")}</a></div>}
+   school={<SchoolInquirySection locale={locale} mode={mode}/>}/>:<>
    {!academy&&<p className={`${styles.wrap} ${styles.previewBanner}`}>{p(viewCopy.shared.previewBanner)}</p>}
    {mode==="sample"&&!academy&&<p className={styles.wrap}>{p(viewCopy.inquiry.sampleBanner)} <a href={`/${locale}/sample?page=florida-journeys&program=${programId}`}>{t("Open the complete journey","פתיחת המסלול המלא")}</a></p>}
    <section className={academy?`${styles.hero} ${jlfa.hero}`:styles.hero}><div className={academy?`${styles.wrap} ${styles.heroGrid} ${jlfa.heroGrid}`:`${styles.wrap} ${styles.heroGrid} `}>

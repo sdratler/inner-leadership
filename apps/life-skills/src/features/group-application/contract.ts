@@ -1,4 +1,5 @@
 import {z} from "zod";
+import {academyIntakeSchema,academyDriveMinutes} from "./academy-intake.ts";
 
 /** Existing Israel application permission. This contract remains writable at /groups/apply. */
 export const groupApplicationNotice={
@@ -88,11 +89,17 @@ const floridaParentApplicationFieldsBase=z.object({
  programId:floridaProgramIdSchema,
  schedulePreference:z.array(scheduleValueSchema).min(1).max(6).refine(values=>new Set(values).size===values.length,"duplicate schedule preference"),
  academyFit:academyFitSchema.optional(),
+ academyIntake:academyIntakeSchema.optional(),
  scheduleContext:z.literal("program_format_interest").optional(),
  scheduleNotes:z.string().trim().min(1).max(300).optional(),
  permission:z.object({confirmed:z.literal(true),version:z.literal(floridaGroupApplicationNotice.version),language:z.enum(["he","en"])}).strict(),
 }).strict();
 const floridaParentIssue=(value:z.infer<typeof floridaParentApplicationFieldsBase>,context:z.RefinementCtx)=>{
+ if(value.academyIntake!==undefined){
+  if(value.programId!=="sunday_fishing_academy"||value.scheduleContext!=="program_format_interest"||!value.academyFit)context.addIssue({code:"custom",path:["academyIntake"],message:"academy fit and format required"});
+  if(value.academyFit&&value.academyIntake.learners.length!==value.academyFit.learners.length)context.addIssue({code:"custom",path:["academyIntake","learners"],message:"learner count mismatch"});
+  if(value.academyFit&&value.academyFit.maximumDriveMinutes!==academyDriveMinutes(value.academyIntake.driveLimit))context.addIssue({code:"custom",path:["academyIntake","driveLimit"],message:"drive preferences must match"});
+ }
  if(value.academyFit!==undefined&&value.programId!=="sunday_fishing_academy")context.addIssue({code:"custom",path:["academyFit"],message:"academy-only group fit"});
  if(value.academyFit!==undefined&&!value.contact.includes("@")&&!normalizeFloridaLeadContact(value.contact))context.addIssue({code:"custom",path:["contact"],message:"include country code or a US ten-digit number"});
  if(value.scheduleContext!==undefined&&value.programId!=="sunday_fishing_academy")context.addIssue({code:"custom",path:["scheduleContext"],message:"academy-only format interest"});
@@ -107,6 +114,7 @@ export const floridaParentApplicationFieldsSchema=floridaParentApplicationFields
 // New fit/version/before-school fields cannot fall back to this legacy branch.
 const floridaParentLegacyReadableFieldsSchema=floridaParentApplicationFieldsBase.extend({
  academyFit:z.undefined().optional(),
+ academyIntake:z.undefined().optional(),
  schedulePreference:z.array(scheduleValueSchema.exclude(["weekday_before_school"])).min(1).max(5)
   .refine(values=>new Set(values).size===values.length,"duplicate schedule preference"),
 }).superRefine(floridaParentIssue);

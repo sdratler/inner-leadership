@@ -1,0 +1,26 @@
+.pricing{color:#052D50;background:#FFF;padding-block:clamp(32px,5vw,72px);font:400 1rem/1.6 Arial,Helvetica,sans-serif;scroll-margin-block-start:24px}
+.pricing *{box-sizing:border-box;min-inline-size:0}
+.inner{inline-size:min(1120px,calc(100% - 32px));margin-inline:auto}
+.header{max-inline-size:65ch;margin-block-end:24px}
+.eyebrow{color:#047AA8;font-size:.875rem;font-weight:700;letter-spacing:.03em}
+.pricing h2{font-size:clamp(1.8rem,4vw,2.75rem);line-height:1.2;margin-block:8px 12px;text-wrap:balance}
+.pricing[lang="en"] h2,.pricing[lang="en"] h3{font-family:Georgia,"Times New Roman",serif}
+.pricing h3{font-size:1.125rem;line-height:1.4;margin:0 0 12px}
+.pricing p{margin-block:0 12px}.pricing p:last-child{margin-block-end:0}
+.featured{display:grid;gap:20px;align-items:center;padding:clamp(20px,3vw,32px);border:2px solid #F4B12D;border-radius:8px;background:#FFF}
+.priceGroup{padding-block-start:16px;border-block-start:1px solid #F4B12D}
+.comparison{font-size:.95rem}.comparison del{margin-inline-start:8px;text-decoration-thickness:2px}
+.pricing .amount{font-size:clamp(2rem,4vw,2.75rem);font-weight:700;line-height:1.15;margin-block:8px 12px}
+.saving{color:#052D50;font-weight:700;font-size:.95rem}
+.cards{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;margin-block:20px}
+.card{padding:20px;border:1px solid #B9D5DF;border-radius:8px;background:#FFF}
+.stageTerms{max-inline-size:100ch;font-size:.95rem;margin-block:20px}
+.disclosure{padding-block:22px;border-block-start:1px solid #B9D5DF;border-block-end:1px solid #B9D5DF}
+.disclosure p{max-inline-size:100ch;font-size:.95rem}
+.actions{display:flex;flex-direction:column;gap:12px;margin-block-start:24px}
+.primary,.secondary{display:inline-flex;align-items:center;justify-content:center;min-block-size:48px;max-inline-size:100%;padding:12px 18px;border:1px solid #052D50;border-radius:5px;font:inherit;font-weight:700;line-height:1.4;text-align:center;text-decoration:none;overflow-wrap:anywhere}
+.primary.primary{color:#FFF;background:#052D50}.primary:hover{color:#FFF;background:#073C68}
+.secondary{color:#052D50;background:#FFF}.secondary:hover{color:#052D50;background:#EAF6FA}
+.primary:focus-visible,.secondary:focus-visible{outline:3px solid #F4B12D;outline-offset:4px}
+@media(min-width:48rem){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.featured{grid-template-columns:minmax(0,1.2fr) minmax(0,1fr)}.priceGroup{padding-block-start:0;padding-inline-start:24px;border-block-start:0;border-inline-start:1px solid #F4B12D}.actions{flex-direction:row;flex-wrap:wrap}}
+@media(min-width:70rem){.cards{grid-template-columns:repeat(4,minmax(0,1fr))}}

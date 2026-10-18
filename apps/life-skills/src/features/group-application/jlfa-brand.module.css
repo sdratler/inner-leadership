@@ -55,6 +55,3 @@
 .scope[lang="he"] .coreProgram h4,.scope[lang="he"] .coreHero h1{font-family:inherit}
 @media(max-width:980px){.coreApply{grid-template-columns:1fr}}
 @media(max-width:640px){.coreWrap{inline-size:calc(100% - 32px)}.coreActions{align-items:stretch;flex-direction:column}.coreActions>a,.coreActions>button{inline-size:100%}}
-
-/* Scoped interim logo/text-only release choice; approved header/footer geometry unchanged. */
-.coreHero .heroGrid{grid-template-columns:minmax(0,1fr)}

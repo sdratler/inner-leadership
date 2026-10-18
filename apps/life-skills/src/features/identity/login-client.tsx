@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { Locale } from "../../lib/locale.ts";
 import { publicAuthAction, sessionInfo, takeAuthTokenFragment } from "./client.ts";
 import { loginReturnDestination } from "./login-return.ts";
@@ -70,6 +70,9 @@ const copy = {
   },
 } as const;
 
+// Client-only form actions must be ready before their buttons accept input.
+const subscribeToHydration = () => () => undefined;
+
 export function LoginClient({ locale }: { locale: Locale }) {
   const router = useRouter();
   const query = useSearchParams();
@@ -83,6 +86,7 @@ export function LoginClient({ locale }: { locale: Locale }) {
   const [tokenReady, setTokenReady] = useState(false);
   const [passwordVisible, setPasswordVisible] = useState(false);
   const token = useRef<string | null>(null);
+  const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
   const t = copy[locale];
 
   useEffect(() => {
@@ -149,20 +153,20 @@ export function LoginClient({ locale }: { locale: Locale }) {
         <h1 id="login-title">{mode === "invite" ? t.activation : t.reset}</h1>
         <label>{t.newPassword}<input id="new-password" name="password" type={passwordVisible ? "text" : "password"} minLength={6} maxLength={128} required autoComplete="new-password" /></label>
         <label>{t.confirmation}<input id="confirm-password" name="confirmation" type={passwordVisible ? "text" : "password"} minLength={6} maxLength={128} required autoComplete="new-password" /></label>
-        <button className={styles.passwordToggle} type="button" aria-controls="new-password confirm-password" aria-pressed={passwordVisible} onClick={() => setPasswordVisible(value => !value)}>{passwordVisible ? t.hidePassword : t.showPassword}</button>
-        <button disabled={busy || !tokenReady} type="submit">{busy ? t.working : t.save}</button>
+        <button className={styles.passwordToggle} type="button" aria-controls="new-password confirm-password" aria-pressed={passwordVisible} disabled={!hydrated} onClick={() => setPasswordVisible(value => !value)}>{passwordVisible ? t.hidePassword : t.showPassword}</button>
+        <button disabled={busy || !hydrated || !tokenReady} type="submit">{busy ? t.working : t.save}</button>
       </form> : mode === "forgot" ? <form action={(form) => void requestReset(form)}>
         <h1 id="login-title">{t.forgotTitle}</h1><p>{t.forgotHelp}</p>
         <label>{t.email}<input name="email" type="email" required autoComplete="username" /></label>
-        <button disabled={busy || resetAccepted} type="submit">{busy ? t.working : t.request}</button>
-        <button className={styles.secondary} disabled={busy} type="button" onClick={() => { setPasswordVisible(false); setMode("login"); setStatus(""); }}>{t.back}</button>
+        <button disabled={busy || !hydrated || resetAccepted} type="submit">{busy ? t.working : t.request}</button>
+        <button className={styles.secondary} disabled={busy || !hydrated} type="button" onClick={() => { setPasswordVisible(false); setMode("login"); setStatus(""); }}>{t.back}</button>
       </form> : <form action={(form) => void login(form)}>
         <h1 id="login-title">{t.title}</h1><p>{t.help}</p>
         <label>{t.email}<input name="email" type="email" required autoComplete="username" /></label>
         <label>{t.password}<input id="login-password" name="password" type={passwordVisible ? "text" : "password"} required autoComplete="current-password" /></label>
-        <button className={styles.passwordToggle} type="button" aria-controls="login-password" aria-pressed={passwordVisible} onClick={() => setPasswordVisible(value => !value)}>{passwordVisible ? t.hidePassword : t.showPassword}</button>
-        <button disabled={busy} type="submit">{busy ? t.working : t.signIn}</button>
-        <button className={styles.secondary} disabled={busy} type="button" onClick={() => { setPasswordVisible(false); setMode("forgot"); setStatus(""); }}>{t.forgot}</button>
+        <button className={styles.passwordToggle} type="button" aria-controls="login-password" aria-pressed={passwordVisible} disabled={!hydrated} onClick={() => setPasswordVisible(value => !value)}>{passwordVisible ? t.hidePassword : t.showPassword}</button>
+        <button disabled={busy || !hydrated} type="submit">{busy ? t.working : t.signIn}</button>
+        <button className={styles.secondary} disabled={busy || !hydrated} type="button" onClick={() => { setPasswordVisible(false); setMode("forgot"); setStatus(""); }}>{t.forgot}</button>
       </form>}
       <p className={styles.status} role="status" aria-live="polite">{status}</p>
       {mode !== "invite" && mode !== "reset" && <Link className={styles.language} href={`/${language}/login`}>{language === "he" ? "עברית" : "English"}</Link>}
