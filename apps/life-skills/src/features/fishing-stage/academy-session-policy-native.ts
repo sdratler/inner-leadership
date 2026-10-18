@@ -5,11 +5,13 @@ import {AppError} from "../../lib/errors.ts";
 import {freshActor,lockWorkspace} from "../identity/data.ts";
 import type {AccountFacts} from "../identity/types.ts";
 import type {SqlSession} from "../identity/store.ts";
-import {academySessionPolicyNativeVersion,type AcademySessionPolicyNativeDependencies,type AcademySessionCreditCommand,
- type AcademySessionCreditNativeContext,type AcademySessionCreditNativeFacts,type AcademySessionCreditRecord,
+import {academySessionPolicyNativeVersion,type AcademySessionPolicyNativeDependencies,type AcademySessionPolicyNativeDependenciesV2,type AcademySessionCreditCommand,
+ type AcademySessionCreditNativeContext,type AcademySessionCreditResolvedFacts,type AcademySessionCreditRecord,
  type AcademySessionCreditCommandResult,type AcademySessionCreditFamilySummary} from "../fishing/academy-session-policy-native-contract.ts";
-import {assessAcademySessionDuration,assessAcademyTravelChange} from "./academy-session-policy-preflight.ts";
-import {AcademySessionCreditStore,academyCreditCommandSchema,academyCreditSelectionSchema,academyCreditFactsSchema,
+import {academyFoundationPreparationPolicyVersion} from "../fishing/academy-policy-preflight-contract.ts";
+import {assessAcademySessionDuration,assessAcademyTravelChange,assessAcademyTravelChangeWithRecordedMaximum,
+ assessAcademyFoundationPreparationDuration} from "./academy-session-policy-preflight.ts";
+import {AcademySessionCreditStore,academyCreditCommandSchema,academyCreditSelectionSchema,academyCreditResolvedFactsSchema,
  academyCreditDigest,sameAcademyAnchor,sameAcademyCredit} from "./academy-session-credit-store.ts";
 
 const selectedSchema=z.strictObject({enrollmentId:z.uuid(),workspaceId:z.uuid(),learnerId:z.uuid()});
@@ -21,20 +23,29 @@ function checked<T>(schema:z.ZodType<T>,value:unknown,code:"INVALID_REQUEST"|"UN
 function result(outcome:AcademySessionCreditCommandResult["outcome"],reason:AcademySessionCreditCommandResult["reason"],credit:AcademySessionCreditRecord|null):AcademySessionCreditCommandResult{
  return {version:academySessionPolicyNativeVersion,outcome,reason,credit,replayed:false,mayBook:false,mayMarkDelivered:false,specificDateOrSeatGuaranteed:false};
 }
-function bound(record:AcademySessionCreditRecord,facts:AcademySessionCreditNativeFacts):void{
+function bound(record:AcademySessionCreditRecord,facts:AcademySessionCreditResolvedFacts):void{
  if(!sameAcademyAnchor(record.anchor,facts.anchor)||record.enrollmentId!==facts.enrollmentId||record.purchaseId!==facts.purchaseId||record.purchaseLineId!==facts.purchaseLineId)fail();
 }
 /** Classifiers supply reasons, never authority. This is called only after Root's
  * required resolver has verified the native obligation and all source bindings. */
-function classify(facts:AcademySessionCreditNativeFacts,credit:AcademySessionCreditRecord|null):AcademySessionCreditCommandResult{
- const travel=assessAcademyTravelChange({...facts.travel,existingCredit:credit?{anchor:credit.anchor,creditId:credit.id,state:credit.state}:null});
+function classify(facts:AcademySessionCreditResolvedFacts,credit:AcademySessionCreditRecord|null):AcademySessionCreditCommandResult{
+ const existingCredit=credit?{anchor:credit.anchor,creditId:credit.id,state:credit.state}:null;
+ const travel="compatibility" in facts?
+  assessAcademyTravelChangeWithRecordedMaximum({...facts.travel,existingCredit}):
+  assessAcademyTravelChange({...facts.travel,existingCredit});
  // A later change cannot erase an undelivered entitlement or its reservation.
  // Retention makes no claim that the replacement is ready to book or deliver.
  if(travel.status==="retain_existing_credit")return result("retained",travel.reason,credit);
  if(travel.status==="no_new_credit")return result("no_credit",travel.reason,credit);
  if(travel.status==="facts_required")return result("facts_required",travel.reason,credit);
- const duration=assessAcademySessionDuration(facts.duration);
- if(duration.status!=="ordinary_duration_matches"||facts.duration.time.timeZone!=="America/New_York")
+ // Retained credits and cached legacy receipts keep their original identity.
+ // A new grant cannot guess the original stage from a legacy envelope.
+ if(!("compatibility" in facts))return result("facts_required","invalid_input",credit);
+ const ordinal=facts.anchor.ordinal;
+ const duration=facts.duration.sessionKind==="ordinary"&&facts.compatibility.originalStage===1&&(ordinal===1||ordinal===2)?
+  assessAcademyFoundationPreparationDuration({version:academyFoundationPreparationPolicyVersion,sessionKind:"foundation_preparation",
+   stage:1,originalOrdinal:ordinal,time:facts.duration.time}):assessAcademySessionDuration(facts.duration);
+ if((duration.status!=="ordinary_duration_matches"&&duration.status!=="foundation_preparation_duration_matches")||facts.duration.time.timeZone!=="America/New_York")
   return result("facts_required",duration.status==="exception_review_required"?"separate_exception_terms":"invalid_input",credit);
  // This bounded slice issues only for ordinary venue/schedule travel changes.
  // A weather classification remains review-only; no exception terms are chosen.
@@ -46,8 +57,8 @@ function classify(facts:AcademySessionCreditNativeFacts,credit:AcademySessionCre
  * discovery. Required authority is supplied by Root; there is no permissive
  * default. Even replay and private read use fresh identity and selected child. */
 export class AcademySessionPolicyNativeService{
- private readonly dependencies:AcademySessionPolicyNativeDependencies;
- constructor(dependencies:AcademySessionPolicyNativeDependencies){
+ private readonly dependencies:AcademySessionPolicyNativeDependencies|AcademySessionPolicyNativeDependenciesV2;
+ constructor(dependencies:AcademySessionPolicyNativeDependencies|AcademySessionPolicyNativeDependenciesV2){
   if(!dependencies?.database||typeof dependencies.database.transaction!=="function"||!dependencies.authority||
    typeof dependencies.authority.resolveCreditFacts!=="function"||typeof dependencies.authority.resolveSelectedEnrollment!=="function"||
    !dependencies.clock||typeof dependencies.clock.now!=="function"||!dependencies.keyring)throw new AppError("UNAVAILABLE");
@@ -69,9 +80,9 @@ export class AcademySessionPolicyNativeService{
   const selected=checked(selectedSchema,value,"UNAVAILABLE");
   if(selected.workspaceId!==c.actor.workspaceId||selected.enrollmentId!==c.selection.selectedEnrollmentId)throw new AppError("FORBIDDEN");return selected;
  }
- private async facts(tx:SqlSession,c:AcademySessionCreditNativeContext,command:AcademySessionCreditCommand,selected:Selected):Promise<AcademySessionCreditNativeFacts>{
+ private async facts(tx:SqlSession,c:AcademySessionCreditNativeContext,command:AcademySessionCreditCommand,selected:Selected):Promise<AcademySessionCreditResolvedFacts>{
   const value=await this.dependencies.authority.resolveCreditFacts(tx,c,command);if(value===null)throw new AppError("FORBIDDEN");
-  const f=checked(academyCreditFactsSchema,value,"UNAVAILABLE"),a=f.anchor;
+  const f=checked(academyCreditResolvedFactsSchema,value,"UNAVAILABLE"),a=f.anchor;
   if(f.enrollmentId!==selected.enrollmentId||a.workspaceId!==selected.workspaceId||a.learnerId!==selected.learnerId||f.inquiry.workspaceId!==a.workspaceId||
    a.occurrenceId!==command.originalOccurrenceId||f.stageRevision!==command.expectedStageRevision||f.sourceEvidenceId!==command.sourceEvidenceId||
    f.evidenceRevision!==command.expectedEvidenceRevision||f.travel.change.evidenceId!==f.sourceEvidenceId||
@@ -79,7 +90,7 @@ export class AcademySessionPolicyNativeService{
    f.travel.obligation&&!sameAcademyAnchor(a,f.travel.obligation.anchor)||f.duration.sessionKind!==f.travel.sessionKind)fail();
   if(f.legacyCredit)bound(f.legacyCredit,f);return f;
  }
- private async finish(tx:SqlSession,initial:AcademySessionCreditNativeContext,selected:Selected,command?:AcademySessionCreditCommand,facts?:AcademySessionCreditNativeFacts):Promise<void>{
+ private async finish(tx:SqlSession,initial:AcademySessionCreditNativeContext,selected:Selected,command?:AcademySessionCreditCommand,facts?:AcademySessionCreditResolvedFacts):Promise<void>{
   const c=await this.context(tx),current=await this.selected(tx,c);
   if(academyCreditDigest(c.actor)!==academyCreditDigest(initial.actor)||academyCreditDigest(current)!==academyCreditDigest(selected))throw new AppError("FORBIDDEN");
   if(command&&facts&&academyCreditDigest(await this.facts(tx,c,command,current))!==academyCreditDigest(facts))fail();

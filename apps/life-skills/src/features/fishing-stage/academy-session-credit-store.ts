@@ -5,7 +5,8 @@ import {AppError} from "../../lib/errors.ts";
 import {seal,unseal,type Keyring} from "../identity/crypto.ts";
 import {one,type SqlSession} from "../identity/store.ts";
 import {academyPolicyPreflightVersion,type AcademyOriginalSessionAnchor} from "../fishing/academy-policy-preflight-contract.ts";
-import {academySessionPolicyNativeVersion,type AcademySessionCreditRecord,type AcademySessionCreditNativeFacts,
+import {academySessionPolicyNativeVersion,academyCalendarCompatibilityVersion,type AcademySessionCreditRecord,type AcademySessionCreditResolvedFacts,
+ type AcademySessionCreditNativeFacts,type AcademySessionCreditNativeFactsV2,
  type AcademySessionCreditCommandResult} from "../fishing/academy-session-policy-native-contract.ts";
 
 const uuid=z.uuid(),text=z.string().min(1).max(120).refine(v=>v===v.trim()),hash=z.string().regex(/^[a-f0-9]{64}$/);
@@ -35,6 +36,19 @@ export const academyCreditFactsSchema=z.strictObject({
    recordedDriveLimit:z.enum(["up_to_30","up_to_45","up_to_60","over_60"]),revisedOneWayMinutes:z.number().finite().nonnegative().nullable(),familyCannotAttend:z.boolean().nullable()})}),
  legacyCredit:academyCreditRecordSchema.nullable(),
 });
+/** Strict additive branch. No transforms/defaults/coercion: legacy parsed key
+ * order and sealed evidence digests retain their original representation. */
+export const academyCreditFactsV2Schema=academyCreditFactsSchema.extend({
+ compatibility:z.strictObject({version:z.literal(academyCalendarCompatibilityVersion),
+  originalStage:z.union([z.literal(1),z.literal(2),z.literal(3),z.literal(4)])}),
+ travel:academyCreditFactsSchema.shape.travel.extend({
+  change:academyCreditFactsSchema.shape.travel.shape.change.extend({
+   recordedDriveLimit:z.union([academyCreditFactsSchema.shape.travel.shape.change.shape.recordedDriveLimit,
+    z.number().int().min(5).max(120).multipleOf(5)]),
+  }),
+ }),
+});
+export const academyCreditResolvedFactsSchema=z.union([academyCreditFactsSchema,academyCreditFactsV2Schema]);
 const reason=z.enum(["invalid_input","original_anchor_mismatch","obligation_missing","obligation_unknown","obligation_not_purchased","obligation_delivered",
  "credit_anchor_mismatch","credit_delivered","credit_unknown","change_evidence_missing","drive_limit_requires_facts","attendance_requires_facts",
  "weather_requires_review","separate_exception_terms","existing_absence_policy","no_qualifying_change","within_recorded_limit","family_can_attend",
@@ -42,7 +56,7 @@ const reason=z.enum(["invalid_input","original_anchor_mismatch","obligation_miss
 const resultSchema=z.strictObject({version:z.literal(academySessionPolicyNativeVersion),outcome:z.enum(["issued","retained","no_credit","facts_required"]),reason,
  credit:academyCreditRecordSchema.nullable(),replayed:z.literal(false),mayBook:z.literal(false),mayMarkDelivered:z.literal(false),specificDateOrSeatGuaranteed:z.literal(false)});
 const receiptSchema=z.strictObject({requestDigest:hash,evidenceId:uuid,evidenceFactsDigest:hash,result:resultSchema});
-const evidenceSchema=z.strictObject({facts:academyCreditFactsSchema});
+const evidenceSchema=z.strictObject({facts:academyCreditResolvedFactsSchema});
 type EvidenceRow={id:string;workspaceId:string;learnerId:string;occurrenceId:string;sourceId:string;revision:number;digest:string;ciphertext:string};
 type EventRow={workspaceId:string;actorId:string;operationId:string;requestDigest:string;evidenceId:string;creditId:string|null;outcome:string;ciphertext:string};
 type CreditRow={id:string;workspaceId:string;learnerId:string;cohortId:string;stageId:string;occurrenceId:string;ordinal:number;moduleId:string;moduleVersion:string;
@@ -64,7 +78,10 @@ export function sameAcademyCredit(a:AcademySessionCreditRecord,b:AcademySessionC
   a.state===b.state&&a.replacementReservationId===b.replacementReservationId;
 }
 /** Legacy reservation state is current authority, not part of immutable source evidence. */
-export function academyEvidenceFacts(facts:AcademySessionCreditNativeFacts):AcademySessionCreditNativeFacts{return {...facts,legacyCredit:null};}
+export function academyEvidenceFacts(facts:AcademySessionCreditNativeFacts):AcademySessionCreditNativeFacts;
+export function academyEvidenceFacts(facts:AcademySessionCreditNativeFactsV2):AcademySessionCreditNativeFactsV2;
+export function academyEvidenceFacts(facts:AcademySessionCreditResolvedFacts):AcademySessionCreditResolvedFacts;
+export function academyEvidenceFacts(facts:AcademySessionCreditResolvedFacts):AcademySessionCreditResolvedFacts{return {...facts,legacyCredit:null};}
 function unavailable():never{throw new AppError("UNAVAILABLE");}
 function parsed<T>(schema:z.ZodType<T>,value:unknown):T{const r=schema.safeParse(value);return r.success?r.data:unavailable();}
 const evidenceAad=(workspace:string,id:string)=>`ls_fishing_stage/academy_evidence/v1/${workspace}/${id}`;
@@ -83,7 +100,7 @@ function decode(value:string,aad:string,ring:Keyring):unknown{
  * All three candidate tables are append-only in this slice; no seat writes. */
 export class AcademySessionCreditStore{
  constructor(private readonly tx:SqlSession,private readonly ring:Keyring){}
- private evidence(row:EvidenceRow):AcademySessionCreditNativeFacts{
+ private evidence(row:EvidenceRow):AcademySessionCreditResolvedFacts{
   const facts=parsed(evidenceSchema,decode(row.ciphertext,evidenceAad(row.workspaceId,row.id),this.ring)).facts;
   if(facts.legacyCredit!==null||facts.anchor.workspaceId!==row.workspaceId||facts.anchor.learnerId!==row.learnerId||facts.anchor.occurrenceId!==row.occurrenceId||
    facts.sourceEvidenceId!==row.sourceId||facts.evidenceRevision!==row.revision||facts.evidenceDigest!==row.digest)unavailable();return facts;
@@ -125,7 +142,7 @@ export class AcademySessionCreditStore{
   if(rows.length>1000)unavailable();const records=[];
   for(const row of rows)records.push(await this.credit(row));return records;
  }
- async replay(workspace:string,actor:string,operation:string,requestDigest:string,facts:AcademySessionCreditNativeFacts):Promise<AcademySessionCreditCommandResult|null>{
+ async replay(workspace:string,actor:string,operation:string,requestDigest:string,facts:AcademySessionCreditResolvedFacts):Promise<AcademySessionCreditCommandResult|null>{
   const row=await one<EventRow>(this.tx,`SELECT ${eventColumns} FROM ls_fishing_stage.academy_session_credit_events
    WHERE workspace_id=$1 AND actor_account_id=$2 AND operation_id=$3 FOR SHARE`,[workspace,actor,operation]);
   if(!row)return null;if(row.requestDigest!==requestDigest)throw new AppError("CONFLICT");
@@ -134,7 +151,7 @@ export class AcademySessionCreditStore{
   if(receipt.evidenceFactsDigest!==expected||academyCreditDigest(evidence)!==expected)throw new AppError("CONFLICT");
   return {...receipt.result,replayed:true};
  }
- async recordEvidence(facts:AcademySessionCreditNativeFacts,now:Date):Promise<string>{
+ async recordEvidence(facts:AcademySessionCreditResolvedFacts,now:Date):Promise<string>{
   const a=facts.anchor,body=academyEvidenceFacts(facts);
   const old=await one<EvidenceRow>(this.tx,`SELECT ${evidenceColumns} FROM ls_fishing_stage.academy_session_policy_evidence
    WHERE workspace_id=$1 AND learner_id=$2 AND original_occurrence_id=$3 AND source_evidence_id=$4 AND source_revision=$5 FOR SHARE`,
@@ -153,7 +170,7 @@ export class AcademySessionCreditStore{
    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
   [a.workspaceId,c.id,a.learnerId,a.cohortId,a.stageId,a.occurrenceId,a.ordinal,a.moduleId,a.moduleVersion,a.activityId,c.enrollmentId,c.purchaseId,c.purchaseLineId,c.state,c.replacementReservationId,evidenceId,now]);
  }
- async recordEvent(workspace:string,actor:string,operation:string,requestDigest:string,evidenceId:string,facts:AcademySessionCreditNativeFacts,result:AcademySessionCreditCommandResult,now:Date):Promise<void>{
+ async recordEvent(workspace:string,actor:string,operation:string,requestDigest:string,evidenceId:string,facts:AcademySessionCreditResolvedFacts,result:AcademySessionCreditCommandResult,now:Date):Promise<void>{
   const body=parsed(receiptSchema,{requestDigest,evidenceId,evidenceFactsDigest:academyCreditDigest(academyEvidenceFacts(facts)),result});
   await this.tx.query(`INSERT INTO ls_fishing_stage.academy_session_credit_events
    (workspace_id,actor_account_id,operation_id,request_sha256,evidence_id,credit_id,outcome,receipt_ciphertext,recorded_at)

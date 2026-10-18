@@ -136,6 +136,9 @@ export type AcademyOutstandingCreditFacts = Readonly<{
  * needs an independently recorded actual maximum before comparing that family.
  */
 export type AcademyRecordedDriveLimit = "up_to_30" | "up_to_45" | "up_to_60" | "over_60";
+/** Additive opt-in only. Runtime validation requires an integer 5..120 in
+ * steps of five; numeric-looking strings and legacy over_60 are not converted. */
+export type AcademyRecordedDriveLimitWithMaximum = AcademyRecordedDriveLimit | number;
 export type AcademyTravelChangeInput = Readonly<{
   version: typeof academyPolicyPreflightVersion;
   original: AcademyOriginalSessionAnchor;
@@ -151,6 +154,11 @@ export type AcademyTravelChangeInput = Readonly<{
     revisedOneWayMinutes: number | null;
     familyCannotAttend: boolean | null;
   }>;
+}>;
+export type AcademyTravelChangeWithRecordedMaximumInput = Omit<AcademyTravelChangeInput,"change"> & Readonly<{
+ change:Omit<AcademyTravelChangeInput["change"],"recordedDriveLimit"> & Readonly<{
+  recordedDriveLimit:AcademyRecordedDriveLimitWithMaximum;
+ }>;
 }>;
 export type AcademyTravelChangeReason =
   | "invalid_input" | "original_anchor_mismatch" | "obligation_missing"

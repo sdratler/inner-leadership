@@ -1,7 +1,7 @@
 import {
  academyPolicyPreflightVersion,academyOrdinarySessionMinutes,
  type AcademySessionDurationInput,type AcademySessionDurationResult,
- type AcademyTravelChangeInput,type AcademyTravelChangeResult,type AcademyOriginalSessionAnchor,
+ type AcademyTravelChangeInput,type AcademyTravelChangeWithRecordedMaximumInput,type AcademyTravelChangeResult,type AcademyOriginalSessionAnchor,
  academyFoundationPreparationPolicyVersion,academyFoundationPreparationMinutes,
  type AcademyFoundationPreparationDurationInput,type AcademyFoundationPreparationDurationResult,
 } from "../fishing/academy-policy-preflight-contract.ts";
@@ -88,6 +88,18 @@ function travelResult(status:AcademyTravelChangeResult["status"],reason:AcademyT
 function facts(reason:AcademyTravelChangeResult["reason"]):AcademyTravelChangeResult{return travelResult("facts_required",reason);}
 
 export function assessAcademyTravelChange(input:AcademyTravelChangeInput):AcademyTravelChangeResult{
+ return assessTravelChange(input,false);
+}
+/** Explicit numeric opt-in. This is still a fact classifier, not credit or
+ * attendance authority. The legacy export retains its original input rules. */
+export function assessAcademyTravelChangeWithRecordedMaximum(input:AcademyTravelChangeWithRecordedMaximumInput):AcademyTravelChangeResult{
+ return assessTravelChange(input,true);
+}
+function recordedDriveLimit(value:unknown,numeric:boolean):boolean{
+ return member(value,["up_to_30","up_to_45","up_to_60","over_60"])||numeric&&typeof value==="number"&&
+  Number.isInteger(value)&&value>=5&&value<=120&&value%5===0;
+}
+function assessTravelChange(input:AcademyTravelChangeInput|AcademyTravelChangeWithRecordedMaximumInput,numeric:boolean):AcademyTravelChangeResult{
  try{
   const value=data(input,["version","original","obligation","existingCredit","sessionKind","change"]);
   if(!value||value.version!==academyPolicyPreflightVersion||!member(value.sessionKind,sessionKinds))return facts("invalid_input");
@@ -95,7 +107,7 @@ export function assessAcademyTravelChange(input:AcademyTravelChangeInput):Academ
   const change=data(value.change,["anchor","kind","evidenceId","weatherQualification","recordedDriveLimit","revisedOneWayMinutes","familyCannotAttend"]);
   const changedAnchor=change?anchor(change.anchor):null;
   if(!original||!change||!changedAnchor||!member(change.kind,["academy_venue","academy_schedule","academy_weather_cancelled","parent_absence","other"])||
-   !member(change.weatherQualification,["qualifying","not_qualifying","unknown"])||!member(change.recordedDriveLimit,["up_to_30","up_to_45","up_to_60","over_60"])||
+   !member(change.weatherQualification,["qualifying","not_qualifying","unknown"])||!recordedDriveLimit(change.recordedDriveLimit,numeric)||
    !(change.revisedOneWayMinutes===null||(typeof change.revisedOneWayMinutes==="number"&&Number.isFinite(change.revisedOneWayMinutes)&&change.revisedOneWayMinutes>=0))||
    !(change.familyCannotAttend===null||typeof change.familyCannotAttend==="boolean"))return facts("invalid_input");
   if(!sameAnchor(original,changedAnchor))return facts("original_anchor_mismatch");
@@ -127,14 +139,16 @@ export function assessAcademyTravelChange(input:AcademyTravelChangeInput):Academ
   }
   if(change.recordedDriveLimit==="over_60"||change.revisedOneWayMinutes===null)return facts("drive_limit_requires_facts");
   if(change.familyCannotAttend===null)return facts("attendance_requires_facts");
-  const limit=change.recordedDriveLimit==="up_to_30"?30:change.recordedDriveLimit==="up_to_45"?45:60;
+  const limit=typeof change.recordedDriveLimit==="number"?change.recordedDriveLimit:
+   change.recordedDriveLimit==="up_to_30"?30:change.recordedDriveLimit==="up_to_45"?45:60;
   if(change.revisedOneWayMinutes<=limit)return travelResult("no_new_credit","within_recorded_limit");
   if(!change.familyCannotAttend)return travelResult("no_new_credit","family_can_attend");
   return travelResult("replacement_review_required","academy_change_exceeds_limit");
  }catch{return facts("invalid_input");}
 }
 
-/** Duration only, intentionally not called by the native credit classifier.
+/** Duration only; the native classifier uses this solely after resolving the
+ * versioned original-stage/ordinal facts through its required authority.
  * Keys core replacement, venue/day suitability, staffing, purchase/delivery and
  * guardian authority require their own current native evidence and review. */
 export function assessAcademyFoundationPreparationDuration(input:AcademyFoundationPreparationDurationInput):AcademyFoundationPreparationDurationResult{

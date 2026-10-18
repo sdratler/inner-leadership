@@ -7,7 +7,8 @@ import type {AccountFacts,Actor,IdentityClock} from "../identity/types.ts";
 import type {Keyring} from "../identity/crypto.ts";
 import type {IdentityStore,SqlSession} from "../identity/store.ts";
 import type {AcademyInquiryReference,AcademyOriginalSessionAnchor,AcademySessionDurationInput,
- AcademyTravelChangeInput,AcademyTravelChangeReason} from "./academy-policy-preflight-contract.ts";
+ AcademyTravelChangeInput,AcademyTravelChangeWithRecordedMaximumInput,AcademyTravelChangeReason} from "./academy-policy-preflight-contract.ts";
+import type {FishingStageNumber} from "./contract.ts";
 
 export const academySessionPolicyNativeVersion="JLFA-SESSION-POLICY-NATIVE-20261018-03-v1" as const;
 export type AcademySessionCreditCommand=Readonly<{
@@ -40,6 +41,21 @@ export type AcademySessionCreditNativeFacts=Readonly<{
   */
  legacyCredit:AcademySessionCreditRecord|null;
 }>;
+export const academyCalendarCompatibilityVersion="JLFA-CALENDAR-COMPAT-20261019-01-v1" as const;
+/** Server-resolved inside the same authorized SqlSession. originalStage must
+ * come from the original stageId/cohort records, never a replacement position,
+ * module name, browser field or a structural object treated as verification. */
+export type AcademyCalendarCompatibilityV1=Readonly<{
+ version:typeof academyCalendarCompatibilityVersion;originalStage:FishingStageNumber;
+}>;
+export type AcademySessionCreditNativeFactsLegacy=AcademySessionCreditNativeFacts;
+export type AcademySessionCreditNativeFactsV2=Omit<AcademySessionCreditNativeFacts,"travel"> & Readonly<{
+ compatibility:AcademyCalendarCompatibilityV1;
+ travel:Omit<AcademyTravelChangeWithRecordedMaximumInput,"existingCredit">;
+}>;
+/** Legacy envelopes stay readable/replayable without migration or defaults.
+ * Fresh issuance needs the versioned branch and independently resolved facts. */
+export type AcademySessionCreditResolvedFacts=AcademySessionCreditNativeFacts|AcademySessionCreditNativeFactsV2;
 export interface AcademySessionPolicyNativeAuthority {
  /** After freshActor + workspace lock, recheck operator/current selected parent,
   * enrollment, every original anchor field, purchase/delivery and immutable
@@ -54,9 +70,17 @@ export interface AcademySessionPolicyNativeAuthority {
   enrollmentId:string;workspaceId:string;learnerId:string;
  }> | null>;
 }
+/** Additive server seam; legacy callers keep the original authority type. */
+export type AcademySessionPolicyNativeAuthorityV2=Omit<AcademySessionPolicyNativeAuthority,"resolveCreditFacts"> & Readonly<{
+ resolveCreditFacts(tx:SqlSession,context:AcademySessionCreditNativeContext,
+  command:AcademySessionCreditCommand):Promise<AcademySessionCreditResolvedFacts|null>;
+}>;
 export type AcademySessionPolicyNativeDependencies=Readonly<{
  database:IdentityStore;keyring:Keyring;principal:Actor;selection:AcademySessionCreditSelection;
  authority:AcademySessionPolicyNativeAuthority;clock:IdentityClock;
+}>;
+export type AcademySessionPolicyNativeDependenciesV2=Omit<AcademySessionPolicyNativeDependencies,"authority"> & Readonly<{
+ authority:AcademySessionPolicyNativeAuthorityV2;
 }>;
 export type AcademySessionCreditCommandResult=Readonly<{
  version:typeof academySessionPolicyNativeVersion;
