@@ -1,6 +1,7 @@
 import {expect,type Page} from "@playwright/test";
 
-/** CAL1108: schema and copy frozen at a7befb7b56c5a8de6f1eac986225ea607c0146db.
+/** Root 20261018-10 successor: exact numeric drive and optional exact learner age;
+ * retains historical Source03 categories and the original strict local boundary.
  * Read-only structural readback. Root supplies a fresh authorized native DTO,
  * selects its matching record and opens the details before calling this helper.
  * Neither a reference, SYNTHETIC_ONLY nor complete is authorization or enrollment.
@@ -8,7 +9,7 @@ import {expect,type Page} from "@playwright/test";
 type AcademyIntakeMirroredInline={
  readonly version:"JLFA-ENROLLMENT-20261018-03-v1";
  readonly postalCode:string;
- readonly driveLimit:"up_to_30"|"up_to_45"|"up_to_60"|"over_60";
+ readonly driveLimit:number|"up_to_30"|"up_to_45"|"up_to_60"|"over_60";
  readonly preferredAreas?:string|undefined;
  readonly preferredGroupLanguage:"en"|"he"|"either";
  readonly stagePreference:"foundation"|"independent"|"advanced"|"leadership"|"discuss";
@@ -18,6 +19,7 @@ type AcademyIntakeMirroredInline={
  readonly confirmationEmail?:string|undefined;
  readonly travelNotes?:string|undefined;
  readonly learners:readonly {
+  readonly ageYears?:number|undefined;
   readonly gradeBand:"grade_3_5"|"grade_6_8"|"grade_9_12"|"discuss";
   readonly schooling:"school"|"homeschool"|"discuss";
   readonly tackleBox:"ready"|"need_advice"|"not_sure";
@@ -67,6 +69,7 @@ function boundarySnapshot(raw:Record<string,unknown>):Boundary{
 function intakeSnapshot(value:unknown):AcademyIntakeMirroredInline{
  const raw=record(value,["version","postalCode","driveLimit","preferredGroupLanguage","stagePreference","keysTravel","offshoreInterest","nextStep","learners"],
   ["preferredAreas","confirmationEmail","travelNotes"]);
+ if(typeof raw.driveLimit==="number")requireInput(Number.isInteger(raw.driveLimit)&&raw.driveLimit>=5&&raw.driveLimit<=120&&raw.driveLimit%5===0);
  const postalCode=trimmed(raw.postalCode,10);requireInput(/^\d{5}(?:-\d{4})?$/.test(postalCode));
  const confirmationEmail=optionalString(raw.confirmationEmail,254);
  // Frozen schema uses Zod's default email syntax and stores lowercase output.
@@ -79,13 +82,14 @@ function intakeSnapshot(value:unknown):AcademyIntakeMirroredInline{
  const learners=Array.from({length},(_,index)=>{
   const descriptor=descriptors[String(index)];
   requireInput(descriptor&&Object.hasOwn(descriptor,"value")&&descriptor.enumerable);
-  const learner=record(descriptor.value,["gradeBand","schooling","tackleBox"]);
-  return Object.freeze({gradeBand:oneOf(learner.gradeBand,["grade_3_5","grade_6_8","grade_9_12","discuss"]),
+  const learner=record(descriptor.value,["gradeBand","schooling","tackleBox"],["ageYears"]);
+  requireInput(learner.ageYears===undefined||(typeof learner.ageYears==="number"&&Number.isInteger(learner.ageYears)&&learner.ageYears>=0&&learner.ageYears<=17));
+  return Object.freeze({...(learner.ageYears===undefined?{}:{ageYears:learner.ageYears as number}),gradeBand:oneOf(learner.gradeBand,["grade_3_5","grade_6_8","grade_9_12","discuss"]),
    schooling:oneOf(learner.schooling,["school","homeschool","discuss"]),
    tackleBox:oneOf(learner.tackleBox,["ready","need_advice","not_sure"])});
  });
  return Object.freeze({version:oneOf(raw.version,["JLFA-ENROLLMENT-20261018-03-v1"]),postalCode,
-  driveLimit:oneOf(raw.driveLimit,["up_to_30","up_to_45","up_to_60","over_60"]),
+  driveLimit:typeof raw.driveLimit==="number"?raw.driveLimit:oneOf(raw.driveLimit,["up_to_30","up_to_45","up_to_60","over_60"]),
   preferredAreas:optionalString(raw.preferredAreas,160),preferredGroupLanguage:oneOf(raw.preferredGroupLanguage,["en","he","either"]),
   stagePreference:oneOf(raw.stagePreference,["foundation","independent","advanced","leadership","discuss"]),
   keysTravel:oneOf(raw.keysTravel,["parent_drive","shuttle_interest","alternative","discuss"]),
@@ -106,7 +110,7 @@ function guard(page:Page,input:Boundary,locale?:"en"|"he"){
   (locale!==undefined&&current.pathname!==`/${locale}/app/group-applications`))throw new Error("ACADEMY_INTAKE_PAGE_BOUNDARY");
 }
 
-/** Independently transcribed frozen text; no production renderer/schema oracle. */
+/** Independently transcribed expected text; no production renderer/schema oracle. */
 function presentation(input:VerifyInput){
  const t=(en:string,he:string)=>input.locale==="he"?he:en,intake=input.expected;
  const pair=(label:string,value:string,bdi=false):Pair=>({label,value,bdi});
@@ -127,7 +131,7 @@ function presentation(input:VerifyInput){
   fields:[
    pair(t("Next step","הצעד הבא"),intake.nextStep==="callback"?t("Request a callback","בקשה לשיחה חוזרת"):t("Continue toward enrollment — request only","המשך לקראת הרשמה — בקשה בלבד")),
    pair(t("ZIP code","מיקוד"),intake.postalCode,true),
-   pair(t("Maximum normal one-way drive","נסיעה רגילה מרבית לכיוון אחד"),drive[intake.driveLimit]),
+   pair(t("Maximum normal one-way drive","נסיעה רגילה מרבית לכיוון אחד"),typeof intake.driveLimit==="number"?t(`Up to ${intake.driveLimit} minutes`,`עד ${intake.driveLimit} דקות`):drive[intake.driveLimit]),
    pair(t("Preferred areas","אזורים מועדפים"),intake.preferredAreas??t("Not specified","לא נמסר")),
    pair(t("Preferred group language","שפה מועדפת לקבוצה"),language[intake.preferredGroupLanguage]),
    pair(t("Stage interest — not placement","עניין בשלב — לא שיבוץ"),stage[intake.stagePreference]),
@@ -137,7 +141,7 @@ function presentation(input:VerifyInput){
    pair(t("Travel notes","הערות על נסיעה"),intake.travelNotes??t("Not specified","לא נמסר")),
   ],
   learners:intake.learners.map((learner,index)=>({heading:`${t("Child","ילד")} ${index+1}`,fields:[
-   pair(t("Grade band","טווח כיתות"),grade[learner.gradeBand]),pair(t("Schooling","מסגרת לימודים"),schooling[learner.schooling]),
+   ...(learner.ageYears===undefined?[]:[pair(t("Age (years)","גיל בשנים"),String(learner.ageYears))]),pair(t("Grade band","טווח כיתות"),grade[learner.gradeBand]),pair(t("Schooling","מסגרת לימודים"),schooling[learner.schooling]),
    pair(t("Personal tackle box","ארגז ציוד אישי"),tackle[learner.tackleBox]),
   ]})),
   footer:t("This saved inquiry does not enroll a child, reserve a founding-family place, confirm a group, book transport or authorize payment.",
@@ -145,7 +149,7 @@ function presentation(input:VerifyInput){
 }
 
 export async function verifyAcademyIntakeOwnerReadback(page:Page,input:VerifyInput):Promise<{
- learnerCount:number;complete:boolean;nextStep:"enrollment_followup"|"callback";driveLimit:"up_to_30"|"up_to_45"|"up_to_60"|"over_60";
+ learnerCount:number;complete:boolean;nextStep:"enrollment_followup"|"callback";driveLimit:number|"up_to_30"|"up_to_45"|"up_to_60"|"over_60";
 }>{
  try{
   // Everything from the caller, including nested learners, is captured before await.

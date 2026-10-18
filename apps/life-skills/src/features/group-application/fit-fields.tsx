@@ -8,12 +8,12 @@ import styles from "./application-form.module.css";
 export function AcademyFitFields({locale,count,onCount,hideLegacyDrive=false,learnerDetails}:{locale:Locale;count:number;onCount:(count:number)=>void;hideLegacyDrive?:boolean;learnerDetails?:readonly ReactNode[]|undefined}){
  const t=(en:string,he:string)=>locale==="he"?he:en;
  return <fieldset className={styles.fit}><legend>{t("Who would like to join?","מי מעוניין להצטרף?")}</legend>
-  <p>{t("Approximate ages and equipment/experience only. Do not enter child names, medical or emergency details.","גילים משוערים, ציוד וניסיון בלבד. אין למסור שמות ילדים או פרטים רפואיים ופרטי חירום.")}</p>
+  <p>{hideLegacyDrive?t("Age in completed years, equipment and experience. No child names, birthdates or medical details are needed.","גיל בשנים מלאות, ציוד וניסיון. אין צורך בשמות ילדים, בתאריכי לידה או בפרטים רפואיים."):t("Approximate ages and equipment/experience only. Do not enter child names, medical or emergency details.","גילים משוערים, ציוד וניסיון בלבד. אין למסור שמות ילדים או פרטים רפואיים ופרטי חירום.")}</p>
   <label>{t("Number of children, including siblings","מספר ילדים, כולל אחים")}<select name="learnerCount" value={count} onChange={event=>onCount(Number(event.target.value))}>
    {Array.from({length:10},(_,i)=><option value={i+1} key={i}>{i+1}</option>)}
   </select></label>
   {Array.from({length:count},(_,i)=><fieldset className={styles.fitLearner} key={i} data-academy-fit-learner><legend>{t("Child","ילד")} {i+1}</legend>
-   <label>{t("Approximate age","גיל משוער")}<input name={`learnerAge-${i}`} type="number" min={0} max={17} step={1} required/></label>
+   <label>{hideLegacyDrive?t("Age (years)","גיל בשנים"):t("Approximate age","גיל משוער")}<input name={`learnerAge-${i}`} type="number" min={0} max={17} step={1} required/></label>
    <label>{t("Personal rod/reel/tackle","חכה, רולר וציוד אישי")}<select name={`learnerGear-${i}`} defaultValue="not_sure">
     <option value="not_sure">{t("Not sure","לא בטוח/ה")}</option><option value="has_gear">{t("Has suitable gear","יש ציוד מתאים")}</option><option value="needs_advice">{t("Needs equipment advice","נדרשת הכוונה לגבי ציוד")}</option>
    </select></label>
@@ -36,12 +36,12 @@ export function academyFitFromForm(values:FormData){
   gear:values.get(`learnerGear-${i}`),experience:values.get(`learnerExperience-${i}`)})),
   ...(typeof drive==="string"&&drive.trim()?{maximumDriveMinutes:Number(drive)}:{}),parentDropoff:values.get("parentDropoff")};
 }
-export function AcademyFitReadback({fit,locale,driveLabel}:{fit:z.infer<typeof academyFitSchema>;locale:Locale;driveLabel?:string|undefined}){
+export function AcademyFitReadback({fit,locale,driveLabel,exactAges=false}:{fit:z.infer<typeof academyFitSchema>;locale:Locale;driveLabel?:string|undefined;exactAges?:boolean}){
  const t=(en:string,he:string)=>locale==="he"?he:en;
  const gear={has_gear:t("Has gear","יש ציוד"),needs_advice:t("Equipment advice","הכוונה לציוד"),not_sure:t("Not sure","לא בטוח/ה")};
  const experience={new:t("New","חדש"),some:t("Some experience","ניסיון מסוים"),experienced:t("Experienced","מנוסה"),not_sure:t("Not sure","לא בטוח/ה")};
  return <details className={styles.fitReadback} data-academy-fit-readback><summary>{t("Group fit","התאמה לקבוצה")} · {fit.learners.length} {t("children","ילדים")}</summary>
-  <ul>{fit.learners.map((learner,i)=><li key={i}>{t("Child","ילד")} {i+1} · {t("Approximate age","גיל משוער")} {learner.approximateAge} · {gear[learner.gear]} · {experience[learner.experience]}</li>)}</ul>
+  <ul>{fit.learners.map((learner,i)=><li key={i}>{t("Child","ילד")} {i+1} · {exactAges?t("Age (years)","גיל בשנים"):t("Approximate age","גיל משוער")} {learner.approximateAge} · {gear[learner.gear]} · {experience[learner.experience]}</li>)}</ul>
   <p>{t("One-way drive preference","העדפת נסיעה לכיוון אחד")}: {driveLabel??(fit.maximumDriveMinutes===undefined?t("Not specified","לא נמסר"):`${fit.maximumDriveMinutes} ${t("minutes","דקות")}`)} · {t("Parent dropoff","הבאה על ידי הורה")}: {fit.parentDropoff==="yes"?t("Yes","כן"):fit.parentDropoff==="no"?t("No","לא"):t("Discuss","לתיאום")}</p>
  </details>;
 }
