@@ -10,7 +10,7 @@ import type {Actor,IdentityClock} from "../identity/types.ts";
 import {one,type IdentityStore,type SqlSession} from "../identity/store.ts";
 import type {AuthEmailTransport} from "../../providers/email/transport.ts";
 import {createAuthEmailTransport} from "../../providers/email/gmail.ts";
-import {groupApplicationFieldsSchema,isFloridaGroupApplication,type GroupApplicationFields} from "./contract.ts";
+import {groupApplicationFieldsSchema,isFloridaGroupApplication,isSchoolInquiry,type GroupApplicationFields} from "./contract.ts";
 import {INQUIRY_EMAIL_FROM,INQUIRY_EMAIL_PURPOSE,inquiryEmailContent} from "./inquiry-email-copy.ts";
 
 const payloadSchema=z.object({purpose:z.literal(INQUIRY_EMAIL_PURPOSE),reference:z.string().uuid(),recipient:z.email().max(254),locale:z.enum(["en","he"])}).strict();
@@ -21,8 +21,13 @@ export function createInquiryEmailTransport(env:Record<string,string|undefined>,
  return createAuthEmailTransport(env,sendFetch);
 }
 function intendedPayload(reference:string,fields:GroupApplicationFields){
- if(!isFloridaGroupApplication(fields)||fields.programId!=="sunday_fishing_academy"||!z.email().max(254).safeParse(fields.contact).success)return null;
- return payloadSchema.parse({purpose:INQUIRY_EMAIL_PURPOSE,reference,recipient:fields.contact,locale:fields.language});
+ if(!isFloridaGroupApplication(fields)||fields.programId!=="sunday_fishing_academy")return null;
+ // Only a supplied, validated confirmation address may override an email
+ // contact. Phone-only remains valid; never infer an address from a number.
+ const supplied=!isSchoolInquiry(fields)?fields.academyIntake?.confirmationEmail:undefined;
+ const recipient=supplied??fields.contact;
+ if(!z.email().max(254).safeParse(recipient).success){if(supplied!==undefined)throw new AppError("INVALID_REQUEST");return null;}
+ return payloadSchema.parse({purpose:INQUIRY_EMAIL_PURPOSE,reference,recipient,locale:fields.language});
 }
 /** Same transaction as the native inquiry and operation receipt. No network. */
 export async function queueInquiryEmail(tx:SqlSession,workspace:WorkspaceId,reference:string,fields:GroupApplicationFields,ring:Keyring,now:Date){

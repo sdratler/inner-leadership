@@ -1,0 +1,11 @@
+"use client";
+import type {Locale} from "../../lib/locale.ts";
+export function AcademyTravelFaq({locale,returnToForm=false}:{locale:Locale;returnToForm?:boolean}){
+ const t=(en:string,he:string)=>locale==="he"?he:en;
+ return <details id="academy-travel-faq" data-academy-travel-faq>
+  <summary>{t("How do locations and make-ups work?","איך פועלים המיקומים וההשלמות?")}</summary>
+  <p>{t("We choose fishing locations around each group's learning goals, where families live, and current conditions. Tell us your maximum one-way drive when you register. More travel flexibility gives us a wider choice of locations and groups, but we respect the limit you select. If we change a session and the new location exceeds your limit, you will not lose that session. The rollover credit stays linked to your child's original session and the learning covered. We will try to arrange a suitable make-up as soon as possible, subject to availability; we cannot guarantee a particular date.","אנו בוחרים מקומות דיג לפי מטרות הלמידה של כל קבוצה, אזור מגורי המשפחות והתנאים בפועל. ציינו בטופס את זמן הנסיעה המרבי לכיוון אחד. גמישות בנסיעה מרחיבה את אפשרויות המיקומים והקבוצות, אך אנו מכבדים את המגבלה שבחרתם. אם נשנה מפגש והמיקום החדש חורג ממנה, לא תאבדו את המפגש. זכות ההשלמה תישאר קשורה למפגש המקורי של ילדכם וללמידה שנכללה בו. נשתדל לתאם השלמה מתאימה בהקדם האפשרי, בכפוף לזמינות; איננו יכולים להבטיח תאריך מסוים.")}</p>
+  <p>{t("A 30-minute preference is respected just like a 45- or 60-minute preference. A change from a 30-minute journey to a 45-minute journey exceeds a family's recorded 30-minute limit. Each qualifying affected child/session keeps its own replacement credit; repeated changes preserve that same credit rather than create duplicates.","מגבלה של 30 דקות מכובדת כמו מגבלה של 45 או 60 דקות. שינוי מנסיעה של 30 דקות לנסיעה של 45 דקות חורג מהמגבלה שנרשמה למשפחה שבחרה 30 דקות. לכל ילד ומפגש שנפגעו ועומדים בתנאים נשמרת זכות ההשלמה שלהם; שינויים חוזרים שומרים על אותה זכות ואינם יוצרים כפילויות.")}</p>
+  {returnToForm&&<a href="#academy-drive-limit" onClick={()=>document.getElementById("academy-drive-limit")?.focus({preventScroll:true})}>{t("Return to my driving preference — keep my form","חזרה להעדפת הנסיעה שלי — הטופס נשמר")}</a>}
+ </details>;
+}

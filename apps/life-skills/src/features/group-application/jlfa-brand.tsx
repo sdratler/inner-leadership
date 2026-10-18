@@ -12,9 +12,9 @@ export const JLFA_TAGLINE="TORAH • FISHING • SELF-GOVERNANCE";
 export const JLFA_LOGO_SRC="/groups/brand/jlfa-logo-locked-v1.png";
 export const JLFA_LOGO_SHA256="e78ff6d3ef16c37613725507ce14da05883734a77f48b78ab9d6df3f92480356";
 type Pair={en:string;he:string};
-export function JlfaLogo({locale,footer=false}:{locale:Locale;footer?:boolean}){
+export function JlfaLogo({locale,footer=false,homeHref="#main"}:{locale:Locale;footer?:boolean;homeHref?:string}){
  const image=<img src={JLFA_LOGO_SRC} width={1254} height={1254} alt={footer?`${JLFA_NAME} — ${JLFA_TAGLINE}`:JLFA_NAME}/>;
- return <a href="#main" className={`${styles.logoLink} ${footer?styles.footerLogo:styles.headerLogo}`} aria-label={`${JLFA_NAME} — ${locale==="he"?"דף הבית":"home"}`}
+ return <a href={homeHref} className={`${styles.logoLink} ${footer?styles.footerLogo:styles.headerLogo}`} aria-label={`${JLFA_NAME} — ${locale==="he"?"דף הבית":"home"}`}
   data-jlfa-header-logo={footer?undefined:"true"} data-jlfa-footer-logo={footer?"true":undefined}>
   {footer?image:<span className={styles.headerWindow} data-jlfa-logo-window="0,100,1254,1000">{image}</span>}
  </a>;
@@ -66,12 +66,12 @@ export function JlfaCoreProgram({locale}:{locale:Locale}){
  </div>;
 }
 
-export function JlfaCoreMain({locale,form,school}:{locale:Locale;form:ReactNode;school:ReactNode}){
+export function JlfaCoreMain({locale,form,school,pricing,travelFaq}:{locale:Locale;form:ReactNode;school:ReactNode;pricing?:ReactNode;travelFaq?:ReactNode}){
  const p=(index:number)=>coreText(index,locale),[name,place,tagline]=p(0).split("\n"),explore=p(3).split("  |  ")[1]!;
  return <>
   <section className={`${styles.hero} ${styles.coreHero}`}><div className={`${styles.coreWrap} ${styles.heroGrid}`}>
    <div><h1>{name}</h1><p className={styles.corePlace}>{place}</p><p className={styles.heroLead}>{tagline}</p><p className={styles.corePillars}>{JLFA_TAGLINE}</p><p>{p(1)}</p><p>{p(2)}</p>
-    <div className={styles.coreActions}><a className={styles.corePrimary} data-jlfa-primary href="#apply">{p(103)}</a><JlfaCurriculum locale={locale} label={explore} title={locale==="he"?"סקירת התוכנית":"Program overview"}><JlfaCoreProgram locale={locale}/></JlfaCurriculum></div>
+    <div className={styles.coreActions}><a className={styles.corePrimary} data-jlfa-primary href={pricing?"#pricing":"#apply"}>{pricing?(locale==="he"?"לשמירת מקום למשפחה מייסדת":"Reserve a Founding Family Spot"):p(103)}</a><JlfaCurriculum locale={locale} label={explore} title={locale==="he"?"סקירת התוכנית":"Program overview"}><JlfaCoreProgram locale={locale}/></JlfaCurriculum></div>
    </div><JlfaHeroPlaceholder locale={locale}/>
   </div></section>
   <section id="about" className={`${styles.coreWrap} ${styles.coreSection}`}><h2>{p(4)}</h2><p>{p(5)}</p><p>{p(6)}</p>
@@ -79,7 +79,8 @@ export function JlfaCoreMain({locale,form,school}:{locale:Locale;form:ReactNode;
    <details className={styles.coreDisclosure}><summary>{p(11)}</summary>{[12,14,16,18,20,22].map(index=><section key={index}><h3>{p(index)}</h3><p>{p(index+1)}</p></section>)}</details>
   </section>
   <section id="outings" className={styles.coreTint}><div className={`${styles.coreWrap} ${styles.coreSection}`}><h2>{p(71)}</h2>{[72,73,74].map(index=><p key={index}>{p(index)}</p>)}</div></section>
-  <section id="questions" className={`${styles.faq} ${styles.coreFaq}`}><div className={`${styles.coreWrap} ${styles.coreSection}`}><h2>{p(75)}</h2><div className={styles.coreFaqList}><JlfaFaq locale={locale} faqs={JLFA_CORE_FAQS} groups={coreFaqGroups}/></div></div></section>
+  {pricing}
+  <section id="questions" className={`${styles.faq} ${styles.coreFaq}`}><div className={`${styles.coreWrap} ${styles.coreSection}`}><h2>{p(75)}</h2><div className={styles.coreFaqList}><JlfaFaq locale={locale} faqs={JLFA_CORE_FAQS} groups={coreFaqGroups}/>{travelFaq}</div></div></section>
   <section className={`${styles.coreWrap} ${styles.coreSection}`}><h2>{p(98)}</h2><p>{p(99)}</p><p>{p(100)}</p></section>
   <section id="apply" className={styles.coreTint}><div className={`${styles.coreWrap} ${styles.coreSection} ${styles.coreApply}`}><div><h2>{p(101)}</h2><p>{p(102)}</p><p>{p(104)}</p></div>{form}</div></section>
   <section className={`${styles.coreWrap} ${styles.coreSection}`}>{school}</section>
