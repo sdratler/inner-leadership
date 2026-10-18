@@ -1,6 +1,6 @@
 /** Mounted authenticated synthetic browser acceptance. One response-loss fault follows a real upstream commit; no data API is mocked. */
 import {expect,test} from "@playwright/test";
-import type {Locator,Request as PlaywrightRequest} from "@playwright/test";
+import type {Locator,Page,Request as PlaywrightRequest} from "@playwright/test";
 import {execFile} from "node:child_process";
 import {createHash,randomUUID} from "node:crypto";
 import {readFileSync} from "node:fs";
@@ -30,6 +30,11 @@ const academyQuestions=[
  {question:text("How does founding-family pricing work?","איך פועלים מחירי המשפחות המייסדות?"),answer:text("The first-stage prepay offer is for the first twenty qualifying families. Only verified qualifying payment reserves a founding-family place. An inquiry, callback, approved offer or pending, failed or unknown payment does not hold one. Current per-child prices and sibling options appear in the pricing section; there is no annual prepay offer.","הצעת התשלום מראש לשלב הראשון מיועדת לעשרים המשפחות הזכאיות הראשונות. רק תשלום מזכה שאומת שומר מקום למשפחה מייסדת. פנייה, שיחה חוזרת, הצעה מאושרת או תשלום ממתין, שנכשל או שמצבו אינו ידוע אינם שומרים מקום. המחירים לכל ילד ואפשרויות האחים מוצגים באזור המחירים; אין הצעת תשלום מראש לשנה.")},
  {question:text("What happens after I submit the form?","מה קורה לאחר שליחת הטופס?"),answer:text("Your preferences are saved privately as an inquiry. Choose continuing toward enrollment or requesting a callback. A suitable actual group, schedule, locations, capacity, terms and payment offer must be confirmed before payment. The form itself does not enroll your child or reserve a paid place.","ההעדפות נשמרות באופן פרטי כפנייה. בוחרים המשך לקראת הרשמה או בקשת שיחה חוזרת. לפני התשלום יש לאשר קבוצה מתאימה בפועל, זמנים, מיקומים, מקום פנוי, תנאים והצעת תשלום. הטופס עצמו אינו רושם את הילד ואינו שומר מקום בתשלום.")},
 ] as const;
+async function academyFormReady(page:Page,navigate:()=>Promise<unknown>){
+ const challenge=page.waitForResponse(response=>response.request().method()==="GET"&&new URL(response.url()).pathname==="/api/public/group-applications"&&new URL(response.url()).searchParams.get("program")==="sunday_fishing_academy");
+ await navigate();const response=await challenge;expect(response.status()).toBe(200);const body=await response.json();expect(body).toMatchObject({ok:true,data:{challenge:expect.any(String)}});expect(body.data.challenge.length).toBeGreaterThan(0);
+ const form=page.locator('[data-academy-full-inquiry] form[data-inquiry-kind="parent"]');await expect(form.locator('button[type="submit"]')).toBeEnabled();return form;
+}
 async function fillCompleteAcademyForm(form:Locator,name:string,contact:string){
  await form.locator('[name="parentName"]').fill(name);await form.locator('[name="contact"]').fill(contact);await form.locator('[name="cityArea"]').fill('Hollywood, Florida');await form.locator('[name="neighborhood"]').fill('Synthetic neighborhood');await form.locator('[name="learnerCount"]').selectOption('1');await form.locator('[name="learnerAge-0"]').fill('12');
  for(const [key,value]of Object.entries({'learnerGear-0':'has_gear','learnerExperience-0':'new','learnerGrade-0':'grade_6_8','learnerSchooling-0':'school','learnerTackleBox-0':'ready',parentDropoff:'yes',driveLimit:'30',preferredGroupLanguage:'en',stagePreference:'foundation',keysTravel:'parent_drive',offshoreInterest:'discuss'}))await form.locator('[name="'+key+'"]').selectOption(value);
@@ -191,8 +196,8 @@ if(!runtimePath){
   const logo=page.locator("[data-jlfa-header-logo] img");await expect(logo).toBeVisible();await expect.poll(()=>logo.evaluate(element=>(element as HTMLImageElement).naturalWidth)).toBe(1254);
   const logoResponse=await page.request.get("/groups/brand/jlfa-logo-locked-v1.png");expect(logoResponse.status()).toBe(200);expect(createHash("sha256").update(await logoResponse.body()).digest("hex")).toBe("e78ff6d3ef16c37613725507ce14da05883734a77f48b78ab9d6df3f92480356");
   for(const stale of ["Central Israel","₪1,000","Two 90-minute","Emotional therapy","$500","$399","500 דולר","399 דולר"])expect(body).not.toContain(stale);expect(body).not.toContain("Rank A");
-  await page.locator('[data-jlfa-primary]').click();await expect(page).toHaveURL(/#pricing$/);await expect(page.locator('[data-academy-pricing]')).toBeVisible();await page.locator('[data-academy-pricing] a').first().click();await expect(page).toHaveURL(`${data.origin}/${locale}/florida/apply`);
-  const form=page.locator('[data-academy-full-inquiry] form[data-inquiry-kind="parent"]');await expect(form.locator('button[type="submit"]')).toBeEnabled();
+  await page.locator('[data-jlfa-primary]').click();await expect(page).toHaveURL(/#pricing$/);await expect(page.locator('[data-academy-pricing]')).toBeVisible();
+  const form=await academyFormReady(page,async()=>{await page.locator('[data-academy-pricing] a').first().click();await expect(page).toHaveURL(`${data.origin}/${locale}/florida/apply`);});
   await fillCompleteAcademyForm(form,"Synthetic public browser check","synthetic@example.invalid");await form.locator('[name="schedulePreference"][value="flexible"]').check();await form.locator('[name="permission"]').check();
   const switched=locale==="he"?"en":"he";await page.getByRole("button",{name:locale==="he"?"EN":"עברית",exact:true}).click();await expect(page).toHaveURL(`${data.origin}/${switched}/florida/apply`);
   for(const [name,value]of Object.entries({parentName:"Synthetic public browser check",contact:"synthetic@example.invalid","learnerAge-0":"12",cityArea:"Hollywood, Florida",neighborhood:"Synthetic neighborhood",postalCode:"33021",driveLimit:"30"}))await expect(form.locator(`[name="${name}"]`)).toHaveValue(value);
@@ -205,7 +210,7 @@ if(!runtimePath){
   const response=await page.goto(`/${locale}/groups/apply`);expect(response?.status()).toBe(200);await expect(page.getByRole("heading",{name:locale==="he"?"הנהגה עצמית דרך למידה משותפת והתנסות מעשית":"Self-governance through hands-on collaborative learning",exact:true,level:1})).toBeVisible();await expect(page.getByRole("list",{name:locale==="he"?"שלבי הבקשה":"Application steps"})).toBeVisible();await expect(page.locator('[name="parentPhone"]')).toBeVisible();await expect(page.locator('[name="contact"]')).toHaveCount(0);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await page.screenshot({path:info.outputPath(`israel-group-application-${locale}-${info.project.name}.png`),fullPage:true});
  });
  test("Florida group inquiry response-loss retry keeps one program-bound operation and practitioner readback",async({page,context},info)=>{
-  await page.goto("/en/florida/apply");const form=page.locator('[data-academy-full-inquiry] form[data-inquiry-kind="parent"]');await expect(form.locator('button[type="submit"]')).toBeEnabled();
+  const form=await academyFormReady(page,()=>page.goto("/en/florida/apply"));
   const applicant=`Synthetic Florida replay ${randomUUID()}`,contact=`synthetic-${randomUUID()}@example.invalid`;await fillCompleteAcademyForm(form,applicant,contact);await form.locator('[name="permission"]').check();
   const endpoint="**/api/public/group-applications?program=sunday_fishing_academy";let firstBody:Record<string,unknown>|undefined,upstreamStatus=0;
   await page.route(endpoint,async route=>{if(route.request().method()!=="POST")return route.continue();firstBody=route.request().postDataJSON() as Record<string,unknown>;const upstream=await route.fetch({headers:{...route.request().headers(),origin:data.origin,"sec-fetch-site":"same-origin"}});upstreamStatus=upstream.status();await route.fulfill({status:503,contentType:"application/json",body:JSON.stringify({ok:false,error:{code:"UNAVAILABLE"}})});});
