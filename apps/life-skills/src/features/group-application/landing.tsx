@@ -13,6 +13,7 @@ import {JlfaCurriculum} from "./jlfa-curriculum.tsx";
 import jlfa from "./jlfa-brand.module.css";
 import {AcademyPricing} from "./academy-pricing.tsx";
 import {AcademyTravelFaq} from "./academy-travel-faq.tsx";
+import {AcademyWebsite} from "./academy-website.tsx";
 
 const styles={...baseStyles,...additions};
 
@@ -43,6 +44,7 @@ export function GroupApplicationLanding({locale:initialLocale,programId="sunday_
  const primary=p(academy?viewCopy.shared.ctaAcademy:vip?viewCopy.shared.ctaVip:pair("Ask about Torah mornings","לפרטים על לימוד תורה בבוקר"));
  useEffect(()=>{document.documentElement.lang=locale;document.documentElement.dir=locale==="he"?"rtl":"ltr";},[locale]);
  const switchLanguage=(next:Locale)=>{if(next===locale)return;setMenuOpen(false);setLocale(next);window.history.replaceState(window.history.state,"",pathFor(next,program,mode)+(mode==="sample"?"":window.location.search)+window.location.hash);};
+ if(academy&&mode==="native")return <AcademyWebsite locale={locale} onLocaleChange={switchLanguage}/>;
  return <div className={academy?`${styles.page} ${jlfa.scope}`:styles.page} lang={locale} dir={locale==="he"?"rtl":"ltr"}>
   <a className={styles.skip} href="#main">{t("Skip to content","דלגו לתוכן")}</a>
   <header className={academy?`${styles.header} ${jlfa.toolbar}`:styles.header}><div className={styles.wrap}>

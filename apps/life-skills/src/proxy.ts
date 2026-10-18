@@ -44,13 +44,14 @@ export function intakeReleasePath(pathname: string, input: Record<string,string|
 }
 export function groupApplicationReleasePath(pathname:string,input:Record<string,string|undefined>):boolean{
  const allowed=pathname==="/api/public/group-applications"||/^\/(he|en)\/groups\/apply\/?$/.test(pathname)||
-  /^\/(he|en)\/florida(?:\/(?:torah-mornings|private-fishing|apply))?\/?$/.test(pathname);
+  /^\/(he|en)\/florida(?:\/(?:torah-mornings|private-fishing|apply))?\/?$/.test(pathname)||
+  /^\/(he|en)\/florida\/stages\/(?:foundation|independent|advanced|leadership)\/?$/.test(pathname);
  if(!allowed||!publicGroupApplicationEnvironmentEnabled(input))return false;
  try{parseIdentityConfig(input);return true;}catch{return false;}
 }
 export function groupApplicationPublicAsset(pathname:string,method:string,input:Record<string,string|undefined>):boolean{
  if(method!=="GET"&&method!=="HEAD")return false;
- const allowed=pathname==="/groups/brand/life-skills-logo.png"||pathname==="/groups/brand/jlfa-logo-locked-v1.png"||/^\/groups\/private\/(?:skill-(?:0[1-9]|1[0-2])\.webp|founder-boy-hero-(?:en|he)-(?:desktop|mobile)\.png|private-hero-text-free-(?:desktop|mobile)\.webp)$/.test(pathname)||pathname==="/groups/people/founder-grass-group.webp"||pathname==="/groups/testimonials/l-bars-2024.png"||pathname==="/groups/sponsor/meir-bunny.png"||
+ const allowed=pathname==="/groups/academy/hero-desktop-20261018.png"||pathname==="/groups/academy/hero-mobile-20261018.png"||pathname==="/groups/brand/life-skills-logo.png"||pathname==="/groups/brand/jlfa-logo-locked-v1.png"||/^\/groups\/private\/(?:skill-(?:0[1-9]|1[0-2])\.webp|founder-boy-hero-(?:en|he)-(?:desktop|mobile)\.png|private-hero-text-free-(?:desktop|mobile)\.webp)$/.test(pathname)||pathname==="/groups/people/founder-grass-group.webp"||pathname==="/groups/testimonials/l-bars-2024.png"||pathname==="/groups/sponsor/meir-bunny.png"||
   /^\/groups\/projects\/LS-PROJECT-(?:01-group\.jpg|02-making\.png|03-3d-printer\.png|04-working-together\.png|05-woodwork\.png|06-guided-conversation\.png|07-music\.png|08-electronics\.png|09-wood-art\.png)$/.test(pathname);
  if(!allowed||!publicGroupApplicationEnvironmentEnabled(input))return false;
  try{parseIdentityConfig(input);return true;}catch{return false;}
