@@ -43,7 +43,7 @@ for(const locale of ["en","he"] as const)test(`${locale}: ordinary authorized in
   const injected=reviewResponse(page);
   try{await page.getByRole("button",{name:t("Refresh","רענון"),exact:true}).click();await expect.poll(()=>began).toBe(true);await expectInquiryEmailSetupAbsent(page,{fixture:"SYNTHETIC_ONLY",origin:data.origin});}
   finally{release();}
-  const fault=await injected;expect(fault.status()).toBe(status);expect(await fault.finished()).toBeNull();await expect(page.getByRole("alert")).toHaveCount(1);await expectInquiryEmailSetupAbsent(page,{fixture:"SYNTHETIC_ONLY",origin:data.origin});await page.unrouteAll({behavior:"wait"});
+  const fault=await injected;expect(fault.status()).toBe(status);expect(await fault.finished()).toBeNull();const alert=page.getByRole("main").getByRole("alert");await expect(alert).toHaveCount(1);await expect(alert).toContainText(status===503?t("Inquiries could not be loaded","לא ניתן לטעון את הפניות"):status===403?t("This account cannot review private inquiries.","לחשבון הזה אין הרשאה לבדיקת פניות פרטיות."):t("Your session ended. Sign in to continue.","פג תוקף החיבור. יש להיכנס מחדש."));await expectInquiryEmailSetupAbsent(page,{fixture:"SYNTHETIC_ONLY",origin:data.origin});await page.unrouteAll({behavior:"wait"});
   const restored=reviewResponse(page);await page.getByRole("button",{name:t("Refresh","רענון"),exact:true}).click();await visibleSetup(await checkedReport(await restored));
  }
  const parent=await browser.newContext({baseURL:data.origin,ignoreHTTPSErrors:true});try{
