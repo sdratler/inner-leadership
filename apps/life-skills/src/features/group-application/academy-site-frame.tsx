@@ -13,18 +13,24 @@ export function AcademySiteFrame({locale,children,onLocaleChange,path="",intake=
   <header className={styles.header} data-academy-header><div className={styles.headerInner}>
    <JlfaLogo locale={locale} homeHref={home}/>
    <nav className={styles.navigation} aria-label={t("Academy navigation","ניווט באקדמיה")}>
-    <a href={home+"#stages"}>{t("The program","התוכנית")}</a><a href={home+"#pricing"}>{t("Prices","מחירים")}</a>
-    {intake?<a href="#academy-travel-faq" onClick={()=>{const faq=document.getElementById("academy-travel-faq");if(faq instanceof HTMLDetailsElement)faq.open=true;}}>{t("Travel FAQ","שאלות על נסיעה")}</a>:<a href={home+"#questions"}>{t("Questions","שאלות")}</a>}
+    <a href={home}>{t("Home","דף הבית")}</a><a href={home+"#stages"}>{t("The program","התוכנית")}</a><a href={home+"#pricing"}>{t("Prices","מחירים")}</a>
+    <a href={intake?"#questions":home+"#questions"}>{t("FAQ","שאלות נפוצות")}</a>
    </nav>
+   <a className={styles.headerAction} href={intake?"#academy-form":`/${locale}/florida/apply`}>{t("Register","להרשמה")} <span aria-hidden="true">↗</span></a>
    <div className={styles.languages} aria-label={t("Language","שפה")}>{(["en","he"] as const).map(language=>onLocaleChange?
     <button key={language} type="button" lang={language} aria-pressed={locale===language} onClick={()=>onLocaleChange(language)}>{language==="en"?"EN":"עברית"}</button>:
     <a key={language} href={`/${language}/florida${path}`} lang={language} aria-current={locale===language?"page":undefined}>{language==="en"?"EN":"עברית"}</a>)}</div>
   </div></header>
   {children}
   <footer className={styles.footer} data-academy-footer><div className={styles.footerInner}>
-   <JlfaLogo locale={locale} footer homeHref={home}/><div><p className={styles.footerName}>South Florida Jewish Leadership Fishing Academy</p><p className={styles.footerPillars}>{JLFA_TAGLINE}</p>
-    <nav aria-label={t("Footer navigation","ניווט בתחתית הדף")}><a href={home}>{t("Home","דף הבית")}</a><a href={home+"#stages"}>{t("Explore the program","הכירו את התוכנית")}</a><a href={`/${locale}/florida/apply`}>{t("Begin an inquiry","לשליחת פנייה")}</a><a href={ACADEMY_WHATSAPP} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">WhatsApp ↗</a></nav>
+   <JlfaLogo locale={locale} footer homeHref={home}/><div><p className={styles.footerName}>South Florida Jewish Leadership Fishing Academy</p><p className={styles.footerPillars}>{JLFA_TAGLINE}</p><p className={styles.nonprofit}>{t("A program of Bnei Neviim Academy, a New Jersey nonprofit.","תוכנית של אקדמיית בני נביאים, ארגון ללא כוונת רווח בניו ג׳רזי.")} <a href="https://bneineviimacademy.org/" target="_blank" rel="noopener noreferrer">Bnei Neviim Academy ↗</a></p>
+    <nav aria-label={t("Footer navigation","ניווט בתחתית הדף")}><a href={home}>{t("Home","דף הבית")}</a><a href={home+"#stages"}>{t("Explore the program","הכירו את התוכנית")}</a><a href={`/${locale}/florida/apply`}>{t("Begin an inquiry","לשליחת פנייה")}</a><a className={styles.whatsappLink} href={ACADEMY_WHATSAPP} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">WhatsApp ↗</a></nav>
    </div>
   </div></footer>
+  <nav className={styles.bottomBar} aria-label={t("Quick Academy actions","פעולות מהירות באקדמיה")} data-academy-bottom-bar>
+   <a href={intake?"#questions":home+"#questions"}>{t("FAQ","שאלות")}</a>
+   <a className={styles.whatsappLink} href={ACADEMY_WHATSAPP} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">WhatsApp ↗</a>
+   <a className={styles.button} href={intake?"#academy-form":`/${locale}/florida/apply`}>{intake?t("Complete form","למילוי הטופס"):t("Start registration","להרשמה")} <span aria-hidden="true">↗</span></a>
+  </nav>
  </div>;
 }

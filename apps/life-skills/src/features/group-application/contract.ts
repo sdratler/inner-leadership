@@ -15,6 +15,12 @@ export const floridaGroupApplicationNotice={
  he:"אני מסכים/ה שכישורי חיים ישמרו באופן פרטי את פרטי הקשר הבסיסיים ואת העניין בקבוצה, וייצרו איתי קשר בנוגע לפנייה זו. הפנייה אינה רושמת ילד, מאשרת תנאי שירות, נותנת הסכמה לשיווק חוזר, שומרת מקום, יוצרת הזמנה או מאשרת תשלום.",
 } as const;
 
+export const academyApplicationNotice={
+ version:"JLFA-ACADEMY-APPLICATION-20261018-10-v1",
+ en:"I agree that the Fishing Academy, a program of Bnei Neviim Academy, may store these application and contact details privately and contact me about my application or callback request. This does not enroll a child, accept service terms, authorize recurring marketing, reserve a place, create a booking or authorize payment.",
+ he:"אני מסכים/ה שהאקדמיה לדיג, תוכנית של אקדמיית בני נביאים, תשמור באופן פרטי את פרטי הפנייה והקשר ותיצור איתי קשר בנוגע לפנייה או לבקשה לשיחה חוזרת. אין בכך הרשמת ילד, אישור תנאי שירות, הרשאה לשיווק חוזר, שמירת מקום, הזמנה או הרשאה לתשלום.",
+} as const;
+
 export function normalizeGroupApplicationContact(input:string):string{
  const trimmed=input.trim();
  if(trimmed.includes("@"))return trimmed.toLowerCase();
@@ -92,10 +98,13 @@ const floridaParentApplicationFieldsBase=z.object({
  academyIntake:academyIntakeSchema.optional(),
  scheduleContext:z.literal("program_format_interest").optional(),
  scheduleNotes:z.string().trim().min(1).max(300).optional(),
- permission:z.object({confirmed:z.literal(true),version:z.literal(floridaGroupApplicationNotice.version),language:z.enum(["he","en"])}).strict(),
+ permission:z.object({confirmed:z.literal(true),version:z.union([z.literal(floridaGroupApplicationNotice.version),z.literal(academyApplicationNotice.version)]),language:z.enum(["he","en"])}).strict(),
 }).strict();
 const floridaParentIssue=(value:z.infer<typeof floridaParentApplicationFieldsBase>,context:z.RefinementCtx)=>{
+ if(value.permission.version===academyApplicationNotice.version&&(!value.academyIntake||value.programId!=="sunday_fishing_academy"))context.addIssue({code:"custom",path:["permission","version"],message:"Academy notice requires full Academy application"});
  if(value.academyIntake!==undefined){
+  if(value.permission.version===academyApplicationNotice.version&&value.academyIntake.learners.some(learner=>learner.ageYears===undefined))context.addIssue({code:"custom",path:["academyIntake","learners"],message:"Age in years required"});
+  if(value.academyFit&&value.academyIntake.learners.some((learner,index)=>learner.ageYears!==undefined&&learner.ageYears!==value.academyFit?.learners[index]?.approximateAge))context.addIssue({code:"custom",path:["academyIntake","learners"],message:"Age values must match"});
   if(value.programId!=="sunday_fishing_academy"||value.scheduleContext!=="program_format_interest"||!value.academyFit)context.addIssue({code:"custom",path:["academyIntake"],message:"academy fit and format required"});
   if(value.academyFit&&value.academyIntake.learners.length!==value.academyFit.learners.length)context.addIssue({code:"custom",path:["academyIntake","learners"],message:"learner count mismatch"});
   if(value.academyFit&&value.academyFit.maximumDriveMinutes!==academyDriveMinutes(value.academyIntake.driveLimit))context.addIssue({code:"custom",path:["academyIntake","driveLimit"],message:"drive preferences must match"});

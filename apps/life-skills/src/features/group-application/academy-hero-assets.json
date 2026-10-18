@@ -1,22 +1,22 @@
 {
-  "version": "JLFA-HERO-VISUALS-20261018-01",
-  "scope": "Code-consumed projection of owner-selected Source03 hero visual bases. Exact source bytes, live text/native CTA; no generation, resampling or image editing. Reference poster is not a production asset.",
+  "version": "JLFA-SELECTED-GRAPHICS-20261018-11",
+  "scope": "Exact owner-selected baked-text PNGs; no image editing/resampling. CTA is real HTML only. Old text-free masters preserved.",
   "assets": [
     {
       "role": "desktop",
-      "bytes": 4250817,
-      "width": 2048,
-      "height": 1143,
-      "sha256": "c04e07e489e866ad8153b283b5445f6d43f393a38005c9a8cacd40050be0bbaa",
-      "publicPath": "/groups/academy/hero-desktop-20261018.png"
+      "bytes": 2084899,
+      "width": 1679,
+      "height": 937,
+      "sha256": "cedc24760677009c57b4cb8d9a656aa58b940625124386609388912914fcb7e6",
+      "publicPath": "/groups/academy/hero-desktop-selected-20261018.png"
     },
     {
       "role": "mobile",
-      "bytes": 4160847,
-      "width": 1143,
-      "height": 2048,
-      "sha256": "12a450f6cff546171c40b46273e89acf5d142fd1a86bd94eacbb8724544b2e42",
-      "publicPath": "/groups/academy/hero-mobile-20261018.png"
+      "bytes": 1923731,
+      "width": 941,
+      "height": 1672,
+      "sha256": "4f249416cc49c3c78c38a40c03022ba9b9387d07a780b09423858257e01db87e",
+      "publicPath": "/groups/academy/hero-mobile-selected-20261018.png"
     }
   ]
 }
