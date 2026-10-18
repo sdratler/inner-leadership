@@ -9,6 +9,7 @@ import { clientReturnPath, parentReturnPath, practitionerDetailReturnPath, pract
 import { groupInterestCandidateEnabled } from "./features/group-interest/candidate.ts";
 import { publicGroupApplicationEnvironmentEnabled } from "./features/group-application/candidate.ts";
 import { canonicalForwardedRequest } from "./features/integration/canonical-forwarded-request.ts";
+import {stripeTestWebhookEnabled} from "./features/fishing-payments/stripe-test-gate.ts";
 
 const intakeIdentityRoutes = new Set([
   "/api/identity/csrf", "/api/identity/login", "/api/identity/session",
@@ -84,6 +85,9 @@ export function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const canonicalOrigin = new URL(env.LS_APP_ORIGIN);
   const requestHost = (request.headers.get("host") ?? request.nextUrl.host).trim().toLowerCase();
+  // One exact test-only route. Its Node handler separately validates transport,
+  // server runtime admission and SDK signature before minimal durable intake.
+  if(stripeTestWebhookEnabled(pathname,process.env))return decorate(NextResponse.next(),headers);
   // Private rendered data needs the same transport fence as its APIs. Keep
   // public intake/login and foundation preview outside this data-page selector.
   // The explicitly synthetic sample retains its separate preview perimeter and
