@@ -1,0 +1,117 @@
+{
+  "decision": "JLFA-MOBILE-ICONS-IMAGE-ADOPTION-20261018-15",
+  "status": "LOCAL_REVIEW_CANDIDATE_NOT_PUBLICATION_APPROVAL",
+  "scope": "Mechanical WebP exports of actual matrix inputs; no generated replacement. Hero/logo/people originals unchanged.",
+  "assets": [
+    {
+      "slot": "foundation",
+      "assetId": "GEAR-BACKPACK-02-D",
+      "publicPath": "/groups/academy/scenes/foundation.webp",
+      "width": 1400,
+      "height": 788,
+      "bytes": 259156,
+      "sha256": "f8787fae91ad880275d4c23d59fea3c9ea72551a37f032da60a68b6882c901ea",
+      "sourceSha256": "a4e07d94b57bb7ba8b3248d9e04c544cadc2f8bbd4afa5b1efd5d8b5746c301e"
+    },
+    {
+      "slot": "habitat",
+      "assetId": "HABITAT-PILINGS-D",
+      "publicPath": "/groups/academy/scenes/habitat.webp",
+      "width": 1400,
+      "height": 788,
+      "bytes": 410720,
+      "sha256": "e5150b26d4ee4f5f7353dc419a5db76d97a0907112e297ff61a1c07a38e6af65",
+      "sourceSha256": "d81d2e3c84f2301d70d0912e8654336fedf23f24bf8f634d822e870d9ca043cf"
+    },
+    {
+      "slot": "advanced",
+      "assetId": "FISH-TARPON-STRIKE-D",
+      "publicPath": "/groups/academy/scenes/advanced.webp",
+      "width": 1400,
+      "height": 788,
+      "bytes": 231996,
+      "sha256": "d14f68fef7f797bf536edc349c9ae8cdcc2ba47d8f5f9fa8294011730f26c1bf",
+      "sourceSha256": "d295d9655c8c162c1b5f56fd00c18c3b3137ae025133a23ddddef45582b9ba65"
+    },
+    {
+      "slot": "advanced-mobile",
+      "assetId": "FISH-TARPON-STRIKE-M",
+      "publicPath": "/groups/academy/scenes/advanced-mobile.webp",
+      "width": 900,
+      "height": 1599,
+      "bytes": 284616,
+      "sha256": "e91eecc4b2968f8cf13c97c504f2a09464747b3a8c94c2ccba4c5951f2a57002",
+      "sourceSha256": "931ca1b3f2eb1d35519e4f3591fc9b3d58ed93adc0e194896c23c01cd809c4df"
+    },
+    {
+      "slot": "leadership",
+      "assetId": "SCENE-BRIDGE-07-D",
+      "publicPath": "/groups/academy/scenes/leadership.webp",
+      "width": 1400,
+      "height": 788,
+      "bytes": 265926,
+      "sha256": "b0892e55a01f80167051b640c997c900981c23e7f95f4bd7fd086f5477812f85",
+      "sourceSha256": "f984f3d6307c9acea360986d346af09d0f01dc5dca6919fca38074eb25c9ae35"
+    },
+    {
+      "slot": "locations",
+      "assetId": "SCENE-BRIDGE-05-D",
+      "publicPath": "/groups/academy/scenes/locations.webp",
+      "width": 1400,
+      "height": 788,
+      "bytes": 195526,
+      "sha256": "f9b10e37b50f9e9d44431c31fa8b3ca85deb2888b62d1d60c1227dbd47cb3a5b",
+      "sourceSha256": "c769caac29f499d8eb7dfbfafb426098bfbc28e0b80b6568088d04febc6fb0a4"
+    },
+    {
+      "slot": "form",
+      "assetId": "SCENE-BRIDGE-06-D",
+      "publicPath": "/groups/academy/scenes/form.webp",
+      "width": 1400,
+      "height": 788,
+      "bytes": 271144,
+      "sha256": "3e89102655e06eaf6ccc947a1b5a304d9554126c4186af5148bf086d07a44dbd",
+      "sourceSha256": "ec5d87d690f896cfbbf5347b063e11cecc964405b36d228501b1b9a97b04908d"
+    },
+    {
+      "slot": "freshwater",
+      "assetId": "FISH-PEACOCK-D",
+      "publicPath": "/groups/academy/scenes/freshwater.webp",
+      "width": 1400,
+      "height": 788,
+      "bytes": 267594,
+      "sha256": "5024dae115a0354f98b83f28f6f4ec0045deb6dc02cdbf45f6ab6406c4e87315",
+      "sourceSha256": "206a940a4d2365d26642abd1fbcbbd741e666eeaa7ecc29c754d4b8cad3731d2"
+    },
+    {
+      "slot": "freshwater-mobile",
+      "assetId": "FISH-PEACOCK-M",
+      "publicPath": "/groups/academy/scenes/freshwater-mobile.webp",
+      "width": 900,
+      "height": 1599,
+      "bytes": 256066,
+      "sha256": "f478ebd48364c9ce28d440b54ec2255778c6d063d21dd0e192b2c8bbe952e856",
+      "sourceSha256": "b2a27af3fc44c1f4d02fa209d7a8455f0b21683b6af1cd28cd77ddffc944ed26"
+    },
+    {
+      "slot": "independent",
+      "assetId": "BAIT-CRABS-D",
+      "publicPath": "/groups/academy/scenes/independent.webp",
+      "width": 1400,
+      "height": 788,
+      "bytes": 291380,
+      "sha256": "556bde17a70f77cef25ccf01cd5e52bbfff55a42c629922aab272aa292ea19c3",
+      "sourceSha256": "2ea77f0d33bed5a8e18f58c2be5de85fe25e4a6fb1688b71532bfd95cb6de03d"
+    },
+    {
+      "slot": "independent-mobile",
+      "assetId": "BAIT-CRABS-M",
+      "publicPath": "/groups/academy/scenes/independent-mobile.webp",
+      "width": 900,
+      "height": 1599,
+      "bytes": 305310,
+      "sha256": "97e721662f1fdd03f8e9b57ca835f12daeb8f5a139922615ea7788c8560cc534",
+      "sourceSha256": "6b3d863bdf5a290b2fdfe4b18a775b6af45222f9f26161ebcc26d8b4d904d794"
+    }
+  ]
+}

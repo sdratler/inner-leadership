@@ -7,6 +7,8 @@ export const academyDriveLimitSchema=z.union([z.enum(["up_to_30","up_to_45","up_
 export const academyIntakeSchema=z.object({
  version:z.literal(ACADEMY_INTAKE_VERSION),
  postalCode:z.string().trim().regex(/^\d{5}(?:-\d{4})?$/),
+ schoolHoursAvailability:z.enum(["flexible","permission_needed","outside_school_only","discuss"]).optional(),
+ schoolHoursAcknowledged:z.literal(true).optional(),
  driveLimit:academyDriveLimitSchema,
  preferredAreas:z.string().trim().min(1).max(160).optional(),
  preferredGroupLanguage:z.enum(["en","he","either"]),
@@ -22,7 +24,11 @@ export const academyIntakeSchema=z.object({
   schooling:z.enum(["school","homeschool","discuss"]),
   tackleBox:z.enum(["ready","need_advice","not_sure"]),
  }).strict()).min(1).max(10),
-}).strict();
+}).strict().superRefine((value,context)=>{
+ const schoolTime=value.schoolHoursAvailability==="flexible"||value.schoolHoursAvailability==="permission_needed";
+ if(schoolTime&&value.schoolHoursAcknowledged!==true)context.addIssue({code:"custom",path:["schoolHoursAcknowledged"],message:"School responsibility acknowledgment required"});
+ if(!schoolTime&&value.schoolHoursAcknowledged!==undefined)context.addIssue({code:"custom",path:["schoolHoursAcknowledged"],message:"School-time preference required"});
+});
 export type AcademyIntake=z.infer<typeof academyIntakeSchema>;
 export type AcademyDriveLimit=z.infer<typeof academyDriveLimitSchema>;
 /** "Over60" is a recorded category, never an invented unlimited numeric cap. */
@@ -35,6 +41,7 @@ export function academyIntakeFromForm(values:FormData):AcademyIntake|null{
  const count=Number(values.get("learnerCount"));if(!Number.isInteger(count)||count<1||count>10)return null;
  const result=academyIntakeSchema.safeParse({version:ACADEMY_INTAKE_VERSION,
   postalCode:values.get("postalCode"),driveLimit:/^\d+$/.test(String(values.get("driveLimit")??""))?Number(values.get("driveLimit")):values.get("driveLimit"),preferredAreas:optional(values.get("preferredAreas")),
+  schoolHoursAvailability:optional(values.get("schoolHoursAvailability")),...(values.get("schoolHoursAcknowledged")==="yes"?{schoolHoursAcknowledged:true}:{}),
   preferredGroupLanguage:values.get("preferredGroupLanguage"),stagePreference:values.get("stagePreference"),
   keysTravel:values.get("keysTravel"),offshoreInterest:values.get("offshoreInterest"),nextStep:values.get("nextStep"),
   confirmationEmail:optional(values.get("confirmationEmail")),travelNotes:optional(values.get("travelNotes")),

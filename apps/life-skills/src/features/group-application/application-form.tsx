@@ -97,7 +97,7 @@ export function GroupApplicationForm({locale,programId,onSaved,mode="native",onP
     <label>{t("Approximate group size — estimate, not offered capacity","מספר משתתפים משוער — הערכה, לא קיבולת מוצעת")}<input name="groupSize" required type="number" min={1} max={1000} step={1}/></label>
     <label>{t("Preferred weekday — not confirmed availability","יום מועדף — לא זמינות מאושרת")}<select name="preferredWeekday" required defaultValue=""><option value="">{t("Choose a preference","בחרו העדפה")}</option>{Object.entries(schoolWeekdayLabels).map(([value,label])=><option key={value} value={value}>{label[locale==="he"?1:0]}</option>)}</select></label>
     <label>{t("Would the school arrange transport?","האם בית הספר יסדיר הסעה?")}<select name="schoolTransport" required defaultValue=""><option value="">{t("Choose an answer","בחרו תשובה")}</option>{Object.entries(schoolTransportLabels).map(([value,label])=><option key={value} value={value}>{label[locale==="he"?1:0]}</option>)}</select><span>{t("This answer does not confirm provider transport.","התשובה אינה מאשרת הסעה מטעם המפעיל.")}</span></label>
-   </div>:<><div className={styles.fields}>
+   </div>:<>{fullIntake&&<h4 className={styles.groupHeading}>{t("01 · Family contact","01 · פרטי המשפחה")}</h4>}<div className={styles.fields}>
     <label>{p(viewCopy.inquiry.parentName)}<input name="parentName" required maxLength={100} autoComplete="name"/></label>
     <label>{p(viewCopy.inquiry.contact)}<input name="contact" required maxLength={254} dir="ltr" inputMode="text" aria-describedby="contact-hint"/><span id="contact-hint" className={styles.fieldNote}>{p(viewCopy.inquiry.contactHint)}</span></label>
     {programId!=="sunday_fishing_academy"&&<label>{p(viewCopy.inquiry.childAge)}<input name="childAge" maxLength={20} inputMode="text"/></label>}
@@ -106,7 +106,7 @@ export function GroupApplicationForm({locale,programId,onSaved,mode="native",onP
     <div className={styles.emptyGroup}><strong>{t("Program","מסלול")}</strong><p>{programName}</p></div>
    </div>
     {programId==="sunday_fishing_academy"&&<AcademyFitFields locale={locale} count={learnerCount} onCount={setLearnerCount} hideLegacyDrive={fullIntake} learnerDetails={fullIntake?Array.from({length:learnerCount},(_,index)=><AcademyIntakeLearnerFields locale={locale} index={index} key={index}/>):undefined}/>}
-    <fieldset className={styles.schedule}><legend>{programId==="sunday_fishing_academy"?p(viewCopy.inquiry.formatLegend):p(viewCopy.inquiry.vipCallLegend)}</legend><p className={styles.fieldNote}>{programId==="sunday_fishing_academy"?p(viewCopy.inquiry.formatHint):p(viewCopy.inquiry.vipCallHint)}</p><div className={styles.checkGrid}>
+    <fieldset className={styles.schedule}><legend>{fullIntake?t("03 · Schedule preferences","03 · העדפות זמנים"):programId==="sunday_fishing_academy"?p(viewCopy.inquiry.formatLegend):p(viewCopy.inquiry.vipCallLegend)}</legend><p className={styles.fieldNote}>{programId==="sunday_fishing_academy"?p(viewCopy.inquiry.formatHint):p(viewCopy.inquiry.vipCallHint)}</p><div className={styles.checkGrid}>
      <label><input name="schedulePreference" type="checkbox" value="weekday_after_school"/><span>{programId==="sunday_fishing_academy"?p(viewCopy.inquiry.formatOptions.weekday_after_school):t("Weekday after school fit call","שיחת התאמה ביום חול אחרי הלימודים")}</span></label>
      {programId==="sunday_fishing_academy"&&<label><input name="schedulePreference" type="checkbox" value="weekday_before_school"/><span>{t("Weekday before school","ביום חול לפני הלימודים")}</span></label>}
      <label><input name="schedulePreference" type="checkbox" value="sunday"/><span>{programId==="sunday_fishing_academy"?p(viewCopy.inquiry.formatOptions.sunday):t("Sunday fit call","שיחת התאמה ביום ראשון")}</span></label>
@@ -117,7 +117,7 @@ export function GroupApplicationForm({locale,programId,onSaved,mode="native",onP
     <label className={styles.full}>{p(viewCopy.inquiry.scheduleNotes)}<textarea name="scheduleNotes" maxLength={300} rows={3}/></label>
     {fullIntake&&<AcademyIntakeFields locale={locale}/>}
 </>}
-    <label className={styles.permission}><input ref={permissionRef} name="permission" type="checkbox" required/><span>{notice[locale]}</span></label>
+    {fullIntake&&<h4 className={styles.groupHeading}>{t("06 · Contact permission","06 · הסכמה ליצירת קשר")}</h4>}<label className={styles.permission}><input ref={permissionRef} name="permission" type="checkbox" required/><span>{notice[locale]}</span></label>
    {school&&<p>{t("Do not submit child names, rosters, diagnoses, clinical or family histories, emergency/medical details, photographs, recordings or media permissions.","אין למסור שמות ילדים, רשימות תלמידים, אבחנות, היסטוריה קלינית או משפחתית, פרטי חירום/רפואה, תמונות, הקלטות או רשות לפרסום.")}</p>}
    {!school&&<p className={styles.privacy}>{fullIntake?t("Your information is kept privately for this application and follow-up. Please do not submit child names, medical information or payment-card details.","המידע נשמר באופן פרטי לצורך הפנייה והמשך הטיפול. אין למסור שמות ילדים, מידע רפואי או פרטי כרטיס תשלום."):p(viewCopy.inquiry.privacyHint)}</p>}
    <label className={styles.honeypot} aria-hidden="true">Website<input name="website" tabIndex={-1} autoComplete="off"/></label>

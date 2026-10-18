@@ -32,19 +32,20 @@ describe("the actual owner-selected Academy visual and inquiry design",()=>{
   const page=html(AcademyIntakePage,{locale});expect(page).toContain('data-academy-full-inquiry=""');expect(page).toContain('name="parentName"');expect(page).toContain('name="postalCode"');expect(page).toContain('name="learnerCount"');
   expect(page).toContain('id="academy-form"');expect(page).toContain('id="academy-drive-limit"');expect(page).toContain('id="academy-travel-faq"');expect(page).toContain('href="#apply"');expect(page).toContain('id="apply"');
   expect(page).toContain('aria-pressed="true"');expect(page).toContain('data-jlfa-header-logo="true"');expect(page).toContain('data-jlfa-footer-logo="true"');expect(page.match(/<form\b/g)).toHaveLength(1);
-  expect(page).not.toContain('data-academy-whatsapp');expect(page).not.toContain('href="https://checkout.');
+  expect(page.match(/data-academy-whatsapp/g)).toHaveLength(1);expect(page).toContain('data-visible="false"');expect(page).not.toContain('href="https://checkout.');
  });
  it.each(["en","he"] as const)("retains the%s sample's inert form and existing overview instead of mounting native stage links",locale=>{
   const page=html(GroupApplicationLanding,{locale,mode:"sample"});expect(page).toContain('name="parentName"');expect(page).toContain('aria-controls="jlfa-curriculum"');expect(page).not.toContain('data-academy-site');expect(page).not.toContain(`href="/${locale}/florida/apply"`);
  });
  for(const stage of academyStages)it.each(["en","he"] as const)(`${stage.slug}:%s has its own accessible age-depth view and the same header/footer`,locale=>{
-  const page=html(AcademyStage,{locale,slug:stage.slug});expect(page).toContain(`data-academy-stage-view="${stage.slug}"`);expect(page.match(/<h1\b/g)).toHaveLength(1);expect(page.match(/role="tab"/g)).toHaveLength(3);expect(page.match(/role="tabpanel"/g)).toHaveLength(3);expect(page.match(/aria-selected="true"/g)).toHaveLength(1);expect(page.match(/ hidden=""/g)).toHaveLength(2);
+  const page=html(AcademyStage,{locale,slug:stage.slug});expect(page).toContain(`data-academy-stage-view="${stage.slug}"`);expect(page.match(/<h1\b/g)).toHaveLength(1);expect(page.match(/role="tab"/g)).toHaveLength(3);expect(page.match(/role="tabpanel"/g)).toHaveLength(3);expect(page.match(/aria-selected="true"/g)).toHaveLength(1);expect(page.match(/role="tabpanel"[^>]*hidden=""/g)).toHaveLength(2);
   expect(page).toContain('data-jlfa-header-logo="true"');expect(page).toContain('data-jlfa-footer-logo="true"');expect(page).toContain(`href="/${locale}/florida/apply"`);expect(page).toContain('Deerfield Beach International Fishing Pier');
   for(const text of["source_approvals","profile_ciphertext","answerKey","paymentIntent","paid first mates"])expect(page).not.toContain(text);
  });
  it("does not fabricate48 weekly assignments or confirmed Keys benefits",()=>{
-  expect(academyFoundationProgression).toHaveLength(6);const foundation=html(AcademyStage,{locale:"en",slug:"foundation"});
-  for(const text of["Week 1","Week 2","Week 3","Week 4","Weeks 5–11","Session 12","to be announced","Bass Pro Shops","planned","voluntary","local twelfth-session alternative","no free Keys benefit"])expect(foundation).toContain(text);
+  expect(academyFoundationProgression).toHaveLength(4);const foundation=html(AcademyStage,{locale:"en",slug:"foundation"});
+  for(const text of["Meetings 1–2","2 hours each","Meeting 3","Meeting 4","Meetings 5–12","Bass Pro Shops","planned","replaces","not an extra tuition class"])expect(foundation).toContain(text);
+  expect(foundation).not.toContain("voluntary Stage 1 milestone");expect(foundation).toContain("not an extra tuition class or a guaranteed date");
   for(const slug of["independent","advanced","leadership"]){const page=html(AcademyStage,{locale:"en",slug});expect(page).toContain("not a fixed twelve-date itinerary");expect(page).not.toContain("Week 1</strong>");}
   expect(html(AcademyStage,{locale:"en",slug:"arbitrary"})).toBe("");
  });
@@ -57,5 +58,29 @@ describe("the actual owner-selected Academy visual and inquiry design",()=>{
  it("treats text/control intersection as overlap while allowing an adjacent blank corner",()=>{
   const bubble={left:320,right:376,top:770,bottom:826};expect(academyContactOverlaps(bubble,{left:20,right:360,top:750,bottom:795})).toBe(true);expect(academyContactOverlaps(bubble,{left:20,right:320,top:750,bottom:795})).toBe(false);expect(academyContactOverlaps(bubble,{left:20,right:380,top:600,bottom:770})).toBe(false);expect(academyContactOverlaps(bubble,{left:320,right:376,top:826,bottom:870})).toBe(false);
   const url=new URL(ACADEMY_WHATSAPP);expect(url.origin).toBe("https://wa.me");expect(url.pathname).toBe("/972534932631");expect(url.searchParams.get("text")).toBe("Hi, I came from your website. I'd like to know more.");
+ });
+});
+
+import {AcademyWebsite} from "../../src/features/group-application/academy-website.tsx";
+import scenes from "../../src/features/group-application/academy-scenes.json";
+import {groupApplicationPublicAsset} from "../../src/proxy.ts";
+const visualGateEnv={NODE_ENV:"production",LS_APP_ORIGIN:"https://academy.invalid",LS_GROUP_APPLICATION_REAL_DATA_RELEASE:"true",LS_IDENTITY_ENABLED:"true",LS_IDENTITY_WORKSPACE_ID:"11111111-1111-4111-8111-111111111111",LS_IDENTITY_ACTIVE_KEY_ID:"v1",LS_IDENTITY_DATA_KEYS:JSON.stringify({v1:Buffer.alloc(32,1).toString("base64url")}),LS_IDENTITY_CSRF_KEY:Buffer.alloc(32,2).toString("base64url"),LS_IDENTITY_LOOKUP_KEY:Buffer.alloc(32,3).toString("base64url"),LS_IDENTITY_RATE_KEY:Buffer.alloc(32,4).toString("base64url")};
+describe("latest owner14/15 visual successor, static contracts",()=>{
+ it.each(["en","he"] as const)("%s hero precedes ordinary header with one real pricing CTA and no bottom bar",locale=>{
+  const html=renderToStaticMarkup(createElement(AcademyWebsite,{locale,onLocaleChange:()=>{}}));
+  expect(html.indexOf("data-academy-hero=")).toBeLessThan(html.indexOf("data-academy-header="));expect(html.match(/data-jlfa-primary/g)).toHaveLength(1);expect(html).toContain(locale==="en"?"See Founding Pricing":"למחיר המשפחות המייסדות");expect(html).not.toContain("data-academy-bottom-bar");
+  expect(html.indexOf('id="questions"')).toBeLessThan(html.indexOf('id="parent-reflections"'));expect(html.indexOf('id="parent-reflections"')).toBeLessThan(html.indexOf('id="founder"'));expect(html.indexOf('id="founder"')).toBeLessThan(html.indexOf("data-academy-footer="));
+  expect(html).toContain('data-academy-testimonial-state="held-pending-source-and-permission"');expect(html).not.toMatch(/Medication|Lieberman|l-bars-2024|More locations in the pool|A Florida Keys milestone/);expect(html).toContain(locale==="en"?"Meet Rabbi Shlomo Dratler":"הכירו את הרב שלמה דרטלר");
+  expect(html.match(/data-academy-whatsapp/g)).toHaveLength(1);expect(html).toContain('aria-controls="academy-mobile-menu"');expect(html).toContain('aria-expanded="false"');
+ });
+ it.each(["foundation","independent","advanced","leadership"])("%s retains its one stage route and real scene without changing age-depth navigation",slug=>{
+  const html=renderToStaticMarkup(createElement(AcademyStage,{locale:"en",slug}));expect(html).toContain('data-academy-scene=');expect(html).toContain('role="tablist"');expect(html.match(/role="tab"/g)).toHaveLength(3);expect(html).toContain('href="/en/florida/apply"');expect(html).not.toContain("data-academy-bottom-bar");if(slug==="foundation")expect(html).toContain("two hours each");
+ });
+ it.each(["en","he"] as const)("%s form retains one form, callback and complete school-hours discovery",locale=>{
+  const html=renderToStaticMarkup(createElement(AcademyIntakePage,{locale}));expect(html.match(/<form\b/g)).toHaveLength(1);expect(html).toContain('name="schoolHoursAvailability" required=""');for(const value of["flexible","permission_needed","outside_school_only","discuss"])expect(html).toContain(`value="${value}"`);expect(html).toContain('value="callback"');expect(html).toContain('value="120"');expect(html).toContain('data-academy-scene="form"');expect(html).not.toContain("data-academy-bottom-bar");
+ });
+ it("serves exactly the installed named scene derivatives under the unchanged GET/HEAD/environment/identity fence",()=>{
+  expect(scenes.assets).toHaveLength(11);for(const image of scenes.assets){const bytes=readFileSync(new URL("../../public"+image.publicPath,import.meta.url));expect(bytes.length).toBe(image.bytes);expect(createHash("sha256").update(bytes).digest("hex")).toBe(image.sha256);for(const method of["GET","HEAD"])expect(groupApplicationPublicAsset(image.publicPath,method,visualGateEnv)).toBe(true);expect(groupApplicationPublicAsset(image.publicPath,"POST",visualGateEnv)).toBe(false);expect(groupApplicationPublicAsset(image.publicPath,"GET",{...visualGateEnv,LS_IDENTITY_ENABLED:"false"})).toBe(false);expect(groupApplicationPublicAsset(image.publicPath,"GET",{...visualGateEnv,LS_GROUP_APPLICATION_REAL_DATA_RELEASE:"false"})).toBe(false);}
+  for(const path of["/groups/academy/scenes/private.webp","/groups/academy/scenes/../secret.webp","/groups/academy/scenes/foundation.png","/groups/academy/scenes/source.csv"])expect(groupApplicationPublicAsset(path,"GET",visualGateEnv)).toBe(false);
  });
 });

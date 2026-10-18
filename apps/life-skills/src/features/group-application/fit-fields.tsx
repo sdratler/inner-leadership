@@ -7,7 +7,7 @@ import styles from "./application-form.module.css";
 
 export function AcademyFitFields({locale,count,onCount,hideLegacyDrive=false,learnerDetails}:{locale:Locale;count:number;onCount:(count:number)=>void;hideLegacyDrive?:boolean;learnerDetails?:readonly ReactNode[]|undefined}){
  const t=(en:string,he:string)=>locale==="he"?he:en;
- return <fieldset className={styles.fit}><legend>{t("Who would like to join?","מי מעוניין להצטרף?")}</legend>
+ return <fieldset className={styles.fit}><legend>{hideLegacyDrive?t("02 · Learners, equipment & experience","02 · לומדים, ציוד וניסיון"):t("Who would like to join?","מי מעוניין להצטרף?")}</legend>
   <p>{hideLegacyDrive?t("Age in completed years, equipment and experience. No child names, birthdates or medical details are needed.","גיל בשנים מלאות, ציוד וניסיון. אין צורך בשמות ילדים, בתאריכי לידה או בפרטים רפואיים."):t("Approximate ages and equipment/experience only. Do not enter child names, medical or emergency details.","גילים משוערים, ציוד וניסיון בלבד. אין למסור שמות ילדים או פרטים רפואיים ופרטי חירום.")}</p>
   <label>{t("Number of children, including siblings","מספר ילדים, כולל אחים")}<select name="learnerCount" value={count} onChange={event=>onCount(Number(event.target.value))}>
    {Array.from({length:10},(_,i)=><option value={i+1} key={i}>{i+1}</option>)}
