@@ -2,6 +2,7 @@ import type {Locale} from "../../lib/locale.ts";
 import type {AcademyIntake,AcademyDriveLimit} from "./academy-intake.ts";
 
 export function academyDriveLabel(limit:AcademyDriveLimit,locale:Locale){
+ if(typeof limit==="number")return locale==="he"?`עד ${limit} דקות`:`Up to ${limit} minutes`;
  const values={up_to_30:["Up to 30 minutes","עד 30 דקות"],up_to_45:["Up to 45 minutes","עד 45 דקות"],up_to_60:["Up to 60 minutes","עד 60 דקות"],over_60:["More than 60 minutes","יותר מ־60 דקות"]} as const;
  return values[limit][locale==="he"?1:0];
 }
@@ -30,7 +31,7 @@ export function AcademyIntakeReadback({intake,locale}:{intake:AcademyIntake;loca
    <dt>{t("Travel notes","הערות על נסיעה")}</dt><dd>{intake.travelNotes??t("Not specified","לא נמסר")}</dd>
   </dl>
   <ol aria-label={t("Learner preferences","העדפות הלומדים")}>{intake.learners.map((learner,index)=><li key={index} data-academy-intake-learner><h4>{t("Child","ילד")} {index+1}</h4><dl>
-   <dt>{t("Grade band","טווח כיתות")}</dt><dd>{grade[learner.gradeBand]}</dd><dt>{t("Schooling","מסגרת לימודים")}</dt><dd>{schooling[learner.schooling]}</dd><dt>{t("Personal tackle box","ארגז ציוד אישי")}</dt><dd>{tackle[learner.tackleBox]}</dd>
+   {learner.ageYears!==undefined&&<><dt>{t("Age (years)","גיל בשנים")}</dt><dd>{learner.ageYears}</dd></>}<dt>{t("Grade band","טווח כיתות")}</dt><dd>{grade[learner.gradeBand]}</dd><dt>{t("Schooling","מסגרת לימודים")}</dt><dd>{schooling[learner.schooling]}</dd><dt>{t("Personal tackle box","ארגז ציוד אישי")}</dt><dd>{tackle[learner.tackleBox]}</dd>
   </dl></li>)}</ol>
   <p>{t("This saved inquiry does not enroll a child, reserve a founding-family place, confirm a group, book transport or authorize payment.","הפנייה שנשמרה אינה רושמת ילד, שומרת מקום למשפחה מייסדת, מאשרת קבוצה, מזמינה הסעה או מאשרת תשלום.")}</p>
  </details>;

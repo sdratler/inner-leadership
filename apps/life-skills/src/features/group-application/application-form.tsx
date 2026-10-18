@@ -2,7 +2,7 @@
 import {useEffect,useRef,useState,useSyncExternalStore} from "react";
 import type {FormEvent} from "react";
 import type {Locale} from "../../lib/locale.ts";
-import {floridaGroupApplicationFieldsSchema,floridaGroupApplicationNotice,floridaSchoolInquiryNotice,type FloridaGroupApplicationCommand,type FloridaProgramId} from "./contract.ts";
+import {floridaGroupApplicationFieldsSchema,floridaGroupApplicationNotice,academyApplicationNotice,floridaSchoolInquiryNotice,type FloridaGroupApplicationCommand,type FloridaProgramId} from "./contract.ts";
 import {schoolAgeLabels,schoolWeekdayLabels,schoolTransportLabels} from "./school-inquiry-details.tsx";
 import {journeyProgramName} from "./journey-preview-model.ts";
 import {AcademyFitFields,academyFitFromForm} from "./fit-fields.tsx";
@@ -23,7 +23,7 @@ export function classifyPublicApplicationFailure(requestStarted:boolean,status?:
 }
 
 export function GroupApplicationForm({locale,programId,onSaved,mode="native",onPreviewed,inquiryKind="parent",fullIntake=false}:{locale:Locale;programId:FloridaProgramId;onSaved?:(reference:string)=>void;mode?:"native"|"sample";onPreviewed?:()=>void;inquiryKind?:"parent"|"institution";fullIntake?:boolean}){
- const school=inquiryKind==="institution",notice=school?floridaSchoolInquiryNotice:floridaGroupApplicationNotice;
+ const school=inquiryKind==="institution",notice=school?floridaSchoolInquiryNotice:fullIntake?academyApplicationNotice:floridaGroupApplicationNotice;
  const viewCopy=programId==="sunday_fishing_academy"&&!school?{...copy,inquiry:{...copy.inquiry,...copy.realMensch.inquiry}}:copy;
  const [learnerCount,setLearnerCount]=useState(1);
  if(school&&programId!=="sunday_fishing_academy")throw new Error("SCHOOL_INQUIRY_ACADEMY_ONLY");
@@ -119,7 +119,7 @@ export function GroupApplicationForm({locale,programId,onSaved,mode="native",onP
 </>}
     <label className={styles.permission}><input ref={permissionRef} name="permission" type="checkbox" required/><span>{notice[locale]}</span></label>
    {school&&<p>{t("Do not submit child names, rosters, diagnoses, clinical or family histories, emergency/medical details, photographs, recordings or media permissions.","אין למסור שמות ילדים, רשימות תלמידים, אבחנות, היסטוריה קלינית או משפחתית, פרטי חירום/רפואה, תמונות, הקלטות או רשות לפרסום.")}</p>}
-   {!school&&<p className={styles.privacy}>{p(viewCopy.inquiry.privacyHint)}</p>}
+   {!school&&<p className={styles.privacy}>{fullIntake?t("Your information is kept privately for this application and follow-up. Please do not submit child names, medical information or payment-card details.","המידע נשמר באופן פרטי לצורך הפנייה והמשך הטיפול. אין למסור שמות ילדים, מידע רפואי או פרטי כרטיס תשלום."):p(viewCopy.inquiry.privacyHint)}</p>}
    <label className={styles.honeypot} aria-hidden="true">Website<input name="website" tabIndex={-1} autoComplete="off"/></label>
   </fieldset>
   {uncertain&&<p className={styles.locked}>{t("We have not confirmed receipt of this inquiry. Keep this page open and use the same reference when checking it; do not pay based on this screen.","עדיין לא אושרה קבלת הפנייה. השאירו את הדף פתוח והשתמשו באותו מספר פנייה בעת הבדיקה; אין לשלם על סמך מסך זה.")} <strong>{t("Reference","מספר הפנייה")}:</strong> <bdi dir="ltr">{uncertainReference}</bdi></p>}
