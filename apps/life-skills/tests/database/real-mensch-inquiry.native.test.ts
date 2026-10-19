@@ -10,6 +10,7 @@ import {floridaGroupApplicationNotice,groupApplicationNotice,type FloridaParentA
 import {seal,tokenDigest} from "../../src/features/identity/crypto.ts";
 import {asId} from "../../src/lib/ids.ts";
 import type {Actor} from "../../src/features/identity/types.ts";
+import {groupApplicationReviewHttp} from "../../src/features/group-application/review-http.ts";
 
 const retained:Fixture[]=[];let f:Fixture,store:PublicGroupApplicationStore;
 const key="synthetic-rm04-inquiry-integrity-key";
@@ -37,6 +38,22 @@ async function deniedRole(role:"adult_client"|"child"):Promise<Actor>{
 }
 beforeAll(async()=>{f=await fixture();retained.push(f);store=new PublicGroupApplicationStore(poolStore(f.pool),f.workspaceId,f.keyring,key);});
 afterAll(async()=>{for(const item of retained)await item.pool.end();});
+
+test("native owner search reopens an older durable inquiry through authenticated HTTP without CRM/send effects",async()=>{
+ const baseline=await before(),stamp=Date.now();let tick=0;
+ const history=new PublicGroupApplicationStore(poolStore(f.pool),f.workspaceId,f.keyring,key,{now:()=>new Date(stamp+tick++)});
+ const target=await history.submit({...command("history-target@example.invalid"),fields:{...command().fields,contact:"history-target@example.invalid",parentName:"Synthetic durable history needle"}});
+ for(let i=0;i<61;i++)await history.submit(command(`history-${i}@example.invalid`));
+ expect((await history.list(f.practitioner.actor)).some(item=>item.id===target.item.id)).toBe(false);
+ const origin="https://synthetic.example.invalid",headers={host:"synthetic.example.invalid","x-forwarded-host":"synthetic.example.invalid","x-forwarded-proto":"https",cookie:"__Host-ls-session="+"s".repeat(43)};
+ const response=await groupApplicationReviewHttp(new Request(origin+"/api/private/group-applications?search=durable+history+needle",{headers}),async()=>({origin,actor:async()=>f.practitioner.actor,store:history}));
+ expect(response.status).toBe(200);expect((await response.json()).data).toEqual({items:[target.item],nextCursor:null,emailSetup:null});
+ const collected:string[]=[];let cursor:string|undefined;
+ do{const page=await history.listPage(f.practitioner.actor,{cursor});collected.push(...page.items.map(item=>item.id));cursor=page.nextCursor??undefined;}while(cursor);
+ expect(new Set(collected).size).toBe(collected.length);expect(collected).toContain(target.item.id);
+ for(const actor of [f.parent.actor,{...f.practitioner.actor,workspaceId:asId(randomUUID(),"workspace")}])await expect(history.listPage(actor,{search:"needle"})).rejects.toMatchObject({code:"FORBIDDEN"});
+ expect(await before()).toEqual(baseline);
+});
 test("native commit/reopen retains group-fit and narrow notice, encrypted at rest, with zero automatic effects",async()=>{
  const baseline=await before(),input=command(),saved=await store.submit(input);
  expect(saved).toMatchObject({saved:true,replayed:false,duplicate:false,item:{fields:input.fields}});
