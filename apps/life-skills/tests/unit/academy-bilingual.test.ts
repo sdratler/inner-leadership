@@ -10,6 +10,10 @@ import {AcademyPublicRoute} from "../../src/features/group-application/academy-r
 import {academyPath} from "../../src/features/group-application/academy-routing.ts";
 
 describe("Source21 bilingual parent journey",()=>{
+ it.each([{locale:"en",stage:"unknown"},{locale:"fr",stage:"foundation"}])("unknown stage/locale returns the Next 404 boundary before public URL formatting: %j",async params=>{
+  const {generateMetadata}=await import("../../src/app/[locale]/florida/stages/[stage]/page.tsx");
+  await expect(generateMetadata({params:Promise.resolve(params)})).rejects.toThrow("NEXT_HTTP_ERROR_FALLBACK;404");
+ });
  it.each(["en","he"] as const)("%s BNA gateway presentation keeps all page links and alternates on the requested host",locale=>{
   const html=renderToStaticMarkup(createElement(AcademyPublicRoute,{mode:"bna"},createElement(AcademyWebsite,{locale,onLocaleChange:()=>{}})));
   const home=locale==="he"?"/he/fishing-academy":"/fishing-academy";

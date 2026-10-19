@@ -8,5 +8,5 @@ import {AcademyStage} from "../../../../../features/group-application/academy-st
 import {academyStages} from "../../../../../features/group-application/academy-public-program.ts";
 export const dynamic="force-dynamic";
 type Params=Promise<{locale:string;stage:string}>;
-export async function generateMetadata({params}:{params:Params}){const {locale,stage}=await params,language=locale==="he"?"he":"en",item=academyStages.find(item=>item.slug===stage);const routeMode=await academyRouteMode();return academyMetadata(language,`/stages/${stage}`,item?.title[language],routeMode);}
+export async function generateMetadata({params}:{params:Params}){const {locale,stage}=await params,item=academyStages.find(item=>item.slug===stage);if(!isLocale(locale)||!item)notFound();const routeMode=await academyRouteMode();return academyMetadata(locale,`/stages/${stage}`,item.title[locale],routeMode);}
 export default async function Page({params}:{params:Params}){const {locale,stage}=await params;if(!isLocale(locale)||!academyStages.some(item=>item.slug===stage)||!publicGroupApplicationEnvironmentEnabled())notFound();return <AcademyPublicRoute mode={await academyRouteMode()}><AcademyStage locale={locale} slug={stage}/></AcademyPublicRoute>;}
