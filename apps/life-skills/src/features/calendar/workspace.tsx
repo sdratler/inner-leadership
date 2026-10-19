@@ -35,11 +35,17 @@ import {localizedTaskTitle} from './administrative-work-copy.ts';
 import {FishingCalendarWorkspace,useFishingCalendarTimeline} from '../fishing/program-calendar-workspace.tsx';
 import {fishingCalendarContext,fishingCalendarSearch,type FishingCalendarEvent,type FishingCalendarSelection} from '../fishing/program-calendar-contract.ts';
 import {taskTiming,timingLabel} from './task-presentation.ts';
+import {AcademyCalendarWorkspace,academyCalendarRequested} from '../fishing/academy-calendar-workspace.tsx';
 import './calendar.css';
 type HistoryPage={items:Array<{version:number;state:'present'|'late'|'no_show'|'canceled';recordedAt:string;reason:string|null}>;nextVersion:number|null};
 import { verifiedGoogleMeetUrl } from './meeting-url.ts';
 export { verifiedGoogleMeetUrl } from './meeting-url.ts';
-export function CalendarWorkspace({locale,role,initialDate,initialView,initialCaseId,initialTaskId='',initialMode='live',selectedClientContext=false}:{locale:Locale;role:'parent'|'adult_client'|'child'|'practitioner';initialDate:string;initialView:'day'|'week'|'month'|'agenda';initialCaseId:string;initialTaskId?:string;initialMode?:CalendarMode;selectedClientContext?:boolean}){
+type CalendarWorkspaceProps={locale:Locale;role:'parent'|'adult_client'|'child'|'practitioner';initialDate:string;initialView:'day'|'week'|'month'|'agenda';initialCaseId:string;initialTaskId?:string;initialMode?:CalendarMode;selectedClientContext?:boolean};
+export function CalendarWorkspace(props:CalendarWorkspaceProps){
+ const params=useSearchParams();
+ return academyCalendarRequested(new URLSearchParams(params.toString()))?<AcademyCalendarWorkspace {...props}/>:<LifeSkillsCalendarWorkspace {...props}/>;
+}
+export function LifeSkillsCalendarWorkspace({locale,role,initialDate,initialView,initialCaseId,initialTaskId='',initialMode='live',selectedClientContext=false}:CalendarWorkspaceProps){
  const router=useRouter();
  const t=text(locale),practitioner=role==='practitioner';
  const mode=practitioner?initialMode:null,livePractitioner=practitioner&&mode==='live';

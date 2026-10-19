@@ -1,12 +1,36 @@
 /** Existing isolated harness only. Tokens below are synthetic queued-mail test
  * delivery; no sender, production URL, injected actor or successful API mock. */
 import {createHash} from 'node:crypto';
-import {expect,type Page,type Locator,type TestInfo} from '@playwright/test';
+import {expect,type Page,type Locator,type TestInfo,type Request} from '@playwright/test';
 import pg from 'pg';
 import {unseal,type Keyring} from '../../../src/features/identity/crypto.ts';
 const mutable=new Map<string,number>([['ls_identity.accounts',2],['ls_identity.account_subjects',2],['ls_identity.people',4],['ls_cases.families',2],['ls_cases.family_members',4],['ls_education.guardian_authorities',2],['ls_identity.auth_mail_outbox',4],['ls_fishing_stage.command_receipts',process.env.LS_ACADEMY_ENROLLMENT_UI_ONLY==='true'?6:2],['ls_fishing_stage.fit_decisions',process.env.LS_ACADEMY_ENROLLMENT_UI_ONLY==='true'?2:0],['ls_fishing_stage.terms_acceptances',process.env.LS_ACADEMY_ENROLLMENT_UI_ONLY==='true'?2:0]]);
 const protectedTables=['ls_cases.cases','ls_cases.case_guardians','ls_education.account_grants','ls_calendar.appointments','ls_calendar.tasks','ls_calendar.task_history','ls_contact_ops.outbound_projections','ls_onboarding.first_session_orders','ls_payments.charges','ls_payments.credit_events','ls_fishing_stage.enrollments','ls_fishing_payments.purchases','ls_fishing_payments.outbox'];
 type Snapshot={table:string;rows:{row:Record<string,unknown>}[]}[];
+async function academyCalendarContextJourney(page:Page,locale:'en'|'he',role:'practitioner'|'parent',info:TestInfo){
+ const t=(en:string,he:string)=>locale==='he'?he:en,base=`/${locale}/${role==='practitioner'?'app/calendar':'family/schedule'}`,clinical:string[]=[];
+ const observe=(request:Request)=>{const path=new URL(request.url()).pathname;if(request.method()==='GET'&&((path.startsWith('/api/calendar/')&&!path.startsWith('/api/calendar/fishing/'))||path==='/api/identity/cases'||path.startsWith('/api/home-practice/')))clinical.push(path);};
+ page.on('request',observe);
+ try{
+  await page.clock.setFixedTime(new Date('2026-10-20T01:30:00Z'));
+  await page.goto(base+'?fishing=1&practice=1&tasks=1&content=1');const academy=page.locator('[data-academy-calendar]');await expect(academy.getByRole('heading',{name:t('Fishing calendar','יומן הדיג'),exact:true})).toBeVisible();
+  await expect(academy.locator(role==='parent'?'#fishing-learner':'#fishing-stage')).toBeEnabled();await expect(academy.locator('#calendar-case,#calendar-mode')).toHaveCount(0);expect(await academy.textContent()).not.toMatch(/Asia\/Jerusalem/);
+  expect(new URL((await academy.getByRole('link',{name:t('Week','שבוע'),exact:true}).getAttribute('href'))!,'https://fixture.invalid').searchParams.get('date')).toBe('2026-10-19');
+  await expect(academy.locator('[data-academy-calendar-timeline] [role="status"]')).toHaveCount(0);
+  if(role==='practitioner'){
+   const stage=academy.locator('#fishing-stage'),options=stage.locator('option[value]:not([value=""])');await expect(options).toHaveCount(1);await stage.selectOption((await options.first().getAttribute('value'))!);
+   await expect(academy.getByRole('button',{name:t('Prepare a twelve-session draft','הכנת טיוטה ל־12 מפגשים'),exact:true})).toBeVisible();
+  }
+  await academy.getByRole('link',{name:t('Week','שבוע'),exact:true}).click();await expect(page).toHaveURL(/view=week/);await expect(academy.locator(role==='parent'?'#fishing-learner':'#fishing-stage')).toBeEnabled();await expect(academy.locator('[data-academy-calendar-timeline] [role="status"]')).toHaveCount(0);
+  await page.reload();await expect(academy.locator(role==='parent'?'#fishing-learner':'#fishing-stage')).toBeEnabled();await expect(academy.locator('[data-academy-calendar-timeline] [role="status"]')).toHaveCount(0);
+  expect(clinical).toEqual([]);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await page.screenshot({path:info.outputPath(`academy-calendar-${role}-${locale}-${info.project.name}.png`),fullPage:true});
+  await page.goto(base+'?fishing=0');await expect(page.locator('[data-academy-calendar] [role="alert"]')).toContainText(t('unavailable','אינו זמין'));expect(clinical).toEqual([]);
+ }finally{page.off('request',observe);}
+ if(role==='parent'){
+  // The other business keeps its existing Calendar when Academy context is absent.
+  await page.goto(base);await expect(page.locator('#calendar-case')).toBeVisible();await expect(page.locator('[data-academy-calendar]')).toHaveCount(0);
+ }
+}
 export async function academyFamilyBrowserSnapshot(pool:pg.Pool,workspaceId:string):Promise<Snapshot>{return Promise.all([...mutable.keys(),...protectedTables].map(async table=>({table,rows:(await pool.query(`SELECT to_jsonb(t) AS row FROM ${table} t WHERE workspace_id=$1 ORDER BY to_jsonb(t)::text`,[workspaceId])).rows})));}
 export async function verifyAcademyFamilyBrowser(pool:pg.Pool,workspaceId:string,before:Snapshot){
  const after=await academyFamilyBrowserSnapshot(pool,workspaceId);
@@ -42,6 +66,7 @@ export async function academyFamilyOwnerJourney(page:Page,record:Locator,input:{
  let enrollmentStageId:string|null=null;if(process.env.LS_ACADEMY_ENROLLMENT_UI_ONLY==="true"){const {academyOwnerFitJourney}=await import("./academy-enrollment.journey.ts");enrollmentStageId=await academyOwnerFitJourney(page,record,saved.children[0],locale,info);}
  await page.reload();await box.locator('summary').click();await expect(box).toContainText(childName);await expect(box).toContainText(t('queued invitation is not delivered email','הזמנה בתור אינה הודעת דוא״ל שנמסרה'));
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await record.screenshot({path:info.outputPath(`academy-family-saved-${locale}-${info.project.name}.png`)});
+ if(enrollmentStageId)await academyCalendarContextJourney(page,locale,'practitioner',info);
  // Deliberate owner logout. Read only this fresh fixture's encrypted invitation
  // as a test mail delivery, then use the normal browser activation and login.
  await page.goto(`/${locale}/app/settings/account`);const logout=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/identity/logout'&&r.request().method()==='POST');await page.getByRole('button',{name:t('Sign out this device','יציאה מהמכשיר הזה'),exact:true}).click();expect((await logout).status()).toBe(200);
@@ -53,4 +78,5 @@ export async function academyFamilyOwnerJourney(page:Page,record:Locator,input:{
  const choices=await page.request.get('/api/calendar/fishing/context');expect(choices.status()).toBe(200);const context=(await choices.json()).data;expect(context.children).toEqual([{learnerId:saved.children[0].learnerId,displayName:childName}]);expect(context.stages).toEqual([]);expect((await page.request.get('/api/private/group-applications/family?applicationId='+applicationId)).status()).toBe(403);expect((await page.request.get('/api/private/group-applications')).status()).toBe(403);
  await page.reload();expect((await page.request.get('/api/calendar/fishing/context')).status()).toBe(200);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await page.screenshot({path:info.outputPath(`academy-family-parent-${locale}-${info.project.name}.png`)});
  if(enrollmentStageId){const {academyParentTermsJourney}=await import("./academy-enrollment.journey.ts");await academyParentTermsJourney(page,{learnerId:saved.children[0].learnerId,stageId:enrollmentStageId,locale},info);}
+ if(enrollmentStageId)await academyCalendarContextJourney(page,locale,'parent',info);
 }
