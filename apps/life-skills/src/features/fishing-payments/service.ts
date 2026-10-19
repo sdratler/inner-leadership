@@ -98,7 +98,10 @@ export class FishingPaymentService {
   if(!known.invoiceId)return null;
   const observation=await this.testHostedCall(context,{phase:'read',invoiceId:known.invoiceId});
   if(observation.status!=='open'||!observation.hasLine||observation.paidCents!==0||!observation.url)return null;
-  const result=await this.store.command(actor,commandId,'stripe-test.hosted.publish',{operationId},c=>this.currentTestHosted(c,context,true),c=>coordinator.publish(c,context,observation));
+  const result=await this.store.command(actor,commandId,'stripe-test.hosted.publish',{operationId},async c=>{
+   await this.currentTestHosted(c,context,true);
+   await coordinator.authorizePublication(c,context);
+  },c=>coordinator.publish(c,context,observation));
   if(!result)return null;
   // Validate cached command results too, after the transaction has committed.
   const due=context.offer.lines.find(l=>l.id===context.purchaseLineId)!.dues.find(d=>d.id===context.operation.dueId)!;

@@ -24,7 +24,7 @@ function fixture(){
  });
  const store={deps:{merchant:binding,clock:{now:()=>new Date(now)},authority:{loadApprovedOffer:vi.fn(async()=>context.offer)}},read,
   command:vi.fn(async<T>(a:Actor,key:string,action:string,body:unknown,authorize:(c:NativeContext)=>Promise<void>,work:(c:NativeContext)=>Promise<T>)=>read(a,async c=>{
-   await authorize(c);const old=cache.get(action+key),hash=digest(body);if(old){if(old.hash!==hash)throw Error('COMMAND_CONFLICT');return old.result as T;}
+   await authorize(c);events.push('cache-lookup');const old=cache.get(action+key),hash=digest(body);if(old){if(old.hash!==hash)throw Error('COMMAND_CONFLICT');return old.result as T;}
    const result=await work(c);cache.set(action+key,{hash,result});return result;
   })),
   operation:vi.fn(async()=>context.operation),purchase:vi.fn(async()=>({offer:context.offer,line:context.offer.lines[0]!,state:initialPayment(context.offer,context.offer.lines[0]!,purchaseId,binding)})),
@@ -39,6 +39,7 @@ function fixture(){
   observe:vi.fn(async()=>{expect(inTransaction).toBe(false);events.push('durable-observation');}),
   inspect:vi.fn(async()=>({context,invoiceId:knownId})),
   reconcile:vi.fn(async()=>{expect(inTransaction).toBe(true);events.push('reconciled-known-object');}),
+  authorizePublication:vi.fn(async()=>{expect(inTransaction).toBe(true);events.push('publication-authorized');}),
   publish:vi.fn(async(_c:NativeContext,_context:StripeTestHostedContext,o:StripeTestHostedObservation):Promise<FamilyHostedAction>=>{expect(inTransaction).toBe(true);events.push('native-mappings-committed-with-result');return {purchaseId,dueIndex:1,state:'ready',url:o.url!};}),
  };
  const perform=vi.fn<StripeTestHostedDependencies['provider']['perform']>(async(_context,action)=>{
@@ -79,6 +80,18 @@ it('publishes only after known-invoice readback and the mapping transaction comm
 });
 it('mapping transaction failure cannot return the observed hosted URL',async()=>{
  const f=fixture();vi.mocked(f.coordinator.publish).mockRejectedValueOnce(Error('SYNTHETIC_BINDING_COMMIT_FAILED'));await expect(f.service.familyStripeTestHostedAction(f.actor,'publish',f.opId)).rejects.toThrow('SYNTHETIC_BINDING_COMMIT_FAILED');expect(f.perform).toHaveBeenCalledTimes(1);
+});
+it('reauthorizes publication in the current transaction before returning a cached URL',async()=>{
+ const f=fixture();const first=await f.service.familyStripeTestHostedAction(f.actor,'same-publish',f.opId);f.events.length=0;
+ await expect(f.service.familyStripeTestHostedAction(f.actor,'same-publish',f.opId)).resolves.toEqual(first);
+ expect(f.coordinator.authorizePublication).toHaveBeenCalledTimes(2);expect(f.coordinator.publish).toHaveBeenCalledTimes(1);expect(f.perform).toHaveBeenCalledTimes(2);
+ expect(f.events.indexOf('publication-authorized')).toBeLessThan(f.events.indexOf('cache-lookup'));
+});
+it.each(['CLOSE_PENDING','CUSTOMER_REVOKED','LINK_POLICY_REVOKED'])('a cached URL cannot bypass fresh Root publication denial: %s',async reason=>{
+ const f=fixture();await f.service.familyStripeTestHostedAction(f.actor,'same-publish',f.opId);f.events.length=0;
+ vi.mocked(f.coordinator.authorizePublication).mockRejectedValueOnce(Error(reason));
+ await expect(f.service.familyStripeTestHostedAction(f.actor,'same-publish',f.opId)).rejects.toThrow(reason);
+ expect(f.coordinator.authorizePublication).toHaveBeenCalledTimes(2);expect(f.coordinator.publish).toHaveBeenCalledTimes(1);expect(f.events).not.toContain('cache-lookup');
 });
 it('revocation during provider read denies publication without weakening ordinary authority',async()=>{
  const f=fixture();f.perform.mockImplementationOnce(async()=>{expect(f.inTransaction()).toBe(false);f.revoke();return f.observation('open');});await expect(f.service.familyStripeTestHostedAction(f.actor,'publish',f.opId)).rejects.toThrow('NOT_FOUND');expect(f.coordinator.publish).not.toHaveBeenCalled();

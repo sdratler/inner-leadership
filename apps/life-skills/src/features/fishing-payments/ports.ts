@@ -109,6 +109,11 @@ export interface StripeTestHostedCoordinator {
  /** Reconcile only the known object and its journal in the supplied transaction;
   * no create, fresh idempotency key, cash fact, grant or public URL. */
  reconcile(c:NativeContext,context:StripeTestHostedContext,observation:StripeTestHostedObservation):Promise<void>;
+ /** MUST run in the command AUTHORIZE transaction before cached result lookup,
+  * not only inside publish work. Reload current native context, customer/policy
+  * revisions and closing/closed state under the same locks; deny revoked or
+  * close-pending links even when an earlier command cached a ready URL. */
+ authorizePublication(c:NativeContext,context:StripeTestHostedContext):Promise<void>;
  publish(c:NativeContext,context:StripeTestHostedContext,observation:StripeTestHostedObservation):Promise<import('./domain.ts').FamilyHostedAction|null>;
 }
 export type StripeTestHostedDependencies=Readonly<{provider:StripeTestHostedProvider;coordinator:StripeTestHostedCoordinator}>;
