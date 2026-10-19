@@ -8,7 +8,7 @@ import {seal,unseal,type Keyring} from "../identity/crypto.ts";
 import {one,type IdentityStore,type SqlSession} from "../identity/store.ts";
 import {systemClock,type Actor,type AccountFacts,type IdentityClock} from "../identity/types.ts";
 import {approvedOffer,digest,settled,familyPayment,POLICY_VERSION,type SettlementFact,type MerchantBinding,type FamilyPaymentView} from "../fishing-payments/domain.ts";
-import type {FishingAuthority} from "../fishing-payments/ports.ts";
+import type {FishingAuthority,NativeContext} from "../fishing-payments/ports.ts";
 import type {EnrollmentProjection,FishingStageRef,PaymentState} from "./contract.ts";
 import type {FishingStageNativeHooks,NativeStageHookContext} from "./native-stage-ports.ts";
 import type {ApprovedStageTemplate,CanonicalOccurrence} from "../fishing-stage/contract.ts";
@@ -396,6 +396,17 @@ export class NativeFishingProgram {
    await this.actor(tx,actor);
    return fishingCalendarOperatorSchema.parse({venues:venues.map(row=>({id:row.id,capacity:row.capacity,...z.object({label,address:z.string().max(1200)}).parse(this.decode("venue",c.actor.workspaceId,row.id,row.ciphertext))})),roster,makeupNotices,makeupFits});
   });}catch(error){clean(error);}
+ }
+ /** Financial cleanup only, from PAY's already authenticated NativeContext.
+  * This does not grant parent/read/hosted access. An inactive cohort or revoked
+  * guardian must not prevent the current financial owner closing a stale link.
+  * Provider/effect-decision admission is separately required by the coordinator. */
+ async stripeHostedClosureOfferInTransaction(c:NativeContext,offerId:string){
+  const account=await one<{role:string}>(c.tx,"SELECT role FROM ls_identity.accounts WHERE workspace_id=$1 AND id=$2 AND state='active' AND email_verified_at<=clock_timestamp() FOR SHARE",[c.actor.workspaceId,c.actor.id]);
+  requireFact(account?.role==='practitioner'&&c.actor.role==='practitioner','FORBIDDEN');requireFact(await demoAccountBatch(c.tx,c.actor.workspaceId,c.actor.id)===null,'FORBIDDEN');
+  const {offer}=await this.approved(c.tx,c.actor.workspaceId,offerId);requireFact(offer.operatorAccountId===c.actor.id,'FORBIDDEN');
+  for(const line of offer.lines){const cohort=await one<{operatorId:string;cohortId:string;stage:number}>(c.tx,'SELECT operator_id AS "operatorId",cohort_id AS "cohortId",stage FROM ls_fishing_stage.cohorts WHERE workspace_id=$1 AND stage_id=$2 FOR SHARE',[c.actor.workspaceId,line.stageId]);requireFact(cohort&&cohort.operatorId===c.actor.id&&cohort.cohortId===line.cohortId&&cohort.stage===line.stage,'FORBIDDEN');}
+  return offer;
  }
  /** Partial existing payment port only; withdrawal/reminder/native provider
   * activation are NOT supplied or silently defaulted by this integration. */
