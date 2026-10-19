@@ -447,6 +447,15 @@ if(!runtimePath){
   await expect(page.getByText(locale==="he"?"הפניות נשארות נפרדות מאנשים, מרשומות טיפוליות, מהרשמה, מהזמנות ומתשלומים עד לפעולה מפורשת ונפרדת.":"Inquiries remain separate from People, clinical records, enrollment, bookings and payments until you take a separate explicit action.",{exact:false})).toBeVisible();
   const record=page.locator("article").filter({hasText:data.publicApplicantName});await expect(record).toHaveCount(1);await expect(record.getByRole("heading",{name:new RegExp(data.publicApplicantName)})).toBeVisible();
   const contact=record.locator(":scope > p > bdi");await expect(contact).toHaveText("synthetic@example.invalid");await expect(contact).toHaveAttribute("dir","ltr");
+  // One read-only UI fault after the real initial native read. Retry must keep
+  // the newly attempted search rather than silently reverting to all records.
+  const attempts:string[]=[],searchRoute="**/api/private/group-applications?**";
+  await page.route(searchRoute,async route=>{attempts.push(new URL(route.request().url()).searchParams.get("search")??"");if(attempts.length===1)await route.fulfill({status:503,contentType:"application/json",body:JSON.stringify({ok:false,error:{code:"UNAVAILABLE"}})});else await route.continue();});
+  try{
+   const search=page.getByRole("search");await search.getByRole("searchbox").fill(data.publicApplicantName);await search.getByRole("button",{name:locale==="he"?"חיפוש":"Search",exact:true}).click();
+   await expect(page.getByRole("alert")).toContainText(locale==="he"?"לא ניתן לטעון את הפניות":"Inquiries could not be loaded");
+   await page.getByRole("button",{name:locale==="he"?"ניסיון נוסף":"Try again",exact:true}).click();await expect(record).toHaveCount(1);await expect(page.getByRole("alert")).toHaveCount(0);expect(attempts).toEqual([data.publicApplicantName,data.publicApplicantName]);
+  }finally{await page.unroute(searchRoute);}
   const details=record.locator("details").filter({has:page.getByText(locale==="he"?"הערה על זמנים":"Scheduling note",{exact:true})});await expect(details).not.toHaveAttribute("open","");await details.locator("summary").click();await expect(details).toHaveAttribute("open","");await expect(details).toContainText("Synthetic scheduling details only.");
   const views=page.getByRole("navigation",{name:locale==="he"?"תצוגות הדף הנוכחי":"Current page views"});await expect(views.getByRole("link",{name:locale==="he"?"בקשות לקבוצה":"Group applications",exact:true})).toHaveAttribute("aria-current","page");
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
