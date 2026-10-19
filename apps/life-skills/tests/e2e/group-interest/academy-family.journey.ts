@@ -6,6 +6,7 @@ import pg from 'pg';
 import {unseal,type Keyring} from '../../../src/features/identity/crypto.ts';
 const mutable=new Map<string,number>([['ls_identity.accounts',2],['ls_identity.account_subjects',2],['ls_identity.people',4],['ls_cases.families',2],['ls_cases.family_members',4],['ls_education.guardian_authorities',2],['ls_identity.auth_mail_outbox',4],['ls_fishing_stage.command_receipts',process.env.LS_ACADEMY_ENROLLMENT_UI_ONLY==='true'?6:2],['ls_fishing_stage.fit_decisions',process.env.LS_ACADEMY_ENROLLMENT_UI_ONLY==='true'?2:0],['ls_fishing_stage.terms_acceptances',process.env.LS_ACADEMY_ENROLLMENT_UI_ONLY==='true'?2:0]]);
 const protectedTables=['ls_cases.cases','ls_cases.case_guardians','ls_education.account_grants','ls_calendar.appointments','ls_calendar.tasks','ls_calendar.task_history','ls_contact_ops.outbound_projections','ls_onboarding.first_session_orders','ls_payments.charges','ls_payments.credit_events','ls_fishing_stage.enrollments','ls_fishing_payments.purchases','ls_fishing_payments.outbox'];
+if(process.env.LS_ACADEMY_OFFER_UI_ONLY==='true'){mutable.set('ls_fishing_stage.command_receipts',20);mutable.set('ls_fishing_stage.offer_approvals',4);mutable.set('ls_fishing_stage.seat_reservations',48);}
 type Snapshot={table:string;rows:{row:Record<string,unknown>}[]}[];
 async function academyCalendarContextJourney(page:Page,locale:'en'|'he',role:'practitioner'|'parent',info:TestInfo){
  const t=(en:string,he:string)=>locale==='he'?he:en,base=`/${locale}/${role==='practitioner'?'app/calendar':'family/schedule'}`,clinical:string[]=[];
@@ -19,7 +20,7 @@ async function academyCalendarContextJourney(page:Page,locale:'en'|'he',role:'pr
   await expect(academy.locator('[data-academy-calendar-timeline] [role="status"]')).toHaveCount(0);
   if(role==='practitioner'){
    const stage=academy.locator('#fishing-stage'),options=stage.locator('option[value]:not([value=""])');await expect(options).toHaveCount(1);await stage.selectOption((await options.first().getAttribute('value'))!);
-   await expect(academy.getByRole('button',{name:t('Prepare a twelve-session draft','הכנת טיוטה ל־12 מפגשים'),exact:true})).toBeVisible();
+   await expect(academy.getByRole('button',{name:process.env.LS_ACADEMY_OFFER_UI_ONLY==='true'?t('Manage this stage','ניהול השלב'):t('Prepare a twelve-session draft','הכנת טיוטה ל־12 מפגשים'),exact:true})).toBeVisible();
   }
   await academy.getByRole('link',{name:t('Week','שבוע'),exact:true}).click();await expect(page).toHaveURL(/view=week/);await expect(academy.locator(role==='parent'?'#fishing-learner':'#fishing-stage')).toBeEnabled();await expect(academy.locator('[data-academy-calendar-timeline] [role="status"]')).toHaveCount(0);
   await page.reload();await expect(academy.locator(role==='parent'?'#fishing-learner':'#fishing-stage')).toBeEnabled();await expect(academy.locator('[data-academy-calendar-timeline] [role="status"]')).toHaveCount(0);
@@ -48,7 +49,7 @@ export async function verifyAcademyFamilyBrowser(pool:pg.Pool,workspaceId:string
  const receipts=(await pool.query("SELECT count(*)::int AS count FROM ls_fishing_stage.command_receipts WHERE workspace_id=$1 AND action='academy.family.setup'",[workspaceId])).rows[0];expect(receipts.count).toBe(2);
  const accounts=(await pool.query("SELECT count(*)::int AS count FROM ls_identity.accounts a WHERE workspace_id=$1 AND role='parent' AND state='active' AND EXISTS(SELECT 1 FROM ls_identity.auth_mail_outbox m WHERE m.workspace_id=a.workspace_id AND m.account_id=a.id AND m.kind='invite')",[workspaceId])).rows[0];expect(accounts.count).toBe(2);
 }
-export async function academyFamilyOwnerJourney(page:Page,record:Locator,input:{origin:string;workspaceId:string;locale:'en'|'he';applicationId:string},info:TestInfo){
+export async function academyFamilyOwnerJourney(page:Page,record:Locator,input:{origin:string;workspaceId:string;locale:'en'|'he';applicationId:string;ownerLogin?:()=>Promise<void>},info:TestInfo){
  info.setTimeout(120000);
  const {origin,locale,applicationId,workspaceId}=input,t=(en:string,he:string)=>locale==='he'?he:en;
  if(process.env.LS_ACADEMY_FAMILY_UI_ONLY!=='true'||!/^https:\/\/localhost:310[56]$/.test(origin)||new URL(page.url()).origin!==origin)throw Error('EXCLUSIVE_SYNTHETIC_FAMILY_BROWSER_REQUIRED');
@@ -83,4 +84,5 @@ export async function academyFamilyOwnerJourney(page:Page,record:Locator,input:{
  await page.reload();expect((await page.request.get('/api/calendar/fishing/context')).status()).toBe(200);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await page.screenshot({path:info.outputPath(`academy-family-parent-${locale}-${info.project.name}.png`)});
  if(enrollmentStageId){const {academyParentTermsJourney}=await import("./academy-enrollment.journey.ts");await academyParentTermsJourney(page,{learnerId:saved.children[0].learnerId,stageId:enrollmentStageId,locale},info);}
  if(enrollmentStageId)await academyCalendarContextJourney(page,locale,'parent',info);
+ if(process.env.LS_ACADEMY_OFFER_UI_ONLY==='true'){if(!enrollmentStageId||!input.ownerLogin)throw Error('ORDINARY_OWNER_OFFER_LOGIN_REQUIRED');const {academyOwnerOfferJourney}=await import('./academy-offer.journey.ts');await academyOwnerOfferJourney(page,record,{locale,stageId:enrollmentStageId,learnerId:saved.children[0].learnerId,ownerLogin:input.ownerLogin},info);}
 }

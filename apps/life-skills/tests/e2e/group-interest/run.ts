@@ -23,6 +23,8 @@ const sampleOnly=process.env.LS_FLORIDA_SAMPLE_TEST_ONLY==="true";
 const fishingOnly=process.env.LS_FISHING_LEAD_UI_ONLY==="true";
 const familyOnly=process.env.LS_ACADEMY_FAMILY_UI_ONLY==="true";
 const enrollmentOnly=process.env.LS_ACADEMY_ENROLLMENT_UI_ONLY==="true";
+const offerOnly=process.env.LS_ACADEMY_OFFER_UI_ONLY==="true";
+if(offerOnly&&!enrollmentOnly)throw Error('OFFER_REQUIRES_RETAINED_ENROLLMENT_HARNESS');
 if(enrollmentOnly&&!familyOnly)throw Error("ENROLLMENT_REQUIRES_RETAINED_FAMILY_HARNESS");
 if(familyOnly&&(!fishingOnly||!["desktop","mobile390"].includes(project??"")||process.env.LS_RM_LAUNCH_OPS09_ONLY==="true"||process.env.LS_EDUCATION_UI_ONLY==="true"||process.env.LS_COMMUNITY_UI_ONLY==="true"))throw Error("FAMILY_EXCLUSIVE_ORDINARY_HARNESS_REQUIRED");
 const educationOnly=process.env.LS_EDUCATION_UI_ONLY==="true";
@@ -353,6 +355,7 @@ try{
   }
   const retainedPublic=await f.pool.query("SELECT to_jsonb(a)::text AS snapshot FROM ls_service_interest.public_applications a WHERE workspace_id=$1 AND id=$2",[workspaceId,publicApplicationId]);
   if(JSON.stringify(retainedPublic.rows)!==JSON.stringify(originalPublic.rows))throw new Error("FISHING_UI_EXISTING_RECEIPT_MUTATED");
+  if(offerOnly)console.log(`ACADEMY_OFFER_UI_ACCEPTANCE_PASS project=${project} locales=en,he ordinaryOwnerAfterParentTerms=true atomicPrepareExactRetry=true withdrawPrivateHistory=true capacityReleased=true noPaymentEnrollmentProvider=true`);
   if(enrollmentOnly)console.log(`ACADEMY_ENROLLMENT_UI_ACCEPTANCE_PASS project=${project} locales=en,he ordinaryOwnerFit=true ordinaryParentTerms=true commitLossExactRetry=true protectedRowsUnchanged=true noPaymentEnrollmentProvider=true`);
   if(familyOnly)console.log(`ACADEMY_FAMILY_UI_ACCEPTANCE_PASS project=${project} locales=en,he ordinaryOwnerAndNewParent=true exactReplay=true newFamilies=2 newChildren=2 invitationsQueuedThenConsumed=2 securityNoticesQueued=2 noEnrollmentPaymentTaskProvider=true`);
   else console.log(`FISHING_LEAD_UI_ACCEPTANCE_PASS project=${project} composedPublicOwnerLogin=true ordinaryRelogin=true scopedDetailsSaved=true detailsRetainedAfterRemoval=true revisions=14 operations=14 profiles=5 projections=6 publicInquiries=4 publicOperations=4 tasksUnchanged=true unrelatedProfileUnchanged=true providerEffects=0`);
