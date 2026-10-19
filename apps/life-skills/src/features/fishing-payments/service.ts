@@ -2,11 +2,109 @@ import { randomUUID } from 'node:crypto';
 import type { Actor } from '../fishing/contract.ts';
 import { one } from '../identity/store.ts';
 import { approvedOffer,digest,id,invariant,withdrawalProposal,type FamilyHostedAction } from './domain.ts';
-import type { NativeContext,ProviderOperation,HostedResult,RefundResult } from './ports.ts';
+import type { NativeContext,ProviderOperation,HostedResult,RefundResult,StripeTestHostedContext,StripeTestHostedDependencies,StripeTestHostedAction,StripeTestHostedObservation,StripeTestHostedPhase } from './ports.ts';
 import { FishingPaymentStore } from './store.ts';
 
 export class FishingPaymentService {
- constructor(readonly store:FishingPaymentStore){}
+ readonly #stripeTestHosted:StripeTestHostedDependencies|undefined;
+ constructor(readonly store:FishingPaymentStore,stripeTestHosted?:StripeTestHostedDependencies){
+  this.#stripeTestHosted=stripeTestHosted?Object.freeze({...stripeTestHosted}):undefined;
+ }
+ private testHosted(){
+  const d=this.#stripeTestHosted,m=this.store.deps.merchant;
+  invariant(d&&d.provider.execution==='stripe_test_hosted_invoice'&&m&&!m.livemode&&m.apiVersion==='2026-09-30.endive'&&digest(d.provider.binding)===digest(m),'STRIPE_TEST_HOSTED_UNAVAILABLE');
+  return d;
+ }
+ private async testHostedContext(raw:StripeTestHostedContext){
+  const {validateStripeTestHostedContext}=await import('./stripe-test-hosted-provider.ts');
+  return validateStripeTestHostedContext(raw,this.testHosted().provider.binding);
+ }
+ /** Existing fresh actor/authority is checked again after the Root dispatch
+  * fence and after provider I/O. No transaction spans the external boundary. */
+ private async currentTestHosted(c:NativeContext,context:StripeTestHostedContext,issuing:boolean){
+  const op=await this.store.operation(c,context.operation.id),p=await this.store.purchase(c,op.purchaseId);
+  invariant(digest(op)===digest(context.operation)&&digest(p.offer)===digest(context.offer)&&p.line.id===context.purchaseLineId&&c.actor.workspaceId===op.workspaceId,'STRIPE_TEST_HOSTED_CONTEXT_CHANGED');
+  await this.store.access(c,p.offer,'read');
+  if(issuing){invariant(c.now.getTime()<Date.parse(context.linkExpiresAt),'STRIPE_TEST_HOSTED_LINK_EXPIRED');await this.executionAuthority(c,{...op,state:'reserved'});}
+ }
+ private async testHostedCall(context:StripeTestHostedContext,action:StripeTestHostedAction):Promise<StripeTestHostedObservation>{
+  const {provider}=this.testHosted(),controller=new AbortController();let timer:ReturnType<typeof setTimeout>|undefined;
+  try{
+   const raw=await Promise.race([provider.perform(context,action,controller.signal),new Promise<never>((_resolve,reject)=>{timer=setTimeout(()=>{controller.abort();reject(Error('STRIPE_TEST_HOSTED_UNAVAILABLE'));},15000);})]);
+   const {validateStripeTestHostedObservation}=await import('./stripe-test-hosted-provider.ts');
+   const observation=validateStripeTestHostedObservation(raw,context,'invoiceId'in action?action.invoiceId:undefined);
+   if(action.phase==='create')invariant(observation.status==='draft'&&!observation.hasLine&&observation.paidCents===0,'STRIPE_TEST_HOSTED_UNAVAILABLE');
+   if(action.phase==='add_line')invariant(observation.status==='draft'&&observation.hasLine&&observation.paidCents===0,'STRIPE_TEST_HOSTED_UNAVAILABLE');
+   if(action.phase==='finalize')invariant(observation.status==='open'&&observation.hasLine&&observation.paidCents===0&&observation.url,'STRIPE_TEST_HOSTED_UNAVAILABLE');
+   if(action.phase==='close')invariant(['void','paid'].includes(observation.status)&&observation.url===null,'STRIPE_TEST_HOSTED_UNAVAILABLE');
+   return observation;
+  }catch{throw Error('STRIPE_TEST_HOSTED_UNAVAILABLE');}finally{if(timer!==undefined)clearTimeout(timer);controller.abort();}
+ }
+ /** Root prepares native records only; no SDK call or implicit customer create. */
+ async prepareStripeTestHosted(actor:Actor,commandId:string,purchaseId:string,dueId:string){
+  id.parse(commandId);id.parse(purchaseId);id.parse(dueId);const {coordinator}=this.testHosted();
+  const context=await this.testHostedContext(await coordinator.prepare(actor,commandId,purchaseId,dueId));
+  invariant(context.operation.purchaseId===purchaseId&&context.operation.dueId===dueId,'STRIPE_TEST_HOSTED_CONTEXT_CHANGED');
+  await this.store.read(actor,c=>this.currentTestHosted(c,context,true));
+  return {operationId:context.operation.id,state:'prepared' as const};
+ }
+ /** One separately persisted phase, not an in-memory create→finalize chain.
+  * Root's global consume fence also denies replay of cached claim commands. */
+ async executeStripeTestHosted(actor:Actor,commandId:string,operationId:string,phase:StripeTestHostedPhase){
+  id.parse(commandId);id.parse(operationId);invariant(['create','add_line','finalize','close'].includes(phase),'STRIPE_TEST_HOSTED_UNAVAILABLE');
+  const {coordinator}=this.testHosted(),raw=await coordinator.claim(actor,commandId,operationId,phase);
+  if(!raw)return {state:'not_claimed' as const};
+  const claim=structuredClone(raw);id.parse(claim.id);const context=await this.testHostedContext(claim.context);
+  invariant(context.operation.id===operationId&&claim.action.phase===phase&&(phase==='close'?['unknown','confirmed'].includes(context.operation.state):context.operation.state==='unknown'),'STRIPE_TEST_HOSTED_CONTEXT_CHANGED');
+  if(!await coordinator.consume(actor,claim))return {state:'not_claimed' as const};
+  if(phase==='close')await this.store.read(actor,async c=>{invariant(c.actor.role==='practitioner','NOT_FOUND');await coordinator.authorizeClosure(c,claim);});
+  else await this.store.read(actor,c=>this.currentTestHosted(c,context,true));
+  try{
+   const observation=await this.testHostedCall(context,claim.action);
+   // Commit observation before another phase may be claimed. Even an unknown
+   // database reply must not expose the provider URL or trigger a new create.
+   await coordinator.observe(claim,observation);return {state:'observed' as const};
+  }catch{return {state:'unknown' as const};}
+ }
+ /** A lost create response without a durable ID stays UNKNOWN. No list/search,
+  * create or idempotency-key replacement is available in this path. */
+ async reconcileStripeTestHosted(actor:Actor,commandId:string,operationId:string){
+  id.parse(commandId);id.parse(operationId);const {coordinator}=this.testHosted(),known=await coordinator.inspect(actor,operationId),context=await this.testHostedContext(known.context);
+  invariant(context.operation.id===operationId,'STRIPE_TEST_HOSTED_CONTEXT_CHANGED');
+  await this.store.read(actor,c=>this.currentTestHosted(c,context,false));
+  if(!known.invoiceId)return {state:'unknown' as const};
+  let observation:StripeTestHostedObservation;
+  try{observation=await this.testHostedCall(context,{phase:'read',invoiceId:known.invoiceId});}catch{return {state:'unknown' as const};}
+  await this.store.command(actor,commandId,'stripe-test.hosted.reconcile',{operationId,context:digest(context),observation:digest(observation)},c=>this.currentTestHosted(c,context,false),c=>coordinator.reconcile(c,context,observation));
+  return {state:'observed' as const};
+ }
+ /** Closure recovery does not borrow revoked family/read access and cannot
+  * redispatch void/create. Root returns only the already-consumed close claim. */
+ async reconcileStripeTestHostedClosure(actor:Actor,operationId:string,closureDecisionId:string){
+  id.parse(operationId);id.parse(closureDecisionId);const {coordinator}=this.testHosted(),raw=await coordinator.inspectClosure(actor,operationId,closureDecisionId);
+  if(!raw)return {state:'unknown' as const};
+  const claim=structuredClone(raw),context=await this.testHostedContext(claim.context);
+  invariant(context.operation.id===operationId&&['unknown','confirmed'].includes(context.operation.state)&&claim.action.phase==='close'&&claim.action.closureDecisionId===closureDecisionId,'STRIPE_TEST_HOSTED_CONTEXT_CHANGED');
+  const invoiceId=claim.action.invoiceId;
+  await this.store.read(actor,async c=>{invariant(c.actor.role==='practitioner','NOT_FOUND');await coordinator.authorizeClosure(c,claim);});
+  try{const observation=await this.testHostedCall(context,{phase:'read',invoiceId});await coordinator.observe(claim,observation);return {state:'observed' as const};}catch{return {state:'unknown' as const};}
+ }
+ /** Only this committed ordinary-family path can publish the hosted URL.
+  * Root must atomically confirm its journal/mappings in publish(c,...). */
+ async familyStripeTestHostedAction(actor:Actor,commandId:string,operationId:string):Promise<FamilyHostedAction|null>{
+  id.parse(commandId);id.parse(operationId);const {coordinator}=this.testHosted(),known=await coordinator.inspect(actor,operationId),context=await this.testHostedContext(known.context);
+  invariant(context.operation.id===operationId,'STRIPE_TEST_HOSTED_CONTEXT_CHANGED');
+  await this.store.read(actor,c=>this.currentTestHosted(c,context,true));
+  if(!known.invoiceId)return null;
+  const observation=await this.testHostedCall(context,{phase:'read',invoiceId:known.invoiceId});
+  if(observation.status!=='open'||!observation.hasLine||observation.paidCents!==0||!observation.url)return null;
+  const result=await this.store.command(actor,commandId,'stripe-test.hosted.publish',{operationId},c=>this.currentTestHosted(c,context,true),c=>coordinator.publish(c,context,observation));
+  if(!result)return null;
+  // Validate cached command results too, after the transaction has committed.
+  const due=context.offer.lines.find(l=>l.id===context.purchaseLineId)!.dues.find(d=>d.id===context.operation.dueId)!;
+  invariant(result.purchaseId===context.operation.purchaseId&&result.dueIndex===due.index&&result.state==='ready'&&result.url===observation.url,'STRIPE_TEST_HOSTED_CONTEXT_CHANGED');
+  return {purchaseId:result.purchaseId,dueIndex:result.dueIndex,state:'ready' as const,url:result.url};
+ }
  private async executionAuthority(c:NativeContext,op:ProviderOperation){
   const p=await this.store.purchase(c,op.purchaseId);await this.store.access(c,p.offer,op.kind==='refund'?'refund':'hosted',op.kind==='refund');
   if(op.kind==='hosted_invoice')await this.store.assertHostedActivationAllowed(c,p.offer);
