@@ -141,12 +141,13 @@ export class NativeFishingProgram {
  }
  approveOffer(actor:Actor,raw:unknown){const input=offerCommandSchema.parse(raw);return this.command(actor,input.commandId,"offer.approve",input,async c=>{this.operator(c,await this.cohort(c.tx,c.actor.workspaceId,input.stageId));},async c=>{
   const cohort=await this.cohort(c.tx,c.actor.workspaceId,input.stageId);requireFact(input.policyApprovalId===cohort.policyApprovalId);const policy=programPolicySchema.parse((await this.source(c.tx,c.actor.workspaceId,input.policyApprovalId,"payment_condition",c.now)).payload);requireFact(policy.policyVersion===POLICY_VERSION,"POLICY_REQUIRED");
-  // Native qualifying-event/late-sibling decisions are not yet selected. Never
-  // silently charge the ordinary rate for a known qualifying family bundle.
+  // Qualifying prepay/late-sibling decisions are not yet selected. The owner
+  // separately settled full-rate installments for EVERY child: three650 dues.
+  // Never substitute ordinary prepay for an unresolved sibling/founder offer.
   requireFact(input.lines.length===1,"POLICY_REQUIRED");
   const related=await one(c.tx,`SELECT s.id FROM ls_fishing_stage.seat_reservations s JOIN ls_cases.family_members f ON f.workspace_id=s.workspace_id AND f.person_id=s.learner_id AND f.family_id=$3 AND f.role='child'
-   WHERE s.workspace_id=$1 AND s.stage_id=$2 AND s.learner_id<>$4 AND s.state<>'released' LIMIT 1`,[c.actor.workspaceId,input.stageId,input.householdId,input.lines[0]!.learnerId]);requireFact(!related,"POLICY_REQUIRED");
-  if(cohort.stage===1)requireFact(!await one(c.tx,"SELECT household_id FROM ls_fishing_payments.founder_households WHERE workspace_id=$1 AND household_id=$2 LIMIT 1",[c.actor.workspaceId,input.householdId]),"POLICY_REQUIRED");
+   WHERE s.workspace_id=$1 AND s.stage_id=$2 AND s.learner_id<>$4 AND s.state<>'released' LIMIT 1`,[c.actor.workspaceId,input.stageId,input.householdId,input.lines[0]!.learnerId]);requireFact(!related||input.lines[0]!.mode==='installments',"POLICY_REQUIRED");
+  if(cohort.stage===1&&input.lines[0]!.mode==='prepay')requireFact(!await one(c.tx,"SELECT household_id FROM ls_fishing_payments.founder_households WHERE workspace_id=$1 AND household_id=$2 LIMIT 1",[c.actor.workspaceId,input.householdId]),"POLICY_REQUIRED");
   const termsSource=await this.source(c.tx,c.actor.workspaceId,cohort.termsApprovalId,"terms",c.now),terms=programTermsSchema.parse(termsSource.payload);requireFact(terms.policyVersion===policy.policyVersion&&Date.parse(input.expiresAt)>c.now.valueOf());
   const lines=[];let acceptedAt:string|null=null;
   for(const line of input.lines){await this.guardian(c.tx,c.actor.workspaceId,input.payerAccountId,line.learnerId,input.householdId);await this.fit(c.tx,c.actor.workspaceId,line.fitDecisionId,input.stageId,line.learnerId,"enrollment");const accepted=await this.acceptance(c.tx,c.actor.workspaceId,line.termsAcceptanceId,cohort,line.learnerId,input.payerAccountId,input.householdId,c.now);acceptedAt=acceptedAt===null?accepted.acceptedAt.toISOString():new Date(Math.max(Date.parse(acceptedAt),accepted.acceptedAt.valueOf())).toISOString();

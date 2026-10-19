@@ -87,9 +87,15 @@ test('siblings remain explicitly selected through Academy Home; each payment bel
  const f=await fixture(),a=await f.enrolled(),siblingId=await f.person('minor','Same name / אותו שם');
  await f.pool.query("INSERT INTO ls_cases.family_members(workspace_id,family_id,person_id,role) VALUES($1,$2,$3,'child')",[f.workspaceId,a.family.householdId,siblingId]);
  await f.pool.query("INSERT INTO ls_education.guardian_authorities(workspace_id,learner_id,account_id,active,verified_at,source_reference,verified_by) VALUES($1,$2,$3,true,$4,'synthetic-sibling-guardian',$5)",[f.workspaceId,siblingId,a.family.parent.id,new Date(Date.now()-1000),f.owner.id]);
- const sibling={...a.family,learnerId:siblingId},purchase=await f.prepare(sibling);await f.settle(purchase);const enrollment=await f.enroll(purchase),selection={learnerId:siblingId,enrollmentId:enrollment.result.id,reference:f.ref},auth=await f.login(a.family.parent),before=await f.effects();
+ const sibling={...a.family,learnerId:siblingId},purchase=await f.prepare(sibling,'installments');
+ const offersBefore=(await f.pool.query('SELECT count(*)::integer AS count FROM ls_fishing_stage.offer_approvals WHERE workspace_id=$1',[f.workspaceId])).rows[0].count;
+ await expect(f.program.approveOffer(f.owner,{...purchase.offer,commandId:randomUUID(),id:randomUUID(),lines:purchase.offer.lines.map(line=>({...line,mode:'prepay',dueAt:line.dueAt.slice(0,1)}))})).rejects.toMatchObject({code:'POLICY_REQUIRED'});
+ expect((await f.pool.query('SELECT count(*)::integer AS count FROM ls_fishing_stage.offer_approvals WHERE workspace_id=$1',[f.workspaceId])).rows[0].count).toBe(offersBefore);
+ for(const index of [1,2,3])await f.settle(purchase,index);
+ const enrollment=await f.enroll(purchase),selection={learnerId:siblingId,enrollmentId:enrollment.result.id,reference:f.ref},auth=await f.login(a.family.parent),before=await f.effects();
  const context=(await (await f.read(auth)).json()).data;expect(context.children).toHaveLength(2);expect(context.selectedLearnerId).toBeNull();expect(context.stages).toEqual([]);
  const own=(await (await f.read(auth,'family-home',fishingCalendarSearch(a.selection))).json()).data,other=(await (await f.read(auth,'family-home',fishingCalendarSearch(selection))).json()).data;expect(own.payment.purchaseId).toBe(a.purchase.purchaseId);expect(other.payment.purchaseId).toBe(purchase.purchaseId);expect(own.view.enrollmentId).not.toBe(other.view.enrollmentId);
+ expect(other.payment).toMatchObject({totalCents:195000,paidCents:195000,state:'paid'});expect(other.payment.dues).toHaveLength(3);expect(other.payment.dues.map((d:{amountCents:number})=>d.amountCents)).toEqual([65000,65000,65000]);
  expect((await f.read(auth,'family-home',fishingCalendarSearch({...selection,enrollmentId:a.enrollment.result.id}))).status).toBe(404);expect(await f.effects()).toEqual(before);
 });
 
