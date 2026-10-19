@@ -159,7 +159,7 @@ if(!runtimePath){
   expect((await page.request.post("/api/identity/logout",{headers:{origin:runtime.origin,"sec-fetch-site":"same-origin","x-csrf-token":session.data.csrfToken},data:{}})).status()).toBe(200);
   await page.goto(academyTarget);await expect(page).toHaveURL(new RegExp(`/${locale}/login\\?next=`));
   await page.getByLabel(t("Email","דוא״ל"),{exact:true}).fill(credentials.email);await page.getByLabel(t("Password","סיסמה"),{exact:true}).fill(credentials.password);await page.getByRole("button",{name:t("Sign in","כניסה"),exact:true}).click();
-  await expect(page).toHaveURL(academyTarget);await verifyAcademy();
+  await expect(page).toHaveURL(url=>url.pathname===`/${locale}/app/clients`&&url.searchParams.size===4&&[...new URL(academyTarget,runtime.origin).searchParams].every(([key,value])=>url.searchParams.get(key)===value));await verifyAcademy();
   }
   await page.screenshot({path:info.outputPath(`academy-directory-${locale}-${info.project.name}.png`)});
   await page.goto(`/${locale}/app/group-applications`);await details.locator("summary").click();
