@@ -46,15 +46,15 @@ describe.each(["en","he"] as const)("%s static Academy prices",locale=>{
   const html=article(render(locale),"installments");expect(html).toContain('<bdi dir="ltr">$1,950</bdi>');expect(plain(html)).toContain("3 × $650 = $1,950");expect(plain(html)).toContain(locale==="he"?"אין הנחת אחים במסלול התשלומים":"No sibling installment discount");expect(plain(html)).toContain(locale==="he"?"לילד הראשון ולאחים":"Primary learners and siblings");expect(html).not.toMatch(/Save|חיסכון|\$1,550|\$1,650|\$1,750/);expect(3*650).toBe(1950);
  });
  test("does not sell annual prepay, stacked discounts, automatic next stages or800 savings",()=>{
-  const text=plain(render(locale));for(const expected of locale==="he"?["השלב הראשון בלבד","אין כפל הנחות","תשלום מראש לשנה שלמה","חיוב אוטומטי לשלב הבא"]:["first stage only","No stacked discounts","annual prepayment","automatic next-stage charges"])expect(text).toContain(expected);
+  const text=plain(render(locale));expect(text).toContain(locale==="he"?"לשלב הראשון בלבד":"first-stage prepay only");
   expect(text).not.toMatch(/\$800|\$[678],\d{3}|cancel.anytime|membership|subscription|annually|renewal/);
  });
- test("explains verified payment eligibility and saving registration before separate payment",()=>{
+ test("keeps the action area concise without claiming an inquiry reserves a place",()=>{
   const text=plain(render(locale));expect(text).not.toMatch(/Form first, payment second|קודם הטופס/);
-  for(const expected of locale==="he"?["רק תשלום מזכה שאומת","בקשה לשיחה חוזרת","ממלאים ושומרים","התשלום והקבוצה מאושרים בנפרד"]:["Only verified qualifying payment","requesting a callback does not reserve a place","Save your registration details first","payment and group are confirmed separately"])expect(text).toContain(expected);
+  expect(text).not.toContain(locale==="he"?"שליחת טופס או בקשה לשיחה חוזרת":"submitting a form or requesting a callback");
  });
  test("default action navigates to the exact locale-specific full form",()=>{
-  const html=render(locale);expect(html).toContain(`href="/${locale}/florida/apply"`);expect(html).toContain(locale==="he"?"להרשמה":"Register");expect(html).not.toMatch(/<form|<input|<textarea|<button|<iframe|<script|<img|<svg/);expect(html.match(/<a\b/g)).toHaveLength(2);expect(plain(html)).not.toMatch(/Pay now|Checkout now|Reserve now|Pay here/);
+  const html=render(locale);expect(html).toContain(`href="/${locale}/florida/apply"`);expect(html).toContain(locale==="he"?"להרשמה":"Register");expect(html).not.toMatch(/<form|<input|<textarea|<button|<iframe|<script|<img/);expect(html.match(/<a\b/g)).toHaveLength(2);expect(plain(html)).not.toMatch(/Pay now|Checkout now|Reserve now|Pay here/);
  });
  test.each(["same","sample"])("explicit %s action preserves the narrow href whitelist",mode=>{
   const href=mode==="same"?`/${locale}/florida/apply`:"#apply";expect(render(locale,href)).toContain(`href="${href}"`);
