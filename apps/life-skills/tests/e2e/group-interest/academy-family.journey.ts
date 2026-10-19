@@ -4,13 +4,19 @@ import {createHash} from 'node:crypto';
 import {expect,type Page,type Locator,type TestInfo} from '@playwright/test';
 import pg from 'pg';
 import {unseal,type Keyring} from '../../../src/features/identity/crypto.ts';
-const mutable=new Map<string,number>([['ls_identity.accounts',2],['ls_identity.account_subjects',2],['ls_identity.people',4],['ls_cases.families',2],['ls_cases.family_members',4],['ls_education.guardian_authorities',2],['ls_identity.auth_mail_outbox',2],['ls_fishing_stage.command_receipts',2]]);
+const mutable=new Map<string,number>([['ls_identity.accounts',2],['ls_identity.account_subjects',2],['ls_identity.people',4],['ls_cases.families',2],['ls_cases.family_members',4],['ls_education.guardian_authorities',2],['ls_identity.auth_mail_outbox',4],['ls_fishing_stage.command_receipts',2]]);
 const protectedTables=['ls_cases.cases','ls_cases.case_guardians','ls_education.account_grants','ls_calendar.appointments','ls_calendar.tasks','ls_calendar.task_history','ls_contact_ops.outbound_projections','ls_onboarding.first_session_orders','ls_payments.charges','ls_payments.credit_events','ls_fishing_stage.enrollments','ls_fishing_payments.purchases','ls_fishing_payments.outbox'];
 type Snapshot={table:string;rows:{row:Record<string,unknown>}[]}[];
 export async function academyFamilyBrowserSnapshot(pool:pg.Pool,workspaceId:string):Promise<Snapshot>{return Promise.all([...mutable.keys(),...protectedTables].map(async table=>({table,rows:(await pool.query(`SELECT to_jsonb(t) AS row FROM ${table} t WHERE workspace_id=$1 ORDER BY to_jsonb(t)::text`,[workspaceId])).rows})));}
 export async function verifyAcademyFamilyBrowser(pool:pg.Pool,workspaceId:string,before:Snapshot){
  const after=await academyFamilyBrowserSnapshot(pool,workspaceId);
  for(const prior of before){const current=after.find(v=>v.table===prior.table)!;expect(current.rows.length-prior.rows.length,prior.table).toBe(mutable.get(prior.table)??0);for(const row of prior.rows)expect(current.rows,prior.table+' original row').toContainEqual(row);}
+ // Normal invite acceptance cancels the consumed invite and queues its existing
+ // authentication security notice. Neither is a send or a second invitation.
+ const oldMail=new Set(before.find(v=>v.table==='ls_identity.auth_mail_outbox')!.rows.map(v=>v.row.id)),mail=after.find(v=>v.table==='ls_identity.auth_mail_outbox')!.rows.filter(v=>!oldMail.has(v.row.id)).map(v=>v.row);
+ expect(mail.filter(v=>v.kind==='invite'&&v.state==='canceled'&&v.payload_ciphertext===null)).toHaveLength(2);
+ expect(mail.filter(v=>v.kind==='security_notice'&&v.state==='queued'&&typeof v.payload_ciphertext==='string'&&v.token_digest===null)).toHaveLength(2);
+ expect(mail.every(v=>v.attempts===0&&v.provider_id===null)).toBe(true);
  const receipts=(await pool.query("SELECT count(*)::int AS count FROM ls_fishing_stage.command_receipts WHERE workspace_id=$1 AND action='academy.family.setup'",[workspaceId])).rows[0];expect(receipts.count).toBe(2);
  const accounts=(await pool.query("SELECT count(*)::int AS count FROM ls_identity.accounts a WHERE workspace_id=$1 AND role='parent' AND state='active' AND EXISTS(SELECT 1 FROM ls_identity.auth_mail_outbox m WHERE m.workspace_id=a.workspace_id AND m.account_id=a.id AND m.kind='invite')",[workspaceId])).rows[0];expect(accounts.count).toBe(2);
 }

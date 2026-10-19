@@ -350,7 +350,7 @@ try{
   }
   const retainedPublic=await f.pool.query("SELECT to_jsonb(a)::text AS snapshot FROM ls_service_interest.public_applications a WHERE workspace_id=$1 AND id=$2",[workspaceId,publicApplicationId]);
   if(JSON.stringify(retainedPublic.rows)!==JSON.stringify(originalPublic.rows))throw new Error("FISHING_UI_EXISTING_RECEIPT_MUTATED");
-  if(familyOnly)console.log(`ACADEMY_FAMILY_UI_ACCEPTANCE_PASS project=${project} locales=en,he ordinaryOwnerAndNewParent=true exactReplay=true newFamilies=2 newChildren=2 invitationsQueuedOnly=2 noEnrollmentPaymentTaskProvider=true`);
+  if(familyOnly)console.log(`ACADEMY_FAMILY_UI_ACCEPTANCE_PASS project=${project} locales=en,he ordinaryOwnerAndNewParent=true exactReplay=true newFamilies=2 newChildren=2 invitationsQueuedThenConsumed=2 securityNoticesQueued=2 noEnrollmentPaymentTaskProvider=true`);
   else console.log(`FISHING_LEAD_UI_ACCEPTANCE_PASS project=${project} composedPublicOwnerLogin=true ordinaryRelogin=true scopedDetailsSaved=true detailsRetainedAfterRemoval=true revisions=14 operations=14 profiles=5 projections=6 publicInquiries=4 publicOperations=4 tasksUnchanged=true unrelatedProfileUnchanged=true providerEffects=0`);
  }
  else if(process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==="true"){
