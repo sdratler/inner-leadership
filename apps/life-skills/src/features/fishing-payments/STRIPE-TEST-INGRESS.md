@@ -46,7 +46,13 @@ account, role/schema and signing secret are verified. The exact public URL may
 be returned as working only after HTTPS/provider delivery and durable readback.
 
 Tests: retained transport/signature/gate cases, guarded account-verifier cases,
-unchanged proxy regression cases, and the new nine-case restricted Postgres
-receipt suite. The native file is opt-in via `LS_STRIPE_INBOX_NATIVE_ALLOW=PAY_SCOPED`
+unchanged proxy regression cases, the nine-case restricted Postgres receipt
+suite, and five exact-operator/full-loader cases using real local verified TLS.
+These prove catalog text-array decoding, exact merchant policy checks, signed
+receipt commit/replay and refusal to repair an existing schema. Local fixture
+redirection of the private database hostname is explicit; it is not a Railway
+or external provider delivery proof. The first native file is opt-in via `LS_STRIPE_INBOX_NATIVE_ALLOW=PAY_SCOPED`
 and an exact disposable loopback target. Local synthetic passes are separate
 from real Stripe sandbox delivery and from later native balance allocation.
+The loader suite additionally requires `LS_STRIPE_LOADER_NATIVE_ALLOW=PAY_SCOPED`,
+an owned local TLS fixture and the exact reviewed private operator source.

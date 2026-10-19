@@ -38,12 +38,12 @@ async function assemble(env:Readonly<Record<string,string|undefined>>):Promise<S
    const columns=(await client.query("SELECT attname AS name,format_type(atttypid,atttypmod) AS type,attnotnull AS required FROM pg_attribute WHERE attrelid='ls_fishing_payments.inbox'::regclass AND attnum>0 AND NOT attisdropped ORDER BY attnum")).rows;
    const expectedColumns=[['provider_account_id','text',true],['livemode','boolean',true],['event_id','text',true],['digest','text',true],['receipt_json','jsonb',true],['received_at','timestamp with time zone',true],['processed_at','timestamp with time zone',false]];
    if(JSON.stringify(columns.map(row=>[row.name,row.type,row.required]))!==JSON.stringify(expectedColumns))throw fail();
-   const primary=(await client.query("SELECT ARRAY(SELECT a.attname FROM unnest(k.conkey) WITH ORDINALITY u(num,position) JOIN pg_attribute a ON a.attrelid=k.conrelid AND a.attnum=u.num ORDER BY u.position) AS columns FROM pg_constraint k WHERE k.conrelid='ls_fishing_payments.inbox'::regclass AND k.contype='p'")).rows;
+   const primary=(await client.query("SELECT ARRAY(SELECT a.attname::text FROM unnest(k.conkey) WITH ORDINALITY u(num,position) JOIN pg_attribute a ON a.attrelid=k.conrelid AND a.attnum=u.num ORDER BY u.position) AS columns FROM pg_constraint k WHERE k.conrelid='ls_fishing_payments.inbox'::regclass AND k.contype='p'")).rows;
    if(primary.length!==1||JSON.stringify(primary[0].columns)!==JSON.stringify(['provider_account_id','livemode','event_id']))throw fail();
    const policy=(await client.query(`SELECT p.polcmd,p.polpermissive,pg_get_expr(p.polqual,p.polrelid) AS "using",pg_get_expr(p.polwithcheck,p.polrelid) AS "check",
-    (SELECT array_agg(rolname ORDER BY rolname) FROM pg_roles WHERE oid=ANY(p.polroles)) AS roles
+    (SELECT array_agg(rolname::text ORDER BY rolname) FROM pg_roles WHERE oid=ANY(p.polroles)) AS roles
     FROM pg_policy p WHERE p.polrelid='ls_fishing_payments.inbox'::regclass`)).rows;
-   const expected=`provider_account_id = '${accountId}'::text`,matches=(value:unknown)=>typeof value==="string"&&value.includes(expected)&&value.includes("livemode = false");
+   const expected=`((provider_account_id = '${accountId}'::text) AND (livemode = false))`,matches=(value:unknown)=>value===expected;
    if(policy.length!==1||policy[0].polcmd!=="*"||!policy[0].polpermissive||JSON.stringify(policy[0].roles)!==JSON.stringify([roleName])||!matches(policy[0].using)||!matches(policy[0].check))throw fail();
    const elevated=(await client.query("SELECT EXISTS(SELECT 1 FROM pg_auth_members WHERE member=(SELECT oid FROM pg_roles WHERE rolname=current_user)) AS member,EXISTS(SELECT 1 FROM pg_namespace WHERE nspname IN('ls_identity','ls_payments','ls_calendar','ls_control') AND has_schema_privilege(current_user,oid,'USAGE')) AS core_usage")).rows[0];
    if(elevated?.member||elevated?.core_usage)throw fail();
