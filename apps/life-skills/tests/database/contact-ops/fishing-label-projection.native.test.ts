@@ -24,8 +24,8 @@ async function setup(poolMax=8){
  const current=async()=>{const p=(await store.read(actor,personId,3)).projection;if(!p)throw Error("LABEL_FIXTURE_PROJECTION_MISSING");return p;};
  const binding={accountId:"synthetic-channel",managedLabelId:"16",chatId:"13055550109@s.whatsapp.net"};let present=false,changes=0;
  const ports:FishingLabelPorts={accountId:binding.accountId,now:clock.now,serial:work=>store.withLabelLease(actor,personId,3,work),current,
-  record:(a,b,evidence)=>store.recordLabelProjection(actor,3,a,b,evidence),capability:async()=>({accountId:binding.accountId,state:"supported",checkedAt:clock.now().toISOString()}),binding:async()=>binding,
-  read:async()=>({binding,present,checkedAt:clock.now().toISOString()}),change:async(_,desired)=>{expect((await current()).status).toBe("outcome_unknown");changes++;present=desired;return {status:200};}};
+  record:(a,b,evidence)=>store.recordLabelProjection(actor,3,a,b,evidence),capability:async()=>({accountId:binding.accountId,state:"supported",checkedAt:clock.now().toISOString()}),labels:async()=>({accountId:binding.accountId,checkedAt:clock.now().toISOString(),labels:[{id:binding.managedLabelId,name:"JLFA • Lead"}]}),binding:async()=>binding,
+  read:async()=>({labelName:"JLFA • Lead",binding,present,checkedAt:clock.now().toISOString()}),change:async(_,desired)=>{expect((await current()).status).toBe("outcome_unknown");changes++;present=desired;return {status:200};}};
  const protectedTables=["ls_identity.people","ls_identity.accounts","ls_identity.account_subjects","ls_cases.cases","ls_cases.case_guardians","ls_calendar.appointments","ls_calendar.tasks","ls_calendar.task_history",
   "ls_contact_ops.profiles","ls_contact_ops.command_receipts","ls_contact_ops.fishing_lead_revisions","ls_contact_ops.fishing_lead_operations","ls_contact_ops.outbound_projections","ls_identity.auth_mail_outbox","ls_onboarding.first_session_orders"];
  const snapshot=()=>Promise.all(protectedTables.map(async table=>({table,rows:(await f.pool.query(`SELECT to_jsonb(t) AS row FROM ${table} t WHERE workspace_id=$1 ORDER BY to_jsonb(t)::text`,[f.workspaceId])).rows})));
@@ -39,7 +39,7 @@ test("actual native lease/CAS serializes concurrent label checks; one effect/rea
  expect(await s.snapshot()).toEqual(before);expect((await s.authority.read(s.actor)).nativeWritesSinceSwitch).toBe(4); // nativeAdd + binding + unknown + verified; not replays.
 });
 test("timeout-after-apply persists unknown through fresh store; retry only reads and verifies, without repeating native Add/provider effect",async()=>{
- const s=await setup(),before=await s.snapshot();let reads=0,changes=0;s.ports.read=async()=>{if(++reads===2)throw Error("synthetic failed read");return {binding:s.binding,present:changes>0,checkedAt:new Date().toISOString()};};
+ const s=await setup(),before=await s.snapshot();let reads=0,changes=0;s.ports.read=async()=>{if(++reads===2)throw Error("synthetic failed read");return {labelName:"JLFA • Lead",binding:s.binding,present:changes>0,checkedAt:new Date().toISOString()};};
  s.ports.change=async()=>{changes++;throw Error("synthetic timeout after apply");};expect((await reconcileFishingLabel(await s.current(),s.ports)).state).toBe("outcome_unknown");
  const reopened=new FishingLeadStore(poolStore(s.f.pool),s.f.keyring,key,program);expect((await reopened.read(s.actor,s.personId,3)).projection?.status).toBe("outcome_unknown");
  expect((await reconcileFishingLabel(await s.current(),s.ports)).state).toBe("verified");expect(changes).toBe(1);expect(await s.snapshot()).toEqual(before);

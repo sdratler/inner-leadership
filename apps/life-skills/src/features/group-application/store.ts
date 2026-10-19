@@ -17,6 +17,9 @@ type Row={id:string;requestDigest:string;payloadCiphertext:string;receivedAt:Dat
 const aad=(workspace:string,id:string)=>`ls_service_interest/public_application/v1/${workspace}/${id}`;
 const select=`SELECT id,request_digest AS "requestDigest",payload_ciphertext AS "payloadCiphertext",received_at AS "receivedAt"
  FROM ls_service_interest.public_applications`;
+const reviewQuerySchema=z.object({search:z.string().trim().max(200).default(""),cursor:z.string().uuid().optional()}).strict();
+export type GroupApplicationReviewQuery=z.input<typeof reviewQuerySchema>;
+export type GroupApplicationReviewPage={items:GroupApplicationRecord[];nextCursor:string|null};
 
 /** Private inquiry only; optional administrative outbox is atomic and never sends here. */
 export class PublicGroupApplicationStore{
@@ -88,6 +91,27 @@ export class PublicGroupApplicationStore{
   if(actor.workspaceId!==this.workspaceId)throw new AppError("FORBIDDEN");
   return this.db.transaction(async tx=>{await tx.query("SET TRANSACTION READ ONLY");requirePractitioner(await freshActor(tx,actor,this.clock.now()));
    const rows=await tx.query<Row>(select+" WHERE workspace_id=$1 ORDER BY received_at DESC,id DESC LIMIT 50",[actor.workspaceId]);return rows.map(row=>this.decode(row));});
+ }
+ /** Search encrypted inquiry fields only after fresh practitioner/workspace
+  * authorization. Bound each scan, retaining a cursor even for an empty match
+  * page so older inquiries are reachable without a plaintext search index. */
+ async listPage(actor:Actor,input:GroupApplicationReviewQuery={}):Promise<GroupApplicationReviewPage>{
+  if(actor.workspaceId!==this.workspaceId)throw new AppError("FORBIDDEN");
+  const parsed=reviewQuerySchema.safeParse(input);if(!parsed.success)throw new AppError("INVALID_REQUEST");
+  const {cursor,search}=parsed.data,needle=search.normalize("NFKC").toLocaleLowerCase();
+  return this.db.transaction(async tx=>{
+   await tx.query("SET TRANSACTION READ ONLY");requirePractitioner(await freshActor(tx,actor,this.clock.now()));
+   if(cursor){const anchor=await tx.query("SELECT id FROM ls_service_interest.public_applications WHERE workspace_id=$1 AND id=$2",[this.workspaceId,cursor]);if(anchor.length!==1)throw new AppError("INVALID_REQUEST");}
+   // Anchor on the stored timestamp, avoiding timestamp precision loss across
+   // pages. The UUID and its subquery remain inside the authorized workspace.
+   const rows=await tx.query<Row>(select+" WHERE workspace_id=$1"+(cursor?" AND (received_at,id)<(SELECT received_at,id FROM ls_service_interest.public_applications WHERE workspace_id=$1 AND id=$2)":"")+" ORDER BY received_at DESC,id DESC LIMIT 201",cursor?[this.workspaceId,cursor]:[this.workspaceId]);
+   const items:GroupApplicationRecord[]=[];let scanned=0;
+   while(scanned<Math.min(rows.length,200)&&items.length<50){
+    const item=this.decode(rows[scanned++]!);
+    if(!needle||JSON.stringify({id:item.id,fields:item.fields}).normalize("NFKC").toLocaleLowerCase().includes(needle))items.push(item);
+   }
+   return {items,nextCursor:scanned<rows.length?rows[scanned-1]!.id:null};
+  });
  }
  async readForOwnerInTransaction(tx:SqlSession,actor:Actor,id:string):Promise<GroupApplicationRecord>{
   if(actor.workspaceId!==this.workspaceId)throw new AppError("FORBIDDEN");

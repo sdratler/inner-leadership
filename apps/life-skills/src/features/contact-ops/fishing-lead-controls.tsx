@@ -2,7 +2,7 @@
 import {useEffect,useRef,useState} from "react";
 import type {Locale} from "../../lib/locale.ts";
 import {loginHref} from "../identity/login-return.ts";
-import {fishingLeadDisplayState,type FishingLeadRequest} from "./core/fishing-lead.ts";
+import {FISHING_ACADEMY_LEAD_LABEL,fishingLeadDisplayState,type FishingLeadRequest} from "./core/fishing-lead.ts";
 import {readFishingLeadContext,previewFishingLead,confirmFishingLead,FishingLeadClientError,
  type FishingLeadContext,type FishingLeadPreview,type FishingLeadProgram,type FishingLeadSource} from "./core/fishing-lead-client.ts";
 
@@ -70,6 +70,7 @@ export function FishingLeadControls({locale,source,program,denied}:{locale:Local
  return <details className="lsw-details" open={open} onToggle={e=>{const next=e.currentTarget.open;setOpen(next);if(next&&!context&&!busy&&!unauthorized)void reload();}}>
   <summary>{t("Fishing lead list","רשימת המתעניינים בדיג")} · {program==="sunday_fishing_academy"?t("Fishing Academy","אקדמיית דיג"):t("Private Fishing & Life Skills","דיג וכישורי חיים באופן פרטי")}</summary>
   <section className="lsw-stack" aria-busy={busy} aria-label={t("Fishing lead membership controls","בקרות שיוך לרשימת המתעניינים בדיג")}>
+   {program==="sunday_fishing_academy"&&<p>{t("Academy label","תווית האקדמיה")}: <bdi dir="ltr">{FISHING_ACADEMY_LEAD_LABEL}</bdi></p>}
    {unauthorized!==null?<div role="alert"><p>{unauthorized===401?t("Your session ended. Sign in to continue.","פג תוקף החיבור. יש להיכנס מחדש."):t("This account cannot manage fishing leads.","לחשבון הזה אין הרשאה לניהול מתעניינים בדיג.")}</p>
     {unauthorized===401&&<a className="lsw-button lsw-button--secondary" href={loginHref(locale,window.location.pathname+window.location.search)}>{t("Sign in","כניסה")}</a>}</div>:<>
     {busy&&<p role="status">{t("Checking…","בודק…")}</p>}

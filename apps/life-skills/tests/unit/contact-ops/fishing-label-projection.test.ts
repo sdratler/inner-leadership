@@ -10,10 +10,26 @@ function fixture(){
  let value=fishingLabelDesired(membership,null),present=false,reads=0,changes=0,locked=false;
  const ports:FishingLabelPorts={accountId:binding.accountId,now:()=>now,serial:async work=>{expect(locked).toBe(false);locked=true;try{return await work();}finally{locked=false;}},
   current:async()=>structuredClone(value),record:async(expected,next)=>{expect(locked).toBe(true);if(JSON.stringify(value)!==JSON.stringify(expected))return false;value=structuredClone(next);return true;},
-  capability:async()=>({accountId:binding.accountId,state:"supported",checkedAt:now.toISOString()}),binding:async()=>binding,
-  read:async()=>{reads++;return {binding,present,checkedAt:now.toISOString()};},change:async(_,desired)=>{changes++;present=desired;return {status:200};}};
+  capability:async()=>({accountId:binding.accountId,state:"supported",checkedAt:now.toISOString()}),labels:async()=>({accountId:binding.accountId,checkedAt:now.toISOString(),labels:[{id:binding.managedLabelId,name:"JLFA • Lead"}]}),binding:async()=>binding,
+  read:async()=>{reads++;return {labelName:"JLFA • Lead",binding,present,checkedAt:now.toISOString()};},change:async(_,desired)=>{changes++;present=desired;return {status:200};}};
  return {ports,membership,get:()=>value,set:(p:FishingLabelProjection)=>{value=p;},setPresent:(p:boolean)=>{present=p;},metrics:()=>({reads,changes})};
 }
+
+test("the exact Academy label requires one owned provider label; LS label, duplicates, stale or wrong-account inventory never mutate",async()=>{
+ for(const catalog of [
+  {accountId:binding.accountId,checkedAt:now.toISOString(),labels:[{id:binding.managedLabelId,name:"LS • Lead"}]},
+  {accountId:binding.accountId,checkedAt:now.toISOString(),labels:[{id:"16",name:"JLFA • Lead"},{id:"17",name:"JLFA • Lead"}]},
+  {accountId:"other",checkedAt:now.toISOString(),labels:[{id:binding.managedLabelId,name:"JLFA • Lead"}]},
+  {accountId:binding.accountId,checkedAt:"2026-10-14T20:38:00.000Z",labels:[{id:binding.managedLabelId,name:"JLFA • Lead"}]}
+ ]){const f=fixture();f.ports.labels=async()=>catalog;expect((await reconcileFishingLabel(f.get(),f.ports)).state).toBe("unconfigured");expect(f.metrics()).toEqual({reads:0,changes:0});}
+ const f=fixture();delete f.ports.labels;expect((await reconcileFishingLabel(f.get(),f.ports)).state).toBe("unconfigured");expect(f.metrics().changes).toBe(0);
+});
+test("a different label binding or readback cannot claim Academy sync verified",async()=>{
+ const f=fixture();f.ports.binding=async()=>({...binding,managedLabelId:"israel-label"});
+ expect((await reconcileFishingLabel(f.get(),f.ports)).state).toBe("unconfigured");expect(f.metrics().changes).toBe(0);
+ const other=fixture();other.ports.read=async()=>({binding,present:true,checkedAt:now.toISOString(),labelName:"LS • Lead"});
+ expect((await reconcileFishingLabel(other.get(),other.ports)).state).toBe("pending");expect(other.metrics().changes).toBe(0);expect(other.get().verifiedAt).toBeNull();
+});
 test("explicit configured account binding, durable unknown BEFORE mutation, exact readback then verified",async()=>{
  const f=fixture(),change=f.ports.change;f.ports.change=async(...args)=>{expect(f.get().status).toBe("outcome_unknown");return change(...args);};
  expect(await reconcileFishingLabel(f.get(),f.ports)).toEqual({state:"verified",generation:1});expect(f.metrics()).toEqual({reads:2,changes:1});expect(f.get().verifiedAt).toBe(now.toISOString());
@@ -29,16 +45,16 @@ test("wrong account and stale capability cannot authorize a provider write",asyn
 test("timeout after apply can be resolved by exact readback without repeating the mutation",async()=>{const f=fixture();f.ports.change=async()=>{f.setPresent(true);throw Error("timeout after apply");};
  expect((await reconcileFishingLabel(f.get(),f.ports)).state).toBe("verified");const second=await reconcileFishingLabel(f.get(),f.ports);expect(second.state).toBe("verified");expect(f.get().status).toBe("verified");});
 test("timeout plus failed readback remains durable unknown; later retry READS first and sends nothing if already applied",async()=>{const f=fixture();let reads=0,changes=0;
- f.ports.read=async()=>{if(++reads===2)throw Error("unavailable");return {binding,present:changes>0,checkedAt:now.toISOString()};};f.ports.change=async()=>{changes++;throw Error("timeout");};
+ f.ports.read=async()=>{if(++reads===2)throw Error("unavailable");return {labelName:"JLFA • Lead",binding,present:changes>0,checkedAt:now.toISOString()};};f.ports.change=async()=>{changes++;throw Error("timeout");};
  expect((await reconcileFishingLabel(f.get(),f.ports)).state).toBe("outcome_unknown");expect(f.get().status).toBe("outcome_unknown");
  expect((await reconcileFishingLabel(f.get(),f.ports)).state).toBe("verified");expect(changes).toBe(1);
 });
 test("unknown effect cannot be erased by later unsupported capability",async()=>{const f=fixture();f.set({...f.get(),binding,status:"outcome_unknown"});f.ports.capability=async()=>({accountId:binding.accountId,state:"unsupported",checkedAt:now.toISOString()});
  expect((await reconcileFishingLabel(f.get(),f.ports)).state).toBe("outcome_unknown");expect(f.get().status).toBe("outcome_unknown");});
 for(const status of [400,401,403,429])test(`definite rejection${status} plus unreadable provider becomes failed, never verified`,async()=>{const f=fixture();let reads=0;
- f.ports.read=async()=>{if(++reads>1)throw Error("read failed");return {binding,present:false,checkedAt:now.toISOString()};};f.ports.change=async()=>({status});
+ f.ports.read=async()=>{if(++reads>1)throw Error("read failed");return {labelName:"JLFA • Lead",binding,present:false,checkedAt:now.toISOString()};};f.ports.change=async()=>({status});
  expect((await reconcileFishingLabel(f.get(),f.ports)).state).toBe("failed");expect(f.get().verifiedAt).toBeNull();});
-test("5xx after possibly applied effect and failed GET must remain unknown",async()=>{const f=fixture();let reads=0;f.ports.read=async()=>{if(++reads>1)throw Error("read failed");return {binding,present:false,checkedAt:now.toISOString()};};f.ports.change=async()=>({status:500});
+test("5xx after possibly applied effect and failed GET must remain unknown",async()=>{const f=fixture();let reads=0;f.ports.read=async()=>{if(++reads>1)throw Error("read failed");return {labelName:"JLFA • Lead",binding,present:false,checkedAt:now.toISOString()};};f.ports.change=async()=>({status:500});
  expect((await reconcileFishingLabel(f.get(),f.ports)).state).toBe("outcome_unknown");});
 test("POST409 and DELETE404 require fresh exact readback; accepted2xx alone is not verified",async()=>{
  for(const [present,status,readback] of [[true,409,true],[false,404,false],[true,200,false]] as const){const f=fixture();
@@ -52,7 +68,7 @@ test("late Add completion cannot mark the newer Remove verified or change its de
  expect((await reconcileFishingLabel(f.get(),f.ports)).state).toBe("superseded");expect(f.get()).toMatchObject({generation:2,desiredPresent:false,status:"pending"});
 });
 test("wrong chat/label or stale readback never becomes verified",async()=>{for(const patch of [{binding:{...binding,chatId:"wrong"}},{binding:{...binding,managedLabelId:"wrong"}},{checkedAt:"2026-10-14T20:38:00.000Z"}]){
- const f=fixture();f.ports.read=async()=>({binding,present:true,checkedAt:now.toISOString(),...patch});expect((await reconcileFishingLabel(f.get(),f.ports)).state).toBe("pending");expect(f.metrics().changes).toBe(0);expect(f.get().verifiedAt).toBeNull();}});
+ const f=fixture();f.ports.read=async()=>({labelName:"JLFA • Lead",binding,present:true,checkedAt:now.toISOString(),...patch});expect((await reconcileFishingLabel(f.get(),f.ports)).state).toBe("pending");expect(f.metrics().changes).toBe(0);expect(f.get().verifiedAt).toBeNull();}});
 test("old verified state is invalidated when actual capability/readback becomes unavailable",async()=>{const f=fixture();f.set({...f.get(),binding,status:"verified",verifiedAt:now.toISOString()});f.ports.read=async()=>{throw Error("provider unavailable");};
  expect((await reconcileFishingLabel(f.get(),f.ports)).state).toBe("pending");expect(f.get().status).toBe("pending");expect(f.get().verifiedAt).toBeNull();});
 test("RM04-LABEL-UNKNOWN-GENERATION-01: Remove retains earlier uncertainty across unsupported capability",async()=>{

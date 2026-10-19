@@ -1,12 +1,12 @@
 import "server-only";
-import {fishingLabelProjectionSchema,fishingLabelBindingSchema,fishingLabelVerified,
+import {FISHING_ACADEMY_LEAD_LABEL,fishingLabelProjectionSchema,fishingLabelBindingSchema,fishingLabelVerified,
  type FishingLabelBinding,type FishingLabelProjection} from "../core/fishing-lead.ts";
 
 /** Normalized exact-account evidence from the existing authorized connector.
  * Unknown/unavailable is NOT known unsupported. A source URL is not capability.
  * This interface grants no access, provider effects or automatic scheduling. */
 export type FishingLabelCapability={accountId:string;checkedAt:string;state:"supported"|"unsupported"};
-export type FishingLabelReadback={binding:FishingLabelBinding;present:boolean;checkedAt:string};
+export type FishingLabelReadback={binding:FishingLabelBinding;present:boolean;checkedAt:string;labelName?:string};
 export type FishingLabelPorts={
  accountId:string;now:()=>Date;
  // Serializes provider jobs for this workspace; native Add/Remove remains
@@ -15,6 +15,9 @@ export type FishingLabelPorts={
  current:()=>Promise<FishingLabelProjection>;
  record:(expected:FishingLabelProjection,next:FishingLabelProjection,readback?:FishingLabelReadback&{generation:number})=>Promise<boolean>;
  capability:()=>Promise<FishingLabelCapability>;
+ // Exact-account inventory evidence. Academy sync never guesses a label ID
+ // from its name, uses LS • Lead, or creates/renames provider labels here.
+ labels?:()=>Promise<{accountId:string;checkedAt:string;labels:{id:string;name:string}[]}>;
  // Must return a provider-resolved, registered managed Business-label/chat
  // binding, not a phone+suffix, group, display-name match or custom List.
  binding:()=>Promise<FishingLabelBinding|null>;
@@ -55,17 +58,29 @@ export async function reconcileFishingLabel(expected:FishingLabelProjection,port
    return result(await ports.record(current,next)?"unsupported":"superseded");
   }
   if(cap.state!=="supported")throw Error("FISHING_LABEL_CAPABILITY_INVALID");
+  let academyLabelId:string|null=null;
+  if(current.program==="sunday_fishing_academy"){
+   try{
+    const catalog=await ports.labels?.();
+    if(!catalog||catalog.accountId!==ports.accountId||!fresh(catalog.checkedAt,ports.now()))return unavailable();
+    const matches=catalog.labels.filter(label=>label.name===FISHING_ACADEMY_LEAD_LABEL);
+    if(matches.length!==1||!matches[0]!.id||catalog.labels.filter(label=>label.id===matches[0]!.id).length!==1)return unavailable();
+    academyLabelId=matches[0]!.id;
+   }catch{return unavailable();}
+  }
   if(current.binding===null){
    let binding:FishingLabelBinding|null;try{binding=await ports.binding();}catch{return result("unconfigured");}
    if(!binding)return result("unconfigured");binding=fishingLabelBindingSchema.parse(binding);
    if(binding.accountId!==ports.accountId)throw Error("FISHING_LABEL_ACCOUNT_MISMATCH");
+   if(academyLabelId!==null&&binding.managedLabelId!==academyLabelId)return result("unconfigured");
    const next=fishingLabelProjectionSchema.parse({...current,binding,status:"pending",capability:undefined,verifiedAt:null});
    if(!await ports.record(current,next))return result("superseded");current=next;
   }
   if(current.binding!.accountId!==ports.accountId)throw Error("FISHING_LABEL_ACCOUNT_MISMATCH");
+  if(academyLabelId!==null&&current.binding!.managedLabelId!==academyLabelId)return unavailable();
   const read=async()=>{
    const value=await ports.read(current.binding!);
-   if(!sameBinding(value.binding,current.binding!)||!fresh(value.checkedAt,ports.now()))throw Error("FISHING_LABEL_READBACK_INVALID");return value;
+   if(!sameBinding(value.binding,current.binding!)||!fresh(value.checkedAt,ports.now())||academyLabelId!==null&&value.labelName!==FISHING_ACADEMY_LEAD_LABEL)throw Error("FISHING_LABEL_READBACK_INVALID");return value;
   };
   let before:FishingLabelReadback;
   try{before=await read();}catch{return unavailable();}

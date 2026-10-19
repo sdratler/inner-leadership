@@ -1,5 +1,6 @@
 import {z} from "zod";
 import {fishingProgramSchema,inquiryContactPermissionSchema} from "./fishing-association-contract.ts";
+export const FISHING_ACADEMY_LEAD_LABEL="JLFA • Lead";
 
 const uuid=z.string().uuid(),epoch=z.number().int().min(0).max(Number.MAX_SAFE_INTEGER-1);
 const version=z.number().int().min(1).max(2147483646),expectedVersion=z.number().int().min(0).max(2147483645);
