@@ -3,6 +3,7 @@ import {useRef,useState,type FormEvent} from 'react';
 import type {Locale} from '../../lib/locale.ts';
 import {sessionInfo,IdentityClientError} from '../identity/client.ts';
 import {academyFamilyVersion,academyFamilyCommandSchema,type AcademyFamilyContext,type AcademyFamilyCommand,type AcademyFamilySaved} from './academy-family-contract.ts';
+import {AcademyEnrollmentControls} from './academy-enrollment-controls.tsx';
 const endpoint='/api/private/group-applications/family';
 class FamilyRequestError extends Error{constructor(readonly status:number){super('ACADEMY_FAMILY_REQUEST_FAILED');}}
 async function request<T>(url:string,init:RequestInit={}){const response=await fetch(url,{...init,credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer'});const body=await response.json() as {ok:boolean;data:T};if(!response.ok||body.ok!==true)throw new FamilyRequestError(response.status);return body.data;}
@@ -29,5 +30,6 @@ export function AcademyFamilyControls({applicationId,locale,denied}:{application
    <button type="submit" className="lsw-button">{t('Prepare family access','הכנת גישה למשפחה')}</button>
   </fieldset></form>}
   {pending&&!busy&&<button className="lsw-button" type="button" onClick={()=>void send(pending)}>{t('Retry the same family setup','ניסיון חוזר לאותה הכנת משפחה')}</button>}
+  {saved&&<AcademyEnrollmentControls applicationId={applicationId} locale={locale} denied={denied}/>}
  </details>;
 }

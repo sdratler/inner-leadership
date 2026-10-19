@@ -22,6 +22,8 @@ const project=process.env.LS_GROUP_INTEREST_TEST_PROJECT as keyof typeof project
 const sampleOnly=process.env.LS_FLORIDA_SAMPLE_TEST_ONLY==="true";
 const fishingOnly=process.env.LS_FISHING_LEAD_UI_ONLY==="true";
 const familyOnly=process.env.LS_ACADEMY_FAMILY_UI_ONLY==="true";
+const enrollmentOnly=process.env.LS_ACADEMY_ENROLLMENT_UI_ONLY==="true";
+if(enrollmentOnly&&!familyOnly)throw Error("ENROLLMENT_REQUIRES_RETAINED_FAMILY_HARNESS");
 if(familyOnly&&(!fishingOnly||!["desktop","mobile390"].includes(project??"")||process.env.LS_RM_LAUNCH_OPS09_ONLY==="true"||process.env.LS_EDUCATION_UI_ONLY==="true"||process.env.LS_COMMUNITY_UI_ONLY==="true"))throw Error("FAMILY_EXCLUSIVE_ORDINARY_HARNESS_REQUIRED");
 const educationOnly=process.env.LS_EDUCATION_UI_ONLY==="true";
 const communityOnly=process.env.LS_COMMUNITY_UI_ONLY==="true";
@@ -244,6 +246,7 @@ try{
     cityArea:"Synthetic Florida",programId:"sunday_fishing_academy",schedulePreference:["sunday"],permission:{confirmed:true,version:floridaGroupApplicationNotice.version,language:locale}}});
    inquiries.push({locale,id:saved.item.id,name:`Synthetic fishing ${locale}`});
   }
+  if(enrollmentOnly){const {seedAcademyEnrollmentBrowser}=await import("./academy-enrollment.journey.ts");await seedAcademyEnrollmentBrowser(f,keyring);}
   await f.pool.query("UPDATE ls_identity.sessions SET revoked_at=clock_timestamp() WHERE workspace_id=$1",[workspaceId]);
   fishingRuntime={credentials,inquiries,protectedPersonId:existing.personId};fishingBefore=await fishingSnapshot();
  }
@@ -350,6 +353,7 @@ try{
   }
   const retainedPublic=await f.pool.query("SELECT to_jsonb(a)::text AS snapshot FROM ls_service_interest.public_applications a WHERE workspace_id=$1 AND id=$2",[workspaceId,publicApplicationId]);
   if(JSON.stringify(retainedPublic.rows)!==JSON.stringify(originalPublic.rows))throw new Error("FISHING_UI_EXISTING_RECEIPT_MUTATED");
+  if(enrollmentOnly)console.log(`ACADEMY_ENROLLMENT_UI_ACCEPTANCE_PASS project=${project} locales=en,he ordinaryOwnerFit=true ordinaryParentTerms=true commitLossExactRetry=true protectedRowsUnchanged=true noPaymentEnrollmentProvider=true`);
   if(familyOnly)console.log(`ACADEMY_FAMILY_UI_ACCEPTANCE_PASS project=${project} locales=en,he ordinaryOwnerAndNewParent=true exactReplay=true newFamilies=2 newChildren=2 invitationsQueuedThenConsumed=2 securityNoticesQueued=2 noEnrollmentPaymentTaskProvider=true`);
   else console.log(`FISHING_LEAD_UI_ACCEPTANCE_PASS project=${project} composedPublicOwnerLogin=true ordinaryRelogin=true scopedDetailsSaved=true detailsRetainedAfterRemoval=true revisions=14 operations=14 profiles=5 projections=6 publicInquiries=4 publicOperations=4 tasksUnchanged=true unrelatedProfileUnchanged=true providerEffects=0`);
  }

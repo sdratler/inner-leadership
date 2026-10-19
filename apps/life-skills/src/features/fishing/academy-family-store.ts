@@ -15,6 +15,8 @@ import type {PublicGroupApplicationStore} from '../group-application/store.ts';
 import {floridaParentApplicationFieldsSchema} from '../group-application/contract.ts';
 import {FishingLeadStore} from '../contact-ops/server/fishing-lead-store.ts';
 import {academyFamilyCommandSchema,academyFamilySavedSchema,academyFamilyVersion,type AcademyFamilySaved,type AcademyFamilyContext} from './academy-family-contract.ts';
+import type {AcademyOwnerEnrollmentBinding} from './academy-enrollment-contract.ts';
+import {readEducationalChildContexts} from './native-child-context.ts';
 const digest=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('hex'),action='academy.family.setup';
 const receiptPayload=z.strictObject({saved:academyFamilySavedSchema,command:academyFamilyCommandSchema});
 type ReceiptRow={actorId:string;operationId:string;hash:string;ciphertext:string};
@@ -59,6 +61,21 @@ export class AcademyFamilyStore{
    const saved=(await this.receipts(tx,actor)).filter(r=>r.saved.applicationId===applicationId);if(saved.length>1)throw new AppError('UNAVAILABLE');if(saved[0]&&saved[0].saved.personId!==person.personId)throw new AppError('CONFLICT');
    return {state:'ready',applicationId,personId:person.personId,parentName:person.displayName,expectedEpoch:lead.epoch,expectedAssociationVersion:person.associationVersion,fieldsDigest:source.hash,learnerAges:source.intake.learners.map(c=>c.ageYears!),households:await this.households(tx,person.personId),saved:saved[0]?await this.currentSaved(tx,saved[0].saved):null};
   });
+ }
+ async readForEnrollmentInTransaction(tx:SqlSession,actor:Actor,binding:AcademyOwnerEnrollmentBinding){
+  if(actor.workspaceId!==this.config.workspaceId)throw new AppError('FORBIDDEN');
+  await this.leads.readGuardianLeadForFamilyInTransaction(tx,actor,binding);await this.owner(tx,actor);if(!await this.configured(tx))throw new AppError('UNAVAILABLE');
+  const source=await this.intake(tx,actor,binding.applicationId);if(source.hash!==binding.expectedFieldsDigest)throw new AppError('CONFLICT');
+  const matches=(await this.receipts(tx,actor)).filter(r=>r.saved.applicationId===binding.applicationId&&r.saved.personId===binding.personId);if(matches.length!==1)throw new AppError('CONFLICT');const saved=await this.currentSaved(tx,matches[0]!.saved);
+  if(digest(saved)!==binding.expectedFamilyDigest)throw new AppError('CONFLICT');return saved;
+ }
+ async readParentForEnrollmentInTransaction(tx:SqlSession,actor:Actor,learnerId:string){
+  if(actor.workspaceId!==this.config.workspaceId)throw new AppError('FORBIDDEN');
+  await readEducationalChildContexts(tx,actor,this.config.keyring,this.clock.now(),learnerId);if(!await this.configured(tx))throw new AppError('UNAVAILABLE');
+  const matches=(await this.receipts(tx,actor)).filter(r=>r.saved.parentAccountId===actor.id&&r.saved.children.some(c=>c.learnerId===learnerId));
+  if(matches.length===0)throw new AppError('NOT_FOUND');if(new Set(matches.map(r=>r.saved.householdId)).size!==1)throw new AppError('CONFLICT');
+  const saved=matches[0]!.saved,child=saved.children.find(c=>c.learnerId===learnerId)!;
+  const current=await this.currentSaved(tx,{...saved,children:[child]});if(current.parentState!=='active')throw new AppError('FORBIDDEN');return {learnerId,householdId:current.householdId,parentAccountId:current.parentAccountId};
  }
  async setup(actor:Actor,raw:unknown,requestId:string){
   if(actor.workspaceId!==this.config.workspaceId)throw new AppError('FORBIDDEN');

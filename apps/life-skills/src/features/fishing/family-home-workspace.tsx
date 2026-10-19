@@ -5,6 +5,7 @@ import type {Locale} from '../../lib/locale.ts';
 import {Button,Select} from '../../ui/workspace/controls.tsx';
 import {calendarRead,CalendarClientError} from '../calendar/client.ts';
 import {loginHref} from '../identity/login-return.ts';
+import {AcademyEnrollmentControls} from './academy-enrollment-controls.tsx';
 import {WeeklyProgressView} from '../fishing-stage/weekly-progress-view.tsx';
 import {FishingFamilyPayments} from '../fishing-payments/workspace.tsx';
 import {FishingParentAttendanceSummary} from '../fishing-stage/parent-attendance-summary.tsx';
@@ -48,6 +49,7 @@ export function FishingFamilyHomeWorkspace({locale}:{locale:Locale}){
     {choices?.selectedLearnerId&&<Select id="academy-home-stage" label={t('Stage enrollment','רישום לשלב')} value={home?.selection.enrollmentId??''} onChange={e=>chooseStage(e.target.value)}><option value="">{t('Choose a stage','בחרו שלב')}</option>{choices.stages.map(s=><option key={s.enrollmentId} value={s.enrollmentId??''}>{s.label} · {t('Stage','שלב')} {s.stage}</option>)}</Select>}
     {choices?.selectedLearnerId&&!choices.stages.length&&<p>{t('No confirmed stage is available for this child.','אין שלב מאושר זמין לילד זה.')}</p>}
    </section>
+   {choices?.selectedLearnerId&&<AcademyEnrollmentControls key={choices.selectedLearnerId} learnerId={choices.selectedLearnerId} locale={locale}/>}
    {home&&<>
     <section className="lsu-panel lsw-stack" aria-label={t('Next fishing trip','טיול הדיג הבא')}><h2>{t('Next fishing trip','טיול הדיג הבא')}</h2>{next&&next.time.kind==='scheduled'?<>
      <h3>{t('Session','מפגש')} {next.ordinal}</h3><p><time dateTime={next.time.startsAt}>{format(next.time.startsAt)}</time> – <time dateTime={next.time.endsAt}>{format(next.time.endsAt)}</time> · <bdi>America/New_York</bdi></p>

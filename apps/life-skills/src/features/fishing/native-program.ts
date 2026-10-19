@@ -1,5 +1,5 @@
 import "server-only";
-import {randomUUID} from "node:crypto";
+import {randomUUID,createHash} from "node:crypto";
 import {z} from "zod";
 import {AppError} from "../../lib/errors.ts";
 import {asId} from "../../lib/ids.ts";
@@ -19,6 +19,7 @@ import {demoAccountBatch,demoRecordBatch} from "../demo/provenance.ts";
 import {FishingProgramError,cohortCommandSchema,venueCommandSchema,fitCommandSchema,termsCommandSchema,holdCommandSchema,offerCommandSchema,enrollmentCommandSchema,enrollmentStateCommandSchema,nativeProgramIntentSchema,programPolicySchema,programTermsSchema,programLimits,type NativeProgramCommandIntent} from "./native-program-contract.ts";
 import {readEducationalChildContexts} from "./native-child-context.ts";
 import {fishingCalendarChoicesSchema,fishingCalendarOperatorSchema,fishingCalendarLimit,type FishingCalendarChoices,type FishingCalendarOperator} from "./program-calendar-contract.ts";
+import type {AcademyEnrollmentStage} from './academy-enrollment-contract.ts';
 
 const uuid=z.uuid(),label=z.string().min(1).max(160).refine(value=>value.trim().length>0);
 const receiptSchema=z.strictObject({id:uuid,revision:z.number().int().positive(),state:z.enum(["cohort","venue","fit","terms","hold","offer","confirmed","suspended","revoked"])});
@@ -247,6 +248,25 @@ export class NativeFishingProgram {
  }
  /** Metadata only. Never supplies an enrollment, grant, merchant or first-child
   * default. Catalog absence is distinct from a broken/partially installed schema. */
+ /** Same-transaction consumer of current native cohorts, fit and actual approved
+  * terms text. No source importer/approval control, roster or private fit note. */
+ async enrollmentReviewInTransaction(tx:SqlSession,actor:Actor,family:{learnerId:string;householdId:string;parentAccountId:string}):Promise<AcademyEnrollmentStage[]>{
+  try{const c=await this.actor(tx,actor);requireFact(c.actor.role==='practitioner'||c.actor.role==='parent'&&c.actor.id===family.parentAccountId,'FORBIDDEN');requireFact(await demoAccountBatch(tx,c.actor.workspaceId,c.actor.id)===null,'FORBIDDEN');
+   if(c.actor.role==='parent')await this.guardian(tx,c.actor.workspaceId,c.actor.id,family.learnerId,family.householdId);
+   if(!await this.calendarCatalog(tx))return [];
+   const rows=await tx.query<{stageId:string}>(`SELECT stage_id AS "stageId" FROM ls_fishing_stage.cohorts WHERE workspace_id=$1 AND active AND ($2::uuid IS NULL OR operator_id=$2) ORDER BY stage_id LIMIT 1001 FOR SHARE`,[c.actor.workspaceId,c.actor.role==='practitioner'?c.actor.id:null]);requireFact(rows.length<=1000,'UNAVAILABLE');
+   const result:AcademyEnrollmentStage[]=[];
+   for(const row of rows){const cohort=await this.cohort(tx,c.actor.workspaceId,row.stageId),fits=await tx.query<{id:string;decision:'approved'|'rejected';recordedAt:Date}>(`SELECT id,decision,recorded_at AS "recordedAt" FROM ls_fishing_stage.fit_decisions WHERE workspace_id=$1 AND stage_id=$2 AND learner_id=$3 AND purpose='enrollment' ORDER BY recorded_at DESC,id DESC LIMIT 1001 FOR SHARE`,[c.actor.workspaceId,row.stageId,family.learnerId]);requireFact(fits.length<=1000,'UNAVAILABLE');
+    const latest=fits[0],tied=latest?fits.filter(f=>f.recordedAt.valueOf()===latest.recordedAt.valueOf()):[],current=tied.find(f=>f.decision==='rejected')??latest;
+    if(c.actor.role==='parent'&&current?.decision!=='approved')continue;
+    const source=await this.source(tx,c.actor.workspaceId,cohort.termsApprovalId,'terms',c.now),terms=programTermsSchema.parse(source.payload);requireFact(terms.contentSha256===source.hash&&terms.termsVersion===source.version,'UNAVAILABLE');
+    let presented:AcademyEnrollmentStage['terms']={state:'unavailable'};
+    if(terms.document){requireFact(createHash('sha256').update(terms.document.body,'utf8').digest('hex')===source.hash,'UNAVAILABLE');const accepted=await one<{id:string;hash:string}>(tx,`SELECT id,source_sha256 AS hash FROM ls_fishing_stage.terms_acceptances WHERE workspace_id=$1 AND stage_id=$2 AND learner_id=$3 AND parent_id=$4 AND household_id=$5 AND source_approval_id=$6 FOR SHARE`,[c.actor.workspaceId,row.stageId,family.learnerId,family.parentAccountId,family.householdId,cohort.termsApprovalId]);if(accepted)requireFact(accepted.hash===source.hash,'UNAVAILABLE');presented={state:'available',sourceApprovalId:cohort.termsApprovalId,sourceSha256:source.hash,termsVersion:terms.termsVersion,body:terms.document.body,acceptanceId:accepted?.id??null};}
+    const name=z.object({label}).parse(this.decode('cohort',c.actor.workspaceId,row.stageId,cohort.labelCiphertext)).label;
+    result.push({stageId:row.stageId,cohortId:cohort.cohortId,stage:cohort.stage,label:name,fit:current?{id:current.id,decision:current.decision,recordedAt:current.recordedAt.toISOString()}:null,terms:presented});
+   }await this.actor(tx,actor);return result;
+  }catch(error){clean(error);}
+ }
  async calendarChoices(actor:Actor,selectedLearnerId:string|null=null):Promise<FishingCalendarChoices>{
   try{return await this.db.transaction(async tx=>{
    const c=await this.actor(tx,actor);requireFact(["practitioner","parent","child"].includes(c.actor.role),"FORBIDDEN");
