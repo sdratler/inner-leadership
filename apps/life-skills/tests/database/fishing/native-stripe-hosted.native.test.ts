@@ -56,7 +56,7 @@ test('guardian/customer revocation and inactive cohort block cached family URL b
 });
 
 test('fresh policy, fit, customer and actual ordinary-family authority gate each phase and all cached preparations',async()=>{
- const f=await fixture(),{operationId}=await f.prepare(),other=await f.createFamily();await expect(f.payments.prepareStripeTestHosted(other.parent,randomUUID(),f.prepared.purchaseId,f.dueId)).rejects.toThrow();f.admit(false);await expect(f.phase(operationId,'create')).rejects.toThrow();f.admit(true);f.changePolicy();await expect(f.phase(operationId,'create')).rejects.toThrow();expect(f.calls).toEqual([]);
+ const f=await fixture(),prepareKey=randomUUID(),{operationId}=await f.prepare(prepareKey),other=await f.createFamily();await expect(f.payments.prepareStripeTestHosted(other.parent,randomUUID(),f.prepared.purchaseId,f.dueId)).rejects.toThrow();f.admit(false);await expect(f.phase(operationId,'create')).rejects.toThrow();f.admit(true);f.changePolicy();await expect(f.phase(operationId,'create')).rejects.toThrow();await expect(f.prepare(prepareKey)).rejects.toThrow();expect(f.calls).toEqual([]);
  const g=await fixture(),op=(await g.prepare()).operationId;await g.program.recordFit(g.owner,{commandId:randomUUID(),id:randomUUID(),stageId:g.ref.stageId,learnerId:g.family.learnerId,purpose:'enrollment',decision:'rejected',targetOccurrenceId:null,targetRevision:null,note:'PRIVATE_NEW_REVIEW'});await expect(g.phase(op,'create')).rejects.toThrow();expect(g.calls).toEqual([]);
 });
 
