@@ -61,7 +61,7 @@ function interruptible<T>(promise:PromiseLike<T>,signal:AbortSignal):Promise<T>{
  const aborted=()=>{signal.removeEventListener('abort',aborted);reject(unavailable());};
  if(signal.aborted){void Promise.resolve(promise).catch(()=>{});aborted();return;}
  signal.addEventListener('abort',aborted,{once:true});
- Promise.resolve(promise).then(value=>{signal.removeEventListener('abort',aborted);signal.aborted?reject(unavailable()):resolve(value);},()=>{signal.removeEventListener('abort',aborted);reject(unavailable());});
+ Promise.resolve(promise).then(value=>{signal.removeEventListener('abort',aborted);if(signal.aborted){reject(unavailable());}else{resolve(value);}},()=>{signal.removeEventListener('abort',aborted);reject(unavailable());});
 });}
 
 /** UNMOUNTED. Constructor does not discover/verify a merchant or read env.
