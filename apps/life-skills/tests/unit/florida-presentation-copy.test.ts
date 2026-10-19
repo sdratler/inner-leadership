@@ -38,8 +38,8 @@ describe("reviewed Florida presentation, not new runtime authority",()=>{
    const html=markup(locale,"sunday_fishing_academy",mode);
    expect(html.match(/<h1\b/g)).toHaveLength(1);
    if(mode==="native"){
-    expect(html).toContain('<h1 id="academy-title">Jewish Leadership<br/>Fishing Academy</h1>');
-    expect(html).toContain('Torah <span>•</span> Fishing <span>•</span> Self-governance');
+    expect(html).toContain(locale==="he"?'<h1 id="academy-title">האקדמיה לדיג<br/>ולמנהיגות יהודית</h1>':'<h1 id="academy-title">Jewish Leadership<br/>Fishing Academy</h1>');
+    expect(html).toContain(locale==="he"?'תורה • דיג • הנהגה עצמית':'Torah <span>•</span> Fishing <span>•</span> Self-governance');
     expect(html).toMatch(/<a[^>]*href="#pricing"[^>]*data-jlfa-primary="true"/);expect(html).toContain(`href="/${locale}/florida/apply"`);
     expect(html).not.toContain('data-inquiry-kind=');expect(html).not.toContain('name="contact"');
     const form=renderToStaticMarkup(createElement(AcademyIntakePage,{locale}));expect(form.match(/name="contact"/g)).toHaveLength(1);expect(form).toContain('data-inquiry-kind="parent"');expect(form).toContain(escaped(academyApplicationNotice[locale]));expect(form).not.toContain(escaped(floridaGroupApplicationNotice[locale]));expect(form).not.toContain('name="permission" checked');
