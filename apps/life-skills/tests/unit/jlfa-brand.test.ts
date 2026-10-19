@@ -34,7 +34,7 @@ describe("current owner-approved Academy brand projection and public overview bo
   expect(html).not.toMatch(/Real Mensch|Real Mentch|Real Mentsch|\/groups\/brand\/life-skills-logo\.png/);
   expect(html).not.toContain("data-jlfa-curriculum-content");
   if(mode==="native"){
-   expect(html).toContain('<h1 id="academy-title">Jewish Leadership<br/>Fishing Academy</h1>');expect(html).toContain('data-academy-site="true"');
+   expect(html).toContain(locale==="he"?'<h1 id="academy-title">האקדמיה לדיג<br/>ולמנהיגות יהודית</h1>':'<h1 id="academy-title">Jewish Leadership<br/>Fishing Academy</h1>');expect(html).toContain('data-academy-site="true"');
    expect(html).toContain('src="/groups/academy/hero-mobile-selected-20261018.png"');expect(html).toContain('srcSet="/groups/academy/hero-desktop-selected-20261018.png"');expect(html).toContain(`href="/${locale}/florida/apply"`);
    expect(html).not.toContain('data-inquiry-kind=');expect(html).not.toContain('aria-controls="jlfa-curriculum"');expect(html).not.toContain(locale==="he"?"תמונת הפתיחה עדיין בעבודה":"HERO ARTWORK IN PROGRESS");
   }else{

@@ -46,12 +46,12 @@ describe.each(["en","he"] as const)("%s static Academy prices",locale=>{
   const html=article(render(locale),"installments");expect(html).toContain('<bdi dir="ltr">$1,950</bdi>');expect(plain(html)).toContain("3 × $650 = $1,950");expect(plain(html)).toContain(locale==="he"?"אין הנחת אחים במסלול התשלומים":"No sibling installment discount");expect(plain(html)).toContain(locale==="he"?"לילד הראשון ולאחים":"Primary learners and siblings");expect(html).not.toMatch(/Save|חיסכון|\$1,550|\$1,650|\$1,750/);expect(3*650).toBe(1950);
  });
  test("does not sell annual prepay, stacked discounts, automatic next stages or800 savings",()=>{
-  const text=plain(render(locale));for(const expected of locale==="he"?["השלב הראשון בלבד","אין כפל הנחות","תשלום מראש לשנה שלמה","חיוב אוטומטי לשלב הבא"]:["first stage only","Discounts do not stack","No full-year prepay","automatic next-stage charge"])expect(text).toContain(expected);
+  const text=plain(render(locale));for(const expected of locale==="he"?["השלב הראשון בלבד","אין כפל הנחות","תשלום מראש לשנה שלמה","חיוב אוטומטי לשלב הבא"]:["first stage only","No stacked discounts","annual prepayment","automatic next-stage charges"])expect(text).toContain(expected);
   expect(text).not.toMatch(/\$800|\$[678],\d{3}|cancel.anytime|membership|subscription|annually|renewal/);
  });
- test("explains verified reservation and offer conditions without form-first messaging",()=>{
+ test("explains verified payment eligibility and saving registration before separate payment",()=>{
   const text=plain(render(locale));expect(text).not.toMatch(/Form first, payment second|קודם הטופס/);
-  for(const expected of locale==="he"?["רק תשלום מזכה שאומת","בקשה לשיחת חזרה","לוח זמנים","מיקומים","מקום פנוי","תנאים שהתקבלו","הצעת תשלום מורשית","שמצבו אינו ידוע"]:["Only verified qualifying payment","An inquiry or callback request does not reserve a place","eligible group","schedule","locations","capacity","accepted terms","authorized payment offer","Pending, failed or unknown payment remains unreserved"])expect(text).toContain(expected);
+  for(const expected of locale==="he"?["רק תשלום מזכה שאומת","בקשה לשיחה חוזרת","ממלאים ושומרים","התשלום והקבוצה מאושרים בנפרד"]:["Only verified qualifying payment","requesting a callback does not reserve a place","Save your registration details first","payment and group are confirmed separately"])expect(text).toContain(expected);
  });
  test("default action navigates to the exact locale-specific full form",()=>{
   const html=render(locale);expect(html).toContain(`href="/${locale}/florida/apply"`);expect(html).toContain(locale==="he"?"להרשמה":"Register");expect(html).not.toMatch(/<form|<input|<textarea|<button|<iframe|<script|<img|<svg/);expect(html.match(/<a\b/g)).toHaveLength(2);expect(plain(html)).not.toMatch(/Pay now|Checkout now|Reserve now|Pay here/);

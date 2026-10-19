@@ -1,5 +1,6 @@
 /* eslint-disable @next/next/no-img-element -- approved existing brand and private-program assets are reused byte-for-byte */
 "use client";
+import {useAcademyHref} from "./academy-route-context.tsx";
 import {useEffect,useState} from "react";
 import type {Locale} from "../../lib/locale.ts";
 import type {FloridaProgramId} from "./contract.ts";
@@ -36,6 +37,7 @@ const programs:Record<FloridaProgramId,Program>={
 
 const pathFor=(locale:Locale,program:Program,mode:"native"|"sample"="native")=>mode==="sample"?`/${locale}/sample?page=florida-landing&program=${program.id}`:`/${locale}/florida${program.slug?`/${program.slug}`:""}`;
 export function GroupApplicationLanding({locale:initialLocale,programId="sunday_fishing_academy",mode="native"}:{locale:Locale;programId?:FloridaProgramId;mode?:"native"|"sample"}){
+ const academyHref=useAcademyHref();
  const [locale,setLocale]=useState<Locale>(initialLocale),[menuOpen,setMenuOpen]=useState(false);
  const visiblePrograms={...programs,sunday_fishing_academy:academyLandingForMode(mode)},program=visiblePrograms[programId];
  const academy=programId==="sunday_fishing_academy",vip=programId==="private_fishing_life_skills";
@@ -43,7 +45,7 @@ export function GroupApplicationLanding({locale:initialLocale,programId="sunday_
  const viewCopy=academy?{...copy,shared:{...copy.shared,...copy.realMensch.shared},inquiry:{...copy.inquiry,...copy.realMensch.inquiry}}:copy;
  const primary=p(academy?viewCopy.shared.ctaAcademy:vip?viewCopy.shared.ctaVip:pair("Ask about Torah mornings","לפרטים על לימוד תורה בבוקר"));
  useEffect(()=>{document.documentElement.lang=locale;document.documentElement.dir=locale==="he"?"rtl":"ltr";},[locale]);
- const switchLanguage=(next:Locale)=>{if(next===locale)return;setMenuOpen(false);setLocale(next);window.history.replaceState(window.history.state,"",pathFor(next,program,mode)+(mode==="sample"?"":window.location.search)+window.location.hash);};
+ const switchLanguage=(next:Locale)=>{if(next===locale)return;setMenuOpen(false);setLocale(next);window.history.replaceState(window.history.state,"",(academy&&mode==="native"?academyHref(next):pathFor(next,program,mode))+(mode==="sample"?"":window.location.search)+window.location.hash);};
  if(academy&&mode==="native")return <AcademyWebsite locale={locale} onLocaleChange={switchLanguage}/>;
  return <div className={academy?`${styles.page} ${jlfa.scope}`:styles.page} lang={locale} dir={locale==="he"?"rtl":"ltr"}>
   <a className={styles.skip} href="#main">{t("Skip to content","דלגו לתוכן")}</a>
@@ -59,7 +61,7 @@ export function GroupApplicationLanding({locale:initialLocale,programId="sunday_
   <main id="main">{academy?<JlfaCoreMain locale={locale}
    pricing={<AcademyPricing locale={locale} {...(mode==="sample"?{applicationHref:"#apply"}:{})}/>}
    travelFaq={<AcademyTravelFaq locale={locale}/>}
-   form={mode==="sample"?<GroupApplicationForm locale={locale} programId={programId} mode={mode}/>:<div><p>{t("Complete the family, learner, schedule and travel form on the next page. Choose enrollment follow-up or a callback; submitting saves an inquiry and does not reserve a place or take payment.","בעמוד הבא ממלאים פרטי משפחה, לומדים, זמינות ונסיעה. בוחרים המשך תהליך הרשמה או שיחת חזרה; השליחה שומרת פנייה, ללא שמירת מקום וללא תשלום.")}</p><a className={styles.primaryButton} data-academy-full-form href={`/${locale}/florida/apply`}>{t("Apply / Continue to Enrollment","הגשת בקשה / המשך להרשמה")}</a></div>}
+   form={mode==="sample"?<GroupApplicationForm locale={locale} programId={programId} mode={mode}/>:<div><p>{t("Complete the family, learner, schedule and travel form on the next page. Choose enrollment follow-up or a callback; submitting saves an inquiry and does not reserve a place or take payment.","בעמוד הבא ממלאים פרטי משפחה, לומדים, זמינות ונסיעה. בוחרים המשך תהליך הרשמה או שיחת חזרה; השליחה שומרת פנייה, ללא שמירת מקום וללא תשלום.")}</p><a className={styles.primaryButton} data-academy-full-form href={academyHref(locale,"/apply")}>{t("Apply / Continue to Enrollment","הגשת בקשה / המשך להרשמה")}</a></div>}
    school={<SchoolInquirySection locale={locale} mode={mode}/>}/>:<>
    {!academy&&<p className={`${styles.wrap} ${styles.previewBanner}`}>{p(viewCopy.shared.previewBanner)}</p>}
    {mode==="sample"&&!academy&&<p className={styles.wrap}>{p(viewCopy.inquiry.sampleBanner)} <a href={`/${locale}/sample?page=florida-journeys&program=${programId}`}>{t("Open the complete journey","פתיחת המסלול המלא")}</a></p>}

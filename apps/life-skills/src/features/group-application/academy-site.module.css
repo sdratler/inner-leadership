@@ -82,3 +82,8 @@
 .heroDesktopLabel{display:none}
 @media(min-width:768px){.heroArt{inline-size:100%;max-inline-size:none;margin:0}.heroArt picture,.heroArt img{inline-size:100%;max-inline-size:none;block-size:auto;object-fit:contain}.heroDesktopLabel{display:inline}.heroMobileLabel{display:none}.heroSelectedAction{inset-block-end:2.4%}}
 @media(min-width:768px){.site .hero{min-block-size:0;block-size:auto;align-items:start}.hero::before{display:none}}
+
+/* Source21: concise editorial layout and learning-depth tabs near the top. */
+:global(body):has(.site){min-inline-size:0}
+.audienceCopy{max-inline-size:760px;padding:28px;background:#fffdf6e8;border-inline-start:3px solid #b88a41}.audience::after{background:linear-gradient(90deg,#fffdf699,transparent)}.programFacts{list-style:none;padding:0;flex-wrap:wrap}.programFacts a{color:inherit;text-underline-offset:5px}.ageTerms{font-size:14px!important}.stageIntro{padding-block-end:24px}.stageIntro .ageTabs{margin-block:26px 12px}.stageIntro .agePanel{padding:14px 20px;max-inline-size:850px}.stageIntro .agePanel p{margin:0}.stageIntro .ageTabs button{min-block-size:48px}.stageBody section+section{margin-block-start:32px}.learningStrip{grid-template-columns:1fr 1fr}.stageCardContent p{min-block-size:0}.stageActions{padding-block:24px}.skillsGrid{margin-block-end:36px}
+@media(max-width:767px){.audienceCopy{padding:24px 20px}.audience::after{background:#fffdf633}.ageTabs{display:flex;flex-wrap:wrap;gap:8px}.ageTabs button{flex:1;min-inline-size:86px;padding:10px 8px;font-size:14px}.stageLayout{gap:24px}.stageNote{padding:24px}.stageIntro h1{font-size:36px}.stageIntro .agePanel{padding:14px}.stageIntro .lead{font-size:20px}.learningStrip .scene img{block-size:auto}.stageNav{flex-wrap:wrap}}
