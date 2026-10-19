@@ -23,6 +23,12 @@ export function AcademyCalendarWorkspace({locale,role,initialDate,initialView:vi
  const changed=useCallback(()=>setRefresh(n=>n+1),[]),leave=t('Leave unsaved fishing work? Leaving does not undo a submitted operation.','לצאת מעבודת דיג שלא נשמרה? יציאה אינה מבטלת פעולה שנשלחה.');
  function href(nextDate:string,nextView:string=view){const query=new URLSearchParams({fishing:'1',date:nextDate,view:nextView});for(const key of contextKeys)for(const v of params.getAll(key))query.append(key,v);return base+'?'+query;}
  function openSelection(selection:FishingCalendarSelection){
+  const selectedParams=new URLSearchParams(fishingCalendarSearch(selection));
+  if(contextKeys.every(key=>JSON.stringify(params.getAll(key))===JSON.stringify(selectedParams.getAll(key)))){
+   // Opening the displayed context must not remount it after an instructor has
+   // started an edit. Keep the current draft and focus its existing plan.
+   setPicker(null);setChoice('');const heading=document.getElementById('fishing-calendar-heading');heading?.scrollIntoView({block:'start'});heading?.focus({preventScroll:true});return;
+  }
   if(dirty&&!window.confirm(leave))return;
   setPicker(null);setChoice('');router.push(base+'?'+new URLSearchParams({fishing:'1',date,view,...Object.fromEntries(new URLSearchParams(fishingCalendarSearch(selection)))}),{scroll:false});
  }
