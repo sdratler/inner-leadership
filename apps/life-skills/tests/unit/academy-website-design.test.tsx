@@ -97,7 +97,7 @@ describe("owner1181 visual and outing corrections",()=>{
  it.each(["en","he"] as const)("%s keeps core inquiry links and separates the outing presentation",locale=>{
   const html=renderToStaticMarkup(createElement(AcademyWebsite,{locale,onLocaleChange:()=>{}}));
   expect(html).not.toContain('id="outings"');expect(html).not.toMatch(/A progression, one stage at a time|The person behind the program|Shared Keys days|Illustrative scene\./);
-  expect(html).not.toContain('id="fishing-skills"');expect(html).toContain('id="how-it-works"');expect(html).toContain(locale==="en"?"What it is":"מהי האקדמיה");
+  expect(html).not.toContain('id="fishing-skills"');expect(html).toContain('id="how-it-works"');expect(html).toContain(locale==="en"?"What we do":"מה אנחנו עושים");
   expect(html.match(/data-academy-scene="foundation"/g)).toHaveLength(1);expect(html).toContain('data-hidden="false"');expect(html).not.toContain('data-academy-bottom-bar');
   const outings=renderToStaticMarkup(createElement(AcademyOutingPrices,{locale}));expect(outings.match(/data-academy-outing=/g)).toHaveLength(2);
   expect(outings).toContain(locale==="en"?"not sold as an extra class":"אינה מפגש נוסף בתשלום");expect(outings).toContain(locale==="en"?"Parents manage their own travel and food":"ההורים דואגים לנסיעה ולאוכל");

@@ -3,7 +3,7 @@ import {useAcademyHref,useAcademyRouteMode} from "./academy-route-context.tsx";
 import {academyMetadata} from "./academy-metadata.ts";
 import {useEffect,useRef,useState,type ReactNode} from "react";
 import type {Locale} from "../../lib/locale.ts";
-import {JlfaLogo,JLFA_TAGLINE} from "./jlfa-brand.tsx";
+import {JlfaLogo} from "./jlfa-brand.tsx";
 import {AcademyWhatsApp,ACADEMY_WHATSAPP} from "./academy-whatsapp.tsx";
 import brand from "./jlfa-brand.module.css";
 import styles from "./academy-site.module.css";
@@ -53,9 +53,9 @@ export function AcademySiteFrame({locale,children,hero,onLocaleChange,path="",in
    {links.map(([href,label])=><a key={href} href={href} onClick={()=>close()}>{label}</a>)}<a href={ACADEMY_WHATSAPP} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer" onClick={()=>close()}>{t("WhatsApp","וואטסאפ")}</a>{languages}
   </nav></header>{hero}{children}
   <footer className={styles.footer} data-academy-footer><div className={styles.footerInner}>
-   <div className={styles.footerBrand}><JlfaLogo locale={locale} footer homeHref={home}/><p className={styles.footerName}>{t("South Florida Jewish Leadership Fishing Academy","האקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה")}</p><p className={styles.footerPillars}>{t(JLFA_TAGLINE,"תורה • דיג • הנהגה עצמית")}</p><p className={styles.nonprofit}>{t("A program of Bnei Neviim Academy, a New Jersey nonprofit.","תוכנית של Bnei Neviim Academy, ארגון ללא כוונת רווח בניו ג׳רזי.")}</p></div>
-   <nav className={styles.footerGroup} aria-label={t("Explore the Academy","להכיר את האקדמיה")}><h2>{t("Explore","להכיר")}</h2><a href={home}>{t("Home","דף הבית")}</a><a href={home+"#stages"}>{t("Four stages","ארבעה שלבים")}</a><a href={home+"/pricing"}>{t("Pricing & outings","מחירים ויציאות")}</a><a href={home+"#questions"}>{t("FAQ","שאלות נפוצות")}</a></nav>
-   <nav className={styles.footerGroup} aria-label={t("Connect with the Academy","קשר עם האקדמיה")}><h2>{t("Let’s talk","בואו נדבר")}</h2><a className={styles.headerAction} href={home+"/apply"}>{t("Register / request a callback","הרשמה / בקשת שיחת חזרה")}</a><a className={styles.footerWhatsApp} href={ACADEMY_WHATSAPP} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">{t("Message on WhatsApp","כתבו לנו בוואטסאפ")}</a><a href="https://bneineviimacademy.org/" target="_blank" rel="noopener noreferrer">Bnei Neviim Academy</a></nav>
+   <JlfaLogo locale={locale} footer homeHref={home}/>
+   <p className={styles.nonprofit}>{t("A program of Bnei Neviim Academy, a New Jersey nonprofit.","תוכנית של Bnei Neviim Academy, ארגון ללא כוונת רווח בניו ג׳רזי.")}</p>
+   <a className={styles.headerAction} href={home+"/apply"}>{t("Register","להרשמה")}</a>
   </div></footer><AcademyWhatsApp locale={locale}/>
  </div>;
 }
