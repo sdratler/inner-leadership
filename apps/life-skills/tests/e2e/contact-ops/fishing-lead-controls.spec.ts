@@ -26,12 +26,13 @@ if(!runtimePath){
   const target=`/${locale}/app/group-applications`,credentials=runtime.fishing.credentials.find(c=>c.role==="practitioner")!;
   expect((await page.request.get("/api/private/group-applications")).status()).toBe(401);
   expect((await page.goto(`/${locale}/florida`))?.status()).toBe(200);
-  await page.locator(`a[href="/${locale}/florida/apply"]`).first().click();await expect(page).toHaveURL(`/${locale}/florida/apply`);
+  await page.locator(`a[href="/${locale}/florida/apply"]:visible`).first().click();await expect(page).toHaveURL(`/${locale}/florida/apply`);
   const form=page.locator('form[data-inquiry-kind="parent"]');
   await form.locator('[name="parentName"]').fill(name);await form.locator('[name="contact"]').fill(contact);
   await form.locator('[name="learnerAge-0"]').fill("12");await form.locator('[name="cityArea"]').fill("Synthetic Florida");
   await form.locator('[name="postalCode"]').fill("33021");
-  for(const [field,value] of Object.entries({driveLimit:"30",schoolHoursAvailability:"discuss",preferredGroupLanguage:locale,stagePreference:"foundation",keysTravel:"discuss",offshoreInterest:"discuss",nextStep:"callback","learnerGrade-0":"grade_6_8","learnerSchooling-0":"school","learnerTackleBox-0":"need_advice"}))await form.locator(`[name="${field}"]`).selectOption(value);
+  for(const [field,value] of Object.entries({driveLimit:"30",schoolHoursAvailability:"discuss",preferredGroupLanguage:locale,stagePreference:"foundation",keysTravel:"discuss",offshoreInterest:"discuss","learnerGrade-0":"grade_6_8","learnerSchooling-0":"school","learnerTackleBox-0":"need_advice"}))await form.locator(`[name="${field}"]`).selectOption(value);
+  await form.locator('[name="nextStep"][value="callback"]').check();
   await form.locator('[name="schedulePreference"][value="sunday"]').check();await form.locator('[name="permission"]').check();
   const endpoint="**/api/public/group-applications?program=sunday_fishing_academy";
   let savedId="",requestHash="",commits=0;
