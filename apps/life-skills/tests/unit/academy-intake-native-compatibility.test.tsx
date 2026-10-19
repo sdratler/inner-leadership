@@ -34,7 +34,7 @@ describe("released Academy payload in the preserved native candidate",()=>{
    expect(html).toContain(language==="he"?"גיל בשנים":"Age (years)");
    expect(html).toContain("<dd>12</dd>");
    const fit=renderToStaticMarkup(createElement(AcademyFitReadback,{fit:decoded.academyFit!,locale:language,driveLabel:academyDriveLabel(intake.driveLimit,language),exactAges:intake.learners.every(learner=>learner.ageYears!==undefined)}));
-   expect(fit).toContain(language==="he"?"גיל בשנים":"Age (years)");
+   expect(fit).toContain(language==="he"?"גיל (בשנים)":"Age (years)");
    expect(fit).not.toContain(language==="he"?"גיל משוער":"Approximate age");
   });
  }

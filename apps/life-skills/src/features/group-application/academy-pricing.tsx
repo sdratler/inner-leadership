@@ -1,57 +1,31 @@
+"use client";
+import {useAcademyHref} from "./academy-route-context.tsx";
 import type {Locale} from "../../lib/locale.ts";
+import {AcademyBidi} from "./academy-bidi.tsx";
 import styles from "./academy-pricing.module.css";
-
 const whatsappHref="https://wa.me/972534932631?text=Hi%2C%20I%20came%20from%20your%20website.%20I%27d%20like%20to%20know%20more.";
-
-/** Static Source03 offer presentation only; no remaining count or payment state.
- * The Hebrew copy is a translation candidate, not owner-approved translation.
- * Root owns form/offer/capacity/payment integration and later mounting.
- */
 export function AcademyPricing({locale,applicationHref}:{locale:Locale;applicationHref?:string}){
  if(locale!=="en"&&locale!=="he")throw new Error("ACADEMY_PRICING_UNAVAILABLE");
- const formHref=`/${locale}/florida/apply`;
+ const formHref="/"+locale+"/florida/apply";
  if(applicationHref!==undefined&&applicationHref!==formHref&&applicationHref!=="#apply")throw new Error("ACADEMY_PRICING_UNAVAILABLE");
+ const academyHref=useAcademyHref();
  const t=(en:string,he:string)=>locale==="he"?he:en;
- const cards=[
-  {kind:"regular-prepay",title:t("Regular stage prepay","תשלום מלא מראש לשלב"),amount:"$1,750",saving:t("Save $200 vs. $1,950","חיסכון של $200 לעומת $1,950"),note:t("Full prepayment for one 12-session stage, per child.","תשלום מלא מראש עבור שלב אחד בן 12 מפגשים, לכל ילד.")},
-  {kind:"founding-sibling",title:t("Eligible founding sibling","אח נוסף במשפחה מייסדת זכאית"),amount:"$1,550",saving:t("Save $400 vs. $1,950","חיסכון של $400 לעומת $1,950"),note:t("Additional eligible sibling, first-stage prepay only.","לאח נוסף זכאי, בתשלום מראש עבור השלב הראשון בלבד.")},
-  {kind:"ordinary-sibling",title:t("Eligible additional sibling","אח נוסף זכאי"),amount:"$1,650",saving:t("Save $300 vs. $1,950","חיסכון של $300 לעומת $1,950"),note:t("Ordinary eligible additional sibling, full stage prepay.","לאח נוסף זכאי במסלול הרגיל, בתשלום מלא מראש לשלב.")},
-  {kind:"installments",title:t("Three installments","שלושה תשלומים"),amount:"$1,950",saving:"3 × $650 = $1,950",note:t("Primary learners and siblings pay the same installment total. No sibling installment discount.","הסכום הכולל בתשלומים זהה לילד הראשון ולאחים. אין הנחת אחים במסלול התשלומים.")},
+ const groups=[
+  {id:"founding",title:t("Founding Families","משפחות מייסדות"),intro:t("For the first 20 qualifying families. First-stage prepay only.","לעשרים המשפחות הזכאיות הראשונות. תשלום מראש לשלב הראשון בלבד."),cards:[
+   {kind:"founding-primary",title:t("Primary child","הילד הראשון"),amount:"$1,650",saving:t("Save $300 vs. $1,950","חיסכון של $300 לעומת $1,950"),note:t("Primary learner, first-stage prepay only.","תשלום מראש לשלב הראשון בלבד, לילד הראשון.")},
+   {kind:"founding-sibling",title:t("Eligible founding sibling","אח נוסף במשפחה מייסדת זכאית"),amount:"$1,550",saving:t("Save $400 vs. $1,950","חיסכון של $400 לעומת $1,950"),note:t("Additional eligible sibling, first-stage prepay only.","לאח נוסף זכאי, בתשלום מראש עבור השלב הראשון בלבד.")}
+  ]},
+  {id:"regular",title:t("Regular Pricing","מחירים רגילים"),intro:t("Choose full stage prepayment or three installments.","בחרו תשלום מלא מראש לשלב או שלושה תשלומים."),cards:[
+   {kind:"regular-prepay",title:t("Full stage prepayment","תשלום מלא מראש לשלב"),amount:"$1,750",saving:t("Save $200 vs. $1,950","חיסכון של $200 לעומת $1,950"),note:t("Full prepayment for one 12-session stage, per child.","תשלום מלא מראש עבור שלב אחד בן 12 מפגשים, לכל ילד.")},
+   {kind:"ordinary-sibling",title:t("Eligible sibling prepayment","תשלום מראש לאח נוסף זכאי"),amount:"$1,650",saving:t("Save $300 vs. $1,950","חיסכון של $300 לעומת $1,950"),note:t("Ordinary eligible additional sibling, full stage prepay.","לאח נוסף זכאי במסלול הרגיל, בתשלום מלא מראש לשלב.")},
+   {kind:"installments",title:t("Three installments","שלושה תשלומים"),amount:"$1,950",saving:"3 × $650 = $1,950",note:t("Primary learners and siblings pay the same installment total. No sibling installment discount.","הסכום הכולל בתשלומים זהה לילד הראשון ולאחים. אין הנחת אחים במסלול התשלומים.")}
+  ]}
  ];
- return <section id="pricing" data-academy-pricing="" className={styles.pricing} lang={locale} dir={locale==="he"?"rtl":"ltr"} aria-labelledby="academy-pricing-title">
-  <div className={styles.inner}>
-   <header className={styles.header}>
-    <p className={styles.eyebrow}>{t("12-session stage · per child","שלב בן 12 מפגשים · לכל ילד")}</p>
-    <h2 id="academy-pricing-title">{t("Founding 20 Families","20 המשפחות המייסדות")}</h2>
-    <p>{t("One 12-session stage, per child, in US dollars.","שלב אחד בן 12 מפגשים, לכל ילד, בדולר ארה״ב.")}</p>
-   </header>
-   <article className={styles.featured} data-price-kind="founding-primary">
-    <div>
-     <h3>{t("Founding primary learner","הילד הראשון במשפחה מייסדת")}</h3>
-     <p>{t("First-20 qualifying families · first-stage prepay only","20 המשפחות הזכאיות הראשונות · תשלום מראש לשלב הראשון בלבד")}</p>
-    </div>
-    <div className={styles.priceGroup}>
-     <p className={styles.comparison}>{t("Standard stage price","מחיר רגיל לשלב")} <del><bdi dir="ltr">$1,950</bdi></del></p>
-     <p className={styles.amount}><bdi dir="ltr">$1,650</bdi></p>
-     <p className={styles.saving}>{t("Save $300 vs. $1,950","חיסכון של $300 לעומת $1,950")}</p>
-    </div>
-   </article>
-   <div className={styles.cards}>{cards.map(card=><article className={styles.card} data-price-kind={card.kind} key={card.kind}>
-    <h3>{card.title}</h3><p className={styles.amount}><bdi dir="ltr">{card.amount}</bdi></p>
-    <p className={styles.saving} dir={card.kind==="installments"?"ltr":undefined}>{card.saving}</p><p>{card.note}</p>
-   </article>)}</div>
-   <p className={styles.stageTerms}>{t("Founding prepay applies to the first stage only. Discounts do not stack. No full-year prepay or automatic next-stage charge. Installments cover the full 12-session stage.","מחירי התשלום מראש למשפחות מייסדות חלים על השלב הראשון בלבד. אין כפל הנחות, תשלום מראש לשנה שלמה או חיוב אוטומטי לשלב הבא. שלושת התשלומים מכסים את השלב המלא בן 12 המפגשים.")}</p>
-   <div className={styles.disclosure}>
-    <h3>{t("Form first, payment second","קודם הטופס, אחר כך התשלום")}</h3>
-    <p>{t("Complete the registration form, including schedule and travel details, before payment; only verified qualifying payment secures a founding-family reservation.","לפני התשלום יש למלא ולשמור את טופס ההרשמה המלא, כולל פרטי לוח הזמנים והנסיעה. רק תשלום מזכה שאומת מבטיח מקום במסגרת ההטבה למשפחה מייסדת.")}</p>
-    <p>{t("Form submission, a callback request and pending/failed payment do not reserve it or create a temporary promotional hold.","שליחת טופס, בקשה לשיחת חזרה ותשלום ממתין או שנכשל אינם שומרים מקום במסגרת ההטבה ואינם יוצרים שמירה זמנית שלה.")}</p>
-    <p>{t("Where an actual eligible group, disclosed schedule/locations, capacity, accepted terms and authorized payment offer are available, the enrollment path may proceed to that payment step; otherwise save the request for follow-up without charging.","אפשר להתקדם לתשלום רק כשיש קבוצה מתאימה בפועל, לוח זמנים ומיקומים שנמסרו, מקום פנוי, תנאים שהתקבלו והצעת תשלום מורשית. אחרת הבקשה נשמרת להמשך טיפול ללא חיוב.")}</p>
-    <p>{t("Pending, failed or unknown payment remains unreserved; only verified qualifying payment confirms the founding-family reservation.","כל עוד התשלום ממתין, נכשל או שמצבו אינו ידוע, אין מקום שמור במסגרת ההטבה. רק תשלום מזכה שאומת מאשר את שמירת המקום למשפחה המייסדת.")}</p>
-   </div>
-   <nav className={styles.actions} aria-label={t("Pricing next steps","הצעדים הבאים לאחר בחירת המחיר")}>
-    <a className={styles.primary} href={applicationHref??formHref}>{t("Apply / Continue to Enrollment","הגשת בקשה / המשך להרשמה")}</a>
-    <a className={styles.secondary} href={whatsappHref} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">{t("Questions? Message on WhatsApp","יש שאלות? כתבו לנו בוואטסאפ")}</a>
-   </nav>
-  </div>
- </section>;
+ return <section id="pricing" data-academy-pricing="" className={styles.pricing} lang={locale} dir={locale==="he"?"rtl":"ltr"} aria-labelledby="academy-pricing-title"><div className={styles.inner}>
+  <header className={styles.header}><p className={styles.eyebrow}>{t("A stage of learning. Skills for life.","שלב של למידה. מיומנויות לחיים.")}</p><h2 id="academy-pricing-title">{t("How much it costs","כמה זה עולה")}</h2><p>{t("One 12-session stage, per child, in US dollars.","שלב אחד בן 12 מפגשים, לכל ילד, בדולר ארה״ב.")}</p></header>
+  <div className={styles.priceGroups}>{groups.map(group=><section className={styles.priceGroupPanel} key={group.id} data-price-group={group.id}><header><p className={styles.groupTag}>{group.id==="founding"?t("First 20 qualifying families","20 המשפחות הזכאיות הראשונות"):t("One stage at a time","שלב אחד בכל פעם")}</p><h3>{group.title}</h3><p>{group.intro}</p></header><div className={styles.groupCards}>{group.cards.map(card=><article className={styles.card} data-price-kind={card.kind} key={card.kind}><h4>{card.title}</h4>{card.kind==="founding-primary"&&<p className={styles.comparison}>{t("Standard stage price","מחיר רגיל לשלב")} <del><bdi dir="ltr">$1,950</bdi></del></p>}<p className={styles.amount}><bdi dir="ltr">{card.amount}</bdi></p><p className={styles.saving} dir={card.kind==="installments"?"ltr":undefined}><AcademyBidi>{card.saving}</AcademyBidi></p><p>{card.note}</p></article>)}</div></section>)}</div>
+  <p className={styles.stageTerms}>{t("Founding rates apply to the first stage only. Only verified qualifying payment secures a founding-family position; submitting a form or requesting a callback does not reserve a place.","מחירי המשפחות המייסדות חלים על השלב הראשון בלבד. רק תשלום מזכה שאומת שומר מקום במסגרת ההטבה; שליחת טופס או בקשה לשיחה חוזרת אינן שומרות מקום.")}</p>
+  <nav className={styles.actions} aria-label={t("Pricing next steps","הצעדים הבאים לאחר בחירת המחיר")}><a className={styles.primary} href={applicationHref??academyHref(locale,"/apply")}>{t("Register","להרשמה")}</a><a className={styles.secondary} href={whatsappHref} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">{t("Questions? Message on WhatsApp","יש שאלות? כתבו לנו בוואטסאפ")}</a></nav>
+  <p className={styles.stageTerms}>{t("No stacked discounts, annual prepayment or automatic next-stage charges. Save your registration details first; payment and group are confirmed separately.","אין כפל הנחות, תשלום מראש לשנה שלמה או חיוב אוטומטי לשלב הבא. ממלאים ושומרים את טופס ההרשמה קודם; התשלום והקבוצה מאושרים בנפרד.")}</p>
+ </div></section>;
 }

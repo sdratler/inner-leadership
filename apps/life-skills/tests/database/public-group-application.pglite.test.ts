@@ -4,7 +4,7 @@ import {afterAll,beforeAll,expect,it,vi} from "vitest";
 import {PGlite} from "@electric-sql/pglite";
 vi.mock("server-only",()=>({}));
 import {PublicGroupApplicationStore} from "../../src/features/group-application/store.ts";
-import {floridaGroupApplicationNotice,groupApplicationNotice,type FloridaParentApplicationFields,type IsraelGroupApplicationCommand} from "../../src/features/group-application/contract.ts";
+import {floridaGroupApplicationNotice,academyApplicationNotice,groupApplicationNotice,type FloridaParentApplicationFields,type IsraelGroupApplicationCommand} from "../../src/features/group-application/contract.ts";
 import type {IdentityStore,SqlSession} from "../../src/features/identity/store.ts";
 import type {Actor} from "../../src/features/identity/types.ts";
 import {asId} from "../../src/lib/ids.ts";
@@ -21,6 +21,21 @@ beforeAll(async()=>{
  for(const role of ["practitioner","parent"] as const){const id=randomUUID(),digest=id.replaceAll("-","").padEnd(64,"0");await db.query("INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,'adult','synthetic',$3)",[id,workspaceId,now]);await db.query("INSERT INTO ls_identity.accounts(id,workspace_id,role,state,locale,email_blind,email_ciphertext,email_verified_at,password_hash,created_at,updated_at) VALUES($1,$2,$3,'active','en',$4,'synthetic',$5,'synthetic',$5,$5)",[id,workspaceId,role,digest,now]);await db.query("INSERT INTO ls_identity.account_subjects(workspace_id,account_id,person_id) VALUES($1,$2,$2)",[workspaceId,id]);await db.query("INSERT INTO ls_identity.sessions(token_digest,workspace_id,account_id,created_at,expires_at) VALUES($1,$2,$3,$4,$5)",[digest,workspaceId,id,now,new Date(now.getTime()+86400000)]);actors.push({id,workspaceId,personId:id,role,state:"active",locale:"en",sessionDigest:digest,expiresAt:now.getTime()+86400000} as Actor);}
 },20000);
 afterAll(async()=>db.close());
+it.each(["callback","enrollment_followup"] as const)("durably replays and privately reads the new Academy %s consent, exact age and 120-minute limit",async nextStep=>{
+ const input=command({contact:`${nextStep}@example.invalid`,childAge:undefined,
+  permission:{confirmed:true,version:academyApplicationNotice.version,language:"en"},scheduleContext:"program_format_interest",
+  academyFit:{version:"RM-FIT-20261014-04-v1",maximumDriveMinutes:120,parentDropoff:"yes",learners:[{approximateAge:12,gear:"has_gear",experience:"new"}]},
+  academyIntake:{version:"JLFA-ENROLLMENT-20261018-03-v1",postalCode:"33431",driveLimit:120,preferredGroupLanguage:"en",stagePreference:"foundation",keysTravel:"parent_drive",offshoreInterest:"discuss",nextStep,learners:[{ageYears:12,gradeBand:"grade_6_8",schooling:"school",tackleBox:"ready"}]}});
+ // Zod removes explicitly undefined fields; match the actual accepted command.
+ delete input.fields.childAge;
+ const first=await service.submit(input),replay=await service.submit(input);
+ expect(replay).toMatchObject({duplicate:true,replayed:true,item:{id:first.item.id,fields:input.fields}});
+ expect(await service.list(actors[0]!)).toContainEqual(first.item);
+ await expect(service.list(actors[1]!)).rejects.toMatchObject({code:"FORBIDDEN"});
+ const row=await db.query<{notice_version:string;payload_ciphertext:string}>("SELECT notice_version,payload_ciphertext FROM ls_service_interest.public_applications WHERE id=$1",[first.item.id]);
+ expect(row.rows[0]!.notice_version).toBe(academyApplicationNotice.version);expect(row.rows[0]!.payload_ciphertext).not.toContain(input.fields.contact);
+ const count=await db.query<{n:number}>("SELECT count(*)::int AS n FROM ls_service_interest.public_application_operations WHERE application_id=$1",[first.item.id]);expect(count.rows[0]!.n).toBe(1);
+});
 it("encrypts one public application, reads it only as practitioner, and creates no CRM, case, payment or message side effect",async()=>{
  const before=await db.query("SELECT (SELECT count(*) FROM ls_identity.people) AS people,(SELECT count(*) FROM ls_cases.cases) AS cases");const input=command(),saved=await service.submit(input);
  expect(saved).toMatchObject({saved:true,replayed:false,duplicate:false,item:{source:"public_group_application",state:"owner_review",fields:input.fields}});

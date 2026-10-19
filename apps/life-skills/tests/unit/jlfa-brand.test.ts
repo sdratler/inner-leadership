@@ -17,10 +17,10 @@ describe("current owner-approved Academy brand projection and public overview bo
   expect(bytes.length).toBe(1701549);expect(createHash("sha256").update(bytes).digest("hex")).toBe(JLFA_LOGO_SHA256);
   expect(bytes.subarray(0,8).toString("hex")).toBe("89504e470d0a1a0a");expect([bytes.readUInt32BE(16),bytes.readUInt32BE(20),bytes[25]]).toEqual([1254,1254,6]);
  });
- it.each(["en","he"] as const)("keeps the same image bytes in %s header and footer with only the approved header window",locale=>{
+ it.each(["en","he"] as const)("keeps the same full native image bytes in %s header and footer",locale=>{
   const header=renderToStaticMarkup(createElement(JlfaLogo,{locale})),footer=renderToStaticMarkup(createElement(JlfaLogo,{locale,footer:true}));
   for(const html of[header,footer]){expect(html).toContain(`src="${JLFA_LOGO_SRC}"`);expect(html).toContain('width="1254" height="1254"');expect(html).not.toMatch(/<svg|data:image|Real Mensch/);}
-  expect(header).toContain('data-jlfa-logo-window="0,100,1254,1000"');expect(footer).not.toContain("data-jlfa-logo-window");
+  expect(header).toContain('data-jlfa-logo-window="full-native"');expect(footer).not.toContain("data-jlfa-logo-window");
   expect(footer).toContain(escaped(JLFA_TAGLINE));
  });
  it.each(["en","he"] as const)("retains every exact existing %s FAQ once, within three initially collapsed groups",locale=>{
@@ -30,10 +30,18 @@ describe("current owner-approved Academy brand projection and public overview bo
  });
  for(const locale of["en","he"] as const)for(const mode of["native","sample"] as const)it(`${locale}/${mode}: brands only Academy and keeps current inquiry/school controls and curriculum closed`,()=>{
   const html=renderToStaticMarkup(createElement(GroupApplicationLanding,{locale,mode,programId:"sunday_fishing_academy"}));
-  expect(html.match(new RegExp(`src="${JLFA_LOGO_SRC}"`,"g"))).toHaveLength(2);expect(html).toContain(`<h1>${escaped(copy.realMensch.academy.title[locale])}</h1>`);
+  expect(html.match(new RegExp(`src="${JLFA_LOGO_SRC}"`,"g"))).toHaveLength(2);expect(html.match(/<h1\b/g)).toHaveLength(1);
   expect(html).not.toMatch(/Real Mensch|Real Mentch|Real Mentsch|\/groups\/brand\/life-skills-logo\.png/);
-  expect(html).toContain('aria-controls="jlfa-curriculum"');expect(html).not.toContain("data-jlfa-curriculum-content");
-  expect(html).toContain('data-inquiry-kind="parent"');expect(html).toContain('data-inquiry-kind="institution"');expect(html).toContain(locale==="he"?"תמונת הפתיחה עדיין בעבודה":"HERO ARTWORK IN PROGRESS");
+  expect(html).not.toContain("data-jlfa-curriculum-content");
+  if(mode==="native"){
+   expect(html).toContain(locale==="he"?'<h1 id="academy-title">האקדמיה לדיג<br/>ולמנהיגות יהודית</h1>':'<h1 id="academy-title">Jewish Leadership<br/>Fishing Academy</h1>');expect(html).toContain('data-academy-site="true"');
+   expect(html).toContain('src="/groups/academy/hero-mobile-selected-20261018.png"');expect(html).toContain('srcSet="/groups/academy/hero-desktop-selected-20261018.png"');expect(html).toContain(`href="/${locale}/florida/apply"`);
+   expect(html).not.toContain('data-inquiry-kind=');expect(html).not.toContain('aria-controls="jlfa-curriculum"');expect(html).not.toContain(locale==="he"?"תמונת הפתיחה עדיין בעבודה":"HERO ARTWORK IN PROGRESS");
+  }else{
+   expect(html).toContain(`<h1>${escaped(copy.realMensch.academy.title[locale])}</h1>`);expect(html).toContain('aria-controls="jlfa-curriculum"');
+   expect(html).toContain('data-inquiry-kind="parent"');expect(html).toContain('data-inquiry-kind="institution"');expect(html).toContain(locale==="he"?"תמונת הפתיחה עדיין בעבודה":"HERO ARTWORK IN PROGRESS");
+   expect(html).not.toContain('/groups/academy/hero-mobile-selected-20261018.png');expect(html).not.toContain('data-academy-site="true"');
+  }
   for(const programId of["private_fishing_life_skills","morning_torah_learning"] as const){const other=renderToStaticMarkup(createElement(GroupApplicationLanding,{locale,mode,programId}));expect(other).toContain('/groups/brand/life-skills-logo.png');expect(other).not.toContain(JLFA_LOGO_SRC);expect(other).not.toContain('aria-controls="jlfa-curriculum"');}
  });
  it("consumes all 105 exact accepted V4 English paragraphs with a complete Hebrew translation and no private source payload",()=>{

@@ -31,7 +31,7 @@ function article(html:string,kind:string){const found=new RegExp(`<article\\b[^>
 describe.each(["en","he"] as const)("%s static Academy prices",locale=>{
  test("uses the pricing anchor and a static family offer with per-child stage scope",()=>{
   const html=render(locale);expect(html).toContain('id="pricing"');expect(html).toContain('data-academy-pricing=""');expect(html).toContain(`lang="${locale}"`);expect(html).toContain(`dir="${locale==="he"?"rtl":"ltr"}"`);
-  expect(html).toContain(`<h2 id="academy-pricing-title">${locale==="he"?"20 המשפחות המייסדות":"Founding 20 Families"}</h2>`);expect(plain(html)).toContain(locale==="he"?"שלב אחד בן 12 מפגשים, לכל ילד, בדולר ארה״ב.":"One 12-session stage, per child, in US dollars.");
+  expect(html).toContain(`<h2 id="academy-pricing-title">${locale==="he"?"כמה זה עולה":"How much it costs"}</h2>`);expect(plain(html)).toContain(locale==="he"?"שלב אחד בן 12 מפגשים, לכל ילד, בדולר ארה״ב.":"One 12-session stage, per child, in US dollars.");
   expect(html.match(/data-price-kind=/g)).toHaveLength(5);expect(html).not.toMatch(/countdown|remaining|spots left|deadline|data-counter|<time|role="timer"|מקומות נותרו|ספירה לאחור/);
  });
  test("founding primary first-stage price compares1950 to1650 and saves300",()=>{
@@ -46,14 +46,15 @@ describe.each(["en","he"] as const)("%s static Academy prices",locale=>{
   const html=article(render(locale),"installments");expect(html).toContain('<bdi dir="ltr">$1,950</bdi>');expect(plain(html)).toContain("3 × $650 = $1,950");expect(plain(html)).toContain(locale==="he"?"אין הנחת אחים במסלול התשלומים":"No sibling installment discount");expect(plain(html)).toContain(locale==="he"?"לילד הראשון ולאחים":"Primary learners and siblings");expect(html).not.toMatch(/Save|חיסכון|\$1,550|\$1,650|\$1,750/);expect(3*650).toBe(1950);
  });
  test("does not sell annual prepay, stacked discounts, automatic next stages or800 savings",()=>{
-  const text=plain(render(locale));for(const expected of locale==="he"?["השלב הראשון בלבד","אין כפל הנחות","תשלום מראש לשנה שלמה","חיוב אוטומטי לשלב הבא"]:["first stage only","Discounts do not stack","No full-year prepay","automatic next-stage charge"])expect(text).toContain(expected);
+  const text=plain(render(locale));for(const expected of locale==="he"?["השלב הראשון בלבד","אין כפל הנחות","תשלום מראש לשנה שלמה","חיוב אוטומטי לשלב הבא"]:["first stage only","No stacked discounts","annual prepayment","automatic next-stage charges"])expect(text).toContain(expected);
   expect(text).not.toMatch(/\$800|\$[678],\d{3}|cancel.anytime|membership|subscription|annually|renewal/);
  });
- test("requires full form before payment, qualifying verified payment and real offer/capacity",()=>{
-  const text=plain(render(locale));for(const expected of locale==="he"?["טופס ההרשמה המלא","לפני התשלום","פרטי לוח הזמנים והנסיעה","רק תשלום מזכה שאומת","בקשה לשיחת חזרה","אינם יוצרים שמירה זמנית","לוח זמנים ומיקומים","מקום פנוי","תנאים שהתקבלו","הצעת תשלום מורשית","ללא חיוב","שמצבו אינו ידוע"]:["Complete the registration form, including schedule and travel details, before payment","only verified qualifying payment secures a founding-family reservation","Form submission, a callback request and pending/failed payment do not reserve it or create a temporary promotional hold","actual eligible group","disclosed schedule/locations","capacity","accepted terms","authorized payment offer","without charging","Pending, failed or unknown payment remains unreserved"])expect(text).toContain(expected);
+ test("explains verified payment eligibility and saving registration before separate payment",()=>{
+  const text=plain(render(locale));expect(text).not.toMatch(/Form first, payment second|קודם הטופס/);
+  for(const expected of locale==="he"?["רק תשלום מזכה שאומת","בקשה לשיחה חוזרת","ממלאים ושומרים","התשלום והקבוצה מאושרים בנפרד"]:["Only verified qualifying payment","requesting a callback does not reserve a place","Save your registration details first","payment and group are confirmed separately"])expect(text).toContain(expected);
  });
  test("default action navigates to the exact locale-specific full form",()=>{
-  const html=render(locale);expect(html).toContain(`href="/${locale}/florida/apply"`);expect(html).toContain(locale==="he"?"הגשת בקשה / המשך להרשמה":"Apply / Continue to Enrollment");expect(html).not.toMatch(/<form|<input|<textarea|<button|<iframe|<script|<img|<svg/);expect(html.match(/<a\b/g)).toHaveLength(2);expect(plain(html)).not.toMatch(/Pay now|Checkout now|Reserve now|Pay here/);
+  const html=render(locale);expect(html).toContain(`href="/${locale}/florida/apply"`);expect(html).toContain(locale==="he"?"להרשמה":"Register");expect(html).not.toMatch(/<form|<input|<textarea|<button|<iframe|<script|<img|<svg/);expect(html.match(/<a\b/g)).toHaveLength(2);expect(plain(html)).not.toMatch(/Pay now|Checkout now|Reserve now|Pay here/);
  });
  test.each(["same","sample"])("explicit %s action preserves the narrow href whitelist",mode=>{
   const href=mode==="same"?`/${locale}/florida/apply`:"#apply";expect(render(locale,href)).toContain(`href="${href}"`);

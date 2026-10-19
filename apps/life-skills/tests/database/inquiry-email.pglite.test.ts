@@ -51,10 +51,10 @@ it("OFF remains compatible with pre-outbox databases and never queries the email
  expect(saved).not.toHaveProperty("acknowledgment");expect(await row(saved.item.id)).toBeUndefined();
 });
 it("rolls back both inquiry and operation if atomic queue persistence fails",async()=>{
- const input=command();const broken:IdentityStore={transaction:fn=>store.transaction(tx=>fn({query:(sql,values)=>{if(sql.startsWith("INSERT INTO ls_service_interest.inquiry_email_outbox"))throw Error("queue unavailable");return tx.query(sql,values);}}))};
+ const input=command(),before=(await db.query("SELECT count(*)::int AS n FROM ls_service_interest.public_applications WHERE workspace_id=$1",[workspace])).rows;const broken:IdentityStore={transaction:fn=>store.transaction(tx=>fn({query:(sql,values)=>{if(sql.startsWith("INSERT INTO ls_service_interest.inquiry_email_outbox"))throw Error("queue unavailable");return tx.query(sql,values);}}))};
  await expect(new PublicGroupApplicationStore(broken,workspace,ring,key,clock,true).submit(input)).rejects.toThrow("queue unavailable");
  expect((await db.query("SELECT operation_id FROM ls_service_interest.public_application_operations WHERE operation_id=$1",[input.operationId])).rows).toEqual([]);
- expect((await db.query("SELECT id FROM ls_service_interest.public_applications WHERE payload_ciphertext LIKE $1",[`%${input.fields.contact}%`])).rows).toEqual([]);
+ expect((await db.query("SELECT count(*)::int AS n FROM ls_service_interest.public_applications WHERE workspace_id=$1",[workspace])).rows).toEqual(before);
  expect(await new PublicGroupApplicationStore(store,workspace,ring,key,clock).replaySaved(input)).toBeNull();
 });
 it("a fresh worker sends only after the native commit and committed unknown reservation, outside the DB transaction",async()=>{
@@ -84,6 +84,12 @@ it("DB failure after a successful provider response leaves unknown and never aut
 it("concurrent worker reservations cannot deliver twice",async()=>{
  const saved=await application.submit(command()),mail=await row(saved.item.id),send=vi.fn(async()=>({providerId:"synthetic_mail_4"}));
  expect((await Promise.all([outbox.dispatchOne(mail.id,{send},INQUIRY_EMAIL_FROM),outbox.dispatchOne(mail.id,{send},INQUIRY_EMAIL_FROM)])).sort()).toEqual(["idle","sent"]);expect(send).toHaveBeenCalledTimes(1);
+});
+it("post-commit HTTP dispatch by native reference shares the same durable no-resend state across retries",async()=>{
+ const input=command(),saved=await application.submit(input),send=vi.fn(async()=>({providerId:"synthetic_post_commit"}));
+ expect(await outbox.dispatchForApplication(saved.item.id,{send},INQUIRY_EMAIL_FROM)).toBe("sent");
+ await application.submit(input);expect(await outbox.dispatchForApplication(saved.item.id,{send},INQUIRY_EMAIL_FROM)).toBe("sent");
+ expect(send).toHaveBeenCalledTimes(1);expect(await outbox.dispatchForApplication(randomUUID(),{send},INQUIRY_EMAIL_FROM)).toBe("not_requested");
 });
 it("rejects mismatched recipient/purpose before network, even with valid ciphertext",async()=>{
  const saved=await application.submit(command()),mail=await row(saved.item.id),send=vi.fn();

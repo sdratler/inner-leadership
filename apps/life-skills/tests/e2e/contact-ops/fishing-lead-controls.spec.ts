@@ -31,7 +31,7 @@ if(!runtimePath){
   await form.locator('[name="parentName"]').fill(name);await form.locator('[name="contact"]').fill(contact);
   await form.locator('[name="learnerAge-0"]').fill("12");await form.locator('[name="cityArea"]').fill("Synthetic Florida");
   await form.locator('[name="postalCode"]').fill("33021");
-  for(const [field,value] of Object.entries({driveLimit:"up_to_30",preferredGroupLanguage:locale,stagePreference:"foundation",keysTravel:"discuss",offshoreInterest:"discuss",nextStep:"callback","learnerGrade-0":"grade_6_8","learnerSchooling-0":"school","learnerTackleBox-0":"need_advice"}))await form.locator(`[name="${field}"]`).selectOption(value);
+  for(const [field,value] of Object.entries({driveLimit:"30",schoolHoursAvailability:"discuss",preferredGroupLanguage:locale,stagePreference:"foundation",keysTravel:"discuss",offshoreInterest:"discuss",nextStep:"callback","learnerGrade-0":"grade_6_8","learnerSchooling-0":"school","learnerTackleBox-0":"need_advice"}))await form.locator(`[name="${field}"]`).selectOption(value);
   await form.locator('[name="schedulePreference"][value="sunday"]').check();await form.locator('[name="permission"]').check();
   const endpoint="**/api/public/group-applications?program=sunday_fishing_academy";
   let savedId="",requestHash="",commits=0;

@@ -41,6 +41,13 @@ type Row={id:string;applicationId:string;purpose:string;ciphertext:string;state:
 /** Private worker capability. Caller supplies the separately permitted transport; never called by public HTTP. */
 export class InquiryEmailOutbox{
  constructor(private readonly db:IdentityStore,private readonly workspace:WorkspaceId,private readonly ring:Keyring,private readonly clock:IdentityClock){}
+ async dispatchForApplication(reference:string,transport:AuthEmailTransport,from:string){
+  if(!z.string().uuid().safeParse(reference).success)throw new AppError("INVALID_REQUEST");
+  const lookup=()=>this.db.transaction(tx=>one<{id:string;state:Row["state"]}>(tx,"SELECT id,state FROM ls_service_interest.inquiry_email_outbox WHERE workspace_id=$1 AND application_id=$2",[this.workspace,reference]));
+  const row=await lookup();if(!row)return "not_requested" as const;if(row.state!=="queued")return row.state;
+  const outcome=await this.dispatchOne(row.id,transport,from);if(outcome!=="idle")return outcome;
+  return (await lookup())?.state??"unknown";
+ }
  async dispatchOne(id:string,transport:AuthEmailTransport,from:string){
   if(!z.string().uuid().safeParse(id).success||from!==INQUIRY_EMAIL_FROM)throw new AppError("INVALID_REQUEST");
   const prepared=await this.db.transaction(async tx=>{
