@@ -169,6 +169,10 @@ async function verifyGroupPlacementDatabaseBoundary(){
 try{
  const workspaceId=randomUUID(),dataKey=randomBytes(32),lookupKey=randomBytes(32),keyring={activeKeyId:"synthetic",keys:{synthetic:dataKey}};
  f=await fixture({workspaceId,keyring,termsVersion:"Synthetic Group Interest"});
+ // Retain the historical conflict cases with explicit synthetic availability,
+ // as in accepted main; elapsed wall-clock time must not invalidate the fixture.
+ if(!launchOpsOnly)await f.pool.query(`INSERT INTO ls_calendar.availability(id,workspace_id,practitioner_id,starts_at,ends_at,kind)
+  VALUES($1,$2,$3,'2026-10-10T00:00:00.000Z','2026-10-12T00:00:00.000Z','open')`,[randomUUID(),workspaceId,f.practitioner.actor.id]);
  await f.seed(launchOpsOnly?f.at(-48):"2026-10-10T08:00:00.000Z");
  await f.seed(launchOpsOnly?f.at(-24):"2026-10-11T08:00:00.000Z");
  await f.pool.query(`INSERT INTO ls_cases.family_members(workspace_id,family_id,person_id,role)
@@ -328,7 +332,7 @@ try{
    (SELECT count(*)::int FROM ls_contact_ops.fishing_lead_operations WHERE workspace_id=$1) AS operations,
    (SELECT count(*)::int FROM ls_contact_ops.profiles WHERE workspace_id=$1) AS profiles,
    (SELECT count(*)::int FROM ls_contact_ops.fishing_label_projection WHERE workspace_id=$1) AS projections`,[workspaceId]);
-  if(JSON.stringify(rows.rows[0])!==JSON.stringify({revisions:12,operations:12,profiles:5,projections:6}))throw new Error("FISHING_UI_NATIVE_COUNTS_MISMATCH");
+  if(JSON.stringify(rows.rows[0])!==JSON.stringify({revisions:14,operations:14,profiles:5,projections:6}))throw new Error("FISHING_UI_NATIVE_COUNTS_MISMATCH");
   // Two seeded inquiries plus two anonymous UI submissions. Both lost-response
   // retries must retain the same saved inquiry and operation, never a duplicate.
   const after=await counts(),expected={...baseline,publicApplications:baseline.publicApplications+4,publicApplicationOperations:baseline.publicApplicationOperations+4};
@@ -340,7 +344,7 @@ try{
   }
   const retainedPublic=await f.pool.query("SELECT to_jsonb(a)::text AS snapshot FROM ls_service_interest.public_applications a WHERE workspace_id=$1 AND id=$2",[workspaceId,publicApplicationId]);
   if(JSON.stringify(retainedPublic.rows)!==JSON.stringify(originalPublic.rows))throw new Error("FISHING_UI_EXISTING_RECEIPT_MUTATED");
-  console.log(`FISHING_LEAD_UI_ACCEPTANCE_PASS project=${project} composedPublicOwnerLogin=true ordinaryRelogin=true revisions=12 operations=12 profiles=5 projections=6 publicInquiries=4 publicOperations=4 tasksUnchanged=true unrelatedProfileUnchanged=true providerEffects=0`);
+  console.log(`FISHING_LEAD_UI_ACCEPTANCE_PASS project=${project} composedPublicOwnerLogin=true ordinaryRelogin=true scopedDetailsSaved=true detailsRetainedAfterRemoval=true revisions=14 operations=14 profiles=5 projections=6 publicInquiries=4 publicOperations=4 tasksUnchanged=true unrelatedProfileUnchanged=true providerEffects=0`);
  }
  else if(process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==="true"){
   phase="public-boundary-readback";const after=await counts(),writes=project===undefined||project==="desktop"?2:1;

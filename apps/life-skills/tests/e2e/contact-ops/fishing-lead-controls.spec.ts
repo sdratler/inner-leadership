@@ -120,12 +120,30 @@ if(!runtimePath){
   expect(createHash("sha256").update(bodies[0]!).digest("hex")).toBe(createHash("sha256").update(bodies[1]!).digest("hex"));
   await expect(details.getByRole("status")).toContainText(t("Added to Leads. No follow-up task was created.","נוסף לרשימת המתעניינים. לא נוצרה משימת המשך."));await page.unrouteAll({behavior:"wait"});
   await expect(details).toContainText(t("Not configured","לא מוגדר"));expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  // Deliberate Academy-only administrative details, through the real mounted
+  // UI and ordinary login. The native readback below must retain them on Remove.
+  const leadDetails={status:"follow_up",notes:`Synthetic Academy note ${locale}`,nextAction:"Owner callback",followUpDate:"2026-11-05"};
+  await details.getByLabel(t("Academy lead status","מצב המתעניין באקדמיה"),{exact:true}).selectOption(leadDetails.status);
+  await details.getByLabel(t("Academy notes","הערות לאקדמיה"),{exact:true}).fill(leadDetails.notes);
+  await details.getByLabel(t("Next Academy action","הפעולה הבאה באקדמיה"),{exact:true}).fill(leadDetails.nextAction);
+  await details.getByLabel(t("Follow-up date","תאריך למעקב"),{exact:true}).fill(leadDetails.followUpDate);
+  await details.getByRole("button",{name:t("Review details","בדיקת הפרטים"),exact:true}).click();
+  await expect(details.getByRole("heading",{name:t("Review Academy lead details","בדיקת פרטי המתעניין באקדמיה"),exact:true})).toBeFocused();
+  await expect(details).toContainText(leadDetails.notes);
+  await details.getByRole("button",{name:t("Confirm Save","אישור שמירה"),exact:true}).click();
+  await expect(details.getByRole("status")).toContainText(t("Academy lead details saved. No task or message was created.","פרטי המתעניין באקדמיה נשמרו. לא נוצרו משימה או הודעה."));
+  await page.reload();await details.locator("summary").click();
+  await expect(details.getByLabel(t("Academy lead status","מצב המתעניין באקדמיה"),{exact:true})).toHaveValue(leadDetails.status);
+  await expect(details.getByLabel(t("Academy notes","הערות לאקדמיה"),{exact:true})).toHaveValue(leadDetails.notes);
+  await expect(details.getByLabel(t("Next Academy action","הפעולה הבאה באקדמיה"),{exact:true})).toHaveValue(leadDetails.nextAction);
+  await expect(details.getByLabel(t("Follow-up date","תאריך למעקב"),{exact:true})).toHaveValue(leadDetails.followUpDate);
   await record.screenshot({path:info.outputPath(`fishing-added-${locale}-${info.project.name}.png`)});
   await details.getByRole("button",{name:t("Remove from Lead List","הסרה מרשימת המתעניינים"),exact:true}).click();await details.getByRole("button",{name:t("Confirm Remove","אישור הסרה"),exact:true}).click();
   await expect(details.getByRole("status")).toContainText(t("Contact and history retained.","פרטי הקשר וההיסטוריה נשמרו."));
   await page.reload();await details.locator("summary").click();await expect(details).toContainText(t("Removed","הוסר"));await expect(details.getByRole("button",{name:t("Add to Lead List","הוספה לרשימת המתעניינים"),exact:true})).toBeVisible();
   await record.screenshot({path:info.outputPath(`fishing-removed-${locale}-${info.project.name}.png`)});
   const current=await page.request.get(`/api/private/fishing-leads/sunday_fishing_academy?source=inquiry&sourceId=${inquiry.id}`),body=await current.json();expect(body.data.membership.state).toBe("removed");
+  expect(body.data.membership.details).toEqual(leadDetails);
   await page.goto(`/${locale}/app/clients?personId=${body.data.personId}`);await expect(page.getByRole("heading",{name:inquiry.name,exact:true})).toBeVisible();
   await expect(page.getByRole("region",{name:t("Fishing interests","התעניינות בדיג"),includeHidden:true})).toBeVisible();
   const personSection=page.getByRole("region",{name:t("Fishing interests","התעניינות בדיג"),includeHidden:true});await personSection.locator("summary").first().click();await expect(personSection).toContainText(t("Removed","הוסר"));
