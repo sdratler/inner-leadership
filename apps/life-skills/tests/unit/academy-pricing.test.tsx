@@ -31,7 +31,7 @@ function article(html:string,kind:string){const found=new RegExp(`<article\\b[^>
 describe.each(["en","he"] as const)("%s static Academy prices",locale=>{
  test("uses the pricing anchor and a static family offer with per-child stage scope",()=>{
   const html=render(locale);expect(html).toContain('id="pricing"');expect(html).toContain('data-academy-pricing=""');expect(html).toContain(`lang="${locale}"`);expect(html).toContain(`dir="${locale==="he"?"rtl":"ltr"}"`);
-  expect(html).toContain(`<h2 id="academy-pricing-title">${locale==="he"?"20 המשפחות המייסדות":"Founding 20 Families"}</h2>`);expect(plain(html)).toContain(locale==="he"?"שלב אחד בן 12 מפגשים, לכל ילד, בדולר ארה״ב.":"One 12-session stage, per child, in US dollars.");
+  expect(html).toContain(`<h2 id="academy-pricing-title">${locale==="he"?"כמה זה עולה":"How much it costs"}</h2>`);expect(plain(html)).toContain(locale==="he"?"שלב אחד בן 12 מפגשים, לכל ילד, בדולר ארה״ב.":"One 12-session stage, per child, in US dollars.");
   expect(html.match(/data-price-kind=/g)).toHaveLength(5);expect(html).not.toMatch(/countdown|remaining|spots left|deadline|data-counter|<time|role="timer"|מקומות נותרו|ספירה לאחור/);
  });
  test("founding primary first-stage price compares1950 to1650 and saves300",()=>{
@@ -54,7 +54,7 @@ describe.each(["en","he"] as const)("%s static Academy prices",locale=>{
   for(const expected of locale==="he"?["רק תשלום מזכה שאומת","בקשה לשיחת חזרה","לוח זמנים","מיקומים","מקום פנוי","תנאים שהתקבלו","הצעת תשלום מורשית","שמצבו אינו ידוע"]:["Only verified qualifying payment","An inquiry or callback request does not reserve a place","eligible group","schedule","locations","capacity","accepted terms","authorized payment offer","Pending, failed or unknown payment remains unreserved"])expect(text).toContain(expected);
  });
  test("default action navigates to the exact locale-specific full form",()=>{
-  const html=render(locale);expect(html).toContain(`href="/${locale}/florida/apply"`);expect(html).toContain(locale==="he"?"הגשת בקשה / המשך להרשמה":"Apply / Continue to Enrollment");expect(html).not.toMatch(/<form|<input|<textarea|<button|<iframe|<script|<img|<svg/);expect(html.match(/<a\b/g)).toHaveLength(2);expect(plain(html)).not.toMatch(/Pay now|Checkout now|Reserve now|Pay here/);
+  const html=render(locale);expect(html).toContain(`href="/${locale}/florida/apply"`);expect(html).toContain(locale==="he"?"להרשמה":"Register");expect(html).not.toMatch(/<form|<input|<textarea|<button|<iframe|<script|<img|<svg/);expect(html.match(/<a\b/g)).toHaveLength(2);expect(plain(html)).not.toMatch(/Pay now|Checkout now|Reserve now|Pay here/);
  });
  test.each(["same","sample"])("explicit %s action preserves the narrow href whitelist",mode=>{
   const href=mode==="same"?`/${locale}/florida/apply`:"#apply";expect(render(locale,href)).toContain(`href="${href}"`);
