@@ -1,8 +1,9 @@
 import 'server-only';
 import {randomUUID} from 'node:crypto';
 import {z} from 'zod';
+import {asId} from '../../lib/ids.ts';
 import {lockWorkspace} from '../identity/data.ts';
-import type {Actor,AccountFacts} from '../identity/types.ts';
+import type {Actor} from '../identity/types.ts';
 import type {SqlSession} from '../identity/store.ts';
 import {one} from '../identity/store.ts';
 import {digest,invariant,type FamilyHostedAction} from '../fishing-payments/domain.ts';
@@ -44,7 +45,7 @@ export class NativeStripeHostedCoordinator implements StripeTestHostedCoordinato
  private async journal(tx:SqlSession,workspace:string,action:string,key:string):Promise<StoredJournal|null>{
   const rows=await tx.query<{actorId:string;value:unknown;hash:string;at:Date}>(`SELECT actor_id AS "actorId",result_json AS value,digest AS hash,created_at AS at FROM ls_fishing_payments.commands WHERE workspace_id=$1 AND action=$2 AND command_id=$3 AND octet_length(result_json::text)<=131072 ORDER BY actor_id LIMIT 2 FOR SHARE`,[workspace,action,key]);invariant(rows.length<=1,'CONFLICT');const row=rows[0];if(!row)return null;invariant(digest(row.value)===row.hash&&row.at instanceof Date,'UNAVAILABLE');return row;
  }
- private async save(c:{tx:SqlSession;actor:Pick<AccountFacts,'id'|'workspaceId'>;now:Date},action:string,key:string,value:unknown){
+ private async save(c:{tx:SqlSession;actor:{id:string;workspaceId:string};now:Date},action:string,key:string,value:unknown){
   opaque.parse(key);invariant(Buffer.byteLength(JSON.stringify(value))<=131072,'UNAVAILABLE');const old=await this.journal(c.tx,c.actor.workspaceId,action,key);if(old){invariant(old.hash===digest(value),'CONFLICT');return;}
   await c.tx.query('INSERT INTO ls_fishing_payments.commands(workspace_id,actor_id,action,command_id,digest,result_json,created_at) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7)',[c.actor.workspaceId,c.actor.id,action,key,digest(value),JSON.stringify(value),c.now]);
  }
@@ -94,7 +95,7 @@ export class NativeStripeHostedCoordinator implements StripeTestHostedCoordinato
   });
  }
  async observe(raw:StripeTestHostedClaim,observation:StripeTestHostedObservation){
-  const claim=this.parseClaim(raw),workspace=claim.context.operation.workspaceId;await this.store.deps.database.transaction(async tx=>{await lockWorkspace(tx,workspace);const key=claim.context.operation.id+':'+claim.action.phase,saved=await this.journal(tx,workspace,actions.phase,key);invariant(saved&&saved.hash===digest(claim),'CONFLICT');const topic=claim.action.phase==='create'?'operation.dispatch':'stripe-test.hosted.'+claim.action.phase+'.dispatch',fence=await one(tx,'SELECT id FROM ls_fishing_payments.outbox WHERE workspace_id=$1 AND topic=$2 AND aggregate_id=$3 AND revision=1 FOR SHARE',[workspace,topic,claim.context.operation.id]);invariant(fence,'CONFLICT');const checked=validateStripeTestHostedObservation(observation,claim.context,'invoiceId'in claim.action?claim.action.invoiceId:undefined);
+  const claim=this.parseClaim(raw),workspace=asId(claim.context.operation.workspaceId,'workspace');await this.store.deps.database.transaction(async tx=>{await lockWorkspace(tx,workspace);const key=claim.context.operation.id+':'+claim.action.phase,saved=await this.journal(tx,workspace,actions.phase,key);invariant(saved&&saved.hash===digest(claim),'CONFLICT');const topic=claim.action.phase==='create'?'operation.dispatch':'stripe-test.hosted.'+claim.action.phase+'.dispatch',fence=await one(tx,'SELECT id FROM ls_fishing_payments.outbox WHERE workspace_id=$1 AND topic=$2 AND aggregate_id=$3 AND revision=1 FOR SHARE',[workspace,topic,claim.context.operation.id]);invariant(fence,'CONFLICT');const checked=validateStripeTestHostedObservation(observation,claim.context,'invoiceId'in claim.action?claim.action.invoiceId:undefined);
    if(claim.action.phase==='create')invariant(checked.status==='draft'&&!checked.hasLine,'CONFLICT');if(claim.action.phase==='add_line')invariant(checked.status==='draft'&&checked.hasLine,'CONFLICT');if(claim.action.phase==='finalize')invariant(checked.status==='open'&&checked.hasLine&&checked.url,'CONFLICT');if(claim.action.phase==='close')invariant(checked.status==='void'||checked.status==='paid','CONFLICT');await this.save({tx,actor:{id:saved.actorId,workspaceId:workspace},now:this.store.deps.clock.now()},actions.observation,key,checked);
   });
  }
