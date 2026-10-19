@@ -151,11 +151,16 @@ if(!runtimePath){
   const academyRow=page.locator(".lsu-native-table tr:visible, .lsu-person-row:visible").filter({hasText:inquiry.name});
   const verifyAcademy=async()=>{await expect(association).toHaveValue("sunday_fishing_academy");await expect(academyStatus).toHaveValue("follow_up");await expect(academyRow).toHaveCount(1);await expect(academyRow).toContainText(leadDetails.nextAction);await expect(academyRow).toContainText(leadDetails.followUpDate);};
   await verifyAcademy();await page.reload();await verifyAcademy();
+  // One additional real sign-in exercises the shared proxy/layout boundary.
+  // Keep this shared synthetic account within its unchanged ten-login limit;
+  // both locales still exercise first load, refresh and strict proxy unit cases.
+  if(locale==="en"){
   const session=await (await page.request.get("/api/identity/session")).json();
   expect((await page.request.post("/api/identity/logout",{headers:{origin:runtime.origin,"sec-fetch-site":"same-origin","x-csrf-token":session.data.csrfToken},data:{}})).status()).toBe(200);
   await page.goto(academyTarget);await expect(page).toHaveURL(new RegExp(`/${locale}/login\\?next=`));
   await page.getByLabel(t("Email","דוא״ל"),{exact:true}).fill(credentials.email);await page.getByLabel(t("Password","סיסמה"),{exact:true}).fill(credentials.password);await page.getByRole("button",{name:t("Sign in","כניסה"),exact:true}).click();
   await expect(page).toHaveURL(academyTarget);await verifyAcademy();
+  }
   await page.screenshot({path:info.outputPath(`academy-directory-${locale}-${info.project.name}.png`)});
   await page.goto(`/${locale}/app/group-applications`);await details.locator("summary").click();
   await details.getByRole("button",{name:t("Remove from Lead List","הסרה מרשימת המתעניינים"),exact:true}).click();await details.getByRole("button",{name:t("Confirm Remove","אישור הסרה"),exact:true}).click();
@@ -165,6 +170,8 @@ if(!runtimePath){
   const current=await page.request.get(`/api/private/fishing-leads/sunday_fishing_academy?source=inquiry&sourceId=${inquiry.id}`),body=await current.json();expect(body.data.membership.state).toBe("removed");
   expect(body.data.membership.details).toEqual(leadDetails);
   await page.goto(academyTarget);await expect(association).toHaveValue("sunday_fishing_academy");await expect(academyRow).toHaveCount(0);await expect(page.getByText(t("No people match these filters.","אין אנשים שמתאימים למסננים."),{exact:true})).toBeVisible();
+  await page.goto(`/${locale}/app/clients?personId=${body.data.personId}&program=sunday_fishing_academy`);
+  await expect(page.getByText(t("This person is not in the authorized view.","איש הקשר אינו נמצא בתצוגה המורשית."),{exact:true})).toBeVisible();await expect(page.getByRole("heading",{name:inquiry.name,exact:true})).toHaveCount(0);
   await page.goto(`/${locale}/app/clients?personId=${body.data.personId}`);await expect(page.getByRole("heading",{name:inquiry.name,exact:true})).toBeVisible();
   await expect(page.getByRole("region",{name:t("Fishing interests","התעניינות בדיג"),includeHidden:true})).toBeVisible();
   const personSection=page.getByRole("region",{name:t("Fishing interests","התעניינות בדיג"),includeHidden:true});await personSection.locator("summary").first().click();await expect(personSection).toContainText(t("Removed","הוסר"));

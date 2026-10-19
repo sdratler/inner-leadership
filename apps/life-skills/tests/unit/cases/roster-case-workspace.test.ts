@@ -519,6 +519,12 @@ it('an Academy source failure does not fall back to Sheet or describe an empty A
  expect(find(view(),e=>e.type===LegacyClientsRoster||e.type===ProspectsClient||e.type===NativePeopleWorkspace)).toBeUndefined();
  expect(text(view())).toContain('No fallback or changes were used');expect(hook.accountRead).not.toHaveBeenCalled();
 });
+it.each(['personId','focusLeadId']as const)('first Academy read retains association scope with an exact %s',async key=>{
+ const personId='00000000-0000-4000-8000-000000000001',leadId='LS-LEAD-synthetic-academy';
+ hook.peopleRead.mockResolvedValue({source:'native',authorityEpoch:3,page:{items:[],total:0,page:1,pageSize:12,pages:1}});
+ const view=()=>hook.render(()=>ClientsRoster({locale:'en',[key]:key==='personId'?personId:leadId,program:'sunday_fishing_academy',leadStatus:'follow_up'}));
+ view();hook.flushEffects();await tick();expect(hook.peopleRead).toHaveBeenCalledExactlyOnceWith(new URLSearchParams({view:'all',[key==='personId'?'personId':'leadId']:key==='personId'?personId:leadId,program:'sunday_fishing_academy',leadStatus:'follow_up'}));
+});
 it('resets a persisted directory page after a confirmed native contact save',async()=>{
  let location=new URL('https://synthetic.invalid/en/app/clients?page=2');
  vi.stubGlobal('window',{get location(){return location;},history:{state:null,replaceState(_state:unknown,_unused:string,url:URL){location=new URL(url);}},addEventListener(){},removeEventListener(){}});

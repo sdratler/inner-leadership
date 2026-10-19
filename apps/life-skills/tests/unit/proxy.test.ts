@@ -25,6 +25,14 @@ describe("public static perimeter", () => {
 });
 
 afterEach(() => vi.unstubAllEnvs());
+it.each(['en','he']as const)('%s actual People proxy retains strict Academy return scope and strips caller headers',locale=>{
+ const origin='https://life-skills.bneineviimacademy.org',path=`/${locale}/app/clients`,header='x-middleware-request-x-ls-practitioner-return';
+ vi.stubEnv('NODE_ENV','production');vi.stubEnv('LS_APP_MODE','foundation_locked');vi.stubEnv('LS_APP_ORIGIN',origin);vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');
+ const returned=(query:URLSearchParams)=>{const response=proxy(new NextRequest(origin+path+'?'+query,{headers:{'x-ls-practitioner-return':'https://untrusted.invalid','x-ls-parent-return':'/he/family','x-ls-client-return':'/en/client'}}));expect(response.headers.get('x-middleware-request-x-ls-parent-return')).toBeNull();expect(response.headers.get('x-middleware-request-x-ls-client-return')).toBeNull();return new URL(response.headers.get(header)!,origin);};
+ const params=new URLSearchParams({section:'paid',filter:'booking',stage:'Global',program:'sunday_fishing_academy',leadStatus:'follow_up',search:'Synthetic Academy note',role:'parent',next:'https://untrusted.invalid'});
+ expect(Object.fromEntries(returned(params).searchParams)).toEqual({section:'all',program:'sunday_fishing_academy',leadStatus:'follow_up',search:'Synthetic Academy note'});
+ for(const key of ['program','leadStatus']){const duplicate=new URLSearchParams(params);duplicate.append(key,duplicate.get(key)!);expect(returned(duplicate).searchParams.has(key)).toBe(false);}
+});
 describe('practitioner education login return through the actual proxy',()=>{
  for(const locale of ['en','he']as const)for(const section of ['review','publication'])it(`${locale}/${section}: retains the strict lesson tuple and rejects ambiguous or untrusted context`,()=>{
   const origin='https://life-skills.bneineviimacademy.org',path=`/${locale}/app/resources`,header='x-middleware-request-x-ls-practitioner-return';
