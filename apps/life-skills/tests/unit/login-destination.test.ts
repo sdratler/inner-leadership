@@ -122,7 +122,7 @@ describe("shared private-app sign-in destination", () => {
     expect(layout).toContain('redirect(loginHref(locale, loginReturnDestination(locale, "practitioner", requested)!))');
     expect(layout).not.toContain("PrivateWorkspaceUnavailable");
     expect(proxy).toContain('inbound.delete("x-ls-practitioner-return")');
-    expect(proxy).toContain('["section", "filter", "leadId", "personId", "mode", "page", "search", "stage", "language", "due"]');
+    expect(proxy).toContain('["section", "filter", "leadId", "personId", "mode", "page", "search", "stage", "language", "due", "program", "leadStatus"]');
     // Exercise actual forwarding rather than freezing the old duplicate-value
     // implementation, which cannot carry strict fishing/education tuples.
     const origin="https://login-forwarding.example.invalid";
