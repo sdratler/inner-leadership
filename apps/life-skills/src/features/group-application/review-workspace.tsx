@@ -22,16 +22,16 @@ export function GroupApplicationReviewWorkspace({locale}:{locale:Locale}){
  const t=(en:string,he:string)=>locale==="he"?he:en;
  const [data,setData]=useState<ReviewData|null>(null),[error,setError]=useState(false),[busy,setBusy]=useState(false),[accessFailure,setAccessFailure]=useState<number|null>(null);
  const [search,setSearch]=useState(""),[appliedSearch,setAppliedSearch]=useState("");
- const readVersion=useRef<symbol|null>(null);
+ const readVersion=useRef<symbol|null>(null),attemptedSearch=useRef("");
  const items=data?.items??null;
- const accessDenied=(status:number)=>{readVersion.current=null;setData(null);setBusy(false);setError(false);setAccessFailure(status);};
+ const accessDenied=(status:number)=>{readVersion.current=null;attemptedSearch.current="";setSearch("");setAppliedSearch("");setData(null);setBusy(false);setError(false);setAccessFailure(status);};
  const load=useCallback(async(query="",cursor:string|null=null)=>{
-  const version=Symbol();readVersion.current=version;setBusy(true);
+  const version=Symbol();readVersion.current=version;attemptedSearch.current=query;setBusy(true);
   // Keep keyed inquiry drafts mounted during a read, but discard their setup
   // report immediately. A failed or obsolete read cannot restore that report.
   setData(current=>current?{...current,emailSetup:null}:null);
   try{const result=await requestGroupApplications(query,cursor);if(version!==readVersion.current)return;setData(current=>cursor&&current?{...result,items:[...new Map([...current.items,...result.items].map(item=>[item.id,item])).values()]}:result);setAppliedSearch(query);setError(false);setAccessFailure(null);}
-  catch(e){if(version!==readVersion.current)return;setData(null);const denied=e instanceof ReviewReadError&&(e.status===401||e.status===403);setError(!denied);setAccessFailure(denied?e.status:null);}
+  catch(e){if(version!==readVersion.current)return;setData(null);const denied=e instanceof ReviewReadError&&(e.status===401||e.status===403);if(denied){attemptedSearch.current="";setSearch("");setAppliedSearch("");}setError(!denied);setAccessFailure(denied?e.status:null);}
   finally{if(version===readVersion.current)setBusy(false);}
  },[]);
  useEffect(()=>{const timer=window.setTimeout(()=>{void load();},0);return()=>{window.clearTimeout(timer);readVersion.current=null;};},[load]);
@@ -40,7 +40,7 @@ export function GroupApplicationReviewWorkspace({locale}:{locale:Locale}){
  return <main className={`lsw-main ${styles.workspace}`} lang={locale} dir={locale==="he"?"rtl":"ltr"}>
   <header className={styles.recentHeader}><div><h1>{t("Group inquiries","פניות לגבי קבוצות")}</h1><p className={styles.intro}>{t("Private owner review only. Inquiries remain separate from People, clinical records, enrollment, bookings and payments until you take a separate explicit action.","לבדיקה פרטית של הבעלים בלבד. הפניות נשארות נפרדות מאנשים, מרשומות טיפוליות, מהרשמה, מהזמנות ומתשלומים עד לפעולה מפורשת ונפרדת.")}</p></div><button type="button" className={`lsw-button lsw-button--secondary ${styles.refresh}`} disabled={busy} onClick={()=>void load(appliedSearch)}>{busy?t("Refreshing…","מרענן…"):t("Refresh","רענון")}</button></header>
   <form className="lsw-actions" role="search" onSubmit={event=>{event.preventDefault();void load(search.trim());}}><label className="lsw-field">{t("Search saved inquiries","חיפוש בפניות שמורות")}<input className="lsw-input" type="search" maxLength={200} value={search} onChange={event=>setSearch(event.target.value)}/></label><button className="lsw-button lsw-button--secondary" type="submit" disabled={busy}>{t("Search","חיפוש")}</button></form>
-  {error&&<section className="lsw-card" role="alert"><h2>{t("Inquiries could not be loaded","לא ניתן לטעון את הפניות")}</h2><p>{t("This is not an empty list. Check the connection and try again.","זו אינה רשימה ריקה. בדקו את החיבור ונסו שוב.")}</p><button type="button" className="lsw-button lsw-button--secondary" onClick={()=>void load(appliedSearch)}>{t("Try again","ניסיון נוסף")}</button></section>}
+  {error&&<section className="lsw-card" role="alert"><h2>{t("Inquiries could not be loaded","לא ניתן לטעון את הפניות")}</h2><p>{t("This is not an empty list. Check the connection and try again.","זו אינה רשימה ריקה. בדקו את החיבור ונסו שוב.")}</p><button type="button" className="lsw-button lsw-button--secondary" onClick={()=>void load(attemptedSearch.current)}>{t("Try again","ניסיון נוסף")}</button></section>}
   {accessFailure!==null&&<section className="lsw-card" role="alert"><p>{accessFailure===401?t("Your session ended. Sign in to continue.","פג תוקף החיבור. יש להיכנס מחדש."):t("This account cannot review private inquiries.","לחשבון הזה אין הרשאה לבדיקת פניות פרטיות.")}</p>{accessFailure===401&&<a className="lsw-button lsw-button--secondary" href={loginHref(locale,`/${locale}/app/group-applications`)}>{t("Sign in","כניסה")}</a>}</section>}
   {!error&&accessFailure===null&&items===null&&<p role="status">{t("Loading inquiries…","טוען פניות…")}</p>}
   {data!==null&&!busy&&!error&&accessFailure===null&&<details className="lsw-card" data-inquiry-email-setup><summary>{t("Inquiry confirmation email setup","הגדרת הודעת אישור הפנייה")}</summary><InquiryEmailSetupSummary report={data.emailSetup??null} locale={locale}/></details>}
