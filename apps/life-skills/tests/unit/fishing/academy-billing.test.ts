@@ -11,5 +11,5 @@ test('billing commands carry only exact canonical references; prices, merchant, 
  expect(academyBillingCommandSchema.safeParse({...command,expectedOfferRevision:2}).success).toBe(false);expect(academyBillingQuerySchema.safeParse({view:'parent',learnerId:randomUUID(),stageId:randomUUID(),applicationId:randomUUID()}).success).toBe(false);
 });
 test('both actual ENHE billing controls start with deliberate read, no inferred payment or external payment link',()=>{
- for(const locale of ['en','he'] as const){const html=renderToStaticMarkup(createElement(AcademyBillingControls,{locale,learnerId:randomUUID(),stageId:randomUUID(),onLockedChange:()=>{}}));expect(html).toContain(locale==='en'?'Read current stage payments':'קריאת תשלומי השלב העדכניים');expect(html).not.toContain('href=');expect(html).not.toContain('1750');expect(html).not.toContain('1950');expect(html).not.toContain('Issue this approved offer');}
+ for(const locale of ['en','he'] as const){const html=renderToStaticMarkup(createElement(AcademyBillingControls,{locale,learnerId:randomUUID(),onLockedChange:()=>{}}));expect(html).toContain(locale==='en'?'Read current stage payments':'קריאת תשלומי השלב העדכניים');expect(html).not.toContain('href=');expect(html).not.toContain('1750');expect(html).not.toContain('1950');expect(html).not.toContain('Issue this approved offer');}
 });

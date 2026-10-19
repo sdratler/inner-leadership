@@ -256,6 +256,15 @@ export class NativeFishingProgram {
   * default. Catalog absence is distinct from a broken/partially installed schema. */
  /** Same-transaction consumer of current native cohorts, fit and actual approved
   * terms text. No source importer/approval control, roster or private fit note. */
+ /** Existing issued obligations remain discoverable after a new fit review.
+  * This read grants no fit, terms, hosted action or enrollment authority. */
+ async academyBillingStageInTransaction(tx:SqlSession,actor:Actor,family:{learnerId:string;householdId:string;parentAccountId:string},purchaseId:string){
+  const c=await this.actor(tx,actor),p=await this.purchase(tx,c.actor.workspaceId,purchaseId);requireFact(await demoAccountBatch(tx,c.actor.workspaceId,c.actor.id)===null,'FORBIDDEN');
+  if(p.line.learnerId!==family.learnerId||p.offer.householdId!==family.householdId||p.offer.payerAccountId!==family.parentAccountId)return null;
+  const cohort=await this.cohort(tx,c.actor.workspaceId,p.line.stageId);if(c.actor.role==='practitioner')this.operator(c,cohort);else requireFact(c.actor.role==='parent'&&c.actor.id===family.parentAccountId,'FORBIDDEN');
+  await this.guardian(tx,c.actor.workspaceId,family.parentAccountId,family.learnerId,family.householdId);
+  return {stageId:cohort.stageId,label:z.object({label}).parse(this.decode('cohort',c.actor.workspaceId,cohort.stageId,cohort.labelCiphertext)).label};
+ }
  async enrollmentReviewInTransaction(tx:SqlSession,actor:Actor,family:{learnerId:string;householdId:string;parentAccountId:string}):Promise<AcademyEnrollmentStage[]>{
   try{const c=await this.actor(tx,actor);requireFact(c.actor.role==='practitioner'||c.actor.role==='parent'&&c.actor.id===family.parentAccountId,'FORBIDDEN');requireFact(await demoAccountBatch(tx,c.actor.workspaceId,c.actor.id)===null,'FORBIDDEN');
    if(c.actor.role==='parent')await this.guardian(tx,c.actor.workspaceId,c.actor.id,family.learnerId,family.householdId);
