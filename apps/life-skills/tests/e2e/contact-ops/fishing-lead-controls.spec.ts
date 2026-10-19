@@ -26,9 +26,12 @@ if(!runtimePath){
   const target=`/${locale}/app/group-applications`,credentials=runtime.fishing.credentials.find(c=>c.role==="practitioner")!;
   expect((await page.request.get("/api/private/group-applications")).status()).toBe(401);
   expect((await page.goto(`/${locale}/florida`))?.status()).toBe(200);
+  await page.locator(`a[href="/${locale}/florida/apply"]`).first().click();await expect(page).toHaveURL(`/${locale}/florida/apply`);
   const form=page.locator('form[data-inquiry-kind="parent"]');
   await form.locator('[name="parentName"]').fill(name);await form.locator('[name="contact"]').fill(contact);
   await form.locator('[name="learnerAge-0"]').fill("12");await form.locator('[name="cityArea"]').fill("Synthetic Florida");
+  await form.locator('[name="postalCode"]').fill("33021");
+  for(const [field,value] of Object.entries({driveLimit:"up_to_30",preferredGroupLanguage:locale,stagePreference:"foundation",keysTravel:"discuss",offshoreInterest:"discuss",nextStep:"callback","learnerGrade-0":"grade_6_8","learnerSchooling-0":"school","learnerTackleBox-0":"need_advice"}))await form.locator(`[name="${field}"]`).selectOption(value);
   await form.locator('[name="schedulePreference"][value="sunday"]').check();await form.locator('[name="permission"]').check();
   const endpoint="**/api/public/group-applications?program=sunday_fishing_academy";
   let savedId="",requestHash="",commits=0;
@@ -123,7 +126,7 @@ if(!runtimePath){
   // Deliberate Academy-only administrative details, through the real mounted
   // UI and ordinary login. The native readback below must retain them on Remove.
   const leadDetails={status:"follow_up",notes:`Synthetic Academy note ${locale}`,nextAction:"Owner callback",followUpDate:"2026-11-05"};
-  await details.getByLabel(t("Academy lead status","מצב המתעניין באקדמיה"),{exact:true}).selectOption(leadDetails.status);
+  await details.getByRole("combobox",{name:t("Academy lead status","מצב המתעניין באקדמיה"),exact:true}).selectOption(leadDetails.status);
   await details.getByLabel(t("Academy notes","הערות לאקדמיה"),{exact:true}).fill(leadDetails.notes);
   await details.getByLabel(t("Next Academy action","הפעולה הבאה באקדמיה"),{exact:true}).fill(leadDetails.nextAction);
   await details.getByLabel(t("Follow-up date","תאריך למעקב"),{exact:true}).fill(leadDetails.followUpDate);
@@ -133,7 +136,7 @@ if(!runtimePath){
   await details.getByRole("button",{name:t("Confirm Save","אישור שמירה"),exact:true}).click();
   await expect(details.getByRole("status")).toContainText(t("Academy lead details saved. No task or message was created.","פרטי המתעניין באקדמיה נשמרו. לא נוצרו משימה או הודעה."));
   await page.reload();await details.locator("summary").click();
-  await expect(details.getByLabel(t("Academy lead status","מצב המתעניין באקדמיה"),{exact:true})).toHaveValue(leadDetails.status);
+  await expect(details.getByRole("combobox",{name:t("Academy lead status","מצב המתעניין באקדמיה"),exact:true})).toHaveValue(leadDetails.status);
   await expect(details.getByLabel(t("Academy notes","הערות לאקדמיה"),{exact:true})).toHaveValue(leadDetails.notes);
   await expect(details.getByLabel(t("Next Academy action","הפעולה הבאה באקדמיה"),{exact:true})).toHaveValue(leadDetails.nextAction);
   await expect(details.getByLabel(t("Follow-up date","תאריך למעקב"),{exact:true})).toHaveValue(leadDetails.followUpDate);
