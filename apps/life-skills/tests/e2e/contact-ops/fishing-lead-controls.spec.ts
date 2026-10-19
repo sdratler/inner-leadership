@@ -44,7 +44,7 @@ if(!runtimePath){
    expect(upstream.status()).toBe(201);const body=await upstream.json();savedId=body.data.item.id;commits++;
    await route.fulfill({status:503,contentType:"application/json",body:JSON.stringify({ok:false,error:{code:"UNAVAILABLE"}})});
   });
-  await form.getByRole("button",{name:copy.submit[locale],exact:true}).click();
+  await form.locator('button[type="submit"]').click();
   await expect(form.getByRole("alert")).toContainText(copy.unknownResult[locale]);expect(commits).toBe(1);expect(savedId).not.toBe("");
   await page.unroute(endpoint);
   const retriedRequest=page.waitForRequest(r=>r.method()==="POST"&&new URL(r.url()).pathname==="/api/public/group-applications");
@@ -53,7 +53,7 @@ if(!runtimePath){
   expect(createHash("sha256").update((await retriedRequest).postData()!).digest("hex")).toBe(requestHash);
   const retried=await retriedResponse;expect(retried.status()).toBe(200);
   expect(await retried.json()).toMatchObject({ok:true,data:{saved:true,replayed:true,duplicate:true,item:{id:savedId,fields:{parentName:name,contact,programId:"sunday_fishing_academy"}}}});
-  await expect(page.getByRole("status")).toContainText(copy.savedTitle[locale]);
+  await expect(form.getByRole("status")).toContainText(t("Inquiry saved","הפנייה נשמרה"));
   const ownerLogin=async()=>{
    await page.goto(`/${locale}/login?next=${encodeURIComponent(target)}`);
    await page.getByLabel(t("Email","דוא״ל"),{exact:true}).fill(credentials.email);
@@ -127,7 +127,7 @@ if(!runtimePath){
   // UI and ordinary login. The native readback below must retain them on Remove.
   const leadDetails={status:"follow_up",notes:`Synthetic Academy note ${locale}`,nextAction:"Owner callback",followUpDate:"2026-11-05"};
   await details.getByRole("combobox",{name:t("Academy lead status","מצב המתעניין באקדמיה"),exact:true}).selectOption(leadDetails.status);
-  await details.getByLabel(t("Academy notes","הערות לאקדמיה"),{exact:true}).fill(leadDetails.notes);
+  await details.getByRole("textbox",{name:t("Academy notes","הערות לאקדמיה"),exact:true}).fill(leadDetails.notes);
   await details.getByLabel(t("Next Academy action","הפעולה הבאה באקדמיה"),{exact:true}).fill(leadDetails.nextAction);
   await details.getByLabel(t("Follow-up date","תאריך למעקב"),{exact:true}).fill(leadDetails.followUpDate);
   await details.getByRole("button",{name:t("Review details","בדיקת הפרטים"),exact:true}).click();
@@ -137,7 +137,7 @@ if(!runtimePath){
   await expect(details.getByRole("status")).toContainText(t("Academy lead details saved. No task or message was created.","פרטי המתעניין באקדמיה נשמרו. לא נוצרו משימה או הודעה."));
   await page.reload();await details.locator("summary").click();
   await expect(details.getByRole("combobox",{name:t("Academy lead status","מצב המתעניין באקדמיה"),exact:true})).toHaveValue(leadDetails.status);
-  await expect(details.getByLabel(t("Academy notes","הערות לאקדמיה"),{exact:true})).toHaveValue(leadDetails.notes);
+  await expect(details.getByRole("textbox",{name:t("Academy notes","הערות לאקדמיה"),exact:true})).toHaveValue(leadDetails.notes);
   await expect(details.getByLabel(t("Next Academy action","הפעולה הבאה באקדמיה"),{exact:true})).toHaveValue(leadDetails.nextAction);
   await expect(details.getByLabel(t("Follow-up date","תאריך למעקב"),{exact:true})).toHaveValue(leadDetails.followUpDate);
   await record.screenshot({path:info.outputPath(`fishing-added-${locale}-${info.project.name}.png`)});
