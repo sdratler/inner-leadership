@@ -298,6 +298,8 @@ if(!file){
    phase="open-editor";await page.getByRole("button",{name:t(locale,"Manage this stage","ניהול השלב"),exact:true}).click();const form=page.getByRole("form",{name:t(locale,"Manage fishing stage","ניהול שלב הדיג"),exact:true});
    phase="select-session";await form.getByLabel(t(locale,"Action","פעולה"),{exact:true}).selectOption("revise");await chooseSession(page,form,locale,data.occurrenceId);
    phase="fill-main-draft";const note=form.getByLabel(t(locale,"Family-visible logistical note","הערה לוגיסטית המוצגת למשפחות"),{exact:true}),draft="Synthetic retained draft / טיוטה סינתטית ".repeat(20);await note.fill(draft);await form.getByRole("textbox",{name:t(locale,"Reason visible to the enrolled family","סיבה המוצגת למשפחה הרשומה"),exact:true}).fill("Synthetic deliberate UI revision");
+   // Opening the already-selected session must keep an actual dirty editor.
+   await event.getByRole('button').click();await expect(form).toBeVisible();await expect(note).toHaveValue(draft);
    draftObserver.begin();
    // A second ordinary session saves a real competing native revision. No
    // fabricated 409 or permissive replacement adapter supplies this conflict.
