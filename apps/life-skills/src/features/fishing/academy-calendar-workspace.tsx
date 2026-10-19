@@ -34,7 +34,7 @@ export function AcademyCalendarWorkspace({locale,role,initialDate,initialView:vi
    const items=timeline.items.filter(item=>fishingCivilTime(item.startsAt).date===day);return items.length?<section key={day} className="lsu-panel lsw-stack"><h3><time dateTime={day}>{new Intl.DateTimeFormat(locale==='he'?'he-IL':'en-US',{timeZone:'America/New_York',weekday:'long',month:'short',day:'numeric'}).format(new Date(day+'T12:00Z'))}</time></h3>{items.map(item=><FishingCalendarEntry key={item.id} item={item} locale={locale} compact={false} onOpen={open}/>)}</section>:null;
   }):<p>{t('No fishing sessions are published in this date range. Choose your child and stage below to see the full plan.','אין מפגשי דיג שפורסמו בטווח התאריכים הזה. בחרו את ילדכם ואת השלב להלן להצגת התוכנית המלאה.')}</p>}
  </div>;
- return <main className="lsw-stack" data-academy-calendar lang={locale} dir={locale==='he'?'rtl':'ltr'}>
+ return <main className="ls-cal lsw lsw-stack" data-academy-calendar lang={locale} dir={locale==='he'?'rtl':'ltr'}>
   <UnsavedChangesGuard dirty={dirty} message={leave}/>
   <header className="lsw-page-header"><div><p className="lsw-eyebrow">{t('South Florida Jewish Leadership Fishing Academy','האקדמיה היהודית למנהיגות ודיג בדרום פלורידה')}</p><h1>{t('Fishing calendar','יומן הדיג')}</h1><p>{t('Group sessions, trip details, attendance and weekly progress.','מפגשים קבוצתיים, פרטי טיולים, נוכחות והתקדמות שבועית.')} · <bdi>America/New_York</bdi></p></div></header>
   {!enabled?<p role="alert">{t('Academy Calendar is unavailable in this context. Open your authorized Academy account.','יומן האקדמיה אינו זמין בהקשר זה. פתחו את חשבון האקדמיה המורשה שלכם.')}</p>:<>

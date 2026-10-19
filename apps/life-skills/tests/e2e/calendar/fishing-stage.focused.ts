@@ -28,7 +28,7 @@ if(!file){
  test.use({baseURL:data.origin});
  const t=(locale:string,en:string,he:string)=>locale==="he"?he:en;
  const family=(locale:string)=>data.families[locale]!;
- const route=(locale:string,role:string,selected=false,view="day")=>`/${locale}/${role==="practitioner"?"app/calendar":role==="child"||role==="adult_client"?"client/calendar":"family/schedule"}?`+new URLSearchParams({date:data.date,view,...(selected?Object.fromEntries(new URLSearchParams(fishingCalendarSearch(family(locale).selection))):{})});
+ const route=(locale:string,role:string,selected=false,view="day")=>`/${locale}/${role==="practitioner"?"app/calendar":role==="child"||role==="adult_client"?"client/calendar":"family/schedule"}?`+new URLSearchParams({fishing:'1',date:data.date,view,...(selected?Object.fromEntries(new URLSearchParams(fishingCalendarSearch(family(locale).selection))):{})});
  function isExpectedLessonResponse(response:Response,page:Page,expected:URL){
   try{
    const request=response.request(),url=new URL(response.url()),keys=["learnerId","moduleId","version","view"];
@@ -246,7 +246,7 @@ if(!file){
    await expectFishingParentPlanSummariesAbsent(page,{fixture:"SYNTHETIC_ONLY",origin:data.origin});
    await child.selectOption(family(locale).selection.learnerId!);await expect(page.getByLabel(t(locale,"Stage enrollment","רישום לשלב"),{exact:true})).toHaveValue("");
    await expectFishingParentPlanSummariesAbsent(page,{fixture:"SYNTHETIC_ONLY",origin:data.origin});
-   const event=page.locator(`[data-fishing-occurrence-id="${data.occurrenceId}"]:visible`);await expect(event).toHaveCount(1);await expect(page.locator('[data-ls-calendar-grid]:visible')).toHaveCount(info.project.use.viewport!.width<=800?0:1);
+   const event=page.locator(`[data-fishing-occurrence-id="${data.occurrenceId}"]:visible`);await expect(event).toHaveCount(1);await expect(page.locator('[data-academy-calendar-timeline]:visible')).toHaveCount(1);await expect(page.locator('#calendar-case,#calendar-mode')).toHaveCount(0);
    await screen(page,locale,info.outputPath(`parent-${locale}-one-calendar.png`));await event.getByRole("button",{name:t(locale,"Open session details","פתיחת פרטי מפגש"),exact:true}).click();
    await expect(page.getByLabel(t(locale,"Stage enrollment","רישום לשלב"),{exact:true})).toHaveValue(family(locale).selection.enrollmentId!);
    const plan=await openPlan(page,locale);await expect(plan.getByRole("heading",{name:/Session 1 ·|מפגש 1 ·/})).toBeVisible();
