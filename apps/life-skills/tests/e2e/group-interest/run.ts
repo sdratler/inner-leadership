@@ -275,6 +275,7 @@ try{
   LS_IDENTITY_WORKSPACE_ID:workspaceId,LS_IDENTITY_ACTIVE_KEY_ID:"synthetic",LS_IDENTITY_DATA_KEYS:JSON.stringify({synthetic:dataKey.toString("base64url")}),
   LS_IDENTITY_CSRF_KEY:randomBytes(32).toString("base64url"),LS_IDENTITY_LOOKUP_KEY:lookupKey.toString("base64url"),LS_IDENTITY_RATE_KEY:randomBytes(32).toString("base64url"),
   LS_GROUP_INTEREST_FIXTURE_PATH:runtimePath,LS_GROUP_INTEREST_TEST_RUNNER_ACTIVE:"true",
+  ...(familyOnly?{LS_CALENDAR_ENABLED:"true"}:{}),
   ...(educationOnly?{LS_EDUCATION_SYNTHETIC_LOOPBACK:"true",TEST_DATABASE_URL:safeTestUrl(),LS_CHILD_ACCOUNTS_ENABLED:"false",LS_AUTH_EMAIL_ENABLED:"false"}:{})};
  if(communityTransport)Object.assign(env,{LS_COMMUNITY_SCOUT_BRIDGE_SECRET:communityTransport.secret,LS_COMMUNITY_FIXTURE_ORIGIN:communityTransport.controlOrigin,
   LS_COMMUNITY_FIXTURE_CA_FILE:cert,NODE_OPTIONS:`--require=${resolve("tests/e2e/community/scout-read-preload.cjs")}`,NODE_EXTRA_CA_CERTS:cert,LS_AUTH_EMAIL_ENABLED:"false",LS_CALENDAR_ENABLED:"true"});
