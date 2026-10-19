@@ -23,6 +23,10 @@ async function academyCalendarContextJourney(page:Page,locale:'en'|'he',role:'pr
   }
   await academy.getByRole('link',{name:t('Week','שבוע'),exact:true}).click();await expect(page).toHaveURL(/view=week/);await expect(academy.locator(role==='parent'?'#fishing-learner':'#fishing-stage')).toBeEnabled();await expect(academy.locator('[data-academy-calendar-timeline] [role="status"]')).toHaveCount(0);
   await page.reload();await expect(academy.locator(role==='parent'?'#fishing-learner':'#fishing-stage')).toBeEnabled();await expect(academy.locator('[data-academy-calendar-timeline] [role="status"]')).toHaveCount(0);
+  if(role==='practitioner'){
+   const selected=new URL(page.url());await page.getByRole('banner').getByRole('link',{name:t('Week','שבוע'),exact:true}).click();await expect(academy.locator('#fishing-stage')).toBeEnabled();
+   const next=new URL(page.url());for(const key of ['fishing','cohortId','stageId','stage'])expect(next.searchParams.getAll(key)).toEqual(selected.searchParams.getAll(key));
+  }
   expect(clinical).toEqual([]);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await page.screenshot({path:info.outputPath(`academy-calendar-${role}-${locale}-${info.project.name}.png`),fullPage:true});
   await page.goto(base+'?fishing=0');await expect(page.locator('[data-academy-calendar] [role="alert"]')).toContainText(t('unavailable','אינו זמין'));expect(clinical).toEqual([]);
  }finally{page.off('request',observe);}
