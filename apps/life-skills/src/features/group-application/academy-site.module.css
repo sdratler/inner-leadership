@@ -77,3 +77,8 @@
 @media(max-width:360px){.wrap{inline-size:calc(100% - 32px)}.headerInner{gap:8px}.header :global([data-jlfa-header-logo]){inline-size:60px}.mobileRegister{font-size:13px;padding-inline:12px}.processGrid{grid-template-columns:1fr}.learningStrip .scene img{block-size:150px}.stageCard .scene img{block-size:200px}.heroSelectedAction .heroCta{font-size:12px;padding-inline:13px}.testimonial{padding-inline:20px}}
 .hero{min-block-size:0;background:#fffdf6;place-items:start center}.hero::before{background:linear-gradient(#fffdf6ba,#fffdf6ba),url('/groups/academy/hero-desktop-selected-20261018.png') center/cover}.heroSemantics{contain:paint}.heroPlace::before,.heroPlace::after{display:none}
 @media(max-width:767px){.hero::before{background-image:linear-gradient(#fffdf6ba,#fffdf6ba),url('/groups/academy/hero-mobile-selected-20261018.png')}}
+
+/* Owner desktop hero review: complete proportional artwork, edge to edge. */
+.heroDesktopLabel{display:none}
+@media(min-width:768px){.heroArt{inline-size:100%;max-inline-size:none;margin:0}.heroArt picture,.heroArt img{inline-size:100%;max-inline-size:none;block-size:auto;object-fit:contain}.heroDesktopLabel{display:inline}.heroMobileLabel{display:none}.heroSelectedAction{inset-block-end:2.4%}}
+@media(min-width:768px){.site .hero{min-block-size:0;block-size:auto;align-items:start}.hero::before{display:none}}
