@@ -5,6 +5,8 @@ export const FISHING_ACADEMY_LEAD_LABEL="JLFA • Lead";
 const uuid=z.string().uuid(),epoch=z.number().int().min(0).max(Number.MAX_SAFE_INTEGER-1);
 const version=z.number().int().min(1).max(2147483646),expectedVersion=z.number().int().min(0).max(2147483645);
 const instant=z.iso.datetime({offset:true});
+export const fishingLeadDetailsSchema=z.object({status:z.enum(["new","contacted","interested","callback_requested","follow_up","closed"]),notes:z.string().trim().max(2000),nextAction:z.string().trim().max(500),followUpDate:z.iso.date().nullable()}).strict();
+export type FishingLeadDetails=z.infer<typeof fishingLeadDetailsSchema>;
 export const fishingLeadSourceSchema=z.discriminatedUnion("kind",[
  z.object({kind:z.literal("inquiry"),id:uuid}).strict(),
  z.object({kind:z.literal("person"),id:uuid}).strict(),
@@ -15,25 +17,26 @@ const previewAdd=z.object({action:z.literal("preview_add"),operationId:uuid,expe
  .refine(v=>v.source.kind!=="person"||v.selectedPersonId===undefined||v.selectedPersonId===v.source.id);
 const previewRemove=z.object({action:z.literal("preview_remove"),operationId:uuid,expectedEpoch:epoch,
  personId:uuid,expectedAssociationVersion:version}).strict();
+const previewEdit=z.object({action:z.literal("preview_edit"),operationId:uuid,expectedEpoch:epoch,personId:uuid,expectedAssociationVersion:version,details:fishingLeadDetailsSchema}).strict();
 const confirm=z.object({action:z.literal("confirm"),token:z.string().min(50).max(16000),
  confirmNewPerson:z.boolean()}).strict();
 /** Program, workspace, mode and actor come from trusted route/session reads.
  * No phone/name text, task, permission grant or external destination is accepted. */
-export const fishingLeadRequestSchema=z.union([previewAdd,previewRemove,confirm]);
+export const fishingLeadRequestSchema=z.union([previewAdd,previewRemove,previewEdit,confirm]);
 export type FishingLeadRequest=z.infer<typeof fishingLeadRequestSchema>;
 
 export const fishingMembershipSchema=z.object({workspaceId:uuid,personId:uuid,program:fishingProgramSchema,
  version,state:z.enum(["active","removed"]),relationship:z.enum(["guardian","adult_partner"]),
  source:fishingLeadSourceSchema,permission:inquiryContactPermissionSchema,
- outboundEligible:z.literal(false),recordedAt:instant,recordedBy:uuid}).strict();
+ outboundEligible:z.literal(false),recordedAt:instant,recordedBy:uuid,details:fishingLeadDetailsSchema.optional()}).strict();
 export type FishingMembership=z.infer<typeof fishingMembershipSchema>;
 export const fishingLeadResultSchema=z.object({operationId:uuid,workspaceId:uuid,personId:uuid,
  program:fishingProgramSchema,version,state:z.enum(["active","removed"]),authorityEpoch:epoch,
  newPerson:z.boolean(),replayed:z.boolean(),tasksCreated:z.literal(0),outboundEligible:z.literal(false)}).strict();
 export type FishingLeadResult=z.infer<typeof fishingLeadResultSchema>;
-type MembershipChange={action:"add"|"remove";workspaceId:string;personId:string;program:z.infer<typeof fishingProgramSchema>;
+type MembershipChange={action:"add"|"remove"|"edit";workspaceId:string;personId:string;program:z.infer<typeof fishingProgramSchema>;
  expectedVersion:number;relationship:"guardian"|"adult_partner";source:z.infer<typeof fishingLeadSourceSchema>;
- permission:z.infer<typeof inquiryContactPermissionSchema>;recordedAt:string;recordedBy:string};
+ permission:z.infer<typeof inquiryContactPermissionSchema>;recordedAt:string;recordedBy:string;details?:FishingLeadDetails|undefined};
 
 /** Used only after fresh identity, endpoint, native-authority and receipt checks.
  * This function cannot create or alter a CRM profile, task, account or grant. */
@@ -44,14 +47,16 @@ export function nextFishingMembership(current:FishingMembership|null,input:Membe
  }else if(input.expectedVersion!==0||input.action!=="add")throw Error("FISHING_MEMBERSHIP_CONFLICT");
  if(input.action==="add"&&current?.state==="active"||input.action==="remove"&&current?.state!=="active")
   throw Error("FISHING_MEMBERSHIP_CONFLICT");
+ if(input.action==="edit"&&(current?.state!=="active"||input.program!=="sunday_fishing_academy"||!input.details))throw Error("FISHING_MEMBERSHIP_CONFLICT");
+ const details=input.action==="edit"?fishingLeadDetailsSchema.parse(input.details):current?.details;
  // Membership cannot reset a recorded withdrawal. Removing keeps all existing
  // classification/source/permission facts; fresh Restore is a new revision.
- const permission=input.action==="remove"?current!.permission:
+ const permission=input.action!=="add"?current!.permission:
   current?.permission.state==="withdrawn"?current.permission:input.permission;
  return fishingMembershipSchema.parse({workspaceId:input.workspaceId,personId:input.personId,program:input.program,
-  version:(current?.version??0)+1,state:input.action==="add"?"active":"removed",
-  relationship:input.action==="remove"?current!.relationship:input.relationship,
-  source:input.action==="remove"?current!.source:input.source,permission,
+  version:(current?.version??0)+1,state:input.action==="remove"?"removed":"active",
+  relationship:input.action!=="add"?current!.relationship:input.relationship,
+  source:input.action!=="add"?current!.source:input.source,permission,...(details?{details}:{}),
   recordedAt:input.recordedAt,recordedBy:input.recordedBy,outboundEligible:false});
 }
 

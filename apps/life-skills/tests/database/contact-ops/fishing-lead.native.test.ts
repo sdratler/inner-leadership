@@ -53,6 +53,24 @@ async function setup(activate=true){
 }
 const forbidden=["ls_identity.accounts","ls_identity.account_subjects","ls_cases.cases","ls_cases.case_guardians","ls_calendar.appointments",
  "ls_calendar.tasks","ls_calendar.task_history","ls_contact_ops.outbound_projections","ls_identity.auth_mail_outbox","ls_onboarding.first_session_orders"];
+
+test("explicit Academy notes/status/manual date edit replays, keeps history and leaves the Israeli profile/other fishing association untouched",async()=>{
+ const s=await setup(),person=await s.create(),source=await s.inquiry(),added=await s.confirm(await s.ready(source));expect(added.personId).toBe(person.personId);
+ const other=new FishingLeadStore(s.db,s.f.keyring,key,"private_fishing_life_skills",s.clock),otherPreview=await other.preview(s.actor,{action:"preview_add",operationId:randomUUID(),expectedEpoch:3,source:{kind:"person",id:person.personId},expectedAssociationVersion:0,relationship:"adult_partner"});
+ expect(otherPreview.state).toBe("ready");if(otherPreview.state!=="ready")throw Error("PREVIEW_REQUIRED");await other.confirm(s.actor,{action:"confirm",token:otherPreview.token,confirmNewPerson:false});
+ const preserved=await s.snapshot([...forbidden,"ls_contact_ops.profiles"]),otherBefore=await other.read(s.actor,person.personId,3),details={status:"callback_requested" as const,notes:"Synthetic Academy-only note",nextAction:"Owner calls family",followUpDate:"2026-11-03"};
+ const input={action:"preview_edit" as const,operationId:randomUUID(),expectedEpoch:3,personId:person.personId,expectedAssociationVersion:1,details};
+ const response=await s.http(input);expect(response.status).toBe(200);const preview=(await response.json()).data as Ready;expect(preview.details).toEqual(details);
+ const confirm={action:"confirm",token:preview.token,confirmNewPerson:false},first=await s.http(confirm),retry=await s.http(confirm);expect(first.status).toBe(200);expect(retry.status).toBe(200);expect((await retry.json()).data).toMatchObject({version:2,replayed:true,tasksCreated:0,outboundEligible:false});
+ const reopened=new FishingLeadStore(s.db,s.f.keyring,key,program,s.clock);expect((await reopened.read(s.actor,person.personId,3)).membership).toMatchObject({version:2,state:"active",details});
+ expect(await other.read(s.actor,person.personId,3)).toEqual(otherBefore);expect(await s.snapshot([...forbidden,"ls_contact_ops.profiles"])).toEqual(preserved);
+ const history=await s.f.pool.query("SELECT payload_ciphertext FROM ls_contact_ops.fishing_lead_revisions WHERE workspace_id=$1 AND program_key=$2 AND person_id=$3 ORDER BY version",[s.f.workspaceId,program,person.personId]);expect(history.rows).toHaveLength(2);expect(JSON.stringify(history.rows)).not.toContain(details.notes);
+ expect((await s.http({...input,operationId:randomUUID(),details:{...details,notes:"Stale overwrite"}})).status).toBe(409);
+ await expect(other.preview(s.actor,{...input,operationId:randomUUID()})).rejects.toMatchObject({code:"FORBIDDEN"});
+ const removal=await reopened.preview(s.actor,{action:"preview_remove",operationId:randomUUID(),expectedEpoch:3,personId:person.personId,expectedAssociationVersion:2});expect(removal.state).toBe("ready");if(removal.state!=="ready")throw Error("PREVIEW_REQUIRED");await reopened.confirm(s.actor,{action:"confirm",token:removal.token,confirmNewPerson:false});
+ expect((await reopened.read(s.actor,person.personId,3)).membership).toMatchObject({state:"removed",version:3,details});expect(await other.read(s.actor,person.personId,3)).toEqual(otherBefore);
+ const restored=await s.confirm(await s.ready(source,3));expect(restored.version).toBe(4);expect((await reopened.read(s.actor,person.personId,3)).membership?.details).toEqual(details);
+});
 test("explicit unmatched inquiry creates one minimal adult/profile/membership atomically across six retries and ZERO tasks/defaults",async()=>{
  const s=await setup(),source=await s.inquiry(),before=await s.snapshot(forbidden),peopleBefore=await s.count("ls_identity.people"),p=await s.ready(source);
  expect(p.newPerson).toBe(true);expect(await s.count("ls_contact_ops.profiles")).toBe(0);expect(await s.count("ls_contact_ops.fishing_lead_revisions")).toBe(0);
