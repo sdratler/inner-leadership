@@ -25,6 +25,13 @@ describe("public static perimeter", () => {
 });
 
 afterEach(() => vi.unstubAllEnvs());
+it.each(['en','he'] as const)('retains the exact %s Academy Home login destination and rejects duplicate child context through the actual proxy',locale=>{
+ const origin='https://life-skills.bneineviimacademy.org',path='/'+locale+'/family',tuple={fishing:'1',learnerId:'11111111-1111-4111-8111-111111111111',enrollmentId:'22222222-2222-4222-8222-222222222222',cohortId:'33333333-3333-4333-8333-333333333333',stageId:'44444444-4444-4444-8444-444444444444',stage:'1'};
+ vi.stubEnv('NODE_ENV','production');vi.stubEnv('LS_APP_MODE','foundation_locked');vi.stubEnv('LS_APP_ORIGIN',origin);vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');
+ const read=(p:URLSearchParams)=>new URL(proxy(new NextRequest(origin+path+'?'+p,{headers:{'x-ls-parent-return':'https://untrusted.invalid'}})).headers.get('x-middleware-request-x-ls-parent-return')!,origin);
+ expect(Object.fromEntries(read(new URLSearchParams({...tuple,role:'practitioner',secret:'not-forwarded'})).searchParams)).toEqual(tuple);
+ const duplicate=new URLSearchParams(tuple);duplicate.append('learnerId',tuple.learnerId);expect(read(duplicate).pathname).toBe(path);expect(read(duplicate).search).toBe('');
+});
 it.each(['en','he']as const)('%s actual People proxy retains strict Academy return scope and strips caller headers',locale=>{
  const origin='https://life-skills.bneineviimacademy.org',path=`/${locale}/app/clients`,header='x-middleware-request-x-ls-practitioner-return';
  vi.stubEnv('NODE_ENV','production');vi.stubEnv('LS_APP_MODE','foundation_locked');vi.stubEnv('LS_APP_ORIGIN',origin);vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');

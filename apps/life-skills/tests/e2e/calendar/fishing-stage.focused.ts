@@ -196,6 +196,22 @@ if(!file){
   }finally{page.off("dialog",handle);}
  }
  async function openPlan(page:Page,locale:string){const summary=page.getByText(t(locale,"Full twelve-session plan and received notices","התוכנית המלאה ל־12 מפגשים והדיווחים שהתקבלו"),{exact:true});const detail=summary.locator("..");if(!await detail.getAttribute("open").then(v=>v!==null))await summary.click();return detail;}
+ async function academyHome(page:Page,locale:string,info:TestInfo,phase:'trip'|'weekly'){
+  const response=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/calendar/fishing/family-home'&&r.request().method()==='GET');void response.catch(()=>undefined);
+  await page.getByRole('banner').getByRole('link',{name:t(locale,'Home','בית'),exact:true}).click();
+  const read=await response;expect(read.status()).toBe(200);const dataHome=(await read.json()).data;
+  const home=page.locator('[data-academy-family-home]');await expect(home).toBeVisible();await expect(home.getByLabel(t(locale,'Stage enrollment','רישום לשלב'),{exact:true})).toHaveValue(family(locale).selection.enrollmentId!);
+  expect(dataHome.selection).toEqual(family(locale).selection);expect(dataHome.payment).toMatchObject({currency:'USD',paidCents:175000,state:'paid'});
+  await expect(home.getByRole('region',{name:t(locale,'Fishing payments','תשלומי תוכנית הדיג'),exact:true}).getByRole('status')).toContainText(t(locale,'Paid','שולם'));await expect(home).not.toContainText('PRIVATE_SYNTHETIC');await expect(home).not.toContainText(t(locale,'No authorized case','אין תיק מורשה'));
+  const contact=home.getByRole('link',{name:t(locale,'Ask your instructor on WhatsApp','פנייה למדריך בוואטסאפ'),exact:true});await expect(contact).toHaveAttribute('href','https://wa.me/972534932631');
+  if(phase==='trip'){
+   const trip=dataHome.view.occurrences.find((o:{id:string})=>o.id===dataHome.view.nextOccurrenceId);expect(trip).toBeTruthy();const panel=home.getByRole('region',{name:t(locale,'Next fishing trip','טיול הדיג הבא'),exact:true});await expect(panel).toContainText(trip.location);await expect(panel).toContainText(trip.directions);await expect(panel.getByRole('link',{name:t(locale,'Open directions in Maps','פתיחת מסלול במפות'),exact:true})).toHaveAttribute('href','https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(trip.location));
+  }else await expect(home.locator('[data-fishing-weekly-updates] article')).toHaveCount(1);
+  const other=family(locale==='en'?'he':'en').selection,denied=await page.request.get('/api/calendar/fishing/family-home?'+fishingCalendarSearch(other));expect([403,404]).toContain(denied.status());
+  await page.reload();await expect(home.getByLabel(t(locale,'Stage enrollment','רישום לשלב'),{exact:true})).toHaveValue(family(locale).selection.enrollmentId!);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  await page.screenshot({path:info.outputPath(`academy-home-${locale}-${phase}.png`),fullPage:true});
+  await home.getByRole('link',{name:t(locale,'Calendar and absence notice','יומן והודעה על היעדרות'),exact:true}).click();await expect(page.getByLabel(t(locale,'Stage enrollment','רישום לשלב'),{exact:true})).toHaveValue(family(locale).selection.enrollmentId!);
+ }
  async function screen(page:Page,locale:string,path:string){
   await expect(page.locator("main.ls-cal")).toHaveAttribute("dir",locale==="he"?"rtl":"ltr");expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   const banner=page.getByRole("banner"),brand=banner.getByRole("link",{name:"Life Skills",exact:true});await expect(brand).toBeVisible();await brand.focus();await expect(brand).toBeFocused();
@@ -244,8 +260,9 @@ if(!file){
    expect(canonicalPlan.selection).toEqual(family(locale).selection);expect(canonicalView).toMatchObject({...family(locale).selection.reference,role:"parent",enrollmentId:family(locale).selection.enrollmentId});
    const attendanceDetails=page.locator("details[data-fishing-parent-attendance]");await expect(attendanceDetails).toHaveCount(1);if(await attendanceDetails.getAttribute("open")===null)await attendanceDetails.locator("summary").click();
    expect(await verifyFishingParentPlanSummaries(page,{fixture:"SYNTHETIC_ONLY",origin:data.origin,locale,view:canonicalView})).toEqual({stageRevision:canonicalView.revision,nextKnown:true,noticeCount:1});
+   await academyHome(page,locale,info,'trip');const currentPlan=await openPlan(page,locale);
    const wrong=await page.request.get("/api/calendar/fishing/context?learnerId="+family(locale).otherLearnerId);expect(wrong.status()).toBe(404);
-   const link=reopened.getByRole("link",{name:t(locale,"Open lesson","פתיחת שיעור"),exact:true}).first();await expect(link).toBeVisible();const href=await link.getAttribute("href");if(!href)throw Error("EXPECTED_LESSON_LINK_REQUIRED");const expectedLesson=new URL(href,data.origin);
+   const link=currentPlan.getByRole("link",{name:t(locale,"Open lesson","פתיחת שיעור"),exact:true}).first();await expect(link).toBeVisible();const href=await link.getAttribute("href");if(!href)throw Error("EXPECTED_LESSON_LINK_REQUIRED");const expectedLesson=new URL(href,data.origin);
    // Await the page's own authorized read, not a test-issued API or a delay.
    const lessonResponse=page.waitForResponse(response=>isExpectedLessonResponse(response,page,expectedLesson));void lessonResponse.catch(()=>undefined);await link.click();const lesson=await lessonResponse;expect(lesson.status()).toBe(200);expect(await lesson.finished()).toBeNull();
    await expect(page.getByLabel("Describe your synthetic hookless practice.",{exact:true})).toBeVisible();expect(await page.locator("body").innerText()).not.toContain("PRIVATE_SYNTHETIC_TEACHER_CANARY");
@@ -361,6 +378,9 @@ if(!file){
     const receipt=await parent.request.get("/api/calendar/fishing/plan?"+fishingCalendarSearch(family(language).selection));expect(receipt.status()).toBe(200);const own=(await receipt.json()).data.view;expect(own.weeklyUpdates).toHaveLength(1);expect(own.weeklyUpdates[0].enrollmentId).toBe(family(language).selection.enrollmentId);expect(own.weeklyUpdates[0].skills).toHaveLength(2);expect(JSON.stringify(own)).not.toMatch(/PRIVATE_SYNTHETIC_WEEKLY_EVIDENCE|weeklyOperator|observationSetDigest/);
     expect(await parent.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await parent.screenshot({path:info.outputPath(`weekly-${language}-parent-published.png`),fullPage:true});
     await page.screenshot({path:info.outputPath(`weekly-${language}-operator-saved.png`),fullPage:true});
+    await academyHome(parent,language,info,'weekly');
+    const direct=await separate(browser,page,weeklyContexts),homeTarget='/'+language+'/family?fishing=1&'+fishingCalendarSearch(family(language).selection);await login(direct,'parent-'+language,homeTarget,language);
+    const directHome=direct.locator('[data-academy-family-home]');await expect(directHome.locator('[data-fishing-weekly-updates] article')).toHaveCount(1);await expect(directHome.getByRole('region',{name:t(language,'Fishing payments','תשלומי תוכנית הדיג'),exact:true}).getByRole('status')).toContainText(t(language,'Paid','שולם'));await expect(directHome).not.toContainText('PRIVATE_SYNTHETIC');await direct.screenshot({path:info.outputPath(`academy-home-${language}-ordinary-signin.png`),fullPage:true});
    }
    for(const language of["en","he"]as const){const parent=parents.get(language)!;await parent.reload();const other=family(language==="en"?"he":"en").selection;const denied=await parent.request.get("/api/calendar/fishing/plan?"+fishingCalendarSearch(other));expect([403,404]).toContain(denied.status());await expect(parent.locator("[data-fishing-weekly-updates] article")).toHaveCount(1);await expect(parent.locator("body")).not.toContainText("PRIVATE_SYNTHETIC_WEEKLY_EVIDENCE");}
   }finally{await Promise.all(weeklyContexts.map(context=>context.close()));}

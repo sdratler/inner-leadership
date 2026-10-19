@@ -60,6 +60,39 @@ test("current selected parent context is explicit and case-free; two populated s
  const plan=await f.read(auth,"plan",fishingCalendarSearch(a.selection));expect(plan.status).toBe(200);const view=(await plan.json()).data;expect(view.operator).toEqual({venues:[],roster:[],makeupNotices:[],makeupFits:[]});expect(view.selection.learnerId).toBe(a.family.learnerId);expect(await f.effects()).toEqual(before);expect(before.cases).toBe(0);expect(before.grants).toBe(0);
 });
 
+test('Academy Home reads the selected native USD payment without merchant activation, excludes private fields and rejects another family and non-parent roles',async()=>{
+ const f=await fixture(),a=await f.enrolled(),b=await f.family(),bp=await f.prepare(b);await f.settle(bp);const be=await f.enroll(bp);
+ const guardian=await f.account('parent');await f.pool.query("INSERT INTO ls_cases.family_members(workspace_id,family_id,person_id,role) VALUES($1,$2,$3,'parent')",[f.workspaceId,a.family.householdId,guardian.personId]);await f.pool.query("INSERT INTO ls_education.guardian_authorities(workspace_id,learner_id,account_id,active,verified_at,source_reference,verified_by) VALUES($1,$2,$3,true,$4,'synthetic-additional-guardian',$5)",[f.workspaceId,a.family.learnerId,guardian.id,new Date(Date.now()-1000),f.owner.id]);
+ const auth=await f.login(a.family.parent),other=await f.login(b.parent),owner=await f.login(f.owner),additional=await f.login(guardian),before=await f.effects();
+ const response=await f.read(auth,'family-home',fishingCalendarSearch(a.selection));expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toBe('private, no-store');
+ const home=(await response.json()).data;expect(home.selection).toEqual(a.selection);expect(home.view.role).toBe('parent');expect(home.payment).toMatchObject({purchaseId:a.purchase.purchaseId,currency:'USD',totalCents:175000,paidCents:175000,state:'paid',enrollmentGranted:false});
+ expect(JSON.stringify(home)).not.toMatch(/providerAccountId|verifiedBindingId|providerReceiptId|canonicalTransactionId|privateNote|PRIVATE_SYNTHETIC|weeklyOperator/);
+ expect((await f.read(other,'family-home',fishingCalendarSearch(a.selection))).status).toBe(404);
+ expect((await f.read(auth,'family-home',fishingCalendarSearch({...a.selection,enrollmentId:be.result.id}))).status).toBe(404);
+ expect((await f.read(owner,'family-home',fishingCalendarSearch(a.selection))).status).toBe(403);
+ const guardianHome=await f.read(additional,'family-home',fishingCalendarSearch(a.selection));expect(guardianHome.status).toBe(200);const guardianView=(await guardianHome.json()).data;expect(guardianView.view.enrollmentId).toBe(a.selection.enrollmentId);expect(guardianView.payment).toBeNull();expect(JSON.stringify(guardianView)).not.toMatch(/paidCents|purchaseId|settlements/);
+ expect((await f.read(auth,'family-home',fishingCalendarSearch(a.selection)+'&learnerId='+a.family.learnerId)).status).toBe(400);
+ expect(await f.effects()).toEqual(before);
+ await f.pool.query("UPDATE ls_education.guardian_authorities SET active=false WHERE workspace_id=$1 AND account_id=$2",[f.workspaceId,a.family.parent.id]);expect((await f.read(auth,'family-home',fishingCalendarSearch(a.selection))).status).toBe(404);
+});
+
+test('Academy Home distinguishes unresolved native payment operations from paid and removes readback after ordinary logout',async()=>{
+ const f=await fixture(),a=await f.enrolled(),auth=await f.login(a.family.parent),before=await f.effects();
+ await f.pool.query("UPDATE ls_fishing_payments.operations SET operation_json=jsonb_set(operation_json,'{state}','\"unknown\"'::jsonb) WHERE workspace_id=$1 AND purchase_id=$2",[f.workspaceId,a.purchase.purchaseId]);
+ const response=await f.read(auth,'family-home',fishingCalendarSearch(a.selection));expect(response.status).toBe(200);expect((await response.json()).data.payment.state).toBe('reconciliation_required');expect(await f.effects()).toEqual(before);
+ const logout=await f.runtime().identity.handle(new Request(f.origin+'/api/identity/logout',{method:'POST',headers:{cookie:auth.cookie,origin:f.origin,'sec-fetch-site':'same-origin','content-type':'application/json','x-csrf-token':auth.csrf},body:'{}'}));expect(logout.status).toBe(200);expect((await f.read(auth,'family-home',fishingCalendarSearch(a.selection))).status).toBe(401);
+});
+
+test('siblings remain explicitly selected through Academy Home; each payment belongs to that exact child enrollment',async()=>{
+ const f=await fixture(),a=await f.enrolled(),siblingId=await f.person('minor','Same name / אותו שם');
+ await f.pool.query("INSERT INTO ls_cases.family_members(workspace_id,family_id,person_id,role) VALUES($1,$2,$3,'child')",[f.workspaceId,a.family.householdId,siblingId]);
+ await f.pool.query("INSERT INTO ls_education.guardian_authorities(workspace_id,learner_id,account_id,active,verified_at,source_reference,verified_by) VALUES($1,$2,$3,true,$4,'synthetic-sibling-guardian',$5)",[f.workspaceId,siblingId,a.family.parent.id,new Date(Date.now()-1000),f.owner.id]);
+ const sibling={...a.family,learnerId:siblingId},purchase=await f.prepare(sibling);await f.settle(purchase);const enrollment=await f.enroll(purchase),selection={learnerId:siblingId,enrollmentId:enrollment.result.id,reference:f.ref},auth=await f.login(a.family.parent),before=await f.effects();
+ const context=(await (await f.read(auth)).json()).data;expect(context.children).toHaveLength(2);expect(context.selectedLearnerId).toBeNull();expect(context.stages).toEqual([]);
+ const own=(await (await f.read(auth,'family-home',fishingCalendarSearch(a.selection))).json()).data,other=(await (await f.read(auth,'family-home',fishingCalendarSearch(selection))).json()).data;expect(own.payment.purchaseId).toBe(a.purchase.purchaseId);expect(other.payment.purchaseId).toBe(purchase.purchaseId);expect(own.view.enrollmentId).not.toBe(other.view.enrollmentId);
+ expect((await f.read(auth,'family-home',fishingCalendarSearch({...selection,enrollmentId:a.enrollment.result.id}))).status).toBe(404);expect(await f.effects()).toEqual(before);
+});
+
 test("native ordinary-password parent notice uses exact replay after a deliberately discarded response, with no duplicate notice or other effects",async()=>{
  const f=await fixture(),a=await f.enrolled(),plan=(await f.stage().read(f.owner,f.ref))!;await f.revise(plan.occurrences[0]!.id);await f.publish();const auth=await f.login(a.family.parent),before=await f.effects();
  const current=(await (await f.read(auth,"plan",fishingCalendarSearch(a.selection))).json()).data.view,o=current.occurrences[0];
@@ -92,6 +125,7 @@ test("a separately enabled child's own real login is read-only and does not conf
  const context=await f.read(auth);expect(context.status).toBe(200);expect((await context.json()).data.selectedLearnerId).toBe(a.family.learnerId);
  const response=await f.read(auth,"plan",fishingCalendarSearch(a.selection));expect(response.status).toBe(200);const plan=(await response.json()).data;expect(plan.view.role).toBe("child");expect(plan.view.notices).toEqual([]);expect(plan.operator.roster).toEqual([]);expect(plan.lessonLinks).toEqual([]);expect(JSON.stringify(plan)).not.toMatch(/paidCents|privateNote|PRIVATE_SYNTHETIC|termsAcceptanceId/);
  expect((await f.write(auth,a.selection,{action:"publish",operationId:randomUUID(),expectedRevision:plan.view.revision})).status).toBe(403);expect(await f.effects()).toEqual(before);
+ expect((await f.read(auth,'family-home',fishingCalendarSearch(a.selection))).status).toBe(403);
 });
 
 test("unenabled child access, expired ordinary sessions, malformed or foreign context never fall back to a first child",async()=>{

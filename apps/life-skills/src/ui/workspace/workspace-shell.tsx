@@ -10,8 +10,8 @@ const copy = {
   en: { skip: "Skip to content", nav: "Workspace navigation", more: "More", close: "Close navigation", menu: "Open navigation", account: "Account menu", settings: "Settings", practitioner: "Practitioner workspace", parent: "Family workspace", client: "Client workspace", location: "You are here", language: "עברית", privacy: "Access is limited to your authorized workspace." },
   he: { skip: "דילוג לתוכן", nav: "ניווט במרחב", more: "עוד", close: "סגירת התפריט", menu: "פתיחת התפריט", account: "תפריט החשבון", settings: "הגדרות", practitioner: "מרחב המטפל", parent: "מרחב המשפחה", client: "מרחב לקוח/ה", location: "המיקום שלכם", language: "English", privacy: "הגישה מוגבלת למרחב המורשה שלכם." },
 } as const;
-export type WorkspaceShellProps = { locale: Locale; role: WorkspaceRole; clientRole?:'adult_client'|'child';pathname: string; caseId?: string | null; audienceId?:string|null; selectedClient?: boolean; section?: string | null | undefined; communityView?: string|null|undefined;view?: string | null | undefined; date?: string | null | undefined; mode?: string | null | undefined; calendarLayers?:CalendarLayerQuery;groupInterestEnabled?:boolean;languageHref: string; children: ReactNode; toHref?: (path: string) => string; notice?: ReactNode };
-export function WorkspaceShell({ locale, role, clientRole, pathname, caseId, audienceId, selectedClient=false, section, communityView,view, date, mode, calendarLayers={},groupInterestEnabled=false,languageHref, children, toHref, notice }: WorkspaceShellProps) {
+export type WorkspaceShellProps = { locale: Locale; role: WorkspaceRole; clientRole?:'adult_client'|'child';pathname: string; caseId?: string | null; audienceId?:string|null; selectedClient?: boolean; section?: string | null | undefined; communityView?: string|null|undefined;view?: string | null | undefined; date?: string | null | undefined; mode?: string | null | undefined; calendarLayers?:CalendarLayerQuery;groupInterestEnabled?:boolean;academyContext?:boolean;languageHref: string; children: ReactNode; toHref?: (path: string) => string; notice?: ReactNode };
+export function WorkspaceShell({ locale, role, clientRole, pathname, caseId, audienceId, selectedClient=false, section, communityView,view, date, mode, calendarLayers={},groupInterestEnabled=false,academyContext=false,languageHref, children, toHref, notice }: WorkspaceShellProps) {
   const sharedClientContext=role==='practitioner'&&isCaseId(caseId)&&['/app/forms','/app/resources'].some(path=>pathname.endsWith(path));
   const effectiveSelectedClient=(selectedClient||sharedClientContext)&&isClientWorkspacePath(pathname.slice(locale.length+2));
   const t = copy[locale], active = role === "practitioner" && effectiveSelectedClient && caseId ? primaryNavigation.practitioner.find(item=>item.key==="clients") : activeItem(pathname, locale, role);
@@ -29,9 +29,10 @@ export function WorkspaceShell({ locale, role, clientRole, pathname, caseId, aud
   }, []);
   const link = (entry: NavItem) => <a className="lsu-nav-link" key={entry.key} href={href(entry.path)} aria-current={active?.key === entry.key ? "page" : undefined}>{entry[locale]}</a>;
   const clientContext = Boolean(caseId && (effectiveSelectedClient || pathname.includes("/app/cases/")));
-  const roleGroups=workspaceGroups(role,clientRole),sharedItems=roleGroups.flatMap(group=>group.items),sharedContext=role!=='practitioner'&&sharedItems.some(item=>pathname===`/${locale}/${item.path}`);
+  const academy=role==='parent'&&academyContext,primary=academy?primaryNavigation.parent.filter(item=>['home','schedule'].includes(item.key)):primaryNavigation[role];
+  const roleGroups=academy?[]:workspaceGroups(role,clientRole),sharedItems=roleGroups.flatMap(group=>group.items),sharedContext=role!=='practitioner'&&sharedItems.some(item=>pathname===`/${locale}/${item.path}`);
   const inCommunity=pathname.endsWith('/app/marketing')&&section==='community';
-  const contextItems = role === "practitioner" ? practitionerContext(pathname, caseId ?? null, clientContext,inCommunity,groupInterestEnabled) : sharedContext?sharedItems:primaryNavigation[role];
+  const contextItems = role === "practitioner" ? practitionerContext(pathname, caseId ?? null, clientContext,inCommunity,groupInterestEnabled) : sharedContext?sharedItems:primary;
   const currentContext = inCommunity?selectedCommunityView(communityView):pathname.endsWith("/app/practice") ? (section ?? "practice") : clientContext ? pathname.endsWith("/settings") ? "access" : pathname.includes("/sessions") ? "sessions" : pathname.includes("/app/calendar") ? "calendar" : pathname.includes("/app/feedback") ? "communications" : pathname.includes("/app/reports") ? "reports" : pathname.includes("/app/forms") ? "forms" : pathname.includes('/app/resources')?'resources':"overview" : pathname.includes("/app/calendar") ? (view ?? "week") : pathname.includes("/app/group-interest") ? "groups" : pathname.includes("/app/group-applications") ? "group_applications" : pathname.includes("/app/clients") || pathname.includes("/app/prospects") ? (section ?? "all") : pathname.endsWith('/app/marketing')&&section==='needs_approval'?'creatives':section ?? (pathname.includes("/app/reports") ? "drafts" : pathname.includes("/app/feedback") ? "app_updates" : "overview");
   const contextHref = (entry: ContextItem) => {
     const url = new URL(href(entry.path), "https://private.invalid");
@@ -81,14 +82,14 @@ export function WorkspaceShell({ locale, role, clientRole, pathname, caseId, aud
     </header>
     {notice && <div className="lsu-preview-notice">{notice}</div>}
     <div className="lsu-layout">
-      <aside className="lsu-sidebar"><nav aria-label={t.nav}><p className="lsu-nav-heading">{t[role]}</p>{primaryNavigation[role].map(link)}{groups}</nav><p className="lsu-sidebar-note">{t.privacy}</p></aside>
+      <aside className="lsu-sidebar"><nav aria-label={t.nav}><p className="lsu-nav-heading">{t[role]}</p>{primary.map(link)}{groups}</nav><p className="lsu-sidebar-note">{t.privacy}</p></aside>
       <div className="lsu-content">
         <nav className="lsu-breadcrumbs" aria-label={t.location}><ol>{crumbs.map((crumb, i) => <li key={`${i}-${crumb.label}`}>{crumb.path ? <a href={crumbHref(crumb.path,crumb.query)}>{crumb.label}</a> : <span aria-current="page">{crumb.label}</span>}</li>)}</ol></nav>
         <div id="lsw-main" className="lsu-page" tabIndex={-1}>{children}</div>
       </div>
     </div>
     <dialog ref={drawer} id={drawerId} className="lsu-drawer" aria-labelledby={titleId} onCancel={event => { event.preventDefault(); close(); }} onClick={event => { if (event.target === event.currentTarget) close(); }}>
-      <div className="lsu-drawer-inner"><header><h2 id={titleId}>{t.nav}</h2><button type="button" className="lsu-icon-control" aria-label={t.close} onClick={close}>×</button></header><nav aria-label={t.nav}>{primaryNavigation[role].map(link)}{groups}</nav></div>
+      <div className="lsu-drawer-inner"><header><h2 id={titleId}>{t.nav}</h2><button type="button" className="lsu-icon-control" aria-label={t.close} onClick={close}>×</button></header><nav aria-label={t.nav}>{primary.map(link)}{groups}</nav></div>
     </dialog>
   </div>;
 }

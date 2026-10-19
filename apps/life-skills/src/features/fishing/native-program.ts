@@ -7,7 +7,7 @@ import {freshActor,lockWorkspace} from "../identity/data.ts";
 import {seal,unseal,type Keyring} from "../identity/crypto.ts";
 import {one,type IdentityStore,type SqlSession} from "../identity/store.ts";
 import {systemClock,type Actor,type AccountFacts,type IdentityClock} from "../identity/types.ts";
-import {approvedOffer,digest,settled,POLICY_VERSION,type SettlementFact,type MerchantBinding} from "../fishing-payments/domain.ts";
+import {approvedOffer,digest,settled,familyPayment,POLICY_VERSION,type SettlementFact,type MerchantBinding,type FamilyPaymentView} from "../fishing-payments/domain.ts";
 import type {FishingAuthority} from "../fishing-payments/ports.ts";
 import type {EnrollmentProjection,FishingStageRef,PaymentState} from "./contract.ts";
 import type {FishingStageNativeHooks,NativeStageHookContext} from "./native-stage-ports.ts";
@@ -225,6 +225,25 @@ export class NativeFishingProgram {
   const c=await this.actor(tx,actor),e=await this.enrollment(tx,c.actor.workspaceId,id,c.now),cohort=await this.cohort(tx,c.actor.workspaceId,e.stageId);if(c.actor.role==="practitioner"&&cohort.operatorId===c.actor.id){await this.actor(tx,actor);return e;}
   if(e.state!=="confirmed"||!e.authorizedAccountIds.includes(c.actor.id)||c.actor.role==="child"&&(!this.options.childAccountsEnabled||c.actor.personId!==e.learnerId)||!["parent","child"].includes(c.actor.role))return null;await this.actor(tx,actor);return e;
  });}catch(error){if(error instanceof FishingProgramError&&["NOT_FOUND","FORBIDDEN"].includes(error.code))return null;clean(error);}}
+ /** Read-only current selected-enrollment payment projection. No merchant,
+  * provider action, invitation, settlement write or implicit enrollment. */
+ async familyPayment(actor:Actor,enrollmentId:string):Promise<FamilyPaymentView|null>{
+  try{return await this.db.transaction(async tx=>{
+   const c=await this.actor(tx,actor);requireFact(c.actor.role==='parent'&&await demoAccountBatch(tx,c.actor.workspaceId,c.actor.id)===null,'FORBIDDEN');
+   const e=await this.enrollment(tx,c.actor.workspaceId,uuid.parse(enrollmentId),c.now);
+   requireFact(e.state==='confirmed'&&e.authorizedAccountIds.includes(c.actor.id),'NOT_FOUND');
+   const p=await this.purchase(tx,c.actor.workspaceId,e.purchaseId);
+   if(p.offer.payerAccountId!==c.actor.id){await this.actor(tx,actor);return null;}
+   // Read the existing native ledger; this read neither verifies a processor
+   // transport nor grants enrollment from a paid flag. Confirmation remains
+   // governed separately by paymentFacts and an admitted merchant binding.
+   await this.guardian(tx,c.actor.workspaceId,c.actor.id,e.learnerId,e.householdId);
+   const operations=await tx.query<{operation:unknown}>("SELECT CASE WHEN octet_length(operation_json::text)<=131072 THEN operation_json ELSE NULL END AS operation FROM ls_fishing_payments.operations WHERE workspace_id=$1 AND purchase_id=$2 LIMIT 101",[c.actor.workspaceId,e.purchaseId]);
+   const operation=z.object({state:z.enum(['reserved','unknown','confirmed'])});requireFact(operations.length<=100&&operations.every(row=>operation.safeParse(row.operation).success),'UNAVAILABLE');
+   const unknown=operations.some(row=>operation.parse(row.operation).state==='unknown');await this.actor(tx,actor);
+   return familyPayment(unknown?{...p.state,state:'reconciliation_required'}:p.state);
+  });}catch(error){clean(error);}
+ }
  /** Metadata only. Never supplies an enrollment, grant, merchant or first-child
   * default. Catalog absence is distinct from a broken/partially installed schema. */
  async calendarChoices(actor:Actor,selectedLearnerId:string|null=null):Promise<FishingCalendarChoices>{

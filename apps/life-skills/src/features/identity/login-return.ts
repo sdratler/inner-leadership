@@ -141,6 +141,7 @@ export function parentReturnPath(locale: Locale, pathname: string, input: Return
   const params = new URLSearchParams();
   const uuid = (key: string) => { if (/^[0-9a-f-]{36}$/i.test(query[key] ?? "")) params.set(key, query[key]!); };
   if (["", "/schedule", "/practice", "/feedback", "/forms", "/resources", "/reports"].includes(suffix)) uuid("caseId");
+  if (suffix === '' || suffix === '/schedule')for(const [key,value]of Object.entries(calendarFishingReturn(input)))params.set(key,value);
   if (suffix === "/schedule") {
     for(const [key,value]of Object.entries(calendarFishingReturn(input)))params.set(key,value);
     if(query.practice==='0'||query.practice==='1')params.set('practice',query.practice);

@@ -9,6 +9,7 @@ import type {Actor} from "../identity/types.ts";
 import {NativeFishingProgram} from "./native-program.ts";
 import {nativeProgramIntentSchema} from "./native-program-contract.ts";
 import {FishingProgramError} from "./native-program-contract.ts";
+import type {FishingFamilyHome} from './family-home-contract.ts';
 import {FishingStageError,FishingStageService} from "../fishing-stage/service.ts";
 import {NativeFishingStageStore} from "../fishing-stage/native-store.ts";
 import {stageCommandSchema,type StageView} from "../fishing-stage/contract.ts";
@@ -82,6 +83,14 @@ export async function handleFishingCalendar(request:Request,path:readonly string
      const current=await program.calendarChoices(actor,parsed.data.learnerId);
      if(current.availability!==choices.availability||plans.some(plan=>!selectedFishingStage(current,plan.selection)))throw new AppError("NOT_FOUND");
      data={availability:choices.availability,items:fishingCalendarEvents(plans,parsed.data)};
+    }else if(request.method==='GET'&&path[0]==='family-home'){
+     if(actor.role!=='parent')throw new AppError('FORBIDDEN');
+     let selection:FishingCalendarSelection;try{selection=fishingCalendarSelectionQuery(url.searchParams);}catch{throw new AppError('INVALID_REQUEST');}
+     if(!selection.learnerId||!selection.enrollmentId)throw new AppError('INVALID_REQUEST');
+     const choice=await authorize(actor,selection),view=await stage(actor,selection,null).read(actor,selection.reference);
+     if(!view||view.role!=='parent'||view.enrollmentId!==selection.enrollmentId)throw new AppError('NOT_FOUND');
+     const payment=await program.familyPayment(actor,selection.enrollmentId);await authorize(actor,selection);
+     data={selection,label:choice.label,view,payment} satisfies FishingFamilyHome;
     }else if(request.method==="GET"&&path[0]==="plan"){
      const query=new URLSearchParams(url.searchParams),lessonLearnerId=query.get("lessonLearnerId");
      if(query.getAll("lessonLearnerId").length>1||lessonLearnerId!==null&&!z.uuid().safeParse(lessonLearnerId).success||actor.role!=="practitioner"&&lessonLearnerId!==null)throw new AppError("INVALID_REQUEST");query.delete("lessonLearnerId");
