@@ -63,13 +63,21 @@ test("explicit Academy notes/status/manual date edit replays, keeps history and 
  const response=await s.http(input);expect(response.status).toBe(200);const preview=(await response.json()).data as Ready;expect(preview.details).toEqual(details);
  const confirm={action:"confirm",token:preview.token,confirmNewPerson:false},first=await s.http(confirm),retry=await s.http(confirm);expect(first.status).toBe(200);expect(retry.status).toBe(200);expect((await retry.json()).data).toMatchObject({version:2,replayed:true,tasksCreated:0,outboundEligible:false});
  const reopened=new FishingLeadStore(s.db,s.f.keyring,key,program,s.clock);expect((await reopened.read(s.actor,person.personId,3)).membership).toMatchObject({version:2,state:"active",details});
+ const academyQuery={view:"all" as const,search:"Academy-only note",program,leadStatus:"callback_requested" as const,today:"2026-11-03",due:"today" as const,page:1,pageSize:12};
+ const directory=await s.crm.list(s.actor,academyQuery,3);expect(directory.total).toBe(1);expect(directory.items[0]).toMatchObject({personId:person.personId,nextAction:"Preserve existing action",followUpDate:"2026-10-30",academyLead:{state:"active",version:2,details}});
+ expect((await s.crm.list(s.actor,{...academyQuery,leadStatus:"closed"},3)).total).toBe(0);
+ expect((await s.crm.list(s.actor,{...academyQuery,today:"2026-11-02"},3)).total).toBe(0);
+ await expect(s.crm.list(s.f.parent.actor,academyQuery,3)).rejects.toMatchObject({code:"FORBIDDEN"});
  expect(await other.read(s.actor,person.personId,3)).toEqual(otherBefore);expect(await s.snapshot([...forbidden,"ls_contact_ops.profiles"])).toEqual(preserved);
  const history=await s.f.pool.query("SELECT payload_ciphertext FROM ls_contact_ops.fishing_lead_revisions WHERE workspace_id=$1 AND program_key=$2 AND person_id=$3 ORDER BY version",[s.f.workspaceId,program,person.personId]);expect(history.rows).toHaveLength(2);expect(JSON.stringify(history.rows)).not.toContain(details.notes);
  expect((await s.http({...input,operationId:randomUUID(),details:{...details,notes:"Stale overwrite"}})).status).toBe(409);
  await expect(other.preview(s.actor,{...input,operationId:randomUUID()})).rejects.toMatchObject({code:"FORBIDDEN"});
  const removal=await reopened.preview(s.actor,{action:"preview_remove",operationId:randomUUID(),expectedEpoch:3,personId:person.personId,expectedAssociationVersion:2});expect(removal.state).toBe("ready");if(removal.state!=="ready")throw Error("PREVIEW_REQUIRED");await reopened.confirm(s.actor,{action:"confirm",token:removal.token,confirmNewPerson:false});
  expect((await reopened.read(s.actor,person.personId,3)).membership).toMatchObject({state:"removed",version:3,details});expect(await other.read(s.actor,person.personId,3)).toEqual(otherBefore);
+ expect((await s.crm.list(s.actor,academyQuery,3)).total).toBe(0);
+ expect((await s.crm.list(s.actor,{view:"all",search:"",personId:person.personId,today:"2026-11-03",page:1,pageSize:12},3)).total).toBe(1);
  const restored=await s.confirm(await s.ready(source,3));expect(restored.version).toBe(4);expect((await reopened.read(s.actor,person.personId,3)).membership?.details).toEqual(details);
+ expect((await s.crm.list(s.actor,academyQuery,3)).items).toHaveLength(1);expect(await s.snapshot([...forbidden,"ls_contact_ops.profiles"])).toEqual(preserved);
 });
 test("explicit unmatched inquiry creates one minimal adult/profile/membership atomically across six retries and ZERO tasks/defaults",async()=>{
  const s=await setup(),source=await s.inquiry(),before=await s.snapshot(forbidden),peopleBefore=await s.count("ls_identity.people"),p=await s.ready(source);

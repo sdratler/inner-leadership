@@ -68,6 +68,10 @@ export function practitionerReturnPath(locale: Locale, page: "calendar" | "clien
     for(const [key,max] of [["search",200],["stage",120]] as const){const value=one(key);if(value&&value.length<=max&&!/[\u0000-\u001f\u007f]/.test(value))params.set(key,value);}
     if(["he","en"].includes(one("language")))params.set("language",one("language"));
     if(["today","overdue"].includes(one("due")))params.set("due",one("due"));
+    if(one("program")==="sunday_fishing_academy"&&!["audience","needs_review","whatsapp_group"].includes(one("section"))){
+      params.set("program","sunday_fishing_academy");params.set("section","all");params.delete("filter");params.delete("stage");
+      if(["new","contacted","interested","callback_requested","follow_up","closed"].includes(one("leadStatus")))params.set("leadStatus",one("leadStatus"));
+    }
   }
   const suffix = params.toString();
   return `/${locale}/app/${page}${suffix ? `?${suffix}` : ""}`;

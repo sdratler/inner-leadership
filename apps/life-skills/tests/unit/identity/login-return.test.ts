@@ -43,6 +43,19 @@ it('preserves only a bounded legacy lead ID on a practitioner People return link
     .toBe('/en/app/clients');
 });
 const caseId='123e4567-e89b-42d3-a456-426614174000',sessionId='223e4567-e89b-42d3-a456-426614174000';
+it.each(['en','he']as const)('%s Academy People filters survive same-role login without borrowing Life Skills pipeline context',locale=>{
+ const query={section:'paid',filter:'booking',stage:'Global Life Skills stage',program:'sunday_fishing_academy',leadStatus:'follow_up',search:'Synthetic Academy note',due:'overdue'};
+ const next=practitionerReturnPath(locale,'clients',query),url=new URL(next,'https://private.invalid');
+ expect(Object.fromEntries(url.searchParams)).toEqual({section:'all',program:query.program,leadStatus:'follow_up',search:query.search,due:'overdue'});
+ expect(loginReturnDestination(locale,'practitioner',next)).toBe(next);
+ expect(loginReturnDestination(locale,'parent',next)).not.toBe(next);
+ expect(loginReturnDestination(locale==='en'?'he':'en','practitioner',next)).not.toBe(next);
+ for(const program of ['other', ['sunday_fishing_academy','sunday_fishing_academy']]){
+  const invalid=new URL(practitionerReturnPath(locale,'clients',{...query,program}),'https://private.invalid');expect(invalid.searchParams.has('program')).toBe(false);expect(invalid.searchParams.has('leadStatus')).toBe(false);
+ }
+ for(const leadStatus of ['constructor',['follow_up','follow_up']])expect(new URL(practitionerReturnPath(locale,'clients',{...query,leadStatus}),'https://private.invalid').searchParams.has('leadStatus')).toBe(false);
+ for(const section of ['audience','needs_review','whatsapp_group'])expect(new URL(practitionerReturnPath(locale,'clients',{...query,section}),'https://private.invalid').searchParams.has('program')).toBe(false);
+});
 it.each(['en','he']as const)('rejects every duplicate %s parent education return key including section instead of defaulting it',locale=>{
  const path=`/${locale}/family/resources`,query={education:'lesson',learnerId:caseId,moduleId:'RM-101',version:'synthetic-v1',section:'portfolio'};
  expect(Object.fromEntries(new URL(parentReturnPath(locale,path,query),'https://private.invalid').searchParams)).toEqual(query);
