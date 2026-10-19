@@ -18,5 +18,14 @@
       "sha256": "4f249416cc49c3c78c38a40c03022ba9b9387d07a780b09423858257e01db87e",
       "publicPath": "/groups/academy/hero-mobile-selected-20261018.png"
     }
-  ]
+  ],
+  "desktopWide": {
+    "role": "desktop-wide",
+    "bytes": 3084482,
+    "width": 2400,
+    "height": 1140,
+    "sha256": "eea80f35657c8821c6d1919e5b51b38e4b9b9e27f6aae11a56f678bc67261bab",
+    "publicPath": "/groups/academy/hero-desktop-wide-20261019.png",
+    "reviewOnly": true
+  }
 }

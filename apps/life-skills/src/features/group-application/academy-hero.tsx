@@ -3,9 +3,10 @@ import assets from "./academy-hero-assets.json";
 import styles from "./academy-site.module.css";
 
 export function AcademyHero({locale}:{locale:Locale}){
+ const wide=assets.desktopWide;
  const desktop=assets.assets.find(asset=>asset.role==="desktop")!,mobile=assets.assets.find(asset=>asset.role==="mobile")!;
  return <section className={styles.hero} aria-labelledby="academy-title" data-academy-hero>
-  <div className={styles.heroArt}><picture><source media="(min-width: 768px)" srcSet={desktop.publicPath} width={desktop.width} height={desktop.height}/>
+  <div className={styles.heroArt}><picture><source media="(min-width: 768px) and (min-aspect-ratio: 17/10)" srcSet={wide.publicPath} width={wide.width} height={wide.height}/><source media="(min-width: 768px)" srcSet={desktop.publicPath} width={desktop.width} height={desktop.height}/>
    <img src={mobile.publicPath} width={mobile.width} height={mobile.height} alt={locale==="he"?"מבוגר וילד משוחחים ליד המים על גשר דיג":"An adult and a boy talking beside the water on a fishing bridge"} fetchPriority="high" decoding="async" data-academy-hero-image/>
   </picture>
   <div className={styles.heroSemantics} lang="en" dir="ltr" data-academy-hero-heading>
@@ -14,7 +15,7 @@ export function AcademyHero({locale}:{locale:Locale}){
   <div className={styles.heroSelectedAction} data-academy-hero-invitation>
    <p className={styles.heroSemantics} lang="en" dir="ltr">A part-time enrichment<br/>program for boys</p>
    <p className={styles.heroSemantics} lang="en" dir="ltr">Torah <span>•</span> Fishing <span>•</span> Self-governance</p>
-   <a href="#pricing" className={styles.heroCta} data-jlfa-primary>{locale==="he"?"למחיר המשפחות המייסדות":"See Founding Pricing"}</a>
+   <a href="#pricing" className={styles.heroCta} data-jlfa-primary><span className={styles.heroDesktopLabel}>{locale==="he"?"לשמירת מקום עכשיו":"Reserve a Spot Now"}</span><span className={styles.heroMobileLabel}>{locale==="he"?"למחיר המשפחות המייסדות":"See Founding Pricing"}</span></a>
   </div></div>
  </section>;
 }
