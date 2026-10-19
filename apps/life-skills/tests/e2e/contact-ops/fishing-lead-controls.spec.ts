@@ -17,7 +17,7 @@ if(!runtimePath){
   expect(result.stdout).toContain("FISHING_LEAD_UI_ACCEPTANCE_PASS project="+project);
  });
 }else{
- const runtime=JSON.parse(readFileSync(runtimePath,"utf8")) as {origin:string;fishing:{credentials:{role:string;email:string;password:string}[];inquiries:{locale:string;id:string;name:string}[];protectedPersonId:string}};
+ const runtime=JSON.parse(readFileSync(runtimePath,"utf8")) as {origin:string;workspaceId:string;fishing:{credentials:{role:string;email:string;password:string}[];inquiries:{locale:string;id:string;name:string}[];protectedPersonId:string}};
  if(process.env.LS_FISHING_LEAD_UI_ONLY!=="true"||!/^https:\/\/localhost:310[5678]$/.test(runtime.origin)||!runtime.fishing)throw Error("FISHING_UI_ISOLATED_FIXTURE_REQUIRED");
  test.use({baseURL:runtime.origin});
  for(const locale of ["en","he"] as const)test(`${locale}: anonymous saved inquiry, exact retry, ordinary owner re-login and deliberate lead addition`,async({page},info)=>{
@@ -92,6 +92,7 @@ if(!runtimePath){
   await details.locator("summary").click();await expect(details.getByRole("button",{name:t("Remove from Lead List","הסרה מרשימת המתעניינים"),exact:true})).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   await record.screenshot({path:info.outputPath(`composed-inquiry-owner-lead-${locale}-${info.project.name}.png`)});
+  if(process.env.LS_ACADEMY_FAMILY_UI_ONLY==="true"){const {academyFamilyOwnerJourney}=await import("../group-interest/academy-family.journey.ts");await academyFamilyOwnerJourney(page,record,{origin:runtime.origin,workspaceId:runtime.workspaceId,locale,applicationId:savedId},info);}
  });
  for(const locale of ["en","he"] as const)test(`${locale}: normal login, preview/cancel, collapsed draft, lost-response retry, Remove and reload`,async({page},info)=>{
   const t=(en:string,he:string)=>locale==="he"?he:en,credentials=runtime.fishing.credentials.find(c=>c.role==="practitioner")!,inquiry=runtime.fishing.inquiries.find(i=>i.locale===locale)!;
