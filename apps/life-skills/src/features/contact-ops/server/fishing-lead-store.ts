@@ -238,6 +238,17 @@ export class FishingLeadStore{
    return result;
   });
  }
+ /** Root's explicit family setup reuses current native lead authority in its
+  * OWN transaction. A lead/phone alone is never verified guardian authority. */
+ async readGuardianLeadForFamilyInTransaction(tx:SqlSession,actor:Actor,input:{applicationId:string;personId:string;expectedEpoch:number;expectedAssociationVersion:number}){
+  if(this.program!=='sunday_fishing_academy'||!uuid.safeParse(input.applicationId).success||!uuid.safeParse(input.personId).success)throw new AppError('INVALID_REQUEST');
+  await this.lockWrite(tx,actor,input.expectedEpoch);
+  const row=await this.ordinaryPerson(tx,actor,input.personId,false),member=await this.current(tx,actor,input.personId);
+  if(row.archived||row.administrativelyArchived||!member||member.state!=='active'||member.relationship!=='guardian'||member.version!==input.expectedAssociationVersion)throw new AppError('CONFLICT');
+  const inquiry=await this.source(tx,actor,{kind:'inquiry',id:input.applicationId});
+  if(!inquiry.phone||!row.references.some(ref=>normalizePhone(ref.phone)===inquiry.phone))throw new AppError('CONFLICT');
+  return {personId:row.personId,displayName:row.displayName,associationVersion:member.version};
+ }
  async read(actor:Actor,personId:string,expectedEpoch:number):Promise<{membership:FishingMembership|null;projection:FishingLabelProjection|null}>{
   if(!uuid.safeParse(personId).success)throw new AppError("INVALID_REQUEST");
   return this.authority.withDestination(actor,{destination:"native",intent:"read",expectedEpoch},async tx=>{
