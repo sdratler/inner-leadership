@@ -18,14 +18,14 @@ function fixture(){
  const actor={workspaceId:offer.workspaceId,id:offer.operatorAccountId,role:'practitioner',sessionDigest:'SYNTHETIC_UNIT_SESSION'} as unknown as Actor;
  let revoked=false,now=NOW,inTransaction=false,knownId:string|null='in_SYNTHETIC';const dispatched=new Set<string>(),events:string[]=[];
  const native={actor:actor as unknown as NativeContext['actor'],now:new Date(now),tx:{query:vi.fn(async()=>[])}} as NativeContext;
- const cache=new Map<string,{hash:string;result:unknown}>();
+ const cache=new Map<string,{hash:string;result:unknown}>(),commandResults:unknown[]=[];
  const read=vi.fn(async<T>(_actor:Actor,work:(c:NativeContext)=>Promise<T>)=>{
   inTransaction=true;events.push('transaction');try{return await work({...native,now:new Date(now)});}finally{inTransaction=false;events.push('commit');}
  });
  const store={deps:{merchant:binding,clock:{now:()=>new Date(now)},authority:{loadApprovedOffer:vi.fn(async()=>context.offer)}},read,
   command:vi.fn(async<T>(a:Actor,key:string,action:string,body:unknown,authorize:(c:NativeContext)=>Promise<void>,work:(c:NativeContext)=>Promise<T>)=>read(a,async c=>{
    await authorize(c);events.push('cache-lookup');const old=cache.get(action+key),hash=digest(body);if(old){if(old.hash!==hash)throw Error('COMMAND_CONFLICT');return old.result as T;}
-   const result=await work(c);cache.set(action+key,{hash,result});return result;
+   const result=await work(c);commandResults.push(result);cache.set(action+key,{hash,result});return result;
   })),
   operation:vi.fn(async()=>context.operation),purchase:vi.fn(async()=>({offer:context.offer,line:context.offer.lines[0]!,state:initialPayment(context.offer,context.offer.lines[0]!,purchaseId,binding)})),
   access:vi.fn(async()=>{if(revoked)throw Error('NOT_FOUND');}),assertHostedActivationAllowed:vi.fn(async()=>{}),loadOffer:vi.fn(async()=>({offer:context.offer,state:'approved'}))};
@@ -48,7 +48,7 @@ function fixture(){
  });
  const provider:StripeTestHostedDependencies['provider']={execution:'stripe_test_hosted_invoice',binding,perform};
  const service=new FishingPaymentService(store as unknown as FishingPaymentStore,{provider,coordinator});
- return {service,store,coordinator,provider,perform,actor,opId,purchaseId,due,events,observation,getContext:()=>context,setContext:(c:StripeTestHostedContext)=>{context=c;},setKnown:(id:string|null)=>{knownId=id;},revoke:()=>{revoked=true;},advance:()=>{now=Date.parse(context.linkExpiresAt);},inTransaction:()=>inTransaction};
+ return {service,store,coordinator,provider,perform,actor,opId,purchaseId,due,events,commandResults,observation,getContext:()=>context,setContext:(c:StripeTestHostedContext)=>{context=c;},setKnown:(id:string|null)=>{knownId=id;},revoke:()=>{revoked=true;},advance:()=>{now=Date.parse(context.linkExpiresAt);},inTransaction:()=>inTransaction};
 }
 
 it('prepares only native records and returns no customer, provider object or URL',async()=>{
@@ -73,6 +73,13 @@ it('failed observation persistence does not expose a link or automatically retry
 });
 it('known-object reconciliation only reads and records inside a freshly authorized transaction',async()=>{
  const f=fixture();await expect(f.service.reconcileStripeTestHosted(f.actor,'reconcile',f.opId)).resolves.toEqual({state:'observed'});expect(f.perform.mock.calls[0]![1]).toEqual({phase:'read',invoiceId:'in_SYNTHETIC'});expect(f.coordinator.reconcile).toHaveBeenCalledTimes(1);expect(f.coordinator.claim).not.toHaveBeenCalled();expect(f.coordinator.publish).not.toHaveBeenCalled();
+});
+it('reconciliation command persists a concrete JSON result when the coordinator returns void',async()=>{
+ const f=fixture();vi.mocked(f.coordinator.reconcile).mockResolvedValue(undefined);
+ await expect(f.service.reconcileStripeTestHosted(f.actor,'serializable-reconcile',f.opId)).resolves.toEqual({state:'observed'});
+ expect(f.commandResults).toEqual([{state:'observed'}]);expect(JSON.stringify(f.commandResults[0])).toBe('{"state":"observed"}');
+ await expect(f.service.reconcileStripeTestHosted(f.actor,'serializable-reconcile',f.opId)).resolves.toEqual({state:'observed'});
+ expect(f.commandResults).toHaveLength(1);expect(f.coordinator.reconcile).toHaveBeenCalledTimes(1);
 });
 it('publishes only after known-invoice readback and the mapping transaction commits',async()=>{
  const f=fixture(),result=await f.service.familyStripeTestHostedAction(f.actor,'publish',f.opId);expect(result).toEqual({purchaseId:f.purchaseId,dueIndex:1,state:'ready',url:'https://invoice.stripe.com/i/SYNTHETIC'});

@@ -75,7 +75,10 @@ export class FishingPaymentService {
   if(!known.invoiceId)return {state:'unknown' as const};
   let observation:StripeTestHostedObservation;
   try{observation=await this.testHostedCall(context,{phase:'read',invoiceId:known.invoiceId});}catch{return {state:'unknown' as const};}
-  await this.store.command(actor,commandId,'stripe-test.hosted.reconcile',{operationId,context:digest(context),observation:digest(observation)},c=>this.currentTestHosted(c,context,false),c=>coordinator.reconcile(c,context,observation));
+  await this.store.command(actor,commandId,'stripe-test.hosted.reconcile',{operationId,context:digest(context),observation:digest(observation)},c=>this.currentTestHosted(c,context,false),async c=>{
+   await coordinator.reconcile(c,context,observation);
+   return {state:'observed' as const};
+  });
   return {state:'observed' as const};
  }
  /** Closure recovery does not borrow revoked family/read access and cannot
