@@ -14,7 +14,7 @@ if(!runtimePath){
   const result=await promisify(execFile)(process.execPath,["--conditions=react-server","--import","tsx","tests/e2e/group-interest/run.ts"],{timeout:210000,maxBuffer:2*1024*1024,
    env:{...process.env,LS_GROUP_INTEREST_TEST_PROJECT:project,LS_GROUP_INTEREST_TEST_ALLOW:"true",LS_CALENDAR_TEST_ALLOW:"true",LS_FISHING_LEAD_UI_ONLY:"true"}})
    .catch(error=>{throw new Error(syntheticChildFailure(error));});
-  expect(result.stdout).toContain("FISHING_LEAD_UI_ACCEPTANCE_PASS project="+project);
+  expect(result.stdout).toContain((process.env.LS_ACADEMY_FAMILY_UI_ONLY==="true"?"ACADEMY_FAMILY_UI_ACCEPTANCE_PASS project=":"FISHING_LEAD_UI_ACCEPTANCE_PASS project=")+project);
  });
 }else{
  const runtime=JSON.parse(readFileSync(runtimePath,"utf8")) as {origin:string;workspaceId:string;fishing:{credentials:{role:string;email:string;password:string}[];inquiries:{locale:string;id:string;name:string}[];protectedPersonId:string}};
