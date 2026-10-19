@@ -1,5 +1,6 @@
 import {z} from "zod";
 import type {Actor,EnrollmentProjection,FishingNotice,FishingSource,FishingStageRef,IdentityClock,OccurrenceProjection} from "../fishing/contract.ts";
+import {weeklyCommandSchemas,type WeeklyState,type weeklyPublications} from "./weekly-progress.ts";
 export type {Actor,EnrollmentProjection,FishingNotice,FishingStageRef,IdentityClock,OccurrenceProjection};
 
 export const floridaZone="America/New_York" as const;
@@ -14,7 +15,7 @@ export const occurrenceTimeSchema=z.discriminatedUnion("kind",[
 export const logisticsSchema=z.strictObject({time:occurrenceTimeSchema,location:text,directions:text,equipment:text,logisticalNote:text,childCapacity:z.number().int().min(1).max(1000)});
 const base={operationId:uuid,expectedRevision:revision};
 const occurrence={occurrenceId:uuid,expectedOccurrenceRevision:revision.min(1)};
-export const stageCommandSchema=z.discriminatedUnion("action",[
+export const legacyStageCommandSchema=z.discriminatedUnion("action",[
  z.strictObject({...base,action:z.literal("create"),templateVersion:version,childCapacity:z.number().int().min(1).max(1000)}),
  z.strictObject({...base,action:z.literal("publish")}),
  z.strictObject({...base,...occurrence,action:z.literal("revise"),details:logisticsSchema,reason:decisionReason}),
@@ -25,6 +26,8 @@ export const stageCommandSchema=z.discriminatedUnion("action",[
  z.strictObject({...base,action:z.literal("request_makeup"),noticeId:uuid}),
  z.strictObject({...base,action:z.literal("confirm_makeup"),noticeId:uuid,replacementOccurrenceId:uuid,expectedReplacementRevision:revision.min(1),reason:decisionReason})
 ]);
+export const stageCommandSchema=z.discriminatedUnion("action",[...legacyStageCommandSchema.options,...weeklyCommandSchemas]);
+export type LegacyStageCommand=z.infer<typeof legacyStageCommandSchema>;
 export type StageCommand=z.infer<typeof stageCommandSchema>;
 export type CanonicalOccurrence=Omit<OccurrenceProjection,"allowedActions">;
 export type ApprovedStageTemplate=FishingSource&{
@@ -37,6 +40,8 @@ export type StageState=FishingStageRef&FishingSource&{
  workspaceId:Actor["workspaceId"];program:"sunday_fishing_academy";revision:number;template:ApprovedStageTemplate;
  occurrences:CanonicalOccurrence[];
  history:CanonicalOccurrence[];attendance:AttendanceFact[];makeups:MakeupRecord[];
+ /** Optional to preserve authenticated hashes of existing snapshots. */
+ weekly?:WeeklyState|undefined;
 };
 export type StageReceipt={operationId:string;stageRevision:number;replayed:boolean};
 export type OperationRecord={digest:string;receipt:StageReceipt};
@@ -76,4 +81,7 @@ export type StageView=FishingStageRef&{
  notices:Array<{id:string;occurrenceId:string;state:FishingNotice["state"];receivedAt:string;originalStartsAt:string;originalOccurrenceRevision:number;scheduleChangedSinceNotice:boolean;requestedAt:string|null;replacementOccurrenceId:string|null;specificTripGuaranteed:false}>;
  attendance:Array<Pick<AttendanceFact,"enrollmentId"|"occurrenceId"|"state"|"recordedAt">>;
  lessonReferences:Array<{occurrenceId:string;moduleId:string;version:string}>;
+ /** Only operators receive private observation evidence or unpublished text. */
+ weeklyOperator?:WeeklyState;
+ weeklyUpdates?:ReturnType<typeof weeklyPublications>;
 };

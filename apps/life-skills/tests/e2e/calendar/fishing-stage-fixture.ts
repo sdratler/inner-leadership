@@ -111,11 +111,15 @@ export async function runFishingStageBrowser(){
    families[locale]={selection:{learnerId:family.learnerId,enrollmentId:enrollment.result.id,reference:f.ref},otherLearnerId:outsiders.learnerId};learners.push({parentId:family.parent.id,learnerId:family.learnerId});
   }
   const adult=await f.account("adult_client");credentials.push({role:"adult_client",accountId:adult.id,email:`${adult.id}@example.invalid`,password:"Ab12cd"});
-  phase="fixture-materials-access";const lessonSourceSha256=await learnerAccess(f,learners);phase="fixture-schedule";const startsAt=f.at(48);await f.revise(plan.occurrences[0]!.id,startsAt,f.at(49));await f.revise(plan.occurrences[1]!.id,f.at(-.5),f.at(-.1));await f.publish();
+  phase="fixture-materials-access";const lessonSourceSha256=await learnerAccess(f,learners);phase="fixture-schedule";
+  // Current Foundation Week1 is two hours; the delivered Week4 fishing
+  // occurrence is an actual three-hour Florida interval, not a clinical slot.
+  await f.pool.query("UPDATE ls_calendar.availability SET starts_at=$3 WHERE workspace_id=$1 AND practitioner_id=$2 AND kind='open'",[f.workspaceId,f.owner.id,f.at(-24)]);
+  const startsAt=f.at(48);await f.revise(plan.occurrences[0]!.id,startsAt,f.at(50));await f.revise(plan.occurrences[3]!.id,f.at(-4),f.at(-1));await f.publish();
   // Both locale families belong to THIS group's one shared cohort. In the
   // operator group their final readbacks therefore compare the same revision.
   if(!["en","he"].every(locale=>families[locale]?.selection.reference.cohortId===f!.ref.cohortId&&families[locale]?.selection.reference.stageId===f!.ref.stageId))throw Error("FISHING_STAGE_SHARED_COHORT_REQUIRED");
-  const data:FishingStageBrowserData={origin,lessonSourceSha256,workspaceId:f.workspaceId,credentials,families,occurrenceId:plan.occurrences[0]!.id,pastOccurrenceId:plan.occurrences[1]!.id,date:fishingCivilTime(startsAt).date};baseline=await snapshot(f);ensureActive();
+  const data:FishingStageBrowserData={origin,lessonSourceSha256,workspaceId:f.workspaceId,credentials,families,occurrenceId:plan.occurrences[0]!.id,pastOccurrenceId:plan.occurrences[3]!.id,date:fishingCivilTime(startsAt).date};baseline=await snapshot(f);ensureActive();
   // Revoke setup-service sessions: each browser role must log in ordinarily.
   await f.pool.query("UPDATE ls_identity.sessions SET revoked_at=clock_timestamp() WHERE workspace_id=$1",[f.workspaceId]);
   const runtimeFile=join(folder,"private-runtime.json");writeFileSync(runtimeFile,JSON.stringify(data),{mode:0o600,flag:"wx"});

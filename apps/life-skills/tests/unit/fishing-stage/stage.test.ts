@@ -13,6 +13,37 @@ function notice(f:Fixture,operation=200,reason="ordinary_absence"){const o=f.sta
 function target(f:Fixture){f.target={...structuredClone(f.state!.occurrences[0]!),id:id(600),cohortId:id(601),stageId:id(602),childCapacity:1,revision:1,state:"published",time:{kind:"scheduled",timeZone:"America/New_York",startsAt:"2026-03-12T15:00:00Z",endsAt:"2026-03-12T16:00:00Z"}};}
 function confirm(f:Fixture,operation=300){return {operationId:id(operation),expectedRevision:f.state!.revision,action:"confirm_makeup",noticeId:f.state!.makeups[0]!.notice.id,replacementOccurrenceId:f.target!.id,expectedReplacementRevision:f.target!.revision,reason:"Synthetic instructor fit decision"};}
 
+it("composes two actual observations, separate weekly review/publication and current-family readback in the existing atomic stage service",async()=>{
+ const f=await scheduled();f.now=new Date("2026-03-08T18:00:00Z");const svc=()=>service(f),event=()=>f.state!.occurrences[0]!;
+ const common=(operation:number)=>({operationId:id(operation),expectedRevision:f.state!.revision,occurrenceId:event().id,expectedOccurrenceRevision:event().revision,enrollmentId:f.enrollment.id});
+ await svc().execute(actor(),ref,{operationId:id(701),expectedRevision:f.state!.revision,occurrenceId:event().id,expectedOccurrenceRevision:event().revision,action:"complete",reason:"Synthetic delivered fishing session"});
+ await svc().execute(actor(),ref,{...common(702),action:"attendance",state:"present",reason:"Instructor observed attendance"});
+ const observation={...common(703),action:"observe_skills",observations:[{skillId:"equipment_care",level:"demonstrated",evidence:"PRIVATE_INSTRUCTOR_ONLY: checked the hook cover"},{skillId:"basic_knots",level:"practicing",evidence:"PRIVATE_INSTRUCTOR_ONLY: retied the knot with one prompt"}]};
+ await svc().execute(actor(),ref,observation);expect((await svc().execute(actor(),ref,observation)).replayed).toBe(true);expect(f.state!.weekly!.observations).toHaveLength(2);
+ expect((await svc().read(actor("parent"),ref))!.weeklyUpdates).toEqual([]);
+ await svc().execute(actor(),ref,{...common(704),action:"draft_weekly_recap",expectedRecapVersion:0,locale:"en",groupWork:"We practiced equipment checks and basic knots.",observationIds:f.state!.weekly!.observations.map(o=>o.id),nextStep:"Bring the same tackle box next session.",gearReminder:"Hook covers and water.",questionInvitation:"Please share a question with the instructor."});
+ const draft=f.state!.weekly!.recaps.at(-1)!;expect(draft.state).toBe("draft");expect((await svc().read(actor("parent"),ref))!.weeklyUpdates).toEqual([]);
+ await svc().execute(actor(),ref,{...common(705),action:"review_weekly_recap",recapId:draft.id,expectedRecapVersion:draft.version});
+ expect((await svc().read(actor("parent"),ref))!.weeklyUpdates).toEqual([]);const reviewed=f.state!.weekly!.recaps.at(-1)!;
+ await svc().execute(actor(),ref,{...common(706),action:"publish_weekly_recap",recapId:reviewed.id,expectedRecapVersion:reviewed.version});
+ const family=await svc().read(actor("parent"),ref);expect(family!.weeklyUpdates).toHaveLength(1);expect(family!.weeklyUpdates![0]!.skills).toHaveLength(2);expect(family!.weeklyOperator).toBeUndefined();
+ expect(JSON.stringify(family)).not.toMatch(/PRIVATE_INSTRUCTOR_ONLY|authoredBy|observationSetDigest|reviewedBy/);expect((await svc().read(actor(),ref))!.weeklyOperator!.observations[0]!.evidence).toContain("PRIVATE_INSTRUCTOR_ONLY");
+ expect((await svc().read({...actor("parent"),id:asId(id(999),"account")},ref))).toBeNull();
+ f.guardianCurrent=false;expect(await svc().read(actor("parent"),ref)).toBeNull();f.guardianCurrent=true;
+ await svc().execute(actor(),ref,{...common(707),action:"attendance",state:"absent",reason:"Explicit attendance correction"});
+ expect((await svc().read(actor("parent"),ref))!.weeklyUpdates).toEqual([]);expect(f.state!.weekly!.recaps.filter(r=>r.state==="published")).toHaveLength(1);
+ expect(f.state!.attendance).toHaveLength(2);expect(f.operations.size).toBe(10);
+});
+
+it("weekly commands require an operator, exact eligible enrollment and recorded actual attendance",async()=>{
+ const f=await scheduled();f.now=new Date("2026-03-08T18:00:00Z");const o=f.state!.occurrences[0]!,svc=service(f);
+ await svc.execute(actor(),ref,{operationId:id(720),expectedRevision:f.state!.revision,occurrenceId:o.id,expectedOccurrenceRevision:o.revision,action:"complete",reason:"Synthetic completed"});
+ const command={operationId:id(721),expectedRevision:f.state!.revision,occurrenceId:o.id,expectedOccurrenceRevision:f.state!.occurrences[0]!.revision,enrollmentId:f.enrollment.id,action:"observe_skills",observations:[{skillId:"basic_knots",level:"practicing",evidence:"Synthetic actual observation"}]};
+ const before=structuredClone(f.state);await expect(svc.execute(actor(),ref,command)).rejects.toThrow("INVALID_STATE");
+ await expect(svc.execute(actor("parent"),ref,command)).rejects.toThrow("FORBIDDEN");await expect(svc.execute(actor(),ref,{...command,enrollmentId:id(999)})).rejects.toThrow("FORBIDDEN");
+ expect(f.state).toEqual(before);
+});
+
 describe("fishing stage — synthetic transaction port, no native activation",()=>{
  it("creates exactly twelve undated canonical items and replays without duplicating",async()=>{
   const f=await plan(),ids=f.state!.occurrences.map(o=>o.id);expect(new Set(ids).size).toBe(12);expect(f.state!.occurrences.every(o=>o.time.kind==="undated"&&!o.optional&&o.state==="draft")).toBe(true);

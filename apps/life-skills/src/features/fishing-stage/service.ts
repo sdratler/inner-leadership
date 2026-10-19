@@ -2,6 +2,7 @@ import "server-only";
 import {createHash,randomUUID} from "node:crypto";
 import type {FishingOccurrenceReadPort} from "../fishing/contract.ts";
 import {canonicalTime,noticeState} from "./time.ts";
+import {applyWeeklyCommand,weeklyStateSchema,weeklyPublications,weeklyPublicationCurrent,WeeklyProgressError,type WeeklyCommand,type WeeklyReadFacts} from "./weekly-progress.ts";
 import {floridaZone,logisticsSchema,stageCommandSchema,stageReferenceSchema,
  type Actor,type ApprovedStageTemplate,type CanonicalOccurrence,type EnrollmentProjection,type FishingStageRef,
  type FishingStageStore,type FishingStageTransaction,type FreshStageContext,type IdentityClock,type MakeupRecord,
@@ -13,6 +14,16 @@ export class FishingStageError extends Error {
 function fail(code:FishingStageError["code"]):never{throw new FishingStageError(code);}
 function sameStage(a:FishingStageRef,b:FishingStageRef){return a.cohortId===b.cohortId&&a.stageId===b.stageId&&a.stage===b.stage;}
 function operator(c:FreshStageContext){return c.actor.role==="practitioner"&&c.operatorAccountIds.includes(c.actor.id);}
+const weeklyActions=new Set(["observe_skills","draft_weekly_recap","review_weekly_recap","publish_weekly_recap"]);
+function isWeekly(command:StageCommand):command is WeeklyCommand{return weeklyActions.has(command.action);}
+const weeklyDigest=(value:unknown)=>createHash("sha256").update(JSON.stringify(value)).digest("hex");
+function weeklyFacts(s:StageState,enrollment:EnrollmentProjection,occurrenceId:string,now:Date):WeeklyReadFacts|null{
+ const o=s.occurrences.find(value=>value.id===occurrenceId),attendance=s.attendance.filter(value=>value.enrollmentId===enrollment.id&&value.occurrenceId===occurrenceId).at(-1);
+ if(!o||o.time.kind!=="scheduled"||!attendance)return null;
+ return {now:now.toISOString(),digest:weeklyDigest,enrollment:{id:enrollment.id,learnerId:enrollment.learnerId},
+  occurrence:{id:o.id,revision:o.revision,moduleId:o.moduleId,moduleVersion:o.moduleVersion,startsAt:o.time.startsAt,endsAt:o.time.endsAt,state:o.state},
+  attendance:{state:attendance.state,recordedAt:attendance.recordedAt,recordedBy:attendance.recordedBy}};
+}
 function validEnrollment(e:EnrollmentProjection|null,c:FreshStageContext):e is EnrollmentProjection{
  return !!e&&e.workspaceId===c.scope.workspaceId&&e.program===c.scope.program&&sameStage(e,c.scope)&&e.state==="confirmed"&&
   Number.isSafeInteger(e.revision)&&e.revision>0&&[e.evidence?.verifiedGuardianBindingId,e.evidence?.capacityReservationId,e.evidence?.fitDecisionId,
@@ -50,6 +61,13 @@ export function validateStageState(s:StageState,c:Pick<FreshStageContext,"scope"
   if(history.length!==o.revision-1||history.some((h,i)=>h.revision!==i+1||h.workspaceId!==s.workspaceId||!sameStage(h,s)))fail("INVALID_STATE");
  }
  if(new Set(s.makeups.map(m=>`${m.notice.enrollmentId}:${m.notice.occurrenceId}`)).size!==s.makeups.length)fail("INVALID_STATE");
+ if(s.weekly){
+  const weekly=weeklyStateSchema.parse(s.weekly);
+  for(const item of [...weekly.observations,...weekly.recaps]){
+   const o=s.occurrences.find(value=>value.id===item.occurrenceId);
+   if(!o||o.state!=="completed"||o.moduleId!==item.moduleId||o.moduleVersion!==item.moduleVersion)fail("INVALID_STATE");
+  }
+ }
 }
 function projection(o:CanonicalOccurrence,c:FreshStageContext):OccurrenceProjection{
  const allowed:OccurrenceProjection["allowedActions"][number][]=["read"];
@@ -76,7 +94,10 @@ function view(s:StageState,c:FreshStageContext,now:Date):StageView{
    scheduleChangedSinceNotice:s.occurrences.find(o=>o.id===m.notice.occurrenceId)?.revision!==m.notice.originalOccurrenceRevision,
    requestedAt:m.requestedAt,replacementOccurrenceId:m.notice.replacementOccurrenceId,specificTripGuaranteed:false})),
   attendance:s.attendance.filter(a=>operator(c)||a.enrollmentId===own).map(a=>({enrollmentId:a.enrollmentId,occurrenceId:a.occurrenceId,state:a.state,recordedAt:a.recordedAt})),
-  lessonReferences:occurrences.filter(o=>s.template.modules[o.ordinal-1]?.learnerContent==="approved").map(o=>({occurrenceId:o.id,moduleId:o.moduleId,version:o.moduleVersion}))};
+  lessonReferences:occurrences.filter(o=>s.template.modules[o.ordinal-1]?.learnerContent==="approved").map(o=>({occurrenceId:o.id,moduleId:o.moduleId,version:o.moduleVersion})),
+  ...(s.weekly?(operator(c)?{weeklyOperator:structuredClone(s.weekly)}:c.actor.role==="parent"&&c.enrollment?{weeklyUpdates:weeklyPublications(s.weekly,c.enrollment.id).filter(update=>{
+   if(update.learnerId!==c.enrollment!.learnerId)return false;const facts=weeklyFacts(s,c.enrollment!,update.occurrenceId,now);return facts!==null&&weeklyPublicationCurrent(s.weekly!,update,facts);
+  })}:{}):{})};
 }
 function revise(s:StageState,o:CanonicalOccurrence,c:FreshStageContext,now:Date,reason:string,changes:Partial<CanonicalOccurrence>){
  s.history.push(structuredClone(o));Object.assign(o,changes,{revision:o.revision+1,changedBy:c.actor.id,changedAt:now.toISOString(),changeReason:reason});
@@ -135,6 +156,13 @@ export class FishingStageService implements FishingOccurrenceReadPort {
   });
  }
  private async change(tx:FishingStageTransaction,c:FreshStageContext,s:StageState,command:Exclude<StageCommand,{action:"create"}>,now:Date){
+  if(isWeekly(command)){
+   occurrenceFor(s,command);const e=await tx.readEnrollment(c,command.enrollmentId);if(!validEnrollment(e,c))fail("FORBIDDEN");
+   const facts=weeklyFacts(s,e,command.occurrenceId,now);if(!facts)fail("INVALID_STATE");
+   try{s.weekly=applyWeeklyCommand(s.weekly??{observations:[],recaps:[]},command,{...facts,actorId:c.actor.id,nextId:randomUUID});}
+   catch(error){if(error instanceof WeeklyProgressError&&error.code!=="UNAVAILABLE")fail(error.code==="CONFLICT"?"CONFLICT":"INVALID_STATE");throw error;}
+   return;
+  }
   if(command.action==="publish"){
    if(!s.occurrences.some(o=>o.state==="draft")||s.occurrences.some(o=>o.state!=="draft"&&o.state!=="cancelled"))fail("INVALID_STATE");
    for(const o of s.occurrences){if(o.state==="draft"){await this.capacity(tx,c,o);revise(s,o,c,now,"Plan published.",{state:"published"});}}return;

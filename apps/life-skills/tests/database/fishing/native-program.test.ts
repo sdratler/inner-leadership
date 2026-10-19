@@ -13,6 +13,37 @@ afterEach(async()=>{await Promise.all(fixtures.splice(0).map(f=>f.close()));});
 async function fixture(options:Parameters<typeof programFixture>[0]={}){const f=await programFixture(options);fixtures.push(f);return f;}
 const syntheticFullPayment={kind:"all_native_dues_paid" as const};
 
+test("native three-hour fishing attendance and observed skills yield only a deliberately reviewed weekly publication for the correct family",async()=>{
+ const f=await fixture({confirmation:syntheticFullPayment}),plan=await f.createPlan(),a=await f.family(),b=await f.family();
+ const purchaseA=await f.prepare(a),purchaseB=await f.prepare(b);await f.settle(purchaseA);await f.settle(purchaseB);
+ const enrolledA=await f.enroll(purchaseA),enrolledB=await f.enroll(purchaseB),occurrenceId=plan.occurrences[3]!.id;
+ // Only this disposable fixture's availability is extended to cover an actual
+ // past three-hour event. No production slot, venue or safety claim is made.
+ await f.pool.query("UPDATE ls_calendar.availability SET starts_at=$3 WHERE workspace_id=$1 AND practitioner_id=$2 AND kind='open'",[f.workspaceId,f.owner.id,f.at(-24)]);
+ await f.revise(occurrenceId,f.at(-4),f.at(-1));await f.publish();
+ const protectedTables=["ls_cases.cases","ls_payments.charges","ls_payments.credit_events","ls_contact_ops.profiles","ls_calendar.tasks","ls_identity.auth_mail_outbox","ls_fishing_payments.outbox"];
+ const protectedState=async()=>Promise.all(protectedTables.map(async table=>({table,rows:(await f.pool.query(`SELECT to_jsonb(t) AS row FROM ${table} t WHERE workspace_id=$1 ORDER BY to_jsonb(t)::text`,[f.workspaceId])).rows}))),before=await protectedState();
+ const stage=()=>f.stage(),current=async()=>{const value=(await stage().read(f.owner,f.ref))!,o=value.occurrences.find(o=>o.id===occurrenceId)!;return {operationId:randomUUID(),expectedRevision:value.revision,occurrenceId,expectedOccurrenceRevision:o.revision};};
+ await stage().execute(f.owner,f.ref,{...await current(),action:"complete",reason:"Synthetic instructor confirms delivered session"});
+ await stage().execute(f.owner,f.ref,{...await current(),action:"attendance",enrollmentId:enrolledA.result.id,state:"present",reason:"Synthetic actual attendance"});
+ const observation={...await current(),action:"observe_skills",enrollmentId:enrolledA.result.id,observations:[{skillId:"equipment_care",level:"demonstrated",evidence:"PRIVATE_SYNTHETIC_WEEKLY_EVIDENCE: checked equipment before casting"},{skillId:"basic_knots",level:"practicing",evidence:"PRIVATE_SYNTHETIC_WEEKLY_EVIDENCE: practiced the knot twice"}]};
+ await stage().execute(f.owner,f.ref,observation);expect((await stage().execute(f.owner,f.ref,observation)).replayed).toBe(true);
+ const operator=await stage().read(f.owner,f.ref),saved=operator!.weeklyOperator!;expect(saved.observations).toHaveLength(2);
+ const event=operator!.occurrences.find(o=>o.id===occurrenceId)!;expect(event.time.kind).toBe("scheduled");if(event.time.kind!=="scheduled")throw Error("SCHEDULE_REQUIRED");expect(Date.parse(event.time.endsAt)-Date.parse(event.time.startsAt)).toBe(180*60000);
+ const own=()=>f.stage(a.parent,enrolledA.result.id).read(a.parent,f.ref),other=()=>f.stage(b.parent,enrolledB.result.id).read(b.parent,f.ref);
+ expect((await own())!.weeklyUpdates).toEqual([]);
+ await stage().execute(f.owner,f.ref,{...await current(),action:"draft_weekly_recap",enrollmentId:enrolledA.result.id,expectedRecapVersion:0,locale:"en",groupWork:"We practiced equipment checks and basic knots.",observationIds:saved.observations.map(o=>o.id),nextStep:"Next session continues controlled casting.",gearReminder:"Bring your tackle box and water.",questionInvitation:"Please ask the instructor if anything is unclear."});
+ expect((await own())!.weeklyUpdates).toEqual([]);let recap=(await stage().read(f.owner,f.ref))!.weeklyOperator!.recaps.at(-1)!;
+ await stage().execute(f.owner,f.ref,{...await current(),action:"review_weekly_recap",enrollmentId:enrolledA.result.id,recapId:recap.id,expectedRecapVersion:recap.version});expect((await own())!.weeklyUpdates).toEqual([]);
+ recap=(await stage().read(f.owner,f.ref))!.weeklyOperator!.recaps.at(-1)!;
+ await stage().execute(f.owner,f.ref,{...await current(),action:"publish_weekly_recap",enrollmentId:enrolledA.result.id,recapId:recap.id,expectedRecapVersion:recap.version});
+ const family=await own();expect(family!.weeklyUpdates).toHaveLength(1);expect(family!.weeklyUpdates![0]!.skills).toHaveLength(2);expect(family!.weeklyOperator).toBeUndefined();expect(JSON.stringify(family)).not.toContain("PRIVATE_SYNTHETIC_WEEKLY_EVIDENCE");
+ expect((await other())!.weeklyUpdates).toEqual([]);expect(await f.stage(b.parent,enrolledA.result.id).read(b.parent,f.ref)).toBeNull();
+ await stage().execute(f.owner,f.ref,{...await current(),action:"attendance",enrollmentId:enrolledA.result.id,state:"absent",reason:"Synthetic deliberate attendance correction"});
+ expect((await own())!.weeklyUpdates).toEqual([]);expect((await stage().read(f.owner,f.ref))!.weeklyOperator!.recaps.some(r=>r.state==="published")).toBe(true);
+ expect(await protectedState()).toEqual(before);
+});
+
 test("real password actor populates native cohort/venue; exact replay and conflict preserve source approvals and twelve undated headers",async()=>{
  const f=await fixture(),first=await f.createPlan();expect(first.occurrences).toHaveLength(12);expect(first.occurrences.every(o=>o.time.kind==="undated")).toBe(true);
  expect(await f.program.createCohort(f.owner,f.cohortCommand)).toMatchObject({id:f.ref.stageId,revision:1,replayed:true});await expect(f.program.createCohort(f.owner,{...f.cohortCommand,label:"changed"})).rejects.toMatchObject({code:"CONFLICT"});

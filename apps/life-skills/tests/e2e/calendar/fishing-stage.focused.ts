@@ -331,10 +331,38 @@ if(!file){
    const final=await verifyFishingCalendarFinalParentReadback(followupPorts(browser,page,info,language,"calendar"),{
     fixture:"SYNTHETIC_DEFERRED_MECHANICS_ONLY",origin:data.origin,locale:language,learnerId:selected.learnerId,enrollmentId:selected.enrollmentId,reference:selected.reference,
     scheduleHref:route(language,"parent",true,"agenda"),expectedStageRevision:finalView.revision,
-    completed:{occurrenceId:data.pastOccurrenceId,moduleId:"RM-102",version:"synthetic-lesson-v1",ordinal:2},
+    completed:{occurrenceId:data.pastOccurrenceId,moduleId:"RM-104",version:"synthetic-lesson-v1",ordinal:4},
     cancelled:{occurrenceId:data.occurrenceId,moduleId:"RM-101",version:"synthetic-lesson-v1",ordinal:1},attendance:{occurrenceId:data.pastOccurrenceId,state:"present"},
     forbiddenContent:["PRIVATE_SYNTHETIC_TEACHER_CANARY","PRIVATE_SYNTHETIC_FIT_CANARY",family(language).otherLearnerId,family(language==="en"?"he":"en").selection.learnerId!]});
    expect(final).toMatchObject({stageRevision:finalView.revision,freshParentRead:true,attendanceEvidence:"PAGE_GET_PLUS_VISIBLE_PARENT_ATTENDANCE_UI"});
   }
+  // Same real native cohort, delivered session and recorded attendance. These
+  // are ordinary operator/parent pages, not a recap API mock or injected login.
+  const weeklyContexts:BrowserContext[]=[],parents=new Map<string,Page>();
+  try{
+   const delivered=finalView.occurrences.find((o:{id:string})=>o.id===data.pastOccurrenceId);expect(Date.parse(delivered.time.endsAt)-Date.parse(delivered.time.startsAt)).toBe(180*60000);
+   for(const language of["en","he"]as const){
+    await page.goto(route(language,"practitioner")+"&"+fishingCalendarSearch(selection));
+    const form=page.getByRole("form",{name:t(language,"Fishing skills and weekly update","מיומנויות דיג ועדכון שבועי"),exact:true});
+    const open=async(kind:string)=>{await page.getByRole("button",{name:t(language,"Skills and weekly updates","מיומנויות ועדכונים שבועיים"),exact:true}).click();await form.locator("#weekly-occurrence").selectOption(data.pastOccurrenceId);await form.locator("#weekly-enrollment").selectOption(family(language).selection.enrollmentId!);await form.locator("#weekly-action").selectOption(kind);};
+    const saveWeekly=async(label:string)=>{const response=page.waitForResponse(r=>new URL(r.url()).pathname==="/api/calendar/fishing/command"&&r.request().method()==="POST");await form.getByRole("button",{name:label,exact:true}).click();expect((await response).status()).toBe(200);await expect(form).toHaveCount(0);};
+    await open("observe_skills");await form.locator("#weekly-level-0").selectOption("demonstrated");
+    await form.locator("#weekly-evidence-0").fill("PRIVATE_SYNTHETIC_WEEKLY_EVIDENCE: checked the hook cover "+language);await form.locator("#weekly-evidence-1").fill("PRIVATE_SYNTHETIC_WEEKLY_EVIDENCE: practiced a basic knot "+language);
+    await saveWeekly(t(language,"Save observed skills","שמירת מיומנויות שנצפו"));
+    await open("draft_weekly_recap");const groupText=t(language,"Our group practiced equipment care and basic fishing knots.","הקבוצה תרגלה שמירה על הציוד וקשרי דיג בסיסיים.");
+    await form.locator("#weekly-work").fill(groupText);await form.locator("#weekly-next").fill(t(language,"Your next trip appears in your schedule when confirmed.","הטיול הבא יופיע בלוח הזמנים לאחר אישורו."));await form.locator("#weekly-gear").fill(t(language,"Bring your tackle box and water.","יש להביא קופסת ציוד ומים."));await form.locator("#weekly-question").fill(t(language,"Please ask your instructor a question.","אפשר לפנות למדריך בשאלה."));await saveWeekly(t(language,"Save weekly draft","שמירת טיוטה שבועית"));
+    const parent=await separate(browser,page,weeklyContexts);parents.set(language,parent);await login(parent,"parent-"+language,route(language,"parent",true),language);
+    await expect(parent.getByLabel(t(language,"Stage enrollment","רישום לשלב"),{exact:true})).toHaveValue(family(language).selection.enrollmentId!);await expect(parent.locator("[data-fishing-weekly-updates]")).toHaveCount(0);
+    const before=await parent.request.get("/api/calendar/fishing/plan?"+fishingCalendarSearch(family(language).selection));expect(before.status()).toBe(200);expect((await before.json()).data.view.weeklyUpdates).toEqual([]);
+    await open("review_weekly_recap");await expect(form).toContainText(groupText);await form.getByRole("checkbox").check();await saveWeekly(t(language,"Approve this weekly update","אישור העדכון השבועי"));
+    await parent.reload();await expect(parent.getByLabel(t(language,"Stage enrollment","רישום לשלב"),{exact:true})).toHaveValue(family(language).selection.enrollmentId!);await expect(parent.locator("[data-fishing-weekly-updates]")).toHaveCount(0);
+    await open("publish_weekly_recap");await form.getByRole("checkbox").check();await saveWeekly(t(language,"Publish in this family's account","פרסום בחשבון המשפחה הזאת"));
+    await parent.reload();const update=parent.locator("[data-fishing-weekly-updates]");await expect(update).toContainText(groupText);await expect(update.getByRole("listitem")).toHaveCount(2);
+    const receipt=await parent.request.get("/api/calendar/fishing/plan?"+fishingCalendarSearch(family(language).selection));expect(receipt.status()).toBe(200);const own=(await receipt.json()).data.view;expect(own.weeklyUpdates).toHaveLength(1);expect(own.weeklyUpdates[0].enrollmentId).toBe(family(language).selection.enrollmentId);expect(own.weeklyUpdates[0].skills).toHaveLength(2);expect(JSON.stringify(own)).not.toMatch(/PRIVATE_SYNTHETIC_WEEKLY_EVIDENCE|weeklyOperator|observationSetDigest/);
+    expect(await parent.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await parent.screenshot({path:info.outputPath(`weekly-${language}-parent-published.png`),fullPage:true});
+    await page.screenshot({path:info.outputPath(`weekly-${language}-operator-saved.png`),fullPage:true});
+   }
+   for(const language of["en","he"]as const){const parent=parents.get(language)!;await parent.reload();const other=family(language==="en"?"he":"en").selection;const denied=await parent.request.get("/api/calendar/fishing/plan?"+fishingCalendarSearch(other));expect([403,404]).toContain(denied.status());await expect(parent.locator("[data-fishing-weekly-updates] article")).toHaveCount(1);await expect(parent.locator("body")).not.toContainText("PRIVATE_SYNTHETIC_WEEKLY_EVIDENCE");}
+  }finally{await Promise.all(weeklyContexts.map(context=>context.close()));}
  });
 }
