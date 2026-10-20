@@ -17,3 +17,5 @@ describe('versioned Academy registration',()=>{
 });
 
 it('owner readback retains experience and school-hours eligibility as well as names and exact grades in both languages',()=>{const registration=floridaAcademyRegistrationFieldsSchema.parse(fields()).academyRegistration;for(const locale of ['en','he']as const){const html=renderToStaticMarkup(createElement(AcademyRegistrationReadback,{registration,locale}));for(const value of [child1,child2,'Synthetic Child One','Synthetic Child Two','00123','37',locale==='en'?'Some experience':'ניסיון מסוים',locale==='en'?'Only outside school hours':'רק מחוץ לשעות בית הספר'])expect(html).toContain(value);}});
+
+it('public curriculum applies current leadership wording while historical source remains immutable',async()=>{const {academyStages}=await import('../../src/features/group-application/academy-public-program.ts');for(const stage of academyStages)for(const p of stage.paragraphs){expect(p.en).not.toContain('without taking over');expect(p.he).not.toContain('בלי להשתלט');}});
