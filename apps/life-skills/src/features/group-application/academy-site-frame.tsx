@@ -10,8 +10,8 @@ import styles from "./academy-site.module.css";
 export {ACADEMY_WHATSAPP} from "./academy-whatsapp.tsx";
 export function AcademySiteFrame({locale,children,hero,onLocaleChange,path="",intake=false,className=""}:{locale:Locale;children:ReactNode;hero?:ReactNode;onLocaleChange?:(locale:Locale)=>void;path?:string;intake?:boolean;className?:string}){
  const academyHref=useAcademyHref(),routeMode=useAcademyRouteMode();
- const t=(en:string,he:string)=>locale==="he"?he:en,home=academyHref(locale),[open,setOpen]=useState(false),menu=useRef<HTMLElement>(null),toggle=useRef<HTMLButtonElement>(null),site=useRef<HTMLDivElement>(null),header=useRef<HTMLElement>(null),[headerHidden,setHeaderHidden]=useState(false),[heroFailed,setHeroFailed]=useState(false);
- const links=[[home,t("Home","דף הבית")],[home+"#stages",t("Four stages","ארבעה שלבים")],[home+"/pricing",t("Pricing","מחירים")],[intake?"#questions":home+"#questions",t("FAQ","שאלות נפוצות")],[intake?"#academy-form":home+"/apply",t("Register","להרשמה")]];
+ const t=(en:string,he:string)=>locale==="he"?he:en,home=academyHref(locale),[open,setOpen]=useState(false),menu=useRef<HTMLElement>(null),toggle=useRef<HTMLButtonElement>(null),site=useRef<HTMLDivElement>(null),header=useRef<HTMLElement>(null),headerHidden=false,[heroFailed,setHeroFailed]=useState(false);
+ const links=[[home,t("Home","דף הבית")],[home+"#stages",t("Four stages","ארבעה שלבים")],[home+"/pricing",t("Pricing","מחירים")],[home+"#questions",t("FAQ","שאלות נפוצות")],[intake?"#academy-form":home+"/apply",t("Register","להרשמה")]];
  function close(restore=false){setOpen(false);if(restore)toggle.current?.focus();}
  useEffect(()=>{
   if(!onLocaleChange)return;
@@ -31,23 +31,16 @@ export function AcademySiteFrame({locale,children,hero,onLocaleChange,path="",in
   const node=header.current;if(!node)return;
   const measure=()=>site.current?.style.setProperty("--academy-header-height",`${node.getBoundingClientRect().height}px`);
   const observer=new ResizeObserver(measure);observer.observe(node);measure();
-  let previous=scrollY,distance=0,frame=0;
-  const update=()=>{frame=0;const current=Math.max(0,scrollY),delta=current-previous;previous=current;
-   distance=delta*distance<0?delta:distance+delta;
-   if(current<node.offsetHeight||open||node.contains(document.activeElement)){setHeaderHidden(false);distance=0;}
-   else if(distance>12){setHeaderHidden(true);distance=0;}else if(distance< -8){setHeaderHidden(false);distance=0;}
-  };
-  const schedule=()=>{if(!frame)frame=requestAnimationFrame(update);};addEventListener("scroll",schedule,{passive:true});
-  return()=>{observer.disconnect();removeEventListener("scroll",schedule);if(frame)cancelAnimationFrame(frame);};
+  return()=>observer.disconnect();
  },[open]);
  useEffect(()=>{const image=site.current?.querySelector<HTMLImageElement>("[data-academy-hero-image]");if(!image)return;const update=()=>setHeroFailed(image.complete&&image.naturalWidth===0);image.addEventListener("error",update);image.addEventListener("load",update);update();return()=>{image.removeEventListener("error",update);image.removeEventListener("load",update);};},[hero]);
- const languages=<div className={styles.languages} aria-label={t("Language","שפה")}>{(["en","he"] as const).map(language=>onLocaleChange?<button key={language} type="button" lang={language} aria-pressed={locale===language} onClick={()=>{onLocaleChange(language);if(open)close(true);else setOpen(false);}}>{language==="en"?"EN":"עברית"}</button>:<a key={language} href={academyHref(language,path)} lang={language} aria-current={locale===language?"page":undefined}>{language==="en"?"EN":"עברית"}</a>)}</div>;
+ const languages=<div className={styles.languages} aria-label={t("Language","שפה")}>{(["en","he"] as const).map(language=>onLocaleChange?<button key={language} type="button" lang={language} aria-pressed={locale===language} onClick={()=>{onLocaleChange(language);if(open)close(true);else setOpen(false);}}>{language==="en"?"English":"עברית"}</button>:<a key={language} href={academyHref(language,path)} lang={language} aria-current={locale===language?"page":undefined}>{language==="en"?"English":"עברית"}</a>)}</div>;
  return <div ref={site} className={`${brand.scope} ${styles.site} ${className}`} lang={locale} dir={locale==="he"?"rtl":"ltr"} data-academy-site data-hero-image-failed={heroFailed?"true":"false"} data-academy-full-inquiry={intake?"":undefined}>
   <a className={styles.skip} href={intake?"#academy-form":"#main"}>{t("Skip to content","דלגו לתוכן")}</a>
-  <header ref={header} className={styles.header} data-academy-header data-hidden={headerHidden?"true":"false"} onFocusCapture={()=>setHeaderHidden(false)}><div className={styles.headerInner}><JlfaLogo locale={locale} homeHref={home} eager/>
+  <header ref={header} className={styles.header} data-academy-header data-hidden={headerHidden?"true":"false"} ><div className={styles.headerInner}><JlfaLogo locale={locale} homeHref={home} eager/>
    <nav className={styles.navigation} aria-label={t("Academy navigation","ניווט באקדמיה")}>{links.slice(0,4).map(([href,label])=><a key={href} href={href}>{label}</a>)}</nav>
-   <div className={styles.desktopActions}>{languages}<a className={styles.headerAction} href={links[4]![0]}>{t("Register","להרשמה")}</a></div>
-   <a className={styles.mobileRegister} href={links[4]![0]}>{t("Register","להרשמה")}</a><button ref={toggle} className={styles.menuToggle} type="button" aria-label={open?t("Close Academy menu","סגירת תפריט האקדמיה"):t("Open Academy menu","פתיחת תפריט האקדמיה")} aria-controls="academy-mobile-menu" aria-expanded={open} onClick={()=>{setHeaderHidden(false);setOpen(!open);}}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+   <div className={styles.desktopActions}>{!intake&&languages}<a className={styles.headerAction} href={links[4]![0]}>{t("Register","להרשמה")}</a></div>
+   <a className={styles.mobileRegister} href={links[4]![0]}>{t("Register","להרשמה")}</a><button ref={toggle} className={styles.menuToggle} type="button" aria-label={open?t("Close Academy menu","סגירת תפריט האקדמיה"):t("Open Academy menu","פתיחת תפריט האקדמיה")} aria-controls="academy-mobile-menu" aria-expanded={open} onClick={()=>{setOpen(!open);}}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
   </div><nav ref={menu} id="academy-mobile-menu" className={styles.mobileMenu} hidden={!open} aria-label={t("Mobile Academy navigation","ניווט באקדמיה לנייד")}>
    <button type="button" className={styles.menuClose} aria-label={t("Close menu","סגירת תפריט")} onClick={()=>close(true)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
    {links.map(([href,label])=><a key={href} href={href} onClick={()=>close()}>{label}</a>)}<a href={ACADEMY_WHATSAPP} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer" onClick={()=>close()}>{t("WhatsApp","וואטסאפ")}</a>{languages}

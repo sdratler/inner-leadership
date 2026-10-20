@@ -1,3 +1,4 @@
+import {academyTripCopy} from './academy-trip-copy.ts';
 import bilingual from "./academy-bilingual-copy.json";
 import copy from "./jlfa-core-copy.json";
 export type AcademyText=Readonly<{en:string;he:string}>;
@@ -26,7 +27,7 @@ export const academyVenues={
  more:["Oleta River State Park","East Greynolds Park","Amelia Earhart Park","South Pointe Park"],
 } as const;
 export const academyFoundationProgression=[
- {label:text("Meetings 1–2 · 2 hours each","מפגשים 1–2 · שעתיים כל אחד"),title:text("Start together at the park","מתחילים יחד בפארק"),body:text("Land-based initiation at a suitable approved park: meet the group, organize personal tackle, practise foundational knots and safe equipment handling. These are two separate preparation meetings.","פתיחה יבשתית בפארק מתאים ומאושר: היכרות עם הקבוצה, סידור ציוד אישי ותרגול קשרים בסיסיים ושימוש בטוח בציוד. אלו שני מפגשי הכנה נפרדים.")},
+ {label:text("Meetings 1–2 · 2 hours each","מפגשים 1–2 · שעתיים כל אחד"),title:text("Start together at the park","מתחילים יחד בפארק"),body:text("Land-based initiation at a suitable approved park: meet the group, organize personal tackle, practise foundational knots and safe equipment handling. These are two separate preparation meetings. "+academyTripCopy.firstMeeting.en,"פתיחה יבשתית בפארק מתאים ומאושר: היכרות עם הקבוצה, סידור ציוד אישי ותרגול קשרים בסיסיים ושימוש בטוח בציוד. אלו שני מפגשי הכנה נפרדים. "+academyTripCopy.firstMeeting.he)},
  {label:text("Meeting 3 · 3 hours","מפגש 3 · שלוש שעות"),title:text("Bass Pro Shops, Dania Beach","Bass Pro Shops, דניה ביץ׳"),body:text("A planned store learning visit, subject to confirmed access and arrangements. Connect equipment choices to what we will practise. The visit and practical arrangements are confirmed with families in advance.","ביקור לימודי מתוכנן בחנות, בכפוף לאישור גישה וסידורים. מחברים בין בחירת הציוד לבין התרגול. הביקור והסידורים המעשיים מאושרים עם המשפחות מראש.")},
  {label:text("Meeting 4 · 3 hours","מפגש 4 · שלוש שעות"),title:text("First supervised pier session","מפגש הדיג המפוקח הראשון במזח"),body:text("Deerfield is a candidate, subject to group-use permission, safety, capacity and current conditions. Pier fishing begins at the appropriate supervised part of the curriculum, not at initiation.","דירפילד הוא מיקום אפשרי, בכפוף לאישור שימוש קבוצתי, בטיחות, קיבולת ותנאים עדכניים. דיג במזח מתחיל בשלב המתאים והמפוקח של הלמידה, לא במפגשי הפתיחה.")},
  {label:text("Meetings 5–12","מפגשים 5–12"),title:text("Practise, reflect and build independence","מתרגלים, חושבים ומפתחים עצמאות"),body:text("Develop the group’s fishing and self-governance skills at suitable freshwater and saltwater locations. A safely confirmed pooled monthly Keys session replaces the participating group’s weekly meeting after the initial readiness ramp; it is not an extra tuition class or a guaranteed date.","מפתחים מיומנויות דיג והנהגה עצמית במקומות מתאימים במים מתוקים ומלוחים. לאחר תקופת ההכנה הראשונית, מפגש חודשי משותף בקיז שאושר כבטוח מחליף את המפגש השבועי של הקבוצה המשתתפת; אין זו תוספת שכר לימוד או הבטחה לתאריך.")},
@@ -37,4 +38,4 @@ export const academyFishingSkills=[
  {title:text("Read the water","קוראים את המים"),body:text("Connect habitat, tides, weather and season to the way we fish. Learn regulations and careful fish handling alongside practical technique.","מחברים בין בית הגידול, הגאות והשפל, מזג האוויר והעונה לשיטת הדיג. לומדים כללים וטיפול זהיר בדגים לצד המיומנות המעשית.")},
 ] as const;
 export const academySelfGovernance=bilingual.gains;
-export const academyQuestions=bilingual.questions;
+export const academyQuestions=bilingual.questions.map((q,index)=>index===7?{...q,answer:academyTripCopy.keysDetails}:index===8?{...q,answer:academyTripCopy.offshoreSummary}:q);
