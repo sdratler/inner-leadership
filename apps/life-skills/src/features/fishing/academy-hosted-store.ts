@@ -15,23 +15,38 @@ import {NativeStripeHostedCoordinator,type NativeStripeHostedPolicy} from './nat
 import {NativeStripeCheckoutCoordinator,type NativeStripeCheckoutPolicy} from '../fishing-payments/stripe-test-checkout-native.ts';
 import type {StripeTestCheckoutBinding,StripeTestCheckoutProvider,CheckoutReturnUrls} from '../fishing-payments/stripe-test-checkout-ports.ts';
 import {AcademyCheckoutService} from './academy-checkout-service.ts';
-import {academyHostedCommandSchema,academyHostedCleanupCommandSchema,type AcademyHostedCommand,type AcademyHostedResult,type AcademyHostedCleanupResult} from './academy-hosted-contract.ts';
+import {FishingReceiptInbox} from '../fishing-payments/receipts.ts';
+import type {StripeTestProcessingDependencies} from '../fishing-payments/receipts.ts';
+import {NativeStripeReceiptBindings} from './native-stripe-bindings.ts';
+import {StripeTestCheckoutFulfillment,type CheckoutFulfillmentPolicy,type CheckoutFulfillmentResult} from '../fishing-payments/stripe-test-checkout-fulfillment.ts';
+import {academyHostedCommandSchema,academyHostedCleanupCommandSchema,academyHostedReceiptCommandSchema,type AcademyHostedCommand,type AcademyHostedResult,type AcademyHostedCleanupResult} from './academy-hosted-contract.ts';
 
 /** Trusted Root SERVER capability, never request JSON or an environment flag.
  * Supplier must independently verify the merchant/customer/effect/expiry policy.
  * Null remains the default; no SDK, credential lookup or provider discovery. */
-export type AcademyHostedAdmission=Readonly<{merchant:StripeTestHostedBinding;provider:StripeTestHostedProvider;policy:NativeStripeHostedPolicy}>|Readonly<{merchant:StripeTestCheckoutBinding;checkout:Readonly<{provider:StripeTestCheckoutProvider;policy:NativeStripeCheckoutPolicy;returnUrls:CheckoutReturnUrls}>}>;
+export type AcademyHostedAdmission=Readonly<{merchant:StripeTestHostedBinding;provider:StripeTestHostedProvider;policy:NativeStripeHostedPolicy}>|Readonly<{merchant:StripeTestCheckoutBinding;checkout:Readonly<{provider:StripeTestCheckoutProvider;policy:NativeStripeCheckoutPolicy;returnUrls:CheckoutReturnUrls;fulfillment?:Readonly<Omit<StripeTestProcessingDependencies,'native'>&{policy:CheckoutFulfillmentPolicy}>}>}>;
 export class AcademyHostedStore{
  private readonly runtime:{store:FishingPaymentStore;service:FishingPaymentService;coordinator:NativeStripeHostedCoordinator;program:NativeFishingProgram}|null;
  private readonly checkout:{store:FishingPaymentStore;service:AcademyCheckoutService;program:NativeFishingProgram}|null;
+ private readonly fulfillment:StripeTestCheckoutFulfillment|null;
  constructor(private readonly db:IdentityStore,private readonly config:IdentityConfig,private readonly family:AcademyFamilyStore,admission:AcademyHostedAdmission|null=null,private readonly clock:IdentityClock=systemClock){
-  this.runtime=null;this.checkout=null;if(!admission)return;
+  this.runtime=null;this.checkout=null;this.fulfillment=null;if(!admission)return;
   const program=new NativeFishingProgram(db,config.keyring,{childAccountsEnabled:false,merchant:admission.merchant},clock),store=new FishingPaymentStore({database:db,clock,merchant:admission.merchant,authority:{...program.paymentApprovalAuthority(),withdrawalFacts:async()=>{throw new AppError('UNAVAILABLE');},reminderPolicy:async()=>{throw new AppError('UNAVAILABLE');}}});
-  if('checkout' in admission){invariant(admission.checkout.provider.execution==='stripe_test_checkout'&&digest(admission.checkout.provider.binding)===digest(admission.merchant),'MERCHANT_BINDING');const coordinator=new NativeStripeCheckoutCoordinator(store,admission.checkout.policy,admission.checkout.returnUrls);this.checkout={store,program,service:new AcademyCheckoutService(coordinator,admission.checkout.provider,clock)};return;}
+  if('checkout' in admission){invariant(admission.checkout.provider.execution==='stripe_test_checkout'&&digest(admission.checkout.provider.binding)===digest(admission.merchant),'MERCHANT_BINDING');const coordinator=new NativeStripeCheckoutCoordinator(store,admission.checkout.policy,admission.checkout.returnUrls);this.checkout={store,program,service:new AcademyCheckoutService(coordinator,admission.checkout.provider,clock)};const f=admission.checkout.fulfillment;if(f){const inbox=new FishingReceiptInbox(store,{endpoint:f.endpoint,endpointSecret:f.endpointSecret,client:f.client,native:new NativeStripeReceiptBindings(db,admission.merchant,clock)});this.fulfillment=new StripeTestCheckoutFulfillment(store,coordinator,admission.checkout.provider,inbox,program,f.policy);}return;}
   invariant(admission.provider.execution==='stripe_test_hosted_invoice'&&digest(admission.provider.binding)===digest(admission.merchant),'MERCHANT_BINDING');const coordinator=new NativeStripeHostedCoordinator(store,program,admission.policy);
   this.runtime={program,store,coordinator,service:new FishingPaymentService(store,{provider:admission.provider,coordinator})};
  }
  available(){return this.runtime!==null||this.checkout!==null;}
+ /** Existing owner route only. Persist the command binding before bounded
+  * reconciliation, then reread native truth on every retry. Never cache an
+  * earlier paid/enrolled result as authority or hold a transaction over I/O. */
+ async processReceipt(actor:Actor,raw:unknown):Promise<CheckoutFulfillmentResult>{
+  const parsed=academyHostedReceiptCommandSchema.safeParse(raw);if(!parsed.success)throw new AppError('INVALID_REQUEST');const command=parsed.data;
+  await this.db.transaction(async tx=>{await lockWorkspace(tx,actor.workspaceId);const current=await freshActor(tx,actor,this.clock.now());if(current.workspaceId!==this.config.workspaceId||current.role!=='practitioner')throw new AppError('FORBIDDEN');});
+  const r=this.checkout,processor=this.fulfillment;if(!r||!processor)throw new AppError('UNAVAILABLE');
+  await r.store.command(actor,command.operationId,'academy.checkout.receipt.request',command,async c=>{const op=await r.store.operation(c,command.hostedOperationId),p=await r.store.purchase(c,op.purchaseId);invariant(p.offer.operatorAccountId===c.actor.id&&p.offer.program==='sunday_fishing_academy','NOT_FOUND');await r.store.access(c,p.offer,'read',true);},async()=>({eventId:command.eventId,hostedOperationId:command.hostedOperationId}));
+  return processor.process(actor,command.eventId,command.hostedOperationId);
+ }
  /** Explicit operator action only. No timer, new invoice, refund or cached
   * family URL. An unknown void reply can recover only by the durable ID. */
  async cleanup(actor:Actor,raw:unknown):Promise<AcademyHostedCleanupResult>{

@@ -22,6 +22,9 @@ import {academyHostedVersion,type AcademyHostedCommand} from '../../../src/featu
 import {NativeStripeHostedCoordinator,type NativeStripeHostedPolicy} from '../../../src/features/fishing/native-stripe-hosted-bindings.ts';
 import type {StripeTestHostedBinding,StripeTestHostedProvider,StripeTestHostedAction,StripeTestHostedObservation} from '../../../src/features/fishing-payments/ports.ts';
 import type {IdentityStore} from '../../../src/features/identity/store.ts';
+import type {StripeTestCheckoutProvider} from '../../../src/features/fishing-payments/stripe-test-checkout-ports.ts';
+import type {NativeStripeCheckoutPolicy} from '../../../src/features/fishing-payments/stripe-test-checkout-native.ts';
+import type {StripeTestReadClient} from '../../../src/features/fishing/stripe-read-ports.ts';
 async function fixture(offerHours=24){
  const f=await academyFamilyFixture({termsDocument:'SYNTHETIC BILLING TERMS ONLY',confirmation:{kind:'all_native_dues_paid'}}),applicationId=await f.inquiry();await f.promote(applicationId);const fc=await f.command(applicationId),saved=(await(await f.post(fc)).json()).data.saved;
  const mail=(await f.pool.query("SELECT id,payload_ciphertext FROM ls_identity.auth_mail_outbox WHERE workspace_id=$1 AND account_id=$2 AND kind='invite'",[f.workspaceId,saved.parentAccountId])).rows[0];await f.auth.consumePasswordToken('invite',JSON.parse(unseal(mail.payload_ciphertext,`auth-mail:${f.workspaceId}:${mail.id}`,f.ring)).token,'Ab12cd',randomUUID());const parentToken=await f.passwordLogin(fc.parentEmail),parent=await f.sessions.actor(parentToken),child=saved.children[0];
@@ -140,4 +143,15 @@ test('cleanup HTTP keeps ordinary role, CSRF, origin, immutable key and unavaila
 
 test('a provider-paid cleanup readback never voids or refunds money and does not invent native payment truth',async()=>{
  const f=await cleanupFixture();f.allowClose();f.settleProviderOnly();const before=await f.protectedRows(),response=await f.postCleanup();expect(response.status).toBe(200);expect((await response.json()).data).toEqual({state:'already_paid'});const bill=(await(await f.get(f.parentToken,f.parentQuery)).json()).data;expect(bill.payments[0]).toMatchObject({paidCents:0,state:'unpaid'});expect(bill.actions).toEqual([]);expect(await f.protectedRows()).toEqual(before);expect(f.calls.filter(a=>a.phase==='close')).toHaveLength(1);
+});
+
+test('existing owner receipt HTTP composition enforces role, CSRF, immutable input and durable native admission before any provider read',async()=>{
+ const f=await hostedFixture(),before=await f.protectedRows(),command={version:academyHostedVersion,action:'process_receipt',operationId:randomUUID(),hostedOperationId:randomUUID(),eventId:'evt_SYNTHETIC_MISSING'};
+ const provider:StripeTestCheckoutProvider={execution:'stripe_test_checkout',binding:f.provider.binding,perform:vi.fn(async()=>{throw Error('PROVIDER_MUST_NOT_RUN');})};
+ const policy:NativeStripeCheckoutPolicy={load:async()=>{throw Error('NO_CHECKOUT_ADMISSION');},promotion:async()=>{throw Error('NO_PROMOTION_ADMISSION');},expire:async()=>{throw Error('NO_EXPIRY_ADMISSION');}};
+ const client:StripeTestReadClient={binding:f.provider.binding,retrieve:vi.fn(async()=>{throw Error('READ_MUST_NOT_RUN');}),listInvoicePayments:vi.fn(async()=>{throw Error('READ_MUST_NOT_RUN');})};
+ const composed=new AcademyHostedStore(f.db,f.config,f.familyStore,{merchant:f.provider.binding,checkout:{provider,policy,returnUrls:{successUrl:f.config.origin+'/en/account',cancelUrl:f.config.origin+'/en/florida/apply'},fulfillment:{endpoint:{endpoint:'connected',accountId:f.provider.binding.accountId,livemode:false,apiVersion:'2026-09-30.endive'},endpointSecret:'whsec_SYNTHETIC_ONLY',client,policy:{enrollmentTarget:async()=>null}}}});
+ const post=(value:unknown=command,token=f.token,headers:Record<string,string>={},target=composed)=>f.postHosted(value,token,{'idempotency-key':command.operationId,...headers},target);
+ expect((await post(command,f.parentToken)).status).toBe(403);expect((await post(command,f.token,{'x-csrf-token':'bad'})).status).toBe(403);expect((await post(command,f.token,{origin:'https://foreign.invalid'})).status).toBe(403);expect((await post(command,f.token,{'idempotency-key':randomUUID()})).status).toBe(400);expect((await post({...command,paid:true})).status).toBe(400);
+ expect((await post(command,f.token,{},f.unavailable)).status).toBe(503);expect((await post()).status).toBe(404);expect(provider.perform).not.toHaveBeenCalled();expect(client.retrieve).not.toHaveBeenCalled();expect(client.listInvoicePayments).not.toHaveBeenCalled();expect(await f.protectedRows()).toEqual(before);
 });

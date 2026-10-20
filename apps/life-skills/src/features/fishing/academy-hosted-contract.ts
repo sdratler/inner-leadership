@@ -8,7 +8,10 @@ export type AcademyHostedCommand=z.infer<typeof academyHostedCommandSchema>;
  * server policy supplies invoice identity and the separate effect decision. */
 export const academyHostedCleanupCommandSchema=z.strictObject({version:z.literal(academyHostedVersion),action:z.enum(['close','close_expired']),operationId:z.uuid(),hostedOperationId:z.uuid()});
 export type AcademyHostedCleanupCommand=z.infer<typeof academyHostedCleanupCommandSchema>;
-export const academyHostedPostSchema=z.union([academyHostedCommandSchema,academyHostedCleanupCommandSchema]);
+/** Deliberate owner reconciliation of a durable receipt. No browser-paid claim,
+ * provider identity, totals, enrollment policy or raw event is accepted. */
+export const academyHostedReceiptCommandSchema=z.strictObject({version:z.literal(academyHostedVersion),action:z.literal('process_receipt'),operationId:z.uuid(),hostedOperationId:z.uuid(),eventId:z.string().regex(/^evt_[A-Za-z0-9_]{1,150}$/)});
+export const academyHostedPostSchema=z.union([academyHostedCommandSchema,academyHostedCleanupCommandSchema,academyHostedReceiptCommandSchema]);
 export type AcademyHostedCleanupResult={state:'closed'|'already_paid'|'review_required'};
 export type AcademyHostedResult={state:'ready';action:FamilyHostedAction}|{state:'review_required'};
 const invoiceUrl=z.string().max(2048).refine(value=>{try{const url=new URL(value);return url.protocol==='https:'&&!url.port&&!url.username&&!url.password&&!/[\r\n]/.test(value)&&(url.hostname==='invoice.stripe.com'&&!url.hash&&url.pathname.startsWith('/i/')||url.hostname==='checkout.stripe.com'&&url.pathname.startsWith('/c/pay/'));}catch{return false;}});

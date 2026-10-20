@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {expect,test,vi} from 'vitest';
 vi.mock('server-only',()=>({}));
-import {academyHostedCommandSchema,academyHostedCleanupCommandSchema,academyHostedPostSchema,academyHostedVersion,readAcademyHostedResult} from '../../../src/features/fishing/academy-hosted-contract.ts';
+import {academyHostedCommandSchema,academyHostedCleanupCommandSchema,academyHostedReceiptCommandSchema,academyHostedPostSchema,academyHostedVersion,readAcademyHostedResult} from '../../../src/features/fishing/academy-hosted-contract.ts';
 import {academyHostedHttp} from '../../../src/features/fishing/academy-hosted-http.ts';
 
 test('parent payment request carries only strict own-bill references, never financial authority or a provider URL',()=>{
@@ -25,4 +25,11 @@ test('owner cleanup selects only a native hosted operation and never client-supp
 
 test('cleanup has no dependency fallback and failure never discloses provider details',async()=>{
  const response=await academyHostedHttp(new Request('https://synthetic.invalid/api/private/group-applications/hosted',{method:'POST',body:JSON.stringify({action:'close'})}),async()=>{throw Error('PRIVATE_CLOSURE_INVOICE_SECRET');});expect(response.status).toBe(503);expect(await response.text()).not.toContain('PRIVATE_CLOSURE');expect(response.headers.get('cache-control')).toBe('private, no-store');
+});
+
+test('owner receipt command accepts only durable references and cannot supply payment, enrollment or policy truth',()=>{
+ const value={version:academyHostedVersion,action:'process_receipt',operationId:randomUUID(),hostedOperationId:randomUUID(),eventId:'evt_SYNTHETIC_RECEIPT'};
+ expect(academyHostedReceiptCommandSchema.parse(value)).toEqual(value);expect(academyHostedPostSchema.parse(value)).toEqual(value);expect(academyHostedCommandSchema.safeParse(value).success).toBe(false);
+ for(const eventId of ['cs_test_UNTRUSTED','evt_','evt_x?paid=true','evt_'+ 'a'.repeat(151)])expect(academyHostedReceiptCommandSchema.safeParse({...value,eventId}).success).toBe(false);
+ for(const key of ['paid','amountCents','enrollmentId','policy','accountId','signature','rawBody','customerId','url'])expect(academyHostedReceiptCommandSchema.safeParse({...value,[key]:'UNTRUSTED'}).success).toBe(false);
 });
