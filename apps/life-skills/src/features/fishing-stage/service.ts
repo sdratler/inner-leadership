@@ -1,6 +1,7 @@
 import "server-only";
 import {createHash,randomUUID} from "node:crypto";
 import type {FishingOccurrenceReadPort} from "../fishing/contract.ts";
+import {applySafetyCommand,safetyStateSchema,type SafetyCommand} from './safety.ts';
 import {canonicalTime,noticeState} from "./time.ts";
 import {applyWeeklyCommand,weeklyStateSchema,weeklyPublications,weeklyPublicationCurrent,WeeklyProgressError,type WeeklyCommand,type WeeklyReadFacts} from "./weekly-progress.ts";
 import {floridaZone,logisticsSchema,stageCommandSchema,stageReferenceSchema,
@@ -15,6 +16,8 @@ function fail(code:FishingStageError["code"]):never{throw new FishingStageError(
 function sameStage(a:FishingStageRef,b:FishingStageRef){return a.cohortId===b.cohortId&&a.stageId===b.stageId&&a.stage===b.stage;}
 function operator(c:FreshStageContext){return c.actor.role==="practitioner"&&c.operatorAccountIds.includes(c.actor.id);}
 const weeklyActions=new Set(["observe_skills","draft_weekly_recap","review_weekly_recap","publish_weekly_recap"]);
+const safetyActions=new Set(['assess_safety','safety_intervention','safety_handoff']);
+function isSafety(command:StageCommand):command is SafetyCommand{return safetyActions.has(command.action);}
 function isWeekly(command:StageCommand):command is WeeklyCommand{return weeklyActions.has(command.action);}
 const weeklyDigest=(value:unknown)=>createHash("sha256").update(JSON.stringify(value)).digest("hex");
 function weeklyFacts(s:StageState,enrollment:EnrollmentProjection,occurrenceId:string,now:Date):WeeklyReadFacts|null{
@@ -61,6 +64,7 @@ export function validateStageState(s:StageState,c:Pick<FreshStageContext,"scope"
   if(history.length!==o.revision-1||history.some((h,i)=>h.revision!==i+1||h.workspaceId!==s.workspaceId||!sameStage(h,s)))fail("INVALID_STATE");
  }
  if(new Set(s.makeups.map(m=>`${m.notice.enrollmentId}:${m.notice.occurrenceId}`)).size!==s.makeups.length)fail("INVALID_STATE");
+ if(s.safety){const safety=safetyStateSchema.parse(s.safety);for(const item of [...safety.assessments,...safety.interventions,...safety.handoffs]){const o=s.occurrences.find(v=>v.id===item.occurrenceId);if(!o||item.occurrenceRevision>o.revision)fail('INVALID_STATE');}}
  if(s.weekly){
   const weekly=weeklyStateSchema.parse(s.weekly);
   for(const item of [...weekly.observations,...weekly.recaps]){
@@ -89,6 +93,7 @@ function view(s:StageState,c:FreshStageContext,now:Date):StageView{
  const own=c.enrollment?.id;
  return {cohortId:s.cohortId,stageId:s.stageId,stage:s.stage,revision:s.revision,role:c.actor.role as StageView["role"],enrollmentId:operator(c)?null:own!,
   occurrences,nextOccurrenceId:next?.id??null,
+  ...(operator(c)&&s.safety?{safetyOperator:structuredClone(s.safety)}:{}),
   notices:(c.actor.role==="child"?[]:s.makeups.filter(m=>operator(c)||m.notice.enrollmentId===own)).map(m=>({id:m.notice.id,occurrenceId:m.notice.occurrenceId,
    state:s.occurrences.find(o=>o.id===m.notice.occurrenceId)?.state==="cancelled"?"operator_undelivered":m.notice.state,receivedAt:m.notice.receivedAt,originalStartsAt:m.notice.originalStartsAt,originalOccurrenceRevision:m.notice.originalOccurrenceRevision,
    scheduleChangedSinceNotice:s.occurrences.find(o=>o.id===m.notice.occurrenceId)?.revision!==m.notice.originalOccurrenceRevision,
@@ -156,6 +161,11 @@ export class FishingStageService implements FishingOccurrenceReadPort {
   });
  }
  private async change(tx:FishingStageTransaction,c:FreshStageContext,s:StageState,command:Exclude<StageCommand,{action:"create"}>,now:Date){
+  if(isSafety(command)){
+   const o=occurrenceFor(s,command),e=await tx.readEnrollment(c,command.enrollmentId);if(!validEnrollment(e,c))fail('FORBIDDEN');
+   if(o.state==='cancelled'||command.action==='assess_safety'&&o.state!=='published')fail('INVALID_STATE');
+   try{s.safety=applySafetyCommand(s.safety??{assessments:[],interventions:[],handoffs:[]},command,{actorId:c.actor.id,learnerId:e.learnerId,now:now.toISOString(),nextId:randomUUID});}catch{fail('INVALID_STATE');}return;
+  }
   if(isWeekly(command)){
    occurrenceFor(s,command);const e=await tx.readEnrollment(c,command.enrollmentId);if(!validEnrollment(e,c))fail("FORBIDDEN");
    const facts=weeklyFacts(s,e,command.occurrenceId,now);if(!facts)fail("INVALID_STATE");

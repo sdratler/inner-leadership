@@ -19,6 +19,9 @@ export class AcademyOfferStore{
  }
  async execute(actor:Actor,raw:unknown){
   if(actor.role!=='practitioner'||actor.workspaceId!==this.config.workspaceId)throw new AppError('FORBIDDEN');const parsed=academyOfferCommandSchema.safeParse(raw);if(!parsed.success)throw new AppError('INVALID_REQUEST');const command=parsed.data;
-  return this.db.transaction(async tx=>{const saved=await this.family.readForEnrollmentInTransaction(tx,actor,command.binding),child=saved.children.find(c=>c.learnerIndex===command.learnerIndex);if(!child)throw new AppError('NOT_FOUND');const bound:IdentityStore={transaction:work=>work(tx)};return this.program(bound).prepareAcademyOffer(actor,command,{learnerId:child.learnerId,householdId:saved.householdId,parentAccountId:saved.parentAccountId},digest(command));});
+  // OWNER03 supersedes binding three-dues offers. Historical records remain readable.
+  if(command.action==='prepare'&&command.mode==='installments')throw new AppError('UNAVAILABLE');
+  return this.db.transaction(async tx=>{const saved=await this.family.readForEnrollmentInTransaction(tx,actor,command.binding),child=saved.children.find(c=>c.learnerIndex===command.learnerIndex);if(!child)throw new AppError('NOT_FOUND');if(command.action==='prepare'){const current=(await this.program(this.db).enrollmentReviewInTransaction(tx,actor,{learnerId:child.learnerId,householdId:saved.householdId,parentAccountId:saved.parentAccountId})).find(s=>s.stageId===command.stageId);if(current?.terms.state!=='available'||!current.terms.owner03Bundle)throw new AppError('UNAVAILABLE');}
+   const bound:IdentityStore={transaction:work=>work(tx)};return this.program(bound).prepareAcademyOffer(actor,command,{learnerId:child.learnerId,householdId:saved.householdId,parentAccountId:saved.parentAccountId},digest(command));});
  }
 }

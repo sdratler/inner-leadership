@@ -5,6 +5,7 @@ import {seal,unseal,type Keyring} from "../identity/crypto.ts";
 import {AppError} from "../../lib/errors.ts";
 import {asId} from "../../lib/ids.ts";
 import {logisticsSchema,stageReferenceSchema,type StageState,type ApprovedStageTemplate,type EnrollmentProjection} from "./contract.ts";
+import {safetyStateSchema} from './safety.ts';
 import {weeklyStateSchema} from "./weekly-progress.ts";
 
 export const nativeLimits=Object.freeze({revisions:1000,snapshotBytes:1048576,envelopeBytes:2000000,partBytes:16384,parts:64,attendance:12000,notices:12000,history:12000});
@@ -25,7 +26,7 @@ const notice=z.strictObject({...source,id:uuid,workspaceId,enrollmentId:uuid,occ
  reason:z.enum(["ordinary_absence","unavoidable","operator_cancelled"]),state:z.enum(["protected","best_effort","operator_review","operator_undelivered"]),entitlementId:uuid.nullable(),replacementOccurrenceId:uuid.nullable(),replacementReservationId:uuid.nullable(),specificTripGuaranteed:z.literal(false)});
 const makeup=z.strictObject({notice,requestedAt:instant.nullable(),decisionAt:instant.nullable(),decisionBy:uuid.nullable(),decisionReason:z.string().trim().min(1).max(1200).nullable()});
 const stateSchema=scope.extend({...source,revision:positive.max(nativeLimits.revisions),template:templateSchema,occurrences:z.array(occurrence).length(12),history:z.array(occurrence).max(nativeLimits.history),
- attendance:z.array(z.strictObject({enrollmentId:uuid,occurrenceId:uuid,state:z.enum(["present","late","absent","no_show"]),recordedAt:instant,recordedBy:uuid,reason:z.string().trim().min(1).max(1200)})).max(nativeLimits.attendance),makeups:z.array(makeup).max(nativeLimits.notices),weekly:weeklyStateSchema.optional()});
+ attendance:z.array(z.strictObject({enrollmentId:uuid,occurrenceId:uuid,state:z.enum(["present","late","absent","no_show"]),recordedAt:instant,recordedBy:uuid,reason:z.string().trim().min(1).max(1200)})).max(nativeLimits.attendance),makeups:z.array(makeup).max(nativeLimits.notices),weekly:weeklyStateSchema.optional(),safety:safetyStateSchema.optional()});
 export const linkSchema=z.strictObject({workspaceId:uuid,sourceStageId:uuid,entitlementId:uuid,enrollmentId:uuid,learnerId:uuid,occurrenceId:uuid,reservationId:uuid});
 export type NativeMakeupLink=z.infer<typeof linkSchema>;
 const snapshotSchema=z.strictObject({state:stateSchema,links:z.array(linkSchema).max(nativeLimits.notices)});

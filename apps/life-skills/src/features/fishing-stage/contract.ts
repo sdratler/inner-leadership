@@ -1,5 +1,6 @@
 import {z} from "zod";
 import type {Actor,EnrollmentProjection,FishingNotice,FishingSource,FishingStageRef,IdentityClock,OccurrenceProjection} from "../fishing/contract.ts";
+import {safetyCommandSchemas,type SafetyState} from './safety.ts';
 import {weeklyCommandSchemas,type WeeklyState,type weeklyPublications} from "./weekly-progress.ts";
 export type {Actor,EnrollmentProjection,FishingNotice,FishingStageRef,IdentityClock,OccurrenceProjection};
 
@@ -26,7 +27,7 @@ export const legacyStageCommandSchema=z.discriminatedUnion("action",[
  z.strictObject({...base,action:z.literal("request_makeup"),noticeId:uuid}),
  z.strictObject({...base,action:z.literal("confirm_makeup"),noticeId:uuid,replacementOccurrenceId:uuid,expectedReplacementRevision:revision.min(1),reason:decisionReason})
 ]);
-export const stageCommandSchema=z.discriminatedUnion("action",[...legacyStageCommandSchema.options,...weeklyCommandSchemas]);
+export const stageCommandSchema=z.discriminatedUnion("action",[...legacyStageCommandSchema.options,...weeklyCommandSchemas,...safetyCommandSchemas]);
 export type LegacyStageCommand=z.infer<typeof legacyStageCommandSchema>;
 export type StageCommand=z.infer<typeof stageCommandSchema>;
 export type CanonicalOccurrence=Omit<OccurrenceProjection,"allowedActions">;
@@ -42,6 +43,7 @@ export type StageState=FishingStageRef&FishingSource&{
  history:CanonicalOccurrence[];attendance:AttendanceFact[];makeups:MakeupRecord[];
  /** Optional to preserve authenticated hashes of existing snapshots. */
  weekly?:WeeklyState|undefined;
+ safety?:SafetyState|undefined;
 };
 export type StageReceipt={operationId:string;stageRevision:number;replayed:boolean};
 export type OperationRecord={digest:string;receipt:StageReceipt};
@@ -83,5 +85,7 @@ export type StageView=FishingStageRef&{
  lessonReferences:Array<{occurrenceId:string;moduleId:string;version:string}>;
  /** Only operators receive private observation evidence or unpublished text. */
  weeklyOperator?:WeeklyState;
+ /** Private instructor observations; never projected to another family. */
+ safetyOperator?:SafetyState;
  weeklyUpdates?:ReturnType<typeof weeklyPublications>;
 };

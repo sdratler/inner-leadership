@@ -13,6 +13,7 @@ import type {StageCommand,OccurrenceProjection} from "../fishing-stage/contract.
 import type {NativeProgramCommandIntent} from "./native-program-contract.ts";
 import {FishingCalendarEditor} from "./program-calendar-editor.tsx";
 import {WeeklyProgressControls} from "./weekly-progress-controls.tsx";
+import {AcademySafetyControls} from './safety-controls.tsx';
 import {WeeklyProgressView} from "../fishing-stage/weekly-progress-view.tsx";
 import {fishingCalendarChoicesSchema,fishingCalendarSearch,fishingCalendarSelectionQuery,selectedFishingStage,fishingCalendarTimelineSchema,type FishingCalendarChoices,type FishingCalendarPlan,type FishingCalendarSelection,type FishingCalendarEvent} from "./program-calendar-contract.ts";
 import styles from "./program-calendar.module.css";
@@ -141,6 +142,7 @@ export function FishingCalendarWorkspace({locale,role,enabled,onDirtyChange,onSa
   </>}
   {plan&&<>
    {parentView?<div className={styles.next} data-fishing-parent-next><FishingParentNextSessionSummary view={parentView} locale={locale}/>{parentNext&&<><p>{parentNext.location}</p>{parentNext.equipment&&<details><summary>{t("Equipment and preparation","ציוד והכנה")}</summary><p>{parentNext.equipment}</p></details>}</>}</div>:<div className={styles.next}><h3>{t("Next fishing session","מפגש הדיג הבא")}</h3>{next?.time.kind==="scheduled"?<><p><time dateTime={next.time.startsAt}>{format(next.time.startsAt)}</time> · America/New_York</p><p>{next.location}</p>{next.equipment&&<details><summary>{t("Equipment and preparation","ציוד והכנה")}</summary><p>{next.equipment}</p></details>}</>:<p>{t("No upcoming date is published. Undated syllabus entries remain in the full plan.","טרם פורסם מועד קרוב. פריטי תוכנית ללא מועד נשמרים בתוכנית המלאה.")}</p>}</div>}
+   {role==='practitioner'&&plan.view&&<AcademySafetyControls key={scope+':'+plan.view.revision} data={plan} locale={locale} locked={locked||loading} onDirty={setDirty} onSave={save}/>}
    {role==="parent"&&<p>{t("Parent-assisted use does not require a child device or child account.","שימוש בסיוע הורה אינו דורש מכשיר או חשבון ילד.")}</p>}
    {parentView&&<details className={styles.plan} data-fishing-parent-attendance><summary>{t("Attendance and session status","נוכחות ומצב המפגשים")}</summary><FishingParentAttendanceSummary view={parentView} locale={locale}/><div data-fishing-parent-makeup><FishingParentMakeupSummary view={parentView} locale={locale}/></div></details>}
    {parentView&&<WeeklyProgressView updates={parentView.weeklyUpdates??[]} locale={locale}/>}

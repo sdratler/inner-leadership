@@ -1,3 +1,4 @@
+import {academyAgreementBundleSchema,academyAgreementAcceptanceSchema} from './academy-agreements.ts';
 import {z} from "zod";
 import {stageReferenceSchema} from "../fishing-stage/contract.ts";
 import {templateSchema} from "../fishing-stage/native-storage.ts";
@@ -17,11 +18,11 @@ export const programPolicySchema=z.strictObject({policyVersion:version,sourceVer
  z.strictObject({kind:z.literal("unselected")}),z.strictObject({kind:z.literal("all_native_dues_paid")}),
  z.strictObject({kind:z.literal("native_due_indices_paid"),indices:z.array(z.union([z.literal(1),z.literal(2),z.literal(3)])).min(1).max(3).refine(values=>new Set(values).size===values.length)})
 ])});
-export const programTermsSchema=z.strictObject({program:z.literal("sunday_fishing_academy"),termsVersion:version,policyVersion:version,sourceVersion:version,contentSha256:sha,document:z.strictObject({format:z.literal('plain_text'),body:z.string().min(1).max(20000).refine(v=>!/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(v))}).optional()});
+export const programTermsSchema=z.strictObject({program:z.literal("sunday_fishing_academy"),termsVersion:version,policyVersion:version,sourceVersion:version,contentSha256:sha,owner03Bundle:academyAgreementBundleSchema.optional(),document:z.strictObject({format:z.literal('plain_text'),body:z.string().min(1).max(20000).refine(v=>!/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(v))}).optional()});
 export const cohortCommandSchema=z.strictObject({...command,...scope,label,instructorAccountId:uuid,approvedChildCapacity:z.number().int().min(1).max(1000),templateApprovalId:uuid,termsApprovalId:uuid,policyApprovalId:uuid,reason});
 export const venueCommandSchema=z.strictObject({...command,id:uuid,label,address:z.string().max(1200),capacity:z.number().int().min(1).max(1000),approvalReference:z.string().min(1).max(500),reason});
 export const fitCommandSchema=z.strictObject({...command,id:uuid,stageId:uuid,learnerId:uuid,purpose:z.enum(["enrollment","makeup"]),decision:z.enum(["approved","rejected"]),targetOccurrenceId:uuid.nullable(),targetRevision:z.number().int().positive().nullable(),note:reason,sourceBindingSha256:sha.optional()}).refine(value=>value.purpose==="makeup"?value.targetOccurrenceId!==null&&value.targetRevision!==null:value.targetOccurrenceId===null&&value.targetRevision===null);
-export const termsCommandSchema=z.strictObject({...command,id:uuid,stageId:uuid,learnerId:uuid,householdId:uuid,sourceApprovalId:uuid,sourceSha256:sha,sourceBindingSha256:sha.optional()});
+export const termsCommandSchema=z.strictObject({...command,id:uuid,stageId:uuid,learnerId:uuid,householdId:uuid,sourceApprovalId:uuid,sourceSha256:sha,agreementAcceptance:academyAgreementAcceptanceSchema.optional(),sourceBindingSha256:sha.optional()});
 export const holdCommandSchema=z.strictObject({...command,holdId:uuid,stageId:uuid,learnerId:uuid,householdId:uuid,payerAccountId:uuid,expectedCohortRevision:z.number().int().positive(),reason});
 export const offerCommandSchema=z.strictObject({...command,id:uuid,stageId:uuid,payerAccountId:uuid,householdId:uuid,policyApprovalId:uuid,expiresAt:z.iso.datetime({offset:true}),
  lines:z.array(z.strictObject({id:uuid,learnerId:uuid,fitDecisionId:uuid,termsAcceptanceId:uuid,holdId:uuid,mode:z.enum(["prepay","installments"]),dueAt:z.array(z.iso.datetime({offset:true})).min(1).max(3)})).min(1).max(20)});
