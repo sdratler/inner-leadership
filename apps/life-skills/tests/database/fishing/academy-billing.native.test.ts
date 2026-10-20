@@ -22,11 +22,11 @@ import {academyHostedVersion,type AcademyHostedCommand} from '../../../src/featu
 import {NativeStripeHostedCoordinator,type NativeStripeHostedPolicy} from '../../../src/features/fishing/native-stripe-hosted-bindings.ts';
 import type {StripeTestHostedBinding,StripeTestHostedProvider,StripeTestHostedAction,StripeTestHostedObservation} from '../../../src/features/fishing-payments/ports.ts';
 import type {IdentityStore} from '../../../src/features/identity/store.ts';
-async function fixture(){
+async function fixture(offerHours=24){
  const f=await academyFamilyFixture({termsDocument:'SYNTHETIC BILLING TERMS ONLY',confirmation:{kind:'all_native_dues_paid'}}),applicationId=await f.inquiry();await f.promote(applicationId);const fc=await f.command(applicationId),saved=(await(await f.post(fc)).json()).data.saved;
  const mail=(await f.pool.query("SELECT id,payload_ciphertext FROM ls_identity.auth_mail_outbox WHERE workspace_id=$1 AND account_id=$2 AND kind='invite'",[f.workspaceId,saved.parentAccountId])).rows[0];await f.auth.consumePasswordToken('invite',JSON.parse(unseal(mail.payload_ciphertext,`auth-mail:${f.workspaceId}:${mail.id}`,f.ring)).token,'Ab12cd',randomUUID());const parentToken=await f.passwordLogin(fc.parentEmail),parent=await f.sessions.actor(parentToken),child=saved.children[0];
  const fit=await f.program.recordFit(f.owner,{commandId:randomUUID(),id:randomUUID(),stageId:f.ref.stageId,learnerId:child.learnerId,purpose:'enrollment',decision:'approved',targetOccurrenceId:null,targetRevision:null,note:'PRIVATE_BILLING_FIT'});await f.program.acceptTerms(parent,{commandId:randomUUID(),id:randomUUID(),stageId:f.ref.stageId,learnerId:child.learnerId,householdId:saved.householdId,sourceApprovalId:f.termsId,sourceSha256:f.termsHash});await f.createPlan();
- const offers=new AcademyOfferStore(f.db,f.config,f.store),context=await offers.context(f.owner,applicationId,0,f.ref.stageId);if(context.state!=='ready'||!context.native.preparationSha256)throw Error('ACTUAL_PREPARATION_REQUIRED');const offerId=randomUUID();await offers.execute(f.owner,{version:academyOfferVersion,action:'prepare',operationId:offerId,binding:context.binding,learnerIndex:0,stageId:f.ref.stageId,expectedPreparationSha256:context.native.preparationSha256,holdCommandId:randomUUID(),approvalCommandId:randomUUID(),mode:'installments',expiresAt:f.at(24),dueAt:[f.at(0),f.at(31*24),f.at(62*24)]});
+ const offers=new AcademyOfferStore(f.db,f.config,f.store),context=await offers.context(f.owner,applicationId,0,f.ref.stageId);if(context.state!=='ready'||!context.native.preparationSha256)throw Error('ACTUAL_PREPARATION_REQUIRED');const offerId=randomUUID();await offers.execute(f.owner,{version:academyOfferVersion,action:'prepare',operationId:offerId,binding:context.binding,learnerIndex:0,stageId:f.ref.stageId,expectedPreparationSha256:context.native.preparationSha256,holdCommandId:randomUUID(),approvalCommandId:randomUUID(),mode:'installments',expiresAt:f.at(offerHours),dueAt:[f.at(0),f.at(31*24),f.at(62*24)]});
  // A local pinned mock binding, never a real merchant verification. Do not
  // mutate the retained shared synthetic-api-v1 fixture or relax the app pin.
  const merchant={...f.merchant,apiVersion:'2026-09-30.endive'},provider:SyntheticHostedProvider={execution:'synthetic',binding:merchant,create:op=>f.provider.create(op),readOperation:op=>f.provider.readOperation(op),reconcileReceipt:()=>f.provider.reconcileReceipt()},program=new NativeFishingProgram(f.db,f.ring,{childAccountsEnabled:false,merchant}),paymentStore=new FishingPaymentStore({database:f.db,clock:systemClock,merchant,provider,authority:{...program.paymentApprovalAuthority(),withdrawalFacts:async()=>{throw Error('POLICY_REQUIRED');},reminderPolicy:async()=>{throw Error('POLICY_REQUIRED');}}}),payments=new FishingPaymentService(paymentStore);
@@ -39,8 +39,8 @@ async function fixture(){
 
 /** All merchant/customer/admission/provider evidence below is synthetic.
  * Ordinary saved family, password actors, HTTP, SQL/binder and journals are real. */
-async function hostedFixture(){
- const f=await fixture();expect((await f.post()).status).toBe(200);const bills=(await(await f.get(f.parentToken,f.parentQuery)).json()).data,purchaseId=bills.payments[0].purchaseId,merchant:StripeTestHostedBinding={...f.paymentStore.deps.merchant!,livemode:false,apiVersion:'2026-09-30.endive'},bindingId=randomUUID(),customerId='cus_SYNTHETIC_'+randomUUID().replaceAll('-',''),invoiceId='in_SYNTHETIC_'+randomUUID().replaceAll('-','');
+async function hostedFixture(offerHours=24){
+ const f=await fixture(offerHours);expect((await f.post()).status).toBe(200);const bills=(await(await f.get(f.parentToken,f.parentQuery)).json()).data,purchaseId=bills.payments[0].purchaseId,merchant:StripeTestHostedBinding={...f.paymentStore.deps.merchant!,livemode:false,apiVersion:'2026-09-30.endive'},bindingId=randomUUID(),customerId='cus_SYNTHETIC_'+randomUUID().replaceAll('-',''),invoiceId='in_SYNTHETIC_'+randomUUID().replaceAll('-','');
  await f.pool.query("INSERT INTO ls_fishing_payments.customer_bindings(workspace_id,id,revision,payer_account_id,provider_account_id,livemode,customer_id,merchant_binding_id,api_version,provenance_reference,verified_at) VALUES($1,$2,1,$3,$4,false,$5,$6,$7,'SYNTHETIC_NOT_ACTUAL_PROVIDER_PROOF',clock_timestamp()-interval '1 minute')",[f.workspaceId,bindingId,f.parent.id,merchant.accountId,customerId,merchant.verifiedBindingId,merchant.apiVersion]);
  let transactions=0,status:StripeTestHostedObservation['status']='draft',hasLine=false,closeAllowed=false;const db:IdentityStore={transaction:async work=>{transactions++;try{return await f.db.transaction(work);}finally{transactions--;}}},calls:StripeTestHostedAction[]=[],lost=new Set<string>();let hook:((action:StripeTestHostedAction)=>Promise<void>)|null=null;
  const policy:NativeStripeHostedPolicy={hosted:async(_c,p)=>({revision:'a'.repeat(64),linkExpiresAt:p.offer.expiresAt,laterDuePolicy:null}),closure:async()=>{if(!closeAllowed)throw Error('SYNTHETIC_CLOSURE_NOT_ADMITTED');return {decisionId:'SYNTHETIC_CLOSE',revision:'c'.repeat(64)};}};
@@ -110,8 +110,8 @@ test('a pending owner closure blocks parent replay and new dispatch, while retai
 });
 
 
-async function cleanupFixture(){
- const f=await hostedFixture();expect((await(await f.postHosted()).json()).data.state).toBe('ready');const hostedOperationId=(await f.pool.query('SELECT id FROM ls_fishing_payments.operations WHERE workspace_id=$1',[f.workspaceId])).rows[0].id as string;
+async function cleanupFixture(offerHours=24){
+ const f=await hostedFixture(offerHours);expect((await(await f.postHosted()).json()).data.state).toBe('ready');const hostedOperationId=(await f.pool.query('SELECT id FROM ls_fishing_payments.operations WHERE workspace_id=$1',[f.workspaceId])).rows[0].id as string;
  const command={version:academyHostedVersion,action:'close' as 'close'|'close_expired',operationId:randomUUID(),hostedOperationId};
  const post=(value:unknown=command,token=f.token,headers:Record<string,string>={},target=f.hosted)=>f.postHosted(value,token,{'idempotency-key':command.operationId,...headers},target);
  return {...f,cleanupCommand:command,postCleanup:post};
@@ -130,8 +130,8 @@ test('explicit owner cleanup recovers a lost void only by known-ID read after gu
 });
 
 test('close-expired checks actual approved link expiry and needs its separate explicit owner policy',async()=>{
- const f=await cleanupFixture();f.allowClose();const command={...f.cleanupCommand,action:'close_expired' as const},count=f.calls.length;expect((await f.postCleanup(command)).status).toBe(409);expect(f.calls).toHaveLength(count);
- const clock={now:()=>new Date(Date.now()+25*60*60*1000)},expired=new AcademyHostedStore(f.db,f.config,f.familyStore,{merchant:f.provider.binding,provider:f.provider,policy:f.policy},clock),response=await f.postCleanup(command,f.token,{},expired);expect(response.status).toBe(200);expect((await response.json()).data).toEqual({state:'closed'});expect(f.calls.filter(a=>a.phase==='close')).toHaveLength(1);
+ const f=await cleanupFixture(1);f.allowClose();const command={...f.cleanupCommand,action:'close_expired' as const},count=f.calls.length;expect((await f.postCleanup(command)).status).toBe(409);expect(f.calls).toHaveLength(count);
+ const clock={now:()=>new Date(Date.now()+2*60*60*1000)},expired=new AcademyHostedStore(f.db,f.config,f.familyStore,{merchant:f.provider.binding,provider:f.provider,policy:f.policy},clock),response=await f.postCleanup(command,f.token,{},expired);expect(response.status).toBe(200);expect((await response.json()).data).toEqual({state:'closed'});expect(f.calls.filter(a=>a.phase==='close')).toHaveLength(1);
 });
 
 test('cleanup HTTP keeps ordinary role, CSRF, origin, immutable key and unavailable admission boundaries',async()=>{
