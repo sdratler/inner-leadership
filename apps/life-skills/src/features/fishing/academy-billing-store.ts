@@ -25,8 +25,14 @@ export class AcademyBillingStore{
   const payments:Extract<AcademyBillingContext,{state:'ready'}>['payments']=[],actions:Extract<AcademyBillingContext,{state:'ready'}>['actions']=[];let links:Extract<AcademyBillingContext,{state:'ready'}>['links']=this.admitted()?'ready':'not_admitted';
   for(const row of rows){const p=await store.read(actor,c=>store.purchase(c,row.id)),line=p.line;if(line.learnerId!==family.learnerId||line.stageId!==stageId||p.offer.householdId!==family.householdId||p.offer.payerAccountId!==family.parentAccountId)continue;const payment=await store.familyView(actor,row.id);payments.push(payment);if(payment.state==='reconciliation_required'){links='review_required';continue;}
    if(actor.role!=='parent'||!this.admitted())continue;
-   const operations=await tx.query<{id:string}>("SELECT id FROM ls_fishing_payments.operations WHERE workspace_id=$1 AND purchase_id=$2 AND kind='hosted_invoice' ORDER BY id LIMIT 4",[actor.workspaceId,row.id]);if(operations.length>3)throw new AppError('UNAVAILABLE');
-   for(const op of operations){try{const action=await service.familyHostedAction(actor,op.id);if(action)actions.push(action);}catch{links='review_required';}}
+   const operations=await tx.query<{id:string;stripeTestHosted:boolean}>("SELECT o.id,EXISTS(SELECT 1 FROM ls_fishing_payments.commands c WHERE c.workspace_id=o.workspace_id AND c.action='stripe-test.hosted.intent' AND c.command_id=o.id::text) AS \"stripeTestHosted\" FROM ls_fishing_payments.operations o WHERE o.workspace_id=$1 AND o.purchase_id=$2 AND o.kind='hosted_invoice' ORDER BY o.id LIMIT 4",[actor.workspaceId,row.id]);if(operations.length>3)throw new AppError('UNAVAILABLE');
+   for(const op of operations){
+    // TEST journal-owned invoices require fresh provider readback and Root's
+    // publication lifecycle checks in a separate request outside this SQL TX.
+    // The legacy confirmed result cannot bypass closing or binding revocation.
+    if(op.stripeTestHosted){links='review_required';continue;}
+    try{const action=await service.familyHostedAction(actor,op.id);if(action)actions.push(action);}catch{links='review_required';}
+   }
   }
   return {payments,actions,links};
  }

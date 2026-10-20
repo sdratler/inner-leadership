@@ -15,6 +15,7 @@ import {FishingPaymentStore} from '../../../src/features/fishing-payments/store.
 import {FishingPaymentService} from '../../../src/features/fishing-payments/service.ts';
 import type {SyntheticHostedProvider} from '../../../src/features/fishing-payments/ports.ts';
 import {systemClock} from '../../../src/features/identity/types.ts';
+import {digest} from '../../../src/features/fishing-payments/domain.ts';
 async function fixture(){
  const f=await academyFamilyFixture({termsDocument:'SYNTHETIC BILLING TERMS ONLY',confirmation:{kind:'all_native_dues_paid'}}),applicationId=await f.inquiry();await f.promote(applicationId);const fc=await f.command(applicationId),saved=(await(await f.post(fc)).json()).data.saved;
  const mail=(await f.pool.query("SELECT id,payload_ciphertext FROM ls_identity.auth_mail_outbox WHERE workspace_id=$1 AND account_id=$2 AND kind='invite'",[f.workspaceId,saved.parentAccountId])).rows[0];await f.auth.consumePasswordToken('invite',JSON.parse(unseal(mail.payload_ciphertext,`auth-mail:${f.workspaceId}:${mail.id}`,f.ring)).token,'Ab12cd',randomUUID());const parentToken=await f.passwordLogin(fc.parentEmail),parent=await f.sessions.actor(parentToken),child=saved.children[0];
@@ -51,4 +52,14 @@ test('parent receives only an actual confirmed native hosted link; pending opera
  await f.pool.query("UPDATE ls_fishing_payments.operations SET operation_json=jsonb_set(operation_json,'{state}','\"unknown\"'::jsonb) WHERE workspace_id=$1 AND id=$2",[f.workspaceId,operation.id]);const unknown=(await(await f.get(f.parentToken,f.parentQuery)).json()).data;expect(unknown.payments[0].state).toBe('reconciliation_required');expect(unknown.links).toBe('review_required');expect(unknown.actions).toEqual([]);await f.pool.query('UPDATE ls_fishing_payments.operations SET operation_json=$3::jsonb WHERE workspace_id=$1 AND id=$2',[f.workspaceId,operation.id,JSON.stringify(operation)]);
  await f.program.recordFit(f.owner,{commandId:randomUUID(),id:randomUUID(),stageId:f.ref.stageId,learnerId:f.child.learnerId,purpose:'enrollment',decision:'rejected',targetOccurrenceId:null,targetRevision:null,note:'PRIVATE_BILLING_NEW_REVIEW'});const changed=(await(await f.get(f.parentToken,f.parentQuery)).json()).data;expect(changed.payments).toHaveLength(1);expect(changed.actions).toEqual([]);expect(changed.links).toBe('review_required');expect(JSON.stringify(changed)).not.toContain('PRIVATE_BILLING_NEW_REVIEW');
  const discovery=new URLSearchParams({view:'parent',learnerId:f.child.learnerId}),ownGroups=(await(await f.get(f.parentToken,discovery)).json()).data;expect(ownGroups).toMatchObject({stageId:null,groups:[{stageId:f.ref.stageId,label:f.cohortCommand.label}],payments:[],actions:[]});
+});
+
+test('ordinary billing never projects a TEST journal-owned invoice through the legacy cached-URL path, even with an injected merchant',async()=>{
+ const f=await fixture();expect((await f.post()).status).toBe(200);const before=await f.protectedRows(),data=(await(await f.get(f.parentToken,f.parentQuery)).json()).data,purchaseId=data.payments[0].purchaseId,state=(await f.paymentStore.readPayment(f.owner,purchaseId))!,reserved=await f.payments.beginHosted(f.parent,randomUUID(),purchaseId,state.dues[0]!.id),operation=await f.payments.executeSynthetic(f.parent,randomUUID(),reserved.id);
+ expect((await(await f.get(f.parentToken,f.parentQuery)).json()).data.actions).toHaveLength(1);
+ // Failure injection only: this intentionally incomplete private intent is a
+ // DENIAL fence. It cannot establish approval, mapping or real provider proof.
+ // The separate coordinator native suite proves actual valid phase journals.
+ const marker={syntheticDenialFenceOnly:true};await f.pool.query("INSERT INTO ls_fishing_payments.commands(workspace_id,actor_id,action,command_id,digest,result_json,created_at) VALUES($1,$2,'stripe-test.hosted.intent',$3,$4,$5::jsonb,clock_timestamp())",[f.workspaceId,f.owner.id,operation.id,digest(marker),JSON.stringify(marker)]);
+ const guarded=(await(await f.get(f.parentToken,f.parentQuery)).json()).data;expect(guarded.payments).toHaveLength(1);expect(guarded.actions).toEqual([]);expect(guarded.links).toBe('review_required');const readonly=(await(await f.get(f.parentToken,f.parentQuery,f.readonly)).json()).data;expect(readonly.actions).toEqual([]);expect(readonly.links).toBe('not_admitted');expect(await f.protectedRows()).toEqual(before);
 });
