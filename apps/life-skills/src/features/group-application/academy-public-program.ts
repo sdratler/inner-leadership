@@ -3,7 +3,8 @@ import bilingual from "./academy-bilingual-copy.json";
 import copy from "./jlfa-core-copy.json";
 export type AcademyText=Readonly<{en:string;he:string}>;
 const text=(en:string,he:string):AcademyText=>({en,he});
-const node=(index:number):AcademyText=>copy.nodes[index]!;
+// Apply the current public amendment without rewriting the historical source.
+const node=(index:number):AcademyText=>{const n=copy.nodes[index]!;return text(n.en.replaceAll('teaching a knot without taking over','teaching a knot through encouragement, guidance and teamwork').replaceAll('help another learner without taking over','help other boys develop their skills through encouragement, guidance, and teamwork').replaceAll('helping someone without taking over','helping others develop their skills through encouragement, guidance, and teamwork').replaceAll('Contributing without taking over','Encouragement, guidance and teamwork'),n.he.replaceAll('לימוד קשר בלי להשתלט על המשימה','לימוד קשר באמצעות עידוד, הכוונה ועבודת צוות').replaceAll('עוזרים ללומד אחר בלי להשתלט','עוזרים לבנים אחרים לפתח את המיומנויות שלהם באמצעות עידוד, הכוונה ועבודת צוות').replaceAll('עזרה למישהו בלי להשתלט','עזרה לאחרים לפתח מיומנויות באמצעות עידוד, הכוונה ועבודת צוות').replaceAll('תורמים בלי להשתלט','עידוד, הכוונה ועבודת צוות'));};
 
 /** Curated PUBLIC Website03/V4 material only, never instructor keys or a native
  * cohort schedule. No approved map of 48 weekly venue/topic records was supplied.
@@ -12,7 +13,7 @@ const legacyStages=[
  {slug:"foundation",number:1,title:text("Foundation Angler","דייג מתחיל"),theme:text("Making Connections, Tying Knots","יוצרים חיבורים, קושרים קשרים"),summary:text("Get to know your gear, organise your tackle and prepare for supervised fishing.","מכירים את הציוד, מארגנים את ארגז הדיג ומתכוננים לדיג בהשגחה."),paragraphs:[node(27),node(28),node(29),node(30)]},
  {slug:"independent",number:2,title:text("Independent Angler","דייג עצמאי"),theme:text("Free-lining, bottom fishing and changing conditions","דיג בחוט חופשי, דיג קרקעית ותנאים משתנים"),summary:text("Make more of your own setup decisions, compare approaches and explain your choices.","מקבלים יותר החלטות בהכנת הציוד, משווים גישות ומסבירים את הבחירות."),paragraphs:[node(32),node(33),node(34),node(35)]},
  {slug:"advanced",number:3,title:text("Advanced Angler","דייג מתקדם"),theme:text("Understanding the system","מבינים את המערכת"),summary:text("Read changing conditions, investigate what happened and adapt with a reasoned plan.","קוראים תנאים משתנים, בודקים מה קרה ומתאימים תוכנית מתוך שיקול דעת."),paragraphs:[node(37),node(38),node(39),node(40)]},
- {slug:"leadership",number:4,title:text("Leadership Angler","דייג מנהיג"),theme:text("Contributing without taking over","תורמים בלי להשתלט"),summary:text("Explain, demonstrate and support another learner while practising shared responsibility.","מסבירים, מדגימים ותומכים בלומד נוסף תוך תרגול אחריות משותפת."),paragraphs:[node(42),node(43),node(44),node(45)]},
+ {slug:"leadership",number:4,title:text("Leadership Angler","דייג מנהיג"),theme:text("Encouragement, guidance and teamwork","עידוד, הכוונה ועבודת צוות"),summary:text("Explain, demonstrate and support another learner while practising shared responsibility.","מסבירים, מדגימים ותומכים בלומד נוסף תוך תרגול אחריות משותפת."),paragraphs:[node(42),node(43),node(44),node(45)]},
 ] as const;
 export const academyStages=legacyStages.map((stage,index)=>({...stage,...bilingual.stages[index]!,number:stage.number,paragraphs:stage.paragraphs}));
 export type AcademyStage=(typeof academyStages)[number];
