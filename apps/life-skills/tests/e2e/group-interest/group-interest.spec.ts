@@ -666,8 +666,8 @@ if(!runtimePath){
   await page.route(searchRoute,async route=>{attempts.push(new URL(route.request().url()).searchParams.get("search")??"");if(attempts.length===1)await route.fulfill({status:503,contentType:"application/json",body:JSON.stringify({ok:false,error:{code:"UNAVAILABLE"}})});else await route.continue();});
   try{
    const search=page.getByRole("search");await search.getByRole("searchbox").fill(data.publicApplicantName);await search.getByRole("button",{name:locale==="he"?"חיפוש":"Search",exact:true}).click();
-   await expect(page.getByRole("alert")).toContainText(locale==="he"?"לא ניתן לטעון את הפניות":"Inquiries could not be loaded");
-   await page.getByRole("button",{name:locale==="he"?"ניסיון נוסף":"Try again",exact:true}).click();await expect(record).toHaveCount(1);await expect(page.getByRole("alert")).toHaveCount(0);expect(attempts).toEqual([data.publicApplicantName,data.publicApplicantName]);
+   await expect(page.locator('main').getByRole("alert")).toContainText(locale==="he"?"לא ניתן לטעון את הפניות":"Inquiries could not be loaded");
+   await page.getByRole("button",{name:locale==="he"?"ניסיון נוסף":"Try again",exact:true}).click();await expect(record).toHaveCount(1);await expect(page.locator('main').getByRole("alert")).toHaveCount(0);expect(attempts).toEqual([data.publicApplicantName,data.publicApplicantName]);
   }finally{await page.unroute(searchRoute);}
   const details=record.locator("details").filter({has:page.getByText(locale==="he"?"הערה על זמנים":"Scheduling note",{exact:true})});await expect(details).not.toHaveAttribute("open","");await details.locator("summary").click();await expect(details).toHaveAttribute("open","");await expect(details).toContainText("Synthetic scheduling details only.");
   const views=page.getByRole("navigation",{name:locale==="he"?"תצוגות הדף הנוכחי":"Current page views"});await expect(views.getByRole("link",{name:locale==="he"?"בקשות לקבוצה":"Group applications",exact:true})).toHaveAttribute("aria-current","page");
