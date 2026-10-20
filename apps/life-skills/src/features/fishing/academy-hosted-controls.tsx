@@ -5,9 +5,9 @@ import type {FamilyPaymentView} from '../fishing-payments/domain.ts';
 import {IdentityClientError,sessionInfo} from '../identity/client.ts';
 import {UnsavedChangesGuard} from '../../ui/workspace/draft-guard.tsx';
 import {academyHostedVersion,readAcademyHostedResult,type AcademyHostedCommand} from './academy-hosted-contract.ts';
-type Props={locale:Locale;learnerId:string;stageId:string;payments:readonly FamilyPaymentView[];onLockedChange:(value:boolean)=>void;onBack:()=>void};
+type Props={locale:Locale;learnerId:string;stageId:string;payments:readonly FamilyPaymentView[];onLockedChange:(value:boolean)=>void;onBack:()=>void;onAccessDenied:()=>void};
 class HostedRequestError extends Error{constructor(readonly status:number){super('HOSTED_REQUEST_FAILED');}}
-export function AcademyHostedControls({locale,learnerId,stageId,payments,onLockedChange,onBack}:Props){
+export function AcademyHostedControls({locale,learnerId,stageId,payments,onLockedChange,onBack,onAccessDenied}:Props){
  const t=(en:string,he:string)=>locale==='he'?he:en,[pending,setPending]=useState<{command:AcademyHostedCommand;body:string}|null>(null),[busy,setBusy]=useState(false),[failed,setFailed]=useState(false),[review,setReview]=useState(false),[blocked,setBlocked]=useState(false),[destination,setDestination]=useState<string|null>(null),flight=useRef(false);
  useEffect(()=>{onLockedChange(busy||pending!==null||destination!==null);return()=>onLockedChange(false);},[busy,pending,destination,onLockedChange]);
  useEffect(()=>{if(!destination)return;const id=window.setTimeout(()=>window.location.assign(destination),0);return()=>window.clearTimeout(id);},[destination]);
@@ -18,7 +18,7 @@ export function AcademyHostedControls({locale,learnerId,stageId,payments,onLocke
    // Clear the navigation warning before a later browser task navigates. No
    // provider URL is cached in storage, rendered as a stale link or reused.
    setPending(null);setDestination(result.action.url);
-  }catch(error){setFailed(true);if(error instanceof IdentityClientError&&['UNAUTHENTICATED','FORBIDDEN'].includes(error.code)||error instanceof HostedRequestError&&[400,401,403,404,409].includes(error.status)){setPending(null);setBlocked(true);}}
+  }catch(error){setFailed(true);if(error instanceof IdentityClientError&&['UNAUTHENTICATED','FORBIDDEN'].includes(error.code)||error instanceof HostedRequestError&&[401,403,404].includes(error.status)){setPending(null);onAccessDenied();}else if(error instanceof HostedRequestError&&[400,409].includes(error.status)){setPending(null);setBlocked(true);}}
   finally{flight.current=false;setBusy(false);}
  };
  const request=(purchaseId:string,dueIndex:number)=>{if(busy||pending||blocked||destination)return;const command:AcademyHostedCommand={version:academyHostedVersion,action:'request',operationId:crypto.randomUUID(),learnerId,stageId,purchaseId,dueIndex},next={command,body:JSON.stringify(command)};setPending(next);void send(next);};

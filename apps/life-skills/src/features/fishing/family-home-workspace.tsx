@@ -16,7 +16,7 @@ import {fishingFamilyContext,fishingFamilyHref,fishingNextTrip,type FishingFamil
 
 type Read={key:string;choices:FishingCalendarChoices;home:FishingFamilyHome|null};
 export function FishingFamilyHomeWorkspace({locale}:{locale:Locale}){
- const router=useRouter(),pathname=usePathname(),search=useSearchParams().toString(),[read,setRead]=useState<Read|null>(null),[failure,setFailure]=useState(''),[refresh,setRefresh]=useState(0);
+ const router=useRouter(),pathname=usePathname(),search=useSearchParams().toString(),[read,setRead]=useState<Read|null>(null),[failure,setFailure]=useState(''),[refresh,setRefresh]=useState(0),[locked,setLocked]=useState(false);
  const t=(en:string,he:string)=>locale==='he'?he:en,key=JSON.stringify([pathname,search,refresh]),value=read?.key===key?read:null;
  useEffect(()=>{
   let live=true;const timer=window.setTimeout(()=>{
@@ -37,19 +37,20 @@ export function FishingFamilyHomeWorkspace({locale}:{locale:Locale}){
   },0);return()=>{live=false;window.clearTimeout(timer);};
  },[key,locale,pathname,search,router]);
  const context=fishingFamilyContext(new URLSearchParams(search)),home=value?.home??null,choices=value?.choices??null,next=home?fishingNextTrip(home.view):null;
- const chooseChild=(id:string)=>{if(!choices?.children.some(c=>c.learnerId===id))return;setRead(null);setFailure('');router.replace('/'+locale+'/family?'+new URLSearchParams({fishing:'1',learnerId:id}));};
- const chooseStage=(id:string)=>{const stage=choices?.stages.find(s=>s.enrollmentId===id);if(!stage)return;setRead(null);setFailure('');router.replace('/'+locale+'/family?fishing=1&'+fishingCalendarSearch({learnerId:stage.learnerId,enrollmentId:stage.enrollmentId,reference:{cohortId:stage.cohortId,stageId:stage.stageId,stage:stage.stage}}));};
+ const chooseChild=(id:string)=>{if(locked||!choices?.children.some(c=>c.learnerId===id))return;setRead(null);setFailure('');router.replace('/'+locale+'/family?'+new URLSearchParams({fishing:'1',learnerId:id}));};
+ const chooseStage=(id:string)=>{if(locked)return;const stage=choices?.stages.find(s=>s.enrollmentId===id);if(!stage)return;setRead(null);setFailure('');router.replace('/'+locale+'/family?fishing=1&'+fishingCalendarSearch({learnerId:stage.learnerId,enrollmentId:stage.enrollmentId,reference:{cohortId:stage.cohortId,stageId:stage.stageId,stage:stage.stage}}));};
+ const refreshDetails=()=>{if(locked)return;setRead(null);setRefresh(n=>n+1);};
  const format=(v:string)=>new Intl.DateTimeFormat(locale==='he'?'he-IL':'en-US',{timeZone:'America/New_York',dateStyle:'medium',timeStyle:'short'}).format(new Date(v));
  const calendar=context?fishingFamilyHref(locale,'family/schedule',context):'/'+locale+'/family/schedule?fishing=1';
  return <main className="lsw-stack lsw-home" data-academy-family-home lang={locale} dir={locale==='he'?'rtl':'ltr'}>
-  <header className="lsw-page-header"><div><p className="lsw-eyebrow">{t('South Florida Jewish Leadership Fishing Academy','האקדמיה היהודית למנהיגות ודיג בדרום פלורידה')}</p><h1>{t('Your fishing academy','האקדמיה שלכם לדיג')}</h1><p>{t('Your next trip, your child’s progress and stage payments.','הטיול הבא, התקדמות ילדכם ותשלומי השלב.')}</p></div><Button variant="secondary" onClick={()=>{setRead(null);setRefresh(n=>n+1);}}>{t('Refresh details','רענון הפרטים')}</Button></header>
-  {failure===key?<section className="lsu-state lsu-state--error" role="alert"><p>{t('Your Academy information could not be read.','לא ניתן לקרוא את פרטי האקדמיה שלכם.')}</p><Button onClick={()=>{setRead(null);setRefresh(n=>n+1);}}>{t('Try again','ניסיון נוסף')}</Button></section>:!value?<p role="status">{t('Loading your Academy…','טוען את האקדמיה שלכם…')}</p>:choices?.availability==='not_configured'?<p>{t('Academy access is not available yet.','הגישה לאקדמיה עדיין אינה זמינה.')}</p>:<>
+  <header className="lsw-page-header"><div><p className="lsw-eyebrow">{t('South Florida Jewish Leadership Fishing Academy','האקדמיה היהודית למנהיגות ודיג בדרום פלורידה')}</p><h1>{t('Your fishing academy','האקדמיה שלכם לדיג')}</h1><p>{t('Your next trip, your child’s progress and stage payments.','הטיול הבא, התקדמות ילדכם ותשלומי השלב.')}</p></div><Button variant="secondary" disabled={locked} onClick={refreshDetails}>{t('Refresh details','רענון הפרטים')}</Button></header>
+  {failure===key?<section className="lsu-state lsu-state--error" role="alert"><p>{t('Your Academy information could not be read.','לא ניתן לקרוא את פרטי האקדמיה שלכם.')}</p><Button disabled={locked} onClick={refreshDetails}>{t('Try again','ניסיון נוסף')}</Button></section>:!value?<p role="status">{t('Loading your Academy…','טוען את האקדמיה שלכם…')}</p>:choices?.availability==='not_configured'?<p>{t('Academy access is not available yet.','הגישה לאקדמיה עדיין אינה זמינה.')}</p>:<>
    <section className="lsu-panel lsw-stack" aria-label={t('Your child and stage','ילדכם והשלב שלו')}>
-    <Select id="academy-home-child" label={t('Choose your child','בחירת ילדכם')} value={choices?.selectedLearnerId??''} onChange={e=>chooseChild(e.target.value)}><option value="">{t('Choose a child','בחרו ילד')}</option>{choices?.children.map(c=><option key={c.learnerId} value={c.learnerId}>{c.displayName}</option>)}</Select>
-    {choices?.selectedLearnerId&&<Select id="academy-home-stage" label={t('Stage enrollment','רישום לשלב')} value={home?.selection.enrollmentId??''} onChange={e=>chooseStage(e.target.value)}><option value="">{t('Choose a stage','בחרו שלב')}</option>{choices.stages.map(s=><option key={s.enrollmentId} value={s.enrollmentId??''}>{s.label} · {t('Stage','שלב')} {s.stage}</option>)}</Select>}
+    <Select id="academy-home-child" disabled={locked} label={t('Choose your child','בחירת ילדכם')} value={choices?.selectedLearnerId??''} onChange={e=>chooseChild(e.target.value)}><option value="">{t('Choose a child','בחרו ילד')}</option>{choices?.children.map(c=><option key={c.learnerId} value={c.learnerId}>{c.displayName}</option>)}</Select>
+    {choices?.selectedLearnerId&&<Select id="academy-home-stage" disabled={locked} label={t('Stage enrollment','רישום לשלב')} value={home?.selection.enrollmentId??''} onChange={e=>chooseStage(e.target.value)}><option value="">{t('Choose a stage','בחרו שלב')}</option>{choices.stages.map(s=><option key={s.enrollmentId} value={s.enrollmentId??''}>{s.label} · {t('Stage','שלב')} {s.stage}</option>)}</Select>}
     {choices?.selectedLearnerId&&!choices.stages.length&&<p>{t('No confirmed stage is available for this child.','אין שלב מאושר זמין לילד זה.')}</p>}
    </section>
-   {choices?.selectedLearnerId&&<AcademyEnrollmentControls key={choices.selectedLearnerId} learnerId={choices.selectedLearnerId} locale={locale}/>}
+   {choices?.selectedLearnerId&&<AcademyEnrollmentControls key={choices.selectedLearnerId} learnerId={choices.selectedLearnerId} locale={locale} onLockedChange={setLocked}/>}
    {home&&<>
     <section className="lsu-panel lsw-stack" aria-label={t('Next fishing trip','טיול הדיג הבא')}><h2>{t('Next fishing trip','טיול הדיג הבא')}</h2>{next&&next.time.kind==='scheduled'?<>
      <h3>{t('Session','מפגש')} {next.ordinal}</h3><p><time dateTime={next.time.startsAt}>{format(next.time.startsAt)}</time> – <time dateTime={next.time.endsAt}>{format(next.time.endsAt)}</time> · <bdi>America/New_York</bdi></p>

@@ -1,5 +1,5 @@
 'use client';
-import {useRef,useState,type FormEvent} from 'react';
+import {useEffect,useRef,useState,type FormEvent} from 'react';
 import type {Locale} from '../../lib/locale.ts';
 import {sessionInfo,IdentityClientError} from '../identity/client.ts';
 import {academyEnrollmentVersion,academyEnrollmentCommandSchema,type AcademyEnrollmentContext,type AcademyEnrollmentCommand} from './academy-enrollment-contract.ts';
@@ -8,9 +8,10 @@ import {AcademyBillingControls} from './academy-billing-controls.tsx';
 const endpoint='/api/private/group-applications/enrollment';
 class EnrollmentRequestError extends Error{constructor(readonly status:number){super('ACADEMY_ENROLLMENT_REQUEST_FAILED');}}
 async function request<T>(url:string,init:RequestInit={}){const response=await fetch(url,{...init,credentials:'same-origin',cache:'no-store',redirect:'error',referrerPolicy:'no-referrer'});const body=await response.json() as {ok:boolean;data:T};if(!response.ok||body.ok!==true)throw new EnrollmentRequestError(response.status);return body.data;}
-type Props={locale:Locale;denied?:(status:number)=>void}&({applicationId:string;learnerId?:never}|{learnerId:string;applicationId?:never});
-export function AcademyEnrollmentControls({locale,denied,applicationId,learnerId}:Props){
+type Props={locale:Locale;denied?:(status:number)=>void;onLockedChange?:(value:boolean)=>void}&({applicationId:string;learnerId?:never}|{learnerId:string;applicationId?:never});
+export function AcademyEnrollmentControls({locale,denied,applicationId,learnerId,onLockedChange}:Props){
  const t=(en:string,he:string)=>locale==='he'?he:en,[context,setContext]=useState<AcademyEnrollmentContext|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(false),[conflict,setConflict]=useState(false),[pending,setPending]=useState<{command:AcademyEnrollmentCommand;body:string}|null>(null),[selectedChild,setSelectedChild]=useState(''),[selectedStage,setSelectedStage]=useState(''),[saved,setSaved]=useState(false),[offerLocked,setOfferLocked]=useState(false),version=useRef(0);
+ useEffect(()=>{onLockedChange?.(busy||pending!==null||offerLocked);return()=>onLockedChange?.(false);},[busy,pending,offerLocked,onLockedChange]);
  const accessDenied=(status:number)=>{setContext(null);setPending(null);setSaved(false);denied?.(status);};
  const load=async()=>{const v=++version.current;setBusy(true);setError(false);try{const result=await request<AcademyEnrollmentContext>(endpoint+'?'+(applicationId?'applicationId='+applicationId:'learnerId='+learnerId));if(v!==version.current)return;setContext(result);setPending(null);setConflict(false);}catch(e){if(v!==version.current)return;setContext(null);setError(true);if(e instanceof EnrollmentRequestError&&[401,403].includes(e.status))accessDenied(e.status);}finally{if(v===version.current)setBusy(false);}};
  const send=async(value:NonNullable<typeof pending>)=>{if(busy)return;setBusy(true);setError(false);try{const session=await sessionInfo();await request(endpoint,{method:'POST',headers:{'content-type':'application/json','x-csrf-token':session.csrfToken,'idempotency-key':value.command.operationId},body:value.body});setPending(null);setSaved(true);setBusy(false);await load();}catch(e){setError(true);if(e instanceof IdentityClientError&&['UNAUTHENTICATED','FORBIDDEN'].includes(e.code))accessDenied(e.code==='UNAUTHENTICATED'?401:403);if(e instanceof EnrollmentRequestError){if([401,403].includes(e.status))accessDenied(e.status);else if(e.status===409||e.status===404){setPending(null);setConflict(true);}}}finally{setBusy(false);}};
