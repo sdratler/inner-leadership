@@ -8,6 +8,11 @@ import {afterEach,expect,test,vi} from 'vitest';
 vi.mock('server-only',()=>({}));
 import {programFixture,type ProgramFixture} from '../fishing/native-program-fixture.ts';
 import {NativeFishingProgram} from '../../../src/features/fishing/native-program.ts';
+import {AcademyHostedStore} from '../../../src/features/fishing/academy-hosted-store.ts';
+import {academyHostedVersion} from '../../../src/features/fishing/academy-hosted-contract.ts';
+import {AcademyFamilyStore} from '../../../src/features/fishing/academy-family-store.ts';
+import {PublicGroupApplicationStore} from '../../../src/features/group-application/store.ts';
+import {FishingLeadStore} from '../../../src/features/contact-ops/server/fishing-lead-store.ts';
 import {NativeStripeReceiptBindings} from '../../../src/features/fishing/native-stripe-bindings.ts';
 import {FishingPaymentStore} from '../../../src/features/fishing-payments/store.ts';
 import {FishingReceiptInbox} from '../../../src/features/fishing-payments/receipts.ts';
@@ -54,7 +59,7 @@ async function fixture(options:{allDues?:boolean;targetMissing?:boolean}={}){
  async function receipt(objectId=ids.session){const eventId='evt_'+randomUUID().replaceAll('-',''),created=Math.floor(Date.now()/1000),event:Wire={id:eventId,object:'event',type:'checkout.session.completed',account:merchant.accountId,livemode:false,api_version:merchant.apiVersion,created,data:{object:{id:objectId,object:'checkout.session',private:CANARY}}},body=JSON.stringify(event),signature=Stripe.webhooks.generateTestHeaderString({payload:body,secret:endpointSecret,timestamp:created});await inbox.acceptStripeTest(Buffer.from(body),signature);client.objects.set('event:'+eventId,event);return {eventId,body,signature};}
  const ledger=async()=>Number((await f.pool.query('SELECT count(*) AS n FROM ls_fishing_payments.settlements WHERE workspace_id=$1',[f.workspaceId])).rows[0].n),enrollments=async()=> (await f.pool.query('SELECT id,revision,state FROM ls_fishing_stage.enrollments WHERE workspace_id=$1 AND purchase_id=$2',[f.workspaceId,prepared.purchaseId])).rows;
  const protectedRows=()=>Promise.all(['ls_payments.charges','ls_payments.credit_events','ls_calendar.tasks','ls_contact_ops.outbound_projections','ls_identity.auth_mail_outbox'].map(async table=>({table,rows:(await f.pool.query(`SELECT to_jsonb(t) AS row FROM ${table} t WHERE workspace_id=$1 ORDER BY to_jsonb(t)::text`,[f.workspaceId])).rows})));
- return {...f,createFamily:f.family,family,prepared,merchant,program,store,coordinator,provider,inbox,processor,fulfillmentPolicy,client,context,open,ids,invoice,intent,charge,receipt,ledger,enrollments,protectedRows,allowTarget:()=>{targetMissing=false;},revokeGuardian:()=>f.pool.query('UPDATE ls_education.guardian_authorities SET active=false WHERE workspace_id=$1 AND learner_id=$2',[f.workspaceId,family.learnerId]),newProcessor:()=>new StripeTestCheckoutFulfillment(store,coordinator,provider,inbox,program,fulfillmentPolicy)};
+ return {...f,createFamily:f.family,family,prepared,merchant,program,store,coordinator,provider,inbox,processor,checkoutPolicy,endpoint,endpointSecret,fulfillmentPolicy,client,context,open,ids,invoice,intent,charge,receipt,ledger,enrollments,protectedRows,allowTarget:()=>{targetMissing=false;},revokeGuardian:()=>f.pool.query('UPDATE ls_education.guardian_authorities SET active=false WHERE workspace_id=$1 AND learner_id=$2',[f.workspaceId,family.learnerId]),newProcessor:()=>new StripeTestCheckoutFulfillment(store,coordinator,provider,inbox,program,fulfillmentPolicy)};
 }
 
 test('signed minimal receipt -> known mock read -> exactly one actual native cash allocation -> current native enrollment -> ordinary parent balance',async()=>{
@@ -84,4 +89,20 @@ test('a downstream enrollment failure retries the same durable enrollment comman
 });
 test('current guardian revocation blocks an orchestration replay from claiming a current enrollment',async()=>{
  const f=await fixture(),r=await f.receipt();await f.processor.process(f.owner,r.eventId,f.context.operationId);await f.revokeGuardian();expect(await f.newProcessor().process(f.owner,r.eventId,f.context.operationId)).toMatchObject({state:'cash_recorded_enrollment_pending',money:'recorded',reason:'native_approval_required'});expect(await f.ledger()).toBe(1);expect(await f.enrollments()).toHaveLength(1);
+});
+
+/** Source199/200 composition candidate, UNRUN. The real Root store is wired
+ * here; its admission, provider readbacks and legal source remain synthetic. */
+test('real AcademyHostedStore receipt composition enrolls once, reads ordinary parent balance and denies command rebinding',async()=>{
+ const f=await fixture(),before=await f.protectedRows(),r=await f.receipt(),clock=f.store.deps.clock,integrity=f.config.lookupKey.toString('hex'),nativeReadback=vi.spyOn(NativeFishingProgram.prototype,'readEnrollmentForInquiryLinkInTransaction');
+ const familyStore=new AcademyFamilyStore(f.db,f.config,new PublicGroupApplicationStore(f.db,f.workspaceId,f.ring,integrity,clock),new FishingLeadStore(f.db,f.ring,integrity,'sunday_fishing_academy',clock),clock);
+ const hosted=new AcademyHostedStore(f.db,f.config,familyStore,{merchant:f.merchant,checkout:{provider:f.provider,policy:f.checkoutPolicy,returnUrls:urls,fulfillment:{endpoint:f.endpoint,endpointSecret:f.endpointSecret,client:f.client,policy:f.fulfillmentPolicy}}},clock);
+ const command={version:academyHostedVersion,action:'process_receipt' as const,operationId:randomUUID(),hostedOperationId:f.context.operationId,eventId:r.eventId};
+ const first=await hosted.processReceipt(f.owner,command);expect(first).toMatchObject({state:'enrolled',money:'recorded',enrollment:'confirmed',paidCents:65000});expect(first.enrollmentId).not.toBeNull();expect(await f.ledger()).toBe(1);
+ const enrolled=await f.enrollments();expect(enrolled).toHaveLength(1);expect(enrolled[0]).toMatchObject({id:first.enrollmentId,revision:1,state:'confirmed'});
+ const parent=await f.program.familyPayment(f.family.parent,first.enrollmentId!);expect(parent).toMatchObject({currency:'USD',totalCents:195000,paidCents:65000});expect(parent?.dues.map(d=>d.paidCents)).toEqual([65000,0,0]);
+ const providerReads=[...f.client.calls],readbacks=nativeReadback.mock.calls.length;expect(readbacks).toBeGreaterThan(0);expect(await hosted.processReceipt(f.owner,{...command})).toEqual(first);expect(nativeReadback.mock.calls.length).toBeGreaterThan(readbacks);expect(f.client.calls).toEqual(providerReads);expect(await f.ledger()).toBe(1);expect(await f.enrollments()).toEqual(enrolled);
+ await expect(hosted.processReceipt(f.owner,{...command,eventId:'evt_REBOUND_'+randomUUID().replaceAll('-','')})).rejects.toThrow('COMMAND_CONFLICT');
+ const binding=(await f.pool.query('SELECT result_json AS result FROM ls_fishing_payments.commands WHERE workspace_id=$1 AND actor_id=$2 AND action=$3 AND command_id=$4',[f.workspaceId,f.owner.id,'academy.checkout.receipt.request',command.operationId])).rows;
+ expect(binding).toEqual([{result:{eventId:r.eventId,hostedOperationId:f.context.operationId}}]);expect(f.provider.perform).toHaveBeenCalledTimes(1);expect(vi.mocked(f.provider.perform).mock.calls[0]![1]).toMatchObject({phase:'read',known:{sessionId:f.ids.session}});expect(f.client.calls).toEqual(providerReads);expect(await f.ledger()).toBe(1);expect(await f.enrollments()).toEqual(enrolled);expect(await f.protectedRows()).toEqual(before);expect(JSON.stringify(first)).not.toContain(CANARY);
 });
