@@ -27,5 +27,23 @@
     "sha256": "eea80f35657c8821c6d1919e5b51b38e4b9b9e27f6aae11a56f678bc67261bab",
     "publicPath": "/groups/academy/hero-desktop-wide-20261019.png",
     "reviewOnly": true
+  },
+  "textFree": {
+    "decision": "JLFA-REGISTRATION-20261020-01",
+    "scope": "Existing original source artwork inspected; no new generated image or face changes. New requested approx1080x2340 mobile master not located. Text-baked approved exports retained above as history.",
+    "desktop": {
+      "publicPath": "/groups/academy/hero-desktop-20261018.png",
+      "width": 2048,
+      "height": 1143,
+      "bytes": 4250817,
+      "sha256": "c04e07e489e866ad8153b283b5445f6d43f393a38005c9a8cacd40050be0bbaa"
+    },
+    "mobile": {
+      "publicPath": "/groups/academy/hero-mobile-20261018.png",
+      "width": 1143,
+      "height": 2048,
+      "bytes": 4160847,
+      "sha256": "12a450f6cff546171c40b46273e89acf5d142fd1a86bd94eacbb8724544b2e42"
+    }
   }
 }

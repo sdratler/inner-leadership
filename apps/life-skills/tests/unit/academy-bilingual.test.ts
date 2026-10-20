@@ -25,10 +25,10 @@ describe("Source21 bilingual parent journey",()=>{
  });
  it.each(["en","he"] as const)("%s keeps the short homepage sequence and legacy anchors without duplicate marketing walls",locale=>{
   const html=renderToStaticMarkup(createElement(AcademyWebsite,{locale,onLocaleChange:()=>{}}));
-  const ids=["about","who-its-for","stages","self-governance","pricing","questions","parent-reflections","founder"];
+  const ids=["about","who-its-for","self-governance","how-it-works","stages","pricing","questions","parent-reflections","founder"];
   const positions=ids.map(id=>html.indexOf(`id="${id}"`));expect(positions.every(n=>n>=0)).toBe(true);expect(positions).toEqual([...positions].sort((a,b)=>a-b));
-  expect(html).not.toContain('<section id="how-it-works"');expect(html).toContain('<span id="how-it-works"');expect(html).not.toContain('class="disclosure"');
-  expect(html).toContain(locale==="he"?"שלושת המפגשים הראשונים":"The first three Foundation meetings");expect(html.match(/<blockquote/g)).toHaveLength(1);expect(html).toContain('<blockquote lang="en" dir="ltr">');
+  expect(html).not.toContain('<section id="how-it-works"');expect(html).toContain('<div id="how-it-works"');expect(html).not.toContain('class="disclosure"');
+  expect(html).toContain(locale==="he"?"בכל שלב 12 מפגשים":"Each stage has 12 sessions");expect(html.match(/<blockquote/g)).toHaveLength(1);expect(html).toContain('<blockquote lang="en" dir="ltr">');
   expect(html).toContain('id="academy-travel-faq"');expect(html).toContain(locale==="he"?"תוכנית של Bnei Neviim Academy":"A program of Bnei Neviim Academy");
  });
  it.each(["foundation","independent","advanced","leadership"])("%s shows age controls before artwork and specific skills without essay bands",slug=>{
@@ -39,12 +39,13 @@ describe("Source21 bilingual parent journey",()=>{
    expect(html).not.toMatch(/Inside this stage|Thinking it through|Depth that grows/);expect(html).toContain(`href="/${locale}/florida/apply"`);
   }
  });
- it.each(["en","he"] as const)("%s complete form preserves numeric drive, school acknowledgment choices and two saved-inquiry intents",locale=>{
+ it.each(["en","he"] as const)("%s registration uses exact grades, integer drive and distinct information/payment actions",locale=>{
   const html=renderToStaticMarkup(createElement(AcademyIntakePage,{locale}));
-  for(const name of ["learnerCount","learnerAge-0","learnerGrade-0","learnerSchooling-0","learnerTackleBox-0","schoolHoursAvailability","driveLimit","permission","nextStep"])expect(html).toContain(`name="${name}"`);
-  for(let minutes=5;minutes<=120;minutes+=5)expect(html).toContain(`value="${minutes}"`);
-  expect(html).toContain('value="permission_needed"');expect(html).toContain('value="enrollment_followup"');expect(html).toContain('value="callback"');expect(html.match(/<form\b/g)).toHaveLength(1);
-  expect(html).toContain(locale==="he"?"שליחת הפרטים":"Submit my information");expect(html).not.toContain('data-academy-saved=');
+  for(const name of ["postalCode","schoolHoursAvailability","driveMinutes","permission","preferredGroupLanguage","paymentPlan"])expect(html).toContain('name="'+name+'"');
+  for(let grade=3;grade<=12;grade++)expect(html).toContain('value="'+grade+'"');
+  expect(html).toContain('min="5" max="120" step="1"');expect(html.match(/name="postalCode"/g)).toHaveLength(1);expect(html.match(/<form\b/g)).toHaveLength(1);
+  for(const removed of ['name="nextStep"','name="parentDropoff"','name="preferredAreas"','learnerTackleBox','learnerGear','grade_3_5'])expect(html).not.toContain(removed);
+  expect(html).toContain(locale==='he'?'שליחת הפרטים שלי':'Submit My Information');expect(html).toContain(locale==='he'?'תשלום ואישור מקום':'Pay &amp; Confirm My Spot');expect(html).not.toContain('data-academy-saved=');
  });
  it.each(["en","he"] as const)("%s metadata keeps the current verified origin and matching alternate child paths",locale=>{
   for(const path of ["","/apply","/pricing","/stages/foundation","/stages/leadership"]){const meta=academyMetadata(locale,path);expect(meta.alternates.canonical).toBe(`https://life-skills.bneineviimacademy.org/${locale}/florida${path}`);for(const lang of ["en","he"] as const)expect(meta.alternates.languages[lang].endsWith(`/${lang}/florida${path}`)).toBe(true);expect(meta.openGraph.url).toBe(meta.alternates.canonical);}
