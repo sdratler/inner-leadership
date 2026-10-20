@@ -268,7 +268,7 @@ describe("actual practitioner Calendar login return perimeter", () => {
 
 describe("actual practice proxy validates transport before header rewriting", () => {
   const origin = "https://life-skills.bneineviimacademy.org";
-  const paths = ["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins", "/api/updates", "/api/owner-digest", "/api/community-threads", "/api/provider-index", "/api/provider-referrals", "/api/private/contact-acquisition", "/api/private/group-interest", "/api/private/group-placement", "/en/app/marketing", "/he/app/marketing", "/en/app/clients", "/he/app/reports", "/he/app/settings/content-voice", "/en/family/calendar", "/he/client/calendar"];
+  const paths = ["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins", "/api/updates", "/api/owner-digest", "/api/community-threads", "/api/provider-index", "/api/provider-referrals", "/api/private/contact-acquisition", "/api/private/group-interest", "/api/private/group-placement", "/api/private/group-applications/hosted", "/en/app/marketing", "/he/app/marketing", "/en/app/clients", "/he/app/reports", "/he/app/settings/content-voice", "/en/family/calendar", "/he/client/calendar"];
   function configured() {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("LS_APP_MODE", "foundation_locked");
@@ -315,6 +315,11 @@ describe("actual practice proxy validates transport before header rewriting", ()
     for (const request of [new NextRequest(`${origin}/api/home-practice`),
       new NextRequest("http://127.0.0.1:8080/api/home-practice", { headers: { host: new URL(origin).host, "x-forwarded-proto": "https" } })])
       expect(proxy(request).headers.get("x-middleware-next")).toBe("1");
+  });
+  it('keeps the hosted request direct HTTPS perimeter and private enablement gate',()=>{
+    configured();const path='/api/private/group-applications/hosted';expect(proxy(new NextRequest(origin+path)).headers.get('x-middleware-next')).toBe('1');
+    for(const url of ['http://life-skills.bneineviimacademy.org'+path,'https://foreign.invalid'+path]){const response=proxy(new NextRequest(url));expect(response.status).toBe(503);expect(response.headers.get('x-middleware-override-headers')).toBeNull();}
+    vi.stubEnv('LS_PRIVATE_APP_ENABLED','false');expect(proxy(new NextRequest(origin+path)).status).toBe(503);
   });
   it("rejects a direct wrong host or HTTP owner digest before forwarding can conceal it", () => {
     configured();
