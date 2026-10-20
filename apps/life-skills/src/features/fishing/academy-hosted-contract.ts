@@ -11,7 +11,7 @@ export type AcademyHostedCleanupCommand=z.infer<typeof academyHostedCleanupComma
 export const academyHostedPostSchema=z.union([academyHostedCommandSchema,academyHostedCleanupCommandSchema]);
 export type AcademyHostedCleanupResult={state:'closed'|'already_paid'|'review_required'};
 export type AcademyHostedResult={state:'ready';action:FamilyHostedAction}|{state:'review_required'};
-const invoiceUrl=z.string().max(2048).refine(value=>{try{const url=new URL(value);return url.protocol==='https:'&&url.hostname==='invoice.stripe.com'&&!url.port&&!url.username&&!url.password&&!url.hash&&url.pathname.startsWith('/i/')&&!/[\r\n]/.test(value);}catch{return false;}});
+const invoiceUrl=z.string().max(2048).refine(value=>{try{const url=new URL(value);return url.protocol==='https:'&&!url.port&&!url.username&&!url.password&&!/[\r\n]/.test(value)&&(url.hostname==='invoice.stripe.com'&&!url.hash&&url.pathname.startsWith('/i/')||url.hostname==='checkout.stripe.com'&&url.pathname.startsWith('/c/pay/'));}catch{return false;}});
 export const academyHostedResultSchema=z.discriminatedUnion('state',[z.strictObject({state:z.literal('review_required')}),z.strictObject({state:z.literal('ready'),action:z.strictObject({purchaseId:z.uuid(),dueIndex:z.number().int().min(1).max(3),state:z.literal('ready'),url:invoiceUrl})})]);
 /** A successful response is usable only for the exact clicked native bill. */
 export function readAcademyHostedResult(value:unknown,command:AcademyHostedCommand):AcademyHostedResult{

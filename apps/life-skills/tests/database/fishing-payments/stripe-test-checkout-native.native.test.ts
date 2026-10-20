@@ -8,10 +8,11 @@ vi.mock('server-only',()=>({}));
 import {programFixture,type ProgramFixture} from '../fishing/native-program-fixture.ts';
 import {NativeFishingProgram} from '../../../src/features/fishing/native-program.ts';
 import {NativeStripeHostedCoordinator} from '../../../src/features/fishing/native-stripe-hosted-bindings.ts';
+import {AcademyCheckoutService} from '../../../src/features/fishing/academy-checkout-service.ts';
 import {NativeStripeReceiptBindings} from '../../../src/features/fishing/native-stripe-bindings.ts';
 import {FishingPaymentStore} from '../../../src/features/fishing-payments/store.ts';
 import {NativeStripeCheckoutCoordinator,checkoutNativeJournalActions as A,type NativeStripeCheckoutPolicy} from '../../../src/features/fishing-payments/stripe-test-checkout-native.ts';
-import type {CheckoutObservation,StripeTestCheckoutContext,StripeTestCheckoutBinding} from '../../../src/features/fishing-payments/stripe-test-checkout-ports.ts';
+import type {CheckoutObservation,StripeTestCheckoutContext,StripeTestCheckoutBinding,StripeTestCheckoutProvider} from '../../../src/features/fishing-payments/stripe-test-checkout-ports.ts';
 import type {Receipt} from '../../../src/features/fishing-payments/ports.ts';
 import type {IdentityStore,SqlSession} from '../../../src/features/identity/store.ts';
 import {digest} from '../../../src/features/fishing-payments/domain.ts';
@@ -47,6 +48,11 @@ test('native concurrent preparation/consumption shares one due/dispatch; pending
  const op=await f.store.read(f.owner,tx=>f.store.operation(tx,c.operationId));expect(op.state).toBe('unknown');expect(op.result).toBeNull();const o=f.observation(c);await f.coordinator.observe(claim,o);
  const restarted=new NativeStripeCheckoutCoordinator(f.store,f.policy,urls),known=(await restarted.inspect(f.owner,c.operationId)).known!;expect(known.sessionId).toBe(f.sessionId);const key=randomUUID();expect((await restarted.redirect(f.family.parent,key,c,known,o)).url).toBe(o.url);expect((await restarted.redirect(f.family.parent,key,c,known,o)).url).toBe(o.url);
  expect((await f.pool.query('SELECT object_id FROM ls_fishing_payments.object_bindings WHERE workspace_id=$1',[f.workspaceId])).rows).toEqual([]);expect(c.schedule.dues.map(d=>d.amountCents)).toEqual([65000,65000,65000]);expect(await f.protectedRows()).toEqual(before);
+});
+test('Root Checkout orchestration uses the durable native journal across repeated family requests without another provider create',async()=>{
+ const f=await fixture(),before=await f.protectedRows(),calls:string[]=[],provider:StripeTestCheckoutProvider={execution:'stripe_test_checkout',binding:f.merchant,perform:async(context,action)=>{calls.push(action.phase);return f.observation(context);}},driver=new AcademyCheckoutService(f.coordinator,provider,{now:()=>new Date()}),key=randomUUID();
+ const first=await driver.request(f.family.parent,key,f.prepared.purchaseId,f.dueId);expect(first?.sessionId).toBe(f.sessionId);expect(calls).toEqual(['create','read']);const restarted=new AcademyCheckoutService(new NativeStripeCheckoutCoordinator(f.store,f.policy,urls),provider,{now:()=>new Date()});expect(await restarted.request(f.family.parent,key,f.prepared.purchaseId,f.dueId)).toEqual(first);expect(calls).toEqual(['create','read','read']);expect(await f.protectedRows()).toEqual(before);
+ await f.revokeGuardian();await expect(restarted.request(f.family.parent,key,f.prepared.purchaseId,f.dueId)).rejects.toThrow();expect(calls).toEqual(['create','read','read']);
 });
 test('existing native invoice and Checkout routes cannot reserve competing payable objects for the same due',async()=>{
  const f=await fixture(),old=new NativeStripeHostedCoordinator(f.store,f.program,{hosted:async(_c,p)=>({revision:'a'.repeat(64),linkExpiresAt:p.offer.expiresAt,laterDuePolicy:null}),closure:async()=>{throw Error('NO_CLOSURE');}});

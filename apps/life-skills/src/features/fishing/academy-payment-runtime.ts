@@ -6,7 +6,9 @@ import {AcademyFamilyStore} from './academy-family-store.ts';
 import {AcademyBillingStore} from './academy-billing-store.ts';
 import {AcademyHostedStore,type AcademyHostedAdmission} from './academy-hosted-store.ts';
 /** Root alone installs an independently verified actual TEST capability after
- * its merchant/customer/effect/expiry gates. No environment flag, request field
+ * its merchant/customer/effect/expiry and applicable reviewed agreement gates.
+ * Hosted invoices and Checkout use the same native purchase path; neither
+ * capability is admitted by this wiring. No environment flag, request field
  * or binding marker provides it. Both routes share this unavailable default. */
 async function loadReviewedAdmission():Promise<AcademyHostedAdmission|null>{return null;}
 export async function academyPaymentRuntime(){
