@@ -1,7 +1,8 @@
 /** Only the Root-owned disposable loopback cluster. No business data read. */
 import {randomUUID} from 'node:crypto';
 import pg from 'pg';
-import {expect,test} from 'vitest';
+import {expect,test,vi} from 'vitest';
+vi.mock('server-only',()=>({}));
 import {safeTestUrl} from '../calendar/fixture.ts';
 import {loadAcademySchemaSources,readAcademySchemaPreflight,type AcademySchemaConnection} from '../../../src/db/academy-schema-preflight.ts';
 async function fixture(){
