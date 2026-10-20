@@ -7,6 +7,7 @@ import {floridaGroupApplicationNotice,floridaSchoolInquiryNotice,floridaGroupApp
 import {issueFloridaGroupApplicationChallenge,issueGroupApplicationChallenge,verifyGroupApplicationChallenge} from "./challenge.ts";
 import {groupApplicationProgramFromRequest,verifyGroupApplicationRequest} from "./public-origin.ts";
 import type {PublicGroupApplicationStore} from "./store.ts";
+import {academyRegistrationNotice} from './academy-registration-notice.ts';
 
 export type PublicGroupApplicationHttpDependencies={enabled:boolean;environment:Record<string,string|undefined>;challengeKey:string;
  now:()=>number;limits:RateLimitStore;store:Pick<PublicGroupApplicationStore,"submit">&Partial<Pick<PublicGroupApplicationStore,"replaySaved">>;
@@ -18,7 +19,7 @@ export async function publicGroupApplicationHttp(request:Request,load:()=>Promis
   const dependencies=await load();if(!dependencies.enabled)throw new AppError("NOT_FOUND");
   if(!["GET","POST"].includes(request.method))throw new AppError("INVALID_REQUEST");
   verifyGroupApplicationRequest(request,dependencies.environment,request.method==="POST");const programId=groupApplicationProgramFromRequest(request);
-  if(request.method==="GET")response=successResponse({notice:programId?floridaGroupApplicationNotice:groupApplicationNotice,...(programId==="sunday_fishing_academy"?{schoolNotice:floridaSchoolInquiryNotice}:{}),
+  if(request.method==="GET")response=successResponse({notice:programId?floridaGroupApplicationNotice:groupApplicationNotice,...(programId==="sunday_fishing_academy"?{schoolNotice:floridaSchoolInquiryNotice,registrationNotice:academyRegistrationNotice}:{}),
    challenge:programId?issueFloridaGroupApplicationChallenge(dependencies.challengeKey,programId,dependencies.now()):issueGroupApplicationChallenge(dependencies.challengeKey,dependencies.now())},requestId);
   else{
    let result:Awaited<ReturnType<PublicGroupApplicationStore["submit"]>>;

@@ -24,7 +24,7 @@ function intendedPayload(reference:string,fields:GroupApplicationFields){
  if(!isFloridaGroupApplication(fields)||fields.programId!=="sunday_fishing_academy")return null;
  // Only a supplied, validated confirmation address may override an email
  // contact. Phone-only remains valid; never infer an address from a number.
- const supplied=!isSchoolInquiry(fields)?fields.academyIntake?.confirmationEmail:undefined;
+ const supplied=!isSchoolInquiry(fields)?(fields.academyRegistration?.receiptEmail??fields.academyIntake?.confirmationEmail):undefined;
  const recipient=supplied??fields.contact;
  if(!z.email().max(254).safeParse(recipient).success){if(supplied!==undefined)throw new AppError("INVALID_REQUEST");return null;}
  return payloadSchema.parse({purpose:INQUIRY_EMAIL_PURPOSE,reference,recipient,locale:fields.language});

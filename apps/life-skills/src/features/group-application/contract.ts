@@ -1,5 +1,7 @@
 import {z} from "zod";
 import {academyIntakeSchema,academyDriveMinutes} from "./academy-intake.ts";
+import {academyRegistrationSchema} from './academy-registration.ts';
+import {academyRegistrationNotice} from './academy-registration-notice.ts';
 
 /** Existing Israel application permission. This contract remains writable at /groups/apply. */
 export const groupApplicationNotice={
@@ -96,6 +98,7 @@ const floridaParentApplicationFieldsBase=z.object({
  schedulePreference:z.array(scheduleValueSchema).min(1).max(6).refine(values=>new Set(values).size===values.length,"duplicate schedule preference"),
  academyFit:academyFitSchema.optional(),
  academyIntake:academyIntakeSchema.optional(),
+ academyRegistration:z.undefined().optional(),
  scheduleContext:z.literal("program_format_interest").optional(),
  scheduleNotes:z.string().trim().min(1).max(300).optional(),
  permission:z.object({confirmed:z.literal(true),version:z.union([z.literal(floridaGroupApplicationNotice.version),z.literal(academyApplicationNotice.version)]),language:z.enum(["he","en"])}).strict(),
@@ -114,10 +117,24 @@ const floridaParentIssue=(value:z.infer<typeof floridaParentApplicationFieldsBas
  if(value.scheduleContext!==undefined&&value.programId!=="sunday_fishing_academy")context.addIssue({code:"custom",path:["scheduleContext"],message:"academy-only format interest"});
  if(value.schedulePreference.some(preference=>preference==="weekday_morning_homeschool"||preference==="weekday_before_school")&&(value.programId!=="sunday_fishing_academy"||value.scheduleContext!=="program_format_interest"))context.addIssue({code:"custom",path:["schedulePreference"],message:"academy format context required"});
 };
-export const floridaParentApplicationFieldsSchema=floridaParentApplicationFieldsBase.superRefine((value,context)=>{
+const floridaLegacyParentApplicationFieldsSchema=floridaParentApplicationFieldsBase.superRefine((value,context)=>{
  floridaParentIssue(value,context);
  if(value.permission.language!==value.language)context.addIssue({code:"custom",path:["permission","language"],message:"permission language must match inquiry"});
 });
+/** Versioned Academy registration; legacy gear/range/next-step contracts are
+ * kept readable and never populated with fabricated values. Availability is
+ * recorded explicitly in registration, not translated into booked formats. */
+export const floridaAcademyRegistrationFieldsSchema=floridaParentApplicationFieldsBase.extend({
+ programId:z.literal('sunday_fishing_academy'),
+ schedulePreference:z.array(scheduleValueSchema).length(0),
+ scheduleContext:z.undefined().optional(),academyFit:z.undefined().optional(),academyIntake:z.undefined().optional(),
+ academyRegistration:academyRegistrationSchema,
+ permission:z.object({confirmed:z.literal(true),version:z.literal(academyRegistrationNotice.version),language:z.enum(['en','he'])}).strict(),
+}).superRefine((v,c)=>{
+ if(v.permission.language!==v.language||v.academyRegistration.consent.language!==v.language)c.addIssue({code:'custom',path:['permission'],message:'permission language must match registration'});
+ if(!v.contact.includes('@')&&!normalizeFloridaLeadContact(v.contact))c.addIssue({code:'custom',path:['contact'],message:'include country code or a US ten-digit number'});
+});
+export const floridaParentApplicationFieldsSchema=z.union([floridaLegacyParentApplicationFieldsSchema,floridaAcademyRegistrationFieldsSchema]);
 // Read only the exact pre-RM04 generation. Its contact language and actual
 // acknowledged notice language were independently accepted; never rewrite either.
 // New fit/version/before-school fields cannot fall back to this legacy branch.
@@ -160,6 +177,7 @@ export type IsraelGroupApplicationFields=z.infer<typeof currentGroupApplicationF
 export type IsraelReadableGroupApplicationFields=z.infer<typeof israelReadableFieldsSchema>;
 export type FloridaGroupApplicationFields=z.infer<typeof floridaGroupApplicationFieldsSchema>;
 export type FloridaParentApplicationFields=z.infer<typeof floridaParentApplicationFieldsSchema>;
+export type LegacyFloridaParentApplicationFields=z.infer<typeof floridaLegacyParentApplicationFieldsSchema>;
 export type FloridaSchoolInquiryFields=z.infer<typeof floridaSchoolInquiryFieldsSchema>;
 export type GroupApplicationFields=z.infer<typeof groupApplicationFieldsSchema>;
 export type IsraelGroupApplicationCommand=z.infer<typeof israelGroupApplicationCommandSchema>;

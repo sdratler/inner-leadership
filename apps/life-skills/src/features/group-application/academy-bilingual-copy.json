@@ -1,16 +1,16 @@
 {
-  "source": "JLFA-BILINGUAL-COPY-ROUTING-20261019-21",
+  "source": "JLFA-REGISTRATION-20261020-01",
   "about": {
-    "en": "A hands-on fishing enrichment program where boys learn practical fishing skills, think independently and work together in a Torah-infused environment. The program has four progressive stages of 12 sessions each. The first three Foundation meetings prepare boys to use their equipment safely; regular supervised fishing outings follow.",
-    "he": "תוכנית העשרה מעשית בדיג לבנים. באווירה תורנית, הבנים לומדים מיומנויות דיג, לחשוב באופן עצמאי ולעבוד יחד. התוכנית כוללת ארבעה שלבים מתקדמים, ובכל שלב 12 מפגשים. שלושת המפגשים הראשונים בשלב היסודות מוקדשים להיכרות עם הציוד ולבטיחות; לאחר מכן יוצאים למפגשי דיג בהשגחה, בהתאם לתנאים וללוח הזמנים של הקבוצה."
+    "en": "A program where boys learn practical fishing skills, how to think independently, and how to work together in a Torah-infused environment.",
+    "he": "תוכנית שבה הבנים לומדים מיומנויות דיג מעשיות, לחשוב באופן עצמאי ולעבוד יחד באווירה תורנית."
   },
   "audience": {
-    "en": "For boys in third grade and up, whether they attend school or are homeschooled. No fishing experience is required. Groups are formed around age, experience, location and availability, so boys can learn, fish and collaborate at an appropriate level.",
-    "he": "לבנים מכיתה ג׳ ומעלה — הלומדים בבית ספר או בחינוך ביתי. אין צורך בניסיון קודם בדיג. אנו מרכיבים את הקבוצות בהתחשב בגיל, בניסיון, באזור המגורים ובזמינות, כדי לאפשר למידה, דיג ושיתוף פעולה המתאימים לכל קבוצה."
+    "en": "For boys ages 8 and up, whether they attend school or are homeschooled. No fishing experience is required. Group eligibility is reviewed for age, experience, location and availability.",
+    "he": "לבנים מגיל 8 ומעלה, הלומדים בבית ספר או בחינוך ביתי. אין צורך בניסיון קודם בדיג. ההתאמה לקבוצה נבדקת לפי גיל, ניסיון, מיקום וזמינות."
   },
   "stageIntro": {
-    "en": "Each stage introduces new techniques and more opportunities to make decisions and take responsibility. Families enroll one stage at a time.",
-    "he": "בכל שלב לומדים שיטות חדשות, מתרגלים קבלת החלטות ולוקחים אחריות רבה יותר. ההרשמה והתשלום הם לכל שלב בנפרד."
+    "en": "Boys progress through four stages of fishing and leadership. Each stage introduces new fishing techniques, builds on previous skills, and creates opportunities to practice independent decision-making, teamwork, and responsibility.",
+    "he": "הבנים מתקדמים בארבעה שלבים של דיג ומנהיגות. בכל שלב לומדים שיטות דיג חדשות, מעמיקים במיומנויות קודמות ומתרגלים קבלת החלטות עצמאית, עבודת צוות ואחריות."
   },
   "stages": [
     {
@@ -93,8 +93,8 @@
         "he": "חולקים ידע ולוקחים אחריות."
       },
       "summary": {
-        "en": "Plan practical group tasks, explain techniques and support other boys without taking over, under appropriate adult supervision.",
-        "he": "מתכננים משימות קבוצתיות, מסבירים שיטות דיג ועוזרים לאחרים ללמוד בלי לעשות הכול במקומם — בליווי ובהשגחה מתאימים של מבוגר."
+        "en": "Help other boys develop their skills through encouragement, guidance, and teamwork, under appropriate adult supervision.",
+        "he": "עוזרים לבנים אחרים לפתח את המיומנויות שלהם באמצעות עידוד, הכוונה ועבודת צוות, בהשגחה מתאימה של מבוגר."
       },
       "water": {
         "en": "Put fishing knowledge to use in shared group tasks. Explain a setup, help a peer practise a knot, coordinate equipment and offer useful support without replacing the learner's effort or an adult's supervision.",
@@ -107,68 +107,68 @@
     }
   ],
   "gainIntro": {
-    "en": "Fishing creates opportunities to practise how we think, communicate and respond when plans change. We focus on:",
-    "he": "הדיג מזמן התנסות מעשית בחשיבה, בתקשורת ובהתמודדות עם תוכניות שמשתנות. אנו מתמקדים בשישה תחומים:"
+    "en": "Practical fishing, independent decisions and the habits of learning and working with others.",
+    "he": "מיומנויות דיג מעשיות, קבלת החלטות עצמאית והרגלי למידה ועבודה עם אחרים."
   },
   "gains": [
     {
       "title": {
-        "en": "Confidence",
-        "he": "ביטחון עצמי"
+        "en": "Fishing skills",
+        "he": "מיומנויות דיג"
       },
       "body": {
-        "en": "Preparation, practice and progress earned through effort.",
-        "he": "הכנה, תרגול והתקדמות שנבנית במאמץ."
+        "en": "Learn to prepare equipment, tie knots, cast safely and read changing conditions.",
+        "he": "לומדים להכין ציוד, לקשור קשרים, להטיל בבטחה ולקרוא תנאים משתנים."
       }
     },
     {
       "title": {
-        "en": "Emotional regulation",
-        "he": "ויסות רגשי"
+        "en": "Independent decisions",
+        "he": "קבלת החלטות עצמאית"
       },
       "body": {
-        "en": "Responding to waiting, frustration and unexpected changes.",
-        "he": "התמודדות עם המתנה, תסכול ושינויים לא צפויים."
+        "en": "Compare options, explain choices and adapt an approach through practice.",
+        "he": "משווים אפשרויות, מסבירים בחירות ומתאימים את הדרך באמצעות תרגול."
       }
     },
     {
       "title": {
-        "en": "Critical thinking",
-        "he": "חשיבה עצמאית וביקורתית"
+        "en": "Teamwork and communication",
+        "he": "עבודת צוות ותקשורת"
       },
       "body": {
-        "en": "Observing, comparing options and explaining decisions.",
-        "he": "התבוננות, השוואת אפשרויות והסברת החלטות."
-      }
-    },
-    {
-      "title": {
-        "en": "Communication",
-        "he": "תקשורת"
-      },
-      "body": {
-        "en": "Listening, asking clear questions and resolving disagreements.",
-        "he": "הקשבה, בקשת עזרה בצורה ברורה ויישוב חילוקי דעות."
+        "en": "Listen, ask clear questions and work toward a shared goal.",
+        "he": "מקשיבים, שואלים שאלות ברורות ופועלים למען מטרה משותפת."
       }
     },
     {
       "title": {
         "en": "Responsibility",
-        "he": "אחריות אישית"
+        "he": "אחריות"
       },
       "body": {
-        "en": "Caring for equipment and following through on choices.",
-        "he": "שמירה על הציוד, עמידה במשימות ובחינת השלכות הבחירה."
+        "en": "Care for equipment, prepare for sessions and follow through on choices.",
+        "he": "שומרים על הציוד, מתכוננים למפגשים ומיישמים את הבחירות."
       }
     },
     {
       "title": {
-        "en": "Collaboration and leadership",
-        "he": "שיתוף פעולה ומנהיגות"
+        "en": "Self-governance",
+        "he": "הנהגה עצמית"
       },
       "body": {
-        "en": "Contributing to a group and helping others learn.",
-        "he": "עבודה למען מטרה משותפת ועזרה לאחרים ללמוד."
+        "en": "Practise patience, reflect on experience and choose the next step thoughtfully.",
+        "he": "מתרגלים סבלנות, חושבים על ההתנסות ובוחרים את הצעד הבא בשיקול דעת."
+      }
+    },
+    {
+      "title": {
+        "en": "Helping others develop",
+        "he": "עוזרים לאחרים להתפתח"
+      },
+      "body": {
+        "en": "Help other boys develop their skills through encouragement, guidance, and teamwork.",
+        "he": "עוזרים לבנים אחרים לפתח את המיומנויות שלהם באמצעות עידוד, הכוונה ועבודת צוות."
       }
     }
   ],
@@ -289,8 +289,8 @@
         "he": "מה קורה לאחר שליחת הטופס?"
       },
       "answer": {
-        "en": "We save your inquiry, review group/schedule/travel fit and contact you. You can request a callback or continue toward enrollment after arrangements and terms are confirmed. No form submission by itself creates a paid reservation.",
-        "he": "אנו שומרים את הפנייה ובודקים את העדפות השעות והנסיעה. אפשר לבקש שיחה חוזרת או להמשיך לבדיקת הרשמה. תשלום יוצע רק לאחר אישור הקבוצה, המקום, הזמינות והתנאים."
+        "en": "Submit My Information saves your registration details and returns a reference so we can discuss a suitable group. It creates no payment or confirmed place. When an eligible group, authorized offer and applicable agreements are confirmed, Pay & Confirm My Spot continues to secure checkout. A place is confirmed only after verified payment and enrollment reconciliation.",
+        "he": "שליחת הפרטים שלי שומרת את פרטי ההרשמה ומחזירה מספר פנייה לצורך תיאום קבוצה מתאימה. היא אינה יוצרת תשלום או אישור מקום. לאחר אישור קבוצה מתאימה, הצעה מורשית וההסכמים החלים, תשלום ואישור מקום ממשיך לתשלום מאובטח. מקום מאושר רק לאחר אימות התשלום והשלמת בדיקת ההרשמה."
       }
     }
   ],

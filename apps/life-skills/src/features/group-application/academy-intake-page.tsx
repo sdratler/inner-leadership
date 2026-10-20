@@ -1,27 +1,17 @@
 "use client";
-import {useAcademyHref} from "./academy-route-context.tsx";
-import{useEffect,useState}from"react";
-import type{Locale}from"../../lib/locale.ts";
-import{GroupApplicationForm}from"./application-form.tsx";
-import{AcademySiteFrame}from"./academy-site-frame.tsx";
-import{AcademyScene}from"./academy-scenes.tsx";
-import{AcademyPricing}from"./academy-pricing.tsx";
-import siteStyles from"./academy-site.module.css";
-import{AcademyTravelFaq}from"./academy-travel-faq.tsx";
-import styles from"./academy-intake.module.css";
-
+import {useEffect,useState} from 'react';
+import type {Locale} from '../../lib/locale.ts';
+import {useAcademyHref} from './academy-route-context.tsx';
+import {GroupApplicationForm} from './application-form.tsx';
+import {AcademySiteFrame} from './academy-site-frame.tsx';
+import styles from './academy-intake.module.css';
 export function AcademyIntakePage({locale:initialLocale}:{locale:Locale}){
- const academyHref=useAcademyHref();
- const[locale,setLocale]=useState(initialLocale),t=(en:string,he:string)=>locale==="he"?he:en,home=academyHref(locale);
- useEffect(()=>{document.documentElement.lang=locale;document.documentElement.dir=locale==="he"?"rtl":"ltr";},[locale]);
- function language(next:Locale){if(next===locale)return;setLocale(next);window.history.replaceState(window.history.state,"",academyHref(next,"/apply")+window.location.hash);}
- return <AcademySiteFrame locale={locale} onLocaleChange={language} intake className={styles.shell??""}>
-  <main id="main" className={styles.main}><div className={styles.intro}><p className={styles.eyebrow}>{t("Torah • Fishing • Self-governance","תורה • דיג • הנהגה עצמית")}</p><h1>{t("Register for the Fishing Academy","הרשמה לאקדמיה לדיג")}</h1><p>{t("Tell us about your family, availability and travel preferences so we can help identify a suitable group. Completing this form does not require payment or reserve a place.","ספרו לנו על המשפחה, הזמינות ומרחק הנסיעה המתאים לכם, כדי שנוכל לבדוק התאמה לקבוצה. מילוי הטופס אינו דורש תשלום ואינו שומר מקום.")}</p><p>{t("12 sessions per stage. Your actual group, schedule, locations and payment offer are confirmed separately.","12 מפגשים בכל שלב. הקבוצה, הזמנים, המיקומים והצעת התשלום בפועל מאושרים בנפרד.")}</p><a href={home+"#pricing"}>{t("Review per-child stage prices","לעיון במחירי שלב לכל ילד")}</a></div>
-   <AcademyScene slot="form" locale={locale} className={styles.introScene??""}/>
-   <section className={styles.signup} aria-labelledby="signup-steps"><h2 id="signup-steps">{t("How to sign up","איך נרשמים")}</h2><ol><li><span aria-hidden="true">01</span><h3>{t("Tell us about your family","ספרו לנו על המשפחה")}</h3><p>{t("Complete your contact, learner, schedule and travel preferences. Your information is saved privately with a reference number.","מלאו פרטי קשר, לומדים, זמנים ונסיעות. המידע נשמר באופן פרטי עם מספר פנייה.")}</p></li><li><span aria-hidden="true">02</span><h3>{t("Choose your next step","בחרו איך להמשיך")}</h3><p>{t("Request a callback, or continue toward enrollment. We follow up about suitable groups, schedules and locations.","בקשו שיחה חוזרת או המשך לקראת הרשמה. ניצור קשר לגבי קבוצות, זמנים ומיקומים מתאימים.")}</p></li><li><span aria-hidden="true">03</span><h3>{t("Confirm, then pay","מאשרים, ואז משלמים")}</h3><p>{t("Review your actual group, availability and terms before an authorized payment offer. Only verified qualifying payment reserves a founding-family place.","בודקים את הקבוצה בפועל, הזמינות והתנאים לפני הצעת תשלום מורשית. רק תשלום מזכה שאומת שומר מקום למשפחה מייסדת.")}</p></li></ol></section>
-   <details className={siteStyles.intakePrices} open><summary>{t("Review tuition for one 12-session stage","לעיון במחירי שלב אחד בן 12 מפגשים")}</summary><AcademyPricing locale={locale} applicationHref="#apply"/></details>
-   <div id="apply"><section id="academy-form" className={styles.formSection} aria-label={t("Complete Academy inquiry","פנייה מלאה לאקדמיה")}><GroupApplicationForm locale={locale} programId="sunday_fishing_academy" fullIntake/></section></div>
-   <section id="questions" className={styles.faqSection} aria-label={t("Locations, travel and make-ups","מיקומים, נסיעות והשלמות")}><h2>{t("Locations, travel and make-ups","מיקומים, נסיעות והשלמות")}</h2><AcademyTravelFaq locale={locale} returnToForm/><details><summary>{t("How long does the founding price last?","לכמה זמן תקף מחיר המשפחות המייסדות?")}</summary><p>{t("Founding prepay applies to the first 12-session stage only, for the first twenty qualifying families. There is no published time deadline. Only verified qualifying payment reserves a founding place; an inquiry or pending payment does not hold one.","מחיר התשלום מראש למשפחה מייסדת חל על השלב הראשון בן 12 המפגשים בלבד, לעשרים המשפחות הזכאיות הראשונות. לא נקבע מועד סיום פומבי. רק תשלום מזכה שאומת שומר מקום; פנייה או תשלום ממתין אינם שומרים מקום.")}</p></details><details><summary>{t("Who handles drop-off and pickup?","מי אחראי להבאה ולאיסוף?")}</summary><p>{t("Parents arrange transport to the confirmed times and locations and make the agreed guardian handoff. The Academy retains supervision and care during accepted custody. Optional Keys transport and offshore outings require separate arrangements.","ההורים מסדירים הגעה ואיסוף במועדים ובמיקומים שאושרו ומבצעים העברה מסודרת בין האחראים. האקדמיה ממשיכה בהשגחה ובאחריות לטיפול בזמן שבו הילד נמצא באחריותה. הסעה אופציונלית לקיז ויציאות לים הפתוח דורשות סידורים נפרדים.")}</p></details></section>
+ const academyHref=useAcademyHref(),[locale,setLocale]=useState(initialLocale),t=(en:string,he:string)=>locale==='he'?he:en;
+ useEffect(()=>{document.documentElement.lang=locale;document.documentElement.dir=locale==='he'?'rtl':'ltr';},[locale]);
+ function language(next:Locale){if(next===locale)return;setLocale(next);window.history.replaceState(window.history.state,'',academyHref(next,'/apply')+window.location.hash);}
+ return <AcademySiteFrame locale={locale} onLocaleChange={language} intake className={styles.shell??''}>
+  <main id="main" className={styles.main}><div className={styles.registrationHeading}><div className={styles.registrationLanguages} role="group" aria-label={t('Interface language','שפת הממשק')}><button type="button" lang="en" aria-pressed={locale==='en'} onClick={()=>language('en')}>English</button><span aria-hidden="true">|</span><button type="button" lang="he" aria-pressed={locale==='he'} onClick={()=>language('he')}>עברית</button></div><h1>{t('Registration','הרשמה')}</h1></div>
+   <div id="apply"><section id="academy-form" className={styles.formSection} aria-label={t('Registration form','טופס הרשמה')}><GroupApplicationForm locale={locale} programId="sunday_fishing_academy" fullIntake/></section></div>
   </main>
  </AcademySiteFrame>;
 }

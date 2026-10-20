@@ -54,14 +54,12 @@ describe.each(["en","he"] as const)("%s static Academy prices",locale=>{
   expect(text).not.toContain(locale==="he"?"שליחת טופס או בקשה לשיחה חוזרת":"submitting a form or requesting a callback");
  });
  test("default action navigates to the exact locale-specific full form",()=>{
-  const html=render(locale);expect(html).toContain(`href="/${locale}/florida/apply"`);expect(html).toContain(locale==="he"?"להרשמה":"Register");expect(html).not.toMatch(/<form|<input|<textarea|<button|<iframe|<script|<img/);expect(html.match(/<a\b/g)).toHaveLength(2);expect(plain(html)).not.toMatch(/Pay now|Checkout now|Reserve now|Pay here/);
+  const html=render(locale);expect(html).toContain(`href="/${locale}/florida/apply"`);expect(html).toContain(locale==="he"?"להרשמה":"Register");expect(html).not.toMatch(/<form|<input|<textarea|<button|<iframe|<script|<img/);expect(html.match(/<a\b/g)).toHaveLength(1);expect(plain(html)).not.toMatch(/Pay now|Checkout now|Reserve now|Pay here/);
  });
  test.each(["same","sample"])("explicit %s action preserves the narrow href whitelist",mode=>{
   const href=mode==="same"?`/${locale}/florida/apply`:"#apply";expect(render(locale,href)).toContain(`href="${href}"`);
  });
- test("WhatsApp is the exact source destination/prefill and user-initiated external anchor",()=>{
-  const html=render(locale),url=new URL(whatsapp);expect(html).toContain(`href="${whatsapp}" target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer"`);expect(url.hostname).toBe("wa.me");expect(url.pathname).toBe("/972534932631");expect(url.searchParams.get("text")).toBe("Hi, I came from your website. I'd like to know more.");expect(html).toContain(locale==="he"?"יש שאלות? כתבו לנו בוואטסאפ":"Questions? Message on WhatsApp");
- });
+ test("does not duplicate the floating WhatsApp control inside pricing",()=>{expect(render(locale)).not.toContain(whatsapp);expect(render(locale)).not.toContain('wa.me');});
 });
 test.each(["https://evil.invalid/"+CANARY,"//evil.invalid/"+CANARY,"javascript:"+CANARY,"/en/florida/apply?x="+CANARY,"/en/florida/apply#"+CANARY,"/he/florida/apply","/en/florida/apply/"," /en/florida/apply","#pricing","","#apply\n",null,123,true,{}])("invalid application href fails with only a fixed error (%s)",href=>{
  let caught:unknown;try{Reflect.apply(AcademyPricing,undefined,[{locale:"en",applicationHref:href}]);}catch(error){caught=error;}expect(caught).toBeInstanceOf(Error);if(!(caught instanceof Error))throw new Error("EXPECTED_SAFE_ERROR");expect(caught.message).toBe("ACADEMY_PRICING_UNAVAILABLE");expect(String(caught)).not.toContain(CANARY);expect(caught.cause).toBeUndefined();

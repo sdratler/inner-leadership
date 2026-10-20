@@ -1,10 +1,13 @@
+import {floridaAcademyRegistrationFieldsSchema} from '../../src/features/group-application/contract.ts';
+import {ACADEMY_REGISTRATION_VERSION,registrationConsent} from '../../src/features/group-application/academy-registration.ts';
+import {academyRegistrationNotice} from '../../src/features/group-application/academy-registration-notice.ts';
 import {createHash,randomUUID} from "node:crypto";
 import {readFile} from "node:fs/promises";
 import {afterAll,beforeAll,expect,it,vi} from "vitest";
 import {PGlite} from "@electric-sql/pglite";
 vi.mock("server-only",()=>({}));
 import {PublicGroupApplicationStore} from "../../src/features/group-application/store.ts";
-import {floridaGroupApplicationNotice,academyApplicationNotice,groupApplicationNotice,type FloridaParentApplicationFields,type IsraelGroupApplicationCommand} from "../../src/features/group-application/contract.ts";
+import {floridaGroupApplicationNotice,academyApplicationNotice,groupApplicationNotice,type LegacyFloridaParentApplicationFields as FloridaParentApplicationFields,type IsraelGroupApplicationCommand} from "../../src/features/group-application/contract.ts";
 import type {IdentityStore,SqlSession} from "../../src/features/identity/store.ts";
 import type {Actor} from "../../src/features/identity/types.ts";
 import {asId} from "../../src/lib/ids.ts";
@@ -64,4 +67,20 @@ it("retains durable no-query Israel submission storage and practitioner readback
  expect(await service.list(actors[0]!)).toContainEqual(saved.item);
  const stored=await db.query<{payload_ciphertext:string;notice_version:string;notice_language:string}>("SELECT payload_ciphertext,notice_version,notice_language FROM ls_service_interest.public_applications WHERE id=$1",[saved.item.id]);
  expect(stored.rows[0]).toMatchObject({notice_version:groupApplicationNotice.version,notice_language:"he"});expect(stored.rows[0]!.payload_ciphertext).not.toContain(input.fields.parentPhone);
+});
+
+it('round-trips named exact-grade siblings and37minutes through the real encrypted store without financial or person effects',async()=>{
+ const children=[{id:randomUUID(),fullName:'Synthetic Registered Child One',ageYears:10,grade:'5',schooling:'school',experience:'new'},{id:randomUUID(),fullName:'Synthetic Registered Child Two',ageYears:13,grade:'8',schooling:'homeschool',experience:'some'}];
+ const fields=floridaAcademyRegistrationFieldsSchema.parse({parentName:'Synthetic Registered Guardian',contact:'+15555550876',cityArea:'Synthetic Florida',language:'en',programId:'sunday_fishing_academy',schedulePreference:[],academyRegistration:{version:ACADEMY_REGISTRATION_VERSION,learners:children,postalCode:'00123',preferredDays:['monday','wednesday'],preferredTimes:['afternoon'],driveMinutes:37,schoolHoursAvailability:'outside_school_only',preferredGroupLanguage:'he',stageInterest:'discuss',intent:'information',consent:registrationConsent('en')},permission:{confirmed:true,version:academyRegistrationNotice.version,language:'en'}});
+ const before=await db.query('SELECT (SELECT count(*) FROM ls_identity.people) AS people,(SELECT count(*) FROM ls_cases.cases) AS cases');
+ const input={operationId:randomUUID(),fields},first=await service.submit(input),replay=await service.submit(input);
+ expect(replay).toMatchObject({replayed:true,item:{id:first.item.id,fields}});expect(first.item.receivedAt).toBe(now.toISOString());
+ expect(await service.list(actors[0]!)).toContainEqual(first.item);await expect(service.list(actors[1]!)).rejects.toMatchObject({code:'FORBIDDEN'});
+ const stored=(await db.query<{payload_ciphertext:string;notice_version:string;notice_language:string}>('SELECT payload_ciphertext,notice_version,notice_language FROM ls_service_interest.public_applications WHERE id=$1',[first.item.id])).rows[0]!;
+ expect(stored.notice_version).toBe(academyRegistrationNotice.version);expect(stored.notice_language).toBe('en');for(const child of children)expect(stored.payload_ciphertext).not.toContain(child.fullName);
+ expect((await db.query('SELECT (SELECT count(*) FROM ls_identity.people) AS people,(SELECT count(*) FROM ls_cases.cases) AS cases')).rows).toEqual(before.rows);
+ expect((await db.query<{n:number}>('SELECT count(*)::int AS n FROM ls_service_interest.public_application_operations WHERE application_id=$1',[first.item.id])).rows[0]!.n).toBe(1);
+ await expect(service.submit({...input,fields:{...fields,academyRegistration:{...fields.academyRegistration,driveMinutes:38}}})).rejects.toMatchObject({code:'CONFLICT'});
+ await expect(service.submit({operationId:randomUUID(),fields:{...fields,academyRegistration:{...fields.academyRegistration,intent:'pay'}}})).rejects.toMatchObject({code:'INVALID_REQUEST'});
+ await expect(service.submit({operationId:randomUUID(),fields:{...fields,permission:{...fields.permission,version:academyApplicationNotice.version}}} as unknown as Parameters<typeof service.submit>[0])).rejects.toMatchObject({code:'INVALID_REQUEST'});
 });

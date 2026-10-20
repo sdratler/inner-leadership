@@ -10,6 +10,7 @@ import {academyIntakeFromForm,academyDriveMinutes,type AcademyIntake} from "./ac
 import {AcademyIntakeFields,AcademyIntakeLearnerFields} from "./academy-intake-fields.tsx";
 import styles from "./application-form.module.css";
 import copy from "./presentation-copy.json";
+import {AcademyRegistrationForm} from './academy-registration-form.tsx';
 
 type Challenge={challenge:string};
 const optional=(value:FormDataEntryValue|null)=>typeof value==="string"&&value.trim()!==""?value:undefined;
@@ -22,7 +23,12 @@ export function classifyPublicApplicationFailure(requestStarted:boolean,status?:
  return "unconfirmed" as const;
 }
 
-export function GroupApplicationForm({locale,programId,onSaved,mode="native",onPreviewed,inquiryKind="parent",fullIntake=false}:{locale:Locale;programId:FloridaProgramId;onSaved?:(reference:string)=>void;mode?:"native"|"sample";onPreviewed?:()=>void;inquiryKind?:"parent"|"institution";fullIntake?:boolean}){
+type GroupApplicationFormProps={locale:Locale;programId:FloridaProgramId;onSaved?:(reference:string)=>void;mode?:"native"|"sample";onPreviewed?:()=>void;inquiryKind?:"parent"|"institution";fullIntake?:boolean};
+export function GroupApplicationForm(props:GroupApplicationFormProps){
+ if(props.fullIntake){if(props.programId!=='sunday_fishing_academy'||props.inquiryKind==='institution')throw Error('ACADEMY_FULL_INTAKE_ONLY');return <AcademyRegistrationForm locale={props.locale} {...(props.mode?{mode:props.mode}:{})} {...(props.onPreviewed?{onPreviewed:props.onPreviewed}:{})} {...(props.onSaved?{onSaved:props.onSaved}:{})}/>;}
+ return <LegacyGroupApplicationForm {...props}/>;
+}
+function LegacyGroupApplicationForm({locale,programId,onSaved,mode="native",onPreviewed,inquiryKind="parent",fullIntake=false}:GroupApplicationFormProps){
  const school=inquiryKind==="institution",notice=school?floridaSchoolInquiryNotice:fullIntake?academyApplicationNotice:floridaGroupApplicationNotice;
  const viewCopy=programId==="sunday_fishing_academy"&&!school?{...copy,inquiry:{...copy.inquiry,...copy.realMensch.inquiry}}:copy;
  const [learnerCount,setLearnerCount]=useState(1);
