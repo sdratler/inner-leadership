@@ -64,7 +64,9 @@ export class NativeStripeHostedCoordinator implements StripeTestHostedCoordinato
   if(purpose==='close'){await this.program.stripeHostedClosureOfferInTransaction(c,p.offer.id);admission={revision:old.authorizationVersion,linkExpiresAt:old.linkExpiresAt,laterDuePolicy:old.laterDuePolicy};}
   else{if(purpose==='dispatch'||purpose==='publish'||purpose==='prepare')await this.payable(c,p,op);else await this.store.access(c,p.offer,'read');admission=admissionSchema.parse(await this.policy.hosted(c,p,customer,purpose,op.dueId!));invariant(admission.linkExpiresAt===old.linkExpiresAt,'CONFLICT');}
   const context=validateStripeTestHostedContext({offer:p.offer,purchaseLineId:p.line.id,operation:op,customer:{bindingId:customer.id,revision:customer.revision,payerAccountId:customer.payerAccountId,customerId:customer.customerId,merchantBindingId:customer.merchantBindingId,verifiedAt:customer.verifiedAt.toISOString()},authorizationVersion:purpose==='close'?old.authorizationVersion:digest({admission,customer:{id:customer.id,revision:customer.revision},offer:digest(p.offer),operation:op.requestDigest}),linkExpiresAt:admission.linkExpiresAt,laterDuePolicy:admission.laterDuePolicy},this.#binding);
-  if(purpose!=='close')invariant(context.authorizationVersion===old.authorizationVersion,'CONFLICT');return {context,purchase:p,customer};
+  if(purpose!=='close')invariant(context.authorizationVersion===old.authorizationVersion,'CONFLICT');
+  if(purpose==='prepare'||purpose==='dispatch'||purpose==='publish')invariant(!await this.journal(c.tx,c.actor.workspaceId,actions.phase,op.id+':close'),'APPROVAL_REQUIRED');
+  return {context,purchase:p,customer};
  }
  private async known(c:NativeContext,opId:string){
   let id:string|null=null;for(const phase of ['create','add_line','finalize','close'] as const){const saved=await this.journal(c.tx,c.actor.workspaceId,actions.observation,opId+':'+phase);if(saved){const object=z.object({invoiceId:pid('in')}).parse(saved.value);invariant(id===null||id===object.invoiceId,'CONFLICT');id=object.invoiceId;}}return id;
