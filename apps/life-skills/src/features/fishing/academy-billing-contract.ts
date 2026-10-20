@@ -10,5 +10,5 @@ export const academyBillingQuerySchema=z.discriminatedUnion('view',[
 export type AcademyBillingQuery=z.infer<typeof academyBillingQuerySchema>;
 export const academyBillingCommandSchema=z.strictObject({version:z.literal(academyBillingVersion),action:z.literal('issue'),operationId:z.uuid(),binding:academyOwnerEnrollmentBindingSchema,learnerIndex:z.number().int().min(0).max(9),stageId:z.uuid(),offerId:z.uuid(),expectedOfferRevision:z.literal(1)});
 export type AcademyBillingCommand=z.infer<typeof academyBillingCommandSchema>;
-type Shared={payments:FamilyPaymentView[];actions:FamilyHostedAction[];links:'ready'|'not_admitted'|'review_required'};
+type Shared={payments:FamilyPaymentView[];actions:FamilyHostedAction[];links:'ready'|'not_admitted'|'review_required';checkout?:'ready'|'not_admitted'};
 export type AcademyBillingContext={state:'not_ready'}|({state:'ready';role:'parent';learnerId:string;stageId:string|null;groups:{stageId:string;label:string}[]}&Shared)|({state:'ready';role:'practitioner';binding:z.infer<typeof academyOwnerEnrollmentBindingSchema>;learnerIndex:number;stageId:string;offer:AcademyOfferSummary|null;issuance:'ready'|'not_admitted'}&Shared);
