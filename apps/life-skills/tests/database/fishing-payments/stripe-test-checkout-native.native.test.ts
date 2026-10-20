@@ -9,6 +9,11 @@ import {programFixture,type ProgramFixture} from '../fishing/native-program-fixt
 import {NativeFishingProgram} from '../../../src/features/fishing/native-program.ts';
 import {NativeStripeHostedCoordinator} from '../../../src/features/fishing/native-stripe-hosted-bindings.ts';
 import {AcademyCheckoutService} from '../../../src/features/fishing/academy-checkout-service.ts';
+import {AcademyHostedStore} from '../../../src/features/fishing/academy-hosted-store.ts';
+import {academyHostedVersion} from '../../../src/features/fishing/academy-hosted-contract.ts';
+import {AcademyFamilyStore} from '../../../src/features/fishing/academy-family-store.ts';
+import {PublicGroupApplicationStore} from '../../../src/features/group-application/store.ts';
+import {FishingLeadStore} from '../../../src/features/contact-ops/server/fishing-lead-store.ts';
 import {NativeStripeReceiptBindings} from '../../../src/features/fishing/native-stripe-bindings.ts';
 import {FishingPaymentStore} from '../../../src/features/fishing-payments/store.ts';
 import {NativeStripeCheckoutCoordinator,checkoutNativeJournalActions as A,type NativeStripeCheckoutPolicy} from '../../../src/features/fishing-payments/stripe-test-checkout-native.ts';
@@ -53,6 +58,19 @@ test('Root Checkout orchestration uses the durable native journal across repeate
  const f=await fixture(),before=await f.protectedRows(),calls:string[]=[],provider:StripeTestCheckoutProvider={execution:'stripe_test_checkout',binding:f.merchant,perform:async(context,action)=>{calls.push(action.phase);return f.observation(context);}},driver=new AcademyCheckoutService(f.coordinator,provider,{now:()=>new Date()}),key=randomUUID();
  const first=await driver.request(f.family.parent,key,f.prepared.purchaseId,f.dueId);expect(first?.sessionId).toBe(f.sessionId);expect(calls).toEqual(['create','read']);const restarted=new AcademyCheckoutService(new NativeStripeCheckoutCoordinator(f.store,f.policy,urls),provider,{now:()=>new Date()});expect(await restarted.request(f.family.parent,key,f.prepared.purchaseId,f.dueId)).toEqual(first);expect(calls).toEqual(['create','read','read']);expect(await f.protectedRows()).toEqual(before);
  await f.revokeGuardian();await expect(restarted.request(f.family.parent,key,f.prepared.purchaseId,f.dueId)).rejects.toThrow();expect(calls).toEqual(['create','read','read']);
+});
+test('known-ID native recovery remains available after31minutes of an open60minute session',async()=>{
+ const f=await fixture(),s=await f.ready(),calls:string[]=[],provider:StripeTestCheckoutProvider={execution:'stripe_test_checkout',binding:f.merchant,perform:async(context,action)=>{calls.push(action.phase);return f.observation(context);}};vi.spyOn(f.store.deps.clock,'now').mockReturnValue(new Date(Date.parse(s.c.expiresAt)-29*60000));
+ const driver=new AcademyCheckoutService(f.coordinator,provider,f.store.deps.clock);expect((await driver.request(f.family.parent,randomUUID(),f.prepared.purchaseId,f.dueId))?.sessionId).toBe(f.sessionId);expect(calls).toEqual(['read']);
+});
+test('expiry-only uses separate historical financial authority after guardian and customer revocation',async()=>{
+ const f=await fixture(),s=await f.ready(),calls:string[]=[],provider:StripeTestCheckoutProvider={execution:'stripe_test_checkout',binding:f.merchant,perform:async(context,action)=>{calls.push(action.phase);return f.observation(context,'expired');}};f.allowExpiry();const driver=new AcademyCheckoutService(f.coordinator,provider,f.store.deps.clock);
+ await expect(driver.close(f.owner,randomUUID(),s.c.operationId,true)).rejects.toThrow();expect((await f.pool.query('SELECT command_id FROM ls_fishing_payments.commands WHERE workspace_id=$1 AND action=$2 AND command_id=$3',[f.workspaceId,A.claim,s.c.operationId+':expire'])).rows).toHaveLength(0);
+ await f.revokeGuardian();await f.pool.query('UPDATE ls_fishing_payments.customer_bindings SET revision=revision+1,revoked_at=clock_timestamp() WHERE workspace_id=$1',[f.workspaceId]);vi.spyOn(f.store.deps.clock,'now').mockReturnValue(new Date(Date.parse(s.c.expiresAt)+1000));expect(await driver.close(f.owner,randomUUID(),s.c.operationId,true)).toEqual({state:'closed'});expect(calls).toEqual(['expire']);
+});
+test('ordinary Root cleanup binds close versus close_expired to the same immutable request receipt',async()=>{
+ const f=await fixture(),s=await f.ready(),calls:string[]=[],provider:StripeTestCheckoutProvider={execution:'stripe_test_checkout',binding:f.merchant,perform:async(context,action)=>{calls.push(action.phase);return f.observation(context,'expired');}},integrity=f.config.lookupKey.toString('hex'),family=new AcademyFamilyStore(f.db,f.config,new PublicGroupApplicationStore(f.db,f.workspaceId,f.ring,integrity,f.store.deps.clock),new FishingLeadStore(f.db,f.ring,integrity,'sunday_fishing_academy',f.store.deps.clock),f.store.deps.clock),hosted=new AcademyHostedStore(f.db,f.config,family,{merchant:f.merchant,checkout:{provider,policy:f.policy,returnUrls:urls}},f.store.deps.clock),command={version:academyHostedVersion,action:'close' as const,operationId:randomUUID(),hostedOperationId:s.c.operationId};
+ f.allowExpiry();expect(await hosted.cleanup(f.owner,command)).toEqual({state:'closed'});await expect(hosted.cleanup(f.owner,{...command,action:'close_expired'})).rejects.toThrow(/CONFLICT/);expect(calls).toEqual(['expire']);
 });
 test('existing native invoice and Checkout routes cannot reserve competing payable objects for the same due',async()=>{
  const f=await fixture(),old=new NativeStripeHostedCoordinator(f.store,f.program,{hosted:async(_c,p)=>({revision:'a'.repeat(64),linkExpiresAt:p.offer.expiresAt,laterDuePolicy:null}),closure:async()=>{throw Error('NO_CLOSURE');}});

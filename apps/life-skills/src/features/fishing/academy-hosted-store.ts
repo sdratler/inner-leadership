@@ -37,9 +37,10 @@ export class AcademyHostedStore{
  async cleanup(actor:Actor,raw:unknown):Promise<AcademyHostedCleanupResult>{
   const parsed=academyHostedCleanupCommandSchema.safeParse(raw);if(!parsed.success)throw new AppError('INVALID_REQUEST');const command=parsed.data;
   await this.db.transaction(async tx=>{await lockWorkspace(tx,actor.workspaceId);const current=await freshActor(tx,actor,this.clock.now());if(current.workspaceId!==this.config.workspaceId||current.role!=='practitioner')throw new AppError('FORBIDDEN');});
+  const active=this.runtime??this.checkout;if(!active)throw new AppError('UNAVAILABLE');
+  await active.store.command(actor,command.operationId,'academy.hosted.cleanup',command,async c=>{const op=await active.store.operation(c,command.hostedOperationId);invariant(op.kind==='hosted_invoice','NOT_FOUND');const p=await active.store.purchase(c,op.purchaseId);await active.program.stripeHostedClosureOfferInTransaction(c,p.offer.id);},async()=>({hostedOperationId:command.hostedOperationId,action:command.action}));
   if(this.checkout)return this.checkout.service.close(actor,'academy:'+command.operationId,command.hostedOperationId,command.action==='close_expired');
   const r=this.runtime;if(!r)throw new AppError('UNAVAILABLE');
-  await r.store.command(actor,command.operationId,'academy.hosted.cleanup',command,async c=>{const op=await r.store.operation(c,command.hostedOperationId);invariant(op.kind==='hosted_invoice','NOT_FOUND');const p=await r.store.purchase(c,op.purchaseId);await r.program.stripeHostedClosureOfferInTransaction(c,p.offer.id);},async()=>({hostedOperationId:command.hostedOperationId,action:command.action}));
   const read=()=>r.coordinator.closureReadback(actor,command.hostedOperationId,command.action==='close_expired'),before=await read();
   if(before.state==='not_requested'||before.state==='pending'&&!before.dispatched)await r.service.executeStripeTestHosted(actor,'academy:'+command.operationId+':close',command.hostedOperationId,'close');
   else if(before.state==='pending')await r.service.reconcileStripeTestHostedClosure(actor,command.hostedOperationId,before.decisionId);

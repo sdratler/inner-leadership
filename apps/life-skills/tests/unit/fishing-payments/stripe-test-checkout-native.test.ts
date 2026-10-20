@@ -43,7 +43,7 @@ function fixture(){
  const observed=(c:StripeTestCheckoutContext):CheckoutObservation=>({contextDigest:digest(c),sessionId:'cs_test_SYNTHETIC_NATIVE',customerId:customer.customerId,status:'open',paymentStatus:'unpaid',amountCents:65000,expiresAt:Math.floor(Date.parse(c.expiresAt)/1000),invoiceId:null,paymentIntentId:null,url:'https://checkout.stripe.com/c/pay/cs_test_SYNTHETIC_NATIVE#opaque%2F%3D'});
  const started=async()=>{const c=await prepare(),claim=await coordinator.claim(parent,randomUUID(),c.operationId,'create');expect(await coordinator.consume(parent,claim)).toBe(true);return {c,claim,o:observed(c)};};
  const ready=async()=>{const s=await started();await coordinator.observe(s.claim,s.o);const known=(await coordinator.inspect(parent,s.c.operationId)).known!;return {...s,known};};
- return {offer,p,parent,owner,customer,store,policy,coordinator,operations,journals,fences,events,prepare,observed,started,ready,deny:()=>{admitted=false;},allowClosure:()=>{closure=true;},changePolicy:()=>{revision='b'.repeat(64);},expire:()=>{now=NOW+3600000;}};
+ return {offer,p,parent,owner,customer,store,policy,coordinator,operations,journals,fences,events,prepare,observed,started,ready,deny:()=>{admitted=false;},allowClosure:()=>{closure=true;},changePolicy:()=>{revision='b'.repeat(64);},advance:(minutes:number)=>{now=NOW+minutes*60000;},expire:()=>{now=NOW+3600000;}};
 }
 
 it('requires actual injected policy/customer capability and never supplies a default admission',async()=>{
@@ -62,6 +62,9 @@ it('the existing invoice dispatch fence prevents another Checkout create',async(
 it('commits a pending cs_ with null invoice before redirect; a new coordinator recovers without browser return',async()=>{
  const f=fixture(),s=await f.ready(),restarted=new NativeStripeCheckoutCoordinator(f.store,f.policy,urls),saved=await restarted.inspect(f.owner,s.c.operationId);expect(saved.known).toEqual(s.known);expect(f.operations.get(s.c.operationId)?.result).toBeNull();
  expect((await restarted.redirect(f.parent,randomUUID(),s.c,s.known,s.o)).url).toBe(s.o.url);expect(f.journals.some(r=>r.action===A.pending)).toBe(true);expect(f.p.state.paidCents).toBe(0);
+});
+it('an existing known session with29minutes remaining recovers while a new create still requires30minutes',async()=>{
+ const f=fixture(),s=await f.ready();f.advance(31);expect(await f.prepare()).toEqual(s.c);expect((await f.coordinator.redirect(f.parent,randomUUID(),s.c,s.known,s.o)).url).toBe(s.o.url);await expect(f.coordinator.claim(f.parent,randomUUID(),s.c.operationId,'create')).rejects.toThrow();expect(f.operations.size).toBe(1);
 });
 it('lost creation without a committed ID cannot be reconciled by guessed ID, searched or recreated',async()=>{
  const f=fixture(),s=await f.started();expect((await f.coordinator.inspect(f.owner,s.c.operationId)).known).toBeNull();await expect(f.coordinator.reconcile(f.owner,randomUUID(),s.c.operationId,s.o)).rejects.toThrow();expect(await f.coordinator.consume(f.owner,s.claim)).toBe(false);expect(f.operations.size).toBe(1);
