@@ -29,3 +29,9 @@ test('reference digest ignores internal FK trigger OIDs while retaining their en
   restore='ALTER TABLE ls_fishing_payments.customer_bindings ADD CONSTRAINT '+row.conname+' '+row.definition;await f.client.query('ALTER TABLE ls_fishing_payments.customer_bindings DROP CONSTRAINT '+row.conname);await f.client.query(restore);restore=null;const changed=(await f.client.query("SELECT oid FROM pg_constraint WHERE conrelid='ls_fishing_payments.customer_bindings'::regclass AND conname=$1",[row.conname])).rows[0];expect(changed.oid).not.toBe(row.oid);expect((await readAcademySchemaPreflight(f.connection,f.sources,first.catalogSha256)).state).toBe('match');
  }finally{if(restore)await f.client.query(restore);await f.close();}
 });
+
+
+test('default privilege drift from a non-current creator role is visible and fully restored',async()=>{
+ const f=await fixture(),role='synthetic_preflight_'+randomUUID().replaceAll('-','');let created=false;try{const first=await readAcademySchemaPreflight(f.connection,f.sources,null);await f.client.query('CREATE ROLE '+role+' NOLOGIN');created=true;await f.client.query('ALTER DEFAULT PRIVILEGES FOR ROLE '+role+' IN SCHEMA ls_fishing_stage GRANT SELECT ON TABLES TO PUBLIC');const changed=await readAcademySchemaPreflight(f.connection,f.sources,first.catalogSha256);expect(changed.state).toBe('drift');expect(changed.catalog.defaults.some(row=>row.creator===role)).toBe(true);expect((await f.client.query('SELECT current_user AS role')).rows[0].role).not.toBe(role);await f.client.query('DROP OWNED BY '+role);await f.client.query('DROP ROLE '+role);created=false;expect((await readAcademySchemaPreflight(f.connection,f.sources,first.catalogSha256)).state).toBe('match');
+ }finally{if(created){await f.client.query('DROP OWNED BY '+role);await f.client.query('DROP ROLE '+role);}await f.close();}
+});
