@@ -12,7 +12,7 @@ import {FishingPaymentService} from '../fishing-payments/service.ts';
 import {AcademyFamilyStore} from './academy-family-store.ts';
 import {NativeFishingProgram} from './native-program.ts';
 import {NativeStripeHostedCoordinator,type NativeStripeHostedPolicy} from './native-stripe-hosted-bindings.ts';
-import {academyHostedCommandSchema,type AcademyHostedCommand,type AcademyHostedResult} from './academy-hosted-contract.ts';
+import {academyHostedCommandSchema,academyHostedCleanupCommandSchema,type AcademyHostedCommand,type AcademyHostedResult,type AcademyHostedCleanupResult} from './academy-hosted-contract.ts';
 
 /** Trusted Root SERVER capability, never request JSON or an environment flag.
  * Supplier must independently verify the merchant/customer/effect/expiry policy.
@@ -27,6 +27,18 @@ export class AcademyHostedStore{
   this.runtime={program,store,coordinator,service:new FishingPaymentService(store,{provider:admission.provider,coordinator})};
  }
  available(){return this.runtime!==null;}
+ /** Explicit operator action only. No timer, new invoice, refund or cached
+  * family URL. An unknown void reply can recover only by the durable ID. */
+ async cleanup(actor:Actor,raw:unknown):Promise<AcademyHostedCleanupResult>{
+  const parsed=academyHostedCleanupCommandSchema.safeParse(raw);if(!parsed.success)throw new AppError('INVALID_REQUEST');const command=parsed.data;
+  await this.db.transaction(async tx=>{await lockWorkspace(tx,actor.workspaceId);const current=await freshActor(tx,actor,this.clock.now());if(current.workspaceId!==this.config.workspaceId||current.role!=='practitioner')throw new AppError('FORBIDDEN');});
+  const r=this.runtime;if(!r)throw new AppError('UNAVAILABLE');
+  await r.store.command(actor,command.operationId,'academy.hosted.cleanup',command,async c=>{const op=await r.store.operation(c,command.hostedOperationId);invariant(op.kind==='hosted_invoice','NOT_FOUND');const p=await r.store.purchase(c,op.purchaseId);await r.program.stripeHostedClosureOfferInTransaction(c,p.offer.id);},async()=>({hostedOperationId:command.hostedOperationId,action:command.action}));
+  const read=()=>r.coordinator.closureReadback(actor,command.hostedOperationId,command.action==='close_expired'),before=await read();
+  if(before.state==='not_requested'||before.state==='pending'&&!before.dispatched)await r.service.executeStripeTestHosted(actor,'academy:'+command.operationId+':close',command.hostedOperationId,'close');
+  else if(before.state==='pending')await r.service.reconcileStripeTestHostedClosure(actor,command.hostedOperationId,before.decisionId);
+  const after=await read();return {state:after.state==='void'?'closed':after.state==='paid'?'already_paid':'review_required'};
+ }
  private async target(c:NativeContext,command:AcademyHostedCommand,actor:Actor){
   if(c.actor.workspaceId!==this.config.workspaceId||c.actor.role!=='parent')throw new AppError('FORBIDDEN');
   const family=await this.family.readParentForEnrollmentInTransaction(c.tx,actor,command.learnerId),r=this.runtime;invariant(r,'UNAVAILABLE');

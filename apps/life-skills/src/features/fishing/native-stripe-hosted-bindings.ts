@@ -113,6 +113,20 @@ export class NativeStripeHostedCoordinator implements StripeTestHostedCoordinato
  async inspectClosure(actor:Actor,operationId:string,closureDecisionId:string){
   return this.store.read(actor,async c=>{await lockWorkspace(c.tx,c.actor.workspaceId);const saved=await this.journal(c.tx,c.actor.workspaceId,actions.phase,operationId+':close');if(!saved)return null;const claim=this.parseClaim(saved.value);invariant(claim.action.phase==='close'&&claim.action.closureDecisionId===closureDecisionId,'FORBIDDEN');await this.authorizeClosure(c,claim);const fence=await one(c.tx,"SELECT id FROM ls_fishing_payments.outbox WHERE workspace_id=$1 AND topic='stripe-test.hosted.close.dispatch' AND aggregate_id=$2 AND revision=1 FOR SHARE",[c.actor.workspaceId,operationId]);return fence?claim:null;});
  }
+ /** Private server readback for the explicit owner cleanup driver. Authority
+  * and a separate closure decision remain current even after a void succeeds.
+  * Expiry is the approved link expiry, never the Stripe invoice due date. */
+ async closureReadback(actor:Actor,operationId:string,requireExpired:boolean){
+  return this.store.read(actor,async c=>{
+   await lockWorkspace(c.tx,c.actor.workspaceId);const {context,purchase,customer}=await this.context(c,uuid.parse(operationId),'close');
+   if(requireExpired)invariant(c.now.valueOf()>=Date.parse(context.linkExpiresAt),'OFFER_NOT_EXPIRED');
+   const invoice=await this.known(c,operationId);invariant(invoice&&this.policy,'APPROVAL_REQUIRED');const decision=closureSchema.parse(await this.policy.closure(c,purchase,invoice,customer)),saved=await this.journal(c.tx,c.actor.workspaceId,actions.phase,operationId+':close');
+   if(!saved)return {state:'not_requested' as const,decisionId:decision.decisionId,dispatched:false};
+   const claim=this.parseClaim(saved.value);await this.authorizeClosure(c,claim);const observation=await this.journal(c.tx,c.actor.workspaceId,actions.observation,operationId+':close'),fence=await one(c.tx,"SELECT id FROM ls_fishing_payments.outbox WHERE workspace_id=$1 AND topic='stripe-test.hosted.close.dispatch' AND aggregate_id=$2 AND revision=1 FOR SHARE",[c.actor.workspaceId,operationId]);
+   if(observation){invariant(fence,'CONFLICT');const checked=validateStripeTestHostedObservation(observation.value,claim.context,invoice);invariant(checked.status==='void'||checked.status==='paid','CONFLICT');return {state:checked.status,decisionId:decision.decisionId,dispatched:true};}
+   return {state:'pending' as const,decisionId:decision.decisionId,dispatched:!!fence};
+  });
+ }
  async reconcile(c:NativeContext,context:StripeTestHostedContext,observation:StripeTestHostedObservation){
   const current=await this.context(c,context.operation.id,'inspect'),known=await this.known(c,context.operation.id);invariant(known&&digest(current.context)===digest(context),'CONFLICT');const checked=validateStripeTestHostedObservation(observation,context,known);await this.save(c,actions.read,context.operation.id+':'+digest(checked),checked);
   for(const phase of ['add_line','finalize'] as const){const key=context.operation.id+':'+phase,claimRow=await this.journal(c.tx,c.actor.workspaceId,actions.phase,key),done=await this.journal(c.tx,c.actor.workspaceId,actions.observation,key);if(!claimRow||done)continue;const claim=this.parseClaim(claimRow.value),fence=await one(c.tx,'SELECT id FROM ls_fishing_payments.outbox WHERE workspace_id=$1 AND topic=$2 AND aggregate_id=$3 AND revision=1 FOR SHARE',[c.actor.workspaceId,'stripe-test.hosted.'+phase+'.dispatch',context.operation.id]);invariant(fence&&digest(claim.context)===digest(context),'CONFLICT');
