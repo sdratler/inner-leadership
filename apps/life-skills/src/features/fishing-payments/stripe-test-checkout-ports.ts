@@ -86,7 +86,9 @@ export function validateCheckoutClaim(raw:unknown,c:StripeTestCheckoutContext,ph
  const claim=checkoutParse(claimSchema,raw);
  requireCheckout(claim.phase===phase&&claim.operationId===c.operationId&&claim.generation===c.generation&&claim.contextDigest===digest(c)&&claim.sessionId===sessionId&&claim.requestDigest===checkoutRequestDigest(c,phase,urls,sessionId)&&claim.idempotencyKey===`rm:${c.offer.workspaceId}:${c.operationId}:checkout:${c.generation}:${phase}`);return claim;
 }
-export function validateCheckoutUrl(value:string){try{const url=new URL(value);requireCheckout(url.protocol==='https:'&&url.hostname==='checkout.stripe.com'&&!url.port&&!url.username&&!url.password&&!url.hash&&url.pathname.startsWith('/c/pay/')&&!/[\r\n]/.test(value));return value;}catch{throw new StripeTestCheckoutError();}}
+/** Provider readback only, never browser authority. Stripe's fragment is opaque:
+ * preserve the bounded original URL verbatim, without decoding/reconstruction. */
+export function validateCheckoutUrl(value:string){try{requireCheckout(value.length<=2048&&!/[\r\n]/.test(value));const url=new URL(value);requireCheckout(url.protocol==='https:'&&url.origin==='https://checkout.stripe.com'&&url.hostname==='checkout.stripe.com'&&!url.port&&!url.username&&!url.password&&url.pathname.startsWith('/c/pay/'));return value;}catch{throw new StripeTestCheckoutError();}}
 const observationSchema=z.strictObject({contextDigest:sha,sessionId:checkoutProviderId('cs'),customerId:checkoutProviderId('cus'),status:z.enum(['open','complete','expired']),paymentStatus:z.enum(['paid','unpaid']),amountCents:cents,expiresAt:z.number().int().nonnegative(),invoiceId:checkoutProviderId('in').nullable(),paymentIntentId:checkoutProviderId('pi').nullable(),url:z.string().max(2048).nullable()});
 export function validateCheckoutObservation(raw:unknown,c:StripeTestCheckoutContext,known?:CheckoutKnownBinding):CheckoutObservation{
  const o=checkoutParse(observationSchema,raw);

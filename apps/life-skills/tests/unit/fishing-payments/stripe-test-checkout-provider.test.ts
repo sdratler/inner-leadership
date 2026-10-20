@@ -9,6 +9,7 @@ import {StripeTestCheckoutSessionProvider,checkoutTransportBounds} from '../../.
 import {checkoutSdkVersion,checkoutApiVersion,checkoutMetadata,checkoutRequestDigest,StripeTestCheckoutError,type StripeTestCheckoutBinding,type StripeTestCheckoutContext,type CheckoutKnownBinding,type CheckoutDispatchClaim} from '../../../src/features/fishing-payments/stripe-test-checkout-ports.ts';
 import {offerFixture} from './fixture.ts';
 const NOW=Date.parse('2027-01-05T15:00:00Z'),SECRET='rk_test_SYNTHETIC_CHECKOUT_NO_NETWORK',PRIVATE='SYNTHETIC_PRIVATE_PROVIDER_CANARY';
+const CHECKOUT_URL='https://checkout.stripe.com/c/pay/cs_test_SYNTHETIC#fidkdWxOYHwnPyd1blpxYHZxWjA0SYNTHETIC%2F%3D';
 const binding:StripeTestCheckoutBinding={accountId:'acct_SYNTHETIC',livemode:false,apiVersion:checkoutApiVersion,verifiedBindingId:'SYNTHETIC_ROOT_BINDING'};
 const urls={successUrl:'https://life-skills.bneineviimacademy.org/en/account',cancelUrl:'https://life-skills.bneineviimacademy.org/en/florida/apply'};
 function context(mode:'prepay'|'installments'='installments',dueIndex=0):StripeTestCheckoutContext{
@@ -22,7 +23,7 @@ function known(c:StripeTestCheckoutContext):CheckoutKnownBinding{return {id:rand
 function claim(c:StripeTestCheckoutContext,phase:'create'|'expire'='create'):CheckoutDispatchClaim{return {id:randomUUID(),phase,operationId:c.operationId,generation:c.generation,contextDigest:digest(c),requestDigest:checkoutRequestDigest(c,phase,urls,phase==='expire'?'cs_test_SYNTHETIC':null),idempotencyKey:`rm:${c.offer.workspaceId}:${c.operationId}:checkout:1:${phase}`,effectDecisionId:'SYNTHETIC_CONSUMED_ROOT_EFFECT',sessionId:phase==='expire'?'cs_test_SYNTHETIC':null};}
 function session(c:StripeTestCheckoutContext,status:'open'|'complete'|'expired'='open',paid=false){
  const amount=c.schedule.dues.find(d=>d.id===c.dueId)!.amountCents;
- return {id:'cs_test_SYNTHETIC',object:'checkout.session',livemode:false,customer:c.customer.customerId,mode:'payment',ui_mode:'hosted_page',currency:'usd',status,payment_status:paid?'paid':'unpaid',amount_subtotal:amount,amount_total:amount,allow_promotion_codes:false,automatic_tax:{enabled:false},total_details:{amount_discount:0,amount_shipping:0,amount_tax:0},invoice_creation:{enabled:true},invoice:paid?'in_SYNTHETIC':null,payment_intent:paid?'pi_SYNTHETIC':null,subscription:null,expires_at:Math.floor(Date.parse(c.expiresAt)/1000),url:status==='open'?'https://checkout.stripe.com/c/pay/cs_test_SYNTHETIC':null,metadata:checkoutMetadata(c),
+ return {id:'cs_test_SYNTHETIC',object:'checkout.session',livemode:false,customer:c.customer.customerId,mode:'payment',ui_mode:'hosted_page',currency:'usd',status,payment_status:paid?'paid':'unpaid',amount_subtotal:amount,amount_total:amount,allow_promotion_codes:false,automatic_tax:{enabled:false},total_details:{amount_discount:0,amount_shipping:0,amount_tax:0},invoice_creation:{enabled:true},invoice:paid?'in_SYNTHETIC':null,payment_intent:paid?'pi_SYNTHETIC':null,subscription:null,expires_at:Math.floor(Date.parse(c.expiresAt)/1000),url:status==='open'?CHECKOUT_URL:null,metadata:checkoutMetadata(c),
   line_items:{object:'list',has_more:false,data:[{id:'li_SYNTHETIC',object:'item',quantity:1,currency:'usd',amount_subtotal:amount,amount_total:amount,amount_tax:0,amount_discount:0,adjustable_quantity:null,price:{id:'price_SYNTHETIC',currency:'usd',unit_amount:amount,type:'one_time',recurring:null}}]},customer_details:{email:PRIVATE,name:PRIVATE},client_secret:PRIVATE};
 }
 function transport(...values:unknown[]){let index=0;const fetch=vi.fn<typeof globalThis.fetch>(async()=>{if(index>=values.length)throw Error(PRIVATE);return new Response(JSON.stringify(values[index++]),{headers:{'content-type':'application/json'}});});vi.stubGlobal('fetch',fetch);return fetch;}
@@ -39,7 +40,7 @@ describe('genuine TEST hosted_page Checkout, mocked wire only',()=>{
  });
  it('creates actual hosted Checkout due1, accepts null invoice/PI and emits no recurring mandate or separate invoice',async()=>{
   const c=context(),fetch=transport(session(c)),o=await provider().perform(c,{phase:'create',claim:claim(c)},signal());
-  expect(o).toMatchObject({status:'open',paymentStatus:'unpaid',amountCents:65000,invoiceId:null,paymentIntentId:null,url:'https://checkout.stripe.com/c/pay/cs_test_SYNTHETIC'});expect(JSON.stringify(o)).not.toContain(PRIVATE);
+  expect(o).toMatchObject({status:'open',paymentStatus:'unpaid',amountCents:65000,invoiceId:null,paymentIntentId:null,url:CHECKOUT_URL});expect(o.url).toBe(CHECKOUT_URL);expect(JSON.stringify(o)).not.toContain(PRIVATE);
   expect(fetch).toHaveBeenCalledTimes(1);const[url,init]=fetch.mock.calls[0]!,params=new URLSearchParams(String(init?.body)),headers=new Headers(init?.headers);
   expect(String(url)).toBe('https://api.stripe.com/v1/checkout/sessions');expect(init).toMatchObject({method:'POST',redirect:'error',credentials:'omit',cache:'no-store'});
   expect(headers.get('stripe-version')).toBe(checkoutApiVersion);expect(headers.get('stripe-account')).toBe(binding.accountId);expect(headers.get('idempotency-key')).toBe(claim(c).idempotencyKey);
@@ -49,6 +50,17 @@ describe('genuine TEST hosted_page Checkout, mocked wire only',()=>{
  });
  it('uses the existing prepay amount without inventing installments',async()=>{
   const c=context('prepay'),fetch=transport(session(c));expect((await provider().perform(c,{phase:'create',claim:claim(c)},signal())).amountCents).toBe(175000);expect(new URLSearchParams(String(fetch.mock.calls[0]![1]?.body)).get('line_items[0][price_data][unit_amount]')).toBe('175000');
+ });
+ it('preserves the complete opaque URL from a known-session provider read',async()=>{
+  const c=context(),fetch=transport(session(c));expect((await provider().perform(c,{phase:'read',known:known(c)},signal())).url).toBe(CHECKOUT_URL);expect(fetch).toHaveBeenCalledTimes(1);
+ });
+ it.each([
+  'https://checkout.stripe.com.foreign.invalid/c/pay/cs_test_SYNTHETIC#opaque',
+  'https://checkout.stripe.com@foreign.invalid/c/pay/cs_test_SYNTHETIC#opaque',
+  'https://user:secret@checkout.stripe.com/c/pay/cs_test_SYNTHETIC#opaque',
+  'https://checkout.stripe.com:8443/c/pay/cs_test_SYNTHETIC#opaque',
+ ])('rejects a malicious URL in provider readback despite its fragment: %s',async url=>{
+  const c=context(),fetch=transport({...session(c),url});await denied(provider().perform(c,{phase:'read',known:known(c)},signal()));expect(fetch).toHaveBeenCalledTimes(1);
  });
  it('reads only the native-known session with one fixed line_items expansion',async()=>{
   const c=context(),fetch=transport(session(c,'complete',true)),o=await provider().perform(c,{phase:'read',known:known(c)},signal());

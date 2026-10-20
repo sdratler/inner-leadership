@@ -5,9 +5,10 @@ import {expect,it} from 'vitest';
 import {digest} from '../../../src/features/fishing-payments/domain.ts';
 import type {Actor} from '../../../src/features/fishing/contract.ts';
 import type {NativeContext} from '../../../src/features/fishing-payments/ports.ts';
-import {checkoutApiVersion,validateCheckoutContext,checkoutFinitePlan,assertCheckoutCreateWindow,validateCheckoutKnown,validateCheckoutClaim,checkoutRequestDigest,validateCheckoutObservation,publishCheckoutRedirect,type StripeTestCheckoutBinding,type StripeTestCheckoutContext,type CheckoutKnownBinding,type CheckoutDispatchClaim,type CheckoutPublicationBoundary,type CheckoutObservation,type CheckoutRedirect} from '../../../src/features/fishing-payments/stripe-test-checkout-ports.ts';
+import {checkoutApiVersion,validateCheckoutContext,checkoutFinitePlan,assertCheckoutCreateWindow,validateCheckoutKnown,validateCheckoutClaim,checkoutRequestDigest,validateCheckoutUrl,validateCheckoutObservation,publishCheckoutRedirect,type StripeTestCheckoutBinding,type StripeTestCheckoutContext,type CheckoutKnownBinding,type CheckoutDispatchClaim,type CheckoutPublicationBoundary,type CheckoutObservation,type CheckoutRedirect} from '../../../src/features/fishing-payments/stripe-test-checkout-ports.ts';
 import {offerFixture} from './fixture.ts';
 const NOW=Date.parse('2027-01-05T15:00:00Z');
+const CHECKOUT_URL='https://checkout.stripe.com/c/pay/cs_test_SYNTHETIC#fidkdWxOYHwnPyd1blpxYHZxWjA0SYNTHETIC%2F%3D';
 const binding:StripeTestCheckoutBinding={accountId:'acct_SYNTHETIC',livemode:false,apiVersion:checkoutApiVersion,verifiedBindingId:'SYNTHETIC_SERVER_BINDING'};
 const urls={successUrl:'https://life-skills.bneineviimacademy.org/en/account',cancelUrl:'https://life-skills.bneineviimacademy.org/en/florida/apply'};
 function fixture(mode:'prepay'|'installments'='installments',dueIndex=0):StripeTestCheckoutContext{
@@ -19,7 +20,26 @@ function fixture(mode:'prepay'|'installments'='installments',dueIndex=0):StripeT
 }
 function known(c:StripeTestCheckoutContext):CheckoutKnownBinding{return {id:randomUUID(),revision:1,sessionId:'cs_test_SYNTHETIC',contextDigest:digest(c),operationId:c.operationId,purchaseId:c.purchaseId,purchaseLineId:c.purchaseLineId,dueId:c.dueId,customerBindingId:c.customer.bindingId,offerDigest:c.offerDigest,scheduleDigest:c.scheduleDigest};}
 function claim(c:StripeTestCheckoutContext):CheckoutDispatchClaim{return {id:randomUUID(),phase:'create',operationId:c.operationId,generation:c.generation,contextDigest:digest(c),requestDigest:checkoutRequestDigest(c,'create',urls),idempotencyKey:`rm:${c.offer.workspaceId}:${c.operationId}:checkout:1:create`,effectDecisionId:'SYNTHETIC_CONSUMED_ROOT_DECISION',sessionId:null};}
-function observation(c:StripeTestCheckoutContext):CheckoutObservation{return {contextDigest:digest(c),sessionId:'cs_test_SYNTHETIC',customerId:c.customer.customerId,status:'open',paymentStatus:'unpaid',amountCents:c.schedule.dues.find(d=>d.id===c.dueId)!.amountCents,expiresAt:Math.floor(Date.parse(c.expiresAt)/1000),invoiceId:null,paymentIntentId:null,url:'https://checkout.stripe.com/c/pay/cs_test_SYNTHETIC'};}
+function observation(c:StripeTestCheckoutContext):CheckoutObservation{return {contextDigest:digest(c),sessionId:'cs_test_SYNTHETIC',customerId:c.customer.customerId,status:'open',paymentStatus:'unpaid',amountCents:c.schedule.dues.find(d=>d.id===c.dueId)!.amountCents,expiresAt:Math.floor(Date.parse(c.expiresAt)/1000),invoiceId:null,paymentIntentId:null,url:CHECKOUT_URL};}
+
+it('preserves the bounded opaque provider fragment byte-for-byte, and permits fragment-free Checkout',()=>{
+ expect(validateCheckoutUrl(CHECKOUT_URL)).toBe(CHECKOUT_URL);
+ const plain='https://checkout.stripe.com/c/pay/cs_test_SYNTHETIC';expect(validateCheckoutUrl(plain)).toBe(plain);
+ const c=fixture();expect(validateCheckoutObservation(observation(c),c).url).toBe(CHECKOUT_URL);
+});
+it.each([
+ 'https://foreign.invalid/c/pay/cs_test_SYNTHETIC#opaque',
+ 'https://checkout.stripe.com.foreign.invalid/c/pay/cs_test_SYNTHETIC#opaque',
+ 'https://checkout.stripe.com@foreign.invalid/c/pay/cs_test_SYNTHETIC#opaque',
+ 'https://user:secret@checkout.stripe.com/c/pay/cs_test_SYNTHETIC#opaque',
+ 'http://checkout.stripe.com/c/pay/cs_test_SYNTHETIC#opaque',
+ 'https://checkout.stripe.com:8443/c/pay/cs_test_SYNTHETIC#opaque',
+ 'https://checkout.stripe.com/i/WRONG#opaque',
+ CHECKOUT_URL+'\r\nLocation: https://foreign.invalid',
+ CHECKOUT_URL+'x'.repeat(2048),
+])('opaque fragments do not relax Checkout destination, credential, port, CRLF or size guards: %s',value=>{
+ expect(()=>validateCheckoutUrl(value)).toThrow();
+});
 
 it('the first Checkout is due1 of exactly three; only two650 payments remain after due1',()=>{
  const c=validateCheckoutContext(fixture(),binding),dues=c.schedule.dues;
@@ -83,7 +103,7 @@ function publication(){
  return {c,k,o,actor,boundary,events,publishes:()=>publishes,deny:()=>{allowed=false;},expire:()=>{now=o.expiresAt*1000;}};
 }
 it('redirect waits for pending binding commit and reauthorizes even a cached result',async()=>{
- const f=publication(),first=await publishCheckoutRedirect(f.actor,'same',f.c,f.k,f.o,f.boundary);expect(f.events.at(-1)).toBe('commit');expect(f.events.indexOf('authorize')).toBeLessThan(f.events.indexOf('pending-binding-persisted'));
+ const f=publication(),first=await publishCheckoutRedirect(f.actor,'same',f.c,f.k,f.o,f.boundary);expect(first.url).toBe(CHECKOUT_URL);expect(f.events.at(-1)).toBe('commit');expect(f.events.indexOf('authorize')).toBeLessThan(f.events.indexOf('pending-binding-persisted'));
  await expect(publishCheckoutRedirect(f.actor,'same',f.c,f.k,f.o,f.boundary)).resolves.toEqual(first);expect(f.publishes()).toBe(1);
  f.events.length=0;f.deny();await expect(publishCheckoutRedirect(f.actor,'same',f.c,f.k,f.o,f.boundary)).rejects.toThrow('CURRENT_ROOT_POLICY_DENIED');expect(f.events).not.toContain('cache-read');
 });
