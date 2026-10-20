@@ -1,4 +1,7 @@
 import {describe,it,expect} from 'vitest';
+import {createElement} from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
+import {AcademyRegistrationReadback} from '../../src/features/group-application/academy-registration-readback.tsx';
 import {createHash} from 'node:crypto';
 import {floridaAcademyRegistrationFieldsSchema,floridaGroupApplicationFieldsSchema,groupApplicationFieldsSchema} from '../../src/features/group-application/contract.ts';
 import {ACADEMY_REGISTRATION_VERSION,registrationConsent} from '../../src/features/group-application/academy-registration.ts';
@@ -12,3 +15,5 @@ describe('versioned Academy registration',()=>{
  it('information submission needs neither email nor plan and cannot be laundered into payment or another program',()=>{expect(floridaAcademyRegistrationFieldsSchema.safeParse(fields()).success).toBe(true);const pay=fields();pay.academyRegistration.intent='pay';expect(floridaAcademyRegistrationFieldsSchema.safeParse(pay).success).toBe(false);expect(floridaGroupApplicationFieldsSchema.safeParse({...fields(),programId:'private_fishing_life_skills'}).success).toBe(false);});
  it('binds consent to immutable actual notice text and displayed language independently of preferred group language',()=>{for(const language of ['en','he'] as const)expect(createHash('sha256').update(academyRegistrationNotice[language]).digest('hex')).toBe(academyRegistrationNoticeHashes[language]);const f=fields();expect(floridaAcademyRegistrationFieldsSchema.safeParse(f).success).toBe(true);f.language='he';expect(floridaAcademyRegistrationFieldsSchema.safeParse(f).success).toBe(false);f.permission.language='he';f.academyRegistration.consent=registrationConsent('he');expect(floridaAcademyRegistrationFieldsSchema.safeParse(f).success).toBe(true);expect(floridaAcademyRegistrationFieldsSchema.safeParse({...f,academyRegistration:{...f.academyRegistration,consent:{...f.academyRegistration.consent,textSha256:'0'.repeat(64)}}}).success).toBe(false);});
 });
+
+it('owner readback retains experience and school-hours eligibility as well as names and exact grades in both languages',()=>{const registration=floridaAcademyRegistrationFieldsSchema.parse(fields()).academyRegistration;for(const locale of ['en','he']as const){const html=renderToStaticMarkup(createElement(AcademyRegistrationReadback,{registration,locale}));for(const value of [child1,child2,'Synthetic Child One','Synthetic Child Two','00123','37',locale==='en'?'Some experience':'ניסיון מסוים',locale==='en'?'Only outside school hours':'רק מחוץ לשעות בית הספר'])expect(html).toContain(value);}});
