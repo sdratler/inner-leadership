@@ -2,7 +2,7 @@
  * actual accepted legal agreement, native payment/attendance or refund proof. */
 import {randomUUID} from 'node:crypto';
 import {expect,it} from 'vitest';
-import {owner03PolicyVersion,owner03PurchasePolicy,owner03RefundProposal,validateOwner03Purchase,Owner03PolicyInputError,type Owner03Purchase,type Owner03RefundInput,type Owner03RefundProposal} from '../../../src/features/fishing-payments/owner03-policy.ts';
+import {owner03PolicyVersion,owner03FamilyFeeDecision,owner03PurchasePolicy,owner03RefundProposal,owner03FamilyPrestartProposal,validateOwner03Purchase,Owner03PolicyInputError,type Owner03Purchase,type Owner03RefundInput,type Owner03RefundProposal,type Owner03FamilyPrestartInput,type Owner03FamilyPrestartProposal} from '../../../src/features/fishing-payments/owner03-policy.ts';
 
 type PrepayBasis='ordinary_primary_prepay'|'ordinary_sibling_prepay'|'founder_initial_primary_prepay'|'founder_initial_sibling_prepay';
 function purchase(mode:'monthly_block'|'stage_prepay'|'installments'='monthly_block',basis:PrepayBasis='ordinary_primary_prepay'):Owner03Purchase{
@@ -51,8 +51,8 @@ it('two siblings buying monthly blocks each receive the selected100 fee after tw
 it.each(['monthly_block','stage_prepay'] as const)('single-child voluntary prestart %s preserves the selected200 fee',mode=>{
  const p=purchase(mode),q=proposal(refund(p,0));expect(q).toMatchObject({attendedCount:0,retainedLessonCents:0,administrationCents:20000,refundCents:p.priceCents-20000});
 });
-it('prestart cancellation of two siblings returns the unresolved fee unit independently for both children',()=>{
- for(const p of [purchase(),purchase('stage_prepay','ordinary_sibling_prepay')]){const r=owner03RefundProposal({...refund(p,0),multiChildPrestart:true});expect(r).toMatchObject({status:'POLICY_REQUIRED',reason:'multi_child_prestart_fee_unit',references:{purchaseId:p.purchaseId,childId:p.childId}});expect(r).not.toHaveProperty('refundCents');expect(r).not.toHaveProperty('administrationCents');}
+it('joint prestart requests through the per-child API report the selected family fee and require allocation',()=>{
+ for(const p of [purchase(),purchase('stage_prepay','ordinary_sibling_prepay')]){const r=owner03RefundProposal({...refund(p,0),multiChildPrestart:true});expect(r).toMatchObject({status:'POLICY_REQUIRED',reason:'family_prestart_allocation_required',familyFeeDecisionId:owner03FamilyFeeDecision,familyAdministrationCents:20000,allocationRequired:true,references:{purchaseId:p.purchaseId,childId:p.childId}});expect(r).not.toHaveProperty('refundCents');expect(r).not.toHaveProperty('administrationCents');}
 });
 it.each([['monthly_block',3],['monthly_block',4],['stage_prepay',3],['stage_prepay',12]] as const)('three-plus remains unresolved for%s count%i',(mode,count)=>{
  const result=owner03RefundProposal(refund(purchase(mode),count));expect(result).toMatchObject({status:'POLICY_REQUIRED',reason:'three_or_more_attended'});expect(result).not.toHaveProperty('refundCents');
@@ -116,4 +116,73 @@ it('returns stable per-child purchase/capture/lesson references without mutating
 });
 it('invalid input never exposes supplied private values or a raw validation cause',()=>{
  let error:unknown;try{owner03RefundProposal({private:'SYNTHETIC_PRIVATE_INPUT_CANARY'});}catch(caught){error=caught;}expect(error).toBeInstanceOf(Owner03PolicyInputError);expect(String(error)).not.toContain('SYNTHETIC_PRIVATE_INPUT_CANARY');expect(error).not.toHaveProperty('cause');
+});
+
+function familyInput(purchases:Owner03Purchase[]=[purchase(),purchase()]):Owner03FamilyPrestartInput{
+ const householdId=randomUUID(),payerAccountId=randomUUID();return {policyVersion:owner03PolicyVersion,decisionId:owner03FamilyFeeDecision,cancellationId:randomUUID(),householdId,payerAccountId,nativeGroupReference:'SYNTHETIC_NATIVE_GROUP_NOT_AUTHORITY',nativeGroupRevision:1,priorOutcome:'none',members:purchases.map(p=>{const i=refund(p,0);return {householdId,payerAccountId,refundInput:{...i,payment:{...i.payment,settlementReferences:['pi_SYNTHETIC_'+p.purchaseId.replaceAll('-','')]}}};}),feeAllocation:null};
+}
+function allocate(i:Owner03FamilyPrestartInput,amounts:readonly number[]){return {...i,feeAllocation:amounts.map((amount,index)=>({purchaseId:i.members[index]!.refundInput.purchase.purchaseId,childId:i.members[index]!.refundInput.purchase.childId,administrationCents:amount}))};}
+function familyProposal(i:unknown):Extract<Owner03FamilyPrestartProposal,{status:'PROPOSAL_ONLY'}>{const r=owner03FamilyPrestartProposal(i);expect(r.status).toBe('PROPOSAL_ONLY');if(r.status!=='PROPOSAL_ONLY')throw Error('EXPECTED_FAMILY_PROPOSAL');return r;}
+
+it('joint prestart has ONE known200 family fee and no guessed per-child refunds without allocation',()=>{
+ const i=familyInput(),q=owner03FamilyPrestartProposal(i);expect(q).toMatchObject({status:'ALLOCATION_REQUIRED',familyAdministrationCents:20000,totalPaidCents:130000,totalRefundCents:110000,allocationRequired:true,decisionId:owner03FamilyFeeDecision,policyVersion:owner03PolicyVersion,effect:'none'});expect(q).not.toHaveProperty('children');expect(q).not.toHaveProperty('feeAllocation');expect(q.binding).toMatchObject({cancellationId:i.cancellationId,householdId:i.householdId,payerAccountId:i.payerAccountId,nativeGroupReference:i.nativeGroupReference,nativeGroupRevision:1});
+ for(const m of i.members)expect(q.binding.members.some(s=>s.references.purchaseId===m.refundInput.purchase.purchaseId&&s.references.childId===m.refundInput.purchase.childId&&s.references.settlementReferences[0]===m.refundInput.payment.settlementReferences[0])).toBe(true);
+});
+it('omitted and empty allocation still disclose the selected family total and allocation-required state',()=>{
+ const i=familyInput(),{feeAllocation:omitted,...withoutAllocation}=i;expect(omitted).toBeNull();for(const input of [withoutAllocation,{...i,feeAllocation:[]}])expect(owner03FamilyPrestartProposal(input)).toMatchObject({status:'ALLOCATION_REQUIRED',familyAdministrationCents:20000,totalRefundCents:110000});
+});
+it.each([[10000,10000],[20000,0],[0,20000],[12345,7655]])('only the explicit monthly sibling allocation %i/%i is applied',(a,b)=>{
+ const i=familyInput(),q=familyProposal(allocate(i,[a,b]));expect(q.children.reduce((n,c)=>n+c.administrationCents,0)).toBe(20000);expect(q.children.reduce((n,c)=>n+c.refundCents,0)).toBe(110000);
+ for(const [index,fee] of [a,b].entries()){const p=i.members[index]!.refundInput.purchase,c=q.children.find(c=>c.references.purchaseId===p.purchaseId)!;expect(c).toMatchObject({administrationCents:fee,refundCents:65000-fee!,retainedLessonCents:0,attendedCount:0,references:{childId:p.childId,purchaseId:p.purchaseId},effect:'none'});}
+});
+it('differing sibling prepayments share one fee while keeping actual paid purchase/child references',()=>{
+ const i=familyInput([purchase('stage_prepay','founder_initial_primary_prepay'),purchase('stage_prepay','founder_initial_sibling_prepay')]),unallocated=owner03FamilyPrestartProposal(i);expect(unallocated).toMatchObject({status:'ALLOCATION_REQUIRED',familyAdministrationCents:20000,totalPaidCents:320000,totalRefundCents:300000});const q=familyProposal(allocate(i,[5000,15000]));
+ expect(q.children.find(c=>c.references.purchaseId===i.members[0]!.refundInput.purchase.purchaseId)).toMatchObject({paidCents:165000,administrationCents:5000,refundCents:160000});expect(q.children.find(c=>c.references.purchaseId===i.members[1]!.refundInput.purchase.purchaseId)).toMatchObject({paidCents:155000,administrationCents:15000,refundCents:140000});expect(q.totalRefundCents).toBe(300000);
+});
+it('family grouping, rather than per-child flags, prevents two200 fees for one joint cancellation',()=>{
+ const i=familyInput();expect(i.members.every(m=>m.refundInput.multiChildPrestart===false)).toBe(true);const q=familyProposal(allocate(i,[20000,0]));expect(q.familyAdministrationCents).toBe(20000);expect(q.children.map(c=>c.administrationCents).sort((a,b)=>a-b)).toEqual([0,20000]);expect(q.totalRefundCents).toBe(110000);
+});
+it('the family decision leaves every after-start per-child fee/window unchanged even with a joint-context flag',()=>{
+ for(const mode of ['monthly_block','stage_prepay'] as const)for(const count of [1,2]){const i=refund(purchase(mode),count);expect(owner03RefundProposal({...i,multiChildPrestart:true})).toEqual(owner03RefundProposal(i));}
+});
+it.each(['pending','unknown','completed','duplicate'] as const)('native cancellation outcome %s requires reconciliation instead of another fee',priorOutcome=>{
+ const i=allocate(familyInput(),[10000,10000]),q=owner03FamilyPrestartProposal({...i,priorOutcome});expect(q).toMatchObject({status:'RECONCILIATION_REQUIRED',reason:'prior_cancellation_outcome',familyAdministrationCents:20000,effect:'none'});expect(q).not.toHaveProperty('children');expect(q).not.toHaveProperty('totalRefundCents');
+});
+it('any prior child refund requires reconciliation before family allocation',()=>{
+ const i=familyInput(),first=i.members[0]!,q=owner03FamilyPrestartProposal({...allocate(i,[10000,10000]),members:[{...first,refundInput:{...first.refundInput,payment:{...first.refundInput.payment,refundedCents:1}}},i.members[1]!]});expect(q).toMatchObject({status:'RECONCILIATION_REQUIRED',reason:'prior_refund'});expect(q).not.toHaveProperty('children');
+});
+it('duplicate purchases or shared settlement references cannot be double-counted as family refund cash',()=>{
+ const i=familyInput();expect(owner03FamilyPrestartProposal({...i,members:[i.members[0],i.members[0]]})).toMatchObject({status:'RECONCILIATION_REQUIRED',reason:'duplicate_purchase'});
+ const a=i.members[0]!,b=i.members[1]!;expect(owner03FamilyPrestartProposal({...i,members:[a,{...b,refundInput:{...b.refundInput,payment:{...b.refundInput.payment,settlementReferences:a.refundInput.payment.settlementReferences}}}]})).toMatchObject({status:'RECONCILIATION_REQUIRED',reason:'shared_settlement_reference'});
+});
+const invalidFamilyAllocations:readonly [string,(i:Owner03FamilyPrestartInput)=>unknown][]=[
+ ['double200 fees',i=>allocate(i,[20000,20000])],
+ ['underallocated fee',i=>allocate(i,[10000,9999])],
+ ['overallocated fee',i=>allocate(i,[10000,10001])],
+ ['no fee despite explicit entries',i=>allocate(i,[0,0])],
+ ['missing child allocation',i=>allocate(i,[20000])],
+ ['negative allocation',i=>allocate(i,[-1,20001])],
+ ['fractional cents',i=>allocate(i,[10000.5,9999.5])],
+ ['foreign allocated child',i=>{const a=allocate(i,[10000,10000]);return {...a,feeAllocation:a.feeAllocation.map((r,index)=>index===0?{...r,childId:randomUUID()}:r)};}],
+ ['foreign allocated purchase',i=>{const a=allocate(i,[10000,10000]);return {...a,feeAllocation:a.feeAllocation.map((r,index)=>index===0?{...r,purchaseId:randomUUID()}:r)};}],
+ ['duplicate allocated purchase',i=>{const a=allocate(i,[10000,10000]);return {...a,feeAllocation:[a.feeAllocation[0],a.feeAllocation[0]]};}],
+ ['different household',i=>({...i,members:i.members.map((m,index)=>index===0?{...m,householdId:randomUUID()}:m)})],
+ ['different payer',i=>({...i,members:i.members.map((m,index)=>index===0?{...m,payerAccountId:randomUUID()}:m)})],
+ ['empty cancellation ID',i=>({...i,cancellationId:''})],
+ ['missing native provenance',i=>({...i,nativeGroupReference:''})],
+ ['invalid group revision',i=>({...i,nativeGroupRevision:0})],
+ ['wrong source decision',i=>({...i,decisionId:'older-unit-unknown'})],
+ ['caller authorization flag',i=>({...i,authorized:true})],
+];
+it.each(invalidFamilyAllocations)('family contract strictly rejects %s',(_label,change)=>{expect(()=>owner03FamilyPrestartProposal(change(familyInput()))).toThrow(Owner03PolicyInputError);});
+it('the family helper preserves historical/operator/disciplinary and after-start policy gates',()=>{
+ const make=(r:Owner03RefundInput)=>{const i=familyInput();return {...i,members:[{...i.members[0]!,refundInput:{...r,payment:{...r.payment,settlementReferences:['pi_OTHER_SYNTHETIC_SCOPE']}}},i.members[1]!]};};
+ expect(owner03FamilyPrestartProposal(make(refund(purchase('installments'),0)))).toMatchObject({status:'POLICY_REQUIRED',reason:'historical_installment_mode'});
+ for(const reason of ['operator','disciplinary'] as const)expect(owner03FamilyPrestartProposal(make({...refund(purchase(),0),reason}))).toMatchObject({status:'POLICY_REQUIRED',reason:reason==='operator'?'operator_cancellation_review':'disciplinary_fee_review'});
+ expect(owner03FamilyPrestartProposal(make(refund(purchase(),1)))).toMatchObject({status:'POLICY_REQUIRED',reason:'family_prestart_scope_required'});expect(owner03FamilyPrestartProposal(make(refund(purchase(),3)))).toMatchObject({status:'POLICY_REQUIRED',reason:'three_or_more_attended'});
+});
+it('canonical grouping/allocation is immutable, order-independent and explicitly requires eventual Root authority',()=>{
+ const i=allocate(familyInput(),[12000,8000]),before=JSON.stringify(i),a=familyProposal(i),b=familyProposal({...i,members:[...i.members].reverse(),feeAllocation:[...i.feeAllocation].reverse()});expect(b).toEqual(a);expect(JSON.stringify(i)).toBe(before);expect(Object.isFrozen(a.binding)).toBe(true);expect(Object.isFrozen(a.binding.members)).toBe(true);expect(Object.isFrozen(a.binding.members[0]!.references.settlementReferences)).toBe(true);
+ expect(a).toMatchObject({authorityRequirement:'ROOT_NATIVE_GROUP_PROVENANCE_AND_ONCE_ONLY_RESERVATION',legalStatus:'OWNER_SELECTED_REVIEW_DRAFT',effect:'none'});expect(a.canonicalGroup).toContain(i.cancellationId);expect(a.canonicalGroup).toContain(i.householdId);expect(a.canonicalGroup).toContain(i.payerAccountId);
+ const different=familyProposal({...i,cancellationId:randomUUID()});expect(different.canonicalGroup).not.toBe(a.canonicalGroup);expect(familyProposal(allocate(i,[8000,12000])).canonicalProposal).not.toBe(a.canonicalProposal);
 });

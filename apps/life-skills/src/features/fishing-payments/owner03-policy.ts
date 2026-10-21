@@ -1,6 +1,7 @@
 import {z} from 'zod';
 
 export const owner03PolicyVersion='JLFA-OWNER-20261020-REFUND-SAFETY-03' as const;
+export const owner03FamilyFeeDecision='JLFA-PRESTART-FAMILY-FEE-20261021-01' as const;
 const uuid=z.uuid(),ref=z.string().regex(/^[A-Za-z0-9_.:-]{1,160}$/),cents=z.number().int().nonnegative().max(100000000);
 const prepayBasis=z.enum(['ordinary_primary_prepay','ordinary_sibling_prepay','founder_initial_primary_prepay','founder_initial_sibling_prepay']);
 const priceBasis=z.enum(['monthly_block_full_rate',...prepayBasis.options,'three_full_rate_dues']);
@@ -21,8 +22,10 @@ export const owner03RefundInputSchema=z.strictObject({purchase:owner03PurchaseSc
 export type Owner03Purchase=Readonly<z.infer<typeof owner03PurchaseSchema>>;
 export type Owner03RefundInput=Readonly<z.infer<typeof owner03RefundInputSchema>>;
 export type Owner03References=Readonly<{purchaseId:string;purchaseLineId:string;childId:string;stageId:string;scopeId:string;offerId:string;offerRevision:number;acceptanceId:string;eligibilityEvidenceId:string;termsVersion:string;settlementReferences:readonly string[];lessonReferences:readonly string[]}>;
-export type Owner03PolicyRequiredReason='historical_installment_mode'|'operator_cancellation_review'|'disciplinary_fee_review'|'multi_child_prestart_fee_unit'|'three_or_more_attended'|'zero_attendance_after_start'|'fully_paid_purchase_required'|'refund_balance_review';
-export type Owner03PolicyRequired=Readonly<{policyVersion:typeof owner03PolicyVersion;status:'POLICY_REQUIRED';reason:Owner03PolicyRequiredReason;references:Owner03References}>;
+// Retain the old fee-unit literal for source compatibility; it is never emitted
+// after the family-fee decision. Allocation, rather than the unit, is pending.
+export type Owner03PolicyRequiredReason='historical_installment_mode'|'operator_cancellation_review'|'disciplinary_fee_review'|'multi_child_prestart_fee_unit'|'family_prestart_allocation_required'|'three_or_more_attended'|'zero_attendance_after_start'|'fully_paid_purchase_required'|'refund_balance_review';
+export type Owner03PolicyRequired=Readonly<{policyVersion:typeof owner03PolicyVersion;status:'POLICY_REQUIRED';reason:Owner03PolicyRequiredReason;references:Owner03References;familyFeeDecisionId?:typeof owner03FamilyFeeDecision;familyAdministrationCents?:20000;allocationRequired?:true}>;
 export type Owner03PurchasePolicy=Readonly<{
  policyVersion:typeof owner03PolicyVersion;status:'PURCHASE_POLICY';legalStatus:'OWNER_SELECTED_REVIEW_DRAFT';references:Owner03References;
  mode:'monthly_block'|'stage_prepay';currency:'USD';priceCents:number;purchasedLessons:4|12;requiredPayments:1;
@@ -87,9 +90,67 @@ export function owner03RefundProposal(raw:unknown):Owner03RefundProposal|Owner03
  if(input.payment.paidCents!==p.priceCents)return required(r,'fully_paid_purchase_required');
  if(count>=3)return required(r,'three_or_more_attended');
  if(count===0&&input.timing!=='prestart')return required(r,'zero_attendance_after_start');
- if(count===0&&input.multiChildPrestart)return required(r,'multi_child_prestart_fee_unit');
+ // Root derives joint membership from native records, not this caller flag.
+ // Never loop the single-child branch to process a joint family cancellation.
+ if(count===0&&input.multiChildPrestart)return {...required(r,'family_prestart_allocation_required'),familyFeeDecisionId:owner03FamilyFeeDecision,familyAdministrationCents:20000,allocationRequired:true};
  const retainedLessonCents=retained(p.priceCents,count,p.purchasedLessons),administrationCents=count===1?0:count===2&&p.mode==='monthly_block'?10000:20000;
  const refundCents=input.payment.paidCents-retainedLessonCents-administrationCents-input.payment.refundedCents;
  if(refundCents<0)return required(r,'refund_balance_review');
  return {policyVersion:owner03PolicyVersion,status:'PROPOSAL_ONLY',legalStatus:'OWNER_SELECTED_REVIEW_DRAFT',references:r,mode:p.mode,currency:'USD',purchasedLessons:p.purchasedLessons,attendedCount:count,paidCents:input.payment.paidCents,retainedLessonCents,administrationCents,alreadyRefundedCents:input.payment.refundedCents,refundCents,rounding:'positive_half_up_total_retention',effect:'none'};
+}
+
+const familyMemberSchema=z.strictObject({householdId:uuid,payerAccountId:uuid,refundInput:owner03RefundInputSchema});
+const familyAllocationSchema=z.strictObject({purchaseId:uuid,childId:uuid,administrationCents:cents});
+export const owner03FamilyPrestartInputSchema=z.strictObject({policyVersion:z.literal(owner03PolicyVersion),decisionId:z.literal(owner03FamilyFeeDecision),cancellationId:uuid,householdId:uuid,payerAccountId:uuid,nativeGroupReference:ref,nativeGroupRevision:z.number().int().positive(),priorOutcome:z.enum(['none','pending','unknown','completed','duplicate']),members:z.array(familyMemberSchema).min(2).max(20),feeAllocation:z.array(familyAllocationSchema).max(20).nullable().optional()});
+export type Owner03FamilyPrestartInput=Readonly<z.infer<typeof owner03FamilyPrestartInputSchema>>;
+export type Owner03FamilyFeeAllocation=Readonly<z.infer<typeof familyAllocationSchema>>;
+type FamilyMember=Readonly<{references:Owner03References;mode:Owner03Purchase['mode'];purchasedLessons:4|12;priceCents:number;paidCents:number;refundedCents:number;reason:Owner03RefundInput['reason'];timing:Owner03RefundInput['timing'];attendedCount:number;lessonOutcomes:readonly Readonly<{lessonId:string;outcome:Owner03RefundInput['attendance']['lessons'][number]['outcome']}>[]}>;
+export type Owner03FamilyCancellationBinding=Readonly<{policyVersion:typeof owner03PolicyVersion;decisionId:typeof owner03FamilyFeeDecision;cancellationId:string;householdId:string;payerAccountId:string;nativeGroupReference:string;nativeGroupRevision:number;members:readonly FamilyMember[]}>;
+type FamilyCommon=Readonly<{policyVersion:typeof owner03PolicyVersion;decisionId:typeof owner03FamilyFeeDecision;legalStatus:'OWNER_SELECTED_REVIEW_DRAFT';binding:Owner03FamilyCancellationBinding;canonicalGroup:string;currency:'USD';familyAdministrationCents:20000;authorityRequirement:'ROOT_NATIVE_GROUP_PROVENANCE_AND_ONCE_ONLY_RESERVATION';effect:'none'}>;
+export type Owner03FamilyPrestartProposal=FamilyCommon&(
+ |Readonly<{status:'ALLOCATION_REQUIRED';allocationRequired:true;totalPaidCents:number;totalRefundCents:number}>
+ |Readonly<{status:'PROPOSAL_ONLY';allocationRequired:false;totalPaidCents:number;totalRefundCents:number;feeAllocation:readonly Owner03FamilyFeeAllocation[];canonicalProposal:string;children:readonly Owner03RefundProposal[]}>
+ |Readonly<{status:'RECONCILIATION_REQUIRED';reason:'prior_cancellation_outcome'|'prior_refund'|'duplicate_purchase'|'shared_settlement_reference'}>
+ |Readonly<{status:'POLICY_REQUIRED';reason:Owner03PolicyRequiredReason|'family_prestart_scope_required'}>
+);
+function immutable<const T>(value:T):Readonly<T>{if(value&&typeof value==='object'){for(const nested of Object.values(value))immutable(nested);Object.freeze(value);}return value;}
+const compareReference=(a:string,b:string)=>a<b?-1:a>b?1:0;
+
+/** Joint voluntary pre-start cancellation only. One selected family fee, never
+ * a call to the single-child fee calculator for each sibling. All entries and
+ * allocations are native purchase+child scoped; no allocation is guessed.
+ *
+ * Root MUST reload the referenced cancellation/group revision under ordinary
+ * current operator authority and prove actual household/payer/child/purchase/
+ * captured-settlement relationships and COMPLETE joint cancellation membership.
+ * Compare canonicalGroup against the immutable saved cancellation identity, then
+ * persist the chosen allocation/canonicalProposal under an atomic once-only fee
+ * reservation BEFORE any separately admitted refund action. Caller IDs, a
+ * provenance label or priorOutcome='none' are NOT that authority or proof.
+ *
+ * This stateless helper cannot detect reuse across requests without Root's
+ * native receipt. Known prior/unknown outcomes or refunded cash require actual
+ * reconciliation, never another automatic fee. Canonical strings are stable
+ * serialization for Root to hash/store, not a signature or authorization token.
+ */
+export function owner03FamilyPrestartProposal(raw:unknown):Owner03FamilyPrestartProposal{
+ const input=parse(owner03FamilyPrestartInputSchema,raw),entries=input.members.map(member=>{requireInput(member.householdId===input.householdId&&member.payerAccountId===input.payerAccountId);return validateOwner03RefundInput(member.refundInput);}).sort((a,b)=>compareReference(a.purchase.purchaseId,b.purchase.purchaseId));
+ const binding:Owner03FamilyCancellationBinding=immutable({policyVersion:owner03PolicyVersion,decisionId:owner03FamilyFeeDecision,cancellationId:input.cancellationId,householdId:input.householdId,payerAccountId:input.payerAccountId,nativeGroupReference:input.nativeGroupReference,nativeGroupRevision:input.nativeGroupRevision,members:entries.map(i=>({references:references(i.purchase,i),mode:i.purchase.mode,purchasedLessons:i.purchase.purchasedLessons,priceCents:i.purchase.priceCents,paidCents:i.payment.paidCents,refundedCents:i.payment.refundedCents,reason:i.reason,timing:i.timing,attendedCount:i.attendance.attendedCount,lessonOutcomes:i.attendance.lessons.map(l=>({lessonId:l.lessonId,outcome:l.outcome})).sort((a,b)=>compareReference(a.lessonId,b.lessonId))}))});
+ const common:FamilyCommon={policyVersion:owner03PolicyVersion,decisionId:owner03FamilyFeeDecision,legalStatus:'OWNER_SELECTED_REVIEW_DRAFT',binding,canonicalGroup:JSON.stringify(binding),currency:'USD',familyAdministrationCents:20000,authorityRequirement:'ROOT_NATIVE_GROUP_PROVENANCE_AND_ONCE_ONLY_RESERVATION',effect:'none'};
+ if(input.priorOutcome!=='none')return immutable({...common,status:'RECONCILIATION_REQUIRED',reason:'prior_cancellation_outcome'});
+ if(entries.some(i=>i.payment.refundedCents!==0))return immutable({...common,status:'RECONCILIATION_REQUIRED',reason:'prior_refund'});
+ if(new Set(entries.map(i=>i.purchase.purchaseId)).size!==entries.length||new Set(entries.map(i=>i.purchase.purchaseLineId)).size!==entries.length)return immutable({...common,status:'RECONCILIATION_REQUIRED',reason:'duplicate_purchase'});
+ const captures=entries.flatMap(i=>i.payment.settlementReferences);if(new Set(captures).size!==captures.length)return immutable({...common,status:'RECONCILIATION_REQUIRED',reason:'shared_settlement_reference'});
+ if(entries.some(i=>i.purchase.mode==='installments'))return immutable({...common,status:'POLICY_REQUIRED',reason:'historical_installment_mode'});
+ if(entries.some(i=>i.reason==='operator'))return immutable({...common,status:'POLICY_REQUIRED',reason:'operator_cancellation_review'});
+ if(entries.some(i=>i.reason==='disciplinary'))return immutable({...common,status:'POLICY_REQUIRED',reason:'disciplinary_fee_review'});
+ if(entries.some(i=>i.attendance.attendedCount>=3))return immutable({...common,status:'POLICY_REQUIRED',reason:'three_or_more_attended'});
+ if(entries.some(i=>i.timing!=='prestart'||i.attendance.attendedCount!==0))return immutable({...common,status:'POLICY_REQUIRED',reason:'family_prestart_scope_required'});
+ if(entries.some(i=>i.payment.paidCents!==i.purchase.priceCents))return immutable({...common,status:'POLICY_REQUIRED',reason:'fully_paid_purchase_required'});
+ const totalPaidCents=entries.reduce((sum,i)=>sum+i.payment.paidCents,0),totalRefundCents=totalPaidCents-20000;requireInput(totalRefundCents>=0);
+ if(!input.feeAllocation?.length)return immutable({...common,status:'ALLOCATION_REQUIRED',allocationRequired:true,totalPaidCents,totalRefundCents});
+ const allocation=input.feeAllocation.map(a=>({...a})).sort((a,b)=>compareReference(a.purchaseId,b.purchaseId));requireInput(allocation.length===entries.length&&new Set(allocation.map(a=>a.purchaseId)).size===entries.length&&allocation.reduce((sum,a)=>sum+a.administrationCents,0)===20000);
+ const children:Owner03RefundProposal[]=entries.map((i,index)=>{const a=allocation[index]!,p=i.purchase;requireInput(a.purchaseId===p.purchaseId&&a.childId===p.childId&&a.administrationCents<=i.payment.paidCents&&p.mode!=='installments');return {policyVersion:owner03PolicyVersion,status:'PROPOSAL_ONLY',legalStatus:'OWNER_SELECTED_REVIEW_DRAFT',references:references(p,i),mode:p.mode,currency:'USD',purchasedLessons:p.purchasedLessons,attendedCount:0,paidCents:i.payment.paidCents,retainedLessonCents:0,administrationCents:a.administrationCents,alreadyRefundedCents:0,refundCents:i.payment.paidCents-a.administrationCents,rounding:'positive_half_up_total_retention',effect:'none'};});
+ requireInput(children.reduce((sum,c)=>sum+c.administrationCents,0)===20000&&children.reduce((sum,c)=>sum+c.refundCents,0)===totalRefundCents);
+ return immutable({...common,status:'PROPOSAL_ONLY',allocationRequired:false,totalPaidCents,totalRefundCents,feeAllocation:allocation,canonicalProposal:JSON.stringify({binding,feeAllocation:allocation}),children});
 }
