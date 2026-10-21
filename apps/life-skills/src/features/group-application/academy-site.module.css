@@ -115,7 +115,7 @@
 
 .site[data-hero-image-failed=true] .heroSemantics{position:static;inline-size:auto;block-size:auto;overflow:visible;clip-path:none;white-space:normal;margin:0}
 
-.site[data-hero-image-failed=true] .heroSelectedAction{position:static}
+.site[data-hero-image-failed=true] .heroSelectedAction{position:static;margin:0;inset:auto}
 
 @media(max-width:767px){.heroSelectedAction{position:absolute;inset-block-start:78%;inset-inline:16px;margin:0;padding:0 0 env(safe-area-inset-bottom)}.heroSelectedAction .heroCta{font-size:16px;min-block-size:48px;padding:12px 25px;max-inline-size:100%}}
 
