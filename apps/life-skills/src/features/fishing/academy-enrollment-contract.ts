@@ -1,4 +1,4 @@
-import {academyAgreementAcceptanceSchema,type AcademyAgreementBundle} from './academy-agreements.ts';
+import {academyAgreementAcceptanceSchema,type AcademyAgreementBundle} from './academy-agreement-contract.ts';
 import {z} from 'zod';
 export const academyEnrollmentVersion='JLFA-ENROLLMENT-REVIEW-20261020-01' as const;
 const uuid=z.uuid(),sha=z.string().regex(/^[a-f0-9]{64}$/),text=z.string().trim().min(1).max(1200).refine(v=>!/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(v));

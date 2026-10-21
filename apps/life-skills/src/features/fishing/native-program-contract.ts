@@ -1,4 +1,4 @@
-import {academyAgreementBundleSchema,academyAgreementAcceptanceSchema} from './academy-agreements.ts';
+import {academyAgreementBundleSchema,academyAgreementAcceptanceSchema} from './academy-agreement-contract.ts';
 import {z} from "zod";
 import {stageReferenceSchema} from "../fishing-stage/contract.ts";
 import {templateSchema} from "../fishing-stage/native-storage.ts";

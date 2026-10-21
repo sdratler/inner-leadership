@@ -1,4 +1,4 @@
-import type {AcademyAgreementBundle} from './academy-agreements.ts';
+import type {AcademyAgreementBundle} from './academy-agreement-contract.ts';
 import type {Locale} from '../../lib/locale.ts';
 const names={en:{participation_safety:'Participation & Safety Agreement',program:'Program Policies',privacy:'Privacy Notice',payment_cancellation:'Payment & Cancellation Terms',child_conduct:'Child Conduct Acknowledgment'},he:{participation_safety:'הסכם השתתפות ובטיחות',program:'מדיניות התוכנית',privacy:'הודעת פרטיות',payment_cancellation:'תנאי תשלום וביטול',child_conduct:'אישור כללי התנהגות לילד'}};
 /** Exact imported text only. No substitute waiver or inferred child signature. */
