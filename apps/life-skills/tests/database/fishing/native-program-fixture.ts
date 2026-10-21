@@ -30,9 +30,10 @@ import {poolStore,safeTestUrl} from "../calendar/fixture.ts";
 import {createHash} from "node:crypto";
 import {learnerLessonSchema} from "../../../src/features/resources/fishing-lesson-journey.ts";
 import {educationCatalogAad} from "../../../src/features/resources/fishing-lesson-native-store.ts";
+import {academyTermsHash,type AcademyAgreementBundle} from '../../../src/features/fishing/academy-agreements.ts';
 import {educationArtifactAad,type EducationStorageBinding} from "../../../src/features/resources/fishing-lesson-storage-contract.ts";
 
-export async function programFixture(options:{capacity?:number;childAccountsEnabled?:boolean;confirmation?:ProgramPolicy["confirmation"];readableRm101?:"SYNTHETIC_ONLY";termsDocument?:string;termsDocumentSha256?:string}={}){
+export async function programFixture(options:{capacity?:number;childAccountsEnabled?:boolean;confirmation?:ProgramPolicy["confirmation"];readableRm101?:"SYNTHETIC_ONLY";termsDocument?:string;termsDocumentSha256?:string;owner03Bundle?:AcademyAgreementBundle}={}){
  const raw=safeTestUrl(),url=new URL(raw);
  if(process.env.LS_RM_PROGRAM_NATIVE_ALLOW!=="MAIN_REGISTERED_ONLY"||url.hostname!=="127.0.0.1"||!/^\/ls_calendar_test_rm_guard_[a-f0-9]{32}_test$/.test(url.pathname)||!url.port||!url.username||!url.password||url.search||url.hash)throw Error("MAIN_REGISTERED_PROGRAM_TARGET_REQUIRED");
  if(options.readableRm101!==undefined&&(options.readableRm101!=="SYNTHETIC_ONLY"||process.env.LS_RM_FISHING_STAGE_UI_ONLY!=="true"))throw Error("READABLE_RM101_SYNTHETIC_BROWSER_OPT_IN_REQUIRED");
@@ -54,11 +55,11 @@ export async function programFixture(options:{capacity?:number;childAccountsEnab
    const preauth=await auth.preauth(),login=await auth.login(email,"Ab12cd",preauth.token,randomUUID());return sessions.actor(login.token);
   }
   const owner=await account("practitioner"),program=new NativeFishingProgram(db,ring,{childAccountsEnabled:options.childAccountsEnabled===true,merchant});
-  const ref={cohortId:randomUUID(),stageId:randomUUID(),stage:1 as const},templateId=randomUUID(),termsId=randomUUID(),policyId=randomUUID(),templateHash=digest("SYNTHETIC_TEMPLATE_NOT_REAL_APPROVAL"),termsHash=options.termsDocument===undefined?digest("SYNTHETIC_TERMS_NOT_REAL_ACCEPTANCE_SOURCE"):options.termsDocumentSha256??createHash('sha256').update(options.termsDocument,'utf8').digest('hex');
+  const ref={cohortId:randomUUID(),stageId:randomUUID(),stage:1 as const},templateId=randomUUID(),termsId=randomUUID(),policyId=randomUUID(),templateHash=digest("SYNTHETIC_TEMPLATE_NOT_REAL_APPROVAL"),termsHash=options.termsDocument===undefined?digest("SYNTHETIC_TERMS_NOT_REAL_ACCEPTANCE_SOURCE"):options.termsDocumentSha256??academyTermsHash({document:{body:options.termsDocument},...(options.owner03Bundle?{owner03Bundle:options.owner03Bundle}:{})});
   const template:ApprovedStageTemplate={stage:1,version:"synthetic-stage-v1",status:"approved",policyVersion:POLICY_VERSION,sourceVersion:"synthetic-program-source-v1",sourceSha256:templateHash,modules:Array.from({length:12},(_,i)=>({moduleId:`RM-1${String(i+1).padStart(2,"0")}`,moduleVersion:"synthetic-lesson-v1",learnerContent:"approved"}))};
   async function source(id:string,kind:string,version:string,hash:string,payload:unknown){await pool.query("INSERT INTO ls_fishing_stage.source_approvals(workspace_id,id,kind,version,canonical_id,source_revision,source_sha256,approval_reference,approved_by,approved_at,payload_ciphertext) VALUES($1,$2,$3,$4,'synthetic.invalid/source','synthetic-revision',$5,'SYNTHETIC_NOT_REAL_CANONICAL_APPROVAL',$6,$7,$8)",[workspaceId,id,kind,version,hash,owner.id,ago,seal(JSON.stringify(payload),`fishing-program:v1:source:${workspaceId}:${id}`,ring)]);}
   await source(templateId,"template",template.version,templateHash,template);
-  await source(termsId,"terms","synthetic-terms-v1",termsHash,{program:"sunday_fishing_academy",termsVersion:"synthetic-terms-v1",policyVersion:POLICY_VERSION,sourceVersion:"synthetic-program-source-v1",contentSha256:termsHash,...(options.termsDocument===undefined?{}:{document:{format:'plain_text',body:options.termsDocument}})});
+  await source(termsId,"terms","synthetic-terms-v1",termsHash,{program:"sunday_fishing_academy",termsVersion:"synthetic-terms-v1",policyVersion:POLICY_VERSION,sourceVersion:"synthetic-program-source-v1",contentSha256:termsHash,...(options.owner03Bundle?{owner03Bundle:options.owner03Bundle}:{}),...(options.termsDocument===undefined?{}:{document:{format:'plain_text',body:options.termsDocument}})});
   await source(policyId,"payment_condition","synthetic-condition-v1",digest("SYNTHETIC_CONDITION"),{policyVersion:POLICY_VERSION,sourceVersion:"synthetic-program-source-v1",confirmation:options.confirmation??{kind:"unselected"}});
   for(const lesson of template.modules){const learnerId=randomUUID(),teacherId=randomUUID();
    // READABLE_RM101_INSERT_FIRST_BEGIN: default and other11 metadata stay unchanged.

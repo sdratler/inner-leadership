@@ -27,5 +27,7 @@ export function verifyAcademyAgreementAcceptance(bundle:AcademyAgreementBundle,r
 /** New source hashes cover both the displayed contract and all translations,
  * versions, identities and review references. Legacy body hashes stay readable. */
 export function academyTermsHash(terms:{document?:{body:string}|undefined;owner03Bundle?:AcademyAgreementBundle|undefined}){
- return terms.owner03Bundle?agreementHash(JSON.stringify({body:terms.document?.body??'',bundle:terms.owner03Bundle})):agreementHash(terms.document?.body??'');
+ // Schema parsing gives imports and database readback the same field order.
+ // Historical terms without a bundle retain their original body-only hash.
+ return terms.owner03Bundle?agreementHash(JSON.stringify({body:terms.document?.body??'',bundle:academyAgreementBundleSchema.parse(terms.owner03Bundle)})):agreementHash(terms.document?.body??'');
 }

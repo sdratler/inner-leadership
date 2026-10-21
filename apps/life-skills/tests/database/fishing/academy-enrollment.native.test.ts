@@ -1,5 +1,6 @@
 /** Real retained auth, SQL and HTTP. All identities/source approvals are fresh
  * synthetic fixtures; no approved legal terms or real merchant are claimed. */
+import {agreementBundleFixture,agreementAcceptanceFixture} from '../../fixtures/academy-agreements.ts';
 import {randomUUID} from 'node:crypto';
 import {expect,test,vi} from 'vitest';
 vi.mock('server-only',()=>({}));
@@ -11,13 +12,13 @@ import {unseal} from '../../../src/features/identity/crypto.ts';
 import {SESSION_COOKIE} from '../../../src/lib/security/session.ts';
 const document='SYNTHETIC REGISTRATION TERMS — TEST ONLY. No actual service or charge.\nתנאי בדיקה בלבד. אין הרשמה לשירות אמיתי או חיוב.';
 async function fixture(termsDocument:string|null=document,termsDocumentSha256?:string){
- const f=await academyFamilyFixture({... (termsDocument===null?{}:{termsDocument}),...(termsDocumentSha256===undefined?{}:{termsDocumentSha256})}),id=await f.inquiry();await f.promote(id);const familyCommand=await f.command(id),response=await f.post(familyCommand);expect(response.status).toBe(200);const family=(await response.json()).data.saved;
+ const f=await academyFamilyFixture({owner03Bundle:agreementBundleFixture(),... (termsDocument===null?{}:{termsDocument}),...(termsDocumentSha256===undefined?{}:{termsDocumentSha256})}),id=await f.inquiry();await f.promote(id);const familyCommand=await f.command(id),response=await f.post(familyCommand);expect(response.status).toBe(200);const family=(await response.json()).data.saved;
  const row=(await f.pool.query("SELECT id,payload_ciphertext FROM ls_identity.auth_mail_outbox WHERE workspace_id=$1 AND account_id=$2 AND kind='invite'",[f.workspaceId,family.parentAccountId])).rows[0],mail=JSON.parse(unseal(row.payload_ciphertext,`auth-mail:${f.workspaceId}:${row.id}`,f.ring));await f.auth.consumePasswordToken('invite',mail.token,'Ab12cd',randomUUID());
  const parentToken=await f.passwordLogin(familyCommand.parentEmail),parent=await f.sessions.actor(parentToken),store=new AcademyEnrollmentStore(f.db,f.config,f.store),endpoint='/api/private/group-applications/enrollment';
  const get=(query:string,token=f.token)=>academyEnrollmentHttp(new Request(f.config.origin+endpoint+'?'+query,{headers:{cookie:SESSION_COOKIE+'='+token}}),async()=>({runtime:f.runtime,store}));
  const post=(command:AcademyEnrollmentCommand,token=f.token,headers:Record<string,string>={})=>academyEnrollmentHttp(new Request(f.config.origin+endpoint,{method:'POST',headers:{cookie:SESSION_COOKIE+'='+token,origin:f.config.origin,'sec-fetch-site':'same-origin','content-type':'application/json','x-csrf-token':f.sessions.csrf(token),'idempotency-key':command.operationId,...headers},body:JSON.stringify(command)}),async()=>({runtime:f.runtime,store}));
  const fitCommand=async()=>{const response=await get('applicationId='+id);expect(response.status).toBe(200);const context=(await response.json()).data;expect(context.role).toBe('practitioner');return {version:academyEnrollmentVersion,action:'fit' as const,operationId:randomUUID(),binding:context.binding,learnerIndex:0,stageId:f.ref.stageId,decision:'approved' as const,note:'PRIVATE_FIT_REVIEW_DO_NOT_PUBLISH'};};
- const termsCommand=()=>({version:academyEnrollmentVersion,action:'terms' as const,operationId:randomUUID(),learnerId:family.children[0].learnerId,stageId:f.ref.stageId,sourceApprovalId:f.termsId,sourceSha256:f.termsHash,termsVersion:'synthetic-terms-v1',accepted:true as const});
+ const termsCommand=()=>({version:academyEnrollmentVersion,action:'terms' as const,operationId:randomUUID(),learnerId:family.children[0].learnerId,stageId:f.ref.stageId,sourceApprovalId:f.termsId,sourceSha256:f.termsHash,termsVersion:'synthetic-terms-v1',accepted:true as const,agreementAcceptance:agreementAcceptanceFixture()});
  const mailSnapshot=async()=>(await f.pool.query('SELECT to_jsonb(m) AS row FROM ls_identity.auth_mail_outbox m WHERE workspace_id=$1 ORDER BY id',[f.workspaceId])).rows;
  return {...f,id,savedFamily:family,parent,parentToken,enrollment:store,getEnrollment:get,postEnrollment:post,fitCommand,termsCommand,mailSnapshot};
 }
