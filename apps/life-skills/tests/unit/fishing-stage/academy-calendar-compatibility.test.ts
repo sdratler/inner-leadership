@@ -586,3 +586,21 @@ describe("G9 authority and effect boundaries",()=>{
   expect(d.trace).not.toContain("credit-original");expect(d.writes).toHaveLength(0);
  });
 });
+
+describe('G10 Root public selected-child projection (controlled SQL unit evidence only)',()=>{
+ it('omits private native credit/source/purchase/reservation identifiers from the serialized response',async()=>{
+  const d=setup(legacyFacts()),{credit}=seedLegacy(d),body=await d.service.readPublicFamilySummary();
+  expect(body).toEqual({version:'JLFA-SESSION-CREDIT-PARENT-20261021-01',enrollmentId:credit.enrollmentId,learnerId:credit.anchor.learnerId,credits:[{id:credit.id,originalOccurrenceId:credit.anchor.occurrenceId,originalOrdinal:credit.anchor.ordinal,state:credit.state}]});
+  const json=JSON.stringify(body);for(const privateId of [credit.purchaseId,credit.purchaseLineId,credit.anchor.workspaceId,credit.anchor.cohortId,credit.anchor.stageId,credit.anchor.moduleId,credit.anchor.moduleVersion,credit.anchor.activityId,credit.replacementReservationId].filter((v):v is string=>v!==null))expect(json).not.toContain(privateId);
+  expect(d.writes).toHaveLength(0);expect(d.state.sessionReads).toBe(2);expect(d.state.selectedReads).toBe(2);
+ });
+ it('returns the same original-session reference and undelivered reserved state after reconstruction, without exposing its reservation',async()=>{
+  const d=setup(legacyFacts()),{credit:reserved}=seedLegacy(d,'replacement_reserved');const before=structuredClone(d.rows),body=await d.service.readPublicFamilySummary();expect(body.credits).toEqual([{id:reserved.id,originalOccurrenceId:reserved.anchor.occurrenceId,originalOrdinal:reserved.anchor.ordinal,state:'replacement_reserved'}]);expect(JSON.stringify(body)).not.toContain(reserved.replacementReservationId!);expect(d.rows).toEqual(before);expect(d.writes).toHaveLength(0);
+ });
+ it('denies public read when the actual selected-child authority is revoked during final revalidation',async()=>{
+  const d=setup(legacyFacts());seedLegacy(d);d.state.denySelectionOnFinal=true;await expect(d.service.readPublicFamilySummary()).rejects.toMatchObject({code:'FORBIDDEN'});expect(d.state.selectedReads).toBe(2);expect(d.writes).toHaveLength(0);
+ });
+ it('does not use a cached private record after current session revocation',async()=>{
+  const d=setup(legacyFacts());seedLegacy(d);d.state.sessionActive=false;await expect(d.service.readPublicFamilySummary()).rejects.toMatchObject({code:'UNAUTHENTICATED'});expect(d.trace).toEqual(['lock','session']);expect(d.writes).toHaveLength(0);
+ });
+});

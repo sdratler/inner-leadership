@@ -5,7 +5,8 @@
 import {expect,type Browser,type BrowserContext,type Page,type Request,type Response} from "@playwright/test";
 import type {Locale} from "../../../src/lib/locale.ts";
 import {fishingCalendarSearch,type FishingCalendarSelection} from "../../../src/features/fishing/program-calendar-contract.ts";
-import {academySessionPolicyNativeVersion,type AcademySessionCreditRecord,type AcademySessionCreditFamilySummary} from "../../../src/features/fishing/academy-session-policy-native-contract.ts";
+import {academySessionPolicyNativeVersion,type AcademySessionCreditRecord} from "../../../src/features/fishing/academy-session-policy-native-contract.ts";
+import {academySessionCreditPublicVersion,academySessionCreditPublicSummarySchema,type AcademySessionCreditPublicSummary} from '../../../src/features/fishing/academy-session-credit-public-contract.ts';
 
 export type AcademySessionPolicyJourneyInput=Readonly<{
  admission:"ROOT_REVIEWED_CAL1136_BROWSER_ONLY";fixture:"SYNTHETIC_CAL1136_ONLY";origin:string;href:string;locale:Locale;
@@ -26,14 +27,14 @@ function loopbackOrigin(value:string):string{
  if(!["http:","https:"].includes(url.protocol)||!["127.0.0.1","localhost"].includes(url.hostname)||!url.port||url.username||url.password||url.pathname!=="/"||url.search||url.hash)
   throw Error("CAL1136_EXACT_LOCAL_ORIGIN_REQUIRED");return url.origin;
 }
-function extract(body:unknown,path:readonly string[]):AcademySessionCreditFamilySummary{
+function extract(body:unknown,path:readonly string[]):AcademySessionCreditPublicSummary{
  let value=body;
  for(const key of path){
   if(!value||typeof value!=="object"||Array.isArray(value)||!Object.hasOwn(value,key))throw Error("CAL1136_ROOT_SUMMARY_MOUNT_REQUIRED");
   value=(value as Record<string,unknown>)[key];
  }
  if(!value||typeof value!=="object"||Array.isArray(value))throw Error("CAL1136_ROOT_SUMMARY_MOUNT_REQUIRED");
- return value as AcademySessionCreditFamilySummary;
+ return academySessionCreditPublicSummarySchema.parse(value);
 }
 function pageRead(response:Response,page:Page,origin:string,selection:FishingCalendarSelection):boolean{
  const request=response.request(),url=new URL(response.url());
@@ -61,7 +62,7 @@ export async function runAcademySessionPolicyJourney(ports:AcademySessionPolicyJ
  async function assertRead(page:Page,response:Response){
   expect(response.status()).toBe(200);expect(response.fromServiceWorker()).toBe(false);expect(await response.finished()).toBeNull();
   const body:unknown=await response.json(),summary=extract(body,input.summaryFieldPath);
-  expect(summary).toEqual({version:academySessionPolicyNativeVersion,enrollmentId:selection.enrollmentId,learnerId:selection.learnerId,credits:[expected]});
+  expect(summary).toEqual({version:academySessionCreditPublicVersion,enrollmentId:selection.enrollmentId,learnerId:selection.learnerId,credits:[{id:expected.id,originalOccurrenceId:expected.anchor.occurrenceId,originalOrdinal:expected.anchor.ordinal,state:expected.state}]});
   const section=page.locator("[data-academy-session-credit-summary]");await expect(section).toHaveCount(1);await expect(section).toBeVisible();
   await expect(section).toHaveAttribute("lang",input.locale);await expect(section).toHaveAttribute("dir",input.locale==="he"?"rtl":"ltr");
   const item=section.locator("[data-academy-credit-id]");await expect(item).toHaveCount(1);await expect(item).toHaveAttribute("data-academy-credit-id",expected.id);
@@ -71,7 +72,8 @@ export async function runAcademySessionPolicyJourney(ports:AcademySessionPolicyJ
   if(expected.state==="replacement_reserved")await expect(section).toContainText(input.locale==="he"?"המפגש טרם סופק.":"The session remains undelivered.");
   const html=await section.innerHTML(),text=await page.locator("body").innerText(),json=JSON.stringify(body);
   for(const secret of input.forbiddenContent){expect(html).not.toContain(secret);expect(text).not.toContain(secret);expect(json).not.toContain(secret);}
-  for(const privateId of [expected.purchaseId,expected.purchaseLineId,expected.replacementReservationId].filter((v):v is string=>v!==null))expect(html).not.toContain(privateId);
+  for(const privateId of [expected.purchaseId,expected.purchaseLineId,expected.replacementReservationId,expected.anchor.workspaceId,expected.anchor.cohortId,expected.anchor.stageId,expected.anchor.moduleId,expected.anchor.moduleVersion,expected.anchor.activityId].filter((v):v is string=>v!==null)){expect(html).not.toContain(privateId);expect(JSON.stringify(summary)).not.toContain(privateId);}
+  for(const privateField of ['purchaseId','purchaseLineId','replacementReservationId','anchor','householdId','guardianBindingId','inquiry','sourceEvidenceId','activityId'])expect(Object.hasOwn(summary,privateField)||summary.credits.some(c=>Object.hasOwn(c,privateField))).toBe(false);
   expect(writes).toEqual([]);selectedReadbacks++;
  }
  async function reload(page:Page){

@@ -9,6 +9,7 @@ import {academySessionPolicyNativeVersion,type AcademySessionPolicyNativeDepende
  type AcademySessionCreditNativeContext,type AcademySessionCreditResolvedFacts,type AcademySessionCreditRecord,
  type AcademySessionCreditCommandResult,type AcademySessionCreditFamilySummary} from "../fishing/academy-session-policy-native-contract.ts";
 import {academyFoundationPreparationPolicyVersion} from "../fishing/academy-policy-preflight-contract.ts";
+import {academySessionCreditPublicVersion,academySessionCreditPublicSummarySchema,type AcademySessionCreditPublicSummary} from '../fishing/academy-session-credit-public-contract.ts';
 import {assessAcademySessionDuration,assessAcademyTravelChange,assessAcademyTravelChangeWithRecordedMaximum,
  assessAcademyFoundationPreparationDuration} from "./academy-session-policy-preflight.ts";
 import {AcademySessionCreditStore,academyCreditCommandSchema,academyCreditSelectionSchema,academyCreditResolvedFactsSchema,
@@ -132,6 +133,8 @@ export class AcademySessionPolicyNativeService{
    await this.finish(tx,c,selected,command,facts);return outcome;
   });
  }
+ /** Historical private server read, retained for sealed-record compatibility.
+  * Never serialize this result into an HTTP/browser response. */
  async readFamilySummary():Promise<AcademySessionCreditFamilySummary>{
   return this.transaction(async tx=>{
    const c=await this.context(tx);if(c.actor.role!=="parent")throw new AppError("FORBIDDEN");
@@ -140,5 +143,11 @@ export class AcademySessionPolicyNativeService{
    if(credits.some(credit=>credit.enrollmentId!==selected.enrollmentId||credit.anchor.workspaceId!==selected.workspaceId||credit.anchor.learnerId!==selected.learnerId))fail();
    await this.finish(tx,c,selected);return {version:academySessionPolicyNativeVersion,enrollmentId:selected.enrollmentId,learnerId:selected.learnerId,credits};
   });
+ }
+ /** Same fresh native identity/selected-child checks as the private read. The
+  * explicit allowlist removes financial/source/reservation IDs before a future
+  * HTTP consumer serializes anything; CSS hiding is not a privacy boundary. */
+ async readPublicFamilySummary():Promise<AcademySessionCreditPublicSummary>{
+  const value=await this.readFamilySummary();return academySessionCreditPublicSummarySchema.parse({version:academySessionCreditPublicVersion,enrollmentId:value.enrollmentId,learnerId:value.learnerId,credits:value.credits.map(c=>({id:c.id,originalOccurrenceId:c.anchor.occurrenceId,originalOrdinal:c.anchor.ordinal,state:c.state}))});
  }
 }
