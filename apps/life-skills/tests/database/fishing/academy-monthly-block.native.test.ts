@@ -21,7 +21,8 @@ async function fixture(capacity=2){
  };
  async function approve(c=commands()){await f.program.acceptMonthlyBlockTerms(family.parent,c.acceptance);await f.program.reserveOfferHold(f.owner,c.hold);await f.program.approveOffer(f.owner,c.offer);return c;}
  async function issue(c=commands()){await approve(c);const issued=await f.paymentStore.registerApprovedOffer(f.owner,randomUUID(),c.offer.id,1);return {...c,family,purchaseId:issued.purchaseIds[0]!};}
- return {...f,plan,family,newFamily:f.family,fit,commands,approve,issue};
+ async function confirm(p:Awaited<ReturnType<typeof issue>>){return f.program.confirmEnrollment(f.owner,{commandId:randomUUID(),id:randomUUID(),stageId:f.ref.stageId,purchaseId:p.purchaseId,fitDecisionId:fit.id,termsAcceptanceId:p.acceptance.id,policyApprovalId:f.policyId,expectedPaymentRevision:(await f.paymentStore.readPayment(f.owner,p.purchaseId))!.revision});}
+ return {...f,plan,family,newFamily:f.family,fit,commands,approve,issue,confirm};
 }
 async function snapshot(f:Pick<ProgramFixture,'pool'|'workspaceId'>){
  const tables=['ls_fishing_stage.block_acceptances','ls_fishing_stage.seat_reservations','ls_fishing_stage.offer_approvals','ls_fishing_stage.command_receipts','ls_fishing_stage.enrollments','ls_fishing_payments.purchases','ls_identity.auth_mail_outbox'];
@@ -35,7 +36,9 @@ test('one independently accepted block reserves four places and issues one $650 
  expect((await f.pool.query('SELECT occurrence_id FROM ls_fishing_stage.seat_reservations WHERE workspace_id=$1 ORDER BY occurrence_id',[f.workspaceId])).rows.map(r=>r.occurrence_id).sort()).toEqual([...c.acceptance.occurrenceIds].sort());
  expect((await f.pool.query('SELECT id FROM ls_fishing_stage.block_acceptances WHERE workspace_id=$1',[f.workspaceId])).rows).toHaveLength(1);
  await f.settle({family:f.family,purchaseId,offer:c.offer});expect(await f.paymentStore.familyView(f.family.parent,purchaseId)).toMatchObject({totalCents:65000,paidCents:65000,state:'paid'});
- const before=await snapshot(f);await expect(f.program.confirmEnrollment(f.owner,{commandId:randomUUID(),id:randomUUID(),stageId:f.ref.stageId,purchaseId,fitDecisionId:f.fit.id,termsAcceptanceId:c.acceptance.id,policyApprovalId:f.policyId,expectedPaymentRevision:(await f.paymentStore.readPayment(f.owner,purchaseId))!.revision})).rejects.toThrow();expect(await snapshot(f)).toEqual(before);
+ const enrolled=await f.confirm({...c,family:f.family,purchaseId});expect(await f.program.readEnrollment(f.family.parent,enrolled.id)).toMatchObject({state:'confirmed',purchaseScope:{kind:'monthly_block',blockId:c.acceptance.blockId,acceptanceId:c.acceptance.id,occurrenceIds:c.acceptance.occurrenceIds}});
+ await f.publish();const home=await f.stage(f.family.parent,enrolled.id).read(f.family.parent,f.ref);expect(home!.occurrences.map(o=>o.id).sort()).toEqual([...c.acceptance.occurrenceIds].sort());expect(home!.lessonReferences).toHaveLength(4);expect(await f.program.familyPayment(f.family.parent,enrolled.id)).toMatchObject({totalCents:65000,paidCents:65000});
+ const other=await f.newFamily();expect(await f.program.readEnrollment(other.parent,enrolled.id)).toBeNull();expect(await f.stage(other.parent,enrolled.id).read(other.parent,f.ref)).toBeNull();
 });
 
 test('another block needs new guardian acceptance and creates a separate four-lesson debt only on explicit issuance',async()=>{
@@ -83,4 +86,21 @@ test('new rejection or revoked guardian denies issuance and issue replay without
 test('Owner03 cannot turn a four-lesson acceptance into retired automatic installments',async()=>{
  const f=await fixture(),c=f.commands();await f.program.acceptMonthlyBlockTerms(f.family.parent,c.acceptance);await f.program.reserveOfferHold(f.owner,c.hold);const before=await snapshot(f),{block:ignored,...line}=c.offer.lines[0]!;void ignored;
  await expect(f.program.approveOffer(f.owner,{...c.offer,lines:[{...line,mode:'installments',dueAt:[f.at(0),f.at(31*24),f.at(62*24)]}]})).rejects.toThrow();expect(await snapshot(f)).toEqual(before);
+});
+
+
+test('monthly enrollment needs authentic full payment and cannot record attendance, safety or weekly facts for an unpurchased lesson',async()=>{
+ const f=await fixture(),p=await f.issue(),before=await snapshot(f);await expect(f.confirm(p)).rejects.toThrow();expect(await snapshot(f)).toEqual(before);
+ await f.settle(p);const enrolled=await f.confirm(p),own=f.plan.occurrences[0]!.id,outside=f.plan.occurrences[4]!.id;
+ await f.pool.query("UPDATE ls_calendar.availability SET starts_at=$3 WHERE workspace_id=$1 AND practitioner_id=$2 AND kind='open'",[f.workspaceId,f.owner.id,f.at(-24)]);
+ await f.revise(own,f.at(-8),f.at(-5));await f.revise(outside,f.at(-4),f.at(-1));await f.publish();
+ const current=async(id:string)=>{const plan=(await f.stage().read(f.owner,f.ref))!,o=plan.occurrences.find(o=>o.id===id)!;return {operationId:randomUUID(),expectedRevision:plan.revision,occurrenceId:id,expectedOccurrenceRevision:o.revision};};
+ for(const id of [own,outside])await f.stage().execute(f.owner,f.ref,{...await current(id),action:'complete',reason:'SYNTHETIC instructor delivered actual three-hour fixture session'});
+ await f.stage().execute(f.owner,f.ref,{...await current(own),action:'attendance',enrollmentId:enrolled.id,state:'present',reason:'SYNTHETIC actual purchased lesson attendance'});
+ const planBefore=(await f.stage().read(f.owner,f.ref))!;
+ await expect(f.stage().execute(f.owner,f.ref,{...await current(outside),action:'attendance',enrollmentId:enrolled.id,state:'present',reason:'SYNTHETIC outside purchase must fail'})).rejects.toThrow();
+ await expect(f.stage().execute(f.owner,f.ref,{...await current(outside),action:'observe_skills',enrollmentId:enrolled.id,observations:[{skillId:'equipment_care',level:'demonstrated',evidence:'SYNTHETIC outside purchase must fail'}]})).rejects.toThrow();
+ await expect(f.stage().execute(f.owner,f.ref,{...await current(outside),action:'safety_intervention',enrollmentId:enrolled.id,decision:'warning',reason:'SYNTHETIC outside purchase must fail',supervisingAdult:'Synthetic Instructor',handoff:'awaiting_authorized_guardian'})).rejects.toMatchObject({code:'FORBIDDEN'});
+ expect(await f.stage().read(f.owner,f.ref)).toEqual(planBefore);const parent=(await f.stage(f.family.parent,enrolled.id).read(f.family.parent,f.ref))!;expect(parent.occurrences).toHaveLength(4);expect(parent.occurrences.some(o=>o.id===outside)).toBe(false);expect(parent.attendance).toEqual([expect.objectContaining({occurrenceId:own,state:'present'})]);
+ await f.pool.query('UPDATE ls_education.guardian_authorities SET active=false WHERE workspace_id=$1 AND learner_id=$2',[f.workspaceId,f.family.learnerId]);expect(await f.program.readEnrollment(f.family.parent,enrolled.id)).toBeNull();expect(await f.stage(f.family.parent,enrolled.id).read(f.family.parent,f.ref)).toBeNull();expect(await f.program.readEnrollment(f.owner,enrolled.id)).toMatchObject({state:'confirmed',authorizedAccountIds:[]});
 });

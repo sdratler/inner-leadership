@@ -96,7 +96,7 @@ CREATE TABLE ls_fishing_stage.offer_approvals (
 );
 CREATE TABLE ls_fishing_stage.enrollments (
  workspace_id uuid NOT NULL,id uuid NOT NULL,stage_id uuid NOT NULL,purchase_id uuid NOT NULL,purchase_line_id text NOT NULL,
- learner_id uuid NOT NULL,household_id uuid NOT NULL,fit_decision_id uuid NOT NULL,terms_acceptance_id uuid NOT NULL,policy_approval_id uuid NOT NULL,
+ learner_id uuid NOT NULL,household_id uuid NOT NULL,fit_decision_id uuid NOT NULL,terms_acceptance_id uuid,block_acceptance_id uuid,policy_approval_id uuid NOT NULL,
  hold_id uuid NOT NULL,guardian_digest text NOT NULL CHECK(guardian_digest ~ '^[a-f0-9]{64}$'),
  state text NOT NULL CHECK(state IN('confirmed','suspended','revoked')),revision integer NOT NULL CHECK(revision>0),
  actor_id uuid NOT NULL,command_id uuid NOT NULL,recorded_at timestamptz NOT NULL,
@@ -107,6 +107,8 @@ CREATE TABLE ls_fishing_stage.enrollments (
  FOREIGN KEY(workspace_id,household_id) REFERENCES ls_cases.families(workspace_id,id),
  FOREIGN KEY(workspace_id,fit_decision_id) REFERENCES ls_fishing_stage.fit_decisions(workspace_id,id),
  FOREIGN KEY(workspace_id,terms_acceptance_id) REFERENCES ls_fishing_stage.terms_acceptances(workspace_id,id),
+ FOREIGN KEY(workspace_id,block_acceptance_id) REFERENCES ls_fishing_stage.block_acceptances(workspace_id,id),
+ CHECK((terms_acceptance_id IS NOT NULL)<>(block_acceptance_id IS NOT NULL)),
  FOREIGN KEY(workspace_id,policy_approval_id) REFERENCES ls_fishing_stage.source_approvals(workspace_id,id),
  FOREIGN KEY(workspace_id,actor_id,command_id) REFERENCES ls_fishing_stage.command_receipts(workspace_id,actor_id,command_id) DEFERRABLE INITIALLY DEFERRED
 );

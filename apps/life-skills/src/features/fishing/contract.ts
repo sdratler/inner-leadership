@@ -57,6 +57,9 @@ export type EnrollmentProjection=FishingStageRef&Readonly<{
  id:string;revision:number;workspaceId:WorkspaceId;program:FishingProgram;
  purchaseId:string;purchaseLineId:string;learnerId:PersonId;householdId:string;
  state:"pending_review"|"confirmed"|"suspended"|"revoked";
+ // Absent only for historical/full-stage enrollment. Native purchase evidence
+ // supplies this scope; a parent request cannot choose additional lessons.
+ purchaseScope?:Readonly<{kind:'monthly_block';blockId:string;acceptanceId:string;occurrenceIds:readonly string[]}>|undefined;
  evidence:Readonly<{
   verifiedGuardianBindingId:string;capacityReservationId:string;fitDecisionId:string;
   acceptedTermsVersion:string;ownerActionId:string;

@@ -20,15 +20,22 @@ const safetyActions=new Set(['assess_safety','safety_intervention','safety_hando
 function isSafety(command:StageCommand):command is SafetyCommand{return safetyActions.has(command.action);}
 function isWeekly(command:StageCommand):command is WeeklyCommand{return weeklyActions.has(command.action);}
 const weeklyDigest=(value:unknown)=>createHash("sha256").update(JSON.stringify(value)).digest("hex");
+function purchaseScopeValid(e:EnrollmentProjection){
+ const scope=e.purchaseScope;
+ return scope===undefined||scope.kind==='monthly_block'&&typeof scope.blockId==='string'&&typeof scope.acceptanceId==='string'&&Array.isArray(scope.occurrenceIds)&&scope.occurrenceIds.length===4&&new Set(scope.occurrenceIds).size===4&&scope.occurrenceIds.every(id=>typeof id==='string'&&id.length>0);
+}
+function inEnrollmentScope(e:EnrollmentProjection,id:string,s:StageState){
+ return e.purchaseScope===undefined||e.purchaseScope.occurrenceIds.includes(id)||s.makeups.some(m=>m.notice.enrollmentId===e.id&&m.notice.replacementOccurrenceId===id&&m.notice.replacementReservationId!==null);
+}
 function weeklyFacts(s:StageState,enrollment:EnrollmentProjection,occurrenceId:string,now:Date):WeeklyReadFacts|null{
  const o=s.occurrences.find(value=>value.id===occurrenceId),attendance=s.attendance.filter(value=>value.enrollmentId===enrollment.id&&value.occurrenceId===occurrenceId).at(-1);
- if(!o||o.time.kind!=="scheduled"||!attendance)return null;
+ if(!o||o.time.kind!=="scheduled"||!attendance||!inEnrollmentScope(enrollment,occurrenceId,s))return null;
  return {now:now.toISOString(),digest:weeklyDigest,enrollment:{id:enrollment.id,learnerId:enrollment.learnerId},
   occurrence:{id:o.id,revision:o.revision,moduleId:o.moduleId,moduleVersion:o.moduleVersion,startsAt:o.time.startsAt,endsAt:o.time.endsAt,state:o.state},
   attendance:{state:attendance.state,recordedAt:attendance.recordedAt,recordedBy:attendance.recordedBy}};
 }
 function validEnrollment(e:EnrollmentProjection|null,c:FreshStageContext):e is EnrollmentProjection{
- return !!e&&e.workspaceId===c.scope.workspaceId&&e.program===c.scope.program&&sameStage(e,c.scope)&&e.state==="confirmed"&&
+ return !!e&&purchaseScopeValid(e)&&e.workspaceId===c.scope.workspaceId&&e.program===c.scope.program&&sameStage(e,c.scope)&&e.state==="confirmed"&&
   Number.isSafeInteger(e.revision)&&e.revision>0&&[e.evidence?.verifiedGuardianBindingId,e.evidence?.capacityReservationId,e.evidence?.fitDecisionId,
    e.evidence?.acceptedTermsVersion,e.evidence?.ownerActionId].every(value=>typeof value==="string"&&value.trim().length>0);
 }
@@ -87,7 +94,7 @@ function projection(o:CanonicalOccurrence,c:FreshStageContext):OccurrenceProject
   replacesOccurrenceId:o.replacesOccurrenceId,changedBy:o.changedBy,changedAt:o.changedAt,changeReason:o.changeReason,allowedActions:allowed};
 }
 function view(s:StageState,c:FreshStageContext,now:Date):StageView{
- const occurrences=s.occurrences.filter(o=>operator(c)||o.state!=="draft").map(o=>projection(o,c));
+ const occurrences=s.occurrences.filter(o=>operator(c)||o.state!=="draft"&&inEnrollmentScope(c.enrollment!,o.id,s)).map(o=>projection(o,c));
  const next=occurrences.filter(o=>o.state==="published"&&o.time.kind==="scheduled"&&Date.parse(o.time.endsAt)>now.getTime())
   .sort((a,b)=>Date.parse(a.time.kind==="scheduled"?a.time.startsAt:"")-Date.parse(b.time.kind==="scheduled"?b.time.startsAt:""))[0];
  const own=c.enrollment?.id;
@@ -162,12 +169,12 @@ export class FishingStageService implements FishingOccurrenceReadPort {
  }
  private async change(tx:FishingStageTransaction,c:FreshStageContext,s:StageState,command:Exclude<StageCommand,{action:"create"}>,now:Date){
   if(isSafety(command)){
-   const o=occurrenceFor(s,command),e=await tx.readEnrollment(c,command.enrollmentId);if(!validEnrollment(e,c))fail('FORBIDDEN');
+   const o=occurrenceFor(s,command),e=await tx.readEnrollment(c,command.enrollmentId);if(!validEnrollment(e,c)||!inEnrollmentScope(e,o.id,s))fail('FORBIDDEN');
    if(o.state==='cancelled'||command.action==='assess_safety'&&o.state!=='published')fail('INVALID_STATE');
    try{s.safety=applySafetyCommand(s.safety??{assessments:[],interventions:[],handoffs:[]},command,{actorId:c.actor.id,learnerId:e.learnerId,now:now.toISOString(),nextId:randomUUID});}catch{fail('INVALID_STATE');}return;
   }
   if(isWeekly(command)){
-   occurrenceFor(s,command);const e=await tx.readEnrollment(c,command.enrollmentId);if(!validEnrollment(e,c))fail("FORBIDDEN");
+   occurrenceFor(s,command);const e=await tx.readEnrollment(c,command.enrollmentId);if(!validEnrollment(e,c)||!inEnrollmentScope(e,command.occurrenceId,s))fail("FORBIDDEN");
    const facts=weeklyFacts(s,e,command.occurrenceId,now);if(!facts)fail("INVALID_STATE");
    try{s.weekly=applyWeeklyCommand(s.weekly??{observations:[],recaps:[]},command,{...facts,actorId:c.actor.id,nextId:randomUUID});}
    catch(error){if(error instanceof WeeklyProgressError&&error.code!=="UNAVAILABLE")fail(error.code==="CONFLICT"?"CONFLICT":"INVALID_STATE");throw error;}
@@ -179,12 +186,12 @@ export class FishingStageService implements FishingOccurrenceReadPort {
   }
   if(command.action==="request_makeup"){
    const m=s.makeups.find(m=>m.notice.id===command.noticeId&&m.notice.enrollmentId===c.enrollment!.id);if(!m)fail("NOT_FOUND");
-   if(m.requestedAt||m.notice.replacementReservationId)fail("CONFLICT");m.requestedAt=now.toISOString();return;
+   if(!inEnrollmentScope(c.enrollment!,m.notice.occurrenceId,s))fail('FORBIDDEN');if(m.requestedAt||m.notice.replacementReservationId)fail("CONFLICT");m.requestedAt=now.toISOString();return;
   }
   if(command.action==="confirm_makeup"){
    const m=s.makeups.find(m=>m.notice.id===command.noticeId);if(!m)fail("NOT_FOUND");
    if(m.notice.replacementReservationId||m.notice.replacementOccurrenceId)fail("CONFLICT");
-   const e=await tx.readEnrollment(c,m.notice.enrollmentId);if(!validEnrollment(e,c))fail("FORBIDDEN");
+   const e=await tx.readEnrollment(c,m.notice.enrollmentId);if(!validEnrollment(e,c)||!inEnrollmentScope(e,m.notice.occurrenceId,s))fail("FORBIDDEN");
    const target=await tx.resolveReplacement(c,e.id,command.replacementOccurrenceId);
    if(!target||!target.suitableForEnrollment)fail("APPROVAL_REQUIRED");const o=target.occurrence;
    if(o.id!==command.replacementOccurrenceId||o.id===m.notice.occurrenceId||o.workspaceId!==s.workspaceId||o.program!==s.program||o.optional!==false||o.state!=="published"||o.time.kind!=="scheduled"||Date.parse(o.time.startsAt)<=now.getTime()||!Number.isSafeInteger(o.childCapacity)||o.childCapacity<1)fail("INVALID_STATE");
@@ -214,7 +221,7 @@ export class FishingStageService implements FishingOccurrenceReadPort {
   }
   if(command.action==="attendance"){
    if(o.state!=="completed"||o.time.kind!=="scheduled")fail("INVALID_STATE");
-   const e=await tx.readEnrollment(c,command.enrollmentId);if(!validEnrollment(e,c))fail("FORBIDDEN");
+   const e=await tx.readEnrollment(c,command.enrollmentId);if(!validEnrollment(e,c)||!inEnrollmentScope(e,o.id,s))fail("FORBIDDEN");
    // Append corrections. Do not mutate an earlier attendance fact or infer one
    // from an elapsed date, a payment, a quiz, an absence or operator cancellation.
    s.attendance.push({enrollmentId:e.id,occurrenceId:o.id,state:command.state,recordedAt:now.toISOString(),recordedBy:c.actor.id,reason:command.reason});return;
@@ -222,6 +229,7 @@ export class FishingStageService implements FishingOccurrenceReadPort {
   if(command.action==="notice"){
    if((o.state!=="published"&&o.state!=="cancelled")||o.time.kind!=="scheduled")fail("INVALID_STATE");
    const e=c.enrollment!;
+   if(!inEnrollmentScope(e,o.id,s))fail('FORBIDDEN');
    if(s.makeups.some(m=>m.notice.enrollmentId===e.id&&m.notice.occurrenceId===o.id))fail("CONFLICT");
    const state=o.state==="cancelled"?"operator_undelivered":noticeState(now.toISOString(),o.time.startsAt,command.reason);
    const record:MakeupRecord={notice:{id:randomUUID(),workspaceId:s.workspaceId,enrollmentId:e.id,occurrenceId:o.id,
