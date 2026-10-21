@@ -47,3 +47,9 @@ test("optional child HTTP is independently disabled by default even with a permi
  const s=setup();s.actor.role="child";expect((await s.http.handle(s.request())).status).toBe(403);expect(s.factory).not.toHaveBeenCalled();
  const enabled=setup(true);enabled.actor.role="child";expect((await enabled.http.handle(enabled.request())).status).toBe(200);expect(enabled.factory).toHaveBeenCalled();
 });
+
+test("same authenticated Resources POST accepts the closed partial-draft command without caller authority",async()=>{
+ const s=setup(),command={action:"save_draft",operationId:randomUUID(),expectedRevisionId:null,answers:[]};
+ expect((await s.http.handle(s.request("POST",{},"",{reference:ref,command}))).status).toBe(200);expect(s.journey.save).toHaveBeenCalledWith(ref,command);
+ expect((await s.http.handle(s.request("POST",{},"",{reference:ref,command:{...command,grant:true}}))).status).toBe(400);
+});

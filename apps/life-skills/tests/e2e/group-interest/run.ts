@@ -10,10 +10,10 @@ import {join,resolve,dirname,basename} from "node:path";
 import {once} from "node:events";
 import net from "node:net";
 import {request as playwrightRequest} from "@playwright/test";
-import {fixture,safeTestUrl} from "../../database/calendar/fixture.ts";
+
 import {seal,tokenDigest,hashPassword,blindEmail} from "../../../src/features/identity/crypto.ts";
 import type {CutoverEvidence} from "../../../src/features/contact-ops/server/cutover-store.ts";
-import {poolStore} from "../../database/calendar/fixture.ts";
+
 import {privateDigest} from "../../../src/features/contact-ops/server/digests.ts";
 import {floridaGroupApplicationNotice} from "../../../src/features/group-application/contract.ts";
 
@@ -32,6 +32,9 @@ if(offerOnly&&!enrollmentOnly)throw Error('OFFER_REQUIRES_RETAINED_ENROLLMENT_HA
 if(enrollmentOnly&&!familyOnly)throw Error("ENROLLMENT_REQUIRES_RETAINED_FAMILY_HARNESS");
 if(familyOnly&&(!fishingOnly||!["desktop","mobile390"].includes(project??"")||process.env.LS_RM_LAUNCH_OPS09_ONLY==="true"||process.env.LS_EDUCATION_UI_ONLY==="true"||process.env.LS_COMMUNITY_UI_ONLY==="true"))throw Error("FAMILY_EXCLUSIVE_ORDINARY_HARNESS_REQUIRED");
 const educationOnly=process.env.LS_EDUCATION_UI_ONLY==="true";
+const educationBatch=process.env.LS_EDUCATION_TEST_BATCH;
+if(educationOnly&&educationBatch!=="retained"&&educationBatch!=="drafts")throw Error("EDUCATION_EXPLICIT_CLOSED_BATCH_REQUIRED");
+if(!educationOnly&&educationBatch!==undefined)throw Error("EDUCATION_BATCH_REQUIRES_EDUCATION_MODE");
 const communityOnly=process.env.LS_COMMUNITY_UI_ONLY==="true";
 const launchOpsOnly=process.env.LS_RM_LAUNCH_OPS09_ONLY==="true";
 if(launchOpsOnly&&(!fishingOnly||project===undefined||communityOnly||educationOnly||sampleOnly||process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==="true"||process.env.LS_GROUP_INTEREST_CAPTURE_ONLY==="true"||process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==="true"))throw Error("OPS09_EXCLUSIVE_EXPLICIT_PROJECT_REQUIRED");
@@ -41,6 +44,8 @@ if(fishingOnly&&project===undefined)throw new Error("FISHING_UI_EXPLICIT_PROJECT
 if(project!==undefined&&!(project in projects))throw new Error("GROUP_INTEREST_BROWSER_PROJECT_NOT_SUPPORTED");
 if((sampleOnly||process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==="true")&&project===undefined)throw new Error("FLORIDA_JOURNEY_EXPLICIT_PROJECT_REQUIRED");
 if(process.env.LS_GROUP_INTEREST_TEST_ALLOW!=="true")throw new Error("GROUP_INTEREST_BROWSER_OPT_IN_REQUIRED");
+// No native/server-only fixture dependency executes before explicit opt-in.
+const {fixture,safeTestUrl,poolStore}=await import("../../database/calendar/fixture.ts");
 const appPort=projects[project??"desktop"],origin=`https://localhost:${appPort}`;
 safeTestUrl();
 if(educationOnly||launchOpsOnly||familyOnly){
@@ -297,11 +302,15 @@ try{
  phase="browser-tests";
  const opsArtifact=launchOpsOnly?`tests/e2e/group-interest/test-results/ops09-${project}-${randomUUID()}`:null;
  if(opsArtifact)console.log("OPS09_ARTIFACT_DIRECTORY "+opsArtifact);
- const selection=project?["--project",project,"--output",opsArtifact??`tests/e2e/group-interest/test-results/isolated-${project}`]:[];
+ const selection=project?["--project",project,"--output",opsArtifact??`tests/e2e/group-interest/test-results/isolated-${project}${educationOnly?"-education-"+educationBatch:""}`]:[];
  if(!fishingOnly&&process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==="true")selection.push("--grep","Florida group inquiry|Israel group application compatibility");
  if(process.env.LS_GROUP_INTEREST_CAPTURE_ONLY==="true")selection.push("--grep","practitioner");
  if(communityOnly){/* Explicit focused read-only Community journey, not a default-suite skip. */}
- else if(educationOnly){/* Existing Playwright config selects the retained Resources journey. */}
+ else if(educationOnly){
+  // Independent ordinary fixtures keep the unchanged Identity limiter effective.
+  // Both batches are required by the outer acceptance tests.
+  selection.push(educationBatch==="drafts"?"--grep":"--grep-invert","partial draft survives real sign-in");
+ }
  else if(familyOnly)selection.push("--grep","anonymous saved inquiry");
  else if(fishingOnly){/* Selection is the retained mounted fishing spec in the same isolated harness. */}
  else if(sampleOnly)selection.push("--grep","Florida owner journey hosted sample");
@@ -321,8 +330,8 @@ try{
   phase="education-native-readback";
   if(JSON.stringify(await educationModule.educationProtectedSnapshot(f))!==JSON.stringify(educationBefore))throw new Error("EDUCATION_UI_FORBIDDEN_DATABASE_EFFECT");
   const count=(await f.pool.query("SELECT count(*)::int AS total FROM ls_education.lesson_events WHERE workspace_id=$1",[workspaceId])).rows[0].total;
-  if(count!==9)throw new Error("EDUCATION_UI_EVENT_REPLAY_OR_FLOW_INCOMPLETE");
-  console.log(`EDUCATION_BROWSER_ACCEPTANCE_PASS project=${project} ordinaryLogin=true events=${count} unrelatedEffects=0 providerEffects=0`);
+  if(count!==(educationBatch==="drafts"?8:9))throw new Error("EDUCATION_UI_EVENT_REPLAY_OR_FLOW_INCOMPLETE");
+  console.log(`EDUCATION_BROWSER_ACCEPTANCE_PASS project=${project} batch=${educationBatch} ordinaryLogin=true events=${count} unrelatedEffects=0 providerEffects=0`);
  }
  else if(launchOpsOnly){
   phase="ops09-native-readback";

@@ -45,6 +45,49 @@ async function setup(options:{state?:"prepared"|"approved";tamper?:"bytes"|"clas
  return {f,reference,journey,command,count,seed};
 }
 
+test("native partial and empty actor-private drafts survive reopen without a final, teacher disclosure or loss on historical final replay",async()=>{
+ const s=await setup({questionCount:3}),draft={action:"save_draft",operationId:randomUUID(),expectedRevisionId:null,answers:[{questionId:"Q01-1",value:"  PRIVATE_SYNTHETIC_PARTIAL_DRAFT  "}]};
+ const saved=await s.journey().save(s.reference,draft);expect((await s.journey().save(s.reference,draft)).duplicate).toBe(true);
+ expect(await s.journey().read(s.reference,"learner")).toMatchObject({submission:null,draft:{revisionId:saved.revisionId,answers:draft.answers}});
+ const teacher=()=>s.journey(s.f.practitioner.actor),teacherRead=await teacher().read(s.reference,"teacher");expect(teacherRead.submission).toBeNull();expect(teacherRead).not.toHaveProperty("draft");expect(JSON.stringify(teacherRead)).not.toContain("PRIVATE_SYNTHETIC_PARTIAL_DRAFT");
+ await expect(teacher().save(s.reference,{...draft,operationId:randomUUID(),expectedRevisionId:saved.revisionId})).rejects.toThrow("FORBIDDEN");
+ await expect(s.journey().save(s.reference,{...draft,operationId:randomUUID()})).rejects.toThrow("CONFLICT");
+ for(const answers of [[{questionId:"Q02-1",value:"foreign"}],[draft.answers[0]!,draft.answers[0]!]])await expect(s.journey().save(s.reference,{...draft,operationId:randomUUID(),expectedRevisionId:saved.revisionId,answers})).rejects.toThrow("QUESTION_MISMATCH");
+ const empty=await s.journey().save(s.reference,{...draft,operationId:randomUUID(),expectedRevisionId:saved.revisionId,answers:[]});expect((await s.journey().read(s.reference,"learner")).draft?.answers).toEqual([]);
+ await expect(s.journey().save(s.reference,{...s.command(),expectedRevisionId:empty.revisionId})).rejects.toThrow("QUESTION_MISMATCH");
+ const command={...s.command(),expectedRevisionId:empty.revisionId,answers:[1,2,3].map(n=>({questionId:`Q01-${n}`,value:"SYNTHETIC final answer"}))},final=await s.journey().save(s.reference,command);expect((await s.journey().read(s.reference,"learner")).draft).toBeNull();
+ const later=await s.journey().save(s.reference,{...draft,operationId:randomUUID(),expectedRevisionId:final.revisionId});expect((await s.journey().save(s.reference,command)).duplicate).toBe(true);expect((await s.journey().read(s.reference,"learner")).draft?.revisionId).toBe(later.revisionId);
+ const observe={action:"observe",operationId:randomUUID(),expectedRevisionId:later.revisionId,submissionId:final.revisionId,task:"Synthetic named practical task",assistance:"with_guidance",knowledgeAssessment:{state:"recorded",assessment:"PRIVATE_SYNTHETIC_KNOWLEDGE: identified the three equipment checks"}},observed=await teacher().save(s.reference,observe);
+ const corrected=await teacher().save(s.reference,{...observe,operationId:randomUUID(),expectedRevisionId:observed.revisionId,knowledgeAssessment:{state:"not_assessed"}});
+ const history=await teacher().read(s.reference,"teacher");expect(history.observations.map(e=>e.command.action==="observe"?e.command.knowledgeAssessment:null)).toEqual([observe.knowledgeAssessment,{state:"not_assessed"}]);expect(history.submission?.revisionId).toBe(final.revisionId);expect(history).not.toHaveProperty("draft");
+ await teacher().save(s.reference,{action:"publish_parent_summary",operationId:randomUUID(),expectedRevisionId:corrected.revisionId,observationId:corrected.revisionId,summary:"Synthetic deliberately safe summary",parentAccountIds:[s.f.parent.actor.id]});
+ expect(JSON.stringify(await s.journey().read(s.reference,"parent"))).not.toMatch(/PRIVATE_SYNTHETIC|answers|draft|knowledgeAssessment|assistance/);expect((await s.journey().read(s.reference,"learner")).draft?.revisionId).toBe(later.revisionId);
+ expect(await s.count()).toEqual({events:7,heads:1});expect(JSON.stringify((await s.f.pool.query("SELECT header,payload_ciphertext FROM ls_education.lesson_events WHERE workspace_id=$1",[s.f.workspaceId])).rows)).not.toMatch(/PRIVATE_SYNTHETIC|equipment checks/);
+});
+
+test("another independently authorized guardian cannot read a draft; their final supersedes it by ledger order",async()=>{
+ const s=await setup(),other=s.f.parentTwo.actor,args=[s.f.workspaceId,s.reference.learnerId,s.reference.moduleId,s.reference.version,other.id,s.f.practitioner.actor.id];
+ await s.f.pool.query("INSERT INTO ls_education.account_grants(workspace_id,learner_id,module_id,version,account_id,active,permissions,granted_by) VALUES($1,$2,$3,$4,$5,true,ARRAY['submit','read_learner','read_parent'],$6)",args);
+ await s.f.pool.query("INSERT INTO ls_education.guardian_authorities(workspace_id,learner_id,account_id,active,verified_at,source_reference,verified_by) VALUES($1,$2,$3,true,clock_timestamp(),'SYNTHETIC independently verified second guardian',$4)",[s.f.workspaceId,s.reference.learnerId,other.id,s.f.practitioner.actor.id]);
+ const command={action:"save_draft",operationId:randomUUID(),expectedRevisionId:null,answers:[{questionId:"Q01-1",value:"PRIVATE_SYNTHETIC_PARENT_ONE"}]},saved=await s.journey().save(s.reference,command);
+ const otherRead=await s.journey(other).read(s.reference,"learner");expect(otherRead.draft).toBeNull();expect(JSON.stringify(otherRead)).not.toContain("PRIVATE_SYNTHETIC_PARENT_ONE");
+ await s.journey(other).save(s.reference,{...s.command(),expectedRevisionId:saved.revisionId});expect((await s.journey().read(s.reference,"learner")).draft).toBeNull();
+});
+
+test.each(["session","grant","guardian","source"] as const)("saved draft read and exact replay recheck current %s authority",async kind=>{
+ const s=await setup(),command={action:"save_draft",operationId:randomUUID(),expectedRevisionId:null,answers:[]};await s.journey().save(s.reference,command);
+ if(kind==="session")await s.f.pool.query("UPDATE ls_identity.sessions SET revoked_at=clock_timestamp() WHERE workspace_id=$1 AND account_id=$2",[s.f.workspaceId,s.f.parent.actor.id]);
+ if(kind==="grant")await s.f.pool.query("UPDATE ls_education.account_grants SET active=false WHERE workspace_id=$1 AND account_id=$2",[s.f.workspaceId,s.f.parent.actor.id]);
+ if(kind==="guardian")await s.f.pool.query("UPDATE ls_education.guardian_authorities SET active=false WHERE workspace_id=$1 AND account_id=$2",[s.f.workspaceId,s.f.parent.actor.id]);
+ if(kind==="source")await s.f.pool.query("UPDATE ls_education.catalog_versions SET approval_state='withdrawn' WHERE workspace_id=$1",[s.f.workspaceId]);
+ await expect(s.journey().read(s.reference,"learner")).rejects.toThrow();await expect(s.journey().save(s.reference,command)).rejects.toThrow();expect(await s.count()).toEqual({events:1,heads:1});
+});
+
+test("explicit draft saves share the unchanged500-event capacity; replay cannot poison readable history",async()=>{
+ const s=await setup(),last=await seedHistory(s,499),command={action:"save_draft",operationId:randomUUID(),expectedRevisionId:last.revisionId,answers:[]},saved=await s.journey().save(s.reference,command);
+ expect((await s.journey().save(s.reference,command)).duplicate).toBe(true);await expect(s.journey().save(s.reference,{...command,operationId:randomUUID(),expectedRevisionId:saved.revisionId})).rejects.toMatchObject({code:"UNAVAILABLE"});expect(await s.count()).toEqual({events:500,heads:1});expect((await s.journey().read(s.reference,"learner")).draft).toMatchObject({revisionId:saved.revisionId,answers:[]});
+});
+
 test.each([1,2,3] as const)("native final submission requires all %i approved questions; rejection leaves no revision",async questionCount=>{
  const s=await setup({questionCount}),complete={...s.command(),answers:Array.from({length:questionCount},(_,index)=>({questionId:`Q01-${index+1}`,value:"Synthetic complete answer"})).reverse()};
  await expect(s.journey().save(s.reference,{...complete,answers:complete.answers.slice(1)})).rejects.toThrow();

@@ -103,3 +103,10 @@ describe("prepared owner-private exact content and encrypted event boundary",()=
   expect(()=>decodeLessonEvent(sealed.header,JSON.stringify(body),keys)).toThrow();
  });
 });
+
+it("new optional knowledge field does not rewrite legacy encrypted command digests",()=>{
+ const legacy=event(),stored=encodeLessonEvent(legacy,keys);expect(decodeLessonEvent(stored.header,stored.ciphertext,keys)).toEqual(legacy);expect(legacy.command).not.toHaveProperty("knowledgeAssessment");
+ const next={...legacy,command:lessonJourneyCommandSchema.parse({...legacy.command,knowledgeAssessment:{state:"recorded",assessment:"PRIVATE_SYNTHETIC_KNOWLEDGE"}})};
+ next.digest=digest(JSON.stringify({ref:{learnerId:next.learnerId,moduleId:next.moduleId,version:next.version},command:next.command,actorId:next.actorId,workspaceId:next.workspaceId,sourceSha256:next.sourceSha256}));
+ const encoded=encodeLessonEvent(next,keys);expect(encoded.ciphertext).not.toContain("PRIVATE_SYNTHETIC_KNOWLEDGE");expect(decodeLessonEvent(encoded.header,encoded.ciphertext,keys)).toEqual(next);
+});

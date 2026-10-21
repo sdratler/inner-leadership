@@ -193,3 +193,10 @@ describe("prepared Real Mensch transactional journey — synthetic port only",()
   expect(html).toMatch(/<button[^>]*disabled/);expect(html).not.toMatch(/<textarea[^>]*disabled/);expect(html).not.toMatch(/<details\b[^>]*\sopen(?:=|\s|>)/);
  });
 });
+
+it("durable draft is actor-private partial work and empty draft is not a final submission",async()=>{
+ const db=new Fixture(),app=service(db),command={action:"save_draft",operationId:id(71),expectedRevisionId:null,answers:[]};
+ const saved=await app.save(ref,command);expect((await app.read(ref,"learner")).draft).toMatchObject({revisionId:saved.revisionId,answers:[]});expect((await app.read(ref,"learner")).submission).toBeNull();
+ db.current=context("practitioner");expect(await app.read(ref,"teacher")).not.toHaveProperty("draft");await expect(app.save(ref,{...command,operationId:id(72),expectedRevisionId:saved.revisionId})).rejects.toThrow("FORBIDDEN");
+ db.current=context("parent");expect((await service(db.reload()).read(ref,"learner")).draft?.answers).toEqual([]);
+});

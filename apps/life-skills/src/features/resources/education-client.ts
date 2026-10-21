@@ -7,12 +7,15 @@ export type EducationRole="parent"|"practitioner";
 const uuid=z.uuid(),text=z.string().min(1).max(2000),sha=z.string().regex(/^[a-f0-9]{64}$/),date=z.iso.datetime();
 const moduleId=educationReferenceSchema.shape.moduleId,version=educationReferenceSchema.shape.version;
 const answers=z.array(z.strictObject({questionId:z.string().regex(/^Q\d{2}-[1-3]$/),value:text})).min(1).max(3);
+const draft=z.strictObject({revisionId:uuid,answers:z.array(z.strictObject({questionId:z.string().regex(/^Q\d{2}-[1-3]$/),value:z.string().max(2000)})).max(3),savedAt:date});
 const learner=z.strictObject({lesson:z.strictObject({moduleId,version,stage:z.number().int().min(1).max(4),locale:z.enum(["en","he"]),
  title:text,instruction:text,questions:z.array(z.strictObject({id:z.string().regex(/^Q\d{2}-[1-3]$/),prompt:text})).min(1).max(3),sourceSha256:sha}),
- revisionId:uuid.nullable(),submission:z.strictObject({revisionId:uuid,answers,submittedAt:date,submittedBy:uuid,assistedBy:uuid.nullable()}).nullable()});
+ revisionId:uuid.nullable(),submission:z.strictObject({revisionId:uuid,answers,submittedAt:date,submittedBy:uuid,assistedBy:uuid.nullable()}).nullable(),draft:draft.nullable().optional()});
 const observationCommand=z.strictObject({action:z.literal("observe"),operationId:uuid,expectedRevisionId:uuid.nullable(),submissionId:uuid,task:text,
- assistance:z.enum(["not_observed","with_guidance","independent"]),privateNote:text.optional()});
-const teacher=learner.extend({observations:z.array(z.strictObject({id:uuid,operationId:uuid,digest:sha,previousRevisionId:uuid.nullable(),workspaceId:uuid,
+ assistance:z.enum(["not_observed","with_guidance","independent"]),privateNote:text.optional(),knowledgeAssessment:z.discriminatedUnion("state",[
+  z.strictObject({state:z.literal("not_assessed")}),z.strictObject({state:z.literal("recorded"),assessment:text}),
+ ]).optional()});
+const teacher=learner.omit({draft:true}).extend({observations:z.array(z.strictObject({id:uuid,operationId:uuid,digest:sha,previousRevisionId:uuid.nullable(),workspaceId:uuid,
  learnerId:uuid,moduleId,version,sourceSha256:sha,actorId:uuid,actorRole:z.literal("practitioner"),at:date,command:observationCommand})).max(500),
  summaryRecipients:z.array(z.strictObject({accountId:uuid,label:z.string().email().max(254)})).max(10)});
 const parent=z.strictObject({moduleId,version,portfolio:z.strictObject({revisionId:uuid,summary:text,publishedAt:date,sourceSha256:sha}).nullable()});
@@ -29,9 +32,10 @@ export function pendingLessonOperation(reference:LessonReference,command:LessonC
  if(new TextEncoder().encode(body).byteLength>16384)throw new LessonClientError("PAYLOAD_TOO_LARGE");
  return Object.freeze({body,operationId:command.operationId});
 }
-// The retained500-event teacher projection has a bounded worst-case UTF-8 size.
-// This includes legitimate long Unicode notes; do not truncate readable history.
-const MAX_RESPONSE_BYTES=8*1024*1024;
+// Up to 500 events: three 2000-code-unit text fields can each JSON-escape to
+// 6 bytes/unit. With <4 KiB metadata/event and <128 KiB lesson/final context,
+// 24 MiB covers the retained history without truncation. Requests stay 16 KiB.
+const MAX_RESPONSE_BYTES=24*1024*1024;
 async function responseData<T>(response:Response,schema:z.ZodType<T>,mayHaveCommitted:boolean):Promise<T>{
  const uncertain=mayHaveCommitted&&(response.status>=500||response.ok);
  let body:unknown;
