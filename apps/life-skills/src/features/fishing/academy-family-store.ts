@@ -17,9 +17,8 @@ import {FishingLeadStore} from '../contact-ops/server/fishing-lead-store.ts';
 import {academyFamilyCommandSchema,academyFamilySavedSchema,academyFamilyVersion,type AcademyFamilySaved,type AcademyFamilyContext} from './academy-family-contract.ts';
 import type {AcademyOwnerEnrollmentBinding} from './academy-enrollment-contract.ts';
 import {readEducationalChildContexts} from './native-child-context.ts';
+import {readAcademyFamilyReceipts} from './academy-family-receipts.ts';
 const digest=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('hex'),action='academy.family.setup';
-const receiptPayload=z.strictObject({saved:academyFamilySavedSchema,command:academyFamilyCommandSchema});
-type ReceiptRow={actorId:string;operationId:string;hash:string;ciphertext:string};
 export class AcademyFamilyStore{
  private readonly accounts:IdentityAccountService;
  constructor(private readonly db:IdentityStore,private readonly config:IdentityConfig,private readonly inquiries:PublicGroupApplicationStore,private readonly leads:FishingLeadStore,private readonly clock:IdentityClock=systemClock){this.accounts=new IdentityAccountService(db,config,clock);}
@@ -34,9 +33,7 @@ export class AcademyFamilyStore{
   return {fields:parsed.data,intake:parsed.data.academyIntake,hash:digest(parsed.data)};
  }
  private async receipts(tx:SqlSession,actor:Actor){
-  const rows=await tx.query<ReceiptRow>('SELECT actor_id AS "actorId",command_id AS "operationId",request_sha256 AS hash,result_ciphertext AS ciphertext FROM ls_fishing_stage.command_receipts WHERE workspace_id=$1 AND action=$2 ORDER BY recorded_at,actor_id,command_id LIMIT 1001',[actor.workspaceId,action]);
-  if(rows.length>1000)throw new AppError('UNAVAILABLE');
-  return rows.map(row=>{try{const payload=receiptPayload.parse(JSON.parse(unseal(row.ciphertext,this.aad(row.actorId,row.operationId,row.hash),this.config.keyring)));if(payload.command.operationId!==row.operationId||digest(payload.command)!==row.hash||payload.saved.applicationId!==payload.command.applicationId||payload.saved.personId!==payload.command.personId)throw new Error();return {...row,saved:payload.saved};}catch{throw new AppError('UNAVAILABLE');}});
+  return readAcademyFamilyReceipts(tx,actor.workspaceId,this.config.keyring);
  }
  private async households(tx:SqlSession,personId:string){
   const rows=await tx.query<{id:string;ciphertext:string}>('SELECT f.id,f.label_ciphertext AS ciphertext FROM ls_cases.families f JOIN ls_cases.family_members m ON m.workspace_id=f.workspace_id AND m.family_id=f.id WHERE f.workspace_id=$1 AND m.person_id=$2 AND m.role IN (\'parent\',\'guardian\') ORDER BY f.id LIMIT 101 FOR SHARE OF f,m',[this.config.workspaceId,personId]);if(rows.length>100)throw new AppError('UNAVAILABLE');
