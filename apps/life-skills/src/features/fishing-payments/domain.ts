@@ -2,16 +2,21 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import type { ApprovedOffer, FishingDue, FishingPurchaseLine, PaymentState } from '../fishing/contract.ts';
 import { asId } from '../../lib/ids.ts';
+import {owner03PolicyVersion} from './owner03-policy.ts';
 
 export const POLICY_VERSION = 'RM-STRIPE-STAGE-LIFECYCLE-20261015-10';
 export const id = z.string().regex(/^[a-zA-Z0-9_.:-]{1,160}$/);
 export const cents = z.number().int().min(0).max(100_000_000);
 export const signedFeeCents=z.number().int().min(-100_000_000).max(100_000_000);
 export const instant = z.iso.datetime({ offset: true });
-const basis = z.enum(['ordinary_primary_prepay','ordinary_sibling_prepay','founder_initial_primary_prepay','founder_initial_sibling_prepay','three_full_rate_dues']);
+const basis = z.enum(['ordinary_primary_prepay','ordinary_sibling_prepay','founder_initial_primary_prepay','founder_initial_sibling_prepay','three_full_rate_dues','monthly_block_full_rate']);
 const due = z.object({ id, index:z.union([z.literal(1),z.literal(2),z.literal(3)]),dueAt:instant,currency:z.literal('USD'),amountCents:cents.positive(),state:z.enum(['pending','action_required','failed','part_paid','paid','reconciliation_required']),paidCents:cents }).strict();
-const line = z.object({ id,learnerId:id,cohortId:id,stageId:id,stage:z.union([z.literal(1),z.literal(2),z.literal(3),z.literal(4)]),sessions:z.literal(12),mode:z.enum(['prepay','installments']),totalCents:cents.positive(),discountBasis:basis,
+const lineBase = z.object({ id,learnerId:id,cohortId:id,stageId:id,stage:z.union([z.literal(1),z.literal(2),z.literal(3),z.literal(4)]),totalCents:cents.positive(),discountBasis:basis,
  eligibility:z.object({kind:z.enum(['ordinary','verified_founder','verified_sibling']),evidenceId:id,policyVersion:id}).strict(),dues:z.array(due).min(1).max(3),capacity:z.object({reservationId:id,revision:z.number().int().positive(),expiresAt:instant}).strict() }).strict();
+const line=z.discriminatedUnion('mode',[
+ lineBase.extend({sessions:z.literal(12),mode:z.enum(['prepay','installments'])}),
+ lineBase.extend({sessions:z.literal(4),mode:z.literal('monthly_block'),block:z.strictObject({id:z.uuid(),acceptanceId:z.uuid(),occurrenceIds:z.array(z.uuid()).length(4).refine(v=>new Set(v).size===4)})})
+]);
 const schema=z.object({id,revision:z.number().int().positive(),workspaceId:id,program:z.enum(['sunday_fishing_academy','private_fishing_life_skills']),operatorAccountId:id,householdId:id,payerAccountId:id,currency:z.literal('USD'),lines:z.array(line).min(1).max(20),expiresAt:instant,policyVersion:id,sourceVersion:id,terms:z.object({version:id,acceptedBy:id,acceptedAt:instant}).strict()}).strict();
 export function invariant(value:unknown,code:string):asserts value { if(!value)throw new Error(code); }
 export function digest(value:unknown):string {
@@ -20,18 +25,27 @@ export function digest(value:unknown):string {
 }
 /** Called on reloaded server records, never a structural Quote supplied by a browser. */
 export function approvedOffer(value:unknown):ApprovedOffer {
- const o=schema.parse(value); invariant(o.policyVersion===POLICY_VERSION,'POLICY_VERSION');
+ const o=schema.parse(value); invariant(o.policyVersion===POLICY_VERSION||o.policyVersion===owner03PolicyVersion,'POLICY_VERSION');
  invariant(o.program==='sunday_fishing_academy','PROGRAM_PRICE_POLICY_REQUIRED');
  invariant(o.terms.acceptedBy===o.payerAccountId,'PAYER_TERMS');
  invariant(new Date(o.terms.acceptedAt).getTime()<new Date(o.expiresAt).getTime(),'TERMS_TIME');
  invariant(new Set(o.lines.map(x=>x.id)).size===o.lines.length&&new Set(o.lines.map(x=>x.learnerId)).size===o.lines.length,'DUPLICATE_LINE');
  const allDues=o.lines.flatMap(x=>x.dues);invariant(new Set(allDues.map(x=>x.id)).size===allDues.length,'DUPLICATE_DUE');
  for(const l of o.lines){
+  // A block is a separate purchase, not a renamed three-dues obligation.
+  // Native authority must bind these four occurrences and this renewed assent.
+  if(l.mode==='monthly_block'){
+   invariant(o.policyVersion===owner03PolicyVersion,'MONTHLY_BLOCK_POLICY');
+   invariant(l.eligibility.kind==='ordinary'&&l.discountBasis==='monthly_block_full_rate'&&l.totalCents===65000,'MONTHLY_BLOCK_PRICE');
+  }else{
+   invariant(l.discountBasis!=='monthly_block_full_rate','DISCOUNT_MODE');
+   invariant(o.policyVersion!==owner03PolicyVersion||l.mode!=='installments','RETIRED_INSTALLMENT_POLICY');
+  }
   const founder=l.discountBasis.startsWith('founder_'),sibling=l.discountBasis.includes('_sibling_');
   invariant(l.eligibility.policyVersion===o.policyVersion,'ELIGIBILITY_POLICY');
   invariant(!founder||l.stage===1&&l.eligibility.kind==='verified_founder','FOUNDER_INITIAL_ONLY');
   invariant(!sibling||l.eligibility.kind!=='ordinary','SIBLING_EVIDENCE');
-  const expected=l.mode==='installments'?195000:founder?(sibling?155000:165000):(sibling?165000:175000);
+  const expected=l.mode==='monthly_block'?65000:l.mode==='installments'?195000:founder?(sibling?155000:165000):(sibling?165000:175000);
   invariant(l.totalCents===expected,'PRICE_MISMATCH');
   invariant(l.mode==='installments'?l.discountBasis==='three_full_rate_dues':l.discountBasis!=='three_full_rate_dues','DISCOUNT_MODE');
   invariant(l.dues.length===(l.mode==='installments'?3:1),'EXACT_DUES');

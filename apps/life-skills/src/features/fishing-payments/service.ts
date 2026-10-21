@@ -185,6 +185,7 @@ export class FishingPaymentService {
  }
  async refundPreview(actor:Actor,purchaseId:string){return this.store.read(actor,c=>this.preview(c,purchaseId));}
  private async preview(c:NativeContext,purchaseId:string){const p=await this.store.purchase(c,purchaseId);await this.store.access(c,p.offer,'refund',true);
+  if(p.line.mode==='monthly_block')return {proposal:{status:'POLICY_REQUIRED' as const,reason:'native_block_withdrawal_authority_required'},token:null,amountCents:null};
   const f=await this.store.deps.authority.withdrawalFacts(c.tx,c.actor,p.offer,p.line),proposal=withdrawalProposal(p.state.originalTotalCents,f.attended,p.line.mode,f.reason,f.multiChildPrestart);
   if(proposal.status!=='PROPOSAL_ONLY')return {proposal,token:null,amountCents:null};
   invariant(p.state.paidCents===p.state.originalTotalCents,'FULL_PREPAY_REQUIRED');

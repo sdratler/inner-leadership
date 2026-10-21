@@ -18,13 +18,16 @@ export type FishingDue=Readonly<{
  paidCents:number;
 }>;
 export type FishingPurchaseLine=FishingStageRef&Readonly<{
- id:string;learnerId:PersonId;sessions:12;mode:"prepay"|"installments";
+ id:string;learnerId:PersonId;
  totalCents:number;discountBasis:string;
  // Immutable server evidence, not eligibility inferred from a browser flag.
  eligibility:Readonly<{kind:"ordinary"|"verified_founder"|"verified_sibling";evidenceId:string;policyVersion:string}>;
  dues:readonly FishingDue[];
  capacity:Readonly<{reservationId:string;revision:number;expiresAt:string}>;
-}>;
+}>&Readonly<
+ |{sessions:12;mode:"prepay"|"installments";block?:never}
+ |{sessions:4;mode:"monthly_block";block:{id:string;acceptanceId:string;occurrenceIds:readonly string[]}}
+>;
 export type ApprovedOffer=FishingSource&Readonly<{
  id:string;revision:number;workspaceId:WorkspaceId;program:FishingProgram;
  operatorAccountId:AccountId;householdId:string;payerAccountId:AccountId;

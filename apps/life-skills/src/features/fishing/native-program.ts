@@ -1,6 +1,6 @@
 import "server-only";
 import {academyAgreementAcceptanceSchema,academyTermsHash,readAcademyAgreementBundle,verifyAcademyAgreementAcceptance} from './academy-agreements.ts';
-import {randomUUID,createHash} from "node:crypto";
+import {randomUUID} from "node:crypto";
 import {z} from "zod";
 import {AppError} from "../../lib/errors.ts";
 import {asId} from "../../lib/ids.ts";
@@ -177,7 +177,7 @@ export class NativeFishingProgram {
   requireFact(row.state.dues.length===line.dues.length&&row.state.dues.every((due,i)=>due.id===line.dues[i]?.id&&due.index===line.dues[i]?.index&&due.amountCents===line.dues[i]?.amountCents),"UNAVAILABLE");return {offer,line,state:row.state,policyId};
  }
  confirmEnrollment(actor:Actor,raw:unknown){const input=enrollmentCommandSchema.parse(raw);return this.command(actor,input.commandId,"enrollment.confirm",input,async c=>this.operator(c,await this.cohort(c.tx,c.actor.workspaceId,input.stageId)),async c=>{
-  const cohort=await this.cohort(c.tx,c.actor.workspaceId,input.stageId),p=await this.purchase(c.tx,c.actor.workspaceId,input.purchaseId);requireFact(p.line.stageId===cohort.stageId&&p.line.cohortId===cohort.cohortId&&p.line.stage===cohort.stage&&p.offer.operatorAccountId===c.actor.id&&p.state.revision===input.expectedPaymentRevision,"CONFLICT");
+  const cohort=await this.cohort(c.tx,c.actor.workspaceId,input.stageId),p=await this.purchase(c.tx,c.actor.workspaceId,input.purchaseId);requireFact(p.line.mode!=='monthly_block','POLICY_REQUIRED');requireFact(p.line.stageId===cohort.stageId&&p.line.cohortId===cohort.cohortId&&p.line.stage===cohort.stage&&p.offer.operatorAccountId===c.actor.id&&p.state.revision===input.expectedPaymentRevision,"CONFLICT");
   const merchant=this.options.merchant;requireFact(merchant,"POLICY_REQUIRED");requireFact(p.state.providerAccountId===merchant.accountId&&p.state.livemode===merchant.livemode);
   requireFact(input.policyApprovalId===cohort.policyApprovalId&&input.policyApprovalId===p.policyId);const policy=programPolicySchema.parse((await this.source(c.tx,c.actor.workspaceId,input.policyApprovalId,"payment_condition",c.now)).payload);
   if(policy.confirmation.kind==="unselected")fail("POLICY_REQUIRED");requireFact(policy.policyVersion===p.offer.policyVersion&&policy.sourceVersion===p.offer.sourceVersion,"POLICY_REQUIRED");
@@ -292,6 +292,7 @@ export class NativeFishingProgram {
    const seats=await tx.query<{holdId:string;offerId:string|null;origin:string;count:number}>(`SELECT hold_id AS "holdId",offer_id AS "offerId",origin,count(*)::integer AS count FROM ls_fishing_stage.seat_reservations WHERE workspace_id=$1 AND stage_id=$2 AND learner_id=$3 AND state<>'released' GROUP BY hold_id,offer_id,origin LIMIT 1001`,[c.actor.workspaceId,stageId,family.learnerId]),holds=seats.filter(s=>s.origin==='offer_hold');requireFact(seats.length<=1000&&holds.length<=1,'UNAVAILABLE');let offer:AcademyOfferSummary|null=null;
    if(holds[0]){
     const held=holds[0];requireFact(held.offerId&&held.count===12,'UNAVAILABLE');const approved=await this.approved(tx,c.actor.workspaceId,held.offerId),line=approved.offer.lines.find(l=>l.learnerId===family.learnerId);requireFact(line&&line.stageId===stageId&&approved.offer.householdId===family.householdId&&approved.offer.payerAccountId===family.parentAccountId&&line.capacity.reservationId===held.holdId,'UNAVAILABLE');
+    requireFact(line.mode!=='monthly_block','UNAVAILABLE');
     const issued=await one(tx,'SELECT id FROM ls_fishing_payments.purchases WHERE workspace_id=$1 AND offer_id=$2 LIMIT 1 FOR SHARE',[c.actor.workspaceId,held.offerId]);offer={id:held.offerId,state:issued?'issued':Date.parse(approved.offer.expiresAt)<=c.now.valueOf()?'expired':'prepared',mode:line.mode,currency:'USD',totalCents:line.totalCents,expiresAt:approved.offer.expiresAt,dues:line.dues.map(d=>({dueAt:d.dueAt,amountCents:d.amountCents}))};
    }
    const accepted=stage.terms.state==='available'?stage.terms.acceptanceId:null,blocked:AcademyOfferNativeContext['blocked']=seats.some(s=>s.origin!=='offer_hold')?'already_enrolled':stage.fit?.decision!=='approved'?'fit_required':!accepted?'terms_required':policy.confirmation.kind==='unselected'?'policy_required':!plan?'plan_required':null;
