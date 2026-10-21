@@ -170,6 +170,33 @@ CREATE TABLE ls_fishing_stage.refund_fee_reservations (
  FOREIGN KEY(workspace_id,cancellation_id,household_id,decision_id) REFERENCES ls_fishing_stage.refund_cancellations(workspace_id,id,household_id,decision_id),
  FOREIGN KEY(workspace_id,actor_id,command_id) REFERENCES ls_fishing_stage.command_receipts(workspace_id,actor_id,command_id) DEFERRABLE INITIALLY DEFERRED
 );
+-- Immutable financial REVIEW preparation only; not a dispatchable PAY operation.
+CREATE TABLE ls_fishing_stage.refund_preparations (
+ workspace_id uuid NOT NULL,id uuid NOT NULL,kind text NOT NULL CHECK(kind IN('purchase','family')),
+ household_id uuid NOT NULL,payer_account_id uuid NOT NULL,cancellation_id uuid,reservation_id uuid,
+ state text NOT NULL CHECK(state='prepared_only'),review_sha256 text NOT NULL CHECK(review_sha256 ~ '^[a-f0-9]{64}$'),
+ request_sha256 text NOT NULL CHECK(request_sha256 ~ '^[a-f0-9]{64}$'),total_refund_cents integer NOT NULL CHECK(total_refund_cents>0),
+ actor_id uuid NOT NULL,command_id uuid NOT NULL,recorded_at timestamptz NOT NULL,
+ payload_ciphertext text NOT NULL CHECK(octet_length(payload_ciphertext) BETWEEN 1 AND 100000),
+ PRIMARY KEY(workspace_id,id),UNIQUE(workspace_id,actor_id,command_id),
+ CHECK((kind='family')=(cancellation_id IS NOT NULL AND reservation_id IS NOT NULL)),
+ CHECK(kind='family' OR (cancellation_id IS NULL AND reservation_id IS NULL)),
+ FOREIGN KEY(workspace_id,household_id) REFERENCES ls_cases.families(workspace_id,id),
+ FOREIGN KEY(workspace_id,payer_account_id) REFERENCES ls_identity.accounts(workspace_id,id),
+ FOREIGN KEY(workspace_id,cancellation_id) REFERENCES ls_fishing_stage.refund_cancellations(workspace_id,id),
+ FOREIGN KEY(workspace_id,reservation_id) REFERENCES ls_fishing_stage.refund_fee_reservations(workspace_id,id),
+ FOREIGN KEY(workspace_id,actor_id,command_id) REFERENCES ls_fishing_stage.command_receipts(workspace_id,actor_id,command_id) DEFERRABLE INITIALLY DEFERRED
+);
+CREATE TABLE ls_fishing_stage.refund_preparation_members (
+ workspace_id uuid NOT NULL,preparation_id uuid NOT NULL,purchase_id uuid NOT NULL,child_id uuid NOT NULL,
+ provider_account_id text NOT NULL,livemode boolean NOT NULL,original_payment_id text NOT NULL CHECK(length(original_payment_id) BETWEEN 1 AND 160),
+ refund_cents integer NOT NULL CHECK(refund_cents>0),
+ PRIMARY KEY(workspace_id,purchase_id),UNIQUE(workspace_id,preparation_id,child_id),
+ UNIQUE(workspace_id,provider_account_id,livemode,original_payment_id),
+ FOREIGN KEY(workspace_id,preparation_id) REFERENCES ls_fishing_stage.refund_preparations(workspace_id,id),
+ FOREIGN KEY(workspace_id,purchase_id) REFERENCES ls_fishing_payments.purchases(workspace_id,id),
+ FOREIGN KEY(workspace_id,child_id) REFERENCES ls_identity.people(workspace_id,id)
+);
 CREATE FUNCTION ls_fishing_stage.reject_program_history_rewrite() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN RAISE EXCEPTION 'IMMUTABLE_PROGRAM_HISTORY'; END;
 $$;
@@ -181,6 +208,8 @@ CREATE TRIGGER immutable_program_block_terms BEFORE UPDATE OR DELETE ON ls_fishi
 CREATE TRIGGER immutable_program_offers BEFORE UPDATE OR DELETE ON ls_fishing_stage.offer_approvals FOR EACH ROW EXECUTE FUNCTION ls_fishing_stage.reject_program_history_rewrite();
 CREATE TRIGGER immutable_refund_cancellations BEFORE UPDATE OR DELETE ON ls_fishing_stage.refund_cancellations FOR EACH ROW EXECUTE FUNCTION ls_fishing_stage.reject_program_history_rewrite();
 CREATE TRIGGER immutable_refund_fee_reservations BEFORE UPDATE OR DELETE ON ls_fishing_stage.refund_fee_reservations FOR EACH ROW EXECUTE FUNCTION ls_fishing_stage.reject_program_history_rewrite();
+CREATE TRIGGER immutable_refund_preparations BEFORE UPDATE OR DELETE ON ls_fishing_stage.refund_preparations FOR EACH ROW EXECUTE FUNCTION ls_fishing_stage.reject_program_history_rewrite();
+CREATE TRIGGER immutable_refund_preparation_members BEFORE UPDATE OR DELETE ON ls_fishing_stage.refund_preparation_members FOR EACH ROW EXECUTE FUNCTION ls_fishing_stage.reject_program_history_rewrite();
 -- The operation FK alone cannot distinguish a prior/different-stage operation.
 -- Bind the intended NEXT source revision to its actual actor/operation at commit.
 CREATE FUNCTION ls_fishing_stage.verify_program_stage_receipt() RETURNS trigger LANGUAGE plpgsql AS $$

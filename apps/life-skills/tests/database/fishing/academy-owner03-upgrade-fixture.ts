@@ -8,7 +8,7 @@ import {programFixture} from './native-program-fixture.ts';
 import {loadAcademySchemaSources,readAcademySchemaPreflight,type AcademySchemaConnection} from '../../../src/db/academy-schema-preflight.ts';
 
 const hash=(value:unknown):string=>createHash('sha256').update(typeof value==='string'?value:JSON.stringify(value)).digest('hex');
-const newTables=['block_acceptances','refund_cancellations','refund_fee_reservations'];
+const newTables=['block_acceptances','refund_cancellations','refund_fee_reservations','refund_preparations','refund_preparation_members'];
 const identifier=(s:string)=>{if(!/^[a-z_][a-z0-9_]*$/.test(s))throw Error('SYNTHETIC_IDENTIFIER_REQUIRED');return '"'+s+'"';};
 const qualified=(schema:string,table:string)=>identifier(schema)+'.'+identifier(table);
 type Rows={table:string;rows:Record<string,unknown>[]}[];

@@ -7,7 +7,7 @@ export const academySchemaSourcePins=Object.freeze(([
  {path:'migrations/manifest.json',sha256:'602bbc5dc51a24060eaaa82db76a529ddf2c10b7615ea4a98c7ef09cc5ee4252'},
  {path:'src/features/fishing-payments/candidate-schema.sql',sha256:'af08db497a42722fffa815e583b65953d2a04107a52f2b18055da5467bf3e35c'},
  {path:'src/features/fishing-stage/candidate.sql',sha256:'b026e9c5352593b8c760a0693a4dca2a0a176e5300e83a572ed1d183db8d11f8'},
- {path:'src/features/fishing/native-program-schema.sql',sha256:'3975ad3a28e0810ef8d94e274a0912d959efddfbb34da5e950bee6e09cb271d4'},
+ {path:'src/features/fishing/native-program-schema.sql',sha256:'31975d4c0db5da2f0bc454906b47cf78ddd622f5fadffeb7c41f4c431dfaf748'},
  {path:'src/features/fishing/native-stripe-bindings.sql',sha256:'48237d5c933f2f404f047c58253ac13b131a8e5ca346e97b7296f33cd5358701'},
 ] as const).map(pin=>Object.freeze(pin)));
 const schemas=['ls_fishing_payments','ls_fishing_stage'] as const,hash=(v:Uint8Array|string)=>createHash('sha256').update(v).digest('hex');
