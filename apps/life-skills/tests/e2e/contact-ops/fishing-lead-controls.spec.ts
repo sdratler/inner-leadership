@@ -21,6 +21,7 @@ if(!runtimePath){
  if(process.env.LS_FISHING_LEAD_UI_ONLY!=="true"||!/^https:\/\/localhost:310[5678]$/.test(runtime.origin)||!runtime.fishing)throw Error("FISHING_UI_ISOLATED_FIXTURE_REQUIRED");
  test.use({baseURL:runtime.origin});
  for(const locale of ["en","he"] as const)test(`${locale}: anonymous saved inquiry, exact retry, ordinary owner re-login and deliberate lead addition`,async({page},info)=>{
+  const monthly=process.env.LS_ACADEMY_MONTHLY_UI_ONLY==='true';if(monthly)info.setTimeout(180000);
   const t=(en:string,he:string)=>locale==="he"?he:en,copy=inquiryCopy.realMensch.inquiry;
   const name=`Synthetic composed ${locale}`,contact=locale==="en"?"+13055550111":"+13055550112";
   const target=`/${locale}/app/group-applications`,credentials=runtime.fishing.credentials.find(c=>c.role==="practitioner")!;
@@ -28,12 +29,21 @@ if(!runtimePath){
   expect((await page.goto(`/${locale}/florida`))?.status()).toBe(200);
   await page.locator(`a[href="/${locale}/florida/apply"]:visible`).first().click();await expect(page).toHaveURL(`/${locale}/florida/apply`);
   const form=page.locator('form[data-inquiry-kind="parent"]');
+  if(monthly)await expect(form.locator('[data-registration-child]').first()).toHaveAttribute('data-registration-child',/^[a-f0-9-]{36}$/);
   await form.locator('[name="parentName"]').fill(name);await form.locator('[name="contact"]').fill(contact);
+  if(monthly){
+   const child=form.locator('[data-registration-child]').first(),id=await child.getAttribute('data-registration-child');expect(id).toBeTruthy();
+   await child.locator(`[name="child-${id}-name"]`).fill('Synthetic public child');await child.locator(`[name="child-${id}-age"]`).fill('12');
+   for(const [field,value]of Object.entries({grade:'6',schooling:'school',experience:'new'}))await child.locator(`[name="child-${id}-${field}"]`).selectOption(value);
+   await form.locator('[name="cityArea"]').fill('Synthetic Florida');await form.locator('[name="postalCode"]').fill('33021');await form.locator('[name="driveMinutes"]').fill('30');await form.locator('[name="schoolHoursAvailability"]').selectOption('discuss');await form.locator('[name="stageInterest"]').selectOption('foundation');await form.locator(`[name="preferredGroupLanguage"][value="${locale}"]`).check();
+   for(const [field,value]of [['preferredDays','sunday'],['preferredTimes','morning']]){const option=form.locator(`input[name="${field}"][value="${value}"]`);await option.locator('xpath=ancestor::details/summary').click();await option.check();}await form.locator('[name="permission"]').check();
+  }else{
   await form.locator('[name="learnerAge-0"]').fill("12");await form.locator('[name="cityArea"]').fill("Synthetic Florida");
   await form.locator('[name="postalCode"]').fill("33021");
   for(const [field,value] of Object.entries({driveLimit:"30",schoolHoursAvailability:"discuss",preferredGroupLanguage:locale,stagePreference:"foundation",keysTravel:"discuss",offshoreInterest:"discuss","learnerGrade-0":"grade_6_8","learnerSchooling-0":"school","learnerTackleBox-0":"need_advice"}))await form.locator(`[name="${field}"]`).selectOption(value);
   await form.locator('[name="nextStep"][value="callback"]').check();
   await form.locator('[name="schedulePreference"][value="sunday"]').check();await form.locator('[name="permission"]').check();
+  }
   const endpoint="**/api/public/group-applications?program=sunday_fishing_academy";
   let savedId="",requestHash="",commits=0;
   // Lose only the response AFTER the real native save. Never fabricate a
@@ -46,15 +56,15 @@ if(!runtimePath){
    await route.fulfill({status:503,contentType:"application/json",body:JSON.stringify({ok:false,error:{code:"UNAVAILABLE"}})});
   });
   await form.locator('button[type="submit"]').click();
-  await expect(form.getByRole("alert")).toContainText(copy.unknownResult[locale]);expect(commits).toBe(1);expect(savedId).not.toBe("");
+  await expect(form.getByRole("alert")).toContainText(monthly?t('The save result is not confirmed.','תוצאת השמירה עדיין לא אומתה.'):copy.unknownResult[locale]);expect(commits).toBe(1);expect(savedId).not.toBe("");
   await page.unroute(endpoint);
   const retriedRequest=page.waitForRequest(r=>r.method()==="POST"&&new URL(r.url()).pathname==="/api/public/group-applications");
   const retriedResponse=page.waitForResponse(r=>r.request().method()==="POST"&&new URL(r.url()).pathname==="/api/public/group-applications");
-  await form.getByRole("button",{name:copy.retrySameSave[locale],exact:true}).click();
+  await form.getByRole("button",{name:monthly?t('Submit My Information','שליחת הפרטים שלי'):copy.retrySameSave[locale],exact:true}).click();
   expect(createHash("sha256").update((await retriedRequest).postData()!).digest("hex")).toBe(requestHash);
   const retried=await retriedResponse;expect(retried.status()).toBe(200);
   expect(await retried.json()).toMatchObject({ok:true,data:{saved:true,replayed:true,duplicate:true,item:{id:savedId,fields:{parentName:name,contact,programId:"sunday_fishing_academy"}}}});
-  await expect(form.getByRole("status")).toContainText(t("Inquiry saved","הפנייה נשמרה"));
+  await expect(form.getByRole("status")).toContainText(monthly?t('Your information has been submitted.','הפרטים שלכם נשלחו.'):t("Inquiry saved","הפנייה נשמרה"));
   const ownerLogin=async()=>{
    await page.goto(`/${locale}/login?next=${encodeURIComponent(target)}`);
    await page.getByLabel(t("Email","דוא״ל"),{exact:true}).fill(credentials.email);

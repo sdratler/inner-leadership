@@ -24,6 +24,8 @@ const fishingOnly=process.env.LS_FISHING_LEAD_UI_ONLY==="true";
 const familyOnly=process.env.LS_ACADEMY_FAMILY_UI_ONLY==="true";
 const enrollmentOnly=process.env.LS_ACADEMY_ENROLLMENT_UI_ONLY==="true";
 const offerOnly=process.env.LS_ACADEMY_OFFER_UI_ONLY==="true";
+const monthlyOnly=process.env.LS_ACADEMY_MONTHLY_UI_ONLY==='true';
+if(monthlyOnly&&(!offerOnly||sampleOnly||process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==='true'||process.env.LS_GROUP_INTEREST_CAPTURE_ONLY==='true'||process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==='true'))throw Error('MONTHLY_EXCLUSIVE_ORDINARY_HARNESS_REQUIRED');
 if(offerOnly&&!enrollmentOnly)throw Error('OFFER_REQUIRES_RETAINED_ENROLLMENT_HARNESS');
 if(enrollmentOnly&&!familyOnly)throw Error("ENROLLMENT_REQUIRES_RETAINED_FAMILY_HARNESS");
 if(familyOnly&&(!fishingOnly||!["desktop","mobile390"].includes(project??"")||process.env.LS_RM_LAUNCH_OPS09_ONLY==="true"||process.env.LS_EDUCATION_UI_ONLY==="true"||process.env.LS_COMMUNITY_UI_ONLY==="true"))throw Error("FAMILY_EXCLUSIVE_ORDINARY_HARNESS_REQUIRED");
@@ -45,6 +47,7 @@ if(educationOnly||launchOpsOnly||familyOnly){
 }
 const folder=mkdtempSync(join(tmpdir(),"ls-group-interest-browser-"));
 let app:ChildProcess|null=null,tests:ChildProcess|null=null;
+let appDiagnostic=()=>'';
 let f:Awaited<ReturnType<typeof fixture>>|null=null,phase="fixture";
 let communityTransport:Awaited<ReturnType<typeof import("../community/inbox-fixture.ts").communityReadTransport>>|null=null;
 async function terminate(child:ChildProcess|null){
@@ -284,7 +287,8 @@ try{
   ...(educationOnly?{LS_EDUCATION_SYNTHETIC_LOOPBACK:"true",TEST_DATABASE_URL:safeTestUrl(),LS_CHILD_ACCOUNTS_ENABLED:"false",LS_AUTH_EMAIL_ENABLED:"false"}:{})};
  if(communityTransport)Object.assign(env,{LS_COMMUNITY_SCOUT_BRIDGE_SECRET:communityTransport.secret,LS_COMMUNITY_FIXTURE_ORIGIN:communityTransport.controlOrigin,
   LS_COMMUNITY_FIXTURE_CA_FILE:cert,NODE_OPTIONS:`--require=${resolve("tests/e2e/community/scout-read-preload.cjs")}`,NODE_EXTRA_CA_CERTS:cert,LS_AUTH_EMAIL_ENABLED:"false",LS_CALENDAR_ENABLED:"true"});
- app=spawn(process.execPath,[resolve("node_modules/next/dist/bin/next"),"dev","--webpack","--experimental-https","--experimental-https-key",key,"--experimental-https-cert",cert,"--hostname","127.0.0.1","--port",String(appPort)],{env,stdio:"ignore",...((launchOpsOnly||familyOnly)?{windowsHide:true}:{})});
+ app=spawn(process.execPath,[resolve("node_modules/next/dist/bin/next"),"dev","--webpack","--experimental-https","--experimental-https-key",key,"--experimental-https-cert",cert,"--hostname","127.0.0.1","--port",String(appPort)],{env,stdio:monthlyOnly?['ignore','pipe','pipe']:"ignore",...((launchOpsOnly||familyOnly)?{windowsHide:true}:{})});
+ if(monthlyOnly){let output='';const capture=(chunk:Buffer)=>{output=(output+chunk.toString()).slice(-12000);};app.stdout?.on('data',capture);app.stderr?.on('data',capture);appDiagnostic=()=>{let safe=output;for(const [name,value]of Object.entries(env))if(value&&/KEY|SECRET|PASSWORD|TOKEN|DATABASE_URL|FIXTURE_PATH/.test(name))safe=safe.replaceAll(value,'[SYNTHETIC_REDACTED]');return safe;};}
  phase="next-health";let healthy=false;const probe=await playwrightRequest.newContext({baseURL:origin,ignoreHTTPSErrors:true});
  try{for(let i=0;i<240;i++){if(app.exitCode!==null)throw new Error("ISOLATED_APP_START_FAILED");try{if((await probe.get("/api/health")).status()===200){healthy=true;break;}}catch{}await new Promise(r=>setTimeout(r,250));}}finally{await probe.dispose();}
  if(!healthy)throw new Error("ISOLATED_APP_HEALTH_TIMEOUT");
@@ -355,8 +359,9 @@ try{
   }
   const retainedPublic=await f.pool.query("SELECT to_jsonb(a)::text AS snapshot FROM ls_service_interest.public_applications a WHERE workspace_id=$1 AND id=$2",[workspaceId,publicApplicationId]);
   if(JSON.stringify(retainedPublic.rows)!==JSON.stringify(originalPublic.rows))throw new Error("FISHING_UI_EXISTING_RECEIPT_MUTATED");
-  if(offerOnly)console.log(`ACADEMY_OFFER_UI_ACCEPTANCE_PASS project=${project} locales=en,he ordinaryOwnerAfterParentTerms=true atomicPrepareExactRetry=true withdrawPrivateHistory=true capacityReleased=true noPaymentEnrollmentProvider=true`);
-  if(enrollmentOnly)console.log(`ACADEMY_ENROLLMENT_UI_ACCEPTANCE_PASS project=${project} locales=en,he ordinaryOwnerFit=true ordinaryParentTerms=true commitLossExactRetry=true protectedRowsUnchanged=true noPaymentEnrollmentProvider=true`);
+  if(monthlyOnly)console.log(`ACADEMY_MONTHLY_UI_ACCEPTANCE_PASS project=${project} locales=en,he ordinaryParentRenewedFourLessonSignatures=true ordinaryOwner650Offer=true exactRetry=true withdrawalReleasesFour=true noPaymentEnrollmentProvider=true`);
+  if(offerOnly&&!monthlyOnly)console.log(`ACADEMY_OFFER_UI_ACCEPTANCE_PASS project=${project} locales=en,he ordinaryOwnerAfterParentTerms=true atomicPrepareExactRetry=true withdrawPrivateHistory=true capacityReleased=true noPaymentEnrollmentProvider=true`);
+  if(enrollmentOnly&&!monthlyOnly)console.log(`ACADEMY_ENROLLMENT_UI_ACCEPTANCE_PASS project=${project} locales=en,he ordinaryOwnerFit=true ordinaryParentTerms=true commitLossExactRetry=true protectedRowsUnchanged=true noPaymentEnrollmentProvider=true`);
   if(familyOnly)console.log(`ACADEMY_FAMILY_UI_ACCEPTANCE_PASS project=${project} locales=en,he ordinaryOwnerAndNewParent=true exactReplay=true newFamilies=2 newChildren=2 invitationsQueuedThenConsumed=2 securityNoticesQueued=2 noEnrollmentPaymentTaskProvider=true`);
   else console.log(`FISHING_LEAD_UI_ACCEPTANCE_PASS project=${project} composedPublicOwnerLogin=true ordinaryRelogin=true scopedDetailsSaved=true detailsRetainedAfterRemoval=true revisions=14 operations=14 profiles=5 projections=6 publicInquiries=4 publicOperations=4 tasksUnchanged=true unrelatedProfileUnchanged=true providerEffects=0`);
  }
@@ -390,5 +395,5 @@ try{
  if(after.inquiries!==baseline.inquiries+3||after.operations!==baseline.operations+3||after.serviceInterests!==baseline.serviceInterests+4||after.serviceOperations!==baseline.serviceOperations+5||after.draftGroups!==baseline.draftGroups+8||after.draftOperations!==baseline.draftOperations+8||after.proposedPlacements!==baseline.proposedPlacements+8||after.placementOperations!==baseline.placementOperations+8||after.placementMoves!==baseline.placementMoves+4||after.movementOperations!==baseline.movementOperations+4||after.meetingRevisions!==baseline.meetingRevisions+4||after.meetingOperations!==baseline.meetingOperations+4||after.practiceRevisions!==baseline.practiceRevisions+42||after.practiceOperations!==baseline.practiceOperations+42)throw new Error("GROUP_INTEREST_RECEIPT_COUNT_MISMATCH");
  console.log(`GROUP_INTEREST_ACCEPTANCE_PASS project=${project??"all"} inquiries=3 serviceInterests=4 draftGroups=8 proposedPlacements=8 placementOperations=8 placementMoves=4 movementOperations=4 meetingRevisions=4 meetingOperations=4 practiceRevisions=42 practiceOperations=42 pagedHistory=42 sideEffects=0`);
  }
-}catch(error){console.error(`Group Intake browser verification failed at ${phase} (${error instanceof Error?error.message:"unknown error"}). No production or provider state was used.`);process.exitCode=1;}
+}catch(error){console.error(`Group Intake browser verification failed at ${phase} (${error instanceof Error?error.message:"unknown error"}). No production or provider state was used.`);if(monthlyOnly)console.error(appDiagnostic());process.exitCode=1;}
 finally{await cleanup();}
