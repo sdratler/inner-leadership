@@ -3,15 +3,17 @@ import {randomUUID} from 'node:crypto';
 import {afterEach,expect,test,vi} from 'vitest';
 vi.mock('server-only',()=>({}));
 import {programFixture,type ProgramFixture} from './native-program-fixture.ts';
+import {installOrdinaryFixtureCalendar,ordinaryFixtureInterval} from './academy-calendar-fixture-times.ts';
 import {agreementAcceptanceFixture,agreementBundleFixture} from '../../fixtures/academy-agreements.ts';
 import {owner03PolicyVersion} from '../../../src/features/fishing-payments/owner03-policy.ts';
 const fixtures:ProgramFixture[]=[];
 afterEach(async()=>{await Promise.all(fixtures.splice(0).map(f=>f.close()));});
 async function fixture(){
  const f=await programFixture({capacity:3,policyVersion:owner03PolicyVersion,confirmation:{kind:'all_native_dues_paid'},owner03Bundle:agreementBundleFixture(),termsDocument:'SYNTHETIC refund source only, not approved legal terms.'});fixtures.push(f);await f.createPlan();
- await f.pool.query("UPDATE ls_calendar.availability SET starts_at=$3 WHERE workspace_id=$1 AND practitioner_id=$2 AND kind='open'",[f.workspaceId,f.owner.id,f.at(-48)]);
+ await installOrdinaryFixtureCalendar(f);
+ const revise:typeof f.revise=(id,start,end,venue)=>{const time=ordinaryFixtureInterval(start??f.at(48),end??f.at(49));return f.revise(id,time.startsAt,time.endsAt,venue);};
  const current=async()=>(await f.stage().read(f.owner,f.ref))!;
- async function schedule(indices=Array.from({length:8},(_,i)=>i)){for(const i of indices){const plan=await current();await f.revise(plan.occurrences[i]!.id,f.at(24+i*24),f.at(27+i*24));}}
+ async function schedule(indices=Array.from({length:8},(_,i)=>i)){for(const i of indices){const plan=await current();await revise(plan.occurrences[i]!.id,f.at(24+i*168),f.at(27+i*168));}}
  async function purchase(family:Awaited<ReturnType<typeof f.family>>,indices=[0,1,2,3],mode:'monthly_block'|'prepay'='monthly_block'){
   const plan=await current(),fit={commandId:randomUUID(),id:randomUUID(),stageId:f.ref.stageId,learnerId:family.learnerId,purpose:'enrollment' as const,decision:'approved' as const,targetOccurrenceId:null,targetRevision:null,note:'PRIVATE SYNTHETIC native refund fit'};await f.program.recordFit(f.owner,fit);
   const acceptance={commandId:randomUUID(),id:randomUUID(),blockId:randomUUID(),stageId:f.ref.stageId,learnerId:family.learnerId,householdId:family.householdId,sourceApprovalId:f.termsId,sourceSha256:f.termsHash,expectedPlanRevision:plan.revision,occurrenceIds:indices.map(i=>plan.occurrences[i]!.id),currency:'USD',priceCents:65000,purchasedLessons:4,automaticFutureCharges:false,agreementAcceptance:agreementAcceptanceFixture()};
@@ -23,10 +25,10 @@ async function fixture(){
  async function confirm(p:Awaited<ReturnType<typeof purchase>>){const payment=(await f.paymentStore.readPayment(f.owner,p.purchaseId))!;return f.program.confirmEnrollment(f.owner,{commandId:randomUUID(),id:randomUUID(),stageId:f.ref.stageId,purchaseId:p.purchaseId,fitDecisionId:p.fit.id,termsAcceptanceId:p.acceptance.id,policyApprovalId:f.policyId,expectedPaymentRevision:payment.revision});}
  async function attend(enrollmentId:string,index:number,state:'present'|'late'|'absent'|'no_show'='present'){
   let plan=await current(),o=plan.occurrences[index]!;
-  if(o.state!=='completed'){await f.revise(o.id,f.at(-24+index*4),f.at(-21+index*4));plan=await current();o=plan.occurrences[index]!;await f.stage().execute(f.owner,f.ref,{action:'complete',operationId:randomUUID(),expectedRevision:plan.revision,occurrenceId:o.id,expectedOccurrenceRevision:o.revision,reason:'SYNTHETIC actual delivered lesson'});}
+  if(o.state!=='completed'){await revise(o.id,f.at(-24-index*168),f.at(-21-index*168));plan=await current();o=plan.occurrences[index]!;await f.stage().execute(f.owner,f.ref,{action:'complete',operationId:randomUUID(),expectedRevision:plan.revision,occurrenceId:o.id,expectedOccurrenceRevision:o.revision,reason:'SYNTHETIC actual delivered lesson'});}
   plan=await current();o=plan.occurrences[index]!;await f.stage().execute(f.owner,f.ref,{action:'attendance',operationId:randomUUID(),expectedRevision:plan.revision,occurrenceId:o.id,expectedOccurrenceRevision:o.revision,enrollmentId,state,reason:'SYNTHETIC observed attendance or correction'});
  }
- return {...f,current,schedule,purchase,confirm,attend};
+ return {...f,revise,current,schedule,purchase,confirm,attend};
 }
 async function protectedRows(f:ProgramFixture){return Promise.all(['ls_fishing_payments.operations','ls_fishing_payments.purchases','ls_fishing_payments.settlements','ls_fishing_payments.outbox','ls_fishing_stage.enrollments','ls_identity.auth_mail_outbox'].map(async table=>(await f.pool.query(`SELECT to_jsonb(t) AS row FROM ${table} t WHERE workspace_id=$1 ORDER BY to_jsonb(t)::text`,[f.workspaceId])).rows));}
 async function jointFamily(){

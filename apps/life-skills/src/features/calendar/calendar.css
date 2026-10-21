@@ -147,6 +147,11 @@ details.ls-cal-task {display:block;padding:0;margin-block:.4rem}
   .lsw.lsu .ls-cal .lsw-calendar-agenda>h3{margin-block:.25rem}
 }
 @media(prefers-reduced-motion:reduce){.ls-cal *{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
+/* The Academy has six linked views; expose every view control on phones. */
+@media(max-width:800px){
+ .lsw.lsu .ls-cal[data-academy-calendar] .lsw-calendar-toolbar>nav{flex-wrap:wrap;overflow-x:visible;scroll-snap-type:none}
+ .lsw.lsu .ls-cal[data-academy-calendar] .lsw-calendar-toolbar>nav>a{flex:1 1 5rem;white-space:normal}
+}
 .lsw.lsu .ls-cal .ls-cal-practice {display:grid;gap:.2rem;inline-size:100%;min-block-size:48px;margin-block:.4rem;padding:.6rem .75rem;text-align:start;font:inherit;background:#f3f8f9;color:var(--ui-deep,#163f48);border:1px solid var(--ui-line,#cddcdf);border-inline-start:4px solid var(--ui-teal,#245159);border-radius:.5rem}
 .ls-cal-practice span {font-size:1rem}
 .ls-cal-practice-time {display:flex;flex-wrap:wrap;justify-content:space-between;gap:.15rem .5rem;font-variant-numeric:tabular-nums}

@@ -21,7 +21,13 @@ export const travelChangeRecordSchema=z.strictObject({version:z.literal(academyT
  originalOccurrenceId:uuid,before:travelLogisticsSchema,changed:travelLogisticsSchema,kind:z.enum(['academy_venue','academy_schedule']),
  revisedOneWayMinutes:z.number().int().min(0).max(1440),estimateReference:z.string().trim().min(1).max(1200),operatorId:uuid,recordedAt:z.iso.datetime({offset:true}),
  command:travelChangeCommandSchema,sha256:hash});
-export type TravelChangeRecord=z.infer<typeof travelChangeRecordSchema>;
+export const academyPhysicalTravelVersion='JLFA-PHYSICAL-TRAVEL-20261021-01-v2' as const;
+export const physicalTravelBindingSchema=z.strictObject({eventId:uuid,publicationId:uuid,publicationRevision:z.number().int().min(1).max(1000000),tripSha256:hash});
+export const physicalTravelChangeCommandSchema=z.strictObject({version:z.literal(academyPhysicalTravelVersion),operationId:uuid,selection:travelSelectionSchema,expectedStageRevision:positive,physical:physicalTravelBindingSchema,revisedOneWayMinutes:z.number().int().min(0).max(1440),estimateReference:z.string().trim().min(1).max(1200)});
+export const physicalTravelChangeRecordSchema=travelChangeRecordSchema.extend({version:z.literal(academyPhysicalTravelVersion),physical:physicalTravelBindingSchema,command:physicalTravelChangeCommandSchema}).refine(v=>v.before.stageRevision===v.changed.stageRevision);
+export const travelStoredChangeSchema=z.union([travelChangeRecordSchema,physicalTravelChangeRecordSchema]);
+export const travelAnyChangeCommandSchema=z.union([travelChangeCommandSchema,physicalTravelChangeCommandSchema]);
+export type TravelChangeRecord=z.infer<typeof travelStoredChangeSchema>;
 export const travelDeclarationRecordSchema=z.strictObject({version:z.literal(academyTravelCreditVersion),id:uuid,workspaceId:uuid,enrollmentId:uuid,learnerId:uuid,changeId:uuid,
  changeSha256:hash,parentAccountId:uuid,guardianSha256:hash,drivePreferenceSha256:hash,familyCannotAttend:z.boolean(),recordedAt:z.iso.datetime({offset:true}),command:travelDeclarationCommandSchema});
 export type TravelDeclarationRecord=z.infer<typeof travelDeclarationRecordSchema>;
@@ -37,7 +43,7 @@ export const travelCreditFrameSchema=z.strictObject({version:z.literal(academyTr
  responseOutcome:z.enum(['issued','retained','no_credit','facts_required']).nullable(),
  credit:z.strictObject({id:uuid,state:z.enum(['outstanding','replacement_reserved','delivered','review_required'])}).nullable(),
  replacement:z.strictObject({occurrenceId:uuid,logistics:travelLogisticsSchema}).nullable(),
- mayRecordChange:z.boolean(),mayRespond:z.boolean(),specificDateOrSeatGuaranteed:z.literal(false)});
+ mayRecordChange:z.boolean(),mayRespond:z.boolean(),specificDateOrSeatGuaranteed:z.literal(false),physical:physicalTravelBindingSchema.extend({state:z.enum(['published','completed','cancelled'])}).optional()});
 export type TravelCreditFrame=z.infer<typeof travelCreditFrameSchema>;
 export const travelCommandReceiptSchema=z.strictObject({version:z.literal(academyTravelCreditVersion),operationId:uuid,changeId:uuid,declarationId:uuid.nullable(),creditId:uuid.nullable(),
  outcome:z.enum(['change_recorded','issued','retained','no_credit','facts_required']),stageRevision:positive,replayed:z.literal(false)});

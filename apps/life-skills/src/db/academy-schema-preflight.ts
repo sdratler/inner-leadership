@@ -47,6 +47,9 @@ const queries={
  policies:`SELECT jsonb_build_object('schema',n.nspname,'table',c.relname,'name',p.polname,'command',p.polcmd,'permissive',p.polpermissive,'roles',(SELECT jsonb_agg(CASE WHEN role_id=0 THEN 'PUBLIC' ELSE pg_get_userbyid(role_id) END ORDER BY CASE WHEN role_id=0 THEN 'PUBLIC' ELSE pg_get_userbyid(role_id) END) FROM unnest(p.polroles) role_id),'using',pg_get_expr(p.polqual,p.polrelid),'check',pg_get_expr(p.polwithcheck,p.polrelid)) AS item FROM pg_policy p JOIN pg_class c ON c.oid=p.polrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE ${scope}`,
  defaults:`SELECT jsonb_build_object('schema',COALESCE(n.nspname,'$GLOBAL'),'kind',d.defaclobjtype,'creator',pg_get_userbyid(d.defaclrole),'acl',${acl('d.defaclobjtype','d.defaclacl','d.defaclrole')}) AS item FROM pg_default_acl d LEFT JOIN pg_namespace n ON n.oid=d.defaclnamespace WHERE d.defaclnamespace=0 OR ${scope}`,
 } as const;
+/** Read-only catalog definitions shared with separately versioned additive
+ * inspectors. The original two-namespace assessment/admission is unchanged. */
+export const academySchemaCatalogQueries=Object.freeze(queries);
 export function assessAcademySchema(catalog:AcademySchemaCatalog,history:readonly Baseline[],sources:AcademySchemaSources,reviewedCatalogSha256:string|null){
  if(reviewedCatalogSha256!==null&&!/^[a-f0-9]{64}$/.test(reviewedCatalogSha256))throw Error('ACADEMY_SCHEMA_REFERENCE_INVALID');
  const catalogSha256=hash(stable(catalog)),names=catalog.namespaces.map(r=>r.name),tables=catalog.relations.filter(r=>r.kind==='r'||r.kind==='p').map(r=>r.schema+'.'+r.name).sort(),baseline=same([...history].sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0),sources.baseline);

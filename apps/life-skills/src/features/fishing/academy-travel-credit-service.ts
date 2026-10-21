@@ -18,7 +18,8 @@ import {academyTravelCompatibilityVersion,type AcademySessionCreditNativeFactsV3
 import type {AcademyOriginalObligation} from './academy-original-obligation-contract.ts';
 import {AcademyTravelCreditStore} from './academy-travel-credit-store.ts';
 import {readTravelActivity,readTravelEquivalence,travelDigest} from './academy-travel-credit-source.ts';
-import {academyTravelCreditVersion,travelSelectionSchema,travelChangeCommandSchema,travelDeclarationCommandSchema,travelChangeRecordSchema,travelDeclarationRecordSchema,travelCreditFrameSchema,travelLogisticsSchema,
+import {readAcademySharedTravel,validateAcademySharedTravelChange} from './academy-shared-travel.ts';
+import {academyTravelCreditVersion,academyPhysicalTravelVersion,travelSelectionSchema,travelAnyChangeCommandSchema,physicalTravelChangeRecordSchema,travelDeclarationCommandSchema,travelChangeRecordSchema,travelDeclarationRecordSchema,travelCreditFrameSchema,travelLogisticsSchema,
  type TravelActivityBinding,type TravelChangeRecord,type TravelDeclarationRecord,type TravelCommandReceipt,type TravelCreditFrame,type TravelNoticeProvenance} from './academy-travel-credit-contract.ts';
 
 type Selection=ReturnType<typeof travelSelectionSchema.parse>;
@@ -35,9 +36,13 @@ export class AcademyTravelCreditService{
  private selected(tx:SqlSession,actor:Actor,selection:Selection){return this.program.readSessionCreditSelectionInTransaction(tx,actor,selection);}
  private inquiry(tx:SqlSession,actor:Actor,learnerId:string){return new PublicGroupApplicationStore(this.db,this.config.workspaceId,this.config.keyring,this.config.lookupKey.toString('hex'),this.clock).readAcademyParentDriveInTransaction(tx,actor,learnerId);}
  private activity(tx:SqlSession,selected:Awaited<ReturnType<AcademyTravelCreditService['selected']>>){return readTravelActivity(tx,this.config.keyring,{workspaceId:selected.plan.workspaceId,templateApprovalId:selected.templateApprovalId,templateSourceSha256:selected.plan.template.sourceSha256,moduleId:selected.original.moduleId,moduleVersion:selected.original.moduleVersion},this.clock.now());}
- private async lifecycle(tx:SqlSession,obligation:AcademyOriginalObligation,activity:TravelActivityBinding|null){
+ private async lifecycle(tx:SqlSession,obligation:AcademyOriginalObligation,activity:TravelActivityBinding|null,shared=false){
   const d=obligation.delivery,tail=d.chain.at(-1)!;
   let state:'outstanding'|'replacement_reserved'|'delivered'|'review_required'=!activity?'review_required':d.state==='delivered'?'delivered':d.state==='review_required'?'review_required':d.chain.length>1?'replacement_reserved':'outstanding';
+  // A displaced old timetable passing does not deliver its learning activity.
+  // This applies only after authenticated physical-event binding; existing
+  // makeup/delivery/ambiguous-root cases retain their ordinary native rules.
+  if(shared&&activity&&d.chain.length===1&&d.reason==='past_session_unresolved')state='outstanding';
   if(d.reason==='replacement_activity_binding_required'&&activity){
    const cohort=await one<{templateApprovalId:string}>(tx,'SELECT template_approval_id AS "templateApprovalId" FROM ls_fishing_stage.cohorts WHERE workspace_id=$1 AND stage_id=$2 AND active FOR SHARE',[obligation.workspaceId,tail.stageId]);requireFact(cohort,'UNAVAILABLE');
    const replacement=await readTravelActivity(tx,this.config.keyring,{workspaceId:obligation.workspaceId,templateApprovalId:cohort.templateApprovalId,templateSourceSha256:tail.templateSourceSha256,moduleId:tail.moduleId,moduleVersion:tail.moduleVersion},this.clock.now());
@@ -47,12 +52,14 @@ export class AcademyTravelCreditService{
   return {state,rootEntitlementId:d.rootEntitlementId,replacementReservationId:reservation,evidenceSha256:travelDigest({delivery:d,activityId:activity?.id??null,state})};
  }
  private async validatedChange(tx:SqlSession,actor:Actor,selection:Selection,change:TravelChangeRecord,current:boolean){
+  if(change.version===academyPhysicalTravelVersion)return validateAcademySharedTravelChange(tx,this.config,this.program,actor,selection,change,current,this.clock.now());
+  if(current){const selected=await this.selected(tx,actor,selection);requireFact(!await readAcademySharedTravel(tx,this.config,selected,this.clock.now()));}
   const selected=await this.program.readSessionCreditChangeInTransaction(tx,actor,selection,{beforeStageRevision:change.before.stageRevision,changedStageRevision:change.changed.stageRevision,requireCurrent:current});
   requireFact(change.workspaceId===actor.workspaceId&&change.enrollmentId===selected.enrollment.id&&change.learnerId===selected.enrollment.learnerId&&change.stageId===selected.plan.stageId&&change.originalOccurrenceId===selected.original.id&&change.operatorId===selected.operatorId&&travelDigest(selected.change?.before)===travelDigest(change.before)&&travelDigest(selected.change?.changed)===travelDigest(change.changed));return selected;
  }
  private async frame(tx:SqlSession,actor:Actor,selection:Selection):Promise<TravelCreditFrame>{
-  const selected=await this.program.readSessionCreditChangeInTransaction(tx,actor,selection),{plan,original,enrollment}=selected,store=new AcademyTravelCreditStore(tx,this.config.keyring),activity=await this.activity(tx,selected),archive=(await new AcademySessionCreditStore(tx,this.config.keyring).selected(actor.workspaceId,enrollment.id,enrollment.learnerId)).find(c=>c.anchor.occurrenceId===original.id)??null;
-  const changes=await store.changes(actor.workspaceId,enrollment.id,original.id),change=changes.find(c=>selected.change&&travelDigest(c.before)===travelDigest(selected.change.before)&&travelDigest(c.changed)===travelDigest(selected.change.changed))??null;
+  const base=await this.selected(tx,actor,selection),shared=await readAcademySharedTravel(tx,this.config,base,this.clock.now()),selected=shared?{...base,change:shared.sourceReady&&shared.publication.state==='published'?{before:shared.before,changed:shared.changed,kind:shared.kind}:null}:await this.program.readSessionCreditChangeInTransaction(tx,actor,selection),{plan,original,enrollment}=selected,store=new AcademyTravelCreditStore(tx,this.config.keyring),activity=await this.activity(tx,selected),archive=(await new AcademySessionCreditStore(tx,this.config.keyring).selected(actor.workspaceId,enrollment.id,enrollment.learnerId)).find(c=>c.anchor.occurrenceId===original.id)??null;
+  const changes=await store.changes(actor.workspaceId,enrollment.id,original.id),change=changes.find(c=>selected.change&&(shared?c.version===academyPhysicalTravelVersion&&c.physical.eventId===shared.physical.eventId&&c.physical.tripSha256===shared.physical.tripSha256:c.version===academyTravelCreditVersion&&travelDigest(c.before)===travelDigest(selected.change.before)&&travelDigest(c.changed)===travelDigest(selected.change.changed)))??null;
   if(change)await this.validatedChange(tx,actor,selection,change,true);
   let maximum:number|null=null,declaration:TravelDeclarationRecord|null=null,responseOutcome:TravelCreditFrame['responseOutcome']=null,replacement:TravelCreditFrame['replacement']=null;
   if(actor.role==='parent'){
@@ -65,25 +72,30 @@ export class AcademyTravelCreditService{
   if(this.merchant){
    const obligation=await this.program.readSessionCreditObligationInTransaction(tx,actor,selection),notice=plan.makeups.find(m=>m.notice.enrollmentId===enrollment.id&&m.notice.occurrenceId===original.id)?.notice;
    const sourceMatches=activity!==null&&(!archive||notice?.travelCredit?.creditId===archive.id&&notice.travelCredit.activityBindingId===activity.id&&sameAcademyAnchor(archive.anchor,{workspaceId:actor.workspaceId,learnerId:enrollment.learnerId,cohortId:plan.cohortId,stageId:plan.stageId,occurrenceId:original.id,ordinal:original.ordinal,moduleId:original.moduleId,moduleVersion:original.moduleVersion,activityId:activity.activityId}));
-   const life=await this.lifecycle(tx,obligation,sourceMatches?activity:null);currentState=life.state;
+   const life=await this.lifecycle(tx,obligation,sourceMatches?activity:null,shared!==null);currentState=life.state;
    if(obligation.payment.state!=='verified_fully_paid')availability='payment_review_required';else if(life.state==='review_required')availability='delivery_review_required';
    if(archive){requireFact(archive.enrollmentId===enrollment.id&&archive.purchaseId===obligation.purchaseId&&archive.purchaseLineId===obligation.purchaseLineId&&life.rootEntitlementId===archive.id,'UNAVAILABLE');if(life.state==='replacement_reserved'||life.state==='delivered')replacement=await this.program.readSessionCreditReplacementInTransaction(tx,actor,selection,archive.id);}
   }else availability='payment_review_required';
   const value=travelCreditFrameSchema.parse({version:academyTravelCreditVersion,selection,stageRevision:plan.revision,availability,originalOrdinal:original.ordinal,
-   current:travelLogisticsSchema.parse({stageRevision:plan.revision,occurrenceRevision:original.revision,state:original.state,time:original.time,location:original.location,sha256:travelDigest({time:original.time,location:original.location,revision:original.revision})}),
+   current:shared?shared.changed:travelLogisticsSchema.parse({stageRevision:plan.revision,occurrenceRevision:original.revision,state:original.state,time:original.time,location:original.location,sha256:travelDigest({time:original.time,location:original.location,revision:original.revision})}),
    candidateChange:selected.change?{before:selected.change.before,changed:selected.change.changed}:null,
    change:change?{id:change.id,sha256:change.sha256,before:change.before,changed:change.changed,revisedOneWayMinutes:change.revisedOneWayMinutes}:null,recordedMaximumOneWayMinutes:maximum,
    declaration:declaration?{id:declaration.id,familyCannotAttend:declaration.familyCannotAttend}:null,responseOutcome,credit:archive?{id:archive.id,state:currentState}:null,replacement,
-   mayRecordChange:actor.role==='practitioner'&&selected.change!==null,mayRespond:actor.role==='parent'&&change!==null&&activity!==null&&this.merchant!==null&&maximum!==null,specificDateOrSeatGuaranteed:false});
+   mayRecordChange:actor.role==='practitioner'&&selected.change!==null,mayRespond:actor.role==='parent'&&change!==null&&activity!==null&&this.merchant!==null&&maximum!==null&&(!shared||shared.sourceReady&&shared.publication.state==='published'),specificDateOrSeatGuaranteed:false,...(shared?{physical:{...shared.physical,state:shared.publication.state}}:{})});
   await this.selected(tx,actor,selection);return value;
  }
  context(actor:Actor,raw:unknown){const selection=travelSelectionSchema.parse(raw);return this.transaction(actor,tx=>this.frame(tx,actor,selection));}
  async recordChange(actor:Actor,raw:unknown){
-  const command=travelChangeCommandSchema.parse(raw);return this.transaction(actor,async tx=>{
-   requireFact(actor.role==='practitioner','FORBIDDEN');const selected=await this.selected(tx,actor,command.selection),store=new AcademyTravelCreditStore(tx,this.config.keyring);
+  const command=travelAnyChangeCommandSchema.parse(raw);return this.transaction(actor,async tx=>{
+   requireFact(actor.role==='practitioner','FORBIDDEN');const selected=await this.selected(tx,actor,command.selection),store=new AcademyTravelCreditStore(tx,this.config.keyring);requireFact(selected.operatorId===actor.id,'FORBIDDEN');
    const replay=await store.replay(actor.workspaceId,actor.id,command.operationId,command);
    if(replay){const old=await store.readChange(actor.workspaceId,replay.changeId);requireFact(old,'UNAVAILABLE');await this.validatedChange(tx,actor,command.selection,old,false);return {receipt:{...replay,replayed:true},current:await this.frame(tx,actor,command.selection)};}
-   requireFact(selected.plan.revision===command.expectedStageRevision);const facts=await this.program.readSessionCreditChangeInTransaction(tx,actor,command.selection,command),change=facts.change;requireFact(change);
+   requireFact(selected.plan.revision===command.expectedStageRevision);
+   if('physical'in command){const shared=await readAcademySharedTravel(tx,this.config,selected,this.clock.now());requireFact(shared&&shared.sourceReady&&shared.publication.state==='published'&&travelDigest(shared.physical)===travelDigest(command.physical));
+    const body={version:academyPhysicalTravelVersion,id:randomUUID(),workspaceId:actor.workspaceId,enrollmentId:selected.enrollment.id,learnerId:selected.enrollment.learnerId,stageId:selected.plan.stageId,originalOccurrenceId:selected.original.id,before:shared.before,changed:shared.changed,kind:shared.kind,revisedOneWayMinutes:command.revisedOneWayMinutes,estimateReference:command.estimateReference,operatorId:actor.id,recordedAt:this.clock.now().toISOString(),command,physical:shared.physical},value=physicalTravelChangeRecordSchema.parse({...body,sha256:travelDigest(body)});await store.insertChange(value);
+    const receipt:TravelCommandReceipt={version:academyTravelCreditVersion,operationId:command.operationId,changeId:value.id,declarationId:null,creditId:null,outcome:'change_recorded',stageRevision:selected.plan.revision,replayed:false};await store.record(actor.workspaceId,actor.id,command,receipt,this.clock.now());await this.validatedChange(tx,actor,command.selection,value,true);return {receipt,current:await this.frame(tx,actor,command.selection)};
+   }
+   requireFact(!await readAcademySharedTravel(tx,this.config,selected,this.clock.now()));const facts=await this.program.readSessionCreditChangeInTransaction(tx,actor,command.selection,command),change=facts.change;requireFact(change);
    const body={version:academyTravelCreditVersion,id:randomUUID(),workspaceId:actor.workspaceId,enrollmentId:selected.enrollment.id,learnerId:selected.enrollment.learnerId,stageId:selected.plan.stageId,originalOccurrenceId:selected.original.id,
     before:change.before,changed:change.changed,kind:change.kind,revisedOneWayMinutes:command.revisedOneWayMinutes,estimateReference:command.estimateReference,operatorId:actor.id,recordedAt:this.clock.now().toISOString(),command};
    const value=travelChangeRecordSchema.parse({...body,sha256:travelDigest(body)});await store.insertChange(value);
@@ -94,7 +106,7 @@ export class AcademyTravelCreditService{
  private async facts(tx:SqlSession,actor:Actor,selection:Selection,change:TravelChangeRecord,declaration:TravelDeclarationRecord):Promise<AcademySessionCreditNativeFactsV3>{
   const selected=await this.validatedChange(tx,actor,selection,change,true),drive=await this.inquiry(tx,actor,selected.enrollment.learnerId),activity=await this.activity(tx,selected);requireFact(activity,'UNAVAILABLE');
   requireFact(declaration.workspaceId===actor.workspaceId&&declaration.enrollmentId===selected.enrollment.id&&declaration.learnerId===selected.enrollment.learnerId&&declaration.parentAccountId===actor.id&&declaration.changeId===change.id&&declaration.changeSha256===change.sha256&&declaration.guardianSha256===selected.guardianSha256&&declaration.drivePreferenceSha256===drive.drivePreferenceDigest,'FORBIDDEN');
-  const obligation=await this.program.readSessionCreditObligationInTransaction(tx,actor,selection),life=await this.lifecycle(tx,obligation,activity),o=obligation.original;
+  const obligation=await this.program.readSessionCreditObligationInTransaction(tx,actor,selection),life=await this.lifecycle(tx,obligation,activity,change.version===academyPhysicalTravelVersion),o=obligation.original;
   const anchor={workspaceId:obligation.workspaceId,learnerId:obligation.learnerId,cohortId:o.cohortId,stageId:o.stageId,occurrenceId:o.occurrenceId,ordinal:o.ordinal,moduleId:o.moduleId,moduleVersion:o.moduleVersion,activityId:activity.activityId};
   requireFact(drive.householdId===obligation.householdId&&drive.parentAccountId===actor.id,'FORBIDDEN');
   let legacyCredit:AcademySessionCreditRecord|null=null;if(life.rootEntitlementId&&life.state!=='review_required'){legacyCredit={id:life.rootEntitlementId,anchor,enrollmentId:obligation.enrollmentId,purchaseId:obligation.purchaseId,purchaseLineId:obligation.purchaseLineId,state:life.state,replacementReservationId:life.replacementReservationId};}

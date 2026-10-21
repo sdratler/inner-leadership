@@ -7,4 +7,4 @@ export const academyFamilyFeeReservationSchema=z.strictObject({commandId:uuid,id
 export type AcademyRefundQuery=z.infer<typeof academyRefundQuerySchema>;
 export type AcademyFamilyCancellation=z.infer<typeof academyFamilyCancellationSchema>;
 export type AcademyFamilyFeeReservation=z.infer<typeof academyFamilyFeeReservationSchema>;
-export type AcademyRefundReviewReason='start_timing_review_required'|'before_third_lesson_window_review_required'|'makeup_attendance_review_required'|'attendance_record_required'|'refund_outcome_reconciliation_required';
+export type AcademyRefundReviewReason='shared_service_review_required'|'start_timing_review_required'|'before_third_lesson_window_review_required'|'makeup_attendance_review_required'|'attendance_record_required'|'refund_outcome_reconciliation_required';

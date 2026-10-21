@@ -1,4 +1,7 @@
+import {readAcademySharedServices} from './academy-shared-service.ts';
+import type {AcademySharedServiceEvidence} from './academy-shared-service-contract.ts';
 import "server-only";
+import {academyOperatorDays,academyOperatorDayViolations,type AcademyTeachingEvent} from './academy-operator-day.ts';
 import {academyAgreementAcceptanceSchema,academyTermsHash,readAcademyAgreementBundle,verifyAcademyAgreementAcceptance} from './academy-agreements.ts';
 import {randomUUID} from "node:crypto";
 import {owner03PolicyVersion,owner03FamilyFeeDecision,validateOwner03RefundInput,owner03RefundProposal,owner03FamilyPrestartProposal,owner03FamilyPrestartInputSchema,type Owner03RefundInput} from '../fishing-payments/owner03-policy.ts';
@@ -33,6 +36,9 @@ import {academyOfferCommandSchema,type AcademyOfferCommand,type AcademyOfferNati
 import {academyOriginalObligationVersion,academyOriginalObligationSelectionSchema,academyOriginalObligationSchema,type AcademyOriginalObligation,type AcademyMakeupSeatProof} from './academy-original-obligation-contract.ts';
 import {projectAcademyOriginalDelivery} from './academy-original-delivery.ts';
 import {travelSelectionSchema,travelLogisticsSchema} from './academy-travel-credit-contract.ts';
+import {academyGroupOriginSchema,academyGroupPlanningChoiceSchema,type AcademyGroupCalendarContext,type AcademyGroupOrigin} from './academy-group-calendar-contract.ts';
+import {readAcademySharedPhysicalEvents,assertAcademyOriginalCommandUnbound,academySharedTeachingEvents,academySharedResourceClash} from './academy-group-calendar-publication-fence.ts';
+import type {AcademyKeysPublication} from './academy-group-calendar-publication-contract.ts';
 
 const uuid=z.uuid(),label=z.string().min(1).max(160).refine(value=>value.trim().length>0);
 const receiptSchema=z.strictObject({id:uuid,revision:z.number().int().positive(),state:z.enum(["cohort","venue","fit","terms","hold","offer","withdrawn","confirmed","suspended","revoked","cancellation_group","family_fee_reserved"]),detail:z.discriminatedUnion('kind',[z.strictObject({kind:z.literal('offer_withdrawal'),offerId:uuid,reason:z.string().min(1).max(1200)}),z.strictObject({kind:z.literal('agreement_acceptance'),learnerId:uuid,parentAccountId:uuid,sourceApprovalId:uuid,sourceSha256:z.string().regex(/^[a-f0-9]{64}$/),acceptedAt:z.iso.datetime(),evidence:academyAgreementAcceptanceSchema})]).optional()});
@@ -42,7 +48,7 @@ type Cohort={stageId:string;cohortId:string;stage:1|2|3|4;operatorId:string;inst
 type EnrollmentRow={id:string;stageId:string;purchaseId:string;purchaseLineId:string;learnerId:string;householdId:string;fitDecisionId:string;termsAcceptanceId:string|null;blockAcceptanceId:string|null;policyApprovalId:string;holdId:string;guardianDigest:string;state:"confirmed"|"suspended"|"revoked";revision:number;actorId:string;commandId:string;recordedAt:Date};
 type Acceptance={id:string;stageId:string;learnerId:string;householdId:string;parentId:string;sourceApprovalId:string;sourceHash:string;acceptedAt:Date};
 type RefundFactsBase={householdId:string;payerAccountId:string;purchaseId:string;childId:string};
-type RefundFacts=RefundFactsBase&({state:'review_required';reason:AcademyRefundReviewReason}|{state:'ready';input:Owner03RefundInput;provenance:{sourceApprovalId:string;sourceSha256:string;acceptanceId:string;paymentRevision:number;settlementSha256:string;guardianSha256:string;enrollmentId:string|null;enrollmentRevision:number|null;plans:{stageId:string;revision:number;sha256:string}[]}});
+type RefundFacts=RefundFactsBase&({state:'review_required';reason:AcademyRefundReviewReason}|{state:'ready';input:Owner03RefundInput;provenance:{sourceApprovalId:string;sourceSha256:string;acceptanceId:string;paymentRevision:number;settlementSha256:string;guardianSha256:string;enrollmentId:string|null;enrollmentRevision:number|null;plans:{stageId:string;revision:number;sha256:string}[];sharedServices?:AcademySharedServiceEvidence[]}});
 type RefundHistoryRow={id:string;householdId:string;decisionId:string;hash:string;ciphertext:string;actorId:string;commandId:string;recordedAt:Date};
 type CancellationRow=RefundHistoryRow&{payerAccountId:string;policyVersion:string;revision:number;purchaseIds:string[]};
 type FeeReservationRow=RefundHistoryRow&{cancellationId:string;feeCents:number;reviewHash:string;proposalHash:string};
@@ -82,7 +88,7 @@ export class NativeFishingProgram {
    const result=receiptSchema.parse(await work(c)),final=await this.actor(tx,actor);await authorize(final);await tx.query(`INSERT INTO ls_fishing_stage.command_receipts(workspace_id,actor_id,command_id,action,request_sha256,result_ciphertext,recorded_at) VALUES($1,$2,$3,$4,$5,$6,$7)`,[actor.workspaceId,c.actor.id,commandId,action,hash,this.encode("receipt",actor.workspaceId,key,result),final.now]);return {...result,replayed:false};
   });}catch(error){clean(error);}
  }
- private async cohort(tx:SqlSession,workspace:string,stageId:string):Promise<Cohort>{const row=await one<Cohort>(tx,`SELECT ${cohortColumns} FROM ls_fishing_stage.cohorts WHERE workspace_id=$1 AND stage_id=$2 FOR SHARE`,[workspace,uuid.parse(stageId)]);requireFact(row&&row.active,"NOT_FOUND");return row;}
+ private async cohort(tx:SqlSession,workspace:string,stageId:string,historicalDayAccounting=false):Promise<Cohort>{const row=await one<Cohort>(tx,`SELECT ${cohortColumns} FROM ls_fishing_stage.cohorts WHERE workspace_id=$1 AND stage_id=$2 FOR SHARE`,[workspace,uuid.parse(stageId)]);requireFact(row&&(row.active||historicalDayAccounting),"NOT_FOUND");return row;}
  private async source(tx:SqlSession,workspace:string,id:string,kind:"terms"|"template"|"payment_condition",now:Date){
   const row=await one<{kind:string;version:string;hash:string;approvedAt:Date;ciphertext:string}>(tx,`SELECT kind,version,source_sha256 AS hash,approved_at AS "approvedAt",payload_ciphertext AS ciphertext FROM ls_fishing_stage.source_approvals WHERE workspace_id=$1 AND id=$2 FOR SHARE`,[workspace,id]);
   requireFact(row&&row.kind===kind&&row.approvedAt instanceof Date&&row.approvedAt<=now);return {...row,payload:this.decode("source",workspace,id,row.ciphertext)};
@@ -181,10 +187,10 @@ export class NativeFishingProgram {
    return {id:input.id,revision:1,state:'terms'};
   });
  }
- private async plan(tx:SqlSession,workspace:string,stageId:string){
+ private async plan(tx:SqlSession,workspace:string,stageId:string,historicalDayAccounting=false){
   const row=await one<Record<string,unknown>&{ciphertext:string}>(tx,`SELECT workspace_id AS "workspaceId",stage_id AS "stageId",cohort_id AS "cohortId",stage,template_version AS "templateVersion",revision,state_sha256 AS "stateHash",payload_ciphertext AS ciphertext FROM ls_fishing_stage.plans WHERE workspace_id=$1 AND stage_id=$2 FOR SHARE`,[workspace,stageId]);requireFact(row,"NOT_FOUND");
   const {ciphertext,...physical}=row,header=planHeaderSchema.parse(physical),snapshot=parseSnapshot(decodeNative("plan",header,ciphertext,this.ring));assertPlanBinding(header,snapshot);
-  const cohort=await this.cohort(tx,workspace,stageId);requireFact(header.cohortId===cohort.cohortId&&header.stage===cohort.stage,"UNAVAILABLE");
+  const cohort=await this.cohort(tx,workspace,stageId,historicalDayAccounting);requireFact(header.cohortId===cohort.cohortId&&header.stage===cohort.stage,"UNAVAILABLE");
   validateStageState(snapshot.state,{scope:{workspaceId:workspace,program:"sunday_fishing_academy",cohortId:cohort.cohortId,stageId,stage:cohort.stage}});
   requireFact(digest(await this.template(tx,workspace,cohort,header.templateVersion,this.clock.now()))===digest(snapshot.state.template),"UNAVAILABLE");
   const ordinals=await tx.query<{workspaceId:string;id:string;stageId:string;cohortId:string;stage:number;templateVersion:string;ordinal:number}>(`SELECT workspace_id AS "workspaceId",id,stage_id AS "stageId",cohort_id AS "cohortId",stage,template_version AS "templateVersion",ordinal FROM ls_fishing_stage.occurrences WHERE workspace_id=$1 AND stage_id=$2 ORDER BY ordinal LIMIT 13`,[workspace,stageId]);
@@ -311,12 +317,13 @@ export class NativeFishingProgram {
     if(!plans.some(s=>s.occurrences.some(o=>o.id===n.replacementOccurrenceId))){const target=await one<{stageId:string}>(c.tx,`SELECT stage_id AS "stageId" FROM ls_fishing_stage.occurrences WHERE workspace_id=$1 AND id=$2`,[workspace,n.replacementOccurrenceId]);requireFact(target,'UNAVAILABLE');plans.push(await this.plan(c.tx,workspace,target.stageId));}
    }
   }
-  const projection=projectOwner03Attendance({purchaseId:p.state.purchaseId,childId:p.line.learnerId,scopeId:p.line.mode==='monthly_block'?p.line.block.id:p.line.stageId,occurrenceIds:ids,enrollmentId:enrollment?.id??null,plans,now:c.now});
+  const sharedServices=await readAcademySharedServices(c.tx,this.ring,{workspaceId:workspace,operatorId:c.actor.id,cohortId:plan.cohortId,stageId:plan.stageId,purchaseId:p.state.purchaseId,purchaseLineId:p.line.id,learnerId:p.line.learnerId,enrollmentId:enrollment?.id??null,enrollmentRevision:enrollment?.revision??null,guardianSha256,originals:plan.occurrences.filter(o=>ids.includes(o.id)).map(o=>({id:o.id,sha256:digest(o)}))},c.now);
+  const projection=projectOwner03Attendance({sharedServices,purchaseId:p.state.purchaseId,childId:p.line.learnerId,scopeId:p.line.mode==='monthly_block'?p.line.block.id:p.line.stageId,occurrenceIds:ids,enrollmentId:enrollment?.id??null,plans,now:c.now});
   if(projection.state!=='ready')return {...base,...projection};
   const priceBasis=p.line.discountBasis,acceptedOffer={id:p.offer.id,revision:p.offer.revision,policyVersion:owner03PolicyVersion,purchaseLineId:p.line.id,childId:p.line.learnerId,priceCents:p.line.totalCents,priceBasis,eligibilityEvidenceId:p.line.eligibility.evidenceId,acceptanceId:accepted.id,termsVersion:p.offer.terms.version};
   const purchase={policyVersion:owner03PolicyVersion,program:'sunday_fishing_academy' as const,purchaseId:p.state.purchaseId,purchaseLineId:p.line.id,childId:p.line.learnerId,stageId:p.line.stageId,stage:p.line.stage,currency:'USD' as const,acceptedOffer,...(p.line.mode==='monthly_block'?{mode:'monthly_block' as const,blockId:p.line.block.id,purchasedLessons:4 as const,priceCents:65000 as const,priceBasis:'monthly_block_full_rate' as const}:p.line.mode==='prepay'?{mode:'stage_prepay' as const,purchasedLessons:12 as const,priceCents:p.line.totalCents,priceBasis}:{mode:'installments' as const,purchasedLessons:12 as const,priceCents:195000 as const,priceBasis:'three_full_rate_dues' as const})};
   const refundInput=validateOwner03RefundInput({purchase,payment:{purchaseId:p.state.purchaseId,childId:p.line.learnerId,currency:'USD',paidCents:p.state.paidCents,refundedCents:execution?0:p.state.refundedCents,settlementReferences:facts.map(f=>f.canonicalTransactionId)},attendance:{scopeId:p.line.mode==='monthly_block'?p.line.block.id:p.line.stageId,attendedCount:projection.attendedCount,lessons:projection.lessons},reason:input.reason,timing:projection.timing,multiChildPrestart:false});
-  return {...base,state:'ready',input:refundInput,provenance:{sourceApprovalId:accepted.sourceApprovalId,sourceSha256:source.hash,acceptanceId:accepted.id,paymentRevision:execution?execution.batch.preparedFacts.members.find(m=>m.input.purchase.purchaseId===p.state.purchaseId)!.provenance.paymentRevision:p.state.revision,settlementSha256:digest(facts),guardianSha256,enrollmentId:enrollment?.id??null,enrollmentRevision:enrollments[0]?.revision??null,plans:plans.map(s=>({stageId:s.stageId,revision:s.revision,sha256:stageDigest(s)}))}};
+  return {...base,state:'ready',input:refundInput,provenance:{sourceApprovalId:accepted.sourceApprovalId,sourceSha256:source.hash,acceptanceId:accepted.id,paymentRevision:execution?execution.batch.preparedFacts.members.find(m=>m.input.purchase.purchaseId===p.state.purchaseId)!.provenance.paymentRevision:p.state.revision,settlementSha256:digest(facts),guardianSha256,enrollmentId:enrollment?.id??null,enrollmentRevision:enrollments[0]?.revision??null,plans:plans.map(s=>({stageId:s.stageId,revision:s.revision,sha256:stageDigest(s)})),...(sharedServices.length?{sharedServices}:{})}};
  }
  /** This continuation accepts ONLY an encrypted server journal reference. The
   * private normalizer above is never supplied with caller-authored exceptions.
@@ -468,6 +475,23 @@ export class NativeFishingProgram {
  });}catch(error){if(error instanceof FishingProgramError&&["NOT_FOUND","FORBIDDEN"].includes(error.code))return null;clean(error);}}
  /** Current selected original scope without interpreting payment or delivery.
   * Used for ordinary reads and immutable source-history resolution; no grant. */
+ /** Calendar read proof only. Preserves separately enabled own-child access;
+  * never supplies parent declaration, merchant or credit-command authority. */
+ async readCalendarOriginalInTransaction(tx:SqlSession,actor:Actor,raw:unknown){
+  try{const input=travelSelectionSchema.parse(raw),c=await this.actor(tx,actor),workspace=c.actor.workspaceId;
+   requireFact(await demoAccountBatch(tx,workspace,c.actor.id)===null,'FORBIDDEN');
+   const enrollment=await this.enrollment(tx,workspace,input.selectedEnrollmentId,c.now),cohort=await this.cohort(tx,workspace,enrollment.stageId);
+   requireFact(enrollment.state==='confirmed','NOT_FOUND');
+   if(c.actor.role==='practitioner')this.operator(c,cohort);
+   else requireFact(enrollment.authorizedAccountIds.includes(c.actor.id)&&(c.actor.role==='parent'||c.actor.role==='child'&&this.options.childAccountsEnabled&&c.actor.personId===enrollment.learnerId),'NOT_FOUND');
+   if(c.actor.role==='parent')await this.guardian(tx,workspace,c.actor.id,enrollment.learnerId,enrollment.householdId);
+   const plan=await this.plan(tx,workspace,enrollment.stageId),original=plan.occurrences.find(o=>o.id===input.originalOccurrenceId);
+   requireFact(original,'NOT_FOUND');
+   if(enrollment.purchaseScope&&!enrollment.purchaseScope.occurrenceIds.includes(original.id)){await this.actor(tx,actor);return null;}
+   const p=await this.purchase(tx,workspace,enrollment.purchaseId);let guardianSha256:string|null=null;try{guardianSha256=await this.guardian(tx,workspace,p.offer.payerAccountId,enrollment.learnerId,enrollment.householdId);}catch(error){if(!(error instanceof FishingProgramError&&error.code==='FORBIDDEN'))throw error;}
+   await this.actor(tx,actor);return {enrollment,plan,original,operatorId:cohort.operatorId,guardianSha256};
+  }catch(error){clean(error);}
+ }
  async readSessionCreditSelectionInTransaction(tx:SqlSession,actor:Actor,raw:unknown){
   try{
    const input=travelSelectionSchema.parse(raw),c=await this.actor(tx,actor),workspace=c.actor.workspaceId;
@@ -482,6 +506,15 @@ export class NativeFishingProgram {
    return {enrollment:e,plan,original,guardianSha256,guardianAccountId,operatorId:cohort.operatorId,templateApprovalId:cohort.templateApprovalId};
   }catch(error){clean(error);}
  }
+ /** Authenticated immutable revision of this selected original, without
+  * manufacturing a Stage edit for a separate physical event. */
+ async readSessionCreditOriginalRevisionInTransaction(tx:SqlSession,actor:Actor,selection:unknown,n:number){
+  const selected=await this.readSessionCreditSelectionInTransaction(tx,actor,selection);requireFact(Number.isInteger(n)&&n>0&&n<=selected.plan.revision,'INVALID_REQUEST');
+  const row=await one<{workspaceId:string;stageId:string;revision:number;actorId:string;operationId:string;recordedAt:Date;previousHash:string|null;stateHash:string;ciphertext:string}>(tx,'SELECT workspace_id AS "workspaceId",stage_id AS "stageId",revision,actor_account_id AS "actorId",operation_id AS "operationId",recorded_at AS "recordedAt",previous_state_sha256 AS "previousHash",state_sha256 AS "stateHash",payload_ciphertext AS ciphertext FROM ls_fishing_stage.revisions WHERE workspace_id=$1 AND stage_id=$2 AND revision=$3 FOR SHARE',[actor.workspaceId,selected.plan.stageId,n]);requireFact(row&&Buffer.byteLength(row.ciphertext)<=16777216,'UNAVAILABLE');
+  const {ciphertext,...physical}=row,header=revisionHeaderSchema.parse({...physical,recordedAt:row.recordedAt.toISOString()}),snapshot=parseSnapshot(decodeNative('revision',header,ciphertext,this.ring));requireFact(header.workspaceId===actor.workspaceId&&header.stageId===selected.plan.stageId&&header.revision===n&&stageDigest(snapshot)===header.stateHash&&snapshot.state.template.sourceSha256===selected.plan.template.sourceSha256&&snapshot.state.template.version===selected.plan.template.version,'UNAVAILABLE');
+  const original=snapshot.state.occurrences.find(o=>o.id===selected.original.id);requireFact(original,'UNAVAILABLE');return {...selected,revisionState:snapshot.state,revisionOriginal:original};
+ }
+ async readSessionCreditGuardianInTransaction(tx:SqlSession,actor:Actor,selection:unknown,parentId:string){const selected=await this.readSessionCreditSelectionInTransaction(tx,actor,selection);requireFact(selected.enrollment.authorizedAccountIds.some(id=>id===parentId)&&(actor.role==='practitioner'||actor.id===parentId),'FORBIDDEN');return this.guardian(tx,actor.workspaceId,parentId,selected.enrollment.learnerId,selected.enrollment.householdId);}
  /** Immutable, authenticated consecutive source revisions. Browser revision
   * numbers are only selectors; their encrypted bodies establish the change.
   * A state-only edit, draft publication, cancellation or free text is not a
@@ -683,6 +716,42 @@ export class NativeFishingProgram {
    await nested.approveOffer(actor,{commandId:input.approvalCommandId,id:input.operationId,stageId:input.stageId,payerAccountId:family.parentAccountId,householdId:family.householdId,policyApprovalId:cohort.policyApprovalId,expiresAt:input.expiresAt,lines:[{id:input.operationId,learnerId:family.learnerId,fitDecisionId:stage.fit.id,termsAcceptanceId:input.mode==='monthly_block'?input.block!.acceptanceId:stage.terms.acceptanceId,holdId:input.operationId,mode:input.mode,dueAt:input.dueAt,...(input.mode==='monthly_block'?{block:input.block}:{})}]});return {id:input.operationId,revision:1,state:'offer' as const};
   });
  }
+ /** Current owner-only planning inputs. These are verified existing originals,
+  * not projected groups, source approvals, seats or purchased service credits. */
+ async calendarGroupPlanningInTransaction(tx:SqlSession,actor:Actor):Promise<AcademyGroupCalendarContext['groups']>{
+  const c=await this.actor(tx,actor);this.operator(c);requireFact(await demoAccountBatch(tx,c.actor.workspaceId,c.actor.id)===null,'FORBIDDEN');
+  const rows=await tx.query<{stageId:string}>(`SELECT c.stage_id AS "stageId" FROM ls_fishing_stage.cohorts c JOIN ls_fishing_stage.plans p ON p.workspace_id=c.workspace_id AND p.stage_id=c.stage_id WHERE c.workspace_id=$1 AND c.operator_id=$2 AND c.active ORDER BY c.cohort_id,c.stage LIMIT 1001 FOR SHARE OF c,p`,[c.actor.workspaceId,c.actor.id]);requireFact(rows.length<=1000,'UNAVAILABLE');
+  const groups:AcademyGroupCalendarContext['groups']=[];
+  for(const row of rows){const cohort=await this.cohort(tx,c.actor.workspaceId,row.stageId);this.operator(c,cohort);const plan=await this.plan(tx,c.actor.workspaceId,row.stageId);
+   const name=z.object({label}).parse(this.decode('cohort',c.actor.workspaceId,cohort.stageId,cohort.labelCiphertext)).label;
+   const originals=plan.occurrences.map(o=>academyGroupOriginSchema.parse({selection:{cohortId:cohort.cohortId,stageId:cohort.stageId,stage:cohort.stage,occurrenceId:o.id,expectedRevision:o.revision},planRevision:plan.revision,
+    ordinal:o.ordinal,moduleId:o.moduleId,moduleVersion:o.moduleVersion,templateApprovalId:cohort.templateApprovalId,templateSourceSha256:plan.template.sourceSha256,instructorId:cohort.instructorId,
+    originalTime:o.time,originalLocation:o.location,originalSha256:digest(o)}));
+   groups.push(academyGroupPlanningChoiceSchema.parse({cohortId:cohort.cohortId,stageId:cohort.stageId,stage:cohort.stage,label:name,planRevision:plan.revision,originals}));
+  }
+  await this.actor(tx,actor);return groups;
+ }
+ /** Server-only current publication authority/roster. Never selects a purchase
+  * from a child name, stage ordinal, payment boolean or caller roster. */
+ async calendarPublicationOwnerInTransaction(tx:SqlSession,actor:Actor){const c=await this.actor(tx,actor);this.operator(c);requireFact(await demoAccountBatch(tx,c.actor.workspaceId,c.actor.id)===null,'FORBIDDEN');return {now:c.now,accountId:c.actor.id};}
+ async calendarPublicationOriginalsInTransaction(tx:SqlSession,actor:Actor,input:readonly AcademyGroupOrigin[],currentSnapshots:boolean){
+  const originals=z.array(academyGroupOriginSchema).min(1).max(100).parse(input),groups=await this.calendarGroupPlanningInTransaction(tx,actor),groupIds=new Set(groups.map(g=>g.cohortId));
+  requireFact(new Set(originals.map(o=>o.selection.cohortId)).size===originals.length&&originals.every(o=>groupIds.has(o.selection.cohortId))&&(!currentSnapshots||originals.length===groupIds.size),'CONFLICT');
+  const selections:{selectedEnrollmentId:string;originalOccurrenceId:string}[]=[];
+  for(const original of originals){const g=groups.find(g=>g.cohortId===original.selection.cohortId&&g.stageId===original.selection.stageId&&g.stage===original.selection.stage),actual=g?.originals.find(o=>o.selection.occurrenceId===original.selection.occurrenceId);requireFact(actual&&actual.originalSha256===original.originalSha256&&(!currentSnapshots||digest(actual)===digest(original)),'CONFLICT');
+   const plan=await this.plan(tx,actor.workspaceId,original.selection.stageId),o=plan.occurrences.find(o=>o.id===original.selection.occurrenceId);requireFact(o?.state==='published'&&o.time.kind==='scheduled','CONFLICT');
+   if(!currentSnapshots)continue;
+   const rows=await tx.query<{id:string}>('SELECT id FROM ls_fishing_stage.enrollments WHERE workspace_id=$1 AND stage_id=$2 AND state=\'confirmed\' ORDER BY id LIMIT 1001 FOR SHARE',[actor.workspaceId,g!.stageId]);requireFact(rows.length<=1000,'UNAVAILABLE');
+   for(const row of rows){const enrollment=await this.enrollment(tx,actor.workspaceId,row.id,this.clock.now());if(!enrollment.purchaseScope||enrollment.purchaseScope.occurrenceIds.includes(o.id))selections.push({selectedEnrollmentId:enrollment.id,originalOccurrenceId:o.id});}
+  }
+  requireFact(selections.length<=1000,'UNAVAILABLE');return selections;
+ }
+ /** All actual sealed instruction for shared-day accounting, including retired
+  * groups and completed lessons. No activity, enrollment or credit inference. */
+ async calendarPublicationTeachingInTransaction(tx:SqlSession,actor:Actor){
+  await this.calendarPublicationOwnerInTransaction(tx,actor);const rows=await tx.query<{stageId:string}>('SELECT p.stage_id AS "stageId" FROM ls_fishing_stage.plans p JOIN ls_fishing_stage.cohorts c ON c.workspace_id=p.workspace_id AND c.stage_id=p.stage_id WHERE p.workspace_id=$1 AND c.operator_id=$2 ORDER BY p.stage_id LIMIT 1001 FOR SHARE OF p,c',[actor.workspaceId,actor.id]);requireFact(rows.length<=1000,'UNAVAILABLE');const values:AcademyTeachingEvent[]=[];
+  for(const row of rows)for(const o of(await this.plan(tx,actor.workspaceId,row.stageId,true)).occurrences)if((o.state==='published'||o.state==='completed')&&o.time.kind==='scheduled')values.push({id:o.id,kind:'ordinary',startsAt:o.time.startsAt,endsAt:o.time.endsAt});return values;
+ }
  async calendarChoices(actor:Actor,selectedLearnerId:string|null=null):Promise<FishingCalendarChoices>{
   try{return await this.db.transaction(async tx=>{
    const c=await this.actor(tx,actor);requireFact(["practitioner","parent","child"].includes(c.actor.role),"FORBIDDEN");
@@ -829,6 +898,7 @@ export class NativeFishingProgram {
    resolveApprovedTemplate:async(tx,c,version)=>{const cohort=await this.hookContext(tx,c);return this.template(tx,c.actor.workspaceId,cohort,version,c.now);},
    readEnrollment:async(tx,c,id)=>{const cohort=await this.hookContext(tx,c);requireFact(c.actor.role==="practitioner"&&cohort.operatorId===c.actor.id,"FORBIDDEN");return this.enrollment(tx,c.actor.workspaceId,id,c.now);},
    occupiedSeats:async(tx,c,id)=>{const cohort=await this.hookContext(tx,c);requireFact(c.actor.role==="practitioner"&&cohort.operatorId===c.actor.id,"FORBIDDEN");const target=await one(tx,"SELECT id FROM ls_fishing_stage.occurrences WHERE workspace_id=$1 AND id=$2",[c.actor.workspaceId,id]);requireFact(target,"NOT_FOUND");return this.countSeats(tx,c.actor.workspaceId,id);},
+   assertPhysicalCommand:async(tx,c,plan,command)=>{await this.hookContext(tx,c);assertAcademyOriginalCommandUnbound(await readAcademySharedPhysicalEvents(tx,this.ring,c.actor.workspaceId),plan,command);},
    reconcileResources:async(tx,c,before,after)=>{await this.resources(tx,c,before,after,intent);},
    replacementSuitable:async(tx,c,e,target)=>{await this.hookContext(tx,c);requireFact(intent?.makeupFitDecisionId);await this.fit(tx,c.actor.workspaceId,intent.makeupFitDecisionId,e.stageId,e.learnerId,"makeup",target);return target.stage===e.stage&&target.program===e.program;},
    reserveMakeup:async(tx,c,input)=>{const cohort=await this.hookContext(tx,c);requireFact(intent&&intent.makeupFitDecisionId&&c.actor.role==="practitioner"&&cohort.operatorId===c.actor.id,"FORBIDDEN");const e=await this.enrollment(tx,c.actor.workspaceId,input.enrollment.id,c.now);requireFact(e.state==="confirmed"&&digest(e)===digest(input.enrollment),"CONFLICT");await this.fit(tx,c.actor.workspaceId,intent.makeupFitDecisionId,e.stageId,e.learnerId,"makeup",input.target);requireFact(input.target.revision===input.expectedRevision,"CONFLICT");await this.targetResources(tx,c,input.target);requireFact(await this.countSeats(tx,c.actor.workspaceId,input.target.id)<input.target.childCapacity,"CAPACITY");
@@ -839,9 +909,10 @@ export class NativeFishingProgram {
   };
   const guard=<A extends unknown[],R>(work:(...args:A)=>Promise<R>)=>async(...args:A):Promise<R>=>{try{return await work(...args);}catch(error){if(!(error instanceof FishingProgramError))throw error;
    if(error.code==="UNAVAILABLE")throw new AppError("UNAVAILABLE");throw new FishingStageError(error.code==="POLICY_REQUIRED"?"APPROVAL_REQUIRED":error.code==="INVALID_REQUEST"?"INVALID_STATE":error.code);}};
-  return {resolveContext:guard(hooks.resolveContext),resolveApprovedTemplate:guard(hooks.resolveApprovedTemplate),readEnrollment:guard(hooks.readEnrollment),occupiedSeats:guard(hooks.occupiedSeats),reconcileResources:guard(hooks.reconcileResources),replacementSuitable:guard(hooks.replacementSuitable),reserveMakeup:guard(hooks.reserveMakeup)};
+  return {resolveContext:guard(hooks.resolveContext),resolveApprovedTemplate:guard(hooks.resolveApprovedTemplate),readEnrollment:guard(hooks.readEnrollment),occupiedSeats:guard(hooks.occupiedSeats),assertPhysicalCommand:guard(hooks.assertPhysicalCommand!),reconcileResources:guard(hooks.reconcileResources),replacementSuitable:guard(hooks.replacementSuitable),reserveMakeup:guard(hooks.reserveMakeup)};
  }
  private async targetResources(tx:SqlSession,c:NativeStageHookContext,target:CanonicalOccurrence){
+  const shared=await readAcademySharedPhysicalEvents(tx,this.ring,c.actor.workspaceId);requireFact(!shared.some(e=>e.originals.some(o=>o.selection.occurrenceId===target.id)),'CONFLICT');
   requireFact(target.time.kind==="scheduled"&&target.state==="published");const time=target.time,cohort=await this.hookContext(tx,c,target);requireFact(target.childCapacity<=cohort.capacity);
   const rows=await tx.query<{kind:string;resourceId:string;startsAt:Date;endsAt:Date;revision:number}>(`SELECT kind,resource_id AS "resourceId",starts_at AS "startsAt",ends_at AS "endsAt",occurrence_revision AS revision FROM ls_fishing_stage.resource_reservations WHERE workspace_id=$1 AND occurrence_id=$2 AND active ORDER BY kind LIMIT 3 FOR SHARE`,[c.actor.workspaceId,target.id]);
   requireFact(rows.length===2&&rows.every(row=>row.revision===target.revision&&row.startsAt.toISOString()===time.startsAt&&row.endsAt.toISOString()===time.endsAt));
@@ -853,12 +924,37 @@ export class NativeFishingProgram {
   const current=await one<{revision:number}>(tx,"SELECT revision FROM ls_fishing_stage.plans WHERE workspace_id=$1 AND stage_id=$2 FOR SHARE",[c.actor.workspaceId,c.scope.stageId]);requireFact(current,"UNAVAILABLE");
   await tx.query(`INSERT INTO ls_fishing_stage.command_receipts(workspace_id,actor_id,command_id,action,request_sha256,result_ciphertext,recorded_at,stage_operation_id,source_stage_id,expected_stage_revision) VALUES($1,$2,$3,'stage.resources',$4,$5,$6,$3,$7,$8)`,[c.actor.workspaceId,c.actor.id,operationId,hash,this.encode("receipt",c.actor.workspaceId,key,body),c.now,c.scope.stageId,current.revision+1]);
  }
+ /** Count actual physical identities. An original's paid module/lesson remains
+  * in its immutable Stage while its explicitly bound shared trip counts once. */
+ private async ordinaryOperatorDays(tx:SqlSession,c:NativeStageHookContext,cohort:Cohort,before:readonly CanonicalOccurrence[],after:readonly CanonicalOccurrence[],shared:readonly AcademyKeysPublication[]){
+  const displaced=new Set(shared.flatMap(e=>e.originals.map(o=>o.selection.occurrenceId)));
+  const newlyScheduled=after.filter(o=>{
+   if(displaced.has(o.id)||o.state!=='published'||o.time.kind!=='scheduled')return false;
+   const old=before.find(p=>p.id===o.id);
+   return old?.state!=='published'||old.time.kind!=='scheduled'||Date.parse(old.time.startsAt)!==Date.parse(o.time.startsAt)||Date.parse(old.time.endsAt)!==Date.parse(o.time.endsAt);
+  });
+  if(!newlyScheduled.length)return;
+  const physical=(values:readonly CanonicalOccurrence[]):AcademyTeachingEvent[]=>values.flatMap(o=>!displaced.has(o.id)&&(o.state==='published'||o.state==='completed')&&o.time.kind==='scheduled'?[{id:o.id,kind:'ordinary' as const,startsAt:o.time.startsAt,endsAt:o.time.endsAt}]:[]);
+  const affected=new Set(academyOperatorDays(physical(newlyScheduled)).map(d=>d.date)),events=[...physical(after),...academySharedTeachingEvents(shared,cohort.operatorId,cohort.instructorId)];
+  // The adapter already holds the workspace transaction lock. Include retired
+  // cohorts and completed instruction: releasing a resource is not erasing a
+  // session taught that day. Validate sealed plans and physical bindings.
+  const plans=await tx.query<{stageId:string}>(`SELECT p.stage_id AS "stageId" FROM ls_fishing_stage.plans p JOIN ls_fishing_stage.cohorts c ON c.workspace_id=p.workspace_id AND c.stage_id=p.stage_id WHERE p.workspace_id=$1 AND p.stage_id<>$2 AND (c.operator_id=$3 OR c.instructor_id=$4) ORDER BY p.stage_id LIMIT 1001 FOR SHARE OF p,c`,[c.actor.workspaceId,c.scope.stageId,cohort.operatorId,cohort.instructorId]);
+  requireFact(plans.length<=1000,'UNAVAILABLE');
+  for(const p of plans)events.push(...physical((await this.plan(tx,c.actor.workspaceId,p.stageId,true)).occurrences));
+  const violations=academyOperatorDayViolations(events,affected);
+  requireFact(!violations.some(v=>v.reason==='ordinary_saturday'),'POLICY_REQUIRED');requireFact(!violations.length,'CAPACITY');
+ }
  private async resources(tx:SqlSession,c:NativeStageHookContext,before:readonly CanonicalOccurrence[],after:readonly CanonicalOccurrence[],intent:NativeProgramCommandIntent|null){
   const cohort=await this.hookContext(tx,c);requireFact(intent&&c.actor.role==="practitioner"&&cohort.operatorId===c.actor.id,"FORBIDDEN");requireFact(after.length===12&&new Set(after.map(o=>o.id)).size===12,"UNAVAILABLE");
+  const shared=await readAcademySharedPhysicalEvents(tx,this.ring,c.actor.workspaceId);
+  await this.ordinaryOperatorDays(tx,c,cohort,before,after,shared);
   const prior=await tx.query<{occurrenceId:string;kind:string;resourceId:string;startsAt:Date;endsAt:Date;active:boolean}>(`SELECT r.occurrence_id AS "occurrenceId",r.kind,r.resource_id AS "resourceId",r.starts_at AS "startsAt",r.ends_at AS "endsAt",r.active FROM ls_fishing_stage.resource_reservations r JOIN ls_fishing_stage.occurrences o ON o.workspace_id=r.workspace_id AND o.id=r.occurrence_id WHERE r.workspace_id=$1 AND o.stage_id=$2 ORDER BY r.occurrence_id,r.kind LIMIT 25 FOR UPDATE OF r`,[c.actor.workspaceId,c.scope.stageId]);requireFact(prior.length<=24,"UNAVAILABLE");
   const effects=[];
   for(const occurrence of after){requireFact(occurrence.stageId===c.scope.stageId&&occurrence.cohortId===c.scope.cohortId&&occurrence.instructor.accountId===cohort.instructorId&&occurrence.childCapacity<=cohort.capacity);
    const choice=intent.resources.find(value=>value.occurrenceId===occurrence.id),old=before.find(value=>value.id===occurrence.id);if(choice)requireFact(old?.revision===choice.expectedRevision,"CONFLICT");
+   const replacement=shared.flatMap(e=>e.originals).find(o=>o.selection.occurrenceId===occurrence.id);
+   if(replacement){requireFact(!choice&&digest(occurrence)===replacement.originalSha256,'CONFLICT');requireFact(!prior.some(p=>p.occurrenceId===occurrence.id&&p.active),'UNAVAILABLE');effects.push({occurrenceId:occurrence.id,active:false,physicalReplacement:true});continue;}
    if(occurrence.time.kind==="undated"||occurrence.state==="cancelled"||occurrence.state==="completed"){
     requireFact(!choice,"INVALID_REQUEST");
     await tx.query("UPDATE ls_fishing_stage.resource_reservations SET active=false,occurrence_revision=$3,actor_id=$4,command_id=$5 WHERE workspace_id=$1 AND occurrence_id=$2",[c.actor.workspaceId,occurrence.id,occurrence.revision,c.actor.id,intent.operationId]);effects.push({occurrenceId:occurrence.id,active:false});continue;
@@ -870,6 +966,7 @@ export class NativeFishingProgram {
    const clinical=await tx.query<{startsAt:Date;endsAt:Date}>(`SELECT a.starts_at-a.buffer_before*interval '1 minute' AS "startsAt",a.ends_at+a.buffer_after*interval '1 minute' AS "endsAt" FROM ls_calendar.appointments a WHERE a.workspace_id=$1 AND a.practitioner_id=$2 AND a.status='scheduled' AND a.starts_at-a.buffer_before*interval '1 minute'<$4::timestamptz AND a.ends_at+a.buffer_after*interval '1 minute'>$3::timestamptz AND NOT EXISTS(SELECT 1 FROM ls_demo.cases d WHERE d.workspace_id=a.workspace_id AND d.case_id=a.case_id) LIMIT 1001 FOR SHARE OF a`,[c.actor.workspaceId,cohort.instructorId,occurrence.time.startsAt,occurrence.time.endsAt]);requireFact(clinical.length<=1000,"UNAVAILABLE");
    assertAvailable(occurrence.time,windows.map(value=>({...value,startsAt:value.startsAt.toISOString(),endsAt:value.endsAt.toISOString()})),clinical.map(value=>({startsAt:value.startsAt.toISOString(),endsAt:value.endsAt.toISOString()})));
    for(const [kind,resourceId]of [["instructor",cohort.instructorId],["venue",venueId]] as const){
+    requireFact(!academySharedResourceClash(shared,kind,resourceId,occurrence.time.startsAt,occurrence.time.endsAt),'CONFLICT');
     const clash=await one(tx,"SELECT occurrence_id FROM ls_fishing_stage.resource_reservations WHERE workspace_id=$1 AND kind=$2 AND resource_id=$3 AND occurrence_id<>$4 AND active AND starts_at<$6::timestamptz AND ends_at>$5::timestamptz LIMIT 1 FOR UPDATE",[c.actor.workspaceId,kind,resourceId,occurrence.id,occurrence.time.startsAt,occurrence.time.endsAt]);requireFact(!clash,"CONFLICT");
     await tx.query(`INSERT INTO ls_fishing_stage.resource_reservations(workspace_id,occurrence_id,kind,resource_id,instructor_id,venue_id,starts_at,ends_at,occurrence_revision,active,actor_id,command_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
      ON CONFLICT(workspace_id,occurrence_id,kind) DO UPDATE SET resource_id=EXCLUDED.resource_id,instructor_id=EXCLUDED.instructor_id,venue_id=EXCLUDED.venue_id,starts_at=EXCLUDED.starts_at,ends_at=EXCLUDED.ends_at,occurrence_revision=EXCLUDED.occurrence_revision,active=EXCLUDED.active,actor_id=EXCLUDED.actor_id,command_id=EXCLUDED.command_id`,[c.actor.workspaceId,occurrence.id,kind,resourceId,kind==="instructor"?resourceId:null,kind==="venue"?resourceId:null,occurrence.time.startsAt,occurrence.time.endsAt,occurrence.revision,occurrence.state==="published",c.actor.id,intent.operationId]);

@@ -135,6 +135,7 @@ export class NativeFishingStageStore implements FishingStageStore {
     },
     resolveApprovedTemplate:async(c,version)=>{const raw=await this.hooks.resolveApprovedTemplate(sql,contextFor(c),version);return raw===null?null:parseTemplate(raw);},
     load:async c=>structuredClone((await load(c))?.snapshot.state??null),
+    assertPhysicalCommand:async(c,command)=>{if(this.hooks.assertPhysicalCommand)await this.hooks.assertPhysicalCommand(sql,contextFor(c),structuredClone((await load(c))?.snapshot.state??null),structuredClone(command));},
     readOperation:async(c,id)=>{
      contextFor(c);
      const row=await one<{workspaceId:string;actorId:string;operationId:string;stageId:string;stageRevision:number;digest:string;stateHash:string;ciphertext:string}>(sql,`SELECT workspace_id AS "workspaceId",actor_account_id AS "actorId",operation_id AS "operationId",stage_id AS "stageId",stage_revision AS "stageRevision",request_digest AS digest,state_sha256 AS "stateHash",receipt_ciphertext AS ciphertext

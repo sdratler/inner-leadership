@@ -2,9 +2,9 @@ import {z} from 'zod';
 import type {Locale} from '../../lib/locale.ts';
 import type {StageView} from '../fishing-stage/contract.ts';
 import type {FamilyPaymentView} from '../fishing-payments/domain.ts';
-import {fishingCalendarSearch,fishingCalendarSelectionQuery,type FishingCalendarSelection} from './program-calendar-contract.ts';
+import {fishingCalendarSearch,fishingCalendarSelectionQuery,type FishingCalendarSelection,type FishingCalendarEvent} from './program-calendar-contract.ts';
 
-export type FishingFamilyHome={selection:FishingCalendarSelection;label:string;view:StageView;payment:FamilyPaymentView|null};
+export type FishingFamilyHome={sharedEvents?:readonly FishingCalendarEvent[];nextPhysical?:FishingCalendarEvent|null;selection:FishingCalendarSelection;label:string;view:StageView;payment:FamilyPaymentView|null};
 const keys=['fishing','learnerId','enrollmentId','cohortId','stageId','stage'] as const;
 /** Navigation hints only. Missing or malformed tuples never select a child. */
 export function fishingFamilyContext(input:URLSearchParams):URLSearchParams|null{

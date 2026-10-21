@@ -1,3 +1,4 @@
+import type {AcademySharedServiceEvidence} from './academy-shared-service-contract.ts';
 import type {StageState} from '../fishing-stage/contract.ts';
 import type {Owner03RefundInput} from '../fishing-payments/owner03-policy.ts';
 import type {AcademyRefundReviewReason} from './academy-refund-contract.ts';
@@ -6,13 +7,20 @@ import {FishingProgramError} from './native-program-contract.ts';
 type Projection={state:'ready';timing:'prestart'|'after_start';attendedCount:number;lessons:Owner03RefundInput['attendance']['lessons']}|{state:'review_required';reason:AcademyRefundReviewReason};
 /** Inputs come only from Root's authenticated snapshot/journal loader. Every
  * outcome represents one purchased slot, including a verified makeup chain. */
-export function projectOwner03Attendance(input:{purchaseId:string;childId:string;scopeId:string;occurrenceIds:readonly string[];enrollmentId:string|null;plans:readonly StageState[];now:Date}):Projection{
+export function projectOwner03Attendance(input:{purchaseId:string;childId:string;scopeId:string;occurrenceIds:readonly string[];enrollmentId:string|null;plans:readonly StageState[];now:Date;sharedServices?:readonly AcademySharedServiceEvidence[]}):Projection{
  const {enrollmentId,plans,now}=input;
  if(!Number.isFinite(now.valueOf())||![4,12].includes(input.occurrenceIds.length)||new Set(input.occurrenceIds).size!==input.occurrenceIds.length)throw new FishingProgramError('UNAVAILABLE');
  const occurrences=new Map(plans.flatMap(plan=>plan.occurrences.map(o=>[o.id,{o,plan}] as const)));
+ const shared=new Map((input.sharedServices??[]).map(v=>[v.originalOccurrenceId,v]));if(shared.size!==(input.sharedServices??[]).length||(input.sharedServices??[]).some(v=>v.purchaseId!==input.purchaseId||v.learnerId!==input.childId||v.enrollmentId!==input.enrollmentId||!input.occurrenceIds.includes(v.originalOccurrenceId)))throw new FishingProgramError('UNAVAILABLE');
  const effective=new Set<string>(),lessons:Owner03RefundInput['attendance']['lessons']=[];
  let delivered=0,hasStarted=false,allFuture=true;
  for(const id of input.occurrenceIds){
+  const service=shared.get(id);if(service){const entry=occurrences.get(id);if(!entry)throw new FishingProgramError('UNAVAILABLE');if(entry.o.state==='completed'||entry.plan.attendance.some(v=>v.occurrenceId===id&&v.enrollmentId===enrollmentId))return {state:'review_required',reason:'shared_service_review_required'};
+   if(service.state==='not_attended')return {state:'review_required',reason:'before_third_lesson_window_review_required'};
+   if(!['pending','credited'].includes(service.state)||service.state==='pending'&&Date.parse(service.startsAt)<=now.valueOf())return {state:'review_required',reason:'shared_service_review_required'};
+   if(service.state==='credited'){if(!service.recordedOnce||Date.parse(service.endsAt)>now.valueOf()||service.sourceRevoked||!service.attendance||!['present','late'].includes(service.attendance.state))throw new FishingProgramError('UNAVAILABLE');delivered++;hasStarted=true;allFuture=false;}
+   lessons.push({lessonId:id,purchaseId:input.purchaseId,childId:input.childId,scopeId:input.scopeId,outcome:service.state==='credited'?'attended':'not_delivered'});continue;
+  }
   let current=id,slotDelivered=false;const visited=new Set<string>();
   for(;;){
    if(visited.has(current)||visited.size>=12)throw new FishingProgramError('UNAVAILABLE');visited.add(current);

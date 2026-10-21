@@ -1,4 +1,5 @@
 import {z} from "zod";
+import {academySharedServiceViewSchema} from './academy-shared-service-contract.ts';
 import {stageReferenceSchema,type StageView} from "../fishing-stage/contract.ts";
 
 const uuid=z.uuid(),label=z.string().min(1).max(160),version=z.string().min(1).max(120);
@@ -14,12 +15,12 @@ export const fishingCalendarOperatorSchema=z.strictObject({venues:z.array(z.stri
  makeupNotices:z.array(z.strictObject({id:uuid,enrollmentId:uuid,learnerId:uuid})).max(12000),
  makeupFits:z.array(z.strictObject({id:uuid,learnerId:uuid,occurrenceId:uuid,revision:z.number().int().positive(),startsAt:z.iso.datetime({offset:true}),label:z.string().min(1).max(1200)})).max(fishingCalendarLimit)});
 export type FishingCalendarOperator=z.infer<typeof fishingCalendarOperatorSchema>;
-export type FishingCalendarPlan={selection:FishingCalendarSelection;choice:z.infer<typeof fishingCalendarStageSchema>;view:StageView|null;operator:FishingCalendarOperator;lessonLearnerId:string|null;
+export type FishingCalendarPlan={sharedEvents?:readonly FishingCalendarEvent[];nextPhysical?:FishingCalendarEvent|null;selection:FishingCalendarSelection;choice:z.infer<typeof fishingCalendarStageSchema>;view:StageView|null;operator:FishingCalendarOperator;lessonLearnerId:string|null;
  lessonLinks:readonly {occurrenceId:string;href:string}[]};
 const selectionKeys=["learnerId","enrollmentId","cohortId","stageId","stage"] as const;
 const civilDay=z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value=>{const d=new Date(value+"T12:00:00Z");return Number.isFinite(d.valueOf())&&d.toISOString().slice(0,10)===value;});
 export const fishingCalendarWindowSchema=z.strictObject({from:civilDay,to:civilDay,learnerId:uuid.nullable()}).refine(value=>{const span=(Date.parse(value.to+"T12:00:00Z")-Date.parse(value.from+"T12:00:00Z"))/86400000;return span>=0&&span<62;});
-export const fishingCalendarEventSchema=z.strictObject({id:uuid,revision:z.number().int().positive(),ordinal:z.number().int().min(1).max(12),label,state:z.enum(["published","completed","cancelled"]),startsAt:z.iso.datetime({offset:true}),endsAt:z.iso.datetime({offset:true}),timeZone:z.literal("America/New_York"),location:z.string().max(2400),selections:z.array(fishingCalendarSelectionSchema).min(1).max(fishingCalendarLimit)});
+export const fishingCalendarEventSchema=z.strictObject({id:uuid,revision:z.number().int().positive(),ordinal:z.number().int().min(1).max(12),label,state:z.enum(["published","completed","cancelled"]),startsAt:z.iso.datetime({offset:true}),endsAt:z.iso.datetime({offset:true}),timeZone:z.literal("America/New_York"),location:z.string().max(2400),details:z.strictObject({directions:z.string().max(1200),equipment:z.string().max(1200),logisticalNote:z.string().max(1200),changedAt:z.iso.datetime({offset:true})}).optional(),selections:z.array(fishingCalendarSelectionSchema).min(1).max(fishingCalendarLimit),shared:z.strictObject({kind:z.literal('monthly_core_keys'),originals:z.array(z.strictObject({selection:fishingCalendarSelectionSchema,occurrenceId:uuid,ordinal:z.number().int().min(1).max(12),moduleId:label,moduleVersion:version,participation:z.enum(['keys','local_alternative','review_required','operator_context']),service:academySharedServiceViewSchema.optional()})).min(1).max(fishingCalendarLimit),weeklyService:z.enum(['not_inferred','per_original']),originalActivity:z.literal('not_inferred')}).optional()});
 export type FishingCalendarEvent=z.infer<typeof fishingCalendarEventSchema>;
 export const fishingCalendarTimelineSchema=z.strictObject({availability:z.enum(["ready","not_configured"]),items:z.array(fishingCalendarEventSchema).max(fishingCalendarLimit)});
 /** Fishing civil days are Florida days, never the host's or clinical calendar's zone. */

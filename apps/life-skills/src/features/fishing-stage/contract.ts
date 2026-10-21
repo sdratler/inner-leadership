@@ -63,6 +63,8 @@ export interface FishingStageTransaction {
  resolveFreshContext(actor:Actor,ref:FishingStageRef):Promise<FreshStageContext|null>;
  resolveApprovedTemplate(context:FreshStageContext,version:string):Promise<ApprovedStageTemplate|null>;
  load(context:FreshStageContext):Promise<StageState|null>;
+ /** Native-only current physical binding check, before operation replay. */
+ assertPhysicalCommand?(context:FreshStageContext,command:StageCommand):Promise<void>;
  readOperation(context:FreshStageContext,operationId:string):Promise<OperationRecord|null>;
  readEnrollment(context:FreshStageContext,enrollmentId:string):Promise<EnrollmentProjection|null>;
  /** Optional additive port. Absence retains local-enrollment rules; it never

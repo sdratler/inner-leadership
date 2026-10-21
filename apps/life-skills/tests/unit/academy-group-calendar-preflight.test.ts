@@ -1,0 +1,20 @@
+import {readFile} from 'node:fs/promises';
+import {expect,test} from 'vitest';
+import {loadAcademySchemaSources,type AcademySchemaCatalog} from '../../src/db/academy-schema-preflight.ts';
+import {loadTravelCreditSchemaSources} from '../../src/db/academy-travel-credit-preflight.ts';
+import {academyGroupCalendarSchemaPin,loadAcademyGroupCalendarSchemaSources,verifyAcademyGroupCalendarSchemaSources,assessAcademyGroupCalendarSchema,readAcademyGroupCalendarSchemaPreflight} from '../../src/db/academy-group-calendar-preflight.ts';
+const root=new URL('../../',import.meta.url);
+const empty:AcademySchemaCatalog={serverMajor:18,namespaces:[],relations:[],columns:[],constraints:[],indexes:[],triggers:[],functions:[],types:[],policies:[],defaults:[]};
+test('explicit group overlay pins four additive tables over intact32 or41 sources, never changes55 or admits mutation',async()=>{
+ const base=await loadAcademySchemaSources(root),travel=await loadTravelCreditSchemaSources(root),a=await loadAcademyGroupCalendarSchemaSources(root,base),b=await loadAcademyGroupCalendarSchemaSources(root,travel);expect(base.tables).toHaveLength(32);expect(travel.tables).toHaveLength(41);expect(a.tables).toHaveLength(36);expect(b.tables).toHaveLength(45);expect(a.baseline).toEqual(base.baseline);expect(b.baseline).toEqual(travel.baseline);expect(a.baseline).toHaveLength(55);expect(Object.isFrozen(a)).toBe(true);
+ const bytes=await readFile(new URL(academyGroupCalendarSchemaPin.path,root));expect(()=>verifyAcademyGroupCalendarSchemaSources(base,{path:academyGroupCalendarSchemaPin.path,bytes:Buffer.concat([bytes,Buffer.from('\n')])})).toThrow('SOURCE_HASH');expect(()=>verifyAcademyGroupCalendarSchemaSources({...base,tables:base.tables.slice(1)},{path:academyGroupCalendarSchemaPin.path,bytes})).toThrow('BASE_SOURCE_SET');
+});
+test('three-namespace inspection rejects partial, extra tables and drift even if a caller supplies that catalog hash',async()=>{
+ const sources=await loadAcademyGroupCalendarSchemaSources(root),full={...empty,namespaces:sources.namespaces.map(name=>({name})),relations:sources.tables.map(n=>({schema:n.split('.')[0],name:n.split('.')[1],kind:'r'}))},reference=assessAcademyGroupCalendarSchema(full,sources.baseline,sources,null).catalogSha256;
+ expect(assessAcademyGroupCalendarSchema(empty,sources.baseline,sources,null).state).toBe('absent');expect(assessAcademyGroupCalendarSchema(full,sources.baseline,sources,null)).toMatchObject({state:'unreviewed',mutationAllowed:false,runtimeAdmission:false});expect(assessAcademyGroupCalendarSchema(full,sources.baseline,sources,reference)).toMatchObject({state:'match',mutationAllowed:false,runtimeAdmission:false});
+ const extra={...full,relations:[...full.relations,{schema:'ls_academy_calendar',name:'unexpected',kind:'r'}]},extraHash=assessAcademyGroupCalendarSchema(extra,sources.baseline,sources,null).catalogSha256;expect(assessAcademyGroupCalendarSchema(extra,sources.baseline,sources,extraHash).state).toBe('partial');expect(assessAcademyGroupCalendarSchema({...full,functions:[{definition:'changed'}]},sources.baseline,sources,reference).state).toBe('drift');expect(assessAcademyGroupCalendarSchema(full,sources.baseline.slice(1),sources,reference).state).toBe('baseline_mismatch');
+});
+test('invalid reference opens no transaction, and inspection failure always rolls back a read-only transaction',async()=>{
+ const sources=await loadAcademyGroupCalendarSchemaSources(root),calls:string[]=[];const connection={query:async(sql:string)=>{calls.push(sql);if(sql==='SET LOCAL search_path=pg_catalog')throw Error('SYNTHETIC_INSPECTION_FAILURE');return {rows:[]};}};
+ await expect(readAcademyGroupCalendarSchemaPreflight(connection,sources,'not_a_reference')).rejects.toThrow('REFERENCE_INVALID');expect(calls).toEqual([]);await expect(readAcademyGroupCalendarSchemaPreflight(connection,sources,null)).rejects.toThrow('SYNTHETIC_INSPECTION_FAILURE');expect(calls).toEqual(['BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY','SET LOCAL search_path=pg_catalog','ROLLBACK']);
+});

@@ -1,4 +1,5 @@
 'use client';
+import {FishingSharedTrips,FishingCalendarEntry} from './program-calendar-workspace.tsx';
 import {useEffect,useState} from 'react';
 import {usePathname,useRouter,useSearchParams} from 'next/navigation';
 import type {Locale} from '../../lib/locale.ts';
@@ -52,7 +53,7 @@ export function FishingFamilyHomeWorkspace({locale}:{locale:Locale}){
    </section>
    {choices?.selectedLearnerId&&<AcademyEnrollmentControls key={choices.selectedLearnerId} learnerId={choices.selectedLearnerId} locale={locale} onLockedChange={setLocked}/>}
    {home&&<>
-    <section className="lsu-panel lsw-stack" aria-label={t('Next fishing trip','טיול הדיג הבא')}><h2>{t('Next fishing trip','טיול הדיג הבא')}</h2>{next&&next.time.kind==='scheduled'?<>
+    {home.sharedEvents?.length?<><FishingSharedTrips events={home.sharedEvents} locale={locale}/><section className="lsu-panel lsw-stack" aria-label={t('Next scheduled fishing session','מפגש הדיג המתוכנן הבא')}><h2>{t('Next scheduled fishing session','מפגש הדיג המתוכנן הבא')}</h2>{home.nextPhysical?<FishingCalendarEntry item={home.nextPhysical} locale={locale} compact={false} onOpen={undefined}/>:<p>{t('No upcoming physical session is confirmed. Original lesson rights are retained.','אין מפגש פיזי קרוב מאושר. הזכויות לשיעור המקורי נשמרות.')}</p>}<p><a href={calendar}>{t('Open fishing calendar','פתיחת יומן הדיג')}</a></p></section></>:<section className="lsu-panel lsw-stack" aria-label={t('Next fishing trip','טיול הדיג הבא')}><h2>{t('Next fishing trip','טיול הדיג הבא')}</h2>{next&&next.time.kind==='scheduled'?<>
      <h3>{t('Session','מפגש')} {next.ordinal}</h3><p><time dateTime={next.time.startsAt}>{format(next.time.startsAt)}</time> – <time dateTime={next.time.endsAt}>{format(next.time.endsAt)}</time> · <bdi>America/New_York</bdi></p>
      {next.revision>1&&<p role="status">{t('Trip details updated — please check the meeting point and time below.','פרטי הטיול עודכנו — בדקו את נקודת המפגש והשעה שלהלן.')}</p>}
      <p><strong>{t('Meeting point:','נקודת מפגש:')}</strong> {next.location}</p><p style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}><strong>{t('Directions and arrival:','הוראות הגעה:')}</strong> {next.directions||t('Arrival details have not been published.','פרטי ההגעה טרם פורסמו.')}</p>
@@ -60,7 +61,7 @@ export function FishingFamilyHomeWorkspace({locale}:{locale:Locale}){
      <p style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}><strong>{t('Bring:','הביאו:')}</strong> {next.equipment||t('Gear details have not been published.','פרטי הציוד טרם פורסמו.')}</p>
      {next.logisticalNote&&<p style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{next.logisticalNote}</p>}
      <p>{t('Last changed:','עודכן לאחרונה:')} <time dateTime={next.changedAt}>{format(next.changedAt)}</time></p>
-    </>:<p>{t('Your next trip will appear here when confirmed.','הטיול הבא יופיע כאן לאחר אישורו.')}</p>}<a className="lsw-button lsw-button--secondary" href={calendar}>{t('Calendar and absence notice','יומן והודעה על היעדרות')}</a></section>
+    </>:<p>{t('Your next trip will appear here when confirmed.','הטיול הבא יופיע כאן לאחר אישורו.')}</p>}<a className="lsw-button lsw-button--secondary" href={calendar}>{t('Calendar and absence notice','יומן והודעה על היעדרות')}</a></section>}
     <section className="lsu-panel lsw-stack" aria-label={t('Your child’s stage and skills','השלב והמיומנויות של ילדכם')}><h2>{home.label} · {t('Stage','שלב')} {home.view.stage}</h2>{home.view.weeklyUpdates?.length?<WeeklyProgressView updates={home.view.weeklyUpdates} locale={locale}/>:<p>{t('Your instructor’s published weekly updates will appear here.','עדכונים שבועיים שיפרסם המדריך יופיעו כאן.')}</p>}<details><summary>{t('Attendance and replacement updates','נוכחות ועדכוני השלמות')}</summary><FishingParentAttendanceSummary view={home.view} locale={locale}/><FishingParentMakeupSummary view={home.view} locale={locale}/></details></section>
     <section className="lsu-panel" aria-label={t('Ask your instructor','שאלה למדריך')}><h2>{t('Notice or ask a question','הודעה או שאלה')}</h2><p><a href={ACADEMY_WHATSAPP.split('?')[0]} target="_blank" rel="noreferrer">{t('Ask your instructor on WhatsApp','פנייה למדריך בוואטסאפ')}</a></p><p>{t('This opens a private conversation. You choose whether to send.','נפתחת שיחה פרטית. אתם מחליטים אם לשלוח.')}</p></section>
     <section className="lsu-panel">{home.payment?<FishingFamilyPayments payments={[home.payment]} locale={locale}/>:<><h2>{t('Payments','תשלומים')}</h2><p>{t('Stage payment details are available to the paying parent.','פרטי תשלומי השלב זמינים להורה המשלם.')}</p></>}</section>

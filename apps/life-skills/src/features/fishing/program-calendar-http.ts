@@ -8,8 +8,11 @@ import type {IdentityStore} from "../identity/store.ts";
 import type {Actor} from "../identity/types.ts";
 import {NativeFishingProgram} from "./native-program.ts";
 import type {MerchantBinding} from '../fishing-payments/domain.ts';
+import {academySharedCalendar} from './academy-shared-calendar.ts';
 import {AcademyTravelCreditService} from './academy-travel-credit-service.ts';
-import {travelSelectionSchema,travelChangeCommandSchema,travelDeclarationCommandSchema} from './academy-travel-credit-contract.ts';
+import {AcademyGroupCalendarService} from './academy-group-calendar-service.ts';
+import {academyGroupDraftCommandSchema,academyGroupCalendarQuerySchema} from './academy-group-calendar-contract.ts';
+import {travelSelectionSchema,travelAnyChangeCommandSchema,travelDeclarationCommandSchema} from './academy-travel-credit-contract.ts';
 import {nativeProgramIntentSchema} from "./native-program-contract.ts";
 import {FishingProgramError} from "./native-program-contract.ts";
 import type {FishingFamilyHome} from './family-home-contract.ts';
@@ -21,7 +24,7 @@ import {educationSearch} from "../resources/education-query.ts";
 import {educationRehearsalEnabled} from "../resources/education-runtime.ts";
 import {FishingLessonNativeStore} from "../resources/fishing-lesson-native-store.ts";
 import {FishingLessonJourney} from "../resources/fishing-lesson-journey.ts";
-import {fishingCalendarSelectionSchema,fishingCalendarSelectionQuery,selectedFishingStage,fishingCalendarWindowSchema,fishingCalendarEvents,type FishingCalendarPlan,type FishingCalendarSelection} from "./program-calendar-contract.ts";
+import {fishingCalendarSelectionSchema,fishingCalendarSelectionQuery,selectedFishingStage,fishingCivilTime,fishingCalendarWindowSchema,fishingCalendarEvents,type FishingCalendarPlan,type FishingCalendarSelection} from "./program-calendar-contract.ts";
 
 export type FishingCalendarDependencies={runtime:Ls050HttpRuntime;store:IdentityStore;merchant?:MerchantBinding|null};
 const contextQuery=z.strictObject({learnerId:z.uuid().optional()});
@@ -72,12 +75,18 @@ export async function handleFishingCalendar(request:Request,path:readonly string
     if(path.length!==1||url.pathname!==prefix+path[0])throw new AppError("NOT_FOUND");
     if(!["practitioner","parent","child"].includes(actor.role))throw new AppError("FORBIDDEN");
     let data:unknown;
-    if(path[0]==='travel-credit'||path[0]==='travel-change'||path[0]==='travel-declaration'){
+    if(path[0]==='group-events'){
+     if(actor.role!=='practitioner')throw new AppError('FORBIDDEN');const groups=new AcademyGroupCalendarService(store,runtime.config,runtime.clock);
+     if(request.method==='GET'){
+      const query=academyGroupCalendarQuerySchema.safeParse(Object.fromEntries(url.searchParams));if(!query.success||url.searchParams.size!==2)throw new AppError('INVALID_REQUEST');data=await groups.context(actor,query.data);
+     }else if(request.method==='POST'&&!url.search){const command=await readJson(request,academyGroupDraftCommandSchema);if(request.headers.get('idempotency-key')!==command.operationId)throw new AppError('INVALID_REQUEST');data=await groups.saveDraft(actor,command);
+     }else throw new AppError('NOT_FOUND');
+    }else if(path[0]==='travel-credit'||path[0]==='travel-change'||path[0]==='travel-declaration'){
      if(actor.role==='child')throw new AppError('FORBIDDEN');const travel=new AcademyTravelCreditService(store,runtime.config,d.merchant??null,runtime.clock);
      if(path[0]==='travel-credit'&&request.method==='GET'){
       const query=travelSelectionSchema.safeParse(Object.fromEntries(url.searchParams));if(!query.success||url.searchParams.size!==Object.keys(query.data).length)throw new AppError('INVALID_REQUEST');data=await travel.context(actor,query.data);
      }else if(request.method==='POST'&&!url.search&&path[0]==='travel-change'){
-      const command=await readJson(request,travelChangeCommandSchema);if(request.headers.get('idempotency-key')!==command.operationId)throw new AppError('INVALID_REQUEST');data=await travel.recordChange(actor,command);
+      const command=await readJson(request,travelAnyChangeCommandSchema);if(request.headers.get('idempotency-key')!==command.operationId)throw new AppError('INVALID_REQUEST');data=await travel.recordChange(actor,command);
      }else if(request.method==='POST'&&!url.search&&path[0]==='travel-declaration'){
       const command=await readJson(request,travelDeclarationCommandSchema);if(request.headers.get('idempotency-key')!==command.operationId)throw new AppError('INVALID_REQUEST');data=await travel.declare(actor,command);
      }else throw new AppError('NOT_FOUND');
@@ -94,7 +103,8 @@ export async function handleFishingCalendar(request:Request,path:readonly string
      }
      const current=await program.calendarChoices(actor,parsed.data.learnerId);
      if(current.availability!==choices.availability||plans.some(plan=>!selectedFishingStage(current,plan.selection)))throw new AppError("NOT_FOUND");
-     data={availability:choices.availability,items:fishingCalendarEvents(plans,parsed.data)};
+     const shared=await academySharedCalendar(store,runtime.config,actor,plans,runtime.clock),ordinary=fishingCalendarEvents(plans,parsed.data).filter(e=>!shared.boundOriginalIds.includes(e.id));
+     data={availability:choices.availability,items:[...ordinary,...shared.events.filter(e=>{const date=fishingCivilTime(e.startsAt).date;return date>=parsed.data.from&&date<=parsed.data.to;})].sort((a,b)=>Date.parse(a.startsAt)-Date.parse(b.startsAt)||a.id.localeCompare(b.id))};
     }else if(request.method==='GET'&&path[0]==='family-home'){
      if(actor.role!=='parent')throw new AppError('FORBIDDEN');
      let selection:FishingCalendarSelection;try{selection=fishingCalendarSelectionQuery(url.searchParams);}catch{throw new AppError('INVALID_REQUEST');}
@@ -102,7 +112,8 @@ export async function handleFishingCalendar(request:Request,path:readonly string
      const choice=await authorize(actor,selection),view=await stage(actor,selection,null).read(actor,selection.reference);
      if(!view||view.role!=='parent'||view.enrollmentId!==selection.enrollmentId)throw new AppError('NOT_FOUND');
      const payment=await program.familyPayment(actor,selection.enrollmentId);await authorize(actor,selection);
-     data={selection,label:choice.label,view,payment} satisfies FishingFamilyHome;
+     const shared=await academySharedCalendar(store,runtime.config,actor,[{selection,choice,view}],runtime.clock);
+     data={selection,label:choice.label,view,payment,...(shared.events.length?{sharedEvents:shared.events,nextPhysical:shared.nextPhysical}:{})} satisfies FishingFamilyHome;
     }else if(request.method==="GET"&&path[0]==="plan"){
      const query=new URLSearchParams(url.searchParams),lessonLearnerId=query.get("lessonLearnerId");
      if(query.getAll("lessonLearnerId").length>1||lessonLearnerId!==null&&!z.uuid().safeParse(lessonLearnerId).success||actor.role!=="practitioner"&&lessonLearnerId!==null)throw new AppError("INVALID_REQUEST");query.delete("lessonLearnerId");
@@ -111,7 +122,8 @@ export async function handleFishingCalendar(request:Request,path:readonly string
      const operator=actor.role==="practitioner"?await program.calendarOperatorChoices(actor,selection.reference):{venues:[],roster:[],makeupNotices:[],makeupFits:[]};
      if(lessonLearnerId!==null&&!operator.roster.some(row=>row.learnerId===lessonLearnerId))throw new AppError("NOT_FOUND");
      const learner=actor.role==="practitioner"?lessonLearnerId:selection.learnerId;
-     data={selection,choice,view,operator,lessonLearnerId:learner,lessonLinks:await links(actor,view,learner)} satisfies FishingCalendarPlan;
+     const shared=await academySharedCalendar(store,runtime.config,actor,[{selection,choice,view}],runtime.clock);
+     data={selection,choice,view,operator,lessonLearnerId:learner,lessonLinks:await links(actor,view,learner),...(shared.events.length?{sharedEvents:shared.events,nextPhysical:shared.nextPhysical}:{})} satisfies FishingCalendarPlan;
      // Recheck current selection after potentially slower independent lesson reads.
      await authorize(actor,selection);
     }else if(request.method==="POST"&&path[0]==="command"){

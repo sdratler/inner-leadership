@@ -140,6 +140,7 @@ export class FishingStageService implements FishingOccurrenceReadPort {
    const now=this.clock.now(),c=fresh(await tx.resolveFreshContext(actor,ref),actor,ref,now);
    const familyAction=command.action==="notice"||command.action==="request_makeup";
    if(familyAction?c.actor.role!=="parent":!operator(c))fail("FORBIDDEN");
+   if(tx.assertPhysicalCommand)await tx.assertPhysicalCommand(c,command);
    // Current physical source/target binding precedes cached cross-cohort
    // attendance receipts; a historical reservation is not current authority.
    if(command.action==='attendance'&&tx.readMakeupAttendanceEnrollment)await tx.readMakeupAttendanceEnrollment(c,command.enrollmentId,command.occurrenceId);

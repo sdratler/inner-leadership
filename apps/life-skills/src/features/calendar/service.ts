@@ -104,7 +104,7 @@ export class CalendarService {
      AND a.starts_at-a.buffer_before*interval '1 minute'<$4 AND a.ends_at+a.buffer_after*interval '1 minute'>$3
      AND NOT EXISTS (SELECT 1 FROM ls_demo.cases d WHERE d.workspace_id=a.workspace_id AND d.case_id=a.case_id) LIMIT 1`,[c.workspace,c.actor.id,from,to]);
     if(conflicts)throw new AppError('CONFLICT');
-    await assertNoFishingInstructorConflict(c.tx,c.workspace,c.actor.id,from,to);
+    await assertNoFishingInstructorConflict(c.tx,c.workspace,c.actor.id,from,to,this.db.keyring);
    }
    const id=randomUUID();await c.tx.query(`INSERT INTO ls_calendar.availability(id,workspace_id,practitioner_id,starts_at,ends_at,kind) VALUES($1,$2,$3,$4,$5,$6)`,[id,c.workspace,c.actor.id,from,to,input.kind]);
    await this.db.history(c,null,'availability_changed');return {id,version:1,startsAt:from,endsAt:to,kind:input.kind};
@@ -142,7 +142,7 @@ export class CalendarService {
     AND NOT EXISTS (SELECT 1 FROM ls_demo.cases d WHERE d.workspace_id=a.workspace_id AND d.case_id=a.case_id)`,[c.workspace,c.actor.id,slot.startsAt,slot.endsAt,historicalDemoBatch!==null]);
   // Both the ordinary practitioner API and the private setup command refuse a
   // DEMO placement over a real appointment. DEMOs still reserve no capacity.
-  await assertNoFishingInstructorConflict(c.tx,c.workspace,a.practitionerId,slot.startsAt,slot.endsAt);
+  await assertNoFishingInstructorConflict(c.tx,c.workspace,a.practitionerId,slot.startsAt,slot.endsAt,this.db.keyring);
   if(demoBatch){if(busy.length)throw new AppError('CONFLICT');}
   else{
    const windows=await this.privateAvailability(c,slot.startsAt,slot.endsAt);

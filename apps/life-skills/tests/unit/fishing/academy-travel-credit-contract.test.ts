@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {expect,test} from 'vitest';
-import {travelChangeCommandSchema,travelDeclarationCommandSchema,travelCreditFrameSchema} from '../../../src/features/fishing/academy-travel-credit-contract.ts';
+import {travelChangeCommandSchema,travelDeclarationCommandSchema,travelCreditFrameSchema,travelAnyChangeCommandSchema,physicalTravelChangeCommandSchema,academyPhysicalTravelVersion} from '../../../src/features/fishing/academy-travel-credit-contract.ts';
 const selection={selectedEnrollmentId:randomUUID(),originalOccurrenceId:randomUUID()},declaration={operationId:randomUUID(),selection,changeId:randomUUID(),changeSha256:'a'.repeat(64),familyCannotAttend:true};
 test('guardian statement accepts only selected original and saved change references, never browser payment/source/guardian proof',()=>{
  expect(travelDeclarationCommandSchema.parse(declaration)).toEqual(declaration);
@@ -17,4 +17,11 @@ test('the browser frame cannot contain the private evidence, purchase, invitatio
  expect(travelCreditFrameSchema.safeParse(frame).success).toBe(true);
  for(const key of ['purchaseId','householdId','guardianSha256','learnerArtifact','parentSignature','invitation','settlements','privateEvidence'])expect(travelCreditFrameSchema.safeParse({...frame,[key]:{private:true}}).success).toBe(false);
  expect(travelCreditFrameSchema.safeParse({...frame,credit:{...frame.credit,replacementReservationId:randomUUID()}}).success).toBe(false);
+});
+
+test('shared physical change uses explicit event selectors without inventing Stage before/after revisions; legacy command representation is unchanged',()=>{
+ const legacy={operationId:randomUUID(),selection,beforeStageRevision:2,changedStageRevision:3,expectedStageRevision:3,revisedOneWayMinutes:45,estimateReference:'Synthetic estimate'};expect(JSON.stringify(travelAnyChangeCommandSchema.parse(legacy))).toBe(JSON.stringify(travelChangeCommandSchema.parse(legacy)));
+ const command={version:academyPhysicalTravelVersion,operationId:randomUUID(),selection,expectedStageRevision:3,physical:{eventId:randomUUID(),publicationId:randomUUID(),publicationRevision:2,tripSha256:'a'.repeat(64)},revisedOneWayMinutes:45,estimateReference:'Synthetic shared trip estimate'};expect(travelAnyChangeCommandSchema.parse(command)).toEqual(command);
+ for(const key of ['beforeStageRevision','changedStageRevision','guardianVerified','creditId','sourceApproved','familyCannotAttend','mayBook'])expect(physicalTravelChangeCommandSchema.safeParse({...command,[key]:true}).success).toBe(false);
+ expect(physicalTravelChangeCommandSchema.safeParse({...command,physical:{...command.physical,approved:true}}).success).toBe(false);
 });

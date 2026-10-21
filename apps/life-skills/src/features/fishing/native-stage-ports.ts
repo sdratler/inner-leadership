@@ -7,7 +7,7 @@ import type {AccountFacts,Actor} from "../identity/types.ts";
 import type {SqlSession} from "../identity/store.ts";
 import type {FishingStageRef} from "./contract.ts";
 import type {
- ApprovedStageTemplate,CanonicalOccurrence,EnrollmentProjection,FreshStageContext,
+ ApprovedStageTemplate,CanonicalOccurrence,EnrollmentProjection,FreshStageContext,StageCommand,StageState,
 } from "../fishing-stage/contract.ts";
 
 export const nativeStagePortsVersion="rm-fishing-native-stage-ports-v1" as const;
@@ -23,6 +23,9 @@ export type NativeStageHookContext=Readonly<{
 export type NativeStageSelection=Readonly<{selectedEnrollmentId:string|null}>;
 
 export interface FishingStageNativeHooks {
+ /** Current shared physical-event binding, under the same workspace lock.
+  * Optional for legacy controlled adapters; the actual native program supplies it. */
+ assertPhysicalCommand?(tx:SqlSession,context:NativeStageHookContext,plan:StageState|null,command:StageCommand):Promise<void>;
  /** Recheck native operator, guardian/child, cohort, terms, fit and capacity
   * evidence under lock. A different selected enrollment is not interchangeable.
   */
