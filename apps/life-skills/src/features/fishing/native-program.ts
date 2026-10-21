@@ -1,7 +1,9 @@
 import "server-only";
 import {academyAgreementAcceptanceSchema,academyTermsHash,readAcademyAgreementBundle,verifyAcademyAgreementAcceptance} from './academy-agreements.ts';
 import {randomUUID} from "node:crypto";
-import {owner03PolicyVersion} from '../fishing-payments/owner03-policy.ts';
+import {owner03PolicyVersion,owner03FamilyFeeDecision,validateOwner03RefundInput,owner03RefundProposal,owner03FamilyPrestartProposal,owner03FamilyPrestartInputSchema,type Owner03RefundInput} from '../fishing-payments/owner03-policy.ts';
+import {academyRefundQuerySchema,academyFamilyCancellationSchema,academyFamilyFeeReservationSchema,type AcademyRefundQuery,type AcademyRefundReviewReason,type AcademyFamilyFeeReservation} from './academy-refund-contract.ts';
+import {projectOwner03Attendance} from './academy-refund-projection.ts';
 import {monthlyBlockTermsCommandSchema,monthlyBlockScopeSchema} from './native-program-contract.ts';
 import {z} from "zod";
 import {AppError} from "../../lib/errors.ts";
@@ -26,12 +28,20 @@ import type {AcademyEnrollmentStage} from './academy-enrollment-contract.ts';
 import {academyOfferCommandSchema,type AcademyOfferCommand,type AcademyOfferNativeContext,type AcademyOfferSummary} from './academy-offer-contract.ts';
 
 const uuid=z.uuid(),label=z.string().min(1).max(160).refine(value=>value.trim().length>0);
-const receiptSchema=z.strictObject({id:uuid,revision:z.number().int().positive(),state:z.enum(["cohort","venue","fit","terms","hold","offer","withdrawn","confirmed","suspended","revoked"]),detail:z.discriminatedUnion('kind',[z.strictObject({kind:z.literal('offer_withdrawal'),offerId:uuid,reason:z.string().min(1).max(1200)}),z.strictObject({kind:z.literal('agreement_acceptance'),learnerId:uuid,parentAccountId:uuid,sourceApprovalId:uuid,sourceSha256:z.string().regex(/^[a-f0-9]{64}$/),acceptedAt:z.iso.datetime(),evidence:academyAgreementAcceptanceSchema})]).optional()});
+const receiptSchema=z.strictObject({id:uuid,revision:z.number().int().positive(),state:z.enum(["cohort","venue","fit","terms","hold","offer","withdrawn","confirmed","suspended","revoked","cancellation_group","family_fee_reserved"]),detail:z.discriminatedUnion('kind',[z.strictObject({kind:z.literal('offer_withdrawal'),offerId:uuid,reason:z.string().min(1).max(1200)}),z.strictObject({kind:z.literal('agreement_acceptance'),learnerId:uuid,parentAccountId:uuid,sourceApprovalId:uuid,sourceSha256:z.string().regex(/^[a-f0-9]{64}$/),acceptedAt:z.iso.datetime(),evidence:academyAgreementAcceptanceSchema})]).optional()});
 type Receipt=z.infer<typeof receiptSchema>;
 type Context={tx:SqlSession;actor:AccountFacts;now:Date};
 type Cohort={stageId:string;cohortId:string;stage:1|2|3|4;operatorId:string;instructorId:string;templateApprovalId:string;termsApprovalId:string;policyApprovalId:string;capacity:number;revision:number;active:boolean;labelCiphertext:string};
 type EnrollmentRow={id:string;stageId:string;purchaseId:string;purchaseLineId:string;learnerId:string;householdId:string;fitDecisionId:string;termsAcceptanceId:string|null;blockAcceptanceId:string|null;policyApprovalId:string;holdId:string;guardianDigest:string;state:"confirmed"|"suspended"|"revoked";revision:number;actorId:string;commandId:string;recordedAt:Date};
 type Acceptance={id:string;stageId:string;learnerId:string;householdId:string;parentId:string;sourceApprovalId:string;sourceHash:string;acceptedAt:Date};
+type RefundFactsBase={householdId:string;payerAccountId:string;purchaseId:string;childId:string};
+type RefundFacts=RefundFactsBase&({state:'review_required';reason:AcademyRefundReviewReason}|{state:'ready';input:Owner03RefundInput;provenance:{sourceApprovalId:string;sourceSha256:string;acceptanceId:string;paymentRevision:number;settlementSha256:string;guardianSha256:string;enrollmentId:string|null;enrollmentRevision:number|null;plans:{stageId:string;revision:number;sha256:string}[]}});
+type RefundHistoryRow={id:string;householdId:string;decisionId:string;hash:string;ciphertext:string;actorId:string;commandId:string;recordedAt:Date};
+type CancellationRow=RefundHistoryRow&{payerAccountId:string;policyVersion:string;revision:number;purchaseIds:string[]};
+type FeeReservationRow=RefundHistoryRow&{cancellationId:string;feeCents:number;reviewHash:string;proposalHash:string};
+const refundHistoryColumns=`id,household_id AS "householdId",decision_id AS "decisionId",request_sha256 AS hash,payload_ciphertext AS ciphertext,actor_id AS "actorId",command_id AS "commandId",recorded_at AS "recordedAt"`;
+const cancellationPayloadSchema=z.strictObject({command:academyFamilyCancellationSchema,actorId:uuid,recordedAt:z.iso.datetime()});
+const feePayloadSchema=z.strictObject({command:academyFamilyFeeReservationSchema,groupSha256:z.string().regex(/^[a-f0-9]{64}$/),input:owner03FamilyPrestartInputSchema,actorId:uuid,recordedAt:z.iso.datetime()});
 const cohortColumns=`stage_id AS "stageId",cohort_id AS "cohortId",stage,operator_id AS "operatorId",instructor_id AS "instructorId",template_approval_id AS "templateApprovalId",terms_approval_id AS "termsApprovalId",policy_approval_id AS "policyApprovalId",child_capacity AS capacity,revision,active,label_ciphertext AS "labelCiphertext"`;
 const enrollmentColumns=`id,stage_id AS "stageId",purchase_id AS "purchaseId",purchase_line_id AS "purchaseLineId",learner_id AS "learnerId",household_id AS "householdId",fit_decision_id AS "fitDecisionId",terms_acceptance_id AS "termsAcceptanceId",block_acceptance_id AS "blockAcceptanceId",policy_approval_id AS "policyApprovalId",hold_id AS "holdId",guardian_digest AS "guardianDigest",state,revision,actor_id AS "actorId",command_id AS "commandId",recorded_at AS "recordedAt"`;
 function fail(code:ConstructorParameters<typeof FishingProgramError>[0]):never{throw new FishingProgramError(code);}
@@ -252,7 +262,126 @@ export class NativeFishingProgram {
   const blank:PaymentState={...p.state,revision:1,paidCents:0,refundedCents:0,feesCents:0,state:"unpaid",dues:p.line.dues,settlements:[],revisedDebt:null};
   const computed=settled(blank,facts.sort((a,b)=>(a.kind==="payment"?0:1)-(b.kind==="payment"?0:1)),this.clock.now().toISOString());
   requireFact(computed.paidCents===p.state.paidCents&&computed.refundedCents===p.state.refundedCents&&computed.feesCents===p.state.feesCents&&computed.dues.every((due,i)=>due.paidCents===p.state.dues[i]?.paidCents)&&digest(computed.settlements.map(value=>[value.kind,value.canonicalTransactionId,value.cents,value.purchaseLineId]).sort())===digest(p.state.settlements.map(value=>[value.kind,value.canonicalTransactionId,value.cents,value.purchaseLineId]).sort()),"UNAVAILABLE");
+  return facts;
  }
+ private async owner03RefundFacts(c:Context,input:AcademyRefundQuery):Promise<RefundFacts>{
+  this.operator(c);requireFact(await demoAccountBatch(c.tx,c.actor.workspaceId,c.actor.id)===null,'FORBIDDEN');
+  const workspace=c.actor.workspaceId,p=await this.purchase(c.tx,workspace,input.purchaseId),cohort=await this.cohort(c.tx,workspace,p.line.stageId);this.operator(c,cohort);
+  requireFact(p.offer.operatorAccountId===c.actor.id&&p.offer.policyVersion===owner03PolicyVersion&&p.policyId===cohort.policyApprovalId,'POLICY_REQUIRED');
+  const {source,terms,bundle}=await this.monthlyTerms(c.tx,workspace,cohort,c.now),merchant=this.options.merchant;
+  requireFact(merchant&&merchant.accountId===p.state.providerAccountId&&merchant.livemode===p.state.livemode,'POLICY_REQUIRED');
+  requireFact(terms.termsVersion===p.offer.terms.version&&terms.sourceVersion===p.offer.sourceVersion,'CONFLICT');
+  const guardianSha256=await this.guardian(c.tx,workspace,p.offer.payerAccountId,p.line.learnerId,p.offer.householdId);
+  let accepted:Acceptance;
+  if(p.line.mode==='monthly_block')accepted=await this.monthlyAcceptance(c.tx,workspace,monthlyBlockScopeSchema.parse(p.line.block),cohort,p.line.learnerId,p.offer.payerAccountId,p.offer.householdId,c.now);
+  else{
+   const rows=await c.tx.query<{id:string;commandId:string}>(`SELECT id,command_id AS "commandId" FROM ls_fishing_stage.terms_acceptances WHERE workspace_id=$1 AND stage_id=$2 AND learner_id=$3 AND household_id=$4 AND parent_id=$5 AND source_approval_id=$6 LIMIT 2 FOR SHARE`,[workspace,p.line.stageId,p.line.learnerId,p.offer.householdId,p.offer.payerAccountId,cohort.termsApprovalId]);requireFact(rows.length===1,'APPROVAL_REQUIRED');
+   const row=rows[0]!;accepted=await this.acceptance(c.tx,workspace,row.id,cohort,p.line.learnerId,p.offer.payerAccountId,p.offer.householdId,c.now);
+   const saved=await one<{action:string;hash:string;ciphertext:string}>(c.tx,`SELECT action,request_sha256 AS hash,result_ciphertext AS ciphertext FROM ls_fishing_stage.command_receipts WHERE workspace_id=$1 AND actor_id=$2 AND command_id=$3 FOR SHARE`,[workspace,p.offer.payerAccountId,row.commandId]);requireFact(saved&&saved.action==='terms.accept','APPROVAL_REQUIRED');
+   const receipt=receiptSchema.parse(this.decode('receipt',workspace,`${p.offer.payerAccountId}:${row.commandId}:${saved.action}:${saved.hash}`,saved.ciphertext)),detail=receipt.detail;
+   requireFact(receipt.id===accepted.id&&receipt.state==='terms'&&detail?.kind==='agreement_acceptance'&&detail.learnerId===p.line.learnerId&&detail.parentAccountId===p.offer.payerAccountId&&detail.sourceApprovalId===cohort.termsApprovalId&&detail.sourceSha256===source.hash&&detail.acceptedAt===accepted.acceptedAt.toISOString(),'APPROVAL_REQUIRED');
+   verifyAcademyAgreementAcceptance(bundle,detail.evidence);
+  }
+  requireFact(p.offer.terms.acceptedBy===accepted.parentId&&accepted.acceptedAt.valueOf()<=Date.parse(p.offer.terms.acceptedAt),'APPROVAL_REQUIRED');
+  const facts=await this.paymentFacts(c.tx,workspace,p),base={householdId:p.offer.householdId,payerAccountId:p.offer.payerAccountId,purchaseId:p.state.purchaseId,childId:p.line.learnerId};
+  const operations=await c.tx.query<{kind:string;value:unknown}>(`SELECT kind,CASE WHEN octet_length(operation_json::text)<=131072 THEN operation_json ELSE NULL END AS value FROM ls_fishing_payments.operations WHERE workspace_id=$1 AND purchase_id=$2 LIMIT 101 FOR SHARE`,[workspace,p.state.purchaseId]);requireFact(operations.length<=100,'UNAVAILABLE');
+  const operationSchema=z.object({kind:z.enum(['hosted_invoice','refund']),state:z.enum(['reserved','unknown','confirmed']),providerAccountId:z.literal(merchant.accountId),livemode:z.literal(merchant.livemode),purchaseId:z.literal(p.state.purchaseId)});
+  for(const op of operations){const value=operationSchema.safeParse(op.value);requireFact(value.success&&value.data.kind===op.kind,'UNAVAILABLE');if(op.kind==='refund'||value.data.state!=='confirmed')return {...base,state:'review_required',reason:'refund_outcome_reconciliation_required'};}
+  if(facts.some(f=>f.kind!=='payment')||p.state.refundedCents!==0||p.state.state==='reconciliation_required')return {...base,state:'review_required',reason:'refund_outcome_reconciliation_required'};
+  requireFact(facts.length>0&&facts.length<=100&&p.state.paidCents===p.state.originalTotalCents&&p.state.dues.every(d=>d.state==='paid'&&d.paidCents===d.amountCents),'POLICY_REQUIRED');
+  // Include complete saved journal metadata in the review digest, not caller labels.
+  for(const fact of facts){const inbox=await one<{value:unknown}>(c.tx,`SELECT CASE WHEN octet_length(receipt_json::text)<=131072 THEN receipt_json ELSE NULL END AS value FROM ls_fishing_payments.inbox WHERE provider_account_id=$1 AND livemode=$2 AND event_id=$3 AND processed_at IS NOT NULL FOR SHARE`,[merchant.accountId,merchant.livemode,fact.providerReceiptId]);requireFact(z.object({eventId:z.literal(fact.providerReceiptId),providerAccountId:z.literal(merchant.accountId),livemode:z.literal(merchant.livemode),apiVersion:z.literal(merchant.apiVersion)}).safeParse(inbox?.value).success,'UNAVAILABLE');}
+  const enrollments=await c.tx.query<{id:string;revision:number}>(`SELECT id,revision FROM ls_fishing_stage.enrollments WHERE workspace_id=$1 AND purchase_id=$2 AND purchase_line_id=$3 LIMIT 2 FOR SHARE`,[workspace,p.state.purchaseId,p.line.id]);requireFact(enrollments.length<=1,'UNAVAILABLE');
+  const enrollment=enrollments[0]?await this.enrollment(c.tx,workspace,enrollments[0].id,c.now):null;
+  requireFact(!enrollment||enrollment.purchaseId===p.state.purchaseId&&enrollment.purchaseLineId===p.line.id&&enrollment.learnerId===p.line.learnerId,'UNAVAILABLE');
+  const plan=await this.plan(c.tx,workspace,p.line.stageId),ids=p.line.mode==='monthly_block'?[...p.line.block.occurrenceIds]:plan.occurrences.map(o=>o.id),plans=[plan];
+  for(let index=0;index<plans.length;index++){
+   requireFact(plans.length<=16,'UNAVAILABLE');
+   const replacements=enrollment?plans[index]!.makeups.filter(m=>m.notice.enrollmentId===enrollment.id&&m.notice.replacementOccurrenceId!==null&&m.notice.replacementReservationId!==null):[];requireFact(replacements.length<=100,'UNAVAILABLE');
+   for(const replacement of replacements){const n=replacement.notice;
+    const link=await one(c.tx,`SELECT l.entitlement_id FROM ls_fishing_stage.makeup_links l JOIN ls_fishing_stage.seat_reservations s ON s.workspace_id=l.workspace_id AND s.id=l.reservation_id WHERE l.workspace_id=$1 AND l.source_stage_id=$2 AND l.entitlement_id=$3 AND l.enrollment_id=$4 AND l.learner_id=$5 AND l.occurrence_id=$6 AND l.reservation_id=$7 AND s.enrollment_id=l.enrollment_id AND s.learner_id=l.learner_id AND s.occurrence_id=l.occurrence_id`,[workspace,plans[index]!.stageId,n.entitlementId,enrollment!.id,p.line.learnerId,n.replacementOccurrenceId,n.replacementReservationId]);requireFact(link,'UNAVAILABLE');
+    if(!plans.some(s=>s.occurrences.some(o=>o.id===n.replacementOccurrenceId))){const target=await one<{stageId:string}>(c.tx,`SELECT stage_id AS "stageId" FROM ls_fishing_stage.occurrences WHERE workspace_id=$1 AND id=$2`,[workspace,n.replacementOccurrenceId]);requireFact(target,'UNAVAILABLE');plans.push(await this.plan(c.tx,workspace,target.stageId));}
+   }
+  }
+  const projection=projectOwner03Attendance({purchaseId:p.state.purchaseId,childId:p.line.learnerId,scopeId:p.line.mode==='monthly_block'?p.line.block.id:p.line.stageId,occurrenceIds:ids,enrollmentId:enrollment?.id??null,plans,now:c.now});
+  if(projection.state!=='ready')return {...base,...projection};
+  const priceBasis=p.line.discountBasis,acceptedOffer={id:p.offer.id,revision:p.offer.revision,policyVersion:owner03PolicyVersion,purchaseLineId:p.line.id,childId:p.line.learnerId,priceCents:p.line.totalCents,priceBasis,eligibilityEvidenceId:p.line.eligibility.evidenceId,acceptanceId:accepted.id,termsVersion:p.offer.terms.version};
+  const purchase={policyVersion:owner03PolicyVersion,program:'sunday_fishing_academy' as const,purchaseId:p.state.purchaseId,purchaseLineId:p.line.id,childId:p.line.learnerId,stageId:p.line.stageId,stage:p.line.stage,currency:'USD' as const,acceptedOffer,...(p.line.mode==='monthly_block'?{mode:'monthly_block' as const,blockId:p.line.block.id,purchasedLessons:4 as const,priceCents:65000 as const,priceBasis:'monthly_block_full_rate' as const}:p.line.mode==='prepay'?{mode:'stage_prepay' as const,purchasedLessons:12 as const,priceCents:p.line.totalCents,priceBasis}:{mode:'installments' as const,purchasedLessons:12 as const,priceCents:195000 as const,priceBasis:'three_full_rate_dues' as const})};
+  const refundInput=validateOwner03RefundInput({purchase,payment:{purchaseId:p.state.purchaseId,childId:p.line.learnerId,currency:'USD',paidCents:p.state.paidCents,refundedCents:p.state.refundedCents,settlementReferences:facts.map(f=>f.canonicalTransactionId)},attendance:{scopeId:p.line.mode==='monthly_block'?p.line.block.id:p.line.stageId,attendedCount:projection.attendedCount,lessons:projection.lessons},reason:input.reason,timing:projection.timing,multiChildPrestart:false});
+  return {...base,state:'ready',input:refundInput,provenance:{sourceApprovalId:accepted.sourceApprovalId,sourceSha256:source.hash,acceptanceId:accepted.id,paymentRevision:p.state.revision,settlementSha256:digest(facts),guardianSha256,enrollmentId:enrollment?.id??null,enrollmentRevision:enrollments[0]?.revision??null,plans:plans.map(s=>({stageId:s.stageId,revision:s.revision,sha256:stageDigest(s)}))}};
+ }
+ /** Current financial-owner read. The digest is a review fence, never a legacy
+  * refund approval token, provider operation, charge, credit or enrollment. */
+ async previewOwner03Refund(actor:Actor,raw:unknown){const input=academyRefundQuerySchema.parse(raw);try{return await this.db.transaction(async tx=>{
+  const c=await this.actor(tx,actor),facts=await this.owner03RefundFacts(c,input);await this.actor(tx,actor);
+  if(facts.state!=='ready')return {status:'POLICY_REQUIRED' as const,reason:facts.reason,purchaseId:facts.purchaseId,effect:'none' as const,providerApproval:'not_admitted' as const};
+  if(facts.input.timing==='prestart'){
+   const groups=await tx.query<{id:string}>(`SELECT id FROM ls_fishing_stage.refund_cancellations WHERE workspace_id=$1 AND purchase_ids @> ARRAY[$2::uuid] LIMIT 2 FOR SHARE`,[c.actor.workspaceId,facts.purchaseId]);requireFact(groups.length<=1,'UNAVAILABLE');
+   if(groups.length){const group=await this.familyCancellation(c,groups[0]!.id);requireFact(group.command.householdId===facts.householdId&&group.command.payerAccountId===facts.payerAccountId,'UNAVAILABLE');facts.input={...facts.input,multiChildPrestart:true};}
+   const reserved=await one(tx,`SELECT id FROM ls_fishing_stage.refund_fee_reservations WHERE workspace_id=$1 AND household_id=$2 AND decision_id=$3`,[c.actor.workspaceId,facts.householdId,owner03FamilyFeeDecision]);
+   if(reserved)return {status:'RECONCILIATION_REQUIRED' as const,reason:'prior_cancellation_outcome' as const,purchaseId:facts.purchaseId,effect:'none' as const,providerApproval:'not_admitted' as const};
+  }
+  const proposal=owner03RefundProposal(facts.input);await this.actor(tx,actor);return {...proposal,reviewSha256:digest({facts,proposal}),effect:'none' as const,providerApproval:'not_admitted' as const};
+ });}catch(error){clean(error);}}
+
+ private async refundHistoryReceipt(c:Context,row:RefundHistoryRow,action:string,state:Receipt['state'],pending?:{commandId:string;hash:string}){
+  requireFact(row.recordedAt instanceof Date&&Number.isFinite(row.recordedAt.valueOf())&&row.recordedAt<=c.now,'UNAVAILABLE');
+  const receipt=await one<{action:string;hash:string;ciphertext:string}>(c.tx,`SELECT action,request_sha256 AS hash,result_ciphertext AS ciphertext FROM ls_fishing_stage.command_receipts WHERE workspace_id=$1 AND actor_id=$2 AND command_id=$3 FOR SHARE`,[c.actor.workspaceId,row.actorId,row.commandId]);
+  if(!receipt){requireFact(pending&&row.actorId===c.actor.id&&row.commandId===pending.commandId&&row.hash===pending.hash,'UNAVAILABLE');return;}
+  requireFact(receipt.action===action&&receipt.hash===row.hash,'UNAVAILABLE');const saved=receiptSchema.parse(this.decode('receipt',c.actor.workspaceId,`${row.actorId}:${row.commandId}:${action}:${row.hash}`,receipt.ciphertext));requireFact(saved.id===row.id&&saved.revision===1&&saved.state===state,'UNAVAILABLE');
+ }
+ private async familyCancellation(c:Context,id:string,pending?:{commandId:string;hash:string}){
+  const row=await one<CancellationRow>(c.tx,`SELECT ${refundHistoryColumns},payer_account_id AS "payerAccountId",policy_version AS "policyVersion",revision,purchase_ids AS "purchaseIds" FROM ls_fishing_stage.refund_cancellations WHERE workspace_id=$1 AND id=$2 FOR SHARE`,[c.actor.workspaceId,id]);requireFact(row,'NOT_FOUND');
+  const saved=cancellationPayloadSchema.parse(this.decode('refund-cancellation',c.actor.workspaceId,row.id,row.ciphertext)),command=saved.command;
+  requireFact(command.id===row.id&&command.householdId===row.householdId&&command.payerAccountId===row.payerAccountId&&command.commandId===row.commandId&&saved.actorId===row.actorId&&saved.recordedAt===row.recordedAt.toISOString()&&row.policyVersion===owner03PolicyVersion&&row.decisionId===owner03FamilyFeeDecision&&row.revision===1&&row.hash===digest(command)&&digest(command.purchaseIds)===digest(row.purchaseIds),'UNAVAILABLE');
+  await this.refundHistoryReceipt(c,row,'refund.family.create','cancellation_group',pending);return {...saved,sha256:digest(saved)};
+ }
+ private async familyRefundMembers(c:Context,command:z.infer<typeof academyFamilyCancellationSchema>){
+  this.operator(c);const facts:RefundFacts[]=[],children=new Set<string>();
+  for(const purchaseId of command.purchaseIds){const fact=await this.owner03RefundFacts(c,{purchaseId,reason:'voluntary'});requireFact(fact.householdId===command.householdId&&fact.payerAccountId===command.payerAccountId&&!children.has(fact.childId),'INVALID_REQUEST');children.add(fact.childId);facts.push(fact);}
+  return facts;
+ }
+ private async familyRefundFacts(c:Context,group:Awaited<ReturnType<NativeFishingProgram['familyCancellation']>>){
+  const facts=await this.familyRefundMembers(c,group.command),ready:Extract<RefundFacts,{state:'ready'}>[]=[];
+  for(const fact of facts){if(fact.state!=='ready')return {state:'review_required' as const,reason:fact.reason};ready.push(fact);}
+  const input=owner03FamilyPrestartInputSchema.parse({policyVersion:owner03PolicyVersion,decisionId:owner03FamilyFeeDecision,cancellationId:group.command.id,householdId:group.command.householdId,payerAccountId:group.command.payerAccountId,nativeGroupReference:`native:${group.command.id}`,nativeGroupRevision:1,priorOutcome:'none',members:ready.map(f=>({householdId:f.householdId,payerAccountId:f.payerAccountId,refundInput:{...f.input,multiChildPrestart:true}}))});
+  return {state:'ready' as const,input,reviewSha256:digest({groupSha256:group.sha256,facts:ready})};
+ }
+ /** Saves the explicit joint request's complete selected membership, never an
+  * inferred list of all children who happen to share a payer. No cash effect. */
+ createOwner03FamilyCancellation(actor:Actor,raw:unknown){const input=academyFamilyCancellationSchema.parse(raw);return this.command(actor,input.commandId,'refund.family.create',input,async c=>{
+  const facts=await this.familyRefundMembers(c,input);requireFact(facts.every(f=>f.state==='ready'&&f.input.timing==='prestart'&&f.input.attendance.attendedCount===0),'POLICY_REQUIRED');
+  const overlap=await one(c.tx,`SELECT id FROM ls_fishing_stage.refund_cancellations WHERE workspace_id=$1 AND purchase_ids && $2::uuid[] AND id<>$3 LIMIT 1 FOR SHARE`,[c.actor.workspaceId,input.purchaseIds,input.id]);requireFact(!overlap,'CONFLICT');
+  const existing=await one(c.tx,`SELECT id FROM ls_fishing_stage.refund_cancellations WHERE workspace_id=$1 AND id=$2`,[c.actor.workspaceId,input.id]);if(existing){const group=await this.familyCancellation(c,input.id,{commandId:input.commandId,hash:digest(input)});requireFact(group.actorId===c.actor.id&&digest(group.command)===digest(input),'CONFLICT');}
+  const reserved=await this.familyFeeReservation(c,input.householdId);requireFact(!reserved||existing&&reserved.row.cancellationId===input.id,'POLICY_REQUIRED');
+ },async c=>{
+  const saved={command:input,actorId:c.actor.id,recordedAt:c.now.toISOString()};
+  await c.tx.query(`INSERT INTO ls_fishing_stage.refund_cancellations(workspace_id,id,household_id,payer_account_id,policy_version,decision_id,revision,purchase_ids,request_sha256,payload_ciphertext,actor_id,command_id,recorded_at) VALUES($1,$2,$3,$4,$5,$6,1,$7::uuid[],$8,$9,$10,$11,$12)`,[c.actor.workspaceId,input.id,input.householdId,input.payerAccountId,owner03PolicyVersion,owner03FamilyFeeDecision,input.purchaseIds,digest(input),this.encode('refund-cancellation',c.actor.workspaceId,input.id,saved),c.actor.id,input.commandId,c.now]);return {id:input.id,revision:1,state:'cancellation_group'};
+ });}
+ private async familyFeeReservation(c:Context,householdId:string,pending?:AcademyFamilyFeeReservation){
+  const row=await one<FeeReservationRow>(c.tx,`SELECT ${refundHistoryColumns},cancellation_id AS "cancellationId",fee_cents AS "feeCents",review_sha256 AS "reviewHash",proposal_sha256 AS "proposalHash" FROM ls_fishing_stage.refund_fee_reservations WHERE workspace_id=$1 AND household_id=$2 AND decision_id=$3 FOR SHARE`,[c.actor.workspaceId,householdId,owner03FamilyFeeDecision]);if(!row)return null;
+  const saved=feePayloadSchema.parse(this.decode('refund-fee',c.actor.workspaceId,row.id,row.ciphertext)),command=saved.command,group=await this.familyCancellation(c,row.cancellationId),input=saved.input;
+  requireFact(command.id===row.id&&command.commandId===row.commandId&&command.cancellationId===row.cancellationId&&command.expectedPreviewSha256===row.reviewHash&&digest(command)===row.hash&&saved.actorId===row.actorId&&saved.recordedAt===row.recordedAt.toISOString()&&row.feeCents===20000&&row.householdId===group.command.householdId&&saved.groupSha256===group.sha256,'UNAVAILABLE');
+  requireFact(input.cancellationId===group.command.id&&input.householdId===group.command.householdId&&input.payerAccountId===group.command.payerAccountId&&input.nativeGroupReference===`native:${group.command.id}`&&input.nativeGroupRevision===1&&input.priorOutcome==='none'&&digest(input.feeAllocation)===digest(command.feeAllocation)&&digest(input.members.map(m=>m.refundInput.purchase.purchaseId).sort())===digest([...group.command.purchaseIds].sort())&&new Set(input.members.map(m=>m.refundInput.purchase.childId)).size===input.members.length,'UNAVAILABLE');
+  const proposal=owner03FamilyPrestartProposal(input);requireFact(proposal.status==='PROPOSAL_ONLY'&&digest(proposal)===row.proposalHash,'UNAVAILABLE');
+  await this.refundHistoryReceipt(c,row,'refund.family.reserve','family_fee_reserved',pending?{commandId:pending.commandId,hash:digest(pending)}:undefined);return {row,saved,proposal};
+ }
+ async readOwner03FamilyCancellation(actor:Actor,id:string){uuid.parse(id);try{return await this.db.transaction(async tx=>{
+  const c=await this.actor(tx,actor),group=await this.familyCancellation(c,id),facts=await this.familyRefundFacts(c,group),reserved=await this.familyFeeReservation(c,group.command.householdId);await this.actor(tx,actor);
+  const base={cancellationId:id,revision:1 as const,effect:'none' as const,providerApproval:'not_admitted' as const};
+  if(reserved){if(reserved.row.cancellationId!==id||facts.state!=='ready'||facts.reviewSha256!==reserved.row.reviewHash)return {...base,status:'RECONCILIATION_REQUIRED' as const,reason:'prior_cancellation_outcome' as const,reservationId:reserved.row.id};return {...reserved.proposal,...base,status:'RESERVED_PROPOSAL_ONLY' as const,reservationId:reserved.row.id,reviewSha256:reserved.row.reviewHash,proposalSha256:reserved.row.proposalHash};}
+  if(facts.state!=='ready')return {...base,status:'POLICY_REQUIRED' as const,reason:facts.reason};return {...owner03FamilyPrestartProposal(facts.input),...base,reviewSha256:facts.reviewSha256};
+ });}catch(error){clean(error);}}
+ /** Atomic once-only family allocation reservation. The immutable snapshot is
+  * historical proposal evidence, NOT a provider approval or dispatched refund. */
+ reserveOwner03FamilyFee(actor:Actor,raw:unknown){const input=academyFamilyFeeReservationSchema.parse(raw);return this.command(actor,input.commandId,'refund.family.reserve',input,async c=>{
+  const group=await this.familyCancellation(c,input.cancellationId),facts=await this.familyRefundFacts(c,group);requireFact(facts.state==='ready','POLICY_REQUIRED');requireFact(facts.reviewSha256===input.expectedPreviewSha256,'CONFLICT');requireFact(owner03FamilyPrestartProposal({...facts.input,feeAllocation:input.feeAllocation}).status==='PROPOSAL_ONLY','POLICY_REQUIRED');
+  const existing=await this.familyFeeReservation(c,group.command.householdId,input);if(existing)requireFact(existing.row.id===input.id&&existing.row.actorId===c.actor.id&&existing.row.commandId===input.commandId&&existing.row.hash===digest(input),'CONFLICT');
+ },async c=>{
+  const group=await this.familyCancellation(c,input.cancellationId),facts=await this.familyRefundFacts(c,group);requireFact(facts.state==='ready'&&facts.reviewSha256===input.expectedPreviewSha256,'CONFLICT');const helperInput={...facts.input,feeAllocation:input.feeAllocation},proposal=owner03FamilyPrestartProposal(helperInput);requireFact(proposal.status==='PROPOSAL_ONLY','POLICY_REQUIRED');
+  const saved={command:input,groupSha256:group.sha256,input:helperInput,actorId:c.actor.id,recordedAt:c.now.toISOString()};await c.tx.query(`INSERT INTO ls_fishing_stage.refund_fee_reservations(workspace_id,id,cancellation_id,household_id,decision_id,fee_cents,review_sha256,proposal_sha256,request_sha256,payload_ciphertext,actor_id,command_id,recorded_at) VALUES($1,$2,$3,$4,$5,20000,$6,$7,$8,$9,$10,$11,$12)`,[c.actor.workspaceId,input.id,input.cancellationId,group.command.householdId,owner03FamilyFeeDecision,facts.reviewSha256,digest(proposal),digest(input),this.encode('refund-fee',c.actor.workspaceId,input.id,saved),c.actor.id,input.commandId,c.now]);return {id:input.id,revision:1,state:'family_fee_reserved'};
+ });}
+
  setEnrollmentState(actor:Actor,raw:unknown){const input=enrollmentStateCommandSchema.parse(raw);return this.command(actor,input.commandId,"enrollment.state",input,async c=>{
   const e=await this.enrollmentRow(c.tx,c.actor.workspaceId,input.id);this.operator(c,await this.cohort(c.tx,c.actor.workspaceId,e.stageId));
  },async c=>{const rows=await c.tx.query("UPDATE ls_fishing_stage.enrollments SET state=$4,revision=revision+1 WHERE workspace_id=$1 AND id=$2 AND revision=$3 RETURNING revision",[c.actor.workspaceId,input.id,input.expectedRevision,input.state]);requireFact(rows.length===1,"CONFLICT");return {id:input.id,revision:input.expectedRevision+1,state:input.state};});}
@@ -426,9 +555,9 @@ export class NativeFishingProgram {
   });}catch(error){clean(error);}
  }
  private async calendarCatalog(tx:SqlSession):Promise<boolean>{
-  const payment=["campaigns","commands","founder_households","inbox","offers","operations","outbox","purchases","reminders","settlements"],stage=["block_acceptances","cohorts","command_receipts","enrollments","fit_decisions","makeup_links","occurrences","offer_approvals","operations","plans","resource_reservations","revisions","seat_reservations","source_approvals","terms_acceptances","venues"];
+  const payment=["campaigns","commands","founder_households","inbox","offers","operations","outbox","purchases","reminders","settlements"],stage=["block_acceptances","cohorts","command_receipts","enrollments","fit_decisions","makeup_links","occurrences","offer_approvals","operations","plans","refund_cancellations","refund_fee_reservations","resource_reservations","revisions","seat_reservations","source_approvals","terms_acceptances","venues"];
   const names=[...payment.map(name=>`ls_fishing_payments.${name}`),...stage.map(name=>`ls_fishing_stage.${name}`)];
-  const rows=await tx.query<{name:string;relation:string|null;kind:string|null}>(`SELECT e.name,c.oid::regclass::text AS relation,c.relkind AS kind FROM unnest(ARRAY[${names.map((_,index)=>`$${index+1}`).join(',')}]::text[]) AS e(name) LEFT JOIN pg_class c ON c.oid=to_regclass(e.name) ORDER BY e.name`,names);requireFact(rows.length===26,"UNAVAILABLE");
+  const rows=await tx.query<{name:string;relation:string|null;kind:string|null}>(`SELECT e.name,c.oid::regclass::text AS relation,c.relkind AS kind FROM unnest(ARRAY[${names.map((_,index)=>`$${index+1}`).join(',')}]::text[]) AS e(name) LEFT JOIN pg_class c ON c.oid=to_regclass(e.name) ORDER BY e.name`,names);requireFact(rows.length===28,"UNAVAILABLE");
   const namespaces=await tx.query<{name:string;present:boolean}>("SELECT name,to_regnamespace(name) IS NOT NULL AS present FROM unnest(ARRAY[$1,$2]::text[]) AS e(name) ORDER BY name",["ls_fishing_payments","ls_fishing_stage"]);requireFact(namespaces.length===2,"UNAVAILABLE");
   if(rows.every(row=>row.relation===null)&&namespaces.every(row=>row.present===false))return false;
   requireFact(namespaces.every(row=>row.present===true)&&rows.every(row=>row.relation===row.name&&row.kind==="r"),"UNAVAILABLE");
@@ -443,7 +572,7 @@ export class NativeFishingProgram {
   const expectedFunctions=["ls_fishing_stage.reject_program_history_rewrite","ls_fishing_stage.verify_program_stage_receipt",...(stripeReady?["ls_fishing_payments.preserve_stripe_binding"]:[])].sort();
   requireFact(JSON.stringify(functions.map(row=>row.name))===JSON.stringify(expectedFunctions),"UNAVAILABLE");
   const triggers=await tx.query<{name:string}>("SELECT c.relname||':'||t.tgname AS name FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=ANY(ARRAY[$1,$2]::text[]) AND NOT t.tgisinternal ORDER BY name",["ls_fishing_payments","ls_fishing_stage"]);
-  const expectedTriggers=["block_acceptances:immutable_program_block_terms","command_receipts:exact_program_stage_receipt","command_receipts:immutable_program_commands","fit_decisions:immutable_program_fit","offer_approvals:immutable_program_offers","source_approvals:immutable_program_sources","terms_acceptances:immutable_program_terms",...(stripeReady?["customer_bindings:preserve_customer_binding","object_bindings:preserve_object_binding"]:[])].sort();
+  const expectedTriggers=["block_acceptances:immutable_program_block_terms","command_receipts:exact_program_stage_receipt","command_receipts:immutable_program_commands","fit_decisions:immutable_program_fit","offer_approvals:immutable_program_offers","refund_cancellations:immutable_refund_cancellations","refund_fee_reservations:immutable_refund_fee_reservations","source_approvals:immutable_program_sources","terms_acceptances:immutable_program_terms",...(stripeReady?["customer_bindings:preserve_customer_binding","object_bindings:preserve_object_binding"]:[])].sort();
   requireFact(JSON.stringify(triggers.map(row=>row.name))===JSON.stringify(expectedTriggers),"UNAVAILABLE");return true;
  }
  async calendarOperatorChoices(actor:Actor,reference:FishingStageRef){
