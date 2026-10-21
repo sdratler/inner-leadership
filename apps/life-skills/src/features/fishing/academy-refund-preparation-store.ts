@@ -38,6 +38,21 @@ export class AcademyRefundPreparationStore{
   if(!receipt||receipt.action!=='refund.approval.prepare'||receipt.hash!==row.requestHash)throw new AppError('UNAVAILABLE');const read=receiptSchema.parse(this.decode(actor.workspaceId,'receipt',row.commandId,receipt.ciphertext));if(digest(read.command)!==row.requestHash||digest(read.result)!==digest(expected))throw new AppError('UNAVAILABLE');return {command,result:expected};
  }
  async read(actor:Actor,id:string){this.guard(actor);return this.db.transaction(async tx=>{await this.program(tx).assertRefundPreparationOwnerInTransaction(tx,actor);const row=await this.header(tx,actor,id);if(!row||row.actorId!==actor.id)throw new AppError('NOT_FOUND');return (await this.verify(tx,actor,row)).result;});}
+ /** Private Root initial-consumption seam in the caller's transaction. This
+  * returns verified historical material, never permission to send money. It
+  * remains strict: a refund operation or changed current facts denies reuse.
+  * Recovery must validate its own separately consumed execution history. */
+ async currentExecutionSnapshotInTransaction(tx:SqlSession,actor:Actor,id:string){
+  this.guard(actor);await this.program(tx).assertRefundPreparationOwnerInTransaction(tx,actor);const row=await this.header(tx,actor,id);if(!row||row.actorId!==actor.id)throw new AppError('NOT_FOUND');const saved=payloadSchema.parse(this.decode(actor.workspaceId,'header',row.id,row.ciphertext)),current=await this.quote(tx,actor,saved.command.selection);await this.verify(tx,actor,row,current);
+  return {preparationId:row.id,ownerId:row.actorId,requestSha256:row.requestHash,reviewSha256:row.reviewHash,ciphertextSha256:digest(row.ciphertext),facts:current.facts};
+ }
+ /** Historical integrity only. This cannot replace a current quote or admit
+  * another effect. Recovery additionally validates its journal and current
+  * native authority; normal read/prepare retain their strict current guards. */
+ async historicalExecutionSnapshotInTransaction(tx:SqlSession,actor:Actor,id:string){
+  this.guard(actor);await this.program(tx).assertRefundPreparationOwnerInTransaction(tx,actor);const row=await this.header(tx,actor,id);if(!row||row.actorId!==actor.id)throw new AppError('NOT_FOUND');const saved=payloadSchema.parse(this.decode(actor.workspaceId,'header',row.id,row.ciphertext));await this.verify(tx,actor,row,{facts:saved.facts,reviewSha256:digest(saved.facts)});
+  return {preparationId:row.id,ownerId:row.actorId,requestSha256:row.requestHash,reviewSha256:row.reviewHash,ciphertextSha256:digest(row.ciphertext),facts:saved.facts};
+ }
  async prepare(actor:Actor,raw:unknown){const command=refundPreparationCommandSchema.safeParse(raw);if(!command.success)throw new AppError('INVALID_REQUEST');this.guard(actor);const input:RefundPreparationCommand=command.data;
   try{return await this.db.transaction(async tx=>{
    const q=await this.quote(tx,actor,input.selection);if(q.reviewSha256!==input.expectedReviewSha256)throw new AppError('CONFLICT');

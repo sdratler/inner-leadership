@@ -5,6 +5,9 @@ import {owner03PolicyVersion,owner03FamilyFeeDecision,validateOwner03RefundInput
 import {academyRefundQuerySchema,academyFamilyCancellationSchema,academyFamilyFeeReservationSchema,type AcademyRefundQuery,type AcademyRefundReviewReason,type AcademyFamilyFeeReservation} from './academy-refund-contract.ts';
 import {academyRefundPreparationVersion,refundPreparationSelectionSchema,refundPreparationFactsSchema,type RefundPreparationFacts} from './academy-refund-preparation-contract.ts';
 import {projectOwner03Attendance} from './academy-refund-projection.ts';
+import {AcademyRefundExecutionJournal} from './academy-refund-execution-store.ts';
+import {AcademyRefundExecutionLedger} from './academy-refund-execution-ledger.ts';
+import {refundExecutionBatchSchema,type RefundExecutionBatch,type RefundExecutionMember} from './academy-refund-execution-contract.ts';
 import {monthlyBlockTermsCommandSchema,monthlyBlockScopeSchema} from './native-program-contract.ts';
 import {z} from "zod";
 import {AppError} from "../../lib/errors.ts";
@@ -265,7 +268,7 @@ export class NativeFishingProgram {
   requireFact(computed.paidCents===p.state.paidCents&&computed.refundedCents===p.state.refundedCents&&computed.feesCents===p.state.feesCents&&computed.dues.every((due,i)=>due.paidCents===p.state.dues[i]?.paidCents)&&digest(computed.settlements.map(value=>[value.kind,value.canonicalTransactionId,value.cents,value.purchaseLineId]).sort())===digest(p.state.settlements.map(value=>[value.kind,value.canonicalTransactionId,value.cents,value.purchaseLineId]).sort()),"UNAVAILABLE");
   return facts;
  }
- private async owner03RefundFacts(c:Context,input:AcademyRefundQuery):Promise<RefundFacts>{
+ private async owner03RefundFacts(c:Context,input:AcademyRefundQuery,execution?:{batch:RefundExecutionBatch;member:RefundExecutionMember}):Promise<RefundFacts>{
   this.operator(c);requireFact(await demoAccountBatch(c.tx,c.actor.workspaceId,c.actor.id)===null,'FORBIDDEN');
   const workspace=c.actor.workspaceId,p=await this.purchase(c.tx,workspace,input.purchaseId),cohort=await this.cohort(c.tx,workspace,p.line.stageId);this.operator(c,cohort);
   requireFact(p.offer.operatorAccountId===c.actor.id&&p.offer.policyVersion===owner03PolicyVersion&&p.policyId===cohort.policyApprovalId,'POLICY_REQUIRED');
@@ -284,11 +287,12 @@ export class NativeFishingProgram {
    verifyAcademyAgreementAcceptance(bundle,detail.evidence);
   }
   requireFact(p.offer.terms.acceptedBy===accepted.parentId&&accepted.acceptedAt.valueOf()<=Date.parse(p.offer.terms.acceptedAt),'APPROVAL_REQUIRED');
-  const facts=await this.paymentFacts(c.tx,workspace,p),base={householdId:p.offer.householdId,payerAccountId:p.offer.payerAccountId,purchaseId:p.state.purchaseId,childId:p.line.learnerId};
+  let facts=await this.paymentFacts(c.tx,workspace,p);const base={householdId:p.offer.householdId,payerAccountId:p.offer.payerAccountId,purchaseId:p.state.purchaseId,childId:p.line.learnerId};
+  if(execution){const original=await new AcademyRefundExecutionLedger(new AcademyRefundExecutionJournal(this.ring)).originalFacts(c.tx,execution.batch,execution.member,facts,p.state.revision);facts=original.facts;}
   const operations=await c.tx.query<{kind:string;value:unknown}>(`SELECT kind,CASE WHEN octet_length(operation_json::text)<=131072 THEN operation_json ELSE NULL END AS value FROM ls_fishing_payments.operations WHERE workspace_id=$1 AND purchase_id=$2 LIMIT 101 FOR SHARE`,[workspace,p.state.purchaseId]);requireFact(operations.length<=100,'UNAVAILABLE');
   const operationSchema=z.object({kind:z.enum(['hosted_invoice','refund']),state:z.enum(['reserved','unknown','confirmed']),providerAccountId:z.literal(merchant.accountId),livemode:z.literal(merchant.livemode),purchaseId:z.literal(p.state.purchaseId)});
-  for(const op of operations){const value=operationSchema.safeParse(op.value);requireFact(value.success&&value.data.kind===op.kind,'UNAVAILABLE');if(op.kind==='refund'||value.data.state!=='confirmed')return {...base,state:'review_required',reason:'refund_outcome_reconciliation_required'};}
-  if(facts.some(f=>f.kind!=='payment')||p.state.refundedCents!==0||p.state.state==='reconciliation_required')return {...base,state:'review_required',reason:'refund_outcome_reconciliation_required'};
+  for(const op of operations){const value=operationSchema.safeParse(op.value);requireFact(value.success&&value.data.kind===op.kind,'UNAVAILABLE');if(execution&&op.kind==='refund')continue;if(op.kind==='refund'||value.data.state!=='confirmed')return {...base,state:'review_required',reason:'refund_outcome_reconciliation_required'};}
+  if(facts.some(f=>f.kind!=='payment')||!execution&&p.state.refundedCents!==0||p.state.state==='reconciliation_required')return {...base,state:'review_required',reason:'refund_outcome_reconciliation_required'};
   requireFact(facts.length>0&&facts.length<=100&&p.state.paidCents===p.state.originalTotalCents&&p.state.dues.every(d=>d.state==='paid'&&d.paidCents===d.amountCents),'POLICY_REQUIRED');
   // Include complete saved journal metadata in the review digest, not caller labels.
   for(const fact of facts){const inbox=await one<{value:unknown}>(c.tx,`SELECT CASE WHEN octet_length(receipt_json::text)<=131072 THEN receipt_json ELSE NULL END AS value FROM ls_fishing_payments.inbox WHERE provider_account_id=$1 AND livemode=$2 AND event_id=$3 AND processed_at IS NOT NULL FOR SHARE`,[merchant.accountId,merchant.livemode,fact.providerReceiptId]);requireFact(z.object({eventId:z.literal(fact.providerReceiptId),providerAccountId:z.literal(merchant.accountId),livemode:z.literal(merchant.livemode),apiVersion:z.literal(merchant.apiVersion)}).safeParse(inbox?.value).success,'UNAVAILABLE');}
@@ -308,9 +312,30 @@ export class NativeFishingProgram {
   if(projection.state!=='ready')return {...base,...projection};
   const priceBasis=p.line.discountBasis,acceptedOffer={id:p.offer.id,revision:p.offer.revision,policyVersion:owner03PolicyVersion,purchaseLineId:p.line.id,childId:p.line.learnerId,priceCents:p.line.totalCents,priceBasis,eligibilityEvidenceId:p.line.eligibility.evidenceId,acceptanceId:accepted.id,termsVersion:p.offer.terms.version};
   const purchase={policyVersion:owner03PolicyVersion,program:'sunday_fishing_academy' as const,purchaseId:p.state.purchaseId,purchaseLineId:p.line.id,childId:p.line.learnerId,stageId:p.line.stageId,stage:p.line.stage,currency:'USD' as const,acceptedOffer,...(p.line.mode==='monthly_block'?{mode:'monthly_block' as const,blockId:p.line.block.id,purchasedLessons:4 as const,priceCents:65000 as const,priceBasis:'monthly_block_full_rate' as const}:p.line.mode==='prepay'?{mode:'stage_prepay' as const,purchasedLessons:12 as const,priceCents:p.line.totalCents,priceBasis}:{mode:'installments' as const,purchasedLessons:12 as const,priceCents:195000 as const,priceBasis:'three_full_rate_dues' as const})};
-  const refundInput=validateOwner03RefundInput({purchase,payment:{purchaseId:p.state.purchaseId,childId:p.line.learnerId,currency:'USD',paidCents:p.state.paidCents,refundedCents:p.state.refundedCents,settlementReferences:facts.map(f=>f.canonicalTransactionId)},attendance:{scopeId:p.line.mode==='monthly_block'?p.line.block.id:p.line.stageId,attendedCount:projection.attendedCount,lessons:projection.lessons},reason:input.reason,timing:projection.timing,multiChildPrestart:false});
-  return {...base,state:'ready',input:refundInput,provenance:{sourceApprovalId:accepted.sourceApprovalId,sourceSha256:source.hash,acceptanceId:accepted.id,paymentRevision:p.state.revision,settlementSha256:digest(facts),guardianSha256,enrollmentId:enrollment?.id??null,enrollmentRevision:enrollments[0]?.revision??null,plans:plans.map(s=>({stageId:s.stageId,revision:s.revision,sha256:stageDigest(s)}))}};
+  const refundInput=validateOwner03RefundInput({purchase,payment:{purchaseId:p.state.purchaseId,childId:p.line.learnerId,currency:'USD',paidCents:p.state.paidCents,refundedCents:execution?0:p.state.refundedCents,settlementReferences:facts.map(f=>f.canonicalTransactionId)},attendance:{scopeId:p.line.mode==='monthly_block'?p.line.block.id:p.line.stageId,attendedCount:projection.attendedCount,lessons:projection.lessons},reason:input.reason,timing:projection.timing,multiChildPrestart:false});
+  return {...base,state:'ready',input:refundInput,provenance:{sourceApprovalId:accepted.sourceApprovalId,sourceSha256:source.hash,acceptanceId:accepted.id,paymentRevision:execution?execution.batch.preparedFacts.members.find(m=>m.input.purchase.purchaseId===p.state.purchaseId)!.provenance.paymentRevision:p.state.revision,settlementSha256:digest(facts),guardianSha256,enrollmentId:enrollment?.id??null,enrollmentRevision:enrollments[0]?.revision??null,plans:plans.map(s=>({stageId:s.stageId,revision:s.revision,sha256:stageDigest(s)}))}};
  }
+ /** This continuation accepts ONLY an encrypted server journal reference. The
+  * private normalizer above is never supplied with caller-authored exceptions.
+  * Full current source/guardian/agreements/attendance are still reloaded; the
+  * only normalized deltas are this batch's verified operations/settlements. */
+ async owner03RefundExecutionContinuationInTransaction(tx:SqlSession,actor:Actor,batchId:string){
+  const c=await this.actor(tx,actor);this.operator(c);const journal=new AcademyRefundExecutionJournal(this.ring),batch=await journal.read(tx,actor.workspaceId,'owner03.refund.batch',uuid.parse(batchId),refundExecutionBatchSchema);requireFact(batch&&batch.workspaceId===actor.workspaceId&&batch.ownerId===actor.id,'FORBIDDEN');
+  const ready:Extract<RefundFacts,{state:'ready'}>[]=[];
+  for(const member of batch.members){const current=await this.owner03RefundFacts(c,{purchaseId:member.purchaseId,reason:'voluntary'},{batch,member}),saved=batch.preparedFacts.members.find(m=>m.input.purchase.purchaseId===member.purchaseId);requireFact(current.state==='ready'&&saved,'POLICY_REQUIRED');requireFact(current.householdId===batch.preparedFacts.householdId&&current.payerAccountId===batch.preparedFacts.payerAccountId&&digest(current.input)===digest(saved.input)&&digest(current.provenance)===digest(saved.provenance),'CONFLICT');ready.push(current);}
+  const family=batch.preparedFacts.family;
+  if(family){const group=await this.familyCancellation(c,family.cancellationId),reserved=await this.familyFeeReservation(c,batch.preparedFacts.householdId);requireFact(reserved&&reserved.row.id===family.reservationId&&reserved.row.cancellationId===family.cancellationId&&group.command.householdId===batch.preparedFacts.householdId&&group.command.payerAccountId===batch.preparedFacts.payerAccountId&&digest([...group.command.purchaseIds].sort())===family.membershipSha256&&group.sha256===family.groupSha256&&reserved.row.reviewHash===family.reviewSha256&&reserved.row.proposalHash===family.proposalSha256&&digest({groupSha256:group.sha256,facts:group.command.purchaseIds.map(id=>ready.find(f=>f.purchaseId===id))})===family.reviewSha256,'CONFLICT');}
+  else{requireFact(batch.members.length===1&&!await this.owner03SingleFamilyFence(c,ready[0]!),'POLICY_REQUIRED');}
+  await this.actor(tx,actor);return batch;
+ }
+ /** Current financial-owner reconciliation, not new family/effect authority.
+  * Validate actual processed receipts/state even if guardian/source permission
+  * for another outbound operation has since ended. */
+ async owner03RefundExecutionSettlementInTransaction(tx:SqlSession,actor:Actor,batchId:string){
+  await this.assertRefundPreparationOwnerInTransaction(tx,actor);const journal=new AcademyRefundExecutionJournal(this.ring),batch=await journal.read(tx,actor.workspaceId,'owner03.refund.batch',uuid.parse(batchId),refundExecutionBatchSchema);requireFact(batch&&batch.ownerId===actor.id&&batch.workspaceId===actor.workspaceId,'FORBIDDEN');const ledger=new AcademyRefundExecutionLedger(journal),states:Record<string,boolean>={};
+  for(const member of batch.members){const p=await this.purchase(tx,actor.workspaceId,member.purchaseId);requireFact(p.offer.operatorAccountId===actor.id,'FORBIDDEN');const facts=await this.paymentFacts(tx,actor.workspaceId,p);states[member.operationId]=(await ledger.originalFacts(tx,batch,member,facts,p.state.revision)).settled;}return states;
+ }
+ async owner03RefundExecutionMerchantInTransaction(tx:SqlSession,actor:Actor,batchId:string){await this.owner03RefundExecutionSettlementInTransaction(tx,actor,batchId);requireFact(this.options.merchant,'POLICY_REQUIRED');return this.options.merchant;}
  /** Current financial-owner read. The digest is a review fence, never a legacy
   * refund approval token, provider operation, charge, credit or enrollment. */
  async previewOwner03Refund(actor:Actor,raw:unknown){const input=academyRefundQuerySchema.parse(raw);try{return await this.db.transaction(async tx=>{
