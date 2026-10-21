@@ -25,6 +25,8 @@ const familyOnly=process.env.LS_ACADEMY_FAMILY_UI_ONLY==="true";
 const enrollmentOnly=process.env.LS_ACADEMY_ENROLLMENT_UI_ONLY==="true";
 const offerOnly=process.env.LS_ACADEMY_OFFER_UI_ONLY==="true";
 const monthlyOnly=process.env.LS_ACADEMY_MONTHLY_UI_ONLY==='true';
+const refundOnly=process.env.LS_ACADEMY_REFUND_UI_ONLY==='true';
+if(refundOnly&&!monthlyOnly)throw Error('REFUND_BROWSER_REQUIRES_RETAINED_MONTHLY_HARNESS');
 if(monthlyOnly&&(!offerOnly||sampleOnly||process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==='true'||process.env.LS_GROUP_INTEREST_CAPTURE_ONLY==='true'||process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==='true'))throw Error('MONTHLY_EXCLUSIVE_ORDINARY_HARNESS_REQUIRED');
 if(offerOnly&&!enrollmentOnly)throw Error('OFFER_REQUIRES_RETAINED_ENROLLMENT_HARNESS');
 if(enrollmentOnly&&!familyOnly)throw Error("ENROLLMENT_REQUIRES_RETAINED_FAMILY_HARNESS");
@@ -360,6 +362,7 @@ try{
   const retainedPublic=await f.pool.query("SELECT to_jsonb(a)::text AS snapshot FROM ls_service_interest.public_applications a WHERE workspace_id=$1 AND id=$2",[workspaceId,publicApplicationId]);
   if(JSON.stringify(retainedPublic.rows)!==JSON.stringify(originalPublic.rows))throw new Error("FISHING_UI_EXISTING_RECEIPT_MUTATED");
   if(monthlyOnly)console.log(`ACADEMY_MONTHLY_UI_ACCEPTANCE_PASS project=${project} locales=en,he ordinaryParentRenewedFourLessonSignatures=true ordinaryOwner650Offer=true exactRetry=true withdrawalReleasesFour=true noPaymentEnrollmentProvider=true`);
+  if(refundOnly)console.log(`ACADEMY_REFUND_UNAVAILABLE_UI_PASS project=${project} locales=en,he ordinaryOwner=true runtimeDefaultNotAdmitted=true successfulFamilyFeeFormsNotProven=true noPaymentRefundEnrollmentProvider=true`);
   if(offerOnly&&!monthlyOnly)console.log(`ACADEMY_OFFER_UI_ACCEPTANCE_PASS project=${project} locales=en,he ordinaryOwnerAfterParentTerms=true atomicPrepareExactRetry=true withdrawPrivateHistory=true capacityReleased=true noPaymentEnrollmentProvider=true`);
   if(enrollmentOnly&&!monthlyOnly)console.log(`ACADEMY_ENROLLMENT_UI_ACCEPTANCE_PASS project=${project} locales=en,he ordinaryOwnerFit=true ordinaryParentTerms=true commitLossExactRetry=true protectedRowsUnchanged=true noPaymentEnrollmentProvider=true`);
   if(familyOnly)console.log(`ACADEMY_FAMILY_UI_ACCEPTANCE_PASS project=${project} locales=en,he ordinaryOwnerAndNewParent=true exactReplay=true newFamilies=2 newChildren=2 invitationsQueuedThenConsumed=2 securityNoticesQueued=2 noEnrollmentPaymentTaskProvider=true`);

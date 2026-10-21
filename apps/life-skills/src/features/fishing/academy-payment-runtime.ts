@@ -4,6 +4,7 @@ import {PublicGroupApplicationStore} from '../group-application/store.ts';
 import {FishingLeadStore} from '../contact-ops/server/fishing-lead-store.ts';
 import {AcademyFamilyStore} from './academy-family-store.ts';
 import {AcademyBillingStore} from './academy-billing-store.ts';
+import {AcademyRefundStore} from './academy-refund-store.ts';
 import {AcademyHostedStore,type AcademyHostedAdmission} from './academy-hosted-store.ts';
 /** Root alone installs an independently verified actual TEST capability after
  * its merchant/customer/effect/expiry and applicable reviewed agreement gates.
@@ -13,5 +14,5 @@ import {AcademyHostedStore,type AcademyHostedAdmission} from './academy-hosted-s
 async function loadReviewedAdmission():Promise<AcademyHostedAdmission|null>{return null;}
 export async function academyPaymentRuntime(){
  const {config,store,clock,services}=await identityRuntime(),integrity=config.lookupKey.toString('hex'),family=new AcademyFamilyStore(store,config,new PublicGroupApplicationStore(store,config.workspaceId,config.keyring,integrity,clock),new FishingLeadStore(store,config.keyring,integrity,'sunday_fishing_academy',clock),clock),admission=await loadReviewedAdmission(),hosted=new AcademyHostedStore(store,config,family,admission,clock);
- return {runtime:{config,sessions:services.sessions,limits:services.limits,audit:services.audit,clock},hosted,billing:new AcademyBillingStore(store,config,family,admission?.merchant??null,clock,hosted)};
+ return {runtime:{config,sessions:services.sessions,limits:services.limits,audit:services.audit,clock},hosted,billing:new AcademyBillingStore(store,config,family,admission?.merchant??null,clock,hosted),refunds:new AcademyRefundStore(store,config,family,admission?.merchant??null,clock)};
 }

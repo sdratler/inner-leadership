@@ -103,6 +103,7 @@ if(!runtimePath){
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   await record.screenshot({path:info.outputPath(`composed-inquiry-owner-lead-${locale}-${info.project.name}.png`)});
   if(process.env.LS_ACADEMY_FAMILY_UI_ONLY==="true"){const {academyFamilyOwnerJourney}=await import("../group-interest/academy-family.journey.ts");await academyFamilyOwnerJourney(page,record,{origin:runtime.origin,workspaceId:runtime.workspaceId,locale,applicationId:savedId,ownerLogin},info);}
+  if(process.env.LS_ACADEMY_REFUND_UI_ONLY==='true'){const {academyRefundUnavailableJourney}=await import('../group-interest/academy-refund.journey.ts');await academyRefundUnavailableJourney(page,record,locale,info);}
  });
  for(const locale of ["en","he"] as const)test(`${locale}: normal login, preview/cancel, collapsed draft, lost-response retry, Remove and reload`,async({page},info)=>{
   const t=(en:string,he:string)=>locale==="he"?he:en,credentials=runtime.fishing.credentials.find(c=>c.role==="practitioner")!,inquiry=runtime.fishing.inquiries.find(i=>i.locale===locale)!;
