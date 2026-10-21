@@ -30,6 +30,8 @@ import {readEducationalChildContexts} from "./native-child-context.ts";
 import {fishingCalendarChoicesSchema,fishingCalendarOperatorSchema,fishingCalendarLimit,type FishingCalendarChoices,type FishingCalendarOperator} from "./program-calendar-contract.ts";
 import type {AcademyEnrollmentStage} from './academy-enrollment-contract.ts';
 import {academyOfferCommandSchema,type AcademyOfferCommand,type AcademyOfferNativeContext,type AcademyOfferSummary} from './academy-offer-contract.ts';
+import {academyOriginalObligationVersion,academyOriginalObligationSelectionSchema,academyOriginalObligationSchema,type AcademyOriginalObligation,type AcademyMakeupSeatProof} from './academy-original-obligation-contract.ts';
+import {projectAcademyOriginalDelivery} from './academy-original-delivery.ts';
 
 const uuid=z.uuid(),label=z.string().min(1).max(160).refine(value=>value.trim().length>0);
 const receiptSchema=z.strictObject({id:uuid,revision:z.number().int().positive(),state:z.enum(["cohort","venue","fit","terms","hold","offer","withdrawn","confirmed","suspended","revoked","cancellation_group","family_fee_reserved"]),detail:z.discriminatedUnion('kind',[z.strictObject({kind:z.literal('offer_withdrawal'),offerId:uuid,reason:z.string().min(1).max(1200)}),z.strictObject({kind:z.literal('agreement_acceptance'),learnerId:uuid,parentAccountId:uuid,sourceApprovalId:uuid,sourceSha256:z.string().regex(/^[a-f0-9]{64}$/),acceptedAt:z.iso.datetime(),evidence:academyAgreementAcceptanceSchema})]).optional()});
@@ -463,6 +465,50 @@ export class NativeFishingProgram {
   const c=await this.actor(tx,actor),e=await this.enrollment(tx,c.actor.workspaceId,id,c.now),cohort=await this.cohort(tx,c.actor.workspaceId,e.stageId);if(c.actor.role==="practitioner"&&cohort.operatorId===c.actor.id){await this.actor(tx,actor);return e;}
   if(e.state!=="confirmed"||!e.authorizedAccountIds.includes(c.actor.id)||c.actor.role==="child"&&(!this.options.childAccountsEnabled||c.actor.personId!==e.learnerId)||!["parent","child"].includes(c.actor.role))return null;await this.actor(tx,actor);return e;
  });}catch(error){if(error instanceof FishingProgramError&&["NOT_FOUND","FORBIDDEN"].includes(error.code))return null;clean(error);}}
+ /** Private current native facts for a purchased ORIGINAL slot. This is not a
+  * credit/booking grant or a browser DTO. The caller supplies the real session;
+  * activity identity, session kind and qualifying change remain separate gates.
+  * No partial payment is silently allocated to particular original lessons. */
+ async readSessionCreditObligationInTransaction(tx:SqlSession,actor:Actor,raw:unknown):Promise<AcademyOriginalObligation>{
+  try{
+   const parsed=academyOriginalObligationSelectionSchema.safeParse(raw);requireFact(parsed.success,'INVALID_REQUEST');const selection=parsed.data,c=await this.actor(tx,actor),workspace=c.actor.workspaceId;
+   requireFact(await demoAccountBatch(tx,workspace,c.actor.id)===null,'FORBIDDEN');
+   const e=await this.enrollment(tx,workspace,selection.selectedEnrollmentId,c.now),cohort=await this.cohort(tx,workspace,e.stageId),p=await this.purchase(tx,workspace,e.purchaseId);
+   requireFact(e.state==='confirmed','NOT_FOUND');
+   if(c.actor.role==='practitioner'){this.operator(c,cohort);requireFact(p.offer.operatorAccountId===c.actor.id,'FORBIDDEN');}
+   else requireFact(c.actor.role==='parent'&&e.authorizedAccountIds.includes(c.actor.id),'NOT_FOUND');
+   const payerGuardian=await this.guardian(tx,workspace,p.offer.payerAccountId,e.learnerId,e.householdId),guardianDigest=c.actor.role==='parent'?await this.guardian(tx,workspace,c.actor.id,e.learnerId,e.householdId):payerGuardian;
+   const plan=await this.plan(tx,workspace,e.stageId),ids=p.line.mode==='monthly_block'?[...p.line.block.occurrenceIds]:plan.occurrences.map(o=>o.id),original=plan.occurrences.find(o=>o.id===selection.originalOccurrenceId);
+   requireFact(ids.includes(selection.originalOccurrenceId)&&original,'NOT_FOUND');
+   const merchant=this.options.merchant;requireFact(merchant&&merchant.accountId===p.state.providerAccountId&&merchant.livemode===p.state.livemode,'POLICY_REQUIRED');
+   const facts=await this.paymentFacts(tx,workspace,p);
+   const journalSize=await one<{count:number;bytes:number}>(tx,"SELECT LEAST(count(*),101)::int AS count,LEAST(COALESCE(sum(octet_length(operation_json::text)),0),262145)::int AS bytes FROM ls_fishing_payments.operations WHERE workspace_id=$1 AND purchase_id=$2",[workspace,e.purchaseId]);requireFact(journalSize&&journalSize.count<=100&&journalSize.bytes<=262144,'UNAVAILABLE');
+   const operations=await tx.query<{id:string;kind:string;value:unknown}>(`SELECT id,kind,CASE WHEN octet_length(operation_json::text)<=131072 THEN operation_json ELSE NULL END AS value FROM ls_fishing_payments.operations WHERE workspace_id=$1 AND purchase_id=$2 ORDER BY id LIMIT 101 FOR SHARE`,[workspace,e.purchaseId]);
+   requireFact(operations.length===journalSize.count,'UNAVAILABLE');
+   const operationSchema=z.object({id:z.string().min(1).max(500),kind:z.enum(['hosted_invoice','refund']),workspaceId:z.literal(workspace),purchaseId:z.literal(e.purchaseId),providerAccountId:z.literal(merchant.accountId),livemode:z.literal(merchant.livemode),currency:z.literal('USD'),state:z.enum(['reserved','unknown','confirmed'])});
+   let reconciliation=p.state.state==='reconciliation_required'||p.state.refundedCents!==0||facts.some(f=>f.kind!=='payment');
+   for(const op of operations){const value=operationSchema.safeParse(op.value);requireFact(value.success&&value.data.id===op.id&&value.data.kind===op.kind,'UNAVAILABLE');if(value.data.kind==='refund'||value.data.state!=='confirmed')reconciliation=true;}
+   const inbox=[];
+   for(const fact of facts){const row=await one<{digest:string;value:unknown}>(tx,`SELECT digest,CASE WHEN octet_length(receipt_json::text)<=131072 THEN receipt_json ELSE NULL END AS value FROM ls_fishing_payments.inbox WHERE provider_account_id=$1 AND livemode=$2 AND event_id=$3 AND processed_at IS NOT NULL FOR SHARE`,[merchant.accountId,merchant.livemode,fact.providerReceiptId]);requireFact(row&&z.object({eventId:z.literal(fact.providerReceiptId),providerAccountId:z.literal(merchant.accountId),livemode:z.literal(merchant.livemode),apiVersion:z.literal(merchant.apiVersion),digest:z.literal(row.digest)}).safeParse(row.value).success,'UNAVAILABLE');inbox.push(row.value);}
+   const fullyPaid=facts.length>0&&p.state.state==='paid'&&p.state.paidCents===p.state.originalTotalCents&&p.state.dues.every(d=>d.state==='paid'&&d.paidCents===d.amountCents),plans=[plan],seats:AcademyMakeupSeatProof[]=[];
+   for(let index=0;index<plans.length;index++){
+    requireFact(plans.length<=16,'UNAVAILABLE');const source=plans[index]!;
+    for(const m of source.makeups.filter(m=>m.notice.enrollmentId===e.id&&m.notice.replacementOccurrenceId!==null)){
+     const n=m.notice;
+     const rows=await tx.query<AcademyMakeupSeatProof>(`SELECT l.workspace_id AS "workspaceId",l.source_stage_id AS "sourceStageId",l.entitlement_id AS "entitlementId",l.enrollment_id AS "enrollmentId",l.learner_id AS "learnerId",l.occurrence_id AS "occurrenceId",l.reservation_id AS "reservationId",s.stage_id AS "seatStageId",s.origin,s.state FROM ls_fishing_stage.makeup_links l JOIN ls_fishing_stage.seat_reservations s ON s.workspace_id=l.workspace_id AND s.id=l.reservation_id AND s.enrollment_id=l.enrollment_id AND s.learner_id=l.learner_id AND s.occurrence_id=l.occurrence_id AND s.entitlement_id=l.entitlement_id WHERE l.workspace_id=$1 AND l.source_stage_id=$2 AND l.entitlement_id=$3 AND l.enrollment_id=$4 AND l.learner_id=$5 AND l.occurrence_id=$6 AND l.reservation_id=$7 AND s.origin='makeup' FOR SHARE OF l,s`,[workspace,source.stageId,n.entitlementId,e.id,e.learnerId,n.replacementOccurrenceId,n.replacementReservationId]);requireFact(rows.length===1,'UNAVAILABLE');seats.push(rows[0]!);
+     if(!plans.some(s=>s.occurrences.some(o=>o.id===n.replacementOccurrenceId))){const target=await one<{stageId:string}>(tx,'SELECT stage_id AS "stageId" FROM ls_fishing_stage.occurrences WHERE workspace_id=$1 AND id=$2 FOR SHARE',[workspace,n.replacementOccurrenceId]);requireFact(target,'UNAVAILABLE');requireFact(plans.length<16,'UNAVAILABLE');plans.push(await this.plan(tx,workspace,target.stageId));}
+    }
+   }
+   const collisions=await tx.query<{id:string}>(`SELECT DISTINCT occurrence_id AS id FROM ls_fishing_stage.seat_reservations WHERE workspace_id=$1 AND learner_id=$2 AND origin='enrollment' AND enrollment_id<>$3 ORDER BY occurrence_id LIMIT 1001`,[workspace,e.learnerId,e.id]);requireFact(collisions.length<=1000,'UNAVAILABLE');
+   const delivery=projectAcademyOriginalDelivery({workspaceId:workspace,enrollmentId:e.id,learnerId:e.learnerId,originalOccurrenceIds:ids,originalOccurrenceId:original.id,plans,seats,otherPurchasedRoots:collisions.map(row=>row.id),now:c.now}),payment={state:!reconciliation&&fullyPaid?'verified_fully_paid' as const:'review_required' as const,reason:reconciliation?'payment_reconciliation_required' as const:fullyPaid?'all_original_dues_paid' as const:'payment_not_fully_settled' as const,revision:p.state.revision,originalTotalCents:p.state.originalTotalCents,paidCents:p.state.paidCents,refundedCents:p.state.refundedCents,dues:p.state.dues.map(({id,index,amountCents,paidCents,state})=>({id,index,amountCents,paidCents,state})),evidenceSha256:digest({offer:p.offer,line:p.line,state:p.state,facts,operations,inbox})};
+   const value={version:academyOriginalObligationVersion,workspaceId:workspace,enrollmentId:e.id,enrollmentRevision:e.revision,learnerId:e.learnerId,householdId:e.householdId,payerAccountId:p.offer.payerAccountId,purchaseId:e.purchaseId,purchaseLineId:e.purchaseLineId,guardianDigest,acceptedTermsVersion:e.evidence.acceptedTermsVersion,
+    original:{cohortId:cohort.cohortId,stageId:plan.stageId,stage:plan.stage,stageRevision:plan.revision,occurrenceId:original.id,occurrenceRevision:original.revision,ordinal:original.ordinal,moduleId:original.moduleId,moduleVersion:original.moduleVersion,templateVersion:plan.template.version,templateApprovalId:cohort.templateApprovalId,templateSourceSha256:plan.template.sourceSha256},
+    purchaseScope:{kind:p.line.mode==='monthly_block'?'monthly_block' as const:'full_stage' as const,purchasedLessons:p.line.sessions,occurrenceIds:ids},payment,delivery,plans:plans.map(s=>({stageId:s.stageId,revision:s.revision,sha256:stageDigest(s)})),mayIssueCredit:false as const,mayBook:false as const,mayMarkDelivered:false as const};
+   const final=await this.actor(tx,actor),current=await this.enrollment(tx,workspace,e.id,final.now);requireFact(digest(current)===digest(e)&&final.actor.id===c.actor.id&&final.actor.personId===c.actor.personId&&final.actor.role===c.actor.role,'CONFLICT');
+   requireFact(guardianDigest===await this.guardian(tx,workspace,c.actor.role==='parent'?c.actor.id:p.offer.payerAccountId,e.learnerId,e.householdId),'FORBIDDEN');
+   return academyOriginalObligationSchema.parse({...value,evidenceSha256:digest(value)});
+  }catch(error){clean(error);}
+ }
  /** Read-only current selected-enrollment payment projection. No merchant,
   * provider action, invitation, settlement write or implicit enrollment. */
  async familyPayment(actor:Actor,enrollmentId:string):Promise<FamilyPaymentView|null>{
