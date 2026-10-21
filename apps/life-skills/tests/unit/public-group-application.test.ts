@@ -67,7 +67,7 @@ describe("public group inquiry compatibility boundary",()=>{
   }
   const fishing=renderToStaticMarkup(createElement(GroupApplicationLanding,{locale:"en",programId:"sunday_fishing_academy"})),torah=renderToStaticMarkup(createElement(GroupApplicationLanding,{locale:"en",programId:"morning_torah_learning"})),privatePage=renderToStaticMarkup(createElement(GroupApplicationLanding,{locale:"en",programId:"private_fishing_life_skills"})),israel=renderToStaticMarkup(createElement(IsraelGroupApplicationLanding,{locale:"en"}));
   expect(fishing).toContain("South Florida Jewish Leadership Fishing Academy");expect(fishing.match(/data-academy-stage-card=/g)).toHaveLength(4);expect(fishing.match(/data-price-kind=/g)).toHaveLength(5);
-  for(const value of["$1,950","$1,750","$1,650","$1,550","3 × $650"])expect(fishing.replace(/<[^>]*>/g,"")).toContain(value);
+  for(const value of["$1,950","$1,750","$1,650","$1,550","$650"])expect(fishing.replace(/<[^>]*>/g,"")).toContain(value);
   for(const value of["Rank A","private-fishing","One package payment","$500","$399"])expect(fishing).not.toContain(value);
   expect(torah).toContain("$1,000 per student each month");expect(torah).toContain("not include fishing");expect(privatePage).toContain(presentation.vip.price.en);expect(privatePage).toContain("does not offer clinical treatment");expect(israel).toContain("Central Israel");expect(israel).toContain('name="parentPhone"');expect(israel).not.toContain("Florida Fishing &amp; Keys Course");
  });

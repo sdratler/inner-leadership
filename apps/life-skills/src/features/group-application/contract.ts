@@ -1,6 +1,6 @@
 import {z} from "zod";
 import {academyIntakeSchema,academyDriveMinutes} from "./academy-intake.ts";
-import {academyRegistrationSchema} from './academy-registration.ts';
+import {academyRegistrationSchema,ACADEMY_REGISTRATION_VERSION} from './academy-registration.ts';
 import {academyRegistrationNotice} from './academy-registration-notice.ts';
 
 /** Existing Israel application permission. This contract remains writable at /groups/apply. */
@@ -159,7 +159,9 @@ export const floridaSchoolInquiryFieldsSchema=z.object({
  preferredWeekday:z.enum(["monday","tuesday","wednesday","thursday","friday","flexible"]),schoolTransport:z.enum(["yes","no","undecided"]),
  permission:z.object({confirmed:z.literal(true),version:z.literal(floridaSchoolInquiryNotice.version),language:z.enum(["he","en"])}).strict(),
 }).strict().superRefine((value,context)=>{if(value.permission.language!==value.language)context.addIssue({code:"custom",path:["permission","language"],message:"permission language must match inquiry"});});
-export const floridaGroupApplicationFieldsSchema=z.union([floridaParentApplicationFieldsSchema,floridaSchoolInquiryFieldsSchema]);
+export const floridaGroupApplicationFieldsSchema=z.union([floridaParentApplicationFieldsSchema,floridaSchoolInquiryFieldsSchema]).superRefine((value,context)=>{
+ if('academyRegistration' in value&&value.academyRegistration&&value.academyRegistration.version!==ACADEMY_REGISTRATION_VERSION)context.addIssue({code:'custom',path:['academyRegistration','version'],message:'current_registration_version_required'});
+});
 export const floridaGroupApplicationReadableFieldsSchema=z.union([floridaParentApplicationFieldsSchema,floridaParentLegacyReadableFieldsSchema,floridaSchoolInquiryFieldsSchema]);
 
 export const groupApplicationFieldsSchema=z.union([floridaGroupApplicationReadableFieldsSchema,israelReadableFieldsSchema]);

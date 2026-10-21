@@ -7,8 +7,7 @@ type Rect={left:number;right:number;top:number;bottom:number};
 const subscribe=()=>()=>{},clientReady=()=>true,serverReady=()=>false;
 export const ACADEMY_WHATSAPP="https://wa.me/972534932631?text=Hi%2C%20I%20came%20from%20your%20website.%20I%27d%20like%20to%20know%20more.";
 export function academyContactOverlaps(a:Rect,b:Rect){return a.left<b.right&&a.right>b.left&&a.top<b.bottom&&a.bottom>b.top;}
-/** Portal keeps fixed positioning outside section transforms. Only the hero,
- * footer, active input and actual submission actions affect visibility. */
+/** Keep the fixed contact action clear of readable content and form actions. */
 export function AcademyWhatsApp({locale}:{locale:Locale}){
  const link=useRef<HTMLAnchorElement>(null),mounted=useSyncExternalStore(subscribe,clientReady,serverReady),[visible,setVisible]=useState(false);
  useEffect(()=>{
@@ -18,7 +17,8 @@ export function AcademyWhatsApp({locale}:{locale:Locale}){
    const heroPending=!!hero&&hero.getBoundingClientRect().bottom>0,box=node.getBoundingClientRect(),active=document.activeElement;
    const editing=active instanceof HTMLElement&&active.matches('input,select,textarea')&&!!active.closest('form');
    const overlap=(item:Element|null)=>!!item&&academyContactOverlaps(box,item.getBoundingClientRect());
-   setVisible(!heroPending&&!editing&&!overlap(footer)&&!overlap(actions));
+   const contentOverlap=Array.from(document.querySelectorAll('main p,main h2,main h3,main li,main a,main button')).some(overlap);
+   setVisible(!heroPending&&!editing&&!overlap(footer)&&!overlap(actions)&&!contentOverlap);
   };
   const schedule=()=>{if(!frame)frame=requestAnimationFrame(check);};
   addEventListener('scroll',schedule,{passive:true});addEventListener('resize',schedule);document.addEventListener('focusin',schedule);document.addEventListener('focusout',schedule);window.visualViewport?.addEventListener('resize',schedule);schedule();
