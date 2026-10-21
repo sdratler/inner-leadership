@@ -43,5 +43,6 @@ export type AcademyGroupDraftReceipt=z.infer<typeof academyGroupDraftReceiptSche
 export const academyGroupDraftReplySchema=z.strictObject({receipt:academyGroupDraftReceiptSchema.extend({replayed:z.boolean()}).strict()});
 export const academyGroupPlanningChoiceSchema=z.strictObject({cohortId:uuid,stageId:uuid,stage:z.number().int().min(1).max(4),label,planRevision:revision,originals:z.array(academyGroupOriginSchema).length(12)});
 export const academyGroupCalendarContextSchema=z.strictObject({version:z.literal(academyGroupCalendarVersion),availability:z.enum(['ready','not_configured']),
- events:z.array(academyGroupEventRecordSchema).max(120),groups:z.array(academyGroupPlanningChoiceSchema).max(1000)});
+ events:z.array(academyGroupEventRecordSchema).max(120),groups:z.array(academyGroupPlanningChoiceSchema).max(1000),
+ venues:z.array(z.strictObject({id:uuid,label,address:z.string().max(1200),capacity:z.number().int().min(1).max(1000)})).max(1000)});
 export type AcademyGroupCalendarContext=z.infer<typeof academyGroupCalendarContextSchema>;

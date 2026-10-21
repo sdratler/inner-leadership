@@ -14,7 +14,8 @@ import {IdentityAuthService} from '../../../src/features/identity/auth-service.t
 import {IdentitySessions} from '../../../src/features/identity/session-adapter.ts';
 import {PostgresIdentityRateStore} from '../../../src/features/identity/rate-store.ts';
 import {durableAuditSink} from '../../../src/features/identity/history.ts';
-import {systemClock} from '../../../src/features/identity/types.ts';
+import {systemClock,type IdentityClock,type Actor} from '../../../src/features/identity/types.ts';
+import type {MerchantBinding} from '../../../src/features/fishing-payments/domain.ts';
 import {SESSION_COOKIE} from '../../../src/lib/security/session.ts';
 import {handleFishingCalendar} from '../../../src/features/fishing/program-calendar-http.ts';
 
@@ -45,9 +46,9 @@ export async function groupCalendarFixture(options:Parameters<typeof programFixt
   const planning=()=>new AcademyGroupCalendarService(f.db,f.config),query={from:monday.slice(0,7),to:monday.slice(0,7)};
   async function draft(refs:readonly FishingStageRef[]=[]):Promise<AcademyGroupDraftCommand>{const context=await planning().context(f.owner,query);return {version:academyGroupCalendarVersion,action:'save_draft',operationId:randomUUID(),eventId:randomUUID(),expectedRevision:0,calendarMonth:query.from,label:'PRIVATE_SYNTHETIC_POOLED_KEYS',placement:{kind:'needs_placement',reason:'Synthetic pending source/site/adult/guardian review'},originals:refs.map(ref=>{const g=context.groups.find(g=>g.stageId===ref.stageId);if(!g)throw Error('SYNTHETIC_PLANNING_GROUP_REQUIRED');return g.originals[0]!.selection;})};}
   async function planningRows(){const values:Record<string,string>={};for(const table of ['events','event_revisions','original_links','commands']){const rows=(await f.pool.query(`SELECT row_to_json(t) AS value FROM ls_academy_calendar.${table} t WHERE workspace_id=$1`,[f.workspaceId])).rows.map(r=>JSON.stringify(r.value)).sort();values[table]=digest(rows);}return values;}
-  async function planningHttp(){const auth=new IdentityAuthService(f.db,f.config,systemClock),sessions=new IdentitySessions(f.db,f.config,systemClock),preauth=await auth.preauth(),login=await auth.login(`${f.owner.id}@example.invalid`,'Ab12cd',preauth.token,randomUUID()),runtime={config:f.config,sessions,limits:new PostgresIdentityRateStore(f.db),audit:durableAuditSink(f.db),clock:systemClock},path='/api/calendar/fishing/group-events';
-   const get=(suffix='?'+new URLSearchParams(query))=>handleFishingCalendar(new Request(f.config.origin+path+suffix,{headers:{cookie:SESSION_COOKIE+'='+login.token}}),['group-events'],async()=>({runtime,store:f.db}));
-   const post=(body:unknown,headers:Record<string,string>={})=>handleFishingCalendar(new Request(f.config.origin+path,{method:'POST',headers:{cookie:SESSION_COOKIE+'='+login.token,origin:f.config.origin,'sec-fetch-site':'same-origin','content-type':'application/json','x-csrf-token':sessions.csrf(login.token),'idempotency-key':(body as {operationId:string}).operationId,...headers},body:JSON.stringify(body)}),['group-events'],async()=>({runtime,store:f.db}));return {get,post};
+  async function planningHttp(target='group-events',merchant?:MerchantBinding|null,clock:IdentityClock=systemClock,account:Actor=f.owner){const auth=new IdentityAuthService(f.db,f.config,systemClock),sessions=new IdentitySessions(f.db,f.config,systemClock),preauth=await auth.preauth(),login=await auth.login(`${account.id}@example.invalid`,'Ab12cd',preauth.token,randomUUID()),runtime={config:f.config,sessions,limits:new PostgresIdentityRateStore(f.db),audit:durableAuditSink(f.db),clock},path='/api/calendar/fishing/'+target;
+   const get=(suffix='?'+new URLSearchParams(query))=>handleFishingCalendar(new Request(f.config.origin+path+suffix,{headers:{cookie:SESSION_COOKIE+'='+login.token}}),[target],async()=>({runtime,store:f.db,...(merchant===undefined?{}:{merchant})}));
+   const post=(body:unknown,headers:Record<string,string>={})=>handleFishingCalendar(new Request(f.config.origin+path,{method:'POST',headers:{cookie:SESSION_COOKIE+'='+login.token,origin:f.config.origin,'sec-fetch-site':'same-origin','content-type':'application/json','x-csrf-token':sessions.csrf(login.token),'idempotency-key':(body as {operationId:string}).operationId,...headers},body:JSON.stringify(body)}),[target],async()=>({runtime,store:f.db,...(merchant===undefined?{}:{merchant})}));return {get,post};
   }
   return {...f,monday,wall,group,read,schedule,publication,action,snapshot,planning,query,draft,planningRows,planningHttp};
  }catch(error){await f.close();throw error;}

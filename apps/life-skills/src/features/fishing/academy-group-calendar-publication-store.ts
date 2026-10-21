@@ -22,6 +22,9 @@ export class AcademyGroupPublicationStore{
   try{requireFact(Buffer.byteLength(ciphertext)<=2097152);return schema.parse(JSON.parse(unseal(ciphertext,academyKeysRecordAad(kind,workspace,id),this.ring)));}catch{throw new AppError('UNAVAILABLE');}
  }
  async configured(){const draft=new AcademyGroupCalendarStore(this.tx,this.ring);if(!await draft.configured())return false;const row=await one<{present:boolean}>(this.tx,"SELECT to_regclass('ls_academy_calendar.publications') IS NOT NULL AS present");requireFact(row);return row.present;}
+ async reviewIds(workspace:string,eventId:string){
+  const rows=await this.tx.query<{id:string}>('SELECT id FROM ls_academy_calendar.source_reviews WHERE workspace_id=$1 AND event_id=$2 ORDER BY approved_at DESC,id LIMIT 101 FOR SHARE',[workspace,eventId]);requireFact(rows.length<=100);return rows.map(r=>r.id);
+ }
  async review(workspace:string,id:string){
   const row=await one<{eventId:string;eventRevision:number;eventSha256:string;sha256:string;approvedBy:string;approvedAt:Date;expiresAt:Date;ciphertext:string}>(this.tx,'SELECT event_id AS "eventId",event_revision AS "eventRevision",event_sha256 AS "eventSha256",sha256,approved_by AS "approvedBy",approved_at AS "approvedAt",expires_at AS "expiresAt",payload_ciphertext AS ciphertext FROM ls_academy_calendar.source_reviews WHERE workspace_id=$1 AND id=$2 FOR SHARE',[workspace,id]);if(!row)return null;
   const v=this.decode(academyKeysSourceReviewSchema,'review',workspace,id,row.ciphertext);requireFact(v.workspaceId===workspace&&v.id===id&&v.eventId===row.eventId&&v.eventRevision===row.eventRevision&&v.eventSha256===row.eventSha256&&v.approval.approvedBy===row.approvedBy&&v.approval.approvedAt===row.approvedAt.toISOString()&&v.approval.expiresAt===row.expiresAt.toISOString()&&digest(v)===row.sha256);

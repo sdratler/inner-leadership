@@ -80,3 +80,20 @@ test('retiring a linked cohort denies archived snapshot reads and exact replay w
 test('existing Calendar HTTP saves and rereads private group drafts with native login, CSRF and exact idempotency',async()=>{
  const f=await fixture(),ref=await f.group(),command=await f.draft([ref]),http=await f.planningHttp();expect((await http.post(command,{'x-csrf-token':'wrong'})).status).toBe(403);expect((await http.post(command,{'idempotency-key':randomUUID()})).status).toBe(400);const before=await f.snapshot();const first=await http.post(command);expect(first.status).toBe(200);expect(first.headers.get('cache-control')).toBe('private, no-store');expect((await first.json()).data.receipt).toMatchObject({state:'needs_placement',revision:1,replayed:false});const read=await http.get();expect(read.status).toBe(200);expect((await read.json()).data.events[0].eventId).toBe(command.eventId);expect((await(await http.post(command)).json()).data.receipt.replayed).toBe(true);expect((await http.get('?'+new URLSearchParams(f.query)+'&from='+f.query.from)).status).toBe(400);expect(await f.snapshot()).toEqual(before);
 });
+
+
+test('owner proposed placement uses current native venue choices, preserves originals and makes no bookings',async()=>{
+ const f=await fixture(),ref=await f.group(),draft=await f.draft([ref]),http=await f.planningHttp(),context=(await(await http.get()).json()).data;
+ expect(context.venues).toEqual(expect.arrayContaining([expect.objectContaining({id:f.venueCommand.id,label:f.venueCommand.label})]));
+ const sunday=new Date(Date.parse(f.monday+'T12:00Z')+6*86400000).toISOString().slice(0,10);
+ const placement={kind:'proposed' as const,startsAt:f.wall(sunday,8),endsAt:f.wall(sunday,18),venueId:f.venueCommand.id};
+ const command={...draft,calendarMonth:sunday.slice(0,7),placement};
+ const before=await f.snapshot();const first=await http.post(command);expect(first.status).toBe(200);expect((await first.json()).data.receipt).toMatchObject({state:'review_required',resourceEffect:'none',purchaseEffect:'none',replayed:false});
+ const current=await f.planning().context(f.owner,{from:command.calendarMonth,to:command.calendarMonth});expect(current.events[0]!.placement).toEqual(placement);expect(current.events[0]!.originals.map(o=>o.selection)).toEqual(draft.originals);
+ const saved=await f.planningRows();expect((await(await http.post(command)).json()).data.receipt.replayed).toBe(true);expect(await f.planningRows()).toEqual(saved);expect(await f.snapshot()).toEqual(before);
+ await f.pool.query('UPDATE ls_fishing_stage.venues SET active=false WHERE workspace_id=$1 AND id=$2',[f.workspaceId,f.venueCommand.id]);
+ expect((await(await http.get()).json()).data.venues).toEqual([]);expect((await http.post(command)).status).toBe(404);expect(await f.planningRows()).toEqual(saved);
+ await f.pool.query('UPDATE ls_fishing_stage.venues SET active=true WHERE workspace_id=$1 AND id=$2',[f.workspaceId,f.venueCommand.id]);
+ expect((await(await http.post(command)).json()).data.receipt.replayed).toBe(true);
+ await expect(f.planning().saveDraft(f.owner,{...command,operationId:randomUUID(),expectedRevision:1,placement:{...placement,venueId:randomUUID()}})).rejects.toMatchObject({code:'NOT_FOUND'});expect(await f.planningRows()).toEqual(saved);
+});

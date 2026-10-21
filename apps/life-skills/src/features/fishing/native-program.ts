@@ -731,6 +731,20 @@ export class NativeFishingProgram {
   }
   await this.actor(tx,actor);return groups;
  }
+ /** Active owner-scoped venue choices are planning inputs, never site approval. */
+ async calendarGroupVenuesInTransaction(tx:SqlSession,actor:Actor):Promise<AcademyGroupCalendarContext['venues']>{
+  const c=await this.actor(tx,actor);this.operator(c);requireFact(await demoAccountBatch(tx,c.actor.workspaceId,c.actor.id)===null,'FORBIDDEN');
+  const rows=await tx.query<{id:string;capacity:number;ciphertext:string}>("SELECT id,capacity,details_ciphertext AS ciphertext FROM ls_fishing_stage.venues WHERE workspace_id=$1 AND operator_id=$2 AND active ORDER BY id LIMIT 1001 FOR SHARE",[c.actor.workspaceId,c.actor.id]);requireFact(rows.length<=fishingCalendarLimit,'UNAVAILABLE');
+  const venues=rows.map(row=>({id:row.id,capacity:row.capacity,...z.object({label,address:z.string().max(1200)}).parse(this.decode('venue',c.actor.workspaceId,row.id,row.ciphertext))}));await this.actor(tx,actor);return venues;
+ }
+ /** Fresh owner/cohort/enrollment authorization before exposing attendance names. */
+ async calendarPublicationMemberNameInTransaction(tx:SqlSession,actor:Actor,enrollmentId:string,learnerId:string){
+  const c=await this.actor(tx,actor);this.operator(c);requireFact(await demoAccountBatch(tx,c.actor.workspaceId,c.actor.id)===null,'FORBIDDEN');
+  const e=await this.enrollment(tx,c.actor.workspaceId,enrollmentId,c.now);requireFact(e.learnerId===learnerId,'NOT_FOUND');const cohort=await this.cohort(tx,c.actor.workspaceId,e.stageId);this.operator(c,cohort);
+  requireFact(await demoRecordBatch(tx,c.actor.workspaceId,'person',learnerId)===null,'FORBIDDEN');
+  const person=await one<{ciphertext:string}>(tx,"SELECT profile_ciphertext AS ciphertext FROM ls_identity.people WHERE workspace_id=$1 AND id=$2 AND kind='minor' FOR SHARE",[c.actor.workspaceId,learnerId]);requireFact(person,'NOT_FOUND');
+  const name=z.object({displayName:label}).parse(JSON.parse(unseal(person.ciphertext,`person:${c.actor.workspaceId}:${learnerId}`,this.ring))).displayName;const groupLabel=z.object({label}).parse(this.decode('cohort',c.actor.workspaceId,cohort.stageId,cohort.labelCiphertext)).label;await this.actor(tx,actor);return {displayName:name,groupLabel,stage:cohort.stage,participantReference:e.id};
+ }
  /** Server-only current publication authority/roster. Never selects a purchase
   * from a child name, stage ordinal, payment boolean or caller roster. */
  async calendarPublicationOwnerInTransaction(tx:SqlSession,actor:Actor){const c=await this.actor(tx,actor);this.operator(c);requireFact(await demoAccountBatch(tx,c.actor.workspaceId,c.actor.id)===null,'FORBIDDEN');return {now:c.now,accountId:c.actor.id};}

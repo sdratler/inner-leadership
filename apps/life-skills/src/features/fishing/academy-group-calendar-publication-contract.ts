@@ -56,3 +56,15 @@ export type AcademyKeysAttendanceRecord=z.infer<typeof academyKeysAttendanceReco
 export const academyKeysReceiptSchema=z.strictObject({version:z.literal(academyGroupPublicationVersion),operationId:uuid,eventId:uuid,publicationId:uuid,publicationRevision:revision,
  attendanceId:uuid.nullable(),state:z.enum(['published','completed','cancelled','attendance_recorded']),sha256:sha,financialEffect:z.literal('none'),activityFulfillment:z.literal('not_inferred')});
 export type AcademyKeysReceipt=z.infer<typeof academyKeysReceiptSchema>;
+
+/** Allowlisted ordinary owner projection; excludes private purchase, guardian,
+ * source bodies and hashes. Readback cannot adopt or edit trusted evidence. */
+export const academyKeysOwnerQuerySchema=z.strictObject({eventId:uuid});
+const sourceState=z.enum(['ready','revoked','outdated','requires_review','runtime_not_admitted']);
+const ownerTrip=z.strictObject({labelEn:text,labelHe:text,startsAt:instant,endsAt:instant,address:note,directions:note,equipment:note,guardianInformation:note});
+export const academyKeysOwnerContextSchema=z.strictObject({version:z.literal(academyGroupPublicationVersion),eventId:uuid,draftRevision:revision,availability:z.enum(['ready','not_configured']),
+ reviews:z.array(z.strictObject({id:uuid,sourceId:text,sourceRevision:text,approvedAt:instant,expiresAt:instant,state:sourceState,trip:ownerTrip,memberCount:z.number().int().min(1).max(1000)})).max(100),
+ publication:z.strictObject({id:uuid,revision,state:z.enum(['published','completed','cancelled']),sourceState,trip:ownerTrip,canAttend:z.boolean(),canComplete:z.boolean(),canCancel:z.boolean(),
+ members:z.array(z.strictObject({learnerId:uuid,displayName:text,groupLabel:text,stage:z.number().int().min(1).max(4),participantReference:uuid,participation:z.enum(['keys','local_alternative','review_required']),attendance:z.enum(['present','late','absent','no_show']).nullable(),attendanceRevision:z.number().int().min(0).max(1000000)})).max(1000)}).nullable()});
+export type AcademyKeysOwnerContext=z.infer<typeof academyKeysOwnerContextSchema>;
+export const academyKeysReplySchema=z.strictObject({receipt:academyKeysReceiptSchema.extend({replayed:z.boolean()}).strict()});

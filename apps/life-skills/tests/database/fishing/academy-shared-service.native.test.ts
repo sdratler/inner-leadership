@@ -11,6 +11,10 @@ import {handleFishingCalendar} from '../../../src/features/fishing/program-calen
 import {fishingCalendarSearch} from '../../../src/features/fishing/program-calendar-contract.ts';
 import {SESSION_COOKIE} from '../../../src/lib/security/session.ts';
 import {travelDigest} from '../../../src/features/fishing/academy-travel-credit-source.ts';
+import {FishingLessonHttp} from '../../../src/features/resources/fishing-lesson-http.ts';
+import {FishingLessonJourney} from '../../../src/features/resources/fishing-lesson-journey.ts';
+import {FishingLessonNativeStore} from '../../../src/features/resources/fishing-lesson-native-store.ts';
+import {stageLessonReference} from '../../../src/features/fishing-stage/classroom.ts';
 
 const live:Awaited<ReturnType<typeof groupTravelFixture>>[]=[];afterEach(async()=>{for(const f of live.splice(0))await f.close();});
 async function fixture(){const f=await groupTravelFixture();live.push(f);let instant:Date|null=null;const clock={now:()=>instant??new Date()},program=new NativeFishingProgram(f.db,f.ring,{childAccountsEnabled:false,merchant:f.merchant},clock),publication=new AcademyGroupPublicationService(f.db,f.config,f.merchant,clock),preparations=new AcademyRefundPreparationStore(f.db,f.config,f.merchant,clock);let publicationRevision=f.published.publicationRevision,attendanceRevision=0;
@@ -34,6 +38,54 @@ test('exact native refund preparation replays once and attendance correction inv
  const f=await fixture();await f.advance();await f.attend();await f.complete();const before=await f.protectedSnapshot(),preview=await f.preparations.preview(f.owner,f.selection),command={version:academyRefundPreparationVersion,operationId:randomUUID(),id:randomUUID(),selection:f.selection,expectedReviewSha256:preview.reviewSha256,confirmation:'prepare_only_no_execution'};
  const prepared=await f.preparations.prepare(f.owner,command);expect(prepared.replayed).toBe(false);expect((await f.preparations.prepare(f.owner,command)).replayed).toBe(true);const saved=(await f.pool.query('SELECT to_jsonb(r) AS row FROM ls_fishing_stage.refund_preparations r WHERE workspace_id=$1',[f.workspaceId])).rows;
  await f.attend('late');const changed=await f.preparations.preview(f.owner,f.selection);expect(changed.totalRefundCents).toBe(preview.totalRefundCents);expect(changed.reviewSha256).not.toBe(preview.reviewSha256);await expect(f.preparations.prepare(f.owner,command)).rejects.toMatchObject({code:'CONFLICT'});await expect(f.preparations.read(f.owner,command.id)).rejects.toMatchObject({code:'CONFLICT'});expect((await f.pool.query('SELECT to_jsonb(r) AS row FROM ls_fishing_stage.refund_preparations r WHERE workspace_id=$1',[f.workspaceId])).rows).toEqual(saved);expect(await f.protectedSnapshot()).toEqual(before);
+});
+
+test('completed shared service preserves the original classroom submission, private assessment and explicit parent summary without another lesson charge or refund count',async()=>{
+ const f=await fixture(),reference={learnerId:f.second.learnerId,moduleId:'RM-101',version:f.template.modules[0]!.moduleVersion};
+ const classroom=new FishingLessonHttp({...f.runtime,clock:f.clock},actor=>new FishingLessonJourney(new FishingLessonNativeStore(f.db,f.ring,actor,f.clock),()=>f.clock.now()));
+ async function login(email:string){const auth=await f.login(email);await f.pool.query('UPDATE ls_identity.sessions SET expires_at=$2 WHERE workspace_id=$1',[f.workspaceId,new Date(f.clock.now().valueOf()+86400000)]);return auth.token;}
+ const parentToken=await login(f.second.parent.id+'@example.invalid'),ownerToken=await login(f.owner.id+'@example.invalid');
+ const read=(token:string,view:'learner'|'teacher'|'parent')=>classroom.handle(new Request(f.config.origin+'/api/resources/education/lesson?'+new URLSearchParams({...reference,view}),{headers:{cookie:SESSION_COOKIE+'='+token}}));
+ const write=(token:string,command:unknown,csrf=f.sessions.csrf(token))=>classroom.handle(new Request(f.config.origin+'/api/resources/education/lesson',{method:'POST',headers:{cookie:SESSION_COOKIE+'='+token,origin:f.config.origin,'sec-fetch-site':'same-origin','content-type':'application/json','x-csrf-token':csrf},body:JSON.stringify({reference,command})}));
+ // Purchase and physical attendance supply no assignment or education grant.
+ expect((await read(parentToken,'learner')).status).toBe(403);await f.advance();await f.attend();await f.complete();expect((await read(parentToken,'learner')).status).toBe(403);
+ // Independently adopted SYNTHETIC classroom authority, never a runtime writer
+ // or actual curriculum approval. The immutable readable catalog already exists.
+ await f.pool.query('INSERT INTO ls_education.educational_assignments(workspace_id,learner_id,module_id,version,active,assigned_by) VALUES($1,$2,$3,$4,true,$5)',[f.workspaceId,reference.learnerId,reference.moduleId,reference.version,f.owner.id]);
+ for(const [id,permissions]of [[f.second.parent.id,['submit','read_learner','read_parent']],[f.owner.id,['observe','publish_parent_summary','read_teacher']]]as const)
+  await f.pool.query('INSERT INTO ls_education.account_grants(workspace_id,account_id,learner_id,module_id,version,active,permissions,granted_by) VALUES($1,$2,$3,$4,$5,true,$6::text[],$7)',[f.workspaceId,id,reference.learnerId,reference.moduleId,reference.version,[...permissions],f.owner.id]);
+ const publicationSnapshot=()=>Promise.all(['publications','publication_commands','attendance'].map(async table=>({table,rows:(await f.pool.query(`SELECT to_jsonb(r) AS row FROM ls_academy_calendar.${table} r WHERE workspace_id=$1 ORDER BY to_jsonb(r)::text`,[f.workspaceId])).rows})));
+ const before=await f.protectedSnapshot(),sharedBefore=await publicationSnapshot(),planBefore=await f.current(),preview=await f.preparations.preview(f.owner,f.selection),prepare={version:academyRefundPreparationVersion,operationId:randomUUID(),id:randomUUID(),selection:f.selection,expectedReviewSha256:preview.reviewSha256,confirmation:'prepare_only_no_execution'};
+ expect(await f.preview()).toMatchObject({status:'PROPOSAL_ONLY',attendedCount:1,refundCents:48750});await f.preparations.prepare(f.owner,prepare);
+ const savedPreparation=(await f.pool.query('SELECT to_jsonb(r) AS row FROM ls_fishing_stage.refund_preparations r WHERE workspace_id=$1',[f.workspaceId])).rows;
+ const planResponse=await f.get('plan');expect(planResponse.status).toBe(200);const calendar=(await planResponse.json()).data;
+ expect(stageLessonReference(calendar.view,f.originalOccurrenceId,f.second.learnerId)).toEqual(reference);expect(calendar.view.occurrences.map((o:{id:string})=>o.id)).toEqual(planBefore.occurrences.slice(0,4).map(o=>o.id));expect(calendar.view.occurrences[0].state).toBe('published');
+ const lessonResponse=await read(parentToken,'learner');expect(lessonResponse.status).toBe(200);const lesson=(await lessonResponse.json()).data;
+ expect(lesson.lesson.moduleId).toBe(reference.moduleId);expect(lesson.lesson.questions).toHaveLength(3);expect(lesson.submission).toBeNull();expect(JSON.stringify(lesson)).not.toContain('PRIVATE_SYNTHETIC_TEACHER_CANARY');
+ const submit={action:'submit',operationId:randomUUID(),expectedRevisionId:null,answers:lesson.lesson.questions.map((q:{id:string})=>({questionId:q.id,value:'SYNTHETIC ORIGINAL LEARNING ANSWER'}))};
+ expect((await write(parentToken,submit,'invalid-csrf')).status).toBe(403);const submittedResponse=await write(parentToken,submit);expect(submittedResponse.status).toBe(200);const submitted=(await submittedResponse.json()).data;
+ const retried=await write(parentToken,submit);expect(retried.status).toBe(200);expect((await retried.json()).data).toEqual({...submitted,duplicate:true});
+ const hidden=await read(parentToken,'parent');expect(hidden.status).toBe(200);expect((await hidden.json()).data.portfolio).toBeNull();
+ const observe={action:'observe',operationId:randomUUID(),expectedRevisionId:submitted.revisionId,submissionId:submitted.revisionId,task:'SYNTHETIC original hookless classroom practice',assistance:'with_guidance',privateNote:'PRIVATE_SYNTHETIC_SHARED_CLASSROOM_ASSESSMENT'};
+ expect((await write(parentToken,observe)).status).toBe(403);const observedResponse=await write(ownerToken,observe);expect(observedResponse.status).toBe(200);const observed=(await observedResponse.json()).data;
+ const observedRetry=await write(ownerToken,observe);expect(observedRetry.status).toBe(200);expect((await observedRetry.json()).data).toEqual({...observed,duplicate:true});
+ const teacherResponse=await read(ownerToken,'teacher');expect(teacherResponse.status).toBe(200);const teacher=(await teacherResponse.json()).data;
+ expect(teacher.submission.assistedBy).toBe(f.second.parent.id);expect(teacher.observations[0].command.privateNote).toBe(observe.privateNote);expect(teacher.summaryRecipients.map((p:{accountId:string})=>p.accountId)).toEqual([f.second.parent.id]);
+ const unshared=await read(parentToken,'parent');expect((await unshared.json()).data.portfolio).toBeNull();
+ const publish={action:'publish_parent_summary',operationId:randomUUID(),expectedRevisionId:observed.revisionId,observationId:observed.revisionId,summary:'SYNTHETIC explicitly shared original classroom progress',parentAccountIds:[f.second.parent.id]};
+ const publishedResponse=await write(ownerToken,publish);expect(publishedResponse.status).toBe(200);const published=(await publishedResponse.json()).data;
+ const publishedRetry=await write(ownerToken,publish);expect(publishedRetry.status).toBe(200);expect((await publishedRetry.json()).data).toEqual({...published,duplicate:true});
+ const freshParent=await login(f.second.parent.id+'@example.invalid'),parentResponse=await read(freshParent,'parent');expect(parentResponse.status).toBe(200);const parent=(await parentResponse.json()).data;
+ expect(parent.portfolio).toMatchObject({revisionId:published.revisionId,summary:publish.summary});expect(JSON.stringify(parent)).not.toMatch(/PRIVATE_SYNTHETIC|ORIGINAL LEARNING ANSWER|privateNote|observations|teacher/);
+ const foreign=await login(f.parentEmail);expect((await read(foreign,'parent')).status).toBe(403);expect((await read(freshParent,'teacher')).status).toBe(403);
+ // Classroom events are durable learning evidence, not physical fulfillment,
+ // a second weekly service, a new paid scope or a changed financial review.
+ expect((await f.pool.query('SELECT count(*)::int AS count FROM ls_education.lesson_events WHERE workspace_id=$1',[f.workspaceId])).rows[0].count).toBe(3);
+ expect((await f.pool.query('SELECT count(*)::int AS count FROM ls_education.lesson_heads WHERE workspace_id=$1',[f.workspaceId])).rows[0].count).toBe(1);expect(await publicationSnapshot()).toEqual(sharedBefore);
+ expect(JSON.stringify((await f.pool.query('SELECT header,payload_ciphertext FROM ls_education.lesson_events WHERE workspace_id=$1',[f.workspaceId])).rows)).not.toMatch(/PRIVATE_SYNTHETIC_SHARED_CLASSROOM|ORIGINAL LEARNING ANSWER|explicitly shared original classroom/);
+ expect(await f.preview()).toMatchObject({status:'PROPOSAL_ONLY',attendedCount:1,refundCents:48750});expect((await f.preparations.preview(f.owner,f.selection)).reviewSha256).toBe(preview.reviewSha256);expect((await f.preparations.prepare(f.owner,prepare)).replayed).toBe(true);
+ expect((await f.pool.query('SELECT to_jsonb(r) AS row FROM ls_fishing_stage.refund_preparations r WHERE workspace_id=$1',[f.workspaceId])).rows).toEqual(savedPreparation);
+ const obligation=await f.db.transaction(tx=>f.program.readSessionCreditObligationInTransaction(tx,f.owner,{selectedEnrollmentId:f.secondEnrollment,originalOccurrenceId:f.originalOccurrenceId}));expect(obligation.delivery.state).not.toBe('delivered');expect(await f.current()).toEqual(planBefore);expect((await f.pool.query('SELECT count(*)::int AS count FROM ls_academy_calendar.activity_evidence WHERE workspace_id=$1',[f.workspaceId])).rows[0].count).toBe(0);expect(await f.protectedSnapshot()).toEqual(before);
 });
 
 for(const state of ['absent','no_show']as const)test('completed '+state+' record never becomes attended service or guesses the before-third-lesson refund window',async()=>{

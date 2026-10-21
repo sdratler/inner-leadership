@@ -17,7 +17,7 @@ import {AcademySessionCreditStore} from '../fishing-stage/academy-session-credit
 import {verifyAcademySharedTravelDeclaration} from './academy-shared-travel.ts';
 import {readAcademySharedPhysicalEvents,academySharedResourceClash,academySharedTeachingEvents} from './academy-group-calendar-publication-fence.ts';
 import {academyFloridaDay,academyOperatorDayViolations} from './academy-operator-day.ts';
-import {academyGroupPublicationVersion,academyKeysCommandSchema,academyKeysPublicationSchema,academyKeysAttendanceRecordSchema,academyKeysReceiptSchema,type AcademyKeysCommand,type AcademyKeysPublication,type AcademyKeysSourceReview,type AcademyKeysReceipt} from './academy-group-calendar-publication-contract.ts';
+import {academyKeysOwnerQuerySchema,academyKeysOwnerContextSchema,type AcademyKeysOwnerContext,academyGroupPublicationVersion,academyKeysCommandSchema,academyKeysPublicationSchema,academyKeysAttendanceRecordSchema,academyKeysReceiptSchema,type AcademyKeysCommand,type AcademyKeysPublication,type AcademyKeysSourceReview,type AcademyKeysReceipt} from './academy-group-calendar-publication-contract.ts';
 
 function requireFact(v:unknown,code:'CONFLICT'|'FORBIDDEN'|'NOT_FOUND'|'UNAVAILABLE'='CONFLICT'):asserts v{if(!v)throw new AppError(code);}
 function clean(error:unknown):never{
@@ -30,7 +30,7 @@ function clean(error:unknown):never{
  * binding can support paid-member proof. Caller submits selectors, not approval. */
 export class AcademyGroupPublicationService{
  private program:NativeFishingProgram;
- constructor(private db:IdentityStore,private config:IdentityConfig,merchant:MerchantBinding|null=null,private clock:IdentityClock=systemClock){this.program=new NativeFishingProgram(db,config.keyring,{childAccountsEnabled:config.childAccountsEnabled===true,merchant},clock);}
+ constructor(private db:IdentityStore,private config:IdentityConfig,private merchant:MerchantBinding|null=null,private clock:IdentityClock=systemClock){this.program=new NativeFishingProgram(db,config.keyring,{childAccountsEnabled:config.childAccountsEnabled===true,merchant},clock);}
  private async validateReview(tx:SqlSession,actor:Actor,store:AcademyGroupPublicationStore,review:AcademyKeysSourceReview,sha256:string,currentSnapshots:boolean,now:Date){
   const saved=await store.review(actor.workspaceId,review.id);requireFact(saved&&!saved.revoked&&saved.sha256===sha256&&digest(review)===sha256,'CONFLICT');
   requireFact(review.workspaceId===actor.workspaceId&&Date.parse(review.approval.approvedAt)<=now.valueOf()&&Date.parse(review.approval.expiresAt)>=Date.parse(review.trip.endsAt),'CONFLICT');
@@ -77,6 +77,34 @@ export class AcademyGroupPublicationService{
   }
   for(const o of value.originals)await tx.query('UPDATE ls_fishing_stage.resource_reservations SET active=false WHERE workspace_id=$1 AND occurrence_id=$2',[actor.workspaceId,o.selection.occurrenceId]);
  }
+ /** Fresh authenticated source/publication readback, never an approval writer. */
+ context(actor:Actor,raw:unknown){const query=academyKeysOwnerQuerySchema.parse(raw);return this.db.transaction(async tx=>{
+  const {now}=await this.program.calendarPublicationOwnerInTransaction(tx,actor),store=new AcademyGroupPublicationStore(tx,this.config.keyring),draftStore=new AcademyGroupCalendarStore(tx,this.config.keyring);
+  const draft=await draftStore.read(actor.workspaceId,query.eventId);requireFact(draft&&draft.record.operatorId===actor.id,'NOT_FOUND');
+  const groups=await this.program.calendarGroupPlanningInTransaction(tx,actor);requireFact(draft.record.originals.every(o=>groups.some(g=>g.stageId===o.selection.stageId&&g.cohortId===o.selection.cohortId&&g.originals.some(n=>n.selection.occurrenceId===o.selection.occurrenceId))),'NOT_FOUND');
+  if(!await store.configured())return academyKeysOwnerContextSchema.parse({version:academyGroupPublicationVersion,eventId:query.eventId,draftRevision:draft.record.revision,availability:'not_configured',reviews:[],publication:null});
+  const trip=(v:AcademyKeysSourceReview['trip'])=>({labelEn:v.labelEn,labelHe:v.labelHe,startsAt:v.startsAt,endsAt:v.endsAt,address:v.address,directions:v.directions,equipment:v.equipment,guardianInformation:v.guardianInformation});
+  const check=async(review:NonNullable<Awaited<ReturnType<AcademyGroupPublicationStore['review']>>>,current:boolean):Promise<AcademyKeysOwnerContext['reviews'][number]['state']>=>{
+   if(review.revoked)return 'revoked';if(current&&(review.record.eventRevision!==draft.record.revision||review.record.eventSha256!==draft.sha256))return 'outdated';if(this.merchant===null)return 'runtime_not_admitted';
+   try{await this.validateReview(tx,actor,store,review.record,review.sha256,current,now);return 'ready';}catch(error){if(error instanceof AppError&&['CONFLICT','FORBIDDEN','NOT_FOUND'].includes(error.code)||error instanceof FishingProgramError&&['CONFLICT','FORBIDDEN','NOT_FOUND','POLICY_REQUIRED','APPROVAL_REQUIRED'].includes(error.code))return 'requires_review';throw error;}
+  };
+  const reviews:AcademyKeysOwnerContext['reviews']=[];
+  for(const id of await store.reviewIds(actor.workspaceId,query.eventId)){const saved=await store.review(actor.workspaceId,id);requireFact(saved,'UNAVAILABLE');const v=saved.record;
+   let state=await check(saved,true);const placement=draft.record.placement;
+   if(state==='ready'&&(placement.kind!=='proposed'||placement.startsAt!==v.trip.startsAt||placement.endsAt!==v.trip.endsAt||placement.venueId!==v.trip.venueId||Date.parse(v.trip.startsAt)<=now.valueOf()))state='requires_review';
+   reviews.push({id:v.id,sourceId:v.approval.source.id,sourceRevision:v.approval.source.revision,approvedAt:v.approval.approvedAt,expiresAt:v.approval.expiresAt,state,trip:trip(v.trip),memberCount:v.members.length});
+  }
+  let publication:AcademyKeysOwnerContext['publication']=null;const current=await store.publication(actor.workspaceId,query.eventId);
+  if(current){const v=current.record;requireFact(v.operatorId===actor.id,'NOT_FOUND');await store.currentResources(v);
+   const command:AcademyKeysCommand=v.state==='published'?{version:academyGroupPublicationVersion,action:'publish',operationId:v.operationId,eventId:v.eventId,expectedDraftRevision:v.draftRevision,expectedPublicationRevision:v.revision-1,sourceReviewId:v.sourceReviewId}:{version:academyGroupPublicationVersion,action:v.state==='completed'?'complete':'cancel',operationId:v.operationId,eventId:v.eventId,expectedPublicationRevision:v.revision-1,reason:v.reason!};requireFact(await store.replay(actor.workspaceId,actor.id,command),'UNAVAILABLE');
+   const review=await store.review(actor.workspaceId,v.sourceReviewId);requireFact(review,'UNAVAILABLE');const sourceState=await check(review,false),members:NonNullable<AcademyKeysOwnerContext['publication']>['members']=[];
+   for(const m of v.members){const attendance=await store.attendance(actor.workspaceId,v.eventId,m.learnerId);if(attendance){const a=attendance.record;requireFact(await store.replay(actor.workspaceId,a.actorId,{version:academyGroupPublicationVersion,action:'attendance',eventId:a.eventId,operationId:a.operationId,expectedPublicationRevision:a.publicationRevision,expectedAttendanceRevision:a.revision-1,learnerId:a.learnerId,state:a.state,reason:a.reason}),'UNAVAILABLE');}
+    members.push({learnerId:m.learnerId,...await this.program.calendarPublicationMemberNameInTransaction(tx,actor,m.enrollmentId,m.learnerId),participation:m.participation.kind,attendance:attendance?.record.state??null,attendanceRevision:attendance?.record.revision??0});
+   }
+   publication={id:v.id,revision:v.revision,state:v.state,sourceState,trip:trip(v.trip),members,canCancel:v.state==='published',canAttend:v.state!=='cancelled'&&sourceState==='ready'&&Date.parse(v.trip.startsAt)<=now.valueOf(),canComplete:v.state==='published'&&sourceState==='ready'&&Date.parse(v.trip.endsAt)<=now.valueOf()&&members.filter(m=>m.participation==='keys').every(m=>m.attendance!==null)};
+  }
+  await this.program.calendarPublicationOwnerInTransaction(tx,actor);return academyKeysOwnerContextSchema.parse({version:academyGroupPublicationVersion,eventId:query.eventId,draftRevision:draft.record.revision,availability:'ready',reviews,publication});
+ }).catch(clean);}
  async execute(actor:Actor,raw:unknown){const command=academyKeysCommandSchema.parse(raw);
   try{return await this.db.transaction(async tx=>{
    const initial=await this.program.calendarPublicationOwnerInTransaction(tx,actor),now=initial.now,store=new AcademyGroupPublicationStore(tx,this.config.keyring),draftStore=new AcademyGroupCalendarStore(tx,this.config.keyring);requireFact(await store.configured(),'UNAVAILABLE');

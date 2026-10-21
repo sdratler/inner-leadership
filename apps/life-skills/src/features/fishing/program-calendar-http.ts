@@ -10,6 +10,8 @@ import {NativeFishingProgram} from "./native-program.ts";
 import type {MerchantBinding} from '../fishing-payments/domain.ts';
 import {academySharedCalendar} from './academy-shared-calendar.ts';
 import {AcademyTravelCreditService} from './academy-travel-credit-service.ts';
+import {AcademyGroupPublicationService} from './academy-group-calendar-publication-service.ts';
+import {academyKeysOwnerQuerySchema,academyKeysCommandSchema} from './academy-group-calendar-publication-contract.ts';
 import {AcademyGroupCalendarService} from './academy-group-calendar-service.ts';
 import {academyGroupDraftCommandSchema,academyGroupCalendarQuerySchema} from './academy-group-calendar-contract.ts';
 import {travelSelectionSchema,travelAnyChangeCommandSchema,travelDeclarationCommandSchema} from './academy-travel-credit-contract.ts';
@@ -81,7 +83,11 @@ export async function handleFishingCalendar(request:Request,path:readonly string
       const query=academyGroupCalendarQuerySchema.safeParse(Object.fromEntries(url.searchParams));if(!query.success||url.searchParams.size!==2)throw new AppError('INVALID_REQUEST');data=await groups.context(actor,query.data);
      }else if(request.method==='POST'&&!url.search){const command=await readJson(request,academyGroupDraftCommandSchema);if(request.headers.get('idempotency-key')!==command.operationId)throw new AppError('INVALID_REQUEST');data=await groups.saveDraft(actor,command);
      }else throw new AppError('NOT_FOUND');
-    }else if(path[0]==='travel-credit'||path[0]==='travel-change'||path[0]==='travel-declaration'){
+    }else if(path[0]==='group-publication'){
+     if(actor.role!=='practitioner')throw new AppError('FORBIDDEN');const publication=new AcademyGroupPublicationService(store,runtime.config,d.merchant??null,runtime.clock);
+     if(request.method==='GET'){const query=academyKeysOwnerQuerySchema.safeParse(Object.fromEntries(url.searchParams));if(!query.success||url.searchParams.size!==1)throw new AppError('INVALID_REQUEST');data=await publication.context(actor,query.data);}
+     else if(request.method==='POST'&&!url.search){const command=await readJson(request,academyKeysCommandSchema);if(request.headers.get('idempotency-key')!==command.operationId)throw new AppError('INVALID_REQUEST');data=await publication.execute(actor,command);}else throw new AppError('NOT_FOUND');
+    }else if(path[0]==='travel-credit' ||path[0]==='travel-change'||path[0]==='travel-declaration'){
      if(actor.role==='child')throw new AppError('FORBIDDEN');const travel=new AcademyTravelCreditService(store,runtime.config,d.merchant??null,runtime.clock);
      if(path[0]==='travel-credit'&&request.method==='GET'){
       const query=travelSelectionSchema.safeParse(Object.fromEntries(url.searchParams));if(!query.success||url.searchParams.size!==Object.keys(query.data).length)throw new AppError('INVALID_REQUEST');data=await travel.context(actor,query.data);

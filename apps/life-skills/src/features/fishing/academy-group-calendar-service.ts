@@ -31,15 +31,16 @@ export class AcademyGroupCalendarService{
   });}catch(error){clean(error);}
  }
  context(actor:Actor,raw:unknown){const query=academyGroupCalendarQuerySchema.parse(raw);return this.transaction(actor,async(_tx,store,groups)=>{
-  if(!await store.configured())return academyGroupCalendarContextSchema.parse({version:academyGroupCalendarVersion,availability:'not_configured',events:[],groups:[]});
+  if(!await store.configured())return academyGroupCalendarContextSchema.parse({version:academyGroupCalendarVersion,availability:'not_configured',events:[],groups:[],venues:[]});
   const events=await store.list(actor.workspaceId,actor.id,query.from,query.to);
   for(const event of events)authorizeSaved(event,groups);
   // Historical drafts retain their original snapshot. Current choices are
   // separate, so a later Stage edit cannot silently rebind an existing link.
-  return academyGroupCalendarContextSchema.parse({version:academyGroupCalendarVersion,availability:'ready',events,groups});
+  return academyGroupCalendarContextSchema.parse({version:academyGroupCalendarVersion,availability:'ready',events,groups,venues:await this.program.calendarGroupVenuesInTransaction(_tx,actor)});
  });}
  saveDraft(actor:Actor,raw:unknown){const command=academyGroupDraftCommandSchema.parse(raw);return this.transaction(actor,async(_tx,store,groups)=>{
   requireFact(await store.configured(),'UNAVAILABLE');
+  if(command.placement.kind==='proposed'){const venueId=command.placement.venueId;requireFact((await this.program.calendarGroupVenuesInTransaction(_tx,actor)).some(v=>v.id===venueId),'NOT_FOUND');}
   const prior=await store.read(actor.workspaceId,command.eventId);
   if(prior){requireFact(prior.record.operatorId===actor.id,'NOT_FOUND');authorizeSaved(prior.record,groups);}
   const replay=await store.replay(actor.workspaceId,actor.id,command);
