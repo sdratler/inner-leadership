@@ -13,3 +13,8 @@ test('exact three increasing dues or one prepay due are required and withdrawal 
  const {holdCommandId:_,approvalCommandId:__,expectedPreparationSha256:___,mode:____,expiresAt:_____,dueAt:______,...base}=c;void _;void __;void ___;void ____;void _____;void ______;
  expect(academyOfferCommandSchema.safeParse({...base,action:'withdraw',offerId:randomUUID(),reason:'Private reviewed withdrawal'}).success).toBe(true);expect(academyOfferCommandSchema.safeParse({...base,action:'withdraw',offerId:randomUUID(),reason:' '}).success).toBe(false);
 });
+
+test('a monthly offer needs one due and its exact independently signed four-lesson block',()=>{
+ const c={...command(),mode:'monthly_block',dueAt:command().dueAt.slice(0,1),block:{id:randomUUID(),acceptanceId:randomUUID(),occurrenceIds:Array.from({length:4},()=>randomUUID())}};expect(academyOfferCommandSchema.safeParse(c).success).toBe(true);
+ for(const patch of [{block:undefined},{dueAt:command().dueAt},{block:{...c.block,occurrenceIds:c.block.occurrenceIds.slice(0,3)}},{block:{...c.block,occurrenceIds:Array(4).fill(c.block.occurrenceIds[0])}},{mode:'prepay'},{mode:'installments',dueAt:command().dueAt}])expect(academyOfferCommandSchema.safeParse({...c,...patch}).success).toBe(false);
+});

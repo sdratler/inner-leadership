@@ -40,6 +40,10 @@ export class AcademyEnrollmentStore{
    if(!current||current.fit?.decision!=='approved')throw new AppError('NOT_FOUND');if(current.terms.state!=='available'||current.terms.sourceApprovalId!==command.sourceApprovalId||current.terms.sourceSha256!==command.sourceSha256||current.terms.termsVersion!==command.termsVersion)throw new AppError('CONFLICT');
    const bundle=readAcademyAgreementBundle(current.terms.owner03Bundle);if(!bundle)throw new AppError('UNAVAILABLE');
    try{verifyAcademyAgreementAcceptance(bundle,command.agreementAcceptance);}catch{throw new AppError('INVALID_REQUEST');}
+   if(command.action==='block_terms'){
+    if(current.monthly?.state!=='available')throw new AppError('UNAVAILABLE');
+    return program.acceptMonthlyBlockTerms(actor,{commandId:command.operationId,id:command.operationId,blockId:command.blockId,stageId:command.stageId,learnerId:command.learnerId,householdId:family.householdId,sourceApprovalId:command.sourceApprovalId,sourceSha256:command.sourceSha256,expectedPlanRevision:command.expectedPlanRevision,occurrenceIds:command.occurrenceIds,currency:command.currency,priceCents:command.priceCents,purchasedLessons:command.purchasedLessons,automaticFutureCharges:command.automaticFutureCharges,agreementAcceptance:command.agreementAcceptance});
+   }
    return program.acceptTerms(actor,{commandId:command.operationId,id:command.operationId,stageId:command.stageId,learnerId:command.learnerId,householdId:family.householdId,sourceApprovalId:command.sourceApprovalId,sourceSha256:command.sourceSha256,agreementAcceptance:command.agreementAcceptance,sourceBindingSha256});
   });
  }
