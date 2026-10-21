@@ -5,7 +5,7 @@ import {AppError} from "../../lib/errors.ts";
 import {seal,unseal,type Keyring} from "../identity/crypto.ts";
 import {one,type SqlSession} from "../identity/store.ts";
 import {academyPolicyPreflightVersion,type AcademyOriginalSessionAnchor} from "../fishing/academy-policy-preflight-contract.ts";
-import {academySessionPolicyNativeVersion,academyCalendarCompatibilityVersion,type AcademySessionCreditRecord,type AcademySessionCreditResolvedFacts,
+import {academySessionPolicyNativeVersion,academyCalendarCompatibilityVersion,academyTravelCompatibilityVersion,type AcademySessionCreditRecord,type AcademySessionCreditResolvedFacts,
  type AcademySessionCreditNativeFacts,type AcademySessionCreditNativeFactsV2,
  type AcademySessionCreditCommandResult} from "../fishing/academy-session-policy-native-contract.ts";
 
@@ -48,7 +48,14 @@ export const academyCreditFactsV2Schema=academyCreditFactsSchema.extend({
   }),
  }),
 });
-export const academyCreditResolvedFactsSchema=z.union([academyCreditFactsSchema,academyCreditFactsV2Schema]);
+export const academyCreditFactsV3Schema=academyCreditFactsV2Schema.extend({
+ compatibility:z.strictObject({version:z.literal(academyTravelCompatibilityVersion),originalStage:z.union([z.literal(1),z.literal(2),z.literal(3),z.literal(4)])}),
+ travel:academyCreditFactsV2Schema.shape.travel.extend({change:academyCreditFactsV2Schema.shape.travel.shape.change.extend({
+  recordedDriveLimit:z.union([academyCreditFactsSchema.shape.travel.shape.change.shape.recordedDriveLimit,z.number().int().min(5).max(120)]),
+ })}),
+ nativeLifecycle:z.strictObject({state:z.enum(['outstanding','replacement_reserved','delivered','review_required']),rootEntitlementId:uuid.nullable(),replacementReservationId:uuid.nullable(),evidenceSha256:hash}),
+});
+export const academyCreditResolvedFactsSchema=z.union([academyCreditFactsSchema,academyCreditFactsV2Schema,academyCreditFactsV3Schema]);
 const reason=z.enum(["invalid_input","original_anchor_mismatch","obligation_missing","obligation_unknown","obligation_not_purchased","obligation_delivered",
  "credit_anchor_mismatch","credit_delivered","credit_unknown","change_evidence_missing","drive_limit_requires_facts","attendance_requires_facts",
  "weather_requires_review","separate_exception_terms","existing_absence_policy","no_qualifying_change","within_recorded_limit","family_can_attend",

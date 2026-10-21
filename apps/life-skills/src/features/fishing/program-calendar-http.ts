@@ -7,6 +7,9 @@ import {Ls050HttpBoundary,type Ls050HttpRuntime} from "../forms/http-boundary.ts
 import type {IdentityStore} from "../identity/store.ts";
 import type {Actor} from "../identity/types.ts";
 import {NativeFishingProgram} from "./native-program.ts";
+import type {MerchantBinding} from '../fishing-payments/domain.ts';
+import {AcademyTravelCreditService} from './academy-travel-credit-service.ts';
+import {travelSelectionSchema,travelChangeCommandSchema,travelDeclarationCommandSchema} from './academy-travel-credit-contract.ts';
 import {nativeProgramIntentSchema} from "./native-program-contract.ts";
 import {FishingProgramError} from "./native-program-contract.ts";
 import type {FishingFamilyHome} from './family-home-contract.ts';
@@ -20,7 +23,7 @@ import {FishingLessonNativeStore} from "../resources/fishing-lesson-native-store
 import {FishingLessonJourney} from "../resources/fishing-lesson-journey.ts";
 import {fishingCalendarSelectionSchema,fishingCalendarSelectionQuery,selectedFishingStage,fishingCalendarWindowSchema,fishingCalendarEvents,type FishingCalendarPlan,type FishingCalendarSelection} from "./program-calendar-contract.ts";
 
-export type FishingCalendarDependencies={runtime:Ls050HttpRuntime;store:IdentityStore};
+export type FishingCalendarDependencies={runtime:Ls050HttpRuntime;store:IdentityStore;merchant?:MerchantBinding|null};
 const contextQuery=z.strictObject({learnerId:z.uuid().optional()});
 export const fishingCalendarCommandSchema=z.strictObject({selection:fishingCalendarSelectionSchema,command:stageCommandSchema,intent:nativeProgramIntentSchema});
 const prefix="/api/calendar/fishing/";
@@ -69,7 +72,16 @@ export async function handleFishingCalendar(request:Request,path:readonly string
     if(path.length!==1||url.pathname!==prefix+path[0])throw new AppError("NOT_FOUND");
     if(!["practitioner","parent","child"].includes(actor.role))throw new AppError("FORBIDDEN");
     let data:unknown;
-    if(request.method==="GET"&&path[0]==="context"){
+    if(path[0]==='travel-credit'||path[0]==='travel-change'||path[0]==='travel-declaration'){
+     if(actor.role==='child')throw new AppError('FORBIDDEN');const travel=new AcademyTravelCreditService(store,runtime.config,d.merchant??null,runtime.clock);
+     if(path[0]==='travel-credit'&&request.method==='GET'){
+      const query=travelSelectionSchema.safeParse(Object.fromEntries(url.searchParams));if(!query.success||url.searchParams.size!==Object.keys(query.data).length)throw new AppError('INVALID_REQUEST');data=await travel.context(actor,query.data);
+     }else if(request.method==='POST'&&!url.search&&path[0]==='travel-change'){
+      const command=await readJson(request,travelChangeCommandSchema);if(request.headers.get('idempotency-key')!==command.operationId)throw new AppError('INVALID_REQUEST');data=await travel.recordChange(actor,command);
+     }else if(request.method==='POST'&&!url.search&&path[0]==='travel-declaration'){
+      const command=await readJson(request,travelDeclarationCommandSchema);if(request.headers.get('idempotency-key')!==command.operationId)throw new AppError('INVALID_REQUEST');data=await travel.declare(actor,command);
+     }else throw new AppError('NOT_FOUND');
+    }else if(request.method==="GET"&&path[0]==="context"){
      const parsed=contextQuery.safeParse(Object.fromEntries(url.searchParams));if(!parsed.success||url.searchParams.size!==Object.keys(parsed.data).length)throw new AppError("INVALID_REQUEST");
      data=await program.calendarChoices(actor,parsed.data.learnerId??null);
     }else if(request.method==="GET"&&path[0]==="timeline"){

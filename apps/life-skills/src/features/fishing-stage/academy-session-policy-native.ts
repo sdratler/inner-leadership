@@ -10,7 +10,7 @@ import {academySessionPolicyNativeVersion,type AcademySessionPolicyNativeDepende
  type AcademySessionCreditCommandResult,type AcademySessionCreditFamilySummary} from "../fishing/academy-session-policy-native-contract.ts";
 import {academyFoundationPreparationPolicyVersion} from "../fishing/academy-policy-preflight-contract.ts";
 import {academySessionCreditPublicVersion,academySessionCreditPublicSummarySchema,type AcademySessionCreditPublicSummary} from '../fishing/academy-session-credit-public-contract.ts';
-import {assessAcademySessionDuration,assessAcademyTravelChange,assessAcademyTravelChangeWithRecordedMaximum,
+import {assessAcademySessionDuration,assessAcademyTravelChange,assessAcademyTravelChangeWithRecordedMaximum,assessAcademyTravelChangeWithExactMaximum,
  assessAcademyFoundationPreparationDuration} from "./academy-session-policy-preflight.ts";
 import {AcademySessionCreditStore,academyCreditCommandSchema,academyCreditSelectionSchema,academyCreditResolvedFactsSchema,
  academyCreditDigest,sameAcademyAnchor,sameAcademyCredit} from "./academy-session-credit-store.ts";
@@ -30,8 +30,10 @@ function bound(record:AcademySessionCreditRecord,facts:AcademySessionCreditResol
 /** Classifiers supply reasons, never authority. This is called only after Root's
  * required resolver has verified the native obligation and all source bindings. */
 function classify(facts:AcademySessionCreditResolvedFacts,credit:AcademySessionCreditRecord|null):AcademySessionCreditCommandResult{
- const existingCredit=credit?{anchor:credit.anchor,creditId:credit.id,state:credit.state}:null;
- const travel="compatibility" in facts?
+ if('nativeLifecycle' in facts&&facts.nativeLifecycle.state==='review_required')return result('facts_required','obligation_unknown',credit);
+ const currentState='nativeLifecycle' in facts?facts.nativeLifecycle.state:credit?.state;
+ const existingCredit=credit?{anchor:credit.anchor,creditId:credit.id,state:currentState==='review_required'||currentState===undefined?'unknown' as const:currentState}:null;
+ const travel='nativeLifecycle' in facts?assessAcademyTravelChangeWithExactMaximum({...facts.travel,existingCredit}):"compatibility" in facts?
   assessAcademyTravelChangeWithRecordedMaximum({...facts.travel,existingCredit}):
   assessAcademyTravelChange({...facts.travel,existingCredit});
  // A later change cannot erase an undelivered entitlement or its reservation.
@@ -112,10 +114,12 @@ export class AcademySessionPolicyNativeService{
    const c=await this.context(tx),selected=await this.selected(tx,c),facts=await this.facts(tx,c,command,selected);
    const store=new AcademySessionCreditStore(tx,this.dependencies.keyring),stored=await store.byOriginal(facts.anchor),legacy=facts.legacyCredit;
    if(stored)bound(stored,facts);
-   if(legacy){const used=await store.byId(c.actor.workspaceId,legacy.id);if(used&&!sameAcademyCredit(used,legacy)||stored&&!sameAcademyCredit(stored,legacy))fail();}
+   if(legacy){const used=await store.byId(c.actor.workspaceId,legacy.id);if('nativeLifecycle' in facts){
+    if(used){bound(used,facts);if(used.id!==legacy.id)fail();}if(stored&&stored.id!==legacy.id)fail();
+   }else if(used&&!sameAcademyCredit(used,legacy)||stored&&!sameAcademyCredit(stored,legacy))fail();}
    // Contradictory delivered/outstanding claims are never silently reconciled.
    const existing=stored??legacy;
-   if(existing&&((existing.state==="delivered")!==(facts.travel.obligation?.state==="delivered"))) {
+   if(!('nativeLifecycle' in facts)&&existing&&((existing.state==="delivered")!==(facts.travel.obligation?.state==="delivered"))) {
     if(existing.state==="delivered"||facts.travel.obligation?.state==="delivered")fail();
    }
    const digest=academyCreditDigest({version:academySessionPolicyNativeVersion,workspaceId:c.actor.workspaceId,actorId:c.actor.id,selection:c.selection,command});

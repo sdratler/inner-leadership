@@ -55,7 +55,14 @@ export type AcademySessionCreditNativeFactsV2=Omit<AcademySessionCreditNativeFac
 }>;
 /** Legacy envelopes stay readable/replayable without migration or defaults.
  * Fresh issuance needs the versioned branch and independently resolved facts. */
-export type AcademySessionCreditResolvedFacts=AcademySessionCreditNativeFacts|AcademySessionCreditNativeFactsV2;
+export const academyTravelCompatibilityVersion='JLFA-TRAVEL-COMPAT-20261021-01-v3' as const;
+/** Explicit exact-integer source branch. Historical envelopes and archive
+ * credit records are never rewritten as the current native lifecycle changes. */
+export type AcademySessionCreditNativeFactsV3=Omit<AcademySessionCreditNativeFactsV2,'compatibility'> & Readonly<{
+ compatibility:Readonly<{version:typeof academyTravelCompatibilityVersion;originalStage:FishingStageNumber}>;
+ nativeLifecycle:Readonly<{state:AcademySessionCreditState|'review_required';rootEntitlementId:string|null;replacementReservationId:string|null;evidenceSha256:string}>;
+}>;
+export type AcademySessionCreditResolvedFacts=AcademySessionCreditNativeFacts|AcademySessionCreditNativeFactsV2|AcademySessionCreditNativeFactsV3;
 export interface AcademySessionPolicyNativeAuthority {
  /** After freshActor + workspace lock, recheck operator/current selected parent,
   * enrollment, every original anchor field, purchase/delivery and immutable

@@ -87,6 +87,8 @@ export type FishingNotice=FishingSource&Readonly<{
  state:"protected"|"best_effort"|"operator_review"|"operator_undelivered";
  entitlementId:string|null;replacementOccurrenceId:string|null;replacementReservationId:string|null;
  specificTripGuaranteed:false;
+ /** Additive authenticated provenance; absent on historical notices. */
+ travelCredit?:import('./academy-travel-credit-contract.ts').TravelNoticeProvenance|undefined;
 }>;
 
 /** Adapter interfaces return null for unavailable or unauthorized objects without

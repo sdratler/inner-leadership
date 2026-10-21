@@ -6,7 +6,7 @@ import type {Keyring} from "../identity/crypto.ts";
 import {one,type IdentityStore,type SqlSession} from "../identity/store.ts";
 import {systemClock,type AccountFacts} from "../identity/types.ts";
 import type {FishingStageNativeHooks,NativeStageHookContext,NativeStagePrincipal} from "../fishing/native-stage-ports.ts";
-import type {Actor,CanonicalOccurrence,EnrollmentProjection,FishingStageRef,FishingStageStore,FishingStageTransaction,FreshStageContext,IdentityClock} from "./contract.ts";
+import type {Actor,CanonicalOccurrence,EnrollmentProjection,FishingStageRef,FishingStageStore,FishingStageTransaction,FreshStageContext,IdentityClock,MakeupAttendanceEnrollment} from "./contract.ts";
 import {FishingStageError,validateStageState} from "./service.ts";
 import {assertPlanBinding,authoritySchema,decodeNative,digest,encodeNative,linkSchema,nativeLimits,operationHeaderSchema,operationSchema,parseEnrollment,parseSnapshot,parseTemplate,planHeaderSchema,revisionHeaderSchema,unavailable,
  type NativeMakeupLink,type NativeSnapshot,type PlanHeader,type RevisionHeader} from "./native-storage.ts";
@@ -53,6 +53,7 @@ export class NativeFishingStageStore implements FishingStageStore {
    let actor=await this.verifiedActor(sql);
    let bound:{context:FreshStageContext;authorityHash:string}|null=null;
    const loaded=new Map<string,Loaded|null>();
+   const attendanceProofs=new Map<string,MakeupAttendanceEnrollment>();
    const contextFor=(c:FreshStageContext):NativeStageHookContext=>{
     if(!bound||c!==bound.context)forbidden();
     return Object.freeze({actor:accountFacts(actor),scope:Object.freeze({...c.scope}),now:this.clock.now(),selectedEnrollmentId:this.principal.selection.selectedEnrollmentId});
@@ -110,6 +111,23 @@ export class NativeFishingStageStore implements FishingStageStore {
     if(!ref)return null;const targetPlan=await load(c,ref);if(!targetPlan)return null;
     return structuredClone(targetPlan.snapshot.state.occurrences.find(o=>o.id===id)??null);
    };
+   const makeupAttendance=async(c:FreshStageContext,enrollmentId:string,occurrenceId:string):Promise<MakeupAttendanceEnrollment|null>=>{
+    operatorContext(c);
+    // Preserve the original local-enrollment command/replay behavior. This
+    // additional authority path applies only to a foreign original stage.
+    const origin=await one<{stageId:string}>(sql,'SELECT stage_id AS "stageId" FROM ls_fishing_stage.enrollments WHERE workspace_id=$1 AND id=$2 FOR SHARE',[actor.workspaceId,uuid.parse(enrollmentId)]);
+    if(!origin||origin.stageId===c.scope.stageId)return null;
+    const raw=await this.hooks.readEnrollment(sql,operatorContext(c),uuid.parse(enrollmentId));if(!raw)forbidden();const e=parseEnrollment(raw);
+    if(e.id!==enrollmentId||e.stageId!==origin.stageId||e.workspaceId!==actor.workspaceId||e.program!==c.scope.program||e.state!=='confirmed'||e.authorizedAccountIds.length===0)forbidden();
+    const targetPlan=await load(c),o=targetPlan?.snapshot.state.occurrences.find(o=>o.id===uuid.parse(occurrenceId));if(!o||o.stageId!==c.scope.stageId)forbidden();
+    const rows=await sql.query<NativeMakeupLink>(`SELECT l.workspace_id AS "workspaceId",l.source_stage_id AS "sourceStageId",l.entitlement_id AS "entitlementId",l.enrollment_id AS "enrollmentId",l.learner_id AS "learnerId",l.occurrence_id AS "occurrenceId",l.reservation_id AS "reservationId"
+     FROM ls_fishing_stage.makeup_links l JOIN ls_fishing_stage.seat_reservations s ON s.workspace_id=l.workspace_id AND s.id=l.reservation_id AND s.entitlement_id=l.entitlement_id AND s.enrollment_id=l.enrollment_id AND s.learner_id=l.learner_id AND s.occurrence_id=l.occurrence_id
+     WHERE l.workspace_id=$1 AND l.source_stage_id=$2 AND l.enrollment_id=$3 AND l.learner_id=$4 AND l.occurrence_id=$5 AND s.stage_id=$6 AND s.origin='makeup' AND s.state IN('reserved','confirmed') LIMIT 2 FOR SHARE OF l,s`,[actor.workspaceId,e.stageId,e.id,e.learnerId,o.id,c.scope.stageId]);
+    if(rows.length!==1)forbidden();const link=linkSchema.parse(rows[0]),source=await load(c,{cohortId:e.cohortId,stageId:e.stageId,stage:e.stage});
+    if(!source)forbidden();const notices=source.snapshot.state.makeups.filter(m=>m.notice.enrollmentId===e.id&&m.notice.entitlementId===link.entitlementId&&m.notice.replacementOccurrenceId===o.id&&m.notice.replacementReservationId===link.reservationId);
+    if(notices.length!==1||!source.snapshot.state.occurrences.some(original=>original.id===notices[0]!.notice.occurrenceId)||e.purchaseScope&&!e.purchaseScope.occurrenceIds.includes(notices[0]!.notice.occurrenceId))forbidden();
+    const proof={enrollment:e,occurrenceId:o.id,targetStageId:c.scope.stageId,entitlementId:link.entitlementId,reservationId:link.reservationId};attendanceProofs.set(e.id+'/'+o.id,proof);return structuredClone(proof);
+   };
    const tx:FishingStageTransaction={
     resolveFreshContext:async(input,ref)=>{
      if(input.id!==actor.id||input.workspaceId!==actor.workspaceId||input.sessionDigest!==actor.sessionDigest||bound&&!sameRef(bound.context.scope,ref))forbidden();
@@ -129,6 +147,7 @@ export class NativeFishingStageStore implements FishingStageStore {
      if(!r||r.actorId!==actor.id||r.operationId!==id||r.stateHash!==header.stateHash)unavailable();return value;
     },
     readEnrollment,
+    readMakeupAttendanceEnrollment:makeupAttendance,
     occupiedSeats:async(c,id)=>{
      const count=await this.hooks.occupiedSeats(sql,operatorContext(c),uuid.parse(id));
      if(!Number.isSafeInteger(count)||count<0)unavailable();return count;
@@ -152,6 +171,7 @@ export class NativeFishingStageStore implements FishingStageStore {
     },
     commit:async(c,state,expected,operation)=>{
      contextFor(c);if(!loaded.has(c.scope.stageId))unavailable();const before=loaded.get(c.scope.stageId);
+     for(const [key,proof]of attendanceProofs){const current=await makeupAttendance(c,proof.enrollment.id,proof.occurrenceId);if(!current||digest(current)!==digest(proof)||key!==proof.enrollment.id+'/'+proof.occurrenceId)forbidden();}
      actor=await this.verifiedActor(sql);const currentAuthority=await authority(c.scope);
      if(!bound||!currentAuthority||currentAuthority.authorityHash!==bound.authorityHash||actor.id!==c.actor.id||actor.role!==c.actor.role||actor.personId!==c.actor.personId)forbidden();
      if((before?.header.revision??0)!==expected||state.revision!==expected+1)conflict();

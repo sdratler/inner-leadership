@@ -56,12 +56,18 @@ export type FreshStageContext={
  guardianRelationshipCurrent:boolean;childAccountEnabled:boolean;
 };
 export type ReplacementCandidate={occurrence:CanonicalOccurrence;suitableForEnrollment:boolean};
+/** Same-transaction native proof for attendance at an already reserved makeup.
+ * The canonical enrollment retains its ORIGINAL cohort/stage and paid scope. */
+export type MakeupAttendanceEnrollment={enrollment:EnrollmentProjection;occurrenceId:string;targetStageId:string;entitlementId:string;reservationId:string};
 export interface FishingStageTransaction {
  resolveFreshContext(actor:Actor,ref:FishingStageRef):Promise<FreshStageContext|null>;
  resolveApprovedTemplate(context:FreshStageContext,version:string):Promise<ApprovedStageTemplate|null>;
  load(context:FreshStageContext):Promise<StageState|null>;
  readOperation(context:FreshStageContext,operationId:string):Promise<OperationRecord|null>;
  readEnrollment(context:FreshStageContext,enrollmentId:string):Promise<EnrollmentProjection|null>;
+ /** Optional additive port. Absence retains local-enrollment rules; it never
+  * permits a foreign cohort or substitutes browser fields for native proof. */
+ readMakeupAttendanceEnrollment?(context:FreshStageContext,enrollmentId:string,occurrenceId:string):Promise<MakeupAttendanceEnrollment|null>;
  /** Count confirmed AND reserved child places using native locks. */
  occupiedSeats(context:FreshStageContext,occurrenceId:string):Promise<number>;
  /** Reuse existing adult/venue calendar reservations, one per occurrence.

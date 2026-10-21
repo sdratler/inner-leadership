@@ -1,5 +1,6 @@
 import "server-only";
 import {createHash,randomUUID} from "node:crypto";
+import {z} from 'zod';
 import type {FishingOccurrenceReadPort} from "../fishing/contract.ts";
 import {applySafetyCommand,safetyStateSchema,type SafetyCommand} from './safety.ts';
 import {canonicalTime,noticeState} from "./time.ts";
@@ -34,11 +35,12 @@ function weeklyFacts(s:StageState,enrollment:EnrollmentProjection,occurrenceId:s
   occurrence:{id:o.id,revision:o.revision,moduleId:o.moduleId,moduleVersion:o.moduleVersion,startsAt:o.time.startsAt,endsAt:o.time.endsAt,state:o.state},
   attendance:{state:attendance.state,recordedAt:attendance.recordedAt,recordedBy:attendance.recordedBy}};
 }
-function validEnrollment(e:EnrollmentProjection|null,c:FreshStageContext):e is EnrollmentProjection{
- return !!e&&purchaseScopeValid(e)&&e.workspaceId===c.scope.workspaceId&&e.program===c.scope.program&&sameStage(e,c.scope)&&e.state==="confirmed"&&
+function validEnrollmentFacts(e:EnrollmentProjection|null,c:FreshStageContext):e is EnrollmentProjection{
+ return !!e&&purchaseScopeValid(e)&&e.workspaceId===c.scope.workspaceId&&e.program===c.scope.program&&e.state==="confirmed"&&
   Number.isSafeInteger(e.revision)&&e.revision>0&&[e.evidence?.verifiedGuardianBindingId,e.evidence?.capacityReservationId,e.evidence?.fitDecisionId,
    e.evidence?.acceptedTermsVersion,e.evidence?.ownerActionId].every(value=>typeof value==="string"&&value.trim().length>0);
 }
+function validEnrollment(e:EnrollmentProjection|null,c:FreshStageContext):e is EnrollmentProjection{return validEnrollmentFacts(e,c)&&sameStage(e,c.scope);}
 function fresh(c:FreshStageContext|null,actor:Actor,ref:FishingStageRef,now:Date):FreshStageContext{
  if(!c||c.sessionRevoked||c.actor.state!=="active"||!Number.isFinite(c.actor.expiresAt)||c.actor.expiresAt<=now.getTime()||c.actor.id!==actor.id||
   c.actor.workspaceId!==actor.workspaceId||c.actor.sessionDigest!==actor.sessionDigest||c.scope.workspaceId!==c.actor.workspaceId||
@@ -138,6 +140,9 @@ export class FishingStageService implements FishingOccurrenceReadPort {
    const now=this.clock.now(),c=fresh(await tx.resolveFreshContext(actor,ref),actor,ref,now);
    const familyAction=command.action==="notice"||command.action==="request_makeup";
    if(familyAction?c.actor.role!=="parent":!operator(c))fail("FORBIDDEN");
+   // Current physical source/target binding precedes cached cross-cohort
+   // attendance receipts; a historical reservation is not current authority.
+   if(command.action==='attendance'&&tx.readMakeupAttendanceEnrollment)await tx.readMakeupAttendanceEnrollment(c,command.enrollmentId,command.occurrenceId);
    const digest=createHash("sha256").update(JSON.stringify({ref,command,actorId:c.actor.id,workspaceId:c.actor.workspaceId,
     enrollmentId:familyAction?c.enrollment!.id:null})).digest("hex");
    const prior=await tx.readOperation(c,command.operationId);
@@ -221,7 +226,11 @@ export class FishingStageService implements FishingOccurrenceReadPort {
   }
   if(command.action==="attendance"){
    if(o.state!=="completed"||o.time.kind!=="scheduled")fail("INVALID_STATE");
-   const e=await tx.readEnrollment(c,command.enrollmentId);if(!validEnrollment(e,c)||!inEnrollmentScope(e,o.id,s))fail("FORBIDDEN");
+   const makeup=tx.readMakeupAttendanceEnrollment?await tx.readMakeupAttendanceEnrollment(c,command.enrollmentId,o.id):null;
+   const e=makeup?.enrollment??await tx.readEnrollment(c,command.enrollmentId);
+   if(makeup){
+    if(!validEnrollmentFacts(e,c)||e.id!==command.enrollmentId||makeup.occurrenceId!==o.id||makeup.targetStageId!==c.scope.stageId||!z.uuid().safeParse(makeup.entitlementId).success||!z.uuid().safeParse(makeup.reservationId).success)fail('FORBIDDEN');
+   }else if(!validEnrollment(e,c)||!inEnrollmentScope(e,o.id,s))fail("FORBIDDEN");
    // Append corrections. Do not mutate an earlier attendance fact or infer one
    // from an elapsed date, a payment, a quiz, an absence or operator cancellation.
    s.attendance.push({enrollmentId:e.id,occurrenceId:o.id,state:command.state,recordedAt:now.toISOString(),recordedBy:c.actor.id,reason:command.reason});return;

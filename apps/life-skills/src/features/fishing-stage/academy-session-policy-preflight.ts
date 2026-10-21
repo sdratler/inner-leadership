@@ -95,11 +95,16 @@ export function assessAcademyTravelChange(input:AcademyTravelChangeInput):Academ
 export function assessAcademyTravelChangeWithRecordedMaximum(input:AcademyTravelChangeWithRecordedMaximumInput):AcademyTravelChangeResult{
  return assessTravelChange(input,true);
 }
-function recordedDriveLimit(value:unknown,numeric:boolean):boolean{
- return member(value,["up_to_30","up_to_45","up_to_60","over_60"])||numeric&&typeof value==="number"&&
-  Number.isInteger(value)&&value>=5&&value<=120&&value%5===0;
+/** V3 registration stores each exact integer, including 37. This explicit
+ * export does not change the legacy/V2 five-minute grammar or sealed facts. */
+export function assessAcademyTravelChangeWithExactMaximum(input:AcademyTravelChangeWithRecordedMaximumInput):AcademyTravelChangeResult{
+ return assessTravelChange(input,'exact');
 }
-function assessTravelChange(input:AcademyTravelChangeInput|AcademyTravelChangeWithRecordedMaximumInput,numeric:boolean):AcademyTravelChangeResult{
+function recordedDriveLimit(value:unknown,numeric:boolean|'exact'):boolean{
+ return member(value,["up_to_30","up_to_45","up_to_60","over_60"])||numeric&&typeof value==="number"&&
+  Number.isInteger(value)&&value>=5&&value<=120&&(numeric==='exact'||value%5===0);
+}
+function assessTravelChange(input:AcademyTravelChangeInput|AcademyTravelChangeWithRecordedMaximumInput,numeric:boolean|'exact'):AcademyTravelChangeResult{
  try{
   const value=data(input,["version","original","obligation","existingCredit","sessionKind","change"]);
   if(!value||value.version!==academyPolicyPreflightVersion||!member(value.sessionKind,sessionKinds))return facts("invalid_input");

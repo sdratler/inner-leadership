@@ -14,6 +14,8 @@ import type {NativeProgramCommandIntent} from "./native-program-contract.ts";
 import {FishingCalendarEditor} from "./program-calendar-editor.tsx";
 import {WeeklyProgressControls} from "./weekly-progress-controls.tsx";
 import {AcademySafetyControls} from './safety-controls.tsx';
+import {AcademyTravelCreditControls} from './academy-travel-credit-controls.tsx';
+import type {travelChangeCommandSchema,travelDeclarationCommandSchema} from './academy-travel-credit-contract.ts';
 import {WeeklyProgressView} from "../fishing-stage/weekly-progress-view.tsx";
 import {fishingCalendarChoicesSchema,fishingCalendarSearch,fishingCalendarSelectionQuery,selectedFishingStage,fishingCalendarTimelineSchema,type FishingCalendarChoices,type FishingCalendarPlan,type FishingCalendarSelection,type FishingCalendarEvent} from "./program-calendar-contract.ts";
 import styles from "./program-calendar.module.css";
@@ -38,14 +40,16 @@ export function useFishingCalendarTimeline({enabled,role,from,to,search,refresh}
 
 const contextKeys=["learnerId","enrollmentId","cohortId","stageId","stage"] as const;
 const contextKey=(role:string,p:URLSearchParams)=>JSON.stringify([role,...contextKeys.map(k=>p.getAll(k))]);
-type Read={key:string;choices:FishingCalendarChoices;plan:FishingCalendarPlan|null};
-type Pending={key:string;body:{selection:FishingCalendarSelection;command:StageCommand;intent:NativeProgramCommandIntent};serialized:string;id:string};
+type Read={key:string;choices:FishingCalendarChoices;plan:FishingCalendarPlan|null;refreshToken:number};
+type Pending={key:string;body:unknown;serialized:string;id:string;path?:'travel-change'|'travel-declaration'};
 /** A retained authenticated Calendar section, not another route or a role switch. */
 export function FishingCalendarWorkspace({locale,role,enabled,onDirtyChange,onSaved}:{locale:Locale;role:"practitioner"|"parent"|"child"|"adult_client";enabled:boolean;onDirtyChange:(dirty:boolean)=>void;onSaved:()=>void}){
  const router=useRouter(),pathname=usePathname(),search=useSearchParams().toString(),scope=contextKey(role,new URLSearchParams(search));
  const t=(en:string,he:string)=>locale==="he"?he:en,active=enabled&&role!=="adult_client";
  const [read,setRead]=useState<Read|null>(null),[loading,setLoading]=useState(false),[failure,setFailure]=useState(""),[refresh,setRefresh]=useState(0),[lessonLearner,setLessonLearner]=useState("");
- const [editor,setEditor]=useState<string|null>(null),[dirty,setDirty]=useState(false),[pending,setPending]=useState<Pending|null>(null),[busy,setBusy]=useState(false),[saved,setSaved]=useState(false);
+ const [editor,setEditor]=useState<string|null>(null),[editorDirty,setEditorDirty]=useState(false),[travelDirty,setTravelDirty]=useState(false),[pending,setPending]=useState<Pending|null>(null),[busy,setBusy]=useState(false),[saved,setSaved]=useState(false);
+ const dirty=editorDirty||travelDirty;
+ function setDirty(value:boolean){setEditorDirty(value);if(!value)setTravelDirty(false);}
  const [weeklyOpen,setWeeklyOpen]=useState(false);
  const [contextState,setContextState]=useState({scope,role,active}),[blockedScope,setBlockedScope]=useState<string|null>(null);
  const inFlight=useRef(false),currentScope=useRef(scope),href=useRef(pathname+"?"+search),dirtyRef=useRef(false),pendingRef=useRef<Pending|null>(null),blocked=useRef(false),receipt=useRef<HTMLParagraphElement>(null);
@@ -82,7 +86,7 @@ export function FishingCalendarWorkspace({locale,role,enabled,onDirtyChange,onSa
     plan=await calendarRead<FishingCalendarPlan>("fishing/plan?"+fishingCalendarSearch(selection)+(role==="practitioner"&&lessonLearner?"&lessonLearnerId="+encodeURIComponent(lessonLearner):""));
     if(JSON.stringify(plan.selection)!==JSON.stringify(selection)||plan.view&&plan.view.role!==role)throw new CalendarClientError("UNAVAILABLE");
    }
-   if(live&&currentScope.current===scope)setRead({key:scope,choices,plan});
+   if(live&&currentScope.current===scope)setRead({key:scope,choices,plan,refreshToken:refresh});
   })().catch(error=>{
    if(!live||currentScope.current!==scope)return;const code=error instanceof CalendarClientError?error.code:"UNAVAILABLE";setFailure(code);
    if(["UNAUTHENTICATED","FORBIDDEN","NOT_FOUND"].includes(code)){setRead(null);setEditor(null);setWeeklyOpen(false);setDirty(false);setPending(null);setSaved(false);setLessonLearner("");}
@@ -104,7 +108,7 @@ export function FishingCalendarWorkspace({locale,role,enabled,onDirtyChange,onSa
   if(inFlight.current||action.key!==currentScope.current)return;inFlight.current=true;setBusy(true);setFailure("");setSaved(false);
   try{
    if(JSON.stringify(action.body)!==action.serialized)throw new CalendarClientError("INVALID_REQUEST");
-   await calendarWrite("fishing/command",JSON.parse(action.serialized),action.id);
+   await calendarWrite('fishing/'+(action.path??'command'),JSON.parse(action.serialized),action.id);
    if(action.key!==currentScope.current)return;setPending(null);setEditor(null);setWeeklyOpen(false);setDirty(false);setSaved(true);setRefresh(n=>n+1);onSaved();
   }catch(error){
    if(action.key!==currentScope.current)return;const code=error instanceof CalendarClientError?error.code:"UNAVAILABLE";setFailure(code);
@@ -117,6 +121,9 @@ export function FishingCalendarWorkspace({locale,role,enabled,onDirtyChange,onSa
  }
  function familyAction(command:Omit<Extract<StageCommand,{action:"notice"}>,"operationId"|"expectedRevision">|Omit<Extract<StageCommand,{action:"request_makeup"}>,"operationId"|"expectedRevision">){
   if(!plan?.view||locked)return;const operationId=crypto.randomUUID();save({...command,operationId,expectedRevision:plan.view.revision},{operationId,resources:[],makeupFitDecisionId:null});
+ }
+ function saveTravel(path:'travel-change'|'travel-declaration',body:ReturnType<typeof travelChangeCommandSchema.parse>|ReturnType<typeof travelDeclarationCommandSchema.parse>){
+  if(!plan?.view||locked)return;const action:Pending={key:scope,body,serialized:JSON.stringify(body),id:body.operationId,path};setPending(action);void execute(action);
  }
  const next=plan?.view?.occurrences.find(o=>o.id===plan.view?.nextOccurrenceId),format=(instant:string)=>new Intl.DateTimeFormat(locale==="he"?"he-IL":"en-US",{timeZone:"America/New_York",dateStyle:"medium",timeStyle:"short"}).format(new Date(instant));
  const parentView=role==="parent"&&plan?.view?.role==="parent"&&plan.view.enrollmentId&&plan.view.enrollmentId===plan.selection.enrollmentId&&Number.isSafeInteger(plan.view.revision)&&plan.view.revision>=0?plan.view:null;
@@ -142,20 +149,21 @@ export function FishingCalendarWorkspace({locale,role,enabled,onDirtyChange,onSa
   </>}
   {plan&&<>
    {parentView?<div className={styles.next} data-fishing-parent-next><FishingParentNextSessionSummary view={parentView} locale={locale}/>{parentNext&&<><p>{parentNext.location}</p>{parentNext.equipment&&<details><summary>{t("Equipment and preparation","ציוד והכנה")}</summary><p>{parentNext.equipment}</p></details>}</>}</div>:<div className={styles.next}><h3>{t("Next fishing session","מפגש הדיג הבא")}</h3>{next?.time.kind==="scheduled"?<><p><time dateTime={next.time.startsAt}>{format(next.time.startsAt)}</time> · America/New_York</p><p>{next.location}</p>{next.equipment&&<details><summary>{t("Equipment and preparation","ציוד והכנה")}</summary><p>{next.equipment}</p></details>}</>:<p>{t("No upcoming date is published. Undated syllabus entries remain in the full plan.","טרם פורסם מועד קרוב. פריטי תוכנית ללא מועד נשמרים בתוכנית המלאה.")}</p>}</div>}
-   {role==='practitioner'&&plan.view&&<AcademySafetyControls key={scope+':'+plan.view.revision} data={plan} locale={locale} locked={locked||loading} onDirty={setDirty} onSave={save}/>}
+   {role==='practitioner'&&plan.view&&<AcademySafetyControls key={scope+':'+plan.view.revision} data={plan} locale={locale} locked={locked||loading||travelDirty} onDirty={setEditorDirty} onSave={save}/>}
    {role==="parent"&&<p>{t("Parent-assisted use does not require a child device or child account.","שימוש בסיוע הורה אינו דורש מכשיר או חשבון ילד.")}</p>}
    {parentView&&<details className={styles.plan} data-fishing-parent-attendance><summary>{t("Attendance and session status","נוכחות ומצב המפגשים")}</summary><FishingParentAttendanceSummary view={parentView} locale={locale}/><div data-fishing-parent-makeup><FishingParentMakeupSummary view={parentView} locale={locale}/></div></details>}
    {parentView&&<WeeklyProgressView updates={parentView.weeklyUpdates??[]} locale={locale}/>}
+   {plan.view&&editor===null&&!weeklyOpen&&(role==='practitioner'||role==='parent')&&<AcademyTravelCreditControls key={scope+':travel:'+plan.view.revision+':'+(value?.refreshToken??0)} plan={plan} locale={locale} role={role} locked={locked||loading||editorDirty} onDirty={setTravelDirty} onSave={saveTravel} onDenied={()=>{setRead(null);setEditor(null);setWeeklyOpen(false);setDirty(false);setPending(null);setSaved(false);setFailure('FORBIDDEN');}}/>}
    {role==="practitioner"&&<Button variant="secondary" disabled={locked||loading} onClick={()=>{if(dirty&&!window.confirm(leaveMessage))return;setDirty(false);setWeeklyOpen(false);setEditor("");}}>{plan.view?t("Manage this stage","ניהול השלב"):t("Prepare a twelve-session draft","הכנת טיוטה ל־12 מפגשים")}</Button>}
    {role==="practitioner"&&plan.view&&<Button variant="secondary" disabled={locked||loading} onClick={()=>{if(dirty&&!window.confirm(leaveMessage))return;setDirty(false);setEditor(null);setWeeklyOpen(true);}}>{t("Skills and weekly updates","מיומנויות ועדכונים שבועיים")}</Button>}
-   {role==="practitioner"&&weeklyOpen&&plan.view&&<WeeklyProgressControls data={plan} locale={locale} locked={locked||loading} onDirty={setDirty} onSave={save} onCancel={()=>{if(locked||dirty&&!window.confirm(leaveMessage))return;setWeeklyOpen(false);setDirty(false);}}/>}
+   {role==="practitioner"&&weeklyOpen&&plan.view&&<WeeklyProgressControls data={plan} locale={locale} locked={locked||loading} onDirty={setEditorDirty} onSave={save} onCancel={()=>{if(locked||dirty&&!window.confirm(leaveMessage))return;setWeeklyOpen(false);setDirty(false);}}/>}
    {plan.view&&<details className={styles.plan}><summary>{t("Full twelve-session plan and received notices","התוכנית המלאה ל־12 מפגשים והדיווחים שהתקבלו")}</summary><fieldset disabled={locked} onChange={()=>{if(role==="parent")setDirty(true);}}><FishingStagePlan view={plan.view} locale={locale}
     {...(role==="practitioner"?{onEdit:(o:OccurrenceProjection)=>{if(locked||dirty&&!window.confirm(leaveMessage))return;setDirty(false);setWeeklyOpen(false);setEditor(o.id);}}:{})}
     {...(role==="parent"?{onNotice:(o:OccurrenceProjection,reason:"ordinary_absence"|"unavoidable")=>familyAction({action:"notice",occurrenceId:o.id,expectedOccurrenceRevision:o.revision,reason}),onRequestMakeup:(id:string)=>familyAction({action:"request_makeup",noticeId:id})}:{})}
     lessonHref={id=>plan.lessonLearnerId===(role==="practitioner"?lessonLearner||null:plan.selection.learnerId)?plan.lessonLinks.find(l=>l.occurrenceId===id)?.href??null:null}/></fieldset></details>}
    {role==="practitioner"&&plan.operator.roster.length>0&&<Select id="fishing-lesson-learner" label={t("Participant for existing Materials access","משתתף לגישה קיימת לחומרים")} value={lessonLearner} disabled={locked} onChange={e=>setLessonLearner(e.target.value)}><option value="">{t("Select an authorized participant","בחירת משתתף מורשה")}</option>{plan.operator.roster.map(r=><option key={r.enrollmentId} value={r.learnerId}>{r.displayName}</option>)}</Select>}
    {plan.view&&!plan.lessonLinks.length&&<p className={styles.note}>{t("Lesson links appear only when the existing Materials catalog and access controls are available. Enrollment creates no lesson grant.","קישורי שיעור מופיעים רק כשהקטלוג ובקרת הגישה הקיימים זמינים. רישום לקורס אינו יוצר הרשאה לשיעור.")}</p>}
-   {role==="practitioner"&&editor!==null&&<div className={styles.editor}><FishingCalendarEditor key={(value?.key??scope)+":"+editor} data={plan} locale={locale} initialOccurrenceId={editor} locked={locked||loading} onDirty={setDirty} onSave={save} onCancel={()=>{if(locked||dirty&&!window.confirm(leaveMessage))return;setEditor(null);setDirty(false);}}/></div>}
+   {role==="practitioner"&&editor!==null&&<div className={styles.editor}><FishingCalendarEditor key={(value?.key??scope)+":"+editor} data={plan} locale={locale} initialOccurrenceId={editor} locked={locked||loading} onDirty={setEditorDirty} onSave={save} onCancel={()=>{if(locked||dirty&&!window.confirm(leaveMessage))return;setEditor(null);setDirty(false);}}/></div>}
   </>}
  </section>;
 }

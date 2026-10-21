@@ -7,6 +7,7 @@ import {asId} from "../../lib/ids.ts";
 import {logisticsSchema,stageReferenceSchema,type StageState,type ApprovedStageTemplate,type EnrollmentProjection} from "./contract.ts";
 import {safetyStateSchema} from './safety.ts';
 import {weeklyStateSchema} from "./weekly-progress.ts";
+import {travelNoticeProvenanceSchema} from '../fishing/academy-travel-credit-contract.ts';
 
 export const nativeLimits=Object.freeze({revisions:1000,snapshotBytes:1048576,envelopeBytes:2000000,partBytes:16384,parts:64,attendance:12000,notices:12000,history:12000});
 const uuid=z.uuid(),version=z.string().trim().min(1).max(120),hash=z.string().regex(/^[a-f0-9]{64}$/);
@@ -23,7 +24,7 @@ const ordinal=z.union([z.literal(1),z.literal(2),z.literal(3),z.literal(4),z.lit
 const occurrence=scope.extend({...logisticsSchema.shape,id:uuid,revision:positive.max(nativeLimits.revisions),templateVersion:version,ordinal,moduleId:z.string().regex(/^RM-[1-4](?:0[1-9]|1[0-2])$/),moduleVersion:version,
  state:z.enum(["draft","published","completed","cancelled"]),optional:z.literal(false),instructor:z.strictObject({accountId,displayName:z.string().trim().min(1).max(200)}),replacesOccurrenceId:uuid.nullable(),changedBy:accountId,changedAt:instant,changeReason:z.string().trim().min(1).max(1200)});
 const notice=z.strictObject({...source,id:uuid,workspaceId,enrollmentId:uuid,occurrenceId:uuid,originalOccurrenceRevision:positive,originalStartsAt:instant,receivedAt:instant,
- reason:z.enum(["ordinary_absence","unavoidable","operator_cancelled"]),state:z.enum(["protected","best_effort","operator_review","operator_undelivered"]),entitlementId:uuid.nullable(),replacementOccurrenceId:uuid.nullable(),replacementReservationId:uuid.nullable(),specificTripGuaranteed:z.literal(false)});
+ reason:z.enum(["ordinary_absence","unavoidable","operator_cancelled"]),state:z.enum(["protected","best_effort","operator_review","operator_undelivered"]),entitlementId:uuid.nullable(),replacementOccurrenceId:uuid.nullable(),replacementReservationId:uuid.nullable(),specificTripGuaranteed:z.literal(false),travelCredit:travelNoticeProvenanceSchema.optional()});
 const makeup=z.strictObject({notice,requestedAt:instant.nullable(),decisionAt:instant.nullable(),decisionBy:uuid.nullable(),decisionReason:z.string().trim().min(1).max(1200).nullable()});
 const stateSchema=scope.extend({...source,revision:positive.max(nativeLimits.revisions),template:templateSchema,occurrences:z.array(occurrence).length(12),history:z.array(occurrence).max(nativeLimits.history),
  attendance:z.array(z.strictObject({enrollmentId:uuid,occurrenceId:uuid,state:z.enum(["present","late","absent","no_show"]),recordedAt:instant,recordedBy:uuid,reason:z.string().trim().min(1).max(1200)})).max(nativeLimits.attendance),makeups:z.array(makeup).max(nativeLimits.notices),weekly:weeklyStateSchema.optional(),safety:safetyStateSchema.optional()});
