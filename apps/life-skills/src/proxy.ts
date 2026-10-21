@@ -9,6 +9,7 @@ import { clientReturnPath, parentReturnPath, practitionerDetailReturnPath, pract
 import { groupInterestCandidateEnabled } from "./features/group-interest/candidate.ts";
 import { publicGroupApplicationEnvironmentEnabled } from "./features/group-application/candidate.ts";
 import { canonicalForwardedRequest } from "./features/integration/canonical-forwarded-request.ts";
+import { stripeTestWebhookEnabled } from "./features/fishing-payments/stripe-test-gate.ts";
 
 const intakeIdentityRoutes = new Set([
   "/api/identity/csrf", "/api/identity/login", "/api/identity/session",
@@ -82,6 +83,9 @@ export function proxy(request: NextRequest) {
   }
   const headers = securityHeaders(nonce, env.NODE_ENV === "development", env.LS_APP_ORIGIN.startsWith("https:"));
   const pathname = request.nextUrl.pathname;
+  // Exact test-only ingress. Its server boundary independently verifies
+  // canonical transport, sandbox account, signature and restricted DB intake.
+  if (stripeTestWebhookEnabled(pathname, process.env)) return decorate(NextResponse.next(), headers);
   const canonicalOrigin = new URL(env.LS_APP_ORIGIN);
   const requestHost = (request.headers.get("host") ?? request.nextUrl.host).trim().toLowerCase();
   // Private rendered data needs the same transport fence as its APIs. Keep
