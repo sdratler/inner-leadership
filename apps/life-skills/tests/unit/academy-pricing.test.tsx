@@ -42,9 +42,7 @@ describe.each(["en","he"] as const)("%s static Academy prices",locale=>{
   if(kind==="founding-sibling")expect(plain(html)).toContain(locale==="he"?"השלב הראשון בלבד":"first-stage prepay only");
   if(kind!=="regular-prepay")expect(plain(html)).toContain(locale==="he"?"זכאי":"eligible");
  });
- test("primary and sibling installment totals are exactly three650 dues with no discount",()=>{
-  const html=article(render(locale),"installments");expect(html).toContain('<bdi dir="ltr">$1,950</bdi>');expect(plain(html)).toContain("3 × $650 = $1,950");expect(plain(html)).toContain(locale==="he"?"אין הנחת אחים במסלול התשלומים":"No sibling installment discount");expect(plain(html)).toContain(locale==="he"?"לילד הראשון ולאחים":"Primary learners and siblings");expect(html).not.toMatch(/Save|חיסכון|\$1,550|\$1,650|\$1,750/);expect(3*650).toBe(1950);
- });
+ test("a monthly block is four lessons for one650 purchase with no future obligation",()=>{const text=plain(article(render(locale),"monthly-block"));expect(text).toContain("$650");expect(text).toContain(locale==="he"?"ארבעה שיעורים":"Four lessons");expect(text).toContain(locale==="he"?"כל מקבץ חדש נרכש בנפרד":"Each new block is purchased separately");expect(text).not.toContain("$1,950");});
  test("does not sell annual prepay, stacked discounts, automatic next stages or800 savings",()=>{
   const text=plain(render(locale));expect(text).toContain(locale==="he"?"לשלב הראשון בלבד":"first-stage prepay only");
   expect(text).not.toMatch(/\$800|\$[678],\d{3}|cancel.anytime|membership|subscription|annually|renewal/);
