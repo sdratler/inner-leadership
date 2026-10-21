@@ -1,6 +1,8 @@
 import "server-only";
 import {academyAgreementAcceptanceSchema,academyTermsHash,readAcademyAgreementBundle,verifyAcademyAgreementAcceptance} from './academy-agreements.ts';
 import {randomUUID} from "node:crypto";
+import {owner03PolicyVersion} from '../fishing-payments/owner03-policy.ts';
+import {monthlyBlockTermsCommandSchema,monthlyBlockScopeSchema} from './native-program-contract.ts';
 import {z} from "zod";
 import {AppError} from "../../lib/errors.ts";
 import {asId} from "../../lib/ids.ts";
@@ -123,6 +125,45 @@ export class NativeFishingProgram {
   const terms=programTermsSchema.parse(source.payload);if(terms.owner03Bundle){const bundle=readAcademyAgreementBundle(terms.owner03Bundle);requireFact(bundle&&academyTermsHash(terms)===source.hash,'APPROVAL_REQUIRED');try{verifyAcademyAgreementAcceptance(bundle,input.agreementAcceptance);}catch{fail('APPROVAL_REQUIRED');}}else requireFact(!input.agreementAcceptance,'APPROVAL_REQUIRED');
   const accepted=await one<{id:string;commandId:string;householdId:string}>(c.tx,'SELECT id,command_id AS "commandId",household_id AS "householdId" FROM ls_fishing_stage.terms_acceptances WHERE workspace_id=$1 AND stage_id=$2 AND learner_id=$3 AND parent_id=$4 AND source_approval_id=$5 FOR SHARE',[c.actor.workspaceId,input.stageId,input.learnerId,c.actor.id,input.sourceApprovalId]);requireFact(!accepted||accepted.id===input.id&&accepted.commandId===input.commandId&&accepted.householdId===input.householdId,'CONFLICT');
  },async c=>{await c.tx.query(`INSERT INTO ls_fishing_stage.terms_acceptances(workspace_id,id,stage_id,learner_id,household_id,parent_id,source_approval_id,source_sha256,accepted_at,command_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,[c.actor.workspaceId,input.id,input.stageId,input.learnerId,input.householdId,c.actor.id,input.sourceApprovalId,input.sourceSha256,c.now,input.commandId]);return {id:input.id,revision:1,state:"terms",...(input.agreementAcceptance?{detail:{kind:"agreement_acceptance" as const,learnerId:input.learnerId,parentAccountId:c.actor.id,sourceApprovalId:input.sourceApprovalId,sourceSha256:input.sourceSha256,acceptedAt:c.now.toISOString(),evidence:input.agreementAcceptance}}:{})};});}
+ private async monthlyTerms(tx:SqlSession,workspace:string,cohort:Cohort,now:Date){
+  const policy=programPolicySchema.parse((await this.source(tx,workspace,cohort.policyApprovalId,'payment_condition',now)).payload);
+  requireFact(policy.policyVersion===owner03PolicyVersion&&policy.confirmation.kind!=='unselected','POLICY_REQUIRED');
+  const source=await this.source(tx,workspace,cohort.termsApprovalId,'terms',now),terms=programTermsSchema.parse(source.payload),bundle=readAcademyAgreementBundle(terms.owner03Bundle);
+  requireFact(terms.policyVersion===owner03PolicyVersion&&bundle&&terms.contentSha256===source.hash&&academyTermsHash(terms)===source.hash,'APPROVAL_REQUIRED');
+  return {source,terms,bundle};
+ }
+ private async monthlyAcceptance(tx:SqlSession,workspace:string,block:z.infer<typeof monthlyBlockScopeSchema>,cohort:Cohort,learner:string,payer:string,household:string,now:Date,receiptRequired=true){
+  const row=await one<Acceptance&{blockId:string;occurrenceIds:string[];commandId:string;ciphertext:string}>(tx,`SELECT id,block_id AS "blockId",stage_id AS "stageId",learner_id AS "learnerId",household_id AS "householdId",parent_id AS "parentId",source_approval_id AS "sourceApprovalId",source_sha256 AS "sourceHash",occurrence_ids AS "occurrenceIds",accepted_at AS "acceptedAt",command_id AS "commandId",payload_ciphertext AS ciphertext FROM ls_fishing_stage.block_acceptances WHERE workspace_id=$1 AND id=$2 FOR SHARE`,[workspace,block.acceptanceId]);
+  requireFact(row&&row.blockId===block.id&&row.stageId===cohort.stageId&&row.learnerId===learner&&row.parentId===payer&&row.householdId===household&&row.sourceApprovalId===cohort.termsApprovalId&&row.acceptedAt<=now);
+  const payload=z.strictObject({command:monthlyBlockTermsCommandSchema,guardianDigest:z.string().regex(/^[a-f0-9]{64}$/),acceptedAt:z.iso.datetime()}).parse(this.decode('block-acceptance',workspace,row.id,row.ciphertext)),input=payload.command;
+  const sameIds=(ids:readonly string[])=>digest([...ids].sort());
+  requireFact(input.id===row.id&&input.commandId===row.commandId&&input.blockId===block.id&&input.stageId===row.stageId&&input.learnerId===learner&&input.householdId===household&&input.sourceApprovalId===row.sourceApprovalId&&input.sourceSha256===row.sourceHash&&payload.acceptedAt===row.acceptedAt.toISOString());
+  requireFact(sameIds(input.occurrenceIds)===sameIds(row.occurrenceIds)&&sameIds(input.occurrenceIds)===sameIds(block.occurrenceIds));
+  requireFact(await this.guardian(tx,workspace,payer,learner,household)===payload.guardianDigest,'FORBIDDEN');
+  const {source,bundle}=await this.monthlyTerms(tx,workspace,cohort,now);requireFact(source.hash===row.sourceHash,'CONFLICT');verifyAcademyAgreementAcceptance(bundle,input.agreementAcceptance);
+  const plan=await this.plan(tx,workspace,cohort.stageId);requireFact(block.occurrenceIds.every(id=>plan.occurrences.some(o=>o.id===id)),'CONFLICT');
+  if(receiptRequired){
+   const hash=digest(input),receipt=await one<{action:string;hash:string;ciphertext:string}>(tx,'SELECT action,request_sha256 AS hash,result_ciphertext AS ciphertext FROM ls_fishing_stage.command_receipts WHERE workspace_id=$1 AND actor_id=$2 AND command_id=$3',[workspace,payer,row.commandId]);
+   requireFact(receipt?.action==='block.terms.accept'&&receipt.hash===hash);const saved=receiptSchema.parse(this.decode('receipt',workspace,`${payer}:${row.commandId}:block.terms.accept:${hash}`,receipt.ciphertext));requireFact(saved.id===row.id&&saved.state==='terms');
+  }
+  return {...row,command:input};
+ }
+ /** A new signature and immutable source/price/scope per purchase. This neither
+  * creates future blocks nor activates an unapproved agreement or provider. */
+ acceptMonthlyBlockTerms(actor:Actor,raw:unknown){
+  const input=monthlyBlockTermsCommandSchema.parse(raw),block={id:input.blockId,acceptanceId:input.id,occurrenceIds:input.occurrenceIds};
+  return this.command(actor,input.commandId,'block.terms.accept',input,async c=>{
+   requireFact(c.actor.role==='parent','FORBIDDEN');const cohort=await this.cohort(c.tx,c.actor.workspaceId,input.stageId);await this.guardian(c.tx,c.actor.workspaceId,c.actor.id,input.learnerId,input.householdId);
+   const {source,bundle}=await this.monthlyTerms(c.tx,c.actor.workspaceId,cohort,c.now);requireFact(cohort.termsApprovalId===input.sourceApprovalId&&source.hash===input.sourceSha256,'CONFLICT');verifyAcademyAgreementAcceptance(bundle,input.agreementAcceptance);
+   const existing=await one<{id:string}>(c.tx,'SELECT id FROM ls_fishing_stage.block_acceptances WHERE workspace_id=$1 AND block_id=$2 FOR SHARE',[c.actor.workspaceId,input.blockId]);
+   if(existing){requireFact(existing.id===input.id,'CONFLICT');const saved=await this.monthlyAcceptance(c.tx,c.actor.workspaceId,block,cohort,input.learnerId,c.actor.id,input.householdId,c.now,false);requireFact(digest(saved.command)===digest(input),'CONFLICT');return;}
+   const plan=await this.plan(c.tx,c.actor.workspaceId,input.stageId);requireFact(plan.revision===input.expectedPlanRevision&&input.occurrenceIds.every(id=>plan.occurrences.some(o=>o.id===id)),'CONFLICT');
+  },async c=>{
+   const guardianDigest=await this.guardian(c.tx,c.actor.workspaceId,c.actor.id,input.learnerId,input.householdId),acceptedAt=c.now.toISOString();
+   await c.tx.query(`INSERT INTO ls_fishing_stage.block_acceptances(workspace_id,id,block_id,stage_id,learner_id,household_id,parent_id,source_approval_id,source_sha256,occurrence_ids,accepted_at,command_id,payload_ciphertext) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::uuid[],$11,$12,$13)`,[c.actor.workspaceId,input.id,input.blockId,input.stageId,input.learnerId,input.householdId,c.actor.id,input.sourceApprovalId,input.sourceSha256,input.occurrenceIds,c.now,input.commandId,this.encode('block-acceptance',c.actor.workspaceId,input.id,{command:input,guardianDigest,acceptedAt})]);
+   return {id:input.id,revision:1,state:'terms'};
+  });
+ }
  private async plan(tx:SqlSession,workspace:string,stageId:string){
   const row=await one<Record<string,unknown>&{ciphertext:string}>(tx,`SELECT workspace_id AS "workspaceId",stage_id AS "stageId",cohort_id AS "cohortId",stage,template_version AS "templateVersion",revision,state_sha256 AS "stateHash",payload_ciphertext AS ciphertext FROM ls_fishing_stage.plans WHERE workspace_id=$1 AND stage_id=$2 FOR SHARE`,[workspace,stageId]);requireFact(row,"NOT_FOUND");
   const {ciphertext,...physical}=row,header=planHeaderSchema.parse(physical),snapshot=parseSnapshot(decodeNative("plan",header,ciphertext,this.ring));assertPlanBinding(header,snapshot);
@@ -140,28 +181,35 @@ export class NativeFishingProgram {
  private async countSeats(tx:SqlSession,workspace:string,id:string){const row=await one<{count:number}>(tx,"SELECT count(*)::integer AS count FROM ls_fishing_stage.seat_reservations WHERE workspace_id=$1 AND occurrence_id=$2 AND state<>'released'",[workspace,id]);requireFact(row&&Number.isInteger(row.count)&&row.count>=0,"UNAVAILABLE");return row.count;}
  reserveOfferHold(actor:Actor,raw:unknown){const input=holdCommandSchema.parse(raw);return this.command(actor,input.commandId,"hold.reserve",input,async c=>{const cohort=await this.cohort(c.tx,c.actor.workspaceId,input.stageId);this.operator(c,cohort);requireFact(cohort.revision===input.expectedCohortRevision,"CONFLICT");await this.guardian(c.tx,c.actor.workspaceId,input.payerAccountId,input.learnerId,input.householdId);},async c=>{
   const cohort=await this.cohort(c.tx,c.actor.workspaceId,input.stageId),plan=await this.plan(c.tx,c.actor.workspaceId,input.stageId);requireFact(plan.occurrences.length===12,"UNAVAILABLE");
-  for(const occurrence of plan.occurrences){requireFact(await this.countSeats(c.tx,c.actor.workspaceId,occurrence.id)<Math.min(cohort.capacity,occurrence.childCapacity),"CAPACITY");
+  if(input.block)await this.monthlyAcceptance(c.tx,c.actor.workspaceId,input.block,cohort,input.learnerId,input.payerAccountId,input.householdId,c.now);
+  const selected=input.block?plan.occurrences.filter(o=>input.block!.occurrenceIds.includes(o.id)):plan.occurrences;requireFact(selected.length===(input.block?4:12),'CONFLICT');
+  if(input.block)requireFact(!await one(c.tx,"SELECT id FROM ls_fishing_stage.seat_reservations WHERE workspace_id=$1 AND learner_id=$2 AND occurrence_id=ANY($3::uuid[]) AND state<>'released' LIMIT 1 FOR SHARE",[c.actor.workspaceId,input.learnerId,input.block.occurrenceIds]),'CONFLICT');
+  for(const occurrence of selected){requireFact(await this.countSeats(c.tx,c.actor.workspaceId,occurrence.id)<Math.min(cohort.capacity,occurrence.childCapacity),"CAPACITY");
    await c.tx.query(`INSERT INTO ls_fishing_stage.seat_reservations(workspace_id,id,hold_id,stage_id,occurrence_id,learner_id,origin,state,revision,hold_revision,actor_id,command_id) VALUES($1,$2,$3,$4,$5,$6,'offer_hold','reserved',1,1,$7,$8)`,[c.actor.workspaceId,randomUUID(),input.holdId,input.stageId,occurrence.id,input.learnerId,c.actor.id,input.commandId]);
   }return {id:input.holdId,revision:1,state:"hold"};
  });}
- private async hold(tx:SqlSession,workspace:string,id:string,stageId:string,learner:string){
+ private async hold(tx:SqlSession,workspace:string,id:string,stageId:string,learner:string,occurrenceIds?:readonly string[]){
   const rows=await tx.query<{id:string;occurrenceId:string;state:string;origin:string;learnerId:string;stageId:string;offerId:string|null;enrollmentId:string|null;holdRevision:number}>(`SELECT id,occurrence_id AS "occurrenceId",state,origin,learner_id AS "learnerId",stage_id AS "stageId",offer_id AS "offerId",enrollment_id AS "enrollmentId",hold_revision AS "holdRevision" FROM ls_fishing_stage.seat_reservations WHERE workspace_id=$1 AND hold_id=$2 ORDER BY occurrence_id LIMIT 13 FOR UPDATE`,[workspace,id]);
-  requireFact(rows.length===12&&rows.every(row=>row.stageId===stageId&&row.learnerId===learner&&row.state!=="released"&&row.holdRevision===rows[0]!.holdRevision)&&new Set(rows.map(row=>row.occurrenceId)).size===12);const plan=await this.plan(tx,workspace,stageId);requireFact(plan.occurrences.every(item=>rows.some(row=>row.occurrenceId===item.id)));return rows;
+  const count=occurrenceIds?4:12;requireFact(!occurrenceIds||occurrenceIds.length===4&&new Set(occurrenceIds).size===4);
+  requireFact(rows.length===count&&rows.every(row=>row.stageId===stageId&&row.learnerId===learner&&row.state!=="released"&&row.holdRevision===rows[0]!.holdRevision)&&new Set(rows.map(row=>row.occurrenceId)).size===count);const plan=await this.plan(tx,workspace,stageId),expected=occurrenceIds??plan.occurrences.map(o=>o.id);requireFact(expected.every(id=>rows.some(row=>row.occurrenceId===id)&&plan.occurrences.some(o=>o.id===id)));return rows;
  }
  approveOffer(actor:Actor,raw:unknown){const input=offerCommandSchema.parse(raw);return this.command(actor,input.commandId,"offer.approve",input,async c=>{this.operator(c,await this.cohort(c.tx,c.actor.workspaceId,input.stageId));},async c=>{
-  const cohort=await this.cohort(c.tx,c.actor.workspaceId,input.stageId);requireFact(input.policyApprovalId===cohort.policyApprovalId);const policy=programPolicySchema.parse((await this.source(c.tx,c.actor.workspaceId,input.policyApprovalId,"payment_condition",c.now)).payload);requireFact(policy.policyVersion===POLICY_VERSION,"POLICY_REQUIRED");
-  // Qualifying prepay/late-sibling decisions are not yet selected. The owner
-  // separately settled full-rate installments for EVERY child: three650 dues.
-  // Never substitute ordinary prepay for an unresolved sibling/founder offer.
+  const cohort=await this.cohort(c.tx,c.actor.workspaceId,input.stageId);requireFact(input.policyApprovalId===cohort.policyApprovalId);const policy=programPolicySchema.parse((await this.source(c.tx,c.actor.workspaceId,input.policyApprovalId,"payment_condition",c.now)).payload);requireFact(policy.policyVersion===POLICY_VERSION||policy.policyVersion===owner03PolicyVersion,"POLICY_REQUIRED");requireFact(input.lines.every(l=>l.mode!=="monthly_block"||policy.policyVersion===owner03PolicyVersion)&&!(policy.policyVersion===owner03PolicyVersion&&input.lines.some(l=>l.mode==="installments")),"POLICY_REQUIRED");
+  // Legacy offers retain their original prices. Owner03 blocks charge one
+  // full-rate purchase per child; they do not invent a discount or future due.
   requireFact(input.lines.length===1,"POLICY_REQUIRED");
   const related=await one(c.tx,`SELECT s.id FROM ls_fishing_stage.seat_reservations s JOIN ls_cases.family_members f ON f.workspace_id=s.workspace_id AND f.person_id=s.learner_id AND f.family_id=$3 AND f.role='child'
-   WHERE s.workspace_id=$1 AND s.stage_id=$2 AND s.learner_id<>$4 AND s.state<>'released' LIMIT 1`,[c.actor.workspaceId,input.stageId,input.householdId,input.lines[0]!.learnerId]);requireFact(!related||input.lines[0]!.mode==='installments',"POLICY_REQUIRED");
+   WHERE s.workspace_id=$1 AND s.stage_id=$2 AND s.learner_id<>$4 AND s.state<>'released' LIMIT 1`,[c.actor.workspaceId,input.stageId,input.householdId,input.lines[0]!.learnerId]);requireFact(!related||input.lines[0]!.mode==='installments'||input.lines[0]!.mode==='monthly_block',"POLICY_REQUIRED");
   if(cohort.stage===1&&input.lines[0]!.mode==='prepay')requireFact(!await one(c.tx,"SELECT household_id FROM ls_fishing_payments.founder_households WHERE workspace_id=$1 AND household_id=$2 LIMIT 1",[c.actor.workspaceId,input.householdId]),"POLICY_REQUIRED");
   const termsSource=await this.source(c.tx,c.actor.workspaceId,cohort.termsApprovalId,"terms",c.now),terms=programTermsSchema.parse(termsSource.payload);requireFact(terms.policyVersion===policy.policyVersion&&Date.parse(input.expiresAt)>c.now.valueOf());
   const lines=[];let acceptedAt:string|null=null;
-  for(const line of input.lines){await this.guardian(c.tx,c.actor.workspaceId,input.payerAccountId,line.learnerId,input.householdId);await this.currentEnrollmentFit(c.tx,c.actor.workspaceId,line.fitDecisionId,input.stageId,line.learnerId);const accepted=await this.acceptance(c.tx,c.actor.workspaceId,line.termsAcceptanceId,cohort,line.learnerId,input.payerAccountId,input.householdId,c.now);acceptedAt=acceptedAt===null?accepted.acceptedAt.toISOString():new Date(Math.max(Date.parse(acceptedAt),accepted.acceptedAt.valueOf())).toISOString();
-   const held=await this.hold(c.tx,c.actor.workspaceId,line.holdId,input.stageId,line.learnerId);requireFact(held.every(row=>row.origin==="offer_hold"&&row.offerId===null));requireFact(line.dueAt.length===(line.mode==="prepay"?1:3),"INVALID_REQUEST");
+  for(const line of input.lines){await this.guardian(c.tx,c.actor.workspaceId,input.payerAccountId,line.learnerId,input.householdId);await this.currentEnrollmentFit(c.tx,c.actor.workspaceId,line.fitDecisionId,input.stageId,line.learnerId);const accepted=line.mode==="monthly_block"?await this.monthlyAcceptance(c.tx,c.actor.workspaceId,monthlyBlockScopeSchema.parse(line.block),cohort,line.learnerId,input.payerAccountId,input.householdId,c.now):await this.acceptance(c.tx,c.actor.workspaceId,line.termsAcceptanceId,cohort,line.learnerId,input.payerAccountId,input.householdId,c.now);acceptedAt=acceptedAt===null?accepted.acceptedAt.toISOString():new Date(Math.max(Date.parse(acceptedAt),accepted.acceptedAt.valueOf())).toISOString();
+   const held=await this.hold(c.tx,c.actor.workspaceId,line.holdId,input.stageId,line.learnerId,line.block?.occurrenceIds);requireFact(held.every(row=>row.origin==="offer_hold"&&row.offerId===null));requireFact(line.dueAt.length===(line.mode==="installments"?3:1),"INVALID_REQUEST");
+   if(line.mode==="monthly_block"){
+   lines.push({id:line.id,learnerId:asId(line.learnerId,"person"),cohortId:cohort.cohortId,stageId:cohort.stageId,stage:cohort.stage,sessions:4 as const,mode:"monthly_block" as const,block:monthlyBlockScopeSchema.parse(line.block),totalCents:65000,discountBasis:"monthly_block_full_rate",eligibility:{kind:"ordinary" as const,evidenceId:line.fitDecisionId,policyVersion:policy.policyVersion},dues:line.dueAt.map((dueAt,i)=>({id:randomUUID(),index:(i+1) as 1|2|3,dueAt,currency:"USD" as const,amountCents:65000,state:"pending" as const,paidCents:0})),capacity:{reservationId:line.holdId,revision:1,expiresAt:input.expiresAt}});
+   }else{
    lines.push({id:line.id,learnerId:asId(line.learnerId,"person"),cohortId:cohort.cohortId,stageId:cohort.stageId,stage:cohort.stage,sessions:12 as const,mode:line.mode,totalCents:line.mode==="prepay"?175000:195000,discountBasis:line.mode==="prepay"?"ordinary_primary_prepay":"three_full_rate_dues",eligibility:{kind:"ordinary" as const,evidenceId:line.fitDecisionId,policyVersion:policy.policyVersion},dues:line.dueAt.map((dueAt,i)=>({id:randomUUID(),index:(i+1) as 1|2|3,dueAt,currency:"USD" as const,amountCents:line.mode==="prepay"?175000:65000,state:"pending" as const,paidCents:0})),capacity:{reservationId:line.holdId,revision:1,expiresAt:input.expiresAt}});
+   }
   }
   const offer=approvedOffer({id:input.id,revision:1,workspaceId:c.actor.workspaceId,program:"sunday_fishing_academy",operatorAccountId:c.actor.id,householdId:input.householdId,payerAccountId:input.payerAccountId,currency:"USD",lines,expiresAt:input.expiresAt,policyVersion:policy.policyVersion,sourceVersion:policy.sourceVersion,terms:{version:terms.termsVersion,acceptedBy:input.payerAccountId,acceptedAt}});
   await c.tx.query(`INSERT INTO ls_fishing_stage.offer_approvals(workspace_id,id,revision,digest,payload_ciphertext,policy_approval_id,actor_id,command_id,recorded_at) VALUES($1,$2,1,$3,$4,$5,$6,$7,$8)`,[c.actor.workspaceId,offer.id,digest(offer),this.encode("offer",c.actor.workspaceId,offer.id,offer),input.policyApprovalId,c.actor.id,input.commandId,c.now]);
@@ -426,7 +474,7 @@ export class NativeFishingProgram {
    }
    if(!operator&&(action==="issue"||account?.role!=="parent"||actor.id!==offer.payerAccountId))return false;
    for(const line of offer.lines){await this.guardian(tx,actor.workspaceId,offer.payerAccountId,line.learnerId,offer.householdId);if(action==="issue"||action==="hosted"){
-    requireFact((action!=="issue"||Date.parse(offer.expiresAt)>this.clock.now().valueOf())&&line.stageId===cohort.stageId&&native.policyId===cohort.policyApprovalId);await this.currentEnrollmentFit(tx,actor.workspaceId,line.eligibility.evidenceId,line.stageId,line.learnerId);const held=await this.hold(tx,actor.workspaceId,line.capacity.reservationId,line.stageId,line.learnerId);requireFact(held.every(row=>row.offerId===offer.id&&row.holdRevision===line.capacity.revision&&row.state!=="released"));
+    requireFact((action!=="issue"||Date.parse(offer.expiresAt)>this.clock.now().valueOf())&&line.stageId===cohort.stageId&&native.policyId===cohort.policyApprovalId);await this.currentEnrollmentFit(tx,actor.workspaceId,line.eligibility.evidenceId,line.stageId,line.learnerId);if(line.mode==="monthly_block")await this.monthlyAcceptance(tx,actor.workspaceId,{...line.block,occurrenceIds:[...line.block.occurrenceIds]},cohort,line.learnerId,offer.payerAccountId,offer.householdId,this.clock.now());const held=await this.hold(tx,actor.workspaceId,line.capacity.reservationId,line.stageId,line.learnerId,line.block?.occurrenceIds);requireFact(held.every(row=>row.offerId===offer.id&&row.holdRevision===line.capacity.revision&&row.state!=="released"));
    }}return true;}
  };}
  private async hookContext(tx:SqlSession,c:NativeStageHookContext,ref:FishingStageRef=c.scope){

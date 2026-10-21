@@ -69,6 +69,24 @@ CREATE TABLE ls_fishing_stage.terms_acceptances (
  FOREIGN KEY(workspace_id,source_approval_id) REFERENCES ls_fishing_stage.source_approvals(workspace_id,id),
  FOREIGN KEY(workspace_id,parent_id,command_id) REFERENCES ls_fishing_stage.command_receipts(workspace_id,actor_id,command_id) DEFERRABLE INITIALLY DEFERRED
 );
+-- Separate renewed acceptance per four-lesson purchase. Existing stage terms
+-- and historical twelve-session purchases are not reclassified or backfilled.
+CREATE TABLE ls_fishing_stage.block_acceptances (
+ workspace_id uuid NOT NULL,id uuid NOT NULL,block_id uuid NOT NULL,
+ stage_id uuid NOT NULL,learner_id uuid NOT NULL,household_id uuid NOT NULL,parent_id uuid NOT NULL,
+ source_approval_id uuid NOT NULL,source_sha256 text NOT NULL CHECK(source_sha256 ~ '^[a-f0-9]{64}$'),
+ occurrence_ids uuid[] NOT NULL CHECK(cardinality(occurrence_ids)=4 AND array_position(occurrence_ids,NULL) IS NULL
+  AND occurrence_ids[1]<>occurrence_ids[2] AND occurrence_ids[1]<>occurrence_ids[3] AND occurrence_ids[1]<>occurrence_ids[4]
+  AND occurrence_ids[2]<>occurrence_ids[3] AND occurrence_ids[2]<>occurrence_ids[4] AND occurrence_ids[3]<>occurrence_ids[4]),
+ accepted_at timestamptz NOT NULL,command_id uuid NOT NULL,
+ payload_ciphertext text NOT NULL CHECK(octet_length(payload_ciphertext) BETWEEN 1 AND 100000),
+ PRIMARY KEY(workspace_id,id),UNIQUE(workspace_id,block_id),
+ FOREIGN KEY(workspace_id,stage_id) REFERENCES ls_fishing_stage.cohorts(workspace_id,stage_id),
+ FOREIGN KEY(workspace_id,learner_id) REFERENCES ls_identity.people(workspace_id,id),
+ FOREIGN KEY(workspace_id,household_id) REFERENCES ls_cases.families(workspace_id,id),
+ FOREIGN KEY(workspace_id,source_approval_id) REFERENCES ls_fishing_stage.source_approvals(workspace_id,id),
+ FOREIGN KEY(workspace_id,parent_id,command_id) REFERENCES ls_fishing_stage.command_receipts(workspace_id,actor_id,command_id) DEFERRABLE INITIALLY DEFERRED
+);
 CREATE TABLE ls_fishing_stage.offer_approvals (
  workspace_id uuid NOT NULL,id text NOT NULL CHECK(length(id) BETWEEN 1 AND 160),revision integer NOT NULL CHECK(revision>0),
  digest text NOT NULL CHECK(digest ~ '^[a-f0-9]{64}$'),payload_ciphertext text NOT NULL CHECK(octet_length(payload_ciphertext) BETWEEN 1 AND 100000),
@@ -132,6 +150,7 @@ CREATE TRIGGER immutable_program_commands BEFORE UPDATE OR DELETE ON ls_fishing_
 CREATE TRIGGER immutable_program_sources BEFORE UPDATE OR DELETE ON ls_fishing_stage.source_approvals FOR EACH ROW EXECUTE FUNCTION ls_fishing_stage.reject_program_history_rewrite();
 CREATE TRIGGER immutable_program_fit BEFORE UPDATE OR DELETE ON ls_fishing_stage.fit_decisions FOR EACH ROW EXECUTE FUNCTION ls_fishing_stage.reject_program_history_rewrite();
 CREATE TRIGGER immutable_program_terms BEFORE UPDATE OR DELETE ON ls_fishing_stage.terms_acceptances FOR EACH ROW EXECUTE FUNCTION ls_fishing_stage.reject_program_history_rewrite();
+CREATE TRIGGER immutable_program_block_terms BEFORE UPDATE OR DELETE ON ls_fishing_stage.block_acceptances FOR EACH ROW EXECUTE FUNCTION ls_fishing_stage.reject_program_history_rewrite();
 CREATE TRIGGER immutable_program_offers BEFORE UPDATE OR DELETE ON ls_fishing_stage.offer_approvals FOR EACH ROW EXECUTE FUNCTION ls_fishing_stage.reject_program_history_rewrite();
 -- The operation FK alone cannot distinguish a prior/different-stage operation.
 -- Bind the intended NEXT source revision to its actual actor/operation at commit.
