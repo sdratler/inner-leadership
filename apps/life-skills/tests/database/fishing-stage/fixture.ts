@@ -3,6 +3,7 @@
 import {randomBytes,randomUUID,createHash} from "node:crypto";
 import {readFileSync} from "node:fs";
 import pg from "pg";
+import {admitNativeCi} from '../native-ci-admission.ts';
 import {drizzle} from "drizzle-orm/node-postgres";
 import {bindStatement} from "../../../src/features/identity/sql-binding.ts";
 import {normalizeDatabaseRows,type DatabaseField} from "../../../src/features/integration/normalize-database-result.ts";
@@ -26,6 +27,7 @@ export function poolStore(pool:pg.Pool):IdentityStore{
  }}))};
 }
 export async function nativeFixture(){
+ const ci=await admitNativeCi(['stage','stageCredit']);
  const schemaSha256=sha(readFileSync(new URL("../../../src/features/fishing-stage/candidate.sql",import.meta.url)));
  const fixtureSha256=sha(readFileSync(new URL("./fixture.sql",import.meta.url)));
  const url=requireNativeTarget(process.env,{schemaSha256,fixtureSha256});
@@ -33,7 +35,7 @@ export async function nativeFixture(){
  try{
   const guard=(await pool.query(`SELECT current_database() AS database,host(inet_server_addr()) AS address,current_setting('password_encryption') AS mode,
    to_regclass('ls_fishing_stage.plans')::text AS plans,to_regclass('ls_fishing_stage.fixture_contexts')::text AS fixture`)).rows[0];
-  if(!guard||guard.database!==process.env.LS_RM_STAGE_TEST_DATABASE||guard.address!=="127.0.0.1"||guard.mode!=="scram-sha-256"||!guard.plans||!guard.fixture)throw Error("RM_STAGE_NATIVE_TARGET_OR_SCHEMA_MISMATCH");
+  if(!guard||guard.database!==(ci?.database??process.env.LS_RM_STAGE_TEST_DATABASE)||guard.address!==(ci?.serverAddress??"127.0.0.1")||guard.mode!=="scram-sha-256"||!guard.plans||!guard.fixture)throw Error("RM_STAGE_NATIVE_TARGET_OR_SCHEMA_MISMATCH");
   const workspaceId=asId(randomUUID(),"workspace"),keyring={activeKeyId:"synthetic",keys:{synthetic:randomBytes(32)}},db=poolStore(pool);
   const now=Date.now(),ago=new Date(now-86400000),expiresAt=now+8*3600000;
   await pool.query("INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,$2)",[workspaceId,ago]);

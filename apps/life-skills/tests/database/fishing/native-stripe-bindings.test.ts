@@ -1,5 +1,6 @@
 import {createHash,randomBytes,randomUUID} from "node:crypto";
 import pg from "pg";
+import {admitNativeCi} from '../native-ci-admission.ts';
 import {afterEach,expect,test,vi} from "vitest";
 vi.mock("server-only",()=>({}));
 import {asId} from "../../../src/lib/ids.ts";
@@ -14,11 +15,11 @@ import {poolStore,safeTestUrl} from "../calendar/fixture.ts";
 const pools:pg.Pool[]=[];
 afterEach(async()=>{await Promise.all(pools.splice(0).map(pool=>pool.end()));});
 async function fixture(options:{wrongPayer?:boolean;wrongMerchantBinding?:boolean}={}){
- const raw=safeTestUrl(),url=new URL(raw);
- if(process.env.LS_RM_STRIPE_BINDING_NATIVE_ALLOW!=="MAIN_REGISTERED_ONLY"||url.hostname!=="127.0.0.1"||!/^\/ls_calendar_test_rm_guard_[a-f0-9]{32}_test$/.test(url.pathname)||!url.port||!url.username||!url.password||url.search||url.hash)throw Error("MAIN_REGISTERED_STRIPE_MAPPING_TARGET_REQUIRED");
+ const ci=await admitNativeCi(['base']),raw=safeTestUrl(),url=new URL(raw);
+ if(!ci&&(process.env.LS_RM_STRIPE_BINDING_NATIVE_ALLOW!=="MAIN_REGISTERED_ONLY"||url.hostname!=="127.0.0.1"||!/^\/ls_calendar_test_rm_guard_[a-f0-9]{32}_test$/.test(url.pathname)||!url.port||!url.username||!url.password||url.search||url.hash))throw Error("MAIN_REGISTERED_STRIPE_MAPPING_TARGET_REQUIRED");
  const pool=new pg.Pool({connectionString:raw,ssl:false,max:4});pools.push(pool);
  const target=(await pool.query("SELECT current_database() AS database,host(inet_server_addr()) AS host,inet_server_port() AS port,to_regclass('ls_fishing_payments.customer_bindings') AS customers,to_regclass('ls_fishing_payments.object_bindings') AS objects")).rows[0];
- if(target.database!==url.pathname.slice(1)||target.host!=="127.0.0.1"||target.port!==Number(url.port)||!target.customers||!target.objects)throw Error("PINNED_MAPPING_SCHEMA_AND_TARGET_REQUIRED");
+ if(target.database!==url.pathname.slice(1)||target.host!==(ci?.serverAddress??"127.0.0.1")||target.port!==Number(url.port)||!target.customers||!target.objects)throw Error("PINNED_MAPPING_SCHEMA_AND_TARGET_REQUIRED");
  const workspaceId=asId(randomUUID(),"workspace"),ago=new Date(Date.now()-3600000),db=poolStore(pool),ring={activeKeyId:"synthetic",keys:{synthetic:randomBytes(32)}},tag=randomUUID().replaceAll("-","");
  await pool.query("INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,$2)",[workspaceId,ago]);
  // This mapping fixture uses explicit synthetic sessions, NOT ordinary-login or

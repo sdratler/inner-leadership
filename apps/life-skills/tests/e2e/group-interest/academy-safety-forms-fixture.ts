@@ -1,13 +1,14 @@
 /** Owned disposable synthetic fixture. Existing paid-family setup and actual
  * native enrollment/publication commands; no provider or production access. */
 import {randomUUID} from 'node:crypto';
+import {admitNativeCi} from '../../database/native-ci-admission.ts';
 import {refundFormsFixture} from './academy-refund-forms-fixture.ts';
 import {handleFishingCalendar} from '../../../src/features/fishing/program-calendar-http.ts';
 import {fishingCalendarSearch,type FishingCalendarSelection,type FishingCalendarPlan} from '../../../src/features/fishing/program-calendar-contract.ts';
 import type {SafetyCommand} from '../../../src/features/fishing-stage/safety.ts';
 import {SESSION_COOKIE} from '../../../src/lib/security/session.ts';
 export async function safetyFormsFixture(origin:string){
- if(process.env.LS_ACADEMY_SAFETY_FORMS_BROWSER!=='SYNTHETIC_LOOPBACK_ONLY')throw Error('EXACT_SAFETY_FORMS_TARGET_REQUIRED');
+ if(!await admitNativeCi(['program'])&&process.env.LS_ACADEMY_SAFETY_FORMS_BROWSER!=='SYNTHETIC_LOOPBACK_ONLY')throw Error('EXACT_SAFETY_FORMS_TARGET_REQUIRED');
  const f=await refundFormsFixture(origin,'ordinary_sundays');
  try{
   const families:Array<Omit<typeof f.families[number],'purchases'>&{purchases:Array<typeof f.families[number]['purchases'][number]&{enrollmentId:string}>}>=[];

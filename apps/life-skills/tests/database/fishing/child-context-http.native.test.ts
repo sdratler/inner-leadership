@@ -1,5 +1,6 @@
 import {randomBytes,randomUUID} from "node:crypto";
 import pg from "pg";
+import {admitNativeCi} from '../native-ci-admission.ts';
 import {afterEach,expect,test,vi} from "vitest";
 vi.mock("server-only",()=>({}));
 import {asId} from "../../../src/lib/ids.ts";
@@ -22,13 +23,13 @@ import {poolStore,safeTestUrl} from "../calendar/fixture.ts";
 const pools:pg.Pool[]=[];
 afterEach(async()=>{await Promise.all(pools.splice(0).map(pool=>pool.end()));});
 async function fixture(){
- const raw=safeTestUrl(),url=new URL(raw);
+ const native=await admitNativeCi(['base']),raw=safeTestUrl(),url=new URL(raw);
  const ci=process.env.CI==="true"&&raw==="postgresql://synthetic:synthetic_ci_only@127.0.0.1:5432/lifeskills_migration_test";
- if(!ci&&(process.env.LS_RM_GUARDIAN_NATIVE_ALLOW!=="MAIN_REGISTERED_ONLY"||!/^\/ls_calendar_test_rm_guard_[a-f0-9]{32}_test$/.test(url.pathname)))throw Error("MAIN_REGISTERED_GUARDIAN_TARGET_REQUIRED");
+ if(!native&&!ci&&(process.env.LS_RM_GUARDIAN_NATIVE_ALLOW!=="MAIN_REGISTERED_ONLY"||!/^\/ls_calendar_test_rm_guard_[a-f0-9]{32}_test$/.test(url.pathname)))throw Error("MAIN_REGISTERED_GUARDIAN_TARGET_REQUIRED");
  if(url.hostname!=="127.0.0.1"||!url.port||!url.username||!url.password||url.search||url.hash)throw Error("GUARDIAN_TARGET_NOT_EXACT_LOOPBACK");
  const pool=new pg.Pool({connectionString:raw,ssl:false,max:4});pools.push(pool);
  const target=(await pool.query("SELECT current_database() AS database,host(inet_server_addr()) AS host,inet_server_port() AS port")).rows[0];
- if(target.database!==url.pathname.slice(1)||target.host!=="127.0.0.1"||target.port!==Number(url.port))throw Error("GUARDIAN_ACTUAL_TARGET_MISMATCH");
+ if(target.database!==url.pathname.slice(1)||target.host!==(native?.serverAddress??"127.0.0.1")||target.port!==Number(url.port))throw Error("GUARDIAN_ACTUAL_TARGET_MISMATCH");
  const workspaceId=asId(randomUUID(),"workspace"),ago=new Date(Date.now()-3600000),db=poolStore(pool),origin="https://synthetic.invalid";
  const config:IdentityConfig={enabled:true,origin,workspaceId,csrfKey:randomBytes(32),lookupKey:randomBytes(32),rateLimitKey:randomBytes(32).toString("hex"),keyring:{activeKeyId:"synthetic",keys:{synthetic:randomBytes(32)}},sessionSeconds:28800};
  await pool.query("INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,$2)",[workspaceId,ago]);

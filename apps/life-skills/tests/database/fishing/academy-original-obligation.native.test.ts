@@ -1,3 +1,4 @@
+import {ordinaryFixtureInterval} from './academy-calendar-fixture-times.ts';
 /** Native authority/facts only: no real merchant, legal approval, credit grant,
  * activity equivalence, browser mount or production release acceptance. */
 import {randomUUID} from 'node:crypto';
@@ -20,7 +21,7 @@ test.each(['monthly_block','prepay'] as const)('actual %s purchase resolves only
  await expect(f.db.transaction(tx=>f.program.readSessionCreditObligationInTransaction(tx,f.p.family.parent,{selectedEnrollmentId:f.enrollmentId,originalOccurrenceId:f.rootIds[0],paid:true}))).rejects.toMatchObject({code:'INVALID_REQUEST'});
 });
 test('historical first-due confirmation keeps actual twelve-slot scope but partial money stays review-required without lesson allocation',async()=>{
- const f=await programFixture({confirmation:{kind:'native_due_indices_paid',indices:[1]}});opened.push(f);await f.createPlan();const p=await f.prepare(await f.family(),'installments');await f.settle(p);const enrolled=await f.enroll(p),plan=(await f.stage().read(f.owner,f.ref))!;await f.revise(plan.occurrences[0]!.id,f.at(48),f.at(51));await f.publish();
+ const f=await programFixture({confirmation:{kind:'native_due_indices_paid',indices:[1]}});opened.push(f);await f.createPlan();const p=await f.prepare(await f.family(),'installments');await f.settle(p);const enrolled=await f.enroll(p),plan=(await f.stage().read(f.owner,f.ref))!;const teaching=ordinaryFixtureInterval(f.at(48),f.at(51));await f.revise(plan.occurrences[0]!.id,teaching.startsAt,teaching.endsAt);await f.publish();
  const result=await f.db.transaction(tx=>f.program.readSessionCreditObligationInTransaction(tx,p.family.parent,{selectedEnrollmentId:enrolled.result.id,originalOccurrenceId:plan.occurrences[0]!.id}));expect(result.purchaseScope.purchasedLessons).toBe(12);expect(result.payment).toMatchObject({state:'review_required',reason:'payment_not_fully_settled',originalTotalCents:195000,paidCents:65000,refundedCents:0,dues:[{index:1,paidCents:65000,state:'paid'},{index:2,paidCents:0,state:'pending'},{index:3,paidCents:0,state:'pending'}]});expect(result.mayIssueCredit).toBe(false);
 });
 test('no admitted merchant or a mismatched account/mode/API cannot reuse another purchase settlement as paid authority',async()=>{

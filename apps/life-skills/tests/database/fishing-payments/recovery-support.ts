@@ -1,6 +1,7 @@
 /** Explicit synthetic adapters for the new native tests; no DDL or provider I/O. */
 import { createHash,createHmac,randomBytes,randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
+import {nativeCiChildEnvelope} from '../native-ci-admission.ts';
 import { fileURLToPath } from 'node:url';
 import type { Actor } from '../../../src/features/fishing/contract.ts';
 import type { ProviderOperation } from '../../../src/features/fishing-payments/ports.ts';
@@ -29,14 +30,15 @@ export async function ingestSyntheticSettlement(n:NativeFixture,owner:Actor,op:P
 }
 
 /** Parent sends all connection/session inputs through stdin, never argv/env/logs. */
-export async function runRecoveryChild(input:Omit<RecoveryInput,'databaseUrl'>):Promise<RecoveryOutput>{
- const databaseUrl=nativeUrl();
+export async function runRecoveryChild(input:Omit<RecoveryInput,'databaseUrl'|'nativeCi'>):Promise<RecoveryOutput>{
+ if('nativeCi' in input)throw Error('RECOVERY_CALLER_ADMISSION_REJECTED');
+ const databaseUrl=nativeUrl(),nativeCi=nativeCiChildEnvelope();
  const env:NodeJS.ProcessEnv={NODE_ENV:'test'};
  for(const key of ['SystemRoot','WINDIR','TEMP','TMP'])if(process.env[key]!==undefined)env[key]=process.env[key];
  const childPath=fileURLToPath(new URL('./restart-recovery.child.ts',import.meta.url));
  const appRoot=fileURLToPath(new URL('../../../',import.meta.url));
  return new Promise((resolve,reject)=>{
-  const child=spawn(process.execPath,['--import','tsx',childPath],{cwd:appRoot,env,windowsHide:true,shell:false,stdio:['pipe','pipe','pipe']});
+  const child=spawn(process.execPath,['--conditions=react-server','--import','tsx',childPath],{cwd:appRoot,env,windowsHide:true,shell:false,stdio:['pipe','pipe','pipe']});
   let output='',bytes=0,timedOut=false,tooLarge=false;
   const timeout=setTimeout(()=>{timedOut=true;child.kill();},12000);
   child.stdout.on('data',(chunk:Buffer)=>{bytes+=chunk.length;if(bytes>8192){tooLarge=true;child.kill();}else output+=chunk.toString('utf8');});
@@ -51,6 +53,6 @@ export async function runRecoveryChild(input:Omit<RecoveryInput,'databaseUrl'>):
    if(code!==0||!result.ok){reject(Error(result.code&&/^[A-Z_0-9]{1,80}$/.test(result.code)?result.code:'RECOVERY_CHILD_FAILED'));return;}
    resolve(result);
   });
-  child.stdin.end(JSON.stringify({...input,databaseUrl}));
+  child.stdin.end(JSON.stringify({...input,databaseUrl,...(nativeCi?{nativeCi}:{})}));
  });
 }

@@ -8,14 +8,15 @@ import {readFileSync} from "node:fs";
 import {fileURLToPath} from "node:url";
 import {spawn} from "node:child_process";
 import pg from "pg";
+import {nativeCiTarget,admitNativeCi} from '../native-ci-admission.ts';
 import {z} from "zod";
 import {one,type IdentityStore,type SqlSession} from "../../../src/features/identity/store.ts";
 import type {Actor} from "../../../src/features/identity/types.ts";
 import {AppError} from "../../../src/lib/errors.ts";
 import {academyPolicyPreflightVersion,type AcademyOriginalSessionAnchor,type AcademyRecordedDriveLimit} from "../../../src/features/fishing/academy-policy-preflight-contract.ts";
-import type {AcademySessionCreditNativeFacts,AcademySessionCreditCommand,AcademySessionCreditCommandResult,AcademySessionPolicyNativeAuthority,AcademySessionCreditNativeContext} from "../../../src/features/fishing/academy-session-policy-native-contract.ts";
+import {academyCalendarCompatibilityVersion,type AcademySessionCreditNativeFacts,type AcademySessionCreditNativeFactsV2,type AcademySessionCreditCommand,type AcademySessionCreditCommandResult,type AcademySessionPolicyNativeAuthority,type AcademySessionCreditNativeContext} from "../../../src/features/fishing/academy-session-policy-native-contract.ts";
 import {AcademySessionPolicyNativeService} from "../../../src/features/fishing-stage/academy-session-policy-native.ts";
-import {academyCreditDigest,sameAcademyAnchor,sameAcademyCredit,academyCreditFactsSchema} from "../../../src/features/fishing-stage/academy-session-credit-store.ts";
+import {academyCreditDigest,sameAcademyAnchor,sameAcademyCredit,academyCreditFactsSchema,academyCreditFactsV2Schema} from "../../../src/features/fishing-stage/academy-session-credit-store.ts";
 import {parseEnrollment,parseTemplate} from "../../../src/features/fishing-stage/native-storage.ts";
 import {floridaParentApplicationFieldsSchema,floridaGroupApplicationNotice,type FloridaParentApplicationFields} from "../../../src/features/group-application/contract.ts";
 import {ACADEMY_INTAKE_VERSION,academyDriveMinutes} from "../../../src/features/group-application/academy-intake.ts";
@@ -33,6 +34,7 @@ export function academySessionPolicyFixturePins(){
  return {contract,schema,code:hash(JSON.stringify(inputs.map(path=>[path,hash(readFileSync(new URL(path,import.meta.url)))])))};
 }
 function admitted(){
+ if(nativeCiTarget(['stageCredit']))return; // Complete raw CI inventory checked independently of private CAL1136 receipts.
  if(process.env.LS_ACADEMY_SESSION_NATIVE_ALLOW!=="ROOT_REVIEWED_CAL1136_ONLY")throw Error("CAL1136_NATIVE_EXECUTION_NOT_ADMITTED");
  const pins=academySessionPolicyFixturePins();
  if(pins.contract!=="645c4ce700a576a80c9fa2163167ef3293bca70db8f3d83ef5b0a6d9952e8b23"||
@@ -42,13 +44,17 @@ function admitted(){
  // The existing nativeFixture additionally requires the exact local 63-byte
  // database name, process-only credentials and Root's original schema pins.
 }
-type Proof={kind:"SYNTHETIC_CAL1136_SQL_AUTHORITY";canonical:AcademyOriginalSessionAnchor;facts:AcademySessionCreditNativeFacts;
+// This fixture exercises enumerated drive preferences; exact numeric limits have their own native suite.
+type FixtureFacts=AcademySessionCreditNativeFacts|(AcademySessionCreditNativeFacts&Pick<AcademySessionCreditNativeFactsV2,'compatibility'>);
+const fixtureV2Schema=academyCreditFactsV2Schema.extend({travel:academyCreditFactsSchema.shape.travel});
+const parseFacts=(value:unknown):FixtureFacts=>value&&typeof value==='object'&&'compatibility' in value?fixtureV2Schema.parse(value):academyCreditFactsSchema.parse(value);
+type Proof={kind:"SYNTHETIC_CAL1136_SQL_AUTHORITY";canonical:AcademyOriginalSessionAnchor;facts:FixtureFacts;
  inquiry:FloridaParentApplicationFields;inquiryVerified:boolean;purchaseVerified:boolean;deliveryVerified:boolean;sourceVerified:boolean;
  legacy:AcademySessionCreditNativeFacts["legacyCredit"]};
 const proofKey=(enrollment:string,occurrence:string)=>`cal1136:${enrollment}:${occurrence}`;
-function proofDigest(facts:AcademySessionCreditNativeFacts){
- const parsed=academyCreditFactsSchema.parse(facts); // Stable order after JSONB reload.
- return academyCreditDigest({anchor:parsed.anchor,duration:parsed.duration,change:parsed.travel.change,revision:parsed.evidenceRevision});
+function proofDigest(facts:FixtureFacts){
+ const parsed=parseFacts(facts); // Stable order after JSONB reload.
+ return academyCreditDigest({anchor:parsed.anchor,duration:parsed.duration,change:parsed.travel.change,revision:parsed.evidenceRevision,...('compatibility' in parsed?{compatibility:parsed.compatibility}:{})});
 }
 
 /** Explicit test-only SQL resolver; also used by the admitted restart child. */
@@ -69,18 +75,19 @@ export function createAcademySyntheticAuthority():AcademySessionPolicyNativeAuth
     const row=await one<{payload:Proof}>(tx,"SELECT payload FROM ls_fishing_stage.fixture_templates WHERE workspace_id=$1 AND stage=1 AND version=$2 AND active FOR SHARE",
      [c.actor.workspaceId,proofKey(e.id,command.originalOccurrenceId)]);
     const proof=row?.payload;if(!proof||proof.kind!=="SYNTHETIC_CAL1136_SQL_AUTHORITY"||!proof.inquiryVerified||!proof.purchaseVerified||!proof.deliveryVerified||!proof.sourceVerified)return null;
-    const f=academyCreditFactsSchema.parse(proof.facts),complete=floridaParentApplicationFieldsSchema.safeParse(proof.inquiry);
+    const f=parseFacts(proof.facts),complete=floridaParentApplicationFieldsSchema.safeParse(proof.inquiry);
     if(f.evidenceDigest!==proofDigest(f)||!complete.success||!complete.data.academyIntake||complete.data.academyIntake.version!==ACADEMY_INTAKE_VERSION||
      f.inquiry.fieldsDigest!==academyCreditDigest(complete.data)||!complete.data.academyIntake.learners[f.inquiry.learnerIndex]||
      f.inquiry.drivePreferenceDigest!==academyCreditDigest({driveLimit:complete.data.academyIntake.driveLimit})||f.travel.change.recordedDriveLimit!==complete.data.academyIntake.driveLimit||
      !sameAcademyAnchor(proof.canonical,f.anchor)||f.enrollmentId!==e.id||f.anchor.learnerId!==e.learnerId||f.purchaseId!==e.purchaseId||f.purchaseLineId!==e.purchaseLineId||
      f.householdId!==e.householdId||f.guardianBindingId!==e.evidence.verifiedGuardianBindingId||f.acceptedTermsVersion!==e.evidence.acceptedTermsVersion)return null;
     if(Boolean(proof.legacy)!==Boolean(f.legacyCredit)||proof.legacy&&f.legacyCredit&&!sameAcademyCredit(proof.legacy,f.legacyCredit))return null;
-    const header=await one<{cohortId:string;stageId:string;ordinal:number;revision:number;templateVersion:string}>(tx,`SELECT o.cohort_id AS "cohortId",o.stage_id AS "stageId",o.ordinal,p.revision,p.template_version AS "templateVersion"
+    const header=await one<{cohortId:string;stageId:string;ordinal:number;originalStage:number;revision:number;templateVersion:string}>(tx,`SELECT o.cohort_id AS "cohortId",o.stage_id AS "stageId",o.ordinal,p.stage AS "originalStage",p.revision,p.template_version AS "templateVersion"
      FROM ls_fishing_stage.occurrences o JOIN ls_fishing_stage.plans p ON p.workspace_id=o.workspace_id AND p.stage_id=o.stage_id WHERE o.workspace_id=$1 AND o.id=$2 FOR SHARE OF o,p`,[c.actor.workspaceId,command.originalOccurrenceId]);
     if(!header||header.cohortId!==f.anchor.cohortId||header.stageId!==f.anchor.stageId||header.ordinal!==f.anchor.ordinal||header.revision!==f.stageRevision)return null;
     const templateRow=await one<{payload:unknown}>(tx,"SELECT payload FROM ls_fishing_stage.fixture_templates WHERE workspace_id=$1 AND stage=1 AND version=$2 AND active FOR SHARE",[c.actor.workspaceId,header.templateVersion]);
-    if(!templateRow)return null;const lesson=parseTemplate(templateRow.payload).modules[header.ordinal-1];
+    if(!templateRow)return null;const template=parseTemplate(templateRow.payload),lesson=template.modules[header.ordinal-1];
+    if(template.stage!==header.originalStage||template.stage!==e.stage||('compatibility' in f&&f.compatibility.originalStage!==header.originalStage))return null;
     if(!lesson||lesson.moduleId!==f.anchor.moduleId||lesson.moduleVersion!==f.anchor.moduleVersion)return null;return f;
    },
   };
@@ -92,14 +99,14 @@ export async function academySessionPolicyFixture(options:{driveLimit?:AcademyRe
   const present=(await base.pool.query(`SELECT to_regclass('ls_fishing_stage.academy_session_policy_evidence')::text AS evidence,
    to_regclass('ls_fishing_stage.academy_session_credits')::text AS credits,to_regclass('ls_fishing_stage.academy_session_credit_events')::text AS events`)).rows[0];
   if(!present?.evidence||!present.credits||!present.events)throw Error("CAL1136_ROOT_SCHEMA_SETUP_REQUIRED");
-  await base.createPlan();const draft=(await base.service().read(base.instructor,base.ref))!,first=draft.occurrences[0]!;
+  await base.createPlan();const draft=(await base.service().read(base.instructor,base.ref))!,first=draft.occurrences[2]!;
   const start=new Date(Date.now()+48*3600000),end=new Date(start.valueOf()+180*60000);
   await base.service().execute(base.instructor,base.ref,{action:"revise",operationId:randomUUID(),expectedRevision:draft.revision,occurrenceId:first.id,expectedOccurrenceRevision:first.revision,
    reason:"Synthetic ordinary 180-minute policy fixture",details:{time:{kind:"scheduled",timeZone:"America/New_York",startsAt:start.toISOString(),endsAt:end.toISOString()},
     location:"Synthetic location",directions:"Synthetic directions",equipment:"Synthetic equipment",logisticalNote:"Synthetic notice",childCapacity:4}});
   const revised=(await base.service().read(base.instructor,base.ref))!;
   await base.service().execute(base.instructor,base.ref,{action:"publish",operationId:randomUUID(),expectedRevision:revised.revision});
-  const plan=(await base.service().read(base.instructor,base.ref))!,original=plan.occurrences[0]!;
+  const plan=(await base.service().read(base.instructor,base.ref))!,original=plan.occurrences[2]!;
   const driveLimit=options.driveLimit??"up_to_30",minutes=academyDriveMinutes(driveLimit);
   const inquiry=floridaParentApplicationFieldsSchema.parse({parentName:"SYNTHETIC_CAL1136_PRIVATE_PARENT",contact:"cal1136@example.invalid",language:"en",childAge:"10",cityArea:"Synthetic city",
    programId:"sunday_fishing_academy",schedulePreference:["sunday"],scheduleContext:"program_format_interest",
@@ -120,7 +127,11 @@ export async function academySessionPolicyFixture(options:{driveLimit?:AcademyRe
      change:{anchor,kind:"academy_venue",evidenceId:sourceEvidenceId,weatherQualification:"unknown",recordedDriveLimit:driveLimit,revisedOneWayMinutes:45,familyCannotAttend:true}},
     legacyCredit:options.legacy?{id:randomUUID(),anchor,enrollmentId:enrollment.id,purchaseId:enrollment.purchaseId,purchaseLineId:enrollment.purchaseLineId,
      state:options.legacy,replacementReservationId:options.legacy==="replacement_reserved"?randomUUID():null}:null};
-   const value={...facts,evidenceDigest:proofDigest(facts)};
+   // The current grant branch derives stage from the saved original, never from a module label.
+   const stage=(await base.pool.query('SELECT stage FROM ls_fishing_stage.plans WHERE workspace_id=$1 AND stage_id=$2 AND cohort_id=$3',[base.workspaceId,anchor.stageId,anchor.cohortId])).rows[0]?.stage;
+   if(![1,2,3,4].includes(stage)||stage!==base.template.stage)throw Error('SYNTHETIC_ORIGINAL_STAGE_BINDING');
+   const current:FixtureFacts=options.legacy?facts:{...facts,compatibility:{version:academyCalendarCompatibilityVersion,originalStage:stage as 1|2|3|4}};
+   const value={...current,evidenceDigest:proofDigest(current)};
    const proof:Proof={kind:"SYNTHETIC_CAL1136_SQL_AUTHORITY",canonical:anchor,facts:value,inquiry,inquiryVerified:true,purchaseVerified:true,deliveryVerified:true,sourceVerified:true,legacy:value.legacyCredit};
    // Existing isolated fixture JSON storage; no new table or production row.
    await base.pool.query("INSERT INTO ls_fishing_stage.fixture_templates(workspace_id,stage,version,payload,active) VALUES($1,1,$2,$3::jsonb,true)",
@@ -136,7 +147,7 @@ export async function academySessionPolicyFixture(options:{driveLimit?:AcademyRe
    return (await base.pool.query("SELECT payload FROM ls_fishing_stage.fixture_templates WHERE workspace_id=$1 AND stage=1 AND version=$2",[base.workspaceId,proofKey(enrollment,original.id)])).rows[0].payload;
   }
   async function change(update:(facts:AcademySessionCreditNativeFacts)=>AcademySessionCreditNativeFacts,enrollment=base.enrolled.id){
-   const proof=await getProof(enrollment),facts=update(structuredClone(proof.facts)),next={...facts,evidenceDigest:proofDigest(facts)};
+   const proof=await getProof(enrollment),facts=parseFacts(update(structuredClone(proof.facts))),next={...facts,evidenceDigest:proofDigest(facts)};
    await base.pool.query("UPDATE ls_fishing_stage.fixture_templates SET payload=$3::jsonb WHERE workspace_id=$1 AND stage=1 AND version=$2",[base.workspaceId,proofKey(enrollment,original.id),JSON.stringify({...proof,facts:next})]);return next;
   }
   async function invalidate(key:"inquiryVerified"|"purchaseVerified"|"deliveryVerified"|"sourceVerified"){
@@ -185,6 +196,7 @@ function restartProcess(input:RestartInput):Promise<{pid:number;result:AcademySe
  });
 }
 async function restartChild(){
+ const ci=await admitNativeCi(['stageCredit']);
  admitted();let raw="";for await(const chunk of process.stdin){raw+=String(chunk);if(Buffer.byteLength(raw)>16384)throw Error("CAL1136_RESTART_INPUT_LIMIT");}
  const input=JSON.parse(raw) as RestartInput;
  if(!z.uuid().safeParse(input.selection).success||!z.string().regex(/^[A-Za-z0-9_-]{43}$/).safeParse(input.key).success)throw Error("CAL1136_RESTART_INPUT_INVALID");
@@ -192,7 +204,7 @@ async function restartChild(){
  const pool=new pg.Pool({connectionString:url,max:2});
  try{
   const guard=(await pool.query("SELECT current_database() AS database,host(inet_server_addr()) AS address,current_setting('password_encryption') AS mode")).rows[0];
-  if(guard?.database!==process.env.LS_RM_STAGE_TEST_DATABASE||guard.address!=="127.0.0.1"||guard.mode!=="scram-sha-256")throw Error("CAL1136_RESTART_TARGET_MISMATCH");
+  if(guard?.database!==(ci?.database??process.env.LS_RM_STAGE_TEST_DATABASE)||guard.address!==(ci?.serverAddress??"127.0.0.1")||guard.mode!=="scram-sha-256")throw Error("CAL1136_RESTART_TARGET_MISMATCH");
   const service=new AcademySessionPolicyNativeService({database:poolStore(pool),principal:input.principal,selection:{selectedEnrollmentId:input.selection},
    keyring:{activeKeyId:"synthetic",keys:{synthetic:Buffer.from(input.key,"base64url")}},authority:createAcademySyntheticAuthority(),clock:{now:()=>new Date()}});
   const result=await service.execute(input.command);process.stdout.write(JSON.stringify({pid:process.pid,result})+"\n");

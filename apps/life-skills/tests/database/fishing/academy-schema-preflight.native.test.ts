@@ -1,13 +1,14 @@
 /** Only the Root-owned disposable loopback cluster. No business data read. */
 import {randomUUID} from 'node:crypto';
 import pg from 'pg';
+import {admitNativeCi,nativeCiTarget} from '../native-ci-admission.ts';
 import {expect,test,vi} from 'vitest';
 vi.mock('server-only',()=>({}));
 import {safeTestUrl} from '../calendar/fixture.ts';
 import {loadAcademySchemaSources,readAcademySchemaPreflight,type AcademySchemaConnection} from '../../../src/db/academy-schema-preflight.ts';
 async function fixture(){
- const raw=safeTestUrl(),url=new URL(raw);if(process.env.LS_RM_PROGRAM_NATIVE_ALLOW!=='MAIN_REGISTERED_ONLY'||url.hostname!=='127.0.0.1'||!/^\/ls_calendar_test_rm_guard_[a-f0-9]{32}_test$/.test(url.pathname))throw Error('ACADEMY_PREFLIGHT_OWNED_LOOPBACK_REQUIRED');
- const pool=new pg.Pool({connectionString:raw,ssl:false,max:1}),client=await pool.connect();try{const target=(await client.query('SELECT current_database() AS database,host(inet_server_addr()) AS host,inet_server_port() AS port')).rows[0];if(target.database!==url.pathname.slice(1)||target.host!=='127.0.0.1'||target.port!==Number(url.port))throw Error('ACADEMY_PREFLIGHT_TARGET_MISMATCH');}catch(e){client.release();await pool.end();throw e;}
+ const ci=await admitNativeCi(['base']),raw=safeTestUrl(),url=new URL(raw);if(!ci&&(process.env.LS_RM_PROGRAM_NATIVE_ALLOW!=='MAIN_REGISTERED_ONLY'||url.hostname!=='127.0.0.1'||!/^\/ls_calendar_test_rm_guard_[a-f0-9]{32}_test$/.test(url.pathname)))throw Error('ACADEMY_PREFLIGHT_OWNED_LOOPBACK_REQUIRED');
+ const pool=new pg.Pool({connectionString:raw,ssl:false,max:1}),client=await pool.connect();try{const target=(await client.query('SELECT current_database() AS database,host(inet_server_addr()) AS host,inet_server_port() AS port')).rows[0];if(target.database!==url.pathname.slice(1)||target.host!==(ci?.serverAddress??'127.0.0.1')||target.port!==Number(url.port))throw Error('ACADEMY_PREFLIGHT_TARGET_MISMATCH');}catch(e){client.release();await pool.end();throw e;}
  const sources=await loadAcademySchemaSources(new URL('../../../',import.meta.url)).catch(async error=>{client.release();await pool.end();throw error;}),connection:AcademySchemaConnection={query:async<R extends object>(sql:string,values:readonly unknown[]=[])=>client.query<R>(sql,[...values])};return {client,connection,sources,close:async()=>{client.release();await pool.end();}};
 }
 test('actual candidate catalog is repeatable, source-bound and inspected only in a read-only snapshot',async()=>{
@@ -40,6 +41,6 @@ test('reference digest ignores internal FK trigger OIDs while retaining their en
 
 
 test('default privilege drift from a non-current creator role is visible and fully restored',async()=>{
- const f=await fixture(),role='synthetic_preflight_'+randomUUID().replaceAll('-','');let created=false;try{const first=await readAcademySchemaPreflight(f.connection,f.sources,null);await f.client.query('CREATE ROLE '+role+' NOLOGIN');created=true;await f.client.query('ALTER DEFAULT PRIVILEGES FOR ROLE '+role+' IN SCHEMA ls_fishing_stage GRANT SELECT ON TABLES TO PUBLIC');const changed=await readAcademySchemaPreflight(f.connection,f.sources,first.catalogSha256);expect(changed.state).toBe('drift');expect(changed.catalog.defaults.some(row=>row.creator===role)).toBe(true);expect((await f.client.query('SELECT current_user AS role')).rows[0].role).not.toBe(role);await f.client.query('DROP OWNED BY '+role);await f.client.query('DROP ROLE '+role);created=false;expect((await readAcademySchemaPreflight(f.connection,f.sources,first.catalogSha256)).state).toBe('match');
+ const f=await fixture(),role='synthetic_preflight_'+randomUUID().replaceAll('-','');let created=false;try{const first=await readAcademySchemaPreflight(f.connection,f.sources,null);await f.client.query('CREATE ROLE '+role+' NOLOGIN');created=true;const ci=nativeCiTarget(['base']);if(ci){await f.client.query('GRANT "'+role+'" TO "'+ci.role+'" WITH INHERIT TRUE');await f.client.query('GRANT "'+role+'" TO "'+ci.role+'" WITH SET TRUE');}await f.client.query('ALTER DEFAULT PRIVILEGES FOR ROLE '+role+' IN SCHEMA ls_fishing_stage GRANT SELECT ON TABLES TO PUBLIC');const changed=await readAcademySchemaPreflight(f.connection,f.sources,first.catalogSha256);expect(changed.state).toBe('drift');expect(changed.catalog.defaults.some(row=>row.creator===role)).toBe(true);expect((await f.client.query('SELECT current_user AS role')).rows[0].role).not.toBe(role);await f.client.query('DROP OWNED BY '+role);await f.client.query('DROP ROLE '+role);created=false;expect((await f.client.query('SELECT rolname FROM pg_roles WHERE rolname=$1',[role])).rows).toEqual([]);expect((await readAcademySchemaPreflight(f.connection,f.sources,first.catalogSha256)).state).toBe('match');
  }finally{if(created){await f.client.query('DROP OWNED BY '+role);await f.client.query('DROP ROLE '+role);}await f.close();}
 });

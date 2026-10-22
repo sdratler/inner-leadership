@@ -1,6 +1,7 @@
 /** Test-only, real native commands and synthetic receipt pipeline. No provider
  * transport, production admission, source importer or application dependency. */
 import {randomUUID} from 'node:crypto';
+import {admitNativeCi,nativeCiTarget} from '../../database/native-ci-admission.ts';
 import {programFixture} from '../../database/fishing/native-program-fixture.ts';
 import {agreementAcceptanceFixture,agreementBundleFixture} from '../../fixtures/academy-agreements.ts';
 import {owner03PolicyVersion} from '../../../src/features/fishing-payments/owner03-policy.ts';
@@ -21,8 +22,13 @@ import {systemClock} from '../../../src/features/identity/types.ts';
 
 const proof=(epoch:number):CutoverEvidence=>({batchId:'SYNTHETIC_REFUND_BROWSER',sourceFileId:'synthetic-only',sourceRevision:'synthetic-only',expectedEpoch:epoch,observedNativeWritesSinceSwitch:0,backupRestored:true,snapshotMatched:true,imported:true,rowContentMatched:true,allRowsAccounted:true,identityConflicts:0,paymentsReconciled:true,writersFenced:true,inboundDurable:true,deltaDrained:true,consumersRepointed:true,sheetConsumersRepointed:true,nativeBrowserVerified:true,oldSchedulesDisabled:true,sourceFrozen:true,restorePlanReady:true});
 export async function refundFormsFixture(origin:string,schedule?:'ordinary_sundays'){
- if(process.env.LS_ACADEMY_REFUND_FORMS_BROWSER!=='SYNTHETIC_LOOPBACK_ONLY'||!/^https:\/\/localhost:310[56]$/.test(origin))throw Error('EXACT_REFUND_FORMS_TARGET_REQUIRED');
- if(schedule!==undefined&&(schedule!=='ordinary_sundays'||process.env.LS_ACADEMY_SAFETY_FORMS_BROWSER!=='SYNTHETIC_LOOPBACK_ONLY'))throw Error('EXACT_SAFETY_SCHEDULE_REQUIRED');
+ // Owner03 starts with the exclusive base catalog and calls this only after its upgrade.
+ const upgrading=nativeCiTarget()?.suite==='tests/database/fishing/academy-owner03-upgrade.native.test.ts';
+ const ci=await admitNativeCi(upgrading?['base']:['program']);
+ // Native CI may publish this composition; use the existing explicit Sunday recipe.
+ const physicalSchedule=schedule??(ci?'ordinary_sundays':undefined);
+ if((!ci&&process.env.LS_ACADEMY_REFUND_FORMS_BROWSER!=='SYNTHETIC_LOOPBACK_ONLY')||!/^https:\/\/localhost:310[56]$/.test(origin))throw Error('EXACT_REFUND_FORMS_TARGET_REQUIRED');
+ if(schedule!==undefined&&(schedule!=='ordinary_sundays'||(!ci&&process.env.LS_ACADEMY_SAFETY_FORMS_BROWSER!=='SYNTHETIC_LOOPBACK_ONLY')))throw Error('EXACT_SAFETY_SCHEDULE_REQUIRED');
  const f=await programFixture({capacity:4,policyVersion:owner03PolicyVersion,owner03Bundle:agreementBundleFixture(),termsDocument:'SYNTHETIC refund browser terms, not approved actual agreement.',confirmation:{kind:'all_native_dues_paid'}});
  try{
   f.config.origin=origin;const key=f.config.lookupKey.toString('hex'),cutover=new ContactCutoverStore(f.db,f.ring,key),leads=new FishingLeadStore(f.db,f.ring,key,'sunday_fishing_academy'),inquiries=new PublicGroupApplicationStore(f.db,f.workspaceId,f.ring,key),family=new AcademyFamilyStore(f.db,f.config,inquiries,leads),auth=new IdentityAuthService(f.db,f.config,systemClock),sessions=new IdentitySessions(f.db,f.config,systemClock);
@@ -32,8 +38,8 @@ export async function refundFormsFixture(origin:string,schedule?:'ordinary_sunda
   // daily schedule unchanged; publication must obey the real operator-day gate.
   const firstSunday=new Date(f.at(48));firstSunday.setUTCHours(16,0,0,0);firstSunday.setUTCDate(firstSunday.getUTCDate()+(7-firstSunday.getUTCDay())%7);
   for(let i=0;i<8;i++){
-   const startsAt=schedule===undefined?f.at(24+i*24):new Date(firstSunday.getTime()+i*7*86400000).toISOString(),endsAt=schedule===undefined?f.at(27+i*24):new Date(Date.parse(startsAt)+2*3600000).toISOString();
-   if(schedule!==undefined){
+   const startsAt=physicalSchedule===undefined?f.at(24+i*24):new Date(firstSunday.getTime()+i*7*86400000).toISOString(),endsAt=physicalSchedule===undefined?f.at(27+i*24):new Date(Date.parse(startsAt)+2*3600000).toISOString();
+   if(physicalSchedule!==undefined){
     if(Date.parse(startsAt)<=Date.now()||new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',weekday:'short'}).format(new Date(startsAt))!=='Sun')throw Error('FUTURE_SYNTHETIC_SUNDAY_REQUIRED');
     await f.pool.query("INSERT INTO ls_calendar.availability(id,workspace_id,practitioner_id,starts_at,ends_at,kind) VALUES($1,$2,$3,$4,$5,'open')",[randomUUID(),f.workspaceId,f.owner.id,startsAt,endsAt]);
    }

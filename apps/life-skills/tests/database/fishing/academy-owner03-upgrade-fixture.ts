@@ -1,12 +1,12 @@
 /** Exclusive disposable legacy reconstruction, never an application importer.
  * Historical rows come from real synthetic native prepay/auth/enrollment commands.
  * Only this fixture rebuilds its own Stage schema from the exact old SQL bytes. */
+import {admitNativeCi} from '../native-ci-admission.ts';
 import {createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import type {PoolClient} from 'pg';
 import {programFixture} from './native-program-fixture.ts';
 import {loadAcademySchemaSources,readAcademySchemaPreflight,type AcademySchemaConnection} from '../../../src/db/academy-schema-preflight.ts';
-
 const hash=(value:unknown):string=>createHash('sha256').update(typeof value==='string'?value:JSON.stringify(value)).digest('hex');
 const newTables=['block_acceptances','refund_cancellations','refund_fee_reservations','refund_preparations','refund_preparation_members'];
 const identifier=(s:string)=>{if(!/^[a-z_][a-z0-9_]*$/.test(s))throw Error('SYNTHETIC_IDENTIFIER_REQUIRED');return '"'+s+'"';};
@@ -14,14 +14,15 @@ const qualified=(schema:string,table:string)=>identifier(schema)+'.'+identifier(
 type Rows={table:string;rows:Record<string,unknown>[]}[];
 function normalized(table:string,row:Record<string,unknown>,legacyWorkspace:string){const copy={...row};if(table==='ls_fishing_stage.enrollments'){if(copy.workspace_id===legacyWorkspace&&copy.block_acceptance_id!==undefined&&copy.block_acceptance_id!==null)throw Error('LEGACY_BLOCK_RECLASSIFIED');delete copy.block_acceptance_id;}return copy;}
 export async function owner03UpgradeFixture(){
- if(process.env.LS_ACADEMY_OWNER03_UPGRADE!=='SYNTHETIC_LOOPBACK_ONLY')throw Error('EXPLICIT_DISPOSABLE_UPGRADE_REQUIRED');
+ const ci=await admitNativeCi(['base']);
+ if(!ci&&(process.env.LS_ACADEMY_OWNER03_UPGRADE!=='SYNTHETIC_LOOPBACK_ONLY'))throw Error('EXPLICIT_DISPOSABLE_UPGRADE_REQUIRED');
  const f=await programFixture({confirmation:{kind:'all_native_dues_paid'}});let client:PoolClient|null=null;
  try{
   await f.createPlan();const family=await f.family(),purchase=await f.prepare(family);await f.settle(purchase);const enrollment=await f.enroll(purchase);await f.publish();
   const parentView=await f.stage(family.parent,enrollment.result.id).read(family.parent,f.ref),payment=await f.paymentStore.readPayment(f.owner,purchase.purchaseId);
   if(parentView?.occurrences.length!==12||payment?.paidCents!==175000)throw Error('GENUINE_SYNTHETIC_LEGACY_PREPAY_REQUIRED');
   client=await f.pool.connect();const connection:AcademySchemaConnection={query:async<R extends object>(sql:string,values:readonly unknown[]=[])=>client!.query<R>(sql,[...values])},sources=await loadAcademySchemaSources(new URL('../../../',import.meta.url));
-  const target=(await client.query('SELECT current_database() AS name,host(inet_server_addr()) AS host,inet_server_port() AS port')).rows[0];if(!/^ls_calendar_test_rm_guard_[a-f0-9]{32}_test$/.test(target.name)||target.host!=='127.0.0.1'||target.port!==Number(new URL(process.env.TEST_DATABASE_URL!).port))throw Error('EXCLUSIVE_ACTUAL_LOOPBACK_UPGRADE_REQUIRED');
+  const target=(await client.query('SELECT current_database() AS name,host(inet_server_addr()) AS host,inet_server_port() AS port')).rows[0];if((ci?target.name!==ci.database:!/^ls_calendar_test_rm_guard_[a-f0-9]{32}_test$/.test(target.name))||target.host!==(ci?.serverAddress??'127.0.0.1')||target.port!==Number(new URL(process.env.TEST_DATABASE_URL!).port))throw Error('EXCLUSIVE_ACTUAL_LOOPBACK_UPGRADE_REQUIRED');
   const relations=(await client.query("SELECT schemaname,tablename FROM pg_tables WHERE schemaname LIKE 'ls\\_%' ESCAPE '\\' ORDER BY schemaname,tablename")).rows as {schemaname:string;tablename:string}[];
   const originals=relations.filter(r=>r.schemaname!=='ls_control'&&!(r.schemaname==='ls_fishing_stage'&&newTables.includes(r.tablename)));
   async function capture():Promise<Rows>{const result:Rows=[];for(const {schemaname,tablename}of originals){const table=schemaname+'.'+tablename,rows=(await client!.query('SELECT to_jsonb(t) AS row FROM '+qualified(schemaname,tablename)+' t')).rows.map(r=>normalized(table,r.row,f.workspaceId));result.push({table,rows});}return result;}

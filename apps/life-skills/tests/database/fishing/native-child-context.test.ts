@@ -2,6 +2,7 @@ import {afterEach,expect,test,vi} from "vitest";
 vi.mock("server-only",()=>({}));
 import {randomBytes,randomUUID,createHash} from "node:crypto";
 import pg from "pg";
+import {admitNativeCi} from '../native-ci-admission.ts';
 import {asId} from "../../../src/lib/ids.ts";
 import {seal,type Keyring} from "../../../src/features/identity/crypto.ts";
 import type {Actor,AccountRole,PersonId} from "../../../src/features/identity/types.ts";
@@ -11,14 +12,14 @@ import {poolStore,safeTestUrl} from "../calendar/fixture.ts";
 const pools:pg.Pool[]=[];
 afterEach(async()=>{await Promise.all(pools.splice(0).map(pool=>pool.end()));});
 async function fixture(){
- const raw=safeTestUrl(),url=new URL(raw);
+ const native=await admitNativeCi(['base']),raw=safeTestUrl(),url=new URL(raw);
  // Reuse only the existing frozen secret-free CI allowlist, never DATABASE_URL.
  const ci=process.env.CI==="true"&&raw==="postgresql://synthetic:synthetic_ci_only@127.0.0.1:5432/lifeskills_migration_test";
- if(!ci&&(process.env.LS_RM_GUARDIAN_NATIVE_ALLOW!=="MAIN_REGISTERED_ONLY"||!/^\/ls_calendar_test_rm_guard_[a-f0-9]{32}_test$/.test(url.pathname)))throw Error("MAIN_REGISTERED_GUARDIAN_TARGET_REQUIRED");
+ if(!native&&!ci&&(process.env.LS_RM_GUARDIAN_NATIVE_ALLOW!=="MAIN_REGISTERED_ONLY"||!/^\/ls_calendar_test_rm_guard_[a-f0-9]{32}_test$/.test(url.pathname)))throw Error("MAIN_REGISTERED_GUARDIAN_TARGET_REQUIRED");
  if(url.hostname!=="127.0.0.1"||!url.port||!url.username||!url.password||url.search||url.hash)throw Error("GUARDIAN_TARGET_NOT_EXACT_LOOPBACK");
  const pool=new pg.Pool({connectionString:raw,ssl:false,max:4});pools.push(pool);
  const target=(await pool.query("SELECT current_database() AS database,host(inet_server_addr()) AS host,inet_server_port() AS port")).rows[0];
- if(target.database!==url.pathname.slice(1)||target.host!=="127.0.0.1"||target.port!==Number(url.port))throw Error("GUARDIAN_ACTUAL_TARGET_MISMATCH");
+ if(target.database!==url.pathname.slice(1)||target.host!==(native?.serverAddress??"127.0.0.1")||target.port!==Number(url.port))throw Error("GUARDIAN_ACTUAL_TARGET_MISMATCH");
  const workspaceId=asId(randomUUID(),"workspace"),now=new Date(),ago=new Date(now.valueOf()-3600000),ring:Keyring={activeKeyId:"synthetic",keys:{synthetic:randomBytes(32)}},db=poolStore(pool);
  await pool.query("INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,$2)",[workspaceId,ago]);
  async function person(kind:"minor"|"adult",displayName:string,extra:Record<string,string>={}){

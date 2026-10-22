@@ -3,6 +3,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
+import {restoreNativeCiChild,admitNativeCi,type NativeCiChildEnvelope} from '../native-ci-admission.ts';
 import { z } from 'zod';
 import { asId } from '../../../src/lib/ids.ts';
 import type { Actor,ApprovedOffer } from '../../../src/features/fishing/contract.ts';
@@ -14,12 +15,12 @@ import { poolStore } from '../calendar/fixture.ts';
 import { nativeUrl } from './fixture.ts';
 import { merchant } from '../../unit/fishing-payments/fixture.ts';
 
-export type RecoveryInput={databaseUrl:string;actor:Actor;operationId:string;originalStartKey:string;matchingResult:HostedResult|RefundResult;proof:{offerId:string;workspaceId:string;payerId:string;operatorId:string;learnerId:string;eligibilityEvidenceId:string};withdrawal:WithdrawalFacts|null};
+export type RecoveryInput={databaseUrl:string;nativeCi?:NativeCiChildEnvelope;actor:Actor;operationId:string;originalStartKey:string;matchingResult:HostedResult|RefundResult;proof:{offerId:string;workspaceId:string;payerId:string;operatorId:string;learnerId:string;eligibilityEvidenceId:string};withdrawal:WithdrawalFacts|null};
 export type RecoveryOutput={ok:boolean;code?:string;pid?:number;initialUnknown?:boolean;retriesUnknown?:boolean;createCalls?:number;readbackMismatchRejected?:boolean;resolved?:boolean;dispatchCount?:number;cashBefore?:{paidCents:number;refundedCents:number};cashAfter?:{paidCents:number;refundedCents:number}};
 const identifier=z.string().regex(/^[a-zA-Z0-9_.:-]{1,160}$/);
 const actorSchema=z.object({id:z.uuid(),workspaceId:z.uuid(),personId:z.uuid(),role:z.enum(['parent','practitioner']),state:z.literal('active'),locale:z.enum(['en','he']),sessionDigest:z.string().regex(/^[a-f0-9]{64}$/),expiresAt:z.number().int().positive()}).strict();
 const common={providerObjectId:identifier,providerAccountId:identifier,livemode:z.literal(false),currency:z.literal('USD'),amountCents:z.number().int().positive(),purchaseId:z.uuid(),idempotencyKey:z.string().max(255)};
-const protocol=z.object({databaseUrl:z.string().max(2048),actor:actorSchema,operationId:z.uuid(),originalStartKey:identifier,
+const protocol=z.object({databaseUrl:z.string().max(2048),nativeCi:z.strictObject({version:z.literal('JLFA-NATIVE-CI-20261022-01'),target:z.string().min(1).max(4096),nonce:z.string().regex(/^[a-f0-9]{64}$/),artifactRoot:z.string().min(1).max(2048)}).optional(),actor:actorSchema,operationId:z.uuid(),originalStartKey:identifier,
  matchingResult:z.discriminatedUnion('kind',[z.object({...common,kind:z.literal('hosted_invoice'),dueId:identifier,url:z.url()}).strict(),z.object({...common,kind:z.literal('refund'),status:z.enum(['pending','succeeded','failed'])}).strict()]),
  proof:z.object({offerId:identifier,workspaceId:z.uuid(),payerId:z.uuid(),operatorId:z.uuid(),learnerId:z.uuid(),eligibilityEvidenceId:identifier}).strict(),
  withdrawal:z.object({attended:z.number().int().min(0).max(12),revision:identifier,reason:z.enum(['voluntary','operator']),multiChildPrestart:z.boolean(),reviewedTermsId:identifier.nullable()}).strict().nullable()
@@ -29,12 +30,13 @@ async function input(){const chunks:Buffer[]=[];let size=0;for await(const part 
 async function main():Promise<RecoveryOutput>{
  const data=await input(),url=new URL(data.databaseUrl);
  invariant(['postgres:','postgresql:'].includes(url.protocol)&&url.hostname==='127.0.0.1'&&/^[0-9]+$/.test(url.port)&&!url.search&&!url.hash,'CHILD_TARGET_GUARD');
- process.env.TEST_DATABASE_URL=data.databaseUrl;const connectionString=nativeUrl();
+ process.env.TEST_DATABASE_URL=data.databaseUrl;if(data.nativeCi)restoreNativeCiChild(data.nativeCi);
+ const ci=await admitNativeCi(['payment']),connectionString=nativeUrl();
  const actor:Actor={...data.actor,id:asId(data.actor.id,'account'),workspaceId:asId(data.actor.workspaceId,'workspace'),personId:asId(data.actor.personId,'person')};
  const pool=new pg.Pool({connectionString,ssl:false,max:2,connectionTimeoutMillis:2000,query_timeout:5000,statement_timeout:5000,idleTimeoutMillis:1000,application_name:'synthetic-rm-payment-recovery-child'});
  try{
   const target=(await pool.query('SELECT current_database() AS database,host(inet_server_addr()) AS host,inet_server_port() AS port')).rows[0];
-  invariant(target?.database===url.pathname.slice(1)&&target.host==='127.0.0.1'&&target.port===Number(url.port),'CHILD_ACTUAL_TARGET_MISMATCH');
+  invariant(target?.database===url.pathname.slice(1)&&target.host===(ci?.serverAddress??'127.0.0.1')&&target.port===Number(url.port),'CHILD_ACTUAL_TARGET_MISMATCH');
   const proof=data.proof;
   const authority:FishingAuthority={
    async loadApprovedOffer(tx,current,offerId){invariant(current.workspaceId===proof.workspaceId&&offerId===proof.offerId,'SYNTHETIC_PROOF_MISMATCH');const rows=await tx.query<{offer:ApprovedOffer}>('SELECT offer_json AS offer FROM ls_fishing_payments.offers WHERE workspace_id=$1 AND id=$2',[current.workspaceId,offerId]);return rows[0]?.offer??null;},

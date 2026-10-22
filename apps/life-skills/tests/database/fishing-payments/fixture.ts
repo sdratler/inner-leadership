@@ -3,6 +3,7 @@
  */
 import { randomUUID,randomBytes,createHash } from 'node:crypto';
 import pg from 'pg';
+import {nativeCiTarget,admitNativeCi} from '../native-ci-admission.ts';
 import { poolStore } from '../calendar/fixture.ts';
 import { asId } from '../../../src/lib/ids.ts';
 import { seal } from '../../../src/features/identity/crypto.ts';
@@ -14,7 +15,7 @@ import { FishingPaymentStore } from '../../../src/features/fishing-payments/stor
 import { FishingPaymentService } from '../../../src/features/fishing-payments/service.ts';
 import { FishingReceiptInbox } from '../../../src/features/fishing-payments/receipts.ts';
 import { offerFixture,merchant } from '../../unit/fishing-payments/fixture.ts';
-export function nativeUrl(){const raw=process.env.TEST_DATABASE_URL;if(!raw)throw Error('MAIN_MUST_PROVIDE_DISPOSABLE_DATABASE');const u=new URL(raw);if(u.hostname!=='127.0.0.1'||!/^\/ls_calendar_test_rm_pay_[a-f0-9]{32}_test$/.test(u.pathname))throw Error('WRONG_PAYMENT_TEST_TARGET');return raw;}
+export function nativeUrl(){const ci=nativeCiTarget(['payment']);if(ci)return ci.url;const raw=process.env.TEST_DATABASE_URL;if(!raw)throw Error('MAIN_MUST_PROVIDE_DISPOSABLE_DATABASE');const u=new URL(raw);if(u.hostname!=='127.0.0.1'||!/^\/ls_calendar_test_rm_pay_[a-f0-9]{32}_test$/.test(u.pathname))throw Error('WRONG_PAYMENT_TEST_TARGET');return raw;}
 export class FakeMerchant implements SyntheticHostedProvider {
  readonly execution='synthetic' as const;readonly binding=merchant;
  readonly results=new Map<string,HostedResult|RefundResult>();calls=0;loseResponse=false;
@@ -24,6 +25,7 @@ export class FakeMerchant implements SyntheticHostedProvider {
  async reconcileReceipt(){if(!this.readback)throw Error('NO_SYNTHETIC_READBACK');return this.readback;}
 }
 export async function setup(){
+ await admitNativeCi(['payment']);
  const pool=new pg.Pool({connectionString:nativeUrl(),max:8});
  if(!(await pool.query("SELECT to_regclass('ls_fishing_payments.operations') AS ready")).rows[0]?.ready){await pool.end();throw Error('MAIN_MUST_APPLY_PINNED_CANDIDATE_FIRST');}
  const workspaceId=asId(randomUUID(),'workspace'),now=new Date(),ago=new Date(now.getTime()-3600000),ring={activeKeyId:'synthetic',keys:{synthetic:randomBytes(32)}};

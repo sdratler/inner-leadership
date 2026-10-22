@@ -1,3 +1,4 @@
+import {ordinaryFixtureInterval} from './academy-calendar-fixture-times.ts';
 import {agreementBundleFixture,agreementAcceptanceFixture} from '../../fixtures/academy-agreements.ts';
 /** Actual retained auth/HTTP/SQL and native PAY; synthetic merchant only. */
 import {randomUUID,createHmac} from 'node:crypto';
@@ -65,8 +66,9 @@ test('same fresh inquiry family completes offer, synthetic PAY, Florida trip, at
  const deliveryProtected=await f.protectedState(),deliveryMail=await f.mailSnapshot(),plan=(await f.stage(f.owner).read(f.owner,f.ref))!,delivered=plan.occurrences[3]!,upcoming=plan.occurrences[4]!;
  // Extend only this owned synthetic fixture's availability. Both events are
  // real scheduled180minute Native occurrences; no actual venue permission.
- await f.pool.query("UPDATE ls_calendar.availability SET starts_at=$3 WHERE workspace_id=$1 AND practitioner_id=$2 AND kind='open'",[f.workspaceId,f.owner.id,f.at(-24)]);
- await f.revise(delivered.id,f.at(-4),f.at(-1));await f.revise(upcoming.id,f.at(48),f.at(51));await f.publish();
+ const deliveredTeaching=ordinaryFixtureInterval(f.at(-4),f.at(-1)),availabilityStart=new Date(Math.min(Date.parse(f.at(-24)),Date.parse(deliveredTeaching.startsAt))).toISOString();
+ await f.pool.query("UPDATE ls_calendar.availability SET starts_at=$3 WHERE workspace_id=$1 AND practitioner_id=$2 AND kind='open'",[f.workspaceId,f.owner.id,availabilityStart]);
+ await f.revise(delivered.id,deliveredTeaching.startsAt,deliveredTeaching.endsAt);const teaching=ordinaryFixtureInterval(f.at(48),f.at(51));await f.revise(upcoming.id,teaching.startsAt,teaching.endsAt);await f.publish();
  const stage=()=>f.stage(f.owner),current=async()=>{const view=(await stage().read(f.owner,f.ref))!,o=view.occurrences.find(o=>o.id===delivered.id)!;return {operationId:randomUUID(),expectedRevision:view.revision,occurrenceId:o.id,expectedOccurrenceRevision:o.revision};};
  await stage().execute(f.owner,f.ref,{...await current(),action:'complete',reason:'SYNTHETIC actual delivered three-hour session'});
  await stage().execute(f.owner,f.ref,{...await current(),action:'attendance',enrollmentId:enrolled.id,state:'present',reason:'SYNTHETIC instructor observed attendance'});

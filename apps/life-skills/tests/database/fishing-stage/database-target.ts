@@ -1,5 +1,8 @@
+import {nativeCiTarget,nativeCiSource} from '../native-ci-admission.ts';
 /** No connection, fallback URL, migration, creation, deletion or implicit CI mode. */
 export function requireNativeTarget(env:Readonly<Record<string,string|undefined>>,pins:{schemaSha256:string;fixtureSha256:string}):string{
+ const ci=nativeCiTarget(['stage','stageCredit'],env);
+ if(ci){if(pins.schemaSha256!==nativeCiSource('apps/life-skills/src/features/fishing-stage/candidate.sql')||pins.fixtureSha256!==nativeCiSource('apps/life-skills/tests/database/fishing-stage/fixture.sql'))throw Error('NATIVE_CI_STAGE_SOURCE_PINS');return ci.url;}
  if(env.LS_RM_STAGE_NATIVE_ALLOW!=="MAIN_REGISTERED_ONLY"||env.LS_RM_STAGE_SCRAM_CONFIRMED!=="true"||
   env.LS_RM_STAGE_SCHEMA_SHA256!==pins.schemaSha256||env.LS_RM_STAGE_FIXTURE_SHA256!==pins.fixtureSha256||
   !/^[a-f0-9]{64}$/.test(pins.schemaSha256)||!/^[a-f0-9]{64}$/.test(pins.fixtureSha256))throw Error("RM_STAGE_NATIVE_ADMISSION_REQUIRED");

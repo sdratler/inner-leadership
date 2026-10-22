@@ -1,3 +1,4 @@
+import {ordinaryFixtureInterval} from './academy-calendar-fixture-times.ts';
 /** Retained native adapters + real password/preauth/CSRF over Request/Response.
  * Synthetic sources, merchant and receipt setup are NOT provider, mounted Next,
  * invitation or production activation proof. No session/authority is injected. */
@@ -150,8 +151,8 @@ test("global educational revocation and foreign-workspace operator login are den
 });
 
 test("native timeline contains published scheduled occurrences once in Florida days and never turns drafts into bookings",async()=>{
- const f=await fixture(),a=await f.enrolled(),auth=await f.login(f.owner),plan=(await f.stage().read(f.owner,f.ref))!,when=f.at(48),day=new Intl.DateTimeFormat("en-CA",{timeZone:"America/New_York",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(when));
- await f.revise(plan.occurrences[0]!.id,when,f.at(49));const query=new URLSearchParams({from:day,to:day}).toString();
+ const f=await fixture(),a=await f.enrolled(),auth=await f.login(f.owner),plan=(await f.stage().read(f.owner,f.ref))!,teaching=ordinaryFixtureInterval(f.at(48),f.at(49)),when=teaching.startsAt,day=new Intl.DateTimeFormat("en-CA",{timeZone:"America/New_York",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(when));
+ await f.revise(plan.occurrences[0]!.id,when,teaching.endsAt);const query=new URLSearchParams({from:day,to:day}).toString();
  expect((await(await f.read(auth,"timeline",query)).json()).data.items).toEqual([]);await f.publish();
  const response=await f.read(auth,"timeline",query);expect(response.status).toBe(200);const items=(await response.json()).data.items;expect(items).toHaveLength(1);expect(items[0]).toMatchObject({id:plan.occurrences[0]!.id,timeZone:"America/New_York",state:"published",selections:[f.operatorSelection]});
  const parent=await f.login(a.family.parent);expect((await(await f.read(parent,"timeline",query)).json()).data.items).toEqual([]);

@@ -1,4 +1,5 @@
 /** One source-bound legacy upgrade through the actual migration runner. Synthetic only. */
+import {nativeCiProofPath} from '../native-ci-admission.ts';
 import {createHash,randomUUID} from 'node:crypto';
 import {readFile,writeFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
@@ -10,7 +11,6 @@ import {readAcademySchemaPreflight} from '../../../src/db/academy-schema-preflig
 import {refundFormsFixture} from '../../e2e/group-interest/academy-refund-forms-fixture.ts';
 import {academyRefundUiVersion,type AcademyRefundUiCommand} from '../../../src/features/fishing/academy-refund-ui-contract.ts';
 const hash=(v:string)=>createHash('sha256').update(v).digest('hex');
-
 test('actual legacy encrypted history survives failed/complete/replayed upgrade; current block/family-fee commands work while unadopted migration baseline stays denied',async()=>{
  const f=await owner03UpgradeFixture();let current:Awaited<ReturnType<typeof refundFormsFixture>>|null=null;
  try{
@@ -35,6 +35,6 @@ test('actual legacy encrypted history survives failed/complete/replayed upgrade;
   for(const table of ['block_acceptances','refund_cancellations','refund_fee_reservations']){await expect(current.pool.query('UPDATE ls_fishing_stage.'+table+' SET payload_ciphertext=payload_ciphertext WHERE workspace_id=$1',[current.workspaceId])).rejects.toThrow('IMMUTABLE_PROGRAM_HISTORY');await expect(current.pool.query('DELETE FROM ls_fishing_stage.'+table+' WHERE workspace_id=$1',[current.workspaceId])).rejects.toThrow('IMMUTABLE_PROGRAM_HISTORY');}
   await f.assertHistory(true);expect((await f.client.query('SELECT name,checksum FROM ls_control.migrations WHERE name=$1',[name])).rows).toEqual([{name,checksum:proposal.checksum}]);
   const proof={scope:'DISPOSABLE_SYNTHETIC_LEGACY_UPGRADE_NOT_NUMBERED_OR_PRODUCTION_ADOPTED',legacySchemaSha256:'eb9da1c89b77c3472455181369cf0f57129f4054e7b7cf826538f375c2f5f048',currentSchemaSha256:'31975d4c0db5da2f0bc454906b47cf78ddd622f5fadffeb7c41f4c431dfaf748',proposalSha256:proposal.checksum,failedUpgradeFullyRolledBack:true,migrationRunnerAppliedOnceReplayNoopChangedChecksumDenied:true,legacyOriginalFieldsAndCiphertextPreserved:true,legacyParentTwelveSessionsAndPaid175000Readback:true,nullableLegacyTermsXorConstraintEnforced:true,newFourLessonPaidPurchases:4,familyFeeCents:20000,explicitAllocationCents:[7000,13000],refundProposalCents:[58000,52000],protectedCurrentTablesUnchanged:protectedBefore.length,newTablesImmutable:true,currentRuntimeAdmission:'UNCHANGED_NOT_ADMITTED',freshCatalogSha256:f.fresh.catalogSha256,legacyCatalogSha256:f.legacyCatalog.catalogSha256,upgradedCatalogSha256:upgraded.catalogSha256,catalogReferencesIndependentlyAdopted:false,source55BaselineAfterSyntheticLedger56:'baseline_mismatch/mutationAllowed:false',oldHistory:f.historyProof,productionQueryOrEffect:false};
-  const proofPath=resolve(process.env.LS_ACADEMY_OWNER03_UPGRADE_PROOF??'');if(!/^C:\/Users\/User\/Documents\/Codex\/2026-10-21\/files-pasted-by-the-user-codex\/work\/pr193-pg-[A-Za-z0-9]+\/upgrade-proof\.json$/.test(proofPath.replaceAll('\\','/')))throw Error('OWNED_UPGRADE_PROOF_PATH_REQUIRED');await writeFile(proofPath,JSON.stringify(proof,null,2));
+  const ciProof=nativeCiProofPath('upgrade-proof.json'),proofPath=ciProof??resolve(process.env.LS_ACADEMY_OWNER03_UPGRADE_PROOF??'');if(!ciProof&&!/^C:\/Users\/User\/Documents\/Codex\/2026-10-21\/files-pasted-by-the-user-codex\/work\/pr193-pg-[A-Za-z0-9]+\/upgrade-proof\.json$/.test(proofPath.replaceAll('\\','/')))throw Error('OWNED_UPGRADE_PROOF_PATH_REQUIRED');await writeFile(proofPath,JSON.stringify(proof,null,2));
  }finally{try{await current?.close();}finally{await f.close();}}
 },120000);

@@ -14,7 +14,7 @@ def aggregate_passes(results: dict[str, str], required: tuple[str, ...]) -> bool
 
 def main() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
-    forbidden = ("secrets.", "pull_request_target", "environment:", "persist-credentials: true")
+    forbidden = ("secrets.", "pull_request_target", "environment:", "persist-credentials: true", "continue-on-error:")
     for value in forbidden:
         if value in text:
             raise SystemExit(f"CI_BOUNDARY_FORBIDDEN:{value}")
@@ -29,7 +29,8 @@ def main() -> None:
         "node ../../tools/ci/create-migration-database.cjs",
         "npm run db:migrate",
         "npm run db:verify",
-        "npm run test:db",
+        "node ../../tools/ci/ci-native.cjs",
+        "node --test tools/ci/native-ci-contract.test.cjs",
         "npm run test:e2e",
         "application-ci:",
         "if: always()",

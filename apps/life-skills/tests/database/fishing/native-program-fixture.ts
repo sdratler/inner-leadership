@@ -5,6 +5,8 @@
  */
 import {createHmac,randomBytes,randomUUID} from "node:crypto";
 import pg from "pg";
+import {admitNativeCi} from '../native-ci-admission.ts';
+import {ordinaryFixtureInterval} from './academy-calendar-fixture-times.ts';
 import {asId} from "../../../src/lib/ids.ts";
 import {seal,blindEmail,hashPassword} from "../../../src/features/identity/crypto.ts";
 import {IdentityAuthService} from "../../../src/features/identity/auth-service.ts";
@@ -35,13 +37,13 @@ import {educationArtifactAad,type EducationStorageBinding} from "../../../src/fe
 
 export async function programFixture(options:{capacity?:number;childAccountsEnabled?:boolean;confirmation?:ProgramPolicy["confirmation"];readableRm101?:"SYNTHETIC_ONLY";termsDocument?:string;termsDocumentSha256?:string;owner03Bundle?:AcademyAgreementBundle;policyVersion?:string}={}){
  const financialPolicyVersion=options.policyVersion??POLICY_VERSION;
- const raw=safeTestUrl(),url=new URL(raw);
- if(process.env.LS_RM_PROGRAM_NATIVE_ALLOW!=="MAIN_REGISTERED_ONLY"||url.hostname!=="127.0.0.1"||!/^\/ls_calendar_test_rm_guard_[a-f0-9]{32}_test$/.test(url.pathname)||!url.port||!url.username||!url.password||url.search||url.hash)throw Error("MAIN_REGISTERED_PROGRAM_TARGET_REQUIRED");
- if(options.readableRm101!==undefined&&(options.readableRm101!=="SYNTHETIC_ONLY"||process.env.LS_RM_FISHING_STAGE_UI_ONLY!=="true"))throw Error("READABLE_RM101_SYNTHETIC_BROWSER_OPT_IN_REQUIRED");
+ const ci=await admitNativeCi(['base','program']),raw=safeTestUrl(),url=new URL(raw);
+ if(!ci&&(process.env.LS_RM_PROGRAM_NATIVE_ALLOW!=="MAIN_REGISTERED_ONLY"||url.hostname!=="127.0.0.1"||!/^\/ls_calendar_test_rm_guard_[a-f0-9]{32}_test$/.test(url.pathname)||!url.port||!url.username||!url.password||url.search||url.hash))throw Error("MAIN_REGISTERED_PROGRAM_TARGET_REQUIRED");
+ if(options.readableRm101!==undefined&&(options.readableRm101!=="SYNTHETIC_ONLY"||(!ci&&process.env.LS_RM_FISHING_STAGE_UI_ONLY!=="true")))throw Error("READABLE_RM101_SYNTHETIC_BROWSER_OPT_IN_REQUIRED");
  const pool=new pg.Pool({connectionString:raw,ssl:false,max:8});
  try{
   const target=(await pool.query("SELECT current_database() AS database,host(inet_server_addr()) AS host,inet_server_port() AS port,to_regclass('ls_fishing_stage.cohorts') AS cohorts,to_regclass('ls_fishing_stage.seat_reservations') AS seats")).rows[0];
-  if(target.database!==url.pathname.slice(1)||target.host!=="127.0.0.1"||target.port!==Number(url.port)||!target.cohorts||!target.seats)throw Error("PROGRAM_NATIVE_ACTUAL_TARGET_OR_SCHEMA_MISMATCH");
+  if(target.database!==url.pathname.slice(1)||target.host!==(ci?.serverAddress??"127.0.0.1")||target.port!==Number(url.port)||!target.cohorts||!target.seats)throw Error("PROGRAM_NATIVE_ACTUAL_TARGET_OR_SCHEMA_MISMATCH");
   const workspaceId=asId(randomUUID(),"workspace"),ago=new Date(Date.now()-86400000),now=Date.now(),db=poolStore(pool),ring={activeKeyId:"synthetic",keys:{synthetic:randomBytes(32)}};
   const config:IdentityConfig={enabled:true,origin:"https://synthetic.invalid",workspaceId,csrfKey:randomBytes(32),lookupKey:randomBytes(32),rateLimitKey:randomBytes(32).toString("hex"),keyring:ring,sessionSeconds:28800};
   await pool.query("INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,$2)",[workspaceId,ago]);
@@ -83,6 +85,7 @@ export async function programFixture(options:{capacity?:number;childAccountsEnab
   await program.createCohort(owner,cohortCommand);
   const venueCommand={commandId:randomUUID(),id:randomUUID(),label:"Synthetic approved pier",address:"Synthetic address",capacity:options.capacity??2,approvalReference:"SYNTHETIC_VENUE_NOT_REAL_PERMISSION",reason:"Disposable resource fixture"};await program.approveVenue(owner,venueCommand);
   const at=(hours:number)=>new Date(now+hours*3600000).toISOString();
+  const teaching=ordinaryFixtureInterval(at(48),at(49));
   await pool.query("INSERT INTO ls_calendar.availability(id,workspace_id,practitioner_id,starts_at,ends_at,kind) VALUES($1,$2,$3,$4,$5,'open')",[randomUUID(),workspaceId,owner.id,new Date(now-3600000),new Date(now+20*86400000)]);
   const stage=(actor:Actor=owner,enrollmentId:string|null=null,intent:NativeProgramCommandIntent|null=null)=>new FishingStageService(new NativeFishingStageStore(db,ring,{actor,selection:{selectedEnrollmentId:enrollmentId}},program.stageHooks(intent)),systemClock);
   async function createPlan(){await stage().execute(owner,ref,{action:"create",operationId:randomUUID(),expectedRevision:0,templateVersion:template.version,childCapacity:options.capacity??2});return (await stage().read(owner,ref))!;}
@@ -108,7 +111,7 @@ export async function programFixture(options:{capacity?:number;childAccountsEnab
    provider.readback={receiptId:eventId,resolvedObjectId:operation.result!.providerObjectId,providerAccountId:merchant.accountId,livemode:false,readAt:new Date().toISOString(),facts:[fact],dues:[]};await inbox.processSynthetic(owner,randomUUID(),eventId);return {operation,eventId};
   }
   async function enroll(p:Awaited<ReturnType<typeof prepare>>){const state=(await paymentStore.readPayment(owner,p.purchaseId))!;const command={commandId:randomUUID(),id:randomUUID(),stageId:p.offer.stageId,purchaseId:p.purchaseId,fitDecisionId:p.fit.id,termsAcceptanceId:p.acceptance.id,policyApprovalId:policyId,expectedPaymentRevision:state.revision};return {command,result:await program.confirmEnrollment(owner,command)};}
-  async function revise(id:string,startsAt=at(48),endsAt=at(49),venueId=venueCommand.id){const current=(await stage().read(owner,ref))!,o=current.occurrences.find(value=>value.id===id)!,operationId=randomUUID();const command:StageCommand={action:"revise",operationId,expectedRevision:current.revision,occurrenceId:id,expectedOccurrenceRevision:o.revision,details:{time:{kind:"scheduled",startsAt,endsAt,timeZone:"America/New_York"},location:venueCommand.label,directions:"Synthetic directions",equipment:"Synthetic equipment",logisticalNote:"Synthetic enrolled-family information",childCapacity:options.capacity??2},reason:"Synthetic schedule choice"};return stage(owner,null,{operationId,resources:[{occurrenceId:id,expectedRevision:o.revision,venueId}],makeupFitDecisionId:null}).execute(owner,ref,command);}
+  async function revise(id:string,startsAt=teaching.startsAt,endsAt=teaching.endsAt,venueId=venueCommand.id){const current=(await stage().read(owner,ref))!,o=current.occurrences.find(value=>value.id===id)!,operationId=randomUUID();const command:StageCommand={action:"revise",operationId,expectedRevision:current.revision,occurrenceId:id,expectedOccurrenceRevision:o.revision,details:{time:{kind:"scheduled",startsAt,endsAt,timeZone:"America/New_York"},location:venueCommand.label,directions:"Synthetic directions",equipment:"Synthetic equipment",logisticalNote:"Synthetic enrolled-family information",childCapacity:options.capacity??2},reason:"Synthetic schedule choice"};return stage(owner,null,{operationId,resources:[{occurrenceId:id,expectedRevision:o.revision,venueId}],makeupFitDecisionId:null}).execute(owner,ref,command);}
   async function publish(){const current=(await stage().read(owner,ref))!,operationId=randomUUID();return stage(owner,null,{operationId,resources:[],makeupFitDecisionId:null}).execute(owner,ref,{action:"publish",operationId,expectedRevision:current.revision});}
   const calendar=new CalendarService(new CalendarStore(db,ring,systemClock));
   async function clinical(){const cases=new CaseService(db,config,systemClock),parent=await account("parent"),created=await cases.create(owner,{kind:"minor",displayName:"UNRELATED synthetic clinical child",familyLabel:"Unrelated clinical fixture"},randomUUID());

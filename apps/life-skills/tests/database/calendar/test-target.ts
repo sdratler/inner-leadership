@@ -1,5 +1,7 @@
+import {nativeCiTarget} from '../native-ci-admission.ts';
 /** Pure disposable-target guard shared by native and browser fixtures. */
 export function safeTestUrl():string {
+ const native=nativeCiTarget();if(native)return native.url;
  const raw=process.env.TEST_DATABASE_URL;
  // The frozen, secret-free repository CI already migrates this separate database.
  // Foundation tests use their own EMPTY LS_TEST_DATABASE_URL; never reuse that DB here.

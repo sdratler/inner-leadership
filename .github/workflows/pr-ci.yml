@@ -21,6 +21,7 @@ jobs:
           node-version: '22'
       - run: node --version && python3 --version
       - run: python3 tools/ci/verify-ci-boundary.py
+      - run: node --test tools/ci/native-ci-contract.test.cjs
       - run: python3 -m unittest discover -s tools/source-audit/tests -v
       - run: npm run check && npm run build && npm run check:server
   app-and-database:
@@ -69,7 +70,8 @@ jobs:
       - run: npm run build
       - name: First, repeated and verify-only disposable migrations
         run: npm run db:migrate && npm run db:migrate && npm run db:verify
-      - run: npm run test:db
+      - name: Complete ordinary and isolated native database inventory
+        run: node ../../tools/ci/ci-native.cjs
       - run: npx --no-install playwright install --with-deps chromium
       - run: npm run test:e2e
       - run: npm run test:e2e:locked
