@@ -6,6 +6,7 @@ import {createHash} from "node:crypto";
 import {promisify} from "node:util";
 import {expect,test} from "@playwright/test";
 import {syntheticChildFailure} from "../group-interest/synthetic-child-output.ts";
+import inquiryCopy from "../../../src/features/group-application/presentation-copy.json" with {type:"json"};
 const runtimePath=process.env.LS_GROUP_INTEREST_FIXTURE_PATH;
 if(!runtimePath){
  test("mounted fishing lead controls through existing isolated native harness",async({},info)=>{
@@ -13,12 +14,97 @@ if(!runtimePath){
   const result=await promisify(execFile)(process.execPath,["--conditions=react-server","--import","tsx","tests/e2e/group-interest/run.ts"],{timeout:210000,maxBuffer:2*1024*1024,
    env:{...process.env,LS_GROUP_INTEREST_TEST_PROJECT:project,LS_GROUP_INTEREST_TEST_ALLOW:"true",LS_CALENDAR_TEST_ALLOW:"true",LS_FISHING_LEAD_UI_ONLY:"true"}})
    .catch(error=>{throw new Error(syntheticChildFailure(error));});
-  expect(result.stdout).toContain("FISHING_LEAD_UI_ACCEPTANCE_PASS project="+project);
+  expect(result.stdout).toContain((process.env.LS_ACADEMY_FAMILY_UI_ONLY==="true"?"ACADEMY_FAMILY_UI_ACCEPTANCE_PASS project=":"FISHING_LEAD_UI_ACCEPTANCE_PASS project=")+project);
  });
 }else{
- const runtime=JSON.parse(readFileSync(runtimePath,"utf8")) as {origin:string;fishing:{credentials:{role:string;email:string;password:string}[];inquiries:{locale:string;id:string;name:string}[];protectedPersonId:string}};
+ const runtime=JSON.parse(readFileSync(runtimePath,"utf8")) as {origin:string;workspaceId:string;fishing:{credentials:{role:string;email:string;password:string}[];inquiries:{locale:string;id:string;name:string}[];protectedPersonId:string}};
  if(process.env.LS_FISHING_LEAD_UI_ONLY!=="true"||!/^https:\/\/localhost:310[5678]$/.test(runtime.origin)||!runtime.fishing)throw Error("FISHING_UI_ISOLATED_FIXTURE_REQUIRED");
  test.use({baseURL:runtime.origin});
+ for(const locale of ["en","he"] as const)test(`${locale}: anonymous saved inquiry, exact retry, ordinary owner re-login and deliberate lead addition`,async({page},info)=>{
+  const monthly=process.env.LS_ACADEMY_MONTHLY_UI_ONLY==='true';if(monthly)info.setTimeout(180000);
+  const t=(en:string,he:string)=>locale==="he"?he:en,copy=inquiryCopy.realMensch.inquiry;
+  const name=`Synthetic composed ${locale}`,contact=locale==="en"?"+13055550111":"+13055550112";
+  const target=`/${locale}/app/group-applications`,credentials=runtime.fishing.credentials.find(c=>c.role==="practitioner")!;
+  expect((await page.request.get("/api/private/group-applications")).status()).toBe(401);
+  expect((await page.goto(`/${locale}/florida`))?.status()).toBe(200);
+  await page.locator(`a[href="/${locale}/florida/apply"]:visible`).first().click();await expect(page).toHaveURL(`/${locale}/florida/apply`);
+  const form=page.locator('form[data-inquiry-kind="parent"]');
+  if(monthly)await expect(form.locator('[data-registration-child]').first()).toHaveAttribute('data-registration-child',/^[a-f0-9-]{36}$/);
+  await form.locator('[name="parentName"]').fill(name);await form.locator('[name="contact"]').fill(contact);
+  if(monthly){
+   const child=form.locator('[data-registration-child]').first(),id=await child.getAttribute('data-registration-child');expect(id).toBeTruthy();
+   await child.locator(`[name="child-${id}-name"]`).fill('Synthetic public child');await child.locator(`[name="child-${id}-age"]`).fill('12');
+   for(const [field,value]of Object.entries({grade:'6',schooling:'school',experience:'new'}))await child.locator(`[name="child-${id}-${field}"]`).selectOption(value);
+   await form.locator('[name="cityArea"]').fill('Synthetic Florida');await form.locator('[name="postalCode"]').fill('33021');await form.locator('[name="driveMinutes"]').fill('30');await form.locator('[name="schoolHoursAvailability"]').selectOption('discuss');await form.locator('[name="stageInterest"]').selectOption('foundation');await form.locator(`[name="preferredGroupLanguage"][value="${locale}"]`).check();
+   for(const [field,value]of [['preferredDays','sunday'],['preferredTimes','morning']]){const option=form.locator(`input[name="${field}"][value="${value}"]`);await option.locator('xpath=ancestor::details/summary').click();await option.check();}await form.locator('[name="permission"]').check();
+  }else{
+  await form.locator('[name="learnerAge-0"]').fill("12");await form.locator('[name="cityArea"]').fill("Synthetic Florida");
+  await form.locator('[name="postalCode"]').fill("33021");
+  for(const [field,value] of Object.entries({driveLimit:"30",schoolHoursAvailability:"discuss",preferredGroupLanguage:locale,stagePreference:"foundation",keysTravel:"discuss",offshoreInterest:"discuss","learnerGrade-0":"grade_6_8","learnerSchooling-0":"school","learnerTackleBox-0":"need_advice"}))await form.locator(`[name="${field}"]`).selectOption(value);
+  await form.locator('[name="nextStep"][value="callback"]').check();
+  await form.locator('[name="schedulePreference"][value="sunday"]').check();await form.locator('[name="permission"]').check();
+  }
+  const endpoint="**/api/public/group-applications?program=sunday_fishing_academy";
+  let savedId="",requestHash="",commits=0;
+  // Lose only the response AFTER the real native save. Never fabricate a
+  // successful receipt or inject a session to bridge public and private UI.
+  await page.route(endpoint,async route=>{
+   if(route.request().method()!=="POST")return route.continue();
+   requestHash=createHash("sha256").update(route.request().postData()!).digest("hex");
+   const upstream=await route.fetch({headers:{...route.request().headers(),origin:runtime.origin,"sec-fetch-site":"same-origin"}});
+   expect(upstream.status()).toBe(201);const body=await upstream.json();savedId=body.data.item.id;commits++;
+   await route.fulfill({status:503,contentType:"application/json",body:JSON.stringify({ok:false,error:{code:"UNAVAILABLE"}})});
+  });
+  await form.locator('button[type="submit"]').click();
+  await expect(form.getByRole("alert")).toContainText(monthly?t('The save result is not confirmed.','תוצאת השמירה עדיין לא אומתה.'):copy.unknownResult[locale]);expect(commits).toBe(1);expect(savedId).not.toBe("");
+  await page.unroute(endpoint);
+  const retriedRequest=page.waitForRequest(r=>r.method()==="POST"&&new URL(r.url()).pathname==="/api/public/group-applications");
+  const retriedResponse=page.waitForResponse(r=>r.request().method()==="POST"&&new URL(r.url()).pathname==="/api/public/group-applications");
+  await form.getByRole("button",{name:monthly?t('Submit My Information','שליחת הפרטים שלי'):copy.retrySameSave[locale],exact:true}).click();
+  expect(createHash("sha256").update((await retriedRequest).postData()!).digest("hex")).toBe(requestHash);
+  const retried=await retriedResponse;expect(retried.status()).toBe(200);
+  expect(await retried.json()).toMatchObject({ok:true,data:{saved:true,replayed:true,duplicate:true,item:{id:savedId,fields:{parentName:name,contact,programId:"sunday_fishing_academy"}}}});
+  await expect(form.getByRole("status")).toContainText(monthly?t('Your information has been submitted.','הפרטים שלכם נשלחו.'):t("Inquiry saved","הפנייה נשמרה"));
+  const ownerLogin=async()=>{
+   await page.goto(`/${locale}/login?next=${encodeURIComponent(target)}`);
+   await page.getByLabel(t("Email","דוא״ל"),{exact:true}).fill(credentials.email);
+   await page.getByLabel(t("Password","סיסמה"),{exact:true}).fill(credentials.password);
+   const login=page.waitForResponse(r=>new URL(r.url()).pathname==="/api/identity/login"&&r.request().method()==="POST",{timeout:30000});
+   await page.getByRole("button",{name:t("Sign in","כניסה"),exact:true}).click();expect((await login).status()).toBe(200);
+   await expect(page).toHaveURL(target);
+  };
+  const verifyInquiry=async()=>{
+   const read=await page.request.get("/api/private/group-applications");expect(read.status()).toBe(200);
+   const body=await read.json();expect(body.data.items.filter((item:{id:string})=>item.id===savedId)).toEqual([
+    expect.objectContaining({id:savedId,fields:expect.objectContaining({parentName:name,contact,programId:"sunday_fishing_academy"})})]);
+   await expect(page.locator("article").filter({has:page.getByRole("heading",{name,exact:true})})).toHaveCount(1);
+  };
+  await ownerLogin();await verifyInquiry();await page.reload();await verifyInquiry();
+  // Ordinary device sign-out and password sign-in, not clearing/injecting cookies.
+  await page.goto(`/${locale}/app/settings/account`);
+  const logout=page.waitForResponse(r=>new URL(r.url()).pathname==="/api/identity/logout"&&r.request().method()==="POST");
+  await page.getByRole("button",{name:t("Sign out this device","יציאה מהמכשיר הזה"),exact:true}).click();expect((await logout).status()).toBe(200);
+  await expect(page).not.toHaveURL(`/${locale}/app/settings/account`);
+  expect((await page.request.get("/api/private/group-applications")).status()).toBe(401);
+  await ownerLogin();await verifyInquiry();
+  const record=page.locator("article").filter({has:page.getByRole("heading",{name,exact:true})});
+  const details=record.locator("details").filter({has:page.getByRole("region",{name:t("Fishing lead membership controls","בקרות שיוך לרשימת המתעניינים בדיג"),includeHidden:true})});
+  await details.locator("summary").click();await details.getByRole("button",{name:t("Add to Lead List","הוספה לרשימת המתעניינים"),exact:true}).click();
+  await expect(details.getByRole("button",{name:t("Confirm Add","אישור הוספה"),exact:true})).toBeDisabled();
+  await details.getByRole("checkbox",{name:t("I confirm creation of this new adult contact.","אני מאשר/ת יצירת איש קשר מבוגר חדש זה."),exact:true}).check();
+  await details.getByRole("button",{name:t("Confirm Add","אישור הוספה"),exact:true}).click();
+  await expect(details.getByRole("status")).toContainText(t("Added to Leads. No follow-up task was created.","נוסף לרשימת המתעניינים. לא נוצרה משימת המשך."));
+  const membership=async()=>{
+   const read=await page.request.get(`/api/private/fishing-leads/sunday_fishing_academy?source=inquiry&sourceId=${savedId}`);expect(read.status()).toBe(200);
+   const body=await read.json();expect(body.data.membership.state).toBe("active");expect(body.data.personId).toBeTruthy();return body.data.personId as string;
+  };
+  const personId=await membership();await page.reload();await verifyInquiry();expect(await membership()).toBe(personId);
+  await details.locator("summary").click();await expect(details.getByRole("button",{name:t("Remove from Lead List","הסרה מרשימת המתעניינים"),exact:true})).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  await record.screenshot({path:info.outputPath(`composed-inquiry-owner-lead-${locale}-${info.project.name}.png`)});
+  if(process.env.LS_ACADEMY_FAMILY_UI_ONLY==="true"){const {academyFamilyOwnerJourney}=await import("../group-interest/academy-family.journey.ts");await academyFamilyOwnerJourney(page,record,{origin:runtime.origin,workspaceId:runtime.workspaceId,locale,applicationId:savedId,ownerLogin},info);}
+  if(process.env.LS_ACADEMY_REFUND_UI_ONLY==='true'){const {academyRefundUnavailableJourney}=await import('../group-interest/academy-refund.journey.ts');await academyRefundUnavailableJourney(page,record,locale,info);}
+ });
  for(const locale of ["en","he"] as const)test(`${locale}: normal login, preview/cancel, collapsed draft, lost-response retry, Remove and reload`,async({page},info)=>{
   const t=(en:string,he:string)=>locale==="he"?he:en,credentials=runtime.fishing.credentials.find(c=>c.role==="practitioner")!,inquiry=runtime.fishing.inquiries.find(i=>i.locale===locale)!;
   await page.goto(`/${locale}/login?next=${encodeURIComponent(`/${locale}/app/group-applications`)}`);
@@ -50,12 +136,54 @@ if(!runtimePath){
   expect(createHash("sha256").update(bodies[0]!).digest("hex")).toBe(createHash("sha256").update(bodies[1]!).digest("hex"));
   await expect(details.getByRole("status")).toContainText(t("Added to Leads. No follow-up task was created.","נוסף לרשימת המתעניינים. לא נוצרה משימת המשך."));await page.unrouteAll({behavior:"wait"});
   await expect(details).toContainText(t("Not configured","לא מוגדר"));expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  // Deliberate Academy-only administrative details, through the real mounted
+  // UI and ordinary login. The native readback below must retain them on Remove.
+  const leadDetails={status:"follow_up",notes:`Synthetic Academy note ${locale}`,nextAction:"Owner callback",followUpDate:"2026-11-05"};
+  await details.getByRole("combobox",{name:t("Academy lead status","מצב המתעניין באקדמיה"),exact:true}).selectOption(leadDetails.status);
+  await details.getByRole("textbox",{name:t("Academy notes","הערות לאקדמיה"),exact:true}).fill(leadDetails.notes);
+  await details.getByLabel(t("Next Academy action","הפעולה הבאה באקדמיה"),{exact:true}).fill(leadDetails.nextAction);
+  await details.getByLabel(t("Follow-up date","תאריך למעקב"),{exact:true}).fill(leadDetails.followUpDate);
+  await details.getByRole("button",{name:t("Review details","בדיקת הפרטים"),exact:true}).click();
+  await expect(details.getByRole("heading",{name:t("Review Academy lead details","בדיקת פרטי המתעניין באקדמיה"),exact:true})).toBeFocused();
+  await expect(details).toContainText(leadDetails.notes);
+  await details.getByRole("button",{name:t("Confirm Save","אישור שמירה"),exact:true}).click();
+  await expect(details.getByRole("status")).toContainText(t("Academy lead details saved. No task or message was created.","פרטי המתעניין באקדמיה נשמרו. לא נוצרו משימה או הודעה."));
+  await page.reload();await details.locator("summary").click();
+  await expect(details.getByRole("combobox",{name:t("Academy lead status","מצב המתעניין באקדמיה"),exact:true})).toHaveValue(leadDetails.status);
+  await expect(details.getByRole("textbox",{name:t("Academy notes","הערות לאקדמיה"),exact:true})).toHaveValue(leadDetails.notes);
+  await expect(details.getByLabel(t("Next Academy action","הפעולה הבאה באקדמיה"),{exact:true})).toHaveValue(leadDetails.nextAction);
+  await expect(details.getByLabel(t("Follow-up date","תאריך למעקב"),{exact:true})).toHaveValue(leadDetails.followUpDate);
   await record.screenshot({path:info.outputPath(`fishing-added-${locale}-${info.project.name}.png`)});
+  // Read the saved association through the ordinary People consumer, including
+  // its first server-rendered request, refresh and same-role sign-in return.
+  // This is read-only; the global Life Skills profile remains a different scope.
+  const academyTarget=`/${locale}/app/clients?${new URLSearchParams({section:"all",program:"sunday_fishing_academy",leadStatus:leadDetails.status,search:leadDetails.notes})}`;
+  await page.goto(academyTarget);
+  const association=page.getByRole("combobox",{name:t("Business association","שיוך למסלול"),exact:true}),academyStatus=page.getByRole("combobox",{name:t("Academy lead status","מצב המתעניין באקדמיה"),exact:true});
+  const academyRow=page.locator(".lsu-native-table tr:visible, .lsu-person-row:visible").filter({hasText:inquiry.name});
+  const verifyAcademy=async()=>{await expect(association).toHaveValue("sunday_fishing_academy");await expect(academyStatus).toHaveValue("follow_up");await expect(academyRow).toHaveCount(1);await expect(academyRow).toContainText(leadDetails.nextAction);await expect(academyRow).toContainText(leadDetails.followUpDate);};
+  await verifyAcademy();await page.reload();await verifyAcademy();
+  // One additional real sign-in exercises the shared proxy/layout boundary.
+  // Keep this shared synthetic account within its unchanged ten-login limit;
+  // both locales still exercise first load, refresh and strict proxy unit cases.
+  if(locale==="en"){
+  const session=await (await page.request.get("/api/identity/session")).json();
+  expect((await page.request.post("/api/identity/logout",{headers:{origin:runtime.origin,"sec-fetch-site":"same-origin","x-csrf-token":session.data.csrfToken},data:{}})).status()).toBe(200);
+  await page.goto(academyTarget);await expect(page).toHaveURL(new RegExp(`/${locale}/login\\?next=`));
+  await page.getByLabel(t("Email","דוא״ל"),{exact:true}).fill(credentials.email);await page.getByLabel(t("Password","סיסמה"),{exact:true}).fill(credentials.password);await page.getByRole("button",{name:t("Sign in","כניסה"),exact:true}).click();
+  await expect(page).toHaveURL(url=>url.pathname===`/${locale}/app/clients`&&url.searchParams.size===4&&[...new URL(academyTarget,runtime.origin).searchParams].every(([key,value])=>url.searchParams.get(key)===value));await verifyAcademy();
+  }
+  await page.screenshot({path:info.outputPath(`academy-directory-${locale}-${info.project.name}.png`)});
+  await page.goto(`/${locale}/app/group-applications`);await details.locator("summary").click();
   await details.getByRole("button",{name:t("Remove from Lead List","הסרה מרשימת המתעניינים"),exact:true}).click();await details.getByRole("button",{name:t("Confirm Remove","אישור הסרה"),exact:true}).click();
   await expect(details.getByRole("status")).toContainText(t("Contact and history retained.","פרטי הקשר וההיסטוריה נשמרו."));
   await page.reload();await details.locator("summary").click();await expect(details).toContainText(t("Removed","הוסר"));await expect(details.getByRole("button",{name:t("Add to Lead List","הוספה לרשימת המתעניינים"),exact:true})).toBeVisible();
   await record.screenshot({path:info.outputPath(`fishing-removed-${locale}-${info.project.name}.png`)});
   const current=await page.request.get(`/api/private/fishing-leads/sunday_fishing_academy?source=inquiry&sourceId=${inquiry.id}`),body=await current.json();expect(body.data.membership.state).toBe("removed");
+  expect(body.data.membership.details).toEqual(leadDetails);
+  await page.goto(academyTarget);await expect(association).toHaveValue("sunday_fishing_academy");await expect(academyRow).toHaveCount(0);await expect(page.getByText(t("No people match these filters.","אין אנשים שמתאימים למסננים."),{exact:true})).toBeVisible();
+  await page.goto(`/${locale}/app/clients?personId=${body.data.personId}&program=sunday_fishing_academy`);
+  await expect(page.getByText(t("This person is not in the authorized view.","איש הקשר אינו נמצא בתצוגה המורשית."),{exact:true})).toBeVisible();await expect(page.getByRole("heading",{name:inquiry.name,exact:true})).toHaveCount(0);
   await page.goto(`/${locale}/app/clients?personId=${body.data.personId}`);await expect(page.getByRole("heading",{name:inquiry.name,exact:true})).toBeVisible();
   await expect(page.getByRole("region",{name:t("Fishing interests","התעניינות בדיג"),includeHidden:true})).toBeVisible();
   const personSection=page.getByRole("region",{name:t("Fishing interests","התעניינות בדיג"),includeHidden:true});await personSection.locator("summary").first().click();await expect(personSection).toContainText(t("Removed","הוסר"));

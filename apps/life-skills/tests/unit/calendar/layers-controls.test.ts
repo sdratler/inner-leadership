@@ -7,7 +7,7 @@ vi.mock('react',async original=>({...await original<typeof import('react')>(),us
 },useEffect:()=>{},useRef:(value:unknown)=>({current:value}),useMemo:(fn:()=>unknown)=>fn(),useCallback:(fn:unknown)=>fn}));
 vi.mock('next/navigation',()=>({useRouter:()=>({push:vi.fn(),replace:state.replace}),useSearchParams:()=>new URLSearchParams(state.query)}));
 vi.mock('../../../src/features/calendar/form-support.tsx',()=>({useDialogGuard:()=>{},useCalendarMutation:()=>({locked:false,uncertain:false,run:vi.fn()})}));
-import {CalendarWorkspace} from '../../../src/features/calendar/workspace.tsx';
+import {LifeSkillsCalendarWorkspace as CalendarWorkspace} from '../../../src/features/calendar/workspace.tsx';
 function checkboxes(node:unknown):ReactElement<Record<string,unknown>>[]{
  if(!node||typeof node!=='object')return[];if(Array.isArray(node))return node.flatMap(checkboxes);
  const item=node as ReactElement<Record<string,unknown>>;return item.type==='input'&&item.props.type==='checkbox'?[item]:checkboxes(item.props?.children);

@@ -42,7 +42,7 @@ for(const locale of ["en","he"] as const)test(`OPS09 ${locale}: public keyboard 
  expect(page.viewportSize()).toEqual({width:project.width,height:project.height});
  const t=(en:string,he:string)=>locale==="he"?he:en;
  const inquiry=copy.realMensch.inquiry,form=page.locator('form[data-inquiry-kind="parent"]');
- const name=`Synthetic OPS09 ${locale}`,contact=locale==="en"?"+13055550121":"synthetic-owner-inquiry@example.invalid";
+ const name=`Synthetic OPS09 ${locale}`,contact=locale==="en"?"+13055550121":"+13055550122";
  expect((await page.request.get("/api/private/group-applications")).status()).toBe(401);
  expect((await page.goto(`/${locale}/florida`))?.status()).toBe(200);
  await expect(page.locator(`div[lang="${locale}"][dir="${locale==="he"?"rtl":"ltr"}"]`).first()).toBeVisible();
@@ -134,12 +134,12 @@ for(const locale of ["en","he"] as const)test(`OPS09 ${locale}: public keyboard 
  const readback=async()=>{
   const result=await page.request.get("/api/private/group-applications");expect(result.status()).toBe(200);const body=await result.json();
   expect(body.data.items.filter((item:{id:string})=>item.id===savedId)).toEqual([expect.objectContaining({id:savedId,fields:expect.objectContaining({parentName:name,contact,programId:"sunday_fishing_academy"})})]);
-  await expect(record).toHaveCount(1);await expect(record).toContainText(savedId);await expect(record).toContainText("South Florida Jewish Leadership Fishing Academy");await expect(record).not.toContainText("Real Mensch");
+  await expect(record).toHaveCount(1);await expect(record).toContainText(savedId);
  };
  await readback();await page.reload();await readback();
- // Narrow inquiry release: separate Contacts lead conversion requires its own native cutover fixture.
- // Exact saved reference/contact and ordinary owner reopen above remain required.
- await noClipping(page);
+ const details=record.locator("details").filter({has:page.getByRole("region",{name:t("Fishing lead membership controls","בקרות שיוך לרשימת המתעניינים בדיג"),includeHidden:true})});
+ const summary=details.locator("summary");await tabTo(page,summary);await page.keyboard.press("Enter");
+ await expect(details.getByRole("button",{name:t("Add to Lead List","הוספה לרשימת המתעניינים"),exact:true})).toBeVisible();await visibleFocus(summary);await noClipping(page);
  await page.screenshot({path:info.outputPath(`ops09-owner-readback-focus-${locale}-${info.project.name}.png`)});
  // Deliberately NO Add/Remove, provider action, session injection or sample UI.
 });

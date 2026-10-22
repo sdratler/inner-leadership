@@ -6,6 +6,22 @@ const reference=(patch:Partial<NativeContactReference>={}):NativeContactReferenc
 const row=(id:string,patch:Partial<NativeContactRow>={}):NativeContactRow=>({personId:id,displayName:"Synthetic "+id,identityKind:"adult",stage:"new",nextAction:"Follow up",followUpDate:"2026-09-28",notes:"Synthetic administrative note",version:1,mode:"live",archived:false,doNotContact:false,references:[reference()],...patch});
 
 describe("complete native contact result selection",()=>{
+ it("filters only active Academy associations and uses their own status, notes and manual dates before pagination",()=>{
+  const active=row("academy",{stage:"Israeli stage",followUpDate:"2026-01-01",academyLead:{state:"active",version:2,details:{status:"callback_requested",notes:"Academy-only search phrase",nextAction:"Owner callback",followUpDate:"2026-09-29"}}});
+  const rows=[active,row("removed",{academyLead:{state:"removed",version:3}}),row("other-business",{notes:"Academy-only search phrase"})],before=JSON.stringify(rows),scoped={program:"sunday_fishing_academy" as const};
+  expect(selectNativeContacts(rows,query({...scoped,search:"Academy-only search phrase",leadStatus:"callback_requested"})).items).toEqual([active]);
+  expect(selectNativeContacts(rows,query({...scoped,due:"today"})).total).toBe(0);
+  expect(selectNativeContacts(rows,query({...scoped,today:"2026-09-29",due:"today"})).total).toBe(1);
+  expect(selectNativeContacts(rows,query({...scoped,leadStatus:"new"})).total).toBe(0);
+  expect(selectNativeContacts(rows,query({search:"Academy-only search phrase"})).total).toBe(0);
+  expect(JSON.stringify(rows)).toBe(before);
+ });
+ it("retains legacy active members without manufacturing a follow-up date, and never borrows the global date",()=>{
+  const rows=[row("legacy",{followUpDate:"2026-01-01",academyLead:{state:"active",version:1}})];
+  expect(selectNativeContacts(rows,query({program:"sunday_fishing_academy",leadStatus:"new"})).total).toBe(1);
+  expect(selectNativeContacts(rows,query({program:"sunday_fishing_academy",due:"overdue"})).total).toBe(0);
+  for(const patch of[{leadStatus:"new" as const},{program:"sunday_fishing_academy" as const,stage:"Israeli stage"},{program:"sunday_fishing_academy" as const,filter:"payment" as const}])expect(()=>selectNativeContacts(rows,query(patch))).toThrow();
+ });
  it("searches and filters the entire source result before server pagination",()=>{
   const rows=Array.from({length:125},(_,i)=>row(String(i).padStart(3,"0")));
   rows[124]=row("124",{displayName:"Hebrew owner-approved synthetic name",references:[reference({email:"demo+last@example.invalid"})]});

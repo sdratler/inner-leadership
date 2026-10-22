@@ -25,6 +25,77 @@ describe("public static perimeter", () => {
 });
 
 afterEach(() => vi.unstubAllEnvs());
+it.each(['en','he'] as const)('retains the exact %s Academy Home login destination and rejects duplicate child context through the actual proxy',locale=>{
+ const origin='https://life-skills.bneineviimacademy.org',path='/'+locale+'/family',tuple={fishing:'1',learnerId:'11111111-1111-4111-8111-111111111111',enrollmentId:'22222222-2222-4222-8222-222222222222',cohortId:'33333333-3333-4333-8333-333333333333',stageId:'44444444-4444-4444-8444-444444444444',stage:'1'};
+ vi.stubEnv('NODE_ENV','production');vi.stubEnv('LS_APP_MODE','foundation_locked');vi.stubEnv('LS_APP_ORIGIN',origin);vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');
+ const read=(p:URLSearchParams)=>new URL(proxy(new NextRequest(origin+path+'?'+p,{headers:{'x-ls-parent-return':'https://untrusted.invalid'}})).headers.get('x-middleware-request-x-ls-parent-return')!,origin);
+ expect(Object.fromEntries(read(new URLSearchParams({...tuple,role:'practitioner',secret:'not-forwarded'})).searchParams)).toEqual(tuple);
+ const duplicate=new URLSearchParams(tuple);duplicate.append('learnerId',tuple.learnerId);expect(read(duplicate).pathname).toBe(path);expect(read(duplicate).search).toBe('');
+});
+it.each(['en','he']as const)('%s actual People proxy retains strict Academy return scope and strips caller headers',locale=>{
+ const origin='https://life-skills.bneineviimacademy.org',path=`/${locale}/app/clients`,header='x-middleware-request-x-ls-practitioner-return';
+ vi.stubEnv('NODE_ENV','production');vi.stubEnv('LS_APP_MODE','foundation_locked');vi.stubEnv('LS_APP_ORIGIN',origin);vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');
+ const returned=(query:URLSearchParams)=>{const response=proxy(new NextRequest(origin+path+'?'+query,{headers:{'x-ls-practitioner-return':'https://untrusted.invalid','x-ls-parent-return':'/he/family','x-ls-client-return':'/en/client'}}));expect(response.headers.get('x-middleware-request-x-ls-parent-return')).toBeNull();expect(response.headers.get('x-middleware-request-x-ls-client-return')).toBeNull();return new URL(response.headers.get(header)!,origin);};
+ const params=new URLSearchParams({section:'paid',filter:'booking',stage:'Global',program:'sunday_fishing_academy',leadStatus:'follow_up',search:'Synthetic Academy note',role:'parent',next:'https://untrusted.invalid'});
+ expect(Object.fromEntries(returned(params).searchParams)).toEqual({section:'all',program:'sunday_fishing_academy',leadStatus:'follow_up',search:'Synthetic Academy note'});
+ for(const key of ['program','leadStatus']){const duplicate=new URLSearchParams(params);duplicate.append(key,duplicate.get(key)!);expect(returned(duplicate).searchParams.has(key)).toBe(false);}
+});
+describe('practitioner education login return through the actual proxy',()=>{
+ for(const locale of ['en','he']as const)for(const section of ['review','publication'])it(`${locale}/${section}: retains the strict lesson tuple and rejects ambiguous or untrusted context`,()=>{
+  const origin='https://life-skills.bneineviimacademy.org',path=`/${locale}/app/resources`,header='x-middleware-request-x-ls-practitioner-return';
+  vi.stubEnv('NODE_ENV','production');vi.stubEnv('LS_APP_MODE','foundation_locked');vi.stubEnv('LS_APP_ORIGIN',origin);vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');
+  const tuple={education:'lesson',learnerId:'11111111-1111-4111-8111-111111111111',moduleId:'RM-101',version:'synthetic-v1',section},query=new URLSearchParams(tuple);
+  const returned=(params:URLSearchParams)=>{const response=proxy(new NextRequest(origin+path+'?'+params,{headers:{'x-ls-practitioner-return':'https://untrusted.invalid/private','x-ls-parent-return':'/en/family/resources','x-ls-client-return':'/he/client'}}));expect(response.status).toBe(200);expect(response.headers.get('x-middleware-request-x-ls-parent-return')).toBeNull();expect(response.headers.get('x-middleware-request-x-ls-client-return')).toBeNull();return new URL(response.headers.get(header)!,origin);};
+  expect(returned(query).pathname).toBe(path);expect(Object.fromEntries(returned(query).searchParams)).toEqual(tuple);
+  for(const[key,value]of Object.entries(tuple)){const duplicate=new URLSearchParams(query);duplicate.append(key,value);expect(returned(duplicate).search).toBe('');}
+  for(const[key,value]of [['education','constructor'],['learnerId','bad'],['moduleId','RM-999'],['version','bad\nversion'],['section','lesson'],['section','portfolio'],['role','practitioner'],['teacherKey','PRIVATE'],['next','https://untrusted.invalid'],['__proto__','PRIVATE'],['constructor','PRIVATE']]){const invalid=new URLSearchParams(query);invalid.set(key!,value!);expect(returned(invalid).search).toBe('');}
+  for(const key of ['learnerId','moduleId','version']){const missing=new URLSearchParams(query);missing.delete(key);expect(returned(missing).search).toBe('');}
+  vi.stubEnv('LS_PRIVATE_APP_ENABLED','false');expect(proxy(new NextRequest(origin+path+'?'+query)).status).toBe(503);
+ });
+});
+describe('parent education login return through the actual proxy',()=>{
+ for(const locale of ['en','he']as const)for(const section of ['lesson','portfolio'])it(`${locale}/${section}: retains the complete strict lesson reference without trusting return headers`,()=>{
+  const origin='https://life-skills.bneineviimacademy.org',path=`/${locale}/family/resources`,header='x-middleware-request-x-ls-parent-return';
+  vi.stubEnv('NODE_ENV','production');vi.stubEnv('LS_APP_MODE','foundation_locked');vi.stubEnv('LS_APP_ORIGIN',origin);vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');
+  const tuple={education:'lesson',learnerId:'11111111-1111-4111-8111-111111111111',moduleId:'RM-101',version:'synthetic-v1',section},query=new URLSearchParams(tuple);
+  const returned=(params:URLSearchParams)=>{const response=proxy(new NextRequest(origin+path+'?'+params,{headers:{'x-ls-parent-return':'https://untrusted.invalid/private','x-ls-practitioner-return':'/en/app/resources','x-ls-client-return':'/he/client'}}));expect(response.status).toBe(200);expect(response.headers.get('x-middleware-request-x-ls-practitioner-return')).toBeNull();expect(response.headers.get('x-middleware-request-x-ls-client-return')).toBeNull();return new URL(response.headers.get(header)!,origin);};
+  expect(Object.fromEntries(returned(query).searchParams)).toEqual(tuple);
+  for(const[key,value]of Object.entries(tuple)){const duplicate=new URLSearchParams(query);duplicate.append(key,value);expect(returned(duplicate).search).toBe('');}
+  for(const[key,value]of [['education','constructor'],['learnerId','bad'],['moduleId','RM-999'],['version','bad\nversion'],['section','publication'],['role','practitioner'],['teacherKey','PRIVATE'],['next','https://untrusted.invalid'],['__proto__','PRIVATE'],['constructor','PRIVATE']]){const invalid=new URLSearchParams(query);invalid.set(key!,value!);expect(returned(invalid).search).toBe('');}
+  vi.stubEnv('LS_PRIVATE_APP_ENABLED','false');expect(proxy(new NextRequest(origin+path+'?'+query)).status).toBe(503);
+ });
+});
+describe('ordinary fishing Calendar proxy return context, not an authorization grant',()=>{
+ const tuple={fishing:'1',learnerId:'11111111-1111-4111-8111-111111111111',enrollmentId:'22222222-2222-4222-8222-222222222222',cohortId:'33333333-3333-4333-8333-333333333333',stageId:'44444444-4444-4444-8444-444444444444',stage:'1'},origin='https://life-skills.bneineviimacademy.org';
+ const configured=()=>{vi.stubEnv('NODE_ENV','production');vi.stubEnv('LS_APP_MODE','foundation_locked');vi.stubEnv('LS_APP_ORIGIN',origin);vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');};
+ for(const locale of ['en','he'])for(const role of ['practitioner','parent','client']){
+  const path=`/${locale}/${role==='practitioner'?'app/calendar':role==='parent'?'family/schedule':'client/calendar'}`,header='x-middleware-request-x-ls-'+role+'-return';
+  const returned=(query:URLSearchParams)=>{const r=proxy(new NextRequest(origin+path+'?'+query,{headers:{'x-ls-practitioner-return':'https://untrusted.invalid/private','x-ls-parent-return':'/he/family/settings','x-ls-client-return':'/en/client/messages'}}));expect(r.status).toBe(200);for(const other of ['practitioner','parent','client'])if(other!==role)expect(r.headers.get('x-middleware-request-x-ls-'+other+'-return')).toBeNull();return new URL(r.headers.get(header)!,origin);};
+  it(`${locale}/${role}: derives the full bounded selection from the original route, never a caller return header`,()=>{
+   configured();const legacy={caseId:'123e4567-e89b-42d3-a456-426614174000',date:'2026-10-16',view:'day',practice:'0'},query=new URLSearchParams({...legacy,...tuple,role:'practitioner',teacherKey:'PRIVATE',next:'https://untrusted.invalid'}),url=returned(query);expect(url.pathname).toBe(path);expect(Object.fromEntries(url.searchParams)).toEqual({...legacy,...tuple});
+  });
+  it(`${locale}/${role}: preserves duplicates until the shared helper rejects the whole fishing selection`,()=>{
+   configured();for(const[key,value]of Object.entries(tuple)){const query=new URLSearchParams({...tuple,date:'2026-10-16',view:'agenda'});query.append(key,value);expect(Object.fromEntries(returned(query).searchParams)).toEqual({date:'2026-10-16',view:'agenda'});}
+   for(const[key,value]of [['learnerId','constructor'],['enrollmentId','bad'],['cohortId','bad'],['stageId','bad'],['stage','1e0'],['fishing','0']]){const query=new URLSearchParams({...tuple,date:'2026-10-16'});query.set(key!,value!);expect(Object.fromEntries(returned(query).searchParams)).toEqual({date:'2026-10-16'});}
+  });
+ }
+ it('keeps existing practitioner Calendar layer values bounded through the proxy',()=>{configured();const r=proxy(new NextRequest(origin+'/en/app/calendar?tasks=0&followups=1&practice=0&content=1'));expect(Object.fromEntries(new URL(r.headers.get('x-middleware-request-x-ls-practitioner-return')!,origin).searchParams)).toEqual({tasks:'0',followups:'1',practice:'0',content:'1'});});
+});
+describe('native fishing child-context original transport fence',()=>{
+ it('rejects spoofed forwarding before canonical rewriting and preserves the private enablement gate',()=>{
+  const origin='https://life-skills.bneineviimacademy.org',path='/api/private/fishing/children';
+  vi.stubEnv('NODE_ENV','production');vi.stubEnv('LS_APP_MODE','foundation_locked');vi.stubEnv('LS_APP_ORIGIN',origin);vi.stubEnv('LS_PRIVATE_APP_ENABLED','true');
+  for(const request of [new NextRequest('http://life-skills.bneineviimacademy.org'+path),new NextRequest('https://untrusted.invalid'+path),
+   new NextRequest(origin+path,{headers:{'x-forwarded-proto':'http','x-forwarded-host':'life-skills.bneineviimacademy.org'}}),
+   new NextRequest(origin+path,{headers:{'x-forwarded-proto':'https,http','x-forwarded-host':'life-skills.bneineviimacademy.org'}}),
+   new NextRequest(origin+path,{headers:{'x-forwarded-proto':'https','x-forwarded-host':'untrusted.invalid'}})]){
+   const result=proxy(request);expect(result.status).toBe(503);expect(result.headers.get('x-middleware-next')).toBeNull();
+  }
+  expect(proxy(new NextRequest(origin+path)).status).toBe(200);
+  expect(proxy(new NextRequest('http://internal.invalid'+path,{headers:{host:'life-skills.bneineviimacademy.org','x-forwarded-proto':'https','x-forwarded-host':'life-skills.bneineviimacademy.org'}})).status).toBe(200);
+  vi.stubEnv('LS_PRIVATE_APP_ENABLED','false');expect(proxy(new NextRequest(origin+path)).status).toBe(503);
+ });
+});
 describe('dedicated Nomad call original transport fence',()=>{
  it('rejects invalid/ambiguous forwarding before the proxy can rewrite it to canonical HTTPS',()=>{
   const origin='https://life-skills.bneineviimacademy.org',path='/api/private/acquisition/call-events';
@@ -197,7 +268,7 @@ describe("actual practitioner Calendar login return perimeter", () => {
 
 describe("actual practice proxy validates transport before header rewriting", () => {
   const origin = "https://life-skills.bneineviimacademy.org";
-  const paths = ["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins", "/api/updates", "/api/owner-digest", "/api/community-threads", "/api/provider-index", "/api/provider-referrals", "/api/private/contact-acquisition", "/api/private/group-interest", "/api/private/group-placement", "/en/app/marketing", "/he/app/marketing", "/en/app/clients", "/he/app/reports", "/he/app/settings/content-voice", "/en/family/calendar", "/he/client/calendar"];
+  const paths = ["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins", "/api/updates", "/api/owner-digest", "/api/community-threads", "/api/provider-index", "/api/provider-referrals", "/api/private/contact-acquisition", "/api/private/group-interest", "/api/private/group-placement", "/api/private/group-applications/hosted", "/en/app/marketing", "/he/app/marketing", "/en/app/clients", "/he/app/reports", "/he/app/settings/content-voice", "/en/family/calendar", "/he/client/calendar"];
   function configured() {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("LS_APP_MODE", "foundation_locked");
@@ -244,6 +315,11 @@ describe("actual practice proxy validates transport before header rewriting", ()
     for (const request of [new NextRequest(`${origin}/api/home-practice`),
       new NextRequest("http://127.0.0.1:8080/api/home-practice", { headers: { host: new URL(origin).host, "x-forwarded-proto": "https" } })])
       expect(proxy(request).headers.get("x-middleware-next")).toBe("1");
+  });
+  it('keeps the hosted request direct HTTPS perimeter and private enablement gate',()=>{
+    configured();const path='/api/private/group-applications/hosted';expect(proxy(new NextRequest(origin+path)).headers.get('x-middleware-next')).toBe('1');
+    for(const url of ['http://life-skills.bneineviimacademy.org'+path,'https://foreign.invalid'+path]){const response=proxy(new NextRequest(url));expect(response.status).toBe(503);expect(response.headers.get('x-middleware-override-headers')).toBeNull();}
+    vi.stubEnv('LS_PRIVATE_APP_ENABLED','false');expect(proxy(new NextRequest(origin+path)).status).toBe(503);
   });
   it("rejects a direct wrong host or HTTP owner digest before forwarding can conceal it", () => {
     configured();

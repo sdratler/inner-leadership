@@ -22,10 +22,15 @@ export const learnerLessonSchema=z.strictObject({
 });
 export type LearnerLesson=z.infer<typeof learnerLessonSchema>;
 const base={operationId:uuid,expectedRevisionId:uuid.nullable()};
+export const lessonKnowledgeAssessmentSchema=z.discriminatedUnion("state",[
+ z.strictObject({state:z.literal("not_assessed")}),
+ z.strictObject({state:z.literal("recorded"),assessment:text}),
+]);
 export const lessonJourneyCommandSchema=z.discriminatedUnion("action",[
+ z.strictObject({...base,action:z.literal("save_draft"),answers:z.array(z.strictObject({questionId:z.string().regex(/^Q\d{2}-[1-3]$/),value:z.string().max(2000)})).max(3)}),
  z.strictObject({...base,action:z.literal("submit"),answers:z.array(z.strictObject({questionId:z.string().regex(/^Q\d{2}-[1-3]$/),value:text})).min(1).max(3)}),
  z.strictObject({...base,action:z.literal("observe"),submissionId:uuid,task:text,
-  assistance:z.enum(["not_observed","with_guidance","independent"]),privateNote:text.optional()}),
+  assistance:z.enum(["not_observed","with_guidance","independent"]),privateNote:text.optional(),knowledgeAssessment:lessonKnowledgeAssessmentSchema.optional()}),
  z.strictObject({...base,action:z.literal("publish_parent_summary"),observationId:uuid,
   summary:text,parentAccountIds:z.array(uuid).min(1).max(10)}),
 ]);
@@ -50,8 +55,10 @@ export type LessonLearnerRead={
  lesson:Pick<LearnerLesson,"moduleId"|"version"|"stage"|"locale"|"title"|"instruction"|"questions"|"sourceSha256">;
  revisionId:string|null;
  submission:{revisionId:string;answers:Extract<Command,{action:"submit"}>["answers"];submittedAt:string;submittedBy:string;assistedBy:string|null}|null;
+ // Actor-private partial work. Optional only for retained pre-extension DTOs.
+ draft?:{revisionId:string;answers:Extract<Command,{action:"save_draft"}>["answers"];savedAt:string}|null|undefined;
 };
-export type LessonTeacherRead=LessonLearnerRead&{
+export type LessonTeacherRead=Omit<LessonLearnerRead,"draft">&{
  observations:LessonJourneyEvent[];summaryRecipients:{accountId:string;label:string}[];
 };
 export type LessonParentRead={moduleId:string;version:string;
@@ -85,12 +92,16 @@ function requireContext(context:LessonJourneyContext|null,ref:LessonReference,no
  return {...context,lesson};
 }
 function validateEvents(events:readonly LessonJourneyEvent[],context:LessonJourneyContext,ref:LessonReference){
+ return validateLessonEventChain(events,{workspaceId:context.actor.workspaceId,sourceSha256:context.lesson.sourceSha256},ref);
+}
+/** Integrity only. This supplies no actor, authorization context or permission. */
+export function validateLessonEventChain(events:readonly LessonJourneyEvent[],binding:{workspaceId:string;sourceSha256:string},ref:LessonReference){
  let prior:string|null=null;
  const ids=new Set<string>();
  for(const event of events){
-  if(event.previousRevisionId!==prior||ids.has(event.id)||event.workspaceId!==context.actor.workspaceId||
+  if(event.previousRevisionId!==prior||ids.has(event.id)||event.workspaceId!==binding.workspaceId||
      event.learnerId!==ref.learnerId||event.moduleId!==ref.moduleId||event.version!==ref.version||
-     event.sourceSha256!==context.lesson.sourceSha256)throw Error("LESSON_JOURNEY_LEDGER_MISMATCH");
+     event.sourceSha256!==binding.sourceSha256)throw Error("LESSON_JOURNEY_LEDGER_MISMATCH");
   ids.add(event.id);prior=event.id;
  }
  return prior;
@@ -107,15 +118,15 @@ export class FishingLessonJourney {
  async save(reference:unknown,input:unknown){
   const ref=lessonReferenceSchema.parse(reference),command=lessonJourneyCommandSchema.parse(input);
   return this.store.transaction(async tx=>{
-   const now=this.now(),context=requireContext(await tx.resolveFreshContext(ref),ref,now,command.action);
+   const now=this.now(),context=requireContext(await tx.resolveFreshContext(ref),ref,now,command.action==="save_draft"?"submit":command.action);
    const events=await tx.readEvents(ref,context.actor.workspaceId),current=validateEvents(events,context,ref);
    const digest=createHash("sha256").update(JSON.stringify({ref,command,actorId:context.actor.id,workspaceId:context.actor.workspaceId,sourceSha256:context.lesson.sourceSha256})).digest("hex");
    const replay=events.find(e=>e.actorId===context.actor.id&&e.operationId===command.operationId);
    if(replay){if(replay.digest!==digest)throw Error("LESSON_JOURNEY_CONFLICT");return {revisionId:replay.id,duplicate:true};}
    if(current!==command.expectedRevisionId)throw Error("LESSON_JOURNEY_CONFLICT");
-   if(command.action==="submit"){
+   if(command.action==="submit"||command.action==="save_draft"){
     const questions=new Set(context.lesson.questions.map(q=>q.id));
-    if(new Set(command.answers.map(a=>a.questionId)).size!==command.answers.length||command.answers.some(a=>!questions.has(a.questionId)))
+    if(command.action==="submit"&&command.answers.length!==questions.size||new Set(command.answers.map(a=>a.questionId)).size!==command.answers.length||command.answers.some(a=>!questions.has(a.questionId)))
      throw Error("LESSON_JOURNEY_QUESTION_MISMATCH");
    }else if(command.action==="observe"){
     const submission=events.find(e=>e.id===command.submissionId&&e.command.action==="submit");
@@ -153,11 +164,17 @@ export class FishingLessonJourney {
      {revisionId:share.id,summary:share.command.summary,publishedAt:share.at,sourceSha256:share.sourceSha256}:null};
    }
    const submission=latest(events,e=>e.command.action==="submit");
-   return {lesson:learnerProjection(context.lesson),revisionId,
+   const common={lesson:learnerProjection(context.lesson),revisionId,
     submission:submission&&submission.command.action==="submit"?{revisionId:submission.id,answers:submission.command.answers,
-     submittedAt:submission.at,submittedBy:submission.actorId,assistedBy:submission.actorRole==="parent"?submission.actorId:null}:null,
-    ...(view==="teacher"?{observations:events.filter(e=>e.command.action==="observe"),
-     summaryRecipients:context.eligibleSummaryRecipients.map(parent=>({accountId:parent.accountId,label:parent.label}))}:{}),
+     submittedAt:submission.at,submittedBy:submission.actorId,assistedBy:submission.actorRole==="parent"?submission.actorId:null}:null};
+   if(view==="teacher")return {...common,observations:events.filter(e=>e.command.action==="observe"),
+    summaryRecipients:context.eligibleSummaryRecipients.map(parent=>({accountId:parent.accountId,label:parent.label}))};
+   // Ledger order, not wall time. Any later final supersedes earlier drafts;
+   // exact replay of an old final appends nothing and cannot erase a newer draft.
+   const finalIndex=submission?events.findIndex(e=>e.id===submission.id):-1;
+   const draft=latest(events.slice(finalIndex+1),e=>e.actorId===context.actor.id&&e.command.action==="save_draft");
+   return {...common,draft:draft&&draft.command.action==="save_draft"?
+    {revisionId:draft.id,answers:draft.command.answers,savedAt:draft.at}:null,
    };
   });
  }

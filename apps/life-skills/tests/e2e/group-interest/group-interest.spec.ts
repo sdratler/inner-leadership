@@ -5,6 +5,7 @@ import {execFile} from "node:child_process";
 import {createHash,randomUUID} from "node:crypto";
 import {readFileSync} from "node:fs";
 import {promisify} from "node:util";
+import {syntheticChildFailure} from "./synthetic-child-output.ts";
 import approvedCopy from "../../../src/features/group-application/presentation-copy.json" with {type:"json"};
 import {academyLandingDraft,academyJourneyForMode} from "../../../src/features/group-application/academy-draft.ts";
 // Expected public snapshot from JLFA-BILINGUAL-COPY-ROUTING-20261019-21.
@@ -224,8 +225,8 @@ if(!runtimePath){
   // The complete 13-case native suite needs boot/postcheck/cleanup headroom;
   // its individual case timeouts and all acceptance assertions stay unchanged.
   test.setTimeout(300_000);if(!["desktop","tablet768","mobile390","mobile340"].includes(project))throw new Error("GROUP_INTEREST_BROWSER_PROJECT_NOT_SUPPORTED");
-  const result=await promisify(execFile)(process.execPath,["--import","tsx","tests/e2e/group-interest/run.ts"],{timeout:270_000,maxBuffer:2*1024*1024,
-   env:{...process.env,LS_GROUP_INTEREST_TEST_PROJECT:project,LS_GROUP_INTEREST_TEST_ALLOW:"true",LS_CALENDAR_TEST_ALLOW:"true"}}).catch((error:unknown)=>{const failed=error as {stdout?:string;code?:string|number;signal?:string;killed?:boolean};console.error(JSON.stringify({phase:"group-interest-child",code:failed.code??null,signal:failed.signal??null,killed:failed.killed===true,childDeadlineMs:270_000}));if(failed.stdout)console.error(failed.stdout.slice(-16000));throw error;});
+  const result=await promisify(execFile)(process.execPath,["--conditions=react-server","--import","tsx","tests/e2e/group-interest/run.ts"],{timeout:270_000,maxBuffer:2*1024*1024,
+   env:{...process.env,LS_GROUP_INTEREST_TEST_PROJECT:project,LS_GROUP_INTEREST_TEST_ALLOW:"true",LS_CALENDAR_TEST_ALLOW:"true"}}).catch(error=>{throw new Error(syntheticChildFailure(error));});
   expect(result.stdout).toContain(`GROUP_INTEREST_ACCEPTANCE_PASS project=${project}`);console.log(result.stdout);
  });
 }else{
@@ -663,6 +664,15 @@ if(!runtimePath){
   await expect(page.getByText(locale==="he"?"הפניות נשארות נפרדות מאנשים, מרשומות טיפוליות, מהרשמה, מהזמנות ומתשלומים עד לפעולה מפורשת ונפרדת.":"Inquiries remain separate from People, clinical records, enrollment, bookings and payments until you take a separate explicit action.",{exact:false})).toBeVisible();
   const record=page.locator("article").filter({hasText:data.publicApplicantName});await expect(record).toHaveCount(1);await expect(record.getByRole("heading",{name:new RegExp(data.publicApplicantName)})).toBeVisible();
   const contact=record.locator(":scope > p > bdi");await expect(contact).toHaveText("synthetic@example.invalid");await expect(contact).toHaveAttribute("dir","ltr");
+  // One read-only UI fault after the real initial native read. Retry must keep
+  // the newly attempted search rather than silently reverting to all records.
+  const attempts:string[]=[],searchRoute="**/api/private/group-applications?**";
+  await page.route(searchRoute,async route=>{attempts.push(new URL(route.request().url()).searchParams.get("search")??"");if(attempts.length===1)await route.fulfill({status:503,contentType:"application/json",body:JSON.stringify({ok:false,error:{code:"UNAVAILABLE"}})});else await route.continue();});
+  try{
+   const search=page.getByRole("search");await search.getByRole("searchbox").fill(data.publicApplicantName);await search.getByRole("button",{name:locale==="he"?"חיפוש":"Search",exact:true}).click();
+   await expect(page.locator('main').getByRole("alert")).toContainText(locale==="he"?"לא ניתן לטעון את הפניות":"Inquiries could not be loaded");
+   await page.getByRole("button",{name:locale==="he"?"ניסיון נוסף":"Try again",exact:true}).click();await expect(record).toHaveCount(1);await expect(page.locator('main').getByRole("alert")).toHaveCount(0);expect(attempts).toEqual([data.publicApplicantName,data.publicApplicantName]);
+  }finally{await page.unroute(searchRoute);}
   const details=record.locator("details").filter({has:page.getByText(locale==="he"?"הערה על זמנים":"Scheduling note",{exact:true})});await expect(details).not.toHaveAttribute("open","");await details.locator("summary").click();await expect(details).toHaveAttribute("open","");await expect(details).toContainText("Synthetic scheduling details only.");
   const views=page.getByRole("navigation",{name:locale==="he"?"תצוגות הדף הנוכחי":"Current page views"});await expect(views.getByRole("link",{name:locale==="he"?"בקשות לקבוצה":"Group applications",exact:true})).toHaveAttribute("aria-current","page");
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);

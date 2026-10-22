@@ -15,6 +15,13 @@ const receipt={operationId:op,workspaceId:workspace,personId:person,program,vers
 const json=(data:unknown,status=200)=>new Response(JSON.stringify({ok:status===200,data}),{status,headers:{"content-type":"application/json"}});
 const session=json({role:"practitioner",csrfToken:"synthetic-csrf"});
 afterEach(()=>vi.unstubAllGlobals());
+
+test("detail edit preview is bound to exactly the reviewed Academy data and confirm retains active membership",async()=>{
+ const details={status:"follow_up" as const,notes:"Synthetic note",nextAction:"Owner callback",followUpDate:null},edit={action:"preview_edit" as const,operationId:op,expectedEpoch:3,personId:person,expectedAssociationVersion:1,details},ready={...preview,action:"edit" as const,expectedVersion:1,details};
+ vi.stubGlobal("fetch",vi.fn().mockResolvedValueOnce(session.clone()).mockResolvedValueOnce(json(ready)));expect(await previewFishingLead(program,edit)).toEqual(ready);
+ vi.stubGlobal("fetch",vi.fn().mockResolvedValueOnce(session.clone()).mockResolvedValueOnce(json({...ready,details:{...details,notes:"Different"}})));await expect(previewFishingLead(program,edit)).rejects.toThrow();
+ vi.stubGlobal("fetch",vi.fn().mockResolvedValueOnce(session.clone()).mockResolvedValueOnce(json({...receipt,version:2})));expect(await confirmFishingLead(program,confirm,ready,3)).toMatchObject({state:"active",version:2});
+});
 test("current membership and projection are schema-checked and bound to the requested person/program/generation",async()=>{
  const f=vi.fn().mockResolvedValue(json(context));vi.stubGlobal("fetch",f);expect(await readFishingLeadContext(program,source)).toEqual(context);
  expect(f.mock.calls[0]![0]).toBe("/api/private/fishing-leads/sunday_fishing_academy?source=person&sourceId="+person);

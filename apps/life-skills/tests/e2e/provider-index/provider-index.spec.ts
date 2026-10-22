@@ -4,12 +4,13 @@ import {execFile} from "node:child_process";
 import {mkdirSync,readFileSync} from "node:fs";
 import {join} from "node:path";
 import {promisify} from "node:util";
+import {syntheticChildFailure} from "../group-interest/synthetic-child-output.ts";
 type Runtime={origin:string;workspaceId:string;owner:string;parent:string;caseId:string};
 const runtimePath=process.env.LS_PROVIDER_INDEX_FIXTURE_PATH;
 if(!runtimePath){
  if(process.env.LS_PROVIDER_INDEX_TEST_RUNNER_ACTIVE==="true")throw new Error("R35_FIXTURE_REQUIRED");
  test("isolated R35 authenticated journeys for the current browser project",async({},info)=>{const project=info.project.name==="mobile"?"mobile390":info.project.name;test.setTimeout(300_000);if(!["desktop","mobile390","mobile340"].includes(project))throw new Error("R35_BROWSER_PROJECT_NOT_SUPPORTED");
-  const result=await promisify(execFile)(process.execPath,["--import","tsx","tests/e2e/provider-index/run.ts"],{timeout:270_000,maxBuffer:2*1024*1024,env:{...process.env,LS_PROVIDER_INDEX_TEST_PROJECT:project,LS_PROVIDER_INDEX_TEST_ALLOW:"true",LS_CALENDAR_TEST_ALLOW:"true"}});
+  const result=await promisify(execFile)(process.execPath,["--conditions=react-server","--import","tsx","tests/e2e/provider-index/run.ts"],{timeout:270_000,maxBuffer:2*1024*1024,env:{...process.env,LS_PROVIDER_INDEX_TEST_PROJECT:project,LS_PROVIDER_INDEX_TEST_ALLOW:"true",LS_CALENDAR_TEST_ALLOW:"true"}}).catch(error=>{throw new Error(syntheticChildFailure(error));});
   expect(result.stdout).toContain(`R35_BROWSER_ACCEPTANCE_PASS project=${project}`);console.log(result.stdout);
  });
 }else{

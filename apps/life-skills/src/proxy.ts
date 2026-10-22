@@ -5,10 +5,11 @@ import { parseIdentityConfig } from "./features/identity/config.ts";
 import { runtimePublicConsent } from "./features/forms/pre-enrollment/consent.ts";
 import { ownerPreviewConfig } from "./features/forms/pre-enrollment/owner-preview.ts";
 import { intakeStaffEntry } from "./features/forms/pre-enrollment/public-origin.ts";
-import { clientReturnPath, parentReturnPath, practitionerDetailReturnPath, practitionerReturnPath } from "./features/identity/login-return.ts";
+import { clientReturnPath, parentReturnPath, practitionerDetailReturnPath, practitionerReturnPath,fishingCalendarReturnKeys } from "./features/identity/login-return.ts";
 import { groupInterestCandidateEnabled } from "./features/group-interest/candidate.ts";
 import { publicGroupApplicationEnvironmentEnabled } from "./features/group-application/candidate.ts";
 import { canonicalForwardedRequest } from "./features/integration/canonical-forwarded-request.ts";
+import {stripeTestWebhookEnabled} from "./features/fishing-payments/stripe-test-gate.ts";
 
 const intakeIdentityRoutes = new Set([
   "/api/identity/csrf", "/api/identity/login", "/api/identity/session",
@@ -84,6 +85,9 @@ export function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const canonicalOrigin = new URL(env.LS_APP_ORIGIN);
   const requestHost = (request.headers.get("host") ?? request.nextUrl.host).trim().toLowerCase();
+  // One exact test-only route. Its Node handler separately validates transport,
+  // server runtime admission and SDK signature before minimal durable intake.
+  if(stripeTestWebhookEnabled(pathname,process.env))return decorate(NextResponse.next(),headers);
   // Private rendered data needs the same transport fence as its APIs. Keep
   // public intake/login and foundation preview outside this data-page selector.
   // The explicitly synthetic sample retains its separate preview perimeter and
@@ -92,7 +96,7 @@ export function proxy(request: NextRequest) {
   // These data pages/APIs depend on strict canonical HTTPS forwarding. Validate the original
   // transport before the request-header rewrite below can hide an invalid chain.
   // Forwarding never grants a session, role, case or audience permission.
-  if (privateDataPage || ["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins", "/api/updates", "/api/owner-digest", "/api/community-threads", "/api/provider-index", "/api/provider-referrals", "/api/private/contact-acquisition", "/api/private/acquisition/call-events", "/api/private/group-interest", "/api/private/group-placement", "/api/private/group-applications"].includes(pathname)||/^\/api\/(?:notifications|marketing)(?:\/|$)/.test(pathname)) {
+  if (privateDataPage || ["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins", "/api/updates", "/api/owner-digest", "/api/community-threads", "/api/provider-index", "/api/provider-referrals", "/api/private/contact-acquisition", "/api/private/acquisition/call-events", "/api/private/group-interest", "/api/private/group-placement", "/api/private/group-applications", "/api/private/group-applications/family", "/api/private/group-applications/enrollment", "/api/private/group-applications/offer", "/api/private/group-applications/billing", "/api/private/group-applications/hosted", "/api/private/fishing/children"].includes(pathname)||/^\/api\/(?:notifications|marketing)(?:\/|$)/.test(pathname)) {
     try {
       if (request.nextUrl.hash || requestHost !== canonicalOrigin.host.toLowerCase()) throw new Error("invalid transport");
       if (request.headers.has("x-forwarded-proto") || request.headers.has("x-forwarded-host")) {
@@ -179,35 +183,45 @@ export function proxy(request: NextRequest) {
   if (practitionerPage) {
     const locale = practitionerPage[1] as "he" | "en";
     const page = practitionerPage[2] as "calendar" | "clients" | "practice";
-    const query: Record<string, string | undefined> = {};
-    for (const key of page === "calendar" ? ["date", "view", "caseId", "context", "mode", "taskId"] : page === "practice" ? ["caseId", "audienceId", "assignmentId", "section"] : ["section", "filter", "leadId", "personId", "mode", "page", "search", "stage", "language", "due"]) {
+    const query: Record<string, string | string[] | undefined> = {};
+    for (const key of page === "calendar" ? ["date", "view", "caseId", "context", "mode", "taskId","tasks","followups","practice","content",...fishingCalendarReturnKeys] : page === "practice" ? ["caseId", "audienceId", "assignmentId", "section"] : ["section", "filter", "leadId", "personId", "mode", "page", "search", "stage", "language", "due", "program", "leadStatus"]) {
       const values = request.nextUrl.searchParams.getAll(key);
-      query[key] = values.length === 1 ? values[0] : undefined;
+      query[key] = values.length === 1 ? values[0] : page==='calendar'&&values.length>1&&fishingCalendarReturnKeys.some(field=>field===key)?values:undefined;
     }
     inbound.set("x-ls-practitioner-return", practitionerReturnPath(locale, page, query));
   }
   const practitionerDetail=/^\/(he|en)\/app\/(?:marketing|feedback|reports|forms|resources|group-applications(?:\/journey-preview)?|settings(?:\/[^/]+)?|cases\/[^/]+\/sessions(?:\/[^/]+)?)$/.exec(pathname)
     ??(groupInterestCandidateEnabled()?/^\/(he|en)\/app\/group-interest$/.exec(pathname):null);
   if(practitionerDetail){
-    const query:Record<string,string|undefined>={};
-      for(const key of ['mode','date','view','caseId','audienceId','appointmentId','context','section','filter','month','layout','channel','state','from','to','publication','language','placement','approval','search','page','threadId','communityView','collection','concept','cycle','program']){const values=request.nextUrl.searchParams.getAll(key);query[key]=values.length===1?values[0]:undefined;}
+    const query:Record<string,string|string[]|undefined>=Object.create(null);
+    // Preserve the whole lesson tuple for the existing strict return parser.
+    // Unknown and repeated fields must be rejected, rather than disappear here.
+    const education=pathname===`/${practitionerDetail[1]}/app/resources`&&request.nextUrl.searchParams.has('education');
+    const keys=education?[...new Set(request.nextUrl.searchParams.keys())]:['mode','date','view','caseId','audienceId','appointmentId','context','section','filter','month','layout','channel','state','from','to','publication','language','placement','approval','search','page','threadId','communityView','collection','concept','cycle','program'];
+    for(const key of keys){const values=request.nextUrl.searchParams.getAll(key);query[key]=values.length===1?values[0]:education&&values.length>1?values:undefined;}
     inbound.set('x-ls-practitioner-return',practitionerDetailReturnPath(practitionerDetail[1] as 'en'|'he',pathname,query));
   }
   const parentPage = /^\/(he|en)\/family(?:\/|$)/.exec(pathname);
   if (parentPage) {
-    const query: Record<string, string | undefined> = {};
-    for (const key of ["caseId", "date", "view", "audienceId", "assignmentId", "practiceVersionId", "section"]) {
+    const query: Record<string, string | string[] | undefined> = Object.create(null);
+    const calendar=pathname===`/${parentPage[1]}/family/schedule`,academyHome=pathname===`/${parentPage[1]}/family`;
+    // Keep the complete education tuple for the strict parent return parser.
+    // Duplicates and unknown keys must reach validation rather than disappear.
+    const education=pathname===`/${parentPage[1]}/family/resources`&&request.nextUrl.searchParams.has('education');
+    const keys=education?[...new Set(request.nextUrl.searchParams.keys())]:["caseId", "date", "view", "audienceId", "assignmentId", "practiceVersionId", "section",...(calendar?['practice']:[]),...(calendar||academyHome?fishingCalendarReturnKeys:[])];
+    for (const key of keys) {
       const values = request.nextUrl.searchParams.getAll(key);
-      query[key] = values.length === 1 ? values[0] : undefined;
+      query[key] = values.length === 1 ? values[0] : values.length>1&&(education||(calendar||academyHome)&&fishingCalendarReturnKeys.some(field=>field===key))?values:undefined;
     }
     inbound.set("x-ls-parent-return", parentReturnPath(parentPage[1] as "he" | "en", pathname, query));
   }
   const clientPage = /^\/(he|en)\/client(?:\/|$)/.exec(pathname);
   if (clientPage) {
-    const query: Record<string, string | undefined> = {};
-    for (const key of ["caseId", "date", "view", "audienceId", "assignmentId", "section"]) {
+    const query: Record<string, string | string[] | undefined> = {};
+    const calendar=pathname===`/${clientPage[1]}/client/calendar`;
+    for (const key of ["caseId", "date", "view", "audienceId", "assignmentId", "section",...(calendar?['practice',...fishingCalendarReturnKeys]:[])]) {
       const values = request.nextUrl.searchParams.getAll(key);
-      query[key] = values.length === 1 ? values[0] : undefined;
+      query[key] = values.length === 1 ? values[0] : calendar&&values.length>1&&fishingCalendarReturnKeys.some(field=>field===key)?values:undefined;
     }
     inbound.set("x-ls-client-return", clientReturnPath(clientPage[1] as "he" | "en", pathname, query));
   }

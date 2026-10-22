@@ -7,6 +7,15 @@ it('uses the same bounded URL values for Sheet and native without translating ke
  expect(peopleFiltersFromQuery(p)).toEqual({query:'עברית English',stage:'__proto__',language:'he',due:'today'});
  expect(peoplePageFromQuery(p)).toBe(3);
 });
+it('retains an explicit Academy association/status without global stage or workflow mixing',()=>{
+ const f=peopleFiltersFromQuery(new URLSearchParams('program=sunday_fishing_academy&leadStatus=callback_requested&stage=Israeli&due=today&search=Academy'));
+ expect(f).toEqual({query:'Academy',stage:'',language:'',due:'today',program:'sunday_fishing_academy',leadStatus:'callback_requested'});
+ const p=directoryQuery(new URLSearchParams('filter=payment&stage=Israeli&page=5'),f);expect(p.has('filter')).toBe(false);expect(p.has('stage')).toBe(false);expect(p.get('program')).toBe('sunday_fishing_academy');expect(p.get('leadStatus')).toBe('callback_requested');
+ const cleared=directoryQuery(p,{query:'',stage:'',language:'',due:'any'});expect(cleared.has('program')).toBe(false);expect(cleared.has('leadStatus')).toBe(false);
+ expect(p.get('section')).toBe('all');
+ expect(peopleFiltersFromQuery(new URLSearchParams('program=sunday_fishing_academy&program=sunday_fishing_academy&leadStatus=new'))).not.toHaveProperty('program');
+ expect(peopleFiltersFromQuery(new URLSearchParams('program=sunday_fishing_academy&leadStatus=paid'))).not.toHaveProperty('leadStatus');
+});
 it.each(['search','stage','language','due','page'])('rejects ambiguous repeated %s values even when identical',key=>{
  const value=key==='page'?'2':key==='due'?'today':key==='language'?'he':'value';
  const p=new URLSearchParams([[key,value],[key,value]]),f=peopleFiltersFromQuery(p);

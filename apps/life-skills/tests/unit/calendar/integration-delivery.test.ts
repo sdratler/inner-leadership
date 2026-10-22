@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+vi.mock('server-only',()=>({}));
 import { AppError } from '../../../src/lib/errors.ts';
 import { SESSION_COOKIE } from '../../../src/lib/security/session.ts';
 import { handleCalendar } from '../../../src/features/calendar/http.ts';

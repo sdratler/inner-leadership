@@ -10,7 +10,7 @@ import {PublicGroupApplicationStore} from "../../group-application/store.ts";
 import {isFloridaGroupApplication,isSchoolInquiry,normalizeFloridaLeadContact} from "../../group-application/contract.ts";
 import {fishingProgramSchema,inquiryContactPermissionSchema} from "../core/fishing-association-contract.ts";
 import {fishingLeadRequestSchema,fishingLeadSourceSchema,fishingMembershipSchema,fishingLeadResultSchema,
- fishingLabelProjectionSchema,fishingLabelDesired,nextFishingMembership,type FishingMembership,
+ fishingLabelProjectionSchema,fishingLabelDesired,nextFishingMembership,fishingLeadDetailsSchema,type FishingLeadDetails,type FishingMembership,
  type FishingLeadRequest,type FishingLeadResult,type FishingLabelProjection} from "../core/fishing-lead.ts";
 import {NativeContactDirectory,type NativeContactRow} from "./native-directory.ts";
 import {OperationalNativeCrmStore} from "./operational-store.ts";
@@ -22,17 +22,17 @@ import {normalizePhone} from "../core/contact-resolution.ts";
 
 const uuid=z.string().uuid(),version=z.number().int().min(1).max(2147483646),PREVIEW_MS=15*60_000;
 const snapshotSchema=z.object({operationId:uuid,workspaceId:uuid,actorId:uuid,program:fishingProgramSchema,
- expectedEpoch:z.number().int().min(0).max(Number.MAX_SAFE_INTEGER-1),action:z.enum(["add","remove"]),
+ expectedEpoch:z.number().int().min(0).max(Number.MAX_SAFE_INTEGER-1),action:z.enum(["add","remove","edit"]),details:fishingLeadDetailsSchema.optional(),
  expectedVersion:z.number().int().min(0).max(2147483645),personId:uuid.nullable(),profileVersion:version.nullable(),
  name:z.string().min(1).max(1000),phone:z.string().refine(v=>normalizePhone(v)===v).nullable(),
  source:fishingLeadSourceSchema,sourceDigest:z.string().regex(/^[a-f0-9]{64}$/),
  relationship:z.enum(["guardian","adult_partner"]),permission:inquiryContactPermissionSchema,
  createdAt:z.iso.datetime(),expiresAt:z.iso.datetime()}).strict()
  .refine(v=>(v.personId===null)===(v.profileVersion===null)&&Date.parse(v.expiresAt)-Date.parse(v.createdAt)===PREVIEW_MS&&
-  (v.personId!==null||v.action==="add"&&v.phone!==null&&v.expectedVersion===0));
+  (v.personId!==null||v.action==="add"&&v.phone!==null&&v.expectedVersion===0)&&(v.action==="edit"?v.program==="sunday_fishing_academy"&&v.details!==undefined:v.details===undefined));
 type Snapshot=z.infer<typeof snapshotSchema>;
 export type FishingLeadPreview={state:"ready";token:string;operationId:string;name:string;phone:string|null;
- personId:string|null;newPerson:boolean;action:"add"|"remove";expectedVersion:number;expiresAt:string}|
+ personId:string|null;newPerson:boolean;action:"add"|"remove"|"edit";details?:FishingLeadDetails;expectedVersion:number;expiresAt:string}|
  {state:"clarify";reason:"email_only"|"identity"|"reserved";choices:{personId:string;name:string}[]};
 export type FishingLeadContext={state:"ready";epoch:number;personId:string|null;membership:FishingMembership|null;projection:FishingLabelProjection|null}|
  {state:"blocked";epoch:number;reason:"native_authority_required"|"email_only"|"identity"|"reserved";choices:{personId:string;name:string}[]};
@@ -123,10 +123,11 @@ export class FishingLeadStore{
  }
  async preview(actor:Actor,input:Exclude<FishingLeadRequest,{action:"confirm"}>):Promise<FishingLeadPreview>{
   const request=fishingLeadRequestSchema.parse(input);if(request.action==="confirm")throw new AppError("INVALID_REQUEST");
+  if(request.action==="preview_edit"&&this.program!=="sunday_fishing_academy")throw new AppError("FORBIDDEN");
   return this.authority.withDestination(actor,{destination:"native",intent:"read",expectedEpoch:request.expectedEpoch},async tx=>{
    const now=this.clock.now();let personId:string|null=null,phone:string|null=null,name:string,profileVersion:number|null=null;
    let source:Snapshot["source"],sourceDigest:string,relationship:Snapshot["relationship"],permission:Snapshot["permission"]={state:"unknown"};
-   if(request.action==="preview_remove"){
+   if(request.action==="preview_remove"||request.action==="preview_edit"){
     personId=request.personId;const row=await this.ordinaryPerson(tx,actor,personId,false),current=await this.current(tx,actor,personId);
     if(!current||current.state!=="active"||current.version!==request.expectedAssociationVersion)throw new AppError("CONFLICT");
     name=row.displayName;profileVersion=row.version;source=current.source;sourceDigest=privateDigest({membership:current},this.integrityKey);
@@ -152,10 +153,10 @@ export class FishingLeadStore{
     }else if(request.expectedAssociationVersion!==0)throw new AppError("CONFLICT");
    }
    const snapshot=snapshotSchema.parse({operationId:request.operationId,workspaceId:actor.workspaceId,actorId:actor.id,program:this.program,
-    expectedEpoch:request.expectedEpoch,expectedVersion:request.expectedAssociationVersion,action:request.action==="preview_add"?"add":"remove",
+    expectedEpoch:request.expectedEpoch,expectedVersion:request.expectedAssociationVersion,action:request.action==="preview_add"?"add":request.action==="preview_remove"?"remove":"edit",...(request.action==="preview_edit"?{details:request.details}:{}),
     personId,profileVersion,name,phone,source,sourceDigest,relationship,permission,createdAt:now.toISOString(),expiresAt:new Date(now.getTime()+PREVIEW_MS).toISOString()});
    return {state:"ready",token:seal(JSON.stringify(snapshot),previewAad(actor,this.program),this.ring),operationId:snapshot.operationId,
-    name,phone,personId,newPerson:personId===null,action:snapshot.action,expectedVersion:snapshot.expectedVersion,expiresAt:snapshot.expiresAt};
+    name,phone,personId,newPerson:personId===null,action:snapshot.action,...(snapshot.details?{details:snapshot.details}:{}),expectedVersion:snapshot.expectedVersion,expiresAt:snapshot.expiresAt};
   });
  }
  async confirm(actor:Actor,input:Extract<FishingLeadRequest,{action:"confirm"}>):Promise<FishingLeadResult>{
@@ -188,7 +189,7 @@ export class FishingLeadStore{
    if(personId){const row=await this.ordinaryPerson(tx,actor,personId,snapshot.action==="add");
     if(row.version!==snapshot.profileVersion||row.displayName!==snapshot.name)throw new AppError("CONFLICT");
     current=await this.current(tx,actor,personId);
-    if(snapshot.action==="remove"&&privateDigest({membership:current},this.integrityKey)!==snapshot.sourceDigest)throw new AppError("CONFLICT");
+    if(snapshot.action!=="add"&&privateDigest({membership:current},this.integrityKey)!==snapshot.sourceDigest)throw new AppError("CONFLICT");
    }else{
     if(!snapshot.phone||await this.directory.hasPhoneClaimInTransaction(tx,actor,snapshot.phone))throw new AppError("CONFLICT");
     const scoped:IdentityStore={transaction:work=>work(tx)};
@@ -236,6 +237,17 @@ export class FishingLeadStore{
    }else if(finalAuthority.nativeWritesSinceSwitch!==authority.nativeWritesSinceSwitch+1)throw new AppError("CONFLICT");
    return result;
   });
+ }
+ /** Root's explicit family setup reuses current native lead authority in its
+  * OWN transaction. A lead/phone alone is never verified guardian authority. */
+ async readGuardianLeadForFamilyInTransaction(tx:SqlSession,actor:Actor,input:{applicationId:string;personId:string;expectedEpoch:number;expectedAssociationVersion:number}){
+  if(this.program!=='sunday_fishing_academy'||!uuid.safeParse(input.applicationId).success||!uuid.safeParse(input.personId).success)throw new AppError('INVALID_REQUEST');
+  await this.lockWrite(tx,actor,input.expectedEpoch);
+  const row=await this.ordinaryPerson(tx,actor,input.personId,false),member=await this.current(tx,actor,input.personId);
+  if(row.archived||row.administrativelyArchived||!member||member.state!=='active'||member.relationship!=='guardian'||member.version!==input.expectedAssociationVersion)throw new AppError('CONFLICT');
+  const inquiry=await this.source(tx,actor,{kind:'inquiry',id:input.applicationId});
+  if(!inquiry.phone||!row.references.some(ref=>normalizePhone(ref.phone)===inquiry.phone))throw new AppError('CONFLICT');
+  return {personId:row.personId,displayName:row.displayName,associationVersion:member.version};
  }
  async read(actor:Actor,personId:string,expectedEpoch:number):Promise<{membership:FishingMembership|null;projection:FishingLabelProjection|null}>{
   if(!uuid.safeParse(personId).success)throw new AppError("INVALID_REQUEST");

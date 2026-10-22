@@ -40,10 +40,10 @@ export async function educationBrowserFixture(f:Fixture,lookupKey:Buffer){
   credentials.push({role,accountId:id,email,password});
  }
  const references:Record<string,LessonReference>={};
- for(const [name,moduleId]of[["en","RM-101"],["he","RM-102"],["control","RM-103"]]as const){
+ for(const [name,moduleId]of[["en","RM-101"],["he","RM-102"],["control","RM-103"],["draft-en","RM-104"],["draft-he","RM-105"]]as const){
   const ref={learnerId,moduleId,version:`synthetic-${name}-v1`},session=Number(moduleId.slice(4));references[name]=ref;
   const sourceSha=hash(`Synthetic source ${name}`),lesson=learnerLessonSchema.parse({moduleId,version:ref.version,stage:1,locale:"en",title:`Synthetic lesson ${name}`,
-   instruction:"Synthetic hookless instruction only. No activity clearance or real curriculum approval.",questions:[{id:`Q${String(session).padStart(2,"0")}-1`,prompt:"Describe your synthetic hookless practice."}],sourceSha256:sourceSha,status:"approved"});
+   instruction:"Synthetic hookless instruction only. No activity clearance or real curriculum approval.",questions:Array.from({length:name.startsWith("draft-")?3:1},(_,index)=>({id:`Q${String(session).padStart(2,"0")}-${index+1}`,prompt:index===0?"Describe your synthetic hookless practice.":`Synthetic draft question ${index+1}`})),sourceSha256:sourceSha,status:"approved"});
   const learnerBytes=JSON.stringify(lesson),teacherBytes="SYNTHETIC TEACHER KEY NOT FOR FAMILY",learnerArtifact=randomUUID(),teacherArtifact=randomUUID();
   const binding:EducationStorageBinding={workspaceId:f.workspaceId,moduleId,version:ref.version,state:"approved",source:{sourceId:"synthetic-browser-source",revision:"synthetic-only",sha256:sourceSha},
    learner:{sourceId:`synthetic-learner-${learnerArtifact}`,version:"1",locale:"en",sha256:hash(learnerBytes),storageClass:"resource_learner",state:"approved"},

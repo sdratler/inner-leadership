@@ -1,6 +1,3 @@
-import {floridaAcademyRegistrationFieldsSchema} from '../../src/features/group-application/contract.ts';
-import {ACADEMY_REGISTRATION_VERSION,registrationConsent} from '../../src/features/group-application/academy-registration.ts';
-import {academyRegistrationNotice} from '../../src/features/group-application/academy-registration-notice.ts';
 import {createHash,randomUUID} from "node:crypto";
 import {readFile} from "node:fs/promises";
 import {afterAll,beforeAll,expect,it,vi} from "vitest";
@@ -11,6 +8,9 @@ import {floridaGroupApplicationNotice,academyApplicationNotice,groupApplicationN
 import type {IdentityStore,SqlSession} from "../../src/features/identity/store.ts";
 import type {Actor} from "../../src/features/identity/types.ts";
 import {asId} from "../../src/lib/ids.ts";
+import {floridaAcademyRegistrationFieldsSchema} from '../../src/features/group-application/contract.ts';
+import {ACADEMY_REGISTRATION_VERSION,registrationConsent} from '../../src/features/group-application/academy-registration.ts';
+import {academyRegistrationNotice} from '../../src/features/group-application/academy-registration-notice.ts';
 
 const db=new PGlite(),workspaceId=asId(randomUUID(),"workspace"),now=new Date("2029-01-01T12:00:00Z"),ring={activeKeyId:"test",keys:{test:Buffer.alloc(32,9)}},key="synthetic-public-group-application-digest-key";
 const identity:IdentityStore={transaction:work=>db.transaction(tx=>work({query:async<T extends object>(sql:string,values:readonly unknown[]=[])=>(await tx.query<T>(sql,[...values])).rows} as SqlSession))};
@@ -69,6 +69,26 @@ it("retains durable no-query Israel submission storage and practitioner readback
  expect(stored.rows[0]).toMatchObject({notice_version:groupApplicationNotice.version,notice_language:"he"});expect(stored.rows[0]!.payload_ciphertext).not.toContain(input.fields.parentPhone);
 });
 
+it("searches durable encrypted history beyond50, continues empty bounded scans, and pages without skipping tied timestamps",async()=>{
+ const target=await service.submit(command({parentName:"Synthetic oldest unique search family",contact:"search-target@example.invalid"}));
+ for(let i=0;i<205;i++){
+  now.setTime(now.getTime()+1000);
+  await service.submit(command({parentName:`Synthetic recent family ${i}`,contact:`recent-${i}@example.invalid`}));
+ }
+ expect((await service.list(actors[0]!)).some(item=>item.id===target.item.id)).toBe(false);
+ const first=await service.listPage(actors[0]!,{search:"OLDEST UNIQUE SEARCH FAMILY"});
+ expect(first.items).toEqual([]);expect(first.nextCursor).not.toBeNull();
+ const second=await service.listPage(actors[0]!,{search:"OLDEST UNIQUE SEARCH FAMILY",cursor:first.nextCursor!});
+ expect(second.items).toEqual([target.item]);expect(second.nextCursor).toBeNull();
+ const ids:string[]=[];let cursor:string|undefined;
+ do{const page=await service.listPage(actors[0]!,{cursor});ids.push(...page.items.map(item=>item.id));cursor=page.nextCursor??undefined;}while(cursor);
+ const count=(await db.query<{n:number}>("SELECT count(*)::int AS n FROM ls_service_interest.public_applications WHERE workspace_id=$1",[workspaceId])).rows[0]!.n;
+ expect(ids).toHaveLength(count);expect(new Set(ids).size).toBe(count);
+ await expect(service.listPage(actors[1]!,{search:"Synthetic"})).rejects.toMatchObject({code:"FORBIDDEN"});
+ await expect(service.listPage({...actors[0]!,workspaceId:asId(randomUUID(),"workspace")},{search:"Synthetic"})).rejects.toMatchObject({code:"FORBIDDEN"});
+ await expect(service.listPage(actors[0]!,{cursor:randomUUID()})).rejects.toMatchObject({code:"INVALID_REQUEST"});
+ await expect(service.listPage(actors[0]!,{search:"x".repeat(201)})).rejects.toMatchObject({code:"INVALID_REQUEST"});
+},30000);
 it('round-trips named exact-grade siblings and37minutes through the real encrypted store without financial or person effects',async()=>{
  const children=[{id:randomUUID(),fullName:'Synthetic Registered Child One',ageYears:10,grade:'5',schooling:'school',experience:'new'},{id:randomUUID(),fullName:'Synthetic Registered Child Two',ageYears:13,grade:'8',schooling:'homeschool',experience:'some'}];
  const fields=floridaAcademyRegistrationFieldsSchema.parse({parentName:'Synthetic Registered Guardian',contact:'+15555550876',cityArea:'Synthetic Florida',language:'en',programId:'sunday_fishing_academy',schedulePreference:[],academyRegistration:{version:ACADEMY_REGISTRATION_VERSION,learners:children,postalCode:'00123',preferredDays:['monday','wednesday'],preferredTimes:['afternoon'],driveMinutes:37,schoolHoursAvailability:'outside_school_only',preferredGroupLanguage:'he',stageInterest:'discuss',intent:'information',consent:registrationConsent('en')},permission:{confirmed:true,version:academyRegistrationNotice.version,language:'en'}});

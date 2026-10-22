@@ -2,6 +2,40 @@ import { expect, it } from 'vitest';
 import { clientReturnPath, parentReturnPath, loginReturnDestination, practitionerDetailReturnPath, practitionerReturnPath } from '../../../src/features/identity/login-return.ts';
 import {settingsItems} from '../../../src/ui/workspace/navigation-model.ts';
 
+it('retains only strict native fishing hints on the existing Calendar return path',()=>{
+ const learnerId='11111111-1111-4111-8111-111111111111',enrollmentId='22222222-2222-4222-8222-222222222222',cohortId='33333333-3333-4333-8333-333333333333',stageId='44444444-4444-4444-8444-444444444444';
+ const result=new URL(practitionerReturnPath('he','calendar',{fishing:'1',learnerId,enrollmentId,cohortId,stageId,stage:'1',view:'agenda',date:'2026-10-16',teacherKey:'PRIVATE',role:'parent'}),'https://life-skills.invalid');
+ expect(result.pathname).toBe('/he/app/calendar');for(const [key,value]of Object.entries({fishing:'1',learnerId,enrollmentId,cohortId,stageId,stage:'1',view:'agenda',date:'2026-10-16'}))expect(result.searchParams.get(key)).toBe(value);expect(result.searchParams.has('teacherKey')).toBe(false);expect(result.searchParams.has('role')).toBe(false);
+ const invalid=new URL(practitionerReturnPath('en','calendar',{learnerId:['two','values'],stageId:'constructor',stage:'1e0'}),'https://life-skills.invalid');expect(invalid.search).toBe('');
+});
+
+const fishingReturnTuple={fishing:'1',learnerId:'11111111-1111-4111-8111-111111111111',enrollmentId:'22222222-2222-4222-8222-222222222222',cohortId:'33333333-3333-4333-8333-333333333333',stageId:'44444444-4444-4444-8444-444444444444',stage:'1'};
+for(const locale of ['en','he'] as const)for(const role of ['practitioner','parent','child'] as const){
+ const path=`/${locale}/${role==='practitioner'?'app/calendar':role==='parent'?'family/schedule':'client/calendar'}`;
+ const returned=(query:Record<string,string|string[]|undefined>)=>role==='practitioner'?practitionerReturnPath(locale,'calendar',query):role==='parent'?parentReturnPath(locale,path,query):clientReturnPath(locale,path,query);
+ it(`${locale}/${role}: preserves the complete single-valued fishing selection and old clinical/layer context`,()=>{
+  const legacy={caseId:'123e4567-e89b-42d3-a456-426614174000',date:'2026-10-16',view:'day',practice:'0'},value=returned({...legacy,...fishingReturnTuple,role:'practitioner',teacherKey:'PRIVATE',next:'https://untrusted.invalid'}),url=new URL(value,'https://private.invalid');
+  expect(url.pathname).toBe(path);expect(Object.fromEntries(url.searchParams)).toEqual({...legacy,...fishingReturnTuple});expect(loginReturnDestination(locale,role,value)).toBe(value);
+  for(const other of ['practitioner','parent','child']as const)if(other!==role)expect(loginReturnDestination(locale,other,value)).not.toBe(value);
+  expect(loginReturnDestination(locale==='en'?'he':'en',role,value)).not.toBe(value);
+ });
+ it(`${locale}/${role}: rejects the entire ambiguous or malformed tuple, not just one key`,()=>{
+  const changes:Record<string,string|string[]|undefined>[]=[...Object.entries(fishingReturnTuple).map(([key,value])=>({[key]:[value,value]})),...['learnerId','enrollmentId','cohortId','stageId'].map(key=>({[key]:'constructor'})),{stage:'01'},{stage:'1e0'},{stage:'5'},{fishing:'0'},{stageId:undefined}];
+  for(const change of changes){const value=new URL(returned({date:'2026-10-16',view:'agenda',...fishingReturnTuple,...change}),'https://private.invalid');expect(Object.fromEntries(value.searchParams)).toEqual({date:'2026-10-16',view:'agenda'});}
+ });
+ it(`${locale}/${role}: supports unselected child/operator context without selecting a first enrollment`,()=>{
+  expect(Object.fromEntries(new URL(returned({fishing:'1',learnerId:fishingReturnTuple.learnerId}),'https://private.invalid').searchParams)).toEqual({fishing:'1',learnerId:fishingReturnTuple.learnerId});
+  const {cohortId,stageId,stage}=fishingReturnTuple,operator={fishing:'1',cohortId,stageId,stage};expect(Object.fromEntries(new URL(returned(operator),'https://private.invalid').searchParams)).toEqual(operator);
+ });
+}
+it('does not attach fishing Calendar context to unrelated parent/client or practitioner destinations',()=>{
+ for(const locale of ['en','he']as const){
+  for(const suffix of ['practice','feedback','settings'])expect(parentReturnPath(locale,`/${locale}/family/${suffix}`,fishingReturnTuple)).toBe(`/${locale}/family/${suffix}`);
+  for(const suffix of ['practice','messages','settings'])expect(clientReturnPath(locale,`/${locale}/client/${suffix}`,fishingReturnTuple)).toBe(`/${locale}/client/${suffix}`);
+  expect(practitionerReturnPath(locale,'practice',fishingReturnTuple)).toBe(`/${locale}/app/practice`);
+ }
+});
+
 it('preserves only a bounded legacy lead ID on a practitioner People return link', () => {
   expect(practitionerReturnPath('he', 'clients', { section: 'prospects', leadId: 'LS-LEAD-synthetic-one' }))
     .toBe('/he/app/clients?section=prospects&leadId=LS-LEAD-synthetic-one');
@@ -9,6 +43,28 @@ it('preserves only a bounded legacy lead ID on a practitioner People return link
     .toBe('/en/app/clients');
 });
 const caseId='123e4567-e89b-42d3-a456-426614174000',sessionId='223e4567-e89b-42d3-a456-426614174000';
+it.each(['en','he']as const)('%s Academy People filters survive same-role login without borrowing Life Skills pipeline context',locale=>{
+ const query={section:'paid',filter:'booking',stage:'Global Life Skills stage',program:'sunday_fishing_academy',leadStatus:'follow_up',search:'Synthetic Academy note',due:'overdue'};
+ const next=practitionerReturnPath(locale,'clients',query),url=new URL(next,'https://private.invalid');
+ expect(Object.fromEntries(url.searchParams)).toEqual({section:'all',program:query.program,leadStatus:'follow_up',search:query.search,due:'overdue'});
+ expect(loginReturnDestination(locale,'practitioner',next)).toBe(next);
+ expect(loginReturnDestination(locale,'parent',next)).not.toBe(next);
+ expect(loginReturnDestination(locale==='en'?'he':'en','practitioner',next)).not.toBe(next);
+ for(const program of ['other', ['sunday_fishing_academy','sunday_fishing_academy']]){
+  const invalid=new URL(practitionerReturnPath(locale,'clients',{...query,program}),'https://private.invalid');expect(invalid.searchParams.has('program')).toBe(false);expect(invalid.searchParams.has('leadStatus')).toBe(false);
+ }
+ for(const leadStatus of ['constructor',['follow_up','follow_up']])expect(new URL(practitionerReturnPath(locale,'clients',{...query,leadStatus}),'https://private.invalid').searchParams.has('leadStatus')).toBe(false);
+ for(const section of ['audience','needs_review','whatsapp_group'])expect(new URL(practitionerReturnPath(locale,'clients',{...query,section}),'https://private.invalid').searchParams.has('program')).toBe(false);
+});
+it.each(['en','he']as const)('rejects every duplicate %s parent education return key including section instead of defaulting it',locale=>{
+ const path=`/${locale}/family/resources`,query={education:'lesson',learnerId:caseId,moduleId:'RM-101',version:'synthetic-v1',section:'portfolio'};
+ expect(Object.fromEntries(new URL(parentReturnPath(locale,path,query),'https://private.invalid').searchParams)).toEqual(query);
+ for(const[key,value]of Object.entries(query))expect(parentReturnPath(locale,path,{...query,[key]:[value,value]})).toBe(path);
+ for(const extra of [{role:'practitioner'},{teacherKey:'PRIVATE'},{section:'review'},{version:'bad\nversion'}])expect(parentReturnPath(locale,path,{...query,...extra})).toBe(path);
+ expect(parentReturnPath(locale,path,{...query,section:undefined})).toContain('section=lesson');
+ for(const other of ['practitioner','child','adult_client']as const)expect(loginReturnDestination(locale,other,parentReturnPath(locale,path,query))).not.toBe(parentReturnPath(locale,path,query));
+ expect(parentReturnPath(locale==='en'?'he':'en',path,query)).not.toBe(parentReturnPath(locale,path,query));
+});
 it.each(['he','en']as const)('preserves exact %s educational context through ordinary role login without clinical or caller authority',locale=>{
  const query={education:'lesson',learnerId:caseId,moduleId:'RM-101',version:'synthetic-v1'};
  for(const section of ['review','publication']){

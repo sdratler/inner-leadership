@@ -10,6 +10,7 @@ import {canonicalForwardedRequest} from "../../integration/canonical-forwarded-r
 import {writeDestination,type CutoverState} from "../core/cutover.ts";
 import type {Page} from "../core/types.ts";
 import type {NativeContactQuery,NativeContactRow} from "./native-directory.ts";
+import {fishingLeadDetailsSchema} from "../core/fishing-lead.ts";
 export type PeopleResponse={source:"sheet";authorityEpoch:number}|{source:"native";authorityEpoch:number;page:Page<NativeContactRow>};
 export type PeopleHttpDependencies={origin:string;now:()=>Date;actor:(token:string)=>Promise<Actor>;
  authority:{read:(actor:Actor)=>Promise<CutoverState>};
@@ -20,7 +21,9 @@ const querySchema=z.object({view:z.enum(["all","prospects","paid","active","arch
  filter:z.enum(["all","today","new","intake","payment","booking","archived"]).optional(),
  mode:z.enum(["live","demo"]).default("live"),personId:z.string().uuid().optional(),
  leadId:z.string().regex(/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]{1,80}$/).optional(),
- page:z.string().regex(/^[1-9]\d{0,4}$/).default("1")}).strict();
+ page:z.string().regex(/^[1-9]\d{0,4}$/).default("1"),program:z.literal("sunday_fishing_academy").optional(),
+ leadStatus:fishingLeadDetailsSchema.shape.status.optional()}).strict()
+ .refine(q=>q.program?!q.stage&&!q.filter&&q.view==="all":q.leadStatus===undefined);
 /** Ordinary practitioner read. No browser flag can choose native authority,
  * reveal a shadow, activate cutover, or turn a failed native read into Sheet data.
  * Existing Sheet UI remains the sole view before cutover; frozen is a conflict.
@@ -39,11 +42,12 @@ export async function peopleHttp(request:Request,load:()=>Promise<PeopleHttpDepe
   const current=await d.authority.read(actor),destination=writeDestination(current.phase);
   if(destination==="durable_queue_only")throw new AppError("CONFLICT");
   let result:PeopleResponse;
-  if(destination==="sheet")result={source:"sheet",authorityEpoch:current.epoch};
+  if(destination==="sheet"){if(input.data.program)throw new AppError("CONFLICT");result={source:"sheet",authorityEpoch:current.epoch};}
   else{
-   const today=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Jerusalem"}).format(d.now()),q=input.data;
+   const q=input.data,today=new Intl.DateTimeFormat("en-CA",{timeZone:q.program?"America/New_York":"Asia/Jerusalem"}).format(d.now());
    const page=await d.directory.list(actor,{view:q.view,search:q.search,...(q.stage?{stage:q.stage}:{}),
-    ...(q.language?{locale:q.language}:{}),...(q.personId?{personId:q.personId}:{}),...(q.leadId?{leadId:q.leadId}:{}),...(q.filter?{filter:q.filter}:{}),due:q.due,mode:q.mode,today,page:Number(q.page),pageSize:12},current.epoch);
+    ...(q.language?{locale:q.language}:{}),...(q.personId?{personId:q.personId}:{}),...(q.leadId?{leadId:q.leadId}:{}),...(q.filter?{filter:q.filter}:{}),
+    ...(q.program?{program:q.program}:{}),...(q.leadStatus?{leadStatus:q.leadStatus}:{}),due:q.due,mode:q.mode,today,page:Number(q.page),pageSize:12},current.epoch);
    result={source:"native",authorityEpoch:current.epoch,page};
   }
   response=successResponse(result,id);

@@ -12,7 +12,7 @@ import { requirePractitioner,caseAccess } from "../cases/policy.ts";
 import { loadCase,loadGuardians } from "../cases/data.ts";
 import { recordAction } from "./history.ts";
 import { issueAuthToken,queueAuthMail } from "./auth-mail.ts";
-import { demoAccountBatch,demoCaseBatch } from '../demo/provenance.ts';
+import { demoAccountBatch,demoCaseBatch,demoRecordBatch } from '../demo/provenance.ts';
 export interface InviteInput {caseId:CaseId;email:string;displayName:string;locale:Locale;}
 async function markDemoInvite(tx:SqlSession,workspaceId:string,caseId:CaseId,account:AccountRow,created:boolean):Promise<void>{
  const batch=await demoCaseBatch(tx,workspaceId,caseId),existing=await demoAccountBatch(tx,workspaceId,account.id);
@@ -44,6 +44,21 @@ async function createAccount(tx:SqlSession,config:IdentityConfig,context:Request
 }
 export class IdentityAccountService {
  constructor(private readonly store:IdentityStore,private readonly config:IdentityConfig,private readonly clock:IdentityClock) {}
+ /** Internal same-transaction Academy setup only. The caller must first verify
+  * the explicit inquiry/person/guardian decision. No case or authority grant is
+  * created here, and existing subjects/roles/addresses are never converted. */
+ async prepareAcademyParentInTransaction(tx:SqlSession,actor:Actor,input:{personId:PersonId;email:string;locale:Locale},requestId:string){
+  const context={requestId,now:this.clock.now()};if(actor.workspaceId!==this.config.workspaceId)throw new AppError('FORBIDDEN');
+  const current=await this.practitionerForInvite(tx,actor,context.now,false);if(!current.emailVerifiedAt||await demoAccountBatch(tx,actor.workspaceId,current.id)||await demoRecordBatch(tx,actor.workspaceId,'person',input.personId))throw new AppError('FORBIDDEN');
+  const person=await one(tx,"SELECT id FROM ls_identity.people WHERE workspace_id=$1 AND id=$2 AND kind='adult' FOR SHARE",[actor.workspaceId,input.personId]);if(!person)throw new AppError('NOT_FOUND');
+  const subject=await one<{id:AccountId}>(tx,'SELECT account_id AS id FROM ls_identity.account_subjects WHERE workspace_id=$1 AND person_id=$2 FOR SHARE',[actor.workspaceId,input.personId]);
+  const email=await accountByEmail(tx,actor.workspaceId,blindEmail(input.email,this.config.lookupKey));
+  if(subject){const existing=await accountById(tx,actor.workspaceId,subject.id);if(!existing||existing.role!=='parent'||existing.state==='revoked'||email?.id!==existing.id||await demoAccountBatch(tx,actor.workspaceId,existing.id))throw new AppError('CONFLICT');return {accountId:existing.id,state:existing.state,invitationQueued:false};}
+  if(email)throw new AppError('CONFLICT');
+  const created=await createAccount(tx,this.config,context,{personId:input.personId,email:input.email,displayName:'',locale:input.locale,role:'parent'});
+  await issueAuthToken(tx,this.config,created,context,'invite');await recordAction(tx,context,actor.workspaceId,actor.id,'invite_queued');
+  return {accountId:created.id,state:created.state,invitationQueued:true};
+ }
  async inviteParent(actor:Actor,input:InviteInput,requestId:string):Promise<{accountId:AccountId}> {
   return this.inviteParentWithAuthority(actor,input,requestId,false);
  }

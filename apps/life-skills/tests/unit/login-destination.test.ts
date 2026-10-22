@@ -1,5 +1,6 @@
 import React from "react";
 import {readFileSync} from "node:fs";
+import {NextRequest} from "next/server";
 import {renderToStaticMarkup} from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { destinationForRole, LoginClient } from "../../src/features/identity/login-client.tsx";
@@ -7,6 +8,7 @@ import { loginHref, loginReturnDestination, parentReturnPath, practitionerReturn
 import { FamilyHomeWorkspace, visibleHomeCases } from "../../src/ui/workspace/family-home.tsx";
 import { visibleUpdateCases } from "../../src/features/updates/updates-workspace.tsx";
 import { PracticeList } from "../../src/features/home-practice/practice-list.tsx";
+import {proxy as applicationProxy} from "../../src/proxy.ts";
 
 vi.mock("next/navigation",()=>({useRouter:()=>({replace:vi.fn(),refresh:vi.fn()}),useSearchParams:()=>new URLSearchParams()}));
 
@@ -120,8 +122,19 @@ describe("shared private-app sign-in destination", () => {
     expect(layout).toContain('redirect(loginHref(locale, loginReturnDestination(locale, "practitioner", requested)!))');
     expect(layout).not.toContain("PrivateWorkspaceUnavailable");
     expect(proxy).toContain('inbound.delete("x-ls-practitioner-return")');
-    expect(proxy).toContain('["section", "filter", "leadId", "personId", "mode", "page", "search", "stage", "language", "due"]');
-    expect(proxy).toContain('values.length === 1 ? values[0] : undefined');
+    expect(proxy).toContain('["section", "filter", "leadId", "personId", "mode", "page", "search", "stage", "language", "due", "program", "leadStatus"]');
+    // Exercise actual forwarding rather than freezing the old duplicate-value
+    // implementation, which cannot carry strict fishing/education tuples.
+    const origin="https://login-forwarding.example.invalid";
+    try{
+      vi.stubEnv("NODE_ENV","production");vi.stubEnv("LS_APP_MODE","foundation_locked");
+      vi.stubEnv("LS_APP_ORIGIN",origin);vi.stubEnv("LS_PRIVATE_APP_ENABLED","true");
+      const forwarded=applicationProxy(new NextRequest(origin+"/en/app/clients?section=active&filter=today&personId=not-an-id&personId=another-id&role=parent&privatePayload=SYNTHETIC_NOT_FORWARDED",{
+        headers:{"x-ls-practitioner-return":"https://untrusted.invalid/private"},
+      }));
+      expect(forwarded.status).toBe(200);
+      expect(forwarded.headers.get("x-middleware-request-x-ls-practitioner-return")).toBe("/en/app/clients?section=active&filter=today");
+    }finally{vi.unstubAllEnvs();}
     expect(proxy).toContain('inbound.set("x-ls-practitioner-return", practitionerReturnPath(locale, page, query))');
     const personId="00000000-0000-4000-8000-000000000001";
     expect(practitionerReturnPath("he","clients",{personId,mode:"demo",role:"parent",unknown:"private"})).toBe(`/he/app/clients?personId=${personId}&mode=demo`);

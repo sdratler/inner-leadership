@@ -28,5 +28,5 @@ export default async function Page({ params, searchParams }: {
       <a href={returnPath}>{locale === "he" ? "ניסיון חוזר" : "Retry"}</a>
     </main>;
   }
-  return <><ProviderIndexEntryLink locale={locale} /><ClientsRoster locale={locale} section={one("section")} prospectFilter={one("filter")} focusLeadId={one("leadId")} personId={one("personId")} mode={one("mode")} page={one("page")} search={one("search")} stage={one("stage")} language={one("language")} due={one("due")} /></>;
+  return <><ProviderIndexEntryLink locale={locale} /><ClientsRoster locale={locale} section={one("section")} prospectFilter={one("filter")} focusLeadId={one("leadId")} personId={one("personId")} mode={one("mode")} page={one("page")} search={one("search")} stage={one("stage")} language={one("language")} due={one("due")} program={one("program")} leadStatus={one("leadStatus")} /></>;
 }

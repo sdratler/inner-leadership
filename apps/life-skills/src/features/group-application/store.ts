@@ -1,5 +1,5 @@
 import "server-only";
-import {randomUUID} from "node:crypto";
+import {createHash,randomUUID} from "node:crypto";
 import {z} from "zod";
 import {AppError} from "../../lib/errors.ts";
 import type {WorkspaceId} from "../../lib/ids.ts";
@@ -10,13 +10,19 @@ import {freshActor,lockWorkspace} from "../identity/data.ts";
 import type {IdentityClock,Actor} from "../identity/types.ts";
 import {systemClock} from "../identity/types.ts";
 import type {IdentityStore,SqlSession} from "../identity/store.ts";
-import {groupApplicationCommandSchema,groupApplicationReplaySchema,groupApplicationFieldsSchema,isFloridaGroupApplication,type GroupApplicationCommand,type GroupApplicationFields,type GroupApplicationRecord} from "./contract.ts";
+import {groupApplicationCommandSchema,groupApplicationReplaySchema,groupApplicationFieldsSchema,floridaParentApplicationFieldsSchema,isFloridaGroupApplication,type GroupApplicationCommand,type GroupApplicationFields,type GroupApplicationRecord} from "./contract.ts";
 import {queueInquiryEmail} from "./inquiry-email.ts";
+import {readEducationalChildContexts} from '../fishing/native-child-context.ts';
+import {readAcademyFamilyReceipts} from '../fishing/academy-family-receipts.ts';
+import {academyDriveMinutes} from './academy-intake.ts';
 
 type Row={id:string;requestDigest:string;payloadCiphertext:string;receivedAt:Date};
 const aad=(workspace:string,id:string)=>`ls_service_interest/public_application/v1/${workspace}/${id}`;
 const select=`SELECT id,request_digest AS "requestDigest",payload_ciphertext AS "payloadCiphertext",received_at AS "receivedAt"
  FROM ls_service_interest.public_applications`;
+const reviewQuerySchema=z.object({search:z.string().trim().max(200).default(""),cursor:z.string().uuid().optional()}).strict();
+export type GroupApplicationReviewQuery=z.input<typeof reviewQuerySchema>;
+export type GroupApplicationReviewPage={items:GroupApplicationRecord[];nextCursor:string|null};
 
 /** Private inquiry only; optional administrative outbox is atomic and never sends here. */
 export class PublicGroupApplicationStore{
@@ -89,11 +95,72 @@ export class PublicGroupApplicationStore{
   return this.db.transaction(async tx=>{await tx.query("SET TRANSACTION READ ONLY");requirePractitioner(await freshActor(tx,actor,this.clock.now()));
    const rows=await tx.query<Row>(select+" WHERE workspace_id=$1 ORDER BY received_at DESC,id DESC LIMIT 50",[actor.workspaceId]);return rows.map(row=>this.decode(row));});
  }
+ /** Search encrypted inquiry fields only after fresh practitioner/workspace
+  * authorization. Bound each scan, retaining a cursor even for an empty match
+  * page so older inquiries are reachable without a plaintext search index. */
+ async listPage(actor:Actor,input:GroupApplicationReviewQuery={}):Promise<GroupApplicationReviewPage>{
+  if(actor.workspaceId!==this.workspaceId)throw new AppError("FORBIDDEN");
+  const parsed=reviewQuerySchema.safeParse(input);if(!parsed.success)throw new AppError("INVALID_REQUEST");
+  const {cursor,search}=parsed.data,needle=search.normalize("NFKC").toLocaleLowerCase();
+  return this.db.transaction(async tx=>{
+   await tx.query("SET TRANSACTION READ ONLY");requirePractitioner(await freshActor(tx,actor,this.clock.now()));
+   if(cursor){const anchor=await tx.query("SELECT id FROM ls_service_interest.public_applications WHERE workspace_id=$1 AND id=$2",[this.workspaceId,cursor]);if(anchor.length!==1)throw new AppError("INVALID_REQUEST");}
+   // Anchor on the stored timestamp, avoiding timestamp precision loss across
+   // pages. The UUID and its subquery remain inside the authorized workspace.
+   const rows=await tx.query<Row>(select+" WHERE workspace_id=$1"+(cursor?" AND (received_at,id)<(SELECT received_at,id FROM ls_service_interest.public_applications WHERE workspace_id=$1 AND id=$2)":"")+" ORDER BY received_at DESC,id DESC LIMIT 201",cursor?[this.workspaceId,cursor]:[this.workspaceId]);
+   const items:GroupApplicationRecord[]=[];let scanned=0;
+   while(scanned<Math.min(rows.length,200)&&items.length<50){
+    const item=this.decode(rows[scanned++]!);
+    if(!needle||JSON.stringify({id:item.id,fields:item.fields}).normalize("NFKC").toLocaleLowerCase().includes(needle))items.push(item);
+   }
+   return {items,nextCursor:scanned<rows.length?rows[scanned-1]!.id:null};
+  });
+ }
  async readForOwnerInTransaction(tx:SqlSession,actor:Actor,id:string):Promise<GroupApplicationRecord>{
   if(actor.workspaceId!==this.workspaceId)throw new AppError("FORBIDDEN");
   if(!z.string().uuid().safeParse(id).success)throw new AppError("INVALID_REQUEST");
   requirePractitioner(await freshActor(tx,actor,this.clock.now()));
   const rows=await tx.query<Row>(select+" WHERE workspace_id=$1 AND id=$2",[this.workspaceId,id]);
   if(rows.length===0)throw new AppError("NOT_FOUND");if(rows.length!==1)throw new AppError("UNAVAILABLE");return this.decode(rows[0]!);
+ }
+ /** Server-private input to the native travel-credit authority. No HTTP mount,
+  * full inquiry, sibling details, owner impersonation or caller-supplied proof.
+  * The exact saved family command selects the inquiry; ambiguous follow-up
+  * applications require an explicit binding rather than a first-row fallback.
+  */
+ async readAcademyParentDriveInTransaction(tx:SqlSession,actor:Actor,selectedLearnerId:string){
+  try{
+   if(actor.workspaceId!==this.workspaceId)throw new AppError('FORBIDDEN');
+   const parsedId=z.uuid().safeParse(selectedLearnerId);if(!parsedId.success)throw new AppError('INVALID_REQUEST');const learnerId=parsedId.data.toLowerCase();
+   await readEducationalChildContexts(tx,actor,this.ring,this.clock.now(),learnerId);
+   const matches=(await readAcademyFamilyReceipts(tx,this.workspaceId,this.ring)).filter(r=>r.saved.parentAccountId===actor.id&&r.saved.children.some(c=>c.learnerId===learnerId));
+   if(matches.length===0)throw new AppError('NOT_FOUND');if(matches.length!==1)throw new AppError('CONFLICT');
+   const receipt=matches[0]!,{saved,command}=receipt,children=saved.children.filter(c=>c.learnerId===learnerId);
+   if(saved.personId!==actor.personId||children.length!==1||saved.children.length!==command.children.length||saved.children.some((child,i)=>{
+    const selected=command.children[i];return !selected||child.learnerIndex!==i||selected.learnerIndex!==i||child.displayName!==selected.displayName||child.registrationChildId!==selected.registrationChildId||selected.existingLearnerId!==null&&selected.existingLearnerId!==child.learnerId;
+   }))throw new AppError('CONFLICT');
+   const child=children[0]!,members=await tx.query(`SELECT c.person_id FROM ls_cases.family_members c
+    JOIN ls_cases.family_members p ON p.workspace_id=c.workspace_id AND p.family_id=c.family_id AND p.person_id=$4 AND p.role IN('parent','guardian')
+    JOIN ls_identity.account_subjects s ON s.workspace_id=p.workspace_id AND s.person_id=p.person_id AND s.account_id=$5
+    WHERE c.workspace_id=$1 AND c.family_id=$2 AND c.person_id=$3 AND c.role='child' FOR SHARE OF c,p,s`,[this.workspaceId,saved.householdId,learnerId,saved.personId,actor.id]);
+   if(members.length!==1)throw new AppError('FORBIDDEN');
+   const rows=await tx.query<Row>(select+' WHERE workspace_id=$1 AND id=$2 FOR SHARE',[this.workspaceId,saved.applicationId]);
+   if(rows.length!==1)throw new AppError('UNAVAILABLE');
+   // decode verifies both AEAD and the private keyed request digest. Unsealing
+   // alone or trusting a copied fields hash would lose the original binding.
+   const fields=floridaParentApplicationFieldsSchema.safeParse(this.decode(rows[0]!).fields);
+   if(!fields.success||fields.data.programId!=='sunday_fishing_academy')throw new AppError('UNAVAILABLE');
+   const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex'),fieldsDigest=hash(fields.data);
+   if(fieldsDigest!==command.expectedFieldsDigest)throw new AppError('CONFLICT');
+   const registration=fields.data.academyRegistration,intake=fields.data.academyIntake;
+   if(registration){if(registration.learners[child.learnerIndex]?.id!==child.registrationChildId)throw new AppError('CONFLICT');}
+   else if(!intake||!fields.data.academyFit||!intake.learners[child.learnerIndex]||intake.learners.some(c=>c.ageYears===undefined)||child.registrationChildId!==undefined)throw new AppError('CONFLICT');
+   const sourceVersion=registration?.version??intake!.version,recordedDriveLimit=registration?registration.driveMinutes:intake!.driveLimit;
+   const maximumOneWayMinutes=typeof recordedDriveLimit==='number'?recordedDriveLimit:academyDriveMinutes(recordedDriveLimit)??null;
+   const value={workspaceId:this.workspaceId,applicationId:saved.applicationId,fieldsDigest,learnerIndex:child.learnerIndex,learnerId,householdId:saved.householdId,parentAccountId:saved.parentAccountId,
+    ...(child.registrationChildId?{registrationChildId:child.registrationChildId}:{}),familyReceipt:{actorId:receipt.actorId,operationId:receipt.operationId,requestDigest:receipt.hash},
+    sourceVersion,recordedDriveLimit,maximumOneWayMinutes,drivePreferenceDigest:hash({sourceVersion,recordedDriveLimit})};
+   await readEducationalChildContexts(tx,actor,this.ring,this.clock.now(),learnerId);return value;
+  }catch(error){if(error instanceof AppError)throw error;throw new AppError('UNAVAILABLE');}
  }
 }

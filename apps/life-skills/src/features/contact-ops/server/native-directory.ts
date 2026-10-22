@@ -18,6 +18,7 @@ import type {InboundActivity} from "../core/inbound-projection.ts";
 import type {AcquisitionReviewItem} from "../core/acquisition.ts";
 import type {CallActivity} from "../core/call-events.ts";
 import {readCallActivities} from "./call-events-store.ts";
+import {fishingMembershipSchema,fishingLeadDetailsSchema,type FishingLeadDetails,type FishingMembership} from "../core/fishing-lead.ts";
 
 const sourceSchema=z.object({sourceRow:z.number().int().min(2),payload:z.object({
  displayName:z.string(),language:z.string(),stageText:z.string(),sourceFields:z.record(z.string(),z.string())})});
@@ -27,7 +28,9 @@ const querySchema=z.object({view:z.enum(["all","prospects","paid","active","arch
  filter:z.enum(["all","today","new","intake","payment","booking","archived"]).optional(),
  page:z.number().int().min(1).max(100000),pageSize:z.number().int().min(1).max(100),
  mode:z.enum(["live","demo"]).optional(),personId:z.string().uuid().optional(),
- leadId:z.string().regex(/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]{1,80}$/).optional()}).strict();
+ leadId:z.string().regex(/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]{1,80}$/).optional(),
+ program:z.literal("sunday_fishing_academy").optional(),leadStatus:fishingLeadDetailsSchema.shape.status.optional()}).strict()
+ .refine(q=>q.program?!q.stage&&!q.filter&&q.view==="all":q.leadStatus===undefined);
 export type NativeContactQuery=z.infer<typeof querySchema>;
 export type NativeContactReference={leadId:string;phone:string;email:string;language:string;
  source:string;campaign:string;outcome:string;owner?:string;sourceDoNotContact?:boolean;messageReceipt:string;
@@ -42,6 +45,8 @@ export type NativeContactRow={personId:string;displayName:string;identityKind:"a
  /** Real assigned cases, joined by canonical person UUID. Never phone/name matching. */
  caseLinks?:{caseId:string;state:string}[];
  callActivity?:{items:CallActivity[];hasMore:boolean};
+ /** Read-only Academy association projection; never substitutes for global CRM fields. */
+ academyLead?:{state:"active"|"removed";version:number;details?:FishingLeadDetails|undefined};
  acquisitionProjections?:{channel:"google_contacts"|"whatsapp";state:"applied"|"no_chat"|"pending"|"failed";
   reason:"provider_not_verified"|"provider_applied"|"no_chat"|"provider_failed";updatedAt:string}[]};
 type StoredProfile={personId:string;kind:"adult"|"minor";personCiphertext:string;profileCiphertext:string;
@@ -98,6 +103,20 @@ export class NativeContactDirectory {
   if(!parsed.success)throw new AppError("INVALID_REQUEST");
   const q=parsed.data;
   const {rows}=await this.readAllInTransaction(tx,actor);
+  if(q.program&&rows.length){
+   const memberships=await tx.query<{personId:string;version:number;state:string;sourceApplicationId:string|null;recordedBy:string;createdAt:Date;ciphertext:string}>(`SELECT DISTINCT ON(person_id) person_id AS "personId",version,state,
+    source_application_id AS "sourceApplicationId",recorded_by AS "recordedBy",created_at AS "createdAt",payload_ciphertext AS ciphertext
+    FROM ls_contact_ops.fishing_lead_revisions WHERE workspace_id=$1 AND program_key=$2 AND person_id=ANY($3::uuid[])
+    ORDER BY person_id,version DESC LIMIT $4`,[actor.workspaceId,q.program,rows.map(row=>row.personId),MAX_CONTACTS+1]);
+   if(memberships.length>MAX_CONTACTS)throw new AppError("UNAVAILABLE");
+   const byPerson=new Map(rows.map(row=>[row.personId,row]));
+   for(const row of memberships){
+    const value:FishingMembership=parse(fishingMembershipSchema,row.ciphertext,`ls_contact_ops/fishing-membership/v1/${actor.workspaceId}/${q.program}/${row.personId}/${row.version}`,this.keyring);
+    if(value.workspaceId!==actor.workspaceId||value.program!==q.program||value.personId!==row.personId||value.version!==row.version||value.state!==row.state||
+     value.recordedBy!==row.recordedBy||value.recordedAt!==row.createdAt.toISOString()||(value.source.kind==="inquiry"?value.source.id:null)!==row.sourceApplicationId)throw new AppError("UNAVAILABLE");
+    byPerson.get(row.personId)!.academyLead={state:value.state,version:value.version,...(value.details?{details:value.details}:{})};
+   }
+  }
   const page=selectNativeContacts(rows,q);
   const calls=await readCallActivities(tx,actor.workspaceId,page.items.filter(row=>row.mode==="live").map(row=>row.personId),this.keyring);
   for(const row of page.items){const activity=calls.get(row.personId);if(activity)row.callActivity=activity;}
@@ -355,6 +374,8 @@ export function selectNativeContacts(rows:readonly NativeContactRow[],input:Nati
   if(r.mode!==(q.mode??"live"))return false;
   if(q.personId&&r.personId!==q.personId)return false;
   if(q.leadId&&!r.references.some(ref=>ref.leadId===q.leadId))return false;
+  if(q.program&&r.academyLead?.state!=="active")return false;
+  if(q.leadStatus&&q.leadStatus!==(r.academyLead?.details?.status??"new"))return false;
   if(view==="archived"&&!closed)return false;
   if(view!=="all"&&view!=="archived"&&closed&&!(view==="active"&&activeCase))return false;
   const openReferences=r.references.filter(ref=>!archived(ref.outcome)&&!suppressed(ref.outcome));
@@ -371,9 +392,10 @@ export function selectNativeContacts(rows:readonly NativeContactRow[],input:Nati
   if(q.filter==="payment"&&!openReferences.some(ref=>(ref.formSubmittedClaim||ref.journey.journeyState==="awaiting_payment")&&!ref.journey.paymentVerified&&!["active","hold"].includes(ref.journey.journeyState)))return false;
   if(q.stage&&q.stage!==r.stage)return false;
   if(q.locale&&!r.references.some(ref=>contactLocale(ref.language)===q.locale))return false;
-  if(q.due==="today"&&(!r.followUpDate||r.followUpDate>q.today))return false;
-  if(q.due==="overdue"&&(!r.followUpDate||r.followUpDate>=q.today))return false;
-  return !text||[r.displayName,...r.references.flatMap(ref=>[ref.phone,ref.email,ref.leadId])].some(v=>v.toLocaleLowerCase().includes(text));
+  const followUp=q.program?r.academyLead?.details?.followUpDate:r.followUpDate;
+  if(q.due==="today"&&(!followUp||followUp>q.today))return false;
+  if(q.due==="overdue"&&(!followUp||followUp>=q.today))return false;
+  return !text||[r.displayName,...r.references.flatMap(ref=>[ref.phone,ref.email,ref.leadId]),...(q.program?[r.academyLead?.details?.notes??"",r.academyLead?.details?.nextAction??""]:[])].some(v=>v.toLocaleLowerCase().includes(text));
  }).sort((a,b)=>a.displayName.localeCompare(b.displayName)||a.personId.localeCompare(b.personId));
  const pages=Math.max(1,Math.ceil(filtered.length/q.pageSize)),page=Math.min(q.page,pages);
  return {items:filtered.slice((page-1)*q.pageSize,page*q.pageSize),total:filtered.length,page,pageSize:q.pageSize,pages};

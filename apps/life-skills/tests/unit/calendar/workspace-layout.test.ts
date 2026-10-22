@@ -1,4 +1,5 @@
 import {readFileSync} from 'node:fs';
+import {runInNewContext} from 'node:vm';
 import {describe,expect,it} from 'vitest';
 
 const workspace=readFileSync(new URL('../../../src/features/calendar/workspace.tsx',import.meta.url),'utf8');
@@ -23,7 +24,7 @@ describe('operational Calendar composition',()=>{
   for(const failure of ['taskFailed&&','followupFailed&&','taskSyncFailed&&','error===\'auth\'','error===\'forbidden\'','caseError&&','countError&&']){
    expect(workspace.indexOf(failure)).toBeLessThan(workspace.indexOf('<CalendarShell '));
   }
-  expect(workspace).toContain('<UnsavedChangesGuard dirty={dirty||taskDirty||mutation.uncertain}');
+  expect(workspace).toContain('<UnsavedChangesGuard dirty={dirty||taskDirty||mutation.uncertain||fishingDirty}');
   expect(workspace).toContain('livePractitioner&&<div className="ls-cal-operational">');
   // Both follow-up and content-task synchronization are live-practitioner-only;
   // the optional visual content layer has its separate enabled-state gate.
@@ -53,9 +54,16 @@ describe('operational Calendar composition',()=>{
   expect(css).toContain('.lsw.lsu .ls-cal .lsw-calendar-toolbar>nav{grid-column:1/-1');
    expect(workspace).toContain("title={locale==='he'?'יומן':'Calendar'}");
   });
-  it('puts the optional practice layer before the dated Calendar and counts actual practice in the mobile empty-grid decision',()=>{
+  it('puts the optional practice layer before Calendar and counts each authorized layer in mobile visibility',()=>{
    expect(workspace.indexOf('checked={showPractice}')).toBeLessThan(workspace.indexOf('<CalendarShell '));
-   expect(workspace).toContain('data-has-entries={items.length+followups.length+tasks.length+practice.length+content.length>0}');
+   const expression=workspace.match(/data-has-entries=\{([^}]+)\}/)?.[1];
+   expect(expression).toBeTruthy();expect(expression).toMatch(/^[A-Za-z0-9_.+> ]+$/);
+   const empty=()=>({items:[],followups:[],tasks:[],practice:[],content:[],fishing:{items:[]}});
+   expect(runInNewContext(expression!,empty(),{timeout:50})).toBe(false);
+   for(const layer of ['items','followups','tasks','practice','content','fishing'] as const){
+    const context:Record<string,unknown>=empty();context[layer]=layer==='fishing'?{items:['Synthetic authorized event']}:['Synthetic authorized event'];
+    expect(runInNewContext(expression!,context,{timeout:50}),layer).toBe(true);
+   }
    expect(workspace.match(/practice=\{practice\}/g)).toHaveLength(2);
    expect(workspace).not.toContain('calendar-practice-title');
     expect(css).toContain('.ls-cal-schedule[data-has-entries="false"]');

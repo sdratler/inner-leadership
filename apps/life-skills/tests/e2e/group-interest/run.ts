@@ -4,16 +4,16 @@
  */
 import {spawn,execFileSync,type ChildProcess} from "node:child_process";
 import {createHash,randomBytes,randomUUID} from "node:crypto";
-import {existsSync,mkdtempSync,rmSync,writeFileSync} from "node:fs";
+import {existsSync,mkdtempSync,rmSync,writeFileSync,realpathSync,lstatSync} from "node:fs";
 import {tmpdir} from "node:os";
-import {join,resolve} from "node:path";
+import {join,resolve,dirname,basename} from "node:path";
 import {once} from "node:events";
 import net from "node:net";
 import {request as playwrightRequest} from "@playwright/test";
-import {fixture,safeTestUrl} from "../../database/calendar/fixture.ts";
+
 import {seal,tokenDigest,hashPassword,blindEmail} from "../../../src/features/identity/crypto.ts";
 import type {CutoverEvidence} from "../../../src/features/contact-ops/server/cutover-store.ts";
-import {poolStore} from "../../database/calendar/fixture.ts";
+
 import {privateDigest} from "../../../src/features/contact-ops/server/digests.ts";
 import {floridaGroupApplicationNotice} from "../../../src/features/group-application/contract.ts";
 
@@ -21,27 +21,69 @@ const projects={desktop:3105,tablet768:3108,mobile390:3106,mobile340:3107} as co
 const project=process.env.LS_GROUP_INTEREST_TEST_PROJECT as keyof typeof projects|undefined;
 const sampleOnly=process.env.LS_FLORIDA_SAMPLE_TEST_ONLY==="true";
 const fishingOnly=process.env.LS_FISHING_LEAD_UI_ONLY==="true";
+const familyOnly=process.env.LS_ACADEMY_FAMILY_UI_ONLY==="true";
+const enrollmentOnly=process.env.LS_ACADEMY_ENROLLMENT_UI_ONLY==="true";
+const offerOnly=process.env.LS_ACADEMY_OFFER_UI_ONLY==="true";
+const monthlyOnly=process.env.LS_ACADEMY_MONTHLY_UI_ONLY==='true';
+const refundOnly=process.env.LS_ACADEMY_REFUND_UI_ONLY==='true';
+if(refundOnly&&!monthlyOnly)throw Error('REFUND_BROWSER_REQUIRES_RETAINED_MONTHLY_HARNESS');
+if(monthlyOnly&&(!offerOnly||sampleOnly||process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==='true'||process.env.LS_GROUP_INTEREST_CAPTURE_ONLY==='true'||process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==='true'))throw Error('MONTHLY_EXCLUSIVE_ORDINARY_HARNESS_REQUIRED');
+if(offerOnly&&!enrollmentOnly)throw Error('OFFER_REQUIRES_RETAINED_ENROLLMENT_HARNESS');
+if(enrollmentOnly&&!familyOnly)throw Error("ENROLLMENT_REQUIRES_RETAINED_FAMILY_HARNESS");
+if(familyOnly&&(!fishingOnly||!["desktop","mobile390","mobile340","tablet768"].includes(project??"")||process.env.LS_RM_LAUNCH_OPS09_ONLY==="true"||process.env.LS_EDUCATION_UI_ONLY==="true"||process.env.LS_COMMUNITY_UI_ONLY==="true"))throw Error("FAMILY_EXCLUSIVE_ORDINARY_HARNESS_REQUIRED");
 const educationOnly=process.env.LS_EDUCATION_UI_ONLY==="true";
+const educationBatch=process.env.LS_EDUCATION_TEST_BATCH;
+if(educationOnly&&educationBatch!=="retained"&&educationBatch!=="drafts")throw Error("EDUCATION_EXPLICIT_CLOSED_BATCH_REQUIRED");
+if(!educationOnly&&educationBatch!==undefined)throw Error("EDUCATION_BATCH_REQUIRES_EDUCATION_MODE");
 const communityOnly=process.env.LS_COMMUNITY_UI_ONLY==="true";
+const launchOpsOnly=process.env.LS_RM_LAUNCH_OPS09_ONLY==="true";
+if(launchOpsOnly&&(!fishingOnly||project===undefined||communityOnly||educationOnly||sampleOnly||process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==="true"||process.env.LS_GROUP_INTEREST_CAPTURE_ONLY==="true"||process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==="true"))throw Error("OPS09_EXCLUSIVE_EXPLICIT_PROJECT_REQUIRED");
 if(communityOnly&&(project===undefined||educationOnly||fishingOnly||sampleOnly))throw new Error("COMMUNITY_EXCLUSIVE_EXPLICIT_PROJECT_REQUIRED");
 if(educationOnly&&project===undefined)throw new Error("EDUCATION_UI_EXPLICIT_PROJECT_REQUIRED");
 if(fishingOnly&&project===undefined)throw new Error("FISHING_UI_EXPLICIT_PROJECT_REQUIRED");
-if(project!==undefined&&!(project in projects))throw new Error("GROUP_INTEREST_BROWSER_PROJECT_NOT_SUPPORTED");
+if(project!==undefined&&!Object.hasOwn(projects,project))throw new Error("GROUP_INTEREST_BROWSER_PROJECT_NOT_SUPPORTED");
 if((sampleOnly||process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==="true")&&project===undefined)throw new Error("FLORIDA_JOURNEY_EXPLICIT_PROJECT_REQUIRED");
 if(process.env.LS_GROUP_INTEREST_TEST_ALLOW!=="true")throw new Error("GROUP_INTEREST_BROWSER_OPT_IN_REQUIRED");
-const appPort=projects[project??"desktop"],origin=`https://localhost:${appPort}`;
+// No native/server-only fixture dependency executes before explicit opt-in.
+const {fixture,safeTestUrl,poolStore}=await import("../../database/calendar/fixture.ts");
+const appPort=familyOnly?(project==="desktop"||project==="mobile340"?3105:3106):projects[project??"desktop"],origin=`https://localhost:${appPort}`;
 safeTestUrl();
-if(educationOnly){
+if(educationOnly||launchOpsOnly||familyOnly){
  const probe=net.createServer();await new Promise<void>((resolve,reject)=>{probe.once("error",reject);probe.listen(appPort,"127.0.0.1",resolve);});
  await new Promise<void>((resolve,reject)=>probe.close(error=>error?reject(error):resolve()));
 }
 const folder=mkdtempSync(join(tmpdir(),"ls-group-interest-browser-"));
 let app:ChildProcess|null=null,tests:ChildProcess|null=null;
+let appDiagnostic=()=>'';
 let f:Awaited<ReturnType<typeof fixture>>|null=null,phase="fixture";
 let communityTransport:Awaited<ReturnType<typeof import("../community/inbox-fixture.ts").communityReadTransport>>|null=null;
-async function terminate(child:ChildProcess|null){if(!child||child.exitCode!==null||child.signalCode!==null)return;child.kill("SIGTERM");await Promise.race([once(child,"exit"),new Promise(r=>setTimeout(r,5000))]);if(child.exitCode===null&&child.signalCode===null)child.kill("SIGKILL");}
+async function terminate(child:ChildProcess|null){
+ if(!child||child.exitCode!==null||child.signalCode!==null)return;
+ if((launchOpsOnly||familyOnly)&&process.platform==="win32"&&child.pid){
+  // taskkill may report a nonzero status after the owned child has exited.
+  // Keep its exit event flowing and require both processes to finish.
+  let onExit=()=>{},onClose=()=>{},onError:(error:Error)=>void=()=>{},timer:ReturnType<typeof setTimeout>|undefined,killer:ChildProcess|null=null;
+  const exited=new Promise<void>(ok=>{onExit=ok;child.once("exit",onExit);});
+  try{
+   killer=spawn("taskkill",["/PID",String(child.pid),"/T","/F"],{windowsHide:true,stdio:"ignore"});
+   const closed=new Promise<void>((ok,no)=>{onClose=ok;onError=no;killer!.once("close",onClose);killer!.once("error",onError);});
+   await Promise.race([Promise.all([closed,exited]),new Promise<never>((_,no)=>{timer=setTimeout(()=>no(Error("FISHING_OWNED_CHILD_EXIT_UNCONFIRMED")),5000);})]);
+  }finally{if(timer)clearTimeout(timer);child.removeListener("exit",onExit);if(killer){killer.removeListener("close",onClose);killer.removeListener("error",onError);if(killer.exitCode===null&&killer.signalCode===null)killer.kill();}}
+  return;
+ }
+ child.kill("SIGTERM");await Promise.race([once(child,"exit"),new Promise(r=>setTimeout(r,5000))]);if(child.exitCode===null&&child.signalCode===null)child.kill("SIGKILL");
+}
 let cleanupPromise:Promise<void>|null=null;
-function cleanup(){cleanupPromise??=(async()=>{await terminate(tests);await terminate(app);await communityTransport?.close();await f?.pool.end();rmSync(folder,{recursive:true,force:true});})();return cleanupPromise;}
+function cleanup(){
+ cleanupPromise??=(async()=>{
+  if(launchOpsOnly||familyOnly){
+   try{await terminate(tests);}finally{try{await terminate(app);}finally{try{await communityTransport?.close();}finally{try{await f?.pool.end();}finally{
+    if(lstatSync(folder).isSymbolicLink()||dirname(realpathSync(folder))!==realpathSync(tmpdir())||basename(folder)!==basename(realpathSync(folder))||!basename(folder).startsWith("ls-group-interest-browser-"))throw Error("OPS09_TEMP_CLEANUP_TARGET_MISMATCH");
+    rmSync(folder,{recursive:true,force:true});
+   }}}}
+  }else{await terminate(tests);await terminate(app);await communityTransport?.close();await f?.pool.end();if(launchOpsOnly&&(lstatSync(folder).isSymbolicLink()||dirname(realpathSync(folder))!==realpathSync(tmpdir())||basename(folder)!==basename(realpathSync(folder))||!basename(folder).startsWith("ls-group-interest-browser-")))throw Error("OPS09_TEMP_CLEANUP_TARGET_MISMATCH");rmSync(folder,{recursive:true,force:true});}
+ })();return cleanupPromise;
+}
 process.once("SIGTERM",()=>{void cleanup().finally(()=>process.exit(143));});
 process.once("SIGINT",()=>{void cleanup().finally(()=>process.exit(130));});
 
@@ -143,12 +185,12 @@ async function verifyGroupPlacementDatabaseBoundary(){
 try{
  const workspaceId=randomUUID(),dataKey=randomBytes(32),lookupKey=randomBytes(32),keyring={activeKeyId:"synthetic",keys:{synthetic:dataKey}};
  f=await fixture({workspaceId,keyring,termsVersion:"Synthetic Group Interest"});
- // These retained conflict scenarios use fixed historical dates. Bind their
- // synthetic availability explicitly instead of relying on now-minus-six-days.
- await f.pool.query(`INSERT INTO ls_calendar.availability(id,workspace_id,practitioner_id,starts_at,ends_at,kind)
+ // Retain the historical conflict cases with explicit synthetic availability,
+ // as in accepted main; elapsed wall-clock time must not invalidate the fixture.
+ if(!launchOpsOnly)await f.pool.query(`INSERT INTO ls_calendar.availability(id,workspace_id,practitioner_id,starts_at,ends_at,kind)
   VALUES($1,$2,$3,'2026-10-10T00:00:00.000Z','2026-10-12T00:00:00.000Z','open')`,[randomUUID(),workspaceId,f.practitioner.actor.id]);
- await f.seed("2026-10-10T08:00:00.000Z");
- await f.seed("2026-10-11T08:00:00.000Z");
+ await f.seed(launchOpsOnly?f.at(-48):"2026-10-10T08:00:00.000Z");
+ await f.seed(launchOpsOnly?f.at(-24):"2026-10-11T08:00:00.000Z");
  await f.pool.query(`INSERT INTO ls_cases.family_members(workspace_id,family_id,person_id,role)
   SELECT c.workspace_id,c.family_id,cl.person_id,'child' FROM ls_cases.cases c
   JOIN ls_cases.clients cl ON cl.workspace_id=c.workspace_id AND cl.id=c.client_id
@@ -169,6 +211,7 @@ try{
  await f.pool.query(`INSERT INTO ls_service_interest.public_applications(workspace_id,id,contact_digest,request_digest,payload_ciphertext,notice_version,notice_language,received_at) VALUES($1,$2,$3,$4,$5,$6,$7,clock_timestamp())`,[workspaceId,publicApplicationId,publicContactDigest,publicRequestDigest,seal(JSON.stringify(publicApplicationFields),`ls_service_interest/public_application/v1/${workspaceId}/${publicApplicationId}`,keyring),floridaGroupApplicationNotice.version,"en"]);
  await f.pool.query(`INSERT INTO ls_service_interest.public_application_operations(workspace_id,operation_id,request_digest,application_id) VALUES($1,$2,$3,$4)`,[workspaceId,publicApplicationOperationId,publicRequestDigest,publicApplicationId]);
  const baseline=await counts();
+ const familyModule=familyOnly?await import("./academy-family.journey.ts"):null;
  let fishingRuntime:object|null=null,fishingBefore:unknown=null,fishingProtectedPerson:string|null=null;
  const protectedFishingTables=["ls_calendar.tasks","ls_calendar.task_history","ls_calendar.appointments","ls_identity.accounts","ls_identity.account_subjects",
   "ls_cases.cases","ls_cases.case_guardians","ls_contact_ops.outbound_projections","ls_identity.auth_mail_outbox","ls_onboarding.first_session_orders"];
@@ -215,9 +258,11 @@ try{
     cityArea:"Synthetic Florida",programId:"sunday_fishing_academy",schedulePreference:["sunday"],permission:{confirmed:true,version:floridaGroupApplicationNotice.version,language:locale}}});
    inquiries.push({locale,id:saved.item.id,name:`Synthetic fishing ${locale}`});
   }
+  if(enrollmentOnly){const {seedAcademyEnrollmentBrowser}=await import("./academy-enrollment.journey.ts");await seedAcademyEnrollmentBrowser(f,keyring);}
   await f.pool.query("UPDATE ls_identity.sessions SET revoked_at=clock_timestamp() WHERE workspace_id=$1",[workspaceId]);
   fishingRuntime={credentials,inquiries,protectedPersonId:existing.personId};fishingBefore=await fishingSnapshot();
  }
+ const familyBefore=familyModule?await familyModule.academyFamilyBrowserSnapshot(f.pool,workspaceId):null;
  // Ordinary Group Intake callers have no react-server loader condition. Do not
  // load the education-only native module into those unchanged test paths.
  const educationModule=educationOnly?await import("../resources/education-fixture.ts"):null;
@@ -245,19 +290,28 @@ try{
   LS_IDENTITY_WORKSPACE_ID:workspaceId,LS_IDENTITY_ACTIVE_KEY_ID:"synthetic",LS_IDENTITY_DATA_KEYS:JSON.stringify({synthetic:dataKey.toString("base64url")}),
   LS_IDENTITY_CSRF_KEY:randomBytes(32).toString("base64url"),LS_IDENTITY_LOOKUP_KEY:lookupKey.toString("base64url"),LS_IDENTITY_RATE_KEY:randomBytes(32).toString("base64url"),
   LS_GROUP_INTEREST_FIXTURE_PATH:runtimePath,LS_GROUP_INTEREST_TEST_RUNNER_ACTIVE:"true",
+  ...(familyOnly?{LS_CALENDAR_ENABLED:"true"}:{}),
   ...(educationOnly?{LS_EDUCATION_SYNTHETIC_LOOPBACK:"true",TEST_DATABASE_URL:safeTestUrl(),LS_CHILD_ACCOUNTS_ENABLED:"false",LS_AUTH_EMAIL_ENABLED:"false"}:{})};
  if(communityTransport)Object.assign(env,{LS_COMMUNITY_SCOUT_BRIDGE_SECRET:communityTransport.secret,LS_COMMUNITY_FIXTURE_ORIGIN:communityTransport.controlOrigin,
   LS_COMMUNITY_FIXTURE_CA_FILE:cert,NODE_OPTIONS:`--require=${resolve("tests/e2e/community/scout-read-preload.cjs")}`,NODE_EXTRA_CA_CERTS:cert,LS_AUTH_EMAIL_ENABLED:"false",LS_CALENDAR_ENABLED:"true"});
- app=spawn(process.execPath,[resolve("node_modules/next/dist/bin/next"),"dev","--webpack","--experimental-https","--experimental-https-key",key,"--experimental-https-cert",cert,"--hostname","127.0.0.1","--port",String(appPort)],{env,stdio:"ignore"});
+ app=spawn(process.execPath,[resolve("node_modules/next/dist/bin/next"),"dev","--webpack","--experimental-https","--experimental-https-key",key,"--experimental-https-cert",cert,"--hostname","127.0.0.1","--port",String(appPort)],{env,stdio:monthlyOnly?['ignore','pipe','pipe']:"ignore",...((launchOpsOnly||familyOnly)?{windowsHide:true}:{})});
+ if(monthlyOnly){let output='';const capture=(chunk:Buffer)=>{output=(output+chunk.toString()).slice(-12000);};app.stdout?.on('data',capture);app.stderr?.on('data',capture);appDiagnostic=()=>{let safe=output;for(const [name,value]of Object.entries(env))if(value&&/KEY|SECRET|PASSWORD|TOKEN|DATABASE_URL|FIXTURE_PATH/.test(name))safe=safe.replaceAll(value,'[SYNTHETIC_REDACTED]');return safe;};}
  phase="next-health";let healthy=false;const probe=await playwrightRequest.newContext({baseURL:origin,ignoreHTTPSErrors:true});
  try{for(let i=0;i<240;i++){if(app.exitCode!==null)throw new Error("ISOLATED_APP_START_FAILED");try{if((await probe.get("/api/health")).status()===200){healthy=true;break;}}catch{}await new Promise(r=>setTimeout(r,250));}}finally{await probe.dispose();}
  if(!healthy)throw new Error("ISOLATED_APP_HEALTH_TIMEOUT");
  phase="browser-tests";
- const selection=project?["--project",project,"--output",`tests/e2e/group-interest/test-results/isolated-${project}`]:[];
+ const opsArtifact=launchOpsOnly?`tests/e2e/group-interest/test-results/ops09-${project}-${randomUUID()}`:null;
+ if(opsArtifact)console.log("OPS09_ARTIFACT_DIRECTORY "+opsArtifact);
+ const selection=project?["--project",project,"--output",opsArtifact??`tests/e2e/group-interest/test-results/isolated-${project}${educationOnly?"-education-"+educationBatch:""}`]:[];
  if(!fishingOnly&&process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==="true")selection.push("--grep","Florida group inquiry|Israel group application compatibility");
  if(process.env.LS_GROUP_INTEREST_CAPTURE_ONLY==="true")selection.push("--grep","practitioner");
  if(communityOnly){/* Explicit focused read-only Community journey, not a default-suite skip. */}
- else if(educationOnly){/* Existing Playwright config selects the retained Resources journey. */}
+ else if(educationOnly){
+  // Independent ordinary fixtures keep the unchanged Identity limiter effective.
+  // Both batches are required by the outer acceptance tests.
+  selection.push(educationBatch==="drafts"?"--grep":"--grep-invert","partial draft survives real sign-in");
+ }
+ else if(familyOnly)selection.push("--grep","anonymous saved inquiry");
  else if(fishingOnly){/* Selection is the retained mounted fishing spec in the same isolated harness. */}
  else if(sampleOnly)selection.push("--grep","Florida owner journey hosted sample");
  else if(process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==="true")selection.push("--grep",process.env.LS_FLORIDA_INSTITUTION_TEST_ONLY==="true"?"Florida owner journey school inquiry|Florida owner journey.*native inquiry replay|Florida owner journey authorization":"Florida owner journey");
@@ -276,20 +330,52 @@ try{
   phase="education-native-readback";
   if(JSON.stringify(await educationModule.educationProtectedSnapshot(f))!==JSON.stringify(educationBefore))throw new Error("EDUCATION_UI_FORBIDDEN_DATABASE_EFFECT");
   const count=(await f.pool.query("SELECT count(*)::int AS total FROM ls_education.lesson_events WHERE workspace_id=$1",[workspaceId])).rows[0].total;
-  if(count!==9)throw new Error("EDUCATION_UI_EVENT_REPLAY_OR_FLOW_INCOMPLETE");
-  console.log(`EDUCATION_BROWSER_ACCEPTANCE_PASS project=${project} ordinaryLogin=true events=${count} unrelatedEffects=0 providerEffects=0`);
+  if(count!==(educationBatch==="drafts"?8:9))throw new Error("EDUCATION_UI_EVENT_REPLAY_OR_FLOW_INCOMPLETE");
+  console.log(`EDUCATION_BROWSER_ACCEPTANCE_PASS project=${project} batch=${educationBatch} ordinaryLogin=true events=${count} unrelatedEffects=0 providerEffects=0`);
+ }
+ else if(launchOpsOnly){
+  phase="ops09-native-readback";
+  if(JSON.stringify(await fishingSnapshot())!==JSON.stringify(fishingBefore))throw Error("OPS09_PROTECTED_DATABASE_EFFECT");
+  const profile=(await f.pool.query("SELECT to_jsonb(p) AS row FROM ls_contact_ops.profiles p WHERE workspace_id=$1 AND person_id=$2",[workspaceId,fishingProtectedPerson])).rows;
+  if(JSON.stringify(profile)!==JSON.stringify(protectedProfile))throw Error("OPS09_EXISTING_PROFILE_CHANGED");
+  const rows=(await f.pool.query(`SELECT (SELECT count(*)::int FROM ls_contact_ops.fishing_lead_revisions WHERE workspace_id=$1) AS revisions,
+   (SELECT count(*)::int FROM ls_contact_ops.fishing_lead_operations WHERE workspace_id=$1) AS operations,
+   (SELECT count(*)::int FROM ls_contact_ops.profiles WHERE workspace_id=$1) AS profiles,
+   (SELECT count(*)::int FROM ls_contact_ops.fishing_label_projection WHERE workspace_id=$1) AS projections`,[workspaceId])).rows[0];
+  if(JSON.stringify(rows)!==JSON.stringify({revisions:2,operations:2,profiles:1,projections:2}))throw Error("OPS09_UNEXPECTED_CONTACT_OR_MEMBERSHIP_WRITE");
+  const after=await counts(),expected={...baseline,publicApplications:baseline.publicApplications+4,publicApplicationOperations:baseline.publicApplicationOperations+4};
+  for(const name of Object.keys(expected) as (keyof BoundaryCounts)[])if(name!=="otherWorkspaceState"&&after[name]!==expected[name])throw Error(`OPS09_UNEXPECTED_INTAKE_PLANNING_EFFECT:${name}`);
+  const retainedPublic=await f.pool.query("SELECT to_jsonb(a)::text AS snapshot FROM ls_service_interest.public_applications a WHERE workspace_id=$1 AND id=$2",[workspaceId,publicApplicationId]);
+  if(JSON.stringify(retainedPublic.rows)!==JSON.stringify(originalPublic.rows))throw Error("OPS09_ORIGINAL_RECEIPT_CHANGED");
+  console.log(`OPS09_ACCEPTANCE_PASS project=${project} locales=en,he keyboard=true ordinaryLogin=true nativePublicNew=2 sameOperationRetry=true noContactMembershipTaskWrite=true`);
  }
  else if(fishingOnly){
   phase="fishing-ui-native-readback";
-  if(JSON.stringify(await fishingSnapshot())!==JSON.stringify(fishingBefore))throw new Error("FISHING_UI_FORBIDDEN_DATABASE_EFFECT");
+  if(familyOnly){if(!familyModule||!familyBefore)throw Error("FAMILY_SNAPSHOT_REQUIRED");await familyModule.verifyAcademyFamilyBrowser(f.pool,workspaceId,familyBefore);}else if(JSON.stringify(await fishingSnapshot())!==JSON.stringify(fishingBefore))throw new Error("FISHING_UI_FORBIDDEN_DATABASE_EFFECT");
   const profile=(await f.pool.query("SELECT to_jsonb(p) AS row FROM ls_contact_ops.profiles p WHERE workspace_id=$1 AND person_id=$2",[workspaceId,fishingProtectedPerson])).rows;
   if(JSON.stringify(profile)!==JSON.stringify(protectedProfile))throw new Error("FISHING_UI_EXISTING_PROFILE_CHANGED");
   const rows=await f.pool.query(`SELECT (SELECT count(*)::int FROM ls_contact_ops.fishing_lead_revisions WHERE workspace_id=$1) AS revisions,
    (SELECT count(*)::int FROM ls_contact_ops.fishing_lead_operations WHERE workspace_id=$1) AS operations,
    (SELECT count(*)::int FROM ls_contact_ops.profiles WHERE workspace_id=$1) AS profiles,
    (SELECT count(*)::int FROM ls_contact_ops.fishing_label_projection WHERE workspace_id=$1) AS projections`,[workspaceId]);
-  if(JSON.stringify(rows.rows[0])!==JSON.stringify({revisions:10,operations:10,profiles:3,projections:4}))throw new Error("FISHING_UI_NATIVE_COUNTS_MISMATCH");
-  console.log(`FISHING_LEAD_UI_ACCEPTANCE_PASS project=${project} ordinaryLogin=true revisions=10 operations=10 profiles=3 projections=4 tasksUnchanged=true unrelatedProfileUnchanged=true providerEffects=0`);
+  if(JSON.stringify(rows.rows[0])!==JSON.stringify(familyOnly?{revisions:4,operations:4,profiles:3,projections:4}:{revisions:14,operations:14,profiles:5,projections:6}))throw new Error("FISHING_UI_NATIVE_COUNTS_MISMATCH");
+  // Two seeded inquiries plus two anonymous UI submissions. Both lost-response
+  // retries must retain the same saved inquiry and operation, never a duplicate.
+  const after=await counts(),expected={...baseline,publicApplications:baseline.publicApplications+4,publicApplicationOperations:baseline.publicApplicationOperations+4};
+  // The all-table snapshot also includes intentionally new contacts and normal
+  // login sessions. Compare every intake/planning scalar here; the independent
+  // exact-row protected-table/profile checks above remain mandatory unchanged.
+  for(const key of Object.keys(expected) as (keyof BoundaryCounts)[]){
+   if(key!=="otherWorkspaceState"&&after[key]!==expected[key])throw new Error(`FISHING_UI_UNEXPECTED_DATABASE_EFFECT:${key}`);
+  }
+  const retainedPublic=await f.pool.query("SELECT to_jsonb(a)::text AS snapshot FROM ls_service_interest.public_applications a WHERE workspace_id=$1 AND id=$2",[workspaceId,publicApplicationId]);
+  if(JSON.stringify(retainedPublic.rows)!==JSON.stringify(originalPublic.rows))throw new Error("FISHING_UI_EXISTING_RECEIPT_MUTATED");
+  if(monthlyOnly)console.log(`ACADEMY_MONTHLY_UI_ACCEPTANCE_PASS project=${project} locales=en,he ordinaryParentRenewedFourLessonSignatures=true ordinaryOwner650Offer=true exactRetry=true withdrawalReleasesFour=true noPaymentEnrollmentProvider=true`);
+  if(refundOnly)console.log(`ACADEMY_REFUND_UNAVAILABLE_UI_PASS project=${project} locales=en,he ordinaryOwner=true runtimeDefaultNotAdmitted=true successfulFamilyFeeFormsNotProven=true noPaymentRefundEnrollmentProvider=true`);
+  if(offerOnly&&!monthlyOnly)console.log(`ACADEMY_OFFER_UI_ACCEPTANCE_PASS project=${project} locales=en,he ordinaryOwnerAfterParentTerms=true atomicPrepareExactRetry=true withdrawPrivateHistory=true capacityReleased=true noPaymentEnrollmentProvider=true`);
+  if(enrollmentOnly&&!monthlyOnly)console.log(`ACADEMY_ENROLLMENT_UI_ACCEPTANCE_PASS project=${project} locales=en,he ordinaryOwnerFit=true ordinaryParentTerms=true commitLossExactRetry=true protectedRowsUnchanged=true noPaymentEnrollmentProvider=true`);
+  if(familyOnly)console.log(`ACADEMY_FAMILY_UI_ACCEPTANCE_PASS project=${project} locales=en,he ordinaryOwnerAndNewParent=true exactReplay=true newFamilies=2 newChildren=2 invitationsQueuedThenConsumed=2 securityNoticesQueued=2 noEnrollmentPaymentTaskProvider=true`);
+  else console.log(`FISHING_LEAD_UI_ACCEPTANCE_PASS project=${project} composedPublicOwnerLogin=true ordinaryRelogin=true scopedDetailsSaved=true detailsRetainedAfterRemoval=true revisions=14 operations=14 profiles=5 projections=6 publicInquiries=4 publicOperations=4 tasksUnchanged=true unrelatedProfileUnchanged=true providerEffects=0`);
  }
  else if(process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==="true"){
   phase="public-boundary-readback";const after=await counts(),writes=project===undefined||project==="desktop"?2:1;
@@ -321,5 +407,5 @@ try{
  if(after.inquiries!==baseline.inquiries+3||after.operations!==baseline.operations+3||after.serviceInterests!==baseline.serviceInterests+4||after.serviceOperations!==baseline.serviceOperations+5||after.draftGroups!==baseline.draftGroups+8||after.draftOperations!==baseline.draftOperations+8||after.proposedPlacements!==baseline.proposedPlacements+8||after.placementOperations!==baseline.placementOperations+8||after.placementMoves!==baseline.placementMoves+4||after.movementOperations!==baseline.movementOperations+4||after.meetingRevisions!==baseline.meetingRevisions+4||after.meetingOperations!==baseline.meetingOperations+4||after.practiceRevisions!==baseline.practiceRevisions+42||after.practiceOperations!==baseline.practiceOperations+42)throw new Error("GROUP_INTEREST_RECEIPT_COUNT_MISMATCH");
  console.log(`GROUP_INTEREST_ACCEPTANCE_PASS project=${project??"all"} inquiries=3 serviceInterests=4 draftGroups=8 proposedPlacements=8 placementOperations=8 placementMoves=4 movementOperations=4 meetingRevisions=4 meetingOperations=4 practiceRevisions=42 practiceOperations=42 pagedHistory=42 sideEffects=0`);
  }
-}catch(error){console.error(`Group Intake browser verification failed at ${phase} (${error instanceof Error?error.message:"unknown error"}). No production or provider state was used.`);process.exitCode=1;}
+}catch(error){console.error(`Group Intake browser verification failed at ${phase} (${error instanceof Error?error.message:"unknown error"}). No production or provider state was used.`);if(monthlyOnly)console.error(appDiagnostic());process.exitCode=1;}
 finally{await cleanup();}

@@ -1,5 +1,7 @@
 "use client";
 import {useEffect,useState} from "react";
+import {useSearchParams} from 'next/navigation';
+import {FishingFamilyHomeWorkspace} from '../../features/fishing/family-home-workspace.tsx';
 import {accountRead} from "../../features/identity/client.ts";
 import {PracticeList} from "../../features/home-practice/practice-list.tsx";
 import {workspaceHref} from "./navigation-model.ts";
@@ -9,6 +11,10 @@ export function visibleHomeCases(role:"parent"|"adult_client"|"child",rows:reado
  return rows.filter(row=>row.kind===(role==="adult_client"?"adult":"minor"));
 }
 export function FamilyHomeWorkspace({locale,initialCaseId,role="parent"}:{locale:Locale;initialCaseId?:string|undefined;role?:"parent"|"adult_client"|"child"}) {
+ const params=useSearchParams();
+ return role==='parent'&&params.get('fishing')==='1'?<FishingFamilyHomeWorkspace locale={locale}/>:<ExistingFamilyHomeWorkspace locale={locale} initialCaseId={initialCaseId} role={role}/>;
+}
+function ExistingFamilyHomeWorkspace({locale,initialCaseId,role}:{locale:Locale;initialCaseId?:string|undefined;role:"parent"|"adult_client"|"child"}) {
  const [cases,setCases]=useState<Case[]|null>(null),[failed,setFailed]=useState(false),[revision,setRevision]=useState(0);
  const he=locale==="he";
  useEffect(()=>{let live=true;void accountRead<Case[]>("cases").then(rows=>{if(live){setCases(visibleHomeCases(role,rows));setFailed(false);}}).catch(()=>{if(live){setFailed(true);setCases(null);}});return()=>{live=false};},[revision,role]);

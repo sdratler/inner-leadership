@@ -121,6 +121,17 @@ describe("prepared Real Mensch transactional journey — synthetic port only",()
   for(const extra of [{actorId:id(1)},{passed:true},{safetyClearance:true},{paymentVerified:true},{teacherAnswer:"x"}])
    expect(lessonJourneyCommandSchema.safeParse({...submit(),...extra}).success).toBe(false);
  });
+ it.each([1,2,3])("requires every approved question for final submission (%i questions), while complete work replays",async count=>{
+  const db=new Fixture(),app=service(db);
+  db.current.lesson=learnerLessonSchema.parse({...lesson,questions:Array.from({length:count},(_,index)=>({id:`Q01-${index+1}`,prompt:`Synthetic question ${index+1}`}))});
+  const complete={...submit(),answers:db.current.lesson.questions.map(question=>({questionId:question.id,value:"Synthetic complete answer"})).reverse()};
+  const incomplete={...complete,answers:complete.answers.slice(1)};
+  await expect(app.save(ref,incomplete)).rejects.toThrow();expect(db.events).toHaveLength(0);expect(db.appends).toBe(0);
+  const saved=await app.save(ref,complete),reloaded=service(db.reload());
+  expect(await reloaded.read(ref,"learner")).toMatchObject({submission:{revisionId:saved.revisionId,answers:complete.answers}});
+  expect(await reloaded.save(ref,complete)).toEqual({revisionId:saved.revisionId,duplicate:true});
+  expect(db.events).toHaveLength(1);
+ });
  it("new work invalidates old observation for a new share, without silently replacing a historical share",async()=>{
   const {db,app,observed}=await preparedJourney(),published=await app.save(ref,{action:"publish_parent_summary",operationId:id(12),
    expectedRevisionId:observed.revisionId,observationId:observed.revisionId,summary:"Exact version one.",parentAccountIds:[id(2)]});
@@ -181,4 +192,11 @@ describe("prepared Real Mensch transactional journey — synthetic port only",()
   expect(html).toContain("שליחת העבודה שלי");expect(html).toContain('class="lsw-input"');expect(html).toContain("טיוטה");
   expect(html).toMatch(/<button[^>]*disabled/);expect(html).not.toMatch(/<textarea[^>]*disabled/);expect(html).not.toMatch(/<details\b[^>]*\sopen(?:=|\s|>)/);
  });
+});
+
+it("durable draft is actor-private partial work and empty draft is not a final submission",async()=>{
+ const db=new Fixture(),app=service(db),command={action:"save_draft",operationId:id(71),expectedRevisionId:null,answers:[]};
+ const saved=await app.save(ref,command);expect((await app.read(ref,"learner")).draft).toMatchObject({revisionId:saved.revisionId,answers:[]});expect((await app.read(ref,"learner")).submission).toBeNull();
+ db.current=context("practitioner");expect(await app.read(ref,"teacher")).not.toHaveProperty("draft");await expect(app.save(ref,{...command,operationId:id(72),expectedRevisionId:saved.revisionId})).rejects.toThrow("FORBIDDEN");
+ db.current=context("parent");expect((await service(db.reload()).read(ref,"learner")).draft?.answers).toEqual([]);
 });

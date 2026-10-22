@@ -13,6 +13,10 @@ import { once } from 'node:events';
 import { fixture,safeTestUrl } from '../../database/calendar/fixture.ts';
 import { civilDate } from '../../../src/features/calendar/time.ts';
 import { InternalTaskService } from '../../../src/features/calendar/tasks.ts';
+if(process.env.LS_RM_FISHING_STAGE_UI_ONLY==='true'){
+ const {runFishingStageBrowser}=await import('./fishing-stage-fixture.ts');
+ await runFishingStageBrowser();
+}else{
 const project=process.env.LS_CALENDAR_TEST_PROJECT;
 if(project!==undefined&&!['desktop','mobile'].includes(project))throw new Error('CALENDAR_BROWSER_PROJECT_NOT_SUPPORTED');
 const tlsPort=project==='mobile'?3446:3445,port=project==='mobile'?3104:3103,origin=`https://127.0.0.1:${tlsPort}`;
@@ -83,3 +87,4 @@ try{
  console.log('LS-030 isolated browser suite completed. Only synthetic fixtures used; no deployment.');
 }catch(error){console.error(`LS-030 browser verification failed at ${phase} (${error instanceof Error?error.name:'unknown error'}). Inspect sanitized test assertions; no runtime credentials are printed.`);process.exitCode=1;}
 finally{await cleanup();}
+}

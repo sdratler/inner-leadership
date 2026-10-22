@@ -503,6 +503,28 @@ it('does not refetch a native directory already loaded for its exact URL context
  try{const view=()=>hook.render(()=>NativePeopleWorkspace({locale:'en',view:'all',initial,initialLoadedContext:true,initialFilters:{query:'synthetic',stage:'',language:'',due:'any'},onSheet:()=>{}}));view();hook.flushEffects();await tick();expect(fetch).not.toHaveBeenCalled();}
  finally{vi.unstubAllGlobals();}
 });
+it.each(['en','he']as const)('%s first People read adopts Academy scope and does not load the global paid pipeline',async locale=>{
+ const data={source:'native',authorityEpoch:3,page:{items:[],total:0,page:2,pageSize:12,pages:2}};
+ hook.peopleRead.mockResolvedValue(data);
+ const view=()=>hook.render(()=>ClientsRoster({locale,section:'paid',prospectFilter:'booking',stage:'Global stage',program:'sunday_fishing_academy',leadStatus:'follow_up',page:'2',search:'Academy note',due:'overdue'}));
+ view();hook.flushEffects();await tick();
+ expect(hook.peopleRead).toHaveBeenCalledExactlyOnceWith(new URLSearchParams({view:'all',program:'sunday_fishing_academy',leadStatus:'follow_up',page:'2',search:'Academy note',due:'overdue'}));
+ const native=find(view(),e=>e.type===NativePeopleWorkspace);expect(native?.props.view).toBe('all');expect(native?.props.initialFilter).toBe('all');expect(native?.props.initialLoadedContext).toBe(true);
+ expect(native?.props.initialFilters).toEqual({query:'Academy note',stage:'',language:'',due:'overdue',program:'sunday_fishing_academy',leadStatus:'follow_up'});
+ expect(hook.accountRead).not.toHaveBeenCalled();
+});
+it('an Academy source failure does not fall back to Sheet or describe an empty Academy list',async()=>{
+ hook.peopleRead.mockRejectedValue(new PeopleRequestError(409));
+ const view=()=>hook.render(()=>ClientsRoster({locale:'en',program:'sunday_fishing_academy',leadStatus:'follow_up'}));view();hook.flushEffects();await tick();
+ expect(find(view(),e=>e.type===LegacyClientsRoster||e.type===ProspectsClient||e.type===NativePeopleWorkspace)).toBeUndefined();
+ expect(text(view())).toContain('No fallback or changes were used');expect(hook.accountRead).not.toHaveBeenCalled();
+});
+it.each(['personId','focusLeadId']as const)('first Academy read retains association scope with an exact %s',async key=>{
+ const personId='00000000-0000-4000-8000-000000000001',leadId='LS-LEAD-synthetic-academy';
+ hook.peopleRead.mockResolvedValue({source:'native',authorityEpoch:3,page:{items:[],total:0,page:1,pageSize:12,pages:1}});
+ const view=()=>hook.render(()=>ClientsRoster({locale:'en',[key]:key==='personId'?personId:leadId,program:'sunday_fishing_academy',leadStatus:'follow_up'}));
+ view();hook.flushEffects();await tick();expect(hook.peopleRead).toHaveBeenCalledExactlyOnceWith(new URLSearchParams({view:'all',[key==='personId'?'personId':'leadId']:key==='personId'?personId:leadId,program:'sunday_fishing_academy',leadStatus:'follow_up'}));
+});
 it('resets a persisted directory page after a confirmed native contact save',async()=>{
  let location=new URL('https://synthetic.invalid/en/app/clients?page=2');
  vi.stubGlobal('window',{get location(){return location;},history:{state:null,replaceState(_state:unknown,_unused:string,url:URL){location=new URL(url);}},addEventListener(){},removeEventListener(){}});

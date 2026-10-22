@@ -4,18 +4,18 @@ import {promisify} from "node:util";
 import {readFileSync} from "node:fs";
 import {createHash} from "node:crypto";
 import pg from "pg";
-import {safeTestUrl} from "../../database/calendar/fixture.ts";
+import {safeTestUrl} from "../../database/calendar/test-target.ts";
 import {educationSearch} from "../../../src/features/resources/education-query.ts";
 import type {LessonReference} from "../../../src/features/resources/fishing-lesson-journey.ts";
 import {syntheticChildFailure} from "../group-interest/synthetic-child-output.ts";
 const runtimePath=process.env.LS_GROUP_INTEREST_FIXTURE_PATH;
 if(!runtimePath){
- test("ordinary-session educational workflow through the existing disposable native harness",async({},info)=>{
+ for(const batch of["retained","drafts"]as const)test(`ordinary-session educational ${batch} workflows through the existing disposable native harness`,async({},info)=>{
   test.setTimeout(420000);const project=info.project.name==="mobile"?"mobile390":info.project.name;
   const result=await promisify(execFile)(process.execPath,["--conditions=react-server","--import","tsx","tests/e2e/group-interest/run.ts"],{
-   timeout:390000,maxBuffer:2*1024*1024,env:{...process.env,LS_GROUP_INTEREST_TEST_ALLOW:"true",LS_CALENDAR_TEST_ALLOW:"true",LS_GROUP_INTEREST_TEST_PROJECT:project,LS_EDUCATION_UI_ONLY:"true"},
+   timeout:390000,maxBuffer:2*1024*1024,env:{...process.env,LS_GROUP_INTEREST_TEST_ALLOW:"true",LS_CALENDAR_TEST_ALLOW:"true",LS_GROUP_INTEREST_TEST_PROJECT:project,LS_EDUCATION_UI_ONLY:"true",LS_EDUCATION_TEST_BATCH:batch},
   }).catch(error=>{throw new Error(syntheticChildFailure(error));});
-  expect(result.stdout).toContain("EDUCATION_BROWSER_ACCEPTANCE_PASS project="+project);
+  expect(result.stdout).toContain(`EDUCATION_BROWSER_ACCEPTANCE_PASS project=${project} batch=${batch}`);
  });
 }else{
  const runtime=JSON.parse(readFileSync(runtimePath,"utf8"))as{origin:string;education:{workspaceId:string;credentials:{role:string;accountId:string;email:string;password:string}[];references:Record<string,LessonReference>}};
@@ -81,6 +81,23 @@ if(!runtimePath){
    const body=await(await page.request.get(query(ref,"parent"))).json();expect(JSON.stringify(body)).not.toMatch(/PRIVATE OBSERVATION|TEACHER KEY|retained .* answer|summaryRecipients|privateNote|emailCiphertext/);
    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:info.outputPath(`education-portfolio-${locale}-${info.project.name}.png`)});
   }finally{for(const c of contexts)await c.close();}
+ });
+ for(const locale of["en","he"]as const)test(`${locale}: partial draft survives real sign-in and stays separate from final work and private knowledge assessment`,async({page,browser},info)=>{
+  const ref=edu.references["draft-"+locale]!,contexts:BrowserContext[]=[],partial="PRIVATE_SYNTHETIC_DURABLE_PARTIAL "+locale,knowledge="PRIVATE_SYNTHETIC_KNOWLEDGE identified the equipment checks "+locale,safe="Synthetic explicitly approved progress "+locale;
+  try{
+   await login(page,"parent",href(locale,ref,"lesson"),locale);const answers=page.locator("textarea[name^=Q]");await expect(answers).toHaveCount(3);await answers.nth(0).fill(partial);
+   let lost=false;const bodies:string[]=[];await page.route("**/api/resources/education/lesson",async route=>{if(route.request().method()!=="POST")return route.continue();bodies.push(route.request().postData()!);const real=await route.fetch();expect(real.status()).toBe(200);if(!lost){lost=true;await route.abort("failed");}else await route.fulfill({response:real});});
+   await page.getByRole("button",{name:t(locale,"Save draft","שמירת טיוטה"),exact:true}).click();await expect(page.locator(".lsw-feature-page").getByRole("alert")).toContainText(t(locale,"save result is unknown","תוצאת השמירה אינה ידועה"));
+   await page.getByRole("button",{name:t(locale,"Retry the same operation","ניסיון נוסף לאותה פעולה"),exact:true}).click();await expect(page.getByText(t(locale,"Draft saved in the app. It has not been submitted to your instructor.","הטיוטה נשמרה במערכת. היא טרם הוגשה למדריך."),{exact:true})).toBeVisible();expect(bodies).toHaveLength(2);expect(bodies[0]).toBe(bodies[1]);expect(JSON.parse(bodies[0]!).command.action).toBe("save_draft");await page.unrouteAll({behavior:"wait"});
+   await page.reload();await expect(answers.nth(0)).toHaveValue(partial);await expect(answers.nth(1)).toHaveValue("");await expect(answers.nth(2)).toHaveValue("");await page.getByRole("button",{name:t(locale,"Submit my work","שליחת העבודה שלי"),exact:true}).click();await expect(page.locator("textarea:invalid")).toHaveCount(2);
+   const teacher=await separate(contexts,browser,page);await login(teacher,"practitioner",href(locale,ref,"review"),locale);await expect(teacher.getByText(t(locale,"No work has been submitted for this lesson.","טרם הוגשה עבודה לשיעור זה."),{exact:true})).toBeVisible();const before=await(await teacher.request.get(query(ref,"teacher"))).json();expect(before.data).not.toHaveProperty("draft");expect(before.data.submission).toBeNull();expect(JSON.stringify(before)).not.toContain(partial);
+   const fresh=await separate(contexts,browser,page);await login(fresh,"parent",href(locale,ref,"lesson"),locale);const freshAnswers=fresh.locator("textarea[name^=Q]");await expect(freshAnswers.nth(0)).toHaveValue(partial);await expect(freshAnswers.nth(1)).toHaveValue("");await fresh.locator(".lsw-feature-page").screenshot({path:info.outputPath(`education-draft-restored-${locale}-${info.project.name}.png`)});
+   await freshAnswers.nth(1).fill("Synthetic equipment check");await freshAnswers.nth(2).fill("Synthetic final reflection");await fresh.getByRole("button",{name:t(locale,"Submit my work","שליחת העבודה שלי"),exact:true}).click();await expect(fresh.getByRole("status").filter({hasText:t(locale,"Saved in the app","נשמר במערכת")})).toBeVisible();await fresh.reload();await expect(fresh.getByRole("button",{name:t(locale,"Submit my work","שליחת העבודה שלי"),exact:true})).toBeDisabled();await expect(fresh.getByText(t(locale,"Draft saved in the app. It has not been submitted to your instructor.","הטיוטה נשמרה במערכת. היא טרם הוגשה למדריך."),{exact:true})).toHaveCount(0);
+   await teacher.reload();await teacher.getByLabel(t(locale,"Knowledge assessment","הערכת ידע"),{exact:true}).selectOption("recorded");await teacher.getByLabel(t(locale,"Factual knowledge assessment","הערכת ידע עובדתית"),{exact:true}).fill(knowledge);await teacher.getByLabel(t(locale,"Observed task","המשימה שנצפתה"),{exact:true}).fill("Synthetic separately observed hookless task");await teacher.getByLabel(t(locale,"Assistance","סיוע"),{exact:true}).selectOption("with_guidance");await teacher.getByRole("button",{name:t(locale,"Save private observation","שמירת תצפית פרטית"),exact:true}).click();await expect(teacher.getByRole("status").filter({hasText:t(locale,"Saved in the app","נשמר במערכת")})).toBeVisible();await teacher.reload();await openDetails(teacher,t(locale,"Previous private observations","תצפיות פרטיות קודמות"));await expect(teacher.locator("article p").filter({hasText:knowledge})).toHaveText(t(locale,"Knowledge assessment: ","הערכת ידע: ")+knowledge);
+   await teacher.locator(".lsw-feature-page").screenshot({path:info.outputPath(`education-knowledge-recorded-${locale}-${info.project.name}.png`)});const assessment=await(await teacher.request.get(query(ref,"teacher"))).json();expect(assessment.data.observations[0].command).toMatchObject({knowledgeAssessment:{state:"recorded",assessment:knowledge},assistance:"with_guidance"});expect(assessment.data).not.toHaveProperty("draft");
+   await teacher.getByRole("tab",{name:t(locale,"Publish summary","פרסום סיכום"),exact:true}).click();await teacher.getByLabel(t(locale,"Parent-safe summary","סיכום המתאים להורה"),{exact:true}).fill(safe);await teacher.getByLabel(edu.credentials.find(c=>c.role==="parent")!.email,{exact:true}).check();await teacher.getByRole("button",{name:t(locale,"Publish selected summary","פרסום הסיכום שנבחר"),exact:true}).click();await expect(teacher.getByRole("status").filter({hasText:t(locale,"Saved in the app","נשמר במערכת")})).toBeVisible();
+   await fresh.getByRole("tab",{name:t(locale,"Published summary","סיכום שפורסם"),exact:true}).click();await expect(fresh.getByText(safe,{exact:true})).toBeVisible();await fresh.reload();await expect(fresh.getByText(safe,{exact:true})).toBeVisible();const parent=await(await fresh.request.get(query(ref,"parent"))).json();expect(parent.data).toEqual({moduleId:ref.moduleId,version:ref.version,portfolio:{revisionId:expect.any(String),summary:safe,publishedAt:expect.any(String),sourceSha256:expect.stringMatching(/^[a-f0-9]{64}$/)}});expect(JSON.stringify(parent)).not.toContain("PRIVATE_SYNTHETIC");await fresh.locator(".lsw-feature-page").screenshot({path:info.outputPath(`education-knowledge-parent-safe-${locale}-${info.project.name}.png`)});
+  }finally{for(const context of contexts)await context.close();}
  });
  test("ordinary roles/anonymous access deny unauthorized lesson and private teacher content",async({page,browser})=>{
   const ref=edu.references.en!,contexts:BrowserContext[]=[];

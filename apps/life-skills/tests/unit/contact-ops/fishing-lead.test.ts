@@ -9,6 +9,20 @@ const result=(v:number,state:"active"|"removed"):FishingLeadResult=>({operationI
  program:base.program,version:v,state,authorityEpoch:3,newPerson:false,replayed:true,tasksCreated:0,outboundEligible:false});
 const binding={accountId:"synthetic-account",managedLabelId:"synthetic-managed-label",chatId:"synthetic-chat"};
 describe("RM04 scoped fishing lead boundary",()=>{
+ it("edits only explicit Academy details and retains them across remove/restore without granting consent",()=>{
+  const details={status:"follow_up" as const,notes:"Synthetic Academy note",nextAction:"Owner callback",followUpDate:"2026-11-01"};
+  const added=nextFishingMembership(null,base),edited=nextFishingMembership(added,{...base,action:"edit",expectedVersion:1,details});
+  expect(edited).toMatchObject({state:"active",version:2,details,permission:{state:"unknown"},outboundEligible:false});
+  const removed=nextFishingMembership(edited,{...base,action:"remove",expectedVersion:2}),restored=nextFishingMembership(removed,{...base,expectedVersion:3});
+  expect(removed.details).toEqual(details);expect(restored.details).toEqual(details);
+  expect(()=>nextFishingMembership(removed,{...base,action:"edit",expectedVersion:3,details})).toThrow("FISHING_MEMBERSHIP_CONFLICT");
+  const other=nextFishingMembership(null,{...base,program:"private_fishing_life_skills"});expect(()=>nextFishingMembership(other,{...base,program:"private_fishing_life_skills",action:"edit",expectedVersion:1,details})).toThrow("FISHING_MEMBERSHIP_CONFLICT");
+ });
+ it("rejects invalid/manual-date and hidden effect fields on detail edits",()=>{
+  const input={action:"preview_edit",operationId:id(5),personId:id(2),expectedEpoch:3,expectedAssociationVersion:1,details:{status:"new",notes:"",nextAction:"",followUpDate:null}};
+  expect(fishingLeadRequestSchema.safeParse(input).success).toBe(true);
+  for(const patch of [{send:true},{details:{...input.details,followUpDate:"tomorrow"}},{details:{...input.details,notes:"x".repeat(2001)}},{details:{...input.details,task:true}}])expect(fishingLeadRequestSchema.safeParse({...input,...patch}).success).toBe(false);
+ });
  it("accepts explicit inquiry preview but not a name-derived command",()=>{
   expect(fishingLeadRequestSchema.parse({action:"preview_add",operationId:id(5),expectedEpoch:3,
    source:base.source,expectedAssociationVersion:0,relationship:"guardian"}).action).toBe("preview_add");

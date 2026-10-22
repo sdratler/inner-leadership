@@ -86,11 +86,15 @@ export function LoginClient({ locale }: { locale: Locale }) {
   const [tokenReady, setTokenReady] = useState(false);
   const [passwordVisible, setPasswordVisible] = useState(false);
   const token = useRef<string | null>(null);
+  const tokenCaptured = useRef(false);
   const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
   const t = copy[locale];
 
   useEffect(() => {
     if (initialMode === "invite" || initialMode === "reset") {
+      // Effect replay must not consume the already-cleared fragment again.
+      if (tokenCaptured.current) return;
+      tokenCaptured.current = true;
       token.current = takeAuthTokenFragment(window.location, window.history);
       setTokenReady(Boolean(token.current));
       if (!token.current) setStatus(t.token);

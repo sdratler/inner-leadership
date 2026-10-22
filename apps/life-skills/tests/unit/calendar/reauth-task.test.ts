@@ -6,7 +6,7 @@ vi.mock('next/navigation',()=>({useRouter:()=>({push:vi.fn(),replace:vi.fn()}),u
 vi.mock('../../../src/features/calendar/page-session.ts',()=>({calendarPageSession:state.session}));
 vi.mock('../../../src/features/calendar/form-support.tsx',()=>({useDialogGuard:()=>{},useCalendarMutation:()=>({locked:false,uncertain:false,run:vi.fn()})}));
 import Page from '../../../src/app/[locale]/app/calendar/page.tsx';
-import {CalendarWorkspace} from '../../../src/features/calendar/workspace.tsx';
+import {LifeSkillsCalendarWorkspace as CalendarWorkspace} from '../../../src/features/calendar/workspace.tsx';
 function find(node:unknown,predicate:(item:ReactElement<Record<string,unknown>>)=>boolean):ReactElement<Record<string,unknown>>|undefined{
  if(!node||typeof node!=='object')return;if(Array.isArray(node))return node.map(n=>find(n,predicate)).find(Boolean);
  const item=node as ReactElement<Record<string,unknown>>;return predicate(item)?item:find(item.props?.children,predicate);

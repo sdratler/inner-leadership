@@ -15,13 +15,16 @@ import {orderedCalendarEntries,type CalendarEntry} from './entry-order.ts';
 import {timingGroup,timingGroupLabel,timingLabel} from './task-presentation.ts';
 import type {CalendarContent} from './content.ts';
 import {CalendarContentEntry} from './content-entry.tsx';
+import {FishingCalendarEntry} from '../fishing/program-calendar-workspace.tsx';
+import type {FishingCalendarEvent} from '../fishing/program-calendar-contract.ts';
 import { text } from './copy.ts';
 export function formatTime(value:string,locale:Locale,full=true){return new Intl.DateTimeFormat(locale==='he'?'he-IL':'en-GB',{timeZone:'Asia/Jerusalem',...(full?{dateStyle:'medium' as const}:{}),timeStyle:'short',hourCycle:'h23'}).format(new Date(value));}
 export type OpenAppointment=(a:AppointmentView,e:MouseEvent<HTMLButtonElement>)=>void;
 function followupHref(locale:Locale,leadId:string){return '/'+locale+'/app/clients?section=prospects&leadId='+encodeURIComponent(leadId);}
-type CalendarEntryProps={locale:Locale;names:Record<string,string>;onOpen:OpenAppointment;onCompleteTask?:((task:InternalTask)=>void)|undefined;onManageTask?:OpenTaskManager|undefined;onOpenPractice?:OpenCalendarPractice|undefined};
+type CalendarEntryProps={locale:Locale;names:Record<string,string>;onOpen:OpenAppointment;onCompleteTask?:((task:InternalTask)=>void)|undefined;onManageTask?:OpenTaskManager|undefined;onOpenPractice?:OpenCalendarPractice|undefined;onOpenFishing?:((item:FishingCalendarEvent)=>void)|undefined};
 function CalendarEntryView({entry,compact,...props}:CalendarEntryProps&{entry:CalendarEntry;compact:boolean}){
  const {locale,names,onOpen,onOpenPractice,onCompleteTask,onManageTask}=props,t=text(locale);
+ if(entry.kind==='fishing')return <FishingCalendarEntry item={entry.item} locale={locale} compact={compact} onOpen={props.onOpenFishing}/>;
  if(entry.kind==='task')return <CalendarTaskCard task={entry.item} locale={locale} names={names} agenda={!compact} onCompleteTask={onCompleteTask} onManageTask={onManageTask}/>;
  if(entry.kind==='content')return <CalendarContentEntry item={entry.item} locale={locale} compact={compact}/>;
  if(entry.kind==='practice')return <article className="ls-cal-practice-agenda"><PracticeCalendarEntry item={entry.item} locale={locale} onOpen={onOpenPractice!}/></article>;
@@ -36,11 +39,11 @@ function CalendarEntryView({entry,compact,...props}:CalendarEntryProps&{entry:Ca
 function CalendarEntryGroups({entries,compact,...props}:CalendarEntryProps&{entries:CalendarEntry[];compact:boolean}){
  return <>{(['timed','part_of_day','unset'] as const).map(group=>{const visible=entries.filter(entry=>timingGroup(entry.timing)===group);return visible.length?<section className="ls-cal-entry-group" key={group} aria-label={timingGroupLabel(group,props.locale)}><h4 className="ls-cal-group-label">{timingGroupLabel(group,props.locale)}</h4>{visible.map(entry=><CalendarEntryView {...props} entry={entry} compact={compact} key={entry.key}/>)}</section>:null;})}</>;
 }
-export function CalendarBoard({dates,items,followups=[],tasks=[],practice=[],content=[],onOpenPractice,locale,view,names,onOpen,onCompleteTask,onManageTask}:{dates:string[];items:AppointmentView[];followups?:CalendarFollowup[];tasks?:InternalTask[];practice?:PracticeOccurrenceItem[];content?:CalendarContent[];onOpenPractice?:OpenCalendarPractice;locale:Locale;view:'day'|'week'|'month';names:Record<string,string>;onOpen:OpenAppointment;onCompleteTask?:((task:InternalTask)=>void)|undefined;onManageTask?:OpenTaskManager|undefined}){
- const t=text(locale),entries=orderedCalendarEntries({items,followups,tasks,content,practice:onOpenPractice?practice:[]});
+export function CalendarBoard({dates,items,followups=[],tasks=[],practice=[],content=[],fishing=[],onOpenFishing,onOpenPractice,locale,view,names,onOpen,onCompleteTask,onManageTask}:{dates:string[];items:AppointmentView[];followups?:CalendarFollowup[];tasks?:InternalTask[];practice?:PracticeOccurrenceItem[];content?:CalendarContent[];fishing?:FishingCalendarEvent[];onOpenFishing?:((item:FishingCalendarEvent)=>void)|undefined;onOpenPractice?:OpenCalendarPractice;locale:Locale;view:'day'|'week'|'month';names:Record<string,string>;onOpen:OpenAppointment;onCompleteTask?:((task:InternalTask)=>void)|undefined;onManageTask?:OpenTaskManager|undefined}){
+ const t=text(locale),entries=orderedCalendarEntries({items,followups,tasks,content,fishing,practice:onOpenPractice?practice:[]});
  return <div className={'ls-cal-board ls-cal-board--'+view} data-ls-calendar-grid>{dates.map(date=>{
   const dayEntries=entries.filter(entry=>entry.date===date),heading=new Intl.DateTimeFormat(locale==='he'?'he-IL':'en-GB',{weekday:'short',day:'numeric',month:'short',timeZone:'Asia/Jerusalem'}).format(new Date(date+'T12:00:00Z'));
-  return <section key={date} className="ls-cal-day" aria-labelledby={'day-'+date}><h3 id={'day-'+date}><time dateTime={date}>{heading}</time></h3><CalendarEntryGroups entries={dayEntries} compact locale={locale} names={names} onOpen={onOpen} onOpenPractice={onOpenPractice} onCompleteTask={onCompleteTask} onManageTask={onManageTask}/>{!dayEntries.length&&<p className="ls-cal-day-empty" aria-label={t.empty}>—</p>}</section>;
+  return <section key={date} className="ls-cal-day" aria-labelledby={'day-'+date}><h3 id={'day-'+date}><time dateTime={date}>{heading}</time></h3><CalendarEntryGroups entries={dayEntries} compact locale={locale} names={names} onOpen={onOpen} onOpenPractice={onOpenPractice} onOpenFishing={onOpenFishing} onCompleteTask={onCompleteTask} onManageTask={onManageTask}/>{!dayEntries.length&&<p className="ls-cal-day-empty" aria-label={t.empty}>—</p>}</section>;
  })}</div>;
 }
 /** Only a rendered, visible authorized task in this agenda can be selected. */
@@ -56,7 +59,7 @@ export function revealCalendarTaskFragment(root:Pick<HTMLElement,'querySelector'
  target.scrollIntoView({block:'center',behavior:'auto'});
  (disclosure?.querySelector<HTMLElement>(':scope > summary')??target).focus({preventScroll:true});return true;
 }
-export function CalendarAgenda({items,followups=[],tasks=[],practice=[],content=[],onOpenPractice,locale,names,onOpen,onCompleteTask,onManageTask}:{items:AppointmentView[];followups?:CalendarFollowup[];tasks?:InternalTask[];practice?:PracticeOccurrenceItem[];content?:CalendarContent[];onOpenPractice?:OpenCalendarPractice;locale:Locale;names:Record<string,string>;onOpen:OpenAppointment;onCompleteTask?:((task:InternalTask)=>void)|undefined;onManageTask?:OpenTaskManager|undefined}){
+export function CalendarAgenda({items,followups=[],tasks=[],practice=[],content=[],fishing=[],onOpenFishing,onOpenPractice,locale,names,onOpen,onCompleteTask,onManageTask}:{items:AppointmentView[];followups?:CalendarFollowup[];tasks?:InternalTask[];practice?:PracticeOccurrenceItem[];content?:CalendarContent[];fishing?:FishingCalendarEvent[];onOpenFishing?:((item:FishingCalendarEvent)=>void)|undefined;onOpenPractice?:OpenCalendarPractice;locale:Locale;names:Record<string,string>;onOpen:OpenAppointment;onCompleteTask?:((task:InternalTask)=>void)|undefined;onManageTask?:OpenTaskManager|undefined}){
  const t=text(locale);
  const agenda=useRef<HTMLDivElement>(null),appliedFragment=useRef<string|null>(null);
  useEffect(()=>{
@@ -66,8 +69,8 @@ export function CalendarAgenda({items,followups=[],tasks=[],practice=[],content=
   apply();const changed=()=>{appliedFragment.current=null;apply();};
   window.addEventListener('hashchange',changed);return()=>window.removeEventListener('hashchange',changed);
  },[tasks]);
- const entries=orderedCalendarEntries({items,followups,tasks,content,practice:onOpenPractice?practice:[]}),dates=[...new Set(entries.map(entry=>entry.date))];
- return <div ref={agenda} className="ls-cal-agenda-list">{dates.map(date=><section className="ls-cal-agenda-day" key={date} aria-labelledby={'agenda-day-'+date}><h3 id={'agenda-day-'+date}><time dateTime={date}>{new Intl.DateTimeFormat(locale==='he'?'he-IL':'en-GB',{dateStyle:'full',timeZone:'Asia/Jerusalem'}).format(new Date(date+'T12:00:00Z'))}</time></h3><CalendarEntryGroups entries={entries.filter(entry=>entry.date===date)} compact={false} locale={locale} names={names} onOpen={onOpen} onOpenPractice={onOpenPractice} onCompleteTask={onCompleteTask} onManageTask={onManageTask}/></section>)}{!entries.length&&<p>{t.empty}</p>}</div>;
+ const entries=orderedCalendarEntries({items,followups,tasks,content,fishing,practice:onOpenPractice?practice:[]}),dates=[...new Set(entries.map(entry=>entry.date))];
+ return <div ref={agenda} className="ls-cal-agenda-list">{dates.map(date=><section className="ls-cal-agenda-day" key={date} aria-labelledby={'agenda-day-'+date}><h3 id={'agenda-day-'+date}><time dateTime={date}>{new Intl.DateTimeFormat(locale==='he'?'he-IL':'en-GB',{dateStyle:'full',timeZone:'Asia/Jerusalem'}).format(new Date(date+'T12:00:00Z'))}</time></h3><CalendarEntryGroups entries={entries.filter(entry=>entry.date===date)} compact={false} locale={locale} names={names} onOpen={onOpen} onOpenPractice={onOpenPractice} onOpenFishing={onOpenFishing} onCompleteTask={onCompleteTask} onManageTask={onManageTask}/></section>)}{!entries.length&&<p>{t.empty}</p>}</div>;
 }
 export function NoticeReceipt({appointment:a,locale,onReplacement}:{appointment:AppointmentView;locale:Locale;onReplacement?:()=>void}){
  const t=text(locale),n=a.notice;if(!n)return null;

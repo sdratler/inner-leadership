@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { safeTestUrl } from '../../database/calendar/fixture.ts';
+import { safeTestUrl } from '../../database/calendar/test-target.ts';
 
 const ci='postgresql://synthetic:synthetic_ci_only@127.0.0.1:5432/lifeskills_migration_test';
 beforeEach(()=>{

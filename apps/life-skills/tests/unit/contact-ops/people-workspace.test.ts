@@ -9,6 +9,11 @@ import type {NativeContactRow} from "../../../src/features/contact-ops/server/na
 import {selectNativeContacts,type NativeContactReference} from "../../../src/features/contact-ops/server/native-directory.ts";
 import nextConfig from "../../../next.config.ts";
 const personId="00000000-0000-4000-8000-000000000001",fields={stage:"New inquiry",nextAction:"Synthetic next action",followUpDate:"2026-09-28",notes:"  Synthetic saved note\nהערה סינתטית שמורה  "};
+test.each(["en","he"] as const)("%s Academy list displays scoped status/action/date without borrowing global business fields",locale=>{
+ const row:NativeContactRow={personId,displayName:"Synthetic Academy contact",identityKind:"adult",...fields,version:1,mode:"live",archived:false,doNotContact:false,references:[],academyLead:{state:"active",version:2,details:{status:"callback_requested",notes:"Scoped note",nextAction:"Academy callback",followUpDate:"2026-11-03"}}};
+ const html=renderToStaticMarkup(createElement(NativePeopleWorkspace,{locale,view:"all",initial:{source:"native",authorityEpoch:3,page:{page:1,pages:1,pageSize:12,total:1,items:[row]}},initialFilters:{query:"",stage:"",language:"",due:"any",program:"sunday_fishing_academy"},onSheet:()=>{}}));
+ expect(html).toContain('JLFA • Lead');expect(html).toContain(`<td>${locale==="he"?"התבקשה שיחה חוזרת":"Callback requested"}</td>`);expect(html).toContain('<td>Academy callback</td>');expect(html).toContain('<td>2026-11-03</td>');expect(html).not.toContain(fields.nextAction);expect(row.nextAction).toBe(fields.nextAction);expect(row.followUpDate).toBe(fields.followUpDate);
+});
 test.each(["he","en"] as const)("%s displays bounded call metadata separately and collapsed, without pretending conversation history",locale=>{
  const row:NativeContactRow={personId,displayName:"Synthetic caller",identityKind:"adult",...fields,version:1,mode:"live",archived:false,doNotContact:false,references:[],
   callActivity:{items:[{id:personId,occurredAt:"2026-10-06T09:00:00.000Z",callState:"incoming",durationSeconds:0}],hasMore:true}};

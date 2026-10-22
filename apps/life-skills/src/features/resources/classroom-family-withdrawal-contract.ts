@@ -1,0 +1,10 @@
+import {z} from "zod";
+import {academyOwnerEnrollmentBindingSchema} from "../fishing/academy-enrollment-contract.ts";
+import {classroomWithdrawalVersion} from "./classroom-withdrawal-contract.ts";
+export const classroomFamilyWithdrawalPath="/api/private/group-applications/classroom-withdrawal";
+export const classroomFamilyWithdrawalQuerySchema=z.strictObject({applicationId:z.uuid(),stageId:z.uuid()});
+export const classroomFamilyWithdrawalCommandSchema=z.strictObject({version:z.literal(classroomWithdrawalVersion),operationId:z.uuid(),binding:academyOwnerEnrollmentBindingSchema,stageId:z.uuid(),expectedScopeSha256:z.string().regex(/^[a-f0-9]{64}$/)});
+export type ClassroomFamilyWithdrawalCommand=z.infer<typeof classroomFamilyWithdrawalCommandSchema>;
+export type ClassroomFamilyWithdrawalReview={state:"ready";binding:z.infer<typeof academyOwnerEnrollmentBindingSchema>;stageId:string;scopeSha256:string;enrollmentCount:number;lessonCount:number;withdrawn:boolean;retainedEventCount:number;children:{learnerId:string;displayName:string;lessons:{moduleId:string;version:string}[]}[]};
+export const classroomFamilyWithdrawalResultSchema=z.strictObject({operationId:z.uuid(),stageId:z.uuid(),state:z.literal("withdrawn"),revokedLessonCount:z.number().int().min(1).max(240),recordedAt:z.iso.datetime(),replayed:z.boolean()});
+export type ClassroomFamilyWithdrawalResult=z.infer<typeof classroomFamilyWithdrawalResultSchema>;
