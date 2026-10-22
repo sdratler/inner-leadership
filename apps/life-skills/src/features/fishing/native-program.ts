@@ -1,6 +1,7 @@
 import {readAcademySharedServices} from './academy-shared-service.ts';
 import type {AcademySharedServiceEvidence} from './academy-shared-service-contract.ts';
 import "server-only";
+import {classroomWithdrawalScopeSchema,type ClassroomWithdrawalScope} from "../resources/classroom-withdrawal-contract.ts";
 import {academyOperatorDays,academyOperatorDayViolations,type AcademyTeachingEvent} from './academy-operator-day.ts';
 import {academyAgreementAcceptanceSchema,academyTermsHash,readAcademyAgreementBundle,verifyAcademyAgreementAcceptance} from './academy-agreements.ts';
 import {randomUUID} from "node:crypto";
@@ -457,6 +458,29 @@ export class NativeFishingProgram {
   requireFact(enrollment.state==="confirmed"&&p.offer.operatorAccountId===c.actor.id,"FORBIDDEN");
   const guardianDigest=await this.guardian(tx,c.actor.workspaceId,p.offer.payerAccountId,enrollment.learnerId,enrollment.householdId);
   return {enrollment,payerAccountId:p.offer.payerAccountId,offerId:p.offer.id,operatorAccountId:c.actor.id,guardianDigest};
+ }
+ /** Server-only withdrawal scope resolver; no grant, enrollment or financial
+  * mutation. Ambiguous shared references are denied rather than broadened. */
+ async readClassroomFamilyScopeInTransaction(tx:SqlSession,actor:Actor,raw:unknown):Promise<ClassroomWithdrawalScope>{
+  const input=classroomWithdrawalScopeSchema.parse(raw),c=await this.actor(tx,actor),workspace=c.actor.workspaceId;
+  requireFact(await demoAccountBatch(tx,workspace,c.actor.id)===null,"FORBIDDEN");
+  const cohort=await this.cohort(tx,workspace,input.stageId);this.operator(c,cohort);
+  const rows=await tx.query<{id:string}>(`SELECT id FROM ls_fishing_stage.enrollments WHERE workspace_id=$1 AND stage_id=$2 AND household_id=$3 AND state IN('confirmed','suspended') ORDER BY id LIMIT 21 FOR SHARE`,[workspace,input.stageId,input.householdId]);
+  requireFact(rows.length>0&&rows.length<=20,"NOT_FOUND");const enrollments=[];
+  for(const row of rows){const e=await this.enrollment(tx,workspace,row.id,c.now);requireFact(e.householdId===input.householdId&&e.stageId===input.stageId&&e.authorizedAccountIds.length>0,"FORBIDDEN");enrollments.push({id:e.id,revision:e.revision,learnerId:e.learnerId,householdId:e.householdId,purchaseId:e.purchaseId,purchaseLineId:e.purchaseLineId,state:e.state});}
+  const learners=[...new Set(enrollments.map(e=>e.learnerId))];
+  const overlaps=await tx.query(`SELECT e.id FROM ls_fishing_stage.enrollments e JOIN ls_fishing_stage.cohorts c ON c.workspace_id=e.workspace_id AND c.stage_id=e.stage_id WHERE e.workspace_id=$1 AND e.learner_id=ANY($2::uuid[]) AND c.stage=$3 AND e.state IN('confirmed','suspended') AND (e.stage_id<>$4 OR e.household_id<>$5) LIMIT 1 FOR SHARE OF e,c`,[workspace,learners,cohort.stage,input.stageId,input.householdId]);
+  const otherFamily=await tx.query(`SELECT family_id FROM ls_cases.family_members WHERE workspace_id=$1 AND person_id=ANY($2::uuid[]) AND role='child' AND family_id<>$3 LIMIT 1 FOR SHARE`,[workspace,learners,input.householdId]);
+  requireFact(overlaps.length===0&&otherFamily.length===0,"CONFLICT");
+  const source=await this.source(tx,workspace,cohort.templateApprovalId,"template",c.now),template=await this.template(tx,workspace,cohort,parseTemplate(source.payload).version,c.now);
+  const provenance=await one<{revision:string}>(tx,`SELECT source_revision AS revision FROM ls_fishing_stage.source_approvals WHERE workspace_id=$1 AND id=$2 FOR SHARE`,[workspace,cohort.templateApprovalId]);requireFact(provenance,"UNAVAILABLE");
+  const lessons=await tx.query<ClassroomWithdrawalScope["lessons"][number]>(`SELECT a.learner_id AS "learnerId",a.module_id AS "moduleId",a.version,c.source_id AS "sourceId",c.source_revision AS "sourceRevision",c.source_sha256 AS "sourceSha256",c.learner_artifact_id AS "learnerArtifactId",c.teacher_artifact_id AS "teacherArtifactId" FROM ls_education.educational_assignments a JOIN ls_education.catalog_versions c ON c.workspace_id=a.workspace_id AND c.module_id=a.module_id AND c.version=a.version WHERE a.workspace_id=$1 AND a.learner_id=ANY($2::uuid[]) AND a.active AND left(a.module_id,4)=$3 ORDER BY a.learner_id,a.module_id,a.version LIMIT 241 FOR SHARE OF a,c`,[workspace,learners,`RM-${cohort.stage}`]);
+  requireFact(lessons.length>0&&lessons.length<=240&&learners.every(id=>lessons.some(l=>l.learnerId===id))&&lessons.every(l=>template.modules.some(m=>m.moduleId===l.moduleId&&m.moduleVersion===l.version)),"CONFLICT");
+  // A parent grant outside the selected saved household is an independent use
+  // of this learner/reference; account-null revocation would be too broad.
+  const foreignGrant=await tx.query(`SELECT g.account_id FROM ls_education.account_grants g JOIN ls_identity.accounts a ON a.workspace_id=g.workspace_id AND a.id=g.account_id JOIN ls_identity.account_subjects s ON s.workspace_id=a.workspace_id AND s.account_id=a.id WHERE g.workspace_id=$1 AND g.learner_id=ANY($2::uuid[]) AND g.active AND a.role='parent' AND left(g.module_id,4)=$3 AND NOT EXISTS(SELECT 1 FROM ls_cases.family_members m WHERE m.workspace_id=g.workspace_id AND m.family_id=$4 AND m.person_id=s.person_id AND m.role='parent') LIMIT 1 FOR SHARE OF g,a,s`,[workspace,learners,`RM-${cohort.stage}`,input.householdId]);
+  requireFact(foreignGrant.length===0,"CONFLICT");await this.actor(tx,actor);
+  return {workspaceId:workspace,operatorAccountId:c.actor.id,...input,cohortRevision:cohort.revision,template:{approvalId:cohort.templateApprovalId,revision:provenance.revision,sha256:source.hash,version:template.version},enrollments,lessons};
  }
  private async enrollment(tx:SqlSession,workspace:string,id:string,now:Date):Promise<EnrollmentProjection>{
   const e=await this.enrollmentRow(tx,workspace,id),cohort=await this.cohort(tx,workspace,e.stageId),p=await this.purchase(tx,workspace,e.purchaseId);
