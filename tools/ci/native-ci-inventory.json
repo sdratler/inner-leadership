@@ -1,10 +1,10 @@
 {
   "version": "JLFA-NATIVE-CI-20261022-01",
-  "sourceBundleSha256": "28309f3725e854e5f09146fdcb53fd4f6168f5c078566910654f075f79a2d36b",
+  "sourceBundleSha256": "16acd35e1ee1e16d9b14133c5a3536afb884aee4b9dc960c2c0561c1ea45f3b7",
   "sources": [
     {
       "path": ".github/workflows/pr-ci.yml",
-      "sha256": "8117c7caec5a94614a0fc4ceb00d02bab320f2bbfcc6f0369d5fcbd3a49fa23b"
+      "sha256": "5369747addebf840b3ca11500c187b2f02646f2a0a425b0a318a12cf28d2d26e"
     },
     {
       "path": "apps/life-skills/migrations/0001_ls_foundation.sql",
