@@ -5,6 +5,7 @@ import {execFile} from "node:child_process";
 import {createHash,randomUUID} from "node:crypto";
 import {readFileSync} from "node:fs";
 import {promisify} from "node:util";
+import {syntheticChildFailure} from "./synthetic-child-output.ts";
 import approvedCopy from "../../../src/features/group-application/presentation-copy.json" with {type:"json"};
 import {academyLandingDraft,academyJourneyForMode} from "../../../src/features/group-application/academy-draft.ts";
 // Expected public snapshot from JLFA-BILINGUAL-COPY-ROUTING-20261019-21.
@@ -224,8 +225,8 @@ if(!runtimePath){
   // The complete 13-case native suite needs boot/postcheck/cleanup headroom;
   // its individual case timeouts and all acceptance assertions stay unchanged.
   test.setTimeout(300_000);if(!["desktop","tablet768","mobile390","mobile340"].includes(project))throw new Error("GROUP_INTEREST_BROWSER_PROJECT_NOT_SUPPORTED");
-  const result=await promisify(execFile)(process.execPath,["--import","tsx","tests/e2e/group-interest/run.ts"],{timeout:270_000,maxBuffer:2*1024*1024,
-   env:{...process.env,LS_GROUP_INTEREST_TEST_PROJECT:project,LS_GROUP_INTEREST_TEST_ALLOW:"true",LS_CALENDAR_TEST_ALLOW:"true"}}).catch((error:unknown)=>{const failed=error as {stdout?:string;code?:string|number;signal?:string;killed?:boolean};console.error(JSON.stringify({phase:"group-interest-child",code:failed.code??null,signal:failed.signal??null,killed:failed.killed===true,childDeadlineMs:270_000}));if(failed.stdout)console.error(failed.stdout.slice(-16000));throw error;});
+  const result=await promisify(execFile)(process.execPath,["--conditions=react-server","--import","tsx","tests/e2e/group-interest/run.ts"],{timeout:270_000,maxBuffer:2*1024*1024,
+   env:{...process.env,LS_GROUP_INTEREST_TEST_PROJECT:project,LS_GROUP_INTEREST_TEST_ALLOW:"true",LS_CALENDAR_TEST_ALLOW:"true"}}).catch(error=>{throw new Error(syntheticChildFailure(error));});
   expect(result.stdout).toContain(`GROUP_INTEREST_ACCEPTANCE_PASS project=${project}`);console.log(result.stdout);
  });
 }else{

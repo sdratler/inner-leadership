@@ -1,10 +1,10 @@
 {
   "version": "JLFA-NATIVE-CI-20261022-01",
-  "sourceBundleSha256": "16acd35e1ee1e16d9b14133c5a3536afb884aee4b9dc960c2c0561c1ea45f3b7",
+  "sourceBundleSha256": "3f1f78d15f3fa5081ae076d680cf0f7d47e2ac1092ac3416c3fcd9a69bad02a4",
   "sources": [
     {
       "path": ".github/workflows/pr-ci.yml",
-      "sha256": "5369747addebf840b3ca11500c187b2f02646f2a0a425b0a318a12cf28d2d26e"
+      "sha256": "a7770b062ff00e4b1e7000a83ac7802d3d27fe30629f047a30370ebc01463753"
     },
     {
       "path": "apps/life-skills/migrations/0001_ls_foundation.sql",
@@ -4428,7 +4428,7 @@
     },
     {
       "path": "apps/life-skills/tests/e2e/calendar/calendar.spec.ts",
-      "sha256": "a8331840ee885dad9f472a27b9bb6efa842c21faaa49bfd59e2159d216d42490"
+      "sha256": "5a70105ac48a372e78024bb108d3c0224c1985ca413cb8d0d98e90ebcb3fdcb9"
     },
     {
       "path": "apps/life-skills/tests/e2e/calendar/fishing-stage-fixture.ts",
@@ -4556,7 +4556,7 @@
     },
     {
       "path": "apps/life-skills/tests/e2e/group-interest/group-interest.spec.ts",
-      "sha256": "ec66897f0e09c23ff63c9613ff9d345accbb22840228120833b589733016c08d"
+      "sha256": "5e34903af9e59e2e942e2cffdd96ef2f7ba61d8e31c21a1f884b9d4efa21ed81"
     },
     {
       "path": "apps/life-skills/tests/e2e/group-interest/inquiry-email-setup.focused.ts",
@@ -4648,7 +4648,7 @@
     },
     {
       "path": "apps/life-skills/tests/e2e/provider-index/provider-index.spec.ts",
-      "sha256": "741a824e1d3ac8ba4efa3ad2d559ee9268ef986a5f111f197b3615c6d9c5aaae"
+      "sha256": "218e0e92ae7cbb537371a0c26d1120b61b61c8f4aca73dc4268c3eea663f483d"
     },
     {
       "path": "apps/life-skills/tests/e2e/provider-index/run.ts",

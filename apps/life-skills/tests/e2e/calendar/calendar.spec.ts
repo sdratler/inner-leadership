@@ -3,6 +3,7 @@ import { test,expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { syntheticChildFailure } from '../group-interest/synthetic-child-output.ts';
 import { text } from '../../../src/features/calendar/copy.ts';
 type Data={origin:string;cases:Record<string,{futureId:string;pastId:string;futureDate:string;pastDate:string}>;caseId:string;foreignId:string;adminDisplayDate:string;parent:string;practitioner:string};
 const file=process.env.LS_CALENDAR_FIXTURE_PATH;
@@ -13,10 +14,10 @@ if(!file){
  test('isolated calendar authenticated journeys for the current browser project',async({},info)=>{
   test.setTimeout(180_000);
   if(!['desktop','mobile'].includes(info.project.name))throw new Error('CALENDAR_BROWSER_PROJECT_NOT_SUPPORTED');
-  const result=await promisify(execFile)(process.execPath,['--import','tsx','tests/e2e/calendar/run.ts'],{
+  const result=await promisify(execFile)(process.execPath,['--conditions=react-server','--import','tsx','tests/e2e/calendar/run.ts'],{
    timeout:150_000,maxBuffer:2*1024*1024,
    env:{...process.env,LS_CALENDAR_TEST_PROJECT:info.project.name,LS_PRIVATE_APP_ENABLED:'true',LS_CALENDAR_TEST_SHARED_ROUTES_ACCEPTED:'true'},
-  });
+  }).catch(error=>{throw new Error(syntheticChildFailure(error));});
   expect(result.stdout).toContain('LS-030 isolated browser suite completed.');
   console.log(result.stdout);
  });
