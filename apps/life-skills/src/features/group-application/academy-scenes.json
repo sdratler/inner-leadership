@@ -113,5 +113,9 @@
       "sha256": "97e721662f1fdd03f8e9b57ca835f12daeb8f5a139922615ea7788c8560cc534",
       "sourceSha256": "6b3d863bdf5a290b2fdfe4b18a775b6af45222f9f26161ebcc26d8b4d904d794"
     }
-  ]
+  ],
+  "stageCardPresentation": {
+    "decision": "JLFA-HERO-BRAND-CORRECTION-20261020",
+    "advanced": "Landscape FISH-TARPON-STRIKE-D at all breakpoints; same card region as other stages, focal82% center; original portrait remains retained for other placements."
+  }
 }

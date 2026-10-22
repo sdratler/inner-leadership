@@ -30,7 +30,7 @@ if(refundOnly&&!monthlyOnly)throw Error('REFUND_BROWSER_REQUIRES_RETAINED_MONTHL
 if(monthlyOnly&&(!offerOnly||sampleOnly||process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==='true'||process.env.LS_GROUP_INTEREST_CAPTURE_ONLY==='true'||process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==='true'))throw Error('MONTHLY_EXCLUSIVE_ORDINARY_HARNESS_REQUIRED');
 if(offerOnly&&!enrollmentOnly)throw Error('OFFER_REQUIRES_RETAINED_ENROLLMENT_HARNESS');
 if(enrollmentOnly&&!familyOnly)throw Error("ENROLLMENT_REQUIRES_RETAINED_FAMILY_HARNESS");
-if(familyOnly&&(!fishingOnly||!["desktop","mobile390"].includes(project??"")||process.env.LS_RM_LAUNCH_OPS09_ONLY==="true"||process.env.LS_EDUCATION_UI_ONLY==="true"||process.env.LS_COMMUNITY_UI_ONLY==="true"))throw Error("FAMILY_EXCLUSIVE_ORDINARY_HARNESS_REQUIRED");
+if(familyOnly&&(!fishingOnly||!["desktop","mobile390","mobile340","tablet768"].includes(project??"")||process.env.LS_RM_LAUNCH_OPS09_ONLY==="true"||process.env.LS_EDUCATION_UI_ONLY==="true"||process.env.LS_COMMUNITY_UI_ONLY==="true"))throw Error("FAMILY_EXCLUSIVE_ORDINARY_HARNESS_REQUIRED");
 const educationOnly=process.env.LS_EDUCATION_UI_ONLY==="true";
 const educationBatch=process.env.LS_EDUCATION_TEST_BATCH;
 if(educationOnly&&educationBatch!=="retained"&&educationBatch!=="drafts")throw Error("EDUCATION_EXPLICIT_CLOSED_BATCH_REQUIRED");
@@ -41,12 +41,12 @@ if(launchOpsOnly&&(!fishingOnly||project===undefined||communityOnly||educationOn
 if(communityOnly&&(project===undefined||educationOnly||fishingOnly||sampleOnly))throw new Error("COMMUNITY_EXCLUSIVE_EXPLICIT_PROJECT_REQUIRED");
 if(educationOnly&&project===undefined)throw new Error("EDUCATION_UI_EXPLICIT_PROJECT_REQUIRED");
 if(fishingOnly&&project===undefined)throw new Error("FISHING_UI_EXPLICIT_PROJECT_REQUIRED");
-if(project!==undefined&&!(project in projects))throw new Error("GROUP_INTEREST_BROWSER_PROJECT_NOT_SUPPORTED");
+if(project!==undefined&&!Object.hasOwn(projects,project))throw new Error("GROUP_INTEREST_BROWSER_PROJECT_NOT_SUPPORTED");
 if((sampleOnly||process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==="true")&&project===undefined)throw new Error("FLORIDA_JOURNEY_EXPLICIT_PROJECT_REQUIRED");
 if(process.env.LS_GROUP_INTEREST_TEST_ALLOW!=="true")throw new Error("GROUP_INTEREST_BROWSER_OPT_IN_REQUIRED");
 // No native/server-only fixture dependency executes before explicit opt-in.
 const {fixture,safeTestUrl,poolStore}=await import("../../database/calendar/fixture.ts");
-const appPort=projects[project??"desktop"],origin=`https://localhost:${appPort}`;
+const appPort=familyOnly?(project==="desktop"||project==="mobile340"?3105:3106):projects[project??"desktop"],origin=`https://localhost:${appPort}`;
 safeTestUrl();
 if(educationOnly||launchOpsOnly||familyOnly){
  const probe=net.createServer();await new Promise<void>((resolve,reject)=>{probe.once("error",reject);probe.listen(appPort,"127.0.0.1",resolve);});

@@ -18,8 +18,8 @@ describe("the actual owner-selected Academy visual and inquiry design",()=>{
  it.each(["en","he"] as const)("renders%s live hero copy, real price/form links and four separate stage views",locale=>{
   const page=html(GroupApplicationLanding,{locale});
   expect(page).toContain('data-academy-site="true"');expect(page).toContain(`lang="${locale}"`);expect(page).toContain(`dir="${locale==="he"?"rtl":"ltr"}"`);
-  expect(page.match(/<h1\b/g)).toHaveLength(1);if(locale==="en"){expect(page).toContain("South Florida");expect(page).toContain("South Florida Jewish Leadership Fishing Academy");expect(page).toContain("A part-time enrichment program for boys");expect(page).toContain("Self-Governance");}else{expect(page).toContain("האקדמיה היהודית לדיג ולמנהיגות בדרום פלורידה");expect(page).toContain("תוכנית העשרה במשרה חלקית לבנים");}
-  expect(page).toContain('<picture>');expect(page).toContain('media="(min-width:768px)"');expect(page).toContain('srcSet="/groups/academy/hero-desktop-20261018.png"');expect(page).toContain('src="/groups/academy/hero-mobile-20261018.png"');
+  expect(page.match(/<h1\b/g)).toHaveLength(1);if(locale==="en"){expect(page).toContain("South Florida");expect(page).toContain("South Florida Jewish Leadership Fishing Academy");expect(page).toContain("A part-time enrichment program for boys");expect(page).toContain("Self-governance");}else{expect(page).toContain("South Florida Jewish Leadership Fishing Academy");expect(page).toContain("תוכנית העשרה במשרה חלקית לבנים");}
+  expect(page).toContain('<picture>');expect(page).toContain('media="(min-width:768px)"');expect(page).toContain('srcSet="/groups/academy/hero-owner03-desktop-'+locale+'.png"');expect(page).toContain('src="/groups/academy/hero-owner03-mobile-'+locale+'.png"');
   expect(page).toMatch(/<a[^>]*href="#pricing"[^>]*data-jlfa-primary="true"/);expect(page).toContain('id="pricing"');expect(page).toContain(`href="/${locale}/florida/apply"`);
   for(const stage of academyStages)expect(page).toContain(`href="/${locale}/florida/stages/${stage.slug}"`);
   expect(page.match(/data-academy-stage-card=/g)).toHaveLength(4);expect(page.match(/data-price-kind=/g)).toHaveLength(5);

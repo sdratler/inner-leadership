@@ -34,8 +34,8 @@ describe("current owner-approved Academy brand projection and public overview bo
   expect(html).not.toMatch(/Real Mensch|Real Mentch|Real Mentsch|\/groups\/brand\/life-skills-logo\.png/);
   expect(html).not.toContain("data-jlfa-curriculum-content");
   if(mode==="native"){
-   expect(html).toContain(locale==="he"?'<h1 id="academy-title">האקדמיה היהודית לדיג ולמנהיגות בדרום פלורידה</h1>':'<h1 id="academy-title">South Florida Jewish Leadership Fishing Academy</h1>');expect(html).toContain('data-academy-site="true"');
-   expect(html).toContain('src="/groups/academy/hero-mobile-20261018.png"');expect(html).toContain('srcSet="/groups/academy/hero-desktop-20261018.png"');expect(html).toContain(`href="/${locale}/florida/apply"`);
+   expect(html).toContain('<h1 id="academy-title" lang="en" dir="ltr">South Florida Jewish Leadership Fishing Academy</h1>');expect(html).toContain('data-academy-site="true"');
+   expect(html).toContain('src="/groups/academy/hero-owner03-mobile-'+locale+'.png"');expect(html).toContain('srcSet="/groups/academy/hero-owner03-desktop-'+locale+'.png"');expect(html).toContain(`href="/${locale}/florida/apply"`);
    expect(html).not.toContain('data-inquiry-kind=');expect(html).not.toContain('aria-controls="jlfa-curriculum"');expect(html).not.toContain(locale==="he"?"תמונת הפתיחה עדיין בעבודה":"HERO ARTWORK IN PROGRESS");
   }else{
    expect(html).toContain(`<h1>${escaped(copy.realMensch.academy.title[locale])}</h1>`);expect(html).toContain('aria-controls="jlfa-curriculum"');

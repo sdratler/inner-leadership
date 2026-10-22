@@ -1,6 +1,20 @@
 /** Actual ordinary-auth screens in the retained disposable harness. Synthetic agreements only. */
 import {expect,type Page,type Locator,type TestInfo} from '@playwright/test';
+import {writeFileSync} from 'node:fs';
 function guard(page:Page){if(process.env.LS_ACADEMY_MONTHLY_UI_ONLY!=='true'||!/^https:\/\/localhost:310[56]$/.test(new URL(page.url()).origin))throw Error('EXCLUSIVE_SYNTHETIC_MONTHLY_BROWSER_REQUIRED');}
+async function readableOwnerOffer(offer:Locator,locale:'en'|'he',info:TestInfo){
+ if(!['mobile340','mobile390'].includes(info.project.name))return;
+ expect((await offer.boundingBox())!.width).toBeGreaterThanOrEqual(220);
+ const buttons=offer.getByRole('button').filter({visible:true});expect(await buttons.count()).toBeGreaterThanOrEqual(2);const actions=[];
+ for(const button of await buttons.all()){
+  const geometry=await button.evaluate(element=>{
+   const box=element.getBoundingClientRect(),style=getComputedStyle(element),number=(value:string)=>Number.parseFloat(value)||0,range=document.createRange();range.selectNodeContents(element);
+   return {width:box.width,height:box.height,textWidth:box.width-number(style.paddingLeft)-number(style.paddingRight)-number(style.borderLeftWidth)-number(style.borderRightWidth),lines:new Set(Array.from(range.getClientRects(),rect=>Math.round(rect.top))).size};
+  });
+  expect(geometry.width).toBeGreaterThanOrEqual(180);expect(geometry.height).toBeGreaterThanOrEqual(44);expect(geometry.height).toBeLessThanOrEqual(100);expect(geometry.textWidth).toBeGreaterThanOrEqual(140);expect(geometry.lines).toBeGreaterThan(0);expect(geometry.lines).toBeLessThanOrEqual(4);actions.push(geometry);
+ }
+ writeFileSync(info.outputPath(`academy-owner-offer-geometry-${locale}-${info.project.name}.json`),JSON.stringify({locale,project:info.project.name,offerWidth:(await offer.boundingBox())!.width,actions},null,2));
+}
 async function exactRetry(page:Page,path:string,submit:Locator,retry:Locator){
  const bodies:string[]=[],keys:string[]=[];let complete=()=>{};const done=new Promise<void>(resolve=>{complete=resolve;});
  const endpoint='**'+path;await page.route(endpoint,async route=>{if(route.request().method()!=='POST')return route.continue();bodies.push(route.request().postData()!);keys.push(route.request().headers()['idempotency-key']!);const upstream=await route.fetch();expect(upstream.status()).toBe(200);if(bodies.length===1)await route.abort('failed');else{await route.fulfill({response:upstream});complete();}});
@@ -33,5 +47,5 @@ export async function academyOwnerMonthlyJourney(page:Page,record:Locator,input:
  await fill(1);await exactRetry(page,'/api/private/group-applications/offer',submit,offer.getByRole('button',{name:t('Retry the same offer request','ניסיון חוזר לאותה בקשת הצעה'),exact:true}));await expect(saved).toContainText('USD 650');await expect(saved.getByRole('listitem')).toHaveCount(1);
  await offer.locator('textarea[name="reason"]').fill('PRIVATE_SYNTHETIC_MONTHLY_WITHDRAWAL');await offer.getByRole('button',{name:t('Withdraw unissued offer and release places','ביטול הצעה שטרם הועברה ושחרור המקומות'),exact:true}).click();await expect(offer.getByRole('region',{name:t('Private offer withdrawal history','היסטוריה פרטית של ביטול הצעות'),exact:true})).toContainText('PRIVATE_SYNTHETIC_MONTHLY_WITHDRAWAL');await fill(2);await submit.click();await expect(saved).toContainText('USD 650');
  await page.reload();await open();await expect(saved).toContainText('USD 650');await expect(saved.getByRole('listitem')).toHaveCount(1);await expect(offer).toContainText('PRIVATE_SYNTHETIC_MONTHLY_WITHDRAWAL');
- const billing=offer.locator('[data-academy-billing]'),read=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/private/group-applications/billing'&&r.request().method()==='GET');await billing.getByRole('button',{name:t('Read current stage payments','קריאת תשלומי השלב העדכניים'),exact:true}).click();const response=await read;expect(response.status()).toBe(200);expect((await response.json()).data).toMatchObject({role:'practitioner',issuance:'not_admitted',payments:[],actions:[]});await expect(billing.getByRole('button',{name:t('Issue this approved offer','יצירת דרישת תשלום להצעה מאושרת זו'),exact:true})).toHaveCount(0);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await offer.screenshot({path:info.outputPath(`academy-owner-monthly-${locale}-${info.project.name}.png`)});
+ const billing=offer.locator('[data-academy-billing]'),read=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/private/group-applications/billing'&&r.request().method()==='GET');await billing.getByRole('button',{name:t('Read current stage payments','קריאת תשלומי השלב העדכניים'),exact:true}).click();const response=await read;expect(response.status()).toBe(200);expect((await response.json()).data).toMatchObject({role:'practitioner',issuance:'not_admitted',payments:[],actions:[]});await expect(billing.getByRole('button',{name:t('Issue this approved offer','יצירת דרישת תשלום להצעה מאושרת זו'),exact:true})).toHaveCount(0);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await readableOwnerOffer(offer,locale,info);await offer.screenshot({path:info.outputPath(`academy-owner-monthly-${locale}-${info.project.name}.png`)});
 }

@@ -20,13 +20,25 @@ import {unseal} from '../../../src/features/identity/crypto.ts';
 import {systemClock} from '../../../src/features/identity/types.ts';
 
 const proof=(epoch:number):CutoverEvidence=>({batchId:'SYNTHETIC_REFUND_BROWSER',sourceFileId:'synthetic-only',sourceRevision:'synthetic-only',expectedEpoch:epoch,observedNativeWritesSinceSwitch:0,backupRestored:true,snapshotMatched:true,imported:true,rowContentMatched:true,allRowsAccounted:true,identityConflicts:0,paymentsReconciled:true,writersFenced:true,inboundDurable:true,deltaDrained:true,consumersRepointed:true,sheetConsumersRepointed:true,nativeBrowserVerified:true,oldSchedulesDisabled:true,sourceFrozen:true,restorePlanReady:true});
-export async function refundFormsFixture(origin:string){
+export async function refundFormsFixture(origin:string,schedule?:'ordinary_sundays'){
  if(process.env.LS_ACADEMY_REFUND_FORMS_BROWSER!=='SYNTHETIC_LOOPBACK_ONLY'||!/^https:\/\/localhost:310[56]$/.test(origin))throw Error('EXACT_REFUND_FORMS_TARGET_REQUIRED');
+ if(schedule!==undefined&&(schedule!=='ordinary_sundays'||process.env.LS_ACADEMY_SAFETY_FORMS_BROWSER!=='SYNTHETIC_LOOPBACK_ONLY'))throw Error('EXACT_SAFETY_SCHEDULE_REQUIRED');
  const f=await programFixture({capacity:4,policyVersion:owner03PolicyVersion,owner03Bundle:agreementBundleFixture(),termsDocument:'SYNTHETIC refund browser terms, not approved actual agreement.',confirmation:{kind:'all_native_dues_paid'}});
  try{
   f.config.origin=origin;const key=f.config.lookupKey.toString('hex'),cutover=new ContactCutoverStore(f.db,f.ring,key),leads=new FishingLeadStore(f.db,f.ring,key,'sunday_fishing_academy'),inquiries=new PublicGroupApplicationStore(f.db,f.workspaceId,f.ring,key),family=new AcademyFamilyStore(f.db,f.config,inquiries,leads),auth=new IdentityAuthService(f.db,f.config,systemClock),sessions=new IdentitySessions(f.db,f.config,systemClock);
   for(const [i,action]of ['prepare','freeze','switch_native'].entries())await cutover.advance(f.owner,{action:action as 'prepare'|'freeze'|'switch_native',operationId:action,proof:proof(i)});
-  await f.createPlan();for(let i=0;i<8;i++){const p=(await f.stage(f.owner).read(f.owner,f.ref))!;await f.revise(p.occurrences[i]!.id,f.at(24+i*24),f.at(27+i*24));}
+  await f.createPlan();
+  // Only the safety composition publishes these dates. Keep the refund-only
+  // daily schedule unchanged; publication must obey the real operator-day gate.
+  const firstSunday=new Date(f.at(48));firstSunday.setUTCHours(16,0,0,0);firstSunday.setUTCDate(firstSunday.getUTCDate()+(7-firstSunday.getUTCDay())%7);
+  for(let i=0;i<8;i++){
+   const startsAt=schedule===undefined?f.at(24+i*24):new Date(firstSunday.getTime()+i*7*86400000).toISOString(),endsAt=schedule===undefined?f.at(27+i*24):new Date(Date.parse(startsAt)+2*3600000).toISOString();
+   if(schedule!==undefined){
+    if(Date.parse(startsAt)<=Date.now()||new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',weekday:'short'}).format(new Date(startsAt))!=='Sun')throw Error('FUTURE_SYNTHETIC_SUNDAY_REQUIRED');
+    await f.pool.query("INSERT INTO ls_calendar.availability(id,workspace_id,practitioner_id,starts_at,ends_at,kind) VALUES($1,$2,$3,$4,$5,'open')",[randomUUID(),f.workspaceId,f.owner.id,startsAt,endsAt]);
+   }
+   const p=(await f.stage(f.owner).read(f.owner,f.ref))!;await f.revise(p.occurrences[i]!.id,startsAt,endsAt);
+  }
   const families=[];
   for(const locale of ['en','he']as const){
    const name=`Synthetic refund family ${locale}`,applicationId=(await inquiries.submit({operationId:randomUUID(),fields:{parentName:name,contact:locale==='en'?'+13055550171':'+13055550172',language:locale,cityArea:'Synthetic Florida',programId:'sunday_fishing_academy',scheduleContext:'program_format_interest',schedulePreference:['sunday'],academyFit:{version:'RM-FIT-20261014-04-v1',learners:[0,1].map(()=>({approximateAge:12,gear:'needs_advice' as const,experience:'new' as const})),maximumDriveMinutes:30,parentDropoff:'yes'},academyIntake:{version:ACADEMY_INTAKE_VERSION,postalCode:'33004',driveLimit:30,preferredGroupLanguage:locale,stagePreference:'foundation',keysTravel:'parent_drive',offshoreInterest:'not_interested',nextStep:'enrollment_followup',learners:[0,1].map(()=>({ageYears:12,gradeBand:'grade_6_8' as const,schooling:'school' as const,tackleBox:'need_advice' as const}))},permission:{confirmed:true,version:floridaGroupApplicationNotice.version,language:locale}}})).item.id;

@@ -45,5 +45,76 @@
       "bytes": 4160847,
       "sha256": "12a450f6cff546171c40b46273e89acf5d142fd1a86bd94eacbb8724544b2e42"
     }
+  },
+  "current": {
+    "decision": "JLFA-ADS-HERO-TEXTLOCK-20261018-01",
+    "implementation": "20261020-owner-correction",
+    "status": "SOURCE_FAITHFUL_DERIVATIVES_PENDING_VISUAL_REVIEW",
+    "photoPixels": "Full-width desktop y300–900 and mobile y520–1380 unchanged; see exact hashes and protected rectangles.",
+    "en": {
+      "desktop": {
+        "publicPath": "/groups/academy/hero-owner03-desktop-en.png",
+        "width": 2048,
+        "height": 1143,
+        "bytes": 2550284,
+        "sha256": "db83ee98d0ee2402cbc2a0d3bfccdbc4455991f7155c53d2a0211d309dca564c",
+        "sourceSha256": "c04e07e489e866ad8153b283b5445f6d43f393a38005c9a8cacd40050be0bbaa",
+        "protectedRect": [
+          0,
+          300,
+          2048,
+          900
+        ],
+        "changedProtectedPixels": 0
+      },
+      "mobile": {
+        "publicPath": "/groups/academy/hero-owner03-mobile-en.png",
+        "width": 1143,
+        "height": 2048,
+        "bytes": 2409600,
+        "sha256": "6c1b39503b5f88aa202bcd7e0c7058f6b3a1f50fb6d54d31161b8c1c1eb1a77e",
+        "sourceSha256": "12a450f6cff546171c40b46273e89acf5d142fd1a86bd94eacbb8724544b2e42",
+        "protectedRect": [
+          0,
+          520,
+          1143,
+          1380
+        ],
+        "changedProtectedPixels": 0
+      }
+    },
+    "he": {
+      "desktop": {
+        "publicPath": "/groups/academy/hero-owner03-desktop-he.png",
+        "width": 2048,
+        "height": 1143,
+        "bytes": 2547651,
+        "sha256": "e1df18c95eadf2da29346651645f4496da9b9ada131c800210c2a444b01f67e2",
+        "sourceSha256": "c04e07e489e866ad8153b283b5445f6d43f393a38005c9a8cacd40050be0bbaa",
+        "protectedRect": [
+          0,
+          300,
+          2048,
+          900
+        ],
+        "changedProtectedPixels": 0
+      },
+      "mobile": {
+        "publicPath": "/groups/academy/hero-owner03-mobile-he.png",
+        "width": 1143,
+        "height": 2048,
+        "bytes": 2399788,
+        "sha256": "5922e8be4fac1a3c61afea54d3d2a3d79e9c9d6e5b0058e6ce3f833b338e285f",
+        "sourceSha256": "12a450f6cff546171c40b46273e89acf5d142fd1a86bd94eacbb8724544b2e42",
+        "protectedRect": [
+          0,
+          520,
+          1143,
+          1380
+        ],
+        "changedProtectedPixels": 0
+      }
+    },
+    "titleLanguage": "English in both interface locales, latest direct owner correction21October"
   }
 }

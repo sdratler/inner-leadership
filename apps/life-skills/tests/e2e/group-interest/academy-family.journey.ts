@@ -1,6 +1,7 @@
 /** Existing isolated harness only. Tokens below are synthetic queued-mail test
  * delivery; no sender, production URL, injected actor or successful API mock. */
 import {createHash} from 'node:crypto';
+import {writeFileSync} from 'node:fs';
 import {expect,type Page,type Locator,type TestInfo,type Request} from '@playwright/test';
 import pg from 'pg';
 import {unseal,type Keyring} from '../../../src/features/identity/crypto.ts';
@@ -11,6 +12,10 @@ if(process.env.LS_ACADEMY_MONTHLY_UI_ONLY==='true'){mutable.set('ls_fishing_stag
 
 type Snapshot={table:string;rows:{row:Record<string,unknown>}[]}[];
 async function academyCalendarContextJourney(page:Page,locale:'en'|'he',role:'practitioner'|'parent',info:TestInfo){
+ const widths={desktop:1440,mobile390:390,mobile340:340,tablet768:768} as const,name=info.project.name;
+ if(!Object.hasOwn(widths,name))throw Error('EXACT_FAMILY_VIEWPORT_PROJECT_REQUIRED');
+ expect(info.project.use.viewport?.width).toBe(widths[name as keyof typeof widths]);expect(page.viewportSize()).toEqual(info.project.use.viewport);
+ writeFileSync(info.outputPath(`academy-family-viewport-${role}-${locale}-${name}.json`),JSON.stringify({scope:'ACTUAL_LOCAL_OWNER_PARENT_VIEWPORT_NOT_ADOPTION_OR_RELEASE',locale,role,project:name,viewport:page.viewportSize(),configuredViewport:info.project.use.viewport},null,2));
  const t=(en:string,he:string)=>locale==='he'?he:en,base=`/${locale}/${role==='practitioner'?'app/calendar':'family/schedule'}`,clinical:string[]=[];
  const observe=(request:Request)=>{const path=new URL(request.url()).pathname;if(request.method()==='GET'&&((path.startsWith('/api/calendar/')&&!path.startsWith('/api/calendar/fishing/'))||path==='/api/identity/cases'||path.startsWith('/api/home-practice/')))clinical.push(path);};
  page.on('request',observe);

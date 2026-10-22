@@ -8,7 +8,7 @@ import type {SafetyCommand} from '../../../src/features/fishing-stage/safety.ts'
 import {SESSION_COOKIE} from '../../../src/lib/security/session.ts';
 export async function safetyFormsFixture(origin:string){
  if(process.env.LS_ACADEMY_SAFETY_FORMS_BROWSER!=='SYNTHETIC_LOOPBACK_ONLY')throw Error('EXACT_SAFETY_FORMS_TARGET_REQUIRED');
- const f=await refundFormsFixture(origin);
+ const f=await refundFormsFixture(origin,'ordinary_sundays');
  try{
   const families:Array<Omit<typeof f.families[number],'purchases'>&{purchases:Array<typeof f.families[number]['purchases'][number]&{enrollmentId:string}>}>=[];
   for(const family of f.families){const enrolled=[];for(const purchase of family.purchases){

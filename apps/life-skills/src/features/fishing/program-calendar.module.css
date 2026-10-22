@@ -22,3 +22,8 @@
    actions on a phone. Each grid track retains a complete horizontal label. */
 .publicationActions{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr));gap:.75rem;align-items:stretch}
 .publicationActions>button{width:100%;min-width:0;white-space:normal;word-break:normal;overflow-wrap:normal}
+
+/* The response card already supplies its frame. Keep native disabled grouping
+   without applying professional-UI padding twice to the radio text. */
+:global(.lsw.lsu) [data-academy-travel-credit] fieldset.travelResponse,
+:global(.lsw.lsu) [data-academy-travel-credit] fieldset.travelResponse>fieldset{border:0;padding:0;margin:0;min-inline-size:0}

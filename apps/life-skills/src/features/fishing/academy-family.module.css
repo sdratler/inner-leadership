@@ -1,0 +1,9 @@
+/* One owner family frame supplies the phone spacing. Nested native disclosure
+   and disabled groups keep their semantics without repeated card padding. */
+@media(max-width:600px){
+ :global(.lsw.lsu) .familyReview{padding:8px;min-inline-size:0}
+ :global(.lsw.lsu) .familyReview :global(.lsw-card){padding:8px;min-inline-size:0}
+ :global(.lsw.lsu) .familyReview :is([data-academy-enrollment-review],[data-academy-offer],[data-academy-billing]){padding:0;border:0;min-inline-size:0}
+ :global(.lsw.lsu) .familyReview fieldset{padding:0;border:0;margin:0;min-inline-size:0}
+ :global(.lsw.lsu) .familyReview :is([data-academy-offer],[data-academy-billing]) button{inline-size:100%;min-inline-size:0;white-space:normal;word-break:normal;overflow-wrap:normal}
+}
