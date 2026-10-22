@@ -12,6 +12,7 @@ import {classroomWithdrawalVersion} from "./classroom-withdrawal-contract.ts";
 import {ClassroomWithdrawalNativeStore} from "./classroom-withdrawal-native-store.ts";
 import {classroomFamilyWithdrawalCommandSchema,classroomFamilyWithdrawalQuerySchema,classroomFamilyWithdrawalResultSchema,type ClassroomFamilyWithdrawalReview,type ClassroomFamilyWithdrawalResult} from "./classroom-family-withdrawal-contract.ts";
 const digest=(value:unknown)=>createHash("sha256").update(JSON.stringify(value)).digest("hex");
+export function classroomFamilyWithdrawalNativeId(actor:Pick<Actor,"workspaceId"|"id">,operationId:string){const h=digest(["classroom.family.withdraw.http",actor.workspaceId,actor.id,operationId]);return `${h.slice(0,8)}-${h.slice(8,12)}-4${h.slice(13,16)}-8${h.slice(17,20)}-${h.slice(20,32)}`;}
 /** Ordinary saved-family adapter. Production has no runtime admission. Tests
  * may supply a genuine native program constructor, never a permissive port. */
 export class ClassroomFamilyWithdrawalStore {
@@ -53,7 +54,7 @@ export class ClassroomFamilyWithdrawalStore {
    if(old&&(old.action!==action||old.hash!==hash))throw new AppError("CONFLICT");
    // Separate deterministic operation namespace leaves the outer ID available
    // for an encrypted receipt binding the entire normalized HTTP body.
-   const h=digest([action,actor.workspaceId,actor.id,command.operationId]),innerId=`${h.slice(0,8)}-${h.slice(8,12)}-4${h.slice(13,16)}-8${h.slice(17,20)}-${h.slice(20,32)}`;
+   const innerId=classroomFamilyWithdrawalNativeId(actor,command.operationId);
    const result=await native.withdraw({version:classroomWithdrawalVersion,operationId:innerId,stageId:command.stageId,householdId:saved.householdId,expectedScopeSha256:command.expectedScopeSha256});
    const output=classroomFamilyWithdrawalResultSchema.parse({operationId:command.operationId,stageId:result.stageId,state:result.state,revokedLessonCount:result.revokedLessonCount,recordedAt:result.recordedAt,replayed:false});
    if(old){const prior=classroomFamilyWithdrawalResultSchema.parse(JSON.parse(unseal(old.ciphertext,aad,this.config.keyring)));if(digest(prior)!==digest(output)||!result.replayed)throw new AppError("UNAVAILABLE");await this.fresh(tx,actor);return {...prior,replayed:true};}
