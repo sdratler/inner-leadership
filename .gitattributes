@@ -1,1 +1,11 @@
 apps/life-skills/migrations/*.sql text eol=lf
+# Exact-byte Academy source version JLFA-ACADEMY-SCHEMA-GIT-LF-20261022-01.
+apps/life-skills/migrations/manifest.json text eol=lf
+apps/life-skills/src/features/fishing-payments/candidate-schema.sql text eol=lf
+apps/life-skills/src/features/fishing-stage/candidate.sql text eol=lf
+apps/life-skills/src/features/fishing/native-program-schema.sql text eol=lf
+apps/life-skills/src/features/fishing/native-stripe-bindings.sql text eol=lf
+apps/life-skills/src/features/fishing-stage/academy-session-credit-schema.sql text eol=lf
+apps/life-skills/src/features/fishing/academy-travel-credit.sql text eol=lf
+apps/life-skills/src/features/fishing/academy-group-calendar.sql text eol=lf
+apps/life-skills/src/features/fishing/academy-group-calendar-publication.sql text eol=lf
