@@ -1,5 +1,5 @@
 "use client";
-import {useEffect,useLayoutEffect,useRef,useState,type FormEvent} from "react";
+import {useCallback,useEffect,useLayoutEffect,useRef,useState,type FormEvent} from "react";
 import type {Locale} from "../../lib/locale.ts";
 import {sessionInfo,IdentityClientError} from "../identity/client.ts";
 import {classroomFamilyRetainedHistoryPath,classroomFamilyRetainedHistoryRequestSchema,classroomFamilyRetainedHistoryReviewSchema,classroomRetainedHistoryPayloadSchema,type ClassroomFamilyRetainedHistoryReview,type ClassroomRetainedHistoryPayload} from "./classroom-family-retained-history-contract.ts";
@@ -16,10 +16,11 @@ export function ClassroomRetainedHistoryView({history,locale}:{history:Classroom
 export function ClassroomRetainedHistoryControls({applicationId,stageId,locale,withdrawalOperationId,disabled=false,onLockedChange,denied}:Props){
  const t=(en:string,he:string)=>locale==="he"?he:en,[operation,setOperation]=useState(withdrawalOperationId??""),[review,setReview]=useState<ClassroomFamilyRetainedHistoryReview|null>(null),[selection,setSelection]=useState(""),[history,setHistory]=useState<ClassroomRetainedHistoryPayload|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(false),epoch=useRef(0),controller=useRef<AbortController|null>(null),scope=JSON.stringify([applicationId,stageId,operation,selection]);
  const currentScope=useRef(scope);
- useLayoutEffect(()=>{currentScope.current=scope;return()=>{epoch.current++;controller.current?.abort();};},[scope]);
- const clear=()=>{epoch.current++;controller.current?.abort();controller.current=null;setHistory(null);setError(false);};
+ const invalidate=useCallback(()=>{epoch.current++;controller.current?.abort();},[]);
+ useLayoutEffect(()=>{currentScope.current=scope;return invalidate;},[scope,invalidate]);
+ const clear=()=>{invalidate();controller.current=null;setHistory(null);setError(false);};
  useEffect(()=>{onLockedChange?.(busy);return()=>onLockedChange?.(false);},[busy,onLockedChange]);
- useEffect(()=>()=>{epoch.current++;controller.current?.abort();},[]);
+ useEffect(()=>invalidate,[invalidate]);
  // Parent keys by application/stage. This additional binding prevents even a
  // render before effect cleanup from displaying content for changed props.
  const [shownScope,setShownScope]=useState("");
