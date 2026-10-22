@@ -92,12 +92,16 @@ function requireContext(context:LessonJourneyContext|null,ref:LessonReference,no
  return {...context,lesson};
 }
 function validateEvents(events:readonly LessonJourneyEvent[],context:LessonJourneyContext,ref:LessonReference){
+ return validateLessonEventChain(events,{workspaceId:context.actor.workspaceId,sourceSha256:context.lesson.sourceSha256},ref);
+}
+/** Integrity only. This supplies no actor, authorization context or permission. */
+export function validateLessonEventChain(events:readonly LessonJourneyEvent[],binding:{workspaceId:string;sourceSha256:string},ref:LessonReference){
  let prior:string|null=null;
  const ids=new Set<string>();
  for(const event of events){
-  if(event.previousRevisionId!==prior||ids.has(event.id)||event.workspaceId!==context.actor.workspaceId||
+  if(event.previousRevisionId!==prior||ids.has(event.id)||event.workspaceId!==binding.workspaceId||
      event.learnerId!==ref.learnerId||event.moduleId!==ref.moduleId||event.version!==ref.version||
-     event.sourceSha256!==context.lesson.sourceSha256)throw Error("LESSON_JOURNEY_LEDGER_MISMATCH");
+     event.sourceSha256!==binding.sourceSha256)throw Error("LESSON_JOURNEY_LEDGER_MISMATCH");
   ids.add(event.id);prior=event.id;
  }
  return prior;

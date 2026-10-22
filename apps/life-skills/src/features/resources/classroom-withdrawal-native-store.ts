@@ -7,6 +7,7 @@ import {one,type IdentityStore,type SqlSession} from "../identity/store.ts";
 import {systemClock,type Actor,type IdentityClock} from "../identity/types.ts";
 import type {NativeFishingProgram} from "../fishing/native-program.ts";
 import {classroomWithdrawalCommandSchema,classroomWithdrawalReceiptSchema,classroomWithdrawalScopeSchema,classroomWithdrawalVersion} from "./classroom-withdrawal-contract.ts";
+import {readWithdrawalManifest,writeWithdrawalManifest} from "./classroom-withdrawal-manifest.ts";
 const digest=(value:unknown)=>createHash("sha256").update(JSON.stringify(value)).digest("hex"),action="classroom.family.withdraw";
 type Revocation={id:string;accountId:string|null;learnerId:string|null;moduleId:string|null;version:string|null};
 /** Unmounted command: no importer, provider, migration, financial withdrawal,
@@ -38,15 +39,18 @@ export class ClassroomWithdrawalNativeStore {
    if(old.action!==action||old.hash!==hash)throw new AppError("CONFLICT");
    const saved=classroomWithdrawalReceiptSchema.parse(JSON.parse(unseal(old.ciphertext,this.aad(input.operationId,hash),this.ring)));
    if(saved.operationId!==input.operationId||saved.stageId!==input.stageId||saved.householdId!==input.householdId||saved.scopeSha256!==input.expectedScopeSha256)throw new AppError("UNAVAILABLE");
+   await readWithdrawalManifest(tx,this.ring,this.actor.workspaceId,this.actor.id,input.operationId);
    await this.fresh(tx);return {...saved,replayed:true};
   }
   if(s.scopeSha256!==input.expectedScopeSha256)throw new AppError("CONFLICT");
-  for(const lesson of s.scope.lessons)await tx.query(`INSERT INTO ls_education.access_revocations(workspace_id,id,account_id,learner_id,module_id,version,recorded_by)
-   VALUES($1,$2,NULL,$3,$4,$5,$6)`,[this.actor.workspaceId,randomUUID(),lesson.learnerId,lesson.moduleId,lesson.version,this.actor.id]);
+  const createdRevocations=[];
+  for(const lesson of s.scope.lessons){const item={id:randomUUID(),learnerId:lesson.learnerId,moduleId:lesson.moduleId,version:lesson.version};createdRevocations.push(item);await tx.query(`INSERT INTO ls_education.access_revocations(workspace_id,id,account_id,learner_id,module_id,version,recorded_by)
+   VALUES($1,$2,NULL,$3,$4,$5,$6)`,[this.actor.workspaceId,item.id,item.learnerId,item.moduleId,item.version,this.actor.id]);}
   const current=await this.program.readClassroomFamilyScopeInTransaction(tx,await this.fresh(tx),selected);
   if(digest(current)!==digest(s.scope))throw new AppError("CONFLICT");
   const result=classroomWithdrawalReceiptSchema.parse({...selected,version:classroomWithdrawalVersion,operationId:input.operationId,scopeSha256:s.scopeSha256,state:"withdrawn",revokedLessonCount:s.scope.lessons.length,recordedAt:this.clock.now().toISOString()});
   await tx.query(`INSERT INTO ls_fishing_stage.command_receipts(workspace_id,actor_id,command_id,action,request_sha256,result_ciphertext,recorded_at) VALUES($1,$2,$3,$4,$5,$6,$7)`,[this.actor.workspaceId,this.actor.id,input.operationId,action,hash,seal(JSON.stringify(result),this.aad(input.operationId,hash),this.ring),result.recordedAt]);
+  await writeWithdrawalManifest(tx,this.ring,{version:"CLASSROOM-WITHDRAWAL-MANIFEST-v1",workspaceId:this.actor.workspaceId,actorId:this.actor.id,command:input,requestSha256:hash,snapshot:s,createdRevocations,result,resultSha256:digest(result)});
   await this.fresh(tx);return {...result,replayed:false};
  });}
  /** Counts/digests-only internal retention proof, never a content DTO. */
