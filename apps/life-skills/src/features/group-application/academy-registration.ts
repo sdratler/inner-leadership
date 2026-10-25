@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {academyCommunicationPreferencesSchema} from './academy-communication-preferences.ts';
 import {academyRegistrationNotice,academyRegistrationNoticeHashes,academyLegacyRegistrationNotice,academyLegacyRegistrationNoticeHashes} from './academy-registration-notice.ts';
 export const ACADEMY_REGISTRATION_VERSION='JLFA-FREE-REGISTRATION-20261023-03-v3' as const;
 export const academyExactGradeSchema=z.enum(['3','4','5','6','7','8','9','10','11','12']);
@@ -21,8 +22,10 @@ export const academyRegistrationSchema=z.object({
  receiptEmail:z.string().trim().email().max(254).transform(s=>s.toLowerCase()).optional(),
  intent:z.enum(['information','pay']),
  paymentSelection:z.object({childId:z.string().uuid(),plan:z.enum(['prepay','installments','monthly_block']),acceptedOfferId:z.string().uuid().optional(),offerRevision:z.number().int().positive().optional()}).strict().optional(),
+ communicationPreferences:academyCommunicationPreferencesSchema.optional(),
  consent:z.object({kind:z.literal('registration_contact'),documentId:z.literal(academyRegistrationNotice.id),version:z.enum([academyLegacyRegistrationNotice.version,academyRegistrationNotice.version]),language:z.enum(['en','he']),textSha256:z.string().regex(/^[a-f0-9]{64}$/)}).strict(),
 }).strict().superRefine((v,c)=>{
+ if(v.communicationPreferences&&(v.version!==ACADEMY_REGISTRATION_VERSION||v.communicationPreferences.notice.language!==v.consent.language))c.addIssue({code:'custom',path:['communicationPreferences'],message:'communication_registration_notice_mismatch'});
  if(v.version===ACADEMY_REGISTRATION_VERSION){
   if(!v.receiptEmail)c.addIssue({code:'custom',path:['receiptEmail'],message:'email_required'});
   if(v.intent!=='information'||v.paymentSelection)c.addIssue({code:'custom',path:['paymentSelection'],message:'free_registration_no_payment'});

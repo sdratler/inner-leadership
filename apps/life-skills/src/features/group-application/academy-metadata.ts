@@ -1,3 +1,4 @@
+import bilingual from "./academy-bilingual-copy.json";
 import type {CampaignSnapshot} from './academy-campaign-contract.ts';
 import {PREREG_CREATIVE} from './academy-campaign-contract.ts';
 import {academyPath,type AcademyRouteMode} from "./academy-routing.ts";
@@ -11,8 +12,12 @@ export function academyMetadata(locale:Locale,path="",title?:string,mode:Academy
  const pre=campaign?.phase==='PRE_REGISTRATION';
  const description=!pre?(locale==='he'?'הרשמה לאקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה. הקבוצה, מועד הפתיחה והתשלום יתואמו בנפרד.':'Register for the South Florida Jewish Leadership Fishing Academy. Group, start date and payment are arranged separately.'):locale==='he'?'הרשמה חינמית לאקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה. הזדמנות לתעריף משפחה מייסדת ל־30 המשפחות הזכאיות הראשונות. אין תשלום היום; מועד הפתיחה יתואם בהמשך.':'Pre-register for free for the South Florida Jewish Leadership Fishing Academy. Founding-family rate opportunity for the first 30 qualifying families. No payment today; start date to be arranged.';
  const url=(language:Locale)=>(mode==="bna"?"https://bneineviimacademy.org":"https://life-skills.bneineviimacademy.org")+academyPath(language,path,mode);
- const displayTitle=title?(pre?title:title.replace('Free Registration','Registration').replace('הרשמה חינמית','הרשמה')):undefined;
- return {title:title?`${pre?title:title.replace('Free Registration','Registration').replace('הרשמה חינמית','הרשמה')} | ${names[locale]}`:names[locale],description,
+ // The client frame omits an explicit title. Resolve only registered page
+ // identities so hydration and campaign refresh preserve server metadata.
+ const routeTitle=path==='/pricing'?(locale==='he'?'מחירים ויציאות':'Pricing & outings'):path==='/apply'?(locale==='he'?'הרשמה חינמית לאקדמיה לדיג':'Free Registration for the Fishing Academy'):bilingual.stages.find(stage=>path===`/stages/${stage.slug}`)?.title[locale];
+ const requestedTitle=title??routeTitle;
+ const displayTitle=requestedTitle?(pre?requestedTitle:requestedTitle.replace('Free Registration','Registration').replace('הרשמה חינמית','הרשמה')):undefined;
+ return {title:displayTitle?`${displayTitle} | ${names[locale]}`:names[locale],description,
   alternates:{canonical:url(locale),languages:{en:url("en"),he:url("he")}},
   openGraph:{title:displayTitle??names[locale],description,url:url(locale),locale:locale==="he"?"he_IL":"en_US",alternateLocale:locale==="he"?["en_US"]:["he_IL"],type:"website" as const,...(pre?{images:[PREREG_CREATIVE.path]}:{})},
   robots:{index:false,follow:false}};

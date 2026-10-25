@@ -33,6 +33,27 @@ export const academyFoundationProgression=[
  {label:text("Meeting 4 · 3 hours","מפגש 4 · שלוש שעות"),title:text("First supervised pier session","מפגש הדיג המפוקח הראשון במזח"),body:text("Deerfield is a candidate, subject to group-use permission, safety, capacity and current conditions. Pier fishing begins at the appropriate supervised part of the curriculum, not at initiation.","דירפילד הוא מיקום אפשרי, בכפוף לאישור שימוש קבוצתי, בטיחות, קיבולת ותנאים עדכניים. דיג במזח מתחיל בשלב המתאים והמפוקח של הלמידה, לא במפגשי הפתיחה.")},
  {label:text("Meetings 5–12","מפגשים 5–12"),title:text("Practise, reflect and build independence","מתרגלים, חושבים ומפתחים עצמאות"),body:text("Develop the group’s fishing and self-governance skills at suitable freshwater and saltwater locations. A safely confirmed pooled monthly Keys session replaces the participating group’s weekly meeting after the initial readiness ramp; it is not an extra tuition class or a guaranteed date.","מפתחים מיומנויות דיג והנהגה עצמית במקומות מתאימים במים מתוקים ומלוחים. לאחר תקופת ההכנה הראשונית, מפגש חודשי משותף בקיז שאושר כבטוח מחליף את המפגש השבועי של הקבוצה המשתתפת; אין זו תוספת שכר לימוד או הבטחה לתאריך.")},
 ] as const;
+
+/** Current public syllabus grouped without an invented dated itinerary.
+ * Website21 paragraphs69996/77368 retain the public topics in core nodes32-45. */
+export const academyStageProgression:Readonly<Record<string,readonly {title:AcademyText;body:AcademyText}[]>>={
+ independent:[
+  {title:text("Connections and casting","חיבורים והטלה"),body:text("Practise braid-to-leader connections, including Double Uni and Albright, and improve casting placement.","מתרגלים חיבורי חוט קלוע לחוט מוביל, ובהם Double Uni ו־Albright, ומשפרים את דיוק ההטלה.")},
+  {title:text("Presentation and conditions","הצגת הפיתיון והתנאים"),body:text("Compare bait, sinker and retrieve choices, free-lining and bottom rigs. Investigate line twist, excess slack and tackle problems.","משווים בחירות של פיתיון, משקולת ואופן החזרת הפיתיון, דיג בחוט חופשי וריגי קרקעית. בוחנים פיתול בחוט, חוט רפוי מדי ותקלות בציוד.")},
+  {title:text("Communication and shared decisions","תקשורת והחלטות משותפות"),body:text("Compare explanations, make a specific request for help and work through disagreements while keeping the shared task moving.","משווים הסברים, מבקשים עזרה באופן ממוקד ומתמודדים עם חילוקי דעות תוך קידום המשימה המשותפת.")},
+ ],
+ advanced:[
+  {title:text("Evidence and equipment","תצפיות וציוד"),body:text("Investigate how the rod and line respond, why a connection failed and when to change a plan. Distinguish observations from assumptions.","בוחנים כיצד החכה והחוט מגיבים, מדוע חיבור נכשל ומתי לשנות תוכנית. מבחינים בין תצפיות לבין הנחות.")},
+  {title:text("Controlled cast-net practice","תרגול מבוקר ברשת הטלה"),body:text("Begin with cast-net anatomy, line management and controlled dry practice. Actual water use requires a separate instructor check of the learner, equipment and location.","מתחילים בהכרת מבנה רשת ההטלה, בניהול החבלים ובתרגול יבש ומבוקר. שימוש ממשי במים דורש בדיקה נפרדת של הלומד, הציוד והמקום בידי המדריך.")},
+  {title:text("Responsible fish-to-table learning","למידה אחראית מדג לשולחן"),body:text("Learn identification, lawful source and cold storage, with an adult-led preparation demonstration in an appropriate setting.","לומדים זיהוי, מקור חוקי ושמירה בקירור, לצד הדגמת הכנה בהובלת מבוגר בסביבה מתאימה.")},
+ ],
+ leadership:[
+  {title:text("Explain and demonstrate","מסבירים ומדגימים"),body:text("Explain a setup, help organize equipment, teach a knot, support accuracy practice and present a reasoned conditions plan.","מסבירים כיצד להכין את המערך, עוזרים לארגן ציוד, מלמדים קשר, מסייעים בתרגול דיוק ומציגים תוכנית מנומקת בהתאם לתנאים.")},
+  {title:text("Help others learn","עוזרים לאחרים ללמוד"),body:text("Listen, offer a manageable next step and give the learner room to try. Know when to involve an adult; a learning role never makes a student responsible for supervising other children.","מקשיבים, מציעים צעד הבא שאפשר להתמודד איתו ונותנים ללומד מקום לנסות. יודעים מתי לערב מבוגר; תפקיד לימודי אינו הופך תלמיד לאחראי להשגחה על ילדים אחרים.")},
+  {title:text("Review demonstrated progress","סקירת התקדמות שהודגמה"),body:text("Review demonstrated fishing skills, critical thinking, communication, collaboration and responsibility with the instructor, then choose a next practical goal. Progress is not based on the size of a fish caught.","סוקרים עם המדריך מיומנויות דיג, חשיבה ביקורתית, תקשורת, שיתוף פעולה ואחריות שהודגמו, ובוחרים יעד מעשי להמשך. ההתקדמות אינה מבוססת על גודל הדג שנתפס.")},
+ ],
+};
+
 export const academyFishingSkills=[
  {title:text("Know your tackle","מכירים את הציוד"),body:text("Each boy maintains his own tackle box and fishing equipment. Learn to select, organise, inspect and care for what you use.","כל בן מתחזק את ארגז הדיג והציוד האישי שלו. לומדים לבחור, לארגן, לבדוק ולשמור על הציוד שבו משתמשים.")},
  {title:text("Rig, cast and adapt","מרכיבים, מטילים ומתאימים"),body:text("Practise knots, rigs, controlled casting, bait and lure selection. Explain what you chose, observe what happened and decide what to try next.","מתרגלים קשרים, ריגים, הטלה מבוקרת ובחירת פיתיונות ודמויים. מסבירים את הבחירה, מתבוננים במה שקרה ומחליטים מה לנסות בהמשך.")},
