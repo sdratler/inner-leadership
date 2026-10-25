@@ -26,6 +26,7 @@ describe('Website03 proposed Foundation entry and historical registration compat
    expect(html).toContain('<summary>');expect(html).toContain(academyRegistrationNotice.version);
    expect(html).toContain(academyRegistrationNoticeHashes[locale]);expect(html).toContain('data-document-status="released_registration_only"');
    expect(html).toContain(academyRegistrationNotice[locale]);expect(html).not.toContain('type="checkbox"');expect(html).not.toContain('final_owner_approved');
+   expect(html).toContain('data-academy-program-policies');expect(html).toContain(locale==='en'?'The Academy cannot excuse a school absence.':'האקדמיה אינה מוסמכת לאשר היעדרות מבית הספר.');
   }
  });
  it('accepts explicit Foundation despite general experience; rejects stage overrides and omission',()=>{

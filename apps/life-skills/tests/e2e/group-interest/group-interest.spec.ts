@@ -7,11 +7,11 @@ import {readFileSync} from "node:fs";
 import {promisify} from "node:util";
 import approvedCopy from "../../../src/features/group-application/presentation-copy.json" with {type:"json"};
 import {academyLandingDraft,academyJourneyForMode} from "../../../src/features/group-application/academy-draft.ts";
-// Approved public snapshot: JLFA-PREREG-LAUNCH-20261023-05 and current bilingual copy.
+// Approved public snapshot: JLFA-WEBSITE-CORRECTIONS-20261025-03 and retained bilingual copy.
 // Keep browser discovery independent of application/Next runtime model loading.
 const academyIntroduction={
-  "en": "A program where boys learn practical fishing skills, how to think independently, and how to work together in a Torah-infused environment.",
-  "he": "תוכנית שבה הבנים לומדים מיומנויות דיג מעשיות, לחשוב באופן עצמאי ולעבוד יחד באווירה תורנית."
+  "en": "A Torah-infused extracurricular fishing program for boys.",
+  "he": "תוכנית דיג חוץ־לימודית לבנים, ברוח התורה."
 } as const;
 const academyStages=[
  {
@@ -22,8 +22,8 @@ const academyStages=[
   },
   "paragraphs": [
    {
-    "en": "Meetings 1–2 introduce the group, equipment, safety and practice knots. Meeting 3 is the planned Bass Pro Shops Dania visit; Meeting 4 is the proposed first supervised pier-fishing session. Later meetings focus on real fishing, equipment care and decisions at suitable sites.",
-    "he": "בשני מפגשי הפתיחה מכירים את הקבוצה, את הציוד ואת כללי הבטיחות ומתרגלים קשרים. במפגש השלישי מתוכנן ביקור ב־Bass Pro Shops בדניה; במפגש הרביעי מתוכנן מפגש הדיג הראשון במזח, בהשגחה. במפגשים הבאים מתמקדים בדיג מעשי, בשמירה על הציוד ובקבלת החלטות במקומות מתאימים."
+    "en": "Meeting 1 introduces the group, existing equipment, safety and collaboration. Meeting 2 is a planned Bass Pro Shops gear-guidance visit. In Meeting 3, assemble equipment, load line, tie rigs and practise casting. Meeting 4 is the first supervised fishing outing, subject to readiness and a confirmed suitable site. Later meetings develop real fishing, equipment care and decisions at suitable sites.",
+    "he": "במפגש 1 מכירים את הקבוצה, בודקים ציוד קיים ולומדים בטיחות ושיתוף פעולה. במפגש 2 מתוכנן ביקור ב־Bass Pro Shops להכוונה בבחירת ציוד. במפגש 3 מרכיבים ציוד, ממלאים את הרולר בחוט, קושרים ריגים ומתרגלים הטלה. מפגש 4 הוא יציאת הדיג הראשונה בהשגחה, בכפוף למוכנות ולאישור אתר מתאים. במפגשים הבאים מפתחים דיג מעשי, שמירה על הציוד וקבלת החלטות במקומות מתאימים."
    },
    {
     "en": "Keeping a personal tackle box organized, tying taught knots, casting safely, asking before borrowing gear and explaining a choice or mistake.",
@@ -100,8 +100,8 @@ const academyQuestions=[
       "he": "כמה מפגשים יש בכל שלב?"
     },
     "answer": {
-      "en": "Twelve. The first two Foundation preparation meetings are two hours each; the third and most ordinary sessions afterward are three hours. A full-day Keys outing is a longer exception. Weather and holidays may spread delivery beyond twelve consecutive weeks.",
-      "he": "שנים־עשר. שני מפגשי ההכנה הראשונים בשלב היסודות נמשכים שעתיים כל אחד; המפגש השלישי ומרבית המפגשים הרגילים בהמשך נמשכים שלוש שעות. יום דיג מלא ומאושר בקיז הוא חריגה ארוכה יותר. חגים ומזג האוויר עשויים לפרוס את המפגשים על פני יותר מ־12 שבועות רצופים."
+      "en": "Twelve. Ordinary meetings last three hours. Specific outing arrangements are confirmed with families in advance. Weather and holidays may spread delivery beyond twelve consecutive weeks.",
+      "he": "שנים־עשר. מפגשים רגילים נמשכים שלוש שעות. הסידורים ליציאות מסוימות מאושרים עם המשפחות מראש. חגים ומזג האוויר עשויים לפרוס את המפגשים על פני יותר מ־12 שבועות רצופים."
     }
   },
   {
@@ -365,6 +365,11 @@ if(!runtimePath){
   const direction=locale==="he"?"rtl":"ltr";await expect(page.locator(`[data-academy-site][lang="${locale}"][dir="${direction}"]`)).toBeVisible();
   await expect(page.locator("h1#academy-title")).toHaveAccessibleName("South Florida Jewish Leadership Fishing Academy");await expect(page.locator("h1#academy-title span")).toHaveText(["Jewish Leadership","Fishing Academy"]);await expect(page.locator("[data-hero-heading] > p")).toHaveText("South Florida");await expect(page.locator("h1#academy-title")).toHaveAttribute("lang","en");await expect(page.locator("h1#academy-title")).toHaveAttribute("dir","ltr");await expect(page.locator("h1#academy-title")).toBeVisible();
   await expect(page.locator('[data-academy-hero-image]')).toBeVisible();await expect(page.locator('[data-jlfa-curriculum-dialog],[data-jlfa-curriculum-content]')).toHaveCount(0);
+  const originalViewport=page.viewportSize();if(originalViewport&&originalViewport.width<768)await page.setViewportSize({width:390,height:700});
+  await expect(page.locator('[data-hero-actions]')).toContainText('$300');
+  await expect.poll(()=>page.locator('[data-hero-actions]').evaluate(node=>{const box=node.getBoundingClientRect();return box.top>=0&&box.bottom<=innerHeight;})).toBe(true);
+  await expect.poll(()=>page.locator('[data-academy-hero-image]').evaluate(node=>(node as HTMLImageElement).naturalWidth>0)).toBe(true);
+  if(originalViewport)await page.setViewportSize(originalViewport);
   const body=await page.locator("body").innerText();expect(body).toContain(academyIntroduction[locale]);expect(body).not.toContain("Weekly sessions · first two Foundation meetings");const review=page.locator("#parent-reflections");await expect(review.locator("blockquote")).toHaveText("“Medication is no longer relevant.”");await expect(review).not.toContainText("earlier educational work");
   await expect(page.locator('[data-academy-stage-card]')).toHaveCount(4);
   const locationLink=page.locator('#academy-mobile-menu a[href$="#locations"]');await expect(locationLink).toHaveAttribute('href',`/${locale}/florida#locations`);
@@ -383,8 +388,8 @@ if(!runtimePath){
   const logo=page.locator("[data-jlfa-header-logo] img");await expect(logo).toBeVisible();await expect.poll(()=>logo.evaluate(element=>(element as HTMLImageElement).naturalWidth)).toBe(1254);
   const logoResponse=await page.request.get("/groups/brand/jlfa-logo-locked-v1.png");expect(logoResponse.status()).toBe(200);expect(createHash("sha256").update(await logoResponse.body()).digest("hex")).toBe("e78ff6d3ef16c37613725507ce14da05883734a77f48b78ab9d6df3f92480356");
   for(const stale of ["Central Israel","₪1,000","Two 90-minute","Emotional therapy","$500","$399","500 דולר","399 דולר"])expect(body).not.toContain(stale);expect(body).not.toContain("Rank A");
-  await page.locator('[data-jlfa-primary]').click();await expect(page).toHaveURL(/#pricing$/);await expect(page.locator('[data-academy-pricing]')).toBeVisible();
-  const form=await academyFormReady(page,async()=>{await page.locator('[data-academy-pricing] a').first().click();await expect(page).toHaveURL(`${data.origin}/${locale}/florida/apply`);});
+  await expect(page.locator('[data-jlfa-primary]')).toHaveAttribute('href',`/${locale}/florida/apply`);await expect(page.locator('[data-academy-pricing]')).toBeVisible();
+  const form=await academyFormReady(page,async()=>{await page.locator('[data-jlfa-primary]').click();await expect(page).toHaveURL(`${data.origin}/${locale}/florida/apply`);});
   const parentMessageLanguage=locale==='en'?'he':'en';await expect(form.locator('[name="parentLanguage"]')).toHaveValue(locale);for(const name of ['nurtureEmail','privateWapi'])await expect(form.locator(`[name="${name}"]`)).not.toBeChecked();await form.locator('[name="parentLanguage"]').selectOption(parentMessageLanguage);await form.locator('[name="nurtureEmail"]').check();
   await fillCompleteAcademyForm(form,"Synthetic public browser check","synthetic@example.invalid");await form.locator('[name="preferredDays"][value="tuesday"]').check();await form.locator('[name="permission"]').check();
   const childId=await form.locator('[name="learnerId"]').inputValue();
