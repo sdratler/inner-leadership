@@ -1,3 +1,4 @@
+import {communicationPreferenceSelection,communicationPreferenceReadback} from '../../src/features/group-application/academy-communication-preferences.ts';
 import {publicGroupApplicationHttp} from '../../src/features/group-application/http.ts';
 import {issueFloridaGroupApplicationChallenge} from '../../src/features/group-application/challenge.ts';
 import {ACADEMY_CAMPAIGN,PREREG_CREATIVE,type CampaignAttribution} from '../../src/features/group-application/academy-campaign-contract.ts';
@@ -325,4 +326,39 @@ it('returns exact synthetic signup drafts only after current owner authorization
  await db.query("UPDATE ls_identity.accounts SET role='parent' WHERE id=$1 AND workspace_id=$2",[x.actor.id,x.workspace]);
  await expect(x.founder.ownerList(x.actor)).rejects.toMatchObject({code:'FORBIDDEN'});
  const revoked=await fixture();await db.query('DELETE FROM ls_identity.sessions WHERE workspace_id=$1',[revoked.workspace]);await expect(revoked.founder.ownerList(revoked.actor)).rejects.toThrow();
+});
+
+
+it('captures optional communication choices only from accepted immutable application, preserving legacy absence',async()=>{
+ const x=await fixture(),legacy=command();await x.applications.submit(legacy,opaqueToken());const before=(await x.founder.ownerList(x.actor)).families[0]!;
+ expect(before).not.toHaveProperty('communicationPreferences');expect(communicationPreferenceReadback(before.communicationPreferences)).toMatchObject({parentLanguage:null,nurtureEmail:'unknown',privateWapi:'unknown'});
+ const c=command();c.fields.academyRegistration.communicationPreferences=communicationPreferenceSelection('he',false,true,'en');const saved=await x.applications.submit(c,opaqueToken());
+ const f=(await x.founder.ownerList(x.actor)).families.find(row=>row.reference===saved.item.id)!;expect(f.locale).toBe('en');expect(f.communicationPreferences).toMatchObject({applicationId:saved.item.id,revision:1,recordedAt:now.toISOString(),source:'completed_parent_registration',selection:{parentLanguage:'he',nurtureEmail:false,privateWapi:true}});
+ expect((await messages(x.workspace)).map(row=>row.purpose)).toEqual(['academy_founder_interest','academy_founder_interest']);expect(f.payment.sentAt).toBeNull();
+});
+it('choice changes conflict on same operation, exact retries do not duplicate, continuation records a new preference without changing old application',async()=>{
+ const x=await fixture(),c=command(),continuation=opaqueToken();c.fields.academyRegistration.communicationPreferences=communicationPreferenceSelection('he',true,false,'en');const saved=await x.applications.submit(c,continuation);
+ const changed=structuredClone(c);changed.fields.academyRegistration.communicationPreferences!.privateWapi=true;await expect(x.applications.submit(changed,continuation)).rejects.toMatchObject({code:'CONFLICT'});expect((await x.applications.submit(c,continuation)).item.id).toBe(saved.item.id);
+ const later=structuredClone(c);later.operationId=randomUUID();later.fields.academyRegistration.communicationPreferences=communicationPreferenceSelection('en',false,false,'en');const amended=await x.applications.submit(later,continuation);
+ const f=(await x.founder.ownerList(x.actor)).families[0]!;expect(f.communicationPreferences).toMatchObject({applicationId:amended.item.id,revision:2,selection:{parentLanguage:'en',nurtureEmail:false,privateWapi:false}});expect(await x.applications.list(x.actor)).toContainEqual(saved.item);expect((await messages(x.workspace))).toHaveLength(1);expect((await x.founder.ownerList(x.actor)).metrics.uniqueFamilies).toBe(1);
+});
+it('a later legacy continuation never fabricates or silently revokes recorded optional choices',async()=>{
+ const x=await fixture(),c=command(),continuation=opaqueToken();c.fields.academyRegistration.communicationPreferences=communicationPreferenceSelection('he',true,false,'en');await x.applications.submit(c,continuation);const before=(await x.founder.ownerList(x.actor)).families[0]!.communicationPreferences;
+ const later=structuredClone(c);later.operationId=randomUUID();delete later.fields.academyRegistration.communicationPreferences;await x.applications.submit(later,continuation);expect((await x.founder.ownerList(x.actor)).families[0]!.communicationPreferences).toEqual(before);
+});
+
+
+it.each(['queued','unknown','sent'])('preference continuation preserves %s outbox ciphertext bytes and prepared language',async state=>{
+ const x=await fixture(),c=command(),continuation=opaqueToken();c.fields.academyRegistration.communicationPreferences=communicationPreferenceSelection('he',true,false,'en');await x.applications.submit(c,continuation);const row=(await messages(x.workspace))[0]!;
+ if(state!=='queued')await db.query("UPDATE ls_service_interest.inquiry_email_outbox SET state=$3,reserved_at=$4,completed_at=$5,provider_id=$6 WHERE workspace_id=$1 AND id=$2",[x.workspace,row.id,state,now,state==='sent'?now:null,state==='sent'?'synthetic-prepared-receipt':null]);
+ const columns='id,state,payload_ciphertext,reserved_at,completed_at,provider_id';const before=(await db.query(`SELECT ${columns} FROM ls_service_interest.inquiry_email_outbox WHERE workspace_id=$1 AND id=$2`,[x.workspace,row.id])).rows;
+ expect(JSON.parse(unseal(row.payload_ciphertext,`ls_service_interest/inquiry_email/v1/${x.workspace}/${row.id}`,ring)).locale).toBe('he');
+ const amended=structuredClone(c);amended.operationId=randomUUID();amended.fields.academyRegistration.communicationPreferences=communicationPreferenceSelection('en',false,false,'en');await x.applications.submit(amended,continuation);
+ expect((await db.query(`SELECT ${columns} FROM ls_service_interest.inquiry_email_outbox WHERE workspace_id=$1 AND id=$2`,[x.workspace,row.id])).rows).toEqual(before);expect((await x.founder.ownerList(x.actor)).families[0]!.communicationPreferences?.selection.parentLanguage).toBe('en');expect((await messages(x.workspace))).toHaveLength(1);
+});
+it('future transactional messages adopt explicit parent language while an already prepared interest email stays version locked',async()=>{
+ const x=await fixture(),c=command(),continuation=opaqueToken();c.fields.academyRegistration.communicationPreferences=communicationPreferenceSelection('he',false,false,'en');await x.applications.submit(c,continuation);const m=(await messages(x.workspace))[0]!,secret=await token(x.workspace,m.id),prepared=m.payload_ciphertext;
+ const amended=structuredClone(c);amended.operationId=randomUUID();amended.fields.academyRegistration.communicationPreferences=communicationPreferenceSelection('en',false,false,'en');await x.applications.submit(amended,continuation);
+ const fakeSend=vi.fn(async(mail:{text:string})=>{expect(mail.text).toContain('אישור ההתעניינות שלי');return {providerId:'synthetic-new-language-test'};});await x.founder.dispatchOne(m.id,{send:fakeSend},INQUIRY_EMAIL_FROM,origin);expect(fakeSend).toHaveBeenCalledTimes(1);await x.founder.confirm(secret);
+ const rows=await messages(x.workspace);expect(rows.find(row=>row.id===m.id)!.payload_ciphertext).toBe(prepared);const ack=rows.find(row=>row.purpose==='academy_founder_ack')!;expect(JSON.parse(unseal(ack.payload_ciphertext,`ls_service_interest/inquiry_email/v1/${x.workspace}/${ack.id}`,ring)).locale).toBe('en');expect(rows.some(row=>row.purpose.includes('nurture')||row.purpose.includes('wapi'))).toBe(false);
 });

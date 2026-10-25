@@ -1,5 +1,6 @@
 "use client";
 import {useId,useState} from 'react';
+import {communicationPreferenceReadback,communicationPreferenceStatusLabel} from './academy-communication-preferences.ts';
 import type {Locale} from '../../lib/locale.ts';
 import type {AcademyFounderStore} from './academy-founder-store.ts';
 import {floridaDeadline} from './academy-founder-contract.ts';
@@ -97,6 +98,7 @@ export function AcademyFounderReadback({locale,data}:{locale:Locale;data:Data}){
    {f.nativeBinding&&<p>{t('Native family last verified','מועד אימות המשפחה במערכת')}: {date(f.nativeBinding.verifiedAt)} · {f.nativeBinding.children.length} {t('mapped children; current authority is checked again before an offer.','ילדים מקושרים; ההרשאה נבדקת מחדש לפני הצעה.')}</p>}
    {f.offer&&<p>{t('Offered group','הקבוצה בהצעה')}: {f.offer.group} · {t('First session','המפגש הראשון')}: {date(f.offer.firstSession)}</p>}
    <p>{t('Children with recorded payment','ילדים עם תשלום מתועד')}: {f.redeemedChildIds.length} · {t('Children enrolled','ילדים שהתקבלו להשתתפות')}: {f.enrolledChildIds.length}</p>
+   <p>{t('Recorded parent communication choices (not provider activation)','בחירות תקשורת מתועדות להורה (לא הפעלת ספק)')}: <bdi>{communicationPreferenceReadback(f.communicationPreferences).parentLanguage??t('Language not recorded','שפה לא תועדה')}</bdi> · {t('Educational email','דוא״ל חינוכי')}: <bdi>{communicationPreferenceStatusLabel(communicationPreferenceReadback(f.communicationPreferences).nurtureEmail,locale)}</bdi> · WAPI: <bdi>{communicationPreferenceStatusLabel(communicationPreferenceReadback(f.communicationPreferences).privateWapi,locale)}</bdi></p>
    <h5>{t('Registration and offer emails','הודעות דוא״ל להרשמה ולהצעות')}</h5>
    {data.messages.some(m=>m.familyId===f.id)?<ul>{data.messages.filter(m=>m.familyId===f.id).map(m=><li key={m.id}><p>{label(purposes,m.purpose,['Message purpose unverified — needs review','מטרת ההודעה לא אומתה — נדרשת בדיקה'])}</p><p>{label(messageStates,m.state,['Send status unverified — needs review','מצב השליחה לא אומת — נדרשת בדיקה'])}</p><p>{t('Message reference','אסמכתת הודעה')}: <bdi>{m.id}</bdi></p></li>)}</ul>:<p>{t('No email records are shown for this family.','לא מוצגות רשומות דוא״ל למשפחה זו.')}</p>}
   </article>)}
