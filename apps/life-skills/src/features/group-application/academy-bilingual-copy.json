@@ -1,8 +1,8 @@
 {
   "source": "JLFA-REGISTRATION-20261020-01",
   "about": {
-    "en": "A program where boys learn practical fishing skills, how to think independently, and how to work together in a Torah-infused environment.",
-    "he": "תוכנית שבה הבנים לומדים מיומנויות דיג מעשיות, לחשוב באופן עצמאי ולעבוד יחד באווירה תורנית."
+    "en": "A Torah-infused extracurricular fishing program for boys.",
+    "he": "תוכנית דיג חוץ־לימודית לבנים, ברוח התורה."
   },
   "audience": {
     "en": "For boys ages 8 and up, whether they attend school or are homeschooled. No fishing experience is required. Group eligibility is reviewed for age, experience, location and availability.",
@@ -28,8 +28,8 @@
         "he": "לומדים לסדר ארגז ציוד אישי, להכיר חוטים וקשרים, להכין ריגים ולתרגל הטלה בטוחה. לאחר שלושה מפגשי הכנה מיישמים את המיומנויות במפגשי דיג בהשגחה."
       },
       "water": {
-        "en": "Meetings 1–2 introduce the group, equipment, safety and practice knots. Meeting 3 is the planned Bass Pro Shops Dania visit; Meeting 4 is the proposed first supervised pier-fishing session. Later meetings focus on real fishing, equipment care and decisions at suitable sites.",
-        "he": "בשני מפגשי הפתיחה מכירים את הקבוצה, את הציוד ואת כללי הבטיחות ומתרגלים קשרים. במפגש השלישי מתוכנן ביקור ב־Bass Pro Shops בדניה; במפגש הרביעי מתוכנן מפגש הדיג הראשון במזח, בהשגחה. במפגשים הבאים מתמקדים בדיג מעשי, בשמירה על הציוד ובקבלת החלטות במקומות מתאימים."
+        "en": "Meeting 1 introduces the group, existing equipment, safety and collaboration. Meeting 2 is a planned Bass Pro Shops gear-guidance visit. In Meeting 3, assemble equipment, load line, tie rigs and practise casting. Meeting 4 is the first supervised fishing outing, subject to readiness and a confirmed suitable site. Later meetings develop real fishing, equipment care and decisions at suitable sites.",
+        "he": "במפגש 1 מכירים את הקבוצה, בודקים ציוד קיים ולומדים בטיחות ושיתוף פעולה. במפגש 2 מתוכנן ביקור ב־Bass Pro Shops להכוונה בבחירת ציוד. במפגש 3 מרכיבים ציוד, ממלאים את הרולר בחוט, קושרים ריגים ומתרגלים הטלה. מפגש 4 הוא יציאת הדיג הראשונה בהשגחה, בכפוף למוכנות ולאישור אתר מתאים. במפגשים הבאים מפתחים דיג מעשי, שמירה על הציוד וקבלת החלטות במקומות מתאימים."
       },
       "practice": {
         "en": "Keeping a personal tackle box organized, tying taught knots, casting safely, asking before borrowing gear and explaining a choice or mistake.",
@@ -189,8 +189,8 @@
         "he": "כמה מפגשים יש בכל שלב?"
       },
       "answer": {
-        "en": "Twelve. The first two Foundation preparation meetings are two hours each; the third and most ordinary sessions afterward are three hours. A full-day Keys outing is a longer exception. Weather and holidays may spread delivery beyond twelve consecutive weeks.",
-        "he": "שנים־עשר. שני מפגשי ההכנה הראשונים בשלב היסודות נמשכים שעתיים כל אחד; המפגש השלישי ומרבית המפגשים הרגילים בהמשך נמשכים שלוש שעות. יום דיג מלא ומאושר בקיז הוא חריגה ארוכה יותר. חגים ומזג האוויר עשויים לפרוס את המפגשים על פני יותר מ־12 שבועות רצופים."
+        "en": "Twelve. Ordinary meetings last three hours. Specific outing arrangements are confirmed with families in advance. Weather and holidays may spread delivery beyond twelve consecutive weeks.",
+        "he": "שנים־עשר. מפגשים רגילים נמשכים שלוש שעות. הסידורים ליציאות מסוימות מאושרים עם המשפחות מראש. חגים ומזג האוויר עשויים לפרוס את המפגשים על פני יותר מ־12 שבועות רצופים."
       }
     },
     {
@@ -291,6 +291,16 @@
       "answer": {
         "en": "Your free registration is saved with a reference. We email you to confirm your interest; no payment is due and no start date has been set. If all founding-family rate reservations are occupied, regular registration remains open without a founding-family rate reservation. A later suitable group and start-date offer, payment and enrollment are separate steps. Cancelling an unpaid registration has no fee.",
         "he": "ההרשמה החינמית נשמרת עם מספר פנייה. נשלח לכם דוא״ל לאישור ההתעניינות; אין תשלום כעת וטרם נקבע מועד פתיחה. אם כל ההקצאות לתעריף המייסדים תפוסות, ההרשמה הרגילה נשארת פתוחה ללא שמירת תעריף מייסדים. הצעת קבוצה ומועד מתאימים בהמשך, תשלום והרשמה להשתתפות הם שלבים נפרדים. ביטול הרשמה שלא שולמה אינו כרוך בתשלום."
+      }
+    },
+    {
+      "question": {
+        "en": "How do boys learn to fish safely?",
+        "he": "איך הבנים לומדים לדוג בבטחה?"
+      },
+      "answer": {
+        "en": "Fishing involves hooks, sharp equipment and water. Boys learn safe handling, casting and collaboration before fishing, and must follow the instructor’s safety directions. Unsafe behavior can mean stopping an activity or removal from the program.",
+        "he": "דיג כולל קרסים, ציוד חד ומים. לפני הדיג הבנים לומדים שימוש בטוח בציוד, הטלה ושיתוף פעולה, ונדרשים לפעול לפי הוראות הבטיחות של המדריך. התנהגות לא בטוחה עלולה להביא להפסקת פעילות או להרחקה מהתוכנית."
       }
     }
   ],

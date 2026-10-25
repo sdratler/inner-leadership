@@ -18,8 +18,10 @@ export function AcademySiteFrame({locale,children,hero,onLocaleChange,path="",in
 
   const meta=academyMetadata(locale,intake?"/apply":path,intake?(locale==="he"?"הרשמה חינמית לאקדמיה לדיג":"Free Registration for the Fishing Academy"):undefined,routeMode,campaign);
   document.title=meta.title;
-  if(!pre)document.querySelectorAll('meta[property="og:image"],meta[property="og:image:width"],meta[property="og:image:height"],meta[property="og:image:type"]').forEach(node=>node.remove());
-  else{let image=document.querySelector<HTMLMetaElement>('meta[property="og:image"]');if(!image){image=document.createElement('meta');image.setAttribute('property','og:image');document.head.appendChild(image);}image.content=new URL('/groups/academy/prereg-approved-square-20261023.png',meta.alternates.canonical).href;}
+  for(const [selector,attribute,value] of [
+   ['meta[property="og:image"]','content',meta.openGraph.images[0]!.url],
+   ['meta[name="twitter:image"]','content',meta.twitter.images[0]!],
+  ]){let node=document.querySelector<HTMLMetaElement>(selector!);if(!node){node=document.createElement('meta');node.setAttribute(selector!.includes('property=')?'property':'name',selector!.split('"')[1]!);document.head.appendChild(node);}node.setAttribute(attribute!,value!);}
 
   document.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.setAttribute("href",meta.alternates.canonical);
   for(const language of ["en","he"] as const)document.querySelector<HTMLLinkElement>(`link[rel="alternate"][hreflang="${language}"]`)?.setAttribute("href",meta.alternates.languages[language]);
@@ -52,7 +54,7 @@ export function AcademySiteFrame({locale,children,hero,onLocaleChange,path="",in
   <footer className={styles.footer} data-academy-footer><div className={styles.footerInner}>
    <JlfaLogo locale={locale} footer homeHref={home}/>
    <p className={styles.nonprofit}>{t("A program of Bnei Neviim Academy, a New Jersey nonprofit.","תוכנית של Bnei Neviim Academy, ארגון ללא כוונת רווח בניו ג׳רזי.")}</p>
-   <a className={styles.headerAction} href={home+"/apply"}>{pre?t('Pre-register for free','הרשמה מוקדמת בחינם'):t('Register','הרשמה')}</a>
+   <a className={styles.headerAction} href={intake?"#academy-form":home+"/apply"}>{pre?t('Pre-register for free','הרשמה מוקדמת בחינם'):t('Register','הרשמה')}</a>
   </div></footer><AcademyWhatsApp locale={locale}/>
  </div>;
 }

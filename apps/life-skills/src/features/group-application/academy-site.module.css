@@ -134,3 +134,22 @@
 @media(max-width:767px){.stageCard{--academy-stage-image-height:240px}}
 
 @media(max-width:360px){.stageCard{--academy-stage-image-height:200px}}
+/* WEBSITE03: fit the action group to the small usable viewport, after the
+   measured header. The complete approved photo is contained, never cropped. */
+.heroArt:not([data-enlarged=true]){aspect-ratio:auto;block-size:min(55.81vw,calc(100svh - var(--academy-header-height,85px)));grid-template-rows:auto minmax(0,1fr) auto}
+.heroArt:not([data-enlarged=true])>picture{block-size:100%;align-items:center;justify-content:center}
+.heroArt:not([data-enlarged=true])>picture img{inline-size:100%;block-size:100%;object-fit:contain}
+@media(max-width:767px){
+ .heroArt:not([data-enlarged=true]){aspect-ratio:auto;block-size:min(179.18vw,calc(100svh - var(--academy-header-height,84px)));min-block-size:0;grid-template-rows:auto minmax(0,1fr) auto}
+ .heroArt:not([data-enlarged=true])>picture{inset:0;align-items:center;justify-content:center;block-size:100%}
+ .heroArt:not([data-enlarged=true])>picture img{inline-size:100%;block-size:100%;object-fit:contain}
+ .heroArt:not([data-enlarged=true]) .heroHeading{padding:12px 8px 0}
+ .site .heroArt:not([data-enlarged=true]) .heroHeading h1{font-size:clamp(29px,8.4cqi,44px);line-height:1.08}
+ .heroArt:not([data-enlarged=true]) .heroSelectedAction{padding:0 8px max(20px,env(safe-area-inset-bottom));gap:10px}
+ .site .heroSelectedAction .heroProgram{font-size:clamp(17px,4.65cqi,24px)}
+ .site .heroSelectedAction .heroOffer{font-size:clamp(16px,4.1cqi,20px)}
+ .heroSelectedAction .heroCta{font-size:clamp(17px,4.4cqi,22px);padding:10px 24px}
+}
+@media(max-height:540px) and (max-width:767px){.heroArt:not([data-enlarged=true]) .heroSelectedAction{gap:8px;padding-block-end:18px}.heroArt:not([data-enlarged=true]) .heroHeading{padding-block-start:8px}}
+/* Reserve a contact-control rail instead of hiding it at every paragraph. */
+@media(max-width:767px){.site main>.wrap,.site main>section>.wrap{padding-inline-end:54px}.site main>.wrap:has([data-academy-stage-view]){padding-inline-end:0}}

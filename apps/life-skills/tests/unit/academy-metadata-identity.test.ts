@@ -32,3 +32,11 @@ describe('Academy registered page metadata identity',()=>{
   for(const path of ['/stages/unknown','/other','/stages/advanced?x=1'])expect(()=>academyMetadata(locale,path)).toThrow('ACADEMY_PATH_UNAVAILABLE');
  });
 });
+
+it('uses the exact approved Fishing logo for route-scoped SSR social metadata and icons in every phase',()=>{
+ for(const locale of ['en','he'] as const)for(const mode of ['legacy','bna'] as const)for(const campaign of [pre,regular,null])for(const path of ['',...pages.map(page=>page.path)]){
+  const metadata=academyMetadata(locale,path,undefined,mode,campaign),logo=new URL('/groups/brand/jlfa-logo-locked-v1.png',metadata.alternates.canonical).href;
+  expect(metadata.openGraph.images).toEqual([{url:logo,alt:locale==='he'?'האקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה':'South Florida Jewish Leadership Fishing Academy'}]);
+  expect(metadata.twitter.images).toEqual([logo]);expect(metadata.twitter.title).toBe(metadata.openGraph.title);expect(metadata.icons.icon[0]?.url).toBe(logo);expect(metadata.icons.apple[0]?.url).toBe(logo);expect(JSON.stringify(metadata)).not.toMatch(/localhost|127\.0\.0\.1|prereg-approved-square/);
+ }
+});

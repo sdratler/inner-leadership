@@ -1,6 +1,5 @@
 import bilingual from "./academy-bilingual-copy.json";
 import type {CampaignSnapshot} from './academy-campaign-contract.ts';
-import {PREREG_CREATIVE} from './academy-campaign-contract.ts';
 import {academyPath,type AcademyRouteMode} from "./academy-routing.ts";
 import type {Locale} from "../../lib/locale.ts";
 
@@ -15,10 +14,13 @@ export function academyMetadata(locale:Locale,path="",title?:string,mode:Academy
  // The client frame omits an explicit title. Resolve only registered page
  // identities so hydration and campaign refresh preserve server metadata.
  const routeTitle=path==='/pricing'?(locale==='he'?'מחירים ויציאות':'Pricing & outings'):path==='/apply'?(locale==='he'?'הרשמה חינמית לאקדמיה לדיג':'Free Registration for the Fishing Academy'):bilingual.stages.find(stage=>path===`/stages/${stage.slug}`)?.title[locale];
+ const logo=new URL("/groups/brand/jlfa-logo-locked-v1.png",url(locale)).href;
  const requestedTitle=title??routeTitle;
  const displayTitle=requestedTitle?(pre?requestedTitle:requestedTitle.replace('Free Registration','Registration').replace('הרשמה חינמית','הרשמה')):undefined;
  return {title:displayTitle?`${displayTitle} | ${names[locale]}`:names[locale],description,
   alternates:{canonical:url(locale),languages:{en:url("en"),he:url("he")}},
-  openGraph:{title:displayTitle??names[locale],description,url:url(locale),locale:locale==="he"?"he_IL":"en_US",alternateLocale:locale==="he"?["en_US"]:["he_IL"],type:"website" as const,...(pre?{images:[PREREG_CREATIVE.path]}:{})},
+  openGraph:{title:displayTitle??names[locale],description,url:url(locale),locale:locale==="he"?"he_IL":"en_US",alternateLocale:locale==="he"?["en_US"]:["he_IL"],type:"website" as const,images:[{url:logo,alt:names[locale]}]},
+  twitter:{card:"summary" as const,title:displayTitle??names[locale],description,images:[logo]},
+  icons:{icon:[{url:logo,type:"image/png"}],apple:[{url:logo,type:"image/png"}]},
   robots:{index:false,follow:false}};
 }
