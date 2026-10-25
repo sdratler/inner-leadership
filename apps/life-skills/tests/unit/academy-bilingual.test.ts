@@ -1,3 +1,4 @@
+import bilingual from '../../src/features/group-application/academy-bilingual-copy.json';
 import type {ReactNode} from 'react';
 import {AcademyCampaignProvider} from '../../src/features/group-application/academy-campaign-state.ts';
 import {campaignSnapshotSchema,ACADEMY_CAMPAIGN} from '../../src/features/group-application/academy-campaign-contract.ts';
@@ -39,8 +40,28 @@ describe("Source21 bilingual parent journey",()=>{
    expect(html.indexOf('role="tablist"')).toBeLessThan(html.indexOf('data-academy-scene='));expect(html.match(/role="tab"/g)).toHaveLength(3);
    for(const age of ["8–10","11–13","14–17"])expect(html).toContain(age);
    for(const heading of locale==="he"?["מיומנויות דיג","קבלת החלטות ועבודת צוות","התקדמות לאורך המפגשים","מקומות דיג אפשריים"]:["Fishing skills","Decisions &amp; teamwork","Session progression","Possible locations"])expect(html).toContain(heading);
+   const stage=bilingual.stages.find(item=>item.slug===slug)!;
+   for(const copy of [stage.water[locale],stage.practice[locale]])expect(html).toContain(renderPhaseRaw(createElement('p',null,copy)));
+   expect(html).not.toContain(locale==='he'?'נושאי הלמידה':'Curriculum topics');
    expect(html).not.toMatch(/Inside this stage|Thinking it through|Depth that grows/);expect(html).toContain(`href="/${locale}/florida/apply"`);
   }
+ });
+ it.each(["en","he"] as const)("%s stage registration actions follow verified campaign phase without inventing availability",locale=>{
+  const regular=campaignSnapshotSchema.parse({...explicitPre,phase:'REGULAR_REGISTRATION',revision:2,occupied:30,remaining:0,firstFilledAt:'2026-10-23T14:00:00.000Z'});
+  for(const initial of [explicitPre,regular,null])for(const slug of ['foundation','independent','advanced','leadership']){
+   const html=renderPhaseRaw(createElement(AcademyCampaignProvider,{initial},createElement(AcademyStage,{locale,slug})));
+   const labels=[...html.matchAll(/<a[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/g)].filter(match=>match[1]===`/${locale}/florida/apply`).map(match=>match[2]);
+   const expected=initial?.phase==='PRE_REGISTRATION'?(locale==='he'?'הרשמה מוקדמת בחינם':'Pre-register for free'):(locale==='he'?'הרשמה':'Register');
+   expect(labels.length).toBeGreaterThanOrEqual(3);expect(labels.every(label=>label===expected)).toBe(true);
+   if(initial?.phase!=='PRE_REGISTRATION')expect(html).not.toContain(locale==='he'?'הרשמה מוקדמת בחינם':'Pre-register for free');
+   expect(html).toContain(locale==='he'?'למחירי השלבים':'See stage prices');
+  }
+ });
+ it.each(["en","he"] as const)("%s full-capacity FAQ keeps ordinary registration open without promising a founder rate",locale=>{
+  const html=renderToStaticMarkup(createElement(AcademyWebsite,{locale,onLocaleChange:()=>{}}));
+  const expected=locale==='he'?'אם כל ההקצאות לתעריף המייסדים תפוסות, ההרשמה הרגילה נשארת פתוחה ללא שמירת תעריף מייסדים.':'If all founding-family rate reservations are occupied, regular registration remains open without a founding-family rate reservation.';
+  expect(html).toContain(expected);expect(html).not.toContain(locale==='he'?'ההרשמה מצטרפת לרשימת המתעניינים':'your registration joins the interest list');
+  expect(html).toContain(locale==='he'?'ביטול הרשמה שלא שולמה אינו כרוך בתשלום.':'Cancelling an unpaid registration has no fee.');
  });
  it.each(["en","he"] as const)("%s registration uses exact grades, integer drive and one free-registration action",locale=>{
   const html=renderToStaticMarkup(createElement(AcademyIntakePage,{locale}));
