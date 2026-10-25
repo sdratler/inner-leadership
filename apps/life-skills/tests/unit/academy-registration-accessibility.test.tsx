@@ -19,11 +19,20 @@ describe('Academy registration error destinations',()=>{
  });
  it.each(['en','he'] as const)('renders matching accessible controls and first-meeting instruction in %s',locale=>{
   const html=renderToStaticMarkup(createElement(AcademyRegistrationForm,{locale,mode:'sample'}));
-  for(const field of ['parentName','contact','postalCode','receiptEmail','preferredDays','preferredTimes','driveMinutes','schoolHoursAvailability','preferredGroupLanguage','stageInterest','optionalNotes','permission']){
+  for(const field of ['parentName','contact','postalCode','receiptEmail','preferredDays','preferredTimes','driveMinutes','schoolHoursAvailability','preferredGroupLanguage','optionalNotes','permission']){
    const target=registrationErrorTarget(field,[],locale);expect(target).not.toBeNull();expect(html).toContain('id="'+target!.id+'"');
   }
-  expect(html).toContain(locale==='en'?'bring any fishing equipment you already have':'הביאו ציוד דיג שכבר יש לכם');
-  expect(html).not.toMatch(/name="(?:equipment|gearOwnership|dropOff)"/);
+  expect(html).toContain(locale==='en'?'Bring any fishing equipment you already own':'הביאו ציוד דיג שכבר יש לכם');
+  expect(html).not.toMatch(/name="(?:equipment|gearOwnership|dropOff|stageInterest)"/);
+  expect(registrationErrorTarget('stageInterest',[],locale)).toBeNull();
   expect(html).not.toContain('role="alert"');
  });
+});
+
+it.each(['en','he'] as const)('%s short form retains separate language and optional consent controls',locale=>{
+ const html=renderToStaticMarkup(createElement(AcademyRegistrationForm,{locale,mode:'sample'}));
+ for(const name of ['parentLanguage','preferredGroupLanguage','nurtureEmail','privateWapi','permission','contact','receiptEmail'])expect(html).toContain('name="'+name+'"');
+ for(const name of ['nurtureEmail','privateWapi','permission'])expect(html.match(new RegExp('<input[^>]*name="'+name+'"[^>]*>'))?.[0]).not.toContain('checked=""');
+ expect(html).toContain('type="tel"');expect(html).toContain('data-academy-program-terms');expect(html).toContain(locale==='he'?'אני מסכים/ה לתנאי ההרשמה ולהודעת הפרטיות.':'I agree to the registration terms and privacy notice.');
+ expect(html).toContain(locale==='he'?'עדכונים (לא חובה)':'Updates (optional)');expect(html).not.toContain(locale==='he'?'הצטרפות לקבוצה':'group joining');expect(html).not.toContain('name="stageInterest"');
 });

@@ -23,7 +23,7 @@ describe("the actual owner-selected Academy visual and inquiry design",()=>{
   expect(page).toContain('data-academy-site="true"');expect(page).toContain(`lang="${locale}"`);expect(page).toContain(`dir="${locale==="he"?"rtl":"ltr"}"`);
   expect(page.match(/<h1\b/g)).toHaveLength(1);if(locale==="en"){expect(page).toContain("South Florida");expect(page).toContain("South Florida Jewish Leadership Fishing Academy");expect(page).not.toContain("A part-time enrichment program for boys");expect(page).toContain("Self-Governance");}else{expect(page).toContain("South Florida Jewish Leadership Fishing Academy");expect(page).not.toContain("תוכנית העשרה במשרה חלקית לבנים");}
   expect(page).toContain('<picture>');expect(page).toContain('media="(min-width:768px)"');expect(page).toContain('srcSet="/groups/academy/hero-desktop-20261018.png"');expect(page).toContain('src="/groups/academy/hero-mobile-20261018.png"');
-  expect(page).toMatch(/<a[^>]*href="#pricing"[^>]*data-jlfa-primary="true"/);expect(page).toContain('id="pricing"');expect(page).toContain(`href="/${locale}/florida/apply"`);
+  expect(page).toContain(`href="/${locale}/florida/apply" data-jlfa-primary="true"`);expect(page).toContain('id="pricing"');expect(page).toContain(`href="/${locale}/florida/apply"`);
   for(const stage of academyStages)expect(page).toContain(`href="/${locale}/florida/stages/${stage.slug}"`);
   expect(page.match(/data-academy-stage-card=/g)).toHaveLength(4);expect(page.match(/data-price-kind=/g)).toHaveLength(5);
   for(const id of["about","who-its-for","how-it-works","stages","self-governance","questions","founder"])expect(page).toContain(`id="${id}"`);
@@ -46,8 +46,8 @@ describe("the actual owner-selected Academy visual and inquiry design",()=>{
   for(const text of["source_approvals","profile_ciphertext","answerKey","paymentIntent","paid first mates"])expect(page).not.toContain(text);
  });
  it("does not fabricate48 weekly assignments or confirmed Keys benefits",()=>{
-  expect(academyFoundationProgression).toHaveLength(4);const foundation=html(AcademyStage,{locale:"en",slug:"foundation"});
-  for(const text of["Meetings 1–2","2 hours each","Meeting 3","Meeting 4","Meetings 5–12","Bass Pro Shops","planned","replaces","not an extra tuition class"])expect(foundation.replace(/<[^>]*>/g,"")).toContain(text);
+  expect(academyFoundationProgression).toHaveLength(5);const foundation=html(AcademyStage,{locale:"en",slug:"foundation"});
+  for(const text of["Meeting 1","Meeting 2","Ordinary meetings last three hours.","Meeting 3","Meeting 4","Meetings 5–12","Bass Pro Shops","planned","replaces","not an extra tuition class"])expect(foundation.replace(/<[^>]*>/g,"")).toContain(text);
   expect(foundation).not.toContain("voluntary Stage 1 milestone");expect(foundation).toContain("not an extra tuition class or a guaranteed date");
   for(const slug of["independent","advanced","leadership"]){const page=html(AcademyStage,{locale:"en",slug});expect(page).toContain("not a fixed twelve-date itinerary");expect(page).not.toContain("Week 1</strong>");}
   expect(html(AcademyStage,{locale:"en",slug:"arbitrary"})).toBe("");
@@ -73,8 +73,8 @@ describe("latest owner14/15 visual successor, static contracts",()=>{
   const html=renderToStaticMarkup(createElement(AcademyWebsite,{locale,onLocaleChange:()=>{}}));
   const ids=["about","who-its-for","self-governance","how-it-works","stages","pricing","questions","parent-reflections","founder"];
   const positions=ids.map(id=>html.indexOf('id="'+id+'"'));expect(positions.every(index=>index>0)).toBe(true);expect(positions).toEqual([...positions].sort((a,b)=>a-b));
-  expect(html).not.toContain('<section id="locations"');expect(html).not.toContain('id="fishing-skills"');expect(html.match(/data-price-group=/g)).toHaveLength(2);
-  const founding=html.slice(html.indexOf('data-price-group="founding"'),html.indexOf('data-price-group="regular"'));expect(founding).toContain('data-price-kind="founding-primary"');expect(founding).toContain('data-price-kind="founding-sibling"');expect(founding).not.toContain('data-price-kind="regular-prepay"');
+  expect(html).not.toContain('<section id="locations"');expect(html).not.toContain('id="fishing-skills"');expect(html.match(/data-price-group=/g)).toHaveLength(1);
+  expect(html).toContain('data-price-group="comparison"');for(const kind of ['founding-primary','founding-sibling','regular-prepay','ordinary-sibling'])expect(html).toContain('data-price-kind="'+kind+'"');
  });
  it.each(["en","he"] as const)("%s top header precedes full-width hero with one real pricing CTA and no bottom bar",locale=>{
   const html=renderToStaticMarkup(createElement(AcademyWebsite,{locale,onLocaleChange:()=>{}}));
@@ -84,7 +84,7 @@ describe("latest owner14/15 visual successor, static contracts",()=>{
   expect(html).not.toContain("data-academy-whatsapp");expect(html).toContain('aria-controls="academy-mobile-menu"');expect(html).toContain('aria-expanded="false"');
  });
  it.each(["foundation","independent","advanced","leadership"])("%s retains its one stage route and real scene without changing age-depth navigation",slug=>{
-  const html=renderToStaticMarkup(createElement(AcademyStage,{locale:"en",slug}));expect(html).toContain('data-academy-scene=');expect(html).toContain('role="tablist"');expect(html.match(/role="tab"/g)).toHaveLength(3);expect(html).toContain('href="/en/florida/apply"');expect(html).not.toContain("data-academy-bottom-bar");if(slug==="foundation")expect(html).toContain("2 hours each");
+  const html=renderToStaticMarkup(createElement(AcademyStage,{locale:"en",slug}));expect(html).toContain('data-academy-scene=');expect(html).toContain('role="tablist"');expect(html.match(/role="tab"/g)).toHaveLength(3);expect(html).toContain('href="/en/florida/apply"');expect(html).not.toContain("data-academy-bottom-bar");if(slug==="foundation")expect(html).toContain("Ordinary meetings last three hours.");
  });
  it.each(["en","he"] as const)("%s form retains one form, exact actions and school-hours responsibility",locale=>{
   const html=renderToStaticMarkup(createElement(AcademyIntakePage,{locale}));expect(html.match(/<form\b/g)).toHaveLength(1);expect(html).toContain('name="schoolHoursAvailability" required=""');for(const value of["flexible","permission_needed","outside_school_only","discuss"])expect(html).toContain(`value="${value}"`);expect(html).not.toContain('name="nextStep"');expect(html).toContain('max="120"');expect(html).toContain('data-academy-registration="true"');expect(html).not.toContain("data-academy-bottom-bar");

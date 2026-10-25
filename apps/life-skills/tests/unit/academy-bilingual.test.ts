@@ -72,7 +72,8 @@ describe("Source21 bilingual parent journey",()=>{
   for(const phrase of locale==='he'?['תרגול יבש ומבוקר','בדיקה נפרדת','מקור חוקי','שמירה בקירור','בהובלת מבוגר']:['controlled dry practice','separate instructor check','lawful source','cold storage','adult-led'])expect(advanced).toContain(phrase);
   for(const phrase of locale==='he'?['אינו הופך תלמיד לאחראי להשגחה','יעד מעשי להמשך','אינה מבוססת על גודל הדג']:['never makes a student responsible for supervising','next practical goal','not based on the size of a fish'])expect(leadership).toContain(phrase);
   for(const html of [independent,advanced,leadership]){expect(html).toContain(locale==='he'?'אינם מסלול קבוע של שנים־עשר תאריכים':'not a fixed twelve-date itinerary');expect(html).not.toMatch(/<ol[^>]*class="[^"]*weekList/);}
-  expect(foundation.replace(/<[^>]*>/g,'' )).toContain(locale==='he'?'מפגשים 1–2 · שעתיים כל אחד':'Meetings 1–2 · 2 hours each');expect(foundation.replace(/<[^>]*>/g,'' )).toContain(locale==='he'?'אלו שני מפגשי הכנה נפרדים':'These are two separate preparation meetings');
+  const foundationText=foundation.replace(/<[^>]*>/g,'');for(const phrase of locale==='he'?['מפגש 1','מפגש 2','מפגש 3','מפגש 4','מפגשים 5–12','מפגשים רגילים נמשכים שלוש שעות.']:['Meeting 1','Meeting 2','Meeting 3','Meeting 4','Meetings 5–12','Ordinary meetings last three hours.'])expect(foundationText).toContain(phrase);
+  expect(foundationText).not.toContain(locale==='he'?'שעתיים כל אחד':'2 hours each');
  });
  it.each(["en","he"] as const)("%s stage registration actions follow verified campaign phase without inventing availability",locale=>{
   const regular=campaignSnapshotSchema.parse({...explicitPre,phase:'REGULAR_REGISTRATION',revision:2,occupied:30,remaining:0,firstFilledAt:'2026-10-23T14:00:00.000Z'});
@@ -99,21 +100,18 @@ describe("Source21 bilingual parent journey",()=>{
   for(const removed of ['name="paymentPlan"','name="nextStep"','name="parentDropoff"','name="preferredAreas"','learnerTackleBox','learnerGear','grade_3_5'])expect(html).not.toContain(removed);
   expect(html).toContain(locale==='he'?'הרשמה מוקדמת בחינם':'Pre-register for free');expect(html).not.toContain(locale==='he'?'תשלום ואישור מקום':'Pay &amp; Confirm My Spot');expect(html).not.toContain('data-academy-saved=');
  });
- it.each(["en","he"] as const)("%s form and FAQ use approved offshore eligibility and stable stage choices",locale=>{
+ it.each(["en","he"] as const)("%s keeps full trip eligibility in FAQ while new applicants use the short Foundation form",locale=>{
   const form=renderToStaticMarkup(createElement(AcademyIntakePage,{locale}));
   const website=renderToStaticMarkup(createElement(AcademyWebsite,{locale,onLocaleChange:()=>{}}));
   const approved=renderPhaseRaw(createElement('p',null,bilingual.questions[8]!.answer[locale]));
-  for(const html of [form,website]){
-   expect(html).toContain(approved.slice(3,-4));
-   expect(html).not.toContain(locale==='he'?'השלב הראשון בן 12 השבועות':'first 12-week stage');
-  }
-  expect(form).toContain(locale==='he'?'12 המפגשים':'twelve-session stage');
-  expect(form).toContain(locale==='he'?'דרישות המוכנות, ההשגחה והקברניט':'captain, guardian and readiness requirements');
-  const selection=form.match(/<select[^>]*name="stageInterest"[^>]*>([\s\S]*?)<\/select>/)?.[1];expect(selection).toBeDefined();
-  const options=[...selection!.matchAll(/<option value="([^"]*)"[^>]*>([^<]*)<\/option>/g)];
-  expect(options.map(option=>option[1])).toEqual(['','foundation','independent','advanced','leadership','discuss']);
-  expect(options.slice(1,5).map(option=>option[2])).toEqual(bilingual.stages.map(stage=>stage.title[locale]));
-  expect(options.at(-1)?.[2]).toBe(locale==='he'?'לתיאום איתי':'Discuss with me');
+  expect(website).toContain(approved.slice(3,-4));
+  expect(form).not.toContain(approved.slice(3,-4));
+  for(const html of [form,website])expect(html).not.toContain(locale==='he'?'השלב הראשון בן 12 השבועות':'first 12-week stage');
+  expect(form).not.toContain('name="stageInterest"');
+  expect(form).not.toContain(locale==='he'?'השלב שמעניין אתכם':'Stage Interest');
+  expect(form).toContain('data-academy-program-terms');
+  expect(form).toContain(locale==='he'?'הכנה למפגש הראשון':'First meeting preparation');
+
  });
  it.each(["en","he"] as const)("%s metadata keeps the current verified origin and matching alternate child paths",locale=>{
   for(const path of ["","/apply","/pricing","/stages/foundation","/stages/leadership"]){const meta=academyMetadata(locale,path);expect(meta.alternates.canonical).toBe(`https://life-skills.bneineviimacademy.org/${locale}/florida${path}`);for(const lang of ["en","he"] as const)expect(meta.alternates.languages[lang].endsWith(`/${lang}/florida${path}`)).toBe(true);expect(meta.openGraph.url).toBe(meta.alternates.canonical);}
@@ -122,3 +120,10 @@ describe("Source21 bilingual parent journey",()=>{
 
 const explicitPre=campaignSnapshotSchema.parse({version:ACADEMY_CAMPAIGN,phase:'PRE_REGISTRATION',revision:1,capacity:30,occupied:1,remaining:29,firstFilledAt:null,asOf:'2026-10-23T14:00:00.000Z',reopeningPolicy:'PROPOSED_STICKY_REGULAR_PENDING_OWNER_CONFIRMATION'});
 function renderToStaticMarkup(node:ReactNode){return renderPhaseRaw(createElement(AcademyCampaignProvider,{initial:explicitPre},node));}
+
+it.each(['en','he'] as const)('%s WEBSITE03 uses the short introduction and explicit safety FAQ without promising outcomes',locale=>{
+ const html=renderToStaticMarkup(createElement(AcademyWebsite,{locale,onLocaleChange:()=>{}}));
+ expect(html).toContain(locale==='he'?'תוכנית דיג חוץ־לימודית לבנים, ברוח התורה.':'A Torah-infused extracurricular fishing program for boys.');
+ expect(html).toContain(locale==='he'?'התנהגות לא בטוחה עלולה להביא להפסקת פעילות או להרחקה מהתוכנית.':'Unsafe behavior can mean stopping an activity or removal from the program.');
+ expect(html).not.toContain(bilingual.gainIntro[locale]);
+});
