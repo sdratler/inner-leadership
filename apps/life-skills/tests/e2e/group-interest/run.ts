@@ -11,11 +11,13 @@ import {once} from "node:events";
 import net from "node:net";
 import {request as playwrightRequest} from "@playwright/test";
 import {fixture,safeTestUrl} from "../../database/calendar/fixture.ts";
-import {seal,tokenDigest,hashPassword,blindEmail} from "../../../src/features/identity/crypto.ts";
+import {seal,unseal,tokenDigest,hashPassword,blindEmail,type Keyring} from "../../../src/features/identity/crypto.ts";
 import type {CutoverEvidence} from "../../../src/features/contact-ops/server/cutover-store.ts";
 import {poolStore} from "../../database/calendar/fixture.ts";
 import {privateDigest} from "../../../src/features/contact-ops/server/digests.ts";
 import {floridaGroupApplicationNotice} from "../../../src/features/group-application/contract.ts";
+import {FOUNDER_DECISION} from "../../../src/features/group-application/academy-founder-contract.ts";
+import {founderTransitionSchema} from "../../../src/features/group-application/academy-founder-transition-contract.ts";
 
 const projects={desktop:3105,tablet768:3108,mobile390:3106,mobile340:3107} as const;
 const project=process.env.LS_GROUP_INTEREST_TEST_PROJECT as keyof typeof projects|undefined;
@@ -23,6 +25,8 @@ const sampleOnly=process.env.LS_FLORIDA_SAMPLE_TEST_ONLY==="true";
 const fishingOnly=process.env.LS_FISHING_LEAD_UI_ONLY==="true";
 const educationOnly=process.env.LS_EDUCATION_UI_ONLY==="true";
 const communityOnly=process.env.LS_COMMUNITY_UI_ONLY==="true";
+const academyOnly=process.env.LS_ACADEMY_FREE_UI_ONLY==="true";
+if(academyOnly&&(project===undefined||communityOnly||educationOnly||fishingOnly||sampleOnly))throw new Error('ACADEMY_FREE_EXCLUSIVE_PROJECT_REQUIRED');
 if(communityOnly&&(project===undefined||educationOnly||fishingOnly||sampleOnly))throw new Error("COMMUNITY_EXCLUSIVE_EXPLICIT_PROJECT_REQUIRED");
 if(educationOnly&&project===undefined)throw new Error("EDUCATION_UI_EXPLICIT_PROJECT_REQUIRED");
 if(fishingOnly&&project===undefined)throw new Error("FISHING_UI_EXPLICIT_PROJECT_REQUIRED");
@@ -31,7 +35,7 @@ if((sampleOnly||process.env.LS_FLORIDA_JOURNEY_TEST_ONLY==="true")&&project===un
 if(process.env.LS_GROUP_INTEREST_TEST_ALLOW!=="true")throw new Error("GROUP_INTEREST_BROWSER_OPT_IN_REQUIRED");
 const appPort=projects[project??"desktop"],origin=`https://localhost:${appPort}`;
 safeTestUrl();
-if(educationOnly){
+if(educationOnly||academyOnly){
  const probe=net.createServer();await new Promise<void>((resolve,reject)=>{probe.once("error",reject);probe.listen(appPort,"127.0.0.1",resolve);});
  await new Promise<void>((resolve,reject)=>probe.close(error=>error?reject(error):resolve()));
 }
@@ -39,13 +43,40 @@ const folder=mkdtempSync(join(tmpdir(),"ls-group-interest-browser-"));
 let app:ChildProcess|null=null,tests:ChildProcess|null=null;
 let f:Awaited<ReturnType<typeof fixture>>|null=null,phase="fixture";
 let communityTransport:Awaited<ReturnType<typeof import("../community/inbox-fixture.ts").communityReadTransport>>|null=null;
-async function terminate(child:ChildProcess|null){if(!child||child.exitCode!==null||child.signalCode!==null)return;child.kill("SIGTERM");await Promise.race([once(child,"exit"),new Promise(r=>setTimeout(r,5000))]);if(child.exitCode===null&&child.signalCode===null)child.kill("SIGKILL");}
+async function terminate(child:ChildProcess|null){
+ if(!child||child.exitCode!==null||child.signalCode!==null)return;
+ // Windows SIGTERM only ends the launcher; stop its still-owned descendant tree.
+ const exited=once(child,'exit');
+ if(process.platform==='win32'&&child.pid)execFileSync('taskkill',['/PID',String(child.pid),'/T','/F'],{stdio:'ignore'});else child.kill('SIGTERM');
+ await Promise.race([exited,new Promise(r=>setTimeout(r,5000))]);
+ if(child.exitCode===null&&child.signalCode===null){child.kill('SIGKILL');await Promise.race([exited,new Promise(r=>setTimeout(r,5000))]);}
+ if(child.exitCode===null&&child.signalCode===null)throw Error('OWNED_BROWSER_CHILD_DID_NOT_EXIT');
+}
+async function verifyReleasedPort(){
+ const deadline=Date.now()+5000;
+ for(;;){const probe=net.createServer();
+  try{await new Promise<void>((resolve,reject)=>{probe.once('error',reject);probe.listen(appPort,'127.0.0.1',resolve);});}
+  catch(error){if((error as NodeJS.ErrnoException).code!=='EADDRINUSE'||Date.now()>=deadline)throw error;await new Promise(r=>setTimeout(r,100));continue;}
+  await new Promise<void>((resolve,reject)=>probe.close(error=>error?reject(error):resolve()));return;
+ }
+}
 let cleanupPromise:Promise<void>|null=null;
-function cleanup(){cleanupPromise??=(async()=>{await terminate(tests);await terminate(app);await communityTransport?.close();await f?.pool.end();rmSync(folder,{recursive:true,force:true});})();return cleanupPromise;}
+function cleanup(){cleanupPromise??=(async()=>{
+ const failed:string[]=[];let portReleased=false;
+ const attempt=async(label:string,work:()=>Promise<unknown>|void)=>{try{await work();}catch{failed.push(label);}};
+ await attempt('test-process',()=>terminate(tests));await attempt('app-process',()=>terminate(app));
+ await attempt('community-transport',()=>communityTransport?.close());await attempt('database-pool',()=>f?.pool.end());
+ if(app)await attempt('app-port',async()=>{await verifyReleasedPort();portReleased=true;});
+ // Remove this runner's private files even when a previous verification failed.
+ await attempt('temporary-files',()=>{rmSync(folder,{recursive:true,force:true});if(existsSync(folder))throw Error('OWNED_BROWSER_TEMP_REMAINS');});
+ console.log('GROUP_INTEREST_CLEANUP '+JSON.stringify({appPid:app?.pid??null,testPid:tests?.pid??null,folder,port:appPort,portReleased,tempRemoved:!existsSync(folder),success:failed.length===0,failed}));
+ if(failed.length)throw Error('OWNED_BROWSER_CLEANUP_FAILED:'+failed.join(','));
+ })();return cleanupPromise;}
 process.once("SIGTERM",()=>{void cleanup().finally(()=>process.exit(143));});
 process.once("SIGINT",()=>{void cleanup().finally(()=>process.exit(130));});
 
 type WorkspaceSnapshot={count:number;snapshot:string};
+const academyTables=['ls_service_interest.academy_founder_families','ls_service_interest.academy_founder_applications','ls_service_interest.academy_founder_operations','ls_service_interest.academy_founder_events','ls_service_interest.academy_campaigns','ls_service_interest.academy_campaign_touches','ls_service_interest.academy_campaign_shares','ls_service_interest.academy_campaign_operations','ls_service_interest.inquiry_email_outbox'];
 type BoundaryCounts={inquiries:number;operations:number;publicApplications:number;publicApplicationOperations:number;serviceInterests:number;serviceOperations:number;draftGroups:number;draftOperations:number;proposedPlacements:number;placementOperations:number;placementMoves:number;movementOperations:number;meetingRevisions:number;meetingOperations:number;practiceRevisions:number;practiceOperations:number;otherWorkspaceState:Record<string,WorkspaceSnapshot>};
 const quoteIdentifier=(value:string)=>`"${value.replaceAll('"','""')}"`;
 async function counts():Promise<BoundaryCounts>{
@@ -53,6 +84,8 @@ async function counts():Promise<BoundaryCounts>{
   "ls_group_admin.draft_groups","ls_group_admin.draft_group_operations","ls_group_admin.proposed_placements","ls_group_admin.proposed_placement_operations",
   "ls_group_admin.proposed_placement_moves","ls_group_admin.proposed_placement_move_operations","ls_group_admin.draft_meeting_revisions","ls_group_admin.draft_meeting_operations",
   "ls_group_admin.fishing_practice_revisions","ls_group_admin.fishing_practice_operations"]);
+ if(academyOnly||(!communityOnly&&!educationOnly&&!fishingOnly&&!sampleOnly&&process.env.LS_FLORIDA_JOURNEY_TEST_ONLY!=='true'))for(const table of academyTables)allowed.add(table);
+ if(academyOnly)for(const table of ['ls_identity.sessions','ls_identity.action_history'])allowed.add(table);
  const inventory=await f!.pool.query<{schema:string;table:string}>(`SELECT c.table_schema AS schema,c.table_name AS table
   FROM information_schema.columns c JOIN information_schema.tables t ON t.table_schema=c.table_schema AND t.table_name=c.table_name
   WHERE c.column_name='workspace_id' AND c.table_schema LIKE 'ls\\_%' ESCAPE '\\' AND t.table_type='BASE TABLE'
@@ -82,6 +115,43 @@ async function counts():Promise<BoundaryCounts>{
   (SELECT count(*)::integer FROM ls_group_admin.fishing_practice_revisions WHERE workspace_id=$1) AS "practiceRevisions",
   (SELECT count(*)::integer FROM ls_group_admin.fishing_practice_operations WHERE workspace_id=$1) AS "practiceOperations"`,[f!.workspaceId]);
  return {...result.rows[0]!,otherWorkspaceState};
+}
+
+async function verifyAcademyEffects(expected:number,keyring:Keyring,digestKey:string){
+ const rows=await Promise.all(academyTables.map(async table=>({table,rows:(await f!.pool.query(`SELECT to_jsonb(t) AS row FROM ${table} t WHERE workspace_id=$1 ORDER BY to_jsonb(t)::text`,[f!.workspaceId])).rows.map(r=>r.row)})));
+ const get=(table:string)=>rows.find(r=>r.table==='ls_service_interest.'+table)!.rows;
+ for(const table of ['academy_founder_families','academy_founder_applications','academy_campaign_touches','inquiry_email_outbox'])if(get(table).length!==expected)throw Error('ACADEMY_FREE_EFFECT_COUNT_'+table);
+ // Each initial save has one revision-provenance event and one signup event.
+ if(get('academy_founder_events').length!==expected*2)throw Error('ACADEMY_FREE_EFFECT_COUNT_academy_founder_events');
+ const transitionHash=(domain:string,value:unknown)=>privateDigest({domain:'academy-founder-transition-v1/'+domain,workspaceId:f!.workspaceId,value},digestKey);
+ for(const table of ['academy_founder_operations','academy_campaign_shares','academy_campaign_operations'])if(get(table).length!==0)throw Error('ACADEMY_FREE_UNEXPECTED_OWNER_MUTATION');
+ const campaigns=get('academy_campaigns');if(campaigns.length!==(expected?1:0)||campaigns.some(c=>c.first_filled_at!==null||c.revision!==expected))throw Error('ACADEMY_FREE_CAMPAIGN_MISMATCH');
+ if(get('academy_founder_families').some(r=>r.allocated!==true||r.status!=='provisional'||r.native_household_id!==null))throw Error('ACADEMY_FREE_ALLOCATION_MISMATCH');
+ if(get('inquiry_email_outbox').some(r=>r.state!=='queued'||r.purpose!=='academy_founder_interest'||r.reserved_at!==null||r.completed_at!==null||r.provider_id!==null))throw Error('ACADEMY_FREE_SEND_EFFECT');
+ for(const row of get('academy_founder_families')){
+  const family=JSON.parse(unseal(row.payload_ciphertext,`ls_service_interest/founder/v1/${f!.workspaceId}/${row.id}`,keyring)) as import('../../../src/features/group-application/academy-founder-store.ts').FounderFamily;
+  if(family.id!==row.id||family.reference!==row.application_id||family.status!=='provisional'||!family.allocated||family.children.length!==(academyOnly?2:1)||new Set(family.children.map(c=>c.id)).size!==family.children.length||family.nativeBinding!==undefined||family.offer!==null||family.collectedCents!==0||family.redeemedChildIds.length||family.enrolledChildIds.length||family.everPaid===true||family.paused)throw Error('ACADEMY_FREE_FAMILY_BINDING_OR_PAYMENT_EFFECT');
+  for(const window of [family.interest,family.payment])if(window.generation!==1||window.sentAt!==null||window.deadline!==null||window.confirmedAt!==null||window.exception)throw Error('ACADEMY_FREE_UNSTARTED_WINDOW_CHANGED');
+  const binding=get('academy_founder_applications').filter(r=>r.family_id===row.id);if(binding.length!==1||binding[0].application_id!==family.reference)throw Error('ACADEMY_FREE_APPLICATION_BINDING');
+  const mail=get('inquiry_email_outbox').filter(r=>r.founder_id===row.id);if(mail.length!==1||mail[0].application_id!==family.reference||mail[0].message_key!=='interest:1')throw Error('ACADEMY_FREE_MAIL_BINDING');
+  const events=get('academy_founder_events').filter(r=>r.family_id===row.id),signup=events.filter(r=>r.transition_from===null&&r.transition_to===null&&r.transition_kind===null&&r.transition_purpose_sha256===null),transitions=events.filter(r=>r.transition_from===1&&r.transition_to===2&&r.transition_kind==='other');
+  if(events.length!==2||events.some(r=>r.actor_id!==null)||signup.length!==1||transitions.length!==1||family.revision!==2||row.revision!==2)throw Error('ACADEMY_FREE_EVENT_BINDING');
+  const action=JSON.parse(unseal(signup[0].payload_ciphertext,`ls_service_interest/founder/v1/${f!.workspaceId}/${signup[0].id}`,keyring));
+  if(Object.keys(action).sort().join(',')!=='action,decision,reason,revision'||action.action!=='signup'||action.revision!==2||action.reason!=='Actual completed form; provisional'||action.decision!==FOUNDER_DECISION)throw Error('ACADEMY_FREE_SIGNUP_EVENT_CHANGED');
+  const event=transitions[0],purpose={kind:'other'},purposeHash=transitionHash('purpose',purpose),at=new Date(event.at).toISOString();
+  if(event.transition_purpose_sha256!==purposeHash)throw Error('ACADEMY_FREE_TRANSITION_PURPOSE_CHANGED');
+  const header={familyId:row.id,id:event.id,fromRevision:1,toRevision:2,kind:'other',purposeHash,actorId:null,at};
+  const aad=`academy-founder-transition-v1/${f!.workspaceId}/${transitionHash('aad-headers',header)}`;
+  const transition=founderTransitionSchema.parse(JSON.parse(unseal(event.payload_ciphertext,aad,keyring)));
+  if(transition.id!==event.id||transition.workspaceId!==f!.workspaceId||transition.familyId!==row.id||transition.actorId!==null||transition.recordedAt!==at||transition.fromRevision!==1||transition.toRevision!==2||transition.purpose.kind!=='other'||transition.beforeSha256!==transitionHash('state',{...family,revision:1,tokenHash:null})||transition.afterSha256!==transitionHash('state',family))throw Error('ACADEMY_FREE_TRANSITION_STATE_CHANGED');
+ }
+
+}
+
+async function otherWorkspacesSnapshot(protectedCurrent=false){
+ const inventory=await f!.pool.query<{schema:string;table:string}>("SELECT c.table_schema AS schema,c.table_name AS table FROM information_schema.columns c JOIN information_schema.tables t USING(table_schema,table_name) WHERE c.column_name='workspace_id' AND c.table_schema LIKE 'ls_%' AND t.table_type='BASE TABLE' ORDER BY c.table_schema,c.table_name");
+ const allowed=new Set([...academyTables,'ls_service_interest.public_applications','ls_service_interest.public_application_operations','ls_identity.sessions','ls_identity.action_history']);
+ return Promise.all(inventory.rows.filter(r=>!protectedCurrent||!allowed.has(r.schema+'.'+r.table)).map(async r=>({table:r.schema+'.'+r.table,rows:(await f!.pool.query(`SELECT to_jsonb(t) AS row FROM ${quoteIdentifier(r.schema)}.${quoteIdentifier(r.table)} t WHERE workspace_id${protectedCurrent?'=':'<>'}$1 ORDER BY to_jsonb(t)::text`,[f!.workspaceId])).rows})));
 }
 
 async function verifyDurableChildIdentity(){
@@ -168,7 +238,15 @@ try{
  const digestKey=lookupKey.toString("hex"),publicRequestDigest=privateDigest({domain:"public-group-application/v1",workspace:workspaceId,fields:publicApplicationFields},digestKey),publicContactDigest=privateDigest({domain:"public-group-application-contact/v1",workspace:workspaceId,contact:publicApplicationFields.contact},digestKey);
  await f.pool.query(`INSERT INTO ls_service_interest.public_applications(workspace_id,id,contact_digest,request_digest,payload_ciphertext,notice_version,notice_language,received_at) VALUES($1,$2,$3,$4,$5,$6,$7,clock_timestamp())`,[workspaceId,publicApplicationId,publicContactDigest,publicRequestDigest,seal(JSON.stringify(publicApplicationFields),`ls_service_interest/public_application/v1/${workspaceId}/${publicApplicationId}`,keyring),floridaGroupApplicationNotice.version,"en"]);
  await f.pool.query(`INSERT INTO ls_service_interest.public_application_operations(workspace_id,operation_id,request_digest,application_id) VALUES($1,$2,$3,$4)`,[workspaceId,publicApplicationOperationId,publicRequestDigest,publicApplicationId]);
- const baseline=await counts();
+ let baseline=await counts();
+ let academyRuntime:{email:string;password:string}|null=null,academyOtherBefore:unknown=null,academyProtectedBefore:unknown=null,academySessionsBefore:unknown[]=[],academyActionsBefore:unknown[]=[];
+ if(academyOnly){
+  const email='synthetic-academy-owner@example.invalid',password=randomBytes(18).toString('base64url');
+  await f.pool.query('UPDATE ls_identity.accounts SET password_hash=$3,email_blind=$4,email_ciphertext=$5 WHERE workspace_id=$1 AND id=$2',[workspaceId,f.practitioner.actor.id,await hashPassword(password),blindEmail(email,lookupKey),seal(email,`email:${workspaceId}:${f.practitioner.actor.id}`,keyring)]);
+  academyRuntime={email,password};baseline=await counts();academyOtherBefore=await otherWorkspacesSnapshot();academyProtectedBefore=await otherWorkspacesSnapshot(true);
+  academySessionsBefore=(await f.pool.query('SELECT to_jsonb(t) AS row FROM ls_identity.sessions t WHERE workspace_id=$1 ORDER BY token_digest',[workspaceId])).rows;
+  academyActionsBefore=(await f.pool.query('SELECT to_jsonb(t) AS row FROM ls_identity.action_history t WHERE workspace_id=$1 ORDER BY id',[workspaceId])).rows;
+ }
  let fishingRuntime:object|null=null,fishingBefore:unknown=null,fishingProtectedPerson:string|null=null;
  const protectedFishingTables=["ls_calendar.tasks","ls_calendar.task_history","ls_calendar.appointments","ls_identity.accounts","ls_identity.account_subjects",
   "ls_cases.cases","ls_cases.case_guardians","ls_contact_ops.outbound_projections","ls_identity.auth_mail_outbox","ls_onboarding.first_session_orders"];
@@ -229,7 +307,7 @@ try{
  const originalPublic=await f.pool.query("SELECT to_jsonb(a)::text AS snapshot FROM ls_service_interest.public_applications a WHERE workspace_id=$1 AND id=$2",[workspaceId,publicApplicationId]);
  if(baseline.inquiries!==0||baseline.operations!==0||baseline.serviceInterests!==0||baseline.serviceOperations!==0||baseline.draftGroups!==0||baseline.draftOperations!==0||baseline.proposedPlacements!==0||baseline.placementOperations!==0||baseline.placementMoves!==0||baseline.movementOperations!==0||baseline.meetingRevisions!==0||baseline.meetingOperations!==0||baseline.practiceRevisions!==0||baseline.practiceOperations!==0)throw new Error("GROUP_INTEREST_FIXTURE_NOT_EMPTY");
  const runtimePath=join(folder,"synthetic-runtime.json");
- const runtime={origin,workspaceId,practitioner:f.practitioner.token,parent:f.parent.token,adult,child,revoked,otherWorkspace,publicApplicationId,publicApplicantName:publicApplicationFields.parentName,...(fishingRuntime?{fishing:fishingRuntime}:{}),...(educationRuntime?{education:educationRuntime}:{})};
+ const runtime={origin,workspaceId,practitioner:f.practitioner.token,parent:f.parent.token,adult,child,revoked,otherWorkspace,publicApplicationId,publicApplicantName:publicApplicationFields.parentName,...(academyRuntime?{academy:academyRuntime}:{}),...(fishingRuntime?{fishing:fishingRuntime}:{}),...(educationRuntime?{education:educationRuntime}:{})};
  writeFileSync(runtimePath,JSON.stringify(runtime),{mode:0o600});
  const key=join(folder,"tls.key"),cert=join(folder,"tls.crt");
  phase="tls-certificate";
@@ -245,10 +323,12 @@ try{
   LS_IDENTITY_WORKSPACE_ID:workspaceId,LS_IDENTITY_ACTIVE_KEY_ID:"synthetic",LS_IDENTITY_DATA_KEYS:JSON.stringify({synthetic:dataKey.toString("base64url")}),
   LS_IDENTITY_CSRF_KEY:randomBytes(32).toString("base64url"),LS_IDENTITY_LOOKUP_KEY:lookupKey.toString("base64url"),LS_IDENTITY_RATE_KEY:randomBytes(32).toString("base64url"),
   LS_GROUP_INTEREST_FIXTURE_PATH:runtimePath,LS_GROUP_INTEREST_TEST_RUNNER_ACTIVE:"true",
+  LS_ACADEMY_FREE_REGISTRATION_ENABLED:'true',LS_ACADEMY_FOUNDER_EMAIL_APPROVED:'false',LS_INQUIRY_EMAIL_SEND_ENABLED:'false',LS_AUTH_EMAIL_ENABLED:'false',
   ...(educationOnly?{LS_EDUCATION_SYNTHETIC_LOOPBACK:"true",TEST_DATABASE_URL:safeTestUrl(),LS_CHILD_ACCOUNTS_ENABLED:"false",LS_AUTH_EMAIL_ENABLED:"false"}:{})};
  if(communityTransport)Object.assign(env,{LS_COMMUNITY_SCOUT_BRIDGE_SECRET:communityTransport.secret,LS_COMMUNITY_FIXTURE_ORIGIN:communityTransport.controlOrigin,
   LS_COMMUNITY_FIXTURE_CA_FILE:cert,NODE_OPTIONS:`--require=${resolve("tests/e2e/community/scout-read-preload.cjs")}`,NODE_EXTRA_CA_CERTS:cert,LS_AUTH_EMAIL_ENABLED:"false",LS_CALENDAR_ENABLED:"true"});
  app=spawn(process.execPath,[resolve("node_modules/next/dist/bin/next"),"dev","--webpack","--experimental-https","--experimental-https-key",key,"--experimental-https-cert",cert,"--hostname","127.0.0.1","--port",String(appPort)],{env,stdio:"ignore"});
+ console.log('GROUP_INTEREST_OWNED_RUNTIME '+JSON.stringify({appPid:app.pid??null,testPid:null,folder,port:appPort,project}));
  phase="next-health";let healthy=false;const probe=await playwrightRequest.newContext({baseURL:origin,ignoreHTTPSErrors:true});
  try{for(let i=0;i<240;i++){if(app.exitCode!==null)throw new Error("ISOLATED_APP_START_FAILED");try{if((await probe.get("/api/health")).status()===200){healthy=true;break;}}catch{}await new Promise(r=>setTimeout(r,250));}}finally{await probe.dispose();}
  if(!healthy)throw new Error("ISOLATED_APP_HEALTH_TIMEOUT");
@@ -256,7 +336,8 @@ try{
  const selection=project?["--project",project,"--output",`tests/e2e/group-interest/test-results/isolated-${project}`]:[];
  if(!fishingOnly&&process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==="true")selection.push("--grep","Florida group inquiry|Israel group application compatibility");
  if(process.env.LS_GROUP_INTEREST_CAPTURE_ONLY==="true")selection.push("--grep","practitioner");
- if(communityOnly){/* Explicit focused read-only Community journey, not a default-suite skip. */}
+ if(academyOnly){/* Dedicated real two-child free registration and ordinary owner login journey. */}
+ else if(communityOnly){/* Explicit focused read-only Community journey, not a default-suite skip. */}
  else if(educationOnly){/* Existing Playwright config selects the retained Resources journey. */}
  else if(fishingOnly){/* Selection is the retained mounted fishing spec in the same isolated harness. */}
  else if(sampleOnly)selection.push("--grep","Florida owner journey hosted sample");
@@ -264,8 +345,23 @@ try{
  else selection.push("--grep-invert","Florida owner journey");
  const testEnv=educationModule?educationModule.educationBrowserTestEnvironment(env,process.env):env;
  tests=spawn(process.execPath,[resolve("node_modules/@playwright/test/cli.js"),"test","--config","tests/e2e/group-interest/playwright.config.ts",...selection],{env:testEnv,stdio:["ignore","inherit","inherit"]});
+ console.log('GROUP_INTEREST_OWNED_RUNTIME '+JSON.stringify({appPid:app.pid??null,testPid:tests.pid??null,folder,port:appPort,project}));
  const [code]=await once(tests,"exit");if(code!==0)throw new Error("GROUP_INTEREST_BROWSER_ACCEPTANCE_FAILED");
- if(communityOnly){
+ if(academyOnly){
+  phase='academy-free-native-readback';await verifyAcademyEffects(2,keyring,digestKey);
+  const after=await counts(),expected={...baseline,publicApplications:baseline.publicApplications+2,publicApplicationOperations:baseline.publicApplicationOperations+2};
+  if(JSON.stringify(after)!==JSON.stringify(expected)||JSON.stringify(await otherWorkspacesSnapshot())!==JSON.stringify(academyOtherBefore))throw Error('ACADEMY_FREE_UNRELATED_DATABASE_EFFECT');
+  if(JSON.stringify(await otherWorkspacesSnapshot(true))!==JSON.stringify(academyProtectedBefore))throw Error('ACADEMY_FREE_EXISTING_DOMAIN_RECORD_CHANGED');
+  const retainedPublic=await f.pool.query("SELECT to_jsonb(a)::text AS snapshot FROM ls_service_interest.public_applications a WHERE workspace_id=$1 AND id=$2",[workspaceId,publicApplicationId]);
+  if(JSON.stringify(retainedPublic.rows)!==JSON.stringify(originalPublic.rows))throw Error('ACADEMY_FREE_EXISTING_PUBLIC_RECEIPT_MUTATED');
+  const sessions=(await f.pool.query('SELECT to_jsonb(t) AS row FROM ls_identity.sessions t WHERE workspace_id=$1 ORDER BY token_digest',[workspaceId])).rows,actions=(await f.pool.query('SELECT to_jsonb(t) AS row FROM ls_identity.action_history t WHERE workspace_id=$1 ORDER BY id',[workspaceId])).rows;
+  for(const prior of academySessionsBefore)if(!sessions.some(row=>JSON.stringify(row)===JSON.stringify(prior)))throw Error('ACADEMY_FREE_EXISTING_SESSION_CHANGED');
+  for(const prior of academyActionsBefore)if(!actions.some(row=>JSON.stringify(row)===JSON.stringify(prior)))throw Error('ACADEMY_FREE_EXISTING_ACTION_CHANGED');
+  const newSessions=sessions.filter(row=>!academySessionsBefore.some(prior=>JSON.stringify(row)===JSON.stringify(prior))),newActions=actions.filter(row=>!academyActionsBefore.some(prior=>JSON.stringify(row)===JSON.stringify(prior)));
+  if(newSessions.length!==2||newSessions.some(r=>r.row.account_id!==f!.practitioner.actor.id||r.row.revoked_at!==null)||newActions.length!==2||newActions.some(r=>r.row.actor_account_id!==f!.practitioner.actor.id||r.row.action!=='login_succeeded'))throw Error('ACADEMY_FREE_ORDINARY_LOGIN_EFFECT_MISMATCH');
+  console.log(`ACADEMY_FREE_BROWSER_ACCEPTANCE_PASS project=${project} families=2 children=4 allocations=2 exactReplay=true ordinaryLogin=true emailsQueued=2 sent=0 unrelatedEffects=0`);
+ }
+ else if(communityOnly){
   if(!communityModule||!communityTransport)throw new Error("COMMUNITY_FIXTURE_MISSING");
   if(JSON.stringify(await communityModule.communityProtectedSnapshot(f))!==JSON.stringify(communityBefore))throw new Error("COMMUNITY_FORBIDDEN_DATABASE_EFFECT");
   if(communityTransport.blocked.length||!communityTransport.reads.includes("/internal/life-skills/posts"))throw new Error("COMMUNITY_UPSTREAM_BOUNDARY_NOT_PROVED");
@@ -292,6 +388,7 @@ try{
   console.log(`FISHING_LEAD_UI_ACCEPTANCE_PASS project=${project} ordinaryLogin=true revisions=10 operations=10 profiles=3 projections=4 tasksUnchanged=true unrelatedProfileUnchanged=true providerEffects=0`);
  }
  else if(process.env.LS_GROUP_INTEREST_PUBLIC_ONLY==="true"){
+  await verifyAcademyEffects(1,keyring,digestKey);
   phase="public-boundary-readback";const after=await counts(),writes=project===undefined||project==="desktop"?2:1;
   const expected={...baseline,publicApplications:baseline.publicApplications+writes,publicApplicationOperations:baseline.publicApplicationOperations+writes};
   if(JSON.stringify(after)!==JSON.stringify(expected))throw new Error("FLORIDA_PUBLIC_UNEXPECTED_DATABASE_EFFECT");
@@ -309,6 +406,7 @@ try{
   console.log(`FLORIDA_JOURNEY_ACCEPTANCE_PASS project=${project??"all"} inquiries=${writes} operations=${writes} otherDatabaseEffects=0 providerEffects=0 downstream=sample`);
  }
  else{
+ await verifyAcademyEffects(1,keyring,digestKey);
  phase="durable-child-identity";await verifyDurableChildIdentity();
  phase="group-placement-database-boundary";await verifyGroupPlacementDatabaseBoundary();
  phase="boundary-readback";
