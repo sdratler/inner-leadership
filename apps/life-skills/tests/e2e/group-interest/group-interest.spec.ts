@@ -160,8 +160,8 @@ const academyQuestions=[
       "he": "האם היציאות לקיז כלולות בתוכנית?"
     },
     "answer": {
-      "en": "The plan is a shared full-day Sunday Keys outing each month after the preparation period. For a participating group, it replaces a regular lesson with no extra tuition charge. Parents cover their own travel and food; optional group transport or meals cost extra. Safety, access, dates and suitable alternatives must be confirmed.",
-      "he": "התכנון הוא ליום דיג משותף בקיז אחת לחודש קלנדרי לאחר תקופת ההכנה. לקבוצה המשתתפת יום זה מחליף את המפגש הרגיל, בלי תוספת שכר לימוד עבור ההדרכה הבסיסית. המשפחות דואגות לנסיעה ולאוכל שלהן; הסעה או ארוחה קבוצתית, אם תוצע, יתומחרו בנפרד. המועד, הגישה, הבטיחות וההשגחה יאושרו מראש, ותוצע חלופה מתאימה למי שלא יוכל להשתתף."
+      "en": "After the initial readiness preparation, one pooled Florida Keys trip per calendar month is planned for safely eligible groups. It replaces each participating group’s normal weekly meeting and counts as one session, not two. Actual dates, venues, supervision, conditions and guardian permissions must be confirmed. Parents provide food and transportation. Any optional program-arranged food or transport is separately quoted before booking; core instruction is not charged again. Families unable to participate receive the applicable reviewed local alternative or remedy.",
+      "he": "לאחר ההכנה הראשונית, מתוכנן טיול משותף אחד בכל חודש קלנדרי בפלורידה קיז לקבוצות שמתאימות מבחינת מוכנות ובטיחות. הטיול מחליף את המפגש השבועי הרגיל של כל קבוצה משתתפת ונחשב למפגש אחד, לא לשניים. יש לאשר תאריכים, מקומות, השגחה, תנאים והסכמות הורים. ההורים דואגים למזון ולהסעה. סידורי מזון או הסעה אופציונליים באמצעות התוכנית יוצעו במחיר נפרד לפני הזמנה; הדרכת הליבה אינה מחויבת שוב. למשפחות שלא יוכלו להשתתף תוצע החלופה המקומית או הפתרון המתאים לפי התנאים שאושרו."
     }
   },
   {
@@ -170,8 +170,8 @@ const academyQuestions=[
       "he": "ומה לגבי דיג מסירה בים הפתוח?"
     },
     "answer": {
-      "en": "It is optional, separately priced and considered only after completing the first twelve-session stage and meeting trip-specific captain, guardian and readiness requirements. No published ticket price or guaranteed availability yet.",
-      "he": "זו אפשרות נפרדת בתשלום, לבנים שסיימו את מלוא השלב הראשון בן 12 המפגשים ועומדים בדרישות המוכנות, ההשגחה והקברניט ליציאה. מחיר ומועד ייקבעו לאחר אישור סופי."
+      "en": "After completing the first 12-week stage, boys may join an optional offshore fishing trip on a chartered boat. This trip is billed separately. Dates, availability and details will be confirmed before booking.",
+      "he": "לאחר השלמת השלב הראשון בן 12 השבועות, הבנים יכולים להצטרף לטיול דיג אופציונלי בים הפתוח בסירה שכורה. הטיול מחויב בנפרד. תאריכים, זמינות ופרטים יאושרו לפני ההזמנה."
     }
   },
   {
@@ -186,12 +186,12 @@ const academyQuestions=[
   },
   {
     "question": {
-      "en": "How does founding-family pricing work?",
-      "he": "איך פועלת הטבת המשפחות המייסדות?"
+      "en": "How does registration and payment work?",
+      "he": "כיצד פועלים ההרשמה והתשלום?"
     },
     "answer": {
-      "en": "The first 30 unique qualifying families completing free registration can reserve the initial full-stage founding-family prepayment rate. Confirm your interest within seven days after the confirmation email is sent. Your group and start date are arranged later. After a genuine suitable offer, a separate seven-day payment window applies. Four-lesson monthly blocks remain $650 without a founder discount. This reserves rate eligibility, not a class seat.",
-      "he": "30 המשפחות הזכאיות הראשונות שישלימו הרשמה חינמית יכולות לשמור את תעריף המשפחה המייסדת בתשלום מראש לשלב המלא הראשון. יש לאשר התעניינות בתוך שבעה ימים משליחת הודעת האישור. הקבוצה ומועד הפתיחה יתואמו בהמשך. לאחר הצעה אמיתית ומתאימה, יינתן חלון נפרד של שבעה ימים לתשלום. מקבץ חודשי של ארבעה שיעורים נשאר במחיר $650 ללא הנחת משפחה מייסדת. נשמרת זכאות לתעריף, ולא מקום בכיתה."
+      "en": "Submitting the form creates no tuition obligation, class seat or start date. Confirm your interest by email. A suitable group and a separately approved offer come before payment. Existing founding-family entitlements remain attached to the family. Each four-lesson monthly block is purchased separately; there is no automatic future charge.",
+      "he": "שליחת הטופס אינה יוצרת התחייבות לשכר לימוד, מקום בכיתה או מועד פתיחה. מאשרים התעניינות בדוא״ל. קבוצה מתאימה והצעה מאושרת נפרדת קודמות לתשלום. זכאות קיימת של משפחות מייסדות נשארת משויכת למשפחה. כל מקבץ חודשי בן ארבעה שיעורים נרכש בנפרד; אין חיוב עתידי אוטומטי."
     }
   },
   {
