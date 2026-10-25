@@ -103,8 +103,9 @@ describe("owner1181 visual and outing corrections",()=>{
   expect(html).not.toContain('id="fishing-skills"');expect(html).toContain('id="how-it-works"');expect(html).toContain(locale==="en"?"What we do":"מה אנחנו עושים");
   expect(html.match(/data-academy-scene="foundation"/g)).toHaveLength(1);expect(html).toContain('data-hidden="false"');expect(html).not.toContain('data-academy-bottom-bar');
   const outings=renderToStaticMarkup(createElement(AcademyOutingPrices,{locale}));expect(outings.match(/data-academy-outing=/g)).toHaveLength(2);
-  expect(outings).toContain(locale==="en"?"not sold as an extra class":"אינה מפגש נוסף בתשלום");expect(outings).toContain(locale==="en"?"Parents manage their own travel and food":"ההורים דואגים לנסיעה ולאוכל");
-  expect(outings).toContain(locale==="en"?"completed the first stage":"סיימו את השלב הראשון");expect(outings).toContain(locale==="en"?"cleared for that particular outing":"קיבלו אישור מתאים ליציאה המסוימת");expect(outings).not.toMatch(/\$[0-9]/);
+  expect(outings).toContain(locale==="en"?"core instruction is not charged again":"הדרכת הליבה אינה מחויבת שוב");expect(outings).toContain(locale==="en"?"Parents provide food and transportation":"ההורים דואגים למזון ולהסעה");
+  expect(outings).toContain(locale==="en"?"completing the first twelve-session stage":"סיימו את מלוא השלב הראשון בן 12 המפגשים");expect(outings).toContain(locale==="en"?"trip-specific captain, guardian and readiness requirements":"דרישות המוכנות, ההשגחה והקברניט ליציאה");expect(outings).not.toMatch(/\$[0-9]/);
+  expect(outings.match(/<details>/g)).toHaveLength(2);expect(outings).toContain(locale==="en"?"counts as one session, not two":"נחשב למפגש אחד, לא לשניים");
  });
  it("adds only the exact pricing page to the existing public environment gate",()=>{
   for(const locale of ["en","he"]){expect(groupApplicationReleasePath(`/${locale}/florida/pricing`,visualGateEnv)).toBe(true);expect(groupApplicationReleasePath(`/${locale}/florida/pricing/private`,visualGateEnv)).toBe(false);expect(groupApplicationReleasePath(`/${locale}/florida/pricing`,{...visualGateEnv,LS_IDENTITY_ENABLED:"false"})).toBe(false);}
