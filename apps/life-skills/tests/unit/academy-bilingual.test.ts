@@ -44,7 +44,19 @@ describe("Source21 bilingual parent journey",()=>{
    for(const copy of [stage.water[locale],stage.practice[locale]])expect(html).toContain(renderPhaseRaw(createElement('p',null,copy)));
    expect(html).not.toContain(locale==='he'?'נושאי הלמידה':'Curriculum topics');
    expect(html).not.toMatch(/Inside this stage|Thinking it through|Depth that grows/);expect(html).toContain(`href="/${locale}/florida/apply"`);
+   expect(html).not.toContain('<figcaption');
+   for(const venue of ['Oleta River State Park','East Greynolds Park','Amelia Earhart Park','South Pointe Park'])expect(html).toContain(venue);
+   expect(html).toContain(locale==='he'?'מקומות אפשריים, לא יעדים שבועיים שהוזמנו.':'Possible locations, not booked weekly destinations.');
   }
+ });
+ it.each(['en','he'] as const)('%s later stages retain distinct public syllabus topics and supervision boundaries',locale=>{
+  const stage=(slug:string)=>renderToStaticMarkup(createElement(AcademyStage,{locale,slug}));
+  const independent=stage('independent'),advanced=stage('advanced'),leadership=stage('leadership'),foundation=stage('foundation');
+  for(const phrase of locale==='he'?['Double Uni','Albright','פיתול בחוט','ריגי קרקעית']:['Double Uni','Albright','line twist','bottom rigs'])expect(independent).toContain(phrase);
+  for(const phrase of locale==='he'?['תרגול יבש ומבוקר','בדיקה נפרדת','מקור חוקי','שמירה בקירור','בהובלת מבוגר']:['controlled dry practice','separate instructor check','lawful source','cold storage','adult-led'])expect(advanced).toContain(phrase);
+  for(const phrase of locale==='he'?['אינו הופך תלמיד לאחראי להשגחה','יעד מעשי להמשך','אינה מבוססת על גודל הדג']:['never makes a student responsible for supervising','next practical goal','not based on the size of a fish'])expect(leadership).toContain(phrase);
+  for(const html of [independent,advanced,leadership]){expect(html).toContain(locale==='he'?'אינם מסלול קבוע של שנים־עשר תאריכים':'not a fixed twelve-date itinerary');expect(html).not.toMatch(/<ol[^>]*class="[^"]*weekList/);}
+  expect(foundation.replace(/<[^>]*>/g,'' )).toContain(locale==='he'?'מפגשים 1–2 · שעתיים כל אחד':'Meetings 1–2 · 2 hours each');expect(foundation.replace(/<[^>]*>/g,'' )).toContain(locale==='he'?'אלו שני מפגשי הכנה נפרדים':'These are two separate preparation meetings');
  });
  it.each(["en","he"] as const)("%s stage registration actions follow verified campaign phase without inventing availability",locale=>{
   const regular=campaignSnapshotSchema.parse({...explicitPre,phase:'REGULAR_REGISTRATION',revision:2,occupied:30,remaining:0,firstFilledAt:'2026-10-23T14:00:00.000Z'});
