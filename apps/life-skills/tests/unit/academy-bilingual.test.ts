@@ -71,6 +71,22 @@ describe("Source21 bilingual parent journey",()=>{
   for(const removed of ['name="paymentPlan"','name="nextStep"','name="parentDropoff"','name="preferredAreas"','learnerTackleBox','learnerGear','grade_3_5'])expect(html).not.toContain(removed);
   expect(html).toContain(locale==='he'?'הרשמה מוקדמת בחינם':'Pre-register for free');expect(html).not.toContain(locale==='he'?'תשלום ואישור מקום':'Pay &amp; Confirm My Spot');expect(html).not.toContain('data-academy-saved=');
  });
+ it.each(["en","he"] as const)("%s form and FAQ use approved offshore eligibility and stable stage choices",locale=>{
+  const form=renderToStaticMarkup(createElement(AcademyIntakePage,{locale}));
+  const website=renderToStaticMarkup(createElement(AcademyWebsite,{locale,onLocaleChange:()=>{}}));
+  const approved=renderPhaseRaw(createElement('p',null,bilingual.questions[8]!.answer[locale]));
+  for(const html of [form,website]){
+   expect(html).toContain(approved.slice(3,-4));
+   expect(html).not.toContain(locale==='he'?'השלב הראשון בן 12 השבועות':'first 12-week stage');
+  }
+  expect(form).toContain(locale==='he'?'12 המפגשים':'twelve-session stage');
+  expect(form).toContain(locale==='he'?'דרישות המוכנות, ההשגחה והקברניט':'captain, guardian and readiness requirements');
+  const selection=form.match(/<select[^>]*name="stageInterest"[^>]*>([\s\S]*?)<\/select>/)?.[1];expect(selection).toBeDefined();
+  const options=[...selection!.matchAll(/<option value="([^"]*)"[^>]*>([^<]*)<\/option>/g)];
+  expect(options.map(option=>option[1])).toEqual(['','foundation','independent','advanced','leadership','discuss']);
+  expect(options.slice(1,5).map(option=>option[2])).toEqual(bilingual.stages.map(stage=>stage.title[locale]));
+  expect(options.at(-1)?.[2]).toBe(locale==='he'?'לתיאום איתי':'Discuss with me');
+ });
  it.each(["en","he"] as const)("%s metadata keeps the current verified origin and matching alternate child paths",locale=>{
   for(const path of ["","/apply","/pricing","/stages/foundation","/stages/leadership"]){const meta=academyMetadata(locale,path);expect(meta.alternates.canonical).toBe(`https://life-skills.bneineviimacademy.org/${locale}/florida${path}`);for(const lang of ["en","he"] as const)expect(meta.alternates.languages[lang].endsWith(`/${lang}/florida${path}`)).toBe(true);expect(meta.openGraph.url).toBe(meta.alternates.canonical);}
  });
