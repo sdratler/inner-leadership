@@ -1,7 +1,10 @@
+import type {ReactNode} from 'react';
+import {AcademyCampaignProvider} from '../../src/features/group-application/academy-campaign-state.ts';
+import {campaignSnapshotSchema,ACADEMY_CAMPAIGN} from '../../src/features/group-application/academy-campaign-contract.ts';
 import {createHash} from "node:crypto";
 import {readFileSync} from "node:fs";
 import {createElement} from "react";
-import {renderToStaticMarkup} from "react-dom/server";
+import {renderToStaticMarkup as renderPhaseRaw} from "react-dom/server";
 import {describe,expect,it} from "vitest";
 import {GroupApplicationLanding} from "../../src/features/group-application/landing.tsx";
 import {JlfaLogo,JlfaFaq,JlfaCoreProgram,JLFA_TAGLINE,JLFA_LOGO_SRC,JLFA_LOGO_SHA256} from "../../src/features/group-application/jlfa-brand.tsx";
@@ -34,8 +37,8 @@ describe("current owner-approved Academy brand projection and public overview bo
   expect(html).not.toMatch(/Real Mensch|Real Mentch|Real Mentsch|\/groups\/brand\/life-skills-logo\.png/);
   expect(html).not.toContain("data-jlfa-curriculum-content");
   if(mode==="native"){
-   expect(html).toContain('<h1 id="academy-title" lang="en" dir="ltr">South Florida Jewish Leadership Fishing Academy</h1>');expect(html).toContain('data-academy-site="true"');
-   expect(html).toContain('src="/groups/academy/hero-owner03-mobile-'+locale+'.png"');expect(html).toContain('srcSet="/groups/academy/hero-owner03-desktop-'+locale+'.png"');expect(html).toContain(`href="/${locale}/florida/apply"`);
+   expect(html).toContain('<h1 id="academy-title" lang="en" dir="ltr" aria-label="South Florida Jewish Leadership Fishing Academy"><span>Jewish Leadership</span><span>Fishing Academy</span></h1>');expect(html).toContain('data-academy-site="true"');
+   expect(html).toContain('src="/groups/academy/hero-mobile-20261018.png"');expect(html).toContain('srcSet="/groups/academy/hero-desktop-20261018.png"');expect(html).toContain(`href="/${locale}/florida/apply"`);
    expect(html).not.toContain('data-inquiry-kind=');expect(html).not.toContain('aria-controls="jlfa-curriculum"');expect(html).not.toContain(locale==="he"?"תמונת הפתיחה עדיין בעבודה":"HERO ARTWORK IN PROGRESS");
   }else{
    expect(html).toContain(`<h1>${escaped(copy.realMensch.academy.title[locale])}</h1>`);expect(html).toContain('aria-controls="jlfa-curriculum"');
@@ -62,3 +65,6 @@ describe("current owner-approved Academy brand projection and public overview bo
   for(const path of["/groups/brand/jlfa-logo-locked-v2.png","/groups/brand/private-source.png","/groups/brand/../private/source.png"])expect(groupApplicationPublicAsset(path,"GET",env)).toBe(false);
  });
 });
+
+const explicitPre=campaignSnapshotSchema.parse({version:ACADEMY_CAMPAIGN,phase:'PRE_REGISTRATION',revision:1,capacity:30,occupied:1,remaining:29,firstFilledAt:null,asOf:'2026-10-23T14:00:00.000Z',reopeningPolicy:'PROPOSED_STICKY_REGULAR_PENDING_OWNER_CONFIRMATION'});
+function renderToStaticMarkup(node:ReactNode){return renderPhaseRaw(createElement(AcademyCampaignProvider,{initial:explicitPre},node));}

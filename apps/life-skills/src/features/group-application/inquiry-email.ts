@@ -9,7 +9,7 @@ import {requirePractitioner} from "../cases/policy.ts";
 import type {Actor,IdentityClock} from "../identity/types.ts";
 import {one,type IdentityStore,type SqlSession} from "../identity/store.ts";
 import type {AuthEmailTransport} from "../../providers/email/transport.ts";
-import {createAuthEmailTransport} from "../../providers/email/gmail.ts";
+import {GmailAuthTransport,parseGmailAuthConfig} from "../../providers/email/gmail.ts";
 import {groupApplicationFieldsSchema,isFloridaGroupApplication,isSchoolInquiry,type GroupApplicationFields} from "./contract.ts";
 import {INQUIRY_EMAIL_FROM,INQUIRY_EMAIL_PURPOSE,inquiryEmailContent} from "./inquiry-email-copy.ts";
 
@@ -18,7 +18,8 @@ const aad=(workspace:string,id:string)=>`ls_service_interest/inquiry_email/v1/${
 export function inquiryEmailQueueEnabled(env:Record<string,string|undefined>){return env.LS_INQUIRY_EMAIL_QUEUE_ENABLED==="true";}
 export function createInquiryEmailTransport(env:Record<string,string|undefined>,sendFetch:typeof fetch=fetch){
  if(env.LS_INQUIRY_EMAIL_SEND_ENABLED!=="true"||env.LS_AUTH_EMAIL_PROVIDER!=="gmail"||env.LS_AUTH_EMAIL_FROM!==INQUIRY_EMAIL_FROM)throw new AppError("UNAVAILABLE");
- return createAuthEmailTransport(env,sendFetch);
+ const config=parseGmailAuthConfig(env);
+ return {transport:new GmailAuthTransport(config,sendFetch,"JLFA Office"),from:config.from};
 }
 function intendedPayload(reference:string,fields:GroupApplicationFields){
  if(!isFloridaGroupApplication(fields)||fields.programId!=="sunday_fishing_academy")return null;
@@ -43,7 +44,7 @@ export class InquiryEmailOutbox{
  constructor(private readonly db:IdentityStore,private readonly workspace:WorkspaceId,private readonly ring:Keyring,private readonly clock:IdentityClock){}
  async dispatchForApplication(reference:string,transport:AuthEmailTransport,from:string){
   if(!z.string().uuid().safeParse(reference).success)throw new AppError("INVALID_REQUEST");
-  const lookup=()=>this.db.transaction(tx=>one<{id:string;state:Row["state"]}>(tx,"SELECT id,state FROM ls_service_interest.inquiry_email_outbox WHERE workspace_id=$1 AND application_id=$2",[this.workspace,reference]));
+  const lookup=()=>this.db.transaction(tx=>one<{id:string;state:Row["state"]}>(tx,"SELECT id,state FROM ls_service_interest.inquiry_email_outbox WHERE workspace_id=$1 AND application_id=$2 AND purpose=$3",[this.workspace,reference,INQUIRY_EMAIL_PURPOSE]));
   const row=await lookup();if(!row)return "not_requested" as const;if(row.state!=="queued")return row.state;
   const outcome=await this.dispatchOne(row.id,transport,from);if(outcome!=="idle")return outcome;
   return (await lookup())?.state??"unknown";

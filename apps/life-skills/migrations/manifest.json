@@ -218,5 +218,9 @@
   {
     "name": "0135_ls_inquiry_email_outbox.sql",
     "sha256": "45a887627c21666d147537bf0a37148f83cc3ced29ccfd27c2f35be7dd9ca424"
+  },
+  {
+    "name": "0136_ls_academy_founder.sql",
+    "sha256": "6590a21e456f05c4956b097ce5cd3300fd2ebb2ae89e1d007bb2ece969b51ecf"
   }
 ]

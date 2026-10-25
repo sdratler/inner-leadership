@@ -1,7 +1,8 @@
 import {z} from "zod";
+import {campaignAttributionSchema} from "./academy-campaign-contract.ts";
 import {academyIntakeSchema,academyDriveMinutes} from "./academy-intake.ts";
 import {academyRegistrationSchema,ACADEMY_REGISTRATION_VERSION} from './academy-registration.ts';
-import {academyRegistrationNotice} from './academy-registration-notice.ts';
+import {academyRegistrationNotice,academyLegacyRegistrationNotice} from './academy-registration-notice.ts';
 
 /** Existing Israel application permission. This contract remains writable at /groups/apply. */
 export const groupApplicationNotice={
@@ -129,9 +130,10 @@ export const floridaAcademyRegistrationFieldsSchema=floridaParentApplicationFiel
  schedulePreference:z.array(scheduleValueSchema).length(0),
  scheduleContext:z.undefined().optional(),academyFit:z.undefined().optional(),academyIntake:z.undefined().optional(),
  academyRegistration:academyRegistrationSchema,
- permission:z.object({confirmed:z.literal(true),version:z.literal(academyRegistrationNotice.version),language:z.enum(['en','he'])}).strict(),
+ permission:z.object({confirmed:z.literal(true),version:z.enum([academyRegistrationNotice.version,academyLegacyRegistrationNotice.version]),language:z.enum(['en','he'])}).strict(),
 }).superRefine((v,c)=>{
  if(v.permission.language!==v.language||v.academyRegistration.consent.language!==v.language)c.addIssue({code:'custom',path:['permission'],message:'permission language must match registration'});
+ if(v.permission.version!==v.academyRegistration.consent.version)c.addIssue({code:'custom',path:['permission'],message:'permission version mismatch'});
  if(!v.contact.includes('@')&&!normalizeFloridaLeadContact(v.contact))c.addIssue({code:'custom',path:['contact'],message:'include country code or a US ten-digit number'});
 });
 export const floridaParentApplicationFieldsSchema=z.union([floridaLegacyParentApplicationFieldsSchema,floridaAcademyRegistrationFieldsSchema]);
@@ -171,10 +173,10 @@ export const floridaGroupApplicationCommandSchema=z.object({operationId:z.string
 export const groupApplicationCommandSchema=z.union([floridaGroupApplicationCommandSchema,israelGroupApplicationCommandSchema]);
 const submissionBase={challenge:z.string().min(80).max(1024),website:z.literal(""),operationId:z.string().uuid()} as const;
 export const groupApplicationSubmissionSchema=z.object({...submissionBase,fields:currentGroupApplicationFieldsSchema}).strict();
-export const floridaGroupApplicationSubmissionSchema=z.object({...submissionBase,fields:floridaGroupApplicationFieldsSchema}).strict();
+export const floridaGroupApplicationSubmissionSchema=z.object({...submissionBase,fields:floridaGroupApplicationFieldsSchema,attribution:campaignAttributionSchema.optional()}).strict();
 // Transport reading does not admit a new write. Only an exact existing receipt
 // may answer a legacy-only tuple; current submission validation remains separate.
-export const floridaGroupApplicationReadSubmissionSchema=z.object({...submissionBase,fields:floridaGroupApplicationReadableFieldsSchema}).strict();
+export const floridaGroupApplicationReadSubmissionSchema=z.object({...submissionBase,fields:floridaGroupApplicationReadableFieldsSchema,attribution:campaignAttributionSchema.optional()}).strict();
 export type IsraelGroupApplicationFields=z.infer<typeof currentGroupApplicationFieldsSchema>;
 export type IsraelReadableGroupApplicationFields=z.infer<typeof israelReadableFieldsSchema>;
 export type FloridaGroupApplicationFields=z.infer<typeof floridaGroupApplicationFieldsSchema>;

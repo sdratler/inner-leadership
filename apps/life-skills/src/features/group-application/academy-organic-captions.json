@@ -1,0 +1,656 @@
+{
+  "schemaVersion": 1,
+  "sourceFileId": "1zCgeF9dFcM2_Xp5ytGnxX_tpDxJjp3H3",
+  "sourceContentVersion": "1.0",
+  "bankDocumentId": "1HetkdQeho7BKMEzVEtqxyR4eY3PPMYOoLOrAOq3WUa8",
+  "bankRevision": "AHj4eMTlsGf-wg9uSUQkjiIpb07x9njqT20Qr0mqZDW462gt8eNvQE48wJOTvVnGRIaEGLR1j4JD4mamJjcqUko04VJyn_6xVlPmXfE0RwA",
+  "bankSha256": "d32761313115f61eba0435b2465897bb2c89ef0232383b75c8ad95a38a6a99d9",
+  "voiceFileId": "174-EqMG0QIH5rCuRgn2xYYPMX-XWJZNn",
+  "voiceVersion": "2.5",
+  "creativeSha256": "b6123180215e697ac8ea19f6750ca5304bc3acbfc70301b5ee81ef3430b98262",
+  "publicationApproved": false,
+  "captions": [
+    {
+      "id": "jlfa-ls-01-en",
+      "sourceId": "JLFA-LS-01-EN",
+      "version": 1,
+      "language": "en",
+      "direction": "ltr",
+      "title": "Self-governance",
+      "text": "A boy can know that respect matters and still speak harshly when he is frustrated. In our fishing groups, we work on self-governance by helping him connect what matters to him with how he acts. A disagreement over shared space becomes a chance to explain his view, consider the other boy, and choose a response with guidance. Through this kind of self-governance work, I’ve seen boys diagnosed with social anxiety become confident in groups and express themselves clearly.\n\nPre-registration is now open for the South Florida Jewish Leadership Fishing Academy, for boys with or without fishing experience. Groups are forming on Sundays and after school, with weekday daytime groups for homeschoolers. Pre-register for free and choose your preferred days and times. For questions, send me a Facebook DM or contact me on WhatsApp.",
+      "sha256": "8df95e95e0afd2c77832d1f0f0ee4dbffaf605ebecf99b2592a743032232ad3c",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "LS_PROTOCOL",
+        "LS_PHILOSOPHY"
+      ],
+      "claimGuardrail": "Do not call self-governance a clinically validated protocol, diagnosis or psychometric score."
+    },
+    {
+      "id": "jlfa-ls-01-he",
+      "sourceId": "JLFA-LS-01-HE",
+      "version": 1,
+      "language": "he",
+      "direction": "rtl",
+      "title": "הנהגה עצמית",
+      "text": "ילד יכול לדעת שכבוד לאחר חשוב, ועדיין לדבר בצורה פוגעת כשהוא מתוסכל. בקבוצות הדיג שלנו עובדים על הנהגה עצמית דרך החיבור בין הערכים שלו לבין הדרך שבה הוא פועל. כשעולה מחלוקת על מקום משותף, אנחנו מלווים אותו כשהוא מסביר את דעתו, מקשיב לחבר ובוחר איך להגיב מתוך כבוד לשניהם. בעבודה כזאת על הנהגה עצמית ראיתי בנים שאובחנו עם חרדה חברתית משתתפים בביטחון ומבטאים את עצמם בצורה ברורה.\n\nההרשמה המוקדמת לאקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה נפתחה! התוכנית מיועדת לבנים עם או בלי ניסיון בדיג. מתגבשות קבוצות בימי ראשון ואחרי הלימודים, וגם בשעות היום באמצע השבוע לילדים בחינוך ביתי. הירשמו מראש ללא עלות ובחרו את הימים והשעות המועדפים עליכם. לשאלות, שלחו לי הודעה פרטית בפייסבוק או פנו אליי בוואטסאפ.",
+      "sha256": "8c9c15b8a9625bf9ba5cd01638c8a5dcf7575eee03eec2a2141596d22ef04144",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "LS_PROTOCOL",
+        "LS_PHILOSOPHY"
+      ],
+      "claimGuardrail": "Do not call self-governance a clinically validated protocol, diagnosis or psychometric score."
+    },
+    {
+      "id": "jlfa-ls-02-en",
+      "sourceId": "JLFA-LS-02-EN",
+      "version": 1,
+      "language": "en",
+      "direction": "ltr",
+      "title": "Emotional regulation",
+      "text": "For some boys, a knot that comes undone is enough to make them want to quit. Emotional regulation needs practice while the frustration is actually there. In our fishing groups, an adult helps the boy notice what he is feeling, pause, and choose whether to ask for help or try another approach, while he works toward something he wants to accomplish. Through this kind of self-governance work, I’ve seen boys diagnosed with social anxiety become confident in groups and express themselves clearly.\n\nPre-registration is now open for the South Florida Jewish Leadership Fishing Academy, for boys with or without fishing experience. Groups are forming on Sundays and after school, with weekday daytime groups for homeschoolers. Pre-register for free and choose your preferred days and times. For questions, send me a Facebook DM or contact me on WhatsApp.",
+      "sha256": "0b8a6c4c88ca1850ff2e903bdce7afd48909265495f14ed47063e1342ea7ac00",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "GROSS_EMOTION",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "Regulation does not mean suppressing all feelings or promising symptom reduction."
+    },
+    {
+      "id": "jlfa-ls-02-he",
+      "sourceId": "JLFA-LS-02-HE",
+      "version": 1,
+      "language": "he",
+      "direction": "rtl",
+      "title": "ויסות רגשי",
+      "text": "יש ילדים שקשר שנפתח מספיק כדי לגרום להם לרצות לוותר. ויסות רגשי דורש תרגול גם כשהתסכול באמת עולה. בקבוצות הדיג שלנו, מבוגר עוזר לילד לזהות מה הוא מרגיש, לעצור ולבחור אם לבקש עזרה או לנסות דרך אחרת, בזמן שהוא עובד על משהו שהוא רוצה להצליח בו. בעבודה כזאת על הנהגה עצמית ראיתי בנים שאובחנו עם חרדה חברתית משתתפים בביטחון ומבטאים את עצמם בצורה ברורה.\n\nההרשמה המוקדמת לאקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה נפתחה! התוכנית מיועדת לבנים עם או בלי ניסיון בדיג. מתגבשות קבוצות בימי ראשון ואחרי הלימודים, וגם בשעות היום באמצע השבוע לילדים בחינוך ביתי. הירשמו מראש ללא עלות ובחרו את הימים והשעות המועדפים עליכם. לשאלות, שלחו לי הודעה פרטית בפייסבוק או פנו אליי בוואטסאפ.",
+      "sha256": "ab2288eb5f427236b01c362ce0272277081365e29057f14cd8cb445d8e0013ae",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "GROSS_EMOTION",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "Regulation does not mean suppressing all feelings or promising symptom reduction."
+    },
+    {
+      "id": "jlfa-ls-03-en",
+      "sourceId": "JLFA-LS-03-EN",
+      "version": 1,
+      "language": "en",
+      "direction": "ltr",
+      "title": "Co-regulation",
+      "text": "A boy who is overwhelmed may need support before he can think about what to do next. In our fishing groups, co-regulation starts with an adult who stays calm and responds to what he needs. If his line tangles and frustration takes over, we work alongside him to put the difficulty into words and find a manageable next step. Through this kind of self-governance work, I’ve seen boys diagnosed with social anxiety become confident in groups and express themselves clearly.\n\nPre-registration is now open for the South Florida Jewish Leadership Fishing Academy, for boys with or without fishing experience. Groups are forming on Sundays and after school, with weekday daytime groups for homeschoolers. Pre-register for free and choose your preferred days and times. For questions, send me a Facebook DM or contact me on WhatsApp.",
+      "sha256": "687198670ef68985b586b7c2ddfc441356ab01a7b0d467d276aebd45297ca90f",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "ACF_COREG",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "Do not imply calm adult behavior guarantees that a child will become calm."
+    },
+    {
+      "id": "jlfa-ls-03-he",
+      "sourceId": "JLFA-LS-03-HE",
+      "version": 1,
+      "language": "he",
+      "direction": "rtl",
+      "title": "ויסות משותף",
+      "text": "ילד שמוצף זקוק לפעמים לעזרה לפני שהוא מסוגל לחשוב מה לעשות עכשיו. בקבוצות הדיג שלנו, ויסות משותף מתחיל במבוגר שנשאר רגוע וקשוב למה שהילד צריך. כשהחוט מסתבך והתסכול גובר, אנחנו נשארים לצדו, עוזרים לו לומר מה קשה לו ומחפשים יחד צעד שהוא יכול להתמודד איתו. בעבודה כזאת על הנהגה עצמית ראיתי בנים שאובחנו עם חרדה חברתית משתתפים בביטחון ומבטאים את עצמם בצורה ברורה.\n\nההרשמה המוקדמת לאקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה נפתחה! התוכנית מיועדת לבנים עם או בלי ניסיון בדיג. מתגבשות קבוצות בימי ראשון ואחרי הלימודים, וגם בשעות היום באמצע השבוע לילדים בחינוך ביתי. הירשמו מראש ללא עלות ובחרו את הימים והשעות המועדפים עליכם. לשאלות, שלחו לי הודעה פרטית בפייסבוק או פנו אליי בוואטסאפ.",
+      "sha256": "a8eaa20e8aff32ba86bc4670ad72f9e6769b0e42ffaad7e2c584360bb64bc01d",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "ACF_COREG",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "Do not imply calm adult behavior guarantees that a child will become calm."
+    },
+    {
+      "id": "jlfa-ls-04-en",
+      "sourceId": "JLFA-LS-04-EN",
+      "version": 1,
+      "language": "en",
+      "direction": "ltr",
+      "title": "Inhibitory control",
+      "text": "Some boys know the rules but act before thinking when they are excited. Fishing gives them a reason to practice inhibitory control: pausing an impulse long enough to decide what to do. Before a practice cast, the boy stops, checks the space, and waits for the instructor’s signal, while an adult helps him manage the urge to rush. Through this kind of self-governance work, I’ve seen boys diagnosed with social anxiety become confident in groups and express themselves clearly.\n\nPre-registration is now open for the South Florida Jewish Leadership Fishing Academy, for boys with or without fishing experience. Groups are forming on Sundays and after school, with weekday daytime groups for homeschoolers. Pre-register for free and choose your preferred days and times. For questions, send me a Facebook DM or contact me on WhatsApp.",
+      "sha256": "03753a2128cded5d15d6f0a35877ee1e8f93d7fc009a4f5d03c5c675b9190d79",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "HARVARD_EF_GUIDE",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "An example of supervised practice, not a claim that impulse-control disorders are treated; adult safety responsibility remains."
+    },
+    {
+      "id": "jlfa-ls-04-he",
+      "sourceId": "JLFA-LS-04-HE",
+      "version": 1,
+      "language": "he",
+      "direction": "rtl",
+      "title": "עיכוב תגובה",
+      "text": "יש ילדים שיודעים את הכללים, אבל פועלים לפני שהם חושבים כשהם מתלהבים. בדיג יש סיבה ממשית לתרגל עיכוב תגובה: לעצור את הדחף לרגע ולבחור איך לפעול. בתרגול ההטלה, הילד עוצר, בודק שהשטח פנוי ומחכה לאישור המדריך, עם ליווי כשהוא לומד להתמודד עם הרצון למהר. בעבודה כזאת על הנהגה עצמית ראיתי בנים שאובחנו עם חרדה חברתית משתתפים בביטחון ומבטאים את עצמם בצורה ברורה.\n\nההרשמה המוקדמת לאקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה נפתחה! התוכנית מיועדת לבנים עם או בלי ניסיון בדיג. מתגבשות קבוצות בימי ראשון ואחרי הלימודים, וגם בשעות היום באמצע השבוע לילדים בחינוך ביתי. הירשמו מראש ללא עלות ובחרו את הימים והשעות המועדפים עליכם. לשאלות, שלחו לי הודעה פרטית בפייסבוק או פנו אליי בוואטסאפ.",
+      "sha256": "b4802ed3fa0287e60f52f32962bbd28d15aac4987058595b537d2e239da58883",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "HARVARD_EF_GUIDE",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "An example of supervised practice, not a claim that impulse-control disorders are treated; adult safety responsibility remains."
+    },
+    {
+      "id": "jlfa-ls-05-en",
+      "sourceId": "JLFA-LS-05-EN",
+      "version": 1,
+      "language": "en",
+      "direction": "ltr",
+      "title": "Cognitive flexibility",
+      "text": "Some boys know exactly how they want something to go and struggle when the plan changes. Fishing gives us real opportunities to practice cognitive flexibility, because the first approach will not always work. With an adult helping him consider what has changed, the boy compares other options and chooses what to try next while staying focused on his goal. Through this kind of self-governance work, I’ve seen boys diagnosed with social anxiety become confident in groups and express themselves clearly.\n\nPre-registration is now open for the South Florida Jewish Leadership Fishing Academy, for boys with or without fishing experience. Groups are forming on Sundays and after school, with weekday daytime groups for homeschoolers. Pre-register for free and choose your preferred days and times. For questions, send me a Facebook DM or contact me on WhatsApp.",
+      "sha256": "81946a23ba30a807aaa7cca3d99dcfcc496cc13333b88ea5cd29c4629c5e7a7d",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "HARVARD_EF_GUIDE",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "Changing an approach is not compulsory compliance with every demand; support and choice remain."
+    },
+    {
+      "id": "jlfa-ls-05-he",
+      "sourceId": "JLFA-LS-05-HE",
+      "version": 1,
+      "language": "he",
+      "direction": "rtl",
+      "title": "גמישות קוגניטיבית",
+      "text": "יש ילדים שיודעים בדיוק איך הם רוצים שדברים יקרו, וקשה להם כשהתוכנית משתנה. בדיג יש הזדמנויות אמיתיות לתרגל גמישות קוגניטיבית, כי הדרך הראשונה שמנסים לא תמיד עובדת. מבוגר עוזר לילד להבין מה השתנה, לבחון אפשרויות אחרות ולבחור מה לנסות בהמשך, תוך שמירה על המטרה שחשובה לו. בעבודה כזאת על הנהגה עצמית ראיתי בנים שאובחנו עם חרדה חברתית משתתפים בביטחון ומבטאים את עצמם בצורה ברורה.\n\nההרשמה המוקדמת לאקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה נפתחה! התוכנית מיועדת לבנים עם או בלי ניסיון בדיג. מתגבשות קבוצות בימי ראשון ואחרי הלימודים, וגם בשעות היום באמצע השבוע לילדים בחינוך ביתי. הירשמו מראש ללא עלות ובחרו את הימים והשעות המועדפים עליכם. לשאלות, שלחו לי הודעה פרטית בפייסבוק או פנו אליי בוואטסאפ.",
+      "sha256": "c8cd358bea1e16886bfff50bf15dd335d9ced217270de37974fcbd0674ecb191",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "HARVARD_EF_GUIDE",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "Changing an approach is not compulsory compliance with every demand; support and choice remain."
+    },
+    {
+      "id": "jlfa-ls-06-en",
+      "sourceId": "JLFA-LS-06-EN",
+      "version": 1,
+      "language": "en",
+      "direction": "ltr",
+      "title": "Working memory",
+      "text": "A boy can understand a demonstration and still lose track when he tries the steps himself. Preparing fishing equipment puts working memory to use as he holds an instruction in mind and acts on it. We work through the sequence with him, using short demonstrations and visual reminders when needed to help him follow the steps and check what comes next. Through this kind of self-governance work, I’ve seen boys diagnosed with social anxiety become confident in groups and express themselves clearly.\n\nPre-registration is now open for the South Florida Jewish Leadership Fishing Academy, for boys with or without fishing experience. Groups are forming on Sundays and after school, with weekday daytime groups for homeschoolers. Pre-register for free and choose your preferred days and times. For questions, send me a Facebook DM or contact me on WhatsApp.",
+      "sha256": "d9875b92d3f148f90b109b510ae1e414c699d503348c6e14cb05e8ab1197b507",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "HARVARD_EF_GUIDE",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "No claim that fishing increases general working-memory capacity or treats ADHD; external aids are legitimate support."
+    },
+    {
+      "id": "jlfa-ls-06-he",
+      "sourceId": "JLFA-LS-06-HE",
+      "version": 1,
+      "language": "he",
+      "direction": "rtl",
+      "title": "זיכרון עבודה",
+      "text": "ילד יכול להבין הדגמה, ועדיין לאבד את רצף השלבים כשהוא מנסה בעצמו. בהכנת ציוד לדיג הוא משתמש בזיכרון העבודה כדי להחזיק בראש הנחיה ולפעול לפיה. אנחנו עוברים איתו על השלבים, עם הדגמות קצרות ותזכורות חזותיות לפי הצורך, כדי לעזור לו לעקוב אחרי מה שהוא עושה ולבדוק מה הצעד הבא. בעבודה כזאת על הנהגה עצמית ראיתי בנים שאובחנו עם חרדה חברתית משתתפים בביטחון ומבטאים את עצמם בצורה ברורה.\n\nההרשמה המוקדמת לאקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה נפתחה! התוכנית מיועדת לבנים עם או בלי ניסיון בדיג. מתגבשות קבוצות בימי ראשון ואחרי הלימודים, וגם בשעות היום באמצע השבוע לילדים בחינוך ביתי. הירשמו מראש ללא עלות ובחרו את הימים והשעות המועדפים עליכם. לשאלות, שלחו לי הודעה פרטית בפייסבוק או פנו אליי בוואטסאפ.",
+      "sha256": "a8395b63b24c21060edf068a5b3b78589131af2c90484c899773b09ee6660356",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "HARVARD_EF_GUIDE",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "No claim that fishing increases general working-memory capacity or treats ADHD; external aids are legitimate support."
+    },
+    {
+      "id": "jlfa-ls-07-en",
+      "sourceId": "JLFA-LS-07-EN",
+      "version": 1,
+      "language": "en",
+      "direction": "ltr",
+      "title": "Planning",
+      "text": "A boy can be eager to go fishing and still struggle to organize what he needs. Planning is one of the executive functions we practice before getting started: choosing the equipment, checking what is missing, and deciding what comes first. With an adult helping him think ahead, he takes responsibility for the parts of the preparation he can manage. Through this kind of self-governance work, I’ve seen boys diagnosed with social anxiety become confident in groups and express themselves clearly.\n\nPre-registration is now open for the South Florida Jewish Leadership Fishing Academy, for boys with or without fishing experience. Groups are forming on Sundays and after school, with weekday daytime groups for homeschoolers. Pre-register for free and choose your preferred days and times. For questions, send me a Facebook DM or contact me on WhatsApp.",
+      "sha256": "0171c19521260bafb8c542db7bfbe386230e02f576d75c6d768a78a6cbb0dde9",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "ASHA_SOCIAL",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "Do not infer a planning deficit or diagnosis from missing equipment; do not withdraw necessary support."
+    },
+    {
+      "id": "jlfa-ls-07-he",
+      "sourceId": "JLFA-LS-07-HE",
+      "version": 1,
+      "language": "he",
+      "direction": "rtl",
+      "title": "תכנון ותפקודים ניהוליים",
+      "text": "ילד יכול לרצות מאוד לצאת לדוג, ועדיין להתקשות לארגן את מה שהוא צריך. תכנון הוא אחד התפקודים הניהוליים שאנחנו מתרגלים לפני שמתחילים: לבחור ציוד, לבדוק מה חסר ולהחליט מה עושים קודם. עם מבוגר שעוזר לו לחשוב קדימה, הילד לוקח אחריות על חלקי ההכנה שהוא יכול לבצע בעצמו. בעבודה כזאת על הנהגה עצמית ראיתי בנים שאובחנו עם חרדה חברתית משתתפים בביטחון ומבטאים את עצמם בצורה ברורה.\n\nההרשמה המוקדמת לאקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה נפתחה! התוכנית מיועדת לבנים עם או בלי ניסיון בדיג. מתגבשות קבוצות בימי ראשון ואחרי הלימודים, וגם בשעות היום באמצע השבוע לילדים בחינוך ביתי. הירשמו מראש ללא עלות ובחרו את הימים והשעות המועדפים עליכם. לשאלות, שלחו לי הודעה פרטית בפייסבוק או פנו אליי בוואטסאפ.",
+      "sha256": "4b0befbe47b5426ad4fdf0d8c1b1dec9cb653e4a0320883d67d40c3802c9abcb",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "ASHA_SOCIAL",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "Do not infer a planning deficit or diagnosis from missing equipment; do not withdraw necessary support."
+    },
+    {
+      "id": "jlfa-ls-08-en",
+      "sourceId": "JLFA-LS-08-EN",
+      "version": 1,
+      "language": "en",
+      "direction": "ltr",
+      "title": "Metacognition",
+      "text": "Some boys keep trying the same thing without stopping to consider why it is not working. Fishing gives us something concrete to think through together. When a cast keeps landing in the wrong place, we practice metacognition by helping the boy examine his own approach, work out what may be happening, and choose one thing to change on the next attempt. Through this kind of self-governance work, I’ve seen boys diagnosed with social anxiety become confident in groups and express themselves clearly.\n\nPre-registration is now open for the South Florida Jewish Leadership Fishing Academy, for boys with or without fishing experience. Groups are forming on Sundays and after school, with weekday daytime groups for homeschoolers. Pre-register for free and choose your preferred days and times. For questions, send me a Facebook DM or contact me on WhatsApp.",
+      "sha256": "fd0379da81cf5325f7164bb089a1ebc561480ffad4bfda4c5fbce5aff8b30daa",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "IES_META",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "No compulsory quiz or clinical score; fishing analogy is educational adaptation, not a study-tested intervention."
+    },
+    {
+      "id": "jlfa-ls-08-he",
+      "sourceId": "JLFA-LS-08-HE",
+      "version": 1,
+      "language": "he",
+      "direction": "rtl",
+      "title": "מטא־קוגניציה",
+      "text": "יש ילדים שמנסים שוב ושוב באותה דרך, בלי לעצור ולחשוב למה היא לא עובדת. הדיג נותן לנו משהו ממשי לבדוק יחד. כשההטלה שוב מגיעה למקום הלא נכון, אנחנו מתרגלים מטא־קוגניציה: עוזרים לילד להתבונן בדרך שבה הוא חושב ופועל, להבין מה אולי קורה ולבחור דבר אחד לשנות בניסיון הבא. בעבודה כזאת על הנהגה עצמית ראיתי בנים שאובחנו עם חרדה חברתית משתתפים בביטחון ומבטאים את עצמם בצורה ברורה.\n\nההרשמה המוקדמת לאקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה נפתחה! התוכנית מיועדת לבנים עם או בלי ניסיון בדיג. מתגבשות קבוצות בימי ראשון ואחרי הלימודים, וגם בשעות היום באמצע השבוע לילדים בחינוך ביתי. הירשמו מראש ללא עלות ובחרו את הימים והשעות המועדפים עליכם. לשאלות, שלחו לי הודעה פרטית בפייסבוק או פנו אליי בוואטסאפ.",
+      "sha256": "36b34d1035e9bbbeaeb8a21df2a2a89e8a2c119403ec0ef33c787fc264216f85",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "IES_META",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "No compulsory quiz or clinical score; fishing analogy is educational adaptation, not a study-tested intervention."
+    },
+    {
+      "id": "jlfa-ls-09-en",
+      "sourceId": "JLFA-LS-09-EN",
+      "version": 1,
+      "language": "en",
+      "direction": "ltr",
+      "title": "Intrinsic motivation",
+      "text": "A boy may find it hard to stay with a task until something about it interests him. Fishing lets us work with intrinsic motivation: the desire to participate because he enjoys the activity itself. As he explores a technique or tries to improve his cast, we guide him through the questions, effort, and mistakes that come with learning something he wants to do. Through this kind of self-governance work, I’ve seen boys diagnosed with social anxiety become confident in groups and express themselves clearly.\n\nPre-registration is now open for the South Florida Jewish Leadership Fishing Academy, for boys with or without fishing experience. Groups are forming on Sundays and after school, with weekday daytime groups for homeschoolers. Pre-register for free and choose your preferred days and times. For questions, send me a Facebook DM or contact me on WhatsApp.",
+      "sha256": "d85f826ada5eecfdcf772c899aa2ddb17143823880d5d8d039909fa00313fc88",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "SDT",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "Do not equate all personally valued behavior with intrinsic motivation; values can support autonomous extrinsic motivation."
+    },
+    {
+      "id": "jlfa-ls-09-he",
+      "sourceId": "JLFA-LS-09-HE",
+      "version": 1,
+      "language": "he",
+      "direction": "rtl",
+      "title": "מוטיבציה פנימית",
+      "text": "לפעמים ילד מתקשה להתמיד במשימה עד שמשהו בה מעורר את העניין שלו. הדיג מאפשר לעבוד עם מוטיבציה פנימית, הרצון להשתתף כי הפעילות עצמה מעניינת ומהנה. כשהוא לומד שיטה או מנסה לדייק בהטלה, אנחנו עוזרים לו להתמודד עם השאלות, המאמץ והטעויות שהם חלק מלמידה של משהו שהוא רוצה לעשות. בעבודה כזאת על הנהגה עצמית ראיתי בנים שאובחנו עם חרדה חברתית משתתפים בביטחון ומבטאים את עצמם בצורה ברורה.\n\nההרשמה המוקדמת לאקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה נפתחה! התוכנית מיועדת לבנים עם או בלי ניסיון בדיג. מתגבשות קבוצות בימי ראשון ואחרי הלימודים, וגם בשעות היום באמצע השבוע לילדים בחינוך ביתי. הירשמו מראש ללא עלות ובחרו את הימים והשעות המועדפים עליכם. לשאלות, שלחו לי הודעה פרטית בפייסבוק או פנו אליי בוואטסאפ.",
+      "sha256": "3382e84cc2cc6f01a4dd9613fa47a413f6c5ad23df1efd1286e2d5919e5e9541",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "SDT",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "Do not equate all personally valued behavior with intrinsic motivation; values can support autonomous extrinsic motivation."
+    },
+    {
+      "id": "jlfa-ls-10-en",
+      "sourceId": "JLFA-LS-10-EN",
+      "version": 1,
+      "language": "en",
+      "direction": "ltr",
+      "title": "Autonomy",
+      "text": "Some boys wait to be told what to do, even when they have ideas of their own. We support autonomy by giving them a meaningful part in the decisions. Within clear safety boundaries, a boy can choose a fishing skill to practice, explain why it matters to him, and work out his next steps with an adult available to guide him. Through this kind of self-governance work, I’ve seen boys diagnosed with social anxiety become confident in groups and express themselves clearly.\n\nPre-registration is now open for the South Florida Jewish Leadership Fishing Academy, for boys with or without fishing experience. Groups are forming on Sundays and after school, with weekday daytime groups for homeschoolers. Pre-register for free and choose your preferred days and times. For questions, send me a Facebook DM or contact me on WhatsApp.",
+      "sha256": "22ab95439fa967b285803c672458945578367c585c68a86f5a6b30961baeb8d3",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "SDT_AUTONOMY",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "Autonomy does not mean unlimited choice, absence of structure, independence from all help or child-directed safety decisions."
+    },
+    {
+      "id": "jlfa-ls-10-he",
+      "sourceId": "JLFA-LS-10-HE",
+      "version": 1,
+      "language": "he",
+      "direction": "rtl",
+      "title": "אוטונומיה",
+      "text": "יש ילדים שמחכים שיגידו להם מה לעשות, גם כשיש להם רעיונות משלהם. אנחנו מעודדים אוטונומיה בכך שנותנים להם חלק אמיתי בהחלטות. בתוך גבולות בטיחות ברורים, הילד יכול לבחור מיומנות דיג לתרגול, להסביר למה היא חשובה לו ולתכנן את הצעדים הבאים, עם מבוגר שמלווה אותו לפי הצורך. בעבודה כזאת על הנהגה עצמית ראיתי בנים שאובחנו עם חרדה חברתית משתתפים בביטחון ומבטאים את עצמם בצורה ברורה.\n\nההרשמה המוקדמת לאקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה נפתחה! התוכנית מיועדת לבנים עם או בלי ניסיון בדיג. מתגבשות קבוצות בימי ראשון ואחרי הלימודים, וגם בשעות היום באמצע השבוע לילדים בחינוך ביתי. הירשמו מראש ללא עלות ובחרו את הימים והשעות המועדפים עליכם. לשאלות, שלחו לי הודעה פרטית בפייסבוק או פנו אליי בוואטסאפ.",
+      "sha256": "9ff31cfa5741ad403dc5dc12e56475b4026363fee81a6ff7c45d19624ccfd0c3",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "SDT_AUTONOMY",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "Autonomy does not mean unlimited choice, absence of structure, independence from all help or child-directed safety decisions."
+    },
+    {
+      "id": "jlfa-ls-11-en",
+      "sourceId": "JLFA-LS-11-EN",
+      "version": 1,
+      "language": "en",
+      "direction": "ltr",
+      "title": "Self-efficacy",
+      "text": "A boy who says “I can’t” may need a chance to see what he can do with guidance. We work on self-efficacy, his belief in his ability to handle a particular task, through manageable challenges such as learning a fishing knot. He can try a step, see what worked, and decide what support he needs for the next attempt. Through this kind of self-governance work, I’ve seen boys diagnosed with social anxiety become confident in groups and express themselves clearly.\n\nPre-registration is now open for the South Florida Jewish Leadership Fishing Academy, for boys with or without fishing experience. Groups are forming on Sundays and after school, with weekday daytime groups for homeschoolers. Pre-register for free and choose your preferred days and times. For questions, send me a Facebook DM or contact me on WhatsApp.",
+      "sha256": "6b249dbbb6331d8dc05a404e1bbda372a08fec02436b7f4fbfc87567dd032b02",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "APA_EFFICACY",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "Task-specific capability belief, not self-worth; no promise that every attempt succeeds or all anxiety resolves."
+    },
+    {
+      "id": "jlfa-ls-11-he",
+      "sourceId": "JLFA-LS-11-HE",
+      "version": 1,
+      "language": "he",
+      "direction": "rtl",
+      "title": "מסוגלות עצמית",
+      "text": "ילד שאומר ״אני לא יכול״ זקוק לפעמים להזדמנות לגלות מה הוא מסוגל לעשות עם ליווי. אנחנו עובדים על מסוגלות עצמית, האמונה ביכולת להתמודד עם משימה מסוימת, דרך אתגרים שאפשר להתקדם בהם בהדרגה, כמו קשירת קשר לדיג. הילד מתרגל שלב אחד, רואה מה עבד ומברר איזו עזרה הוא צריך בניסיון הבא. בעבודה כזאת על הנהגה עצמית ראיתי בנים שאובחנו עם חרדה חברתית משתתפים בביטחון ומבטאים את עצמם בצורה ברורה.\n\nההרשמה המוקדמת לאקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה נפתחה! התוכנית מיועדת לבנים עם או בלי ניסיון בדיג. מתגבשות קבוצות בימי ראשון ואחרי הלימודים, וגם בשעות היום באמצע השבוע לילדים בחינוך ביתי. הירשמו מראש ללא עלות ובחרו את הימים והשעות המועדפים עליכם. לשאלות, שלחו לי הודעה פרטית בפייסבוק או פנו אליי בוואטסאפ.",
+      "sha256": "499b773e7d083bd0211947ac18780e695edea04fef69eadc1049ba298a119bae",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "APA_EFFICACY",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "Task-specific capability belief, not self-worth; no promise that every attempt succeeds or all anxiety resolves."
+    },
+    {
+      "id": "jlfa-ls-12-en",
+      "sourceId": "JLFA-LS-12-EN",
+      "version": 1,
+      "language": "en",
+      "direction": "ltr",
+      "title": "Frustration tolerance",
+      "text": "Some boys are ready to quit as soon as a task becomes frustrating. Untangling a fishing line gives us time to practice frustration tolerance while the difficulty is real and getting back to fishing matters to the boy. With an adult alongside him, he practices pausing, asking for help, and deciding what to try next. Through this kind of self-governance work, I’ve seen boys diagnosed with social anxiety become confident in groups and express themselves clearly.\n\nPre-registration is now open for the South Florida Jewish Leadership Fishing Academy, for boys with or without fishing experience. Groups are forming on Sundays and after school, with weekday daytime groups for homeschoolers. Pre-register for free and choose your preferred days and times. For questions, send me a Facebook DM or contact me on WhatsApp.",
+      "sha256": "dedc2bfb36492544c75240017597155e431c14f6879b4459bb963278331fee45",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "LS_PROTOCOL",
+        "NIH_FRUSTRATION"
+      ],
+      "claimGuardrail": "Never frame persistence as enduring danger or overwhelming distress; pauses and reasonable support remain available."
+    },
+    {
+      "id": "jlfa-ls-12-he",
+      "sourceId": "JLFA-LS-12-HE",
+      "version": 1,
+      "language": "he",
+      "direction": "rtl",
+      "title": "סבילות לתסכול",
+      "text": "יש ילדים שמוכנים לוותר ברגע שהמשימה נעשית מתסכלת. חוט דיג שהסתבך נותן לנו הזדמנות לתרגל סבילות לתסכול מול קושי אמיתי, כשהילד עדיין רוצה לחזור לדוג. עם מבוגר לצדו, הוא מתרגל לעצור לרגע, לבקש עזרה ולהחליט מה לנסות בהמשך. בעבודה כזאת על הנהגה עצמית ראיתי בנים שאובחנו עם חרדה חברתית משתתפים בביטחון ומבטאים את עצמם בצורה ברורה.\n\nההרשמה המוקדמת לאקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה נפתחה! התוכנית מיועדת לבנים עם או בלי ניסיון בדיג. מתגבשות קבוצות בימי ראשון ואחרי הלימודים, וגם בשעות היום באמצע השבוע לילדים בחינוך ביתי. הירשמו מראש ללא עלות ובחרו את הימים והשעות המועדפים עליכם. לשאלות, שלחו לי הודעה פרטית בפייסבוק או פנו אליי בוואטסאפ.",
+      "sha256": "3d2e6e3a1ab9dd189ccf971fe705aafb7d4f70aeb9f0bda132d3e2131a8e0adb",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "LS_PROTOCOL",
+        "NIH_FRUSTRATION"
+      ],
+      "claimGuardrail": "Never frame persistence as enduring danger or overwhelming distress; pauses and reasonable support remain available."
+    },
+    {
+      "id": "jlfa-ls-13-en",
+      "sourceId": "JLFA-LS-13-EN",
+      "version": 1,
+      "language": "en",
+      "direction": "ltr",
+      "title": "Perspective-taking",
+      "text": "A boy can feel certain that another child is being unfair before hearing his side of the story. When fishing partners disagree over space or equipment, we practice perspective-taking by helping each boy explain what he was trying to do and listen to the other. They can then consider both points of view as they work out how to continue together. Through this kind of self-governance work, I’ve seen boys diagnosed with social anxiety become confident in groups and express themselves clearly.\n\nPre-registration is now open for the South Florida Jewish Leadership Fishing Academy, for boys with or without fishing experience. Groups are forming on Sundays and after school, with weekday daytime groups for homeschoolers. Pre-register for free and choose your preferred days and times. For questions, send me a Facebook DM or contact me on WhatsApp.",
+      "sha256": "a00c6650f44b2f97380a746d93934427430c0915aa2812955afbbab49a372066",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "ASHA_SOCIAL",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "Understanding another perspective does not require agreement, mind-reading or surrendering legitimate boundaries."
+    },
+    {
+      "id": "jlfa-ls-13-he",
+      "sourceId": "JLFA-LS-13-HE",
+      "version": 1,
+      "language": "he",
+      "direction": "rtl",
+      "title": "הבנת נקודת המבט של האחר",
+      "text": "ילד יכול להיות בטוח שחברו מתנהג בחוסר הוגנות עוד לפני ששמע את הצד שלו. כששותפים לדיג מתווכחים על מקום או ציוד, אנחנו מתרגלים הבנה של נקודת המבט של האחר: עוזרים לכל אחד להסביר מה ניסה לעשות ולהקשיב לחבר. כך הם יכולים להתחשב בשתי נקודות המבט כשהם מחליטים איך להמשיך יחד. בעבודה כזאת על הנהגה עצמית ראיתי בנים שאובחנו עם חרדה חברתית משתתפים בביטחון ומבטאים את עצמם בצורה ברורה.\n\nההרשמה המוקדמת לאקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה נפתחה! התוכנית מיועדת לבנים עם או בלי ניסיון בדיג. מתגבשות קבוצות בימי ראשון ואחרי הלימודים, וגם בשעות היום באמצע השבוע לילדים בחינוך ביתי. הירשמו מראש ללא עלות ובחרו את הימים והשעות המועדפים עליכם. לשאלות, שלחו לי הודעה פרטית בפייסבוק או פנו אליי בוואטסאפ.",
+      "sha256": "a0f06a04dc636bc4a3e0a70167b9c2716c454cc64e9a5c6cdd625248c82d90e0",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "ASHA_SOCIAL",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "Understanding another perspective does not require agreement, mind-reading or surrendering legitimate boundaries."
+    },
+    {
+      "id": "jlfa-ls-14-en",
+      "sourceId": "JLFA-LS-14-EN",
+      "version": 1,
+      "language": "en",
+      "direction": "ltr",
+      "title": "Reciprocal communication",
+      "text": "Some boys know what they want to say but struggle with the give and take of a conversation. Preparing fishing equipment together gives reciprocal communication a purpose. One boy explains what he needs, the other asks a question, and they check whether they have understood each other, with an adult helping them listen and respond as they work through the task. Through this kind of self-governance work, I’ve seen boys diagnosed with social anxiety become confident in groups and express themselves clearly.\n\nPre-registration is now open for the South Florida Jewish Leadership Fishing Academy, for boys with or without fishing experience. Groups are forming on Sundays and after school, with weekday daytime groups for homeschoolers. Pre-register for free and choose your preferred days and times. For questions, send me a Facebook DM or contact me on WhatsApp.",
+      "sha256": "a856c5b09f52b4d295098e75192c89ce1148decb072606fe45d31985e2122295",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "ASHA_SOCIAL",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "No forced eye contact or single cultural communication style; no diagnosis inferred from the term."
+    },
+    {
+      "id": "jlfa-ls-14-he",
+      "sourceId": "JLFA-LS-14-HE",
+      "version": 1,
+      "language": "he",
+      "direction": "rtl",
+      "title": "תקשורת הדדית",
+      "text": "יש ילדים שיודעים להסביר רעיון, אבל מתקשים לתת מקום לתגובה של האחר. הכנת ציוד דיג יחד נותנת לתקשורת הדדית מטרה אמיתית. ילד אחד מסביר מה הוא צריך, השני שואל שאלה, והם בודקים שהבינו זה את זה, עם מבוגר שעוזר להם להקשיב ולהגיב בתוך הפעילות עצמה. בעבודה כזאת על הנהגה עצמית ראיתי בנים שאובחנו עם חרדה חברתית משתתפים בביטחון ומבטאים את עצמם בצורה ברורה.\n\nההרשמה המוקדמת לאקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה נפתחה! התוכנית מיועדת לבנים עם או בלי ניסיון בדיג. מתגבשות קבוצות בימי ראשון ואחרי הלימודים, וגם בשעות היום באמצע השבוע לילדים בחינוך ביתי. הירשמו מראש ללא עלות ובחרו את הימים והשעות המועדפים עליכם. לשאלות, שלחו לי הודעה פרטית בפייסבוק או פנו אליי בוואטסאפ.",
+      "sha256": "da63a6e44e310acf6503915fd640e0fdfad9ae43cf92978718b858c74572749c",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "ASHA_SOCIAL",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "No forced eye contact or single cultural communication style; no diagnosis inferred from the term."
+    },
+    {
+      "id": "jlfa-ls-15-en",
+      "sourceId": "JLFA-LS-15-EN",
+      "version": 1,
+      "language": "en",
+      "direction": "ltr",
+      "title": "Assertive communication",
+      "text": "A boy may need help but struggle to ask for it, or turn a disagreement into an argument. Fishing gives him real reasons to practice assertive communication: saying what he needs clearly while respecting the other person. When he needs a turn with equipment or wants to try something different, we help him find words that match what he is trying to achieve. Through this kind of self-governance work, I’ve seen boys diagnosed with social anxiety become confident in groups and express themselves clearly.\n\nPre-registration is now open for the South Florida Jewish Leadership Fishing Academy, for boys with or without fishing experience. Groups are forming on Sundays and after school, with weekday daytime groups for homeschoolers. Pre-register for free and choose your preferred days and times. For questions, send me a Facebook DM or contact me on WhatsApp.",
+      "sha256": "5231cb99b53a97e74302c4c2bb05d3ffb05185213ab8b45654599c197c57721b",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "CCI_ASSERTIVE",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "Assertiveness is not aggression or entitlement to have every request granted; no treatment efficacy claim."
+    },
+    {
+      "id": "jlfa-ls-15-he",
+      "sourceId": "JLFA-LS-15-HE",
+      "version": 1,
+      "language": "he",
+      "direction": "rtl",
+      "title": "תקשורת אסרטיבית",
+      "text": "ילד יכול להזדקק לעזרה ולהתקשות לבקש אותה, או להפוך חוסר הסכמה לוויכוח. בדיג יש סיבות אמיתיות לתרגל תקשורת אסרטיבית: לומר מה הוא צריך בצורה ברורה ומכבדת. כשהוא רוצה להשתמש בציוד משותף או לנסות דרך אחרת, אנחנו עוזרים לו למצוא מילים שמתאימות למה שהוא מנסה להשיג. בעבודה כזאת על הנהגה עצמית ראיתי בנים שאובחנו עם חרדה חברתית משתתפים בביטחון ומבטאים את עצמם בצורה ברורה.\n\nההרשמה המוקדמת לאקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה נפתחה! התוכנית מיועדת לבנים עם או בלי ניסיון בדיג. מתגבשות קבוצות בימי ראשון ואחרי הלימודים, וגם בשעות היום באמצע השבוע לילדים בחינוך ביתי. הירשמו מראש ללא עלות ובחרו את הימים והשעות המועדפים עליכם. לשאלות, שלחו לי הודעה פרטית בפייסבוק או פנו אליי בוואטסאפ.",
+      "sha256": "5a0ab5e40f8c6fade0df1e8fe1c9391b8c0041ffc14c06149a894d72406628f3",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "CCI_ASSERTIVE",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "Assertiveness is not aggression or entitlement to have every request granted; no treatment efficacy claim."
+    },
+    {
+      "id": "jlfa-ls-16-en",
+      "sourceId": "JLFA-LS-16-EN",
+      "version": 1,
+      "language": "en",
+      "direction": "ltr",
+      "title": "Collaborative problem solving",
+      "text": "Two boys can want to enjoy the same activity and still disagree about how to do it. Sharing equipment or choosing where to fish gives collaborative problem solving a real purpose. With guidance, they explain what matters to each of them, look at the options, and work toward a plan they can both take part in. Through this kind of self-governance work, I’ve seen boys diagnosed with social anxiety become confident in groups and express themselves clearly.\n\nPre-registration is now open for the South Florida Jewish Leadership Fishing Academy, for boys with or without fishing experience. Groups are forming on Sundays and after school, with weekday daytime groups for homeschoolers. Pre-register for free and choose your preferred days and times. For questions, send me a Facebook DM or contact me on WhatsApp.",
+      "sha256": "fff0b067dbd8f559cac681cb5e4e25d31b9b76d6e50904995a5d47fefdb1c616",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "OECD_COLLAB",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "Generic educational process; do not imply certification in or delivery of a proprietary clinical CPS treatment."
+    },
+    {
+      "id": "jlfa-ls-16-he",
+      "sourceId": "JLFA-LS-16-HE",
+      "version": 1,
+      "language": "he",
+      "direction": "rtl",
+      "title": "פתרון בעיות משותף",
+      "text": "שני ילדים יכולים לרצות ליהנות מאותה פעילות, ועדיין לא להסכים איך לעשות אותה. כשצריך לחלוק ציוד או לבחור מקום לדיג, אנחנו עובדים על פתרון בעיות משותף. עם ליווי, כל אחד מסביר מה חשוב לו, הם בוחנים יחד את האפשרויות ומחפשים תוכנית ששניהם יוכלו לקחת בה חלק. בעבודה כזאת על הנהגה עצמית ראיתי בנים שאובחנו עם חרדה חברתית משתתפים בביטחון ומבטאים את עצמם בצורה ברורה.\n\nההרשמה המוקדמת לאקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה נפתחה! התוכנית מיועדת לבנים עם או בלי ניסיון בדיג. מתגבשות קבוצות בימי ראשון ואחרי הלימודים, וגם בשעות היום באמצע השבוע לילדים בחינוך ביתי. הירשמו מראש ללא עלות ובחרו את הימים והשעות המועדפים עליכם. לשאלות, שלחו לי הודעה פרטית בפייסבוק או פנו אליי בוואטסאפ.",
+      "sha256": "5695c7ed54a17b83dc6f1bf3a7836e61e8503d3d4f9f3113389f30745bb279f6",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "OECD_COLLAB",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "Generic educational process; do not imply certification in or delivery of a proprietary clinical CPS treatment."
+    },
+    {
+      "id": "jlfa-ls-17-en",
+      "sourceId": "JLFA-LS-17-EN",
+      "version": 1,
+      "language": "en",
+      "direction": "ltr",
+      "title": "Goal setting",
+      "text": "A boy may want to get better at fishing without knowing what to work on next. We use goal setting to turn that intention into something he can practice, such as learning one knot or improving his casting accuracy. He helps choose the goal, works out what support he needs, and checks his progress with an adult as he goes. Through this kind of self-governance work, I’ve seen boys diagnosed with social anxiety become confident in groups and express themselves clearly.\n\nPre-registration is now open for the South Florida Jewish Leadership Fishing Academy, for boys with or without fishing experience. Groups are forming on Sundays and after school, with weekday daytime groups for homeschoolers. Pre-register for free and choose your preferred days and times. For questions, send me a Facebook DM or contact me on WhatsApp.",
+      "sha256": "ad421f7d8e975ef355140f28c6db45e581851c7a9745b2003e61b7226078b786",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "GOALS",
+        "GOALS_APA",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "No fixed mastery deadline, public ranking or guarantee that setting a goal ensures success."
+    },
+    {
+      "id": "jlfa-ls-17-he",
+      "sourceId": "JLFA-LS-17-HE",
+      "version": 1,
+      "language": "he",
+      "direction": "rtl",
+      "title": "הצבת מטרות",
+      "text": "ילד יכול לרצות להשתפר בדיג, בלי לדעת על מה לעבוד עכשיו. הצבת מטרות עוזרת להפוך את הרצון הזה למשהו שאפשר לתרגל, כמו ללמוד קשר אחד או לדייק יותר בהטלה. הילד שותף לבחירת המטרה, מברר איזו עזרה הוא צריך ובודק יחד עם מבוגר איך הוא מתקדם לאורך התרגול. בעבודה כזאת על הנהגה עצמית ראיתי בנים שאובחנו עם חרדה חברתית משתתפים בביטחון ומבטאים את עצמם בצורה ברורה.\n\nההרשמה המוקדמת לאקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה נפתחה! התוכנית מיועדת לבנים עם או בלי ניסיון בדיג. מתגבשות קבוצות בימי ראשון ואחרי הלימודים, וגם בשעות היום באמצע השבוע לילדים בחינוך ביתי. הירשמו מראש ללא עלות ובחרו את הימים והשעות המועדפים עליכם. לשאלות, שלחו לי הודעה פרטית בפייסבוק או פנו אליי בוואטסאפ.",
+      "sha256": "985e2a04fea004b2814d4e9e2d5f0b5c193dcc20929410304b671ab17ca9b9a6",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "GOALS",
+        "GOALS_APA",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "No fixed mastery deadline, public ranking or guarantee that setting a goal ensures success."
+    },
+    {
+      "id": "jlfa-ls-18-en",
+      "sourceId": "JLFA-LS-18-EN",
+      "version": 1,
+      "language": "en",
+      "direction": "ltr",
+      "title": "Self-monitoring",
+      "text": "A boy may realize he interrupted someone only after the conversation has ended. In our fishing groups, self-monitoring gives him something specific to notice while working with a partner. He might choose to check whether he lets the other boy finish speaking, then review what happened with an adult and decide what he wants to practice next. Through this kind of self-governance work, I’ve seen boys diagnosed with social anxiety become confident in groups and express themselves clearly.\n\nPre-registration is now open for the South Florida Jewish Leadership Fishing Academy, for boys with or without fishing experience. Groups are forming on Sundays and after school, with weekday daytime groups for homeschoolers. Pre-register for free and choose your preferred days and times. For questions, send me a Facebook DM or contact me on WhatsApp.",
+      "sha256": "1d5d81cd0eabdfa616d65819731f807701ceba7c22e77d65520c439b7250566b",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "IES_MONITOR",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "Support a clear feasible action already taught; no diagnosis, moral score, public report card or surveillance claim."
+    },
+    {
+      "id": "jlfa-ls-18-he",
+      "sourceId": "JLFA-LS-18-HE",
+      "version": 1,
+      "language": "he",
+      "direction": "rtl",
+      "title": "ניטור עצמי",
+      "text": "ילד יכול להבין שקטע את דבריו של מישהו רק אחרי שהשיחה נגמרה. בקבוצות הדיג שלנו, ניטור עצמי מתחיל בדבר מסוים שהוא בוחר לשים לב אליו בזמן עבודה עם חבר. למשל, הוא יכול לבדוק אם נתן לחבר לסיים לדבר, ואחר כך לחשוב יחד עם מבוגר על מה שקרה ולהחליט מה הוא רוצה לתרגל בהמשך. בעבודה כזאת על הנהגה עצמית ראיתי בנים שאובחנו עם חרדה חברתית משתתפים בביטחון ומבטאים את עצמם בצורה ברורה.\n\nההרשמה המוקדמת לאקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה נפתחה! התוכנית מיועדת לבנים עם או בלי ניסיון בדיג. מתגבשות קבוצות בימי ראשון ואחרי הלימודים, וגם בשעות היום באמצע השבוע לילדים בחינוך ביתי. הירשמו מראש ללא עלות ובחרו את הימים והשעות המועדפים עליכם. לשאלות, שלחו לי הודעה פרטית בפייסבוק או פנו אליי בוואטסאפ.",
+      "sha256": "538b4e79b2a37742dba5b4aabf629d92f75a0689b5e106f53396e8d546a05922",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "IES_MONITOR",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "Support a clear feasible action already taught; no diagnosis, moral score, public report card or surveillance claim."
+    },
+    {
+      "id": "jlfa-ls-19-en",
+      "sourceId": "JLFA-LS-19-EN",
+      "version": 1,
+      "language": "en",
+      "direction": "ltr",
+      "title": "Interoception",
+      "text": "A boy may notice he is frustrated before realizing he is thirsty, tense, or tired. We practice interoception, noticing and making sense of signals inside the body, during fishing and hands-on activities. With an adult helping him describe what he notices, he can connect that information to a practical response, such as asking for water or a break. Through this kind of self-governance work, I’ve seen boys diagnosed with social anxiety become confident in groups and express themselves clearly.\n\nPre-registration is now open for the South Florida Jewish Leadership Fishing Academy, for boys with or without fishing experience. Groups are forming on Sundays and after school, with weekday daytime groups for homeschoolers. Pre-register for free and choose your preferred days and times. For questions, send me a Facebook DM or contact me on WhatsApp.",
+      "sha256": "049be9947a31e93af2d38d07be296d11f70554105f16d24462f0e5dba2449cad",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "NIH_INTEROCEPTION",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "No medical assessment, biomarker, neuroplasticity claim or advice to override bodily needs; adult safety judgment remains."
+    },
+    {
+      "id": "jlfa-ls-19-he",
+      "sourceId": "JLFA-LS-19-HE",
+      "version": 1,
+      "language": "he",
+      "direction": "rtl",
+      "title": "אינטרוספציה — חישה פנימית של הגוף",
+      "text": "ילד יכול לשים לב שהוא מתוסכל לפני שהוא מבין שהוא צמא, מתוח או עייף. במהלך הדיג והפעילות המעשית אנחנו מתרגלים אינטרוספציה: לשים לב לאותות שמגיעים מתוך הגוף ולהבין מה הם אומרים לנו. מבוגר עוזר לו לתאר מה הוא מרגיש ולחבר את המידע הזה לפעולה מתאימה, כמו לבקש מים או הפסקה. בעבודה כזאת על הנהגה עצמית ראיתי בנים שאובחנו עם חרדה חברתית משתתפים בביטחון ומבטאים את עצמם בצורה ברורה.\n\nההרשמה המוקדמת לאקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה נפתחה! התוכנית מיועדת לבנים עם או בלי ניסיון בדיג. מתגבשות קבוצות בימי ראשון ואחרי הלימודים, וגם בשעות היום באמצע השבוע לילדים בחינוך ביתי. הירשמו מראש ללא עלות ובחרו את הימים והשעות המועדפים עליכם. לשאלות, שלחו לי הודעה פרטית בפייסבוק או פנו אליי בוואטסאפ.",
+      "sha256": "7c8e512b8da3ab40a1ffff6aa6feef867c41ffc6da220699902c40478c169d03",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "NIH_INTEROCEPTION",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "No medical assessment, biomarker, neuroplasticity claim or advice to override bodily needs; adult safety judgment remains."
+    },
+    {
+      "id": "jlfa-ls-20-en",
+      "sourceId": "JLFA-LS-20-EN",
+      "version": 1,
+      "language": "en",
+      "direction": "ltr",
+      "title": "Transfer of learning",
+      "text": "A boy may handle a disagreement while fishing and still struggle with a similar situation at school. We work on transfer of learning by helping him identify what was useful and where else it could apply. Together, we plan how he could try those steps in another setting, knowing that using a skill somewhere new also takes practice. Through this kind of self-governance work, I’ve seen boys diagnosed with social anxiety become confident in groups and express themselves clearly.\n\nPre-registration is now open for the South Florida Jewish Leadership Fishing Academy, for boys with or without fishing experience. Groups are forming on Sundays and after school, with weekday daytime groups for homeschoolers. Pre-register for free and choose your preferred days and times. For questions, send me a Facebook DM or contact me on WhatsApp.",
+      "sha256": "26ac2e805adb109fc73cfa1c7ad26526db2bac2c3d3f38303761b8661501df68",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "TRANSFER",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "Keep this limitation: practice on the water does not by itself prove generalization to home or school."
+    },
+    {
+      "id": "jlfa-ls-20-he",
+      "sourceId": "JLFA-LS-20-HE",
+      "version": 1,
+      "language": "he",
+      "direction": "rtl",
+      "title": "העברת למידה",
+      "text": "ילד יכול להתמודד עם מחלוקת בדיג, ועדיין להתקשות במצב דומה בבית הספר. אנחנו עובדים על העברת למידה כשהוא מזהה מה עזר לו וחושב היכן עוד יוכל להשתמש בזה. יחד מתכננים איך לנסות את אותם צעדים במצב אחר, כי גם שימוש במיומנות במקום חדש דורש תרגול. בעבודה כזאת על הנהגה עצמית ראיתי בנים שאובחנו עם חרדה חברתית משתתפים בביטחון ומבטאים את עצמם בצורה ברורה.\n\nההרשמה המוקדמת לאקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה נפתחה! התוכנית מיועדת לבנים עם או בלי ניסיון בדיג. מתגבשות קבוצות בימי ראשון ואחרי הלימודים, וגם בשעות היום באמצע השבוע לילדים בחינוך ביתי. הירשמו מראש ללא עלות ובחרו את הימים והשעות המועדפים עליכם. לשאלות, שלחו לי הודעה פרטית בפייסבוק או פנו אליי בוואטסאפ.",
+      "sha256": "ef351cff78c862fd0233c73bfa260fdeb93872d3a80d8291828b96dcdb98d090",
+      "state": "draft_unapproved",
+      "sourceIds": [
+        "TRANSFER",
+        "LS_PROTOCOL"
+      ],
+      "claimGuardrail": "Keep this limitation: practice on the water does not by itself prove generalization to home or school."
+    }
+  ]
+}

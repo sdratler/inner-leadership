@@ -17,6 +17,15 @@ function setup(){
 }
 afterEach(()=>vi.restoreAllMocks());
 describe("private inquiry email setup projection",()=>{
+ it("uses authenticated bounded history search and cursor while retaining the email gate",async()=>{
+  const d=setup(),nextCursor="00000000-0000-4000-8000-000000000021",listPage=vi.fn(async()=>({items:[],nextCursor})),load=async()=>({...await d.load(),store:{list:d.list,listPage}});
+  const response=await groupApplicationReviewHttp(request("?search=Synthetic+family&cursor="+nextCursor),load);
+  expect(response.status).toBe(200);expect(listPage).toHaveBeenCalledWith(practitioner,{search:"Synthetic family",cursor:nextCursor});expect(d.list).not.toHaveBeenCalled();expect((await response.json()).data).toEqual({items:[],nextCursor,emailSetup:d.report});
+ });
+ it.each(["?search=a&search=b","?cursor=not-a-uuid","?search="+"x".repeat(201),"?workspaceId=other&search=a"])("rejects malformed/duplicate history parameters before any private read: %s",async suffix=>{
+  const d=setup(),listPage=vi.fn(),load=async()=>({...await d.load(),store:{list:d.list,listPage}});
+  expect((await groupApplicationReviewHttp(request(suffix),load)).status).toBe(400);expect(d.actor).not.toHaveBeenCalled();expect(listPage).not.toHaveBeenCalled();expect(d.emailSetup).not.toHaveBeenCalled();
+ });
  it("returns only the fixed nonsecret report after authorized native listing",async()=>{
   const d=setup(),network=vi.spyOn(globalThis,"fetch").mockRejectedValue(Error("NETWORK_FORBIDDEN"));
   const response=await groupApplicationReviewHttp(request(),d.load),body=await response.json();

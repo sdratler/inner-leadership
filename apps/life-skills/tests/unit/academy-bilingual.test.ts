@@ -1,5 +1,8 @@
+import type {ReactNode} from 'react';
+import {AcademyCampaignProvider} from '../../src/features/group-application/academy-campaign-state.ts';
+import {campaignSnapshotSchema,ACADEMY_CAMPAIGN} from '../../src/features/group-application/academy-campaign-contract.ts';
 import {createElement} from "react";
-import {renderToStaticMarkup} from "react-dom/server";
+import {renderToStaticMarkup as renderPhaseRaw} from "react-dom/server";
 import {describe,it,expect,vi} from "vitest";
 vi.mock("server-only",()=>({}));
 import {AcademyWebsite} from "../../src/features/group-application/academy-website.tsx";
@@ -39,15 +42,18 @@ describe("Source21 bilingual parent journey",()=>{
    expect(html).not.toMatch(/Inside this stage|Thinking it through|Depth that grows/);expect(html).toContain(`href="/${locale}/florida/apply"`);
   }
  });
- it.each(["en","he"] as const)("%s registration uses exact grades, integer drive and distinct information/payment actions",locale=>{
+ it.each(["en","he"] as const)("%s registration uses exact grades, integer drive and one free-registration action",locale=>{
   const html=renderToStaticMarkup(createElement(AcademyIntakePage,{locale}));
-  for(const name of ["postalCode","schoolHoursAvailability","driveMinutes","permission","preferredGroupLanguage","paymentPlan"])expect(html).toContain('name="'+name+'"');
+  for(const name of ["postalCode","schoolHoursAvailability","driveMinutes","permission","preferredGroupLanguage"])expect(html).toContain('name="'+name+'"');
   for(let grade=3;grade<=12;grade++)expect(html).toContain('value="'+grade+'"');
   expect(html).toContain('min="5" max="120" step="1"');expect(html.match(/name="postalCode"/g)).toHaveLength(1);expect(html.match(/<form\b/g)).toHaveLength(1);
-  for(const removed of ['name="nextStep"','name="parentDropoff"','name="preferredAreas"','learnerTackleBox','learnerGear','grade_3_5'])expect(html).not.toContain(removed);
-  expect(html).toContain(locale==='he'?'שליחת הפרטים שלי':'Submit My Information');expect(html).toContain(locale==='he'?'תשלום ואישור מקום':'Pay &amp; Confirm My Spot');expect(html).not.toContain('data-academy-saved=');
+  for(const removed of ['name="paymentPlan"','name="nextStep"','name="parentDropoff"','name="preferredAreas"','learnerTackleBox','learnerGear','grade_3_5'])expect(html).not.toContain(removed);
+  expect(html).toContain(locale==='he'?'הרשמה מוקדמת בחינם':'Pre-register for free');expect(html).not.toContain(locale==='he'?'תשלום ואישור מקום':'Pay &amp; Confirm My Spot');expect(html).not.toContain('data-academy-saved=');
  });
  it.each(["en","he"] as const)("%s metadata keeps the current verified origin and matching alternate child paths",locale=>{
   for(const path of ["","/apply","/pricing","/stages/foundation","/stages/leadership"]){const meta=academyMetadata(locale,path);expect(meta.alternates.canonical).toBe(`https://life-skills.bneineviimacademy.org/${locale}/florida${path}`);for(const lang of ["en","he"] as const)expect(meta.alternates.languages[lang].endsWith(`/${lang}/florida${path}`)).toBe(true);expect(meta.openGraph.url).toBe(meta.alternates.canonical);}
  });
 });
+
+const explicitPre=campaignSnapshotSchema.parse({version:ACADEMY_CAMPAIGN,phase:'PRE_REGISTRATION',revision:1,capacity:30,occupied:1,remaining:29,firstFilledAt:null,asOf:'2026-10-23T14:00:00.000Z',reopeningPolicy:'PROPOSED_STICKY_REGULAR_PENDING_OWNER_CONFIRMATION'});
+function renderToStaticMarkup(node:ReactNode){return renderPhaseRaw(createElement(AcademyCampaignProvider,{initial:explicitPre},node));}

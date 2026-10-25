@@ -43,7 +43,8 @@ export function intakeReleasePath(pathname: string, input: Record<string,string|
   } catch { return false; }
 }
 export function groupApplicationReleasePath(pathname:string,input:Record<string,string|undefined>):boolean{
- const allowed=pathname==="/api/public/group-applications"||/^\/(he|en)\/groups\/apply\/?$/.test(pathname)||
+ const founderPath=input.LS_ACADEMY_FREE_REGISTRATION_ENABLED==='true'&&(pathname==='/api/public/academy-founder'||/^\/(he|en)\/florida\/confirm-interest\/?$/.test(pathname));
+ const allowed=founderPath||pathname==="/api/public/group-applications"||/^\/(he|en)\/groups\/apply\/?$/.test(pathname)||
   /^\/(he|en)\/florida(?:\/(?:torah-mornings|private-fishing|apply|pricing))?\/?$/.test(pathname)||
   /^\/(he|en)\/florida\/stages\/(?:foundation|independent|advanced|leadership)\/?$/.test(pathname);
  if(!allowed||!publicGroupApplicationEnvironmentEnabled(input))return false;
@@ -51,7 +52,7 @@ export function groupApplicationReleasePath(pathname:string,input:Record<string,
 }
 export function groupApplicationPublicAsset(pathname:string,method:string,input:Record<string,string|undefined>):boolean{
  if(method!=="GET"&&method!=="HEAD")return false;
- const allowed=/^\/groups\/academy\/hero-owner03-(?:desktop|mobile)-(?:en|he)\.png$/.test(pathname)||/^\/groups\/academy\/scenes\/(?:foundation|habitat|advanced|advanced-mobile|leadership|locations|form|freshwater|freshwater-mobile|independent|independent-mobile)\.webp$/.test(pathname)||pathname==="/groups/academy/hero-desktop-wide-20261019.png"||pathname==="/groups/academy/hero-desktop-selected-20261018.png"||pathname==="/groups/academy/hero-mobile-selected-20261018.png"||pathname==="/groups/academy/hero-desktop-20261018.png"||pathname==="/groups/academy/hero-mobile-20261018.png"||pathname==="/groups/brand/life-skills-logo.png"||pathname==="/groups/brand/jlfa-logo-locked-v1.png"||/^\/groups\/private\/(?:skill-(?:0[1-9]|1[0-2])\.webp|founder-boy-hero-(?:en|he)-(?:desktop|mobile)\.png|private-hero-text-free-(?:desktop|mobile)\.webp)$/.test(pathname)||pathname==="/groups/people/founder-grass-group.webp"||pathname==="/groups/people/founder-head.jpg"||pathname==="/groups/testimonials/l-bars-2024.png"||pathname==="/groups/sponsor/meir-bunny.png"||
+ const allowed=pathname==="/groups/academy/prereg-approved-square-20261023.png"||/^\/groups\/academy\/hero-owner03-(?:desktop|mobile)-(?:en|he)\.png$/.test(pathname)||/^\/groups\/academy\/scenes\/(?:foundation|habitat|advanced|advanced-mobile|leadership|locations|form|freshwater|freshwater-mobile|independent|independent-mobile)\.webp$/.test(pathname)||pathname==="/groups/academy/hero-desktop-wide-20261019.png"||pathname==="/groups/academy/hero-desktop-selected-20261018.png"||pathname==="/groups/academy/hero-mobile-selected-20261018.png"||pathname==="/groups/academy/hero-desktop-20261018.png"||pathname==="/groups/academy/hero-mobile-20261018.png"||pathname==="/groups/brand/life-skills-logo.png"||pathname==="/groups/brand/jlfa-logo-locked-v1.png"||/^\/groups\/private\/(?:skill-(?:0[1-9]|1[0-2])\.webp|founder-boy-hero-(?:en|he)-(?:desktop|mobile)\.png|private-hero-text-free-(?:desktop|mobile)\.webp)$/.test(pathname)||pathname==="/groups/people/founder-grass-group.webp"||pathname==="/groups/people/founder-head.jpg"||pathname==="/groups/testimonials/l-bars-2024.png"||pathname==="/groups/sponsor/meir-bunny.png"||
   /^\/groups\/projects\/LS-PROJECT-(?:01-group\.jpg|02-making\.png|03-3d-printer\.png|04-working-together\.png|05-woodwork\.png|06-guided-conversation\.png|07-music\.png|08-electronics\.png|09-wood-art\.png)$/.test(pathname);
  if(!allowed||!publicGroupApplicationEnvironmentEnabled(input))return false;
  try{parseIdentityConfig(input);return true;}catch{return false;}
@@ -92,7 +93,7 @@ export function proxy(request: NextRequest) {
   // These data pages/APIs depend on strict canonical HTTPS forwarding. Validate the original
   // transport before the request-header rewrite below can hide an invalid chain.
   // Forwarding never grants a session, role, case or audience permission.
-  if (privateDataPage || ["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins", "/api/updates", "/api/owner-digest", "/api/community-threads", "/api/provider-index", "/api/provider-referrals", "/api/private/contact-acquisition", "/api/private/acquisition/call-events", "/api/private/group-interest", "/api/private/group-placement", "/api/private/group-applications"].includes(pathname)||/^\/api\/(?:notifications|marketing)(?:\/|$)/.test(pathname)) {
+  if (privateDataPage || ["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins", "/api/updates", "/api/owner-digest", "/api/community-threads", "/api/provider-index", "/api/provider-referrals", "/api/private/contact-acquisition", "/api/private/acquisition/call-events", "/api/private/group-interest", "/api/private/group-placement", "/api/private/group-applications", "/api/private/group-applications/founder"].includes(pathname)||/^\/api\/(?:notifications|marketing)(?:\/|$)/.test(pathname)) {
     try {
       if (request.nextUrl.hash || requestHost !== canonicalOrigin.host.toLowerCase()) throw new Error("invalid transport");
       if (request.headers.has("x-forwarded-proto") || request.headers.has("x-forwarded-host")) {

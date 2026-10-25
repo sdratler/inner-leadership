@@ -1,6 +1,9 @@
+import type {ReactNode} from 'react';
+import {AcademyCampaignProvider} from '../../src/features/group-application/academy-campaign-state.ts';
+import {campaignSnapshotSchema,ACADEMY_CAMPAIGN} from '../../src/features/group-application/academy-campaign-contract.ts';
 import {describe,it,expect} from "vitest";
 import {createElement} from "react";
-import {renderToStaticMarkup} from "react-dom/server";
+import {renderToStaticMarkup as renderPhaseRaw} from "react-dom/server";
 import {readFile} from "node:fs/promises";
 import {GroupApplicationLanding} from "../../src/features/group-application/landing.tsx";
 import {GroupApplicationForm} from "../../src/features/group-application/application-form.tsx";
@@ -39,8 +42,8 @@ describe("reviewed Florida presentation, not new runtime authority",()=>{
    const html=markup(locale,"sunday_fishing_academy",mode);
    expect(html.match(/<h1\b/g)).toHaveLength(1);
    if(mode==="native"){
-    expect(html).toContain('<h1 id="academy-title" lang="en" dir="ltr">South Florida Jewish Leadership Fishing Academy</h1>');
-    expect(html).toContain(locale==="he"?'תורה • דיג • הנהגה עצמית':'Torah • Fishing • Self-governance');
+    expect(html).toContain('<h1 id="academy-title" lang="en" dir="ltr" aria-label="South Florida Jewish Leadership Fishing Academy"><span>Jewish Leadership</span><span>Fishing Academy</span></h1>');
+    expect(html).toContain(locale==="he"?'תורה • דיג • הנהגה עצמית':'Torah • Fishing • Self-Governance');
     expect(html).toMatch(/<a[^>]*href="#pricing"[^>]*data-jlfa-primary="true"/);expect(html).toContain(`href="/${locale}/florida/apply"`);
     expect(html).not.toContain('data-inquiry-kind=');expect(html).not.toContain('name="contact"');
     const form=renderToStaticMarkup(createElement(AcademyIntakePage,{locale}));expect(form.match(/name="contact"/g)).toHaveLength(1);expect(form).toContain('data-inquiry-kind="parent"');expect(form).toContain(escaped(academyRegistrationNotice[locale]));expect(form).not.toContain(escaped(floridaGroupApplicationNotice[locale]));expect(form).not.toContain('name="permission" checked');
@@ -57,7 +60,7 @@ describe("reviewed Florida presentation, not new runtime authority",()=>{
    expect(html).toContain(`dir="${locale==="he"?"rtl":"ltr"}"`);
    expect(html).not.toContain(mode==="sample"?"program=morning_torah_learning":"torah-mornings");
    expect(html).not.toContain(mode==="sample"?"program=private_fishing_life_skills":"private-fishing");
-   expect(html).not.toMatch(/Pre-register|This page does not create|No invented launch details|\$1,100|\$2,399|\$3,000/);
+   expect(html).not.toMatch(/This page does not create|No invented launch details|\$1,100|\$2,399|\$3,000/);
    expect(html).not.toContain('name="permission" checked');
   });
   it(`keeps VIP individually considered, without Academy schedules or implied packages in ${locale}/${mode}`,()=>{
@@ -90,3 +93,6 @@ describe("reviewed Florida presentation, not new runtime authority",()=>{
   expect(JSON.stringify(copy)).not.toMatch(/1,100|3,300|2,399|2,550|3,000|teacher-only|answer keys|sourceId|financial model/);
  });
 });
+
+const explicitPre=campaignSnapshotSchema.parse({version:ACADEMY_CAMPAIGN,phase:'PRE_REGISTRATION',revision:1,capacity:30,occupied:1,remaining:29,firstFilledAt:null,asOf:'2026-10-23T14:00:00.000Z',reopeningPolicy:'PROPOSED_STICKY_REGULAR_PENDING_OWNER_CONFIRMATION'});
+function renderToStaticMarkup(node:ReactNode){return renderPhaseRaw(createElement(AcademyCampaignProvider,{initial:explicitPre},node));}
