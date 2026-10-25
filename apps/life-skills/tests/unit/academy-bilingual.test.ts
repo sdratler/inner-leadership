@@ -14,6 +14,22 @@ import {AcademyPublicRoute} from "../../src/features/group-application/academy-r
 import {academyPath} from "../../src/features/group-application/academy-routing.ts";
 
 describe("Source21 bilingual parent journey",()=>{
+ it.each(["en","he"] as const)("%s mobile locations link uses the retained FAQ anchor without changing desktop navigation",locale=>{
+  for(const mode of ['legacy','bna'] as const){
+   const html=renderToStaticMarkup(createElement(AcademyPublicRoute,{mode},createElement(AcademyStage,{locale,slug:'advanced'})));
+   const home=academyPath(locale,'',mode);
+   const desktop=html.match(/<nav[^>]*aria-label="(?:Academy navigation|ניווט באקדמיה)"[^>]*>([\s\S]*?)<\/nav>/)?.[1];
+   const mobile=html.match(/<nav[^>]*id="academy-mobile-menu"[^>]*>([\s\S]*?)<\/nav>/)?.[1];
+   expect(desktop).toBeDefined();expect(mobile).toBeDefined();
+   const hrefs=(markup:string)=>[...markup.matchAll(/<a[^>]*href="([^"]*)"/g)].map(match=>match[1]);
+   expect(hrefs(desktop!)).toEqual([home,home+'#stages',home+'/pricing',home+'#questions']);
+   expect(hrefs(mobile!).filter(href=>href===home+'#locations')).toHaveLength(1);
+   expect(mobile).toContain(`href="${home}#locations">${locale==='he'?'איפה דגים':'Where we fish'}</a>`);
+   expect(hrefs(mobile!)).toEqual(expect.arrayContaining([home+'#questions',home+'/apply']));
+   const landing=renderToStaticMarkup(createElement(AcademyPublicRoute,{mode},createElement(AcademyWebsite,{locale,onLocaleChange:()=>{}})));
+   expect(landing).toMatch(/<details[^>]*id="locations"/);expect(landing).not.toMatch(/<section[^>]*id="locations"/);
+  }
+ });
  it.each([{locale:"en",stage:"unknown"},{locale:"fr",stage:"foundation"}])("unknown stage/locale returns the Next 404 boundary before public URL formatting: %j",async params=>{
   const {generateMetadata}=await import("../../src/app/[locale]/florida/stages/[stage]/page.tsx");
   await expect(generateMetadata({params:Promise.resolve(params)})).rejects.toThrow("NEXT_HTTP_ERROR_FALLBACK;404");
