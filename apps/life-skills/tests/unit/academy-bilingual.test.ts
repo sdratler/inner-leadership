@@ -127,3 +127,12 @@ it.each(['en','he'] as const)('%s WEBSITE03 uses the short introduction and expl
  expect(html).toContain(locale==='he'?'התנהגות לא בטוחה עלולה להביא להפסקת פעילות או להרחקה מהתוכנית.':'Unsafe behavior can mean stopping an activity or removal from the program.');
  expect(html).not.toContain(bilingual.gainIntro[locale]);
 });
+
+it.each(['en','he'] as const)('%s every intake registration link stays in the same document and preserves the unsent form',locale=>{
+ for(const mode of ['legacy','bna'] as const)for(const campaign of [explicitPre,null]){
+  const html=renderToStaticMarkup(createElement(AcademyPublicRoute,{mode,campaign},createElement(AcademyIntakePage,{locale})));
+  const label=campaign?(locale==='he'?'הרשמה מוקדמת בחינם':'Pre-register for free'):(locale==='he'?'הרשמה':'Register');
+  const links=[...html.matchAll(/<a[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/g)].filter(match=>match[2]===label);
+  expect(links.length).toBeGreaterThanOrEqual(4);expect(links.every(match=>match[1]==='#academy-form')).toBe(true);expect(html).toContain('id="academy-form"');
+ }
+});

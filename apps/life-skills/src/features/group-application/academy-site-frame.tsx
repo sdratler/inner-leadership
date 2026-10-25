@@ -54,7 +54,7 @@ export function AcademySiteFrame({locale,children,hero,onLocaleChange,path="",in
   <footer className={styles.footer} data-academy-footer><div className={styles.footerInner}>
    <JlfaLogo locale={locale} footer homeHref={home}/>
    <p className={styles.nonprofit}>{t("A program of Bnei Neviim Academy, a New Jersey nonprofit.","תוכנית של Bnei Neviim Academy, ארגון ללא כוונת רווח בניו ג׳רזי.")}</p>
-   <a className={styles.headerAction} href={home+"/apply"}>{pre?t('Pre-register for free','הרשמה מוקדמת בחינם'):t('Register','הרשמה')}</a>
+   <a className={styles.headerAction} href={intake?"#academy-form":home+"/apply"}>{pre?t('Pre-register for free','הרשמה מוקדמת בחינם'):t('Register','הרשמה')}</a>
   </div></footer><AcademyWhatsApp locale={locale}/>
  </div>;
 }

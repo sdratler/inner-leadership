@@ -3,7 +3,7 @@ import {useEffect,useRef,useState,type FormEvent,type InputHTMLAttributes} from 
 import type {Locale} from '../../lib/locale.ts';
 import {floridaAcademyRegistrationFieldsSchema,type FloridaGroupApplicationCommand} from './contract.ts';
 import {ACADEMY_REGISTRATION_VERSION,academyGradeLabels,registrationConsent} from './academy-registration.ts';
-import {communicationPreferenceSelection} from './academy-communication-preferences.ts';
+import {academyCommunicationNotice,academyCommunicationNoticeHashes,communicationPreferenceSelection} from './academy-communication-preferences.ts';
 import {academyRegistrationNotice} from './academy-registration-notice.ts';
 import {useAcademyCampaign} from './academy-campaign-state.ts';
 import {captureCampaignAttribution,type CampaignAttribution} from './academy-campaign-contract.ts';
@@ -133,6 +133,7 @@ export function AcademyRegistrationForm({locale,onSaved,mode='native',onPreviewe
     <label htmlFor="registration-parentLanguage">{t('Preferred language for parent messages','שפה מועדפת להודעות להורה')}</label><select id="registration-parentLanguage" name="parentLanguage" value={parentLanguage} onChange={event=>{setParentLanguage(event.target.value==='he'?'he':'en');setLanguageChosen(true);}}><option value="en">English</option><option value="he">עברית</option></select>
     <p className={styles.help}>{t('Separate from the fishing group language.','נפרד משפת קבוצת הדיג.')}</p>
     <details className={styles.preparation}><summary>{t('Updates (optional)','עדכונים (לא חובה)')}</summary>
+    <div data-communication-notice data-document-id={academyCommunicationNotice.id} data-document-version={academyCommunicationNotice.version} data-document-language={locale} data-document-sha256={academyCommunicationNoticeHashes[locale]}><p>{academyCommunicationNotice[locale]}</p><p className={styles.help}>{t('Version','גרסה')}: <bdi dir="ltr">{academyCommunicationNotice.version}</bdi></p></div>
     <label className={styles.consent}><input type="checkbox" name="nurtureEmail" checked={nurtureEmail} onChange={event=>setNurtureEmail(event.target.checked)}/>{t('Email updates','עדכונים בדוא״ל')}</label>
     <label className={styles.consent}><input type="checkbox" name="privateWapi" checked={privateWapi} onChange={event=>setPrivateWapi(event.target.checked)}/>{t('WhatsApp updates','עדכונים בוואטסאפ')}</label>
     </details>
