@@ -34,7 +34,7 @@ function releaseEnvironment():Record<string,string>{const encode=(n:number)=>Buf
 describe("public group inquiry compatibility boundary",()=>{
  it("routes the native Academy pricing funnel to a separate complete form while sample stays inert",()=>{
   for(const locale of["en","he"]as const){const native=renderToStaticMarkup(createElement(GroupApplicationLanding,{locale})),sample=renderToStaticMarkup(createElement(GroupApplicationLanding,{locale,mode:"sample"}));
-   expect(native).toMatch(/<a[^>]*href="#pricing"[^>]*data-jlfa-primary="true"/);expect(native).toContain('id="pricing"');expect(native).toContain(`href="/${locale}/florida/apply"`);expect(native).toContain('id="academy-travel-faq"');expect(native).not.toContain('name="parentName"');expect(native).not.toContain('name="postalCode"');
+   expect(native).toMatch(new RegExp(`<a[^>]*href="/${locale}/florida/apply"[^>]*data-jlfa-primary="true"`));expect(native).toContain('id="pricing"');expect(native).toContain(`href="/${locale}/florida/apply"`);expect(native).toContain('id="academy-travel-faq"');expect(native).not.toContain('name="parentName"');expect(native).not.toContain('name="postalCode"');
    expect(sample).toContain('name="parentName"');expect(sample).not.toContain(`href="/${locale}/florida/apply"`);expect(sample).toContain('aria-controls="jlfa-curriculum"');
   }
  });

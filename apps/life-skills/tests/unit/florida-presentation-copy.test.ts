@@ -44,7 +44,7 @@ describe("reviewed Florida presentation, not new runtime authority",()=>{
    if(mode==="native"){
     expect(html).toContain('<h1 id="academy-title" lang="en" dir="ltr" aria-label="South Florida Jewish Leadership Fishing Academy"><span>Jewish Leadership</span><span>Fishing Academy</span></h1>');
     expect(html).toContain(locale==="he"?'תורה • דיג • הנהגה עצמית':'Torah • Fishing • Self-Governance');
-    expect(html).toMatch(/<a[^>]*href="#pricing"[^>]*data-jlfa-primary="true"/);expect(html).toContain(`href="/${locale}/florida/apply"`);
+    expect(html).toMatch(new RegExp(`<a[^>]*href="/${locale}/florida/apply"[^>]*data-jlfa-primary="true"`));expect(html).toContain(`href="/${locale}/florida/apply"`);
     expect(html).not.toContain('data-inquiry-kind=');expect(html).not.toContain('name="contact"');
     const form=renderToStaticMarkup(createElement(AcademyIntakePage,{locale}));expect(form.match(/name="contact"/g)).toHaveLength(1);expect(form).toContain('data-inquiry-kind="parent"');expect(form).toContain(escaped(academyRegistrationNotice[locale]));expect(form).not.toContain(escaped(floridaGroupApplicationNotice[locale]));expect(form).not.toContain('name="permission" checked');
    }else{
