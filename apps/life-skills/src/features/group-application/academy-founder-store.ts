@@ -15,7 +15,7 @@ import type {AuthEmailTransport} from '../../providers/email/transport.ts';
 import {captureCommunicationPreferences,academyRecordedCommunicationPreferencesSchema,type AcademyRecordedCommunicationPreferences} from './academy-communication-preferences.ts';
 import type {GroupApplicationFields} from './contract.ts';
 import {isFloridaGroupApplication,isSchoolInquiry} from './contract.ts';
-import {ACADEMY_REGISTRATION_VERSION} from './academy-registration.ts';
+import {isFreeAcademyRegistrationVersion} from './academy-registration.ts';
 import {INQUIRY_EMAIL_FROM} from './inquiry-email-copy.ts';
 import {FOUNDER_CAPACITY,FOUNDER_DECISION,FOUNDER_TIMEZONE,FOUNDER_REMINDER_DEFAULTS,floridaCalendarDays,founderOwnerCommandSchema,founderPrice,occupiesFounder,type FounderStatus,type FounderPublicResult,type FounderOwnerCommand,type FounderNativeFamily} from './academy-founder-contract.ts';
 import {founderEmailContent,type FounderMail,type FounderMailKind} from './academy-founder-email.ts';
@@ -58,7 +58,7 @@ export type FounderMailScope='signup'|'all';
 const signupMailPurposes=['academy_founder_interest','academy_founder_ack','academy_founder_interest_reminder','academy_founder_interest_deadline_receipt'];
 const paymentFamily=(f:FounderFamily)=>!!f.offer||!!f.payment.sentAt||!!f.everPaid||f.redeemedChildIds.length>0||f.collectedCents>0||f.enrolledChildIds.length>0;
 const emptyWindow=():Window=>({generation:1,sentAt:null,deadline:null,exception:false,confirmedAt:null});
-export function isFreeFounderRegistration(fields:GroupApplicationFields){return isFloridaGroupApplication(fields)&&!isSchoolInquiry(fields)&&fields.academyRegistration?.version===ACADEMY_REGISTRATION_VERSION;}
+export function isFreeFounderRegistration(fields:GroupApplicationFields){return isFloridaGroupApplication(fields)&&!isSchoolInquiry(fields)&&isFreeAcademyRegistrationVersion(fields.academyRegistration?.version);}
 export class AcademyFounderStore{
  constructor(private readonly db:IdentityStore,private readonly workspace:WorkspaceId,private readonly ring:Keyring,private readonly digestKey:string,private readonly clock:IdentityClock,private readonly paymentPort:FounderPaymentPort|null=null,private readonly nativeFamilies:FounderNativeFamilyPort|null=null){}
  private campaign(){return new AcademyCampaignStore(this.workspace,this.ring,this.digestKey,()=>this.clock.now());}

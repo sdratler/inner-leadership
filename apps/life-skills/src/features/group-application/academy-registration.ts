@@ -1,13 +1,16 @@
 import {z} from 'zod';
 import {academyCommunicationPreferencesSchema} from './academy-communication-preferences.ts';
 import {academyRegistrationNotice,academyRegistrationNoticeHashes,academyLegacyRegistrationNotice,academyLegacyRegistrationNoticeHashes} from './academy-registration-notice.ts';
-export const ACADEMY_REGISTRATION_VERSION='JLFA-FREE-REGISTRATION-20261023-03-v3' as const;
+export const ACADEMY_PREVIOUS_FREE_REGISTRATION_VERSION='JLFA-FREE-REGISTRATION-20261023-03-v3' as const;
+export const ACADEMY_REGISTRATION_VERSION='JLFA-FREE-REGISTRATION-20261025-03-v4' as const;
+/** Historical free registrations retain their original eligibility and replay semantics. */
+export function isFreeAcademyRegistrationVersion(version:string|undefined){return version===ACADEMY_PREVIOUS_FREE_REGISTRATION_VERSION||version===ACADEMY_REGISTRATION_VERSION;}
 export const academyExactGradeSchema=z.enum(['3','4','5','6','7','8','9','10','11','12']);
 export const registrationDaySchema=z.enum(['sunday','monday','tuesday','wednesday','thursday','friday','flexible']);
 export const registrationTimeSchema=z.enum(['morning','afternoon','evening','flexible']);
 const flexibleExclusive=(v:string[])=>new Set(v).size===v.length&&(!v.includes('flexible')||v.length===1);
 export const academyRegistrationSchema=z.object({
- version:z.enum(['JLFA-REGISTRATION-20261020-01-v1','JLFA-REGISTRATION-20261020-OWNER03-v2',ACADEMY_REGISTRATION_VERSION]),
+ version:z.enum(['JLFA-REGISTRATION-20261020-01-v1','JLFA-REGISTRATION-20261020-OWNER03-v2',ACADEMY_PREVIOUS_FREE_REGISTRATION_VERSION,ACADEMY_REGISTRATION_VERSION]),
  learners:z.array(z.object({id:z.string().uuid(),fullName:z.string().trim().min(1).max(120),ageYears:z.number().int().min(0).max(17),grade:academyExactGradeSchema,schooling:z.enum(['school','homeschool','discuss']),experience:z.enum(['new','some','experienced','not_sure'])}).strict()).min(1).max(10),
  postalCode:z.string().trim().regex(/^\d{5}(?:-\d{4})?$/),
  preferredDays:z.array(registrationDaySchema).min(1).max(7).refine(flexibleExclusive,'flexible_exclusive'),
@@ -25,8 +28,10 @@ export const academyRegistrationSchema=z.object({
  communicationPreferences:academyCommunicationPreferencesSchema.optional(),
  consent:z.object({kind:z.literal('registration_contact'),documentId:z.literal(academyRegistrationNotice.id),version:z.enum([academyLegacyRegistrationNotice.version,academyRegistrationNotice.version]),language:z.enum(['en','he']),textSha256:z.string().regex(/^[a-f0-9]{64}$/)}).strict(),
 }).strict().superRefine((v,c)=>{
- if(v.communicationPreferences&&(v.version!==ACADEMY_REGISTRATION_VERSION||v.communicationPreferences.notice.language!==v.consent.language))c.addIssue({code:'custom',path:['communicationPreferences'],message:'communication_registration_notice_mismatch'});
- if(v.version===ACADEMY_REGISTRATION_VERSION){
+ if(v.communicationPreferences&&(!isFreeAcademyRegistrationVersion(v.version)||v.communicationPreferences.notice.language!==v.consent.language))c.addIssue({code:'custom',path:['communicationPreferences'],message:'communication_registration_notice_mismatch'});
+ // Explicit proposed entry only. Never default/transform old answers or infer private history.
+ if(v.version===ACADEMY_REGISTRATION_VERSION&&v.stageInterest!=='foundation')c.addIssue({code:'custom',path:['stageInterest'],message:'foundation_proposed_entry_required'});
+ if(isFreeAcademyRegistrationVersion(v.version)){
   if(!v.receiptEmail)c.addIssue({code:'custom',path:['receiptEmail'],message:'email_required'});
   if(v.intent!=='information'||v.paymentSelection)c.addIssue({code:'custom',path:['paymentSelection'],message:'free_registration_no_payment'});
   if(v.consent.version!==academyRegistrationNotice.version)c.addIssue({code:'custom',path:['consent'],message:'free_registration_terms_required'});
