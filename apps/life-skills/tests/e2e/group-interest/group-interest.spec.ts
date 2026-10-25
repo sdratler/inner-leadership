@@ -170,8 +170,8 @@ const academyQuestions=[
       "he": "ומה לגבי דיג מסירה בים הפתוח?"
     },
     "answer": {
-      "en": "After completing the first 12-week stage, boys may join an optional offshore fishing trip on a chartered boat. This trip is billed separately. Dates, availability and details will be confirmed before booking.",
-      "he": "לאחר השלמת השלב הראשון בן 12 השבועות, הבנים יכולים להצטרף לטיול דיג אופציונלי בים הפתוח בסירה שכורה. הטיול מחויב בנפרד. תאריכים, זמינות ופרטים יאושרו לפני ההזמנה."
+      "en": "It is optional, separately priced and considered only after completing the first twelve-session stage and meeting trip-specific captain, guardian and readiness requirements. No published ticket price or guaranteed availability yet.",
+      "he": "זו אפשרות נפרדת בתשלום, לבנים שסיימו את מלוא השלב הראשון בן 12 המפגשים ועומדים בדרישות המוכנות, ההשגחה והקברניט ליציאה. מחיר ומועד ייקבעו לאחר אישור סופי."
     }
   },
   {
@@ -200,8 +200,8 @@ const academyQuestions=[
       "he": "מה קורה לאחר שליחת הטופס?"
     },
     "answer": {
-      "en": "Your free registration is saved with a reference. We email you to confirm your interest; no payment is due and no start date has been set. If all founding-family rate reservations are occupied, your registration joins the interest list. A later suitable group and start-date offer, payment and enrollment are separate steps. Cancelling an unpaid registration has no fee.",
-      "he": "ההרשמה החינמית נשמרת עם מספר פנייה. נשלח לכם דוא״ל לאישור ההתעניינות; אין תשלום כעת וטרם נקבע מועד פתיחה. אם כל ההזמנות לתעריף משפחה מייסדת תפוסות, ההרשמה מצטרפת לרשימת המתעניינים. הצעת קבוצה ומועד מתאימים בהמשך, תשלום והרשמה להשתתפות הם שלבים נפרדים. ביטול הרשמה שלא שולמה אינו כרוך בתשלום."
+      "en": "Your free registration is saved with a reference. We email you to confirm your interest; no payment is due and no start date has been set. If all founding-family rate reservations are occupied, regular registration remains open without a founding-family rate reservation. A later suitable group and start-date offer, payment and enrollment are separate steps. Cancelling an unpaid registration has no fee.",
+      "he": "ההרשמה החינמית נשמרת עם מספר פנייה. נשלח לכם דוא״ל לאישור ההתעניינות; אין תשלום כעת וטרם נקבע מועד פתיחה. אם כל ההקצאות לתעריף המייסדים תפוסות, ההרשמה הרגילה נשארת פתוחה ללא שמירת תעריף מייסדים. הצעת קבוצה ומועד מתאימים בהמשך, תשלום והרשמה להשתתפות הם שלבים נפרדים. ביטול הרשמה שלא שולמה אינו כרוך בתשלום."
     }
   }
 ] as const;
