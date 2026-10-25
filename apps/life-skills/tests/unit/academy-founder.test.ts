@@ -25,3 +25,17 @@ it('GET/open/preview cannot confirm; POST requires same-origin action, valid tok
  expect((await founderPublicHttp(request('POST',{action:'confirm_interest',token:'a'.repeat(43)}),async()=>({...d,enabled:false}))).status).toBe(503);expect(confirm).toHaveBeenCalledTimes(1);
 });
 it('sender inspection never grants send authority from configured fields or queued records',()=>{expect(inspectInquiryEmailSetup({})).toMatchObject({sendPermitted:false,senderVerified:false,deliveryVerified:false,status:'SEND_DISABLED'});expect(inspectInquiryEmailSetup({LS_INQUIRY_EMAIL_SEND_ENABLED:'true'})).toMatchObject({sendPermitted:false,status:'HOLD_REQUIRED'});});
+
+it('dispatches only after a durable explicit confirmation, never on read/open/rejected confirmation',async()=>{
+ const order:string[]=[],confirm=vi.fn(async()=>{order.push('committed');return {confirmed:true,reference:'synthetic-reference'};}),afterConfirm=vi.fn(async(reference:string)=>{expect(reference).toBe('synthetic-reference');order.push('dispatch');});
+ const d={enabled:true,store:{confirm,aggregate:vi.fn(),confirmationContext:async()=>({reference:'synthetic-reference',deadline:null,timezone:'America/New_York' as const,confirmed:false,available:false})},afterConfirm,environment:{LS_APP_ORIGIN:origin},limits:{consume:async()=>({count:1,retryAfterMs:0})},rateKey:'synthetic-rate-limit-key-32-characters'};
+ const req=(action:string,token='a'.repeat(43))=>new Request(origin+'/api/public/academy-founder',{method:'POST',headers:{host:'academy.example.invalid',origin,'sec-fetch-site':'same-origin','content-type':'application/json'},body:JSON.stringify({action,token})});
+ expect((await founderPublicHttp(req('read_confirmation'),async()=>d)).status).toBe(200);expect(order).toEqual([]);
+ expect((await founderPublicHttp(req('confirm_interest'),async()=>d)).status).toBe(200);expect(order).toEqual(['committed','dispatch']);
+ order.length=0;expect((await founderPublicHttp(req('confirm_interest','bad'),async()=>d)).status).toBe(400);expect(order).toEqual([]);
+ confirm.mockRejectedValueOnce(Error('synthetic transaction failure'));
+ expect((await founderPublicHttp(req('confirm_interest'),async()=>d)).status).toBe(503);expect(order).toEqual([]);
+ afterConfirm.mockRejectedValueOnce(Error('synthetic delivery failure'));
+ const saved=await founderPublicHttp(req('confirm_interest'),async()=>d);expect(saved.status).toBe(200);expect(await saved.json()).toMatchObject({data:{confirmed:true,reference:'synthetic-reference'}});
+ expect(saved.headers.get('Cache-Control')).toBe('private, no-store');
+});
