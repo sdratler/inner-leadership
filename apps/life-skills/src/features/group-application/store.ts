@@ -1,4 +1,5 @@
 import "server-only";
+import {campaignAttributionSchema,type CampaignAttribution} from "./academy-campaign-contract.ts";
 import {randomUUID} from "node:crypto";
 import {z} from "zod";
 import {AppError} from "../../lib/errors.ts";
@@ -12,16 +13,20 @@ import {systemClock} from "../identity/types.ts";
 import type {IdentityStore,SqlSession} from "../identity/store.ts";
 import {groupApplicationCommandSchema,groupApplicationReplaySchema,groupApplicationFieldsSchema,isFloridaGroupApplication,type GroupApplicationCommand,type GroupApplicationFields,type GroupApplicationRecord} from "./contract.ts";
 import {queueInquiryEmail} from "./inquiry-email.ts";
+import {isFreeFounderRegistration,type AcademyFounderStore} from './academy-founder-store.ts';
 
 type Row={id:string;requestDigest:string;payloadCiphertext:string;receivedAt:Date};
 const aad=(workspace:string,id:string)=>`ls_service_interest/public_application/v1/${workspace}/${id}`;
 const select=`SELECT id,request_digest AS "requestDigest",payload_ciphertext AS "payloadCiphertext",received_at AS "receivedAt"
  FROM ls_service_interest.public_applications`;
+const reviewQuerySchema=z.object({search:z.string().trim().max(200).default(""),cursor:z.string().uuid().optional()}).strict();
+export type GroupApplicationReviewQuery=z.input<typeof reviewQuerySchema>;
+export type GroupApplicationReviewPage={items:GroupApplicationRecord[];nextCursor:string|null};
 
 /** Private inquiry only; optional administrative outbox is atomic and never sends here. */
 export class PublicGroupApplicationStore{
  constructor(private readonly db:IdentityStore,private readonly workspaceId:WorkspaceId,private readonly ring:Keyring,
-  private readonly digestKey:string,private readonly clock:IdentityClock=systemClock,private readonly emailQueueEnabled=false){}
+  private readonly digestKey:string,private readonly clock:IdentityClock=systemClock,private readonly emailQueueEnabled=false,private readonly founder?:AcademyFounderStore){}
  private requestDigest(fields:GroupApplicationFields){return privateDigest({domain:"public-group-application/v1",workspace:this.workspaceId,fields},this.digestKey);}
  private contactDigest(fields:GroupApplicationFields){return isFloridaGroupApplication(fields)?
   privateDigest({domain:"public-group-application-contact/v1",workspace:this.workspaceId,contact:fields.contact},this.digestKey):
@@ -34,7 +39,7 @@ export class PublicGroupApplicationStore{
   }catch{throw new AppError("UNAVAILABLE");}
  }
  private async read(tx:SqlSession,id:string){const rows=await tx.query<Row>(select+" WHERE workspace_id=$1 AND id=$2",[this.workspaceId,id]);if(rows.length!==1)throw new AppError("UNAVAILABLE");return this.decode(rows[0]!);}
- async replaySaved(input:{operationId:string;fields:GroupApplicationFields}){
+ async replaySaved(input:{operationId:string;fields:GroupApplicationFields},attribution:CampaignAttribution|null=null){
   const parsed=groupApplicationReplaySchema.safeParse(input);if(!parsed.success)throw new AppError("INVALID_REQUEST");
   const command=parsed.data,digest=this.requestDigest(command.fields);
   return this.db.transaction(async tx=>{
@@ -42,19 +47,21 @@ export class PublicGroupApplicationStore{
    const rows=await tx.query<{applicationId:string;requestDigest:string}>(`SELECT application_id AS "applicationId",request_digest AS "requestDigest"
     FROM ls_service_interest.public_application_operations WHERE workspace_id=$1 AND operation_id=$2`,[this.workspaceId,command.operationId]);
    if(rows.length===0)return null;if(rows.length!==1)throw new AppError("UNAVAILABLE");
-   if(rows[0]!.requestDigest!==digest)throw new AppError("CONFLICT");
-   return {saved:true as const,replayed:true,duplicate:true,item:await this.read(tx,rows[0]!.applicationId)};
+   if(rows[0]!.requestDigest!==digest)throw new AppError("CONFLICT");if(this.founder&&isFreeFounderRegistration(command.fields))await this.founder.checkAttribution(tx,command.operationId,attribution);
+   return {saved:true as const,replayed:true,duplicate:true,item:await this.read(tx,rows[0]!.applicationId),...(this.founder?{founder:await this.founder.publicResult(tx,rows[0]!.applicationId)}:{})};
   });
  }
- async submit(input:GroupApplicationCommand){
+ async submit(input:GroupApplicationCommand,continuation?:string,attribution:CampaignAttribution|null=null){
+  if(attribution!==null)campaignAttributionSchema.parse(attribution);
   const parsed=groupApplicationCommandSchema.safeParse(input);
-  if(!parsed.success){const prior=await this.replaySaved(input);if(prior)return prior;throw new AppError("INVALID_REQUEST");}
+  if(!parsed.success){const prior=await this.replaySaved(input,attribution);if(prior)return prior;throw new AppError("INVALID_REQUEST");}
   const command=parsed.data,requestDigest=this.requestDigest(command.fields),contactDigest=this.contactDigest(command.fields);
+  const free=isFreeFounderRegistration(command.fields);if(free&&(!this.founder||!continuation))throw new AppError('UNAVAILABLE');
   return this.db.transaction(async tx=>{
    await lockWorkspace(tx,this.workspaceId);
    const prior=await tx.query<{applicationId:string;requestDigest:string}>(`SELECT application_id AS "applicationId",request_digest AS "requestDigest"
     FROM ls_service_interest.public_application_operations WHERE workspace_id=$1 AND operation_id=$2`,[this.workspaceId,command.operationId]);
-   if(prior.length){if(prior.length!==1||prior[0]!.requestDigest!==requestDigest)throw new AppError("CONFLICT");return {saved:true as const,replayed:true,duplicate:true,item:await this.read(tx,prior[0]!.applicationId)};}
+   if(prior.length){if(prior.length!==1||prior[0]!.requestDigest!==requestDigest)throw new AppError("CONFLICT");if(free)await this.founder!.checkAttribution(tx,command.operationId,attribution);return {saved:true as const,replayed:true,duplicate:true,item:await this.read(tx,prior[0]!.applicationId),...(this.founder?{founder:await this.founder.publicResult(tx,prior[0]!.applicationId)}:{})};}
    const existing=await tx.query<{id:string}>(`SELECT id FROM ls_service_interest.public_applications WHERE workspace_id=$1 AND request_digest=$2`,[this.workspaceId,requestDigest]);
    if(existing.length>1)throw new AppError("UNAVAILABLE");
    if(existing.length===1){
@@ -65,7 +72,7 @@ export class PublicGroupApplicationStore{
     // that key could later submit different content and escape replay conflict.
     await tx.query("INSERT INTO ls_service_interest.public_application_operations(workspace_id,operation_id,request_digest,application_id) VALUES($1,$2,$3,$4)",
      [this.workspaceId,command.operationId,requestDigest,applicationId]);
-    return {saved:true as const,replayed:false,duplicate:true,item:await this.read(tx,applicationId)};
+    if(free)await this.founder!.bindAttribution(tx,command.operationId,applicationId,attribution);return {saved:true as const,replayed:false,duplicate:true,item:await this.read(tx,applicationId),...(this.founder?{founder:await this.founder.publicResult(tx,applicationId)}:{})};
    }
    const now=this.clock.now(),id=randomUUID();
    {
@@ -80,14 +87,37 @@ export class PublicGroupApplicationStore{
    }
    await tx.query(`INSERT INTO ls_service_interest.public_application_operations(workspace_id,operation_id,request_digest,application_id)
     VALUES($1,$2,$3,$4)`,[this.workspaceId,command.operationId,requestDigest,id]);
-   const acknowledgment=this.emailQueueEnabled?await queueInquiryEmail(tx,this.workspaceId,id,command.fields,this.ring,now):undefined;
-   return {saved:true as const,replayed:false,duplicate:false,item:await this.read(tx,id),...(acknowledgment?{acknowledgment}:{})};
+   const founder=free?await this.founder!.accept(tx,id,command.fields,continuation!):undefined;
+   if(free)await this.founder!.bindAttribution(tx,command.operationId,id,attribution);
+   const acknowledgment=!free&&this.emailQueueEnabled?await queueInquiryEmail(tx,this.workspaceId,id,command.fields,this.ring,now):undefined;
+   return {saved:true as const,replayed:false,duplicate:false,item:await this.read(tx,id),...(founder?{founder}:{}),...(acknowledgment?{acknowledgment}:{})};
   });
  }
  async list(actor:Actor):Promise<GroupApplicationRecord[]>{
   if(actor.workspaceId!==this.workspaceId)throw new AppError("FORBIDDEN");
   return this.db.transaction(async tx=>{await tx.query("SET TRANSACTION READ ONLY");requirePractitioner(await freshActor(tx,actor,this.clock.now()));
    const rows=await tx.query<Row>(select+" WHERE workspace_id=$1 ORDER BY received_at DESC,id DESC LIMIT 50",[actor.workspaceId]);return rows.map(row=>this.decode(row));});
+ }
+ /** Search encrypted inquiry fields only after fresh practitioner/workspace
+  * authorization. Bound each scan, retaining a cursor even for an empty match
+  * page so older inquiries are reachable without a plaintext search index. */
+ async listPage(actor:Actor,input:GroupApplicationReviewQuery={}):Promise<GroupApplicationReviewPage>{
+  if(actor.workspaceId!==this.workspaceId)throw new AppError("FORBIDDEN");
+  const parsed=reviewQuerySchema.safeParse(input);if(!parsed.success)throw new AppError("INVALID_REQUEST");
+  const {cursor,search}=parsed.data,needle=search.normalize("NFKC").toLocaleLowerCase();
+  return this.db.transaction(async tx=>{
+   await tx.query("SET TRANSACTION READ ONLY");requirePractitioner(await freshActor(tx,actor,this.clock.now()));
+   if(cursor){const anchor=await tx.query("SELECT id FROM ls_service_interest.public_applications WHERE workspace_id=$1 AND id=$2",[this.workspaceId,cursor]);if(anchor.length!==1)throw new AppError("INVALID_REQUEST");}
+   // Anchor on the stored timestamp, avoiding timestamp precision loss across
+   // pages. The UUID and its subquery remain inside the authorized workspace.
+   const rows=await tx.query<Row>(select+" WHERE workspace_id=$1"+(cursor?" AND (received_at,id)<(SELECT received_at,id FROM ls_service_interest.public_applications WHERE workspace_id=$1 AND id=$2)":"")+" ORDER BY received_at DESC,id DESC LIMIT 201",cursor?[this.workspaceId,cursor]:[this.workspaceId]);
+   const items:GroupApplicationRecord[]=[];let scanned=0;
+   while(scanned<Math.min(rows.length,200)&&items.length<50){
+    const item=this.decode(rows[scanned++]!);
+    if(!needle||JSON.stringify({id:item.id,fields:item.fields}).normalize("NFKC").toLocaleLowerCase().includes(needle))items.push(item);
+   }
+   return {items,nextCursor:scanned<rows.length?rows[scanned-1]!.id:null};
+  });
  }
  async readForOwnerInTransaction(tx:SqlSession,actor:Actor,id:string):Promise<GroupApplicationRecord>{
   if(actor.workspaceId!==this.workspaceId)throw new AppError("FORBIDDEN");

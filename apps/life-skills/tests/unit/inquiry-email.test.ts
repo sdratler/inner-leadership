@@ -33,6 +33,7 @@ it("reuses the Office Gmail transport only under a separate explicit purpose gat
  const env={LS_INQUIRY_EMAIL_SEND_ENABLED:"true",LS_AUTH_EMAIL_ENABLED:"true",LS_AUTH_EMAIL_PROVIDER:"gmail",LS_AUTH_EMAIL_FROM:"office@bneineviimacademy.org",LS_AUTH_GOOGLE_CLIENT_ID:"synthetic-client",LS_AUTH_GOOGLE_CLIENT_SECRET:"synthetic-secret",LS_AUTH_GOOGLE_REFRESH_TOKEN:"synthetic-refresh"};
  const {transport,from}=createInquiryEmailTransport(env,fetcher);
  expect(transport.nonIdempotent).toBe(true);expect(await transport.send({from,to:"parent@example.invalid",...inquiryEmailContent(reference,"en"),idempotencyKey:`ls-auth-${reference}`})).toEqual({providerId:"synthetic_receipt"});expect(fetcher).toHaveBeenCalledTimes(2);
+ const mime=Buffer.from(JSON.parse(String(fetcher.mock.calls[1]![1].body)).raw,'base64url').toString('utf8');expect(mime).toContain('From: JLFA Office <office@bneineviimacademy.org>\r\n');expect(mime).not.toContain('From: Life Skills');
 });
 it.each([
  {contact:"+12025550101",confirmationEmail:"confirmation@example.invalid",expected:"confirmation@example.invalid"},

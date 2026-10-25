@@ -52,10 +52,10 @@ function base64url(value: Uint8Array | string): string {
 function base64(value: Uint8Array | string): string {
   return Buffer.from(value).toString("base64").replace(/.{1,76}/g, "$&\r\n").trimEnd();
 }
-function mime(message: AuthEmailMessage): string {
+function mime(message: AuthEmailMessage, displayName: "Life Skills" | "JLFA Office"): string {
   const messageId = `<${message.idempotencyKey}@bneineviimacademy.org>`;
   return [
-    `From: Life Skills <${OFFICE_FROM}>`, `To: ${message.to}`, `Subject: ${encodedWord(message.subject)}`,
+    `From: ${displayName} <${OFFICE_FROM}>`, `To: ${message.to}`, `Subject: ${encodedWord(message.subject)}`,
     "MIME-Version: 1.0", "Content-Type: text/plain; charset=UTF-8", "Content-Transfer-Encoding: base64",
     `Message-ID: ${messageId}`, "", base64(Buffer.from(message.text, "utf8")), ""
   ].join("\r\n");
@@ -63,7 +63,8 @@ function mime(message: AuthEmailMessage): string {
 
 export class GmailAuthTransport implements AuthEmailTransport {
   readonly nonIdempotent = true;
-  constructor(private readonly config: GmailAuthConfig, private readonly sendFetch: typeof fetch = fetch) {}
+  constructor(private readonly config: GmailAuthConfig, private readonly sendFetch: typeof fetch = fetch,
+    private readonly displayName: "Life Skills" | "JLFA Office" = "Life Skills") {}
 
   private async accessToken(): Promise<string> {
     let last: unknown;
@@ -87,7 +88,7 @@ export class GmailAuthTransport implements AuthEmailTransport {
   }
 
   async send(message: AuthEmailMessage): Promise<{ providerId: string }> {
-    if (!this.config.enabled || message.from !== OFFICE_FROM || !ADDRESS.test(message.to) || message.to.length > 254 ||
+    if (!this.config.enabled || !["Life Skills", "JLFA Office"].includes(this.displayName) || message.from !== OFFICE_FROM || !ADDRESS.test(message.to) || message.to.length > 254 ||
         !KEY.test(message.idempotencyKey) || !headerValue(message.subject, MAX_SUBJECT) ||
         message.text.length > MAX_TEXT) throw new AuthEmailDeliveryError(false);
     const token = await this.accessToken();
@@ -96,7 +97,7 @@ export class GmailAuthTransport implements AuthEmailTransport {
       response = await this.sendFetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
         method: "POST", redirect: "error", signal: AbortSignal.timeout(8000),
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ raw: base64url(mime(message)) })
+        body: JSON.stringify({ raw: base64url(mime(message, this.displayName)) })
       });
     } catch { throw new AuthEmailDeliveryError(false); }
     if (!response.ok) { try { await response.body?.cancel(); } catch { /* response cleanup is best effort */ } throw new AuthEmailDeliveryError(false); }

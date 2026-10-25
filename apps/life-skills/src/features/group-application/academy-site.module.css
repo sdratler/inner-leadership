@@ -90,34 +90,33 @@
 
 /* Text-free masters, proportional image cover, and flowing accessible copy. */
 
-/* Current hero composition: one responsive raster, one real pricing action.
-   Prior hero rules were removed above, rather than overridden again. */
-
-.site .hero{position:relative;inline-size:100%;min-block-size:0;block-size:auto;overflow:clip;background:#052D50;color:#FFFFFF;isolation:isolate}
-
-.heroArt{position:relative;inline-size:100%;max-inline-size:none;margin:0;padding:0;background:#052D50}
-
-.heroArt picture,.heroArt img{display:block;inline-size:100%;block-size:auto;max-inline-size:none;object-fit:contain}
-
-.heroSemantics{position:absolute;inline-size:1px;block-size:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0;margin:-1px}
-
-.heroSelectedAction{position:relative;inset:auto;display:flex;justify-content:center;margin-block-start:clamp(-110px,-5vw,-30px);padding-block-end:clamp(20px,2vw,32px);padding-inline:16px}
-
-.heroSelectedAction .heroCta{display:inline-flex;align-items:center;justify-content:center;min-block-size:48px;padding:12px 32px;border:1px solid #d2981f;border-radius:12px;background:#F4B12D;color:#052D50;font:700 clamp(16px,1.3vw,21px)/1.25 Arial,Helvetica,sans-serif;text-align:center;text-decoration:none;box-shadow:0 3px 0 #9b6c18}
-
-.heroCta:focus-visible{outline:3px solid #FFFFFF;outline-offset:5px}
-
-.heroCta:hover{background:#ffce66;color:#052D50}
-
-.site[data-hero-image-failed=true] .heroArt{min-block-size:420px;padding:40px 24px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;text-align:center}
-
+/* Packet05 actual DOM typography over untouched proportional photographs. */
+.site .hero{position:relative;inline-size:100%;background:#092668;color:#fff;isolation:isolate}
+.heroArt{position:relative;inline-size:100%;container-type:inline-size;isolation:isolate;background:#092668;display:grid;grid-template-rows:auto minmax(22cqi,1fr) auto;aspect-ratio:2048/1143}
+.heroArt picture{position:absolute;inset:0;z-index:-1}.heroArt picture,.heroArt img{display:block;inline-size:100%;block-size:auto;max-inline-size:none;object-fit:contain}.heroArt>picture{display:flex;align-items:flex-end}.heroArt>picture img{flex:none}
+.heroHeading{position:relative;grid-row:1;padding:1.4cqi 2% 0;text-align:center}
+.site .heroHeading .heroLocation{max-inline-size:none;inline-size:100%;display:flex;align-items:center;justify-content:center;gap:18px;margin:0 0 .3em;font:400 clamp(16px,1.8cqi,29px)/1.2 Georgia,'Times New Roman',serif;color:#fff}
+.heroLocation::before,.heroLocation::after{content:"";inline-size:clamp(35px,8cqi,120px);block-size:1px;background:#FDC844}
+.site .heroArt .heroHeading h1{max-inline-size:none;inline-size:100%;margin:0;font:700 clamp(34px,5.2cqi,80px)/1.08 Georgia,'Times New Roman',serif;letter-spacing:-.025em;color:#fff;text-shadow:0 2px 3px #092668}
+.heroHeading h1 span{display:block}.heroHeading h1 span+span{color:#FDC844}
+.heroSelectedAction{position:relative;grid-row:3;padding:0 2% 3cqi;display:flex;flex-direction:column;align-items:center;text-align:center;gap:clamp(12px,1.3cqi,22px)}
+.site .heroSelectedAction .heroProgram{max-inline-size:none;margin:0;font:700 clamp(21px,2.9cqi,44px)/1.2 Georgia,'Times New Roman',serif;color:#fff}
+.heroSelectedAction .heroCta{display:inline-flex;align-items:center;justify-content:center;min-block-size:48px;padding:12px 32px;border:1px solid #e4a83a;border-radius:9px;background:#FDC844;color:#041858;font:700 clamp(17px,1.8cqi,27px)/1.25 Arial,Helvetica,sans-serif;text-align:center;text-decoration:none;box-shadow:0 3px 0 #a06c18;max-inline-size:100%}
+.heroCta:focus-visible{outline:3px solid #fff;outline-offset:5px}.heroCta:hover{background:#ffda47;color:#041858}
+.site .heroSelectedAction .heroOffer{inline-size:100%;max-inline-size:100%;overflow-wrap:anywhere;margin:0;font:700 clamp(17px,1.9cqi,29px)/1.25 Arial,Helvetica,sans-serif;color:#FFDA47;white-space:normal}
+.site[data-hero-image-failed=true] .heroArt{min-block-size:500px;display:flex;flex-direction:column;gap:240px;padding:24px}
+.site[data-hero-image-failed=true] .heroHeading,.site[data-hero-image-failed=true] .heroSelectedAction{position:static}
 .site[data-hero-image-failed=true] .heroArt picture{display:none}
-
-.site[data-hero-image-failed=true] .heroSemantics{position:static;inline-size:auto;block-size:auto;overflow:visible;clip-path:none;white-space:normal;margin:0}
-
-.site[data-hero-image-failed=true] .heroSelectedAction{position:static;margin:0;inset:auto}
-
-@media(max-width:767px){.heroSelectedAction{position:absolute;inset-block-start:78%;inset-inline:16px;margin:0;padding:0 0 env(safe-area-inset-bottom)}.heroSelectedAction .heroCta{font-size:16px;min-block-size:48px;padding:12px 25px;max-inline-size:100%}}
+@media(max-width:767px){.heroArt{aspect-ratio:1143/2048;grid-template-rows:auto minmax(70cqi,1fr) auto}.heroHeading{padding:8.8cqi 10px 0}.site .heroArt .heroHeading h1{font-size:clamp(29px,8.9cqi,60px);line-height:1.1}.site .heroHeading .heroLocation{max-inline-size:none;inline-size:100%;font-size:clamp(15px,4.3cqi,25px);gap:12px}.heroSelectedAction{padding:0 2% 10cqi;gap:16px}.site .heroSelectedAction .heroProgram{font-size:clamp(18px,5.2cqi,31px)}.heroSelectedAction .heroCta{font-size:clamp(17px,4.7cqi,25px);padding:12px 26px}.site .heroSelectedAction .heroOffer{font-size:clamp(16px,4.55cqi,25px)}}
+@media(max-width:340px){.site .heroSelectedAction .heroOffer{white-space:normal}.heroSelectedAction{gap:12px}}
+/* Enlarged text uses normal flow around the complete photograph; faces never
+   become a backdrop for oversized copy. No source image is cropped or edited. */
+.heroArt[data-enlarged=true]{display:flex;flex-direction:column;aspect-ratio:auto}
+.heroArt[data-enlarged=true] .heroHeading{order:1;padding:24px 12px}
+.site .heroArt[data-enlarged=true] .heroHeading h1{overflow-wrap:anywhere;word-break:normal}
+.heroArt[data-enlarged=true]>picture{order:2;position:static;display:block;z-index:auto}
+.heroArt[data-enlarged=true] .heroSelectedAction{order:3;padding:24px 12px 36px;inline-size:100%}
+@media(prefers-contrast:more){.heroHeading h1,.heroProgram{text-shadow:0 2px 5px #041858}}
 
 /* The same image region applies to all four cards. Advanced uses the landscape
    master at every width; no portrait source or special height override. */

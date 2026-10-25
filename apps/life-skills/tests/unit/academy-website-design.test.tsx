@@ -1,5 +1,8 @@
+import type {ReactNode} from 'react';
+import {AcademyCampaignProvider} from '../../src/features/group-application/academy-campaign-state.ts';
+import {campaignSnapshotSchema,ACADEMY_CAMPAIGN} from '../../src/features/group-application/academy-campaign-contract.ts';
 import {createElement,type ComponentType} from "react";
-import {renderToStaticMarkup} from "react-dom/server";
+import {renderToStaticMarkup as renderPhaseRaw} from "react-dom/server";
 import {readFileSync,existsSync} from "node:fs";
 import {createHash} from "node:crypto";
 import {describe,it,expect,vi} from "vitest";
@@ -18,8 +21,8 @@ describe("the actual owner-selected Academy visual and inquiry design",()=>{
  it.each(["en","he"] as const)("renders%s live hero copy, real price/form links and four separate stage views",locale=>{
   const page=html(GroupApplicationLanding,{locale});
   expect(page).toContain('data-academy-site="true"');expect(page).toContain(`lang="${locale}"`);expect(page).toContain(`dir="${locale==="he"?"rtl":"ltr"}"`);
-  expect(page.match(/<h1\b/g)).toHaveLength(1);if(locale==="en"){expect(page).toContain("South Florida");expect(page).toContain("South Florida Jewish Leadership Fishing Academy");expect(page).toContain("A part-time enrichment program for boys");expect(page).toContain("Self-governance");}else{expect(page).toContain("South Florida Jewish Leadership Fishing Academy");expect(page).toContain("תוכנית העשרה במשרה חלקית לבנים");}
-  expect(page).toContain('<picture>');expect(page).toContain('media="(min-width:768px)"');expect(page).toContain('srcSet="/groups/academy/hero-owner03-desktop-'+locale+'.png"');expect(page).toContain('src="/groups/academy/hero-owner03-mobile-'+locale+'.png"');
+  expect(page.match(/<h1\b/g)).toHaveLength(1);if(locale==="en"){expect(page).toContain("South Florida");expect(page).toContain("South Florida Jewish Leadership Fishing Academy");expect(page).not.toContain("A part-time enrichment program for boys");expect(page).toContain("Self-Governance");}else{expect(page).toContain("South Florida Jewish Leadership Fishing Academy");expect(page).not.toContain("תוכנית העשרה במשרה חלקית לבנים");}
+  expect(page).toContain('<picture>');expect(page).toContain('media="(min-width:768px)"');expect(page).toContain('srcSet="/groups/academy/hero-desktop-20261018.png"');expect(page).toContain('src="/groups/academy/hero-mobile-20261018.png"');
   expect(page).toMatch(/<a[^>]*href="#pricing"[^>]*data-jlfa-primary="true"/);expect(page).toContain('id="pricing"');expect(page).toContain(`href="/${locale}/florida/apply"`);
   for(const stage of academyStages)expect(page).toContain(`href="/${locale}/florida/stages/${stage.slug}"`);
   expect(page.match(/data-academy-stage-card=/g)).toHaveLength(4);expect(page.match(/data-price-kind=/g)).toHaveLength(5);
@@ -75,7 +78,7 @@ describe("latest owner14/15 visual successor, static contracts",()=>{
  });
  it.each(["en","he"] as const)("%s top header precedes full-width hero with one real pricing CTA and no bottom bar",locale=>{
   const html=renderToStaticMarkup(createElement(AcademyWebsite,{locale,onLocaleChange:()=>{}}));
-  expect(html.indexOf("data-academy-header=")).toBeLessThan(html.indexOf("data-academy-hero="));expect(html.match(/data-jlfa-primary/g)).toHaveLength(1);expect(html).toContain(locale==="en"?"Reserve a Spot Now":"לשמירת מקום");expect(html).not.toContain("data-academy-bottom-bar");
+  expect(html.indexOf("data-academy-header=")).toBeLessThan(html.indexOf("data-academy-hero="));expect(html.match(/data-jlfa-primary/g)).toHaveLength(1);expect(html).toContain(locale==="en"?"Pre-register for free":"הרשמה מוקדמת בחינם");expect(html).not.toContain("data-academy-bottom-bar");
   expect(html.indexOf('id="questions"')).toBeLessThan(html.indexOf('id="parent-reflections"'));expect(html.indexOf('id="parent-reflections"')).toBeLessThan(html.indexOf('id="founder"'));expect(html.indexOf('id="founder"')).toBeLessThan(html.indexOf("data-academy-footer="));
   expect(html).toContain('data-academy-testimonial-state="historical-reflection"');expect(html.match(/<blockquote\b/g)).toHaveLength(1);expect(html).toContain('<blockquote lang="en" dir="ltr"><p>“Medication is no longer relevant.”</p></blockquote>');expect(html).toContain("L. Bars");const testimonial=html.slice(html.indexOf('id="parent-reflections"'),html.indexOf('id="founder"'));expect(testimonial).toContain(locale==="en"?"Mother of a student · 2024 · Beit Shemesh":"אמו של תלמיד · 2024 · בית שמש");expect(testimonial).toContain('/groups/testimonials/l-bars-2024.png');expect(testimonial).not.toMatch(/earlier educational work|עבודה חינוכית קודמת|עבודתו החינוכית הקודמת/);expect(html).not.toMatch(/Lieberman|More locations in the pool|A Florida Keys milestone/);expect(html).toContain(locale==="en"?"Meet Rabbi Shlomo Dratler":"הכירו את הרב שלמה דרטלר");
   expect(html).not.toContain("data-academy-whatsapp");expect(html).toContain('aria-controls="academy-mobile-menu"');expect(html).toContain('aria-expanded="false"');
@@ -107,3 +110,6 @@ describe("owner1181 visual and outing corrections",()=>{
   for(const locale of ["en","he"]){expect(groupApplicationReleasePath(`/${locale}/florida/pricing`,visualGateEnv)).toBe(true);expect(groupApplicationReleasePath(`/${locale}/florida/pricing/private`,visualGateEnv)).toBe(false);expect(groupApplicationReleasePath(`/${locale}/florida/pricing`,{...visualGateEnv,LS_IDENTITY_ENABLED:"false"})).toBe(false);}
  });
 });
+
+const explicitPre=campaignSnapshotSchema.parse({version:ACADEMY_CAMPAIGN,phase:'PRE_REGISTRATION',revision:1,capacity:30,occupied:1,remaining:29,firstFilledAt:null,asOf:'2026-10-23T14:00:00.000Z',reopeningPolicy:'PROPOSED_STICKY_REGULAR_PENDING_OWNER_CONFIRMATION'});
+function renderToStaticMarkup(node:ReactNode){return renderPhaseRaw(createElement(AcademyCampaignProvider,{initial:explicitPre},node));}
