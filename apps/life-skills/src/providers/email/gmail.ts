@@ -9,6 +9,7 @@ const TOKEN = /^[^\r\n]{1,4096}$/;
 const KEY = /^ls-auth-[0-9a-f-]{36}$/;
 const MAX_SUBJECT = 150;
 const MAX_TEXT = 5000;
+const MAX_HTML_BYTES = 32768;
 
 export interface GmailAuthConfig {
   enabled: true;
@@ -54,6 +55,18 @@ function base64(value: Uint8Array | string): string {
 }
 function mime(message: AuthEmailMessage, displayName: "Life Skills" | "JLFA Office"): string {
   const messageId = `<${message.idempotencyKey}@bneineviimacademy.org>`;
+  if (message.html !== undefined) {
+    // Reviewed Academy formatter supplies escaped HTML and its own hidden preheader.
+    // Base64 part bodies cannot contain this MIME delimiter; do not add preview headers.
+    const boundary = `jlfa-alt-${message.idempotencyKey}`;
+    return [
+      `From: ${displayName} <${OFFICE_FROM}>`, `To: ${message.to}`, `Subject: ${encodedWord(message.subject)}`,
+      "MIME-Version: 1.0", `Content-Type: multipart/alternative; boundary="${boundary}"`, `Message-ID: ${messageId}`, "",
+      `--${boundary}`, "Content-Type: text/plain; charset=UTF-8", "Content-Transfer-Encoding: base64", "", base64(message.text),
+      `--${boundary}`, "Content-Type: text/html; charset=UTF-8", "Content-Transfer-Encoding: base64", "", base64(message.html),
+      `--${boundary}--`, ""
+    ].join("\r\n");
+  }
   return [
     `From: ${displayName} <${OFFICE_FROM}>`, `To: ${message.to}`, `Subject: ${encodedWord(message.subject)}`,
     "MIME-Version: 1.0", "Content-Type: text/plain; charset=UTF-8", "Content-Transfer-Encoding: base64",
@@ -90,7 +103,9 @@ export class GmailAuthTransport implements AuthEmailTransport {
   async send(message: AuthEmailMessage): Promise<{ providerId: string }> {
     if (!this.config.enabled || !["Life Skills", "JLFA Office"].includes(this.displayName) || message.from !== OFFICE_FROM || !ADDRESS.test(message.to) || message.to.length > 254 ||
         !KEY.test(message.idempotencyKey) || !headerValue(message.subject, MAX_SUBJECT) ||
-        message.text.length > MAX_TEXT) throw new AuthEmailDeliveryError(false);
+        message.text.length > MAX_TEXT || (message.html !== undefined &&
+        (this.displayName !== "JLFA Office" || typeof message.html !== "string" || message.html.length === 0 ||
+         Buffer.byteLength(message.html, "utf8") > MAX_HTML_BYTES))) throw new AuthEmailDeliveryError(false);
     const token = await this.accessToken();
     let response: Response;
     try {

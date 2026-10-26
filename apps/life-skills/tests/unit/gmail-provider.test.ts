@@ -52,3 +52,53 @@ describe("bounded Gmail auth transport", () => {
     await expect(new GmailAuthTransport(parseGmailAuthConfig(env),f).send(message)).rejects.toMatchObject({retryable:false});expect(calls).toBe(1);
   });
 });
+
+describe("reviewed Academy HTML transport alternative", () => {
+  const capture = () => {
+    const raw: string[] = []; let calls=0;
+    const mock=(async(url:string|URL|Request,init?:RequestInit)=>{
+      calls++;
+      if(String(url).includes("oauth2")) return Response.json({access_token:"synthetic-token"});
+      raw.push(Buffer.from(JSON.parse(String(init?.body)).raw,"base64url").toString("utf8"));
+      return Response.json({id:"synthetic-receipt"});
+    }) as typeof fetch;
+    return {raw,mock,calls:()=>calls};
+  };
+  test("legacy plaintext MIME remains byte-for-byte unchanged",async()=>{
+    const c=capture(); await new GmailAuthTransport(parseGmailAuthConfig(env),c.mock).send({...message,subject:"Receipt",text:"plain\nbody"});
+    expect(c.raw[0]).toBe([
+      "From: Life Skills <office@bneineviimacademy.org>","To: recipient@example.org","Subject: =?UTF-8?B?UmVjZWlwdA==?=",
+      "MIME-Version: 1.0","Content-Type: text/plain; charset=UTF-8","Content-Transfer-Encoding: base64",
+      "Message-ID: <ls-auth-123e4567-e89b-12d3-a456-426614174000@bneineviimacademy.org>","","cGxhaW4KYm9keQ==",""
+    ].join("\r\n"));
+  });
+  test.each(["en","he"])("preserves both exact %s bodies with inert preheader and one recipient",async(locale)=>{
+    const c=capture(),text=locale==="he"?"שלום\nאישור עניין":"Hello\nConfirm interest";
+    const html=`<!doctype html><html lang="${locale}"><body><div style="display:none">${text}</div><p>Safe &amp; exact</p></body></html>`;
+    await new GmailAuthTransport(parseGmailAuthConfig(env),c.mock,"JLFA Office").send({...message,text,html});
+    const raw=c.raw[0]!; expect(c.calls()).toBe(2);expect(c.raw).toHaveLength(1);
+    expect(raw).toContain("From: JLFA Office <office@bneineviimacademy.org>");
+    const boundary=`jlfa-alt-${message.idempotencyKey}`;
+    const parts=raw.split(`--${boundary}`);expect(parts).toHaveLength(4);
+    expect(parts[1]).toContain("Content-Type: text/plain; charset=UTF-8");expect(parts[2]).toContain("Content-Type: text/html; charset=UTF-8");
+    expect(Buffer.from(parts[1]!.split("\r\n\r\n")[1]!.trim(),"base64").toString()).toBe(text);
+    expect(Buffer.from(parts[2]!.split("\r\n\r\n")[1]!.trim(),"base64").toString()).toBe(html);
+    expect(raw).not.toMatch(/\r\n(?:Cc|Bcc|Preview|X-Preview):/i);expect(raw.match(/\r\nTo:/g)).toHaveLength(1);
+  });
+  test("rejects malformed or oversized HTML and non-Academy display before credential or provider access",async()=>{
+    const c=capture(),t=new GmailAuthTransport(parseGmailAuthConfig(env),c.mock,"JLFA Office");
+    for(const html of ["","א".repeat(16385),null,7]) await expect(t.send({...message,html} as Parameters<typeof t.send>[0])).rejects.toMatchObject({retryable:false});
+    await expect(new GmailAuthTransport(parseGmailAuthConfig(env),c.mock).send({...message,html:"<p>body</p>"})).rejects.toMatchObject({retryable:false});
+    expect(c.calls()).toBe(0);
+  });
+  test("Resend cannot silently discard an exact HTML alternative",async()=>{
+    const {ResendAuthTransport}=await import("../../src/providers/email/resend.ts");const c=capture();
+    const t=new ResendAuthTransport({enabled:true,from:message.from,apiKey:"synthetic"},c.mock);
+    await expect(t.send({...message,html:"<p>body</p>"})).rejects.toMatchObject({retryable:false});expect(c.calls()).toBe(0);
+  });
+  test("uncertain HTML send has one provider attempt and no automatic retry",async()=>{
+    let sends=0;const mock=(async(url:string|URL|Request)=>{if(String(url).includes("oauth2"))return Response.json({access_token:"synthetic"});sends++;throw new Error("synthetic transport uncertainty");}) as typeof fetch;
+    const t=new GmailAuthTransport(parseGmailAuthConfig(env),mock,"JLFA Office");expect(t.nonIdempotent).toBe(true);
+    await expect(t.send({...message,html:"<p>body</p>"})).rejects.toMatchObject({retryable:false});expect(sends).toBe(1);
+  });
+});
