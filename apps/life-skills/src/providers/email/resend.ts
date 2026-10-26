@@ -10,7 +10,7 @@ export function parseResendAuthConfig(env:Record<string,string|undefined>):Resen
 export class ResendAuthTransport implements AuthEmailTransport {
  constructor(private readonly config:ResendAuthConfig,private readonly sendFetch:typeof fetch=fetch){}
  async send(message:AuthEmailMessage):Promise<{providerId:string}> {
-  if(!this.config.enabled || message.from!==this.config.from || !ADDRESS.test(message.to) || message.to.length>254 || !/^ls-auth-[0-9a-f-]{36}$/.test(message.idempotencyKey) || /[\r\n]/.test(message.subject) || message.subject.length>150 || message.text.length>5000) throw new AuthEmailDeliveryError(false);
+  if(message.html!==undefined || !this.config.enabled || message.from!==this.config.from || !ADDRESS.test(message.to) || message.to.length>254 || !/^ls-auth-[0-9a-f-]{36}$/.test(message.idempotencyKey) || /[\r\n]/.test(message.subject) || message.subject.length>150 || message.text.length>5000) throw new AuthEmailDeliveryError(false);
   let response:Response;
   try{response=await this.sendFetch('https://api.resend.com/emails',{method:'POST',redirect:'error',signal:AbortSignal.timeout(8000),headers:{Authorization:`Bearer ${this.config.apiKey}`,'Content-Type':'application/json','Idempotency-Key':message.idempotencyKey},body:JSON.stringify({from:message.from,to:[message.to],subject:message.subject,text:message.text})});}
   catch{throw new AuthEmailDeliveryError(true);}
