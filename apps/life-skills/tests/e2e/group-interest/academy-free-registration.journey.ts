@@ -3,6 +3,7 @@ import {readFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {expect,test} from '@playwright/test';
 import exactStates from '../../../src/features/group-application/academy-exact-state-copy.json' with {type:'json'};
+import exactWebsite from '../../../src/features/group-application/academy-exact-website-copy.json' with {type:'json'};
 const file=process.env.LS_GROUP_INTEREST_FIXTURE_PATH;
 if(!file||process.env.LS_ACADEMY_FREE_UI_ONLY!=='true')throw Error('ACADEMY_FREE_BROWSER_FIXTURE_REQUIRED');
 const runtime=JSON.parse(readFileSync(file,'utf8')) as {origin:string;academy:{email:string;password:string}};
@@ -11,7 +12,7 @@ test.use({baseURL:runtime.origin});
 for(const locale of ['en','he'] as const)test(`${locale}: two children, committed reply loss, exact retry, real owner login and readback`,async({page},info)=>{
  const t=(en:string,he:string)=>locale==='he'?he:en;
  const before=await page.request.get('/api/public/academy-founder');expect(before.status()).toBe(200);const previous=(await before.json()).data;
- await page.goto(`/${locale}/florida`);await expect(page.getByRole('heading',{name:'South Florida Jewish Leadership Fishing Academy',exact:true})).toBeVisible();await expect(page.locator('[data-jlfa-primary]')).toHaveText(t('Pre-register for free','הרשמה מוקדמת בחינם'));
+ await page.goto(`/${locale}/florida`);await expect(page.getByRole('heading',{name:exactWebsite[locale].hero.accessibleName,exact:true})).toBeVisible();await expect(page.locator('[data-jlfa-primary]')).toHaveText(t('Pre-register for free','הרשמה מוקדמת בחינם'));
  const challenge=page.waitForResponse(r=>r.request().method()==='GET'&&new URL(r.url()).pathname==='/api/public/group-applications');await page.goto(`/${locale}/florida/apply`);expect((await challenge).status()).toBe(200);
  const form=page.locator('form[data-academy-registration]');await expect(form.locator('button[type=submit]')).toBeEnabled();
  const name='Synthetic free family '+locale+' '+randomUUID(),email='synthetic-'+randomUUID()+'@example.invalid';
