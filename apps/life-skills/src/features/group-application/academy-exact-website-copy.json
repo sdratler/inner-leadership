@@ -1,0 +1,782 @@
+{
+  "en": {
+    "nav": {
+      "home": "Home",
+      "curriculum": "Curriculum",
+      "pricing": "Pricing",
+      "faq": "FAQ",
+      "preRegister": "Pre-register for free",
+      "register": "Register",
+      "language": "Language"
+    },
+    "hero": {
+      "accessibleName": "South Florida Jewish Leadership Fishing Academy",
+      "pillars": "Torah • Fishing • Self-Governance",
+      "offer": "First 30 families save $300"
+    },
+    "home": {
+      "aboutHeading": "What we do",
+      "aboutLead": "A Torah-infused extracurricular fishing program for boys.",
+      "aboutSupporting": "Boys prepare their own equipment, solve real fishing problems and learn to work with one another.",
+      "audienceHeading": "Who it's for",
+      "audience": "For boys ages 8 and up, whether they attend school or are homeschooled. No fishing experience is needed.",
+      "gainsHeading": "What boys gain",
+      "gains": [
+        {
+          "title": "Fishing skills",
+          "body": "Set up a rod, tie a reliable knot and cast with control. Learn to notice what the water and your equipment are telling you."
+        },
+        {
+          "title": "Independent thinking",
+          "body": "Compare options, test an idea and explain your choice. A tangled line becomes a problem to investigate, not just something to hand to an adult."
+        },
+        {
+          "title": "Self-governance",
+          "body": "Notice frustration before it takes over. Practice pausing, reconsidering and choosing a useful next step."
+        },
+        {
+          "title": "Communication",
+          "body": "Explain what help you need, listen to another boy's idea and work through a disagreement without losing the shared task."
+        },
+        {
+          "title": "Responsibility",
+          "body": "Prepare your equipment, care for shared spaces and follow through on what you agreed to do."
+        },
+        {
+          "title": "Leadership",
+          "body": "Help another boy become more capable. Offer encouragement and guidance without taking the task away from him."
+        }
+      ],
+      "journeyHeading": "How it works",
+      "journey": [
+        {
+          "title": "Pre-register",
+          "body": "Tell us about your family, preferred days and travel distance."
+        },
+        {
+          "title": "Find the right group",
+          "body": "We contact you about a suitable group and start date."
+        },
+        {
+          "title": "Learn the basics",
+          "body": "Get familiar with your equipment, safety routines, knots and casting."
+        },
+        {
+          "title": "Go fishing",
+          "body": "Put those skills into practice through supervised fishing and shared problem-solving."
+        }
+      ],
+      "journeyRegularFirstTitle": "Register",
+      "stagesHeading": "The four stages",
+      "stagesIntro": "Twelve sessions per stage. Enroll one stage at a time.",
+      "stageCards": [
+        {
+          "slug": "foundation",
+          "title": "Foundation Angler",
+          "tagline": "Get equipped. Learn the basics. Start fishing.",
+          "body": "Prepare your tackle, tie knots and practice safe casting before putting your skills to work on the water.",
+          "linkLabel": "Explore Foundation"
+        },
+        {
+          "slug": "independent",
+          "title": "Independent Angler",
+          "tagline": "Make your own decisions on the water.",
+          "body": "Choose and adjust your setup, solve tackle problems and explain your plan to a fishing partner.",
+          "linkLabel": "Explore Independent"
+        },
+        {
+          "slug": "advanced",
+          "title": "Advanced Angler",
+          "tagline": "Read the conditions. Refine your approach.",
+          "body": "Connect what you notice about current, depth and equipment to the choices you make while fishing.",
+          "linkLabel": "Explore Advanced"
+        },
+        {
+          "slug": "leadership",
+          "title": "Leadership Angler",
+          "tagline": "Help another boy become more capable.",
+          "body": "Explain a technique, organize a shared task and offer guidance without doing the work for someone else.",
+          "linkLabel": "Explore Leadership"
+        }
+      ],
+      "faqHeading": "FAQ",
+      "faq": [
+        {
+          "id": "experience",
+          "question": "Does my son need fishing experience?",
+          "answer": "No. New students begin with equipment, knots and safety before supervised fishing. Boys with experience build on what they already know."
+        },
+        {
+          "id": "frequency",
+          "question": "How often do you meet?",
+          "answer": "Once a week, with 12 sessions in each stage. Ordinary meetings are three hours. We confirm any different preparation-session or trip times with the group."
+        },
+        {
+          "id": "equipment",
+          "question": "Does he need his own equipment?",
+          "answer": "Yes. Each boy learns to use and care for his own rod, reel and tackle. Bring any equipment you already own to the first meeting; we'll help you work out what else is needed."
+        },
+        {
+          "id": "safety",
+          "question": "How do you approach safety?",
+          "answer": "Fishing involves hooks, sharp equipment and water. Boys practice safe handling, casting awareness and following instructions before fishing. Readiness is checked individually, and unsafe behavior can mean stopping an activity or removal from the program."
+        },
+        {
+          "id": "locations",
+          "question": "Where do you fish?",
+          "answer": "At suitable South Florida parks, lakes, piers and shoreline locations. We choose sites around the group, the conditions and what the boys are learning."
+        },
+        {
+          "id": "academy-travel-faq",
+          "question": "How far will we need to drive?",
+          "answer": "Tell us your maximum one-way driving time. More flexibility gives us more locations to consider. If we move an ordinary session beyond your recorded limit and you cannot attend, your son keeps the right to a suitable makeup."
+        },
+        {
+          "id": "transport",
+          "question": "Who handles transportation?",
+          "answer": "Parents arrange drop-off and pickup. Any optional Academy-arranged transportation is quoted separately."
+        },
+        {
+          "id": "keys-trip-faq",
+          "question": "Are Florida Keys trips included?",
+          "answer": "Monthly bridge-fishing trips are planned after the initial preparation. The trip replaces that week's ordinary session, with fishing instruction included. Food and transportation cost extra."
+        },
+        {
+          "id": "offshore-trip-faq",
+          "question": "What about offshore fishing?",
+          "answer": "An optional offshore charter may be offered after your son completes Stage 1. It is a separate purchase, with trip details and readiness requirements confirmed beforehand."
+        },
+        {
+          "id": "weather",
+          "question": "What happens if the weather changes?",
+          "answer": "We may change the location or date. A cancelled or qualifying missed session stays linked to your son's original lesson, and we arrange a suitable makeup when available."
+        },
+        {
+          "id": "absence",
+          "question": "What if my son misses a session?",
+          "answer": "Give at least 24 hours' notice to preserve the usual makeup entitlement. Unavoidable short-notice absences are considered individually. Makeup arrangements depend on suitable space and availability."
+        },
+        {
+          "id": "group-language",
+          "question": "Are Hebrew-speaking groups available?",
+          "answer": "We are considering groups according to family interest and suitable schedules. Choose your preferred group language on the form."
+        },
+        {
+          "id": "after-registration",
+          "question": "What happens after I pre-register?",
+          "answer": "We save your details and email you to confirm your interest. We then work on a suitable group and start date. There is nothing to pay now."
+        },
+        {
+          "id": "monthly",
+          "question": "Can I pay monthly?",
+          "answer": "Yes. A four-session block costs $650 per child. Each new block is purchased separately, with no automatic renewal."
+        },
+        {
+          "id": "program-terms",
+          "question": "Where can I read the program terms?",
+          "answer": "Open Program terms & safety on the registration form for registration, safety, conduct and payment information."
+        }
+      ],
+      "regularFollowup": {
+        "question": "What happens after I register?",
+        "answer": "We save your details and contact you about a suitable group and start date. No payment is taken by the registration form."
+      },
+      "founderHeading": "Meet Rabbi Shlomo Dratler",
+      "founderBody": "Rabbi Shlomo Dratler grew up in Florida and has spent the past 18 years in Beit Shemesh, raising five children. His educational work focuses on intrinsic motivation, independent thinking and authentic relationships. The Fishing Academy brings that approach into practical fishing, shared responsibility and everyday Torah values.",
+      "footerAttribution": "A program of Bnei Neviim Academy, a New Jersey nonprofit."
+    },
+    "pricing": {
+      "heading": "Program pricing",
+      "unit": "One 12-session stage · Prices in USD",
+      "primaryTemplate": "First child — {price} prepaid",
+      "siblingTemplate": "Additional eligible sibling — {price} prepaid",
+      "monthlyTemplate": "Monthly — {price} for 4 sessions",
+      "founderQualifier": "Founding rates apply to first-stage prepayment for the first 30 qualifying families.",
+      "founderTwoTemplate": "Two eligible founding siblings: {price} prepaid.",
+      "noPayment": "No payment at pre-registration.",
+      "ordinaryBelow": "Each monthly block is purchased separately. No automatic renewal.",
+      "remainingTemplate": "{remaining} of 30 founding-family rate reservations remaining.",
+      "loading": "Checking availability…",
+      "unavailable": "Availability will be checked when you submit.",
+      "outings": {
+        "keysTitle": "Florida Keys",
+        "keysBody": "Monthly bridge trips are planned after preparation. Fishing instruction is included; food and transportation cost extra.",
+        "offshoreTitle": "Offshore fishing",
+        "offshoreBody": "An optional charter may be offered after Stage 1, at an additional cost.",
+        "faqLink": "Trip details in the FAQ"
+      }
+    },
+    "form": {
+      "titleA": "Pre-register for free",
+      "titleB": "Register your family",
+      "intro": "Tell us about your family and the days that work for you.",
+      "offerA": {
+        "primary": "First stage: {price} prepaid for the first child.",
+        "sibling": "Additional eligible sibling: {price}.",
+        "monthly": "Monthly option: {price} for 4 sessions.",
+        "qualifier": "Founding prepay rates · First 30 qualifying families · No payment today",
+        "twoChildren": "Founding-family prepay for two boys: {price}."
+      },
+      "offerB": {
+        "primary": "First child: {price}.",
+        "sibling": "Additional eligible sibling: {price}.",
+        "monthly": "Monthly option: {price} for 4 sessions.",
+        "qualifier": "One 12-session stage · No payment taken by this form"
+      },
+      "sections": {
+        "parent": "Parent or guardian",
+        "child": "Your son",
+        "availability": "Days, times & travel",
+        "notes": "Anything else?",
+        "terms": "Program terms & safety"
+      },
+      "labels": {
+        "parentName": "Full name",
+        "email": "Email",
+        "phone": "Phone",
+        "cityArea": "City / area",
+        "postalCode": "ZIP code",
+        "childName": "Child's full name",
+        "age": "Age",
+        "grade": "Grade / homeschool equivalent",
+        "schooling": "Schooling",
+        "experience": "Fishing experience",
+        "days": "Preferred days",
+        "times": "Preferred times",
+        "driveMinutes": "How many minutes can you drive one way?",
+        "schoolHours": "Can he attend during school hours?",
+        "groupLanguage": "Preferred group language",
+        "parentLanguage": "Language for parent messages",
+        "notes": "Notes (optional)"
+      },
+      "gradePlaceholder": "Choose a grade",
+      "options": {
+        "grades": {
+          "3": "Grade 3",
+          "4": "Grade 4",
+          "5": "Grade 5",
+          "6": "Grade 6",
+          "7": "Grade 7",
+          "8": "Grade 8",
+          "9": "Grade 9",
+          "10": "Grade 10",
+          "11": "Grade 11",
+          "12": "Grade 12"
+        },
+        "schooling": {
+          "school": "School",
+          "homeschool": "Homeschool",
+          "discuss": "Discuss with me"
+        },
+        "experience": {
+          "new": "New to fishing",
+          "some": "Some experience",
+          "experienced": "Experienced",
+          "not_sure": "Not sure"
+        },
+        "days": {
+          "sunday": "Sunday",
+          "monday": "Monday",
+          "tuesday": "Tuesday",
+          "wednesday": "Wednesday",
+          "thursday": "Thursday",
+          "friday": "Friday",
+          "flexible": "Flexible"
+        },
+        "times": {
+          "morning": "Morning",
+          "afternoon": "Afternoon",
+          "evening": "Evening",
+          "flexible": "Flexible"
+        },
+        "schoolHours": {
+          "flexible": "Homeschool / flexible schedule",
+          "permission_needed": "With school permission",
+          "outside_school_only": "Outside school hours only",
+          "discuss": "Please contact me"
+        },
+        "groupLanguage": {
+          "en": "English",
+          "he": "Hebrew",
+          "either": "Either"
+        },
+        "parentLanguage": {
+          "en": "English",
+          "he": "Hebrew"
+        }
+      },
+      "childTemplate": "Child {number}",
+      "addChild": "Add another child",
+      "removeChild": "Remove child",
+      "daysPrompt": "Choose all suitable days",
+      "timesPrompt": "Choose all suitable times",
+      "driveHelp": "A longer drive gives us more fishing locations to consider.",
+      "travelLink": "Travel & makeup information",
+      "notesPlaceholder": "Anything about scheduling or your son's experience that you'd like us to know?",
+      "equipmentLine": "Bring any fishing equipment you already own to the first meeting.",
+      "requiredCheckbox": "I am the parent or guardian. I have read the program information and agree to the registration terms and privacy notice.",
+      "updatesHeading": "Updates (optional)",
+      "emailUpdates": "Email updates about the program",
+      "whatsappUpdates": "WhatsApp updates about the program",
+      "submitBusy": "Saving your registration…",
+      "submitBelow": "No payment today. We'll contact you about the next step."
+    },
+    "terms": {
+      "sections": [
+        {
+          "id": "registration",
+          "heading": "Free registration",
+          "paragraphs": [
+            "This form records your family's interest. No payment is taken. A group, start date and paid place are confirmed separately."
+          ]
+        },
+        {
+          "id": "safety",
+          "heading": "Safety & participation",
+          "paragraphs": [
+            "Fishing and outdoor activities involve hooks, sharp equipment, moving lines, fish, sun, changing weather and water. Preparation and supervision reduce risk, but cannot remove every risk.",
+            "Boys must follow the instructor's directions, stop when instructed and complete the required safety preparation before fishing. The instructor may restrict or stop an activity, or remove a boy from the program, when behavior is unsafe. Parents will be contacted and a supervised handoff arranged when a boy must leave.",
+            "Before participation, parents provide necessary emergency, pickup and relevant support information privately and complete the applicable participation agreement."
+          ]
+        },
+        {
+          "id": "conduct",
+          "heading": "My son's responsibilities",
+          "paragraphs": [
+            "I will work with the other boys and speak respectfully. I will follow the instructor's directions, use equipment only as instructed and stop immediately when told to stop. I will ask for help when I do not understand and tell an adult if someone is hurt or something is unsafe."
+          ]
+        },
+        {
+          "id": "policies",
+          "heading": "Program policies",
+          "paragraphs": [
+            "Parents arrange drop-off and pickup at the confirmed place and time, and any school permission needed for a daytime session. Boys bring and care for their own fishing equipment.",
+            "Give at least 24 hours' notice of an absence to preserve the usual makeup entitlement. Unavoidable short-notice absences are considered individually. If an ordinary session is moved beyond your recorded driving limit and your son cannot attend, he retains a suitable makeup for that lesson.",
+            "Monthly Keys bridge trips are planned after preparation and replace the participating group's ordinary session. Food and transportation are separate costs. Offshore charters are optional, separately priced outings after Stage 1 and specific trip approval."
+          ]
+        },
+        {
+          "id": "payment",
+          "heading": "Payment & cancellation information",
+          "paragraphs": [
+            "A prepaid stage covers 12 sessions. The $650 option covers four sessions purchased as one block. There is no automatic next-block or next-stage charge.",
+            "Cancelling an unpaid registration costs nothing.",
+            "For voluntary cancellation before the first paid lesson, the selected administration fee is $200 per family for a joint family cancellation.",
+            "After one attended lesson, the selected early-refund rule deducts that lesson's proportional cost with no administration fee. After two attended lessons, it deducts both lessons plus $100 per child for a four-session block, or $200 per child for a prepaid stage.",
+            "The complete terms for the particular paid offer must be provided and accepted before payment. No payment or refund is authorized by submitting this form."
+          ]
+        },
+        {
+          "id": "privacy",
+          "heading": "Registration privacy",
+          "paragraphs": [
+            "We use your submitted details to review your registration, consider suitable groups and send registration-related messages. Your children's information is not published with the public family counter. Optional email and WhatsApp updates are separate choices."
+          ]
+        }
+      ],
+      "founderParagraph": "During the founding-family campaign, eligible families can reserve first-stage prepaid rates. Confirm your interest within seven days of the confirmation email being successfully sent. Registration does not guarantee a particular group or start date."
+    },
+    "metadata": {
+      "landingTitle": "South Florida Jewish Leadership Fishing Academy",
+      "landingDescriptionA": "A Torah-infused extracurricular fishing program for boys. Explore the four-stage curriculum and pre-register for free.",
+      "landingDescriptionB": "A Torah-infused extracurricular fishing program for boys. Explore the four-stage curriculum and register your family's interest.",
+      "formTitleA": "Free Pre-registration | South Florida Jewish Leadership Fishing Academy",
+      "formDescriptionA": "Tell us about your family and preferred schedule. No payment at pre-registration.",
+      "formTitleB": "Registration | South Florida Jewish Leadership Fishing Academy",
+      "formDescriptionB": "Tell us about your family and preferred schedule so we can consider a suitable group.",
+      "pricingTitle": "Program Pricing | South Florida Jewish Leadership Fishing Academy",
+      "pricingDescription": "Explore stage prepayment and monthly options for the Fishing Academy. No payment at pre-registration.",
+      "curriculumTitle": "{stage_title} | South Florida Jewish Leadership Fishing Academy"
+    }
+  },
+  "he": {
+    "nav": {
+      "home": "ראשי",
+      "curriculum": "תוכנית הלימודים",
+      "pricing": "מחירים",
+      "faq": "שאלות נפוצות",
+      "preRegister": "הרשמה מוקדמת בחינם",
+      "register": "להרשמה",
+      "language": "שפה"
+    },
+    "hero": {
+      "accessibleName": "האקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה",
+      "pillars": "תורה • דיג • הנהגה עצמית",
+      "offer": "30 המשפחות הראשונות חוסכות $300"
+    },
+    "home": {
+      "aboutHeading": "מה אנחנו עושים?",
+      "aboutLead": "תוכנית העשרה בדיג לבנים, באווירה תורנית.",
+      "aboutSupporting": "הבנים מכינים את הציוד בעצמם, מתמודדים עם בעיות אמיתיות בדיג ולומדים לעבוד יחד.",
+      "audienceHeading": "למי זה מתאים?",
+      "audience": "לבנים מגיל 8 ומעלה, הלומדים בבית ספר או בחינוך ביתי. אין צורך בניסיון קודם בדיג.",
+      "gainsHeading": "מה הבנים מפתחים?",
+      "gains": [
+        {
+          "title": "מיומנויות דיג",
+          "body": "מכינים חכה, קושרים קשר יציב ומטילים בשליטה. לומדים לשים לב למה שקורה במים ובציוד."
+        },
+        {
+          "title": "חשיבה עצמאית",
+          "body": "משווים אפשרויות, בודקים רעיון ומסבירים בחירה. חוט שהסתבך הופך לבעיה שחוקרים, לא רק למשהו שמעבירים למבוגר."
+        },
+        {
+          "title": "הנהגה עצמית",
+          "body": "מזהים תסכול לפני שהוא מנהל אותנו. מתרגלים עצירה, חשיבה מחדש ובחירה בצעד מועיל."
+        },
+        {
+          "title": "תקשורת",
+          "body": "מסבירים איזו עזרה צריך, מקשיבים לרעיון של חבר ומתמודדים עם מחלוקת בלי לאבד את המשימה המשותפת."
+        },
+        {
+          "title": "אחריות",
+          "body": "מכינים את הציוד, שומרים על המרחב המשותף ועומדים במה שסיכמנו לעשות."
+        },
+        {
+          "title": "מנהיגות",
+          "body": "עוזרים לחבר להיות מסוגל יותר. מעודדים ומכוונים בלי לקחת ממנו את המשימה."
+        }
+      ],
+      "journeyHeading": "איך זה עובד",
+      "journey": [
+        {
+          "title": "נרשמים מראש",
+          "body": "מספרים לנו על המשפחה, הימים המתאימים וזמן הנסיעה הנוח לכם."
+        },
+        {
+          "title": "מוצאים קבוצה מתאימה",
+          "body": "ניצור איתכם קשר לגבי קבוצה ומועד פתיחה מתאימים."
+        },
+        {
+          "title": "לומדים את היסודות",
+          "body": "מכירים את הציוד, כללי הבטיחות, הקשרים וההטלה."
+        },
+        {
+          "title": "יוצאים לדוג",
+          "body": "מיישמים את המיומנויות בדיג בהשגחה ובפתרון בעיות יחד."
+        }
+      ],
+      "journeyRegularFirstTitle": "נרשמים",
+      "stagesHeading": "ארבעת השלבים",
+      "stagesIntro": "12 מפגשים בכל שלב. נרשמים לכל שלב בנפרד.",
+      "stageCards": [
+        {
+          "slug": "foundation",
+          "title": "יסודות הדיג",
+          "tagline": "מכינים ציוד. לומדים את הבסיס. מתחילים לדוג.",
+          "body": "מארגנים ציוד, קושרים קשרים ומתרגלים הטלה בטוחה, ואז מיישמים את המיומנויות במים.",
+          "linkLabel": "להיכרות עם שלב היסודות"
+        },
+        {
+          "slug": "independent",
+          "title": "דיג עצמאי",
+          "tagline": "מקבלים החלטות בעצמכם בזמן הדיג.",
+          "body": "בוחרים ומתאימים את הציוד, פותרים תקלות ומסבירים את התוכנית לחבר שאיתו דגים.",
+          "linkLabel": "להיכרות עם שלב הדיג העצמאי"
+        },
+        {
+          "slug": "advanced",
+          "title": "דיג מתקדם",
+          "tagline": "קוראים את התנאים. מדייקים את הגישה.",
+          "body": "מחברים בין מה שמבחינים בו בזרם, בעומק ובציוד לבין ההחלטות שמקבלים בזמן הדיג.",
+          "linkLabel": "להיכרות עם שלב הדיג המתקדם"
+        },
+        {
+          "slug": "leadership",
+          "title": "דיג ומנהיגות",
+          "tagline": "עוזרים לחבר לפתח יכולת משלו.",
+          "body": "מסבירים טכניקה, מארגנים משימה משותפת ומכוונים בלי לעשות את העבודה במקום מישהו אחר.",
+          "linkLabel": "להיכרות עם שלב המנהיגות"
+        }
+      ],
+      "faqHeading": "שאלות נפוצות",
+      "faq": [
+        {
+          "id": "experience",
+          "question": "האם צריך ניסיון קודם בדיג?",
+          "answer": "לא. תלמידים חדשים מתחילים בהכרת הציוד, בקשרים ובבטיחות לפני דיג בהשגחה. בנים עם ניסיון ממשיכים לפתח את מה שהם כבר יודעים."
+        },
+        {
+          "id": "frequency",
+          "question": "באיזו תדירות נפגשים?",
+          "answer": "פעם בשבוע, עם 12 מפגשים בכל שלב. מפגש רגיל נמשך שלוש שעות. זמני הכנה או טיולים שחורגים מכך יתואמו עם הקבוצה."
+        },
+        {
+          "id": "equipment",
+          "question": "האם צריך ציוד אישי?",
+          "answer": "כן. כל בן לומד להשתמש בחכה, ברולר ובציוד שלו ולשמור עליהם. הביאו למפגש הראשון ציוד שכבר יש לכם; נעזור להבין מה עוד צריך."
+        },
+        {
+          "id": "safety",
+          "question": "איך ניגשים לבטיחות?",
+          "answer": "דיג כולל קרסים, ציוד חד וקרבה למים. לפני הדיג הבנים מתרגלים שימוש בטוח, תשומת לב למרחב ההטלה והקשבה להוראות. המוכנות נבדקת לכל ילד, והתנהגות לא בטוחה עלולה להביא להפסקת פעילות או להפסקת ההשתתפות בתוכנית."
+        },
+        {
+          "id": "locations",
+          "question": "איפה דגים?",
+          "answer": "בפארקים, אגמים, מזחים ואזורי חוף מתאימים בדרום פלורידה. המיקום נבחר לפי הקבוצה, התנאים ומה שהבנים לומדים."
+        },
+        {
+          "id": "academy-travel-faq",
+          "question": "כמה רחוק נצטרך לנסוע?",
+          "answer": "ציינו את זמן הנסיעה המרבי המתאים לכם לכיוון אחד. גמישות רבה יותר מאפשרת לשקול מקומות נוספים. אם נעביר מפגש רגיל מעבר למגבלה שנרשמה ולא תוכלו להגיע, בנכם ישמור על הזכות להשלמה מתאימה."
+        },
+        {
+          "id": "transport",
+          "question": "מי אחראי להסעות?",
+          "answer": "ההורים דואגים להבאה ולאיסוף. הסעה אופציונלית שמאורגנת באמצעות האקדמיה תוצע במחיר נפרד."
+        },
+        {
+          "id": "keys-trip-faq",
+          "question": "האם טיולי הקיז כלולים?",
+          "answer": "לאחר ההכנה הראשונית מתוכננים טיולי דיג חודשיים מהגשרים. הטיול מחליף את המפגש הרגיל באותו שבוע, והדרכת הדיג כלולה. אוכל והסעות בתשלום נפרד."
+        },
+        {
+          "id": "offshore-trip-faq",
+          "question": "ומה לגבי דיג בים הפתוח?",
+          "answer": "לאחר סיום השלב הראשון עשויה להיות מוצעת יציאה אופציונלית בסירה. זו רכישה נפרדת, ופרטי היציאה ודרישות המוכנות יאושרו מראש."
+        },
+        {
+          "id": "weather",
+          "question": "מה קורה כשמזג האוויר משתנה?",
+          "answer": "ייתכן שנשנה את המקום או התאריך. מפגש שבוטל או הוחמץ בתנאים המזכים נשאר משויך לשיעור המקורי של בנכם, ונתאם השלמה מתאימה כשיתאפשר."
+        },
+        {
+          "id": "absence",
+          "question": "מה קורה אם הבן מחמיץ מפגש?",
+          "answer": "הודיעו לפחות 24 שעות מראש כדי לשמור על הזכאות הרגילה להשלמה. היעדרות בלתי נמנעת בהתראה קצרה נבחנת בנפרד. ההשלמה תלויה במקום ובזמינות מתאימים."
+        },
+        {
+          "id": "group-language",
+          "question": "האם יהיו קבוצות דוברות עברית?",
+          "answer": "נבחן קבוצות לפי התעניינות המשפחות ולוחות הזמנים המתאימים. בחרו בטופס את שפת הקבוצה המועדפת."
+        },
+        {
+          "id": "after-registration",
+          "question": "מה קורה אחרי ההרשמה המוקדמת?",
+          "answer": "נשמור את הפרטים ונשלח דוא״ל לאישור ההתעניינות. לאחר מכן נפעל להתאמת קבוצה ומועד פתיחה. אין צורך לשלם כעת."
+        },
+        {
+          "id": "monthly",
+          "question": "אפשר לשלם במסלול חודשי?",
+          "answer": "כן. מקבץ של ארבעה מפגשים עולה $650 לכל ילד. כל מקבץ חדש נרכש בנפרד, ללא חידוש אוטומטי."
+        },
+        {
+          "id": "program-terms",
+          "question": "איפה אפשר לקרוא את תנאי התוכנית?",
+          "answer": "פתחו את תנאי התוכנית והבטיחות בטופס ההרשמה למידע על הרשמה, בטיחות, התנהגות ותשלום."
+        }
+      ],
+      "regularFollowup": {
+        "question": "מה קורה אחרי ההרשמה?",
+        "answer": "נשמור את הפרטים וניצור קשר לגבי קבוצה ומועד פתיחה מתאימים. לא נגבה תשלום בטופס ההרשמה."
+      },
+      "founderHeading": "הכירו את הרב שלמה דרטלר",
+      "founderBody": "הרב שלמה דרטלר גדל בפלורידה וב־18 השנים האחרונות חי בבית שמש ומגדל חמישה ילדים. עבודתו החינוכית מתמקדת במוטיבציה פנימית, בחשיבה עצמאית ובקשרים אותנטיים. באקדמיה לדיג הוא מביא את הגישה הזאת לדיג מעשי, לאחריות משותפת ולערכי תורה בחיי היום־יום.",
+      "footerAttribution": "תוכנית של Bnei Neviim Academy, ארגון ללא כוונת רווח בניו ג׳רזי."
+    },
+    "pricing": {
+      "heading": "מחירי התוכנית",
+      "unit": "שלב אחד בן 12 מפגשים · המחירים בדולר ארה״ב",
+      "primaryTemplate": "הילד הראשון — {price} בתשלום מראש",
+      "siblingTemplate": "אח נוסף זכאי — {price} בתשלום מראש",
+      "monthlyTemplate": "מסלול חודשי — {price} עבור 4 מפגשים",
+      "founderQualifier": "תעריפי המייסדים חלים על תשלום מראש לשלב הראשון, ל־30 המשפחות הזכאיות הראשונות.",
+      "founderTwoTemplate": "שני אחים זכאים במשפחה מייסדת: {price} בתשלום מראש.",
+      "noPayment": "אין תשלום בהרשמה המוקדמת.",
+      "ordinaryBelow": "כל מקבץ חודשי נרכש בנפרד. אין חידוש אוטומטי.",
+      "remainingTemplate": "נותרו {remaining} מתוך 30 הזמנות לתעריף משפחה מייסדת.",
+      "loading": "בודקים זמינות…",
+      "unavailable": "הזמינות תיבדק עם שליחת הטופס.",
+      "outings": {
+        "keysTitle": "פלורידה קיז",
+        "keysBody": "לאחר ההכנה מתוכננים טיולי דיג חודשיים מהגשרים. הדרכת הדיג כלולה; אוכל והסעות בתשלום נפרד.",
+        "offshoreTitle": "דיג בים הפתוח",
+        "offshoreBody": "לאחר השלב הראשון עשויה להיות מוצעת יציאה אופציונלית בסירה, בתשלום נוסף.",
+        "faqLink": "פרטי היציאות בשאלות הנפוצות"
+      }
+    },
+    "form": {
+      "titleA": "הרשמה מוקדמת בחינם",
+      "titleB": "הרשמת המשפחה",
+      "intro": "ספרו לנו על המשפחה ועל הימים שמתאימים לכם.",
+      "offerA": {
+        "primary": "השלב הראשון: {price} בתשלום מראש לילד הראשון.",
+        "sibling": "אח נוסף זכאי: {price}.",
+        "monthly": "מסלול חודשי: {price} עבור 4 מפגשים.",
+        "qualifier": "תעריפי מייסדים בתשלום מראש · 30 המשפחות הזכאיות הראשונות · אין תשלום היום",
+        "twoChildren": "תשלום מראש למשפחה מייסדת עם שני בנים: {price}."
+      },
+      "offerB": {
+        "primary": "הילד הראשון: {price} בתשלום מראש.",
+        "sibling": "אח נוסף זכאי: {price}.",
+        "monthly": "מסלול חודשי: {price} עבור 4 מפגשים.",
+        "qualifier": "שלב אחד בן 12 מפגשים · אין תשלום בטופס זה"
+      },
+      "sections": {
+        "parent": "פרטי הורה או אפוטרופוס",
+        "child": "פרטי הבן",
+        "availability": "ימים, שעות ונסיעות",
+        "notes": "משהו נוסף?",
+        "terms": "תנאי התוכנית והבטיחות"
+      },
+      "labels": {
+        "parentName": "שם מלא",
+        "email": "דוא״ל",
+        "phone": "טלפון",
+        "cityArea": "עיר / אזור",
+        "postalCode": "מיקוד",
+        "childName": "שם הילד המלא",
+        "age": "גיל",
+        "grade": "כיתה / כיתה מקבילה בחינוך ביתי",
+        "schooling": "מסגרת לימודים",
+        "experience": "ניסיון בדיג",
+        "days": "ימים מועדפים",
+        "times": "שעות מועדפות",
+        "driveMinutes": "כמה דקות תוכלו לנסוע לכיוון אחד?",
+        "schoolHours": "האם יוכל להשתתף בשעות הלימודים?",
+        "groupLanguage": "שפת הקבוצה המועדפת",
+        "parentLanguage": "שפת ההודעות להורה",
+        "notes": "הערות (לא חובה)"
+      },
+      "gradePlaceholder": "בחרו כיתה",
+      "options": {
+        "grades": {
+          "3": "כיתה ג׳",
+          "4": "כיתה ד׳",
+          "5": "כיתה ה׳",
+          "6": "כיתה ו׳",
+          "7": "כיתה ז׳",
+          "8": "כיתה ח׳",
+          "9": "כיתה ט׳",
+          "10": "כיתה י׳",
+          "11": "כיתה י״א",
+          "12": "כיתה י״ב"
+        },
+        "schooling": {
+          "school": "בית ספר",
+          "homeschool": "חינוך ביתי",
+          "discuss": "לתיאום איתי"
+        },
+        "experience": {
+          "new": "חדש בדיג",
+          "some": "ניסיון מסוים",
+          "experienced": "מנוסה",
+          "not_sure": "לא בטוח/ה"
+        },
+        "days": {
+          "sunday": "יום ראשון",
+          "monday": "יום שני",
+          "tuesday": "יום שלישי",
+          "wednesday": "יום רביעי",
+          "thursday": "יום חמישי",
+          "friday": "יום שישי",
+          "flexible": "גמיש"
+        },
+        "times": {
+          "morning": "בוקר",
+          "afternoon": "אחר הצהריים",
+          "evening": "ערב",
+          "flexible": "גמיש"
+        },
+        "schoolHours": {
+          "flexible": "חינוך ביתי / מערכת גמישה",
+          "permission_needed": "באישור בית הספר",
+          "outside_school_only": "רק מחוץ לשעות הלימודים",
+          "discuss": "אנא צרו איתי קשר"
+        },
+        "groupLanguage": {
+          "en": "אנגלית",
+          "he": "עברית",
+          "either": "לא משנה"
+        },
+        "parentLanguage": {
+          "en": "אנגלית",
+          "he": "עברית"
+        }
+      },
+      "childTemplate": "ילד {number}",
+      "addChild": "הוספת ילד נוסף",
+      "removeChild": "הסרת ילד",
+      "daysPrompt": "בחרו את כל הימים המתאימים",
+      "timesPrompt": "בחרו את כל הזמנים המתאימים",
+      "driveHelp": "נסיעה ארוכה יותר מאפשרת לשקול מקומות דיג נוספים.",
+      "travelLink": "מידע על נסיעות והשלמות",
+      "notesPlaceholder": "משהו לגבי לוח הזמנים או הניסיון של בנכם שחשוב לכם שנדע?",
+      "equipmentLine": "למפגש הראשון, הביאו ציוד דיג שכבר יש לכם.",
+      "requiredCheckbox": "אני ההורה או האפוטרופוס. קראתי את המידע על התוכנית ואני מסכים/ה לתנאי ההרשמה ולהודעת הפרטיות.",
+      "updatesHeading": "עדכונים (לבחירה)",
+      "emailUpdates": "עדכונים על התוכנית בדוא״ל",
+      "whatsappUpdates": "עדכונים על התוכנית ב־WhatsApp",
+      "submitBusy": "שומרים את ההרשמה…",
+      "submitBelow": "אין תשלום היום. ניצור איתכם קשר לגבי ההמשך."
+    },
+    "terms": {
+      "sections": [
+        {
+          "id": "registration",
+          "heading": "הרשמה בחינם",
+          "paragraphs": [
+            "טופס זה מתעד את התעניינות המשפחה. לא נגבה תשלום. הקבוצה, מועד הפתיחה והמקום בתשלום מאושרים בנפרד."
+          ]
+        },
+        {
+          "id": "safety",
+          "heading": "בטיחות והשתתפות",
+          "paragraphs": [
+            "דיג ופעילות בחוץ כוללים קרסים, ציוד חד, חוטים בתנועה, דגים, שמש, מזג אוויר משתנה ומים. הכנה והשגחה מפחיתות סיכונים, אך אינן יכולות לבטל את כולם.",
+            "הבנים חייבים לפעול לפי הוראות המדריך, לעצור כשנאמר להם ולהשלים את הכנת הבטיחות הנדרשת לפני הדיג. המדריך רשאי להגביל או להפסיק פעילות, או להפסיק השתתפות בתוכנית, כשההתנהגות אינה בטוחה. אם ילד צריך לעזוב, ניצור קשר עם ההורים ונדאג למסירה מסודרת ובהשגחה.",
+            "לפני ההשתתפות, ההורים מוסרים באופן פרטי את פרטי החירום, האיסוף והסיוע הרלוונטיים ומשלימים את הסכם ההשתתפות המתאים."
+          ]
+        },
+        {
+          "id": "conduct",
+          "heading": "האחריות של בני",
+          "paragraphs": [
+            "אעבוד יחד עם הבנים האחרים ואדבר בכבוד. אפעל לפי הוראות המדריך, אשתמש בציוד רק כפי שהודרכתי ואעצור מיד כשאומרים לי לעצור. אבקש עזרה כשאיני מבין ואודיע למבוגר אם מישהו נפגע או אם משהו אינו בטוח."
+          ]
+        },
+        {
+          "id": "policies",
+          "heading": "כללי התוכנית",
+          "paragraphs": [
+            "ההורים דואגים להבאה ולאיסוף במקום ובזמן שאושרו, ולכל אישור בית ספר הנדרש למפגש בשעות היום. הבנים מביאים את ציוד הדיג האישי ושומרים עליו.",
+            "יש להודיע על היעדרות לפחות 24 שעות מראש כדי לשמור על הזכאות הרגילה להשלמה. היעדרות בלתי נמנעת בהתראה קצרה נבחנת בנפרד. אם מפגש רגיל מועבר מעבר למגבלת הנסיעה שנרשמה ובנכם אינו יכול להגיע, תישמר לו השלמה מתאימה לאותו שיעור.",
+            "טיולי הגשרים החודשיים בקיז מתוכננים לאחר ההכנה ומחליפים את המפגש הרגיל של הקבוצה המשתתפת. אוכל והסעות בתשלום נפרד. יציאות בסירה לים הפתוח הן אופציונליות, מתומחרות בנפרד ומותנות בסיום השלב הראשון ובאישור ליציאה המסוימת."
+          ]
+        },
+        {
+          "id": "payment",
+          "heading": "מידע על תשלום וביטול",
+          "paragraphs": [
+            "שלב בתשלום מראש כולל 12 מפגשים. מסלול $650 כולל ארבעה מפגשים הנרכשים כמקבץ אחד. אין חיוב אוטומטי למקבץ הבא או לשלב הבא.",
+            "ביטול הרשמה שלא שולמה אינו כרוך בתשלום.",
+            "בביטול מרצון לפני המפגש הראשון ששולם, דמי הטיפול שנבחרו הם $200 למשפחה עבור ביטול משפחתי משותף.",
+            "לאחר מפגש אחד שבו השתתף הילד, כלל ההחזר המוקדם שנבחר מנכה את החלק היחסי של אותו מפגש, ללא דמי טיפול. לאחר שני מפגשים מנוכים שני המפגשים ובנוסף $100 לכל ילד במסלול של ארבעה מפגשים, או $200 לכל ילד בשלב ששולם מראש.",
+            "התנאים המלאים להצעה בתשלום יוצגו ויאושרו לפני התשלום. שליחת הטופס אינה מאשרת חיוב או החזר כספי."
+          ]
+        },
+        {
+          "id": "privacy",
+          "heading": "פרטיות בהרשמה",
+          "paragraphs": [
+            "הפרטים שנשלחו משמשים לבדיקת ההרשמה, להתאמת קבוצות ולשליחת הודעות הקשורות להרשמה. פרטי הילדים אינם מפורסמים במונה המשפחות הציבורי. עדכונים בדוא״ל וב־WhatsApp הם בחירות נפרדות."
+          ]
+        }
+      ],
+      "founderParagraph": "במהלך מבצע המשפחות המייסדות, משפחות זכאיות יכולות לשמור תעריף לתשלום מראש לשלב הראשון. יש לאשר התעניינות בתוך שבעה ימים משליחת הודעת האישור בהצלחה. ההרשמה אינה מבטיחה קבוצה מסוימת או מועד פתיחה."
+    },
+    "metadata": {
+      "landingTitle": "האקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה",
+      "landingDescriptionA": "תוכנית העשרה בדיג לבנים, באווירה תורנית. הכירו את ארבעת שלבי הלימוד והירשמו מראש בחינם.",
+      "landingDescriptionB": "תוכנית העשרה בדיג לבנים, באווירה תורנית. הכירו את ארבעת שלבי הלימוד ורשמו את התעניינות משפחתכם.",
+      "formTitleA": "הרשמה מוקדמת בחינם | האקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה",
+      "formDescriptionA": "ספרו לנו על המשפחה ועל לוח הזמנים המתאים לכם. אין תשלום בהרשמה המוקדמת.",
+      "formTitleB": "הרשמה | האקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה",
+      "formDescriptionB": "ספרו לנו על המשפחה ועל לוח הזמנים המתאים לכם, כדי שנוכל לשקול קבוצה מתאימה.",
+      "pricingTitle": "מחירי התוכנית | האקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה",
+      "pricingDescription": "הכירו את אפשרויות התשלום מראש והמסלול החודשי באקדמיה לדיג. אין תשלום בהרשמה המוקדמת.",
+      "curriculumTitle": "{stage_title} | האקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה"
+    }
+  }
+}

@@ -53,7 +53,7 @@ export async function publicGroupApplicationHttp(request:Request,load:()=>Promis
     // Only persisted state can establish SENT and its deadline. A failed
     // refresh must not hide the durable application or claim it is still queued.
     try{const founder=await dependencies.refreshFounder(result.item.id);if(!founder||founder.reference!==savedFounder.reference)throw new AppError('UNAVAILABLE');result={...result,founder};}
-    catch{result={...result,founder:{...savedFounder,email:'delivery_problem'}};}
+    catch{result={...result,founder:{...savedFounder,email:'unknown'}};}
    }
    response=successResponse({...result,...(acknowledgment?{acknowledgment}:{})},requestId,result.replayed||result.duplicate?200:201);
   }

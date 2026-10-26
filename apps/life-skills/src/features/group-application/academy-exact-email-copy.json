@@ -1,0 +1,268 @@
+{
+  "version": "JLFA-EXACT-COPY-20261026-05",
+  "sourceSha256": "771152d0aef0550bd369ea132b472e5bfcc1d44514ebb7815c1e47a7abd41466",
+  "locales": {
+    "en": {
+      "greetingFallback": "Hi,",
+      "reservationSentences": {
+        "reserved": "Your founding-family rate is reserved, pending this confirmation.",
+        "interest_list": "Your registration is saved, and we'll consider your family's schedule as we form the groups.",
+        "pending_verification": "Your registration is saved. We're still checking founding-family eligibility."
+      },
+      "confirmedFounderSentence": "Your founding-family rate remains reserved.",
+      "templates": {
+        "R00": {
+          "subject": "Confirm your Fishing Academy registration",
+          "preview": "We received your details. Please confirm that you'd like to hear about a suitable group.",
+          "blocks": [
+            {
+              "kind": "paragraph",
+              "text": "Hi {parent_first_name},"
+            },
+            {
+              "kind": "paragraph",
+              "text": "Thank you for registering for the South Florida Jewish Leadership Fishing Academy."
+            },
+            {
+              "kind": "paragraph",
+              "text": "{reservation_sentence}"
+            },
+            {
+              "kind": "paragraph",
+              "text": "Please confirm that you'd like us to arrange a suitable group for your family."
+            },
+            {
+              "kind": "action",
+              "text": "Confirm my interest"
+            },
+            {
+              "kind": "paragraph",
+              "text": "Confirm by {interest_deadline_eastern}. No payment is due now. I'll be in touch as the groups take shape."
+            },
+            {
+              "kind": "paragraph",
+              "text": "Questions about your son or the schedule? Reply to this email."
+            },
+            {
+              "kind": "paragraph",
+              "text": "Shlomo"
+            }
+          ]
+        },
+        "R01": {
+          "subject": "A quick check on your Fishing Academy registration",
+          "preview": "Please confirm your interest so we know to keep planning with your family.",
+          "blocks": [
+            {
+              "kind": "paragraph",
+              "text": "Hi {parent_first_name},"
+            },
+            {
+              "kind": "paragraph",
+              "text": "Are you still interested in a Fishing Academy group for your son?"
+            },
+            {
+              "kind": "paragraph",
+              "text": "Please confirm by {interest_deadline_eastern} so we know to keep planning with your family. No payment is needed."
+            },
+            {
+              "kind": "action",
+              "text": "Confirm my interest"
+            },
+            {
+              "kind": "paragraph",
+              "text": "Questions? Just reply."
+            },
+            {
+              "kind": "paragraph",
+              "text": "Shlomo"
+            }
+          ]
+        },
+        "R02": {
+          "subject": "Please confirm your interest in the Fishing Academy",
+          "preview": "Your confirmation deadline is {interest_deadline_eastern}.",
+          "blocks": [
+            {
+              "kind": "paragraph",
+              "text": "Hi {parent_first_name},"
+            },
+            {
+              "kind": "paragraph",
+              "text": "I haven't received your interest confirmation yet. The deadline is {interest_deadline_eastern}."
+            },
+            {
+              "kind": "action",
+              "text": "Confirm my interest"
+            },
+            {
+              "kind": "paragraph",
+              "text": "If you have a question before deciding, reply here."
+            },
+            {
+              "kind": "paragraph",
+              "text": "Shlomo"
+            }
+          ]
+        },
+        "R03": {
+          "subject": "Your Fishing Academy interest is confirmed",
+          "preview": "Thank you. I'll be in touch as the groups take shape.",
+          "blocks": [
+            {
+              "kind": "paragraph",
+              "text": "Hi {parent_first_name},"
+            },
+            {
+              "kind": "paragraph",
+              "text": "Thank you for confirming. I'll be in touch as we work out a suitable group and start date."
+            },
+            {
+              "kind": "paragraph",
+              "text": "{confirmed_founder_sentence}"
+            },
+            {
+              "kind": "paragraph",
+              "text": "There's nothing to pay now. You can reply here with any questions."
+            },
+            {
+              "kind": "paragraph",
+              "text": "Shlomo"
+            }
+          ]
+        }
+      }
+    },
+    "he": {
+      "greetingFallback": "שלום,",
+      "reservationSentences": {
+        "reserved": "תעריף המשפחה המייסדת שמור לכם, בכפוף לאישור הזה.",
+        "interest_list": "ההרשמה נשמרה, ונביא בחשבון את לוח הזמנים של משפחתכם כשנרכיב את הקבוצות.",
+        "pending_verification": "ההרשמה נשמרה. אנחנו עדיין בודקים את הזכאות לתעריף המייסדים."
+      },
+      "confirmedFounderSentence": "תעריף המשפחה המייסדת נשאר שמור לכם.",
+      "templates": {
+        "R00": {
+          "subject": "אישור ההרשמה לאקדמיה לדיג",
+          "preview": "קיבלנו את הפרטים. אשרו שתרצו לשמוע על קבוצה מתאימה.",
+          "blocks": [
+            {
+              "kind": "paragraph",
+              "text": "שלום {parent_first_name},"
+            },
+            {
+              "kind": "paragraph",
+              "text": "תודה שנרשמתם לאקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה."
+            },
+            {
+              "kind": "paragraph",
+              "text": "{reservation_sentence}"
+            },
+            {
+              "kind": "paragraph",
+              "text": "אשרו שתרצו שנפעל להתאמת קבוצה למשפחתכם."
+            },
+            {
+              "kind": "action",
+              "text": "אישור ההתעניינות שלי"
+            },
+            {
+              "kind": "paragraph",
+              "text": "יש לאשר עד {interest_deadline_eastern}. אין צורך לשלם כעת. אעדכן כשהקבוצות יתגבשו."
+            },
+            {
+              "kind": "paragraph",
+              "text": "יש שאלה לגבי בנכם או לוח הזמנים? אפשר להשיב למייל הזה."
+            },
+            {
+              "kind": "paragraph",
+              "text": "שלמה"
+            }
+          ]
+        },
+        "R01": {
+          "subject": "בדיקה קצרה לגבי ההרשמה לאקדמיה לדיג",
+          "preview": "אשרו התעניינות כדי שנדע להמשיך בתכנון עם משפחתכם.",
+          "blocks": [
+            {
+              "kind": "paragraph",
+              "text": "שלום {parent_first_name},"
+            },
+            {
+              "kind": "paragraph",
+              "text": "האם אתם עדיין מעוניינים בקבוצה באקדמיה לדיג עבור בנכם?"
+            },
+            {
+              "kind": "paragraph",
+              "text": "אשרו עד {interest_deadline_eastern}, כדי שנדע להמשיך בתכנון עם משפחתכם. אין צורך בתשלום."
+            },
+            {
+              "kind": "action",
+              "text": "אישור ההתעניינות שלי"
+            },
+            {
+              "kind": "paragraph",
+              "text": "יש שאלות? פשוט השיבו למייל."
+            },
+            {
+              "kind": "paragraph",
+              "text": "שלמה"
+            }
+          ]
+        },
+        "R02": {
+          "subject": "אנא אשרו התעניינות באקדמיה לדיג",
+          "preview": "המועד האחרון לאישור הוא {interest_deadline_eastern}.",
+          "blocks": [
+            {
+              "kind": "paragraph",
+              "text": "שלום {parent_first_name},"
+            },
+            {
+              "kind": "paragraph",
+              "text": "עדיין לא קיבלתי את אישור ההתעניינות שלכם. המועד האחרון הוא {interest_deadline_eastern}."
+            },
+            {
+              "kind": "action",
+              "text": "אישור ההתעניינות שלי"
+            },
+            {
+              "kind": "paragraph",
+              "text": "אם יש שאלה לפני שמחליטים, אפשר להשיב כאן."
+            },
+            {
+              "kind": "paragraph",
+              "text": "שלמה"
+            }
+          ]
+        },
+        "R03": {
+          "subject": "ההתעניינות באקדמיה לדיג אושרה",
+          "preview": "תודה. אעדכן כשהקבוצות יתגבשו.",
+          "blocks": [
+            {
+              "kind": "paragraph",
+              "text": "שלום {parent_first_name},"
+            },
+            {
+              "kind": "paragraph",
+              "text": "תודה על האישור. אצור קשר כשנמצא קבוצה ומועד פתיחה מתאימים."
+            },
+            {
+              "kind": "paragraph",
+              "text": "{confirmed_founder_sentence}"
+            },
+            {
+              "kind": "paragraph",
+              "text": "אין צורך לשלם כעת. אפשר להשיב כאן בכל שאלה."
+            },
+            {
+              "kind": "paragraph",
+              "text": "שלמה"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

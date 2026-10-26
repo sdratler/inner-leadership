@@ -1,3 +1,4 @@
+import {academyExactCopy,academyExactCurriculum} from '../../src/features/group-application/academy-exact-copy.ts';
 import bilingual from '../../src/features/group-application/academy-bilingual-copy.json';
 import type {ReactNode} from 'react';
 import {AcademyCampaignProvider} from '../../src/features/group-application/academy-campaign-state.ts';
@@ -13,8 +14,8 @@ import {academyMetadata} from "../../src/features/group-application/academy-meta
 import {AcademyPublicRoute} from "../../src/features/group-application/academy-route-context.tsx";
 import {academyPath} from "../../src/features/group-application/academy-routing.ts";
 
-describe("Source21 bilingual parent journey",()=>{
- it.each(["en","he"] as const)("%s mobile locations link uses the retained FAQ anchor without changing desktop navigation",locale=>{
+describe("Exact05 bilingual parent journey and retained stage coverage",()=>{
+ it.each(["en","he"] as const)("%s mobile menu keeps the exact four navigation links and registration action while locations remain in the FAQ",locale=>{
   for(const mode of ['legacy','bna'] as const){
    const html=renderToStaticMarkup(createElement(AcademyPublicRoute,{mode},createElement(AcademyStage,{locale,slug:'advanced'})));
    const home=academyPath(locale,'',mode);
@@ -23,8 +24,8 @@ describe("Source21 bilingual parent journey",()=>{
    expect(desktop).toBeDefined();expect(mobile).toBeDefined();
    const hrefs=(markup:string)=>[...markup.matchAll(/<a[^>]*href="([^"]*)"/g)].map(match=>match[1]);
    expect(hrefs(desktop!)).toEqual([home,home+'#stages',home+'/pricing',home+'#questions']);
-   expect(hrefs(mobile!).filter(href=>href===home+'#locations')).toHaveLength(1);
-   expect(mobile).toContain(`href="${home}#locations">${locale==='he'?'איפה דגים':'Where we fish'}</a>`);
+   expect(hrefs(mobile!).slice(0,5)).toEqual([home,home+'#stages',home+'/pricing',home+'#questions',home+'/apply']);expect(hrefs(mobile!).filter(href=>href===home+'#locations')).toHaveLength(0);
+   expect(mobile).not.toMatch(/Where we fish|איפה דגים/);
    expect(hrefs(mobile!)).toEqual(expect.arrayContaining([home+'#questions',home+'/apply']));
    const landing=renderToStaticMarkup(createElement(AcademyPublicRoute,{mode},createElement(AcademyWebsite,{locale,onLocaleChange:()=>{}})));
    expect(landing).toMatch(/<details[^>]*id="locations"/);expect(landing).not.toMatch(/<section[^>]*id="locations"/);
@@ -47,50 +48,43 @@ describe("Source21 bilingual parent journey",()=>{
   const html=renderToStaticMarkup(createElement(AcademyWebsite,{locale,onLocaleChange:()=>{}}));
   const ids=["about","who-its-for","self-governance","how-it-works","stages","pricing","questions","parent-reflections","founder"];
   const positions=ids.map(id=>html.indexOf(`id="${id}"`));expect(positions.every(n=>n>=0)).toBe(true);expect(positions).toEqual([...positions].sort((a,b)=>a-b));
-  expect(html).not.toContain('<section id="how-it-works"');expect(html).toContain('<div id="how-it-works"');expect(html).not.toContain('class="disclosure"');
-  expect(html).toContain(locale==="he"?"בכל שלב 12 מפגשים":"Each stage has 12 sessions");expect(html.match(/<blockquote/g)).toHaveLength(1);expect(html).toContain('<blockquote lang="en" dir="ltr">');
-  expect(html).toContain('id="academy-travel-faq"');expect(html).toContain(locale==="he"?"תוכנית של Bnei Neviim Academy":"A program of Bnei Neviim Academy");
+  expect(html).toContain('<section id="how-it-works"');expect(html).not.toContain('<div id="how-it-works"');expect(html).not.toContain('class="disclosure"');
+  expect(html).toContain(academyExactCopy[locale].home.stagesIntro);expect(html.match(/<blockquote/g)).toHaveLength(1);expect(html).toContain('<blockquote lang="en" dir="ltr">');
+  expect(html).toContain('id="academy-travel-faq"');expect(html).toContain(academyExactCopy[locale].home.footerAttribution);
  });
- it.each(["foundation","independent","advanced","leadership"])("%s shows age controls before artwork and specific skills without essay bands",slug=>{
-  for(const locale of ["en","he"] as const){const html=renderToStaticMarkup(createElement(AcademyStage,{locale,slug}));
-   expect(html.indexOf('role="tablist"')).toBeLessThan(html.indexOf('data-academy-scene='));expect(html.match(/role="tab"/g)).toHaveLength(3);
+ it.each(["foundation","independent","advanced","leadership"])("%s provides direct stage navigation, native age choices and all twelve exact lessons",slug=>{
+  for(const locale of ["en","he"] as const){const html=renderToStaticMarkup(createElement(AcademyStage,{locale,slug})),stage=academyExactCurriculum.stages.find(item=>item.slug===slug)!;
+   expect(html.indexOf('data-academy-curriculum-navigation')).toBeLessThan(html.indexOf('data-academy-scene='));expect(html.match(/data-age-choice=/g)).toHaveLength(3);expect(html.match(/data-age-panel=/g)).toHaveLength(3);
    for(const age of ["8–10","11–13","14–17"])expect(html).toContain(age);
-   for(const heading of locale==="he"?["מיומנויות דיג","קבלת החלטות ועבודת צוות","התקדמות לאורך המפגשים","מקומות דיג אפשריים"]:["Fishing skills","Decisions &amp; teamwork","Session progression","Possible locations"])expect(html).toContain(heading);
-   const stage=bilingual.stages.find(item=>item.slug===slug)!;
-   for(const copy of [stage.water[locale],stage.practice[locale]])expect(html).toContain(renderPhaseRaw(createElement('p',null,copy)));
-   expect(html).not.toContain(locale==='he'?'נושאי הלמידה':'Curriculum topics');
-   expect(html).not.toMatch(/Inside this stage|Thinking it through|Depth that grows/);expect(html).toContain(`href="/${locale}/florida/apply"`);
-   expect(html).not.toContain('<figcaption');
-   for(const venue of ['Oleta River State Park','East Greynolds Park','Amelia Earhart Park','South Pointe Park'])expect(html).toContain(venue);
-   expect(html).toContain(locale==='he'?'מקומות אפשריים, לא יעדים שבועיים שהוזמנו.':'Possible locations, not booked weekly destinations.');
+   for(const lesson of stage.lessons){expect(html).toContain(renderPhaseRaw(createElement('h3',null,lesson.title[locale])));expect(html).toContain(renderPhaseRaw(createElement('p',null,lesson.description[locale])));}
+   expect(html).toContain(renderPhaseRaw(createElement('p',null,academyExactCurriculum.common[locale].logisticsNote)));
+   expect(html).not.toContain('<figcaption');expect(html).not.toContain('Curriculum topics');expect(html).not.toMatch(/RM-\d{3}|data-academy-lesson-list[^>]*hidden|<details/);
+   expect(html).toContain(`href="/${locale}/florida/apply"`);
   }
  });
- it.each(['en','he'] as const)('%s later stages retain distinct public syllabus topics and supervision boundaries',locale=>{
-  const stage=(slug:string)=>renderToStaticMarkup(createElement(AcademyStage,{locale,slug}));
-  const independent=stage('independent'),advanced=stage('advanced'),leadership=stage('leadership'),foundation=stage('foundation');
-  for(const phrase of locale==='he'?['Double Uni','Albright','פיתול בחוט','ריגי קרקעית']:['Double Uni','Albright','line twist','bottom rigs'])expect(independent).toContain(phrase);
-  for(const phrase of locale==='he'?['תרגול יבש ומבוקר','בדיקה נפרדת','מקור חוקי','שמירה בקירור','בהובלת מבוגר']:['controlled dry practice','separate instructor check','lawful source','cold storage','adult-led'])expect(advanced).toContain(phrase);
-  for(const phrase of locale==='he'?['אינו הופך תלמיד לאחראי להשגחה','יעד מעשי להמשך','אינה מבוססת על גודל הדג']:['never makes a student responsible for supervising','next practical goal','not based on the size of a fish'])expect(leadership).toContain(phrase);
-  for(const html of [independent,advanced,leadership]){expect(html).toContain(locale==='he'?'אינם מסלול קבוע של שנים־עשר תאריכים':'not a fixed twelve-date itinerary');expect(html).not.toMatch(/<ol[^>]*class="[^"]*weekList/);}
-  const foundationText=foundation.replace(/<[^>]*>/g,'');for(const phrase of locale==='he'?['מפגש 1','מפגש 2','מפגש 3','מפגש 4','מפגשים 5–12','מפגשים רגילים נמשכים שלוש שעות.']:['Meeting 1','Meeting 2','Meeting 3','Meeting 4','Meetings 5–12','Ordinary meetings last three hours.'])expect(foundationText).toContain(phrase);
-  expect(foundationText).not.toContain(locale==='he'?'שעתיים כל אחד':'2 hours each');
+ it.each(['en','he'] as const)('%s curriculum keeps distinct stage age support and explicit readiness limits',locale=>{
+  for(const stage of academyExactCurriculum.stages){const html=renderToStaticMarkup(createElement(AcademyStage,{locale,slug:stage.slug}));
+   for(const panel of Object.values(stage.agePanels))for(const text of panel[locale])expect(html).toContain(renderPhaseRaw(createElement('li',null,text)));
+   expect(html).toContain(renderPhaseRaw(academyExactCurriculum.common[locale].readinessNote));expect(html.match(/data-academy-lesson-list/g)).toHaveLength(1);
+  }
+  expect(academyExactCurriculum.stages[0]!.lessons.slice(0,4).map(item=>item.rmId)).toEqual(['RM-101','RM-103','RM-102','RM-104']);
  });
  it.each(["en","he"] as const)("%s stage registration actions follow verified campaign phase without inventing availability",locale=>{
   const regular=campaignSnapshotSchema.parse({...explicitPre,phase:'REGULAR_REGISTRATION',revision:2,occupied:30,remaining:0,firstFilledAt:'2026-10-23T14:00:00.000Z'});
   for(const initial of [explicitPre,regular,null])for(const slug of ['foundation','independent','advanced','leadership']){
    const html=renderPhaseRaw(createElement(AcademyCampaignProvider,{initial},createElement(AcademyStage,{locale,slug})));
    const labels=[...html.matchAll(/<a[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/g)].filter(match=>match[1]===`/${locale}/florida/apply`).map(match=>match[2]);
-   const expected=initial?.phase==='PRE_REGISTRATION'?(locale==='he'?'הרשמה מוקדמת בחינם':'Pre-register for free'):(locale==='he'?'הרשמה':'Register');
+   const expected=initial?.phase==='PRE_REGISTRATION'?academyExactCopy[locale].nav.preRegister:academyExactCopy[locale].nav.register;
    expect(labels.length).toBeGreaterThanOrEqual(3);expect(labels.every(label=>label===expected)).toBe(true);
    if(initial?.phase!=='PRE_REGISTRATION')expect(html).not.toContain(locale==='he'?'הרשמה מוקדמת בחינם':'Pre-register for free');
-   expect(html).toContain(locale==='he'?'למחירי השלבים':'See stage prices');
+   expect(html).not.toContain(locale==='he'?'למחירי השלבים':'See stage prices');
   }
  });
- it.each(["en","he"] as const)("%s full-capacity FAQ keeps ordinary registration open without promising a founder rate",locale=>{
-  const html=renderToStaticMarkup(createElement(AcademyWebsite,{locale,onLocaleChange:()=>{}}));
-  const expected=locale==='he'?'אם כל ההקצאות לתעריף המייסדים תפוסות, ההרשמה הרגילה נשארת פתוחה ללא שמירת תעריף מייסדים.':'If all founding-family rate reservations are occupied, regular registration remains open without a founding-family rate reservation.';
-  expect(html).toContain(expected);expect(html).not.toContain(locale==='he'?'ההרשמה מצטרפת לרשימת המתעניינים':'your registration joins the interest list');
-  expect(html).toContain(locale==='he'?'ביטול הרשמה שלא שולמה אינו כרוך בתשלום.':'Cancelling an unpaid registration has no fee.');
+ it.each(["en","he"] as const)("%s ordinary-phase follow-up FAQ does not invent a founder allocation",locale=>{
+  const html=renderPhaseRaw(createElement(AcademyCampaignProvider,{initial:null},createElement(AcademyWebsite,{locale,onLocaleChange:()=>{}})));
+  expect(html).toContain(renderPhaseRaw(createElement('p',null,academyExactCopy[locale].home.regularFollowup.answer)));
+  expect(html).not.toContain(locale==='he'?'ההרשמה מצטרפת לרשימת המתעניינים':'your registration joins the interest list');
+  expect(html).not.toContain(academyExactCopy[locale].hero.offer);
  });
  it.each(["en","he"] as const)("%s registration uses exact grades, integer drive and one free-registration action",locale=>{
   const html=renderToStaticMarkup(createElement(AcademyIntakePage,{locale}));
@@ -103,14 +97,14 @@ describe("Source21 bilingual parent journey",()=>{
  it.each(["en","he"] as const)("%s keeps full trip eligibility in FAQ while new applicants use the short Foundation form",locale=>{
   const form=renderToStaticMarkup(createElement(AcademyIntakePage,{locale}));
   const website=renderToStaticMarkup(createElement(AcademyWebsite,{locale,onLocaleChange:()=>{}}));
-  const approved=renderPhaseRaw(createElement('p',null,bilingual.questions[8]!.answer[locale]));
+  const approved=renderPhaseRaw(createElement('p',null,academyExactCopy[locale].home.faq.find(item=>item.id==='offshore-trip-faq')!.answer));
   expect(website).toContain(approved.slice(3,-4));
   expect(form).not.toContain(approved.slice(3,-4));
   for(const html of [form,website])expect(html).not.toContain(locale==='he'?'השלב הראשון בן 12 השבועות':'first 12-week stage');
   expect(form).not.toContain('name="stageInterest"');
   expect(form).not.toContain(locale==='he'?'השלב שמעניין אתכם':'Stage Interest');
   expect(form).toContain('data-academy-program-terms');
-  expect(form).toContain(locale==='he'?'הכנה למפגש הראשון':'First meeting preparation');
+  expect(form).toContain(academyExactCopy[locale].form.equipmentLine);
 
  });
  it.each(["en","he"] as const)("%s metadata keeps the current verified origin and matching alternate child paths",locale=>{
@@ -121,18 +115,26 @@ describe("Source21 bilingual parent journey",()=>{
 const explicitPre=campaignSnapshotSchema.parse({version:ACADEMY_CAMPAIGN,phase:'PRE_REGISTRATION',revision:1,capacity:30,occupied:1,remaining:29,firstFilledAt:null,asOf:'2026-10-23T14:00:00.000Z',reopeningPolicy:'PROPOSED_STICKY_REGULAR_PENDING_OWNER_CONFIRMATION'});
 function renderToStaticMarkup(node:ReactNode){return renderPhaseRaw(createElement(AcademyCampaignProvider,{initial:explicitPre},node));}
 
-it.each(['en','he'] as const)('%s WEBSITE03 uses the short introduction and explicit safety FAQ without promising outcomes',locale=>{
+it.each(['en','he'] as const)('%s Exact05 uses the supplied introduction and explicit safety FAQ without promising outcomes',locale=>{
  const html=renderToStaticMarkup(createElement(AcademyWebsite,{locale,onLocaleChange:()=>{}}));
- expect(html).toContain(locale==='he'?'תוכנית דיג חוץ־לימודית לבנים, ברוח התורה.':'A Torah-infused extracurricular fishing program for boys.');
- expect(html).toContain(locale==='he'?'התנהגות לא בטוחה עלולה להביא להפסקת פעילות או להרחקה מהתוכנית.':'Unsafe behavior can mean stopping an activity or removal from the program.');
+ expect(html).toContain(academyExactCopy[locale].home.aboutLead);expect(html).toContain(academyExactCopy[locale].home.aboutSupporting);
+ expect(html).toContain(renderPhaseRaw(createElement('p',null,academyExactCopy[locale].home.faq.find(item=>item.id==='safety')!.answer)));
  expect(html).not.toContain(bilingual.gainIntro[locale]);
 });
 
 it.each(['en','he'] as const)('%s every intake registration link stays in the same document and preserves the unsent form',locale=>{
  for(const mode of ['legacy','bna'] as const)for(const campaign of [explicitPre,null]){
   const html=renderToStaticMarkup(createElement(AcademyPublicRoute,{mode,campaign},createElement(AcademyIntakePage,{locale})));
-  const label=campaign?(locale==='he'?'הרשמה מוקדמת בחינם':'Pre-register for free'):(locale==='he'?'הרשמה':'Register');
+  const label=campaign?academyExactCopy[locale].nav.preRegister:academyExactCopy[locale].nav.register;
   const links=[...html.matchAll(/<a[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/g)].filter(match=>match[2]===label);
   expect(links.length).toBeGreaterThanOrEqual(4);expect(links.every(match=>match[1]==='#academy-form')).toBe(true);expect(html).toContain('id="academy-form"');
  }
+});
+
+it.each(['en','he'] as const)('%s exact homepage distinguishes all four parent steps from all four stages',locale=>{
+ const html=renderToStaticMarkup(createElement(AcademyWebsite,{locale,onLocaleChange:()=>{}})),copy=academyExactCopy[locale].home;
+ for(const item of [...copy.gains,...copy.journey,...copy.stageCards])for(const text of [item.title,item.body])expect(html).toContain(renderPhaseRaw(createElement('span',null,text)).slice(6,-7));
+ expect(copy.gains).toHaveLength(6);expect(copy.journey).toHaveLength(4);expect(copy.stageCards).toHaveLength(4);
+ for(const faq of copy.faq){expect(html).toContain(renderPhaseRaw(createElement('summary',null,faq.question)));expect(html).toContain(renderPhaseRaw(createElement('p',null,faq.answer)));}
+ expect(copy.faq).toHaveLength(15);
 });

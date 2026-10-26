@@ -1,0 +1,796 @@
+{
+  "common": {
+    "en": {
+      "navigation": [
+        "Foundation",
+        "Independent",
+        "Advanced",
+        "Leadership"
+      ],
+      "ageLabel": "Learning depth",
+      "ageTabs": [
+        "Ages 8–10",
+        "Ages 11–13",
+        "Ages 14–17"
+      ],
+      "readinessNote": "Activities are adapted to the learner's readiness. Age alone does not clear a boy for a higher-risk activity.",
+      "progressionHeading": "The 12-session progression",
+      "logisticsNote": "Locations and activities are confirmed for each group."
+    },
+    "he": {
+      "navigation": [
+        "יסודות",
+        "עצמאי",
+        "מתקדם",
+        "מנהיגות"
+      ],
+      "ageLabel": "רמת ההעמקה",
+      "ageTabs": [
+        "גילי 8–10",
+        "גילי 11–13",
+        "גילי 14–17"
+      ],
+      "readinessNote": "הפעילות מותאמת למוכנות של כל בן. גיל לבדו אינו מהווה אישור לפעילות בסיכון גבוה יותר.",
+      "progressionHeading": "ההתקדמות לאורך 12 המפגשים",
+      "logisticsNote": "המיקומים והפעילויות יאושרו לכל קבוצה."
+    }
+  },
+  "stages": [
+    {
+      "slug": "foundation",
+      "title": {
+        "en": "Foundation Angler",
+        "he": "יסודות הדיג"
+      },
+      "introduction": {
+        "en": "Learn to prepare your own equipment, use it safely and begin fishing with the group. The first lessons establish the habits that every later stage builds on.",
+        "he": "מכינים את הציוד בעצמכם, לומדים להשתמש בו בבטחה ומתחילים לדוג עם הקבוצה. המפגשים הראשונים בונים את ההרגלים שעליהם נשענים השלבים הבאים."
+      },
+      "agePanels": {
+        "8–10": {
+          "en": [
+            "Recognize the main parts of your gear and practice a dependable knot.",
+            "Check the space around you, take turns and ask clearly for help."
+          ],
+          "he": [
+            "מכירים את חלקי הציוד העיקריים ומתרגלים קשר יציב.",
+            "בודקים את המרחב מסביב, מחכים לתור ומבקשים עזרה בצורה ברורה."
+          ]
+        },
+        "11–13": {
+          "en": [
+            "Prepare a basic setup and explain what each part does.",
+            "Work with a partner, check your own mistakes and give others room to learn."
+          ],
+          "he": [
+            "מכינים מערך דיג בסיסי ומסבירים את תפקידו של כל חלק.",
+            "עובדים עם חבר, בודקים טעויות ומשאירים לאחרים מקום ללמוד."
+          ]
+        },
+        "14–17": {
+          "en": [
+            "Compare equipment choices and check a complete setup systematically.",
+            "Explain your decisions, share responsibility and respond constructively to correction."
+          ],
+          "he": [
+            "משווים אפשרויות ציוד ובודקים מערך שלם בצורה מסודרת.",
+            "מסבירים החלטות, חולקים אחריות ומגיבים להערות באופן ענייני."
+          ]
+        }
+      },
+      "lessons": [
+        {
+          "number": 1,
+          "rmId": "RM-101",
+          "title": {
+            "en": "Your Gear, Your Responsibility",
+            "he": "הציוד שלך, האחריות שלך"
+          },
+          "description": {
+            "en": "Get to know the rod, reel, line and tackle you'll be using. Practice the safety routines and shared-space habits that let everyone learn together.",
+            "he": "מכירים את החכה, הרולר, החוט והאביזרים שבהם נשתמש. מתרגלים כללי בטיחות והרגלים של עבודה במרחב משותף, כדי שכולם יוכלו ללמוד יחד."
+          }
+        },
+        {
+          "number": 2,
+          "rmId": "RM-103",
+          "title": {
+            "en": "Choosing Gear at Bass Pro",
+            "he": "בוחרים ציוד ב־Bass Pro"
+          },
+          "description": {
+            "en": "Compare rods, reels and tackle during a planned visit to Bass Pro Shops in Dania Beach. Work within a budget and explain what you need—not simply what looks impressive.",
+            "he": "משווים חכות, רולרים ואביזרים בביקור מתוכנן ב־Bass Pro Shops בדניה ביץ׳. פועלים במסגרת תקציב ומסבירים מה צריך — ולא רק מה נראה מרשים."
+          }
+        },
+        {
+          "number": 3,
+          "rmId": "RM-102",
+          "title": {
+            "en": "Making Connections, Tying Knots",
+            "he": "מחברים ציוד, קושרים קשרים"
+          },
+          "description": {
+            "en": "Assemble your setup, load line and practice the knots and casting basics you'll use while fishing. When something slips or tangles, slow down, examine it and try again.",
+            "he": "מרכיבים את הציוד, ממלאים חוט ומתרגלים קשרים ויסודות הטלה שישמשו בדיג. כשמשהו מחליק או מסתבך, מאטים, בודקים ומנסים שוב."
+          }
+        },
+        {
+          "number": 4,
+          "rmId": "RM-104",
+          "title": {
+            "en": "Putting It Together on the Water",
+            "he": "מחברים את הכול ליד המים"
+          },
+          "description": {
+            "en": "Use your prepared equipment during the first supervised fishing session. Practice noticing the people around you, following instructions and asking for help at the right time.",
+            "he": "משתמשים בציוד שהכנו במפגש הדיג הראשון בהשגחה. מתרגלים תשומת לב לאנשים מסביב, הקשבה להוראות ובקשת עזרה בזמן הנכון."
+          }
+        },
+        {
+          "number": 5,
+          "rmId": "RM-105",
+          "title": {
+            "en": "Read the Water Before You Cast",
+            "he": "קוראים את המים לפני שמטילים"
+          },
+          "description": {
+            "en": "Look at current, depth and structure before choosing where to fish. Make a prediction, explain it and compare it with what you actually observe.",
+            "he": "מתבוננים בזרם, בעומק ובמבנה השטח לפני שבוחרים היכן לדוג. מציעים השערה, מסבירים אותה ומשווים למה שרואים בפועל."
+          }
+        },
+        {
+          "number": 6,
+          "rmId": "RM-106",
+          "title": {
+            "en": "Weight, Drag and Control",
+            "he": "משקל, בלם ושליטה"
+          },
+          "description": {
+            "en": "Explore how sinkers and reel drag affect your setup. Learn to make a controlled adjustment instead of responding to every problem by pulling harder.",
+            "he": "בוחנים כיצד משקולות ובלם הרולר משפיעים על מערך הדיג. לומדים לבצע שינוי בשליטה, במקום להגיב לכל בעיה במשיכה חזקה יותר."
+          }
+        },
+        {
+          "number": 7,
+          "rmId": "RM-107",
+          "title": {
+            "en": "Bait, Shared Space and Clean Hands",
+            "he": "פיתיון, מרחב משותף וידיים נקיות"
+          },
+          "description": {
+            "en": "Learn how to handle bait and keep your station organized. Share supplies fairly, ask before borrowing and leave the area ready for the next person.",
+            "he": "לומדים לטפל בפיתיון ולשמור על עמדה מסודרת. חולקים ציוד בהגינות, מבקשים לפני ששואלים ומשאירים את המקום מוכן לאדם הבא."
+          }
+        },
+        {
+          "number": 8,
+          "rmId": "RM-108",
+          "title": {
+            "en": "What Makes a Lure Worth Chasing?",
+            "he": "מה גורם לדג לרדוף אחרי דמוי?"
+          },
+          "description": {
+            "en": "Compare how familiar lures move through the water. Test an idea about what might attract a fish, and separate your explanation from your observation.",
+            "he": "משווים את תנועתם של דמויים מוכרים במים. בודקים רעיון לגבי מה שעשוי למשוך דג ומבחינים בין ההסבר שלנו לבין התצפית."
+          }
+        },
+        {
+          "number": 9,
+          "rmId": "RM-109",
+          "title": {
+            "en": "A Fish in Your Hands",
+            "he": "דג בידיים שלך"
+          },
+          "description": {
+            "en": "Learn to observe and handle fish appropriately under supervision. Practice caring for a living creature, controlling excitement and knowing when an adult should take over.",
+            "he": "לומדים להתבונן בדגים ולטפל בהם כראוי בהשגחה. מתרגלים דאגה ליצור חי, שליטה בהתרגשות וזיהוי המצב שבו מבוגר צריך לקחת את הטיפול לידיו."
+          }
+        },
+        {
+          "number": 10,
+          "rmId": "RM-110",
+          "title": {
+            "en": "What Is Your Line Telling You?",
+            "he": "מה החוט מספר לך?"
+          },
+          "description": {
+            "en": "Watch for differences between current, line movement and a possible bite. Practice staying attentive without reacting to every movement in the same way.",
+            "he": "מבחינים בין זרם, תנועת חוט ואפשרות של אכילה. מתרגלים קשב בלי להגיב לכל תנועה באותה דרך."
+          }
+        },
+        {
+          "number": 11,
+          "rmId": "RM-111",
+          "title": {
+            "en": "One Rig, a Shared Plan",
+            "he": "מערך דיג אחד, תוכנית משותפת"
+          },
+          "description": {
+            "en": "Choose a basic setup with a partner and explain your choices. Agree on space, equipment and responsibilities before you begin.",
+            "he": "בוחרים מערך בסיסי עם חבר ומסבירים את הבחירות. מסכמים על המרחב, הציוד וחלוקת האחריות לפני שמתחילים."
+          }
+        },
+        {
+          "number": 12,
+          "rmId": "RM-112",
+          "title": {
+            "en": "Show What You Can Do",
+            "he": "מראים מה כבר יודעים לעשות"
+          },
+          "description": {
+            "en": "Demonstrate your equipment preparation, a taught knot and the safety routines you've practiced. Review what you can now do independently and choose what to work on next.",
+            "he": "מדגימים הכנת ציוד, קשר שנלמד והרגלי בטיחות שתורגלו. בודקים מה כבר אפשר לעשות עצמאית ובוחרים במה להתמקד בהמשך."
+          }
+        }
+      ]
+    },
+    {
+      "slug": "independent",
+      "title": {
+        "en": "Independent Angler",
+        "he": "דיג עצמאי"
+      },
+      "introduction": {
+        "en": "Prepare with less prompting, make more of your own fishing decisions and work through problems before handing them to someone else. Independence still includes knowing when to ask for help.",
+        "he": "מתכוננים עם פחות תזכורות, מקבלים יותר החלטות בעצמכם ומתמודדים עם בעיות לפני שמעבירים אותן למישהו אחר. עצמאות כוללת גם לדעת מתי לבקש עזרה."
+      },
+      "agePanels": {
+        "8–10": {
+          "en": [
+            "Repeat familiar setups with less prompting and choose between two suitable options.",
+            "Finish your part of a shared task and explain where you got stuck."
+          ],
+          "he": [
+            "חוזרים על הכנות מוכרות עם פחות הכוונה ובוחרים בין שתי אפשרויות מתאימות.",
+            "מסיימים את החלק האישי במשימה משותפת ומסבירים היכן נתקענו."
+          ]
+        },
+        "11–13": {
+          "en": [
+            "Re-rig, compare presentations and troubleshoot common tackle problems.",
+            "Explain a plan to your partner and stay useful when frustration appears."
+          ],
+          "he": [
+            "מכינים מחדש את המערך, משווים הצגות פיתיון ופותרים תקלות ציוד נפוצות.",
+            "מסבירים תוכנית לחבר ונשארים שותפים מועילים גם כשמתעורר תסכול."
+          ]
+        },
+        "14–17": {
+          "en": [
+            "Match tackle and presentation to observed conditions, with a reasoned backup plan.",
+            "Discuss trade-offs and help a partner without assuming an adult's responsibilities."
+          ],
+          "he": [
+            "מתאימים ציוד והצגת פיתיון לתנאים שנצפו, עם תוכנית חלופית מנומקת.",
+            "דנים ביתרונות ובחסרונות ועוזרים לחבר בלי לקחת אחריות של מבוגר."
+          ]
+        }
+      },
+      "lessons": [
+        {
+          "number": 1,
+          "rmId": "RM-201",
+          "title": {
+            "en": "Ready Without Reminding",
+            "he": "מוכנים בלי שיזכירו"
+          },
+          "description": {
+            "en": "Prepare your equipment from a checklist, then check what you missed. Take ownership of arriving ready instead of waiting for someone else to organize you.",
+            "he": "מכינים ציוד לפי רשימה, ואז בודקים מה נשכח. לוקחים אחריות להגיע מוכנים במקום לחכות שמישהו אחר יארגן אותנו."
+          }
+        },
+        {
+          "number": 2,
+          "rmId": "RM-202",
+          "title": {
+            "en": "Joining Lines, Comparing Knots",
+            "he": "מחברים חוטים, משווים קשרים"
+          },
+          "description": {
+            "en": "Practice braid-to-leader connections such as the Double Uni and Albright. Compare your attempts, identify weak points and ask for specific feedback.",
+            "he": "מתרגלים חיבורי חוט קלוע ללידר, ובהם Double Uni ו־Albright. משווים ניסיונות, מזהים נקודות חלשות ומבקשים משוב ממוקד."
+          }
+        },
+        {
+          "number": 3,
+          "rmId": "RM-203",
+          "title": {
+            "en": "Accuracy Before Distance",
+            "he": "דיוק לפני מרחק"
+          },
+          "description": {
+            "en": "Practice placing a cast where you intend while protecting shared water and casting space. Notice how your choices affect the boy fishing beside you.",
+            "he": "מתרגלים הטלה למקום שהתכוונו אליו, תוך שמירה על המים ועל מרחב ההטלה המשותף. שמים לב כיצד הבחירות שלנו משפיעות על החבר שלצידנו."
+          }
+        },
+        {
+          "number": 4,
+          "rmId": "RM-204",
+          "title": {
+            "en": "Choose the Setup, Explain the Choice",
+            "he": "בוחרים מערך ומסבירים למה"
+          },
+          "description": {
+            "en": "Match a rod, reel and line to a fishing task. Explain why your choice fits the situation rather than assuming the strongest or most expensive equipment is best.",
+            "he": "מתאימים חכה, רולר וחוט למשימת דיג. מסבירים מדוע הבחירה מתאימה, במקום להניח שהציוד החזק או היקר ביותר הוא הטוב ביותר."
+          }
+        },
+        {
+          "number": 5,
+          "rmId": "RM-205",
+          "title": {
+            "en": "Untangling the Problem",
+            "he": "מתירים את הבעיה"
+          },
+          "description": {
+            "en": "Investigate line twist, loose line and common tackle tangles. Describe the problem clearly, test one change and resist making it worse through frustration.",
+            "he": "בוחנים פיתול בחוט, חוט רפוי ותסבוכות ציוד נפוצות. מתארים את הבעיה, בודקים שינוי אחד ונמנעים מהחמרתה מתוך תסכול."
+          }
+        },
+        {
+          "number": 6,
+          "rmId": "RM-206",
+          "title": {
+            "en": "What Does This Swivel Do?",
+            "he": "מה הסביבל הזה עושה?"
+          },
+          "description": {
+            "en": "Compare leaders, swivels and the connections in a rig. Learn to explain the purpose of a component before adding it to your setup.",
+            "he": "משווים לידרים, סביבלים וחיבורים במערך הדיג. לומדים להסביר את תפקידו של חלק לפני שמוסיפים אותו לציוד."
+          }
+        },
+        {
+          "number": 7,
+          "rmId": "RM-207",
+          "title": {
+            "en": "Present the Bait Differently",
+            "he": "מציגים את הפיתיון אחרת"
+          },
+          "description": {
+            "en": "Compare free-lining, light weights and bottom presentations under supervision. Change one part of the setup and pay attention to the difference it makes.",
+            "he": "משווים דיג ללא משקולת, עם משקל קל ובקרבת הקרקעית, בהשגחה. משנים חלק אחד במערך ושמים לב להבדל שנוצר."
+          }
+        },
+        {
+          "number": 8,
+          "rmId": "RM-208",
+          "title": {
+            "en": "The Same Place, Different Conditions",
+            "he": "אותו מקום, תנאים אחרים"
+          },
+          "description": {
+            "en": "Look at how wind, tide and timing change a familiar fishing location. Adjust your expectations and explain what you would try differently.",
+            "he": "בוחנים איך רוח, גאות ושפל ותזמון משנים מקום דיג מוכר. מתאימים ציפיות ומסבירים מה ננסה לעשות אחרת."
+          }
+        },
+        {
+          "number": 9,
+          "rmId": "RM-209",
+          "title": {
+            "en": "Stay Clear When Things Get Busy",
+            "he": "מתקשרים ברור גם כשהכול קורה יחד"
+          },
+          "description": {
+            "en": "Practice clear calls and agreed roles when a fish is being landed. Learn to help without crowding, shouting over others or making unsafe decisions.",
+            "he": "מתרגלים קריאות ברורות ותפקידים מוסכמים כשמעלים דג. לומדים לעזור בלי להצטופף, לצעוק מעל אחרים או לקבל החלטות לא בטוחות."
+          }
+        },
+        {
+          "number": 10,
+          "rmId": "RM-210",
+          "title": {
+            "en": "Identify First. Decide Second.",
+            "he": "קודם מזהים, אחר כך מחליטים"
+          },
+          "description": {
+            "en": "Use suitable identification information and current guidance before deciding what to do with a catch. Practice admitting uncertainty instead of guessing confidently.",
+            "he": "משתמשים במידע זיהוי מתאים ובהנחיות עדכניות לפני שמחליטים מה לעשות עם דג שנתפס. מתרגלים להודות באי־ודאות במקום לנחש בביטחון."
+          }
+        },
+        {
+          "number": 11,
+          "rmId": "RM-211",
+          "title": {
+            "en": "Build a Plan You Can Explain",
+            "he": "בונים תוכנית שאפשר להסביר"
+          },
+          "description": {
+            "en": "Prepare a shared fishing plan with equipment, presentation and a backup option. Listen to a different suggestion and work toward a decision the group understands.",
+            "he": "מכינים תוכנית משותפת עם ציוד, דרך הצגת פיתיון ואפשרות חלופית. מקשיבים להצעה אחרת ומתקדמים להחלטה שהקבוצה מבינה."
+          }
+        },
+        {
+          "number": 12,
+          "rmId": "RM-212",
+          "title": {
+            "en": "Fish With Greater Independence",
+            "he": "דגים בעצמאות רבה יותר"
+          },
+          "description": {
+            "en": "Demonstrate preparation, a reasoned setup choice and a response to a practical problem. Review when you worked independently and when asking for help improved the outcome.",
+            "he": "מדגימים הכנה, בחירת מערך מנומקת ותגובה לבעיה מעשית. בודקים מתי פעלנו בעצמאות ומתי בקשת עזרה שיפרה את התוצאה."
+          }
+        }
+      ]
+    },
+    {
+      "slug": "advanced",
+      "title": {
+        "en": "Advanced Angler",
+        "he": "דיג מתקדם"
+      },
+      "introduction": {
+        "en": "Look beyond a single clue. Compare conditions, test presentations and understand why equipment succeeds or fails, while taking on more demanding tasks only when individually cleared.",
+        "he": "מסתכלים מעבר לרמז בודד. משווים תנאים, בודקים דרכי הצגת פיתיון ומבינים מדוע ציוד מצליח או נכשל. משימות מורכבות יותר נעשות רק לאחר אישור אישי מתאים."
+      },
+      "agePanels": {
+        "8–10": {
+          "en": [
+            "Compare familiar lure and depth choices using visible clues.",
+            "Explain what you tried and stay engaged when it does not work."
+          ],
+          "he": [
+            "משווים דמויים ועומקים מוכרים לפי סימנים שאפשר לראות.",
+            "מסבירים מה ניסינו ונשארים מעורבים גם כשהניסיון לא מצליח."
+          ]
+        },
+        "11–13": {
+          "en": [
+            "Connect wind, current, depth and equipment observations to a presentation plan.",
+            "Change the group's approach when the evidence changes, without blaming a partner."
+          ],
+          "he": [
+            "מחברים תצפיות על רוח, זרם, עומק וציוד לתוכנית הצגת פיתיון.",
+            "משנים את גישת הקבוצה כשהממצאים משתנים, בלי להאשים חבר."
+          ]
+        },
+        "14–17": {
+          "en": [
+            "Evaluate line systems, equipment limits and competing explanations.",
+            "Lead a reasoned discussion while leaving safety decisions and hazardous work with adults."
+          ],
+          "he": [
+            "בוחנים מערכות חוטים, מגבלות ציוד והסברים מתחרים.",
+            "מובילים דיון מנומק, בעוד החלטות בטיחות ועבודה מסוכנת נשארות בידי מבוגרים."
+          ]
+        }
+      },
+      "lessons": [
+        {
+          "number": 1,
+          "rmId": "RM-301",
+          "title": {
+            "en": "Different Materials, Different Decisions",
+            "he": "חומרים שונים, החלטות שונות"
+          },
+          "description": {
+            "en": "Compare braid, monofilament, fluorocarbon and instructor-controlled wire examples. Explain the trade-offs rather than looking for one material that is best for everything.",
+            "he": "משווים חוט קלוע, מונופילמנט, פלואורוקרבון ודוגמאות תיל בשליטת המדריך. מסבירים יתרונות וחסרונות במקום לחפש חומר אחד שמתאים להכול."
+          }
+        },
+        {
+          "number": 2,
+          "rmId": "RM-302",
+          "title": {
+            "en": "Put the Clues Together",
+            "he": "מחברים בין הרמזים"
+          },
+          "description": {
+            "en": "Consider current, structure, depth and weather together. Distinguish what you know from what you are assuming before changing your plan.",
+            "he": "בוחנים יחד זרם, מבנה השטח, עומק ומזג אוויר. מבחינים בין מה שיודעים לבין מה שמניחים לפני שמשנים תוכנית."
+          }
+        },
+        {
+          "number": 3,
+          "rmId": "RM-303",
+          "title": {
+            "en": "Find Bait Responsibly",
+            "he": "מחפשים פיתיון באחריות"
+          },
+          "description": {
+            "en": "Observe possible bait sources and learn what permission and local rules must be checked. Treat a promising opportunity as something to investigate, not automatic permission to collect.",
+            "he": "מתבוננים במקורות פיתיון אפשריים ולומדים אילו אישורים וכללים מקומיים צריך לבדוק. הזדמנות מבטיחה היא סיבה לברר, לא אישור אוטומטי לאסוף."
+          }
+        },
+        {
+          "number": 4,
+          "rmId": "RM-304",
+          "title": {
+            "en": "Learn the Net on Dry Ground",
+            "he": "מכירים את הרשת על קרקע יבשה"
+          },
+          "description": {
+            "en": "Study cast-net parts and practice controlled line management on land. Build a safe routine before considering any use near water.",
+            "he": "לומדים את חלקי רשת ההטלה ומתרגלים ניהול חבלים מבוקר ביבשה. בונים הרגל בטוח לפני ששוקלים שימוש ליד מים."
+          }
+        },
+        {
+          "number": 5,
+          "rmId": "RM-305",
+          "title": {
+            "en": "From Practice to Permission",
+            "he": "מהתרגול אל האישור"
+          },
+          "description": {
+            "en": "Review the learner, equipment and location requirements for cast-net use. Only individually cleared boys practice in approved conditions; others continue controlled dry practice.",
+            "he": "בודקים את דרישות הלומד, הציוד והמקום לשימוש ברשת הטלה. רק בנים שקיבלו אישור אישי מתרגלים בתנאים מאושרים; האחרים ממשיכים בתרגול יבש ומבוקר."
+          }
+        },
+        {
+          "number": 6,
+          "rmId": "RM-306",
+          "title": {
+            "en": "Follow the Current",
+            "he": "עוקבים אחרי הזרם"
+          },
+          "description": {
+            "en": "Observe how water carries bait and scent through a fishing area. Discuss when chumming is suitable or prohibited, and evaluate an instructor-led demonstration only where permitted.",
+            "he": "מתבוננים כיצד המים נושאים פיתיון וריח באזור הדיג. דנים מתי פיזור חומר משיכה מתאים או אסור, ובוחנים הדגמה בהובלת מדריך רק במקום שמותר."
+          }
+        },
+        {
+          "number": 7,
+          "rmId": "RM-307",
+          "title": {
+            "en": "One Lure, Several Presentations",
+            "he": "דמוי אחד, כמה דרכי עבודה"
+          },
+          "description": {
+            "en": "Experiment with retrieve speed, depth and movement. Change one variable at a time and explain what the result does—and does not—tell you.",
+            "he": "מתנסים במהירות החזרה, בעומק ובתנועה. משנים משתנה אחד בכל פעם ומסבירים מה התוצאה מלמדת — ומה לא."
+          }
+        },
+        {
+          "number": 8,
+          "rmId": "RM-308",
+          "title": {
+            "en": "Why Did the Gear Fail?",
+            "he": "למה הציוד נכשל?"
+          },
+          "description": {
+            "en": "Inspect examples of abrasion, weak knots and stressed connections. Work backward from the result and identify what could be checked or changed next time.",
+            "he": "בודקים דוגמאות לשחיקה, לקשרים חלשים ולחיבורים תחת עומס. חוזרים מהתוצאה אל הגורמים האפשריים ומזהים מה לבדוק או לשנות בפעם הבאה."
+          }
+        },
+        {
+          "number": 9,
+          "rmId": "RM-309",
+          "title": {
+            "en": "From Catch to Table: Start With a Plan",
+            "he": "מהשלל לשולחן: מתחילים בתוכנית"
+          },
+          "description": {
+            "en": "Learn why identification, lawful retention, cleanliness and cold storage come before preparing a fish. Divide appropriate tasks and recognize when qualified guidance is needed.",
+            "he": "לומדים מדוע זיהוי, החזקה מותרת, ניקיון ושמירה בקירור קודמים להכנת דג. מחלקים משימות מתאימות ומזהים מתי דרושה הכוונה מוסמכת."
+          }
+        },
+        {
+          "number": 10,
+          "rmId": "RM-310",
+          "title": {
+            "en": "Watch the Preparation. Understand the Responsibility.",
+            "he": "מתבוננים בהכנה, מבינים את האחריות"
+          },
+          "description": {
+            "en": "Observe an adult-led fish-preparation demonstration, including filleting and safe food-handling routines. Take age-appropriate nonhazardous roles while sharp tools and other restricted tasks stay with responsible adults.",
+            "he": "צופים בהדגמת הכנת דג בהובלת מבוגר, כולל פילוט והרגלי טיפול בטוח במזון. משתתפים בתפקידים לא מסוכנים המתאימים לגיל, בעוד הכלים החדים והמשימות המוגבלות נשארים אצל המבוגרים האחראים."
+          }
+        },
+        {
+          "number": 11,
+          "rmId": "RM-311",
+          "title": {
+            "en": "Change the Plan Without Losing the Goal",
+            "he": "משנים תוכנית בלי לאבד את המטרה"
+          },
+          "description": {
+            "en": "Rework a fishing plan when conditions make the original approach unsuitable. Practice disagreeing constructively and choosing a safer or more useful alternative.",
+            "he": "מתאימים מחדש תוכנית דיג כשהתנאים כבר אינם מתאימים לגישה המקורית. מתרגלים מחלוקת עניינית ובחירת חלופה בטוחה או מועילה יותר."
+          }
+        },
+        {
+          "number": 12,
+          "rmId": "RM-312",
+          "title": {
+            "en": "Defend Your Approach",
+            "he": "מסבירים את ההיגיון מאחורי הגישה"
+          },
+          "description": {
+            "en": "Present a fishing plan, the evidence behind it and what would make you change your mind. Review your demonstrated skills and propose a realistic next challenge.",
+            "he": "מציגים תוכנית דיג, את הממצאים שעליהם היא נשענת ומה יגרום לנו לשנות אותה. סוקרים מיומנויות שהודגמו ומציעים אתגר המשך מציאותי."
+          }
+        }
+      ]
+    },
+    {
+      "slug": "leadership",
+      "title": {
+        "en": "Leadership Angler",
+        "he": "דיג ומנהיגות"
+      },
+      "introduction": {
+        "en": "Use what you know to help someone else learn. Practice clear explanation, thoughtful feedback and shared responsibility without taking over another boy's work—or an adult's supervision.",
+        "he": "משתמשים במה שיודעים כדי לעזור למישהו אחר ללמוד. מתרגלים הסבר ברור, משוב מתחשב ואחריות משותפת בלי לקחת את העבודה מהחבר — או את ההשגחה מהמבוגר."
+      },
+      "agePanels": {
+        "8–10": {
+          "en": [
+            "Show a familiar skill with the instructor's permission and encouragement.",
+            "Notice who needs help, take turns and leave room for the other boy to try."
+          ],
+          "he": [
+            "מדגימים מיומנות מוכרת באישור המדריך ובעידודו.",
+            "שמים לב למי שצריך עזרה, מחכים לתור ומשאירים לחבר מקום לנסות."
+          ]
+        },
+        "11–13": {
+          "en": [
+            "Demonstrate a technique and organize a small shared equipment task.",
+            "Include quieter boys and give feedback they can act on."
+          ],
+          "he": [
+            "מדגימים טכניקה ומארגנים משימת ציוד משותפת קטנה.",
+            "משתפים בנים שקטים יותר ונותנים משוב שאפשר לפעול לפיו."
+          ]
+        },
+        "14–17": {
+          "en": [
+            "Present a practical group plan and support an adult-led learning station.",
+            "Facilitate discussion, handle disagreement and reflect on the quality of your guidance."
+          ],
+          "he": [
+            "מציגים תוכנית קבוצתית מעשית ומסייעים בתחנת למידה בהובלת מבוגר.",
+            "מנחים דיון, מתמודדים עם מחלוקת ובוחנים את איכות ההכוונה שנתנו."
+          ]
+        }
+      },
+      "lessons": [
+        {
+          "number": 1,
+          "rmId": "RM-401",
+          "title": {
+            "en": "Can You Explain It Clearly?",
+            "he": "אפשר להסביר את זה ברור?"
+          },
+          "description": {
+            "en": "Explain a familiar setup without assuming the other boy already understands it. Notice which details help and which only make the explanation longer.",
+            "he": "מסבירים מערך מוכר בלי להניח שהחבר כבר מבין אותו. מבחינים אילו פרטים עוזרים ואילו רק מאריכים את ההסבר."
+          }
+        },
+        {
+          "number": 2,
+          "rmId": "RM-402",
+          "title": {
+            "en": "Show, Then Step Back",
+            "he": "מדגימים ואז מפנים מקום"
+          },
+          "description": {
+            "en": "Demonstrate one part of a fishing skill and let the learner attempt it. Practice giving useful support without completing the task for him.",
+            "he": "מדגימים חלק אחד במיומנות דיג ונותנים ללומד לנסות. מתרגלים תמיכה מועילה בלי להשלים את המשימה במקומו."
+          }
+        },
+        {
+          "number": 3,
+          "rmId": "RM-403",
+          "title": {
+            "en": "Teach a Knot, Not Dependence",
+            "he": "מלמדים קשר, לא תלות"
+          },
+          "description": {
+            "en": "Help another boy learn a knot under instructor supervision. Ask a useful question, notice his attempt and give him room to correct it.",
+            "he": "עוזרים לחבר ללמוד קשר בהשגחת מדריך. שואלים שאלה מועילה, שמים לב לניסיון שלו ונותנים לו מקום לתקן."
+          }
+        },
+        {
+          "number": 4,
+          "rmId": "RM-404",
+          "title": {
+            "en": "Make the Shared Setup Work",
+            "he": "מארגנים עמדה שעובדת לכולם"
+          },
+          "description": {
+            "en": "Help organize equipment, supplies and clear working spaces. Agree on responsibilities so that helping does not become ordering everyone around.",
+            "he": "מסייעים בסידור ציוד, אספקה ומרחבי עבודה פנויים. מסכמים אחריות כדי שעזרה לא תהפוך לחלוקת פקודות לכולם."
+          }
+        },
+        {
+          "number": 5,
+          "rmId": "RM-405",
+          "title": {
+            "en": "Lead a Conversation About Conditions",
+            "he": "מובילים שיחה על התנאים"
+          },
+          "description": {
+            "en": "Invite the group to compare what they notice about the water and weather. Help distinguish observation, assumption and a proposed next step.",
+            "he": "מזמינים את הקבוצה להשוות מה רואים במים ובמזג האוויר. מסייעים להבחין בין תצפית, הנחה והצעה לצעד הבא."
+          }
+        },
+        {
+          "number": 6,
+          "rmId": "RM-406",
+          "title": {
+            "en": "Plan Within Real Limits",
+            "he": "מתכננים בתוך מגבלות אמיתיות"
+          },
+          "description": {
+            "en": "Build a proposed outing plan around travel, time, equipment and approved location choices. Explain what is possible within the constraints instead of promising what has not been arranged.",
+            "he": "בונים הצעת יציאה לפי נסיעה, זמן, ציוד ואפשרויות מיקום מאושרות. מסבירים מה אפשרי בתוך המגבלות במקום להבטיח סידורים שלא נקבעו."
+          }
+        },
+        {
+          "number": 7,
+          "rmId": "RM-407",
+          "title": {
+            "en": "Notice Who Is Being Left Out",
+            "he": "שמים לב למי שנשאר בצד"
+          },
+          "description": {
+            "en": "Look for opportunities to include a quieter or less confident boy in a shared task. Offer a specific role without labeling him or speaking for him.",
+            "he": "מחפשים דרך לשתף בן שקט יותר או פחות בטוח במשימה משותפת. מציעים תפקיד מסוים בלי לתייג אותו או לדבר בשמו."
+          }
+        },
+        {
+          "number": 8,
+          "rmId": "RM-408",
+          "title": {
+            "en": "Feedback Someone Can Use",
+            "he": "משוב שאפשר להשתמש בו"
+          },
+          "description": {
+            "en": "Replace vague praise or criticism with a clear observation and a manageable next step. Listen to how your feedback is received and adjust it when needed.",
+            "he": "מחליפים שבח או ביקורת מעורפלים בתצפית ברורה ובצעד הבא שאפשר לבצע. מקשיבים לאופן שבו המשוב מתקבל ומשנים אותו כשצריך."
+          }
+        },
+        {
+          "number": 9,
+          "rmId": "RM-409",
+          "title": {
+            "en": "Disagree Without Losing the Task",
+            "he": "חולקים בדעה, נשארים במשימה"
+          },
+          "description": {
+            "en": "Work through a disagreement about equipment, space or a fishing decision. State the concern, hear the other perspective and return to the shared goal.",
+            "he": "מתמודדים עם מחלוקת על ציוד, מרחב או החלטת דיג. מסבירים את הקושי, שומעים את נקודת המבט האחרת וחוזרים למטרה המשותפת."
+          }
+        },
+        {
+          "number": 10,
+          "rmId": "RM-410",
+          "title": {
+            "en": "Help Another Boy Think It Through",
+            "he": "עוזרים לחבר לחשוב בעצמו"
+          },
+          "description": {
+            "en": "Ask a learner what he tried, what happened and what he would change. Let his explanation guide the conversation instead of supplying every answer.",
+            "he": "שואלים את הלומד מה ניסה, מה קרה ומה היה משנה. נותנים להסבר שלו להוביל את השיחה במקום לספק את כל התשובות."
+          }
+        },
+        {
+          "number": 11,
+          "rmId": "RM-411",
+          "title": {
+            "en": "Support a Learning Station",
+            "he": "מסייעים בתחנת למידה"
+          },
+          "description": {
+            "en": "Assist at an instructor-led practice station with an agreed, bounded role. Demonstrate, encourage and organize while the adult retains supervision and safety responsibility.",
+            "he": "מסייעים בתחנת תרגול בהובלת מדריך, בתפקיד מוגדר ומוסכם. מדגימים, מעודדים ומארגנים, בעוד המבוגר שומר על אחריות ההשגחה והבטיחות."
+          }
+        },
+        {
+          "number": 12,
+          "rmId": "RM-412",
+          "title": {
+            "en": "Show the Difference Your Help Makes",
+            "he": "מראים מה העזרה שלנו מאפשרת"
+          },
+          "description": {
+            "en": "Demonstrate a skill, guide another learner and explain the choices you made while helping. Reflect on how to become more useful, not merely more in charge.",
+            "he": "מדגימים מיומנות, מכוונים לומד אחר ומסבירים את הבחירות שעשינו בזמן העזרה. בוחנים איך להיות מועילים יותר, לא רק אחראים יותר על אחרים."
+          }
+        }
+      ]
+    }
+  ]
+}

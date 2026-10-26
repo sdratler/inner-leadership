@@ -7,204 +7,12 @@ import {readFileSync} from "node:fs";
 import {promisify} from "node:util";
 import approvedCopy from "../../../src/features/group-application/presentation-copy.json" with {type:"json"};
 import {academyLandingDraft,academyJourneyForMode} from "../../../src/features/group-application/academy-draft.ts";
-// Approved public snapshot: JLFA-WEBSITE-CORRECTIONS-20261025-03 and retained bilingual copy.
-// Keep browser discovery independent of application/Next runtime model loading.
-const academyIntroduction={
-  "en": "A Torah-infused extracurricular fishing program for boys.",
-  "he": "תוכנית דיג חוץ־לימודית לבנים, ברוח התורה."
-} as const;
-const academyStages=[
- {
-  "slug": "foundation",
-  "title": {
-   "en": "Foundation Angler",
-   "he": "יסודות הדיג"
-  },
-  "paragraphs": [
-   {
-    "en": "Meeting 1 introduces the group, existing equipment, safety and collaboration. Meeting 2 is a planned Bass Pro Shops gear-guidance visit. In Meeting 3, assemble equipment, load line, tie rigs and practise casting. Meeting 4 is the first supervised fishing outing, subject to readiness and a confirmed suitable site. Later meetings develop real fishing, equipment care and decisions at suitable sites.",
-    "he": "במפגש 1 מכירים את הקבוצה, בודקים ציוד קיים ולומדים בטיחות ושיתוף פעולה. במפגש 2 מתוכנן ביקור ב־Bass Pro Shops להכוונה בבחירת ציוד. במפגש 3 מרכיבים ציוד, ממלאים את הרולר בחוט, קושרים ריגים ומתרגלים הטלה. מפגש 4 הוא יציאת הדיג הראשונה בהשגחה, בכפוף למוכנות ולאישור אתר מתאים. במפגשים הבאים מפתחים דיג מעשי, שמירה על הציוד וקבלת החלטות במקומות מתאימים."
-   },
-   {
-    "en": "Keeping a personal tackle box organized, tying taught knots, casting safely, asking before borrowing gear and explaining a choice or mistake.",
-    "he": "סידור ארגז ציוד אישי, קשירת קשרים שנלמדו, הטלה בטוחה, בקשת רשות לפני שימוש בציוד של אחר והסבר של בחירה או טעות."
-   }
-  ]
- },
- {
-  "slug": "independent",
-  "title": {
-   "en": "Independent Angler",
-   "he": "דיג עצמאי"
-  },
-  "paragraphs": [
-   {
-    "en": "Fish with greater independence while comparing rigs, bait, lures, casting approaches and conditions. Learn how a different presentation or depth can change the opportunity at a familiar location.",
-    "he": "דגים בעצמאות הולכת וגדלה ומשווים ריגים, פיתיונות, דמויים, דרכי הטלה ותנאים. לומדים כיצד שינוי בעומק או באופן הצגת הפיתיון עשוי ליצור אפשרויות אחרות גם במקום מוכר."
-   },
-   {
-    "en": "Preparing equipment, evaluating choices, communicating clearly with partners, troubleshooting problems without blame and adjusting their plan.",
-    "he": "הכנת ציוד, בחינת אפשרויות, תקשורת ברורה עם חברי הקבוצה, פתרון בעיות בלי לחפש אשמים ושינוי תוכנית לפי הצורך."
-   }
-  ]
- },
- {
-  "slug": "advanced",
-  "title": {
-   "en": "Advanced Angler",
-   "he": "דיג מתקדם"
-  },
-  "paragraphs": [
-   {
-    "en": "Explore more demanding fishing techniques and equipment. Interpret tide and current, lure depth, line abrasion, fish habitat and changing weather. Consider the responsible handling and lawful use of a catch when appropriate.",
-    "he": "מתנסים בשיטות ובציוד דיג מורכבים יותר. בוחנים גאות ושפל, זרמים, עומק הדמוי, שחיקת חוטים, בתי גידול ומזג אוויר משתנה. כשמתאים, לומדים גם על טיפול אחראי בדגים ועל הכללים החלים על שלל הדיג."
-   },
-   {
-    "en": "Comparing explanations, identifying the evidence behind a decision, responding calmly when conditions change and making group plans together.",
-    "he": "השוואת הסברים, זיהוי העובדות שעליהן מתבססת החלטה, תגובה שקולה לשינוי בתנאים ותכנון משותף."
-   }
-  ]
- },
- {
-  "slug": "leadership",
-  "title": {
-   "en": "Leadership Angler",
-   "he": "דיג ומנהיגות"
-  },
-  "paragraphs": [
-   {
-    "en": "Put fishing knowledge to use in shared group tasks. Explain a setup, help a peer practise a knot, coordinate equipment and offer useful support without replacing the learner's effort or an adult's supervision.",
-    "he": "משתמשים בידע שנרכש במשימות קבוצתיות. מסבירים כיצד להכין ציוד, עוזרים לחבר לתרגל קשר, מארגנים ציוד משותף ומסייעים בלי לעשות הכול במקומו — ובלי להחליף השגחה של מבוגר."
-   },
-   {
-    "en": "Listening, giving clear feedback, taking responsibility for agreements, handling disagreement and knowing when to ask an adult for help.",
-    "he": "הקשבה, מתן משוב ברור, עמידה בהתחייבויות, התמודדות עם חילוקי דעות וזיהוי המצבים שבהם צריך לבקש עזרה ממבוגר."
-   }
-  ]
- }
-] as const;
-const academyQuestions=[
-  {
-    "question": {
-      "en": "Does my son need fishing experience?",
-      "he": "האם צריך ניסיון קודם בדיג?"
-    },
-    "answer": {
-      "en": "No. The first three Foundation meetings cover equipment, safety, knots and casting. Supervised fishing begins afterward; experienced boys build on what they know.",
-      "he": "לא. בשלושת מפגשי היסודות הראשונים לומדים ציוד, בטיחות, קשרים והטלה. לאחריהם מתחילים לדוג בהשגחה. בעלי ניסיון קודם מתקדמים מתוך המיומנויות שכבר רכשו."
-    }
-  },
-  {
-    "question": {
-      "en": "How many sessions are in a stage?",
-      "he": "כמה מפגשים יש בכל שלב?"
-    },
-    "answer": {
-      "en": "Twelve. Ordinary meetings last three hours. Specific outing arrangements are confirmed with families in advance. Weather and holidays may spread delivery beyond twelve consecutive weeks.",
-      "he": "שנים־עשר. מפגשים רגילים נמשכים שלוש שעות. הסידורים ליציאות מסוימות מאושרים עם המשפחות מראש. חגים ומזג האוויר עשויים לפרוס את המפגשים על פני יותר מ־12 שבועות רצופים."
-    }
-  },
-  {
-    "question": {
-      "en": "Does he need his own equipment?",
-      "he": "האם צריך ציוד דיג אישי?"
-    },
-    "answer": {
-      "en": "Yes. Each boy buys and maintains his own rod, reel and tackle box. We help families choose gear and learn how to use and care for it. Personal equipment is not included in tuition.",
-      "he": "כן. כל בן רוכש ומתחזק חכה, רולר וארגז ציוד אישי. אנו עוזרים לבחור ציוד מתאים ולומדים איך להכין אותו ולשמור עליו. הציוד האישי אינו כלול במחיר התוכנית."
-    }
-  },
-  {
-    "question": {
-      "en": "Where do you fish?",
-      "he": "איפה מתקיימים המפגשים?"
-    },
-    "answer": {
-      "en": "We choose suitable South Florida parks, lakes and piers according to group location, fishing goals, seasons, conditions and safety. Returning to the same locations allows different species and techniques. Named sites are possibilities, not booked commitments.",
-      "he": "בוחרים מבין פארקים, אגמים ומזחי דיג מתאימים בדרום פלורידה לפי מקום מגורי הקבוצה, מטרות הלמידה, העונה, התנאים והבטיחות. לפעמים חוזרים לאותו מקום כדי לתרגל שיטה אחרת או לדוג סוגי דגים שונים. אלו מקומות אפשריים, לא התחייבות להזמנה."
-    }
-  },
-  {
-    "question": {
-      "en": "How far will we need to drive?",
-      "he": "כמה זמן נצטרך לנסוע?"
-    },
-    "answer": {
-      "en": "We aim for convenient sites, around 30 minutes when feasible. You choose your family's maximum comfortable one-way drive in the form; more flexibility can open up additional fishing options. If we move your child's session beyond that limit and you cannot attend, the original session's replacement credit remains available.",
-      "he": "משתדלים לבחור מקומות קרובים, לעיתים סביב חצי שעה כאשר הדבר מתאפשר. בטופס בוחרים את זמן הנסיעה המרבי שנוח למשפחה לכיוון אחד. גמישות רבה יותר יכולה לפתוח אפשרויות דיג נוספות. אם נעביר מפגש למקום שחורג מהמגבלה שלכם ולא תוכלו להגיע, תישמר הזכאות להשלמת המפגש המקורי."
-    }
-  },
-  {
-    "question": {
-      "en": "Who handles drop-off and pickup?",
-      "he": "מי אחראי להבאה ולאיסוף?"
-    },
-    "answer": {
-      "en": "Parents arrange travel and the agreed handoff at confirmed times. The Academy supervises the children while they are in its accepted care.",
-      "he": "ההורים דואגים להגיע למקום ולשעה שאושרו ולאסוף את הילדים. לאחר מסירה מסודרת, האקדמיה אחראית להשגחה במהלך המפגש."
-    }
-  },
-  {
-    "question": {
-      "en": "What happens when the weather changes our plans?",
-      "he": "מה קורה כשמזג האוויר משנה את התוכנית?"
-    },
-    "answer": {
-      "en": "Sometimes we need to change the place or date. Qualifying missed sessions retain a child-specific credit for the original stage, week and learning activity. We try to arrange an appropriate make-up soon, subject to availability; we cannot promise a particular date.",
-      "he": "לפעמים צריך לשנות את המקום או התאריך. כאשר מתקיימים תנאי הזכאות להשלמה, נשמרת לילד הזכות למפגש המקורי, לשלב ולפעילות שנלמדה בו. נשתדל לתאם מפגש חלופי מתאים בהקדם, בהתאם לזמינות, בלי להבטיח תאריך מסוים."
-    }
-  },
-  {
-    "question": {
-      "en": "Are Florida Keys trips included?",
-      "he": "האם היציאות לקיז כלולות בתוכנית?"
-    },
-    "answer": {
-      "en": "After the initial readiness preparation, one pooled Florida Keys trip per calendar month is planned for safely eligible groups. It replaces each participating group’s normal weekly meeting and counts as one session, not two. Actual dates, venues, supervision, conditions and guardian permissions must be confirmed. Parents provide food and transportation. Any optional program-arranged food or transport is separately quoted before booking; core instruction is not charged again. Families unable to participate receive the applicable reviewed local alternative or remedy.",
-      "he": "לאחר ההכנה הראשונית, מתוכנן טיול משותף אחד בכל חודש קלנדרי בפלורידה קיז לקבוצות שמתאימות מבחינת מוכנות ובטיחות. הטיול מחליף את המפגש השבועי הרגיל של כל קבוצה משתתפת ונחשב למפגש אחד, לא לשניים. יש לאשר תאריכים, מקומות, השגחה, תנאים והסכמות הורים. ההורים דואגים למזון ולהסעה. סידורי מזון או הסעה אופציונליים באמצעות התוכנית יוצעו במחיר נפרד לפני הזמנה; הדרכת הליבה אינה מחויבת שוב. למשפחות שלא יוכלו להשתתף תוצע החלופה המקומית או הפתרון המתאים לפי התנאים שאושרו."
-    }
-  },
-  {
-    "question": {
-      "en": "What about offshore fishing?",
-      "he": "ומה לגבי דיג מסירה בים הפתוח?"
-    },
-    "answer": {
-      "en": "It is optional, separately priced and considered only after completing the first twelve-session stage and meeting trip-specific captain, guardian and readiness requirements. No published ticket price or guaranteed availability yet.",
-      "he": "זו אפשרות נפרדת בתשלום, לבנים שסיימו את מלוא השלב הראשון בן 12 המפגשים ועומדים בדרישות המוכנות, ההשגחה והקברניט ליציאה. מחיר ומועד ייקבעו לאחר אישור סופי."
-    }
-  },
-  {
-    "question": {
-      "en": "Are Hebrew-speaking groups available?",
-      "he": "האם יהיו קבוצות דוברות עברית?"
-    },
-    "answer": {
-      "en": "We can explore this option as interest, schedules and suitable group formation allow. Indicate your language preference in the form.",
-      "he": "נוכל לבחון הקמת קבוצות לפי מספר המשפחות המעוניינות, לוחות הזמנים וההתאמה בין המשתתפים. ציינו בטופס את השפה המועדפת."
-    }
-  },
-  {
-    "question": {
-      "en": "How does registration and payment work?",
-      "he": "כיצד פועלים ההרשמה והתשלום?"
-    },
-    "answer": {
-      "en": "Submitting the form creates no tuition obligation, class seat or start date. Confirm your interest by email. A suitable group and a separately approved offer come before payment. Existing founding-family entitlements remain attached to the family. Each four-lesson monthly block is purchased separately; there is no automatic future charge.",
-      "he": "שליחת הטופס אינה יוצרת התחייבות לשכר לימוד, מקום בכיתה או מועד פתיחה. מאשרים התעניינות בדוא״ל. קבוצה מתאימה והצעה מאושרת נפרדת קודמות לתשלום. זכאות קיימת של משפחות מייסדות נשארת משויכת למשפחה. כל מקבץ חודשי בן ארבעה שיעורים נרכש בנפרד; אין חיוב עתידי אוטומטי."
-    }
-  },
-  {
-    "question": {
-      "en": "What happens after I submit the form?",
-      "he": "מה קורה לאחר שליחת הטופס?"
-    },
-    "answer": {
-      "en": "Your free registration is saved with a reference. We email you to confirm your interest; no payment is due and no start date has been set. If all founding-family rate reservations are occupied, regular registration remains open without a founding-family rate reservation. A later suitable group and start-date offer, payment and enrollment are separate steps. Cancelling an unpaid registration has no fee.",
-      "he": "ההרשמה החינמית נשמרת עם מספר פנייה. נשלח לכם דוא״ל לאישור ההתעניינות; אין תשלום כעת וטרם נקבע מועד פתיחה. אם כל ההקצאות לתעריף המייסדים תפוסות, ההרשמה הרגילה נשארת פתוחה ללא שמירת תעריף מייסדים. הצעת קבוצה ומועד מתאימים בהמשך, תשלום והרשמה להשתתפות הם שלבים נפרדים. ביטול הרשמה שלא שולמה אינו כרוך בתשלום."
-    }
-  }
-] as const;
+// Exact05 public JSON projections keep discovery independent of Next runtime.
+import exactWebsite from "../../../src/features/group-application/academy-exact-website-copy.json" with {type:"json"};
+import exactCurriculum from "../../../src/features/group-application/academy-exact-curriculum.json" with {type:"json"};
+import exactStates from "../../../src/features/group-application/academy-exact-state-copy.json" with {type:"json"};
+const academyIntroduction={en:exactWebsite.en.home.aboutLead,he:exactWebsite.he.home.aboutLead};
+const academyStages=exactCurriculum.stages;
 async function academyFormReady(page:Page,navigate:()=>Promise<unknown>){
  const challenge=page.waitForResponse(response=>response.request().method()==="GET"&&new URL(response.url()).pathname==="/api/public/group-applications"&&new URL(response.url()).searchParams.get("program")==="sunday_fishing_academy");
  await navigate();const response=await challenge;expect(response.status()).toBe(200);const body=await response.json();expect(body).toMatchObject({ok:true,data:{challenge:expect.any(String)}});expect(body.data.challenge.length).toBeGreaterThan(0);
@@ -212,12 +20,12 @@ async function academyFormReady(page:Page,navigate:()=>Promise<unknown>){
 }
 async function switchAcademyLocale(page:Page,name:string){await page.getByRole('group',{name:/Interface language|שפת הממשק/}).getByRole('button',{name:name==='EN'?'English':name,exact:true}).click();}
 async function openAcademyUpdates(form:Locator,locale:'en'|'he'){
- await form.locator('summary').filter({hasText:locale==='en'?'Updates (optional)':'עדכונים (לא חובה)'}).click();
+ await form.locator('summary').filter({hasText:exactWebsite[locale].form.updatesHeading}).click();
  await expect(form.locator('[data-communication-notice]')).toBeVisible();await expect(form.locator('[data-communication-notice]')).toHaveAttribute('data-document-language',locale);
  for(const name of ['nurtureEmail','privateWapi']){await expect(form.locator(`[name="${name}"]`)).toBeVisible();await expect(form.locator(`[name="${name}"]`)).not.toBeChecked();}
 }
 async function fillCompleteAcademyForm(form:Locator,name:string,contact:string){
- await form.locator('[name="parentName"]').fill(name);await form.locator('[name="contact"]').fill(contact);await form.locator('[name="receiptEmail"]').fill(contact);await form.locator('[name="cityArea"]').fill('Hollywood, Florida');await form.locator('[name="postalCode"]').fill('00123');const child=form.locator('[data-registration-child]').first();await child.locator('[name$="-name"]').fill('Synthetic registered learner');await child.locator('[name$="-age"]').fill('12');await child.locator('[name$="-grade"]').selectOption('6');await child.locator('[name$="-schooling"]').selectOption('school');await child.locator('[name$="-experience"]').selectOption('new');await form.locator('[name="driveMinutes"]').fill('37');await form.locator('[name="schoolHoursAvailability"]').selectOption('permission_needed');await expect(form.locator('[name="stageInterest"]')).toHaveCount(0);await form.locator('[name="preferredGroupLanguage"][value="en"]').check();for(const field of ['preferredDays','preferredTimes']){const input=form.locator('[name="'+field+'"]').first();await input.locator('xpath=ancestor::details').locator('summary').click();}await form.locator('[name="preferredDays"][value="sunday"]').check();await form.locator('[name="preferredTimes"][value="afternoon"]').check();
+ await form.locator('[name="parentName"]').fill(name);await form.locator('[name="contact"]').fill('');await form.locator('[name="receiptEmail"]').fill(contact);await form.locator('[name="cityArea"]').fill('Hollywood, Florida');await form.locator('[name="postalCode"]').fill('00123');const child=form.locator('[data-registration-child]').first();await child.locator('[name$="-name"]').fill('Synthetic registered learner');await child.locator('[name$="-age"]').fill('12');await child.locator('[name$="-grade"]').selectOption('6');await child.locator('[name$="-schooling"]').selectOption('school');await child.locator('[name$="-experience"]').selectOption('new');await form.locator('[name="driveMinutes"]').fill('37');await form.locator('[name="schoolHoursAvailability"]').selectOption('permission_needed');await expect(form.locator('[name="stageInterest"]')).toHaveCount(0);await form.locator('[name="preferredGroupLanguage"][value="en"]').check();for(const field of ['preferredDays','preferredTimes']){const input=form.locator('[name="'+field+'"]').first();await input.locator('xpath=ancestor::details').locator('summary').click();}await form.locator('[name="preferredDays"][value="sunday"]').check();await form.locator('[name="preferredTimes"][value="afternoon"]').check();
 }
 
 type Runtime={origin:string;workspaceId:string;practitioner:string;parent:string;adult:string;child:string;revoked:string;otherWorkspace:string;publicApplicationId:string;publicApplicantName:string};
@@ -368,7 +176,7 @@ if(!runtimePath){
  for(const locale of ["en","he"] as const)test(`Florida group inquiry ${locale}: responsive content, retained draft and private boundary`,async({page},info)=>{
   const response=await page.goto(`/${locale}/florida`);expect(response?.status()).toBe(200);
   const direction=locale==="he"?"rtl":"ltr";await expect(page.locator(`[data-academy-site][lang="${locale}"][dir="${direction}"]`)).toBeVisible();
-  await expect(page.locator("h1#academy-title")).toHaveAccessibleName("South Florida Jewish Leadership Fishing Academy");await expect(page.locator("h1#academy-title span")).toHaveText(["Jewish Leadership","Fishing Academy"]);await expect(page.locator("[data-hero-heading] > p")).toHaveText("South Florida");await expect(page.locator("h1#academy-title")).toHaveAttribute("lang","en");await expect(page.locator("h1#academy-title")).toHaveAttribute("dir","ltr");await expect(page.locator("h1#academy-title")).toBeVisible();
+  await expect(page.locator("h1#academy-title")).toHaveAccessibleName(exactWebsite[locale].hero.accessibleName);await expect(page.locator("h1#academy-title span")).toHaveText(["Jewish Leadership","Fishing Academy"]);await expect(page.locator("[data-hero-heading] > p")).toHaveText("South Florida");await expect(page.locator("h1#academy-title")).toHaveAttribute("lang","en");await expect(page.locator("h1#academy-title")).toHaveAttribute("dir","ltr");await expect(page.locator("h1#academy-title")).toBeVisible();
   await expect(page.locator('[data-academy-hero-image]')).toBeVisible();await expect(page.locator('[data-jlfa-curriculum-dialog],[data-jlfa-curriculum-content]')).toHaveCount(0);
   const originalViewport=page.viewportSize();if(originalViewport&&originalViewport.width<768)await page.setViewportSize({width:390,height:700});
   await expect(page.locator('[data-hero-actions]')).toContainText('$300');
@@ -377,18 +185,20 @@ if(!runtimePath){
   if(originalViewport)await page.setViewportSize(originalViewport);
   const body=await page.locator("body").innerText();expect(body).toContain(academyIntroduction[locale]);expect(body).not.toContain("Weekly sessions · first two Foundation meetings");const review=page.locator("#parent-reflections");await expect(review.locator("blockquote")).toHaveText("“Medication is no longer relevant.”");await expect(review).not.toContainText("earlier educational work");
   await expect(page.locator('[data-academy-stage-card]')).toHaveCount(4);
-  const locationLink=page.locator('#academy-mobile-menu a[href$="#locations"]');await expect(locationLink).toHaveAttribute('href',`/${locale}/florida#locations`);
-  if((page.viewportSize()?.width??1440)<900){await page.locator('[aria-controls="academy-mobile-menu"]').click();await expect(locationLink).toBeVisible();await locationLink.click();await expect(page).toHaveURL(`${data.origin}/${locale}/florida#locations`);await expect(page.locator('details#locations')).toBeVisible();await expect(page.locator('details#locations')).toHaveJSProperty('open',true);await expect(page.locator('[aria-controls="academy-mobile-menu"]')).toHaveAttribute('aria-expanded','false');await page.goto(`/${locale}/florida`);}
-  for(const item of academyStages){await page.locator(`[data-academy-stage-card="${item.slug}"] a`).click();await expect(page).toHaveURL(`${data.origin}/${locale}/florida/stages/${item.slug}`);await expect(page.locator('h1')).toHaveText(item.title[locale]);await expect(page.locator('[role="tab"]')).toHaveCount(3);await expect(page.locator('[role="tab"]').first()).toBeEnabled();await expect(page).toHaveTitle(`${item.title[locale]} | ${locale==='he'?'האקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה':'South Florida Jewish Leadership Fishing Academy'}`);await expect(page.locator('meta[property="og:title"]')).toHaveAttribute('content',item.title[locale]);for(const paragraph of item.paragraphs)await expect(page.locator("main")).toContainText(paragraph[locale]);
-   await expect(page.locator('main figcaption')).toHaveCount(0);
-   for(const venue of ['Oleta River State Park','East Greynolds Park','Amelia Earhart Park','South Pointe Park'])await expect(page.locator('main')).toContainText(venue);
-   await expect(page.locator('main')).toContainText(locale==='he'?'מקומות אפשריים, לא יעדים שבועיים שהוזמנו.':'Possible locations, not booked weekly destinations.');
-   if(item.slug==='independent')for(const phrase of ['Double Uni','Albright',locale==='he'?'פיתול בחוט':'line twist'])await expect(page.locator('main')).toContainText(phrase);
-   if(item.slug==='advanced')for(const phrase of locale==='he'?['תרגול יבש ומבוקר','בדיקה נפרדת','שמירה בקירור']:['controlled dry practice','separate instructor check','cold storage'])await expect(page.locator('main')).toContainText(phrase);
-   if(item.slug==='leadership')for(const phrase of locale==='he'?['אינו הופך תלמיד לאחראי להשגחה','יעד מעשי להמשך','אינה מבוססת על גודל הדג']:['never makes a student responsible for supervising','next practical goal','not based on the size of a fish'])await expect(page.locator('main')).toContainText(phrase);
-   await page.goto(`/${locale}/florida`);}
-  await page.goto(`/${locale}/florida/pricing`);const pricingTitle=locale==='he'?'מחירים ויציאות':'Pricing & outings';await expect(page).toHaveTitle(`${pricingTitle} | ${locale==='he'?'האקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה':'South Florida Jewish Leadership Fishing Academy'}`);await expect(page.locator('meta[property="og:title"]')).toHaveAttribute('content',pricingTitle);await page.goto(`/${locale}/florida`);
-  for(const question of academyQuestions){const detail=page.locator('details').filter({has:page.getByText(question.question[locale],{exact:true})});await detail.locator('summary').click();await expect(detail).toContainText(question.answer[locale]);}
+  const curriculumLink=page.locator('#academy-mobile-menu a[href$="#stages"]');await expect(curriculumLink).toHaveAttribute('href',`/${locale}/florida#stages`);
+  if((page.viewportSize()?.width??1440)<1000){await page.locator('[aria-controls="academy-mobile-menu"]').click();await expect(curriculumLink).toBeVisible();await curriculumLink.click();await expect(page).toHaveURL(`${data.origin}/${locale}/florida#stages`);await expect(page.locator('[data-academy-stage-card]').first()).toBeVisible();await expect(page.locator('[aria-controls="academy-mobile-menu"]')).toHaveAttribute('aria-expanded','false');await page.goto(`/${locale}/florida`);}
+  for(const item of academyStages){
+   await page.locator(`[data-academy-stage-card="${item.slug}"] a`).click();await expect(page).toHaveURL(`${data.origin}/${locale}/florida/stages/${item.slug}`);const stageMain=page.locator(`main[data-academy-stage-view="${item.slug}"]`);await expect(stageMain).toHaveCount(1);await expect(stageMain).toBeVisible();await expect(stageMain.locator('h1')).toHaveText(item.title[locale]);
+   const title=exactWebsite[locale].metadata.curriculumTitle.replace('{stage_title}',item.title[locale]);await expect(page).toHaveTitle(title);await expect(page.locator('meta[property="og:title"]')).toHaveAttribute('content',title);await expect(page.locator('meta[name="description"]')).toHaveAttribute('content',item.introduction[locale]);
+   await expect(stageMain).toContainText(item.introduction[locale]);await expect(stageMain.locator('figcaption')).toHaveCount(0);await expect(stageMain.locator('[data-academy-lesson-list]>li')).toHaveCount(12);
+   for(const lesson of item.lessons){await expect(stageMain.getByRole('heading',{name:lesson.title[locale],exact:true})).toBeVisible();await expect(stageMain.getByText(lesson.description[locale],{exact:true})).toBeVisible();}
+   await expect(stageMain.locator('[data-age-choice]')).toHaveCount(3);
+   for(const [index,age]of (['8–10','11–13','14–17']as const).entries()){const input=stageMain.locator(`[data-age-choice="${index}"]`),id=await input.getAttribute('id');expect(id).toBeTruthy();await stageMain.locator('label').filter({hasText:exactCurriculum.common[locale].ageTabs[index]!}).click();await expect(input).toBeChecked();const panel=stageMain.locator(`[data-age-panel="${index}"]`);await expect(panel).toBeVisible();for(const text of item.agePanels[age][locale])await expect(panel).toContainText(text);}
+   await expect(stageMain).not.toContainText(/RM-\d{3}|Possible locations|מקומות דיג אפשריים/);await expect(stageMain.locator('[data-academy-curriculum-register]')).toHaveAttribute('href',`/${locale}/florida/apply`);
+   await page.goto(`/${locale}/florida`);
+  }
+  await page.goto(`/${locale}/florida/pricing`);const pricingTitle=exactWebsite[locale].metadata.pricingTitle;await expect(page).toHaveTitle(pricingTitle);await expect(page.locator('meta[property="og:title"]')).toHaveAttribute('content',pricingTitle);await page.goto(`/${locale}/florida`);
+  for(const question of exactWebsite[locale].home.faq){const detail=page.locator('details').filter({has:page.getByText(question.question,{exact:true})});await detail.locator('summary').click();await expect(detail).toContainText(question.answer);}
   const footer=page.locator('[data-academy-footer]');await expect(footer.locator('a')).toHaveCount(2);await expect(footer.locator('[data-jlfa-footer-logo]')).toHaveCount(1);await expect(footer).toContainText(locale==="he"?"ארגון ללא כוונת רווח בניו ג׳רזי":"a New Jersey nonprofit");await expect(footer.getByRole('link',{name:locale==="he"?"הרשמה מוקדמת בחינם":"Pre-register for free",exact:true})).toHaveAttribute('href',`/${locale}/florida/apply`);await expect(footer.locator('nav')).toHaveCount(0);await expect(page.locator('[role="timer"],[data-counter]')).toHaveCount(0);
   const logo=page.locator("[data-jlfa-header-logo] img");await expect(logo).toBeVisible();await expect.poll(()=>logo.evaluate(element=>(element as HTMLImageElement).naturalWidth)).toBe(1254);
   const logoResponse=await page.request.get("/groups/brand/jlfa-logo-locked-v1.png");expect(logoResponse.status()).toBe(200);expect(createHash("sha256").update(await logoResponse.body()).digest("hex")).toBe("e78ff6d3ef16c37613725507ce14da05883734a77f48b78ab9d6df3f92480356");
@@ -400,7 +210,7 @@ if(!runtimePath){
   const childId=await form.locator('[name="learnerId"]').inputValue();
   const switched=locale==="he"?"en":"he";await switchAcademyLocale(page,locale==="he"?"EN":"עברית");await expect(page).toHaveURL(`${data.origin}/${switched}/florida/apply`);
   await expect(form.locator('[name="parentLanguage"]')).toHaveValue(parentMessageLanguage);await expect(form.locator('[name="nurtureEmail"]')).toBeChecked();await expect(form.locator('[name="privateWapi"]')).not.toBeChecked();
-  for(const [name,value]of Object.entries({parentName:"Synthetic public browser check",contact:"synthetic@example.invalid",receiptEmail:"synthetic@example.invalid",cityArea:"Hollywood, Florida",postalCode:"00123",driveMinutes:"37"}))await expect(form.locator(`[name="${name}"]`)).toHaveValue(value);
+  for(const [name,value]of Object.entries({parentName:"Synthetic public browser check",contact:"",receiptEmail:"synthetic@example.invalid",cityArea:"Hollywood, Florida",postalCode:"00123",driveMinutes:"37"}))await expect(form.locator(`[name="${name}"]`)).toHaveValue(value);
   await expect(form.locator('[name="learnerId"]')).toHaveValue(childId);const child=form.locator('[data-registration-child]').first();await expect(child.locator('[name$="-name"]')).toHaveValue('Synthetic registered learner');await expect(child.locator('[name$="-age"]')).toHaveValue('12');await expect(child.locator('[name$="-grade"]')).toHaveValue('6');
   for(const day of ['sunday','tuesday'])await expect(form.locator(`[name="preferredDays"][value="${day}"]`)).toBeChecked();await expect(form.locator('[name="preferredTimes"][value="afternoon"]')).toBeChecked();await expect(form.locator('[name="preferredGroupLanguage"][value="en"]')).toBeChecked();await expect(form.locator('[name="permission"]')).not.toBeChecked();await switchAcademyLocale(page,locale==="he"?"עברית":"EN");await expect(page).toHaveURL(`${data.origin}/${locale}/florida/apply`);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await expect(page.locator('[data-jlfa-header-logo]')).toBeVisible();
@@ -415,10 +225,10 @@ if(!runtimePath){
   const applicant=`Synthetic Florida replay ${randomUUID()}`,contact=`synthetic-${randomUUID()}@example.invalid`;await fillCompleteAcademyForm(form,applicant,contact);await form.locator('[name="parentLanguage"]').selectOption('he');await openAcademyUpdates(form,'en');await form.locator('[name="nurtureEmail"]').check();await expect(form.locator('[name="privateWapi"]')).not.toBeChecked();await form.locator('[name="permission"]').check();
   const endpoint="**/api/public/group-applications?program=sunday_fishing_academy";let firstBody:Record<string,unknown>|undefined,upstreamStatus=0;
   await page.route(endpoint,async route=>{if(route.request().method()!=="POST")return route.continue();firstBody=route.request().postDataJSON() as Record<string,unknown>;const upstream=await route.fetch({headers:{...route.request().headers(),origin:data.origin,"sec-fetch-site":"same-origin"}});upstreamStatus=upstream.status();await route.fulfill({status:503,contentType:"application/json",body:JSON.stringify({ok:false,error:{code:"UNAVAILABLE"}})});});
-  await form.locator('button[type="submit"]').click();await expect(form.getByRole("alert")).toContainText("The save result is not confirmed");expect(upstreamStatus).toBe(201);expect(firstBody).toMatchObject({website:"",fields:{parentName:applicant,contact,programId:"sunday_fishing_academy",permission:{confirmed:true,version:"JLFA-FREE-REGISTRATION-TERMS-20261023-03-v1"},academyRegistration:{version:"JLFA-FREE-REGISTRATION-20261025-03-v4",intent:"information",driveMinutes:37,postalCode:"00123",schoolHoursAvailability:"permission_needed",learners:[{fullName:"Synthetic registered learner",ageYears:12,grade:"6"}]}}});await expect(form.locator('[name="contact"]')).toBeDisabled();
-  await page.unroute(endpoint);const replayRequest=page.waitForRequest(request=>request.method()==="POST"&&new URL(request.url()).searchParams.get("program")==="sunday_fishing_academy"),replayResponse=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).searchParams.get("program")==="sunday_fishing_academy");await form.getByRole("button",{name:"Check the original submission",exact:true}).click();const replayBody=(await replayRequest).postDataJSON(),replayed=await replayResponse;expect(replayBody).toEqual(firstBody);expect(replayed.status()).toBe(200);const replayedBody=await replayed.json();expect(replayedBody).toMatchObject({ok:true,data:{saved:true,replayed:true,duplicate:true,item:{fields:{parentName:applicant,programId:"sunday_fishing_academy"}}}});
+  await form.locator('button[type="submit"]').click();await expect(form.getByRole("alert")).toContainText(exactStates.en.save.uncertainHeading);expect(upstreamStatus).toBe(201);expect(firstBody).toMatchObject({website:"",fields:{parentName:applicant,contact,programId:"sunday_fishing_academy",permission:{confirmed:true,version:"JLFA-FREE-REGISTRATION-TERMS-20261026-05-v1"},academyRegistration:{version:"JLFA-FREE-REGISTRATION-20261026-05-v5",intent:"information",driveMinutes:37,postalCode:"00123",schoolHoursAvailability:"permission_needed",learners:[{fullName:"Synthetic registered learner",ageYears:12,grade:"6"}]}}});await expect(form.locator('[name="contact"]')).toBeDisabled();
+  await page.unroute(endpoint);const replayRequest=page.waitForRequest(request=>request.method()==="POST"&&new URL(request.url()).searchParams.get("program")==="sunday_fishing_academy"),replayResponse=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).searchParams.get("program")==="sunday_fishing_academy");await form.getByRole("button",{name:exactStates.en.save.checkStatus,exact:true}).click();const replayBody=(await replayRequest).postDataJSON(),replayed=await replayResponse;expect(replayBody).toEqual(firstBody);expect(replayed.status()).toBe(200);const replayedBody=await replayed.json();expect(replayedBody).toMatchObject({ok:true,data:{saved:true,replayed:true,duplicate:true,item:{fields:{parentName:applicant,programId:"sunday_fishing_academy"}}}});
   expect(replayedBody.data.item.fields.academyRegistration.communicationPreferences).toMatchObject({parentLanguage:'he',nurtureEmail:true,privateWapi:false,notice:{language:'en'}});
-  const reference=replayedBody.data.item.id;await expect(form.locator('[data-academy-saved]')).toHaveAttribute('data-academy-saved',reference);await expect(form.locator('[data-academy-saved]')).toContainText("Your free registration is saved");await expect(form.locator('button[type="submit"]')).toBeDisabled();
+  const reference=replayedBody.data.item.id;await expect(form.locator('[data-academy-saved]')).toHaveAttribute('data-academy-saved',reference);await expect(form.locator('[data-academy-saved]')).toContainText(exactStates.en.save.savedHeading);await expect(form.locator('button[type="submit"]')).toBeDisabled();
   await context.addCookies([{name:"__Host-ls-session",value:data.practitioner,url:data.origin,httpOnly:true,secure:true,sameSite:"Lax"}]);const read=page.waitForResponse(r=>r.request().method()==="GET"&&new URL(r.url()).pathname==="/api/private/group-applications");await page.goto("/en/app/group-applications");expect((await read).status()).toBe(200);
   const record=page.locator(`article[data-academy-intake-ref="${reference}"]`);await expect(record).toHaveCount(1);await expect(record).toContainText(applicant);await expect(record).toContainText(approvedCopy.realMensch.academy.label.en);await expect(record).toContainText('Parent-selected message language');await expect(record).toContainText('Educational emails requested');await expect(record).toContainText('Not requested');
   const details=record.locator('[data-academy-registration-readback]');await expect(details).toContainText('Synthetic registered learner');await expect(details).toContainText('Grade 6');await expect(details).toContainText('00123');await expect(details).toContainText('37');await expect(details).toContainText('School permission must be arranged');await expect(details).toContainText('registration contact/storage only');

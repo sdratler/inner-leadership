@@ -6,6 +6,8 @@ For the current Life Skills app completion, read [LS-DUAL-PACKAGE-20261003-01](h
 
 ## Authority by domain
 
+For Academy website/form/curriculum corrections, read [academy-public-current.md](../apps/life-skills/docs/academy-public-current.md). It records the exact Website/UI/Brand/Content Voice revisions and a concise derived visual/accessibility checklist. The exact05 English/Hebrew packet owns the supplied words; current Product owns prices/rules. This scoped pointer does not replace canonical sources, broaden effects or apply older Israeli baked-hero instructions to Academy routes.
+
 | Question | Authority | Evidence of completion |
 | --- | --- | --- |
 | What does the owner want? | Latest explicit owner decision, reconciled into the registered CURRENT Product/Website/Program source | Same-file revision and readback linked to one change ID |

@@ -2,7 +2,7 @@ import {z} from "zod";
 import {campaignAttributionSchema} from "./academy-campaign-contract.ts";
 import {academyIntakeSchema,academyDriveMinutes} from "./academy-intake.ts";
 import {academyRegistrationSchema,ACADEMY_REGISTRATION_VERSION} from './academy-registration.ts';
-import {academyRegistrationNotice,academyLegacyRegistrationNotice} from './academy-registration-notice.ts';
+import {academyRegistrationNotice,academyLegacyRegistrationNotice,academyPreviousFreeRegistrationNotice} from './academy-registration-notice.ts';
 
 /** Existing Israel application permission. This contract remains writable at /groups/apply. */
 export const groupApplicationNotice={
@@ -130,7 +130,7 @@ export const floridaAcademyRegistrationFieldsSchema=floridaParentApplicationFiel
  schedulePreference:z.array(scheduleValueSchema).length(0),
  scheduleContext:z.undefined().optional(),academyFit:z.undefined().optional(),academyIntake:z.undefined().optional(),
  academyRegistration:academyRegistrationSchema,
- permission:z.object({confirmed:z.literal(true),version:z.enum([academyRegistrationNotice.version,academyLegacyRegistrationNotice.version]),language:z.enum(['en','he'])}).strict(),
+ permission:z.object({confirmed:z.literal(true),version:z.enum([academyRegistrationNotice.version,academyPreviousFreeRegistrationNotice.version,academyLegacyRegistrationNotice.version]),language:z.enum(['en','he'])}).strict(),
 }).superRefine((v,c)=>{
  if(v.permission.language!==v.language||v.academyRegistration.consent.language!==v.language)c.addIssue({code:'custom',path:['permission'],message:'permission language must match registration'});
  if(v.permission.version!==v.academyRegistration.consent.version)c.addIssue({code:'custom',path:['permission'],message:'permission version mismatch'});
