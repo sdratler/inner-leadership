@@ -1,3 +1,4 @@
+import {academyExactCopy} from '../../src/features/group-application/academy-exact-copy.ts';
 import type {ReactNode} from 'react';
 import {AcademyCampaignProvider} from '../../src/features/group-application/academy-campaign-state.ts';
 import {campaignSnapshotSchema,ACADEMY_CAMPAIGN} from '../../src/features/group-application/academy-campaign-contract.ts';
@@ -29,24 +30,26 @@ afterEach(()=>{expect(noNetwork).not.toHaveBeenCalled();});
 afterAll(()=>{vi.restoreAllMocks();vi.unstubAllGlobals();});
 const render=(locale:Locale,href?:string)=>renderToStaticMarkup(createElement(AcademyPricing,{locale,...(href===undefined?{}:{applicationHref:href})}));
 const plain=(html:string)=>html.replace(/<[^>]*>/g," ").replace(/\s+/g," ").trim();
-function cell(html:string,kind:string){const found=new RegExp(`<td\\b[^>]*data-price-kind="${kind}"[^>]*>([\\s\\S]*?)</td>`).exec(html);expect(found).not.toBeNull();return found![1]!;}
+function cell(html:string,kind:string){const found=new RegExp(`<p\\b[^>]*data-price-kind="${kind}"[^>]*>([\\s\\S]*?)</p>`).exec(html);expect(found).not.toBeNull();return found![1]!;}
 
-describe.each(["en","he"] as const)("%s compact Academy price comparison",locale=>{
- test("uses one compact panel with an adjacent ordinary/founder comparison",()=>{
-  const html=render(locale);expect(html).toContain('id="pricing"');expect(html).toContain('data-academy-pricing=""');expect(html).toContain(`lang="${locale}"`);expect(html).toContain(`dir="${locale==="he"?"rtl":"ltr"}"`);
-  expect(html).toContain(locale==='he'?'הירשמו בחינם. חסכו 300 דולר.':'Pre-register free. Save $300.');expect(html.match(/data-price-group=/g)).toHaveLength(1);expect(html.match(/data-price-kind=/g)).toHaveLength(5);
-  expect(html).not.toMatch(/countdown|spots left|role="timer"|מקומות נותרו/);expect(plain(html)).toContain(locale==='he'?'12 מפגשים':'12-session');
+describe.each(["en","he"] as const)("%s exact actual Academy prices",locale=>{
+ test("uses one actual three-price panel without comparison or fabricated scarcity",()=>{
+  const html=render(locale);expect(html).toContain('id="pricing"');expect(html).toContain('data-academy-pricing="true"');expect(html).toContain(`lang="${locale}"`);expect(html).toContain(`dir="${locale==="he"?"rtl":"ltr"}"`);
+  expect(html).toContain(academyExactCopy[locale].pricing.heading);expect(html.match(/data-price-group=/g)).toHaveLength(1);expect(html.match(/data-price-kind=/g)).toHaveLength(3);
+  expect(html).not.toMatch(/countdown|spots left|role="timer"|מקומות נותרו|<table|<del>|\$1,950|\$800|\$1,850/);expect(plain(html)).toContain(academyExactCopy[locale].pricing.unit);
  });
- test("founding primary compares the real three-block basis without a false former price",()=>{
-  const html=render(locale);expect(cell(html,'founding-primary')).toContain('$1,650');expect(html).toContain('$1,950');expect(html).not.toContain('<del>');expect(plain(html)).toContain(locale==='he'?'שלושה מקבצים נפרדים':'Three separately purchased');expect(plain(html)).toContain('$300');
+ test.each([['founding-primary',1650],['founding-sibling',1550],['monthly-block',650]] as const)('%s shows its actual master amount', (kind,amount)=>{expect(cell(render(locale),kind)).toContain(`$${amount.toLocaleString('en-US')}`);});
+ test('ordinary and unknown snapshots show only ordinary rates without a founder claim',()=>{
+  for(const initial of [null,campaignSnapshotSchema.parse({...explicitPre,phase:'REGULAR_REGISTRATION',revision:2,occupied:30,remaining:0,firstFilledAt:explicitPre.asOf})]){
+   const html=renderPhaseRaw(createElement(AcademyCampaignProvider,{initial},createElement(AcademyPricing,{locale})));
+   for(const [kind,amount] of [['regular-prepay',1750],['ordinary-sibling',1650],['monthly-block',650]] as const)expect(cell(html,kind)).toContain(`$${amount.toLocaleString('en-US')}`);
+   expect(html).toContain(academyExactCopy[locale].pricing.ordinaryBelow);expect(html).not.toMatch(/founding-primary|founding-sibling|\$300|\$1,550/);
+  }
  });
- test.each([["regular-prepay",1750,200],["founding-sibling",1550,400],["ordinary-sibling",1650,300]] as const)("%s preserves master amount and savings basis",(kind,amount,saving)=>{
-  expect(cell(render(locale),kind)).toContain(`$${amount.toLocaleString('en-US')}`);expect(amount+saving).toBe(1950);
+ test('does not add renewal, comparison or a payment action to the short panel',()=>{
+  const html=render(locale);expect(html).toContain(academyExactCopy[locale].pricing.founderQualifier);expect(html).toContain(academyExactCopy[locale].pricing.noPayment);expect(html).not.toMatch(/<details|<form|<input|<textarea|<button|<iframe|<script|<img|Pay now|subscription/);
  });
- test("monthly row is a separate650 purchase, never automatic renewal",()=>{const text=plain(render(locale));expect(text).toContain('$650');expect(text).toContain(locale==='he'?'ל־4 שיעורים':'for 4 lessons');expect(text).toContain(locale==='he'?'כל מקבץ נרכש בנפרד':'Each block is purchased separately');expect(text).toContain(locale==='he'?'ללא חידוש אוטומטי':'No automatic renewal');});
- test("no annual offer,1850proposal,stacked discounts or800 claim",()=>{const text=plain(render(locale));expect(text).not.toMatch(/\$800|\$1,850|Pay now|membership|subscription/);expect(text).toContain(locale==='he'?'אין כפל הנחות':'Discounts do not stack');for(const amount of ['$3,200','$3,400','$3,900'])expect(text).toContain(amount);});
- test("lifecycle details remain readable inside a collapsed how-it-works disclosure",()=>{const html=render(locale);expect(html).toMatch(/<details[^>]*><summary>/);expect(html).not.toMatch(/<details[^>]*open=/);expect(plain(html)).toContain(locale==='he'?'לא מקום בכיתה או מועד פתיחה':'not a class seat or start date');expect(plain(html)).toContain(locale==='he'?'שבעה ימים קלנדריים':'seven-calendar-day');});
- test("default action navigates to the exact localized form",()=>{const html=render(locale);expect(html).toContain(`href="/${locale}/florida/apply"`);expect(html).toContain(locale==='he'?'הרשמה מוקדמת בחינם':'Pre-register for free');expect(html).not.toMatch(/<form|<input|<textarea|<button|<iframe|<script|<img/);expect(html.match(/<a\b/g)).toHaveLength(1);});
+ test("default action navigates to the exact localized form",()=>{const html=render(locale);expect(html).toContain(`href="/${locale}/florida/apply"`);expect(html).toContain(academyExactCopy[locale].nav.preRegister);expect(html.match(/<a\b/g)).toHaveLength(1);});
  test.each(['same','sample'])("explicit %s action preserves narrow href whitelist",mode=>{const href=mode==='same'?`/${locale}/florida/apply`:'#apply';expect(render(locale,href)).toContain(`href="${href}"`);});
  test("does not duplicate floating WhatsApp",()=>{expect(render(locale)).not.toContain(whatsapp);expect(render(locale)).not.toContain('wa.me');});
 });
@@ -60,8 +63,8 @@ test.each(["en-US","fr",CANARY,null,undefined])("invalid locale cannot build an 
 test("frozen props are not mutated and rendering uses no logs or effects",()=>{
  const props=Object.freeze({locale:"en" as const,applicationHref:"#apply"}),before={...props},spies=[vi.spyOn(console,"log"),vi.spyOn(console,"warn"),vi.spyOn(console,"error")];try{const first=renderToStaticMarkup(createElement(AcademyPricing,props));expect(renderToStaticMarkup(createElement(AcademyPricing,props))).toBe(first);expect(props).toEqual(before);for(const spy of spies)expect(spy).not.toHaveBeenCalled();}finally{for(const spy of spies)spy.mockRestore();}
 });
-test("compact comparison CSS supports narrow content, logical alignment and keyboard controls",()=>{
- const css=readFileSync(new URL("../../src/features/group-application/academy-pricing.module.css",import.meta.url),"utf8");for(const color of ['#052D50','#047AA8','#F4B12D','#FFF'])expect(css).toContain(color);expect(css).toContain('table-layout:fixed');expect(css).toContain('overflow-wrap:anywhere');expect(css).toContain('min-block-size:48px');expect(css).toContain(':focus-visible');expect(css).toContain('padding-inline-start');expect(css).not.toMatch(/@import|url\(|:global|!important|position:fixed/);
+test("actual-price CSS supports readable narrow content and keyboard controls",()=>{
+ const css=readFileSync(new URL("../../src/features/group-application/academy-pricing.module.css",import.meta.url),"utf8");for(const token of ['#092668','#fdc844','min-block-size:48px',':focus-visible','max-inline-size:1120px','font-size:16px','text-align:start'])expect(css).toContain(token);expect(css).not.toMatch(/@import|url\(|:global|!important|position:fixed|table-layout/);
 });
 
 const explicitPre=campaignSnapshotSchema.parse({version:ACADEMY_CAMPAIGN,phase:'PRE_REGISTRATION',revision:1,capacity:30,occupied:1,remaining:29,firstFilledAt:null,asOf:'2026-10-23T14:00:00.000Z',reopeningPolicy:'PROPOSED_STICKY_REGULAR_PENDING_OWNER_CONFIRMATION'});
@@ -70,7 +73,7 @@ function renderToStaticMarkup(node:ReactNode){return renderPhaseRaw(createElemen
 test('actual phase gates founder promotion and family totals use the same commercial master',()=>{
  for(const locale of ['en','he'] as const)for(const initial of [explicitPre,null]){
   const html=renderPhaseRaw(createElement(AcademyCampaignProvider,{initial},createElement(AcademyRegistrationOffer,{locale,childrenCount:2})));
-  expect(html).toContain(initial?'$3,200':'$3,400');expect(html).toContain(initial?'$1,550':'$1,650');
+  expect(html).toContain(initial?'$1,650':'$1,750');expect(html).toContain(initial?'$1,550':'$1,650');expect(html).toContain('$650');if(initial)expect(html).toContain('$3,200');else expect(html).not.toContain('data-registration-family-price');
   if(!initial){expect(html).not.toContain('$3,200');expect(html).not.toContain('$300');expect(html).not.toContain(locale==='he'?'המשפחות הזכאיות הראשונות':'First 30 qualifying families');}
  }
 });

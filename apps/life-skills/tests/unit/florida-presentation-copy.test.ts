@@ -1,3 +1,4 @@
+import {academyExactCopy} from '../../src/features/group-application/academy-exact-copy.ts';
 import type {ReactNode} from 'react';
 import {AcademyCampaignProvider} from '../../src/features/group-application/academy-campaign-state.ts';
 import {campaignSnapshotSchema,ACADEMY_CAMPAIGN} from '../../src/features/group-application/academy-campaign-contract.ts';
@@ -8,19 +9,18 @@ import {readFile} from "node:fs/promises";
 import {GroupApplicationLanding} from "../../src/features/group-application/landing.tsx";
 import {GroupApplicationForm} from "../../src/features/group-application/application-form.tsx";
 import {AcademyIntakePage} from "../../src/features/group-application/academy-intake-page.tsx";
-import {academyQuestions} from "../../src/features/group-application/academy-public-program.ts";
 import {floridaGroupApplicationNotice,floridaSchoolInquiryNotice} from "../../src/features/group-application/contract.ts";
-import {academyRegistrationNotice} from "../../src/features/group-application/academy-registration-notice.ts";
+import {academyRegistrationNotice,academyRegistrationNoticeHashes} from "../../src/features/group-application/academy-registration-notice.ts";
 import copy from "../../src/features/group-application/presentation-copy.json";
 
 const markup=(locale:"en"|"he",programId:"sunday_fishing_academy"|"private_fishing_life_skills",mode:"native"|"sample")=>renderToStaticMarkup(createElement(GroupApplicationLanding,{locale,programId,mode}));
 const escaped=(text:string)=>renderToStaticMarkup(createElement("span",null,text)).slice(6,-7);
 describe("reviewed Florida presentation, not new runtime authority",()=>{
- it("adopts the current V4 core FAQ and removes superseded mixed academic inclusions without changing other funnels",()=>{
+ it("adopts exact05 native FAQ while preserving the retained V4 sample FAQ and separate funnels",()=>{
   expect(copy.realMensch.academy.faqs).toHaveLength(11);const faq=copy.realMensch.academy.faqs[6]!;
   for(const locale of ["en","he"] as const){
    const sample=markup(locale,"sunday_fishing_academy","sample");expect(sample).toContain(escaped(faq[0]![locale]));expect(sample).toContain(escaped(faq[1]![locale]));
-   const native=markup(locale,"sunday_fishing_academy","native");for(const current of academyQuestions){expect(native).toContain(escaped(current.question[locale]));expect(native).toContain(escaped(current.answer[locale]));}
+   const native=markup(locale,"sunday_fishing_academy","native");for(const current of academyExactCopy[locale].home.faq){expect(native).toContain(escaped(current.question));expect(native).toContain(escaped(current.answer));}
    expect(markup(locale,"private_fishing_life_skills","native")).not.toContain(escaped(faq[0]![locale]));
   }
   expect(faq[1]!.en).toContain("It does not include a full math, science, English or Jewish-studies curriculum");expect(faq[1]!.en).toContain("compulsory academic homework or a digital classroom");expect(JSON.stringify(faq)).not.toMatch(/\$|guaranteed|reimburse/i);
@@ -42,11 +42,11 @@ describe("reviewed Florida presentation, not new runtime authority",()=>{
    const html=markup(locale,"sunday_fishing_academy",mode);
    expect(html.match(/<h1\b/g)).toHaveLength(1);
    if(mode==="native"){
-    expect(html).toContain('<h1 id="academy-title" lang="en" dir="ltr" aria-label="South Florida Jewish Leadership Fishing Academy"><span>Jewish Leadership</span><span>Fishing Academy</span></h1>');
+    expect(html).toContain(`<h1 id="academy-title" lang="en" dir="ltr" aria-label="${escaped(academyExactCopy[locale].hero.accessibleName)}"><span>Jewish Leadership</span><span>Fishing Academy</span></h1>`);
     expect(html).toContain(locale==="he"?'תורה • דיג • הנהגה עצמית':'Torah • Fishing • Self-Governance');
     expect(html).toMatch(new RegExp(`<a[^>]*href="/${locale}/florida/apply"[^>]*data-jlfa-primary="true"`));expect(html).toContain(`href="/${locale}/florida/apply"`);
     expect(html).not.toContain('data-inquiry-kind=');expect(html).not.toContain('name="contact"');
-    const form=renderToStaticMarkup(createElement(AcademyIntakePage,{locale}));expect(form.match(/name="contact"/g)).toHaveLength(1);expect(form).toContain('data-inquiry-kind="parent"');expect(form).toContain(escaped(academyRegistrationNotice[locale]));expect(form).not.toContain(escaped(floridaGroupApplicationNotice[locale]));expect(form).not.toContain('name="permission" checked');
+    const form=renderToStaticMarkup(createElement(AcademyIntakePage,{locale}));expect(form.match(/name="contact"/g)).toHaveLength(1);expect(form).toContain('data-inquiry-kind="parent"');for(const paragraph of academyRegistrationNotice[locale].split("\n\n"))expect(form).toContain(escaped(paragraph));expect(form.match(/data-document-fragment=/g)).toHaveLength(2);expect(form).toContain(academyRegistrationNoticeHashes[locale]);expect(form).toContain('data-document-scope="registration-and-privacy-fragments-only"');expect(form).not.toContain(escaped(floridaGroupApplicationNotice[locale]));expect(form).not.toContain('name="permission" checked');
    }else{
     expect(html).toContain(`<h1>${copy.realMensch.academy.title[locale]}</h1>`);expect(html).toContain("TORAH • FISHING • SELF-GOVERNANCE");
     expect(html.match(new RegExp(`href="#apply"[^>]*>${copy.realMensch.shared.ctaAcademy[locale]}`,"g"))).toHaveLength(2);

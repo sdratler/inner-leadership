@@ -1,10 +1,12 @@
-import bilingual from './academy-bilingual-copy.json';
-/** One current source for contextual registration, curriculum and FAQ copy. */
+import {academyExactCopy} from './academy-exact-copy.ts';
+const faq=(id:string)=>({en:academyExactCopy.en.home.faq.find(item=>item.id===id)!.answer,he:academyExactCopy.he.home.faq.find(item=>item.id===id)!.answer});
+/** Contextual summaries and full FAQ conditions are distinct exact-packet
+ * projections. Neither grants a booked outing or participation clearance. */
 export const academyTripCopy={
- keysSummary:{en:'Monthly bridge-fishing trips in the Florida Keys are planned after safety preparation. Fishing instruction is included; food and transportation cost extra.',he:'לאחר הכנת הבטיחות מתוכננים טיולי דיג חודשיים מגשרים בפלורידה קיז. הדרכת הדיג כלולה; מזון והסעות בתשלום נוסף.'},
- keysDetails:{en:'After the initial readiness preparation, one pooled Florida Keys trip per calendar month is planned for safely eligible groups. It replaces each participating group’s normal weekly meeting and counts as one session, not two. Actual dates, venues, supervision, conditions and guardian permissions must be confirmed. Parents provide food and transportation. Any optional program-arranged food or transport is separately quoted before booking; core instruction is not charged again. Families unable to participate receive the applicable reviewed local alternative or remedy.',he:'לאחר ההכנה הראשונית, מתוכנן טיול משותף אחד בכל חודש קלנדרי בפלורידה קיז לקבוצות שמתאימות מבחינת מוכנות ובטיחות. הטיול מחליף את המפגש השבועי הרגיל של כל קבוצה משתתפת ונחשב למפגש אחד, לא לשניים. יש לאשר תאריכים, מקומות, השגחה, תנאים והסכמות הורים. ההורים דואגים למזון ולהסעה. סידורי מזון או הסעה אופציונליים באמצעות התוכנית יוצעו במחיר נפרד לפני הזמנה; הדרכת הליבה אינה מחויבת שוב. למשפחות שלא יוכלו להשתתף תוצע החלופה המקומית או הפתרון המתאים לפי התנאים שאושרו.'},
- offshoreSummary:{en:'An optional offshore charter may be offered after Stage 1, at an additional cost.',he:'לאחר שלב 1 עשוי להיות מוצע שיט דיג אופציונלי בים הפתוח, בתשלום נוסף.'},
- offshoreConditions:bilingual.questions[8]!.answer,
- firstMeeting:{en:'Bring any fishing equipment you already own so we can review it together.',he:'הביאו ציוד דיג שכבר יש לכם כדי שנוכל לעבור עליו יחד.'},
- schoolResponsibility:{en:'The Academy cannot excuse a school absence. You are responsible for school attendance and any required school permission. A weekday slot is not confirmed until the schedule and permission are reviewed.',he:'האקדמיה אינה מוסמכת לאשר היעדרות מבית הספר. אתם אחראים לנוכחות בבית הספר ולהשגת כל אישור נדרש. מועד ביום חול אינו מאושר עד לבדיקת לוח הזמנים והאישורים.'},
+ keysSummary:{en:academyExactCopy.en.pricing.outings.keysBody,he:academyExactCopy.he.pricing.outings.keysBody},
+ keysDetails:faq('keys-trip-faq'),
+ offshoreSummary:{en:academyExactCopy.en.pricing.outings.offshoreBody,he:academyExactCopy.he.pricing.outings.offshoreBody},
+ offshoreConditions:faq('offshore-trip-faq'),
+ firstMeeting:{en:academyExactCopy.en.form.equipmentLine,he:academyExactCopy.he.form.equipmentLine},
+ schoolResponsibility:{en:academyExactCopy.en.terms.sections.find(item=>item.id==='policies')!.paragraphs[0]!,he:academyExactCopy.he.terms.sections.find(item=>item.id==='policies')!.paragraphs[0]!},
 } as const;

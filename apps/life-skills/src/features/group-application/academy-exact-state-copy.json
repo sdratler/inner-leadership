@@ -1,0 +1,88 @@
+{
+  "en": {
+    "save": {
+      "savedHeading": "Your registration is saved.",
+      "founderReserved": "Your founding-family rate is reserved, pending email confirmation.",
+      "reference": "Registration reference: {reference}",
+      "pendingAllocation": "We're checking your founding-family eligibility. You do not need to submit again.",
+      "ordinary": "We'll review your family's schedule and contact you about a suitable group.",
+      "emailQueued": "Your confirmation email is waiting to be sent. Your registration is saved.",
+      "emailSent": "We've sent a confirmation email to {email}. Open it to confirm your interest.",
+      "emailFailure": "Your registration is saved, but we could not deliver the confirmation email. Please check your email address or contact us.",
+      "emailUnknown": "Your registration is saved. We're checking whether the confirmation email was sent.",
+      "uncertainHeading": "Checking your registration…",
+      "uncertainText": "We haven't confirmed the result yet. Keep this page open while we check, so your family is not registered twice.",
+      "checkStatus": "Check registration status",
+      "saveFailure": "Your registration was not saved. Your answers are still here. Please try again.",
+      "retry": "Try again"
+    },
+    "confirmation": {
+      "heading": "Confirm your interest",
+      "text": "Let us know that you'd like us to continue arranging a suitable Fishing Academy group for your family.",
+      "button": "Confirm my interest",
+      "smallLine": "No payment is required.",
+      "confirmedHeading": "Your interest is confirmed.",
+      "confirmedText": "Thank you. We'll contact you as the groups take shape. No payment is due now.",
+      "founderSentence": "Your founding-family rate remains reserved.",
+      "alreadyConfirmed": "Your interest is already confirmed. There is nothing else to do here.",
+      "unusableLink": "This confirmation link is no longer available. Contact us so we can check your registration."
+    },
+    "errors": {
+      "parentName": "Please enter your name.",
+      "email": "Please enter a valid email address.",
+      "cityArea": "Please enter your city or area.",
+      "postalCode": "Please enter your ZIP code.",
+      "childName": "Please enter your son's name.",
+      "age": "Please enter a whole-number age.",
+      "grade": "Please choose a grade.",
+      "option": "Please choose an option.",
+      "days": "Please select at least one day.",
+      "times": "Please select at least one time.",
+      "driveMinutes": "Please enter your one-way driving time in minutes.",
+      "permission": "Please read and accept the registration terms."
+    }
+  },
+  "he": {
+    "save": {
+      "savedHeading": "ההרשמה נשמרה.",
+      "founderReserved": "תעריף המשפחה המייסדת שמור לכם, בכפוף לאישור בדוא״ל.",
+      "reference": "מספר ההרשמה: {reference}",
+      "pendingAllocation": "אנחנו בודקים את הזכאות לתעריף המייסדים. אין צורך לשלוח שוב.",
+      "ordinary": "נבדוק את לוח הזמנים של המשפחה וניצור קשר לגבי קבוצה מתאימה.",
+      "emailQueued": "הודעת האישור ממתינה לשליחה. ההרשמה נשמרה.",
+      "emailSent": "שלחנו הודעת אישור אל {email}. פתחו אותה כדי לאשר התעניינות.",
+      "emailFailure": "ההרשמה נשמרה, אך לא הצלחנו למסור את הודעת האישור. בדקו את כתובת הדוא״ל או צרו איתנו קשר.",
+      "emailUnknown": "ההרשמה נשמרה. אנחנו בודקים אם הודעת האישור נשלחה.",
+      "uncertainHeading": "בודקים את ההרשמה…",
+      "uncertainText": "התוצאה עדיין לא אושרה. השאירו את העמוד פתוח בזמן הבדיקה, כדי שהמשפחה לא תירשם פעמיים.",
+      "checkStatus": "בדיקת מצב ההרשמה",
+      "saveFailure": "ההרשמה לא נשמרה. התשובות עדיין כאן. נסו שוב.",
+      "retry": "ניסיון נוסף"
+    },
+    "confirmation": {
+      "heading": "אישור התעניינות",
+      "text": "אשרו שתרצו שנמשיך להתאים למשפחתכם קבוצה באקדמיה לדיג.",
+      "button": "אישור ההתעניינות שלי",
+      "smallLine": "אין צורך בתשלום.",
+      "confirmedHeading": "ההתעניינות אושרה.",
+      "confirmedText": "תודה. ניצור איתכם קשר כשהקבוצות יתגבשו. אין צורך לשלם כעת.",
+      "founderSentence": "תעריף המשפחה המייסדת נשאר שמור לכם.",
+      "alreadyConfirmed": "ההתעניינות כבר אושרה. אין צורך בפעולה נוספת כאן.",
+      "unusableLink": "קישור האישור הזה כבר אינו זמין. צרו איתנו קשר כדי שנוכל לבדוק את ההרשמה."
+    },
+    "errors": {
+      "parentName": "נא להזין שם.",
+      "email": "נא להזין כתובת דוא״ל תקינה.",
+      "cityArea": "נא להזין עיר או אזור.",
+      "postalCode": "נא להזין מיקוד.",
+      "childName": "נא להזין את שם הבן.",
+      "age": "נא להזין גיל בשנים שלמות.",
+      "grade": "נא לבחור כיתה.",
+      "option": "נא לבחור אפשרות.",
+      "days": "נא לבחור יום אחד לפחות.",
+      "times": "נא לבחור זמן אחד לפחות.",
+      "driveMinutes": "נא להזין את זמן הנסיעה לכיוון אחד בדקות.",
+      "permission": "נא לקרוא ולאשר את תנאי ההרשמה."
+    }
+  }
+}

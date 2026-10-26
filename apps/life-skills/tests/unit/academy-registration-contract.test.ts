@@ -4,14 +4,15 @@ import {renderToStaticMarkup} from 'react-dom/server';
 import {AcademyRegistrationReadback} from '../../src/features/group-application/academy-registration-readback.tsx';
 import {createHash} from 'node:crypto';
 import {floridaAcademyRegistrationFieldsSchema,floridaGroupApplicationFieldsSchema,groupApplicationFieldsSchema} from '../../src/features/group-application/contract.ts';
-import {ACADEMY_REGISTRATION_VERSION,registrationConsent} from '../../src/features/group-application/academy-registration.ts';
+import {ACADEMY_REGISTRATION_VERSION,ACADEMY_FOUNDATION_FREE_REGISTRATION_VERSION,registrationConsent} from '../../src/features/group-application/academy-registration.ts';
 import {academyRegistrationNotice,academyRegistrationNoticeHashes} from '../../src/features/group-application/academy-registration-notice.ts';
 const child1='b7faef3c-c13a-4af3-8a43-1947447fca43',child2='2f48492b-5919-4fa6-a4a5-b590304dbe85';
 function fields(){return {parentName:'Synthetic Parent',contact:'+15555550124',cityArea:'Synthetic Florida',language:'en',programId:'sunday_fishing_academy',schedulePreference:[],academyRegistration:{version:ACADEMY_REGISTRATION_VERSION,learners:[{id:child1,fullName:'Synthetic Child One',ageYears:10,grade:'5',schooling:'school',experience:'new'},{id:child2,fullName:'Synthetic Child Two',ageYears:13,grade:'8',schooling:'homeschool',experience:'some'}],postalCode:'00123',preferredDays:['monday','wednesday'],preferredTimes:['afternoon','evening'],driveMinutes:37,schoolHoursAvailability:'outside_school_only',preferredGroupLanguage:'he',stageInterest:'foundation',receiptEmail:'synthetic@example.invalid',intent:'information',consent:registrationConsent('en')},permission:{confirmed:true,version:academyRegistrationNotice.version,language:'en'}};}
 describe('versioned Academy registration',()=>{
  it('rejects fresh v1 writes while retaining historical v1 reads',()=>{
   const current=fields();
-  const legacy={...current,academyRegistration:{...current.academyRegistration,version:'JLFA-REGISTRATION-20261020-01-v1',paymentSelection:{childId:child1,plan:'installments'}}};
+  const legacyConsent=registrationConsent('en',ACADEMY_FOUNDATION_FREE_REGISTRATION_VERSION);
+  const legacy={...current,permission:{...current.permission,version:legacyConsent.version},academyRegistration:{...current.academyRegistration,version:'JLFA-REGISTRATION-20261020-01-v1',consent:legacyConsent,paymentSelection:{childId:child1,plan:'installments'}}};
   expect(groupApplicationFieldsSchema.safeParse(legacy).success).toBe(true);
   expect(floridaGroupApplicationFieldsSchema.safeParse(legacy).success).toBe(false);
   expect(floridaGroupApplicationFieldsSchema.safeParse(current).success).toBe(true);
