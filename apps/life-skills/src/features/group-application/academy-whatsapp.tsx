@@ -17,7 +17,9 @@ export function AcademyWhatsApp({locale}:{locale:Locale}){
    const heroPending=!!hero&&hero.getBoundingClientRect().bottom>0,box=node.getBoundingClientRect(),active=document.activeElement;
    const editing=active instanceof HTMLElement&&active.matches('input,select,textarea')&&!!active.closest('form');
    const overlap=(item:Element|null)=>!!item&&academyContactOverlaps(box,item.getBoundingClientRect());
-   setVisible(!heroPending&&!editing&&!overlap(footer)&&!overlap(actions));
+   const curriculumControls=Array.from(document.querySelectorAll('[data-age-choice] + label,[data-academy-curriculum-register]'));
+   const curriculumOverlap=curriculumControls.some(item=>item.getClientRects().length>0&&overlap(item));
+   setVisible(!heroPending&&!editing&&!overlap(footer)&&!overlap(actions)&&!curriculumOverlap);
   };
   const schedule=()=>{if(!frame)frame=requestAnimationFrame(check);};
   addEventListener('scroll',schedule,{passive:true});addEventListener('resize',schedule);document.addEventListener('focusin',schedule);document.addEventListener('focusout',schedule);window.visualViewport?.addEventListener('resize',schedule);schedule();

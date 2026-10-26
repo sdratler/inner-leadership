@@ -2,10 +2,10 @@ import {communicationPreferenceStatusLabel} from './academy-communication-prefer
 import type {Locale} from '../../lib/locale.ts';
 import type {AcademyRegistration} from './academy-registration.ts';
 import bilingual from './academy-bilingual-copy.json';
-import {academyGradeLabels,ACADEMY_REGISTRATION_VERSION} from './academy-registration.ts';
+import {academyGradeLabels,isFoundationAcademyRegistrationVersion} from './academy-registration.ts';
 export function AcademyRegistrationReadback({registration:r,locale}:{registration:AcademyRegistration;locale:Locale}){
  const t=(en:string,he:string)=>locale==='he'?he:en;
- const stageLabel=r.version===ACADEMY_REGISTRATION_VERSION?t('Proposed entry stage (instructor review required)','שלב כניסה מוצע (נדרש אישור מדריך)'):t('Stage interest','עניין בשלב');
+ const stageLabel=isFoundationAcademyRegistrationVersion(r.version)?t('Proposed entry stage (instructor review required)','שלב כניסה מוצע (נדרש אישור מדריך)'):t('Stage interest','עניין בשלב');
  const days={sunday:t('Sunday','ראשון'),monday:t('Monday','שני'),tuesday:t('Tuesday','שלישי'),wednesday:t('Wednesday','רביעי'),thursday:t('Thursday','חמישי'),friday:t('Friday','שישי'),flexible:t('Flexible','גמיש')};
  const experience={new:t('New to fishing','חדש בדיג'),some:t('Some experience','ניסיון מסוים'),experienced:t('Experienced','מנוסה'),not_sure:t('Not sure','לא בטוח/ה')},schoolHours={flexible:t('Homeschool / flexible schedule allows it','חינוך ביתי / מערכת גמישה מאפשרים זאת'),permission_needed:t('School permission must be arranged','יש להסדיר אישור מבית הספר'),outside_school_only:t('Only outside school hours','רק מחוץ לשעות בית הספר'),discuss:t('Discuss school-hours availability','לתיאום זמינות בשעות בית הספר')},interest={interested:t('Interested','מעוניינים'),not_interested:t('Not interested','לא מעוניינים'),discuss:t('Discuss with me','לתיאום איתי')};
  const times={morning:t('Morning','בוקר'),afternoon:t('Afternoon','אחר הצהריים'),evening:t('Evening','ערב'),flexible:t('Flexible','גמיש')};

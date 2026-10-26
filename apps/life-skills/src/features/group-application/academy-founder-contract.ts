@@ -9,7 +9,24 @@ export const founderStatusSchema=z.enum(['pending_verification','interest_list',
 export type FounderStatus=z.infer<typeof founderStatusSchema>;
 export const occupiedFounderStatuses:readonly FounderStatus[]=['provisional','confirmed','scheduling_hold','offered','redeemed'];
 export const occupiesFounder=(status:FounderStatus)=>occupiedFounderStatuses.includes(status);
-export type FounderPublicResult={status:'reserved'|'interest_list'|'regular_registration'|'pending_verification'|'confirmed'|'closed';initialStatus?:'reserved'|'regular_registration'|'pending_verification';reference:string;email:'queued'|'sent'|'delivery_problem'|'not_queued';deadline:string|null;timezone:typeof FOUNDER_TIMEZONE};
+export type FounderPublicResult={status:'reserved'|'interest_list'|'regular_registration'|'pending_verification'|'confirmed'|'closed';initialStatus?:'reserved'|'regular_registration'|'pending_verification';reference:string;email:'queued'|'sent'|'delivery_problem'|'unknown'|'not_queued';receiptEmail?:string;founderRateReserved?:boolean;deadline:string|null;timezone:typeof FOUNDER_TIMEZONE};
+/** Missing historical failure evidence stays uncertain; an exception is not a
+ * provider rejection. Only a persisted known failure supports failure copy. */
+export function founderPublicEmailState(input:{outboxState?:string|undefined;exception:boolean;knownDeliveryFailure?:boolean}):FounderPublicResult['email']{
+ if(input.knownDeliveryFailure)return 'delivery_problem';
+ if(input.exception||input.outboxState==='unknown')return 'unknown';
+ if(input.outboxState==='sent')return 'sent';
+ if(input.outboxState==='queued')return 'queued';
+ return 'not_queued';
+}
+/** A missing accepted send or an unresolved delivery cannot prove expiry. */
+export function founderPublicConfirmationState(input:{sentAt:string|null;deadline:string|null;exception:boolean;status:string;confirmed:boolean;now:Date}){
+ const closed=['expired','withdrawn'].includes(input.status);
+ const confirmed=input.confirmed&&!closed;
+ const end=input.deadline?Date.parse(input.deadline):NaN;
+ const expired=!!input.sentAt&&Number.isFinite(end)&&end<=input.now.getTime();
+ return {confirmed,unusable:!confirmed&&(closed||expired),available:!confirmed&&!!input.sentAt&&!input.exception&&Number.isFinite(end)&&end>input.now.getTime()&&!closed};
+}
 export const founderOwnerCommandSchema=z.discriminatedUnion('action',[
  z.object({action:z.literal('bind_native_family'),binding:academyOwnerEnrollmentBindingSchema}),
  z.object({action:z.literal('resend'),window:z.enum(['interest','payment'])}),

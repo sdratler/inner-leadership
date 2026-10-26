@@ -10,7 +10,13 @@ import {configuredGroupApplicationOrigin} from './public-origin.ts';
 import {verifyMutationOrigin} from '../../lib/security/csrf.ts';
 import {founderOwnerCommandSchema} from './academy-founder-contract.ts';
 import type {AcademyFounderStore} from './academy-founder-store.ts';
-export type FounderPublicDependencies={enabled:boolean;store:Pick<AcademyFounderStore,'aggregate'|'confirm'|'confirmationContext'>;environment:Record<string,string|undefined>;limits:RateLimitStore;rateKey:string;afterConfirm?:(reference:string)=>Promise<void>};
+// Additive result fields remain optional at this boundary for historical
+// adapters. Current storage supplies them; public renderers fail closed when
+// absent and never infer founder rights or confirmation from HTTP success.
+export type FounderPublicDependencies={enabled:boolean;store:Pick<AcademyFounderStore,'aggregate'>&{
+ confirm(token:string):Promise<{confirmed:boolean;reference:string;alreadyConfirmed?:boolean;founderRateReserved?:boolean}>;
+ confirmationContext(token:string):Promise<{reference:string;deadline:string|null;timezone:string;confirmed:boolean;available:boolean;founderRateReserved?:boolean;unusable?:boolean}>;
+};environment:Record<string,string|undefined>;limits:RateLimitStore;rateKey:string;afterConfirm?:(reference:string)=>Promise<void>};
 function headers(response:Response){response.headers.set('Cache-Control','private, no-store');response.headers.set('Referrer-Policy','no-referrer');response.headers.set('X-Content-Type-Options','nosniff');return response;}
 export async function founderPublicHttp(request:Request,load:()=>Promise<FounderPublicDependencies>){const requestId=randomUUID();try{
  const d=await load();if(!d.enabled)throw new AppError('UNAVAILABLE');const origin=configuredGroupApplicationOrigin(request,d.environment);if(!origin)throw new AppError('FORBIDDEN');

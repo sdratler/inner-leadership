@@ -19,6 +19,8 @@ GitHub issues and pull requests govern engineering execution; exact commits gove
 
 ## Mandatory creative execution gate
 
+For Academy public routes only, follow [the current scoped Academy source/checklist pointer](apps/life-skills/docs/academy-public-current.md). Owner packet `JLFA-EXACT-COPY-20261026-05` and Readability04 require approved proportional photography with accessible HTML copy; they supersede the older text-baked hero rule below within that scope. Preserve the separate Israeli Life Skills and BNA surfaces and all approved asset bytes.
+
 Before Life Skills hero, image, logo or ad work, read `creative/README.md` and resolve its registered source/master records. This gate implements the owner's explicit correction `D-CREATIVE-MASTER-PIPELINE-20260911-08`; prior live-copy or deterministic-compositor instructions must not revive the rejected design.
 
 - The approved hero raster contains the visible headline, service, age, photograph, benefit icons/labels and visual treatment. Only the header/toolbar and real WhatsApp button are visible live website additions; equivalent semantics may be visually hidden.

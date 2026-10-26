@@ -1,3 +1,5 @@
+import {academyExactCopy} from '../../src/features/group-application/academy-exact-copy.ts';
+import {AcademyRegistrationForm} from '../../src/features/group-application/academy-registration-form.tsx';
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {AcademyFounderReadback} from '../../src/features/group-application/academy-founder-readback.tsx';
@@ -34,4 +36,7 @@ it.each(['en','he'] as const)('renders actual owner choice labels in %s without 
  expect(unknown).toContain(locale==='en'?'Not recorded — optional permission not established':'לא תועד — הרשאה אופציונלית לא אומתה');expect(unknown).not.toMatch(/not_requested|>requested<|>unknown</);
 });
 
-it('keeps short parent-facing labels free of implementation provider names and the full notice readable',()=>{for(const locale of ['en','he'] as const)expect(academyCommunicationNotice[locale]).not.toMatch(/WAPI/i);const form=readFileSync(new URL('../../src/features/group-application/academy-registration-form.tsx',import.meta.url),'utf8');expect(form).not.toContain('through WAPI');expect(form).not.toContain('דרך WAPI');expect(form).toContain("t('WhatsApp updates','עדכונים בוואטסאפ')");expect(form).toContain('academyCommunicationNotice[locale]');expect(form).toContain('academyCommunicationNoticeHashes[locale]');});
+it('keeps exact parent-facing labels free of implementation provider names and the full notice readable',()=>{
+ const form=readFileSync(new URL('../../src/features/group-application/academy-registration-form.tsx',import.meta.url),'utf8');expect(form).not.toContain('through WAPI');expect(form).not.toContain('דרך WAPI');expect(form).toContain('academyCommunicationNotice[locale]');expect(form).toContain('academyCommunicationNoticeHashes[locale]');
+ for(const locale of ['en','he'] as const){const copy=academyExactCopy[locale].form,html=renderToStaticMarkup(createElement(AcademyRegistrationForm,{locale,mode:'sample'}));expect(academyCommunicationNotice[locale]).not.toMatch(/WAPI/i);for(const label of [copy.updatesHeading,copy.emailUpdates,copy.whatsappUpdates])expect(html).toContain(renderToStaticMarkup(label));expect(html).toContain(renderToStaticMarkup(academyCommunicationNotice[locale]));expect(html).toContain(academyCommunicationNoticeHashes[locale]);expect(html).toContain(academyCommunicationNotice.version);expect(html).not.toMatch(/name="(?:nurtureEmail|privateWapi)"[^>]*checked/);}
+});

@@ -62,6 +62,8 @@ afterAll(async()=>db.close());
 it('replays an immutable historical v3 application with preferences and attribution after v4 without rewriting consent or placement',async()=>{
  const x=await fixture(),c=command(),id=randomUUID(),continuation=opaqueToken();
  c.fields.academyRegistration.version=ACADEMY_PREVIOUS_FREE_REGISTRATION_VERSION;
+ c.fields.academyRegistration.consent=registrationConsent('en',ACADEMY_PREVIOUS_FREE_REGISTRATION_VERSION);
+ c.fields.permission.version=c.fields.academyRegistration.consent.version;
  c.fields.academyRegistration.stageInterest='advanced';
  c.fields.academyRegistration.communicationPreferences=communicationPreferenceSelection('he',false,true,'en');
  const fields=floridaAcademyRegistrationFieldsSchema.parse(c.fields),at=new Date('2026-10-24T12:00:00Z');
@@ -290,12 +292,12 @@ it.each(['sent','unknown','read_failed'] as const)('public signup returns durabl
   afterCommit:async(reference:string)=>{await x.founder.dispatchForApplication(reference,{send},INQUIRY_EMAIL_FROM,origin);return 'not_requested' as const;},
   refreshFounder:async(reference:string)=>{if(outcome==='read_failed')throw Error('read temporarily unavailable');return store.transaction(tx=>x.founder.publicResult(tx,reference));}});
  const response=await publicGroupApplicationHttp(request(),deps);expect(response.status).toBe(201);const body=await response.json();
- expect(body).toMatchObject({ok:true,data:{saved:true,founder:{email:outcome==='sent'?'sent':'delivery_problem'}}});
+ expect(body).toMatchObject({ok:true,data:{saved:true,founder:{email:outcome==='sent'?'sent':'unknown'}}});
  const read=await x.founder.ownerList(x.actor);expect(read.families).toHaveLength(1);expect(read.metrics.children).toBe(1);
  expect(body.data.founder.deadline).toBe(outcome==='sent'?read.families[0]!.interest.deadline:null);
  expect(read.families[0]!.interest.deadline!==null).toBe(outcome!=='unknown');
  const sends=send.mock.calls.length;expect(sends).toBe(outcome==='unknown'?1:2);
- const retry=await publicGroupApplicationHttp(request(),deps);expect(retry.status).toBe(200);expect((await retry.json()).data).toMatchObject({saved:true,replayed:true,founder:{email:outcome==='sent'?'sent':'delivery_problem'}});
+ const retry=await publicGroupApplicationHttp(request(),deps);expect(retry.status).toBe(200);expect((await retry.json()).data).toMatchObject({saved:true,replayed:true,founder:{email:outcome==='sent'?'sent':'unknown'}});
  expect(send).toHaveBeenCalledTimes(sends);expect((await x.founder.aggregate()).occupied).toBe(1);
 });
 
