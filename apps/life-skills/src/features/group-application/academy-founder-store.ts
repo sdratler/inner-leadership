@@ -1,4 +1,5 @@
 import 'server-only';
+import {assertSignupWorkerAdmission,signupWorkerFamilyAllowed,signupWorkerReferences,signupWorkerMessageAllowed,type SignupWorkerAdmission} from './academy-signup-worker-admission.ts';
 import {AcademyCampaignStore} from './academy-campaign-store.ts';
 import {signupEmailReview} from './academy-signup-email-review.ts';
 import {campaignAttributionSchema,currentReminderLines,floridaDate,PAYMENT_REMINDER_SCHEDULE,type CampaignAttribution,type CampaignShareCommand,type PaymentReminderProjection} from './academy-campaign-contract.ts';
@@ -50,17 +51,20 @@ export interface FounderPaymentPort{
   * closure here: an unsafe withdrawal throws and rolls this transaction back. */
  reconcileAndClose(tx:SqlSession,family:FounderFamily):Promise<{safeToRelease:boolean;paidChildIds:string[];collectedCents:number;enrolledChildIds:string[]}>;
 }
+type StoredFounderMail=FounderMail&{templateCatalogSha256?:string};
 type Row={id:string;revision:number;status:FounderStatus;ciphertext:string;allocated:boolean;nativeHouseholdId:string|null};
 const select=`SELECT id,revision,status,allocated,payload_ciphertext AS ciphertext,native_household_id AS "nativeHouseholdId" FROM ls_service_interest.academy_founder_families`;
 const txMailSelect='SELECT id,payload_ciphertext AS ciphertext FROM ls_service_interest.inquiry_email_outbox';
 const paymentKind=(kind:FounderMailKind)=>kind==='offer'||kind==='payment_reminder'||kind==='payment_deadline_receipt';
 export type FounderMailScope='signup'|'all';
+/** Advisory scan position only. Every candidate still needs current admission. */
+export type SignupDispatchCursor=Readonly<{createdAt:string;id:string}>;
 const signupMailPurposes=['academy_founder_interest','academy_founder_ack','academy_founder_interest_reminder','academy_founder_interest_deadline_receipt'];
 const paymentFamily=(f:FounderFamily)=>!!f.offer||!!f.payment.sentAt||!!f.everPaid||f.redeemedChildIds.length>0||f.collectedCents>0||f.enrolledChildIds.length>0;
 const emptyWindow=():Window=>({generation:1,sentAt:null,deadline:null,exception:false,confirmedAt:null});
 export function isFreeFounderRegistration(fields:GroupApplicationFields){return isFloridaGroupApplication(fields)&&!isSchoolInquiry(fields)&&isFreeAcademyRegistrationVersion(fields.academyRegistration?.version);}
 export class AcademyFounderStore{
- constructor(private readonly db:IdentityStore,private readonly workspace:WorkspaceId,private readonly ring:Keyring,private readonly digestKey:string,private readonly clock:IdentityClock,private readonly paymentPort:FounderPaymentPort|null=null,private readonly nativeFamilies:FounderNativeFamilyPort|null=null){}
+ constructor(private readonly db:IdentityStore,private readonly workspace:WorkspaceId,private readonly ring:Keyring,private readonly digestKey:string,private readonly clock:IdentityClock,private readonly paymentPort:FounderPaymentPort|null=null,private readonly nativeFamilies:FounderNativeFamilyPort|null=null,private readonly signupContent:SignupWorkerAdmission|null=null){}
  private campaign(){return new AcademyCampaignStore(this.workspace,this.ring,this.digestKey,()=>this.clock.now());}
  async bindAttribution(tx:SqlSession,operationId:string,applicationId:string,value:CampaignAttribution|null){await this.campaign().attribution(tx,operationId,applicationId,value===null?null:campaignAttributionSchema.parse(value));}
  async checkAttribution(tx:SqlSession,operationId:string,value:CampaignAttribution|null){await this.campaign().checkAttribution(tx,operationId,value);}
@@ -112,7 +116,10 @@ export class AcademyFounderStore{
   await tx.query('INSERT INTO ls_service_interest.academy_founder_applications(workspace_id,application_id,family_id) VALUES($1,$2,$3)',[this.workspace,applicationId,f.id]);
   if(f.allocated)await this.campaign().allocationChanged(tx);await this.queue(tx,f,'interest',`interest:${f.interest.generation}`);await this.save(tx,f);await this.event(tx,f,'signup',null,'Actual completed form; '+status);return this.publicResult(tx,applicationId);
  }
- private async queue(tx:SqlSession,f:FounderFamily,kind:FounderMailKind,key:string,daily?:Pick<FounderMail,'reminderDate'|'unpaidLines'>){
+ private async queue(tx:SqlSession,f:FounderFamily,kind:FounderMailKind,key:string,daily?:Pick<FounderMail,'reminderDate'|'unpaidLines'>,interestDay?:3|6){
+  // Same-key payload identity is immutable. Never upgrade existing legacy,
+  // canceled, queued, UNKNOWN or sent rows to exact05 or a new language.
+  if(kind!=='payment_reminder'&&await one<{id:string}>(tx,'SELECT id FROM ls_service_interest.inquiry_email_outbox WHERE workspace_id=$1 AND founder_id=$2 AND message_key=$3 FOR UPDATE',[this.workspace,f.id,key]))return;
   let token:string|undefined;
   if(kind==='interest'){token=opaqueToken();f.tokenHash=tokenDigest(token);}
   if(kind==='interest_reminder'){
@@ -120,13 +127,20 @@ export class AcademyFounderStore{
    for(const row of source){const p=JSON.parse(unseal(row.ciphertext,`ls_service_interest/inquiry_email/v1/${this.workspace}/${row.id}`,this.ring)) as FounderMail;if(p.generation===f.interest.generation&&p.token&&tokenDigest(p.token)===f.tokenHash){token=p.token;break;}}
    if(!token)throw new AppError('UNAVAILABLE');
   }
-  const p:FounderMail={...daily,familyId:f.id,generation:paymentKind(kind)?f.payment.generation:f.interest.generation,kind,locale:f.locale,to:f.email,reference:f.reference,status:f.status==='pending_verification'?'pending_verification':!f.allocated?'interest_list':'reserved',...(token?{token}:{}),...(f.offer?{offer:f.offer}:{})};
+  const p:StoredFounderMail={...daily,familyId:f.id,generation:paymentKind(kind)?f.payment.generation:f.interest.generation,kind,locale:f.locale,to:f.email,reference:f.reference,status:f.status==='pending_verification'?'pending_verification':!f.allocated?'interest_list':'reserved',...(token?{token}:{}),...(f.offer?{offer:f.offer}:{})};
   if(kind==='payment_reminder'){
    const existing=await one<{id:string;state:string;reserved:Date|null;provider:string|null;ciphertext:string}>(tx,"SELECT id,state,reserved_at AS reserved,provider_id AS provider,payload_ciphertext AS ciphertext FROM ls_service_interest.inquiry_email_outbox WHERE workspace_id=$1 AND founder_id=$2 AND message_key=$3 FOR UPDATE",[this.workspace,f.id,key]);
    if(existing){if(['queued','canceled'].includes(existing.state)&&!existing.reserved&&!existing.provider){const before=unseal(existing.ciphertext,`ls_service_interest/inquiry_email/v1/${this.workspace}/${existing.id}`,this.ring),prepared=JSON.parse(before) as {locale?:unknown};if(prepared.locale!=='en'&&prepared.locale!=='he')throw new AppError('UNAVAILABLE');p.locale=prepared.locale;if(existing.state==='canceled'||before!==JSON.stringify(p)){await tx.query("UPDATE ls_service_interest.inquiry_email_outbox SET state='queued',completed_at=NULL,payload_ciphertext=$3 WHERE workspace_id=$1 AND id=$2",[this.workspace,existing.id,seal(JSON.stringify(p),`ls_service_interest/inquiry_email/v1/${this.workspace}/${existing.id}`,this.ring)]);await this.event(tx,f,'daily_reminder_rebuilt',null,JSON.stringify({date:p.reminderDate,previous:this.digest(JSON.parse(before)),current:this.digest(p)}));}}return;}
   }
   // Preference changes apply only to new message creation, never an existing same-key reminder.
   if(f.communicationPreferences!==undefined)p.locale=academyRecordedCommunicationPreferencesSchema.parse(f.communicationPreferences).selection.parentLanguage;
+  const content=this.signupContent;
+  if(content&&signupWorkerFamilyAllowed(content,f,this.clock.now())&&!paymentKind(kind)){
+   const templateId=kind==='interest'?'R00':kind==='ack'&&f.interest.confirmedAt?'R03':kind==='interest_reminder'&&interestDay===3?'R01':kind==='interest_reminder'&&interestDay===6?'R02':null;
+   if(templateId){p.templateCatalogSha256=content.templateCatalogSha256;p.transactional={version:'JLFA-EXACT-COPY-20261026-05',templateId,...(templateId==='R03'?{confirmed:true,founderRateReserved:f.allocated}:{}),...((templateId==='R01'||templateId==='R02')&&f.interest.sentAt&&f.interest.deadline?{acceptedSend:{sentAt:f.interest.sentAt,deadline:f.interest.deadline}}:{})};}
+   // R00 is retained as an unsent intent with no invented acceptedSend.
+   // Admission-v2 cannot dispatch it until a separately reviewed resolution.
+  }
   const id=randomUUID();await tx.query(`INSERT INTO ls_service_interest.inquiry_email_outbox(workspace_id,id,application_id,purpose,payload_ciphertext,created_at,founder_id,message_key) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING`,[this.workspace,id,f.reference,'academy_founder_'+kind,seal(JSON.stringify(p),`ls_service_interest/inquiry_email/v1/${this.workspace}/${id}`,this.ring),this.clock.now(),f.id,key]);
  }
  private async cancelQueued(tx:SqlSession,f:FounderFamily,scope:FounderMailScope='all'){await tx.query("UPDATE ls_service_interest.inquiry_email_outbox SET state='canceled',completed_at=$3 WHERE workspace_id=$1 AND founder_id=$2 AND state='queued' AND ($4::boolean=false OR purpose IN ($5,$6,$7,$8))",[this.workspace,f.id,this.clock.now(),scope==='signup',...signupMailPurposes]);}
@@ -247,7 +261,10 @@ export class AcademyFounderStore{
   f.redeemedChildIds=[...new Set([...f.redeemedChildIds,...paid])];f.collectedCents=p.collectedCents;f.enrolledChildIds=enrolled;
  }
  private async closeOffer(tx:SqlSession,f:FounderFamily){if(!this.paymentPort)return false;const p=await this.paymentPort.reconcileAndClose(tx,f);if(typeof p.safeToRelease!=='boolean')throw new AppError('UNAVAILABLE');this.paymentProjection(f,p);if(f.everPaid||f.redeemedChildIds.length||f.collectedCents>0){f.status='redeemed';return false;}return p.safeToRelease;}
- private async promote(tx:SqlSession){let count=await this.occupied(tx);if(count>=FOUNDER_CAPACITY)return;const rows=await tx.query<Row>(select+" WHERE workspace_id=$1 AND status='interest_list' ORDER BY submission_sequence FOR UPDATE",[this.workspace]);for(const row of rows){if(count>=FOUNDER_CAPACITY)break;const f=this.decode(row);if(!f.identityApproved||paymentFamily(f)||f.paused)continue;f.status='provisional';f.allocated=true;f.interest={...emptyWindow(),generation:f.interest.generation+1};f.tokenHash=null;await this.cancelQueued(tx,f);await this.queue(tx,f,'interest',`promotion:${f.interest.generation}`);await this.save(tx,f);await this.event(tx,f,'promotion',null,'FIFO completed-form applicant; new confirmation request');count++;}}
+ private async promote(tx:SqlSession,population?:SignupWorkerAdmission){let count=await this.occupied(tx);if(count>=FOUNDER_CAPACITY)return;const rows=await tx.query<Row>(select+" WHERE workspace_id=$1 AND status='interest_list' ORDER BY submission_sequence FOR UPDATE",[this.workspace]);for(const row of rows){if(count>=FOUNDER_CAPACITY)break;const f=this.decode(row);if(!f.identityApproved||paymentFamily(f)||f.paused)continue;
+   // Do not mutate excluded families or bypass an older eligible FIFO family.
+   if(population){assertSignupWorkerAdmission(population,this.workspace,this.clock.now());if(!signupWorkerFamilyAllowed(population,f,this.clock.now()))break;}
+   f.status='provisional';f.allocated=true;f.interest={...emptyWindow(),generation:f.interest.generation+1};f.tokenHash=null;await this.cancelQueued(tx,f,population?'signup':'all');await this.queue(tx,f,'interest',`promotion:${f.interest.generation}`);await this.save(tx,f);await this.event(tx,f,'promotion',null,'FIFO completed-form applicant; new confirmation request');count++;}}
  private async deliveryReview(tx:SqlSession,f:FounderFamily,c:Extract<FounderOwnerCommand,{action:'delivery_review'}>,ownerId:string):Promise<FounderTransitionPurpose>{
   const row=await one<{state:string;payload:string}>(tx,'SELECT state,payload_ciphertext AS payload FROM ls_service_interest.inquiry_email_outbox WHERE workspace_id=$1 AND founder_id=$2 AND id=$3 FOR UPDATE',[this.workspace,f.id,c.messageId]);if(!row||!['unknown','sent'].includes(row.state))throw new AppError('CONFLICT');
   const p=JSON.parse(unseal(row.payload,`ls_service_interest/inquiry_email/v1/${this.workspace}/${c.messageId}`,this.ring)) as FounderMail,w=paymentKind(p.kind)?f.payment:f.interest;
@@ -263,11 +280,19 @@ export class AcademyFounderStore{
   return c.outcome==='sent'&&p.kind==='offer'&&wasUnsent&&!w.exception&&!f.paused&&f.status==='offered'?this.sentPurpose(f,c.messageId,c.providerId!,ownerId):{kind:'other'};
  }
  /** Dispatch uses existing transport and existing outbox. Caller enforces send enablement. */
- async dispatchOne(id:string,transport:AuthEmailTransport,from:string,origin:string,scope:FounderMailScope='all'){
+ async dispatchOne(id:string,transport:AuthEmailTransport,from:string,origin:string,scope:FounderMailScope='all',population?:SignupWorkerAdmission){
+  if(population){assertSignupWorkerAdmission(population,this.workspace,this.clock.now());if(scope!=='signup'||origin!==population.origin||from!==population.sender)throw new AppError('UNAVAILABLE');}
   if(!['signup','all'].includes(scope)||from!==INQUIRY_EMAIL_FROM||new URL(origin).protocol!=='https:')throw new AppError('UNAVAILABLE');
   const prepared=await this.db.transaction(async tx=>{
    await lockWorkspace(tx,this.workspace);const row=await one<{familyId:string;state:string;payload:string}>(tx,'SELECT founder_id AS "familyId",state,payload_ciphertext AS payload FROM ls_service_interest.inquiry_email_outbox WHERE workspace_id=$1 AND id=$2 FOR UPDATE',[this.workspace,id]);if(!row||row.state!=='queued'||!row.familyId)return null;
-   const f=await this.get(tx,row.familyId),p=JSON.parse(unseal(row.payload,`ls_service_interest/inquiry_email/v1/${this.workspace}/${id}`,this.ring)) as FounderMail,w=paymentKind(p.kind)?f.payment:f.interest;
+   const f=await this.get(tx,row.familyId),p=JSON.parse(unseal(row.payload,`ls_service_interest/inquiry_email/v1/${this.workspace}/${id}`,this.ring)) as StoredFounderMail,w=paymentKind(p.kind)?f.payment:f.interest;
+   if(p.transactional&&!population)return null; // Exact-copy payloads never use an unscoped legacy dispatch.
+   // Admission is rechecked under the same lock before reserving or changing a row.
+   if(population){assertSignupWorkerAdmission(population,this.workspace,this.clock.now());if(!signupWorkerFamilyAllowed(population,f,this.clock.now())||p.reference!==f.reference||!signupWorkerMessageAllowed(population,{version:p.transactional?.version,templateId:p.transactional?.templateId,templateCatalogSha256:p.templateCatalogSha256},this.clock.now()))return null;
+    p.status=f.status==='pending_verification'?'pending_verification':f.allocated?'reserved':'interest_list';
+    if(p.transactional?.templateId==='R03'){if(!f.interest.confirmedAt)return null;p.transactional={...p.transactional,confirmed:true,founderRateReserved:f.allocated};}
+    else if(p.transactional){if(!w.sentAt||!w.deadline)return null;p.transactional={...p.transactional,acceptedSend:{sentAt:w.sentAt,deadline:w.deadline}};}
+   }
    // Signup activation cannot reserve, cancel or otherwise mutate held payment work.
    if(scope==='signup'&&(!signupMailPurposes.includes('academy_founder_'+p.kind)||paymentFamily(f)))return null;
    if(paymentKind(p.kind)&&p.kind!=='payment_reminder'&&(!this.paymentPort||!await this.paymentCurrent(tx,f))){await tx.query("UPDATE ls_service_interest.inquiry_email_outbox SET state='canceled',completed_at=$3 WHERE workspace_id=$1 AND id=$2",[this.workspace,id,this.clock.now()]);await this.save(tx,f);return null;}
@@ -277,11 +302,29 @@ export class AcademyFounderStore{
    }
    if(p.familyId!==f.id||p.to!==f.email||f.paused||w.exception||p.generation!==w.generation||['withdrawn','expired','scheduling_hold'].includes(f.status)||p.kind==='interest_reminder'&&(w.confirmedAt||f.status==='redeemed')){await tx.query("UPDATE ls_service_interest.inquiry_email_outbox SET state='canceled',completed_at=$3 WHERE workspace_id=$1 AND id=$2",[this.workspace,id,this.clock.now()]);return null;}
    const sentAt=this.clock.now(),deadline=w.deadline??floridaCalendarDays(sentAt,7).toISOString();if(p.kind==='offer'&&(!f.offer||new Date(deadline)>new Date(f.offer.firstSession))){w.exception=true;await this.save(tx,f);return null;}
+   const mail=founderEmailContent({...p,...(w.deadline?{deadline:w.deadline}:{})},origin);
    await tx.query("UPDATE ls_service_interest.inquiry_email_outbox SET state='unknown',reserved_at=$3 WHERE workspace_id=$1 AND id=$2",[this.workspace,id,sentAt]);
    // A provider response can arrive later. New windows show their exact
    // successful-send deadline on the secure action page, never an earlier guess.
-   return {familyId:f.id,revision:f.revision,p,at:sentAt,mail:founderEmailContent({...p,...(w.deadline?{deadline:w.deadline}:{})},origin)};
+   return {familyId:f.id,revision:f.revision,p,at:sentAt,mail};
   });if(!prepared)return 'idle' as const;
+  // Commit can settle after the admission window closes. No await may occur
+  // between this fresh fence and starting the provider call below.
+  if(population){
+   try{assertSignupWorkerAdmission(population,this.workspace,this.clock.now());}
+   catch{
+    // No provider call has begun: release only our still-unchanged reservation.
+    // A concurrent owner cancellation/reconciliation must never be overwritten.
+    // If this transaction fails, propagate the persistence failure; do not emit
+    // send_exception or pretend that an ambiguous provider call occurred.
+    await this.db.transaction(async tx=>{
+     await lockWorkspace(tx,this.workspace);
+     const restored=await tx.query("UPDATE ls_service_interest.inquiry_email_outbox SET state='queued',reserved_at=NULL WHERE workspace_id=$1 AND id=$2 AND state='unknown' AND reserved_at=$3 AND provider_id IS NULL AND completed_at IS NULL RETURNING id",[this.workspace,id,prepared.at]);
+     const family=await this.get(tx,prepared.familyId);
+     await this.event(tx,family,'dispatch_not_attempted',null,JSON.stringify({messageId:id,reason:'Admission no longer valid before transport invocation',reservationRestored:restored.length===1}));
+    });return 'idle' as const;
+   }
+  }
   try{
    const receipt=await transport.send({from,to:prepared.p.to,...prepared.mail,idempotencyKey:`ls-auth-${id}`});if(!/^[A-Za-z0-9_-]{1,256}$/.test(receipt.providerId))throw Error();
    await this.db.transaction(async tx=>{await lockWorkspace(tx,this.workspace);const f=await this.get(tx,prepared.familyId),w=paymentKind(prepared.p.kind)?f.payment:f.interest;let transitionPurpose:FounderTransitionPurpose={kind:'other'};const wasUnsent=w.sentAt===null;
@@ -301,30 +344,42 @@ export class AcademyFounderStore{
   const money=await this.paymentPort.inspect(tx,f);this.paymentProjection(f,money);if(money.inFlight)return [];
   return currentReminderLines(await this.paymentPort.reminderProjection(tx,f),f,this.clock.now());
  }
- async tick(reminderDays:readonly number[]=FOUNDER_REMINDER_DEFAULTS,paymentHour:number=PAYMENT_REMINDER_SCHEDULE.hour,scope:FounderMailScope='all'){if(!['signup','all'].includes(scope)||reminderDays.some(d=>!Number.isInteger(d)||d<1||d>6)||!Number.isInteger(paymentHour)||paymentHour<0||paymentHour>23)throw new AppError('INVALID_REQUEST');return this.db.transaction(async tx=>{
-  await lockWorkspace(tx,this.workspace);const rows=await tx.query<Row>(select+' WHERE workspace_id=$1 ORDER BY submission_sequence FOR UPDATE',[this.workspace]);
-  for(const row of rows){const f=this.decode(row);if(scope==='signup'&&paymentFamily(f))continue;if(f.paused||['expired','withdrawn','scheduling_hold','pending_verification'].includes(f.status))continue;
+ async tick(reminderDays:readonly number[]=FOUNDER_REMINDER_DEFAULTS,paymentHour:number=PAYMENT_REMINDER_SCHEDULE.hour,scope:FounderMailScope='all',population?:SignupWorkerAdmission){if(population){assertSignupWorkerAdmission(population,this.workspace,this.clock.now());if(scope!=='signup'||reminderDays.some(day=>day!==3&&day!==6))throw new AppError('INVALID_REQUEST');}if(!['signup','all'].includes(scope)||reminderDays.some(d=>!Number.isInteger(d)||d<1||d>6)||!Number.isInteger(paymentHour)||paymentHour<0||paymentHour>23)throw new AppError('INVALID_REQUEST');return this.db.transaction(async tx=>{
+  await lockWorkspace(tx,this.workspace);const rows=await tx.query<Row>(select+' WHERE workspace_id=$1 AND ($2::timestamptz IS NULL OR submitted_at >= $2) AND ($3::uuid[] IS NULL OR application_id=ANY($3)) ORDER BY submission_sequence FOR UPDATE',[this.workspace,population?.cutoff??null,population?signupWorkerReferences(population):null]);
+  for(const row of rows){const f=this.decode(row);if(population){assertSignupWorkerAdmission(population,this.workspace,this.clock.now());if(!signupWorkerFamilyAllowed(population,f,this.clock.now()))continue;}if(scope==='signup'&&paymentFamily(f))continue;if(f.paused||['expired','withdrawn','scheduling_hold','pending_verification'].includes(f.status))continue;
    const payment=!!f.offer,w=payment?f.payment:f.interest;
    if(payment){const current=await this.paymentCurrent(tx,f);if(!current&&!f.everPaid){await this.cancelQueued(tx,f);await this.save(tx,f);continue;}}
    if(w.exception||!w.sentAt||!w.deadline||!payment&&w.confirmedAt)continue;
    if(await this.hasUnknown(tx,f,payment)){w.exception=true;await this.save(tx,f);continue;}
    if(new Date(w.deadline)<=this.clock.now()){
     if(payment&&!await this.closeOffer(tx,f)){w.exception=true;await this.save(tx,f);continue;}
-    f.status='expired';f.allocated=false;f.tokenHash=null;await this.cancelQueued(tx,f);await this.save(tx,f);await this.event(tx,f,'expired',null,'Successfully sent window elapsed; unused allocation released once');
+    f.status='expired';f.allocated=false;f.tokenHash=null;await this.cancelQueued(tx,f,population?'signup':'all');await this.save(tx,f);await this.event(tx,f,'expired',null,'Successfully sent window elapsed; unused allocation released once');
    }else if(payment){
     const date=floridaDate(this.clock.now()),hour=Number(new Intl.DateTimeFormat('en-US',{timeZone:FOUNDER_TIMEZONE,hour:'2-digit',hourCycle:'h23'}).format(this.clock.now()));
     // Cancel obsolete dates; never enqueue missed-day catch-up messages.
     const queued=await tx.query<{id:string;ciphertext:string}>(txMailSelect+" WHERE workspace_id=$1 AND founder_id=$2 AND purpose='academy_founder_payment_reminder' AND state='queued'",[this.workspace,f.id]);
     for(const row of queued){const old=JSON.parse(unseal(row.ciphertext,`ls_service_interest/inquiry_email/v1/${this.workspace}/${row.id}`,this.ring)) as FounderMail;if(old.reminderDate!==date)await tx.query("UPDATE ls_service_interest.inquiry_email_outbox SET state='canceled',completed_at=$3 WHERE workspace_id=$1 AND id=$2",[this.workspace,row.id,this.clock.now()]);}
     const lines=await this.reminderLines(tx,f);if(hour>=paymentHour&&lines?.length)await this.queue(tx,f,'payment_reminder',`payment:family-date:${date}`,{reminderDate:date,unpaidLines:lines});await this.save(tx,f);
-   }else for(const day of reminderDays)if(floridaCalendarDays(new Date(w.sentAt),day)<=this.clock.now())await this.queue(tx,f,'interest_reminder',`interest:${w.generation}:reminder:${day}`);
-  }await this.promote(tx);return {prepared:true};
+   }else for(const day of reminderDays)if(floridaCalendarDays(new Date(w.sentAt),day)<=this.clock.now())await this.queue(tx,f,'interest_reminder',`interest:${w.generation}:reminder:${day}`,undefined,day===3||day===6?day:undefined);
+  }await this.promote(tx,population);return {prepared:true};
  });}
- async dispatchQueued(transport:AuthEmailTransport,from:string,origin:string,scope:FounderMailScope='all'){if(!['signup','all'].includes(scope))throw new AppError('INVALID_REQUEST');const ids=await this.db.transaction(tx=>tx.query<{id:string}>("SELECT id FROM ls_service_interest.inquiry_email_outbox WHERE workspace_id=$1 AND founder_id IS NOT NULL AND state='queued' AND ($2::boolean=false OR purpose IN ($3,$4,$5,$6)) ORDER BY created_at LIMIT 50",[this.workspace,scope==='signup',...signupMailPurposes]));for(const row of ids)await this.dispatchOne(row.id,transport,from,origin,scope);return {processed:ids.length};}
- async dispatchForApplication(reference:string,transport:AuthEmailTransport,from:string,origin:string){
-  const rows=await this.db.transaction(tx=>tx.query<{id:string}>("SELECT m.id FROM ls_service_interest.inquiry_email_outbox m JOIN ls_service_interest.academy_founder_applications a ON a.workspace_id=m.workspace_id AND a.family_id=m.founder_id WHERE a.workspace_id=$1 AND a.application_id=$2 AND m.state='queued' AND m.purpose IN('academy_founder_interest','academy_founder_ack') ORDER BY m.created_at LIMIT 2",[this.workspace,reference]));
-  for(const row of rows)await this.dispatchOne(row.id,transport,from,origin,'signup');
-  const receipts=await this.db.transaction(tx=>tx.query<{id:string}>("SELECT m.id FROM ls_service_interest.inquiry_email_outbox m JOIN ls_service_interest.academy_founder_applications a ON a.workspace_id=m.workspace_id AND a.family_id=m.founder_id WHERE a.workspace_id=$1 AND a.application_id=$2 AND m.state='queued' AND m.purpose='academy_founder_interest_deadline_receipt' LIMIT 1",[this.workspace,reference]));for(const row of receipts)await this.dispatchOne(row.id,transport,from,origin,'signup');
+ async dispatchQueued(transport:AuthEmailTransport,from:string,origin:string,scope:FounderMailScope='all',population?:SignupWorkerAdmission,after?:SignupDispatchCursor){
+  if(population){assertSignupWorkerAdmission(population,this.workspace,this.clock.now());if(scope!=='signup'||origin!==population.origin||from!==population.sender)throw new AppError('INVALID_REQUEST');}
+  if(!['signup','all'].includes(scope))throw new AppError('INVALID_REQUEST');
+  if(after&&(!population||typeof after.createdAt!=='string'||after.createdAt.length>64||!Number.isFinite(Date.parse(after.createdAt))||!/^[-0-9a-f]{36}$/.test(after.id)))throw new AppError('INVALID_REQUEST');
+  // Keep the exact PostgreSQL timestamp text, including microseconds. Reading
+  // one extra row proves whether the bounded page has reached its current end.
+  const rows=await this.db.transaction(tx=>tx.query<{id:string;createdAt:string}>("SELECT m.id,m.created_at::text AS \"createdAt\" FROM ls_service_interest.inquiry_email_outbox m JOIN ls_service_interest.academy_founder_families f ON f.workspace_id=m.workspace_id AND f.id=m.founder_id WHERE m.workspace_id=$1 AND m.state='queued' AND ($2::boolean=false OR m.purpose IN ($3,$4,$5,$6)) AND ($7::timestamptz IS NULL OR f.submitted_at >= $7) AND ($8::uuid[] IS NULL OR f.application_id=ANY($8)) AND ($9::timestamptz IS NULL OR (m.created_at,m.id)>($9::timestamptz,$10::uuid)) ORDER BY m.created_at,m.id LIMIT 51",[this.workspace,scope==='signup',...signupMailPurposes,population?.cutoff??null,population?signupWorkerReferences(population):null,after?.createdAt??null,after?.id??null]));
+  const page=rows.slice(0,50);let processed=0;
+  for(const row of page){const result=await this.dispatchOne(row.id,transport,from,origin,scope,population);if(result!=='idle')processed++;}
+  const last=page.at(-1),continuation:SignupDispatchCursor|undefined=population&&rows.length>50&&last?Object.freeze({createdAt:last.createdAt,id:last.id}):undefined;
+  return {processed:population?processed:page.length,inspected:page.length,continuation,scanComplete:rows.length<=50};
+ }
+ async dispatchForApplication(reference:string,transport:AuthEmailTransport,from:string,origin:string,population?:SignupWorkerAdmission){
+  if(population){assertSignupWorkerAdmission(population,this.workspace,this.clock.now());if(origin!==population.origin||from!==population.sender)throw new AppError('INVALID_REQUEST');}
+  const rows=await this.db.transaction(tx=>tx.query<{id:string}>("SELECT m.id FROM ls_service_interest.inquiry_email_outbox m JOIN ls_service_interest.academy_founder_applications a ON a.workspace_id=m.workspace_id AND a.family_id=m.founder_id JOIN ls_service_interest.academy_founder_families f ON f.workspace_id=a.workspace_id AND f.id=a.family_id WHERE ($3::timestamptz IS NULL OR f.submitted_at >= $3) AND ($4::uuid[] IS NULL OR f.application_id=ANY($4)) AND a.workspace_id=$1 AND a.application_id=$2 AND m.state='queued' AND m.purpose IN('academy_founder_interest','academy_founder_ack') ORDER BY m.created_at LIMIT 2",[this.workspace,reference,population?.cutoff??null,population?signupWorkerReferences(population):null]));
+  for(const row of rows)await this.dispatchOne(row.id,transport,from,origin,'signup',population);
+  const receipts=await this.db.transaction(tx=>tx.query<{id:string}>("SELECT m.id FROM ls_service_interest.inquiry_email_outbox m JOIN ls_service_interest.academy_founder_applications a ON a.workspace_id=m.workspace_id AND a.family_id=m.founder_id JOIN ls_service_interest.academy_founder_families f ON f.workspace_id=a.workspace_id AND f.id=a.family_id WHERE ($3::timestamptz IS NULL OR f.submitted_at >= $3) AND ($4::uuid[] IS NULL OR f.application_id=ANY($4)) AND a.workspace_id=$1 AND a.application_id=$2 AND m.state='queued' AND m.purpose='academy_founder_interest_deadline_receipt' LIMIT 1",[this.workspace,reference,population?.cutoff??null,population?signupWorkerReferences(population):null]));for(const row of receipts)await this.dispatchOne(row.id,transport,from,origin,'signup',population);
  }
  private async paymentCurrent(tx:SqlSession,f:FounderFamily){if(!f.offer||!this.paymentPort)return false;const p=await this.paymentPort.inspect(tx,f);if(typeof p.inFlight!=='boolean')throw new AppError('UNAVAILABLE');this.paymentProjection(f,p);if(f.everPaid||f.redeemedChildIds.length||f.collectedCents>0){f.status='redeemed';return false;}return !p.inFlight;}
  /** Internal callback for the admitted signed-payment transaction coordinator. No public/owner raw PAID action. */

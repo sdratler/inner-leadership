@@ -388,3 +388,116 @@ it('future transactional messages adopt explicit parent language while an alread
  const fakeSend=vi.fn(async(mail:{text:string})=>{expect(mail.text).toContain('אישור ההתעניינות שלי');return {providerId:'synthetic-new-language-test'};});await x.founder.dispatchOne(m.id,{send:fakeSend},INQUIRY_EMAIL_FROM,origin);expect(fakeSend).toHaveBeenCalledTimes(1);await x.founder.confirm(secret);
  const rows=await messages(x.workspace);expect(rows.find(row=>row.id===m.id)!.payload_ciphertext).toBe(prepared);const ack=rows.find(row=>row.purpose==='academy_founder_ack')!;expect(JSON.parse(unseal(ack.payload_ciphertext,`ls_service_interest/inquiry_email/v1/${x.workspace}/${ack.id}`,ring)).locale).toBe('en');expect(rows.some(row=>row.purpose.includes('nurture')||row.purpose.includes('wapi'))).toBe(false);
 });
+
+// Proposed v2 population regressions. Synthetic PGlite ONLY, not executed during
+// this outside-Git preparation. Original 6681de66 cases above remain byte-identical.
+import {createSignupWorkerAdmission,signupRecipientDigest} from '../../src/features/group-application/academy-signup-worker-admission.ts';
+import {dispatchAdmittedSignupCallback} from '../../src/features/group-application/academy-signup-population-runtime.ts';
+const v2Origin='https://bneineviimacademy.org',v2Cutoff='2026-10-23T14:00:00.000Z';
+async function v2Policy(workspace:string,refs?:{reference:string;email:string}[]){
+ const {createHash}=await import('node:crypto'),sha=async(path:string)=>createHash('sha256').update(await readFile(path)).digest('hex');
+ const bindings={templateModuleSha256:await sha('src/features/group-application/academy-founder-email.ts'),templateContractSha256:await sha('src/features/group-application/academy-founder-contract.ts'),templateCatalogSha256:await sha('src/features/group-application/academy-exact-email-copy.json'),templateFacadeSha256:await sha('src/features/group-application/academy-exact-copy.ts'),transportHashes:{gmail:await sha('src/providers/email/gmail.ts'),contract:await sha('src/providers/email/transport.ts'),resend:await sha('src/providers/email/resend.ts')}};
+ const targets={workspaceId:workspace,projectId:'22222222-2222-4222-8222-222222222222',environmentId:'33333333-3333-4333-8333-333333333333',serviceId:'44444444-4444-4444-8444-444444444444'};
+ const context={...targets,...bindings,enabled:true,freeEnabled:true,sendEnabled:true,founderApproved:true,sourceCommit:'a'.repeat(40),releaseCommit:'a'.repeat(40),origin:v2Origin,templateVersion:'JLFA-EXACT-COPY-20261026-05'};
+ const data={...targets,...bindings,version:'JLFA-SIGNUP-WORKER-ADMISSION-v2',approvalReceiptSha256:'d'.repeat(64),sourceCommit:context.sourceCommit,origin:v2Origin,sender:INQUIRY_EMAIL_FROM,templateVersion:context.templateVersion,allowedTemplateIds:['R01','R02','R03'],cutoff:v2Cutoff,expiresAt:'2026-11-10T00:00:00.000Z',population:refs?{mode:'references',families:refs.map(f=>({reference:f.reference,recipientSha256:signupRecipientDigest(f.email)}))}:{mode:'future_submissions'}};
+ const admission=createSignupWorkerAdmission(data,context,now);if(!admission)throw Error('synthetic v2 admission invalid');
+ const env={LS_ACADEMY_SIGNUP_WORKER_ENABLED:'true',LS_ACADEMY_SIGNUP_WORKER_ADMISSION_JSON:JSON.stringify(data),LS_INQUIRY_EMAIL_QUEUE_ENABLED:'true',LS_ACADEMY_FREE_REGISTRATION_ENABLED:'true',LS_INQUIRY_EMAIL_SEND_ENABLED:'true',LS_ACADEMY_FOUNDER_EMAIL_APPROVED:'true',RAILWAY_GIT_COMMIT_SHA:data.sourceCommit,LIFE_SKILLS_RELEASE_COMMIT:data.sourceCommit,LS_IDENTITY_WORKSPACE_ID:workspace,RAILWAY_PROJECT_ID:data.projectId,RAILWAY_ENVIRONMENT_ID:data.environmentId,RAILWAY_SERVICE_ID:data.serviceId,LS_APP_ORIGIN:v2Origin};
+ return {admission,env};
+}
+async function v2ConfirmedFixture(){
+ const x=await fixture(),saved=await x.applications.submit(command(),opaqueToken()),initial=(await messages(x.workspace))[0]!;
+ // Explicit synthetic historical send setup, not a new-v2 initial/R00 dispatch.
+ await x.founder.dispatchOne(initial.id,{send:async()=>({providerId:'synthetic_legacy_setup'})},INQUIRY_EMAIL_FROM,origin);
+ const {admission,env}=await v2Policy(x.workspace),worker=new AcademyFounderStore(store,x.workspace,ring,key,clock,null,null,admission);
+ await worker.confirm(await token(x.workspace,initial.id));
+ const ack=(await messages(x.workspace)).find(m=>m.purpose==='academy_founder_ack')!;
+ return {...x,saved,initial,admission,env,worker,ack};
+}
+async function v2FamilyRows(workspace:string,id:string){return (await db.query('SELECT * FROM ls_service_interest.academy_founder_families WHERE workspace_id=$1 AND id=$2',[workspace,id])).rows;}
+async function v2SetFamilyState(workspace:string,id:string,status:'interest_list'|'withdrawn'){
+ const row=(await messages(workspace)).find(m=>m.founder_id===id)!;void row;
+ const source=(await db.query<{payload_ciphertext:string}>('SELECT payload_ciphertext FROM ls_service_interest.academy_founder_families WHERE workspace_id=$1 AND id=$2',[workspace,id])).rows[0]!;
+ const f=JSON.parse(unseal(source.payload_ciphertext,`ls_service_interest/founder/v1/${workspace}/${id}`,ring));f.status=status;f.allocated=false;
+ await db.query('UPDATE ls_service_interest.academy_founder_families SET status=$3,allocated=false,payload_ciphertext=$4 WHERE workspace_id=$1 AND id=$2',[workspace,id,status,seal(JSON.stringify(f),`ls_service_interest/founder/v1/${workspace}/${id}`,ring)]);
+}
+it('v2 new R00 remains a durable queued intent without acceptedSend, reservation or provider attempt',async()=>{
+ const previous=now;try{now=new Date(v2Cutoff);const x=await fixture(),{admission}=await v2Policy(x.workspace),worker=new AcademyFounderStore(store,x.workspace,ring,key,clock,null,null,admission),applications=new PublicGroupApplicationStore(store,x.workspace,ring,key,clock,false,worker);
+  await applications.submit(command(),opaqueToken());const message=(await messages(x.workspace))[0]!,payload=JSON.parse(unseal(message.payload_ciphertext,`ls_service_interest/inquiry_email/v1/${x.workspace}/${message.id}`,ring)),send=vi.fn(async()=>({providerId:'not_attempted'}));
+  expect(payload.transactional).toEqual({version:'JLFA-EXACT-COPY-20261026-05',templateId:'R00'});expect(payload.templateCatalogSha256).toBe(admission.templateCatalogSha256);expect(payload.transactional.acceptedSend).toBeUndefined();
+  expect(await worker.dispatchOne(message.id,{send},INQUIRY_EMAIL_FROM,v2Origin,'signup',admission)).toBe('idle');expect(send).not.toHaveBeenCalled();expect((await messages(x.workspace))[0]).toEqual(message);
+ }finally{now=previous;}
+});
+it.each(['queued','unknown','sent'] as const)('v2 never upgrades existing %s legacy payloads or reserved bytes',async(state)=>{
+ const previous=now;try{now=new Date(v2Cutoff);const x=await fixture();await x.applications.submit(command(),opaqueToken());const initial=(await messages(x.workspace))[0]!;
+  if(state!=='queued')await db.query("UPDATE ls_service_interest.inquiry_email_outbox SET state=$3,reserved_at=$4,completed_at=$5,provider_id=$6 WHERE workspace_id=$1 AND id=$2",[x.workspace,initial.id,state,now,state==='sent'?now:null,state==='sent'?'synthetic_prior':null]);
+  const before=await messages(x.workspace),family=await v2FamilyRows(x.workspace,initial.founder_id),{admission}=await v2Policy(x.workspace),worker=new AcademyFounderStore(store,x.workspace,ring,key,clock,null,null,admission),send=vi.fn(async()=>({providerId:'not_attempted'}));
+  await worker.dispatchQueued({send},INQUIRY_EMAIL_FROM,v2Origin,'signup',admission);expect(send).not.toHaveBeenCalled();expect(await messages(x.workspace)).toEqual(before);expect(await v2FamilyRows(x.workspace,initial.founder_id)).toEqual(family);
+ }finally{now=previous;}
+});
+it.each(['unchanged','canceled'] as const)('v2 expiry at reservation commit restores only its own %s reservation with no send',async(externalState)=>{
+ const previous=now;try{now=new Date(v2Cutoff);const x=await v2ConfirmedFixture(),beforeFamily=await v2FamilyRows(x.workspace,x.ack.founder_id);let advanced=false;
+  const boundaryStore:IdentityStore={transaction:async fn=>{let reserved=false;const result=await store.transaction(tx=>fn({query:async<T extends object>(sql:string,values:readonly unknown[]=[])=>{const rows=await tx.query<T>(sql,values);if(sql.includes("SET state='unknown',reserved_at"))reserved=true;return rows;}}));if(reserved&&!advanced){advanced=true;now=new Date(x.admission.expiresAt);if(externalState==='canceled')await db.query("UPDATE ls_service_interest.inquiry_email_outbox SET state='canceled',completed_at=$3 WHERE workspace_id=$1 AND id=$2",[x.workspace,x.ack.id,now]);}return result;}};
+  const worker=new AcademyFounderStore(boundaryStore,x.workspace,ring,key,clock,null,null,x.admission),send=vi.fn(async()=>({providerId:'not_attempted'}));expect(await worker.dispatchOne(x.ack.id,{send},INQUIRY_EMAIL_FROM,v2Origin,'signup',x.admission)).toBe('idle');expect(advanced).toBe(true);expect(send).not.toHaveBeenCalled();
+  const row=(await db.query<{state:string;reserved_at:Date|null;payload_ciphertext:string;provider_id:string|null}>('SELECT state,reserved_at,payload_ciphertext,provider_id FROM ls_service_interest.inquiry_email_outbox WHERE workspace_id=$1 AND id=$2',[x.workspace,x.ack.id])).rows[0]!;expect(row.state).toBe(externalState==='canceled'?'canceled':'queued');if(externalState==='unchanged')expect(row.reserved_at).toBeNull();expect(row.payload_ciphertext).toBe(x.ack.payload_ciphertext);expect(row.provider_id).toBeNull();expect(await v2FamilyRows(x.workspace,x.ack.founder_id)).toEqual(beforeFamily);
+ }finally{now=previous;}
+});
+it('v2 preserves an actual late receipt after admission expiry without starting a new interest clock',async()=>{
+ const previous=now;try{now=new Date(v2Cutoff);const x=await v2ConfirmedFixture(),before=(await x.worker.ownerList(x.actor)).families[0]!.interest,send=vi.fn(async()=>{now=new Date(x.admission.expiresAt);return {providerId:'synthetic_late_ack'};});
+  expect(await x.worker.dispatchOne(x.ack.id,{send},INQUIRY_EMAIL_FROM,v2Origin,'signup',x.admission)).toBe('sent');expect(send).toHaveBeenCalledTimes(1);expect((await messages(x.workspace)).find(m=>m.id===x.ack.id)?.state).toBe('sent');expect((await x.worker.ownerList(x.actor)).families[0]!.interest).toEqual(before);
+ }finally{now=previous;}
+});
+it('v2 callback excludes old families and needs policy before factory while new explicit ACK sends once',async()=>{
+ const previous=now;try{now=new Date('2026-10-23T13:59:59.999Z');const old=await fixture(),saved=await old.applications.submit(command(),opaqueToken()),initial=(await messages(old.workspace))[0]!;await old.founder.dispatchOne(initial.id,{send:async()=>({providerId:'synthetic_old'})},INQUIRY_EMAIL_FROM,origin);
+  now=new Date(v2Cutoff);const {admission,env}=await v2Policy(old.workspace),oldWorker=new AcademyFounderStore(store,old.workspace,ring,key,clock,null,null,admission);await oldWorker.confirm(await token(old.workspace,initial.id));const before=await messages(old.workspace),oldFamily=await v2FamilyRows(old.workspace,initial.founder_id),send=vi.fn(async()=>({providerId:'synthetic_ack'})),factory=vi.fn(()=>({transport:{send},from:INQUIRY_EMAIL_FROM}));
+  await dispatchAdmittedSignupCallback(saved.item.id,oldWorker,v2Origin,{...env,LS_ACADEMY_SIGNUP_WORKER_ADMISSION_JSON:undefined},now,factory);expect(factory).not.toHaveBeenCalled();await dispatchAdmittedSignupCallback(saved.item.id,oldWorker,v2Origin,env,now,factory);expect(send).not.toHaveBeenCalled();expect(await messages(old.workspace)).toEqual(before);expect(await v2FamilyRows(old.workspace,initial.founder_id)).toEqual(oldFamily);
+  const fresh=await v2ConfirmedFixture();await dispatchAdmittedSignupCallback(fresh.saved.item.id,fresh.worker,v2Origin,fresh.env,now,factory);expect(send).toHaveBeenCalledTimes(1);await dispatchAdmittedSignupCallback(fresh.saved.item.id,fresh.worker,v2Origin,fresh.env,now,factory);expect(send).toHaveBeenCalledTimes(1);
+ }finally{now=previous;}
+});
+it('v2 exact recipient binding and UNKNOWN reservation survive restart without automatic resend',async()=>{
+ const previous=now;try{now=new Date(v2Cutoff);const x=await v2ConfirmedFixture(),family=(await x.worker.ownerList(x.actor)).families[0]!,wrong=(await v2Policy(x.workspace,[{reference:family.reference,email:'wrong@example.invalid'}])).admission,good=(await v2Policy(x.workspace,[{reference:family.reference,email:family.email}])).admission,send=vi.fn(async()=>{throw Error('synthetic ambiguity');});
+  expect(await x.worker.dispatchOne(x.ack.id,{send},INQUIRY_EMAIL_FROM,v2Origin,'signup',wrong)).toBe('idle');expect(send).not.toHaveBeenCalled();expect((await messages(x.workspace)).find(m=>m.id===x.ack.id)).toEqual(x.ack);
+  expect(await x.worker.dispatchOne(x.ack.id,{send},INQUIRY_EMAIL_FROM,v2Origin,'signup',good)).toBe('unknown');const unknown=(await messages(x.workspace)).find(m=>m.id===x.ack.id)!;expect(unknown.payload_ciphertext).toBe(x.ack.payload_ciphertext);await new AcademyFounderStore(store,x.workspace,ring,key,clock,null,null,good).dispatchQueued({send},INQUIRY_EMAIL_FROM,v2Origin,'signup',good);expect(send).toHaveBeenCalledTimes(1);expect((await messages(x.workspace)).find(m=>m.id===x.ack.id)).toEqual(unknown);
+ }finally{now=previous;}
+});
+it('v2 day3/day6 new identities use the actual sent clock and same-key payloads stay immutable',async()=>{
+ const previous=now;try{now=new Date(v2Cutoff);const x=await fixture();await x.applications.submit(command(),opaqueToken());const initial=(await messages(x.workspace))[0]!;await x.founder.dispatchOne(initial.id,{send:async()=>({providerId:'synthetic_setup'})},INQUIRY_EMAIL_FROM,origin);const {admission}=await v2Policy(x.workspace),worker=new AcademyFounderStore(store,x.workspace,ring,key,clock,null,null,admission),window=(await worker.ownerList(x.actor)).families[0]!.interest;
+  for(const [at,id] of [['2026-10-26T14:00:00.000Z','R01'],['2026-10-29T14:00:00.000Z','R02']] as const){now=new Date(at);await worker.tick([3,6],10,'signup',admission);const rows=(await messages(x.workspace)).filter(m=>m.purpose==='academy_founder_interest_reminder'),payloads=rows.map(m=>JSON.parse(unseal(m.payload_ciphertext,`ls_service_interest/inquiry_email/v1/${x.workspace}/${m.id}`,ring)));expect(payloads.some(p=>p.transactional.templateId===id&&p.transactional.acceptedSend.sentAt===window.sentAt&&p.transactional.acceptedSend.deadline===window.deadline)).toBe(true);const before=await messages(x.workspace);await worker.tick([3,6],10,'signup',admission);expect(await messages(x.workspace)).toEqual(before);}
+  expect((await messages(x.workspace)).find(m=>m.id===initial.id)?.payload_ciphertext).toBe(initial.payload_ciphertext);
+ }finally{now=previous;}
+});
+it('v2 scoped tick never expires an old family and cannot bypass excluded eligible FIFO promotion',async()=>{
+ const previous=now;try{now=new Date('2026-10-23T13:59:59.999Z');const x=await fixture();await x.applications.submit(command(),opaqueToken());const old=(await messages(x.workspace))[0]!;await v2SetFamilyState(x.workspace,old.founder_id,'interest_list');
+  now=new Date(v2Cutoff);await x.applications.submit(command(),opaqueToken());const next=(await messages(x.workspace)).find(m=>m.founder_id!==old.founder_id)!;await v2SetFamilyState(x.workspace,next.founder_id,'interest_list');const beforeOld=await v2FamilyRows(x.workspace,old.founder_id),beforeNew=await v2FamilyRows(x.workspace,next.founder_id),{admission}=await v2Policy(x.workspace),worker=new AcademyFounderStore(store,x.workspace,ring,key,clock,null,null,admission);
+  await worker.tick([],10,'signup',admission);expect(await v2FamilyRows(x.workspace,old.founder_id)).toEqual(beforeOld);expect(await v2FamilyRows(x.workspace,next.founder_id)).toEqual(beforeNew);await v2SetFamilyState(x.workspace,old.founder_id,'withdrawn');const closed=await v2FamilyRows(x.workspace,old.founder_id);await worker.tick([],10,'signup',admission);expect((await worker.ownerList(x.actor)).families.find(f=>f.id===next.founder_id)?.status).toBe('provisional');expect(await v2FamilyRows(x.workspace,old.founder_id)).toEqual(closed);
+ }finally{now=previous;}
+});
+it('v2 expiry processing leaves an actually sent old window byte-identical while expiring the admitted new window',async()=>{
+ const previous=now;try{now=new Date('2026-10-23T13:59:59.999Z');const x=await fixture();await x.applications.submit(command(),opaqueToken());const old=(await messages(x.workspace))[0]!;await x.founder.dispatchOne(old.id,{send:async()=>({providerId:'synthetic_old_sent'})},INQUIRY_EMAIL_FROM,origin);
+  now=new Date(v2Cutoff);await x.applications.submit(command(),opaqueToken());const fresh=(await messages(x.workspace)).find(m=>m.founder_id!==old.founder_id)!;await x.founder.dispatchOne(fresh.id,{send:async()=>({providerId:'synthetic_new_sent'})},INQUIRY_EMAIL_FROM,origin);const beforeOld=await v2FamilyRows(x.workspace,old.founder_id),beforeMail=(await messages(x.workspace)).filter(m=>m.founder_id===old.founder_id),{admission}=await v2Policy(x.workspace),worker=new AcademyFounderStore(store,x.workspace,ring,key,clock,null,null,admission);
+  now=new Date('2026-10-31T14:00:00.000Z');await worker.tick([3,6],10,'signup',admission);expect(await v2FamilyRows(x.workspace,old.founder_id)).toEqual(beforeOld);expect((await messages(x.workspace)).filter(m=>m.founder_id===old.founder_id)).toEqual(beforeMail);expect((await worker.ownerList(x.actor)).families.find(f=>f.id===fresh.founder_id)?.status).toBe('expired');
+ }finally{now=previous;}
+});
+it('v2 expired authority is rejected before mutations and concurrent ACK attempts reserve once',async()=>{
+ const previous=now;try{now=new Date(v2Cutoff);const x=await v2ConfirmedFixture(),before=await messages(x.workspace);now=new Date(x.admission.expiresAt);await expect(x.worker.tick([],10,'signup',x.admission)).rejects.toThrow('SIGNUP_WORKER_NOT_ADMITTED');expect(await messages(x.workspace)).toEqual(before);now=new Date(v2Cutoff);
+  let release!:()=>void,started!:()=>void;const gate=new Promise<void>(r=>release=r),begun=new Promise<void>(r=>started=r),send=vi.fn(async()=>{started();await gate;return {providerId:'synthetic_once'};});const first=x.worker.dispatchOne(x.ack.id,{send},INQUIRY_EMAIL_FROM,v2Origin,'signup',x.admission);await begun;expect(await x.worker.dispatchOne(x.ack.id,{send},INQUIRY_EMAIL_FROM,v2Origin,'signup',x.admission)).toBe('idle');release();expect(await first).toBe('sent');expect(send).toHaveBeenCalledTimes(1);
+ }finally{now=previous;}
+});
+
+it('v2 bounded continuation reaches an ACK after 55 held R00/legacy intents without changing their bytes or state',async()=>{
+ const previous=now;try{now=new Date(v2Cutoff);const x=await v2ConfirmedFixture(),heldIds:string[]=[],ackPayload=JSON.parse(unseal(x.ack.payload_ciphertext,`ls_service_interest/inquiry_email/v1/${x.workspace}/${x.ack.id}`,ring));
+  for(let i=0;i<55;i++){
+   const id=randomUUID(),payload=structuredClone(ackPayload);heldIds.push(id);
+   if(i%2===0){payload.kind='interest';payload.transactional={version:'JLFA-EXACT-COPY-20261026-05',templateId:'R00'};}
+   else{delete payload.transactional;delete payload.templateCatalogSha256;}
+   await db.query("INSERT INTO ls_service_interest.inquiry_email_outbox(workspace_id,id,application_id,founder_id,message_key,purpose,payload_ciphertext,state,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,'queued',$8)",[x.workspace,id,x.ack.application_id,x.ack.founder_id,'synthetic-held-'+i,'academy_founder_'+payload.kind,seal(JSON.stringify(payload),`ls_service_interest/inquiry_email/v1/${x.workspace}/${id}`,ring),new Date(now.getTime()-1000)]);
+  }
+  const before=(await messages(x.workspace)).filter(m=>heldIds.includes(m.id)),send=vi.fn(async()=>({providerId:'synthetic_after_held_page'}));
+  const first=await x.worker.dispatchQueued({send},INQUIRY_EMAIL_FROM,v2Origin,'signup',x.admission);
+  expect(first).toMatchObject({processed:0,inspected:50,scanComplete:false});expect(first.continuation).toBeDefined();expect(send).not.toHaveBeenCalled();expect((await messages(x.workspace)).filter(m=>heldIds.includes(m.id))).toEqual(before);
+  // A new per-cycle store receives the advisory cursor from its hosted caller.
+  const next=new AcademyFounderStore(store,x.workspace,ring,key,clock,null,null,x.admission),second=await next.dispatchQueued({send},INQUIRY_EMAIL_FROM,v2Origin,'signup',x.admission,first.continuation);
+  expect(second.processed).toBe(1);expect(second.inspected).toBeLessThanOrEqual(50);expect(second.scanComplete).toBe(true);expect(second.continuation).toBeUndefined();expect(send).toHaveBeenCalledTimes(1);expect((await messages(x.workspace)).find(m=>m.id===x.ack.id)?.state).toBe('sent');expect((await messages(x.workspace)).filter(m=>heldIds.includes(m.id))).toEqual(before);
+  // Restart starts safely from the beginning; it grants no authority to held rows.
+  const restarted=await new AcademyFounderStore(store,x.workspace,ring,key,clock,null,null,x.admission).dispatchQueued({send},INQUIRY_EMAIL_FROM,v2Origin,'signup',x.admission);expect(restarted.processed).toBe(0);expect(restarted.inspected).toBe(50);expect(send).toHaveBeenCalledTimes(1);expect((await messages(x.workspace)).filter(m=>heldIds.includes(m.id))).toEqual(before);
+ }finally{now=previous;}
+});
