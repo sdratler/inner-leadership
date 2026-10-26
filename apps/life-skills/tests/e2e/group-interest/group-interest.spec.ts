@@ -689,7 +689,12 @@ if(!runtimePath){
   const details=record.locator("details").filter({has:page.getByText(locale==="he"?"הערה על זמנים":"Scheduling note",{exact:true})});await expect(details).not.toHaveAttribute("open","");await details.locator("summary").click();await expect(details).toHaveAttribute("open","");await expect(details).toContainText("Synthetic scheduling details only.");
   const views=page.getByRole("navigation",{name:locale==="he"?"תצוגות הדף הנוכחי":"Current page views"});await expect(views.getByRole("link",{name:locale==="he"?"בקשות לקבוצה":"Group applications",exact:true})).toHaveAttribute("aria-current","page");
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
-  await page.goto(`/${locale}/app/clients`);await views.getByRole("link",{name:locale==="he"?"בקשות לקבוצה":"Group applications",exact:true}).click();await expect(page).toHaveURL(new RegExp(`/${locale}/app/group-applications$`));await page.goBack();await expect(page).toHaveURL(new RegExp(`/${locale}/app/clients$`));
+  await page.goto(`/${locale}/app/clients`);await expect(page).toHaveURL(new RegExp(`/${locale}/app/clients$`));
+  await expect(page.getByRole("heading",{name:locale==="he"?"אנשים":"People",level:1,exact:true})).toBeVisible();
+  await expect(views.getByRole("link",{name:locale==="he"?"הכול":"All",exact:true})).toHaveAttribute("aria-current","page");
+  const applicationsLink=views.getByRole("link",{name:locale==="he"?"בקשות לקבוצה":"Group applications",exact:true});
+  await expect(applicationsLink).toHaveAttribute("href",`/${locale}/app/group-applications`);await expect(applicationsLink).toBeVisible();
+  await applicationsLink.click();await expect(page).toHaveURL(new RegExp(`/${locale}/app/group-applications$`));await page.goBack();await expect(page).toHaveURL(new RegExp(`/${locale}/app/clients$`));
  });
  test("parent is denied the owner-only page and API without disclosure",async({page,context},info)=>{
   await context.addCookies([{name:"__Host-ls-session",value:data.parent,url:data.origin,httpOnly:true,secure:true,sameSite:"Lax"}]);
@@ -703,7 +708,7 @@ if(!runtimePath){
   for(const [kind,token] of Object.entries({adult:data.adult,child:data.child,revoked:data.revoked,otherWorkspace:data.otherWorkspace})){
    await context.clearCookies();await context.addCookies([{name:"__Host-ls-session",value:token,url:data.origin,httpOnly:true,secure:true,sameSite:"Lax"}]);
    const response=await page.goto("/en/app/group-interest");expect([200,404]).toContain(response?.status());await expect(page.getByRole("heading",{name:"Group and tutoring interest",exact:true})).toHaveCount(0);
-   expect(page.url().includes("/en/login")||await page.getByRole("heading",{name:"Page unavailable",exact:true}).count()===1,kind).toBe(true);expect(await page.locator("body").innerText()).not.toContain("Synthetic draft");
+   await expect.poll(async()=>page.url().includes("/en/login")||await page.getByRole("heading",{name:"Page unavailable",exact:true}).count()===1,{message:kind}).toBe(true);expect(await page.locator("body").innerText()).not.toContain("Synthetic draft");
    const interest=await page.request.get(`${data.origin}/api/private/group-interest`),placement=await page.request.get(`${data.origin}/api/private/group-placement`);
    expect([401,403],kind).toContain(interest.status());expect([401,403],kind).toContain(placement.status());expect(await interest.text()).not.toContain("Synthetic draft");expect(await placement.text()).not.toContain("Synthetic draft");
   }
