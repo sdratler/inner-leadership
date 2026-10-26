@@ -7,11 +7,11 @@ import {readFileSync} from "node:fs";
 import {promisify} from "node:util";
 import approvedCopy from "../../../src/features/group-application/presentation-copy.json" with {type:"json"};
 import {academyLandingDraft,academyJourneyForMode} from "../../../src/features/group-application/academy-draft.ts";
-// Approved public snapshot: JLFA-PREREG-LAUNCH-20261023-05 and current bilingual copy.
+// Approved public snapshot: JLFA-WEBSITE-CORRECTIONS-20261025-03 and retained bilingual copy.
 // Keep browser discovery independent of application/Next runtime model loading.
 const academyIntroduction={
-  "en": "A program where boys learn practical fishing skills, how to think independently, and how to work together in a Torah-infused environment.",
-  "he": "תוכנית שבה הבנים לומדים מיומנויות דיג מעשיות, לחשוב באופן עצמאי ולעבוד יחד באווירה תורנית."
+  "en": "A Torah-infused extracurricular fishing program for boys.",
+  "he": "תוכנית דיג חוץ־לימודית לבנים, ברוח התורה."
 } as const;
 const academyStages=[
  {
@@ -22,8 +22,8 @@ const academyStages=[
   },
   "paragraphs": [
    {
-    "en": "Meetings 1–2 introduce the group, equipment, safety and practice knots. Meeting 3 is the planned Bass Pro Shops Dania visit; Meeting 4 is the proposed first supervised pier-fishing session. Later meetings focus on real fishing, equipment care and decisions at suitable sites.",
-    "he": "בשני מפגשי הפתיחה מכירים את הקבוצה, את הציוד ואת כללי הבטיחות ומתרגלים קשרים. במפגש השלישי מתוכנן ביקור ב־Bass Pro Shops בדניה; במפגש הרביעי מתוכנן מפגש הדיג הראשון במזח, בהשגחה. במפגשים הבאים מתמקדים בדיג מעשי, בשמירה על הציוד ובקבלת החלטות במקומות מתאימים."
+    "en": "Meeting 1 introduces the group, existing equipment, safety and collaboration. Meeting 2 is a planned Bass Pro Shops gear-guidance visit. In Meeting 3, assemble equipment, load line, tie rigs and practise casting. Meeting 4 is the first supervised fishing outing, subject to readiness and a confirmed suitable site. Later meetings develop real fishing, equipment care and decisions at suitable sites.",
+    "he": "במפגש 1 מכירים את הקבוצה, בודקים ציוד קיים ולומדים בטיחות ושיתוף פעולה. במפגש 2 מתוכנן ביקור ב־Bass Pro Shops להכוונה בבחירת ציוד. במפגש 3 מרכיבים ציוד, ממלאים את הרולר בחוט, קושרים ריגים ומתרגלים הטלה. מפגש 4 הוא יציאת הדיג הראשונה בהשגחה, בכפוף למוכנות ולאישור אתר מתאים. במפגשים הבאים מפתחים דיג מעשי, שמירה על הציוד וקבלת החלטות במקומות מתאימים."
    },
    {
     "en": "Keeping a personal tackle box organized, tying taught knots, casting safely, asking before borrowing gear and explaining a choice or mistake.",
@@ -100,8 +100,8 @@ const academyQuestions=[
       "he": "כמה מפגשים יש בכל שלב?"
     },
     "answer": {
-      "en": "Twelve. The first two Foundation preparation meetings are two hours each; the third and most ordinary sessions afterward are three hours. A full-day Keys outing is a longer exception. Weather and holidays may spread delivery beyond twelve consecutive weeks.",
-      "he": "שנים־עשר. שני מפגשי ההכנה הראשונים בשלב היסודות נמשכים שעתיים כל אחד; המפגש השלישי ומרבית המפגשים הרגילים בהמשך נמשכים שלוש שעות. יום דיג מלא ומאושר בקיז הוא חריגה ארוכה יותר. חגים ומזג האוויר עשויים לפרוס את המפגשים על פני יותר מ־12 שבועות רצופים."
+      "en": "Twelve. Ordinary meetings last three hours. Specific outing arrangements are confirmed with families in advance. Weather and holidays may spread delivery beyond twelve consecutive weeks.",
+      "he": "שנים־עשר. מפגשים רגילים נמשכים שלוש שעות. הסידורים ליציאות מסוימות מאושרים עם המשפחות מראש. חגים ומזג האוויר עשויים לפרוס את המפגשים על פני יותר מ־12 שבועות רצופים."
     }
   },
   {
@@ -211,8 +211,13 @@ async function academyFormReady(page:Page,navigate:()=>Promise<unknown>){
  const form=page.locator('form[data-academy-registration]');await expect(form.locator('button[type="submit"]')).toBeEnabled();return form;
 }
 async function switchAcademyLocale(page:Page,name:string){await page.getByRole('group',{name:/Interface language|שפת הממשק/}).getByRole('button',{name:name==='EN'?'English':name,exact:true}).click();}
+async function openAcademyUpdates(form:Locator,locale:'en'|'he'){
+ await form.locator('summary').filter({hasText:locale==='en'?'Updates (optional)':'עדכונים (לא חובה)'}).click();
+ await expect(form.locator('[data-communication-notice]')).toBeVisible();await expect(form.locator('[data-communication-notice]')).toHaveAttribute('data-document-language',locale);
+ for(const name of ['nurtureEmail','privateWapi']){await expect(form.locator(`[name="${name}"]`)).toBeVisible();await expect(form.locator(`[name="${name}"]`)).not.toBeChecked();}
+}
 async function fillCompleteAcademyForm(form:Locator,name:string,contact:string){
- await form.locator('[name="parentName"]').fill(name);await form.locator('[name="contact"]').fill(contact);await form.locator('[name="receiptEmail"]').fill(contact);await form.locator('[name="cityArea"]').fill('Hollywood, Florida');await form.locator('[name="postalCode"]').fill('00123');const child=form.locator('[data-registration-child]').first();await child.locator('[name$="-name"]').fill('Synthetic registered learner');await child.locator('[name$="-age"]').fill('12');await child.locator('[name$="-grade"]').selectOption('6');await child.locator('[name$="-schooling"]').selectOption('school');await child.locator('[name$="-experience"]').selectOption('new');await form.locator('[name="driveMinutes"]').fill('37');await form.locator('[name="schoolHoursAvailability"]').selectOption('permission_needed');await form.locator('[name="stageInterest"]').selectOption('foundation');await form.locator('[name="preferredGroupLanguage"][value="en"]').check();for(const field of ['preferredDays','preferredTimes']){const input=form.locator('[name="'+field+'"]').first();await input.locator('xpath=ancestor::details').locator('summary').click();}await form.locator('[name="preferredDays"][value="sunday"]').check();await form.locator('[name="preferredTimes"][value="afternoon"]').check();
+ await form.locator('[name="parentName"]').fill(name);await form.locator('[name="contact"]').fill(contact);await form.locator('[name="receiptEmail"]').fill(contact);await form.locator('[name="cityArea"]').fill('Hollywood, Florida');await form.locator('[name="postalCode"]').fill('00123');const child=form.locator('[data-registration-child]').first();await child.locator('[name$="-name"]').fill('Synthetic registered learner');await child.locator('[name$="-age"]').fill('12');await child.locator('[name$="-grade"]').selectOption('6');await child.locator('[name$="-schooling"]').selectOption('school');await child.locator('[name$="-experience"]').selectOption('new');await form.locator('[name="driveMinutes"]').fill('37');await form.locator('[name="schoolHoursAvailability"]').selectOption('permission_needed');await expect(form.locator('[name="stageInterest"]')).toHaveCount(0);await form.locator('[name="preferredGroupLanguage"][value="en"]').check();for(const field of ['preferredDays','preferredTimes']){const input=form.locator('[name="'+field+'"]').first();await input.locator('xpath=ancestor::details').locator('summary').click();}await form.locator('[name="preferredDays"][value="sunday"]').check();await form.locator('[name="preferredTimes"][value="afternoon"]').check();
 }
 
 type Runtime={origin:string;workspaceId:string;practitioner:string;parent:string;adult:string;child:string;revoked:string;otherWorkspace:string;publicApplicationId:string;publicApplicantName:string};
@@ -365,6 +370,11 @@ if(!runtimePath){
   const direction=locale==="he"?"rtl":"ltr";await expect(page.locator(`[data-academy-site][lang="${locale}"][dir="${direction}"]`)).toBeVisible();
   await expect(page.locator("h1#academy-title")).toHaveAccessibleName("South Florida Jewish Leadership Fishing Academy");await expect(page.locator("h1#academy-title span")).toHaveText(["Jewish Leadership","Fishing Academy"]);await expect(page.locator("[data-hero-heading] > p")).toHaveText("South Florida");await expect(page.locator("h1#academy-title")).toHaveAttribute("lang","en");await expect(page.locator("h1#academy-title")).toHaveAttribute("dir","ltr");await expect(page.locator("h1#academy-title")).toBeVisible();
   await expect(page.locator('[data-academy-hero-image]')).toBeVisible();await expect(page.locator('[data-jlfa-curriculum-dialog],[data-jlfa-curriculum-content]')).toHaveCount(0);
+  const originalViewport=page.viewportSize();if(originalViewport&&originalViewport.width<768)await page.setViewportSize({width:390,height:700});
+  await expect(page.locator('[data-hero-actions]')).toContainText('$300');
+  await expect.poll(()=>page.locator('[data-hero-actions]').evaluate(node=>{const box=node.getBoundingClientRect();return box.top>=0&&box.bottom<=innerHeight;})).toBe(true);
+  await expect.poll(()=>page.locator('[data-academy-hero-image]').evaluate(node=>(node as HTMLImageElement).naturalWidth>0)).toBe(true);
+  if(originalViewport)await page.setViewportSize(originalViewport);
   const body=await page.locator("body").innerText();expect(body).toContain(academyIntroduction[locale]);expect(body).not.toContain("Weekly sessions · first two Foundation meetings");const review=page.locator("#parent-reflections");await expect(review.locator("blockquote")).toHaveText("“Medication is no longer relevant.”");await expect(review).not.toContainText("earlier educational work");
   await expect(page.locator('[data-academy-stage-card]')).toHaveCount(4);
   const locationLink=page.locator('#academy-mobile-menu a[href$="#locations"]');await expect(locationLink).toHaveAttribute('href',`/${locale}/florida#locations`);
@@ -383,9 +393,9 @@ if(!runtimePath){
   const logo=page.locator("[data-jlfa-header-logo] img");await expect(logo).toBeVisible();await expect.poll(()=>logo.evaluate(element=>(element as HTMLImageElement).naturalWidth)).toBe(1254);
   const logoResponse=await page.request.get("/groups/brand/jlfa-logo-locked-v1.png");expect(logoResponse.status()).toBe(200);expect(createHash("sha256").update(await logoResponse.body()).digest("hex")).toBe("e78ff6d3ef16c37613725507ce14da05883734a77f48b78ab9d6df3f92480356");
   for(const stale of ["Central Israel","₪1,000","Two 90-minute","Emotional therapy","$500","$399","500 דולר","399 דולר"])expect(body).not.toContain(stale);expect(body).not.toContain("Rank A");
-  await page.locator('[data-jlfa-primary]').click();await expect(page).toHaveURL(/#pricing$/);await expect(page.locator('[data-academy-pricing]')).toBeVisible();
-  const form=await academyFormReady(page,async()=>{await page.locator('[data-academy-pricing] a').first().click();await expect(page).toHaveURL(`${data.origin}/${locale}/florida/apply`);});
-  const parentMessageLanguage=locale==='en'?'he':'en';await expect(form.locator('[name="parentLanguage"]')).toHaveValue(locale);for(const name of ['nurtureEmail','privateWapi'])await expect(form.locator(`[name="${name}"]`)).not.toBeChecked();await form.locator('[name="parentLanguage"]').selectOption(parentMessageLanguage);await form.locator('[name="nurtureEmail"]').check();
+  await expect(page.locator('[data-jlfa-primary]')).toHaveAttribute('href',`/${locale}/florida/apply`);await expect(page.locator('[data-academy-pricing]')).toBeVisible();
+  const form=await academyFormReady(page,async()=>{await page.locator('[data-jlfa-primary]').click();await expect(page).toHaveURL(`${data.origin}/${locale}/florida/apply`);});
+  const parentMessageLanguage=locale==='en'?'he':'en';await expect(form.locator('[name="parentLanguage"]')).toHaveValue(locale);for(const name of ['nurtureEmail','privateWapi'])await expect(form.locator(`[name="${name}"]`)).not.toBeChecked();await form.locator('[name="parentLanguage"]').selectOption(parentMessageLanguage);await openAcademyUpdates(form,locale);await form.locator('[name="nurtureEmail"]').check();
   await fillCompleteAcademyForm(form,"Synthetic public browser check","synthetic@example.invalid");await form.locator('[name="preferredDays"][value="tuesday"]').check();await form.locator('[name="permission"]').check();
   const childId=await form.locator('[name="learnerId"]').inputValue();
   const switched=locale==="he"?"en":"he";await switchAcademyLocale(page,locale==="he"?"EN":"עברית");await expect(page).toHaveURL(`${data.origin}/${switched}/florida/apply`);
@@ -402,10 +412,10 @@ if(!runtimePath){
  });
  test("Florida group inquiry response-loss retry keeps one program-bound operation and practitioner readback",async({page,context},info)=>{
   const form=await academyFormReady(page,()=>page.goto("/en/florida/apply"));
-  const applicant=`Synthetic Florida replay ${randomUUID()}`,contact=`synthetic-${randomUUID()}@example.invalid`;await fillCompleteAcademyForm(form,applicant,contact);await form.locator('[name="parentLanguage"]').selectOption('he');await form.locator('[name="nurtureEmail"]').check();await expect(form.locator('[name="privateWapi"]')).not.toBeChecked();await form.locator('[name="permission"]').check();
+  const applicant=`Synthetic Florida replay ${randomUUID()}`,contact=`synthetic-${randomUUID()}@example.invalid`;await fillCompleteAcademyForm(form,applicant,contact);await form.locator('[name="parentLanguage"]').selectOption('he');await openAcademyUpdates(form,'en');await form.locator('[name="nurtureEmail"]').check();await expect(form.locator('[name="privateWapi"]')).not.toBeChecked();await form.locator('[name="permission"]').check();
   const endpoint="**/api/public/group-applications?program=sunday_fishing_academy";let firstBody:Record<string,unknown>|undefined,upstreamStatus=0;
   await page.route(endpoint,async route=>{if(route.request().method()!=="POST")return route.continue();firstBody=route.request().postDataJSON() as Record<string,unknown>;const upstream=await route.fetch({headers:{...route.request().headers(),origin:data.origin,"sec-fetch-site":"same-origin"}});upstreamStatus=upstream.status();await route.fulfill({status:503,contentType:"application/json",body:JSON.stringify({ok:false,error:{code:"UNAVAILABLE"}})});});
-  await form.locator('button[type="submit"]').click();await expect(form.getByRole("alert")).toContainText("The save result is not confirmed");expect(upstreamStatus).toBe(201);expect(firstBody).toMatchObject({website:"",fields:{parentName:applicant,contact,programId:"sunday_fishing_academy",permission:{confirmed:true,version:"JLFA-FREE-REGISTRATION-TERMS-20261023-03-v1"},academyRegistration:{version:"JLFA-FREE-REGISTRATION-20261023-03-v3",intent:"information",driveMinutes:37,postalCode:"00123",schoolHoursAvailability:"permission_needed",learners:[{fullName:"Synthetic registered learner",ageYears:12,grade:"6"}]}}});await expect(form.locator('[name="contact"]')).toBeDisabled();
+  await form.locator('button[type="submit"]').click();await expect(form.getByRole("alert")).toContainText("The save result is not confirmed");expect(upstreamStatus).toBe(201);expect(firstBody).toMatchObject({website:"",fields:{parentName:applicant,contact,programId:"sunday_fishing_academy",permission:{confirmed:true,version:"JLFA-FREE-REGISTRATION-TERMS-20261023-03-v1"},academyRegistration:{version:"JLFA-FREE-REGISTRATION-20261025-03-v4",intent:"information",driveMinutes:37,postalCode:"00123",schoolHoursAvailability:"permission_needed",learners:[{fullName:"Synthetic registered learner",ageYears:12,grade:"6"}]}}});await expect(form.locator('[name="contact"]')).toBeDisabled();
   await page.unroute(endpoint);const replayRequest=page.waitForRequest(request=>request.method()==="POST"&&new URL(request.url()).searchParams.get("program")==="sunday_fishing_academy"),replayResponse=page.waitForResponse(response=>response.request().method()==="POST"&&new URL(response.url()).searchParams.get("program")==="sunday_fishing_academy");await form.getByRole("button",{name:"Check the original submission",exact:true}).click();const replayBody=(await replayRequest).postDataJSON(),replayed=await replayResponse;expect(replayBody).toEqual(firstBody);expect(replayed.status()).toBe(200);const replayedBody=await replayed.json();expect(replayedBody).toMatchObject({ok:true,data:{saved:true,replayed:true,duplicate:true,item:{fields:{parentName:applicant,programId:"sunday_fishing_academy"}}}});
   expect(replayedBody.data.item.fields.academyRegistration.communicationPreferences).toMatchObject({parentLanguage:'he',nurtureEmail:true,privateWapi:false,notice:{language:'en'}});
   const reference=replayedBody.data.item.id;await expect(form.locator('[data-academy-saved]')).toHaveAttribute('data-academy-saved',reference);await expect(form.locator('[data-academy-saved]')).toContainText("Your free registration is saved");await expect(form.locator('button[type="submit"]')).toBeDisabled();
@@ -679,7 +689,12 @@ if(!runtimePath){
   const details=record.locator("details").filter({has:page.getByText(locale==="he"?"הערה על זמנים":"Scheduling note",{exact:true})});await expect(details).not.toHaveAttribute("open","");await details.locator("summary").click();await expect(details).toHaveAttribute("open","");await expect(details).toContainText("Synthetic scheduling details only.");
   const views=page.getByRole("navigation",{name:locale==="he"?"תצוגות הדף הנוכחי":"Current page views"});await expect(views.getByRole("link",{name:locale==="he"?"בקשות לקבוצה":"Group applications",exact:true})).toHaveAttribute("aria-current","page");
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
-  await page.goto(`/${locale}/app/clients`);await views.getByRole("link",{name:locale==="he"?"בקשות לקבוצה":"Group applications",exact:true}).click();await expect(page).toHaveURL(new RegExp(`/${locale}/app/group-applications$`));await page.goBack();await expect(page).toHaveURL(new RegExp(`/${locale}/app/clients$`));
+  await page.goto(`/${locale}/app/clients`);await expect(page).toHaveURL(new RegExp(`/${locale}/app/clients$`));
+  await expect(page.getByRole("heading",{name:locale==="he"?"אנשים":"People",level:1,exact:true})).toBeVisible();
+  await expect(views.getByRole("link",{name:locale==="he"?"הכול":"All",exact:true})).toHaveAttribute("aria-current","page");
+  const applicationsLink=views.getByRole("link",{name:locale==="he"?"בקשות לקבוצה":"Group applications",exact:true});
+  await expect(applicationsLink).toHaveAttribute("href",`/${locale}/app/group-applications`);await expect(applicationsLink).toBeVisible();
+  await applicationsLink.click();await expect(page).toHaveURL(new RegExp(`/${locale}/app/group-applications$`));await page.goBack();await expect(page).toHaveURL(new RegExp(`/${locale}/app/clients$`));
  });
  test("parent is denied the owner-only page and API without disclosure",async({page,context},info)=>{
   await context.addCookies([{name:"__Host-ls-session",value:data.parent,url:data.origin,httpOnly:true,secure:true,sameSite:"Lax"}]);
@@ -693,7 +708,7 @@ if(!runtimePath){
   for(const [kind,token] of Object.entries({adult:data.adult,child:data.child,revoked:data.revoked,otherWorkspace:data.otherWorkspace})){
    await context.clearCookies();await context.addCookies([{name:"__Host-ls-session",value:token,url:data.origin,httpOnly:true,secure:true,sameSite:"Lax"}]);
    const response=await page.goto("/en/app/group-interest");expect([200,404]).toContain(response?.status());await expect(page.getByRole("heading",{name:"Group and tutoring interest",exact:true})).toHaveCount(0);
-   expect(page.url().includes("/en/login")||await page.getByRole("heading",{name:"Page unavailable",exact:true}).count()===1,kind).toBe(true);expect(await page.locator("body").innerText()).not.toContain("Synthetic draft");
+   await expect.poll(async()=>page.url().includes("/en/login")||await page.getByRole("heading",{name:"Page unavailable",exact:true}).count()===1,{message:kind}).toBe(true);expect(await page.locator("body").innerText()).not.toContain("Synthetic draft");
    const interest=await page.request.get(`${data.origin}/api/private/group-interest`),placement=await page.request.get(`${data.origin}/api/private/group-placement`);
    expect([401,403],kind).toContain(interest.status());expect([401,403],kind).toContain(placement.status());expect(await interest.text()).not.toContain("Synthetic draft");expect(await placement.text()).not.toContain("Synthetic draft");
   }

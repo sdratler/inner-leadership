@@ -9,7 +9,8 @@ import {PGlite} from '@electric-sql/pglite';
 vi.mock('server-only',()=>({}));
 import {AcademyFounderStore,type FounderPaymentPort,type FounderNativeFamilyPort} from '../../src/features/group-application/academy-founder-store.ts';
 import {PublicGroupApplicationStore} from '../../src/features/group-application/store.ts';
-import {ACADEMY_REGISTRATION_VERSION,registrationConsent} from '../../src/features/group-application/academy-registration.ts';
+import {ACADEMY_REGISTRATION_VERSION,ACADEMY_PREVIOUS_FREE_REGISTRATION_VERSION,registrationConsent} from '../../src/features/group-application/academy-registration.ts';
+import {privateDigest} from '../../src/features/contact-ops/server/digests.ts';
 import {academyRegistrationNotice} from '../../src/features/group-application/academy-registration-notice.ts';
 import {floridaAcademyRegistrationFieldsSchema} from '../../src/features/group-application/contract.ts';
 import {INQUIRY_EMAIL_FROM} from '../../src/features/group-application/inquiry-email-copy.ts';
@@ -58,6 +59,29 @@ async function messages(workspace:string){return (await db.query<{id:string;foun
 async function token(workspace:string,id:string){const row=(await messages(workspace)).find(m=>m.id===id)!;return JSON.parse(unseal(row.payload_ciphertext,`ls_service_interest/inquiry_email/v1/${workspace}/${id}`,ring)).token as string;}
 beforeAll(async()=>{await db.exec('CREATE SCHEMA ls_control');for(const n of ['0001_ls_foundation.sql','0010_ls_identity_cases_20260906.sql','0124_ls_group_interest.sql','0131_ls_public_group_applications.sql','0135_ls_inquiry_email_outbox.sql','proposals/0136_ls_academy_founder.sql'])await db.exec(await readFile('migrations/'+n,'utf8'));},25000);
 afterAll(async()=>db.close());
+it('replays an immutable historical v3 application with preferences and attribution after v4 without rewriting consent or placement',async()=>{
+ const x=await fixture(),c=command(),id=randomUUID(),continuation=opaqueToken();
+ c.fields.academyRegistration.version=ACADEMY_PREVIOUS_FREE_REGISTRATION_VERSION;
+ c.fields.academyRegistration.stageInterest='advanced';
+ c.fields.academyRegistration.communicationPreferences=communicationPreferenceSelection('he',false,true,'en');
+ const fields=floridaAcademyRegistrationFieldsSchema.parse(c.fields),at=new Date('2026-10-24T12:00:00Z');
+ const touch={campaign:ACADEMY_CAMPAIGN,source:'facebook',medium:'social',content:PREREG_CREATIVE.id}as const,attribution:CampaignAttribution={first:touch,last:touch};
+ const digest=privateDigest({domain:'public-group-application/v1',workspace:x.workspace,fields},key),ciphertext=seal(JSON.stringify(fields),`ls_service_interest/public_application/v1/${x.workspace}/${id}`,ring);
+ // Seed the already-accepted historical tuple; the current public write API must reject new v3 tuples.
+ await store.transaction(async tx=>{
+  await tx.query('INSERT INTO ls_service_interest.public_applications(workspace_id,id,contact_digest,request_digest,payload_ciphertext,notice_version,notice_language,received_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[x.workspace,id,'a'.repeat(64),digest,ciphertext,fields.permission.version,fields.language,at]);
+  await tx.query('INSERT INTO ls_service_interest.public_application_operations(workspace_id,operation_id,request_digest,application_id) VALUES($1,$2,$3,$4)',[x.workspace,c.operationId,digest,id]);
+  await x.founder.accept(tx,id,fields,continuation);await x.founder.bindAttribution(tx,c.operationId,id,attribution);
+ });
+ const before=(await db.query('SELECT payload_ciphertext,request_digest,notice_version,received_at FROM ls_service_interest.public_applications WHERE id=$1',[id])).rows;
+ const replay=await x.applications.replaySaved(c,attribution);expect(replay?.item).toMatchObject({id,receivedAt:at.toISOString(),fields});
+ expect((await x.applications.submit(c,continuation,attribution)).item).toEqual(replay!.item);
+ await expect(x.applications.replaySaved({...c,fields:{...c.fields,parentName:'Changed synthetic parent'}},attribution)).rejects.toMatchObject({code:'CONFLICT'});
+ await expect(x.applications.replaySaved(c,{first:touch,last:{...touch,source:'whatsapp',medium:'message'}})).rejects.toMatchObject({code:'CONFLICT'});
+ await expect(x.applications.submit({...c,operationId:randomUUID()},continuation,attribution)).rejects.toMatchObject({code:'INVALID_REQUEST'});
+ expect((await db.query('SELECT payload_ciphertext,request_digest,notice_version,received_at FROM ls_service_interest.public_applications WHERE id=$1',[id])).rows).toEqual(before);
+ expect(await x.founder.aggregate()).toMatchObject({occupied:1,remaining:29});
+});
 it('allocates at durable acceptance; exact replay/reload and sibling/language continuation consume one family allocation',async()=>{
  const x=await fixture(),c=command(),continuation=opaqueToken(),saved=await x.applications.submit(c,continuation);expect(saved.founder).toMatchObject({status:'reserved',email:'queued',deadline:null});expect(await x.founder.aggregate()).toMatchObject({remaining:29,capacity:30});
  expect((await x.applications.submit(c,continuation)).item.id).toBe(saved.item.id);expect((await x.applications.replaySaved(c))?.founder?.reference).toBe(saved.item.id);
