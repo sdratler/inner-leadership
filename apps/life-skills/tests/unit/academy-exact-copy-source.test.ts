@@ -24,7 +24,7 @@ describe('one source-bound Exact05 content projection',()=>{
   }
  });
  it('pins exact paired state, field-error and meaningful curriculum age text against old-copy regression',()=>{
-  expect(sha(academyExactStates)).toBe('1dd5950ed3b8010df58f273add9de8c896403cacd40513cb5c21cd5b0db3fdd3');
+  expect(sha(academyExactStates)).toBe('948f5c290fb867f35c237b5bd42a7387d11447e118267de3c7b769d35b6b673d');
   expect(sha(academyExactCurriculum.common)).toBe('0371ab3cdcd98f4497c7af576fcb3b1bdb9a48ac8b8091c7dd87bf33f478aadb');
   for(const locale of ['en','he']as const){
    expect(new Set(academyExactCurriculum.stages.map(s=>JSON.stringify(s.agePanels['11–13'][locale]))).size).toBe(4);

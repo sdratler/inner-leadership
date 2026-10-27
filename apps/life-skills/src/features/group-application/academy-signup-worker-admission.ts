@@ -13,7 +13,7 @@ const schema=z.object({
  templateVersion:z.literal('JLFA-EXACT-COPY-20261026-05'),
  // Content approval is not send authority. Every population still requires its
  // issued finite source-bound admission and existing mode-specific runtime gates.
- r00Exception:z.object({version:z.literal('JLFA-R00-RELATIVE-SEND-CLOCK-20261027-01'),approvalReceiptSha256:hash}).strict().optional(),
+ r00Exception:z.object({version:z.literal('JLFA-OWNER-PAYMENT-CLOCK-CORRECTION-20261027-01'),approvalReceiptSha256:hash}).strict().optional(),
  allowedTemplateIds:z.array(z.enum(['R00','R01','R02','R03'])).min(1).max(4),
  transportHashes:z.object({gmail:hash,contract:hash,resend:hash}).strict(),
  cutoff:timestamp,expiresAt:timestamp,
@@ -40,7 +40,7 @@ export function createSignupWorkerAdmission(input:unknown,context:SignupWorkerCo
  if(!context.transportHashes||(['gmail','contract','resend'] as const).some(key=>p.transportHashes[key]!==context.transportHashes[key]))return null;
  if(new Set(p.allowedTemplateIds).size!==p.allowedTemplateIds.length)return null;
  if(p.allowedTemplateIds.includes('R00')&&!p.r00Exception)return null;
- if(p.r00Exception&&p.r00Exception.approvalReceiptSha256!=='7dfc71f18f0f853bb11f4bc1de0547484c13a9bbfa1f82eeab30d0eaf95aca87')return null;
+ if(p.r00Exception&&p.r00Exception.approvalReceiptSha256!=='caeab55524e61c98273b01c9884f15b707e502bc6e145360ebf4575ba55bde3a')return null;
  if(p.population.mode==='controlled_test'){
   if(!p.r00Exception||!p.allowedTemplateIds.includes('R03')||p.allowedTemplateIds.some(id=>id!=='R00'&&id!=='R03')||new Set(p.population.learnerIds).size!==2||Date.parse(p.population.admittedAt)>now.getTime()||Date.parse(p.population.admittedAt)<Date.parse(p.cutoff)||Date.parse(p.expiresAt)<=Date.parse(p.population.admittedAt)||Date.parse(p.expiresAt)-Date.parse(p.population.admittedAt)>24*60*60*1000)return null;
   Object.freeze(p.population.learnerIds);
@@ -69,7 +69,7 @@ export function signupWorkerFamilyAllowed(p:SignupWorkerAdmission,f:{reference:s
  * Existing payloads never gain this identity by inference or automatic upgrade. */
 export function signupWorkerMessageAllowed(p:SignupWorkerAdmission,message:unknown,now:Date){
  if(!issued.has(p)||!Number.isFinite(now.getTime())||now.getTime()<Date.parse(p.cutoff)||now.getTime()>=Date.parse(p.expiresAt))return false;
- const parsed=z.object({version:z.literal('JLFA-EXACT-COPY-20261026-05'),templateId:z.enum(['R00','R01','R02','R03']),templateCatalogSha256:hash,r00Exception:z.object({version:z.literal('JLFA-R00-RELATIVE-SEND-CLOCK-20261027-01'),approvalReceiptSha256:hash}).strict().optional()}).strict().safeParse(message);
+ const parsed=z.object({version:z.literal('JLFA-EXACT-COPY-20261026-05'),templateId:z.enum(['R00','R01','R02','R03']),templateCatalogSha256:hash,r00Exception:z.object({version:z.literal('JLFA-OWNER-PAYMENT-CLOCK-CORRECTION-20261027-01'),approvalReceiptSha256:hash}).strict().optional()}).strict().safeParse(message);
  if(!parsed.success||p.population.mode==='controlled_test'&&now.getTime()<Date.parse(p.population.admittedAt))return false;
  const m=parsed.data;if(m.templateId==='R00'){if(!p.r00Exception||m.r00Exception?.version!==p.r00Exception.version||m.r00Exception.approvalReceiptSha256!==p.r00Exception.approvalReceiptSha256)return false;}else if(m.r00Exception!==undefined)return false;
  return parsed.data.version===p.templateVersion&&parsed.data.templateCatalogSha256===p.templateCatalogSha256&&p.allowedTemplateIds.includes(parsed.data.templateId);

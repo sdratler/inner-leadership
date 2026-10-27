@@ -37,7 +37,7 @@
             },
             {
               "kind": "paragraph",
-              "text": "Confirm by {interest_deadline_eastern}. No payment is due now. I'll be in touch as the groups take shape."
+              "text": "We expect to announce the start date within the next couple of weeks. Once we announce it, you’ll have seven days to pay and secure your place. No payment is due now. I'll be in touch as the groups take shape."
             },
             {
               "kind": "paragraph",
@@ -63,7 +63,7 @@
             },
             {
               "kind": "paragraph",
-              "text": "Please confirm by {interest_deadline_eastern} so we know to keep planning with your family. No payment is needed."
+              "text": "Please confirm your interest so we know to keep planning with your family. No payment is needed."
             },
             {
               "kind": "action",
@@ -81,7 +81,7 @@
         },
         "R02": {
           "subject": "Please confirm your interest in the Fishing Academy",
-          "preview": "Your confirmation deadline is {interest_deadline_eastern}.",
+          "preview": "Please confirm your interest so we know to keep planning with your family.",
           "blocks": [
             {
               "kind": "paragraph",
@@ -89,7 +89,7 @@
             },
             {
               "kind": "paragraph",
-              "text": "I haven't received your interest confirmation yet. The deadline is {interest_deadline_eastern}."
+              "text": "I haven't received your interest confirmation yet."
             },
             {
               "kind": "action",
@@ -168,7 +168,7 @@
             },
             {
               "kind": "paragraph",
-              "text": "יש לאשר עד {interest_deadline_eastern}. אין צורך לשלם כעת. אעדכן כשהקבוצות יתגבשו."
+              "text": "אנו מצפים להודיע על מועד הפתיחה בשבועיים הקרובים. מרגע שנודיע עליו, יהיו לכם שבעה ימים לשלם ולהבטיח את מקומכם. אין צורך לשלם כעת. אעדכן כשהקבוצות יתגבשו."
             },
             {
               "kind": "paragraph",
@@ -194,7 +194,7 @@
             },
             {
               "kind": "paragraph",
-              "text": "אשרו עד {interest_deadline_eastern}, כדי שנדע להמשיך בתכנון עם משפחתכם. אין צורך בתשלום."
+              "text": "אשרו התעניינות, כדי שנדע להמשיך בתכנון עם משפחתכם. אין צורך בתשלום."
             },
             {
               "kind": "action",
@@ -212,7 +212,7 @@
         },
         "R02": {
           "subject": "אנא אשרו התעניינות באקדמיה לדיג",
-          "preview": "המועד האחרון לאישור הוא {interest_deadline_eastern}.",
+          "preview": "אשרו התעניינות כדי שנדע להמשיך בתכנון עם משפחתכם.",
           "blocks": [
             {
               "kind": "paragraph",
@@ -220,7 +220,7 @@
             },
             {
               "kind": "paragraph",
-              "text": "עדיין לא קיבלתי את אישור ההתעניינות שלכם. המועד האחרון הוא {interest_deadline_eastern}."
+              "text": "עדיין לא קיבלתי את אישור ההתעניינות שלכם."
             },
             {
               "kind": "action",
@@ -264,5 +264,9 @@
         }
       }
     }
+  },
+  "amendment": {
+    "version": "JLFA-OWNER-PAYMENT-CLOCK-CORRECTION-20261027-01",
+    "approvalReceiptSha256": "caeab55524e61c98273b01c9884f15b707e502bc6e145360ebf4575ba55bde3a"
   }
 }

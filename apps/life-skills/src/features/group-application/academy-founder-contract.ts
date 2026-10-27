@@ -19,13 +19,12 @@ export function founderPublicEmailState(input:{outboxState?:string|undefined;exc
  if(input.outboxState==='queued')return 'queued';
  return 'not_queued';
 }
-/** A missing accepted send or an unresolved delivery cannot prove expiry. */
+/** Initial interest has no expiry. Old deadline values remain historical audit
+ * data; only explicit closure or unresolved delivery prevents confirmation. */
 export function founderPublicConfirmationState(input:{sentAt:string|null;deadline:string|null;exception:boolean;status:string;confirmed:boolean;now:Date}){
  const closed=['expired','withdrawn'].includes(input.status);
  const confirmed=input.confirmed&&!closed;
- const end=input.deadline?Date.parse(input.deadline):NaN;
- const expired=!!input.sentAt&&Number.isFinite(end)&&end<=input.now.getTime();
- return {confirmed,unusable:!confirmed&&(closed||expired),available:!confirmed&&!!input.sentAt&&!input.exception&&Number.isFinite(end)&&end>input.now.getTime()&&!closed};
+ return {confirmed,unusable:!confirmed&&closed,available:!confirmed&&!!input.sentAt&&!input.exception&&!closed};
 }
 export const founderOwnerCommandSchema=z.discriminatedUnion('action',[
  z.object({action:z.literal('bind_native_family'),binding:academyOwnerEnrollmentBindingSchema}),

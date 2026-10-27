@@ -1,7 +1,6 @@
 "use client";
 import {useCallback,useEffect,useRef,useState} from 'react';
 import type {Locale} from '../../lib/locale.ts';
-import {floridaDeadline} from './academy-founder-contract.ts';
 import {AcademySiteFrame} from './academy-site-frame.tsx';
 import siteStyles from './academy-site.module.css';
 import {academyExactStates} from './academy-exact-copy.ts';
@@ -46,19 +45,19 @@ export function AcademyConfirmationOutcome({locale,alreadyConfirmed,founderRateR
 export function AcademyFounderConfirm({locale:initialLocale}:{locale:Locale}){
  const [locale,setLocale]=useState(initialLocale);
  const token=useRef(''),captured=useRef(false),mounted=useRef(false),request=useRef<AbortController|null>(null),generation=useRef(0),inFlight=useRef(false);
- const [state,setState]=useState<ConfirmationState>('loading'),[deadline,setDeadline]=useState<string|null>(null);
+ const [state,setState]=useState<ConfirmationState>('loading');
  const [founderRateReserved,setFounderRateReserved]=useState(false);
  const read=useCallback(async()=>{
   if(!token.current){setState('missing');return;}
   if(!/^[A-Za-z0-9_-]{43}$/.test(token.current)){setState('invalid');return;}
   request.current?.abort();const controller=new AbortController(),current=++generation.current;request.current=controller;inFlight.current=true;
-  setState('loading');setDeadline(null);setFounderRateReserved(false);
+  setState('loading');setFounderRateReserved(false);
   const isCurrent=()=>mounted.current&&!controller.signal.aborted&&generation.current===current;
   try{
    const response=await fetch('/api/public/academy-founder',{method:'POST',cache:'no-store',credentials:'same-origin',signal:controller.signal,headers:{'content-type':'application/json'},body:JSON.stringify({action:'read_confirmation',token:token.current})});
    const context=readConfirmationContext(await response.json());
    if(!response.ok||!context)throw Error();
-   if(isCurrent()){setDeadline(context.deadline);setFounderRateReserved(context.founderRateReserved);setState(confirmationStateFromContext(context));}
+   if(isCurrent()){setFounderRateReserved(context.founderRateReserved);setState(confirmationStateFromContext(context));}
   }catch{if(isCurrent())setState('read_failed');}
   finally{if(isCurrent())inFlight.current=false;}
  },[]);
@@ -77,7 +76,7 @@ export function AcademyFounderConfirm({locale:initialLocale}:{locale:Locale}){
    const result=readConfirmedResult(body);
    if(!response.ok||!result)throw Error();
    if(isCurrent()){setFounderRateReserved(result.founderRateReserved);setState(result.alreadyConfirmed?'already_confirmed':'confirmed');}
-  }catch{if(isCurrent()){setDeadline(null);setState('confirm_unknown');}}
+  }catch{if(isCurrent()){setState('confirm_unknown');}}
   finally{if(isCurrent())inFlight.current=false;}
  }
  const t=(en:string,he:string)=>locale==='he'?he:en;
@@ -87,12 +86,12 @@ export function AcademyFounderConfirm({locale:initialLocale}:{locale:Locale}){
   <h1>{copy.heading}</h1>
   <p>{copy.text}</p>
   <p>{copy.smallLine}</p>
-  {deadline&&<p>{t('Confirmation deadline: ','המועד האחרון לאישור: ')}{floridaDeadline(deadline,locale)}</p>}
+  <p data-academy-payment-timing>{copy.paymentTiming}</p>
   {state==='loading'&&<p role="status">{t('Checking your confirmation link…','בודקים את קישור האישור…')}</p>}
   {state==='missing'&&<p role="alert">{t('This page has no confirmation link. Open the complete link from your registration email.','לעמוד זה חסר קישור האישור. פתחו את הקישור המלא מתוך הודעת ההרשמה שלכם.')}</p>}
   {state==='invalid'&&<p role="alert">{t('This confirmation link is incomplete or invalid. Open the complete link from your registration email.','קישור האישור אינו מלא או אינו תקין. פתחו את הקישור המלא מתוך הודעת ההרשמה שלכם.')}</p>}
   {state==='read_failed'&&<p role="alert">{t('We could not check this link. Keep this page open and retry below. Retrying only checks your status; it does not confirm interest.','לא הצלחנו לבדוק את הקישור. השאירו את העמוד פתוח ונסו שוב למטה. הניסיון החוזר בודק את המצב בלבד ואינו מאשר התעניינות.')}</p>}
-  {state==='not_ready'&&<p role="status">{t('This link is not currently available for confirmation. Contact the Academy for a delivery or deadline review. No interest confirmation has been verified.','הקישור אינו זמין כרגע לאישור. פנו לאקדמיה לבדיקת ההודעה או המועד. לא אומת אישור התעניינות.')}</p>}
+  {state==='not_ready'&&<p role="status">{t('This link is not currently available for confirmation. Contact the Academy for a delivery review. No interest confirmation has been verified.','הקישור אינו זמין כרגע לאישור. פנו לאקדמיה לבדיקת ההודעה. לא אומת אישור התעניינות.')}</p>}
   {state==='unavailable'&&<p role="status">{copy.unusableLink}</p>}
   {(state==='available'||state==='confirming')&&<button type="button" className={siteStyles.button} style={actionStyle} disabled={state==='confirming'} onClick={()=>void confirm()}>{state==='confirming'?t('Confirming…','מאשרים…'):copy.button}</button>}
   {state==='confirm_unknown'&&<p role="alert">{t('We could not verify the confirmation result. Check its status below before trying to confirm again.','לא הצלחנו לאמת את תוצאת האישור. בדקו את המצב למטה לפני ניסיון אישור נוסף.')}</p>}

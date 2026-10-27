@@ -70,7 +70,7 @@ describe('exact05 content and transport admission is additive and closed',()=>{
 
 describe('conditional single synthetic family R00 plus explicit confirmation ACK',()=>{
  const learnerIds=['66666666-6666-4666-8666-666666666666','77777777-7777-4777-8777-777777777777'];
- const exception={version:'JLFA-R00-RELATIVE-SEND-CLOCK-20261027-01',approvalReceiptSha256:'7dfc71f18f0f853bb11f4bc1de0547484c13a9bbfa1f82eeab30d0eaf95aca87'};
+ const exception={version:'JLFA-OWNER-PAYMENT-CLOCK-CORRECTION-20261027-01',approvalReceiptSha256:'caeab55524e61c98273b01c9884f15b707e502bc6e145360ebf4575ba55bde3a'};
  const controlled={...policy,expiresAt:'2026-10-25T14:00:00.000Z',allowedTemplateIds:['R00','R03'],r00Exception:exception,population:{mode:'controlled_test',admittedAt:'2026-10-25T12:00:00.000Z',recipientSha256:signupRecipientDigest(family.email),learnerIds}};
  const target={...family,children:learnerIds.map(id=>({id}))};
  it('requires the exception and exact initial-plus-ACK allowlist and maximum 24-hour window',()=>{
@@ -100,7 +100,7 @@ describe('conditional single synthetic family R00 plus explicit confirmation ACK
 
 it('controlled renewal keeps original family cutoff but admits only a new finite ACK window with broad flags absent',()=>{
  const old='2026-10-25T11:00:00.000Z',at=new Date('2026-10-27T12:00:00.000Z'),learnerIds=['66666666-6666-4666-8666-666666666666','77777777-7777-4777-8777-777777777777'];
- const p={...policy,cutoff:old,expiresAt:'2026-10-27T13:00:00.000Z',allowedTemplateIds:['R03'],r00Exception:{version:'JLFA-R00-RELATIVE-SEND-CLOCK-20261027-01',approvalReceiptSha256:'7dfc71f18f0f853bb11f4bc1de0547484c13a9bbfa1f82eeab30d0eaf95aca87'},population:{mode:'controlled_test',admittedAt:at.toISOString(),recipientSha256:signupRecipientDigest(family.email),learnerIds}};
+ const p={...policy,cutoff:old,expiresAt:'2026-10-27T13:00:00.000Z',allowedTemplateIds:['R03'],r00Exception:{version:'JLFA-OWNER-PAYMENT-CLOCK-CORRECTION-20261027-01',approvalReceiptSha256:'caeab55524e61c98273b01c9884f15b707e502bc6e145360ebf4575ba55bde3a'},population:{mode:'controlled_test',admittedAt:at.toISOString(),recipientSha256:signupRecipientDigest(family.email),learnerIds}};
  const a=createSignupWorkerAdmission(p,{...context,founderApproved:false},at)!;expect(a).not.toBeNull();expect(signupWorkerFamilyAllowed(a,{...family,children:learnerIds.map(id=>({id}))},at)).toBe(true);
  expect(signupWorkerMessageAllowed(a,{version:context.templateVersion,templateId:'R00',templateCatalogSha256:context.templateCatalogSha256,r00Exception:p.r00Exception},at)).toBe(false);
  for(const admittedAt of ['2026-10-25T10:59:59.999Z','2026-10-27T12:00:00.001Z'])expect(createSignupWorkerAdmission({...p,population:{...p.population,admittedAt}},{...context,founderApproved:false},at)).toBeNull();
@@ -110,10 +110,22 @@ it('controlled renewal keeps original family cutoff but admits only a new finite
 });
 
 it('future/reference R00 needs approved content receipt AND all existing broad gates',()=>{
- const exception={version:'JLFA-R00-RELATIVE-SEND-CLOCK-20261027-01',approvalReceiptSha256:'7dfc71f18f0f853bb11f4bc1de0547484c13a9bbfa1f82eeab30d0eaf95aca87'};
+ const exception={version:'JLFA-OWNER-PAYMENT-CLOCK-CORRECTION-20261027-01',approvalReceiptSha256:'caeab55524e61c98273b01c9884f15b707e502bc6e145360ebf4575ba55bde3a'};
  for(const population of [{mode:'future_submissions'},{mode:'references',families:[{reference:family.reference,recipientSha256:signupRecipientDigest(family.email)}]}]){
   const input={...policy,allowedTemplateIds:['R00','R03'],r00Exception:exception,population};expect(createSignupWorkerAdmission(input,context,now)).not.toBeNull();
   for(const changed of [{sendEnabled:false},{founderApproved:false},{enabled:false}])expect(createSignupWorkerAdmission(input,{...context,...changed},now)).toBeNull();
   expect(createSignupWorkerAdmission({...input,r00Exception:{...exception,approvalReceiptSha256:'0'.repeat(64)}},context,now)).toBeNull();
  }
+});
+
+it('superseded initial-clock policy and queued catalog identities cannot be admitted or sent',()=>{
+ const amended={version:"JLFA-OWNER-PAYMENT-CLOCK-CORRECTION-20261027-01",approvalReceiptSha256:"caeab55524e61c98273b01c9884f15b707e502bc6e145360ebf4575ba55bde3a"};
+ const current={...policy,allowedTemplateIds:['R00','R03'],r00Exception:amended};
+ const a=createSignupWorkerAdmission(current,context,now)!;expect(a).not.toBeNull();
+ const identity={version:context.templateVersion,templateId:'R00',templateCatalogSha256:context.templateCatalogSha256,r00Exception:amended};
+ expect(signupWorkerMessageAllowed(a,identity,now)).toBe(true);
+ const old={version:'JLFA-R00-RELATIVE-SEND-CLOCK-20261027-01',approvalReceiptSha256:'7dfc71f18f0f853bb11f4bc1de0547484c13a9bbfa1f82eeab30d0eaf95aca87'};
+ expect(createSignupWorkerAdmission({...current,r00Exception:old},context,now)).toBeNull();
+ expect(signupWorkerMessageAllowed(a,{...identity,r00Exception:old},now)).toBe(false);
+ for(const templateId of ['R00','R01','R02','R03'])expect(signupWorkerMessageAllowed(a,{...identity,templateId,templateCatalogSha256:'175d4bbc87d94d2632c6a1be0092784ad14e4eb7dbc25825c6ec0106d2f3e1ea',...(templateId==='R00'?{}:{r00Exception:undefined})},now)).toBe(false);
 });

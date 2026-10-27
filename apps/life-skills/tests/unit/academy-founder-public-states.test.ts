@@ -20,7 +20,8 @@ describe('public email state follows saved evidence',()=>{
   expect(founderPublicConfirmationState({...input,exception:true})).toEqual({confirmed:false,available:false,unusable:false});
   expect(founderPublicConfirmationState({...input,sentAt:null,deadline:null})).toEqual({confirmed:false,available:false,unusable:false});
   expect(founderPublicConfirmationState({...input,sentAt:null,deadline:past})).toEqual({confirmed:false,available:false,unusable:false});
-  expect(founderPublicConfirmationState({...input,deadline:past})).toEqual({confirmed:false,available:false,unusable:true});
+  expect(founderPublicConfirmationState({...input,deadline:past})).toEqual({confirmed:false,available:true,unusable:false});
+  expect(founderPublicConfirmationState({...input,deadline:null})).toEqual({confirmed:false,available:true,unusable:false});
   expect(founderPublicConfirmationState({...input,confirmed:true,deadline:past,status:'confirmed'})).toEqual({confirmed:true,available:false,unusable:false});
   for(const status of ['withdrawn','expired'])expect(founderPublicConfirmationState({...input,status,confirmed:true})).toEqual({confirmed:false,available:false,unusable:true});
  });
