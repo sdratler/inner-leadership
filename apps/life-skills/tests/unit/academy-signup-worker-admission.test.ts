@@ -71,13 +71,13 @@ describe('exact05 content and transport admission is additive and closed',()=>{
 describe('conditional single synthetic family R00 plus explicit confirmation ACK',()=>{
  const learnerIds=['66666666-6666-4666-8666-666666666666','77777777-7777-4777-8777-777777777777'];
  const exception={version:'JLFA-OWNER-PAYMENT-CLOCK-CORRECTION-20261027-01',approvalReceiptSha256:'caeab55524e61c98273b01c9884f15b707e502bc6e145360ebf4575ba55bde3a'};
- const controlled={...policy,expiresAt:'2026-10-25T14:00:00.000Z',allowedTemplateIds:['R00','R03'],r00Exception:exception,population:{mode:'controlled_test',admittedAt:'2026-10-25T12:00:00.000Z',recipientSha256:signupRecipientDigest(family.email),learnerIds}};
- const target={...family,children:learnerIds.map(id=>({id}))};
+ const controlled={...policy,expiresAt:'2026-10-25T14:00:00.000Z',allowedTemplateIds:['R00','R03'],r00Exception:exception,population:{mode:'controlled_test',reference:family.reference,generation:2,revision:4,admittedAt:'2026-10-25T12:00:00.000Z',recipientSha256:signupRecipientDigest(family.email),learnerIds}};
+ const target={...family,revision:4,interest:{generation:2},children:learnerIds.map(id=>({id}))};
  it('requires the exception and exact initial-plus-ACK allowlist and maximum 24-hour window',()=>{
   expect(createSignupWorkerAdmission(controlled,context,now)).not.toBeNull();
   for(const changed of [{r00Exception:undefined},{r00Exception:{...exception,approvalReceiptSha256:''}},{allowedTemplateIds:['R00']},{allowedTemplateIds:['R00','R03','R01']},{expiresAt:'2026-10-27T11:00:00.000Z'},{population:{...controlled.population,learnerIds:[learnerIds[0],learnerIds[0]]}}])expect(createSignupWorkerAdmission({...controlled,...changed},context,now)).toBeNull();
  });
- it('matches only exact new recipient and both immutable learner IDs, independent of generated reference',()=>{
+ it('matches only exact new recipient and both immutable learner IDs, with the exact saved reference and snapshot',()=>{
   const a=createSignupWorkerAdmission(controlled,context,now)!;
   expect(signupWorkerFamilyAllowed(a,target,now)).toBe(true);
   expect(signupWorkerFamilyAllowed(a,family,now)).toBe(false);
@@ -85,6 +85,17 @@ describe('conditional single synthetic family R00 plus explicit confirmation ACK
   for(const changed of [{email:'other@example.invalid'},{submittedAt:'2026-10-25T10:59:59.999Z'},{children:target.children.slice(0,1)},{children:[...target.children,{id:ids.workspaceId}]},{children:[target.children[0]!,target.children[0]!]},{children:[target.children[0]!,{id:ids.workspaceId}]}])expect(signupWorkerFamilyAllowed(a,{...target,...changed},now)).toBe(false);
   expect(signupWorkerFamilyAllowed({...a},target,now)).toBe(false);
   expect(signupWorkerFamilyAllowed(a,target,new Date(controlled.expiresAt))).toBe(false);
+ });
+ it('requires the exact admitted generation and revision, with no automatic carry-forward',()=>{
+  const a=createSignupWorkerAdmission(controlled,context,now)!;expect(a).not.toBeNull();
+  expect(signupWorkerFamilyAllowed(a,target,now)).toBe(true);
+  for(const changed of [{reference:ids.workspaceId},{interest:{generation:1}},{interest:{generation:3}},{revision:3},{revision:5}])expect(signupWorkerFamilyAllowed(a,{...target,...changed},now)).toBe(false);
+  for(const changed of [{generation:undefined},{generation:0},{generation:1.5},{generation:Number.MAX_SAFE_INTEGER+1},{revision:undefined},{revision:0},{reference:undefined}])expect(createSignupWorkerAdmission({...controlled,population:{...controlled.population,...changed}},context,now)).toBeNull();
+  expect(signupWorkerFamilyAllowed({...a},target,now)).toBe(false);
+  const ack=createSignupWorkerAdmission({...controlled,allowedTemplateIds:['R03'],population:{...controlled.population,revision:6}},context,now)!;
+  expect(signupWorkerFamilyAllowed(ack,{...target,revision:6},now)).toBe(true);
+  expect(signupWorkerFamilyAllowed(a,{...target,revision:6},now)).toBe(false);
+  expect(signupWorkerMessageAllowed(ack,{version:context.templateVersion,templateId:'R00',templateCatalogSha256:context.templateCatalogSha256,r00Exception:exception},now)).toBe(false);
  });
  it('requires already recorded exact exception identity and keeps all reminders/legacy intents denied',()=>{
   const a=createSignupWorkerAdmission(controlled,context,now)!;
@@ -100,8 +111,8 @@ describe('conditional single synthetic family R00 plus explicit confirmation ACK
 
 it('controlled renewal keeps original family cutoff but admits only a new finite ACK window with broad flags absent',()=>{
  const old='2026-10-25T11:00:00.000Z',at=new Date('2026-10-27T12:00:00.000Z'),learnerIds=['66666666-6666-4666-8666-666666666666','77777777-7777-4777-8777-777777777777'];
- const p={...policy,cutoff:old,expiresAt:'2026-10-27T13:00:00.000Z',allowedTemplateIds:['R03'],r00Exception:{version:'JLFA-OWNER-PAYMENT-CLOCK-CORRECTION-20261027-01',approvalReceiptSha256:'caeab55524e61c98273b01c9884f15b707e502bc6e145360ebf4575ba55bde3a'},population:{mode:'controlled_test',admittedAt:at.toISOString(),recipientSha256:signupRecipientDigest(family.email),learnerIds}};
- const a=createSignupWorkerAdmission(p,{...context,founderApproved:false},at)!;expect(a).not.toBeNull();expect(signupWorkerFamilyAllowed(a,{...family,children:learnerIds.map(id=>({id}))},at)).toBe(true);
+ const p={...policy,cutoff:old,expiresAt:'2026-10-27T13:00:00.000Z',allowedTemplateIds:['R03'],r00Exception:{version:'JLFA-OWNER-PAYMENT-CLOCK-CORRECTION-20261027-01',approvalReceiptSha256:'caeab55524e61c98273b01c9884f15b707e502bc6e145360ebf4575ba55bde3a'},population:{mode:'controlled_test',reference:family.reference,generation:2,revision:4,admittedAt:at.toISOString(),recipientSha256:signupRecipientDigest(family.email),learnerIds}};
+ const a=createSignupWorkerAdmission(p,{...context,founderApproved:false},at)!;expect(a).not.toBeNull();expect(signupWorkerFamilyAllowed(a,{...family,revision:4,interest:{generation:2},children:learnerIds.map(id=>({id}))},at)).toBe(true);
  expect(signupWorkerMessageAllowed(a,{version:context.templateVersion,templateId:'R00',templateCatalogSha256:context.templateCatalogSha256,r00Exception:p.r00Exception},at)).toBe(false);
  for(const admittedAt of ['2026-10-25T10:59:59.999Z','2026-10-27T12:00:00.001Z'])expect(createSignupWorkerAdmission({...p,population:{...p.population,admittedAt}},{...context,founderApproved:false},at)).toBeNull();
  expect(createSignupWorkerAdmission({...p,expiresAt:'2026-10-28T12:00:00.001Z'},{...context,founderApproved:false},at)).toBeNull();

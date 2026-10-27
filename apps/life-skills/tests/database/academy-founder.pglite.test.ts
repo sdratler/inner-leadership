@@ -523,13 +523,20 @@ async function controlledR00Fixture(){
  const {env}=await v2Policy(x.workspace),data=JSON.parse(env.LS_ACADEMY_SIGNUP_WORKER_ADMISSION_JSON);
  data.cutoff=now.toISOString();data.expiresAt=new Date(now.getTime()+60*60*1000).toISOString();data.allowedTemplateIds=['R00','R03'];
  data.r00Exception={version:'JLFA-OWNER-PAYMENT-CLOCK-CORRECTION-20261027-01',approvalReceiptSha256:'caeab55524e61c98273b01c9884f15b707e502bc6e145360ebf4575ba55bde3a'};
- data.population={mode:'controlled_test',admittedAt:now.toISOString(),recipientSha256:signupRecipientDigest(c.fields.academyRegistration.receiptEmail!),learnerIds:c.fields.academyRegistration.learners.map(l=>l.id)};
+ data.population={mode:'controlled_test',reference:randomUUID(),generation:1,revision:2,admittedAt:now.toISOString(),recipientSha256:signupRecipientDigest(c.fields.academyRegistration.receiptEmail!),learnerIds:c.fields.academyRegistration.learners.map(l=>l.id)};
  env.LS_ACADEMY_SIGNUP_WORKER_ADMISSION_JSON=JSON.stringify(data);env.LS_INQUIRY_EMAIL_SEND_ENABLED='false';
  const controlledEnv={...env,LS_ACADEMY_FOUNDER_EMAIL_APPROVED:'false',LS_ACADEMY_SIGNUP_CONTROLLED_SEND_ENABLED:'true'};
  const {loadSignupPopulation}=await import('../../src/features/group-application/academy-signup-population-runtime.ts');
- const admission=loadSignupPopulation(controlledEnv,now);if(!admission)throw Error('Synthetic controlled admission refused');
+ let admission=loadSignupPopulation(controlledEnv,now);if(!admission)throw Error('Synthetic controlled admission refused');
  const worker=new AcademyFounderStore(store,x.workspace,ring,key,clock,null,null,admission),applications=new PublicGroupApplicationStore(store,x.workspace,ring,key,clock,false,worker);
- return {...x,c,env:controlledEnv,admission,worker,applications};
+ async function bindSnapshot(allowedTemplateIds=['R00','R03']){
+  const target=(await worker.ownerList(x.actor)).families.find(f=>f.children.some(child=>child.id===c.fields.academyRegistration.learners[0]!.id));if(!target)throw Error('Synthetic controlled target missing');
+  data.population.reference=target.reference;data.population.generation=target.interest.generation;data.population.revision=target.revision;data.allowedTemplateIds=allowedTemplateIds;
+  controlledEnv.LS_ACADEMY_SIGNUP_WORKER_ADMISSION_JSON=JSON.stringify(data);admission=loadSignupPopulation(controlledEnv,now);if(!admission)throw Error('Synthetic controlled snapshot refused');return admission;
+ }
+ const submit=applications.submit.bind(applications);
+ applications.submit=async(...args:Parameters<typeof submit>)=>{const saved=await submit(...args);if(args[0].operationId===c.operationId)await bindSnapshot();return saved;};
+ return {...x,c,env:controlledEnv,get admission(){if(!admission)throw Error('Synthetic controlled snapshot unavailable');return admission;},worker,applications,bindSnapshot};
 }
 it('current R00 records actual provider acceptance with no initial seven-day deadline and delivers only initial plus explicit ACK',async()=>{
  const previous=now;try{
@@ -542,7 +549,7 @@ it('current R00 records actual provider acceptance with no initial seven-day dea
   expect(await messages(x.workspace)).toHaveLength(1);const confirmation=await token(x.workspace,initial.id),beforeRead=await messages(x.workspace);
   const context=await x.worker.confirmationContext(confirmation);expect(context.confirmed).toBe(false);expect(context.deadline).toBe(family.interest.deadline);expect(await messages(x.workspace)).toEqual(beforeRead);
   await x.worker.confirm(confirmation);const ack=(await messages(x.workspace)).find(m=>m.purpose==='academy_founder_ack')!;expect(ack).toBeDefined();
-  const ackSend=vi.fn(async()=>({providerId:'synthetic_controlled_ack'}));const restarted=new AcademyFounderStore(store,x.workspace,ring,key,clock,null,null,x.admission);
+  await x.bindSnapshot(['R03']);const ackSend=vi.fn(async()=>({providerId:'synthetic_controlled_ack'}));const restarted=new AcademyFounderStore(store,x.workspace,ring,key,clock,null,null,x.admission);
   await restarted.dispatchQueued({send:ackSend},INQUIRY_EMAIL_FROM,v2Origin,'signup',x.admission);await restarted.confirm(confirmation);await restarted.dispatchQueued({send:ackSend},INQUIRY_EMAIL_FROM,v2Origin,'signup',x.admission);
   expect(ackSend).toHaveBeenCalledTimes(1);expect(await messages(x.workspace)).toHaveLength(2);expect((await restarted.ownerList(x.actor)).families[0]!.interest.sentAt).toBe(family.interest.sentAt);
   const before=await messages(x.workspace);expect(await restarted.tick([3,6],10,'signup',x.admission)).toEqual({prepared:false});expect(await messages(x.workspace)).toEqual(before);
@@ -589,7 +596,7 @@ it('conditional exact confirmation after policy expiry creates one exact ACK wit
   now=new Date('2026-10-25T14:00:00.000Z');const inactive=new AcademyFounderStore(store,x.workspace,ring,key,clock);const before=await messages(x.workspace);expect((await inactive.confirmationContext(secret)).confirmed).toBe(false);expect(await messages(x.workspace)).toEqual(before);
   await inactive.confirm(secret);await inactive.confirm(secret);const rows=await messages(x.workspace),ack=rows.find(m=>m.purpose==='academy_founder_ack')!,p=JSON.parse(unseal(ack.payload_ciphertext,`ls_service_interest/inquiry_email/v1/${x.workspace}/${ack.id}`,ring));expect(rows).toHaveLength(2);expect(p.transactional).toMatchObject({version:'JLFA-EXACT-COPY-20261026-05',templateId:'R03',confirmed:true});expect(p.templateCatalogSha256).toBe(x.admission.templateCatalogSha256);expect(rows.find(m=>m.id===initial.id)!.payload_ciphertext).toBe(original);
   const send=vi.fn(async()=>({providerId:'synthetic_renewed_ack'}));expect(await inactive.dispatchOne(ack.id,{send},INQUIRY_EMAIL_FROM,v2Origin,'signup')).toBe('idle');expect(send).not.toHaveBeenCalled();
-  const data=JSON.parse(x.env.LS_ACADEMY_SIGNUP_WORKER_ADMISSION_JSON);data.population.admittedAt=now.toISOString();data.expiresAt=new Date(now.getTime()+3600000).toISOString();data.allowedTemplateIds=['R03'];const {loadSignupPopulation}=await import('../../src/features/group-application/academy-signup-population-runtime.ts');const renewal=loadSignupPopulation({...x.env,LS_ACADEMY_SIGNUP_WORKER_ADMISSION_JSON:JSON.stringify(data)},now)!;expect(renewal).not.toBeNull();
+  const data=JSON.parse(x.env.LS_ACADEMY_SIGNUP_WORKER_ADMISSION_JSON);const snapshot=(await x.worker.ownerList(x.actor)).families[0]!;data.population.reference=snapshot.reference;data.population.generation=snapshot.interest.generation;data.population.revision=snapshot.revision;data.population.admittedAt=now.toISOString();data.expiresAt=new Date(now.getTime()+3600000).toISOString();data.allowedTemplateIds=['R03'];const {loadSignupPopulation}=await import('../../src/features/group-application/academy-signup-population-runtime.ts');const renewal=loadSignupPopulation({...x.env,LS_ACADEMY_SIGNUP_WORKER_ADMISSION_JSON:JSON.stringify(data)},now)!;expect(renewal).not.toBeNull();
   const worker=new AcademyFounderStore(store,x.workspace,ring,key,clock,null,null,renewal);await worker.dispatchQueued({send},INQUIRY_EMAIL_FROM,v2Origin,'signup',renewal);await worker.dispatchQueued({send},INQUIRY_EMAIL_FROM,v2Origin,'signup',renewal);expect(send).toHaveBeenCalledTimes(1);expect((await messages(x.workspace)).filter(m=>m.state==='sent')).toHaveLength(2);
  }finally{now=previous;}
 });
@@ -599,7 +606,7 @@ it.each([['en','he'],['he','en']] as const)('conditional R00 and ACK use saved p
   const copy=JSON.parse(await readFile('src/features/group-application/academy-exact-email-copy.json','utf8')).locales[parent];
   const send=vi.fn(async(m:{subject:string;text:string;html?:string})=>{expect(m.subject).toBe(copy.templates.R00.subject);expect(m.text).toContain(parent==='he'?'שבעה ימים לשלם':'seven days to pay');expect(m.text).not.toContain(parent==='he'?'seven days to pay':'שבעה ימים לשלם');expect(m.html).toContain('lang="'+parent+'"');return {providerId:'synthetic_parent_language_initial'};});
   await x.worker.dispatchOne(initial.id,{send},INQUIRY_EMAIL_FROM,v2Origin,'signup',x.admission);await x.worker.confirm(await token(x.workspace,initial.id));const ack=(await messages(x.workspace)).find(m=>m.purpose==='academy_founder_ack')!,ackPayload=JSON.parse(unseal(ack.payload_ciphertext,`ls_service_interest/inquiry_email/v1/${x.workspace}/${ack.id}`,ring));expect(ackPayload.locale).toBe(parent);
-  const ackSend=vi.fn(async(m:{subject:string;html?:string})=>{expect(m.subject).toBe(copy.templates.R03.subject);expect(m.html).toContain('lang="'+parent+'"');return {providerId:'synthetic_parent_language_ack'};});await x.worker.dispatchOne(ack.id,{send:ackSend},INQUIRY_EMAIL_FROM,v2Origin,'signup',x.admission);expect(ackSend).toHaveBeenCalledTimes(1);expect((await messages(x.workspace)).find(m=>m.id===initial.id)!.payload_ciphertext).toBe(initial.payload_ciphertext);
+  await x.bindSnapshot(['R03']);const ackSend=vi.fn(async(m:{subject:string;html?:string})=>{expect(m.subject).toBe(copy.templates.R03.subject);expect(m.html).toContain('lang="'+parent+'"');return {providerId:'synthetic_parent_language_ack'};});await x.worker.dispatchOne(ack.id,{send:ackSend},INQUIRY_EMAIL_FROM,v2Origin,'signup',x.admission);expect(ackSend).toHaveBeenCalledTimes(1);expect((await messages(x.workspace)).find(m=>m.id===initial.id)!.payload_ciphertext).toBe(initial.payload_ciphertext);
  }finally{now=previous;}
 });
 it.each([['en','he'],['he','en']] as const)('new synthetic R01/R02 use parent %s/%s language and retain initial bytes without actual reminder dispatch',async(ui,parent)=>{
@@ -684,5 +691,36 @@ it.each([{kind:'ack'},{templateId:'R03'}])('rejects mismatched historical SENT p
  const previous=now;try{now=new Date(v2Cutoff);const x=await controlledR00Fixture();await x.applications.submit(x.c,opaqueToken());const initial=(await messages(x.workspace))[0]!;await x.worker.dispatchOne(initial.id,{send:async()=>({providerId:'synthetic_mismatch_historical'})},INQUIRY_EMAIL_FROM,v2Origin,'signup',x.admission);
   const secret=await token(x.workspace,initial.id),aad=`ls_service_interest/inquiry_email/v1/${x.workspace}/${initial.id}`,old=JSON.parse(unseal(initial.payload_ciphertext,aad,ring));old.transactional.r00Exception={version:'JLFA-R00-RELATIVE-SEND-CLOCK-20261027-01',approvalReceiptSha256:'7dfc71f18f0f853bb11f4bc1de0547484c13a9bbfa1f82eeab30d0eaf95aca87'};old.templateCatalogSha256='175d4bbc87d94d2632c6a1be0092784ad14e4eb7dbc25825c6ec0106d2f3e1ea';if(mismatch.kind)old.kind=mismatch.kind;else old.transactional.templateId=mismatch.templateId;
   await db.query('UPDATE ls_service_interest.inquiry_email_outbox SET payload_ciphertext=$3 WHERE workspace_id=$1 AND id=$2',[x.workspace,initial.id,seal(JSON.stringify(old),aad,ring)]);await expect(x.worker.confirm(secret)).rejects.toMatchObject({code:'UNAVAILABLE'});expect((await x.worker.confirmationContext(secret)).confirmed).toBe(false);expect(await messages(x.workspace)).toHaveLength(1);
+ }finally{now=previous;}
+});
+
+it('controlled exact snapshot admits promoted generation2 and requires fresh ACK revision without touching historical intents',async()=>{
+ const previous=now;try{
+  now=new Date(v2Cutoff);const x=await controlledR00Fixture(),old=command(x.c.fields.academyRegistration.receiptEmail);old.fields.parentName='Historical synthetic identity';
+  await x.applications.submit(old,opaqueToken());const prior=(await x.worker.ownerList(x.actor)).families[0]!;
+  await x.worker.execute(x.actor,{operationId:randomUUID(),familyId:prior.id,expectedRevision:prior.revision,reason:'Synthetic historical withdrawal only',action:'withdraw'});
+  const historical=(await messages(x.workspace)).filter(m=>m.founder_id===prior.id);
+  const saved=await x.applications.submit(x.c,opaqueToken()),pending=(await x.worker.ownerList(x.actor)).families.find(f=>f.reference===saved.item.id)!;
+  expect(pending.status).toBe('pending_verification');expect(pending.identityApproved).toBe(false);
+  await x.worker.execute(x.actor,{operationId:randomUUID(),familyId:pending.id,expectedRevision:pending.revision,reason:'Verify distinct marked synthetic test only',action:'resolve_identity',outcome:'distinct_family'});
+  const promoted=(await x.worker.ownerList(x.actor)).families.find(f=>f.id===pending.id)!;expect(promoted).toMatchObject({revision:4,status:'provisional',allocated:true,identityApproved:true,interest:{generation:2,sentAt:null,deadline:null},payment:{sentAt:null,deadline:null}});
+  const own=(await messages(x.workspace)).filter(m=>m.founder_id===promoted.id),initial=own.find(m=>m.state==='queued')!;expect(own).toHaveLength(2);expect(own.filter(m=>m.state==='canceled')).toHaveLength(1);
+  const send=vi.fn(async()=>({providerId:'synthetic_promoted_r00'}));
+  expect(await x.worker.dispatchOne(initial.id,{send},INQUIRY_EMAIL_FROM,v2Origin,'signup',x.admission)).toBe('idle');
+  await x.bindSnapshot();const data=JSON.parse(x.env.LS_ACADEMY_SIGNUP_WORKER_ADMISSION_JSON),{loadSignupPopulation}=await import('../../src/features/group-application/academy-signup-population-runtime.ts');
+  for(const change of [{generation:1},{generation:3},{revision:3},{revision:5},{reference:prior.reference},{recipientSha256:'0'.repeat(64)},{learnerIds:[randomUUID(),randomUUID()]}]){
+   const changed=loadSignupPopulation({...x.env,LS_ACADEMY_SIGNUP_WORKER_ADMISSION_JSON:JSON.stringify({...data,population:{...data.population,...change}})},now)!;expect(changed).not.toBeNull();
+   expect(await x.worker.dispatchOne(initial.id,{send},INQUIRY_EMAIL_FROM,v2Origin,'signup',changed)).toBe('idle');
+  }
+  const ackOnly=loadSignupPopulation({...x.env,LS_ACADEMY_SIGNUP_WORKER_ADMISSION_JSON:JSON.stringify({...data,allowedTemplateIds:['R03']})},now)!;
+  expect(await x.worker.dispatchOne(initial.id,{send},INQUIRY_EMAIL_FROM,v2Origin,'signup',ackOnly)).toBe('idle');
+  await expect(x.worker.dispatchOne(initial.id,{send},INQUIRY_EMAIL_FROM,v2Origin,'signup',{...x.admission})).rejects.toThrow('SIGNUP_WORKER_NOT_ADMITTED');
+  expect(send).not.toHaveBeenCalled();expect((await messages(x.workspace)).filter(m=>m.founder_id===promoted.id)).toEqual(own);
+  expect(await x.worker.dispatchOne(initial.id,{send},INQUIRY_EMAIL_FROM,v2Origin,'signup',x.admission)).toBe('sent');expect(send).toHaveBeenCalledTimes(1);
+  const accepted=(await x.worker.ownerList(x.actor)).families.find(f=>f.id===promoted.id)!;expect(accepted.interest.sentAt).toBe(now.toISOString());expect(accepted.interest.deadline).toBeNull();expect(accepted.payment.sentAt).toBeNull();expect(accepted.payment.deadline).toBeNull();
+  const secret=await token(x.workspace,initial.id);await x.worker.confirm(secret);const ack=(await messages(x.workspace)).find(m=>m.founder_id===promoted.id&&m.purpose==='academy_founder_ack')!,ackSend=vi.fn(async()=>({providerId:'synthetic_promoted_ack'}));
+  expect(await x.worker.dispatchOne(ack.id,{send:ackSend},INQUIRY_EMAIL_FROM,v2Origin,'signup',x.admission)).toBe('idle');expect(ackSend).not.toHaveBeenCalled();
+  await x.bindSnapshot(['R03']);expect(await x.worker.dispatchOne(ack.id,{send:ackSend},INQUIRY_EMAIL_FROM,v2Origin,'signup',x.admission)).toBe('sent');expect(ackSend).toHaveBeenCalledTimes(1);
+  expect((await messages(x.workspace)).filter(m=>m.founder_id===prior.id)).toEqual(historical);
  }finally{now=previous;}
 });

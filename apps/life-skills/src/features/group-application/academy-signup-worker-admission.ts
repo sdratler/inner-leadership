@@ -19,7 +19,7 @@ const schema=z.object({
  cutoff:timestamp,expiresAt:timestamp,
  population:z.discriminatedUnion('mode',[
   z.object({mode:z.literal('future_submissions')}).strict(),
-  z.object({mode:z.literal('controlled_test'),admittedAt:timestamp,recipientSha256:hash,learnerIds:z.array(z.string().uuid()).length(2)}).strict(),
+  z.object({mode:z.literal('controlled_test'),reference:z.string().uuid(),generation:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),revision:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),admittedAt:timestamp,recipientSha256:hash,learnerIds:z.array(z.string().uuid()).length(2)}).strict(),
   z.object({mode:z.literal('references'),families:z.array(z.object({reference:z.string().uuid(),recipientSha256:hash}).strict()).min(1).max(50)}).strict(),
  ]),
 }).strict();
@@ -57,10 +57,10 @@ export function assertSignupWorkerAdmission(p:SignupWorkerAdmission,workspace:st
  if(!issued.has(p)||p.workspaceId!==workspace||!Number.isFinite(now.getTime())||now.getTime()<Date.parse(p.cutoff)||p.population.mode==='controlled_test'&&now.getTime()<Date.parse(p.population.admittedAt)||now.getTime()>=Date.parse(p.expiresAt))throw Error('SIGNUP_WORKER_NOT_ADMITTED');
 }
 export function signupWorkerReferences(p:SignupWorkerAdmission){return p.population.mode==='references'?p.population.families.map(f=>f.reference):null;}
-export function signupWorkerFamilyAllowed(p:SignupWorkerAdmission,f:{reference:string;submittedAt:string;email:string;children?:readonly {id:string}[]},now:Date){
+export function signupWorkerFamilyAllowed(p:SignupWorkerAdmission,f:{reference:string;submittedAt:string;email:string;children?:readonly {id:string}[];revision?:number;interest?:{generation:number}},now:Date){
  if(!issued.has(p)||!Number.isFinite(now.getTime())||now.getTime()>=Date.parse(p.expiresAt))return false;
  const at=Date.parse(f.submittedAt);if(!Number.isFinite(at)||at<Date.parse(p.cutoff)||at>now.getTime())return false;
- if(p.population.mode==='controlled_test'){if(now.getTime()<Date.parse(p.population.admittedAt))return false;const ids=f.children?.map(c=>c.id);return p.population.recipientSha256===signupRecipientDigest(f.email)&&ids?.length===2&&new Set(ids).size===2&&ids.every(id=>p.population.mode==='controlled_test'&&p.population.learnerIds.includes(id));}
+ if(p.population.mode==='controlled_test'){if(now.getTime()<Date.parse(p.population.admittedAt)||p.population.reference!==f.reference||p.population.generation!==f.interest?.generation||p.population.revision!==f.revision)return false;const ids=f.children?.map(c=>c.id);return p.population.recipientSha256===signupRecipientDigest(f.email)&&ids?.length===2&&new Set(ids).size===2&&ids.every(id=>p.population.mode==='controlled_test'&&p.population.learnerIds.includes(id));}
  return p.population.mode==='future_submissions'||p.population.families.some(a=>a.reference===f.reference&&a.recipientSha256===signupRecipientDigest(f.email));
 }
 

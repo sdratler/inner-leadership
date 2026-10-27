@@ -331,7 +331,7 @@ export class AcademyFounderStore{
    if(p.transactional&&!population)return null; // Exact-copy payloads never use an unscoped legacy dispatch.
    // Admission is rechecked under the same lock before reserving or changing a row.
    if(population){assertSignupWorkerAdmission(population,this.workspace,this.clock.now());if(!signupWorkerFamilyAllowed(population,f,this.clock.now())||p.reference!==f.reference||!signupWorkerMessageAllowed(population,{version:p.transactional?.version,templateId:p.transactional?.templateId,templateCatalogSha256:p.templateCatalogSha256,...(p.transactional?.r00Exception?{r00Exception:p.transactional.r00Exception}:{})},this.clock.now()))return null;
-    if(population.population.mode==='controlled_test'&&(p.generation!==1||!f.identityApproved||!academyRecordedCommunicationPreferencesSchema.safeParse(f.communicationPreferences).success))return null;
+    if(population.population.mode==='controlled_test'&&(p.generation!==population.population.generation||!f.identityApproved||!academyRecordedCommunicationPreferencesSchema.safeParse(f.communicationPreferences).success))return null;
     p.status=f.status==='pending_verification'?'pending_verification':f.allocated?'reserved':'interest_list';
     if(p.transactional?.templateId==='R03'){if(!f.interest.confirmedAt)return null;p.transactional={...p.transactional,confirmed:true,founderRateReserved:f.allocated};}
     else if(isAnnouncementR00(p)){if(w.sentAt||w.deadline||w.confirmedAt||p.transactional!.acceptedSend!==undefined)return null;}
