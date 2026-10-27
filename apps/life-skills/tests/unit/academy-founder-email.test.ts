@@ -96,3 +96,36 @@ test('legacy queued payloads do not acquire a new template, language, preheader 
  assert.ok(old.text.startsWith('Hello,\n\nYour Jewish Leadership Fishing Academy registration reference is synthetic-reference'));
  assert.ok(old.text.includes('seven calendar days after this email is successfully sent'));
 });
+
+test('conditional R00 exception replaces only the approved-relative sentence and leaves exact05 catalog untouched',()=>{
+ const receipt='e'.repeat(64);
+ for(const locale of ['en','he'] as const){
+  const p=make('R00',locale);delete p.transactional!.acceptedSend;
+  p.transactional!.r00Exception={version:'JLFA-R00-RELATIVE-SEND-CLOCK-20261027-01',approvalReceiptSha256:receipt};
+  const actual=founderEmailContent(p,'https://bneineviimacademy.org') as {subject:string;text:string;preview:string;html:string};
+  const relative=locale==='en'?'You have seven calendar days after this email is successfully sent. Your exact Florida deadline appears on the confirmation page.':'לרשותכם שבעה ימים קלנדריים לאחר שליחת הודעה זו בהצלחה. המועד המדויק לפי שעון פלורידה מופיע בעמוד האישור.';
+  const original=locale==='en'?'Confirm by {interest_deadline_eastern}.':'יש לאשר עד {interest_deadline_eastern}.';
+  const copy=exactCopy.locales[locale],template=copy.templates.R00;
+  const expected=template.blocks.map(b=>b.text.replace(original,relative).replace('{parent_first_name}','Ari').replace('{reservation_sentence}',copy.reservationSentences.reserved)+(b.kind==='action'?': https://bneineviimacademy.org'+(locale==='he'?'/he':'')+'/fishing-academy/confirm-interest#'+token:'')).join('\n\n');
+  assert.equal(actual.text,expected);assert.equal(actual.subject,template.subject);assert.equal(actual.preview,template.preview);
+  assert.ok(actual.html.includes(relative));assert.equal((actual.html.match(/<a /g)??[]).length,1);
+  assert.ok(!actual.text.includes('{interest_deadline_eastern}'));assert.ok(!actual.text.includes(floridaDeadline(acceptedSend.deadline,locale)));
+ }
+});
+test('conditional exception rejects a fabricated clock, wrong identity, missing receipt and use on other templates',()=>{
+ const p=make('R00');p.transactional!.r00Exception={version:'JLFA-R00-RELATIVE-SEND-CLOCK-20261027-01',approvalReceiptSha256:'e'.repeat(64)};
+ assert.throws(()=>founderEmailContent(p,'https://bneineviimacademy.org'),/EXCEPTION_INVALID/);
+ delete p.transactional!.acceptedSend;p.transactional!.r00Exception.approvalReceiptSha256='';
+ assert.throws(()=>founderEmailContent(p,'https://bneineviimacademy.org'),/EXCEPTION_INVALID/);
+ p.transactional!.r00Exception.approvalReceiptSha256='e'.repeat(64);(p.transactional!.r00Exception as {version:string}).version='unreviewed';
+ assert.throws(()=>founderEmailContent(p,'https://bneineviimacademy.org'),/EXCEPTION_INVALID/);
+ for(const id of ['R01','R02','R03'] as const){const other=make(id);other.transactional!.r00Exception={version:'JLFA-R00-RELATIVE-SEND-CLOCK-20261027-01',approvalReceiptSha256:'e'.repeat(64)};assert.throws(()=>founderEmailContent(other,'https://bneineviimacademy.org'),/EXCEPTION_INVALID/);}
+});
+
+test('exact EN/HE action is a readable email-safe button link with escaped text and unchanged plain body',()=>{
+ for(const locale of ['en','he'] as const){const p=make('R00',locale);p.transactional!.parentFirstName='<Ari & \"test\">';const result=founderEmailContent(p,'https://bneineviimacademy.org') as {text:string;html:string};
+  assert.ok(result.html.includes('dir="'+(locale==='he'?'rtl':'ltr')+'"'));assert.ok(result.html.includes('&lt;Ari &amp; &quot;test&quot;&gt;'));assert.ok(!result.html.includes('<Ari'));
+  const link=result.html.match(/<a href="([^"]+)" style="([^"]+)">([^<]+)<\/a>/);assert.ok(link);assert.ok(link[1]!.endsWith('/confirm-interest#'+token));for(const value of ['background-color:#FDC844','color:#041858','min-height:48px','border-radius:8px','font-size:16px','padding:12px 24px'])assert.ok(link[2]!.includes(value));
+  const expected=exactCopy.locales[locale].templates.R00.blocks.map(b=>b.text.replace('{parent_first_name}',p.transactional!.parentFirstName!).replace('{reservation_sentence}',exactCopy.locales[locale].reservationSentences.reserved).replace('{interest_deadline_eastern}',floridaDeadline(acceptedSend.deadline,locale))+(b.kind==='action'?': https://bneineviimacademy.org'+(locale==='he'?'/he':'')+'/fishing-academy/confirm-interest#'+token:'')).join('\n\n');assert.equal(result.text,expected);assert.ok(!result.html.includes('<script'));assert.ok(!result.text.includes('style='));
+ }
+});

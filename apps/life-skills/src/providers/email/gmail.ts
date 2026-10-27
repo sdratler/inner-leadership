@@ -77,7 +77,8 @@ function mime(message: AuthEmailMessage, displayName: "Life Skills" | "JLFA Offi
 export class GmailAuthTransport implements AuthEmailTransport {
   readonly nonIdempotent = true;
   constructor(private readonly config: GmailAuthConfig, private readonly sendFetch: typeof fetch = fetch,
-    private readonly displayName: "Life Skills" | "JLFA Office" = "Life Skills") {}
+    private readonly displayName: "Life Skills" | "JLFA Office" = "Life Skills",
+    private readonly beforeMessageSend?: (message: AuthEmailMessage) => void) {}
 
   private async accessToken(): Promise<string> {
     let last: unknown;
@@ -107,6 +108,10 @@ export class GmailAuthTransport implements AuthEmailTransport {
         (this.displayName !== "JLFA Office" || typeof message.html !== "string" || message.html.length === 0 ||
          Buffer.byteLength(message.html, "utf8") > MAX_HTML_BYTES))) throw new AuthEmailDeliveryError(false);
     const token = await this.accessToken();
+    // Optional server-issued gate runs AFTER OAuth, immediately before the
+    // irreversible message request. A local refusal is known not attempted;
+    // keep it outside the catch that classifies HTTP uncertainty below.
+    this.beforeMessageSend?.(message);
     let response: Response;
     try {
       response = await this.sendFetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {

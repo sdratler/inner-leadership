@@ -8,9 +8,15 @@ function confirmationLink(origin:string,locale:'en'|'he',token:string){
  return base+'/confirm-interest#'+token;
 }
 export type FounderMailKind='interest'|'ack'|'offer'|'interest_reminder'|'payment_reminder'|'interest_deadline_receipt'|'payment_deadline_receipt';
+/** Conditional exception identity only; not an approval or send capability.
+ * The original exact05 catalog remains immutable. Runtime admission separately
+ * binds the actual owner exception receipt and this formatter's source hash. */
+export const R00_RELATIVE_EXCEPTION='JLFA-R00-RELATIVE-SEND-CLOCK-20261027-01' as const;
+export type R00RelativeException={version:typeof R00_RELATIVE_EXCEPTION;approvalReceiptSha256:string};
+export function isRelativeR00(p:FounderMail){return p.kind==='interest'&&p.transactional?.templateId==='R00'&&p.transactional.r00Exception?.version===R00_RELATIVE_EXCEPTION&&/^[a-f0-9]{64}$/.test(p.transactional.r00Exception.approvalReceiptSha256);}
 export type FounderTransactionalMail={
  version:'JLFA-EXACT-COPY-20261026-05';templateId:'R00'|'R01'|'R02'|'R03';parentFirstName?:string;
- acceptedSend?:{sentAt:string;deadline:string};confirmed?:boolean;founderRateReserved?:boolean;
+ r00Exception?:R00RelativeException;acceptedSend?:{sentAt:string;deadline:string};confirmed?:boolean;founderRateReserved?:boolean;
 };
 export type FounderMail={transactional?:FounderTransactionalMail;familyId:string;generation:number;kind:FounderMailKind;locale:'en'|'he';to:string;reference:string;status:'reserved'|'interest_list'|'pending_verification';token?:string;deadline?:string;reminderDate?:string;unpaidLines?:{childId:string;offerId:string;revision:number;name:string;unpaidCents:number;deadline:string|null}[];offer?:{group:string;firstSession:string;children:{name:string;amount:number}[];paymentUrl:string;terms:string};};
 /** Drafts for owner review. No scheduling-hold exception or enrollment claims. */
@@ -50,25 +56,31 @@ function exactTransactionalContent(p:FounderMail,origin:string){
  const name=input.parentFirstName?.trim();
  if(name!==undefined&&(name.length>80||/[\u0000-\u001f\u007f{}]/.test(name)))throw Error('ACADEMY_TRANSACTIONAL_NAME_INVALID');
  if(input.confirmed!==undefined&&typeof input.confirmed!=='boolean'||input.founderRateReserved!==undefined&&typeof input.founderRateReserved!=='boolean')throw Error('ACADEMY_TRANSACTIONAL_EVIDENCE_INVALID');
+ const relative=isRelativeR00(p);
+ if(input.r00Exception!==undefined&&(!relative||input.acceptedSend!==undefined))throw Error('ACADEMY_R00_EXCEPTION_INVALID');
  let deadline='',link='';
  if(input.templateId==='R03'){
   if(input.confirmed!==true)throw Error('ACADEMY_TRANSACTIONAL_CONFIRMATION_REQUIRED');
  }else{
   const accepted=input.acceptedSend;
-  if(!accepted||!validInstant(accepted.sentAt)||!validInstant(accepted.deadline))throw Error('ACADEMY_TRANSACTIONAL_ACCEPTED_SEND_REQUIRED');
-  const minimum=floridaCalendarDays(new Date(accepted.sentAt),7).getTime();
+  if(!relative&&(!accepted||!validInstant(accepted.sentAt)||!validInstant(accepted.deadline)))throw Error('ACADEMY_TRANSACTIONAL_ACCEPTED_SEND_REQUIRED');
+  const minimum=accepted?floridaCalendarDays(new Date(accepted.sentAt),7).getTime():NaN;
   // Extensions are possible for reminders; the initial rendered window is exact.
-  if(Date.parse(accepted.deadline)<minimum||input.templateId==='R00'&&Date.parse(accepted.deadline)!==minimum)throw Error('ACADEMY_TRANSACTIONAL_DEADLINE_MISMATCH');
+  if(!relative&&accepted&&(Date.parse(accepted.deadline)<minimum||input.templateId==='R00'&&Date.parse(accepted.deadline)!==minimum))throw Error('ACADEMY_TRANSACTIONAL_DEADLINE_MISMATCH');
   if(!p.token||!/^[A-Za-z0-9_-]{43}$/.test(p.token))throw Error('ACADEMY_TRANSACTIONAL_TOKEN_REQUIRED');
   const parsed=new URL(origin);
   if(parsed.protocol!=='https:'||parsed.username||parsed.password||parsed.origin!==origin||!['bneineviimacademy.org','life-skills.bneineviimacademy.org','127.0.0.1','[::1]'].includes(parsed.hostname))throw Error('ACADEMY_TRANSACTIONAL_ORIGIN_INVALID');
-  deadline=floridaDeadline(accepted.deadline,p.locale);link=confirmationLink(origin,p.locale,p.token);
+  deadline=accepted?floridaDeadline(accepted.deadline,p.locale):'';link=confirmationLink(origin,p.locale,p.token);
  }
  const values:Record<string,string>={parent_first_name:name??'',reservation_sentence:copy.reservationSentences[p.status],interest_deadline_eastern:deadline,confirmed_founder_sentence:input.confirmed===true&&input.founderRateReserved===true&&p.status==='reserved'?copy.confirmedFounderSentence:''};
  const interpolate=(text:string)=>text.replace(/\{([a-z_]+)\}/g,(_match,key:string)=>{if(!Object.hasOwn(values,key))throw Error('ACADEMY_TRANSACTIONAL_PLACEHOLDER_INVALID');return values[key]!;});
- const blocks=template.blocks.map((block,index)=>({...block,text:index===0&&!name?copy.greetingFallback:interpolate(block.text)})).filter(block=>block.text!=='');
+ const relativeLine=p.locale==='en'?'You have seven calendar days after this email is successfully sent. Your exact Florida deadline appears on the confirmation page.':'לרשותכם שבעה ימים קלנדריים לאחר שליחת הודעה זו בהצלחה. המועד המדויק לפי שעון פלורידה מופיע בעמוד האישור.';
+ const originalLine=p.locale==='en'?'Confirm by {interest_deadline_eastern}.':'יש לאשר עד {interest_deadline_eastern}.';
+ if(relative&&template.blocks.filter(b=>b.text.startsWith(originalLine)).length!==1)throw Error('ACADEMY_R00_SOURCE_LINE_MISMATCH');
+ const sourceBlocks=relative?template.blocks.map(b=>({...b,text:b.text.startsWith(originalLine)?relativeLine+b.text.slice(originalLine.length):b.text})):template.blocks;
+ const blocks=sourceBlocks.map((block,index)=>({...block,text:index===0&&!name?copy.greetingFallback:interpolate(block.text)})).filter(block=>block.text!=='');
  const text=blocks.map(block=>block.kind==='action'?block.text+': '+link:block.text).join('\n\n');
  const preview=interpolate(template.preview),subject=interpolate(template.subject);
- const html='<div lang="'+p.locale+'" dir="'+(p.locale==='he'?'rtl':'ltr')+'"><div style="display:none;max-height:0;overflow:hidden" aria-hidden="true">'+htmlEscape(preview)+'</div>'+blocks.map(block=>block.kind==='action'?'<p><a href="'+htmlEscape(link)+'">'+htmlEscape(block.text)+'</a></p>':'<p>'+htmlEscape(block.text).replace(/\n/g,'<br>')+'</p>').join('')+'</div>';
+ const html='<div lang="'+p.locale+'" dir="'+(p.locale==='he'?'rtl':'ltr')+'"><div style="display:none;max-height:0;overflow:hidden" aria-hidden="true">'+htmlEscape(preview)+'</div>'+blocks.map(block=>block.kind==='action'?'<p><a href="'+htmlEscape(link)+'" style="display:inline-block;background-color:#FDC844;color:#041858;font-size:16px;line-height:24px;font-weight:700;text-decoration:none;text-align:center;min-height:48px;box-sizing:border-box;padding:12px 24px;border-radius:8px;">'+htmlEscape(block.text)+'</a></p>':'<p>'+htmlEscape(block.text).replace(/\n/g,'<br>')+'</p>').join('')+'</div>';
  return {subject,text,preview,html};
 }

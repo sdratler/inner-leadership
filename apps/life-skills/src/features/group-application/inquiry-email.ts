@@ -1,4 +1,6 @@
 import "server-only";
+import {loadSignupPopulation} from "./academy-signup-population-runtime.ts";
+import {assertSignupWorkerAdmission,signupRecipientDigest,SignupEmailNotAttemptedError,type SignupWorkerAdmission} from "./academy-signup-worker-admission.ts";
 import {randomUUID} from "node:crypto";
 import {z} from "zod";
 import {AppError} from "../../lib/errors.ts";
@@ -16,10 +18,32 @@ import {INQUIRY_EMAIL_FROM,INQUIRY_EMAIL_PURPOSE,inquiryEmailContent} from "./in
 const payloadSchema=z.object({purpose:z.literal(INQUIRY_EMAIL_PURPOSE),reference:z.string().uuid(),recipient:z.email().max(254),locale:z.enum(["en","he"])}).strict();
 const aad=(workspace:string,id:string)=>`ls_service_interest/inquiry_email/v1/${workspace}/${id}`;
 export function inquiryEmailQueueEnabled(env:Record<string,string|undefined>){return env.LS_INQUIRY_EMAIL_QUEUE_ENABLED==="true";}
-export function createInquiryEmailTransport(env:Record<string,string|undefined>,sendFetch:typeof fetch=fetch){
- if(env.LS_INQUIRY_EMAIL_SEND_ENABLED!=="true"||env.LS_AUTH_EMAIL_PROVIDER!=="gmail"||env.LS_AUTH_EMAIL_FROM!==INQUIRY_EMAIL_FROM)throw new AppError("UNAVAILABLE");
- const config=parseGmailAuthConfig(env);
- return {transport:new GmailAuthTransport(config,sendFetch,"JLFA Office"),from:config.from};
+export function createInquiryEmailTransport(env:Record<string,string|undefined>,sendFetch:typeof fetch=fetch,signup?:{policy:SignupWorkerAdmission;now:()=>Date}){
+ const controlled=signup?.policy.population.mode==='controlled_test';
+ if(env.LS_ACADEMY_SIGNUP_CONTROLLED_SEND_ENABLED==='true'&&!controlled)throw new AppError("UNAVAILABLE");
+ const requireSignup=()=>{
+  if(!signup||env.LS_INQUIRY_EMAIL_QUEUE_ENABLED!=='true')throw new SignupEmailNotAttemptedError();
+  try{assertSignupWorkerAdmission(signup.policy,env.LS_IDENTITY_WORKSPACE_ID??'',signup.now());}catch{throw new SignupEmailNotAttemptedError();}
+  const p=signup.policy,current=loadSignupPopulation(env,signup.now());
+  if(!current||JSON.stringify(current)!==JSON.stringify(p))throw new SignupEmailNotAttemptedError();
+  // loadSignupPopulation rechecks each mode's exact broad or isolated flags,
+  // source bytes, current expiry and target binding. No policy grants generic mail.
+  if(controlled&&(env.LS_ACADEMY_SIGNUP_CONTROLLED_SEND_ENABLED!=='true'||env.LS_INQUIRY_EMAIL_SEND_ENABLED==='true'||env.LS_ACADEMY_FOUNDER_EMAIL_APPROVED==='true'))throw new SignupEmailNotAttemptedError();
+ };
+ if(signup)requireSignup();
+ else if(env.LS_INQUIRY_EMAIL_SEND_ENABLED!=="true")throw new AppError("UNAVAILABLE");
+ if(env.LS_AUTH_EMAIL_PROVIDER!=="gmail"||env.LS_AUTH_EMAIL_FROM!==INQUIRY_EMAIL_FROM)throw new AppError("UNAVAILABLE");
+ const beforeMessageSend=(message:Parameters<AuthEmailTransport['send']>[0])=>{
+  requireSignup();const p=signup!.policy,digest=signupRecipientDigest(message.to);
+  if(message.from!==p.sender||p.population.mode==='controlled_test'&&digest!==p.population.recipientSha256||p.population.mode==='references'&&!p.population.families.some(f=>f.recipientSha256===digest))throw new SignupEmailNotAttemptedError();
+ };
+ const config=parseGmailAuthConfig(env),adapter=new GmailAuthTransport(config,sendFetch,"JLFA Office",signup?beforeMessageSend:undefined);
+ const transport:AuthEmailTransport=signup?{nonIdempotent:true,send:message=>{
+  requireSignup();const p=signup!.policy,digest=signupRecipientDigest(message.to);
+  if(message.from!==p.sender||p.population.mode==='controlled_test'&&digest!==p.population.recipientSha256||p.population.mode==='references'&&!p.population.families.some(f=>f.recipientSha256===digest))throw new SignupEmailNotAttemptedError();
+  return adapter.send(message);
+ }}:adapter;
+ return {transport,from:config.from};
 }
 function intendedPayload(reference:string,fields:GroupApplicationFields){
  if(!isFloridaGroupApplication(fields)||fields.programId!=="sunday_fishing_academy")return null;

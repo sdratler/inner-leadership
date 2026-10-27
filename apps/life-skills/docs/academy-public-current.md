@@ -3,7 +3,7 @@
 This is a derived checklist for `apps/life-skills` Academy routes, not a second copy, product, brand or approval master. The owner's exact packet `JLFA-EXACT-COPY-20261026-05` supersedes earlier Academy wording and the older Israeli text-baked hero rule within this scope.
 
 - [Exact English/Hebrew packet](https://drive.google.com/file/d/1AGn2fhHmSktFycEE6vGFdx4F9rxql6o_/view), UTF-8 SHA-256 `771152d0aef0550bd369ea132b472e5bfcc1d44514ebb7815c1e47a7abd41466`.
-- [Website](https://docs.google.com/document/d/1jw0shI2DSfUH9RpJc2WdeIqXwO1OYOUEiwuv3mdNngU/edit), revision `AHj4eMRXyXh3MdRuFj597UFjZNeBmP2d11jLZ2I3l1MCoMU-3vlUPV5mZw-4qzCvX-NKLvNfu3pEusFaF-GKBJ_yZlewqNWfqv2byjCR1ok`.
+- [Website](https://docs.google.com/document/d/1jw0shI2DSfUH9RpJc2WdeIqXwO1OYOUEiwuv3mdNngU/edit), revision `AHj4eMQxonrZQfP5ny0DJqSmqTeKKailI-aA-AaO3UtNHqlyFLirb8QoNxpclVgRkRu8e0RkhdM4gWYf9K1Y4K5qJTg82aCDhyoFqr8plL4`.
 - [UI](https://docs.google.com/document/d/1KokAca2V-UhCPj1czP28TQ4i5E2Wd1JKJFbuXfmAPu4/edit), revision `AHj4eMT02Qjrttb8iuNMA8WqxTeLq8sNKmMXKf-s_7xgU-9XBCIcsme-6wpLP7scJRBNFt0npecEcyIdyG9hvZ-I03PDaIFBdWcnokBdrWQ`.
 - [Brand](https://docs.google.com/document/d/1Ru0oxW_2OFU7IN_aGDpuzIayOrpvB7wCi-HhK5VFyUQ/edit), revision `AHj4eMTF8rLzq40Gm4UeguKRPntuc6fj4ib3T5It0F0kFHOUI8WyQQq6A98bfNfjKnRK5oOtecWrllyxCkSWvbksT8D64zmFn9RuB03RL6I`.
 - [Content Voice](https://drive.google.com/file/d/174-EqMG0QIH5rCuRgn2xYYPMX-XWJZNn/view), revision `AHj4eMRvnTuzK6liUzfexDSdsA9iKfJ9JesDZJ9RWvz3Qi7p5KbbVgcY8tqqrGin5FN4yoRj21UbU8hU9vDIq11dBqbhe1ECoJM`. Exact supplied copy takes precedence over writing new variants.
@@ -23,3 +23,13 @@ Refresh source revisions at execution milestones and fetch changed content. The 
 - Reuse UI's pinned Vercel Web Interface Guidelines commit `e3d624baaf29dc1fc645aff3e38f03e564d2d6b1`: keyboard operation, visible focus, browser zoom, min-width0, no horizontal overflow, clear error recovery, no layout-property animation or transition-all. Lean/UI-audit mechanics are derived checks; this file does not claim Library skills are installed.
 - Exact candidate review/current protected CI/normal merge/fresh source-and-marker release/public serving-version acceptance. Synthetic browser checks are not native database, provider, physical-device or Safari proof.
 - Email requires actual authorized recipient/send/receipt/explicit confirmation/owner readback and a restart-safe worker before claiming delivery. Never invent a send clock, activate payment, import private Drive material or alter BNA/Israeli surfaces.
+
+## Approved R00-only deadline exception
+
+The owner approved `JLFA-R00-RELATIVE-SEND-CLOCK-20261027-01` on 27 October 2026, registered as a narrow amendment in the Website copy authority above. Its exact English/Hebrew relative-deadline sentence replaces only R00’s first deadline sentence. Render only the recorded parent-message language, independent of interface and group language. All other exact05 copy and the original catalog stay unchanged.
+
+The receipt-bound implementation must preserve the actual successful-send clock, immutable historical payloads and UNKNOWN outcomes. Copy authorization is not runtime sending authority; the controlled test requires a finite source/recipient/family policy while unrelated sending stays disabled. Existing review, protected CI and deployment verification remain required.
+
+Only newly created v5 families capture a server-owned exact-content identity in the existing encrypted family payload, independently of active sending policy. With a recorded parent-message language, new R00/ACK/reminder intents retain that identity while sending is off. Missing language evidence stays held; existing families, saved retries and same-key queued payloads are not retrofitted. This adds no schema or migration.
+
+Ordinary future/reference policies are code-capable of the approved R00 wording only under their existing full source, population, broad approval and SEND gates. Those broad gates remain unconfigured for the controlled test. The actual test uses separate finite recipient/learner authority with generic SEND false and broad founder approval absent; the provider fence is rechecked after OAuth immediately before message transmission.

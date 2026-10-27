@@ -102,3 +102,17 @@ describe("reviewed Academy HTML transport alternative", () => {
     await expect(t.send({...message,html:"<p>body</p>"})).rejects.toMatchObject({retryable:false});expect(sends).toBe(1);
   });
 });
+
+test('server-issued fence runs after delayed OAuth and before any message HTTP attempt',async()=>{
+ let expired=false,oauth=0,sends=0;
+ const {SignupEmailNotAttemptedError}=await import('../../src/features/group-application/academy-signup-worker-admission.ts');
+ const mock=(async(url:string|URL|Request)=>{if(String(url).includes('oauth2')){oauth++;await Promise.resolve();expired=true;return Response.json({access_token:'synthetic'});}sends++;return Response.json({id:'must_not_send'});}) as typeof fetch;
+ const transport=new GmailAuthTransport(parseGmailAuthConfig(env),mock,'JLFA Office',()=>{if(expired)throw new SignupEmailNotAttemptedError();});
+ await expect(transport.send(message)).rejects.toBeInstanceOf(SignupEmailNotAttemptedError);expect(oauth).toBe(1);expect(sends).toBe(0);
+});
+test('HTTP ambiguity after a successful fence remains nonretryable and is never classified not attempted',async()=>{
+ let sends=0,fences=0;
+ const mock=(async(url:string|URL|Request)=>{if(String(url).includes('oauth2'))return Response.json({access_token:'synthetic'});sends++;throw Error('synthetic ambiguous HTTP');}) as typeof fetch;
+ const transport=new GmailAuthTransport(parseGmailAuthConfig(env),mock,'JLFA Office',()=>{fences++;});
+ const attempt=transport.send(message);await expect(attempt).rejects.toBeInstanceOf(AuthEmailDeliveryError);await expect(attempt).rejects.toMatchObject({retryable:false});expect(sends).toBe(1);expect(fences).toBe(1);
+});
