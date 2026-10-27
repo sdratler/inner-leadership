@@ -1,12 +1,12 @@
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {afterEach,beforeEach,it,expect,vi} from 'vitest';
-const m=vi.hoisted(()=>({imports:0,identity:vi.fn(),transport:vi.fn(),close:vi.fn(),construct:vi.fn(),tick:vi.fn(),drain:vi.fn(),single:vi.fn(),legacy:vi.fn(),legacyCallback:vi.fn(),http:vi.fn(),query:vi.fn(),supervise:vi.fn()}));
+const m=vi.hoisted(()=>({imports:0,identity:vi.fn(),transport:vi.fn(),close:vi.fn(),construct:vi.fn(),tick:vi.fn(),drain:vi.fn(),single:vi.fn(),legacy:vi.fn(),legacyCallback:vi.fn(),signupCallback:vi.fn(),http:vi.fn(),query:vi.fn(),supervise:vi.fn()}));
 vi.mock('server-only',()=>({}));
 vi.mock('../../src/features/identity/runtime.ts',()=>{m.imports++;return {identityRuntime:m.identity};});
 vi.mock('../../src/db/client.ts',()=>({closeDatabase:m.close}));
 vi.mock('../../src/features/group-application/inquiry-email.ts',()=>{m.imports++;return {createInquiryEmailTransport:m.transport,inquiryEmailQueueEnabled:(env:Record<string,string|undefined>)=>env.LS_INQUIRY_EMAIL_QUEUE_ENABLED==='true',InquiryEmailOutbox:class{dispatchOne=m.legacy;dispatchForApplication=m.legacyCallback;}};});
-vi.mock('../../src/features/group-application/academy-founder-store.ts',()=>({AcademyFounderStore:class{constructor(...args:unknown[]){m.construct(...args);}tick=m.tick;dispatchQueued=m.drain;dispatchOne=m.single;}}));
+vi.mock('../../src/features/group-application/academy-founder-store.ts',()=>({AcademyFounderStore:class{constructor(...args:unknown[]){m.construct(...args);}tick=m.tick;dispatchQueued=m.drain;dispatchOne=m.single;dispatchForApplication=m.signupCallback;}}));
 vi.mock('../../scripts/signup-worker-supervisor.ts',()=>({superviseSignupWorker:m.supervise}));
 vi.mock('../../src/features/group-application/http.ts',()=>({publicGroupApplicationHttp:m.http}));
 vi.mock('../../src/features/group-application/candidate.ts',()=>({publicGroupApplicationEnabled:()=>true}));
@@ -19,7 +19,7 @@ vi.mock('@/features/group-application/candidate.ts',()=>({publicGroupApplication
 vi.mock('@/features/group-application/http.ts',()=>({publicGroupApplicationHttp:m.http}));
 vi.mock('@/features/group-application/store.ts',()=>({PublicGroupApplicationStore:class{}}));
 vi.mock('@/features/group-application/inquiry-email.ts',()=>({createInquiryEmailTransport:m.transport,inquiryEmailQueueEnabled:(env:Record<string,string|undefined>)=>env.LS_INQUIRY_EMAIL_QUEUE_ENABLED==='true',InquiryEmailOutbox:class{dispatchOne=m.legacy;dispatchForApplication=m.legacyCallback;}}));
-vi.mock('@/features/group-application/academy-founder-store.ts',()=>({AcademyFounderStore:class{constructor(...args:unknown[]){m.construct(...args);}tick=m.tick;dispatchQueued=m.drain;dispatchOne=m.single;}}));
+vi.mock('@/features/group-application/academy-founder-store.ts',()=>({AcademyFounderStore:class{constructor(...args:unknown[]){m.construct(...args);}tick=m.tick;dispatchQueued=m.drain;dispatchOne=m.single;dispatchForApplication=m.signupCallback;}}));
 const workspace='11111111-1111-4111-8111-111111111111',origin='https://bneineviimacademy.org',sha=(p:string)=>createHash('sha256').update(readFileSync(p)).digest('hex');
 const bindings=()=>({templateModuleSha256:sha('src/features/group-application/academy-founder-email.ts'),templateContractSha256:sha('src/features/group-application/academy-founder-contract.ts'),templateCatalogSha256:sha('src/features/group-application/academy-exact-email-copy.json'),templateFacadeSha256:sha('src/features/group-application/academy-exact-copy.ts'),transportHashes:{gmail:sha('src/providers/email/gmail.ts'),contract:sha('src/providers/email/transport.ts'),resend:sha('src/providers/email/resend.ts')}});
 const policy={version:'JLFA-SIGNUP-WORKER-ADMISSION-v2',approvalReceiptSha256:'d'.repeat(64),sourceCommit:'a'.repeat(40),workspaceId:workspace,projectId:'22222222-2222-4222-8222-222222222222',environmentId:'33333333-3333-4333-8333-333333333333',serviceId:'44444444-4444-4444-8444-444444444444',origin,sender:'office@bneineviimacademy.org',...bindings(),templateVersion:'JLFA-EXACT-COPY-20261026-05',allowedTemplateIds:['R01','R02','R03'],cutoff:'2026-10-25T11:00:00.000Z',expiresAt:'2026-10-26T11:00:00.000Z',population:{mode:'future_submissions'}};
@@ -101,4 +101,31 @@ it.each(['QUEUE','SEND'] as const)('public generic callback retains the original
 it('the unchanged generic HTTP dispatcher selects only its existing inquiry purpose',()=>{
  const source=readFileSync('src/features/group-application/inquiry-email.ts','utf8'),start=source.indexOf(' async dispatchForApplication('),end=source.indexOf(' async dispatchOne(',start),method=source.slice(start,end);
  expect(method).toContain('application_id=$2 AND purpose=$3');expect(method).toContain('[this.workspace,reference,INQUIRY_EMAIL_PURPOSE]');expect(method).not.toContain('academy_founder_');
+});
+
+function controlledPolicy(){return {...policy,expiresAt:'2026-10-25T13:00:00.000Z',allowedTemplateIds:['R00','R03'],r00Exception:{version:'JLFA-R00-RELATIVE-SEND-CLOCK-20261027-01',approvalReceiptSha256:'7dfc71f18f0f853bb11f4bc1de0547484c13a9bbfa1f82eeab30d0eaf95aca87'},population:{mode:'controlled_test',admittedAt:'2026-10-25T12:00:00.000Z',recipientSha256:'9'.repeat(64),learnerIds:['66666666-6666-4666-8666-666666666666','77777777-7777-4777-8777-777777777777']}};}
+function setControlled(){vi.stubEnv('LS_ACADEMY_FOUNDER_EMAIL_APPROVED',undefined);vi.stubEnv('LS_INQUIRY_EMAIL_SEND_ENABLED','false');vi.stubEnv('LS_ACADEMY_SIGNUP_CONTROLLED_SEND_ENABLED','true');vi.stubEnv('LS_ACADEMY_SIGNUP_WORKER_ADMISSION_JSON',JSON.stringify(controlledPolicy()));}
+it('controlled signup CLI passes issued policy to factory while global send and generic CLI stay closed',async()=>{
+ setControlled();vi.spyOn(process,'argv','get').mockReturnValue(['node','synthetic-worker','--dispatch-signup-one','55555555-5555-4555-8555-555555555555']);
+ await import('../../scripts/inquiry-email-worker.ts');expect(m.single).toHaveBeenCalledTimes(1);expect(m.transport.mock.calls[0]?.[2].policy).toBe(m.construct.mock.calls[0]?.[7]);expect(m.legacy).not.toHaveBeenCalled();
+ vi.resetModules();vi.clearAllMocks();vi.spyOn(process,'argv','get').mockReturnValue(['node','synthetic-worker','--dispatch-one','55555555-5555-4555-8555-555555555555']);await import('../../scripts/inquiry-email-worker.ts');expect(m.identity).not.toHaveBeenCalled();expect(m.transport).not.toHaveBeenCalled();
+});
+it.each(['missing-dedicated','global-on','broad-population'] as const)('controlled loader rejects %s before runtime or transport',async(mode)=>{
+ setControlled();if(mode==='missing-dedicated')vi.stubEnv('LS_ACADEMY_SIGNUP_CONTROLLED_SEND_ENABLED',undefined);if(mode==='global-on')vi.stubEnv('LS_INQUIRY_EMAIL_SEND_ENABLED','true');if(mode==='broad-population')vi.stubEnv('LS_ACADEMY_SIGNUP_WORKER_ADMISSION_JSON',JSON.stringify(policy));
+ await import('../../scripts/inquiry-email-worker.ts');expect(m.identity).not.toHaveBeenCalled();expect(m.transport).not.toHaveBeenCalled();expect(m.drain).not.toHaveBeenCalled();
+});
+it('global-off generic public HTTP callback stays inert even with an admitted test policy',async()=>{
+ setControlled();const route=await import('../../src/app/api/public/group-applications/route.ts');await route.POST(new Request(origin+'/api/public/group-applications',{method:'POST'}));
+ expect(m.legacyCallback).not.toHaveBeenCalled();expect(m.transport).toHaveBeenCalledTimes(1);expect(m.signupCallback).toHaveBeenCalledTimes(1);expect(m.transport.mock.calls[0]?.[2].policy.population.mode).toBe('controlled_test');
+});
+it('controlled hosted expiry closes owned DB and reports a planned stop without another effect cycle',async()=>{
+ setControlled();vi.spyOn(process,'argv','get').mockReturnValue(['node','synthetic-worker','--hosted-signup']);
+ const prior=process.send,send=vi.fn();process.send=send as NonNullable<typeof process.send>;
+ try{m.supervise.mockImplementation(async(options:{cycle:()=>Promise<void>;signal:AbortSignal})=>{await options.cycle();vi.setSystemTime(new Date(controlledPolicy().expiresAt));await options.cycle();expect(options.signal.aborted).toBe(true);});
+  await import('../../scripts/inquiry-email-worker.ts');expect(m.drain).toHaveBeenCalledTimes(1);expect(m.transport).toHaveBeenCalledTimes(1);expect(send).toHaveBeenCalledWith({type:'JLFA_SIGNUP_WORKER_COMPLETE',reason:'ADMISSION_EXPIRED'});expect(m.close).toHaveBeenCalledTimes(1);
+ }finally{if(prior)process.send=prior;else delete process.send;}
+});
+it('already expired controlled worker imports no DB/provider and returns a planned closed state',async()=>{
+ setControlled();vi.setSystemTime(new Date(controlledPolicy().expiresAt));vi.spyOn(process,'argv','get').mockReturnValue(['node','synthetic-worker','--hosted-signup']);
+ await import('../../scripts/inquiry-email-worker.ts');expect(m.identity).not.toHaveBeenCalled();expect(m.transport).not.toHaveBeenCalled();expect(console.log).toHaveBeenCalledWith('{"state":"CONTROLLED_ADMISSION_EXPIRED"}');
 });

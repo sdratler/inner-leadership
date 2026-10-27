@@ -1,9 +1,11 @@
 import 'server-only';
-import {assertSignupWorkerAdmission,signupWorkerFamilyAllowed,signupWorkerReferences,signupWorkerMessageAllowed,type SignupWorkerAdmission} from './academy-signup-worker-admission.ts';
+import {SignupEmailNotAttemptedError,assertSignupWorkerAdmission,signupWorkerFamilyAllowed,signupWorkerReferences,signupWorkerMessageAllowed,type SignupWorkerAdmission} from './academy-signup-worker-admission.ts';
 import {AcademyCampaignStore} from './academy-campaign-store.ts';
 import {signupEmailReview} from './academy-signup-email-review.ts';
 import {campaignAttributionSchema,currentReminderLines,floridaDate,PAYMENT_REMINDER_SCHEDULE,type CampaignAttribution,type CampaignShareCommand,type PaymentReminderProjection} from './academy-campaign-contract.ts';
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
+import {readFileSync} from 'node:fs';
+import {resolve} from 'node:path';
 import {AppError} from '../../lib/errors.ts';
 import type {WorkspaceId} from '../../lib/ids.ts';
 import {privateDigest} from '../contact-ops/server/digests.ts';
@@ -19,7 +21,7 @@ import {isFloridaGroupApplication,isSchoolInquiry} from './contract.ts';
 import {isFreeAcademyRegistrationVersion} from './academy-registration.ts';
 import {INQUIRY_EMAIL_FROM} from './inquiry-email-copy.ts';
 import {FOUNDER_CAPACITY,FOUNDER_DECISION,FOUNDER_TIMEZONE,FOUNDER_REMINDER_DEFAULTS,floridaCalendarDays,founderOwnerCommandSchema,founderPrice,occupiesFounder,founderPublicEmailState,founderPublicConfirmationState,type FounderStatus,type FounderPublicResult,type FounderOwnerCommand,type FounderNativeFamily} from './academy-founder-contract.ts';
-import {founderEmailContent,type FounderMail,type FounderMailKind} from './academy-founder-email.ts';
+import {founderEmailContent,isRelativeR00,type FounderMail,type FounderMailKind} from './academy-founder-email.ts';
 import type {FounderCommercialFamily} from '../fishing/academy-founder-commercial-intent-contract.ts';
 import {AcademyFounderTransitionStore} from './academy-founder-transition-store.ts';
 import type {FounderTransitionPurpose} from './academy-founder-transition-contract.ts';
@@ -28,7 +30,10 @@ export interface FounderNativeFamilyPort{read(tx:SqlSession,actor:Actor,family:F
 
 type Window={generation:number;sentAt:string|null;deadline:string|null;exception:boolean;confirmedAt:string|null;deliveryOutcome?:'failed'|'unknown'};
 export type VerifiedFounderOffer={id:string;group:string;groupId:string;firstSession:string;paymentUrl:string;terms:string;priceVersion:string;children:{id:string;name:string;amount:number}[]};
-export type FounderFamily={communicationPreferences?:AcademyRecordedCommunicationPreferences;initialStatus?:'reserved'|'regular_registration'|'pending_verification';everPaid?:boolean;nativeBinding?:FounderNativeFamily;id:string;reference:string;status:FounderStatus;allocated:boolean;revision:number;submittedAt:string;locale:'en'|'he';email:string;parentName:string;children:{id:string;name:string;age:number}[];identityApproved:boolean;interest:Window;payment:Window;tokenHash:string|null;paused:boolean;offer:VerifiedFounderOffer|null;redeemedChildIds:string[];collectedCents:number;enrolledChildIds:string[]};
+type ExactSignupContent={version:'JLFA-EXACT-COPY-20261026-05';catalogSha256:string;exceptionVersion:'JLFA-R00-RELATIVE-SEND-CLOCK-20261027-01';approvalReceiptSha256:string};
+const exactSignupContent:ExactSignupContent=Object.freeze({version:'JLFA-EXACT-COPY-20261026-05',catalogSha256:'175d4bbc87d94d2632c6a1be0092784ad14e4eb7dbc25825c6ec0106d2f3e1ea',exceptionVersion:'JLFA-R00-RELATIVE-SEND-CLOCK-20261027-01',approvalReceiptSha256:'7dfc71f18f0f853bb11f4bc1de0547484c13a9bbfa1f82eeab30d0eaf95aca87'});
+/** Captured only by new v5 creation. Content provenance grants no send authority. */
+export type FounderFamily={signupContent?:ExactSignupContent;communicationPreferences?:AcademyRecordedCommunicationPreferences;initialStatus?:'reserved'|'regular_registration'|'pending_verification';everPaid?:boolean;nativeBinding?:FounderNativeFamily;id:string;reference:string;status:FounderStatus;allocated:boolean;revision:number;submittedAt:string;locale:'en'|'he';email:string;parentName:string;children:{id:string;name:string;age:number}[];identityApproved:boolean;interest:Window;payment:Window;tokenHash:string|null;paused:boolean;offer:VerifiedFounderOffer|null;redeemedChildIds:string[];collectedCents:number;enrolledChildIds:string[]};
 /** Supplied only by the separately admitted native/PAY integration. Never an HTTP proof DTO.
  * Calls share the campaign transaction/lock. Provider closure runs outside it;
  * final inspection verifies terminal closure and signed settlements before safe. */
@@ -111,10 +116,22 @@ export class AcademyFounderStore{
   const collision=await tx.query('SELECT id FROM ls_service_interest.academy_founder_families WHERE workspace_id=$1 AND (identity_digest=$2 OR email_digest=$3)',[this.workspace,identity,emailDigest]);
   const campaign=await this.campaign().snapshot(tx);
   const status:FounderStatus=collision.length||r.learners.some(c=>c.ageYears<8)?'pending_verification':campaign.phase==='PRE_REGISTRATION'&&campaign.remaining>0?'provisional':'interest_list';
-  const f:FounderFamily={...(r.communicationPreferences?{communicationPreferences:captureCommunicationPreferences(r.communicationPreferences,applicationId,this.clock.now())}:{}),initialStatus:status==='pending_verification'?'pending_verification':status==='provisional'?'reserved':'regular_registration',id:randomUUID(),reference:applicationId,status,allocated:status==='provisional',revision:1,submittedAt:this.clock.now().toISOString(),locale:fields.language,email,parentName:fields.parentName,children:r.learners.map(c=>({id:c.id,name:c.fullName,age:c.ageYears})),identityApproved:status!=='pending_verification',interest:emptyWindow(),payment:emptyWindow(),tokenHash:null,paused:false,offer:null,redeemedChildIds:[],collectedCents:0,enrolledChildIds:[]};
+  const f:FounderFamily={...(r.version==='JLFA-FREE-REGISTRATION-20261026-05-v5'?{signupContent:{...exactSignupContent}}:{}),...(r.communicationPreferences?{communicationPreferences:captureCommunicationPreferences(r.communicationPreferences,applicationId,this.clock.now())}:{}),initialStatus:status==='pending_verification'?'pending_verification':status==='provisional'?'reserved':'regular_registration',id:randomUUID(),reference:applicationId,status,allocated:status==='provisional',revision:1,submittedAt:this.clock.now().toISOString(),locale:fields.language,email,parentName:fields.parentName,children:r.learners.map(c=>({id:c.id,name:c.fullName,age:c.ageYears})),identityApproved:status!=='pending_verification',interest:emptyWindow(),payment:emptyWindow(),tokenHash:null,paused:false,offer:null,redeemedChildIds:[],collectedCents:0,enrolledChildIds:[]};
   await tx.query(`INSERT INTO ls_service_interest.academy_founder_families(workspace_id,id,application_id,continuation_digest,identity_digest,email_digest,revision,status,payload_ciphertext,submitted_at,allocated) VALUES($1,$2,$3,$4,$5,$6,1,$7,$8,$9,$10)`,[this.workspace,f.id,applicationId,continuationDigest,identity,emailDigest,status,seal(JSON.stringify(f),this.aad(f.id),this.ring),this.clock.now(),f.allocated]);
   await tx.query('INSERT INTO ls_service_interest.academy_founder_applications(workspace_id,application_id,family_id) VALUES($1,$2,$3)',[this.workspace,applicationId,f.id]);
   if(f.allocated)await this.campaign().allocationChanged(tx);await this.queue(tx,f,'interest',`interest:${f.interest.generation}`);await this.save(tx,f);await this.event(tx,f,'signup',null,'Actual completed form; '+status);return this.publicResult(tx,applicationId);
+ }
+ private async inheritedAckIdentity(tx:SqlSession,f:FounderFamily){
+  const rows=await tx.query<{id:string;ciphertext:string}>(txMailSelect+" WHERE workspace_id=$1 AND founder_id=$2 AND purpose='academy_founder_interest' AND state='sent' AND provider_id IS NOT NULL ORDER BY created_at DESC LIMIT 101",[this.workspace,f.id]);
+  if(rows.length>100)throw new AppError('UNAVAILABLE');
+  const matching=rows.map(row=>JSON.parse(unseal(row.ciphertext,`ls_service_interest/inquiry_email/v1/${this.workspace}/${row.id}`,this.ring)) as StoredFounderMail).filter(p=>p.generation===f.interest.generation);
+  const exact=matching.filter(p=>p.transactional!==undefined);
+  if(!exact.length)return null; // Original legacy sends retain their old semantics.
+  if(!academyRecordedCommunicationPreferencesSchema.safeParse(f.communicationPreferences).success)throw new AppError('UNAVAILABLE');
+  if(exact.length!==1||matching.length!==1)throw new AppError('UNAVAILABLE');const p=exact[0]!;
+  const currentHash=createHash('sha256').update(readFileSync(resolve(process.cwd(),'src/features/group-application/academy-exact-email-copy.json'))).digest('hex');
+  if(!isRelativeR00(p)||p.transactional!.r00Exception!.approvalReceiptSha256!==exactSignupContent.approvalReceiptSha256||p.transactional!.version!=='JLFA-EXACT-COPY-20261026-05'||p.familyId!==f.id||p.reference!==f.reference||p.to!==f.email||!p.token||tokenDigest(p.token)!==f.tokenHash||p.templateCatalogSha256!==currentHash||!f.interest.sentAt||!f.interest.deadline)throw new AppError('UNAVAILABLE');
+  return {templateCatalogSha256:p.templateCatalogSha256,transactional:{version:'JLFA-EXACT-COPY-20261026-05' as const,templateId:'R03' as const,confirmed:true,founderRateReserved:f.allocated}};
  }
  private async queue(tx:SqlSession,f:FounderFamily,kind:FounderMailKind,key:string,daily?:Pick<FounderMail,'reminderDate'|'unpaidLines'>,interestDay?:3|6){
   // Same-key payload identity is immutable. Never upgrade existing legacy,
@@ -134,12 +151,22 @@ export class AcademyFounderStore{
   }
   // Preference changes apply only to new message creation, never an existing same-key reminder.
   if(f.communicationPreferences!==undefined)p.locale=academyRecordedCommunicationPreferencesSchema.parse(f.communicationPreferences).selection.parentLanguage;
-  const content=this.signupContent;
-  if(content&&signupWorkerFamilyAllowed(content,f,this.clock.now())&&!paymentKind(kind)){
+  if(kind==='ack'&&f.interest.confirmedAt){const inherited=await this.inheritedAckIdentity(tx,f);if(inherited){p.templateCatalogSha256=inherited.templateCatalogSha256;p.transactional=inherited.transactional;}}
+  const choice=academyRecordedCommunicationPreferencesSchema.safeParse(f.communicationPreferences);
+  if(f.signupContent!==undefined&&!paymentKind(kind)){
+   const c=f.signupContent,currentHash=createHash('sha256').update(readFileSync(resolve(process.cwd(),'src/features/group-application/academy-exact-email-copy.json'))).digest('hex');
+   if(c.version!==exactSignupContent.version||c.catalogSha256!==exactSignupContent.catalogSha256||c.exceptionVersion!==exactSignupContent.exceptionVersion||c.approvalReceiptSha256!==exactSignupContent.approvalReceiptSha256||currentHash!==c.catalogSha256)throw new AppError('UNAVAILABLE');
+   // A compatible API submission may omit a choice. Keep its intent unsendable;
+   // never infer parent language from page/group locale or upgrade its same key.
    const templateId=kind==='interest'?'R00':kind==='ack'&&f.interest.confirmedAt?'R03':kind==='interest_reminder'&&interestDay===3?'R01':kind==='interest_reminder'&&interestDay===6?'R02':null;
-   if(templateId){p.templateCatalogSha256=content.templateCatalogSha256;p.transactional={version:'JLFA-EXACT-COPY-20261026-05',templateId,...(templateId==='R03'?{confirmed:true,founderRateReserved:f.allocated}:{}),...((templateId==='R01'||templateId==='R02')&&f.interest.sentAt&&f.interest.deadline?{acceptedSend:{sentAt:f.interest.sentAt,deadline:f.interest.deadline}}:{})};}
-   // R00 is retained as an unsent intent with no invented acceptedSend.
-   // Admission-v2 cannot dispatch it until a separately reviewed resolution.
+   if(choice.success&&templateId){p.templateCatalogSha256=c.catalogSha256;p.transactional={version:c.version,templateId,...(templateId==='R00'?{r00Exception:{version:c.exceptionVersion,approvalReceiptSha256:c.approvalReceiptSha256}}:{}),...(templateId==='R03'?{confirmed:true,founderRateReserved:f.allocated}:{}),...((templateId==='R01'||templateId==='R02')&&f.interest.sentAt&&f.interest.deadline?{acceptedSend:{sentAt:f.interest.sentAt,deadline:f.interest.deadline}}:{})};}
+  }
+  const content=this.signupContent;
+  if(f.signupContent===undefined&&content&&signupWorkerFamilyAllowed(content,f,this.clock.now())&&!paymentKind(kind)&&choice.success){
+   const templateId=kind==='interest'?'R00':kind==='ack'&&f.interest.confirmedAt?'R03':kind==='interest_reminder'&&interestDay===3?'R01':kind==='interest_reminder'&&interestDay===6?'R02':null;
+   if(templateId){p.templateCatalogSha256=content.templateCatalogSha256;p.transactional={version:'JLFA-EXACT-COPY-20261026-05',templateId,...(templateId==='R00'&&content.r00Exception?{r00Exception:content.r00Exception}:{}),...(templateId==='R03'?{confirmed:true,founderRateReserved:f.allocated}:{}),...((templateId==='R01'||templateId==='R02')&&f.interest.sentAt&&f.interest.deadline?{acceptedSend:{sentAt:f.interest.sentAt,deadline:f.interest.deadline}}:{})};}
+   // R00 never invents acceptedSend. Only a separately receipted controlled-test
+   // exception may render the relative line; old same-key payloads stay untouched.
   }
   const id=randomUUID();await tx.query(`INSERT INTO ls_service_interest.inquiry_email_outbox(workspace_id,id,application_id,purpose,payload_ciphertext,created_at,founder_id,message_key) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING`,[this.workspace,id,f.reference,'academy_founder_'+kind,seal(JSON.stringify(p),`ls_service_interest/inquiry_email/v1/${this.workspace}/${id}`,this.ring),this.clock.now(),f.id,key]);
  }
@@ -275,9 +302,17 @@ export class AcademyFounderStore{
    if(!w.sentAt){w.sentAt=c.sentAt;w.deadline=floridaCalendarDays(new Date(c.sentAt),7).toISOString();}w.exception=false;delete w.deliveryOutcome;
    await tx.query("UPDATE ls_service_interest.inquiry_email_outbox SET state='sent',provider_id=$4,completed_at=$5 WHERE workspace_id=$1 AND founder_id=$2 AND id=$3",[this.workspace,f.id,c.messageId,c.providerId,c.sentAt]);
    if(p.kind==='offer'&&(!f.offer||new Date(w.deadline!)>new Date(f.offer.firstSession)||!await this.activatePayment(tx,f,w.deadline!)))w.exception=true;
-   if(!w.exception&&(p.kind==='interest'||p.kind==='offer'))await this.queue(tx,f,p.kind==='interest'?'interest_deadline_receipt':'payment_deadline_receipt',`deadline:${p.kind}:${w.generation}`);
+   if(!w.exception&&!isRelativeR00(p)&&(p.kind==='interest'||p.kind==='offer'))await this.queue(tx,f,p.kind==='interest'?'interest_deadline_receipt':'payment_deadline_receipt',`deadline:${p.kind}:${w.generation}`);
   }else{w.exception=true;w.deliveryOutcome=c.outcome==='bounce'||c.outcome==='suppressed'?'failed':'unknown';await this.cancelQueued(tx,f);if(c.outcome==='not_sent'){w.sentAt=null;w.deadline=null;w.exception=false;delete w.deliveryOutcome;w.generation++;await tx.query("UPDATE ls_service_interest.inquiry_email_outbox SET state='canceled',provider_id=NULL,completed_at=$4 WHERE workspace_id=$1 AND founder_id=$2 AND id=$3",[this.workspace,f.id,c.messageId,this.clock.now()]);}}
   return c.outcome==='sent'&&p.kind==='offer'&&wasUnsent&&!w.exception&&!f.paused&&f.status==='offered'?this.sentPurpose(f,c.messageId,c.providerId!,ownerId):{kind:'other'};
+ }
+ private async unreserveNotAttempted(id:string,familyId:string,reservedAt:Date){
+  await this.db.transaction(async tx=>{
+     await lockWorkspace(tx,this.workspace);
+     const restored=await tx.query("UPDATE ls_service_interest.inquiry_email_outbox SET state='queued',reserved_at=NULL WHERE workspace_id=$1 AND id=$2 AND state='unknown' AND reserved_at=$3 AND provider_id IS NULL AND completed_at IS NULL RETURNING id",[this.workspace,id,reservedAt]);
+     const family=await this.get(tx,familyId);
+     await this.event(tx,family,'dispatch_not_attempted',null,JSON.stringify({messageId:id,reason:'Local admission/adapter fence rejected before provider invocation',reservationRestored:restored.length===1}));
+    });
  }
  /** Dispatch uses existing transport and existing outbox. Caller enforces send enablement. */
  async dispatchOne(id:string,transport:AuthEmailTransport,from:string,origin:string,scope:FounderMailScope='all',population?:SignupWorkerAdmission){
@@ -286,11 +321,15 @@ export class AcademyFounderStore{
   const prepared=await this.db.transaction(async tx=>{
    await lockWorkspace(tx,this.workspace);const row=await one<{familyId:string;state:string;payload:string}>(tx,'SELECT founder_id AS "familyId",state,payload_ciphertext AS payload FROM ls_service_interest.inquiry_email_outbox WHERE workspace_id=$1 AND id=$2 FOR UPDATE',[this.workspace,id]);if(!row||row.state!=='queued'||!row.familyId)return null;
    const f=await this.get(tx,row.familyId),p=JSON.parse(unseal(row.payload,`ls_service_interest/inquiry_email/v1/${this.workspace}/${id}`,this.ring)) as StoredFounderMail,w=paymentKind(p.kind)?f.payment:f.interest;
+   if(f.signupContent!==undefined&&!paymentKind(p.kind)&&(!p.transactional||!academyRecordedCommunicationPreferencesSchema.safeParse(f.communicationPreferences).success))return null; // New exact family cannot fall through legacy/UI-language send.
+   if(p.transactional&&!academyRecordedCommunicationPreferencesSchema.safeParse(f.communicationPreferences).success)return null; // All exact05 payloads require recorded parent-message language.
    if(p.transactional&&!population)return null; // Exact-copy payloads never use an unscoped legacy dispatch.
    // Admission is rechecked under the same lock before reserving or changing a row.
-   if(population){assertSignupWorkerAdmission(population,this.workspace,this.clock.now());if(!signupWorkerFamilyAllowed(population,f,this.clock.now())||p.reference!==f.reference||!signupWorkerMessageAllowed(population,{version:p.transactional?.version,templateId:p.transactional?.templateId,templateCatalogSha256:p.templateCatalogSha256},this.clock.now()))return null;
+   if(population){assertSignupWorkerAdmission(population,this.workspace,this.clock.now());if(!signupWorkerFamilyAllowed(population,f,this.clock.now())||p.reference!==f.reference||!signupWorkerMessageAllowed(population,{version:p.transactional?.version,templateId:p.transactional?.templateId,templateCatalogSha256:p.templateCatalogSha256,...(p.transactional?.r00Exception?{r00Exception:p.transactional.r00Exception}:{})},this.clock.now()))return null;
+    if(population.population.mode==='controlled_test'&&(p.generation!==1||!f.identityApproved||!academyRecordedCommunicationPreferencesSchema.safeParse(f.communicationPreferences).success))return null;
     p.status=f.status==='pending_verification'?'pending_verification':f.allocated?'reserved':'interest_list';
     if(p.transactional?.templateId==='R03'){if(!f.interest.confirmedAt)return null;p.transactional={...p.transactional,confirmed:true,founderRateReserved:f.allocated};}
+    else if(isRelativeR00(p)){if(w.sentAt||w.deadline||w.confirmedAt||p.transactional!.acceptedSend!==undefined)return null;}
     else if(p.transactional){if(!w.sentAt||!w.deadline)return null;p.transactional={...p.transactional,acceptedSend:{sentAt:w.sentAt,deadline:w.deadline}};}
    }
    // Signup activation cannot reserve, cancel or otherwise mutate held payment work.
@@ -317,12 +356,7 @@ export class AcademyFounderStore{
     // A concurrent owner cancellation/reconciliation must never be overwritten.
     // If this transaction fails, propagate the persistence failure; do not emit
     // send_exception or pretend that an ambiguous provider call occurred.
-    await this.db.transaction(async tx=>{
-     await lockWorkspace(tx,this.workspace);
-     const restored=await tx.query("UPDATE ls_service_interest.inquiry_email_outbox SET state='queued',reserved_at=NULL WHERE workspace_id=$1 AND id=$2 AND state='unknown' AND reserved_at=$3 AND provider_id IS NULL AND completed_at IS NULL RETURNING id",[this.workspace,id,prepared.at]);
-     const family=await this.get(tx,prepared.familyId);
-     await this.event(tx,family,'dispatch_not_attempted',null,JSON.stringify({messageId:id,reason:'Admission no longer valid before transport invocation',reservationRestored:restored.length===1}));
-    });return 'idle' as const;
+    await this.unreserveNotAttempted(id,prepared.familyId,prepared.at);return 'idle' as const;
    }
   }
   try{
@@ -331,12 +365,12 @@ export class AcademyFounderStore{
     const completed=this.clock.now(),recorded=await tx.query("UPDATE ls_service_interest.inquiry_email_outbox SET state='sent',provider_id=$3,completed_at=$4 WHERE workspace_id=$1 AND id=$2 AND state='unknown' RETURNING id",[this.workspace,id,receipt.providerId,completed]);
     if(recorded.length===1&&w.generation===prepared.p.generation&&['interest','offer'].includes(prepared.p.kind)&&!(scope==='signup'&&paymentFamily(f))){
      if(f.revision!==prepared.revision||f.paused||['withdrawn','expired','scheduling_hold'].includes(f.status))w.exception=true;
-     else if(!w.sentAt){w.sentAt=completed.toISOString();w.deadline=floridaCalendarDays(completed,7).toISOString();if(prepared.p.kind==='offer'&&(!f.offer||new Date(w.deadline)>new Date(f.offer.firstSession)||!await this.activatePayment(tx,f,w.deadline)))w.exception=true;if(!w.exception)await this.queue(tx,f,prepared.p.kind==='interest'?'interest_deadline_receipt':'payment_deadline_receipt',`deadline:${prepared.p.kind}:${w.generation}`);}
+     else if(!w.sentAt){w.sentAt=completed.toISOString();w.deadline=floridaCalendarDays(completed,7).toISOString();if(prepared.p.kind==='offer'&&(!f.offer||new Date(w.deadline)>new Date(f.offer.firstSession)||!await this.activatePayment(tx,f,w.deadline)))w.exception=true;if(!w.exception&&!isRelativeR00(prepared.p))await this.queue(tx,f,prepared.p.kind==='interest'?'interest_deadline_receipt':'payment_deadline_receipt',`deadline:${prepared.p.kind}:${w.generation}`);}
      if(prepared.p.kind==='offer'&&wasUnsent&&!w.exception&&w.sentAt===completed.toISOString())transitionPurpose=this.sentPurpose(f,id,receipt.providerId,null);
      await this.save(tx,f,transitionPurpose);
     }await this.event(tx,f,'provider_accepted',null,JSON.stringify({messageId:id,providerId:receipt.providerId,sentAt:completed.toISOString(),generation:prepared.p.generation,outboxReceiptUpdated:recorded.length===1,note:'Not read/delivery proof; immutable late receipt even if row was canceled'}));
    });return 'sent' as const;
-  }catch{await this.db.transaction(async tx=>{await lockWorkspace(tx,this.workspace);const f=await this.get(tx,prepared.familyId);const w=paymentKind(prepared.p.kind)?f.payment:f.interest;if(w.generation===prepared.p.generation&&!(scope==='signup'&&paymentFamily(f))){w.exception=true;await this.cancelQueued(tx,f,scope);await this.save(tx,f);}await this.event(tx,f,'send_exception',null,'Unknown/ambiguous; no automatic retry or forfeiture');});return 'unknown' as const;}
+  }catch(error){if(error instanceof SignupEmailNotAttemptedError){await this.unreserveNotAttempted(id,prepared.familyId,prepared.at);return 'idle' as const;}await this.db.transaction(async tx=>{await lockWorkspace(tx,this.workspace);const f=await this.get(tx,prepared.familyId);const w=paymentKind(prepared.p.kind)?f.payment:f.interest;if(w.generation===prepared.p.generation&&!(scope==='signup'&&paymentFamily(f))){w.exception=true;await this.cancelQueued(tx,f,scope);await this.save(tx,f);}await this.event(tx,f,'send_exception',null,'Unknown/ambiguous; no automatic retry or forfeiture');});return 'unknown' as const;}
  }
  /** Safe due-work preparation. No provider call; scheduler runs this before dispatch. */
  private async reminderLines(tx:SqlSession,f:FounderFamily){
@@ -344,7 +378,7 @@ export class AcademyFounderStore{
   const money=await this.paymentPort.inspect(tx,f);this.paymentProjection(f,money);if(money.inFlight)return [];
   return currentReminderLines(await this.paymentPort.reminderProjection(tx,f),f,this.clock.now());
  }
- async tick(reminderDays:readonly number[]=FOUNDER_REMINDER_DEFAULTS,paymentHour:number=PAYMENT_REMINDER_SCHEDULE.hour,scope:FounderMailScope='all',population?:SignupWorkerAdmission){if(population){assertSignupWorkerAdmission(population,this.workspace,this.clock.now());if(scope!=='signup'||reminderDays.some(day=>day!==3&&day!==6))throw new AppError('INVALID_REQUEST');}if(!['signup','all'].includes(scope)||reminderDays.some(d=>!Number.isInteger(d)||d<1||d>6)||!Number.isInteger(paymentHour)||paymentHour<0||paymentHour>23)throw new AppError('INVALID_REQUEST');return this.db.transaction(async tx=>{
+ async tick(reminderDays:readonly number[]=FOUNDER_REMINDER_DEFAULTS,paymentHour:number=PAYMENT_REMINDER_SCHEDULE.hour,scope:FounderMailScope='all',population?:SignupWorkerAdmission){if(population){assertSignupWorkerAdmission(population,this.workspace,this.clock.now());if(scope!=='signup'||reminderDays.some(day=>day!==3&&day!==6))throw new AppError('INVALID_REQUEST');}if(!['signup','all'].includes(scope)||reminderDays.some(d=>!Number.isInteger(d)||d<1||d>6)||!Number.isInteger(paymentHour)||paymentHour<0||paymentHour>23)throw new AppError('INVALID_REQUEST');if(population?.population.mode==='controlled_test')return {prepared:false};return this.db.transaction(async tx=>{
   await lockWorkspace(tx,this.workspace);const rows=await tx.query<Row>(select+' WHERE workspace_id=$1 AND ($2::timestamptz IS NULL OR submitted_at >= $2) AND ($3::uuid[] IS NULL OR application_id=ANY($3)) ORDER BY submission_sequence FOR UPDATE',[this.workspace,population?.cutoff??null,population?signupWorkerReferences(population):null]);
   for(const row of rows){const f=this.decode(row);if(population){assertSignupWorkerAdmission(population,this.workspace,this.clock.now());if(!signupWorkerFamilyAllowed(population,f,this.clock.now()))continue;}if(scope==='signup'&&paymentFamily(f))continue;if(f.paused||['expired','withdrawn','scheduling_hold','pending_verification'].includes(f.status))continue;
    const payment=!!f.offer,w=payment?f.payment:f.interest;

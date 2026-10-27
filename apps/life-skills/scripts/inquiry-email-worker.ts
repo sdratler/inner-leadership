@@ -6,7 +6,15 @@ const args=process.argv.slice(2),hosted=args.length===1&&args[0]==='--hosted-sig
 const single=args.length===2&&args[0]==='--dispatch-signup-one'&&/^[-0-9a-f]{36}$/.test(args[1]!);
 const generic=args.length===2&&args[0]==='--dispatch-one'&&/^[-0-9a-f]{36}$/.test(args[1]!);
 if(!hosted&&!due&&!single&&!generic)throw Error('INQUIRY_EMAIL_ARGUMENTS_INVALID');
-const initial=loadSignupPopulation(process.env,new Date());
+const initial=loadSignupPopulation(process.env,new Date()),initialPolicyBytes=process.env.LS_ACADEMY_SIGNUP_WORKER_ADMISSION_JSON;
+function controlledExpired(){
+ if(process.env.LS_ACADEMY_SIGNUP_CONTROLLED_SEND_ENABLED!=='true'||process.env.LS_INQUIRY_EMAIL_SEND_ENABLED==='true')return false;
+ try{const p=JSON.parse(process.env.LS_ACADEMY_SIGNUP_WORKER_ADMISSION_JSON??'null');return p?.population?.mode==='controlled_test'&&typeof p.expiresAt==='string'&&Number.isFinite(Date.parse(p.expiresAt))&&Date.now()>=Date.parse(p.expiresAt);}catch{return false;}
+}
+const expiredMessage={type:'JLFA_SIGNUP_WORKER_COMPLETE',reason:'ADMISSION_EXPIRED'};
+if(hosted&&!initial&&controlledExpired()){
+ process.send?.(expiredMessage);console.log(JSON.stringify({state:'CONTROLLED_ADMISSION_EXPIRED'}));
+}else
 if((!generic&&!initial)||(generic&&process.env.LS_INQUIRY_EMAIL_SEND_ENABLED!=='true')){
  if(hosted)throw Error('SIGNUP_WORKER_NOT_ADMITTED');
  console.log(JSON.stringify({state:'SEND_DISABLED',processed:0}));
@@ -23,6 +31,9 @@ if((!generic&&!initial)||(generic&&process.env.LS_INQUIRY_EMAIL_SEND_ENABLED!=='
   // reset the scan; the cursor never bypasses a row's current dispatch guards.
   let queueCursor:SignupDispatchCursor|undefined,queuePolicy:string|undefined;
   const cycle=async()=>{
+   if(hosted&&initial?.population.mode==='controlled_test'&&process.env.LS_ACADEMY_SIGNUP_WORKER_ADMISSION_JSON===initialPolicyBytes&&controlledExpired()){
+    control.abort();process.send?.(expiredMessage);return;
+   }
    const selected=(single||generic)?await r.store.transaction(tx=>tx.query<{founderId:string|null}>('SELECT founder_id AS "founderId" FROM ls_service_interest.inquiry_email_outbox WHERE workspace_id=$1 AND id=$2',[r.config.workspaceId,args[1]])):null;
    if(generic&&!selected?.[0]?.founderId){
     // Preserve the existing non-Academy inquiry lane, with its own SEND/config gate.
@@ -36,7 +47,7 @@ if((!generic&&!initial)||(generic&&process.env.LS_INQUIRY_EMAIL_SEND_ENABLED!=='
    const founder=new AcademyFounderStore(r.store,r.config.workspaceId,r.config.keyring,r.config.lookupKey.toString('hex'),r.clock,null,null,population);
    if((single||generic)&&!selected?.[0]?.founderId)throw Error('SIGNUP_MESSAGE_NOT_FOUND');
    const {createInquiryEmailTransport}=await import('../src/features/group-application/inquiry-email.ts');
-   const {transport,from}=createInquiryEmailTransport(process.env);
+   const {transport,from}=createInquiryEmailTransport(process.env,undefined,{policy:population,now:r.clock.now});
    if(single||generic){
     // A founder row addressed through either CLI spelling uses the same v2 gate.
     const state=await founder.dispatchOne(args[1]!,transport,from,r.config.origin,'signup',population);console.log(JSON.stringify({state}));return;

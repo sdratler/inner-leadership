@@ -67,3 +67,53 @@ describe('exact05 content and transport admission is additive and closed',()=>{
   const refs=signupWorkerReferences(a)!;refs.length=0;expect(signupWorkerReferences(a)).toEqual([family.reference]);
  });
 });
+
+describe('conditional single synthetic family R00 plus explicit confirmation ACK',()=>{
+ const learnerIds=['66666666-6666-4666-8666-666666666666','77777777-7777-4777-8777-777777777777'];
+ const exception={version:'JLFA-R00-RELATIVE-SEND-CLOCK-20261027-01',approvalReceiptSha256:'7dfc71f18f0f853bb11f4bc1de0547484c13a9bbfa1f82eeab30d0eaf95aca87'};
+ const controlled={...policy,expiresAt:'2026-10-25T14:00:00.000Z',allowedTemplateIds:['R00','R03'],r00Exception:exception,population:{mode:'controlled_test',admittedAt:'2026-10-25T12:00:00.000Z',recipientSha256:signupRecipientDigest(family.email),learnerIds}};
+ const target={...family,children:learnerIds.map(id=>({id}))};
+ it('requires the exception and exact initial-plus-ACK allowlist and maximum 24-hour window',()=>{
+  expect(createSignupWorkerAdmission(controlled,context,now)).not.toBeNull();
+  for(const changed of [{r00Exception:undefined},{r00Exception:{...exception,approvalReceiptSha256:''}},{allowedTemplateIds:['R00']},{allowedTemplateIds:['R00','R03','R01']},{expiresAt:'2026-10-27T11:00:00.000Z'},{population:{...controlled.population,learnerIds:[learnerIds[0],learnerIds[0]]}}])expect(createSignupWorkerAdmission({...controlled,...changed},context,now)).toBeNull();
+ });
+ it('matches only exact new recipient and both immutable learner IDs, independent of generated reference',()=>{
+  const a=createSignupWorkerAdmission(controlled,context,now)!;
+  expect(signupWorkerFamilyAllowed(a,target,now)).toBe(true);
+  expect(signupWorkerFamilyAllowed(a,family,now)).toBe(false);
+  expect(signupWorkerFamilyAllowed(a,{...target,children:[...target.children].reverse()},now)).toBe(true);
+  for(const changed of [{email:'other@example.invalid'},{submittedAt:'2026-10-25T10:59:59.999Z'},{children:target.children.slice(0,1)},{children:[...target.children,{id:ids.workspaceId}]},{children:[target.children[0]!,target.children[0]!]},{children:[target.children[0]!,{id:ids.workspaceId}]}])expect(signupWorkerFamilyAllowed(a,{...target,...changed},now)).toBe(false);
+  expect(signupWorkerFamilyAllowed({...a},target,now)).toBe(false);
+  expect(signupWorkerFamilyAllowed(a,target,new Date(controlled.expiresAt))).toBe(false);
+ });
+ it('requires already recorded exact exception identity and keeps all reminders/legacy intents denied',()=>{
+  const a=createSignupWorkerAdmission(controlled,context,now)!;
+  const identity={version:context.templateVersion,templateId:'R00',templateCatalogSha256:context.templateCatalogSha256,r00Exception:exception};
+  expect(signupWorkerMessageAllowed(a,identity,now)).toBe(true);
+  expect(signupWorkerMessageAllowed(a,{...identity,r00Exception:undefined},now)).toBe(false);
+  expect(signupWorkerMessageAllowed(a,{...identity,r00Exception:{...exception,approvalReceiptSha256:'f'.repeat(64)}},now)).toBe(false);
+  for(const id of ['R01','R02','R03'])expect(signupWorkerMessageAllowed(a,{...identity,templateId:id},now)).toBe(false);
+  expect(signupWorkerMessageAllowed(a,{...identity,templateId:'R03',r00Exception:undefined},now)).toBe(true);
+  expect(Object.isFrozen(a.r00Exception)).toBe(true);expect(Object.isFrozen((a.population as {learnerIds:string[]}).learnerIds)).toBe(true);
+ });
+});
+
+it('controlled renewal keeps original family cutoff but admits only a new finite ACK window with broad flags absent',()=>{
+ const old='2026-10-25T11:00:00.000Z',at=new Date('2026-10-27T12:00:00.000Z'),learnerIds=['66666666-6666-4666-8666-666666666666','77777777-7777-4777-8777-777777777777'];
+ const p={...policy,cutoff:old,expiresAt:'2026-10-27T13:00:00.000Z',allowedTemplateIds:['R03'],r00Exception:{version:'JLFA-R00-RELATIVE-SEND-CLOCK-20261027-01',approvalReceiptSha256:'7dfc71f18f0f853bb11f4bc1de0547484c13a9bbfa1f82eeab30d0eaf95aca87'},population:{mode:'controlled_test',admittedAt:at.toISOString(),recipientSha256:signupRecipientDigest(family.email),learnerIds}};
+ const a=createSignupWorkerAdmission(p,{...context,founderApproved:false},at)!;expect(a).not.toBeNull();expect(signupWorkerFamilyAllowed(a,{...family,children:learnerIds.map(id=>({id}))},at)).toBe(true);
+ expect(signupWorkerMessageAllowed(a,{version:context.templateVersion,templateId:'R00',templateCatalogSha256:context.templateCatalogSha256,r00Exception:p.r00Exception},at)).toBe(false);
+ for(const admittedAt of ['2026-10-25T10:59:59.999Z','2026-10-27T12:00:00.001Z'])expect(createSignupWorkerAdmission({...p,population:{...p.population,admittedAt}},{...context,founderApproved:false},at)).toBeNull();
+ expect(createSignupWorkerAdmission({...p,expiresAt:'2026-10-28T12:00:00.001Z'},{...context,founderApproved:false},at)).toBeNull();
+ expect(signupWorkerFamilyAllowed(a,{...family,children:[{id:learnerIds[0]!},{id:ids.workspaceId}]},at)).toBe(false);
+ expect(createSignupWorkerAdmission(policy,{...context,founderApproved:false},now)).toBeNull();
+});
+
+it('future/reference R00 needs approved content receipt AND all existing broad gates',()=>{
+ const exception={version:'JLFA-R00-RELATIVE-SEND-CLOCK-20261027-01',approvalReceiptSha256:'7dfc71f18f0f853bb11f4bc1de0547484c13a9bbfa1f82eeab30d0eaf95aca87'};
+ for(const population of [{mode:'future_submissions'},{mode:'references',families:[{reference:family.reference,recipientSha256:signupRecipientDigest(family.email)}]}]){
+  const input={...policy,allowedTemplateIds:['R00','R03'],r00Exception:exception,population};expect(createSignupWorkerAdmission(input,context,now)).not.toBeNull();
+  for(const changed of [{sendEnabled:false},{founderApproved:false},{enabled:false}])expect(createSignupWorkerAdmission(input,{...context,...changed},now)).toBeNull();
+  expect(createSignupWorkerAdmission({...input,r00Exception:{...exception,approvalReceiptSha256:'0'.repeat(64)}},context,now)).toBeNull();
+ }
+});
