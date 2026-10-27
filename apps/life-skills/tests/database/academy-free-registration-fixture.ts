@@ -18,6 +18,8 @@ import {PublicGroupApplicationStore} from '../../src/features/group-application/
 import {floridaAcademyRegistrationFieldsSchema} from '../../src/features/group-application/contract.ts';
 import {ACADEMY_REGISTRATION_VERSION,registrationConsent} from '../../src/features/group-application/academy-registration.ts';
 import {academyRegistrationNotice} from '../../src/features/group-application/academy-registration-notice.ts';
+import {registrationAcknowledgments} from '../../src/features/group-application/academy-registration-acknowledgments.ts';
+import {communicationPreferenceSelection} from '../../src/features/group-application/academy-communication-preferences.ts';
 
 export function academyMigrationInventory():Migration[]{
  const entries=JSON.parse(readFileSync(new URL('../../migrations/manifest.json',import.meta.url),'utf8')) as {name:string;sha256:string}[];
@@ -73,5 +75,6 @@ export async function academyWorkspace(pool:pg.Pool){
 }
 
 export function academyCommand(email='synthetic-'+randomUUID()+'@example.invalid'){
- return {operationId:randomUUID(),fields:floridaAcademyRegistrationFieldsSchema.parse({parentName:'Synthetic Parent '+email,contact:email,language:'en',cityArea:'Synthetic Florida',programId:'sunday_fishing_academy',schedulePreference:[],academyRegistration:{version:ACADEMY_REGISTRATION_VERSION,learners:[{id:randomUUID(),fullName:'Synthetic Older',ageYears:12,grade:'7',schooling:'school',experience:'new'},{id:randomUUID(),fullName:'Synthetic Younger',ageYears:9,grade:'4',schooling:'school',experience:'new'}],postalCode:'01234',preferredDays:['sunday'],preferredTimes:['morning'],driveMinutes:30,schoolHoursAvailability:'outside_school_only',preferredGroupLanguage:'either',stageInterest:'foundation',receiptEmail:email,intent:'information',consent:registrationConsent('en')},permission:{confirmed:true,version:academyRegistrationNotice.version,language:'en'}})};
+ const learners=[{id:randomUUID(),fullName:'Synthetic Older',ageYears:12,grade:'7',schooling:'school',experience:'new'},{id:randomUUID(),fullName:'Synthetic Younger',ageYears:9,grade:'4',schooling:'school',experience:'new'}];
+ return {operationId:randomUUID(),fields:floridaAcademyRegistrationFieldsSchema.parse({parentName:'Synthetic Parent '+email,contact:email,language:'en',cityArea:'Synthetic Florida',programId:'sunday_fishing_academy',schedulePreference:[],academyRegistration:{version:ACADEMY_REGISTRATION_VERSION,learners,postalCode:'01234',preferredDays:['sunday'],preferredTimes:['morning'],driveMinutes:30,schoolHoursAvailability:'outside_school_only',preferredGroupLanguage:'either',stageInterest:'foundation',receiptEmail:email,intent:'information',communicationPreferences:communicationPreferenceSelection('en',false,'en'),acknowledgments:registrationAcknowledgments('en',learners.map(child=>child.id)),consent:registrationConsent('en')},permission:{confirmed:true,version:academyRegistrationNotice.version,language:'en'}})};
 }

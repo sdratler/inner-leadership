@@ -66,11 +66,11 @@ describe('Academy read-only draft documents',()=>{
    }
   }
  });
- it.each(['en','he'] as const)('renders six exact %s information sections in one closed disclosure, without historical draft walls',locale=>{
+ it.each(['en','he'] as const)('renders six exact %s information panels in one mutually exclusive disclosure group',locale=>{
   const html=renderToStaticMarkup(createElement(AcademyProgramTerms,{locale})),copy=academyExactCopy[locale];
-  expect(html.match(/<details/g)).toHaveLength(1);expect(html).not.toMatch(/<details[^>]*open=/);expect(html).toContain(renderToStaticMarkup(createElement('summary',null,copy.form.sections.terms)));
+  expect(html.match(/<details/g)).toHaveLength(6);expect(html.match(/name="academy-program-information"/g)).toHaveLength(6);expect(html).not.toMatch(/<details[^>]*open=/);expect(html).toContain(renderToStaticMarkup(createElement('h2',{id:'academy-program-terms-heading'},copy.form.sections.terms)));
   expect(html.match(/data-academy-information=/g)).toHaveLength(6);
-  for(const section of copy.terms.sections){expect(html).toContain(renderToStaticMarkup(createElement('h3',{id:'academy-information-'+section.id},section.heading)));for(const paragraph of section.paragraphs)expect(html).toContain(renderToStaticMarkup(createElement('span',null,paragraph)).slice(6,-7));}
+  for(const section of copy.terms.sections){expect(html).toContain(renderToStaticMarkup(createElement('summary',{id:'academy-information-'+section.id},section.heading)));expect(html).toContain('role="region" tabindex="0" aria-labelledby="academy-information-'+section.id+'"');for(const paragraph of section.paragraphs)expect(html).toContain(renderToStaticMarkup(createElement('span',null,paragraph)).slice(6,-7));}
   for(const document of academyProgramDraftDocuments)expect(html).not.toContain('data-document-id="'+document.id+'"');
   expect(html).not.toContain('data-academy-draft-body');expect(html).not.toContain('data-academy-founder-information');
  });

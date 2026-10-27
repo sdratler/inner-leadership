@@ -314,10 +314,11 @@
       "travelLink": "Travel & makeup information",
       "notesPlaceholder": "Anything about scheduling or your son's experience that you'd like us to know?",
       "equipmentLine": "Bring any fishing equipment you already own to the first meeting.",
-      "requiredCheckbox": "I am the parent or guardian. I have read the program information and agree to the registration terms and privacy notice.",
+      "conductCheckbox": "I have read and explained the Fishing Academy conduct rules to each child listed in this registration.",
+      "requiredCheckbox": "I have read and agree to the program terms, safety information, payment and cancellation information, and registration privacy notice. I understand that this free registration does not authorize payment or complete a final participation waiver.",
       "updatesHeading": "Updates (optional)",
       "emailUpdates": "Email updates about the program",
-      "whatsappUpdates": "WhatsApp updates about the program",
+      "whatsappUpdates": "I would like to receive Fishing Academy updates and reminders by WhatsApp.",
       "submitBusy": "Saving your registration…",
       "submitBelow": "No payment today. We'll contact you about the next step."
     },
@@ -371,7 +372,7 @@
           "id": "privacy",
           "heading": "Registration privacy",
           "paragraphs": [
-            "We use your submitted details to review your registration, consider suitable groups and send registration-related messages. Your children's information is not published with the public family counter. Optional email and WhatsApp updates are separate choices."
+            "We use your submitted details to review your registration, consider suitable groups and send registration-related email. Your children's information is not published with the public family counter. WhatsApp updates are optional and require the separate unchecked choice."
           ]
         }
       ],
@@ -705,10 +706,11 @@
       "travelLink": "מידע על נסיעות והשלמות",
       "notesPlaceholder": "משהו לגבי לוח הזמנים או הניסיון של בנכם שחשוב לכם שנדע?",
       "equipmentLine": "למפגש הראשון, הביאו ציוד דיג שכבר יש לכם.",
-      "requiredCheckbox": "אני ההורה או האפוטרופוס. קראתי את המידע על התוכנית ואני מסכים/ה לתנאי ההרשמה ולהודעת הפרטיות.",
+      "conductCheckbox": "קראתי והסברתי את כללי ההתנהגות של אקדמיית הדיג לכל ילד הרשום בהרשמה זו.",
+      "requiredCheckbox": "קראתי ואני מסכים/ה לתנאי התוכנית, למידע הבטיחות, למידע על תשלום וביטול ולהודעת הפרטיות של ההרשמה. מובן לי שהרשמה חינמית זו אינה מתירה תשלום ואינה משלימה כתב ויתור סופי להשתתפות.",
       "updatesHeading": "עדכונים (לבחירה)",
       "emailUpdates": "עדכונים על התוכנית בדוא״ל",
-      "whatsappUpdates": "עדכונים על התוכנית ב־WhatsApp",
+      "whatsappUpdates": "ברצוני לקבל עדכונים ותזכורות של אקדמיית הדיג ב־WhatsApp.",
       "submitBusy": "שומרים את ההרשמה…",
       "submitBelow": "אין תשלום היום. ניצור איתכם קשר לגבי ההמשך."
     },
@@ -762,7 +764,7 @@
           "id": "privacy",
           "heading": "פרטיות בהרשמה",
           "paragraphs": [
-            "הפרטים שנשלחו משמשים לבדיקת ההרשמה, להתאמת קבוצות ולשליחת הודעות הקשורות להרשמה. פרטי הילדים אינם מפורסמים במונה המשפחות הציבורי. עדכונים בדוא״ל וב־WhatsApp הם בחירות נפרדות."
+            "הפרטים שנשלחו משמשים לבדיקת ההרשמה, להתאמת קבוצות ולשליחת דוא״ל הקשור להרשמה. פרטי הילדים אינם מפורסמים במונה המשפחות הציבורי. עדכונים ב־WhatsApp הם אופציונליים ודורשים את הבחירה הנפרדת שאינה מסומנת מראש."
           ]
         }
       ],

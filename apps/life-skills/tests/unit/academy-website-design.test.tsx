@@ -27,6 +27,8 @@ describe("the actual owner-selected Academy visual and inquiry design",()=>{
   expect(page).toContain(`href="/${locale}/florida/apply" data-jlfa-primary="true"`);expect(page).toContain('id="pricing"');expect(page).toContain(`href="/${locale}/florida/apply"`);
   for(const stage of academyStages)expect(page).toContain(`href="/${locale}/florida/stages/${stage.slug}"`);
   expect(page.match(/data-academy-stage-card=/g)).toHaveLength(4);expect(page.match(/data-price-kind=/g)).toHaveLength(3);
+  expect(page.match(/<details name="academy-faq"/g)).toHaveLength(academyExactCopy[locale].home.faq.length);
+  expect(page).not.toMatch(/<details[^>]*name="academy-faq"[^>]*open=/);
   for(const id of["about","who-its-for","how-it-works","stages","self-governance","questions","founder"])expect(page).toContain(`id="${id}"`);
   expect(page).toContain('data-jlfa-header-logo="true"');expect(page).toContain('data-jlfa-footer-logo="true"');expect(page).toContain('/groups/people/founder-grass-group.webp');
   for(const value of['name="parentName"','name="postalCode"','role="timer"','data-counter','Save $800','HERO ARTWORK IN PROGRESS','text-layout-reference.png'])expect(page).not.toContain(value);

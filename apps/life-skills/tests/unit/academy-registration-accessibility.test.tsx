@@ -3,6 +3,7 @@ import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {describe,it,expect} from 'vitest';
 import {academyCommunicationNotice,academyCommunicationNoticeHashes,communicationPreferenceSelection} from '../../src/features/group-application/academy-communication-preferences.ts';
+import {academyConductAttestation,academyProgramInformationAcceptance} from '../../src/features/group-application/academy-registration-acknowledgments.ts';
 import {AcademyRegistrationForm,registrationErrorTarget} from '../../src/features/group-application/academy-registration-form.tsx';
 
 describe('Academy registration error destinations',()=>{
@@ -16,6 +17,8 @@ describe('Academy registration error destinations',()=>{
  it('maps nested consent to its control and does not invent destinations for contract-only errors',()=>{
   expect(registrationErrorTarget('permission.confirmed',[],'en')?.id).toBe('registration-permission');
   expect(registrationErrorTarget('permission.version',[],'he')?.id).toBe('registration-permission');
+  expect(registrationErrorTarget('acknowledgments.conduct.childIds',[],'en')?.id).toBe('registration-conductExplained');
+  expect(registrationErrorTarget('acknowledgments.programInformation',[],'he')?.id).toBe('registration-permission');
   expect(registrationErrorTarget('operationId',[],'en')).toBeNull();
   expect(registrationErrorTarget('academyRegistration.learners',[],'en')).toBeNull();
  });
@@ -33,19 +36,27 @@ describe('Academy registration error destinations',()=>{
 
 it.each(['en','he'] as const)('%s short form retains separate language and optional consent controls',locale=>{
  const html=renderToStaticMarkup(createElement(AcademyRegistrationForm,{locale,mode:'sample'}));
- for(const name of ['parentLanguage','preferredGroupLanguage','nurtureEmail','privateWapi','permission','contact','receiptEmail'])expect(html).toContain('name="'+name+'"');
- for(const name of ['nurtureEmail','privateWapi','permission'])expect(html.match(new RegExp('<input[^>]*name="'+name+'"[^>]*>'))?.[0]).not.toContain('checked=""');
+ for(const name of ['parentLanguage','preferredGroupLanguage','conductExplained','privateWapi','permission','contact','receiptEmail'])expect(html).toContain('name="'+name+'"');
+ expect(html).not.toContain('name="nurtureEmail"');
+ for(const name of ['conductExplained','privateWapi','permission'])expect(html.match(new RegExp('<input[^>]*name="'+name+'"[^>]*>'))?.[0]).not.toContain('checked=""');
+ for(const name of ['conductExplained','permission'])expect(html.match(new RegExp('<input[^>]*name="'+name+'"[^>]*>'))?.[0]).toContain('required=""');
+ expect(html).toContain(renderToStaticMarkup(createElement('span',null,academyExactCopy[locale].form.conductCheckbox)));
+ expect(academyExactCopy[locale].form.conductCheckbox).toBe(academyConductAttestation[locale]);
+ expect(academyExactCopy[locale].form.requiredCheckbox).toBe(academyProgramInformationAcceptance[locale]);
+ expect(academyExactCopy[locale].form.whatsappUpdates).toBe(academyCommunicationNotice[locale]);
  expect(html).toContain('type="tel"');expect(html).toContain('data-academy-program-terms');expect(html).toContain(renderToStaticMarkup(createElement('span',null,academyExactCopy[locale].form.requiredCheckbox)));
  expect(html).toContain(locale==='he'?'עדכונים (לבחירה)':'Updates (optional)');expect(html).not.toContain('name="stageInterest"');
 });
 
 it.each(['en','he'] as const)('%s optional choices expose the exact versioned notice recorded by the command',locale=>{
- const html=renderToStaticMarkup(createElement(AcademyRegistrationForm,{locale,mode:'sample'})),selection=communicationPreferenceSelection(locale,false,false,locale);
- const disclosure=html.match(/<details[^>]*><summary>(?:Updates \(optional\)|עדכונים \(לבחירה\))<\/summary>([\s\S]*?)<\/details>/)?.[1];expect(disclosure).toBeDefined();
+ const html=renderToStaticMarkup(createElement(AcademyRegistrationForm,{locale,mode:'sample'})),selection=communicationPreferenceSelection(locale,false,locale);
+ const disclosure=html.match(/<details[^>]*><summary id="academy-optional-updates-notice">(?:Updates \(optional\)|עדכונים \(לבחירה\))<\/summary>([\s\S]*?)<\/details>/)?.[1];expect(disclosure).toBeDefined();
  expect(disclosure).toContain(renderToStaticMarkup(createElement('p',null,academyCommunicationNotice[locale])));
  for(const [attribute,value] of [['id',selection.notice.documentId],['version',selection.notice.version],['language',selection.notice.language],['sha256',selection.notice.textSha256]])expect(disclosure).toContain('data-document-'+attribute+'="'+value+'"');
  expect(disclosure).toContain(academyCommunicationNoticeHashes[locale]);expect(disclosure).toContain('<bdi dir="ltr">'+academyCommunicationNotice.version+'</bdi>');
- for(const name of ['nurtureEmail','privateWapi'])expect(disclosure?.match(new RegExp('<input[^>]*name="'+name+'"[^>]*>'))?.[0]).not.toMatch(/checked=""|required=""/);
+ expect(disclosure).not.toMatch(/<input/);
+ const whatsapp=html.match(/<input[^>]*name="privateWapi"[^>]*>/)?.[0];expect(whatsapp).toBeDefined();expect(whatsapp).not.toMatch(/checked=""|required=""/);
+ expect(html.match(/name="academy-program-information"/g)).toHaveLength(7);
  expect(html).not.toMatch(/<details[^>]*open=[^>]*><summary>(?:Updates|עדכונים)/);
 });
 
