@@ -20,7 +20,7 @@ describe('Academy registered page metadata identity',()=>{
    const client=academyMetadata(locale,page.path,undefined,mode,campaign);
    const copy=academyExactCopy[locale].metadata,stage=academyExactCurriculum.stages.find(item=>page.path===`/stages/${item.slug}`);const expected=page.path==='/confirm-interest'?academyExactStates[locale].confirmation.heading+' | '+copy.landingTitle:page.path==='/apply'?(campaign?.phase==='PRE_REGISTRATION'?copy.formTitleA:copy.formTitleB):page.path==='/pricing'?copy.pricingTitle:copy.curriculumTitle.replace('{stage_title}',stage!.title[locale]);
    expect(client.title).toBe(server.title);expect(client.title).toBe(expected);
-   expect(client.openGraph.title).toBe(expected);expect(client.openGraph.title).toBe(server.openGraph.title);
+   expect(client.openGraph.title).toBe(locale==='he'?'האקדמיה לדיג ולמנהיגות יהודית':'Jewish Leadership Fishing Academy');expect(client.openGraph.title).toBe(server.openGraph.title);
    expect(client.alternates).toEqual(server.alternates);expect(client.alternates.canonical.endsWith(page.path)).toBe(true);
    expect(client.openGraph.url).toBe(client.alternates.canonical);
    if(campaign?.phase!=='PRE_REGISTRATION')expect(client.description).not.toContain('first 30');
@@ -30,7 +30,7 @@ describe('Academy registered page metadata identity',()=>{
   const home=academyMetadata(locale,'',undefined,'bna',pre);
   expect(home.title).toBe(locale==='he'?'האקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה':'South Florida Jewish Leadership Fishing Academy');
   expect(home.title).not.toContain(' | ');
-  expect(academyMetadata(locale,'/apply','Legacy caller title','bna',null).openGraph.title).toBe(academyExactCopy[locale].metadata.formTitleB);
+  expect(academyMetadata(locale,'/apply','Legacy caller title','bna',null).openGraph.title).toBe(locale==='he'?'האקדמיה לדיג ולמנהיגות יהודית':'Jewish Leadership Fishing Academy');
   for(const path of ['/stages/unknown','/other','/stages/advanced?x=1'])expect(()=>academyMetadata(locale,path)).toThrow('ACADEMY_PATH_UNAVAILABLE');
  });
 });
@@ -39,6 +39,7 @@ it('uses the exact approved Fishing logo for route-scoped SSR social metadata an
  for(const locale of ['en','he'] as const)for(const mode of ['legacy','bna'] as const)for(const campaign of [pre,regular,null])for(const path of ['',...pages.map(page=>page.path)]){
   const metadata=academyMetadata(locale,path,undefined,mode,campaign),logo=new URL('/groups/brand/jlfa-logo-locked-v1.png',metadata.alternates.canonical).href;
   expect(metadata.openGraph.images).toEqual([{url:logo,alt:locale==='he'?'האקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה':'South Florida Jewish Leadership Fishing Academy'}]);
+  expect(metadata.openGraph.description).toBe(academyExactCopy[locale].hero.pillars);expect(metadata.twitter.description).toBe(academyExactCopy[locale].hero.pillars);
   expect(metadata.twitter.images).toEqual([logo]);expect(metadata.twitter.title).toBe(metadata.openGraph.title);expect(metadata.icons.icon[0]?.url).toBe(logo);expect(metadata.icons.apple[0]?.url).toBe(logo);expect(JSON.stringify(metadata)).not.toMatch(/localhost|127\.0\.0\.1|prereg-approved-square/);
  }
 });

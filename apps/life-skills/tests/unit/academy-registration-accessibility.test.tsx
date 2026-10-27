@@ -2,7 +2,7 @@ import {academyExactCopy} from '../../src/features/group-application/academy-exa
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {describe,it,expect} from 'vitest';
-import {academyCommunicationNotice,academyCommunicationNoticeHashes,communicationPreferenceSelection} from '../../src/features/group-application/academy-communication-preferences.ts';
+import {academyCommunicationNotice} from '../../src/features/group-application/academy-communication-preferences.ts';
 import {academyConductAttestation,academyProgramInformationAcceptance} from '../../src/features/group-application/academy-registration-acknowledgments.ts';
 import {AcademyRegistrationForm,registrationErrorTarget} from '../../src/features/group-application/academy-registration-form.tsx';
 
@@ -45,19 +45,15 @@ it.each(['en','he'] as const)('%s short form retains separate language and optio
  expect(academyExactCopy[locale].form.requiredCheckbox).toBe(academyProgramInformationAcceptance[locale]);
  expect(academyExactCopy[locale].form.whatsappUpdates).toBe(academyCommunicationNotice[locale]);
  expect(html).toContain('type="tel"');expect(html).toContain('data-academy-program-terms');expect(html).toContain(renderToStaticMarkup(createElement('span',null,academyExactCopy[locale].form.requiredCheckbox)));
- expect(html).toContain(locale==='he'?'עדכונים (לבחירה)':'Updates (optional)');expect(html).not.toContain('name="stageInterest"');
+ expect(html).not.toContain(academyExactCopy[locale].form.updatesHeading);expect(html).not.toContain('name="stageInterest"');
 });
 
-it.each(['en','he'] as const)('%s optional choices expose the exact versioned notice recorded by the command',locale=>{
- const html=renderToStaticMarkup(createElement(AcademyRegistrationForm,{locale,mode:'sample'})),selection=communicationPreferenceSelection(locale,false,locale);
- const disclosure=html.match(/<details[^>]*><summary id="academy-optional-updates-notice">(?:Updates \(optional\)|עדכונים \(לבחירה\))<\/summary>([\s\S]*?)<\/details>/)?.[1];expect(disclosure).toBeDefined();
- expect(disclosure).toContain(renderToStaticMarkup(createElement('p',null,academyCommunicationNotice[locale])));
- for(const [attribute,value] of [['id',selection.notice.documentId],['version',selection.notice.version],['language',selection.notice.language],['sha256',selection.notice.textSha256]])expect(disclosure).toContain('data-document-'+attribute+'="'+value+'"');
- expect(disclosure).toContain(academyCommunicationNoticeHashes[locale]);expect(disclosure).toContain('<bdi dir="ltr">'+academyCommunicationNotice.version+'</bdi>');
- expect(disclosure).not.toMatch(/<input/);
+it.each(['en','he'] as const)('%s optional WhatsApp choice is one line without a duplicate updates disclosure',locale=>{
+ const html=renderToStaticMarkup(createElement(AcademyRegistrationForm,{locale,mode:'sample'}));
  const whatsapp=html.match(/<input[^>]*name="privateWapi"[^>]*>/)?.[0];expect(whatsapp).toBeDefined();expect(whatsapp).not.toMatch(/checked=""|required=""/);
- expect(html.match(/name="academy-program-information"/g)).toHaveLength(7);
- expect(html).not.toMatch(/<details[^>]*open=[^>]*><summary>(?:Updates|עדכונים)/);
+ expect(html).toContain(renderToStaticMarkup(createElement('span',null,(locale==='he'?'לבחירה: ':'Optional: ')+academyCommunicationNotice[locale])));
+ expect(html).not.toContain('academy-optional-updates-notice');expect(html).not.toContain('data-communication-notice');expect(html).not.toContain(academyExactCopy[locale].form.updatesHeading);
+ expect(html.match(/name="academy-program-information"/g)).toHaveLength(6);
 });
 
 it.each(['en','he'] as const)('%s exact form labels preserve independent language choices, numeric inputs and empty grade',locale=>{
@@ -65,6 +61,7 @@ it.each(['en','he'] as const)('%s exact form labels preserve independent languag
  for(const label of Object.values(c.labels))expect(html).toContain(renderToStaticMarkup(createElement('span',null,label)).slice(6,-7));
  expect(html.match(/<input[^>]*name="contact"[^>]*>/)?.[0]).not.toContain('required=""');expect(html.match(/<input[^>]*name="receiptEmail"[^>]*>/)?.[0]).toContain('required=""');
  expect(html).toMatch(/<input[^>]*type="text"[^>]*name="postalCode"/);expect(html).toContain('min="5" max="120" step="1"');
+ expect(html).not.toMatch(/<select[^>]*name="schoolHoursAvailability"/);for(const value of Object.keys(c.options.schoolHours))expect([...html.matchAll(/<input[^>]*name="schoolHoursAvailability"[^>]*>/g)].some(match=>match[0].includes('value="'+value+'"'))).toBe(true);
  for(const grade of Object.keys(c.options.grades))expect(html).toContain('value="'+grade+'"');
  expect(html).toContain('<option value="" selected="">'+c.gradePlaceholder+'</option>');
  for(const value of ['en','he','either'])expect([...html.matchAll(/<input[^>]*name="preferredGroupLanguage"[^>]*>/g)].some(match=>match[0].includes('value="'+value+'"'))).toBe(true);

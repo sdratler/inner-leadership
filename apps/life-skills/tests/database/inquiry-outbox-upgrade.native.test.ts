@@ -14,7 +14,7 @@ for(const legacyLength of [51,52,53,54])test(`preserves populated legacy ${legac
   await query("INSERT INTO ls_service_interest.public_applications(workspace_id,id,contact_digest,request_digest,payload_ciphertext,notice_version,notice_language,received_at) VALUES($1,$2,$3,$4,'retained-encrypted-legacy','v1','en',now())",[workspace,id,'a'.repeat(64),'b'.repeat(64)]);
   const before=(await query('SELECT to_jsonb(t) AS row FROM ls_service_interest.public_applications t')).rows;
   const ledger=(await query('SELECT to_jsonb(t) AS row FROM ls_control.migrations t ORDER BY name')).rows;
-  expect(await migrate({query},db.inventory,false)).toEqual({applied:56-legacyLength,pending:0});
+  expect(await migrate({query},db.inventory,false)).toEqual({applied:db.inventory.length-legacyLength,pending:0});
   expect(await migrate({query},db.inventory,true)).toEqual({applied:0,pending:0});
   expect((await query('SELECT to_jsonb(t) AS row FROM ls_service_interest.public_applications t')).rows).toEqual(before);
   expect((await query('SELECT to_jsonb(t) AS row FROM ls_control.migrations t ORDER BY name')).rows.slice(0,legacyLength)).toEqual(ledger);
@@ -42,7 +42,7 @@ test('early inquiry-only 0135 preserves inquiry, queued acknowledgment and ledge
   expect(planMigrations(files,await history()).map(f=>f.name)).toEqual([...files.slice(52,54),...files.slice(55)].map(f=>f.name));
   expect((await query("SELECT to_regclass('ls_contact_ops.fishing_lead_revisions') AS relation")).rows[0]?.relation).toBeNull();
   expect(await records()).toEqual(before);
-  expect(await migrate({query},files,false)).toEqual({applied:3,pending:0});
+  expect(await migrate({query},files,false)).toEqual({applied:4,pending:0});
   expect(await migrate({query},files,false)).toEqual({applied:0,pending:0});
   expect(await migrate({query},files,true)).toEqual({applied:0,pending:0});
   expect(await records()).toEqual(before);

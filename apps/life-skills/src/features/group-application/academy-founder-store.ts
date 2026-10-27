@@ -25,6 +25,7 @@ import {founderEmailContent,isAnnouncementR00,type FounderMail,type FounderMailK
 import type {FounderCommercialFamily} from '../fishing/academy-founder-commercial-intent-contract.ts';
 import {AcademyFounderTransitionStore} from './academy-founder-transition-store.ts';
 import type {FounderTransitionPurpose} from './academy-founder-transition-contract.ts';
+import {queueAcademyOwnerNotification} from './academy-owner-notification.ts';
 
 export interface FounderNativeFamilyPort{read(tx:SqlSession,actor:Actor,family:FounderFamily,binding:FounderNativeFamily['source']):Promise<FounderNativeFamily>;}
 
@@ -69,7 +70,7 @@ const paymentFamily=(f:FounderFamily)=>!!f.offer||!!f.payment.sentAt||!!f.everPa
 const emptyWindow=():Window=>({generation:1,sentAt:null,deadline:null,exception:false,confirmedAt:null});
 export function isFreeFounderRegistration(fields:GroupApplicationFields){return isFloridaGroupApplication(fields)&&!isSchoolInquiry(fields)&&isFreeAcademyRegistrationVersion(fields.academyRegistration?.version);}
 export class AcademyFounderStore{
- constructor(private readonly db:IdentityStore,private readonly workspace:WorkspaceId,private readonly ring:Keyring,private readonly digestKey:string,private readonly clock:IdentityClock,private readonly paymentPort:FounderPaymentPort|null=null,private readonly nativeFamilies:FounderNativeFamilyPort|null=null,private readonly signupContent:SignupWorkerAdmission|null=null){}
+ constructor(private readonly db:IdentityStore,private readonly workspace:WorkspaceId,private readonly ring:Keyring,private readonly digestKey:string,private readonly clock:IdentityClock,private readonly paymentPort:FounderPaymentPort|null=null,private readonly nativeFamilies:FounderNativeFamilyPort|null=null,private readonly signupContent:SignupWorkerAdmission|null=null,private readonly ownerNotificationsEnabled=false){}
  private campaign(){return new AcademyCampaignStore(this.workspace,this.ring,this.digestKey,()=>this.clock.now());}
  async bindAttribution(tx:SqlSession,operationId:string,applicationId:string,value:CampaignAttribution|null){await this.campaign().attribution(tx,operationId,applicationId,value===null?null:campaignAttributionSchema.parse(value));}
  async checkAttribution(tx:SqlSession,operationId:string,value:CampaignAttribution|null){await this.campaign().checkAttribution(tx,operationId,value);}
@@ -107,6 +108,7 @@ export class AcademyFounderStore{
    // A capability proves continuity, not permission to replace a household.
    if(f.email!==email||f.parentName.normalize('NFKC').trim().toLowerCase()!==fields.parentName.normalize('NFKC').trim().toLowerCase())throw new AppError('CONFLICT');
    await tx.query('INSERT INTO ls_service_interest.academy_founder_applications(workspace_id,application_id,family_id) VALUES($1,$2,$3)',[this.workspace,applicationId,f.id]);
+   if(this.ownerNotificationsEnabled)await queueAcademyOwnerNotification(tx,this.workspace,applicationId,fields,this.ring,this.clock.now());
    for(const c of r.learners){const existing=f.children.find(p=>p.id===c.id);if(existing){existing.name=c.fullName;existing.age=c.ageYears;}else f.children.push({id:c.id,name:c.fullName,age:c.ageYears});}
    if(r.communicationPreferences)f.communicationPreferences=captureCommunicationPreferences(r.communicationPreferences,applicationId,this.clock.now(),f.communicationPreferences);
    await this.save(tx,f);await this.event(tx,f,'amendment',null,'Accepted sibling/language continuation; no additional allocation');return this.publicResult(tx,applicationId);
@@ -119,6 +121,7 @@ export class AcademyFounderStore{
    const f:FounderFamily={...((r.version===ACADEMY_EXACT_COPY_FREE_REGISTRATION_VERSION||r.version===ACADEMY_REGISTRATION_VERSION)?{signupContent:{...exactSignupContent}}:{}),...(r.communicationPreferences?{communicationPreferences:captureCommunicationPreferences(r.communicationPreferences,applicationId,this.clock.now())}:{}),initialStatus:status==='pending_verification'?'pending_verification':status==='provisional'?'reserved':'regular_registration',id:randomUUID(),reference:applicationId,status,allocated:status==='provisional',revision:1,submittedAt:this.clock.now().toISOString(),locale:fields.language,email,parentName:fields.parentName,children:r.learners.map(c=>({id:c.id,name:c.fullName,age:c.ageYears})),identityApproved:status!=='pending_verification',interest:emptyWindow(),payment:emptyWindow(),tokenHash:null,paused:false,offer:null,redeemedChildIds:[],collectedCents:0,enrolledChildIds:[]};
   await tx.query(`INSERT INTO ls_service_interest.academy_founder_families(workspace_id,id,application_id,continuation_digest,identity_digest,email_digest,revision,status,payload_ciphertext,submitted_at,allocated) VALUES($1,$2,$3,$4,$5,$6,1,$7,$8,$9,$10)`,[this.workspace,f.id,applicationId,continuationDigest,identity,emailDigest,status,seal(JSON.stringify(f),this.aad(f.id),this.ring),this.clock.now(),f.allocated]);
   await tx.query('INSERT INTO ls_service_interest.academy_founder_applications(workspace_id,application_id,family_id) VALUES($1,$2,$3)',[this.workspace,applicationId,f.id]);
+  if(this.ownerNotificationsEnabled)await queueAcademyOwnerNotification(tx,this.workspace,applicationId,fields,this.ring,this.clock.now());
   if(f.allocated)await this.campaign().allocationChanged(tx);await this.queue(tx,f,'interest',`interest:${f.interest.generation}`);await this.save(tx,f);await this.event(tx,f,'signup',null,'Actual completed form; '+status);return this.publicResult(tx,applicationId);
  }
  private async inheritedAckIdentity(tx:SqlSession,f:FounderFamily){

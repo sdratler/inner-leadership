@@ -222,5 +222,9 @@
   {
     "name": "0136_ls_academy_founder.sql",
     "sha256": "6590a21e456f05c4956b097ce5cd3300fd2ebb2ae89e1d007bb2ece969b51ecf"
+  },
+  {
+    "name": "0137_ls_academy_owner_notifications.sql",
+    "sha256": "b474d4f21eec0b39cb0796e9afac1226335108bc20dd334bf005c01aa775a506"
   }
 ]

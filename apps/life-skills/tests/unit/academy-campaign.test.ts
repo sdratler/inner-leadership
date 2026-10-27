@@ -21,7 +21,7 @@ it('rejects foreign, duplicate, missing, stale, noninteger or unpaid-paid projec
 it('uses Florida calendar dates through DST rather than UTC dates or fixed 24-hour windows',()=>{expect(floridaDate(new Date('2026-11-02T04:30:00Z'))).toBe('2026-11-01');expect(floridaDate(new Date('2026-11-02T05:30:00Z'))).toBe('2026-11-02');});
 
 it('rejects callback-invented later deadlines, excess balances, unoffered children and contradictions with signed paid IDs',()=>{const now=new Date('2026-10-25T14:00:00Z');for(const change of [{deadline:'2026-11-30T14:00:00.000Z'},{unpaidCents:155001},{childId:'unoffered'},{state:'paid',unpaidCents:0}]){const p=projection();Object.assign(p.lines[1]!,change);expect(()=>currentReminderLines(p,family,now)).toThrow();}expect(currentReminderLines(projection(),family,new Date('2026-11-01T14:00:00Z'))).toEqual([]);});
-it('normalizes all regular-application metadata title variants',()=>{const m=academyMetadata('en','/apply','Free Registration for the Fishing Academy','legacy',snapshot(true));expect(m.title).not.toContain('Free');expect(m.openGraph.title).not.toContain('Free');});
+it('normalizes all regular-application metadata title variants',()=>{const m=academyMetadata('en','/apply','Free Registration for the Fishing Academy','legacy',snapshot(true));expect(m.title).not.toContain('Free');expect(m.openGraph.title).toBe('Jewish Leadership Fishing Academy');});
 
 it('requires actual UTC publication evidence only for explicit manual confirmation, without accepting provider-verified claims',()=>{
  const base={operationId:'aaaa1111-1111-4111-8111-111111111111',shareId:'bbbb1111-1111-4111-8111-111111111111',reason:'Synthetic owner evidence'};

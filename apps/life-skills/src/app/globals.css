@@ -51,7 +51,6 @@ footer { color:var(--ls-muted); font-size:.8125rem; margin-block-start:32px; }
 .app-shell--practitioner .main-content { max-inline-size:1100px; padding:40px; }
 .state-page { padding:32px; max-inline-size:800px; margin-inline:auto; }
 .state-page button { border:0; border-radius:10px; padding:12px 20px; min-block-size:44px; background:var(--ls-forest-900); color:var(--ls-paper); }
-.skeleton-line { display:block; block-size:24px; background:var(--ls-sand-300); border-radius:6px; margin-block:16px; max-inline-size:480px; }
 @media (max-width:760px) {
  .app-header { min-block-size:80px; padding:16px; gap:12px; }
  .main-content,.app-shell--practitioner .main-content { padding:32px 16px 24px; }
