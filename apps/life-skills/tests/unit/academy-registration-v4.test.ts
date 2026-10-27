@@ -11,9 +11,11 @@ import {AcademyRegistrationReadback} from '../../src/features/group-application/
 import {AcademyProgramTerms} from '../../src/features/group-application/academy-program-terms.tsx';
 import {academyRegistrationNotice,academyRegistrationNoticeHashes} from '../../src/features/group-application/academy-registration-notice.ts';
 import {academyExactCopy} from '../../src/features/group-application/academy-exact-copy.ts';
+import {registrationAcknowledgments} from '../../src/features/group-application/academy-registration-acknowledgments.ts';
 
 function registration(version:string=ACADEMY_REGISTRATION_VERSION,stageInterest='foundation'){
- return {version,learners:[{id:'b7faef3c-c13a-4af3-8a43-1947447fca43',fullName:'Synthetic Child One',ageYears:10,grade:'5',schooling:'school',experience:'experienced'},{id:'2f48492b-5919-4fa6-a4a5-b590304dbe85',fullName:'Synthetic Child Two',ageYears:13,grade:'8',schooling:'homeschool',experience:'some'}],postalCode:'00123',preferredDays:['monday'],preferredTimes:['afternoon'],driveMinutes:37,schoolHoursAvailability:'outside_school_only',preferredGroupLanguage:'he',stageInterest,receiptEmail:'synthetic@example.invalid',intent:'information',consent:registrationConsent('en',version===ACADEMY_REGISTRATION_VERSION?ACADEMY_REGISTRATION_VERSION:ACADEMY_FOUNDATION_FREE_REGISTRATION_VERSION)};
+ const learners=[{id:'b7faef3c-c13a-4af3-8a43-1947447fca43',fullName:'Synthetic Child One',ageYears:10,grade:'5',schooling:'school',experience:'experienced'},{id:'2f48492b-5919-4fa6-a4a5-b590304dbe85',fullName:'Synthetic Child Two',ageYears:13,grade:'8',schooling:'homeschool',experience:'some'}];
+ return {version,learners,postalCode:'00123',preferredDays:['monday'],preferredTimes:['afternoon'],driveMinutes:37,schoolHoursAvailability:'outside_school_only',preferredGroupLanguage:'he',stageInterest,receiptEmail:'synthetic@example.invalid',intent:'information',...(version===ACADEMY_REGISTRATION_VERSION?{communicationPreferences:communicationPreferenceSelection('en',false,'en'),acknowledgments:registrationAcknowledgments('en',learners.map(child=>child.id))}:{}),consent:registrationConsent('en',version===ACADEMY_REGISTRATION_VERSION?ACADEMY_REGISTRATION_VERSION:ACADEMY_FOUNDATION_FREE_REGISTRATION_VERSION)};
 }
 function fields(r=registration()){
  return {parentName:'Synthetic Parent',contact:'+15555550124',cityArea:'Synthetic Florida',language:'en',programId:'sunday_fishing_academy',schedulePreference:[],academyRegistration:r,permission:{confirmed:true,version:r.consent.version,language:'en'}};
@@ -23,8 +25,8 @@ describe('Website03 proposed Foundation entry and historical registration compat
  it('renders the actual released localized notice inside one collapsed terms disclosure with immutable identity',()=>{
   for(const locale of ['en','he']as const){
    const html=renderToStaticMarkup(createElement(AcademyProgramTerms,{locale}));
-   expect(html).toContain('<details data-academy-program-terms="true" id="academy-program-terms">');
-   expect(html).toContain('<summary>');expect(html).toContain(academyRegistrationNotice.version);
+   expect(html).toContain('<section data-academy-program-terms="true" id="academy-program-terms"');
+   expect(html).toContain('name="academy-program-information"');expect(html).toContain(academyRegistrationNotice.version);
    expect(html).toContain(academyRegistrationNoticeHashes[locale]);expect(html).toContain('data-document-status="released_registration_only"');
    for(const paragraph of academyRegistrationNotice[locale].split('\n\n'))expect(html).toContain(paragraph.replaceAll('&','&amp;').replaceAll("'",'&#x27;'));expect(html).not.toContain('type="checkbox"');expect(html).not.toContain('final_owner_approved');
    expect(html).toContain('data-academy-information="policies"');const policy=academyExactCopy[locale].terms.sections.find(section=>section.id==='policies')!;expect(html).toContain(policy.paragraphs[0]!.replaceAll('&','&amp;').replaceAll("'",'&#x27;'));

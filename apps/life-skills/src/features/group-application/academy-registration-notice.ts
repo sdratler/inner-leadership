@@ -18,16 +18,28 @@ export const academyPreviousFreeRegistrationNoticeHashes={en:'b4ff8bb4a6860d719f
 /** Exact05 free-registration/privacy fragments only. The phase-dependent
  * founding paragraph and safety/conduct/paid-policy information are separately
  * displayed program information, never participation/payment/child assent. */
-export const academyRegistrationNotice={
+export const academyExact05RegistrationNotice={
  "id": "jlfa-registration-privacy-contact",
  "version": "JLFA-FREE-REGISTRATION-TERMS-20261026-05-v1",
  "en": "This form records your family's interest. No payment is taken. A group, start date and paid place are confirmed separately.\n\nWe use your submitted details to review your registration, consider suitable groups and send registration-related messages. Your children's information is not published with the public family counter. Optional email and WhatsApp updates are separate choices.",
  "he": "טופס זה מתעד את התעניינות המשפחה. לא נגבה תשלום. הקבוצה, מועד הפתיחה והמקום בתשלום מאושרים בנפרד.\n\nהפרטים שנשלחו משמשים לבדיקת ההרשמה, להתאמת קבוצות ולשליחת הודעות הקשורות להרשמה. פרטי הילדים אינם מפורסמים במונה המשפחות הציבורי. עדכונים בדוא״ל וב־WhatsApp הם בחירות נפרדות."
 } as const;
-export const academyRegistrationNoticeHashes={"en": "8584bfcfdd8a0f12673e646994a8fb79043e6f85e7eb09f84dc8862a3bce3b6d", "he": "39f66e14a303128855a3d6ae8715097dd93b8282ebb2df95016e88e5cadaeeb8"} as const;
+export const academyExact05RegistrationNoticeHashes={"en": "8584bfcfdd8a0f12673e646994a8fb79043e6f85e7eb09f84dc8862a3bce3b6d", "he": "39f66e14a303128855a3d6ae8715097dd93b8282ebb2df95016e88e5cadaeeb8"} as const;
+
+/** Current registration/privacy notice after the owner's 27 October consent
+ * correction. Email is necessary registration contact; WhatsApp remains the
+ * sole optional communication choice. */
+export const academyRegistrationNotice={
+ id:'jlfa-registration-privacy-contact',
+ version:'JLFA-FREE-REGISTRATION-TERMS-20261027-06-v2',
+ en:"This form records your family's interest. No payment is taken. A group, start date and paid place are confirmed separately.\n\nWe use your submitted details to review your registration, consider suitable groups and send registration-related email. Your children's information is not published with the public family counter. WhatsApp updates are optional and require the separate unchecked choice.",
+ he:'טופס זה מתעד את התעניינות המשפחה. לא נגבה תשלום. הקבוצה, מועד הפתיחה והמקום בתשלום מאושרים בנפרד.\n\nהפרטים שנשלחו משמשים לבדיקת ההרשמה, להתאמת קבוצות ולשליחת דוא״ל הקשור להרשמה. פרטי הילדים אינם מפורסמים במונה המשפחות הציבורי. עדכונים ב־WhatsApp הם אופציונליים ודורשים את הבחירה הנפרדת שאינה מסומנת מראש.',
+} as const;
+export const academyRegistrationNoticeHashes={en:'553ad734aa28e7c11c426f2fa0eb7815a24126daab08b2f62934391416200f10',he:'c11d9a7ee8dae1878b0cfce1c195182ce1c9619749828a0b0fdc657b9184ad07'} as const;
 export function academyNoticeHashes(version:string){
  if(version===academyLegacyRegistrationNotice.version)return academyLegacyRegistrationNoticeHashes;
  if(version===academyPreviousFreeRegistrationNotice.version)return academyPreviousFreeRegistrationNoticeHashes;
+ if(version===academyExact05RegistrationNotice.version)return academyExact05RegistrationNoticeHashes;
  if(version===academyRegistrationNotice.version)return academyRegistrationNoticeHashes;
  return undefined;
 }

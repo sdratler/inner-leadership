@@ -1,16 +1,18 @@
 import {createHash} from 'node:crypto';
 import {describe,it,expect} from 'vitest';
-import {academyRegistrationSchema,ACADEMY_REGISTRATION_VERSION,ACADEMY_FOUNDATION_FREE_REGISTRATION_VERSION,ACADEMY_PREVIOUS_FREE_REGISTRATION_VERSION,registrationConsent} from '../../src/features/group-application/academy-registration.ts';
+import {academyRegistrationSchema,ACADEMY_REGISTRATION_VERSION,ACADEMY_EXACT_COPY_FREE_REGISTRATION_VERSION,ACADEMY_FOUNDATION_FREE_REGISTRATION_VERSION,ACADEMY_PREVIOUS_FREE_REGISTRATION_VERSION,registrationConsent} from '../../src/features/group-application/academy-registration.ts';
 import {academyLegacyRegistrationNotice,academyPreviousFreeRegistrationNotice,academyRegistrationNotice,academyNoticeHashes} from '../../src/features/group-application/academy-registration-notice.ts';
 import {floridaGroupApplicationFieldsSchema,groupApplicationFieldsSchema} from '../../src/features/group-application/contract.ts';
+import {registrationAcknowledgments} from '../../src/features/group-application/academy-registration-acknowledgments.ts';
+import {communicationPreferenceSelection} from '../../src/features/group-application/academy-communication-preferences.ts';
 
-const historicalVersions=['JLFA-REGISTRATION-20261020-01-v1','JLFA-REGISTRATION-20261020-OWNER03-v2',ACADEMY_PREVIOUS_FREE_REGISTRATION_VERSION,ACADEMY_FOUNDATION_FREE_REGISTRATION_VERSION] as const;
-function registration(version:Parameters<typeof registrationConsent>[1]=ACADEMY_REGISTRATION_VERSION){return {version,learners:[{id:'b7faef3c-c13a-4af3-8a43-1947447fca43',fullName:'Synthetic Child One',ageYears:10,grade:'5',schooling:'school',experience:'experienced'},{id:'2f48492b-5919-4fa6-a4a5-b590304dbe85',fullName:'Synthetic Child Two',ageYears:13,grade:'8',schooling:'homeschool',experience:'some'}],postalCode:'00123',preferredDays:['monday'],preferredTimes:['afternoon'],driveMinutes:37,schoolHoursAvailability:'outside_school_only',preferredGroupLanguage:'he',stageInterest:'foundation',receiptEmail:'synthetic@example.invalid',intent:'information',consent:registrationConsent('en',version)};}
+const historicalVersions=['JLFA-REGISTRATION-20261020-01-v1','JLFA-REGISTRATION-20261020-OWNER03-v2',ACADEMY_PREVIOUS_FREE_REGISTRATION_VERSION,ACADEMY_FOUNDATION_FREE_REGISTRATION_VERSION,ACADEMY_EXACT_COPY_FREE_REGISTRATION_VERSION] as const;
+function registration(version:Parameters<typeof registrationConsent>[1]=ACADEMY_REGISTRATION_VERSION){const learners=[{id:'b7faef3c-c13a-4af3-8a43-1947447fca43',fullName:'Synthetic Child One',ageYears:10,grade:'5',schooling:'school',experience:'experienced'},{id:'2f48492b-5919-4fa6-a4a5-b590304dbe85',fullName:'Synthetic Child Two',ageYears:13,grade:'8',schooling:'homeschool',experience:'some'}];return {version,learners,postalCode:'00123',preferredDays:['monday'],preferredTimes:['afternoon'],driveMinutes:37,schoolHoursAvailability:'outside_school_only',preferredGroupLanguage:'he',stageInterest:'foundation',receiptEmail:'synthetic@example.invalid',intent:'information',...(version===ACADEMY_REGISTRATION_VERSION?{communicationPreferences:communicationPreferenceSelection('en',false,'en'),acknowledgments:registrationAcknowledgments('en',learners.map(child=>child.id))}:{}),consent:registrationConsent('en',version)};}
 function fields(r=registration()){return {parentName:'Synthetic Parent',contact:r.receiptEmail,cityArea:'Synthetic Florida',language:'en',programId:'sunday_fishing_academy',schedulePreference:[],academyRegistration:r,permission:{confirmed:true,version:r.consent.version,language:'en'}};}
 const sha=(v:string)=>createHash('sha256').update(v).digest('hex');
 
-describe('Exact05 additive registration/notice binding',()=>{
- it('requires the new exact free/privacy notice for fresh v5 writes, while preserving an email-only intake',()=>{
+describe('additive registration/notice binding through current v6',()=>{
+ it('requires the current free/privacy notice and acknowledgments for fresh v6 writes, while preserving an email-only intake',()=>{
   expect(floridaGroupApplicationFieldsSchema.safeParse(fields()).success).toBe(true);
   const oldNotice={...registration(),consent:registrationConsent('en',ACADEMY_FOUNDATION_FREE_REGISTRATION_VERSION)};
   expect(floridaGroupApplicationFieldsSchema.safeParse(fields(oldNotice)).success).toBe(false);
@@ -18,7 +20,7 @@ describe('Exact05 additive registration/notice binding',()=>{
   expect(academyRegistrationSchema.safeParse({...registration(),paymentSelection:{childId:registration().learners[0]!.id,plan:'prepay'}}).success).toBe(false);
  });
  it.each(historicalVersions)('reads %s byte-for-byte without migrating its notice, stage answers or two-child values',version=>{
-  const old=registration(version);if(version!==ACADEMY_FOUNDATION_FREE_REGISTRATION_VERSION)old.stageInterest='advanced';
+  const old=registration(version);if(version!==ACADEMY_FOUNDATION_FREE_REGISTRATION_VERSION&&version!==ACADEMY_EXACT_COPY_FREE_REGISTRATION_VERSION)old.stageInterest='advanced';
   const wire=JSON.stringify(old),hash=sha(wire),parsed=academyRegistrationSchema.parse(JSON.parse(wire));
   expect(JSON.stringify(parsed)).toBe(wire);expect(sha(JSON.stringify(parsed))).toBe(hash);
   expect(parsed.postalCode).toBe('00123');expect(parsed.driveMinutes).toBe(37);expect(parsed.learners).toHaveLength(2);
