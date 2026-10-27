@@ -4,7 +4,7 @@ import type {Locale} from '../../lib/locale.ts';
 import {floridaAcademyRegistrationFieldsSchema,type FloridaGroupApplicationCommand} from './contract.ts';
 import {ACADEMY_REGISTRATION_VERSION,registrationConsent} from './academy-registration.ts';
 import {registrationAcknowledgments} from './academy-registration-acknowledgments.ts';
-import {academyCommunicationNotice,academyCommunicationNoticeHashes,communicationPreferenceSelection} from './academy-communication-preferences.ts';
+import {communicationPreferenceSelection} from './academy-communication-preferences.ts';
 import {academyRegistrationNotice} from './academy-registration-notice.ts';
 import {useAcademyCampaign} from './academy-campaign-state.ts';
 import {captureCampaignAttribution,type CampaignAttribution} from './academy-campaign-contract.ts';
@@ -18,6 +18,11 @@ import styles from './academy-registration.module.css';
 function ChoiceDropdown({name,label,options,value,onChange,empty,error}:{name:string;label:string;options:readonly {value:string;label:string;disabled?:boolean}[];value:string[];onChange:(v:string[])=>void;empty:string;error?:string|undefined}){
  function toggle(item:string){onChange(item==='flexible'?(value.includes(item)?[]:['flexible']):value.includes(item)?value.filter(v=>v!==item):[...value.filter(v=>v!=='flexible'),item]);}
  return <details className={styles.dropdown}><summary id={'registration-'+name} aria-invalid={!!error} aria-describedby={error?'registration-error-'+name:undefined}><strong>{label}</strong><span>{value.length?options.filter(o=>value.includes(o.value)).map(o=>o.label).join(', '):empty}</span></summary><div role="group" aria-label={label}>{options.map(o=><label key={o.value}><input type="checkbox" name={name} value={o.value} checked={value.includes(o.value)} disabled={o.disabled} onChange={()=>toggle(o.value)}/>{o.label}</label>)}</div>{error&&<small id={'registration-error-'+name} className={styles.errorText}>{error}</small>}</details>;
+}
+function SingleChoiceDropdown({name,label,options,value,onChange,empty,error}:{name:string;label:string;options:readonly {value:string;label:string}[];value:string;onChange:(v:string)=>void;empty:string;error?:string|undefined}){
+ const disclosure=useRef<HTMLDetailsElement>(null),selected=options.find(option=>option.value===value)?.label;
+ function choose(next:string){onChange(next);if(disclosure.current)disclosure.current.open=false;}
+ return <details ref={disclosure} className={styles.dropdown}><summary id={'registration-'+name} aria-required="true" aria-invalid={!!error} aria-describedby={error?'registration-error-'+name:undefined}><strong>{label}</strong><span>{selected??empty}</span></summary><div role="radiogroup" aria-label={label}>{options.map(option=><label key={option.value}><input type="radio" name={name} value={option.value} checked={value===option.value} required onChange={()=>choose(option.value)}/>{option.label}</label>)}</div>{error&&<small id={'registration-error-'+name} className={styles.errorText}>{error}</small>}</details>;
 }
 function Field({name,label,error,...props}:{name:string;label:string;error?:string|undefined}&InputHTMLAttributes<HTMLInputElement>){
  const id='registration-'+name.replace(/[^a-zA-Z0-9-]/g,'-');return <div className={styles.field}><label htmlFor={id}>{label}</label><input {...props} id={id} name={name} aria-invalid={!!error} aria-describedby={error?id+'-error':undefined}/>{error&&<small id={id+'-error'} className={styles.errorText}>{error}</small>}</div>;
@@ -45,7 +50,7 @@ export function AcademyRegistrationResult({locale,reference,founder}:{locale:Loc
 }
 export function AcademyRegistrationForm({locale,onSaved,mode='native',onPreviewed}:{locale:Locale;onSaved?:(id:string)=>void;mode?:'native'|'sample';onPreviewed?:()=>void}){
  const copy=academyExactCopy[locale],c=copy.form,stateCopy=academyExactStates[locale],href=useAcademyHref(),t=(en:string,he:string)=>locale==='he'?he:en,form=useRef<HTMLFormElement>(null),errorRef=useRef<HTMLDivElement>(null),resultRef=useRef<HTMLDivElement>(null),sequence=useRef(1);
- const [children,setChildren]=useState<Child[]>([{key:1,id:'',name:''}]),[days,setDays]=useState<string[]>([]),[times,setTimes]=useState<string[]>([]),[groupLanguage,setGroupLanguage]=useState('either'),[consent,setConsent]=useState(false);
+ const [children,setChildren]=useState<Child[]>([{key:1,id:'',name:''}]),[days,setDays]=useState<string[]>([]),[times,setTimes]=useState<string[]>([]),[schoolHours,setSchoolHours]=useState(''),[groupLanguage,setGroupLanguage]=useState('either'),[consent,setConsent]=useState(false);
  const [parentLanguage,setParentLanguage]=useState<Locale>(locale),[languageChosen,setLanguageChosen]=useState(false),[conductExplained,setConductExplained]=useState(false),[privateWapi,setPrivateWapi]=useState(false);
  useEffect(()=>{if(!languageChosen)setParentLanguage(locale);},[locale,languageChosen]);
  const [previewed,setPreviewed]=useState(false),[founder,setFounder]=useState<FounderPublicResult|null>(null);
@@ -133,7 +138,7 @@ export function AcademyRegistrationForm({locale,onSaved,mode='native',onPreviewe
     <ChoiceDropdown name="preferredDays" label={c.labels.days} options={choices(c.options.days).map(o=>({...o,disabled:o.value==='friday'&&times.includes('evening')}))} error={fieldErrors.preferredDays} value={days} onChange={setDays} empty={c.daysPrompt}/>
     <ChoiceDropdown name="preferredTimes" label={c.labels.times} options={choices(c.options.times).map(o=>({...o,disabled:o.value==='evening'&&days.includes('friday')}))} error={fieldErrors.preferredTimes} value={times} onChange={setTimes} empty={c.timesPrompt}/>
     <div><Field name="driveMinutes" label={c.labels.driveMinutes} type="number" min={5} max={120} step={1} required inputMode="numeric" error={fieldErrors.driveMinutes}/><p className={styles.help}>{c.driveHelp} <a href={href(locale)+'#academy-travel-faq'} target="_blank" rel="noopener noreferrer">{c.travelLink}</a></p></div>
-    {select('schoolHoursAvailability',c.labels.schoolHours,choices(c.options.schoolHours))}
+    <SingleChoiceDropdown name="schoolHoursAvailability" label={c.labels.schoolHours} options={choices(c.options.schoolHours)} value={schoolHours} onChange={setSchoolHours} empty={t('Choose one','בחרו אפשרות')} error={fieldErrors.schoolHoursAvailability}/>
     <div><p id="registration-group-language-label">{c.labels.groupLanguage}</p><div id="registration-preferredGroupLanguage" tabIndex={-1} role="radiogroup" aria-labelledby="registration-group-language-label" className={styles.segments}>{Object.entries(c.options.groupLanguage).map(([value,label])=><label key={value}><input type="radio" name="preferredGroupLanguage" value={value} checked={groupLanguage===value} onChange={()=>setGroupLanguage(value)}/>{label}</label>)}</div></div>
     <div className={styles.field}><label htmlFor="registration-parentLanguage">{c.labels.parentLanguage}</label><select id="registration-parentLanguage" name="parentLanguage" value={parentLanguage} onChange={event=>{setParentLanguage(event.target.value==='he'?'he':'en');setLanguageChosen(true);}}>{Object.entries(c.options.parentLanguage).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></div>
    </div></section>
@@ -142,11 +147,6 @@ export function AcademyRegistrationForm({locale,onSaved,mode='native',onPreviewe
     <label className={styles.consent}><input id="registration-conductExplained" type="checkbox" name="conductExplained" checked={conductExplained} onChange={event=>setConductExplained(event.target.checked)} required aria-invalid={!!fieldErrors.conductExplained} aria-describedby={fieldErrors.conductExplained?'registration-conduct-error':undefined}/><span>{c.conductCheckbox}</span></label>{fieldErrors.conductExplained&&<small id="registration-conduct-error" className={styles.errorText}>{c.conductCheckbox}</small>}
     <label className={styles.consent}><input id="registration-permission" type="checkbox" name="permission" checked={consent} onChange={event=>setConsent(event.target.checked)} required aria-invalid={Object.keys(fieldErrors).some(k=>k.startsWith('permission'))} aria-describedby={Object.keys(fieldErrors).some(k=>k.startsWith('permission'))?'registration-consent-error':undefined}/><span>{c.requiredCheckbox}</span></label>{Object.keys(fieldErrors).some(k=>k.startsWith('permission'))&&<small id="registration-consent-error" className={styles.errorText}>{stateCopy.errors.permission}</small>}
     <label className={styles.consent}><input type="checkbox" name="privateWapi" checked={privateWapi} onChange={event=>setPrivateWapi(event.target.checked)}/><span>{t('Optional: ','לבחירה: ')}{c.whatsappUpdates}</span></label>
-    <details name="academy-program-information" className={styles.informationDisclosure}><summary id="academy-optional-updates-notice">{c.updatesHeading}</summary>
-     <div className={styles.informationPanel} role="region" tabIndex={0} aria-labelledby="academy-optional-updates-notice">
-     <div data-communication-notice data-document-id={academyCommunicationNotice.id} data-document-version={academyCommunicationNotice.version} data-document-language={locale} data-document-sha256={academyCommunicationNoticeHashes[locale]}><p>{academyCommunicationNotice[locale]}</p><p className={styles.help}>{t('Version','גרסה')}: <bdi dir="ltr">{academyCommunicationNotice.version}</bdi></p></div>
-     </div>
-    </details>
    </section>
    <div className={styles.honeypot} aria-hidden="true"><label>{t('Website','אתר')}<input name="website" autoComplete="off" tabIndex={-1}/></label></div>
   </fieldset>

@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {afterEach,beforeEach,it,expect,vi} from 'vitest';
-const m=vi.hoisted(()=>({imports:0,identity:vi.fn(),transport:vi.fn(),close:vi.fn(),construct:vi.fn(),tick:vi.fn(),drain:vi.fn(),single:vi.fn(),legacy:vi.fn(),legacyCallback:vi.fn(),signupCallback:vi.fn(),http:vi.fn(),query:vi.fn(),supervise:vi.fn()}));
+const m=vi.hoisted(()=>({imports:0,identity:vi.fn(),transport:vi.fn(),ownerTransport:vi.fn(),ownerDispatch:vi.fn(),close:vi.fn(),construct:vi.fn(),tick:vi.fn(),drain:vi.fn(),single:vi.fn(),legacy:vi.fn(),legacyCallback:vi.fn(),signupCallback:vi.fn(),http:vi.fn(),query:vi.fn(),supervise:vi.fn()}));
 vi.mock('server-only',()=>({}));
 vi.mock('../../src/features/identity/runtime.ts',()=>{m.imports++;return {identityRuntime:m.identity};});
 vi.mock('../../src/db/client.ts',()=>({closeDatabase:m.close}));
@@ -20,6 +20,7 @@ vi.mock('@/features/group-application/http.ts',()=>({publicGroupApplicationHttp:
 vi.mock('@/features/group-application/store.ts',()=>({PublicGroupApplicationStore:class{}}));
 vi.mock('@/features/group-application/inquiry-email.ts',()=>({createInquiryEmailTransport:m.transport,inquiryEmailQueueEnabled:(env:Record<string,string|undefined>)=>env.LS_INQUIRY_EMAIL_QUEUE_ENABLED==='true',InquiryEmailOutbox:class{dispatchOne=m.legacy;dispatchForApplication=m.legacyCallback;}}));
 vi.mock('@/features/group-application/academy-founder-store.ts',()=>({AcademyFounderStore:class{constructor(...args:unknown[]){m.construct(...args);}tick=m.tick;dispatchQueued=m.drain;dispatchOne=m.single;dispatchForApplication=m.signupCallback;}}));
+vi.mock('@/features/group-application/academy-owner-notification.ts',()=>({createAcademyOwnerNotificationTransport:m.ownerTransport,AcademyOwnerNotificationOutbox:class{dispatchForApplication=m.ownerDispatch;}}));
 const workspace='11111111-1111-4111-8111-111111111111',origin='https://bneineviimacademy.org',sha=(p:string)=>createHash('sha256').update(readFileSync(p)).digest('hex');
 const bindings=()=>({templateModuleSha256:sha('src/features/group-application/academy-founder-email.ts'),templateContractSha256:sha('src/features/group-application/academy-founder-contract.ts'),templateCatalogSha256:sha('src/features/group-application/academy-exact-email-copy.json'),templateFacadeSha256:sha('src/features/group-application/academy-exact-copy.ts'),transportHashes:{gmail:sha('src/providers/email/gmail.ts'),contract:sha('src/providers/email/transport.ts'),resend:sha('src/providers/email/resend.ts')}});
 const policy={version:'JLFA-SIGNUP-WORKER-ADMISSION-v2',approvalReceiptSha256:'d'.repeat(64),sourceCommit:'a'.repeat(40),workspaceId:workspace,projectId:'22222222-2222-4222-8222-222222222222',environmentId:'33333333-3333-4333-8333-333333333333',serviceId:'44444444-4444-4444-8444-444444444444',origin,sender:'office@bneineviimacademy.org',...bindings(),templateVersion:'JLFA-EXACT-COPY-20261026-05',allowedTemplateIds:['R01','R02','R03'],cutoff:'2026-10-25T11:00:00.000Z',expiresAt:'2026-10-26T11:00:00.000Z',population:{mode:'future_submissions'}};
@@ -97,6 +98,11 @@ it.each(['QUEUE','SEND'] as const)('public generic callback retains the original
  vi.stubEnv('LS_ACADEMY_SIGNUP_WORKER_ADMISSION_JSON',undefined);vi.stubEnv(flag==='QUEUE'?'LS_INQUIRY_EMAIL_QUEUE_ENABLED':'LS_INQUIRY_EMAIL_SEND_ENABLED','false');
  const route=await import('../../src/app/api/public/group-applications/route.ts');await route.POST(new Request(origin+'/api/public/group-applications',{method:'POST'}));
  expect(m.transport).not.toHaveBeenCalled();expect(m.legacyCallback).not.toHaveBeenCalled();
+});
+it('public afterCommit dispatches the durable owner notice only when its dedicated flag is enabled',async()=>{
+ vi.stubEnv('LS_ACADEMY_OWNER_NOTIFICATION_ENABLED','true');vi.stubEnv('LS_ACADEMY_OWNER_NOTIFICATION_TO','sdratler@gmail.com');m.ownerTransport.mockReturnValue({transport:{owner:true},from:policy.sender,to:'sdratler@gmail.com'});m.ownerDispatch.mockResolvedValue('sent');
+ const route=await import('../../src/app/api/public/group-applications/route.ts');await route.POST(new Request(origin+'/api/public/group-applications',{method:'POST'}));
+ expect(m.ownerTransport).toHaveBeenCalledTimes(1);expect(m.ownerDispatch).toHaveBeenCalledWith('55555555-5555-4555-8555-555555555555',{owner:true},policy.sender,'sdratler@gmail.com',origin);
 });
 it('the unchanged generic HTTP dispatcher selects only its existing inquiry purpose',()=>{
  const source=readFileSync('src/features/group-application/inquiry-email.ts','utf8'),start=source.indexOf(' async dispatchForApplication('),end=source.indexOf(' async dispatchOne(',start),method=source.slice(start,end);

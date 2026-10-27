@@ -23,7 +23,7 @@ import {communicationPreferenceSelection} from '../../src/features/group-applica
 
 export function academyMigrationInventory():Migration[]{
  const entries=JSON.parse(readFileSync(new URL('../../migrations/manifest.json',import.meta.url),'utf8')) as {name:string;sha256:string}[];
- if(entries.length!==56||entries.at(-1)?.name!=='0136_ls_academy_founder.sql'||new Set(entries.map(e=>e.name)).size!==entries.length)throw Error('ACADEMY_TEST_MANIFEST_NOT_FULL_56');
+ if(entries.length!==57||entries.at(-1)?.name!=='0137_ls_academy_owner_notifications.sql'||new Set(entries.map(e=>e.name)).size!==entries.length)throw Error('ACADEMY_TEST_MANIFEST_NOT_FULL_57');
  return entries.map(entry=>{
   if(!/^\d{4}_[a-z][a-z0-9_]*\.sql$/.test(entry.name))throw Error('ACADEMY_TEST_MANIFEST_PATH_INVALID');
   const bytes=readFileSync(new URL('../../migrations/'+entry.name,import.meta.url));
@@ -43,10 +43,10 @@ export async function academyTestDatabase(prefix:'full'|'before_founder'='full')
   finally{await admin.end();}
  };
  try{
-  const inventory=academyMigrationInventory();await admin.query(`CREATE DATABASE "${name}"`);created=true;
+  const inventory=academyMigrationInventory(),founderIndex=inventory.findIndex(file=>file.name==='0136_ls_academy_founder.sql');if(founderIndex<1)throw Error('ACADEMY_TEST_FOUNDER_MIGRATION_MISSING');await admin.query(`CREATE DATABASE "${name}"`);created=true;
   const client=await pool.connect();try{
    const actual=await client.query('SELECT current_database() AS name');if(actual.rows[0]?.name!==name)throw Error('ACADEMY_TEST_DATABASE_MISMATCH');
-   await migrate({query:async(sql,values)=>client.query(sql,values?[...values]:undefined)},prefix==='full'?inventory:inventory.slice(0,-1),false);
+   await migrate({query:async(sql,values)=>client.query(sql,values?[...values]:undefined)},prefix==='full'?inventory:inventory.slice(0,founderIndex),false);
   }finally{client.release();}
   return {pool,inventory,name,close};
  }catch(error){await close();throw error;}
