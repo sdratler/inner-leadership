@@ -36,7 +36,7 @@ const purposes:Record<string,Labels>={
  academy_founder_interest:['Thank-you and interest confirmation request','תודה ובקשה לאישור התעניינות'],
  academy_founder_ack:['Interest confirmation acknowledgment','אישור קבלת אישור ההתעניינות'],
  academy_founder_interest_reminder:['Interest confirmation reminder','תזכורת לאישור התעניינות'],
- academy_founder_interest_deadline_receipt:['Interest confirmation deadline notice','הודעה על המועד לאישור התעניינות'],
+ academy_founder_interest_deadline_receipt:['Historical interest confirmation deadline notice','הודעה היסטורית על המועד לאישור התעניינות'],
  academy_founder_offer:['Individualized payment offer','הצעת תשלום אישית'],
  academy_founder_payment_reminder:['Payment reminder','תזכורת לתשלום'],
  academy_founder_payment_deadline_receipt:['Payment deadline notice','הודעה על מועד התשלום'],
@@ -72,6 +72,13 @@ export function AcademyFounderReadback({locale,data}:{locale:Locale;data:Data}){
  const count=(value:number)=>Number.isSafeInteger(value)&&value>=0?String(value):t('Needs review','נדרשת בדיקה');
  const date=(value:string)=>Number.isFinite(Date.parse(value))?floridaDeadline(value,locale):t('Date not verified — needs review','התאריך לא אומת — נדרשת בדיקה');
  const window=(value:Data['families'][number]['interest'])=>value.exception?t('Delivery exception — owner review required','חריגת משלוח — נדרשת בדיקת בעלים'):!value.sentAt?t('No recorded successful send — no verified window','אין שליחה מוצלחת מתועדת — אין חלון מאומת'):!Number.isFinite(Date.parse(value.sentAt))?t('Send time not verified — window needs review','מועד השליחה לא אומת — החלון דורש בדיקה'):value.deadline?date(value.deadline):t('Sent window deadline needs review','מועד הסיום של החלון לאחר השליחה דורש בדיקה');
+ const interestHistory=(value:Data['families'][number]['interest'])=>{
+  const noExpiry=t('No initial interest-confirmation expiry.','אין תוקף מוגבל לאישור ההתעניינות הראשוני.');
+  if(value.exception)return noExpiry+' '+t('Delivery exception — owner review required','חריגת משלוח — נדרשת בדיקת בעלים');
+  if(!value.sentAt)return noExpiry+' '+t('No recorded successful send.','אין שליחה מוצלחת מתועדת.');
+  if(!Number.isFinite(Date.parse(value.sentAt)))return noExpiry+' '+t('Send time not verified — historical record needs review','מועד השליחה לא אומת — הרשומה ההיסטורית דורשת בדיקה');
+  return noExpiry+' '+t('Initial request sent: ','בקשת האישור הראשונית נשלחה: ')+date(value.sentAt)+(value.deadline?' '+t('Historical recorded deadline (not active): ','מועד אחרון שנרשם בעבר (אינו פעיל): ')+date(value.deadline):'');
+ };
  const families=filterFounderFamilies(data.families,{search,status,age}),filtered=search!==''||status!=='all'||age!=='';
  const controlStyle={display:'block',width:'100%',minHeight:44,font:'inherit',boxSizing:'border-box' as const};
  return <section lang={locale} dir={locale==='he'?'rtl':'ltr'} data-academy-founder-readback style={{minWidth:0,overflowWrap:'anywhere'}}>
@@ -94,7 +101,7 @@ export function AcademyFounderReadback({locale,data}:{locale:Locale;data:Data}){
    <p>{t('Registration status','מצב ההרשמה')}: {label(statuses,f.status,['Status unverified — needs owner review','המצב לא אומת — נדרשת בדיקת בעלים'])} · {t('Revision','גרסה')} {f.revision}</p>
    <ul>{f.children.map(c=><li key={c.id}><bdi>{c.name}</bdi> · {t('Age','גיל')} {c.age}</li>)}</ul>
    <p>{t('Interest confirmation','אישור התעניינות')}: {f.interest.confirmedAt?date(f.interest.confirmedAt):t('Pending','ממתין')}</p>
-   <p>{t('Interest confirmation window','חלון אישור ההתעניינות')}: {window(f.interest)}</p><p>{t('Payment offer window','חלון הצעת התשלום')}: {window(f.payment)}</p>
+   <p>{t('Initial confirmation history','היסטוריית האישור הראשוני')}: {interestHistory(f.interest)}</p><p>{t('Payment offer window','חלון הצעת התשלום')}: {window(f.payment)}</p>
    {f.nativeBinding&&<p>{t('Native family last verified','מועד אימות המשפחה במערכת')}: {date(f.nativeBinding.verifiedAt)} · {f.nativeBinding.children.length} {t('mapped children; current authority is checked again before an offer.','ילדים מקושרים; ההרשאה נבדקת מחדש לפני הצעה.')}</p>}
    {f.offer&&<p>{t('Offered group','הקבוצה בהצעה')}: {f.offer.group} · {t('First session','המפגש הראשון')}: {date(f.offer.firstSession)}</p>}
    <p>{t('Children with recorded payment','ילדים עם תשלום מתועד')}: {f.redeemedChildIds.length} · {t('Children enrolled','ילדים שהתקבלו להשתתפות')}: {f.enrolledChildIds.length}</p>

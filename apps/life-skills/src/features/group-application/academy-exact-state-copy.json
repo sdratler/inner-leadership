@@ -25,7 +25,8 @@
       "confirmedText": "Thank you. We'll contact you as the groups take shape. No payment is due now.",
       "founderSentence": "Your founding-family rate remains reserved.",
       "alreadyConfirmed": "Your interest is already confirmed. There is nothing else to do here.",
-      "unusableLink": "This confirmation link is no longer available. Contact us so we can check your registration."
+      "unusableLink": "This confirmation link is no longer available. Contact us so we can check your registration.",
+      "paymentTiming": "We expect to announce the start date within the next couple of weeks. Once we announce it, you’ll have seven days to pay and secure your place."
     },
     "errors": {
       "parentName": "Please enter your name.",
@@ -68,7 +69,8 @@
       "confirmedText": "תודה. ניצור איתכם קשר כשהקבוצות יתגבשו. אין צורך לשלם כעת.",
       "founderSentence": "תעריף המשפחה המייסדת נשאר שמור לכם.",
       "alreadyConfirmed": "ההתעניינות כבר אושרה. אין צורך בפעולה נוספת כאן.",
-      "unusableLink": "קישור האישור הזה כבר אינו זמין. צרו איתנו קשר כדי שנוכל לבדוק את ההרשמה."
+      "unusableLink": "קישור האישור הזה כבר אינו זמין. צרו איתנו קשר כדי שנוכל לבדוק את ההרשמה.",
+      "paymentTiming": "אנו מצפים להודיע על מועד הפתיחה בשבועיים הקרובים. מרגע שנודיע עליו, יהיו לכם שבעה ימים לשלם ולהבטיח את מקומכם."
     },
     "errors": {
       "parentName": "נא להזין שם.",

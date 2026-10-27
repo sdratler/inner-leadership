@@ -5,15 +5,16 @@ import {signupEmailReview} from '../../src/features/group-application/academy-si
 import {founderEmailContent,type FounderMail} from '../../src/features/group-application/academy-founder-email.ts';
 
 describe('synthetic signup email owner review',()=>{
- it('has eight bilingual base drafts and sixteen status examples, without payable templates',()=>{
+ it('has six bilingual base drafts and fourteen status examples, without retired or payable templates',()=>{
   const review=signupEmailReview();expect(review).toMatchObject({syntheticExample:true,delivery:'not_sent',state:'draft_review_required',formatter:'founderEmailContent'});
-  expect(review.drafts).toHaveLength(8);expect(new Set(review.drafts.map(d=>d.id)).size).toBe(8);expect(review.drafts.flatMap(d=>d.variants)).toHaveLength(16);
-  for(const language of ['en','he'])expect(review.drafts.filter(d=>d.language===language).map(d=>d.kind)).toEqual(['interest','ack','interest_reminder','interest_deadline_receipt']);
+  expect(review.drafts).toHaveLength(6);expect(new Set(review.drafts.map(d=>d.id)).size).toBe(6);expect(review.drafts.flatMap(d=>d.variants)).toHaveLength(14);
+  expect(review.drafts.some(d=>(d.kind as string)==='interest_deadline_receipt')).toBe(false);
+  for(const language of ['en','he'])expect(review.drafts.filter(d=>d.language===language).map(d=>d.kind)).toEqual(['interest','ack','interest_reminder']);
  });
  for(const language of ['en','he'] as const)it(language+' exactly consumes the sending formatter and binds both hashes',()=>{
   const review=signupEmailReview();for(const d of review.drafts.filter(d=>d.language===language))for(const v of d.variants){
    const mail:FounderMail={familyId:'synthetic-preview-only',generation:1,kind:d.kind,locale:language,to:'synthetic-preview@example.invalid',reference:review.example.reference,status:v.status==='not_applicable'?'reserved':v.status,
-    ...(d.kind==='interest'||d.kind==='interest_reminder'?{token:'PREVIEW_ONLY_NOT_A_CONFIRMATION_TOKEN'}:{}),...(d.kind==='interest_reminder'||d.kind==='interest_deadline_receipt'?{deadline:review.example.deadline}:{})};
+    ...(d.kind==='interest'||d.kind==='interest_reminder'?{token:'PREVIEW_ONLY_NOT_A_CONFIRMATION_TOKEN'}:{}),...(d.kind==='interest_reminder'?{deadline:review.example.deadline}:{})};
    expect({subject:v.subject,text:v.text}).toEqual(founderEmailContent(mail,'https://bneineviimacademy.org'));
    expect(v.subjectSha256).toBe(createHash('sha256').update(v.subject,'utf8').digest('hex'));expect(v.textSha256).toBe(createHash('sha256').update(v.text,'utf8').digest('hex'));
    if(d.kind==='interest'||d.kind==='interest_reminder')expect(v.text).toContain('https://bneineviimacademy.org'+(language==='he'?'/he':'')+'/fishing-academy/confirm-interest#PREVIEW_ONLY_NOT_A_CONFIRMATION_TOKEN');

@@ -97,3 +97,16 @@ describe('Academy read-only draft documents',()=>{
   }finally{vi.unstubAllGlobals();}
  });
 });
+
+// Latest direct owner correction supersedes the initial-email confirmation clock.
+describe('announcement payment clock public information',()=>{
+ it.each(['en','he'] as const)('keeps %s timing informational and outside accepted notice fragments',locale=>{
+  const copy=academyExactCopy[locale],payment=copy.terms.sections.find(s=>s.id==='payment')!;
+  const html=renderToStaticMarkup(createElement(AcademyProgramTerms,{locale}));
+  expect(payment.paragraphs[0]).toBe(locale==='en'?"We expect to announce the start date within the next couple of weeks. Once we announce it, you’ll have seven days to pay and secure your place.":'אנו מצפים להודיע על מועד הפתיחה בשבועיים הקרובים. מרגע שנודיע עליו, יהיו לכם שבעה ימים לשלם ולהבטיח את מקומכם.');
+  expect(html).toContain(renderToStaticMarkup(createElement('span',null,payment.paragraphs[0])).slice(6,-7));
+  expect(copy.terms.founderParagraph).not.toMatch(/seven days|שבעה ימים/);
+  expect(academyRegistrationNotice[locale]).not.toContain(payment.paragraphs[0]);
+  expect(html.match(/data-document-fragment=/g)).toHaveLength(2);
+ });
+});

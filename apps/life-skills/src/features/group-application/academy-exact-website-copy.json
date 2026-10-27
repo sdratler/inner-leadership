@@ -359,6 +359,7 @@
           "id": "payment",
           "heading": "Payment & cancellation information",
           "paragraphs": [
+            "We expect to announce the start date within the next couple of weeks. Once we announce it, you’ll have seven days to pay and secure your place.",
             "A prepaid stage covers 12 sessions. The $650 option covers four sessions purchased as one block. There is no automatic next-block or next-stage charge.",
             "Cancelling an unpaid registration costs nothing.",
             "For voluntary cancellation before the first paid lesson, the selected administration fee is $200 per family for a joint family cancellation.",
@@ -374,7 +375,7 @@
           ]
         }
       ],
-      "founderParagraph": "During the founding-family campaign, eligible families can reserve first-stage prepaid rates. Confirm your interest within seven days of the confirmation email being successfully sent. Registration does not guarantee a particular group or start date."
+      "founderParagraph": "During the founding-family campaign, eligible families can reserve first-stage prepaid rates. Registration does not guarantee a particular group or start date."
     },
     "metadata": {
       "landingTitle": "South Florida Jewish Leadership Fishing Academy",
@@ -749,6 +750,7 @@
           "id": "payment",
           "heading": "מידע על תשלום וביטול",
           "paragraphs": [
+            "אנו מצפים להודיע על מועד הפתיחה בשבועיים הקרובים. מרגע שנודיע עליו, יהיו לכם שבעה ימים לשלם ולהבטיח את מקומכם.",
             "שלב בתשלום מראש כולל 12 מפגשים. מסלול $650 כולל ארבעה מפגשים הנרכשים כמקבץ אחד. אין חיוב אוטומטי למקבץ הבא או לשלב הבא.",
             "ביטול הרשמה שלא שולמה אינו כרוך בתשלום.",
             "בביטול מרצון לפני המפגש הראשון ששולם, דמי הטיפול שנבחרו הם $200 למשפחה עבור ביטול משפחתי משותף.",
@@ -764,7 +766,7 @@
           ]
         }
       ],
-      "founderParagraph": "במהלך מבצע המשפחות המייסדות, משפחות זכאיות יכולות לשמור תעריף לתשלום מראש לשלב הראשון. יש לאשר התעניינות בתוך שבעה ימים משליחת הודעת האישור בהצלחה. ההרשמה אינה מבטיחה קבוצה מסוימת או מועד פתיחה."
+      "founderParagraph": "במהלך מבצע המשפחות המייסדות, משפחות זכאיות יכולות לשמור תעריף לתשלום מראש לשלב הראשון. ההרשמה אינה מבטיחה קבוצה מסוימת או מועד פתיחה."
     },
     "metadata": {
       "landingTitle": "האקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה",

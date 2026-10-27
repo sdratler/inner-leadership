@@ -2,6 +2,7 @@ import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {describe,expect,it} from 'vitest';
 import {AcademyFounderConfirm,AcademyConfirmationOutcome,readConfirmationContext,readConfirmedResult,confirmationStateFromContext} from '../../src/features/group-application/academy-founder-confirm.tsx';
+import {founderPublicConfirmationState} from '../../src/features/group-application/academy-founder-contract.ts';
 import {academyExactStates} from '../../src/features/group-application/academy-exact-copy.ts';
 
 describe('confirmation context readback',()=>{
@@ -65,5 +66,28 @@ describe('confirmation context readback',()=>{
   expect(html).toContain('id="main"');expect(html).toContain('lang="'+locale+'"');
   expect(html).not.toContain('confirm-interest#');
   expect(html).toMatch(/<button[^>]*lang="en"/);expect(html).toMatch(/<button[^>]*lang="he"/);
+ });
+});
+
+describe('initial confirmation has no elapsed-time expiry',()=>{
+ const initial={sentAt:'2026-10-01T12:00:00.000Z',deadline:'2026-10-08T12:00:00.000Z',exception:false,status:'provisional',confirmed:false,now:new Date('2026-12-01T12:00:00.000Z')};
+ it('accepts late initial confirmation without using the historical deadline as authority',()=>{
+  const state=founderPublicConfirmationState(initial);
+  expect(state).toEqual({confirmed:false,unusable:false,available:true});
+  expect(confirmationStateFromContext({...state,deadline:null,founderRateReserved:true})).toBe('available');
+ });
+ it.each(['expired','withdrawn'])('does not reopen an explicitly closed %s record',status=>{
+  const state=founderPublicConfirmationState({...initial,status});
+  expect(state).toEqual({confirmed:false,unusable:true,available:false});
+  expect(confirmationStateFromContext({...state,deadline:null,founderRateReserved:false})).toBe('unavailable');
+ });
+ it('retains unresolved delivery and missing-send holds without inventing expiry',()=>{
+  for(const change of [{exception:true},{sentAt:null}])expect(founderPublicConfirmationState({...initial,...change})).toEqual({confirmed:false,unusable:false,available:false});
+ });
+ it.each(['en','he'] as const)('shows %s announcement payment information without an interest deadline',locale=>{
+  const html=renderToStaticMarkup(<AcademyFounderConfirm locale={locale}/>),copy=academyExactStates[locale].confirmation;
+  expect(html).toContain(renderToStaticMarkup(<p data-academy-payment-timing>{copy.paymentTiming}</p>));
+  expect(html).not.toContain(locale==='en'?'Confirmation deadline:':'המועד האחרון לאישור:');
+  expect(copy.smallLine).toBe(locale==='en'?'No payment is required.':'אין צורך בתשלום.');
  });
 });

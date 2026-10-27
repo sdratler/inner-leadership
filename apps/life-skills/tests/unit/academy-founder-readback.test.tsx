@@ -23,7 +23,7 @@ describe('owner founder readback',()=>{
  });
  it.each(['en','he'] as const)('labels acknowledgment as interest confirmation and rejects malformed send time in %s',locale=>{
   const data=fixture();data.messages[0]!.purpose='academy_founder_ack';data.families[0]!.interest.sentAt='not-a-send-time';data.families[0]!.interest.deadline='2026-11-01T12:00:00Z';const html=render(data,locale);
-  expect(html).toContain(locale==='en'?'Interest confirmation acknowledgment':'אישור קבלת אישור ההתעניינות');expect(html).not.toContain(locale==='en'?'Registration acknowledgment':'אישור קבלת ההרשמה');expect(html).toContain(locale==='en'?'Send time not verified — window needs review':'מועד השליחה לא אומת — החלון דורש בדיקה');expect(html).not.toContain('America/New_York');
+  expect(html).toContain(locale==='en'?'Interest confirmation acknowledgment':'אישור קבלת אישור ההתעניינות');expect(html).not.toContain(locale==='en'?'Registration acknowledgment':'אישור קבלת ההרשמה');expect(html).toContain(locale==='en'?'Send time not verified — historical record needs review':'מועד השליחה לא אומת — הרשומה ההיסטורית דורשת בדיקה');expect(html).not.toContain('America/New_York');
  });
  it('prioritizes delivery exceptions and does not start a window from an unbacked deadline',()=>{
   const data=fixture();data.families[0]!.interest={generation:2,sentAt:'2026-10-25T12:00:00Z',deadline:'2026-11-01T12:00:00Z',exception:true,confirmedAt:null};data.families[0]!.payment.deadline='2026-11-02T12:00:00Z';const html=render(data);expect(html).toContain('Delivery exception — owner review required');expect(html).toContain('No recorded successful send — no verified window');expect(html).not.toContain('America/New_York');
@@ -58,5 +58,21 @@ describe('owner founder readback',()=>{
   const data=fixture(),before=structuredClone(data);data.families[0]!.parentName='משפחה לדוגמה';before.families[0]!.parentName='משפחה לדוגמה';
   expect(filterFounderFamilies(data.families,{search:'משפחה',status:'all',age:''})).toHaveLength(1);expect(filterFounderFamilies(data.families,{search:'ＳＹＮＴＨＥＴＩＣ',status:'all',age:''})).toHaveLength(1);
   expect(filterFounderFamilies(data.families,{search:'no-match',status:'all',age:''})).toEqual([]);expect(data).toEqual(before);
+ });
+});
+
+describe('owner initial-confirmation history after clock correction',()=>{
+ it.each(['en','he'] as const)('shows %s old deadline as historical only and preserves payment-window readback',locale=>{
+  const data=fixture(),f=data.families[0]!;f.interest={generation:1,sentAt:'2026-10-01T12:00:00Z',deadline:'2026-10-08T12:00:00Z',exception:false,confirmedAt:null};
+  const before=structuredClone(data),html=render(data,locale);
+  expect(html).toContain(locale==='en'?'No initial interest-confirmation expiry.':'אין תוקף מוגבל לאישור ההתעניינות הראשוני.');
+  expect(html).toContain(locale==='en'?'Historical recorded deadline (not active):':'מועד אחרון שנרשם בעבר (אינו פעיל):');
+  expect(html).not.toContain(locale==='en'?'Interest confirmation window':'חלון אישור ההתעניינות');
+  expect(html).toContain(locale==='en'?'Payment offer window':'חלון הצעת התשלום');
+  expect(data).toEqual(before);
+ });
+ it('does not call a newly sent initial request with no deadline an incomplete window',()=>{
+  const data=fixture();data.families[0]!.interest.sentAt='2026-10-27T12:00:00Z';
+  const html=render(data);expect(html).toContain('Initial request sent:');expect(html).not.toContain('Sent window deadline needs review');expect(html).not.toContain('Historical recorded deadline');
  });
 });
