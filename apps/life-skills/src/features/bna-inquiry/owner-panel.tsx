@@ -63,7 +63,7 @@ export function BnaInquiryOwnerPanel({locale}:{locale:Locale}){
   {error!==null&&<div role="alert" className="lsw-alert"><p>{error===401?t("Sign in again to view inquiries.","יש להיכנס מחדש כדי לצפות בפניות."):
    error===403?t("This account cannot view BNA inquiries.","לחשבון זה אין גישה לפניות בני נביאים."):
    error===409?t("This inquiry changed. Reload it before saving.","הפנייה השתנתה. יש לרענן לפני שמירה."):
-   error===400?t("Check the note and next action or waiting condition.","יש לבדוק את ההערה ואת הפעולה הבאה או תנאי ההמתנה."):
+   error===400?t("Add a note and either a dated next action or a waiting condition.","יש להוסיף הערה ופעולה הבאה עם תאריך או תנאי המתנה."):
    t("Inquiries could not be read. Saved records have not been shown as an empty list.","לא ניתן לקרוא את הפניות. רשומות שמורות אינן מוצגות כרשימה ריקה.")}</p>
    {error===401?<a href={`/${locale}/login`}>{t("Sign in","כניסה")}</a>:<button type="button" onClick={()=>void load()}>{t("Retry read","ניסיון קריאה נוסף")}</button>}</div>}
   {message&&<p role="status">{message}</p>}
@@ -90,7 +90,7 @@ export function BnaInquiryOwnerPanel({locale}:{locale:Locale}){
     <button type="submit" disabled={busy||!!pending}>{t("Save follow-up","שמירת המשך טיפול")}</button></form>
    <h4>{t("Saved history","היסטוריה שמורה")}</h4><ol>{detail.history.map(event=><li key={event.operationId}>
     <time dateTime={event.recordedAt}>{event.recordedAt}</time> · {event.status} · {event.note}
-    {event.nextAction&&<> · {event.nextAction}</>}{event.waitingCondition&&<> · {event.waitingCondition}</>}
+    {event.nextAction&&<> · {event.nextAction}{event.dueDate&&<> ({event.dueDate})</>}</>}{event.waitingCondition&&<> · {event.waitingCondition}</>}
    </li>)}</ol>
   </article>}
  </section>;
