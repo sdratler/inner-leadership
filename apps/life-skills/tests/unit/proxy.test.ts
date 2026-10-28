@@ -32,6 +32,20 @@ describe("public static perimeter", () => {
 });
 
 afterEach(() => vi.unstubAllEnvs());
+describe("retired Israeli public form request boundary",()=>{
+  it.each(["foundation_preview","foundation_locked","isolated_preview"])("returns a real 404 before rendering in %s while preserving the Academy route",mode=>{
+    const origin=mode==="foundation_preview"?"https://127.0.0.1:3001":"https://life-skills.example.invalid",key=(seed:string)=>Buffer.alloc(32,seed).toString("base64url");
+    const env={NODE_ENV:"production",LS_APP_MODE:mode,LS_APP_ORIGIN:origin,LS_PRIVATE_APP_ENABLED:"true",LS_PREVIEW_ACCESS_KEY:"synthetic_preview_gate_key_1234567890",LS_GROUP_APPLICATION_REAL_DATA_RELEASE:"true",LS_IDENTITY_ENABLED:"true",LS_IDENTITY_WORKSPACE_ID:"00000000-0000-4000-8000-000000000001",LS_IDENTITY_ACTIVE_KEY_ID:"v1",LS_IDENTITY_DATA_KEYS:JSON.stringify({v1:key("a")}),LS_IDENTITY_CSRF_KEY:key("b"),LS_IDENTITY_LOOKUP_KEY:key("c"),LS_IDENTITY_RATE_KEY:key("d")};
+    for(const [name,value] of Object.entries(env))vi.stubEnv(name,value);
+    for(const locale of ["en","he"])for(const method of ["GET","HEAD","POST"])for(const suffix of ["","/","?program=sunday_fishing_academy","/other"]){
+      const response=proxy(new NextRequest(`${origin}/${locale}/groups/apply${suffix}`,{method}));
+      expect(response.status).toBe(404);expect(response.headers.get("x-middleware-next")).toBeNull();
+      expect(response.headers.get("location")).toBeNull();expect(response.headers.get("cache-control")).toBe("private, no-store");
+    }
+    const academy=proxy(new NextRequest(origin+"/en/florida/apply"));
+    expect(academy.status).toBe(200);expect(academy.headers.get("x-middleware-next")).toBe("1");
+  });
+});
 describe('dedicated Nomad call original transport fence',()=>{
  it('rejects invalid/ambiguous forwarding before the proxy can rewrite it to canonical HTTPS',()=>{
   const origin='https://life-skills.bneineviimacademy.org',path='/api/private/acquisition/call-events';

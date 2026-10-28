@@ -46,7 +46,7 @@ export function intakeReleasePath(pathname: string, input: Record<string,string|
 }
 export function groupApplicationReleasePath(pathname:string,input:Record<string,string|undefined>):boolean{
  const founderPath=input.LS_ACADEMY_FREE_REGISTRATION_ENABLED==='true'&&(pathname==='/api/public/academy-founder'||/^\/(he|en)\/florida\/confirm-interest\/?$/.test(pathname));
- const allowed=founderPath||pathname==="/api/public/group-applications"||/^\/(he|en)\/groups\/apply\/?$/.test(pathname)||
+ const allowed=founderPath||pathname==="/api/public/group-applications"||
   /^\/(he|en)\/florida(?:\/(?:torah-mornings|private-fishing|apply|pricing))?\/?$/.test(pathname)||
   /^\/(he|en)\/florida\/stages\/(?:foundation|independent|advanced|leadership)\/?$/.test(pathname);
  if(!allowed||!publicGroupApplicationEnvironmentEnabled(input))return false;
@@ -85,6 +85,11 @@ export function proxy(request: NextRequest) {
   }
   const headers = securityHeaders(nonce, env.NODE_ENV === "development", env.LS_APP_ORIGIN.startsWith("https:"));
   const pathname = request.nextUrl.pathname;
+  // Retire this public form before React streaming can commit a 200 response.
+  // Release flags, query strings and HTTP methods cannot reopen the old route.
+  if (/^\/(he|en)\/groups\/apply(?:\/|$)/.test(pathname)) {
+    return decorate(new NextResponse(null, { status: 404 }), headers);
+  }
   const canonicalOrigin = new URL(env.LS_APP_ORIGIN);
   const requestHost = (request.headers.get("host") ?? request.nextUrl.host).trim().toLowerCase();
   // Private rendered data needs the same transport fence as its APIs. Keep

@@ -27,8 +27,9 @@ try{
  execFileSync(openssl,["req","-new","-newkey","rsa:2048","-nodes","-keyout",keyFile,"-out",requestFile,"-subj","/CN=localhost"],{stdio:"ignore"});
  execFileSync(openssl,["x509","-req","-in",requestFile,"-CA",caCertFile,"-CAkey",caKeyFile,"-CAcreateserial","-out",certFile,"-days","1","-sha256","-extfile",extensionsFile],{stdio:"ignore"});
  bridge=createHttpsServer({key:readFileSync(keyFile),cert:readFileSync(certFile)},(req,res)=>{
+  bridgeAttempts++;
   if(req.method!=="GET"||req.url!=="/api/bna/life-skills-app/whatsapp-group-roster"){res.writeHead(404).end();return}
-  bridgeAttempts++;if(req.headers["x-life-skills-bridge-secret"]!==bridgeSecret){console.error("WHATSAPP_ROSTER_BRIDGE_SECRET_MISMATCH");res.writeHead(401).end();return}
+  if(req.headers["x-life-skills-bridge-secret"]!==bridgeSecret){console.error("WHATSAPP_ROSTER_BRIDGE_SECRET_MISMATCH");res.writeHead(401).end();return}
   bridgeReads++;const observedAt=new Date().toISOString();res.writeHead(200,{"content-type":"application/json","cache-control":"no-store"});res.end(JSON.stringify({schemaVersion:1,channelId,group:{id:groupId,title:"Synthetic Life Skills Group"},observedAt,actorRole:"unknown",completeness:{state:"partial",declaredCount:null,reason:"unknown"},members:[{memberId:"15550001111",phone,displayName:"Synthetic roster member",role:"admin"},{memberId:"123456789@lid",phone:null,displayName:null,role:"unknown"}]}));
  }).on("tlsClientError",error=>console.error("WHATSAPP_ROSTER_BRIDGE_TLS_ERROR",error.message));await new Promise<void>((resolve,reject)=>bridge!.listen(3490,"127.0.0.1",resolve).once("error",reject));
  const env:NodeJS.ProcessEnv={...process.env};for(const name of Object.keys(env))if(name.startsWith("LS_")||/DATABASE_URL|WHAPI|WAPI|GOOGLE|OPENAI|ANTHROPIC|RAILWAY|TOKEN|SECRET|API_KEY/i.test(name))delete env[name];
