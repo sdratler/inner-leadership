@@ -58,7 +58,7 @@ export function FishingFollowupPanel({locale,applicationId}:{locale:Locale;appli
    {error!==null&&<div role="alert" className="lsw-alert"><p>{error===401?t("Sign in again.","יש להיכנס מחדש."):
     error===403||error===404?t("This account cannot open this Fishing inquiry.","לחשבון זה אין גישה לפניית הדיג."):
     error===409?t("This inquiry changed. Reload before saving.","הפנייה השתנתה. יש לרענן לפני השמירה."):
-    error===400?t("Add a note and a next action or waiting condition.","יש להוסיף הערה ופעולה הבאה או תנאי המתנה."):
+    error===400?t("Add a note and either a dated next action or a waiting condition.","יש להוסיף הערה ופעולה הבאה עם תאריך או תנאי המתנה."):
     t("Follow-up could not be read. Try again.","לא ניתן לקרוא את המעקב. אפשר לנסות שוב.")}</p>
     {![401,403,404].includes(error)&&<button type="button" onClick={()=>void read()}>{t("Reload","רענון")}</button>}</div>}
    {message&&<p role="status">{message}</p>}
@@ -69,7 +69,7 @@ export function FishingFollowupPanel({locale,applicationId}:{locale:Locale;appli
     {detail.attribution?.first.campaign&&<> · {t("Campaign","קמפיין")}: {detail.attribution.first.campaign}</>}
     {detail.attribution?.last.postRef&&<> · {t("Post reference","מזהה פרסום")}: {detail.attribution.last.postRef}</>}
     {detail.attribution?.last.groupRef&&<> · {t("Group reference","מזהה קבוצה")}: {detail.attribution.last.groupRef}</>}</p>
-    <p>{t("Current stage","שלב נוכחי")}: {detail.followup.status} · {t("Next action","פעולה הבאה")}: {detail.followup.nextAction??t("None","אין")}</p>
+    <p>{t("Current stage","שלב נוכחי")}: {detail.followup.status} · {t("Next action","פעולה הבאה")}: {detail.followup.nextAction??t("None","אין")}{detail.followup.dueDate&&<> · {t("Due date","תאריך יעד")}: {detail.followup.dueDate}</>}</p>
     <form onSubmit={submit} className="lsw-stack"><label>{t("Stage","שלב")}<select value={status} onChange={event=>setStatus(event.target.value as typeof status)}>
      <option value="new">{t("New","חדש")}</option><option value="contacted">{t("Contacted","נוצר קשר")}</option>
      <option value="waiting">{t("Waiting","ממתין")}</option><option value="closed">{t("Closed","סגור")}</option></select></label>
@@ -80,7 +80,7 @@ export function FishingFollowupPanel({locale,applicationId}:{locale:Locale;appli
      <button type="submit" disabled={busy||!!pending}>{t("Save follow-up","שמירת המשך טיפול")}</button></form>
     {detail.history.length>0&&<><h4>{t("Saved history","היסטוריה שמורה")}</h4><ol>{detail.history.map(item=><li key={item.operationId}>
      <time dateTime={item.recordedAt}>{item.recordedAt}</time> · {item.status} · {item.note}
-     {item.nextAction&&<> · {item.nextAction}</>}{item.waitingCondition&&<> · {item.waitingCondition}</>}</li>)}</ol></>}
+     {item.nextAction&&<> · {item.nextAction} ({item.dueDate})</>}{item.waitingCondition&&<> · {item.waitingCondition}</>}</li>)}</ol></>}
    </>}
   </section>
  </details>;
