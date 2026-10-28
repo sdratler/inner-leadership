@@ -45,6 +45,7 @@ it('retains every pre-founder migration pin and adopts only the exact additive f
  expect(entries[56]).toEqual({name:'0137_ls_academy_owner_notifications.sql',sha256:'b474d4f21eec0b39cb0796e9afac1226335108bc20dd334bf005c01aa775a506'});
  expect(entries[57]).toEqual({name:'0138_ls_academy_crm.sql',sha256:'0598f09b6653089664ffe8be283232fa2d7ea927989754d9c704ff3e09480fbf'});
  expect(entries[58]).toEqual({name:'0139_ls_bna_inquiries.sql',sha256:'91421da4a936986e9c33e4ccbe141c07f78cbaeca3f6d55bf0e34fd243e64da0'});
+ expect(entries[59]).toEqual({name:'0140_ls_owner_305_conversations.sql',sha256:'d4c5c6a4e98382c4059e97c6147eae378b0017fd61307df771b1bdbc68b29790'});
  for(const entry of entries)expect(createHash('sha256').update(readFileSync('migrations/'+entry.name)).digest('hex')).toBe(entry.sha256);
  const proposal=readFileSync('migrations/proposals/0136_ls_academy_founder.sql','utf8'),numbered=readFileSync('migrations/0136_ls_academy_founder.sql','utf8');
  expect(numbered.slice(numbered.indexOf('\n')).replaceAll('\r\n','\n')).toBe(proposal.slice(proposal.indexOf('\n')).replaceAll('\r\n','\n'));
