@@ -23,9 +23,9 @@ import {communicationPreferenceSelection} from '../../src/features/group-applica
 
 export function academyMigrationInventory():Migration[]{
  const entries=JSON.parse(readFileSync(new URL('../../migrations/manifest.json',import.meta.url),'utf8')) as {name:string;sha256:string}[];
- // The existing 57-entry founder/notification prefix stays in place; only the
- // fresh CRM preparation follows it. Every SQL file is still checksum-checked.
- if(entries.length!==58||entries[55]?.name!=='0136_ls_academy_founder.sql'||entries[56]?.name!=='0137_ls_academy_owner_notifications.sql'||entries[57]?.name!=='0138_ls_academy_crm.sql'||new Set(entries.map(e=>e.name)).size!==entries.length)throw Error('ACADEMY_TEST_MANIFEST_NOT_FULL_58');
+ // The existing 57-entry founder/notification prefix stays in place; the
+ // additive CRM and BNA lead migrations follow it. Check every SQL checksum.
+ if(entries.length!==59||entries[55]?.name!=='0136_ls_academy_founder.sql'||entries[56]?.name!=='0137_ls_academy_owner_notifications.sql'||entries[57]?.name!=='0138_ls_academy_crm.sql'||entries[58]?.name!=='0139_ls_bna_inquiries.sql'||new Set(entries.map(e=>e.name)).size!==entries.length)throw Error('ACADEMY_TEST_MANIFEST_NOT_FULL_59');
  return entries.map(entry=>{
   if(!/^\d{4}_[a-z][a-z0-9_]*\.sql$/.test(entry.name))throw Error('ACADEMY_TEST_MANIFEST_PATH_INVALID');
   const bytes=readFileSync(new URL('../../migrations/'+entry.name,import.meta.url));
