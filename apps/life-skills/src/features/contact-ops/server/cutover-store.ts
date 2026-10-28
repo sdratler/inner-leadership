@@ -2,7 +2,7 @@ import "server-only";
 import {z} from "zod";
 import {AppError} from "../../../lib/errors.ts";
 import type {IdentityStore,SqlSession} from "../../identity/store.ts";
-import {freshActor} from "../../identity/data.ts";
+import {freshActor,lockWorkspace} from "../../identity/data.ts";
 import {seal,unseal,type Keyring} from "../../identity/crypto.ts";
 import {systemClock,type Actor,type IdentityClock} from "../../identity/types.ts";
 import {requirePractitioner} from "../../cases/policy.ts";
@@ -11,6 +11,8 @@ import {privateDigest} from "./digests.ts";
 import {cutoverEpochSchema as safeEpoch,cutoverStateSchema as stateSchema,cutoverStateAad as stateAad,readCutoverState} from "./cutover-state.ts";
 import {asId} from '../../../lib/ids.ts';
 import {assertCutoverOperatorPayload,authorizeCutoverOperator,type CutoverOperatorPermit,type CutoverPrincipal} from './cutover-operator.ts';
+import {ACADEMY_CRM_PROGRAM,academyInitializationInputSchema,type AcademyInitializationInput} from '../core/academy-crm.ts';
+import {demoAccountBatch} from '../../demo/provenance.ts';
 
 const source=z.string().min(1).max(200);
 export type CutoverEvidence=CutoverProof & {observedNativeWritesSinceSwitch:number};
@@ -58,6 +60,77 @@ export class ContactCutoverStore {
  async advance(a:Actor,input:CutoverAdvanceInput):Promise<{state:CutoverState;replayed:boolean}>{
   return this.advanceAuthorized(a,input,tx=>this.authorize(tx,a));
  }
+ /** Reviewed server-side coordination only; deliberately absent from HTTP and
+  * the old signed import operator. External evidence is a coordinator duty.
+  * This method neither imports nor deletes anything. Existing CRM profiles
+  * require their exact preservation/removal reconciliation before this path. */
+ async initializeAcademy(a:Actor,input:AcademyInitializationInput):Promise<{state:CutoverState;replayed:boolean}>{
+  const proof=academyInitializationInputSchema.parse(input),operation=proof.operationId;
+  const digest=privateDigest({actorId:a.id,workspaceId:a.workspaceId,action:"initialize_academy",proof},this.integrityKey);
+  return this.db.transaction(async tx=>{
+   await this.lock(tx,a);
+   if(await demoAccountBatch(tx,a.workspaceId,a.id)!==null)throw new AppError("FORBIDDEN");
+   const previous=await tx.query<Prior>(`SELECT payload_digest AS digest,actor_account_id AS "actorId",
+    evidence_ciphertext AS ciphertext,result_epoch::text AS "resultEpoch" FROM ls_contact_ops.cutover_history
+    WHERE workspace_id=$1 AND operation_id=$2`,[a.workspaceId,operation]);
+   if(previous[0]){
+    const prior=previous[0];if(prior.digest!==digest||prior.actorId!==a.id)throw new AppError("CONFLICT");
+    const record=this.decode(z.object({state:stateSchema,proof:academyInitializationInputSchema}).strict(),prior.ciphertext,historyAad(a.workspaceId,operation));
+    if(record.state.phase!=="academy_native"||record.state.epoch!==Number(prior.resultEpoch)||
+     record.state.epoch!==proof.expectedEpoch+1||record.state.academy?.operationId!==operation)throw new AppError("UNAVAILABLE");
+    return {state:record.state,replayed:true};
+   }
+   const current=await this.current(tx,a);
+   if(current.phase!=="sheet_active"||current.academy||current.epoch!==proof.expectedEpoch||
+    current.nativeWritesSinceSwitch!==proof.observedNativeWritesSinceSwitch||current.nativeWritesSinceSwitch!==0||
+    current.epoch>=Number.MAX_SAFE_INTEGER-1)throw new AppError("CONFLICT");
+   // The identity lock also serializes shadow-import/profile creation. Identity
+   // accounts, genuine Academy applications, families and receipts stay intact.
+   await lockWorkspace(tx,a.workspaceId);
+   const existing=await tx.query(`SELECT person_id FROM ls_contact_ops.profiles WHERE workspace_id=$1 LIMIT 1`,[a.workspaceId]);
+   if(existing.length)throw new AppError("CONFLICT");
+   await this.assertNoPendingEffects(tx,a.workspaceId);
+   const next:CutoverState={phase:"academy_native",epoch:current.epoch+1,batchId:operation,
+    sourceFileId:null,sourceRevision:null,nativeWritesSinceSwitch:0,
+    academy:{kind:"academy_fresh",program:ACADEMY_CRM_PROGRAM,operationId:operation,decisionId:proof.decisionId,
+     initializedAt:this.clock.now().toISOString(),importedRows:0,evidence:proof.evidence}};
+   await this.save(tx,a,next);
+   await tx.query(`INSERT INTO ls_contact_ops.cutover_history(workspace_id,operation_id,actor_account_id,action,
+    from_epoch,result_epoch,payload_digest,evidence_ciphertext) VALUES($1,$2,$3,'initialize_academy',$4,$5,$6,$7)`,
+    [a.workspaceId,operation,a.id,current.epoch,next.epoch,digest,
+     seal(JSON.stringify({state:next,proof}),historyAad(a.workspaceId,operation),this.keyring)]);
+   return {state:next,replayed:false};
+  });
+ }
+ private async assertNoPendingEffects(tx:SqlSession,workspaceId:string){
+  const pending=await tx.query(`SELECT operation_id FROM ls_contact_ops.outbound_projections
+   WHERE workspace_id=$1 AND state IN ('prepared','sent_pending') LIMIT 1`,[workspaceId]);
+  if(pending.length)throw new AppError("CONFLICT");
+  const labelTable=await tx.query<{labels:string|null}>("SELECT to_regclass('ls_contact_ops.fishing_label_projection')::text AS labels");
+  if(labelTable[0]?.labels){
+   const labels=await tx.query(`SELECT person_id FROM ls_contact_ops.fishing_label_projection
+    WHERE workspace_id=$1 AND (status IN ('pending','outcome_unknown') OR unresolved_effect) LIMIT 1`,[workspaceId]);
+   if(labels.length)throw new AppError("CONFLICT");
+  }
+ }
+ /** The fresh Academy adapter is separate from generic native authority. Its
+  * caller must enforce immutable contact admission before every data access. */
+ async withAcademy<T>(a:Actor,input:{intent:"read"|"write";expectedEpoch:number},
+  work:(tx:SqlSession,state:CutoverState&{academy:NonNullable<CutoverState["academy"]>})=>Promise<T>):Promise<T>{
+  if(!safeEpoch.safeParse(input.expectedEpoch).success||!["read","write"].includes(input.intent))throw new AppError("INVALID_REQUEST");
+  return this.db.transaction(async tx=>{
+   if(input.intent==="read")await tx.query("SET TRANSACTION READ ONLY");
+   await this.lock(tx,a);const current=await this.current(tx,a,input.intent==="write");
+   if(current.phase!=="academy_native"||!current.academy||current.academy.program!==ACADEMY_CRM_PROGRAM||
+    current.epoch!==input.expectedEpoch)throw new AppError("CONFLICT");
+   const result=await work(tx,{...current,academy:current.academy});
+   if(input.intent==="write"){
+    if(current.nativeWritesSinceSwitch>=Number.MAX_SAFE_INTEGER-1)throw new AppError("UNAVAILABLE");
+    await this.save(tx,a,{...current,nativeWritesSinceSwitch:current.nativeWritesSinceSwitch+1});
+   }
+   return result;
+  });
+ }
  async advanceAsOperator(input:CutoverAdvanceInput,permit:CutoverOperatorPermit,lookupKey:Buffer){
   assertCutoverOperatorPayload(permit,input,this.integrityKey);
   const a={workspaceId:asId(permit.envelope.workspaceId,'workspace'),id:asId(permit.envelope.ownerAccountId,'account')};
@@ -85,18 +158,10 @@ export class ContactCutoverStore {
    // Every action, including prepare and both rollback steps, advances the
    // authority epoch. The same lock protects pre-send intents: no transition
    // may strand a receipt or Sheet projection awaiting reconciliation.
-   const pending=await tx.query(`SELECT operation_id FROM ls_contact_ops.outbound_projections
-    WHERE workspace_id=$1 AND state IN ('prepared','sent_pending') LIMIT 1`,[a.workspaceId]);
-   if(pending.length)throw new AppError("CONFLICT");
    // The additive label table is not a dependency of the earlier inquiry-only
    // release. Once installed, do not strand an unfinished managed association
    // by switching authority, even when the caller obtained a fresh counter.
-   const labelTable=await tx.query<{labels:string|null}>("SELECT to_regclass('ls_contact_ops.fishing_label_projection')::text AS labels");
-   if(labelTable[0]?.labels){
-    const labels=await tx.query(`SELECT person_id FROM ls_contact_ops.fishing_label_projection
-     WHERE workspace_id=$1 AND (status IN ('pending','outcome_unknown') OR unresolved_effect) LIMIT 1`,[a.workspaceId]);
-    if(labels.length)throw new AppError("CONFLICT");
-   }
+   await this.assertNoPendingEffects(tx,a.workspaceId);
    // Writes keep the phase epoch but advance this counter. Bind EVERY transition's
    // evidence to both, so an intervening write invalidates a rollback/delta proof.
    if(current.epoch!==proof.expectedEpoch||current.nativeWritesSinceSwitch!==proof.observedNativeWritesSinceSwitch||current.epoch>=Number.MAX_SAFE_INTEGER-1)throw new AppError("CONFLICT");

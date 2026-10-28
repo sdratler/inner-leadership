@@ -124,6 +124,8 @@ export class ContactInboundStore {
   const projector=new NativeInboundProjection(this.workspaceId,this.keyring,this.integrityKey,this.clock);
   const keys=inboundProjectionKeys(this.workspaceId,binding,event,message,payloadDigest,inquiry,this.integrityKey);
   return this.db.transaction(async tx=>{
+   await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",[`${this.workspaceId}:contact-authority`]);
+   if((await readCutoverState(tx,this.workspaceId,this.keyring,false)).phase==="academy_native")throw new AppError("UNAVAILABLE");
    await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",[`${this.workspaceId}:contact-receipt:${binding}:${event}`]);
    const rows=await tx.query<{digest:string;storedAt:Date}>(`SELECT payload_digest AS digest,stored_at AS "storedAt"
     FROM ls_contact_ops.message_receipts WHERE workspace_id=$1 AND channel='whatsapp' AND provider_binding_id=$2 AND provider_event_key=$3`,[this.workspaceId,binding,event]);
@@ -148,6 +150,8 @@ export class ContactInboundStore {
   if(!Number.isSafeInteger(limit)||limit<1||limit>100)throw new AppError("INVALID_REQUEST");
   return this.db.transaction(async tx=>{
    await tx.query("SET TRANSACTION READ ONLY");requirePractitioner(await freshActor(tx,actor,this.clock.now()));
+   await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",[`${this.workspaceId}:contact-authority`]);
+   if((await readCutoverState(tx,this.workspaceId,this.keyring,false)).phase==="academy_native")throw new AppError("UNAVAILABLE");
    // The existing primary key starts with workspace/channel/binding/event.
    // Read at most budget+1 in that indexed order BEFORE decrypting or grouping;
    // no full-history aggregate, sort, join or partial-history success. Exact SQL
