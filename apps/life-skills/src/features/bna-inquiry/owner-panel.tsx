@@ -73,7 +73,7 @@ export function BnaInquiryOwnerPanel({locale}:{locale:Locale}){
   {page&&<div className="lsw-stack"><p>{page.items.length===0?t("No BNA inquiries saved yet.","עדיין לא נשמרו פניות לבני נביאים."):
    t(`${page.items.length} saved inquiries`,`${page.items.length} פניות שמורות`)}</p>
    <ul>{page.items.map(item=><li key={item.id}><button type="button" disabled={busy||!!pending} onClick={()=>void open(item.id)}>
-    {item.fields.name} · {item.fields.townOrZip} · {item.followup.status}</button></li>)}</ul></div>}
+    {item.fields.name} · {item.fields.townOrZip} · {item.followup.status} · <bdi dir="ltr">{item.id}</bdi></button></li>)}</ul></div>}
   {detail&&<article className="lsw-stack" aria-label={t("BNA inquiry detail","פרטי פניית בני נביאים")}>
    <h3>{detail.fields.name}</h3><p><bdi dir="ltr">{detail.fields.contact}</bdi> · {detail.fields.contactChannel}</p>
    <p>{t("Ages","גילים")}: {detail.fields.childAges.join(", ")} · {detail.fields.townOrZip} · {detail.fields.language.toUpperCase()}</p>
