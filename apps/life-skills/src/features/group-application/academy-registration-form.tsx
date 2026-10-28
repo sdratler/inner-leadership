@@ -109,7 +109,7 @@ export function AcademyRegistrationForm({locale,onSaved,mode='native',onPreviewe
   }catch{if(mounted.current){setUncertain(true);setError('uncertain');}}finally{sending.current=false;if(mounted.current)setBusy(false);}
  }
  const choices=(values:Record<string,string>)=>Object.entries(values).map(([value,label])=>({value,label}));
- const select=(name:string,label:string,options:readonly {value:string;label:string}[],placeholder='')=>{const id='registration-'+name;return <div className={styles.field}><label htmlFor={id}>{label}</label><select id={id} name={name} required defaultValue="" aria-invalid={!!fieldErrors[name]} aria-describedby={fieldErrors[name]?id+'-error':undefined}><option value="">{placeholder}</option>{options.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select>{fieldErrors[name]&&<small id={id+'-error'} className={styles.errorText}>{fieldErrors[name]}</small>}</div>;};
+ const select=(name:string,label:string,options:readonly {value:string;label:string}[],placeholder=t('Choose one','בחרו אפשרות'))=>{const id='registration-'+name;return <div className={styles.field}><label htmlFor={id}>{label}</label><select id={id} name={name} required defaultValue="" aria-invalid={!!fieldErrors[name]} aria-describedby={fieldErrors[name]?id+'-error':undefined}><option value="">{placeholder}</option>{options.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select>{fieldErrors[name]&&<small id={id+'-error'} className={styles.errorText}>{fieldErrors[name]}</small>}</div>;};
  const errorTargets=Object.keys(fieldErrors).map(name=>registrationErrorTarget(name,children,locale)).filter((target):target is {id:string;label:string}=>target!==null).filter((target,index,items)=>items.findIndex(item=>item.id===target.id)===index);
  function focusError(id:string){const target=document.getElementById(id);if(target&&form.current?.contains(target)){const dropdown=target.closest('details');if(dropdown)dropdown.open=true;target.focus();}}
  const errorText=error==='validation'?t('Please complete the highlighted fields and consent. Availability preferences must exclude Shabbos.','יש להשלים את השדות המסומנים ואת ההסכמה. העדפות הזמנים אינן יכולות לכלול שבת.'):error==='unavailable'?t('Online registration is temporarily unavailable. No details have been sent.','ההרשמה המקוונת אינה זמינה כרגע. לא נשלחו פרטים.'):error==='uncertain'?stateCopy.save.uncertainText:stateCopy.save.saveFailure;
@@ -117,13 +117,14 @@ export function AcademyRegistrationForm({locale,onSaved,mode='native',onPreviewe
   {mode==='sample'&&<p>{t('Sample only. No information is sent or saved.','דוגמה בלבד. לא נשלחים או נשמרים פרטים.')}</p>}{previewed&&<p role="status">{t('Sample checked. No information was submitted.','הדוגמה נבדקה. לא נשלחו פרטים.')}</p>}
   {error&&<div role="alert" ref={errorRef} tabIndex={-1} className={styles.alert}><strong>{uncertain?stateCopy.save.uncertainHeading:t('Please check your registration','יש לבדוק את פרטי ההרשמה')}</strong><p>{errorText}</p>{error==='validation'&&errorTargets.length>0&&<ul className={styles.errorLinks}>{errorTargets.map(target=><li key={target.id}><a href={'#'+target.id} onClick={event=>{event.preventDefault();focusError(target.id);}}>{target.label}</a></li>)}</ul>}{uncertain&&pending.current&&<p>{t('Operation reference','מספר הפעולה')}: <bdi dir="ltr">{pending.current.command.operationId}</bdi></p>}</div>}
   {reference&&<div role="status" ref={resultRef} tabIndex={-1} className={styles.success} data-academy-saved={reference}><AcademyRegistrationResult locale={locale} reference={reference} founder={founder}/></div>}
-  <AcademyRegistrationOffer locale={locale} childrenCount={children.length}/>
-  <fieldset className={styles.body} disabled={busy||uncertain||!!reference}>
+  {reference&&<AcademyProgramTerms locale={locale}/>}
+  {!reference&&<><AcademyRegistrationOffer locale={locale} childrenCount={children.length}/>
+  <fieldset className={styles.body} disabled={busy||uncertain}>
    <legend className={styles.srOnly}>{pre?c.titleA:c.titleB}</legend>
    <section aria-labelledby="registration-parent"><h2 id="registration-parent">{c.sections.parent}</h2><div className={styles.grid}>
     <Field name="parentName" label={c.labels.parentName} required maxLength={100} autoComplete="name" error={fieldErrors.parentName}/>
     <Field name="receiptEmail" label={c.labels.email} required type="email" maxLength={254} autoComplete="email" dir="ltr" error={fieldErrors.receiptEmail}/>
-    <Field name="contact" label={c.labels.phone} maxLength={254} type="tel" autoComplete="tel" dir="ltr" error={fieldErrors.contact}/>
+    <Field name="contact" label={c.labels.phone+t(' (optional)',' (לבחירה)')} maxLength={254} type="tel" autoComplete="tel" dir="ltr" error={fieldErrors.contact}/>
     <Field name="cityArea" label={c.labels.cityArea} required maxLength={100} autoComplete="address-level2" error={fieldErrors.cityArea}/>
     <Field name="postalCode" label={c.labels.postalCode} required inputMode="numeric" type="text" pattern="[0-9]{5}(-[0-9]{4})?" maxLength={10} autoComplete="postal-code" dir="ltr" error={fieldErrors.postalCode}/>
    </div></section>
@@ -151,6 +152,6 @@ export function AcademyRegistrationForm({locale,onSaved,mode='native',onPreviewe
    <div className={styles.honeypot} aria-hidden="true"><label>{t('Website','אתר')}<input name="website" autoComplete="off" tabIndex={-1}/></label></div>
   </fieldset>
   <div className={styles.actions} data-registration-actions><div><button type="submit" className={styles.primary} disabled={busy||(mode==='native'&&!challenge&&!pending.current)||!!reference}>{uncertain&&!challenge?t('Refresh connection','רענון החיבור'):uncertain?stateCopy.save.checkStatus:pre?copy.nav.preRegister:copy.nav.register}</button>{uncertain&&!challenge&&<p>{t('Your original submission is kept unchanged. Refresh the connection, then explicitly check the original submission. Nothing is resubmitted automatically.','השליחה המקורית נשמרת ללא שינוי. רעננו את החיבור ואז בדקו במפורש את השליחה המקורית. דבר אינו נשלח שוב באופן אוטומטי.')}</p>}<p>{c.submitBelow}</p></div></div>
-  {busy&&<p role="status">{c.submitBusy}</p>}
+  {busy&&<p role="status">{c.submitBusy}</p>}</>}
  </form>;
 }
