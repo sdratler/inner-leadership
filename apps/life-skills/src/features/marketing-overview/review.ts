@@ -18,15 +18,11 @@ async function authorize(request:Request){
  if(actor.role!=="practitioner")throw new AppError("FORBIDDEN");
  verifyMutationOrigin(request,identity.config.origin);verifyCsrfToken(request.headers.get("x-csrf-token"),identity.services.sessions.csrf(token));
 }
-export async function saveArtworkReviewBridge(input:ArtworkReviewCommand):Promise<ArtworkReviewResult>{
- // Fixed registered path; never pass caller-selected headers or remote URLs.
- const origin=(process.env.LIFE_SKILLS_CRM_BRIDGE_ORIGIN??"").replace(/\/+$/,"");const secret=(process.env.LIFE_SKILLS_APP_BRIDGE_SECRET??"").trim();
- if(!/^https:\/\//.test(origin)||secret.length<32)throw new AppError("UNAVAILABLE");
- const response=await fetch(origin+"/api/bna/life-skills-app/marketing/review",{method:"POST",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer",signal:AbortSignal.timeout(30000),headers:{"Content-Type":"application/json","X-Life-Skills-Bridge-Secret":secret},body:JSON.stringify(input)});
- let body:unknown;try{body=await response.json();}catch{throw new AppError("UNAVAILABLE");}
- if(!response.ok)throw new AppError(response.status===409?"CONFLICT":response.status===404?"NOT_FOUND":response.status===400?"INVALID_REQUEST":"UNAVAILABLE");
- if(!body||typeof body!=="object"||!("success" in body)||body.success!==true||!("result" in body))throw new AppError("UNAVAILABLE");
- return body.result as ArtworkReviewResult;
+/** Academy artwork reviews need an Academy-owned registry. The retired bridge
+ * must never receive a write merely because its old credentials still exist. */
+export async function saveArtworkReviewBridge(_input:ArtworkReviewCommand):Promise<ArtworkReviewResult>{
+ void _input;
+ throw new AppError("UNAVAILABLE");
 }
 export async function marketingReview(request:Request,deps={authorize,save:saveArtworkReviewBridge}):Promise<Response>{
  const requestId=randomUUID();

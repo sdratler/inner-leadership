@@ -3,6 +3,8 @@ import {readFile} from "node:fs/promises";
 import {afterAll,beforeAll,expect,it,vi} from "vitest";
 import {PGlite} from "@electric-sql/pglite";
 vi.mock("server-only",()=>({}));
+import {seal} from "../../src/features/identity/crypto.ts";
+import {privateDigest} from "../../src/features/contact-ops/server/digests.ts";
 import {PublicGroupApplicationStore} from "../../src/features/group-application/store.ts";
 import {floridaGroupApplicationNotice,academyApplicationNotice,groupApplicationNotice,type LegacyFloridaParentApplicationFields as FloridaParentApplicationFields,type IsraelGroupApplicationCommand} from "../../src/features/group-application/contract.ts";
 import type {IdentityStore,SqlSession} from "../../src/features/identity/store.ts";
@@ -64,11 +66,13 @@ it("bounds repeated distinct submissions per contact and keeps append-only evide
  await expect(db.query("UPDATE ls_service_interest.public_applications SET notice_language='he' WHERE id=$1",[saved[0]!.item.id])).rejects.toThrow("public_group_application_append_only");
  await expect(db.query("DELETE FROM ls_service_interest.public_application_operations WHERE application_id=$1",[saved[0]!.item.id])).rejects.toThrow("public_group_application_append_only");
 });
-it("retains durable no-query Israel submission storage and practitioner readback",async()=>{
- const input=israelCommand(),saved=await service.submit(input);expect(saved).toMatchObject({saved:true,replayed:false,duplicate:false,item:{fields:input.fields}});
- expect(await service.list(actors[0]!)).toContainEqual(saved.item);
- const stored=await db.query<{payload_ciphertext:string;notice_version:string;notice_language:string}>("SELECT payload_ciphertext,notice_version,notice_language FROM ls_service_interest.public_applications WHERE id=$1",[saved.item.id]);
- expect(stored.rows[0]).toMatchObject({notice_version:groupApplicationNotice.version,notice_language:"he"});expect(stored.rows[0]!.payload_ciphertext).not.toContain(input.fields.parentPhone);
+it("rejects retired Israel writes and keeps historical rows outside the Academy owner view",async()=>{
+ const input=israelCommand();await expect(service.submit(input)).rejects.toMatchObject({code:"NOT_FOUND"});await expect(service.replaySaved(input)).rejects.toMatchObject({code:"NOT_FOUND"});
+ const id=randomUUID(),fields=input.fields,payload=seal(JSON.stringify(fields),`ls_service_interest/public_application/v1/${workspaceId}/${id}`,ring);
+ await db.query("INSERT INTO ls_service_interest.public_applications(workspace_id,id,contact_digest,request_digest,payload_ciphertext,notice_version,notice_language,received_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",[workspaceId,id,privateDigest({id},key),privateDigest({domain:"public-group-application/v1",workspace:workspaceId,fields},key),payload,groupApplicationNotice.version,"he",now]);
+ expect((await service.list(actors[0]!)).some(item=>item.id===id)).toBe(false);
+ await expect(identity.transaction(tx=>service.readForOwnerInTransaction(tx,actors[0]!,id))).rejects.toMatchObject({code:"NOT_FOUND"});
+ expect((await db.query<{payload_ciphertext:string}>("SELECT payload_ciphertext FROM ls_service_interest.public_applications WHERE id=$1",[id])).rows[0]!.payload_ciphertext).toBe(payload);
 });
 
 it("searches durable encrypted history beyond50, continues empty bounded scans, and pages without skipping tied timestamps",async()=>{
@@ -85,7 +89,7 @@ it("searches durable encrypted history beyond50, continues empty bounded scans, 
  const ids:string[]=[];let cursor:string|undefined;
  do{const page=await service.listPage(actors[0]!,{cursor});ids.push(...page.items.map(item=>item.id));cursor=page.nextCursor??undefined;}while(cursor);
  const count=(await db.query<{n:number}>("SELECT count(*)::int AS n FROM ls_service_interest.public_applications WHERE workspace_id=$1",[workspaceId])).rows[0]!.n;
- expect(ids).toHaveLength(count);expect(new Set(ids).size).toBe(count);
+ expect(ids).toHaveLength(count-1);expect(new Set(ids).size).toBe(count-1);
  await expect(service.listPage(actors[1]!,{search:"Synthetic"})).rejects.toMatchObject({code:"FORBIDDEN"});
  await expect(service.listPage({...actors[0]!,workspaceId:asId(randomUUID(),"workspace")},{search:"Synthetic"})).rejects.toMatchObject({code:"FORBIDDEN"});
  await expect(service.listPage(actors[0]!,{cursor:randomUUID()})).rejects.toMatchObject({code:"INVALID_REQUEST"});

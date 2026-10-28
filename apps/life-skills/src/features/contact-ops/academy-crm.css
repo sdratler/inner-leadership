@@ -1,0 +1,24 @@
+.lsw.lsu .lsw-main.academy-crm{max-width:1180px;margin-inline:auto;padding:24px;gap:16px;border:0;border-radius:0;box-shadow:none}
+.academy-crm .lsw-page-header{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap}
+.academy-crm-toolbar{display:flex;align-items:end;gap:.75rem;flex-wrap:wrap;margin-block:1.5rem}
+.academy-crm-toolbar label{flex:1;min-width:180px}
+.academy-crm label{display:grid;gap:.35rem;font-weight:600}
+.academy-crm input,.academy-crm textarea,.academy-crm select{font:inherit;width:100%;box-sizing:border-box;min-height:44px;padding:.65rem;border:1px solid #b7c9cb;border-radius:8px;background:#fff;color:#163b43}
+.academy-crm input:focus-visible,.academy-crm textarea:focus-visible,.academy-crm select:focus-visible,.academy-crm button:focus-visible{outline:3px solid #2b7d8c;outline-offset:3px}
+.academy-crm input[readonly]{background:#f2f6f5}
+.academy-crm-columns{display:grid;grid-template-columns:minmax(230px,.8fr) minmax(0,1.3fr);gap:1.25rem;align-items:start}
+.academy-crm-columns>section{min-width:0}
+.lsw.lsu .academy-crm-row{margin-block-end:.8rem;padding:1rem;gap:.6rem;overflow-wrap:anywhere}
+.academy-crm-row h2{margin-block:0 .5rem;font-size:1.15rem}
+.academy-crm-row h2 button{font:inherit;color:#205c69;text-align:start;border:0;background:none;padding:.25rem;min-height:44px;text-decoration:underline;cursor:pointer}
+.lsw.lsu .academy-crm-fields{border:0;padding:0;margin:0;display:grid;gap:1rem;min-width:0}
+.academy-crm-fields p{margin:0}
+.academy-crm-pages{display:flex;gap:1rem;align-items:center;justify-content:center;margin-block:1.25rem}
+.academy-crm-pages button,.academy-crm-history button{min-height:44px;padding:.5rem 1rem}
+.academy-crm-history{border-top:1px solid #d1dddc;margin-block-start:1.5rem;padding-block-start:1rem}
+.academy-crm-history article{border-top:1px solid #d1dddc;padding-block:1rem;overflow-wrap:anywhere}
+.academy-crm-history h3{font-size:1rem;margin-block:0 .25rem}
+.academy-crm-history time{font-size:.9rem;color:#4c656a}
+.academy-crm-note{white-space:pre-wrap}
+.academy-crm-sr{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+@media(max-width:720px){.lsw.lsu .lsw-main.academy-crm{padding:16px}.academy-crm-columns{grid-template-columns:minmax(0,1fr)}.academy-crm-toolbar>*{flex-basis:100%}.academy-crm .lsw-page-header{align-items:start}}

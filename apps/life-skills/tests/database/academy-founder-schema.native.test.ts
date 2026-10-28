@@ -9,11 +9,11 @@ let db:Awaited<ReturnType<typeof academyTestDatabase>>;
 beforeAll(async()=>{db=await academyTestDatabase('before_founder');},60000);
 afterAll(async()=>{await db?.close();});
 
-test('full manifest adopts 0136 once before independently applying 0137: exact legacy queued/unknown/sent/canceled rows survive rollback and apply',async()=>{
+test('full manifest adopts 0136 once before independently applying 0137, 0138 and 0139: exact legacy queued/unknown/sent/canceled rows survive rollback and apply',async()=>{
  const workspace=randomUUID(),ring={activeKeyId:'synthetic',keys:{synthetic:randomBytes(32)}},at=new Date(),client=await db.pool.connect();
  const query=async(sql:string,values:readonly unknown[]=[])=>client.query(sql,[...values]);
  try{
-  expect(db.inventory).toHaveLength(57);expect(db.inventory.filter(m=>m.name.startsWith('0136_')).map(m=>m.name)).toEqual(['0136_ls_academy_founder.sql']);expect(db.inventory.at(-1)?.name).toBe('0137_ls_academy_owner_notifications.sql');expect(db.inventory.every(m=>!m.name.includes('proposals/'))).toBe(true);
+  expect(db.inventory).toHaveLength(59);expect(db.inventory.filter(m=>m.name.startsWith('0136_')).map(m=>m.name)).toEqual(['0136_ls_academy_founder.sql']);expect(db.inventory.slice(56).map(m=>m.name)).toEqual(['0137_ls_academy_owner_notifications.sql','0138_ls_academy_crm.sql','0139_ls_bna_inquiries.sql']);expect(db.inventory.every(m=>!m.name.includes('proposals/'))).toBe(true);
   await query('INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,$2)',[workspace,at]);
   for(const state of ['queued','unknown','sent','canceled']){
    const application=randomUUID(),id=randomUUID(),payload=seal(JSON.stringify({synthetic:true,state}),`ls_service_interest/inquiry_email/v1/${workspace}/${id}`,ring);
@@ -35,7 +35,20 @@ test('full manifest adopts 0136 once before independently applying 0137: exact l
   expect(await oldRows()).toEqual(before);expect((await query('SELECT founder_id,message_key FROM ls_service_interest.inquiry_email_outbox WHERE workspace_id=$1 ORDER BY id',[workspace])).rows).toEqual(before.map(()=>({founder_id:null,message_key:null})));
   for(const row of await oldRows())expect(JSON.parse(unseal(row.payload_ciphertext,`ls_service_interest/inquiry_email/v1/${workspace}/${row.id}`,ring))).toEqual({synthetic:true,state:row.state});
   const founderApplied=await history();expect(founderApplied).toHaveLength(56);expect(founderApplied.slice(0,55)).toEqual(historyBefore);expect(founderApplied.at(-1)).toMatchObject({name:founderMigration.name,checksum:founderMigration.checksum});
-  expect(await migrate({query},founderInventory,false)).toEqual({applied:0,pending:0});expect(await migrate({query},db.inventory,false)).toEqual({applied:1,pending:0});expect(await migrate({query},db.inventory,true)).toEqual({applied:0,pending:0});const applied=await history();expect(applied).toHaveLength(57);expect(applied.slice(0,56)).toEqual(founderApplied);expect(applied.at(-1)).toMatchObject({name:'0137_ls_academy_owner_notifications.sql'});expect(await oldRows()).toEqual(before);
+  expect(await migrate({query},founderInventory,false)).toEqual({applied:0,pending:0});
+  const notificationInventory=db.inventory.slice(0,57);
+  expect(await migrate({query},notificationInventory,false)).toEqual({applied:1,pending:0});expect(await migrate({query},notificationInventory,true)).toEqual({applied:0,pending:0});
+  const notificationsApplied=await history();expect(notificationsApplied).toHaveLength(57);expect(notificationsApplied.slice(0,56)).toEqual(founderApplied);expect(notificationsApplied.at(-1)).toMatchObject({name:'0137_ls_academy_owner_notifications.sql'});expect(await oldRows()).toEqual(before);
+  const completeOutbox=async()=>(await query('SELECT to_jsonb(t) AS row FROM ls_service_interest.inquiry_email_outbox t WHERE workspace_id=$1 ORDER BY id',[workspace])).rows;
+  const beforeCrm=await completeOutbox(),crmMigration=db.inventory[57]!;
+  await expect(migrate({query},db.inventory,true)).rejects.toThrow('MIGRATIONS_PENDING');
+  const crmFault={query:async(sql:string,values?:readonly unknown[])=>query(sql===crmMigration.sql?sql+'\nSELECT 1/0;':sql,values)};
+  await expect(migrate(crmFault,db.inventory,false)).rejects.toThrow('MIGRATION_FAILED');
+  expect(await history()).toEqual(notificationsApplied);expect(await completeOutbox()).toEqual(beforeCrm);
+  expect((await query("SELECT to_regclass('ls_contact_ops.academy_crm_contacts') AS contacts,to_regclass('ls_contact_ops.academy_crm_activity') AS activity")).rows[0]).toEqual({contacts:null,activity:null});
+  expect(await migrate({query},db.inventory,false)).toEqual({applied:2,pending:0});expect(await migrate({query},db.inventory,false)).toEqual({applied:0,pending:0});expect(await migrate({query},db.inventory,true)).toEqual({applied:0,pending:0});
+  const applied=await history();expect(applied).toHaveLength(59);expect(applied.slice(0,57)).toEqual(notificationsApplied);expect(applied[57]).toMatchObject({name:crmMigration.name,checksum:crmMigration.checksum});expect(applied.at(-1)).toMatchObject({name:'0139_ls_bna_inquiries.sql'});expect(await oldRows()).toEqual(before);expect(await completeOutbox()).toEqual(beforeCrm);
+  expect((await query('SELECT (SELECT count(*)::int FROM ls_contact_ops.academy_crm_contacts) AS contacts,(SELECT count(*)::int FROM ls_contact_ops.academy_crm_activity) AS activity,(SELECT count(*)::int FROM ls_service_interest.bna_inquiries) AS bna')).rows[0]).toEqual({contacts:0,activity:0,bna:0});
   const drift=db.inventory.map(file=>file.name===founderMigration.name?{...file,checksum:'0'.repeat(64)}:file);
   await expect(migrate({query},drift,true)).rejects.toThrow('MIGRATION_HISTORY_DIVERGED');expect(await history()).toEqual(applied);expect(await oldRows()).toEqual(before);
   expect((await query("SELECT count(*)::int AS n FROM ls_control.migrations WHERE name LIKE '0136%'")).rows[0].n).toBe(1);

@@ -9,11 +9,12 @@ describe('UI upgrade server-rendered structure (not authenticated journey proof)
   it(`${locale}/${role}: exact logo, direction, breadcrumb, one content title`,()=>{
    const base=role==='parent'?'family':'app';
    const html=renderToStaticMarkup(<WorkspaceShell locale={locale} role={role} pathname={`/${locale}/${base}/settings/notifications`} caseId="00000000-0000-4000-8000-000000000001" languageHref={`/${locale==='he'?'en':'he'}/${base}/settings/notifications`}><main><h1>Content title</h1></main></WorkspaceShell>);
-   expect(html).toContain('/intake-brand/life-skills-logo.png');expect(html).toContain(`dir="${locale==='he'?'rtl':'ltr'}"`);expect(html.match(/<h1/g)?.length).toBe(1);expect(html).toContain('lsu-breadcrumbs');expect(html).toContain('aria-haspopup="dialog"');expect(html).not.toContain('lsw-brand-mark');expect(html).toContain('?caseId=00000000-0000-4000-8000-000000000001');
+   expect(html).toContain('/groups/brand/jlfa-logo-locked-v1.png');expect(html).toContain(`dir="${locale==='he'?'rtl':'ltr'}"`);expect(html.match(/<h1/g)?.length).toBe(1);expect(html).toContain('lsu-breadcrumbs');expect(html).toContain('aria-haspopup="dialog"');expect(html).not.toContain('lsw-brand-mark');expect(html).toContain('?caseId=00000000-0000-4000-8000-000000000001');
   });
   it(`${locale}/${role}: settings hub is links, not a wall of editable fields`,()=>{
    const html=renderToStaticMarkup(<SettingsIndex locale={locale} role={role}/>);
-   expect(html).toContain('/settings/account?caseId=');expect(html).not.toContain('<input');expect(html).not.toContain('<textarea');expect(html.match(/lsu-settings-card/g)?.length).toBe(role==='parent'?4:3);
+   expect(html).toContain('/settings/account?caseId=');expect(html).not.toContain('<input');expect(html).not.toContain('<textarea');expect(html.match(/lsu-settings-card/g)?.length).toBe(role==='parent'?4:6);
+   if(role==='practitioner')for(const section of ['templates','content-voice','community'])expect(html).toContain(`/app/settings/${section}?caseId=`);
   });
  }
  it('coordination remains a contextual link rather than a preference form',()=>{const html=renderToStaticMarkup(<AccountSettings locale="en" role="parent" section="coordination"/>);expect(html).toContain('/family/practice?caseId=00000000-0000-4000-8000-000000000001');expect(html).not.toContain('settings-language');expect(html).not.toContain('quiet-start');});

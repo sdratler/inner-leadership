@@ -29,7 +29,7 @@ export function InstallApp({ locale }: {
         return () => { active.current = false; clearTimeout(timer); window.removeEventListener('beforeinstallprompt', before); window.removeEventListener('appinstalled', onInstalled); };
     }, []);
     if (installed)
-        return <p role="status">{word(locale, "This browser reports Life Skills as installed on this device.", "הדפדפן מדווח שכישורי חיים מותקנת במכשיר הזה.")}</p>;
+        return <p role="status">{word(locale, "This browser reports Fishing Academy as installed on this device.", "הדפדפן מדווח שהאקדמיה לדיג מותקנת במכשיר הזה.")}</p>;
     async function install() {
         if (prompting.current) return;
         setNotice(null);
@@ -39,7 +39,7 @@ export function InstallApp({ locale }: {
         catch { if (active.current) { setNotice("error"); setHelp(true); } }
         finally { prompting.current = false; if (active.current) setBusy(false); }
     }
-    return <div><button type="button" disabled={busy} aria-busy={busy || undefined} onClick={() => void install()}>{busy ? word(locale, "Waiting for the browser…", "ממתינים לדפדפן…") : word(locale, "Install Life Skills", "התקנת כישורי חיים")}</button>
+    return <div><button type="button" disabled={busy} aria-busy={busy || undefined} onClick={() => void install()}>{busy ? word(locale, "Waiting for the browser…", "ממתינים לדפדפן…") : word(locale, "Install Fishing Academy", "התקנת האקדמיה לדיג")}</button>
         {notice && <p role={notice === "error" ? "alert" : "status"}>{notice === "accepted" ? word(locale, "The installation request was accepted. Installation is not yet confirmed; check your device's app list.", "בקשת ההתקנה התקבלה. ההתקנה עדיין לא אומתה; יש לבדוק ברשימת האפליקציות במכשיר.") : notice === "dismissed" ? word(locale, "Installation was dismissed. You can keep using the secure app in this browser.", "ההתקנה בוטלה. אפשר להמשיך להשתמש באפליקציה המאובטחת בדפדפן הזה.") : word(locale, "The browser installation request failed. Nothing is confirmed. Try your browser's Install app action, or reload this page for a fresh request.", "בקשת ההתקנה בדפדפן נכשלה. לא ניתן לאשר התקנה. אפשר להשתמש בפעולת התקנת אפליקציה בדפדפן, או לטעון מחדש לקבלת בקשה חדשה.")}</p>}
         {help && <p>{word(locale, "On iPhone: open the secure app in Safari, choose Share, then Add to Home Screen. On Android: use your browser's Install app or Add to Home Screen action. Notifications require your separate permission.", "באייפון: פותחים את האפליקציה המאובטחת ב-Safari, בוחרים שיתוף ואז הוספה למסך הבית. באנדרואיד: בוחרים התקנת אפליקציה או הוספה למסך הבית בתפריט הדפדפן. התראות דורשות הרשאה נפרדת.")}</p>}</div>;
 }

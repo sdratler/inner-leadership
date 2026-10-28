@@ -32,6 +32,11 @@ function count(value:unknown):number{const result=typeof value==="string"&&/^\d+
 export async function readTaskCounts(store:IdentityStore,actor:Actor,now:Date):Promise<TaskCounts>{
  return store.transaction(async tx=>{
   await tx.query("SET TRANSACTION READ ONLY");const current=await freshActor(tx,actor,now);requirePractitioner(current);
+  await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",[`${current.workspaceId}:contact-authority`]);
+  const authority=await tx.query<{phase:string}>("SELECT phase FROM ls_contact_ops.cutover WHERE workspace_id=$1",[current.workspaceId]);
+  // The old aggregate has no Academy provenance. Unavailable is honest until a
+  // scoped task projection is connected; zero would falsely claim no work due.
+  if(authority.some(row=>row.phase==="academy_native"))throw new AppError("UNAVAILABLE");
   const rows=await tx.query<{due:unknown;overdue:unknown;future:unknown}>(`SELECT
    COUNT(*) FILTER(WHERE greatest(t.due_date,(to_jsonb(t)->>'snoozed_until')::date)=$3::date) AS due,
    COUNT(*) FILTER(WHERE greatest(t.due_date,(to_jsonb(t)->>'snoozed_until')::date)<$3::date) AS overdue,

@@ -54,7 +54,7 @@ function digestRuntime(finalFailure?:'UNAUTHENTICATED'|'FORBIDDEN',queries:strin
   if(sql.includes('FROM ls_identity.accounts a JOIN')){accountReads++;if(finalFailure&&accountReads===3)throw new AppError(finalFailure);return [currentActor] as T[];}
   if(sql.includes('FROM ls_calendar.tasks'))return [{due:'2',overdue:'1',future:'0'}] as T[];
   if(sql.includes('COUNT(DISTINCT i.stable_lead_ref)'))return [{total:'1'}] as T[];
-  if(sql.startsWith('SET TRANSACTION')||sql.includes('FROM ls_demo.records')||sql.includes('FROM ls_onboarding.prospect_journeys'))return [] as T[];
+  if(sql.startsWith('SET TRANSACTION')||sql.includes('pg_advisory_xact_lock')||sql.includes('FROM ls_contact_ops.cutover')||sql.includes('FROM ls_demo.records')||sql.includes('FROM ls_onboarding.prospect_journeys'))return [] as T[];
   throw Error('UNEXPECTED_QUERY');
  }})};
  return {store,clock:{now:()=>now},config:{workspaceId:actor.workspaceId,lookupKey:Buffer.alloc(32,7)}} as Parameters<typeof loadOwnerDigest>[1];

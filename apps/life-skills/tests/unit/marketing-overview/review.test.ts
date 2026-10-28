@@ -30,7 +30,10 @@ test.each([{...command,ownerId:'caller'},{...command,revision:0},{...command,not
 test('conflict stays recoverable without leaking provider error text',async()=>{
  const response=await marketingReview(request(),{authorize:vi.fn(),save:vi.fn().mockRejectedValue(new AppError('CONFLICT'))});expect(response.status).toBe(409);expect((await response.json()).error.code).toBe('CONFLICT');
 });
-test('fixed bridge POST has bounded time, private headers and no redirect; provider conflict remains 409',async()=>{
- vi.stubEnv('LIFE_SKILLS_CRM_BRIDGE_ORIGIN','https://existing-private-bridge.example');vi.stubEnv('LIFE_SKILLS_APP_BRIDGE_SECRET','z'.repeat(32));const fetch=vi.fn().mockResolvedValue(Response.json({success:true,result}));vi.stubGlobal('fetch',fetch);expect(await saveArtworkReviewBridge(command)).toEqual(result);const [url,init]=fetch.mock.calls[0]!;expect(url).toBe('https://existing-private-bridge.example/api/bna/life-skills-app/marketing/review');expect(init.method).toBe('POST');expect(init.redirect).toBe('error');expect(init.cache).toBe('no-store');expect(init.signal).toBeInstanceOf(AbortSignal);
- fetch.mockResolvedValue(Response.json({code:'PRIVATE_PROVIDER_ERROR'},{status:409}));await expect(saveArtworkReviewBridge(command)).rejects.toMatchObject({code:'CONFLICT'});
+test('retired artwork review bridge cannot write even when old credentials remain',async()=>{
+ vi.stubEnv('LIFE_SKILLS_CRM_BRIDGE_ORIGIN','https://existing-private-bridge.example');vi.stubEnv('LIFE_SKILLS_APP_BRIDGE_SECRET','z'.repeat(32));
+ const fetch=vi.fn();vi.stubGlobal('fetch',fetch);
+ await expect(saveArtworkReviewBridge(command)).rejects.toMatchObject({code:'UNAVAILABLE'});
+ expect((await marketingReview(request())).status).toBe(503);
+ expect(fetch).not.toHaveBeenCalled();
 });

@@ -6,7 +6,8 @@ import {academyMetadata} from "./academy-metadata.ts";
 import {useEffect,useRef,useState,type ReactNode} from "react";
 import type {Locale} from "../../lib/locale.ts";
 import {JlfaLogo} from "./jlfa-brand.tsx";
-import {AcademyWhatsApp,ACADEMY_WHATSAPP} from "./academy-whatsapp.tsx";
+import {AcademyWhatsApp} from "./academy-whatsapp.tsx";
+import {ACADEMY_CONTACT,academyWhatsAppHref} from "./academy-contact.ts";
 import styles from "./academy-site.module.css";
 export {ACADEMY_WHATSAPP} from "./academy-whatsapp.tsx";
 export function AcademySiteFrame({locale,children,hero,onLocaleChange,path="",intake=false,className=""}:{locale:Locale;children:ReactNode;hero?:ReactNode;onLocaleChange?:(locale:Locale)=>void;path?:string;intake?:boolean;className?:string}){
@@ -49,13 +50,13 @@ export function AcademySiteFrame({locale,children,hero,onLocaleChange,path="",in
    <a className={styles.mobileRegister} href={links[4]![0]}>{pre?copy.nav.preRegister:copy.nav.register}</a><button ref={toggle} className={styles.menuToggle} type="button" aria-label={open?t("Close Academy menu","סגירת תפריט האקדמיה"):t("Open Academy menu","פתיחת תפריט האקדמיה")} aria-controls="academy-mobile-menu" aria-expanded={open} onClick={()=>{setOpen(!open);}}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
   </div><nav ref={menu} id="academy-mobile-menu" className={styles.mobileMenu} hidden={!open} aria-label={t("Mobile Academy navigation","ניווט באקדמיה לנייד")}>
    <button type="button" className={styles.menuClose} aria-label={t("Close menu","סגירת תפריט")} onClick={()=>close(true)}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
-   {links.map(([href,label])=><a key={href} href={href} data-academy-registration-link={href===links[4]![0]?true:undefined} onClick={()=>close()}>{label}</a>)}<a href={ACADEMY_WHATSAPP} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer" onClick={()=>close()}>{t("WhatsApp","וואטסאפ")}</a>{languages}
+   {links.map(([href,label])=><a key={href} href={href} data-academy-registration-link={href===links[4]![0]?true:undefined} onClick={()=>close()}>{label}</a>)}<a href={academyWhatsAppHref(locale)} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer" onClick={()=>close()}>{t("WhatsApp","וואטסאפ")}</a>{languages}
   </nav></header>{hero}{children}
   <footer className={styles.footer} data-academy-footer><div className={styles.footerInner}>
    <JlfaLogo locale={locale} footer homeHref={home}/>
    <p className={styles.nonprofit}>{copy.home.footerAttribution}</p>
    <a className={styles.headerAction} href={intake?"#academy-form":home+"/apply"}>{pre?copy.nav.preRegister:copy.nav.register}</a>
-   <div className={styles.footerLinks}>{languages}<a href={ACADEMY_WHATSAPP} target="_blank" rel="noopener noreferrer">{t('Contact via WhatsApp','יצירת קשר בוואטסאפ')}</a><a href={intake?'#academy-program-terms':home+'/apply#academy-program-terms'}>{copy.form.sections.terms}</a></div>
+   <div className={styles.footerLinks}>{languages}<a href={ACADEMY_CONTACT.telephone} dir="ltr">{ACADEMY_CONTACT.display}</a><a href={academyWhatsAppHref(locale)} target="_blank" rel="noopener noreferrer">{t('Contact via WhatsApp','יצירת קשר בוואטסאפ')}</a><a href={intake?'#academy-program-terms':home+'/apply#academy-program-terms'}>{copy.form.sections.terms}</a></div>
   </div></footer>{!intake&&<AcademyWhatsApp locale={locale}/>}
  </div>;
 }

@@ -6,6 +6,7 @@ import type {SqlSession} from '../../../src/features/identity/store.ts';
 import {contactInboundIntegrity} from '../../../src/db/contact-inbound-integrity.ts';
 import {contactAuthorityIntegrity} from '../../../src/db/contact-authority-integrity.ts';
 import {CONTACT_AUTHORITY_MIGRATION,CONTACT_INBOUND_MIGRATION} from '../../../src/db/contact-ops-production-guard.ts';
+import {legacyAuthorityFixtureStatements} from './authority-integrity-fixture.ts';
 const files=[CONTACT_AUTHORITY_MIGRATION,CONTACT_INBOUND_MIGRATION].map(migration=>({name:migration.name,checksum:migration.sha256,
  sql:readFileSync(new URL(`../../../migrations/${migration.name}`,import.meta.url),'utf8')}));
 const fixtures:Fixture[]=[];
@@ -21,10 +22,10 @@ async function probe(f:Fixture,statements:readonly string[],work:(tx:SqlSession)
  }finally{await client.query('ROLLBACK');client.release();}
 }
 
-test('native inquiry proof binds exact migration, complete receipt catalog and intact authority baseline',async()=>{
+test('native inquiry proof binds exact migration, complete receipt catalog and pinned legacy authority baseline',async()=>{
  const f=await setup();
  for(const file of files)expect(createHash('sha256').update(file.sql.replace(/\r\n/g,'\n')).digest('hex')).toBe(file.checksum);
- await probe(f,[],async tx=>{
+ await probe(f,legacyAuthorityFixtureStatements(),async tx=>{
   expect(await contactInboundIntegrity(tx,files)).toEqual(present);
   expect(await contactAuthorityIntegrity(tx,files)).toEqual(present);
  });

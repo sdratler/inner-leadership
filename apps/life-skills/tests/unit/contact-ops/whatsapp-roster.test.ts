@@ -19,14 +19,11 @@ const source=(members:unknown[]=[{memberId:"12025550101",phone,displayName:"Synt
 const request=(path="/api/private/whatsapp-group-roster",cookie=token)=>new Request("http://127.0.0.1:3000"+path,{headers:{cookie:`${SESSION_COOKIE}=${cookie}`,"x-forwarded-host":"synthetic.invalid","x-forwarded-proto":"https"}});
 afterEach(()=>{vi.unstubAllEnvs();vi.unstubAllGlobals()});
 
-test("bridge transport uses only the fixed read route and rejects declared overflow",async()=>{
+test("retired roster transport remains unavailable with old credentials and performs no fetch",async()=>{
  vi.stubEnv("LIFE_SKILLS_CRM_BRIDGE_ORIGIN","https://academy.synthetic.invalid");vi.stubEnv("LIFE_SKILLS_APP_BRIDGE_SECRET","s".repeat(32));
- const fetchMock=vi.fn<typeof fetch>(async()=>new Response(JSON.stringify(source()),{status:200,headers:{"content-type":"application/json"}}));vi.stubGlobal("fetch",fetchMock);
- await expect(crmBridgeWhatsAppRoster()).resolves.toContain(binding.groupId);
- expect(fetchMock).toHaveBeenCalledWith("https://academy.synthetic.invalid/api/bna/life-skills-app/whatsapp-group-roster",expect.objectContaining({method:"GET",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer"}));
- expect(fetchMock.mock.calls[0]?.[1]?.headers).toEqual({"X-Life-Skills-Bridge-Secret":"s".repeat(32)});
- fetchMock.mockResolvedValueOnce(new Response("{}",{status:200,headers:{"content-length":"65537"}}));
- await expect(crmBridgeWhatsAppRoster()).rejects.toThrow("crm_bridge_unavailable");
+ const fetchMock=vi.fn<typeof fetch>();vi.stubGlobal("fetch",fetchMock);
+ await expect(crmBridgeWhatsAppRoster()).rejects.toMatchObject({code:"UNAVAILABLE"});
+ expect(fetchMock).not.toHaveBeenCalled();
 });
 
 test("normalized roster strips provider-only fields and projects only one exact native match",()=>{

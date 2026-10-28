@@ -1,10 +1,17 @@
 import { existsSync } from "node:fs";
 import { NextRequest } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { groupApplicationPublicAsset, proxy, publicStaticAsset } from "../../src/proxy.ts";
+import { groupApplicationPublicAsset, groupApplicationReleasePath, proxy, publicStaticAsset } from "../../src/proxy.ts";
 import {settingsItems} from '../../src/ui/workspace/navigation-model.ts';
 
 describe("public static perimeter", () => {
+  it("serves the exact Academy login and PWA logo without requiring public intake",()=>{
+    const path="/groups/brand/jlfa-logo-locked-v1.png";
+    expect(existsSync(new URL(`../../public${path}`,import.meta.url))).toBe(true);
+    expect(publicStaticAsset(path,"GET")).toBe(true);expect(publicStaticAsset(path,"HEAD")).toBe(true);
+    expect(publicStaticAsset(path,"POST")).toBe(false);
+    for(const other of ["/groups/brand/private.png","/api/marketing/assets/retired","/groups/../api/private/people"])expect(publicStaticAsset(other,"GET")).toBe(false);
+  });
   it("serves only the shipped app fonts via GET or HEAD", () => {
     for (const name of ["Heebo-wght.ttf", "FrankRuhlLibre-wght.ttf"]) {
       expect(existsSync(new URL(`../../public/fonts/${name}`, import.meta.url))).toBe(true);
@@ -25,6 +32,33 @@ describe("public static perimeter", () => {
 });
 
 afterEach(() => vi.unstubAllEnvs());
+describe("BNA inquiry release perimeter",()=>{
+  it("requires the exact enabled public path and strict private transport",()=>{
+    const origin="https://life-skills.bneineviimacademy.org",key=(seed:string)=>Buffer.alloc(32,seed).toString("base64url");
+    const env={NODE_ENV:"production",LS_APP_MODE:"foundation_locked",LS_APP_ORIGIN:origin,LS_PRIVATE_APP_ENABLED:"true",LS_BNA_INQUIRY_ENABLED:"true",LS_GROUP_APPLICATION_REAL_DATA_RELEASE:"true",LS_IDENTITY_ENABLED:"true",LS_IDENTITY_WORKSPACE_ID:"00000000-0000-4000-8000-000000000001",LS_IDENTITY_ACTIVE_KEY_ID:"v1",LS_IDENTITY_DATA_KEYS:JSON.stringify({v1:key("a")}),LS_IDENTITY_CSRF_KEY:key("b"),LS_IDENTITY_LOOKUP_KEY:key("c"),LS_IDENTITY_RATE_KEY:key("d")};
+    expect(groupApplicationReleasePath("/api/public/bna-inquiries",env)).toBe(true);
+    expect(groupApplicationReleasePath("/api/public/bna-inquiries/",env)).toBe(false);
+    expect(groupApplicationReleasePath("/api/public/bna-inquiries",{...env,LS_BNA_INQUIRY_ENABLED:"false"})).toBe(false);
+    expect(groupApplicationReleasePath("/api/public/bna-inquiries",{...env,LS_GROUP_APPLICATION_REAL_DATA_RELEASE:"false"})).toBe(false);
+    for(const [name,value] of Object.entries(env))vi.stubEnv(name,value);
+    expect(proxy(new NextRequest(origin+"/api/private/bna-inquiries")).status).toBe(200);
+    expect(proxy(new NextRequest("http://life-skills.bneineviimacademy.org/api/private/bna-inquiries")).status).toBe(503);
+  });
+});
+describe("retired Israeli public form request boundary",()=>{
+  it.each(["foundation_preview","foundation_locked","isolated_preview"])("returns a real 404 before rendering in %s while preserving the Academy route",mode=>{
+    const origin=mode==="foundation_preview"?"https://127.0.0.1:3001":"https://life-skills.example.invalid",key=(seed:string)=>Buffer.alloc(32,seed).toString("base64url");
+    const env={NODE_ENV:"production",LS_APP_MODE:mode,LS_APP_ORIGIN:origin,LS_PRIVATE_APP_ENABLED:"true",LS_PREVIEW_ACCESS_KEY:"synthetic_preview_gate_key_1234567890",LS_GROUP_APPLICATION_REAL_DATA_RELEASE:"true",LS_IDENTITY_ENABLED:"true",LS_IDENTITY_WORKSPACE_ID:"00000000-0000-4000-8000-000000000001",LS_IDENTITY_ACTIVE_KEY_ID:"v1",LS_IDENTITY_DATA_KEYS:JSON.stringify({v1:key("a")}),LS_IDENTITY_CSRF_KEY:key("b"),LS_IDENTITY_LOOKUP_KEY:key("c"),LS_IDENTITY_RATE_KEY:key("d")};
+    for(const [name,value] of Object.entries(env))vi.stubEnv(name,value);
+    for(const locale of ["en","he"])for(const method of ["GET","HEAD","POST"])for(const suffix of ["","/","?program=sunday_fishing_academy","/other"]){
+      const response=proxy(new NextRequest(`${origin}/${locale}/groups/apply${suffix}`,{method}));
+      expect(response.status).toBe(404);expect(response.headers.get("x-middleware-next")).toBeNull();
+      expect(response.headers.get("location")).toBeNull();expect(response.headers.get("cache-control")).toBe("private, no-store");
+    }
+    const academy=proxy(new NextRequest(origin+"/en/florida/apply"));
+    expect(academy.status).toBe(200);expect(academy.headers.get("x-middleware-next")).toBe("1");
+  });
+});
 describe('dedicated Nomad call original transport fence',()=>{
  it('rejects invalid/ambiguous forwarding before the proxy can rewrite it to canonical HTTPS',()=>{
   const origin='https://life-skills.bneineviimacademy.org',path='/api/private/acquisition/call-events';

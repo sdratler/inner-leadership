@@ -1,4 +1,6 @@
-# Life Skills: one maintained project state
+# Fishing Academy: one maintained project state
+
+The current `ACADEMY-ONLY-CRM-20261028-01` owner correction in [AGENTS.md](../AGENTS.md) controls the retirement of the Israeli business. Earlier completion packages are history where they conflict: zero legacy lead import, no required permanent lead archive, and no fallback to the retired CRM. Genuine Academy records and separate school/business work remain distinct.
 
 This implements the owner's 11 September request to clarify rambles, save decisions and complete work economically. It extends the existing registered Operating Protocol; it does not introduce another control workbook, SDK or business master. Current task-specific authorization remains valid.
 
@@ -40,7 +42,7 @@ Coordination is the existing lane-appropriate protocol. The old embedded Work Gr
 
 Keep one record and two coordinated loops; do not create Beads, another board or a competing source of truth. The private task record captures an owner ramble or packet, the native database owns business records, Git/tests/release receipts own engineering evidence, and the registered canonical documents own scope. Every open item advances through `source -> stable task -> owner -> next action -> evidence`. A correction updates that same item and preserves its history.
 
-The existing 08:30 audit reconciles changed and still-open items. The existing ten-minute supervisor may advance only eligible claimed work without duplicating the owner or re-running a broad audit. Neither loop may silently close unfinished rambles or packets, nor collapse `implemented`, `tested`, `merged`, `deployed` and `verified live` into one state. Drive mirrors and projections remain derived views, not new masters.
+The former 08:30 audit and ten-minute supervisor are not established as active by the current operations audit. Do not describe them as running or enable schedules from this document. In an authorized session, reconcile changed and still-open items and advance eligible work without repeating a broad audit after every PR. Never silently close unfinished rambles or packets, or collapse `implemented`, `tested`, `merged`, `deployed` and `verified live` into one state. Drive mirrors and projections remain derived views, not new masters.
 
 ## Keep recurring work inexpensive
 

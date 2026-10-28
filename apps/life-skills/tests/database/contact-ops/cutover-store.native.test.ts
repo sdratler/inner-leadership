@@ -121,7 +121,10 @@ test("native cutover persists encrypted exact-epoch transitions and immutable id
  expect((await f.pool.query("SELECT count(*)::integer AS n FROM ls_contact_ops.cutover_history WHERE workspace_id=$1",[f.workspaceId])).rows[0].n).toBe(2);
  for(const command of ["UPDATE ls_contact_ops.cutover_history SET action='prepare' WHERE workspace_id=$1","DELETE FROM ls_contact_ops.cutover_history WHERE workspace_id=$1"])
   await expect(f.pool.query(command,[f.workspaceId])).rejects.toThrow("CONTACT_CUTOVER_HISTORY_APPEND_ONLY");
- await expect(f.pool.query("TRUNCATE ls_contact_ops.cutover_history")).rejects.toThrow("CONTACT_CUTOVER_HISTORY_APPEND_ONLY");
+ // The Academy admission FK now prevents plain TRUNCATE before triggers run.
+ // CASCADE still has to reach and respect the append-only history guard.
+ await expect(f.pool.query("TRUNCATE ls_contact_ops.cutover_history")).rejects.toThrow("cannot truncate a table referenced in a foreign key constraint");
+ await expect(f.pool.query("TRUNCATE ls_contact_ops.cutover_history CASCADE")).rejects.toThrow("CONTACT_CUTOVER_HISTORY_APPEND_ONLY");
 });
 
 test("native cutover serializes competing transitions instead of admitting two epochs",async()=>{

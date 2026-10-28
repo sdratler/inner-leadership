@@ -1,7 +1,5 @@
 import "server-only";
 import type { MarketingInventory, MarketingSnapshot } from "./contracts.ts";
-import { crmBridge } from "../prospects/bridge.ts";
-import { readDirectMetaAds } from "./meta-provider.ts";
 import {creativeMediaPath} from "./media-link.ts";
 import {validateMarketingSnapshot} from "./read-model.ts";
 import {AppError} from '../../lib/errors.ts';
@@ -30,10 +28,6 @@ const empty: MarketingSnapshot = {
   connectionErrors: [],
   scout: { readyDrafts: null, sourceUrl: null, lastChecked: null, status: "unbound" },
 };
-// This process's last successful inventory read, not Meta freshness or a
-// fabricated persistent sync. A restart honestly returns unknown until read.
-let lastInventoryReadAt:string|null=null;
-
 function registrySnapshot(result:PromiseSettledResult<RegistryReadback>):RegistryReadback["snapshot"]|null {
   if(result.status!=="fulfilled"||result.value?.success!==true)return null;
   try{
@@ -48,11 +42,16 @@ function registrySnapshot(result:PromiseSettledResult<RegistryReadback>):Registr
   }catch{return null;}
 }
 
-export async function loadMarketingSnapshot(): Promise<MarketingSnapshot> {
+/** Reusable validated reader. Production must supply an Academy-owned source;
+ * there is deliberately no automatic binding to the retired CRM or ad account. */
+export function createMarketingReader(sources:{registry:()=>Promise<RegistryReadback>;ads:()=>Promise<Pick<MarketingSnapshot,"fetchedAt"|"ads"|"adSeries"|"adReporting">>}){
+// Freshness belongs to this reader instance, never to a different business.
+let lastInventoryReadAt:string|null=null;
+async function loadMarketingSnapshot(): Promise<MarketingSnapshot> {
   const lastAttemptAt=new Date().toISOString();
   const [registryResult, metaResult] = await Promise.allSettled([
-    crmBridge<RegistryReadback>("/api/bna/life-skills-app/marketing"),
-    readDirectMetaAds(),
+    sources.registry(),
+    sources.ads(),
   ]);
   const registry = registrySnapshot(registryResult);
   if(registry&&(lastInventoryReadAt===null||Date.parse(registry.fetchedAt)>Date.parse(lastInventoryReadAt)))lastInventoryReadAt=registry.fetchedAt;
@@ -83,9 +82,21 @@ export async function loadMarketingSnapshot(): Promise<MarketingSnapshot> {
 
 /** Same registered public-content inventory, without an unrelated Meta metrics
  * request. Missing inventory is unavailable, never an empty-success Calendar. */
-export async function loadContentRegistry():Promise<MarketingSnapshot>{
-  const result=await Promise.allSettled([crmBridge<RegistryReadback>("/api/bna/life-skills-app/marketing")]);
+async function loadContentRegistry():Promise<MarketingSnapshot>{
+  const result=await Promise.allSettled([sources.registry()]);
   const registry=registrySnapshot(result[0]!);
   if(!registry)throw new AppError('UNAVAILABLE');
   return {...empty,source:'registry_only',fetchedAt:registry.fetchedAt,creatives:registry.creatives,publications:registry.publications,...(registry.nextStatusHold!==undefined?{nextStatusHold:registry.nextStatusHold}:{}),inventory:registry.inventory,workbookUrl:registry.workbookUrl};
+}
+return {loadMarketingSnapshot,loadContentRegistry};
+}
+
+/** The retired Israeli registry is not an Academy source. Unknown inventory is
+ * an explicit setup state, not a successful zero count or a transient outage. */
+export async function loadMarketingSnapshot():Promise<MarketingSnapshot>{
+ return {...empty,source:"unconfigured",inventoryReadback:{status:"unconfigured",lastSuccessfulReadAt:null,lastAttemptAt:new Date().toISOString(),errorCode:null}};
+}
+export async function loadContentRegistry():Promise<MarketingSnapshot>{
+ // A calendar sync must not close existing tasks from an empty fake inventory.
+ throw new AppError("UNAVAILABLE");
 }

@@ -79,15 +79,30 @@ test("parent/adult/child, wrong workspace and revoked practitioner cannot reopen
  await expect(poolStore(other.pool).transaction(tx=>otherStore.readForOwnerInTransaction(tx,other.practitioner.actor,otherSaved.item.id))).rejects.toMatchObject({code:"UNAUTHENTICATED"});
  expect(await before()).toEqual(baseline);
 });
-test("old Florida and Israel saved fields remain exact and do not become new academy fit/enrollment",async()=>{
+test("historical Academy fields stay exact while retired Israel writes and owner reads are closed",async()=>{
  const old=command("parent-legacy@example.invalid");delete old.fields.academyFit;delete old.fields.scheduleContext;
  old.fields.schedulePreference=["sunday"];old.fields.childAge="10";
  const saved=await store.submit(old);expect(saved.item.fields).toEqual(old.fields);
  const israel={operationId:randomUUID(),fields:{parentName:"Synthetic legacy Israel",parentPhone:"+972520009998",language:"he" as const,
   childAge:10,town:"Modiin",townChoice:"modiin" as const,neighborhood:"Synthetic neighborhood",schedulePreference:"evening" as const,observations:{},
   permission:{confirmed:true as const,version:groupApplicationNotice.version,language:"he" as const}}};
- const previous=await store.submit(israel);expect(previous.item.fields).toEqual(israel.fields);
- expect(await store.list(f.practitioner.actor)).toContainEqual(previous.item);
+ const baseline=await before(),countsBefore=await Promise.all([count("ls_service_interest.public_applications"),count("ls_service_interest.public_application_operations")]);
+ await expect(store.submit(israel)).rejects.toMatchObject({code:"NOT_FOUND"});
+ await expect(store.replaySaved(israel)).rejects.toMatchObject({code:"NOT_FOUND"});
+ expect(await Promise.all([count("ls_service_interest.public_applications"),count("ls_service_interest.public_application_operations")])).toEqual(countsBefore);
+ // Seed only a historical encrypted row. Retirement must not require a new
+ // successful legacy submission, nor convert that row into Academy enrollment.
+ const id=randomUUID(),fields=israel.fields,requestDigest=privateDigest({domain:"public-group-application/v1",workspace:f.workspaceId,fields},key),
+  contactDigest=privateDigest({domain:"public-group-application-contact/v1",workspace:f.workspaceId,phone:fields.parentPhone},key);
+ await f.pool.query(`INSERT INTO ls_service_interest.public_applications(workspace_id,id,contact_digest,request_digest,payload_ciphertext,notice_version,notice_language,received_at)
+  VALUES($1,$2,$3,$4,$5,$6,$7,clock_timestamp())`,[f.workspaceId,id,contactDigest,requestDigest,seal(JSON.stringify(fields),`ls_service_interest/public_application/v1/${f.workspaceId}/${id}`,f.keyring),fields.permission.version,fields.permission.language]);
+ await f.pool.query(`INSERT INTO ls_service_interest.public_application_operations(workspace_id,operation_id,request_digest,application_id)
+  VALUES($1,$2,$3,$4)`,[f.workspaceId,israel.operationId,requestDigest,id]);
+ const snapshot=()=>f.pool.query("SELECT to_jsonb(a)::text AS snapshot FROM ls_service_interest.public_applications a WHERE workspace_id=$1 AND id=$2",[f.workspaceId,id]);
+ const prior=(await snapshot()).rows,items=await store.list(f.practitioner.actor);
+ expect(items).toContainEqual(saved.item);expect(items.some(item=>item.id===id)).toBe(false);
+ await expect(poolStore(f.pool).transaction(tx=>store.readForOwnerInTransaction(tx,f.practitioner.actor,id))).rejects.toMatchObject({code:"NOT_FOUND"});
+ expect((await snapshot()).rows).toEqual(prior);expect(await before()).toEqual(baseline);
 });
 test("historically accepted mixed contact/notice language remains immutable and cannot break the owner list",async()=>{
  const fields={parentName:"Synthetic retained language tuple",contact:"synthetic-compatibility@example.invalid",language:"en" as const,

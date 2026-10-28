@@ -66,11 +66,11 @@ export function WorkspaceShell({ locale, role, clientRole, pathname, caseId, aud
   return <div className={`lsw lsu lsu--${role}`} lang={locale} dir={locale === "he" ? "rtl" : "ltr"}>
     <a className="lsu-skip" href="#lsw-main">{t.skip}</a>
     <header className="lsu-header">
-      <a className="lsu-brand" href={href(role === "parent" ? "family" : role === "client" ? "client" : "app/calendar")} aria-label="Life Skills">
+      <a className="lsu-brand" href={href(role === "parent" ? "family" : role === "client" ? "client" : "app/calendar")} aria-label="Fishing Academy">
         {/* Exact approved bitmap; no image reconstruction, recoloring or remote source. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/intake-brand/life-skills-logo.png" alt={locale === "he" ? "כישורי חיים" : "Life Skills"} width={124} height={65}/>
-        <span><strong translate="no" dir="ltr">Life Skills</strong><small>{t[role]}</small></span>
+        <img src="/groups/brand/jlfa-logo-locked-v1.png" alt={locale === "he" ? "האקדמיה לדיג ולמנהיגות יהודית" : "Jewish Leadership Fishing Academy"} width={1254} height={1254}/>
+        <span><strong translate="no" dir="ltr">Fishing Academy</strong><small>{t[role]}</small></span>
       </a>
       {contextItems.length>0&&topTabs}
       <div className="lsu-header-controls">

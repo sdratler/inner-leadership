@@ -1,5 +1,6 @@
 import { requireThat } from "./validation.ts";
-export type Phase = "sheet_active" | "shadow_ready" | "frozen" | "native_active" | "retired" | "rollback_prepared";
+import type {AcademyInitialization} from "./academy-crm.ts";
+export type Phase = "sheet_active" | "shadow_ready" | "frozen" | "native_active" | "retired" | "rollback_prepared" | "academy_native";
 export interface CutoverState {
     phase: Phase;
     epoch: number;
@@ -7,6 +8,7 @@ export interface CutoverState {
     sourceFileId: string | null;
     sourceRevision: string | null;
     nativeWritesSinceSwitch: number;
+    academy?: AcademyInitialization | undefined;
 }
 export interface CutoverProof {
     batchId: string;
@@ -33,6 +35,7 @@ export interface CutoverProof {
 export type CutoverAction = "prepare" | "freeze" | "switch_native" | "retire_sheet" | "prepare_rollback" | "finish_rollback";
 /** Pure gate only. The adapter must hold a database lock and commit epoch/writer changes atomically. */
 export function advanceCutover(s: CutoverState, action: CutoverAction, proof: CutoverProof, batchId: string): CutoverState {
+    requireThat(s.phase !== "academy_native" && s.academy === undefined, "ACADEMY_AUTHORITY_IS_NOT_LEGACY_CUTOVER");
     requireThat(Number.isSafeInteger(s.epoch) && s.epoch >= 0, "INVALID_EPOCH");
     requireThat(Boolean(batchId), "MISSING_BATCH");
     requireThat(proof.batchId === batchId && proof.expectedEpoch === s.epoch && Boolean(proof.sourceFileId && proof.sourceRevision), "PROOF_MISMATCH");
@@ -73,6 +76,8 @@ export function advanceCutover(s: CutoverState, action: CutoverAction, proof: Cu
     return { ...to("sheet_active"), nativeWritesSinceSwitch: 0, batchId: null, sourceFileId: null, sourceRevision: null };
 }
 export function writeDestination(phase: Phase): "sheet" | "native" | "durable_queue_only" {
+    // Fresh Academy authority deliberately does not activate generic legacy
+    // readers, contact matching, inbox projections, importers or send adapters.
     return phase === "sheet_active" || phase === "shadow_ready" ? "sheet" : phase === "native_active" || phase === "retired" ? "native" : "durable_queue_only";
 }
 export interface WorkbookDependency {

@@ -13,7 +13,7 @@ import {CommunitySection} from '../../../../features/community-reply/section.tsx
 import {readContentVoiceSource} from '../../../../features/content-voice/source.ts';
 import {loadFacebookPagePublicationState} from '../../../../features/marketing-overview/page-publication-provider.ts';
 export const dynamic="force-dynamic";
-export const metadata={title:"Life Skills — Marketing",robots:{index:false,follow:false}};
+export const metadata={title:"Fishing Academy — Marketing",robots:{index:false,follow:false}};
 /** No unverified connections or fabricated live data. Codex binds a separately owner-authorized read model here. */
 export default async function Page({params,searchParams}:{params:Promise<{locale:string}>;searchParams:Promise<Record<string,string|string[]|undefined>>}){
  const {locale}=await params;if(!isLocale(locale))notFound();
@@ -30,7 +30,7 @@ export default async function Page({params,searchParams}:{params:Promise<{locale
  const query:ContentCalendarQuery&CreativeQuery&{section?:string|undefined}=Object.fromEntries(["section","filter","month","layout","date","channel","state","from","to","publication","language","placement","approval","search","page","collection","concept","cycle"].map(key=>[key,typeof rawQuery[key]==="string"?rawQuery[key]:undefined]));
   query.section=section;
   const [snapshot,facebookPage]=await Promise.all([loadMarketingSnapshot(),section==="content_calendar"?loadFacebookPagePublicationState():Promise.resolve(undefined)]);
-  const digest=query.section==="overview"?await (async()=>{
+  const digest=query.section==="overview"&&snapshot.source!=="unconfigured"?await (async()=>{
    try{return await loadOwnerDigest(context.actor,context.runtime,snapshot,locale);}
    catch(error){if(error instanceof AppError&&error.code==="FORBIDDEN")notFound();throw error;}
   })():undefined;

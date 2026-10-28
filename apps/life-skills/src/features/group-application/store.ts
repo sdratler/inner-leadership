@@ -11,7 +11,7 @@ import {freshActor,lockWorkspace} from "../identity/data.ts";
 import type {IdentityClock,Actor} from "../identity/types.ts";
 import {systemClock} from "../identity/types.ts";
 import type {IdentityStore,SqlSession} from "../identity/store.ts";
-import {groupApplicationCommandSchema,groupApplicationReplaySchema,groupApplicationFieldsSchema,isFloridaGroupApplication,type GroupApplicationCommand,type GroupApplicationFields,type GroupApplicationRecord} from "./contract.ts";
+import {groupApplicationCommandSchema,groupApplicationReplaySchema,groupApplicationFieldsSchema,isFloridaGroupApplication,floridaProgramIdSchema,type FloridaProgramId,type GroupApplicationCommand,type GroupApplicationFields,type GroupApplicationRecord} from "./contract.ts";
 import {queueInquiryEmail} from "./inquiry-email.ts";
 import {isFreeFounderRegistration,type AcademyFounderStore} from './academy-founder-store.ts';
 
@@ -19,14 +19,28 @@ type Row={id:string;requestDigest:string;payloadCiphertext:string;receivedAt:Dat
 const aad=(workspace:string,id:string)=>`ls_service_interest/public_application/v1/${workspace}/${id}`;
 const select=`SELECT id,request_digest AS "requestDigest",payload_ciphertext AS "payloadCiphertext",received_at AS "receivedAt"
  FROM ls_service_interest.public_applications`;
-const reviewQuerySchema=z.object({search:z.string().trim().max(200).default(""),cursor:z.string().uuid().optional()}).strict();
+export const reviewCursorSchema=z.string().min(64).max(2048).regex(/^[A-Za-z0-9_-]+$/);
+const reviewQuerySchema=z.object({search:z.string().trim().max(200).default(""),cursor:reviewCursorSchema.optional()}).strict();
+const cursorPayloadSchema=z.object({id:z.string().uuid(),searchDigest:z.string().regex(/^[a-f0-9]{64}$/)}).strict();
 export type GroupApplicationReviewQuery=z.input<typeof reviewQuerySchema>;
 export type GroupApplicationReviewPage={items:GroupApplicationRecord[];nextCursor:string|null};
 
 /** Private inquiry only; optional administrative outbox is atomic and never sends here. */
 export class PublicGroupApplicationStore{
  constructor(private readonly db:IdentityStore,private readonly workspaceId:WorkspaceId,private readonly ring:Keyring,
-  private readonly digestKey:string,private readonly clock:IdentityClock=systemClock,private readonly emailQueueEnabled=false,private readonly founder?:AcademyFounderStore){}
+  private readonly digestKey:string,private readonly clock:IdentityClock=systemClock,private readonly emailQueueEnabled=false,private readonly founder?:AcademyFounderStore,
+  private readonly reviewProgram:FloridaProgramId="sunday_fishing_academy"){floridaProgramIdSchema.parse(reviewProgram);}
+ private inOwnerScope(item:GroupApplicationRecord){return isFloridaGroupApplication(item.fields)&&item.fields.programId===this.reviewProgram;}
+ private cursorAad(actor:Actor){return `ls_service_interest/review_cursor/v1/${this.workspaceId}/${actor.id}/${this.reviewProgram}`;}
+ private searchDigest(search:string){return privateDigest({domain:"public-group-review-search/v1",search},this.digestKey);}
+ private readCursor(actor:Actor,cursor:string,search:string):string{
+  try{
+   const encoded=Buffer.from(cursor,"base64url");if(encoded.toString("base64url")!==cursor)throw new Error();
+   const value=cursorPayloadSchema.parse(JSON.parse(unseal(encoded.toString("utf8"),this.cursorAad(actor),this.ring)));
+   if(value.searchDigest!==this.searchDigest(search))throw new Error();return value.id;
+  }catch{throw new AppError("INVALID_REQUEST");}
+ }
+ private nextCursor(actor:Actor,id:string,search:string){return Buffer.from(seal(JSON.stringify({id,searchDigest:this.searchDigest(search)}),this.cursorAad(actor),this.ring)).toString("base64url");}
  private requestDigest(fields:GroupApplicationFields){return privateDigest({domain:"public-group-application/v1",workspace:this.workspaceId,fields},this.digestKey);}
  private contactDigest(fields:GroupApplicationFields){return isFloridaGroupApplication(fields)?
   privateDigest({domain:"public-group-application-contact/v1",workspace:this.workspaceId,contact:fields.contact},this.digestKey):
@@ -41,6 +55,7 @@ export class PublicGroupApplicationStore{
  private async read(tx:SqlSession,id:string){const rows=await tx.query<Row>(select+" WHERE workspace_id=$1 AND id=$2",[this.workspaceId,id]);if(rows.length!==1)throw new AppError("UNAVAILABLE");return this.decode(rows[0]!);}
  async replaySaved(input:{operationId:string;fields:GroupApplicationFields},attribution:CampaignAttribution|null=null){
   const parsed=groupApplicationReplaySchema.safeParse(input);if(!parsed.success)throw new AppError("INVALID_REQUEST");
+  if(!isFloridaGroupApplication(parsed.data.fields))throw new AppError("NOT_FOUND");
   const command=parsed.data,digest=this.requestDigest(command.fields);
   return this.db.transaction(async tx=>{
    await tx.query("SET TRANSACTION READ ONLY");
@@ -55,6 +70,7 @@ export class PublicGroupApplicationStore{
   if(attribution!==null)campaignAttributionSchema.parse(attribution);
   const parsed=groupApplicationCommandSchema.safeParse(input);
   if(!parsed.success){const prior=await this.replaySaved(input,attribution);if(prior)return prior;throw new AppError("INVALID_REQUEST");}
+  if(!isFloridaGroupApplication(parsed.data.fields))throw new AppError("NOT_FOUND");
   const command=parsed.data,requestDigest=this.requestDigest(command.fields),contactDigest=this.contactDigest(command.fields);
   const free=isFreeFounderRegistration(command.fields);if(free&&(!this.founder||!continuation))throw new AppError('UNAVAILABLE');
   return this.db.transaction(async tx=>{
@@ -94,9 +110,15 @@ export class PublicGroupApplicationStore{
   });
  }
  async list(actor:Actor):Promise<GroupApplicationRecord[]>{
-  if(actor.workspaceId!==this.workspaceId)throw new AppError("FORBIDDEN");
-  return this.db.transaction(async tx=>{await tx.query("SET TRANSACTION READ ONLY");requirePractitioner(await freshActor(tx,actor,this.clock.now()));
-   const rows=await tx.query<Row>(select+" WHERE workspace_id=$1 ORDER BY received_at DESC,id DESC LIMIT 50",[actor.workspaceId]);return rows.map(row=>this.decode(row));});
+  // The older group-interest consumer has no continuation control. Traverse a
+  // bounded 1,000-row window instead of calling a mixed-row LIMIT an empty CRM.
+  const items:GroupApplicationRecord[]=[];let cursor:string|undefined;
+  for(let pageIndex=0;pageIndex<5;pageIndex++){
+   const page=await this.listPage(actor,{cursor});items.push(...page.items);
+   if(items.length>=50||page.nextCursor===null)return items.slice(0,50);
+   cursor=page.nextCursor;
+  }
+  throw new AppError("UNAVAILABLE");
  }
  /** Search encrypted inquiry fields only after fresh practitioner/workspace
   * authorization. Bound each scan, retaining a cursor even for an empty match
@@ -104,9 +126,10 @@ export class PublicGroupApplicationStore{
  async listPage(actor:Actor,input:GroupApplicationReviewQuery={}):Promise<GroupApplicationReviewPage>{
   if(actor.workspaceId!==this.workspaceId)throw new AppError("FORBIDDEN");
   const parsed=reviewQuerySchema.safeParse(input);if(!parsed.success)throw new AppError("INVALID_REQUEST");
-  const {cursor,search}=parsed.data,needle=search.normalize("NFKC").toLocaleLowerCase();
+  const {search}=parsed.data,needle=search.normalize("NFKC").toLocaleLowerCase();
   return this.db.transaction(async tx=>{
    await tx.query("SET TRANSACTION READ ONLY");requirePractitioner(await freshActor(tx,actor,this.clock.now()));
+   const cursor=parsed.data.cursor?this.readCursor(actor,parsed.data.cursor,needle):undefined;
    if(cursor){const anchor=await tx.query("SELECT id FROM ls_service_interest.public_applications WHERE workspace_id=$1 AND id=$2",[this.workspaceId,cursor]);if(anchor.length!==1)throw new AppError("INVALID_REQUEST");}
    // Anchor on the stored timestamp, avoiding timestamp precision loss across
    // pages. The UUID and its subquery remain inside the authorized workspace.
@@ -114,9 +137,12 @@ export class PublicGroupApplicationStore{
    const items:GroupApplicationRecord[]=[];let scanned=0;
    while(scanned<Math.min(rows.length,200)&&items.length<50){
     const item=this.decode(rows[scanned++]!);
-    if(!needle||JSON.stringify({id:item.id,fields:item.fields}).normalize("NFKC").toLocaleLowerCase().includes(needle))items.push(item);
+    // Scope is trusted server composition, never a browser program filter.
+    if(this.inOwnerScope(item)&&(!needle||JSON.stringify({id:item.id,fields:item.fields}).normalize("NFKC").toLocaleLowerCase().includes(needle)))items.push(item);
    }
-   return {items,nextCursor:scanned<rows.length?rows[scanned-1]!.id:null};
+   // A scan may end on a retired row. Do not expose that row's identifier as
+   // pagination metadata; bind the opaque cursor to this owner/program/search.
+   return {items,nextCursor:scanned<rows.length?this.nextCursor(actor,rows[scanned-1]!.id,needle):null};
   });
  }
  async readForOwnerInTransaction(tx:SqlSession,actor:Actor,id:string):Promise<GroupApplicationRecord>{
@@ -124,6 +150,7 @@ export class PublicGroupApplicationStore{
   if(!z.string().uuid().safeParse(id).success)throw new AppError("INVALID_REQUEST");
   requirePractitioner(await freshActor(tx,actor,this.clock.now()));
   const rows=await tx.query<Row>(select+" WHERE workspace_id=$1 AND id=$2",[this.workspaceId,id]);
-  if(rows.length===0)throw new AppError("NOT_FOUND");if(rows.length!==1)throw new AppError("UNAVAILABLE");return this.decode(rows[0]!);
+  if(rows.length===0)throw new AppError("NOT_FOUND");if(rows.length!==1)throw new AppError("UNAVAILABLE");const item=this.decode(rows[0]!);
+  if(!this.inOwnerScope(item))throw new AppError("NOT_FOUND");return item;
  }
 }

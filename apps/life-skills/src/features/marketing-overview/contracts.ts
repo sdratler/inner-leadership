@@ -117,7 +117,7 @@ export function normalizeMarketingSection(value:unknown){
     return (["overview", "content_calendar", "creatives", "needs_approval", "community", "ads"] as const).find(section=>section===value)??"overview";
 }
 export interface MarketingSnapshot {
-    source: "synthetic" | "provider_readback" | "registry_only";
+    source: "synthetic" | "provider_readback" | "registry_only" | "unconfigured";
     fetchedAt: string | null;
     creatives: readonly CreativeVersion[];
     library?: readonly CreativeVersion[];
@@ -130,7 +130,7 @@ export interface MarketingSnapshot {
     adReporting?: AdReporting;
     workbookUrl?: string | null;
     connectionErrors?: readonly string[];
-    inventoryReadback?: {status:"available"|"error";lastSuccessfulReadAt:string|null;lastAttemptAt:string;errorCode:"creative_inventory_unavailable"|null};
+    inventoryReadback?: {status:"available"|"error"|"unconfigured";lastSuccessfulReadAt:string|null;lastAttemptAt:string;errorCode:"creative_inventory_unavailable"|null};
     scout: {
         readyDrafts: number | null;
         sourceUrl: string | null;

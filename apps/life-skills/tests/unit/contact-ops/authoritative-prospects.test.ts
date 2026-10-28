@@ -8,8 +8,8 @@ const actor={role:"practitioner"} as Actor;
 function deps(phase:Phase){const state:CutoverState={phase,epoch:3,batchId:"synthetic",sourceFileId:"synthetic",sourceRevision:"synthetic",nativeWritesSinceSwitch:0};
  return {authority:{read:vi.fn().mockResolvedValue(state)},native:{prospects:vi.fn().mockResolvedValue([])},sheet:{list:vi.fn().mockResolvedValue([])}};}
 describe("one authoritative operational prospect read",()=>{
- it.each(["sheet_active","shadow_ready"] as const)("preserves the genuine Sheet reader in %s",async phase=>{
-  const d=deps(phase);expect(await authoritativeProspects(actor,d)).toEqual([]);expect(d.sheet.list).toHaveBeenCalledOnce();expect(d.native.prospects).not.toHaveBeenCalled();
+ it.each(["sheet_active","shadow_ready"] as const)("retired Sheet authority stays unavailable in %s",async phase=>{
+  const d=deps(phase);await expect(authoritativeProspects(actor,d)).rejects.toMatchObject({code:"UNAVAILABLE"});expect(d.sheet.list).not.toHaveBeenCalled();expect(d.native.prospects).not.toHaveBeenCalled();
  });
  it.each(["native_active","retired"] as const)("uses only the epoch-fenced native read in %s",async phase=>{
   const d=deps(phase);expect(await authoritativeProspects(actor,d)).toEqual([]);expect(d.native.prospects).toHaveBeenCalledWith(actor,3);expect(d.sheet.list).not.toHaveBeenCalled();

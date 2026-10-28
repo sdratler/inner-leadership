@@ -17,7 +17,7 @@ export function destinationForRole(locale: Locale, role: Role): string | null {
 
 const copy = {
   en: {
-    title: "Sign in to Life Skills",
+    title: "Sign in to Fishing Academy",
     help: "Use the private account that was created or invited for you.",
     email: "Email",
     password: "Password",
@@ -43,7 +43,7 @@ const copy = {
     working: "Working…",
   },
   he: {
-    title: "כניסה לכישורי חיים",
+    title: "כניסה לאקדמיה לדיג",
     help: "יש להשתמש בחשבון הפרטי שנוצר או הוזמן עבורכם.",
     email: "דוא״ל",
     password: "סיסמה",
@@ -146,8 +146,8 @@ export function LoginClient({ locale }: { locale: Locale }) {
       <header className={styles.brand}>
         {/* Exact approved local brand asset, shared with the authenticated workspace. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/intake-brand/life-skills-logo.png" width={124} height={65} alt={locale === "he" ? "כישורי חיים" : "Life Skills"} />
-        <div><strong>{locale === "he" ? "כישורי חיים" : "Life Skills"}</strong><small>{locale === "he" ? "המרחב הפרטי" : "Private app"}</small></div>
+        <img src="/groups/brand/jlfa-logo-locked-v1.png" width={1254} height={1254} alt={locale === "he" ? "האקדמיה לדיג ולמנהיגות יהודית" : "Jewish Leadership Fishing Academy"} />
+        <div><strong>{locale === "he" ? "האקדמיה לדיג" : "Fishing Academy"}</strong><small>{locale === "he" ? "המרחב הפרטי" : "Private app"}</small></div>
       </header>
       {mode === "invite" || mode === "reset" ? <form action={(form) => void complete(form)}>
         <h1 id="login-title">{mode === "invite" ? t.activation : t.reset}</h1>

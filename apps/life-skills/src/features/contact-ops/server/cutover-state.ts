@@ -4,12 +4,15 @@ import {AppError} from "../../../lib/errors.ts";
 import type {SqlSession} from "../../identity/store.ts";
 import {unseal,type Keyring} from "../../identity/crypto.ts";
 import type {CutoverState} from "../core/cutover.ts";
+import {academyInitializationSchema} from "../core/academy-crm.ts";
 
 export const cutoverEpochSchema=z.number().int().min(0).max(Number.MAX_SAFE_INTEGER-1);
 const source=z.string().min(1).max(200);
-export const cutoverStateSchema=z.object({phase:z.enum(["sheet_active","shadow_ready","frozen","native_active","retired","rollback_prepared"]),
+export const cutoverStateSchema=z.object({phase:z.enum(["sheet_active","shadow_ready","frozen","native_active","retired","rollback_prepared","academy_native"]),
  epoch:cutoverEpochSchema,batchId:source.nullable(),sourceFileId:source.nullable(),sourceRevision:source.nullable(),
- nativeWritesSinceSwitch:cutoverEpochSchema}).strict();
+ nativeWritesSinceSwitch:cutoverEpochSchema,academy:academyInitializationSchema.optional()}).strict()
+ .refine(state=>state.phase==="academy_native"?Boolean(state.academy)&&state.batchId===state.academy?.operationId&&
+  state.sourceFileId===null&&state.sourceRevision===null:state.academy===undefined);
 export const cutoverStateAad=(workspace:string,epoch:number)=>`ls_contact_ops/cutover/v1/${workspace}/${epoch}`;
 /** Internal transaction composition only. This is NOT an authorization boundary:
  * ordinary APIs still require their fresh practitioner actor; provider ingestion
@@ -24,7 +27,8 @@ export async function readCutoverState(tx:SqlSession,workspace:string,keyring:Ke
  try{state=cutoverStateSchema.parse(JSON.parse(unseal(row.ciphertext,cutoverStateAad(workspace,epoch),keyring)));}
  catch{throw new AppError("UNAVAILABLE");}
  if(state.epoch!==epoch||state.phase!==row.phase||
-  (state.phase==="sheet_active"?(state.batchId!==null||state.sourceFileId!==null||state.sourceRevision!==null||state.nativeWritesSinceSwitch!==0):
+  (state.phase==="academy_native"?(!state.academy||state.sourceFileId!==null||state.sourceRevision!==null):
+   state.phase==="sheet_active"?(state.batchId!==null||state.sourceFileId!==null||state.sourceRevision!==null||state.nativeWritesSinceSwitch!==0):
    !state.batchId||!state.sourceFileId||!state.sourceRevision))throw new AppError("UNAVAILABLE");
  return state;
 }

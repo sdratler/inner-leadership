@@ -13,6 +13,7 @@ import {nativeManualInquirySchema,type NativeManualInquiry} from "../core/people
 import {canonical} from "../core/validation.ts";
 import {administrativeArchiveSchema,type AdministrativeArchive} from "../core/contact-lifecycle.ts";
 import {nativeWhatsappInquirySchema,inboundActivitySchema,type NativeWhatsappInquiry,type InboundActivity} from "../core/inbound-projection.ts";
+import {academyContactOriginSchema,type AcademyContactOrigin} from "../core/academy-crm.ts";
 export interface CrmProfile {
     personId: string;
     stage: string;
@@ -22,6 +23,7 @@ export interface CrmProfile {
     legacyIds: readonly string[];
     /** Server-created native inquiry; it does not claim a legacy Sheet origin. */
     nativeInquiry?: NativeManualInquiry;
+    academyOrigin?: AcademyContactOrigin;
     /** Provider-origin administrative inquiry; never a manual/Sheet/account claim. */
     whatsappInquiry?: NativeWhatsappInquiry;
     /** Committed incoming activity only, separate from authored notes. */
@@ -38,7 +40,7 @@ export function crmProfileAad(w: string, p: string) { return `ls_contact_ops/pro
 const legacyId=z.string().regex(/^LS-(?:LEAD|WAPI)-[A-Za-z0-9_-]+$/);
 export const crmProfileSchema=z.object({personId:z.string().uuid(),stage:z.string().min(1).max(120),
     nextAction:z.string().max(500).nullable(),followUpDate:z.string().refine(dateOnly).nullable(),
-    notes:z.string().max(5000),nativeInquiry:nativeManualInquirySchema.optional(),
+    notes:z.string().max(5000),nativeInquiry:nativeManualInquirySchema.optional(),academyOrigin:academyContactOriginSchema.optional(),
     whatsappInquiry:nativeWhatsappInquirySchema.optional(),inboundActivity:inboundActivitySchema.optional(),legacyIds:z.array(legacyId).max(100)
         .refine(ids=>new Set(ids).size===ids.length),
     leadUpdates:z.record(legacyId,z.object({outcome:z.string().max(500).optional(),owner:z.string().max(120).optional()}).strict()).optional(),
@@ -52,7 +54,8 @@ export const crmProfileSchema=z.object({personId:z.string().uuid(),stage:z.strin
         (!p.whatsappInquiry||(p.whatsappInquiry.leadId==="LS-WAPI-native-"+p.personId&&!p.legacyIds.includes(p.whatsappInquiry.leadId)))&&
         // An owner-matched business thread may update an existing canonical
         // lead without manufacturing a second WhatsApp inquiry/lead identity.
-        (!p.inboundActivity||Boolean(p.whatsappInquiry||p.nativeInquiry||p.legacyIds.length)));
+        (!p.inboundActivity||Boolean(p.whatsappInquiry||p.nativeInquiry||p.legacyIds.length))&&
+        (!p.academyOrigin||(p.legacyIds.length===0&&!p.nativeInquiry&&!p.whatsappInquiry&&!p.inboundActivity&&!p.outreach&&!p.leadUpdates)));
 function validateProfile(profile:unknown):asserts profile is CrmProfile {
     requireThat(crmProfileSchema.safeParse(profile).success,"BAD_PROFILE");
     const p=profile as CrmProfile;
@@ -139,6 +142,7 @@ export class NativeCrmStore {
             requireThat(current.length===1,"STALE_PROFILE_VERSION");
             const saved=crmProfileSchema.parse(JSON.parse(unseal(current[0]!.payload_ciphertext,crmProfileAad(a.workspaceId,profile.personId),this.keyring)));
             requireThat(canonical(saved.nativeInquiry??null)===canonical(profile.nativeInquiry??null),"INQUIRY_ORIGIN_IMMUTABLE");
+            requireThat(canonical(saved.academyOrigin??null)===canonical(profile.academyOrigin??null),"INQUIRY_ORIGIN_IMMUTABLE");
             requireThat(canonical(saved.whatsappInquiry??null)===canonical(profile.whatsappInquiry??null),"INQUIRY_ORIGIN_IMMUTABLE");
             requireThat(canonical(saved.inboundActivity??null)===canonical(profile.inboundActivity??null),"INBOUND_ACTIVITY_IMMUTABLE");
             requireThat(canonical(saved.outreach??null)===canonical(profile.outreach??null),"OUTREACH_REQUIRES_DELIVERY_RECEIPT");

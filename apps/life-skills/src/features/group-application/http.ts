@@ -3,8 +3,8 @@ import {randomUUID} from "node:crypto";
 import {AppError} from "../../lib/errors.ts";
 import {failureResponse,readJson,successResponse} from "../../lib/http/json.ts";
 import {enforceRateLimit,opaqueRateLimitKey,type RateLimitStore} from "../../lib/security/rate-limit.ts";
-import {floridaGroupApplicationNotice,floridaSchoolInquiryNotice,floridaGroupApplicationSubmissionSchema,floridaGroupApplicationReadSubmissionSchema,groupApplicationNotice,groupApplicationSubmissionSchema} from "./contract.ts";
-import {issueFloridaGroupApplicationChallenge,issueGroupApplicationChallenge,verifyGroupApplicationChallenge} from "./challenge.ts";
+import {floridaGroupApplicationNotice,floridaSchoolInquiryNotice,floridaGroupApplicationSubmissionSchema,floridaGroupApplicationReadSubmissionSchema} from "./contract.ts";
+import {issueFloridaGroupApplicationChallenge,verifyGroupApplicationChallenge} from "./challenge.ts";
 import {groupApplicationProgramFromRequest,verifyGroupApplicationRequest} from "./public-origin.ts";
 import type {PublicGroupApplicationStore} from "./store.ts";
 import {academyRegistrationNotice} from './academy-registration-notice.ts';
@@ -23,15 +23,18 @@ export async function publicGroupApplicationHttp(request:Request,load:()=>Promis
   const dependencies=await load();if(!dependencies.enabled)throw new AppError("NOT_FOUND");
   if(!["GET","POST"].includes(request.method))throw new AppError("INVALID_REQUEST");
   verifyGroupApplicationRequest(request,dependencies.environment,request.method==="POST");const programId=groupApplicationProgramFromRequest(request);
+  // The no-program route was the retired Israel intake. Do not issue a new
+  // challenge, replay a receipt or recreate a legacy row through that route.
+  if(!programId)throw new AppError("NOT_FOUND");
   const cookie=(request.headers.get('cookie')??'').split(';').map(s=>s.trim()).filter(s=>s.startsWith('ls_academy_registration='));
   if(cookie.length>1)throw new AppError('INVALID_REQUEST');
   const existing=cookie[0]?.slice('ls_academy_registration='.length);if(existing&&!TOKEN_PATTERN.test(existing))throw new AppError('INVALID_REQUEST');
   const continuation=existing??opaqueToken();if(!existing&&request.method==='GET'&&programId==='sunday_fishing_academy')newContinuation=continuation;
-  if(request.method==="GET")response=successResponse({notice:programId?floridaGroupApplicationNotice:groupApplicationNotice,...(programId==="sunday_fishing_academy"?{schoolNotice:floridaSchoolInquiryNotice,registrationNotice:academyRegistrationNotice}:{}),
-   challenge:programId?issueFloridaGroupApplicationChallenge(dependencies.challengeKey,programId,dependencies.now()):issueGroupApplicationChallenge(dependencies.challengeKey,dependencies.now())},requestId);
+  if(request.method==="GET")response=successResponse({notice:floridaGroupApplicationNotice,...(programId==="sunday_fishing_academy"?{schoolNotice:floridaSchoolInquiryNotice,registrationNotice:academyRegistrationNotice}:{}),
+   challenge:issueFloridaGroupApplicationChallenge(dependencies.challengeKey,programId,dependencies.now())},requestId);
   else{
    let result:Awaited<ReturnType<PublicGroupApplicationStore["submit"]>>;
-   if(programId){
+   {
     const body=await readJson(request,floridaGroupApplicationReadSubmissionSchema),challenge=verifyGroupApplicationChallenge(body.challenge,dependencies.challengeKey,dependencies.now());
     if(challenge.v!==2||body.fields.programId!==challenge.programId||body.fields.programId!==programId)throw new AppError("FORBIDDEN");
     await enforceRateLimit(dependencies.limits,opaqueRateLimitKey("public-group-application:global",dependencies.challengeKey),30,60_000);
@@ -39,11 +42,6 @@ export async function publicGroupApplicationHttp(request:Request,load:()=>Promis
     if(current.success){const command={operationId:current.data.operationId,fields:current.data.fields};result=isFreeFounderRegistration(command.fields)?await dependencies.store.submit(command,existing,current.data.attribution??null):await dependencies.store.submit(command);}
     else{const prior=await dependencies.store.replaySaved?.({operationId:body.operationId,fields:body.fields},body.attribution??null);
      if(!prior)throw new AppError("INVALID_REQUEST");result=prior;}
-   }else{
-    const body=await readJson(request,groupApplicationSubmissionSchema),challenge=verifyGroupApplicationChallenge(body.challenge,dependencies.challengeKey,dependencies.now());
-    if(challenge.v!==1)throw new AppError("FORBIDDEN");
-    await enforceRateLimit(dependencies.limits,opaqueRateLimitKey("public-group-application:global",dependencies.challengeKey),30,60_000);
-    result=await dependencies.store.submit({operationId:body.operationId,fields:body.fields});
    }
    // submit/replay has completed its durable transaction. A mail error cannot undo or hide the saved inquiry.
    let acknowledgment:Awaited<ReturnType<NonNullable<PublicGroupApplicationHttpDependencies["afterCommit"]>>>;

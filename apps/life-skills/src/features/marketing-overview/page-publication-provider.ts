@@ -1,5 +1,4 @@
 import "server-only";
-import { crmBridge } from "../prospects/bridge.ts";
 import type {
   FacebookPagePublicationReadModel,
   FacebookPagePublicationRecord,
@@ -101,12 +100,10 @@ export function parseFacebookPagePublicationState(value: unknown): FacebookPageP
   };
 }
 
+/** Page publishing must be explicitly bound to the Academy. Old Page records
+ * and credentials do not establish that binding. No provider read or write. */
 export async function loadFacebookPagePublicationState(): Promise<FacebookPagePublicationReadModel> {
-  try {
-    const result = await crmBridge<{success: true; publication: unknown}>("/api/bna/life-skills-app/marketing/facebook-page-publication");
-    if (!object(result) || !Object.hasOwn(result, "publication")) throw new Error("facebook_page_readback_invalid");
-    return parseFacebookPagePublicationState(result.publication);
-  } catch {
-    return unavailableFacebookPagePublicationState();
-  }
+ return {state:"UNCONFIGURED_DESTINATION",lifecycleState:"BLOCKED",reason:null,
+  destinationConfigured:false,providerEvidenceAvailable:false,
+  externalWriteEnabled:false,externalWritePerformed:false,noBlindRetry:false,recentRecords:[]};
 }
