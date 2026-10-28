@@ -6,6 +6,7 @@ import {AcademyFounderCounter} from './academy-founder-counter.tsx';
 import {founderPrice} from './academy-founder-contract.ts';
 import {academyExactCopy} from './academy-exact-copy.ts';
 import styles from './academy-pricing.module.css';
+import {academyCoastalCopy} from './academy-coastal-copy.ts';
 /** Exact editorial template; amounts always come from the commercial function. */
 function PriceLine({template,value}:{template:string;value:number}){
  const [before,after]=template.split('{price}');
@@ -14,13 +15,13 @@ function PriceLine({template,value}:{template:string;value:number}){
 export function AcademyRegistrationOffer({locale,childrenCount=1}:{locale:Locale;childrenCount?:number}){
  const pre=useAcademyCampaign()?.phase==='PRE_REGISTRATION',copy=academyExactCopy[locale].form;
  const offer=pre?copy.offerA:copy.offerB;
- return <aside className={styles.formOffer} data-registration-price>
+ return <details className={styles.formOffer} data-registration-price><summary>{academyCoastalCopy[locale].offerDetails}</summary><div>
   <p><PriceLine template={offer.primary} value={founderPrice('prepay',pre,false)}/></p>
   <p><PriceLine template={offer.sibling} value={founderPrice('prepay',pre,true)}/></p>
   <p><PriceLine template={offer.monthly} value={founderPrice('monthly_block',false,false)}/></p>
   {pre&&childrenCount===2&&<p data-registration-family-price><PriceLine template={copy.offerA.twoChildren} value={founderPrice('prepay',true,false)+founderPrice('prepay',true,true)}/></p>}
   <p className={styles.qualifier}>{offer.qualifier}</p>
- </aside>;
+ </div></details>;
 }
 export function AcademyPricing({locale,applicationHref}:{locale:Locale;applicationHref?:string}){
  if(locale!=='en'&&locale!=='he')throw new Error('ACADEMY_PRICING_UNAVAILABLE');

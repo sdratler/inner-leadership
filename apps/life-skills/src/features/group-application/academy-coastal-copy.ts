@@ -1,0 +1,47 @@
+/** Owner's 28 October coastal refinement. Exact05 and its legal/state/curriculum
+ * projections remain immutable; this is the current marketing presentation. */
+export const academyCoastalCopy = {
+ version:'JLFA-COASTAL-REFINEMENT-20261028',
+ en:{
+  aboutHeading:'Fishing skills. Torah values. Room to grow.',
+  aboutLead:'A Torah-infused fishing program for boys ages 8 and up. Your son learns to prepare his own gear, solve practical problems and work thoughtfully with other boys—one stage at a time.',
+  aboutSupporting:'School and homeschool families are welcome. No fishing experience is needed.',
+  essentials:'Boys 8+ · No experience needed · 12 sessions per stage',
+  gainsHeading:'What he practices on the water—and beyond.',
+  gains:[
+   {title:'Fishing skills',body:'Set up a rod, tie a dependable knot and cast with control. Learn to notice what the water—and your equipment—are telling you.'},
+   {title:'Independent thinking',body:'When a line tangles, investigate what happened. Test a solution and explain the next step before handing the problem to an adult.'},
+   {title:'Self-governance',body:'Notice frustration, pause and choose what to do next. Practice staying useful when fishing does not go to plan.'},
+   {title:'Communication',body:'Ask clearly for help, listen to another boy’s idea and work through disagreement without losing the shared task.'},
+   {title:'Responsibility',body:'Prepare your gear, care for shared spaces and follow through on what you agreed to do.'},
+   {title:'Leadership',body:'Help another boy learn without taking over. Explain, encourage and give him room to try.'},
+  ],
+  stagesHeading:'From first cast to helping others lead.',
+  journeyHeading:'From your family’s interest to a suitable group',
+  journey:[{title:'Pre-register',body:'Tell us about your family, preferred days and travel distance.'},{title:'Confirm your interest',body:'When the system requests it, confirm that you would like us to keep planning with your family.'},{title:'Find the right group',body:'We contact you to discuss a suitable group and start date.'},{title:'Prepare to take part',body:'Review the applicable participation and payment information before taking a paid place.'}],
+  closingHeading:'Tell us about your family',closingBody:'Let’s find out which days and group could work for your son. No payment at pre-registration.',
+  formIntro:'Tell us about your son and the schedule that works for your family. We’ll use your details to consider a suitable group. No payment is taken here.',
+  offerDetails:'View rates and purchasing options',blockLabel:'Four-session block',
+ },
+ he:{
+  aboutHeading:'מיומנויות דיג. ערכי תורה. מקום לצמוח.',
+  aboutLead:'תוכנית דיג ברוח התורה לבנים מגיל 8 ומעלה. בנכם לומד להכין את הציוד שלו, לפתור בעיות מעשיות ולעבוד מתוך התחשבות בבנים אחרים—שלב אחר שלב.',
+  aboutSupporting:'למשפחות של תלמידי בתי ספר ושל חינוך ביתי. אין צורך בניסיון קודם בדיג.',
+  essentials:'לבנים מגיל 8 · ללא צורך בניסיון · 12 מפגשים בכל שלב',
+  gainsHeading:'מה מתרגלים ליד המים—וגם מעבר להם.',
+  gains:[
+   {title:'מיומנויות דיג',body:'מרכיבים חכה, קושרים קשר אמין ומטילים בשליטה. לומדים לשים לב למה שהמים והציוד מספרים לכם.'},
+   {title:'חשיבה עצמאית',body:'כשהחוט מסתבך, בודקים מה קרה. מנסים פתרון ומסבירים את הצעד הבא לפני שמעבירים את הבעיה למבוגר.'},
+   {title:'הנהגה עצמית',body:'מזהים תסכול, עוצרים ובוחרים מה לעשות עכשיו. מתרגלים להמשיך לתרום גם כשהדיג אינו מתקדם כמתוכנן.'},
+   {title:'תקשורת',body:'מבקשים עזרה בבירור, מקשיבים לרעיון של ילד אחר ופותרים מחלוקת בלי לאבד את המשימה המשותפת.'},
+   {title:'אחריות',body:'מכינים את הציוד, שומרים על המרחב המשותף ועומדים במה שהתחייבתם לעשות.'},
+   {title:'מנהיגות',body:'עוזרים לילד אחר ללמוד בלי להשתלט. מסבירים, מעודדים ומשאירים לו מקום לנסות.'},
+  ],
+  stagesHeading:'מההטלה הראשונה ועד לעזרה לאחרים להוביל.',
+  journeyHeading:'מההתעניינות שלכם לקבוצה מתאימה',
+  journey:[{title:'הרשמה מוקדמת',body:'ספרו לנו על המשפחה, הימים המועדפים ומרחק הנסיעה המתאים לכם.'},{title:'אישור ההתעניינות',body:'כשהמערכת מבקשת זאת, אשרו שתרצו שנמשיך לתכנן יחד עם משפחתכם.'},{title:'מציאת הקבוצה המתאימה',body:'ניצור קשר כדי לדון בקבוצה ובתאריך התחלה מתאימים.'},{title:'הכנה להשתתפות',body:'עיינו במידע הרלוונטי על השתתפות ותשלום לפני אישור מקום בתשלום.'}],
+  closingHeading:'ספרו לנו על המשפחה שלכם',closingBody:'נבדוק אילו ימים וקבוצה עשויים להתאים לבנכם. אין תשלום בהרשמה המוקדמת.',
+  formIntro:'ספרו לנו על בנכם ועל הזמנים המתאימים למשפחה. נשתמש בפרטים כדי לבחון קבוצה מתאימה. לא נגבה תשלום כאן.',
+  offerDetails:'לתעריפים ולאפשרויות הרכישה',blockLabel:'מקבץ של ארבעה מפגשים',
+ },
+} as const;
