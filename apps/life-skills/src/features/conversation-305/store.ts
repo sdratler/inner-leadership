@@ -21,7 +21,7 @@ const metadataAad=(workspace:string,id:string)=>`ls_service_interest/owner-305-c
 const revisionAad=(workspace:string,operation:string)=>`ls_service_interest/owner-305-revision/v1/${workspace}/${operation}`;
 export class Owner305ConversationStore{
  constructor(private readonly db:IdentityStore,private readonly workspaceId:WorkspaceId,private readonly ring:Keyring,
-  private readonly digestKey:string,private readonly clock:IdentityClock=systemClock){}
+  private readonly digestKey:string,private readonly ownerAccountId:string,private readonly clock:IdentityClock=systemClock){}
  private digest(actor:Actor,command:ConversationCommand){return privateDigest({domain:"owner-305-conversation-operation/v1",workspace:this.workspaceId,actor:actor.id,command},this.digestKey);}
  private metadata(row:ConversationRow){try{const metadata=metadataSchema.parse(JSON.parse(unseal(row.metadataCiphertext,metadataAad(this.workspaceId,row.id),this.ring)));
   return {id:row.id,ownerAccountId:row.ownerAccountId,createdAt:row.createdAt.toISOString(),...metadata};
@@ -30,7 +30,8 @@ export class Owner305ConversationStore{
   return {operationId:row.operationId,conversationId:row.conversationId,ownerAccountId:row.ownerAccountId,
    version:row.version,recordedAt:row.recordedAt.toISOString(),...followup};
  }catch{throw new AppError("UNAVAILABLE");}}
- private async owner(tx:SqlSession,actor:Actor){if(actor.workspaceId!==this.workspaceId)throw new AppError("NOT_FOUND");
+ private async owner(tx:SqlSession,actor:Actor){if(actor.workspaceId!==this.workspaceId||
+  !z.string().uuid().safeParse(this.ownerAccountId).success||actor.id!==this.ownerAccountId)throw new AppError("NOT_FOUND");
   const fresh=await freshActor(tx,actor,this.clock.now());if(fresh.role!=="practitioner"||fresh.state!=="active")throw new AppError("NOT_FOUND");}
  private async record(tx:SqlSession,actor:Actor,id:string){
   const rows=await tx.query<ConversationRow>(`SELECT id,owner_account_id AS "ownerAccountId",metadata_ciphertext AS "metadataCiphertext",created_at AS "createdAt"

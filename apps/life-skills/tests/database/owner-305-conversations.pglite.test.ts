@@ -14,7 +14,7 @@ const db=new PGlite(),ring={activeKeyId:"synthetic",keys:{synthetic:Buffer.alloc
 const adapter:IdentityStore={transaction:fn=>db.transaction(tx=>fn({query:async<T extends object>(sql:string,values:readonly unknown[]=[])=>
  (await tx.query<T>(sql,[...values])).rows} as SqlSession))};
 const now=new Date("2026-10-29T12:00:00Z"),workspace=asId(randomUUID(),"workspace"),owner=randomUUID();
-const store=new Owner305ConversationStore(adapter,workspace,ring,"synthetic-305-private-digest-key",{now:()=>now});
+const store=new Owner305ConversationStore(adapter,workspace,ring,"synthetic-305-private-digest-key",owner,{now:()=>now});
 const account=async(id:string,role:"practitioner"|"parent")=>{const digest=id.replaceAll("-","").padEnd(64,"0");
  await db.query("INSERT INTO ls_identity.people(id,workspace_id,kind,profile_ciphertext,created_at) VALUES($1,$2,'adult','synthetic',$3)",[id,workspace,now]);
  await db.query("INSERT INTO ls_identity.accounts(id,workspace_id,role,state,locale,email_blind,email_ciphertext,email_verified_at,password_hash,created_at,updated_at) VALUES($1,$2,$3,'active','en',$4,'synthetic',$5,'synthetic',$5,$5)",[id,workspace,role,digest,now]);
@@ -39,6 +39,9 @@ it("keeps manual 305 classification private, durable and independent of Person/c
  await expect(store.save(ownerActor,{...create,contactHint:"Different hint"})).rejects.toMatchObject({code:"CONFLICT"});
  expect((await store.list(ownerActor)).items).toHaveLength(1);
  await expect(store.list(otherActor)).rejects.toMatchObject({code:"NOT_FOUND"});
+ const misboundStore=new Owner305ConversationStore(adapter,workspace,ring,"synthetic-305-private-digest-key",randomUUID(),{now:()=>now});
+ await expect(misboundStore.list(ownerActor)).rejects.toMatchObject({code:"NOT_FOUND"});
+ await expect(misboundStore.save(ownerActor,{...create,operationId:randomUUID()})).rejects.toMatchObject({code:"NOT_FOUND"});
  const detail=await store.read(ownerActor,saved.id);expect(detail).toMatchObject({lineNumber:CONVERSATION_305_LINE,
   contactHint:create.contactHint,followup:{classification:"both",version:1}});
  const revise={kind:"revise" as const,operationId:randomUUID(),conversationId:saved.id,expectedVersion:1,
