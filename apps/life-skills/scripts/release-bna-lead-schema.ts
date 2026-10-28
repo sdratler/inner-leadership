@@ -17,8 +17,8 @@ const sha=z.string().regex(/^[a-f0-9]{64}$/),gitSha=z.string().regex(/^[a-f0-9]{
 const proofSchema=z.strictObject({projectId:uuid,environmentId:uuid,appServiceId:uuid,databaseServiceId:uuid,deploymentId:uuid,
  reviewedCommit:gitSha,manifestSha256:sha,sourceSha256:sha,databaseBindingSha256:sha,baselineLedgerSha256:sha,
  backup:z.strictObject({receiptId:z.string().min(1).max(200),readbackAt:z.iso.datetime(),databaseSystemIdentifier:z.string().min(1)}),
- isolatedRestore:z.strictObject({sourceReceiptId:z.string().min(1).max(200),verifiedAt:z.iso.datetime(),verified:true}),
- rollback:z.strictObject({reviewed:true,description:z.string().min(20).max(2000)})});
+ isolatedRestore:z.strictObject({sourceReceiptId:z.string().min(1).max(200),verifiedAt:z.iso.datetime(),verified:z.literal(true)}),
+ rollback:z.strictObject({reviewed:z.literal(true),description:z.string().min(20).max(2000)})});
 const sources=["migrations/manifest.json","migrations/0138_ls_academy_crm.sql","migrations/0139_ls_bna_inquiries.sql",
  "src/db/bna-lead-schema-release.ts","scripts/release-bna-lead-schema.ts"] as const;
 async function sourceSha(){const root=new URL("../",import.meta.url),entries=[];
