@@ -9,7 +9,7 @@ describe('UI upgrade server-rendered structure (not authenticated journey proof)
   it(`${locale}/${role}: exact logo, direction, breadcrumb, one content title`,()=>{
    const base=role==='parent'?'family':'app';
    const html=renderToStaticMarkup(<WorkspaceShell locale={locale} role={role} pathname={`/${locale}/${base}/settings/notifications`} caseId="00000000-0000-4000-8000-000000000001" languageHref={`/${locale==='he'?'en':'he'}/${base}/settings/notifications`}><main><h1>Content title</h1></main></WorkspaceShell>);
-   expect(html).toContain('/intake-brand/life-skills-logo.png');expect(html).toContain(`dir="${locale==='he'?'rtl':'ltr'}"`);expect(html.match(/<h1/g)?.length).toBe(1);expect(html).toContain('lsu-breadcrumbs');expect(html).toContain('aria-haspopup="dialog"');expect(html).not.toContain('lsw-brand-mark');expect(html).toContain('?caseId=00000000-0000-4000-8000-000000000001');
+   expect(html).toContain('/groups/brand/jlfa-logo-locked-v1.png');expect(html).toContain(`dir="${locale==='he'?'rtl':'ltr'}"`);expect(html.match(/<h1/g)?.length).toBe(1);expect(html).toContain('lsu-breadcrumbs');expect(html).toContain('aria-haspopup="dialog"');expect(html).not.toContain('lsw-brand-mark');expect(html).toContain('?caseId=00000000-0000-4000-8000-000000000001');
   });
   it(`${locale}/${role}: settings hub is links, not a wall of editable fields`,()=>{
    const html=renderToStaticMarkup(<SettingsIndex locale={locale} role={role}/>);

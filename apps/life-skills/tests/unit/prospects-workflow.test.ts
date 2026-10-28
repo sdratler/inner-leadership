@@ -84,16 +84,15 @@ describe("live intake follow-up contract",()=>{
    expect(fetchMock).not.toHaveBeenCalled();
   }finally{vi.unstubAllGlobals();}
  });
- it("permits the existing real-prospect bridge only after a fresh unmarked lookup",async()=>{
+ it("retired CRM sender stays closed even for an unmarked record with old credentials",async()=>{
   const queries:unknown[][]=[];
   const store:IdentityStore={transaction:async work=>work({query:async(_sql,values)=>{queries.push([...values??[]]);return [];}})};
   const fetchMock=vi.fn().mockResolvedValue({ok:true,status:200,json:async()=>({success:true,receipt:{provider:"test",providerMessageId:"test-id",sentAt:"2026-09-26T00:00:00Z"}})});
   vi.stubGlobal("fetch",fetchMock);vi.stubEnv("LIFE_SKILLS_CRM_BRIDGE_ORIGIN","https://crm.test");vi.stubEnv("LIFE_SKILLS_APP_BRIDGE_SECRET","test-secret-32-characters-long-only");
   try{
-   const result=await sendProspectMessage("LS-LEAD-real","test message",{store,workspaceId:"workspace"});
+   await expect(sendProspectMessage("LS-LEAD-real","test message",{store,workspaceId:"workspace"})).rejects.toMatchObject({code:"UNAVAILABLE"});
    expect(queries).toEqual([["workspace","prospect","LS-LEAD-real"]]);
-   expect(fetchMock).toHaveBeenCalledOnce();
-   expect(result.receipt.providerMessageId).toBe("test-id");
+   expect(fetchMock).not.toHaveBeenCalled();
   }finally{vi.unstubAllGlobals();vi.unstubAllEnvs();}
  });
 });

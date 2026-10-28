@@ -16,6 +16,8 @@ const intakeIdentityRoutes = new Set([
   "/api/identity/reset/request", "/api/identity/reset/complete",
 ]);
 const publicBrandAndFontAssets = new Set([
+  // Exact approved Academy login/PWA logo; no private media path is opened.
+  "/groups/brand/jlfa-logo-locked-v1.png",
   "/intake-brand/life-skills-logo.png", "/intake-brand/bna-logo.png",
   "/intake-brand/Heebo-wght.ttf", "/intake-brand/FrankRuhlLibre-wght.ttf",
   "/fonts/Heebo-wght.ttf", "/fonts/FrankRuhlLibre-wght.ttf",

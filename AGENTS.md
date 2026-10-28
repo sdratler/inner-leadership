@@ -1,4 +1,10 @@
-# Life Skills — current authority pointers
+# Fishing Academy — current authority pointers
+
+## Current Academy-only decision — 28 October 2026
+
+Owner correction `ACADEMY-ONLY-CRM-20261028-01`, reconciled in the current [Operating Protocol](https://docs.google.com/document/d/1q-GDEaL9JmmVfy1meQrGvu3V4H2XNJ4jp2b17ZrP6bE/edit) and [Technology source](https://docs.google.com/document/d/1PExKb2PwAFAHlBtgmQ9RU-JdfTfQ-jTk41SpWetn7w8/edit), supersedes older instructions to preserve the Israeli business in the active app. The Israeli Life Skills business is retired. Build a fresh Academy CRM with zero legacy lead import. Remove retired business records, branding, marketing feeds/templates and workflows from active app surfaces. Preserve genuine Academy registrations and reusable infrastructure; Hebrew support is still active. A permanent archive of old leads is not a prerequisite.
+
+Keep implementation, source reconciliation, native initialization, data removal, deployment and ordinary owner verification separate. A scoped read/write closure or a draft PR does not prove that existing data was deleted or that a fresh native CRM was initialized. Do not manufacture an import proof, change the default cutover phase to native, or let an unconfigured Academy source silently fall back to the retired Sheet. Continue from the same existing engineering owner and handoff; a separately prepared candidate does not transfer integration ownership.
 
 This is a derived entry point, not a product master. Prepared under SYS033 at `b4276f563240bd3337366aa1d24de2216eb9fb55`. Current Drive contracts govern intent; Build Control governs work; exact Git commits govern code; authenticated provider evidence governs deployment. Original LS000 build provenance remains unchanged in `apps/life-skills/docs/historical/ls000-source-snapshot.json`.
 
@@ -19,7 +25,7 @@ GitHub issues and pull requests govern engineering execution; exact commits gove
 
 ## Mandatory creative execution gate
 
-For Academy public routes only, follow [the current scoped Academy source/checklist pointer](apps/life-skills/docs/academy-public-current.md). Owner packet `JLFA-EXACT-COPY-20261026-05` and Readability04 require approved proportional photography with accessible HTML copy; they supersede the older text-baked hero rule below within that scope. Preserve the separate Israeli Life Skills and BNA surfaces and all approved asset bytes.
+For Academy public routes only, follow [the current scoped Academy source/checklist pointer](apps/life-skills/docs/academy-public-current.md). Owner packet `JLFA-EXACT-COPY-20261026-05` and Readability04 require approved proportional photography with accessible HTML copy; they supersede the older text-baked hero rule below within that scope. Preserve approved Academy asset bytes and the separate BNA school work. Older Israeli creative instructions below describe historical provenance and do not authorize their return to the active app.
 
 Before Life Skills hero, image, logo or ad work, read `creative/README.md` and resolve its registered source/master records. This gate implements the owner's explicit correction `D-CREATIVE-MASTER-PIPELINE-20260911-08`; prior live-copy or deterministic-compositor instructions must not revive the rejected design.
 

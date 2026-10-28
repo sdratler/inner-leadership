@@ -31,21 +31,16 @@ const source = () => ({
 
 beforeEach(() => { vi.resetModules(); mocks.bridge.mockReset(); mocks.bridge.mockResolvedValue({ success: true, publication: source() }); });
 
-test("loads only a bounded redacted read model and drops source identifiers", async () => {
-  const { loadFacebookPagePublicationState } = await import("../../../src/features/marketing-overview/page-publication-provider.ts");
-  const result = await loadFacebookPagePublicationState();
-  expect(mocks.bridge).toHaveBeenCalledExactlyOnceWith("/api/bna/life-skills-app/marketing/facebook-page-publication");
-  expect(result).toMatchObject({ state: "UNCONFIGURED_DESTINATION", externalWriteEnabled: false, externalWritePerformed: false });
-  expect(result.recentRecords).toEqual([{ state: "UNKNOWN", localBusinessDate: "2026-10-08", scheduledAt: "2026-10-08T17:00:00.000Z", providerReadAt: null, publishedAt: null, noBlindRetry: true }]);
-  expect(JSON.stringify(result)).not.toContain("private-row-id");
+test("a verified source parser drops private row identifiers", async () => {
+ const {parseFacebookPagePublicationState}=await import("../../../src/features/marketing-overview/page-publication-provider.ts");
+ const result=parseFacebookPagePublicationState(source());
+ expect(result.recentRecords).toEqual([{state:"UNKNOWN",localBusinessDate:"2026-10-08",scheduledAt:"2026-10-08T17:00:00.000Z",providerReadAt:null,publishedAt:null,noBlindRetry:true}]);
+ expect(JSON.stringify(result)).not.toContain("private-row-id");
 });
-
-test("bridge and malformed payload failures are unavailable rather than empty success", async () => {
-  const { loadFacebookPagePublicationState } = await import("../../../src/features/marketing-overview/page-publication-provider.ts");
-  mocks.bridge.mockRejectedValueOnce(Error("synthetic unavailable"));
-  expect(await loadFacebookPagePublicationState()).toMatchObject({ state: "BRIDGE_UNAVAILABLE", recentRecords: [], externalWriteEnabled: false });
-  mocks.bridge.mockResolvedValueOnce({ success: true, publication: { ...source(), lifecycleState: "INVENTED" } });
-  expect(await loadFacebookPagePublicationState()).toMatchObject({ state: "BRIDGE_UNAVAILABLE" });
+test("unconfigured Academy Page publishing never reads the retired business", async () => {
+ const {loadFacebookPagePublicationState}=await import("../../../src/features/marketing-overview/page-publication-provider.ts");
+ expect(await loadFacebookPagePublicationState()).toMatchObject({state:"UNCONFIGURED_DESTINATION",destinationConfigured:false,recentRecords:[],externalWriteEnabled:false,externalWritePerformed:false});
+ expect(mocks.bridge).not.toHaveBeenCalled();
 });
 
 test.each([

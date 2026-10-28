@@ -4,7 +4,7 @@ import {academyIntakeSchema,academyDriveMinutes} from "./academy-intake.ts";
 import {academyRegistrationSchema,ACADEMY_REGISTRATION_VERSION} from './academy-registration.ts';
 import {academyRegistrationNotice,academyExact05RegistrationNotice,academyLegacyRegistrationNotice,academyPreviousFreeRegistrationNotice} from './academy-registration-notice.ts';
 
-/** Existing Israel application permission. This contract remains writable at /groups/apply. */
+/** Historical Israel application permission, retained only to decode existing records. */
 export const groupApplicationNotice={
  version:"ls-group-application-20261009-01-v1",
  en:"I agree that Life Skills may store these application and contact details privately and contact me about this group inquiry. This is an application for owner review only. It is not clinical consent, recurring marketing permission, enrollment, placement, payment authorization, booking or a guarantee of acceptance.",

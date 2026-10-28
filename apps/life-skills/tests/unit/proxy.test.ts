@@ -5,6 +5,13 @@ import { groupApplicationPublicAsset, proxy, publicStaticAsset } from "../../src
 import {settingsItems} from '../../src/ui/workspace/navigation-model.ts';
 
 describe("public static perimeter", () => {
+  it("serves the exact Academy login and PWA logo without requiring public intake",()=>{
+    const path="/groups/brand/jlfa-logo-locked-v1.png";
+    expect(existsSync(new URL(`../../public${path}`,import.meta.url))).toBe(true);
+    expect(publicStaticAsset(path,"GET")).toBe(true);expect(publicStaticAsset(path,"HEAD")).toBe(true);
+    expect(publicStaticAsset(path,"POST")).toBe(false);
+    for(const other of ["/groups/brand/private.png","/api/marketing/assets/retired","/groups/../api/private/people"])expect(publicStaticAsset(other,"GET")).toBe(false);
+  });
   it("serves only the shipped app fonts via GET or HEAD", () => {
     for (const name of ["Heebo-wght.ttf", "FrankRuhlLibre-wght.ttf"]) {
       expect(existsSync(new URL(`../../public/fonts/${name}`, import.meta.url))).toBe(true);

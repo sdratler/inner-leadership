@@ -36,6 +36,6 @@ describe('workspace horizontal tab visibility',()=>{
   expect(calendarCopy.en.attendedCount).toBe('Attended individual sessions');
   expect(calendarCopy.he.attendedCount).toBe('פגישות אישיות שהתקיימו');
   const layout=readFileSync(new URL('../../../src/app/[locale]/layout.tsx',import.meta.url),'utf8');
-  expect(layout).toContain('title: "Life Skills"');expect(layout).not.toContain('Life Skills — Foundation');
+  expect(layout).toContain('title: "Fishing Academy"');expect(layout).not.toContain('Life Skills — Foundation');
  });
 });

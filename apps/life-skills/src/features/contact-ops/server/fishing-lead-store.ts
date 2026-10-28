@@ -66,7 +66,7 @@ export class FishingLeadStore{
   if(state.epoch!==epoch||writeDestination(state.phase)!=="native")throw new AppError("CONFLICT");return state;
  }
  private inquiries(actor:Actor,tx:SqlSession){
-  return new PublicGroupApplicationStore({transaction:work=>work(tx)},actor.workspaceId,this.ring,this.integrityKey,this.clock);
+  return new PublicGroupApplicationStore({transaction:work=>work(tx)},actor.workspaceId,this.ring,this.integrityKey,this.clock,false,undefined,this.program);
  }
  private decode<T>(schema:z.ZodType<T>,ciphertext:string,aad:string):T{
   try{return schema.parse(JSON.parse(unseal(ciphertext,aad,this.ring)));}catch{throw new AppError("UNAVAILABLE");}

@@ -37,6 +37,13 @@ function MetricBars({ locale, points, metric, currencyCode }: { locale: Locale; 
 }
 
 export function MarketingDashboard({ locale, snapshot, ownerDigest, facebookPage, initialSection, initialFilter, initialMonth, calendarQuery, calendarNavigation, creativeQuery, renderedAt }: { locale: Locale; snapshot: MarketingSnapshot; ownerDigest?:OwnerDigest|undefined; facebookPage?:FacebookPagePublicationReadModel|undefined; initialSection?: string | undefined; initialFilter?: string | undefined; initialMonth?: string | undefined; calendarQuery?:ContentCalendarQuery|undefined;calendarNavigation?:ContentCalendarNavigation|undefined;creativeQuery?:CreativeQuery|undefined; renderedAt: string }) {
+  if(snapshot.source==="unconfigured")return <section className="lsw-stack" lang={locale} dir={locale==='he'?'rtl':'ltr'} data-academy-marketing-setup>
+    <header className="lsw-page-header"><div><p className="lsw-eyebrow">{word(locale,"Fishing Academy","האקדמיה לדיג")}</p><h1>{word(locale,"Marketing","שיווק")}</h1></div></header>
+    <div role="status"><h2>{word(locale,"Academy marketing library needs setup","יש להגדיר את ספריית השיווק של האקדמיה")}</h2><p>{word(locale,"An Academy asset collection and publishing destinations have not been connected yet.","טרם חוברו אוסף נכסי השיווק ויעדי הפרסום של האקדמיה.")}</p></div>
+    <p>{word(locale,"You can review Academy inquiries and existing campaign preparations in the Academy workspace.","אפשר לעיין בפניות לאקדמיה ובהכנות הקמפיין הקיימות בסביבת העבודה של האקדמיה.")}</p>
+    <a className="lsr-button" href={`/${locale}/app/group-applications`}>{word(locale,"Open Academy inquiries and campaign records","פתיחת פניות האקדמיה ורשומות הקמפיין")}</a>
+    <p>{word(locale,"Facebook group publishing is not connected to this screen. Publication history and advertising results are unavailable here until their Academy sources are connected.","פרסום בקבוצות Facebook אינו מחובר למסך זה. היסטוריית הפרסום ותוצאות הפרסום אינן זמינות כאן עד לחיבור מקורות האקדמיה.")}</p>
+  </section>;
   const section = normalizeMarketingSection(initialSection);
   const gallery=section==='creatives'||section==='needs_approval';
   const h = headings[locale];

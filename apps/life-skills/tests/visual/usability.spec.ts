@@ -4,7 +4,7 @@ for(const locale of ["he","en"] as const){
  test(`${locale} login uses approved brand and keeps entered password on visibility toggle`,async({page},testInfo)=>{
   await page.goto(`/${locale}/login`);
   await expect(page.locator("html")).toHaveAttribute("dir",locale==="he"?"rtl":"ltr");
-  const logo=page.locator('img[src="/intake-brand/life-skills-logo.png"]');
+  const logo=page.locator('img[src="/groups/brand/jlfa-logo-locked-v1.png"]');
   await expect(logo).toBeVisible();
   await expect.poll(()=>logo.evaluate(image=>(image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
   const password=page.locator('#login-password');

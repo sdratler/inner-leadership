@@ -132,7 +132,7 @@ describe("shared private-app sign-in destination", () => {
   for (const locale of ["he", "en"] as const) {
     it(`${locale}: uses the approved local logo and an accessible password visibility control`,()=>{
       const html=renderToStaticMarkup(React.createElement(LoginClient,{locale}));
-      expect(html).toContain('src="/intake-brand/life-skills-logo.png"');
+      expect(html).toContain('src="/groups/brand/jlfa-logo-locked-v1.png"');
       expect(html).toContain('autoComplete="current-password"');
       expect(html).toContain('type="button" aria-controls="login-password" aria-pressed="false"');
       expect(html).not.toContain("❧");

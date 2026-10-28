@@ -13,15 +13,15 @@ export type ProspectReadDependencies={
  sheet:{list:()=>Promise<Prospect[]>};
 };
 /** One server-side destination. Neither a browser query nor native failure may
- * choose the shadow, revive the Sheet, or change authority. Genuine legacy
- * reads remain available until the separately verified writer cutover.
+ * choose the shadow, revive the retired Sheet, or change authority. A fresh
+ * Academy CRM needs explicit native initialization; absence is not empty success.
  */
 export async function authoritativeProspects(actor:Actor,d:ProspectReadDependencies):Promise<Prospect[]>{
  if(actor.role!=="practitioner")throw new AppError("FORBIDDEN");
  const state=await d.authority.read(actor),destination=writeDestination(state.phase);
  if(destination==="durable_queue_only")throw new AppError("CONFLICT");
  if(destination==="native")return d.native.prospects(actor,state.epoch);
- return d.sheet.list();
+ throw new AppError("UNAVAILABLE");
 }
 export function readAuthoritativeProspects(actor:Actor,runtime:Pick<Awaited<ReturnType<typeof identityRuntime>>,"store"|"config"|"clock">){
  const key=runtime.config.lookupKey.toString("hex");

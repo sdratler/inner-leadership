@@ -5,6 +5,7 @@ import type {Actor} from "../../src/features/identity/types.ts";
 import {groupApplicationReviewHttp,type GroupApplicationReviewDependencies} from "../../src/features/group-application/review-http.ts";
 import {inspectInquiryEmailSetup} from "../../src/features/group-application/inquiry-email-setup.ts";
 import {INQUIRY_EMAIL_FROM} from "../../src/features/group-application/inquiry-email-copy.ts";
+import {floridaGroupApplicationNotice,type GroupApplicationRecord} from "../../src/features/group-application/contract.ts";
 
 const origin="https://synthetic.example.invalid",token="s".repeat(43),path="/api/private/group-applications";
 const practitioner={id:"00000000-0000-4000-8000-000000000010",workspaceId:"00000000-0000-4000-8000-000000000011",personId:"00000000-0000-4000-8000-000000000012",role:"practitioner",state:"active",locale:"en",sessionDigest:"synthetic",expiresAt:Date.now()+60000} as unknown as Actor;
@@ -17,8 +18,15 @@ function setup(){
 }
 afterEach(()=>vi.restoreAllMocks());
 describe("private inquiry email setup projection",()=>{
+ it.each(['retired_israel','morning_torah_learning','private_fishing_life_skills'])("fails closed before serializing a misconfigured %s record",async program=>{
+  const d=setup();const fields=program==='retired_israel'?{parentName:'PRIVATE_RETIRED_CANARY',parentPhone:'+972520000000'}:{parentName:'PRIVATE_OTHER_PROGRAM_CANARY',contact:'other@example.invalid',language:'en',cityArea:'Synthetic',programId:program,schedulePreference:['flexible'],permission:{confirmed:true,version:floridaGroupApplicationNotice.version,language:'en'}};
+  const item={id:'00000000-0000-4000-8000-000000000022',source:'public_group_application',state:'owner_review',receivedAt:new Date().toISOString(),fields} as GroupApplicationRecord;
+  const load=async()=>({...await d.load(),store:{list:async()=>[item]}});
+  const response=await groupApplicationReviewHttp(request(),load),body=await response.text();
+  expect(response.status).toBe(503);expect(body).not.toContain('CANARY');expect(body).not.toContain('items');expect(d.emailSetup).not.toHaveBeenCalled();
+ });
  it("uses authenticated bounded history search and cursor while retaining the email gate",async()=>{
-  const d=setup(),nextCursor="00000000-0000-4000-8000-000000000021",listPage=vi.fn(async()=>({items:[],nextCursor})),load=async()=>({...await d.load(),store:{list:d.list,listPage}});
+  const d=setup(),nextCursor="c".repeat(180),listPage=vi.fn(async()=>({items:[],nextCursor})),load=async()=>({...await d.load(),store:{list:d.list,listPage}});
   const response=await groupApplicationReviewHttp(request("?search=Synthetic+family&cursor="+nextCursor),load);
   expect(response.status).toBe(200);expect(listPage).toHaveBeenCalledWith(practitioner,{search:"Synthetic family",cursor:nextCursor});expect(d.list).not.toHaveBeenCalled();expect((await response.json()).data).toEqual({items:[],nextCursor,emailSetup:d.report});
  });
