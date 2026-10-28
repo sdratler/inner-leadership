@@ -130,14 +130,15 @@ test("origin/CSRF/parent/malformed body denials use actual session read and cann
  expect((await s.http({...body,program:"private_fishing_life_skills"})).status).toBe(400);
  expect(await s.count("ls_contact_ops.fishing_lead_operations")).toBe(0);expect(await s.count("ls_contact_ops.profiles")).toBe(0);
 });
-test("email-only, wrong-program/Israel inquiry and stale preview/version never invent identity or permission",async()=>{
+test("email-only, differently scoped inquiry and stale preview/version never invent identity or permission",async()=>{
  const s=await setup(),email=await s.inquiry("synthetic-inquiry@example.invalid");
  expect(await s.store.preview(s.actor,{action:"preview_add",operationId:randomUUID(),expectedEpoch:3,source:email,expectedAssociationVersion:0,relationship:"guardian"})).toMatchObject({state:"clarify",reason:"email_only"});
  expect(await s.store.context(s.actor,email)).toMatchObject({state:"blocked",reason:"email_only"});
  const source=await s.inquiry(),p=await s.ready(source);s.advance(16*60_000);await expect(s.confirm(p)).rejects.toThrow("CONFLICT");
  expect(await s.count("ls_contact_ops.profiles")).toBe(0);expect(await s.count("ls_calendar.tasks")).toBe(0);
  const wrong=new FishingLeadStore(s.db,s.f.keyring,key,"private_fishing_life_skills",s.clock);
- await expect(wrong.preview(s.actor,{action:"preview_add",operationId:randomUUID(),expectedEpoch:3,source,expectedAssociationVersion:0,relationship:"adult_partner"})).rejects.toThrow("FORBIDDEN");
+ await expect(wrong.preview(s.actor,{action:"preview_add",operationId:randomUUID(),expectedEpoch:3,source,expectedAssociationVersion:0,relationship:"adult_partner"})).rejects.toMatchObject({code:"NOT_FOUND"});
+ expect(await s.count("ls_contact_ops.profiles")).toBe(0);expect(await s.count("ls_contact_ops.fishing_lead_operations")).toBe(0);
 });
 test("Sheet/frozen/stale authority blocks only native actions without fallback",async()=>{
  const s=await setup(false),source=await s.inquiry();expect(await s.store.context(s.actor,source)).toMatchObject({state:"blocked",reason:"native_authority_required",epoch:0});
