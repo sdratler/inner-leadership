@@ -46,10 +46,10 @@ describe("Exact05 bilingual parent journey and retained stage coverage",()=>{
  });
  it.each(["en","he"] as const)("%s keeps the short homepage sequence and legacy anchors without duplicate marketing walls",locale=>{
   const html=renderToStaticMarkup(createElement(AcademyWebsite,{locale,onLocaleChange:()=>{}}));
-  const ids=["about","who-its-for","self-governance","how-it-works","stages","pricing","questions","parent-reflections","founder"];
+  const ids=["about","who-its-for","self-governance","stages","founder","how-it-works","pricing","questions"];
   const positions=ids.map(id=>html.indexOf(`id="${id}"`));expect(positions.every(n=>n>=0)).toBe(true);expect(positions).toEqual([...positions].sort((a,b)=>a-b));
   expect(html).toContain('<section id="how-it-works"');expect(html).not.toContain('<div id="how-it-works"');expect(html).not.toContain('class="disclosure"');
-  expect(html).toContain(academyExactCopy[locale].home.stagesIntro);expect(html.match(/<blockquote/g)).toHaveLength(1);expect(html).toContain('<blockquote lang="en" dir="ltr">');
+  expect(html).toContain(academyExactCopy[locale].home.stagesIntro);expect(html).not.toMatch(/<blockquote|Medication is no longer relevant/);
   expect(html).toContain('id="academy-travel-faq"');expect(html).toContain(academyExactCopy[locale].home.footerAttribution);
  });
  it.each(["foundation","independent","advanced","leadership"])("%s provides direct stage navigation, native age choices and all twelve exact lessons",slug=>{

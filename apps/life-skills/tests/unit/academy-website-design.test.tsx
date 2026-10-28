@@ -76,7 +76,7 @@ const visualGateEnv={NODE_ENV:"production",LS_APP_ORIGIN:"https://academy.invali
 describe("latest owner14/15 visual successor, static contracts",()=>{
  it.each(["en","he"] as const)("%s final homepage follows the owner’s complete hierarchy",locale=>{
   const html=renderToStaticMarkup(createElement(AcademyWebsite,{locale,onLocaleChange:()=>{}}));
-  const ids=["about","who-its-for","self-governance","how-it-works","stages","pricing","questions","parent-reflections","founder"];
+  const ids=["about","who-its-for","self-governance","stages","founder","how-it-works","pricing","questions"];
   const positions=ids.map(id=>html.indexOf('id="'+id+'"'));expect(positions.every(index=>index>0)).toBe(true);expect(positions).toEqual([...positions].sort((a,b)=>a-b));
   expect(html).not.toContain('<section id="locations"');expect(html).not.toContain('id="fishing-skills"');expect(html.match(/data-price-group=/g)).toHaveLength(1);
   expect(html).toContain('data-price-group="actual"');for(const kind of ['founding-primary','founding-sibling','monthly-block'])expect(html).toContain('data-price-kind="'+kind+'"');
@@ -84,8 +84,8 @@ describe("latest owner14/15 visual successor, static contracts",()=>{
  it.each(["en","he"] as const)("%s top header precedes full-width hero with one real pricing CTA and no bottom bar",locale=>{
   const html=renderToStaticMarkup(createElement(AcademyWebsite,{locale,onLocaleChange:()=>{}}));
   expect(html.indexOf("data-academy-header=")).toBeLessThan(html.indexOf("data-academy-hero="));expect(html.match(/data-jlfa-primary/g)).toHaveLength(1);expect(html).toContain(locale==="en"?"Pre-register for free":"הרשמה מוקדמת בחינם");expect(html).not.toContain("data-academy-bottom-bar");
-  expect(html.indexOf('id="questions"')).toBeLessThan(html.indexOf('id="parent-reflections"'));expect(html.indexOf('id="parent-reflections"')).toBeLessThan(html.indexOf('id="founder"'));expect(html.indexOf('id="founder"')).toBeLessThan(html.indexOf("data-academy-footer="));
-  expect(html).toContain('data-academy-testimonial-state="historical-reflection"');expect(html.match(/<blockquote\b/g)).toHaveLength(1);expect(html).toContain('<blockquote lang="en" dir="ltr"><p>“Medication is no longer relevant.”</p></blockquote>');expect(html).toContain("L. Bars");const testimonial=html.slice(html.indexOf('id="parent-reflections"'),html.indexOf('id="founder"'));expect(testimonial).toContain(locale==="en"?"Mother of a student · 2024 · Beit Shemesh":"אמו של תלמיד · 2024 · בית שמש");expect(testimonial).toContain('/groups/testimonials/l-bars-2024.png');expect(testimonial).not.toMatch(/earlier educational work|עבודה חינוכית קודמת|עבודתו החינוכית הקודמת/);expect(html).not.toMatch(/Lieberman|More locations in the pool|A Florida Keys milestone/);expect(html).toContain(academyExactCopy[locale].home.founderHeading);
+  expect(html.indexOf('id="founder"')).toBeLessThan(html.indexOf('id="pricing"'));expect(html.indexOf('id="questions"')).toBeLessThan(html.indexOf("data-academy-footer="));
+  expect(html).not.toMatch(/<blockquote|Medication is no longer relevant|L\. Bars|parent-reflections/);expect(html).toContain(academyExactCopy[locale].home.founderHeading);
   expect(html).not.toContain("data-academy-whatsapp");expect(html).toContain('aria-controls="academy-mobile-menu"');expect(html).toContain('aria-expanded="false"');
  });
  it.each(["foundation","independent","advanced","leadership"])("%s retains its one stage route and real scene without changing age-depth navigation",slug=>{

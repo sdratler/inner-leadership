@@ -3,4 +3,13 @@
 .errorLinks{padding-inline-start:24px;margin-block:12px 0}.errorLinks a{display:inline-block;padding-block:8px;min-block-size:44px;overflow-wrap:anywhere}.alert:focus,.form [role=radiogroup]:focus{outline:3px solid #d68c12;outline-offset:3px}
 .dropdown label:has(input:checked){background:#e6f4f4}
 .preparation{margin-block:16px;border-block-start:1px solid #c9d8dd;padding-block-start:12px}.preparation summary{min-block-size:44px;cursor:pointer;font-weight:700}.preparation p{margin-block:12px}
-.form .informationDisclosure{border-block-end:1px solid #d5e0e2;padding-block:8px}.form .informationDisclosure>summary{min-block-size:48px;padding-block:12px}.informationPanel{max-block-size:min(24rem,60svh);overflow-y:auto;overscroll-behavior:contain;padding:12px 16px 12px 4px;scrollbar-gutter:stable}.informationPanel:focus-visible{outline:3px solid #d68c12;outline-offset:3px}
+.form .informationDisclosure{border-block-end:1px solid #d5e0e2;padding-block:8px}.form .informationDisclosure>summary{display:flex;align-items:center;justify-content:space-between;gap:16px;list-style:none;min-block-size:48px;padding-block:12px}.informationDisclosure>summary::after{content:'+';font-size:24px}.informationDisclosure[open]>summary::after{content:'−'}.informationPanel{max-inline-size:68ch;padding-block:16px;line-height:1.7}.informationPanel:focus-visible{outline:3px solid #d68c12;outline-offset:3px}
+.form{border:0;border-radius:0;padding:0;background:transparent}
+.form .child{background:#f3f8fb;border-color:#d6e1e7;padding:20px}
+.form :is(input[type=checkbox],input[type=radio]){accent-color:#092668}
+.form a,.form .textButton{color:#092668!important}
+.form .segments label:has(input:checked),.form .dropdown label:has(input:checked){background:#edf3fa;border-color:#092668}
+.form :is(input,select,textarea){scroll-margin-block:24px}
+.form section{counter-increment:form-section}
+.body>section>h2::before{content:counter(form-section,decimal-leading-zero) ' / ';color:#486580;font:600 15px/1.5 Arial,sans-serif}
+@media(max-width:700px){.form .child{padding:16px 12px}.form .grid{gap:18px}.form .segments{gap:6px}.form .segments label{padding-inline:8px}}
