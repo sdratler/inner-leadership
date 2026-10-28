@@ -65,7 +65,11 @@ export function FishingFollowupPanel({locale,applicationId}:{locale:Locale;appli
    {pending&&!busy&&<div role="status" className="lsw-alert"><p>{t("Save outcome unknown. Retry the same operation.","תוצאת השמירה אינה ידועה. יש לנסות שוב את אותה פעולה.")}</p>
     <button type="button" onClick={()=>void save(pending)}>{t("Retry same save","ניסיון חוזר לאותה שמירה")}</button></div>}
    {busy&&!detail&&<p role="status">{t("Loading follow-up…","טוען מעקב…")}</p>}
-   {detail&&<><p>{t("Current stage","שלב נוכחי")}: {detail.followup.status} · {t("Next action","פעולה הבאה")}: {detail.followup.nextAction??t("None","אין")}</p>
+   {detail&&<><p>{t("Source","מקור")}: {detail.attribution?.first.source??t("Unknown","לא ידוע")}
+    {detail.attribution?.first.campaign&&<> · {t("Campaign","קמפיין")}: {detail.attribution.first.campaign}</>}
+    {detail.attribution?.last.postRef&&<> · {t("Post reference","מזהה פרסום")}: {detail.attribution.last.postRef}</>}
+    {detail.attribution?.last.groupRef&&<> · {t("Group reference","מזהה קבוצה")}: {detail.attribution.last.groupRef}</>}</p>
+    <p>{t("Current stage","שלב נוכחי")}: {detail.followup.status} · {t("Next action","פעולה הבאה")}: {detail.followup.nextAction??t("None","אין")}</p>
     <form onSubmit={submit} className="lsw-stack"><label>{t("Stage","שלב")}<select value={status} onChange={event=>setStatus(event.target.value as typeof status)}>
      <option value="new">{t("New","חדש")}</option><option value="contacted">{t("Contacted","נוצר קשר")}</option>
      <option value="waiting">{t("Waiting","ממתין")}</option><option value="closed">{t("Closed","סגור")}</option></select></label>

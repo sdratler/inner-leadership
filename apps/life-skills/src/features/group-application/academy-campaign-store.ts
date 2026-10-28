@@ -5,7 +5,7 @@ import type {WorkspaceId} from '../../lib/ids.ts';
 import {one,type SqlSession} from '../identity/store.ts';
 import {seal,unseal,type Keyring} from '../identity/crypto.ts';
 import {privateDigest} from '../contact-ops/server/digests.ts';
-import {ACADEMY_CAMPAIGN,PREREG_CREATIVE,academyCampaignTarget,campaignSnapshotSchema,campaignShareCommandSchema,type CampaignSnapshot,type CampaignAttribution,type CampaignShareCommand,type AcademyOrganicCaptionReview} from './academy-campaign-contract.ts';
+import {ACADEMY_CAMPAIGN,PREREG_CREATIVE,academyCampaignTarget,campaignSnapshotSchema,campaignShareCommandSchema,campaignAttributionSchema,type CampaignSnapshot,type CampaignAttribution,type CampaignShareCommand,type AcademyOrganicCaptionReview} from './academy-campaign-contract.ts';
 import {academyOrganicSource,academyOrganicCaption,organicCaptionMatches} from './academy-organic-captions.ts';
 type Share={captionSource?:{fileId:string;bankRevision:string;bankSha256:string;sourceId:string};id:string;templateId?:string;templateSuperseded?:boolean;phase:CampaignSnapshot['phase'];placement:string;language:string;captionId:string;captionVersion:number;captionSha256:string;creative:typeof PREREG_CREATIVE;targetUrl:string;captionApproval:'UNVERIFIED_EXISTING_COPY_WORKFLOW_REQUIRED';status:string;snapshot:CampaignSnapshot;history:{action:string;at:string;actor:string;reason?:string;postUrl?:string;fromRevision?:number;toRevision?:number}[];needsReview:boolean;publication?:{method:'OWNER_MANUAL_CONFIRMATION';publishedAt:string;recordedAt:string;lastVerifiedAt:string;actor:string;evidence:string;postUrl?:string}};
 export class AcademyCampaignStore{
@@ -56,6 +56,23 @@ export class AcademyCampaignStore{
  /** Immutable per-operation touch; checked even for cached application replies. */
  async attribution(tx:SqlSession,operationId:string,applicationId:string,attribution:CampaignAttribution|null){const digest=this.hash(attribution),old=await one<{digest:string}>(tx,'SELECT request_digest AS digest FROM ls_service_interest.academy_campaign_touches WHERE workspace_id=$1 AND operation_id=$2',[this.workspace,operationId]);if(old){if(old.digest!==digest)throw new AppError('CONFLICT');return;}await tx.query('INSERT INTO ls_service_interest.academy_campaign_touches(workspace_id,operation_id,application_id,request_digest,payload_ciphertext,at) VALUES($1,$2,$3,$4,$5,$6)',[this.workspace,operationId,applicationId,digest,seal(JSON.stringify(attribution),this.aad(operationId),this.ring),this.now()]);}
  async checkAttribution(tx:SqlSession,operationId:string,attribution:CampaignAttribution|null){const old=await one<{digest:string}>(tx,'SELECT request_digest AS digest FROM ls_service_interest.academy_campaign_touches WHERE workspace_id=$1 AND operation_id=$2',[this.workspace,operationId]);if(old&&old.digest!==this.hash(attribution)||!old&&attribution!==null)throw new AppError('CONFLICT');}
+ /** Owner readback for a saved application, including short inquiries. Missing rows are unknown attribution. */
+ async applicationAttribution(tx:SqlSession,applicationId:string):Promise<CampaignAttribution|null>{
+  const rows=await tx.query<{operation:string;digest:string;payload:string}>(`SELECT operation_id AS operation,request_digest AS digest,payload_ciphertext AS payload
+   FROM ls_service_interest.academy_campaign_touches WHERE workspace_id=$1 AND application_id=$2 ORDER BY touch_sequence LIMIT 101`,
+   [this.workspace,applicationId]);
+  if(rows.length>100)throw new AppError('UNAVAILABLE');
+  let first:CampaignAttribution['first']|null=null,last:CampaignAttribution['last']|null=null;
+  for(const row of rows){
+   let value:CampaignAttribution|null;
+   try{const decoded=JSON.parse(unseal(row.payload,this.aad(row.operation),this.ring)) as unknown;
+    value=decoded===null?null:campaignAttributionSchema.parse(decoded);
+    if(this.hash(value)!==row.digest)throw new Error();}
+   catch{throw new AppError('UNAVAILABLE');}
+   if(value){first??=value.first;last=value.last;}
+  }
+  return first&&last?{first,last}:null;
+ }
  private async writeShare(tx:SqlSession,p:Share){await tx.query('UPDATE ls_service_interest.academy_campaign_shares SET payload_ciphertext=$3 WHERE workspace_id=$1 AND id=$2',[this.workspace,p.id,seal(JSON.stringify(p),this.aad(p.id),this.ring)]);}
  private async insertShare(tx:SqlSession,p:Share){await tx.query('INSERT INTO ls_service_interest.academy_campaign_shares(workspace_id,id,payload_ciphertext,created_at) VALUES($1,$2,$3,$4)',[this.workspace,p.id,seal(JSON.stringify(p),this.aad(p.id),this.ring),this.now()]);}
  async list(tx:SqlSession){const rows=await tx.query<{id:string;payload:string}>('SELECT id,payload_ciphertext AS payload FROM ls_service_interest.academy_campaign_shares WHERE workspace_id=$1 ORDER BY created_at,id',[this.workspace]);return rows.map(r=>JSON.parse(unseal(r.payload,this.aad(r.id),this.ring)) as Share);}

@@ -5,6 +5,8 @@ import {PGlite} from "@electric-sql/pglite";
 vi.mock("server-only",()=>({}));
 import {PublicGroupApplicationStore} from "../../src/features/group-application/store.ts";
 import {FishingInquiryFollowupStore} from "../../src/features/group-application/fishing-followup-store.ts";
+import {AcademyFounderStore} from "../../src/features/group-application/academy-founder-store.ts";
+import {ACADEMY_CAMPAIGN,PREREG_CREATIVE,campaignAttributionSchema} from "../../src/features/group-application/academy-campaign-contract.ts";
 import {floridaGroupApplicationNotice,groupApplicationNotice} from "../../src/features/group-application/contract.ts";
 import {seal} from "../../src/features/identity/crypto.ts";
 import {privateDigest} from "../../src/features/contact-ops/server/digests.ts";
@@ -16,7 +18,8 @@ const db=new PGlite(),workspace=asId(randomUUID(),"workspace"),now=new Date("202
 const ring={activeKeyId:"synthetic",keys:{synthetic:Buffer.alloc(32,17)}},key="synthetic-fishing-followup-digest-key";
 const adapter:IdentityStore={transaction:fn=>db.transaction(tx=>fn({query:async<T extends object>(sql:string,values:readonly unknown[]=[])=>
  (await tx.query<T>(sql,[...values])).rows} as SqlSession))};
-const applications=new PublicGroupApplicationStore(adapter,workspace,ring,key,{now:()=>now});
+const clock={now:()=>now},founder=new AcademyFounderStore(adapter,workspace,ring,key,clock);
+const applications=new PublicGroupApplicationStore(adapter,workspace,ring,key,clock,false,founder);
 const actors:Actor[]=[];
 async function account(role:"practitioner"|"parent"){
  const id=randomUUID(),digest=id.replaceAll("-","").padEnd(64,"0");
@@ -31,7 +34,8 @@ beforeAll(async()=>{
  await db.exec("CREATE SCHEMA ls_control");
  const manifest=JSON.parse(await readFile("migrations/manifest.json","utf8")) as {name:string;sha256:string}[];
  for(const name of ["0001_ls_foundation.sql","0010_ls_identity_cases_20260906.sql","0124_ls_group_interest.sql",
-  "0131_ls_public_group_applications.sql","0140_ls_fishing_inquiry_followups.sql"]){
+  "0131_ls_public_group_applications.sql","0135_ls_inquiry_email_outbox.sql",
+  "0136_ls_academy_founder.sql","0140_ls_fishing_inquiry_followups.sql"]){
   const sql=await readFile("migrations/"+name,"utf8");
   expect(createHash("sha256").update(sql).digest("hex")).toBe(manifest.find(row=>row.name===name)?.sha256);
   await db.exec(sql);
@@ -43,12 +47,20 @@ afterAll(async()=>db.close());
 it("keeps one encrypted owner follow-up on an email-only Fishing inquiry across replay and readback",async()=>{
  const owner=actors[0]!,parent=actors[1]!;
  const followups=new FishingInquiryFollowupStore(adapter,workspace,ring,key,owner.id,{now:()=>now});
- const saved=await applications.submit({operationId:randomUUID(),fields:{parentName:"Synthetic Parent",
+ const attribution=campaignAttributionSchema.parse({first:{campaign:ACADEMY_CAMPAIGN,source:"facebook",medium:"social",
+  content:PREREG_CREATIVE.id,postRef:"approved_post_1",groupRef:"group_1"},
+  last:{campaign:ACADEMY_CAMPAIGN,source:"facebook",medium:"social",
+   content:PREREG_CREATIVE.id,postRef:"approved_post_1",groupRef:"group_1"}});
+ const submission:Parameters<typeof applications.submit>[0]={operationId:randomUUID(),fields:{parentName:"Synthetic Parent",
   contact:"fishing-parent@example.invalid",language:"en",childAge:"10",cityArea:"Florida",
   programId:"sunday_fishing_academy",schedulePreference:["sunday"],
-  permission:{confirmed:true,version:floridaGroupApplicationNotice.version,language:"en"}}});
+  permission:{confirmed:true,version:floridaGroupApplicationNotice.version,language:"en"}}};
+ const saved=await applications.submit(submission,undefined,attribution);
+ expect(await applications.submit(submission,undefined,attribution)).toMatchObject({replayed:true,duplicate:true});
+ await expect(applications.submit(submission,undefined,null)).rejects.toMatchObject({code:"CONFLICT"});
  const initial=await followups.read(owner,saved.item.id);
  expect(initial.followup).toMatchObject({version:0,status:"new",nextAction:"Review inquiry"});
+ expect(initial.attribution).toEqual(attribution);
  const before=(await db.query("SELECT count(*)::int AS n FROM ls_identity.people")).rows;
  const command={operationId:randomUUID(),applicationId:saved.item.id,expectedVersion:0,status:"waiting" as const,
   note:"Parent requested a call next week",nextAction:"Call parent",dueDate:"2026-11-05",waitingCondition:"Parent availability"};

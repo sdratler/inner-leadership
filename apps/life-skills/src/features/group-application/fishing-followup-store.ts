@@ -9,6 +9,7 @@ import type {Actor,IdentityClock} from "../identity/types.ts";
 import {systemClock} from "../identity/types.ts";
 import type {IdentityStore,SqlSession} from "../identity/store.ts";
 import {PublicGroupApplicationStore} from "./store.ts";
+import {AcademyCampaignStore} from "./academy-campaign-store.ts";
 import {fishingFollowupCommandSchema,fishingFollowupStateSchema,
  type FishingFollowupCommand,type FishingFollowupState} from "./fishing-followup-contract.ts";
 
@@ -61,7 +62,9 @@ export class FishingInquiryFollowupStore{
    await tx.query("SET TRANSACTION READ ONLY");await this.owner(tx,actor);
    const application=await this.applications.readForOwnerInTransaction(tx,actor,id);
    const history=await this.history(tx,id);
-   return {application,followup:history[0]??{version:0,...initial},history};
+   const attribution=await new AcademyCampaignStore(this.workspaceId,this.ring,this.digestKey,()=>this.clock.now())
+    .applicationAttribution(tx,id);
+   return {application,attribution,followup:history[0]??{version:0,...initial},history};
   });
  }
  async followup(actor:Actor,input:FishingFollowupCommand){

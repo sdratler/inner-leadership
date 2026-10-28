@@ -11,6 +11,7 @@ import {AcademyIntakeFields,AcademyIntakeLearnerFields} from "./academy-intake-f
 import styles from "./application-form.module.css";
 import copy from "./presentation-copy.json";
 import {AcademyRegistrationForm} from './academy-registration-form.tsx';
+import {captureCampaignAttribution,type CampaignAttribution} from './academy-campaign-contract.ts';
 
 type Challenge={challenge:string};
 const optional=(value:FormDataEntryValue|null)=>typeof value==="string"&&value.trim()!==""?value:undefined;
@@ -34,12 +35,15 @@ function LegacyGroupApplicationForm({locale,programId,onSaved,mode="native",onPr
  const [learnerCount,setLearnerCount]=useState(1);
  if(school&&programId!=="sunday_fishing_academy")throw new Error("SCHOOL_INQUIRY_ACADEMY_ONLY");
  if(fullIntake&&(school||programId!=="sunday_fishing_academy"))throw new Error("ACADEMY_FULL_INTAKE_ONLY");
- const t=(en:string,he:string)=>locale==="he"?he:en,form=useRef<HTMLFormElement>(null),pending=useRef<{command:FloridaGroupApplicationCommand;website:""}|null>(null),errorRef=useRef<HTMLDivElement>(null),successRef=useRef<HTMLDivElement>(null),permissionRef=useRef<HTMLInputElement>(null);
+ const t=(en:string,he:string)=>locale==="he"?he:en,form=useRef<HTMLFormElement>(null),pending=useRef<{command:FloridaGroupApplicationCommand;website:"";attribution:CampaignAttribution|null}|null>(null),errorRef=useRef<HTMLDivElement>(null),successRef=useRef<HTMLDivElement>(null),permissionRef=useRef<HTMLInputElement>(null);
+ const attribution=useRef<CampaignAttribution|null>(null);
  const [challenge,setChallenge]=useState(""),[busy,setBusy]=useState(false),[uncertain,setUncertain]=useState(false),[uncertainReference,setUncertainReference]=useState(""),[error,setError]=useState(""),[saved,setSaved]=useState(false),[savedReference,setSavedReference]=useState("");
  const [previewed,setPreviewed]=useState(false);
  const [savedStep,setSavedStep]=useState<AcademyIntake["nextStep"]|null>(null),[savedAcknowledgment,setSavedAcknowledgment]=useState<"queued"|"not_requested"|null>(null);
  const sampleReady=useSyncExternalStore(subscribeHydration,clientReady,serverReady);
  const endpoint=`/api/public/group-applications?program=${encodeURIComponent(programId)}`;
+ useEffect(()=>{if(mode!=="native"||programId!=="sunday_fishing_academy")return;
+  try{attribution.current=captureCampaignAttribution(new URL(location.href),sessionStorage);}catch{}},[mode,programId]);
  useEffect(()=>{if(mode==="sample")return;let active=true,timer:ReturnType<typeof setTimeout>|undefined;fetch(endpoint,{cache:"no-store",credentials:"same-origin"}).then(async response=>{const body=await response.json();if(!response.ok||body?.ok!==true||typeof body.data?.challenge!=="string")throw new Error();return body.data as Challenge;}).then(data=>{if(active)timer=setTimeout(()=>{if(active)setChallenge(data.challenge);},1600);}).catch(()=>{if(active)setError(locale==="he"?"שליחת פניות מקוונות עדיין אינה זמינה. לא נשלחו פרטים.":"Online inquiries are not available yet. No details have been sent.");});return()=>{active=false;if(timer)clearTimeout(timer);};},[endpoint,locale,mode]);
  useEffect(()=>{if(error)errorRef.current?.focus();},[error]);
  useEffect(()=>{if(saved)successRef.current?.focus();},[saved]);
@@ -57,11 +61,11 @@ function LegacyGroupApplicationForm({locale,programId,onSaved,mode="native",onPr
    if(!fields.success){setError(school?t("Please complete the school, staff contact, city, country-coded business contact, age band, estimated size, weekday, transport answer and contact permission.","יש למלא שם מוסד, איש קשר ותפקיד, עיר, פרטי קשר מקצועיים עם קידומת מדינה, טווח גיל, מספר משוער, יום מועדף, תשובת הסעה והסכמה ליצירת קשר."):fullIntake?t("Please complete contact, area/ZIP, every learner's details, schedule, driving limit, group/transport preferences, next-step choice and permission. An optional confirmation email must be valid.","יש למלא פרטי קשר, אזור ומיקוד, פרטים לכל לומד, העדפות זמנים, מגבלת נסיעה, העדפות קבוצה והסעות, בחירת המשך והסכמה. דוא״ל לאישור הפנייה, אם נמסר, חייב להיות תקין."):t("Please complete the required contact, location, program, schedule and permission fields.","יש למלא את פרטי הקשר, המיקום, המסלול והעדפות הזמנים הנדרשים ולאשר את ההסכמה."));return;}
    if(values.get("website")!==""){setError(t("Your inquiry could not be verified. Reload the page and try again.","לא ניתן לאמת את הפנייה. רעננו את הדף ונסו שוב."));return;}
    if(mode==="sample"){setPreviewed(true);onPreviewed?.();return;}
-   pending.current={command:{operationId:crypto.randomUUID(),fields:fields.data},website:""};setUncertainReference(pending.current.command.operationId);
+   pending.current={command:{operationId:crypto.randomUUID(),fields:fields.data},website:"",attribution:attribution.current};setUncertainReference(pending.current.command.operationId);
   }
   setBusy(true);let requestStarted=false;
   try{
-   requestStarted=true;const response=await fetch(endpoint,{method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify({challenge,website:pending.current.website,operationId:pending.current.command.operationId,fields:pending.current.command.fields})});
+   requestStarted=true;const response=await fetch(endpoint,{method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify({challenge,website:pending.current.website,operationId:pending.current.command.operationId,fields:pending.current.command.fields,...(pending.current.attribution?{attribution:pending.current.attribution}:{})})});
    if(!response.ok&&previouslyUncertain&&response.status===403){
     setChallenge("");
     try{const renewed=await fetch(endpoint,{cache:"no-store",credentials:"same-origin"}),body=await renewed.json();if(!renewed.ok||body?.ok!==true||typeof body.data?.challenge!=="string")throw new Error();await new Promise(resolve=>setTimeout(resolve,1600));setChallenge(body.data.challenge);setUncertain(true);setError(t("Form verification was renewed. Check the same save again; it will not create a duplicate.","אימות הטופס חודש. בדקו שוב את אותה שמירה; לא ייווצר עותק נוסף."));}

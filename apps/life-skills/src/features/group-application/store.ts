@@ -62,7 +62,7 @@ export class PublicGroupApplicationStore{
    const rows=await tx.query<{applicationId:string;requestDigest:string}>(`SELECT application_id AS "applicationId",request_digest AS "requestDigest"
     FROM ls_service_interest.public_application_operations WHERE workspace_id=$1 AND operation_id=$2`,[this.workspaceId,command.operationId]);
    if(rows.length===0)return null;if(rows.length!==1)throw new AppError("UNAVAILABLE");
-   if(rows[0]!.requestDigest!==digest)throw new AppError("CONFLICT");if(this.founder&&isFreeFounderRegistration(command.fields))await this.founder.checkAttribution(tx,command.operationId,attribution);
+   if(rows[0]!.requestDigest!==digest)throw new AppError("CONFLICT");if(this.founder)await this.founder.checkAttribution(tx,command.operationId,attribution);
    return {saved:true as const,replayed:true,duplicate:true,item:await this.read(tx,rows[0]!.applicationId),...(this.founder?{founder:await this.founder.publicResult(tx,rows[0]!.applicationId)}:{})};
   });
  }
@@ -77,7 +77,7 @@ export class PublicGroupApplicationStore{
    await lockWorkspace(tx,this.workspaceId);
    const prior=await tx.query<{applicationId:string;requestDigest:string}>(`SELECT application_id AS "applicationId",request_digest AS "requestDigest"
     FROM ls_service_interest.public_application_operations WHERE workspace_id=$1 AND operation_id=$2`,[this.workspaceId,command.operationId]);
-   if(prior.length){if(prior.length!==1||prior[0]!.requestDigest!==requestDigest)throw new AppError("CONFLICT");if(free)await this.founder!.checkAttribution(tx,command.operationId,attribution);return {saved:true as const,replayed:true,duplicate:true,item:await this.read(tx,prior[0]!.applicationId),...(this.founder?{founder:await this.founder.publicResult(tx,prior[0]!.applicationId)}:{})};}
+   if(prior.length){if(prior.length!==1||prior[0]!.requestDigest!==requestDigest)throw new AppError("CONFLICT");if(this.founder)await this.founder.checkAttribution(tx,command.operationId,attribution);return {saved:true as const,replayed:true,duplicate:true,item:await this.read(tx,prior[0]!.applicationId),...(this.founder?{founder:await this.founder.publicResult(tx,prior[0]!.applicationId)}:{})};}
    const existing=await tx.query<{id:string}>(`SELECT id FROM ls_service_interest.public_applications WHERE workspace_id=$1 AND request_digest=$2`,[this.workspaceId,requestDigest]);
    if(existing.length>1)throw new AppError("UNAVAILABLE");
    if(existing.length===1){
@@ -88,7 +88,7 @@ export class PublicGroupApplicationStore{
     // that key could later submit different content and escape replay conflict.
     await tx.query("INSERT INTO ls_service_interest.public_application_operations(workspace_id,operation_id,request_digest,application_id) VALUES($1,$2,$3,$4)",
      [this.workspaceId,command.operationId,requestDigest,applicationId]);
-    if(free)await this.founder!.bindAttribution(tx,command.operationId,applicationId,attribution);return {saved:true as const,replayed:false,duplicate:true,item:await this.read(tx,applicationId),...(this.founder?{founder:await this.founder.publicResult(tx,applicationId)}:{})};
+    if(this.founder)await this.founder.bindAttribution(tx,command.operationId,applicationId,attribution);return {saved:true as const,replayed:false,duplicate:true,item:await this.read(tx,applicationId),...(this.founder?{founder:await this.founder.publicResult(tx,applicationId)}:{})};
    }
    const now=this.clock.now(),id=randomUUID();
    {
@@ -104,7 +104,7 @@ export class PublicGroupApplicationStore{
    await tx.query(`INSERT INTO ls_service_interest.public_application_operations(workspace_id,operation_id,request_digest,application_id)
     VALUES($1,$2,$3,$4)`,[this.workspaceId,command.operationId,requestDigest,id]);
    const founder=free?await this.founder!.accept(tx,id,command.fields,continuation!):undefined;
-   if(free)await this.founder!.bindAttribution(tx,command.operationId,id,attribution);
+   if(this.founder)await this.founder.bindAttribution(tx,command.operationId,id,attribution);
    const acknowledgment=!free&&this.emailQueueEnabled?await queueInquiryEmail(tx,this.workspaceId,id,command.fields,this.ring,now):undefined;
    return {saved:true as const,replayed:false,duplicate:false,item:await this.read(tx,id),...(founder?{founder}:{}),...(acknowledgment?{acknowledgment}:{})};
   });
