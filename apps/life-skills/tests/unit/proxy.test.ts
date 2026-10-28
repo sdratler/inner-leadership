@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { NextRequest } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { groupApplicationPublicAsset, proxy, publicStaticAsset } from "../../src/proxy.ts";
+import { groupApplicationPublicAsset, groupApplicationReleasePath, proxy, publicStaticAsset } from "../../src/proxy.ts";
 import {settingsItems} from '../../src/ui/workspace/navigation-model.ts';
 
 describe("public static perimeter", () => {
@@ -32,6 +32,19 @@ describe("public static perimeter", () => {
 });
 
 afterEach(() => vi.unstubAllEnvs());
+describe("BNA inquiry release perimeter",()=>{
+  it("requires the exact enabled public path and strict private transport",()=>{
+    const origin="https://life-skills.bneineviimacademy.org",key=(seed:string)=>Buffer.alloc(32,seed).toString("base64url");
+    const env={NODE_ENV:"production",LS_APP_MODE:"foundation_locked",LS_APP_ORIGIN:origin,LS_PRIVATE_APP_ENABLED:"true",LS_BNA_INQUIRY_ENABLED:"true",LS_GROUP_APPLICATION_REAL_DATA_RELEASE:"true",LS_IDENTITY_ENABLED:"true",LS_IDENTITY_WORKSPACE_ID:"00000000-0000-4000-8000-000000000001",LS_IDENTITY_ACTIVE_KEY_ID:"v1",LS_IDENTITY_DATA_KEYS:JSON.stringify({v1:key("a")}),LS_IDENTITY_CSRF_KEY:key("b"),LS_IDENTITY_LOOKUP_KEY:key("c"),LS_IDENTITY_RATE_KEY:key("d")};
+    expect(groupApplicationReleasePath("/api/public/bna-inquiries",env)).toBe(true);
+    expect(groupApplicationReleasePath("/api/public/bna-inquiries/",env)).toBe(false);
+    expect(groupApplicationReleasePath("/api/public/bna-inquiries",{...env,LS_BNA_INQUIRY_ENABLED:"false"})).toBe(false);
+    expect(groupApplicationReleasePath("/api/public/bna-inquiries",{...env,LS_GROUP_APPLICATION_REAL_DATA_RELEASE:"false"})).toBe(false);
+    for(const [name,value] of Object.entries(env))vi.stubEnv(name,value);
+    expect(proxy(new NextRequest(origin+"/api/private/bna-inquiries")).status).toBe(200);
+    expect(proxy(new NextRequest("http://life-skills.bneineviimacademy.org/api/private/bna-inquiries")).status).toBe(503);
+  });
+});
 describe("retired Israeli public form request boundary",()=>{
   it.each(["foundation_preview","foundation_locked","isolated_preview"])("returns a real 404 before rendering in %s while preserving the Academy route",mode=>{
     const origin=mode==="foundation_preview"?"https://127.0.0.1:3001":"https://life-skills.example.invalid",key=(seed:string)=>Buffer.alloc(32,seed).toString("base64url");

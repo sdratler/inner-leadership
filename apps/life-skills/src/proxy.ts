@@ -47,6 +47,7 @@ export function intakeReleasePath(pathname: string, input: Record<string,string|
 export function groupApplicationReleasePath(pathname:string,input:Record<string,string|undefined>):boolean{
  const founderPath=input.LS_ACADEMY_FREE_REGISTRATION_ENABLED==='true'&&(pathname==='/api/public/academy-founder'||/^\/(he|en)\/florida\/confirm-interest\/?$/.test(pathname));
  const allowed=founderPath||pathname==="/api/public/group-applications"||
+  (input.LS_BNA_INQUIRY_ENABLED==='true'&&pathname==='/api/public/bna-inquiries')||
   /^\/(he|en)\/florida(?:\/(?:torah-mornings|private-fishing|apply|pricing))?\/?$/.test(pathname)||
   /^\/(he|en)\/florida\/stages\/(?:foundation|independent|advanced|leadership)\/?$/.test(pathname);
  if(!allowed||!publicGroupApplicationEnvironmentEnabled(input))return false;
@@ -100,7 +101,7 @@ export function proxy(request: NextRequest) {
   // These data pages/APIs depend on strict canonical HTTPS forwarding. Validate the original
   // transport before the request-header rewrite below can hide an invalid chain.
   // Forwarding never grants a session, role, case or audience permission.
-  if (privateDataPage || ["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins", "/api/updates", "/api/owner-digest", "/api/community-threads", "/api/provider-index", "/api/provider-referrals", "/api/private/contact-acquisition", "/api/private/acquisition/call-events", "/api/private/group-interest", "/api/private/group-placement", "/api/private/group-applications", "/api/private/group-applications/founder"].includes(pathname)||/^\/api\/(?:notifications|marketing)(?:\/|$)/.test(pathname)) {
+  if (privateDataPage || ["/api/goals", "/api/commitments", "/api/home-practice", "/api/checkins", "/api/updates", "/api/owner-digest", "/api/community-threads", "/api/provider-index", "/api/provider-referrals", "/api/private/contact-acquisition", "/api/private/acquisition/call-events", "/api/private/group-interest", "/api/private/group-placement", "/api/private/group-applications", "/api/private/group-applications/founder", "/api/private/bna-inquiries"].includes(pathname)||/^\/api\/(?:notifications|marketing)(?:\/|$)/.test(pathname)) {
     try {
       if (request.nextUrl.hash || requestHost !== canonicalOrigin.host.toLowerCase()) throw new Error("invalid transport");
       if (request.headers.has("x-forwarded-proto") || request.headers.has("x-forwarded-host")) {
