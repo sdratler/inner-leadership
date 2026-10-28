@@ -65,7 +65,7 @@ describe("the actual owner-selected Academy visual and inquiry design",()=>{
  });
  it("treats text/control intersection as overlap while allowing an adjacent blank corner",()=>{
   const bubble={left:320,right:376,top:770,bottom:826};expect(academyContactOverlaps(bubble,{left:20,right:360,top:750,bottom:795})).toBe(true);expect(academyContactOverlaps(bubble,{left:20,right:320,top:750,bottom:795})).toBe(false);expect(academyContactOverlaps(bubble,{left:20,right:380,top:600,bottom:770})).toBe(false);expect(academyContactOverlaps(bubble,{left:320,right:376,top:826,bottom:870})).toBe(false);
-  const url=new URL(ACADEMY_WHATSAPP);expect(url.origin).toBe("https://wa.me");expect(url.pathname).toBe("/972534932631");expect(url.searchParams.get("text")).toBe("Hi, I came from your website. I'd like to know more.");
+  const url=new URL(ACADEMY_WHATSAPP);expect(url.origin).toBe("https://wa.me");expect(url.pathname).toBe("/13054916674");expect(url.searchParams.get("text")).toBe("Hi, I'm interested in the Jewish Leadership Fishing Academy. Please tell me about the next suitable group.");
  });
 });
 

@@ -14,9 +14,10 @@ import {renderToStaticMarkup as renderPhaseRaw} from "react-dom/server";
 import {afterAll,afterEach,beforeAll,describe,expect,test,vi} from "vitest";
 import type {Locale} from "../../src/lib/locale.ts";
 import {AcademyPricing,AcademyRegistrationOffer} from "../../src/features/group-application/academy-pricing.tsx";
+import {ACADEMY_WHATSAPP} from "../../src/features/group-application/academy-whatsapp.tsx";
 
 const CANARY="PRIVATE_SYNTHETIC_HREF1107";
-const whatsapp="https://wa.me/972534932631?text=Hi%2C%20I%20came%20from%20your%20website.%20I%27d%20like%20to%20know%20more.";
+const whatsapp=ACADEMY_WHATSAPP;
 const noNetwork=vi.fn(()=>{throw new Error("UNEXPECTED_NETWORK_ATTEMPT");});
 beforeAll(()=>{
  vi.stubGlobal("fetch",noNetwork);vi.stubGlobal("WebSocket",noNetwork);
