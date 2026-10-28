@@ -13,7 +13,8 @@ describe('UI upgrade server-rendered structure (not authenticated journey proof)
   });
   it(`${locale}/${role}: settings hub is links, not a wall of editable fields`,()=>{
    const html=renderToStaticMarkup(<SettingsIndex locale={locale} role={role}/>);
-   expect(html).toContain('/settings/account?caseId=');expect(html).not.toContain('<input');expect(html).not.toContain('<textarea');expect(html.match(/lsu-settings-card/g)?.length).toBe(role==='parent'?4:3);
+   expect(html).toContain('/settings/account?caseId=');expect(html).not.toContain('<input');expect(html).not.toContain('<textarea');expect(html.match(/lsu-settings-card/g)?.length).toBe(role==='parent'?4:6);
+   if(role==='practitioner')for(const section of ['templates','content-voice','community'])expect(html).toContain(`/app/settings/${section}?caseId=`);
   });
  }
  it('coordination remains a contextual link rather than a preference form',()=>{const html=renderToStaticMarkup(<AccountSettings locale="en" role="parent" section="coordination"/>);expect(html).toContain('/family/practice?caseId=00000000-0000-4000-8000-000000000001');expect(html).not.toContain('settings-language');expect(html).not.toContain('quiet-start');});
