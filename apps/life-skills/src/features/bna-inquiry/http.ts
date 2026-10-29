@@ -14,6 +14,7 @@ import type {Actor} from "../identity/types.ts";
 import {BNA_INQUIRY_NOTICE,bnaAttributionSchema,bnaFollowupCommandSchema,bnaInquirySubmissionSchema} from "./contract.ts";
 import {BNA_COOP_PROGRAM,BNA_COOP_NOTICE,bnaCoopReadableFieldsSchema} from "./coop-contract.ts";
 import type {BnaInquiryStore} from "./store.ts";
+import {bnaAcknowledgmentPreview} from "../bna-communications/acknowledgment-preview.ts";
 
 const coopSubmission=z.object({challenge:z.string().min(80).max(1024),website:z.literal("").optional(),operationId:z.string().uuid(),fields:bnaCoopReadableFieldsSchema,attribution:bnaAttributionSchema.optional()}).strict();
 type PublicDeps={enabled:boolean;environment:Record<string,string|undefined>;challengeKey:string;now:()=>number;
@@ -53,10 +54,12 @@ export async function privateBnaInquiryHttp(request:Request,load:()=>Promise<Pri
   if(url.origin!==d.origin||url.pathname!=="/api/private/bna-inquiries")throw new AppError("NOT_FOUND");
   const actor=await d.actor(token);
   if(request.method==="GET"){
-   const keys=[...url.searchParams.keys()];if(keys.some(key=>!['id','before','historyBefore','operation'].includes(key)||url.searchParams.getAll(key).length!==1))throw new AppError("INVALID_REQUEST");
+   const keys=[...url.searchParams.keys()];if(keys.some(key=>!['id','before','historyBefore','operation','preview'].includes(key)||url.searchParams.getAll(key).length!==1))throw new AppError("INVALID_REQUEST");
+   const preview=url.searchParams.get('preview');
    const id=url.searchParams.get("id"),before=url.searchParams.get("before"),historyBefore=url.searchParams.get("historyBefore"),operation=url.searchParams.get("operation");
    if((id!==null&&!id)||(before!==null&&!before)||(operation!==null&&(!operation||id!==null||before!==null||historyBefore!==null))||(historyBefore!==null&&(!id||before!==null||!/^\d{1,10}$/.test(historyBefore)))||(id!==null&&before!==null))throw new AppError("INVALID_REQUEST");
-   response=successResponse(operation?await d.store.findOperation(actor,operation):id?await d.store.read(actor,id,historyBefore===null?undefined:Number(historyBefore)):await d.store.list(actor,before??undefined),requestId);
+   if(preview!==null&&(preview!=='acknowledgment'||!id||before!==null||historyBefore!==null||operation!==null))throw new AppError('INVALID_REQUEST');
+   response=successResponse(preview?bnaAcknowledgmentPreview(await d.store.read(actor,id!)):operation?await d.store.findOperation(actor,operation):id?await d.store.read(actor,id,historyBefore===null?undefined:Number(historyBefore)):await d.store.list(actor,before??undefined),requestId);
   }else if(request.method==="POST"){
    if(url.search)throw new AppError("INVALID_REQUEST");
    verifyMutationOrigin(canonical,d.origin);verifyCsrfToken(request.headers.get("x-csrf-token"),d.csrf(token));
