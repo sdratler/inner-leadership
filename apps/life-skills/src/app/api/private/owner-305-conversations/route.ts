@@ -6,6 +6,6 @@ async function handle(request:Request){return owner305ConversationHttp(request,a
  const r=await identityRuntime();return {enabled:process.env.LS_305_CLASSIFICATION_ENABLED==="true",origin:r.config.origin,
   actor:(token:string)=>r.services.sessions.actor(token),csrf:(token:string)=>r.services.sessions.csrf(token),
   limits:r.services.limits,rateLimitKey:r.config.rateLimitKey,
-  store:new Owner305ConversationStore(r.store,r.config.workspaceId,r.config.keyring,r.config.lookupKey.toString("hex"),process.env.LS_BNA_OWNER_ACCOUNT_ID??"",r.clock)};
+  store:new Owner305ConversationStore(r.store,r.config.workspaceId,r.config.keyring,r.config.lookupKey.toString("hex"),process.env.LS_BNA_OWNER_ACCOUNT_ID??"",r.clock,process.env.LS_305_INBOUND_ENABLED==="true"?process.env.LS_305_INBOUND_BINDING_SHA256??null:null)};
 });}
 export const GET=handle;export const POST=handle;

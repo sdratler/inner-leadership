@@ -1,6 +1,6 @@
 # 305 WhatsApp inbound release
 
-The owner-only inbox records future authenticated 305 channel events as encrypted receipts. It does not scan provider history, create People records or tasks, infer a program, or send messages. The owner can start a separate manual follow-up from a displayed message; that action does not merge identities.
+The owner-only inbox records future authenticated 305 channel events as encrypted receipts. It does not scan provider history, create People records or tasks, infer a program, or send messages. The owner can explicitly link one manual follow-up to a displayed message; that action does not merge identities.
 
 1. Complete review and checks for the app candidate and gateway PR. Keep `LS_305_INBOUND_ENABLED` and `LIFE_SKILLS_305_INBOUND_ENABLED` off and keep `LIFE_SKILLS_SHEET_CRM_ENABLED=false`.
 2. Deploy the reviewed app candidate with inbound off. Capture a fresh production backup, verify an isolated restore and rollback plan, then bind a protected proof file to the exact app deployment, commit, source, manifest, database and 0141 ledger. Run `release-owner-305-inbound-schema.ts --preflight`, apply only with `LS_305_INBOUND_SCHEMA_APPLY_APPROVED=true`, and run `--verify-only`.

@@ -1,8 +1,10 @@
+import {randomUUID} from "node:crypto";
 import {afterAll,beforeAll,expect,it,vi} from "vitest";
 vi.mock("server-only",()=>({}));
 import {academyTestDatabase,academyWorkspace} from "./academy-free-registration-fixture.ts";
 import {poolStore} from "./calendar/fixture.ts";
 import {Owner305InboundStore} from "../../src/features/conversation-305/inbound-store.ts";
+import {Owner305ConversationStore} from "../../src/features/conversation-305/store.ts";
 import {receive305} from "../../src/features/conversation-305/inbound-http.ts";
 import {inboundBindingDigest} from "../../src/features/contact-ops/server/inbound-store.ts";
 import {inboundAcknowledgementDigest} from "../../src/features/contact-ops/server/inbound-http.ts";
@@ -25,5 +27,12 @@ it("commits, replays and isolates a synthetic 305 bridge event in real PostgreSQ
  await expect(store.list(fixture.parent.actor)).rejects.toMatchObject({code:"NOT_FOUND"});expect((await store.list(fixture.owner.actor)).items).toMatchObject([{messageText:inquiry.messageText}]);
  const rows=await db.pool.query<{payload_ciphertext:string}>("SELECT payload_ciphertext FROM ls_service_interest.owner_305_inbound_receipts WHERE workspace_id=$1",[fixture.workspace]);expect(rows.rowCount).toBe(1);expect(rows.rows[0]!.payload_ciphertext).not.toContain(inquiry.messageText);
  const after=await counts();expect(after).toEqual({...before,"ls_service_interest.owner_305_inbound_receipts":before["ls_service_interest.owner_305_inbound_receipts"]!+1});
+ const item=(await store.list(fixture.owner.actor)).items[0]!,conversations=new Owner305ConversationStore(poolStore(db.pool),fixture.workspace,fixture.ring,fixture.digestKey,fixture.owner.actor.id,undefined,binding);
+ const command={kind:"create" as const,operationId:randomUUID(),channel:"whatsapp" as const,contactHint:"Synthetic sender",sourceReceiptKey:item.id,
+  followup:{classification:"bna" as const,note:"Synthetic follow-up",nextAction:null,dueDate:null,waitingCondition:"Await reply"}};
+ const linked=await conversations.save(fixture.owner.actor,command);expect(await conversations.save(fixture.owner.actor,command)).toMatchObject({id:linked.id,replayed:true});
+ await expect(conversations.save(fixture.owner.actor,{...command,operationId:randomUUID()})).rejects.toMatchObject({code:"CONFLICT"});
+ expect((await store.list(fixture.owner.actor)).items[0]!.linkedConversationId).toBe(linked.id);
+ expect((await conversations.read(fixture.owner.actor,linked.id)).sourceReceiptKey).toBe(item.id);
  await expect(db.pool.query("DELETE FROM ls_service_interest.owner_305_inbound_receipts WHERE workspace_id=$1",[fixture.workspace])).rejects.toThrow();
 },60000);

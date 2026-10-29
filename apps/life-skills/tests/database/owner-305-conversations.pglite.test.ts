@@ -78,11 +78,20 @@ it("stores exact 305 provider receipts once and exposes them only to the owner",
  await expect(inbound.capture({...inquiry,businessNumber:"+15555550124"})).rejects.toMatchObject({code:"FORBIDDEN"});
  await expect(inbound.list(otherActor)).rejects.toMatchObject({code:"NOT_FOUND"});
  await expect(inbound.list({...otherActor,role:"practitioner"})).rejects.toMatchObject({code:"NOT_FOUND"});
- expect((await inbound.list(ownerActor)).items[0]).toMatchObject({fromNumber:inquiry.fromNumber,messageText:inquiry.messageText});
+ const item=(await inbound.list(ownerActor)).items[0]!;expect(item).toMatchObject({fromNumber:inquiry.fromNumber,messageText:inquiry.messageText,linkedConversationId:null});
+ const linkedStore=new Owner305ConversationStore(adapter,workspace,ring,"synthetic-305-private-digest-key",owner,{now:()=>now},inboundBindingDigest(inquiry));
+ const command={kind:"create" as const,operationId:randomUUID(),channel:"whatsapp" as const,contactHint:"Synthetic sender",sourceReceiptKey:item.id,
+  followup:{classification:"fishing" as const,note:"Asked about Fishing",nextAction:null,dueDate:null,waitingCondition:"Await availability"}};
+ const linked=await linkedStore.save(ownerActor,command);expect(await linkedStore.save(ownerActor,command)).toMatchObject({id:linked.id,replayed:true});
+ await expect(linkedStore.save(ownerActor,{...command,operationId:randomUUID()})).rejects.toMatchObject({code:"CONFLICT"});
+ await expect(linkedStore.save(ownerActor,{...command,operationId:randomUUID(),sourceReceiptKey:"f".repeat(64)})).rejects.toMatchObject({code:"NOT_FOUND"});
+ expect((await linkedStore.read(ownerActor,linked.id)).sourceReceiptKey).toBe(item.id);
+ expect((await inbound.list(ownerActor)).items[0]!.linkedConversationId).toBe(linked.id);
  const stored=(await db.query<{payload_ciphertext:string}>("SELECT payload_ciphertext FROM ls_service_interest.owner_305_inbound_receipts")).rows[0]!;
  expect(stored.payload_ciphertext).not.toContain(inquiry.messageText);
  expect((await db.query<{n:number}>("SELECT count(*)::int AS n FROM ls_identity.people")).rows[0]!.n).toBe(peopleBefore);
  await expect(db.query("DELETE FROM ls_service_interest.owner_305_inbound_receipts WHERE workspace_id=$1",[workspace])).rejects.toThrow();
+ await expect(db.query("DELETE FROM ls_service_interest.owner_305_inbound_links WHERE workspace_id=$1",[workspace])).rejects.toThrow();
 });
 it("acknowledges the authenticated gateway payload only after the encrypted receipt commits",async()=>{
  const inquiry={provider:"whapi" as const,channelId:"synthetic-channel",businessNumber:CONVERSATION_305_LINE,providerEventId:"gateway-event",providerMessageId:"gateway-message",providerThreadId:"15555550123@s.whatsapp.net",eventType:"inbound_message" as const,fromMe:false as const,fromNumber:"+15555550123",pushName:"Synthetic",messageType:"text",messageText:"Synthetic gateway inquiry",occurredAt:now.toISOString(),media:[]};

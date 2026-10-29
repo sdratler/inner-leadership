@@ -20,13 +20,14 @@ async function get<T>(id?:string):Promise<T>{const response=await fetch("/api/pr
 export function Owner305ConversationPanel({locale,inboundEnabled=false}:{locale:Locale;inboundEnabled?:boolean}){
  const t=(en:string,he:string)=>locale==="he"?he:en;
  const [page,setPage]=useState<Page|null>(null),[detail,setDetail]=useState<Detail|null>(null),[draft,setDraft]=useState<Draft>(empty);
+ const [sourceReceiptKey,setSourceReceiptKey]=useState<string|null>(null),[inboundRefresh,setInboundRefresh]=useState(0);
  const [pending,setPending]=useState<ConversationCommand|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState<number|null>(null),[message,setMessage]=useState("");
  const active=useRef(true),serial=useRef(0);
- const clearPrivate=useCallback(()=>{setPage(null);setDetail(null);setDraft(empty);setPending(null);},[]);
+ const clearPrivate=useCallback(()=>{setPage(null);setDetail(null);setDraft(empty);setPending(null);setSourceReceiptKey(null);},[]);
  const load=useCallback(async()=>{const seq=++serial.current;try{const value=await get<Page>();if(active.current&&serial.current===seq){setPage(value);setError(null);}}
   catch(cause){if(active.current&&serial.current===seq){const code=cause instanceof RequestError?cause.status:503;setError(code);if([401,403,404].includes(code))clearPrivate();}}},[clearPrivate]);
  const open=useCallback(async(id:string)=>{const seq=++serial.current;try{const value=await get<Detail>(id);if(!active.current||serial.current!==seq)return;
-   setDetail(value);setDraft({channel:value.channel,contactHint:value.contactHint,classification:value.followup.classification,
+   setDetail(value);setSourceReceiptKey(null);setDraft({channel:value.channel,contactHint:value.contactHint,classification:value.followup.classification,
     note:"",nextAction:value.followup.nextAction??"",dueDate:value.followup.dueDate??"",waitingCondition:value.followup.waitingCondition??""});setError(null);
   }catch(cause){if(active.current&&serial.current===seq){const code=cause instanceof RequestError?cause.status:503;setError(code);if([401,403,404].includes(code))clearPrivate();}}},[clearPrivate]);
  useEffect(()=>{active.current=true;const timer=window.setTimeout(()=>void load(),0);return()=>{window.clearTimeout(timer);active.current=false;};},[load]);
@@ -35,21 +36,21 @@ export function Owner305ConversationPanel({locale,inboundEnabled=false}:{locale:
    const response=await fetch("/api/private/owner-305-conversations",{method:"POST",credentials:"same-origin",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer",
     headers:{"content-type":"application/json","x-csrf-token":session.csrfToken},body:JSON.stringify(command)});
    const body=await response.json().catch(()=>null);if(!response.ok||!body?.ok)throw new RequestError(response.status);
-   setPending(null);await load();await open(body.data.id as string);setMessage(t("Conversation saved and read back.","השיחה נשמרה ונקראה מחדש."));
+   setPending(null);setInboundRefresh(value=>value+1);await load();await open(body.data.id as string);setMessage(t("Conversation saved and read back.","השיחה נשמרה ונקראה מחדש."));
   }catch(cause){const code=cause instanceof RequestError?cause.status:503;setError(code);if([400,401,403,404,409].includes(code))setPending(null);
    if([401,403,404].includes(code))clearPrivate();}finally{setBusy(false);}}
  function submit(event:FormEvent<HTMLFormElement>){event.preventDefault();if(pending)return;
   const followup={classification:draft.classification,note:draft.note,nextAction:draft.nextAction.trim()||null,
    dueDate:draft.dueDate||null,waitingCondition:draft.waitingCondition.trim()||null};
   const raw=detail?{kind:"revise",operationId:crypto.randomUUID(),conversationId:detail.id,expectedVersion:detail.followup.version,followup}:
-   {kind:"create",operationId:crypto.randomUUID(),channel:draft.channel,contactHint:draft.contactHint,followup};
+   {kind:"create",operationId:crypto.randomUUID(),channel:draft.channel,contactHint:draft.contactHint,...(sourceReceiptKey?{sourceReceiptKey}:{}),followup};
   const parsed=conversationCommandSchema.safeParse(raw);if(!parsed.success){setError(400);return;}void save(parsed.data);
  }
  const labels:Record<Classification,[string,string]>={fishing:["Fishing","דיג"],bna:["BNA Torah","תורה בבני נביאים"],both:["Both","שניהם"],
   support_provider:["Support/provider","תמיכה/ספק"],unclassified:["Unclassified","טרם סווג"]};
  if(error===404)return null;
  return <section className="lsw-card" lang={locale} dir={locale==="he"?"rtl":"ltr"} aria-label={t("305 conversations","שיחות קו 305")}>
-  {inboundEnabled&&page&&<Owner305InboundPanel locale={locale} disabled={busy||!!pending} onRecord={item=>{setDetail(null);setDraft({...empty,channel:"whatsapp",contactHint:item.fromNumber});setError(null);}}/>}
+  {inboundEnabled&&page&&<Owner305InboundPanel locale={locale} disabled={busy||!!pending} refreshKey={inboundRefresh} onRecord={item=>{if(item.linkedConversationId){void open(item.linkedConversationId);return;}setDetail(null);setSourceReceiptKey(item.id);setDraft({...empty,channel:"whatsapp",contactHint:item.fromNumber});setError(null);}}/>}
   <h2>{t("305 conversations","שיחות קו 305")}</h2>
   <p><bdi dir="ltr">{CONVERSATION_305_LINE}</bdi> · {t("Enter conversations you handled manually. This does not import or merge a contact, capture provider history, or send a message.","תיעוד ידני של שיחות שטיפלת בהן. אין כאן יבוא או מיזוג אנשי קשר, קליטת היסטוריית ספק או שליחת הודעה.")}</p>
   {error!==null&&<div role="alert" className="lsw-alert"><p>{error===401?t("Sign in again.","יש להיכנס מחדש."):
@@ -67,14 +68,16 @@ export function Owner305ConversationPanel({locale,inboundEnabled=false}:{locale:
    {page.hasMore&&<p>{t("Showing the latest 100.","מוצגות 100 האחרונות.")}</p>}
    <ul>{page.items.map(item=><li key={item.id}><button type="button" disabled={busy||!!pending} onClick={()=>void open(item.id)}>
     {item.contactHint} · {t(...labels[item.followup.classification])} · {item.createdAt}</button></li>)}</ul></div>}
-  <button type="button" disabled={busy||!!pending} onClick={()=>{setDetail(null);setDraft(empty);setError(null);}}>{t("New 305 conversation","שיחת 305 חדשה")}</button>
+  <button type="button" disabled={busy||!!pending} onClick={()=>{setDetail(null);setSourceReceiptKey(null);setDraft(empty);setError(null);}}>{t("New 305 conversation","שיחת 305 חדשה")}</button>
   {detail&&<div className="lsw-stack"><h3>{detail.contactHint}</h3><p>{t("Channel","ערוץ")}: {detail.channel} · {t("Recorded","תועד")}: {detail.createdAt}</p>
+   {detail.sourceReceiptKey&&<p>{t("Linked to a received 305 WhatsApp message.","מקושר להודעת WhatsApp שהתקבלה בקו 305.")}</p>}
    <p>{t("Current classification","סיווג נוכחי")}: {t(...labels[detail.followup.classification])}</p>
    <ol>{detail.history.map(item=><li key={item.operationId}><time dateTime={item.recordedAt}>{item.recordedAt}</time> · {t(...labels[item.classification])} · {item.note}
     {item.nextAction&&<> · {item.nextAction} ({item.dueDate})</>}{item.waitingCondition&&<> · {item.waitingCondition}</>}</li>)}</ol>
    {detail.hasMoreHistory&&<p>{t("Showing the latest 100 revisions.","מוצגים 100 העדכונים האחרונים.")}</p>}</div>}
   <form onSubmit={submit} className="lsw-stack"><h3>{detail?t("Update classification and follow-up","עדכון סיווג ומעקב"):t("Record a conversation","תיעוד שיחה")}</h3>
-   {!detail&&<><label>{t("Channel","ערוץ")}<select value={draft.channel} onChange={event=>setDraft({...draft,channel:event.target.value as Channel})}>
+   {sourceReceiptKey&&!detail&&<p role="status">{t("This follow-up will be linked to the selected message.","המעקב יקושר להודעה שנבחרה.")}</p>}
+   {!detail&&<><label>{t("Channel","ערוץ")}<select disabled={!!sourceReceiptKey} value={draft.channel} onChange={event=>setDraft({...draft,channel:event.target.value as Channel})}>
     <option value="phone">{t("Phone","טלפון")}</option><option value="whatsapp">WhatsApp</option><option value="sms">SMS</option><option value="other">{t("Other","אחר")}</option></select></label>
     <label>{t("Contact hint you recognize","פרט מזהה לזיהוי השיחה")}<input required maxLength={160} value={draft.contactHint} onChange={event=>setDraft({...draft,contactHint:event.target.value})}/></label></>}
    <label>{t("Classification","סיווג")}<select value={draft.classification} onChange={event=>setDraft({...draft,classification:event.target.value as Classification})}>

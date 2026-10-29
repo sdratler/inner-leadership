@@ -9,7 +9,7 @@ const followup=z.object({classification:conversationClassification,note:z.string
  if(!value.nextAction&&!value.waitingCondition)ctx.addIssue({code:"custom",path:["nextAction"],message:"action or waiting condition required"});
 });
 export const conversationCreateSchema=z.object({kind:z.literal("create"),operationId:z.string().uuid(),
- channel:z.enum(["phone","whatsapp","sms","other"]),contactHint:z.string().trim().min(1).max(160),
+ channel:z.enum(["phone","whatsapp","sms","other"]),contactHint:z.string().trim().min(1).max(160),sourceReceiptKey:z.string().regex(/^[a-f0-9]{64}$/).optional(),
  followup}).strict();
 export const conversationReviseSchema=z.object({kind:z.literal("revise"),operationId:z.string().uuid(),
  conversationId:z.string().uuid(),expectedVersion:z.number().int().min(1),followup}).strict();

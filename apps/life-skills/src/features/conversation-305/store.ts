@@ -21,7 +21,9 @@ const metadataAad=(workspace:string,id:string)=>`ls_service_interest/owner-305-c
 const revisionAad=(workspace:string,operation:string)=>`ls_service_interest/owner-305-revision/v1/${workspace}/${operation}`;
 export class Owner305ConversationStore{
  constructor(private readonly db:IdentityStore,private readonly workspaceId:WorkspaceId,private readonly ring:Keyring,
-  private readonly digestKey:string,private readonly ownerAccountId:string,private readonly clock:IdentityClock=systemClock){}
+  private readonly digestKey:string,private readonly ownerAccountId:string,private readonly clock:IdentityClock=systemClock,private readonly inboundBindingDigest:string|null=null){}
+ private inboundBinding(){if(!this.inboundBindingDigest||!/^[a-f0-9]{64}$/.test(this.inboundBindingDigest))throw new AppError("UNAVAILABLE");
+  return privateDigest({domain:"owner-305-binding/v1",workspace:this.workspaceId,value:this.inboundBindingDigest},this.digestKey);}
  private digest(actor:Actor,command:ConversationCommand){return privateDigest({domain:"owner-305-conversation-operation/v1",workspace:this.workspaceId,actor:actor.id,command},this.digestKey);}
  private metadata(row:ConversationRow){try{const metadata=metadataSchema.parse(JSON.parse(unseal(row.metadataCiphertext,metadataAad(this.workspaceId,row.id),this.ring)));
   return {id:row.id,ownerAccountId:row.ownerAccountId,createdAt:row.createdAt.toISOString(),...metadata};
@@ -57,7 +59,9 @@ export class Owner305ConversationStore{
  async read(actor:Actor,id:string){if(!z.string().uuid().safeParse(id).success)throw new AppError("INVALID_REQUEST");
   return this.db.transaction(async tx=>{await tx.query("SET TRANSACTION READ ONLY");await this.owner(tx,actor);
    const record=await this.record(tx,actor,id),history=await this.history(tx,id);
-   return {...record,followup:history.items[0]!,history:history.items,hasMoreHistory:history.hasMore};});}
+   const links=this.inboundBindingDigest?await tx.query<{eventKey:string}>(`SELECT event_key AS "eventKey" FROM ls_service_interest.owner_305_inbound_links WHERE workspace_id=$1 AND binding_key=$2 AND conversation_id=$3`,[this.workspaceId,this.inboundBinding(),id]):[];
+   if(links.length>1)throw new AppError("UNAVAILABLE");
+   return {...record,sourceReceiptKey:links[0]?.eventKey??null,followup:history.items[0]!,history:history.items,hasMoreHistory:history.hasMore};});}
  async save(actor:Actor,input:ConversationCommand){const command=conversationCommandSchema.parse(input),digest=this.digest(actor,command),now=this.clock.now();
   return this.db.transaction(async tx=>{await lockWorkspace(tx,this.workspaceId);await this.owner(tx,actor);
    if(command.kind==="create"){
@@ -70,11 +74,17 @@ export class Owner305ConversationStore{
     const used=await tx.query<{operationId:string}>(`SELECT operation_id AS "operationId" FROM ls_service_interest.owner_305_conversation_revisions
      WHERE workspace_id=$1 AND operation_id=$2`,[this.workspaceId,command.operationId]);
     if(used.length)throw new AppError("CONFLICT");
+    let binding:string|null=null;if(command.sourceReceiptKey){if(command.channel!=="whatsapp")throw new AppError("INVALID_REQUEST");binding=this.inboundBinding();
+     const receipt=await tx.query<{eventKey:string}>(`SELECT event_key AS "eventKey" FROM ls_service_interest.owner_305_inbound_receipts WHERE workspace_id=$1 AND binding_key=$2 AND event_key=$3`,[this.workspaceId,binding,command.sourceReceiptKey]);
+     if(receipt.length!==1)throw new AppError("NOT_FOUND");
+     const linked=await tx.query<{conversationId:string}>(`SELECT conversation_id AS "conversationId" FROM ls_service_interest.owner_305_inbound_links WHERE workspace_id=$1 AND binding_key=$2 AND event_key=$3`,[this.workspaceId,binding,command.sourceReceiptKey]);
+     if(linked.length)throw new AppError("CONFLICT");}
     const id=randomUUID(),metadata=metadataSchema.parse({lineNumber:CONVERSATION_305_LINE,channel:command.channel,contactHint:command.contactHint});
     await tx.query(`INSERT INTO ls_service_interest.owner_305_conversations(workspace_id,id,owner_account_id,line_number,metadata_ciphertext,creation_digest,created_at)
      VALUES($1,$2,$3,$4,$5,$6,$7)`,[this.workspaceId,id,actor.id,CONVERSATION_305_LINE,seal(JSON.stringify(metadata),metadataAad(this.workspaceId,id),this.ring),digest,now]);
     await tx.query(`INSERT INTO ls_service_interest.owner_305_conversation_operations(workspace_id,operation_id,creation_digest,conversation_id) VALUES($1,$2,$3,$4)`,
      [this.workspaceId,command.operationId,digest,id]);
+    if(binding&&command.sourceReceiptKey)await tx.query(`INSERT INTO ls_service_interest.owner_305_inbound_links(workspace_id,binding_key,event_key,conversation_id) VALUES($1,$2,$3,$4)`,[this.workspaceId,binding,command.sourceReceiptKey,id]);
     await this.insertRevision(tx,actor,id,command.operationId,1,digest,command.followup,now);
     return {saved:true as const,id,replayed:false};
    }

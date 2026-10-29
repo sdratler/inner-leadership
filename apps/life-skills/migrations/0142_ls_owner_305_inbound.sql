@@ -10,8 +10,18 @@ CREATE TABLE ls_service_interest.owner_305_inbound_receipts (
  PRIMARY KEY(workspace_id,binding_key,event_key), UNIQUE(workspace_id,binding_key,message_key)
 );
 CREATE INDEX owner_305_inbound_recent ON ls_service_interest.owner_305_inbound_receipts(workspace_id,binding_key,stored_at DESC,event_key DESC);
+CREATE TABLE ls_service_interest.owner_305_inbound_links (
+ workspace_id uuid NOT NULL,binding_key text NOT NULL,event_key text NOT NULL,conversation_id uuid NOT NULL,
+ PRIMARY KEY(workspace_id,binding_key,event_key), UNIQUE(workspace_id,conversation_id),
+ FOREIGN KEY(workspace_id,binding_key,event_key) REFERENCES ls_service_interest.owner_305_inbound_receipts(workspace_id,binding_key,event_key),
+ FOREIGN KEY(workspace_id,conversation_id) REFERENCES ls_service_interest.owner_305_conversations(workspace_id,id)
+);
 CREATE TRIGGER owner_305_inbound_no_edit BEFORE UPDATE OR DELETE ON ls_service_interest.owner_305_inbound_receipts
  FOR EACH ROW EXECUTE FUNCTION ls_service_interest.reject_public_application_mutation();
 CREATE TRIGGER owner_305_inbound_no_truncate BEFORE TRUNCATE ON ls_service_interest.owner_305_inbound_receipts
  FOR EACH STATEMENT EXECUTE FUNCTION ls_service_interest.reject_public_application_mutation();
-REVOKE ALL ON ls_service_interest.owner_305_inbound_receipts FROM PUBLIC;
+CREATE TRIGGER owner_305_inbound_link_no_edit BEFORE UPDATE OR DELETE ON ls_service_interest.owner_305_inbound_links
+ FOR EACH ROW EXECUTE FUNCTION ls_service_interest.reject_public_application_mutation();
+CREATE TRIGGER owner_305_inbound_link_no_truncate BEFORE TRUNCATE ON ls_service_interest.owner_305_inbound_links
+ FOR EACH STATEMENT EXECUTE FUNCTION ls_service_interest.reject_public_application_mutation();
+REVOKE ALL ON ls_service_interest.owner_305_inbound_receipts,ls_service_interest.owner_305_inbound_links FROM PUBLIC;

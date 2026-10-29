@@ -65,7 +65,7 @@ async function main(){const mode=process.argv[2];if(!["--source-digest","--prefl
    if(mode==="--preflight"){process.stdout.write(JSON.stringify({code:"INBOUND_305_SCHEMA_PREFLIGHT_OK",pending:plan.pending.map(file=>file.name),effects:"schema-only"})+"\n");return;}
    const result=await migrate({query:(sql,values)=>client.query(sql,values?[...values]:undefined)},plan.scoped,false);
    const afterLedger=await client.query<{name:string;checksum:string}>("SELECT name,checksum FROM ls_control.migrations ORDER BY name"),afterStage=await readInbound305SchemaStage({query:(sql,values)=>client.query(sql,values?[...values]:undefined)}),after=inbound305SchemaPlan(files,afterLedger.rows,afterStage);
-   const rows=await client.query<{total:number}>(`SELECT (SELECT count(*) FROM ls_service_interest.owner_305_inbound_receipts)::int AS total`);
+   const rows=await client.query<{total:number}>(`SELECT ((SELECT count(*) FROM ls_service_interest.owner_305_inbound_receipts)+(SELECT count(*) FROM ls_service_interest.owner_305_inbound_links))::int AS total`);
    if(result.applied!==1||afterStage!==1||after.pending.length||rows.rows[0]?.total!==0)throw Error("INBOUND_305_SCHEMA_READBACK_FAILED");
    process.stdout.write(JSON.stringify({code:"INBOUND_305_SCHEMA_VERIFIED",applied:1,stage:1})+"\n");
   }finally{await client.query("SELECT pg_advisory_unlock(541940,5)").catch(()=>undefined);}
