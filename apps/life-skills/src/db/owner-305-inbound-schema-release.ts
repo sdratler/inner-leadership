@@ -1,12 +1,14 @@
 import {planMigrations,type AppliedMigration,type Migration} from "./migration-plan.ts";
 import {owner305Hash,type Owner305ReleaseQuery} from "./owner-305-schema-release.ts";
-export const INBOUND_305_BASELINE={name:"0141_ls_owner_305_conversations.sql",sha256:"d4c5c6a4e98382c4059e97c6147eae378b0017fd61307df771b1bdbc68b29790"} as const;
-export const INBOUND_305_MIGRATION={name:"0142_ls_owner_305_inbound.sql",sha256:"73b274095bbd3acafd9eeb4461c26abc57b5276ce115c1e1e46c34f1c4d535cc"} as const;
+import {BNA_SUPPORT_MIGRATION} from "./bna-support-schema-source.ts";
+export const INBOUND_305_BASELINE=BNA_SUPPORT_MIGRATION;
+export const INBOUND_305_MIGRATION={name:"0145_ls_owner_305_inbound.sql",sha256:"73b274095bbd3acafd9eeb4461c26abc57b5276ce115c1e1e46c34f1c4d535cc"} as const;
 export {owner305Hash};
 export function inbound305SchemaPlan(files:readonly Migration[],history:readonly AppliedMigration[],stage:0|1){
  const sorted=[...files].sort((a,b)=>a.name.localeCompare(b.name)),index=sorted.findIndex(f=>f.name===INBOUND_305_MIGRATION.name&&f.checksum===INBOUND_305_MIGRATION.sha256);
  if(index<1||sorted[index-1]?.name!==INBOUND_305_BASELINE.name||sorted[index-1]?.checksum!==INBOUND_305_BASELINE.sha256)throw Error("INBOUND_305_SCHEMA_SOURCE_MISMATCH");
- const scoped=sorted.slice(0,index+1),pending=planMigrations(scoped,history),expected=stage===0?[INBOUND_305_MIGRATION.name]:[];
+ planMigrations(sorted,history);
+ const scoped=sorted.slice(0,index+1),pending=planMigrations(scoped,history.slice(0,index+1)),expected=stage===0?[INBOUND_305_MIGRATION.name]:[];
  if(JSON.stringify(pending.map(f=>f.name))!==JSON.stringify(expected))throw Error("INBOUND_305_SCHEMA_LEDGER_STATE_CONFLICT");return {scoped,pending};
 }
 export async function readInbound305SchemaStage(db:Owner305ReleaseQuery):Promise<0|1>{

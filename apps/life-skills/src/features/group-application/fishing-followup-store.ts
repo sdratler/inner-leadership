@@ -50,27 +50,43 @@ export class FishingInquiryFollowupStore{
     version:row.version,recordedAt:row.recordedAt.toISOString(),...saved.state};
   }catch{throw new AppError("UNAVAILABLE");}
  }
- private async history(tx:SqlSession,id:string){
-  const rows=await tx.query<Row>(rowSql+" WHERE workspace_id=$1 AND application_id=$2 ORDER BY version DESC LIMIT 101",
-   [this.workspaceId,id]);
-  if(rows.length>100)throw new AppError("UNAVAILABLE");
-  return rows.map(row=>this.decode(row));
+ private async history(tx:SqlSession,id:string,before?:number){
+  const rows=await tx.query<Row>(rowSql+" WHERE workspace_id=$1 AND application_id=$2 AND ($3::integer IS NULL OR version<$3) ORDER BY version DESC LIMIT 101",
+   [this.workspaceId,id,before??null]);
+  return {items:rows.slice(0,100).map(row=>this.decode(row)),hasMore:rows.length>100};
  }
- async read(actor:Actor,id:string){
-  if(!z.string().uuid().safeParse(id).success)throw new AppError("INVALID_REQUEST");
+ async listPage(actor:Actor,cursor?:string){
+  await this.db.transaction(async tx=>{await tx.query("SET TRANSACTION READ ONLY");await this.owner(tx,actor);});
+  const page=await this.applications.listPage(actor,cursor?{cursor}:{});
+  return this.db.transaction(async tx=>{
+   await tx.query("SET TRANSACTION READ ONLY");await this.owner(tx,actor);
+   const ids=page.items.map(item=>item.id);
+   if(!ids.length)return {items:[],nextCursor:page.nextCursor};
+   const rows=await tx.query<Row>(`SELECT DISTINCT ON (application_id) operation_id AS "operationId",application_id AS "applicationId",
+    actor_account_id AS "actorAccountId",version,request_digest AS "requestDigest",payload_ciphertext AS "payloadCiphertext",recorded_at AS "recordedAt"
+    FROM ls_service_interest.fishing_inquiry_followups WHERE workspace_id=$1 AND application_id=ANY($2::uuid[])
+    ORDER BY application_id,version DESC`,[this.workspaceId,ids]);
+   const latest=new Map(rows.map(row=>[row.applicationId,this.decode(row)]));
+   const attribution=await new AcademyCampaignStore(this.workspaceId,this.ring,this.digestKey,()=>this.clock.now()).applicationAttributions(tx,ids);
+   return {items:page.items.map(application=>({application,attribution:attribution.get(application.id)??null,
+    followup:latest.get(application.id)??{version:0,...initial}})),nextCursor:page.nextCursor};
+  });
+ }
+ async read(actor:Actor,id:string,before?:number){
+  if(!z.string().uuid().safeParse(id).success||before!==undefined&&(!Number.isSafeInteger(before)||before<1||before>2147483647))throw new AppError("INVALID_REQUEST");
   return this.db.transaction(async tx=>{
    await tx.query("SET TRANSACTION READ ONLY");await this.owner(tx,actor);
    const application=await this.applications.readForOwnerInTransaction(tx,actor,id);
-   const history=await this.history(tx,id);
+   const history=await this.history(tx,id,before),latest=before===undefined?history:await this.history(tx,id);
    const attribution=await new AcademyCampaignStore(this.workspaceId,this.ring,this.digestKey,()=>this.clock.now())
     .applicationAttribution(tx,id);
-   return {application,attribution,followup:history[0]??{version:0,...initial},history};
+   return {application,attribution,followup:latest.items[0]??{version:0,...initial},history:history.items,hasMoreHistory:history.hasMore};
   });
  }
  async followup(actor:Actor,input:FishingFollowupCommand){
   const command=fishingFollowupCommandSchema.parse(input);
   const state=fishingFollowupStateSchema.parse({status:command.status,note:command.note,
-   nextAction:command.nextAction,dueDate:command.dueDate,waitingCondition:command.waitingCondition});
+   nextAction:command.nextAction,dueDate:command.dueDate,waitingCondition:command.waitingCondition,...(command.sourceCorrection?{sourceCorrection:command.sourceCorrection}:{})});
   const digest=this.digest({operationId:command.operationId,applicationId:command.applicationId,
    actorAccountId:actor.id,expectedVersion:command.expectedVersion,state});
   return this.db.transaction(async tx=>{
@@ -83,7 +99,7 @@ export class FishingInquiryFollowupStore{
     return {...this.decode(prior[0]!),replayed:true};
    }
    await this.applications.readForOwnerInTransaction(tx,actor,command.applicationId);
-   const history=await this.history(tx,command.applicationId),version=(history[0]?.version??0)+1;
+   const history=await this.history(tx,command.applicationId),version=(history.items[0]?.version??0)+1;
    if(command.expectedVersion!==version-1)throw new AppError("CONFLICT");
    const now=this.clock.now();
    await tx.query(`INSERT INTO ls_service_interest.fishing_inquiry_followups

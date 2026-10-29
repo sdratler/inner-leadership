@@ -1,7 +1,7 @@
 import {z} from "zod";
 
 export const CONVERSATION_305_LINE="+13054916674" as const;
-export const conversationClassification=z.enum(["fishing","bna","both","support_provider","unclassified"]);
+export const conversationClassification=z.enum(["fishing","bna","both","support","provider","support_provider","unclassified"]);
 const followup=z.object({classification:conversationClassification,note:z.string().trim().min(1).max(5000),
  nextAction:z.string().trim().min(1).max(500).nullable(),dueDate:z.iso.date().nullable(),
  waitingCondition:z.string().trim().min(1).max(500).nullable()}).strict().superRefine((value,ctx)=>{

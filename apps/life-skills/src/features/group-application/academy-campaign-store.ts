@@ -73,6 +73,20 @@ export class AcademyCampaignStore{
   }
   return first&&last?{first,last}:null;
  }
+ /** Bounded batch with the same integrity checks as individual readback. */
+ async applicationAttributions(tx:SqlSession,applicationIds:string[]):Promise<Map<string,CampaignAttribution|null>>{
+  if(applicationIds.length>50||new Set(applicationIds).size!==applicationIds.length)throw new AppError('INVALID_REQUEST');
+  const result=new Map<string,CampaignAttribution|null>(applicationIds.map(id=>[id,null]));if(!applicationIds.length)return result;
+  const rows=await tx.query<{applicationId:string;operation:string;digest:string;payload:string}>(`SELECT ids.id AS "applicationId",t.operation_id AS operation,t.request_digest AS digest,t.payload_ciphertext AS payload
+   FROM unnest($2::uuid[]) AS ids(id) JOIN LATERAL (SELECT operation_id,request_digest,payload_ciphertext,touch_sequence FROM ls_service_interest.academy_campaign_touches
+   WHERE workspace_id=$1 AND application_id=ids.id ORDER BY touch_sequence LIMIT 101) t ON true ORDER BY ids.id,t.touch_sequence`,[this.workspace,applicationIds]);
+  const counts=new Map<string,number>();
+  for(const row of rows){const count=(counts.get(row.applicationId)??0)+1;counts.set(row.applicationId,count);if(count>100)throw new AppError('UNAVAILABLE');
+   let value:CampaignAttribution|null;try{const decoded=JSON.parse(unseal(row.payload,this.aad(row.operation),this.ring)) as unknown;
+    value=decoded===null?null:campaignAttributionSchema.parse(decoded);if(this.hash(value)!==row.digest)throw new Error();}catch{throw new AppError('UNAVAILABLE');}
+   if(value){const prior=result.get(row.applicationId);result.set(row.applicationId,{first:prior?.first??value.first,last:value.last});}}
+  return result;
+ }
  private async writeShare(tx:SqlSession,p:Share){await tx.query('UPDATE ls_service_interest.academy_campaign_shares SET payload_ciphertext=$3 WHERE workspace_id=$1 AND id=$2',[this.workspace,p.id,seal(JSON.stringify(p),this.aad(p.id),this.ring)]);}
  private async insertShare(tx:SqlSession,p:Share){await tx.query('INSERT INTO ls_service_interest.academy_campaign_shares(workspace_id,id,payload_ciphertext,created_at) VALUES($1,$2,$3,$4)',[this.workspace,p.id,seal(JSON.stringify(p),this.aad(p.id),this.ring),this.now()]);}
  async list(tx:SqlSession){const rows=await tx.query<{id:string;payload:string}>('SELECT id,payload_ciphertext AS payload FROM ls_service_interest.academy_campaign_shares WHERE workspace_id=$1 ORDER BY created_at,id',[this.workspace]);return rows.map(r=>JSON.parse(unseal(r.payload,this.aad(r.id),this.ring)) as Share);}

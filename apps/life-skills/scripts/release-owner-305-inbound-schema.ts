@@ -1,4 +1,4 @@
-/** Exact-target 0141 schema-only operator. Requires 0138â€“0140 already applied.
+/** Exact-target 0145 schema-only operator. Requires the accepted 0144 baseline.
  * It never imports contacts, captures provider data, classifies records, or enables UI. */
 import {readFile,readdir,lstat} from "node:fs/promises";
 import {fileURLToPath} from "node:url";
@@ -10,6 +10,9 @@ import type {AppliedMigration,Migration} from "../src/db/migration-plan.ts";
 import {assertContactOpsDatabaseIdentity} from "../src/db/contact-ops-production-guard.ts";
 import {readBnaLeadSchemaStage} from "../src/db/bna-lead-schema-release.ts";
 import {readOwner305SchemaStage} from "../src/db/owner-305-schema-release.ts";
+import {readBnaCoopSchemaStage} from "../src/db/bna-coop-schema-release.ts";
+import {readOwner305LinkSchemaStage} from "../src/db/owner-305-link-schema-release.ts";
+import {readBnaSupportSchemaStage} from "../src/db/bna-support-schema-release.ts";
 import {INBOUND_305_MIGRATION,owner305Hash,inbound305SchemaPlan,readInbound305SchemaStage} from "../src/db/owner-305-inbound-schema-release.ts";
 
 const target={projectId:"3b756632-1f66-4f75-a016-eabc37aa0d67",environmentId:"dd91bd71-57cc-45e6-a75b-8c858491d7c7",
@@ -21,8 +24,8 @@ const proofSchema=z.strictObject({projectId:uuid,environmentId:uuid,appServiceId
  backup:z.strictObject({receiptId:z.string().min(1).max(200),readbackAt:z.iso.datetime(),databaseSystemIdentifier:z.string().min(1)}),
  isolatedRestore:z.strictObject({sourceReceiptId:z.string().min(1).max(200),verifiedAt:z.iso.datetime(),verified:z.literal(true)}),
  rollback:z.strictObject({reviewed:z.literal(true),description:z.string().min(20).max(2000)})});
-const sources=["migrations/manifest.json","migrations/0139_ls_bna_inquiries.sql","migrations/0140_ls_fishing_inquiry_followups.sql","migrations/0141_ls_owner_305_conversations.sql","migrations/0142_ls_owner_305_inbound.sql",
- "src/db/owner-305-schema-release.ts","src/db/owner-305-inbound-schema-release.ts","scripts/release-owner-305-inbound-schema.ts"] as const;
+const sources=["migrations/manifest.json","migrations/0139_ls_bna_inquiries.sql","migrations/0140_ls_fishing_inquiry_followups.sql","migrations/0141_ls_owner_305_conversations.sql","migrations/0142_ls_bna_coop_interest.sql","migrations/0143_ls_owner_305_inquiry_links.sql","migrations/0144_ls_bna_support_interest.sql","migrations/0145_ls_owner_305_inbound.sql",
+ "src/db/owner-305-schema-release.ts","src/db/bna-lead-schema-release.ts","src/db/contact-ops-production-guard.ts","src/db/migration-runner.ts","src/db/migration-plan.ts","src/db/bna-coop-schema-release.ts","src/db/bna-support-schema-source.ts","src/db/owner-305-link-schema-release.ts","src/db/bna-support-schema-release.ts","src/db/owner-305-inbound-schema-release.ts","scripts/release-owner-305-inbound-schema.ts"] as const;
 async function sourceSha(){const root=new URL("../",import.meta.url),entries=[];
  for(const name of sources){const url=new URL(name,root),stat=await lstat(fileURLToPath(url));if(!stat.isFile()||stat.isSymbolicLink())throw Error("INBOUND_305_SCHEMA_SOURCE_INVALID");entries.push([name,owner305Hash(await readFile(url))]);}
  return owner305Hash(JSON.stringify(entries));}
@@ -42,13 +45,13 @@ async function main(){const mode=process.argv[2];if(!["--source-digest","--prefl
  if(!files.some(file=>file.name===INBOUND_305_MIGRATION.name&&file.checksum===INBOUND_305_MIGRATION.sha256))throw Error("INBOUND_305_SCHEMA_SOURCE_MISMATCH");
  const proofPath=process.env.LS_305_INBOUND_SCHEMA_PROOF_FILE,proofSha=process.env.LS_305_INBOUND_SCHEMA_PROOF_SHA256;
  if(!proofPath||!isAbsolute(proofPath)||!proofSha)throw Error("INBOUND_305_SCHEMA_PROOF_REQUIRED");
- const proofStat=await lstat(proofPath);if(!proofStat.isFile()||proofStat.isSymbolicLink())throw Error("INBOUND_305_SCHEMA_PROOF_INVALID");
+ const proofStat=await lstat(proofPath);if(!proofStat.isFile()||proofStat.isSymbolicLink()||(proofStat.mode&0o077)!==0)throw Error("INBOUND_305_SCHEMA_PROOF_INVALID");
  const proofBytes=await readFile(proofPath);if(owner305Hash(proofBytes)!==sha.parse(proofSha))throw Error("INBOUND_305_SCHEMA_PROOF_HASH_MISMATCH");
  const proof=proofSchema.parse(JSON.parse(proofBytes.toString("utf8")));
  if(proof.projectId!==target.projectId||proof.environmentId!==target.environmentId||proof.appServiceId!==target.appServiceId||proof.databaseServiceId!==target.databaseServiceId||proof.deploymentId!==deployment||proof.reviewedCommit!==reviewedCommit||proof.manifestSha256!==manifestSha256||proof.sourceSha256!==actualSourceSha||proof.databaseBindingSha256!==databaseBindingSha256||proof.backup.receiptId!==proof.isolatedRestore.sourceReceiptId)throw Error("INBOUND_305_SCHEMA_PROOF_TARGET_MISMATCH");
  const now=Date.now(),backupAt=Date.parse(proof.backup.readbackAt),restoreAt=Date.parse(proof.isolatedRestore.verifiedAt);
  if(backupAt>restoreAt||restoreAt>now||now-backupAt>7*86400_000)throw Error("INBOUND_305_SCHEMA_BACKUP_STALE");
- if(mode==="--apply"&&(process.env.LS_305_INBOUND_SCHEMA_APPLY_APPROVED!=="true"||process.env.LS_305_INBOUND_ENABLED==="true"))throw Error("INBOUND_305_SCHEMA_APPLY_NOT_APPROVED");
+ if((mode==="--apply"&&process.env.LS_305_INBOUND_SCHEMA_APPLY_APPROVED!=="true")||(mode!=="--verify-only"&&process.env.LS_305_INBOUND_ENABLED==="true"))throw Error("INBOUND_305_SCHEMA_APPLY_NOT_APPROVED");
  const pool=new Pool({connectionString:url.toString(),ssl:{rejectUnauthorized:true,ca:process.env.LS_DATABASE_CA},max:1,connectionTimeoutMillis:8000,statement_timeout:30000});
  try{const client=await pool.connect();try{
   const lock=await client.query<{locked:boolean}>("SELECT pg_try_advisory_lock(541940,5) AS locked");if(lock.rows[0]?.locked!==true)throw Error("INBOUND_305_SCHEMA_LOCKED");
@@ -57,7 +60,8 @@ async function main(){const mode=process.argv[2];if(!["--source-digest","--prefl
    assertContactOpsDatabaseIdentity(identity.rows[0]?.system_identifier,identity.rows[0]?.ssl);
    if(proof.backup.databaseSystemIdentifier!==identity.rows[0]?.system_identifier)throw Error("INBOUND_305_SCHEMA_BACKUP_IDENTITY_MISMATCH");
    const ledger=await client.query<{name:string;checksum:string}>("SELECT name,checksum FROM ls_control.migrations ORDER BY name"),history:AppliedMigration[]=ledger.rows;
-   if(await readBnaLeadSchemaStage({query:(sql,values)=>client.query(sql,values?[...values]:undefined)})!==1||await readOwner305SchemaStage({query:(sql,values)=>client.query(sql,values?[...values]:undefined)})!==1)throw Error("INBOUND_305_SCHEMA_PREDECESSOR_NOT_READY");
+   const query={query:(sql:string,values?:readonly unknown[])=>client.query(sql,values?[...values]:undefined)};
+   if(await readBnaLeadSchemaStage(query)!==1||await readOwner305SchemaStage(query)!==1||await readBnaCoopSchemaStage(query)!==1||await readOwner305LinkSchemaStage(query)!==1||await readBnaSupportSchemaStage(query)!==1)throw Error("INBOUND_305_SCHEMA_PREDECESSOR_NOT_READY");
    const stage=await readInbound305SchemaStage({query:(sql,values)=>client.query(sql,values?[...values]:undefined)}),plan=inbound305SchemaPlan(files,history,stage);
    if(mode==="--verify-only"){if(stage!==1||plan.pending.length)throw Error("INBOUND_305_SCHEMA_VERIFY_PENDING");
     process.stdout.write(JSON.stringify({code:"INBOUND_305_SCHEMA_VERIFIED",applied:0,stage:1})+"\n");return;}

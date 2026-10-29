@@ -1,4 +1,5 @@
 import {z} from "zod";
+import {inquirySourceCorrectionSchema} from "../inquiry-source-correction.ts";
 
 export const BNA_INQUIRY_PROGRAM="bna_torah_mornings" as const;
 export const BNA_INQUIRY_NOTICE={
@@ -10,7 +11,7 @@ export const BNA_INQUIRY_NOTICE={
 const contact=z.string().trim().max(254);
 const tag=z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$/);
 export const bnaAttributionSchema=z.object({
- campaign:tag.optional(),source:tag.optional(),content:tag.optional(),referral:tag.optional(),postRef:tag.optional(),
+ campaign:tag.optional(),source:tag.optional(),medium:tag.optional(),content:tag.optional(),referral:tag.optional(),postRef:tag.optional(),groupRef:tag.optional(),landingPath:z.enum(["/join","/he/join","/support","/he/support"]).optional(),
 }).strict();
 export const bnaInquiryFieldsSchema=z.object({
  name:z.string().trim().min(1).max(120),
@@ -35,6 +36,7 @@ export const bnaFollowupCommandSchema=z.object({
  status:z.enum(["new","contacted","waiting","closed"]),
  note:z.string().trim().min(1).max(5000),nextAction:z.string().trim().max(500).nullable(),
  dueDate:z.iso.date().nullable(),waitingCondition:z.string().trim().max(500).nullable(),
+ sourceCorrection:inquirySourceCorrectionSchema.optional(),
 }).strict().superRefine((value,ctx)=>{
  if(Boolean(value.nextAction)!==Boolean(value.dueDate))
   ctx.addIssue({code:"custom",path:["dueDate"],message:"dated action required"});

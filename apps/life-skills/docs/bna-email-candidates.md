@@ -1,0 +1,9 @@
+# BNA email review candidates
+
+`src/features/bna-communications/email-candidates.json` contains the 15 exact bilingual email candidates from section 12 of `BNA_FISHING_CODEX_IMPLEMENTATION_MASTER_2026-10-29.md`. Its source SHA-256 identifies the supplied package; each message also binds its English and Hebrew subject/body bytes. Only leading/trailing blank lines and source line endings were normalized during extraction.
+
+`previewBnaEmailCandidate` produces plain text for review. It requires each used reference or URL, rejects unexpected template tokens, and uses a natural greeting when the first name is absent. Candidate text remains a review candidate. Trigger descriptions are metadata; this module has no outbox, worker, scheduler or provider call.
+
+The co-op owner panel can request its service-acknowledgment candidate through the existing private BNA endpoint. The endpoint re-reads the actual owner-authorized record and selects its saved message language. It offers email preview only for an email-selected reply channel; a phone selection, including one with an optional secondary email, is not silently turned into email permission. The view labels the copy as a review candidate and delivery as not queued. Historical Torah-morning inquiries retain their separate contract.
+
+Before delivery integration, review final copy and verified sender/reply-to/footer. B0 and S0 require actual durable inquiry saves; D0 requires a reconciled successful gift and is not a tax receipt. Educational messages require the corresponding current purpose/channel permission, suppression/reply handling and working preference/unsubscribe paths. Preserve the separate Fishing lifecycle. Apply the package's duplicate, personal-conversation, recurring-gift and controlled-delivery gates before activation. An extracted template or successful preview does not establish any of those facts.
