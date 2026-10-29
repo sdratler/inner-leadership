@@ -3,6 +3,7 @@ import {readFile} from "node:fs/promises";
 import {afterAll,beforeAll,expect,it,vi} from "vitest";
 import {PGlite} from "@electric-sql/pglite";
 vi.mock("server-only",()=>({}));
+import {readFishingMarketingSchemaStage} from "../../src/db/fishing-marketing-schema-release.ts";
 import {FishingMarketingStore} from "../../src/features/fishing-marketing/store.ts";
 import {receiveFishingMarketing} from "../../src/features/fishing-marketing/http.ts";
 import {canonical} from "../../src/features/contact-ops/core/validation.ts";
@@ -54,4 +55,11 @@ it("acknowledges only a committed authenticated bridge snapshot",async()=>{
 it("does not expose an altered or corrupt snapshot",async()=>{
  await db.query("UPDATE ls_service_interest.fishing_marketing_snapshot SET payload_ciphertext='corrupt' WHERE workspace_id=$1",[workspace]);
  await expect(store.read(ownerActor)).rejects.toMatchObject({code:"UNAVAILABLE"});
+});
+
+it("checks the additive schema catalog and rejects missing protections",async()=>{
+ const query={query:<T extends object>(sql:string,values?:readonly unknown[])=>db.query<T>(sql,values?[...values]:undefined)};
+ expect(await readFishingMarketingSchemaStage(query)).toBe(1);
+ await db.exec("DROP TRIGGER fishing_marketing_no_delete ON ls_service_interest.fishing_marketing_snapshot");
+ await expect(readFishingMarketingSchemaStage(query)).rejects.toThrow("FISHING_MARKETING_SCHEMA_CATALOG_CONFLICT");
 });

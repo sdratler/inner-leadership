@@ -1,3 +1,4 @@
+import Image from "next/image";
 import type {Locale} from "../../lib/locale.ts";
 import type {FishingMarketingSnapshot} from "./contract.ts";
 
@@ -8,7 +9,7 @@ function status(locale:Locale,value:string,evidence:string){
  if(evidence==="operator_recorded_readback")return locale==="he"?"דווח שאומת על ידי המפעיל":"Operator recorded readback";
  return labels[value]?.[locale==="he"?1:0]??(locale==="he"?"התוצאה לא אומתה":"Outcome unverified");
 }
-export function FishingMarketingPanel({locale,data,unavailable=false}:{locale:Locale;data:Readback;unavailable?:boolean}){
+export function FishingMarketingPanel({locale,data,unavailable=false,creative=null}:{locale:Locale;data:Readback;unavailable?:boolean;creative?:{path:string;sha256:string;width:number;height:number}|null}){
  const t=(en:string,he:string)=>locale==="he"?he:en;
  if(unavailable)return <section className="lsw-card" role="status"><h2>{t("Fishing group preparation","הכנת פרסומים לקבוצות דיג")}</h2><p>{t("The scheduler readback is unavailable.","קריאת נתוני המתזמן אינה זמינה.")}</p></section>;
  if(!data)return <section className="lsw-card" role="status"><h2>{t("Fishing group preparation","הכנת פרסומים לקבוצות דיג")}</h2><p>{t("Waiting for the first scheduler sync.","ממתינים לסנכרון הראשון של המתזמן.")}</p></section>;
@@ -21,7 +22,7 @@ export function FishingMarketingPanel({locale,data,unavailable=false}:{locale:Lo
   <p>{t("Next preparation window","חלון ההכנה הבא")}: <bdi><time dateTime={s.schedule.nextDue}>{s.schedule.nextDue}</time></bdi> ({s.schedule.timezone})</p>
   <details><summary>{t("Groups and approved captions","קבוצות וכיתובים מאושרים")}</summary>
    <ul>{s.targets.map(group=><li key={group.id}><a href={group.url} target="_blank" rel="noreferrer">{group.name||group.id}</a> · {group.hold?status(locale,group.hold,"unverified"):group.eligible?t("Eligible for preparation","זמינה להכנה"):t("Held for review","בהשהיה לבדיקה")}</li>)}</ul>
-   {s.assets.map(asset=><article key={asset.id}><h3>{asset.language.toUpperCase()}</h3><p style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}} dir="auto">{asset.caption}</p><p>{t("Image is not yet connected to this view.","התמונה עדיין אינה מחוברת לתצוגה זו.")}</p></article>)}
+   {s.assets.map(asset=><article key={asset.id}><h3>{asset.language.toUpperCase()}</h3><p style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}} dir="auto">{asset.caption}</p>{creative&&creative.sha256===asset.imageSha256?<Image src={creative.path} alt={t("Approved Fishing Academy image","תמונה מאושרת של אקדמיית הדיג")} width={creative.width} height={creative.height} unoptimized style={{maxWidth:"100%",height:"auto"}}/>:<p>{t("Exact approved image unavailable.","התמונה המאושרת המדויקת אינה זמינה.")}</p>}</article>)}
   </details>
   <details><summary>{t("Queue and publication history","תור והיסטוריית פרסום")}</summary>
    {!s.items.length&&!s.history.length&&<p>{t("No matching queue or delivery records in this snapshot.","אין רשומות תור או מסירה תואמות בנתונים אלו.")}</p>}
