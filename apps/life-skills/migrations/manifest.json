@@ -266,5 +266,9 @@
   {
     "name": "0147_ls_fishing_marketing_snapshot.sql",
     "sha256": "6419f05b3cf4d17add4f49fdb4c2eabe8f8cad2afe6f1b004398ab6f4327c755"
+  },
+  {
+    "name": "0148_ls_bna_email_preferences.sql",
+    "sha256": "6e11023cce18b93d1e7af783d91ff6208bdca9c794f2194c921994c3bc951e74"
   }
 ]

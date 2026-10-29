@@ -1,11 +1,11 @@
-import {randomUUID,createHash} from "node:crypto";
-import {readFileSync} from "node:fs";
+import {randomUUID} from "node:crypto";
 import {expect,it,vi} from "vitest";
 import pg from "pg";
 vi.mock("server-only",()=>({}));
 import {historicalPracticeDatabase} from "./home-practice/legacy-practice-fixture.ts";
 import {poolStore} from "./calendar/fixture.ts";
 import {migrate} from "../../src/db/migration-runner.ts";
+import {bnaPreferencesCatalogFingerprint,BNA_PREFERENCES_MIGRATION,BNA_PREFERENCES_CATALOG_SHA256,readBnaPreferencesSchemaStage,bnaPreferencesSchemaPlan} from "../../src/db/bna-preferences-schema-release.ts";
 import {BnaInquiryStore} from "../../src/features/bna-inquiry/store.ts";
 import {BNA_COOP_NOTICE,BNA_COOP_PROGRAM} from "../../src/features/bna-inquiry/coop-contract.ts";
 import {BnaPreferenceStore} from "../../src/features/bna-communications/preferences-store.ts";
@@ -17,7 +17,9 @@ it("native additive preference upgrade rolls back safely, preserves inquiries an
  const query=(sql:string,values?:readonly unknown[])=>client.query(sql,values?[...values]:undefined);
  const pool=new pg.Pool({connectionString:db.url,ssl:false,max:6});
  try{
-  await migrate({query},db.inventory,false);
+  const index=db.inventory.findIndex(file=>file.name===BNA_PREFERENCES_MIGRATION.name);expect(index).toBe(67);
+  const baseline=db.inventory.slice(0,index),proposal=db.inventory[index]!,target=db.inventory.slice(0,index+1);
+  await migrate({query},baseline,false);
   const workspace=asId(randomUUID(),"workspace"),owner=randomUUID(),session="a".repeat(64),now=new Date("2026-10-29T22:00:00Z"),clock={now:()=>now};
   const ring={activeKeyId:"synthetic",keys:{synthetic:Buffer.alloc(32,23)}},key="synthetic-native-bna-preference-private-key";
   await query("INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,$2)",[workspace,now]);
@@ -30,13 +32,31 @@ it("native additive preference upgrade rolls back safely, preserves inquiries an
   const inquiry=await inquiries.submit({operationId:randomUUID(),fields:{name:"Synthetic native adult",contactChannel:"email",contact:"synthetic@example.invalid",language:"he",siteLanguage:"en",emailUpdates:true,
    townOrZip:"DO NOT COPY TOWN",childAges:[10],question:"DO NOT COPY CHILD NOTE",permission:{confirmed:true,version:BNA_COOP_NOTICE.version,language:"en"}}},BNA_COOP_PROGRAM);
   const before=(await query("SELECT to_jsonb(t) AS row FROM ls_service_interest.bna_inquiries t ORDER BY id")).rows;
-  const sql=readFileSync("migrations/proposals/0148_ls_bna_email_preferences.sql","utf8"),proposal={name:"0148_ls_bna_email_preferences.sql",checksum:createHash("sha256").update(sql).digest("hex"),sql};
+
   const ledger=(await query("SELECT name,checksum FROM ls_control.migrations ORDER BY name")).rows;
-  await expect(migrate({query},[...db.inventory,{...proposal,sql:sql+"\nSELECT 1/0;"}],false)).rejects.toThrow("MIGRATION_FAILED");
+  expect(await readBnaPreferencesSchemaStage({query})).toBe(0);
+  expect(bnaPreferencesSchemaPlan(db.inventory,ledger,0).pending.map(file=>file.name)).toEqual([BNA_PREFERENCES_MIGRATION.name]);
+  await query("BEGIN");try{
+   await query("CREATE FUNCTION ls_service_interest.check_bna_email_preference_event() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$");
+   await expect(readBnaPreferencesSchemaStage({query})).rejects.toThrow("BNA_PREFERENCES_SCHEMA_CATALOG_CONFLICT");
+  }finally{await query("ROLLBACK");}
+  await expect(migrate({query},[...baseline,{...proposal,sql:proposal.sql+"\nSELECT 1/0;"}],false)).rejects.toThrow("MIGRATION_FAILED");
   expect((await query("SELECT to_regclass('ls_service_interest.bna_email_preference_events') AS relation")).rows).toEqual([{relation:null}]);
   expect((await query("SELECT name,checksum FROM ls_control.migrations ORDER BY name")).rows).toEqual(ledger);
-  expect(await migrate({query},[...db.inventory,proposal],false)).toEqual({applied:1,pending:0});
+  expect(await migrate({query},target,false)).toEqual({applied:1,pending:0});
+  expect(await bnaPreferencesCatalogFingerprint({query})).toBe(BNA_PREFERENCES_CATALOG_SHA256);
+  expect(await readBnaPreferencesSchemaStage({query})).toBe(1);
+  expect(bnaPreferencesSchemaPlan(db.inventory,(await query("SELECT name,checksum FROM ls_control.migrations ORDER BY name")).rows,1).pending).toEqual([]);
   expect((await query("SELECT to_jsonb(t) AS row FROM ls_service_interest.bna_inquiries t ORDER BY id")).rows).toEqual(before);
+  for(const change of [
+   "ALTER TABLE ls_service_interest.bna_email_preference_events DISABLE TRIGGER bna_email_preference_immutable",
+   "ALTER TABLE ls_service_interest.bna_email_preference_events ALTER COLUMN recorded_at DROP NOT NULL",
+   "GRANT SELECT ON ls_service_interest.bna_email_preference_events TO PUBLIC",
+   "GRANT EXECUTE ON FUNCTION ls_service_interest.check_bna_email_preference_event() TO PUBLIC",
+   "ALTER FUNCTION ls_service_interest.check_bna_email_preference_event() SECURITY DEFINER",
+   "ALTER TABLE ls_service_interest.bna_email_preference_events ENABLE ROW LEVEL SECURITY",
+  ]){await query("BEGIN");try{await query(change);await expect(readBnaPreferencesSchemaStage({query})).rejects.toThrow("BNA_PREFERENCES_SCHEMA_CATALOG_CONFLICT");}finally{await query("ROLLBACK");}}
+  expect(await readBnaPreferencesSchemaStage({query})).toBe(1);
   const prefs=new BnaPreferenceStore(poolStore(pool),workspace,owner,ring,key,clock,inquiries);
   const command={inquiryId:inquiry.reference,operationId:randomUUID(),expectedVersion:0,action:"pause_all" as const,note:"Synthetic owner pause"};
   const outcomes=await Promise.allSettled([prefs.updateOwner(actor,command),prefs.updateOwner(actor,{...command,operationId:randomUUID(),action:"withdraw_all"})]);

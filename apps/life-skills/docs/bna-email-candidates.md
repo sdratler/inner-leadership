@@ -24,11 +24,21 @@ side-effect-free and return no name, address, child details or private history.
 Permission grants expire after30days; an old link still permits withdrawal.
 Exact operation replay returns current native state after a lost response.
 
-This preference preparation is NOT a deployed feature. Proposed migration
-`migrations/proposals/0148_ls_bna_email_preferences.sql` is outside the active
-manifest. The flag-gated owner panel and matching BNA recipient page/relay are
+This preference implementation is NOT a deployed feature. Candidate migration
+`migrations/0148_ls_bna_email_preferences.sql` follows the unchanged67-entry
+prefix. The flag-gated owner panel and matching BNA recipient page/relay are
 implemented in the existing repositories. `LS_BNA_PREFERENCES_ENABLED` stays
-off pending the native release guard, full candidate CI, backup/restore
-and ordinary browser acceptance. No existing data migration or historical
-outbound collector is authorized by the proposal. Runtime flags and production
-acceptance are recorded in the existing private implementation checkpoint.
+off pending full candidate CI, fresh backup/isolated restore, the schema-only
+operator and ordinary browser acceptance. No historical outbound collector is
+added. Runtime flags and production acceptance are recorded in the existing
+private implementation checkpoint.
+
+`scripts/release-bna-preferences-schema.ts` admits only the existing exact
+Railway service/database with verified TLS and a deployment/commit/source/
+manifest/ledger-bound protected proof. Backup and isolated-restore evidence
+bind the same archive, database identity, exact0148 SQL, native catalog and
+unchanged prior tables. Preflight/apply require the new preference gate off;
+existing form,305 and B0/S0 gates are unaffected. Apply admits only0148, then
+checks its exact catalog/ledger and empty event table; verify-only never applies.
+Rollback keeps the additive immutable history and disables only the new
+preference capability. It never reverses a saved withdrawal or resumes mail.

@@ -1,5 +1,5 @@
 -- Additive, append-only adult email controls. No inquiry, contact, task or send
--- is created by this schema. Not in the active manifest until guarded release.
+-- is created by this schema. Apply only through its exact-target release guard.
 CREATE TABLE ls_service_interest.bna_email_preference_events (
  workspace_id uuid NOT NULL REFERENCES ls_identity.workspaces(id),
  recipient_key text NOT NULL CHECK(recipient_key ~ '^[a-f0-9]{64}$'),

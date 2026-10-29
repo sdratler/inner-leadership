@@ -1,5 +1,9 @@
 import {z} from "zod";
-import {bnaEmailProgram} from "./delivery-policy.ts";
+import {BNA_COOP_PROGRAM} from "../bna-inquiry/coop-contract.ts";
+import {BNA_SUPPORT_PROGRAM} from "../bna-inquiry/support-contract.ts";
+// This contract is also imported by the owner client. Keep server crypto,
+// frozen email content and delivery adapters outside that browser graph.
+const bnaPreferenceProgram=z.enum([BNA_COOP_PROGRAM,BNA_SUPPORT_PROGRAM]);
 
 export const BNA_PREFERENCE_NOTICE={version:"BNA-EMAIL-PREFERENCES-20261029-v1",
  en:"Send me BNA educational or project updates for this program by email. I can unsubscribe at any time.",
@@ -17,10 +21,10 @@ export const bnaRecipientPreferenceCommand=z.discriminatedUnion("action",[
 ]);
 export type BnaRecipientPreferenceCommand=z.infer<typeof bnaRecipientPreferenceCommand>;
 export const bnaPreferenceCapability=z.strictObject({version:z.literal(1),workspaceId:z.string().uuid(),ownerAccountId:z.string().uuid(),
- inquiryId:z.string().uuid(),recipientKey:z.string().regex(/^[a-f0-9]{64}$/),program:bnaEmailProgram,issuedAt:z.iso.datetime(),expiresAt:z.iso.datetime()});
+ inquiryId:z.string().uuid(),recipientKey:z.string().regex(/^[a-f0-9]{64}$/),program:bnaPreferenceProgram,issuedAt:z.iso.datetime(),expiresAt:z.iso.datetime()});
 export const bnaPreferenceToken=z.string().regex(/^[A-Za-z0-9_-]{100,2048}$/);
-export type BnaPreferenceContext={inquiryId:string;program:z.infer<typeof bnaEmailProgram>;recipient:string;locale:"en"|"he";originalPermissionAt:string|null;originalNoticeVersion:string};
-export type BnaPreferenceSnapshot={version:number;program:z.infer<typeof bnaEmailProgram>;locale:"en"|"he";
+export type BnaPreferenceContext={inquiryId:string;program:z.infer<typeof bnaPreferenceProgram>;recipient:string;locale:"en"|"he";originalPermissionAt:string|null;originalNoticeVersion:string};
+export type BnaPreferenceSnapshot={version:number;program:z.infer<typeof bnaPreferenceProgram>;locale:"en"|"he";
  permissionGrantedAt:string|null;withdrawn:boolean;paused:boolean;replyPending:boolean;invalidRecipient:boolean;complaint:boolean};
 export function recipientBnaPreferences(snapshot:BnaPreferenceSnapshot){return {version:snapshot.version,program:snapshot.program,locale:snapshot.locale,
  updates:snapshot.permissionGrantedAt!==null&&!snapshot.withdrawn,
