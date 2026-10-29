@@ -14,8 +14,8 @@ export function Owner305InboundPanel({locale,onRecord,disabled}:{locale:Locale;o
  return <div className="lsw-stack"><h3>{t("305 WhatsApp messages","הודעות WhatsApp לקו 305")}</h3>
   {failed?<p role="alert">{t("Messages could not be read.","לא ניתן לקרוא את ההודעות.")}</p>:!data?<p role="status">{t("Loading messages…","טוען הודעות…")}</p>:<>
    {data.items.length===0?<p>{t("No messages received yet.","טרם התקבלו הודעות.")}</p>:<ul>{data.items.map(item=><li key={item.id}>
-    <p><bdi>{item.fromNumber}</bdi> {item.pushName} · <time dateTime={item.occurredAt}>{item.occurredAt}</time></p>
-    <p>{item.messageText}</p>{item.media.map((media,index)=><p key={index}>{media.fileName||media.mimeType}</p>)}
+    <p><bdi>{item.fromNumber}</bdi> <bdi>{item.pushName}</bdi> · <bdi><time dateTime={item.occurredAt}>{new Date(item.occurredAt).toLocaleString(locale==="he"?"he-IL":"en-US",{dateStyle:"medium",timeStyle:"short"})}</time></bdi></p>
+    <p dir="auto">{item.messageText}</p>{item.media.map((media,index)=><p dir="auto" key={index}>{media.fileName||media.mimeType}</p>)}
     <button type="button" disabled={disabled} onClick={()=>onRecord(item)}>{t("Record a follow-up","תיעוד מעקב")}</button>
    </li>)}</ul>}{data.hasMore&&<p>{t("Showing the latest 100 messages.","מוצגות 100 ההודעות האחרונות.")}</p>}</>}
  </div>;
