@@ -1,0 +1,450 @@
+{
+  "packageId": "BNA-JLFA-IMPLEMENTATION-20261029-10",
+  "section": "11",
+  "sourceSha256": "f45b7e2f49f1a27adc1a93bc4460fbdba5fa0f6e1425dbef1c5e5b414d732b03",
+  "normalization": "Source line endings converted to LF; leading and trailing body blank lines removed.",
+  "posts": [
+    {
+      "id": "V01",
+      "title": "Ratzon: give the question a direction",
+      "type": "value",
+      "business": "placement_required",
+      "status": "review_candidate",
+      "assetInstruction": "Optional permissioned real learning photo; text-only is acceptable.",
+      "content": {
+        "en": "A useful place to begin a Torah-learning conversation is the boy’s own question. Ask him which detail interests him, what he thinks the source means, and what he would like to understand more clearly.\n\nThen choose one question to investigate together. Let him explain what changed in his understanding. In our approach, that movement from curiosity to a chosen commitment gives ratzon a practical expression.\n\nWhat question has your child brought you recently?",
+        "he": "נקודת פתיחה מועילה לשיחת לימוד היא השאלה של הילד עצמו. שאלו איזה פרט מעניין אותו, כיצד הוא מבין את המקור ומה הוא רוצה לברר יותר לעומק.\n\nבחרו יחד שאלה אחת לחקירה. תנו לו להסביר מה השתנה בהבנה שלו. בגישה שלנו, המעבר מסקרנות להתחייבות שהילד בוחר נותן לרצון ביטוי מעשי.\n\nאיזו שאלה הילד שלכם העלה לאחרונה?"
+      },
+      "copySha256": "237159d0be02c62506fcfaf6440c6f6dc98fa3f545ad4897bb727e944b7a3537"
+    },
+    {
+      "id": "V02",
+      "title": "A daily rhythm",
+      "type": "value",
+      "business": "placement_required",
+      "status": "review_candidate",
+      "assetInstruction": "Optional permissioned real learning photo; text-only is acceptable.",
+      "content": {
+        "en": "A rhythm gives a family a familiar sequence: prepare the space, learn together, move, eat, and return to a chosen responsibility. A timetable adds agreed clock times where they are useful.\n\nStart with one part of the day. Ask everyone what needs to happen and which transition usually needs help. Agree on the sequence, give it a few days, and review one adjustment together.\n\nWhich part of your family’s day would benefit from a clearer rhythm?",
+        "he": "קצב יומי נותן למשפחה רצף מוכר: מכינים את המרחב, לומדים יחד, נעים, אוכלים וחוזרים לאחריות שנבחרה. לוח זמנים מוסיף שעות מוסכמות במקומות שבהם הן מועילות.\n\nהתחילו בחלק אחד של היום. שאלו מה צריך לקרות ובאיזה מעבר דרושה עזרה. הסכימו על הרצף, נסו אותו כמה ימים ובחרו יחד שינוי אחד.\n\nבאיזה חלק של היום יעזור למשפחה שלכם קצב ברור יותר?"
+      },
+      "copySha256": "2baa31fb3bdeae28519567d6befe4d836a9ce28d55349c353305d9ff5d876a33"
+    },
+    {
+      "id": "V03",
+      "title": "An open-ended question",
+      "type": "value",
+      "business": "placement_required",
+      "status": "review_candidate",
+      "assetInstruction": "Optional permissioned real learning photo; text-only is acceptable.",
+      "content": {
+        "en": "An open-ended question gives a child room to describe his thinking. After learning a passage, try: “Which part needs explaining?” or “How did you reach that conclusion?”\n\nListen to the whole answer. Ask him to point to the words that support his view. You can then examine another possibility together. The conversation becomes a practice in careful reading, explanation and intellectual responsibility.\n\nWhich questions lead to the most thoughtful conversations in your home?",
+        "he": "שאלה פתוחה נותנת לילד מקום לתאר את החשיבה שלו. אחרי לימוד קטע אפשר לשאול: ״איזה חלק דורש הסבר?״ או ״איך הגעת למסקנה הזאת?״\n\nהקשיבו לתשובה כולה. בקשו ממנו להצביע על המילים שתומכות בהבנתו, ואז בחנו יחד אפשרות נוספת. השיחה נעשית לתרגול בקריאה מדויקת, בהסבר ובאחריות מחשבתית.\n\nאילו שאלות מעוררות אצלכם בבית שיחות מעמיקות?"
+      },
+      "copySha256": "4521fe8aa8c61477b52fd058aa98ad0cc3462230ecf95ee42e3d73e2629c8564"
+    },
+    {
+      "id": "V04",
+      "title": "Give a value a visible action",
+      "type": "value",
+      "business": "placement_required",
+      "status": "review_candidate",
+      "assetInstruction": "Optional permissioned real learning photo; text-only is acceptable.",
+      "content": {
+        "en": "A shared value becomes easier to practice when everyone can describe what it looks like. Take responsibility: returning equipment, telling someone when a plan changes, or finishing an agreed task.\n\nChoose one value with your family and ask for examples from ordinary life. Agree on one action to practice this week. At the next conversation, discuss what happened and what support would help.\n\nWhich value would your family choose first?",
+        "he": "ערך משותף נעשה ברור יותר לתרגול כשאפשר לתאר איך הוא נראה. אחריות יכולה להתבטא בהחזרת ציוד, בעדכון כשמשהו משתנה או בהשלמת משימה מוסכמת.\n\nבחרו ערך אחד עם המשפחה ובקשו דוגמאות מחיי היומיום. הסכימו על פעולה אחת לשבוע הקרוב. בשיחה הבאה בדקו מה קרה ואיזו עזרה תהיה מועילה.\n\nבאיזה ערך המשפחה שלכם תבחר להתחיל?"
+      },
+      "copySha256": "36b95b00ddbebdacb641b62612a366226d5be0bedbda6b46145738d48ba910b7"
+    },
+    {
+      "id": "V05",
+      "title": "A useful pause",
+      "type": "value",
+      "business": "placement_required",
+      "status": "review_candidate",
+      "assetInstruction": "Optional permissioned real learning photo; text-only is acceptable.",
+      "content": {
+        "en": "When frustration rises during learning, give the boy a manageable next step. Pause the task, help him describe the difficulty, and ask what would make it possible to continue.\n\nHe might need an explanation, a smaller part to work on, movement, or help putting a question into words. Return to the agreed task when he is ready, with the support the situation calls for.\n\nSelf-governance has a practical setting in moments like these.",
+        "he": "כשתסכול עולה בזמן הלמידה, עזרו לילד למצוא צעד שאפשר לבצע. עצרו לרגע, עזרו לו לתאר את הקושי ושאלו מה יאפשר להמשיך.\n\nייתכן שהוא זקוק להסבר, לחלק קטן יותר של המשימה, לתנועה או לעזרה בניסוח שאלה. חזרו למשימה המוסכמת כשהוא מוכן, עם התמיכה שהמצב דורש.\n\nרגעים כאלה נותנים להנהגה העצמית מקום מעשי לתרגול."
+      },
+      "copySha256": "11dc245fe64c29f818721f22b289e2606c9bf574cee58870ab7dd8454d1a6e26"
+    },
+    {
+      "id": "V06",
+      "title": "Listening during disagreement",
+      "type": "value",
+      "business": "placement_required",
+      "status": "review_candidate",
+      "assetInstruction": "Optional permissioned real learning photo; text-only is acceptable.",
+      "content": {
+        "en": "A disagreement can become a useful learning conversation. Ask each boy to explain the other person’s point before responding with his own.\n\nThen identify the shared task: understanding a source, solving a practical problem, or deciding how to use a shared space. Each person can propose a next step that respects that purpose.\n\nThe educator guides the exchange and helps both boys stay involved. What helps disagreements become productive in your family?",
+        "he": "מחלוקת יכולה להפוך לשיחת למידה מועילה. בקשו מכל ילד להסביר את דברי האחר לפני שהוא מציג את תגובתו.\n\nאחר כך הגדירו את המשימה המשותפת: הבנת מקור, פתרון בעיה מעשית או החלטה על שימוש במרחב משותף. כל אחד יכול להציע צעד שמכבד את המטרה הזאת.\n\nהמחנך מכוון את השיחה ועוזר לשני הילדים להישאר שותפים. מה עוזר למחלוקות אצלכם להפוך לפוריות?"
+      },
+      "copySha256": "b7dc771abf4a484db322260e358a5c9db458c3b2d44b333236b1117630af8a23"
+    },
+    {
+      "id": "V07",
+      "title": "A commitment a boy can own",
+      "type": "value",
+      "business": "placement_required",
+      "status": "review_candidate",
+      "assetInstruction": "Optional permissioned real learning photo; text-only is acceptable.",
+      "content": {
+        "en": "Give a learning commitment a clear shape: what the boy intends to study, how he will approach it, and what he will be able to explain afterward.\n\nInvite him to choose a realistic first step. At the end, ask what he completed, where he needed help and what he wants to do next. Keep the review specific and private.\n\nThis is one way we connect learner choice with follow-through in autonomous Torah learning.",
+        "he": "תנו להתחייבות בלמידה צורה ברורה: מה הילד מתכוון ללמוד, כיצד ייגש לכך ומה יוכל להסביר בסיום.\n\nהזמינו אותו לבחור צעד ראשון מציאותי. בסוף שאלו מה השלים, היכן נזקק לעזרה ומה ירצה לעשות בהמשך. שמרו על שיחה אישית ומדויקת.\n\nכך אפשר לחבר בין בחירה לבין עמידה בהתחייבות בתוך לימוד תורה עצמאי."
+      },
+      "copySha256": "2ebafde0640e9bd87b401f023c2bb772030f474b56e9332e9cc1c79f74432657"
+    },
+    {
+      "id": "V08",
+      "title": "Torah expressed in an ordinary choice",
+      "type": "value",
+      "business": "placement_required",
+      "status": "review_candidate",
+      "assetInstruction": "Optional permissioned real learning photo; text-only is acceptable.",
+      "content": {
+        "en": "A Torah idea becomes part of a boy’s life through the choices around him. Returning something borrowed, speaking honestly about a mistake, or giving another person time to explain can become an opportunity to examine a value together.\n\nAsk which source relates to the situation and how the boy understands its application. Give him room to think through a responsible action.\n\nGeulah consciousness gives this relationship between Torah, knowledge and daily life a direction.",
+        "he": "רעיון תורני מקבל ביטוי בחיי הילד דרך הבחירות שסביבו. החזרת חפץ שאול, דיבור כן על טעות או מתן זמן לאדם אחר להסביר יכולים לפתוח בירור משותף של ערך.\n\nשאלו איזה מקור קשור למצב וכיצד הילד מבין את היישום שלו. תנו לו מקום לחשוב על פעולה אחראית.\n\nתודעת הגאולה נותנת כיוון לקשר הזה בין תורה, דעת וחיי היומיום."
+      },
+      "copySha256": "3720ce18825368a85dc74b61b71d9ee616328fb072c7be7fcdb789828ab89149"
+    },
+    {
+      "id": "V09",
+      "title": "Preparing equipment",
+      "type": "value",
+      "business": "placement_required",
+      "status": "review_candidate",
+      "assetInstruction": "Optional permissioned real learning photo; text-only is acceptable.",
+      "content": {
+        "en": "Preparing equipment gives responsibility a concrete form. Before an activity, let a boy identify what he needs, check its condition and explain how it will be used.\n\nThe adult checks safety and offers the help required. Afterward, the boy returns the equipment and notices what needs replacing or improving.\n\nA simple preparation-and-return routine creates repeated opportunities to practice planning and care. What ordinary equipment could your child take more responsibility for?",
+        "he": "הכנת ציוד נותנת לאחריות ביטוי מוחשי. לפני פעילות, תנו לילד לזהות מה דרוש, לבדוק את המצב ולהסביר כיצד ישתמש בציוד.\n\nהמבוגר בודק את הבטיחות ומעניק את העזרה הנדרשת. בסיום הילד מחזיר את הציוד ושם לב למה שצריך להחליף או לשפר.\n\nרצף פשוט של הכנה והחזרה מזמן תרגול חוזר בתכנון ובשמירה. על איזה ציוד יומיומי יכול ילדכם לקחת יותר אחריות?"
+      },
+      "copySha256": "3387a0150314fccb533a6c74e6bd39aeedeff21a7d5f131963d09294ee08108f"
+    },
+    {
+      "id": "V10",
+      "title": "The next useful challenge",
+      "type": "value",
+      "business": "placement_required",
+      "status": "review_candidate",
+      "assetInstruction": "Optional permissioned real learning photo; text-only is acceptable.",
+      "content": {
+        "en": "When choosing a learning task, look closely at what the boy can already do and where he begins to need help. That gives the next challenge a useful starting point.\n\nHe may be ready to read a shorter passage independently, explain one part of a Mishnah, or prepare a question before a discussion. Choose a task with a visible finish and review the experience together.\n\nOrganic learning gives attention to the actual learner and his next step.",
+        "he": "בבחירת משימת למידה, שימו לב למה שהילד כבר יודע לעשות ולנקודה שבה הוא מתחיל להזדקק לעזרה. כך מתקבלת נקודת פתיחה מועילה לאתגר הבא.\n\nייתכן שהוא מוכן לקרוא קטע קצר בעצמו, להסביר חלק ממשנה או להכין שאלה לפני דיון. בחרו משימה עם סיום ברור ובדקו יחד את החוויה.\n\nלמידה אורגנית מתייחסת ללומד עצמו ולצעד הבא שלו."
+      },
+      "copySha256": "388772b0d16bf2e72bdd0de280cc25bccf80a35427bff7e3518c22ae47da0079"
+    },
+    {
+      "id": "V11",
+      "title": "Observing a difficult moment",
+      "type": "value",
+      "business": "placement_required",
+      "status": "review_candidate",
+      "assetInstruction": "Optional permissioned real learning photo; text-only is acceptable.",
+      "content": {
+        "en": "A difficult learning moment gives us information to examine. What was the task? What happened immediately beforehand? What did the child understand, and what was being asked of him?\n\nWrite down one concrete observation before deciding how to respond. Then consider an adjustment: clarify the instruction, reduce the first step, change the setting or offer a conversation.\n\nThis keeps educational support connected to the actual situation and the child’s needs.",
+        "he": "רגע קשה בלמידה נותן מידע שאפשר לבחון. מה הייתה המשימה? מה קרה מיד לפניה? מה הילד הבין ומה התבקש לעשות?\n\nרשמו תצפית אחת ברורה לפני בחירת התגובה. אחר כך שקלו התאמה: הבהרת ההנחיה, הקטנת הצעד הראשון, שינוי הסביבה או שיחה אישית.\n\nכך התמיכה החינוכית נשארת מחוברת למצב ולצרכים של הילד."
+      },
+      "copySha256": "3b4f7742a64af4d65975d3249f1ef518f093bed28c8298b294c01a4f0ed56169"
+    },
+    {
+      "id": "V12",
+      "title": "A parent observation worth sharing",
+      "type": "value",
+      "business": "placement_required",
+      "status": "review_candidate",
+      "assetInstruction": "Optional permissioned real learning photo; text-only is acceptable.",
+      "content": {
+        "en": "Parents notice important patterns: the subject that holds a child’s attention, the question he keeps returning to, or the setting in which he speaks more comfortably.\n\nBring one specific observation into a conversation with his educator. Describe what happened and ask what it might suggest for the next learning experience. Together, choose something small to try and a way to review it.\n\nWhat have you noticed recently about how your child likes to learn?",
+        "he": "הורים מבחינים בדפוסים חשובים: נושא שמחזיק את תשומת הלב, שאלה שהילד חוזר אליה או סביבה שבה הוא מדבר בנוחות רבה יותר.\n\nהביאו תצפית מדויקת לשיחה עם המחנך. תארו מה קרה ושאלו מה אפשר ללמוד מכך לגבי חוויית הלמידה הבאה. בחרו יחד ניסיון קטן ודרך לבדוק אותו.\n\nמה גיליתם לאחרונה על הדרך שבה ילדכם אוהב ללמוד?"
+      },
+      "copySha256": "a159ec25a5b4e11b1c553389cad0a8db0ccd4cdfa31f19f8dd25fd219732729b"
+    },
+    {
+      "id": "V13",
+      "title": "A shared task",
+      "type": "value",
+      "business": "placement_required",
+      "status": "review_candidate",
+      "assetInstruction": "Optional permissioned real learning photo; text-only is acceptable.",
+      "content": {
+        "en": "A shared task gives conversation a purpose. Two boys preparing a space for learning need to decide what belongs where, divide the work and check that others can use it.\n\nThe adult can help them make clear requests and respond to each other’s suggestions. Finish by asking what made the cooperation work and what they would change next time.\n\nOrdinary responsibilities provide useful material for learning about relationships.",
+        "he": "משימה משותפת נותנת לשיחה מטרה. שני ילדים שמכינים מרחב ללמידה צריכים להחליט מה שייך לאן, לחלק עבודה ולבדוק שאחרים יוכלו להשתמש במקום.\n\nהמבוגר יכול לעזור להם לבקש בקשות ברורות ולהגיב להצעות זה של זה. בסיום שאלו מה סייע לשיתוף הפעולה ומה ישנו בפעם הבאה.\n\nאחריות יומיומית מספקת חומר ממשי ללמידה על קשרים."
+      },
+      "copySha256": "ad7a09e03208052c0b84d5634d936e5b20c168e4bb9c8acdb5b9f35d4b051b15"
+    },
+    {
+      "id": "V14",
+      "title": "Repairing a mistake",
+      "type": "value",
+      "business": "placement_required",
+      "status": "review_candidate",
+      "assetInstruction": "Optional permissioned real learning photo; text-only is acceptable.",
+      "content": {
+        "en": "After a mistake, guide the conversation toward a repair the child can understand. What happened? Who or what was affected? What action would help now?\n\nA repair might involve returning an item, correcting inaccurate information, cleaning a space or having an honest conversation. Help him choose a proportionate action and follow through.\n\nThe aim in our educational work is to make responsibility concrete and practicable.",
+        "he": "אחרי טעות, כוונו את השיחה לתיקון שהילד יכול להבין. מה קרה? מי או מה הושפע? איזו פעולה תעזור עכשיו?\n\nהתיקון יכול להיות החזרת חפץ, תיקון מידע שגוי, ניקוי מקום או שיחה כנה. עזרו לו לבחור פעולה מתאימה ולהשלים אותה.\n\nבעבודה החינוכית שלנו אנו מבקשים לתת לאחריות צורה מוחשית שאפשר לתרגל."
+      },
+      "copySha256": "b8ff8775ba0513b46eddf3792f64ff3351f6dce53b9944c7426d51c12e07925a"
+    },
+    {
+      "id": "V15",
+      "title": "Guidance that keeps the learner involved",
+      "type": "value",
+      "business": "placement_required",
+      "status": "review_candidate",
+      "assetInstruction": "Optional permissioned real learning photo; text-only is acceptable.",
+      "content": {
+        "en": "When a boy asks for help, invite him to show what he has tried. Ask where the difficulty begins and offer the smallest useful explanation or demonstration.\n\nThen give him a turn. Stay available while he tests the next step and explains what he notices. Safety-sensitive activities still require the adult’s direct supervision and intervention.\n\nGuidance can keep the learner actively involved in the problem he is trying to solve.",
+        "he": "כשילד מבקש עזרה, הזמינו אותו להראות מה כבר ניסה. שאלו היכן מתחיל הקושי והציעו הסבר או הדגמה ממוקדים.\n\nלאחר מכן תנו לו לנסות. הישארו זמינים בזמן שהוא בודק את הצעד הבא ומסביר מה הוא רואה. בפעילות רגישה לבטיחות נדרשות השגחה והתערבות ישירה של המבוגר.\n\nכך ההדרכה משאירה את הלומד שותף פעיל בפתרון הבעיה שלו."
+      },
+      "copySha256": "0eb0b6c11dce891846642c7474f0cf677644204a70cdb2d0b58a975448d9e560"
+    },
+    {
+      "id": "V16",
+      "title": "A learning environment with room to move",
+      "type": "value",
+      "business": "placement_required",
+      "status": "review_candidate",
+      "assetInstruction": "Optional permissioned real learning photo; text-only is acceptable.",
+      "content": {
+        "en": "A learning environment can include seated study, walking conversation, practical preparation and time to return to a text. Choose the setting that serves the learning and the child’s needs.\n\nFor a simple home practice, take one question from a source into a short conversation while walking, then return and check the wording together. Notice whether the boy can explain the connection clearly.\n\nWhich settings have supported thoughtful learning for your family?",
+        "he": "סביבת למידה יכולה לכלול לימוד בישיבה, שיחה בהליכה, הכנה מעשית וחזרה למקור. בחרו סביבה שמשרתת את הלמידה ואת צורכי הילד.\n\nלתרגול בבית, קחו שאלה אחת מהמקור לשיחה קצרה בהליכה, ואז חזרו ובדקו יחד את הנוסח. שימו לב אם הילד יכול להסביר את הקשר בבירור.\n\nאילו סביבות תמכו בלמידה מעמיקה במשפחה שלכם?"
+      },
+      "copySha256": "82f78eaf6af698055611a219e327b8cd47874abbdcf1014eb41215eae29d3038"
+    },
+    {
+      "id": "V17",
+      "title": "Information and judgment",
+      "type": "value",
+      "business": "placement_required",
+      "status": "review_candidate",
+      "assetInstruction": "Optional permissioned real learning photo; text-only is acceptable.",
+      "content": {
+        "en": "A child can encounter an answer quickly through a book, a search or an AI tool. The next educational step is to examine it: Where did it come from? Does it fit the source? What follows from it?\n\nAsk him to explain the answer in his own words and check one important claim against the original material. An adult should guide age-appropriate tool use and verification.\n\nCareful judgment gives information a responsible place in learning.",
+        "he": "ילד יכול להגיע לתשובה במהירות דרך ספר, חיפוש או כלי בינה מלאכותית. הצעד החינוכי הבא הוא לבדוק אותה: מה המקור שלה? האם היא מתאימה לטקסט? מה נובע ממנה?\n\nבקשו ממנו להסביר במילים שלו ולבדוק טענה מרכזית אחת מול המקור. מבוגר צריך להנחות שימוש בכלים ובדיקה המתאימים לגיל.\n\nשיקול דעת מדויק נותן למידע מקום אחראי בלמידה."
+      },
+      "copySha256": "d82f259d7c136c54e5ace691755671dd4161c250354625741c7129bd52212084"
+    },
+    {
+      "id": "V18",
+      "title": "A family conversation about commitments",
+      "type": "value",
+      "business": "placement_required",
+      "status": "review_candidate",
+      "assetInstruction": "Optional permissioned real learning photo; text-only is acceptable.",
+      "content": {
+        "en": "Choose one shared responsibility for a short family conversation. Ask each person what a fair contribution would look like and what help they need to carry it out.\n\nWrite a simple agreement in words everyone understands. Set a time to review how it went. Keep the discussion focused on the task, the commitment and the next adjustment.\n\nThis gives children practice in expressing a view, considering others and following through.",
+        "he": "בחרו אחריות משותפת אחת לשיחה משפחתית קצרה. שאלו כל אחד איך נראית תרומה הוגנת ואיזו עזרה נדרשת כדי לבצע אותה.\n\nכתבו הסכמה פשוטה במילים שכולם מבינים וקבעו זמן לבדיקת הביצוע. התמקדו במשימה, בהתחייבות ובהתאמה הבאה.\n\nכך ילדים מתרגלים הבעת עמדה, התחשבות באחרים ועמידה בהתחייבות."
+      },
+      "copySha256": "a28a1a5b7aee914e9319b860e78fcb484a20bdae07de669ab96ba1bc361ee921"
+    },
+    {
+      "id": "V19",
+      "title": "Learning from another perspective",
+      "type": "value",
+      "business": "placement_required",
+      "status": "review_candidate",
+      "assetInstruction": "Optional permissioned real learning photo; text-only is acceptable.",
+      "content": {
+        "en": "During a Torah discussion, ask a boy to consider how someone else might understand the passage. Which words could support that reading? Where would the two explanations lead?\n\nReturn to the text and compare the reasoning carefully. Give him time to revise his own explanation if he sees something new.\n\nOur approach values a learner who can think independently while remaining open to another person’s contribution.",
+        "he": "בדיון תורני, בקשו מהילד לשקול כיצד אדם אחר עשוי להבין את הקטע. אילו מילים תומכות בקריאה הזאת? לאן מוביל כל הסבר?\n\nחזרו לטקסט והשוו את הנימוקים. תנו לו זמן לדייק את ההסבר שלו כשהוא מבחין בדבר חדש.\n\nהגישה שלנו מעריכה לומד שחושב באופן עצמאי ופתוח לתרומתו של אדם אחר."
+      },
+      "copySha256": "32dcdeb9538692b1e904d84b312ab203a66cb3da12a192c240c30e78f9bfdc36"
+    },
+    {
+      "id": "V20",
+      "title": "Health and the ordinary learning day",
+      "type": "value",
+      "business": "placement_required",
+      "status": "review_candidate",
+      "assetInstruction": "Optional permissioned real learning photo; text-only is acceptable.",
+      "content": {
+        "en": "When planning a learning day, include the ordinary needs of the person doing the learning: meals, water, movement, rest and a manageable rhythm.\n\nAsk your child what helps him arrive ready to learn and notice patterns together. Persistent pain, fatigue or other health concerns deserve attention from a qualified professional. Keep individualized medical advice with the appropriate clinician.\n\nA thoughtful educational plan makes room for the whole child.",
+        "he": "בתכנון יום למידה, התייחסו לצרכים היומיומיים של הלומד: ארוחות, מים, תנועה, מנוחה וקצב שאפשר לעמוד בו.\n\nשאלו את הילד מה עוזר לו להגיע מוכן ללמידה ושימו לב יחד לדפוסים. כאב מתמשך, עייפות או חשש בריאותי אחר מצריכים בירור אצל איש מקצוע מתאים. ייעוץ רפואי אישי נשאר בתחום המטפל המוסמך.\n\nתכנון חינוכי קשוב נותן מקום לילד השלם."
+      },
+      "copySha256": "2af39640a3d44cf6c05c66214232074158b91d1f5750be500d40c2db54a9cd83"
+    },
+    {
+      "id": "V21",
+      "title": "Naming a learning need",
+      "type": "value",
+      "business": "placement_required",
+      "status": "review_candidate",
+      "assetInstruction": "Optional permissioned real learning photo; text-only is acceptable.",
+      "content": {
+        "en": "A useful description of a learning need is specific: the boy wants to join a discussion and needs help entering the conversation; he understands the idea and needs help organizing his explanation.\n\nThat description suggests something to practice. Model a possible first sentence, give time to try it, and ask what support helped. Individual needs and professional recommendations should inform the plan.\n\nWhat skill would make your child’s next learning experience more accessible?",
+        "he": "תיאור מועיל של צורך בלמידה הוא מדויק: הילד רוצה להשתתף בדיון וזקוק לעזרה בכניסה לשיחה; הוא מבין את הרעיון וצריך עזרה בארגון ההסבר.\n\nתיאור כזה מציע יכולת שאפשר לתרגל. הדגימו משפט פתיחה, תנו זמן לנסות ובדקו איזו תמיכה עזרה. הצרכים האישיים והמלצות אנשי המקצוע צריכים להנחות את התוכנית.\n\nאיזו יכולת תהפוך את חוויית הלמידה הבאה של ילדכם לנגישה יותר?"
+      },
+      "copySha256": "2e8dc5ebcdbb45a8c203c731d6067bf517dd61b82274c7363a3d0bca8eb72204"
+    },
+    {
+      "id": "V22",
+      "title": "One question, sustained attention",
+      "type": "value",
+      "business": "placement_required",
+      "status": "review_candidate",
+      "assetInstruction": "Optional permissioned real learning photo; text-only is acceptable.",
+      "content": {
+        "en": "Choose a question substantial enough to stay with. Read the source, invite an initial explanation and identify the point that still needs work.\n\nA learner can draw the situation, compare two cases or explain his reasoning aloud. Return to the same question after that step and see what has become clearer.\n\nThis gives a Torah-learning session a meaningful thread, with room for thought and a visible direction.",
+        "he": "בחרו שאלה שיש טעם להתעכב עליה. קראו את המקור, הזמינו הסבר ראשוני וזהו את הנקודה שדורשת בירור נוסף.\n\nהלומד יכול לצייר את המצב, להשוות בין שני מקרים או להסביר בקול את הנימוק. חזרו לאותה שאלה ובדקו מה התבהר.\n\nכך נוצר למפגש הלימוד חוט מקשר משמעותי, עם מקום למחשבה וכיוון ברור."
+      },
+      "copySha256": "fcd8ede444e727c495589ec6c5fa635d07b656b921988e2e2c13779bd3c46c9a"
+    },
+    {
+      "id": "V23",
+      "title": "A useful response to a child’s idea",
+      "type": "value",
+      "business": "placement_required",
+      "status": "review_candidate",
+      "assetInstruction": "Optional permissioned real learning photo; text-only is acceptable.",
+      "content": {
+        "en": "When a child offers an idea, begin by understanding it. Ask him to give an example, point to the source or explain how he imagines it working.\n\nThen examine one difficulty together. Let him suggest an adjustment and decide what can be tested safely. The adult remains responsible for the boundaries of the activity.\n\nThis kind of exchange gives curiosity and responsibility a shared place in learning.",
+        "he": "כשילד מציע רעיון, התחילו בהבנתו. בקשו דוגמה, הפניה למקור או הסבר כיצד הוא מדמיין את הביצוע.\n\nלאחר מכן בחנו יחד קושי אחד. תנו לו להציע התאמה ולהחליט מה אפשר לבדוק בבטחה. האחריות לגבולות הפעילות נשארת בידי המבוגר.\n\nשיחה כזאת נותנת לסקרנות ולאחריות מקום משותף בלמידה."
+      },
+      "copySha256": "55e587b3984e3ad4e79155324c0cbf7fcd8b2de0b31ace5bc797bdb8d32026b7"
+    },
+    {
+      "id": "V24",
+      "title": "Geulah consciousness in community",
+      "type": "value",
+      "business": "placement_required",
+      "status": "review_candidate",
+      "assetInstruction": "Optional permissioned real learning photo; text-only is acceptable.",
+      "content": {
+        "en": "Geulah consciousness gives our educational community a purpose: knowledge of Hashem expressed through how we learn, relate and contribute.\n\nIn practice, that means serious Torah questions, honest conversation, attention to another person and responsibility for shared work. Boys receive guidance as they develop the inner will and judgment to participate thoughtfully.\n\nWhich everyday responsibility gives your child an opportunity to live a Torah value?",
+        "he": "תודעת הגאולה נותנת לקהילה החינוכית שלנו תכלית: דעת ה׳ שבאה לידי ביטוי בדרך שבה אנו לומדים, יוצרים קשר ותורמים.\n\nבפועל, אלה שאלות תורניות מעמיקות, שיחה כנה, תשומת לב לזולת ואחריות לעשייה משותפת. הבנים מקבלים הכוונה בפיתוח הרצון הפנימי ושיקול הדעת הדרושים להשתתפות משמעותית.\n\nאיזו אחריות יומיומית נותנת לילדכם הזדמנות לחיות ערך תורני?"
+      },
+      "copySha256": "33b98450a33122f0442fbef7f18854b5a79efa82414e767c984e9414e1f83435"
+    },
+    {
+      "id": "B01",
+      "title": "Co-op invitation: exact identity",
+      "type": "bna_promotion",
+      "business": "bna_coop",
+      "status": "review_candidate",
+      "assetInstruction": "Original BNA learning photo + approved hero/brand identity where appropriate.",
+      "content": {
+        "en": "Raising the Generation of the Geulah.\n\nBnei Neviim Academy is a South Florida Integrative Torah Learning Co-op for Boys—an autonomous Torah learning community manifesting Geulah consciousness through authentic relationships, intrinsic motivation, and self-governance.\n\nRegister your interest for free and tell us about your son and the learning environment you are looking for. I’ll follow up personally to discuss a suitable next step.\n\nJoin the Learning Co-op: {{BNA_JOIN_URL}}",
+        "he": "מגדלים את דור הגאולה.\n\nאקדמיית בני נביאים היא קואופרטיב ללימוד תורה אינטגרטיבי לבנים בדרום פלורידה—קהילת לימוד תורה עצמאית המגשימה תודעת גאולה דרך קשרים אותנטיים, מוטיבציה פנימית והנהגה עצמית.\n\nהירשמו להתעניינות ללא תשלום וספרו על בנכם ועל סביבת הלמידה שאתם מחפשים. אחזור אליכם אישית לשיחה על צעד מתאים.\n\nהצטרפו לקואופרטיב הלמידה: {{BNA_JOIN_URL}}"
+      },
+      "copySha256": "27c78bc31d0e15ce325be8af6c2d443a032c2b751d4a5f8437d216652dde651f"
+    },
+    {
+      "id": "B02",
+      "title": "Co-op invitation: learner ownership",
+      "type": "bna_promotion",
+      "business": "bna_coop",
+      "status": "review_candidate",
+      "assetInstruction": "Original BNA learning photo + approved hero/brand identity where appropriate.",
+      "content": {
+        "en": "A boy’s own question can give a Torah-learning session its direction. With careful guidance, he can investigate a source, explain his understanding and choose the next step.\n\nThis is central to the Bnei Neviim Academy learning co-op in South Florida. Our approach brings autonomous Torah learning together with authentic relationships, intrinsic motivation and self-governance.\n\nFamilies can register their interest for free. Share your area and what you are looking for, and I’ll follow up personally: {{BNA_JOIN_URL}}",
+        "he": "השאלה של הילד יכולה לתת למפגש לימוד התורה את הכיוון שלו. עם הכוונה מדויקת הוא יכול לחקור מקור, להסביר את הבנתו ולבחור את הצעד הבא.\n\nזהו חלק מרכזי בקואופרטיב הלמידה של אקדמיית בני נביאים בדרום פלורידה. הגישה משלבת לימוד תורה עצמאי עם קשרים אותנטיים, מוטיבציה פנימית והנהגה עצמית.\n\nהמשפחות מוזמנות להירשם להתעניינות ללא תשלום. שתפו באזור מגוריכם ובמה שאתם מחפשים, ואחזור אליכם אישית: {{BNA_JOIN_URL}}"
+      },
+      "copySha256": "021a2427223681e89e07bb6db23d32514fa85995dfed45f08f7e9292bcc00290"
+    },
+    {
+      "id": "B03",
+      "title": "Co-op invitation: family conversation",
+      "type": "bna_promotion",
+      "business": "bna_coop",
+      "status": "review_candidate",
+      "assetInstruction": "Original BNA learning photo + approved hero/brand identity where appropriate.",
+      "content": {
+        "en": "Parents bring an important perspective on their child’s learning: what interests him, where he becomes engaged and what kind of support helps him participate.\n\nAt Bnei Neviim Academy, that conversation is part of an integrative Torah-learning approach grounded in intrinsic motivation, authentic relationships and responsibility.\n\nI welcome South Florida families interested in the learning co-op to tell me about their sons. Free interest registration is here: {{BNA_JOIN_URL}}\n\n—Shloimie Dratler",
+        "he": "הורים מביאים נקודת מבט חשובה על הלמידה של ילדם: מה מעניין אותו, היכן הוא נעשה מעורב ואיזו תמיכה עוזרת לו להשתתף.\n\nבאקדמיית בני נביאים השיחה הזאת היא חלק מגישה אינטגרטיבית ללימוד תורה, המושרשת במוטיבציה פנימית, בקשרים אותנטיים ובאחריות.\n\nאני מזמין משפחות בדרום פלורידה המתעניינות בקואופרטיב הלמידה לספר לי על בניהן. הרשמה להתעניינות ללא תשלום: {{BNA_JOIN_URL}}\n\nשלומי דרטלר"
+      },
+      "copySha256": "bc12c222e6b982f514e399d305f9478949a38c7ee50a27c9ac32ff6db73ea539"
+    },
+    {
+      "id": "B04",
+      "title": "Co-op invitation: Torah in choices",
+      "type": "bna_promotion",
+      "business": "bna_coop",
+      "status": "review_candidate",
+      "assetInstruction": "Original BNA learning photo + approved hero/brand identity where appropriate.",
+      "content": {
+        "en": "Torah knowledge takes expression in a boy’s choices: how he speaks during disagreement, cares for shared equipment and follows through on a commitment.\n\nThe Bnei Neviim Academy learning co-op connects thoughtful Torah study with those everyday experiences. Boys practice self-governance and learn through genuine relationships, guided by the purpose of raising the generation of the Geulah.\n\nJoin the South Florida co-op interest list for free, and let’s discuss what your family is looking for: {{BNA_JOIN_URL}}",
+        "he": "דעת תורה באה לידי ביטוי בבחירות של הילד: כיצד הוא מדבר בזמן מחלוקת, שומר על ציוד משותף ועומד בהתחייבות.\n\nקואופרטיב הלמידה של אקדמיית בני נביאים מחבר לימוד תורה מעמיק עם החוויות היומיומיות האלה. הבנים מתרגלים הנהגה עצמית ולומדים דרך קשרים אמיתיים, מתוך התכלית של גידול דור הגאולה.\n\nהצטרפו ללא תשלום לרשימת המתעניינים בקואופרטיב בדרום פלורידה, ונשוחח על מה שהמשפחה שלכם מחפשת: {{BNA_JOIN_URL}}"
+      },
+      "copySha256": "5de824d7b64f9710512e31c40befc3a10b56aac757fea2f350c4be8250cb0ba2"
+    },
+    {
+      "id": "F01",
+      "title": "Fishing invitation: practical skills",
+      "type": "fishing_promotion",
+      "business": "fishing",
+      "status": "review_candidate",
+      "assetInstruction": "Existing approved Fishing advertisement, correct current phase; no graphic regeneration.",
+      "content": {
+        "en": "Fishing gives a boy a practical reason to prepare, pay attention and solve a problem. He learns to care for his equipment, explain what he notices and ask for useful help.\n\nThe Jewish Leadership Fishing Academy brings Torah, fishing and self-governance together for boys ages 8 and up in South Florida. No fishing experience is needed. Boys begin with preparation and foundational skills, with guidance through each stage.\n\nPre-register for free and share your preferred schedule: {{FISHING_APPLY_URL}}",
+        "he": "הדיג נותן לילד סיבה מעשית להתכונן, לשים לב ולפתור בעיה. הוא לומד לשמור על הציוד, להסביר את מה שהוא רואה ולבקש עזרה מועילה.\n\nהאקדמיה לדיג ולמנהיגות יהודית מחברת תורה, דיג והנהגה עצמית לבנים מגיל שמונה בדרום פלורידה. אין צורך בניסיון קודם. הבנים מתחילים בהכנה ובמיומנויות בסיס, עם הדרכה בכל שלב.\n\nהירשמו מראש ללא תשלום ושתפו בזמנים שמתאימים לכם: {{FISHING_APPLY_URL}}"
+      },
+      "copySha256": "0d297afade908d55cf3110427417b895b28ee441d3ca3afd492df07fbac1ea63"
+    },
+    {
+      "id": "F02",
+      "title": "Fishing invitation: shared effort",
+      "type": "fishing_promotion",
+      "business": "fishing",
+      "status": "review_candidate",
+      "assetInstruction": "Existing approved Fishing advertisement, correct current phase; no graphic regeneration.",
+      "content": {
+        "en": "A shared fishing task gives boys opportunities to communicate clearly, notice another person’s needs and work through frustration with guidance.\n\nAt the Jewish Leadership Fishing Academy, those moments belong to the learning. Boys develop their fishing skills alongside Torah values, responsibility and self-governance. Each stage includes twelve sessions, beginning with the foundations.\n\nSouth Florida school and homeschool families can pre-register for free and discuss a suitable group: {{FISHING_APPLY_URL}}",
+        "he": "משימת דיג משותפת מזמנת לבנים תקשורת ברורה, תשומת לב לצורכי הזולת והתמודדות מודרכת עם תסכול.\n\nבאקדמיה לדיג ולמנהיגות יהודית הרגעים האלה הם חלק מהלמידה. הבנים מפתחים מיומנויות דיג לצד ערכי תורה, אחריות והנהגה עצמית. בכל שלב שנים עשר מפגשים, החל מן היסודות.\n\nמשפחות בדרום פלורידה, בבית הספר ובחינוך ביתי, מוזמנות להירשם מראש ללא תשלום ולדון בקבוצה מתאימה: {{FISHING_APPLY_URL}}"
+      },
+      "copySha256": "345205ebed44d827ab5c89a6964189c9e3d71e330b2bbfca51de85ca87096608"
+    },
+    {
+      "id": "F03",
+      "title": "Fishing invitation: preparation",
+      "type": "fishing_promotion",
+      "business": "fishing",
+      "status": "review_candidate",
+      "assetInstruction": "Existing approved Fishing advertisement, correct current phase; no graphic regeneration.",
+      "content": {
+        "en": "Preparing a rod, tying a knot and checking the space around a cast are meaningful parts of learning to fish. Boys practice these steps with adult guidance before taking on the next challenge.\n\nThe South Florida Jewish Leadership Fishing Academy connects that practical learning with Torah and self-governance. Boys use and learn to care for their own equipment, with guidance on what they need.\n\nFor boys ages 8 and up. Pre-register for free: {{FISHING_APPLY_URL}}",
+        "he": "הכנת חכה, קשירת קשר ובדיקת המרחב לפני הטלה הם חלק משמעותי מלימוד הדיג. הבנים מתרגלים את הצעדים האלה בהדרכת מבוגר לפני המעבר לאתגר הבא.\n\nהאקדמיה לדיג ולמנהיגות יהודית בדרום פלורידה מחברת את הלמידה המעשית עם תורה והנהגה עצמית. הבנים משתמשים בציוד שלהם ולומדים לטפל בו, עם הכוונה לגבי הציוד הדרוש.\n\nלבנים מגיל שמונה. הרשמה מוקדמת ללא תשלום: {{FISHING_APPLY_URL}}"
+      },
+      "copySha256": "59dfa2ffee0a118651ba4d3c5b46a100c41fc2982b3cade10cbc3f1adb75d1d3"
+    },
+    {
+      "id": "F04",
+      "title": "Fishing invitation: a meaningful question",
+      "type": "fishing_promotion",
+      "business": "fishing",
+      "status": "review_candidate",
+      "assetInstruction": "Existing approved Fishing advertisement, correct current phase; no graphic regeneration.",
+      "content": {
+        "en": "Why did the knot slip? What changed in the water? Which part of the setup needs attention?\n\nFishing gives boys concrete questions to investigate. At the Jewish Leadership Fishing Academy, an educator helps them observe, explain and choose a useful next step while caring for their equipment and the people around them.\n\nTorah • Fishing • Self-Governance. South Florida, boys ages 8 and up. Register your interest for free: {{FISHING_APPLY_URL}}",
+        "he": "מדוע הקשר החליק? מה השתנה במים? איזה חלק במערך הדיג דורש תשומת לב?\n\nהדיג נותן לבנים שאלות ממשיות לחקירה. באקדמיה לדיג ולמנהיגות יהודית המחנך עוזר להם להתבונן, להסביר ולבחור צעד מועיל, תוך שמירה על הציוד ועל הסובבים אותם.\n\nתורה • דיג • הנהגה עצמית. דרום פלורידה, לבנים מגיל שמונה. הרשמה להתעניינות ללא תשלום: {{FISHING_APPLY_URL}}"
+      },
+      "copySha256": "6fe28296ea9208a2f61481b9478d22013e6cd33d31a452b6034e111bf645a8f5"
+    },
+    {
+      "id": "S01",
+      "title": "Support invitation: educational work",
+      "type": "support_promotion",
+      "business": "support",
+      "status": "review_candidate",
+      "assetInstruction": "Original teaching photo, clearly historical where relevant; no future-campus image.",
+      "content": {
+        "en": "Bnei Neviim Academy connects integrative Torah learning with intrinsic motivation, authentic relationships and self-governance.\n\nSupporters can help sustain the educational work and follow the long-term vision for a nature-centered learning community in Florida. The direction includes thoughtful learning spaces, outdoor life and opportunities for meaningful responsibility, with a later aspiration to bring the approach to Israel.\n\nRead the vision or speak with me about contributing: {{SUPPORT_URL}}\n\n—Shloimie Dratler",
+        "he": "אקדמיית בני נביאים מחברת לימוד תורה אינטגרטיבי עם מוטיבציה פנימית, קשרים אותנטיים והנהגה עצמית.\n\nתומכים יכולים לסייע לעשייה החינוכית ולעקוב אחר החזון ארוך הטווח לקהילת למידה המחוברת לטבע בפלורידה. הכיוון כולל מרחבי למידה קשובים, חיי חוץ והזדמנויות לאחריות משמעותית, ושאיפה עתידית להביא את הגישה לישראל.\n\nקראו על החזון או שוחחו איתי על אפשרויות לתרום: {{SUPPORT_URL}}\n\nשלומי דרטלר"
+      },
+      "copySha256": "1d153d917cf8d5a1f8bc0c6a7303be8885a40eb49fdec855c99b763fe80e513b"
+    },
+    {
+      "id": "S02",
+      "title": "Support invitation: knowing the approach",
+      "type": "support_promotion",
+      "business": "support",
+      "status": "review_candidate",
+      "assetInstruction": "Original teaching photo, clearly historical where relevant; no future-campus image.",
+      "content": {
+        "en": "A learning community gives education a human setting: an educator who knows the learner, meaningful Torah questions and relationships in which responsibility can be practiced.\n\nThat is the work behind the Bnei Neviim Academy vision. I welcome conversations with people who want to understand the approach and explore a thoughtful way to support its development in Florida.\n\nOur support page explains the direction and offers a way to stay informed: {{SUPPORT_URL}}",
+        "he": "קהילת למידה נותנת לחינוך מסגרת אנושית: מחנך שמכיר את הלומד, שאלות תורניות משמעותיות וקשרים שבהם אפשר לתרגל אחריות.\n\nזו העשייה שביסוד חזון אקדמיית בני נביאים. אני מזמין לשיחה אנשים שרוצים להבין את הגישה ולבחון דרך מתאימה לתמוך בהתפתחותה בפלורידה.\n\nעמוד התמיכה מציג את הכיוון ומאפשר להישאר מעודכנים: {{SUPPORT_URL}}"
+      },
+      "copySha256": "a529d3dfa529f8bfb889640334e4cb8733fc986ecd71310ef738d2346b863f2c"
+    }
+  ]
+}

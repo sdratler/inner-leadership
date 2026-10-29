@@ -19,6 +19,6 @@ export function BnaAcknowledgmentPreviewPanel({id,locale}:{id:string;locale:Loca
   {busy&&<p role="status">{t('Loading…','טוען…')}</p>}{failed&&<p role="alert">{t('Preview could not be read. Check your access and try again.','לא ניתן לקרוא את התצוגה. יש לבדוק את הגישה ולנסות שוב.')}</p>}
   {preview&&(preview.available?<article lang={preview.candidate.locale} dir={preview.candidate.locale==='he'?'rtl':'ltr'}>
    <p>{t('Reply address','כתובת לתשובה')}: <bdi dir="ltr">{preview.recipient}</bdi></p><h4>{preview.candidate.subject}</h4><p style={{whiteSpace:'pre-wrap'}}>{preview.candidate.body}</p>
-  </article>:<p>{preview.reason==='phone_reply_selected'?t('The parent selected a phone reply. An email acknowledgment is not assumed.','ההורה בחר תשובה בטלפון. אין הנחה שנבחר אישור בדוא״ל.'):t('This candidate belongs to the co-op inquiry program.','נוסח זה מיועד לפנייה לקואופרטיב.')}</p>)}
+  </article>:<p>{preview.reason==='phone_reply_selected'?t('The selected reply channel is phone. An email acknowledgment is not assumed.','ערוץ המענה שנבחר הוא טלפון. אין הנחה שנבחר אישור בדוא״ל.'):t('No service acknowledgment candidate is available for this inquiry program.','אין נוסח אישור פנייה זמין לתוכנית זו.')}</p>)}
  </details>;
 }
