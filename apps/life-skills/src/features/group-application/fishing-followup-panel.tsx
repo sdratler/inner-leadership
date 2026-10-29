@@ -39,7 +39,8 @@ export function FishingFollowupPanel({locale,applicationId,autoOpen=false,onOper
   try{const before=detail.history[detail.history.length-1]!.version;
    const response=await fetch(endpoint+"?"+new URLSearchParams({id:applicationId,historyBefore:String(before)}),{credentials:"same-origin",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer"});
    const body=await response.json().catch(()=>null);if(!response.ok||!body?.ok)throw new RequestError(response.status);
-   const page=body.data as Detail;setDetail(current=>current&&current.application.id===applicationId?{...current,history:[...current.history,...page.history],hasMoreHistory:page.hasMoreHistory}:current);
+   const page=body.data as Detail;if(page.followup.version!==detail.followup.version){setError(409);return;}
+   setDetail(current=>current&&current.application.id===applicationId&&current.followup.version===detail.followup.version?{...current,history:[...current.history,...page.history],hasMoreHistory:page.hasMoreHistory}:current);
   }catch(cause){const code=cause instanceof RequestError?cause.status:503;setError(code);if([401,403,404].includes(code)){setDetail(null);setPending(null);}}
   finally{setBusy(false);}
  }

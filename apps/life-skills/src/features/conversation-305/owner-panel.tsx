@@ -35,7 +35,9 @@ export function Owner305ConversationPanel({locale,initialId,onOperationPending,l
  useEffect(()=>{onOperationPending?.(pending!==null||linkPending);},[pending,linkPending,onOperationPending]);
  async function loadHistory(){if(!detail||busy||pending||linkPending||loadingHistory||!detail.hasMoreHistory||!detail.history.length)return;
   const id=detail.id,before=detail.history[detail.history.length-1]!.version,seq=++serial.current;setLoadingHistory(true);
-  try{const page=await get<Detail>(id,undefined,before);if(active.current&&serial.current===seq){setDetail(current=>current?.id===id?{...current,history:[...current.history,...page.history],hasMoreHistory:page.hasMoreHistory}:current);setError(null);}}
+  try{const page=await get<Detail>(id,undefined,before);if(active.current&&serial.current===seq){
+   if(page.followup.version!==detail.followup.version){setError(409);return;}
+   setDetail(current=>current?.id===id&&current.followup.version===detail.followup.version?{...current,history:[...current.history,...page.history],hasMoreHistory:page.hasMoreHistory}:current);setError(null);}}
   catch(cause){if(active.current&&serial.current===seq){const code=cause instanceof RequestError?cause.status:503;setError(code);if([401,403,404].includes(code))clearPrivate();}}
   finally{if(active.current)setLoadingHistory(false);}}
  async function save(command:ConversationCommand){if(busy)return;const previouslyUnknown=pending!==null;setBusy(true);setPending(command);setError(null);setMessage("");
