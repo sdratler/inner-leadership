@@ -107,7 +107,7 @@ export function BnaInquiryOwnerPanel({locale,initialId,onOperationPending}:{loca
    {detail.program==="bna_learning_coop"&&<><p>{t("Page language","שפת הדף")}: {detail.fields.siteLanguage.toUpperCase()} · {t("Email updates","עדכוני דוא״ל")}: {detail.fields.emailUpdates?t("requested","התבקשו"):t("not requested","לא התבקשו")}</p>{detail.fields.secondaryContact&&<p><bdi dir="ltr">{detail.fields.secondaryContact.value}</bdi> · {detail.fields.secondaryContact.channel}</p>}</>}
    <p>{t("Captured source","מקור שנקלט")}: {detail.attribution?.source??t("Unknown","לא ידוע")}</p>
    <p>{t("Owner","אחראי")}: <bdi dir="ltr">{detail.ownerAccountId}</bdi></p>
-   {detail.program==='bna_learning_coop'&&<BnaAcknowledgmentPreviewPanel key={detail.id} id={detail.id} locale={locale}/>}
+   {(detail.program==='bna_learning_coop'||detail.program==='bna_support_interest')&&<BnaAcknowledgmentPreviewPanel key={detail.id} id={detail.id} locale={locale}/>}
    <form onSubmit={submit} className="lsw-stack"><label>{t("Stage","שלב")}<select value={status} onChange={event=>setStatus(event.target.value as typeof status)}>
     <option value="new">{t("New","חדש")}</option><option value="contacted">{t("Contacted","נוצר קשר")}</option>
     <option value="waiting">{t("Waiting","ממתין")}</option><option value="closed">{t("Closed","סגור")}</option></select></label>

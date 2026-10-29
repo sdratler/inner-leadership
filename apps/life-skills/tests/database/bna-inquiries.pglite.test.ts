@@ -209,3 +209,16 @@ it("saves support via its own HTTP challenge and returns the same receipt withou
  expect(await store.read(ownerActor,receipt.reference)).toMatchObject({program:BNA_SUPPORT_PROGRAM,fields,attribution:{source:"bna_site",landingPath:"/he/support"}});
  await expect(store.read(otherActor,receipt.reference)).rejects.toMatchObject({code:"NOT_FOUND"});
 });
+
+it("previews S0 for the owner using the saved support language without inferring donor or email-update state",async()=>{
+ const fields={name:"Synthetic acknowledgment supporter",contactChannel:"email" as const,contact:"support-preview@example.invalid",purpose:"support_conversation" as const,language:"he" as const,siteLanguage:"en" as const,emailUpdates:false,permission:{confirmed:true as const,version:BNA_SUPPORT_NOTICE.version,language:"en" as const}};
+ const saved=await store.submit({operationId:randomUUID(),fields},BNA_SUPPORT_PROGRAM),origin="https://life-skills.example.invalid",token="a".repeat(43);
+ const deps={origin,actor:async()=>ownerActor,csrf:()=>"",limits:{consume:async()=>({count:1,retryAfterMs:0})},rateLimitKey:"synthetic",store};
+ const request=(id:string)=>new Request(origin+"/api/private/bna-inquiries?"+new URLSearchParams({id,preview:"acknowledgment"}),{headers:{host:"life-skills.example.invalid","x-forwarded-proto":"https","x-forwarded-host":"life-skills.example.invalid",cookie:`__Host-ls-session=${token}`}});
+ const response=await privateBnaInquiryHttp(request(saved.reference),async()=>deps);expect(response.status).toBe(200);
+ expect((await response.json()).data).toMatchObject({available:true,deliveryState:"not_queued",recipient:fields.contact,candidate:{id:"EMAIL-S0",locale:"he",status:"review_candidate"}});
+ expect((await privateBnaInquiryHttp(request(saved.reference),async()=>({...deps,actor:async()=>otherActor}))).status).toBe(404);
+ const phone=await store.submit({operationId:randomUUID(),fields:{...fields,contactChannel:"phone",contact:"+12025550129"}},BNA_SUPPORT_PROGRAM);
+ const phoneResponse=await privateBnaInquiryHttp(request(phone.reference),async()=>deps);expect((await phoneResponse.json()).data).toEqual({available:false,reason:"phone_reply_selected"});
+ expect((await store.read(ownerActor,saved.reference)).fields).toMatchObject({purpose:"support_conversation",emailUpdates:false});
+});
