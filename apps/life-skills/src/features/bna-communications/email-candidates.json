@@ -1,0 +1,263 @@
+{
+  "packageId": "BNA-JLFA-IMPLEMENTATION-20261029-10",
+  "sourceFile": "BNA_FISHING_CODEX_IMPLEMENTATION_MASTER_2026-10-29.md",
+  "sourceSha256": "f45b7e2f49f1a27adc1a93bc4460fbdba5fa0f6e1425dbef1c5e5b414d732b03",
+  "status": "review_candidate",
+  "messages": [
+    {
+      "id": "EMAIL-B0",
+      "title": "BNA service acknowledgment",
+      "trigger": "After actual durable co-op interest save; one per inquiry operation",
+      "status": "review_candidate",
+      "content": {
+        "en": {
+          "subject": "Your BNA co-op interest is saved",
+          "body": "Hi {{FIRST_NAME}},\n\nYour interest in the South Florida Integrative Torah Learning Co-op for Boys has been saved. Your reference is {{REFERENCE}}.\n\nI’ll follow up using the details you provided to discuss your son’s interests, your area and the learning environment you are looking for. Any actual group arrangements and participation terms will be discussed separately.\n\nYou are welcome to reply with the question that matters most to you. Please keep detailed medical records out of email; we can arrange a private conversation where needed.\n\nShloimie Dratler\n+1 (305) 491-6674"
+        },
+        "he": {
+          "subject": "ההתעניינות בקואופרטיב בני נביאים נשמרה",
+          "body": "שלום {{FIRST_NAME}},\n\nההתעניינות שלכם בקואופרטיב ללימוד תורה אינטגרטיבי לבנים בדרום פלורידה נשמרה. מספר הפנייה: {{REFERENCE}}.\n\nאחזור אליכם באמצעות הפרטים שמסרתם כדי לשוחח על תחומי העניין של בנכם, על האזור שלכם ועל סביבת הלמידה שאתם מחפשים. פרטי קבוצה בפועל ותנאי השתתפות יידונו בנפרד.\n\nאפשר להשיב עם השאלה החשובה לכם ביותר. אנא הימנעו משליחת מסמכים רפואיים מפורטים בדוא״ל; לפי הצורך נתאם שיחה אישית.\n\nשלומי דרטלר\n+1 (305) 491-6674"
+        }
+      },
+      "copySha256": "66fb4e6340e04e38aa6a7b206105363528a1f4a655c4b3a0eeb9cfd64c57941e"
+    },
+    {
+      "id": "EMAIL-B1",
+      "title": "BNA educational updates",
+      "trigger": "Day +3 from appropriate updates permission",
+      "status": "review_candidate",
+      "content": {
+        "en": {
+          "subject": "Where autonomous Torah learning begins",
+          "body": "Hi {{FIRST_NAME}},\n\nA boy’s own question gives us a useful starting point. He can study a source, offer an explanation and notice what still needs to be understood. The educator helps him choose a meaningful next step and remain responsible for the work.\n\nThat is a central part of our approach at Bnei Neviim. Ratzon, careful thought and guidance belong together. Over time, the learner is invited to take greater ownership of his questions, commitments and progress.\n\nWhat currently draws your son into learning? A particular subject, a strong question or a conversation he keeps returning to would be useful to hear about.\n\nShloimie"
+        },
+        "he": {
+          "subject": "כאן מתחיל לימוד תורה עצמאי",
+          "body": "שלום {{FIRST_NAME}},\n\nהשאלה של הילד נותנת נקודת פתיחה מועילה. הוא יכול ללמוד מקור, להציע הסבר ולזהות מה עדיין דורש בירור. המחנך עוזר לו לבחור צעד משמעותי ולהישאר אחראי לעבודה.\n\nזהו חלק מרכזי בגישה של בני נביאים. רצון, חשיבה מדויקת והכוונה משתלבים יחד. בהדרגה הלומד מוזמן לקחת יותר אחריות על השאלות, ההתחייבויות וההתקדמות שלו.\n\nמה מושך את בנכם ללמידה כיום? אשמח לשמוע על נושא מסוים, שאלה חזקה או שיחה שהוא חוזר אליה.\n\nשלומי"
+        }
+      },
+      "copySha256": "32035a0d5037e910bc27d146d4b2d8474d3996d3f663ef2a34611df381d28559"
+    },
+    {
+      "id": "EMAIL-B2",
+      "title": "BNA educational updates",
+      "trigger": "Day +7 from appropriate updates permission",
+      "status": "review_candidate",
+      "content": {
+        "en": {
+          "subject": "Self-governance in everyday moments",
+          "body": "Hi {{FIRST_NAME}},\n\nSelf-governance becomes concrete when a boy notices a difficulty, chooses a response and follows through. A disagreement, a misplaced item or a demanding passage can each provide a setting for that practice.\n\nThe adult helps him describe what happened, consider the people involved and choose a manageable next action. We look at the actual behavior and the support needed, then return to the shared task.\n\nAt home, you can choose one ordinary responsibility and agree on what completion looks like. Review it together afterward: What worked? Where was help useful? What should happen next?\n\nShloimie"
+        },
+        "he": {
+          "subject": "הנהגה עצמית ברגעים יומיומיים",
+          "body": "שלום {{FIRST_NAME}},\n\nהנהגה עצמית נעשית מוחשית כשהילד מבחין בקושי, בוחר תגובה ועומד בה. מחלוקת, חפץ שלא הוחזר או קטע לימוד מאתגר יכולים לתת מקום לתרגול.\n\nהמבוגר עוזר לתאר מה קרה, להתחשב באנשים המעורבים ולבחור פעולה שאפשר לבצע. אנו בוחנים את ההתנהגות ואת התמיכה הדרושה וחוזרים למשימה המשותפת.\n\nבבית אפשר לבחור אחריות יומיומית אחת ולהסכים כיצד נראה סיום שלה. אחר כך בדקו יחד: מה עבד? היכן עזרה הועילה? מה הצעד הבא?\n\nשלומי"
+        }
+      },
+      "copySha256": "bed840747e116b9b805108a7d42bb6cab9a796e4320d18ae1d52950dc5f0283b"
+    },
+    {
+      "id": "EMAIL-B3",
+      "title": "BNA educational updates",
+      "trigger": "Day +12 from appropriate updates permission",
+      "status": "review_candidate",
+      "content": {
+        "en": {
+          "subject": "Geulah consciousness expressed through education",
+          "body": "Hi {{FIRST_NAME}},\n\nRaising the generation of the Geulah gives our educational work its direction. Knowledge of Hashem finds expression in the learner’s judgment, relationships and contribution to the world around him.\n\nIn the co-op, that approach connects Torah study with genuine questions, honest conversation and shared responsibility. A boy can examine a value in a source and consider how it applies to a choice he is making.\n\nOur website brings together the educational philosophy and practical examples. You can explore the articles here: {{ARTICLES_URL}}\n\nWhich part of this approach connects most strongly with what you want for your son?\n\nShloimie"
+        },
+        "he": {
+          "subject": "תודעת גאולה הבאה לידי ביטוי בחינוך",
+          "body": "שלום {{FIRST_NAME}},\n\nגידול דור הגאולה נותן לעשייה החינוכית שלנו כיוון. דעת ה׳ באה לידי ביטוי בשיקול הדעת של הלומד, בקשרים שלו ובתרומה לעולם שסביבו.\n\nבקואופרטיב הגישה מחברת לימוד תורה עם שאלות אמיתיות, שיחה כנה ואחריות משותפת. ילד יכול לעיין בערך במקור ולבחון כיצד הוא קשור לבחירה שהוא עומד לעשות.\n\nהאתר מחבר בין הפילוסופיה החינוכית לבין דוגמאות מעשיות. אפשר להעמיק במאמרים כאן: {{ARTICLES_URL}}\n\nאיזה חלק בגישה הזאת מתחבר במיוחד למה שאתם מבקשים עבור בנכם?\n\nשלומי"
+        }
+      },
+      "copySha256": "d7b069192dd96b32a2a469df5b6f9ef4bc7964756ea041970b6f5241817fd64d"
+    },
+    {
+      "id": "EMAIL-B4",
+      "title": "BNA educational updates",
+      "trigger": "Day +18 from appropriate updates permission",
+      "status": "review_candidate",
+      "content": {
+        "en": {
+          "subject": "A rhythm that supports your family",
+          "body": "Hi {{FIRST_NAME}},\n\nA family rhythm gives the day a familiar sequence. Preparing the learning space, choosing a question, studying, moving and returning to a responsibility can each have a clear place.\n\nTry discussing one part of the day with your son. Ask what needs to happen, where he needs help and which commitment he can take responsibility for. Agree on a small adjustment and review it after a few days.\n\nThese observations can also help our conversation about the co-op. What kind of rhythm has worked well for your family, and where would additional support be useful?\n\nShloimie"
+        },
+        "he": {
+          "subject": "קצב יומי שתומך במשפחה",
+          "body": "שלום {{FIRST_NAME}},\n\nקצב משפחתי נותן ליום רצף מוכר. הכנת מרחב הלמידה, בחירת שאלה, לימוד, תנועה וחזרה לאחריות יכולים לקבל כל אחד מקום ברור.\n\nנסו לשוחח עם בנכם על חלק אחד של היום. שאלו מה צריך לקרות, היכן הוא זקוק לעזרה ועל איזו התחייבות הוא יכול לקחת אחריות. הסכימו על התאמה קטנה ובדקו אותה לאחר כמה ימים.\n\nהתצפיות האלה יכולות לעזור גם בשיחה על הקואופרטיב. איזה קצב התאים למשפחה שלכם, והיכן תמיכה נוספת תהיה מועילה?\n\nשלומי"
+        }
+      },
+      "copySha256": "085f0544c0df15e7b14b7549291c709497747a7ccd6b988d62110d5ca984be60"
+    },
+    {
+      "id": "EMAIL-B5",
+      "title": "BNA educational updates",
+      "trigger": "Day +25 from appropriate updates permission; suppress if a personal conversation is already active",
+      "status": "review_candidate",
+      "content": {
+        "en": {
+          "subject": "Let’s discuss a suitable next step",
+          "body": "Hi {{FIRST_NAME}},\n\nA useful next step is a conversation about your son’s learning, your location and the arrangements that could suit your family.\n\nYou can reply with your current availability and the main question you would like to discuss. We will review any actual group, schedule, tuition and participation details together before a commitment to a program.\n\nThank you for taking an interest in the Bnei Neviim learning community.\n\nShloimie Dratler\n+1 (305) 491-6674"
+        },
+        "he": {
+          "subject": "בואו נדבר על צעד מתאים",
+          "body": "שלום {{FIRST_NAME}},\n\nהצעד הבא הוא שיחה על הלמידה של בנכם, על המיקום שלכם ועל מסגרת שעשויה להתאים למשפחה.\n\nאפשר להשיב עם הזמינות שלכם ועם השאלה המרכזית שתרצו לדון בה. נעבור יחד על פרטי קבוצה בפועל, לוח זמנים, שכר לימוד ותנאי השתתפות לפני התחייבות לתוכנית.\n\nתודה על ההתעניינות בקהילת הלמידה של בני נביאים.\n\nשלומי דרטלר\n+1 (305) 491-6674"
+        }
+      },
+      "copySha256": "2b6e64739558c9fd82fd2160cf13ae153982162ba4dd3b24254747f1b857f171"
+    },
+    {
+      "id": "EMAIL-S0",
+      "title": "Support service acknowledgment",
+      "trigger": "After actual support-interest save; does not require a donation",
+      "status": "review_candidate",
+      "content": {
+        "en": {
+          "subject": "Your BNA support inquiry",
+          "body": "Hi {{FIRST_NAME}},\n\nThank you for getting in touch about supporting Bnei Neviim Academy. Your inquiry has been saved under reference {{REFERENCE}}.\n\nI’ll follow up to hear what interests you and discuss a suitable next step. The educational work centers on integrative Torah learning, authentic relationships and self-governance, with a long-term vision for a nature-centered learning environment in Florida.\n\nYou can reply with a question or the aspect of the work you would like to explore.\n\nShloimie Dratler\n+1 (305) 491-6674"
+        },
+        "he": {
+          "subject": "פנייתכם בנושא תמיכה בבני נביאים",
+          "body": "שלום {{FIRST_NAME}},\n\nתודה שפניתם בנושא תמיכה באקדמיית בני נביאים. הפנייה נשמרה תחת המספר {{REFERENCE}}.\n\nאחזור אליכם כדי לשמוע מה מעניין אתכם ולדון בצעד מתאים. העשייה החינוכית מתמקדת בלימוד תורה אינטגרטיבי, בקשרים אותנטיים ובהנהגה עצמית, עם חזון ארוך טווח לסביבת למידה המחוברת לטבע בפלורידה.\n\nאפשר להשיב עם שאלה או עם היבט של העשייה שתרצו להכיר.\n\nשלומי דרטלר\n+1 (305) 491-6674"
+        }
+      },
+      "copySha256": "f03f4b890033305ba20a78c5efe352e999b35c3626c52f9c71273e6393b0cfaa"
+    },
+    {
+      "id": "EMAIL-S1",
+      "title": "Support-interest educational updates",
+      "trigger": "Day +3 after project-updates opt-in; donor status not assumed",
+      "status": "review_candidate",
+      "content": {
+        "en": {
+          "subject": "The educational approach behind BNA",
+          "body": "Hi {{FIRST_NAME}},\n\nThe work begins with the learner: his questions, inner will, relationships and growing capacity to take responsibility. Torah study gives that process substance and direction.\n\nAn educator can help a boy investigate a source, explain a choice and respond thoughtfully when something becomes difficult. Shared work gives boys opportunities to practice care, communication and follow-through.\n\nThe BNA vision brings these experiences together in an organic learning community. Our articles provide a closer look at the approach: {{ARTICLES_URL}}\n\nShloimie"
+        },
+        "he": {
+          "subject": "הגישה החינוכית שביסוד בני נביאים",
+          "body": "שלום {{FIRST_NAME}},\n\nהעבודה מתחילה בלומד: בשאלותיו, ברצונו הפנימי, בקשרים שלו וביכולת המתפתחת לקחת אחריות. לימוד התורה נותן לתהליך תוכן וכיוון.\n\nהמחנך יכול לעזור לילד לחקור מקור, להסביר בחירה ולהגיב בשיקול דעת כשמתעורר קושי. עשייה משותפת מזמנת תרגול באכפתיות, בתקשורת ובעמידה בהתחייבות.\n\nחזון בני נביאים מחבר בין החוויות האלה בקהילת למידה אורגנית. המאמרים מאפשרים להכיר את הגישה לעומק: {{ARTICLES_URL}}\n\nשלומי"
+        }
+      },
+      "copySha256": "6bf9ac6cb649ee391b208399fd43db5d035f36211de1b67932ef450f5ceef543"
+    },
+    {
+      "id": "EMAIL-S2",
+      "title": "Support-interest educational updates",
+      "trigger": "Day +10 after project-updates opt-in",
+      "status": "review_candidate",
+      "content": {
+        "en": {
+          "subject": "The Florida center vision",
+          "body": "Hi {{FIRST_NAME}},\n\nThe long-term vision is a learning environment with space for Torah study, gardening, care for animals, physical activity and responsibility for shared places. Nature and community provide a setting for purposeful experiences.\n\nThe planning proceeds in stages: the educational work, suitable people and support, location feasibility, and the requirements of a larger center. Specific funding goals will be presented with their defined scope and budget when ready.\n\nYou can read the current direction or reply to discuss it: {{SUPPORT_URL}}\n\nShloimie"
+        },
+        "he": {
+          "subject": "חזון המרכז בפלורידה",
+          "body": "שלום {{FIRST_NAME}},\n\nהחזון ארוך הטווח הוא סביבת למידה שיש בה מקום ללימוד תורה, גינון, טיפול בבעלי חיים, פעילות גופנית ואחריות למרחבים משותפים. הטבע והקהילה נותנים מסגרת לחוויות בעלות תכלית.\n\nהתכנון מתקדם בשלבים: העשייה החינוכית, אנשים ותמיכה מתאימים, היתכנות המקום והדרישות של מרכז רחב יותר. יעדי מימון מסוימים יוצגו עם היקף מוגדר ותקציב כאשר יהיו מוכנים.\n\nאפשר לקרוא על הכיוון הנוכחי או להשיב כדי לשוחח עליו: {{SUPPORT_URL}}\n\nשלומי"
+        }
+      },
+      "copySha256": "1fc47470b5ee4985d9904109dce3b48c99d9bb28d5c15480b1e9847eb7b2c47b"
+    },
+    {
+      "id": "EMAIL-S3",
+      "title": "Support-interest educational updates",
+      "trigger": "Day +21 after project-updates opt-in; suppress if already a confirmed donor",
+      "status": "review_candidate",
+      "content": {
+        "en": {
+          "subject": "A conversation about contributing",
+          "body": "Hi {{FIRST_NAME}},\n\nPeople can contribute to an educational community through professional experience, introductions, thoughtful feedback and financial support for an agreed purpose.\n\nI’d like to understand which part of the BNA vision interests you and what kind of involvement could be meaningful. The longer-term direction also includes bringing the educational approach to Israel, informed by the experience developed in Florida.\n\nReply with what you would like to discuss, and we can arrange a conversation.\n\nShloimie Dratler\n+1 (305) 491-6674"
+        },
+        "he": {
+          "subject": "שיחה על אפשרויות לתרום",
+          "body": "שלום {{FIRST_NAME}},\n\nאפשר לתרום לקהילה חינוכית דרך ניסיון מקצועי, חיבורים, משוב רציני ותמיכה כספית למטרה מוסכמת.\n\nאשמח להבין איזה חלק בחזון בני נביאים מעניין אתכם ואיזו מעורבות תהיה משמעותית עבורכם. הכיוון ארוך הטווח כולל גם הבאת הגישה החינוכית לישראל, על בסיס הניסיון שיצטבר בפלורידה.\n\nהשיבו עם הנושא שתרצו לדון בו, ונוכל לתאם שיחה.\n\nשלומי דרטלר\n+1 (305) 491-6674"
+        }
+      },
+      "copySha256": "969cca33c1a79c95da5437b8f85777082c26d6ca456fddd1f09896730f0694d0"
+    },
+    {
+      "id": "EMAIL-D0",
+      "title": "Verified donor acknowledgment",
+      "trigger": "One per reconciled successful gift; educational letter, not a tax receipt",
+      "status": "review_candidate",
+      "content": {
+        "en": {
+          "subject": "Thank you for supporting Bnei Neviim Academy",
+          "body": "Hi {{FIRST_NAME}},\n\nThank you for your contribution to Bnei Neviim Academy. Your support is connected to educational work grounded in Torah learning, authentic relationships and responsibility.\n\nI appreciate the trust behind your gift. You can reply to me with questions about the purpose or payment details recorded for your gift. You are also welcome to reply with a question about the educational approach.\n\nShloimie Dratler\n+1 (305) 491-6674"
+        },
+        "he": {
+          "subject": "תודה על תמיכתכם באקדמיית בני נביאים",
+          "body": "שלום {{FIRST_NAME}},\n\nתודה על תרומתכם לאקדמיית בני נביאים. תמיכתכם קשורה לעשייה חינוכית המושרשת בלימוד תורה, בקשרים אותנטיים ובאחריות.\n\nאני מעריך את האמון שמאחורי התרומה. אפשר להשיב לי עם שאלות על המטרה או על פרטי התשלום שנרשמו עבור התרומה. אפשר גם להשיב עם שאלה על הגישה החינוכית.\n\nשלומי דרטלר\n+1 (305) 491-6674"
+        }
+      },
+      "copySha256": "9e8492faeda1fbd0e0f740bf334f78ac84bd0525eda1fc23f4c0f14d07ab0ab4"
+    },
+    {
+      "id": "EMAIL-D1",
+      "title": "Donor educational updates",
+      "trigger": "Day +4 after appropriate updates permission; suppress duplicate educational content",
+      "status": "review_candidate",
+      "content": {
+        "en": {
+          "subject": "What the educational work looks like",
+          "body": "Hi {{FIRST_NAME}},\n\nA boy brings a question to the learning. He studies the source, explains his understanding and works with an educator on the point that needs clarification. In another moment, he practices making a clear request or repairing a mistake.\n\nThese ordinary experiences are central to BNA’s approach. Torah, intrinsic motivation and self-governance come together through real work and authentic relationships.\n\nYour interest in this work matters. I welcome questions about how the approach is expressed in learning and daily responsibility.\n\nShloimie"
+        },
+        "he": {
+          "subject": "כך נראית העבודה החינוכית",
+          "body": "שלום {{FIRST_NAME}},\n\nילד מביא שאלה ללמידה. הוא מעיין במקור, מסביר את הבנתו ומברר עם המחנך את הנקודה שעדיין דורשת דיוק. ברגע אחר הוא מתרגל בקשה ברורה או תיקון טעות.\n\nהחוויות היומיומיות האלה מרכזיות בגישת בני נביאים. תורה, מוטיבציה פנימית והנהגה עצמית מתחברות דרך עשייה ממשית וקשרים אותנטיים.\n\nהעניין שלכם בעבודה הזאת חשוב. אשמח לשאלות על האופן שבו הגישה באה לידי ביטוי בלמידה ובאחריות היומיומית.\n\nשלומי"
+        }
+      },
+      "copySha256": "350b654652377aae0d28a9ec89da2ff6baa10e4fda7bbe18aebbbce74325213b"
+    },
+    {
+      "id": "EMAIL-D2",
+      "title": "Donor educational updates",
+      "trigger": "Day +11 after appropriate updates permission",
+      "status": "review_candidate",
+      "content": {
+        "en": {
+          "subject": "A community shaped by Torah and relationship",
+          "body": "Hi {{FIRST_NAME}},\n\nGeulah consciousness gives our work a shared direction: knowledge of Hashem expressed through learning, human relationships and contribution.\n\nWe pay attention to the learner’s ratzon and the practical conditions that help him participate. A meaningful question, a manageable commitment and an adult who listens each have a place in that process.\n\nThe articles on our website describe the educational thinking in greater depth: {{ARTICLES_URL}}\n\nWhat aspect of the approach would you like to hear more about?\n\nShloimie"
+        },
+        "he": {
+          "subject": "קהילה המעוצבת דרך תורה וקשר",
+          "body": "שלום {{FIRST_NAME}},\n\nתודעת הגאולה נותנת לעשייה כיוון משותף: דעת ה׳ הבאה לידי ביטוי בלמידה, בקשרים אנושיים ובתרומה.\n\nאנו מתייחסים לרצונו של הלומד ולתנאים המעשיים שעוזרים לו להשתתף. שאלה משמעותית, התחייבות שאפשר לעמוד בה ומבוגר שמקשיב מקבלים כל אחד מקום בתהליך.\n\nהמאמרים באתר מתארים את החשיבה החינוכית לעומק: {{ARTICLES_URL}}\n\nעל איזה היבט בגישה תרצו לשמוע עוד?\n\nשלומי"
+        }
+      },
+      "copySha256": "300df8812687abf4e23e6e0a6c4e831650624ba8940538a992ce08553ef293d3"
+    },
+    {
+      "id": "EMAIL-D3",
+      "title": "Donor vision updates",
+      "trigger": "Day +21 after appropriate updates permission; educational vision, not an invented spending report",
+      "status": "review_candidate",
+      "content": {
+        "en": {
+          "subject": "The long-term Florida vision",
+          "body": "Hi {{FIRST_NAME}},\n\nThe long-term Florida vision includes a nature-centered learning environment with Torah study, outdoor life and meaningful responsibilities shared by the community.\n\nDeveloping that environment involves suitable premises, educators, practical safeguards and a budget tied to defined stages. We will share specific milestones with their scope and evidence as those plans are established.\n\nA later aspiration is to bring the educational approach to Israel. Experience from the Florida community will help inform that work.\n\nThe current vision is available here: {{SUPPORT_URL}}\n\nShloimie"
+        },
+        "he": {
+          "subject": "החזון ארוך הטווח בפלורידה",
+          "body": "שלום {{FIRST_NAME}},\n\nהחזון ארוך הטווח בפלורידה כולל סביבת למידה המחוברת לטבע, ובה לימוד תורה, חיי חוץ ואחריות משמעותית המשותפת לקהילה.\n\nפיתוח הסביבה הזאת דורש מקום מתאים, מחנכים, הסדרי בטיחות ותקציב הקשור לשלבים מוגדרים. אבני דרך מסוימות יוצגו עם היקפן ועם המידע התומך בהן כשהתוכניות יגובשו.\n\nשאיפה עתידית היא להביא את הגישה החינוכית לישראל. הניסיון של הקהילה בפלורידה יסייע לעצב את העשייה הזאת.\n\nהחזון הנוכחי מופיע כאן: {{SUPPORT_URL}}\n\nשלומי"
+        }
+      },
+      "copySha256": "37cfe87e094b8c572299264635a210199c55ae6703c9b196421f87e67b528b9a"
+    },
+    {
+      "id": "EMAIL-D4",
+      "title": "Donor relationship follow-up",
+      "trigger": "Day +35 after appropriate updates permission; do not restart on every recurring gift",
+      "status": "review_candidate",
+      "content": {
+        "en": {
+          "subject": "What would you like to understand about BNA?",
+          "body": "Hi {{FIRST_NAME}},\n\nI’d value a conversation about the aspects of BNA’s work that matter to you. Some supporters are drawn to autonomous Torah learning, some to the role of authentic relationships, and others to the long-term community vision.\n\nYou can reply with a question, an observation or a relevant introduction. Your perspective can help make future educational updates more useful.\n\nThank you for your connection to the work.\n\nShloimie Dratler\n+1 (305) 491-6674"
+        },
+        "he": {
+          "subject": "מה תרצו להבין על בני נביאים?",
+          "body": "שלום {{FIRST_NAME}},\n\nאשמח לשיחה על ההיבטים בעשיית בני נביאים החשובים לכם. יש המתעניינים בלימוד תורה עצמאי, אחרים בתפקידם של קשרים אותנטיים, ואחרים בחזון הקהילתי ארוך הטווח.\n\nאפשר להשיב עם שאלה, תצפית או חיבור רלוונטי. נקודת המבט שלכם יכולה לעזור להפוך את העדכונים החינוכיים הבאים למועילים יותר.\n\nתודה על הקשר שלכם לעשייה.\n\nשלומי דרטלר\n+1 (305) 491-6674"
+        }
+      },
+      "copySha256": "2e46f2364a7fe7a7be616d3a63ef91f2519c880389261b4abb8ebe16cbd06b66"
+    }
+  ]
+}
