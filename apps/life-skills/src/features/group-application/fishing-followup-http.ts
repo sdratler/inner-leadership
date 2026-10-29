@@ -26,8 +26,9 @@ export async function fishingFollowupHttp(request:Request,load:()=>Promise<Deps>
   const actor=await d.actor(token);
   if(request.method==="GET"){
    const keys=[...url.searchParams.keys()];
-   if(keys.length!==1||keys[0]!=="id"||url.searchParams.getAll("id").length!==1)throw new AppError("INVALID_REQUEST");
-   response=successResponse(await d.store.read(actor,url.searchParams.get("id")??""),requestId);
+   if(keys.some(key=>!['id','historyBefore'].includes(key)||url.searchParams.getAll(key).length!==1)||url.searchParams.getAll('id').length!==1)throw new AppError("INVALID_REQUEST");
+   const before=url.searchParams.get('historyBefore');if(before!==null&&!/^\d{1,10}$/.test(before))throw new AppError("INVALID_REQUEST");
+   response=successResponse(await d.store.read(actor,url.searchParams.get("id")??"",before===null?undefined:Number(before)),requestId);
   }else if(request.method==="POST"){
    if(url.search)throw new AppError("INVALID_REQUEST");
    verifyMutationOrigin(canonical,d.origin);verifyCsrfToken(request.headers.get("x-csrf-token"),d.csrf(token));

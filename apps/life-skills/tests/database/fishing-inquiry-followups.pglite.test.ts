@@ -111,3 +111,15 @@ it("pages owner-scoped Fishing inquiries with their saved follow-up and no dupli
  const bad=first.nextCursor!.slice(0,-1)+(first.nextCursor!.endsWith("A")?"B":"A");
  await expect(followups.listPage(owner,bad)).rejects.toMatchObject({code:"INVALID_REQUEST"});
 },30000);
+
+it("keeps a Fishing inquiry readable and editable beyond 100 follow-up revisions",async()=>{
+ const owner=actors[0]!,parent=actors[1]!,followups=new FishingInquiryFollowupStore(adapter,workspace,ring,key,owner.id,clock);
+ const saved=await applications.submit({operationId:randomUUID(),fields:{parentName:"Synthetic history parent",contact:"history@example.invalid",language:"en",cityArea:"Florida",programId:"sunday_fishing_academy",schedulePreference:["sunday"],permission:{confirmed:true,version:floridaGroupApplicationNotice.version,language:"en"}}});
+ const id=saved.item.id;
+ for(let n=0;n<102;n++)await followups.followup(owner,{operationId:randomUUID(),applicationId:id,expectedVersion:n,status:"waiting",note:`Revision ${n+1}`,nextAction:null,dueDate:null,waitingCondition:"Await reply"});
+ const first=await followups.read(owner,id);expect(first.followup.version).toBe(102);expect(first.history).toHaveLength(100);expect(first.hasMoreHistory).toBe(true);
+ const older=await followups.read(owner,id,first.history[99]!.version);expect(older.followup.version).toBe(102);expect(older.history.map(item=>item.version)).toEqual([2,1]);expect(older.hasMoreHistory).toBe(false);
+ await expect(followups.read(parent,id,3)).rejects.toMatchObject({code:"NOT_FOUND"});
+ await expect(followups.read(owner,id,0)).rejects.toMatchObject({code:"INVALID_REQUEST"});
+ expect(await followups.followup(owner,{operationId:randomUUID(),applicationId:id,expectedVersion:102,status:"waiting",note:"Revision 103",nextAction:null,dueDate:null,waitingCondition:"Await reply"})).toMatchObject({version:103});
+},30000);

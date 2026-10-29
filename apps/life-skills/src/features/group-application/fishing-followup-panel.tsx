@@ -33,6 +33,15 @@ export function FishingFollowupPanel({locale,applicationId,autoOpen=false,onOper
  },[applicationId]);
  useEffect(()=>{if(!autoOpen)return;const timer=window.setTimeout(()=>void read(),0);return()=>window.clearTimeout(timer);},[autoOpen,read]);
  useEffect(()=>{onOperationPending?.(pending!==null);},[pending,onOperationPending]);
+ async function loadHistory(){if(!detail||busy||pending||!detail.hasMoreHistory||!detail.history.length)return;
+  setBusy(true);setError(null);
+  try{const before=detail.history[detail.history.length-1]!.version;
+   const response=await fetch(endpoint+"?"+new URLSearchParams({id:applicationId,historyBefore:String(before)}),{credentials:"same-origin",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer"});
+   const body=await response.json().catch(()=>null);if(!response.ok||!body?.ok)throw new RequestError(response.status);
+   const page=body.data as Detail;setDetail(current=>current&&current.application.id===applicationId?{...current,history:[...current.history,...page.history],hasMoreHistory:page.hasMoreHistory}:current);
+  }catch(cause){const code=cause instanceof RequestError?cause.status:503;setError(code);if([401,403,404].includes(code)){setDetail(null);setPending(null);}}
+  finally{setBusy(false);}
+ }
  async function save(command:FishingFollowupCommand){
   const previouslyUnknown=pending!==null;setBusy(true);setError(null);setMessage("");setPending(command);
   try{const session=await sessionInfo();if(session.role!=="practitioner")throw new RequestError(403);
@@ -84,6 +93,7 @@ export function FishingFollowupPanel({locale,applicationId,autoOpen=false,onOper
     {detail.history.length>0&&<><h4>{t("Saved history","היסטוריה שמורה")}</h4><ol>{detail.history.map(item=><li key={item.operationId}>
      <time dateTime={item.recordedAt}>{item.recordedAt}</time> · {item.status} · {item.note}
      {item.nextAction&&<> · {item.nextAction} ({item.dueDate})</>}{item.waitingCondition&&<> · {item.waitingCondition}</>}</li>)}</ol></>}
+    {detail.hasMoreHistory&&<button type="button" disabled={busy||!!pending} onClick={()=>void loadHistory()}>{t("Load older history","טעינת היסטוריה קודמת")}</button>}
    </>}
   </section>
  </details>;
