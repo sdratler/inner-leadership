@@ -35,5 +35,5 @@ export default async function Page({params,searchParams}:{params:Promise<{locale
    try{return await loadOwnerDigest(context.actor,context.runtime,snapshot,locale);}
    catch(error){if(error instanceof AppError&&error.code==="FORBIDDEN")notFound();throw error;}
   })():undefined;
-  return <><MarketingDashboard locale={locale} snapshot={snapshot} ownerDigest={digest} facebookPage={facebookPage} initialSection={query.section} initialFilter={query.filter} initialMonth={query.month} calendarQuery={query} creativeQuery={query} renderedAt={new Date().toISOString()}/>{section==='creatives'&&<BnaContentReviewLibrary locale={locale}/>}</>;
+  return <MarketingDashboard locale={locale} snapshot={snapshot} ownerDigest={digest} facebookPage={facebookPage} initialSection={query.section} initialFilter={query.filter} initialMonth={query.month} calendarQuery={query} creativeQuery={query} renderedAt={new Date().toISOString()} contentReview={section==='creatives'?<BnaContentReviewLibrary locale={locale}/>:undefined}/>;
 }

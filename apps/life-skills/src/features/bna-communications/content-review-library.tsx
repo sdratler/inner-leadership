@@ -1,12 +1,12 @@
 import type {Locale} from '../../lib/locale.ts';
 import Link from 'next/link';
-import {Section,word} from '../../ui/revamp/primitives.tsx';
+import {Section} from '../../ui/revamp/primitives.tsx';
 import {bnaSocialCandidates,previewBnaSocialCandidate} from './social-candidates.ts';
 import {bnaEmailCandidates} from './email-candidates.ts';
 
 /** Owner route content only. Native disclosures do not queue, approve or send. */
 export function BnaContentReviewLibrary({locale}:{locale:Locale}){
- const t=(en:string,he:string)=>word(locale,en,he);
+ const t=(en:string,he:string)=>locale==='he'?he:en;
  return <Section title={t('BNA and Fishing copy for review','נוסחי בני נביאים ואקדמיית הדיג לבדיקה')} privateOnly description={t('Draft content from your consolidated package. Nothing here is approved, scheduled or sent.','נוסחים לבדיקה מהחבילה המאוחדת שלכם. דבר כאן אינו מאושר, מתוזמן או נשלח.')}>
   <p><Link href="/en/app/marketing?section=creatives">English</Link> · <Link href="/he/app/marketing?section=creatives">עברית</Link></p>
   <details className="lsw-details"><summary>{t(`${bnaSocialCandidates.posts.length} social drafts`,`${bnaSocialCandidates.posts.length} נוסחי פוסטים`)}</summary>

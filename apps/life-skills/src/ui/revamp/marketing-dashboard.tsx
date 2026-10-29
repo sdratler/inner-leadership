@@ -1,6 +1,6 @@
 "use client";
 import Image from "next/image";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { Locale } from "../../features/session-workflow/types.ts";
 import { normalizeMarketingSection, type AdDailyPoint, type FacebookPagePublicationReadModel, type MarketingSnapshot } from "../../features/marketing-overview/contracts.ts";
 import { safeMarketingUrl } from "../../features/marketing-overview/read-model.ts";
@@ -36,7 +36,7 @@ function MetricBars({ locale, points, metric, currencyCode }: { locale: Locale; 
   return <figure className="lsr-chart"><figcaption><strong>{label}</strong></figcaption><div className="lsr-chart-bars">{points.map(point => <div key={point.date} className="lsr-chart-point"><div className="lsr-chart-track">{point[metric]===null?<span className="sr-only">{word(locale,"Unavailable","לא זמין")}</span>:<span style={{ height: `${(point[metric]! / maximum) * 100}%` }} />}</div><small>{point.date.slice(5)}</small><span className="sr-only">{point.date}: {metric === "spendMinor" ? currency(locale, currencyCode, point.spendMinor) : point.linkClicks ?? word(locale, "Unavailable", "לא זמין")}</span></div>)}</div></figure>;
 }
 
-export function MarketingDashboard({ locale, snapshot, ownerDigest, facebookPage, initialSection, initialFilter, initialMonth, calendarQuery, calendarNavigation, creativeQuery, renderedAt }: { locale: Locale; snapshot: MarketingSnapshot; ownerDigest?:OwnerDigest|undefined; facebookPage?:FacebookPagePublicationReadModel|undefined; initialSection?: string | undefined; initialFilter?: string | undefined; initialMonth?: string | undefined; calendarQuery?:ContentCalendarQuery|undefined;calendarNavigation?:ContentCalendarNavigation|undefined;creativeQuery?:CreativeQuery|undefined; renderedAt: string }) {
+export function MarketingDashboard({ locale, snapshot, ownerDigest, facebookPage, initialSection, initialFilter, initialMonth, calendarQuery, calendarNavigation, creativeQuery, renderedAt, contentReview }: { locale: Locale; snapshot: MarketingSnapshot; ownerDigest?:OwnerDigest|undefined; facebookPage?:FacebookPagePublicationReadModel|undefined; initialSection?: string | undefined; initialFilter?: string | undefined; initialMonth?: string | undefined; calendarQuery?:ContentCalendarQuery|undefined;calendarNavigation?:ContentCalendarNavigation|undefined;creativeQuery?:CreativeQuery|undefined; renderedAt: string; contentReview?:ReactNode|undefined }) {
   if(snapshot.source==="unconfigured")return <section className="lsw-stack" lang={locale} dir={locale==='he'?'rtl':'ltr'} data-academy-marketing-setup>
     <header className="lsw-page-header"><div><p className="lsw-eyebrow">{word(locale,"Fishing Academy","האקדמיה לדיג")}</p><h1>{word(locale,"Marketing","שיווק")}</h1></div></header>
     <div role="status"><h2>{word(locale,"Academy marketing library needs setup","יש להגדיר את ספריית השיווק של האקדמיה")}</h2><p>{word(locale,"An Academy asset collection and publishing destinations have not been connected yet.","טרם חוברו אוסף נכסי השיווק ויעדי הפרסום של האקדמיה.")}</p></div>
@@ -131,6 +131,7 @@ export function MarketingDashboard({ locale, snapshot, ownerDigest, facebookPage
         image={creativeMediaPath(asset)}
         sourceAvailable={Boolean(safeMarketingUrl(asset.sourceUrl??null,["drive.google.com","docs.google.com","github.com"])??safeMarketingUrl(asset.imageUrl,["drive.google.com","docs.google.com","github.com"]))}
         title={asset.title} width={asset.width} height={asset.height} locale={locale} unregisteredRevision={asset.registeredRevision===false}/>} />}
+    {section === "creatives" && contentReview}
     {section === "community" && <Section title={h[section]}><CommunityReplyWorkspace locale={locale} /></Section>}
   </section>;
 }
