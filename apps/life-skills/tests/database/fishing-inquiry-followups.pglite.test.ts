@@ -104,3 +104,23 @@ it("links only an exact tagged Fishing inquiry to its verified group post",async
  await expect(readTaggedInquiries(adapter,workspace,ring,key,owner.id,clock,parent,snapshot)).rejects.toMatchObject({code:"NOT_FOUND"});
  expect((await db.query("SELECT count(*)::int AS n FROM ls_identity.people")).rows).toEqual(before);
 });
+
+
+it("paginates tagged inquiries without skipping or repeating records",async()=>{
+ const owner=actors[0]!,touch={campaign:ACADEMY_CAMPAIGN,source:"facebook" as const,medium:"social" as const,content:PREREG_CREATIVE.id,groupRef:"123",postRef:"456"};
+ const attribution=campaignAttributionSchema.parse({first:touch,last:touch}),ids=new Set<string>();
+ for(let i=0;i<101;i++){
+  const result=await applications.submit({operationId:randomUUID(),fields:{parentName:"Synthetic paging parent",contact:`paging-${i}@example.invalid`,language:"en",childAge:"10",cityArea:"Florida",programId:"sunday_fishing_academy",schedulePreference:["sunday"],permission:{confirmed:true,version:floridaGroupApplicationNotice.version,language:"en"}}},undefined,attribution);
+  ids.add(result.item.id);
+ }
+ const h="b".repeat(64),at=now.toISOString(),postUrl="https://www.facebook.com/groups/123/posts/456";
+ const snapshot=fishingMarketingSnapshotSchema.parse({schemaVersion:1,program:"fishing",channel:"facebook_group_manual",mode:"assisted",generatedAt:at,schedule:{timezone:"America/New_York",dailyCap:5,cooldownDays:30,enabled:true,funnelReady:false,day:"2026-10-29",window:"waiting",nextDue:at,lastRun:null},assets:[],targets:[],items:[],itemsTruncated:false,history:[{id:h,groupId:"123",contentDigest:h,variantId:null,identity:"personal",state:"published_browser_readback_verified",recordedAt:at,postUrl,publicationEvidence:"browser_readback"}],historyAvailable:true,historyTruncated:false,excludedHistory:0});
+ const first=await readTaggedInquiries(adapter,workspace,ring,key,owner.id,clock,owner,snapshot);
+ expect(first.nextCursor).not.toBeNull();
+ const second=await readTaggedInquiries(adapter,workspace,ring,key,owner.id,clock,owner,snapshot,first.nextCursor!);
+ expect(second.nextCursor).toBeNull();
+ const all=[...first.links,...second.links].map(link=>link.applicationId);
+ expect(new Set(all).size).toBe(all.length);
+ for(const id of ids)expect(all).toContain(id);
+ await expect(readTaggedInquiries(adapter,workspace,ring,key,owner.id,clock,owner,snapshot,"invalid")).rejects.toMatchObject({code:"INVALID_REQUEST"});
+},30000);
