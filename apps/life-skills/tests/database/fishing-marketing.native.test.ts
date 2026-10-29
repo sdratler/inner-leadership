@@ -38,7 +38,7 @@ it("upgrades only0147 after0146 and preserves a queued acknowledgment through fa
  const servicePool=new pg.Pool({connectionString:history.url,ssl:false,max:2});
  try{
   const index=history.inventory.findIndex(file=>file.name==='0147_ls_fishing_marketing_snapshot.sql');expect(index).toBe(66);
-  const baseline=history.inventory.slice(0,index),migration=history.inventory[index]!;await migrate({query},baseline,false);
+  const baseline=history.inventory.slice(0,index),migration=history.inventory[index]!,target=history.inventory.slice(0,index+1);await migrate({query},baseline,false);
   const f=await academyWorkspace(servicePool),env={LS_BNA_EMAIL_QUEUE_ENABLED:'true',LS_BNA_EMAIL_SOURCE_SHA256:BNA_EMAIL_SOURCE,LS_BNA_EMAIL_QUEUE_SINCE:new Date(Date.now()-1000).toISOString()};
   const store=poolStore(servicePool),mail=new BnaAcknowledgmentStore(store,f.workspace,f.owner.actor.id,f.ring,f.digestKey,f.runtime.clock);
   const inquiries=new BnaInquiryStore(store,f.workspace,f.ring,f.digestKey,f.owner.actor.id,f.runtime.clock,configuredBnaAcknowledgmentQueue(env,f.ring,f.digestKey));
@@ -49,8 +49,12 @@ it("upgrades only0147 after0146 and preserves a queued acknowledgment through fa
   await expect(migrate({query},[...baseline,{...migration,sql:migration.sql+'\nSELECT 1/0;'}],false)).rejects.toThrow('MIGRATION_FAILED');
   expect(await readFishingMarketingSchemaStage({query})).toBe(0);expect((await query('SELECT name,checksum FROM ls_control.migrations ORDER BY name')).rows).toEqual(ledgerBefore);
   expect(await mail.readForInquiry(f.owner.actor,saved.reference)).toEqual(before);
-  expect(await migrate({query},history.inventory,false)).toEqual({applied:1,pending:0});expect(await readFishingMarketingSchemaStage({query})).toBe(1);
-  expect(await mail.readForInquiry(f.owner.actor,saved.reference)).toEqual(before);expect(await migrate({query},history.inventory,true)).toEqual({applied:0,pending:0});
+  expect(await migrate({query},target,false)).toEqual({applied:1,pending:0});expect(await readFishingMarketingSchemaStage({query})).toBe(1);
+  expect(await mail.readForInquiry(f.owner.actor,saved.reference)).toEqual(before);expect(await migrate({query},target,true)).toEqual({applied:0,pending:0});
+  expect(history.inventory.slice(index+1).map(file=>file.name)).toEqual(['0148_ls_bna_email_preferences.sql']);
+  expect(await migrate({query},history.inventory,false)).toEqual({applied:1,pending:0});
+  expect(await mail.readForInquiry(f.owner.actor,saved.reference)).toEqual(before);
+  expect(await migrate({query},history.inventory,true)).toEqual({applied:0,pending:0});
   expect((await query('SELECT count(*)::int AS n FROM ls_service_interest.fishing_marketing_snapshot')).rows).toEqual([{n:0}]);
  }finally{await servicePool.end();client.release();await history.close();}
 },60000);
