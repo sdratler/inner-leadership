@@ -8,6 +8,8 @@ import {CONVERSATION_305_LINE} from "../../src/features/conversation-305/contrac
 import {readOwner305SchemaStage} from "../../src/db/owner-305-schema-release.ts";
 import {seal} from "../../src/features/identity/crypto.ts";
 import {privateDigest} from "../../src/features/contact-ops/server/digests.ts";
+import {BnaInquiryStore} from "../../src/features/bna-inquiry/store.ts";
+import {BNA_INQUIRY_NOTICE} from "../../src/features/bna-inquiry/contract.ts";
 import {asId} from "../../src/lib/ids.ts";
 import type {Actor} from "../../src/features/identity/types.ts";
 import type {IdentityStore,SqlSession} from "../../src/features/identity/store.ts";
@@ -87,3 +89,17 @@ it("pages the owner register without losing older conversations or exposing an a
  await expect(store.list(ownerActor,bad)).rejects.toMatchObject({code:"INVALID_REQUEST"});
  await expect(store.list(otherActor,first.nextCursor!)).rejects.toMatchObject({code:"NOT_FOUND"});
 },30000);
+
+it("proposal preserves link and unlink events without changing existing conversation revisions",async()=>{
+ await db.exec(await readFile("migrations/proposals/0143_ls_owner_305_inquiry_links.sql","utf8"));
+ const bna=new BnaInquiryStore(adapter,workspace,ring,"synthetic-bna-private-digest-key",owner,{now:()=>now});
+ const inquiry=await bna.submit({operationId:randomUUID(),fields:{name:"Synthetic parent",contactChannel:"email",contact:"link@example.invalid",language:"en",townOrZip:"Florida",childAges:[10],permission:{confirmed:true,version:BNA_INQUIRY_NOTICE.version,language:"en"}}});
+ const conversation=await store.save(ownerActor,{kind:"create",operationId:randomUUID(),channel:"phone",contactHint:"Synthetic caller",followup:{classification:"bna",note:"Discussed inquiry",nextAction:null,dueDate:null,waitingCondition:"Await reply"}});
+ const sql=`INSERT INTO ls_service_interest.owner_305_inquiry_link_events(workspace_id,operation_id,conversation_id,owner_account_id,version,request_digest,bna_inquiry_id,linked,recorded_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`;
+ const values=[workspace,randomUUID(),conversation.id,owner,1,"a".repeat(64),inquiry.reference,true,now];await db.query(sql,values);
+ await expect(db.query(sql,[workspace,randomUUID(),conversation.id,owner,1,"b".repeat(64),inquiry.reference,false,now])).rejects.toThrow();
+ await db.query(sql,[workspace,randomUUID(),conversation.id,owner,2,"c".repeat(64),inquiry.reference,false,now]);
+ expect((await db.query("SELECT linked FROM ls_service_interest.owner_305_inquiry_link_events WHERE conversation_id=$1 ORDER BY version",[conversation.id])).rows).toEqual([{linked:true},{linked:false}]);
+ await expect(db.query("DELETE FROM ls_service_interest.owner_305_inquiry_link_events WHERE conversation_id=$1",[conversation.id])).rejects.toThrow();
+ expect((await store.read(ownerActor,conversation.id)).history).toHaveLength(1);
+});
