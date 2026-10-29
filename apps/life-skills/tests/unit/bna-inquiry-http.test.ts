@@ -2,6 +2,7 @@ import {randomUUID} from "node:crypto";
 import {expect,it,vi} from "vitest";
 vi.mock("server-only",()=>({}));
 import {publicBnaInquiryHttp} from "../../src/features/bna-inquiry/http.ts";
+import {BNA_COOP_NOTICE} from "../../src/features/bna-inquiry/coop-contract.ts";
 import {BNA_INQUIRY_NOTICE} from "../../src/features/bna-inquiry/contract.ts";
 
 const origin="https://life-skills.example.invalid",path="/api/public/bna-inquiries";
@@ -28,4 +29,18 @@ it("offers a BNA-only challenge, requires same-origin consent, and returns only 
  expect(submit).toHaveBeenCalledOnce();
  expect((await publicBnaInquiryHttp(request("POST",{...submission,fields:{...submission.fields,permission:{...submission.fields.permission,confirmed:false}}}),async()=>deps)).status).toBe(400);
  expect(submit).toHaveBeenCalledOnce();
+});
+
+it("binds co-op submission and challenge to its own endpoint",async()=>{
+ let now=Date.now();const submit=vi.fn(async(...args:unknown[])=>{void args;return {saved:true as const,reference:randomUUID(),replayed:false};});
+ const deps={enabled:true,environment:{LS_APP_ORIGIN:origin},challengeKey:"synthetic-bna-challenge-key-32-characters",now:()=>now,limits:{consume:async()=>({count:1,retryAfterMs:0})},store:{submit}};
+ const req=(path:string,method:string,body?:unknown)=>new Request(origin+path,{method,headers:{host:"life-skills.example.invalid",origin,"sec-fetch-site":"same-origin","content-type":"application/json"},...(body?{body:JSON.stringify(body)}:{})});
+ const old=(await (await publicBnaInquiryHttp(req("/api/public/bna-inquiries","GET"),async()=>deps)).json()).data.challenge;
+ const offer=await publicBnaInquiryHttp(req("/api/public/bna-coop-inquiries","GET"),async()=>deps,"coop");const data=(await offer.json()).data;expect(data.notice).toEqual(BNA_COOP_NOTICE);
+ const fields={name:"Synthetic",contactChannel:"email",contact:"parent@example.invalid",language:"en",siteLanguage:"he",emailUpdates:false,townOrZip:"Florida",childAges:[10],permission:{confirmed:true,version:BNA_COOP_NOTICE.version,language:"he"}};
+ now+=1500;const body={challenge:old,operationId:randomUUID(),fields};
+ expect((await publicBnaInquiryHttp(req("/api/public/bna-coop-inquiries","POST",body),async()=>deps,"coop")).status).toBe(403);
+ expect((await publicBnaInquiryHttp(req("/api/public/bna-coop-inquiries","POST",{...body,challenge:data.challenge}),async()=>deps,"coop")).status).toBe(201);
+ expect(submit.mock.calls[0]?.[1]).toBe("bna_learning_coop");expect(submit.mock.calls[0]?.[0]).toMatchObject({attribution:{landingPath:"/he/join"}});
+ expect((await publicBnaInquiryHttp(req("/api/public/bna-inquiries","POST",{...body,challenge:data.challenge}),async()=>deps)).status).toBe(400);
 });

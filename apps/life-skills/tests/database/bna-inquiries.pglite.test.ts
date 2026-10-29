@@ -5,6 +5,7 @@ import {PGlite} from "@electric-sql/pglite";
 vi.mock("server-only",()=>({}));
 import {BnaInquiryStore} from "../../src/features/bna-inquiry/store.ts";
 import {BNA_INQUIRY_NOTICE,bnaInquiryFieldsSchema} from "../../src/features/bna-inquiry/contract.ts";
+import {BNA_COOP_NOTICE,BNA_COOP_PROGRAM} from "../../src/features/bna-inquiry/coop-contract.ts";
 import {asId} from "../../src/lib/ids.ts";
 import type {Actor} from "../../src/features/identity/types.ts";
 import type {IdentityStore,SqlSession} from "../../src/features/identity/store.ts";
@@ -59,3 +60,32 @@ it("a new operation never reveals prior exact-content submissions through a reus
  expect(first.reference).not.toBe(second.reference);
  expect(first.replayed).toBe(false);expect(second.replayed).toBe(false);
 });
+
+it("saves general co-op interest separately while retaining historical purpose and independent notice language",async()=>{
+ const before=(await store.list(ownerActor)).items.map(item=>item.id);
+ await db.exec(await readFile("migrations/0142_ls_bna_coop_interest.sql","utf8"));
+ expect((await store.list(ownerActor)).items.map(item=>item.id)).toEqual(before);
+ const old=await store.submit({operationId:randomUUID(),fields});
+ const input={operationId:randomUUID(),fields:{name:"Synthetic co-op parent",contactChannel:"phone" as const,contact:"+13055550123",language:"en" as const,siteLanguage:"he" as const,emailUpdates:false,townOrZip:"Florida",childAges:[10],permission:{confirmed:true as const,version:BNA_COOP_NOTICE.version,language:"he" as const}}};
+ await expect(store.submit({...input,operationId:randomUUID(),fields:{...input.fields,emailUpdates:true}},BNA_COOP_PROGRAM)).rejects.toThrow();
+ const withEmail={...input,operationId:randomUUID(),fields:{...input.fields,emailUpdates:true,secondaryContact:{channel:"email" as const,value:"parent@example.invalid"}}};
+ const opted=await store.submit(withEmail,BNA_COOP_PROGRAM);expect((await store.read(ownerActor,opted.reference))).toMatchObject({fields:{emailUpdates:true,secondaryContact:withEmail.fields.secondaryContact}});
+ const saved=await store.submit(input,BNA_COOP_PROGRAM);expect(await store.submit(input,BNA_COOP_PROGRAM)).toEqual({...saved,replayed:true});
+ expect((await store.read(ownerActor,saved.reference))).toMatchObject({program:"bna_learning_coop",fields:input.fields});
+ expect((await store.read(ownerActor,old.reference)).program).toBe("bna_torah_mornings");
+ await expect(store.read(otherActor,saved.reference)).rejects.toMatchObject({code:"NOT_FOUND"});
+ await expect(store.submit({...input,operationId:randomUUID(),fields:{...input.fields,permission:{...input.fields.permission,language:"en"}}},BNA_COOP_PROGRAM)).rejects.toThrow();
+ const command={operationId:randomUUID(),inquiryId:saved.reference,expectedVersion:1,status:"waiting" as const,note:"Synthetic owner note",nextAction:null,dueDate:null,waitingCondition:"Await reply"};
+ await store.followup(ownerActor,command);expect((await store.read(ownerActor,saved.reference)).followup).toMatchObject({note:command.note,waitingCondition:command.waitingCondition});
+});
+
+
+it("reaches older BNA inquiries through an owner-bound cursor without duplicates",async()=>{
+ const ids=new Set<string>();
+ for(let n=0;n<101;n++){const saved=await store.submit({operationId:randomUUID(),fields:{...fields,contact:`paging-${n}@example.invalid`}});ids.add(saved.reference);}
+ const first=await store.list(ownerActor);expect(first.items).toHaveLength(100);expect(first.nextCursor).toBeTruthy();expect(first.nextCursor).not.toMatch(/^[0-9a-f-]{36}$/i);
+ const second=await store.list(ownerActor,first.nextCursor!);expect(second.nextCursor).toBeNull();
+ const all=[...first.items,...second.items].map(item=>item.id);expect(new Set(all).size).toBe(all.length);for(const id of ids)expect(all).toContain(id);
+ const bad=first.nextCursor!.slice(0,-1)+(first.nextCursor!.endsWith("A")?"B":"A");await expect(store.list(ownerActor,bad)).rejects.toMatchObject({code:"INVALID_REQUEST"});
+ await expect(store.list(otherActor,first.nextCursor!)).rejects.toMatchObject({code:"NOT_FOUND"});
+},30000);

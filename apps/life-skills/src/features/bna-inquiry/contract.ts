@@ -10,7 +10,7 @@ export const BNA_INQUIRY_NOTICE={
 const contact=z.string().trim().max(254);
 const tag=z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$/);
 export const bnaAttributionSchema=z.object({
- campaign:tag.optional(),source:tag.optional(),content:tag.optional(),referral:tag.optional(),postRef:tag.optional(),
+ campaign:tag.optional(),source:tag.optional(),medium:tag.optional(),content:tag.optional(),referral:tag.optional(),postRef:tag.optional(),groupRef:tag.optional(),landingPath:z.enum(["/join","/he/join"]).optional(),
 }).strict();
 export const bnaInquiryFieldsSchema=z.object({
  name:z.string().trim().min(1).max(120),

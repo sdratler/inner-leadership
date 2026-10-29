@@ -8,8 +8,9 @@ import {bnaFollowupCommandSchema,type BnaFollowupCommand} from "./contract.ts";
 type Page=Awaited<ReturnType<BnaInquiryStore["list"]>>;
 type Detail=Awaited<ReturnType<BnaInquiryStore["read"]>>;
 class RequestError extends Error{constructor(readonly status:number){super("BNA_INQUIRY_REQUEST_FAILED");}}
-async function get<T>(id?:string):Promise<T>{
- const response=await fetch("/api/private/bna-inquiries"+(id?"?"+new URLSearchParams({id}):""),
+async function get<T>(id?:string,before?:string):Promise<T>{
+ const query=id?new URLSearchParams({id}):before?new URLSearchParams({before}):null;
+ const response=await fetch("/api/private/bna-inquiries"+(query?"?"+query:""),
   {credentials:"same-origin",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer"});
  const body=await response.json().catch(()=>null);if(!response.ok||!body?.ok)throw new RequestError(response.status);
  return body.data as T;
@@ -18,15 +19,15 @@ async function get<T>(id?:string):Promise<T>{
 export function BnaInquiryOwnerPanel({locale}:{locale:Locale}){
  const t=(en:string,he:string)=>locale==="he"?he:en;
  const [page,setPage]=useState<Page|null>(null),[detail,setDetail]=useState<Detail|null>(null);
- const [error,setError]=useState<number|null>(null),[message,setMessage]=useState(""),[busy,setBusy]=useState(false);
+ const [error,setError]=useState<number|null>(null),[message,setMessage]=useState(""),[busy,setBusy]=useState(false),[loadingMore,setLoadingMore]=useState(false);
  const [pending,setPending]=useState<BnaFollowupCommand|null>(null),[status,setStatus]=useState<"new"|"contacted"|"waiting"|"closed">("new");
  const [note,setNote]=useState(""),[nextAction,setNextAction]=useState(""),[dueDate,setDueDate]=useState(""),[waiting,setWaiting]=useState("");
  const serial=useRef(0),active=useRef(true);
  const clearPrivate=useCallback(()=>{setPage(null);setDetail(null);setPending(null);setNote("");setNextAction("");setWaiting("");},[]);
- const load=useCallback(async()=>{const n=++serial.current;
-  try{const value=await get<Page>();if(active.current&&serial.current===n){setPage(value);setError(null);}}
+ const load=useCallback(async(before?:string)=>{const n=++serial.current;if(before)setLoadingMore(true);
+  try{const value=await get<Page>(undefined,before);if(active.current&&serial.current===n){setPage(current=>before&&current&&current.nextCursor===before?{...value,items:[...new Map([...current.items,...value.items].map(item=>[item.id,item])).values()]}:before?current:value);setError(null);}}
   catch(cause){if(active.current&&serial.current===n){const code=cause instanceof RequestError?cause.status:503;setError(code);
-   if([401,403,404].includes(code))clearPrivate();}}
+   if([401,403,404].includes(code))clearPrivate();}}finally{if(active.current&&before)setLoadingMore(false);}
  },[clearPrivate]);
  const open=useCallback(async(id:string)=>{const n=++serial.current;
   try{const value=await get<Detail>(id);if(!active.current||serial.current!==n)return;
@@ -71,13 +72,15 @@ export function BnaInquiryOwnerPanel({locale}:{locale:Locale}){
    <button type="button" onClick={()=>void save(pending)}>{t("Retry same save","ניסיון חוזר לאותה שמירה")}</button></div>}
   {!page&&error===null&&<p role="status">{t("Loading BNA inquiries…","טוען את פניות בני נביאים…")}</p>}
   {page&&<div className="lsw-stack"><p>{page.items.length===0?t("No BNA inquiries saved yet.","עדיין לא נשמרו פניות לבני נביאים."):
-   t(`${page.items.length} saved inquiries`,`${page.items.length} פניות שמורות`)}</p>
+   t(`${page.items.length} inquiries shown`,`${page.items.length} פניות מוצגות`)}</p>
    <ul>{page.items.map(item=><li key={item.id}><button type="button" disabled={busy||!!pending} onClick={()=>void open(item.id)}>
-    {item.fields.name} · {item.fields.townOrZip} · {item.followup.status} · <bdi dir="ltr">{item.id}</bdi></button></li>)}</ul></div>}
+    {item.fields.name} · {item.program==="bna_learning_coop"?t("Learning co-op","קואופרטיב הלמידה"):t("Torah mornings","בקרים של תורה")} · {item.fields.townOrZip} · {item.followup.status} · <bdi dir="ltr">{item.id}</bdi></button></li>)}</ul>
+   {page.nextCursor&&<button type="button" disabled={loadingMore||busy||!!pending} onClick={()=>void load(page.nextCursor!)}>{loadingMore?t("Loading…","טוען…"):t("Load older inquiries","טעינת פניות קודמות")}</button>}</div>}
   {detail&&<article className="lsw-stack" aria-label={t("BNA inquiry detail","פרטי פניית בני נביאים")}>
-   <h3>{detail.fields.name}</h3><p><bdi dir="ltr">{detail.fields.contact}</bdi> · {detail.fields.contactChannel}</p>
+   <h3>{detail.fields.name}</h3><p>{detail.program==="bna_learning_coop"?t("Learning co-op interest","התעניינות בקואופרטיב הלמידה"):t("Torah-morning interest","התעניינות בבקרים של תורה")}</p><p><bdi dir="ltr">{detail.fields.contact}</bdi> · {detail.fields.contactChannel}</p>
    <p>{t("Ages","גילים")}: {detail.fields.childAges.join(", ")} · {detail.fields.townOrZip} · {detail.fields.language.toUpperCase()}</p>
    {detail.fields.question&&<p>{detail.fields.question}</p>}
+   {detail.program==="bna_learning_coop"&&<><p>{t("Page language","שפת הדף")}: {detail.fields.siteLanguage.toUpperCase()} · {t("Email updates","עדכוני דוא״ל")}: {detail.fields.emailUpdates?t("requested","התבקשו"):t("not requested","לא התבקשו")}</p>{detail.fields.secondaryContact&&<p><bdi dir="ltr">{detail.fields.secondaryContact.value}</bdi> · {detail.fields.secondaryContact.channel}</p>}</>}
    <p>{t("Source","מקור")}: {detail.attribution?.source??t("Unknown","לא ידוע")}</p>
    <p>{t("Owner","אחראי")}: <bdi dir="ltr">{detail.ownerAccountId}</bdi></p>
    <form onSubmit={submit} className="lsw-stack"><label>{t("Stage","שלב")}<select value={status} onChange={event=>setStatus(event.target.value as typeof status)}>

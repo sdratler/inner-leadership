@@ -5,7 +5,7 @@ import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 const inventory=()=> (JSON.parse(readFileSync('migrations/manifest.json','utf8')) as {name:string;sha256:string}[]).map(f=>({name:f.name,checksum:f.sha256,sql:readFileSync('migrations/'+f.name,'utf8')}));
 it('supports every previously valid parent prefix and the original appended outbox history',()=>{
- const files=inventory();expect(files).toHaveLength(61);
+ const files=inventory();expect(files).toHaveLength(62);
  for(const n of [51,52,53,54,55,56,57,58,59,60,61])expect(planMigrations(files,files.slice(0,n))).toEqual(files.slice(n));
 });
 it('recognizes only the exact early outbox and resumes each partial deferred upgrade',()=>{

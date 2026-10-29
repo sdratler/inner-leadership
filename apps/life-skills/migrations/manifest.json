@@ -242,5 +242,9 @@
   {
     "name": "0141_ls_owner_305_conversations.sql",
     "sha256": "d4c5c6a4e98382c4059e97c6147eae378b0017fd61307df771b1bdbc68b29790"
+  },
+  {
+    "name": "0142_ls_bna_coop_interest.sql",
+    "sha256": "84146e6f8341d09f0b7f865cd920cc9e7350120ce0aa81a52528f6aa45085bdc"
   }
 ]
