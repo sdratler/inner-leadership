@@ -34,7 +34,7 @@ export function FishingFollowupPanel({locale,applicationId,autoOpen=false,onOper
  useEffect(()=>{if(!autoOpen)return;const timer=window.setTimeout(()=>void read(),0);return()=>window.clearTimeout(timer);},[autoOpen,read]);
  useEffect(()=>{onOperationPending?.(pending!==null);},[pending,onOperationPending]);
  async function save(command:FishingFollowupCommand){
-  setBusy(true);setError(null);setMessage("");setPending(command);
+  const previouslyUnknown=pending!==null;setBusy(true);setError(null);setMessage("");setPending(command);
   try{const session=await sessionInfo();if(session.role!=="practitioner")throw new RequestError(403);
    const response=await fetch(endpoint,{method:"POST",credentials:"same-origin",cache:"no-store",
     redirect:"error",referrerPolicy:"no-referrer",headers:{"content-type":"application/json","x-csrf-token":session.csrfToken},
@@ -44,8 +44,8 @@ export function FishingFollowupPanel({locale,applicationId,autoOpen=false,onOper
    const saved=body.data as Saved;if(saved.applicationId!==applicationId)throw new RequestError(503);
    setPending(null);setNote("");await read();setMessage(t("Follow-up saved.","המעקב נשמר."));
   }catch(cause){const code=cause instanceof RequestError?cause.status:503;setError(code);
-   if([400,401,403,404,409].includes(code))setPending(null);
-   if([401,403,404].includes(code))setDetail(null);
+   if(!previouslyUnknown&&[400,401,403,404,409].includes(code))setPending(null);
+   if([401,403,404].includes(code)){setDetail(null);setPending(null);}
   }finally{setBusy(false);}
  }
  function submit(event:FormEvent<HTMLFormElement>){event.preventDefault();if(!detail||pending)return;
@@ -59,8 +59,8 @@ export function FishingFollowupPanel({locale,applicationId,autoOpen=false,onOper
   <section className="lsw-stack" aria-busy={busy}>
    {error!==null&&<div role="alert" className="lsw-alert"><p>{error===401?t("Sign in again.","יש להיכנס מחדש."):
     error===403||error===404?t("This account cannot open this Fishing inquiry.","לחשבון זה אין גישה לפניית הדיג."):
-    error===409?t("This inquiry changed. Reload before saving.","הפנייה השתנתה. יש לרענן לפני השמירה."):
-    error===400?t("Add a note and either a dated next action or a waiting condition.","יש להוסיף הערה ופעולה הבאה עם תאריך או תנאי המתנה."):
+    error===409&&!pending?t("This inquiry changed. Reload before saving.","הפנייה השתנתה. יש לרענן לפני השמירה."):
+    error===400&&!pending?t("Add a note and either a dated next action or a waiting condition.","יש להוסיף הערה ופעולה הבאה עם תאריך או תנאי המתנה."):
     t("Follow-up could not be read. Try again.","לא ניתן לקרוא את המעקב. אפשר לנסות שוב.")}</p>
     {![401,403,404].includes(error)&&<button type="button" onClick={()=>void read()}>{t("Reload","רענון")}</button>}</div>}
    {message&&<p role="status">{message}</p>}
