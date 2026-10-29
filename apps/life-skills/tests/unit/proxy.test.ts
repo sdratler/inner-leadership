@@ -40,6 +40,12 @@ describe("BNA inquiry release perimeter",()=>{
     expect(groupApplicationReleasePath("/api/public/bna-inquiries/",env)).toBe(false);
     expect(groupApplicationReleasePath("/api/public/bna-inquiries",{...env,LS_BNA_INQUIRY_ENABLED:"false"})).toBe(false);
     expect(groupApplicationReleasePath("/api/public/bna-inquiries",{...env,LS_GROUP_APPLICATION_REAL_DATA_RELEASE:"false"})).toBe(false);
+    const preferences={...env,LS_BNA_PREFERENCES_ENABLED:"true"};
+    expect(groupApplicationReleasePath("/api/public/bna-preferences",preferences)).toBe(true);
+    for(const path of ["/api/public/bna-preferences/","/api/public/bna-preferences/other","/api/public/bna-preferences-extra"])
+      expect(groupApplicationReleasePath(path,preferences)).toBe(false);
+    for(const flag of ["LS_BNA_PREFERENCES_ENABLED","LS_BNA_INQUIRY_ENABLED","LS_GROUP_APPLICATION_REAL_DATA_RELEASE","LS_IDENTITY_ENABLED"])
+      expect(groupApplicationReleasePath("/api/public/bna-preferences",{...preferences,[flag]:"false"})).toBe(false);
     const support={...env,LS_BNA_SUPPORT_INQUIRY_ENABLED:"true"};
     expect(groupApplicationReleasePath("/api/public/bna-support-inquiries",support)).toBe(true);
     for(const path of ["/api/public/bna-support-inquiries/","/api/public/bna-support-inquiries/other","/api/public/bna-support-inquiries-extra"])

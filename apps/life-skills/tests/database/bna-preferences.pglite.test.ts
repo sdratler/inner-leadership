@@ -40,7 +40,7 @@ it("reads captured permission without a write, no child/address disclosure or to
  const id=await inquiry(),before=(await db.query("SELECT count(*)::int AS n FROM ls_service_interest.bna_email_preference_events")).rows;
  const own=await prefs.readOwner(ownerActor,id);expect(own).toMatchObject({preferences:{version:0,permissionGrantedAt:null,withdrawn:false},history:[]});
  const cap=await prefs.issueCapability(ownerActor,id),read=await prefs.readRecipient(cap.token);
- expect(read).toMatchObject({inquiryId:id,canSubscribe:true,preferences:{program:BNA_COOP_PROGRAM,locale:"he",permissionGrantedAt:null}});
+ expect(read).toMatchObject({inquiryId:id,canSubscribe:true,preferences:{program:BNA_COOP_PROGRAM,locale:"he",updates:false,deliveryPaused:false}});
  expect(JSON.stringify(read)).not.toMatch(/SYNTHETIC|DO NOT COPY|example.invalid|recipientKey|ownerAccount/);
  expect((await db.query("SELECT count(*)::int AS n FROM ls_service_interest.bna_email_preference_events")).rows).toEqual(before);
 });

@@ -9,7 +9,7 @@ import {SESSION_COOKIE} from "../../lib/security/session.ts";
 import {TOKEN_PATTERN} from "../identity/crypto.ts";
 import type {Actor} from "../identity/types.ts";
 import {canonicalForwardedRequest} from "../integration/canonical-forwarded-request.ts";
-import {bnaOwnerPreferenceCommand,bnaRecipientPreferenceCommand,bnaPreferenceToken} from "./preferences-contract.ts";
+import {bnaOwnerPreferenceCommand,bnaRecipientPreferenceCommand,bnaPreferenceToken,recipientBnaPreferences} from "./preferences-contract.ts";
 import type {BnaPreferenceStore} from "./preferences-store.ts";
 
 const publicCommand=z.discriminatedUnion("action",[
@@ -33,7 +33,9 @@ export async function publicBnaPreferenceHttp(request:Request,load:()=>Promise<P
   const input=await readJson(request,publicCommand);
   await enforceRateLimit(d.limits,opaqueRateLimitKey("bna-preferences:global",d.rateLimitKey),300,60000);
   await enforceRateLimit(d.limits,opaqueRateLimitKey(`bna-preferences:${createHash("sha256").update(input.token).digest("hex")}`,d.rateLimitKey),30,60000);
-  const result=input.action==="read"?await d.store.readRecipient(input.token):await d.store.updateRecipient(input.token,input.command);
+  let result;
+  if(input.action==="read")result=await d.store.readRecipient(input.token);
+  else{const saved=await d.store.updateRecipient(input.token,input.command);result={replayed:saved.replayed,preferences:recipientBnaPreferences(saved.preferences)};}
   return protectedResponse(successResponse(result,requestId));
  }catch(error){return protectedResponse(failureResponse(error instanceof AppError?error:new AppError("UNAVAILABLE"),requestId));}
 }

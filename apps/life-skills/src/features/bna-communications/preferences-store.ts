@@ -10,7 +10,7 @@ import type {IdentityStore,SqlSession} from "../identity/store.ts";
 import type {BnaInquiryStore} from "../bna-inquiry/store.ts";
 import {bnaEmailRecipientKey} from "./acknowledgment-store.ts";
 import {bnaEmailProgram} from "./delivery-policy.ts";
-import {bnaOwnerPreferenceCommand,bnaRecipientPreferenceCommand,bnaPreferenceCapability,bnaPreferenceToken,BNA_PREFERENCE_NOTICE,
+import {bnaOwnerPreferenceCommand,bnaRecipientPreferenceCommand,bnaPreferenceCapability,bnaPreferenceToken,BNA_PREFERENCE_NOTICE,recipientBnaPreferences,
  type BnaOwnerPreferenceCommand,type BnaRecipientPreferenceCommand,type BnaPreferenceContext,type BnaPreferenceSnapshot} from "./preferences-contract.ts";
 
 const eventSchema=z.strictObject({version:z.literal(1),source:z.enum(["owner","recipient"]),
@@ -111,7 +111,8 @@ export class BnaPreferenceStore{
  private async recipientContext(tx:SqlSession,token:string){const cap=this.capability(token),context=await this.context(tx,cap.inquiryId);
   if(context.recipientKey!==cap.recipientKey||context.program!==cap.program)throw new AppError("NOT_FOUND");return context;}
  async readRecipient(token:string){return this.db.transaction(async tx=>{await tx.query("SET TRANSACTION READ ONLY");
-  const context=await this.recipientContext(tx,token);return {inquiryId:context.inquiryId,preferences:this.snapshot(context,await this.rows(tx,context.recipientKey)),notice:BNA_PREFERENCE_NOTICE,
+  const context=await this.recipientContext(tx,token),snapshot=this.snapshot(context,await this.rows(tx,context.recipientKey));
+  return {inquiryId:context.inquiryId,preferences:recipientBnaPreferences(snapshot),notice:BNA_PREFERENCE_NOTICE,
    canSubscribe:Date.parse(this.capability(token).expiresAt)>this.clock.now().getTime()};
  });}
  private async append(tx:SqlSession,context:Awaited<ReturnType<BnaPreferenceStore["context"]>>,command:BnaOwnerPreferenceCommand|BnaRecipientPreferenceCommand,source:"owner"|"recipient",canGrant=true){

@@ -26,8 +26,9 @@ Exact operation replay returns current native state after a lost response.
 
 This preference preparation is NOT a deployed feature. Proposed migration
 `migrations/proposals/0148_ls_bna_email_preferences.sql` is outside the active
-manifest. `LS_BNA_PREFERENCES_ENABLED` stays off pending the owner UI, branded
-recipient page/relay, native release guard, full candidate CI, backup/restore
+manifest. The flag-gated owner panel and matching BNA recipient page/relay are
+implemented in the existing repositories. `LS_BNA_PREFERENCES_ENABLED` stays
+off pending the native release guard, full candidate CI, backup/restore
 and ordinary browser acceptance. No existing data migration or historical
 outbound collector is authorized by the proposal. Runtime flags and production
 acceptance are recorded in the existing private implementation checkpoint.

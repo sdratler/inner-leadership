@@ -22,3 +22,6 @@ export const bnaPreferenceToken=z.string().regex(/^[A-Za-z0-9_-]{100,2048}$/);
 export type BnaPreferenceContext={inquiryId:string;program:z.infer<typeof bnaEmailProgram>;recipient:string;locale:"en"|"he";originalPermissionAt:string|null;originalNoticeVersion:string};
 export type BnaPreferenceSnapshot={version:number;program:z.infer<typeof bnaEmailProgram>;locale:"en"|"he";
  permissionGrantedAt:string|null;withdrawn:boolean;paused:boolean;replyPending:boolean;invalidRecipient:boolean;complaint:boolean};
+export function recipientBnaPreferences(snapshot:BnaPreferenceSnapshot){return {version:snapshot.version,program:snapshot.program,locale:snapshot.locale,
+ updates:snapshot.permissionGrantedAt!==null&&!snapshot.withdrawn,
+ deliveryPaused:snapshot.paused||snapshot.replyPending||snapshot.invalidRecipient||snapshot.complaint};}

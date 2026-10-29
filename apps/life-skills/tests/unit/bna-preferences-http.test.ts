@@ -12,7 +12,7 @@ const request=(path:string,method="POST",body?:unknown,headers:Record<string,str
  headers:{host:"life-skills.example.invalid",origin,"sec-fetch-site":"same-origin","content-type":"application/json","x-forwarded-proto":"https",...headers},
  ...(body?{body:JSON.stringify(body)}:{})});
 it("recipient reads require a capability in a same-origin JSON body and never mutate",async()=>{
- const readRecipient=vi.fn(async()=>({inquiryId:id,preferences,notice:BNA_PREFERENCE_NOTICE,canSubscribe:true})),updateRecipient=vi.fn(),deps={enabled:true,origin,limits,rateLimitKey:"synthetic-preference-rate-key-at-least-32",store:{readRecipient,updateRecipient}};
+ const readRecipient=vi.fn(async()=>({inquiryId:id,preferences:{version:0,program:"bna_learning_coop" as const,locale:"en" as const,updates:false,deliveryPaused:false},notice:BNA_PREFERENCE_NOTICE,canSubscribe:true})),updateRecipient=vi.fn(),deps={enabled:true,origin,limits,rateLimitKey:"synthetic-preference-rate-key-at-least-32",store:{readRecipient,updateRecipient}};
  const path="/api/public/bna-preferences",body={action:"read",token};
  const result=await publicBnaPreferenceHttp(request(path,"POST",body),async()=>deps);expect(result.status).toBe(200);
  expect(result.headers.get("cache-control")).toContain("no-store");expect(result.headers.get("referrer-policy")).toBe("no-referrer");
@@ -25,7 +25,8 @@ it("recipient mutation is strict, bounded and sends only the intended command to
  const readRecipient=vi.fn(),updateRecipient=vi.fn(async()=>({replayed:false,preferences:{...preferences,withdrawn:true}}));
  const deps={enabled:true,origin,limits,rateLimitKey:"synthetic-preference-rate-key-at-least-32",store:{readRecipient,updateRecipient}},path="/api/public/bna-preferences";
  const command={action:"unsubscribe_all",inquiryId:id,operationId:randomUUID(),expectedVersion:1},body={action:"update",token,command};
- expect((await publicBnaPreferenceHttp(request(path,"POST",body),async()=>deps)).status).toBe(200);
+ const response=await publicBnaPreferenceHttp(request(path,"POST",body),async()=>deps);expect(response.status).toBe(200);
+ const output=await response.json();expect(output.data.preferences).toMatchObject({updates:false});expect(JSON.stringify(output)).not.toMatch(/replyPending|complaint|invalidRecipient|permissionGrantedAt/);
  expect(updateRecipient).toHaveBeenCalledWith(token,command);
  expect((await publicBnaPreferenceHttp(request(path,"POST",{...body,command:{...command,workspaceId:randomUUID()}}),async()=>deps)).status).toBe(400);
  expect((await publicBnaPreferenceHttp(request(path,"POST",body,{"content-type":"text/plain"}),async()=>deps)).status).toBe(415);
