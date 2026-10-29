@@ -13,15 +13,16 @@ import {BNA_INQUIRY_PROGRAM,bnaAttributionSchema,bnaFollowupCommandSchema,bnaInq
  type BnaAttribution,type BnaFollowupCommand,type BnaInquiryFields} from "./contract.ts";
 
 import {BNA_COOP_PROGRAM,BNA_COOP_NOTICE,bnaCoopReadableFieldsSchema,type BnaCoopFields} from "./coop-contract.ts";
+import {inquirySourceCorrectionSchema} from "../inquiry-source-correction.ts";
 type InquiryPayload={program:typeof BNA_INQUIRY_PROGRAM;fields:BnaInquiryFields;attribution:BnaAttribution|null}|{program:typeof BNA_COOP_PROGRAM;fields:BnaCoopFields;attribution:BnaAttribution|null};
 type InquiryRow={id:string;programKey:string;ownerAccountId:string;requestDigest:string;payloadCiphertext:string;receivedAt:Date};
-type FollowupState={status:"new"|"contacted"|"waiting"|"closed";note:string;nextAction:string|null;dueDate:string|null;waitingCondition:string|null};
+type FollowupState={status:"new"|"contacted"|"waiting"|"closed";note:string;nextAction:string|null;dueDate:string|null;waitingCondition:string|null;sourceCorrection?:{source:string;basis:string}};
 type FollowupRow={operationId:string;inquiryId:string;actorAccountId:string;version:number;requestDigest:string;payloadCiphertext:string;recordedAt:Date};
 const payloadSchema=z.discriminatedUnion("program",[
  z.object({program:z.literal(BNA_INQUIRY_PROGRAM),fields:bnaInquiryFieldsSchema,attribution:bnaAttributionSchema.nullable()}).strict(),
  z.object({program:z.literal(BNA_COOP_PROGRAM),fields:bnaCoopReadableFieldsSchema,attribution:bnaAttributionSchema.nullable()}).strict()]);
 const stateSchema=z.object({status:z.enum(["new","contacted","waiting","closed"]),note:z.string().max(5000),
- nextAction:z.string().max(500).nullable(),dueDate:z.iso.date().nullable(),waitingCondition:z.string().max(500).nullable()}).strict();
+ nextAction:z.string().max(500).nullable(),dueDate:z.iso.date().nullable(),waitingCondition:z.string().max(500).nullable(),sourceCorrection:inquirySourceCorrectionSchema.optional()}).strict();
 const inquiryAad=(workspace:string,id:string)=>`ls_service_interest/bna-inquiry/v1/${workspace}/${id}`;
 const followupAad=(workspace:string,operation:string)=>`ls_service_interest/bna-followup/v1/${workspace}/${operation}`;
 const initialState:FollowupState={status:"new",note:"Inquiry saved for owner review",nextAction:"Review inquiry",dueDate:null,waitingCondition:null};
@@ -162,7 +163,7 @@ export class BnaInquiryStore{
    const current=await this.history(tx,command.inquiryId),version=current.items[0]!.version+1;
    if(command.expectedVersion!==current.items[0]!.version)throw new AppError("CONFLICT");
    const state=stateSchema.parse({status:command.status,note:command.note,nextAction:command.nextAction,
-    dueDate:command.dueDate,waitingCondition:command.waitingCondition}),now=this.clock.now();
+    dueDate:command.dueDate,waitingCondition:command.waitingCondition,...(command.sourceCorrection?{sourceCorrection:command.sourceCorrection}:{})}),now=this.clock.now();
    await tx.query(`INSERT INTO ls_service_interest.bna_inquiry_followups(workspace_id,operation_id,inquiry_id,actor_account_id,
     version,request_digest,payload_ciphertext,recorded_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
     [this.workspaceId,command.operationId,command.inquiryId,actor.id,version,digest,

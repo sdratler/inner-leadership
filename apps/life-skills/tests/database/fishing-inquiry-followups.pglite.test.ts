@@ -63,12 +63,13 @@ it("keeps one encrypted owner follow-up on an email-only Fishing inquiry across 
  expect(initial.attribution).toEqual(attribution);
  const before=(await db.query("SELECT count(*)::int AS n FROM ls_identity.people")).rows;
  const command={operationId:randomUUID(),applicationId:saved.item.id,expectedVersion:0,status:"waiting" as const,
-  note:"Parent requested a call next week",nextAction:"Call parent",dueDate:"2026-11-05",waitingCondition:"Parent availability"};
+  note:"Parent requested a call next week",nextAction:"Call parent",dueDate:"2026-11-05",waitingCondition:"Parent availability",sourceCorrection:{source:"Community referral",basis:"Parent stated this on the call"}};
  expect(await followups.followup(owner,command)).toMatchObject({version:1,replayed:false});
  expect(await followups.followup(owner,command)).toMatchObject({version:1,replayed:true});
  await expect(followups.followup(owner,{...command,operationId:randomUUID()})).rejects.toMatchObject({code:"CONFLICT"});
  const read=await followups.read(owner,saved.item.id);
  expect(read.followup).toMatchObject({version:1,note:command.note,nextAction:command.nextAction});
+ expect(read.attribution).toEqual(attribution);expect(read.history[0]).toMatchObject({sourceCorrection:command.sourceCorrection,actorAccountId:owner.id});
  expect(read.history).toHaveLength(1);
  await expect(followups.read(parent,saved.item.id)).rejects.toMatchObject({code:"NOT_FOUND"});
  await expect(followups.read(owner,randomUUID())).rejects.toMatchObject({code:"NOT_FOUND"});

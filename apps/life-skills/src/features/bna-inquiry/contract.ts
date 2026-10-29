@@ -1,4 +1,5 @@
 import {z} from "zod";
+import {inquirySourceCorrectionSchema} from "../inquiry-source-correction.ts";
 
 export const BNA_INQUIRY_PROGRAM="bna_torah_mornings" as const;
 export const BNA_INQUIRY_NOTICE={
@@ -35,6 +36,7 @@ export const bnaFollowupCommandSchema=z.object({
  status:z.enum(["new","contacted","waiting","closed"]),
  note:z.string().trim().min(1).max(5000),nextAction:z.string().trim().max(500).nullable(),
  dueDate:z.iso.date().nullable(),waitingCondition:z.string().trim().max(500).nullable(),
+ sourceCorrection:inquirySourceCorrectionSchema.optional(),
 }).strict().superRefine((value,ctx)=>{
  if(Boolean(value.nextAction)!==Boolean(value.dueDate))
   ctx.addIssue({code:"custom",path:["dueDate"],message:"dated action required"});

@@ -86,7 +86,7 @@ export class FishingInquiryFollowupStore{
  async followup(actor:Actor,input:FishingFollowupCommand){
   const command=fishingFollowupCommandSchema.parse(input);
   const state=fishingFollowupStateSchema.parse({status:command.status,note:command.note,
-   nextAction:command.nextAction,dueDate:command.dueDate,waitingCondition:command.waitingCondition});
+   nextAction:command.nextAction,dueDate:command.dueDate,waitingCondition:command.waitingCondition,...(command.sourceCorrection?{sourceCorrection:command.sourceCorrection}:{})});
   const digest=this.digest({operationId:command.operationId,applicationId:command.applicationId,
    actorAccountId:actor.id,expectedVersion:command.expectedVersion,state});
   return this.db.transaction(async tx=>{

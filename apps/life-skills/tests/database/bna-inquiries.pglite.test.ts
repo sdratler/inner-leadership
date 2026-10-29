@@ -59,12 +59,13 @@ it("saves a BNA inquiry in the existing DB, replays exactly, and gives one owner
  await expect(store.list(otherActor)).rejects.toMatchObject({code:"NOT_FOUND"});
  const detail=await store.read(ownerActor,saved.reference);
  expect(detail).toMatchObject({program:"bna_torah_mornings",fields,followup:{version:1,status:"new",nextAction:"Review inquiry"}});
- const command={operationId:randomUUID(),inquiryId:saved.reference,expectedVersion:1,status:"waiting" as const,note:"Called parent; waiting for preferred time",nextAction:"Call again",dueDate:"2026-11-02",waitingCondition:"Parent availability"};
+ const command={operationId:randomUUID(),inquiryId:saved.reference,expectedVersion:1,status:"waiting" as const,note:"Called parent; waiting for preferred time",nextAction:"Call again",dueDate:"2026-11-02",waitingCondition:"Parent availability",sourceCorrection:{source:"Community referral",basis:"Parent stated this on the call"}};
  expect(await store.followup(ownerActor,command)).toMatchObject({version:2,status:"waiting",replayed:false});
  expect(await store.followup(ownerActor,command)).toMatchObject({version:2,status:"waiting",replayed:true});
  await expect(store.followup(ownerActor,{...command,operationId:randomUUID()})).rejects.toMatchObject({code:"CONFLICT"});
  const read=await store.read(ownerActor,saved.reference);
  expect(read.followup).toMatchObject({version:2,note:command.note,nextAction:command.nextAction});
+ expect(read.attribution).toMatchObject({source:"bna_site"});expect(read.history[0]).toMatchObject({sourceCorrection:command.sourceCorrection,actorAccountId:ownerActor.id});
  expect(read.history.map(event=>event.version)).toEqual([2,1]);
  expect((await db.query("SELECT count(*)::int AS n FROM ls_service_interest.bna_inquiries")).rows).toEqual([{n:1}]);
  await expect(db.query("DELETE FROM ls_service_interest.bna_inquiries WHERE workspace_id=$1",[workspace])).rejects.toThrow();
