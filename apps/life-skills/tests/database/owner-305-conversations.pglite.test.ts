@@ -8,6 +8,7 @@ import {Owner305InboundStore} from "../../src/features/conversation-305/inbound-
 import {inboundBindingDigest} from "../../src/features/contact-ops/server/inbound-store.ts";
 import {CONVERSATION_305_LINE} from "../../src/features/conversation-305/contract.ts";
 import {readOwner305SchemaStage} from "../../src/db/owner-305-schema-release.ts";
+import {readInbound305SchemaStage} from "../../src/db/owner-305-inbound-schema-release.ts";
 import {asId} from "../../src/lib/ids.ts";
 import type {Actor} from "../../src/features/identity/types.ts";
 import type {IdentityStore,SqlSession} from "../../src/features/identity/store.ts";
@@ -58,6 +59,7 @@ it("keeps manual 305 classification private, durable and independent of Person/c
  await expect(db.query("DELETE FROM ls_service_interest.owner_305_conversations WHERE workspace_id=$1",[workspace])).rejects.toThrow();
 });
 it("stores exact 305 provider receipts once and exposes them only to the owner",async()=>{
+ expect(await readInbound305SchemaStage({query:(sql,values)=>db.query(sql,values?[...values]:undefined)})).toBe(1);
  const inquiry={provider:"whapi" as const,channelId:"synthetic-channel",businessNumber:CONVERSATION_305_LINE,
   providerEventId:"synthetic-event",providerMessageId:"synthetic-message",providerThreadId:"synthetic-thread",
   eventType:"inbound_message" as const,fromMe:false as const,fromNumber:"+15555550123",pushName:"Synthetic",

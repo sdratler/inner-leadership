@@ -1,0 +1,10 @@
+# 305 WhatsApp inbound release
+
+The owner-only inbox records future authenticated 305 channel events as encrypted receipts. It does not scan provider history, create People records or tasks, infer a program, or send messages. The owner can start a separate manual follow-up from a displayed message; that action does not merge identities.
+
+1. Complete review and checks for the app candidate and gateway PR. Keep `LS_305_INBOUND_ENABLED` and `LIFE_SKILLS_305_INBOUND_ENABLED` off and keep `LIFE_SKILLS_SHEET_CRM_ENABLED=false`.
+2. Deploy the reviewed app candidate with inbound off. Capture a fresh production backup, verify an isolated restore and rollback plan, then bind a protected proof file to the exact app deployment, commit, source, manifest, database and 0141 ledger. Run `release-owner-305-inbound-schema.ts --preflight`, apply only with `LS_305_INBOUND_SCHEMA_APPLY_APPROVED=true`, and run `--verify-only`.
+3. Reconcile the existing gateway outbox and unknown provider effects. Verify the provider channel's authenticated user is `+13054916674`, the gateway's explicit 305 channel ID, and the app's exact binding digest match. Configure the receiver and gateway only after their protected bridge credentials and destination are verified. Never re-enable the retired Sheet to activate this path.
+4. Use an authorized synthetic inbound canary to verify durable capture, identical replay, conflict rejection, owner readback and a new session. Verify unauthorized access is denied and no Person, task, outbound send or legacy Sheet row was created. Reconcile any unknown result before retrying. Only then declare inbound working.
+
+The guarded schema operator requires the exact target, 0141 predecessor, fresh backup and restore proof, checksummed source and inbound flag off. A rollback disables the inbound flags and retains committed receipts for reconciliation; it does not delete messages or restore a database over later inquiries.
