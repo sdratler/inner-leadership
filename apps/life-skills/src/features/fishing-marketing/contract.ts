@@ -1,6 +1,6 @@
 import {z} from "zod";
 
-const group=z.string().regex(/^[A-Za-z0-9._-]{1,150}$/);
+const group=z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,149}$/);
 const hash=z.string().regex(/^[a-f0-9]{64}$/);
 const instant=z.iso.datetime({offset:true});
 const timezone=z.string().min(1).max(100).refine(value=>{try{new Intl.DateTimeFormat("en",{timeZone:value});return true;}catch{return false;}});
