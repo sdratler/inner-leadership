@@ -1,5 +1,6 @@
 import {planMigrations,type AppliedMigration,type Migration} from "./migration-plan.ts";
 import type {Owner305ReleaseQuery} from "./owner-305-schema-release.ts";
+import {BNA_SUPPORT_MIGRATION} from "./bna-support-schema-source.ts";
 export const BNA_COOP_BASELINE={name:"0141_ls_owner_305_conversations.sql",sha256:"d4c5c6a4e98382c4059e97c6147eae378b0017fd61307df771b1bdbc68b29790"} as const;
 export const BNA_COOP_MIGRATION={name:"0142_ls_bna_coop_interest.sql",sha256:"84146e6f8341d09f0b7f865cd920cc9e7350120ce0aa81a52528f6aa45085bdc"} as const;
 export function bnaCoopSchemaPlan(files:readonly Migration[],history:readonly AppliedMigration[],stage:0|1){
@@ -19,5 +20,9 @@ export async function readBnaCoopSchemaStage(db:Owner305ReleaseQuery):Promise<0|
  const value=result.rows[0]!.definition.replace(/\s+/g,"");
  if(value==="CHECK((program_key='bna_torah_mornings'::text))")return 0;
  if(value==="CHECK((program_key=ANY(ARRAY['bna_torah_mornings'::text,'bna_learning_coop'::text])))")return 1;
+ if(value==="CHECK((program_key=ANY(ARRAY['bna_torah_mornings'::text,'bna_learning_coop'::text,'bna_support_interest'::text])))"){
+  const ledger=await db.query<{checksum:string}>("SELECT checksum FROM ls_control.migrations WHERE name=$1",[BNA_SUPPORT_MIGRATION.name]);
+  if(ledger.rows.length===1&&ledger.rows[0]!.checksum===BNA_SUPPORT_MIGRATION.sha256)return 1;
+ }
  throw Error("BNA_COOP_SCHEMA_CATALOG_CONFLICT");
 }
