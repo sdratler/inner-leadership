@@ -22,8 +22,9 @@ export function BnaInquiryOwnerPanel({locale,initialId,onOperationPending}:{loca
  const [error,setError]=useState<number|null>(null),[message,setMessage]=useState(""),[busy,setBusy]=useState(false),[loadingMore,setLoadingMore]=useState(false),[loadingHistory,setLoadingHistory]=useState(false);
  const [pending,setPending]=useState<BnaFollowupCommand|null>(null),[status,setStatus]=useState<"new"|"contacted"|"waiting"|"closed">("new");
  const [note,setNote]=useState(""),[nextAction,setNextAction]=useState(""),[dueDate,setDueDate]=useState(""),[waiting,setWaiting]=useState("");
+ const [operation,setOperation]=useState("");
  const serial=useRef(0),active=useRef(true);
- const clearPrivate=useCallback(()=>{setPage(null);setDetail(null);setPending(null);setLoadingHistory(false);setStatus("new");setNote("");setNextAction("");setDueDate("");setWaiting("");},[]);
+ const clearPrivate=useCallback(()=>{setPage(null);setDetail(null);setPending(null);setLoadingHistory(false);setOperation("");setStatus("new");setNote("");setNextAction("");setDueDate("");setWaiting("");},[]);
  const load=useCallback(async(before?:string)=>{const n=++serial.current;setLoadingHistory(false);if(before)setLoadingMore(true);
   try{const value=await get<Page>(undefined,before);if(active.current&&serial.current===n){setPage(current=>before&&current&&current.nextCursor===before?{...value,items:[...new Map([...current.items,...value.items].map(item=>[item.id,item])).values()]}:before?current:value);setError(null);}}
   catch(cause){if(active.current&&serial.current===n){const code=cause instanceof RequestError?cause.status:503;setError(code);
@@ -44,6 +45,15 @@ export function BnaInquiryOwnerPanel({locale,initialId,onOperationPending}:{loca
   catch(cause){if(active.current&&serial.current===n){const code=cause instanceof RequestError?cause.status:503;setError(code);if([401,403,404].includes(code))clearPrivate();}}
   finally{if(active.current&&serial.current===n)setLoadingHistory(false);}
  },[clearPrivate]);
+ async function findOperation(event:FormEvent<HTMLFormElement>){event.preventDefault();if(pending||busy)return;
+  const n=++serial.current;setDetail(null);setNote("");setNextAction("");setDueDate("");setWaiting("");setMessage("");setError(null);
+  try{const response=await fetch("/api/private/bna-inquiries?"+new URLSearchParams({operation:operation.trim()}),{credentials:"same-origin",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer"});
+   const body=await response.json().catch(()=>null);if(!response.ok||!body?.ok)throw new RequestError(response.status);
+   if(!active.current||serial.current!==n)return;const result=body.data as Awaited<ReturnType<BnaInquiryStore["findOperation"]>>;
+   if(!result.found){setMessage(t("No saved inquiry was found for that reference yet. Check again before advising another submission.","לא נמצאה עדיין פנייה שמורה למספר הזה. יש לבדוק שוב לפני שממליצים לשלוח פנייה נוספת."));return;}
+   const value=result.detail;setDetail(value);setStatus(value.followup.status);setNextAction(value.followup.nextAction??"");setDueDate(value.followup.dueDate??"");setWaiting(value.followup.waitingCondition??"");setError(null);
+  }catch(cause){if(active.current&&serial.current===n){const code=cause instanceof RequestError?cause.status:503;setError(code);if([401,403,404].includes(code))clearPrivate();}}
+ }
  useEffect(()=>{let cancelled=false;const sequence=serial;active.current=true;const timer=window.setTimeout(()=>{void load().then(()=>{if(!cancelled&&active.current&&initialId)void open(initialId);});},0);
   return()=>{cancelled=true;window.clearTimeout(timer);active.current=false;sequence.current++;};},[load,open,initialId]);
  useEffect(()=>{onOperationPending?.(pending!==null);},[pending,onOperationPending]);
@@ -70,6 +80,7 @@ export function BnaInquiryOwnerPanel({locale,initialId,onOperationPending}:{loca
  return <section className="lsw-card" lang={locale} dir={locale==="he"?"rtl":"ltr"} aria-label={t("BNA inquiries","פניות לבני נביאים")}>
   <h2>{t("BNA inquiries","פניות לבני נביאים")}</h2>
   <p>{t("Separate from Fishing. An inquiry is not enrollment or a booked place.","נפרד מתוכנית הדיג. פנייה אינה הרשמה או שמירת מקום.")}</p>
+  <form onSubmit={findOperation}><label>{t("Find a submission by operation reference","חיפוש פנייה לפי מספר פעולה")} <input required pattern="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}" maxLength={36} value={operation} onChange={event=>setOperation(event.target.value)} dir="ltr"/></label> <button type="submit" disabled={busy||!!pending}>{t("Find inquiry","חיפוש פנייה")}</button></form>
   {error!==null&&<div role="alert" className="lsw-alert"><p>{error===401?t("Sign in again to view inquiries.","יש להיכנס מחדש כדי לצפות בפניות."):
    error===403?t("This account cannot view BNA inquiries.","לחשבון זה אין גישה לפניות בני נביאים."):
    error===409?t("This inquiry changed. Reload it before saving.","הפנייה השתנתה. יש לרענן לפני שמירה."):

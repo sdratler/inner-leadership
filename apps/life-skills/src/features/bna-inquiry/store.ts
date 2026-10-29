@@ -136,6 +136,15 @@ export class BnaInquiryStore{
    const record=await this.inquiry(tx,id),current=await this.history(tx,id),history=beforeVersion===undefined?current:await this.history(tx,id,beforeVersion);
    return {...record,followup:current.items[0]!,history:history.items,hasMoreHistory:history.hasMore};});
  }
+ async findOperation(actor:Actor,operationId:string){
+  if(!z.string().uuid().safeParse(operationId).success)throw new AppError("INVALID_REQUEST");
+  return this.db.transaction(async tx=>{await tx.query("SET TRANSACTION READ ONLY");await this.owner(tx,actor);
+   const rows=await tx.query<{id:string}>(`SELECT inquiry_id AS id FROM ls_service_interest.bna_inquiry_operations WHERE workspace_id=$1 AND operation_id=$2`,[this.workspaceId,operationId]);
+   if(!rows.length)return {found:false as const};if(rows.length!==1)throw new AppError("UNAVAILABLE");
+   const record=await this.inquiry(tx,rows[0]!.id),history=await this.history(tx,record.id);
+   return {found:true as const,detail:{...record,followup:history.items[0]!,history:history.items,hasMoreHistory:history.hasMore}};
+  });
+ }
  async followup(actor:Actor,input:BnaFollowupCommand){
   const command=bnaFollowupCommandSchema.parse(input),digest=privateDigest({domain:"bna-followup-command/v1",workspace:this.workspaceId,
    actor:actor.id,command},this.digestKey);

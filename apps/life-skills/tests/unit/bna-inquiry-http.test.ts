@@ -49,9 +49,11 @@ it("binds co-op submission and challenge to its own endpoint",async()=>{
 
 it("only requests a bounded history page for a single authenticated inquiry",async()=>{
  const token="a".repeat(43),actor={id:randomUUID(),workspaceId:randomUUID(),role:"practitioner"} as Actor,read=vi.fn(async()=>({history:[]}));
- const deps={origin,actor:async()=>actor,csrf:()=>"b".repeat(43),limits:{consume:async()=>({count:1,retryAfterMs:0})},rateLimitKey:"synthetic-rate-key",store:{read,list:vi.fn(),followup:vi.fn()} as unknown as Pick<BnaInquiryStore,"read"|"list"|"followup">};
+ const findOperation=vi.fn(async()=>({found:false}));
+ const deps={origin,actor:async()=>actor,csrf:()=>"b".repeat(43),limits:{consume:async()=>({count:1,retryAfterMs:0})},rateLimitKey:"synthetic-rate-key",store:{read,findOperation,list:vi.fn(),followup:vi.fn()} as unknown as Pick<BnaInquiryStore,"read"|"list"|"findOperation"|"followup">};
  const req=(query:string,cookie=true)=>new Request(origin+"/api/private/bna-inquiries"+query,{headers:{host:"life-skills.example.invalid","x-forwarded-proto":"https","x-forwarded-host":"life-skills.example.invalid",...(cookie?{cookie:`__Host-ls-session=${token}`}:{})}});
  const id=randomUUID();expect((await privateBnaInquiryHttp(req(`?id=${id}&historyBefore=23`),async()=>deps)).status).toBe(200);expect(read).toHaveBeenCalledWith(actor,id,23);
- for(const query of [`?historyBefore=23`,`?id=${id}&historyBefore=2&historyBefore=3`,`?id=${id}&before=x`,`?id=${id}&historyBefore=oops`])expect((await privateBnaInquiryHttp(req(query),async()=>deps)).status).toBe(400);
+ const operation=randomUUID();expect((await privateBnaInquiryHttp(req(`?operation=${operation}`),async()=>deps)).status).toBe(200);expect(findOperation).toHaveBeenCalledWith(actor,operation);
+ for(const query of [`?historyBefore=23`,`?id=${id}&historyBefore=2&historyBefore=3`,`?id=${id}&before=x`,`?id=${id}&historyBefore=oops`,`?id=${id}&operation=${operation}`,`?operation=${operation}&before=x`,`?operation=`])expect((await privateBnaInquiryHttp(req(query),async()=>deps)).status).toBe(400);
  expect((await privateBnaInquiryHttp(req(`?id=${id}&historyBefore=23`,false),async()=>deps)).status).toBe(401);
 });

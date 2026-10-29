@@ -41,6 +41,10 @@ it("saves a BNA inquiry in the existing DB, replays exactly, and gives one owner
  const operationId=randomUUID(),saved=await store.submit({operationId,fields,attribution:{source:"bna_site"}});
  expect(saved).toMatchObject({saved:true,replayed:false});
  expect(await store.submit({operationId,fields,attribution:{source:"bna_site"}})).toEqual({...saved,replayed:true});
+ expect(await store.findOperation(ownerActor,operationId)).toMatchObject({found:true,detail:{id:saved.reference,program:"bna_torah_mornings"}});
+ expect(await store.findOperation(ownerActor,randomUUID())).toEqual({found:false});
+ await expect(store.findOperation(otherActor,operationId)).rejects.toMatchObject({code:"NOT_FOUND"});
+ await expect(store.findOperation(ownerActor,"invalid")).rejects.toMatchObject({code:"INVALID_REQUEST"});
  await expect(store.submit({operationId,fields,attribution:{source:"different"}})).rejects.toMatchObject({code:"CONFLICT"});
  expect((await store.list(ownerActor)).items).toHaveLength(1);
  await expect(store.list(otherActor)).rejects.toMatchObject({code:"NOT_FOUND"});
@@ -75,6 +79,7 @@ it("saves general co-op interest separately while retaining historical purpose a
  const withEmail={...input,operationId:randomUUID(),fields:{...input.fields,emailUpdates:true,secondaryContact:{channel:"email" as const,value:"parent@example.invalid"}}};
  const opted=await store.submit(withEmail,BNA_COOP_PROGRAM);expect((await store.read(ownerActor,opted.reference))).toMatchObject({fields:{emailUpdates:true,secondaryContact:withEmail.fields.secondaryContact}});
  const saved=await store.submit(input,BNA_COOP_PROGRAM);expect(await store.submit(input,BNA_COOP_PROGRAM)).toEqual({...saved,replayed:true});
+ expect(await store.findOperation(ownerActor,input.operationId)).toMatchObject({found:true,detail:{id:saved.reference,program:BNA_COOP_PROGRAM}});
  expect((await store.read(ownerActor,saved.reference))).toMatchObject({program:"bna_learning_coop",fields:input.fields});
  expect((await store.read(ownerActor,old.reference)).program).toBe("bna_torah_mornings");
  await expect(store.read(otherActor,saved.reference)).rejects.toMatchObject({code:"NOT_FOUND"});
