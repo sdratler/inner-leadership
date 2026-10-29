@@ -4,6 +4,8 @@ import {afterAll,beforeAll,expect,it,vi} from "vitest";
 import {PGlite} from "@electric-sql/pglite";
 vi.mock("server-only",()=>({}));
 import {Owner305ConversationStore} from "../../src/features/conversation-305/store.ts";
+import {Owner305InboundStore} from "../../src/features/conversation-305/inbound-store.ts";
+import {inboundBindingDigest} from "../../src/features/contact-ops/server/inbound-store.ts";
 import {CONVERSATION_305_LINE} from "../../src/features/conversation-305/contract.ts";
 import {readOwner305SchemaStage} from "../../src/db/owner-305-schema-release.ts";
 import {asId} from "../../src/lib/ids.ts";
@@ -24,7 +26,7 @@ const account=async(id:string,role:"practitioner"|"parent")=>{const digest=id.re
 let ownerActor:Actor,otherActor:Actor;
 beforeAll(async()=>{await db.exec("CREATE SCHEMA ls_control");
  for(const name of ["0001_ls_foundation.sql","0010_ls_identity_cases_20260906.sql","0124_ls_group_interest.sql",
-  "0131_ls_public_group_applications.sql","0139_ls_bna_inquiries.sql","0140_ls_fishing_inquiry_followups.sql","0141_ls_owner_305_conversations.sql"])
+  "0131_ls_public_group_applications.sql","0139_ls_bna_inquiries.sql","0140_ls_fishing_inquiry_followups.sql","0141_ls_owner_305_conversations.sql","0142_ls_owner_305_inbound.sql"])
   await db.exec(await readFile("migrations/"+name,"utf8"));
  await db.query("INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,$2)",[workspace,now]);
  ownerActor=await account(owner,"practitioner");otherActor=await account(randomUUID(),"parent");},30000);
@@ -54,4 +56,26 @@ it("keeps manual 305 classification private, durable and independent of Person/c
  expect(updated.history.map(item=>item.version)).toEqual([2,1]);
  expect((await db.query<{n:number}>("SELECT count(*)::int AS n FROM ls_identity.people")).rows[0]!.n).toBe(peopleBefore);
  await expect(db.query("DELETE FROM ls_service_interest.owner_305_conversations WHERE workspace_id=$1",[workspace])).rejects.toThrow();
+});
+it("stores exact 305 provider receipts once and exposes them only to the owner",async()=>{
+ const inquiry={provider:"whapi" as const,channelId:"synthetic-channel",businessNumber:CONVERSATION_305_LINE,
+  providerEventId:"synthetic-event",providerMessageId:"synthetic-message",providerThreadId:"synthetic-thread",
+  eventType:"inbound_message" as const,fromMe:false as const,fromNumber:"+15555550123",pushName:"Synthetic",
+  messageType:"text",messageText:"Synthetic private inquiry",occurredAt:now.toISOString(),media:[]};
+ const inbound=new Owner305InboundStore(adapter,workspace,ring,"synthetic-305-private-digest-key",inboundBindingDigest(inquiry),owner,{now:()=>now});
+ const missingOwner=new Owner305InboundStore(adapter,workspace,ring,"synthetic-305-private-digest-key",inboundBindingDigest(inquiry),randomUUID(),{now:()=>now});
+ await expect(missingOwner.capture(inquiry)).rejects.toMatchObject({code:"UNAVAILABLE"});
+ const peopleBefore=(await db.query<{n:number}>("SELECT count(*)::int AS n FROM ls_identity.people")).rows[0]!.n;
+ expect(await inbound.capture(inquiry)).toMatchObject({replayed:false});expect(await inbound.capture(inquiry)).toMatchObject({replayed:true});
+ await expect(inbound.capture({...inquiry,messageText:"changed"})).rejects.toMatchObject({code:"CONFLICT"});
+ await expect(inbound.capture({...inquiry,providerEventId:"other-event"})).rejects.toMatchObject({code:"CONFLICT"});
+ await expect(inbound.capture({...inquiry,channelId:"other-channel"})).rejects.toMatchObject({code:"FORBIDDEN"});
+ await expect(inbound.capture({...inquiry,businessNumber:"+15555550124"})).rejects.toMatchObject({code:"FORBIDDEN"});
+ await expect(inbound.list(otherActor)).rejects.toMatchObject({code:"NOT_FOUND"});
+ await expect(inbound.list({...otherActor,role:"practitioner"})).rejects.toMatchObject({code:"NOT_FOUND"});
+ expect((await inbound.list(ownerActor)).items[0]).toMatchObject({fromNumber:inquiry.fromNumber,messageText:inquiry.messageText});
+ const stored=(await db.query<{payload_ciphertext:string}>("SELECT payload_ciphertext FROM ls_service_interest.owner_305_inbound_receipts")).rows[0]!;
+ expect(stored.payload_ciphertext).not.toContain(inquiry.messageText);
+ expect((await db.query<{n:number}>("SELECT count(*)::int AS n FROM ls_identity.people")).rows[0]!.n).toBe(peopleBefore);
+ await expect(db.query("DELETE FROM ls_service_interest.owner_305_inbound_receipts WHERE workspace_id=$1",[workspace])).rejects.toThrow();
 });

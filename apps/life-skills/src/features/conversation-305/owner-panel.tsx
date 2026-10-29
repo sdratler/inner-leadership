@@ -4,6 +4,7 @@ import type {Locale} from "../../lib/locale.ts";
 import {sessionInfo} from "../identity/client.ts";
 import {conversationCommandSchema,CONVERSATION_305_LINE,type ConversationCommand} from "./contract.ts";
 import type {Owner305ConversationStore} from "./store.ts";
+import {Owner305InboundPanel} from "./inbound-panel.tsx";
 
 type Page=Awaited<ReturnType<Owner305ConversationStore["list"]>>;
 type Detail=Awaited<ReturnType<Owner305ConversationStore["read"]>>;
@@ -16,7 +17,7 @@ async function get<T>(id?:string):Promise<T>{const response=await fetch("/api/pr
  {credentials:"same-origin",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer"});
  const body=await response.json().catch(()=>null);if(!response.ok||!body?.ok)throw new RequestError(response.status);return body.data as T;}
 /** Owner-entered records only; no provider history scan or Person association. */
-export function Owner305ConversationPanel({locale}:{locale:Locale}){
+export function Owner305ConversationPanel({locale,inboundEnabled=false}:{locale:Locale;inboundEnabled?:boolean}){
  const t=(en:string,he:string)=>locale==="he"?he:en;
  const [page,setPage]=useState<Page|null>(null),[detail,setDetail]=useState<Detail|null>(null),[draft,setDraft]=useState<Draft>(empty);
  const [pending,setPending]=useState<ConversationCommand|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState<number|null>(null),[message,setMessage]=useState("");
@@ -48,6 +49,7 @@ export function Owner305ConversationPanel({locale}:{locale:Locale}){
   support_provider:["Support/provider","תמיכה/ספק"],unclassified:["Unclassified","טרם סווג"]};
  if(error===404)return null;
  return <section className="lsw-card" lang={locale} dir={locale==="he"?"rtl":"ltr"} aria-label={t("305 conversations","שיחות קו 305")}>
+  {inboundEnabled&&page&&<Owner305InboundPanel locale={locale} disabled={busy||!!pending} onRecord={item=>{setDetail(null);setDraft({...empty,channel:"whatsapp",contactHint:item.fromNumber});setError(null);}}/>}
   <h2>{t("305 conversations","שיחות קו 305")}</h2>
   <p><bdi dir="ltr">{CONVERSATION_305_LINE}</bdi> · {t("Enter conversations you handled manually. This does not import or merge a contact, capture provider history, or send a message.","תיעוד ידני של שיחות שטיפלת בהן. אין כאן יבוא או מיזוג אנשי קשר, קליטת היסטוריית ספק או שליחת הודעה.")}</p>
   {error!==null&&<div role="alert" className="lsw-alert"><p>{error===401?t("Sign in again.","יש להיכנס מחדש."):

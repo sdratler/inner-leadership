@@ -242,5 +242,9 @@
   {
     "name": "0141_ls_owner_305_conversations.sql",
     "sha256": "d4c5c6a4e98382c4059e97c6147eae378b0017fd61307df771b1bdbc68b29790"
+  },
+  {
+    "name": "0142_ls_owner_305_inbound.sql",
+    "sha256": "427267a71da4dfc161bea056bf91e2dce12c6eef97aa7dc8d06d67264b1097df"
   }
 ]
