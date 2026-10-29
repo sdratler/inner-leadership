@@ -6,6 +6,8 @@ vi.mock("server-only",()=>({}));
 import {BnaInquiryStore} from "../../src/features/bna-inquiry/store.ts";
 import {BNA_INQUIRY_NOTICE,bnaInquiryFieldsSchema} from "../../src/features/bna-inquiry/contract.ts";
 import {BNA_COOP_NOTICE,BNA_COOP_LEGACY_NOTICE,BNA_COOP_PROGRAM} from "../../src/features/bna-inquiry/coop-contract.ts";
+import {BNA_SUPPORT_NOTICE,BNA_SUPPORT_PROGRAM,BNA_SUPPORT_UPDATES_NOTICE} from "../../src/features/bna-inquiry/support-contract.ts";
+import {bnaLeadRow} from "../../src/features/people/lead-view.ts";
 import {publicBnaInquiryHttp,privateBnaInquiryHttp} from "../../src/features/bna-inquiry/http.ts";
 import {seal} from "../../src/features/identity/crypto.ts";
 import {privateDigest} from "../../src/features/contact-ops/server/digests.ts";
@@ -166,4 +168,44 @@ it("previews the saved co-op acknowledgment only for the owner and selected emai
  expect((await privateBnaInquiryHttp(request(saved.reference),async()=>({...deps,actor:async()=>otherActor}))).status).toBe(404);
  const phone=await store.submit({...input,operationId:randomUUID(),fields:{...input.fields,contactChannel:'phone',contact:'+13055550123',secondaryContact:{channel:'email',value:'secondary@example.invalid'}}},BNA_COOP_PROGRAM);
  const phoneResult=await privateBnaInquiryHttp(request(phone.reference),async()=>deps);expect((await phoneResult.json()).data).toEqual({available:false,reason:'phone_reply_selected'});
+});
+
+it("preserves existing inquiries when admitting adult support intent, with separate purpose and exact replay",async()=>{
+ const before=(await store.list(ownerActor)).items.map(item=>item.id),applicationCount=await db.query("SELECT count(*)::int AS n FROM ls_service_interest.public_applications");
+ await db.exec(await readFile("migrations/proposals/0144_ls_bna_support_interest.sql","utf8"));
+ expect((await store.list(ownerActor)).items.map(item=>item.id)).toEqual(before);
+ const fields={name:"Synthetic support caller",contactChannel:"phone" as const,contact:"+12025550129",purpose:"support_conversation" as const,language:"en" as const,siteLanguage:"he" as const,emailUpdates:false,
+  permission:{confirmed:true as const,version:BNA_SUPPORT_NOTICE.version,language:"he" as const}};
+ const input={operationId:randomUUID(),fields},saved=await store.submit(input,BNA_SUPPORT_PROGRAM);
+ expect(await store.submit(input,BNA_SUPPORT_PROGRAM)).toEqual({...saved,replayed:true});
+ await expect(store.submit({...input,fields:{...fields,purpose:"project_updates"}},BNA_SUPPORT_PROGRAM)).rejects.toThrow();
+ await expect(store.submit(input,BNA_COOP_PROGRAM)).rejects.toThrow();
+ const detail=await store.read(ownerActor,saved.reference);expect(detail).toMatchObject({program:BNA_SUPPORT_PROGRAM,fields});
+ expect(bnaLeadRow(detail).purposes).toEqual(["support"]);expect(detail.fields).not.toHaveProperty("childAges");
+ expect(await store.findOperation(ownerActor,input.operationId)).toMatchObject({found:true,detail:{id:saved.reference,program:BNA_SUPPORT_PROGRAM}});
+ await expect(store.read(otherActor,saved.reference)).rejects.toMatchObject({code:"NOT_FOUND"});
+ await store.followup(ownerActor,{operationId:randomUUID(),inquiryId:saved.reference,expectedVersion:1,status:"waiting",note:"Synthetic support follow-up",nextAction:null,dueDate:null,waitingCondition:"Await support conversation"});
+ expect((await store.read(ownerActor,saved.reference)).followup).toMatchObject({status:"waiting",waitingCondition:"Await support conversation"});
+ expect((await db.query("SELECT count(*)::int AS n FROM ls_service_interest.public_applications")).rows).toEqual(applicationCount.rows);
+});
+
+it("saves support via its own HTTP challenge and returns the same receipt without creating parent permissions",async()=>{
+ let clock=now.getTime();const origin="https://life-skills.example.invalid",path="/api/public/bna-support-inquiries";
+ const deps={enabled:true,environment:{LS_APP_ORIGIN:origin},challengeKey:"synthetic-bna-challenge-key-32-characters",now:()=>clock,limits:{consume:async()=>({count:1,retryAfterMs:0})},store};
+ const request=(method:string,body?:unknown,route=path)=>new Request(origin+route,{method,headers:{host:"life-skills.example.invalid",origin,"sec-fetch-site":"same-origin","content-type":"application/json"},...(body?{body:JSON.stringify(body)}:{})});
+ expect((await publicBnaInquiryHttp(request("GET"),async()=>({...deps,enabled:false}),"support")).status).toBe(404);
+ const offer=(await (await publicBnaInquiryHttp(request("GET"),async()=>deps,"support")).json()).data;expect(offer.notice).toEqual(BNA_SUPPORT_NOTICE);expect(offer.updatesNotice).toEqual(BNA_SUPPORT_UPDATES_NOTICE);
+ const coop=(await (await publicBnaInquiryHttp(request("GET",undefined,"/api/public/bna-coop-inquiries"),async()=>deps,"coop")).json()).data;
+ const fields={name:"Synthetic support update reader",contactChannel:"email",contact:"updates@example.invalid",purpose:"project_updates",language:"en",siteLanguage:"he",emailUpdates:true,
+  permission:{confirmed:true,version:BNA_SUPPORT_NOTICE.version,language:"he"},updatesPermission:{confirmed:true,channel:"email",version:BNA_SUPPORT_UPDATES_NOTICE.version,language:"he"}};
+ const body={operationId:randomUUID(),challenge:offer.challenge,fields,attribution:{source:"bna_site",landingPath:"/join"}};clock+=1500;
+ const before=(await db.query("SELECT count(*)::int AS n FROM ls_service_interest.bna_inquiries")).rows;
+ expect((await publicBnaInquiryHttp(request("POST",{...body,challenge:coop.challenge}),async()=>deps,"support")).status).toBe(403);
+ expect((await publicBnaInquiryHttp(request("POST",{...body,fields:{...fields,updatesPermission:undefined}}),async()=>deps,"support")).status).toBe(400);
+ expect((await publicBnaInquiryHttp(request("POST",{...body,fields:{...fields,childAges:[10]}}),async()=>deps,"support")).status).toBe(400);
+ const saved=await publicBnaInquiryHttp(request("POST",body),async()=>deps,"support");expect(saved.status).toBe(201);const receipt=(await saved.json()).data;
+ const replay=await publicBnaInquiryHttp(request("POST",body),async()=>deps,"support");expect(replay.status).toBe(200);expect((await replay.json()).data).toEqual({...receipt,replayed:true});
+ const after=(await db.query<{n:number}>("SELECT count(*)::int AS n FROM ls_service_interest.bna_inquiries")).rows;expect(after[0]!.n).toBe((before[0] as {n:number}).n+1);
+ expect(await store.read(ownerActor,receipt.reference)).toMatchObject({program:BNA_SUPPORT_PROGRAM,fields,attribution:{source:"bna_site",landingPath:"/he/support"}});
+ await expect(store.read(otherActor,receipt.reference)).rejects.toMatchObject({code:"NOT_FOUND"});
 });

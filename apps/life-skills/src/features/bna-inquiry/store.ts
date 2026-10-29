@@ -13,14 +13,16 @@ import {BNA_INQUIRY_PROGRAM,bnaAttributionSchema,bnaFollowupCommandSchema,bnaInq
  type BnaAttribution,type BnaFollowupCommand,type BnaInquiryFields} from "./contract.ts";
 
 import {BNA_COOP_PROGRAM,BNA_COOP_NOTICE,bnaCoopReadableFieldsSchema,type BnaCoopFields} from "./coop-contract.ts";
+import {BNA_SUPPORT_PROGRAM,bnaSupportFieldsSchema,type BnaSupportFields} from "./support-contract.ts";
 import {inquirySourceCorrectionSchema} from "../inquiry-source-correction.ts";
-type InquiryPayload={program:typeof BNA_INQUIRY_PROGRAM;fields:BnaInquiryFields;attribution:BnaAttribution|null}|{program:typeof BNA_COOP_PROGRAM;fields:BnaCoopFields;attribution:BnaAttribution|null};
+type InquiryPayload={program:typeof BNA_INQUIRY_PROGRAM;fields:BnaInquiryFields;attribution:BnaAttribution|null}|{program:typeof BNA_COOP_PROGRAM;fields:BnaCoopFields;attribution:BnaAttribution|null}|{program:typeof BNA_SUPPORT_PROGRAM;fields:BnaSupportFields;attribution:BnaAttribution|null};
 type InquiryRow={id:string;programKey:string;ownerAccountId:string;requestDigest:string;payloadCiphertext:string;receivedAt:Date};
 type FollowupState={status:"new"|"contacted"|"waiting"|"closed";note:string;nextAction:string|null;dueDate:string|null;waitingCondition:string|null;sourceCorrection?:{source:string;basis:string}};
 type FollowupRow={operationId:string;inquiryId:string;actorAccountId:string;version:number;requestDigest:string;payloadCiphertext:string;recordedAt:Date};
 const payloadSchema=z.discriminatedUnion("program",[
  z.object({program:z.literal(BNA_INQUIRY_PROGRAM),fields:bnaInquiryFieldsSchema,attribution:bnaAttributionSchema.nullable()}).strict(),
- z.object({program:z.literal(BNA_COOP_PROGRAM),fields:bnaCoopReadableFieldsSchema,attribution:bnaAttributionSchema.nullable()}).strict()]);
+ z.object({program:z.literal(BNA_COOP_PROGRAM),fields:bnaCoopReadableFieldsSchema,attribution:bnaAttributionSchema.nullable()}).strict(),
+ z.object({program:z.literal(BNA_SUPPORT_PROGRAM),fields:bnaSupportFieldsSchema,attribution:bnaAttributionSchema.nullable()}).strict()]);
 const stateSchema=z.object({status:z.enum(["new","contacted","waiting","closed"]),note:z.string().max(5000),
  nextAction:z.string().max(500).nullable(),dueDate:z.iso.date().nullable(),waitingCondition:z.string().max(500).nullable(),sourceCorrection:inquirySourceCorrectionSchema.optional()}).strict();
 const inquiryAad=(workspace:string,id:string)=>`ls_service_interest/bna-inquiry/v1/${workspace}/${id}`;
@@ -36,7 +38,7 @@ export class BnaInquiryStore{
   if(!z.string().uuid().safeParse(ownerAccountId).success)throw new AppError("UNAVAILABLE");
  }
  private requestDigest(payload:InquiryPayload){return privateDigest({domain:"bna-inquiry/v1",workspace:this.workspaceId,payload},this.digestKey);}
- private contactDigest(fields:BnaInquiryFields|BnaCoopFields){return privateDigest({domain:"bna-inquiry-contact/v1",workspace:this.workspaceId,
+ private contactDigest(fields:BnaInquiryFields|BnaCoopFields|BnaSupportFields){return privateDigest({domain:"bna-inquiry-contact/v1",workspace:this.workspaceId,
   channel:fields.contactChannel,contact:fields.contact},this.digestKey);}
  private decode(row:InquiryRow){
   try{
@@ -66,7 +68,7 @@ export class BnaInquiryStore{
  private async inquiry(tx:SqlSession,id:string){
   const rows=await tx.query<InquiryRow>(`SELECT id,program_key AS "programKey",owner_account_id AS "ownerAccountId",request_digest AS "requestDigest",
    payload_ciphertext AS "payloadCiphertext",received_at AS "receivedAt" FROM ls_service_interest.bna_inquiries
-   WHERE workspace_id=$1 AND id=$2 AND program_key IN ('bna_torah_mornings','bna_learning_coop') AND owner_account_id=$3`,
+   WHERE workspace_id=$1 AND id=$2 AND program_key IN ('bna_torah_mornings','bna_learning_coop','bna_support_interest') AND owner_account_id=$3`,
    [this.workspaceId,id,this.ownerAccountId]);
   if(rows.length!==1)throw new AppError("NOT_FOUND");return this.decode(rows[0]!);
  }
@@ -78,8 +80,8 @@ export class BnaInquiryStore{
   if(!rows.length&&beforeVersion===undefined)throw new AppError("UNAVAILABLE");
   return {items:rows.slice(0,100).map(row=>this.decodeFollowup(row)),hasMore:rows.length>100};
  }
- async submit(input:{operationId:string;fields:BnaInquiryFields|BnaCoopFields;attribution?:BnaAttribution},program:typeof BNA_INQUIRY_PROGRAM|typeof BNA_COOP_PROGRAM=BNA_INQUIRY_PROGRAM){
-  const fields=program===BNA_COOP_PROGRAM?bnaCoopReadableFieldsSchema.parse(input.fields):bnaInquiryFieldsSchema.parse(input.fields),attribution=input.attribution?bnaAttributionSchema.parse(input.attribution):null;
+ async submit(input:{operationId:string;fields:BnaInquiryFields|BnaCoopFields|BnaSupportFields;attribution?:BnaAttribution},program:typeof BNA_INQUIRY_PROGRAM|typeof BNA_COOP_PROGRAM|typeof BNA_SUPPORT_PROGRAM=BNA_INQUIRY_PROGRAM){
+  const fields=program===BNA_SUPPORT_PROGRAM?bnaSupportFieldsSchema.parse(input.fields):program===BNA_COOP_PROGRAM?bnaCoopReadableFieldsSchema.parse(input.fields):bnaInquiryFieldsSchema.parse(input.fields),attribution=input.attribution?bnaAttributionSchema.parse(input.attribution):null;
   const payload=payloadSchema.parse({program,fields,attribution});
   const requestDigest=this.requestDigest(payload),contactDigest=this.contactDigest(fields),now=this.clock.now();
   return this.db.transaction(async tx=>{
@@ -116,13 +118,13 @@ export class BnaInquiryStore{
   return this.db.transaction(async tx=>{
    await tx.query("SET TRANSACTION READ ONLY");await this.owner(tx,actor);
    const anchor=cursor===undefined?null:this.cursorId(actor,cursor);
-   if(anchor){const found=await tx.query(`SELECT id FROM ls_service_interest.bna_inquiries WHERE workspace_id=$1 AND owner_account_id=$2 AND program_key IN ('bna_torah_mornings','bna_learning_coop') AND id=$3`,[this.workspaceId,this.ownerAccountId,anchor]);if(found.length!==1)throw new AppError("INVALID_REQUEST");}
+   if(anchor){const found=await tx.query(`SELECT id FROM ls_service_interest.bna_inquiries WHERE workspace_id=$1 AND owner_account_id=$2 AND program_key IN ('bna_torah_mornings','bna_learning_coop','bna_support_interest') AND id=$3`,[this.workspaceId,this.ownerAccountId,anchor]);if(found.length!==1)throw new AppError("INVALID_REQUEST");}
    const rows=await tx.query<InquiryRow & {followupOperationId:string;followupInquiryId:string;followupActorAccountId:string;followupVersion:number;followupRequestDigest:string;followupPayloadCiphertext:string;followupRecordedAt:Date}>(`SELECT i.id,i.program_key AS "programKey",i.owner_account_id AS "ownerAccountId",i.request_digest AS "requestDigest",
     i.payload_ciphertext AS "payloadCiphertext",i.received_at AS "receivedAt",f.operation_id AS "followupOperationId",f.inquiry_id AS "followupInquiryId",
     f.actor_account_id AS "followupActorAccountId",f.version AS "followupVersion",f.request_digest AS "followupRequestDigest",
     f.payload_ciphertext AS "followupPayloadCiphertext",f.recorded_at AS "followupRecordedAt" FROM ls_service_interest.bna_inquiries i
     LEFT JOIN LATERAL (SELECT * FROM ls_service_interest.bna_inquiry_followups f WHERE f.workspace_id=i.workspace_id AND f.inquiry_id=i.id ORDER BY f.version DESC LIMIT 1) f ON true
-    WHERE i.workspace_id=$1 AND i.program_key IN ('bna_torah_mornings','bna_learning_coop') AND i.owner_account_id=$2 AND ($3::uuid IS NULL OR (i.received_at,i.id)<(SELECT received_at,id FROM ls_service_interest.bna_inquiries WHERE workspace_id=$1 AND owner_account_id=$2 AND id=$3)) ORDER BY i.received_at DESC,i.id DESC LIMIT 101`,
+    WHERE i.workspace_id=$1 AND i.program_key IN ('bna_torah_mornings','bna_learning_coop','bna_support_interest') AND i.owner_account_id=$2 AND ($3::uuid IS NULL OR (i.received_at,i.id)<(SELECT received_at,id FROM ls_service_interest.bna_inquiries WHERE workspace_id=$1 AND owner_account_id=$2 AND id=$3)) ORDER BY i.received_at DESC,i.id DESC LIMIT 101`,
     [this.workspaceId,this.ownerAccountId,anchor]);
    const items=[];
    for(const row of rows.slice(0,100)){const record=this.decode(row);if(!row.followupOperationId)throw new AppError("UNAVAILABLE");

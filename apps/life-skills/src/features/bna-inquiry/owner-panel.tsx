@@ -96,11 +96,13 @@ export function BnaInquiryOwnerPanel({locale,initialId,onOperationPending}:{loca
   {page&&<div className="lsw-stack"><p>{page.items.length===0?t("No BNA inquiries saved yet.","עדיין לא נשמרו פניות לבני נביאים."):
    t(`${page.items.length} inquiries shown`,`${page.items.length} פניות מוצגות`)}</p>
    <ul>{page.items.map(item=><li key={item.id}><button type="button" disabled={busy||!!pending} onClick={()=>void open(item.id)}>
-    {item.fields.name} · {item.program==="bna_learning_coop"?t("Learning co-op","קואופרטיב הלמידה"):t("Torah mornings","בקרים של תורה")} · {item.fields.townOrZip} · {item.followup.status} · <bdi dir="ltr">{item.id}</bdi></button></li>)}</ul>
+    {item.fields.name} · {item.program==="bna_support_interest"?t("Support inquiry","פניית תמיכה"):item.program==="bna_learning_coop"?t("Learning co-op","קואופרטיב הלמידה"):t("Torah mornings","בקרים של תורה")} · {item.program==="bna_support_interest"?item.fields.purpose:item.fields.townOrZip} · {item.followup.status} · <bdi dir="ltr">{item.id}</bdi></button></li>)}</ul>
    {page.nextCursor&&<button type="button" disabled={loadingMore||busy||!!pending} onClick={()=>void load(page.nextCursor!)}>{loadingMore?t("Loading…","טוען…"):t("Load older inquiries","טעינת פניות קודמות")}</button>}</div>}
   {detail&&<article className="lsw-stack" aria-label={t("BNA inquiry detail","פרטי פניית בני נביאים")}>
-   <h3>{detail.fields.name}</h3><p>{detail.program==="bna_learning_coop"?t("Learning co-op interest","התעניינות בקואופרטיב הלמידה"):t("Torah-morning interest","התעניינות בבקרים של תורה")}</p><p><bdi dir="ltr">{detail.fields.contact}</bdi> · {detail.fields.contactChannel}</p>
-   <p>{t("Ages","גילים")}: {detail.fields.childAges.join(", ")} · {detail.fields.townOrZip} · {detail.fields.language.toUpperCase()}</p>
+   <h3>{detail.fields.name}</h3><p>{detail.program==="bna_support_interest"?t("Support interest — no gift recorded","התעניינות בתמיכה — לא נרשמה תרומה"):detail.program==="bna_learning_coop"?t("Learning co-op interest","התעניינות בקואופרטיב הלמידה"):t("Torah-morning interest","התעניינות בבקרים של תורה")}</p><p><bdi dir="ltr">{detail.fields.contact}</bdi> · {detail.fields.contactChannel}</p>
+   {detail.program==="bna_support_interest"?<><p>{detail.fields.purpose==="project_updates"?t("Project updates requested","התבקשו עדכוני פרויקט"):t("Support conversation requested","התבקשה שיחה על תמיכה")} · {detail.fields.language.toUpperCase()}</p>
+    {detail.fields.areaOfInterest&&<p>{detail.fields.areaOfInterest}</p>}
+    <p>{t("Email project updates","עדכוני פרויקט בדוא״ל")}: {detail.fields.emailUpdates?t("requested","התבקשו"):t("not requested","לא התבקשו")}</p></>:<p>{t("Ages","גילים")}: {detail.fields.childAges.join(", ")} · {detail.fields.townOrZip} · {detail.fields.language.toUpperCase()}</p>}
    {detail.fields.question&&<p>{detail.fields.question}</p>}
    {detail.program==="bna_learning_coop"&&<><p>{t("Page language","שפת הדף")}: {detail.fields.siteLanguage.toUpperCase()} · {t("Email updates","עדכוני דוא״ל")}: {detail.fields.emailUpdates?t("requested","התבקשו"):t("not requested","לא התבקשו")}</p>{detail.fields.secondaryContact&&<p><bdi dir="ltr">{detail.fields.secondaryContact.value}</bdi> · {detail.fields.secondaryContact.channel}</p>}</>}
    <p>{t("Captured source","מקור שנקלט")}: {detail.attribution?.source??t("Unknown","לא ידוע")}</p>

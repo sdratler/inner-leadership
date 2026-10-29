@@ -5,13 +5,13 @@ export type LeadViewRow={key:string;recordId:string;kind:"bna_inquiry"|"fishing_
  status:string;nextAction:string|null;dueDate:string|null;waitingCondition:string|null};
 
 type Followup={status:string;nextAction:string|null;dueDate:string|null;waitingCondition:string|null;recordedAt?:string};
-type BnaItem={id:string;ownerAccountId:string;receivedAt:string;fields:{name:string};attribution:{source?:string|undefined}|null;followup:Followup};
+type BnaItem={id:string;program?:string;ownerAccountId:string;receivedAt:string;fields:{name:string};attribution:{source?:string|undefined}|null;followup:Followup};
 type FishingItem={id:string;receivedAt:string;fields:{programId:string;parentName?:string;schoolName?:string}};
 type FishingDetail={application:FishingItem;attribution:{first:{source:string}}|null;followup:Followup};
 type ConversationItem={id:string;ownerAccountId:string;contactHint:string;createdAt:string;followup:{classification:string;recordedAt:string;nextAction:string|null;dueDate:string|null;waitingCondition:string|null}};
 
 export function bnaLeadRow(item:BnaItem):LeadViewRow{
- return {key:`bna:${item.id}`,recordId:item.id,kind:"bna_inquiry",label:item.fields.name,purposes:["bna"],
+ return {key:`bna:${item.id}`,recordId:item.id,kind:"bna_inquiry",label:item.fields.name,purposes:[item.program==="bna_support_interest"?"support":"bna"],
   source:item.attribution?.source??"unknown",latestActivity:item.followup.recordedAt??item.receivedAt,
   ownerAccountId:item.ownerAccountId,status:item.followup.status,nextAction:item.followup.nextAction,
   dueDate:item.followup.dueDate,waitingCondition:item.followup.waitingCondition};
