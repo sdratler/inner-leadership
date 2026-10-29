@@ -129,4 +129,3 @@ it("paginates tagged inquiries without skipping or repeating records",async()=>{
  for(const id of ids)expect(all).toContain(id);
  await expect(readTaggedInquiries(adapter,workspace,ring,key,owner.id,clock,owner,snapshot,"invalid")).rejects.toMatchObject({code:"INVALID_REQUEST"});
 },30000);
-
