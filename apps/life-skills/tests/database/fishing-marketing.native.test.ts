@@ -51,7 +51,9 @@ it("upgrades only0147 after0146 and preserves a queued acknowledgment through fa
   expect(await mail.readForInquiry(f.owner.actor,saved.reference)).toEqual(before);
   expect(await migrate({query},target,false)).toEqual({applied:1,pending:0});expect(await readFishingMarketingSchemaStage({query})).toBe(1);
   expect(await mail.readForInquiry(f.owner.actor,saved.reference)).toEqual(before);expect(await migrate({query},target,true)).toEqual({applied:0,pending:0});
-  expect(history.inventory.slice(index+1).map(file=>file.name)).toEqual(['0148_ls_bna_email_preferences.sql']);
+  expect(history.inventory.slice(index+1).map(file=>file.name)).toEqual(['0148_ls_bna_email_preferences.sql','0149_ls_bna_optional_calendar.sql']);
+  expect(await migrate({query},history.inventory.slice(0,index+2),false)).toEqual({applied:1,pending:0});
+  expect(await mail.readForInquiry(f.owner.actor,saved.reference)).toEqual(before);
   expect(await migrate({query},history.inventory,false)).toEqual({applied:1,pending:0});
   expect(await mail.readForInquiry(f.owner.actor,saved.reference)).toEqual(before);
   expect(await migrate({query},history.inventory,true)).toEqual({applied:0,pending:0});

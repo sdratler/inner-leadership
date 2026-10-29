@@ -16,7 +16,7 @@ explicit program preference records the displayed notice and changes the
 permission anchor only on a new grant or regrant. Global BNA email withdrawal
 and holds share the existing canonical recipient key across co-op/support;
 they never merge People or alter Fishing WhatsApp/service acknowledgments.
-No new optional send path is added by this code.
+Preference controls do not themselves activate optional sending.
 
 The recipient capability belongs in a URL fragment and a same-origin JSON
 body, never a query parameter, cookie, log or provider evidence. Reads are
@@ -24,14 +24,40 @@ side-effect-free and return no name, address, child details or private history.
 Permission grants expire after30days; an old link still permits withdrawal.
 Exact operation replay returns current native state after a lost response.
 
-This preference implementation is NOT a deployed feature. Candidate migration
-`migrations/0148_ls_bna_email_preferences.sql` follows the unchanged67-entry
-prefix. The flag-gated owner panel and matching BNA recipient page/relay are
-implemented in the existing repositories. `LS_BNA_PREFERENCES_ENABLED` stays
-off pending full candidate CI, fresh backup/isolated restore, the schema-only
-operator and ordinary browser acceptance. No historical outbound collector is
-added. Runtime flags and production acceptance are recorded in the existing
-private implementation checkpoint.
+Preference migration0148 and its owner/recipient controls were released through
+PR225. The existing private implementation checkpoint records exact deployed
+sources, dedicated gates, native readback and ordinary browser acceptance.
+Those receipts do not activate optional educational sequences. Never reapply
+0148 or reuse a proof bound to a previous deployment.
+
+The optional calendar candidate uses the same canonical adult recipient key,
+native preference facts and owner follow-up status. Its additive candidate schema
+`migrations/0149_ls_bna_optional_calendar.sql` follows the exact unchanged68-entry
+prefix in the69-entry candidate manifest. It has NOT been applied in production. The separately gated
+People preview and private API remain off until exact schema release and browser
+acceptance. A preview is read-only; a prepared payload encrypts the frozen copy,
+personal preference link and approved postal footer. Saved previews protect the
+capability rather than printing its bearer value. No child fields enter a message.
+
+Native reservations coordinate unknown effects, identical content, 48-hour
+spacing and two educational sends in a rolling seven days across co-op/support.
+Owner cancellation preserves uncertain effects; only a known not-attempted result
+admits an explicit versioned retry. Later grants anchor from that grant; another
+program's language change does not invalidate an unchanged preparation. The
+transactional service acknowledgment tables and Fishing lifecycle stay separate.
+No optional production sender admission, worker or provider adapter is mounted;
+the internal transport interface is exercised only with synthetic tests. Sender
+footer/copy activation, fresh exact-target backup/restore and schema release, monitored reply
+ingestion and verified donor-event integration remain required. Donor messages
+cannot be prepared from this inquiry-only calendar or a browser's claim of a gift.
+
+`scripts/release-bna-optional-calendar-schema.ts` binds the exact existing
+production service/database, verified TLS, deployment/source/manifest/ledger,
+private archive/isolated restore, exact0149 SQL and native catalog. Its guard
+freezes the complete68-entry predecessor and checks both tables, function and
+trigger definitions/security, privileges and partial/orphan states. Apply requires
+the calendar gate off and admits only0149. It preserves the live preference gate,
+service mail,305 and Fishing receivers; verification never repeats an apply.
 
 `scripts/release-bna-preferences-schema.ts` admits only the existing exact
 Railway service/database with verified TLS and a deployment/commit/source/

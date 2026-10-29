@@ -5,6 +5,7 @@ import {sessionInfo} from "../identity/client.ts";
 import type {BnaInquiryStore} from "./store.ts";
 import {BnaAcknowledgmentPreviewPanel} from "../bna-communications/acknowledgment-preview-panel.tsx";
 import {BnaPreferencesOwnerPanel} from "../bna-communications/preferences-owner-panel.tsx";
+import {BnaOptionalCalendarOwnerPanel} from "../bna-communications/optional-calendar-owner-panel.tsx";
 import {bnaFollowupCommandSchema,type BnaFollowupCommand} from "./contract.ts";
 
 type Page=Awaited<ReturnType<BnaInquiryStore["list"]>>;
@@ -18,7 +19,7 @@ async function get<T>(id?:string,before?:string,historyBefore?:number):Promise<T
  return body.data as T;
 }
 /** Add this section to the existing People route. No separate CRM or identity. */
-export function BnaInquiryOwnerPanel({locale,initialId,preferencesEnabled=false,onOperationPending}:{locale:Locale;initialId?:string|undefined;preferencesEnabled?:boolean;onOperationPending?:(pending:boolean)=>void}){
+export function BnaInquiryOwnerPanel({locale,initialId,preferencesEnabled=false,calendarEnabled=false,onOperationPending}:{locale:Locale;initialId?:string|undefined;preferencesEnabled?:boolean;calendarEnabled?:boolean;onOperationPending?:(pending:boolean)=>void}){
  const t=(en:string,he:string)=>locale==="he"?he:en;
  const [page,setPage]=useState<Page|null>(null),[detail,setDetail]=useState<Detail|null>(null);
  const [error,setError]=useState<number|null>(null),[message,setMessage]=useState(""),[busy,setBusy]=useState(false),[loadingMore,setLoadingMore]=useState(false),[loadingHistory,setLoadingHistory]=useState(false);
@@ -112,7 +113,8 @@ export function BnaInquiryOwnerPanel({locale,initialId,preferencesEnabled=false,
    <p>{t("Owner","אחראי")}: <bdi dir="ltr">{detail.ownerAccountId}</bdi></p>
    {(detail.program==='bna_learning_coop'||detail.program==='bna_support_interest')&&<>
     <BnaAcknowledgmentPreviewPanel key={detail.id} id={detail.id} locale={locale} disabled={busy||!!pending||preferencesPending} onOperationPending={setAckPending}/>
-    {preferencesEnabled&&<BnaPreferencesOwnerPanel key={'preferences-'+detail.id} id={detail.id} locale={locale} disabled={busy||!!pending||ackPending} onOperationPending={setPreferencesPending}/>}</>}
+    {preferencesEnabled&&<BnaPreferencesOwnerPanel key={'preferences-'+detail.id} id={detail.id} locale={locale} disabled={busy||!!pending||ackPending} onOperationPending={setPreferencesPending}/>}
+    {calendarEnabled&&<BnaOptionalCalendarOwnerPanel key={'calendar-'+detail.id} id={detail.id} locale={locale} disabled={busy||!!pending||controlsPending}/>}</>}
    <form onSubmit={submit} className="lsw-stack"><label>{t("Stage","שלב")}<select value={status} onChange={event=>setStatus(event.target.value as typeof status)}>
     <option value="new">{t("New","חדש")}</option><option value="contacted">{t("Contacted","נוצר קשר")}</option>
     <option value="waiting">{t("Waiting","ממתין")}</option><option value="closed">{t("Closed","סגור")}</option></select></label>
