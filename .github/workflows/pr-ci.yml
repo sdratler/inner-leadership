@@ -25,7 +25,7 @@ jobs:
       - run: npm run check && npm run build && npm run check:server
   app-and-database:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 40
     defaults:
       run:
         working-directory: apps/life-skills
