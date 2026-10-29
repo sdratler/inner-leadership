@@ -93,6 +93,18 @@ export class BnaPreferenceStore{
    scope:row.programKey??"all_bna_email",source:row.source,action:event.command.action,recordedAt:event.recordedAt,
    note:"note" in event.command?event.command.note:null})),hasMoreHistory:rows.length>100};
  });}
+ /** Server-internal, within the calendar's existing transaction and workspace
+  * lock. The caller authorizes the owner/worker; no browser supplies these facts. */
+ async readForCalendar(tx:SqlSession,inquiryId:string){
+  const context=await this.context(tx,inquiryId);
+  return {context,preferences:this.snapshot(context,await this.rows(tx,context.recipientKey))};
+ }
+ async capabilityForCalendar(tx:SqlSession,inquiryId:string){
+  const context=await this.context(tx,inquiryId),now=this.clock.now();
+  const payload=bnaPreferenceCapability.parse({version:1,workspaceId:this.workspace,ownerAccountId:this.ownerAccountId,inquiryId,
+   recipientKey:context.recipientKey,program:context.program,issuedAt:now.toISOString(),expiresAt:new Date(now.getTime()+30*DAY).toISOString()});
+  return Buffer.from(seal(JSON.stringify(payload),this.tokenAad(),this.ring)).toString("base64url");
+ }
  /** Capability lives in the URL fragment, never a query/path, and exposes no
   * name, address, child field, note or other program's history. GET never writes.
   * Granting permission expires after30days; withdrawal stays usable afterward. */

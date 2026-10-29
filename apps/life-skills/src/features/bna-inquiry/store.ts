@@ -96,6 +96,13 @@ export class BnaInquiryStore{
   if(!rows.length&&beforeVersion===undefined)throw new AppError("UNAVAILABLE");
   return {items:rows.slice(0,100).map(row=>this.decodeFollowup(row)),hasMore:rows.length>100};
  }
+ /** Internal optional-mail context. Never serialize the inquiry, child fields
+  * or follow-up note into a message or calendar response. */
+ async optionalEmailContext(tx:SqlSession,id:string){
+  const context=await this.communicationContext(tx,id),record=await this.inquiry(tx,id);
+  const latest=(await this.history(tx,id)).items[0];if(!latest)throw new AppError("UNAVAILABLE");
+  return {...context,adultName:record.fields.name,closed:latest.status==="closed"};
+ }
  async submit(input:{operationId:string;fields:BnaInquiryFields|BnaCoopFields|BnaSupportFields;attribution?:BnaAttribution},program:typeof BNA_INQUIRY_PROGRAM|typeof BNA_COOP_PROGRAM|typeof BNA_SUPPORT_PROGRAM=BNA_INQUIRY_PROGRAM){
   const fields=program===BNA_SUPPORT_PROGRAM?bnaSupportFieldsSchema.parse(input.fields):program===BNA_COOP_PROGRAM?bnaCoopReadableFieldsSchema.parse(input.fields):bnaInquiryFieldsSchema.parse(input.fields),attribution=input.attribution?bnaAttributionSchema.parse(input.attribution):null;
   const payload=payloadSchema.parse({program,fields,attribution});
