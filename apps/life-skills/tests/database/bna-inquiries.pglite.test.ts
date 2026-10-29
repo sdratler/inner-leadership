@@ -6,6 +6,7 @@ vi.mock("server-only",()=>({}));
 import {BnaInquiryStore} from "../../src/features/bna-inquiry/store.ts";
 import {BNA_INQUIRY_NOTICE,bnaInquiryFieldsSchema} from "../../src/features/bna-inquiry/contract.ts";
 import {BNA_COOP_NOTICE,BNA_COOP_PROGRAM} from "../../src/features/bna-inquiry/coop-contract.ts";
+import {publicBnaInquiryHttp} from "../../src/features/bna-inquiry/http.ts";
 import {readBnaCoopSchemaStage} from "../../src/db/bna-coop-schema-release.ts";
 import {asId} from "../../src/lib/ids.ts";
 import type {Actor} from "../../src/features/identity/types.ts";
@@ -80,6 +81,33 @@ it("saves general co-op interest separately while retaining historical purpose a
  await expect(store.submit({...input,operationId:randomUUID(),fields:{...input.fields,permission:{...input.fields.permission,language:"en"}}},BNA_COOP_PROGRAM)).rejects.toThrow();
  const command={operationId:randomUUID(),inquiryId:saved.reference,expectedVersion:1,status:"waiting" as const,note:"Synthetic owner note",nextAction:null,dueDate:null,waitingCondition:"Await reply"};
  await store.followup(ownerActor,command);expect((await store.read(ownerActor,saved.reference)).followup).toMatchObject({note:command.note,waitingCondition:command.waitingCondition});
+});
+
+it("accepts a co-op HTTP submission into durable owner-visible storage and replays it once",async()=>{
+ const origin="https://life-skills.example.invalid",path="/api/public/bna-coop-inquiries";
+ let clock=now.getTime();
+ const deps={enabled:true,environment:{LS_APP_ORIGIN:origin},challengeKey:"synthetic-bna-challenge-key-32-characters",now:()=>clock,
+  limits:{consume:async()=>({count:1,retryAfterMs:0})},store};
+ const request=(method:string,body?:unknown)=>new Request(origin+path,{method,
+  headers:{host:"life-skills.example.invalid",origin,"sec-fetch-site":"same-origin","content-type":"application/json"},
+  ...(body?{body:JSON.stringify(body)}:{})});
+ const offer=await publicBnaInquiryHttp(request("GET"),async()=>deps,"coop");
+ const challenge=(await offer.json()).data.challenge;
+ const submission={challenge,operationId:randomUUID(),website:"",fields:{name:"Synthetic HTTP parent",contactChannel:"email",
+  contact:"http-parent@example.invalid",language:"en",siteLanguage:"he",emailUpdates:false,townOrZip:"Florida",childAges:[10],
+  permission:{confirmed:true,version:BNA_COOP_NOTICE.version,language:"he"}},attribution:{source:"bna_site"}};
+ clock+=1500;
+ const before=(await db.query("SELECT count(*)::int AS n FROM ls_service_interest.bna_inquiries")).rows[0] as {n:number};
+ const rejected=await publicBnaInquiryHttp(request("POST",{...submission,fields:{...submission.fields,permission:{...submission.fields.permission,confirmed:false}}}),async()=>deps,"coop");
+ expect(rejected.status).toBe(400);
+ const saved=await publicBnaInquiryHttp(request("POST",submission),async()=>deps,"coop");
+ expect(saved.status).toBe(201);const receipt=(await saved.json()).data;
+ const replay=await publicBnaInquiryHttp(request("POST",submission),async()=>deps,"coop");
+ expect(replay.status).toBe(200);expect((await replay.json()).data).toEqual({...receipt,replayed:true});
+ expect((await db.query("SELECT count(*)::int AS n FROM ls_service_interest.bna_inquiries")).rows).toEqual([{n:before.n+1}]);
+ const detail=await store.read(ownerActor,receipt.reference);
+ expect(detail).toMatchObject({program:BNA_COOP_PROGRAM,fields:submission.fields,attribution:{source:"bna_site",landingPath:"/he/join"}});
+ await expect(store.read(otherActor,receipt.reference)).rejects.toMatchObject({code:"NOT_FOUND"});
 });
 
 
