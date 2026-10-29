@@ -24,7 +24,7 @@ const proofSchema=z.strictObject({projectId:uuid,environmentId:uuid,appServiceId
  isolatedRestore:z.strictObject({sourceReceiptId:z.string().min(1).max(200),verifiedAt:z.iso.datetime(),verified:z.literal(true)}),
  rollback:z.strictObject({reviewed:z.literal(true),description:z.string().min(20).max(2000)})});
 const sources=["migrations/manifest.json","migrations/0139_ls_bna_inquiries.sql","migrations/0140_ls_fishing_inquiry_followups.sql","migrations/0141_ls_owner_305_conversations.sql","migrations/0142_ls_bna_coop_interest.sql","migrations/0143_ls_owner_305_inquiry_links.sql",
- "src/db/owner-305-schema-release.ts","src/db/bna-lead-schema-release.ts","src/db/contact-ops-production-guard.ts","src/db/migration-runner.ts","src/db/migration-plan.ts","src/db/bna-coop-schema-release.ts","src/db/owner-305-link-schema-release.ts","scripts/release-owner-305-link-schema.ts"] as const;
+ "src/db/owner-305-schema-release.ts","src/db/bna-lead-schema-release.ts","src/db/contact-ops-production-guard.ts","src/db/migration-runner.ts","src/db/migration-plan.ts","src/db/bna-coop-schema-release.ts","src/db/bna-support-schema-source.ts","src/db/owner-305-link-schema-release.ts","scripts/release-owner-305-link-schema.ts"] as const;
 async function sourceSha(){const root=new URL("../",import.meta.url),entries=[];
  for(const name of sources){const url=new URL(name,root),stat=await lstat(fileURLToPath(url));if(!stat.isFile()||stat.isSymbolicLink())throw Error("OWNER_305_LINK_SCHEMA_SOURCE_INVALID");entries.push([name,owner305Hash(await readFile(url))]);}
  return owner305Hash(JSON.stringify(entries));}

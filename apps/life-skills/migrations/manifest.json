@@ -250,5 +250,9 @@
   {
     "name": "0143_ls_owner_305_inquiry_links.sql",
     "sha256": "63624d56b8692249e8bab3bd68aaf1c8b5596129fac703c47cd25d662048000c"
+  },
+  {
+    "name": "0144_ls_bna_support_interest.sql",
+    "sha256": "84404c0c5eccde3923c2e05e855d335c5eee65e862d4a01f200cc9cd7f28c1a7"
   }
 ]

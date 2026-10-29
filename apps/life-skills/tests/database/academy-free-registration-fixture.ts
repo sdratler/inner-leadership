@@ -25,7 +25,7 @@ export function academyMigrationInventory():Migration[]{
  const entries=JSON.parse(readFileSync(new URL('../../migrations/manifest.json',import.meta.url),'utf8')) as {name:string;sha256:string}[];
  // The existing 57-entry founder/notification prefix stays in place; the
  // additive CRM and BNA lead migrations follow it. Check every SQL checksum.
- if(entries.length!==63||entries[55]?.name!=='0136_ls_academy_founder.sql'||entries[56]?.name!=='0137_ls_academy_owner_notifications.sql'||entries[57]?.name!=='0138_ls_academy_crm.sql'||entries[58]?.name!=='0139_ls_bna_inquiries.sql'||entries[59]?.name!=='0140_ls_fishing_inquiry_followups.sql'||entries[60]?.name!=='0141_ls_owner_305_conversations.sql'||entries[61]?.name!=='0142_ls_bna_coop_interest.sql'||entries[62]?.name!=='0143_ls_owner_305_inquiry_links.sql'||new Set(entries.map(e=>e.name)).size!==entries.length)throw Error('ACADEMY_TEST_MANIFEST_NOT_FULL_63');
+ if(entries.length!==64||entries[55]?.name!=='0136_ls_academy_founder.sql'||entries[56]?.name!=='0137_ls_academy_owner_notifications.sql'||entries[57]?.name!=='0138_ls_academy_crm.sql'||entries[58]?.name!=='0139_ls_bna_inquiries.sql'||entries[59]?.name!=='0140_ls_fishing_inquiry_followups.sql'||entries[60]?.name!=='0141_ls_owner_305_conversations.sql'||entries[61]?.name!=='0142_ls_bna_coop_interest.sql'||entries[62]?.name!=='0143_ls_owner_305_inquiry_links.sql'||entries[63]?.name!=='0144_ls_bna_support_interest.sql'||new Set(entries.map(e=>e.name)).size!==entries.length)throw Error('ACADEMY_TEST_MANIFEST_NOT_FULL_64');
  return entries.map(entry=>{
   if(!/^\d{4}_[a-z][a-z0-9_]*\.sql$/.test(entry.name))throw Error('ACADEMY_TEST_MANIFEST_PATH_INVALID');
   const bytes=readFileSync(new URL('../../migrations/'+entry.name,import.meta.url));

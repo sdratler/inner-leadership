@@ -20,7 +20,7 @@ it("migrates the exact co-op constraint without changing existing inquiry rows",
   expect(await readBnaCoopSchemaStage({query})).toBe(1);expect((await query("SELECT to_jsonb(t) AS row FROM ls_service_interest.bna_inquiries t WHERE id=$1",[id])).rows).toEqual(before);
   const coopHistory=(await query("SELECT name,checksum FROM ls_control.migrations ORDER BY name")).rows;
   expect(await readOwner305LinkSchemaStage({query})).toBe(0);expect(owner305LinkSchemaPlan(db.inventory,coopHistory,0).pending).toHaveLength(1);
-  expect(await migrate({query},db.inventory,false)).toEqual({applied:1,pending:0});expect(await readOwner305LinkSchemaStage({query})).toBe(1);
+  expect(await migrate({query},db.inventory,false)).toEqual({applied:2,pending:0});expect(await readOwner305LinkSchemaStage({query})).toBe(1);
   const finalHistory=(await query("SELECT name,checksum FROM ls_control.migrations ORDER BY name")).rows;
   expect(bnaCoopSchemaPlan(db.inventory,finalHistory,1).pending).toHaveLength(0);
   expect((await query("SELECT to_jsonb(t) AS row FROM ls_service_interest.bna_inquiries t WHERE id=$1",[id])).rows).toEqual(before);

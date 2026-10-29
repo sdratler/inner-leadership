@@ -172,7 +172,7 @@ it("previews the saved co-op acknowledgment only for the owner and selected emai
 
 it("preserves existing inquiries when admitting adult support intent, with separate purpose and exact replay",async()=>{
  const before=(await store.list(ownerActor)).items.map(item=>item.id),applicationCount=await db.query("SELECT count(*)::int AS n FROM ls_service_interest.public_applications");
- await db.exec(await readFile("migrations/proposals/0144_ls_bna_support_interest.sql","utf8"));
+ await db.exec(await readFile("migrations/0144_ls_bna_support_interest.sql","utf8"));
  expect((await store.list(ownerActor)).items.map(item=>item.id)).toEqual(before);
  const fields={name:"Synthetic support caller",contactChannel:"phone" as const,contact:"+12025550129",purpose:"support_conversation" as const,language:"en" as const,siteLanguage:"he" as const,emailUpdates:false,
   permission:{confirmed:true as const,version:BNA_SUPPORT_NOTICE.version,language:"he" as const}};
