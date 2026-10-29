@@ -22,3 +22,14 @@ it("does not show Fishing records when BNA or an unconnected channel is selected
  const page=renderToStaticMarkup(createElement(FishingMarketingPanel,{locale:"en",data,filters:{channel:"page"}}));
  expect(page).toContain("This channel is not connected");expect(page).not.toContain("Synthetic caption");
 });
+
+
+it("renders owner inquiry links and a bounded next page without claiming causation",()=>{
+ const id="00000000-0000-4000-8000-000000000004",cursor="00000000-0000-4000-8000-000000000005";
+ const html=renderToStaticMarkup(createElement(FishingMarketingPanel,{locale:"en",data:{snapshot,receivedAt:at},section:"content_calendar",filters:{program:"fishing",channel:"groups",state:"published"},attribution:{links:[{applicationId:id,postUrl:"https://www.facebook.com/groups/123/posts/456"}],nextCursor:cursor}}));
+ expect(html).toContain(`/en/app/group-applications?inquiryId=${id}`);
+ expect(html).toContain(`linkCursor=${cursor}`);expect(html).toContain("Tags do not prove the post caused the inquiry");
+ expect(html).toContain('rel="noreferrer"');
+ const unavailable=renderToStaticMarkup(createElement(FishingMarketingPanel,{locale:"en",data:{snapshot,receivedAt:at},attributionUnavailable:true}));
+ expect(unavailable).toContain("this does not mean there are no matches");
+});
