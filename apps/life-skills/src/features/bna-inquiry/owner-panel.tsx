@@ -8,8 +8,8 @@ import {bnaFollowupCommandSchema,type BnaFollowupCommand} from "./contract.ts";
 type Page=Awaited<ReturnType<BnaInquiryStore["list"]>>;
 type Detail=Awaited<ReturnType<BnaInquiryStore["read"]>>;
 class RequestError extends Error{constructor(readonly status:number){super("BNA_INQUIRY_REQUEST_FAILED");}}
-async function get<T>(id?:string,before?:string):Promise<T>{
- const query=id?new URLSearchParams({id}):before?new URLSearchParams({before}):null;
+async function get<T>(id?:string,before?:string,historyBefore?:number):Promise<T>{
+ const query=id?new URLSearchParams({id,...(historyBefore===undefined?{}:{historyBefore:String(historyBefore)})}):before?new URLSearchParams({before}):null;
  const response=await fetch("/api/private/bna-inquiries"+(query?"?"+query:""),
   {credentials:"same-origin",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer"});
  const body=await response.json().catch(()=>null);if(!response.ok||!body?.ok)throw new RequestError(response.status);
@@ -19,23 +19,30 @@ async function get<T>(id?:string,before?:string):Promise<T>{
 export function BnaInquiryOwnerPanel({locale}:{locale:Locale}){
  const t=(en:string,he:string)=>locale==="he"?he:en;
  const [page,setPage]=useState<Page|null>(null),[detail,setDetail]=useState<Detail|null>(null);
- const [error,setError]=useState<number|null>(null),[message,setMessage]=useState(""),[busy,setBusy]=useState(false),[loadingMore,setLoadingMore]=useState(false);
+ const [error,setError]=useState<number|null>(null),[message,setMessage]=useState(""),[busy,setBusy]=useState(false),[loadingMore,setLoadingMore]=useState(false),[loadingHistory,setLoadingHistory]=useState(false);
  const [pending,setPending]=useState<BnaFollowupCommand|null>(null),[status,setStatus]=useState<"new"|"contacted"|"waiting"|"closed">("new");
  const [note,setNote]=useState(""),[nextAction,setNextAction]=useState(""),[dueDate,setDueDate]=useState(""),[waiting,setWaiting]=useState("");
  const serial=useRef(0),active=useRef(true);
- const clearPrivate=useCallback(()=>{setPage(null);setDetail(null);setPending(null);setStatus("new");setNote("");setNextAction("");setDueDate("");setWaiting("");},[]);
- const load=useCallback(async(before?:string)=>{const n=++serial.current;if(before)setLoadingMore(true);
+ const clearPrivate=useCallback(()=>{setPage(null);setDetail(null);setPending(null);setLoadingHistory(false);setStatus("new");setNote("");setNextAction("");setDueDate("");setWaiting("");},[]);
+ const load=useCallback(async(before?:string)=>{const n=++serial.current;setLoadingHistory(false);if(before)setLoadingMore(true);
   try{const value=await get<Page>(undefined,before);if(active.current&&serial.current===n){setPage(current=>before&&current&&current.nextCursor===before?{...value,items:[...new Map([...current.items,...value.items].map(item=>[item.id,item])).values()]}:before?current:value);setError(null);}}
   catch(cause){if(active.current&&serial.current===n){const code=cause instanceof RequestError?cause.status:503;setError(code);
    if([401,403,404].includes(code))clearPrivate();}}finally{if(active.current&&before)setLoadingMore(false);}
  },[clearPrivate]);
  const open=useCallback(async(id:string)=>{const n=++serial.current;
-  setDetail(null);setStatus("new");setNote("");setNextAction("");setDueDate("");setWaiting("");setMessage("");
+  setDetail(null);setLoadingHistory(false);setStatus("new");setNote("");setNextAction("");setDueDate("");setWaiting("");setMessage("");
   try{const value=await get<Detail>(id);if(!active.current||serial.current!==n)return;
    setDetail(value);setError(null);setStatus(value.followup.status);setNote("");setNextAction(value.followup.nextAction??"");
    setDueDate(value.followup.dueDate??"");setWaiting(value.followup.waitingCondition??"");}
   catch(cause){if(active.current&&serial.current===n){const code=cause instanceof RequestError?cause.status:503;setError(code);
    if([401,403,404].includes(code))clearPrivate();}}
+ },[clearPrivate]);
+ const olderHistory=useCallback(async(current:Detail)=>{const last=current.history.at(-1);if(!last)return;const n=++serial.current;setLoadingHistory(true);
+  try{const value=await get<Detail>(current.id,undefined,last.version);if(active.current&&serial.current===n){
+   if(value.followup.version!==current.followup.version){setError(409);return;}
+   setDetail(previous=>previous?.id===current.id&&previous.followup.version===current.followup.version?{...previous,history:[...previous.history,...value.history],hasMoreHistory:value.hasMoreHistory}:previous);setError(null);}}
+  catch(cause){if(active.current&&serial.current===n){const code=cause instanceof RequestError?cause.status:503;setError(code);if([401,403,404].includes(code))clearPrivate();}}
+  finally{if(active.current&&serial.current===n)setLoadingHistory(false);}
  },[clearPrivate]);
  useEffect(()=>{active.current=true;const timer=window.setTimeout(()=>void load(),0);
   return()=>{window.clearTimeout(timer);active.current=false;};},[load]);
@@ -95,7 +102,7 @@ export function BnaInquiryOwnerPanel({locale}:{locale:Locale}){
    <h4>{t("Saved history","היסטוריה שמורה")}</h4><ol>{detail.history.map(event=><li key={event.operationId}>
     <time dateTime={event.recordedAt}>{event.recordedAt}</time> · {event.status} · {event.note}
     {event.nextAction&&<> · {event.nextAction}{event.dueDate&&<> ({event.dueDate})</>}</>}{event.waitingCondition&&<> · {event.waitingCondition}</>}
-   </li>)}</ol>
+   </li>)}</ol>{detail.hasMoreHistory&&<button type="button" disabled={loadingHistory||busy||!!pending} onClick={()=>void olderHistory(detail)}>{loadingHistory?t("Loading…","טוען…"):t("Load older history","טעינת היסטוריה קודמת")}</button>}
   </article>}
  </section>;
 }

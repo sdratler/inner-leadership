@@ -111,6 +111,16 @@ it("accepts a co-op HTTP submission into durable owner-visible storage and repla
 });
 
 
+it("keeps a frequently updated inquiry readable and pages its complete follow-up history",async()=>{
+ const saved=await store.submit({operationId:randomUUID(),fields:{...fields,contact:"history@example.invalid"}});
+ for(let version=1;version<=101;version++)await store.followup(ownerActor,{operationId:randomUUID(),inquiryId:saved.reference,expectedVersion:version,status:"waiting",note:`Synthetic note ${version}`,nextAction:null,dueDate:null,waitingCondition:"Await reply"});
+ const recent=await store.read(ownerActor,saved.reference);expect(recent.followup.version).toBe(102);expect(recent.history).toHaveLength(100);expect(recent.hasMoreHistory).toBe(true);
+ const older=await store.read(ownerActor,saved.reference,recent.history.at(-1)!.version);expect(older.followup.version).toBe(102);expect(older.history.map(item=>item.version)).toEqual([2,1]);expect(older.hasMoreHistory).toBe(false);
+ expect((await store.list(ownerActor)).items.some(item=>item.id===saved.reference&&item.followup.version===102)).toBe(true);
+ await store.followup(ownerActor,{operationId:randomUUID(),inquiryId:saved.reference,expectedVersion:102,status:"closed",note:"Synthetic closure",nextAction:null,dueDate:null,waitingCondition:null});
+ await expect(store.read(otherActor,saved.reference,3)).rejects.toMatchObject({code:"NOT_FOUND"});
+},30000);
+
 it("reaches older BNA inquiries through an owner-bound cursor without duplicates",async()=>{
  const ids=new Set<string>();
  for(let n=0;n<101;n++){const saved=await store.submit({operationId:randomUUID(),fields:{...fields,contact:`paging-${n}@example.invalid`}});ids.add(saved.reference);}

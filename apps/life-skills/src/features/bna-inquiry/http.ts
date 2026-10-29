@@ -53,9 +53,10 @@ export async function privateBnaInquiryHttp(request:Request,load:()=>Promise<Pri
   if(url.origin!==d.origin||url.pathname!=="/api/private/bna-inquiries")throw new AppError("NOT_FOUND");
   const actor=await d.actor(token);
   if(request.method==="GET"){
-   const keys=[...url.searchParams.keys()];if(keys.length>1||keys.length===1&&!['id','before'].includes(keys[0]!))throw new AppError("INVALID_REQUEST");
-   const id=url.searchParams.get("id"),before=url.searchParams.get("before");if(keys.length&&!(id||before))throw new AppError("INVALID_REQUEST");
-   response=successResponse(id?await d.store.read(actor,id):await d.store.list(actor,before??undefined),requestId);
+   const keys=[...url.searchParams.keys()];if(keys.some(key=>!['id','before','historyBefore'].includes(key)||url.searchParams.getAll(key).length!==1))throw new AppError("INVALID_REQUEST");
+   const id=url.searchParams.get("id"),before=url.searchParams.get("before"),historyBefore=url.searchParams.get("historyBefore");
+   if((id!==null&&!id)||(before!==null&&!before)||(historyBefore!==null&&(!id||before!==null||!/^\d{1,10}$/.test(historyBefore)))||(id!==null&&before!==null))throw new AppError("INVALID_REQUEST");
+   response=successResponse(id?await d.store.read(actor,id,historyBefore===null?undefined:Number(historyBefore)):await d.store.list(actor,before??undefined),requestId);
   }else if(request.method==="POST"){
    if(url.search)throw new AppError("INVALID_REQUEST");
    verifyMutationOrigin(canonical,d.origin);verifyCsrfToken(request.headers.get("x-csrf-token"),d.csrf(token));

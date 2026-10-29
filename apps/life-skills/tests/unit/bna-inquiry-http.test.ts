@@ -1,7 +1,9 @@
 import {randomUUID} from "node:crypto";
 import {expect,it,vi} from "vitest";
 vi.mock("server-only",()=>({}));
-import {publicBnaInquiryHttp} from "../../src/features/bna-inquiry/http.ts";
+import {publicBnaInquiryHttp,privateBnaInquiryHttp} from "../../src/features/bna-inquiry/http.ts";
+import type {BnaInquiryStore} from "../../src/features/bna-inquiry/store.ts";
+import type {Actor} from "../../src/features/identity/types.ts";
 import {BNA_COOP_NOTICE} from "../../src/features/bna-inquiry/coop-contract.ts";
 import {BNA_INQUIRY_NOTICE} from "../../src/features/bna-inquiry/contract.ts";
 
@@ -43,4 +45,13 @@ it("binds co-op submission and challenge to its own endpoint",async()=>{
  expect((await publicBnaInquiryHttp(req("/api/public/bna-coop-inquiries","POST",{...body,challenge:data.challenge}),async()=>deps,"coop")).status).toBe(201);
  expect(submit.mock.calls[0]?.[1]).toBe("bna_learning_coop");expect(submit.mock.calls[0]?.[0]).toMatchObject({attribution:{landingPath:"/he/join"}});
  expect((await publicBnaInquiryHttp(req("/api/public/bna-inquiries","POST",{...body,challenge:data.challenge}),async()=>deps)).status).toBe(400);
+});
+
+it("only requests a bounded history page for a single authenticated inquiry",async()=>{
+ const token="a".repeat(43),actor={id:randomUUID(),workspaceId:randomUUID(),role:"practitioner"} as Actor,read=vi.fn(async()=>({history:[]}));
+ const deps={origin,actor:async()=>actor,csrf:()=>"b".repeat(43),limits:{consume:async()=>({count:1,retryAfterMs:0})},rateLimitKey:"synthetic-rate-key",store:{read,list:vi.fn(),followup:vi.fn()} as unknown as Pick<BnaInquiryStore,"read"|"list"|"followup">};
+ const req=(query:string,cookie=true)=>new Request(origin+"/api/private/bna-inquiries"+query,{headers:{host:"life-skills.example.invalid","x-forwarded-proto":"https","x-forwarded-host":"life-skills.example.invalid",...(cookie?{cookie:`__Host-ls-session=${token}`}:{})}});
+ const id=randomUUID();expect((await privateBnaInquiryHttp(req(`?id=${id}&historyBefore=23`),async()=>deps)).status).toBe(200);expect(read).toHaveBeenCalledWith(actor,id,23);
+ for(const query of [`?historyBefore=23`,`?id=${id}&historyBefore=2&historyBefore=3`,`?id=${id}&before=x`,`?id=${id}&historyBefore=oops`])expect((await privateBnaInquiryHttp(req(query),async()=>deps)).status).toBe(400);
+ expect((await privateBnaInquiryHttp(req(`?id=${id}&historyBefore=23`,false),async()=>deps)).status).toBe(401);
 });

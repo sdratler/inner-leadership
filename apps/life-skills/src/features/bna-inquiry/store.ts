@@ -69,13 +69,13 @@ export class BnaInquiryStore{
    [this.workspaceId,id,this.ownerAccountId]);
   if(rows.length!==1)throw new AppError("NOT_FOUND");return this.decode(rows[0]!);
  }
- private async history(tx:SqlSession,id:string){
+ private async history(tx:SqlSession,id:string,beforeVersion?:number){
   const rows=await tx.query<FollowupRow>(`SELECT operation_id AS "operationId",inquiry_id AS "inquiryId",
    actor_account_id AS "actorAccountId",version,request_digest AS "requestDigest",
    payload_ciphertext AS "payloadCiphertext",recorded_at AS "recordedAt" FROM ls_service_interest.bna_inquiry_followups
-   WHERE workspace_id=$1 AND inquiry_id=$2 ORDER BY version DESC LIMIT 101`,[this.workspaceId,id]);
-  if(!rows.length||rows.length>100)throw new AppError("UNAVAILABLE");
-  return rows.map(row=>this.decodeFollowup(row));
+   WHERE workspace_id=$1 AND inquiry_id=$2 AND ($3::integer IS NULL OR version<$3) ORDER BY version DESC LIMIT 101`,[this.workspaceId,id,beforeVersion??null]);
+  if(!rows.length&&beforeVersion===undefined)throw new AppError("UNAVAILABLE");
+  return {items:rows.slice(0,100).map(row=>this.decodeFollowup(row)),hasMore:rows.length>100};
  }
  async submit(input:{operationId:string;fields:BnaInquiryFields|BnaCoopFields;attribution?:BnaAttribution},program:typeof BNA_INQUIRY_PROGRAM|typeof BNA_COOP_PROGRAM=BNA_INQUIRY_PROGRAM){
   const fields=program===BNA_COOP_PROGRAM?bnaCoopFieldsSchema.parse(input.fields):bnaInquiryFieldsSchema.parse(input.fields),attribution=input.attribution?bnaAttributionSchema.parse(input.attribution):null;
@@ -121,15 +121,16 @@ export class BnaInquiryStore{
     [this.workspaceId,this.ownerAccountId,anchor]);
    const items=[];
    for(const row of rows.slice(0,100)){const record=this.decode(row),history=await this.history(tx,row.id);
-    items.push({...record,followup:history[0]!});}
+    items.push({...record,followup:history.items[0]!});}
    return {program:"bna" as const,items,nextCursor:rows.length>100?this.encodeCursor(actor,items.at(-1)!.id):null};
   });
  }
- async read(actor:Actor,id:string){
+ async read(actor:Actor,id:string,beforeVersion?:number){
   if(!z.string().uuid().safeParse(id).success)throw new AppError("INVALID_REQUEST");
+  if(beforeVersion!==undefined&&(!Number.isSafeInteger(beforeVersion)||beforeVersion<1||beforeVersion>2147483647))throw new AppError("INVALID_REQUEST");
   return this.db.transaction(async tx=>{await tx.query("SET TRANSACTION READ ONLY");await this.owner(tx,actor);
-   const record=await this.inquiry(tx,id),history=await this.history(tx,id);
-   return {...record,followup:history[0]!,history};});
+   const record=await this.inquiry(tx,id),current=await this.history(tx,id),history=beforeVersion===undefined?current:await this.history(tx,id,beforeVersion);
+   return {...record,followup:current.items[0]!,history:history.items,hasMoreHistory:history.hasMore};});
  }
  async followup(actor:Actor,input:BnaFollowupCommand){
   const command=bnaFollowupCommandSchema.parse(input),digest=privateDigest({domain:"bna-followup-command/v1",workspace:this.workspaceId,
@@ -144,8 +145,8 @@ export class BnaInquiryStore{
    if(prior.length){if(prior.length!==1||prior[0]!.requestDigest!==digest||prior[0]!.actorAccountId!==actor.id)throw new AppError("CONFLICT");
     return {...this.decodeFollowup(prior[0]!),replayed:true};}
    await this.inquiry(tx,command.inquiryId);
-   const current=await this.history(tx,command.inquiryId),version=current[0]!.version+1;
-   if(command.expectedVersion!==current[0]!.version)throw new AppError("CONFLICT");
+   const current=await this.history(tx,command.inquiryId),version=current.items[0]!.version+1;
+   if(command.expectedVersion!==current.items[0]!.version)throw new AppError("CONFLICT");
    const state=stateSchema.parse({status:command.status,note:command.note,nextAction:command.nextAction,
     dueDate:command.dueDate,waitingCondition:command.waitingCondition}),now=this.clock.now();
    await tx.query(`INSERT INTO ls_service_interest.bna_inquiry_followups(workspace_id,operation_id,inquiry_id,actor_account_id,
