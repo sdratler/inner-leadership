@@ -44,7 +44,7 @@ export function LeadWorkspace({locale,linksEnabled=false,inboundEnabled=false}:{
   <h1>{t("People","אנשים")}</h1><p>{t("Inquiries and conversations that need your attention.","פניות ושיחות שדורשות את תשומת לבך.")}</p>
   <a href={`/${locale}/app/clients?view=legacy`}>{t("Open existing contact workspace","פתיחת סביבת אנשי הקשר הקיימת")}</a>
   {accessError?<p role="alert">{t("Access could not be verified. Sign in again or contact the administrator.","לא ניתן לאמת את הגישה. יש להיכנס מחדש או לפנות למנהל.")}</p>:<>
-   <label>{t("View","תצוגה")} <select value={filter} onChange={event=>setFilter(event.target.value as Filter)}>
+   <label>{t("View","תצוגה")} <select aria-label={t("View","תצוגה")} value={filter} disabled={pending} onChange={event=>{if(pendingRef.current)return;setSelected(null);setFilter(event.target.value as Filter);}}>
     <option value="followup">{t("Needs follow-up","דורשים מעקב")}</option><option value="all">{t("All loaded","כל הרשומות שנטענו")}</option>
     <option value="bna">BNA</option><option value="fishing">{t("Fishing","דיג")}</option><option value="support">{t("Support","תמיכה")}</option>
     <option value="provider">{t("Providers","ספקים")}</option><option value="unclassified">{t("Unclassified","טרם סווג")}</option></select></label>
