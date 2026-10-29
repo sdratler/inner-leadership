@@ -1,0 +1,21 @@
+import {randomUUID} from "node:crypto";
+import {expect,it,vi} from "vitest";
+vi.mock("server-only",()=>({}));
+import {owner305InquiryLinkHttp} from "../../src/features/conversation-305/inquiry-link-http.ts";
+import type {Owner305InquiryLinkStore} from "../../src/features/conversation-305/inquiry-link-store.ts";
+import type {Actor} from "../../src/features/identity/types.ts";
+const origin="https://life-skills.example.invalid",path="/api/private/owner-305-conversations/inquiry-links",token="a".repeat(43),csrf="b".repeat(43);
+it("requires an enabled owner session, same-origin CSRF and a valid explicit link command",async()=>{
+ const actor={id:randomUUID(),workspaceId:randomUUID(),role:"practitioner"} as Actor,save=vi.fn(async()=>({replayed:false})),list=vi.fn(async()=>({items:[],nextCursor:null}));
+ const deps={enabled:true,origin,actor:async()=>actor,csrf:()=>csrf,limits:{consume:async()=>({count:1,retryAfterMs:0})},rateLimitKey:"synthetic-rate-key-32-characters",store:{save,list} as unknown as Pick<Owner305InquiryLinkStore,"save"|"list">};
+ const request=(method:string,query="",body?:unknown,headers:Record<string,string>={})=>new Request(origin+path+query,{method,headers:{host:"life-skills.example.invalid","x-forwarded-proto":"https","x-forwarded-host":"life-skills.example.invalid",origin,"sec-fetch-site":"same-origin","content-type":"application/json","x-csrf-token":csrf,cookie:`__Host-ls-session=${token}`,...headers},...(body?{body:JSON.stringify(body)}:{})});
+ const id=randomUUID(),command={operationId:randomUUID(),conversationId:id,target:{kind:"bna_inquiry",id:randomUUID()},expectedVersion:0,linked:true};
+ expect((await owner305InquiryLinkHttp(request("GET",`?id=${id}`),async()=>deps)).status).toBe(200);expect(list).toHaveBeenCalledWith(actor,id,undefined);
+ expect((await owner305InquiryLinkHttp(request("GET",`?id=${id}&id=${id}`),async()=>deps)).status).toBe(400);
+ expect((await owner305InquiryLinkHttp(request("GET",`?id=${id}`,undefined,{cookie:""}),async()=>deps)).status).toBe(401);
+ expect((await owner305InquiryLinkHttp(request("GET",`?id=${id}`),async()=>({...deps,enabled:false}))).status).toBe(404);
+ expect((await owner305InquiryLinkHttp(request("POST","",command,{origin:"https://other.invalid"}),async()=>deps)).status).toBe(403);
+ expect((await owner305InquiryLinkHttp(request("POST","",command,{"x-csrf-token":"wrong"}),async()=>deps)).status).toBe(403);
+ expect((await owner305InquiryLinkHttp(request("POST","",{...command,target:{kind:"person",id:randomUUID()}}),async()=>deps)).status).toBe(400);expect(save).not.toHaveBeenCalled();
+ expect((await owner305InquiryLinkHttp(request("POST","",command),async()=>deps)).status).toBe(201);expect(save).toHaveBeenCalledOnce();
+});

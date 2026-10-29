@@ -130,3 +130,19 @@ it("links and unlinks only owner-authorized inquiries with stable operations",as
  await expect(noFishing.save(ownerActor,fish)).rejects.toMatchObject({code:"NOT_FOUND"});
  await expect(noFishing.save(ownerActor,{...fish,operationId:randomUUID(),expectedVersion:1,linked:false})).rejects.toMatchObject({code:"NOT_FOUND"});
 });
+
+it("pages linked inquiry choices with owner and conversation-bound cursors",async()=>{
+ const key="synthetic-private-digest-key-32-characters",links=new Owner305InquiryLinkStore(adapter,workspace,ring,key,owner,owner,{now:()=>now});
+ const bna=new BnaInquiryStore(adapter,workspace,ring,key,owner,{now:()=>now});
+ const conversation=await store.save(ownerActor,{kind:"create",operationId:randomUUID(),channel:"phone",contactHint:"Synthetic paging caller",followup:{classification:"bna",note:"Synthetic",nextAction:null,dueDate:null,waitingCondition:"Await reply"}});
+ const ids=new Set<string>();for(let n=0;n<101;n++){
+  const inquiry=await bna.submit({operationId:randomUUID(),fields:{name:`Synthetic ${n}`,contactChannel:"email",contact:`link-page-${n}@example.invalid`,language:"en",townOrZip:"Florida",childAges:[10],permission:{confirmed:true,version:BNA_INQUIRY_NOTICE.version,language:"en"}}});
+  ids.add(inquiry.reference);await links.save(ownerActor,{operationId:randomUUID(),conversationId:conversation.id,target:{kind:"bna_inquiry",id:inquiry.reference},expectedVersion:0,linked:true});
+ }
+ const first=await links.list(ownerActor,conversation.id);expect(first.items).toHaveLength(100);expect(first.nextCursor).toBeTruthy();
+ const second=await links.list(ownerActor,conversation.id,first.nextCursor!);expect(second.nextCursor).toBeNull();
+ const all=[...first.items,...second.items].map(item=>item.target.id);expect(new Set(all).size).toBe(101);for(const id of ids)expect(all).toContain(id);
+ const other=await store.save(ownerActor,{kind:"create",operationId:randomUUID(),channel:"phone",contactHint:"Another caller",followup:{classification:"unclassified",note:"Synthetic",nextAction:null,dueDate:null,waitingCondition:"Await reply"}});
+ await expect(links.list(ownerActor,other.id,first.nextCursor!)).rejects.toMatchObject({code:"INVALID_REQUEST"});
+ await expect(links.list(otherActor,conversation.id,first.nextCursor!)).rejects.toMatchObject({code:"NOT_FOUND"});
+},30000);

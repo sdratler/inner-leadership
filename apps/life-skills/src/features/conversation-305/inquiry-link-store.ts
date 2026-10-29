@@ -3,7 +3,7 @@ import {z} from "zod";
 import {AppError} from "../../lib/errors.ts";
 import type {WorkspaceId} from "../../lib/ids.ts";
 import {freshActor,lockWorkspace} from "../identity/data.ts";
-import type {Keyring} from "../identity/crypto.ts";
+import {seal,unseal,type Keyring} from "../identity/crypto.ts";
 import type {IdentityStore,SqlSession} from "../identity/store.ts";
 import type {Actor,IdentityClock} from "../identity/types.ts";
 import {systemClock} from "../identity/types.ts";
@@ -33,12 +33,20 @@ export class Owner305InquiryLinkStore{
  }
  private asResult(row:LinkRow){return {operationId:row.operationId,conversationId:row.conversationId,version:row.version,linked:row.linked,
   target:row.bnaId?{kind:"bna_inquiry" as const,id:row.bnaId}:{kind:"fishing_inquiry" as const,id:row.fishingId!},recordedAt:row.recordedAt.toISOString()};}
- async list(actor:Actor,conversationId:string){
+ private cursorAad(actor:Actor,conversationId:string){return `owner-305-inquiry-links/v1/${this.workspace}/${actor.id}/${conversationId}`;}
+ private cursor(actor:Actor,conversationId:string,value:string){try{if(!/^[A-Za-z0-9_-]{64,2048}$/.test(value))throw Error();const bytes=Buffer.from(value,"base64url");if(bytes.toString("base64url")!==value)throw Error();
+  return z.strictObject({kind:z.enum(["bna_inquiry","fishing_inquiry"]),id:z.string().uuid()}).parse(JSON.parse(unseal(bytes.toString("utf8"),this.cursorAad(actor,conversationId),this.ring)));}catch{throw new AppError("INVALID_REQUEST");}}
+ async list(actor:Actor,conversationId:string,cursor?:string){
   if(!z.string().uuid().safeParse(conversationId).success)throw new AppError("INVALID_REQUEST");
   return this.db.transaction(async tx=>{await tx.query("SET TRANSACTION READ ONLY");await this.authorize(tx,actor,conversationId);
+   const after=cursor===undefined?null:this.cursor(actor,conversationId,cursor);
    const rows=await tx.query<LinkRow>(`SELECT ${columns} FROM (SELECT DISTINCT ON (COALESCE(bna_inquiry_id,fishing_application_id),bna_inquiry_id IS NULL) * FROM ls_service_interest.owner_305_inquiry_link_events
-    WHERE workspace_id=$1 AND conversation_id=$2 AND owner_account_id=$3 AND (fishing_application_id IS NULL OR $4::boolean) ORDER BY COALESCE(bna_inquiry_id,fishing_application_id),bna_inquiry_id IS NULL,version DESC) latest ORDER BY recorded_at DESC,operation_id DESC LIMIT 101`,[this.workspace,conversationId,actor.id,Boolean(this.fishingOwnerId&&actor.id===this.fishingOwnerId)]);
-   if(rows.length>100)throw new AppError("UNAVAILABLE");return {items:rows.map(row=>this.asResult(row))};
+    WHERE workspace_id=$1 AND conversation_id=$2 AND owner_account_id=$3 AND (fishing_application_id IS NULL OR $4::boolean) ORDER BY COALESCE(bna_inquiry_id,fishing_application_id),bna_inquiry_id IS NULL,version DESC) latest
+    WHERE ($5::uuid IS NULL OR (bna_inquiry_id IS NULL,COALESCE(bna_inquiry_id,fishing_application_id))>($6::boolean,$5::uuid))
+    ORDER BY bna_inquiry_id IS NULL,COALESCE(bna_inquiry_id,fishing_application_id) LIMIT 101`,[this.workspace,conversationId,actor.id,Boolean(this.fishingOwnerId&&actor.id===this.fishingOwnerId),after?.id??null,after?.kind==="fishing_inquiry"]);
+   const items=rows.slice(0,100).map(row=>this.asResult(row));
+   const nextCursor=rows.length>100?Buffer.from(seal(JSON.stringify(items.at(-1)!.target),this.cursorAad(actor,conversationId),this.ring)).toString("base64url"):null;
+   return {items,nextCursor};
   });
  }
  async save(actor:Actor,input:InquiryLinkCommand){

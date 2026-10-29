@@ -4,6 +4,7 @@ import type {Locale} from "../../lib/locale.ts";
 import {sessionInfo} from "../identity/client.ts";
 import {conversationCommandSchema,CONVERSATION_305_LINE,type ConversationCommand} from "./contract.ts";
 import type {Owner305ConversationStore} from "./store.ts";
+import {InquiryLinkPanel} from "./inquiry-link-panel.tsx";
 
 type Page=Awaited<ReturnType<Owner305ConversationStore["list"]>>;
 type Detail=Awaited<ReturnType<Owner305ConversationStore["read"]>>;
@@ -16,10 +17,11 @@ async function get<T>(id?:string,before?:string):Promise<T>{const query=id?new U
  {credentials:"same-origin",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer"});
  const body=await response.json().catch(()=>null);if(!response.ok||!body?.ok)throw new RequestError(response.status);return body.data as T;}
 /** Owner-entered records only; no provider history scan or Person association. */
-export function Owner305ConversationPanel({locale,initialId,onOperationPending}:{locale:Locale;initialId?:string|undefined;onOperationPending?:(pending:boolean)=>void}){
+export function Owner305ConversationPanel({locale,initialId,onOperationPending,linksEnabled=false}:{locale:Locale;initialId?:string|undefined;onOperationPending?:(pending:boolean)=>void;linksEnabled?:boolean}){
  const t=(en:string,he:string)=>locale==="he"?he:en;
  const [page,setPage]=useState<Page|null>(null),[detail,setDetail]=useState<Detail|null>(null),[draft,setDraft]=useState<Draft>(empty);
  const [pending,setPending]=useState<ConversationCommand|null>(null),[busy,setBusy]=useState(false),[opening,setOpening]=useState(false),[loadingMore,setLoadingMore]=useState(false),[error,setError]=useState<number|null>(null),[message,setMessage]=useState("");
+ const [linkPending,setLinkPending]=useState(false);
  const active=useRef(true),serial=useRef(0);
  const clearPrivate=useCallback(()=>{setPage(null);setDetail(null);setDraft(empty);setPending(null);setOpening(false);},[]);
  const load=useCallback(async(before?:string)=>{const seq=++serial.current;setOpening(false);if(before)setLoadingMore(true);try{const value=await get<Page>(undefined,before);if(active.current&&serial.current===seq){setPage(current=>before&&current&&current.nextCursor===before?{...value,items:[...new Map([...current.items,...value.items].map(item=>[item.id,item])).values()]}:before?current:value);setError(null);}}
@@ -30,7 +32,7 @@ export function Owner305ConversationPanel({locale,initialId,onOperationPending}:
   }catch(cause){if(active.current&&serial.current===seq){const code=cause instanceof RequestError?cause.status:503;setError(code);if([401,403,404].includes(code))clearPrivate();}}
   finally{if(active.current&&serial.current===seq)setOpening(false);}},[clearPrivate]);
  useEffect(()=>{let cancelled=false;const sequence=serial;active.current=true;const timer=window.setTimeout(()=>{void load().then(()=>{if(!cancelled&&active.current&&initialId)void open(initialId);});},0);return()=>{cancelled=true;window.clearTimeout(timer);active.current=false;sequence.current++;};},[load,open,initialId]);
- useEffect(()=>{onOperationPending?.(pending!==null);},[pending,onOperationPending]);
+ useEffect(()=>{onOperationPending?.(pending!==null||linkPending);},[pending,linkPending,onOperationPending]);
  async function save(command:ConversationCommand){if(busy)return;setBusy(true);setPending(command);setError(null);setMessage("");
   try{const session=await sessionInfo();if(session.role!=="practitioner")throw new RequestError(403);
    const response=await fetch("/api/private/owner-305-conversations",{method:"POST",credentials:"same-origin",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer",
@@ -39,7 +41,7 @@ export function Owner305ConversationPanel({locale,initialId,onOperationPending}:
    setPending(null);await load();await open(body.data.id as string);setMessage(t("Conversation saved and read back.","השיחה נשמרה ונקראה מחדש."));
   }catch(cause){const code=cause instanceof RequestError?cause.status:503;setError(code);if([400,401,403,404,409].includes(code))setPending(null);
    if([401,403,404].includes(code))clearPrivate();}finally{setBusy(false);}}
- function submit(event:FormEvent<HTMLFormElement>){event.preventDefault();if(pending||opening)return;
+ function submit(event:FormEvent<HTMLFormElement>){event.preventDefault();if(pending||opening||linkPending)return;
   const followup={classification:draft.classification,note:draft.note,nextAction:draft.nextAction.trim()||null,
    dueDate:draft.dueDate||null,waitingCondition:draft.waitingCondition.trim()||null};
   const raw=detail?{kind:"revise",operationId:crypto.randomUUID(),conversationId:detail.id,expectedVersion:detail.followup.version,followup}:
@@ -65,16 +67,17 @@ export function Owner305ConversationPanel({locale,initialId,onOperationPending}:
   {!page&&error===null&&<p role="status">{t("Loading…","טוען…")}</p>}
   {page&&<div className="lsw-stack"><p>{page.items.length===0?t("No conversations recorded yet.","עדיין לא תועדו שיחות."):
    t(`${page.items.length} conversations shown`,`${page.items.length} שיחות מוצגות`)}</p>
-   <ul>{page.items.map(item=><li key={item.id}><button type="button" disabled={busy||!!pending} onClick={()=>void open(item.id)}>
+   <ul>{page.items.map(item=><li key={item.id}><button type="button" disabled={busy||!!pending||linkPending} onClick={()=>void open(item.id)}>
     {item.contactHint} · {t(...labels[item.followup.classification])} · {item.createdAt}</button></li>)}</ul>
-   {page.nextCursor&&<button type="button" disabled={loadingMore||busy||!!pending} onClick={()=>void load(page.nextCursor!)}>{loadingMore?t("Loading…","טוען…"):t("Load older conversations","טעינת שיחות קודמות")}</button>}</div>}
-  <button type="button" disabled={busy||!!pending} onClick={()=>{++serial.current;setOpening(false);setDetail(null);setDraft(empty);setError(null);setMessage("");}}>{t("New 305 conversation","שיחת 305 חדשה")}</button>
+   {page.nextCursor&&<button type="button" disabled={loadingMore||busy||!!pending||linkPending} onClick={()=>void load(page.nextCursor!)}>{loadingMore?t("Loading…","טוען…"):t("Load older conversations","טעינת שיחות קודמות")}</button>}</div>}
+  <button type="button" disabled={busy||!!pending||linkPending} onClick={()=>{++serial.current;setOpening(false);setDetail(null);setDraft(empty);setError(null);setMessage("");}}>{t("New 305 conversation","שיחת 305 חדשה")}</button>
   {opening&&<p role="status">{t("Loading conversation…","טוען שיחה…")}</p>}
   {detail&&<div className="lsw-stack"><h3>{detail.contactHint}</h3><p>{t("Channel","ערוץ")}: {detail.channel} · {t("Recorded","תועד")}: {detail.createdAt}</p>
    <p>{t("Current classification","סיווג נוכחי")}: {t(...labels[detail.followup.classification])}</p>
    <ol>{detail.history.map(item=><li key={item.operationId}><time dateTime={item.recordedAt}>{item.recordedAt}</time> · {t(...labels[item.classification])} · {item.note}
     {item.nextAction&&<> · {item.nextAction} ({item.dueDate})</>}{item.waitingCondition&&<> · {item.waitingCondition}</>}</li>)}</ol>
-   {detail.hasMoreHistory&&<p>{t("Showing the latest 100 revisions.","מוצגים 100 העדכונים האחרונים.")}</p>}</div>}
+   {detail.hasMoreHistory&&<p>{t("Showing the latest 100 revisions.","מוצגים 100 העדכונים האחרונים.")}</p>}
+   {linksEnabled&&<InquiryLinkPanel key={detail.id} locale={locale} conversationId={detail.id} onPending={setLinkPending} disabled={busy||!!pending}/>}</div>}
   {!opening&&<form onSubmit={submit} className="lsw-stack"><h3>{detail?t("Update classification and follow-up","עדכון סיווג ומעקב"):t("Record a conversation","תיעוד שיחה")}</h3>
    {!detail&&<><label>{t("Channel","ערוץ")}<select value={draft.channel} onChange={event=>setDraft({...draft,channel:event.target.value as Channel})}>
     <option value="phone">{t("Phone","טלפון")}</option><option value="whatsapp">WhatsApp</option><option value="sms">SMS</option><option value="other">{t("Other","אחר")}</option></select></label>
@@ -86,7 +89,7 @@ export function Owner305ConversationPanel({locale,initialId,onOperationPending}:
    <label>{t("Next action","פעולה הבאה")}<input maxLength={500} value={draft.nextAction} onChange={event=>setDraft({...draft,nextAction:event.target.value})}/></label>
    <label>{t("Action date","תאריך פעולה")}<input type="date" value={draft.dueDate} onChange={event=>setDraft({...draft,dueDate:event.target.value})}/></label>
    <label>{t("Or waiting condition","או תנאי המתנה")}<input maxLength={500} value={draft.waitingCondition} onChange={event=>setDraft({...draft,waitingCondition:event.target.value})}/></label>
-   <button type="submit" disabled={busy||!!pending}>{detail?t("Save update","שמירת עדכון"):t("Save conversation","שמירת שיחה")}</button>
+   <button type="submit" disabled={busy||!!pending||linkPending}>{detail?t("Save update","שמירת עדכון"):t("Save conversation","שמירת שיחה")}</button>
   </form>}
  </section>;
 }
