@@ -26,10 +26,10 @@ export function Owner305ConversationPanel({locale,initialId,onOperationPending,l
  const clearPrivate=useCallback(()=>{setPage(null);setDetail(null);setDraft(empty);setPending(null);setOpening(false);},[]);
  const load=useCallback(async(before?:string)=>{const seq=++serial.current;setOpening(false);if(before)setLoadingMore(true);try{const value=await get<Page>(undefined,before);if(active.current&&serial.current===seq){setPage(current=>before&&current&&current.nextCursor===before?{...value,items:[...new Map([...current.items,...value.items].map(item=>[item.id,item])).values()]}:before?current:value);setError(null);}}
   catch(cause){if(active.current&&serial.current===seq){const code=cause instanceof RequestError?cause.status:503;setError(code);if([401,403,404].includes(code))clearPrivate();}}finally{if(active.current&&before)setLoadingMore(false);}},[clearPrivate]);
- const open=useCallback(async(id:string)=>{const seq=++serial.current;setDetail(null);setDraft(empty);setMessage("");setOpening(true);try{const value=await get<Detail>(id);if(!active.current||serial.current!==seq)return;
+ const open=useCallback(async(id:string)=>{const seq=++serial.current;setDetail(null);setDraft(empty);setMessage("");setOpening(true);try{const value=await get<Detail>(id);if(!active.current||serial.current!==seq)return false;
    setDetail(value);setDraft({channel:value.channel,contactHint:value.contactHint,classification:value.followup.classification,
-    note:"",nextAction:value.followup.nextAction??"",dueDate:value.followup.dueDate??"",waitingCondition:value.followup.waitingCondition??""});setError(null);
-  }catch(cause){if(active.current&&serial.current===seq){const code=cause instanceof RequestError?cause.status:503;setError(code);if([401,403,404].includes(code))clearPrivate();}}
+    note:"",nextAction:value.followup.nextAction??"",dueDate:value.followup.dueDate??"",waitingCondition:value.followup.waitingCondition??""});setError(null);return true;
+  }catch(cause){if(active.current&&serial.current===seq){const code=cause instanceof RequestError?cause.status:503;setError(code);if([401,403,404].includes(code))clearPrivate();}return false;}
   finally{if(active.current&&serial.current===seq)setOpening(false);}},[clearPrivate]);
  useEffect(()=>{let cancelled=false;const sequence=serial;active.current=true;const timer=window.setTimeout(()=>{void load().then(()=>{if(!cancelled&&active.current&&initialId)void open(initialId);});},0);return()=>{cancelled=true;window.clearTimeout(timer);active.current=false;sequence.current++;};},[load,open,initialId]);
  useEffect(()=>{onOperationPending?.(pending!==null||linkPending);},[pending,linkPending,onOperationPending]);
@@ -38,7 +38,7 @@ export function Owner305ConversationPanel({locale,initialId,onOperationPending,l
    const response=await fetch("/api/private/owner-305-conversations",{method:"POST",credentials:"same-origin",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer",
     headers:{"content-type":"application/json","x-csrf-token":session.csrfToken},body:JSON.stringify(command)});
    const body=await response.json().catch(()=>null);if(!response.ok||!body?.ok)throw new RequestError(response.status);
-   setPending(null);await load();await open(body.data.id as string);setMessage(t("Conversation saved and read back.","השיחה נשמרה ונקראה מחדש."));
+   setPending(null);await load();if(await open(body.data.id as string))setMessage(t("Conversation saved and read back.","השיחה נשמרה ונקראה מחדש."));
   }catch(cause){const code=cause instanceof RequestError?cause.status:503;setError(code);if([400,401,403,404,409].includes(code))setPending(null);
    if([401,403,404].includes(code))clearPrivate();}finally{setBusy(false);}}
  function submit(event:FormEvent<HTMLFormElement>){event.preventDefault();if(pending||opening||linkPending)return;
