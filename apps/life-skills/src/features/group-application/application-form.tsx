@@ -24,9 +24,9 @@ export function classifyPublicApplicationFailure(requestStarted:boolean,status?:
  return "unconfirmed" as const;
 }
 
-type GroupApplicationFormProps={locale:Locale;programId:FloridaProgramId;onSaved?:(reference:string)=>void;mode?:"native"|"sample";onPreviewed?:()=>void;inquiryKind?:"parent"|"institution";fullIntake?:boolean};
+type GroupApplicationFormProps={locale:Locale;programId:FloridaProgramId;onSaved?:(reference:string)=>void;mode?:"native"|"sample";onPreviewed?:()=>void;inquiryKind?:"parent"|"institution";fullIntake?:boolean;privacyLinkEnabled?:boolean};
 export function GroupApplicationForm(props:GroupApplicationFormProps){
- if(props.fullIntake){if(props.programId!=='sunday_fishing_academy'||props.inquiryKind==='institution')throw Error('ACADEMY_FULL_INTAKE_ONLY');return <AcademyRegistrationForm locale={props.locale} {...(props.mode?{mode:props.mode}:{})} {...(props.onPreviewed?{onPreviewed:props.onPreviewed}:{})} {...(props.onSaved?{onSaved:props.onSaved}:{})}/>;}
+ if(props.fullIntake){if(props.programId!=='sunday_fishing_academy'||props.inquiryKind==='institution')throw Error('ACADEMY_FULL_INTAKE_ONLY');return <AcademyRegistrationForm locale={props.locale} privacyLinkEnabled={props.privacyLinkEnabled??false} {...(props.mode?{mode:props.mode}:{})} {...(props.onPreviewed?{onPreviewed:props.onPreviewed}:{})} {...(props.onSaved?{onSaved:props.onSaved}:{})}/>;}
  return <LegacyGroupApplicationForm {...props}/>;
 }
 function LegacyGroupApplicationForm({locale,programId,onSaved,mode="native",onPreviewed,inquiryKind="parent",fullIntake=false}:GroupApplicationFormProps){
