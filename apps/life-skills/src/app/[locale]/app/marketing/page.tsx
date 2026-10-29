@@ -12,6 +12,7 @@ import {communityView} from '../../../../features/community-reply/views.ts';
 import {CommunitySection} from '../../../../features/community-reply/section.tsx';
 import {readContentVoiceSource} from '../../../../features/content-voice/source.ts';
 import {loadFacebookPagePublicationState} from '../../../../features/marketing-overview/page-publication-provider.ts';
+import {BnaContentReviewLibrary} from '../../../../features/bna-communications/content-review-library.tsx';
 export const dynamic="force-dynamic";
 export const metadata={title:"Fishing Academy — Marketing",robots:{index:false,follow:false}};
 /** No unverified connections or fabricated live data. Codex binds a separately owner-authorized read model here. */
@@ -34,5 +35,5 @@ export default async function Page({params,searchParams}:{params:Promise<{locale
    try{return await loadOwnerDigest(context.actor,context.runtime,snapshot,locale);}
    catch(error){if(error instanceof AppError&&error.code==="FORBIDDEN")notFound();throw error;}
   })():undefined;
-  return <MarketingDashboard locale={locale} snapshot={snapshot} ownerDigest={digest} facebookPage={facebookPage} initialSection={query.section} initialFilter={query.filter} initialMonth={query.month} calendarQuery={query} creativeQuery={query} renderedAt={new Date().toISOString()}/>;
+  return <MarketingDashboard locale={locale} snapshot={snapshot} ownerDigest={digest} facebookPage={facebookPage} initialSection={query.section} initialFilter={query.filter} initialMonth={query.month} calendarQuery={query} creativeQuery={query} renderedAt={new Date().toISOString()} contentReview={section==='creatives'?<BnaContentReviewLibrary locale={locale}/>:undefined}/>;
 }
