@@ -16,7 +16,7 @@ async function get<T>(id?:string,before?:string,historyBefore?:number):Promise<T
  return body.data as T;
 }
 /** Add this section to the existing People route. No separate CRM or identity. */
-export function BnaInquiryOwnerPanel({locale}:{locale:Locale}){
+export function BnaInquiryOwnerPanel({locale,initialId,onOperationPending}:{locale:Locale;initialId?:string|undefined;onOperationPending?:(pending:boolean)=>void}){
  const t=(en:string,he:string)=>locale==="he"?he:en;
  const [page,setPage]=useState<Page|null>(null),[detail,setDetail]=useState<Detail|null>(null);
  const [error,setError]=useState<number|null>(null),[message,setMessage]=useState(""),[busy,setBusy]=useState(false),[loadingMore,setLoadingMore]=useState(false),[loadingHistory,setLoadingHistory]=useState(false);
@@ -44,8 +44,9 @@ export function BnaInquiryOwnerPanel({locale}:{locale:Locale}){
   catch(cause){if(active.current&&serial.current===n){const code=cause instanceof RequestError?cause.status:503;setError(code);if([401,403,404].includes(code))clearPrivate();}}
   finally{if(active.current&&serial.current===n)setLoadingHistory(false);}
  },[clearPrivate]);
- useEffect(()=>{active.current=true;const timer=window.setTimeout(()=>void load(),0);
-  return()=>{window.clearTimeout(timer);active.current=false;};},[load]);
+ useEffect(()=>{let cancelled=false;const sequence=serial;active.current=true;const timer=window.setTimeout(()=>{void load().then(()=>{if(!cancelled&&active.current&&initialId)void open(initialId);});},0);
+  return()=>{cancelled=true;window.clearTimeout(timer);active.current=false;sequence.current++;};},[load,open,initialId]);
+ useEffect(()=>{onOperationPending?.(busy||pending!==null);},[busy,pending,onOperationPending]);
  async function save(command:BnaFollowupCommand){
   if(busy)return;setBusy(true);setError(null);setMessage("");setPending(command);
   try{const session=await sessionInfo();if(session.role!=="practitioner")throw new RequestError(403);

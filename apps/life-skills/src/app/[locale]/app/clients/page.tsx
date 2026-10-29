@@ -12,6 +12,7 @@ import {ContactCutoverStore} from "../../../../features/contact-ops/server/cutov
 import {AcademyCrmWorkspace} from "../../../../features/contact-ops/academy-crm-workspace.tsx";
 import {BnaInquiryOwnerPanel} from "../../../../features/bna-inquiry/owner-panel.tsx";
 import {Owner305ConversationPanel} from "../../../../features/conversation-305/owner-panel.tsx";
+import {LeadWorkspace} from "../../../../features/people/lead-workspace.tsx";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -25,12 +26,12 @@ export default async function Page({ params, searchParams }: {
   const query = await searchParams;
   const one=(key:string)=>typeof query[key]==="string"?query[key] as string:undefined;
   const returnPath = practitionerReturnPath(locale, "clients", query);
-  let academy=false;
+  let academy=false,accountId="";
   try {
     await requireWorkspaceRole("practitioner");
     const cookie=(await headers()).get("cookie")??"",token=cookie.split(";").map(value=>value.trim()).find(value=>value.startsWith(SESSION_COOKIE+"="))?.slice(SESSION_COOKIE.length+1);
     if(!token)throw new AppError("UNAUTHENTICATED");
-    const runtime=await identityRuntime(),actor=await runtime.services.sessions.actor(token);
+    const runtime=await identityRuntime(),actor=await runtime.services.sessions.actor(token);accountId=actor.id;
     academy=(await new ContactCutoverStore(runtime.store,runtime.config.keyring,runtime.config.lookupKey.toString("hex"),runtime.clock).read(actor)).phase==="academy_native";
   }
   catch (error) {
@@ -45,6 +46,7 @@ export default async function Page({ params, searchParams }: {
   const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   const inquiryId=one("inquiryId"),validInquiry=inquiryId&&uuid.test(inquiryId)?inquiryId:undefined;
   const personId=one("personId"),validPerson=personId&&uuid.test(personId)?personId:undefined;
+  if(process.env.LS_BNA_COMBINED_PEOPLE_ENABLED==="true"&&process.env.LS_BNA_INQUIRY_ENABLED==="true"&&process.env.LS_305_CLASSIFICATION_ENABLED==="true"&&accountId===process.env.LS_PROVIDER_INDEX_OWNER_ACCOUNT_ID&&!validInquiry&&!validPerson&&one("view")!=="legacy")return <LeadWorkspace locale={locale}/>;
   if((academy||validInquiry)&&one("mode")==="demo")return <main className="lsw-main" lang={locale} dir={locale==="he"?"rtl":"ltr"}>
     <h1>{locale==="he"?"אנשי האקדמיה":"Academy people"}</h1>
     <p>{locale==="he"?"תצוגת הדגמה אינה זמינה ברשימת האקדמיה.":"Demo contacts are not available in the Academy CRM."}</p>

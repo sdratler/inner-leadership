@@ -1,5 +1,5 @@
 "use client";
-import {useState,type FormEvent} from "react";
+import {useCallback,useEffect,useState,type FormEvent} from "react";
 import type {Locale} from "../../lib/locale.ts";
 import {sessionInfo} from "../identity/client.ts";
 import {fishingFollowupCommandSchema,type FishingFollowupCommand} from "./fishing-followup-contract.ts";
@@ -11,14 +11,14 @@ class RequestError extends Error{constructor(readonly status:number){super("FISH
 const endpoint="/api/private/group-applications/followups";
 
 /** Owner action remains attached to the saved inquiry, including email-only inquiries. */
-export function FishingFollowupPanel({locale,applicationId}:{locale:Locale;applicationId:string}){
+export function FishingFollowupPanel({locale,applicationId,autoOpen=false,onOperationPending}:{locale:Locale;applicationId:string;autoOpen?:boolean;onOperationPending?:(pending:boolean)=>void}){
  const t=(en:string,he:string)=>locale==="he"?he:en;
  const [detail,setDetail]=useState<Detail|null>(null),[error,setError]=useState<number|null>(null);
  const [busy,setBusy]=useState(false),[pending,setPending]=useState<FishingFollowupCommand|null>(null),[message,setMessage]=useState("");
  const [status,setStatus]=useState<"new"|"contacted"|"waiting"|"closed">("new"),
   [note,setNote]=useState(""),[nextAction,setNextAction]=useState("Review inquiry"),
   [dueDate,setDueDate]=useState(""),[waiting,setWaiting]=useState("");
- async function read(){
+ const read=useCallback(async()=>{
   setBusy(true);setError(null);
   try{const response=await fetch(endpoint+"?"+new URLSearchParams({id:applicationId}),
    {credentials:"same-origin",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer"});
@@ -30,7 +30,9 @@ export function FishingFollowupPanel({locale,applicationId}:{locale:Locale;appli
   }catch(cause){const code=cause instanceof RequestError?cause.status:503;setError(code);
    if([401,403,404].includes(code)){setDetail(null);setPending(null);}}
   finally{setBusy(false);}
- }
+ },[applicationId]);
+ useEffect(()=>{if(!autoOpen)return;const timer=window.setTimeout(()=>void read(),0);return()=>window.clearTimeout(timer);},[autoOpen,read]);
+ useEffect(()=>{onOperationPending?.(busy||pending!==null);},[busy,pending,onOperationPending]);
  async function save(command:FishingFollowupCommand){
   setBusy(true);setError(null);setMessage("");setPending(command);
   try{const session=await sessionInfo();if(session.role!=="practitioner")throw new RequestError(403);
@@ -52,7 +54,7 @@ export function FishingFollowupPanel({locale,applicationId}:{locale:Locale;appli
    dueDate:dueDate||null,waitingCondition:waiting.trim()||null});
   if(!parsed.success){setError(400);return;}void save(parsed.data);
  }
- return <details className="lsw-details" onToggle={event=>{if(event.currentTarget.open&&!detail&&!busy&&error!==404)void read();}}>
+ return <details className="lsw-details" open={autoOpen||undefined} onToggle={event=>{if(!autoOpen&&event.currentTarget.open&&!detail&&!busy&&error!==404)void read();}}>
   <summary>{t("Owner follow-up","המשך טיפול של האחראי")}</summary>
   <section className="lsw-stack" aria-busy={busy}>
    {error!==null&&<div role="alert" className="lsw-alert"><p>{error===401?t("Sign in again.","יש להיכנס מחדש."):
@@ -65,7 +67,8 @@ export function FishingFollowupPanel({locale,applicationId}:{locale:Locale;appli
    {pending&&!busy&&<div role="status" className="lsw-alert"><p>{t("Save outcome unknown. Retry the same operation.","תוצאת השמירה אינה ידועה. יש לנסות שוב את אותה פעולה.")}</p>
     <button type="button" onClick={()=>void save(pending)}>{t("Retry same save","ניסיון חוזר לאותה שמירה")}</button></div>}
    {busy&&!detail&&<p role="status">{t("Loading follow-up…","טוען מעקב…")}</p>}
-   {detail&&<><p>{t("Source","מקור")}: {detail.attribution?.first.source??t("Unknown","לא ידוע")}
+   {detail&&<><p>{t("Reply contact","פרטי קשר לתשובה")}: <bdi dir="ltr">{"contact" in detail.application.fields?detail.application.fields.contact:detail.application.fields.parentPhone}</bdi></p>
+    <p>{t("Source","מקור")}: {detail.attribution?.first.source??t("Unknown","לא ידוע")}
     {detail.attribution?.first.campaign&&<> · {t("Campaign","קמפיין")}: {detail.attribution.first.campaign}</>}
     {detail.attribution?.last.postRef&&<> · {t("Post reference","מזהה פרסום")}: {detail.attribution.last.postRef}</>}
     {detail.attribution?.last.groupRef&&<> · {t("Group reference","מזהה קבוצה")}: {detail.attribution.last.groupRef}</>}</p>
