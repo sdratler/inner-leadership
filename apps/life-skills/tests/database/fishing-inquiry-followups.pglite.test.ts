@@ -3,6 +3,8 @@ import {readFile} from "node:fs/promises";
 import {afterAll,beforeAll,expect,it,vi} from "vitest";
 import {PGlite} from "@electric-sql/pglite";
 vi.mock("server-only",()=>({}));
+import {readTaggedInquiries} from "../../src/features/fishing-marketing/attribution-store.ts";
+import {fishingMarketingSnapshotSchema} from "../../src/features/fishing-marketing/contract.ts";
 import {PublicGroupApplicationStore} from "../../src/features/group-application/store.ts";
 import {FishingInquiryFollowupStore} from "../../src/features/group-application/fishing-followup-store.ts";
 import {AcademyFounderStore} from "../../src/features/group-application/academy-founder-store.ts";
@@ -123,4 +125,42 @@ it("keeps a Fishing inquiry readable and editable beyond 100 follow-up revisions
  await expect(followups.read(parent,id,3)).rejects.toMatchObject({code:"NOT_FOUND"});
  await expect(followups.read(owner,id,0)).rejects.toMatchObject({code:"INVALID_REQUEST"});
  expect(await followups.followup(owner,{operationId:randomUUID(),applicationId:id,expectedVersion:102,status:"waiting",note:"Revision 103",nextAction:null,dueDate:null,waitingCondition:"Await reply"})).toMatchObject({version:103});
+},30000);
+
+it("links only an exact tagged Fishing inquiry to its verified group post",async()=>{
+ const owner=actors[0]!,parent=actors[1]!,touch={campaign:ACADEMY_CAMPAIGN,source:"facebook" as const,medium:"social" as const,content:PREREG_CREATIVE.id,groupRef:"123",postRef:"456"};
+ const attribution=campaignAttributionSchema.parse({first:touch,last:touch});
+ const saved=await applications.submit({operationId:randomUUID(),fields:{parentName:"Synthetic linked parent",contact:"linked-parent@example.invalid",language:"en",childAge:"10",cityArea:"Florida",programId:"sunday_fishing_academy",schedulePreference:["sunday"],permission:{confirmed:true,version:floridaGroupApplicationNotice.version,language:"en"}}},undefined,attribution);
+ const h="a".repeat(64),at=now.toISOString(),postUrl="https://www.facebook.com/groups/123/posts/456";
+ const snapshot=fishingMarketingSnapshotSchema.parse({schemaVersion:1,program:"fishing",channel:"facebook_group_manual",mode:"assisted",generatedAt:at,schedule:{timezone:"America/New_York",dailyCap:5,cooldownDays:30,enabled:true,funnelReady:false,day:"2026-10-29",window:"waiting",nextDue:at,lastRun:null},assets:[],targets:[],items:[],itemsTruncated:false,history:[{id:h,groupId:"123",contentDigest:h,variantId:null,identity:"personal",state:"published_browser_readback_verified",recordedAt:at,postUrl,publicationEvidence:"browser_readback"}],historyAvailable:true,historyTruncated:false,excludedHistory:0});
+ const before=(await db.query("SELECT count(*)::int AS n FROM ls_identity.people")).rows;
+ const page=await readTaggedInquiries(adapter,workspace,ring,key,owner.id,clock,owner,snapshot);
+ expect(page.links).toEqual([{applicationId:saved.item.id,postUrl}]);expect(page.nextCursor).toBeNull();
+ await expect(readTaggedInquiries(adapter,workspace,ring,key,owner.id,clock,parent,snapshot)).rejects.toMatchObject({code:"NOT_FOUND"});
+ expect((await db.query("SELECT count(*)::int AS n FROM ls_identity.people")).rows).toEqual(before);
+});
+
+
+it("paginates tagged inquiries without skipping or repeating records",async()=>{
+ const owner=actors[0]!,touch={campaign:ACADEMY_CAMPAIGN,source:"facebook" as const,medium:"social" as const,content:PREREG_CREATIVE.id,groupRef:"123",postRef:"456"};
+ const attribution=campaignAttributionSchema.parse({first:touch,last:touch}),ids=new Set<string>();
+ for(let i=0;i<101;i++){
+  const result=await applications.submit({operationId:randomUUID(),fields:{parentName:"Synthetic paging parent",contact:`paging-${i}@example.invalid`,language:"en",childAge:"10",cityArea:"Florida",programId:"sunday_fishing_academy",schedulePreference:["sunday"],permission:{confirmed:true,version:floridaGroupApplicationNotice.version,language:"en"}}},undefined,attribution);
+  ids.add(result.item.id);
+ }
+ const h="b".repeat(64),at=now.toISOString(),postUrl="https://www.facebook.com/groups/123/posts/456";
+ const snapshot=fishingMarketingSnapshotSchema.parse({schemaVersion:1,program:"fishing",channel:"facebook_group_manual",mode:"assisted",generatedAt:at,schedule:{timezone:"America/New_York",dailyCap:5,cooldownDays:30,enabled:true,funnelReady:false,day:"2026-10-29",window:"waiting",nextDue:at,lastRun:null},assets:[],targets:[],items:[],itemsTruncated:false,history:[{id:h,groupId:"123",contentDigest:h,variantId:null,identity:"personal",state:"published_browser_readback_verified",recordedAt:at,postUrl,publicationEvidence:"browser_readback"}],historyAvailable:true,historyTruncated:false,excludedHistory:0});
+ const first=await readTaggedInquiries(adapter,workspace,ring,key,owner.id,clock,owner,snapshot);
+ expect(first.nextCursor).not.toBeNull();
+ expect(first.nextCursor).not.toMatch(/^[0-9a-f-]{36}$/i);
+ const tampered=first.nextCursor!.slice(0,-1)+(first.nextCursor!.endsWith("A")?"B":"A");
+ await expect(readTaggedInquiries(adapter,workspace,ring,key,owner.id,clock,owner,snapshot,tampered)).rejects.toMatchObject({code:"INVALID_REQUEST"});
+ const anotherOwner={...owner,id:randomUUID()} as Actor;
+ await expect(readTaggedInquiries(adapter,workspace,ring,key,anotherOwner.id,clock,anotherOwner,snapshot,first.nextCursor!)).rejects.toMatchObject({code:"INVALID_REQUEST"});
+ const second=await readTaggedInquiries(adapter,workspace,ring,key,owner.id,clock,owner,snapshot,first.nextCursor!);
+ expect(second.nextCursor).toBeNull();
+ const all=[...first.links,...second.links].map(link=>link.applicationId);
+ expect(new Set(all).size).toBe(all.length);
+ for(const id of ids)expect(all).toContain(id);
+ await expect(readTaggedInquiries(adapter,workspace,ring,key,owner.id,clock,owner,snapshot,"invalid")).rejects.toMatchObject({code:"INVALID_REQUEST"});
 },30000);

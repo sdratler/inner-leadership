@@ -262,5 +262,9 @@
   {
     "name": "0146_ls_bna_communication_delivery.sql",
     "sha256": "5988e5955f16790960aa5381d07125a8a235f23928d5568cab5d32c816e58da2"
+  },
+  {
+    "name": "0147_ls_fishing_marketing_snapshot.sql",
+    "sha256": "6419f05b3cf4d17add4f49fdb4c2eabe8f8cad2afe6f1b004398ab6f4327c755"
   }
 ]
