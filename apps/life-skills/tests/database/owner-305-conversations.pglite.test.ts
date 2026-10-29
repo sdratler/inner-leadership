@@ -116,3 +116,12 @@ it("stores an opaque LID without inventing a phone number or merging a person",a
  expect((await inbound.list(ownerActor)).items.find(item=>item.messageText===inquiry.messageText)).toMatchObject({fromNumber:null,pushName:"Synthetic LID"});
  await expect(inbound.capture({...inquiry,providerEventId:"other",providerMessageId:"other",fromNumber:"+15555550123"})).rejects.toMatchObject({code:"INVALID_REQUEST"});
 });
+it("pages through more than 100 receipts without omitting or repeating messages",async()=>{
+  const template={provider:"whapi" as const,channelId:"pagination-channel",businessNumber:CONVERSATION_305_LINE,providerEventId:"",providerMessageId:"",providerThreadId:"15555550123@s.whatsapp.net",eventType:"inbound_message" as const,fromMe:false as const,fromNumber:"+15555550123",pushName:"Synthetic",messageType:"text",messageText:"Pagination fixture",occurredAt:now.toISOString(),media:[]};
+  const store=new Owner305InboundStore(adapter,workspace,ring,"synthetic-305-private-digest-key",inboundBindingDigest(template),owner,{now:()=>now});
+  for(let i=0;i<102;i++)await store.capture({...template,providerEventId:`page-${i}`,providerMessageId:`page-${i}`});
+  const first=await store.list(ownerActor);expect(first.items).toHaveLength(100);expect(first.hasMore).toBe(true);expect(first.nextCursor).toBeTruthy();
+  const second=await store.list(ownerActor,first.nextCursor!);expect(second.items).toHaveLength(2);expect(second.hasMore).toBe(false);expect(second.nextCursor).toBeNull();
+  expect(new Set([...first.items,...second.items].map(item=>item.id)).size).toBe(102);
+  await expect(store.list(ownerActor,"invalid")).rejects.toMatchObject({code:"INVALID_REQUEST"});
+ });

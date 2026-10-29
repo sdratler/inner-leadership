@@ -28,8 +28,9 @@ export async function read305(request:Request,env:Environment,load:(binding:stri
   if(!TOKEN_PATTERN.test(token))throw new AppError("UNAUTHENTICATED");
   const binding=env.LS_305_INBOUND_BINDING_SHA256??"";if(!inbound305Enabled(env)||!/^[a-f0-9]{64}$/.test(binding))throw new AppError("UNAVAILABLE");
   const d=await load(binding),url=new URL(canonicalForwardedRequest(request,d.origin).url);
-  if(request.method!=="GET"||url.origin!==d.origin||url.search)throw new AppError("INVALID_REQUEST");
-  response=successResponse(await d.store.list(await d.actor(token)),id);
+  const params=[...url.searchParams.keys()];if(request.method!=="GET"||url.origin!==d.origin||params.some(key=>key!=="before")||params.length>1)throw new AppError("INVALID_REQUEST");
+  const before=url.searchParams.get("before")??undefined;if(before!==undefined&&!/^[a-f0-9]{64}$/.test(before))throw new AppError("INVALID_REQUEST");
+  response=successResponse(await d.store.list(await d.actor(token),before),id);
  }catch(error){response=failureResponse(error instanceof AppError?error:new AppError("UNAVAILABLE"),id);}
  response.headers.set("Referrer-Policy","no-referrer");response.headers.set("X-Content-Type-Options","nosniff");response.headers.set("Content-Security-Policy","default-src 'none'; frame-ancestors 'none'");return response;
 }

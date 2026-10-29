@@ -16,10 +16,12 @@ it("requires both flags and the bridge secret before durable capture",async()=>{
  expect(await response.text()).not.toContain(inquiry.messageText);
 });
 it("requires a session and exact origin before reading the owner store",async()=>{
- const list=vi.fn(async()=>({items:[],hasMore:false})),actor={id:env.LS_BNA_OWNER_ACCOUNT_ID} as Actor;
+ const list=vi.fn(async()=>({items:[],hasMore:false,nextCursor:null})),actor={id:env.LS_BNA_OWNER_ACCOUNT_ID} as Actor;
  const load=vi.fn(async()=>({origin,actor:async()=>actor,store:{list}}));
  const request=(cookie:string,url=origin+"/api/private/owner-305-inbound")=>new Request(url,{headers:{cookie,host:"life-skills.example.invalid","x-forwarded-proto":"https","x-forwarded-host":"life-skills.example.invalid"}});
  expect((await read305(request(""),env,load)).status).toBe(401);expect(load).not.toHaveBeenCalled();
  expect((await read305(request(`__Host-ls-session=${"a".repeat(43)}`,origin+"/api/private/owner-305-inbound?extra=1"),env,load)).status).toBe(400);expect(list).not.toHaveBeenCalled();
- expect((await read305(request(`__Host-ls-session=${"a".repeat(43)}`),env,load)).status).toBe(200);expect(list).toHaveBeenCalledOnce();
+ const cookie=`__Host-ls-session=${"a".repeat(43)}`;
+ expect((await read305(request(cookie,origin+"/api/private/owner-305-inbound?before=bad"),env,load)).status).toBe(400);expect(list).not.toHaveBeenCalled();
+ const cursor="a".repeat(64);expect((await read305(request(cookie,origin+"/api/private/owner-305-inbound?before="+cursor),env,load)).status).toBe(200);expect(list).toHaveBeenCalledWith(actor,cursor);
 });

@@ -39,16 +39,16 @@ export class Owner305InboundStore{
     VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING stored_at AS "storedAt"`,[this.workspaceId,keys.bindingKey,keys.eventKey,keys.messageKey,keys.payloadDigest,cipher,inquiry.occurredAt]);
    return {replayed:false,storedAt:inserted[0]!.storedAt.toISOString()};});
  }
- async list(actor:Actor){if(actor.workspaceId!==this.workspaceId||actor.id!==this.ownerAccountId||!z.string().uuid().safeParse(this.ownerAccountId).success)throw new AppError("NOT_FOUND");
+ async list(actor:Actor,before?:string){if(before!==undefined&&!/^[a-f0-9]{64}$/.test(before))throw new AppError("INVALID_REQUEST");if(actor.workspaceId!==this.workspaceId||actor.id!==this.ownerAccountId||!z.string().uuid().safeParse(this.ownerAccountId).success)throw new AppError("NOT_FOUND");
   return this.db.transaction(async tx=>{await tx.query("SET TRANSACTION READ ONLY");const fresh=await freshActor(tx,actor,this.clock.now());
    if(fresh.role!=="practitioner"||fresh.state!=="active")throw new AppError("NOT_FOUND");
    const rows=await tx.query<Row>(`SELECT r.binding_key AS "bindingKey",r.event_key AS "eventKey",r.message_key AS "messageKey",r.payload_digest AS "payloadDigest",r.payload_ciphertext AS "payloadCiphertext",r.occurred_at AS "occurredAt",r.stored_at AS "storedAt",l.conversation_id AS "linkedConversationId"
     FROM ls_service_interest.owner_305_inbound_receipts r LEFT JOIN ls_service_interest.owner_305_inbound_links l ON l.workspace_id=r.workspace_id AND l.binding_key=r.binding_key AND l.event_key=r.event_key
-    WHERE r.workspace_id=$1 AND r.binding_key=$2 ORDER BY r.stored_at DESC,r.event_key DESC LIMIT 101`,[this.workspaceId,this.binding()]);
+    WHERE r.workspace_id=$1 AND r.binding_key=$2 AND ($3::text IS NULL OR (r.stored_at,r.event_key) < (SELECT c.stored_at,c.event_key FROM ls_service_interest.owner_305_inbound_receipts c WHERE c.workspace_id=$1 AND c.binding_key=$2 AND c.event_key=$3)) ORDER BY r.stored_at DESC,r.event_key DESC LIMIT 101`,[this.workspaceId,this.binding(),before??null]);
    const items=rows.slice(0,100).map(row=>{try{const inquiry=inbound305InquirySchema.parse(JSON.parse(unseal(row.payloadCiphertext,aad(this.workspaceId,row.bindingKey,row.eventKey),this.ring)));
     const keys=this.keys(inquiry);if(inquiry.businessNumber!==CONVERSATION_305_LINE||inboundBindingDigest(inquiry)!==this.bindingDigest||keys.bindingKey!==row.bindingKey||keys.eventKey!==row.eventKey||keys.messageKey!==row.messageKey||keys.payloadDigest!==row.payloadDigest||row.occurredAt.toISOString()!==inquiry.occurredAt)throw Error();
     return {id:row.eventKey,linkedConversationId:row.linkedConversationId??null,fromNumber:inquiry.fromNumber,pushName:inquiry.pushName,messageText:inquiry.messageText,messageType:inquiry.messageType,occurredAt:inquiry.occurredAt,storedAt:row.storedAt.toISOString(),media:inquiry.media.map(({fileName,mimeType,sizeBytes})=>({fileName,mimeType,sizeBytes}))};
    }catch{throw new AppError("UNAVAILABLE");}});
-   return {items,hasMore:rows.length>100};});
+   return {items,hasMore:rows.length>100,nextCursor:rows.length>100?items.at(-1)!.id:null};});
  }
 }
