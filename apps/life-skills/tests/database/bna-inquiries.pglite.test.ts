@@ -164,6 +164,6 @@ it("previews the saved co-op acknowledgment only for the owner and selected emai
  const request=(id:string)=>new Request(origin+'/api/private/bna-inquiries?'+new URLSearchParams({id,preview:'acknowledgment'}),{headers:{host:'life-skills.example.invalid','x-forwarded-proto':'https','x-forwarded-host':'life-skills.example.invalid',cookie:`__Host-ls-session=${token}`}});
  const result=await privateBnaInquiryHttp(request(saved.reference),async()=>deps);expect(result.status).toBe(200);expect((await result.json()).data).toMatchObject({available:true,deliveryState:'not_queued',recipient:input.fields.contact,candidate:{locale:'he',status:'review_candidate'}});
  expect((await privateBnaInquiryHttp(request(saved.reference),async()=>({...deps,actor:async()=>otherActor}))).status).toBe(404);
- const phone=await store.submit({...input,operationId:randomUUID(),fields:{...input.fields,contactChannel:'phone',contact:'+13055550123'}},BNA_COOP_PROGRAM);
+ const phone=await store.submit({...input,operationId:randomUUID(),fields:{...input.fields,contactChannel:'phone',contact:'+13055550123',secondaryContact:{channel:'email',value:'secondary@example.invalid'}}},BNA_COOP_PROGRAM);
  const phoneResult=await privateBnaInquiryHttp(request(phone.reference),async()=>deps);expect((await phoneResult.json()).data).toEqual({available:false,reason:'phone_reply_selected'});
 });
