@@ -4,7 +4,7 @@ import {OWNER_305_MIGRATION,owner305SchemaPlan} from "../../src/db/owner-305-sch
 
 const entries=JSON.parse(readFileSync("migrations/manifest.json","utf8")) as {name:string;sha256:string}[];
 const files=entries.map(row=>({name:row.name,checksum:row.sha256,sql:readFileSync("migrations/"+row.name,"utf8")}));
-it("releases 0140 only after the exact 0139 ledger and rejects a changed migration",()=>{
+it("releases 0141 only after the exact 0140 ledger and rejects a changed migration",()=>{
  const baseline=files.slice(0,-1).map(file=>({name:file.name,checksum:file.checksum}));
  expect(owner305SchemaPlan(files,baseline,0).pending.map(file=>file.name)).toEqual([OWNER_305_MIGRATION.name]);
  expect(owner305SchemaPlan(files,files.map(file=>({name:file.name,checksum:file.checksum})),1).pending).toEqual([]);

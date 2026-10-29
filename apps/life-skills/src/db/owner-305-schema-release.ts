@@ -1,8 +1,8 @@
 import {createHash} from "node:crypto";
 import {planMigrations,type AppliedMigration,type Migration} from "./migration-plan.ts";
 
-export const OWNER_305_BASELINE={name:"0139_ls_bna_inquiries.sql",sha256:"91421da4a936986e9c33e4ccbe141c07f78cbaeca3f6d55bf0e34fd243e64da0"} as const;
-export const OWNER_305_MIGRATION={name:"0140_ls_owner_305_conversations.sql",sha256:"d4c5c6a4e98382c4059e97c6147eae378b0017fd61307df771b1bdbc68b29790"} as const;
+export const OWNER_305_BASELINE={name:"0140_ls_fishing_inquiry_followups.sql",sha256:"0d24071314c823f5754c1d5d5637fd18b33cb81d08c45f7a58e95d2bf4c45d46"} as const;
+export const OWNER_305_MIGRATION={name:"0141_ls_owner_305_conversations.sql",sha256:"d4c5c6a4e98382c4059e97c6147eae378b0017fd61307df771b1bdbc68b29790"} as const;
 export const owner305Hash=(value:string|Buffer)=>createHash("sha256").update(value).digest("hex");
 export function owner305SchemaPlan(files:readonly Migration[],history:readonly AppliedMigration[],stage:0|1){
  const sorted=[...files].sort((a,b)=>a.name.localeCompare(b.name)),index=sorted.findIndex(file=>file.name===OWNER_305_MIGRATION.name&&file.checksum===OWNER_305_MIGRATION.sha256);

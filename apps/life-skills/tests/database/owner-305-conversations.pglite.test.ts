@@ -24,7 +24,7 @@ const account=async(id:string,role:"practitioner"|"parent")=>{const digest=id.re
 let ownerActor:Actor,otherActor:Actor;
 beforeAll(async()=>{await db.exec("CREATE SCHEMA ls_control");
  for(const name of ["0001_ls_foundation.sql","0010_ls_identity_cases_20260906.sql","0124_ls_group_interest.sql",
-  "0131_ls_public_group_applications.sql","0139_ls_bna_inquiries.sql","0140_ls_owner_305_conversations.sql"])
+  "0131_ls_public_group_applications.sql","0139_ls_bna_inquiries.sql","0140_ls_fishing_inquiry_followups.sql","0141_ls_owner_305_conversations.sql"])
   await db.exec(await readFile("migrations/"+name,"utf8"));
  await db.query("INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,$2)",[workspace,now]);
  ownerActor=await account(owner,"practitioner");otherActor=await account(randomUUID(),"parent");},30000);

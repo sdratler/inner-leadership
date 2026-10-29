@@ -1,4 +1,4 @@
-/** Exact-target 0140 schema-only operator. Requires 0138–0139 already applied.
+/** Exact-target 0141 schema-only operator. Requires 0138–0140 already applied.
  * It never imports contacts, captures provider data, classifies records, or enables UI. */
 import {readFile,readdir,lstat} from "node:fs/promises";
 import {fileURLToPath} from "node:url";
@@ -20,7 +20,7 @@ const proofSchema=z.strictObject({projectId:uuid,environmentId:uuid,appServiceId
  backup:z.strictObject({receiptId:z.string().min(1).max(200),readbackAt:z.iso.datetime(),databaseSystemIdentifier:z.string().min(1)}),
  isolatedRestore:z.strictObject({sourceReceiptId:z.string().min(1).max(200),verifiedAt:z.iso.datetime(),verified:z.literal(true)}),
  rollback:z.strictObject({reviewed:z.literal(true),description:z.string().min(20).max(2000)})});
-const sources=["migrations/manifest.json","migrations/0139_ls_bna_inquiries.sql","migrations/0140_ls_owner_305_conversations.sql",
+const sources=["migrations/manifest.json","migrations/0139_ls_bna_inquiries.sql","migrations/0140_ls_fishing_inquiry_followups.sql","migrations/0141_ls_owner_305_conversations.sql",
  "src/db/owner-305-schema-release.ts","scripts/release-owner-305-schema.ts"] as const;
 async function sourceSha(){const root=new URL("../",import.meta.url),entries=[];
  for(const name of sources){const url=new URL(name,root),stat=await lstat(fileURLToPath(url));if(!stat.isFile()||stat.isSymbolicLink())throw Error("OWNER_305_SCHEMA_SOURCE_INVALID");entries.push([name,owner305Hash(await readFile(url))]);}
