@@ -7,7 +7,7 @@ import type {Owner305ConversationStore} from "./store.ts";
 
 type Page=Awaited<ReturnType<Owner305ConversationStore["list"]>>;
 type Detail=Awaited<ReturnType<Owner305ConversationStore["read"]>>;
-type Classification="fishing"|"bna"|"both"|"support_provider"|"unclassified";
+type Classification="fishing"|"bna"|"both"|"support"|"provider"|"support_provider"|"unclassified";
 type Channel="phone"|"whatsapp"|"sms"|"other";
 type Draft={channel:Channel;contactHint:string;classification:Classification;note:string;nextAction:string;dueDate:string;waitingCondition:string};
 const empty:Draft={channel:"phone",contactHint:"",classification:"unclassified",note:"",nextAction:"",dueDate:"",waitingCondition:""};
@@ -42,10 +42,11 @@ export function Owner305ConversationPanel({locale}:{locale:Locale}){
    dueDate:draft.dueDate||null,waitingCondition:draft.waitingCondition.trim()||null};
   const raw=detail?{kind:"revise",operationId:crypto.randomUUID(),conversationId:detail.id,expectedVersion:detail.followup.version,followup}:
    {kind:"create",operationId:crypto.randomUUID(),channel:draft.channel,contactHint:draft.contactHint,followup};
+  if(draft.classification==="support_provider"){setError(400);return;}
   const parsed=conversationCommandSchema.safeParse(raw);if(!parsed.success){setError(400);return;}void save(parsed.data);
  }
  const labels:Record<Classification,[string,string]>={fishing:["Fishing","דיג"],bna:["BNA Torah","תורה בבני נביאים"],both:["Both","שניהם"],
-  support_provider:["Support/provider","תמיכה/ספק"],unclassified:["Unclassified","טרם סווג"]};
+  support:["Support","תמיכה"],provider:["Provider","ספק"],support_provider:["Support or provider — choose one","תמיכה או ספק — יש לבחור אחד"],unclassified:["Unclassified","טרם סווג"]};
  if(error===404)return null;
  return <section className="lsw-card" lang={locale} dir={locale==="he"?"rtl":"ltr"} aria-label={t("305 conversations","שיחות קו 305")}>
   <h2>{t("305 conversations","שיחות קו 305")}</h2>
@@ -75,8 +76,9 @@ export function Owner305ConversationPanel({locale}:{locale:Locale}){
    {!detail&&<><label>{t("Channel","ערוץ")}<select value={draft.channel} onChange={event=>setDraft({...draft,channel:event.target.value as Channel})}>
     <option value="phone">{t("Phone","טלפון")}</option><option value="whatsapp">WhatsApp</option><option value="sms">SMS</option><option value="other">{t("Other","אחר")}</option></select></label>
     <label>{t("Contact hint you recognize","פרט מזהה לזיהוי השיחה")}<input required maxLength={160} value={draft.contactHint} onChange={event=>setDraft({...draft,contactHint:event.target.value})}/></label></>}
+   {draft.classification==="support_provider"&&<p role="status">{t("This older record combines support and provider. Choose its actual purpose before saving an update.","רשומה קודמת זו משלבת תמיכה וספק. בחרו את המטרה המתאימה לפני שמירת עדכון.")}</p>}
    <label>{t("Classification","סיווג")}<select value={draft.classification} onChange={event=>setDraft({...draft,classification:event.target.value as Classification})}>
-    {(Object.keys(labels) as Classification[]).map(value=><option key={value} value={value}>{t(...labels[value])}</option>)}</select></label>
+    {(Object.keys(labels) as Classification[]).map(value=><option key={value} value={value} disabled={value==="support_provider"}>{t(...labels[value])}</option>)}</select></label>
    <label>{t("Private note","הערה פרטית")}<textarea required maxLength={5000} value={draft.note} onChange={event=>setDraft({...draft,note:event.target.value})}/></label>
    <label>{t("Next action","פעולה הבאה")}<input maxLength={500} value={draft.nextAction} onChange={event=>setDraft({...draft,nextAction:event.target.value})}/></label>
    <label>{t("Action date","תאריך פעולה")}<input type="date" value={draft.dueDate} onChange={event=>setDraft({...draft,dueDate:event.target.value})}/></label>

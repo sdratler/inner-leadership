@@ -6,6 +6,8 @@ vi.mock("server-only",()=>({}));
 import {Owner305ConversationStore} from "../../src/features/conversation-305/store.ts";
 import {CONVERSATION_305_LINE} from "../../src/features/conversation-305/contract.ts";
 import {readOwner305SchemaStage} from "../../src/db/owner-305-schema-release.ts";
+import {seal} from "../../src/features/identity/crypto.ts";
+import {privateDigest} from "../../src/features/contact-ops/server/digests.ts";
 import {asId} from "../../src/lib/ids.ts";
 import type {Actor} from "../../src/features/identity/types.ts";
 import type {IdentityStore,SqlSession} from "../../src/features/identity/store.ts";
@@ -54,4 +56,20 @@ it("keeps manual 305 classification private, durable and independent of Person/c
  expect(updated.history.map(item=>item.version)).toEqual([2,1]);
  expect((await db.query<{n:number}>("SELECT count(*)::int AS n FROM ls_identity.people")).rows[0]!.n).toBe(peopleBefore);
  await expect(db.query("DELETE FROM ls_service_interest.owner_305_conversations WHERE workspace_id=$1",[workspace])).rejects.toThrow();
+});
+
+it("preserves ambiguous historical 305 records while requiring an explicit support or provider choice",async()=>{
+ const id=randomUUID(),operationId=randomUUID(),legacy={kind:"create" as const,operationId,channel:"phone" as const,contactHint:"Synthetic historical contact",followup:{classification:"support_provider" as const,note:"Historical purpose unknown",nextAction:null,dueDate:null,waitingCondition:"Await clarification"}};
+ const digest=privateDigest({domain:"owner-305-conversation-operation/v1",workspace,actor:ownerActor.id,command:legacy},"synthetic-305-private-digest-key");
+ const metadata={lineNumber:CONVERSATION_305_LINE,channel:legacy.channel,contactHint:legacy.contactHint};
+ await db.query("INSERT INTO ls_service_interest.owner_305_conversations(workspace_id,id,owner_account_id,line_number,metadata_ciphertext,creation_digest,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)",[workspace,id,owner,CONVERSATION_305_LINE,seal(JSON.stringify(metadata),`ls_service_interest/owner-305-conversation/v1/${workspace}/${id}`,ring),digest,now]);
+ await db.query("INSERT INTO ls_service_interest.owner_305_conversation_operations(workspace_id,operation_id,creation_digest,conversation_id) VALUES($1,$2,$3,$4)",[workspace,operationId,digest,id]);
+ await db.query("INSERT INTO ls_service_interest.owner_305_conversation_revisions(workspace_id,operation_id,conversation_id,owner_account_id,version,request_digest,payload_ciphertext,recorded_at) VALUES($1,$2,$3,$4,1,$5,$6,$7)",[workspace,operationId,id,owner,digest,seal(JSON.stringify(legacy.followup),`ls_service_interest/owner-305-revision/v1/${workspace}/${operationId}`,ring),now]);
+ expect(await store.save(ownerActor,legacy)).toMatchObject({id,replayed:true});
+ expect((await store.read(ownerActor,id)).followup.classification).toBe("support_provider");
+ await expect(store.save(ownerActor,{...legacy,operationId:randomUUID()})).rejects.toMatchObject({code:"INVALID_REQUEST"});
+ for(const classification of ["support","provider"] as const){const item=await store.save(ownerActor,{...legacy,operationId:randomUUID(),followup:{...legacy.followup,classification}});expect((await store.read(ownerActor,item.id)).followup.classification).toBe(classification);}
+ await store.save(ownerActor,{kind:"revise",operationId:randomUUID(),conversationId:id,expectedVersion:1,followup:{...legacy.followup,classification:"provider"}});
+ const current=await store.read(ownerActor,id);expect(current.followup.classification).toBe("provider");expect(current.history.map(row=>row.classification)).toEqual(["provider","support_provider"]);
+ await expect(store.read(otherActor,id)).rejects.toMatchObject({code:"NOT_FOUND"});
 });

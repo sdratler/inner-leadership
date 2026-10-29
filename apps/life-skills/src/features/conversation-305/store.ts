@@ -67,6 +67,7 @@ export class Owner305ConversationStore{
      [this.workspaceId,command.operationId,actor.id]);
     if(prior.length){if(prior.length!==1||prior[0]!.creationDigest!==digest)throw new AppError("CONFLICT");
      return {saved:true as const,id:prior[0]!.conversationId,replayed:true};}
+    if(command.followup.classification==="support_provider")throw new AppError("INVALID_REQUEST");
     const used=await tx.query<{operationId:string}>(`SELECT operation_id AS "operationId" FROM ls_service_interest.owner_305_conversation_revisions
      WHERE workspace_id=$1 AND operation_id=$2`,[this.workspaceId,command.operationId]);
     if(used.length)throw new AppError("CONFLICT");
@@ -83,6 +84,7 @@ export class Owner305ConversationStore{
     FROM ls_service_interest.owner_305_conversation_revisions WHERE workspace_id=$1 AND operation_id=$2`,[this.workspaceId,command.operationId]);
    if(prior.length){if(prior.length!==1||prior[0]!.requestDigest!==digest||prior[0]!.conversationId!==command.conversationId||prior[0]!.ownerAccountId!==actor.id)throw new AppError("CONFLICT");
     return {saved:true as const,id:command.conversationId,replayed:true,followup:this.revision(prior[0]!)};}
+   if(command.followup.classification==="support_provider")throw new AppError("INVALID_REQUEST");
    await this.record(tx,actor,command.conversationId);
    const latest=await tx.query<{version:number}>(`SELECT version FROM ls_service_interest.owner_305_conversation_revisions
     WHERE workspace_id=$1 AND conversation_id=$2 ORDER BY version DESC LIMIT 1`,[this.workspaceId,command.conversationId]);
