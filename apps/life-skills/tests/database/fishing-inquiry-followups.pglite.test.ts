@@ -84,6 +84,9 @@ it("keeps one encrypted owner follow-up on an email-only Fishing inquiry across 
  await expect(followups.read(owner,retiredId)).rejects.toMatchObject({code:"NOT_FOUND"});
  await expect(followups.followup(owner,{...command,operationId:randomUUID(),applicationId:retiredId}))
   .rejects.toMatchObject({code:"NOT_FOUND"});
+ const batch=await followups.listPage(owner);expect(batch.items).toHaveLength(1);
+ expect(batch.items[0]).toMatchObject({application:{id:saved.item.id},attribution,followup:{version:1,status:"waiting",nextAction:"Call parent"}});
+ await expect(followups.listPage(parent)).rejects.toMatchObject({code:"NOT_FOUND"});
  expect((await db.query("SELECT count(*)::int AS n FROM ls_identity.people")).rows).toEqual(before);
  const row=(await db.query<{payload_ciphertext:string}>("SELECT payload_ciphertext FROM ls_service_interest.fishing_inquiry_followups WHERE application_id=$1",[saved.item.id])).rows[0]!;
  expect(row.payload_ciphertext).not.toContain(command.note);

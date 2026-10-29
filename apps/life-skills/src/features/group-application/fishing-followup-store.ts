@@ -56,6 +56,23 @@ export class FishingInquiryFollowupStore{
   if(rows.length>100)throw new AppError("UNAVAILABLE");
   return rows.map(row=>this.decode(row));
  }
+ async listPage(actor:Actor,cursor?:string){
+  await this.db.transaction(async tx=>{await tx.query("SET TRANSACTION READ ONLY");await this.owner(tx,actor);});
+  const page=await this.applications.listPage(actor,cursor?{cursor}:{});
+  return this.db.transaction(async tx=>{
+   await tx.query("SET TRANSACTION READ ONLY");await this.owner(tx,actor);
+   const ids=page.items.map(item=>item.id);
+   if(!ids.length)return {items:[],nextCursor:page.nextCursor};
+   const rows=await tx.query<Row>(`SELECT DISTINCT ON (application_id) operation_id AS "operationId",application_id AS "applicationId",
+    actor_account_id AS "actorAccountId",version,request_digest AS "requestDigest",payload_ciphertext AS "payloadCiphertext",recorded_at AS "recordedAt"
+    FROM ls_service_interest.fishing_inquiry_followups WHERE workspace_id=$1 AND application_id=ANY($2::uuid[])
+    ORDER BY application_id,version DESC`,[this.workspaceId,ids]);
+   const latest=new Map(rows.map(row=>[row.applicationId,this.decode(row)]));
+   const attribution=await new AcademyCampaignStore(this.workspaceId,this.ring,this.digestKey,()=>this.clock.now()).applicationAttributions(tx,ids);
+   return {items:page.items.map(application=>({application,attribution:attribution.get(application.id)??null,
+    followup:latest.get(application.id)??{version:0,...initial}})),nextCursor:page.nextCursor};
+  });
+ }
  async read(actor:Actor,id:string){
   if(!z.string().uuid().safeParse(id).success)throw new AppError("INVALID_REQUEST");
   return this.db.transaction(async tx=>{
