@@ -12,10 +12,10 @@ import {SESSION_COOKIE} from "../../lib/security/session.ts";
 import {TOKEN_PATTERN} from "../identity/crypto.ts";
 import type {Actor} from "../identity/types.ts";
 import {BNA_INQUIRY_NOTICE,bnaAttributionSchema,bnaFollowupCommandSchema,bnaInquirySubmissionSchema} from "./contract.ts";
-import {BNA_COOP_PROGRAM,BNA_COOP_NOTICE,bnaCoopFieldsSchema} from "./coop-contract.ts";
+import {BNA_COOP_PROGRAM,BNA_COOP_NOTICE,bnaCoopReadableFieldsSchema} from "./coop-contract.ts";
 import type {BnaInquiryStore} from "./store.ts";
 
-const coopSubmission=z.object({challenge:z.string().min(80).max(1024),website:z.literal("").optional(),operationId:z.string().uuid(),fields:bnaCoopFieldsSchema,attribution:bnaAttributionSchema.optional()}).strict();
+const coopSubmission=z.object({challenge:z.string().min(80).max(1024),website:z.literal("").optional(),operationId:z.string().uuid(),fields:bnaCoopReadableFieldsSchema,attribution:bnaAttributionSchema.optional()}).strict();
 type PublicDeps={enabled:boolean;environment:Record<string,string|undefined>;challengeKey:string;now:()=>number;
  limits:RateLimitStore;store:Pick<BnaInquiryStore,"submit">};
 export async function publicBnaInquiryHttp(request:Request,load:()=>Promise<PublicDeps>,purpose:"torah"|"coop"="torah"):Promise<Response>{

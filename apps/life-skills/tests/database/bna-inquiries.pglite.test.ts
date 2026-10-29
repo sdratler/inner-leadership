@@ -5,8 +5,10 @@ import {PGlite} from "@electric-sql/pglite";
 vi.mock("server-only",()=>({}));
 import {BnaInquiryStore} from "../../src/features/bna-inquiry/store.ts";
 import {BNA_INQUIRY_NOTICE,bnaInquiryFieldsSchema} from "../../src/features/bna-inquiry/contract.ts";
-import {BNA_COOP_NOTICE,BNA_COOP_PROGRAM} from "../../src/features/bna-inquiry/coop-contract.ts";
+import {BNA_COOP_NOTICE,BNA_COOP_LEGACY_NOTICE,BNA_COOP_PROGRAM} from "../../src/features/bna-inquiry/coop-contract.ts";
 import {publicBnaInquiryHttp,privateBnaInquiryHttp} from "../../src/features/bna-inquiry/http.ts";
+import {seal} from "../../src/features/identity/crypto.ts";
+import {privateDigest} from "../../src/features/contact-ops/server/digests.ts";
 import {readBnaCoopSchemaStage} from "../../src/db/bna-coop-schema-release.ts";
 import {asId} from "../../src/lib/ids.ts";
 import type {Actor} from "../../src/features/identity/types.ts";
@@ -120,6 +122,18 @@ it("accepts a co-op HTTP submission into durable owner-visible storage and repla
  const detail=await store.read(ownerActor,receipt.reference);
  expect(detail).toMatchObject({program:BNA_COOP_PROGRAM,fields:submission.fields,attribution:{source:"bna_site",landingPath:"/he/join"}});
  await expect(store.read(otherActor,receipt.reference)).rejects.toMatchObject({code:"NOT_FOUND"});
+});
+
+it("reads and replays an older co-op notice but never accepts it for a new operation",async()=>{
+ const id=randomUUID(),operationId=randomUUID(),followupId=randomUUID(),legacyFields={name:"Synthetic legacy co-op",contactChannel:"email" as const,contact:"legacy-coop@example.invalid",language:"en" as const,siteLanguage:"en" as const,emailUpdates:false,townOrZip:"Florida",childAges:[9],permission:{confirmed:true as const,version:BNA_COOP_LEGACY_NOTICE.version,language:"en" as const}};
+ const payload={program:BNA_COOP_PROGRAM,fields:legacyFields,attribution:null},digest=privateDigest({domain:"bna-inquiry/v1",workspace,payload},"synthetic-bna-private-digest-key");
+ await db.query(`INSERT INTO ls_service_interest.bna_inquiries(workspace_id,id,program_key,owner_account_id,contact_digest,request_digest,payload_ciphertext,notice_version,notice_language,received_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'en',$9)`,[workspace,id,BNA_COOP_PROGRAM,owner,"a".repeat(64),digest,seal(JSON.stringify(payload),`ls_service_interest/bna-inquiry/v1/${workspace}/${id}`,ring),BNA_COOP_LEGACY_NOTICE.version,now]);
+ await db.query("INSERT INTO ls_service_interest.bna_inquiry_operations(workspace_id,operation_id,request_digest,inquiry_id) VALUES($1,$2,$3,$4)",[workspace,operationId,digest,id]);
+ const state={status:"new",note:"Synthetic legacy",nextAction:"Review inquiry",dueDate:null,waitingCondition:null};
+ await db.query("INSERT INTO ls_service_interest.bna_inquiry_followups(workspace_id,operation_id,inquiry_id,actor_account_id,version,request_digest,payload_ciphertext,recorded_at) VALUES($1,$2,$3,$4,1,$5,$6,$7)",[workspace,followupId,id,owner,"b".repeat(64),seal(JSON.stringify(state),`ls_service_interest/bna-followup/v1/${workspace}/${followupId}`,ring),now]);
+ expect(await store.submit({operationId,fields:legacyFields},BNA_COOP_PROGRAM)).toMatchObject({reference:id,replayed:true});
+ expect((await store.read(ownerActor,id)).fields.permission.version).toBe(BNA_COOP_LEGACY_NOTICE.version);
+ await expect(store.submit({operationId:randomUUID(),fields:legacyFields},BNA_COOP_PROGRAM)).rejects.toMatchObject({code:"INVALID_REQUEST"});
 });
 
 

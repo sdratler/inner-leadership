@@ -1,16 +1,19 @@
 import {z} from "zod";
 export const BNA_COOP_PROGRAM="bna_learning_coop" as const;
-export const BNA_COOP_NOTICE={version:"BNA-COOP-INTEREST-20261029-v1",
+export const BNA_COOP_LEGACY_NOTICE={version:"BNA-COOP-INTEREST-20261029-v1",
  en:"Please contact me about the BNA learning co-op using the details I provided. I have read the privacy information.",
  he:"אבקש ליצור איתי קשר בעניין קואופרטיב הלמידה של בני נביאים באמצעות הפרטים שמסרתי. קראתי את המידע על פרטיות."} as const;
+export const BNA_COOP_NOTICE={version:"BNA-COOP-INTEREST-20261029-v2",
+ en:"Please contact me about the BNA learning co-op using the details I provided. I have read the Privacy Policy.",
+ he:"אבקש ליצור איתי קשר בעניין קואופרטיב הלמידה של בני נביאים באמצעות הפרטים שמסרתי. קראתי את מדיניות הפרטיות."} as const;
 const contact=z.string().trim().max(254);
-export const bnaCoopFieldsSchema=z.object({
+export const bnaCoopReadableFieldsSchema=z.object({
  name:z.string().trim().min(1).max(120),contactChannel:z.enum(["email","phone"]),contact,
  secondaryContact:z.object({channel:z.enum(["email","phone"]),value:contact}).strict().optional(),
  emailUpdates:z.boolean(),language:z.enum(["en","he"]),siteLanguage:z.enum(["en","he"]),townOrZip:z.string().trim().min(2).max(100),
  childAges:z.array(z.number().int().min(0).max(18)).min(1).max(8),
  availability:z.string().trim().max(500).optional(),question:z.string().trim().max(2000).optional(),
- permission:z.object({confirmed:z.literal(true),version:z.literal(BNA_COOP_NOTICE.version),language:z.enum(["en","he"])}).strict(),
+ permission:z.object({confirmed:z.literal(true),version:z.enum([BNA_COOP_NOTICE.version,BNA_COOP_LEGACY_NOTICE.version]),language:z.enum(["en","he"])}).strict(),
 }).strict().superRefine((value,ctx)=>{
  if(value.secondaryContact){
   const secondary=value.secondaryContact;
@@ -23,4 +26,5 @@ export const bnaCoopFieldsSchema=z.object({
  if(value.contactChannel==="email"&&(!z.email().max(254).safeParse(value.contact.toLowerCase()).success||value.contact!==value.contact.toLowerCase()))ctx.addIssue({code:"custom",path:["contact"],message:"email required"});
  if(value.contactChannel==="phone"&&!/^\+[1-9]\d{7,14}$/.test(value.contact))ctx.addIssue({code:"custom",path:["contact"],message:"international phone required"});
 });
-export type BnaCoopFields=z.infer<typeof bnaCoopFieldsSchema>;
+export const bnaCoopFieldsSchema=bnaCoopReadableFieldsSchema.refine(value=>value.permission.version===BNA_COOP_NOTICE.version,{path:["permission","version"],message:"current notice required"});
+export type BnaCoopFields=z.infer<typeof bnaCoopReadableFieldsSchema>;

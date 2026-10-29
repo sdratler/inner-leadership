@@ -12,14 +12,14 @@ import type {IdentityStore,SqlSession} from "../identity/store.ts";
 import {BNA_INQUIRY_PROGRAM,bnaAttributionSchema,bnaFollowupCommandSchema,bnaInquiryFieldsSchema,
  type BnaAttribution,type BnaFollowupCommand,type BnaInquiryFields} from "./contract.ts";
 
-import {BNA_COOP_PROGRAM,bnaCoopFieldsSchema,type BnaCoopFields} from "./coop-contract.ts";
+import {BNA_COOP_PROGRAM,BNA_COOP_NOTICE,bnaCoopReadableFieldsSchema,type BnaCoopFields} from "./coop-contract.ts";
 type InquiryPayload={program:typeof BNA_INQUIRY_PROGRAM;fields:BnaInquiryFields;attribution:BnaAttribution|null}|{program:typeof BNA_COOP_PROGRAM;fields:BnaCoopFields;attribution:BnaAttribution|null};
 type InquiryRow={id:string;programKey:string;ownerAccountId:string;requestDigest:string;payloadCiphertext:string;receivedAt:Date};
 type FollowupState={status:"new"|"contacted"|"waiting"|"closed";note:string;nextAction:string|null;dueDate:string|null;waitingCondition:string|null};
 type FollowupRow={operationId:string;inquiryId:string;actorAccountId:string;version:number;requestDigest:string;payloadCiphertext:string;recordedAt:Date};
 const payloadSchema=z.discriminatedUnion("program",[
  z.object({program:z.literal(BNA_INQUIRY_PROGRAM),fields:bnaInquiryFieldsSchema,attribution:bnaAttributionSchema.nullable()}).strict(),
- z.object({program:z.literal(BNA_COOP_PROGRAM),fields:bnaCoopFieldsSchema,attribution:bnaAttributionSchema.nullable()}).strict()]);
+ z.object({program:z.literal(BNA_COOP_PROGRAM),fields:bnaCoopReadableFieldsSchema,attribution:bnaAttributionSchema.nullable()}).strict()]);
 const stateSchema=z.object({status:z.enum(["new","contacted","waiting","closed"]),note:z.string().max(5000),
  nextAction:z.string().max(500).nullable(),dueDate:z.iso.date().nullable(),waitingCondition:z.string().max(500).nullable()}).strict();
 const inquiryAad=(workspace:string,id:string)=>`ls_service_interest/bna-inquiry/v1/${workspace}/${id}`;
@@ -78,7 +78,7 @@ export class BnaInquiryStore{
   return {items:rows.slice(0,100).map(row=>this.decodeFollowup(row)),hasMore:rows.length>100};
  }
  async submit(input:{operationId:string;fields:BnaInquiryFields|BnaCoopFields;attribution?:BnaAttribution},program:typeof BNA_INQUIRY_PROGRAM|typeof BNA_COOP_PROGRAM=BNA_INQUIRY_PROGRAM){
-  const fields=program===BNA_COOP_PROGRAM?bnaCoopFieldsSchema.parse(input.fields):bnaInquiryFieldsSchema.parse(input.fields),attribution=input.attribution?bnaAttributionSchema.parse(input.attribution):null;
+  const fields=program===BNA_COOP_PROGRAM?bnaCoopReadableFieldsSchema.parse(input.fields):bnaInquiryFieldsSchema.parse(input.fields),attribution=input.attribution?bnaAttributionSchema.parse(input.attribution):null;
   const payload=payloadSchema.parse({program,fields,attribution});
   const requestDigest=this.requestDigest(payload),contactDigest=this.contactDigest(fields),now=this.clock.now();
   return this.db.transaction(async tx=>{
@@ -87,6 +87,7 @@ export class BnaInquiryStore{
     FROM ls_service_interest.bna_inquiry_operations WHERE workspace_id=$1 AND operation_id=$2`,[this.workspaceId,input.operationId]);
    if(prior.length){if(prior.length!==1||prior[0]!.requestDigest!==requestDigest)throw new AppError("CONFLICT");
     return {saved:true as const,reference:prior[0]!.inquiryId,replayed:true};}
+   if(program===BNA_COOP_PROGRAM&&fields.permission.version!==BNA_COOP_NOTICE.version)throw new AppError("INVALID_REQUEST");
    const counts=await tx.query<{contactCount:number;workspaceCount:number}>(`SELECT
     (SELECT count(*)::int FROM ls_service_interest.bna_inquiries WHERE workspace_id=$1 AND contact_digest=$2 AND received_at>$3::timestamptz-interval '24 hours') AS "contactCount",
     (SELECT count(*)::int FROM ls_service_interest.bna_inquiries WHERE workspace_id=$1 AND received_at>$3::timestamptz-interval '24 hours') AS "workspaceCount"`,
