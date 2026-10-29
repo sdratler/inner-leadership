@@ -35,3 +35,10 @@ it("forwards one pagination cursor and rejects mixed or duplicate query paramete
  expect((await owner305ConversationHttp(request("?before=opaque-cursor"),async()=>deps)).status).toBe(200);expect(list).toHaveBeenCalledWith(actor,"opaque-cursor");
  for(const query of ["?before=one&before=two","?before=one&id=two","?before=","?other=one"])expect((await owner305ConversationHttp(request(query),async()=>deps)).status).toBe(400);
 });
+it("forwards a bounded history page only with its conversation reference",async()=>{
+ const id=randomUUID(),read=vi.fn(async()=>({history:[],hasMoreHistory:false}));
+ const deps={enabled:true,origin,actor:async()=>actor,csrf:()=>csrf,limits:{consume:async()=>({count:1,retryAfterMs:0})},rateLimitKey:"synthetic-305-rate-key-32-characters",store:{list:vi.fn(),read,save:vi.fn()} as unknown as Pick<Owner305ConversationStore,"save"|"list"|"read">};
+ const request=(query:string)=>new Request(origin+path+query,{headers:{host:"life-skills.example.invalid","x-forwarded-proto":"https","x-forwarded-host":"life-skills.example.invalid",cookie:`__Host-ls-session=${token}`}});
+ expect((await owner305ConversationHttp(request(`?id=${id}&historyBefore=42`),async()=>deps)).status).toBe(200);expect(read).toHaveBeenCalledWith(actor,id,42);
+ for(const query of [`?id=${id}&historyBefore=bad`,`?id=${id}&historyBefore=1&historyBefore=2`,`?historyBefore=2`,`?id=${id}&before=cursor`])expect((await owner305ConversationHttp(request(query),async()=>deps)).status).toBe(400);
+});

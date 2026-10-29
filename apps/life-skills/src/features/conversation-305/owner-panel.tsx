@@ -13,14 +13,14 @@ type Channel="phone"|"whatsapp"|"sms"|"other";
 type Draft={channel:Channel;contactHint:string;classification:Classification;note:string;nextAction:string;dueDate:string;waitingCondition:string};
 const empty:Draft={channel:"phone",contactHint:"",classification:"unclassified",note:"",nextAction:"",dueDate:"",waitingCondition:""};
 class RequestError extends Error{constructor(readonly status:number){super("OWNER_305_REQUEST_FAILED");}}
-async function get<T>(id?:string,before?:string):Promise<T>{const query=id?new URLSearchParams({id}):before?new URLSearchParams({before}):null;const response=await fetch("/api/private/owner-305-conversations"+(query?"?"+query:""),
+async function get<T>(id?:string,before?:string,historyBefore?:number):Promise<T>{const query=id?new URLSearchParams({id,...(historyBefore===undefined?{}:{historyBefore:String(historyBefore)})}):before?new URLSearchParams({before}):null;const response=await fetch("/api/private/owner-305-conversations"+(query?"?"+query:""),
  {credentials:"same-origin",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer"});
  const body=await response.json().catch(()=>null);if(!response.ok||!body?.ok)throw new RequestError(response.status);return body.data as T;}
 /** Owner-entered records only; no provider history scan or Person association. */
 export function Owner305ConversationPanel({locale,initialId,onOperationPending,linksEnabled=false}:{locale:Locale;initialId?:string|undefined;onOperationPending?:(pending:boolean)=>void;linksEnabled?:boolean}){
  const t=(en:string,he:string)=>locale==="he"?he:en;
  const [page,setPage]=useState<Page|null>(null),[detail,setDetail]=useState<Detail|null>(null),[draft,setDraft]=useState<Draft>(empty);
- const [pending,setPending]=useState<ConversationCommand|null>(null),[busy,setBusy]=useState(false),[opening,setOpening]=useState(false),[loadingMore,setLoadingMore]=useState(false),[error,setError]=useState<number|null>(null),[message,setMessage]=useState("");
+ const [pending,setPending]=useState<ConversationCommand|null>(null),[busy,setBusy]=useState(false),[opening,setOpening]=useState(false),[loadingMore,setLoadingMore]=useState(false),[loadingHistory,setLoadingHistory]=useState(false),[error,setError]=useState<number|null>(null),[message,setMessage]=useState("");
  const [linkPending,setLinkPending]=useState(false);
  const active=useRef(true),serial=useRef(0);
  const clearPrivate=useCallback(()=>{setPage(null);setDetail(null);setDraft(empty);setPending(null);setOpening(false);},[]);
@@ -33,6 +33,11 @@ export function Owner305ConversationPanel({locale,initialId,onOperationPending,l
   finally{if(active.current&&serial.current===seq)setOpening(false);}},[clearPrivate]);
  useEffect(()=>{let cancelled=false;const sequence=serial;active.current=true;const timer=window.setTimeout(()=>{void load().then(()=>{if(!cancelled&&active.current&&initialId)void open(initialId);});},0);return()=>{cancelled=true;window.clearTimeout(timer);active.current=false;sequence.current++;};},[load,open,initialId]);
  useEffect(()=>{onOperationPending?.(pending!==null||linkPending);},[pending,linkPending,onOperationPending]);
+ async function loadHistory(){if(!detail||busy||pending||linkPending||loadingHistory||!detail.hasMoreHistory||!detail.history.length)return;
+  const id=detail.id,before=detail.history[detail.history.length-1]!.version,seq=++serial.current;setLoadingHistory(true);
+  try{const page=await get<Detail>(id,undefined,before);if(active.current&&serial.current===seq){setDetail(current=>current?.id===id?{...current,history:[...current.history,...page.history],hasMoreHistory:page.hasMoreHistory}:current);setError(null);}}
+  catch(cause){if(active.current&&serial.current===seq){const code=cause instanceof RequestError?cause.status:503;setError(code);if([401,403,404].includes(code))clearPrivate();}}
+  finally{if(active.current)setLoadingHistory(false);}}
  async function save(command:ConversationCommand){if(busy)return;const previouslyUnknown=pending!==null;setBusy(true);setPending(command);setError(null);setMessage("");
   try{const session=await sessionInfo();if(session.role!=="practitioner")throw new RequestError(403);
    const response=await fetch("/api/private/owner-305-conversations",{method:"POST",credentials:"same-origin",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer",
@@ -41,7 +46,7 @@ export function Owner305ConversationPanel({locale,initialId,onOperationPending,l
    setPending(null);await load();if(await open(body.data.id as string))setMessage(t("Conversation saved and read back.","השיחה נשמרה ונקראה מחדש."));
   }catch(cause){const code=cause instanceof RequestError?cause.status:503;setError(code);if(!previouslyUnknown&&[400,401,403,404,409].includes(code))setPending(null);
    if([401,403,404].includes(code))clearPrivate();}finally{setBusy(false);}}
- function submit(event:FormEvent<HTMLFormElement>){event.preventDefault();if(pending||opening||linkPending)return;
+ function submit(event:FormEvent<HTMLFormElement>){event.preventDefault();if(pending||opening||linkPending||loadingHistory)return;
   const followup={classification:draft.classification,note:draft.note,nextAction:draft.nextAction.trim()||null,
    dueDate:draft.dueDate||null,waitingCondition:draft.waitingCondition.trim()||null};
   const raw=detail?{kind:"revise",operationId:crypto.randomUUID(),conversationId:detail.id,expectedVersion:detail.followup.version,followup}:
@@ -76,7 +81,7 @@ export function Owner305ConversationPanel({locale,initialId,onOperationPending,l
    <p>{t("Current classification","סיווג נוכחי")}: {t(...labels[detail.followup.classification])}</p>
    <ol>{detail.history.map(item=><li key={item.operationId}><time dateTime={item.recordedAt}>{item.recordedAt}</time> · {t(...labels[item.classification])} · {item.note}
     {item.nextAction&&<> · {item.nextAction} ({item.dueDate})</>}{item.waitingCondition&&<> · {item.waitingCondition}</>}</li>)}</ol>
-   {detail.hasMoreHistory&&<p>{t("Showing the latest 100 revisions.","מוצגים 100 העדכונים האחרונים.")}</p>}
+   {detail.hasMoreHistory&&<button type="button" disabled={loadingHistory||busy||!!pending||linkPending} onClick={()=>void loadHistory()}>{t("Load older history","טעינת היסטוריה קודמת")}</button>}
    {linksEnabled&&<InquiryLinkPanel key={detail.id} locale={locale} conversationId={detail.id} onPending={setLinkPending} disabled={busy||!!pending}/>}</div>}
   {!opening&&<form onSubmit={submit} className="lsw-stack"><h3>{detail?t("Update classification and follow-up","עדכון סיווג ומעקב"):t("Record a conversation","תיעוד שיחה")}</h3>
    {!detail&&<><label>{t("Channel","ערוץ")}<select value={draft.channel} onChange={event=>setDraft({...draft,channel:event.target.value as Channel})}>
@@ -89,7 +94,7 @@ export function Owner305ConversationPanel({locale,initialId,onOperationPending,l
    <label>{t("Next action","פעולה הבאה")}<input maxLength={500} value={draft.nextAction} onChange={event=>setDraft({...draft,nextAction:event.target.value})}/></label>
    <label>{t("Action date","תאריך פעולה")}<input type="date" value={draft.dueDate} onChange={event=>setDraft({...draft,dueDate:event.target.value})}/></label>
    <label>{t("Or waiting condition","או תנאי המתנה")}<input maxLength={500} value={draft.waitingCondition} onChange={event=>setDraft({...draft,waitingCondition:event.target.value})}/></label>
-   <button type="submit" disabled={busy||!!pending||linkPending}>{detail?t("Save update","שמירת עדכון"):t("Save conversation","שמירת שיחה")}</button>
+   <button type="submit" disabled={busy||!!pending||linkPending||loadingHistory}>{detail?t("Save update","שמירת עדכון"):t("Save conversation","שמירת שיחה")}</button>
   </form>}
  </section>;
 }

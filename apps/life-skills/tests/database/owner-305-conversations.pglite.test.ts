@@ -158,3 +158,12 @@ it("rejects disabled append-only guards and unexpected grants in the link schema
  try{await expect(stage()).rejects.toThrow("OWNER_305_LINK_SCHEMA_CATALOG_CONFLICT");}finally{await db.exec("REVOKE SELECT ON ls_service_interest.owner_305_inquiry_link_events FROM PUBLIC");}
  expect(await stage()).toBe(1);
 });
+
+it("pages older 305 revisions while keeping the current conversation editable",async()=>{
+ const saved=await store.save(ownerActor,{kind:"create",operationId:randomUUID(),channel:"phone",contactHint:"Synthetic history caller",followup:{classification:"bna",note:"Initial note",nextAction:null,dueDate:null,waitingCondition:"Await reply"}});
+ for(let version=1;version<102;version++)await store.save(ownerActor,{kind:"revise",operationId:randomUUID(),conversationId:saved.id,expectedVersion:version,followup:{classification:"bna",note:`Revision ${version+1}`,nextAction:null,dueDate:null,waitingCondition:"Await reply"}});
+ const first=await store.read(ownerActor,saved.id);expect(first.followup.version).toBe(102);expect(first.history).toHaveLength(100);expect(first.hasMoreHistory).toBe(true);
+ const older=await store.read(ownerActor,saved.id,first.history[99]!.version);expect(older.followup.version).toBe(102);expect(older.history.map(item=>item.version)).toEqual([2,1]);expect(older.hasMoreHistory).toBe(false);
+ await expect(store.read(otherActor,saved.id,3)).rejects.toMatchObject({code:"NOT_FOUND"});await expect(store.read(ownerActor,saved.id,0)).rejects.toMatchObject({code:"INVALID_REQUEST"});
+ expect(await store.save(ownerActor,{kind:"revise",operationId:randomUUID(),conversationId:saved.id,expectedVersion:102,followup:{classification:"bna",note:"Revision 103",nextAction:null,dueDate:null,waitingCondition:"Await reply"}})).toMatchObject({saved:true});
+},30000);

@@ -39,10 +39,10 @@ export class Owner305ConversationStore{
    [this.workspaceId,id,actor.id,CONVERSATION_305_LINE]);
   if(rows.length!==1)throw new AppError("NOT_FOUND");return this.metadata(rows[0]!);
  }
- private async history(tx:SqlSession,id:string){const rows=await tx.query<RevisionRow>(`SELECT operation_id AS "operationId",conversation_id AS "conversationId",
+ private async history(tx:SqlSession,id:string,before?:number){const rows=await tx.query<RevisionRow>(`SELECT operation_id AS "operationId",conversation_id AS "conversationId",
   owner_account_id AS "ownerAccountId",version,request_digest AS "requestDigest",payload_ciphertext AS "payloadCiphertext",recorded_at AS "recordedAt"
-  FROM ls_service_interest.owner_305_conversation_revisions WHERE workspace_id=$1 AND conversation_id=$2 ORDER BY version DESC LIMIT 101`,[this.workspaceId,id]);
-  if(!rows.length)throw new AppError("UNAVAILABLE");return {items:rows.slice(0,100).map(row=>this.revision(row)),hasMore:rows.length>100};}
+  FROM ls_service_interest.owner_305_conversation_revisions WHERE workspace_id=$1 AND conversation_id=$2 AND ($3::integer IS NULL OR version<$3) ORDER BY version DESC LIMIT 101`,[this.workspaceId,id,before??null]);
+  if(!rows.length&&before===undefined)throw new AppError("UNAVAILABLE");return {items:rows.slice(0,100).map(row=>this.revision(row)),hasMore:rows.length>100};}
  private cursorAad(actor:Actor){return `ls_service_interest/owner-305-cursor/v1/${this.workspaceId}/${actor.id}`;}
  private cursorId(actor:Actor,cursor:string){try{if(!/^[A-Za-z0-9_-]{64,2048}$/.test(cursor))throw Error();const bytes=Buffer.from(cursor,"base64url");if(bytes.toString("base64url")!==cursor)throw Error();return z.strictObject({id:z.string().uuid()}).parse(JSON.parse(unseal(bytes.toString("utf8"),this.cursorAad(actor),this.ring))).id;}catch{throw new AppError("INVALID_REQUEST");}}
  private encodeCursor(actor:Actor,id:string){return Buffer.from(seal(JSON.stringify({id}),this.cursorAad(actor),this.ring)).toString("base64url");}
@@ -60,10 +60,10 @@ export class Owner305ConversationStore{
   const items=rows.slice(0,100).map(row=>({...this.metadata(row),followup:this.revision(row)}));
   return {lineNumber:CONVERSATION_305_LINE,items,hasMore:rows.length>100,nextCursor:rows.length>100?this.encodeCursor(actor,items.at(-1)!.id):null};
  });}
- async read(actor:Actor,id:string){if(!z.string().uuid().safeParse(id).success)throw new AppError("INVALID_REQUEST");
+ async read(actor:Actor,id:string,before?:number){if(!z.string().uuid().safeParse(id).success||before!==undefined&&(!Number.isSafeInteger(before)||before<1||before>2147483647))throw new AppError("INVALID_REQUEST");
   return this.db.transaction(async tx=>{await tx.query("SET TRANSACTION READ ONLY");await this.owner(tx,actor);
-   const record=await this.record(tx,actor,id),history=await this.history(tx,id);
-   return {...record,followup:history.items[0]!,history:history.items,hasMoreHistory:history.hasMore};});}
+   const record=await this.record(tx,actor,id),history=await this.history(tx,id,before),latest=before===undefined?history:await this.history(tx,id);
+   return {...record,followup:latest.items[0]!,history:history.items,hasMoreHistory:history.hasMore};});}
  async save(actor:Actor,input:ConversationCommand){const command=conversationCommandSchema.parse(input),digest=this.digest(actor,command),now=this.clock.now();
   return this.db.transaction(async tx=>{await lockWorkspace(tx,this.workspaceId);await this.owner(tx,actor);
    if(command.kind==="create"){
