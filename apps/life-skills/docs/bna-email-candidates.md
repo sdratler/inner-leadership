@@ -31,9 +31,9 @@ Those receipts do not activate optional educational sequences. Never reapply
 0148 or reuse a proof bound to a previous deployment.
 
 The optional calendar candidate uses the same canonical adult recipient key,
-native preference facts and owner follow-up status. Its additive schema remains
-`migrations/proposals/0149_ls_bna_optional_calendar.sql`, outside the active
-68-entry manifest. It has NOT been applied in production. The separately gated
+native preference facts and owner follow-up status. Its additive candidate schema
+`migrations/0149_ls_bna_optional_calendar.sql` follows the exact unchanged68-entry
+prefix in the69-entry candidate manifest. It has NOT been applied in production. The separately gated
 People preview and private API remain off until exact schema release and browser
 acceptance. A preview is read-only; a prepared payload encrypts the frozen copy,
 personal preference link and approved postal footer. Saved previews protect the
@@ -47,9 +47,17 @@ program's language change does not invalidate an unchanged preparation. The
 transactional service acknowledgment tables and Fishing lifecycle stay separate.
 No optional production sender admission, worker or provider adapter is mounted;
 the internal transport interface is exercised only with synthetic tests. Sender
-footer/copy activation, exact-target schema guard/backup/restore, monitored reply
+footer/copy activation, fresh exact-target backup/restore and schema release, monitored reply
 ingestion and verified donor-event integration remain required. Donor messages
 cannot be prepared from this inquiry-only calendar or a browser's claim of a gift.
+
+`scripts/release-bna-optional-calendar-schema.ts` binds the exact existing
+production service/database, verified TLS, deployment/source/manifest/ledger,
+private archive/isolated restore, exact0149 SQL and native catalog. Its guard
+freezes the complete68-entry predecessor and checks both tables, function and
+trigger definitions/security, privileges and partial/orphan states. Apply requires
+the calendar gate off and admits only0149. It preserves the live preference gate,
+service mail,305 and Fishing receivers; verification never repeats an apply.
 
 `scripts/release-bna-preferences-schema.ts` admits only the existing exact
 Railway service/database with verified TLS and a deployment/commit/source/

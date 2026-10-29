@@ -1,11 +1,11 @@
-import {randomUUID,createHash} from 'node:crypto';
-import {readFile} from 'node:fs/promises';
+import {randomUUID} from 'node:crypto';
 import {expect,it,vi} from 'vitest';
 import pg from 'pg';
 vi.mock('server-only',()=>({}));
 import {historicalPracticeDatabase} from './home-practice/legacy-practice-fixture.ts';
 import {poolStore} from './calendar/fixture.ts';
 import {migrate} from '../../src/db/migration-runner.ts';
+import {bnaOptionalCalendarCatalogFingerprint,BNA_OPTIONAL_CALENDAR_CATALOG_SHA256,readBnaOptionalCalendarSchemaStage,bnaOptionalCalendarSchemaPlan} from '../../src/db/bna-optional-calendar-schema-release.ts';
 import {BnaInquiryStore} from '../../src/features/bna-inquiry/store.ts';
 import {BnaPreferenceStore} from '../../src/features/bna-communications/preferences-store.ts';
 import {BnaOptionalCalendarStore} from '../../src/features/bna-communications/optional-calendar-store.ts';
@@ -19,13 +19,32 @@ it('native candidate migration is atomic/additive and concurrent programs share 
  const db=await historicalPracticeDatabase('0118_ls_contact_delta_history.sql'),client=await db.pool.connect(),pool=new pg.Pool({connectionString:db.url,ssl:false,max:6});
  const query=(sql:string,values?:readonly unknown[])=>client.query(sql,values?[...values]:undefined);
  try{
-  await migrate({query},db.inventory,false);const before=(await query('SELECT name,checksum FROM ls_control.migrations ORDER BY name')).rows;
-  const bytes=await readFile('migrations/proposals/0149_ls_bna_optional_calendar.sql'),proposal={name:'0149_ls_bna_optional_calendar.sql',checksum:createHash('sha256').update(bytes).digest('hex'),sql:bytes.toString('utf8')};
-  await expect(migrate({query},[...db.inventory,{...proposal,sql:proposal.sql+'\nSELECT 1/0;'}],false)).rejects.toThrow('MIGRATION_FAILED');
+  const index=db.inventory.findIndex(file=>file.name==='0149_ls_bna_optional_calendar.sql');expect(index).toBe(68);
+  const baseline=db.inventory.slice(0,index),proposal=db.inventory[index]!,target=db.inventory.slice(0,index+1);
+  await migrate({query},baseline,false);const before=(await query('SELECT name,checksum FROM ls_control.migrations ORDER BY name')).rows;
+  expect(await readBnaOptionalCalendarSchemaStage({query})).toBe(0);
+  expect(bnaOptionalCalendarSchemaPlan(db.inventory,before,0).pending.map(p=>p.name)).toEqual([proposal.name]);
+  await query('BEGIN');try{
+   await query('CREATE FUNCTION ls_service_interest.check_bna_optional_event() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$');
+   await expect(readBnaOptionalCalendarSchemaStage({query})).rejects.toThrow('BNA_OPTIONAL_CALENDAR_SCHEMA_CATALOG_CONFLICT');
+  }finally{await query('ROLLBACK');}
+  await expect(migrate({query},[...baseline,{...proposal,sql:proposal.sql+'\nSELECT 1/0;'}],false)).rejects.toThrow('MIGRATION_FAILED');
   expect((await query("SELECT to_regclass('ls_service_interest.bna_optional_messages') AS relation")).rows[0].relation).toBeNull();
   expect((await query('SELECT name,checksum FROM ls_control.migrations ORDER BY name')).rows).toEqual(before);
-  expect(await migrate({query},[...db.inventory,proposal],false)).toEqual({applied:1,pending:0});
-  expect(await migrate({query},[...db.inventory,proposal],false)).toEqual({applied:0,pending:0});
+  expect(await migrate({query},target,false)).toEqual({applied:1,pending:0});
+  expect(await migrate({query},target,false)).toEqual({applied:0,pending:0});
+  const nativeCatalog=await bnaOptionalCalendarCatalogFingerprint({query});
+  expect(nativeCatalog).toBe(BNA_OPTIONAL_CALENDAR_CATALOG_SHA256);
+  expect(await readBnaOptionalCalendarSchemaStage({query})).toBe(1);
+  for(const change of [
+   'ALTER TABLE ls_service_interest.bna_optional_messages DISABLE TRIGGER bna_optional_messages_immutable',
+   'ALTER TABLE ls_service_interest.bna_optional_events ALTER COLUMN recorded_at DROP NOT NULL',
+   'GRANT SELECT ON ls_service_interest.bna_optional_events TO PUBLIC',
+   'GRANT EXECUTE ON FUNCTION ls_service_interest.check_bna_optional_event() TO PUBLIC',
+   'ALTER FUNCTION ls_service_interest.check_bna_optional_initial_history() SECURITY DEFINER',
+   'ALTER TABLE ls_service_interest.bna_optional_messages ENABLE ROW LEVEL SECURITY',
+   'DROP TABLE ls_service_interest.bna_optional_events CASCADE',
+  ]){await query('BEGIN');try{await query(change);await expect(readBnaOptionalCalendarSchemaStage({query})).rejects.toThrow('BNA_OPTIONAL_CALENDAR_SCHEMA_CATALOG_CONFLICT');}finally{await query('ROLLBACK');}}
   const workspace=asId(randomUUID(),'workspace'),owner=randomUUID(),session='a'.repeat(64),ring={activeKeyId:'synthetic',keys:{synthetic:Buffer.alloc(32,29)}},key='synthetic-native-optional-calendar-private-key';
   let now=new Date('2026-10-30T00:00:00Z');const clock={now:()=>now};
   await query('INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,$2)',[workspace,now]);

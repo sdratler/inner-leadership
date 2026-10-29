@@ -1,4 +1,4 @@
--- Candidate only: not admitted to the active migration manifest/runtime yet.
+-- Additive optional-mail calendar; apply only through the exact-target release guard.
 -- One canonical adult-email calendar. No contact, task, backfill or send.
 CREATE TABLE ls_service_interest.bna_optional_messages (
  workspace_id uuid NOT NULL,id uuid NOT NULL,operation_id uuid NOT NULL,

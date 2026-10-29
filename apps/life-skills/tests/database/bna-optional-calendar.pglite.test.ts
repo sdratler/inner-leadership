@@ -38,7 +38,7 @@ async function prepare(id:string,templateId:'EMAIL-B1'|'EMAIL-B2'|'EMAIL-S1'='EM
 const accepted=(onSend?:(m:Parameters<BnaOptionalTransport['send']>[0])=>void):BnaOptionalTransport=>({authorize:()=>true,send:async m=>{onSend?.(m);return {state:'accepted',providerId:'synthetic-'+randomUUID()};}});
 beforeAll(async()=>{
  await db.exec('CREATE SCHEMA ls_control');
- for(const file of ['0001_ls_foundation.sql','0010_ls_identity_cases_20260906.sql','0124_ls_group_interest.sql','0131_ls_public_group_applications.sql','0139_ls_bna_inquiries.sql','0142_ls_bna_coop_interest.sql','0144_ls_bna_support_interest.sql','0146_ls_bna_communication_delivery.sql','0148_ls_bna_email_preferences.sql','proposals/0149_ls_bna_optional_calendar.sql'])await db.exec(await readFile('migrations/'+file,'utf8'));
+ for(const file of ['0001_ls_foundation.sql','0010_ls_identity_cases_20260906.sql','0124_ls_group_interest.sql','0131_ls_public_group_applications.sql','0139_ls_bna_inquiries.sql','0142_ls_bna_coop_interest.sql','0144_ls_bna_support_interest.sql','0146_ls_bna_communication_delivery.sql','0148_ls_bna_email_preferences.sql','0149_ls_bna_optional_calendar.sql'])await db.exec(await readFile('migrations/'+file,'utf8'));
  await db.query('INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,$2)',[workspace,base]);
  for(const id of [owner,other]){
   const digest=id.replaceAll('-','').padEnd(64,'0');
