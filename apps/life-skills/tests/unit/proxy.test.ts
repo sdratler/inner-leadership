@@ -40,6 +40,17 @@ describe("BNA inquiry release perimeter",()=>{
     expect(groupApplicationReleasePath("/api/public/bna-inquiries/",env)).toBe(false);
     expect(groupApplicationReleasePath("/api/public/bna-inquiries",{...env,LS_BNA_INQUIRY_ENABLED:"false"})).toBe(false);
     expect(groupApplicationReleasePath("/api/public/bna-inquiries",{...env,LS_GROUP_APPLICATION_REAL_DATA_RELEASE:"false"})).toBe(false);
+    const support={...env,LS_BNA_SUPPORT_INQUIRY_ENABLED:"true"};
+    expect(groupApplicationReleasePath("/api/public/bna-support-inquiries",support)).toBe(true);
+    for(const path of ["/api/public/bna-support-inquiries/","/api/public/bna-support-inquiries/other","/api/public/bna-support-inquiries-extra"])
+      expect(groupApplicationReleasePath(path,support)).toBe(false);
+    for(const flag of ["LS_BNA_SUPPORT_INQUIRY_ENABLED","LS_BNA_INQUIRY_ENABLED","LS_GROUP_APPLICATION_REAL_DATA_RELEASE","LS_IDENTITY_ENABLED"])
+      expect(groupApplicationReleasePath("/api/public/bna-support-inquiries",{...support,[flag]:"false"})).toBe(false);
+    for(const [name,value] of Object.entries(support))vi.stubEnv(name,value);
+    const publicSupport=proxy(new NextRequest(origin+"/api/public/bna-support-inquiries"));
+    expect(publicSupport.status).toBe(200);expect(publicSupport.headers.get("x-middleware-next")).toBe("1");
+    vi.stubEnv("LS_BNA_SUPPORT_INQUIRY_ENABLED","false");
+    expect(proxy(new NextRequest(origin+"/api/public/bna-support-inquiries")).status).toBe(503);
     for(const [name,value] of Object.entries(env))vi.stubEnv(name,value);
     expect(proxy(new NextRequest(origin+"/api/private/bna-inquiries")).status).toBe(200);
     expect(proxy(new NextRequest("http://life-skills.bneineviimacademy.org/api/private/bna-inquiries")).status).toBe(503);
