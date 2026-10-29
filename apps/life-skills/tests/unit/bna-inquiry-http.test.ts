@@ -8,6 +8,7 @@ import {BNA_COOP_NOTICE} from "../../src/features/bna-inquiry/coop-contract.ts";
 import {BNA_INQUIRY_NOTICE} from "../../src/features/bna-inquiry/contract.ts";
 import {AppError} from "../../src/lib/errors.ts";
 import {freezeBnaAcknowledgment} from "../../src/features/bna-communications/delivery-policy.ts";
+import type {BnaAcknowledgmentStore} from "../../src/features/bna-communications/acknowledgment-store.ts";
 
 const origin="https://life-skills.example.invalid",path="/api/public/bna-inquiries";
 it("offers a BNA-only challenge, requires same-origin consent, and returns only a generic save receipt",async()=>{
@@ -72,4 +73,58 @@ it("reads the owned inquiry before exposing its frozen acknowledgment and never 
  readForInquiry.mockClear();read.mockRejectedValueOnce(new AppError("NOT_FOUND"));
  expect((await privateBnaInquiryHttp(req(),async()=>deps)).status).toBe(404);expect(readForInquiry).not.toHaveBeenCalled();
  expect((await privateBnaInquiryHttp(req(false),async()=>deps)).status).toBe(401);expect(readForInquiry).not.toHaveBeenCalled();
+});
+
+function acknowledgmentFixture(){
+ const id=randomUUID(),messageId=randomUUID(),token='a'.repeat(43),csrf='b'.repeat(43),actor={id:randomUUID(),workspaceId:randomUUID(),role:'practitioner'} as Actor;
+ const fields={name:'Synthetic owner',contactChannel:'email' as const,contact:'synthetic@example.invalid',language:'en' as const,siteLanguage:'en' as const,emailUpdates:false,townOrZip:'Synthetic',childAges:[10],permission:{confirmed:true as const,version:BNA_COOP_NOTICE.version,language:'en' as const}};
+ type Delivery=Extract<Awaited<ReturnType<BnaAcknowledgmentStore['readForInquiry']>>,{payload:unknown}>;
+ let delivery:Delivery={state:'queued',messageId,version:1,lastCode:'INQUIRY_SAVED',providerId:null,completedAt:null,payload:freezeBnaAcknowledgment('bna_learning_coop',id,fields)!,history:[]};
+ const read=vi.fn(async()=>({id,program:'bna_learning_coop',fields}));
+ const communications={readForInquiry:vi.fn(async():Promise<Delivery>=>delivery),cancel:vi.fn(async()=>({state:'canceled' as const,replayed:false})),retryNotAttempted:vi.fn(async()=>({state:'queued' as const,replayed:false}))};
+ const followup=vi.fn(),deps={origin,actor:async()=>actor,csrf:()=>csrf,limits:{consume:async()=>({count:1,retryAfterMs:0})},rateLimitKey:'synthetic-acknowledgment-rate-key-32-characters',store:{read,list:vi.fn(),findOperation:vi.fn(),followup} as unknown as Pick<BnaInquiryStore,'read'|'list'|'findOperation'|'followup'>,communications};
+ const command={action:'cancel_acknowledgment',inquiryId:id,messageId,expectedVersion:1,operationId:randomUUID()};
+ const request=(input:unknown,headers:Record<string,string>={},authenticated=true)=>new Request(origin+'/api/private/bna-inquiries',{method:'POST',headers:{host:'life-skills.example.invalid','x-forwarded-proto':'https',origin,'content-type':'application/json','x-csrf-token':csrf,...(authenticated?{cookie:`__Host-ls-session=${token}`} : {}),...headers},body:JSON.stringify(input)});
+ return {id,actor,read,communications,followup,deps,command,request,setDelivery:(next:Delivery)=>{delivery=next;},delivery};
+}
+
+it('requires an authenticated same-origin CSRF-protected owner action before changing acknowledgment state',async()=>{
+ const f=acknowledgmentFixture();
+ expect((await privateBnaInquiryHttp(f.request(f.command,{},false),async()=>f.deps)).status).toBe(401);
+ expect((await privateBnaInquiryHttp(f.request(f.command,{'x-csrf-token':'invalid'}),async()=>f.deps)).status).toBe(403);
+ expect((await privateBnaInquiryHttp(f.request(f.command,{origin:'https://other.invalid'}),async()=>f.deps)).status).toBe(403);
+ expect(f.read).not.toHaveBeenCalled();expect(f.communications.cancel).not.toHaveBeenCalled();expect(f.communications.retryNotAttempted).not.toHaveBeenCalled();expect(f.followup).not.toHaveBeenCalled();
+});
+
+it('binds the action to the owned inquiry and its exact frozen message',async()=>{
+ const f=acknowledgmentFixture();
+ expect((await privateBnaInquiryHttp(f.request({...f.command,messageId:randomUUID()}),async()=>f.deps)).status).toBe(404);
+ f.read.mockRejectedValueOnce(new AppError('NOT_FOUND'));
+ expect((await privateBnaInquiryHttp(f.request(f.command),async()=>f.deps)).status).toBe(404);
+ expect(f.communications.cancel).not.toHaveBeenCalled();expect(f.followup).not.toHaveBeenCalled();
+});
+
+it('rejects recipient, copy and owner overrides on a delivery action',async()=>{
+ const f=acknowledgmentFixture();
+ for(const extra of [{recipient:'other@example.invalid'},{subject:'Other copy'},{ownerAccountId:randomUUID()},{program:'bna_support_interest'}]){
+  expect((await privateBnaInquiryHttp(f.request({...f.command,...extra}),async()=>f.deps)).status).toBe(400);
+ }
+ expect(f.communications.cancel).not.toHaveBeenCalled();expect(f.communications.retryNotAttempted).not.toHaveBeenCalled();expect(f.followup).not.toHaveBeenCalled();
+});
+
+it('returns current provider facts after an idempotent cancellation replay rather than claiming recalled mail',async()=>{
+ const f=acknowledgmentFixture();
+ f.communications.cancel.mockImplementationOnce(async()=>{f.setDelivery({...f.delivery,state:'sent',version:4,lastCode:'PROVIDER_ACCEPTED_AFTER_CANCEL',providerId:'synthetic-provider',completedAt:new Date().toISOString()});return {state:'canceled',replayed:true};});
+ const response=await privateBnaInquiryHttp(f.request(f.command),async()=>f.deps);
+ expect(response.status).toBe(200);expect((await response.json()).data).toMatchObject({replayed:true,acknowledgment:{deliveryState:'sent',deliveryVersion:4,deliveryCode:'PROVIDER_ACCEPTED_AFTER_CANCEL'}});
+ expect(f.communications.cancel).toHaveBeenCalledWith(f.actor,{messageId:f.command.messageId,operationId:f.command.operationId,expectedVersion:1});
+ expect(f.communications.readForInquiry).toHaveBeenCalledTimes(2);expect(f.followup).not.toHaveBeenCalled();
+});
+
+it('preserves retry operation/version and propagates a native unknown-or-stale rejection without another effect',async()=>{
+ const f=acknowledgmentFixture(),command={...f.command,action:'retry_acknowledgment'};
+ f.communications.retryNotAttempted.mockRejectedValueOnce(new AppError('CONFLICT'));
+ expect((await privateBnaInquiryHttp(f.request(command),async()=>f.deps)).status).toBe(409);
+ expect(f.communications.retryNotAttempted).toHaveBeenCalledWith(f.actor,{messageId:command.messageId,operationId:command.operationId,expectedVersion:1});
+ expect(f.communications.cancel).not.toHaveBeenCalled();expect(f.followup).not.toHaveBeenCalled();
 });

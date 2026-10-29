@@ -17,6 +17,7 @@ import {BNA_SUPPORT_PROGRAM,BNA_SUPPORT_NOTICE,BNA_SUPPORT_UPDATES_NOTICE,bnaSup
 import type {BnaInquiryStore} from "./store.ts";
 import {bnaAcknowledgmentPreview} from "../bna-communications/acknowledgment-preview.ts";
 import type {BnaAcknowledgmentStore} from "../bna-communications/acknowledgment-store.ts";
+import {bnaAcknowledgmentCommandSchema} from "../bna-communications/acknowledgment-command.ts";
 
 const coopSubmission=z.object({challenge:z.string().min(80).max(1024),website:z.literal("").optional(),operationId:z.string().uuid(),fields:bnaCoopReadableFieldsSchema,attribution:bnaAttributionSchema.optional()}).strict();
 const supportSubmission=z.object({challenge:z.string().min(80).max(1024),website:z.literal("").optional(),operationId:z.string().uuid(),fields:bnaSupportFieldsSchema,attribution:bnaAttributionSchema.optional()}).strict();
@@ -49,7 +50,7 @@ export async function publicBnaInquiryHttp(request:Request,load:()=>Promise<Publ
 
 type PrivateDeps={origin:string;actor:(token:string)=>Promise<Actor>;csrf:(token:string)=>string;
  limits:RateLimitStore;rateLimitKey:string;store:Pick<BnaInquiryStore,"list"|"read"|"findOperation"|"followup">;
- communications?:Pick<BnaAcknowledgmentStore,"readForInquiry">};
+ communications?:Pick<BnaAcknowledgmentStore,"readForInquiry">&Partial<Pick<BnaAcknowledgmentStore,"cancel"|"retryNotAttempted">>};
 export async function privateBnaInquiryHttp(request:Request,load:()=>Promise<PrivateDeps>):Promise<Response>{
  const requestId=randomUUID();let response:Response;
  try{
@@ -72,8 +73,25 @@ export async function privateBnaInquiryHttp(request:Request,load:()=>Promise<Pri
    if(url.search)throw new AppError("INVALID_REQUEST");
    verifyMutationOrigin(canonical,d.origin);verifyCsrfToken(request.headers.get("x-csrf-token"),d.csrf(token));
    await enforceRateLimit(d.limits,opaqueRateLimitKey(`bna-followup:${actor.workspaceId}:${actor.id}`,d.rateLimitKey),30,60_000);
-   const input=await readJson(request,bnaFollowupCommandSchema);
-   response=successResponse(await d.store.followup(actor,input),requestId);
+   const input=await readJson(request,z.union([bnaFollowupCommandSchema,bnaAcknowledgmentCommandSchema]));
+   if('action' in input){
+    const communications=d.communications;if(!communications)throw new AppError('UNAVAILABLE');
+    const record=await d.store.read(actor,input.inquiryId);
+    if(record.program!=='bna_learning_coop'&&record.program!=='bna_support_interest')throw new AppError('NOT_FOUND');
+    const before=await communications.readForInquiry(actor,input.inquiryId);
+    if(!('payload' in before)||before.messageId!==input.messageId)throw new AppError('NOT_FOUND');
+    const command={messageId:input.messageId,operationId:input.operationId,expectedVersion:input.expectedVersion};
+    let result:{replayed:boolean};
+    if(input.action==='cancel_acknowledgment'){
+     if(!communications.cancel)throw new AppError('UNAVAILABLE');result=await communications.cancel(actor,command);
+    }else{
+     if(!communications.retryNotAttempted)throw new AppError('UNAVAILABLE');result=await communications.retryNotAttempted(actor,command);
+    }
+    // A provider may finish after cancellation. Return current durable facts,
+    // including on replay, rather than presenting a historical action as final.
+    const after=await communications.readForInquiry(actor,input.inquiryId);
+    response=successResponse({acknowledgment:bnaAcknowledgmentPreview(record,after),replayed:result.replayed},requestId);
+   }else response=successResponse(await d.store.followup(actor,input),requestId);
   }else throw new AppError("INVALID_REQUEST");
  }catch(error){response=failureResponse(error instanceof AppError?error:new AppError("UNAVAILABLE"),requestId);}
  response.headers.set("Referrer-Policy","no-referrer");response.headers.set("X-Content-Type-Options","nosniff");
