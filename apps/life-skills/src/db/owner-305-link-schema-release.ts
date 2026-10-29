@@ -32,7 +32,10 @@ export async function readOwner305LinkSchemaStage(db:Owner305ReleaseQuery):Promi
   ['c','CHECK (((bna_inquiry_id IS NULL) <> (fishing_application_id IS NULL)))'],['c','CHECK (((version >= 1) AND (version <= 2147483646)))'],['c',"CHECK ((request_digest ~ '^[a-f0-9]{64}$'::text))"],
   ['f','FOREIGN KEY (workspace_id, bna_inquiry_id) REFERENCES ls_service_interest.bna_inquiries(workspace_id, id)'],['f','FOREIGN KEY (workspace_id, conversation_id) REFERENCES ls_service_interest.owner_305_conversations(workspace_id, id)'],
   ['f','FOREIGN KEY (workspace_id, fishing_application_id) REFERENCES ls_service_interest.public_applications(workspace_id, id)'],['f','FOREIGN KEY (workspace_id, owner_account_id) REFERENCES ls_identity.accounts(workspace_id, id)'],['p','PRIMARY KEY (workspace_id, operation_id)']];
- if(JSON.stringify(definitions.rows.map(value=>[value.kind,value.definition]))!==JSON.stringify(expectedDefinitions))throw Error("OWNER_305_LINK_SCHEMA_CATALOG_CONFLICT");
+ // Database collations can order punctuation differently; compare exact
+ // definitions in a deterministic order without weakening the catalog check.
+ const canonical=(values:string[][])=>values.map(value=>JSON.stringify(value)).sort();
+ if(JSON.stringify(canonical(definitions.rows.map(value=>[value.kind,value.definition])))!==JSON.stringify(canonical(expectedDefinitions)))throw Error("OWNER_305_LINK_SCHEMA_CATALOG_CONFLICT");
  const indexes=await db.query<{name:string;definition:string}>(`SELECT indexname AS name,indexdef AS definition FROM pg_indexes WHERE schemaname='ls_service_interest' AND tablename='owner_305_inquiry_link_events' ORDER BY indexname`);
  const expectedIndexes=[
   ['owner_305_bna_link_version','CREATE UNIQUE INDEX owner_305_bna_link_version ON ls_service_interest.owner_305_inquiry_link_events USING btree (workspace_id, conversation_id, bna_inquiry_id, version) WHERE (bna_inquiry_id IS NOT NULL)'],
