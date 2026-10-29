@@ -33,13 +33,13 @@ export function Owner305ConversationPanel({locale,initialId,onOperationPending,l
   finally{if(active.current&&serial.current===seq)setOpening(false);}},[clearPrivate]);
  useEffect(()=>{let cancelled=false;const sequence=serial;active.current=true;const timer=window.setTimeout(()=>{void load().then(()=>{if(!cancelled&&active.current&&initialId)void open(initialId);});},0);return()=>{cancelled=true;window.clearTimeout(timer);active.current=false;sequence.current++;};},[load,open,initialId]);
  useEffect(()=>{onOperationPending?.(pending!==null||linkPending);},[pending,linkPending,onOperationPending]);
- async function save(command:ConversationCommand){if(busy)return;setBusy(true);setPending(command);setError(null);setMessage("");
+ async function save(command:ConversationCommand){if(busy)return;const previouslyUnknown=pending!==null;setBusy(true);setPending(command);setError(null);setMessage("");
   try{const session=await sessionInfo();if(session.role!=="practitioner")throw new RequestError(403);
    const response=await fetch("/api/private/owner-305-conversations",{method:"POST",credentials:"same-origin",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer",
     headers:{"content-type":"application/json","x-csrf-token":session.csrfToken},body:JSON.stringify(command)});
    const body=await response.json().catch(()=>null);if(!response.ok||!body?.ok)throw new RequestError(response.status);
    setPending(null);await load();if(await open(body.data.id as string))setMessage(t("Conversation saved and read back.","השיחה נשמרה ונקראה מחדש."));
-  }catch(cause){const code=cause instanceof RequestError?cause.status:503;setError(code);if([400,401,403,404,409].includes(code))setPending(null);
+  }catch(cause){const code=cause instanceof RequestError?cause.status:503;setError(code);if(!previouslyUnknown&&[400,401,403,404,409].includes(code))setPending(null);
    if([401,403,404].includes(code))clearPrivate();}finally{setBusy(false);}}
  function submit(event:FormEvent<HTMLFormElement>){event.preventDefault();if(pending||opening||linkPending)return;
   const followup={classification:draft.classification,note:draft.note,nextAction:draft.nextAction.trim()||null,
@@ -57,8 +57,8 @@ export function Owner305ConversationPanel({locale,initialId,onOperationPending,l
   <p><bdi dir="ltr">{CONVERSATION_305_LINE}</bdi> · {t("Enter conversations you handled manually. This does not import or merge a contact, capture provider history, or send a message.","תיעוד ידני של שיחות שטיפלת בהן. אין כאן יבוא או מיזוג אנשי קשר, קליטת היסטוריית ספק או שליחת הודעה.")}</p>
   {error!==null&&<div role="alert" className="lsw-alert"><p>{error===401?t("Sign in again.","יש להיכנס מחדש."):
    error===403?t("This account cannot view the 305 register.","לחשבון זה אין גישה ליומן שיחות 305."):
-   error===409?t("The record changed. Reload it before saving.","הרשומה השתנתה. יש לרענן לפני שמירה."):
-   error===400?t("Add a note and either a dated next action or a waiting condition.","יש להוסיף הערה ופעולה הבאה עם תאריך או תנאי המתנה."):
+   error===409&&!pending?t("The record changed. Reload it before saving.","הרשומה השתנתה. יש לרענן לפני שמירה."):
+   error===400&&!pending?t("Add a note and either a dated next action or a waiting condition.","יש להוסיף הערה ופעולה הבאה עם תאריך או תנאי המתנה."):
    t("Read or save could not be confirmed. The register is not shown as empty.","לא ניתן לאשר קריאה או שמירה. היומן אינו מוצג כריק.")}</p>
    {error===401?<a href={`/${locale}/login`}>{t("Sign in","כניסה")}</a>:<button type="button" onClick={()=>void load()}>{t("Retry read","ניסיון קריאה נוסף")}</button>}</div>}
   {message&&<p role="status">{message}</p>}

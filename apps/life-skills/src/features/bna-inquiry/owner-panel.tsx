@@ -58,7 +58,7 @@ export function BnaInquiryOwnerPanel({locale,initialId,onOperationPending}:{loca
   return()=>{cancelled=true;window.clearTimeout(timer);active.current=false;sequence.current++;};},[load,open,initialId]);
  useEffect(()=>{onOperationPending?.(pending!==null);},[pending,onOperationPending]);
  async function save(command:BnaFollowupCommand){
-  if(busy)return;setBusy(true);setError(null);setMessage("");setPending(command);
+  if(busy)return;const previouslyUnknown=pending!==null;setBusy(true);setError(null);setMessage("");setPending(command);
   try{const session=await sessionInfo();if(session.role!=="practitioner")throw new RequestError(403);
    const response=await fetch("/api/private/bna-inquiries",{method:"POST",credentials:"same-origin",cache:"no-store",
     redirect:"error",referrerPolicy:"no-referrer",headers:{"content-type":"application/json","x-csrf-token":session.csrfToken},
@@ -66,7 +66,7 @@ export function BnaInquiryOwnerPanel({locale,initialId,onOperationPending}:{loca
    const body=await response.json().catch(()=>null);if(!response.ok||!body?.ok)throw new RequestError(response.status);
    setPending(null);await load();await open(command.inquiryId);setMessage(t("Follow-up saved.","המעקב נשמר."));
   }catch(cause){const code=cause instanceof RequestError?cause.status:503;setError(code);
-   if([400,401,403,404,409].includes(code))setPending(null);
+   if(!previouslyUnknown&&[400,401,403,404,409].includes(code))setPending(null);
    if([401,403,404].includes(code))clearPrivate();
   }finally{setBusy(false);}
  }
@@ -83,8 +83,8 @@ export function BnaInquiryOwnerPanel({locale,initialId,onOperationPending}:{loca
   <form onSubmit={findOperation}><label>{t("Find a submission by operation reference","חיפוש פנייה לפי מספר פעולה")} <input required pattern="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}" maxLength={36} value={operation} onChange={event=>setOperation(event.target.value)} dir="ltr"/></label> <button type="submit" disabled={busy||!!pending}>{t("Find inquiry","חיפוש פנייה")}</button></form>
   {error!==null&&<div role="alert" className="lsw-alert"><p>{error===401?t("Sign in again to view inquiries.","יש להיכנס מחדש כדי לצפות בפניות."):
    error===403?t("This account cannot view BNA inquiries.","לחשבון זה אין גישה לפניות בני נביאים."):
-   error===409?t("This inquiry changed. Reload it before saving.","הפנייה השתנתה. יש לרענן לפני שמירה."):
-   error===400?t("Add a note and either a dated next action or a waiting condition.","יש להוסיף הערה ופעולה הבאה עם תאריך או תנאי המתנה."):
+   error===409&&!pending?t("This inquiry changed. Reload it before saving.","הפנייה השתנתה. יש לרענן לפני שמירה."):
+   error===400&&!pending?t("Add a note and either a dated next action or a waiting condition.","יש להוסיף הערה ופעולה הבאה עם תאריך או תנאי המתנה."):
    t("Inquiries could not be read. Saved records have not been shown as an empty list.","לא ניתן לקרוא את הפניות. רשומות שמורות אינן מוצגות כרשימה ריקה.")}</p>
    {error===401?<a href={`/${locale}/login`}>{t("Sign in","כניסה")}</a>:<button type="button" onClick={()=>void load()}>{t("Retry read","ניסיון קריאה נוסף")}</button>}</div>}
   {message&&<p role="status">{message}</p>}
