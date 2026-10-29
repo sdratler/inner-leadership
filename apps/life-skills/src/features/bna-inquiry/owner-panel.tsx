@@ -3,6 +3,7 @@ import {useCallback,useEffect,useRef,useState,type FormEvent} from "react";
 import type {Locale} from "../../lib/locale.ts";
 import {sessionInfo} from "../identity/client.ts";
 import type {BnaInquiryStore} from "./store.ts";
+import {BnaAcknowledgmentPreviewPanel} from "../bna-communications/acknowledgment-preview-panel.tsx";
 import {bnaFollowupCommandSchema,type BnaFollowupCommand} from "./contract.ts";
 
 type Page=Awaited<ReturnType<BnaInquiryStore["list"]>>;
@@ -104,6 +105,7 @@ export function BnaInquiryOwnerPanel({locale,initialId,onOperationPending}:{loca
    {detail.program==="bna_learning_coop"&&<><p>{t("Page language","שפת הדף")}: {detail.fields.siteLanguage.toUpperCase()} · {t("Email updates","עדכוני דוא״ל")}: {detail.fields.emailUpdates?t("requested","התבקשו"):t("not requested","לא התבקשו")}</p>{detail.fields.secondaryContact&&<p><bdi dir="ltr">{detail.fields.secondaryContact.value}</bdi> · {detail.fields.secondaryContact.channel}</p>}</>}
    <p>{t("Captured source","מקור שנקלט")}: {detail.attribution?.source??t("Unknown","לא ידוע")}</p>
    <p>{t("Owner","אחראי")}: <bdi dir="ltr">{detail.ownerAccountId}</bdi></p>
+   {detail.program==='bna_learning_coop'&&<BnaAcknowledgmentPreviewPanel key={detail.id} id={detail.id} locale={locale}/>}
    <form onSubmit={submit} className="lsw-stack"><label>{t("Stage","שלב")}<select value={status} onChange={event=>setStatus(event.target.value as typeof status)}>
     <option value="new">{t("New","חדש")}</option><option value="contacted">{t("Contacted","נוצר קשר")}</option>
     <option value="waiting">{t("Waiting","ממתין")}</option><option value="closed">{t("Closed","סגור")}</option></select></label>
