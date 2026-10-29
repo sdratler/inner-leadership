@@ -25,17 +25,18 @@ export function startApplication({host=process,spawn=nativeSpawn,schedule=setTim
   if(children.size){hardStop=schedule(()=>{for(const child of children)child.kill('SIGKILL');},10_000);hardStop.unref?.();}else dispose();
  };
  const onInt=()=>stop('SIGINT'),onTerm=()=>stop('SIGTERM');host.on('SIGINT',onInt);host.on('SIGTERM',onTerm);
- const launch=(args,isWorker=false,isSignupWorker=isWorker)=>{
+ const launch=(args,isWorker=false,isSignupWorker=isWorker,isBnaWorker=false)=>{
   const child=spawn(host.execPath,args,{stdio:isWorker?['inherit','inherit','inherit','ipc']:'inherit',env});children.add(child);
   let expectedExpiry=false;
   if(isSignupWorker&&controlled)child.on('message',message=>{if(message&&Object.keys(message).length===2&&message.type==='JLFA_SIGNUP_WORKER_COMPLETE'&&message.reason==='ADMISSION_EXPIRED'&&Number.isFinite(controlledExpiresAt)&&now()>=controlledExpiresAt)expectedExpiry=true;});
-  child.on('error',()=>{children.delete(child);stop('SIGTERM',true);if(!children.size)dispose();});
-  child.on('exit',code=>{children.delete(child);if(isSignupWorker&&expectedExpiry&&code===0&&!stopping)return;if(!stopping)stop('SIGTERM',enabled||ownerNotifications||code!==0);else if(code!==0&&code!==null)host.exitCode=1;if(!children.size)dispose();});return child;
+  child.on('error',()=>{children.delete(child);if(isBnaWorker&&!stopping){host.stderr?.write?.('BNA acknowledgment worker stopped; inquiries remain available.\n');return;}stop('SIGTERM',true);if(!children.size)dispose();});
+  child.on('exit',code=>{children.delete(child);if(isBnaWorker&&!stopping){host.stderr?.write?.('BNA acknowledgment worker stopped; inquiries remain available.\n');return;}if(isSignupWorker&&expectedExpiry&&code===0&&!stopping)return;if(!stopping)stop('SIGTERM',enabled||ownerNotifications||code!==0);else if(code!==0&&code!==null)host.exitCode=1;if(!children.size)dispose();});return child;
  };
  try{
   launch([fileURLToPath(new URL('../node_modules/next/dist/bin/next',import.meta.url)),'start','--hostname','0.0.0.0','--port',port]);
   if(enabled&&!stopping)launch(['--conditions=react-server','--import','tsx',fileURLToPath(new URL('./inquiry-email-worker.ts',import.meta.url)),'--hosted-signup'],true);
   if(ownerNotifications&&!stopping)launch(['--conditions=react-server','--import','tsx',fileURLToPath(new URL('./academy-owner-notification-worker.ts',import.meta.url)),'--hosted-owner-notifications'],true,false);
+  if(env.LS_BNA_EMAIL_WORKER_ENABLED==='true'&&!stopping){try{launch(['--conditions=react-server','--import','tsx',fileURLToPath(new URL('./bna-acknowledgment-worker.ts',import.meta.url)),'--hosted-bna-acknowledgments'],true,false,true);}catch{host.stderr?.write?.('BNA acknowledgment worker could not start; inquiries remain available.\n');}}
  }catch{stop('SIGTERM',true);throw Error('APPLICATION_CHILD_START_FAILED');}
  return {stop:()=>stop('SIGTERM')};
 }

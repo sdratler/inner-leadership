@@ -16,6 +16,7 @@ import {BNA_COOP_PROGRAM,BNA_COOP_NOTICE,bnaCoopReadableFieldsSchema,type BnaCoo
 import {BNA_SUPPORT_PROGRAM,bnaSupportFieldsSchema,type BnaSupportFields} from "./support-contract.ts";
 import {inquirySourceCorrectionSchema} from "../inquiry-source-correction.ts";
 type InquiryPayload={program:typeof BNA_INQUIRY_PROGRAM;fields:BnaInquiryFields;attribution:BnaAttribution|null}|{program:typeof BNA_COOP_PROGRAM;fields:BnaCoopFields;attribution:BnaAttribution|null}|{program:typeof BNA_SUPPORT_PROGRAM;fields:BnaSupportFields;attribution:BnaAttribution|null};
+export type BnaInquiryAcknowledgmentHook=(tx:SqlSession,input:{workspaceId:WorkspaceId;id:string;operationId:string;ownerAccountId:string;payload:InquiryPayload;receivedAt:Date})=>Promise<void>;
 type InquiryRow={id:string;programKey:string;ownerAccountId:string;requestDigest:string;payloadCiphertext:string;receivedAt:Date};
 type FollowupState={status:"new"|"contacted"|"waiting"|"closed";note:string;nextAction:string|null;dueDate:string|null;waitingCondition:string|null;sourceCorrection?:{source:string;basis:string}};
 type FollowupRow={operationId:string;inquiryId:string;actorAccountId:string;version:number;requestDigest:string;payloadCiphertext:string;recordedAt:Date};
@@ -34,7 +35,7 @@ const initialState:FollowupState={status:"new",note:"Inquiry saved for owner rev
 export class BnaInquiryStore{
  constructor(private readonly db:IdentityStore,private readonly workspaceId:WorkspaceId,
   private readonly ring:Keyring,private readonly digestKey:string,private readonly ownerAccountId:string,
-  private readonly clock:IdentityClock=systemClock){
+  private readonly clock:IdentityClock=systemClock,private readonly queueAcknowledgment?:BnaInquiryAcknowledgmentHook){
   if(!z.string().uuid().safeParse(ownerAccountId).success)throw new AppError("UNAVAILABLE");
  }
  private requestDigest(payload:InquiryPayload){return privateDigest({domain:"bna-inquiry/v1",workspace:this.workspaceId,payload},this.digestKey);}
@@ -108,6 +109,7 @@ export class BnaInquiryStore{
     version,request_digest,payload_ciphertext,recorded_at) VALUES($1,$2,$3,$4,1,$5,$6,$7)`,
     [this.workspaceId,firstOperation,id,this.ownerAccountId,firstDigest,
      seal(JSON.stringify(initialState),followupAad(this.workspaceId,firstOperation),this.ring),now]);
+   await this.queueAcknowledgment?.(tx,{workspaceId:this.workspaceId,id,operationId:input.operationId,ownerAccountId:this.ownerAccountId,payload,receivedAt:now});
    return {saved:true as const,reference:id,replayed:false};
   });
  }

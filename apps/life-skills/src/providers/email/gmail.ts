@@ -53,7 +53,7 @@ function base64url(value: Uint8Array | string): string {
 function base64(value: Uint8Array | string): string {
   return Buffer.from(value).toString("base64").replace(/.{1,76}/g, "$&\r\n").trimEnd();
 }
-function mime(message: AuthEmailMessage, displayName: "Life Skills" | "JLFA Office"): string {
+function mime(message: AuthEmailMessage, displayName: "Life Skills" | "JLFA Office" | "BNA Office"): string {
   const messageId = `<${message.idempotencyKey}@bneineviimacademy.org>`;
   if (message.html !== undefined) {
     // Reviewed Academy formatter supplies escaped HTML and its own hidden preheader.
@@ -77,8 +77,8 @@ function mime(message: AuthEmailMessage, displayName: "Life Skills" | "JLFA Offi
 export class GmailAuthTransport implements AuthEmailTransport {
   readonly nonIdempotent = true;
   constructor(private readonly config: GmailAuthConfig, private readonly sendFetch: typeof fetch = fetch,
-    private readonly displayName: "Life Skills" | "JLFA Office" = "Life Skills",
-    private readonly beforeMessageSend?: (message: AuthEmailMessage) => void) {}
+    private readonly displayName: "Life Skills" | "JLFA Office" | "BNA Office" = "Life Skills",
+    private readonly beforeMessageSend?: (message: AuthEmailMessage) => void|Promise<void>) {}
 
   private async accessToken(): Promise<string> {
     let last: unknown;
@@ -102,7 +102,7 @@ export class GmailAuthTransport implements AuthEmailTransport {
   }
 
   async send(message: AuthEmailMessage): Promise<{ providerId: string }> {
-    if (!this.config.enabled || !["Life Skills", "JLFA Office"].includes(this.displayName) || message.from !== OFFICE_FROM || !ADDRESS.test(message.to) || message.to.length > 254 ||
+    if (!this.config.enabled || !["Life Skills", "JLFA Office", "BNA Office"].includes(this.displayName) || message.from !== OFFICE_FROM || !ADDRESS.test(message.to) || message.to.length > 254 ||
         !KEY.test(message.idempotencyKey) || !headerValue(message.subject, MAX_SUBJECT) ||
         message.text.length > MAX_TEXT || (message.html !== undefined &&
         (this.displayName !== "JLFA Office" || typeof message.html !== "string" || message.html.length === 0 ||
@@ -111,7 +111,7 @@ export class GmailAuthTransport implements AuthEmailTransport {
     // Optional server-issued gate runs AFTER OAuth, immediately before the
     // irreversible message request. A local refusal is known not attempted;
     // keep it outside the catch that classifies HTTP uncertainty below.
-    this.beforeMessageSend?.(message);
+    await this.beforeMessageSend?.(message);
     let response: Response;
     try {
       response = await this.sendFetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {

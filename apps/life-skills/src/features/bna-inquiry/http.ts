@@ -16,6 +16,7 @@ import {BNA_COOP_PROGRAM,BNA_COOP_NOTICE,bnaCoopReadableFieldsSchema} from "./co
 import {BNA_SUPPORT_PROGRAM,BNA_SUPPORT_NOTICE,BNA_SUPPORT_UPDATES_NOTICE,bnaSupportFieldsSchema} from "./support-contract.ts";
 import type {BnaInquiryStore} from "./store.ts";
 import {bnaAcknowledgmentPreview} from "../bna-communications/acknowledgment-preview.ts";
+import type {BnaAcknowledgmentStore} from "../bna-communications/acknowledgment-store.ts";
 
 const coopSubmission=z.object({challenge:z.string().min(80).max(1024),website:z.literal("").optional(),operationId:z.string().uuid(),fields:bnaCoopReadableFieldsSchema,attribution:bnaAttributionSchema.optional()}).strict();
 const supportSubmission=z.object({challenge:z.string().min(80).max(1024),website:z.literal("").optional(),operationId:z.string().uuid(),fields:bnaSupportFieldsSchema,attribution:bnaAttributionSchema.optional()}).strict();
@@ -47,7 +48,8 @@ export async function publicBnaInquiryHttp(request:Request,load:()=>Promise<Publ
 }
 
 type PrivateDeps={origin:string;actor:(token:string)=>Promise<Actor>;csrf:(token:string)=>string;
- limits:RateLimitStore;rateLimitKey:string;store:Pick<BnaInquiryStore,"list"|"read"|"findOperation"|"followup">};
+ limits:RateLimitStore;rateLimitKey:string;store:Pick<BnaInquiryStore,"list"|"read"|"findOperation"|"followup">;
+ communications?:Pick<BnaAcknowledgmentStore,"readForInquiry">};
 export async function privateBnaInquiryHttp(request:Request,load:()=>Promise<PrivateDeps>):Promise<Response>{
  const requestId=randomUUID();let response:Response;
  try{
@@ -63,7 +65,9 @@ export async function privateBnaInquiryHttp(request:Request,load:()=>Promise<Pri
    const id=url.searchParams.get("id"),before=url.searchParams.get("before"),historyBefore=url.searchParams.get("historyBefore"),operation=url.searchParams.get("operation");
    if((id!==null&&!id)||(before!==null&&!before)||(operation!==null&&(!operation||id!==null||before!==null||historyBefore!==null))||(historyBefore!==null&&(!id||before!==null||!/^\d{1,10}$/.test(historyBefore)))||(id!==null&&before!==null))throw new AppError("INVALID_REQUEST");
    if(preview!==null&&(preview!=='acknowledgment'||!id||before!==null||historyBefore!==null||operation!==null))throw new AppError('INVALID_REQUEST');
-   response=successResponse(preview?bnaAcknowledgmentPreview(await d.store.read(actor,id!)):operation?await d.store.findOperation(actor,operation):id?await d.store.read(actor,id,historyBefore===null?undefined:Number(historyBefore)):await d.store.list(actor,before??undefined),requestId);
+   if(preview){const record=await d.store.read(actor,id!);const delivery=record.program==='bna_learning_coop'||record.program==='bna_support_interest'?await d.communications?.readForInquiry(actor,id!):undefined;
+    response=successResponse(bnaAcknowledgmentPreview(record,delivery),requestId);
+   }else response=successResponse(operation?await d.store.findOperation(actor,operation):id?await d.store.read(actor,id,historyBefore===null?undefined:Number(historyBefore)):await d.store.list(actor,before??undefined),requestId);
   }else if(request.method==="POST"){
    if(url.search)throw new AppError("INVALID_REQUEST");
    verifyMutationOrigin(canonical,d.origin);verifyCsrfToken(request.headers.get("x-csrf-token"),d.csrf(token));
