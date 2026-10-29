@@ -10,6 +10,9 @@ import {seal} from "../../src/features/identity/crypto.ts";
 import {privateDigest} from "../../src/features/contact-ops/server/digests.ts";
 import {BnaInquiryStore} from "../../src/features/bna-inquiry/store.ts";
 import {BNA_INQUIRY_NOTICE} from "../../src/features/bna-inquiry/contract.ts";
+import {Owner305InquiryLinkStore} from "../../src/features/conversation-305/inquiry-link-store.ts";
+import {PublicGroupApplicationStore} from "../../src/features/group-application/store.ts";
+import {floridaGroupApplicationNotice} from "../../src/features/group-application/contract.ts";
 import {asId} from "../../src/lib/ids.ts";
 import type {Actor} from "../../src/features/identity/types.ts";
 import type {IdentityStore,SqlSession} from "../../src/features/identity/store.ts";
@@ -30,6 +33,7 @@ beforeAll(async()=>{await db.exec("CREATE SCHEMA ls_control");
  for(const name of ["0001_ls_foundation.sql","0010_ls_identity_cases_20260906.sql","0124_ls_group_interest.sql",
   "0131_ls_public_group_applications.sql","0139_ls_bna_inquiries.sql","0140_ls_fishing_inquiry_followups.sql","0141_ls_owner_305_conversations.sql"])
   await db.exec(await readFile("migrations/"+name,"utf8"));
+ await db.exec(await readFile("migrations/proposals/0143_ls_owner_305_inquiry_links.sql","utf8"));
  await db.query("INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,$2)",[workspace,now]);
  ownerActor=await account(owner,"practitioner");otherActor=await account(randomUUID(),"parent");},30000);
 afterAll(async()=>db.close());
@@ -91,7 +95,6 @@ it("pages the owner register without losing older conversations or exposing an a
 },30000);
 
 it("proposal preserves link and unlink events without changing existing conversation revisions",async()=>{
- await db.exec(await readFile("migrations/proposals/0143_ls_owner_305_inquiry_links.sql","utf8"));
  const bna=new BnaInquiryStore(adapter,workspace,ring,"synthetic-bna-private-digest-key",owner,{now:()=>now});
  const inquiry=await bna.submit({operationId:randomUUID(),fields:{name:"Synthetic parent",contactChannel:"email",contact:"link@example.invalid",language:"en",townOrZip:"Florida",childAges:[10],permission:{confirmed:true,version:BNA_INQUIRY_NOTICE.version,language:"en"}}});
  const conversation=await store.save(ownerActor,{kind:"create",operationId:randomUUID(),channel:"phone",contactHint:"Synthetic caller",followup:{classification:"bna",note:"Discussed inquiry",nextAction:null,dueDate:null,waitingCondition:"Await reply"}});
@@ -102,4 +105,28 @@ it("proposal preserves link and unlink events without changing existing conversa
  expect((await db.query("SELECT linked FROM ls_service_interest.owner_305_inquiry_link_events WHERE conversation_id=$1 ORDER BY version",[conversation.id])).rows).toEqual([{linked:true},{linked:false}]);
  await expect(db.query("DELETE FROM ls_service_interest.owner_305_inquiry_link_events WHERE conversation_id=$1",[conversation.id])).rejects.toThrow();
  expect((await store.read(ownerActor,conversation.id)).history).toHaveLength(1);
+});
+
+it("links and unlinks only owner-authorized inquiries with stable operations",async()=>{
+ const key="synthetic-private-digest-key-32-characters",links=new Owner305InquiryLinkStore(adapter,workspace,ring,key,owner,owner,{now:()=>now});
+ const bna=new BnaInquiryStore(adapter,workspace,ring,key,owner,{now:()=>now});
+ const inquiry=await bna.submit({operationId:randomUUID(),fields:{name:"Synthetic parent",contactChannel:"email",contact:"owner-link@example.invalid",language:"en",townOrZip:"Florida",childAges:[10],permission:{confirmed:true,version:BNA_INQUIRY_NOTICE.version,language:"en"}}});
+ const applications=new PublicGroupApplicationStore(adapter,workspace,ring,key,{now:()=>now});
+ const fishing=await applications.submit({operationId:randomUUID(),fields:{parentName:"Synthetic parent",contact:"owner-fish@example.invalid",language:"en",cityArea:"Florida",programId:"sunday_fishing_academy",schedulePreference:["sunday"],permission:{confirmed:true,version:floridaGroupApplicationNotice.version,language:"en"}}});
+ const otherProgram=await applications.submit({operationId:randomUUID(),fields:{parentName:"Synthetic parent",contact:"other-program@example.invalid",language:"en",cityArea:"Florida",programId:"morning_torah_learning",schedulePreference:["sunday"],permission:{confirmed:true,version:floridaGroupApplicationNotice.version,language:"en"}}});
+ const conversation=await store.save(ownerActor,{kind:"create",operationId:randomUUID(),channel:"phone",contactHint:"Synthetic caller",followup:{classification:"both",note:"Discussed programs",nextAction:null,dueDate:null,waitingCondition:"Await reply"}});
+ const command={operationId:randomUUID(),conversationId:conversation.id,target:{kind:"bna_inquiry" as const,id:inquiry.reference},expectedVersion:0,linked:true};
+ const saved=await links.save(ownerActor,command);expect(await links.save(ownerActor,command)).toEqual({...saved,replayed:true});
+ await expect(links.save(ownerActor,{...command,linked:false})).rejects.toMatchObject({code:"CONFLICT"});
+ await expect(links.save(otherActor,{...command,operationId:randomUUID()})).rejects.toMatchObject({code:"NOT_FOUND"});
+ await expect(links.save(ownerActor,{...command,operationId:randomUUID(),target:{kind:"fishing_inquiry",id:otherProgram.item.id}})).rejects.toMatchObject({code:"NOT_FOUND"});
+ const fish={...command,operationId:randomUUID(),target:{kind:"fishing_inquiry" as const,id:fishing.item.id}};await links.save(ownerActor,fish);
+ expect((await links.list(ownerActor,conversation.id)).items.filter(item=>item.linked)).toHaveLength(2);
+ await links.save(ownerActor,{...command,operationId:randomUUID(),expectedVersion:1,linked:false});
+ const after=await links.list(ownerActor,conversation.id);expect(after.items).toHaveLength(2);expect(after.items.find(item=>item.target.kind==="bna_inquiry")).toMatchObject({linked:false,version:2});
+ await expect(links.save(ownerActor,{...command,operationId:randomUUID(),expectedVersion:1,linked:false})).rejects.toMatchObject({code:"CONFLICT"});
+ const noFishing=new Owner305InquiryLinkStore(adapter,workspace,ring,key,owner,"",{now:()=>now});
+ expect((await noFishing.list(ownerActor,conversation.id)).items.every(item=>item.target.kind==="bna_inquiry")).toBe(true);
+ await expect(noFishing.save(ownerActor,fish)).rejects.toMatchObject({code:"NOT_FOUND"});
+ await expect(noFishing.save(ownerActor,{...fish,operationId:randomUUID(),expectedVersion:1,linked:false})).rejects.toMatchObject({code:"NOT_FOUND"});
 });
