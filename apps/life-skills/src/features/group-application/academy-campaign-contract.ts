@@ -8,10 +8,11 @@ export const campaignSnapshotSchema=z.object({version:z.literal(ACADEMY_CAMPAIGN
 });
 export type CampaignSnapshot=z.infer<typeof campaignSnapshotSchema>;
 /** Registered nonpersonal tokens only. Arbitrary UTM strings/URLs are discarded. */
-export const campaignTouchSchema=z.object({campaign:z.literal(ACADEMY_CAMPAIGN),source:z.enum(['facebook','whatsapp','website','direct']),medium:z.enum(['social','message','direct']),content:z.literal(PREREG_CREATIVE.id)}).strict();
+const nonPersonalRef=z.string().regex(/^[a-z0-9][a-z0-9_-]{0,79}$/);
+export const campaignTouchSchema=z.object({campaign:z.literal(ACADEMY_CAMPAIGN),source:z.enum(['facebook','whatsapp','website','direct']),medium:z.enum(['social','message','direct']),content:z.literal(PREREG_CREATIVE.id),postRef:nonPersonalRef.optional(),groupRef:nonPersonalRef.optional()}).strict();
 export const campaignAttributionSchema=z.object({first:campaignTouchSchema,last:campaignTouchSchema}).strict();
 export type CampaignAttribution=z.infer<typeof campaignAttributionSchema>;
-export function campaignTouchFromUrl(url:URL){const p=url.searchParams;const parsed=campaignTouchSchema.safeParse({campaign:p.get('utm_campaign'),source:p.get('utm_source'),medium:p.get('utm_medium'),content:p.get('utm_content')});return parsed.success?parsed.data:null;}
+export function campaignTouchFromUrl(url:URL){const p=url.searchParams,ref=(key:string)=>{const value=p.get(key);return value&&nonPersonalRef.safeParse(value).success?value:undefined;},postRef=ref('post_ref'),groupRef=ref('group_ref');const parsed=campaignTouchSchema.safeParse({campaign:p.get('utm_campaign'),source:p.get('utm_source'),medium:p.get('utm_medium'),content:p.get('utm_content'),...(postRef?{postRef}:{}),...(groupRef?{groupRef}:{})});return parsed.success?parsed.data:null;}
 export function captureCampaignAttribution(url:URL,storage:Pick<Storage,'getItem'|'setItem'>):CampaignAttribution|null{
  const key='jlfa/campaign-attribution/v1',touch=campaignTouchFromUrl(url);let previous:CampaignAttribution|null=null;
  try{const parsed=campaignAttributionSchema.safeParse(JSON.parse(storage.getItem(key)??'null'));if(parsed.success)previous=parsed.data;}catch{}

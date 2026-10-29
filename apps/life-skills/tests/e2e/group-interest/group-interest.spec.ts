@@ -513,7 +513,7 @@ if(!runtimePath){
   await expect(page.getByRole("heading",{name:locale==="he"?"פניות לאקדמיה לדיג":"Fishing Academy inquiries",exact:true})).toBeVisible();
   await expect(page.getByText(locale==="he"?"סקירת פניות, בקשות הרשמה ומעקבים של האקדמיה. הצטרפות לתוכנית, הזמנות ותשלומים נשארים נפרדים.":"Review Academy inquiries, registrations and follow-ups. Enrollment, bookings and payments remain separate.",{exact:false})).toBeVisible();
   const record=page.locator("article").filter({hasText:data.publicApplicantName});await expect(record).toHaveCount(1);await expect(record.getByRole("heading",{name:new RegExp(data.publicApplicantName)})).toBeVisible();
-  const contact=record.locator(":scope > p > bdi");await expect(contact).toHaveText("synthetic@example.invalid");await expect(contact).toHaveAttribute("dir","ltr");
+  const contact=record.locator(":scope > p > bdi").filter({hasText:"synthetic@example.invalid"});await expect(contact).toHaveCount(1);await expect(contact).toHaveText("synthetic@example.invalid");await expect(contact).toHaveAttribute("dir","ltr");
   const details=record.locator("details").filter({has:page.getByText(locale==="he"?"הערה על זמנים":"Scheduling note",{exact:true})});await expect(details).not.toHaveAttribute("open","");await details.locator("summary").click();await expect(details).toHaveAttribute("open","");await expect(details).toContainText("Synthetic scheduling details only.");
   const views=page.getByRole("navigation",{name:locale==="he"?"תצוגות הדף הנוכחי":"Current page views"});await expect(views.getByRole("link",{name:locale==="he"?"בקשות לקבוצה":"Group applications",exact:true})).toHaveAttribute("aria-current","page");
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);

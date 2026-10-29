@@ -63,7 +63,7 @@ export function BnaInquiryOwnerPanel({locale}:{locale:Locale}){
   {error!==null&&<div role="alert" className="lsw-alert"><p>{error===401?t("Sign in again to view inquiries.","יש להיכנס מחדש כדי לצפות בפניות."):
    error===403?t("This account cannot view BNA inquiries.","לחשבון זה אין גישה לפניות בני נביאים."):
    error===409?t("This inquiry changed. Reload it before saving.","הפנייה השתנתה. יש לרענן לפני שמירה."):
-   error===400?t("Check the note and next action or waiting condition.","יש לבדוק את ההערה ואת הפעולה הבאה או תנאי ההמתנה."):
+   error===400?t("Add a note and either a dated next action or a waiting condition.","יש להוסיף הערה ופעולה הבאה עם תאריך או תנאי המתנה."):
    t("Inquiries could not be read. Saved records have not been shown as an empty list.","לא ניתן לקרוא את הפניות. רשומות שמורות אינן מוצגות כרשימה ריקה.")}</p>
    {error===401?<a href={`/${locale}/login`}>{t("Sign in","כניסה")}</a>:<button type="button" onClick={()=>void load()}>{t("Retry read","ניסיון קריאה נוסף")}</button>}</div>}
   {message&&<p role="status">{message}</p>}
@@ -73,7 +73,7 @@ export function BnaInquiryOwnerPanel({locale}:{locale:Locale}){
   {page&&<div className="lsw-stack"><p>{page.items.length===0?t("No BNA inquiries saved yet.","עדיין לא נשמרו פניות לבני נביאים."):
    t(`${page.items.length} saved inquiries`,`${page.items.length} פניות שמורות`)}</p>
    <ul>{page.items.map(item=><li key={item.id}><button type="button" disabled={busy||!!pending} onClick={()=>void open(item.id)}>
-    {item.fields.name} · {item.fields.townOrZip} · {item.followup.status}</button></li>)}</ul></div>}
+    {item.fields.name} · {item.fields.townOrZip} · {item.followup.status} · <bdi dir="ltr">{item.id}</bdi></button></li>)}</ul></div>}
   {detail&&<article className="lsw-stack" aria-label={t("BNA inquiry detail","פרטי פניית בני נביאים")}>
    <h3>{detail.fields.name}</h3><p><bdi dir="ltr">{detail.fields.contact}</bdi> · {detail.fields.contactChannel}</p>
    <p>{t("Ages","גילים")}: {detail.fields.childAges.join(", ")} · {detail.fields.townOrZip} · {detail.fields.language.toUpperCase()}</p>
@@ -90,7 +90,7 @@ export function BnaInquiryOwnerPanel({locale}:{locale:Locale}){
     <button type="submit" disabled={busy||!!pending}>{t("Save follow-up","שמירת המשך טיפול")}</button></form>
    <h4>{t("Saved history","היסטוריה שמורה")}</h4><ol>{detail.history.map(event=><li key={event.operationId}>
     <time dateTime={event.recordedAt}>{event.recordedAt}</time> · {event.status} · {event.note}
-    {event.nextAction&&<> · {event.nextAction}</>}{event.waitingCondition&&<> · {event.waitingCondition}</>}
+    {event.nextAction&&<> · {event.nextAction}{event.dueDate&&<> ({event.dueDate})</>}</>}{event.waitingCondition&&<> · {event.waitingCondition}</>}
    </li>)}</ol>
   </article>}
  </section>;

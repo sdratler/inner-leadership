@@ -234,5 +234,9 @@
   {
     "name": "0139_ls_bna_inquiries.sql",
     "sha256": "91421da4a936986e9c33e4ccbe141c07f78cbaeca3f6d55bf0e34fd243e64da0"
+  },
+  {
+    "name": "0140_ls_fishing_inquiry_followups.sql",
+    "sha256": "0d24071314c823f5754c1d5d5637fd18b33cb81d08c45f7a58e95d2bf4c45d46"
   }
 ]
