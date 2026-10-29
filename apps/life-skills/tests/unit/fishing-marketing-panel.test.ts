@@ -18,9 +18,20 @@ it("renders the registered image only for its exact digest, with honest assisted
 it("does not show Fishing records when BNA or an unconnected channel is selected",()=>{
  const data={snapshot,receivedAt:at};
  const bna=renderToStaticMarkup(createElement(FishingMarketingPanel,{locale:"en",data,filters:{program:"bna"}}));
- expect(bna).toContain("BNA marketing is not connected yet");expect(bna).not.toContain("Synthetic caption");
+ expect(bna).toContain("BNA social publishing is not connected yet");expect(bna).not.toContain("Synthetic caption");
  const page=renderToStaticMarkup(createElement(FishingMarketingPanel,{locale:"en",data,filters:{channel:"page"}}));
  expect(page).toContain("This channel is not connected");expect(page).not.toContain("Synthetic caption");
+});
+
+it('shows an actual group cooldown and recorded publication without equating a scheduler check to a post',()=>{
+ const target={id:'123',name:'Synthetic reviewed group',url:'https://www.facebook.com/groups/123',eligible:true,hold:null,preparation:{status:'cooldown',nextEligibleAt:'2026-11-04T19:29:23Z',rulesCheckedAt:'2026-10-28T12:00:00Z',lastPublishedAt:'2026-10-28T19:29:23Z',canPrepare:false}};
+ const current=fishingMarketingSnapshotSchema.parse({...snapshot,targets:[target]});
+ const html=renderToStaticMarkup(createElement(FishingMarketingPanel,{locale:'en',data:{snapshot:current,receivedAt:at}}));
+ expect(html).toContain('Waiting for group cooldown');expect(html).toContain('Nov 4, 2026');expect(html).toContain('2026-10-28T19:29:23Z');
+ expect(html).toContain('not a scheduled post');expect(html).not.toContain('Eligible for preparation');
+ const legacy=fishingMarketingSnapshotSchema.parse({...snapshot,targets:[{id:target.id,name:target.name,url:target.url,eligible:true,hold:null}]});
+ const old=renderToStaticMarkup(createElement(FishingMarketingPanel,{locale:'he',data:{snapshot:legacy,receivedAt:at}}));
+ expect(old).toContain('התזמון טרם נטען');expect(old).not.toContain('זמינה להכנה');
 });
 
 

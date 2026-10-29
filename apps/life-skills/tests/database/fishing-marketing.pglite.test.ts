@@ -52,6 +52,18 @@ it("acknowledges only a committed authenticated bridge snapshot",async()=>{
  expect((await receiveFishingMarketing(request(),env,async()=>store)).status).toBe(200);
 });
 
+it('retains group timing facts through encrypted owner readback and an identical replay',async()=>{
+ const preparation={status:'cooldown',nextEligibleAt:'2026-11-04T19:29:23Z',lastPublishedAt:'2026-10-28T19:29:23Z',rulesCheckedAt:'2026-10-28T12:00:00Z',canPrepare:false};
+ const value={...snapshot,generatedAt:'2026-10-29T11:50:00Z',historyAvailable:true,targets:[{id:'123',name:'Synthetic group',url:'https://www.facebook.com/groups/123',eligible:true,hold:null,preparation}]};
+ const before=await db.query('SELECT count(*) FROM ls_identity.people');
+ expect((await store.save(value)).replayed).toBe(false);
+ expect((await store.save(value)).replayed).toBe(true);
+ expect((await store.read(ownerActor))?.snapshot.targets[0]?.preparation).toEqual(preparation);
+ expect((await db.query('SELECT count(*) FROM ls_identity.people')).rows).toEqual(before.rows);
+ const stored=await db.query<{payload_ciphertext:string}>('SELECT payload_ciphertext FROM ls_service_interest.fishing_marketing_snapshot');
+ expect(stored.rows[0]!.payload_ciphertext).not.toContain('nextEligibleAt');
+});
+
 it("does not expose an altered or corrupt snapshot",async()=>{
  await db.query("UPDATE ls_service_interest.fishing_marketing_snapshot SET payload_ciphertext='corrupt' WHERE workspace_id=$1",[workspace]);
  await expect(store.read(ownerActor)).rejects.toMatchObject({code:"UNAVAILABLE"});

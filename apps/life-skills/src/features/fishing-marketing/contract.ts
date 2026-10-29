@@ -6,7 +6,9 @@ const instant=z.iso.datetime({offset:true});
 const timezone=z.string().min(1).max(100).refine(value=>{try{new Intl.DateTimeFormat("en",{timeZone:value});return true;}catch{return false;}});
 const profile=z.string().regex(/^[0-9]{5,32}$/).nullable();
 const postUrl=z.url().nullable();
-const target=z.strictObject({id:group,name:z.string().max(200),url:z.url(),eligible:z.boolean(),hold:z.enum(["complaint","removed"]).nullable()});
+const preparation=z.strictObject({status:z.enum(['policy_review','rules_review','history_review','unresolved_delivery','cooldown','ready','group_held','target_held']),
+ nextEligibleAt:instant.nullable(),rulesCheckedAt:instant.nullable(),lastPublishedAt:instant.nullable(),canPrepare:z.boolean()});
+const target=z.strictObject({id:group,name:z.string().max(200),url:z.url(),eligible:z.boolean(),hold:z.enum(["complaint","removed"]).nullable(),preparation:preparation.optional()});
 const asset=z.strictObject({id:z.string().min(1).max(180),language:z.enum(["en","he"]),caption:z.string().min(1).max(5000),captionSha256:hash,imageSha256:hash});
 const queueItem=z.strictObject({day:z.iso.date(),groupId:group,variantId:z.string().min(1).max(180),captionSha256:hash,imageSha256:hash,actorProfileId:profile,
  state:z.enum(["ready","submitted","moderator_pending","published_verified","failed","unknown","skipped","complaint","removed"]),createdAt:instant,postUrl,
@@ -27,7 +29,15 @@ export const fishingMarketingSnapshotSchema=z.strictObject({schemaVersion:z.lite
  const invalid=(path:(string|number)[])=>ctx.addIssue({code:"custom",path,message:"inconsistent Fishing evidence"});
  if(new Set(value.assets.map(a=>a.id)).size!==value.assets.length)invalid(["assets"]);
  if(new Set(value.targets.map(t=>t.id)).size!==value.targets.length)invalid(["targets"]);
- value.targets.forEach((t,i)=>{if(!exactGroupUrl(t.url,t.id,false))invalid(["targets",i,"url"]);});
+ value.targets.forEach((t,i)=>{if(!exactGroupUrl(t.url,t.id,false))invalid(["targets",i,"url"]);
+  const p=t.preparation;if(!p)return;
+  if(!value.historyAvailable&&(p.status==='ready'||p.status==='cooldown'||p.canPrepare))invalid(['targets',i,'preparation','status']);
+  if(p.canPrepare!==(p.status==='ready'&&t.eligible&&t.hold===null&&value.schedule.enabled&&value.schedule.funnelReady))invalid(['targets',i,'preparation','canPrepare']);
+  if((p.status==='cooldown')!==(p.nextEligibleAt!==null)||p.nextEligibleAt&&Date.parse(p.nextEligibleAt)<=Date.parse(value.generatedAt))invalid(['targets',i,'preparation','nextEligibleAt']);
+  if((p.status==='ready'||p.status==='cooldown')&&!p.rulesCheckedAt)invalid(['targets',i,'preparation','rulesCheckedAt']);
+  if(p.rulesCheckedAt&&Date.parse(p.rulesCheckedAt)>Date.parse(value.generatedAt))invalid(['targets',i,'preparation','rulesCheckedAt']);
+  if(p.lastPublishedAt&&Date.parse(p.lastPublishedAt)>Date.parse(value.generatedAt))invalid(['targets',i,'preparation','lastPublishedAt']);
+ });
  value.items.forEach((item,i)=>{if(item.postUrl&&!exactGroupUrl(item.postUrl,item.groupId,true))invalid(["items",i,"postUrl"]);
   if(item.publicationEvidence==="operator_recorded_readback"&&(item.state!=="published_verified"||!item.postUrl))invalid(["items",i,"publicationEvidence"]);});
  value.history.forEach((item,i)=>{if(item.postUrl&&!exactGroupUrl(item.postUrl,item.groupId,true))invalid(["history",i,"postUrl"]);
