@@ -12,7 +12,7 @@ type SourceState={page:LeadSourcePage|null;error:boolean;loading:boolean};
 type Filter="followup"|"all"|LeadPurpose;
 const names:LeadSource[]=["bna","fishing","conversation_305"];
 const blank=():Record<LeadSource,SourceState>=>({bna:{page:null,error:false,loading:false},fishing:{page:null,error:false,loading:false},conversation_305:{page:null,error:false,loading:false}});
-export function LeadWorkspace({locale,linksEnabled=false,inboundEnabled=false}:{locale:Locale;linksEnabled?:boolean;inboundEnabled?:boolean}){
+export function LeadWorkspace({locale,linksEnabled=false,inboundEnabled=false,preferencesEnabled=false}:{locale:Locale;linksEnabled?:boolean;inboundEnabled?:boolean;preferencesEnabled?:boolean}){
  const t=(en:string,he:string)=>locale==="he"?he:en;
  const [sources,setSources]=useState(blank),[filter,setFilter]=useState<Filter>("followup"),[selected,setSelected]=useState<LeadViewRow|"new305"|"bnaLookup"|null>(null);
  const [account,setAccount]=useState<string|null>(null),[accessError,setAccessError]=useState(false),[pending,setPending]=useState(false);
@@ -59,8 +59,8 @@ export function LeadWorkspace({locale,linksEnabled=false,inboundEnabled=false}:{
    <ul>{rows.map(row=><li key={row.key}><button type="button" disabled={pending} onClick={()=>setSelected(row)}>{row.label} · {row.purposes.join(" / ")} · {row.status}</button>
     <span> · {row.source} · <time dateTime={row.latestActivity}>{row.latestActivity}</time> · {row.nextAction??row.waitingCondition??t("No next action recorded","לא תועדה פעולה הבאה")}{row.dueDate&&<> · {row.dueDate}</>}</span></li>)}</ul>
    {selected&&<section aria-label={t("Selected record","הרשומה שנבחרה")}>
-    {selected==="new305"?<Owner305ConversationPanel key="new305" locale={locale} linksEnabled={linksEnabled} inboundEnabled={inboundEnabled} onOperationPending={pendingChanged}/>:selected==="bnaLookup"?<BnaInquiryOwnerPanel key="bnaLookup" locale={locale} onOperationPending={pendingChanged}/>:
-     selected.kind==="bna_inquiry"?<BnaInquiryOwnerPanel key={selected.key} locale={locale} initialId={selected.recordId} onOperationPending={pendingChanged}/>:
+    {selected==="new305"?<Owner305ConversationPanel key="new305" locale={locale} linksEnabled={linksEnabled} inboundEnabled={inboundEnabled} onOperationPending={pendingChanged}/>:selected==="bnaLookup"?<BnaInquiryOwnerPanel key="bnaLookup" locale={locale} preferencesEnabled={preferencesEnabled} onOperationPending={pendingChanged}/>:
+     selected.kind==="bna_inquiry"?<BnaInquiryOwnerPanel key={selected.key} locale={locale} initialId={selected.recordId} preferencesEnabled={preferencesEnabled} onOperationPending={pendingChanged}/>:
      selected.kind==="conversation_305"?<Owner305ConversationPanel key={selected.key} locale={locale} initialId={selected.recordId} linksEnabled={linksEnabled} inboundEnabled={inboundEnabled} onOperationPending={pendingChanged}/>:
      <div className="lsw-card"><h2>{selected.label}</h2><FishingFollowupPanel key={selected.key} locale={locale} applicationId={selected.recordId} autoOpen onOperationPending={pendingChanged}/></div>}
    </section>}

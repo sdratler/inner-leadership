@@ -47,13 +47,13 @@ export default async function Page({ params, searchParams }: {
   const inquiryId=one("inquiryId"),validInquiry=inquiryId&&uuid.test(inquiryId)?inquiryId:undefined;
   const personId=one("personId"),validPerson=personId&&uuid.test(personId)?personId:undefined;
   const linksEnabled=process.env.LS_305_INQUIRY_LINK_ENABLED==="true",inboundEnabled=process.env.LS_305_INBOUND_ENABLED==="true";
-  if(process.env.LS_BNA_COMBINED_PEOPLE_ENABLED==="true"&&process.env.LS_BNA_INQUIRY_ENABLED==="true"&&process.env.LS_305_CLASSIFICATION_ENABLED==="true"&&accountId===process.env.LS_PROVIDER_INDEX_OWNER_ACCOUNT_ID&&!validInquiry&&!validPerson&&one("view")!=="legacy")return <LeadWorkspace locale={locale} linksEnabled={linksEnabled} inboundEnabled={inboundEnabled}/>;
+  if(process.env.LS_BNA_COMBINED_PEOPLE_ENABLED==="true"&&process.env.LS_BNA_INQUIRY_ENABLED==="true"&&process.env.LS_305_CLASSIFICATION_ENABLED==="true"&&accountId===process.env.LS_PROVIDER_INDEX_OWNER_ACCOUNT_ID&&!validInquiry&&!validPerson&&one("view")!=="legacy")return <LeadWorkspace locale={locale} linksEnabled={linksEnabled} inboundEnabled={inboundEnabled} preferencesEnabled={process.env.LS_BNA_PREFERENCES_ENABLED==="true"}/>;
   if((academy||validInquiry)&&one("mode")==="demo")return <main className="lsw-main" lang={locale} dir={locale==="he"?"rtl":"ltr"}>
     <h1>{locale==="he"?"אנשי האקדמיה":"Academy people"}</h1>
     <p>{locale==="he"?"תצוגת הדגמה אינה זמינה ברשימת האקדמיה.":"Demo contacts are not available in the Academy CRM."}</p>
     <a href={`/${locale}/app/clients`}>{locale==="he"?"פתיחת רשימת האקדמיה":"Open Academy contacts"}</a>
   </main>;
-  const bnaPanel=process.env.LS_BNA_INQUIRY_ENABLED==="true"?<BnaInquiryOwnerPanel locale={locale}/>:null;
+  const bnaPanel=process.env.LS_BNA_INQUIRY_ENABLED==="true"?<BnaInquiryOwnerPanel locale={locale} preferencesEnabled={process.env.LS_BNA_PREFERENCES_ENABLED==="true"}/>:null;
   const conversations305=process.env.LS_305_CLASSIFICATION_ENABLED==="true"?<Owner305ConversationPanel locale={locale} linksEnabled={linksEnabled} inboundEnabled={inboundEnabled}/>:null;
 
   if(academy||validInquiry)return <><AcademyCrmWorkspace locale={locale} initialInquiryId={validInquiry} initialPersonId={validPerson}/>{bnaPanel}{conversations305}</>;

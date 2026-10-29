@@ -5,14 +5,14 @@ import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 const inventory=()=> (JSON.parse(readFileSync('migrations/manifest.json','utf8')) as {name:string;sha256:string}[]).map(f=>({name:f.name,checksum:f.sha256,sql:readFileSync('migrations/'+f.name,'utf8')}));
 it('supports every previously valid parent prefix and the original appended outbox history',()=>{
- const files=inventory();expect(files).toHaveLength(67);
- for(const n of [51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67])expect(planMigrations(files,files.slice(0,n))).toEqual(files.slice(n));
+ const files=inventory();expect(files).toHaveLength(68);
+ for(const n of [51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68])expect(planMigrations(files,files.slice(0,n))).toEqual(files.slice(n));
 
 });
 it('recognizes only the exact early outbox and resumes each partial deferred upgrade',()=>{
  const files=inventory(),outbox=files[54]!;
  for(const n of [51,52,53])expect(planMigrations(files,[...files.slice(0,n),outbox])).toEqual([...files.slice(n,54),...files.slice(55)]);
- const future={name:'0148_next.sql',checksum:'d'.repeat(64),sql:'select 1;'};
+ const future={name:'0149_next.sql',checksum:'d'.repeat(64),sql:'select 1;'};
 
  expect(planMigrations([...files,future],[...files.slice(0,51),outbox])).toEqual([...files.slice(51,54),...files.slice(55),future]);
  expect(planMigrations([...files.slice(0,51),outbox],files.slice(0,51))).toEqual([outbox]);

@@ -73,6 +73,21 @@ export class BnaInquiryStore{
    [this.workspaceId,id,this.ownerAccountId]);
   if(rows.length!==1)throw new AppError("NOT_FOUND");return this.decode(rows[0]!);
  }
+ /** Server-internal context for the native communication journal. The caller
+  * must authorize either the ordinary owner or an inquiry-bound capability.
+  * Never return this context from a public endpoint. No child fields escape. */
+ async communicationContext(tx:SqlSession,id:string){
+  if(!z.string().uuid().safeParse(id).success)throw new AppError("INVALID_REQUEST");
+  await this.configuredOwner(tx);const record=await this.inquiry(tx,id);
+  if(record.program!==BNA_COOP_PROGRAM&&record.program!==BNA_SUPPORT_PROGRAM)throw new AppError("NOT_FOUND");
+  const fields=record.fields;
+  const recipient=fields.contactChannel==="email"?fields.contact:
+   record.program===BNA_COOP_PROGRAM&&record.fields.secondaryContact?.channel==="email"?record.fields.secondaryContact.value:null;
+  if(!recipient)throw new AppError("NOT_FOUND");
+  return {inquiryId:record.id,program:record.program,recipient,locale:fields.language,
+   originalPermissionAt:fields.emailUpdates?record.receivedAt:null,
+   originalNoticeVersion:fields.permission.version};
+ }
  private async history(tx:SqlSession,id:string,beforeVersion?:number){
   const rows=await tx.query<FollowupRow>(`SELECT operation_id AS "operationId",inquiry_id AS "inquiryId",
    actor_account_id AS "actorAccountId",version,request_digest AS "requestDigest",
