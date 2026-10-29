@@ -117,6 +117,11 @@ it("paginates tagged inquiries without skipping or repeating records",async()=>{
  const snapshot=fishingMarketingSnapshotSchema.parse({schemaVersion:1,program:"fishing",channel:"facebook_group_manual",mode:"assisted",generatedAt:at,schedule:{timezone:"America/New_York",dailyCap:5,cooldownDays:30,enabled:true,funnelReady:false,day:"2026-10-29",window:"waiting",nextDue:at,lastRun:null},assets:[],targets:[],items:[],itemsTruncated:false,history:[{id:h,groupId:"123",contentDigest:h,variantId:null,identity:"personal",state:"published_browser_readback_verified",recordedAt:at,postUrl,publicationEvidence:"browser_readback"}],historyAvailable:true,historyTruncated:false,excludedHistory:0});
  const first=await readTaggedInquiries(adapter,workspace,ring,key,owner.id,clock,owner,snapshot);
  expect(first.nextCursor).not.toBeNull();
+ expect(first.nextCursor).not.toMatch(/^[0-9a-f-]{36}$/i);
+ const tampered=first.nextCursor!.slice(0,-1)+(first.nextCursor!.endsWith("A")?"B":"A");
+ await expect(readTaggedInquiries(adapter,workspace,ring,key,owner.id,clock,owner,snapshot,tampered)).rejects.toMatchObject({code:"INVALID_REQUEST"});
+ const anotherOwner={...owner,id:randomUUID()} as Actor;
+ await expect(readTaggedInquiries(adapter,workspace,ring,key,anotherOwner.id,clock,anotherOwner,snapshot,first.nextCursor!)).rejects.toMatchObject({code:"INVALID_REQUEST"});
  const second=await readTaggedInquiries(adapter,workspace,ring,key,owner.id,clock,owner,snapshot,first.nextCursor!);
  expect(second.nextCursor).toBeNull();
  const all=[...first.links,...second.links].map(link=>link.applicationId);
@@ -124,3 +129,4 @@ it("paginates tagged inquiries without skipping or repeating records",async()=>{
  for(const id of ids)expect(all).toContain(id);
  await expect(readTaggedInquiries(adapter,workspace,ring,key,owner.id,clock,owner,snapshot,"invalid")).rejects.toMatchObject({code:"INVALID_REQUEST"});
 },30000);
+
