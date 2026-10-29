@@ -50,7 +50,7 @@ export function Owner305ConversationPanel({locale,inboundEnabled=false}:{locale:
   support_provider:["Support/provider","תמיכה/ספק"],unclassified:["Unclassified","טרם סווג"]};
  if(error===404)return null;
  return <section className="lsw-card" lang={locale} dir={locale==="he"?"rtl":"ltr"} aria-label={t("305 conversations","שיחות קו 305")}>
-  {inboundEnabled&&page&&<Owner305InboundPanel locale={locale} disabled={busy||!!pending} refreshKey={inboundRefresh} onRecord={item=>{if(item.linkedConversationId){void open(item.linkedConversationId);return;}setDetail(null);setSourceReceiptKey(item.id);setDraft({...empty,channel:"whatsapp",contactHint:item.fromNumber});setError(null);}}/>}
+  {inboundEnabled&&page&&<Owner305InboundPanel locale={locale} disabled={busy||!!pending} refreshKey={inboundRefresh} onRecord={item=>{if(item.linkedConversationId){void open(item.linkedConversationId);return;}setDetail(null);setSourceReceiptKey(item.id);setDraft({...empty,channel:"whatsapp",contactHint:item.fromNumber??item.pushName??""});setError(null);}}/>}
   <h2>{t("305 conversations","שיחות קו 305")}</h2>
   <p><bdi dir="ltr">{CONVERSATION_305_LINE}</bdi> · {t("Enter conversations you handled manually. This does not import or merge a contact, capture provider history, or send a message.","תיעוד ידני של שיחות שטיפלת בהן. אין כאן יבוא או מיזוג אנשי קשר, קליטת היסטוריית ספק או שליחת הודעה.")}</p>
   {error!==null&&<div role="alert" className="lsw-alert"><p>{error===401?t("Sign in again.","יש להיכנס מחדש."):

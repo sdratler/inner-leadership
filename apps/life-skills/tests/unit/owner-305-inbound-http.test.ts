@@ -5,7 +5,7 @@ import {read305,receive305} from "../../src/features/conversation-305/inbound-ht
 import {inboundBindingDigest} from "../../src/features/contact-ops/server/inbound-store.ts";
 import type {Actor} from "../../src/features/identity/types.ts";
 const origin="https://life-skills.example.invalid",secret="synthetic-bridge-secret-never-production";
-const inquiry={provider:"whapi" as const,channelId:"synthetic-channel",businessNumber:"+13054916674",providerEventId:"event",providerMessageId:"message",providerThreadId:"thread",eventType:"inbound_message" as const,fromMe:false as const,fromNumber:"+15555550123",pushName:"Synthetic",messageType:"text",messageText:"Synthetic private message",occurredAt:"2026-10-29T00:00:00Z",media:[]};
+const inquiry={provider:"whapi" as const,channelId:"synthetic-channel",businessNumber:"+13054916674",providerEventId:"event",providerMessageId:"message",providerThreadId:"15555550123@s.whatsapp.net",eventType:"inbound_message" as const,fromMe:false as const,fromNumber:"+15555550123",pushName:"Synthetic",messageType:"text",messageText:"Synthetic private message",occurredAt:"2026-10-29T00:00:00Z",media:[]};
 const env={LS_305_INBOUND_ENABLED:"true",LS_305_CLASSIFICATION_ENABLED:"true",LS_BNA_OWNER_ACCOUNT_ID:randomUUID(),LS_305_INBOUND_BINDING_SHA256:inboundBindingDigest(inquiry),LIFE_SKILLS_APP_BRIDGE_SECRET:secret};
 const post=(key=secret)=>new Request(origin+"/api/private/owner-305-inbound",{method:"POST",headers:{"content-type":"application/json","x-life-skills-bridge-secret":key},body:JSON.stringify(inquiry)});
 it("requires both flags and the bridge secret before durable capture",async()=>{
