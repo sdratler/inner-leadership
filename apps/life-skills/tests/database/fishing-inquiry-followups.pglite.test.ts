@@ -63,12 +63,13 @@ it("keeps one encrypted owner follow-up on an email-only Fishing inquiry across 
  expect(initial.attribution).toEqual(attribution);
  const before=(await db.query("SELECT count(*)::int AS n FROM ls_identity.people")).rows;
  const command={operationId:randomUUID(),applicationId:saved.item.id,expectedVersion:0,status:"waiting" as const,
-  note:"Parent requested a call next week",nextAction:"Call parent",dueDate:"2026-11-05",waitingCondition:"Parent availability"};
+  note:"Parent requested a call next week",nextAction:"Call parent",dueDate:"2026-11-05",waitingCondition:"Parent availability",sourceCorrection:{source:"Community referral",basis:"Parent stated this on the call"}};
  expect(await followups.followup(owner,command)).toMatchObject({version:1,replayed:false});
  expect(await followups.followup(owner,command)).toMatchObject({version:1,replayed:true});
  await expect(followups.followup(owner,{...command,operationId:randomUUID()})).rejects.toMatchObject({code:"CONFLICT"});
  const read=await followups.read(owner,saved.item.id);
  expect(read.followup).toMatchObject({version:1,note:command.note,nextAction:command.nextAction});
+ expect(read.attribution).toEqual(attribution);expect(read.history[0]).toMatchObject({sourceCorrection:command.sourceCorrection,actorAccountId:owner.id});
  expect(read.history).toHaveLength(1);
  await expect(followups.read(parent,saved.item.id)).rejects.toMatchObject({code:"NOT_FOUND"});
  await expect(followups.read(owner,randomUUID())).rejects.toMatchObject({code:"NOT_FOUND"});
@@ -84,8 +85,42 @@ it("keeps one encrypted owner follow-up on an email-only Fishing inquiry across 
  await expect(followups.read(owner,retiredId)).rejects.toMatchObject({code:"NOT_FOUND"});
  await expect(followups.followup(owner,{...command,operationId:randomUUID(),applicationId:retiredId}))
   .rejects.toMatchObject({code:"NOT_FOUND"});
+ const secondTouch=campaignAttributionSchema.parse({first:attribution.first,last:{campaign:ACADEMY_CAMPAIGN,source:"whatsapp",medium:"message",content:PREREG_CREATIVE.id}});
+ expect(await applications.submit({...submission,operationId:randomUUID()},undefined,secondTouch)).toMatchObject({duplicate:true});
+ const attributed=await followups.read(owner,saved.item.id);expect(attributed.attribution).toEqual(secondTouch);
+ const batch=await followups.listPage(owner);expect(batch.items).toHaveLength(1);
+ expect(batch.items[0]).toMatchObject({application:{id:saved.item.id},attribution:secondTouch,followup:{version:1,status:"waiting",nextAction:"Call parent"}});
+ await expect(followups.listPage(parent)).rejects.toMatchObject({code:"NOT_FOUND"});
  expect((await db.query("SELECT count(*)::int AS n FROM ls_identity.people")).rows).toEqual(before);
  const row=(await db.query<{payload_ciphertext:string}>("SELECT payload_ciphertext FROM ls_service_interest.fishing_inquiry_followups WHERE application_id=$1",[saved.item.id])).rows[0]!;
  expect(row.payload_ciphertext).not.toContain(command.note);
  await expect(db.query("DELETE FROM ls_service_interest.fishing_inquiry_followups WHERE application_id=$1",[saved.item.id])).rejects.toThrow();
 });
+
+it("pages owner-scoped Fishing inquiries with their saved follow-up and no duplicates",async()=>{
+ const owner=actors[0]!,parent=actors[1]!,followups=new FishingInquiryFollowupStore(adapter,workspace,ring,key,owner.id,clock),ids=new Set<string>();
+ for(let n=0;n<51;n++){
+  const saved=await applications.submit({operationId:randomUUID(),fields:{parentName:`Synthetic parent ${n}`,contact:`batch-${n}@example.invalid`,language:"en",cityArea:"Florida",programId:"sunday_fishing_academy",schedulePreference:["sunday"],permission:{confirmed:true,version:floridaGroupApplicationNotice.version,language:"en"}}});
+  ids.add(saved.item.id);
+ }
+ const first=await followups.listPage(owner);expect(first.items).toHaveLength(50);expect(first.nextCursor).toBeTruthy();
+ const second=await followups.listPage(owner,first.nextCursor!);expect(second.nextCursor).toBeNull();
+ const all=[...first.items,...second.items];expect(new Set(all.map(item=>item.application.id)).size).toBe(all.length);
+ for(const id of ids)expect(all.some(item=>item.application.id===id)).toBe(true);
+ expect(all.find(item=>item.followup.version===1)?.followup).toMatchObject({status:"waiting",nextAction:"Call parent"});
+ await expect(followups.listPage(parent,first.nextCursor!)).rejects.toMatchObject({code:"NOT_FOUND"});
+ const bad=first.nextCursor!.slice(0,-1)+(first.nextCursor!.endsWith("A")?"B":"A");
+ await expect(followups.listPage(owner,bad)).rejects.toMatchObject({code:"INVALID_REQUEST"});
+},30000);
+
+it("keeps a Fishing inquiry readable and editable beyond 100 follow-up revisions",async()=>{
+ const owner=actors[0]!,parent=actors[1]!,followups=new FishingInquiryFollowupStore(adapter,workspace,ring,key,owner.id,clock);
+ const saved=await applications.submit({operationId:randomUUID(),fields:{parentName:"Synthetic history parent",contact:"history@example.invalid",language:"en",cityArea:"Florida",programId:"sunday_fishing_academy",schedulePreference:["sunday"],permission:{confirmed:true,version:floridaGroupApplicationNotice.version,language:"en"}}});
+ const id=saved.item.id;
+ for(let n=0;n<102;n++)await followups.followup(owner,{operationId:randomUUID(),applicationId:id,expectedVersion:n,status:"waiting",note:`Revision ${n+1}`,nextAction:null,dueDate:null,waitingCondition:"Await reply"});
+ const first=await followups.read(owner,id);expect(first.followup.version).toBe(102);expect(first.history).toHaveLength(100);expect(first.hasMoreHistory).toBe(true);
+ const older=await followups.read(owner,id,first.history[99]!.version);expect(older.followup.version).toBe(102);expect(older.history.map(item=>item.version)).toEqual([2,1]);expect(older.hasMoreHistory).toBe(false);
+ await expect(followups.read(parent,id,3)).rejects.toMatchObject({code:"NOT_FOUND"});
+ await expect(followups.read(owner,id,0)).rejects.toMatchObject({code:"INVALID_REQUEST"});
+ expect(await followups.followup(owner,{operationId:randomUUID(),applicationId:id,expectedVersion:102,status:"waiting",note:"Revision 103",nextAction:null,dueDate:null,waitingCondition:"Await reply"})).toMatchObject({version:103});
+},30000);

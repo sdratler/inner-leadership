@@ -1,5 +1,5 @@
 "use client";
-import {useState,type FormEvent} from "react";
+import {useCallback,useEffect,useState,type FormEvent} from "react";
 import type {Locale} from "../../lib/locale.ts";
 import {sessionInfo} from "../identity/client.ts";
 import {fishingFollowupCommandSchema,type FishingFollowupCommand} from "./fishing-followup-contract.ts";
@@ -11,14 +11,15 @@ class RequestError extends Error{constructor(readonly status:number){super("FISH
 const endpoint="/api/private/group-applications/followups";
 
 /** Owner action remains attached to the saved inquiry, including email-only inquiries. */
-export function FishingFollowupPanel({locale,applicationId}:{locale:Locale;applicationId:string}){
+export function FishingFollowupPanel({locale,applicationId,autoOpen=false,onOperationPending}:{locale:Locale;applicationId:string;autoOpen?:boolean;onOperationPending?:(pending:boolean)=>void}){
  const t=(en:string,he:string)=>locale==="he"?he:en;
  const [detail,setDetail]=useState<Detail|null>(null),[error,setError]=useState<number|null>(null);
  const [busy,setBusy]=useState(false),[pending,setPending]=useState<FishingFollowupCommand|null>(null),[message,setMessage]=useState("");
  const [status,setStatus]=useState<"new"|"contacted"|"waiting"|"closed">("new"),
   [note,setNote]=useState(""),[nextAction,setNextAction]=useState("Review inquiry"),
   [dueDate,setDueDate]=useState(""),[waiting,setWaiting]=useState("");
- async function read(){
+ const [sourceCorrection,setSourceCorrection]=useState(""),[sourceBasis,setSourceBasis]=useState("");
+ const read=useCallback(async()=>{
   setBusy(true);setError(null);
   try{const response=await fetch(endpoint+"?"+new URLSearchParams({id:applicationId}),
    {credentials:"same-origin",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer"});
@@ -30,9 +31,21 @@ export function FishingFollowupPanel({locale,applicationId}:{locale:Locale;appli
   }catch(cause){const code=cause instanceof RequestError?cause.status:503;setError(code);
    if([401,403,404].includes(code)){setDetail(null);setPending(null);}}
   finally{setBusy(false);}
+ },[applicationId]);
+ useEffect(()=>{if(!autoOpen)return;const timer=window.setTimeout(()=>void read(),0);return()=>window.clearTimeout(timer);},[autoOpen,read]);
+ useEffect(()=>{onOperationPending?.(pending!==null);},[pending,onOperationPending]);
+ async function loadHistory(){if(!detail||busy||pending||!detail.hasMoreHistory||!detail.history.length)return;
+  setBusy(true);setError(null);
+  try{const before=detail.history[detail.history.length-1]!.version;
+   const response=await fetch(endpoint+"?"+new URLSearchParams({id:applicationId,historyBefore:String(before)}),{credentials:"same-origin",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer"});
+   const body=await response.json().catch(()=>null);if(!response.ok||!body?.ok)throw new RequestError(response.status);
+   const page=body.data as Detail;if(page.followup.version!==detail.followup.version){setError(409);return;}
+   setDetail(current=>current&&current.application.id===applicationId&&current.followup.version===detail.followup.version?{...current,history:[...current.history,...page.history],hasMoreHistory:page.hasMoreHistory}:current);
+  }catch(cause){const code=cause instanceof RequestError?cause.status:503;setError(code);if([401,403,404].includes(code)){setDetail(null);setPending(null);}}
+  finally{setBusy(false);}
  }
  async function save(command:FishingFollowupCommand){
-  setBusy(true);setError(null);setMessage("");setPending(command);
+  const previouslyUnknown=pending!==null;setBusy(true);setError(null);setMessage("");setPending(command);
   try{const session=await sessionInfo();if(session.role!=="practitioner")throw new RequestError(403);
    const response=await fetch(endpoint,{method:"POST",credentials:"same-origin",cache:"no-store",
     redirect:"error",referrerPolicy:"no-referrer",headers:{"content-type":"application/json","x-csrf-token":session.csrfToken},
@@ -40,32 +53,33 @@ export function FishingFollowupPanel({locale,applicationId}:{locale:Locale;appli
    const body=await response.json().catch(()=>null);
    if(!response.ok||!body?.ok)throw new RequestError(response.status);
    const saved=body.data as Saved;if(saved.applicationId!==applicationId)throw new RequestError(503);
-   setPending(null);setNote("");await read();setMessage(t("Follow-up saved.","המעקב נשמר."));
+   setPending(null);setNote("");setSourceCorrection("");setSourceBasis("");await read();setMessage(t("Follow-up saved.","המעקב נשמר."));
   }catch(cause){const code=cause instanceof RequestError?cause.status:503;setError(code);
-   if([400,401,403,404,409].includes(code))setPending(null);
-   if([401,403,404].includes(code))setDetail(null);
+   if(!previouslyUnknown&&[400,401,403,404,409].includes(code))setPending(null);
+   if([401,403,404].includes(code)){setDetail(null);setPending(null);}
   }finally{setBusy(false);}
  }
  function submit(event:FormEvent<HTMLFormElement>){event.preventDefault();if(!detail||pending)return;
   const parsed=fishingFollowupCommandSchema.safeParse({operationId:crypto.randomUUID(),applicationId,
    expectedVersion:detail.followup.version,status,note,nextAction:nextAction.trim()||null,
-   dueDate:dueDate||null,waitingCondition:waiting.trim()||null});
+   dueDate:dueDate||null,waitingCondition:waiting.trim()||null,...(sourceCorrection.trim()||sourceBasis.trim()?{sourceCorrection:{source:sourceCorrection,basis:sourceBasis}}:{})});
   if(!parsed.success){setError(400);return;}void save(parsed.data);
  }
- return <details className="lsw-details" onToggle={event=>{if(event.currentTarget.open&&!detail&&!busy&&error!==404)void read();}}>
+ return <details className="lsw-details" open={autoOpen||undefined} onToggle={event=>{if(!autoOpen&&event.currentTarget.open&&!detail&&!busy&&error!==404)void read();}}>
   <summary>{t("Owner follow-up","המשך טיפול של האחראי")}</summary>
   <section className="lsw-stack" aria-busy={busy}>
    {error!==null&&<div role="alert" className="lsw-alert"><p>{error===401?t("Sign in again.","יש להיכנס מחדש."):
     error===403||error===404?t("This account cannot open this Fishing inquiry.","לחשבון זה אין גישה לפניית הדיג."):
-    error===409?t("This inquiry changed. Reload before saving.","הפנייה השתנתה. יש לרענן לפני השמירה."):
-    error===400?t("Add a note and either a dated next action or a waiting condition.","יש להוסיף הערה ופעולה הבאה עם תאריך או תנאי המתנה."):
+    error===409&&!pending?t("This inquiry changed. Reload before saving.","הפנייה השתנתה. יש לרענן לפני השמירה."):
+    error===400&&!pending?t("Check the note, next action or waiting condition, and both source-correction fields if used.","יש לבדוק את ההערה, הפעולה או תנאי ההמתנה ואת שני שדות תיקון המקור אם מולאו."):
     t("Follow-up could not be read. Try again.","לא ניתן לקרוא את המעקב. אפשר לנסות שוב.")}</p>
     {![401,403,404].includes(error)&&<button type="button" onClick={()=>void read()}>{t("Reload","רענון")}</button>}</div>}
    {message&&<p role="status">{message}</p>}
    {pending&&!busy&&<div role="status" className="lsw-alert"><p>{t("Save outcome unknown. Retry the same operation.","תוצאת השמירה אינה ידועה. יש לנסות שוב את אותה פעולה.")}</p>
     <button type="button" onClick={()=>void save(pending)}>{t("Retry same save","ניסיון חוזר לאותה שמירה")}</button></div>}
    {busy&&!detail&&<p role="status">{t("Loading follow-up…","טוען מעקב…")}</p>}
-   {detail&&<><p>{t("Source","מקור")}: {detail.attribution?.first.source??t("Unknown","לא ידוע")}
+   {detail&&<><p>{t("Reply contact","פרטי קשר לתשובה")}: <bdi dir="ltr">{"contact" in detail.application.fields?detail.application.fields.contact:detail.application.fields.parentPhone}</bdi></p>
+    <p>{t("Captured source","מקור שנקלט")}: {detail.attribution?.first.source??t("Unknown","לא ידוע")}
     {detail.attribution?.first.campaign&&<> · {t("Campaign","קמפיין")}: {detail.attribution.first.campaign}</>}
     {detail.attribution?.last.postRef&&<> · {t("Post reference","מזהה פרסום")}: {detail.attribution.last.postRef}</>}
     {detail.attribution?.last.groupRef&&<> · {t("Group reference","מזהה קבוצה")}: {detail.attribution.last.groupRef}</>}</p>
@@ -77,10 +91,15 @@ export function FishingFollowupPanel({locale,applicationId}:{locale:Locale;appli
      <label>{t("Next action","פעולה הבאה")}<input maxLength={500} value={nextAction} onChange={event=>setNextAction(event.target.value)}/></label>
      <label>{t("Due date","תאריך יעד")}<input type="date" value={dueDate} onChange={event=>setDueDate(event.target.value)}/></label>
      <label>{t("Waiting condition","תנאי המתנה")}<input maxLength={500} value={waiting} onChange={event=>setWaiting(event.target.value)}/></label>
+     <label>{t("Source correction, if known","תיקון מקור, אם ידוע")}<input maxLength={100} value={sourceCorrection} onChange={event=>setSourceCorrection(event.target.value)}/></label>
+     <label>{t("How do you know?","כיצד ידוע המקור?")}<input maxLength={500} value={sourceBasis} onChange={event=>setSourceBasis(event.target.value)}/></label>
+     <p>{t("A correction and its basis are saved in history; the captured source remains unchanged. Complete both fields or leave both empty.","התיקון והבסיס לו נשמרים בהיסטוריה; המקור שנקלט אינו משתנה. יש למלא את שני השדות או להשאיר את שניהם ריקים.")}</p>
      <button type="submit" disabled={busy||!!pending}>{t("Save follow-up","שמירת המשך טיפול")}</button></form>
     {detail.history.length>0&&<><h4>{t("Saved history","היסטוריה שמורה")}</h4><ol>{detail.history.map(item=><li key={item.operationId}>
      <time dateTime={item.recordedAt}>{item.recordedAt}</time> · {item.status} · {item.note}
+     {item.sourceCorrection&&<> · {t("Owner source correction","תיקון מקור של האחראי")}: {item.sourceCorrection.source} · {t("Basis","בסיס")}: {item.sourceCorrection.basis} · <bdi dir="ltr">{item.actorAccountId}</bdi></>}
      {item.nextAction&&<> · {item.nextAction} ({item.dueDate})</>}{item.waitingCondition&&<> · {item.waitingCondition}</>}</li>)}</ol></>}
+    {detail.hasMoreHistory&&<button type="button" disabled={busy||!!pending} onClick={()=>void loadHistory()}>{t("Load older history","טעינת היסטוריה קודמת")}</button>}
    </>}
   </section>
  </details>;

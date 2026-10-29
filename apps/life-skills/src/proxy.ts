@@ -47,7 +47,7 @@ export function intakeReleasePath(pathname: string, input: Record<string,string|
 export function groupApplicationReleasePath(pathname:string,input:Record<string,string|undefined>):boolean{
  const founderPath=input.LS_ACADEMY_FREE_REGISTRATION_ENABLED==='true'&&(pathname==='/api/public/academy-founder'||/^\/(he|en)\/florida\/confirm-interest\/?$/.test(pathname));
  const allowed=founderPath||pathname==="/api/public/group-applications"||
-  (input.LS_BNA_INQUIRY_ENABLED==='true'&&pathname==='/api/public/bna-inquiries')||
+  (input.LS_BNA_INQUIRY_ENABLED==='true'&&(pathname==='/api/public/bna-inquiries'||input.LS_BNA_COOP_INQUIRY_ENABLED==='true'&&pathname==='/api/public/bna-coop-inquiries'))||
   /^\/(he|en)\/florida(?:\/(?:torah-mornings|private-fishing|apply|pricing))?\/?$/.test(pathname)||
   /^\/(he|en)\/florida\/stages\/(?:foundation|independent|advanced|leadership)\/?$/.test(pathname);
  if(!allowed||!publicGroupApplicationEnvironmentEnabled(input))return false;

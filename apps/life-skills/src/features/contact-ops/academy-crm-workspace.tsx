@@ -45,6 +45,7 @@ export function AcademyCrmWorkspace({locale,initialInquiryId,initialPersonId}:{l
  },[showError]);
  const open=useCallback(async(personId:string,epoch:number)=>{
   const request=++detailSerial.current;
+  setDetail(null);setInquiry(null);setCreating(false);setConfirmedOperationId(null);setMessage("");
   try{const value=await read<Detail>({personId,expectedEpoch:String(epoch)});if(active.current&&detailSerial.current===request){setDetail(value);setCreating(false);setInquiry(null);setError(null);}}
   catch(cause){if(active.current&&detailSerial.current===request)showError(cause);}
  },[showError]);
@@ -86,7 +87,7 @@ export function AcademyCrmWorkspace({locale,initialInquiryId,initialPersonId}:{l
   error===404?text("That Academy record is not available.","רשומת האקדמיה הזו אינה זמינה."):
   error===409?text("The saved record changed or this contact already exists. Reload before saving again.","הרשומה השתנתה או שאיש הקשר כבר קיים. יש לרענן לפני שמירה נוספת."):
   error===400?text("Check the name, phone or email, and the date.","יש לבדוק את השם, הטלפון או הדוא״ל ואת התאריך."):
-  text("The request could not be confirmed. Your draft is still here.","לא ניתן לאשר שהבקשה הושלמה. הטיוטה עדיין כאן.");
+  text("The request could not be confirmed. Reload saved records or retry the same save if offered.","לא ניתן לאשר שהבקשה הושלמה. יש לרענן את הרשומות או לנסות שוב את אותה שמירה אם האפשרות מוצעת.");
  return <main className="lsw-main academy-crm" lang={locale} dir={locale==="he"?"rtl":"ltr"}>
   <header className="lsw-page-header"><div><h1>{text("Academy people","אנשי האקדמיה")}</h1>
    <p>{text("Contacts, conversation notes and next actions.","אנשי קשר, סיכומי שיחות ופעולות הבאות.")}</p></div>
