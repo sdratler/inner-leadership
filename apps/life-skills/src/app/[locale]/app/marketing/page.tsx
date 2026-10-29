@@ -13,6 +13,7 @@ import {CommunitySection} from '../../../../features/community-reply/section.tsx
 import {readContentVoiceSource} from '../../../../features/content-voice/source.ts';
 import {FishingMarketingStore} from '../../../../features/fishing-marketing/store.ts';
 import {verifiedFishingCreative} from '../../../../features/fishing-marketing/creative.ts';
+import {readTaggedInquiries} from "../../../../features/fishing-marketing/attribution-store.ts";
 import {FishingMarketingPanel} from '../../../../features/fishing-marketing/panel.tsx';
 import {loadFacebookPagePublicationState} from '../../../../features/marketing-overview/page-publication-provider.ts';
 export const dynamic="force-dynamic";
@@ -41,5 +42,7 @@ export default async function Page({params,searchParams}:{params:Promise<{locale
   const showFishing=process.env.LS_FISHING_MARKETING_ENABLED==="true"&&(section==="overview"||section==="content_calendar");
   if(showFishing){try{const r=context.runtime;fishing=await new FishingMarketingStore(r.store,r.config.workspaceId,r.config.keyring,r.config.lookupKey.toString("hex"),process.env.LS_BNA_OWNER_ACCOUNT_ID??"",r.clock).read(context.actor);}catch{fishingUnavailable=true;}}
   const fishingCreative=showFishing&&fishing?await verifiedFishingCreative():null;
-  return <>{showFishing&&<FishingMarketingPanel locale={locale} data={fishing} unavailable={fishingUnavailable} creative={fishingCreative} section={section} filters={{program:rawQuery.marketingProgram,channel:rawQuery.marketingChannel,state:rawQuery.marketingState}}/>}<MarketingDashboard locale={locale} snapshot={snapshot} ownerDigest={digest} facebookPage={facebookPage} initialSection={query.section} initialFilter={query.filter} initialMonth={query.month} calendarQuery={query} creativeQuery={query} renderedAt={new Date().toISOString()}/></>;
+  let attribution:Awaited<ReturnType<typeof readTaggedInquiries>>|null=null,attributionUnavailable=false;
+  if(fishing){try{const r=context.runtime;const rawCursor=rawQuery.linkCursor;const cursor=typeof rawCursor==="string"&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawCursor)?rawCursor:undefined;attribution=await readTaggedInquiries(r.store,r.config.workspaceId,r.config.keyring,r.config.lookupKey.toString("hex"),process.env.LS_BNA_OWNER_ACCOUNT_ID??"",r.clock,context.actor,fishing.snapshot,cursor);}catch{attributionUnavailable=true;}}
+  return <>{showFishing&&<FishingMarketingPanel locale={locale} data={fishing} unavailable={fishingUnavailable} creative={fishingCreative} attribution={attribution} attributionUnavailable={attributionUnavailable} section={section} filters={{program:rawQuery.marketingProgram,channel:rawQuery.marketingChannel,state:rawQuery.marketingState}}/>}<MarketingDashboard locale={locale} snapshot={snapshot} ownerDigest={digest} facebookPage={facebookPage} initialSection={query.section} initialFilter={query.filter} initialMonth={query.month} calendarQuery={query} creativeQuery={query} renderedAt={new Date().toISOString()}/></>;
 }
