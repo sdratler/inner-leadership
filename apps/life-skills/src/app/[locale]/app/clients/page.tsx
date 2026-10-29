@@ -11,6 +11,7 @@ import {identityRuntime} from "../../../../features/identity/runtime.ts";
 import {ContactCutoverStore} from "../../../../features/contact-ops/server/cutover-store.ts";
 import {AcademyCrmWorkspace} from "../../../../features/contact-ops/academy-crm-workspace.tsx";
 import {BnaInquiryOwnerPanel} from "../../../../features/bna-inquiry/owner-panel.tsx";
+import {Owner305ConversationPanel} from "../../../../features/conversation-305/owner-panel.tsx";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -50,6 +51,7 @@ export default async function Page({ params, searchParams }: {
     <a href={`/${locale}/app/clients`}>{locale==="he"?"פתיחת רשימת האקדמיה":"Open Academy contacts"}</a>
   </main>;
   const bnaPanel=process.env.LS_BNA_INQUIRY_ENABLED==="true"?<BnaInquiryOwnerPanel locale={locale}/>:null;
-  if(academy||validInquiry)return <><AcademyCrmWorkspace locale={locale} initialInquiryId={validInquiry} initialPersonId={validPerson}/>{bnaPanel}</>;
-  return <><ProviderIndexEntryLink locale={locale} /><ClientsRoster locale={locale} section={one("section")} prospectFilter={one("filter")} focusLeadId={one("leadId")} personId={one("personId")} mode={one("mode")} page={one("page")} search={one("search")} stage={one("stage")} language={one("language")} due={one("due")} />{bnaPanel}</>;
+  const conversations305=process.env.LS_305_CLASSIFICATION_ENABLED==="true"?<Owner305ConversationPanel locale={locale}/>:null;
+  if(academy||validInquiry)return <><AcademyCrmWorkspace locale={locale} initialInquiryId={validInquiry} initialPersonId={validPerson}/>{bnaPanel}{conversations305}</>;
+  return <><ProviderIndexEntryLink locale={locale} /><ClientsRoster locale={locale} section={one("section")} prospectFilter={one("filter")} focusLeadId={one("leadId")} personId={one("personId")} mode={one("mode")} page={one("page")} search={one("search")} stage={one("stage")} language={one("language")} due={one("due")} />{bnaPanel}{conversations305}</>;
 }

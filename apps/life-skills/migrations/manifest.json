@@ -238,5 +238,9 @@
   {
     "name": "0140_ls_fishing_inquiry_followups.sql",
     "sha256": "0d24071314c823f5754c1d5d5637fd18b33cb81d08c45f7a58e95d2bf4c45d46"
+  },
+  {
+    "name": "0141_ls_owner_305_conversations.sql",
+    "sha256": "d4c5c6a4e98382c4059e97c6147eae378b0017fd61307df771b1bdbc68b29790"
   }
 ]
