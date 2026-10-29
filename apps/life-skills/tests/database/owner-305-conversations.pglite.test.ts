@@ -149,3 +149,12 @@ it("pages linked inquiry choices with owner and conversation-bound cursors",asyn
  await expect(links.list(ownerActor,other.id,first.nextCursor!)).rejects.toMatchObject({code:"INVALID_REQUEST"});
  await expect(links.list(otherActor,conversation.id,first.nextCursor!)).rejects.toMatchObject({code:"NOT_FOUND"});
 },30000);
+
+it("rejects disabled append-only guards and unexpected grants in the link schema",async()=>{
+ const stage=()=>readOwner305LinkSchemaStage({query:(sql,values)=>db.query(sql,values?[...values]:undefined)});
+ await db.exec("ALTER TABLE ls_service_interest.owner_305_inquiry_link_events DISABLE TRIGGER owner_305_inquiry_link_no_edit");
+ try{await expect(stage()).rejects.toThrow("OWNER_305_LINK_SCHEMA_CATALOG_CONFLICT");}finally{await db.exec("ALTER TABLE ls_service_interest.owner_305_inquiry_link_events ENABLE TRIGGER owner_305_inquiry_link_no_edit");}
+ await db.exec("GRANT SELECT ON ls_service_interest.owner_305_inquiry_link_events TO PUBLIC");
+ try{await expect(stage()).rejects.toThrow("OWNER_305_LINK_SCHEMA_CATALOG_CONFLICT");}finally{await db.exec("REVOKE SELECT ON ls_service_interest.owner_305_inquiry_link_events FROM PUBLIC");}
+ expect(await stage()).toBe(1);
+});

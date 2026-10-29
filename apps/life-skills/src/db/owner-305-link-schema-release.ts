@@ -23,5 +23,27 @@ export async function readOwner305LinkSchemaStage(db:Owner305ReleaseQuery):Promi
  const columns=await db.query<{name:string;type:string;nullable:string}>(`SELECT column_name AS name,data_type AS type,is_nullable AS nullable FROM information_schema.columns
   WHERE table_schema='ls_service_interest' AND table_name='owner_305_inquiry_link_events' ORDER BY ordinal_position`);
  const expected=[['workspace_id','uuid','NO'],['operation_id','uuid','NO'],['conversation_id','uuid','NO'],['owner_account_id','uuid','NO'],['version','integer','NO'],['request_digest','text','NO'],['bna_inquiry_id','uuid','YES'],['fishing_application_id','uuid','YES'],['linked','boolean','NO'],['recorded_at','timestamp with time zone','NO']];
- if(JSON.stringify(columns.rows.map(value=>[value.name,value.type,value.nullable]))!==JSON.stringify(expected))throw Error("OWNER_305_LINK_SCHEMA_CATALOG_CONFLICT");return 1;
+ if(JSON.stringify(columns.rows.map(value=>[value.name,value.type,value.nullable]))!==JSON.stringify(expected))throw Error("OWNER_305_LINK_SCHEMA_CATALOG_CONFLICT");
+ const definitions=await db.query<{kind:string;definition:string}>(`SELECT c.contype::text AS kind,pg_get_constraintdef(c.oid) AS definition FROM pg_constraint c JOIN pg_class r ON r.oid=c.conrelid JOIN pg_namespace n ON n.oid=r.relnamespace
+  WHERE n.nspname='ls_service_interest' AND r.relname='owner_305_inquiry_link_events' AND c.contype IN ('c','f','p') AND c.convalidated ORDER BY kind,definition`);
+ const expectedDefinitions=[
+  ['c','CHECK (((bna_inquiry_id IS NULL) <> (fishing_application_id IS NULL)))'],['c','CHECK (((version >= 1) AND (version <= 2147483646)))'],['c',"CHECK ((request_digest ~ '^[a-f0-9]{64}$'::text))"],
+  ['f','FOREIGN KEY (workspace_id, bna_inquiry_id) REFERENCES ls_service_interest.bna_inquiries(workspace_id, id)'],['f','FOREIGN KEY (workspace_id, conversation_id) REFERENCES ls_service_interest.owner_305_conversations(workspace_id, id)'],
+  ['f','FOREIGN KEY (workspace_id, fishing_application_id) REFERENCES ls_service_interest.public_applications(workspace_id, id)'],['f','FOREIGN KEY (workspace_id, owner_account_id) REFERENCES ls_identity.accounts(workspace_id, id)'],['p','PRIMARY KEY (workspace_id, operation_id)']];
+ if(JSON.stringify(definitions.rows.map(value=>[value.kind,value.definition]))!==JSON.stringify(expectedDefinitions))throw Error("OWNER_305_LINK_SCHEMA_CATALOG_CONFLICT");
+ const indexes=await db.query<{name:string;definition:string}>(`SELECT indexname AS name,indexdef AS definition FROM pg_indexes WHERE schemaname='ls_service_interest' AND tablename='owner_305_inquiry_link_events' ORDER BY indexname`);
+ const expectedIndexes=[
+  ['owner_305_bna_link_version','CREATE UNIQUE INDEX owner_305_bna_link_version ON ls_service_interest.owner_305_inquiry_link_events USING btree (workspace_id, conversation_id, bna_inquiry_id, version) WHERE (bna_inquiry_id IS NOT NULL)'],
+  ['owner_305_fishing_link_version','CREATE UNIQUE INDEX owner_305_fishing_link_version ON ls_service_interest.owner_305_inquiry_link_events USING btree (workspace_id, conversation_id, fishing_application_id, version) WHERE (fishing_application_id IS NOT NULL)'],
+  ['owner_305_inquiry_link_events_pkey','CREATE UNIQUE INDEX owner_305_inquiry_link_events_pkey ON ls_service_interest.owner_305_inquiry_link_events USING btree (workspace_id, operation_id)'],
+  ['owner_305_inquiry_link_history','CREATE INDEX owner_305_inquiry_link_history ON ls_service_interest.owner_305_inquiry_link_events USING btree (workspace_id, conversation_id, recorded_at DESC, operation_id DESC)']];
+ if(JSON.stringify(indexes.rows.map(value=>[value.name,value.definition]))!==JSON.stringify(expectedIndexes))throw Error("OWNER_305_LINK_SCHEMA_CATALOG_CONFLICT");
+ const triggers=await db.query<{name:string;definition:string}>(`SELECT t.tgname AS name,pg_get_triggerdef(t.oid) AS definition FROM pg_trigger t JOIN pg_class r ON r.oid=t.tgrelid JOIN pg_namespace n ON n.oid=r.relnamespace
+  WHERE n.nspname='ls_service_interest' AND r.relname='owner_305_inquiry_link_events' AND NOT t.tgisinternal AND t.tgenabled IN ('O','A') ORDER BY t.tgname`);
+ const expectedTriggers=[['owner_305_inquiry_link_no_edit','CREATE TRIGGER owner_305_inquiry_link_no_edit BEFORE DELETE OR UPDATE ON ls_service_interest.owner_305_inquiry_link_events FOR EACH ROW EXECUTE FUNCTION ls_service_interest.reject_public_application_mutation()'],
+  ['owner_305_inquiry_link_no_truncate','CREATE TRIGGER owner_305_inquiry_link_no_truncate BEFORE TRUNCATE ON ls_service_interest.owner_305_inquiry_link_events FOR EACH STATEMENT EXECUTE FUNCTION ls_service_interest.reject_public_application_mutation()']];
+ if(JSON.stringify(triggers.rows.map(value=>[value.name,value.definition]))!==JSON.stringify(expectedTriggers))throw Error("OWNER_305_LINK_SCHEMA_CATALOG_CONFLICT");
+ const grants=await db.query<{count:number}>(`SELECT count(*)::int AS count FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace,LATERAL aclexplode(COALESCE(c.relacl,acldefault('r',c.relowner))) acl
+  WHERE n.nspname='ls_service_interest' AND c.relname='owner_305_inquiry_link_events' AND acl.grantee<>c.relowner`);
+ if(grants.rows[0]?.count!==0)throw Error("OWNER_305_LINK_SCHEMA_CATALOG_CONFLICT");return 1;
 }
