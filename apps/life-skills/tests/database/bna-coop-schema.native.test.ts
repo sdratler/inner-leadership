@@ -20,8 +20,8 @@ it("migrates the exact co-op constraint without changing existing inquiry rows",
   expect(await readBnaCoopSchemaStage({query})).toBe(1);expect((await query("SELECT to_jsonb(t) AS row FROM ls_service_interest.bna_inquiries t WHERE id=$1",[id])).rows).toEqual(before);
   const coopHistory=(await query("SELECT name,checksum FROM ls_control.migrations ORDER BY name")).rows;
   expect(await readOwner305LinkSchemaStage({query})).toBe(0);expect(owner305LinkSchemaPlan(db.inventory,coopHistory,0).pending).toHaveLength(1);
-  expect(db.inventory.slice(coopIndex+1).map(file=>file.name)).toEqual(['0143_ls_owner_305_inquiry_links.sql','0144_ls_bna_support_interest.sql','0145_ls_owner_305_inbound.sql','0146_ls_bna_communication_delivery.sql']);
-  expect(await migrate({query},db.inventory,false)).toEqual({applied:4,pending:0});expect(await readOwner305LinkSchemaStage({query})).toBe(1);
+  expect(db.inventory.slice(coopIndex+1).map(file=>file.name)).toEqual(['0143_ls_owner_305_inquiry_links.sql','0144_ls_bna_support_interest.sql','0145_ls_owner_305_inbound.sql','0146_ls_bna_communication_delivery.sql','0147_ls_fishing_marketing_snapshot.sql']);
+  expect(await migrate({query},db.inventory,false)).toEqual({applied:5,pending:0});expect(await readOwner305LinkSchemaStage({query})).toBe(1);
   const finalHistory=(await query("SELECT name,checksum FROM ls_control.migrations ORDER BY name")).rows;
   expect(finalHistory.slice(0,coopHistory.length)).toEqual(coopHistory);
   expect(bnaCoopSchemaPlan(db.inventory,finalHistory,1).pending).toHaveLength(0);

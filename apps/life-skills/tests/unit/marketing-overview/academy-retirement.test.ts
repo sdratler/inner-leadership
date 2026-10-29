@@ -53,3 +53,14 @@ test("a direct old marketing asset URL remains private and cannot reach its old 
  expect(fetch).not.toHaveBeenCalled();
  expect((await marketingMedia(new Request(url),"retired-asset")).status).toBe(401);
 });
+
+test("assisted group readback shares the existing Marketing shell while the exact BNA review library stays separate",async()=>{
+ const fetch=vi.fn();vi.stubGlobal("fetch",fetch);const snapshot=await loadMarketingSnapshot();
+ const contentReview=React.createElement(BnaContentReviewLibrary,{locale:"en"});
+ const groupPreparation=React.createElement("section",{"data-fishing-preparation":true},"Synthetic assisted preparation");
+ const render=(initialSection:string)=>renderToStaticMarkup(React.createElement(MarketingDashboard,{locale:"en",snapshot,initialSection,contentReview,groupPreparation,renderedAt:"2026-10-29T15:00:00.000Z"}));
+ const overview=render("overview"),creatives=render("creatives");
+ expect(overview).toContain("Synthetic assisted preparation");expect(overview.indexOf("<h1>Marketing</h1>")).toBeLessThan(overview.indexOf("data-fishing-preparation"));
+ expect(creatives).toContain("34 social drafts");expect(creatives).toContain("15 email drafts");expect(creatives).not.toContain("Synthetic assisted preparation");
+ expect(fetch).not.toHaveBeenCalled();
+});

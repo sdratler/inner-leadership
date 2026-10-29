@@ -13,6 +13,10 @@ import {CommunitySection} from '../../../../features/community-reply/section.tsx
 import {readContentVoiceSource} from '../../../../features/content-voice/source.ts';
 import {loadFacebookPagePublicationState} from '../../../../features/marketing-overview/page-publication-provider.ts';
 import {BnaContentReviewLibrary} from '../../../../features/bna-communications/content-review-library.tsx';
+import {FishingMarketingStore} from '../../../../features/fishing-marketing/store.ts';
+import {verifiedFishingCreative} from '../../../../features/fishing-marketing/creative.ts';
+import {readTaggedInquiries} from '../../../../features/fishing-marketing/attribution-store.ts';
+import {FishingMarketingPanel} from '../../../../features/fishing-marketing/panel.tsx';
 export const dynamic="force-dynamic";
 export const metadata={title:"Fishing Academy — Marketing",robots:{index:false,follow:false}};
 /** No unverified connections or fabricated live data. Codex binds a separately owner-authorized read model here. */
@@ -35,5 +39,11 @@ export default async function Page({params,searchParams}:{params:Promise<{locale
    try{return await loadOwnerDigest(context.actor,context.runtime,snapshot,locale);}
    catch(error){if(error instanceof AppError&&error.code==="FORBIDDEN")notFound();throw error;}
   })():undefined;
-  return <MarketingDashboard locale={locale} snapshot={snapshot} ownerDigest={digest} facebookPage={facebookPage} initialSection={query.section} initialFilter={query.filter} initialMonth={query.month} calendarQuery={query} creativeQuery={query} renderedAt={new Date().toISOString()} contentReview={section==='creatives'?<BnaContentReviewLibrary locale={locale}/>:undefined}/>;
+  let fishing:Awaited<ReturnType<FishingMarketingStore['read']>>=null,fishingUnavailable=false;
+  const showFishing=process.env.LS_FISHING_MARKETING_ENABLED==='true'&&(section==='overview'||section==='content_calendar');
+  if(showFishing){try{const r=context.runtime;fishing=await new FishingMarketingStore(r.store,r.config.workspaceId,r.config.keyring,r.config.lookupKey.toString('hex'),process.env.LS_BNA_OWNER_ACCOUNT_ID??'',r.clock).read(context.actor);}catch{fishingUnavailable=true;}}
+  const fishingCreative=showFishing&&fishing?await verifiedFishingCreative():null;
+  let attribution:Awaited<ReturnType<typeof readTaggedInquiries>>|null=null,attributionUnavailable=false;
+  if(fishing){try{const r=context.runtime;attribution=await readTaggedInquiries(r.store,r.config.workspaceId,r.config.keyring,r.config.lookupKey.toString('hex'),process.env.LS_BNA_OWNER_ACCOUNT_ID??'',r.clock,context.actor,fishing.snapshot,typeof rawQuery.linkCursor==='string'?rawQuery.linkCursor:undefined);}catch{attributionUnavailable=true;}}
+  return <MarketingDashboard locale={locale} snapshot={snapshot} ownerDigest={digest} facebookPage={facebookPage} initialSection={query.section} initialFilter={query.filter} initialMonth={query.month} calendarQuery={query} creativeQuery={query} renderedAt={new Date().toISOString()} contentReview={section==='creatives'?<BnaContentReviewLibrary locale={locale}/>:undefined} groupPreparation={showFishing?<FishingMarketingPanel locale={locale} data={fishing} unavailable={fishingUnavailable} creative={fishingCreative} attribution={attribution} attributionUnavailable={attributionUnavailable} section={section} filters={{program:rawQuery.marketingProgram,channel:rawQuery.marketingChannel,state:rawQuery.marketingState}}/>:undefined}/>;
 }

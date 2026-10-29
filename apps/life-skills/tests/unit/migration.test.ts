@@ -5,14 +5,14 @@ import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 const inventory=()=> (JSON.parse(readFileSync('migrations/manifest.json','utf8')) as {name:string;sha256:string}[]).map(f=>({name:f.name,checksum:f.sha256,sql:readFileSync('migrations/'+f.name,'utf8')}));
 it('supports every previously valid parent prefix and the original appended outbox history',()=>{
- const files=inventory();expect(files).toHaveLength(66);
- for(const n of [51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66])expect(planMigrations(files,files.slice(0,n))).toEqual(files.slice(n));
+ const files=inventory();expect(files).toHaveLength(67);
+ for(const n of [51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67])expect(planMigrations(files,files.slice(0,n))).toEqual(files.slice(n));
 
 });
 it('recognizes only the exact early outbox and resumes each partial deferred upgrade',()=>{
  const files=inventory(),outbox=files[54]!;
  for(const n of [51,52,53])expect(planMigrations(files,[...files.slice(0,n),outbox])).toEqual([...files.slice(n,54),...files.slice(55)]);
- const future={name:'0147_next.sql',checksum:'d'.repeat(64),sql:'select 1;'};
+ const future={name:'0148_next.sql',checksum:'d'.repeat(64),sql:'select 1;'};
 
  expect(planMigrations([...files,future],[...files.slice(0,51),outbox])).toEqual([...files.slice(51,54),...files.slice(55),future]);
  expect(planMigrations([...files.slice(0,51),outbox],files.slice(0,51))).toEqual([outbox]);
@@ -42,6 +42,7 @@ it("verify-only does not issue DDL or migration SQL",async()=>{
 
 it('retains every pre-founder migration pin and adopts only the exact additive founder SQL',()=>{
  const entries=JSON.parse(readFileSync('migrations/manifest.json','utf8')) as {name:string;sha256:string}[];
+ expect(createHash('sha256').update(JSON.stringify(entries.slice(0,66))).digest('hex')).toBe('8cfd7bee1885dc769c2d2ea602c672da2d4727587fdaeb7dff849ab798a6ad66');
  expect(createHash('sha256').update(JSON.stringify(entries.slice(0,65))).digest('hex')).toBe('9938871b9c138f02e7dd372ac1d273f792371272aa69a2fa990a44ae890b6858');
  expect(createHash('sha256').update(JSON.stringify(entries.slice(0,55))).digest('hex')).toBe('14c3d62442b8152997c957746e96682fc696aa1fac533034d30db0f1279b51c4');
  expect(entries[55]).toEqual({name:'0136_ls_academy_founder.sql',sha256:'6590a21e456f05c4956b097ce5cd3300fd2ebb2ae89e1d007bb2ece969b51ecf'});

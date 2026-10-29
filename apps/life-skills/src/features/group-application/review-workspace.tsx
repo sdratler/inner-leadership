@@ -22,11 +22,11 @@ type ReviewResponse={ok:true;data:ReviewData};
 class ReviewReadError extends Error{constructor(readonly status:number){super("INQUIRY_REVIEW_FAILED");}}
 async function requestGroupApplications(search:string,cursor:string|null){const query=new URLSearchParams();if(search)query.set("search",search);if(cursor)query.set("cursor",cursor);const response=await fetch("/api/private/group-applications"+(query.size?"?"+query.toString():""),{credentials:"same-origin",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer"});if(!response.ok)throw new ReviewReadError(response.status);const body=await response.json() as ReviewResponse;if(body.ok!==true)throw new ReviewReadError(503);return body.data;}
 
-export function GroupApplicationReviewWorkspace({locale}:{locale:Locale}){
+export function GroupApplicationReviewWorkspace({locale,initialSearch=""}:{locale:Locale;initialSearch?:string}){
  const t=(en:string,he:string)=>locale==="he"?he:en;
  const [data,setData]=useState<ReviewData|null>(null),[error,setError]=useState(false),[busy,setBusy]=useState(false),[accessFailure,setAccessFailure]=useState<number|null>(null);
  const [academyFilters,setAcademyFilters]=useState<AcademyInquiryFiltersValue>(emptyAcademyInquiryFilters);
- const [search,setSearch]=useState(""),[appliedSearch,setAppliedSearch]=useState("");
+ const [search,setSearch]=useState(initialSearch),[appliedSearch,setAppliedSearch]=useState(initialSearch);
  const readVersion=useRef<symbol|null>(null),attemptedSearch=useRef("");
  const items=data?.items??null;
  const visibleAcademyCount=items?.filter(item=>matchesAcademyInquiryFilters(item,academyFilters)).length??0;
@@ -40,7 +40,7 @@ export function GroupApplicationReviewWorkspace({locale}:{locale:Locale}){
   catch(e){if(version!==readVersion.current)return;setData(null);const denied=e instanceof ReviewReadError&&(e.status===401||e.status===403);if(denied){attemptedSearch.current="";setSearch("");setAppliedSearch("");}setError(!denied);setAccessFailure(denied?e.status:null);}
   finally{if(version===readVersion.current)setBusy(false);}
  },[]);
- useEffect(()=>{const timer=window.setTimeout(()=>{void load();},0);return()=>{window.clearTimeout(timer);readVersion.current=null;};},[load]);
+ useEffect(()=>{const timer=window.setTimeout(()=>{setSearch(initialSearch);void load(initialSearch);},0);return()=>{window.clearTimeout(timer);readVersion.current=null;};},[load,initialSearch]);
  const offer=(value:string)=>value==="sunday_fishing_academy"?t("Real Mensch · Jewish Leadership Fishing Academy","Real Mensch · האקדמיה היהודית לדיג ולמנהיגות"):value==="morning_torah_learning"?t("Morning Torah Learning","לימוד תורה בבוקר"):t("Private Fishing & Life Skills","דיג וכישורי חיים באופן פרטי");
  const schedule=(value:string)=>value==="weekday_before_school"?t("Weekday before school","בימי חול לפני הלימודים"):value==="weekday_morning_homeschool"?t("Weekday homeschool morning","בוקר לימוד ביתי בימי חול"):value==="weekday_after_school"?t("Weekday after school","בימי חול אחרי הלימודים"):value==="sunday"?t("Sunday","יום ראשון"):value==="other"?t("Another time","זמן אחר"):t("Flexible","גמישים");
  return <main className={`lsw-main ${styles.workspace}`} lang={locale} dir={locale==="he"?"rtl":"ltr"}>

@@ -10,7 +10,7 @@ it("admits only support0144 after the exact0143 ledger and rejects drift or sche
  expect(bnaSupportSchemaPlan(files,files,1).pending).toEqual([]);
  for(const [history,stage] of [[baseline,1],[files,0],[baseline.slice(0,-1),0]] as const)expect(()=>bnaSupportSchemaPlan(files,history,stage)).toThrow();
  for(const changed of [files.filter(file=>file.name!==BNA_SUPPORT_MIGRATION.name),files.map((file,n)=>n===index-1?{...file,checksum:"0".repeat(64)}:file),files.map(file=>file.name===BNA_SUPPORT_MIGRATION.name?{...file,checksum:"0".repeat(64)}:file)])expect(()=>bnaSupportSchemaPlan(changed,baseline,0)).toThrow();
- const later={name:"0147_future.sql",checksum:"e".repeat(64),sql:"select 1;"};expect(bnaSupportSchemaPlan([...files,later],[...files,later],1).pending).toEqual([]);
+ const later={name:"0148_future.sql",checksum:"e".repeat(64),sql:"select 1;"};expect(bnaSupportSchemaPlan([...files,later],[...files,later],1).pending).toEqual([]);
  expect(()=>bnaSupportSchemaPlan([...files,later],[...files,{...later,checksum:"f".repeat(64)}],1)).toThrow();
 });
 const definition="CHECK ((program_key = ANY (ARRAY['bna_torah_mornings'::text, 'bna_learning_coop'::text, 'bna_support_interest'::text])))";
