@@ -84,8 +84,11 @@ it("keeps one encrypted owner follow-up on an email-only Fishing inquiry across 
  await expect(followups.read(owner,retiredId)).rejects.toMatchObject({code:"NOT_FOUND"});
  await expect(followups.followup(owner,{...command,operationId:randomUUID(),applicationId:retiredId}))
   .rejects.toMatchObject({code:"NOT_FOUND"});
+ const secondTouch=campaignAttributionSchema.parse({first:attribution.first,last:{campaign:ACADEMY_CAMPAIGN,source:"whatsapp",medium:"message",content:PREREG_CREATIVE.id}});
+ expect(await applications.submit({...submission,operationId:randomUUID()},undefined,secondTouch)).toMatchObject({duplicate:true});
+ const attributed=await followups.read(owner,saved.item.id);expect(attributed.attribution).toEqual(secondTouch);
  const batch=await followups.listPage(owner);expect(batch.items).toHaveLength(1);
- expect(batch.items[0]).toMatchObject({application:{id:saved.item.id},attribution,followup:{version:1,status:"waiting",nextAction:"Call parent"}});
+ expect(batch.items[0]).toMatchObject({application:{id:saved.item.id},attribution:secondTouch,followup:{version:1,status:"waiting",nextAction:"Call parent"}});
  await expect(followups.listPage(parent)).rejects.toMatchObject({code:"NOT_FOUND"});
  expect((await db.query("SELECT count(*)::int AS n FROM ls_identity.people")).rows).toEqual(before);
  const row=(await db.query<{payload_ciphertext:string}>("SELECT payload_ciphertext FROM ls_service_interest.fishing_inquiry_followups WHERE application_id=$1",[saved.item.id])).rows[0]!;

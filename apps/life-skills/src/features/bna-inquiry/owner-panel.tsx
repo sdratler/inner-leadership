@@ -46,7 +46,7 @@ export function BnaInquiryOwnerPanel({locale,initialId,onOperationPending}:{loca
  },[clearPrivate]);
  useEffect(()=>{let cancelled=false;const sequence=serial;active.current=true;const timer=window.setTimeout(()=>{void load().then(()=>{if(!cancelled&&active.current&&initialId)void open(initialId);});},0);
   return()=>{cancelled=true;window.clearTimeout(timer);active.current=false;sequence.current++;};},[load,open,initialId]);
- useEffect(()=>{onOperationPending?.(busy||pending!==null);},[busy,pending,onOperationPending]);
+ useEffect(()=>{onOperationPending?.(pending!==null);},[pending,onOperationPending]);
  async function save(command:BnaFollowupCommand){
   if(busy)return;setBusy(true);setError(null);setMessage("");setPending(command);
   try{const session=await sessionInfo();if(session.role!=="practitioner")throw new RequestError(403);

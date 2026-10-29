@@ -32,7 +32,7 @@ export function FishingFollowupPanel({locale,applicationId,autoOpen=false,onOper
   finally{setBusy(false);}
  },[applicationId]);
  useEffect(()=>{if(!autoOpen)return;const timer=window.setTimeout(()=>void read(),0);return()=>window.clearTimeout(timer);},[autoOpen,read]);
- useEffect(()=>{onOperationPending?.(busy||pending!==null);},[busy,pending,onOperationPending]);
+ useEffect(()=>{onOperationPending?.(pending!==null);},[pending,onOperationPending]);
  async function save(command:FishingFollowupCommand){
   setBusy(true);setError(null);setMessage("");setPending(command);
   try{const session=await sessionInfo();if(session.role!=="practitioner")throw new RequestError(403);

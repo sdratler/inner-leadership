@@ -30,7 +30,7 @@ export function Owner305ConversationPanel({locale,initialId,onOperationPending}:
   }catch(cause){if(active.current&&serial.current===seq){const code=cause instanceof RequestError?cause.status:503;setError(code);if([401,403,404].includes(code))clearPrivate();}}
   finally{if(active.current&&serial.current===seq)setOpening(false);}},[clearPrivate]);
  useEffect(()=>{let cancelled=false;const sequence=serial;active.current=true;const timer=window.setTimeout(()=>{void load().then(()=>{if(!cancelled&&active.current&&initialId)void open(initialId);});},0);return()=>{cancelled=true;window.clearTimeout(timer);active.current=false;sequence.current++;};},[load,open,initialId]);
- useEffect(()=>{onOperationPending?.(busy||pending!==null);},[busy,pending,onOperationPending]);
+ useEffect(()=>{onOperationPending?.(pending!==null);},[pending,onOperationPending]);
  async function save(command:ConversationCommand){if(busy)return;setBusy(true);setPending(command);setError(null);setMessage("");
   try{const session=await sessionInfo();if(session.role!=="practitioner")throw new RequestError(403);
    const response=await fetch("/api/private/owner-305-conversations",{method:"POST",credentials:"same-origin",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer",
