@@ -6,6 +6,9 @@ vi.mock("server-only",()=>({}));
 import {Owner305ConversationStore} from "../../src/features/conversation-305/store.ts";
 import {Owner305InboundStore} from "../../src/features/conversation-305/inbound-store.ts";
 import {inboundBindingDigest} from "../../src/features/contact-ops/server/inbound-store.ts";
+import {receive305} from "../../src/features/conversation-305/inbound-http.ts";
+import {inboundAcknowledgementDigest} from "../../src/features/contact-ops/server/inbound-http.ts";
+import {inboundInquirySchema} from "../../src/features/contact-ops/core/inbound.ts";
 import {CONVERSATION_305_LINE} from "../../src/features/conversation-305/contract.ts";
 import {readOwner305SchemaStage} from "../../src/db/owner-305-schema-release.ts";
 import {readInbound305SchemaStage} from "../../src/db/owner-305-inbound-schema-release.ts";
@@ -80,4 +83,15 @@ it("stores exact 305 provider receipts once and exposes them only to the owner",
  expect(stored.payload_ciphertext).not.toContain(inquiry.messageText);
  expect((await db.query<{n:number}>("SELECT count(*)::int AS n FROM ls_identity.people")).rows[0]!.n).toBe(peopleBefore);
  await expect(db.query("DELETE FROM ls_service_interest.owner_305_inbound_receipts WHERE workspace_id=$1",[workspace])).rejects.toThrow();
+});
+it("acknowledges the authenticated gateway payload only after the encrypted receipt commits",async()=>{
+ const inquiry={provider:"whapi" as const,channelId:"synthetic-channel",businessNumber:CONVERSATION_305_LINE,providerEventId:"gateway-event",providerMessageId:"gateway-message",providerThreadId:"15555550123@s.whatsapp.net",eventType:"inbound_message" as const,fromMe:false as const,fromNumber:"+15555550123",pushName:"Synthetic",messageType:"text",messageText:"Synthetic gateway inquiry",occurredAt:now.toISOString(),media:[]};
+ const secret="synthetic-bridge-secret-not-real-305",binding=inboundBindingDigest(inquiry),inbound=new Owner305InboundStore(adapter,workspace,ring,"synthetic-305-private-digest-key",binding,owner,{now:()=>now});
+ const env={LS_305_INBOUND_ENABLED:"true",LS_305_CLASSIFICATION_ENABLED:"true",LS_BNA_OWNER_ACCOUNT_ID:owner,LS_305_INBOUND_BINDING_SHA256:binding,LIFE_SKILLS_APP_BRIDGE_SECRET:secret};
+ const request=(payload:unknown)=>new Request("https://synthetic.invalid/api/private/owner-305-inbound",{method:"POST",headers:{"content-type":"application/json","x-life-skills-bridge-secret":secret},body:JSON.stringify(payload)});
+ const first=await receive305(request(inquiry),env,async()=>inbound);expect(first.status).toBe(201);
+ expect((await first.json()).data.ackDigest).toBe(inboundAcknowledgementDigest(inboundInquirySchema.parse(inquiry),secret));
+ const replay=await receive305(request(inquiry),env,async()=>inbound);expect(replay.status).toBe(200);expect((await replay.json()).data.replayed).toBe(true);
+ expect((await receive305(request({...inquiry,messageText:"changed"}),env,async()=>inbound)).status).toBe(409);
+ expect((await inbound.list(ownerActor)).items.filter(item=>item.messageText===inquiry.messageText)).toHaveLength(1);
 });
