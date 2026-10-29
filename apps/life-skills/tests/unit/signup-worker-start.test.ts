@@ -57,3 +57,15 @@ it.each(['unexpected-zero','early-expiry','failed-expiry'] as const)('worker %s 
 it('controlled flag cannot start a broad worker or turn generic SEND on',()=>{
  for(const change of [{LS_INQUIRY_EMAIL_SEND_ENABLED:'true'},{LS_ACADEMY_SIGNUP_WORKER_ADMISSION_JSON:JSON.stringify({population:{mode:'future_submissions'}})}]){const f=controlledStart();Object.assign(f.host.env,change);expect(()=>startApplication({...f,now:()=>Date.parse('2026-10-27T12:00:00.000Z')})).toThrow('SIGNUP_WORKER_NOT_ADMITTED');expect(f.spawn).not.toHaveBeenCalled();}
 });
+
+it('BNA acknowledgment worker failure leaves public intake running and does not restart or resend',()=>{
+ const f=fixture();f.host.env.LS_BNA_EMAIL_WORKER_ENABLED='true';const app=startApplication(f);
+ expect(f.spawn).toHaveBeenCalledTimes(2);expect(f.spawn.mock.calls[1]?.[1]).toEqual(['--conditions=react-server','--import','tsx',expect.stringContaining('bna-acknowledgment-worker.ts'),'--hosted-bna-acknowledgments']);
+ f.children[1]!.emit('exit',1);expect(f.children[0]!.kill).not.toHaveBeenCalled();expect(f.host.exitCode).toBe(0);expect(f.spawn).toHaveBeenCalledTimes(2);
+ app.stop();f.children[0]!.emit('exit',0);expect(f.host.listenerCount('SIGTERM')).toBe(0);
+});
+it('BNA worker spawn errors preserve web, while web shutdown still stops an active BNA child',()=>{
+ const broken=fixture();broken.host.env.LS_BNA_EMAIL_WORKER_ENABLED='true';broken.spawn.mockImplementationOnce(()=>{const child=Object.assign(new EventEmitter(),{kill:vi.fn()});broken.children.push(child);return child;}).mockImplementationOnce(()=>{throw Error('synthetic spawn failure');});
+ const app=startApplication(broken);expect(broken.children[0]!.kill).not.toHaveBeenCalled();app.stop();broken.children[0]!.emit('exit',0);
+ const f=fixture();f.host.env.LS_BNA_EMAIL_WORKER_ENABLED='true';startApplication(f);f.children[0]!.emit('exit',0);expect(f.children[1]!.kill).toHaveBeenCalledWith('SIGTERM');f.children[1]!.emit('exit',0);expect(f.host.listenerCount('SIGTERM')).toBe(0);
+});

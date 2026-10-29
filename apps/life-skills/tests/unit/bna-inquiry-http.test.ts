@@ -6,6 +6,8 @@ import type {BnaInquiryStore} from "../../src/features/bna-inquiry/store.ts";
 import type {Actor} from "../../src/features/identity/types.ts";
 import {BNA_COOP_NOTICE} from "../../src/features/bna-inquiry/coop-contract.ts";
 import {BNA_INQUIRY_NOTICE} from "../../src/features/bna-inquiry/contract.ts";
+import {AppError} from "../../src/lib/errors.ts";
+import {freezeBnaAcknowledgment} from "../../src/features/bna-communications/delivery-policy.ts";
 
 const origin="https://life-skills.example.invalid",path="/api/public/bna-inquiries";
 it("offers a BNA-only challenge, requires same-origin consent, and returns only a generic save receipt",async()=>{
@@ -56,4 +58,18 @@ it("only requests a bounded history page for a single authenticated inquiry",asy
  const operation=randomUUID();expect((await privateBnaInquiryHttp(req(`?operation=${operation}`),async()=>deps)).status).toBe(200);expect(findOperation).toHaveBeenCalledWith(actor,operation);
  for(const query of [`?historyBefore=23`,`?id=${id}&historyBefore=2&historyBefore=3`,`?id=${id}&before=x`,`?id=${id}&historyBefore=oops`,`?id=${id}&operation=${operation}`,`?operation=${operation}&before=x`,`?operation=`])expect((await privateBnaInquiryHttp(req(query),async()=>deps)).status).toBe(400);
  expect((await privateBnaInquiryHttp(req(`?id=${id}&historyBefore=23`,false),async()=>deps)).status).toBe(401);
+});
+
+it("reads the owned inquiry before exposing its frozen acknowledgment and never sends from a preview",async()=>{
+ const id=randomUUID(),token="a".repeat(43),actor={id:randomUUID(),workspaceId:randomUUID(),role:"practitioner"} as Actor;
+ const fields={name:"Synthetic parent",contactChannel:"email" as const,contact:"synthetic@example.invalid",language:"he" as const,siteLanguage:"en" as const,emailUpdates:false,townOrZip:"Synthetic",childAges:[10],permission:{confirmed:true as const,version:BNA_COOP_NOTICE.version,language:"en" as const}};
+ const read=vi.fn(async()=>({id,program:"bna_learning_coop",fields})),readForInquiry=vi.fn(async()=>({state:"unknown" as const,messageId:randomUUID(),version:2,lastCode:"CONTROLLED_DELIVERY_RESERVED",providerId:null,completedAt:null,payload:freezeBnaAcknowledgment("bna_learning_coop",id,fields)!,history:[]}));
+ const deps={origin,actor:async()=>actor,csrf:()=>"b".repeat(43),limits:{consume:async()=>({count:1,retryAfterMs:0})},rateLimitKey:"synthetic-rate-key",store:{read,list:vi.fn(),findOperation:vi.fn(),followup:vi.fn()} as unknown as Pick<BnaInquiryStore,"read"|"list"|"findOperation"|"followup">,communications:{readForInquiry}};
+ const req=(authenticated=true)=>new Request(origin+"/api/private/bna-inquiries?id="+id+"&preview=acknowledgment",{headers:{host:"life-skills.example.invalid","x-forwarded-proto":"https",...(authenticated?{cookie:`__Host-ls-session=${token}`}:{})}});
+ const response=await privateBnaInquiryHttp(req(),async()=>deps);expect(response.status).toBe(200);
+ expect((await response.json()).data).toMatchObject({available:true,deliveryState:"unknown",recipient:fields.contact,candidate:{status:"frozen_snapshot",locale:"he"}});
+ expect(readForInquiry).toHaveBeenCalledWith(actor,id);
+ readForInquiry.mockClear();read.mockRejectedValueOnce(new AppError("NOT_FOUND"));
+ expect((await privateBnaInquiryHttp(req(),async()=>deps)).status).toBe(404);expect(readForInquiry).not.toHaveBeenCalled();
+ expect((await privateBnaInquiryHttp(req(false),async()=>deps)).status).toBe(401);expect(readForInquiry).not.toHaveBeenCalled();
 });

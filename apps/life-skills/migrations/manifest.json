@@ -258,5 +258,9 @@
   {
     "name": "0145_ls_owner_305_inbound.sql",
     "sha256": "73b274095bbd3acafd9eeb4461c26abc57b5276ce115c1e1e46c34f1c4d535cc"
+  },
+  {
+    "name": "0146_ls_bna_communication_delivery.sql",
+    "sha256": "5988e5955f16790960aa5381d07125a8a235f23928d5568cab5d32c816e58da2"
   }
 ]
