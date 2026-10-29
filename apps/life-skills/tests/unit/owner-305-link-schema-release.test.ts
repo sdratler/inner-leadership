@@ -12,3 +12,9 @@ it("admits only the reviewed link migration immediately after the co-op baseline
  expect(()=>owner305LinkSchemaPlan(files,baseline,1)).toThrow();
  expect(()=>owner305LinkSchemaPlan([...baseline,{...proposal,checksum:"0".repeat(64)}],baseline,0)).toThrow();
 });
+it("verifies the link schema after a valid later migration without accepting divergent history",()=>{
+ const later={name:"0144_example.sql",checksum:"a".repeat(64),sql:"SELECT 1;"};
+ const files=[...baseline,proposal,later];
+ expect(owner305LinkSchemaPlan(files,files,1).pending).toEqual([]);
+ expect(()=>owner305LinkSchemaPlan(files,[...baseline,proposal,{...later,checksum:"b".repeat(64)}],1)).toThrow();
+});

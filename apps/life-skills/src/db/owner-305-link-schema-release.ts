@@ -6,7 +6,9 @@ export const OWNER_305_LINK_MIGRATION={name:"0143_ls_owner_305_inquiry_links.sql
 export function owner305LinkSchemaPlan(files:readonly Migration[],history:readonly AppliedMigration[],stage:0|1){
  const sorted=[...files].sort((a,b)=>a.name.localeCompare(b.name)),index=sorted.findIndex(file=>file.name===OWNER_305_LINK_MIGRATION.name&&file.checksum===OWNER_305_LINK_MIGRATION.sha256);
  if(index<1||sorted[index-1]?.name!==BNA_COOP_MIGRATION.name||sorted[index-1]?.checksum!==BNA_COOP_MIGRATION.sha256)throw Error("OWNER_305_LINK_SCHEMA_SOURCE_MISMATCH");
- const scoped=sorted.slice(0,index+1),pending=planMigrations(scoped,history),expected=stage===0?[OWNER_305_LINK_MIGRATION.name]:[];
+ // Validate later ledger entries too, then evaluate only the link migration prefix.
+ planMigrations(sorted,history);
+ const scoped=sorted.slice(0,index+1),pending=planMigrations(scoped,history.slice(0,index+1)),expected=stage===0?[OWNER_305_LINK_MIGRATION.name]:[];
  if(JSON.stringify(pending.map(file=>file.name))!==JSON.stringify(expected))throw Error("OWNER_305_LINK_SCHEMA_LEDGER_STATE_CONFLICT");return {scoped,pending};
 }
 /** Detect an absent or structurally incomplete link table before release. */
