@@ -19,15 +19,16 @@ async function get<T>(id?:string):Promise<T>{const response=await fetch("/api/pr
 export function Owner305ConversationPanel({locale}:{locale:Locale}){
  const t=(en:string,he:string)=>locale==="he"?he:en;
  const [page,setPage]=useState<Page|null>(null),[detail,setDetail]=useState<Detail|null>(null),[draft,setDraft]=useState<Draft>(empty);
- const [pending,setPending]=useState<ConversationCommand|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState<number|null>(null),[message,setMessage]=useState("");
+ const [pending,setPending]=useState<ConversationCommand|null>(null),[busy,setBusy]=useState(false),[opening,setOpening]=useState(false),[error,setError]=useState<number|null>(null),[message,setMessage]=useState("");
  const active=useRef(true),serial=useRef(0);
- const clearPrivate=useCallback(()=>{setPage(null);setDetail(null);setDraft(empty);setPending(null);},[]);
- const load=useCallback(async()=>{const seq=++serial.current;try{const value=await get<Page>();if(active.current&&serial.current===seq){setPage(value);setError(null);}}
+ const clearPrivate=useCallback(()=>{setPage(null);setDetail(null);setDraft(empty);setPending(null);setOpening(false);},[]);
+ const load=useCallback(async()=>{const seq=++serial.current;setOpening(false);try{const value=await get<Page>();if(active.current&&serial.current===seq){setPage(value);setError(null);}}
   catch(cause){if(active.current&&serial.current===seq){const code=cause instanceof RequestError?cause.status:503;setError(code);if([401,403,404].includes(code))clearPrivate();}}},[clearPrivate]);
- const open=useCallback(async(id:string)=>{const seq=++serial.current;try{const value=await get<Detail>(id);if(!active.current||serial.current!==seq)return;
+ const open=useCallback(async(id:string)=>{const seq=++serial.current;setDetail(null);setDraft(empty);setMessage("");setOpening(true);try{const value=await get<Detail>(id);if(!active.current||serial.current!==seq)return;
    setDetail(value);setDraft({channel:value.channel,contactHint:value.contactHint,classification:value.followup.classification,
     note:"",nextAction:value.followup.nextAction??"",dueDate:value.followup.dueDate??"",waitingCondition:value.followup.waitingCondition??""});setError(null);
-  }catch(cause){if(active.current&&serial.current===seq){const code=cause instanceof RequestError?cause.status:503;setError(code);if([401,403,404].includes(code))clearPrivate();}}},[clearPrivate]);
+  }catch(cause){if(active.current&&serial.current===seq){const code=cause instanceof RequestError?cause.status:503;setError(code);if([401,403,404].includes(code))clearPrivate();}}
+  finally{if(active.current&&serial.current===seq)setOpening(false);}},[clearPrivate]);
  useEffect(()=>{active.current=true;const timer=window.setTimeout(()=>void load(),0);return()=>{window.clearTimeout(timer);active.current=false;};},[load]);
  async function save(command:ConversationCommand){if(busy)return;setBusy(true);setPending(command);setError(null);setMessage("");
   try{const session=await sessionInfo();if(session.role!=="practitioner")throw new RequestError(403);
@@ -37,7 +38,7 @@ export function Owner305ConversationPanel({locale}:{locale:Locale}){
    setPending(null);await load();await open(body.data.id as string);setMessage(t("Conversation saved and read back.","השיחה נשמרה ונקראה מחדש."));
   }catch(cause){const code=cause instanceof RequestError?cause.status:503;setError(code);if([400,401,403,404,409].includes(code))setPending(null);
    if([401,403,404].includes(code))clearPrivate();}finally{setBusy(false);}}
- function submit(event:FormEvent<HTMLFormElement>){event.preventDefault();if(pending)return;
+ function submit(event:FormEvent<HTMLFormElement>){event.preventDefault();if(pending||opening)return;
   const followup={classification:draft.classification,note:draft.note,nextAction:draft.nextAction.trim()||null,
    dueDate:draft.dueDate||null,waitingCondition:draft.waitingCondition.trim()||null};
   const raw=detail?{kind:"revise",operationId:crypto.randomUUID(),conversationId:detail.id,expectedVersion:detail.followup.version,followup}:
@@ -66,13 +67,14 @@ export function Owner305ConversationPanel({locale}:{locale:Locale}){
    {page.hasMore&&<p>{t("Showing the latest 100.","מוצגות 100 האחרונות.")}</p>}
    <ul>{page.items.map(item=><li key={item.id}><button type="button" disabled={busy||!!pending} onClick={()=>void open(item.id)}>
     {item.contactHint} · {t(...labels[item.followup.classification])} · {item.createdAt}</button></li>)}</ul></div>}
-  <button type="button" disabled={busy||!!pending} onClick={()=>{setDetail(null);setDraft(empty);setError(null);}}>{t("New 305 conversation","שיחת 305 חדשה")}</button>
+  <button type="button" disabled={busy||!!pending} onClick={()=>{++serial.current;setOpening(false);setDetail(null);setDraft(empty);setError(null);setMessage("");}}>{t("New 305 conversation","שיחת 305 חדשה")}</button>
+  {opening&&<p role="status">{t("Loading conversation…","טוען שיחה…")}</p>}
   {detail&&<div className="lsw-stack"><h3>{detail.contactHint}</h3><p>{t("Channel","ערוץ")}: {detail.channel} · {t("Recorded","תועד")}: {detail.createdAt}</p>
    <p>{t("Current classification","סיווג נוכחי")}: {t(...labels[detail.followup.classification])}</p>
    <ol>{detail.history.map(item=><li key={item.operationId}><time dateTime={item.recordedAt}>{item.recordedAt}</time> · {t(...labels[item.classification])} · {item.note}
     {item.nextAction&&<> · {item.nextAction} ({item.dueDate})</>}{item.waitingCondition&&<> · {item.waitingCondition}</>}</li>)}</ol>
    {detail.hasMoreHistory&&<p>{t("Showing the latest 100 revisions.","מוצגים 100 העדכונים האחרונים.")}</p>}</div>}
-  <form onSubmit={submit} className="lsw-stack"><h3>{detail?t("Update classification and follow-up","עדכון סיווג ומעקב"):t("Record a conversation","תיעוד שיחה")}</h3>
+  {!opening&&<form onSubmit={submit} className="lsw-stack"><h3>{detail?t("Update classification and follow-up","עדכון סיווג ומעקב"):t("Record a conversation","תיעוד שיחה")}</h3>
    {!detail&&<><label>{t("Channel","ערוץ")}<select value={draft.channel} onChange={event=>setDraft({...draft,channel:event.target.value as Channel})}>
     <option value="phone">{t("Phone","טלפון")}</option><option value="whatsapp">WhatsApp</option><option value="sms">SMS</option><option value="other">{t("Other","אחר")}</option></select></label>
     <label>{t("Contact hint you recognize","פרט מזהה לזיהוי השיחה")}<input required maxLength={160} value={draft.contactHint} onChange={event=>setDraft({...draft,contactHint:event.target.value})}/></label></>}
@@ -84,6 +86,6 @@ export function Owner305ConversationPanel({locale}:{locale:Locale}){
    <label>{t("Action date","תאריך פעולה")}<input type="date" value={draft.dueDate} onChange={event=>setDraft({...draft,dueDate:event.target.value})}/></label>
    <label>{t("Or waiting condition","או תנאי המתנה")}<input maxLength={500} value={draft.waitingCondition} onChange={event=>setDraft({...draft,waitingCondition:event.target.value})}/></label>
    <button type="submit" disabled={busy||!!pending}>{detail?t("Save update","שמירת עדכון"):t("Save conversation","שמירת שיחה")}</button>
-  </form>
+  </form>}
  </section>;
 }

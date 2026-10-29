@@ -23,13 +23,14 @@ export function BnaInquiryOwnerPanel({locale}:{locale:Locale}){
  const [pending,setPending]=useState<BnaFollowupCommand|null>(null),[status,setStatus]=useState<"new"|"contacted"|"waiting"|"closed">("new");
  const [note,setNote]=useState(""),[nextAction,setNextAction]=useState(""),[dueDate,setDueDate]=useState(""),[waiting,setWaiting]=useState("");
  const serial=useRef(0),active=useRef(true);
- const clearPrivate=useCallback(()=>{setPage(null);setDetail(null);setPending(null);setNote("");setNextAction("");setWaiting("");},[]);
+ const clearPrivate=useCallback(()=>{setPage(null);setDetail(null);setPending(null);setStatus("new");setNote("");setNextAction("");setDueDate("");setWaiting("");},[]);
  const load=useCallback(async(before?:string)=>{const n=++serial.current;if(before)setLoadingMore(true);
   try{const value=await get<Page>(undefined,before);if(active.current&&serial.current===n){setPage(current=>before&&current&&current.nextCursor===before?{...value,items:[...new Map([...current.items,...value.items].map(item=>[item.id,item])).values()]}:before?current:value);setError(null);}}
   catch(cause){if(active.current&&serial.current===n){const code=cause instanceof RequestError?cause.status:503;setError(code);
    if([401,403,404].includes(code))clearPrivate();}}finally{if(active.current&&before)setLoadingMore(false);}
  },[clearPrivate]);
  const open=useCallback(async(id:string)=>{const n=++serial.current;
+  setDetail(null);setStatus("new");setNote("");setNextAction("");setDueDate("");setWaiting("");setMessage("");
   try{const value=await get<Detail>(id);if(!active.current||serial.current!==n)return;
    setDetail(value);setError(null);setStatus(value.followup.status);setNote("");setNextAction(value.followup.nextAction??"");
    setDueDate(value.followup.dueDate??"");setWaiting(value.followup.waitingCondition??"");}
@@ -58,8 +59,8 @@ export function BnaInquiryOwnerPanel({locale}:{locale:Locale}){
   if(!parsed.success){setError(400);return;}void save(parsed.data);
  }
  if(error===404)return null;
- return <section className="lsw-card" lang={locale} dir={locale==="he"?"rtl":"ltr"} aria-label={t("BNA Torah inquiries","פניות לתוכנית התורה של בני נביאים")}>
-  <h2>{t("BNA Torah inquiries","פניות לתוכנית התורה של בני נביאים")}</h2>
+ return <section className="lsw-card" lang={locale} dir={locale==="he"?"rtl":"ltr"} aria-label={t("BNA inquiries","פניות לבני נביאים")}>
+  <h2>{t("BNA inquiries","פניות לבני נביאים")}</h2>
   <p>{t("Separate from Fishing. An inquiry is not enrollment or a booked place.","נפרד מתוכנית הדיג. פנייה אינה הרשמה או שמירת מקום.")}</p>
   {error!==null&&<div role="alert" className="lsw-alert"><p>{error===401?t("Sign in again to view inquiries.","יש להיכנס מחדש כדי לצפות בפניות."):
    error===403?t("This account cannot view BNA inquiries.","לחשבון זה אין גישה לפניות בני נביאים."):
