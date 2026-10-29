@@ -115,13 +115,17 @@ export class BnaInquiryStore{
    await tx.query("SET TRANSACTION READ ONLY");await this.owner(tx,actor);
    const anchor=cursor===undefined?null:this.cursorId(actor,cursor);
    if(anchor){const found=await tx.query(`SELECT id FROM ls_service_interest.bna_inquiries WHERE workspace_id=$1 AND owner_account_id=$2 AND program_key IN ('bna_torah_mornings','bna_learning_coop') AND id=$3`,[this.workspaceId,this.ownerAccountId,anchor]);if(found.length!==1)throw new AppError("INVALID_REQUEST");}
-   const rows=await tx.query<InquiryRow>(`SELECT id,program_key AS "programKey",owner_account_id AS "ownerAccountId",request_digest AS "requestDigest",
-    payload_ciphertext AS "payloadCiphertext",received_at AS "receivedAt" FROM ls_service_interest.bna_inquiries
-    WHERE workspace_id=$1 AND program_key IN ('bna_torah_mornings','bna_learning_coop') AND owner_account_id=$2 AND ($3::uuid IS NULL OR (received_at,id)<(SELECT received_at,id FROM ls_service_interest.bna_inquiries WHERE workspace_id=$1 AND owner_account_id=$2 AND id=$3)) ORDER BY received_at DESC,id DESC LIMIT 101`,
+   const rows=await tx.query<InquiryRow & {followupOperationId:string;followupInquiryId:string;followupActorAccountId:string;followupVersion:number;followupRequestDigest:string;followupPayloadCiphertext:string;followupRecordedAt:Date}>(`SELECT i.id,i.program_key AS "programKey",i.owner_account_id AS "ownerAccountId",i.request_digest AS "requestDigest",
+    i.payload_ciphertext AS "payloadCiphertext",i.received_at AS "receivedAt",f.operation_id AS "followupOperationId",f.inquiry_id AS "followupInquiryId",
+    f.actor_account_id AS "followupActorAccountId",f.version AS "followupVersion",f.request_digest AS "followupRequestDigest",
+    f.payload_ciphertext AS "followupPayloadCiphertext",f.recorded_at AS "followupRecordedAt" FROM ls_service_interest.bna_inquiries i
+    LEFT JOIN LATERAL (SELECT * FROM ls_service_interest.bna_inquiry_followups f WHERE f.workspace_id=i.workspace_id AND f.inquiry_id=i.id ORDER BY f.version DESC LIMIT 1) f ON true
+    WHERE i.workspace_id=$1 AND i.program_key IN ('bna_torah_mornings','bna_learning_coop') AND i.owner_account_id=$2 AND ($3::uuid IS NULL OR (i.received_at,i.id)<(SELECT received_at,id FROM ls_service_interest.bna_inquiries WHERE workspace_id=$1 AND owner_account_id=$2 AND id=$3)) ORDER BY i.received_at DESC,i.id DESC LIMIT 101`,
     [this.workspaceId,this.ownerAccountId,anchor]);
    const items=[];
-   for(const row of rows.slice(0,100)){const record=this.decode(row),history=await this.history(tx,row.id);
-    items.push({...record,followup:history.items[0]!});}
+   for(const row of rows.slice(0,100)){const record=this.decode(row);if(!row.followupOperationId)throw new AppError("UNAVAILABLE");
+    const followup=this.decodeFollowup({operationId:row.followupOperationId,inquiryId:row.followupInquiryId,actorAccountId:row.followupActorAccountId,version:row.followupVersion,requestDigest:row.followupRequestDigest,payloadCiphertext:row.followupPayloadCiphertext,recordedAt:row.followupRecordedAt});
+    items.push({...record,followup});}
    return {program:"bna" as const,items,nextCursor:rows.length>100?this.encodeCursor(actor,items.at(-1)!.id):null};
   });
  }

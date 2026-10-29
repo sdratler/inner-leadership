@@ -92,3 +92,19 @@ it("keeps one encrypted owner follow-up on an email-only Fishing inquiry across 
  expect(row.payload_ciphertext).not.toContain(command.note);
  await expect(db.query("DELETE FROM ls_service_interest.fishing_inquiry_followups WHERE application_id=$1",[saved.item.id])).rejects.toThrow();
 });
+
+it("pages owner-scoped Fishing inquiries with their saved follow-up and no duplicates",async()=>{
+ const owner=actors[0]!,parent=actors[1]!,followups=new FishingInquiryFollowupStore(adapter,workspace,ring,key,owner.id,clock),ids=new Set<string>();
+ for(let n=0;n<51;n++){
+  const saved=await applications.submit({operationId:randomUUID(),fields:{parentName:`Synthetic parent ${n}`,contact:`batch-${n}@example.invalid`,language:"en",cityArea:"Florida",programId:"sunday_fishing_academy",schedulePreference:["sunday"],permission:{confirmed:true,version:floridaGroupApplicationNotice.version,language:"en"}}});
+  ids.add(saved.item.id);
+ }
+ const first=await followups.listPage(owner);expect(first.items).toHaveLength(50);expect(first.nextCursor).toBeTruthy();
+ const second=await followups.listPage(owner,first.nextCursor!);expect(second.nextCursor).toBeNull();
+ const all=[...first.items,...second.items];expect(new Set(all.map(item=>item.application.id)).size).toBe(all.length);
+ for(const id of ids)expect(all.some(item=>item.application.id===id)).toBe(true);
+ expect(all.find(item=>item.followup.version===1)?.followup).toMatchObject({status:"waiting",nextAction:"Call parent"});
+ await expect(followups.listPage(parent,first.nextCursor!)).rejects.toMatchObject({code:"NOT_FOUND"});
+ const bad=first.nextCursor!.slice(0,-1)+(first.nextCursor!.endsWith("A")?"B":"A");
+ await expect(followups.listPage(owner,bad)).rejects.toMatchObject({code:"INVALID_REQUEST"});
+},30000);
