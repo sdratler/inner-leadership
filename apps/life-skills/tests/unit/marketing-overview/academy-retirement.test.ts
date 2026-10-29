@@ -8,6 +8,7 @@ import {loadMarketingSnapshot,loadContentRegistry} from "../../../src/features/m
 import {validateMarketingSnapshot} from "../../../src/features/marketing-overview/read-model.ts";
 import {marketingMedia} from "../../../src/features/marketing-overview/media.ts";
 import {MarketingDashboard} from "../../../src/ui/revamp/marketing-dashboard.tsx";
+import {BnaContentReviewLibrary} from "../../../src/features/bna-communications/content-review-library.tsx";
 
 afterEach(()=>{vi.unstubAllGlobals();vi.unstubAllEnvs();});
 
@@ -27,6 +28,21 @@ test.each(["en","he"] as const)("Academy marketing setup is actionable without r
  expect(html).toContain("data-academy-marketing-setup");expect(html).toContain(`/${locale}/app/group-applications`);
  expect(html).toContain(locale==="en"?"needs setup":"יש להגדיר");
  expect(html).not.toMatch(/<img|retired\.example|Life Skills|Temporarily unavailable|No registered revisions/);
+});
+
+test.each(["en","he"] as const)("owner can review actual supplied drafts before connecting publication sources in %s",async locale=>{
+ const fetch=vi.fn();vi.stubGlobal("fetch",fetch);
+ const snapshot=await loadMarketingSnapshot();
+ const contentReview=React.createElement(BnaContentReviewLibrary,{locale});
+ const render=(initialSection:string)=>renderToStaticMarkup(React.createElement(MarketingDashboard,{locale,snapshot,initialSection,contentReview,renderedAt:"2026-10-29T15:00:00.000Z"}));
+ const html=render("creatives");
+ expect(html).toContain("data-academy-marketing-setup");
+ expect(html).toContain(locale==="en"?"34 social drafts":"34 נוסחי פוסטים");
+ expect(html).toContain(locale==="en"?"15 email drafts":"15 נוסחי דוא״ל");
+ expect(html).toContain(locale==="en"?"Nothing here is approved, scheduled or sent.":"דבר כאן אינו מאושר, מתוזמן או נשלח.");
+ expect(html).not.toMatch(/<details[^>]*\bopen\b|<form|<button/);
+ expect(render("overview")).not.toContain(locale==="en"?"34 social drafts":"34 נוסחי פוסטים");
+ expect(fetch).not.toHaveBeenCalled();
 });
 
 test("a direct old marketing asset URL remains private and cannot reach its old bridge",async()=>{
