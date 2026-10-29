@@ -14,3 +14,11 @@ it("renders the registered image only for its exact digest, with honest assisted
  const wrong=renderToStaticMarkup(createElement(FishingMarketingPanel,{locale:"en",data,creative:{...creative,sha256:"b".repeat(64)}}));
  expect(wrong).not.toContain('src="/groups/academy/prereg-approved-square-20261023.png"');expect(wrong).toContain("Exact approved image unavailable");
 });
+
+it("does not show Fishing records when BNA or an unconnected channel is selected",()=>{
+ const data={snapshot,receivedAt:at};
+ const bna=renderToStaticMarkup(createElement(FishingMarketingPanel,{locale:"en",data,filters:{program:"bna"}}));
+ expect(bna).toContain("BNA marketing is not connected yet");expect(bna).not.toContain("Synthetic caption");
+ const page=renderToStaticMarkup(createElement(FishingMarketingPanel,{locale:"en",data,filters:{channel:"page"}}));
+ expect(page).toContain("This channel is not connected");expect(page).not.toContain("Synthetic caption");
+});

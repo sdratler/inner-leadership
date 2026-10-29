@@ -1,6 +1,7 @@
 import Image from "next/image";
 import type {Locale} from "../../lib/locale.ts";
 import type {FishingMarketingSnapshot} from "./contract.ts";
+import {filterFishingRecords,marketingFilters} from "./filters.ts";
 
 type Readback={snapshot:FishingMarketingSnapshot;receivedAt:string}|null;
 function status(locale:Locale,value:string,evidence:string){
@@ -9,13 +10,22 @@ function status(locale:Locale,value:string,evidence:string){
  if(evidence==="operator_recorded_readback")return locale==="he"?"דווח שאומת על ידי המפעיל":"Operator recorded readback";
  return labels[value]?.[locale==="he"?1:0]??(locale==="he"?"התוצאה לא אומתה":"Outcome unverified");
 }
-export function FishingMarketingPanel({locale,data,unavailable=false,creative=null}:{locale:Locale;data:Readback;unavailable?:boolean;creative?:{path:string;sha256:string;width:number;height:number}|null}){
+export function FishingMarketingPanel({locale,data,unavailable=false,creative=null,filters={},section="overview"}:{locale:Locale;data:Readback;unavailable?:boolean;creative?:{path:string;sha256:string;width:number;height:number}|null;filters?:{program?:unknown;channel?:unknown;state?:unknown};section?:string}){
  const t=(en:string,he:string)=>locale==="he"?he:en;
  if(unavailable)return <section className="lsw-card" role="status"><h2>{t("Fishing group preparation","הכנת פרסומים לקבוצות דיג")}</h2><p>{t("The scheduler readback is unavailable.","קריאת נתוני המתזמן אינה זמינה.")}</p></section>;
  if(!data)return <section className="lsw-card" role="status"><h2>{t("Fishing group preparation","הכנת פרסומים לקבוצות דיג")}</h2><p>{t("Waiting for the first scheduler sync.","ממתינים לסנכרון הראשון של המתזמן.")}</p></section>;
- const s=data.snapshot,groups=new Map(s.targets.map(target=>[target.id,target]));
+ const s=data.snapshot,groups=new Map(s.targets.map(target=>[target.id,target])),selected=marketingFilters(filters);
+ const visible=selected.program!=="bna"&&(selected.channel==="all"||selected.channel==="groups"),records=filterFishingRecords(s,selected.state);
  return <section className="lsw-card lsw-stack" lang={locale} dir={locale==="he"?"rtl":"ltr"}>
-  <h2>{t("Fishing group preparation","הכנת פרסומים לקבוצות דיג")}</h2>
+  <h2>{t("Program marketing","שיווק לפי תוכנית")}</h2>
+  <form method="get" className="lsw-stack"><input type="hidden" name="section" value={section}/>
+   <label>{t("Program","תוכנית")} <select name="marketingProgram" defaultValue={selected.program}><option value="all">{t("All authorized programs","כל התוכניות המורשות")}</option><option value="fishing">Fishing</option><option value="bna">BNA</option></select></label>
+   <label>{t("Channel","ערוץ")} <select name="marketingChannel" defaultValue={selected.channel}><option value="all">{t("All channels","כל הערוצים")}</option><option value="groups">Facebook Groups</option><option value="page">Facebook Page</option><option value="other">{t("Other configured channels","ערוצים מוגדרים אחרים")}</option></select></label>
+   <label>{t("State","מצב")} <select name="marketingState" defaultValue={selected.state}><option value="all">{t("All states","כל המצבים")}</option><option value="draft">{t("Draft / ready","טיוטה / מוכן")}</option><option value="scheduled">{t("Scheduled","מתוזמן")}</option><option value="pending">{t("Pending","ממתין")}</option><option value="published">{t("Published with readback","פורסם ואומת")}</option><option value="problem">{t("Problem / unknown","בעיה / לא ידוע")}</option></select></label>
+   <button type="submit">{t("Apply filters","החלת מסננים")}</button></form>
+  {selected.program!=="fishing"&&<p role="status">{t("BNA marketing is not connected yet.","שיווק BNA עדיין אינו מחובר.")}</p>}
+  {selected.channel!=="all"&&selected.channel!=="groups"&&<p role="status">{t("This channel is not connected to the Fishing group queue.","ערוץ זה אינו מחובר לתור קבוצות הדיג.")}</p>}
+  {visible&&<><h3>{t("Fishing group preparation","הכנת פרסומים לקבוצות דיג")}</h3>
   <p>{t("Assisted posting: review and publish each post yourself.","פרסום בסיוע: יש לבדוק ולפרסם כל פוסט באופן ידני.")}</p>
   <p>{t("Last scheduler snapshot","נתוני המתזמן האחרונים")}: <bdi><time dateTime={s.generatedAt}>{s.generatedAt}</time></bdi> · {t("Received","התקבל")}: <bdi><time dateTime={data.receivedAt}>{data.receivedAt}</time></bdi>. {t("A missing update can mean the Windows host is offline.","היעדר עדכון עשוי להעיד שמחשב Windows אינו פעיל.")}</p>
   <p>{s.schedule.enabled?t("Scheduler enabled","המתזמן פעיל"):t("Scheduler paused","המתזמן מושהה")} · {s.schedule.funnelReady?t("Funnel gate open","שער הפניות פתוח"):t("Funnel gate held","שער הפניות בהשהיה")} · {t("Daily cap","מגבלה יומית")}: {s.schedule.dailyCap} · {t("Same-group cooldown","מרווח לאותה קבוצה")}: {s.schedule.cooldownDays} {t("days","ימים")}</p>
@@ -25,10 +35,10 @@ export function FishingMarketingPanel({locale,data,unavailable=false,creative=nu
    {s.assets.map(asset=><article key={asset.id}><h3>{asset.language.toUpperCase()}</h3><p style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}} dir="auto">{asset.caption}</p>{creative&&creative.sha256===asset.imageSha256?<Image src={creative.path} alt={t("Approved Fishing Academy image","תמונה מאושרת של אקדמיית הדיג")} width={creative.width} height={creative.height} unoptimized style={{maxWidth:"100%",height:"auto"}}/>:<p>{t("Exact approved image unavailable.","התמונה המאושרת המדויקת אינה זמינה.")}</p>}</article>)}
   </details>
   <details><summary>{t("Queue and publication history","תור והיסטוריית פרסום")}</summary>
-   {!s.items.length&&!s.history.length&&<p>{t("No matching queue or delivery records in this snapshot.","אין רשומות תור או מסירה תואמות בנתונים אלו.")}</p>}
-   {s.items.length>0&&<><h3>{t("Prepared queue","תור מוכן")}</h3><ul>{s.items.map(item=><li key={`${item.day}/${item.groupId}`}><bdi>{item.day}</bdi> · {groups.get(item.groupId)?.name??item.groupId} · {status(locale,item.state,item.publicationEvidence)} · {t("Personal profile ID","מזהה פרופיל אישי")}: <bdi>{item.actorProfileId??t("not recorded","לא תועד")}</bdi> {item.postUrl&&<a href={item.postUrl} target="_blank" rel="noreferrer">{t("Open post","פתיחת הפוסט")}</a>}</li>)}</ul></>}
-   {s.history.length>0&&<><h3>{t("Delivery ledger","יומן מסירות")}</h3><ul>{s.history.map(item=><li key={item.id}><bdi>{item.recordedAt}</bdi> · {groups.get(item.groupId)?.name??item.groupId} · {status(locale,item.state,item.publicationEvidence)} · {t("Recorded identity","זהות שתועדה")}: <bdi>{item.identity}</bdi> ({t("account ID not recorded","מזהה החשבון לא תועד")}) {item.postUrl&&<a href={item.postUrl} target="_blank" rel="noreferrer">{t("Open post","פתיחת הפוסט")}</a>}</li>)}</ul></>}
+   {!records.items.length&&!records.history.length&&<p>{t("No matching queue or delivery records in this snapshot.","אין רשומות תור או מסירה תואמות בנתונים אלו.")}</p>}
+   {records.items.length>0&&<><h3>{t("Prepared queue","תור מוכן")}</h3><ul>{records.items.map(item=><li key={`${item.day}/${item.groupId}`}><bdi>{item.day}</bdi> · {groups.get(item.groupId)?.name??item.groupId} · {status(locale,item.state,item.publicationEvidence)} · {t("Personal profile ID","מזהה פרופיל אישי")}: <bdi>{item.actorProfileId??t("not recorded","לא תועד")}</bdi> {item.postUrl&&<a href={item.postUrl} target="_blank" rel="noreferrer">{t("Open post","פתיחת הפוסט")}</a>}</li>)}</ul></>}
+   {records.history.length>0&&<><h3>{t("Delivery ledger","יומן מסירות")}</h3><ul>{records.history.map(item=><li key={item.id}><bdi>{item.recordedAt}</bdi> · {groups.get(item.groupId)?.name??item.groupId} · {status(locale,item.state,item.publicationEvidence)} · {t("Recorded identity","זהות שתועדה")}: <bdi>{item.identity}</bdi> ({t("account ID not recorded","מזהה החשבון לא תועד")}) {item.postUrl&&<a href={item.postUrl} target="_blank" rel="noreferrer">{t("Open post","פתיחת הפוסט")}</a>}</li>)}</ul></>}
    {(!s.historyAvailable||s.historyTruncated||s.itemsTruncated)&&<p role="status">{t("Some history is unavailable or truncated; check the scheduler.","חלק מההיסטוריה אינה זמינה או נקטעה; יש לבדוק את המתזמן.")}</p>}
-  </details>
+  </details></>}
  </section>;
 }
