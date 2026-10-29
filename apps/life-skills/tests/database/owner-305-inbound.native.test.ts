@@ -1,0 +1,38 @@
+import {randomUUID} from "node:crypto";
+import {afterAll,beforeAll,expect,it,vi} from "vitest";
+vi.mock("server-only",()=>({}));
+import {academyTestDatabase,academyWorkspace} from "./academy-free-registration-fixture.ts";
+import {poolStore} from "./calendar/fixture.ts";
+import {Owner305InboundStore} from "../../src/features/conversation-305/inbound-store.ts";
+import {Owner305ConversationStore} from "../../src/features/conversation-305/store.ts";
+import {receive305} from "../../src/features/conversation-305/inbound-http.ts";
+import {inboundBindingDigest} from "../../src/features/contact-ops/server/inbound-store.ts";
+import {inboundAcknowledgementDigest} from "../../src/features/contact-ops/server/inbound-http.ts";
+import {inboundInquirySchema} from "../../src/features/contact-ops/core/inbound.ts";
+import {readInbound305SchemaStage} from "../../src/db/owner-305-inbound-schema-release.ts";
+let db:Awaited<ReturnType<typeof academyTestDatabase>>,fixture:Awaited<ReturnType<typeof academyWorkspace>>;
+beforeAll(async()=>{db=await academyTestDatabase();fixture=await academyWorkspace(db.pool);},60000);
+afterAll(async()=>{await db?.close();});
+it("commits, replays and isolates a synthetic 305 bridge event in real PostgreSQL",async()=>{
+ const inquiry={provider:"whapi" as const,channelId:"synthetic-305",businessNumber:"+13054916674",providerEventId:"event-1",providerMessageId:"message-1",providerThreadId:"15555550123@s.whatsapp.net",eventType:"inbound_message" as const,fromMe:false as const,fromNumber:"+15555550123",pushName:"Synthetic",messageType:"text",messageText:"Synthetic private inquiry",occurredAt:"2026-10-29T00:00:00.000Z",media:[]};
+ const binding=inboundBindingDigest(inquiry),secret="synthetic-bridge-secret-never-production",store=new Owner305InboundStore(poolStore(db.pool),fixture.workspace,fixture.ring,fixture.digestKey,binding,fixture.owner.actor.id);
+ const env={LS_305_INBOUND_ENABLED:"true",LS_305_CLASSIFICATION_ENABLED:"true",LS_BNA_OWNER_ACCOUNT_ID:fixture.owner.actor.id,LS_305_INBOUND_BINDING_SHA256:binding,LIFE_SKILLS_APP_BRIDGE_SECRET:secret};
+ const request=(payload:unknown)=>new Request("https://synthetic.invalid/api/private/owner-305-inbound",{method:"POST",headers:{"content-type":"application/json","x-life-skills-bridge-secret":secret},body:JSON.stringify(payload)});
+ const tables=await db.pool.query<{schema:string;table:string}>(`SELECT c.table_schema AS schema,c.table_name AS table FROM information_schema.columns c JOIN information_schema.tables t USING(table_schema,table_name) WHERE c.column_name='workspace_id' AND c.table_schema LIKE 'ls_%' AND t.table_type='BASE TABLE' ORDER BY 1,2`);
+ const counts=async()=>Object.fromEntries(await Promise.all(tables.rows.map(async row=>{if(!/^[a-z0-9_]+$/.test(row.schema)||!/^[a-z0-9_]+$/.test(row.table))throw Error("INVALID_TEST_TABLE");const r=await db.pool.query<{n:number}>(`SELECT count(*)::int AS n FROM "${row.schema}"."${row.table}" WHERE workspace_id=$1`,[fixture.workspace]);return [row.schema+"."+row.table,r.rows[0]!.n] as const;})));
+ const before=await counts();expect(await readInbound305SchemaStage({query:(sql,values)=>db.pool.query(sql,values?[...values]:undefined)})).toBe(1);
+ const responses=await Promise.all(Array.from({length:3},()=>receive305(request(inquiry),env,async()=>store)));
+ expect(responses.map(r=>r.status).sort()).toEqual([200,200,201]);for(const r of responses)expect((await r.json()).data.ackDigest).toBe(inboundAcknowledgementDigest(inboundInquirySchema.parse(inquiry),secret));
+ expect((await receive305(request({...inquiry,messageText:"changed"}),env,async()=>store)).status).toBe(409);
+ await expect(store.list(fixture.parent.actor)).rejects.toMatchObject({code:"NOT_FOUND"});expect((await store.list(fixture.owner.actor)).items).toMatchObject([{messageText:inquiry.messageText}]);
+ const rows=await db.pool.query<{payload_ciphertext:string}>("SELECT payload_ciphertext FROM ls_service_interest.owner_305_inbound_receipts WHERE workspace_id=$1",[fixture.workspace]);expect(rows.rowCount).toBe(1);expect(rows.rows[0]!.payload_ciphertext).not.toContain(inquiry.messageText);
+ const after=await counts();expect(after).toEqual({...before,"ls_service_interest.owner_305_inbound_receipts":before["ls_service_interest.owner_305_inbound_receipts"]!+1});
+ const item=(await store.list(fixture.owner.actor)).items[0]!,conversations=new Owner305ConversationStore(poolStore(db.pool),fixture.workspace,fixture.ring,fixture.digestKey,fixture.owner.actor.id,undefined,binding);
+ const command={kind:"create" as const,operationId:randomUUID(),channel:"whatsapp" as const,contactHint:"Synthetic sender",sourceReceiptKey:item.id,
+  followup:{classification:"bna" as const,note:"Synthetic follow-up",nextAction:null,dueDate:null,waitingCondition:"Await reply"}};
+ const linked=await conversations.save(fixture.owner.actor,command);expect(await conversations.save(fixture.owner.actor,command)).toMatchObject({id:linked.id,replayed:true});
+ await expect(conversations.save(fixture.owner.actor,{...command,operationId:randomUUID()})).rejects.toMatchObject({code:"CONFLICT"});
+ expect((await store.list(fixture.owner.actor)).items[0]!.linkedConversationId).toBe(linked.id);
+ expect((await conversations.read(fixture.owner.actor,linked.id)).sourceReceiptKey).toBe(item.id);
+ await expect(db.pool.query("DELETE FROM ls_service_interest.owner_305_inbound_receipts WHERE workspace_id=$1",[fixture.workspace])).rejects.toThrow();
+},60000);

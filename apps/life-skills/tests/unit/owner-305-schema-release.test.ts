@@ -10,6 +10,7 @@ it("releases 0141 only after the exact 0140 ledger and rejects a changed migrati
  const through305=files.slice(0,index+1).map(file=>({name:file.name,checksum:file.checksum}));
  expect(owner305SchemaPlan(files,baseline,0).pending.map(file=>file.name)).toEqual([OWNER_305_MIGRATION.name]);
  expect(owner305SchemaPlan(files,through305,1).pending).toEqual([]);
+
  expect(()=>owner305SchemaPlan(files,baseline.slice(0,-1),0)).toThrow("OWNER_305_SCHEMA_LEDGER_STATE_CONFLICT");
  expect(()=>owner305SchemaPlan(files,baseline,1)).toThrow("OWNER_305_SCHEMA_LEDGER_STATE_CONFLICT");
  expect(()=>owner305SchemaPlan(files.map(file=>file.name===OWNER_305_MIGRATION.name?{...file,checksum:"a".repeat(64)}:file),baseline,0)).toThrow("OWNER_305_SCHEMA_SOURCE_MISMATCH");

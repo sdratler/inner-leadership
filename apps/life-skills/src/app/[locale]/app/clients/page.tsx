@@ -46,15 +46,16 @@ export default async function Page({ params, searchParams }: {
   const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   const inquiryId=one("inquiryId"),validInquiry=inquiryId&&uuid.test(inquiryId)?inquiryId:undefined;
   const personId=one("personId"),validPerson=personId&&uuid.test(personId)?personId:undefined;
-  const linksEnabled=process.env.LS_305_INQUIRY_LINK_ENABLED==="true";
-  if(process.env.LS_BNA_COMBINED_PEOPLE_ENABLED==="true"&&process.env.LS_BNA_INQUIRY_ENABLED==="true"&&process.env.LS_305_CLASSIFICATION_ENABLED==="true"&&accountId===process.env.LS_PROVIDER_INDEX_OWNER_ACCOUNT_ID&&!validInquiry&&!validPerson&&one("view")!=="legacy")return <LeadWorkspace locale={locale} linksEnabled={linksEnabled}/>;
+  const linksEnabled=process.env.LS_305_INQUIRY_LINK_ENABLED==="true",inboundEnabled=process.env.LS_305_INBOUND_ENABLED==="true";
+  if(process.env.LS_BNA_COMBINED_PEOPLE_ENABLED==="true"&&process.env.LS_BNA_INQUIRY_ENABLED==="true"&&process.env.LS_305_CLASSIFICATION_ENABLED==="true"&&accountId===process.env.LS_PROVIDER_INDEX_OWNER_ACCOUNT_ID&&!validInquiry&&!validPerson&&one("view")!=="legacy")return <LeadWorkspace locale={locale} linksEnabled={linksEnabled} inboundEnabled={inboundEnabled}/>;
   if((academy||validInquiry)&&one("mode")==="demo")return <main className="lsw-main" lang={locale} dir={locale==="he"?"rtl":"ltr"}>
     <h1>{locale==="he"?"אנשי האקדמיה":"Academy people"}</h1>
     <p>{locale==="he"?"תצוגת הדגמה אינה זמינה ברשימת האקדמיה.":"Demo contacts are not available in the Academy CRM."}</p>
     <a href={`/${locale}/app/clients`}>{locale==="he"?"פתיחת רשימת האקדמיה":"Open Academy contacts"}</a>
   </main>;
   const bnaPanel=process.env.LS_BNA_INQUIRY_ENABLED==="true"?<BnaInquiryOwnerPanel locale={locale}/>:null;
-  const conversations305=process.env.LS_305_CLASSIFICATION_ENABLED==="true"?<Owner305ConversationPanel locale={locale} linksEnabled={linksEnabled}/>:null;
+  const conversations305=process.env.LS_305_CLASSIFICATION_ENABLED==="true"?<Owner305ConversationPanel locale={locale} linksEnabled={linksEnabled} inboundEnabled={inboundEnabled}/>:null;
+
   if(academy||validInquiry)return <><AcademyCrmWorkspace locale={locale} initialInquiryId={validInquiry} initialPersonId={validPerson}/>{bnaPanel}{conversations305}</>;
   return <><ProviderIndexEntryLink locale={locale} /><ClientsRoster locale={locale} section={one("section")} prospectFilter={one("filter")} focusLeadId={one("leadId")} personId={one("personId")} mode={one("mode")} page={one("page")} search={one("search")} stage={one("stage")} language={one("language")} due={one("due")} />{bnaPanel}{conversations305}</>;
 }

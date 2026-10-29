@@ -254,5 +254,9 @@
   {
     "name": "0144_ls_bna_support_interest.sql",
     "sha256": "84404c0c5eccde3923c2e05e855d335c5eee65e862d4a01f200cc9cd7f28c1a7"
+  },
+  {
+    "name": "0145_ls_owner_305_inbound.sql",
+    "sha256": "73b274095bbd3acafd9eeb4461c26abc57b5276ce115c1e1e46c34f1c4d535cc"
   }
 ]

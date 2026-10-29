@@ -1,11 +1,19 @@
-import {randomUUID} from "node:crypto";
+import {createHmac,randomUUID} from "node:crypto";
 import {readFile} from "node:fs/promises";
 import {afterAll,beforeAll,expect,it,vi} from "vitest";
 import {PGlite} from "@electric-sql/pglite";
 vi.mock("server-only",()=>({}));
 import {Owner305ConversationStore} from "../../src/features/conversation-305/store.ts";
+import {Owner305InboundStore} from "../../src/features/conversation-305/inbound-store.ts";
+import {inboundBindingDigest} from "../../src/features/contact-ops/server/inbound-store.ts";
+import {receive305} from "../../src/features/conversation-305/inbound-http.ts";
+import {inboundAcknowledgementDigest} from "../../src/features/contact-ops/server/inbound-http.ts";
+import {inboundInquirySchema} from "../../src/features/contact-ops/core/inbound.ts";
+import {inbound305InquirySchema} from "../../src/features/conversation-305/inbound-contract.ts";
+import {canonical} from "../../src/features/contact-ops/core/validation.ts";
 import {CONVERSATION_305_LINE} from "../../src/features/conversation-305/contract.ts";
 import {readOwner305SchemaStage} from "../../src/db/owner-305-schema-release.ts";
+import {readInbound305SchemaStage} from "../../src/db/owner-305-inbound-schema-release.ts";
 import {seal} from "../../src/features/identity/crypto.ts";
 import {privateDigest} from "../../src/features/contact-ops/server/digests.ts";
 import {BnaInquiryStore} from "../../src/features/bna-inquiry/store.ts";
@@ -14,6 +22,7 @@ import {Owner305InquiryLinkStore} from "../../src/features/conversation-305/inqu
 import {PublicGroupApplicationStore} from "../../src/features/group-application/store.ts";
 import {floridaGroupApplicationNotice} from "../../src/features/group-application/contract.ts";
 import {readOwner305LinkSchemaStage} from "../../src/db/owner-305-link-schema-release.ts";
+
 import {asId} from "../../src/lib/ids.ts";
 import type {Actor} from "../../src/features/identity/types.ts";
 import type {IdentityStore,SqlSession} from "../../src/features/identity/store.ts";
@@ -32,7 +41,7 @@ const account=async(id:string,role:"practitioner"|"parent")=>{const digest=id.re
 let ownerActor:Actor,otherActor:Actor;
 beforeAll(async()=>{await db.exec("CREATE SCHEMA ls_control");
  for(const name of ["0001_ls_foundation.sql","0010_ls_identity_cases_20260906.sql","0124_ls_group_interest.sql",
-  "0131_ls_public_group_applications.sql","0139_ls_bna_inquiries.sql","0140_ls_fishing_inquiry_followups.sql","0141_ls_owner_305_conversations.sql"])
+  "0131_ls_public_group_applications.sql","0139_ls_bna_inquiries.sql","0140_ls_fishing_inquiry_followups.sql","0141_ls_owner_305_conversations.sql","0145_ls_owner_305_inbound.sql"])
   await db.exec(await readFile("migrations/"+name,"utf8"));
  expect(await readOwner305LinkSchemaStage({query:(sql,values)=>db.query(sql,values?[...values]:undefined)})).toBe(0);
  await db.exec(await readFile("migrations/0143_ls_owner_305_inquiry_links.sql","utf8"));
@@ -66,6 +75,68 @@ it("keeps manual 305 classification private, durable and independent of Person/c
  expect((await db.query<{n:number}>("SELECT count(*)::int AS n FROM ls_identity.people")).rows[0]!.n).toBe(peopleBefore);
  await expect(db.query("DELETE FROM ls_service_interest.owner_305_conversations WHERE workspace_id=$1",[workspace])).rejects.toThrow();
 });
+it("stores exact 305 provider receipts once and exposes them only to the owner",async()=>{
+ expect(await readInbound305SchemaStage({query:(sql,values)=>db.query(sql,values?[...values]:undefined)})).toBe(1);
+ const inquiry={provider:"whapi" as const,channelId:"synthetic-channel",businessNumber:CONVERSATION_305_LINE,
+  providerEventId:"synthetic-event",providerMessageId:"synthetic-message",providerThreadId:"15555550123@s.whatsapp.net",
+  eventType:"inbound_message" as const,fromMe:false as const,fromNumber:"+15555550123",pushName:"Synthetic",
+  messageType:"text",messageText:"Synthetic private inquiry",occurredAt:now.toISOString(),media:[]};
+ const inbound=new Owner305InboundStore(adapter,workspace,ring,"synthetic-305-private-digest-key",inboundBindingDigest(inquiry),owner,{now:()=>now});
+ const missingOwner=new Owner305InboundStore(adapter,workspace,ring,"synthetic-305-private-digest-key",inboundBindingDigest(inquiry),randomUUID(),{now:()=>now});
+ await expect(missingOwner.capture(inquiry)).rejects.toMatchObject({code:"UNAVAILABLE"});
+ const peopleBefore=(await db.query<{n:number}>("SELECT count(*)::int AS n FROM ls_identity.people")).rows[0]!.n;
+ expect(await inbound.capture(inquiry)).toMatchObject({replayed:false});expect(await inbound.capture(inquiry)).toMatchObject({replayed:true});
+ await expect(inbound.capture({...inquiry,messageText:"changed"})).rejects.toMatchObject({code:"CONFLICT"});
+ await expect(inbound.capture({...inquiry,providerEventId:"other-event"})).rejects.toMatchObject({code:"CONFLICT"});
+ await expect(inbound.capture({...inquiry,channelId:"other-channel"})).rejects.toMatchObject({code:"FORBIDDEN"});
+ await expect(inbound.capture({...inquiry,businessNumber:"+15555550124"})).rejects.toMatchObject({code:"INVALID_REQUEST"});
+ await expect(inbound.list(otherActor)).rejects.toMatchObject({code:"NOT_FOUND"});
+ await expect(inbound.list({...otherActor,role:"practitioner"})).rejects.toMatchObject({code:"NOT_FOUND"});
+ const item=(await inbound.list(ownerActor)).items[0]!;expect(item).toMatchObject({fromNumber:inquiry.fromNumber,messageText:inquiry.messageText,linkedConversationId:null});
+ const linkedStore=new Owner305ConversationStore(adapter,workspace,ring,"synthetic-305-private-digest-key",owner,{now:()=>now},inboundBindingDigest(inquiry));
+ const command={kind:"create" as const,operationId:randomUUID(),channel:"whatsapp" as const,contactHint:"Synthetic sender",sourceReceiptKey:item.id,
+  followup:{classification:"fishing" as const,note:"Asked about Fishing",nextAction:null,dueDate:null,waitingCondition:"Await availability"}};
+ const linked=await linkedStore.save(ownerActor,command);expect(await linkedStore.save(ownerActor,command)).toMatchObject({id:linked.id,replayed:true});
+ await expect(linkedStore.save(ownerActor,{...command,operationId:randomUUID()})).rejects.toMatchObject({code:"CONFLICT"});
+ await expect(linkedStore.save(ownerActor,{...command,operationId:randomUUID(),sourceReceiptKey:"f".repeat(64)})).rejects.toMatchObject({code:"NOT_FOUND"});
+ expect((await linkedStore.read(ownerActor,linked.id)).sourceReceiptKey).toBe(item.id);
+ expect((await inbound.list(ownerActor)).items[0]!.linkedConversationId).toBe(linked.id);
+ const stored=(await db.query<{payload_ciphertext:string}>("SELECT payload_ciphertext FROM ls_service_interest.owner_305_inbound_receipts")).rows[0]!;
+ expect(stored.payload_ciphertext).not.toContain(inquiry.messageText);
+ expect((await db.query<{n:number}>("SELECT count(*)::int AS n FROM ls_identity.people")).rows[0]!.n).toBe(peopleBefore);
+ await expect(db.query("DELETE FROM ls_service_interest.owner_305_inbound_receipts WHERE workspace_id=$1",[workspace])).rejects.toThrow();
+ await expect(db.query("DELETE FROM ls_service_interest.owner_305_inbound_links WHERE workspace_id=$1",[workspace])).rejects.toThrow();
+});
+it("acknowledges the authenticated gateway payload only after the encrypted receipt commits",async()=>{
+ const inquiry={provider:"whapi" as const,channelId:"synthetic-channel",businessNumber:CONVERSATION_305_LINE,providerEventId:"gateway-event",providerMessageId:"gateway-message",providerThreadId:"15555550123@s.whatsapp.net",eventType:"inbound_message" as const,fromMe:false as const,fromNumber:"+15555550123",pushName:"Synthetic",messageType:"text",messageText:"Synthetic gateway inquiry",occurredAt:now.toISOString(),media:[]};
+ const secret="synthetic-bridge-secret-not-real-305",binding=inboundBindingDigest(inquiry),inbound=new Owner305InboundStore(adapter,workspace,ring,"synthetic-305-private-digest-key",binding,owner,{now:()=>now});
+ const env={LS_305_INBOUND_ENABLED:"true",LS_305_CLASSIFICATION_ENABLED:"true",LS_BNA_OWNER_ACCOUNT_ID:owner,LS_305_INBOUND_BINDING_SHA256:binding,LIFE_SKILLS_APP_BRIDGE_SECRET:secret};
+ const request=(payload:unknown)=>new Request("https://synthetic.invalid/api/private/owner-305-inbound",{method:"POST",headers:{"content-type":"application/json","x-life-skills-bridge-secret":secret},body:JSON.stringify(payload)});
+ const first=await receive305(request(inquiry),env,async()=>inbound);expect(first.status).toBe(201);
+ expect((await first.json()).data.ackDigest).toBe(inboundAcknowledgementDigest(inboundInquirySchema.parse(inquiry),secret));
+ const replay=await receive305(request(inquiry),env,async()=>inbound);expect(replay.status).toBe(200);expect((await replay.json()).data.replayed).toBe(true);
+ expect((await receive305(request({...inquiry,messageText:"changed"}),env,async()=>inbound)).status).toBe(409);
+ expect((await inbound.list(ownerActor)).items.filter(item=>item.messageText===inquiry.messageText)).toHaveLength(1);
+});
+it("stores an opaque LID without inventing a phone number or merging a person",async()=>{
+ const inquiry={provider:"whapi" as const,channelId:"synthetic-channel",businessNumber:CONVERSATION_305_LINE,providerEventId:"lid-event",providerMessageId:"lid-message",providerThreadId:"123456789@lid",eventType:"inbound_message" as const,fromMe:false as const,fromNumber:null,pushName:"Synthetic LID",messageType:"text",messageText:"Synthetic LID inquiry",occurredAt:now.toISOString(),media:[]};
+ const secret="synthetic-bridge-secret-not-real-305",binding=inboundBindingDigest(inquiry),inbound=new Owner305InboundStore(adapter,workspace,ring,"synthetic-305-private-digest-key",binding,owner,{now:()=>now});
+ const env={LS_305_INBOUND_ENABLED:"true",LS_305_CLASSIFICATION_ENABLED:"true",LS_BNA_OWNER_ACCOUNT_ID:owner,LS_305_INBOUND_BINDING_SHA256:binding,LIFE_SKILLS_APP_BRIDGE_SECRET:secret};
+ const request=new Request("https://synthetic.invalid/api/private/owner-305-inbound",{method:"POST",headers:{"content-type":"application/json","x-life-skills-bridge-secret":secret},body:JSON.stringify(inquiry)});
+ const response=await receive305(request,env,async()=>inbound);expect(response.status).toBe(201);
+ expect((await response.json()).data.ackDigest).toBe(createHmac("sha256",secret).update("life-skills-inbound-ack/v1\n").update(canonical(inbound305InquirySchema.parse(inquiry))).digest("hex"));
+ expect((await inbound.list(ownerActor)).items.find(item=>item.messageText===inquiry.messageText)).toMatchObject({fromNumber:null,pushName:"Synthetic LID"});
+ await expect(inbound.capture({...inquiry,providerEventId:"other",providerMessageId:"other",fromNumber:"+15555550123"})).rejects.toMatchObject({code:"INVALID_REQUEST"});
+});
+it("pages through more than 100 receipts without omitting or repeating messages",async()=>{
+  const template={provider:"whapi" as const,channelId:"pagination-channel",businessNumber:CONVERSATION_305_LINE,providerEventId:"",providerMessageId:"",providerThreadId:"15555550123@s.whatsapp.net",eventType:"inbound_message" as const,fromMe:false as const,fromNumber:"+15555550123",pushName:"Synthetic",messageType:"text",messageText:"Pagination fixture",occurredAt:now.toISOString(),media:[]};
+  const store=new Owner305InboundStore(adapter,workspace,ring,"synthetic-305-private-digest-key",inboundBindingDigest(template),owner,{now:()=>now});
+  for(let i=0;i<102;i++)await store.capture({...template,providerEventId:`page-${i}`,providerMessageId:`page-${i}`});
+  const first=await store.list(ownerActor);expect(first.items).toHaveLength(100);expect(first.hasMore).toBe(true);expect(first.nextCursor).toBeTruthy();
+  const second=await store.list(ownerActor,first.nextCursor!);expect(second.items).toHaveLength(2);expect(second.hasMore).toBe(false);expect(second.nextCursor).toBeNull();
+  expect(new Set([...first.items,...second.items].map(item=>item.id)).size).toBe(102);
+  await expect(store.list(ownerActor,"invalid")).rejects.toMatchObject({code:"INVALID_REQUEST"});
+ });
 
 it("preserves ambiguous historical 305 records while requiring an explicit support or provider choice",async()=>{
  const id=randomUUID(),operationId=randomUUID(),legacy={kind:"create" as const,operationId,channel:"phone" as const,contactHint:"Synthetic historical contact",followup:{classification:"support_provider" as const,note:"Historical purpose unknown",nextAction:null,dueDate:null,waitingCondition:"Await clarification"}};
