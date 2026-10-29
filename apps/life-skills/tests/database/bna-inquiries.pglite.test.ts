@@ -6,6 +6,7 @@ vi.mock("server-only",()=>({}));
 import {BnaInquiryStore} from "../../src/features/bna-inquiry/store.ts";
 import {BNA_INQUIRY_NOTICE,bnaInquiryFieldsSchema} from "../../src/features/bna-inquiry/contract.ts";
 import {BNA_COOP_NOTICE,BNA_COOP_PROGRAM} from "../../src/features/bna-inquiry/coop-contract.ts";
+import {readBnaCoopSchemaStage} from "../../src/db/bna-coop-schema-release.ts";
 import {asId} from "../../src/lib/ids.ts";
 import type {Actor} from "../../src/features/identity/types.ts";
 import type {IdentityStore,SqlSession} from "../../src/features/identity/store.ts";
@@ -63,7 +64,9 @@ it("a new operation never reveals prior exact-content submissions through a reus
 
 it("saves general co-op interest separately while retaining historical purpose and independent notice language",async()=>{
  const before=(await store.list(ownerActor)).items.map(item=>item.id);
+ expect(await readBnaCoopSchemaStage({query:(sql,values)=>db.query(sql,values?[...values]:undefined)})).toBe(0);
  await db.exec(await readFile("migrations/0142_ls_bna_coop_interest.sql","utf8"));
+ expect(await readBnaCoopSchemaStage({query:(sql,values)=>db.query(sql,values?[...values]:undefined)})).toBe(1);
  expect((await store.list(ownerActor)).items.map(item=>item.id)).toEqual(before);
  const old=await store.submit({operationId:randomUUID(),fields});
  const input={operationId:randomUUID(),fields:{name:"Synthetic co-op parent",contactChannel:"phone" as const,contact:"+13055550123",language:"en" as const,siteLanguage:"he" as const,emailUpdates:false,townOrZip:"Florida",childAges:[10],permission:{confirmed:true as const,version:BNA_COOP_NOTICE.version,language:"he" as const}}};

@@ -1,0 +1,10 @@
+# BNA co-op inquiry release sequence
+
+This is a guarded schema and route change on the existing owner workspace. It does not import contacts, send messages, or enable a public route. Historical Torah-morning inquiry records retain their original purpose and notice.
+
+1. Complete exact-candidate review and required CI. Review the requested desktop/mobile English/Hebrew previews before releasing the homepage. Confirm an actual BNA privacy notice is public and matches the form acknowledgment; until then the draft form remains disabled.
+2. Deploy the reviewed app candidate with `LS_BNA_COOP_INQUIRY_ENABLED` off. Capture a fresh backup after the 0141 ledger, verify an isolated restore, and bind the proof file to the exact deployment, reviewed commit, manifest, source digest, database identity and baseline ledger. `release-bna-coop-schema.ts --preflight` requires the exact production target, TLS, predecessor catalog, an unchanged ledger and the flag off. Apply only with `LS_BNA_COOP_SCHEMA_APPLY_APPROVED=true`, then use `--verify-only`.
+3. Release the matching gateway and public page with the gateway flag off. Reconcile actual route binding and rollback. Only enable the app and gateway flags after the privacy notice, preview review, source/consent and end-to-end test prerequisites are met.
+4. Use the authorized synthetic browser canary to verify email-only and phone-only co-op submissions, same-operation replay, source and language, ordinary owner readback and a saved next action in a new session. Verify Fishing remains separate and non-owner access is denied. Reconcile any uncertain result before retrying; no real email, WhatsApp or other message is implied by a saved inquiry.
+
+The earlier WhatsApp receiver and Marketing drafts used the same future migration slots. Reconcile and retest them after this G1 migration is integrated; do not apply conflicting histories. Rollback disables the co-op flags and retains legitimate inquiry data; never restore an old database over later submissions.
