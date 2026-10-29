@@ -26,7 +26,7 @@ test("Academy setup is explicit and cannot fall back to old registry or ads cred
 test.each(["en","he"] as const)("Academy marketing setup is actionable without retired assets or invented results in %s",async locale=>{
  const html=renderToStaticMarkup(React.createElement(MarketingDashboard,{locale,snapshot:await loadMarketingSnapshot(),renderedAt:"2026-10-28T00:00:00.000Z"}));
  expect(html).toContain("data-academy-marketing-setup");expect(html).toContain(`/${locale}/app/group-applications`);
- expect(html).toContain(locale==="en"?"needs setup":"יש להגדיר");
+  expect(html).toContain(locale==="en"?"Page publishing needs a connection":"נדרש חיבור לפרסום בעמוד");
  expect(html).not.toMatch(/<img|retired\.example|Life Skills|Temporarily unavailable|No registered revisions/);
 });
 

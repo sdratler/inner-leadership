@@ -16,3 +16,13 @@ it("rejects cross-group links, unsupported data and invented publication evidenc
  expect(schema.safeParse({...snapshot,historyAvailable:false}).success).toBe(false);
  expect(schema.safeParse({...snapshot,history:[{...snapshot.history[0],groupId:"1.3",postUrl:"https://www.facebook.com/groups/1x3/posts/42"}]}).success).toBe(false);
 });
+
+it('accepts observed cooldown facts while rejecting invented availability or contradictory dates',()=>{
+ const preparation={status:'cooldown',nextEligibleAt:'2026-11-04T19:29:23Z',rulesCheckedAt:'2026-10-28T12:00:00Z',lastPublishedAt:'2026-10-28T19:29:23Z',canPrepare:false};
+ const value={...snapshot,targets:[{...snapshot.targets[0],preparation}]};
+ expect(schema.safeParse(value).success).toBe(true);
+ for(const patch of [{canPrepare:true},{nextEligibleAt:null},{nextEligibleAt:'2026-10-28T12:00:00Z'},{status:'ready'},{rulesCheckedAt:null},{rulesCheckedAt:'2026-11-04T12:00:00Z'},{lastPublishedAt:'2026-11-04T12:00:00Z'}]){
+  expect(schema.safeParse({...value,targets:[{...snapshot.targets[0],preparation:{...preparation,...patch}}]}).success).toBe(false);
+ }
+ expect(schema.safeParse({...value,history:[],historyAvailable:false}).success).toBe(false);
+});
