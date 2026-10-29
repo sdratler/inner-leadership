@@ -73,3 +73,17 @@ it("preserves ambiguous historical 305 records while requiring an explicit suppo
  const current=await store.read(ownerActor,id);expect(current.followup.classification).toBe("provider");expect(current.history.map(row=>row.classification)).toEqual(["provider","support_provider"]);
  await expect(store.read(otherActor,id)).rejects.toMatchObject({code:"NOT_FOUND"});
 });
+
+it("pages the owner register without losing older conversations or exposing an anchor",async()=>{
+ const ids=new Set<string>();
+ for(let n=0;n<101;n++){
+  const saved=await store.save(ownerActor,{kind:"create",operationId:randomUUID(),channel:"phone",contactHint:`Synthetic caller ${n}`,followup:{classification:"unclassified",note:"Synthetic follow-up",nextAction:null,dueDate:null,waitingCondition:"Await response"}});
+  ids.add(saved.id);
+ }
+ const first=await store.list(ownerActor);expect(first.items).toHaveLength(100);expect(first.nextCursor).toBeTruthy();expect(first.nextCursor).not.toMatch(/^[0-9a-f-]{36}$/i);
+ const next=await store.list(ownerActor,first.nextCursor!);expect(next.nextCursor).toBeNull();
+ const all=[...first.items,...next.items].map(item=>item.id);expect(new Set(all).size).toBe(all.length);for(const id of ids)expect(all).toContain(id);
+ const bad=first.nextCursor!.slice(0,-1)+(first.nextCursor!.endsWith("A")?"B":"A");
+ await expect(store.list(ownerActor,bad)).rejects.toMatchObject({code:"INVALID_REQUEST"});
+ await expect(store.list(otherActor,first.nextCursor!)).rejects.toMatchObject({code:"NOT_FOUND"});
+},30000);

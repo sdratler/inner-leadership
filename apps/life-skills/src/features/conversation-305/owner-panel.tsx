@@ -12,18 +12,18 @@ type Channel="phone"|"whatsapp"|"sms"|"other";
 type Draft={channel:Channel;contactHint:string;classification:Classification;note:string;nextAction:string;dueDate:string;waitingCondition:string};
 const empty:Draft={channel:"phone",contactHint:"",classification:"unclassified",note:"",nextAction:"",dueDate:"",waitingCondition:""};
 class RequestError extends Error{constructor(readonly status:number){super("OWNER_305_REQUEST_FAILED");}}
-async function get<T>(id?:string):Promise<T>{const response=await fetch("/api/private/owner-305-conversations"+(id?"?"+new URLSearchParams({id}):""),
+async function get<T>(id?:string,before?:string):Promise<T>{const query=id?new URLSearchParams({id}):before?new URLSearchParams({before}):null;const response=await fetch("/api/private/owner-305-conversations"+(query?"?"+query:""),
  {credentials:"same-origin",cache:"no-store",redirect:"error",referrerPolicy:"no-referrer"});
  const body=await response.json().catch(()=>null);if(!response.ok||!body?.ok)throw new RequestError(response.status);return body.data as T;}
 /** Owner-entered records only; no provider history scan or Person association. */
 export function Owner305ConversationPanel({locale}:{locale:Locale}){
  const t=(en:string,he:string)=>locale==="he"?he:en;
  const [page,setPage]=useState<Page|null>(null),[detail,setDetail]=useState<Detail|null>(null),[draft,setDraft]=useState<Draft>(empty);
- const [pending,setPending]=useState<ConversationCommand|null>(null),[busy,setBusy]=useState(false),[opening,setOpening]=useState(false),[error,setError]=useState<number|null>(null),[message,setMessage]=useState("");
+ const [pending,setPending]=useState<ConversationCommand|null>(null),[busy,setBusy]=useState(false),[opening,setOpening]=useState(false),[loadingMore,setLoadingMore]=useState(false),[error,setError]=useState<number|null>(null),[message,setMessage]=useState("");
  const active=useRef(true),serial=useRef(0);
  const clearPrivate=useCallback(()=>{setPage(null);setDetail(null);setDraft(empty);setPending(null);setOpening(false);},[]);
- const load=useCallback(async()=>{const seq=++serial.current;setOpening(false);try{const value=await get<Page>();if(active.current&&serial.current===seq){setPage(value);setError(null);}}
-  catch(cause){if(active.current&&serial.current===seq){const code=cause instanceof RequestError?cause.status:503;setError(code);if([401,403,404].includes(code))clearPrivate();}}},[clearPrivate]);
+ const load=useCallback(async(before?:string)=>{const seq=++serial.current;setOpening(false);if(before)setLoadingMore(true);try{const value=await get<Page>(undefined,before);if(active.current&&serial.current===seq){setPage(current=>before&&current&&current.nextCursor===before?{...value,items:[...new Map([...current.items,...value.items].map(item=>[item.id,item])).values()]}:before?current:value);setError(null);}}
+  catch(cause){if(active.current&&serial.current===seq){const code=cause instanceof RequestError?cause.status:503;setError(code);if([401,403,404].includes(code))clearPrivate();}}finally{if(active.current&&before)setLoadingMore(false);}},[clearPrivate]);
  const open=useCallback(async(id:string)=>{const seq=++serial.current;setDetail(null);setDraft(empty);setMessage("");setOpening(true);try{const value=await get<Detail>(id);if(!active.current||serial.current!==seq)return;
    setDetail(value);setDraft({channel:value.channel,contactHint:value.contactHint,classification:value.followup.classification,
     note:"",nextAction:value.followup.nextAction??"",dueDate:value.followup.dueDate??"",waitingCondition:value.followup.waitingCondition??""});setError(null);
@@ -63,10 +63,10 @@ export function Owner305ConversationPanel({locale}:{locale:Locale}){
    <button type="button" onClick={()=>void save(pending)}>{t("Retry same save","ניסיון חוזר לאותה שמירה")}</button></div>}
   {!page&&error===null&&<p role="status">{t("Loading…","טוען…")}</p>}
   {page&&<div className="lsw-stack"><p>{page.items.length===0?t("No conversations recorded yet.","עדיין לא תועדו שיחות."):
-   t(`${page.items.length} recorded conversations`,`${page.items.length} שיחות מתועדות`)}</p>
-   {page.hasMore&&<p>{t("Showing the latest 100.","מוצגות 100 האחרונות.")}</p>}
+   t(`${page.items.length} conversations shown`,`${page.items.length} שיחות מוצגות`)}</p>
    <ul>{page.items.map(item=><li key={item.id}><button type="button" disabled={busy||!!pending} onClick={()=>void open(item.id)}>
-    {item.contactHint} · {t(...labels[item.followup.classification])} · {item.createdAt}</button></li>)}</ul></div>}
+    {item.contactHint} · {t(...labels[item.followup.classification])} · {item.createdAt}</button></li>)}</ul>
+   {page.nextCursor&&<button type="button" disabled={loadingMore||busy||!!pending} onClick={()=>void load(page.nextCursor!)}>{loadingMore?t("Loading…","טוען…"):t("Load older conversations","טעינת שיחות קודמות")}</button>}</div>}
   <button type="button" disabled={busy||!!pending} onClick={()=>{++serial.current;setOpening(false);setDetail(null);setDraft(empty);setError(null);setMessage("");}}>{t("New 305 conversation","שיחת 305 חדשה")}</button>
   {opening&&<p role="status">{t("Loading conversation…","טוען שיחה…")}</p>}
   {detail&&<div className="lsw-stack"><h3>{detail.contactHint}</h3><p>{t("Channel","ערוץ")}: {detail.channel} · {t("Recorded","תועד")}: {detail.createdAt}</p>

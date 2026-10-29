@@ -24,8 +24,9 @@ export async function owner305ConversationHttp(request:Request,load:()=>Promise<
   if(url.origin!==d.origin||url.pathname!=="/api/private/owner-305-conversations"||url.hash)throw new AppError("NOT_FOUND");
   const actor=await d.actor(token);
   if(request.method==="GET"){
-   const keys=[...url.searchParams.keys()];if(keys.length>1||keys.length===1&&keys[0]!=="id")throw new AppError("INVALID_REQUEST");
-   const id=url.searchParams.get("id");response=successResponse(id?await d.store.read(actor,id):await d.store.list(actor),requestId);
+   const keys=[...url.searchParams.keys()];if(keys.length>1||keys.length===1&&!['id','before'].includes(keys[0]!))throw new AppError("INVALID_REQUEST");
+   const id=url.searchParams.get("id"),before=url.searchParams.get("before");if(keys.length&&!(id||before))throw new AppError("INVALID_REQUEST");
+   response=successResponse(id?await d.store.read(actor,id):await d.store.list(actor,before??undefined),requestId);
   }else if(request.method==="POST"){
    if(url.search)throw new AppError("INVALID_REQUEST");
    verifyMutationOrigin(canonical,d.origin);verifyCsrfToken(request.headers.get("x-csrf-token"),d.csrf(token));

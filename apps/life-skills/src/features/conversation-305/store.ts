@@ -43,16 +43,22 @@ export class Owner305ConversationStore{
   owner_account_id AS "ownerAccountId",version,request_digest AS "requestDigest",payload_ciphertext AS "payloadCiphertext",recorded_at AS "recordedAt"
   FROM ls_service_interest.owner_305_conversation_revisions WHERE workspace_id=$1 AND conversation_id=$2 ORDER BY version DESC LIMIT 101`,[this.workspaceId,id]);
   if(!rows.length)throw new AppError("UNAVAILABLE");return {items:rows.slice(0,100).map(row=>this.revision(row)),hasMore:rows.length>100};}
- async list(actor:Actor){return this.db.transaction(async tx=>{await tx.query("SET TRANSACTION READ ONLY");await this.owner(tx,actor);
+ private cursorAad(actor:Actor){return `ls_service_interest/owner-305-cursor/v1/${this.workspaceId}/${actor.id}`;}
+ private cursorId(actor:Actor,cursor:string){try{if(!/^[A-Za-z0-9_-]{64,2048}$/.test(cursor))throw Error();const bytes=Buffer.from(cursor,"base64url");if(bytes.toString("base64url")!==cursor)throw Error();return z.strictObject({id:z.string().uuid()}).parse(JSON.parse(unseal(bytes.toString("utf8"),this.cursorAad(actor),this.ring))).id;}catch{throw new AppError("INVALID_REQUEST");}}
+ private encodeCursor(actor:Actor,id:string){return Buffer.from(seal(JSON.stringify({id}),this.cursorAad(actor),this.ring)).toString("base64url");}
+ async list(actor:Actor,cursor?:string){return this.db.transaction(async tx=>{await tx.query("SET TRANSACTION READ ONLY");await this.owner(tx,actor);
+  const anchor=cursor===undefined?null:this.cursorId(actor,cursor);
+  if(anchor){const found=await tx.query(`SELECT id FROM ls_service_interest.owner_305_conversations WHERE workspace_id=$1 AND owner_account_id=$2 AND line_number=$3 AND id=$4`,[this.workspaceId,actor.id,CONVERSATION_305_LINE,anchor]);if(found.length!==1)throw new AppError("INVALID_REQUEST");}
   const rows=await tx.query<ConversationRow & {operationId:string;conversationId:string;version:number;requestDigest:string;payloadCiphertext:string;recordedAt:Date}>(`SELECT c.id,c.owner_account_id AS "ownerAccountId",c.metadata_ciphertext AS "metadataCiphertext",c.created_at AS "createdAt",
    r.operation_id AS "operationId",r.conversation_id AS "conversationId",r.version,r.request_digest AS "requestDigest",
    r.payload_ciphertext AS "payloadCiphertext",r.recorded_at AS "recordedAt"
    FROM ls_service_interest.owner_305_conversations c JOIN LATERAL(
     SELECT * FROM ls_service_interest.owner_305_conversation_revisions r
     WHERE r.workspace_id=c.workspace_id AND r.conversation_id=c.id ORDER BY r.version DESC LIMIT 1) r ON true
-   WHERE c.workspace_id=$1 AND c.owner_account_id=$2 AND c.line_number=$3 ORDER BY c.created_at DESC,c.id DESC LIMIT 101`,
-   [this.workspaceId,actor.id,CONVERSATION_305_LINE]);
-  return {lineNumber:CONVERSATION_305_LINE,items:rows.slice(0,100).map(row=>({...this.metadata(row),followup:this.revision(row)})),hasMore:rows.length>100};
+   WHERE c.workspace_id=$1 AND c.owner_account_id=$2 AND c.line_number=$3 AND ($4::uuid IS NULL OR (c.created_at,c.id)<(SELECT anchor.created_at,anchor.id FROM ls_service_interest.owner_305_conversations anchor WHERE anchor.workspace_id=$1 AND anchor.owner_account_id=$2 AND anchor.line_number=$3 AND anchor.id=$4)) ORDER BY c.created_at DESC,c.id DESC LIMIT 101`,
+   [this.workspaceId,actor.id,CONVERSATION_305_LINE,anchor]);
+  const items=rows.slice(0,100).map(row=>({...this.metadata(row),followup:this.revision(row)}));
+  return {lineNumber:CONVERSATION_305_LINE,items,hasMore:rows.length>100,nextCursor:rows.length>100?this.encodeCursor(actor,items.at(-1)!.id):null};
  });}
  async read(actor:Actor,id:string){if(!z.string().uuid().safeParse(id).success)throw new AppError("INVALID_REQUEST");
   return this.db.transaction(async tx=>{await tx.query("SET TRANSACTION READ ONLY");await this.owner(tx,actor);
