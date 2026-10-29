@@ -5,7 +5,10 @@ export const BNA_COOP_MIGRATION={name:"0142_ls_bna_coop_interest.sql",sha256:"84
 export function bnaCoopSchemaPlan(files:readonly Migration[],history:readonly AppliedMigration[],stage:0|1){
  const sorted=[...files].sort((a,b)=>a.name.localeCompare(b.name)),index=sorted.findIndex(f=>f.name===BNA_COOP_MIGRATION.name&&f.checksum===BNA_COOP_MIGRATION.sha256);
  if(index<1||sorted[index-1]?.name!==BNA_COOP_BASELINE.name||sorted[index-1]?.checksum!==BNA_COOP_BASELINE.sha256)throw Error("BNA_COOP_SCHEMA_SOURCE_MISMATCH");
- const scoped=sorted.slice(0,index+1),pending=planMigrations(scoped,history),expected=stage===0?[BNA_COOP_MIGRATION.name]:[];
+ // Validate the complete ledger first, including any later migrations, then
+ // inspect the 0142 prefix. A later migration cannot hide a divergent history.
+ planMigrations(sorted,history);
+ const scoped=sorted.slice(0,index+1),pending=planMigrations(scoped,history.slice(0,index+1)),expected=stage===0?[BNA_COOP_MIGRATION.name]:[];
  if(JSON.stringify(pending.map(f=>f.name))!==JSON.stringify(expected))throw Error("BNA_COOP_SCHEMA_LEDGER_STATE_CONFLICT");return {scoped,pending};
 }
 export async function readBnaCoopSchemaStage(db:Owner305ReleaseQuery):Promise<0|1>{

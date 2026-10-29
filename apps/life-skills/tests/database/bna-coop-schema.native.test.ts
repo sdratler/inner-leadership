@@ -3,10 +3,12 @@ import {expect,it} from "vitest";
 import {historicalPracticeDatabase} from "./home-practice/legacy-practice-fixture.ts";
 import {migrate} from "../../src/db/migration-runner.ts";
 import {readBnaCoopSchemaStage,bnaCoopSchemaPlan} from "../../src/db/bna-coop-schema-release.ts";
+import {readOwner305LinkSchemaStage,owner305LinkSchemaPlan} from "../../src/db/owner-305-link-schema-release.ts";
 it("migrates the exact co-op constraint without changing existing inquiry rows",async()=>{
  const db=await historicalPracticeDatabase("0118_ls_contact_delta_history.sql"),client=await db.pool.connect(),query=(sql:string,values?:readonly unknown[])=>client.query(sql,values?[...values]:undefined);
  try{
-  const baseline=db.inventory.slice(0,-1);await migrate({query},baseline,false);
+  const coopIndex=db.inventory.findIndex(file=>file.name==="0142_ls_bna_coop_interest.sql");expect(coopIndex).toBeGreaterThan(0);
+  const baseline=db.inventory.slice(0,coopIndex),coopScope=db.inventory.slice(0,coopIndex+1);await migrate({query},baseline,false);
   const workspace=randomUUID(),owner=randomUUID(),id=randomUUID();
   await query("INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,now())",[workspace]);
   await query("INSERT INTO ls_identity.accounts(id,workspace_id,role,state,locale,email_blind,email_ciphertext,email_verified_at,password_hash,created_at,updated_at) VALUES($1,$2,'practitioner','active','en',$3,'synthetic',now(),'synthetic',now(),now())",[owner,workspace,'a'.repeat(64)]);
@@ -14,8 +16,14 @@ it("migrates the exact co-op constraint without changing existing inquiry rows",
   const before=(await query("SELECT to_jsonb(t) AS row FROM ls_service_interest.bna_inquiries t WHERE id=$1",[id])).rows;
   const hist=(await query("SELECT name,checksum FROM ls_control.migrations ORDER BY name")).rows;
   expect(await readBnaCoopSchemaStage({query})).toBe(0);expect(bnaCoopSchemaPlan(db.inventory,hist,0).pending).toHaveLength(1);
-  expect(await migrate({query},db.inventory,false)).toEqual({applied:1,pending:0});
+  expect(await migrate({query},coopScope,false)).toEqual({applied:1,pending:0});
   expect(await readBnaCoopSchemaStage({query})).toBe(1);expect((await query("SELECT to_jsonb(t) AS row FROM ls_service_interest.bna_inquiries t WHERE id=$1",[id])).rows).toEqual(before);
+  const coopHistory=(await query("SELECT name,checksum FROM ls_control.migrations ORDER BY name")).rows;
+  expect(await readOwner305LinkSchemaStage({query})).toBe(0);expect(owner305LinkSchemaPlan(db.inventory,coopHistory,0).pending).toHaveLength(1);
+  expect(await migrate({query},db.inventory,false)).toEqual({applied:1,pending:0});expect(await readOwner305LinkSchemaStage({query})).toBe(1);
+  const finalHistory=(await query("SELECT name,checksum FROM ls_control.migrations ORDER BY name")).rows;
+  expect(bnaCoopSchemaPlan(db.inventory,finalHistory,1).pending).toHaveLength(0);
+  expect((await query("SELECT to_jsonb(t) AS row FROM ls_service_interest.bna_inquiries t WHERE id=$1",[id])).rows).toEqual(before);
   expect(await migrate({query},db.inventory,true)).toEqual({applied:0,pending:0});
  }finally{client.release();await db.close();}
 },60000);

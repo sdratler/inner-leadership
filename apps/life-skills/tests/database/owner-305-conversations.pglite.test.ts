@@ -35,7 +35,7 @@ beforeAll(async()=>{await db.exec("CREATE SCHEMA ls_control");
   "0131_ls_public_group_applications.sql","0139_ls_bna_inquiries.sql","0140_ls_fishing_inquiry_followups.sql","0141_ls_owner_305_conversations.sql"])
   await db.exec(await readFile("migrations/"+name,"utf8"));
  expect(await readOwner305LinkSchemaStage({query:(sql,values)=>db.query(sql,values?[...values]:undefined)})).toBe(0);
- await db.exec(await readFile("migrations/proposals/0143_ls_owner_305_inquiry_links.sql","utf8"));
+ await db.exec(await readFile("migrations/0143_ls_owner_305_inquiry_links.sql","utf8"));
  expect(await readOwner305LinkSchemaStage({query:(sql,values)=>db.query(sql,values?[...values]:undefined)})).toBe(1);
  await db.query("INSERT INTO ls_identity.workspaces(id,created_at) VALUES($1,$2)",[workspace,now]);
  ownerActor=await account(owner,"practitioner");otherActor=await account(randomUUID(),"parent");},30000);
