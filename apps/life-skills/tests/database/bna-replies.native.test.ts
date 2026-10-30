@@ -8,7 +8,7 @@ import {poolStore} from './calendar/fixture.ts';
 import {migrate} from '../../src/db/migration-runner.ts';
 import {BnaInquiryStore} from '../../src/features/bna-inquiry/store.ts';
 import {BnaAcknowledgmentStore,configuredBnaAcknowledgmentQueue} from '../../src/features/bna-communications/acknowledgment-store.ts';
-import {BnaOptionalCalendarStore} from '../../src/features/bna-communications/optional-calendar-store.ts';
+import {BnaOptionalCalendarStore,type BnaOptionalAdmission} from '../../src/features/bna-communications/optional-calendar-store.ts';
 import {BnaPreferenceStore} from '../../src/features/bna-communications/preferences-store.ts';
 import {BnaReplyStore} from '../../src/features/bna-communications/reply-store.ts';
 import type {BnaSentReplySource} from '../../src/features/bna-communications/reply-contract.ts';
@@ -36,7 +36,7 @@ it('native reply proposal is atomic/additive; concurrent receipts/reviews preser
   const actor=(id:string)=>({id,workspaceId:workspace,personId:id,role:id===owner?'practitioner':'parent',state:'active',locale:'en',sessionDigest:id.replaceAll('-','').padEnd(64,'0'),expiresAt:new Date('2035-01-01').getTime()}) as Actor;
   const ownerActor=actor(owner),store=poolStore(pool),inquiries=new BnaInquiryStore(store,workspace,ring,key,owner,clock,configuredBnaAcknowledgmentQueue({LS_BNA_EMAIL_QUEUE_ENABLED:'true',LS_BNA_EMAIL_QUEUE_SINCE:base.toISOString(),LS_BNA_EMAIL_SOURCE_SHA256:BNA_EMAIL_SOURCE},ring,key));
   const acknowledgment=new BnaAcknowledgmentStore(store,workspace,owner,ring,key,clock),basePrefs=new BnaPreferenceStore(store,workspace,owner,ring,key,clock,inquiries);
-  const optionalAdmission={sourceSha256:BNA_EMAIL_SOURCE,postalAddress:'SYNTHETIC ONLY, 123 Test Street, Example',approvedCopies:Object.fromEntries(bnaEmailCandidates.messages.map(m=>[m.id,m.copySha256]))};
+  const optionalAdmission:BnaOptionalAdmission={sourceSha256:BNA_EMAIL_SOURCE,postalAddress:'SYNTHETIC ONLY, 123 Test Street, Example',approvedCopies:Object.fromEntries(bnaEmailCandidates.messages.map(m=>[m.id,m.copySha256]))};
   const optionalSources=new BnaOptionalCalendarStore(store,workspace,owner,ring,key,clock,inquiries,basePrefs,()=>optionalAdmission);
   const replies=new BnaReplyStore(store,workspace,owner,ring,key,clock,{service:acknowledgment,optional:optionalSources},()=>({primaryMailbox:'synthetic-native-mailbox@example.invalid',monitorFrom:base.toISOString()}));
   const prefs=new BnaPreferenceStore(store,workspace,owner,ring,key,clock,inquiries,replies),calendar=new BnaOptionalCalendarStore(store,workspace,owner,ring,key,clock,inquiries,prefs,()=>optionalAdmission);
