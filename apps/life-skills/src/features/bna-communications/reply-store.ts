@@ -123,6 +123,16 @@ export class BnaReplyStore{
  }
  private async inquiry(tx:SqlSession,id:string){if(!z.uuid().safeParse(id).success)throw new AppError('INVALID_REQUEST');
   if(!(await one(tx,"SELECT id FROM ls_service_interest.bna_inquiries WHERE workspace_id=$1 AND id=$2 AND owner_account_id=$3 AND program_key IN('bna_learning_coop','bna_support_interest')",[this.workspace,id,this.ownerId])))throw new AppError('NOT_FOUND');}
+ async summariesForInquiries(actor:Actor,input:readonly string[]){const ids=z.array(z.uuid()).max(100).parse(input);
+  if(new Set(ids).size!==ids.length)throw new AppError('INVALID_REQUEST');return this.db.transaction(async tx=>{await tx.query('SET TRANSACTION READ ONLY');await this.owner(tx,actor);
+   const summary:Record<string,{pending:number;latestReceivedAt:string|null}>={};for(const id of ids)summary[id]={pending:0,latestReceivedAt:null};if(!ids.length)return summary;
+   const owned=await tx.query<{id:string}>("SELECT id FROM ls_service_interest.bna_inquiries WHERE workspace_id=$1 AND owner_account_id=$2 AND id=ANY($3::uuid[])",[this.workspace,this.ownerId,ids]);
+   if(owned.length!==ids.length)throw new AppError('NOT_FOUND');
+   const rows=await tx.query<Joined>(`SELECT ${joinedColumns} FROM ls_service_interest.bna_mailbox_reply_receipts r ${latestReview} WHERE r.workspace_id=$1 AND r.owner_account_id=$2 AND r.inquiry_id=ANY($3::uuid[]) ORDER BY r.received_at,r.id LIMIT 10001`,[this.workspace,this.ownerId,ids]);
+   if(rows.length>10000)throw new AppError('UNAVAILABLE');for(const row of rows){this.decode(row);const review=this.joinedReview(row),s=summary[row.inquiryId];if(!s)throw new AppError('UNAVAILABLE');
+    if(review.state==='pending')s.pending++;s.latestReceivedAt=row.receivedAt.toISOString();}return summary;
+  });
+ }
  private cursorAad(inquiryId:string){return `ls_service_interest/bna-mailbox-reply-cursor/v1/${this.workspace}/${this.ownerId}/${inquiryId}`;}
  async readOwner(actor:Actor,inquiryId:string,before?:string){return this.db.transaction(async tx=>{await tx.query('SET TRANSACTION READ ONLY');await this.owner(tx,actor);await this.inquiry(tx,inquiryId);
   let anchor:string|null=null;if(before!==undefined){try{if(!/^[A-Za-z0-9_-]{64,2048}$/.test(before))throw Error();const bytes=Buffer.from(before,'base64url');if(bytes.toString('base64url')!==before)throw Error();

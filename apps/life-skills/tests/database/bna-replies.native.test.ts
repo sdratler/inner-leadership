@@ -60,6 +60,7 @@ it('native reply proposal is atomic/additive; concurrent receipts/reviews preser
   const first=(await replies.readOwner(ownerActor,co.reference)).items[0]!;
   expect((await prefs.readOwner(ownerActor,co.reference)).preferences).toMatchObject({version:0,replyPending:true});
   expect((await prefs.readOwner(ownerActor,support.reference)).preferences.replyPending).toBe(false);
+  expect(await replies.summariesForInquiries(ownerActor,[co.reference,support.reference])).toEqual({[co.reference]:{pending:1,latestReceivedAt:now.toISOString()},[support.reference]:{pending:0,latestReceivedAt:null}});
   const command={action:'mark_reviewed' as const,receiptId:first.id,operationId:randomUUID(),expectedVersion:1};now=new Date(now.getTime()+1000);
   await Promise.all([replies.markReviewed(ownerActor,command),replies.ingest([selection],reader('synthetic-native-reply-two'))]);
   expect((await replies.readOwner(ownerActor,co.reference)).items.map(r=>r.state)).toEqual(['pending','reviewed']);

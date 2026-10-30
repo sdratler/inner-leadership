@@ -11,6 +11,16 @@ import {freezeBnaAcknowledgment} from "../../src/features/bna-communications/del
 import type {BnaAcknowledgmentStore} from "../../src/features/bna-communications/acknowledgment-store.ts";
 
 const origin="https://life-skills.example.invalid",path="/api/public/bna-inquiries";
+it('enriches only the authorized list page with durable reply-review summaries and fails closed on a missing summary',async()=>{
+ const actor={id:randomUUID(),workspaceId:randomUUID(),role:'practitioner'} as Actor,id=randomUUID(),page={items:[{id}],nextCursor:null};
+ const list=vi.fn(async()=>page),summariesForInquiries=vi.fn(async():Promise<Record<string,{pending:number;latestReceivedAt:string|null}>>=>({[id]:{pending:1,latestReceivedAt:'2026-10-30T12:00:00.000Z'}}));
+ const deps={origin,actor:async()=>actor,csrf:()=>'',limits:{consume:async()=>({count:1,retryAfterMs:0})},rateLimitKey:'synthetic-reply-summary-rate-key-32',
+  store:{list,read:vi.fn(),findOperation:vi.fn(),followup:vi.fn()} as unknown as Pick<BnaInquiryStore,'list'|'read'|'findOperation'|'followup'>,replyReviews:{summariesForInquiries}};
+ const request=()=>new Request(origin+'/api/private/bna-inquiries',{headers:{host:'life-skills.example.invalid','x-forwarded-proto':'https',cookie:'__Host-ls-session='+('a'.repeat(43))}});
+ const result=await privateBnaInquiryHttp(request(),async()=>deps);expect(result.status).toBe(200);expect((await result.json()).data.items[0]).toMatchObject({id,replyReview:{pending:1}});expect(summariesForInquiries).toHaveBeenCalledWith(actor,[id]);
+ summariesForInquiries.mockResolvedValueOnce({});expect((await privateBnaInquiryHttp(request(),async()=>deps)).status).toBe(503);
+ list.mockRejectedValueOnce(new AppError('NOT_FOUND'));const calls=summariesForInquiries.mock.calls.length;expect((await privateBnaInquiryHttp(request(),async()=>deps)).status).toBe(404);expect(summariesForInquiries).toHaveBeenCalledTimes(calls);
+});
 it("offers a BNA-only challenge, requires same-origin consent, and returns only a generic save receipt",async()=>{
  let now=Date.now();const submit=vi.fn(async()=>({saved:true as const,reference:randomUUID(),replayed:false}));
  const deps={enabled:true,environment:{LS_APP_ORIGIN:origin},challengeKey:"synthetic-bna-challenge-key-32-characters",now:()=>now,

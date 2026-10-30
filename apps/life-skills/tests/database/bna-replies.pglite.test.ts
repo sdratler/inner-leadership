@@ -81,6 +81,8 @@ it('keeps same-adult programs separate and refuses remapping one provider receip
  const email=randomUUID()+'@example.invalid',co=await inquiry(email),support=await inquiry(email,true,true),coSelection=await sent(co),supportSelection=await sent(support);
  now=new Date(base.getTime()+1000);const r=reader();await replies.ingest([coSelection],r);
  expect((await prefs.readOwner(ownerActor,co)).preferences.replyPending).toBe(true);expect((await prefs.readOwner(ownerActor,support)).preferences.replyPending).toBe(false);
+ expect(await replies.summariesForInquiries(ownerActor,[co,support])).toEqual({[co]:{pending:1,latestReceivedAt:now.toISOString()},[support]:{pending:0,latestReceivedAt:null}});
+ await expect(replies.summariesForInquiries(ownerActor,[co,randomUUID()])).rejects.toMatchObject({code:'NOT_FOUND'});
  const before=await count();await expect(replies.ingest([supportSelection],r)).rejects.toMatchObject({code:'CONFLICT'});expect(await count()).toEqual(before);
  await expect(replies.readOwner(otherActor,co)).rejects.toMatchObject({code:'NOT_FOUND'});
 });

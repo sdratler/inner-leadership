@@ -6,6 +6,7 @@ import type {BnaInquiryStore} from "./store.ts";
 import {BnaAcknowledgmentPreviewPanel} from "../bna-communications/acknowledgment-preview-panel.tsx";
 import {BnaPreferencesOwnerPanel} from "../bna-communications/preferences-owner-panel.tsx";
 import {BnaOptionalCalendarOwnerPanel} from "../bna-communications/optional-calendar-owner-panel.tsx";
+import {BnaReplyOwnerPanel} from '../bna-communications/reply-owner-panel.tsx';
 import {bnaFollowupCommandSchema,type BnaFollowupCommand} from "./contract.ts";
 
 type Page=Awaited<ReturnType<BnaInquiryStore["list"]>>;
@@ -19,12 +20,13 @@ async function get<T>(id?:string,before?:string,historyBefore?:number):Promise<T
  return body.data as T;
 }
 /** Add this section to the existing People route. No separate CRM or identity. */
-export function BnaInquiryOwnerPanel({locale,initialId,preferencesEnabled=false,calendarEnabled=false,onOperationPending}:{locale:Locale;initialId?:string|undefined;preferencesEnabled?:boolean;calendarEnabled?:boolean;onOperationPending?:(pending:boolean)=>void}){
+export function BnaInquiryOwnerPanel({locale,initialId,preferencesEnabled=false,calendarEnabled=false,repliesEnabled=false,onOperationPending}:{locale:Locale;initialId?:string|undefined;preferencesEnabled?:boolean;calendarEnabled?:boolean;repliesEnabled?:boolean;onOperationPending?:(pending:boolean)=>void}){
  const t=(en:string,he:string)=>locale==="he"?he:en;
  const [page,setPage]=useState<Page|null>(null),[detail,setDetail]=useState<Detail|null>(null);
  const [error,setError]=useState<number|null>(null),[message,setMessage]=useState(""),[busy,setBusy]=useState(false),[loadingMore,setLoadingMore]=useState(false),[loadingHistory,setLoadingHistory]=useState(false);
  const [ackPending,setAckPending]=useState(false),[preferencesPending,setPreferencesPending]=useState(false);
- const controlsPending=ackPending||preferencesPending;
+ const [replyReviewPending,setReplyReviewPending]=useState(false);
+ const controlsPending=ackPending||preferencesPending||replyReviewPending;
  const [pending,setPending]=useState<BnaFollowupCommand|null>(null),[status,setStatus]=useState<"new"|"contacted"|"waiting"|"closed">("new");
  const [note,setNote]=useState(""),[nextAction,setNextAction]=useState(""),[dueDate,setDueDate]=useState(""),[waiting,setWaiting]=useState("");
  const [sourceCorrection,setSourceCorrection]=useState(""),[sourceBasis,setSourceBasis]=useState("");
@@ -112,8 +114,9 @@ export function BnaInquiryOwnerPanel({locale,initialId,preferencesEnabled=false,
    <p>{t("Captured source","מקור שנקלט")}: {detail.attribution?.source??t("Unknown","לא ידוע")}</p>
    <p>{t("Owner","אחראי")}: <bdi dir="ltr">{detail.ownerAccountId}</bdi></p>
    {(detail.program==='bna_learning_coop'||detail.program==='bna_support_interest')&&<>
-    <BnaAcknowledgmentPreviewPanel key={detail.id} id={detail.id} locale={locale} disabled={busy||!!pending||preferencesPending} onOperationPending={setAckPending}/>
-    {preferencesEnabled&&<BnaPreferencesOwnerPanel key={'preferences-'+detail.id} id={detail.id} locale={locale} disabled={busy||!!pending||ackPending} onOperationPending={setPreferencesPending}/>}
+    <BnaAcknowledgmentPreviewPanel key={detail.id} id={detail.id} locale={locale} disabled={busy||!!pending||preferencesPending||replyReviewPending} onOperationPending={setAckPending}/>
+    {preferencesEnabled&&<BnaPreferencesOwnerPanel key={'preferences-'+detail.id} id={detail.id} locale={locale} disabled={busy||!!pending||ackPending||replyReviewPending} onOperationPending={setPreferencesPending}/>}
+    {repliesEnabled&&<BnaReplyOwnerPanel key={'replies-'+detail.id} id={detail.id} locale={locale} disabled={busy||!!pending||ackPending||preferencesPending} onOperationPending={setReplyReviewPending}/>}
     {calendarEnabled&&<BnaOptionalCalendarOwnerPanel key={'calendar-'+detail.id} id={detail.id} locale={locale} disabled={busy||!!pending||controlsPending}/>}</>}
    <form onSubmit={submit} className="lsw-stack"><label>{t("Stage","שלב")}<select value={status} onChange={event=>setStatus(event.target.value as typeof status)}>
     <option value="new">{t("New","חדש")}</option><option value="contacted">{t("Contacted","נוצר קשר")}</option>
