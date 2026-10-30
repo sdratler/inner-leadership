@@ -44,6 +44,17 @@ export function FishingMarketingPanel({locale,data,unavailable=false,creative=nu
      <p>{t('Last recorded publication','הפרסום האחרון שתועד')}: {group.preparation.lastPublishedAt?<bdi><time dateTime={group.preparation.lastPublishedAt}>{instant(locale,group.preparation.lastPublishedAt,s.schedule.timezone)}</time></bdi>:t('Not recorded','לא תועד')} · {t('Next promotion eligibility','המועד הבא שבו ניתן לשקול פרסום שיווקי')}: {group.preparation.nextEligibleAt?<bdi><time dateTime={group.preparation.nextEligibleAt}>{instant(locale,group.preparation.nextEligibleAt,s.schedule.timezone)}</time></bdi>:group.preparation.status==='ready'?t('Cooldown cleared','תקופת ההמתנה הסתיימה'):t('Review required','נדרשת בדיקה')} ({s.schedule.timezone})</p>
      <p>{t('Rules last checked','מועד בדיקת הכללים האחרון')}: {group.preparation.rulesCheckedAt?<bdi><time dateTime={group.preparation.rulesCheckedAt}>{instant(locale,group.preparation.rulesCheckedAt,s.schedule.timezone)}</time></bdi>:t('Not recorded','לא תועד')}</p>
     </>}
+    <details className="lsw-details"><summary>{t('Rules and review','כללים ובדיקה')}</summary>
+     {group.review?<>
+      <p>{t('Posting identity: personal profile.','זהות הפרסום: פרופיל אישי.')} {t('Membership last checked','מועד בדיקת החברות האחרון')}: {group.review.membershipVerifiedAt?<bdi><time dateTime={group.review.membershipVerifiedAt}>{instant(locale,group.review.membershipVerifiedAt,s.schedule.timezone)}</time></bdi>:t('Not recorded','לא תועד')}</p>
+      <p>{group.review.promotionAllowed?t('Promotion is permitted subject to the recorded group rules.','פרסום שיווקי מותר בכפוף לכללי הקבוצה המתועדים.'):t('Standalone promotion is not cleared under the recorded group rules.','פרסום שיווקי עצמאי אינו מאושר לפי כללי הקבוצה המתועדים.')}</p>
+      <p>{t('Minimum promotion interval','מרווח מינימלי לפרסום שיווקי')}: {group.review.cooldownDays} {t('days','ימים')}.</p>
+      <p dir="auto" style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{group.review.ruleNote}</p>
+      <p dir="auto" style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{group.review.ownerNote}</p>
+      <p><a href={group.review.rulesUrl} target="_blank" rel="noreferrer">{t('Open group rules','פתיחת כללי הקבוצה')}</a> · {t('Checked','נבדקו')}: <bdi><time dateTime={group.review.rulesCheckedAt}>{instant(locale,group.review.rulesCheckedAt,s.schedule.timezone)}</time></bdi></p>
+      <p>{t('These notes do not approve a post or clear a paused destination.','הערות אלו אינן מאשרות פוסט ואינן מבטלות השהיה של יעד.')}</p>
+     </>:<p>{t('Rule notes and evidence have not been included in this snapshot.','הערות הכללים והאסמכתאות טרם נכללו בנתונים אלו.')}</p>}
+    </details>
    </li>)}</ul>
    {s.assets.map(asset=><article key={asset.id}><h3>{asset.language.toUpperCase()}</h3><p style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}} dir="auto">{asset.caption}</p>{creative&&creative.sha256===asset.imageSha256?<Image src={creative.path} alt={t("Approved Fishing Academy image","תמונה מאושרת של אקדמיית הדיג")} width={creative.width} height={creative.height} unoptimized style={{maxWidth:"100%",height:"auto"}}/>:<p>{t("Exact approved image unavailable.","התמונה המאושרת המדויקת אינה זמינה.")}</p>}</article>)}
   </details>

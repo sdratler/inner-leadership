@@ -64,6 +64,19 @@ it('retains group timing facts through encrypted owner readback and an identical
  expect(stored.rows[0]!.payload_ciphertext).not.toContain('nextEligibleAt');
 });
 
+it('retains encrypted rule notes, exact source links and a held destination without creating contacts',async()=>{
+ const review={postingIdentity:'personal',membershipVerifiedAt:'2026-10-28T10:00:00Z',rulesCheckedAt:'2026-10-28T12:00:00Z',rulesUrl:'https://www.facebook.com/groups/123/about',ruleNote:'Synthetic group: one relevant promotion per month.',ownerNote:'Exact copy and previous activity remain unreviewed.',promotionAllowed:true,cooldownDays:31};
+ const value={...snapshot,generatedAt:'2026-10-29T11:55:00Z',targets:[{id:'123',name:'Synthetic held group',url:'https://www.facebook.com/groups/123',eligible:false,hold:null,review}]};
+ const before=(await db.query('SELECT count(*) FROM ls_identity.people')).rows;
+ expect((await store.save(value)).replayed).toBe(false);expect((await store.save(value)).replayed).toBe(true);
+ expect((await store.read(ownerActor))?.snapshot.targets[0]?.review).toEqual(review);
+ expect((await store.read(ownerActor))?.snapshot.targets[0]?.eligible).toBe(false);
+ await expect(store.read(otherActor)).rejects.toMatchObject({code:'NOT_FOUND'});
+ expect((await db.query('SELECT count(*) FROM ls_identity.people')).rows).toEqual(before);
+ const rows=await db.query<{payload_ciphertext:string}>('SELECT payload_ciphertext FROM ls_service_interest.fishing_marketing_snapshot');
+ expect(rows.rows).toHaveLength(1);expect(rows.rows[0]!.payload_ciphertext).not.toContain(review.ruleNote);expect(rows.rows[0]!.payload_ciphertext).not.toContain(review.rulesUrl);
+});
+
 it("does not expose an altered or corrupt snapshot",async()=>{
  await db.query("UPDATE ls_service_interest.fishing_marketing_snapshot SET payload_ciphertext='corrupt' WHERE workspace_id=$1",[workspace]);
  await expect(store.read(ownerActor)).rejects.toMatchObject({code:"UNAVAILABLE"});
