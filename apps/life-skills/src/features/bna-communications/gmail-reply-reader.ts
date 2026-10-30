@@ -2,15 +2,12 @@ import 'server-only';
 import {z} from 'zod';
 import {AppError} from '../../lib/errors.ts';
 import type {GmailAuthConfig} from '../../providers/email/gmail.ts';
-import {BNA_EMAIL_SENDER,bnaEmailProgram} from './delivery-policy.ts';
+import {BNA_EMAIL_SENDER} from './delivery-policy.ts';
+import {bnaReplySentSource,type BnaSentReplySource,type BnaReceivedReply} from './reply-contract.ts';
+export type {BnaSentReplySource,BnaReceivedReply} from './reply-contract.ts';
 
 const id=z.string().regex(/^[A-Za-z0-9_-]{1,256}$/);
 const address=z.email().max(254).refine(x=>/^[\x21-\x7e]+$/.test(x));
-const sentSchema=z.strictObject({messageId:z.uuid(),inquiryId:z.uuid(),program:bnaEmailProgram,
- providerId:id,recipient:address,acceptedAt:z.iso.datetime()});
-export type BnaSentReplySource=z.infer<typeof sentSchema>;
-export type BnaReceivedReply={inquiryId:string;program:BnaSentReplySource['program'];originalMessageId:string;
- providerMessageId:string;providerThreadId:string;receivedAt:string};
 const header=z.strictObject({name:z.string().min(1).max(100),value:z.string().max(8192)});
 const metadata=z.strictObject({id,threadId:id,internalDate:z.string().regex(/^\d{1,16}$/),
  labelIds:z.array(z.string().max(100)).max(100).default([]),payload:z.strictObject({headers:z.array(header).max(100)})});
@@ -86,11 +83,15 @@ async function boundedJson(response:Response,maxBytes:number){
 export class BnaGmailReplyReader{
  constructor(private readonly config:GmailAuthConfig,private readonly primaryMailbox:string,private readonly monitorFrom:string,
   private readonly clock:{now:()=>Date},private readonly readFetch:typeof fetch=fetch){}
+ async readRepliesForBinding(input:readonly BnaSentReplySource[],expected:{primaryMailbox:string;monitorFrom:string}){
+  if(expected.primaryMailbox.toLowerCase()!==this.primaryMailbox.toLowerCase()||Date.parse(expected.monitorFrom)!==Date.parse(this.monitorFrom))throw unavailable();
+  return this.readReplies(input);
+ }
  async readReplies(input:readonly BnaSentReplySource[]):Promise<BnaReceivedReply[]>{
   try{return await this.read(input);}catch{throw unavailable();}
  }
  private async read(input:readonly BnaSentReplySource[]){
-  const sources=z.array(sentSchema).max(25).parse(input),primary=address.parse(this.primaryMailbox).toLowerCase();
+  const sources=z.array(bnaReplySentSource).max(25).parse(input),primary=address.parse(this.primaryMailbox).toLowerCase();
   const cutoff=z.iso.datetime().parse(this.monitorFrom),now=this.clock.now();
   if(!Number.isFinite(now.getTime())||Date.parse(cutoff)>now.getTime()||!this.config.enabled||this.config.from!==BNA_EMAIL_SENDER)throw unavailable();
   if(new Set(sources.map(s=>s.messageId)).size!==sources.length||new Set(sources.map(s=>s.providerId)).size!==sources.length||

@@ -14,6 +14,7 @@ import {bnaEmailRecipientKey} from './acknowledgment-store.ts';
 import {bnaEmailCandidates,previewBnaEmailCandidate} from './email-candidates.ts';
 import {BNA_EMAIL_SENDER,BNA_EMAIL_SOURCE,decideBnaEducationalDelivery} from './delivery-policy.ts';
 import {bnaOptionalCommand,bnaOptionalPrepare,bnaOptionalTemplate,type BnaOptionalCommand,type BnaOptionalPrepare,type BnaOptionalState,type BnaOptionalTemplate} from './optional-calendar-contract.ts';
+import {bnaNativeReplySource} from './reply-contract.ts';
 
 const tracks={bna_learning_coop:['EMAIL-B1','EMAIL-B2','EMAIL-B3','EMAIL-B4','EMAIL-B5'],bna_support_interest:['EMAIL-S1','EMAIL-S2','EMAIL-S3']} as const;
 const hash=(value:string)=>createHash('sha256').update(value).digest('hex');
@@ -65,6 +66,16 @@ export class BnaOptionalCalendarStore{
  private async context(tx:SqlSession,inquiryId:string){
   const [c,p]=await Promise.all([this.inquiries.optionalEmailContext(tx,inquiryId),this.preferences.readForCalendar(tx,inquiryId)]);
   if(c.recipient!==p.context.recipient||c.program!==p.preferences.program)throw new AppError('UNAVAILABLE');return {...c,...p};
+ }
+ /** Server-internal known-send binding, including a late provider acceptance.
+  * The monitor receives the adult recipient and identifiers, never the email. */
+ async replySource(tx:SqlSession,id:string){
+  if(!z.uuid().safeParse(id).success)throw new AppError('INVALID_REQUEST');
+  const item=await this.item(tx,id),payload=this.decode(item);
+  if(item.event.state!=='sent'||!item.event.providerId||item.event.recordedAt>this.clock.now()||
+   !['PROVIDER_ACCEPTED','PROVIDER_ACCEPTED_AFTER_CANCEL'].includes(item.event.code))throw new AppError('UNAVAILABLE');
+  return bnaNativeReplySource.parse({kind:'optional',messageId:item.id,inquiryId:item.inquiryId,program:item.programKey,
+   providerId:item.event.providerId,recipient:payload.recipient,recipientKey:item.recipientKey,createdAt:item.createdAt.toISOString(),acceptedAt:item.event.recordedAt.toISOString()});
  }
  private next(context:Awaited<ReturnType<BnaOptionalCalendarStore['context']>>,rows:Item[]){
   return tracks[context.program].find(id=>!rows.some(row=>row.templateId===id&&row.event.state==='sent'))??null;

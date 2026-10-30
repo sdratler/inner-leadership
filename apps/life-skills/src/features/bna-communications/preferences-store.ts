@@ -30,7 +30,8 @@ const DAY=86_400_000;
 export class BnaPreferenceStore{
  constructor(private readonly db:IdentityStore,private readonly workspace:WorkspaceId,private readonly ownerAccountId:string,
   private readonly ring:Keyring,private readonly key:string,private readonly clock:IdentityClock,
-  private readonly inquiries:Pick<BnaInquiryStore,"communicationContext">){}
+  private readonly inquiries:Pick<BnaInquiryStore,"communicationContext">,
+  private readonly replyReviews?:{pendingInTransaction(tx:SqlSession,recipientKey:string,program:BnaPreferenceContext['program']):Promise<boolean>}){}
  private aad(operation:string){return `ls_service_interest/bna-email-preference/v1/${this.workspace}/${operation}`;}
  private tokenAad(){return `ls_service_interest/bna-email-preference-capability/v1/${this.workspace}/${this.ownerAccountId}`;}
  private digest(recipientKey:string,event:Event,actor:string|null){return privateDigest({domain:"bna-email-preference-event/v1",workspace:this.workspace,recipientKey,actor,event},this.key);}
@@ -87,9 +88,12 @@ export class BnaPreferenceStore{
   return {version:rows.at(-1)?.row.version??0,program:context.program,locale,permissionGrantedAt,
    withdrawn:withdraw||globalWithdraw>grant,paused:globalPaused||localPaused,replyPending,invalidRecipient,complaint};
  }
+ private async withReplyReviews(tx:SqlSession,context:BnaPreferenceContext&{recipientKey:string},rows:Awaited<ReturnType<BnaPreferenceStore['rows']>>){
+  const snapshot=this.snapshot(context,rows);if(this.replyReviews&&await this.replyReviews.pendingInTransaction(tx,context.recipientKey,context.program))snapshot.replyPending=true;return snapshot;
+ }
  async readOwner(actor:Actor,inquiryId:string){return this.db.transaction(async tx=>{
   await tx.query("SET TRANSACTION READ ONLY");await this.owner(tx,actor);const context=await this.context(tx,inquiryId),rows=await this.rows(tx,context.recipientKey);
-  return {preferences:this.snapshot(context,rows),history:rows.slice(-100).reverse().map(({row,event})=>({version:row.version,operationId:row.operationId,
+  return {preferences:await this.withReplyReviews(tx,context,rows),history:rows.slice(-100).reverse().map(({row,event})=>({version:row.version,operationId:row.operationId,
    scope:row.programKey??"all_bna_email",source:row.source,action:event.command.action,recordedAt:event.recordedAt,
    note:"note" in event.command?event.command.note:null})),hasMoreHistory:rows.length>100};
  });}
@@ -97,7 +101,7 @@ export class BnaPreferenceStore{
   * lock. The caller authorizes the owner/worker; no browser supplies these facts. */
  async readForCalendar(tx:SqlSession,inquiryId:string){
   const context=await this.context(tx,inquiryId);
-  return {context,preferences:this.snapshot(context,await this.rows(tx,context.recipientKey))};
+  return {context,preferences:await this.withReplyReviews(tx,context,await this.rows(tx,context.recipientKey))};
  }
  async capabilityForCalendar(tx:SqlSession,inquiryId:string){
   const context=await this.context(tx,inquiryId),now=this.clock.now();
@@ -123,7 +127,7 @@ export class BnaPreferenceStore{
  private async recipientContext(tx:SqlSession,token:string){const cap=this.capability(token),context=await this.context(tx,cap.inquiryId);
   if(context.recipientKey!==cap.recipientKey||context.program!==cap.program)throw new AppError("NOT_FOUND");return context;}
  async readRecipient(token:string){return this.db.transaction(async tx=>{await tx.query("SET TRANSACTION READ ONLY");
-  const context=await this.recipientContext(tx,token),snapshot=this.snapshot(context,await this.rows(tx,context.recipientKey));
+  const context=await this.recipientContext(tx,token),snapshot=await this.withReplyReviews(tx,context,await this.rows(tx,context.recipientKey));
   return {inquiryId:context.inquiryId,preferences:recipientBnaPreferences(snapshot),notice:BNA_PREFERENCE_NOTICE,
    canSubscribe:Date.parse(this.capability(token).expiresAt)>this.clock.now().getTime()};
  });}
@@ -132,7 +136,7 @@ export class BnaPreferenceStore{
   const prior=await tx.query<Row>(`SELECT ${columns} FROM ls_service_interest.bna_email_preference_events WHERE workspace_id=$1 AND operation_id=$2`,[this.workspace,command.operationId]);
   if(prior.length){const row=prior[0]!,event=this.decode(row);
    if(row.recipientKey!==context.recipientKey||row.actorAccountId!==actor||event.source!==source||JSON.stringify(event.command)!==JSON.stringify(command))throw new AppError("CONFLICT");
-   return {preferences:this.snapshot(context,await this.rows(tx,context.recipientKey)),replayed:true};
+   return {preferences:await this.withReplyReviews(tx,context,await this.rows(tx,context.recipientKey)),replayed:true};
   }
   if(command.action==="set_preferences"&&command.updates&&!canGrant)throw new AppError("FORBIDDEN");
   const rows=await this.rows(tx,context.recipientKey),version=rows.at(-1)?.row.version??0;
@@ -144,7 +148,7 @@ export class BnaPreferenceStore{
    actor_account_id,source,program_key,request_digest,payload_ciphertext,recorded_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
    [this.workspace,context.recipientKey,version+1,command.operationId,context.inquiryId,this.ownerAccountId,actor,source,programKey,
     this.digest(context.recipientKey,event,actor),seal(JSON.stringify(event),this.aad(command.operationId),this.ring),now]);
-  return {preferences:this.snapshot(context,await this.rows(tx,context.recipientKey)),replayed:false};
+  return {preferences:await this.withReplyReviews(tx,context,await this.rows(tx,context.recipientKey)),replayed:false};
  }
  async updateOwner(actor:Actor,input:BnaOwnerPreferenceCommand){const command=bnaOwnerPreferenceCommand.parse(input);
   return this.db.transaction(async tx=>{await lockWorkspace(tx,this.workspace);await this.owner(tx,actor);

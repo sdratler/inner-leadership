@@ -41,6 +41,10 @@ describe('known-send Gmail metadata reply reader',()=>{
   const f=fixture();const reader=new BnaGmailReplyReader(config,'another@example.invalid',cutoff,{now:()=>now},f.fetcher as typeof fetch);
   await expect(reader.readReplies([f.s])).rejects.toMatchObject({code:'UNAVAILABLE'});expect(f.calls).toHaveLength(2);
  });
+ it('binds the native ingestion admission to this reader before requesting any provider data',async()=>{
+  const f=fixture();await expect(f.reader.readRepliesForBinding([f.s],{primaryMailbox:'wrong@example.invalid',monitorFrom:cutoff})).rejects.toMatchObject({code:'UNAVAILABLE'});
+  expect(f.calls).toHaveLength(0);expect(await f.reader.readRepliesForBinding([f.s],{primaryMailbox:primary,monitorFrom:cutoff})).toHaveLength(1);
+ });
  it.each(['From','To','Message-ID'])('rejects a mismatched original %s binding',async name=>{
   const f=fixture(undefined,own=>changeHeader(own,name,'wrong@example.invalid'));
   await expect(f.reader.readReplies([f.s])).rejects.toMatchObject({code:'UNAVAILABLE'});

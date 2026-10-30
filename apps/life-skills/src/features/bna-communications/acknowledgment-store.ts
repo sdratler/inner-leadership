@@ -11,6 +11,7 @@ import {one,type IdentityStore,type SqlSession} from "../identity/store.ts";
 import type {BnaInquiryAcknowledgmentHook} from "../bna-inquiry/store.ts";
 import {BNA_EMAIL_SOURCE,freezeBnaAcknowledgment,frozenBnaAcknowledgmentSchema,type FrozenBnaAcknowledgment} from "./delivery-policy.ts";
 import {bnaRecipientSha256,type BnaDispatchAdmission} from "./dispatch-admission.ts";
+import {bnaNativeReplySource} from './reply-contract.ts';
 
 export type BnaAcknowledgmentState="queued"|"unknown"|"sent"|"failed"|"canceled";
 type Row={id:string;inquiryId:string;programKey:string;ownerAccountId:string;recipientKey:string;locale:string;
@@ -75,6 +76,17 @@ export class BnaAcknowledgmentStore{
  private row(tx:SqlSession,id:string,lock=false){return one<Row>(tx,`SELECT ${columns} FROM ls_service_interest.bna_email_messages m
   JOIN ls_service_interest.bna_email_delivery d ON d.workspace_id=m.workspace_id AND d.message_id=m.id
   WHERE m.workspace_id=$1 AND m.id=$2 AND m.owner_account_id=$3${lock?" FOR UPDATE OF d":""}`,[this.workspace,id,this.ownerAccountId]);}
+ /** Server-internal metadata monitor binding. Caller owns the transaction and
+  * authorizes the configured owner; no body or child field leaves this method. */
+ async replySource(tx:SqlSession,id:string){
+  if(!z.uuid().safeParse(id).success)throw new AppError('INVALID_REQUEST');
+  const row=await this.row(tx,id);
+  if(!row||row.state!=='sent'||!row.providerId||!row.completedAt||row.completedAt>this.clock.now()||
+   !['PROVIDER_ACCEPTED','PROVIDER_ACCEPTED_AFTER_CANCEL'].includes(row.lastCode??''))throw new AppError('UNAVAILABLE');
+  const payload=this.decode(row);
+  return bnaNativeReplySource.parse({kind:'service',messageId:row.id,inquiryId:row.inquiryId,program:payload.program,
+   providerId:row.providerId,recipient:payload.recipient,recipientKey:row.recipientKey,createdAt:row.createdAt.toISOString(),acceptedAt:row.completedAt.toISOString()});
+ }
  private async transition(tx:SqlSession,row:Row,state:BnaAcknowledgmentState,code:string,operationId:string,actorId:string|null=null,providerId:string|null=null,requestDigest:string|null=null){
   const now=this.clock.now(),version=row.version+1;
   const updated=await tx.query(`UPDATE ls_service_interest.bna_email_delivery SET state=$4,version=$5,last_code=$6,
