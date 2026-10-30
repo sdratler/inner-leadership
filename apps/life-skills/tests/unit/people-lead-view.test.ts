@@ -19,3 +19,10 @@ it("preserves mixed and ambiguous 305 purposes without guessing a relationship",
  expect(ambiguous.purposes).toEqual(["unclassified"]);expect(needsFollowup(ambiguous)).toBe(true);
  expect(conversationLeadRow({...item,followup:{...item.followup,classification:"provider"}}).purposes).toEqual(["provider"]);
 });
+it('shows a new reply review on a closed inquiry without rewriting its saved follow-up or purpose',()=>{
+ const item={id:'reply-inquiry',program:'bna_support_interest',ownerAccountId:'owner',receivedAt:'2026-10-28T12:00:00.000Z',fields:{name:'Synthetic adult'},attribution:null,followup:{...followup,status:'closed'}};
+ const row=bnaLeadRow({...item,replyReview:{pending:1,latestReceivedAt:'2026-10-30T12:00:00.000Z'}});
+ expect(row).toMatchObject({status:'closed',replyPending:true,purposes:['support'],latestActivity:'2026-10-30T12:00:00.000Z'});expect(needsFollowup(row)).toBe(true);
+ const done=bnaLeadRow({...item,replyReview:{pending:0,latestReceivedAt:'2026-10-30T12:00:00.000Z'}});expect(needsFollowup(done)).toBe(false);expect(done.status).toBe('closed');
+ expect(()=>bnaLeadRow({...item,replyReview:{pending:-1,latestReceivedAt:null}})).toThrow('INVALID_REPLY_SUMMARY');
+});

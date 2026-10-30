@@ -18,6 +18,7 @@ import type {BnaInquiryStore} from "./store.ts";
 import {bnaAcknowledgmentPreview} from "../bna-communications/acknowledgment-preview.ts";
 import type {BnaAcknowledgmentStore} from "../bna-communications/acknowledgment-store.ts";
 import {bnaAcknowledgmentCommandSchema} from "../bna-communications/acknowledgment-command.ts";
+import type {BnaReplyStore} from '../bna-communications/reply-store.ts';
 
 const coopSubmission=z.object({challenge:z.string().min(80).max(1024),website:z.literal("").optional(),operationId:z.string().uuid(),fields:bnaCoopReadableFieldsSchema,attribution:bnaAttributionSchema.optional()}).strict();
 const supportSubmission=z.object({challenge:z.string().min(80).max(1024),website:z.literal("").optional(),operationId:z.string().uuid(),fields:bnaSupportFieldsSchema,attribution:bnaAttributionSchema.optional()}).strict();
@@ -50,7 +51,8 @@ export async function publicBnaInquiryHttp(request:Request,load:()=>Promise<Publ
 
 type PrivateDeps={origin:string;actor:(token:string)=>Promise<Actor>;csrf:(token:string)=>string;
  limits:RateLimitStore;rateLimitKey:string;store:Pick<BnaInquiryStore,"list"|"read"|"findOperation"|"followup">;
- communications?:Pick<BnaAcknowledgmentStore,"readForInquiry">&Partial<Pick<BnaAcknowledgmentStore,"cancel"|"retryNotAttempted">>};
+ communications?:Pick<BnaAcknowledgmentStore,"readForInquiry">&Partial<Pick<BnaAcknowledgmentStore,"cancel"|"retryNotAttempted">>;
+ replyReviews?:Pick<BnaReplyStore,'summariesForInquiries'>};
 export async function privateBnaInquiryHttp(request:Request,load:()=>Promise<PrivateDeps>):Promise<Response>{
  const requestId=randomUUID();let response:Response;
  try{
@@ -68,7 +70,10 @@ export async function privateBnaInquiryHttp(request:Request,load:()=>Promise<Pri
    if(preview!==null&&(preview!=='acknowledgment'||!id||before!==null||historyBefore!==null||operation!==null))throw new AppError('INVALID_REQUEST');
    if(preview){const record=await d.store.read(actor,id!);const delivery=record.program==='bna_learning_coop'||record.program==='bna_support_interest'?await d.communications?.readForInquiry(actor,id!):undefined;
     response=successResponse(bnaAcknowledgmentPreview(record,delivery),requestId);
-   }else response=successResponse(operation?await d.store.findOperation(actor,operation):id?await d.store.read(actor,id,historyBefore===null?undefined:Number(historyBefore)):await d.store.list(actor,before??undefined),requestId);
+   }else if(operation)response=successResponse(await d.store.findOperation(actor,operation),requestId);
+   else if(id)response=successResponse(await d.store.read(actor,id,historyBefore===null?undefined:Number(historyBefore)),requestId);
+   else{const page=await d.store.list(actor,before??undefined),reviews=await d.replyReviews?.summariesForInquiries(actor,page.items.map(item=>item.id));
+    response=successResponse(reviews?{...page,items:page.items.map(item=>{const replyReview=reviews[item.id];if(!replyReview)throw new AppError('UNAVAILABLE');return {...item,replyReview};})}:page,requestId);}
   }else if(request.method==="POST"){
    if(url.search)throw new AppError("INVALID_REQUEST");
    verifyMutationOrigin(canonical,d.origin);verifyCsrfToken(request.headers.get("x-csrf-token"),d.csrf(token));
